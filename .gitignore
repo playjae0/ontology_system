@@ -3,3 +3,10 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# data/ = 실행 산출물. 추적하지 않는다.
+#   ① `python run.py all` 한 번으로 재생성된다(진실의 원천은 mock/parsed + layers/config).
+#   ② 의미 축 id가 ULID(시각+난수)라 실행할 때마다 내용이 달라진다 —
+#      추적하면 테스트를 돌릴 때마다 diff가 나고, 그 잡음이 core/의 실제 변경을 덮는다.
+#      G4 완료판정 `git diff core/`(J3)가 읽혀야 하므로 이 잡음은 특히 해롭다.
+data/
