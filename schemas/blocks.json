@@ -1,0 +1,16 @@
+{
+  "_note": "공용 블록 — 여러 doc_type에서 반복되는 필드 묶음. 블록도 값이라 코드 리스크 0(CH2 2.6).",
+  "common_core": {
+    "source_locator": {"role": "meta"}
+  },
+  "process_coord": {
+    "process_group": {"role": "anchor", "target_category": "Process", "level": "대공정"},
+    "process_ref":   {"role": "anchor", "target_category": "Process", "level": "세부공정"},
+    "process_no":    {"role": "meta", "optional": true}
+  },
+  "_structural": {
+    "_note": "role 배정 대상이 아닌 구조 필드 — D-31·D-1 (둘 다 가결정, 확정은 세션 1/4).",
+    "electrode_type": "극성 결합은 role 핸들러가 아니라 entity 해소 코드가 수행한다",
+    "section": "청크의 원본 위치 표기이며 chunk_id 산식의 입력이다"
+  }
+}

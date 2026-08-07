@@ -1,0 +1,18 @@
+{
+  "process": {
+    "layer": "process",
+    "status": "builtin",
+    "skeleton_version": "process-1.0",
+    "categories": [
+      "Process",
+      "Unit",
+      "Property"
+    ],
+    "relations": [
+      "part_of",
+      "precedes",
+      "has_property",
+      "mirrors"
+    ]
+  }
+}

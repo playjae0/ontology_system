@@ -1,0 +1,30 @@
+{
+  "CP01": {
+    "doc_hash": "bf837af363df6cb1b9789111d00f84d5bf5e0176dc9b7ab79a00d2ed3b8c1493",
+    "revision": "R3",
+    "source_path": "mock/raw/CP01.xlsx",
+    "doc_type": "cp",
+    "first_ingested_at": "2026-01-05T00:00:00"
+  },
+  "PFMEA01": {
+    "doc_hash": "c0dfb4c0f8814f24a364c71796d7cb3740f0e7dc2627f0d295801f349dbf4f08",
+    "revision": "R3",
+    "source_path": "mock/raw/PFMEA01.xlsx",
+    "doc_type": "pfmea",
+    "first_ingested_at": "2026-01-05T00:00:00"
+  },
+  "PPT01": {
+    "doc_hash": "21a05510e0aec6fcd0bb7fb52c2354767862959c121c06836f83155bffd2d652",
+    "revision": "R1",
+    "source_path": "(mock)",
+    "doc_type": "ppt_process",
+    "first_ingested_at": "2026-01-05T00:00:00"
+  },
+  "PPT03": {
+    "doc_hash": "0ef7357b989d201c3113542a2856612fcd8c8dd40a3ff595402b5726ce7da176",
+    "revision": "R1",
+    "source_path": "(mock)",
+    "doc_type": "ppt_process",
+    "first_ingested_at": "2026-01-05T00:00:00"
+  }
+}
