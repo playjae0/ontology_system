@@ -16,7 +16,7 @@ from pathlib import Path
 
 from core import store
 from core.bootstrap import bootstrap, open_graph
-from core.ingest import ingest
+from core.pipeline import run_document
 from router import discover
 
 ROOT = Path(__file__).resolve().parent
@@ -29,6 +29,9 @@ def _load(p):
 def cmd_bootstrap():
     for layer in discover():
         g, m, ids = bootstrap(layer)
+        if g is None:
+            print(f"[bootstrap] {layer}: 골격 선언 없음 — 내장 층이 아니다 (J10)")
+            continue
         print(f"[bootstrap] {layer}: 노드 {m['nodes']} · 엣지 {m['edges']}")
         print(f"            계기판 7 graph {m['gauge7_graph_mb']}MB "
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
@@ -36,17 +39,21 @@ def cmd_bootstrap():
 
 def cmd_ingest(paths):
     for p in paths:
-        env = _load(p)
-        r = ingest(env)
+        r, m, extracted = run_document(_load(p))
         mark = "보류" if r.status == "held" else "인입"
+        tail = f"  ({r.reason})" if r.reason else (
+            "  [추출 실행]" if extracted else "  [추출 체크포인트 재사용]")
         print(f"[{mark}] {r.doc_id}: record {len(r.record_ids)} · "
-              f"chunk {len(r.chunk_ids)}" + (f"  ({r.reason})" if r.reason else ""))
+              f"chunk {len(r.chunk_ids)}{tail}")
 
 
 def cmd_all():
     cmd_bootstrap()
     mock = sorted((ROOT / "mock" / "parsed").glob("*.json"))
-    cmd_ingest([p for p in mock if p.stem != "CP01B"])
+    order = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
+    idx = {n: i for i, n in enumerate(order)}
+    cmd_ingest(sorted([p for p in mock if p.stem != "CP01B"],
+                      key=lambda p: idx.get(p.stem, 99)))
 
 
 def cmd_gauges():

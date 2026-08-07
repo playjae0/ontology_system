@@ -152,3 +152,56 @@
 ### 다음
 
 정지점 3 — **G3**(계약 v2 정합 · 추출 분리 · 게이트). ★가장 중요한 구간.
+
+---
+
+## G3 — 계약 v2 정합 · 추출 분리 · 게이트 · 2026-08-08 · **완료**
+
+정지점 3(★). 완료판정 전 항목 PASS (`tests/test_g3.py` — 40항목). G1+G2·verify_roundtrip 회귀도 PASS.
+
+### 1c′·1d′ — 변경점 닫힌 목록 5항 전부 반영
+
+| 판정 | 결과 |
+|---|---|
+| C4 spec_conflict | **1건** (같은 context, 다른 값) |
+| C7 병렬 항목 | context M1·M2 **2건 병렬** — 충돌 아님 |
+| C8·C9 극성 결합 | `cathode 노칭 프레스` · `anode 노칭 프레스` **2노드** |
+| mirrors | **2건** 자동 연결 |
+| C10 mirror_asymmetry | 큐 1건 (`노칭::anode 버 높이`) |
+| C5 극성 모호 anchor | `탭용접` → orphan_anchor |
+| **C11 coord_mismatch** | **1건** — 파서→인입 사슬의 실증 |
+| P5 linked=false | 보존 |
+| P6 auto + 큐 | `주액기` |
+
+`process_group`은 **부착하지 않고 골격 조상 대조만** 한다. 골격 밖 값은 coord_mismatch가 아니라 orphan_anchor로 갈리는 것도 확인했다.
+
+### n3 — 추출 분리
+
+`extract/{doc_id}.json`이 3.11 스키마 그대로다 — 표면형만·노드 id 없음·confidence 없음·span 없음. 재현성 3입력(`mock-1.0` / `e-1.0` / `quality-1`) 기록. **구축 2회 재실행 시 추출 미재호출** 확인. S13 orphan_attach **0건**, attach가 다른 청크의 개체로 붙어 has_property 생성.
+
+### n4 — 커밋 게이트
+
+| 분기 | 결과 |
+|---|---|
+| K1 동종 쌍 causes(경로 ③) | **direction_unverifiable** 큐, 커밋 0, 근거 청크 동봉 |
+| K2 이종 쌍 affects | **커밋** |
+| K3 방향만 반대 | **direction_conflict** 큐, 자동 반전 없음 |
+| K4 관계 없는 서술 | 후보 **0** (과추출 없음) |
+
+**회귀 — 경로 ②는 무비용 통과**: PFMEA causes **13** · affects **9** · occurs_in **8** · controlled_by **11** 전부 커밋. `gate_rejects.json`은 큐가 아니라 로그(사유별 건수)다.
+
+### 이번 구간에서 고친 결함 3건
+
+1. **alias 과매칭** — alias에 문자열 포함 규칙을 걸면 `cathode 노칭 프레스`가 무극성 노드에 흡수된다. alias는 **정확 일치만**, 포함 규칙은 canonical에만 적용하도록 갈랐다.
+2. **극성 정체성** — 위와 같은 뿌리. 극성이 다르면 후보에서 제외하는 것을 문자열 휴리스틱이 아니라 **정체성 규칙**으로 걸었다.
+3. **부트스트랩 비멱등** — 골격을 다시 심어 ULID가 새로 발급되면서 2회 실행 시 노드가 60→72로 늘었다. 이미 심긴 골격은 다시 심지 않도록 고쳤다. **`run.py all` 2회 = 동일 그래프(60노드·71엣지)** 확인.
+
+### 보고 — 품질층 config 생성 시점
+
+G3 프롬프트가 "quality config의 prompts.extract 훅 활성"을 지시하고 §8 총괄표가 S2·S3을 QPPT01(층 quality)에 배정하므로, `layers/quality/config.json`을 이 구간에서 작성했다. 증분0 G2 n10의 *"품질지식층은 여기서 내장하지 않는다(G4의 3′이 신규 층 등록 절차로 추가)"* 서술과 겹치는 지점이다.
+
+**내장하지는 않았다** — `registration: "registered"`로 두어 registry의 **builtin 층은 여전히 process 1개**다. G4 3′의 「수동 config 경로로 층을 등록한다」는 절차 검증은 그대로 남아 있고, config는 값 파일이라 되돌리기 비용이 0이다. **판정이 다르면 알려 달라.**
+
+### 다음
+
+정지점 4 — **G4**(질의 회귀 · 품질층 층 등록 절차 · 재인입 회귀). `git diff core/`(J3)가 여기서 판정된다.

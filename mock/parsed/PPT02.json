@@ -1,0 +1,33 @@
+{
+  "doc_id": "PPT02",
+  "doc_type": "ppt_process",
+  "source_path": "(mock)",
+  "revision": "R1",
+  "parsed_at": "2026-01-05T00:00:00",
+  "parser_version": "mock-0.1",
+  "adapter_version": "mock-1.0",
+  "context": {
+    "model": "M1"
+  },
+  "payload_kind": "prose",
+  "chunks": [
+    {
+      "source_locator": "PPT02-L1",
+      "process_group": "조립",
+      "process_ref": "전해액주입",
+      "electrode_type": "both",
+      "text": "주액기는 정량 펌프로 전해액을 셀에 주입하는 설비다.",
+      "section": "슬라이드 1",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT02-L2",
+      "process_group": "조립",
+      "process_ref": "전해액주입",
+      "electrode_type": "both",
+      "text": "노즐 세척 주기는 교대마다 관리한다.",
+      "section": "슬라이드 2",
+      "meta": {}
+    }
+  ]
+}

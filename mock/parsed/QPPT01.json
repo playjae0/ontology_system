@@ -1,0 +1,51 @@
+{
+  "doc_id": "QPPT01",
+  "doc_type": "ppt_quality",
+  "source_path": "(mock)",
+  "revision": "R1",
+  "parsed_at": "2026-01-05T00:00:00",
+  "parser_version": "mock-0.1",
+  "adapter_version": "mock-1.0",
+  "context": {
+    "model": "M1"
+  },
+  "payload_kind": "prose",
+  "chunks": [
+    {
+      "source_locator": "QPPT01-K1",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "이물 유입으로 인해 절연 파괴가 발생했다.",
+      "section": "슬라이드 1",
+      "meta": {}
+    },
+    {
+      "source_locator": "QPPT01-K2",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "절연 파괴는 단락으로 이어진다.",
+      "section": "슬라이드 2",
+      "meta": {}
+    },
+    {
+      "source_locator": "QPPT01-K3",
+      "process_group": "조립",
+      "process_ref": "스태킹",
+      "electrode_type": "both",
+      "text": "단락이 내부 절연 파괴로 이어진다는 보고가 있다.",
+      "section": "슬라이드 3",
+      "meta": {}
+    },
+    {
+      "source_locator": "QPPT01-K4",
+      "process_group": "조립",
+      "process_ref": "실링",
+      "electrode_type": "both",
+      "text": "실링 공정은 교대 시작 시 설비 상태를 점검한다.",
+      "section": "슬라이드 4",
+      "meta": {}
+    }
+  ]
+}

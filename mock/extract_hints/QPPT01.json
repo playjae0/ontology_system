@@ -1,0 +1,67 @@
+{
+  "QPPT01-K1": {
+    "entities": [
+      {
+        "surface": "이물 유입",
+        "category": "Failure"
+      },
+      {
+        "surface": "절연 파괴",
+        "category": "Failure"
+      }
+    ],
+    "relations": [
+      {
+        "src": "이물 유입",
+        "rel": "causes",
+        "dst": "절연 파괴"
+      }
+    ],
+    "attach": []
+  },
+  "QPPT01-K2": {
+    "entities": [
+      {
+        "surface": "절연 파괴",
+        "category": "Failure"
+      },
+      {
+        "surface": "단락",
+        "category": "FailureEffect"
+      }
+    ],
+    "relations": [
+      {
+        "src": "절연 파괴",
+        "rel": "affects",
+        "dst": "단락"
+      }
+    ],
+    "attach": []
+  },
+  "QPPT01-K3": {
+    "entities": [
+      {
+        "surface": "단락",
+        "category": "FailureEffect"
+      },
+      {
+        "surface": "절연 파괴",
+        "category": "Failure"
+      }
+    ],
+    "relations": [
+      {
+        "src": "단락",
+        "rel": "affects",
+        "dst": "절연 파괴"
+      }
+    ],
+    "attach": []
+  },
+  "QPPT01-K4": {
+    "entities": [],
+    "relations": [],
+    "attach": []
+  }
+}
