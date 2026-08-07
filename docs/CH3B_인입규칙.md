@@ -73,24 +73,26 @@ tags: {3.5: 확정(R9 electrode_type role은 미결 — 이 절과 함께 확정
 1. **모든 자동 생성물(노드·엣지·alias·값 항목)에 status와 provenance를 예외 없이 기록한다.** 이것이 사후 수정을 가능하게 하는 재료다.
 2. **아무것도 조용히 버리지 않는다.** 처리 못 한 것은 전부 종류가 붙은 큐 항목이 된다 — 실패는 예외가 아니라 등급이다.
 3. **큐 13종**:
-| kind | 뜻 | kind | 뜻 |
-|---|---|---|---|
-| auto_node | 자동 생성 노드 — 검토 대상 | spec_conflict | 같은 항목·같은 맥락에 다른 값 |
-| uncertain_match | 판정 불확실 — 신규로 만들고 표시 | evidence_lost | 재인입 후 근거가 0이 된 것 |
-| orphan_anchor | 공정좌표가 골격에 없음 | mirror_asymmetry | 극성 쌍의 자식 구성 불일치 |
-| orphan_chunk_link | 청크 속 언급 미해소 | unknown_field | 스키마에 없는 필드(파서가 앞서간 신호) |
-| orphan_attach | 부착 대상 이름 미해소 | missing_field | 필수 값 부재·계약 위반 |
-| attach_conflict | 문서끼리 부착 주장 충돌 | invalid_category | 카테고리 오류 |
-| structural_proposal | Tier1 구조 개정 제안(3.9) | | |
+
+   | kind | 뜻 | kind | 뜻 |
+   |---|---|---|---|
+   | auto_node | 자동 생성 노드 — 검토 대상 | spec_conflict | 같은 항목·같은 맥락에 다른 값 |
+   | uncertain_match | 판정 불확실 — 신규로 만들고 표시 | evidence_lost | 재인입 후 근거가 0이 된 것 |
+   | orphan_anchor | 공정좌표가 골격에 없음 | mirror_asymmetry | 극성 쌍의 자식 구성 불일치 |
+   | orphan_chunk_link | 청크 속 언급 미해소 | unknown_field | 스키마에 없는 필드(파서가 앞서간 신호) |
+   | orphan_attach | 부착 대상 이름 미해소 | missing_field | 필수 값 부재·계약 위반 |
+   | attach_conflict | 문서끼리 부착 주장 충돌 | invalid_category | 카테고리 오류 |
+   | structural_proposal | Tier1 구조 개정 제안(3.9) | | |
  
 - 게이트 도입(3.4)과 함께 direction_conflict(방향 반대 후보)와 거부 기록이 추가된다 — 신설 kind로 갈지 기존 kind 확장으로 갈지는 명세 개정(v1.19)에서 확정.
 4. **수정 도구 = 인스턴스 변경 I축 4연산 (틀 v2.2 A2 — 스키마 축 L1~L4와 직교)**
-| 등급 | 연산 | 핵심 규칙 | 자동화 |
-|---|---|---|---|
-| **I1** | 개명 | canonical 변경, **id 불변**(P4). **옛 canonical은 자동으로 alias로 강등** — 문서에 옛 이름이 계속 나오므로 사라지면 재매칭이 깨진다. 스코프 카테고리는 부모 개명 시 자식 canonical 연쇄 변경. 골격·config 대상이면 파일도 함께(3.9) | 도구 실행, 파급 자동 |
-| **I2** | 병합 | **id 생존자 = 작은 id.** 기준이 하나뿐인 이유는 정확성이 아니라 **결정성**이다 — 어느 쪽을 죽여도 툼스톤이 리다이렉트하고 내용은 전부 합쳐지므로, 필요한 것은 "처리 순서·병렬과 무관하게 같은 답"이다(사람 지정 override 가능). 결과 노드 status는 둘 중 높은 쪽. **canonical 선택은 분리**(아래).<br>**정보 손실 없음**: 흡수 노드의 **provenance가 전부 생존자로 이관**되므로 어느 문서에서 온 지식인지 그대로 조회된다. canonical·alias도 각자의 provenance와 함께 alias로 이관, 엣지 이설(중복은 provenance 합집합), attribute는 context 그룹별 합침(같은 그룹 값 충돌 시 spec_conflict).<br>**흡수 id에는 `{status: merged_into, target, at}` 툼스톤만** — 내용은 생존자에 있으므로 중복 저장이 아니고, 용도는 옛 id 참조의 리다이렉트 하나다. 질의는 전이 추적 | 도구 실행, 사람 지시 |
-| **I3** | 분리 | **자동 불가.** 어느 alias·provenance·엣지가 어느 쪽인지 사람이 지정해야 한다. **판정 3분기의 "불확실 → 신규 생성"이 분리를 예방하는 장치다** — 병합은 쉽고 분리는 어렵다 | 사람 지정 필수 |
-| **I4** | 폐기 | **삭제하지 않는다.** `status: obsolete` + `replaced_by: <id>\|null` + 사유 + 시점. 이유: ①옛 문서·답변이 참조 ②재인입 부활 차단. 질의는 기본 제외하되 replaced_by를 전이 추적 | 사람 판정 |
+
+   | 등급 | 연산 | 핵심 규칙 | 자동화 |
+   |---|---|---|---|
+   | **I1** | 개명 | canonical 변경, **id 불변**(P4). **옛 canonical은 자동으로 alias로 강등** — 문서에 옛 이름이 계속 나오므로 사라지면 재매칭이 깨진다. 스코프 카테고리는 부모 개명 시 자식 canonical 연쇄 변경. 골격·config 대상이면 파일도 함께(3.9) | 도구 실행, 파급 자동 |
+   | **I2** | 병합 | **id 생존자 = 작은 id.** 기준이 하나뿐인 이유는 정확성이 아니라 **결정성**이다 — 어느 쪽을 죽여도 툼스톤이 리다이렉트하고 내용은 전부 합쳐지므로, 필요한 것은 "처리 순서·병렬과 무관하게 같은 답"이다(사람 지정 override 가능). 결과 노드 status는 둘 중 높은 쪽. **canonical 선택은 분리**(아래).<br>**정보 손실 없음**: 흡수 노드의 **provenance가 전부 생존자로 이관**되므로 어느 문서에서 온 지식인지 그대로 조회된다. canonical·alias도 각자의 provenance와 함께 alias로 이관, 엣지 이설(중복은 provenance 합집합), attribute는 context 그룹별 합침(같은 그룹 값 충돌 시 spec_conflict).<br>**흡수 id에는 `{status: merged_into, target, at}` 툼스톤만** — 내용은 생존자에 있으므로 중복 저장이 아니고, 용도는 옛 id 참조의 리다이렉트 하나다. 질의는 전이 추적 | 도구 실행, 사람 지시 |
+   | **I3** | 분리 | **자동 불가.** 어느 alias·provenance·엣지가 어느 쪽인지 사람이 지정해야 한다. **판정 3분기의 "불확실 → 신규 생성"이 분리를 예방하는 장치다** — 병합은 쉽고 분리는 어렵다 | 사람 지정 필수 |
+   | **I4** | 폐기 | **삭제하지 않는다.** `status: obsolete` + `replaced_by: <id>\|null` + 사유 + 시점. 이유: ①옛 문서·답변이 참조 ②재인입 부활 차단. 질의는 기본 제외하되 replaced_by를 전이 추적 | 사람 판정 |
  
 **병합 시 canonical 선택 — 자동으로 정하지 않는다.** 병합은 사람이 지시하는 연산이므로 그 자리에서 고르게 한다. 후보는 두 노드의 canonical + 모든 alias 전부이고, 각 후보에 **출현 빈도와 출처 등급**(Tier1/confirmed 문서에서 온 표기인지)을 표시한다. **LLM이 대표 이름으로 적합한 것 하나를 추천**하고(오타·약어·비정형 표기 배제) **사람이 확정**한다. 빈도를 자동 규칙으로 쓰지 않는 이유는 복사·붙여넣기로 **오타가 반복 등장**할 수 있어 빈도가 정확성을 보장하지 않기 때문이다. 선택되지 않은 표기는 전부 alias로 남으므로 정보 손실이 없다.
  
