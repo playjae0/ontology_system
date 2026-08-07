@@ -1,0 +1,90 @@
+{
+  "doc_id": "PPT01",
+  "doc_type": "ppt_process",
+  "source_path": "(mock)",
+  "revision": "R1",
+  "parsed_at": "2026-01-05T00:00:00",
+  "parser_version": "mock-0.1",
+  "adapter_version": "mock-1.0",
+  "context": {
+    "model": "M1"
+  },
+  "payload_kind": "prose",
+  "chunks": [
+    {
+      "source_locator": "PPT01-C001",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "노칭 프레스는 전극 원단을 정해진 형상으로 타발하는 설비다. 상형과 하형으로 구성된 금형이 원단을 눌러 자르며, 금형의 클리어런스가 절단면 품질을 좌우한다. 타발 방식은 기계식 프레스를 쓰고 원단은 언와인더에서 연속 공급된다.",
+      "section": "슬라이드 1",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT01-C002",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "타발이 끝난 전극은 검사 구간을 지나 스태커로 이송된다. 이송 구간에서는 원단 장력을 일정하게 유지하는 것이 중요하다.",
+      "section": "슬라이드 2",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT01-C003",
+      "process_group": "조립",
+      "process_ref": "스태킹",
+      "electrode_type": "both",
+      "text": "적층 정렬도는 스태킹 공정의 핵심 관리 항목이다. 인라인 비전이 매 적층마다 위치를 측정하고, 기준을 벗어나면 정렬을 보정한 뒤 재적층한다.",
+      "section": "슬라이드 3",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT01-C004",
+      "process_group": "조립",
+      "process_ref": "cathode 탭용접",
+      "electrode_type": "both",
+      "text": "2026년 1월 5일 기준 용접 가압력은 0.3MPa, 진폭은 40±3㎛로 운용한다. 초도품 3개를 확인한 뒤 양산에 들어간다.",
+      "section": "슬라이드 4",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT01-C005",
+      "process_group": "조립",
+      "process_ref": "패키징",
+      "electrode_type": "both",
+      "text": "작업 전 보호구를 착용하고 설비 정지 상태를 확인한다. 정기 점검 주기를 준수하며 이상 발생 시 즉시 보고한다.",
+      "section": "슬라이드 5",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT01-C006",
+      "process_group": "조립",
+      "process_ref": "전해액주입",
+      "electrode_type": "both",
+      "text": "주액기는 정량 펌프로 전해액을 셀에 주입하는 설비다. 노즐 막힘이 주액량 편차의 주된 원인이므로 세척 주기를 관리한다.",
+      "section": "슬라이드 6",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT01-C007",
+      "process_group": "조립",
+      "process_ref": "실링",
+      "electrode_type": "both",
+      "text": "MOCK 요약: sealing_unit_diagram.png",
+      "section": "슬라이드 7",
+      "meta": {
+        "image_summary": true,
+        "image_ref": "sealing_unit_diagram.png"
+      }
+    },
+    {
+      "source_locator": "PPT01-C008",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "The notching press cuts the electrode foil. 사내 문서에서는 notching press 라는 영문 표기도 함께 쓰인다.",
+      "section": "슬라이드 8",
+      "meta": {}
+    }
+  ]
+}

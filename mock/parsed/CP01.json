@@ -1,0 +1,150 @@
+{
+  "doc_id": "CP01",
+  "doc_type": "cp",
+  "source_path": "mock/raw/CP01.xlsx",
+  "revision": "R3",
+  "parsed_at": "2026-01-05T00:00:00",
+  "parser_version": "mock-0.1",
+  "adapter_version": "mock-1.0",
+  "context": {
+    "model": "M1"
+  },
+  "payload_kind": "table",
+  "records": [
+    {
+      "source_locator": "CP01-C1",
+      "process_group": "조립",
+      "process_no": "OP-10",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "설비": "노칭 프레스",
+      "관리항목": "노칭 정밀도",
+      "규격": "±0.1mm",
+      "측정방법": "비전 측정기",
+      "대응계획": "공정 정지 후 금형 점검"
+    },
+    {
+      "source_locator": "CP01-C2",
+      "process_group": "조립",
+      "process_no": "OP-10",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "설비": "노칭 프레스",
+      "관리항목": "금형 클리어런스",
+      "규격": "20±2㎛",
+      "측정방법": "간극 게이지",
+      "대응계획": "클리어런스 재조정 후 초도품 확인"
+    },
+    {
+      "source_locator": "CP01-C3",
+      "process_group": "조립",
+      "process_no": "OP-20",
+      "process_ref": "스태킹",
+      "electrode_type": "both",
+      "설비": "스태커",
+      "관리항목": "적층 정렬도",
+      "규격": "±0.2mm",
+      "측정방법": "인라인 비전",
+      "대응계획": "정렬 보정 후 재적층"
+    },
+    {
+      "source_locator": "CP01-C4",
+      "process_group": "조립",
+      "process_no": "OP-20",
+      "process_ref": "스태킹",
+      "electrode_type": "both",
+      "설비": "스태커",
+      "관리항목": "적층 정렬도",
+      "규격": "±0.3mm",
+      "측정방법": "인라인 비전",
+      "대응계획": "정렬 보정 후 재적층"
+    },
+    {
+      "source_locator": "CP01-C5",
+      "process_group": "조립",
+      "process_no": "OP-30",
+      "process_ref": "탭용접",
+      "electrode_type": "both",
+      "설비": "초음파 융착기",
+      "관리항목": "용접 가압력",
+      "규격": "0.3MPa",
+      "측정방법": "로드셀",
+      "대응계획": "가압 조건 재설정"
+    },
+    {
+      "source_locator": "CP01-C6",
+      "process_group": "조립",
+      "process_no": "OP-60",
+      "process_ref": "실링",
+      "electrode_type": "both",
+      "설비": "실러",
+      "관리항목": "실링 온도",
+      "규격": "180±5℃",
+      "측정방법": "열전대",
+      "대응계획": "히터 유닛 교체"
+    },
+    {
+      "source_locator": "CP01-C7",
+      "process_group": "조립",
+      "process_no": "OP-20",
+      "process_ref": "스태킹",
+      "electrode_type": "both",
+      "설비": "스태커",
+      "관리항목": "적층 정렬도",
+      "규격": "±0.25mm",
+      "측정방법": "인라인 비전",
+      "대응계획": "정렬 보정 후 재적층",
+      "context": {
+        "model": "M2"
+      }
+    },
+    {
+      "source_locator": "CP01-C8",
+      "process_group": "조립",
+      "process_no": "OP-10",
+      "process_ref": "노칭",
+      "electrode_type": "cathode",
+      "설비": "노칭 프레스",
+      "관리항목": "노칭 정밀도",
+      "규격": "±0.1mm",
+      "측정방법": "비전 측정기",
+      "대응계획": "공정 정지 후 금형 점검"
+    },
+    {
+      "source_locator": "CP01-C9",
+      "process_group": "조립",
+      "process_no": "OP-10",
+      "process_ref": "노칭",
+      "electrode_type": "anode",
+      "설비": "노칭 프레스",
+      "관리항목": "노칭 정밀도",
+      "규격": "±0.12mm",
+      "측정방법": "비전 측정기",
+      "대응계획": "공정 정지 후 금형 점검"
+    },
+    {
+      "source_locator": "CP01-C10",
+      "process_group": "조립",
+      "process_no": "OP-10",
+      "process_ref": "노칭",
+      "electrode_type": "anode",
+      "설비": "노칭 프레스",
+      "관리항목": "버 높이",
+      "규격": "30㎛ 이하",
+      "측정방법": "현미경",
+      "대응계획": "금형 연마 후 재검사"
+    },
+    {
+      "source_locator": "CP01-C11",
+      "process_group": "스태킹",
+      "process_no": "OP-10",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "설비": "노칭 프레스",
+      "관리항목": "노칭 피치",
+      "규격": "50±0.2mm",
+      "측정방법": "레이저 변위계",
+      "대응계획": "피치 보정 후 초도품 확인"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "doc_id": "PPT03",
+  "doc_type": "ppt_process",
+  "source_path": "(mock)",
+  "revision": "R1",
+  "parsed_at": "2026-01-05T00:00:00",
+  "parser_version": "mock-0.1",
+  "adapter_version": "mock-1.0",
+  "context": {
+    "model": "M1"
+  },
+  "payload_kind": "prose",
+  "chunks": [
+    {
+      "source_locator": "PPT03-C001",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "노칭 금형은 교대 시작 시 육안 점검하고 이상이 있으면 교체한다.",
+      "section": "본문",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT03-C002",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "안전 수칙을 준수한다",
+      "section": "부록",
+      "meta": {}
+    },
+    {
+      "source_locator": "PPT03-C003",
+      "process_group": "조립",
+      "process_ref": "노칭",
+      "electrode_type": "both",
+      "text": "안전 수칙을 준수한다",
+      "section": "부록",
+      "meta": {}
+    }
+  ]
+}

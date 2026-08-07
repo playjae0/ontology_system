@@ -98,40 +98,46 @@ CP_COLS = ["공정구분", "공정번호", "공정명", "극성", "설비", "관
            "규격", "측정방법", "대응계획", "적용모델"]
 
 # ============================================================
-print("\n■ CP01.xlsx — 역산 정합 prefix 10건 + 확대분")
+print("\n■ CP01.xlsx — 역산 정합 prefix 11건 + 확대분")
 h, rows, merged = read_table(f"{RAW}/CP01.xlsx")
 recs, fails, dit = normalize(h, rows, ["설비", "관리항목"], ["공정명", "설비", "관리항목"])
+# 튜플 = (공정구분, 공정명, 극성, 설비, 관리항목, 규격, 적용모델)
+# 공정구분은 C11(coord_mismatch)을 어서션하기 위해 08-07에 추가됐다 — 그 전에는
+# 전 행이 "조립"이라 비교에 넣을 이유가 없었다.
 EXP_CP = [
-    ("노칭", "both", "노칭 프레스", "노칭 정밀도", "±0.1mm", None),
-    ("노칭", "both", "노칭 프레스", "금형 클리어런스", "20±2㎛", None),
-    ("스태킹", "both", "스태커", "적층 정렬도", "±0.2mm", None),
-    ("스태킹", "both", "스태커", "적층 정렬도", "±0.3mm", None),
-    ("탭용접", "both", "초음파 융착기", "용접 가압력", "0.3MPa", None),
-    ("실링", "both", "실러", "실링 온도", "180±5℃", None),
-    ("스태킹", "both", "스태커", "적층 정렬도", "±0.25mm", "M2"),
-    ("노칭", "cathode", "노칭 프레스", "노칭 정밀도", "±0.1mm", None),
-    ("노칭", "anode", "노칭 프레스", "노칭 정밀도", "±0.12mm", None),
-    ("노칭", "anode", "노칭 프레스", "버 높이", "30㎛ 이하", None),
+    ("조립", "노칭", "both", "노칭 프레스", "노칭 정밀도", "±0.1mm", None),
+    ("조립", "노칭", "both", "노칭 프레스", "금형 클리어런스", "20±2㎛", None),
+    ("조립", "스태킹", "both", "스태커", "적층 정렬도", "±0.2mm", None),
+    ("조립", "스태킹", "both", "스태커", "적층 정렬도", "±0.3mm", None),
+    ("조립", "탭용접", "both", "초음파 융착기", "용접 가압력", "0.3MPa", None),
+    ("조립", "실링", "both", "실러", "실링 온도", "180±5℃", None),
+    ("조립", "스태킹", "both", "스태커", "적층 정렬도", "±0.25mm", "M2"),
+    ("조립", "노칭", "cathode", "노칭 프레스", "노칭 정밀도", "±0.1mm", None),
+    ("조립", "노칭", "anode", "노칭 프레스", "노칭 정밀도", "±0.12mm", None),
+    ("조립", "노칭", "anode", "노칭 프레스", "버 높이", "30㎛ 이하", None),
+    # C11 — coord_mismatch: 공정구분 "스태킹"과 공정명 "노칭"이 둘 다 골격에 실존하나
+    # 조상 관계가 아니다. 파서는 그대로 태깅하고 에이전트 인입 검증이 큐로 잡는다(D-15).
+    ("스태킹", "노칭", "both", "노칭 프레스", "노칭 피치", "50±0.2mm", None),
 ]
-got = [(r["공정명"], r["극성"], r["설비"], r["관리항목"], r["규격"], r["적용모델"])
-       for _, r in recs]
+got = [(r["공정구분"], r["공정명"], r["극성"], r["설비"], r["관리항목"],
+        r["규격"], r["적용모델"]) for _, r in recs]
 allok &= show("헤더 = cp 계약 10열", h == CP_COLS, str(h))
 allok &= show("병합 20건 이상", len(merged) >= 20, f"{len(merged)}건")
 allok &= show("상동(〃) 5건 이상 해소", dit >= 5, f"{dit}건")
 allok &= show("자기완결 실패 0건", not fails, str(fails))
 allok &= show(f"record {len(got)}건 (확대 목표 24건 이상)", len(got) >= 24)
-allok &= show("prefix 10건이 기존 parsed 명세와 일치", got[:10] == EXP_CP)
-if got[:10] != EXP_CP:
-    diff_prefix(got[:10], EXP_CP, "C")
+allok &= show("prefix 11건이 기존 parsed 명세와 일치", got[:11] == EXP_CP)
+if got[:11] != EXP_CP:
+    diff_prefix(got[:11], EXP_CP, "C")
 # 확대분이 기존 판정을 흔들지 않는지
-alig = [g for g in got if g[3] == "적층 정렬도"]
+alig = [g for g in got if g[4] == "적층 정렬도"]
 allok &= show("확대분이 '적층 정렬도' spec 판정을 건드리지 않음 (M1 2건·M2 1건 유지)",
               len(alig) == 3, f"{len(alig)}건")
-clr = [(g[4], g[5]) for g in got if g[3] == "금형 클리어런스"]
+clr = [(g[5], g[6]) for g in got if g[4] == "금형 클리어런스"]
 allok &= show("'금형 클리어런스'에 M3 맥락 항목이 병렬 추가됨",
               sorted(clr) == [("20±2㎛", None), ("22±2㎛", "M3")], str(clr))
 SKEL = ["노칭", "스태킹", "cathode 탭용접", "anode 탭용접", "패키징", "전해액주입", "실링"]
-used = {g[0] for g in got}
+used = {g[1] for g in got}
 allok &= show("골격 세부공정 7개 전량 소진", set(SKEL) <= used,
               f"미사용={sorted(set(SKEL) - used)}")
 allok &= show("극성 모호 anchor('탭용접')가 대조군으로 남아 있음", "탭용접" in used)
