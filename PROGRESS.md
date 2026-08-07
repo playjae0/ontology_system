@@ -110,3 +110,45 @@
 정지점 2 — **G1 + G2**. 착수 전 선행 작업 2건:
 1. `mock/raw/CP01.xlsx`에 C11 삽입 → `verify_roundtrip` 재실행(prefix 11)이 진짜 판정.
 2. `mock/parsed/` 신규 작성(§4.1 — 구현문서 §6 mock 전문 기준, 4항 적용 상태로).
+
+---
+
+## G1 + G2 — 저장 계층 · 주소 체계 · 부트스트랩 · 2026-08-07 · **완료**
+
+정지점 2. 완료판정 전 항목 PASS (`tests/test_g1_g2.py` — 31항목).
+
+### 선행 작업
+
+| # | 내용 | 결과 |
+|---|---|---|
+| ② | `mock/raw/CP01.xlsx`에 C11(coord_mismatch) **삽입** | 28 → **29 record**. C1~C10 불변, 확대분 C12~C29로 밀림 |
+| ① | `mock/parsed/` **신규 작성**(마이그레이션 아님 — 정정 5항 #3) | CP01 11 · PFMEA01 13 · PPT01 8청크 |
+| ③ | §4.2 신규 mock | PPT03(occ 충돌) · CP01B(doc_hash) |
+
+`verify_roundtrip` **prefix 11 PASS** — 50항목 전량, FAIL 0. **이것이 D-18의 진짜 판정이다**(A0의 prefix 10 결과를 대체).
+
+`mock/parsed/`는 손으로 쓰지 않고 `tools/gen_parsed_mock.py`가 raw의 prefix에서 파생시킨다. 손으로 쓰면 raw와 어긋날 수 있고 그 어긋남이 곧 D-18의 무효화이기 때문이다.
+
+### st — 저장 계층 (틀 §4B-A8 · 카드 B6)
+
+- `core/graph.py`의 **GraphStore가 층 그래프의 유일 경계**. 파일 이름까지 이 클래스가 소유한다(`GraphStore.for_layer()`) — 밖에서 경로를 조립하면 저장 방식을 바꾸는 날(R10) 고칠 곳이 다시 여러 군데가 된다.
+- **직접 접근 0지점** — 테스트가 레포 전체 `.py`를 훑어 실증한다. A0 계수 ①이 0지점이었으므로 "교체"가 아니라 **처음부터 GraphStore로 작성**했다(D-32와 같은 취지).
+- 직렬화 **orjson**(표준 json 폴백 — "외부 패키지 0" 원칙을 폴백으로 보존).
+- **계기판 7** graph 0.005MB / **계기판 8** build 0.0s. 알람선(200MB·30초) 미초과.
+
+### n1 — 근거 축 id · n2 — doc_hash · n10 — 부트스트랩
+
+| 판정 | 결과 |
+|---|---|
+| **S6** occ 충돌 | PPT03 M2·M3이 동일 (section, text) → chunk_id 갈림(occ 0·1). 결함 로그 0건 |
+| **멱등성 ①** 2회 인입 | id 집합·청크 저장 동일 |
+| **멱등성 ②** 조각 순서 셔플 3회 | id 집합·청크 저장 동일 |
+| **S5** doc_hash 차단 | CP01B 보류 · `duplicate_doc_hold` 큐 1건 · 청크 변화 0 · 같은 doc_id 재인입은 통과 |
+| **1b 승계** | Process **8**노드 · part_of **7** · precedes **6** · status `seed` |
+| registry | **builtin 층 1개**(process)만 존재 |
+| **ULID** | 의미 축 id 전부 ULID · `id_seq.json` **없음**(발효 확정) |
+| content 청크 | `{record_id}-{필드명}` 37건 (D8) |
+
+### 다음
+
+정지점 3 — **G3**(계약 v2 정합 · 추출 분리 · 게이트). ★가장 중요한 구간.
