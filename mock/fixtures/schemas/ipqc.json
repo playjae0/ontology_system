@@ -1,0 +1,67 @@
+{
+  "doc_type": "ipqc",
+  "schema_version": 1,
+  "layer": "process",
+  "use_blocks": ["common_core", "process_coord"],
+  "fields": {
+    "검사설비": {
+      "role": "entity",
+      "category": "Unit",
+      "optional": true
+    },
+    "검사항목": {
+      "role": "entity",
+      "category": "Property"
+    },
+    "규격": {
+      "role": "attribute",
+      "attach_to_field": "검사항목",
+      "attr_name": "spec",
+      "contextual": true,
+      "optional": true
+    },
+    "측정방법": {
+      "role": "attribute",
+      "attach_to_field": "검사항목",
+      "attr_name": "measurement_method",
+      "optional": true
+    },
+    "판정기준": {
+      "role": "attribute",
+      "attach_to_field": "검사항목",
+      "attr_name": "judgement_criteria",
+      "contextual": true,
+      "optional": true
+    },
+    "부적합 조치": {
+      "role": "content",
+      "attach_to_field": "검사항목",
+      "optional": true
+    },
+    "검사자": {
+      "role": "meta",
+      "optional": true
+    },
+    "검사일시": {
+      "role": "meta",
+      "optional": true
+    },
+    "성적서번호": {
+      "role": "meta",
+      "optional": true
+    }
+  },
+  "edges": [
+    {
+      "from": "@process_ref",
+      "relation": "has_property",
+      "to": "검사항목"
+    },
+    {
+      "from": "검사설비",
+      "relation": "part_of",
+      "to": "@process_ref",
+      "optional": true
+    }
+  ]
+}

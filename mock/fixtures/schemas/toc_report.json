@@ -1,0 +1,28 @@
+{
+  "doc_type": "toc_report",
+  "schema_version": 1,
+  "layer": "process",
+  "payload_kind": "prose",
+  "use_blocks": ["common_core", "process_coord"],
+  "fields": {
+    "text": {
+      "role": "content",
+      "note": "목차 잎 절 아래 본문 줄을 묶은 청크 본문. 문장 단위 서술이며 필드 단위 규칙 처리가 불가능하다."
+    },
+    "section": {
+      "role": "UNMAPPABLE",
+      "optional": true,
+      "note": "헤딩 경로 문자열. 표제어의 의미가 최상위 절마다 달라 하나의 role로 확정 불가 — TOC01은 1장=공정명(Process), 2장=품질 이슈명, 3장=개선 활동명이고 TOC02는 2장=설비명(Unit)이다. 이슈명·개선활동명을 담을 층/카테고리가 아직 없으므로 추측 배정하지 않는다. 사람 판정 대상."
+    },
+    "meta": {
+      "role": "meta",
+      "note": "doc_title(1행 제목)·sheet·source_path·section_path·heading·heading_number·heading_level·rows·chunk_kind. 내용물이 아니라 출처 장부용 신상정보."
+    },
+    "image_ref": {
+      "role": "meta",
+      "optional": true,
+      "note": "이미지 placeholder 조각에만 존재. 어댑터는 참조만 싣고 요약하지 않는다(요약은 코어 몫). 요약 후 content로 승격되는지는 코어 파이프라인 소관이라 여기서 확정하지 않는다."
+    }
+  },
+  "edges": []
+}

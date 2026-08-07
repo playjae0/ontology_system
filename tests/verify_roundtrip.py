@@ -9,11 +9,16 @@
  raw를 파싱한 records의 **앞 N건(prefix)**이 mock/parsed/*.json 의 records와 일치한다.
  확대분은 그 뒤에 붙으며 기존 노드·판정에 영향을 주지 않는 신규 항목으로만 구성한다.
 """
+import os
 import sys
+from pathlib import Path
+
 from openpyxl import load_workbook
 from pptx import Presentation
 
-RAW = "/home/claude/mock/raw"
+# 레포 루트 기준으로 raw mock 위치를 잡는다 — 이 파일은 tests/ 에 있으므로 부모가 루트다.
+# 환경변수 RAW_DIR 로 덮어쓸 수 있다. (구판의 절대경로 하드코딩 대체 — 08-07 13회차 판정)
+RAW = os.environ.get("RAW_DIR") or str(Path(__file__).resolve().parent.parent / "mock" / "raw")
 DITTO = {"〃", "〝", "same as above", "상동"}
 MULTI_SEP = [",", "/", "\n"]          # 가결정 D-12 기본 닫힌 목록
 
