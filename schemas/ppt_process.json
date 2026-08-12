@@ -1,0 +1,10 @@
+{
+  "doc_type": "ppt_process",
+  "schema_version": 1,
+  "layer": "process",
+  "payload_kind": "prose",
+  "use_blocks": ["common_core", "process_coord"],
+  "_note": "비정형 문서는 role 매핑 표가 없다 — 어느 층에 속하는지의 선언이 계약의 전부이고, 개체·관계는 추출(n3) 후보가 낸다. 층 배정을 코드가 추측하면 그 자체가 층 어휘다(B1).",
+  "fields": {},
+  "edges": []
+}

@@ -130,5 +130,7 @@
       "정의문": "극성만 다른 대칭 관리항목이다"
     }
   ],
-  "skeleton_version": "process-1.0"
+  "skeleton_version": "process-1.0",
+  "config_version": "process-1",
+  "registration": "builtin"
 }

@@ -1,0 +1,27 @@
+{
+  "PPT02-L1": {
+    "entities": [
+      {
+        "surface": "주액기",
+        "category": "Unit"
+      }
+    ],
+    "relations": [],
+    "attach": []
+  },
+  "PPT02-L2": {
+    "entities": [
+      {
+        "surface": "노즐 세척 주기",
+        "category": "Property"
+      }
+    ],
+    "relations": [],
+    "attach": [
+      {
+        "surface": "노즐 세척 주기",
+        "attach_to": "주액기"
+      }
+    ]
+  }
+}
