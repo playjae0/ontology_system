@@ -154,7 +154,7 @@
       "source_locator": "PFMEA01-R11",
       "process_group": "조립",
       "process_no": "OP-60",
-      "process_ref": "실링",
+      "process_ref": "사이드 실링",
       "electrode_type": "anode",
       "failure_mode": "밀봉 불량",
       "cause": "이물 유입",

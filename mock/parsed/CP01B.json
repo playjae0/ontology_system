@@ -75,7 +75,7 @@
       "source_locator": "CP01B-C6",
       "process_group": "조립",
       "process_no": "OP-60",
-      "process_ref": "실링",
+      "process_ref": "사이드 실링",
       "electrode_type": "both",
       "설비": "실러",
       "관리항목": "실링 온도",

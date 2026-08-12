@@ -41,7 +41,7 @@
     {
       "source_locator": "QPPT01-K4",
       "process_group": "조립",
-      "process_ref": "실링",
+      "process_ref": "사이드 실링",
       "electrode_type": "both",
       "text": "실링 공정은 교대 시작 시 설비 상태를 점검한다.",
       "section": "슬라이드 4",

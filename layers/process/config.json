@@ -6,19 +6,9 @@
     "Property": "공정/설비에서 관리·측정·통제되는 항목의 이름(예: 노칭 정밀도). 관리항목/특성/CTQ 포함. 규격값·측정값·판정결과는 제외(attribute)."
   },
   "skeleton": {
-    "type": "tree",
+    "type": "tree-v3.2",
     "category": "Process",
-    "data": {
-      "조립": [
-        "노칭",
-        "스태킹",
-        "cathode 탭용접",
-        "anode 탭용접",
-        "패키징",
-        "전해액주입",
-        "실링"
-      ]
-    },
+    "source": "skeleton.json",
     "relations": {
       "child": "part_of",
       "sibling": "precedes"
@@ -130,7 +120,7 @@
       "정의문": "극성만 다른 대칭 관리항목이다"
     }
   ],
-  "skeleton_version": "process-1.0",
+  "skeleton_version": "process-3.2",
   "config_version": "process-1",
   "registration": "builtin"
 }

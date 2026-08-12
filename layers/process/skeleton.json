@@ -1,0 +1,53 @@
+{
+  "skeleton_version": 3,
+  "POLARITY_LABELS": { "cathode": "양극", "anode": "음극" },
+  "PROCESS_TREE": [
+    { "조립": [
+      { "노칭": ["::cathode", "::anode",
+                 "전극 언와인딩", "노칭 타발", "비전검사", "전극 리와인딩"] },
+      { "스태킹": [
+          {"@unordered": "전극 시트 공급"},
+          {"@unordered": "분리막 공급"},
+          "적층", "비전검사", "스택 테이핑"] },
+      { "탭용접": ["::cathode", "::anode",
+                   {"pre용접": "@split"}, {"pre vision": "@split"}, {"cutting": "@split"},
+                   {"탭공급": "@split"}, {"main용접": "@split"}, {"laser용접": "@split"},
+                   "bead press", "cleaning", "탭 taping", "vision check", "barcode marking"] },
+      { "패키징": ["파우치 포밍", "스택 삽입", "사이드 실링", "전해액 주액", "프리 실링"] }
+    ]}
+  ],
+  "ALIASES": {
+    "조립": ["assembly", "조립공정"],
+    "노칭": ["notching", "NC"],
+    "전극 언와인딩": ["unwinding", "언와인딩"],
+    "노칭 타발": ["punching", "타발"],
+    "노칭::비전검사": ["비전 검사", "노칭 검사", "vision inspection"],
+    "전극 리와인딩": ["rewinding", "리와인딩"],
+    "스태킹": ["stacking", "ST"],
+    "전극 시트 공급": ["electrode feeding", "전극 투입"],
+    "분리막 공급": ["separator feeding", "세퍼레이터 공급"],
+    "적층": ["z-stacking", "z-folding", "스택 적층"],
+    "스태킹::비전검사": ["비전 검사", "정렬 검사", "align inspection"],
+    "스택 테이핑": ["스택 고정 테이핑"],
+    "탭용접": ["tab welding", "탭 용접", "TW"],
+    "탭용접::cathode": ["cathode tab welding"],
+    "탭용접::anode": ["anode tab welding"],
+    "pre용접": ["pre 용접", "pre welding", "예비 용접"],
+    "pre vision": ["프리 비전"],
+    "cutting": ["tab cutting", "탭 컷팅", "탭 절단"],
+    "탭공급": ["탭 공급", "lead tab feeding", "리드탭 공급"],
+    "main용접": ["main 용접", "main welding", "본 용접"],
+    "laser용접": ["laser 용접", "laser welding", "레이저 용접"],
+    "bead press": ["비드 프레스", "용접부 압착"],
+    "cleaning": ["클리닝", "이물 제거", "파티클 제거"],
+    "탭용접::탭 taping": ["탭 테이핑", "절연 테이핑"],
+    "탭용접::vision check": ["비전 검사", "용접부 검사"],
+    "barcode marking": ["바코드 마킹", "셀 ID 마킹", "marking"],
+    "패키징": ["packaging", "PKG", "포장"],
+    "파우치 포밍": ["forming", "pouch forming", "컵 성형"],
+    "스택 삽입": ["inserting", "cell inserting", "폴딩"],
+    "사이드 실링": ["side sealing", "3면 실링", "측면 실링"],
+    "전해액 주액": ["electrolyte filling", "주액", "전해액주입"],
+    "프리 실링": ["pre-sealing", "가실링", "1차 실링"]
+  }
+}

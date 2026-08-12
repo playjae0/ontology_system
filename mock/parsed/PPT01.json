@@ -68,7 +68,7 @@
     {
       "source_locator": "PPT01-C007",
       "process_group": "조립",
-      "process_ref": "실링",
+      "process_ref": "사이드 실링",
       "electrode_type": "both",
       "text": "MOCK 요약: sealing_unit_diagram.png",
       "section": "슬라이드 7",

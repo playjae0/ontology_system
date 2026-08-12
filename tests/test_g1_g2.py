@@ -4,8 +4,9 @@
   st  : graph.py 밖 직접 접근 0 (grep 실증) + 계기판 7·8 출력
   n1  : S6(occ 충돌) + 멱등성 2종(2회 인입 동일 · 조각 순서 셔플 동일)
   n2  : S5(doc_hash 차단)
-  n10 : 기존 1b 판정 승계(Process 8 · part_of 7 · precedes 6)
-        + registry에 builtin 층 1개만 존재
+  n10 : **seed v3.2 골격**(Process 46 · part_of 45 · precedes 22 · polarity≠none 16
+        · mirrors 쌍 8) + 파생 대표 흐름 출력 + registry에 builtin 층 1개만 존재
+        — 구 기대값(8·7·6)은 골격 두 축 분리(D-42) 전 수치다.
 
 사용: python tests/test_g1_g2.py
 """
@@ -41,9 +42,18 @@ def load(name):
     return json.loads((ROOT / "mock" / "parsed" / name).read_text(encoding="utf-8"))
 
 
+def canon(g):
+    return {n["canonical"] for n in g.nodes.values()}
+
+
 def reset():
+    """**깨끗한 그래프에서 전체 재빌드.** v3.2는 canonical 체계 자체가 바뀌었으므로
+    (sub 이하 부모 경로 접두 · 인스턴스 `{개념}::{축값}`) 기존 그래프 위에 다시 심으면
+    옛 골격이 살아남는다 — 멱등성(D-41)이 막는 것은 "같은 canonical의 재발급"이지
+    "canonical 체계 변경"이 아니다. 기대값 대조는 반드시 이 경로로 한다.
+    """
     shutil.rmtree(store.DATA, ignore_errors=True)
-    return bootstrap("process")
+    return bootstrap("process", echo=False)
 
 
 # ============================================================ st
@@ -63,7 +73,7 @@ for p in ROOT.rglob("*.py"):
             hits.append(f"{p.relative_to(ROOT)}:{i}")
 show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", not hits, str(hits))
 
-g, m, _ = reset()
+g, m, _, flow = reset()
 show("계기판 7 (graph 저장 크기) 출력", "gauge7_graph_bytes" in m,
      f"{m['gauge7_graph_mb']}MB")
 show("계기판 8 (build 소요) 출력", "gauge8_build_seconds" in m,
@@ -74,15 +84,57 @@ show("직렬화 orjson (미설치 시 표준 json 폴백)", m["serializer"] in (
      m["serializer"])
 
 # ============================================================ n10
-print("\n■ n10 — 부트스트랩 seed·config (기존 1b 판정 승계)")
+print("\n■ n10 — 부트스트랩 seed·config (골격 seed v3.2 · 두 축 분리)")
 rels = Counter(e["rel"] for e in g.edges)
-show("Process 8노드", sum(1 for n in g.nodes.values() if n["category"] == "Process") == 8)
-show("part_of 7", rels["part_of"] == 7, str(rels["part_of"]))
-show("precedes 6", rels["precedes"] == 6, str(rels["precedes"]))
+POL = [n for n in g.nodes.values() if n.get("polarity") not in (None, "none")]
+show("Process 46노드",
+     sum(1 for n in g.nodes.values() if n["category"] == "Process") == 46,
+     str(len(g.nodes)))
+show("part_of 45 (구조 — 루트 제외 전 노드)", rels["part_of"] == 45, str(rels["part_of"]))
+show("precedes 22 (지식 — 참여 항목만 건너 이음)", rels["precedes"] == 22,
+     str(rels["precedes"]))
+show("polarity ≠ none 16 (인스턴스 4 + @split 인스턴스 12)", len(POL) == 16,
+     str(len(POL)))
+show("mirrors 쌍 8 (노칭 1 + 탭용접 1 + @split 6)", rels["mirrors"] == 16,
+     f"엣지 {rels['mirrors']} → 쌍 {rels['mirrors'] // 2}")
 show("골격 노드 status = seed",
      {n["status"] for n in g.nodes.values()} == {"seed"})
 show("골격 provenance = ['seed']",
      all(n["provenance"] == ["seed"] for n in g.nodes.values()))
+
+# tier·canonical — loader 파생이며 수기 접두가 아니다 (A11-7 · D-47)
+tiers = Counter(n["tier"] for n in g.nodes.values())
+show("tier가 깊이에서 파생 (main 1 · sub 8 · detail 37)",
+     tiers == Counter({"main": 1, "sub": 8, "detail": 37}), str(dict(tiers)))
+show("main·sub canonical은 이름 그대로 / detail은 부모 경로 접두",
+     {"조립", "노칭", "탭용접"} <= canon(g)
+     and "탭용접::pre용접" in canon(g) and "패키징::사이드 실링" in canon(g))
+show("인스턴스 canonical = {개념}::{축값} — 쌍 유무 무관 균일",
+     {"노칭::cathode", "노칭::anode", "탭용접::pre용접::cathode"} <= canon(g))
+show("극성 인스턴스 간 precedes 0건 (구조적 미생성 — J12)",
+     not [e for e in g.edges if e["rel"] == "precedes"
+          and (g.get(e["src"]).get("polarity") != "none"
+               or g.get(e["dst"]).get("polarity") != "none")])
+
+# seed ALIASES → 사전 등재 (장부는 dictionary.json 하나 — 카드 B4)
+D = store.read(store.DICTIONARY, {})
+show("seed ALIASES가 사전에 등재 (provenance=['seed'])",
+     D.get("notching") and D.get("전해액주입")
+     and all(a["provenance"] == ["seed"]
+             for n in g.nodes.values() for a in n["aliases"]))
+show("인스턴스 auto alias 2종 ('{축값} {이름}' · '{라벨} {이름}')",
+     D.get("cathode 탭용접") and D.get("양극 탭용접") and D.get("음극 노칭"))
+show("짧은 이름 auto alias (detail 노드의 접두 없는 조회)",
+     D.get("사이드 실링") and D.get("적층") and D.get("pre용접"))
+show("모호한 짧은 이름은 미등재 ('비전검사' — 접두 키가 대신한다)",
+     "비전검사" not in D and D.get("노칭 검사") and D.get("정렬 검사"))
+
+# 파생 대표 흐름 출력 — 순서 오선언의 유일한 안전망 (A11-2 · M9 계보)
+show("로드 시 파생 대표 흐름 출력 (레벨 5줄)", len(flow) == 5, f"{len(flow)}줄")
+show("무주장 항목이 흐름에서 빠지고 별도 표기됨 (@unordered)",
+     any("무주장" in ln and "전극 시트 공급" in ln for ln in flow)
+     and not any("전극 시트 공급 →" in ln for ln in flow))
+
 reg = store.read(store.REGISTRY, {})
 show("registry에 builtin 층 1개만 존재",
      len(reg) == 1 and list(reg.values())[0]["status"] == "builtin", str(list(reg)))
