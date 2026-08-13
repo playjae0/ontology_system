@@ -28,7 +28,7 @@ def _load(p):
 
 def cmd_bootstrap():
     for layer in discover():
-        g, m, ids = bootstrap(layer)
+        g, m, ids, _flow = bootstrap(layer)          # 파생 흐름은 loader가 출력한다
         if g is None:
             print(f"[bootstrap] {layer}: 골격 선언 없음 — 내장 층이 아니다 (J10)")
             continue

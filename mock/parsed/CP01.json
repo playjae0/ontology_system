@@ -75,7 +75,7 @@
       "source_locator": "CP01-C6",
       "process_group": "조립",
       "process_no": "OP-60",
-      "process_ref": "실링",
+      "process_ref": "사이드 실링",
       "electrode_type": "both",
       "설비": "실러",
       "관리항목": "실링 온도",
@@ -145,6 +145,18 @@
       "규격": "50±0.2mm",
       "측정방법": "레이저 변위계",
       "대응계획": "피치 보정 후 초도품 확인"
+    },
+    {
+      "source_locator": "CP01-C12",
+      "process_group": "조립",
+      "process_no": "OP-30",
+      "process_ref": "cathode 탭용접",
+      "electrode_type": "anode",
+      "설비": "초음파 융착기",
+      "관리항목": "용접 강도",
+      "규격": "8N 이상",
+      "측정방법": "인장시험기",
+      "대응계획": "용접 조건 재설정 후 초도품 확인"
     }
   ]
 }

@@ -44,7 +44,7 @@ def full_run():
     shutil.rmtree(store.DATA, ignore_errors=True)
     shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
     for lay in ("process", "quality"):
-        bootstrap(lay)
+        bootstrap(lay, echo=False)      # 파생 흐름 출력은 사람 대조용 — 판정은 test_g1_g2
     flags = {}
     for d in DOCS:
         _, _, extracted = run_document(load(f"{d}.json"))
@@ -84,20 +84,70 @@ show("C7 병렬 항목 (context 상이 → 충돌 아님)",
 show("C8·C9 극성 결합 canonical 2노드",
      {"cathode 노칭 프레스", "anode 노칭 프레스"} <= canon(P))
 show("mirrors 엣지 생성", rel["mirrors"] > 0, str(rel["mirrors"]))
-show("C10 mirror_asymmetry 큐 (anode 쪽에만 '버 높이')",
-     len(q("mirror_asymmetry")) >= 1,
+# 짝은 **polarity 필드**로 찾는다(F3 — 문자열 파싱 폐지). 스코프가 붙은 관리항목의
+# 짝도 찾아야 하며, 못 찾으면 정상 쌍이 비대칭 큐로 새어 나간다.
+show("C10 mirror_asymmetry 참 양성 (anode 쪽에만 '버 높이')",
+     "노칭::버 높이" in [x["payload"]["base"] for x in q("mirror_asymmetry")],
      str([x["payload"]["base"] for x in q("mirror_asymmetry")]))
+# ⚠ **알려진 오검출 2건** — BLOCKERS 판정필요-5. A11-9 ①로 부착된 노드는 극성이
+# 이름이 아니라 **주소**에 있는데, mirrors 짝 키(base_canonical)에는 그 주소가
+# 그대로 들어간다. `탭용접::cathode::용접 강도`의 짝은 `탭용접::anode::…`이므로
+# 키가 달라 **둘 다 있어도 절대 페어링되지 않는다** — F3의 "부모가 mirror 쌍이면
+# 하향 연쇄" 절이 미구현이다. Unit은 스코프 자체가 없어 같은 뿌리에서 갈린다.
+# 고치려면 core에 새 분기가 필요하므로 **잠그고 판정을 기다린다**(고치지 않는다).
+_MA_KNOWN = ["노칭::버 높이", "초음파 융착기", "탭용접::cathode::용접 강도"]
+show("mirror_asymmetry 오검출 2건이 현행 그대로 (조용히 바뀌면 잡힌다 — 판정필요-5)",
+     sorted(x["payload"]["base"] for x in q("mirror_asymmetry")) == sorted(_MA_KNOWN),
+     str(sorted(x["payload"]["base"] for x in q("mirror_asymmetry"))))
+show("스코프 붙은 관리항목의 극성 쌍도 페어링 (구 strip 방식이 놓치던 자리)",
+     any(e["rel"] == "mirrors"
+         and P.get(e["src"])["canonical"] == "노칭::cathode 노칭 정밀도"
+         and P.get(e["dst"])["canonical"] == "노칭::anode 노칭 정밀도"
+         for e in P.edges))
+show("Tier1(seed) 골격은 mirror_asymmetry 대상이 아님 (A11-4)",
+     not any(P.get(x["payload"]["node_id"])["status"] == "seed"
+             for x in q("mirror_asymmetry")))
 
-show("C5 극성 모호 anchor('탭용접') → orphan_anchor",
-     any("극성 모호" in x["reason"] for x in q("orphan_anchor")),
-     str([x["reason"] for x in q("orphan_anchor") if "극성 모호" in x["reason"]][:1]))
+# ★ M2 — D5(극성 모호)는 **구조적으로 소멸**했다(A11-6). "탭용접"은 개념 노드가
+# 극성 무관 alias를 단독 소유하므로 모호하지 않고 **저해상도 부착**된다.
+show("C5′ 개념 해상도 anchor('탭용접') → 개념 노드에 부착 (저해상도 부착)",
+     any(n["canonical"] == "탭용접::용접 가압력" for n in P.nodes.values()))
+show("C5′ 극성 모호 orphan_anchor 0건 (D5 구조 소멸)",
+     not any("모호" in x["reason"] for x in q("orphan_anchor")),
+     str([x["reason"] for x in q("orphan_anchor")]))
+show("orphan_anchor는 '목록 밖 이름'만 남음 (레이저노칭·셀 부풀음)",
+     {"레이저노칭", "셀 부풀음"}
+     == {x["payload"]["surface"] for x in q("orphan_anchor")},
+     str(sorted({x["payload"]["surface"] for x in q("orphan_anchor")})))
 
-# ★ G3 신규 — C11
+# ★ M2 — 부착 정합 (A11-9)
+show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
+     "탭용접::cathode::용접 가압력" in canon(P)
+     and not any("cathode::cathode" in c or "::cathode 용접" in c for c in canon(P)))
+show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
+     next(n for n in P.nodes.values()
+          if n["canonical"] == "탭용접::cathode::용접 가압력")["polarity"] == "cathode")
+show("polarity가 닫힌 4값 밖으로 새지 않음 (cathode/anode/none/unbound)",
+     {n.get("polarity") for n in list(P.nodes.values()) + list(Q.nodes.values())}
+     <= {"cathode", "anode", "none", "unbound"},
+     str(sorted({str(n.get("polarity"))
+                 for n in list(P.nodes.values()) + list(Q.nodes.values())})))
+show("D-43 — electrode_type은 노드에 기록되지 않는다 (구조 필드 · polarity가 파생 필드)",
+     not any("electrode_type" in n for n in
+             list(P.nodes.values()) + list(Q.nodes.values())))
+
+# ★ G3 신규 — C11(좌표축) · C12(극성축). 같은 계열의 공짜 검증 둘이다.
 cm = q("coord_mismatch")
-show("**C11 coord_mismatch 1건** (스태킹/노칭 — 실존하되 조상 아님)",
-     len(cm) == 1, str([x["payload"] for x in cm]))
-show("coord_mismatch가 orphan_anchor로 새지 않음 (골격 밖과 구분)",
-     len(cm) == 1 and all("스태킹" not in x["reason"] for x in q("orphan_anchor")))
+show("**C11 coord_mismatch** (스태킹/노칭 — 실존하되 조상 아님)",
+     any(x["payload"].get("process_group") == "스태킹" for x in cm),
+     str([x["reason"] for x in cm]))
+show("**C12 coord_mismatch — A11-9 ②** (좌표 극성 cathode ↔ record 극성 anode)",
+     any(x["payload"].get("node_polarity") == "cathode"
+         and x["payload"].get("electrode_type") == "anode" for x in cm),
+     str([x["payload"] for x in cm if "node_polarity" in x["payload"]]))
+show("coord_mismatch 2건 · orphan_anchor로 새지 않음 (골격 밖과 구분)",
+     len(cm) == 2 and all("스태킹" not in x["reason"] for x in q("orphan_anchor")),
+     str(len(cm)))
 
 show("Property canonical이 세부공정 스코프", any("::" in c for c in canon(P)),
      str([c for c in canon(P) if "::" in c][:1]))

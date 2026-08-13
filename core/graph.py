@@ -120,7 +120,7 @@ class GraphStore:
             "attrs": attrs or {}, "aliases": aliases or [],
             "provenance": list(provenance or []),
         }
-        node.update(extra)                      # electrode_type 등 구조 필드
+        node.update(extra)                      # tier·polarity 등 파생 필드
         self.nodes[nid] = node
         return nid
 

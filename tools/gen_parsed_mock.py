@@ -6,7 +6,7 @@
   ① 조각 필드 chunk_id → source_locator (role=meta)
   ② 봉투에 adapter_version 추가
   ③ provenance 표기는 source_locator 기반 유지
-  ④ CP01은 parsed·raw 모두 11 record가 prefix
+  ④ CP01은 parsed·raw 모두 prefix가 일치한다 (11 → **12** — A11-9 ② 실발화 행 C12 삽입)
 
 **raw에서 파생시키는 이유**: 손으로 쓰면 raw와 어긋날 수 있고, 그것이 곧
 D-18(역산 정합 = prefix 일치)의 무효화다. 여기서 뽑아내면 정합이 구성상 보장된다.
@@ -77,11 +77,11 @@ def write(name, obj):
 
 
 def main():
-    # ---- CP01 : 11 record prefix (C1~C11) ----
+    # ---- CP01 : 12 record prefix (C1~C12) ----
     cp = build("CP01", "CP01.xlsx", ["설비", "관리항목"],
                ["공정명", "설비", "관리항목"],
                {k: k for k in ["설비", "관리항목", "규격", "측정방법", "대응계획"]},
-               11, "C")
+               12, "C")
     write("CP01.json", envelope("CP01", "cp", "mock/raw/CP01.xlsx", "R3",
                                 "table", "records", cp))
 

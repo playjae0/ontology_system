@@ -44,6 +44,10 @@ def build_table(env, cfg, schema, graph):
         ctx.update(rec.get("context") or {})            # 봉투 → 레코드 상속·덮어쓰기
         parent = ref_g.get(ref)["canonical"] if ref else None
         et = rec.get("electrode_type")                  # ④ 구조 필드 — 직접 읽는다
+        # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
+        # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch
+        anchor_pol = b.anchor_polarity(ref, ref_g)
+        b.check_polarity(ref, et, prov, ref_g)
 
         resolved, attrs, contents, external = {}, [], [], {}
         for f, spec in fields.items():
@@ -65,7 +69,8 @@ def build_table(env, cfg, schema, graph):
             elif role == "entity":
                 resolved[f] = b.resolve_entity(
                     rec[f], spec["category"], prov,
-                    electrode_type=et, parent_canonical=parent)
+                    electrode_type=et, parent_canonical=parent,
+                    anchor_polarity=anchor_pol)
             elif role == "attribute":
                 attrs.append((f, spec))
             elif role == "content":
@@ -127,11 +132,14 @@ def build_prose(env, cfg, graph, candidates):
         prov = src.get("source_locator") or cid
         ref, ref_g = b.resolve_anchor(src.get("process_ref"), COORD_CATEGORY, prov)
         parent = ref_g.get(ref)["canonical"] if ref else None
+        anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
+        b.check_polarity(ref, src.get("electrode_type"), prov, ref_g)
 
         for e in cand.get("entities", []):
             nid = b.resolve_entity(e["surface"], e["category"], prov,
                                    electrode_type=src.get("electrode_type"),
-                                   parent_canonical=parent)
+                                   parent_canonical=parent,
+                                   anchor_polarity=anchor_pol)
             if {"chunk_id": cid, "node_id": nid} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": nid})
                 ch["chunks"][cid]["linked"] = True
