@@ -69,7 +69,10 @@
     "precedes": "{src} 다음 공정은 {dst}이다",
     "has_property": "{src}의 관리인자: {dst}",
     "mirrors": "{src}는 {dst}와(과) 극성 대칭 공정/설비이다",
-    "attr:spec": "{node}의 규격: {value} (출처: {prov})"
+    "attr:spec": "{node}의 규격: {value} (출처: {prov})",
+    "precedes:derived": "({scope} 기준) {src} 다음 공정은 {dst}이다",
+    "precedes:none": "{src}의 다음 공정은 골격에 선언되어 있지 않다 (순서 정보 없음)",
+    "attr:측정방법": "{node}의 측정방법: {value} (출처: {prov})"
   },
   "_fact_note": "맥락형 attr(spec 등)은 context 그룹별 한 줄씩 렌더: '[model=M1] 규격: ...'. mirrors는 query_traverse 기본 미포함(비대칭 조회 시에만 명시적 확장 — HOOK).",
   "prompts": {
@@ -116,5 +119,50 @@
   ],
   "skeleton_version": "process-3.2",
   "config_version": "process-1",
-  "registration": "builtin"
+  "registration": "builtin",
+  "query_intents": {
+    "flow": [
+      "전체 공정 흐름",
+      "공정 흐름",
+      "전체 흐름"
+    ],
+    "order": [
+      "다음 공정",
+      "다음은",
+      "다음에 오는",
+      "다음 단계"
+    ],
+    "general": [
+      "영어로",
+      "영문으로",
+      "동작 원리"
+    ],
+    "value": [
+      "규격이",
+      "규격은",
+      "규격 뭐",
+      "몇 ",
+      "얼마"
+    ],
+    "reverse": [
+      "관리하는",
+      "발생할 수 있는",
+      "이어질 수 있는",
+      "어디서"
+    ],
+    "structure": [
+      "어떤 설비",
+      "무슨 설비",
+      "어떤 관리",
+      "무슨 관리",
+      "어떤 인자",
+      "있어?"
+    ],
+    "describe": [
+      "어떻게",
+      "관리 방법",
+      "방법은"
+    ]
+  },
+  "_query_intents_note": "CH5 5.3 질문 유형 대응표의 표기 목록. **USE_MOCK의 결정적 분류기**이며 실물 경로에서는 LLM이 유형을 판정한다(core/query.py의 HOOK). 선언 순서가 우선순위다 — 좁은 유형을 먼저 둔다."
 }
