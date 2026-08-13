@@ -98,7 +98,7 @@ CP_COLS = ["공정구분", "공정번호", "공정명", "극성", "설비", "관
            "규격", "측정방법", "대응계획", "적용모델"]
 
 # ============================================================
-print("\n■ CP01.xlsx — 역산 정합 prefix 11건 + 확대분")
+print("\n■ CP01.xlsx — 역산 정합 prefix 12건 + 확대분")
 h, rows, merged = read_table(f"{RAW}/CP01.xlsx")
 recs, fails, dit = normalize(h, rows, ["설비", "관리항목"], ["공정명", "설비", "관리항목"])
 # 튜플 = (공정구분, 공정명, 극성, 설비, 관리항목, 규격, 적용모델)
@@ -121,6 +121,11 @@ EXP_CP = [
     # C11 — coord_mismatch: 공정구분 "스태킹"과 공정명 "노칭"이 둘 다 골격에 실존하나
     # 조상 관계가 아니다. 파서는 그대로 태깅하고 에이전트 인입 검증이 큐로 잡는다(D-15).
     ("스태킹", "노칭", "both", "노칭 프레스", "노칭 피치", "50±0.2mm", None),
+    # C12 — coord_mismatch(극성판, A11-9 ②): 좌표는 인스턴스(`cathode 탭용접` →
+    # 탭용접::cathode)인데 그 행의 극성은 anode다. **둘 다 확정이고 서로 다르므로**
+    # 조용히 한쪽을 택하지 않고 큐로 표면화한다. C11이 좌표축(조상)의 불일치라면
+    # 이쪽은 같은 계열의 극성축 불일치다 — 규칙 ②의 유일한 실발화 지점이다.
+    ("조립", "cathode 탭용접", "anode", "초음파 융착기", "용접 강도", "8N 이상", None),
 ]
 got = [(r["공정구분"], r["공정명"], r["극성"], r["설비"], r["관리항목"],
         r["규격"], r["적용모델"]) for _, r in recs]
@@ -129,9 +134,9 @@ allok &= show("병합 20건 이상", len(merged) >= 20, f"{len(merged)}건")
 allok &= show("상동(〃) 5건 이상 해소", dit >= 5, f"{dit}건")
 allok &= show("자기완결 실패 0건", not fails, str(fails))
 allok &= show(f"record {len(got)}건 (확대 목표 24건 이상)", len(got) >= 24)
-allok &= show("prefix 11건이 기존 parsed 명세와 일치", got[:11] == EXP_CP)
-if got[:11] != EXP_CP:
-    diff_prefix(got[:11], EXP_CP, "C")
+allok &= show("prefix 12건이 기존 parsed 명세와 일치", got[:12] == EXP_CP)
+if got[:12] != EXP_CP:
+    diff_prefix(got[:12], EXP_CP, "C")
 # 확대분이 기존 판정을 흔들지 않는지
 alig = [g for g in got if g[4] == "적층 정렬도"]
 allok &= show("확대분이 '적층 정렬도' spec 판정을 건드리지 않음 (M1 2건·M2 1건 유지)",

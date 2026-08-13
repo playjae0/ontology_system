@@ -23,8 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import store                                    # noqa: E402
-from core.bootstrap import bootstrap, open_graph          # noqa: E402
+from core import gate, store                              # noqa: E402
+from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.ids import is_ulid                              # noqa: E402
 from core.ingest import ingest                            # noqa: E402
 
@@ -135,6 +135,35 @@ show("무주장 항목이 흐름에서 빠지고 별도 표기됨 (@unordered)",
      any("무주장" in ln and "전극 시트 공급" in ln for ln in flow)
      and not any("전극 시트 공급 →" in ln for ln in flow))
 
+# ── seed는 후보가 아니라 선언이다 (틀 §4B-A3 경로 ①) ────────────────────────
+# 골격이 게이트를 지나지 않는 것은 **설계**이며, 그 대가로 패턴표에 골격 관계를
+# 넣지 않는다. 넣으면 추출 경로(③)가 골격을 개정할 수 있게 된다(A5 발명 금지 ③).
+# 아래 셋은 그 균형을 **우연이 아니라 보장으로** 잠근다.
+print("\n■ seed 경로 ① — 선언이지 후보가 아니다 (게이트 비경유의 잠금)")
+CFG = load_config("process")
+SKEL_REL = {CFG["skeleton"]["relations"]["child"],
+            CFG["skeleton"]["relations"]["sibling"],
+            (CFG.get("mirrors") or {}).get("relation")}
+SKEL_CAT = CFG["skeleton"]["category"]
+show("① 패턴표에 골격 관계가 없다 (추출이 골격을 개정할 수 없다)",
+     not [p for p in CFG["relation_patterns"]
+          if p["src"] == SKEL_CAT and p["dst"] == SKEL_CAT and p["rel"] in SKEL_REL],
+     str([f"{p['src']} -{p['rel']}-> {p['dst']}" for p in CFG["relation_patterns"]
+          if p["src"] == SKEL_CAT and p["dst"] == SKEL_CAT]))
+# 표에 없다는 것만으로는 부족하다 — 실제로 어느 경로로도 커밋되지 않아야 한다.
+# 특히 경로 ②(스키마 edges 선언)는 동종 쌍도 무비용 통과하므로, 패턴이 하나라도
+# 남아 있으면 **정형 문서가 골격 흐름을 개정**한다(A11-2 "순서의 출처는 seed 하나뿐").
+_paths = (gate.PATH_SCHEMA, gate.PATH_EXTRACT, gate.PATH_AUTO)
+_verdicts = {f"{r}/{p}": gate.judge(SKEL_CAT, r, SKEL_CAT, CFG, p)[0]
+             for r in SKEL_REL if r for p in _paths}
+show("② 문서·규칙 경로(②③④) 어느 쪽도 골격 관계를 커밋하지 못한다",
+     gate.COMMIT not in _verdicts.values(), str(_verdicts))
+show("③ loader가 게이트를 부르지 않는다 (경유 자체가 없다)",
+     "gate" not in (ROOT / "core" / "bootstrap.py").read_text(encoding="utf-8"))
+show("골격 엣지 status = seed · 게이트 거부 로그 0건",
+     {e["status"] for e in g.edges} == {"seed"}
+     and not store.path(store.GATE_REJECTS).exists())
+
 reg = store.read(store.REGISTRY, {})
 show("registry에 builtin 층 1개만 존재",
      len(reg) == 1 and list(reg.values())[0]["status"] == "builtin", str(list(reg)))
@@ -184,10 +213,10 @@ show("멱등성 ② 조각 순서 셔플 3회 — 청크 저장 동일", ok_stor
 reset()
 cp = ingest(load("CP01.json"))
 fm = ingest(load("PFMEA01.json"))
-show("CP01 record 11건", len(cp.record_ids) == 11, str(len(cp.record_ids)))
+show("CP01 record 12건", len(cp.record_ids) == 12, str(len(cp.record_ids)))
 show("PFMEA01 record 13건", len(fm.record_ids) == 13, str(len(fm.record_ids)))
 show("record_id 전부 유일 (충돌 접미 없이)",
-     len(set(cp.record_ids)) == 11 and len(set(fm.record_ids)) == 13)
+     len(set(cp.record_ids)) == 12 and len(set(fm.record_ids)) == 13)
 cc = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
 content = [k for k in cc if "-" in k.split(":", 1)[1]]
 show("table content 청크 id = {record_id}-{필드명} (D8)",

@@ -14,7 +14,7 @@
 
 **코드에 층 어휘 0**(B1) — 공정·노칭·스태킹은 물론 **극성 값(cathode/anode)도
 이 파일에 없다.** 코드가 아는 것은 **구문 마커 4종**(`::` 접두 · `@split` ·
-`@unordered` · `@noflow`)뿐이고, 축의 값은 seed의 `POLARITY_LABELS` **키에서
+`@unordered` · `@noflow`)뿐이고, 축의 값은 seed의 `AXIS_LABELS` **키에서
 읽는다**. 그래서 판정문의 "마커 닫힌 7종"이 코드에서는 "구문 4종 + 데이터에서 온
 값 N개"로 구현된다 — 어휘 밖 마커는 명시적 실패다. 골격의 모양·카테고리·관계·
 소재는 전부 `layers/<layer>/config.json`이 값으로 선언한다.
@@ -40,7 +40,7 @@ SEED_STATUS = "seed"        # 사람이 파일로 심은 것 (용어 대장 stat
 SEED_PROV = ["seed"]
 
 # ---- seed 문법: 코드가 아는 전부 -------------------------------------------
-# 구문 마커 4종. 축의 **값**은 여기에 없다 — POLARITY_LABELS 키에서 읽는다(B1).
+# 구문 마커 4종. 축의 **값**은 여기에 없다 — AXIS_LABELS 키에서 읽는다(B1).
 MARK_SPLIT = "@split"           # 전 축값 전개 (개념 + 인스턴스 N)
 MARK_UNORDERED = "@unordered"   # 순서 비참여 래퍼 (개별)
 MARK_NOFLOW = "@noflow"         # 그 부모 아래 전체 무주장 (배열 첫 요소)
@@ -50,10 +50,15 @@ MARK_PREFIX = "@"               # 축약형 마커의 접두 — `@{축값}` = �
 TIER_BY_DEPTH = {1: "main", 2: "sub"}
 TIER_DEEP = "detail"
 
-# seed 형식 v3.2의 블록 이름. ※`PROCESS_TREE`는 형식이 특정 층 이름을 달고 있어
-# 로더에 층 어휘가 새는 지점이다 — 보고 대상(§ 명세 트랙 판정 대기).
-KEY_TREE = "PROCESS_TREE"
-KEY_LABELS = "POLARITY_LABELS"
+# seed 형식 v3.2의 블록 이름 — 전부 **축·층 중립**이다(B1).
+# 구 `PROCESS_TREE`·`POLARITY_LABELS`는 형식이 특정 층·특정 축의 이름을 달고 있어
+# 로더에 층 어휘가 새던 지점이라 `TREE`·`AXIS_LABELS`로 개명했다. 상수로 격리하는
+# 것은 위반을 유지한 채 숨기는 것이고, seed 실물 1개·의존 코드 1곳인 지금이 가장
+# 싼 시점이다. 노드 필드 `polarity`와 config의 `polarity` 블록은 그대로 둔다 —
+# 그쪽은 A11-8이 정한 시스템 어휘이자 B1의 명시된 예외이며, 해소 경로는
+# identity_axis 일반화로 이연되어 있다.
+KEY_TREE = "TREE"
+KEY_LABELS = "AXIS_LABELS"
 KEY_ALIASES = "ALIASES"
 
 TYPE_TREE = "tree-v3.2"
@@ -346,7 +351,7 @@ def _register_aliases(g, seed, parsed, ids, labels, register):
         등재한다. 모호한 짧은 이름을 등재하면 소비처가 조용히 하나를 고르게 되는데,
         그것이 바로 "임의 선택 금지"가 막는 사고다 — 모호하면 사전에 없는 것이 맞고
         접두 키가 그 자리를 대신한다.
-      · 인스턴스 — `{축값} {이름}` · `{라벨} {이름}` (POLARITY_LABELS).
+      · 인스턴스 — `{축값} {이름}` · `{라벨} {이름}` (AXIS_LABELS).
     """
     by_canonical = {s.canonical: s for s in parsed.specs}
 

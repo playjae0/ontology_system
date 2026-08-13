@@ -1,7 +1,7 @@
 {
   "skeleton_version": 3,
-  "POLARITY_LABELS": { "cathode": "양극", "anode": "음극" },
-  "PROCESS_TREE": [
+  "AXIS_LABELS": { "cathode": "양극", "anode": "음극" },
+  "TREE": [
     { "조립": [
       { "노칭": ["::cathode", "::anode",
                  "전극 언와인딩", "노칭 타발", "비전검사", "전극 리와인딩"] },

@@ -1,8 +1,18 @@
 # -*- coding: utf-8 -*-
-"""n4 커밋 게이트 — 엣지가 그래프에 쓰이기 전의 단일 관문 (CH3A 3.4).
+"""n4 커밋 게이트 — **문서 유래 엣지**가 그래프에 쓰이기 전의 관문 (CH3A 3.4).
 
-엣지가 생기는 경로는 넷뿐이고 **넷 모두 같은 관문**을 지난다:
-    ① seed(사람·골격) ② edges 선언(스키마·정형) ③ 추출 후보(LLM·비정형) ④ 자동 규칙(코드)
+엣지가 생기는 경로는 넷이고, 그중 **셋이 이 관문을 지난다**:
+    ① seed(사람·골격) — **비경유**  ② edges 선언(스키마·정형) ③ 추출 후보(LLM·비정형)
+    ④ 자동 규칙(코드)
+
+**① seed가 비경유인 것은 우회가 아니라 설계다**(틀 §4B-A3 경로 ①): seed는 후보가
+아니라 **선언**이다. 사람이 파일에 적은 골격을 코드가 다시 판정할 근거가 없고,
+판정할 표(`relation_patterns`)를 골격까지 덮도록 넓히면 **경로 ③이 골격을 개정할 수
+있게 된다** — A5 하향 한정·발명 금지 ③ 위반이다. 그래서 골격 관계
+(`Process part_of/precedes/mirrors Process`)는 패턴표에 **넣지 않는다.**
+층이 어떤 관계를 갖는지의 선언은 config `relations` 배열이 이미 하고 있고,
+`relation_patterns`는 그것과 별개인 **추출용 게이트 패턴**이다.
+골격 엣지는 loader(n10)가 `status="seed"`로 직접 쓴다.
 
 분기 (CH3A 3.4):
     패턴 안                  → 커밋
@@ -11,7 +21,7 @@
     관계 자체가 미선언        → 발생 불가(③이 닫힌 목록 선택) — 방어적으로 거부 + 기록
     동종 쌍 방향성 관계의 ③   → 커밋하지 않고 `direction_unverifiable` 큐 (근거 청크 동봉)
 
-①②④는 정의상 패턴 안이라 **무비용 통과**이고, 게이트는 ③에게만 실질 관문이다.
+②④는 정의상 패턴 안이라 **무비용 통과**이고, 게이트는 ③에게만 실질 관문이다.
 정형 edges 선언(②)의 동종 쌍은 커밋된다 — PFMEA의 causes 연쇄가 살아 있는 근거다.
 
 **자동 방향 교정을 하지 않는 이유**: 인과 그래프에서 방향 반전은 틀린 사실을
@@ -31,7 +41,8 @@ DIRECTION_UNVERIFIABLE = "direction_unverifiable"
 INVALID_PATTERN = "invalid_pattern"
 UNDECLARED = "undeclared_relation"
 
-PATH_SEED = "seed"          # ①
+# 경로 이름 — ①(seed)은 여기 없다. 이 관문에 오지 않기 때문이다(위 설명).
+# 죽은 상수를 남겨 두면 다음 사람이 그것을 태워도 되는 신호로 읽는다.
 PATH_SCHEMA = "schema"      # ②
 PATH_EXTRACT = "extract"    # ③
 PATH_AUTO = "auto"          # ④
@@ -91,8 +102,8 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
     verdict, _ = judge(s["category"], rel, d["category"], cfg, path)
 
     if verdict == COMMIT:
-        status = "seed" if path == PATH_SEED else "auto"
-        graph.add_edge(src, rel, dst, status, provenance)
+        # 이 관문을 지난 엣지는 전부 문서·규칙 유래다 — status는 `auto` 하나다.
+        graph.add_edge(src, rel, dst, "auto", provenance)
         return COMMIT
 
     if verdict in (DIRECTION_CONFLICT, DIRECTION_UNVERIFIABLE):

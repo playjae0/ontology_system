@@ -76,6 +76,7 @@
     "extract": "(명세 §5.4-1 규칙 — 정의문 3종 삽입, 주제만, 목록 밖 버림, 애매하면 제외)",
     "judge": "(명세 §5.4-2 규칙 — 의미 판단, 표기 변형 안내, 비대칭: 확신 없으면 uncertain)"
   },
+  "_relation_patterns_note": "추출 경로 전용 게이트 패턴. 골격 관계(Process part_of/precedes/mirrors Process)는 여기 넣지 않는다 — 넣으면 추출이 골격을 개정한다. 층이 어떤 관계를 갖는지의 선언은 위 relations 배열이 한다.",
   "relation_patterns": [
     {
       "src": "Unit",
@@ -97,13 +98,6 @@
       "dst": "Property",
       "symmetric": false,
       "정의문": "공정이 그 관리항목을 갖는다"
-    },
-    {
-      "src": "Process",
-      "rel": "precedes",
-      "dst": "Process",
-      "symmetric": false,
-      "정의문": "이 공정 다음에 저 공정이 온다"
     },
     {
       "src": "Unit",
