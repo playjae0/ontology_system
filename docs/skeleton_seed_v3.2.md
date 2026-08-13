@@ -1,10 +1,10 @@
-# 조립 골격 seed v3.2 (확정본 — 2026-08-10 승인 · layers/process/skeleton.json으로 반입)
+# 조립 골격 seed v3.3 (확정본 — 2026-08-10 승인 · layers/process/skeleton.json으로 반입)
 
+> **v3.3 (2026-08-10)**: 키 개명 — `PROCESS_TREE` → `TREE`, `POLARITY_LABELS` → `AXIS_LABELS` (B1: loader에 층·축 어휘 금지 — 레포 D-53. 허브가 실물 선반영, 문서가 따라감). **마커 구현 원칙(D-49)**: 코드가 아는 것은 구문 4종(`::` 접두·@split·@unordered·@noflow)뿐이고 축의 값은 AXIS_LABELS 키에서 파생 — 코드에 cathode/anode 문자열 0. 트리 구조·ALIASES·기대값(46/45/22/16/8) 전부 불변.
 > 상태: **확정 (2026-08-10, M2 승인).** 판정문(안건/M2_판정문안_초안.md **r8**)과 세트 — 문법·규칙의 정본은 판정문 §2(A11)·§4 → 정본 반영본은 틀 v2.6 §4B-A11 / 카드 v13. 다음 단계: 허브 세션이 skeleton.json으로 반입 → n10 재실행(아래 기대값 대조) → G3 정합 + mock "실링" 행 교체(D-42).
 > **v3.2**: skeleton_aliases.json 별도 파일 **폐지** — ALIASES는 skeleton.json 안의 분리 블록(트리와 나란한 최상위 키)으로 복귀. **지위: 이 블록은 사전이 아니라 seed(원천)다** — loader가 dictionary.json(전 층 공유 단일 장부·B4)에 `provenance: ["seed"]`로 등재하면 역할 종료. 운영 중 표기 축적은 매칭 경로(E5)로 같은 사전에 쌓이며, seed 유래와는 provenance 태그로 구분된다(구역 분리 아님). 소비처(anchor 해소·좌표 닫힌 목록·판정 후보·질의 링킹)는 전부 사전만 본다.
 > v3.1: `~` → `@unordered` 래퍼, 마커 닫힌 7종. v3: FLOW 폐지 — 배열=대표 흐름. v2: 사용자 답변 6건.
 > **음/양극 대응: cathode=양극, anode=음극** (AXIS_LABELS).
-> **키 개명 (2026-08-13 — 코드 반입분)**: `PROCESS_TREE` → **`TREE`**, `POLARITY_LABELS` → **`AXIS_LABELS`**. 형식의 블록 이름이 특정 층·특정 축을 달고 있으면 그것을 읽는 loader에 층 어휘가 새어 카드 B1을 저촉한다(seed 실물 1개·의존 코드 1곳인 시점이 가장 싸다). 아래 JSON 블록은 개명 반영본이며, **판정문 §1-12·§4·§8·대장의 형식 서술은 명세 트랙이 정리한다.** 노드 필드 `polarity`·config `polarity` 블록은 A11-8의 시스템 어휘라 개명 대상이 아니다.
 
 ## 문법 요약 (정본은 판정문 §4)
 
