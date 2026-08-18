@@ -1,0 +1,69 @@
+==================================================================
+실행 하네스 — /home/claude/exp3/out/adapters/toc_report.py  +  /home/claude/exp3/out/schemas/toc_report.json
+==================================================================
+
+① adapter 로드
+  [PASS] 문법 오류 없음
+  [PASS] 순수 함수 계약 — 네트워크/LLM 호출 없음 (§5 규약 2)  — []
+  [PASS] import 성공
+  [PASS] ADAPTER 선언 존재
+  [PASS] 필수 키 4종 (doc_type·adapter_version·payload_kind·expects)
+  [PASS] payload_kind가 닫힌 2값  — prose
+  [PASS] extract 함수 존재
+  [PASS] locate 함수 없음 (§5 규약 1 — 폐지된 인터페이스)
+  [PASS] adapter.doc_type == schema.doc_type  — toc_report / toc_report
+
+② preflight — TOC01.xlsx
+  [PASS] 분할 신호 상수가 expects에 선언됨 (prose는 header_row 대상 아님)  — keys=['title_row', 'content_column', 'heading_pattern', 'section_sep', 'max_col']
+
+③ extract 실행 — TOC01.xlsx
+  [PASS] 예외 없이 실행
+  [PASS] list[dict] 반환  — list / 11건
+  [PASS] 조각 11건 산출 (0건 아님)
+  [PASS] 전 조각에 source_locator 존재
+  [PASS] source_locator가 문서 내 유일 (§5 규약 1)  — 중복 0건
+  [PASS] 정본 id를 파서가 부여하지 않음 (chunk_id/record_id 부재 — 틀 A7-1)
+  [PASS] prose 조각에 text 또는 image_ref 존재
+  [PASS] 상동 기호가 해소됨 (계약 ③)  — 0건 잔존
+
+④ 매칭 스키마 정합 — TOC01.xlsx
+  [PASS] 헤더 4키 (doc_type·schema_version·layer·use_blocks)
+  [FAIL] fields 선언 존재  — 0개
+  [PASS] 전 필드의 role이 닫힌 5종 안  — {}
+  [PASS] entity 필드에 category 필수  — []
+  [PASS] edges 0건의 from/to가 전부 선언된 필드  — []
+  [PASS] 파서 출력에 스키마 밖 필드 없음 (unknown_field 큐 예상분)  — []
+  [PASS] 필수 필드가 조각에 실제로 채워짐 (missing_field 큐 예상분)  — []
+  [PASS] UNMAPPABLE 필드가 스키마 fields에 들어가지 않음 (등록 제외 대상)  — []
+      role 루프 드라이런: anchor=0 · entity=0 · attribute=0 · content=0 · meta=0
+
+      [조각 1 표본] {"text": "노칭 프레스는 금형으로 전극 원단을 타발하여 탭 형상을 만든다.\n전극 언와인더가 원단을 공급하며 장력과 사행을 함께 제어한다.", "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.1 설비 구성", "meta": {"doc_title": "조립공정 현황 보고"}, "source_locator": "보고서!A5:A6"}
+
+② preflight — TOC02.xlsx
+  [PASS] 분할 신호 상수가 expects에 선언됨 (prose는 header_row 대상 아님)  — keys=['title_row', 'content_column', 'heading_pattern', 'section_sep', 'max_col']
+
+③ extract 실행 — TOC02.xlsx
+  [PASS] 예외 없이 실행
+  [PASS] list[dict] 반환  — list / 9건
+  [PASS] 조각 9건 산출 (0건 아님)
+  [PASS] 전 조각에 source_locator 존재
+  [PASS] source_locator가 문서 내 유일 (§5 규약 1)  — 중복 0건
+  [PASS] 정본 id를 파서가 부여하지 않음 (chunk_id/record_id 부재 — 틀 A7-1)
+  [PASS] prose 조각에 text 또는 image_ref 존재
+  [PASS] 상동 기호가 해소됨 (계약 ③)  — 0건 잔존
+
+④ 매칭 스키마 정합 — TOC02.xlsx
+  [PASS] 헤더 4키 (doc_type·schema_version·layer·use_blocks)
+  [FAIL] fields 선언 존재  — 0개
+  [PASS] 전 필드의 role이 닫힌 5종 안  — {}
+  [PASS] entity 필드에 category 필수  — []
+  [PASS] edges 0건의 from/to가 전부 선언된 필드  — []
+  [PASS] 파서 출력에 스키마 밖 필드 없음 (unknown_field 큐 예상분)  — []
+  [PASS] 필수 필드가 조각에 실제로 채워짐 (missing_field 큐 예상분)  — []
+  [PASS] UNMAPPABLE 필드가 스키마 fields에 들어가지 않음 (등록 제외 대상)  — []
+      role 루프 드라이런: anchor=0 · entity=0 · attribute=0 · content=0 · meta=0
+
+      [조각 1 표본] {"text": "코터는 집전체 위에 활물질 슬러리를 도포한다.\n도포량 편차는 건조 후 두께 편차로 이어진다.\n슬러리 점도는 도포 균일도에 직접 영향을 준다.", "section": "1. 전극 공정 개요 > 1.1 코팅", "meta": {"doc_title": "전극공정 현황 보고"}, "source_locator": "보고서!A4:A6"}
+
+==================================================================
+실행 하네스 결과: FAIL — 위 항목 확인 필요
