@@ -1,0 +1,273 @@
+# -*- coding: utf-8 -*-
+"""질의 4단 — 범용 읽기 파이프라인 (CH5 5.1·5.2, 명세 §5.6.1~5.6.4).
+
+    질문 → ①링킹 → ②확장 → ③수집 → ④답변
+
+**시스템(코드)이 그래프 연결성으로 근거를 고르고, LLM은 받은 근거를 읽고 답한다.**
+LLM은 그래프를 직접 읽지 않는다 — 그것이 이 4단을 나눈 이유다.
+
+**질의는 읽기 전용이다(P6).** 질문에 나온 표기를 사전에 배우지 않는다 —
+사용자 입력은 비검증이라 사전을 오염시킬 수 있다.
+
+**코드에 층 어휘 0**(B1) — 확장 규칙(query_traverse)·문장 틀(fact_templates)·
+질문 의도의 표기(query_intents)가 전부 층 config의 값이다. 층이 늘어도 이 파일은
+그대로이고, 그것이 J3(품질층 추가에 core 무수정)의 근거다. 여기서 하는 일은
+**스펙을 인자로 받아 도는 조립**뿐이다.
+"""
+from __future__ import annotations
+
+from . import store
+from .ids import norm
+
+COLLECT_LIMIT = 8               # ③ 수집 상한 (CH5 5.1 규약 6). 초과분은 tier2부터 자른다.
+
+PATH_GRAPH = "graph_fact"
+PATH_CHUNK = "chunk"
+PATH_BOTH = "both"
+PATH_GENERAL = "general_knowledge"
+
+# 의도 이름 → 답의 소재 (CH5 5.3 질문 유형 대응표). **이름은 골격 어휘이고, 어떤 말이
+# 그 의도인지는 층 config가 값으로 준다** — D-49의 "구문 N종 + 데이터에서 온 값"과 같은
+# 분업이다. 이원 채널은 어느 의도에서도 둘 다 공급하지만, **답이 어디에 있는지**는
+# 질문 유형이 정한다 — 서술형에 그래프 사실을 답으로 내밀면 그건 답이 아니다.
+INTENT_PATH = {"flow": PATH_GRAPH, "order": PATH_GRAPH, "value": PATH_GRAPH,
+               "reverse": PATH_GRAPH, "structure": PATH_GRAPH,
+               "describe": PATH_CHUNK, "general": PATH_GENERAL}
+
+
+# ---------------------------------------------------------------- ① 링킹
+def link(question, dictionary, graphs):
+    """표기 → 노드. **사전 스캔 우선**(무LLM)이며 **긴 표면형이 이긴다**.
+
+    긴 것부터 보는 이유: "노칭 정밀도"가 있는데 "노칭"이 먼저 맞으면 질문이 가리킨
+    것보다 넓은 노드에 붙는다. 3단(임베딩 검색)은 이연이며 훅만 둔다.
+
+    극성 링킹은 **넓게** 한다(CH5 5.1 규약 3 — 쓰기는 좁게와 대칭): 사전이 한 표기에
+    여러 노드를 달고 있으면 전부 링킹한다. 극성 무관 표기는 개념 노드에 붙고,
+    인스턴스는 part_of 하향이 데려온다.
+    """
+    q = norm(question)
+    hits, taken = [], []
+    for surface in sorted(dictionary, key=len, reverse=True):
+        if not surface or surface not in q:
+            continue
+        if any(surface in t for t in taken):        # 이미 더 긴 표기로 잡힌 자리
+            continue
+        taken.append(surface)
+        for nid in dictionary[surface]:
+            for layer, g in graphs.items():
+                n = g.get(nid)
+                if n is not None:
+                    hits.append({"surface": surface, "node_id": nid, "layer": layer})
+    return hits
+
+
+def log_miss(question):
+    """링킹 미스는 버리지 않고 쌓는다 — 하이브리드 서치 도입 판정의 데이터다(5.4)."""
+    store.append_line(store.LINK_MISS, question)
+
+
+# ---------------------------------------------------------------- ② 확장
+def expand(graph, ids, cfg):
+    """config의 `query_traverse` 스펙대로만 뻗는다.
+
+    `precedes`는 확장에 넣지 않는다(순서는 그래프 사실 채널과 flow 특례가 담당) —
+    `mirrors`도 기본 확장에 없다. 둘 다 **config가 그렇게 선언**하기 때문이며 코드는
+    관계 이름을 모른다. 전파는 프론티어 방식이라 다른 관계로 도달한 노드에도 규칙이
+    적용된다 — 공정→(part_of 하향)→설비→(has_property)→인자 2홉이 성립하는 근거다.
+    """
+    return graph.neighbors(ids, cfg.get("query_traverse") or {})
+
+
+def bridge(src_ids, home_layer, graphs, configs):
+    """cross-layer 브리지 **1홉·비재귀·양방향**.
+
+    걸침 엣지는 **출발 층의 그래프**에 저장된다(구현문서 §2.2) — 그래서 공정층 노드로
+    물어도 품질층 그래프를 훑어야 답이 나온다. 어느 관계가 브리지인지는 그 층의
+    `cross_layer_traverse`가 값으로 선언한다.
+    """
+    found, crossed = {}, []
+    for layer, g in graphs.items():
+        if layer == home_layer:
+            continue
+        spec = (configs[layer].get("cross_layer_traverse") or {})
+        if not spec:
+            continue
+        for e in g.edges:
+            if e.get("status") == "deleted_by_user" or e["rel"] not in spec:
+                continue
+            d = spec[e["rel"]].get("direction", "both")
+            hit = ((d in ("out", "both") and e["dst"] in src_ids)
+                   or (d in ("in", "both") and e["src"] in src_ids))
+            if not hit:
+                continue
+            found.setdefault(layer, set()).add(
+                e["src"] if e["dst"] in src_ids else e["dst"])
+            crossed.append((layer, e))
+    return found, crossed
+
+
+def cross_facts(crossed, graphs, configs):
+    """걸침 엣지의 문장화 — **출발 층의 템플릿을 쓴다**(§8-R4).
+
+    같은 층 안의 엣지와 갈라 두는 이유: 걸침 엣지는 **dst가 다른 층 그래프에 산다.**
+    한 층의 노드 집합만 보고 문장화하면 이 엣지는 양끝이 한 집합에 들어오지 않아
+    영영 렌더되지 않는다 — "노칭에서 나는 불량은?"이 답을 못 내던 자리다.
+    """
+    out = []
+    for layer, e in crossed:
+        tpl = (configs[layer].get("fact_templates") or {}).get(e["rel"])
+        src, dst = _find(graphs, e["src"]), _find(graphs, e["dst"])
+        if tpl and src and dst:
+            out.append(tpl.format(src=src["canonical"], dst=dst["canonical"]))
+    return out
+
+
+def _find(graphs, nid):
+    """노드는 어느 층 그래프에든 있을 수 있다 — 걸침 엣지의 양끝이 그렇다."""
+    for g in graphs.values():
+        n = g.get(nid)
+        if n is not None:
+            return n
+    return None
+
+
+# ---------------------------------------------------------------- ③ 수집
+def collect_chunks(node_ids, direct):
+    """2-tier(직접 링킹 > 확장) · 상한 8 · 최신순. **잘림은 로그로 남긴다**(계기판 재료)."""
+    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    by_node = {}
+    for d in ch["describes"]:
+        by_node.setdefault(d["node_id"], []).append(d["chunk_id"])
+    tier1 = [(1, cid) for nid in direct for cid in by_node.get(nid, [])]
+    tier2 = [(2, cid) for nid in node_ids if nid not in direct
+             for cid in by_node.get(nid, [])]
+    ordered, seen = [], set()
+    for tier, cid in tier1 + tier2:                 # tier1이 앞이라 잘림은 바깥부터다
+        if cid in seen:
+            continue
+        seen.add(cid)
+        c = ch["chunks"].get(cid)
+        if c:
+            ordered.append({"chunk_id": cid, "doc_id": c["doc_id"], "text": c["text"],
+                            "tier": tier, "section": c.get("section"),
+                            "source_locator": c.get("source_locator")})
+    dropped = max(0, len(ordered) - COLLECT_LIMIT)
+    if dropped:
+        store.append_line(store.LINK_MISS, f"[collect_truncated] {dropped}건 잘림")
+    return ordered[:COLLECT_LIMIT], dropped
+
+
+# ---------------------------------------------------------------- ④ 답변 — 채널 1
+def facts(graph, node_ids, cfg):
+    """[그래프 사실] — 수집 노드의 엣지·값을 `fact_templates`로 문장화한다.
+
+    **순서·규격은 이 채널에만 있다.** 청크 단채널이면 "노칭 다음은?"에 답하지 못한다.
+    맥락형 attr는 context 그룹별로 한 줄씩 낸다(같은 인자의 M1·M2 규격은 충돌이
+    아니라 병렬 항목이기 때문이다).
+    """
+    tpl = cfg.get("fact_templates") or {}
+    out = []
+    for e in graph.edges:
+        if e.get("status") == "deleted_by_user":
+            continue
+        if e["src"] in node_ids and e["dst"] in node_ids and e["rel"] in tpl:
+            out.append(tpl[e["rel"]].format(src=graph.get(e["src"])["canonical"],
+                                            dst=graph.get(e["dst"])["canonical"]))
+    for nid in node_ids:
+        n = graph.get(nid)
+        for name, val in (n.get("attrs") or {}).items():
+            t = tpl.get(f"attr:{name}")
+            if not t or val is None:
+                continue
+            for item in (val if isinstance(val, list) else [val]):
+                if not isinstance(item, dict) or item.get("value") is None:
+                    continue
+                line = t.format(node=n["canonical"], value=item["value"],
+                                prov=", ".join(item.get("provenance") or []))
+                ctx = item.get("context")
+                out.append(f"[{_ctx(ctx)}] {line}" if ctx else line)
+    return out
+
+
+def _ctx(ctx):
+    return ", ".join(f"{k}={v}" for k, v in sorted(ctx.items()))
+
+
+# ---------------------------------------------------------------- 순서 파생 (규약 8)
+def next_of(graph, nid, cfg):
+    """순서 파생 — **자기 선언 > 부모 파생 > "순서 정보 없음"** (틀 §4B-A11-5).
+
+    ①노드 자신에게 `precedes` 선언이 있으면 그것이 답이다.
+    ②없으면 부모로 올라가 부모의 후속 Q를 찾고, **Q에 나와 같은 축값 인스턴스가
+      있으면 그리로 하강**한다 — 없으면 Q 자체다(공유 스텝 합류가 자동으로 된다).
+    ③조상까지 선언이 없으면 **추측하지 않고** "순서 정보 없음"으로 답한다.
+
+    돌려주는 것은 `(후속 노드 id 또는 None, 해상도 노드 id)`다. 해상도를 함께 주는
+    이유: 인스턴스 질문에 개념 해상도로 답하는 경우를 사람이 오해하지 않게
+    **답변에 그 기준을 표기**해야 하기 때문이다(fact_template).
+    """
+    skel = cfg.get("skeleton") or {}
+    child_rel = (skel.get("relations") or {}).get("child")
+    sib_rel = (skel.get("relations") or {}).get("sibling")
+    if not child_rel or not sib_rel:
+        return None, None
+    cur, seen = nid, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        nxt = [e["dst"] for e in graph.edges if e["src"] == cur and e["rel"] == sib_rel]
+        if nxt:
+            return _descend(graph, nxt[0], graph.get(nid).get("polarity"),
+                            child_rel), cur
+        up = [e["dst"] for e in graph.edges if e["src"] == cur and e["rel"] == child_rel]
+        cur = up[0] if up else None
+    return None, None
+
+
+def _descend(graph, target, polarity, child_rel):
+    """후속 노드에 **같은 축값 인스턴스**가 있으면 그리로 내려간다(없으면 개념 그대로).
+
+    이것이 "공유 스텝 합류 자동"의 실체다 — 극성 가지를 타던 질문이 극성 없는
+    공통 스텝을 만나면 그냥 그 스텝으로 답이 나온다.
+    """
+    if not polarity or polarity == "none":
+        return target
+    for e in graph.edges:
+        if e["rel"] == child_rel and e["dst"] == target:
+            child = graph.get(e["src"])
+            if child and child.get("polarity") == polarity:
+                return e["src"]
+    return target
+
+
+def flow_chain(graph, cfg):
+    """flow 특례 — **개념 노드 레벨 대표 흐름 체인**을 통째로 공급한다(5.2 규약 4).
+
+    골격이 얇아 저비용이고, 축 인스턴스는 제외한다 — 극성 인스턴스 간에는 순서가
+    선언되지 않으므로(J12) 흐름의 단위는 개념 노드다.
+    """
+    sib = ((cfg.get("skeleton") or {}).get("relations") or {}).get("sibling")
+    tpl = (cfg.get("fact_templates") or {}).get(sib, "{src} → {dst}")
+    return [tpl.format(src=graph.get(e["src"])["canonical"],
+                       dst=graph.get(e["dst"])["canonical"])
+            for e in graph.edges
+            if e["rel"] == sib
+            and graph.get(e["src"]).get("polarity") in (None, "none")]
+
+
+# ---------------------------------------------------------------- 의도
+def intent_of(question, cfg):
+    """질문 의도 — **표기 목록은 config가 소유한다**(층 어휘이기 때문이다).
+
+    코드가 아는 것은 "의도 이름으로 갈린다"는 절차뿐이고, 어떤 말이 어떤 의도인지는
+    층이 값으로 선언한다. 우선순위는 선언 순서다.
+
+    이 표기 대조는 **USE_MOCK의 결정적 분류기**다(구현문서 §8 — 문형 규칙).
+    # HOOK: llm_intent — 실물 경로에서는 LLM이 질문 유형을 판정하고, 그때도 유형의
+    # 이름과 답의 소재(INTENT_PATH)는 그대로다. 바뀌는 것은 분류 수단뿐이다.
+    """
+    q = norm(question)
+    for name, marks in (cfg.get("query_intents") or {}).items():
+        if any(m in q for m in marks):
+            return name
+    return None

@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import store                                   # noqa: E402
-from core.bootstrap import bootstrap, open_graph         # noqa: E402
+from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
+from core.build import Builder                           # noqa: E402
 from core.extract import EXTRACT_DIR                     # noqa: E402
 from core.pipeline import run_document                   # noqa: E402
 
@@ -63,6 +64,8 @@ def canon(g):
 flags = full_run()
 P = open_graph("process")
 Q = open_graph("quality")
+# 짝 키 정규화(F3 하향 연쇄)를 직접 호출해 보기 위한 도구 인스턴스 — 그래프는 안 건드린다.
+BLD = Builder(P, load_config("process"), None, "TEST", "process")
 
 # ============================================================ 1c′ (정형·공정층)
 print("\n■ 1c′ — 정형 인입 (계약 v2 정합)")
@@ -89,16 +92,38 @@ show("mirrors 엣지 생성", rel["mirrors"] > 0, str(rel["mirrors"]))
 show("C10 mirror_asymmetry 참 양성 (anode 쪽에만 '버 높이')",
      "노칭::버 높이" in [x["payload"]["base"] for x in q("mirror_asymmetry")],
      str([x["payload"]["base"] for x in q("mirror_asymmetry")]))
-# ⚠ **알려진 오검출 2건** — BLOCKERS 판정필요-5. A11-9 ①로 부착된 노드는 극성이
-# 이름이 아니라 **주소**에 있는데, mirrors 짝 키(base_canonical)에는 그 주소가
-# 그대로 들어간다. `탭용접::cathode::용접 강도`의 짝은 `탭용접::anode::…`이므로
-# 키가 달라 **둘 다 있어도 절대 페어링되지 않는다** — F3의 "부모가 mirror 쌍이면
-# 하향 연쇄" 절이 미구현이다. Unit은 스코프 자체가 없어 같은 뿌리에서 갈린다.
-# 고치려면 core에 새 분기가 필요하므로 **잠그고 판정을 기다린다**(고치지 않는다).
-_MA_KNOWN = ["노칭::버 높이", "초음파 융착기", "탭용접::cathode::용접 강도"]
-show("mirror_asymmetry 오검출 2건이 현행 그대로 (조용히 바뀌면 잡힌다 — 판정필요-5)",
-     sorted(x["payload"]["base"] for x in q("mirror_asymmetry")) == sorted(_MA_KNOWN),
-     str(sorted(x["payload"]["base"] for x in q("mirror_asymmetry"))))
+
+# ★ 판정필요-5 ① — F3 하향 연쇄 (틀 v2.7 · 카드 F3 · CH3B v2.2 3.5 규약 6)
+# 짝 키는 canonical 전문이 아니라 **(부모 — mirror 쌍이면 동일시 · 주소 접두를 제외한
+# 자기 이름부 · polarity 반대)** 세 요소다. 개수가 아니라 **구조로** 잠근다 — 큐에
+# 오른 항목마다 반대 극성 노드를 직접 찾아 "정말로 짝이 없는지"를 확인하므로,
+# 나중에 짝이 생기면 큐가 줄어도 이 판정은 그대로 성립한다.
+_pol_vals = ["cathode", "anode"]
+_by_key = {}
+for _n in P.nodes.values():
+    if _n["status"] != "seed" and _n.get("polarity") in _pol_vals:
+        _by_key.setdefault((_n.get("mirror_scope"), _n.get("mirror_name")),
+                           set()).add(_n["polarity"])
+_false = [x["payload"]["base"] for x in q("mirror_asymmetry")
+          if len(_by_key.get((x["payload"]["scope"], x["payload"]["name"]), ())) > 1]
+show("mirror_asymmetry 오검출 0건 (짝이 있는데 큐에 오른 항목이 없다)",
+     not _false, str(_false))
+show("F3 하향 연쇄 — 부모가 mirror 쌍이면 자식 짝 키에서 동일시된다",
+     BLD._mirror_scope("탭용접::cathode") == "탭용접"
+     and BLD._mirror_scope("탭용접::anode") == "탭용접",
+     f"탭용접::cathode → {BLD._mirror_scope('탭용접::cathode')}")
+show("짝 없는 인스턴스는 동일시하지 않는다 (무관한 자식이 한 키로 뭉치지 않는다)",
+     BLD._mirror_scope("노칭") == "노칭")
+
+# ★ 판정필요-5 ② — A11-9 ① 적용 범위를 스코프 카테고리로 한정 (카드 F1 v14)
+_dup = [c for c, k in Counter((n["canonical"], n["category"])
+                              for n in P.nodes.values()).items() if k > 1]
+show("canonical 중복 0건 (스코프 없는 Unit은 F1 극성 결합을 유지한다)",
+     not _dup, str(_dup))
+show("Unit은 극성이 이름에 실린다 / Property는 주소에 실린다",
+     "anode 초음파 융착기" in canon(P) and "초음파 융착기" in canon(P)
+     and "탭용접::cathode::용접 강도" in canon(P),
+     str(sorted(c for c in canon(P) if "융착" in c)))
 show("스코프 붙은 관리항목의 극성 쌍도 페어링 (구 strip 방식이 놓치던 자리)",
      any(e["rel"] == "mirrors"
          and P.get(e["src"])["canonical"] == "노칭::cathode 노칭 정밀도"

@@ -39,6 +39,7 @@ DOC_REGISTRY = "doc_registry.json"    # doc_id → doc_hash 대장 (D-8)
 OPS_LOG = "ops_log.json"              # I축 연산 로그 (D-8)
 GATE_REJECTS = "gate_rejects.json"    # 게이트 거부 로그 — 큐가 아니다 (D-7)
 DEFECTS = "defects.log"               # 결함 로그 (n1 id 충돌 등)
+LINK_MISS = "link_miss.log"           # 질의 링킹 미스·수집 잘림 (CH5 5.1 규약 6·5.2 규약 3)
 
 
 def path(name) -> Path:
@@ -55,11 +56,16 @@ def write(name, obj):
     path(name).write_bytes(_dumps(obj))
 
 
-def append_defect(line: str):
-    """결함 로그는 덮지 않고 쌓는다 — 조용히 버리지 않는다(G5)."""
+def append_line(name: str, line: str):
+    """줄 단위 로그는 덮지 않고 쌓는다 — 조용히 버리지 않는다(G5)."""
     DATA.mkdir(parents=True, exist_ok=True)
-    with path(DEFECTS).open("a", encoding="utf-8") as f:
+    with path(name).open("a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
+
+
+def append_defect(line: str):
+    """결함 로그 — 처리 대상이 아니라 관측 신호다(계기판 재료)."""
+    append_line(DEFECTS, line)
 
 
 def enqueue(kind, reason, doc_id, payload):

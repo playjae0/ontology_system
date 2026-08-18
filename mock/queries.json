@@ -1,0 +1,24 @@
+{
+  "_note": "스모크 테스트 12문항 (구현문서 §6.4). ③ 골든셋과 별개다 — 이것은 4단이 도는지 보는 최소 집합이고, 골든셋은 답의 품질을 재는 별개 자산이다. expected_path는 CH5 5.3 질문 유형 대응표에 대응한다.",
+  "queries": [
+    {"id": 1,  "type": "Q1", "q": "노칭 프레스 금형 관리 어떻게 해?",      "expected_path": "chunk"},
+    {"id": 2,  "type": "Q1", "q": "적층 정렬도 관리 방법은?",              "expected_path": "chunk"},
+    {"id": 3,  "type": "Q2", "q": "노칭 다음 공정은?",                     "expected_path": "graph_fact"},
+    {"id": 4,  "type": "Q2", "q": "스태킹에 어떤 설비가 있어?",            "expected_path": "graph_fact"},
+    {"id": 5,  "type": "Q3", "q": "조립 전체 공정 흐름 설명해줘",          "expected_path": "graph_fact"},
+    {"id": 6,  "type": "Q4", "q": "노칭 정밀도 규격이 뭐야?",              "expected_path": "graph_fact"},
+    {"id": 7,  "type": "Q4", "q": "실링 온도 규격은?",                     "expected_path": "graph_fact"},
+    {"id": 8,  "type": "Q5", "q": "금형 클리어런스를 관리하는 설비는?",    "expected_path": "graph_fact"},
+    {"id": 9,  "type": "Q5-cross", "q": "노칭에서 발생할 수 있는 불량은?", "expected_path": "graph_fact"},
+    {"id": 10, "type": "cross", "q": "단락으로 이어질 수 있는 불량은 뭐가 있어?", "expected_path": "graph_fact"},
+    {"id": 11, "type": "Q8", "q": "노칭이 영어로 뭐야?",                   "expected_path": "general_knowledge"},
+    {"id": 12, "type": "Q8", "q": "리튬이온 배터리 동작 원리 설명해줘",    "expected_path": "general_knowledge"}
+  ],
+  "_derived_order": {
+    "_note": "순서 파생 3분기(A11-5 · CH5 5.1 규약 8) — 자기 선언 / 부모 파생+동일 축값 하강 / 순서 정보 없음. 파생 답에는 해상도가 표기되어야 한다.",
+    "self": "노칭 다음 공정은?",
+    "derived_instance": "탭용접::pre용접::cathode 다음 공정은?",
+    "derived_merge": "탭용접::laser용접::cathode 다음 공정은?",
+    "none": "조립 다음 공정은?"
+  }
+}

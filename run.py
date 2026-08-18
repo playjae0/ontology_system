@@ -8,6 +8,7 @@
   python run.py bootstrap          층 골격 심기 (n10)
   python run.py ingest <파일...>   계약 JSON 인입 (n2 → n1)
   python run.py all                bootstrap + mock/parsed 전량 인입
+  python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
   python run.py gauges             계기판 7·8 출력
 """
 import json
@@ -56,6 +57,12 @@ def cmd_all():
                       key=lambda p: idx.get(p.stem, 99)))
 
 
+def cmd_query(args):
+    """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다."""
+    from cli.query import answer, render
+    print(render(answer(" ".join(args))))
+
+
 def cmd_gauges():
     for layer in discover():
         g = open_graph(layer)
@@ -73,4 +80,5 @@ if __name__ == "__main__":
     {"bootstrap": lambda: cmd_bootstrap(),
      "ingest": lambda: cmd_ingest(sys.argv[2:]),
      "all": lambda: cmd_all(),
+     "query": lambda: cmd_query(sys.argv[2:]),
      "gauges": lambda: cmd_gauges()}[cmd]()

@@ -191,7 +191,17 @@ class Builder:
         `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
         그 노드에서 **상속**한다(A11-9 ① — 이중 표기 방지). 그렇지 않을 때만
         기존 극성 결합 3조건이 돈다(F1).
+
+        **생략은 스코프 카테고리에 한정한다** [틀 v2.7 · CH3B v2.2 3.5 규약 3 ·
+        카드 F1]. 생략의 근거는 "극성이 이미 주소에 있다"인데, 주소가 canonical에
+        실리는 것은 `canonical_scope`가 걸린 카테고리(현행 Property)뿐이다.
+        스코프가 없는 카테고리(Unit)에 생략을 적용하면 표면형에도 주소에도 극성이
+        없어져 **polarity 필드만 다르고 canonical이 같은 노드 2개가 공존**한다
+        (P4 취지 위반 — C12 실측). 그래서 Unit은 F1 극성 결합을 유지한다.
         """
+        scoped_category = category in (self.cfg.get("canonical_scope") or {}) \
+            .get("bind_categories", [])
+        anchor_polarity = anchor_polarity if scoped_category else None
         inherited = anchor_polarity is not None
         bound = surface if inherited else \
             bind_polarity(surface, category, electrode_type, self.cfg)       # ④
@@ -212,10 +222,11 @@ class Builder:
         extra = {"_scoped": True} if scoped and self.cfg.get("canonical_scope", {}) \
             .get("bind_categories", []).count(category) else {}
         extra["polarity"] = polarity                     # 닫힌 4값을 항상 기록한다
-        # mirrors 짝 찾기의 키 — **결합 전** canonical이다. canonical 문자열을 되
-        # 파싱하지 않기 위해(A11-8) 조립 시점에 함께 적어 둔다.
-        extra["base_canonical"] = scope_canonical(
-            surface, category, parent_canonical, self.cfg)[0]
+        # mirrors 짝 키의 두 요소 — **부모**와 **주소 접두를 제외한 자기 이름부**다
+        # (F3). canonical을 되 파싱하지 않기 위해(A11-8) 조립 시점에 적어 둔다.
+        # 스코프가 없는 카테고리는 부모가 이름에 실리지 않으므로 부모 요소도 없다.
+        extra["mirror_scope"] = parent_canonical if scoped_category else None
+        extra["mirror_name"] = norm(surface)
         nid = self.g.add_node(canonical, category, "auto", provenance=[prov], **extra)
         self._register(surface, nid, prov)
         store.enqueue("auto_node" if verdict == NEW else "uncertain_match",
@@ -259,6 +270,32 @@ class Builder:
         items.append({"context": context, "value": value, "provenance": [prov]})
 
     # ---------------------------------------------------------------- mirrors
+    def _mirror_scope(self, scope):
+        """짝 키의 부모 요소 — **부모가 mirror 쌍이면 동일시한다**(F3 하향 연쇄).
+
+        부모가 축 인스턴스이고 그 인스턴스가 mirrors로 이어져 있으면, 그 아래 같은
+        이름의 자식들은 **같은 자리**에 있는 것이다. 그래서 부모를 개념 노드로 올려
+        잡아야 `탭용접::cathode::용접 강도`와 `탭용접::anode::용접 강도`가 한 키로
+        모인다. 구판은 canonical 전문을 키로 써서 둘을 영영 못 짝짓고 전부 편측
+        큐로 흘렸다(D-50이 고친 것과 같은 뿌리의 남은 절반).
+
+        **짝 없는 인스턴스는 동일시하지 않는다** — mirrors 엣지가 없으면 그 자리는
+        분화 쌍이 아니고, 올려 잡으면 무관한 자식들이 한 키로 뭉친다.
+        판정 근거는 전부 필드·엣지다 — canonical을 파싱하지 않는다(A11-8).
+        """
+        if not scope:
+            return scope
+        node = next((n for n in self.g.nodes.values() if n["canonical"] == scope), None)
+        if node is None or not is_bound(node.get("polarity"), self.cfg):
+            return scope
+        mrel = (self.cfg.get("mirrors") or {}).get("relation")
+        if not any(e["src"] == node["id"] and e["rel"] == mrel for e in self.g.edges):
+            return scope
+        child_rel = (self.cfg.get("skeleton") or {}).get("relations", {}).get("child")
+        up = [e["dst"] for e in self.g.edges
+              if e["src"] == node["id"] and e["rel"] == child_rel]
+        return self.g.get(up[0])["canonical"] if up else scope
+
     def link_mirrors(self):
         """④ 자동 규칙 — 같은 이름부(결합 전 canonical) + polarity 반대 쌍.
 
@@ -288,7 +325,8 @@ class Builder:
             pol = n.get("polarity")
             if pol not in vals:
                 continue
-            key = n.get("base_canonical") or n["canonical"]
+            key = (self._mirror_scope(n.get("mirror_scope")),
+                   n.get("mirror_name") or n["canonical"])
             by_key.setdefault(key, {})[pol] = nid
         for base, pair in by_key.items():
             if len(pair) == len(vals):
@@ -300,7 +338,11 @@ class Builder:
                 continue
             # 비대칭 — 한쪽 극성에만 달린 자식
             only = next(iter(pair))
+            scope, name = base
+            sep = (self.cfg.get("canonical_scope") or {}).get("sep", "::")
+            label = f"{scope}{sep}{name}" if scope else name
             store.enqueue("mirror_asymmetry",
-                          f"'{base}'가 {only} 쪽에만 있다 (극성 쌍의 구성 불일치)",
+                          f"'{label}'가 {only} 쪽에만 있다 (극성 쌍의 구성 불일치)",
                           self.doc_id,
-                          {"base": base, "present": only, "node_id": pair[only]})
+                          {"base": label, "scope": scope, "name": name,
+                           "present": only, "node_id": pair[only]})
