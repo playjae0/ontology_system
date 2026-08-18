@@ -283,6 +283,33 @@ show("D-37 — 노드에 등급 필드 없음",
      not any("classification" in n for n in
              list(P.nodes.values()) + list(Q.nodes.values())))
 
+# ============================================================ 계약 위반 방어
+# 인입 코드는 계약 위반에 **예외로 죽지 않는다**(D-30 계보). 한 필드의 형태 오류로
+# 레코드 전체·문서 전체의 정상 지식까지 잃을 이유가 없다.
+print("\n■ 계약 위반 방어 (인입은 죽지 않고 큐로 표면화한다)")
+bad = load("CP01.json")
+bad["doc_id"] = "CPBAD"
+bad["records"] = [dict(bad["records"][0], context="M1")]     # 계약은 임의 딕셔너리다
+qn = len(store.read(store.QUEUE, []))
+try:
+    run_document(bad)
+    show("스칼라 context에 예외로 죽지 않는다 (CH2 2.2 위반 · D-30 계보)", True)
+except Exception as e:                                        # noqa: BLE001
+    show("스칼라 context에 예외로 죽지 않는다 (CH2 2.2 위반 · D-30 계보)",
+         False, f"{type(e).__name__}: {e}")
+mf = [x for x in store.read(store.QUEUE, [])
+      if x["kind"] == "missing_field" and x["doc_id"] == "CPBAD"]
+show("계약 위반이 missing_field 큐로 표면화 (새 kind 신설 없음 — 닫힌 20종)",
+     len(mf) == 1, str([x["reason"] for x in mf]))
+
+# 엣지 끝점의 `@` 표기는 from·to 어느 쪽에도 온다. 한쪽만 해소하면 스키마가 선언한
+# 엣지가 **큐도 로그도 없이 사라진다**(A-4 관통 실측 — ipqc has_property 0건).
+from core.pipeline import _endpoint                            # noqa: E402
+_res, _ref, _g = {"설비": "N1"}, "NREF", P
+show("엣지 끝점 `@process_ref`가 from·to 양쪽에서 같게 해소된다",
+     _endpoint("@process_ref", _res, _ref, _g, {}, P, "T")[0] == _ref
+     and _endpoint("설비", _res, _ref, _g, {}, P, "T")[0] == "N1")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

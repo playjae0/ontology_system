@@ -10,6 +10,7 @@
   ② preflight       — ADAPTER.expects ↔ 실물 지문 대조
   ③ extract 실행    — 조각 산출 · 계약 3층 구조 self-check(validator)
   ④ 스키마 정합     — 스키마 fields ↔ 조각 필드 대조 + role 루프 드라이런
+                     (fields의 정답은 payload_kind가 정한다 — prose는 `{}`가 정답, D-31)
 
 사용: python run_adapter.py <adapter.py> <schema.json> <문서.xlsx> [문서2.xlsx ...]
 """
@@ -159,12 +160,34 @@ def run_extract(mod, raw, label):
 
 
 # ---------------------------------------------------------------- ④ 스키마 정합
-def check_schema(schema, pieces, label):
+def payload_kind_of(schema, mod):
+    """payload_kind의 선언처 — **스키마 우선, 없으면 어댑터**.
+
+    둘 다 계약 선언물이고 하네스는 doc_type이 일치하는 한 쌍만 받는다(main의 대조).
+    스키마가 선언하지 않는 경우가 실재하므로(3차 산출 fixture 2종 모두 미선언) 폴백을
+    둔다 — 어느 쪽도 선언하지 않으면 분기 자체가 불가능하니 그때는 명시적 실패다.
+    **값으로 분기하고 doc_type 이름으로 분기하지 않는다**(B1).
+    """
+    return schema.get("payload_kind") or (mod.ADAPTER or {}).get("payload_kind")
+
+
+def check_schema(schema, pieces, label, payload_kind=None):
     print(f"\n④ 매칭 스키마 정합 — {label}")
     show("헤더 4키 (doc_type·schema_version·layer·use_blocks)",
          {"doc_type", "schema_version", "layer"} <= set(schema))
     fields = schema.get("fields", {})
-    show("fields 선언 존재", bool(fields), f"{len(fields)}개")
+    # **fields의 정답은 payload_kind가 정한다** [D-31 확정 — 카드 C17 · CH2 2.5/2.6].
+    # prose 조각의 고정 키 4종(text·section·meta·image_ref)은 **payload 구조 필드**라
+    # role 배정 대상이 아니고, 그래서 prose 매칭 스키마의 fields는 `{}`가 정답이다 —
+    # 층·블록 선언이 계약의 전부다. 구판은 이 정답을 FAIL로 찍었다(3차 로그의 유일한 FAIL).
+    if payload_kind == "prose":
+        show("prose 스키마의 fields는 비어 있음 (D-31 — 고정 키는 payload 구조 필드)",
+             not fields, f"{len(fields)}개")
+    elif payload_kind == "table":
+        show("table 스키마의 fields 선언 존재", bool(fields), f"{len(fields)}개")
+    else:
+        show("payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)",
+             False, str(payload_kind))
     badrole = {k: v.get("role") for k, v in fields.items() if v.get("role") not in ROLES}
     show("전 필드의 role이 닫힌 5종 안", not badrole, str(badrole))
     noecat = [k for k, v in fields.items() if v.get("role") == "entity" and not v.get("category")]
@@ -222,7 +245,7 @@ if __name__ == "__main__":
         label = d.split("/")[-1]
         preflight(mod, raw, label)
         pieces = run_extract(mod, raw, label)
-        check_schema(schema, pieces, label)
+        check_schema(schema, pieces, label, payload_kind_of(schema, mod))
         if pieces:
             print(f"\n      [조각 1 표본] {json.dumps(pieces[0], ensure_ascii=False)[:300]}")
     print("\n" + "=" * 66)
