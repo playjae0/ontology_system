@@ -1,22 +1,3 @@
-# -*- coding: utf-8 -*-
-"""어댑터 — doc_type: ipqc (공정검사성적서, 조립공정)
-
-관찰 근거: mock/raw/IPQC01.xlsx, IPQC02.xlsx (시트명 '검사성적서')
-  1행  제목(A1:P1 병합)  2행  문서정보(A2:P2 병합)  3행  헤더(굵게)  4행~ 데이터
-  A 대공정 / B 공정No / C 공정명 / D 극성 / E 검사설비 / F 검사항목 / G 규격 /
-  H 측정방법 / I 판정기준 / J 부적합 조치 / K 적용모델 / L 검사자 / M 검사일시 /
-  N 성적서번호 / O 최근 불량 이력 / P 관련 표준문서
-
-자기완결성 처리
-  - 병합 셀(A/B/C)은 각 행에 복제한다. (IPQC01은 A4:A35·B/C 블록 병합,
-    IPQC02는 A가 행마다 반복되고 B/C만 병합 — 두 표기 모두 동일 결과가 되도록 처리)
-  - 상동 기호 '〃'(E열 관찰)는 같은 열의 직전 해소값으로 치환한다.
-  - 한 셀 복수값(F열 '실링 폭, 실링 강도')은 행으로 전개한다.
-  - 적용모델(K)이 비면 2행 문서정보의 '적용모델(기본): M1'을 상속한다.
-
-순수 함수 — 네트워크·LLM·파일 접근 없음. 같은 입력이면 같은 출력.
-"""
-
 import re
 
 ADAPTER = {
@@ -24,179 +5,129 @@ ADAPTER = {
     "adapter_version": "1.0",
     "payload_kind": "table",
     "expects": {
-        "sheet_name": "검사성적서",
-        "title_row": 1,
-        "doc_info_row": 2,
         "header_row": 3,
-        "first_data_row": 4,
+        "data_start_row": 4,
+        # [D-29] preflight 표류 감지용 — 원본 헤더 문자열의 순서 배열
+        "header_labels": [
+            "대공정", "공정No", "공정명", "극성", "검사설비", "검사항목",
+            "규격", "측정방법", "판정기준", "부적합 조치", "적용모델",
+            "검사자", "검사일시", "성적서번호", "최근 불량 이력", "관련 표준문서",
+        ],
+        # {출력 필드명: 열문자} — 키는 원본 헤더가 아니라 출력 필드명(D-29)
         "columns": {
-            "process_group": "A",      # 대공정   (구조 필드 / anchor)
-            "process_no": "B",         # 공정No   (구조 필드 / meta)
-            "process_ref": "C",        # 공정명   (구조 필드 / anchor)
-            "electrode_type": "D",     # 극성     (구조 필드, role 대상 아님)
+            "process_group": "A",   # 대공정 → 구조 필드(anchor는 process_coord 몫)
+            "process_no": "B",      # 공정No → 구조 필드(meta)
+            "process_ref": "C",     # 공정명 → 구조 필드(anchor는 process_coord 몫)
+            "electrode_type": "D",  # 극성 → 구조 필드(entity 해소 코드가 직접 소비)
             "검사설비": "E",
             "검사항목": "F",
             "규격": "G",
             "측정방법": "H",
             "판정기준": "I",
             "부적합 조치": "J",
-            "context": "K",            # 적용모델 (구조 필드, role 대상 아님)
+            "context": "K",         # 적용모델 → 구조 필드(맥락 상속 입력)
             "검사자": "L",
             "검사일시": "M",
             "성적서번호": "N",
-            "최근 불량 이력": "O",      # UNMAPPABLE — 조각으로 내보내지 않는다
-            "관련 표준문서": "P",       # UNMAPPABLE — 조각으로 내보내지 않는다
+            "관련 표준문서": "P",
+            # O열(최근 불량 이력)은 UNMAPPABLE 판정 — 출력·스키마에서 제외(D-30, 산출물 3 참조)
         },
-        # 조각으로 내보내는 열(= 매칭 스키마 fields + 구조 필드)
-        "emit_fields": [
-            "process_group", "process_no", "process_ref", "electrode_type",
-            "context", "검사설비", "검사항목", "규격", "측정방법",
-            "판정기준", "부적합 조치", "검사자", "검사일시", "성적서번호",
-        ],
-        "unmappable_columns": ["최근 불량 이력", "관련 표준문서"],
-        "ditto_marks": ["〃", "″", "”", "\"", "同上", "상동"],
-        "merged_fill_columns": ["A", "B", "C"],
-        "ditto_columns": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
-        "multi_value_sep": ", ",
-        "multi_value_fields": ["검사항목"],
-        "context_default_pattern": r"적용모델\(기본\)\s*[:：]\s*([^\s]+)",
-        "context_key": "model",
-        "row_present_columns": ["E", "F", "G", "H", "I", "J", "L", "M", "N"],
+        "ditto_mark": "〃",             # 상동 기호 → 같은 열 직전 실값으로 치환
+        "multi_value_sep": ", ",        # 한 셀 복수값(예: F30 "실링 폭, 실링 강도") → 행 전개
+        "multi_value_field": "검사항목",
+        # 문서 정보행(A2)의 "적용모델(기본): M1"에서 context 기본값을 읽는다
+        "context_default_cell": "A2",
+        "context_default_pattern": r"적용모델\(기본\)\s*:\s*(\S+)",
     },
 }
 
-_DITTO = set(ADAPTER["expects"]["ditto_marks"])
-_ADDR = re.compile(r"^([A-Z]+)([0-9]+)$")
-_SPLIT = re.compile(r"\s*,\s*")
+_CELL_RE = re.compile(r"^([A-Z]+)(\d+)$")
 
 
-def _col_idx(letters):
+def _col_to_idx(col):
     n = 0
-    for ch in letters:
+    for ch in col:
         n = n * 26 + (ord(ch) - 64)
     return n
 
 
-def _col_letter(idx):
+def _idx_to_col(n):
     s = ""
-    while idx > 0:
-        idx, r = divmod(idx - 1, 26)
+    while n:
+        n, r = divmod(n - 1, 26)
         s = chr(65 + r) + s
     return s
 
 
-def _norm(v):
-    if v is None:
-        return None
-    if isinstance(v, str):
-        v = v.strip()
-        return v or None
-    return v
-
-
-def _fill_merged(sheet):
-    """병합 범위의 좌상단 값을 범위 전체로 복제한 셀 맵을 만든다."""
-    cells = dict(sheet.get("cells") or {})
-    for rng in sheet.get("merged") or []:
-        if ":" not in rng:
+def _expand_merged(cells, merged):
+    """병합 범위의 좌상단 값을 범위 내 전 셀에 복제한다(자기완결성 규약 5)."""
+    for rng in merged:
+        try:
+            tl, br = rng.split(":")
+            m1 = _CELL_RE.match(tl)
+            m2 = _CELL_RE.match(br)
+            if not m1 or not m2:
+                continue
+        except ValueError:
             continue
-        a, b = rng.split(":", 1)
-        ma, mb = _ADDR.match(a.strip()), _ADDR.match(b.strip())
-        if not ma or not mb:
+        c1, r1 = _col_to_idx(m1.group(1)), int(m1.group(2))
+        c2, r2 = _col_to_idx(m2.group(1)), int(m2.group(2))
+        val = cells.get(tl)
+        if val is None:
             continue
-        c1, r1 = _col_idx(ma.group(1)), int(ma.group(2))
-        c2, r2 = _col_idx(mb.group(1)), int(mb.group(2))
-        src = cells.get(a.strip())
-        if src is None:
-            continue
-        for c in range(min(c1, c2), max(c1, c2) + 1):
-            for r in range(min(r1, r2), max(r1, r2) + 1):
-                addr = "%s%d" % (_col_letter(c), r)
-                if cells.get(addr) is None:
-                    cells[addr] = src
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                key = "%s%d" % (_idx_to_col(c), r)
+                if key not in cells or cells[key] in (None, ""):
+                    cells[key] = val
     return cells
 
 
-def _doc_context_default(cells, info_row, pattern):
-    txt = cells.get("A%d" % info_row)
-    if not isinstance(txt, str):
-        return None
-    m = re.search(pattern, txt)
-    return m.group(1) if m else None
-
-
-def extract(raw):
+def extract(raw) -> list[dict]:
     """reader 원시 추출물 → 정규 조각 리스트. 조각마다 source_locator 포함."""
-    out = []
-    if not isinstance(raw, dict) or raw.get("format") != "xlsx":
-        return out
+    exp = ADAPTER["expects"]
+    fragments = []
+    for sheet in raw.get("sheets", []):
+        cells = dict(sheet.get("cells", {}))
+        _expand_merged(cells, sheet.get("merged", []))
 
-    ex = ADAPTER["expects"]
-    cols = ex["columns"]
-    header_row = ex["header_row"]
-    first_row = ex["first_data_row"]
-    emit = ex["emit_fields"]
+        # context 기본값: 문서 정보행에서 파싱 (예: "적용모델(기본): M1")
+        default_ctx = ""
+        info = cells.get(exp["context_default_cell"], "")
+        m = re.search(exp["context_default_pattern"], str(info))
+        if m:
+            default_ctx = m.group(1)
 
-    for sheet in raw.get("sheets") or []:
-        name = sheet.get("name") or "sheet"
-        cells = _fill_merged(sheet)
-        max_row = int(sheet.get("max_row") or 0)
+        prev = {}  # 열문자 → 직전 실값 (상동 기호 치환용)
+        for row in range(exp["data_start_row"], int(sheet.get("max_row", 0)) + 1):
+            rec = {}
+            for field, col in exp["columns"].items():
+                v = cells.get("%s%d" % (col, row), "")
+                v = "" if v is None else str(v).strip()
+                if v == exp["ditto_mark"]:
+                    v = prev.get(col, "")
+                if v != "":
+                    prev[col] = v
+                rec[field] = v
 
-        # 헤더 행이 관찰 상수와 어긋나면(다른 시트 등) 건너뛴다.
-        if _norm(cells.get("A%d" % header_row)) != "대공정":
-            # 이미지 placeholder만은 남긴다
-            for im in sheet.get("images") or []:
-                out.append({"source_locator": "%s!%s" % (name, im.get("cell")),
-                            "image_ref": im.get("ref")})
-            continue
-
-        ctx_default = _doc_context_default(cells, ex["doc_info_row"],
-                                           ex["context_default_pattern"])
-        last = {}   # 열문자 → 직전 해소값 (상동 기호 치환용)
-
-        for row in range(first_row, max_row + 1):
-            present = any(_norm(cells.get("%s%d" % (c, row))) is not None
-                          for c in ex["row_present_columns"])
-            if not present:
+            # 검사항목이 없는 행은 record가 아니다
+            if rec.get("검사항목", "") == "":
                 continue
 
-            resolved = {}
-            for field, col in cols.items():
-                v = _norm(cells.get("%s%d" % (col, row)))
-                if v in _DITTO and col in ex["ditto_columns"]:
-                    v = last.get(col)
-                if v is not None and col in ex["ditto_columns"]:
-                    last[col] = v
-                resolved[field] = v
+            if rec.get("context", "") == "":
+                rec["context"] = default_ctx
 
-            # 적용모델: 빈 칸이면 문서정보 행의 기본값을 상속
-            model = resolved.get("context") or ctx_default
-            resolved["context"] = {ex["context_key"]: model} if model else None
+            base_loc = "%s!R%d" % (sheet.get("name", "sheet"), row)
 
-            # 한 셀 복수값 → 행으로 전개
-            variants = []
-            for f in ex["multi_value_fields"]:
-                val = resolved.get(f)
-                if isinstance(val, str) and _SPLIT.search(val):
-                    parts = [p for p in _SPLIT.split(val) if p]
-                    if len(parts) > 1:
-                        variants.append((f, parts))
-            n = max([len(p) for _, p in variants] or [1])
-
-            for i in range(n):
-                rec = {}
-                for f in emit:
-                    rec[f] = resolved.get(f)
-                for f, parts in variants:
-                    rec[f] = parts[i] if i < len(parts) else parts[-1]
-                loc = "%s!R%d" % (name, row)
-                if n > 1:
-                    loc = "%s#%d" % (loc, i + 1)
-                rec["source_locator"] = loc
-                out.append(rec)
-
-        for im in sheet.get("images") or []:
-            out.append({"source_locator": "%s!%s" % (name, im.get("cell")),
-                        "image_ref": im.get("ref")})
-
-    return out
+            # 한 셀 복수값 → 행으로 전개 (locator에 접미사로 유일성 보장)
+            parts = [p.strip() for p in rec[exp["multi_value_field"]].split(exp["multi_value_sep"]) if p.strip()]
+            if len(parts) <= 1:
+                rec["source_locator"] = base_loc
+                fragments.append(rec)
+            else:
+                for i, part in enumerate(parts, 1):
+                    r2 = dict(rec)
+                    r2[exp["multi_value_field"]] = part
+                    r2["source_locator"] = "%s#%d" % (base_loc, i)
+                    fragments.append(r2)
+    return fragments
