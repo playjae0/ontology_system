@@ -259,10 +259,12 @@ class Builder:
             return
         attrs = n.setdefault("attrs", {})
         if not contextual:
-            attrs[name] = {"value": value, "provenance": [prov]}
-            return
+            # **단순형은 빈 context 그룹 하나로 취급한다**(3.6 규약 5) — 분기가 아니라
+            # 특수 사례다. 구판은 deep-equal 없이 덮어써서 교차 출처의 다른 주장이
+            # provenance째 소멸했다("충돌은 정보다" — 규약 6).
+            context = {}
         items = attrs.setdefault(name, [])
-        if not isinstance(items, list):
+        if not isinstance(items, list):                  # 구판 단순형 값의 승격
             items = attrs[name] = [items]
         for it in items:
             if it.get("context") == context:

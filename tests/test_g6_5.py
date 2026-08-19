@@ -273,11 +273,15 @@ ops.merge("process", y["id"], x["id"], actor="시험자", reason="C1 repro")
 keep = node_by("process", "노칭::노칭 정밀도") or node_by("process", "노칭::금형 클리어런스")
 merged = keep["attrs"].get("spec") or []
 vals = {it["value"] for it in merged} if isinstance(merged, list) else set()
+queued = {x2["payload"].get("incoming") for x2 in q_of("spec_conflict")}
 want = {it["value"] for a2 in (xa, ya) for it in (a2.get("spec") or [])}
-show("C1 병합이 attribute 값을 무음 폐기하지 않는다 (양쪽 값 잔존)",
-     want <= vals, f"기대 {sorted(want)} · 실제 {sorted(vals)}")
-show("C1 같은 맥락의 값 충돌은 spec_conflict로 뜬다",
-     len(q_of("spec_conflict")) >= before_sc)
+# 계약은 "양쪽 값이 attrs에 남는다"가 아니라 **"무음으로 사라지지 않는다"**다 —
+# 맥락이 다르면 병렬 저장, 같은 맥락의 충돌이면 spec_conflict 큐다(3.7 I2).
+show("C1 병합이 attribute 값을 무음 폐기하지 않는다 (attrs 또는 spec_conflict)",
+     want <= (vals | queued), f"기대 {sorted(want)} · attrs {sorted(vals)} · 큐 {sorted(queued)}")
+show("C1 흡수측 값이 같은 맥락에서 충돌하면 spec_conflict로 뜬다",
+     len(q_of("spec_conflict")) > before_sc,
+     f"{before_sc} → {len(q_of('spec_conflict'))}")
 
 # C3 — 비맥락형의 교차 출처 값 충돌
 fresh()
@@ -289,9 +293,10 @@ n = node_by("process", "노칭::노칭 정밀도")
 at = n["attrs"].get("측정방법")
 prov = at.get("provenance") if isinstance(at, dict) else \
     [p for it in at for p in it["provenance"]]
-show("C3 비맥락형 교차 출처 충돌은 spec_conflict + 기존 값 보존 (3.6 규약 5)",
+show("C3 비맥락형 교차 출처 충돌은 spec_conflict + **기존 값 보존** (3.6 규약 5)",
      any(x2["payload"].get("attr") == "측정방법" for x2 in q_of("spec_conflict"))
-     and "XA-R1" in prov, f"{at}")
+     and "CP01-C1" in prov
+     and "비전 측정기" in str(at) and "방법B" not in str(at), f"{at}")
 
 # C5 — 툼스톤은 매칭 후보가 아니다
 fresh()

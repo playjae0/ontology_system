@@ -21,6 +21,7 @@ import os
 
 from .ids import norm
 from .naming import POLARITY_NONE
+from .ops import is_live
 
 THRESHOLD = 0.85        # 단일 임계. 세분화는 판정 보류율이 쌓인 뒤에만(P7·E2).
 
@@ -82,6 +83,8 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     # ② 후보 검색 + ③ 판정
     best, score = None, 0.0
     for nid, n in graph.nodes.items():
+        if not is_live(n):
+            continue                                     # 툼스톤은 후보가 아니다(D-66 6번째 지점)
         if n["category"] != category or n["layer"] != layer:
             continue                                     # 카테고리 불일치 안전망(규약 3)
         if not scoped and n.get("_scoped"):
