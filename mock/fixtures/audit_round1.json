@@ -1,0 +1,582 @@
+{
+ "confirmed": [
+  {
+   "title": "인입 필드 검증(③단) 전체 미구현 — 스키마 밖 필드·필수 필드 부재가 무음 통과 (unknown_field·missing_field 큐 0)",
+   "file": "core/pipeline.py",
+   "line": 71,
+   "claim": "CH2 2.8 '인입 검증 3단'의 ③필드 검증이 구현되어 있지 않다. build_table의 루프(core/pipeline.py:71-72 `if f not in rec or rec[f] in (None, \"\"): continue`)는 스키마 필드만 순회하므로 ①레코드에 스키마 밖 필드가 있어도 unknown_field 큐 없이 값이 완전히 버려지고(레코드는 어디에도 저장되지 않으므로 그 값은 영구 소실), ②optional 미선언 필수 필드가 비어 있어도 missing_field 큐 없이 조용히 건너뛴다. unknown_field·missing_field(D-60의 context 방어 1곳 제외)는 코드 전체에서 enqueue되지 않으며, 이를 위해 정의된 STRUCTURAL 상수(pipeline.py:19)는 어디서도 참조되지 않는 죽은 코드다 — 검증이 계획되고 배선되지 않았다는 증거다.",
+   "violated_ref": "CH2 2.8 ③ 필드 검증: '스키마에 없는 필드가 레코드에 등장 → unknown_field 리뷰 … 선언되지 않았으면 missing_field 큐' · CH2 2.2 '계약 위반은 조용히 통과하지 않는다' · 카드 G5 '아무것도 조용히 버리지 않는다' · 증분0 §3 G3 변경점 ⑤(큐 kind 20종 소비)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a_$$ && cd /tmp/a_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nimport json,copy\nfrom core import store\nfrom core.pipeline import run_document\nenv=json.load(open('mock/parsed/CP01.json'))\ne=copy.deepcopy(env); e['doc_id']='XCP01'\nfor r in e['records']: r['알수없는필드']='이 값은 소실된다'\ndel e['records'][0]['설비']\nq0=len(store.read(store.QUEUE,[]))\nres,_,_=run_document(e)\nk=[x['kind'] for x in store.read(store.QUEUE,[])[q0:]]\nprint('결과:',res,'| 신규 큐 kind:',k,'| unknown_field:',k.count('unknown_field'),'| missing_field:',k.count('missing_field'))\"  # 기대: unknown_field/missing_field 0건, 인입은 ok",
+   "severity": "high",
+   "dim": "invariants",
+   "verdict_reason": "CH2 2.8 ③단(스키마 밖 필드→unknown_field, 미선언 필수 필드 부재→missing_field)이 코드 어디에도 배선되지 않았다. core/pipeline.py:71-72의 build_table 루프는 스키마 fields만 순회하므로 스키마 밖 필드는 어떤 큐·로그·저장소에도 닿지 않고 값이 소실되며, optional 미선언 필드 부재도 무음 통과한다. 반박 전부 실패: ①파서측 validator 대체론 — ingest.py 자체 docstring과 D-2가 \"파서측=문서 단위 실패, 에이전트측 ③=큐 착지, 겹치지 않는다\"고 명시하고 kit/run_adapter.py:207-214는 자기 검사를 \"unknown_field 큐 예상분\"이라 부른다(하류 큐 존재를 전제). ②이연론 — 증분0 D-2가 ③을 \"기존 1c\"(G3 소관)로 배정, PROGRESS.md는 G3 완료(08-08)·A트랙 G0~G6 종결 선언, \"하지 않은 것\" 목록에 필드 검증 없음, DECISIONS 69건에 이연 결정 없음. ③등재 예외 3건과 무관. ④실영향 — mock 자체가 이 큐를 발화하도록 설계됨: PFMEA01 R12의 비고='재발 2건'은 구현용문서 R12 행·raw_mock_대장이 unknown_field 큐 산출을 명시한 기대값인데, 깨끗한 전체 빌드 후 unknown_field 0건이고 grep -r \"재발 2건\" data/ 무일치 — 설계된 기대 출력이 실제로 미달성. STRUCTURAL 상수(pipeline.py:19)는 코드 전체에서 참조 0회 확인. CH2 2.2 \"계약 위반은 조용히 통과하지 않는다\"·카드 G5 \"아무것도 조용히 버리지 않는다\" 직접 위반.",
+   "evidence": "사본 /tmp/audit_ver1 (8695ee8), rm -rf data/process data/quality data/*.json 후 python3 run.py all 성공. 발견의 repro 스크립트 실행 출력: \"결과: <Ingest XCP01 ok chunks=12 records=12> | 신규 큐 kind: ['spec_conflict', 'coord_mismatch', 'coord_mismatch'] | unknown_field: 0 | missing_field: 0\" — schemas/cp.json에서 설비는 role=entity·optional 미선언이므로 missing_field 기대 지점. 추가 실증: 전체 빌드 후 store.QUEUE의 kind Counter에 unknown_field 0건(PFMEA01 R12에 비고='재발 2건' 존재 확인 — 문서상 unknown_field 큐 기대값)이고 grep -rl \"재발 2건\" data/ → 무일치(rc=1), 즉 값이 시스템 상태 어디에도 없다. grep STRUCTURAL: core/pipeline.py:19 정의 외 코드 참조 0."
+  },
+  {
+   "title": "payload_kind 닫힌 2값 미검증 — 오탈자 하나로 table 문서의 전 레코드가 무음 소실",
+   "file": "core/pipeline.py",
+   "line": 263,
+   "claim": "run_document는 `if env.get(\"payload_kind\") == \"table\"` 외의 모든 값(오탈자·누락 포함)을 prose로 처리한다. payload_kind가 'tabel'인 table 봉투를 넣으면 records 12건이 완전히 무시된 채 청크 0·레코드 0으로 '정상 인입'되고, doc_registry에 등재되며 빈 추출 체크포인트까지 생성된다. 큐·결함 로그 어디에도 신호가 없다 — 문서 전체가 조용히 사라진다. C9는 payload_kind를 '닫힌 2값 스위치'로 계약했고 CH2 2.8은 '어느 단계의 실패도 조용히 통과하지 않는다'고 명시한다.",
+   "violated_ref": "카드 C9 'payload_kind — table|prose 닫힌 2값' · CH2 2.2 '`payload_kind`는 두 값의 닫힌 집합이다' · 카드 G5 · CH2 2.8 '어느 단계의 실패도 조용히 통과하지 않는다'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/b_$$ && cd /tmp/b_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nimport json,copy\nfrom core import store\nfrom core.pipeline import run_document\nenv=json.load(open('mock/parsed/CP01.json'))\ne=copy.deepcopy(env); e['doc_id']='XCP05'; e['payload_kind']='tabel'\ne['records'][0]['규격']='±0.123mm'\nq0=len(store.read(store.QUEUE,[]))\nres,_,_=run_document(e)\nprint(res,'| 신규 큐:',[x['kind'] for x in store.read(store.QUEUE,[])[q0:]],'| 등재:',('XCP05' in store.read(store.DOC_REGISTRY,{})))\"  # 기대: ok chunks=0 records=0, 큐 0건, 등재 True — 12행 무음 소실",
+   "severity": "high",
+   "dim": "invariants",
+   "verdict_reason": "재현 완전 성공 + 반박 사유 전부 기각. (1) 재현: 사본에서 payload_kind='tabel'인 table 봉투(records 12건)를 run_document에 넣으면 `<Ingest XCP05 ok chunks=0 records=0>` — 신규 큐 0건, defect 로그 0건, doc_registry에 XCP05 등재 True, 빈 추출 체크포인트 extract/XCP05.json까지 생성됨(has_checkpoint 때문에 재실행 시 추출도 건너뜀 — 소실이 고착됨). core/pipeline.py:263과 core/ingest.py:132 두 곳 모두 `== \"table\"` else-prose의 열린 폴백이라 닫힌 2값(C9, CH2 2.2) 밖의 값이 유효한 prose로 무음 재해석된다. (2) '파서 측 validator 소관(D-2·파서_명세 §189)'이라는 설계 의도 방어 검토 — 기각: 이 레포(G6 완료 상태)에 파서 validator는 미구현이고(parser/에는 reader.py뿐, payload_kind 검사 0건), USE_MOCK 경로는 손으로 작성한 mock/parsed JSON을 파서 경유 없이 직접 인입하므로 설계상으로도 이 경로를 파서가 덮을 수 없다 — 현재 시스템 어디에도 C9를 강제하는 지점이 없다. (3) 같은 파일의 자체 규범과도 모순: pipeline.py _context는 context 계약 위반을 missing_field 큐로 표면화하고(D-30 계보 — \"인입 코드는 계약 위반에 예외로 죽지 않고 큐로 표면화\"), invalid_role도 큐+defect로 착지시키는데, payload_kind 계약 위반만 무신호 통과다. (4) run.py가 stdout에 'record 0 · chunk 0'을 찍긴 하나 계약된 표면화 채널(큐·결함 로그)은 전부 비어 있어 CH2 2.8('어느 단계의 실패도 조용히 통과하지 않는다') 위반이 성립한다. (5) 등재된 예외 3건(B1 관련)과 무관. 문서 전체 무음 소실 + 허위 인입 등재이므로 high 유지.",
+   "evidence": "cp -r /home/claude/repo_clone /tmp/audit_pk && cd /tmp/audit_pk && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null; 이후 발견의 파이썬 스니펫 실행 결과: `<Ingest XCP05 ok chunks=0 records=0> | 신규 큐: [] | 등재: True` (env records 12건). 추가 확인: store 결함 로그 `defects: []`, data/ 내 XCP05 흔적은 doc_registry.json 1곳뿐, extract/XCP05.json 빈 후보 체크포인트 생성 확인(stage=extract, candidates 빈 값 — core/extract.py:100 has_checkpoint로 재실행 시 추출 스킵). 파서 측 방어 부재 확인: grep -rn payload_kind parser/ → 0건, core/에도 unknown_field 검증 미구현."
+  },
+  {
+   "title": "I2 병합 — 충돌 attribute 값·provenance가 무음 소실 (setdefault가 흡수측 값을 버림)",
+   "file": "core/ops.py",
+   "line": 295,
+   "claim": "merge()의 attribute 이관(core/ops.py:294-295 `keep.setdefault(\"attrs\", {}).setdefault(name, val)`)은 생존자에 같은 이름의 attr가 이미 있으면 흡수측 값을 그 provenance째 조용히 버린다. 툼스톤의 attrs는 {}로 비워지므로 값은 어디에도 남지 않고, spec_conflict 큐도 로그도 없다. L5는 'alias·엣지·값·provenance 전부 생존자로 이관'을, 함수 자신의 docstring도 '정보 손실 0이 계약'이라 선언하나 실물은 이를 위반한다. 실측: 서로 다른 spec을 가진 두 노드 병합 후 한쪽 값이 완전 소실됐다.",
+   "violated_ref": "카드 L5 'I2 병합 — alias·엣지·값·provenance 전부 생존자로 이관' · 카드 L7 '선택 안 된 표기는 전부 alias로 남아 정보 손실이 없다' · 카드 G5 · core/ops.py merge docstring '정보 손실 0이 계약이다'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/c_$$ && cd /tmp/c_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nfrom core.graph import GraphStore\nfrom core import ops, store\ng=GraphStore.for_layer('process').load()\na=g.add_node('감사A','Unit','auto',attrs={'spec':{'value':'A값','provenance':['DOCA-1']}},provenance=['DOCA-1'])\nb=g.add_node('감사B','Unit','auto',attrs={'spec':{'value':'B값','provenance':['DOCB-1']}},provenance=['DOCB-1'])\ng.save(); ops.merge('process',a,b,actor='auditor')\ng2=GraphStore.for_layer('process').load()\nsurv=[n for n in g2.nodes.values() if n['id'] in (a,b) and not n.get('merged_into')][0]\ngone=[n for n in g2.nodes.values() if n['id'] in (a,b) and n.get('merged_into')][0]\nprint('생존자 attrs:',surv['attrs'],'| 툼스톤 attrs:',gone['attrs'])\nprint('spec_conflict 큐:',sum(1 for x in store.read(store.QUEUE,[]) if x['kind']=='spec_conflict' and '감사' in str(x)))\"  # 기대: 한쪽 값+provenance 소실, 큐 0",
+   "severity": "high",
+   "dim": "invariants",
+   "verdict_reason": "확정 — 반박 불가. (1) 코드 실물: /tmp/audit_i2/core/ops.py:294-295 `keep.setdefault(\"attrs\", {}).setdefault(name, val)` — 생존자에 같은 이름의 attr가 있으면 흡수측 값 전체(맥락형이면 병렬 context 항목·provenance 전부)를 조용히 버린다. 툼스톤은 ops.py:312에서 `\"attrs\": {}`로 비워지므로 값은 그래프 어디에도 남지 않고, merge 경로에는 spec_conflict enqueue가 없다(spec_conflict를 싣는 코드는 core/build.py:263 인입 경로뿐). (2) 문서 계약 위반 확인: docs/00_틀_확정본.md:236 I2 행이 \"attribute는 context 그룹별로 합치되 같은 그룹에 다른 값이면 spec_conflict 큐\"를 명시하고, docs/CH3B_인입규칙.md:101도 동일 문면(\"attribute는 context 그룹별 합침(같은 그룹 값 충돌 시 spec_conflict)\"), 카드 L5 \"값·provenance 전부 생존자로 이관\", 함수 docstring \"정보 손실 0이 계약\"과 전부 충돌한다. 구현은 context 그룹별 합침 자체를 하지 않는다 — deep-equal 비교도, 병렬 항목 보존도 없다. (3) 등재 예외 아님: DECISIONS.md의 병합 관련 결정은 D-62(생존자 우선순위 3단)·D-66(툼스톤 대상 자격)뿐이며 attr 이관을 setdefault로 축약하는 결정은 69건 어디에도 없다. B1 예외 3건과도 무관. (4) 실영향 있음: build.py put_attribute의 실제 저장 형식(맥락형 리스트)에서도 이름 충돌 시 흡수측 리스트가 통째로 소실되므로, 충돌 값뿐 아니라 context가 달라 계약상 \"병렬 항목\"으로 보존돼야 할 값까지 잃는다 — 주장보다 오히려 더 넓은 손실이다.",
+   "evidence": "사본 /tmp/audit_i2에서 rm -rf data/process data/quality data/*.json && python3 run.py all 후 제시된 repro 스크립트를 그대로 실행. 출력: \"생존자 attrs: {'spec': {'value': 'B값', 'provenance': ['DOCB-1']}} | 툼스톤 attrs: {}\" / \"spec_conflict 큐: 0\". 즉 'A값'과 provenance 'DOCA-1'이 그래프·큐·로그 어디에도 남지 않았다. 재현 100%, 결정적."
+  },
+  {
+   "title": "재인입 회수(H1·H2) 미구현 — 개정판 재인입 후 삭제된 행의 청크·describes가 잔존, evidence_lost 미발화",
+   "file": "core/ingest.py",
+   "line": 95,
+   "claim": "ingest()는 같은 doc_id 재인입 시 그 문서 몫의 기존 청크·describes·provenance를 회수하지 않고 새 조각을 덮어쓰기만 한다. 행이 삭제된 개정판(R4, 12행→6행)을 재인입해도 chunks.json의 CP01 청크는 12건 그대로 남아, 현행 개정판에 존재하지 않는 내용이 질의의 '문서 근거'로 계속 공급된다. evidence_lost 큐는 코드 어디에서도 enqueue되지 않는다(grep 0건). H2 ①'회수(청크·describes·엣지/값 provenance)'와 L9의 evidence_lost 표시 경로가 실물에 없다 — PROGRESS.md G4는 '3.5′ 재인입 회귀 완료'를 주장하나 그 회귀는 동일 내용 재인입만 검증해 이 결함이 가려졌다.",
+   "violated_ref": "카드 H1 '그 문서 몫의 provenance만 회수하고 다시 넣는다' · 카드 H2 ① 회수(청크·describes·엣지/값 provenance) · 카드 L9 '재인입 → provenance 0 → evidence_lost 표시' · 카드 L6",
+   "repro": "cp -r /home/claude/repo_clone /tmp/d_$$ && cd /tmp/d_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nimport json,copy\nfrom core import store\nfrom core.pipeline import run_document\nch0={cid for cid,c in store.read(store.CHUNKS,{'chunks':{}})['chunks'].items() if c['doc_id']=='CP01'}\ne=copy.deepcopy(json.load(open('mock/parsed/CP01.json')))\ne['revision']='R4'; e['records']=e['records'][:6]\nres,_,_=run_document(e)\nch1={cid for cid,c in store.read(store.CHUNKS,{'chunks':{}})['chunks'].items() if c['doc_id']=='CP01'}\nprint(res,'| CP01 청크:',len(ch0),'->',len(ch1),'(기대: 6, 실제 12 — 삭제 행 6건 잔존)')\nprint('evidence_lost 큐:',sum(1 for x in store.read(store.QUEUE,[]) if x['kind']=='evidence_lost'))\"",
+   "severity": "high",
+   "dim": "invariants",
+   "verdict_reason": "반박 실패 — 발견은 재현되고, 등재 예외·설계 의도·이연 결정 어디에도 해당하지 않는다. (1) 재현 확인: 사본에서 repro 실행 결과 CP01 청크 12 -> 12(기대 6), 삭제된 6행의 청크가 잔존하고 그 청크를 가리키는 describes 6건도 잔존하며(core/query.py collect_chunks가 describes를 통해 이 청크들을 질의의 '문서 근거'로 계속 공급), evidence_lost 큐는 0건. `grep -rn evidence_lost` 결과 코드 전체에서 cli/platform.py:43의 kind 목록 표기 1건뿐 — enqueue 지점이 없다. (2) 규범 위반 확정: 정본 카드 v16의 H1(123행) '그 문서 몫의 provenance만 회수하고 다시 넣는다', H2(124행) '①회수(청크·describes·엣지/값 provenance)', L9(202행) '재인입은 그 문서 몫의 provenance를 회수하고 근거 0인 노드를 evidence_lost로 표시', 그리고 정본 docs/CH3B_인입규칙.md 132행 '① 회수: 그 문서에서 온 청크·describes·엣지/값의 provenance 항목. provenance가 0이 된 auto 노드·엣지는 evidence_lost 큐로' — 전부 무조건 규범이며 core/ingest.py ingest()(95행~)와 core/pipeline.py 어디에도 회수 경로가 없다. put_chunk는 같은 cid만 덮어쓰고 사라진 행의 cid는 건드리지 않는다. (3) 이연·예외 부재: DECISIONS 69건 전수 검색 — D-59는 큐(③재평가) 측의 queue.remove_doc 기각이지 ①회수(청크·describes·provenance)의 이연이 아니다. B1 예외 3건과 무관. 증분0 단위 3.5/5의 범위는 '②사전 보존'이고, ①회수는 구현용문서 182·259행이 ingest.py/build.py 모듈 명세로 명시한 core 소관인데 실물에 없다. (4) 가려짐 확인: PROGRESS G4 3.5′는 '전 문서 재인입 후 노드 66→66' — 동일 내용 재인입만 검증해 행 삭제 개정 시나리오를 덮지 못했다. (5) 우회 경로 부재: run.py all은 data를 초기화하지 않고 위에 얹어 인입하며, L9상 시스템이 문서를 자동 재독하는 경로도 없으므로 다음 빌드가 회수해 주지도 않는다. ids.py 10행이 '개정 구분은 revision, doc_id는 재인입 단위'로 명시하므로 repro의 같은 doc_id + R4 재인입은 설계된 정상 경로다. 조용한 낡은 근거 공급 + 계약(정본 규범) 위반이므로 high 유지.",
+   "evidence": "cp -r /home/claude/repo_clone /tmp/audit_v1 && cd /tmp/audit_v1 && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null; 이후 발견의 파이썬 스니펫 실행 출력: \"<Ingest CP01 ok chunks=6 records=6> | CP01 청크: 12 -> 12\" · \"evidence_lost 큐: 0\". 추가 검증: 삭제된 행(records[6:])의 source_locator로 필터한 잔존 청크 6건, 그 청크를 가리키는 describes 6건 잔존. grep -rn evidence_lost --include=*.py → cli/platform.py:43(표시용 kind 목록) 1건뿐, enqueue 0건."
+  },
+  {
+   "title": "스키마 `target_layer`를 코드가 전혀 읽지 않는다 — PFMEA 관리항목이 품질층에 중복 생성되어 걸침 병합이 조용히 깨진다",
+   "file": "core/pipeline.py",
+   "line": 88,
+   "claim": "실증(CONFIRMED). pfmea.json은 control_item_for_fm/for_cause에 `\"target_layer\": \"process\"`를 선언하지만(schemas/pfmea.json:12-13), build_table의 entity 분기(core/pipeline.py:88-91)는 spec의 target_layer를 읽지 않고 무조건 `b.resolve_entity(...)`로 자기 층 그래프(self.g=quality)에 해소한다(core/build.py:187 시그니처에 target_layer 자체가 없음 — `grep -rn target_layer core/` 0건). 결과: 깨끗한 재빌드 후 quality/graph.json에 layer=quality인 Property 노드 11개('금형 클리어런스', '타발 속도', '노칭정밀도' 등)가 생기고, process 층의 정본 노드('노칭::금형 클리어런스', '노칭::노칭 정밀도')와 영영 병합되지 않는다. controlled_by 엣지 11건 전부 dst가 품질층 중복 노드다(계약: src=품질층, dst=공정층 노드 id — 구현용문서 §2.2). CP와 PFMEA가 같은 키로 만나야 한다는 걸침 설계 목적이 큐·로그 0건으로 무산된다.",
+   "violated_ref": "CH2_문서계약.md v2.4 §2.5·스키마 문법 표: \"target_layer(걸침 필드 — 이 필드는 다른 층 그래프에 기록. 예: PFMEA의 관리항목 → 공정층 Property)\" · role_어휘_정의서 §3.2 동일 문면 · 명세 §15.7 규칙 A · CH4 §4 규약 4 \"필드가 target_layer로 층을 지정해 한 번의 인입이 여러 층에 기록된다\"",
+   "repro": "cp -r /home/claude/repo_clone /tmp/v1 && cd /tmp/v1 && rm -rf data/process data/quality data/*.json data/ops_log.json data/*.log extract && python3 run.py all >/dev/null && python3 -c \"import json; q=json.load(open('data/quality/graph.json')); p=json.load(open('data/process/graph.json')); print([ (n['canonical'],n['layer']) for n in q['nodes'].values() if n['category']=='Property']); print([q['nodes'][e['dst']]['layer'] for e in q['edges'] if e['rel']=='controlled_by']); print([n['canonical'] for n in p['nodes'].values() if '클리어런스' in n['canonical']]); print(sorted({x['kind'] for x in json.load(open('data/review_queue.json'))}))\"  # 기대: Property가 quality층에 11개, controlled_by dst 전부 'quality', process에는 '노칭::금형 클리어런스' 별도 존재, 큐에 관련 kind 없음",
+   "severity": "high",
+   "dim": "silent-loss",
+   "verdict_reason": "반박 실패 — 발견은 전부 재현되고 문서 근거도 정확하다. (1) 코드 사실: `grep -rn target_layer` 결과가 schemas/pfmea.json:12-13 두 건뿐 — core/·layers/·cli/ 어디에서도 읽지 않는다. core/pipeline.py의 entity 분기(role==\"entity\")는 spec을 무시하고 `b.resolve_entity(...)`로 자기 층 그래프(quality)에 해소하며, core/build.py resolve_entity 시그니처에 target_layer 매개변수 자체가 없다. anchor 분기만 resolve_anchor로 층간 해소를 하므로 아키텍처 불가능이 아니라 entity role 한정 구현 누락이다. (2) 데이터 실증: 깨끗한 재빌드 후 quality/graph.json에 layer=quality Property 11개('금형 클리어런스', '노칭정밀도' 등 — canonical_scope도 process config에만 있어 무스코프 이름), controlled_by 11건 전부 dst가 품질층 중복 노드. process 층에는 '노칭::금형 클리어런스', '노칭::노칭 정밀도'가 별도 존재 — 병합 키가 영영 갈린다. quality 그래프의 실제 층간 엣지는 occurs_in 9건뿐(PROGRESS.md:801의 '걸침 엣지 9건'이 바로 이것 — controlled_by 층간 0건인데 걸침이 작동하는 듯한 착시를 준다). (3) 규범 문면: CH2_문서계약.md:229·330·342(\"target_layer — 이 필드는 다른 층 그래프에 기록\"), 명세 §15.7 규칙 A(\"관리항목 필드는 공정층 Property로 인입\"), 명세 v1.14 F4(\"세부공정 스코프로 통일해야 CP·PFMEA가 같은 키로 병합\"), layers/quality/config.json:89-93이 controlled_by를 Failure→Property '층간 브리지'로 선언 — 전부 위반. (4) 등재 예외 아님: DECISIONS.md 69건에 target_layer/걸침 이연 항목 0건. B1 예외 3건과 무관. (5) 조용함: review_queue에 층 배치 오류를 가리키는 kind 없음(auto_node 51건은 규칙 A상 정상 경로에서도 생기는 일반 플래그), tests/test_g3.py:264는 controlled_by 건수>0만 확인하고 dst 층은 검사하지 않는다. 심각도 high 유지 — 걸침 병합이라는 설계 목적이 신호 0으로 무산되는 조용한 계약 위반.",
+   "evidence": "/tmp/audit_v1 (repo_clone 8695ee8 사본)에서 rm -rf data/process data/quality data/*.json data/ops_log.json data/*.log 후 python3 run.py all 실행. 검증 스크립트 출력: quality Property 11개 전부 layer='quality'(금형 클리어런스/타발 속도/이물 검출 감도/적층 정렬도/흡착 압력/용접 가압력/용접 진폭/실링 온도/주액량/노칭정밀도/빔 출력), controlled_by 11건 dst 층 전부 'quality', process 층에 '노칭::금형 클리어런스'·'노칭::노칭 정밀도' 별도 존재, 큐 kind는 {auto_node, coord_mismatch, direction_conflict, direction_unverifiable, mirror_asymmetry, orphan_anchor, spec_conflict}로 층 배치 오류 kind 없음. quality 그래프의 층간 엣지 전수조사 결과 occurs_in 9건뿐, controlled_by 층간 0건. grep -rn target_layer core/ layers/ cli/ run.py router.py → 0건(schemas/pfmea.json만 2건)."
+  },
+  {
+   "title": "재인입 시 추출 체크포인트 무효화가 없다 — extract.invalidate() 호출부 0곳, 개정된 prose 내용이 큐·로그 없이 그래프에 영영 안 들어간다",
+   "file": "core/extract.py",
+   "line": 100,
+   "claim": "실증(CONFIRMED). extract()는 체크포인트가 있으면 그대로 반환하고(core/extract.py:100-101), 재인입 계약이 요구하는 invalidate()(extract.py:47)는 레포 전체에서 호출부가 0곳이다(`grep -rn 'invalidate(' --include='*.py' .`). 같은 doc_id의 개정본(청크 텍스트 변경)을 재인입하면: extracted=False, extract/{doc_id}.json 불변, 새 문장의 개체·관계가 추출되지 않아 그래프에 0건 반영, 큐·defects.log 0건. 실측: XQ01 v1(무해 문장) 인입 후 v2(\"금형 마모로 인해 전극 치수 불량이 발생한다\") 재인입 → causes 엣지 0건, 체크포인트에 '금형 마모' 부재. 부수 실측: 구판 청크(v1 텍스트)가 chunks.json에 doc_id=XQ01로 잔존해 낡은 근거로 계속 서빙된다.",
+   "violated_ref": "CH3B_인입규칙.md 3.8 규약 7: \"재인입 시 그 doc_id의 추출 체크포인트는 무효화·재생성한다 — 청크가 바뀌었으므로\" · CH3A 3.11 규약 7 동일 문면 · 증분0_구현.md n3 항: \"재인입 시 그 doc_id의 체크포인트는 무효화·재생성(3.11 규약 7)\"",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\npb={\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"prose\",\"doc_type\":\"ppt_quality\",\"doc_id\":\"XQ01\"}\nch={\"source_locator\":\"XQ01-C001\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"text\":\"안전 수칙을 준수한다.\",\"section\":\"본문\",\"meta\":{}}\nprint(run_document(dict(pb,chunks=[ch]))[2])  # True\nch2=dict(ch,text=\"금형 마모로 인해 전극 치수 불량이 발생한다.\")\nprint(run_document(dict(pb,revision=\"R2\",chunks=[ch2]))[2])  # False = 체크포인트 재사용\nprint('금형 마모' in open('extract/XQ01.json').read())  # False\ng=json.load(open('data/quality/graph.json')); print(any('XQ01' in str(e['provenance']) for e in g['edges']))  # False\nprint([x['kind'] for x in json.load(open('data/review_queue.json')) if x['doc_id']=='XQ01'])  # []\nEOF",
+   "severity": "high",
+   "dim": "silent-loss",
+   "verdict_reason": "재현 완전 성공, 반박 근거 없음. extract.invalidate()(core/extract.py:47)는 레포 전체에서 호출부 0곳이고, run_document→extract()는 체크포인트 존재 시 무조건 재사용한다(core/extract.py:100-101). ingest.py:51이 같은 doc_id 재인입을 '정상 경로'로 통과시키고 register_doc이 revision을 R2로 갱신하므로 시스템은 성공으로 보고하지만, 개정된 청크의 개체·관계는 추출되지 않고 큐·defects.log 어디에도 흔적이 없다 — 전형적 silent loss. 반박 시도 전부 실패: ①등재 예외 아님(B1 예외 3건과 무관) ②설계 의도 아님 — extract.py 자체 독스트링(18행)·증분0_구현.md n3(G3 소관, 완료 처리됨)·CH3A 3.11 규약 7·CH3B 3.8이 전부 무효화를 요구하고, DECISIONS.md·BLOCKERS.md에 이연 결정 없음 ③실영향 무(vacuous) 아님 — invalidate() 수동 호출 후 재실행하면 '금형 마모 causes 전극 치수 불량' 후보가 실제 생성되고 기존 Failure 노드들의 provenance에 XQ01-C001이 추가됨을 반사실 실측으로 확인 ④운영 문서에 수동 체크포인트 삭제 절차 없음 ⑤G4 3.5′ 재인입 회귀는 동일 내용 재인입(멱등성)만 검증해 이 경로를 한 번도 밟지 않았고, G3 완료판정도 체크포인트 '재사용'만 확인해 규약 7을 검증하지 않았다. 부수 주장(구판 청크 잔존)도 재현됨 — v1·v2 청크가 doc_id=XQ01로 공존. CH3B 3.8 '재인입은 예외 처리가 아니라 주 경로다'이므로 주 경로에서의 조용한 데이터 소실 = high 유지.",
+   "evidence": "사본 /tmp/audit_ext (8695ee8, 깨끗한 재빌드 후): v1 인입 extracted=True → v2(같은 doc_id, revision R2, 텍스트 변경) 재인입 extracted=False · '금형 마모' in extract/XQ01.json → False · quality graph에 XQ01 provenance 0건 · review_queue XQ01 0건 · defects.log XQ01 0건 · chunks.json에 XQ01 청크 2건 공존('안전 수칙을 준수한다.'와 '금형 마모로 인해...'). 반사실: em.invalidate('XQ01') 후 동일 v2 재인입 → extracted=True, candidates=[{entities: 금형 마모/전극 치수 불량(Failure), relations: causes}], 노드 provenance에 XQ01-C001 추가됨. grep -rn 'invalidate(' --include='*.py' → core/extract.py:47 정의 1건뿐, 호출부 0."
+  },
+  {
+   "title": "build_prose: 끝점이 버퍼에 없는 relation 후보가 게이트에 닿기도 전에 무기록 소멸 (else 없는 if s and d)",
+   "file": "core/pipeline.py",
+   "line": 207,
+   "claim": "실증(CONFIRMED). 추출 체크포인트의 relations 후보는 src/dst가 문서 버퍼에 없으면 `if s and d:`(pipeline.py:203-208)에서 조용히 버려진다 — else 분기가 없어 큐도, gate_rejects도, defects.log도 남지 않는다. USE_MOCK 문형 폴백(_mock_candidates)은 vocab 밖 표면형도 relation으로 방출하므로(extract.py:76-81 — entities에는 vocab 매칭만 추가, relations는 무조건 append) 표준 경로에서 실제로 발생한다. 실측: \"고압 방전로 인해 격막 천공이 발생한다\" 인입 → extract/XQ02.json에 {src:'고압 방전', rel:'causes', dst:'격막 천공'} 후보가 기록되지만 그래프 엣지 0, gate_rejects 증가 0, 큐 0, defects 0. 게이트 머리말의 \"거부는 버리는 것이 아니라 기록하는 것이다\"가 게이트 앞 단계에서 무력화된다. D-61과 동일 계보(큐도 로그도 없는 엣지 소실).",
+   "violated_ref": "CH3B 3.7 규약 2: \"처리 못 한 것은 전부 종류가 붙은 큐 항목이 된다 — 실패는 예외가 아니라 등급이다\" · core/gate.py 머리말(CH3A 3.4): \"거부는 버리는 것이 아니라 기록하는 것이다\"",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core import store; from core.pipeline import run_document\nenv={\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"prose\",\"doc_type\":\"ppt_quality\",\"doc_id\":\"XQ02\",\"chunks\":[{\"source_locator\":\"XQ02-C001\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"text\":\"고압 방전로 인해 격막 천공이 발생한다.\",\"section\":\"본문\",\"meta\":{}}]}\ngr0=len(store.read(store.GATE_REJECTS,{\"rejects\":[]})['rejects']); q0=len(json.load(open('data/review_queue.json')))\nrun_document(env)\nprint('후보:', json.load(open('extract/XQ02.json'))['candidates'][0]['relations'])\ng=json.load(open('data/quality/graph.json')); print('엣지에 반영?', any('XQ02' in str(e['provenance']) for e in g['edges']))\nprint('gate_rejects 증가:', len(store.read(store.GATE_REJECTS,{\"rejects\":[]})['rejects'])-gr0, '| 큐 증가(XQ02 관련):', [x['kind'] for x in json.load(open('data/review_queue.json')) if x['doc_id']=='XQ02'])\nEOF  # 기대: 후보는 있으나 엣지 False, gate_rejects 0, 큐 [] (auto_node 등 무관 항목 제외)",
+   "severity": "high",
+   "dim": "silent-loss",
+   "verdict_reason": "반박 실패 — 발견은 실증된다. (1) 코드 확인: core/pipeline.py:203-208의 ③ 경로에서 relation 후보의 src/dst를 b.buffer에서만 조회하고 `if s and d:`(정확히는 206행)에 else가 없다 — 미해소 시 큐 enqueue도, store.append_defect도, gate 도달도 없다. 같은 함수의 attach 폴백(211-224행)은 미해소 시 orphan_attach를 enqueue하는 것과 대조적. (2) 재현 성공: 사본에서 repro를 그대로 실행 — extract/XQ02.json에 {src:'고압 방전', rel:'causes', dst:'격막 천공'} 후보가 기록되지만 graph.json 엣지 반영 False, gate_rejects 증가 0, XQ02 큐 항목 []. (3) 등재 예외 아님: 공인 예외 3호는 _PATTERNS의 causes/affects 문자열이 B1(core 층 어휘 금지)을 침범하는 건에 한정되며, 무기록 소멸과 무관. (4) 설계 의도 아님: CH3A 3.11 계약(규약 1~8 전수 확인)에 \"relations 끝점 ⊆ entities\" 불변식이 없고, 미해소 relation 끝점의 처분 규정 자체가 없다. 반면 CH3B 3.7 규약 2(\"아무것도 조용히 버리지 않는다. 처리 못 한 것은 전부 종류가 붙은 큐 항목이 된다\")와 CH3A 3.4(\"거부는 버리는 것이 아니라 기록하는 것이다\")가 명시적으로 위반된다. 유사 사례인 attach 미해소(orphan_attach 큐, 3.11 규약 6)·동종 쌍 방향(direction_unverifiable 큐, 3.4 규약 6)은 전부 큐/로그 착지가 규정돼 있다. (5) 실영향 있음: extract.py:76-87 확인 — _mock_candidates는 entities에는 vocab 매칭 표면형만 넣고 relations는 무조건 append하므로 표준 USE_MOCK 경로에서 발생하며, hints 파일(실 LLM 산출물 스탠드인)도 계약상 끝점⊆entities 보장이 없어 실 경로에서도 동일 소멸 가능(build.py:187 resolve_entity는 entities 목록의 표면형만 buffer에 넣는다). DECISIONS.md D-61이 동일 패턴(\"큐도 로그도 없이 사라졌다\")을 결함으로 판정·수정한 전례가 장부에 있다. 유일한 오차: 발견의 라인 표기 207은 실제 206(같은 블록) — 실질 무영향.",
+   "evidence": "/tmp/audit_v1 (8695ee8 사본)에서 발견의 repro 스크립트 실행 결과: \"후보: [{'src': '고압 방전', 'rel': 'causes', 'dst': '격막 천공'}]\" / \"엣지에 반영? False\" / \"gate_rejects 증가: 0 | 큐 항목(XQ02): []\". 즉 추출 체크포인트에는 relation 후보가 존재하나 그래프·gate_rejects·review_queue·defects 어디에도 흔적 없이 소멸. 관련 파일: /tmp/audit_v1/core/pipeline.py:203-208(else 없는 if s and d), /tmp/audit_v1/core/extract.py:76-87(relations 무조건 append), /tmp/audit_v1/docs/CH3B_인입규칙.md:82(규약 2 문면), /tmp/audit_v1/docs/CH3A_인입절차.md:140(거부 기록 원칙), /tmp/audit_v1/DECISIONS.md:110(D-61 동일 계보)."
+  },
+  {
+   "title": "I2 병합이 흡수 노드의 attribute를 이름 충돌 시 조용히 폐기한다 — setdefault 한 줄이 '정보 손실 0' 계약을 깬다",
+   "file": "core/ops.py",
+   "line": 294,
+   "claim": "실증(CONFIRMED). merge()의 attribute 이관은 `keep.setdefault('attrs',{}).setdefault(name, val)`(ops.py:294-295)라서 생존자에 같은 이름의 attribute가 이미 있으면 흡수 노드의 값이 아무 데도 남지 않고 사라진다 — spec_conflict 큐도, ops_log detail도, alias류 보존도 없다. merge 자체 독스트링(ops.py:258-262)이 \"provenance·alias·엣지·attribute가 전부 생존자로 이관\", \"정보 손실 0이 계약\"이라 명시한다. 실측: 측정방법='비전 측정기'(CP01-C1) 노드와 측정방법='간극 게이지'(CP01-C2) 노드를 병합 → 생존자에 '비전 측정기'만 남고 '간극 게이지'는 그래프 전문 검색에서도 부재, 큐 증가 0, ops_log에도 미기록. 문서 출처가 있는 값의 무기록 파괴다.",
+   "violated_ref": "00_불변식_카드 L7 계열·ops.py 관통 원칙: \"정보를 잃지 않는다. 선택되지 않은 표기는 전부 alias로 남고 provenance는 전량 이관된다\" · CH3B 3.7 I2 행: 병합의 자동화 전제는 정보 보존 · CH3B 3.6 규약 5(다른 값은 spec_conflict, 덮어쓰지 않음)",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core import ops, store\np=json.load(open('data/process/graph.json'))\ncands=[n for n in p['nodes'].values() if n['category']=='Property' and (n.get('attrs') or {}).get('측정방법')]\na,b=cands[0],cands[1]; gone_val=None\nq0=len(store.read(store.QUEUE,[]))\nops.merge('process', a['id'], b['id'], actor='auditor', reason='demo')\np2=open('data/process/graph.json').read()\nfor n in (a,b):\n    v=n['attrs']['측정방법']['value']\n    print(v, '그래프 잔존?', v in p2)\nprint('큐 증가:', len(store.read(store.QUEUE,[]))-q0)\nEOF  # 기대: 두 값 중 흡수측 값(예: '간극 게이지')이 False, 큐 증가 0",
+   "severity": "high",
+   "dim": "silent-loss",
+   "verdict_reason": "반박 실패 — 발견은 실재하며 계약 문면 위반이 명확하다. (1) 코드 확인: /tmp/audit_i2/core/ops.py:294-295 `for name, val in (gone.get(\"attrs\") or {}).items(): keep.setdefault(\"attrs\", {}).setdefault(name, val)` — 생존자에 같은 이름 attr이 있으면 흡수측 값이 무조건 폐기된다. 툼스톤은 `attrs: {}`(ops.py:309-312)라 원본에도 안 남고, log_op detail(ops.py:322-323)은 survivor/canonical만 기록해 attr 폐기 흔적이 없다. (2) 계약 문면: 같은 파일 merge 독스트링(ops.py:258-262)이 \"provenance·alias·엣지·attribute가 전부 생존자로 이관… 정보 손실 0이 계약\"이라 명시하고, docs/CH3B_인입규칙.md:101(3.7 I2 행)은 더 구체적으로 \"attribute는 context 그룹별 합침(같은 그룹 값 충돌 시 spec_conflict)\"를 요구한다 — 코드는 context 그룹 합침도 spec_conflict 인큐도 하지 않는다. 인입 경로(core/build.py:242-270 put_attribute)는 같은 충돌을 spec_conflict로 큐잉하므로 병합 경로만 규약 5(CH3B:59 \"덮어쓰지 않음\")를 우회한다. (3) 등재 예외 아님: DECISIONS.md 69건 중 병합 관련은 D-62(생존자 우선순위)·D-66(툼스톤/행위자)뿐이고 attr 폐기를 승인한 결정은 없다. B1 예외 3건과도 무관. (4) \"비현실적 시나리오\" 반박도 불성립 — I2는 중복 노드 병합용이고 교차 출처 중복은 같은 attr에 다른 값을 갖는 것이 정상 케이스라서 CH3B I2 행이 바로 그 경우의 spec_conflict 처리를 명문화한 것이다. 문서 출처(provenance CP01-C2)가 붙은 값의 무기록 파괴 = silent data loss, high 유지.",
+   "evidence": "사본 /tmp/audit_i2 (git 8695ee8, 기존 data/ 상태)에서 실행: python3로 category=Property·attrs.측정방법 보유 노드 10건 중 앞 2건('노칭::노칭 정밀도' 측정방법='비전 측정기'[CP01-C1], '노칭::금형 클리어런스' 측정방법='간극 게이지'[CP01-C2])을 ops.merge('process', a, b, actor='auditor') → 출력: \"비전 측정기 그래프 잔존? True / 간극 게이지 그래프 잔존? False / 큐 증가: 0\". data/process/graph.json 전문에서 '간극 게이지' 및 그 attr-provenance(CP01-C2 링크) 완전 부재, review_queue 증가 0, ops_log 마지막 항목 detail={\"survivor\":\"01M0C108PGYK…\",\"canonical\":\"노칭::노칭 정밀도\"}로 attr 폐기 미기록. 발견의 재현 커맨드(경로만 /tmp/v1→사본 경로)가 그대로 재현됨."
+  },
+  {
+   "title": "비맥락형 attribute의 교차 출처 값이 spec_conflict 없이 통째로 덮어써진다 (provenance까지 소멸)",
+   "file": "core/build.py",
+   "line": 252,
+   "claim": "실증(CONFIRMED). put_attribute의 비맥락형 분기(build.py:251-253)는 기존 값과의 deep-equal 비교 없이 `attrs[name] = {value, provenance:[prov]}`로 무조건 교체한다. CH3B 3.6 규약 5는 \"단순형은 빈 context 그룹 하나로 취급\"하여 다른 값이면 spec_conflict 큐·덮어쓰기 금지를 요구하고, 규약 6은 spec_conflict가 교차 출처에서 발생한다고 못박는다. 실측: CP01이 '노칭::노칭 정밀도'에 측정방법='비전 측정기'(CP01-C1)를 저장한 상태에서 다른 doc_id의 CP 문서 2건(측정방법='방법A', '방법B')을 인입 → 최종 {value:'방법B', provenance:['XB-R1']}, CP01-C1 provenance 소멸, 측정방법에 대한 spec_conflict 0건. 두 문서가 다른 값을 주장한다는 품질 신호(\"충돌은 정보다\")가 무기록 소실된다.",
+   "violated_ref": "CH3B_인입규칙.md 3.6 규약 5: \"deep-equal로 비교해 다르면 spec_conflict 큐(덮어쓰지 않음)… 단순형은 빈 context 그룹 하나로 취급한다\" + 규약 6: \"spec_conflict는 교차 출처에서만 발생한다\"(발생해야 하는데 전혀 발생하지 않음)",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nbase={\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{\"model\":\"M1\"},\"payload_kind\":\"table\",\"doc_type\":\"cp\"}\nrec={\"source_locator\":\"XA-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"설비\":\"노칭 프레스\",\"관리항목\":\"노칭 정밀도\",\"측정방법\":\"방법A\"}\ndef node():\n    g=json.load(open('data/process/graph.json'))\n    return next(n for n in g['nodes'].values() if n['canonical']=='노칭::노칭 정밀도')\nprint('before:', node()['attrs']['측정방법'])\nrun_document(dict(base,doc_id=\"XATTR_A\",records=[rec]))\nrun_document(dict(base,doc_id=\"XATTR_B\",records=[dict(rec,source_locator=\"XB-R1\",측정방법=\"방법B\")]))\nprint('after:', node()['attrs']['측정방법'])\nq=json.load(open('data/review_queue.json'))\nprint('측정방법 spec_conflict:', [x for x in q if x['kind']=='spec_conflict' and x['payload'].get('attr')=='측정방법'])\nEOF  # 기대: after={'value':'방법B','provenance':['XB-R1']}, spec_conflict []",
+   "severity": "high",
+   "dim": "silent-loss",
+   "verdict_reason": "재현 성공·반박 실패. 사본(/tmp/audit_2343)에서 깨끗한 재빌드 후 발견의 repro를 그대로 실행 — 비맥락형 분기(core/build.py:251-253)가 deep-equal 비교·spec_conflict 큐 없이 attrs[name]을 무조건 교체함을 확인. CH3B 3.6 규약 5(59행 \"단순형은 빈 context 그룹 하나로 취급… 다르면 spec_conflict 큐(덮어쓰지 않음)\")·role_어휘_정의서 80행·명세 v1.6이 일치하여 요구하는 규범이며, put_attribute 자체 docstring도 같은 규칙을 선언하나 단순형 분기만 미구현. 반박 시도 결과: ①DECISIONS.md(69건)·PROGRESS·BLOCKERS에 단순형 last-write-wins를 승인한 결정 없음(D-59는 큐 멱등성만) ②등재 예외 3건(B1)과 무관 ③재인입-교체(규약 6) 해석 불가 — core/ids.py:10이 doc_id를 재인입 단위로 정의하고 repro는 3개 doc_id(CP01/XATTR_A/XATTR_B) 교차 출처이며, 특히 CP01→XATTR_A 첫 덮어쓰기는 논쟁 여지 없는 교차 출처. 실영향 실증: CP01-C1 provenance 소멸(CH2 239행 — 재인입 doc_id 회수의 근거 자체가 사라짐), 두 문서의 값 상충이라는 품질 신호 무기록 소실. 조용한 데이터 소실 + 계약 문면 위반이므로 high 유지.",
+   "evidence": "cd /tmp/audit_2343 && rm -rf data/process data/quality data/*.json && python3 run.py all 후 발견의 repro 스크립트 실행 출력: \"before: {'value': '비전 측정기', 'provenance': ['CP01-C1']}\" / \"after: {'value': '방법B', 'provenance': ['XB-R1']}\" / \"측정방법 spec_conflict: []\". 주장과 완전 일치 — 교차 출처 3건(CP01, XATTR_A, XATTR_B)이 순차 덮어쓰기되고 spec_conflict 0건, 선행 provenance 전부 소멸. cp.json의 측정방법 spec에 contextual 플래그 없음(schemas/cp.json:10)이므로 비맥락형 분기 경유 확인."
+  }
+ ],
+ "refuted": [],
+ "unverified": [
+  {
+   "title": "재인입 회수(그 문서 몫 걷어내기)가 전면 미구현 — 개정값이 교체되지 않고 옛 값이 정답으로 잔존, 새 값은 조용히 소실",
+   "file": "core/ingest.py",
+   "line": 95,
+   "claim": "ingest()·build_table 어디에도 재인입 시 해당 doc_id의 provenance/attribute/청크 회수가 없다(코드 전체에 evidence_lost 생산자 0건 — grep 확인). 실측: CP01을 revision R4로 규격 ±0.1mm→±0.05mm 변경해 재인입하면 그래프의 '노칭::노칭 정밀도'.attrs.spec은 ±0.1mm(구판)로 남고(core/build.py:263 put_attribute가 기존값 유지 후 return), 새 값 ±0.05mm는 그래프에 영영 반영되지 않으며 spec_conflict 큐가 doc=CP01 단독 출처로 올라온다(existing ±0.1mm / incoming ±0.05mm — 큐 62→63). 개정에서 삭제한 레코드(CP01-C12)의 provenance는 노드 2개('anode 초음파 융착기'·'탭용접::cathode::용접 강도')에 그대로 남고 evidence_lost는 0건. 구판 레코드의 청크도 회수되지 않아 CP01 청크가 12→13개로 늘며 구판 텍스트가 linked 상태로 질의 수집 대상에 남는다. 질의 '노칭 정밀도 규격은?'은 폐기된 규격을 현행으로 답한다.",
+   "violated_ref": "CH3B 3.8 규약 1·2(60·109·130행): \"같은 문서의 개정값은 충돌이 아니라 교체다 — 재인입이 그 문서 몫을 회수한 뒤 새 값을 쓰므로 spec_conflict는 교차 출처에서만 발생한다\", \"재인입은 그 문서 몫의 provenance를 회수하고 근거가 0이 된 노드를 evidence_lost로 표시\"; 불변식 카드 H1·L6·L9; ontology_system_구현용문서.md 182행 \"재인입: 동일 doc_id 유입 시 해당 provenance 항목 제거 → provenance 0의 auto 노드는 큐 kind=evidence_lost … attribute 항목도 doc_id로 회수(같은 문서 개정값은 교체)\"",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && python3 -c \"import json; env=json.load(open('mock/parsed/CP01.json')); env['revision']='R4'; env['records'][0]['규격']='±0.05mm'; env['records'].pop(); json.dump(env, open('/tmp/CP01_revB.json','w'), ensure_ascii=False)\" && python3 run.py ingest /tmp/CP01_revB.json && python3 -c \"import json; g=json.load(open('data/process/graph.json')); print('spec:', [n['attrs']['spec'] for n in g['nodes'].values() if n['canonical']=='노칭::노칭 정밀도']); q=json.load(open('data/review_queue.json')); print('spec_conflict:', [(x['doc_id'],x['payload'].get('existing'),x['payload'].get('incoming')) for x in q if x['kind']=='spec_conflict']); print('evidence_lost:', [x for x in q if x['kind']=='evidence_lost']); print('C12 잔존:', [n['canonical'] for n in g['nodes'].values() if 'CP01-C12' in (n.get('provenance') or [])]); ch=json.load(open('data/chunks.json')); print('CP01 청크:', sum(1 for c in ch['chunks'].values() if c['doc_id']=='CP01'))\"",
+   "severity": "high",
+   "dim": "idempotency"
+  },
+  {
+   "title": "추출 체크포인트 재인입 무효화 미구현 — extract.invalidate()가 사장 코드, 개정본의 새 청크가 영구 미추출(지식 조용히 소실)",
+   "file": "core/extract.py",
+   "line": 100,
+   "claim": "extract()는 체크포인트가 있으면 무조건 재사용하고(100행), 규약 7을 집행할 invalidate()(47행)는 레포 전체에서 호출처가 0곳이다(grep -rn invalidate — 정의 1건뿐). 실측: PPT02를 revision B로 청크 텍스트를 바꿔 재인입하면 출력이 '[추출 체크포인트 재사용]'이고, 새 청크 PPT02:5b58ca9d2b05('흡착 압력 저하로 인해 흡착 불량이 발생')는 extract/PPT02.json candidates에 없어 그 문장의 개체·관계가 그래프에 영영 들어가지 않는다. 큐도 로그도 없다. 파생 실측(QPPT01 revB, K1 청크 삭제): 낡은 체크포인트의 K1 후보가 현행 개정본에 존재하지 않는 rev A 청크를 근거로 재커밋된다.",
+   "violated_ref": "CH3A 3.11 규약 7(236행): \"재인입 시 그 doc_id의 추출 체크포인트는 무효화·재생성한다 — 청크가 바뀌었으므로\"; 불변식 카드 M12: \"재인입 시 그 doc_id 체크포인트는 무효화·재생성\"; 증분0_구현.md 179행 동일 문면; extract.py 자체 모듈 독스트링 규약 7",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && python3 -c \"import json; env=json.load(open('mock/parsed/PPT02.json')); env['revision']='B'; env['chunks'][0]['text']+=' 그리고 흡착 압력 저하로 인해 흡착 불량이 발생한다.'; json.dump(env, open('/tmp/PPT02_revB.json','w'), ensure_ascii=False)\" && python3 run.py ingest /tmp/PPT02_revB.json && python3 -c \"import json; ck=json.load(open('extract/PPT02.json')); ch=json.load(open('data/chunks.json')); cur=[c for c in ch['chunks'] if c.startswith('PPT02:')]; got=[c['chunk_id'] for c in ck['candidates']]; print('미추출 신규 청크:', [c for c in cur if c not in got])\"  # ['PPT02:5b58ca9d2b05'] + 인입 출력에 '[추출 체크포인트 재사용]'",
+   "severity": "high",
+   "dim": "idempotency"
+  },
+  {
+   "title": "I2 병합이 흡수 노드의 attribute를 조용히 폐기 — context 그룹 합침·spec_conflict 큐 미작동('정보 손실 0' 계약 위반)",
+   "file": "core/ops.py",
+   "line": 295,
+   "claim": "merge()의 attribute 이관이 keep.setdefault('attrs',{}).setdefault(name, val) 한 줄이라, 생존자에 같은 이름의 attr이 있으면 흡수 노드의 값은 context 그룹 병합도 충돌 큐도 없이 통째로 사라진다. 실측: '스태킹::적층 정렬도'(spec: M1 ±0.2mm·M2 ±0.25mm)를 '노칭::노칭 정밀도'(spec: M1 ±0.1mm)에 병합하면 생존자 attrs는 M1 ±0.1mm 하나뿐 — M2 병렬 항목(다른 context 그룹, 계약상 합쳐져야 함)까지 소실되고 spec_conflict 건수는 불변(1건). ops_log에도 소실 기록이 없다.",
+   "violated_ref": "00_틀_확정본.md §4B-A2 I2(236행) / CH3B 3.9 I2(101행): \"정보 손실은 없다 … attribute는 context 그룹별로 합치되 같은 그룹에 다른 값이면 spec_conflict 큐\"",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && IDS=$(python3 -c \"import json; g=json.load(open('data/process/graph.json')); d={n['canonical']:i for i,n in g['nodes'].items()}; print(d['노칭::노칭 정밀도'], d['스태킹::적층 정렬도'])\") && python3 cli/ops.py merge process $IDS --actor test --reason t --yes && python3 -c \"import json; g=json.load(open('data/process/graph.json')); q=json.load(open('data/review_queue.json')); [print(json.dumps(n['attrs'],ensure_ascii=False)) for n in g['nodes'].values() if not n.get('merged_into') and n['canonical']=='노칭::노칭 정밀도']; print('spec_conflict:', sum(1 for x in q if x['kind']=='spec_conflict'))\"  # M2 ±0.25mm 소실 · spec_conflict 1(불변)",
+   "severity": "high",
+   "dim": "idempotency"
+  },
+  {
+   "title": "I2 병합 엣지 이설이 중복 엣지와 자기참조 엣지를 만들고, 질의가 'X는 X의 원인' 거짓 사실을 출력",
+   "file": "core/ops.py",
+   "line": 296,
+   "claim": "merge()가 엣지 끝점만 치환(296-300행)하고 치환 후 (src,rel,dst) 중복 병합·자기참조 검사를 하지 않아 GraphStore.add_edge가 유지하던 유일성 불변이 깨진다. 실측 ①두 노드가 같은 dst로 엣지를 가진 상태에서 병합+재인입 → (keep, affects, dst) 물리 엣지 2건 공존, provenance가 두 엣지에 갈라짐 ②엣지로 이어진 두 노드('가압력 부족' causes '용접 강도 부족')를 병합 → (keep, causes, keep) 자기 루프 생성, 질의 '용접 강도 부족의 원인은?'의 [그래프 사실]에 \"용접 강도 부족는 용접 강도 부족의 원인이 될 수 있다\"가 출력된다. 이후 split해도 자기 루프가 산출물로 복사되어 존속한다.",
+   "violated_ref": "00_틀_확정본.md §4B-A2 I2(236행) / CH3B 3.9(101행): \"엣지는 생존자로 이설(중복은 provenance 합집합)\" — 합집합이 아니라 물리 중복; core/graph.py add_edge 계약(\"중복은 무시하고 … provenance만 합집합\")의 저장 불변 훼손",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && IDS=$(python3 -c \"import json; g=json.load(open('data/quality/graph.json')); d={n['canonical']:i for i,n in g['nodes'].items()}; print(d['가압력 부족'], d['용접 강도 부족'])\") && python3 cli/ops.py merge quality $IDS --actor test --yes && python3 -c \"import json; g=json.load(open('data/quality/graph.json')); print('self-loop:', [(e['rel'],e['provenance']) for e in g['edges'] if e['src']==e['dst']])\" && python3 run.py query \"용접 강도 부족의 원인은?\" | head -5  # 중복 엣지: 슬리팅 버→버 발생 병합 후 run.py ingest mock/parsed/PFMEA01.json → (keep,affects,·) 2건",
+   "severity": "high",
+   "dim": "idempotency"
+  },
+  {
+   "title": "D-66 과장: matcher 후보 검색이 is_live 없이 툼스톤에 MATCH — 병합 후 재인입 데이터가 죽은 노드에 착지",
+   "file": "core/matcher.py",
+   "line": 84,
+   "claim": "DECISIONS.md D-66은 \"canonical로 노드를 찾는 코드는 전부 생존 판정(is_live)을 거친다\"고 적었으나, core/matcher.py resolve()의 ② 후보 검색 루프(84~100행)는 graph.nodes 전체를 훑으며 is_live/merged_into 필터가 없다. 병합 툼스톤은 canonical·category·layer를 그대로 지니고 polarity 필드가 없어 _pol()=none이므로, 극성 none의 신규 표면형이 툼스톤 canonical과 포함 관계면 0.95로 MATCH되어 툼스톤 id가 반환된다. build.resolve_entity는 그 툼스톤에 provenance를 append하고 _register가 표면형→툼스톤 id를 사전에 등재하며, 이후 엣지도 툼스톤 id로 커밋된다 — 질의는 merged 노드를 생존자로 transit하므로 툼스톤에 실린 지식은 답변에서 영영 나오지 않는다(조용한 소실). 이는 D-66이 막았다고 기록한 사고(\"옛 이름이 산 노드를 가린다\") 그 자체이며, is_live 적용 실물은 core/ops.py 내부 5지점(개명 중복검사·병합·분리·폐기·스코프 자식 수집)뿐이다.",
+   "violated_ref": "DECISIONS.md:115 D-66 ① \"canonical로 노드를 찾는 코드는 전부 생존 판정(is_live)을 거친다\" · 00_불변식_카드 L5/L9(툼스톤·재인입 부활 금지) · P4(노드 유일성)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a_$$ && cd /tmp/a_$$ && rm -rf data/process data/quality data/*.json data/*.log extract && python3 run.py all >/dev/null && python3 -c \"import sys; sys.path.insert(0,'.');\nfrom core.ops import merge; from core.bootstrap import open_graph; from core import store; from core.matcher import resolve\ng0=open_graph('process'); autos=[n for n in g0.nodes.values() if n['status']=='auto']\na,b=autos[0],autos[1]; merge('process',a['id'],b['id'],actor='aud')\ng=open_graph('process'); gone=a['id'] if g.get(a['id']).get('merged_into') else b['id']; t=g.get(gone)\nv,nid,s=resolve(t['canonical']+'테스트',t['category'],'process',g,store.read(store.DICTIONARY,{}),scoped=True,polarity=t.get('polarity'))\nprint(v, nid==gone, s)\"  # 출력: match True 0.95 — 툼스톤이 매칭 대상",
+   "severity": "high",
+   "dim": "ledger"
+  },
+  {
+   "title": "개정본 재인입 시 추출 체크포인트 무효화가 미구현 — 어떤 테스트도 '내용이 바뀐 재인입'을 넣지 않아 침묵 통과 (실증 완료)",
+   "file": "core/extract.py",
+   "line": 47,
+   "claim": "invalidate()가 정의만 되고 호출부가 0이다(전수 grep: core/extract.py:47 정의뿐). run_document→extract는 has_checkpoint면 무조건 옛 파일을 재사용하므로, 같은 doc_id의 개정본(revision 변경·청크 추가/수정)을 재인입해도 새 청크는 영영 추출되지 않고 개정된 문장의 후보도 갱신되지 않는다. 큐·결함 로그 어느 쪽에도 흔적이 없다. 테스트는 test_g3.py:223-227이 '동일 내용 재실행 시 재호출 안 함'만 잠그고, test_g4 3.5′·test_g5 왕복도 전부 동일 내용 재인입뿐이라 이 결함이 전 테스트 green인 채로 존재한다. 사본 실증: 개정 QPPT01 재인입 → extracted=False, 체크포인트 바이트 불변, 신규 청크 2건 linked=False로 방치, 신규 인과 문장('가압력 부족은 용접 강도 부족을 유발한다') 후보 미생성, 큐 62→62, 결함 로그 0.",
+   "violated_ref": "불변식 카드 M12: '재인입 시 그 doc_id 체크포인트는 무효화·재생성' · CH3A_인입절차.md:236 규약 7: '재인입 시 그 doc_id의 추출 체크포인트는 무효화·재생성한다 — 청크가 바뀌었으므로' · 증분0_구현.md §3 n3 '하는 일' 동일 문구. CH3B 3.8: '재인입은 예외 처리가 아니라 주 경로다'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a1 && cd /tmp/a1 && rm -rf data extract && python3 run.py all && python3 - <<'EOF'\nimport json,sys;sys.path.insert(0,\".\")\nfrom pathlib import Path\nfrom core import store\nfrom core.pipeline import run_document, finalize\nck=Path(\"extract/QPPT01.json\").read_text(encoding=\"utf-8\")\nenv=json.loads(Path(\"mock/parsed/QPPT01.json\").read_text(encoding=\"utf-8\"))\nenv[\"revision\"]=\"v2\";env[\"chunks\"][0][\"text\"]=\"정전기 방전으로 인해 절연 파괴가 발생했다\"\nenv[\"chunks\"].append({\"source_locator\":\"QPPT01-C005\",\"section\":\"추가\",\"text\":\"가압력 부족은 용접 강도 부족을 유발한다\",\"process_ref\":\"탭용접\"})\nr,_,ex=run_document(env);finalize()\nprint(\"추출 재호출:\",ex)                                    # False\nprint(\"체크포인트 불변:\",ck==Path(\"extract/QPPT01.json\").read_text(encoding=\"utf-8\"))  # True\nprint(\"큐 내 신규 문장 흔적:\",any(\"가압력 부족\" in json.dumps(x,ensure_ascii=False) for x in store.read(store.QUEUE,[])))  # False\nEOF",
+   "severity": "high",
+   "dim": "coverage"
+  },
+  {
+   "title": "재인입 회수(그 문서 몫 걷어내기)·evidence_lost가 전면 미구현 — 개정 재인입 후 옛 청크가 근거로 잔존, 테스트는 동일 내용 재인입만 (실증 완료)",
+   "file": "core/ingest.py",
+   "line": 95,
+   "claim": "ingest()는 같은 doc_id 재인입 시 기존 청크를 회수하지 않고 새 chunk_id만 추가한다(내용이 바뀌면 id가 달라져 옛 청크가 그대로 남는다). provenance 회수→evidence_lost 경로도 전무하다 — 'evidence_lost' 발화 지점이 코드 전체에 0이고(cli/platform.py:43의 닫힌 목록 등재뿐) 영영 발화 불가능한 죽은 kind다. 실증: 개정 QPPT01 재인입 후 옛 청크 4/4 잔존(구 K1 문장 '이물 유입으로 인해…'가 개정 후에도 검색 가능한 근거로 남음), evidence_lost 0건. 테스트 갭: test_g4.py 3.5′(163-194)·test_g5.py 왕복(221-236)이 전부 '동일 내용' 재인입이라 회수 경로가 한 번도 실행되지 않는다. 개정으로 사라진 지식의 옛 근거가 조용히 계속 서빙되는 결함이 침묵 통과한다. (참고: 회수 유예를 등재한 DECISIONS 항목은 찾지 못했다 — 후순위 이연이 맞다면 심각도 하향 여지 있음)",
+   "violated_ref": "CH3B_인입규칙.md 3.8 규약 1: '같은 doc_id의 개정본이 오면 그 문서 몫만 걷어내고 다시 넣는다' · 같은 파일 3.5 규약 6(60행): '같은 문서의 개정값은 충돌이 아니라 교체다 — 재인입이 그 문서 몫을 회수한 뒤 새 값을 쓰므로' · 3.8: '재인입 → provenance 0 → evidence_lost 큐'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a2 && cd /tmp/a2 && rm -rf data extract && python3 run.py all && python3 - <<'EOF'\nimport json,sys;sys.path.insert(0,\".\")\nfrom pathlib import Path\nfrom core import store\nfrom core.pipeline import run_document, finalize\nbefore={k for k,v in store.read(store.CHUNKS,{\"chunks\":{}})[\"chunks\"].items() if v[\"doc_id\"]==\"QPPT01\"}\nenv=json.loads(Path(\"mock/parsed/QPPT01.json\").read_text(encoding=\"utf-8\"))\nenv[\"revision\"]=\"v2\";env[\"chunks\"][0][\"text\"]=\"정전기 방전으로 인해 절연 파괴가 발생했다\"\nrun_document(env);finalize()\nafter={k:v for k,v in store.read(store.CHUNKS,{\"chunks\":{}})[\"chunks\"].items() if v[\"doc_id\"]==\"QPPT01\"}\nprint(\"옛 청크 잔존:\",len(before & set(after)),\"/\",len(before))          # 4/4\nprint(\"evidence_lost:\",[x for x in store.read(store.QUEUE,[]) if x[\"kind\"]==\"evidence_lost\"])  # []\nimport subprocess;print(subprocess.run([\"grep\",\"-rn\",\"evidence_lost\",\"core\",\"cli\"],capture_output=True,text=True).stdout)  # 발화 지점 0\nEOF",
+   "severity": "high",
+   "dim": "coverage"
+  },
+  {
+   "title": "D6 위반 — entity 필드의 리스트 값이 '문자열로 뭉개져' 기존 노드에 흡수되고 사전을 오염 (드롭+missing_field 계약 미이행)",
+   "file": "core/build.py",
+   "line": 187,
+   "claim": "D6는 'entity 필드에 리스트가 오면 문자열로 뭉개지 않고 드롭 + missing_field 큐'를 계약한다. 실물 resolve_entity는 리스트 검사 없이 그대로 처리해, matcher._similarity의 str() 강제 변환으로 [\"노칭 프레스\",\"보조 프레스\"]가 문자열 포함 규칙(0.95≥0.85)에 걸려 기존 '노칭 프레스' 노드에 MATCH되고, 그 노드의 aliases에 리스트 객체가, dictionary.json에 \"['노칭 프레스', '보조 프레스']\" 키가 등재된다. 큐 0건 — 두 실물이 한 노드로 합쳐질 수 있는 조용한 오염이다(A5 위험).",
+   "violated_ref": "카드 D6 '리스트가 오면 문자열로 뭉개지 않고 드롭 + missing_field 큐 … anchor=불허' (정의서 §3.2·§3.4) · 카드 A5 · 카드 G5",
+   "repro": "cp -r /home/claude/repo_clone /tmp/e_$$ && cd /tmp/e_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nimport json,copy\nfrom core import store\nfrom core.pipeline import run_document\nfrom core.bootstrap import open_graph\ne=copy.deepcopy(json.load(open('mock/parsed/CP01.json')))\ne['doc_id']='XCP03'; e['records'][0]['설비']=['노칭 프레스','보조 프레스']\nq0=len(store.read(store.QUEUE,[]))\nres,_,_=run_document(e)\ng=open_graph('process')\nfor n in g.nodes.values():\n  for a in n.get('aliases',[]):\n    if not isinstance(a.get('surface'),str): print('리스트 alias 오염:',n['canonical'],'->',a['surface'])\nprint('사전 오염 키:',[k for k in store.read(store.DICTIONARY,{}) if k.startswith('[')])\nprint('missing_field 신규:',[x['kind'] for x in store.read(store.QUEUE,[])[q0:]].count('missing_field'))\"",
+   "severity": "medium",
+   "dim": "invariants"
+  },
+  {
+   "title": "닫힌 20종 밖 큐 kind 'invalid_role' — D-30(결함 로그)을 큐로도 이중 발화, 플랫폼 화면 스스로 '닫힌 20종 위반' 판정",
+   "file": "core/pipeline.py",
+   "line": 79,
+   "claim": "core/pipeline.py:79는 알 수 없는 role에 대해 append_defect(D-30이 정한 결함 로그 — 정상)와 함께 store.enqueue(\"invalid_role\", …)를 호출한다. invalid_role은 CH3B 3.7·증분0 §6-5·D-54가 확정한 닫힌 20종에 없다(D-30 문면은 '결함 로그'만 지정, D-60은 '새 kind를 만들지 않는다'를 재확인). cli/platform.py의 QUEUE_KINDS(닫힌 20종 상수)에도 없어, 플랫폼 큐 화면이 이 항목을 '⚠ 목록 밖 kind — 닫힌 20종 위반, 그 자체가 결함'으로 출력한다 — 시스템이 자기 산출물을 결함으로 판정하는 상태다.",
+   "violated_ref": "CH3B 3.7 규약 3 + 증분0 §6-5 '계 20종' (D-54) · D-30 '크래시 대신 invalid_role 결함 로그'(큐 아님) · D-60 '새 kind를 만들지 않는다' · cli/platform.py:37-49 QUEUE_KINDS",
+   "repro": "cp -r /home/claude/repo_clone /tmp/f_$$ && cd /tmp/f_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nimport json,copy\nfrom core import store\nfrom core.pipeline import run_document\ns=json.load(open('schemas/cp.json')); s['doc_type']='cpbad'; s['fields']['설비']['role']='entty'\njson.dump(s,open('schemas/cpbad.json','w'),ensure_ascii=False)\ne=copy.deepcopy(json.load(open('mock/parsed/CP01.json'))); e['doc_id']='XCP04'; e['doc_type']='cpbad'\nrun_document(e)\nimport cli.platform as P\nprint('alien kinds:',P.queue_view()['alien'])\"  # 기대: {'invalid_role': 1}",
+   "severity": "medium",
+   "dim": "invariants"
+  },
+  {
+   "title": "미등록 doc_type 문서가 구축 모드 분기 없이 하드코딩 기본 층 'process'로 무음 운영-인입 (M1·M2·B3 위반)",
+   "file": "core/pipeline.py",
+   "line": 252,
+   "claim": "run_document(core/pipeline.py:252 `layer = layer or (schema or {}).get(\"layer\") or \"process\"`)는 스키마가 없는(=미등록) doc_type을 명시적 실패나 구축 모드 신호 없이 하드코딩된 기본 층 \"process\"로 라우팅해 정상 인입한다. 실측: 완전 미등록 doc_type의 prose 문서가 process 층으로 인입·추출·doc_registry 등재까지 완료되고 큐 0건이다. M1·M2는 '처리 방식이 없는 입력은 구축 모드'이고 판별은 등록 여부 조회라 정의하며, B3는 config로 표현 안 되는 절차를 '명시적 실패'로 드러내라 한다. 부수적으로 층 이름 리터럴 \"process\"가 core에 있다(bootstrap.py:423 기본 인자도 동일) — bootstrap.py 자신이 '코드가 층 이름으로 가르면 그 자체가 층 어휘다'(477-481행 주석)라고 선언한 것과 어긋난다.",
+   "violated_ref": "카드 M1·M2 '모드 판별은 결정적 — 등록 여부 조회' · 카드 B3 '명시적 실패로 드러낸다' · 카드 B1(층 어휘 0 — 등재 예외 3건에 층 이름 리터럴 없음)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/g_$$ && cd /tmp/g_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nfrom core.pipeline import run_document\nfrom core import store\nenv={'doc_id':'XNEW01','doc_type':'완전미등록타입','payload_kind':'prose','revision':'R1','adapter_version':'x-1','chunks':[{'source_locator':'p1','text':'아무 내용','section':'s'}]}\nres,m,_=run_document(env)\nprint(res,'| 라우팅 층:',m['layer'],'| 등재:','XNEW01' in store.read(store.DOC_REGISTRY,{}),'| 큐:',[x['kind'] for x in store.read(store.QUEUE,[]) if x.get('doc_id')=='XNEW01'])\"  # 기대: process 층 무음 인입, 큐 0",
+   "severity": "medium",
+   "dim": "invariants"
+  },
+  {
+   "title": "한시 예외 3호의 'USE_MOCK 한정' 경계가 코드에 없다 — causes/affects 문형 폴백이 USE_MOCK=0에서도 실행 (matcher의 _use_mock은 죽은 코드)",
+   "file": "core/extract.py",
+   "line": 97,
+   "claim": "등재 예외 3호는 core/extract.py _PATTERNS의 causes/affects를 'USE_MOCK 문형 폴백 한정'으로 승인했으나, extract()에는 USE_MOCK 게이트가 전혀 없다 — 힌트 파일이 없으면 환경과 무관하게 _mock_candidates(하드코딩 관계 어휘)가 무조건 실행된다. 실측: USE_MOCK=0에서 causes/affects 관계 후보가 그대로 산출됐다. 같은 계열로 core/matcher.py:32-33의 _use_mock()은 정의만 되고 어디서도 호출되지 않는 죽은 코드라, USE_MOCK=0(실물 모드)에서도 mock 문자열 유사도 규칙이 LLM 판정 자리(E1 ③)를 조용히 대신한다 — 실물 모드 스위치가 시스템 전체에서 무효다.",
+   "violated_ref": "한시 예외 3호 문면 'USE_MOCK 문형 폴백 한정' (08-18 사용자 승인 — 한정 조건이 집행되지 않으면 예외 범위 초과) · 카드 B1 '예외는 세어질 때만 예외다' · 카드 E1(③ LLM 동일성 판정 자리) · core/matcher.py:15-16 자기 서술('USE_MOCK=1에서는 ③이 문자열 규칙')",
+   "repro": "cp -r /home/claude/repo_clone /tmp/h_$$ && cd /tmp/h_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && USE_MOCK=0 python3 -c \"\nimport json,copy,os\nfrom core import extract as X\nfrom core.bootstrap import load_config\nfrom core.pipeline import _vocab\nenv=copy.deepcopy(json.load(open('mock/parsed/QPPT01.json'))); env['doc_id']='XQ01'\ncfg=load_config('quality')\nloc2id={c['source_locator']:f'XQ01:{i}' for i,c in enumerate(env['chunks'])}\nck,ran=X.extract(env,cfg,loc2id,_vocab(cfg))\nprint('USE_MOCK=',os.environ.get('USE_MOCK'),'| 폴백 실행:',ran,'| 관계:',[r for c in ck['candidates'] for r in c['relations']][:3])\" && grep -n '_use_mock' core/matcher.py && ! grep -rn '_use_mock()' core/ cli/ --include='*.py' | grep -v 'def _use_mock'",
+   "severity": "medium",
+   "dim": "invariants"
+  },
+  {
+   "title": "추출 후보의 발명 카테고리가 무검증으로 그래프에 심긴다 — invalid_category 큐 미배선 (I3 닫힌 목록 위반)",
+   "file": "core/pipeline.py",
+   "line": 194,
+   "claim": "build_prose는 추출 후보의 category를 층 config의 닫힌 카테고리 목록과 대조하지 않고 resolve_entity로 넘겨 노드를 생성한다. 실측: 힌트(=LLM 추출 산출물 자리)에 존재하지 않는 카테고리 '발명된카테고리'를 넣자 그 카테고리의 auto 노드가 quality 층에 그대로 생성됐고 invalid_category 큐는 0건이다. I3는 '운영 중 카테고리를 LLM이 발명하는 일은 없다 — 닫힌 목록에서 선택만'이며, 닫힌 20종에 invalid_category(카테고리 오류)가 이 방어를 위해 존재하나 코드 어디에서도 enqueue되지 않는다(grep 0건).",
+   "violated_ref": "카드 I3 '운영 중 카테고리 발명 없음 — 닫힌 목록 선택만' · CH3B 3.7 큐 표 'invalid_category — 카테고리 오류' · 카드 J1(카테고리 정의문은 층의 여섯 칸)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/i_$$ && cd /tmp/i_$$ && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nimport json\nfrom pathlib import Path\nfrom core.pipeline import run_document\nfrom core.bootstrap import open_graph\nfrom core import store\nPath('mock/extract_hints').mkdir(exist_ok=True)\njson.dump({'p1':{'entities':[{'surface':'감사표면형','category':'발명된카테고리'}],'relations':[],'attach':[]}},open('mock/extract_hints/XCAT01.json','w'),ensure_ascii=False)\nenv={'doc_id':'XCAT01','doc_type':'ppt_quality','payload_kind':'prose','revision':'R1','adapter_version':'x-1','chunks':[{'source_locator':'p1','text':'감사표면형 언급','section':'s'}]}\nres,m,_=run_document(env)\ng=open_graph(m['layer'])\nprint('목록 밖 카테고리 노드:',[(n['canonical'],n['category']) for n in g.nodes.values() if n['category']=='발명된카테고리'])\nprint('invalid_category 큐:',sum(1 for x in store.read(store.QUEUE,[]) if x['kind']=='invalid_category'))\"",
+   "severity": "medium",
+   "dim": "invariants"
+  },
+  {
+   "title": "큐·연산 로그의 시점 필드가 하드코딩 상수 — ops_log 5요소 계약의 '시점'이 위조값",
+   "file": "core/ops.py",
+   "line": 84,
+   "claim": "core/ops.py의 log_op는 모든 I축 연산 로그에 at=\"2026-08-18T00:00:00\" 상수를 기록한다(병합·분리 툼스톤의 at[310·394행], obsoleted_at[425행]도 동일 상수). core/store.py:101의 enqueue도 모든 큐 항목에 created=\"2026-01-05T00:00:00\" 상수를 기록한다. log_op 자신의 docstring이 '5요소를 전부 적는다: 연산·행위자·시점·대상·사유 … 누가 그래프를 고쳤는지 모르면 로그가 로그가 아니다'라 선언하나, 시점 요소는 전 연산이 같은 위조값이라 감사 추적·순서 재구성이 불가능하다. mock 데이터 파일이 아닌 core 실행 경로의 산출물이며, 어느 결정 장부에도 이 상수화가 등재되어 있지 않다.",
+   "violated_ref": "증분0 §3 G5 아웃풋 '연산 로그 ops_log.json(행위자·시점·대상·사유 — D-8)' · 카드 L5 '전 연산이 파급 미리보기 + 연산 로그 대상' · 카드 G2(모든 자동 생성물에 기록 — 기록의 진실성 전제)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/j_$$ && cd /tmp/j_$$ && grep -n '2026-08-18T00:00:00' core/ops.py && grep -n '2026-01-05T00:00:00' core/store.py && rm -rf data/process data/quality data/*.json && python3 run.py all >/dev/null && python3 -c \"\nfrom core import store\nprint({x['created'] for x in store.read(store.QUEUE,[])})\"  # 기대: 전 항목 동일 상수 1개",
+   "severity": "medium",
+   "dim": "invariants"
+  },
+  {
+   "title": "걸침 엣지의 from 끝점이 다른 층 노드면 commit_edge가 게이트 판정 전에 무기록 소멸시킨다 — D-61의 남은 절반",
+   "file": "core/gate.py",
+   "line": 100,
+   "claim": "실증(CONFIRMED, 단 현행 스키마에는 미발화 — 잠복 결함). commit_edge는 `s, d = graph.get(src), (dst_graph or graph).get(dst); if not s or not d: return None`(gate.py:99-101)으로, src가 다른 층 그래프에 사는 노드면 판정·log_reject·큐 없이 None을 반환한다. build_table의 edges 루프(pipeline.py:112)는 _endpoint가 돌려준 src 쪽 그래프를 `_sg`로 받아 버리고 commit_edge에 전달하지 않는다(dst_graph만 존재). D-61 문면은 \"@는 from·to 양쪽에서 같게 해소한다\"인데, 해소는 대칭이 됐지만 커밋은 여전히 비대칭이다 — 품질층 스키마가 `from: \"@process_ref\"`를 선언하면(계약상 정당: CH2 edges from/to = 필드명 또는 @좌표필드) 그 엣지는 0건 적재된다. 실측(합성 스키마 xql.json): '@process_ref occurs_in failure' 선언 → failure 노드는 생성되나 occurs_in 엣지 0, gate_rejects 증가 0, 큐는 auto_node 1건뿐(엣지 소실 언급 없음), defects 0.",
+   "violated_ref": "DECISIONS.md D-61: \"@ 접두는 from·to 양쪽에서 같게 해소한다… 큐도 로그도 없이 사라졌다\"(재발 조건 잔존) · CH3A 3.4/gate.py 머리말: \"거부는 버리는 것이 아니라 기록하는 것이다\" · CH2 edges 문법(from에 @좌표필드 허용)",
+   "repro": "cd /tmp/v1 && printf '%s' '{\"doc_type\":\"xql\",\"schema_version\":1,\"layer\":\"quality\",\"use_blocks\":[\"common_core\",\"process_coord\"],\"fields\":{\"failure\":{\"role\":\"entity\",\"category\":\"Failure\"}},\"edges\":[{\"from\":\"@process_ref\",\"relation\":\"occurs_in\",\"to\":\"failure\"}]}' > schemas/xql.json && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core import store; from core.pipeline import run_document\ngr0=len(store.read(store.GATE_REJECTS,{\"rejects\":[]})['rejects'])\nrun_document({\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"table\",\"doc_id\":\"XQL01\",\"doc_type\":\"xql\",\"records\":[{\"source_locator\":\"XL-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"failure\":\"감사불량A\"}]})\ng=json.load(open('data/quality/graph.json'))\nfid=next(n['id'] for n in g['nodes'].values() if n['canonical']=='감사불량A')\nprint('occurs_in:', [e for e in g['edges'] if e['rel']=='occurs_in' and fid in (e['src'],e['dst'])])\nprint('gate_rejects 증가:', len(store.read(store.GATE_REJECTS,{\"rejects\":[]})['rejects'])-gr0)\nEOF  # 기대: occurs_in [], gate_rejects 0",
+   "severity": "medium",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "다른 층 anchor에 붙인 attribute가 저장되지 않는 그래프 인스턴스에 쓰여 증발한다 (외부 그래프 미저장)",
+   "file": "core/pipeline.py",
+   "line": 101,
+   "claim": "실증(CONFIRMED, 잠복 — 현행 스키마의 attribute 부착 대상은 전부 자기 층). build_table의 attribute 분기는 부착 대상이 걸침 anchor면 `tg = external.get(...)` 그래프에 `Builder(tg,...).put_attribute(...)`로 쓴다(pipeline.py:101-104). 그런데 external의 그래프는 resolve_anchor→_graph_for→open_graph()가 그때그때 새로 load한 인스턴스(bootstrap.py:102-104 — 캐시 없음)이고, run_document는 자기 층 graph만 build_end()로 저장한다(pipeline.py:273). 외부 층 인스턴스는 save가 한 번도 불리지 않아 attribute 값이 메모리에서 소멸한다 — 큐·로그 0. 실측(합성 스키마 xqa.json: proc=anchor(Process), 메모=attribute attach_to proc): 값 '외부층속성값777'이 process/quality 어느 graph.json에도 없음, 큐 증가 0, defects 0.",
+   "violated_ref": "CH2 2.5/role_어휘_정의서 §3.3: attribute는 anchor로 해소된 골격 노드에도 부착 가능(v1.6) + 걸침 필드는 다른 층 그래프에 기록(명세 §15.7 규칙 A) · CH3B 3.6 규약 3(모든 값 항목 provenance 보존 — 값 자체가 소실되면 성립 불가)",
+   "repro": "cd /tmp/v1 && printf '%s' '{\"doc_type\":\"xqa\",\"schema_version\":1,\"layer\":\"quality\",\"use_blocks\":[\"common_core\",\"process_coord\"],\"fields\":{\"proc\":{\"role\":\"anchor\",\"target_category\":\"Process\"},\"메모\":{\"role\":\"attribute\",\"attach_to_field\":\"proc\",\"attr_name\":\"xqa_note\"}},\"edges\":[]}' > schemas/xqa.json && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nrun_document({\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"table\",\"doc_id\":\"XQA01\",\"doc_type\":\"xqa\",\"records\":[{\"source_locator\":\"XA2-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"proc\":\"노칭\",\"메모\":\"외부층속성값777\"}]})\nprint('process에?', '외부층속성값777' in open('data/process/graph.json').read())\nprint('quality에?', '외부층속성값777' in open('data/quality/graph.json').read())\nprint('큐에?', '외부층속성값777' in open('data/review_queue.json').read())\nEOF  # 기대: 세 파일 모두 False",
+   "severity": "medium",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "재인입 회수(3.8 규약 2-①)가 미구현 — 구판 청크가 근거로 잔존하고 evidence_lost는 사문(死文)이다",
+   "file": "core/ingest.py",
+   "line": 95,
+   "claim": "부분 실증 + 정적. ingest()(ingest.py:95-158)와 run_document 어디에도 '그 문서 몫 걷어내기'가 없다: 개정본 재인입 시 옛 청크(옛 chunk_id)는 chunks.json에 같은 doc_id로 잔존하고(F2 실측: XQ01 v1 텍스트 청크가 v2 인입 후에도 남음 — 질의 근거로 계속 서빙), describes·attribute·provenance의 문서 몫 회수도 없으며, provenance가 0이 된 auto 노드·엣지를 싣는 evidence_lost 큐는 방출 지점이 코드 전체에 0곳이다(cli/platform.py:43의 kind 목록에만 존재). CH3B 3.6 규약 6(같은 문서 개정값은 교체)도 이 회수를 전제로 한다. G4 3.5′ 재인입 회귀는 '동일 내용 재인입'만 검증해 이 공백을 지나쳤다.",
+   "violated_ref": "CH3B_인입규칙.md 3.8 규약 1-2: \"같은 doc_id의 개정본이 오면 그 문서 몫만 걷어내고 다시 넣는다… ①회수: 그 문서에서 온 청크·describes·엣지/값의 provenance 항목. provenance가 0이 된 auto 노드·엣지는 evidence_lost 큐로\"",
+   "repro": "cd /tmp/v1 && python3 -c \"import json; ch=json.load(open('data/chunks.json'))['chunks']; print({cid:c['text'] for cid,c in ch.items() if c['doc_id']=='XQ01'})\"  # (F2 재현 후 실행) 기대: v1·v2 텍스트 청크 2건이 같은 doc_id로 공존. 추가: grep -rn \"evidence_lost\" --include='*.py' . → 방출(enqueue) 지점 0곳 확인",
+   "severity": "medium",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "같은 문서의 맥락형 값 개정이 '교체'가 아니라 거짓 spec_conflict로 흘러 새 값이 그래프에 적용되지 않는다",
+   "file": "core/build.py",
+   "line": 263,
+   "claim": "실증(CONFIRMED). put_attribute의 맥락형 분기(build.py:257-269)는 같은 context에 다른 값이 오면 출처 문서가 자기 자신이어도 spec_conflict를 싣고 return한다 — doc_id 비교가 없다. CH3B 3.6 규약 6은 \"같은 문서의 개정값은 충돌이 아니라 교체다 — spec_conflict는 교차 출처에서만 발생\"이라고 못박는다. 실측: XSPEC2 R1(규격 ±0.5mm) 인입 후 같은 doc_id R2(±0.4mm) 재인입 → 그래프는 ±0.5mm 유지, ±0.4mm는 거짓 충돌 큐 항목에만 존재. 개정 문서의 정본 값이 그래프에 반영되지 않는다(큐에는 남으므로 완전 무기록은 아니나 분류가 틀리고 현행값이 낡는다).",
+   "violated_ref": "CH3B_인입규칙.md 3.6 규약 6: \"같은 문서의 개정값은 충돌이 아니라 교체다 — 재인입이 그 문서 몫을 회수한 뒤 새 값을 쓰므로(3.8), spec_conflict는 교차 출처에서만 발생한다\"",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nbase={\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{\"model\":\"M1\"},\"payload_kind\":\"table\",\"doc_id\":\"XSPEC2\",\"doc_type\":\"cp\"}\nrec={\"source_locator\":\"XS2-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"설비\":\"노칭 프레스\",\"관리항목\":\"감사전용항목\",\"규격\":\"±0.5mm\"}\nrun_document(dict(base,records=[rec])); run_document(dict(base,revision=\"R2\",records=[dict(rec,규격=\"±0.4mm\")]))\ng=json.load(open('data/process/graph.json'))\nn=next(n for n in g['nodes'].values() if n['canonical']=='노칭::감사전용항목')\nprint(n['attrs']['spec'])  # 기대(계약): ±0.4mm / 실제: ±0.5mm\nprint([x['payload'] for x in json.load(open('data/review_queue.json')) if x['kind']=='spec_conflict' and x['doc_id']=='XSPEC2'])\nEOF",
+   "severity": "medium",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "스키마에 없는 record 필드가 unknown_field 큐 없이 값째 증발한다 — 닫힌 20종의 unknown_field가 사문이다",
+   "file": "core/pipeline.py",
+   "line": 71,
+   "claim": "실증(CONFIRMED). build_table은 schema fields만 순회하고(pipeline.py:71: `for f, spec in fields.items()`) record에만 있는 필드는 어떤 경로로도 소비·보고되지 않는다. `unknown_field`를 enqueue하는 코드는 레포 전체 0곳(kind 목록 나열뿐 — cli/platform.py:42). 반면 CH3B 3.7 닫힌 20종 표는 unknown_field를 \"스키마에 없는 필드(파서가 앞서간 신호)\"로 정의하고, kit/run_adapter.py:207-210은 스키마 밖 필드를 'unknown_field 큐 예상분'으로 명시한다(tools/gen_parsed_mock.py:62도 'unknown_field 재료'를 생성). 실측: cp record에 비고='이 값은 어디에도 남지 않는다' 추가 인입 → 큐 증가 0, 그래프·청크·큐 전문에서 값 부재. 파서가 스키마보다 앞서가는 정상 시나리오에서 열 하나가 통째로 조용히 사라진다.",
+   "violated_ref": "CH3B_인입규칙.md 3.7 큐 kind 표: \"unknown_field | 스키마에 없는 필드(파서가 앞서간 신호)\" (닫힌 20종) · CH3B 3.7 규약 2(처리 못 한 것은 전부 큐)",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nq0=len(json.load(open('data/review_queue.json')))\nrun_document({\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"table\",\"doc_id\":\"XUF01\",\"doc_type\":\"cp\",\"records\":[{\"source_locator\":\"XU-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"설비\":\"노칭 프레스\",\"관리항목\":\"노칭 정밀도\",\"비고\":\"이 값은 어디에도 남지 않는다\"}]})\nq=json.load(open('data/review_queue.json'))\nprint('큐 증가:', len(q)-q0, '| unknown_field:', [x for x in q if x['kind']=='unknown_field'])\nprint('값 잔존?', any('이 값은 어디에도' in open(f).read() for f in ('data/review_queue.json','data/process/graph.json','data/chunks.json')))\nEOF  # 기대: 증가 0, [], False",
+   "severity": "medium",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "필수(비 optional) 필드 부재가 missing_field 큐 없이 통과한다 — 에이전트 측 필드 검증 ③이 사실상 미구현",
+   "file": "core/pipeline.py",
+   "line": 72,
+   "claim": "실증(CONFIRMED). build_table은 `if f not in rec or rec[f] in (None, \"\"): continue`(pipeline.py:72-73)로 필수 여부(optional 플래그 부재)를 보지 않고 조용히 건너뛴다. missing_field enqueue는 context 형태 위반 방어(D-60, pipeline.py:44) 한 곳뿐이다. ingest.py 머리말은 검증 배열 \"③ 필드 검증(1c — G3 소관)\"이 큐로 착지한다고 선언하고, CH2 스키마 문법에서 optional은 'true면 빈 값 허용(검증 통과)'이므로 optional이 아닌 필드의 부재는 검증 실패여야 한다. kit/run_adapter.py:214도 필수 필드 채움을 'missing_field 큐 예상분'으로 대조한다. 실측: cp record에서 필수 필드 관리항목을 뺀 문서 인입 → 큐 증가 0(missing_field 포함 일절 없음), 그 행의 has_property 엣지·attribute도 함께 무기록 생략.",
+   "violated_ref": "core/ingest.py 머리말(증분0 §3 G1·D-2): \"에이전트 측 ③은 큐로 착지한다\" · CH3B 3.7 kind 표 missing_field \"필수 값 부재·계약 위반\" · CH2 스키마 문법 optional 정의(역: 비 optional 빈 값은 검증 실패)",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nq0=len(json.load(open('data/review_queue.json')))\nrun_document({\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"table\",\"doc_id\":\"XMF01\",\"doc_type\":\"cp\",\"records\":[{\"source_locator\":\"XM-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"설비\":\"노칭 프레스\"}]})\nq=json.load(open('data/review_queue.json'))\nprint('큐 증가:', len(q)-q0, '| XMF01 항목:', [x['kind'] for x in q if x['doc_id']=='XMF01'])\nEOF  # 기대: 0, []",
+   "severity": "medium",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "문서 유래 후보성 큐 항목의 재인입 회수 미구현 — 개정 재인입마다 같은 항목이 provenance만 바뀌어 증식하고, 근거 문장이 삭제돼도 큐에 잔존",
+   "file": "core/gate.py",
+   "line": 111,
+   "claim": "direction_unverifiable 등 후보성 큐에 doc_id 단위 회수(store.drop)가 없다 — drop 소비처는 mirror_asymmetry 1곳뿐. 실측: QPPT01의 인과 문장(K1 '이물 유입으로 인해 절연 파괴가 발생')을 삭제한 revision R2를 재인입하면 그 후보의 direction_unverifiable 항목이 회수되지 않을 뿐 아니라 1건→2건으로 늘어난다(큐 62→63). 증식 원인: 낡은 체크포인트의 K1 후보가 재커밋될 때 현행 봉투에 K1 locator가 없어 provenance가 'QPPT01-K1'→청크 id 'QPPT01:08c083b4dd41'로 변조되어 (kind,doc_id,payload) dedup 키(D-59)를 빗나간다. 개정을 거듭할수록 존재하지 않는 문장의 방향 확인 요청이 화면에 쌓인다.",
+   "violated_ref": "CH3A 3.4 규약 6(149행): \"재인입 시 이 큐 항목은 회수 후 재생성한다 — 근거 문서가 개정되면 미확인 후보를 제거하고 재추출되면 새로 등록한다. 이는 문서에서 유래한 모든 후보성 큐 항목의 일반 규칙이다\"; D-59의 dedup 계약이 provenance 변조로 우회됨",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && python3 -c \"import json; env=json.load(open('mock/parsed/QPPT01.json')); env['revision']='R2'; env['chunks']=[c for c in env['chunks'] if c['source_locator']!='QPPT01-K1']; json.dump(env, open('/tmp/QPPT01_revB.json','w'), ensure_ascii=False)\" && python3 run.py ingest /tmp/QPPT01_revB.json && python3 -c \"import json; q=json.load(open('data/review_queue.json')); s=[x for x in q if x['kind']=='direction_unverifiable']; print(len(s), [x['payload']['provenance'] for x in s])\"  # 2건, ['QPPT01-K1'] vs ['QPPT01:08c083b4dd41']",
+   "severity": "medium",
+   "dim": "idempotency"
+  },
+  {
+   "title": "문서 인입 순서에 따라 그래프가 비동형(66 vs 65 노드) — USE_MOCK 폴백 추출이 그래프·사전 상태를 어휘로 읽고 체크포인트가 그 우연을 영구 동결",
+   "file": "core/pipeline.py",
+   "line": 269,
+   "claim": "run_document가 추출 직전 _vocab(cfg)로 현재 그래프의 canonical·alias를 어휘로 만들어 넘기고(269행), _mock_candidates의 '주제 언급' 스캔이 그 어휘로 개체를 잡는다. 실측: 정순(CP01 먼저) 3회는 구조 지문 동일하나, 역순(QPPT01→…→CP01)으로 인입하면 PPT01 추출 시점에 CP01-C5산 '용접 가압력'이 어휘에 없어 process 노드가 66→65(auto_node 51→50, mirror_asymmetry 4→3, 사전 233→232 id) — '탭용접::cathode::용접 가압력' 노드가 큐·로그 없이 소실된다. 역순-시대 체크포인트를 보존한 채 정순 재빌드해도 65노드가 재생산된다(체크포인트가 은닉 상태를 동결). 체크포인트의 재현 입력 3종(adapter/prompt/config_version) 기록만으로 재현이 불가능한, 기록되지 않는 4번째 입력(그래프 상태)이 존재한다. 등재 예외 3호(한시 예외 — _PATTERNS의 causes/affects)는 B1 층 어휘 예외일 뿐 이 순서 의존을 덮지 않는다.",
+   "violated_ref": "불변식 카드 M12 / CH3A 3.11 규약 4: 재현성 입력 3종 전부 기록(따로 개정되므로 따로) — 실제 산출은 기록되지 않는 그래프 상태에 의존; extract.py 규약 1의 취지(\"추출이 그래프 상태에 의존하게 되어 체크포인트가 재현 불가능해진다\"); 증분0 §7 완료판정 \"run.py all 2회 동일 그래프\"가 순서 고정에서만 성립",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && python3 -c \"import json; g=json.load(open('data/process/graph.json')); print(len(g['nodes']))\" && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py bootstrap && python3 run.py ingest mock/parsed/QPPT01.json mock/parsed/PPT03.json mock/parsed/PPT02.json mock/parsed/PPT01.json mock/parsed/PFMEA01.json mock/parsed/CP01.json && python3 -c \"import json; g=json.load(open('data/process/graph.json')); print(len(g['nodes']), [n['canonical'] for n in g['nodes'].values() if '가압력' in n['canonical']])\"  # 66 → 65, '탭용접::cathode::용접 가압력' 부재",
+   "severity": "medium",
+   "dim": "idempotency"
+  },
+  {
+   "title": "재인입이 링킹된 전 청크의 linked 플래그를 False로 되돌림 — '링킹 0건' 관측 상태가 전량 거짓이 됨",
+   "file": "core/pipeline.py",
+   "line": 171,
+   "claim": "재인입 시 ingest.put_chunk가 청크를 linked:False로 덮어쓰고(core/ingest.py:128), _describe(171행)·build_prose(200행)는 describes 쌍이 이미 존재하면 분기를 건너뛰어 linked를 복원하지 않는다. 실측: run.py all 2회 실행만으로 describes가 걸린 청크 51건 전부 linked True→False로 뒤집힌다(그래프·큐·사전 raw 해시는 동일). linked는 '링킹 0건 청크' 판별 필드(C6 화면·폴백 전제)인데 링킹된 청크 전부가 0건으로 표시되는 상태 오염이며, 이를 잠근 테스트(test_g1_g2:227, test_g3:186)는 초회 인입만 검사해 잡지 못한다.",
+   "violated_ref": "불변식 카드 C6(링킹 0건 청크 보존 — linked=false가 그 판별 표시), ontology_system_구현용문서.md 121행 청크 저장 계약의 linked 필드·310행 \"P5 … linked=false 보존\", 명세 278행(전 청크 보존(linked=False 포함)이 폴백 검색의 전제)",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all >/dev/null && python3 run.py all >/dev/null && python3 -c \"import json; ch=json.load(open('data/chunks.json')); ids={d['chunk_id'] for d in ch['describes']}; print('describes 있는데 linked=False:', sum(1 for c in ids if not ch['chunks'][c]['linked']), '/', len(ids))\"  # 51/51",
+   "severity": "medium",
+   "dim": "idempotency"
+  },
+  {
+   "title": "I3 분리의 사전 리다이렉트 과잉 — 다른 타깃에 배분된 표면형에도 첫 산출물 id가 추가되어 한 표기가 두 산출물을 동시에 가리킴(사전 오염)",
+   "file": "core/ops.py",
+   "line": 397,
+   "claim": "split()이 타깃별 사전 등재를 마친 뒤 _dict_redirect(dictionary, nid, new_ids[0])를 무차별 실행해, 원본 노드를 가리키던 모든 표면형(배분표에서 다른 타깃에 배분된 것 포함)에 첫 산출물 id를 덧붙인다. 실측: '용접 강도 부족'(alias '가압력 부족')을 두 타깃으로 분리하면 dictionary['가압력 부족']이 [타깃2, 타깃1] 두 id가 된다 — 사람이 배분표로 '가압력 부족은 타깃2'라고 확정했는데 사전은 타깃1도 가리킨다. 질의 링킹(link)은 그 표기로 두 노드를 모두 링킹하고, anchor 해소라면 '표기 모호' orphan_anchor로 빠진다. 이후 판정의 오염원이 된다.",
+   "violated_ref": "CH3A 3.3(111행): \"사전이 오염되면 이후 모든 판정이 오염된다\"; I3 계약(R3-⑵ — 배분은 사람 지정이 전부, 코드가 임의로 한쪽에 몰지 않는다)의 취지: 배분 완료된 표기를 코드가 첫 산출물로 재매핑",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all && IDS=$(python3 -c \"import json; g=json.load(open('data/quality/graph.json')); d={n['canonical']:i for i,n in g['nodes'].items()}; print(d['가압력 부족'], d['용접 강도 부족'])\") && python3 cli/ops.py merge quality $IDS --actor t --yes && NID=$(python3 -c \"import json; g=json.load(open('data/quality/graph.json')); print([i for i,n in g['nodes'].items() if not n.get('merged_into') and n['canonical']=='용접 강도 부족'][0])\") && python3 -c \"import json; g=json.load(open('data/quality/graph.json')); nid='$NID'; own=[i for i,e in enumerate(g['edges']) if nid in (e['src'],e['dst'])]; n=g['nodes'][nid]; json.dump({'targets':[{'canonical':'용접 강도 부족','aliases':[],'provenance':['PFMEA01-R7'],'edges':[i for i in own if 'PFMEA01-R7' in g['edges'][i]['provenance']]},{'canonical':'가압력 부족','aliases':[],'provenance':['PFMEA01-R8'],'edges':[i for i in own if 'PFMEA01-R7' not in g['edges'][i]['provenance']]}]}, open('/tmp/plan.json','w'), ensure_ascii=False)\" && python3 cli/ops.py split quality $NID /tmp/plan.json --actor t --yes && python3 -c \"import json; print(json.load(open('data/dictionary.json'))['가압력 부족'])\"  # id 2개",
+   "severity": "medium",
+   "dim": "idempotency"
+  },
+  {
+   "title": "인입 코드가 닫힌 20종 밖 kind 'invalid_role'을 큐에 적재 — D-30(결함 로그)·D-54(닫힌 목록) 동시 위반",
+   "file": "core/pipeline.py",
+   "line": 79,
+   "claim": "D-30과 정본 문서(실행검증_1차 §D-30, CH2 2.8, 증분0 §게이트)는 알 수 없는 role을 \"크래시 대신 invalid_role 결함 로그\"로 방어한다고 정했고, D-54는 \"큐 20종은 닫힌 목록\"이라고 판정했다. 그런데 pipeline.py 79행은 append_defect(결함 로그, 정본대로) 직후 store.enqueue(\"invalid_role\", …)로 21번째 kind를 큐에 싣는다. cli/platform.py의 닫힌 20종 상수(QUEUE_KINDS)에 invalid_role이 없으므로, 이 경로가 발화하는 순간 플랫폼 큐 화면이 자기 파이프라인의 산출을 \"⚠ 목록 밖 kind — 닫힌 20종 위반, 그 자체가 결함이다\"로 표시한다. 코드가 자기 규범을 스스로 위반하는 적재 지점이다.",
+   "violated_ref": "DECISIONS.md:103 D-54 \"큐 20종은 닫힌 목록\" · DECISIONS.md D-30 \"인입 코드에 invalid_role 방어\"(docs/실행검증_1차.md:147 — \"큐\"가 아니라 \"결함 로그\") · docs/CH2_문서계약.md:563",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a_$$ && cd /tmp/a_$$ && rm -rf data/process data/quality data/*.json data/*.log extract && python3 run.py all >/dev/null && python3 -c \"import sys,json; sys.path.insert(0,'.')\njson.dump({'doc_type':'audit_bad','layer':'process','fields':{'공정명':{'role':'anchor','target_category':'Process'},'이상필드':{'role':'banana'}}}, open('schemas/audit_bad.json','w'), ensure_ascii=False)\nfrom core.pipeline import run_document\nrun_document({'doc_id':'AUD01','doc_type':'audit_bad','source_path':'x','revision':'R1','parsed_at':'t','parser_version':'t','adapter_version':'t','payload_kind':'table','records':[{'source_locator':'AUD01-r1','공정명':'노칭','이상필드':'v'}]})\" && python3 cli/platform.py queue | grep ⚠  # 출력: ⚠ 목록 밖 kind 'invalid_role' 1건",
+   "severity": "medium",
+   "dim": "ledger"
+  },
+  {
+   "title": "A-4 관통 경로(tools/passthrough.py)가 finalize를 부르지 않아 mirrors 재평가·self-heal 미실행 — 해소된 큐 항목 잔존·mirrors 엣지 미커밋",
+   "file": "tools/passthrough.py",
+   "line": 57,
+   "claim": "D-65가 mirrors 재평가를 문서 빌드에서 pipeline.finalize로 이설한 뒤, run.py cmd_ingest는 낱개 인입에도 finalize를 기본 수행하지만 tools/passthrough.py는 run_document만 부르고 finalize를 부르지 않는다. 실측: 깨끗한 run.py all 후 passthrough로 IPQC01을 인입하면 IPQC01이 '초음파 융착기'의 반대 극성 노드를 공급해 비대칭이 해소되는데도 mirror_asymmetry가 4건 그대로 남고(스테일), 수동으로 finalize()를 돌리면 3건으로 내려가며 신규 mirrors 엣지가 커밋된다. CH3B 3.5 규약 6 \"매 빌드마다 재평가(self-heal)하고 … 대칭이 회복되면 큐에서 제거한다\"가 이 인입 경로에서 깨진다. passthrough는 장부(D-60·D-61)가 검출 도구로 인용하는 공식 관통 경로다.",
+   "violated_ref": "docs/CH3B_인입규칙.md:33 (3.5 규약 6 — 매 빌드마다 재평가·대칭 회복 시 제거) · DECISIONS.md:114 D-65 (재평가는 빌드 말미 패스)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a_$$ && cd /tmp/a_$$ && rm -rf data/process data/quality data/*.json data/*.log extract && python3 run.py all >/dev/null && python3 tools/passthrough.py mock/fixtures/adapters/ipqc.py mock/fixtures/schemas/ipqc.json IPQC01 mock/raw/IPQC01.xlsx >/dev/null && python3 -c \"import json; print('before', sum(1 for x in json.load(open('data/review_queue.json')) if x['kind']=='mirror_asymmetry'))\" && python3 -c \"import sys; sys.path.insert(0,'.'); from core.pipeline import finalize; finalize(); import json; print('after', sum(1 for x in json.load(open('data/review_queue.json')) if x['kind']=='mirror_asymmetry'))\"  # before 4 / after 3",
+   "severity": "medium",
+   "dim": "ledger"
+  },
+  {
+   "title": "ops_log의 '시점' 요소가 상수 하드코딩('2026-08-18T00:00:00') — 5요소 로그의 한 요소가 실질 공백",
+   "file": "core/ops.py",
+   "line": 84,
+   "claim": "D-66 ②는 \"ops_log의 5요소(연산·행위자·시점·대상·사유) 중 하나가 비면 로그가 로그가 아니다\"라고 적었고 D-67은 그 5요소 표시를 플랫폼에 노출한다. 그러나 log_op(core/ops.py:84)는 at을 상수 문자열 \"2026-08-18T00:00:00\"으로 적는다(툼스톤 at: 310·394행, obsoleted_at: 425행도 동일 상수). 모든 I축 연산 기록의 시점이 같은 가짜 값이라 언제 연산이 일어났는지 로그로 알 수 없다 — 시점 요소가 형식만 있고 내용이 없다. USE_MOCK 결정성 제약도 아니다: 같은 레포의 노드 id 발급(core/ids.py new_ulid)은 실제 벽시계(time.time)와 os.urandom을 쓴다.",
+   "violated_ref": "DECISIONS.md:115 D-66 ② \"5요소 중 하나가 비면 로그가 로그가 아니다\" · DECISIONS.md:116 D-67 (ops_log 열람 — 5요소 표시)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a_$$ && cd /tmp/a_$$ && grep -n '2026-08-18T00:00:00' core/ops.py && rm -rf data/process data/quality data/*.json data/*.log extract && python3 run.py all >/dev/null && python3 -c \"import sys; sys.path.insert(0,'.'); from core.ops import merge; from core.bootstrap import open_graph; g=open_graph('process'); a=[n for n in g.nodes.values() if n['status']=='auto']; merge('process',a[0]['id'],a[1]['id'],actor='aud')\" && sleep 1 && python3 -c \"import sys; sys.path.insert(0,'.'); from core.ops import rename; from core.bootstrap import open_graph; g=open_graph('process'); n=[x for x in g.nodes.values() if x['status']=='auto' and not x.get('merged_into')][0]; rename('process',n['id'],n['canonical']+'2',actor='aud')\" && python3 -c \"import json; print([x['at'] for x in json.load(open('data/ops_log.json'))])\"  # 서로 다른 시각의 두 연산이 동일한 상수 at",
+   "severity": "medium",
+   "dim": "ledger"
+  },
+  {
+   "title": "attach 자식 표면형 미해소 시 큐·로그 없이 침묵 드롭 — 테스트는 orphan_attach 0건만 잠가 참양성·자식 경로 둘 다 무커버 (실증 완료)",
+   "file": "core/pipeline.py",
+   "line": 214,
+   "claim": "build_prose의 attach 처리에서 부착 '대상'(attach_to) 미해소는 orphan_attach 큐로 가지만(217행), '자식'(surface) 미해소는 `if child is None: continue`(214-215행)로 큐도 결함 로그도 없이 사라진다. 추출 LLM이 entities에 없는 표면형으로 attach를 내는 표류(운영에서 개연적)가 오면 선언된 부착이 조용히 소실된다. 테스트 갭: test_g3.py:212-213은 'orphan_attach 0건'만 잠근다 — 참양성(대상 미해소→큐 발화) 경로도, 자식 미해소 경로도 어떤 테스트도 건드리지 않으므로 이 비대칭이 침묵 통과한다. 사본 실증: 힌트 파일로 자식 미해소 attach 투입 → 큐 신규 항목 0·결함 로그 0·흔적 전무, 대조군(대상 미해소)은 orphan_attach 정상 발화.",
+   "violated_ref": "불변식 카드 G5(116행): '아무것도 조용히 버리지 않는다 — 실패는 예외가 아니라 등급이며 전부 큐로 간다' · 카드 M12: 'attach_to의 해소 범위 = 문서 해소 버퍼 전체+사전 … 미해소는 orphan_attach+좌표 폴백'(폴백도 미구현)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a3 && cd /tmp/a3 && rm -rf data extract && python3 run.py all && python3 - <<'EOF'\nimport json,sys;sys.path.insert(0,\".\")\nfrom pathlib import Path\nfrom core import store\nfrom core.pipeline import run_document, finalize\nPath(\"mock/extract_hints/XAT01.json\").write_text(json.dumps({\"XAT01-C001\":{\"entities\":[],\"relations\":[],\"attach\":[{\"surface\":\"유령 인자\",\"attach_to\":\"주액기\"}]},\"XAT01-C002\":{\"entities\":[{\"surface\":\"세척 압력\",\"category\":\"Property\"}],\"relations\":[],\"attach\":[{\"surface\":\"세척 압력\",\"attach_to\":\"존재하지 않는 대상\"}]}},ensure_ascii=False),encoding=\"utf-8\")\nenv={\"doc_id\":\"XAT01\",\"doc_type\":\"ppt_process\",\"source_path\":\"x.pptx\",\"revision\":\"R1\",\"parsed_at\":\"t\",\"parser_version\":\"t\",\"adapter_version\":\"mock-1.0\",\"payload_kind\":\"prose\",\"chunks\":[{\"source_locator\":\"XAT01-C001\",\"section\":\"본문\",\"text\":\"설명 A\",\"process_ref\":\"전해액주입\"},{\"source_locator\":\"XAT01-C002\",\"section\":\"본문\",\"text\":\"설명 B\",\"process_ref\":\"전해액주입\"}]}\nrun_document(env);finalize()\nq=store.read(store.QUEUE,[])\nprint(\"자식 미해소 흔적:\",any(\"유령 인자\" in json.dumps(x,ensure_ascii=False) for x in q))   # False — 침묵 드롭\nprint(\"대조군 orphan_attach:\",[x[\"payload\"] for x in q if x[\"kind\"]==\"orphan_attach\"])   # 대상 미해소는 발화\nprint(\"defects 존재:\",store.path(store.DEFECTS).exists())                                  # False\nEOF",
+   "severity": "medium",
+   "dim": "coverage"
+  },
+  {
+   "title": "invalid_role(D-30) 잠금이 hasattr 한 줄 — 실제 분기(pipeline.py:75-81)를 어떤 테스트도 실행하지 않는다",
+   "file": "tests/test_g3.py",
+   "line": 272,
+   "claim": "test_g3.py:272-273의 D-30 판정은 `hasattr(store, \"append_defect\")` 확인이 전부다. 스키마에 없는 role을 가진 문서를 실제로 투입하는 테스트가 없어, invalid_role 분기(core/pipeline.py:75-81)의 회귀 — 예: enqueue 전 예외 발생, payload 키 누락, 해당 필드만 버리지 않고 레코드 전체 드롭 — 가 전부 침묵 통과한다. mock 6종의 스키마는 모두 유효 role만 있으므로 이 분기는 어떤 테스트 실행에서도 한 번도 돌지 않는다. 시나리오: role 오타('attributes')가 있는 신규 스키마 등록 시 KeyError로 죽거나 큐 미적재여도 전 테스트 green.",
+   "violated_ref": "DECISIONS D-30(알 수 없는 role에 KeyError로 죽지 않고 결함 로그+큐) · 증분0_구현.md §1-4: '테스트는 완료판정의 기계 번역일 뿐이다'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a4 && cd /tmp/a4 && rm -rf data extract && python3 run.py all && python3 - <<'EOF'\nimport json,sys;sys.path.insert(0,\".\")\nfrom core import store\nfrom core.pipeline import run_document\nenv=json.loads(open(\"mock/parsed/CP01.json\",encoding=\"utf-8\").read());env[\"doc_id\"]=\"CPROLE\"\nsch=json.loads(open(\"schemas/cp.json\",encoding=\"utf-8\").read())\nk=next(iter(sch[\"fields\"]));sch[\"fields\"][k][\"role\"]=\"attributes\"   # role 오타 주입\nopen(\"schemas/cprole.json\",\"w\",encoding=\"utf-8\").write(json.dumps(sch,ensure_ascii=False))\nenv[\"doc_type\"]=\"cprole\"\nrun_document(env)\nprint([x for x in store.read(store.QUEUE,[]) if x[\"kind\"]==\"invalid_role\"])  # 이 경로를 잠그는 테스트가 없다\nEOF",
+   "severity": "medium",
+   "dim": "coverage"
+  },
+  {
+   "title": "증분0 §4.2③ 추가 어서션('절연 파괴' 한 노드 유지 — A5) 문구는 있는데 테스트가 없고, 품질층 canonical 중복 잠금이 전무하다",
+   "file": "tests/test_g3.py",
+   "line": 120,
+   "claim": "증분0 §4.2③은 'K1·K2의 절연 파괴가 기존 PFMEA01 유래 노드와 판정 매칭(한 노드 유지 — A5)'을 추가 어서션으로 명기하지만 어떤 테스트도 이를 검증하지 않는다. canonical 중복 검사는 test_g3.py:120-123(P층 한정)과 test_g5.py:230-234(process 한정)뿐 — 품질층(Q)은 무잠금. 시나리오: matcher 회귀로 QPPT01 유래 '절연 파괴'가 기존 노드에 매칭되지 않고 중복 auto 노드로 서면, test_g4의 causes 사슬(any 기반)·direction_* 큐·cross 질의 어서션이 전부 그대로 성립해 그래프 이분(split-brain)이 침묵 통과한다. 사본 실측 현행값: 품질층 '절연 파괴' 1노드, provenance에 PFMEA01-R3/R4 + QPPT01-K1/K2/K3 병합 — 잠글 값은 있는데 잠금이 없다.",
+   "violated_ref": "증분0_구현.md §4.2③ '추가 어서션: K1·K2의 절연 파괴가 기존 PFMEA01 유래 노드와 판정 매칭(한 노드 유지 — A5)' · 카드 P4(노드 유일성)",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a5 && cd /tmp/a5 && rm -rf data extract && python3 run.py all && python3 -c \"import sys;sys.path.insert(0,'.');from core.bootstrap import open_graph;Q=open_graph('quality');ns=[n for n in Q.nodes.values() if n['canonical']=='절연 파괴'];print(len(ns), ns[0]['provenance'])\" && grep -n \"절연 파괴\" tests/test_g3.py tests/test_g4.py | grep -c provenance || echo '한 노드 유지 어서션 0건'",
+   "severity": "medium",
+   "dim": "coverage"
+  },
+  {
+   "title": "개수 잠금과 구조 잠금의 비대칭 — spec_conflict==1·direction_* >=1은 payload 무검증이라 '참양성 소실+오검출 등장' 상쇄가 침묵 통과한다",
+   "file": "tests/test_g3.py",
+   "line": 80,
+   "claim": "분류 결과: 구조(오검출 0) 잠금 = mirror_asymmetry(test_g3.py:108-111, 큐 항목마다 반대 극성 실재 검증)·orphan_anchor(144-147, 집합 일치)·coord_mismatch(167-176, payload 필드 검증+개수). 순수 개수 잠금 = spec_conflict `len==1`(test_g3.py:79-80 — node/attr/values 미검증), direction_unverifiable `len>=1`(237-239 — K1 쌍 '이물 유입→절연 파괴' 미특정), direction_conflict `len>=1`(245-247), 재인입 큐 증식 `len 동일성`(test_g4.py:185-186 — 항목 교체는 통과). 침묵 통과 시나리오: (a) C4의 참 spec_conflict가 미검출되고 다른 허위 충돌 1건이 뜨면 count==1 유지로 통과(사본 실측 현 payload: attr=spec, ±0.2mm vs ±0.3mm — 이를 잠그면 막힌다). (b) K1 후보가 게이트 전에 드롭되고(커밋 0 유지) 무관한 동종 쌍이 허위로 큐에 오르면 du>=1로 통과. (c) 재인입이 참 조건 1건을 지우고 허위 1건을 실으면 len 동일로 통과.",
+   "violated_ref": "증분0_구현.md §4.2③ K1 어서션 '(이물 유입, causes, 절연 파괴) → direction_unverifiable 큐' — 쌍이 명세인데 테스트는 개수만 · §4.1 C4 '같은 context 그룹, 다른 값' — 어느 값의 충돌인지가 명세",
+   "repro": "cd /tmp/audit_사본 && sed -n '79,80p;237,239p;245,247p' tests/test_g3.py && sed -n '185,186p' tests/test_g4.py && python3 -c \"import sys;sys.path.insert(0,'.');from core import store;q=store.read(store.QUEUE,[]);print([(x['payload']['attr'],x['payload']['existing'],x['payload']['incoming']) for x in q if x['kind']=='spec_conflict'])\"",
+   "severity": "medium",
+   "dim": "coverage"
+  },
+  {
+   "title": "B1 등재 예외 밖의 좌표 어휘 하드코딩 — bootstrap이 전 골격 노드에 attrs 'process_no'를 심고, pipeline에 '@process_ref'·process_* 리터럴",
+   "file": "core/bootstrap.py",
+   "line": 404,
+   "claim": "B1의 공인 예외는 3건(electrode_type·polarity/tier·extract _PATTERNS)뿐인데, core에 공정좌표 계열 리터럴이 추가로 존재한다: ①core/bootstrap.py:404 `attrs={\"process_no\": None}` — 모든 골격 노드에 process_no attr를 하드코딩으로 심는다(파일 머리의 '코드에 층 어휘 0 — 이 파일에 없다' 선언과 자기모순이며, process_no는 C3상 조각 meta 필드이지 노드 attr 규정이 없다) ②core/pipeline.py:19-20 STRUCTURAL 상수의 process_group/process_ref/process_no(게다가 미사용 죽은 코드) ③core/pipeline.py:158 `if name == \"@process_ref\"` 분기. C3가 공정좌표를 계약 필드로 지시하므로 소비 자체는 방어 가능하나, B1 문면은 '예외는 세어질 때만 예외다'이고 이들은 세어져 있지 않다 — 카드와 실물의 어긋남 자체가 결함 신호(카드 서문)다. identity_axis 일반화(전 층 무연화) 시 이 지점들이 남는다.",
+   "violated_ref": "카드 B1 '현행 예외 2건 … 예외는 세어질 때만 예외다' (+한시 예외 3호) · core/bootstrap.py:15 자기 선언 '코드에 층 어휘 0(B1)' · 카드 C3(process_no는 anchor가 아니라 meta — 노드 attr 아님)",
+   "repro": "cd /home/claude/repo_clone && grep -n 'process_no' core/bootstrap.py core/pipeline.py && grep -n '@process_ref' core/pipeline.py && ! grep -rn 'STRUCTURAL' core/ cli/ --include='*.py' | grep -v 'pipeline.py:19' | grep -v 'pipeline.py:20' | grep -q . && echo 'STRUCTURAL은 정의만 있고 미사용'",
+   "severity": "low",
+   "dim": "invariants"
+  },
+  {
+   "title": "K5 '최신순' 수집 미구현 — collect_chunks가 시간 정보 없이 등재 순서로만 자른다",
+   "file": "core/query.py",
+   "line": 176,
+   "claim": "카드 K5는 '수집은 2-tier(직접>확장), 상한 8, 최신순'을 계약하나 collect_chunks는 tier 구분과 상한·잘림 로그만 구현하고 최신순 정렬이 없다 — 청크 저장 구조(core/ingest.py put_chunk)에 시각·revision 필드 자체가 없어 최신순을 구현할 재료도 저장되지 않는다. 상한 8 초과 시 어떤 근거가 잘리는지가 '최신 우선'이 아니라 describes 등재 순서에 좌우된다.",
+   "violated_ref": "카드 K5 '수집은 2-tier, 상한 8, 최신순이며 잘림은 로그로 남긴다' (명세 §5.6.3)",
+   "repro": "cd /home/claude/repo_clone && sed -n '166,189p' core/query.py  # 정렬 키에 시간 요소 부재 확인 && grep -n 'parsed_at\\|revision' core/ingest.py | grep put_chunk -A2; grep -n '\"linked\"\\|adapter_version' core/ingest.py  # 청크 스키마에 시각 필드 없음",
+   "severity": "low",
+   "dim": "invariants"
+  },
+  {
+   "title": "chunk_id 산식이 카드 N3 문면과 다르다 — section에도 norm()을 적용 (자기 docstring과도 불일치)",
+   "file": "core/ids.py",
+   "line": 69,
+   "claim": "카드 N3와 ids.py 자신의 docstring(11행)은 chunk_id = sha256(norm(text)+NUL+section+NUL+occ)로 section을 원문 그대로 넣는 산식을 정본으로 명시하나, 실물 69행은 `norm(section)`을 적용한다. ids.py 서문은 '산식·norm 규칙은 확정 계약이며 조정 대상이 아니다'라 선언하므로 문면과 다른 산식은 계약 위반이다. 실해는 작다(occ 계산도 같은 norm 키를 쓰므로 충돌 소실은 없음)만, 산식을 문서 기준으로 재구현하는 외부 구현체와 id가 어긋나 멱등성 대조가 깨진다.",
+   "violated_ref": "카드 N3 'chunk_id = {doc_id}:sha256(norm(text)+\\x00+section+\\x00+occ)[:12]' · core/ids.py:19-20 '산식 … 확정 계약이며 조정 대상이 아니다' · core/ids.py:11 자기 docstring",
+   "repro": "cd /home/claude/repo_clone && sed -n '9,13p;68,70p' core/ids.py && python3 -c \"\nfrom core.ids import chunk_id\nprint(chunk_id('D','텍스트','섹션  A',0), chunk_id('D','텍스트','섹션 A',0))\"  # 공백만 다른 두 section이 같은 id — 문면 산식대로면 달라야 한다",
+   "severity": "low",
+   "dim": "invariants"
+  },
+  {
+   "title": "attach 후보의 자식(surface) 미해소는 orphan_attach도 없이 continue로 소멸 — 대상(attach_to) 미해소와 비대칭",
+   "file": "core/pipeline.py",
+   "line": 214,
+   "claim": "정적 추정(코드 경로 확실, 실입력은 힌트/LLM 산출물의 entities-attach 불일치 시). build_prose의 attach 처리(pipeline.py:211-219)는 target 미해소면 orphan_attach 큐에 싣지만, child(`a['surface']`)가 버퍼에 없으면 `if child is None: continue`로 큐·로그 없이 버린다. 추출기가 entities에 없는 표면형을 attach로 방출하면(실물 LLM 경로에서 개연적) 그 부착 주장 전체가 무기록 소실된다. 같은 미해소인데 한쪽만 표면화되는 비대칭은 설계 근거가 문서에 없다. 또한 CH3B 3.11 규약 6이 요구하는 '미해소 시 공정좌표 폴백(3.4 규약 4·5)'도 두 경로 모두 구현되어 있지 않다(orphan_attach 큐만 있음).",
+   "violated_ref": "CH3B 3.7 규약 2(처리 못 한 것은 전부 큐) · CH3B 3.11 규약 6: \"미해소면 orphan_attach 큐 + 공정좌표 폴백(3.4 규약 4·5)\"",
+   "repro": "cd /tmp/v1 && printf '%s' '{\"XAT-C001\":{\"entities\":[],\"relations\":[],\"attach\":[{\"surface\":\"등재안된표면형\",\"attach_to\":\"노칭 프레스\"}]}}' > mock/extract_hints/XATT01.json && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nq0=len(json.load(open('data/review_queue.json')))\nrun_document({\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"prose\",\"doc_id\":\"XATT01\",\"doc_type\":\"ppt_process\",\"chunks\":[{\"source_locator\":\"XAT-C001\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"text\":\"임의 본문\",\"section\":\"본문\",\"meta\":{}}]})\nq=json.load(open('data/review_queue.json'))\nprint('XATT01 큐 항목:', [x['kind'] for x in q if x['doc_id']=='XATT01'])\nEOF  # 기대: orphan_attach 없이 [] (attach 후보가 무기록 소멸)",
+   "severity": "low",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "link_mirrors의 by_key[pol]=nid 덮어쓰기 — 같은 (scope,name,polarity)의 중복 노드(uncertain_match 산물)가 짝 판정에서 무기록 제외",
+   "file": "core/build.py",
+   "line": 333,
+   "claim": "정적 추정. link_mirrors는 `by_key.setdefault(key, {})[pol] = nid`(build.py:333)로 같은 키·같은 극성의 노드가 둘 이상이면 나중 것이 앞의 것을 덮는다. uncertain_match 분기는 기존과 같은 canonical의 신규 노드를 만들 수 있으므로(matcher.py:107-108 — 0<score<0.85 → 신규 생성) 이 상태는 실재 가능하고, 덮인 노드는 mirrors 자동 규칙에서도 mirror_asymmetry 큐에서도 보이지 않게 된다 — 그 노드의 편측성이 화면(큐)에서 조용히 빠진다. 규약 위반의 방향: 3.5 규약 3은 '한쪽에만 있는 자식은 mirror_asymmetry 큐로 알린다'인데, 덮인 노드는 알림 대상 집계 자체에서 탈락한다.",
+   "violated_ref": "CH3B 3.5 규약 3(비대칭은 큐로 알린다) · 3.5 규약 6(매 빌드 재평가 = 현재 스냅샷 — 스냅샷에서 노드가 무기록 누락)",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\n# 같은 mirror_name·polarity의 노드 2개를 만들어 finalize 후 by_key 충돌을 관찰\nimport sys; sys.path.insert(0,'.')\nfrom core.bootstrap import open_graph, load_config\ng=open_graph('process')\na=g.add_node('감사중복::cathode 항목','Property','auto',provenance=['x'],polarity='cathode',mirror_scope='감사중복',mirror_name='항목')\nb=g.add_node('감사중복::cathode 항목(2)','Property','auto',provenance=['x'],polarity='cathode',mirror_scope='감사중복',mirror_name='항목')\ng.save()\nfrom core.pipeline import finalize; finalize(['process'])\nimport json; q=json.load(open('data/review_queue.json'))\nitems=[x for x in q if x['kind']=='mirror_asymmetry' and x['payload'].get('name')=='항목']\nprint('mirror_asymmetry 항목 수:', len(items), '| node_id들:', [x['payload']['node_id'] for x in items], '| 생성한 노드:', a, b)\nEOF  # 기대: 항목 1건뿐 — 둘 중 하나(a)는 짝 판정·큐 어디에도 없음",
+   "severity": "low",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "attribute의 부착 대상 미해소 시 값이 continue로 소멸 — 선행 orphan_anchor 큐에 값 자체는 실리지 않는다",
+   "file": "core/pipeline.py",
+   "line": 99,
+   "claim": "정적 추정(경로 확실). attrs 루프의 `tgt = resolved.get(spec.get('attach_to_field')); if tgt is None: continue`(pipeline.py:97-100)는 부착 대상 필드가 미해소(예: anchor가 골격 밖 — orphan_anchor는 별도 큐됨)거나 스키마의 attach_to_field 오기재일 때 attribute 값을 무기록 폐기한다. anchor 실패는 orphan_anchor로 표면화되지만 그 큐 항목에는 잃어버린 attribute 값(예: severity=9)이 없어, 사람이 좌표를 고쳐도 재인입 전까지 값의 존재 자체를 알 수 없다. attach_to_field 오기재(스키마 오류)의 경우에는 어떤 신호도 없다. content 필드도 동일 패턴(pipeline.py:106-108).",
+   "violated_ref": "CH3B 3.7 규약 2(처리 못 한 것은 전부 큐) — 값 단위 처리 실패가 어느 큐에도 실리지 않음",
+   "repro": "cd /tmp/v1 && python3 - <<'EOF'\nimport json,sys; sys.path.insert(0,'.')\nfrom core.pipeline import run_document\nrun_document({\"source_path\":\"(a)\",\"revision\":\"R1\",\"parsed_at\":\"2026-01-05T00:00:00\",\"parser_version\":\"m\",\"adapter_version\":\"m\",\"context\":{},\"payload_kind\":\"table\",\"doc_id\":\"XSEV01\",\"doc_type\":\"pfmea\",\"records\":[{\"source_locator\":\"XSV-R1\",\"process_group\":\"조립\",\"process_ref\":\"노칭\",\"electrode_type\":\"both\",\"failure_mode\":\"감사모드\",\"cause\":\"감사원인\",\"severity\":9,\"effect_category\":\"골격에없는효과\"}]})\nq=json.load(open('data/review_queue.json'))\nprint([ (x['kind'], 'severity' in str(x['payload'])) for x in q if x['doc_id']=='XSEV01'])\nprint('severity 9 그래프 잔존?', '\"severity\"' in open('data/quality/graph.json').read())\nEOF  # 기대: orphan_anchor는 있으나 severity 값은 큐 payload에도 그래프에도 없음",
+   "severity": "low",
+   "dim": "silent-loss"
+  },
+  {
+   "title": "run.py ingest가 추출 경로가 아닌 table 문서에도 '[추출 체크포인트 재사용]'을 출력 — P-1 상태 오신호",
+   "file": "run.py",
+   "line": 50,
+   "claim": "cmd_ingest의 꼬리표가 extracted 불리언 하나로 갈려, 추출 단계 자체가 없는 table 문서(CP01·PFMEA01)에도 '추출 체크포인트 재사용'이 찍힌다. 체크포인트 파일 존재=추출 완료가 상태 계약(P-1)인 시스템에서, 존재하지도 않는 체크포인트를 재사용했다는 출력은 운영자를 오도하며 같은 레포의 platform extract 화면('― 추출 경로 아님 — table 인입')과 서로 모순된다. 실측: 깨끗한 재빌드에서 [인입] CP01 … [추출 체크포인트 재사용] 출력, extract/CP01.json은 부재.",
+   "violated_ref": "extract.py 계약 \"산출물 extract/{doc_id}.json의 존재가 곧 '추출 완료' 상태다(P-1)\" — 존재하지 않는 상태를 화면이 주장; cli/platform.py extract_view의 표시와 자기모순",
+   "repro": "cd /tmp/audit_$$ && rm -rf data/process data/quality data/*.json data/*.log extract/*.json && python3 run.py all | grep CP01 && ls extract/  # 'CP01 … [추출 체크포인트 재사용]' 출력, extract/에 CP01.json 없음",
+   "severity": "low",
+   "dim": "idempotency"
+  },
+  {
+   "title": "build._mirror_scope의 canonical 스캔에도 is_live 부재 — D-66 '전부' 문면과 불일치 (두 번째 지점)",
+   "file": "core/build.py",
+   "line": 288,
+   "claim": "core/build.py:288 `node = next((n for n in self.g.nodes.values() if n[\"canonical\"] == scope), None)`는 canonical로 노드를 찾으면서 is_live를 거치지 않는다. 툼스톤이 canonical을 그대로 지니므로(D-66 근거 문면), scope와 같은 canonical의 툼스톤이 삽입 순서상 먼저 잡히면 — 예: I1 개명으로 산 노드가 툼스톤의 옛 canonical을 새로 받은 경우(rename 중복검사는 산 노드만 보므로 허용됨) — polarity 없는 툼스톤이 잡혀 F3 하향 연쇄의 부모 동일시가 조용히 무력화되고 정상 극성 쌍이 mirror_asymmetry 오검출로 흐를 수 있다. D-66의 \"canonical로 노드를 찾는 코드는 전부 생존 판정을 거친다\"가 이 지점에서도 성립하지 않는다(트리거 조건이 좁아 심각도는 낮게 잡음).",
+   "violated_ref": "DECISIONS.md:115 D-66 ① · DECISIONS.md:105 D-56 (F3 하향 연쇄 짝 키 — 부모 동일시)",
+   "repro": "cd /tmp/사본 && grep -n 'if n\\[\"canonical\"\\] == scope' core/build.py  # 288행에 is_live 필터 없음을 육안 확인; 대조: 같은 파일 어디에도 is_live import 없음 (grep -n is_live core/build.py → 0건)",
+   "severity": "low",
+   "dim": "ledger"
+  },
+  {
+   "title": "link_mirrors 독스트링이 폐기된 base_canonical 키를 현행 메커니즘으로 서술 — D-56과 모순되는 낡은 문면",
+   "file": "core/build.py",
+   "line": 304,
+   "claim": "D-56은 \"구 base_canonical 단일 키는 폐기\"라고 판정했고 실물 코드도 mirror_scope·mirror_name 2요소+polarity로 페어링한다(build.py:331~333). 그러나 link_mirrors의 독스트링(302~306행)은 \"짝을 찾는 키도 … 결합 시점에 적어 둔 base_canonical(스코프는 붙고 극성은 안 붙은 이름)을 쓴다\"고 현재형으로 서술한다. base_canonical 필드는 레포 어디에도 존재하지 않는다(grep 0건). 코드 계약을 문면으로 읽는 다음 세션이 폐기된 키를 실물로 오독할 수 있는 낡은 잠금이다.",
+   "violated_ref": "DECISIONS.md:105 D-56 \"구 base_canonical 단일 키는 폐기\"",
+   "repro": "cd /tmp/사본 && sed -n '299,310p' core/build.py && grep -rn base_canonical --include='*.py' . | grep -v __pycache__  # 독스트링 1건 외 필드 실물 0건",
+   "severity": "low",
+   "dim": "ledger"
+  },
+  {
+   "title": "D-5 hierarchy_unresolved: kind 등재만 있고 레포 전체에 생산 지점 0 — '평면 폴백+표시+큐'는 미구현",
+   "file": "cli/platform.py",
+   "line": 48,
+   "claim": "D-5는 \"kind hierarchy_unresolved 신설(평면 폴백 청크에 표시+큐)\"이고 증분0 §T6은 운영 인입 시 혼재 들여쓰기 행을 \"평면 폴백 + hierarchy_unresolved 큐\"로 처리한다고 명세한다. 실물은 닫힌 20종 상수(cli/platform.py:48)에 이름만 있고, store.enqueue(\"hierarchy_unresolved\", …) 호출이 core/parser/cli/tools 어디에도 없다 — 파서 normalizer(생산 주체)가 별도 트랙 미착수인 것은 감안하되, 장부 문면만 읽으면 신설이 완료된 것으로 오독되는 절반 구현 상태다(계수 0으로 화면에 뜨는 것이 전부).",
+   "violated_ref": "DECISIONS.md:54 D-5 · docs/증분0_구현.md:280 (T6 — 평면 폴백 + hierarchy_unresolved 큐)",
+   "repro": "cd /tmp/사본 && grep -rn hierarchy_unresolved --include='*.py' . | grep -v __pycache__  # cli/platform.py:48 상수 1건뿐 — enqueue 지점 0건",
+   "severity": "low",
+   "dim": "ledger"
+  },
+  {
+   "title": "D-47 문면과 물리 착지 불일치: provenance:['seed'] 태그는 dictionary.json이 아니라 노드 aliases에 실린다",
+   "file": "core/bootstrap.py",
+   "line": 443,
+   "claim": "D-47은 \"n10이 dictionary.json에 provenance:[\\\"seed\\\"]로 등재 … 운영 축적분과 태그로 구분, seed 개정 시 seed 유래 엔트리만 갱신\"이라고 적었으나, 실물 dictionary.json은 태그 없는 {norm표면형: [node_id…]} 매핑이고(register 함수, bootstrap.py:443~452) SEED_PROV 태그는 그래프 노드의 aliases[].provenance에만 실린다. 사전 장부 단독으로는 seed 유래 엔트리를 식별할 수 없어 \"seed 개정 시 seed 유래 엔트리만 갱신\"을 문면대로 수행할 물리 근거가 사전에 없다 — 태그 메커니즘 자체는 존재하나 장부가 지목한 파일이 아니다.",
+   "violated_ref": "DECISIONS.md:96 D-47 \"n10이 dictionary.json에 provenance:[\\\"seed\\\"]로 등재\"",
+   "repro": "cd /tmp/사본 && python3 -c \"import json; d=json.load(open('data/dictionary.json')); k,v=next(iter(d.items())); print(type(v), v)\"  # 값이 id 배열뿐 — provenance 키 없음; 대조: sed -n '443,452p' core/bootstrap.py (태그는 n['aliases']에 append)",
+   "severity": "low",
+   "dim": "ledger"
+  },
+  {
+   "title": "cli delete-edge가 --yes 미리보기 게이트 없이 즉시 실행 — ops 모듈 자체 원칙 '미리보기 없이 도는 연산은 없다'와 불일치",
+   "file": "cli/ops.py",
+   "line": 85,
+   "claim": "core/ops.py 모듈 서두의 관통 원칙은 \"파급이 1건을 넘으면 실행 전에 보여준다(G6). 미리보기 없이 도는 연산은 없다\"이고, cli/ops.py 독스트링도 \"--yes 없이는 미리보기만 내고 멈춘다 — 승인 없는 파급은 이 도구의 설계상 존재하지 않는다\"고 선언한다. 그러나 delete-edge 분기(cli/ops.py:83~86)만은 dry_run·--yes 확인 없이 ops.delete_edge를 즉시 실행한다(core/ops.py delete_edge에도 dry_run 인자·미리보기 경로가 없다). hit 목록이 복수일 수 있어(같은 (src,rel,dst) 중복 기록) 파급 1건 초과 가능성도 배제되지 않는다.",
+   "violated_ref": "core/ops.py:14 \"파급이 1건을 넘으면 실행 전에 보여준다(G6). 미리보기 없이 도는 연산은 없다\" · cli/ops.py:10-11 독스트링 · 카드 G6",
+   "repro": "cd /tmp/사본 && sed -n '83,86p' cli/ops.py  # --yes 분기 없이 print(ops.delete_edge(...)) 즉시 실행; 대조: rename/merge/split/obsolete는 전부 dry_run 미리보기 후 a.yes 게이트",
+   "severity": "low",
+   "dim": "ledger"
+  },
+  {
+   "title": "L8 읽기 추적의 순환·깊이 초과 '결함 로그' 경로 무테스트 — 조용히 멈추는 회귀가 침묵 통과",
+   "file": "tests/test_g5.py",
+   "line": 194,
+   "claim": "core/ops.py:103-107은 체인 순환·깊이 초과 시 append_defect를 부르지만, test_g5.py:194-196의 I-5 판정은 `ops.MAX_CHAIN > 0`과 정상 resolve_chain 한 번뿐이다. 순환/초과 상태를 만들어 결함 로그가 실제로 남는지 보는 테스트가 없어, 로그 없이 조용히 반환하는 회귀(L8 후단 위반)가 침묵 통과한다. 증분0 §4.3 I-5 어서션 문구('읽기 추적의 깊이 제한 초과는 결함 로그')는 있는데 대응 테스트가 없는 항목이다.",
+   "violated_ref": "불변식 카드 L8(201행): '읽기 시점 추적은 방문 집합+최대 깊이 제한을 두되 한계 초과 시 결함으로 로그한다(조용히 멈추지 않는다)' · 증분0_구현.md §4.3 I-5",
+   "repro": "cd /tmp/audit_사본 && sed -n '194,196p' tests/test_g5.py && sed -n '95,110p' core/ops.py  # 구현은 있으나 이 분기를 실행하는 테스트가 없다",
+   "severity": "low",
+   "dim": "coverage"
+  },
+  {
+   "title": "경계값 무테스트 — 조각 0건 문서는 서로를 duplicate_doc_hold로 차단하고, doc_type 부재 봉투는 KeyError로 죽는다 (실측)",
+   "file": "core/pipeline.py",
+   "line": 250,
+   "claim": "빈 문서(chunks/records 0건)를 넣는 테스트가 없다. 실측: 서로 다른 doc_id의 빈 문서 2부(같은 doc_type·revision)는 doc_hash가 payload 0건이라 동일해져 두 번째가 duplicate_doc_hold로 보류된다 — 파서가 빈 파싱 결과를 낼 수 있는 운영에서 서로 무관한 빈 문서들이 상호 차단되는 경계 거동이 무잠금이다. 또 doc_type 키가 없는 봉투는 pipeline.py:250 `env[\"doc_type\"]`에서 KeyError로 즉사한다 — test_g3의 '계약 위반 방어' 절(D-30 계보: 계약 위반에 예외로 죽지 않는다)은 스칼라 context 한 케이스만 잠그고 봉투 필수 필드 결손은 안 잠근다. 확신도 낮은 추정 포함(파서가 doc_type을 보증한다는 반론 가능)이라 심각도를 낮춰 보고한다.",
+   "violated_ref": "불변식 카드 G5 '실패는 예외가 아니라 등급' · test_g3.py:290 주석 자신이 인용하는 'D-30 계보 — 인입 코드는 계약 위반에 예외로 죽지 않는다'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a8 && cd /tmp/a8 && rm -rf data extract && python3 run.py all >/dev/null && python3 - <<'EOF'\nimport sys;sys.path.insert(0,\".\")\nfrom core.pipeline import run_document\nb={\"doc_type\":\"ppt_process\",\"source_path\":\"e.pptx\",\"revision\":\"R1\",\"parsed_at\":\"t\",\"parser_version\":\"t\",\"adapter_version\":\"mock-1.0\",\"payload_kind\":\"prose\",\"chunks\":[]}\nprint(run_document(dict(b,doc_id=\"EMPTY01\"))[0].status)   # ok\nprint(run_document(dict(b,doc_id=\"EMPTY02\"))[0].status)   # held — 서로 다른 빈 문서가 중복 판정\ntry: run_document({\"doc_id\":\"NOTYPE\",\"payload_kind\":\"prose\",\"chunks\":[]})\nexcept Exception as e: print(type(e).__name__, e)          # KeyError 'doc_type'\nEOF",
+   "severity": "low",
+   "dim": "coverage"
+  },
+  {
+   "title": "S5 판정 문구 대비 테스트 축소 — '그래프/청크/사전 변화 0' 중 청크만 검증, '크기 동봉'은 테스트·코드·봉투 모두에 없다",
+   "file": "tests/test_g1_g2.py",
+   "line": 238,
+   "claim": "증분0 §4.2⑥의 S5 어서션은 'duplicate_doc_hold 큐 1건(파일명·크기·기존 doc_id 동봉)·그래프/청크/사전 변화 0'인데, test_g1_g2.py:238-243은 청크 스냅샷 동일성과 source_path·existing_doc_id만 잠근다. 사전·그래프 무변화는 무잠금(현행 코드는 held 시 조기 반환이라 지금은 안전하나, check_doc_hash 이후에 사전을 건드리는 회귀가 생기면 침묵 통과). '크기'는 check_doc_hash payload(core/ingest.py:59-67)에도 봉투(CP01B.json 키 목록)에도 없어 CH3A 3.2 규약 5('파일명·크기·기존 doc_id를 함께 제시')의 문구가 구현·테스트 어느 쪽에도 착지하지 않았다 — 명세 문구와 계약 필드의 불일치로 명세 트랙 확인이 필요한 항목.",
+   "violated_ref": "CH3A_인입절차.md 3.2 규약 5: '파일명·크기·기존 doc_id를 함께 제시' · 증분0_구현.md §4.2⑥: '그래프/청크/사전 변화 0'",
+   "repro": "cd /tmp/audit_사본 && sed -n '230,245p' tests/test_g1_g2.py && sed -n '55,69p' core/ingest.py && python3 -c \"import json;print(list(json.load(open('mock/parsed/CP01B.json'))))\"  # size류 필드 부재",
+   "severity": "low",
+   "dim": "coverage"
+  },
+  {
+   "title": "§8 전체 완료판정 'run.py all 2회 동일 그래프'가 기계 잠금 없음 — 테스트는 in-process 재인입의 노드 수·질의 경로만 비교",
+   "file": "tests/test_g4.py",
+   "line": 171,
+   "claim": "증분0 §8은 '국면 1의 전체 완료 = … + run.py all 2회 동일 그래프'를 명기하지만, test_g4 3.5′는 in-process run_document 재실행 후 노드 수 불변·provenance 포함·질의 경로 동일만 보고, 그래프 파일 전체(엣지 목록·attrs·순서)의 동일성은 비교하지 않는다. test_g6은 subprocess `run.py all`을 1회만 부른다. 시나리오: 재인입이 엣지 provenance를 증식시키거나 attrs 병렬 항목을 중복 적재하는 회귀는 노드 수·질의 경로를 안 바꾸므로 침묵 통과한다. 단 이 문구는 '국면 1 전체 완료'(P트랙 포함) 판정이라 G6 시점에는 유예로 볼 여지가 있어 low로 보고한다.",
+   "violated_ref": "증분0_구현.md §8: '국면 1의 전체 완료 = 위 15종 + 기존 판정 전부 + git diff core/ 빈 것(J3) + run.py all 2회 동일 그래프'",
+   "repro": "cp -r /home/claude/repo_clone /tmp/a10 && cd /tmp/a10 && rm -rf data extract && python3 run.py all >/dev/null && h1=$(find data -name '*.json' -exec sha256sum {} + | sort | sha256sum) && python3 run.py all >/dev/null && h2=$(find data -name '*.json' -exec sha256sum {} + | sort | sha256sum) && echo \"$h1\" && echo \"$h2\"  # 이 대조를 수행하는 테스트가 없다",
+   "severity": "low",
+   "dim": "coverage"
+  }
+ ],
+ "stats": {
+  "raw": 55,
+  "unique": 55,
+  "confirmed": 9,
+  "refuted": 0,
+  "unverified": 46
+ }
+}

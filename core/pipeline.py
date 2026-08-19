@@ -139,7 +139,29 @@ def finalize(layers=None):
         g = open_graph(layer)
         g.build_begin()
         Builder(g, load_config(layer), None, None, layer).link_mirrors()
+        _evidence_lost(g)
         g.build_end()
+
+
+def _evidence_lost(g):
+    """근거가 0이 된 auto 노드·엣지 (카드 L9) — **삭제가 아니라 표시**다.
+
+    회수(재인입) 시점이 아니라 여기서 판정하는 이유는 mirrors와 같다(D-65):
+    회수 직후는 아직 재적재 전이라 "근거 0"이 참이 아니다. 재적재가 근거를 되돌리면
+    이 조건은 성립하지 않아야 하고, 그러려면 **빌드가 끝난 뒤**에 봐야 한다.
+    """
+    store.drop("evidence_lost",
+               lambda p: p.get("node_id") in g.nodes or p.get("src") in g.nodes)
+    for n in g.nodes.values():
+        if n.get("status") == "auto" and not n.get("provenance"):
+            store.enqueue("evidence_lost",
+                          f"근거가 모두 회수됐다 — '{n['canonical']}'",
+                          None, {"node_id": n["id"], "canonical": n["canonical"]})
+    for e in g.edges:
+        if e.get("status") == "auto" and not e.get("provenance"):
+            store.enqueue("evidence_lost",
+                          f"근거가 모두 회수된 엣지 — {e['rel']}",
+                          None, {"src": e["src"], "rel": e["rel"], "dst": e["dst"]})
 
 
 def _endpoint(name, resolved, ref, ref_g, external, graph, doc_id):
@@ -168,7 +190,7 @@ def _describe(doc_id, rec, field, node_id):
                 and c.get("source_locator") == rec.get("source_locator"):
             if {"chunk_id": cid, "node_id": node_id} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": node_id})
-                c["linked"] = True
+            c["linked"] = True          # 관측 상태 — 이미 걸려 있어도 참이다(A4)
             break
     store.write(store.CHUNKS, ch)
 
@@ -197,7 +219,7 @@ def build_prose(env, cfg, graph, candidates):
                                    anchor_polarity=anchor_pol)
             if {"chunk_id": cid, "node_id": nid} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": nid})
-                ch["chunks"][cid]["linked"] = True
+            ch["chunks"][cid]["linked"] = True          # 상동 — 재인입이 거짓으로 되돌리지 않는다
 
         # ③ 경로 — 추출 후보. 게이트의 실질 관문이다.
         for r in cand.get("relations", []):
