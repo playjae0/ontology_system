@@ -378,6 +378,15 @@ def run_document(path_or_env, layer=None):
     return res, metrics, extracted
 
 
+def skeleton_closed_list(layer):
+    """골격 닫힌 목록 — **스냅샷 파일이 정본**이다(D-11). 파서와 같은 실물을 본다.
+
+    파일이 없으면(부트스트랩 전) 빈 목록이다 — 그래프로 몰래 폴백하지 않는다.
+    폴백하면 "둘이 같은 실물을 본다"가 조용히 깨지고 그것이 곧 이 파일의 존재 이유다.
+    """
+    return (store.read(store.SKELETON_LIST, {}).get(layer) or {}).get("nodes", [])
+
+
 def _vocab(cfg):
     """USE_MOCK 문형 폴백이 쓸 표면형→카테고리 표 — **골격 닫힌 목록 스냅샷만** 읽는다.
 
@@ -388,15 +397,14 @@ def _vocab(cfg):
     재현성 3입력(adapter/prompt/config_version)에 기록되지 않는 네 번째 입력이기도 하다.
 
     골격(`status="seed"`)은 부트스트랩이 인입 **전에** 세우고 인입이 바꾸지 않으므로
-    순서 무관이다. 좌표 닫힌 목록 = 골격 전 노드이며(A11-6 · D-45), 이것이 D-11이 말한
-    "골격 닫힌 목록 스냅샷"의 실질이다 — 별도 파일을 만들지 않고 그래프에서 읽는다.
+    순서 무관이다. 좌표 닫힌 목록 = 골격 전 노드이며(A11-6 · D-45), 그 실물이
+    **`data/skeleton_closed_list.json` 스냅샷**이다(D-11 확정 — P1이 실물화).
+    G6.5에서는 파일이 없어 그래프의 seed 노드를 직독했는데, 그러면 파서와 에이전트가
+    **다른 실물**을 보게 된다 — 파서는 이 레포의 그래프를 읽지 않기 때문이다(D-9).
     """
     from .ids import norm
     v = {}
-    for n in open_graph(cfg["layer"]).nodes.values():
-        if n.get("status") != "seed":
-            continue
-        v[norm(n["canonical"])] = n["category"]
-        for a in n["aliases"]:
-            v[norm(a["surface"])] = n["category"]
+    for n in skeleton_closed_list(cfg["layer"]):
+        for s in [n["canonical"]] + list(n.get("aliases") or []):
+            v[norm(s)] = n["category"]
     return {k: c for k, c in v.items() if k and c}

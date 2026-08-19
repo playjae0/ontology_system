@@ -38,6 +38,9 @@ ADAPTER = {
             "대응계획": "I",
             "context": "J",                 # 적용모델 → 구조 필드(맥락)
         },
+        # `context`는 **임의 딕셔너리**가 계약이다(CH2 2.2) — 스칼라로 내면 인입이
+        # `missing_field`로 표면화하고 그 필드를 버린다(D-60 실측). 키는 관찰 상수다.
+        "context_key": "model",
         "ditto_mark": "〃",                 # 상동 기호 → 같은 열 직전 실값
         "multi_value_seps": [",", "/", "\n"],   # D-12 기본 닫힌 목록
         "multi_value_fields": ["설비", "관리항목"],
@@ -106,9 +109,16 @@ def extract(raw) -> list[dict]:
                 if v != "":
                     prev[col] = v
                 rec[field] = v
+            if rec.get("context") and exp.get("context_key"):
+                rec["context"] = {exp["context_key"]: rec["context"]}
+            elif "context" in rec and not rec["context"]:
+                del rec["context"]          # 빈 맥락은 봉투 값을 그대로 상속한다
 
-            if all(rec.get(c, "") == "" for c in exp["multi_value_fields"]):
-                continue                    # 빈 행
+            # **빈 행은 전 열이 빈 행뿐이다.** 일부만 비었으면 그것은 여백이 아니라
+            # 결측이고, 빈 행으로 삼켜 버리면 그 행이 조용히 사라진다(C14 위반 —
+            # 한 칸씩 밀린 행이 정확히 그 모양이다: CP03_bad 15행).
+            if all(v == "" for v in rec.values()):
+                continue
             miss = [c for c in exp["required"] if rec.get(c, "") == ""]
             if miss:
                 raise ValueError(f"자기완결 실패 row {row}: 필수 결측 {miss} (C14)")
