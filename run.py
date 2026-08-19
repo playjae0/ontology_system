@@ -10,7 +10,9 @@
   python run.py all                bootstrap + mock/parsed 전량 인입
   python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
   python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
-  python run.py gauges             계기판 7·8 출력
+  python run.py gauges             계기판 8종 (cli/platform.py로 위임)
+  python run.py platform <명령>    플랫폼 창구 4′ (cli/platform.py로 위임)
+  python run.py scan <문서> ...    n9 지문 스캔 (cli/scan.py로 위임)
 """
 import json
 import sys
@@ -75,15 +77,19 @@ def cmd_ops(args):
 
 
 def cmd_gauges():
-    for layer in discover():
-        g = open_graph(layer)
-        g.build_begin()
-        m = g.build_end()
-        flag = "  ⚠ 알람선 초과 → R10 판정 개시" if (
-            m["gauge7_over_alarm"] or m["gauge8_over_alarm"]) else ""
-        print(f"{layer}: 계기판7 {m['gauge7_graph_mb']}MB · "
-              f"계기판8 {m['gauge8_build_seconds']}s · "
-              f"노드 {m['nodes']} 엣지 {m['edges']}{flag}")
+    """계기판은 8종 전부가 현행이다(CH5 5.5) — 별도 호출로 계산한다(4′)."""
+    from cli.platform import cmd_gauges as full
+    full()
+
+
+def cmd_platform(args):
+    from cli.platform import main
+    return main(args)
+
+
+def cmd_scan(args):
+    from cli.scan import main
+    return main(args)
 
 
 if __name__ == "__main__":
@@ -93,4 +99,6 @@ if __name__ == "__main__":
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),
      "ops": lambda: cmd_ops(sys.argv[2:]),
-     "gauges": lambda: cmd_gauges()}[cmd]()
+     "gauges": lambda: cmd_gauges(),
+     "platform": lambda: cmd_platform(sys.argv[2:]),
+     "scan": lambda: cmd_scan(sys.argv[2:])}[cmd]()
