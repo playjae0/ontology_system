@@ -62,6 +62,36 @@ def link(question, dictionary, graphs):
     return hits
 
 
+def transit(graph, nid, cfg):
+    """툼스톤·폐기 전이 — 옛 id에 닿으면 **현재 노드로 옮겨** 답한다 (R3-⑶ · L5·L8).
+
+    돌려주는 것은 `(현재 node_id, 표기 or None, 노출 여부)`다.
+
+      · `merged_into` 체인 → 생존자로 전이(표기 없음 — 병합은 같은 것의 통합이다)
+      · `obsolete` + `replaced_by` → 대체 노드로 전이 + **"(대체됨: 구명칭)" 표기**
+      · `obsolete` + `replaced_by` 없음 → 일반 결과에서 **제외**하되, 정확 이름으로
+        직접 지명한 질의에는 **"폐기됨"을 명시**해 답한다 — 침묵 소실 금지(D-30 계보)
+
+    체인 추적의 순환·깊이 방어는 `core.ops.resolve_chain`이 소유한다(L8 읽기 측).
+    """
+    from .ops import STATUS_MERGED, STATUS_OBSOLETE, resolve_chain
+    tpl = cfg.get("fact_templates") or {}
+    n = graph.get(nid)
+    if n is None:
+        return nid, None, True
+    if n.get("status") == STATUS_MERGED:
+        return resolve_chain(graph, nid, STATUS_MERGED), None, True
+    if n.get("status") != STATUS_OBSOLETE:
+        return nid, None, True
+    if n.get("replaced_by"):
+        tgt = resolve_chain(graph, nid, "replaced_by")
+        note = tpl.get("node:replaced", "(대체됨: {old})").format(
+            old=n["canonical"], new=(graph.get(tgt) or {}).get("canonical", ""))
+        return tgt, note, True
+    return nid, tpl.get("node:obsolete", "{node}는 폐기된 항목이다").format(
+        node=n["canonical"]), False
+
+
 def log_miss(question):
     """링킹 미스는 버리지 않고 쌓는다 — 하이브리드 서치 도입 판정의 데이터다(5.4)."""
     store.append_line(store.LINK_MISS, question)

@@ -54,7 +54,9 @@
     "affects": "{src}는 {dst}(으)로 이어질 수 있다",
     "occurs_in": "{src}는 {dst} 공정에서 발생한다",
     "controlled_by": "{src}는 {dst}(으)로 관리한다",
-    "attr:severity": "{node}의 심각도: {value} (출처: {prov})"
+    "attr:severity": "{node}의 심각도: {value} (출처: {prov})",
+    "node:replaced": "(대체됨: {old} → {new})",
+    "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
   },
   "prompts": {
     "extract": "(명세 §5.4-1 규칙 — 정의문 3종 삽입, 주제만, 목록 밖 버림, 애매하면 제외). 훅 활성 — QPPT01 품질층 추출 경로(증분0 §6-6).",

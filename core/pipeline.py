@@ -118,9 +118,28 @@ def build_table(env, cfg, schema, graph):
                                  gate.PATH_SCHEMA, [prov], env["doc_id"],
                                  dst_graph=dg)
 
-    b.link_mirrors()
     b.flush()
     return b
+
+
+def finalize(layers=None):
+    """빌드 말미 패스 — **전역 재평가가 필요한 자동 규칙**은 문서 빌드가 아니라 여기서 돈다.
+
+    문서 빌드 안에서 돌리면 **뒤에 인입되는 문서가 만드는 노드를 보지 못한다** — mirrors
+    재평가가 한 박자 늦어 큐가 1회차 3건 → 2회차 4건으로 수렴했다(20회차 후속 실측).
+    노드에 짝 키를 적어 두는 것(`mirror_scope`·`mirror_name`)은 그대로 층 빌드가 하고,
+    **재평가와 큐 갱신만** 이쪽으로 옮긴다 — 자동 규칙 자체를 옮기는 것이 아니다.
+
+    큐 항목의 `doc_id`는 `None`이다. 이 조건은 **어느 한 문서의 것이 아니라 그래프 전체의
+    상태**이기 때문이다 — 특정 문서에 귀속시키면 그 문서를 다시 넣을 때만 갱신되는
+    지금의 문제로 되돌아간다.
+    """
+    from router import discover
+    for layer in (layers or discover()):
+        g = open_graph(layer)
+        g.build_begin()
+        Builder(g, load_config(layer), None, None, layer).link_mirrors()
+        g.build_end()
 
 
 def _endpoint(name, resolved, ref, ref_g, external, graph, doc_id):

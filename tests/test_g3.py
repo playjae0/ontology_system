@@ -22,7 +22,7 @@ from core import store                                   # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.build import Builder                           # noqa: E402
 from core.extract import EXTRACT_DIR                     # noqa: E402
-from core.pipeline import run_document                   # noqa: E402
+from core.pipeline import finalize, run_document                   # noqa: E402
 
 allok = True
 
@@ -50,6 +50,7 @@ def full_run():
     for d in DOCS:
         _, _, extracted = run_document(load(f"{d}.json"))
         flags[d] = extracted
+    finalize()                          # 빌드 말미 패스 — 전역 재평가는 여기서 돈다
     return flags
 
 

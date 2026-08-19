@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core import query as Q, store                      # noqa: E402
+from core.ids import norm                               # noqa: E402
 from core.bootstrap import load_config, open_graph      # noqa: E402
 from router import discover                             # noqa: E402
 
@@ -42,9 +43,26 @@ def answer(question):
     hits = Q.link(question, dictionary, graphs)
 
     res = {"question": question, "linked": [], "facts": [], "chunks": [],
-           "path": Q.PATH_GENERAL, "note": None, "truncated": 0}
+           "path": Q.PATH_GENERAL, "note": None, "truncated": 0, "transit": []}
+    # 전이 — 옛 id에 닿은 링킹은 현재 노드로 옮긴다. 직접 지명한 폐기 노드는
+    # 결과에서 빼되 상태를 밝힌다(R3-⑶ — 조용히 사라지지 않는다).
+    kept, notes = [], []
+    for h in hits:
+        g = graphs[h["layer"]]
+        nid, note, visible = Q.transit(g, h["node_id"], configs[h["layer"]])
+        if note:
+            notes.append(note)
+        named = norm(h["surface"]) == norm((g.get(h["node_id"]) or {}).get("canonical", ""))
+        if visible or named:
+            kept.append(dict(h, node_id=nid, visible=visible))
+    hits = [h for h in kept if h["visible"]]
+    res["transit"] = notes
     res["linked"] = [f"{h['layer']}:{graphs[h['layer']].get(h['node_id'])['canonical']}"
-                     for h in hits]
+                     for h in kept]
+    if notes and not hits:
+        res["note"] = " · ".join(notes)
+        res["path"] = Q.PATH_GENERAL
+        return res
 
     # 의도는 링킹된 층의 config가 판정한다. 링킹이 없으면 물어볼 층도 없다.
     layers_hit = {h["layer"] for h in hits}
@@ -132,6 +150,8 @@ def render(res):
         lines.append(f"   [링킹] {', '.join(res['linked'])}")
     if res["note"]:
         lines.append(f"   {res['note']}")
+    for t in res.get("transit", []):
+        lines.append(f"   [전이] {t}")
     for f in res["facts"]:
         lines.append(f"   [그래프 사실] {f}")
     for c in res["chunks"]:
