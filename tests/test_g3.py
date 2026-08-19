@@ -147,9 +147,17 @@ show("orphan_anchor는 '목록 밖 이름'만 남음 (레이저노칭·셀 부�
      str(sorted({x["payload"]["surface"] for x in q("orphan_anchor")})))
 
 # ★ M2 — 부착 정합 (A11-9)
+# 판정 문면은 **이중 표기 방지**다 — 한 canonical에 축값이 두 번 실리지 않아야 한다.
+# (구판은 "::cathode 용접"을 프록시로 썼으나, 좌표가 **개념**인 레코드는 주소에 극성이
+#  없어 F1 결합이 한 번 일어나는 것이 정상이다 — G6.5 D1 수리로 드러난 정상 형태다.)
+def _axis_twice(c):
+    return any(c.count(v) > 1 for v in ("cathode", "anode"))
+
+
 show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
      "탭용접::cathode::용접 가압력" in canon(P)
-     and not any("cathode::cathode" in c or "::cathode 용접" in c for c in canon(P)))
+     and not any(_axis_twice(c) for c in canon(P)),
+     str([c for c in canon(P) if _axis_twice(c)]))
 show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
      next(n for n in P.nodes.values()
           if n["canonical"] == "탭용접::cathode::용접 가압력")["polarity"] == "cathode")

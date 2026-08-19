@@ -127,10 +127,16 @@ def build_table(env, cfg, schema, graph):
                 if nid is not None and ng is not graph:
                     external[f] = ng
             elif role == "entity":
-                resolved[f] = b.resolve_entity(
+                # **스키마가 층을 선언하면 그 층에 해소한다**(D1). 선언을 안 읽으면
+                # 걸침 개체가 자기 층에 복제되어 CP↔PFMEA 병합이 조용히 깨진다
+                # (실측: 관리항목 11종이 품질층에 중복 생성).
+                eb = b.for_layer(spec.get("target_layer") or cfg["layer"])
+                resolved[f] = eb.resolve_entity(
                     rec[f], spec["category"], prov,
                     electrode_type=et, parent_canonical=parent,
                     anchor_polarity=anchor_pol)
+                if eb is not b:
+                    external[f] = eb.g
             elif role == "attribute":
                 attrs.append((f, spec))
             elif role == "content":
@@ -141,9 +147,10 @@ def build_table(env, cfg, schema, graph):
             if tgt is None:
                 continue
             tg = external.get(spec.get("attach_to_field"), graph)
-            Builder(tg, cfg, schema, env["doc_id"], cfg["layer"]).put_attribute(
-                tgt, spec.get("attr_name", f), rec[f], ctx, prov,
-                bool(spec.get("contextual")))
+            # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
+            ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
+            ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], ctx, prov,
+                             bool(spec.get("contextual")))
         for f, spec in contents:                        # describes — 필드별 청크(D8)
             tgt = resolved.get(spec.get("attach_to_field"))
             if tgt is not None:
@@ -151,14 +158,14 @@ def build_table(env, cfg, schema, graph):
 
         # ② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다.
         for e in schema.get("edges", []):
-            src, _sg = _endpoint(e["from"], resolved, ref, ref_g, external, graph,
-                                 env["doc_id"])
+            src, sg = _endpoint(e["from"], resolved, ref, ref_g, external, graph,
+                                env["doc_id"])
             dst, dg = _endpoint(e["to"], resolved, ref, ref_g, external, graph,
                                 env["doc_id"])
-            if src and dst:
-                gate.commit_edge(graph, src, e["relation"], dst, cfg,
-                                 gate.PATH_SCHEMA, [prov], env["doc_id"],
-                                 dst_graph=dg)
+            # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
+            gate.commit_edge(graph, src, e["relation"], dst, cfg,
+                             gate.PATH_SCHEMA, [prov], env["doc_id"],
+                             src_graph=sg, dst_graph=dg)
 
     b.flush()
     return b
@@ -344,16 +351,20 @@ def run_document(path_or_env, layer=None):
     graph.build_begin()
 
     extracted = False
+    builder = None
     if kind == "table":
-        build_table(env, cfg, schema, graph)
+        builder = build_table(env, cfg, schema, graph)
     else:
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == env["doc_id"]}
         vocab = _vocab(cfg)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab)
-        build_prose(env, cfg, graph, ck["candidates"])
+        builder = build_prose(env, cfg, graph, ck["candidates"])
 
+    for other in builder.graphs():          # 걸침 층에 쓴 것도 저장된다 (D3)
+        if other is not graph:
+            other.save()
     metrics = graph.build_end()
     return res, metrics, extracted
 

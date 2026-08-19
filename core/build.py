@@ -33,6 +33,32 @@ class Builder:
         self.layer = layer
         self.dict = store.read(store.DICTIONARY, {})
         self.buffer: dict[str, str] = {}     # 문서 해소 버퍼 (2-pass Pass 1)
+        self.subs: dict[str, "Builder"] = {}  # 걸침 층별 하위 빌더 — 아래 for_layer
+
+    # ---------------------------------------------------------------- 걸침
+    def for_layer(self, layer):
+        """다른 층에 쓰는 하위 빌더. **층당 하나로 캐시한다.**
+
+        캐시가 없으면 레코드마다 `open_graph`가 새 인스턴스를 물어 와서 **앞 레코드가
+        쓴 것이 뒤 레코드에게 보이지 않고**, 어느 것도 저장되지 않는다(외부 그래프
+        증발 — R2-9 실측). 사전과 문서 버퍼는 **공유**한다: 장부는 하나이고(B4),
+        버퍼는 문서 하나의 것이지 층의 것이 아니다.
+        """
+        if layer == self.layer:
+            return self
+        if layer not in self.subs:
+            from .bootstrap import load_config, open_graph
+            sub = Builder(open_graph(layer), load_config(layer), self.schema,
+                          self.doc_id, layer)
+            sub.dict = self.dict
+            sub.buffer = self.buffer
+            sub.subs = self.subs
+            self.subs[layer] = sub
+        return self.subs[layer]
+
+    def graphs(self):
+        """이 빌드가 만진 그래프 전부 — 자기 층 + 걸침 층. 저장 대상이다."""
+        return [self.g] + [s.g for s in self.subs.values()]
 
     # ---------------------------------------------------------------- 사전
     def _register(self, surface, nid, prov):
@@ -53,11 +79,11 @@ class Builder:
         """카테고리를 선언한 층의 그래프. 같은 층이면 self.g를 그대로 쓴다."""
         if category in self.cfg.get("categories", {}):
             return self.g, self.layer
-        from .bootstrap import layer_of_category, open_graph
+        from .bootstrap import layer_of_category
         lay = layer_of_category(category)
         if lay is None or lay == self.layer:
             return self.g, self.layer
-        return open_graph(lay), lay
+        return self.for_layer(lay).g, lay
 
     def resolve_anchor(self, surface, category, prov):
         """골격 조회 전용 — anchor는 새로 만들지 않는다.

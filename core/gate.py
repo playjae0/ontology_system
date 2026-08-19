@@ -40,6 +40,7 @@ DIRECTION_CONFLICT = "direction_conflict"
 DIRECTION_UNVERIFIABLE = "direction_unverifiable"
 INVALID_PATTERN = "invalid_pattern"
 UNDECLARED = "undeclared_relation"
+UNRESOLVED_ENDPOINT = "unresolved_endpoint"     # 끝점 미해소 — 큐가 아니라 로그다(D-7)
 
 # 경로 이름 — ①(seed)은 여기 없다. 이 관문에 오지 않기 때문이다(위 설명).
 # 죽은 상수를 남겨 두면 다음 사람이 그것을 태워도 되는 신호로 읽는다.
@@ -90,15 +91,22 @@ def log_reject(rel, src_cat, dst_cat, verdict, path, doc_id):
 
 
 def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
-                evidence_chunk=None, dst_graph=None):
+                evidence_chunk=None, src_graph=None, dst_graph=None):
     """게이트를 통과시킨 뒤에만 엣지를 쓴다. 돌려주는 것은 분기 이름이다.
 
-    `dst_graph`는 **걸침 엣지**용이다 — 도착 노드가 다른 층에 살아도 엣지 자체는
-    출발 층의 그래프에 저장한다(구현문서 §2.2: src=품질층 노드, dst=공정층 노드 id).
+    `src_graph`·`dst_graph`는 **걸침 엣지**용이다 — 끝점이 다른 층에 살아도 엣지 자체는
+    출발 층의 그래프에 저장한다(구현문서 §2.2). **양쪽을 같게 받는다**: `to`만 받던
+    구판은 `from`이 걸침일 때 판정 전에 무음으로 사라졌다(D-61 수리의 남은 절반).
+
+    끝점이 해소되지 않았으면 **그것도 기록한다** — 거부는 버리는 것이 아니라 기록하는
+    것이고(D-7), 무기록 소멸은 아무도 모른다.
     """
-    s, d = graph.get(src), (dst_graph or graph).get(dst)
+    s = (src_graph or graph).get(src) if src else None
+    d = (dst_graph or graph).get(dst) if dst else None
     if not s or not d:
-        return None
+        log_reject(rel, "?" if not s else s["category"], "?" if not d else d["category"],
+                   UNRESOLVED_ENDPOINT, path, doc_id)
+        return UNRESOLVED_ENDPOINT
     verdict, _ = judge(s["category"], rel, d["category"], cfg, path)
 
     if verdict == COMMIT:
