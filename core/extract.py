@@ -54,20 +54,23 @@ def invalidate(doc_id):
 # ---------------------------------------------------------------- USE_MOCK
 # 증분0 §5-1: 힌트 파일이 있으면 그 내용을 후보로 반환(결정적 — 게이트·구축 검증용).
 # 없으면 문형 규칙 폴백. mock 텍스트는 이 규칙이 잡는 통제 문형으로 창작한다(D-10).
-_PATTERNS = [
-    (re.compile(r"(.+?)로 인해 (.+?)(?:가|이) 발생"), "causes"),
-    (re.compile(r"(.+?)(?:는|은) (.+?)(?:를|을) 유발"), "causes"),
-    (re.compile(r"(.+?)(?:는|은) (.+?)(?:으로|로) 이어진다"), "affects"),
-    (re.compile(r"(.+?)(?:이|가) (.+?)(?:으로|로) 이어진다"), "affects"),
-]
+#
+# **규칙 표는 층 config가 소유한다** — 관계 이름(`causes`·`affects`)은 층 어휘이고
+# 코드에 있으면 그 자체가 B1 위반이다(예외 3호가 그것이었다). 카드가 적어 둔 해소
+# 경로가 "문형 규칙의 config 이동"이고 여기가 그 자리다(n7 — parser 정비의 첫 자리).
+# 코드가 아는 것은 **정규식이 구문이라는 것**뿐이고 무엇을 뜻하는지는 데이터가 말한다.
+
+
+def _patterns(cfg):
+    return [(re.compile(p["pattern"]), p["rel"])
+            for p in (cfg.get("extract_patterns") or [])]
 
 
 def _mock_candidates(chunk_id, text, cfg, vocab):
     """문형 규칙 폴백. 카테고리는 config 정의문 예시·사전 매칭으로 정한다.
 
-    **USE_MOCK 한정이다.** `_PATTERNS`가 층 어휘(`causes`·`affects`)를 코드에 담는
-    한시 예외 3호로 등재됐고 그 경계가 "USE_MOCK"인데, 코드에는 경계가 없어
-    실LLM 경로에서도 이 규칙이 돌았다. 실물 경로는 미구현이므로 **명시적으로 실패**한다.
+    **USE_MOCK 한정이다.** 경계가 코드에 없어 실LLM 경로에서도 이 규칙이 돌았다
+    (G6.5 E3이 이 게이트를 세웠다). 실물 경로는 미구현이므로 **명시적으로 실패**한다.
     """
     if os.environ.get("USE_MOCK", "1") != "1":
         raise NotImplementedError(
@@ -78,7 +81,7 @@ def _mock_candidates(chunk_id, text, cfg, vocab):
     def cat_of(surface):
         return vocab.get(norm(surface))
 
-    for pat, rel in _PATTERNS:
+    for pat, rel in _patterns(cfg):
         m = pat.search(text)
         if not m:
             continue
