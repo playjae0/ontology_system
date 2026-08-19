@@ -9,6 +9,7 @@
   python run.py ingest <파일...>   계약 JSON 인입 (n2 → n1)
   python run.py all                bootstrap + mock/parsed 전량 인입
   python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
+  python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
   python run.py gauges             계기판 7·8 출력
 """
 import json
@@ -38,7 +39,8 @@ def cmd_bootstrap():
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
 
 
-def cmd_ingest(paths):
+def cmd_ingest(paths, finalize=True):
+    """`finalize`는 전 문서 인입 뒤 도는 빌드 말미 패스다 — 낱개 인입에서도 기본 수행한다."""
     for p in paths:
         r, m, extracted = run_document(_load(p))
         mark = "보류" if r.status == "held" else "인입"
@@ -46,6 +48,9 @@ def cmd_ingest(paths):
             "  [추출 실행]" if extracted else "  [추출 체크포인트 재사용]")
         print(f"[{mark}] {r.doc_id}: record {len(r.record_ids)} · "
               f"chunk {len(r.chunk_ids)}{tail}")
+    if finalize:
+        from core.pipeline import finalize as _fin
+        _fin()
 
 
 def cmd_all():
@@ -61,6 +66,12 @@ def cmd_query(args):
     """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다."""
     from cli.query import answer, render
     print(render(answer(" ".join(args))))
+
+
+def cmd_ops(args):
+    """I축 도구도 subprocess 진입점을 갖는다(§16.1) — 위임만 한다."""
+    from cli.ops import main
+    return main(args)
 
 
 def cmd_gauges():
@@ -81,4 +92,5 @@ if __name__ == "__main__":
      "ingest": lambda: cmd_ingest(sys.argv[2:]),
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),
+     "ops": lambda: cmd_ops(sys.argv[2:]),
      "gauges": lambda: cmd_gauges()}[cmd]()

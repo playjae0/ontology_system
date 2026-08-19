@@ -24,7 +24,7 @@ from core import query as Q                             # noqa: E402
 from core import store                                  # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
-from core.pipeline import run_document                  # noqa: E402
+from core.pipeline import finalize, run_document                  # noqa: E402
 
 allok = True
 
@@ -51,6 +51,7 @@ def full_run():
         bootstrap(lay, echo=False)
     for d in DOCS:
         run_document(load(f"{d}.json"))
+    finalize()                          # 빌드 말미 패스 — 전역 재평가는 여기서 돈다
 
 
 full_run()
@@ -165,6 +166,7 @@ before_n = len(P.nodes)
 before_prov = {n["canonical"]: sorted(n["provenance"]) for n in P.nodes.values()}
 for d in DOCS:
     run_document(load(f"{d}.json"))
+finalize()
 P2 = open_graph("process")
 show("재인입 후 노드 수 불변 (중복 0)", len(P2.nodes) == before_n,
      f"{before_n} → {len(P2.nodes)}")
@@ -178,6 +180,7 @@ show("사전 재매칭으로 provenance 복원 (잃은 출처 0)",
 q_after = store.read(store.QUEUE, [])
 for d in DOCS:
     run_document(load(f"{d}.json"))
+finalize()
 q_again = store.read(store.QUEUE, [])
 show("재인입이 큐를 증식시키지 않는다 (중복 제거 — 3.5 규약 6)",
      len(q_again) == len(q_after), f"{len(q_after)} → {len(q_again)}")

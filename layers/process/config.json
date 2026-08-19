@@ -72,7 +72,9 @@
     "attr:spec": "{node}의 규격: {value} (출처: {prov})",
     "precedes:derived": "({scope} 기준) {src} 다음 공정은 {dst}이다",
     "precedes:none": "{src}의 다음 공정은 골격에 선언되어 있지 않다 (순서 정보 없음)",
-    "attr:측정방법": "{node}의 측정방법: {value} (출처: {prov})"
+    "attr:측정방법": "{node}의 측정방법: {value} (출처: {prov})",
+    "node:replaced": "(대체됨: {old} → {new})",
+    "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
   },
   "_fact_note": "맥락형 attr(spec 등)은 context 그룹별 한 줄씩 렌더: '[model=M1] 규격: ...'. mirrors는 query_traverse 기본 미포함(비대칭 조회 시에만 명시적 확장 — HOOK).",
   "prompts": {
