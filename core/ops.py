@@ -19,6 +19,8 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from . import store
 from .graph import STATUS_DELETED, GraphStore
 from .ids import norm
@@ -74,6 +76,11 @@ def _sep(cfg):
     return (cfg.get("canonical_scope") or {}).get("sep", "::")
 
 
+def _now():
+    """연산 시점 — 로그 5요소의 하나다. 상수로 두면 그 자리가 **위조값**이 된다."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def log_op(op, actor, targets, reason, detail=None):
     """연산 로그 — **큐가 아니라 로그다**(D-7 계보). 처리 대상이 아니라 이력이다.
 
@@ -81,7 +88,7 @@ def log_op(op, actor, targets, reason, detail=None):
     행위자 없는 I축 연산은 거부한다 — 누가 그래프를 고쳤는지 모르면 로그가 로그가 아니다.
     """
     log = store.read(store.OPS_LOG, [])
-    log.append({"op": op, "actor": actor, "at": "2026-08-18T00:00:00",
+    log.append({"op": op, "actor": actor, "at": _now(),
                 "targets": list(targets), "reason": reason, "detail": detail or {}})
     store.write(store.OPS_LOG, log)
     return log[-1]
@@ -253,6 +260,47 @@ def _survivor(a, b, override=None):
     return (a, b) if a["id"] <= b["id"] else (b, a)
 
 
+def _merge_attrs(g, layer, keep, gone):
+    """흡수 노드의 attribute를 **인입 경로의 병합 규칙으로** 생존자에 합친다.
+
+    구판은 `setdefault` 한 줄이라 **이름이 같으면 흡수측 값을 통째로 버렸다** — 값도
+    provenance도 무기록 소실이라 "정보 손실 0" 계약이 정면으로 깨졌다. 자체 병합 로직을
+    새로 쓰지 않고 `Builder.put_attribute`를 그대로 부른다: 같은 이름은 context 그룹별로
+    합쳐지고, 같은 그룹의 다른 값은 `spec_conflict` 큐로 간다(3.7 I2 문면 그대로).
+    """
+    from .build import Builder
+    b = Builder(g, _cfg(layer), None, None, keep["layer"])
+    for name, val in (gone.get("attrs") or {}).items():
+        items = val if isinstance(val, list) else [
+            {"context": {}, "value": (val or {}).get("value"),
+             "provenance": (val or {}).get("provenance") or []}]
+        for it in items:
+            for prov in (it.get("provenance") or ["op:merge"]):
+                b.put_attribute(keep["id"], name, it.get("value"),
+                                it.get("context") or {}, prov, True)
+
+
+def _move_edges(g, gone_id, keep_id):
+    """엣지 이설 — **`add_edge` 경유**다. 치환만 하면 계약 둘이 동시에 깨진다.
+
+    ①`(src, rel, dst)` 유일성 — 같은 대상으로 각각 엣지를 갖던 두 노드를 합치면 물리
+    중복이 생기고 provenance가 갈라진다(합집합이어야 한다). ②**자기참조** — 서로를
+    가리키던 두 노드가 합쳐지면 자기 루프가 되는데, 그것은 참 관계가 아니라 병합의
+    부산물이다(실측: 질의가 "X는 X의 원인"을 사실로 출력). 이설하지 않고 기록만 남긴다.
+    """
+    moved = [e for e in g.edges if gone_id in (e["src"], e["dst"])]
+    for e in moved:
+        g.edges.remove(e)
+    for e in moved:
+        src = keep_id if e["src"] == gone_id else e["src"]
+        dst = keep_id if e["dst"] == gone_id else e["dst"]
+        if src == dst:
+            store.append_defect(
+                f"merge: 자기참조가 되는 엣지는 이설하지 않는다 — {e['rel']} @ {keep_id}")
+            continue
+        g.add_edge(src, e["rel"], dst, e["status"], e["provenance"])
+
+
 def merge(layer, nid, into, actor, canonical=None, override=None,
           reason="", dry_run=False):
     """I2 — 두 노드를 하나로. **정보 손실 0**이 계약이다.
@@ -291,13 +339,8 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         if al["surface"] not in seen and al["surface"] != keep["canonical"]:
             keep["aliases"].append(al)                       # 선택 안 된 표기도 남는다
             seen.add(al["surface"])
-    for name, val in (gone.get("attrs") or {}).items():
-        keep.setdefault("attrs", {}).setdefault(name, val)
-    for e in g.edges:                                        # 엣지 이설
-        if e["src"] == gone["id"]:
-            e["src"] = keep["id"]
-        if e["dst"] == gone["id"]:
-            e["dst"] = keep["id"]
+    _merge_attrs(g, layer, keep, gone)
+    _move_edges(g, gone["id"], keep["id"])                   # 엣지 이설
     if canonical and canonical != keep["canonical"]:         # 사람 확정
         if not any(a2["surface"] == keep["canonical"] for a2 in keep["aliases"]):
             keep["aliases"].append({"surface": keep["canonical"],
@@ -307,7 +350,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         STATUS_RANK.get(gone["status"], 0) else gone["status"]
 
     g.nodes[gone["id"]] = {"id": gone["id"], STATUS_MERGED: keep["id"],
-                           "status": STATUS_MERGED, "at": "2026-08-18T00:00:00",
+                           "status": STATUS_MERGED, "at": _now(),
                            "canonical": gone["canonical"], "category": gone["category"],
                            "layer": gone["layer"], "attrs": {}, "aliases": [],
                            "provenance": []}
@@ -391,10 +434,13 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     for i in own_edges:
         g.edges[i]["status"] = STATUS_DELETED
     g.nodes[nid] = {"id": nid, STATUS_MERGED: new_ids[0], "status": STATUS_MERGED,
-                    "at": "2026-08-18T00:00:00", "canonical": node["canonical"],
+                    "at": _now(), "canonical": node["canonical"],
                     "category": node["category"], "layer": node["layer"],
                     "attrs": {}, "aliases": [], "provenance": []}
-    _dict_redirect(dictionary, nid, new_ids[0])
+    # 배분표가 각 표기를 자기 타깃에 이미 등재했다 — 여기서는 **옛 id만 걷는다.**
+    # 병합용 리다이렉트를 그대로 쓰면 다른 타깃에 배분된 표기까지 첫 산출물을 가리켜
+    # 한 표기가 두 노드를 동시에 가리킨다(사전 오염 — 조용한 유실 금지의 반대편).
+    _dict_redirect(dictionary, nid, None)
     store.write(store.DICTIONARY, dictionary)
     g.save()
     log_op("I3:split", actor, [nid] + new_ids, reason, {"targets": new_ids})
@@ -422,7 +468,7 @@ def obsolete(layer, nid, actor, replaced_by=None, reason="", dry_run=False):
         return pv
     node["status"] = STATUS_OBSOLETE
     node["replaced_by"] = replaced_by
-    node["obsoleted_at"] = "2026-08-18T00:00:00"
+    node["obsoleted_at"] = _now()
     node["obsolete_reason"] = reason
     g.save()
     log_op("I4:obsolete", actor, [nid], reason, {"replaced_by": replaced_by})

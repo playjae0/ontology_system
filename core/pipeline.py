@@ -14,10 +14,13 @@ from . import extract as extract_mod
 from . import gate, store
 from .build import Builder
 from .bootstrap import load_config, open_graph
-from .ingest import ingest, load_schema
+from .ingest import IngestResult, ingest, load_schema
 
 STRUCTURAL = {"process_group", "process_ref", "process_no", "electrode_type",
               "source_locator", "section", "context"}
+
+# 봉투 `payload_kind`의 **닫힌 2값**(CH2 2.2). 밖의 값은 폴백 대상이 아니라 계약 위반이다.
+PAYLOAD_KINDS = ("table", "prose")
 
 # 공정좌표 anchor의 목표 카테고리 — 공용 블록(schemas/blocks.json)이 소유한다.
 COORD_CATEGORY = json.loads(
@@ -27,6 +30,27 @@ COORD_CATEGORY = json.loads(
 
 def _prov(rec):
     return rec.get("source_locator")
+
+
+def _check_fields(rec, fields, prov, doc_id):
+    """③ 필드 검증 (CH2 2.8) — 계약 위반은 조용히 통과하지 않는다.
+
+    스키마 밖 필드는 **값을 동봉해** `unknown_field` 큐로 간다(레코드는 어디에도
+    저장되지 않으므로, 여기서 안 실으면 그 값은 영구 소실이다 — 카드 G5).
+    `optional` 미선언 필드의 부재는 `missing_field` 큐다. 둘 다 닫힌 20종 안이고
+    **문서를 죽이지 않는다** — 문서 단위 실패는 파서 측 계약이다(C14).
+    """
+    for f, v in rec.items():
+        if f in fields or f in STRUCTURAL:
+            continue
+        store.enqueue("unknown_field", f"스키마에 없는 필드 '{f}'", doc_id,
+                      {"field": f, "value": v, "provenance": prov})
+    for f, spec in fields.items():
+        if spec.get("optional") or f in STRUCTURAL:
+            continue
+        if rec.get(f) in (None, ""):
+            store.enqueue("missing_field", f"필수 필드 '{f}' 부재", doc_id,
+                          {"field": f, "provenance": prov})
 
 
 def _context(holder, prov, doc_id):
@@ -47,6 +71,22 @@ def _context(holder, prov, doc_id):
     return {}
 
 
+def _scalar(value, field, prov, doc_id):
+    """role 핸들러는 **단일 값만 본다**는 전제를 코드가 방어한다 (카드 D6).
+
+    복수값 전개는 파서 몫이지만(normalizer), 계약이 핸들러 측 방어를 따로 요구한다 —
+    리스트가 그대로 오면 `norm()`의 `str()` 강제 변환과 포함 규칙을 타고 **기존 노드에
+    조용히 흡수되어 사전을 오염시킨다**(실측: `dictionary`에 `"['노칭 프레스', …]"` 키).
+    D-60의 `context` 방어와 같은 계보다 — 죽지 않고 그 필드만 버린 뒤 큐로 드러낸다.
+    """
+    if isinstance(value, (str, int, float)):
+        return True
+    store.enqueue("missing_field",
+                  f"'{field}'가 단일 값이 아니다 — {type(value).__name__} (카드 D6)",
+                  doc_id, {"field": field, "value": value, "provenance": prov})
+    return False
+
+
 # ---------------------------------------------------------------- 정형 (1c′)
 def build_table(env, cfg, schema, graph):
     b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
@@ -55,6 +95,7 @@ def build_table(env, cfg, schema, graph):
 
     for rec in env.get("records", []):
         prov = _prov(rec)
+        _check_fields(rec, fields, prov, env["doc_id"])
         # ③ 좌표: 부착은 process_ref 하나. process_group은 조상 대조만.
         ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov)
         b.check_coord(rec.get("process_group"), ref, prov, ref_g)
@@ -72,12 +113,13 @@ def build_table(env, cfg, schema, graph):
             if f not in rec or rec[f] in (None, ""):
                 continue
             role = spec.get("role")
+            if role in ("entity", "attribute", "anchor") and \
+                    not _scalar(rec[f], f, prov, env["doc_id"]):
+                continue
             if role not in ("anchor", "entity", "attribute", "content", "meta"):
                 # D-30 — 알 수 없는 role에 KeyError로 죽지 않는다.
-                store.append_defect(
+                store.append_defect(                    # 큐가 아니라 로그다 (D-30)
                     f"{env['doc_id']}: invalid_role '{role}' @ 필드 '{f}'")
-                store.enqueue("invalid_role", f"스키마에 없는 role '{role}'",
-                              env["doc_id"], {"field": f, "role": role})
                 continue
             if role == "anchor":
                 nid, ng = b.resolve_anchor(rec[f], spec["target_category"], prov)
@@ -85,10 +127,16 @@ def build_table(env, cfg, schema, graph):
                 if nid is not None and ng is not graph:
                     external[f] = ng
             elif role == "entity":
-                resolved[f] = b.resolve_entity(
+                # **스키마가 층을 선언하면 그 층에 해소한다**(D1). 선언을 안 읽으면
+                # 걸침 개체가 자기 층에 복제되어 CP↔PFMEA 병합이 조용히 깨진다
+                # (실측: 관리항목 11종이 품질층에 중복 생성).
+                eb = b.for_layer(spec.get("target_layer") or cfg["layer"])
+                resolved[f] = eb.resolve_entity(
                     rec[f], spec["category"], prov,
                     electrode_type=et, parent_canonical=parent,
                     anchor_polarity=anchor_pol)
+                if eb is not b:
+                    external[f] = eb.g
             elif role == "attribute":
                 attrs.append((f, spec))
             elif role == "content":
@@ -99,9 +147,10 @@ def build_table(env, cfg, schema, graph):
             if tgt is None:
                 continue
             tg = external.get(spec.get("attach_to_field"), graph)
-            Builder(tg, cfg, schema, env["doc_id"], cfg["layer"]).put_attribute(
-                tgt, spec.get("attr_name", f), rec[f], ctx, prov,
-                bool(spec.get("contextual")))
+            # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
+            ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
+            ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], ctx, prov,
+                             bool(spec.get("contextual")))
         for f, spec in contents:                        # describes — 필드별 청크(D8)
             tgt = resolved.get(spec.get("attach_to_field"))
             if tgt is not None:
@@ -109,14 +158,14 @@ def build_table(env, cfg, schema, graph):
 
         # ② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다.
         for e in schema.get("edges", []):
-            src, _sg = _endpoint(e["from"], resolved, ref, ref_g, external, graph,
-                                 env["doc_id"])
+            src, sg = _endpoint(e["from"], resolved, ref, ref_g, external, graph,
+                                env["doc_id"])
             dst, dg = _endpoint(e["to"], resolved, ref, ref_g, external, graph,
                                 env["doc_id"])
-            if src and dst:
-                gate.commit_edge(graph, src, e["relation"], dst, cfg,
-                                 gate.PATH_SCHEMA, [prov], env["doc_id"],
-                                 dst_graph=dg)
+            # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
+            gate.commit_edge(graph, src, e["relation"], dst, cfg,
+                             gate.PATH_SCHEMA, [prov], env["doc_id"],
+                             src_graph=sg, dst_graph=dg)
 
     b.flush()
     return b
@@ -139,7 +188,29 @@ def finalize(layers=None):
         g = open_graph(layer)
         g.build_begin()
         Builder(g, load_config(layer), None, None, layer).link_mirrors()
+        _evidence_lost(g)
         g.build_end()
+
+
+def _evidence_lost(g):
+    """근거가 0이 된 auto 노드·엣지 (카드 L9) — **삭제가 아니라 표시**다.
+
+    회수(재인입) 시점이 아니라 여기서 판정하는 이유는 mirrors와 같다(D-65):
+    회수 직후는 아직 재적재 전이라 "근거 0"이 참이 아니다. 재적재가 근거를 되돌리면
+    이 조건은 성립하지 않아야 하고, 그러려면 **빌드가 끝난 뒤**에 봐야 한다.
+    """
+    store.drop("evidence_lost",
+               lambda p: p.get("node_id") in g.nodes or p.get("src") in g.nodes)
+    for n in g.nodes.values():
+        if n.get("status") == "auto" and not n.get("provenance"):
+            store.enqueue("evidence_lost",
+                          f"근거가 모두 회수됐다 — '{n['canonical']}'",
+                          None, {"node_id": n["id"], "canonical": n["canonical"]})
+    for e in g.edges:
+        if e.get("status") == "auto" and not e.get("provenance"):
+            store.enqueue("evidence_lost",
+                          f"근거가 모두 회수된 엣지 — {e['rel']}",
+                          None, {"src": e["src"], "rel": e["rel"], "dst": e["dst"]})
 
 
 def _endpoint(name, resolved, ref, ref_g, external, graph, doc_id):
@@ -168,7 +239,7 @@ def _describe(doc_id, rec, field, node_id):
                 and c.get("source_locator") == rec.get("source_locator"):
             if {"chunk_id": cid, "node_id": node_id} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": node_id})
-                c["linked"] = True
+            c["linked"] = True          # 관측 상태 — 이미 걸려 있어도 참이다(A4)
             break
     store.write(store.CHUNKS, ch)
 
@@ -197,7 +268,7 @@ def build_prose(env, cfg, graph, candidates):
                                    anchor_polarity=anchor_pol)
             if {"chunk_id": cid, "node_id": nid} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": nid})
-                ch["chunks"][cid]["linked"] = True
+            ch["chunks"][cid]["linked"] = True          # 상동 — 재인입이 거짓으로 되돌리지 않는다
 
         # ③ 경로 — 추출 후보. 게이트의 실질 관문이다.
         for r in cand.get("relations", []):
@@ -206,12 +277,19 @@ def build_prose(env, cfg, graph, candidates):
             if s and d:
                 gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
                                  [prov], env["doc_id"], evidence_chunk=cid)
+            else:                               # 게이트에 닿기도 전의 소멸 — 기록한다
+                store.append_defect(
+                    f"{env['doc_id']}: 관계 후보 끝점 미해소 — "
+                    f"'{r['src']}' -{r['rel']}-> '{r['dst']}' @ {cid}")
 
         # attach — ③의 폴백. 해소 범위는 **문서 버퍼 전체 + 사전**이며 청크 경계가 없다.
         for a in cand.get("attach", []):
             child = b.buffer.get(_n(a["surface"]))
             target = b.buffer.get(_n(a["attach_to"])) or _dict_hit(b, a["attach_to"])
-            if child is None:
+            if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
+                store.append_defect(
+                    f"{env['doc_id']}: attach 자식 미해소 — "
+                    f"'{a['surface']}' → '{a['attach_to']}' @ {cid}")
                 continue
             if target is None:
                 store.enqueue("orphan_attach", f"부착 대상 미해소 — '{a['attach_to']}'",
@@ -245,11 +323,31 @@ def _pair_relation(cfg, src_cat, dst_cat):
 
 
 # ---------------------------------------------------------------- 진입점
+def _reject(doc_id, reason, payload):
+    """문서 단위 실패 (C14) — **위반 하나면 통째 미인입**이고 큐로 드러낸다.
+
+    그래프·청크·체크포인트에 아무것도 쓰지 않는다. 무음 폴백으로 밀어 넣으면
+    잘못된 자리에 적재된 지식을 나중에 아무도 찾아내지 못한다.
+    """
+    store.enqueue("parse_failure", reason, doc_id, payload)
+    res = IngestResult(doc_id)
+    res.status, res.reason = "held", reason
+    return res, None, False
+
+
 def run_document(path_or_env, layer=None):
     env = path_or_env
-    doc_type = env["doc_type"]
+    doc_id, doc_type = env["doc_id"], env["doc_type"]
+
+    kind = env.get("payload_kind")
+    if kind not in PAYLOAD_KINDS:                        # 닫힌 2값 (B2)
+        return _reject(doc_id, f"payload_kind가 닫힌 2값 밖이다 — {kind!r}",
+                       {"payload_kind": kind, "doc_type": doc_type})
     schema = load_schema(doc_type)
-    layer = layer or (schema or {}).get("layer") or "process"
+    if schema is None and layer is None:                 # 미등록 doc_type (B3)
+        return _reject(doc_id, f"미등록 doc_type '{doc_type}' — 구축 모드 대상이다",
+                       {"doc_type": doc_type, "source_path": env.get("source_path")})
+    layer = layer or schema["layer"]
     cfg = load_config(layer)
 
     res = ingest(env)                                    # ① doc_hash → ② 근거 축 id
@@ -260,29 +358,43 @@ def run_document(path_or_env, layer=None):
     graph.build_begin()
 
     extracted = False
-    if env.get("payload_kind") == "table":
-        build_table(env, cfg, schema, graph)
+    builder = None
+    if kind == "table":
+        builder = build_table(env, cfg, schema, graph)
     else:
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == env["doc_id"]}
         vocab = _vocab(cfg)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab)
-        build_prose(env, cfg, graph, ck["candidates"])
+        builder = build_prose(env, cfg, graph, ck["candidates"])
 
+    for other in builder.graphs():          # 걸침 층에 쓴 것도 저장된다 (D3)
+        if other is not graph:
+            other.save()
     metrics = graph.build_end()
     return res, metrics, extracted
 
 
 def _vocab(cfg):
-    """USE_MOCK 문형 폴백이 쓸 표면형→카테고리 표. 층 config에서만 나온다."""
-    v = {}
-    for nid, ids in store.read(store.DICTIONARY, {}).items():
-        v.setdefault(nid, None)
+    """USE_MOCK 문형 폴백이 쓸 표면형→카테고리 표 — **골격 닫힌 목록 스냅샷만** 읽는다.
+
+    구판은 사전과 **현재 그래프 상태**를 어휘로 넘겼다. 그러면 추출이 "지금까지 무엇이
+    인입됐나"에 의존해 **문서 인입 순서에 따라 그래프가 달라지고**(실측 정순 66 · 역순 65),
+    체크포인트가 그 우연을 영구히 동결한다 — 추출 계약 규약 1이 노드 id 참조를 금지한
+    이유가 정확히 이 메커니즘이고, 표면형 어휘라는 뒷문으로 같은 의존이 성립해 있었다.
+    재현성 3입력(adapter/prompt/config_version)에 기록되지 않는 네 번째 입력이기도 하다.
+
+    골격(`status="seed"`)은 부트스트랩이 인입 **전에** 세우고 인입이 바꾸지 않으므로
+    순서 무관이다. 좌표 닫힌 목록 = 골격 전 노드이며(A11-6 · D-45), 이것이 D-11이 말한
+    "골격 닫힌 목록 스냅샷"의 실질이다 — 별도 파일을 만들지 않고 그래프에서 읽는다.
+    """
     from .ids import norm
-    g = open_graph(cfg["layer"])
-    for n in g.nodes.values():
+    v = {}
+    for n in open_graph(cfg["layer"]).nodes.values():
+        if n.get("status") != "seed":
+            continue
         v[norm(n["canonical"])] = n["category"]
         for a in n["aliases"]:
             v[norm(a["surface"])] = n["category"]
-    return {k: c for k, c in v.items() if c}
+    return {k: c for k, c in v.items() if k and c}

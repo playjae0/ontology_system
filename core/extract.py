@@ -63,7 +63,16 @@ _PATTERNS = [
 
 
 def _mock_candidates(chunk_id, text, cfg, vocab):
-    """문형 규칙 폴백. 카테고리는 config 정의문 예시·사전 매칭으로 정한다."""
+    """문형 규칙 폴백. 카테고리는 config 정의문 예시·사전 매칭으로 정한다.
+
+    **USE_MOCK 한정이다.** `_PATTERNS`가 층 어휘(`causes`·`affects`)를 코드에 담는
+    한시 예외 3호로 등재됐고 그 경계가 "USE_MOCK"인데, 코드에는 경계가 없어
+    실LLM 경로에서도 이 규칙이 돌았다. 실물 경로는 미구현이므로 **명시적으로 실패**한다.
+    """
+    if os.environ.get("USE_MOCK", "1") != "1":
+        raise NotImplementedError(
+            "문형 폴백은 USE_MOCK 한정이다 (한시 예외 3호) — "
+            "실LLM 추출 경로는 미구현이다. HOOK: 여기에 추출 에이전트를 붙인다")
     entities, relations = [], []
 
     def cat_of(surface):

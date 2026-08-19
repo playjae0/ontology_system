@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from core import store                                    # noqa: E402
 from core.bootstrap import bootstrap, open_graph          # noqa: E402
-from core.pipeline import run_document                    # noqa: E402
+from core.pipeline import finalize, run_document          # noqa: E402
 from parser.reader import read                            # noqa: E402
 from router import discover                               # noqa: E402
 
@@ -55,6 +55,7 @@ def main(adapter_path, schema_path, doc_id, doc, questions):
 
     pieces = mod.extract(read(doc))
     res, metrics, _ = run_document(envelope(mod, doc_id, doc, pieces))
+    finalize()                          # 빌드 말미 패스 — 관통도 정식 경로와 같게 끝낸다
     g = open_graph(layer)
     new = [n for n in g.nodes.values() if n["id"] not in before]
 

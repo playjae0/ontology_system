@@ -1,0 +1,158 @@
+{
+ "real": [
+  {
+   "idx": 0,
+   "sev": "high",
+   "file": "core/ops.py",
+   "line": 296,
+   "title": "I2 병합 엣지 이설이 중복 엣지와 자기참조 엣지를 만들고, 질의가 'X는 X의 원인' 거짓 사실을 출력",
+   "reason": "주장 전부 재현됨. core/ops.py:296-300의 I2 merge 엣지 이설은 e[\"src\"]/e[\"dst\"]를 직접 치환만 하고, 치환 후 (src,rel,dst) 중복 병합·자기참조 검사가 없다. 이는 정본 명세 위반이다: 00_틀_확정본.md 236행과 CH3B_인입규칙.md 101행 모두 I2를 \"엣지는 생존자로 이설(중복은 provenance 합집합)\"으로 규정하며, core/graph.py add_edge(127행)도 같은 유일성+합집합 계약을 명시하는데 merge는 이 경로를 우회한다. DECISIONS.md·불변식 카드에 자기 루프나 물리 중복을 허용하는 결정은 없고, B1 등재 예외 3건(electrode_type·polarity·_PATTERNS)과도 무관하다. 실영향 실증: 자기 루프가 질의 응답의 [그래프 사실]에 \"용접 강도 부족는 용접 강도 부족의 원인이 될 수 있다\"라는 거짓 사실로 그대로 출력되고, 중복 엣지는 provenance가 R12/R13로 갈라져 \"중복은 provenance 합집합\" 불변이 물리적으로 깨진다. severity high 유지 — 사람이 실행하는 정상 운영 경로(I2 병합)만으로 저장 불변 훼손과 사용자 노출 거짓 사실이 동시에 발생한다.",
+   "evidence": "사본 /tmp/v2_idx0 (git 8695ee8), 깨끗한 재빌드(rm -rf data/... && python3 run.py all) 후: ① python3 cli/ops.py merge quality <가압력 부족 id> <용접 강도 부족 id> --actor test --yes → data/quality/graph.json에 자기 루프 1건 생성: ('01M0C1Q50W5ASK70356G7KC17A','causes','01M0C1Q50W5ASK70356G7KC17A', provenance ['PFMEA01-R7']). 이어 python3 run.py query \"용접 강도 부족의 원인은?\" 출력에 \"[그래프 사실] 용접 강도 부족는 용접 강도 부족의 원인이 될 수 있다\" 확인. ② 별도 사본 /tmp/v2_idx0_b에서 '슬리팅 버'와 '버 발생'(둘 다 affects→01M0C1RHC1GXKCV5Y2QJ8MNYY5 엣지 보유)을 병합 → 재인입 없이 병합 즉시 (keep, affects, 01M0C1RHC1GXKCV5Y2QJ8MNYY5) 물리 엣지 2건 공존, provenance가 ['PFMEA01-R12']와 ['PFMEA01-R13']로 분열(합집합 아님). 코드 근거: /tmp/v2_idx0/core/ops.py 296-300행(치환만 수행), /tmp/v2_idx0/core/graph.py add_edge 127행(유일성·합집합 계약)."
+  },
+  {
+   "idx": 1,
+   "sev": "high",
+   "file": "core/matcher.py",
+   "line": 84,
+   "title": "D-66 과장: matcher 후보 검색이 is_live 없이 툼스톤에 MATCH — 병합 후 재인입 데이터가 죽은 노드에 착지",
+   "reason": "확인됨. (1) 재현 성공 — 깨끗한 재빌드 후 auto 노드 2건 병합, 툼스톤 canonical('노칭::노칭 정밀도')을 포함하는 신규 표면형으로 resolve() 호출 시 'match / 툼스톤 id / 0.95'가 그대로 나왔다. (2) core/matcher.py resolve()의 ② 후보 검색 루프(84~100행)는 category·layer·_scoped·polarity 4개 필터뿐이고 is_live/merged_into 검사가 없다 — 병합 툼스톤은 canonical·category·layer를 보존하고 aliases=[]·polarity 무필드(_pol→none)라 후보로 살아남는다. (3) grep 전수 확인: is_live/STATUS_MERGED는 core/ops.py(5지점)와 core/query.py(읽기 transit)에만 있고 matcher.py·build.py·pipeline.py·gate.py·graph.py·tools에는 전무 — D-66 ①의 \"canonical로 노드를 찾는 코드는 전부 생존 판정을 거친다\"는 원장 기술이 실물과 다르다. (4) 실영향 실재: core/build.py resolve_entity(187행~)는 MATCH 시 반환된 nid에 무검사로 provenance append + _register(표면형→nid 사전 등재) + buffer 등재를 수행하므로 재인입 지식이 툼스톤에 적재되고, query.py transit은 링킹된 툼스톤을 생존자로 전이한 뒤 생존자 id로만 expand하므로 툼스톤 id에 실린 엣지·attr·provenance는 어떤 질의 경로로도 도달 불가 — 침묵 소실. (5) 등재 예외 아님: 한시 예외 3호는 extract.py _PATTERNS(USE_MOCK 문형 폴백) 한정이고, ② 후보 수집 루프는 mock 여부와 무관한 구조 코드다(matcher.py의 _use_mock은 정의만 있고 resolve에서 미사용). 반박 가능한 유일한 완화 — 정확 일치 표면형은 ① 사전 조회의 _dict_redirect 덕에 생존자로 착지 — 는 포함 관계 표면형(스코프 canonical 조립 시 자연 발생)에는 적용되지 않으므로 결함을 소거하지 못한다. 발동 조건이 병합 후 재인입 + 포함 관계 표면형으로 좁긴 하나, 툼스톤은 영구 잔존하므로 시간이 갈수록 충돌 표면이 커지고 소실은 무증상이다. severity high 유지.",
+   "evidence": "cp -r /home/claude/repo_clone /tmp/v2_idx1; rm -rf data/{process,quality,*.json,*.log}; python3 run.py all (exit 0); 이후 python3 -c로 autos[0]·autos[1] merge(actor='aud') 후 resolve(t['canonical']+'테스트', t['category'], 'process', …, polarity=t.get('polarity')) 실행 → 출력 \"tombstone: 01M0C1RA92SJ9TMERDN9J7W12F 노칭::노칭 정밀도 Property merged_into\" / \"match True 0.95 01M0C1RA92SJ9TMERDN9J7W12F\" — MATCH가 툼스톤 id를 반환함을 실측. 보조 확인: grep -rn \"is_live|merged_into|STATUS_MERGED\" core/gate.py core/pipeline.py core/build.py core/graph.py tools → 0건."
+  },
+  {
+   "idx": 2,
+   "sev": "medium",
+   "file": "core/build.py",
+   "line": 187,
+   "title": "D6 위반 — entity 필드의 리스트 값이 '문자열로 뭉개져' 기존 노드에 흡수되고 사전을 오염 (드롭+missing_field 계약 미이행)",
+   "reason": "D6 카드와 role_어휘_정의서 §3.2(v1.8)는 'entity 필드에 리스트가 오면 드롭 + missing_field 큐'를 명시하고, 특히 \"핸들러는 단일 값만 본다는 전제를 코드가 방어한다\"라고 코드 측 방어를 계약한다. 실물 core/pipeline.py build_table(role==\"entity\" 분기)과 core/build.py resolve_entity에는 리스트 검사가 전혀 없고, core/ids.py norm의 str() 강제 변환 + matcher._similarity 포함 규칙(0.95)으로 리스트가 기존 노드에 조용히 MATCH된다. '파서가 전개한다'는 반박은 성립하지 않는다 — 계약이 핸들러 측 방어를 별도로 요구하며, 같은 D-30 패턴이 context 필드에는 구현되어 있어(pipeline.py::_context) entity 리스트만 누락임이 드러난다. B1 등재 예외 3건에도 해당 없음. run_document는 run.py의 실제 인입 경로 그대로다.",
+   "evidence": "깨끗한 재빌드 후 재현 스크립트 실행 결과: (1) \"리스트 alias 오염: 노칭 프레스 -> ['노칭 프레스', '보조 프레스']\" — 기존 노드 aliases에 리스트 객체 저장, (2) \"사전 오염 키: [\\\"['노칭 프레스', '보조 프레스']\\\"]\" — dictionary.json에 문자열화된 리스트 키 등재, (3) \"missing_field 신규: 0\" — 계약된 큐 표면화 전무. 주장한 세 효과 전부 재현됨."
+  },
+  {
+   "idx": 3,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 79,
+   "title": "닫힌 20종 밖 큐 kind 'invalid_role' — D-30(결함 로그)을 큐로도 이중 발화, 플랫폼 화면 스스로 '닫힌 20종 위반' 판정",
+   "reason": "core/pipeline.py:79 enqueues kind 'invalid_role' which is outside the closed 20-kind queue list (QUEUE_KINDS in cli/platform.py:37-49). Every governing text specifies invalid_role as a defect LOG only, never a queue kind: D-30 원문(docs/실행검증_1차.md:99 '크래시 대신 invalid_role 결함 로그'), CH2_문서계약.md:563(같은 문단의 '반드시 큐로 간다' 일반칙에서 이 케이스를 명시적으로 결함 로그로 분리), 증분0_구현.md:188, D-54(닫힌 목록·처리 주체 있는 kind만), D-60('새 kind를 만들지 않는다' 재확인). B1 등재 예외 3건과 무관. 결과적으로 파이프라인 산출물을 플랫폼 화면이 '닫힌 20종 위반 — 그 자체가 결함'으로 판정하는 자기모순이 실재하며, 해당 큐 항목은 이름 붙은 처리 주체가 없다(P-3). 반박 근거 없음.",
+   "evidence": "Clean rebuild of copy at /tmp/v2_idx3 (git 8695ee8), then injected schemas/cpbad.json with role 'entty' and ran run_document on a cloned CP01 envelope (doc_id XCP04). Output: alien kinds: {'invalid_role': 1}. `python3 cli/platform.py queue` printed the 20 closed kinds plus: ⚠ 목록 밖 kind 'invalid_role' 1건 — 닫힌 20종 위반, 그 자체가 결함이다. Code inspection confirms core/pipeline.py:76-80 calls both append_defect (D-30 compliant) and store.enqueue(\"invalid_role\", ...), and invalid_role is absent from QUEUE_KINDS."
+  },
+  {
+   "idx": 4,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 252,
+   "title": "미등록 doc_type 문서가 구축 모드 분기 없이 하드코딩 기본 층 'process'로 무음 운영-인입 (M1·M2·B3 위반)",
+   "reason": "반박 실패 — 결함 실재. (1) 재현 성공: 완전 미등록 doc_type('완전미등록타입') prose 봉투가 run_document 직접 호출과 공식 CLI 진입점(python3 run.py ingest) 양쪽에서 status ok로 process 층에 인입·추출 실행·doc_registry 등재까지 완료되고 큐 0건, 명시적 실패·구축 모드 신호 전무. (2) 설계 의도 반박 불가: 정본이 오히려 발견을 지지한다 — 틀 확정본 32-34행(\"문서 도착 → 등록 여부 조회 → 미등록 → 구축 모드\"), CH2 문서계약 421행(\"발동 조건은 결정적 — 미등록이면 구축 모드로 넘어간다(M2)\"), CH2 367행(\"층 배정을 코드가 추측하면 그 자체가 층 어휘다(B1)\"), 카드 B3(\"명시적 실패로 드러낸다\"). 코드는 등록 여부 조회(load_schema)를 실제 수행하고도 미스 분기에서 실패 대신 하드코딩 \"process\"로 무음 라우팅한다 — 조회는 있는데 판별 결과를 버리는 구조라 'n6 등록 파이프라인(P3) 미착수 스코프' 반론도 성립 안 함(구축 모드 배선 없이도 held/큐로 명시 실패시킬 경로가 이미 존재: ingest held·parse_failure 큐). (3) B1 부수 지적도 실측 확인: 등록된 doc_type 스키마 6종 전부 layer 필드 보유(blocks.json은 doc_type 스키마 아님)라 `or \"process\"` 폴백은 오직 미등록 미스 케이스에서만 발화하며, bootstrap.py 자신이 423행 기본 인자 3행 아래와 477-481행에서 \"코드가 층 이름으로 가르면 그 자체가 층 어휘다(B1)\"라고 두 번 선언한다. B1 등재 예외 3건(electrode_type·polarity·_PATTERNS)에 층 이름 리터럴은 없다. 심각도 medium 유지: 발화 조건이 미등록 doc_type 봉투 투입(정상 파서 경로는 등록 타입만 산출)이라 표면은 좁지만, run.py ingest는 임의 계약 JSON을 받는 공개 진입점이고 결과가 무음 운영층 오염 + 카드 3건(M1·M2·B3) 위반이다.",
+   "evidence": "/tmp/v2_f4 (8695ee8 사본, 깨끗한 재빌드 후). ① python3 -c 직접 호출: \"<Ingest XNEW01 ok chunks=1 records=0> | 라우팅 층: process | 등재: True | 큐: []\". ② 공식 CLI: python3 run.py ingest /tmp/xnew02.json (doc_type='또다른미등록') → \"[인입] XNEW02: record 0 · chunk 1 [추출 실행]\", doc_registry: True, queue: []. 코드 근거: /tmp/v2_f4/core/pipeline.py:252 `layer = layer or (schema or {}).get(\"layer\") or \"process\"`, core/ingest.py:24-26 (load_schema 미존재 시 None 반환, 실패 경로 없음), run.py:47 (게이트 없이 run_document 직결). 문서 근거: docs/00_불변식_카드.md M1·M2(164-165행)·B3(47행), docs/00_틀_확정본.md 32-34행, docs/CH2_문서계약.md 367·421행, core/bootstrap.py 427·477-481행 B1 자기 선언."
+  },
+  {
+   "idx": 5,
+   "sev": "medium",
+   "file": "core/extract.py",
+   "line": 97,
+   "title": "한시 예외 3호의 'USE_MOCK 한정' 경계가 코드에 없다 — causes/affects 문형 폴백이 USE_MOCK=0에서도 실행 (matcher의 _use_mock은 죽은 코드)",
+   "reason": "재현 완전 성공, 반박 근거 없음. (1) core/extract.py의 extract()에는 USE_MOCK 게이트가 전혀 없다 — 힌트 파일이 없으면 환경과 무관하게 _mock_candidates(_PATTERNS의 causes/affects 하드코딩)가 무조건 실행되며, USE_MOCK=0 실측에서 causes/affects 관계 후보가 그대로 산출됐다. 한시 예외 3호의 문면은 'USE_MOCK 문형 폴백 한정'인데 그 한정 조건이 코드에 존재하지 않으므로, 승인된 예외 범위와 실물이 불일치한다(카드 B1 '예외는 세어질 때만 예외다' — 임무 문서도 '한정 조건 자체가 실물과 다른지는 검증 대상'으로 명시). (2) core/matcher.py:32-33 _use_mock()은 정의만 있고 호출처 0건(grep으로 확인) — 죽은 코드 맞다. 게다가 전 런타임(core/·cli/·run.py·router.py)에서 os.environ 읽기가 이 죽은 함수 하나뿐이라, USE_MOCK 환경변수는 시스템 어디에도 영향을 주지 않는다. matcher.py:15 자기 서술('USE_MOCK=1에서는 ③이 문자열 규칙')이 함의하는 분기도 실재하지 않는다. (3) 구현문서 §8은 '설정 접근은 core/llm.py 한 곳으로 수렴'을 규정하나 core/llm.py·embeddings.py 자체가 레포에 없다. 유일한 완화 요소: 실물 LLM 경로가 아직 미구현이라(증분0은 mock 전용, '실물 전환 시에만 설치') 오늘 당장 USE_MOCK=0으로 운영되는 실경로가 대체당하는 사고는 없다 — '실물 모드 스위치가 시스템 전체에서 무효'라는 표현은 '무효화될 실물 모드가 아직 없다'는 점에서 다소 과장이다. 그러나 USE_MOCK=0 설정이 명시적 실패(B3) 없이 조용히 mock과 동일 동작하는 것은 현재 사실이고, 예외 3호의 한정 문면과 코드 실물의 불일치는 그 자체로 확정 결함이다. 원 심각도 medium 유지 — 잠재 위험(실물 전환 시 게이트 누락)과 예외 회계 위반이지, 현행 산출물 오염은 아니다.",
+   "evidence": "사본 /tmp/v2_idx5 (8695ee8), 깨끗한 재빌드 exit=0 후: USE_MOCK=0 python3 -c \"...X.extract(env,...)\" → 출력 \"USE_MOCK= 0 | 폴백 실행: True | 관계: [{'src': '이물 유입으', 'rel': 'causes', 'dst': '절연 파괴'}, {'src': '절연 파괴', 'rel': 'affects', 'dst': '단락'}, {'src': '단락', 'rel': 'affects', 'dst': '내부 절연 파괴'}]\" — USE_MOCK=0에서 _PATTERNS 폴백이 실행되어 causes/affects 후보 산출. grep -n '_use_mock' core/matcher.py → 32행 정의뿐, 호출처 grep은 0건(exit=1). grep -rn \"environ\" core/ cli/ run.py router.py → core/matcher.py:33 단 1건 — USE_MOCK 환경변수를 읽는 유일한 지점이 죽은 함수다. 부가 확인: docs/ontology_system_구현용문서.md §8은 USE_MOCK 분기를 core/llm.py 수렴으로 설계했으나 core/에 llm.py·embeddings.py 부재. docs/00_불변식_카드.md(v16) B1은 예외 ①②만 등재."
+  },
+  {
+   "idx": 6,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 194,
+   "title": "추출 후보의 발명 카테고리가 무검증으로 그래프에 심긴다 — invalid_category 큐 미배선 (I3 닫힌 목록 위반)",
+   "reason": "재현 성공 + 반박 근거 없음. (1) 코드 사실: core/pipeline.py build_prose(194행)는 추출 후보의 category를 층 config의 닫힌 카테고리 목록과 대조 없이 core/build.py resolve_entity(187행)로 넘기고, resolve_entity도 카테고리 유효성 검사가 없다. (2) invalid_category는 닫힌 큐 20종에 확정 등재돼 있고(CH3B 3.7 표 '카테고리 오류', 00_용어_대장 §수정큐, 구현용문서 §2.3, cli/platform.py:43 열람 목록) 코드 전체 grep에서 enqueue 0건 — 소비(열람) 배선만 있고 생산자가 없는 죽은 방어다. (3) 카드 I3 '운영 중 카테고리 발명 없음 — 닫힌 목록 선택만'[틀 확정]과 CH2 2.9 금지 목록('카테고리의 운영 중 발명')이 정본 근거이고, CH3A 3.1 규약 3의 '닫힌 목록에서 선택'은 프롬프트 계약일 뿐 코드 강제가 아니다 — 추출→구축 신뢰 경계에서 유일한 강제 지점이 비어 있다. (4) 배선 이연을 명시한 문서·DECISIONS 항목 없음, B1 예외 3건 무관. 다만 완화 요인 둘: 현 증분0은 USE_MOCK 전용이라 후보 원천이 config 어휘 기반 _mock_candidates 또는 개발자 통제 힌트 파일뿐이어서 정규 15시나리오 재빌드에서는 발화 불가(잠재 결함), 그리고 오염 노드는 auto_node 큐에 잡혀 reason 문자열에 카테고리가 노출되므로 완전 무표시는 아니며 게이트 패턴표가 목록 밖 카테고리의 엣지 커밋을 차단한다. 따라서 high 아님 — 보고된 medium이 적정.",
+   "evidence": "사본 /tmp/v2_idx6 (8695ee8), 깨끗한 재빌드 후 힌트 mock/extract_hints/XCAT01.json에 category='발명된카테고리' 주입 → run_document 결과: quality 층 그래프에 [('감사표면형', '발명된카테고리')] auto 노드 생성, invalid_category 큐 0건. XCAT01 큐 항목은 auto_node 1건뿐(reason: \"자동 생성: 감사표면형 (발명된카테고리)\"). 코드 전체에서 store.enqueue되는 kind: auto_node·uncertain_match·coord_mismatch·invalid_role·mirror_asymmetry·missing_field·orphan_anchor·orphan_attach·spec_conflict 등 — invalid_category 없음."
+  },
+  {
+   "idx": 7,
+   "sev": "medium",
+   "file": "core/ops.py",
+   "line": 84,
+   "title": "큐·연산 로그의 시점 필드가 하드코딩 상수 — ops_log 5요소 계약의 '시점'이 위조값",
+   "reason": "재현 성공·반박 근거 없음. core/ops.py:84(및 310·394·425)의 at와 core/store.py:101의 created가 코드에 상수로 박혀 있고, 깨끗한 재빌드 후 큐 전 항목 created가 단일 상수이며, 2026-08-19에 실제 rename 연산을 실행해도 ops_log에 at=\"2026-08-18T00:00:00\"이 기록됨을 실측 확인. 증분0 §3 G5·테스트 I-6·D-66이 5요소(행위자·시점·대상·사유) 로그를 계약으로 명시하고 D-66은 \"5요소 중 하나가 비면 로그가 로그가 아니다\"라 선언하는데, 행위자는 --actor 필수로 강제하면서 시점은 위조 상수다. DECISIONS.md 69건 어디에도 시점 상수화 등재 없음, B1 예외 3건에도 미포함, core/ids.py:44는 이미 time.time()을 쓰므로 벽시계 금지 설계도 아님. 다만 로그는 append-only라 상대 순서는 배열 위치로 복원 가능하고, 큐 중복 제거 키는 created 미포함이며 그래프 데이터 오염은 없어 심각도는 medium 유지가 타당.",
+   "evidence": "cp -r /home/claude/repo_clone /tmp/v2_7; grep 확인: core/ops.py 84/310/394/425 = \"2026-08-18T00:00:00\", core/store.py 101 = \"2026-01-05T00:00:00\". rm -rf data/... && python3 run.py all 후 store.read(QUEUE)의 created 집합 = {'2026-01-05T00:00:00'} 단일값. 실연산 검증: python3 cli/ops.py rename process 01M0C25HMT09F0P3GTRQP8VJW7 \"조립2\" --actor tester --yes → data/ops_log.json 마지막 항목 {\"op\":\"I1:rename\",\"actor\":\"tester\",\"at\":\"2026-08-18T00:00:00\",...} — 실행일 2026-08-19인데 하루 전 자정 상수 기록."
+  },
+  {
+   "idx": 8,
+   "sev": "medium",
+   "file": "core/gate.py",
+   "line": 100,
+   "title": "걸침 엣지의 from 끝점이 다른 층 노드면 commit_edge가 게이트 판정 전에 무기록 소멸시킨다 — D-61의 남은 절반",
+   "reason": "재현 성공(CONFIRMED). pipeline.py:112가 _endpoint의 src측 그래프를 _sg로 버리고 commit_edge에 graph(현재 층)만 전달하므로, 품질층 스키마가 from에 @process_ref를 선언하면 gate.py:99-101의 `graph.get(src)` → None → 판정·log_reject·큐·결함로그 전부 없이 None 반환. CH2 문법은 from에 @좌표필드를 명시적으로 허용하고(§ \"from/to는 필드명 또는 @좌표필드\"), D-61은 \"@는 from·to 양쪽에서 같게 해소한다\"며 바로 이 침묵 소실을 재발 방지 대상으로 명기했다 — 해소는 대칭이 됐으나 커밋이 비대칭으로 남아 D-61의 재발 조건이 잔존한다. _endpoint가 다른 @ 표기는 결함 로그로 드러내는 것과 대조적으로 이 경로만 무기록이며, gate.py의 \"거부는 기록하는 것이다\" 원칙(D-7 계보)에도 위배. 현행 스키마는 미발화(ipqc는 process층이라 동일 그래프, pfmea는 to에만 @)라는 잠복성 판단도 정확하다.",
+   "evidence": "/tmp/v2_idx8 (8695ee8 사본, 깨끗한 재빌드 후): schemas/xql.json에 layer=quality·edges [{\"from\":\"@process_ref\",\"relation\":\"occurs_in\",\"to\":\"failure\"}] 생성 → run_document 1건 인입 실측: failure 노드 생성됨(01M0C2B3MKYHHZVWEXVKRE09KK), occurs_in 엣지 0건, gate_rejects 증가 0, 큐 증가분은 auto_node 1건뿐(엣지 소실 언급 없음), defects []. 발견의 기대 결과와 완전 일치."
+  },
+  {
+   "idx": 9,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 101,
+   "title": "다른 층 anchor에 붙인 attribute가 저장되지 않는 그래프 인스턴스에 쓰여 증발한다 (외부 그래프 미저장)",
+   "reason": "재현 성공 + 코드·문서 양쪽에서 반박 근거를 찾지 못했다. (1) 메커니즘 실증: pipeline.py:101-104의 attribute 분기는 부착 대상이 걸침 anchor면 external의 그래프에 Builder().put_attribute()로 쓰는데, 그 인스턴스는 resolve_anchor→_graph_for→open_graph(bootstrap.py:104 — `GraphStore.for_layer(layer).load()`, 캐시 없음)가 그때그때 새로 load한 것이고, run_document는 자기 층 graph만 build_end()→save()한다(pipeline.py:273). put_attribute는 메모리 dict만 변경하므로(build.py:241-) 외부 층 값은 소멸한다. (2) 설계 의도 반박 불가: 코드 자체가 외부 그래프 대상 attribute 쓰기를 의도적으로 구현했고(external 맵을 만들어 명시적으로 tg로 전달), CH2 2.4 §2.5 ③은 \"attribute는 anchor로 해소된 골격 노드에도 붙을 수 있다\"고 명시하며, 걸침 anchor는 대표 사례로 코드 docstring(bootstrap.py _graph_for: \"품질층 문서의 process_ref가 공정층 골격을 가리키는 것이 대표 사례\")과 명세 §15.7 규칙 A(\"걸침 필드는 다른 층 그래프에 기록\")가 함께 승인한다. B1 예외 3건에도 해당 없음. (3) 무신호 소실 실측: 값이 양 층 graph.json·review_queue·defects 어디에도 없고 XQA01 큐 항목 0건 — \"조용히 버리지 않는다\" 불변식 위반. (4) 대조 실증: 같은 패턴의 자기 층 케이스(pfmea severity→effect_category)는 정상 저장됨(FailureEffect 노드에 severity attrs 확인) — 걸침일 때만 증발. 잠복 판정도 정확: 현행 스키마 전수 조사 결과 attribute→anchor 부착은 pfmea severity(자기 층 FailureEffect) 1건뿐이라 현재 데이터 손실은 없다. 따라서 medium(silent-loss이나 잠복) 유지가 적절하다.",
+   "evidence": "사본 /tmp/v2_idx9 (8695ee8, 깨끗한 재빌드 후): 합성 스키마 schemas/xqa.json(quality층, proc=anchor target_category=Process[공정층], 메모=attribute attach_to proc) 생성 후 run_document 1건 인입 → 출력 \"process에? False / quality에? False / 큐에? False\" — 값 '외부층속성값777'이 data/process/graph.json, data/quality/graph.json, data/review_queue.json 모두 부재. XQA01 관련 큐 항목 0건, defects 파일 없음. 대조군: 재빌드된 data/quality/graph.json의 FailureEffect 4노드(단락·화재 등)에는 severity attrs가 정상 존재(자기 층 attribute→anchor는 저장됨). 코드 근거: /tmp/v2_idx9/core/pipeline.py:98-104(외부 그래프에 put_attribute), :273(자기 층만 build_end), /tmp/v2_idx9/core/bootstrap.py:102-104(open_graph 매회 새 load), /tmp/v2_idx9/core/graph.py(save는 build_end에서만)."
+  },
+  {
+   "idx": 10,
+   "sev": "medium",
+   "file": "core/build.py",
+   "line": 263,
+   "title": "같은 문서의 맥락형 값 개정이 '교체'가 아니라 거짓 spec_conflict로 흘러 새 값이 그래프에 적용되지 않는다",
+   "reason": "재현 성공, 반박 근거 없음. (1) 코드 확인: core/build.py put_attribute의 맥락형 분기(257~270행)는 같은 context에 다른 값이 오면 provenance/doc_id 비교 없이 무조건 spec_conflict를 싣고 return한다 — 같은 문서 여부를 가릴 재료 자체를 보지 않는다. (2) 계약 확인: CH3B 3.6 규약 6(60행)은 \"같은 문서의 개정값은 충돌이 아니라 교체 — spec_conflict는 교차 출처에서만\"이라고 못박고, 3.8 규약 2-①과 불변식 카드 H1·H2는 재인입 시 그 문서 몫의 '값 provenance' 회수를 명시한다. (3) 구현 부재 확인: core/ 전체에 값 provenance 회수(evidence_lost 포함) 구현이 없다 — run_document(pipeline.py)·build_begin(graph.py) 어디에도 doc_id 몫 걷어내기 단계가 없다. (4) 이연 근거 없음: 증분0 계획상 재인입 회귀는 G4 소관이고 레포는 G6 완료 상태다. PROGRESS.md G4 3.5′은 '동일 내용 재인입 멱등성'(66→66, run.py all 2회 동일)만 검증했고 개정값 교체 케이스는 미검증. DECISIONS.md D-59는 큐 적재 멱등성만 다루며 값 회수를 이연한 결정은 69건 어디에도 없다. B1 예외 3건과도 무관하다. 결과적으로 개정 문서의 정본 값이 그래프에 반영되지 않고(현행값 낡음), 거짓 분류(교차 출처 충돌)로 사람 검토를 오도한다. 재인입이 '주 경로'(3.8 경계)인 도메인이므로 실영향이 상시적이나, 새 값이 큐 payload에 남아 완전 소실은 아니므로 medium 유지가 적정하다.",
+   "evidence": "사본 /tmp/v2_idx10에서 깨끗한 재빌드(rm -rf data/... 후 python3 run.py all) 뒤 재현 스크립트 실행: XSPEC2 R1(규격 ±0.5mm) 인입 → 같은 doc_id R2(±0.4mm) 재인입. 실측 출력 — attr spec: [{\"context\":{\"model\":\"M1\"},\"value\":\"±0.5mm\",\"provenance\":[\"XS2-R1\"]}] (그래프는 ±0.5mm 유지, ±0.4mm 미반영) / review_queue: [{\"node_id\":\"01M0C2GMS0HTYBC6QHYZY11GPJ\",\"attr\":\"spec\",\"context\":{\"model\":\"M1\"},\"existing\":\"±0.5mm\",\"incoming\":\"±0.4mm\",\"provenance\":\"XS2-R1\"}] (같은 문서인데 spec_conflict로 분류). 주장 그대로 재현됨."
+  },
+  {
+   "idx": 11,
+   "sev": "medium",
+   "file": "core/gate.py",
+   "line": 111,
+   "title": "문서 유래 후보성 큐 항목의 재인입 회수 미구현 — 개정 재인입마다 같은 항목이 provenance만 바뀌어 증식하고, 근거 문장이 삭제돼도 큐에 잔존",
+   "reason": "재현 100% 일치, 반박 근거 없음. (1) CH3A 3.4 규약 6이 \"재인입 시 이 큐 항목은 회수 후 재생성한다 — 문서에서 유래한 모든 후보성 큐 항목의 일반 규칙\"을 명시하는데, store.drop(core/store.py:71)의 소비처는 core/build.py:323의 mirror_asymmetry 1곳뿐 — direction_unverifiable에 대한 doc_id 단위 회수는 어디에도 없다. (2) 증식 메커니즘도 코드로 확인: enqueue의 dedup 키가 (kind, doc_id, payload)인데 provenance가 payload 안에 있어, 재커밋 시 locator 소실로 provenance가 'QPPT01-K1'→청크 id로 변조되면 dedup을 빗나간다. (3) 부수 원인으로 extract.py:47 invalidate()(규약 7 \"재인입 시 체크포인트 무효화\")가 정의만 되고 호출처가 0곳인 죽은 코드라, 개정 재인입에도 낡은 체크포인트의 K1 후보가 재커밋된다(출력에 '추출 체크포인트 재사용' 확인). B1 등재 예외 3건(electrode_type·polarity·_PATTERNS)과 무관. 단 증식은 무한이 아니라 후보당 provenance 변조 1회분(+1)에서 안정화됨을 실측(3차 재인입에도 2건 유지) — 다만 내용이 바뀌는 개정마다 폴백 청크 id가 달라지면 추가 증식 가능하고, 삭제된 문장의 방향 확인 요청이 화면에 영구 잔존하는 위반 자체는 그대로다. medium 유지.",
+   "evidence": "사본 /tmp/v2_idx11에서 깨끗한 재빌드 후 기준선: 큐 62건, direction_unverifiable 1건(provenance ['QPPT01-K1']). K1 청크를 제거한 revision R2 재인입 → 큐 63건, direction_unverifiable 2건: 원본 항목(provenance ['QPPT01-K1'], 근거 문장은 이미 삭제됨) + 신규 항목(provenance ['QPPT01:08c083b4dd41']) — 동일 (src,rel,dst)=이물 유입-causes->절연 파괴. 동일 revB 재인입 및 R3 재인입 후에도 2건 잔존(회수 없음). 재인입 출력에 '[추출 체크포인트 재사용]' 확인 — 청크가 바뀌었는데도 체크포인트 미무효화(invalidate() 호출처 0곳)."
+  },
+  {
+   "idx": 12,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 269,
+   "title": "문서 인입 순서에 따라 그래프가 비동형(66 vs 65 노드) — USE_MOCK 폴백 추출이 그래프·사전 상태를 어휘로 읽고 체크포인트가 그 우연을 영구 동결",
+   "reason": "모든 주장이 실측 재현됨. (1) 정순 run.py all(신규 추출)=66노드('탭용접::cathode::용접 가압력' 존재), 역순 인입(신규 추출)=65노드(해당 노드 부재). (2) 역순-시대 extract/*.json을 보존한 채 정순 재빌드해도 65노드 — 체크포인트가 은닉 상태를 동결함을 확인. (3) 65노드 상태에서 소실 노드에 대한 큐·ops_log 흔적 0건 — '큐·로그 없이 소실' 확인. (4) 코드 확인: pipeline.py:269의 _vocab()이 store.DICTIONARY와 open_graph().nodes(현재 그래프 상태)를 읽어 추출에 넘김 — docstring의 '층 config에서만 나온다'는 실물과 불일치. extract.py 규약 1이 금지 이유로 명시한 바로 그 메커니즘('추출이 그래프 상태에 의존 → 체크포인트 재현 불가')이 표면형 어휘 경로로 성립하며, M12/CH3A 3.11 규약 4의 재현성 3입력(adapter/prompt/config_version)에 기록되지 않는 4번째 입력임. 반박 불성립: 등재 예외 3호는 _PATTERNS(문형 정규식)의 B1 층 어휘 예외이지 그래프 상태 의존(M12 재현성)을 승인한 것이 아님. 증분0 §7 완료판정은 순서 고정에서만 검사하므로 반증이 못 됨. run.py ingest의 임의 순서 인입은 문서화된 정상 경로임.",
+   "evidence": "/tmp/v2_check (8695ee8 사본): ① rm -rf data/... extract/*.json && python3 run.py all → nodes=66, ['탭용접::용접 가압력','탭용접::cathode::용접 가압력']. ② 동일 초기화 후 run.py bootstrap; run.py ingest QPPT01 PPT03 PPT02 PPT01 PFMEA01 CP01 → nodes=65, ['탭용접::용접 가압력']만. ③ 역순-시대 extract/*.json 복원 후 정순 run.py all → 전 문서 '체크포인트 재사용', nodes=65. ④ 65노드 상태에서 review_queue.json의 '가압력' 항목은 무관한 auto_node 3건뿐, ops_log.json '가압력' 0건 — 소실 노드 추적 불가."
+  },
+  {
+   "idx": 13,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 171,
+   "title": "재인입이 링킹된 전 청크의 linked 플래그를 False로 되돌림 — '링킹 0건' 관측 상태가 전량 거짓이 됨",
+   "reason": "재현 성공, 코드 기전 확인. core/ingest.py:128의 put_chunk는 매 인입마다 linked:False로 청크를 새로 쓰며, 같은 doc_id 재인입은 설계상 정상 경로다(check_doc_hash 주석 \"같은 doc_id는 재인입(정상 경로)이므로 통과\"). core/pipeline.py의 _describe(165~172행)와 build_prose(197~200행)는 describes 쌍이 이미 존재하면 분기를 건너뛰어 linked=True를 복원하지 않는다 — 재인입 시 쌍은 전부 기존재하므로 링킹된 전 청크가 linked=False로 남는다. 설계 의도 반박 불가: CH3B 3.8은 \"재인입은 예외가 아니라 주 경로\"이고 규약 6은 \"같은 문서를 두 번 넣으면 같아야 한다\"는 멱등성 기준을 명시하며, linked 필드는 구현용문서 121행 청크 저장 계약과 C6(링킹 0건 청크 판별 표시)의 정본 필드다. 프로젝트 스스로 유사 재실행 드리프트를 결함으로 판정해 고친 전례(D-59 큐 멱등)도 있다. 완화 요인: 런타임에서 청크 레벨 linked를 읽는 소비자는 현재 없고(폴백 검색은 명세 278행대로 linked 무관 전 청크 대상, cli/query.py도 미참조), describes 쌍 자체는 온전해 참 상태가 복원 가능하다 — 질의 동작에 기능적 영향은 없다. 따라서 관측/계약 필드의 상태 오염으로 medium 유지가 타당하다.",
+   "evidence": "사본 /tmp/v2_check에서 깨끗한 재빌드 후: 1회 실행 → describes 걸린 청크 49건 중 linked=False 0건. 2회 실행 → 49건 전부 linked=False (발견문은 51건이라 했으나 현 8695ee8 데이터 기준 49건 — 수치만 다르고 현상 동일). describes 쌍 55건은 두 실행 모두 그대로 유지."
+  },
+  {
+   "idx": 14,
+   "sev": "medium",
+   "file": "core/ops.py",
+   "line": 397,
+   "title": "I3 분리의 사전 리다이렉트 과잉 — 다른 타깃에 배분된 표면형에도 첫 산출물 id가 추가되어 한 표기가 두 산출물을 동시에 가리킴(사전 오염)",
+   "reason": "재현 성공 및 반박 근거 없음. core/ops.py:397의 _dict_redirect(dictionary, nid, new_ids[0])가 배분표에 따라 이미 각 타깃에 등재 완료된 표면형에도 첫 산출물 id를 덧붙인다. 병합용으로 설계된 _dict_redirect(재인입 부활 방지)를 split에 그대로 재사용한 것이 원인이며, split에서는 잔여 검사 통과로 모든 표면형이 이미 자기 타깃에 재등재된 상태라 옛 id 제거만이 옳다. D-63(R3-⑵)이 '잔여를 조용히 한쪽에 몰아 넣으면 사람이 영영 모른다 — 조용한 유실 금지'를 명시하므로 설계 의도 반박 불가. CH5의 '넓게 링킹' 규약은 극성 등 의도적 다중 등재용이지 이 오염 상태를 정당화하지 않는다.",
+   "evidence": "/tmp/v2_idx14에서 깨끗한 재빌드 후 merge→split 실행: dictionary['가압력 부족'] = ['01M0C2S1HR9RW76M2RGNV63SFT'(가압력 부족), '01M0C2S1HRZEDHV0JP7WCKZ29Y'(용접 강도 부족)] — 2개 id. 실영향 확인: cli/query.py \"가압력 부족 원인\" → [링킹] quality:가압력 부족, quality:용접 강도 부족 두 노드 모두 링킹, 분리해 낸 타깃1의 사실(\"용접 강도 부족는 방전기능상실로 이어질 수 있다\")까지 답변에 포함. core/build.py resolve_anchor는 len(hits)>1이면 orphan_anchor '표기 모호' 큐 등재 — 재인입 시 anchor 해소 실패 경로도 코드로 확인."
+  },
+  {
+   "idx": 15,
+   "sev": "medium",
+   "file": "tools/passthrough.py",
+   "line": 57,
+   "title": "A-4 관통 경로(tools/passthrough.py)가 finalize를 부르지 않아 mirrors 재평가·self-heal 미실행 — 해소된 큐 항목 잔존·mirrors 엣지 미커밋",
+   "reason": "재현 성공·반박 근거 없음. tools/passthrough.py는 run_document만 호출하고 pipeline.finalize를 부르지 않는다. 반면 run.py cmd_ingest(44-55행)는 \"낱개 인입에서도 기본 수행한다\"는 주석과 함께 finalize를 기본 호출한다 — 낱개 인입도 finalize 대상이라는 것이 코드에 명시된 설계다. git 이력상 passthrough는 92b5b06(A-4 관통)에서 생성됐고 finalize는 이후 f500466(G5/D-65)에서 도입됐는데 passthrough는 갱신되지 않았다 — 문서화된 예외가 아니라 이설 시 누락이다. passthrough는 data/에 실제 영속 상태를 쓰며 D-60·D-61이 인용하는 공식 관통 경로이므로 CH3B 3.5 규약 6(\"매 빌드마다 재평가·대칭 회복 시 제거\") 위반이 실장부에 남는다. B1 예외 3건과 무관. 심각도는 medium 유지 — 주 운영 경로(run.py ingest)는 정상이고 passthrough 도구 경로에 한정되나, 해소된 큐 항목 잔존·mirrors 엣지 미커밋이 다음 정규 빌드까지 지속된다.",
+   "evidence": "사본 /tmp/a_v15: 깨끗한 재빌드 후 mirror_asymmetry=4 → passthrough로 IPQC01 인입 후에도 4(스테일) → 수동 finalize() 후 3. 대조군 /tmp/a_ctrl: 재빌드 직후 IPQC01 없이 finalize만 실행 시 4→4 불변 — 4→3 감소는 IPQC01 유래 극성 노드가 원인임을 확증. 즉 passthrough가 finalize를 생략해 해소 조건이 충족됐는데도 큐가 갱신되지 않음."
+  },
+  {
+   "idx": 16,
+   "sev": "medium",
+   "file": "core/pipeline.py",
+   "line": 214,
+   "title": "attach 자식 표면형 미해소 시 큐·로그 없이 침묵 드롭 — 테스트는 orphan_attach 0건만 잠가 참양성·자식 경로 둘 다 무커버 (실증 완료)",
+   "reason": "주장 전부 실증·문서 대조로 확인됨. (1) 코드: /tmp/v2_16/core/pipeline.py 213-215행 `child = b.buffer.get(_n(a[\"surface\"])) … if child is None: continue` — 부착 '자식' 표면형 미해소는 큐·결함 로그 없이 소실되고, '대상'(attach_to) 미해소만 orphan_attach로 발화(217행)하는 비대칭이 실재. (2) 문서 근거는 반박이 아니라 위반을 확증: 불변식 카드 G5(116행) \"아무것도 조용히 버리지 않는다 — 전부 큐로 간다\", M12·CH3A 3.11 규약 6 \"미해소면 orphan_attach 큐 + 공정좌표 폴백\"(폴백도 core에 미구현 — orphan_attach enqueue 1개소뿐), CH3A 2-pass 규약 2 \"Pass 1에 없는 대상을 가리키면 '진짜 미해소'(큐로)\". DECISIONS.md 69건에 침묵 드롭을 승인한 판정 없음. B1 등재 예외 3건(electrode_type·polarity·extract.py _PATTERNS)에도 해당하지 않음 — 결함 위치는 pipeline.py 구축 경로다. (3) 테스트 갭 확인: tests/test_g3.py 212-213행이 'orphan_attach 0건'만 잠그고, 전체 tests/에서 orphan_attach를 다루는 곳은 그 두 줄뿐 — 참양성(대상 미해소→큐 발화)도 자식 미해소도 무커버. 유일한 정상참작은 현행 mock에서 attach 후보가 큐레이션된 힌트 파일에서만 나와(문형 폴백은 attach:[] 고정) 현재 빌드에서는 발생 데이터가 없다는 점 — 따라서 잠재 결함이지만, 시스템의 설계 목표가 실 LLM 추출 운영이고 그 경로에서 표면형 표류는 개연적이므로 medium 유지가 적정.",
+   "evidence": "사본 /tmp/v2_16에서 깨끗한 재빌드 후 발견의 재현 스크립트 실행 결과: \"자식 미해소 흔적: False\"(큐 전체에 '유령 인자' 부재 — 침묵 드롭), \"대조군 orphan_attach: [{'surface': '세척 압력', 'attach_to': '존재하지 않는 대상'}]\"(대상 미해소는 정상 발화), \"defects 존재: False\"(결함 로그 파일 자체 미생성). 주장된 3개 관찰치와 완전 일치."
+  }
+ ],
+ "dead": []
+}

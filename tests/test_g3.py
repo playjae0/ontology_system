@@ -147,12 +147,23 @@ show("orphan_anchor는 '목록 밖 이름'만 남음 (레이저노칭·셀 부�
      str(sorted({x["payload"]["surface"] for x in q("orphan_anchor")})))
 
 # ★ M2 — 부착 정합 (A11-9)
+# 판정 문면은 **이중 표기 방지**다 — 한 canonical에 축값이 두 번 실리지 않아야 한다.
+# (구판은 "::cathode 용접"을 프록시로 썼으나, 좌표가 **개념**인 레코드는 주소에 극성이
+#  없어 F1 결합이 한 번 일어나는 것이 정상이다 — G6.5 D1 수리로 드러난 정상 형태다.)
+def _axis_twice(c):
+    return any(c.count(v) > 1 for v in ("cathode", "anode"))
+
+
+# 증인은 **정형 유래**(CP01-C12)를 쓴다 — 아래 126행이 이미 신뢰하는 노드이고,
+# 표 경로라 인입 순서에 무관하다. 구판 증인(PPT01 유래 `…용접 가압력`)은 G6.5 E2가
+# mock 폴백 어휘를 골격 닫힌 목록으로 한정하면서 corpus에서 사라졌다.
 show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
-     "탭용접::cathode::용접 가압력" in canon(P)
-     and not any("cathode::cathode" in c or "::cathode 용접" in c for c in canon(P)))
+     "탭용접::cathode::용접 강도" in canon(P)
+     and not any(_axis_twice(c) for c in canon(P)),
+     str([c for c in canon(P) if _axis_twice(c)]))
 show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
      next(n for n in P.nodes.values()
-          if n["canonical"] == "탭용접::cathode::용접 가압력")["polarity"] == "cathode")
+          if n["canonical"] == "탭용접::cathode::용접 강도")["polarity"] == "cathode")
 show("polarity가 닫힌 4값 밖으로 새지 않음 (cathode/anode/none/unbound)",
      {n.get("polarity") for n in list(P.nodes.values()) + list(Q.nodes.values())}
      <= {"cathode", "anode", "none", "unbound"},

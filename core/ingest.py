@@ -20,6 +20,11 @@ from .ids import US, OccCounter, chunk_id, doc_hash, norm, record_id
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
 
+# 재인입 회수에서 **내리지 않는** 큐 kind — 조건 판정이 아니라 상시 작업목록이다.
+# 이것을 내리면 재인입 한 번에 미검토 노드 목록이 증발한다(20회차 실측 61 → 11).
+# 나머지 kind는 이번 인입이 현재 스냅샷을 다시 싣는다(D-59가 가른 "싣는 쪽/내리는 쪽").
+STANDING_KINDS = {"auto_node", "uncertain_match"}
+
 
 def load_schema(doc_type):
     p = SCHEMA_DIR / f"{doc_type}.json"
@@ -69,6 +74,82 @@ def check_doc_hash(env):
     return dh, None
 
 
+# ---------------------------------------------------------------- 재인입 회수
+def doc_locators(env, doc_id, chunks):
+    """그 문서 몫의 provenance 문자열 — **봉투(현행 개정판) + 기존 청크(구판)**.
+
+    새 인덱스를 만들지 않는다. 조각은 전부 `source_locator`를 갖고(계약 v2 ①),
+    청크는 `doc_id`를 갖는다(§2.3) — 둘의 합집합이 그 문서의 발자국이다.
+    개정판에서 **삭제된 행**은 봉투에 없으므로 기존 청크가 그 자리를 메우고,
+    청크를 남기지 않은 행(content 필드 없는 레코드)은 doc_id 접두로 걷는다.
+    """
+    locs = {r.get("source_locator") for r in env.get("records", [])}
+    locs |= {c.get("source_locator") for c in env.get("chunks", [])}
+    locs |= {c.get("source_locator") for c in chunks["chunks"].values()
+             if c.get("doc_id") == doc_id}
+    return {loc for loc in locs if loc}
+
+
+def withdraw(env, doc_id):
+    """재인입 회수 3분류 (CH3B 3.8 H2 — 이 절이 오래 미완이었다).
+
+    ①**회수** — 그 문서의 청크·describes, 그리고 노드·엣지·값의 provenance 항목.
+      근거가 0이 된 auto 노드·엣지는 **삭제하지 않는다**(지우면 재인입이 부활시키고
+      사람이 "왜 사라졌나"를 물을 자리도 없어진다 — L9). 그 판정은 여기가 아니라
+      **빌드 말미**(`pipeline.finalize`)가 한다 — 회수 직후는 아직 재적재 전이라
+      "근거 0"이 참이 아니고, 그때 울리면 매 재인입마다 거짓 항목이 쌓인다(D-65와 같은 자리).
+    ②**보존** — 살아있는 노드의 사전·alias, 그리고 미검토 작업목록(`STANDING_KINDS`).
+    ③**재평가** — 그 문서발 조건 큐를 내리고, 이번 인입이 현재 스냅샷을 다시 싣는다.
+      근거 문장이 삭제되면 그 조건도 함께 내려가야 한다 — 큐는 이력이 아니라 화면이다.
+    """
+    from router import discover
+    from .bootstrap import open_graph
+
+    chunks = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    locs = doc_locators(env, doc_id, chunks)
+
+    # ③ 먼저 내린다 — 회수가 싣는 evidence_lost가 같은 손에 지워지면 안 된다.
+    q = store.read(store.QUEUE, [])
+    kept = [x for x in q
+            if x.get("doc_id") != doc_id or x.get("kind") in STANDING_KINDS]
+    if len(kept) != len(q):
+        store.write(store.QUEUE, kept)
+
+    # ① 청크·describes
+    gone = {cid for cid, c in chunks["chunks"].items() if c.get("doc_id") == doc_id}
+    for cid in gone:
+        del chunks["chunks"][cid]
+    chunks["describes"] = [d for d in chunks["describes"] if d["chunk_id"] not in gone]
+    store.write(store.CHUNKS, chunks)
+
+    def mine(p):
+        return p in locs or p == doc_id or str(p).startswith(doc_id + "-")
+
+    def strip(holder):
+        """그 문서 유래 provenance 항목을 걷어낸다. 남은 개수를 돌려준다."""
+        holder["provenance"] = [p for p in (holder.get("provenance") or [])
+                                if not mine(p)]
+        return len(holder["provenance"])
+
+    # ① 노드·값·엣지의 provenance
+    for layer in discover():
+        g = open_graph(layer)
+        for n in g.nodes.values():
+            strip(n)
+            for name, val in list((n.get("attrs") or {}).items()):
+                if isinstance(val, list):               # 맥락형 — context 그룹별 항목
+                    left = [it for it in val if strip(it)]
+                    n["attrs"][name] = left
+                    if not left:
+                        del n["attrs"][name]
+                elif isinstance(val, dict) and "provenance" in val:
+                    if not strip(val):                  # 단순형 — 빈 그룹 하나로 취급
+                        del n["attrs"][name]
+        for e in g.edges:
+            strip(e)
+        g.save()
+
+
 def register_doc(env, dh):
     reg = store.read(store.DOC_REGISTRY, {})
     doc_id = env["doc_id"]
@@ -106,6 +187,14 @@ def ingest(env):
         res.status = "held"
         res.reason = f"duplicate_doc_hold (기존 {dup})"
         return res
+
+    # 재인입이면 그 문서 몫을 먼저 걷어낸다 — 덮어쓰기 전에 회수해야 개정이 성립한다.
+    reg = store.read(store.DOC_REGISTRY, {})
+    if doc_id in reg:
+        withdraw(env, doc_id)
+        if reg[doc_id].get("doc_hash") != dh:           # 청크가 바뀌었다 (3.11 규약 7)
+            from . import extract as extract_mod
+            extract_mod.invalidate(doc_id)
 
     schema = load_schema(env.get("doc_type"))
     chunks = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
