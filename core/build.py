@@ -159,6 +159,35 @@ class Builder:
                        "provenance": prov})
         return False
 
+    def descend_anchor(self, ref_id, electrode_type, g=None):
+        """⓪ **하강 부착** (틀 §4B-A11-9 ⓪ · 카드 F1 v18 · CH3B 3.5 규약 3-⓪).
+
+        좌표가 **개념 노드**인데 record의 축값이 확정이면, 그 개념의 **동일 축값
+        인스턴스가 존재할 때** 그리로 내려가 부착한다(`탭용접`+cathode → `탭용접::cathode`).
+        하강 후에는 ①(표면형 결합 생략)이 그대로 적용된다.
+
+        **인스턴스가 없으면 하강하지 않는다** — 골격은 Tier1이고 부착 코드가 임의로
+        인스턴스를 만들 수 없다. 그때는 현행 F1 결합이 답이다.
+
+        고치는 것: 같은 실물이 좌표 해상도에 따라 두 canonical로 갈리던 접점 결함이다
+        (`탭용접::cathode 용접 가압력` ↔ `탭용접::cathode::용접 가압력` — 판정필요-6).
+        **A11-5 순서 파생의 하강과 동형**이라 그 함수를 그대로 쓴다 — 새 로직이 아니다.
+        """
+        if not ref_id:
+            return ref_id
+        g = g or self.g
+        node = g.get(ref_id) or {}
+        owner = self._owner_cfg(node)
+        if is_bound(node.get("polarity"), owner):      # 이미 인스턴스다 — 하강 대상 아님
+            return ref_id
+        if not is_bound(electrode_type, owner):        # record가 축값을 확정하지 않았다
+            return ref_id
+        child_rel = ((owner.get("skeleton") or {}).get("relations") or {}).get("child")
+        if not child_rel:
+            return ref_id
+        from .query import _descend                    # A11-5와 같은 하강 (동형 재사용)
+        return _descend(g, ref_id, electrode_type, child_rel)
+
     def anchor_polarity(self, ref_id, g=None):
         """부착 골격 노드의 polarity. 축값이 확정일 때만 돌려준다(아니면 None).
 

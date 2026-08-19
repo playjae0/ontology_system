@@ -125,11 +125,16 @@ show("Unit은 극성이 이름에 실린다 / Property는 주소에 실린다",
      "anode 초음파 융착기" in canon(P) and "초음파 융착기" in canon(P)
      and "탭용접::cathode::용접 강도" in canon(P),
      str(sorted(c for c in canon(P) if "융착" in c)))
+# 기대값 이동 [P1 §0 — A11-9 ⓪ 하강 부착]: C8·C9는 좌표가 **개념**(`노칭`)이고 극성이
+# 확정이라 이제 `노칭::cathode`·`노칭::anode` 인스턴스로 하강해 부착한다. 그래서
+# canonical이 F1 결합형(`노칭::cathode 노칭 정밀도`)에서 스코프형으로 이동했다.
+# **페어링이 성립하는지**가 이 항의 판정이고 그것은 그대로다.
 show("스코프 붙은 관리항목의 극성 쌍도 페어링 (구 strip 방식이 놓치던 자리)",
      any(e["rel"] == "mirrors"
-         and P.get(e["src"])["canonical"] == "노칭::cathode 노칭 정밀도"
-         and P.get(e["dst"])["canonical"] == "노칭::anode 노칭 정밀도"
-         for e in P.edges))
+         and P.get(e["src"])["canonical"] == "노칭::cathode::노칭 정밀도"
+         and P.get(e["dst"])["canonical"] == "노칭::anode::노칭 정밀도"
+         for e in P.edges),
+     str(sorted(c for c in canon(P) if "노칭 정밀도" in c)))
 show("Tier1(seed) 골격은 mirror_asymmetry 대상이 아님 (A11-4)",
      not any(P.get(x["payload"]["node_id"])["status"] == "seed"
              for x in q("mirror_asymmetry")))
@@ -161,6 +166,17 @@ show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생�
      "탭용접::cathode::용접 강도" in canon(P)
      and not any(_axis_twice(c) for c in canon(P)),
      str([c for c in canon(P) if _axis_twice(c)]))
+# ★ P1 §0 — A11-9 ⓪ 하강 부착 (판정필요-6 종결 어서션)
+show("A11-9 ⓪ 개념 좌표 + 축값 확정 → 동일 극성 인스턴스로 하강 부착",
+     "탭용접::cathode::용접 가압력" in canon(P)
+     and "탭용접::cathode 용접 가압력" not in canon(P),
+     str(sorted(c for c in canon(P) if "용접 가압력" in c)))
+show("A11-9 ⓪ 같은 실물이 좌표 해상도로 갈리지 않는다 (판정필요-6 종결)",
+     len([c for c in canon(P) if c.endswith("용접 가압력")
+          and "cathode" in c]) == 1)
+show("A11-9 ⓪ 인스턴스가 없으면 하강하지 않는다 (임의 생성 금지 — 골격 Tier1)",
+     "패키징::전해액 주액::cathode 주액량" in canon(P),
+     str(sorted(c for c in canon(P) if "주액량" in c)))
 show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
      next(n for n in P.nodes.values()
           if n["canonical"] == "탭용접::cathode::용접 강도")["polarity"] == "cathode")

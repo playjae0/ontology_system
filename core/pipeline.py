@@ -98,11 +98,12 @@ def build_table(env, cfg, schema, graph):
         _check_fields(rec, fields, prov, env["doc_id"])
         # ③ 좌표: 부착은 process_ref 하나. process_group은 조상 대조만.
         ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov)
+        et = rec.get("electrode_type")                  # ④ 구조 필드 — 직접 읽는다
+        ref = b.descend_anchor(ref, et, ref_g)          # ⓪ 하강 부착 (A11-9 ⓪)
         b.check_coord(rec.get("process_group"), ref, prov, ref_g)
         ctx = dict(envelope_ctx)
         ctx.update(_context(rec, prov, env["doc_id"]))  # 봉투 → 레코드 상속·덮어쓰기
         parent = ref_g.get(ref)["canonical"] if ref else None
-        et = rec.get("electrode_type")                  # ④ 구조 필드 — 직접 읽는다
         # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
         # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch
         anchor_pol = b.anchor_polarity(ref, ref_g)
@@ -257,6 +258,7 @@ def build_prose(env, cfg, graph, candidates):
         src = by_locator.get(loc_of.get(cid), {})
         prov = src.get("source_locator") or cid
         ref, ref_g = b.resolve_anchor(src.get("process_ref"), COORD_CATEGORY, prov)
+        ref = b.descend_anchor(ref, src.get("electrode_type"), ref_g)   # ⓪ 비정형도 동일
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         b.check_polarity(ref, src.get("electrode_type"), prov, ref_g)
