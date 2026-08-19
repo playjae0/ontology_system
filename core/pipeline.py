@@ -14,10 +14,13 @@ from . import extract as extract_mod
 from . import gate, store
 from .build import Builder
 from .bootstrap import load_config, open_graph
-from .ingest import ingest, load_schema
+from .ingest import IngestResult, ingest, load_schema
 
 STRUCTURAL = {"process_group", "process_ref", "process_no", "electrode_type",
               "source_locator", "section", "context"}
+
+# 봉투 `payload_kind`의 **닫힌 2값**(CH2 2.2). 밖의 값은 폴백 대상이 아니라 계약 위반이다.
+PAYLOAD_KINDS = ("table", "prose")
 
 # 공정좌표 anchor의 목표 카테고리 — 공용 블록(schemas/blocks.json)이 소유한다.
 COORD_CATEGORY = json.loads(
@@ -27,6 +30,27 @@ COORD_CATEGORY = json.loads(
 
 def _prov(rec):
     return rec.get("source_locator")
+
+
+def _check_fields(rec, fields, prov, doc_id):
+    """③ 필드 검증 (CH2 2.8) — 계약 위반은 조용히 통과하지 않는다.
+
+    스키마 밖 필드는 **값을 동봉해** `unknown_field` 큐로 간다(레코드는 어디에도
+    저장되지 않으므로, 여기서 안 실으면 그 값은 영구 소실이다 — 카드 G5).
+    `optional` 미선언 필드의 부재는 `missing_field` 큐다. 둘 다 닫힌 20종 안이고
+    **문서를 죽이지 않는다** — 문서 단위 실패는 파서 측 계약이다(C14).
+    """
+    for f, v in rec.items():
+        if f in fields or f in STRUCTURAL:
+            continue
+        store.enqueue("unknown_field", f"스키마에 없는 필드 '{f}'", doc_id,
+                      {"field": f, "value": v, "provenance": prov})
+    for f, spec in fields.items():
+        if spec.get("optional") or f in STRUCTURAL:
+            continue
+        if rec.get(f) in (None, ""):
+            store.enqueue("missing_field", f"필수 필드 '{f}' 부재", doc_id,
+                          {"field": f, "provenance": prov})
 
 
 def _context(holder, prov, doc_id):
@@ -47,6 +71,22 @@ def _context(holder, prov, doc_id):
     return {}
 
 
+def _scalar(value, field, prov, doc_id):
+    """role 핸들러는 **단일 값만 본다**는 전제를 코드가 방어한다 (카드 D6).
+
+    복수값 전개는 파서 몫이지만(normalizer), 계약이 핸들러 측 방어를 따로 요구한다 —
+    리스트가 그대로 오면 `norm()`의 `str()` 강제 변환과 포함 규칙을 타고 **기존 노드에
+    조용히 흡수되어 사전을 오염시킨다**(실측: `dictionary`에 `"['노칭 프레스', …]"` 키).
+    D-60의 `context` 방어와 같은 계보다 — 죽지 않고 그 필드만 버린 뒤 큐로 드러낸다.
+    """
+    if isinstance(value, (str, int, float)):
+        return True
+    store.enqueue("missing_field",
+                  f"'{field}'가 단일 값이 아니다 — {type(value).__name__} (카드 D6)",
+                  doc_id, {"field": field, "value": value, "provenance": prov})
+    return False
+
+
 # ---------------------------------------------------------------- 정형 (1c′)
 def build_table(env, cfg, schema, graph):
     b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
@@ -55,6 +95,7 @@ def build_table(env, cfg, schema, graph):
 
     for rec in env.get("records", []):
         prov = _prov(rec)
+        _check_fields(rec, fields, prov, env["doc_id"])
         # ③ 좌표: 부착은 process_ref 하나. process_group은 조상 대조만.
         ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov)
         b.check_coord(rec.get("process_group"), ref, prov, ref_g)
@@ -72,12 +113,13 @@ def build_table(env, cfg, schema, graph):
             if f not in rec or rec[f] in (None, ""):
                 continue
             role = spec.get("role")
+            if role in ("entity", "attribute", "anchor") and \
+                    not _scalar(rec[f], f, prov, env["doc_id"]):
+                continue
             if role not in ("anchor", "entity", "attribute", "content", "meta"):
                 # D-30 — 알 수 없는 role에 KeyError로 죽지 않는다.
-                store.append_defect(
+                store.append_defect(                    # 큐가 아니라 로그다 (D-30)
                     f"{env['doc_id']}: invalid_role '{role}' @ 필드 '{f}'")
-                store.enqueue("invalid_role", f"스키마에 없는 role '{role}'",
-                              env["doc_id"], {"field": f, "role": role})
                 continue
             if role == "anchor":
                 nid, ng = b.resolve_anchor(rec[f], spec["target_category"], prov)
@@ -267,11 +309,31 @@ def _pair_relation(cfg, src_cat, dst_cat):
 
 
 # ---------------------------------------------------------------- 진입점
+def _reject(doc_id, reason, payload):
+    """문서 단위 실패 (C14) — **위반 하나면 통째 미인입**이고 큐로 드러낸다.
+
+    그래프·청크·체크포인트에 아무것도 쓰지 않는다. 무음 폴백으로 밀어 넣으면
+    잘못된 자리에 적재된 지식을 나중에 아무도 찾아내지 못한다.
+    """
+    store.enqueue("parse_failure", reason, doc_id, payload)
+    res = IngestResult(doc_id)
+    res.status, res.reason = "held", reason
+    return res, None, False
+
+
 def run_document(path_or_env, layer=None):
     env = path_or_env
-    doc_type = env["doc_type"]
+    doc_id, doc_type = env["doc_id"], env["doc_type"]
+
+    kind = env.get("payload_kind")
+    if kind not in PAYLOAD_KINDS:                        # 닫힌 2값 (B2)
+        return _reject(doc_id, f"payload_kind가 닫힌 2값 밖이다 — {kind!r}",
+                       {"payload_kind": kind, "doc_type": doc_type})
     schema = load_schema(doc_type)
-    layer = layer or (schema or {}).get("layer") or "process"
+    if schema is None and layer is None:                 # 미등록 doc_type (B3)
+        return _reject(doc_id, f"미등록 doc_type '{doc_type}' — 구축 모드 대상이다",
+                       {"doc_type": doc_type, "source_path": env.get("source_path")})
+    layer = layer or schema["layer"]
     cfg = load_config(layer)
 
     res = ingest(env)                                    # ① doc_hash → ② 근거 축 id
@@ -282,7 +344,7 @@ def run_document(path_or_env, layer=None):
     graph.build_begin()
 
     extracted = False
-    if env.get("payload_kind") == "table":
+    if kind == "table":
         build_table(env, cfg, schema, graph)
     else:
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]

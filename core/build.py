@@ -199,6 +199,16 @@ class Builder:
         없어져 **polarity 필드만 다르고 canonical이 같은 노드 2개가 공존**한다
         (P4 취지 위반 — C12 실측). 그래서 Unit은 F1 극성 결합을 유지한다.
         """
+        from .bootstrap import layer_of_category
+        if layer_of_category(category) is None:
+            # 카테고리는 **운영 중에 발명되지 않는다**(카드 I3 · CH2 2.9 금지 목록).
+            # 추출→구축의 신뢰 경계에서 이것이 유일한 강제 지점이다 — 프롬프트 계약만으로는
+            # 층 어휘가 아닌 이름이 그래프에 심긴다.
+            store.enqueue("invalid_category",
+                          f"층이 선언하지 않은 카테고리 '{category}' — 노드를 만들지 않는다",
+                          self.doc_id, {"surface": surface, "category": category,
+                                        "provenance": prov})
+            return None
         scoped_category = category in (self.cfg.get("canonical_scope") or {}) \
             .get("bind_categories", [])
         anchor_polarity = anchor_polarity if scoped_category else None
