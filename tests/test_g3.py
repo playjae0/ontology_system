@@ -154,13 +154,16 @@ def _axis_twice(c):
     return any(c.count(v) > 1 for v in ("cathode", "anode"))
 
 
+# 증인은 **정형 유래**(CP01-C12)를 쓴다 — 아래 126행이 이미 신뢰하는 노드이고,
+# 표 경로라 인입 순서에 무관하다. 구판 증인(PPT01 유래 `…용접 가압력`)은 G6.5 E2가
+# mock 폴백 어휘를 골격 닫힌 목록으로 한정하면서 corpus에서 사라졌다.
 show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
-     "탭용접::cathode::용접 가압력" in canon(P)
+     "탭용접::cathode::용접 강도" in canon(P)
      and not any(_axis_twice(c) for c in canon(P)),
      str([c for c in canon(P) if _axis_twice(c)]))
 show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
      next(n for n in P.nodes.values()
-          if n["canonical"] == "탭용접::cathode::용접 가압력")["polarity"] == "cathode")
+          if n["canonical"] == "탭용접::cathode::용접 강도")["polarity"] == "cathode")
 show("polarity가 닫힌 4값 밖으로 새지 않음 (cathode/anode/none/unbound)",
      {n.get("polarity") for n in list(P.nodes.values()) + list(Q.nodes.values())}
      <= {"cathode", "anode", "none", "unbound"},

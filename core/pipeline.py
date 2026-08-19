@@ -277,12 +277,19 @@ def build_prose(env, cfg, graph, candidates):
             if s and d:
                 gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
                                  [prov], env["doc_id"], evidence_chunk=cid)
+            else:                               # 게이트에 닿기도 전의 소멸 — 기록한다
+                store.append_defect(
+                    f"{env['doc_id']}: 관계 후보 끝점 미해소 — "
+                    f"'{r['src']}' -{r['rel']}-> '{r['dst']}' @ {cid}")
 
         # attach — ③의 폴백. 해소 범위는 **문서 버퍼 전체 + 사전**이며 청크 경계가 없다.
         for a in cand.get("attach", []):
             child = b.buffer.get(_n(a["surface"]))
             target = b.buffer.get(_n(a["attach_to"])) or _dict_hit(b, a["attach_to"])
-            if child is None:
+            if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
+                store.append_defect(
+                    f"{env['doc_id']}: attach 자식 미해소 — "
+                    f"'{a['surface']}' → '{a['attach_to']}' @ {cid}")
                 continue
             if target is None:
                 store.enqueue("orphan_attach", f"부착 대상 미해소 — '{a['attach_to']}'",
@@ -370,14 +377,24 @@ def run_document(path_or_env, layer=None):
 
 
 def _vocab(cfg):
-    """USE_MOCK 문형 폴백이 쓸 표면형→카테고리 표. 층 config에서만 나온다."""
-    v = {}
-    for nid, ids in store.read(store.DICTIONARY, {}).items():
-        v.setdefault(nid, None)
+    """USE_MOCK 문형 폴백이 쓸 표면형→카테고리 표 — **골격 닫힌 목록 스냅샷만** 읽는다.
+
+    구판은 사전과 **현재 그래프 상태**를 어휘로 넘겼다. 그러면 추출이 "지금까지 무엇이
+    인입됐나"에 의존해 **문서 인입 순서에 따라 그래프가 달라지고**(실측 정순 66 · 역순 65),
+    체크포인트가 그 우연을 영구히 동결한다 — 추출 계약 규약 1이 노드 id 참조를 금지한
+    이유가 정확히 이 메커니즘이고, 표면형 어휘라는 뒷문으로 같은 의존이 성립해 있었다.
+    재현성 3입력(adapter/prompt/config_version)에 기록되지 않는 네 번째 입력이기도 하다.
+
+    골격(`status="seed"`)은 부트스트랩이 인입 **전에** 세우고 인입이 바꾸지 않으므로
+    순서 무관이다. 좌표 닫힌 목록 = 골격 전 노드이며(A11-6 · D-45), 이것이 D-11이 말한
+    "골격 닫힌 목록 스냅샷"의 실질이다 — 별도 파일을 만들지 않고 그래프에서 읽는다.
+    """
     from .ids import norm
-    g = open_graph(cfg["layer"])
-    for n in g.nodes.values():
+    v = {}
+    for n in open_graph(cfg["layer"]).nodes.values():
+        if n.get("status") != "seed":
+            continue
         v[norm(n["canonical"])] = n["category"]
         for a in n["aliases"]:
             v[norm(a["surface"])] = n["category"]
-    return {k: c for k, c in v.items() if c}
+    return {k: c for k, c in v.items() if k and c}

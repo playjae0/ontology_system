@@ -19,6 +19,8 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from . import store
 from .graph import STATUS_DELETED, GraphStore
 from .ids import norm
@@ -74,6 +76,11 @@ def _sep(cfg):
     return (cfg.get("canonical_scope") or {}).get("sep", "::")
 
 
+def _now():
+    """연산 시점 — 로그 5요소의 하나다. 상수로 두면 그 자리가 **위조값**이 된다."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def log_op(op, actor, targets, reason, detail=None):
     """연산 로그 — **큐가 아니라 로그다**(D-7 계보). 처리 대상이 아니라 이력이다.
 
@@ -81,7 +88,7 @@ def log_op(op, actor, targets, reason, detail=None):
     행위자 없는 I축 연산은 거부한다 — 누가 그래프를 고쳤는지 모르면 로그가 로그가 아니다.
     """
     log = store.read(store.OPS_LOG, [])
-    log.append({"op": op, "actor": actor, "at": "2026-08-18T00:00:00",
+    log.append({"op": op, "actor": actor, "at": _now(),
                 "targets": list(targets), "reason": reason, "detail": detail or {}})
     store.write(store.OPS_LOG, log)
     return log[-1]
@@ -343,7 +350,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         STATUS_RANK.get(gone["status"], 0) else gone["status"]
 
     g.nodes[gone["id"]] = {"id": gone["id"], STATUS_MERGED: keep["id"],
-                           "status": STATUS_MERGED, "at": "2026-08-18T00:00:00",
+                           "status": STATUS_MERGED, "at": _now(),
                            "canonical": gone["canonical"], "category": gone["category"],
                            "layer": gone["layer"], "attrs": {}, "aliases": [],
                            "provenance": []}
@@ -427,7 +434,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     for i in own_edges:
         g.edges[i]["status"] = STATUS_DELETED
     g.nodes[nid] = {"id": nid, STATUS_MERGED: new_ids[0], "status": STATUS_MERGED,
-                    "at": "2026-08-18T00:00:00", "canonical": node["canonical"],
+                    "at": _now(), "canonical": node["canonical"],
                     "category": node["category"], "layer": node["layer"],
                     "attrs": {}, "aliases": [], "provenance": []}
     # 배분표가 각 표기를 자기 타깃에 이미 등재했다 — 여기서는 **옛 id만 걷는다.**
@@ -461,7 +468,7 @@ def obsolete(layer, nid, actor, replaced_by=None, reason="", dry_run=False):
         return pv
     node["status"] = STATUS_OBSOLETE
     node["replaced_by"] = replaced_by
-    node["obsoleted_at"] = "2026-08-18T00:00:00"
+    node["obsoleted_at"] = _now()
     node["obsolete_reason"] = reason
     g.save()
     log_op("I4:obsolete", actor, [nid], reason, {"replaced_by": replaced_by})

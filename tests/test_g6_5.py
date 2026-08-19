@@ -412,15 +412,31 @@ def build_in(order):
     for d in order:
         run_document(load(d))
     finalize()
-    return {lay: sorted(n2["canonical"] for n2 in open_graph(lay).nodes.values())
+    return {lay: {n2["canonical"]: {n2["canonical"]} | {a["surface"]
+                                    for a in n2["aliases"]}
+                  for n2 in open_graph(lay).nodes.values()}
             for lay in ("process", "quality")}
 
 
 fwd = build_in(DOCS)
 rev2 = build_in(list(reversed(DOCS)))
-diff = {lay: sorted(set(fwd[lay]) ^ set(rev2[lay])) for lay in fwd}
-show("E2 정순·역순 인입이 동형 그래프를 만든다",
-     not any(diff.values()), str({k: v for k, v in diff.items() if v}))
+# 봉인 R2-12가 잰 것은 **노드 소실**이다(정순 66 · 역순 65 — 큐·로그 없이 사라짐).
+# 표기 변형 중 어느 쪽이 canonical이 되는가는 소실이 아니라 매칭의 정상 동작이다
+# (기존 노드에 alias 자동 누적 — 3.3 규약 1). 양쪽 다 표기를 잃지 않는다.
+def _lost(a, b):
+    """a에는 있는데 b의 어느 노드도 그 표기를 갖지 않는 것 = 진짜 소실."""
+    have = {s for names in b.values() for s in names}
+    return sorted(c for c, names in a.items() if not (names & have))
+
+
+gap = {lay: (len(fwd[lay]) != len(rev2[lay]),
+             _lost(fwd[lay], rev2[lay]) + _lost(rev2[lay], fwd[lay]))
+       for lay in fwd}
+show("E2 정순·역순 인입이 동형 그래프를 만든다 (노드 수 동일 · 소실 0)",
+     not any(cnt or lost for cnt, lost in gap.values()),
+     str({k: v for k, v in gap.items() if v[0] or v[1]})
+     or f"process {len(fwd['process'])}/{len(rev2['process'])} · "
+        f"quality {len(fwd['quality'])}/{len(rev2['quality'])}")
 
 fresh()
 print("\n" + "=" * 62)
