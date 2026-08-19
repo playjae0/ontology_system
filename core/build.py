@@ -318,6 +318,9 @@ class Builder:
         vals = (self.cfg.get("polarity") or {}).get("values") or []
         if not vals:
             return
+        # **재평가 전에 이 층 소관의 옛 항목을 걷어낸다** — 매 빌드의 재평가가 곧
+        # 현재 스냅샷이고, 대칭이 회복되면 큐에서 내려가야 한다(3.5 규약 6 self-heal).
+        store.drop("mirror_asymmetry", lambda p: p.get("node_id") in self.g.nodes)
         by_key = {}
         for nid, n in self.g.nodes.items():
             if n["status"] == "seed":                    # Tier1 — loader 소관

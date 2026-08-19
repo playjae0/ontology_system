@@ -173,6 +173,18 @@ show("사전 재매칭으로 provenance 복원 (잃은 출처 0)",
          for n in P2.nodes.values()),
      str([n["canonical"] for n in P2.nodes.values()
           if not set(before_prov.get(n["canonical"], [])) <= set(n["provenance"])][:3]))
+# 큐는 조건의 화면이지 이력이 아니다 — 재인입이 같은 조건을 다시 싣지 않아야 하고
+# (중복 제거), 재계산하는 쪽은 해소된 조건을 내려야 한다(self-heal). 둘 다 3.5 규약 6.
+q_after = store.read(store.QUEUE, [])
+for d in DOCS:
+    run_document(load(f"{d}.json"))
+q_again = store.read(store.QUEUE, [])
+show("재인입이 큐를 증식시키지 않는다 (중복 제거 — 3.5 규약 6)",
+     len(q_again) == len(q_after), f"{len(q_after)} → {len(q_again)}")
+show("미검토 작업목록은 재인입에도 보존된다 (auto_node — 재검출되지 않는 상시 조건)",
+     sum(1 for x in q_again if x["kind"] == "auto_node") ==
+     sum(1 for x in q_after if x["kind"] == "auto_node"),
+     str(sum(1 for x in q_again if x["kind"] == "auto_node")))
 show("재인입 후에도 질의 응답 동일 (판정 무오염)",
      {i: R.answer(q["q"])["path"] for i, q in
       zip([q["id"] for q in QUERIES["queries"]], QUERIES["queries"])}

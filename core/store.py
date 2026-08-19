@@ -68,11 +68,41 @@ def append_defect(line: str):
     append_line(DEFECTS, line)
 
 
+def drop(kind, match):
+    """그 kind의 큐 항목 중 `match(payload)`가 참인 것을 걷어낸다 — **self-heal**의 손이다.
+
+    CH3B 3.5 규약 6은 mirrors에 대해 *"매 빌드마다 재평가하고 대칭이 회복되면 큐에서
+    제거한다"*고 요구한다. 재평가가 새 항목을 쌓기만 하면 **고쳐진 조건이 화면에서
+    영영 사라지지 않는다** — 큐는 조건의 화면이지 이력이 아니다(P-3).
+    재계산하는 쪽이 자기 소관 범위를 걷어내고 현재 스냅샷을 다시 싣는다.
+    """
+    q = read(QUEUE, [])
+    kept = [x for x in q if not (x.get("kind") == kind and match(x.get("payload") or {}))]
+    if len(kept) != len(q):
+        write(QUEUE, kept)
+    return len(q) - len(kept)
+
+
 def enqueue(kind, reason, doc_id, payload):
     """수정 큐. 처리 못 한 것은 전부 종류가 붙은 큐 항목이 된다 —
-    실패는 예외가 아니라 등급이다(CH3B 3.7 규약 2)."""
+    실패는 예외가 아니라 등급이다(CH3B 3.7 규약 2).
+
+    **같은 항목을 두 번 싣지 않는다** (3.5 규약 6 "큐는 쌍 키로 중복 제거"). 조건은
+    빌드마다 다시 판정되므로 중복 방지가 없으면 같은 조건이 재인입마다 증식한다
+    (실측: `run.py all` 1회 3항목 → 2회 7 → 3회 11). 동일성 기준은 **(kind, doc_id,
+    payload)** — payload의 node_id는 재인입에도 불변이라(P4) 결정적이다.
+
+    회수(=조건이 해소되어 화면에서 내리는 것)는 여기가 아니라 `drop()`이 한다 —
+    싣는 쪽과 내리는 쪽을 가르지 않으면 **재검출되지 않는 상시 조건**(auto_node 같은
+    미검토 작업목록)까지 재인입이 지워 버린다.
+    """
     q = read(QUEUE, [])
-    q.append({"kind": kind, "payload": payload, "reason": reason,
-              "doc_id": doc_id, "created": "2026-01-05T00:00:00"})
+    item = {"kind": kind, "payload": payload, "reason": reason,
+            "doc_id": doc_id, "created": "2026-01-05T00:00:00"}
+    for x in q:
+        if (x.get("kind"), x.get("doc_id"), x.get("payload")) \
+                == (kind, doc_id, payload):
+            return x
+    q.append(item)
     write(QUEUE, q)
-    return q[-1]
+    return item

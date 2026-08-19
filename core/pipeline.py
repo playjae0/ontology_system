@@ -29,11 +29,29 @@ def _prov(rec):
     return rec.get("source_locator")
 
 
+def _context(holder, prov, doc_id):
+    """조각·봉투의 `context`는 **임의 딕셔너리**다(CH2 2.2) — 스칼라로 오면 계약 위반이다.
+
+    D-30과 같은 계보로 처리한다: 인입 코드는 계약 위반에 **예외로 죽지 않고** 큐로
+    표면화한 뒤 그 필드만 버리고 전진한다. 한 필드의 형태 오류로 레코드 전체를 잃으면
+    "조용히 버리지 않는다"가 반대 방향으로 깨지고, 죽어 버리면 나머지 행의 정상 지식까지
+    통째로 사라진다. 새 kind를 만들지 않는다 — `missing_field`가 "필수 값 부재·계약 위반"을
+    이미 덮는다(CH3B 3.7 · 닫힌 20종).
+    """
+    c = holder.get("context")
+    if c is None or isinstance(c, dict):
+        return dict(c or {})
+    store.enqueue("missing_field",
+                  f"context가 딕셔너리가 아니다 — {type(c).__name__} {c!r} (CH2 2.2 계약 위반)",
+                  doc_id, {"field": "context", "value": c, "provenance": prov})
+    return {}
+
+
 # ---------------------------------------------------------------- 정형 (1c′)
 def build_table(env, cfg, schema, graph):
     b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
     fields = schema["fields"]
-    envelope_ctx = env.get("context", {})
+    envelope_ctx = _context(env, env.get("source_path"), env["doc_id"])
 
     for rec in env.get("records", []):
         prov = _prov(rec)
@@ -41,7 +59,7 @@ def build_table(env, cfg, schema, graph):
         ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov)
         b.check_coord(rec.get("process_group"), ref, prov, ref_g)
         ctx = dict(envelope_ctx)
-        ctx.update(rec.get("context") or {})            # 봉투 → 레코드 상속·덮어쓰기
+        ctx.update(_context(rec, prov, env["doc_id"]))  # 봉투 → 레코드 상속·덮어쓰기
         parent = ref_g.get(ref)["canonical"] if ref else None
         et = rec.get("electrode_type")                  # ④ 구조 필드 — 직접 읽는다
         # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
@@ -91,11 +109,10 @@ def build_table(env, cfg, schema, graph):
 
         # ② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다.
         for e in schema.get("edges", []):
-            src = resolved.get(e["from"])
-            if e["to"] == "@process_ref":
-                dst, dg = ref, ref_g
-            else:
-                dst, dg = resolved.get(e["to"]), external.get(e["to"], graph)
+            src, _sg = _endpoint(e["from"], resolved, ref, ref_g, external, graph,
+                                 env["doc_id"])
+            dst, dg = _endpoint(e["to"], resolved, ref, ref_g, external, graph,
+                                env["doc_id"])
             if src and dst:
                 gate.commit_edge(graph, src, e["relation"], dst, cfg,
                                  gate.PATH_SCHEMA, [prov], env["doc_id"],
@@ -104,6 +121,25 @@ def build_table(env, cfg, schema, graph):
     b.link_mirrors()
     b.flush()
     return b
+
+
+def _endpoint(name, resolved, ref, ref_g, external, graph, doc_id):
+    """엣지 끝점 해소 — `@` 접두는 **필드가 아니라 이 레코드의 공정좌표**를 가리킨다.
+
+    `@`는 `from`·`to` 어느 쪽에도 올 수 있다(하네스의 참조 무결성 검사도 양쪽을 같게
+    본다). 한쪽만 구현하면 **스키마가 선언한 엣지가 조용히 사라진다** — A-4 관통
+    실측: ipqc의 `@process_ref has_property 검사항목`이 0건 적재됐다. 조용한 누락은
+    큐도 로그도 남기지 않아 아무도 모른다.
+
+    좌표 중 부착 대상은 `process_ref` 하나다(③ — process_group은 조상 대조만 한다).
+    그 밖의 `@` 표기는 해소하지 않되 **결함 로그로 드러낸다.**
+    """
+    if not str(name).startswith("@"):
+        return resolved.get(name), external.get(name, graph)
+    if name == "@process_ref":
+        return ref, ref_g
+    store.append_defect(f"{doc_id}: 부착 대상이 아닌 좌표 표기 '{name}' @ edges 선언")
+    return None, graph
 
 
 def _describe(doc_id, rec, field, node_id):
