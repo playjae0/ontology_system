@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "검수 뷰 데이터 (view.json)",
+  "_정본": "파서_명세 §7 · 카드 M11. 어긋나면 그쪽이 이긴다.",
+  "_경계계약": [
+    "이 스키마는 **산출자(P3 n6)와 렌더러(킷 ⑤) 사이의 계약**이다.",
+    "렌더러만 교체되고 데이터 계약은 불변이다(§7 규약 3 · P-2) — 플랫폼 화면은",
+    "나중에 이 JSON을 직접 읽는다. 그래서 렌더러가 필요로 하는 것을 데이터가 미리",
+    "다 갖고 있어야 하고, 렌더러가 계산해서 채우면 그 순간 계약이 렌더러에 종속된다.",
+    "**3구획 구조는 payload_kind와 무관하게 같다** — 다른 것은 구획 1의 렌더뿐이다."
+  ],
+  "type": "object",
+  "required": ["doc_type", "adapter_version", "payload_kind", "sections"],
+  "properties": {
+    "doc_type": {"type": "string"},
+    "adapter_version": {"type": "string"},
+    "payload_kind": {"enum": ["table", "prose"]},
+    "regenerations": {
+      "type": "array",
+      "_note": "재생성 루프의 지시 이력 — **숫자 상한 없음**(§7 규약 2 · A8). 매회 지시가 남고 중단은 사람 판단이다. 화면에는 강제 없는 안내만 둔다.",
+      "items": {
+        "type": "object",
+        "required": ["n", "instruction"],
+        "properties": {"n": {"type": "integer"}, "instruction": {"type": "string"},
+                       "at": {"type": "string"}}
+      }
+    },
+    "sections": {
+      "type": "object",
+      "required": ["parse_result", "role_table", "adapter_summary"],
+      "_note": "구획 3개. 구판의 구획 4(층 초안)는 층 등록 세션의 검수 뷰로 이관됐다 — doc_type 등록 화면에 뜰 일이 없다(§7 ⑺-⓪).",
+      "properties": {
+        "parse_result": {
+          "type": "object",
+          "_note": "구획 1 — **3층 표시**(§7 규약 1). 목적은 '모든 행이 맞는가'가 아니라 '규칙이 맞는가'다.",
+          "required": ["summary", "anomalies", "normal"],
+          "properties": {
+            "summary": {
+              "type": "object",
+              "_note": "① 요약 통계 — 조각 수·필드별 채움율·실패/경고 건수",
+              "required": ["samples", "pieces", "fill_rate"],
+              "properties": {
+                "samples": {"type": "integer"},
+                "pieces": {"type": "integer"},
+                "failures": {"type": "integer"},
+                "warnings": {"type": "integer"},
+                "fill_rate": {
+                  "type": "object",
+                  "_note": "{필드명: 0.0~1.0}. 산출자가 계산한다 — 렌더러가 계산하면 계약이 렌더러에 종속된다.",
+                  "additionalProperties": {"type": "number"}
+                }
+              }
+            },
+            "anomalies": {
+              "type": "array",
+              "_note": "② 이상 신호 — **전량 필수 표시**다. 발췌로 숨기면 안 된다. 실패 조각·'판정 불가' 질문·경고가 전부 여기 온다.",
+              "items": {
+                "type": "object",
+                "required": ["kind", "message"],
+                "properties": {
+                  "kind": {"enum": ["failure", "question", "warning"],
+                           "_note": "question = '판정 불가'. 질문 형태로 표시한다(§7 규약 5)."},
+                  "message": {"type": "string"},
+                  "where": {"type": "string", "_note": "표본·조각 위치"},
+                  "detail": {"type": "object"}
+                }
+              }
+            },
+            "normal": {
+              "type": "object",
+              "_note": "③ 정상 조각 — **발췌 기본 + 전량 접힘**. excerpt는 화면에 펼쳐지고 all은 접힌다.",
+              "required": ["excerpt", "all"],
+              "properties": {
+                "excerpt": {"type": "array", "items": {"type": "object"}},
+                "all": {"type": "array", "items": {"type": "object"}},
+                "columns": {
+                  "type": "array", "items": {"type": "string"},
+                  "_note": "table 렌더용 열 순서. prose면 비워 둔다 — 렌더는 payload_kind가 가른다."
+                },
+                "tree": {
+                  "type": "array",
+                  "_note": "prose 렌더용 계층 트리 — 청크 경계 표시. table이면 비워 둔다.",
+                  "items": {
+                    "type": "object",
+                    "required": ["section", "locator"],
+                    "properties": {"section": {"type": "string"},
+                                   "locator": {"type": "string"},
+                                   "excerpt": {"type": "string"},
+                                   "depth": {"type": "integer"}}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "role_table": {
+          "type": "array",
+          "_note": "구획 2 — 필드 → role 배정표. **근거를 병기한다**(LLM의 한 줄 설명). 구조 필드는 여기 올리지 않는다(D-46 — 6지선다 대상이 아니다).",
+          "items": {
+            "type": "object",
+            "required": ["field", "role"],
+            "properties": {
+              "field": {"type": "string"},
+              "role": {"enum": ["anchor", "entity", "attribute", "content", "meta",
+                                "UNMAPPABLE"]},
+              "category": {"type": "string"},
+              "attach_to": {"type": "string"},
+              "reason": {"type": "string", "_note": "배정 근거 한 줄"},
+              "from_block": {"type": "string", "_note": "공용 블록 유래면 블록 이름"}
+            }
+          }
+        },
+        "adapter_summary": {
+          "type": "object",
+          "_note": "구획 3 — expects와 adapter_version. **코드 전문은 접힘**(펼쳐볼 수는 있게).",
+          "required": ["expects"],
+          "properties": {
+            "expects": {"type": "object"},
+            "adapter_version": {"type": "string"},
+            "source": {"type": "string", "_note": "어댑터 코드 전문 — 접힌 채로 렌더된다"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "doc_type": "toc_report",
+  "adapter_version": "1.0",
+  "payload_kind": "prose",
+  "regenerations": [],
+  "sections": {
+    "parse_result": {
+      "summary": {
+        "samples": 1,
+        "pieces": 11,
+        "failures": 1,
+        "warnings": 1,
+        "fill_rate": {
+          "image_ref": 0.182,
+          "meta": 1.0,
+          "section": 1.0,
+          "source_locator": 1.0,
+          "text": 1.0
+        }
+      },
+      "anomalies": [
+        {
+          "kind": "warning",
+          "message": "표본 1부 · 변형 미관찰 — **선언된 관계는 근거 1건일 수 있음** (D-22)",
+          "where": "TOC01.xlsx"
+        },
+        {
+          "kind": "failure",
+          "message": "이미지 placeholder 조각에 요약이 비어 있다 (코어가 채운다 — §5 규약 3)",
+          "where": "보고서!A17",
+          "detail": {
+            "image_ref": "img_001"
+          }
+        }
+      ],
+      "normal": {
+        "excerpt": [
+          {
+            "text": "노칭 프레스는 금형으로 전극 원단을 타발하여 탭 형상을 만든다.\n전극 언와인더가 원단을 공급하며 장력과 사행을 함께 제어한다.",
+            "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.1 설비 구성",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A5:A6"
+          },
+          {
+            "text": "타발 정밀도는 금형 클리어런스와 타발 속도에 의해 좌우된다.\n버 높이는 금형 날 상태에 직접 영향을 받아 교대별로 확인한다.",
+            "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.2 관리 항목",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A8:A9"
+          },
+          {
+            "text": "스태커는 분리막과 전극을 교대로 적층한다.\n분리막 언와인더가 분리막을 공급하고 장력을 유지한다.",
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.1 설비 구성",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A12:A13"
+          }
+        ],
+        "all": [
+          {
+            "text": "노칭 프레스는 금형으로 전극 원단을 타발하여 탭 형상을 만든다.\n전극 언와인더가 원단을 공급하며 장력과 사행을 함께 제어한다.",
+            "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.1 설비 구성",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A5:A6"
+          },
+          {
+            "text": "타발 정밀도는 금형 클리어런스와 타발 속도에 의해 좌우된다.\n버 높이는 금형 날 상태에 직접 영향을 받아 교대별로 확인한다.",
+            "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.2 관리 항목",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A8:A9"
+          },
+          {
+            "text": "스태커는 분리막과 전극을 교대로 적층한다.\n분리막 언와인더가 분리막을 공급하고 장력을 유지한다.",
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.1 설비 구성",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A12:A13"
+          },
+          {
+            "text": "적층 정렬도는 인라인 비전으로 전수 관리한다.\n흡착 압력이 낮으면 적층 어긋남과 분리막 주름이 함께 발생한다.",
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.2 관리 항목",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A15:A16"
+          },
+          {
+            "source_locator": "보고서!A17",
+            "image_ref": "img_001",
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.2 관리 항목",
+            "text": "MOCK 요약: img_001",
+            "meta": {
+              "image_summary": true
+            }
+          },
+          {
+            "text": "초음파 융착기가 극성별로 탭을 접합하며 조건이 서로 다르다.\n용접 진폭과 출력은 혼 마모에 따라 주기적으로 재설정한다.",
+            "section": "1. 조립 공정 개요 > 1.3 탭용접",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A19:A20"
+          },
+          {
+            "text": "금형 마모가 누적되면 절단면에 버가 생겨 단락으로 이어질 수 있다.\n현미경 검사에서 30㎛를 초과한 건이 3월에 2건 확인되었다.",
+            "section": "2. 품질 이슈 > 2.1 노칭 버 발생",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A23:A24"
+          },
+          {
+            "text": "정렬 센서 오차와 흡착 불량이 주요 원인으로 파악된다.\n스테이지 진동도 기여 인자로 새로 확인되었다.",
+            "section": "2. 품질 이슈 > 2.2 적층 어긋남",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A26:A27"
+          },
+          {
+            "source_locator": "보고서!A28",
+            "image_ref": "img_002",
+            "section": "2. 품질 이슈 > 2.2 적층 어긋남",
+            "text": "MOCK 요약: img_002",
+            "meta": {
+              "image_summary": true
+            }
+          },
+          {
+            "text": "누적 타수 기준을 하향 조정하여 버 발생을 사전에 억제한다.",
+            "section": "3. 개선 활동 > 3.1 금형 교체 주기 단축",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A31"
+          },
+          {
+            "text": "일일 교정을 표준 작업에 편입하고 결과를 이력으로 남긴다.",
+            "section": "3. 개선 활동 > 3.2 정렬 센서 교정 주기화",
+            "meta": {
+              "doc_title": "조립공정 현황 보고"
+            },
+            "source_locator": "보고서!A33"
+          }
+        ],
+        "columns": [],
+        "tree": [
+          {
+            "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.1 설비 구성",
+            "locator": "보고서!A5:A6",
+            "excerpt": "노칭 프레스는 금형으로 전극 원단을 타발하여 탭 형상을 만든다.\n전극 언와인더가 원단을 공급하며 장력과 사행",
+            "depth": 2
+          },
+          {
+            "section": "1. 조립 공정 개요 > 1.1 노칭 > 1.1.2 관리 항목",
+            "locator": "보고서!A8:A9",
+            "excerpt": "타발 정밀도는 금형 클리어런스와 타발 속도에 의해 좌우된다.\n버 높이는 금형 날 상태에 직접 영향을 받아 교",
+            "depth": 2
+          },
+          {
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.1 설비 구성",
+            "locator": "보고서!A12:A13",
+            "excerpt": "스태커는 분리막과 전극을 교대로 적층한다.\n분리막 언와인더가 분리막을 공급하고 장력을 유지한다.",
+            "depth": 2
+          },
+          {
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.2 관리 항목",
+            "locator": "보고서!A15:A16",
+            "excerpt": "적층 정렬도는 인라인 비전으로 전수 관리한다.\n흡착 압력이 낮으면 적층 어긋남과 분리막 주름이 함께 발생한다",
+            "depth": 2
+          },
+          {
+            "section": "1. 조립 공정 개요 > 1.2 스태킹 > 1.2.2 관리 항목",
+            "locator": "보고서!A17",
+            "excerpt": "MOCK 요약: img_001",
+            "depth": 2
+          },
+          {
+            "section": "1. 조립 공정 개요 > 1.3 탭용접",
+            "locator": "보고서!A19:A20",
+            "excerpt": "초음파 융착기가 극성별로 탭을 접합하며 조건이 서로 다르다.\n용접 진폭과 출력은 혼 마모에 따라 주기적으로 ",
+            "depth": 1
+          }
+        ]
+      }
+    },
+    "role_table": [
+      {
+        "field": "source_locator",
+        "role": "meta",
+        "category": null,
+        "attach_to": null,
+        "reason": "공용 블록 선언",
+        "from_block": "공용 블록"
+      },
+      {
+        "field": "process_group",
+        "role": "anchor",
+        "category": null,
+        "attach_to": null,
+        "reason": "공용 블록 선언",
+        "from_block": "공용 블록"
+      },
+      {
+        "field": "process_ref",
+        "role": "anchor",
+        "category": null,
+        "attach_to": null,
+        "reason": "공용 블록 선언",
+        "from_block": "공용 블록"
+      },
+      {
+        "field": "process_no",
+        "role": "meta",
+        "category": null,
+        "attach_to": null,
+        "reason": "공용 블록 선언",
+        "from_block": "공용 블록"
+      }
+    ],
+    "adapter_summary": {
+      "expects": {
+        "title_row": 1,
+        "content_column": "A",
+        "heading_pattern": "^(\\d+(?:\\.\\d+)*)\\.?\\s+\\S",
+        "section_sep": " > ",
+        "max_col": 1
+      },
+      "adapter_version": "1.0",
+      "source": "import re\n\nADAPTER = {\n    \"doc_type\": \"toc_report\",\n    \"adapter_version\": \"1.0\",\n    \"payload_kind\": \"prose\",              # 목차형 보고서 — 행=record 아님\n    \"expects\": {                          # 분할 신호 상수 (관찰 기록)\n        \"title_row\": 1,                   # 힌트: 1행은 문서 제목 → meta로만 소비\n        \"content_column\": \"A\",            # 두 표본 모두 max_col=1, 단일 열\n        \"heading_pattern\": r\"^(\\d+(?:\\.\\d+)*)\\.?\\s+\\S\",  # \"1.\" / \"1.1\" / \"1.1.1\" — 두 표본에서 3계층 반복 관찰\n        \"section_sep\": \" > \",             # section 헤딩 경로 구분자\n        \"max_col\": 1,\n    },\n}\n\n_HEADING_RE = re.compile(r\"^(\\d+(?:\\.\\d+)*)\\.?\\s+(.+)$\")\n_CELL_RE = re.compile(r\"^[A-Z]+(\\d+)$\")\n\n\ndef extract(raw) -> list[dict]:\n    \"\"\"reader 원시 추출물 → 정규 조각(청크) 리스트. 조각마다 source_locator 포함.\n\n    분할 규칙(관찰 근거):\n    - 헤딩 판정은 번호 패턴만 사용한다. bold(표본1 A4·A7 헤딩이 비굵음)와\n      indent(표본1 A12=5 등 잡음)는 두 표본에서 비신뢰로 관찰되어 쓰지 않는다.\n    - 같은 헤딩 아래 연속 본문 행은 하나의 청크로 묶는다.\n    - 이미지는 placeholder 조각 {source_locator, image_ref, section}으로만 낸다.\n    - 1행 제목은 청크가 아니라 각 조각 meta.doc_title로만 실린다.\n    \"\"\"\n    fragments = []\n    for sheet in raw[\"sheets\"]:\n        name = sheet[\"name\"]\n        cells = sheet[\"cells\"]\n\n        images_by_row = {}\n        for img in sheet.get(\"images\""
+    }
+  }
+}

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>검수 뷰 — ipqc</title><style>
+:root { --bd:#d8dce3; --mut:#5b6270; --bg2:#f6f7f9; --warn:#b45309; --fail:#b91c1c;
+        --ask:#1d4ed8; }
+body { font: 15px/1.65 -apple-system,'Segoe UI','Noto Sans KR',sans-serif;
+       margin: 0 auto; max-width: 1080px; padding: 24px 20px 64px; color:#12151a; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 32px 0 10px; padding-bottom: 6px;
+     border-bottom: 2px solid #12151a; }
+.sub { color: var(--mut); margin: 0 0 8px; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px;
+        display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--bd); padding: 6px 9px; text-align: left;
+         vertical-align: top; }
+th { background: var(--bg2); white-space: nowrap; }
+.stat { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.stat div { border: 1px solid var(--bd); border-radius: 6px; padding: 8px 14px;
+            background: var(--bg2); }
+.stat b { display: block; font-size: 20px; }
+.anom { border-left: 4px solid var(--bd); padding: 8px 12px; margin: 8px 0;
+        background: var(--bg2); }
+.anom.failure { border-color: var(--fail); } .anom.warning { border-color: var(--warn); }
+.anom.question { border-color: var(--ask); }
+.tag { font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.failure .tag { color: var(--fail); } .warning .tag { color: var(--warn); }
+.question .tag { color: var(--ask); }
+.where { color: var(--mut); font-size: 12px; }
+details { margin: 10px 0; border: 1px solid var(--bd); border-radius: 6px;
+          padding: 8px 12px; }
+summary { cursor: pointer; font-weight: 600; }
+pre { background: var(--bg2); padding: 10px; overflow-x: auto; font-size: 13px;
+      border-radius: 4px; }
+.tree li { margin: 3px 0; } .tree .loc { color: var(--mut); font-size: 12px; }
+.none { color: var(--mut); font-style: italic; }
+footer { margin-top: 40px; color: var(--mut); font-size: 12px;
+         border-top: 1px solid var(--bd); padding-top: 10px; }
+</style></head><body>
+<h1>검수 뷰 — ipqc</h1>
+<p class="sub">payload_kind <b>table</b> · adapter_version
+   <b>1.0</b></p>
+<p class="sub">이 화면은 어댑터 성능 평가가 아니라 <b>등록 승인의 근거 확인</b>이다.
+   목적은 "모든 행이 맞는가"가 아니라 <b>"규칙이 맞는가"</b>다.</p>
+
+<h2>구획 1 · 파싱 결과</h2>
+<div class='stat'>
+<div><b>2</b>표본</div>
+<div><b>53</b>조각</div>
+<div><b>0</b>실패</div>
+<div><b>1</b>경고</div>
+</div>
+<table><tr><th>필드</th><th>context</th><th>electrode_type</th><th>process_group</th><th>process_no</th><th>process_ref</th><th>source_locator</th><th>검사설비</th><th>검사일시</th></tr><tr><td>채움율</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td></tr></table>
+<h3 style="font-size:15px;margin:16px 0 4px">이상 신호 — 전량</h3>
+<div class='anom warning'><span class='tag'>경고</span> UNMAPPABLE 2열은 스키마에서 제외됐다 (D-30) <span class='where'>(O열 &#x27;최근 불량 이력&#x27; · 미배정 1열)</span></div>
+<div class='anom question'><span class='tag'>판정 불가</span> &#x27;판정기준&#x27;은 attribute인가 content인가 — 규격값이 아니라 판정 문장이다 <span class='where'>(IPQC01 I열)</span></div>
+<h3 style='font-size:15px;margin:16px 0 4px'>정상 조각 — 발췌</h3><table><tr><th>context</th><th>electrode_type</th><th>process_group</th><th>process_no</th><th>process_ref</th><th>source_locator</th><th>검사설비</th><th>검사일시</th><th>검사자</th><th>검사항목</th><th>관련 표준문서</th><th>규격</th><th>부적합 조치</th><th>성적서번호</th><th>측정방법</th><th>판정기준</th></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R4</td><td>노칭 검사기</td><td>2026-04-02 09:10</td><td>김민수</td><td>노칭 정밀도</td><td>WI-노칭-003</td><td>±0.1mm</td><td>금형 점검 후 재검사</td><td>QC-2604-001</td><td>비전 측정기</td><td>3점 연속 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R5</td><td>노칭 검사기</td><td>2026-04-02 09:25</td><td>김민수</td><td>버 높이</td><td>WI-노칭-003</td><td>30㎛ 이하</td><td>금형 연마</td><td>QC-2604-002</td><td>현미경</td><td>1점 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R6</td><td>노칭 검사기</td><td>2026-04-02 09:40</td><td>김민수</td><td>타발 속도</td><td>WI-노칭-003</td><td>120±10spm</td><td>레시피 재설정</td><td>QC-2604-003</td><td>설비 로그</td><td>상한 초과 시 부적합</td></tr></table><details><summary>전량 보기 (53건)</summary><table><tr><th>context</th><th>electrode_type</th><th>process_group</th><th>process_no</th><th>process_ref</th><th>source_locator</th><th>검사설비</th><th>검사일시</th><th>검사자</th><th>검사항목</th><th>관련 표준문서</th><th>규격</th><th>부적합 조치</th><th>성적서번호</th><th>측정방법</th><th>판정기준</th></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R4</td><td>노칭 검사기</td><td>2026-04-02 09:10</td><td>김민수</td><td>노칭 정밀도</td><td>WI-노칭-003</td><td>±0.1mm</td><td>금형 점검 후 재검사</td><td>QC-2604-001</td><td>비전 측정기</td><td>3점 연속 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R5</td><td>노칭 검사기</td><td>2026-04-02 09:25</td><td>김민수</td><td>버 높이</td><td>WI-노칭-003</td><td>30㎛ 이하</td><td>금형 연마</td><td>QC-2604-002</td><td>현미경</td><td>1점 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R6</td><td>노칭 검사기</td><td>2026-04-02 09:40</td><td>김민수</td><td>타발 속도</td><td>WI-노칭-003</td><td>120±10spm</td><td>레시피 재설정</td><td>QC-2604-003</td><td>설비 로그</td><td>상한 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R7</td><td>장력 측정기</td><td>2026-04-02 09:55</td><td>김민수</td><td>원단 장력</td><td>WI-노칭-005</td><td>25±3N</td><td>장력 조건 재설정</td><td>QC-2604-004</td><td>장력계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R8</td><td>장력 측정기</td><td>2026-04-02 10:10</td><td>김민수</td><td>사행량</td><td>WI-노칭-005</td><td>±1.0mm</td><td>가이드 롤 재조정</td><td>QC-2604-005</td><td>EPC 센서</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R9</td><td>적층 비전</td><td>2026-04-02 10:35</td><td>박서연</td><td>적층 정렬도</td><td>WI-스태킹-001</td><td>±0.2mm</td><td>정렬 보정 후 재적층</td><td>QC-2604-006</td><td>인라인 비전</td><td>2점 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R10</td><td>적층 비전</td><td>2026-04-02 10:50</td><td>박서연</td><td>흡착 압력</td><td>WI-스태킹-001</td><td>-60±5kPa</td><td>흡착 패드 교체</td><td>QC-2604-007</td><td>진공계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R11</td><td>적층 비전</td><td>2026-04-02 11:05</td><td>박서연</td><td>분리막 장력</td><td>WI-스태킹-004</td><td>8±1N</td><td>장력 조건 재설정</td><td>QC-2604-008</td><td>장력계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R12</td><td>적층 비전</td><td>2026-04-02 11:20</td><td>박서연</td><td>적층 속도</td><td>WI-스태킹-004</td><td>60±5ppm</td><td>레시피 재설정</td><td>QC-2604-009</td><td>설비 로그</td><td>상한 초과 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-30</td><td>cathode 탭용접</td><td>검사성적서!R13</td><td>초음파 융착기</td><td>2026-04-02 13:00</td><td>박서연</td><td>용접 인장강도</td><td>WI-용접-002</td><td>15N 이상</td><td>가압 조건 재설정</td><td>QC-2604-010</td><td>인장 시험기</td><td>1점 미달 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-30</td><td>cathode 탭용접</td><td>검사성적서!R14</td><td>초음파 융착기</td><td>2026-04-02 13:15</td><td>박서연</td><td>용접 진폭</td><td>WI-용접-002</td><td>40±3㎛</td><td>혼 교체</td><td>QC-2604-011</td><td>진폭계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-30</td><td>cathode 탭용접</td><td>검사성적서!R15</td><td>초음파 융착기</td><td>2026-04-02 13:30</td><td>박서연</td><td>용접 출력</td><td>WI-용접-006</td><td>2.0±0.2kW</td><td>출력 조건 재설정</td><td>QC-2604-012</td><td>설비 로그</td><td>상한 초과 시 부적합</td></tr><tr><td>M1</td><td>anode</td><td>조립</td><td>OP-31</td><td>anode 탭용접</td><td>검사성적서!R16</td><td>초음파 융착기</td><td>2026-04-02 13:50</td><td>박서연</td><td>용접 인장강도</td><td>WI-용접-002</td><td>12N 이상</td><td>가압 조건 재설정</td><td>QC-2604-013</td><td>인장 시험기</td><td>1점 미달 시 부적합</td></tr><tr><td>M1</td><td>anode</td><td>조립</td><td>OP-31</td><td>anode 탭용접</td><td>검사성적서!R17</td><td>초음파 융착기</td><td>2026-04-02 14:05</td><td>박서연</td><td>용접 진폭</td><td>WI-용접-002</td><td>35±3㎛</td><td>혼 교체</td><td>QC-2604-014</td><td>진폭계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>anode</td><td>조립</td><td>OP-31</td><td>anode 탭용접</td><td>검사성적서!R18</td><td>초음파 융착기</td><td>2026-04-02 14:20</td><td>박서연</td><td>용접 출력</td><td>WI-용접-006</td><td>1.8±0.2kW</td><td>출력 조건 재설정</td><td>QC-2604-015</td><td>설비 로그</td><td>상한 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R19</td><td>파우치 포밍기</td><td>2026-04-02 14:45</td><td>정하늘</td><td>포밍 깊이</td><td>WI-패키징-004</td><td>8±0.3mm</td><td>포밍 금형 점검</td><td>QC-2604-016</td><td>깊이 게이지</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R20</td><td>파우치 포밍기</td><td>2026-04-02 15:00</td><td>정하늘</td><td>포밍 외관</td><td>WI-패키징-004</td><td>균열 없을 것</td><td>금형 교체</td><td>QC-2604-017</td><td>육안 검사</td><td>균열 발견 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R21</td><td>파우치 포밍기</td><td>2026-04-02 15:15</td><td>정하늘</td><td>포밍 피치</td><td>WI-패키징-007</td><td>±0.2mm</td><td>금형 세팅 재확인</td><td>QC-2604-018</td><td>깊이 게이지</td><td>규격 이탈 시 부적합</td></tr><tr><td>M2</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R22</td><td>파우치 포밍기</td><td>2026-04-02 15:30</td><td>정하늘</td><td>포밍 깊이</td><td>WI-패키징-004</td><td>8±0.3mm</td><td>포밍 금형 점검</td><td>QC-2604-019</td><td>깊이 게이지</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R23</td><td>주액기</td><td>2026-04-03 09:00</td><td>정하늘</td><td>주액량</td><td>WI-주액-001</td><td>2.4±0.05g</td><td>노즐 세척 후 재주액</td><td>QC-2604-020</td><td>중량 검사기</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R24</td><td>주액기</td><td>2026-04-03 09:15</td><td>정하늘</td><td>노즐 토출 균일도</td><td>WI-주액-001</td><td>CV 3% 이하</td><td>노즐 교체</td><td>QC-2604-021</td><td>유량계</td><td>CV 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R25</td><td>주액기</td><td>2026-04-03 09:30</td><td>정하늘</td><td>챔버 진공도</td><td>WI-주액-003</td><td>5±1Pa</td><td>진공 펌프 점검</td><td>QC-2604-022</td><td>진공계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M2</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R26</td><td>주액기</td><td>2026-04-03 09:45</td><td>정하늘</td><td>주액량</td><td>WI-주액-001</td><td>2.5±0.05g</td><td>노즐 세척 후 재주액</td><td>QC-2604-023</td><td>중량 검사기</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R27</td><td>실러</td><td>2026-04-03 10:20</td><td>이도현</td><td>실링 온도</td><td>WI-실링-002</td><td>180±5℃</td><td>히터 유닛 교체</td><td>QC-2604-024</td><td>열전대</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R28</td><td>실러</td><td>2026-04-03 10:35</td><td>이도현</td><td>실링 압력</td><td>WI-실링-002</td><td>0.4±0.05MPa</td><td>실링 패드 교체</td><td>QC-2604-025</td><td>압력계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>프리 실링</td><td>검사성적서!R29</td><td>실러</td><td>2026-04-03 10:50</td><td>이도현</td><td>실링 시간</td><td>WI-실링-005</td><td>3.0±0.2s</td><td>레시피 재설정</td><td>QC-2604-026</td><td>설비 로그</td><td>상한 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R30#1</td><td>실러</td><td>2026-04-03 11:05</td><td>이도현</td><td>실링 폭</td><td>WI-실링-005</td><td></td><td>실링 조건 재설정</td><td>QC-2604-027</td><td>게이지 및 인장 시험</td><td>기준 미달 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R30#2</td><td>실러</td><td>2026-04-03 11:05</td><td>이도현</td><td>실링 강도</td><td>WI-실링-005</td><td></td><td>실링 조건 재설정</td><td>QC-2604-027</td><td>게이지 및 인장 시험</td><td>기준 미달 시 부적합</td></tr><tr><td>M2</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R31</td><td>실러</td><td>2026-04-03 11:20</td><td>이도현</td><td>실링 온도</td><td>WI-실링-002</td><td>182±5℃</td><td>히터 유닛 교체</td><td>QC-2604-028</td><td>열전대</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R32</td><td>노칭 검사기</td><td>2026-04-09 09:10</td><td>한지우</td><td>노칭 정밀도</td><td>WI-노칭-003</td><td>±0.1mm</td><td>금형 점검 후 재검사</td><td>QC-2604-041</td><td>비전 측정기</td><td>3점 연속 이탈 시 부적합</td></tr><tr><td>M1</td><td>anode</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R33</td><td>노칭 검사기</td><td>2026-04-09 09:25</td><td>한지우</td><td>노칭 정밀도</td><td>WI-노칭-003</td><td>±0.12mm</td><td>금형 점검 후 재검사</td><td>QC-2604-042</td><td>비전 측정기</td><td>3점 연속 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R34</td><td>적층 비전</td><td>2026-04-09 09:50</td><td>한지우</td><td>적층 정렬도</td><td>WI-스태킹-001</td><td>±0.2mm</td><td>정렬 보정 후 재적층</td><td>QC-2604-043</td><td>인라인 비전</td><td>2점 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R35</td><td>실러</td><td>2026-04-09 10:30</td><td>한지우</td><td>실링 온도</td><td>WI-실링-002</td><td>180±5℃</td><td>히터 유닛 교체</td><td>QC-2604-044</td><td>열전대</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R4</td><td>노칭 검사기</td><td>2026-05-14 08:50</td><td>한지우</td><td>노칭 정밀도</td><td>WI-노칭-003</td><td>±0.1mm</td><td>금형 점검 후 재검사</td><td>QC-2605-041</td><td>비전 측정기</td><td>3점 연속 이탈 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R5</td><td>노칭 검사기</td><td>2026-05-14 09:05</td><td>한지우</td><td>버 높이</td><td>WI-노칭-003</td><td>30㎛ 이하</td><td>금형 연마</td><td>QC-2605-042</td><td>현미경</td><td>1점 초과 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-10</td><td>노칭</td><td>검사성적서!R6</td><td>장력 측정기</td><td>2026-05-14 09:20</td><td>한지우</td><td>원단 장력</td><td>WI-노칭-005</td><td>25±3N</td><td>장력 조건 재설정</td><td>QC-2605-043</td><td>장력계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R7</td><td>적층 비전</td><td>2026-05-14 09:45</td><td>한지우</td><td>적층 정렬도</td><td>WI-스태킹-001</td><td>±0.2mm</td><td>정렬 보정 후 재적층</td><td>QC-2605-044</td><td>인라인 비전</td><td>2점 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R8</td><td>적층 비전</td><td>2026-05-14 10:00</td><td>한지우</td><td>흡착 압력</td><td>WI-스태킹-001</td><td>-60±5kPa</td><td>흡착 패드 교체</td><td>QC-2605-045</td><td>진공계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-20</td><td>스태킹</td><td>검사성적서!R9</td><td>적층 비전</td><td>2026-05-14 10:15</td><td>한지우</td><td>분리막 장력</td><td>WI-스태킹-004</td><td>8±1N</td><td>장력 조건 재설정</td><td>QC-2605-046</td><td>장력계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-30</td><td>cathode 탭용접</td><td>검사성적서!R10</td><td>초음파 융착기</td><td>2026-05-14 10:45</td><td>한지우</td><td>용접 인장강도</td><td>WI-용접-002</td><td>15N 이상</td><td>가압 조건 재설정</td><td>QC-2605-047</td><td>인장 시험기</td><td>1점 미달 시 부적합</td></tr><tr><td>M1</td><td>cathode</td><td>조립</td><td>OP-30</td><td>cathode 탭용접</td><td>검사성적서!R11</td><td>초음파 융착기</td><td>2026-05-14 11:00</td><td>한지우</td><td>용접 진폭</td><td>WI-용접-002</td><td>40±3㎛</td><td>혼 교체</td><td>QC-2605-048</td><td>진폭계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>anode</td><td>조립</td><td>OP-31</td><td>anode 탭용접</td><td>검사성적서!R12</td><td>초음파 융착기</td><td>2026-05-14 11:20</td><td>한지우</td><td>용접 인장강도</td><td>WI-용접-002</td><td>12N 이상</td><td>가압 조건 재설정</td><td>QC-2605-049</td><td>인장 시험기</td><td>1점 미달 시 부적합</td></tr><tr><td>M1</td><td>anode</td><td>조립</td><td>OP-31</td><td>anode 탭용접</td><td>검사성적서!R13</td><td>초음파 융착기</td><td>2026-05-14 11:35</td><td>한지우</td><td>용접 진폭</td><td>WI-용접-002</td><td>35±3㎛</td><td>혼 교체</td><td>QC-2605-050</td><td>진폭계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R14</td><td>파우치 포밍기</td><td>2026-05-14 13:10</td><td>오세진</td><td>포밍 깊이</td><td>WI-패키징-004</td><td>8±0.3mm</td><td>포밍 금형 점검</td><td>QC-2605-051</td><td>깊이 게이지</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R15</td><td>파우치 포밍기</td><td>2026-05-14 13:25</td><td>오세진</td><td>포밍 외관</td><td>WI-패키징-004</td><td>균열 없을 것</td><td>금형 교체</td><td>QC-2605-052</td><td>육안 검사</td><td>균열 발견 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-40</td><td>패키징</td><td>검사성적서!R16</td><td>파우치 포밍기</td><td>2026-05-14 13:40</td><td>오세진</td><td>포밍 피치</td><td>WI-패키징-007</td><td>±0.2mm</td><td>금형 세팅 재확인</td><td>QC-2605-053</td><td>깊이 게이지</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R17</td><td>주액기</td><td>2026-05-14 14:05</td><td>오세진</td><td>주액량</td><td>WI-주액-001</td><td>2.4±0.05g</td><td>노즐 세척 후 재주액</td><td>QC-2605-054</td><td>중량 검사기</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R18</td><td>주액기</td><td>2026-05-14 14:20</td><td>오세진</td><td>노즐 토출 균일도</td><td>WI-주액-001</td><td>CV 3% 이하</td><td>노즐 교체</td><td>QC-2605-055</td><td>유량계</td><td>CV 초과 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-50</td><td>전해액주입</td><td>검사성적서!R19</td><td>주액기</td><td>2026-05-14 14:35</td><td>오세진</td><td>챔버 진공도</td><td>WI-주액-003</td><td>5±1Pa</td><td>진공 펌프 점검</td><td>QC-2605-056</td><td>진공계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R20</td><td>실러</td><td>2026-05-14 15:00</td><td>오세진</td><td>실링 온도</td><td>WI-실링-002</td><td>180±5℃</td><td>히터 유닛 교체</td><td>QC-2605-057</td><td>열전대</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R21</td><td>실러</td><td>2026-05-14 15:15</td><td>오세진</td><td>실링 압력</td><td>WI-실링-002</td><td>0.4±0.05MPa</td><td>실링 패드 교체</td><td>QC-2605-058</td><td>압력계</td><td>규격 이탈 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R22</td><td>실러</td><td>2026-05-14 15:30</td><td>오세진</td><td>실링 강도</td><td>WI-실링-005</td><td>8N 이상</td><td>실링 조건 재설정</td><td>QC-2605-059</td><td>인장 시험기</td><td>1점 미달 시 부적합</td></tr><tr><td>M1</td><td>both</td><td>조립</td><td>OP-60</td><td>사이드 실링</td><td>검사성적서!R23</td><td>실러</td><td>2026-05-14 15:45</td><td>오세진</td><td>실링 폭</td><td>WI-실링-005</td><td>5±0.5mm</td><td>실링 조건 재설정</td><td>QC-2605-060</td><td>게이지</td><td>규격 이탈 시 부적합</td></tr></table></details>
+
+<h2>구획 2 · 필드 → role 배정표</h2>
+<table><tr><th>필드</th><th>role</th><th>카테고리</th><th>부착</th><th>근거</th></tr><tr><td>검사설비</td><td><b>entity</b></td><td>Unit</td><td></td><td>생성 세션의 배정 근거</td></tr><tr><td>검사항목</td><td><b>entity</b></td><td>Property</td><td></td><td>생성 세션의 배정 근거</td></tr><tr><td>규격</td><td><b>attribute</b></td><td></td><td>검사항목</td><td>생성 세션의 배정 근거</td></tr><tr><td>측정방법</td><td><b>attribute</b></td><td></td><td>검사항목</td><td>생성 세션의 배정 근거</td></tr><tr><td>판정기준</td><td><b>attribute</b></td><td></td><td>검사항목</td><td>생성 세션의 배정 근거</td></tr><tr><td>부적합 조치</td><td><b>content</b></td><td></td><td>검사항목</td><td>생성 세션의 배정 근거</td></tr><tr><td>관련 표준문서</td><td><b>attribute</b></td><td></td><td>검사항목</td><td>생성 세션의 배정 근거</td></tr><tr><td>검사자</td><td><b>meta</b></td><td></td><td></td><td>생성 세션의 배정 근거</td></tr><tr><td>검사일시</td><td><b>meta</b></td><td></td><td></td><td>생성 세션의 배정 근거</td></tr><tr><td>성적서번호</td><td><b>meta</b></td><td></td><td></td><td>생성 세션의 배정 근거</td></tr><tr><td>source_locator</td><td><b>meta</b> <span class='where'>(공용 블록)</span></td><td></td><td></td><td>공용 블록 선언</td></tr><tr><td>process_group</td><td><b>anchor</b> <span class='where'>(공용 블록)</span></td><td></td><td></td><td>공용 블록 선언</td></tr><tr><td>process_ref</td><td><b>anchor</b> <span class='where'>(공용 블록)</span></td><td></td><td></td><td>공용 블록 선언</td></tr><tr><td>process_no</td><td><b>meta</b> <span class='where'>(공용 블록)</span></td><td></td><td></td><td>공용 블록 선언</td></tr></table>
+
+<h2>구획 3 · 어댑터 요약</h2>
+<p class='sub'>adapter_version <b>1.0</b></p>
+<pre>{
+  &quot;header_row&quot;: 3,
+  &quot;data_start_row&quot;: 4,
+  &quot;header_labels&quot;: [
+    &quot;대공정&quot;,
+    &quot;공정No&quot;,
+    &quot;공정명&quot;,
+    &quot;극성&quot;,
+    &quot;검사설비&quot;,
+    &quot;검사항목&quot;,
+    &quot;규격&quot;,
+    &quot;측정방법&quot;,
+    &quot;판정기준&quot;,
+    &quot;부적합 조치&quot;,
+    &quot;적용모델&quot;,
+    &quot;검사자&quot;,
+    &quot;검사일시&quot;,
+    &quot;성적서번호&quot;,
+    &quot;최근 불량 이력&quot;,
+    &quot;관련 표준문서&quot;
+  ],
+  &quot;columns&quot;: {
+    &quot;process_group&quot;: &quot;A&quot;,
+    &quot;process_no&quot;: &quot;B&quot;,
+    &quot;process_ref&quot;: &quot;C&quot;,
+    &quot;electrode_type&quot;: &quot;D&quot;,
+    &quot;검사설비&quot;: &quot;E&quot;,
+    &quot;검사항목&quot;: &quot;F&quot;,
+    &quot;규격&quot;: &quot;G&quot;,
+    &quot;측정방법&quot;: &quot;H&quot;,
+    &quot;판정기준&quot;: &quot;I&quot;,
+    &quot;부적합 조치&quot;: &quot;J&quot;,
+    &quot;context&quot;: &quot;K&quot;,
+    &quot;검사자&quot;: &quot;L&quot;,
+    &quot;검사일시&quot;: &quot;M&quot;,
+    &quot;성적서번호&quot;: &quot;N&quot;,
+    &quot;관련 표준문서&quot;: &quot;P&quot;
+  },
+  &quot;ditto_mark&quot;: &quot;〃&quot;,
+  &quot;multi_value_sep&quot;: &quot;, &quot;,
+  &quot;multi_value_field&quot;: &quot;검사항목&quot;,
+  &quot;context_default_cell&quot;: &quot;A2&quot;,
+  &quot;context_default_pattern&quot;: &quot;적용모델\\(기본\\)\\s*:\\s*(\\S+)&quot;
+}</pre>
+<details><summary>어댑터 코드 전문 (접힘)</summary><pre>import re
+
+ADAPTER = {
+    &quot;doc_type&quot;: &quot;ipqc&quot;,
+    &quot;adapter_version&quot;: &quot;1.0&quot;,
+    &quot;payload_kind&quot;: &quot;table&quot;,
+    &quot;expects&quot;: {
+        &quot;header_row&quot;: 3,
+        &quot;data_start_row&quot;: 4,
+        # [D-29] preflight 표류 감지용 — 원본 헤더 문자열의 순서 배열
+        &quot;header_labels&quot;: [
+            &quot;대공정&quot;, &quot;공정No&quot;, &quot;공정명&quot;, &quot;극성&quot;, &quot;검사설비&quot;, &quot;검사항목&quot;,
+            &quot;규격&quot;, &quot;측정방법&quot;, &quot;판정기준&quot;, &quot;부적합 조치&quot;, &quot;적용모델&quot;,
+            &quot;검사자&quot;, &quot;검사일시&quot;, &quot;성적서번호&quot;, &quot;최근 불량 이력&quot;, &quot;관련 표준문서&quot;,
+        ],
+        # {출력 필드명: 열문자} — 키는 원본 헤더가 아니라 출력 필드명(D-29)
+        &quot;columns&quot;: {
+            &quot;process_group&quot;: &quot;A&quot;,   # 대공정 → 구조 필드(anchor는 process_coord 몫)
+            &quot;process_no&quot;: &quot;B&quot;,      # 공정No → 구조 필드(meta)
+            &quot;process_ref&quot;: &quot;C&quot;,     # 공정명 → 구조 필드(anchor는 process_coord 몫)
+            &quot;electrode_type&quot;: &quot;D&quot;,  # 극성 → 구조 필드(entity 해소 코드가 직접 소비)
+            &quot;검사설비&quot;: &quot;E&quot;,
+            &quot;검사항목&quot;: &quot;F&quot;,
+            &quot;규격&quot;: &quot;G&quot;,
+            &quot;측정방법&quot;: &quot;H&quot;,
+            &quot;판정기준&quot;: &quot;I&quot;,
+            &quot;부적합 조치&quot;: &quot;J&quot;,
+            &quot;context&quot;: &quot;K&quot;,         # 적용모델 → 구조 필드(맥락 상속 입력)
+            &quot;검사자&quot;: &quot;L&quot;,
+            &quot;검사일시&quot;: &quot;M&quot;,
+            &quot;성적서번호&quot;: &quot;N&quot;,
+            &quot;관련 표준문서&quot;: &quot;P&quot;,
+            # O열(최근 불량 이력)은 UNMAPPABLE 판정 — 출력·스키마에서 제외(D-30, 산출물 3 참조)
+        },
+        &quot;ditto_ma</pre></details>
+<h2>재생성 이력</h2><p class='sub'>재생성 1회째 — 표본·힌트 변경을 고려. <b>상한은 없다</b>(중단은 사람 판단).</p><table><tr><th>#</th><th>수정 지시</th><th>시점</th></tr><tr><td>1</td><td>공정명은 B열이 아니라 C열이다</td><td>2026-08-19T10:00:00</td></tr></table>
+
+<footer>검수 뷰 렌더러 (킷 ⑤) · 데이터 계약 = <code>kit/검수뷰_데이터스키마.json</code>
+ · 규격 정본 = 파서_명세 §7 · 카드 M11<br>
+ 승인은 CLI/파일로 한다 — "무수정 = 자동 통과"는 금지다.</footer>
+</body></html>
