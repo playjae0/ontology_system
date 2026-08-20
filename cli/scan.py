@@ -29,7 +29,8 @@ if str(ROOT) not in sys.path:
 
 from parser.reader import read                          # noqa: E402
 
-# 등록부 이전의 어댑터 소재지 (P3 후 registry가 정본)
+# **등록부가 정본**이다(n6 확정분 — P3). 등록부에 어댑터가 없는 내장 doc_type을 위해
+# mock 소재지를 뒤에 둔다 — P트랙 이전의 잔재이고, 등록이 쌓이면 자연히 비어 간다.
 ADAPTER_DIRS = [ROOT / "mock" / "adapters", ROOT / "mock" / "fixtures" / "adapters"]
 
 
@@ -41,15 +42,22 @@ def _load(path):
 
 
 def adapters(paths=None):
-    """어댑터 실물 목록 — 경로가 오면 그것만, 없으면 기본 소재지를 전부 훑는다."""
+    """어댑터 실물 목록 — 경로가 오면 그것만, 없으면 **등록부 + 기본 소재지**.
+
+    등록부가 앞에 온다 — 같은 doc_type이 양쪽에 있으면 등록된 실물이 정본이다.
+    """
+    from core.registry import adapter_paths
     files = []
+    if paths is None:
+        files += [p for _dt, p in adapter_paths()]
     for p in (paths or ADAPTER_DIRS):
         p = Path(p)
         files += sorted(p.glob("*.py")) if p.is_dir() else [p]
-    out = []
+    out, seen = [], set()
     for f in files:
-        if f.stem.startswith("_"):
+        if f.stem.startswith("_") or f.resolve() in seen:
             continue
+        seen.add(f.resolve())
         mod = _load(f)
         if isinstance(getattr(mod, "ADAPTER", None), dict):
             out.append((f, mod))

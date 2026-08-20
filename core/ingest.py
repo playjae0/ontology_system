@@ -27,8 +27,14 @@ STANDING_KINDS = {"auto_node", "uncertain_match"}
 
 
 def load_schema(doc_type):
-    p = SCHEMA_DIR / f"{doc_type}.json"
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    """M2 등록 여부 조회 — **등록부가 답한다**(카드 M2 · n6이 등재).
+
+    구판은 `schemas/` 파일 실재를 직접 봤다. 그러면 n6이 등록한 doc_type을 인입이
+    모르고, "묻는 곳이 셋인데 답하는 곳도 셋"이 된다 — 조회가 모드를 가르는 근거를
+    잃는다. 내장(builtin)도 등록부가 함께 답하므로 기존 경로는 그대로 산다.
+    """
+    from .registry import schema_of
+    return schema_of(doc_type)
 
 
 class IngestResult:
