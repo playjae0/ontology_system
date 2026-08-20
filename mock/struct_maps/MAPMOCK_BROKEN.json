@@ -1,0 +1,97 @@
+{
+  "doc_id": "MAPMOCK_BROKEN",
+  "source": "손작성 mock 힌트 — **실패 경로 시험용**",
+  "note": "깨진 지도 — 레벨 비단조(1 → 3). 평면 폴백 + hierarchy_unresolved 착지가 정답",
+  "rows": [
+    {
+      "row": 2,
+      "heading": true,
+      "level": 1
+    },
+    {
+      "row": 3,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 4,
+      "heading": true,
+      "level": 3
+    },
+    {
+      "row": 5,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 6,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 7,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 8,
+      "heading": true,
+      "level": 2
+    },
+    {
+      "row": 9,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 10,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 11,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 12,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 13,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 14,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 15,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 16,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 17,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 18,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 19,
+      "heading": false,
+      "level": 0
+    }
+  ]
+}

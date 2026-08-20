@@ -1,0 +1,97 @@
+{
+  "doc_id": "MAPMOCK_OK",
+  "source": "손작성 mock 힌트 (증분0 §5-4 — fixture 아님)",
+  "note": "정상 지도 — 레벨 단조·헤딩 5건·커버리지 일치",
+  "rows": [
+    {
+      "row": 2,
+      "heading": true,
+      "level": 1
+    },
+    {
+      "row": 3,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 4,
+      "heading": true,
+      "level": 2
+    },
+    {
+      "row": 5,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 6,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 7,
+      "heading": true,
+      "level": 2
+    },
+    {
+      "row": 8,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 9,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 10,
+      "heading": true,
+      "level": 1
+    },
+    {
+      "row": 11,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 12,
+      "heading": true,
+      "level": 2
+    },
+    {
+      "row": 13,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 14,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 15,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 16,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 17,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 18,
+      "heading": false,
+      "level": 0
+    },
+    {
+      "row": 19,
+      "heading": false,
+      "level": 0
+    }
+  ]
+}

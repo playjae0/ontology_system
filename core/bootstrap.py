@@ -420,6 +420,48 @@ def _stale_skeleton(g, category, planted):
 
 
 # ---------------------------------------------------------------- 진입점
+def write_closed_list(layer, g, cfg, seed=None):
+    """골격 닫힌 목록 스냅샷 — **파서·에이전트의 공유 자산**이다 (D-11 확정).
+
+    파서는 이 레포의 그래프를 읽지 않는다(별도 프로그램 · 결합은 JSON뿐 — D-9).
+    좌표 태깅이 고를 닫힌 목록을 파일 하나로 내보내야 둘이 **같은 실물**을 본다.
+
+    목록 = **골격 전 노드**(개념 + 인스턴스)이며 canonical과 alias를 함께 싣는다
+    (A11-6 · D-45 — 구 "세부공정 목록" 서술은 폐기됐다). `skeleton_version`을 함께
+    적어 표류를 대조할 수 있게 한다.
+
+    **파생물이다**(P5) — 골격을 재빌드하면 loader가 다시 만든다. 손으로 고치지 않는다.
+    """
+    # 구조 부모를 함께 싣는다 — 태거가 `process_group`(tier:main 조상 — A11-7)을
+    # 파생하려면 부모 링크가 필요하고, 파서는 그래프를 읽지 않는다(D-9).
+    child_rel = ((cfg.get("skeleton") or {}).get("relations") or {}).get("child")
+    parent_of = {e["src"]: e["dst"] for e in g.edges
+                 if e["rel"] == child_rel and e.get("status") == "seed"}
+    entries = []
+    for n in g.nodes.values():
+        if n.get("status") != "seed":
+            continue
+        up = g.get(parent_of.get(n["id"]))
+        entries.append({
+            "id": n["id"], "canonical": n["canonical"], "category": n["category"],
+            "tier": n.get("tier"),
+            "polarity": n.get("polarity"),
+            "parent": up["canonical"] if up else None,
+            "aliases": sorted(a["surface"] for a in n["aliases"]),
+        })
+    entries.sort(key=lambda e: e["canonical"])
+    snap = store.read(store.SKELETON_LIST, {})
+    snap[layer] = {
+        "skeleton_version": cfg.get("skeleton_version"),
+        "seed_version": (seed or {}).get("skeleton_version"),
+        "category": (cfg.get("skeleton") or {}).get("category"),
+        "count": len(entries),
+        "nodes": entries,
+    }
+    store.write(store.SKELETON_LIST, snap)
+    return snap[layer]
+
+
 def bootstrap(layer="process", echo=True):
     """골격을 심고 사전에 등재한 뒤 registry에 층을 올린다.
 
@@ -473,6 +515,7 @@ def bootstrap(layer="process", echo=True):
 
     metrics = g.build_end()
     store.write(store.DICTIONARY, dictionary)
+    write_closed_list(layer, g, cfg, seed)
 
     reg = store.read(store.REGISTRY, {})
     reg[layer] = {

@@ -13,6 +13,7 @@
   python run.py gauges             계기판 8종 (cli/platform.py로 위임)
   python run.py platform <명령>    플랫폼 창구 4′ (cli/platform.py로 위임)
   python run.py scan <문서> ...    n9 지문 스캔 (cli/scan.py로 위임)
+  python run.py parse <명령> ...   파서 n7 (cli/parse.py로 위임 — run·head·build)
 """
 import json
 import sys
@@ -92,6 +93,12 @@ def cmd_scan(args):
     return main(args)
 
 
+def cmd_parse(args):
+    """파서는 별도 패키지지만 진입점은 하나로 모은다(§16.1 계약 1)."""
+    from cli.parse import main
+    return main(args)
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
     {"bootstrap": lambda: cmd_bootstrap(),
@@ -101,4 +108,5 @@ if __name__ == "__main__":
      "ops": lambda: cmd_ops(sys.argv[2:]),
      "gauges": lambda: cmd_gauges(),
      "platform": lambda: cmd_platform(sys.argv[2:]),
-     "scan": lambda: cmd_scan(sys.argv[2:])}[cmd]()
+     "scan": lambda: cmd_scan(sys.argv[2:]),
+     "parse": lambda: cmd_parse(sys.argv[2:])}[cmd]()

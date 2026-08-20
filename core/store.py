@@ -38,6 +38,7 @@ REGISTRY = "registry.json"            # 층 등록부 (D-8)
 DOC_REGISTRY = "doc_registry.json"    # doc_id → doc_hash 대장 (D-8)
 OPS_LOG = "ops_log.json"              # I축 연산 로그 (D-8)
 GATE_REJECTS = "gate_rejects.json"    # 게이트 거부 로그 — 큐가 아니다 (D-7)
+SKELETON_LIST = "skeleton_closed_list.json"   # 골격 닫힌 목록 스냅샷 (D-11 확정)
 DEFECTS = "defects.log"               # 결함 로그 (n1 id 충돌 등)
 LINK_MISS = "link_miss.log"           # 질의 링킹 미스·수집 잘림 (CH5 5.1 규약 6·5.2 규약 3)
 
