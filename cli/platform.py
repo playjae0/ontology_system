@@ -12,6 +12,7 @@ subprocess로 부르고, 표시는 data/의 JSON(진실)을 읽어서 한다 —
   queue              수정 큐 열람 — **닫힌 20종 전부**(0건 kind 포함)
   extract            추출 상태 (extract/{doc_id}.json 존재 = 추출 완료 — P-1)
   registry           층 등록부 조회
+  doctypes           doc_type 등록부 조회 (내장 + n6 등록분)
   ops                I축 연산 이력(ops_log) 열람 + 툼스톤 계수
   gauges             계기판 8종 (CH5 5.5 — 별도 호출로 계산, build·query 무오염)
 
@@ -165,6 +166,18 @@ def cmd_registry():
     for lay, meta in reg.items():
         print(f"  {lay:<10} status={meta.get('status')} · "
               f"categories={meta.get('categories')} · relations={meta.get('relations')}")
+
+
+def cmd_doctypes():
+    """doc_type 등록부 — **인입·지문 스캔과 같은 실물**을 읽는다(장부는 하나다)."""
+    from core.registry import all_doc_types
+    reg = all_doc_types()
+    print(f"doc_type 등록부 — {len(reg)}종")
+    for dt, m in sorted(reg.items()):
+        print(f"  {dt:<14} status={m.get('status'):<10} 층={m.get('layer')} · "
+              f"스키마={m.get('schema')}"
+              + (f" · 어댑터={m['adapter']}" if m.get("adapter") else "")
+              + (f" · 승인={m['approved_by']}" if m.get("approved_by") else ""))
 
 
 def ops_view():
@@ -329,6 +342,7 @@ def main(argv):
      "queue": lambda: cmd_queue(args[0] if args else None),
      "extract": lambda: cmd_extract(),
      "registry": lambda: cmd_registry(),
+     "doctypes": lambda: cmd_doctypes(),
      "ops": lambda: cmd_ops(),
      "gauges": lambda: cmd_gauges()}[cmd]()
 

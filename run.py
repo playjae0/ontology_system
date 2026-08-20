@@ -14,6 +14,7 @@
   python run.py platform <명령>    플랫폼 창구 4′ (cli/platform.py로 위임)
   python run.py scan <문서> ...    n9 지문 스캔 (cli/scan.py로 위임)
   python run.py parse <명령> ...   파서 n7 (cli/parse.py로 위임 — run·head·build)
+  python run.py register <명령>    n6 구축 모드 등록 (cli/register.py로 위임)
 """
 import json
 import sys
@@ -99,6 +100,12 @@ def cmd_parse(args):
     return main(args)
 
 
+def cmd_register(args):
+    """n6 구축 모드 — 생성 → 검수 → 확정."""
+    from cli.register import main
+    return main(args)
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
     {"bootstrap": lambda: cmd_bootstrap(),
@@ -109,4 +116,5 @@ if __name__ == "__main__":
      "gauges": lambda: cmd_gauges(),
      "platform": lambda: cmd_platform(sys.argv[2:]),
      "scan": lambda: cmd_scan(sys.argv[2:]),
-     "parse": lambda: cmd_parse(sys.argv[2:])}[cmd]()
+     "parse": lambda: cmd_parse(sys.argv[2:]),
+     "register": lambda: cmd_register(sys.argv[2:])}[cmd]()
