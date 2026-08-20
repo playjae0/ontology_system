@@ -1,0 +1,8 @@
+{
+  "doc_type": "toc_report",
+  "schema_version": 1,
+  "layer": "process",
+  "use_blocks": ["common_core", "process_coord"],
+  "fields": {},
+  "edges": []
+}

@@ -29,9 +29,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from parser.reader import read
 
 ROLES = {"anchor", "entity", "attribute", "content", "meta"}
-STRUCT_FIELDS = {"process_group", "process_ref", "process_no",
-                 "electrode_type", "context", "source_locator", "doc_type"}
 BANNED_IMPORTS = {"requests", "urllib", "httpx", "openai", "anthropic", "socket"}
+
+# 구조 필드 — role 배정 대상이 아닌 것들(C17). 공용 블록이 선언하지 **않는** 것만 여기 둔다.
+# `process_group`·`process_ref`·`process_no`·`source_locator`는 `schemas/blocks.json`이
+# 소유하므로 아래에 중복해 적지 않는다 — 적어 두면 블록 파일이 바뀌어도 하네스가 모른다.
+STRUCT_ONLY = {"electrode_type", "context", "doc_type", "section"}
+BLOCKS_PATH = Path(__file__).resolve().parent.parent / "schemas" / "blocks.json"
+
+
+def load_blocks(schema, path=None):
+    """`use_blocks` 로더 — 스키마가 선언한 공용 블록을 **전개해서** 합친다.
+
+    실행검증_1차 §4.4의 처방이다: 좌표 필드를 `process_coord`에 위임한 스키마는
+    `fields`에 좌표가 없어 **role 루프 드라이런의 `anchor`가 0으로 찍혔다**. 스키마는
+    옳고 하네스가 미완이었다 — 블록을 조립하지 않으면 anchor 경로가 검사되지 않는다.
+
+    돌려주는 것은 `(합쳐진 fields, 블록 유래 필드명 집합)`이다. 블록 유래 필드는
+    **선언된 필드**이므로 `unknown_field` 계산에서 빠지고, role 루프에는 **들어간다.**
+    """
+    p = Path(path or BLOCKS_PATH)
+    blocks = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    merged, from_blocks = dict(schema.get("fields") or {}), set()
+    for name in schema.get("use_blocks") or []:
+        blk = blocks.get(name)
+        if not isinstance(blk, dict):
+            continue
+        for f, spec in blk.items():
+            if f.startswith("_") or not isinstance(spec, dict):
+                continue
+            from_blocks.add(f)
+            merged.setdefault(f, spec)          # 스키마 선언이 블록을 이긴다
+    return merged, from_blocks
 
 ok_all = True
 
@@ -175,16 +204,24 @@ def check_schema(schema, pieces, label, payload_kind=None):
     print(f"\n④ 매칭 스키마 정합 — {label}")
     show("헤더 4키 (doc_type·schema_version·layer·use_blocks)",
          {"doc_type", "schema_version", "layer"} <= set(schema))
-    fields = schema.get("fields", {})
+    declared = schema.get("fields", {})
+    # **공용 블록을 전개해 합친다**(§4.4 처방) — 좌표를 블록에 위임한 스키마도
+    # anchor 경로가 드라이런된다. `fields` 판정(D-31)은 **스키마 선언분**으로 한다:
+    # 블록은 스키마가 쓴 것이 아니라 참조한 것이므로 prose의 `{}` 정답을 흔들면 안 된다.
+    fields, block_fields = load_blocks(schema)
+    struct = STRUCT_ONLY | block_fields
+    if block_fields:
+        show(f"use_blocks 전개 — {schema.get('use_blocks')} → 필드 {len(block_fields)}종 합류",
+             True, str(sorted(block_fields)))
     # **fields의 정답은 payload_kind가 정한다** [D-31 확정 — 카드 C17 · CH2 2.5/2.6].
     # prose 조각의 고정 키 4종(text·section·meta·image_ref)은 **payload 구조 필드**라
     # role 배정 대상이 아니고, 그래서 prose 매칭 스키마의 fields는 `{}`가 정답이다 —
     # 층·블록 선언이 계약의 전부다. 구판은 이 정답을 FAIL로 찍었다(3차 로그의 유일한 FAIL).
     if payload_kind == "prose":
         show("prose 스키마의 fields는 비어 있음 (D-31 — 고정 키는 payload 구조 필드)",
-             not fields, f"{len(fields)}개")
+             not declared, f"{len(declared)}개")
     elif payload_kind == "table":
-        show("table 스키마의 fields 선언 존재", bool(fields), f"{len(fields)}개")
+        show("table 스키마의 fields 선언 존재", bool(declared), f"{len(declared)}개")
     else:
         show("payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)",
              False, str(payload_kind))
@@ -199,17 +236,17 @@ def check_schema(schema, pieces, label, payload_kind=None):
         for side in ("from", "to"):
             t = str(e.get(side, ""))
             refs.add(t[1:] if t.startswith("@") else t)
-    unknown = sorted(r for r in refs if r and r not in fields and r not in STRUCT_FIELDS)
+    unknown = sorted(r for r in refs if r and r not in fields and r not in struct)
     show(f"edges {len(edges)}건의 from/to가 전부 선언된 필드", not unknown, str(unknown))
     # 조각 ↔ 스키마 대조 (인입 검증 ③단계의 드라이런)
     if pieces:
         piece_keys = set().union(*[set(p) for p in pieces])
-        unknown_field = sorted(piece_keys - set(fields) - STRUCT_FIELDS
+        unknown_field = sorted(piece_keys - set(fields) - struct
                                - {"text", "section", "meta", "image_ref"})
         show("파서 출력에 스키마 밖 필드 없음 (unknown_field 큐 예상분)",
              not unknown_field, str(unknown_field))
         missing = sorted(k for k, v in fields.items()
-                         if not v.get("optional") and k not in STRUCT_FIELDS
+                         if not v.get("optional") and k not in struct
                          and not any(p.get(k) not in (None, "") for p in pieces))
         show("필수 필드가 조각에 실제로 채워짐 (missing_field 큐 예상분)",
              not missing, str(missing))
