@@ -4,7 +4,7 @@ title: 구현 — 코드 배치, 두 축 id, 파이프라인 형상, mock
 axis: 구현
 question: 이 설계는 코드로 어떤 모양이 되고, 무엇으로 검증되는가?
 owns: [§3.5, §8-R3(+틀 A4·A8), §16.1, §16.3, §11, 구현문서 v1.16 구조, 틀 Q1(3단계)]
-version: v3.1 (2026-08-19 — H-2 이행: 6.5 「미결(레포 확인)」 → 확정 스냅샷(G0~G5 완료·정산, 회귀 5종, 장부 66건 — 현행 정본은 미러). 본문 6.1~6.4 무변경. v3 = 쟁점 A 판정 반영(08-06). 틀 v2.4·카드 v11 기준 — 이후 확정분은 대장 §1이 판본 기준점)
+version: v3.2 (2026-08-19 — **전제 감사 정정 3건**[허브 — 문서↔레포 실물 전수 대조]: 6.1 파일 트리 현행화(viz.py 부재 정정·id_seq.json 소거[ULID 기발효]·parser/·kit/·cli/·tests/ 등재 — P1·P2 반영) · `layers/{층}/config.json` 경로 정밀화 · data/ 생성물 목록 실물 정합. v3.1 = H-2 이행: 6.5 「미결(레포 확인)」 → 확정 스냅샷(G0~G5 완료·정산, 회귀 5종, 장부 66건 — 현행 정본은 미러). 본문 6.1~6.4 무변경. v3 = 쟁점 A 판정 반영(08-06). 틀 v2.4·카드 v11 기준 — 이후 확정분은 대장 §1이 판본 기준점)
 status: 서술완료 (심화 재검토는 감사 4로 수행 완료 — 검사 로그 10회차)
 sections: [6.1, 6.2, 6.3, 6.4, 6.5]
 tags: {6.1: 확정, 6.2: 확정, 6.3: 확정(15종 — 08-06 개정), 6.4: 확정, 6.5: 확정(정지점 스냅샷 — 08-19 H-2)}
@@ -24,15 +24,22 @@ tags: {6.1: 확정, 6.2: 확정, 6.3: 확정(15종 — 08-06 개정), 6.4: 확�
 ```
 ontology/
 ├── core/       처리 코드 — 전 층 공용, 층 어휘 0 (A)
-├── layers/     층별 config.json — 코드 0 (B)
-├── schemas/    doc_type별 매칭 스키마 + 공용 블록
+├── layers/     층별 폴더 — {층}/config.json + {층}/skeleton.json(seed) — 코드 0 (B)
+├── schemas/    doc_type별 매칭 스키마 + 공용 블록(blocks.json)
+├── parser/     파서 공용 코어 6종 + 기본 어댑터 (P1 — n7)
+├── kit/        어댑터 생성 킷 6종 — 외부 전달물 (P2 — n8)
+├── cli/        플랫폼·질의·I축·스캔 CLI (G5·G6)
+├── tools/      passthrough 등 보조 도구
+├── mock/       raw 실물·parsed 계약·fixture(봉인)·참조 어댑터·지도 mock
+├── tests/      회귀 9종
 ├── router.py   층 폴더 자동 발견 (등록 배선 없음)
-├── run.py      파이프라인 진입점 / viz.py 시각화
-└── data/       진실 — 층별 graph.json + 공유: dictionary.json ·
-                id_seq.json(※ULID 발효 시 폐지) · chunks.json · review_queue.json
+├── run.py      파이프라인 진입점
+└── data/       진실(생성물 — 미추적) — 층별 graph.json + 공유: dictionary.json · chunks.json ·
+                review_queue.json · skeleton_closed_list.json(파생물 P5) · registry.json ·
+                doc_registry.json · gate_rejects.json (· ops_log.json — I축 연산 시 생성)
 ```
 
-> **관리 자산의 원칙 (세션 N 명문화)**: 판단·성능에 영향을 주는 자산은 **코드 안에 박지 않고 자산별 지정 파일**로 둔다 — 층 어휘는 `layers/config.json`(B1·B2), 매칭 스키마는 `schemas/`의 JSON, 프롬프트(추출 지시문 등)는 프롬프트 파일(사람 확정 관리 자산, prompt_version), 어댑터의 판단 상수는 `ADAPTER.expects`(C11). 실물은 각자 파일, **목록·버전의 한눈 파악은 등록부(registry — M2의 등록 조회가 읽는 것)가 담당**한다.
+> **관리 자산의 원칙 (세션 N 명문화)**: 판단·성능에 영향을 주는 자산은 **코드 안에 박지 않고 자산별 지정 파일**로 둔다 — 층 어휘는 `layers/{층}/config.json`(B1·B2), 매칭 스키마는 `schemas/`의 JSON, 프롬프트(추출 지시문 등)는 프롬프트 파일(사람 확정 관리 자산, prompt_version), 어댑터의 판단 상수는 `ADAPTER.expects`(C11). 실물은 각자 파일, **목록·버전의 한눈 파악은 등록부(registry — M2의 등록 조회가 읽는 것)가 담당**한다.
 
 ### 규약
 
