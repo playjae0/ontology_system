@@ -89,20 +89,26 @@ layers/         층 선언 — config.json + skeleton.json  (코드 아님, 데�
 schemas/        doc_type 매칭 스키마 · 공용 블록
 mock/           창작 표본 — raw 문서 10종 · 계약 JSON · fixture
 tests/          회귀 10종 (423 PASS)
-docs/           정본 — 틀 · 불변식 카드 · 용어 대장 · CH1~CH7 · 파서 명세 · 증분0
+docs/spec/      **정본 명세 11종** — 0 기반·1 금지와불변·2 계약·3 구조·4 쓰기·5 읽기·
+                6 파서와구축모드·7 구현규격 + README·부록_용어·개정대장
+docs/회귀스위트/  명세 문면 기계 점검 + 자산
 ```
 
 ## 읽는 순서 (문서)
 
-1. `docs/CH1_기반.md` — 목적 · PoC 범위 · **불변 원칙 P1~P7**
-2. `docs/00_틀_확정본.md` — 돌아오는 기준점
-3. `docs/00_불변식_카드.md` — 압축 검사기 (설계가 어긋나면 여기서 걸린다)
-4. `docs/증분0_구현.md` §3 — 단위별 정의와 완료판정
-5. `CLAUDE.md` — 세션 진행 규칙 · 판본 기준점
+**명세는 `docs/spec/` 11종뿐이다.** 옛 챕터군(CH1~CH7·틀·카드·증분0·파서 명세)은
+정제본으로 통합돼 제거됐다 — 돌아갈 좌표는 태그 `phase1-complete`다.
 
-장부 둘: `DECISIONS.md`(가결정 82건) · `BLOCKERS.md`(멈춤 0). 진행 이력은 `PROGRESS.md`.
+1. `docs/spec/README.md` — 11종의 지도와 소유 경계
+2. `docs/spec/0_기반과원칙.md` — 목적 · 범위 · **불변 원칙 P1~P7**
+3. `docs/spec/1_금지와불변.md` — 압축 검사기 (설계가 어긋나면 여기서 걸린다)
+4. `docs/spec/7_구현규격과검증.md` — 코드 배치 · id 산식 · 완료판정 · 산출물 표
+5. `CLAUDE.md` — 세션 진행 규칙
 
-## 설계 원칙 (P1~P7 요약 — 정본은 CH1)
+**명세가 답하지 않는 지점은 추측으로 메우지 않는다** — `BLOCKERS.md`에 신고하고 멈춘다.
+장부 둘: `DECISIONS.md`(가결정) · `BLOCKERS.md`(멈춤). 진행 이력은 `PROGRESS.md`.
+
+## 설계 원칙 (P1~P7 요약 — 정본은 `docs/spec/0_기반과원칙.md`)
 
 | | |
 |---|---|
