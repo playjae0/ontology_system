@@ -26,14 +26,40 @@ import os
 import re
 from pathlib import Path
 
-from . import store
+from . import log, store
 from .ids import norm
 
 ROOT = Path(__file__).resolve().parent.parent
 EXTRACT_DIR = ROOT / "extract"
 HINTS_DIR = ROOT / "mock" / "extract_hints"
 
-PROMPT_VERSION = "e-1.0"        # 지시문 템플릿 — 전 층 공통의 사람 확정 관리 자산
+_LOG = log.get(__name__)
+
+PROMPTS_DIR = ROOT / "prompts"
+
+
+def prompt_version(name="extract"):
+    """지시문 템플릿의 판본 — **파일에서 읽는다**(문서 7 §7.6-B-5).
+
+    코드에 버전 문자열을 박아 두면 템플릿이 개정돼도 체크포인트에는 옛 번호가
+    남고, 템플릿이 아예 없어도 있는 것처럼 기록된다 — **실체 없는 버전이 재현성
+    기록에 남는 것**이 그 결함이다. 그래서 정본은 파일 머리말의 `version:`이다.
+
+    파일이 없으면 **명시적 실패**다(§7.6-B-4) — 재현성 기록의 근거가 없는데 조용히
+    기본값을 적으면 그 체크포인트로는 추출을 재현할 수 없다.
+    """
+    p = PROMPTS_DIR / f"{name}.md"
+    if not p.exists():
+        log.explicit_fail(_LOG, "core.extract.prompt_version",
+                          f"지시문 템플릿이 없다: {p} — prompt_version의 정본은 "
+                          "파일이다(문서 7 §7.6-B-5)")
+        raise FileNotFoundError(f"지시문 템플릿 없음: {p}")
+    for line in p.read_text(encoding="utf-8").splitlines()[:10]:
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    log.explicit_fail(_LOG, "core.extract.prompt_version",
+                      f"{p} 머리말에 version: 줄이 없다")
+    raise ValueError(f"{p}: 머리말 version: 줄이 없다")
 
 
 def checkpoint_path(doc_id):
@@ -131,7 +157,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
         "doc_id": doc_id,
         "stage": "extract",
         "adapter_version": env.get("adapter_version"),
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": prompt_version(),
         "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),
         "layer": cfg["layer"],
         "extracted_at": env.get("parsed_at"),

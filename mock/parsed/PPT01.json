@@ -74,6 +74,7 @@
       "section": "슬라이드 7",
       "meta": {
         "image_summary": true,
+        "image_summary_source": "mock",
         "image_ref": "sealing_unit_diagram.png"
       }
     },
