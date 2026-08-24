@@ -9,7 +9,16 @@
 """
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
+
+from . import log
+
+try:
+    import fcntl
+except ImportError:                     # pragma: no cover - 비 POSIX
+    fcntl = None
 
 try:
     import orjson
@@ -43,9 +52,62 @@ SKELETON_LIST = "skeleton_closed_list.json"   # 골격 닫힌 목록 스냅샷 (
 DEFECTS = "defects.log"               # 결함 로그 (n1 id 충돌 등)
 LINK_MISS = "link_miss.log"           # 질의 링킹 미스·수집 잘림 (CH5 5.1 규약 6·5.2 규약 3)
 
+_LOG = log.get(__name__)
+
 
 def path(name) -> Path:
     return DATA / name
+
+
+# ---------------------------------------------------------------- 원자적 쓰기
+def atomic_write_bytes(target: Path, data: bytes) -> int:
+    """**진실을 반쯤 쓰인 채로 남기지 않는다** (문서 7 §7.1 저장 계층).
+
+    `data/`는 백업 대상이지 재생성 대상이 아니다 — 사전·큐의 사람 판단 기록과
+    승인 기록은 재생성되지 않는다(§7.7·§7.8). 그래서 대상 파일을 직접 덮어쓰면
+    build가 쓰기 도중 죽었을 때 **진실이 복구 불가로 유실된다.**
+
+    두 장치를 함께 건다:
+
+    1. **같은 디렉터리의 tmp + `os.replace`** — 같은 파일시스템이라야 rename이
+       원자적이다. `/tmp`에 쓰고 옮기면 크로스 디바이스 복사가 되어 원자성이 깨진다.
+    2. **`fcntl.flock`** — 직렬 실행(§7.3-3③)은 *호출부의 약속*이고 저장 측 방어가
+       0이면 호출부가 계약을 어겼을 때 막을 것이 없다. 락은 별도 `.lock` 파일에
+       건다: 대상 파일에 걸면 replace가 그 inode를 갈아치워 락이 허공에 남는다.
+
+    이것은 성능의 선반영(P7)이 아니라 **정합성 요구**다.
+
+    `fcntl`이 없는 플랫폼(Windows)에서는 락만 생략하고 원자적 교체는 유지한다 —
+    락 부재로 원자성까지 포기하면 방어가 0으로 되돌아간다.
+    """
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock = target.parent / f".{target.name}.lock"   # 숨은 이름 — data/ 열람의 잡음이 아니게
+    lf = None
+    try:
+        lf = lock.open("a+b")
+        if fcntl is not None:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        fd, tmp = tempfile.mkstemp(dir=str(target.parent),
+                                   prefix=f".{target.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())            # 교체 전에 내용이 디스크에 닿아야 한다
+            os.replace(tmp, target)             # 원자적 — 독자는 옛 판 또는 새 판만 본다
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+    finally:
+        if lf is not None:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+                except OSError:                  # pragma: no cover
+                    pass
+            lf.close()
+    return len(data)
 
 
 def read(name, default):
@@ -55,7 +117,7 @@ def read(name, default):
 
 def write(name, obj):
     DATA.mkdir(parents=True, exist_ok=True)
-    path(name).write_bytes(_dumps(obj))
+    atomic_write_bytes(path(name), _dumps(obj))
 
 
 def append_line(name: str, line: str):
@@ -106,5 +168,6 @@ def enqueue(kind, reason, doc_id, payload):
                 == (kind, doc_id, payload):
             return x
     q.append(item)
+    log.queue_put(_LOG, kind, reason, doc_id)   # 문서 7 §7.8 로그 3종
     write(QUEUE, q)
     return item

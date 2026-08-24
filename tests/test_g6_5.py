@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import gate, ops, store                            # noqa: E402
+from core import init, gate, ops, store                            # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
 from core.build import Builder                               # noqa: E402
 from core.extract import EXTRACT_DIR, checkpoint_path        # noqa: E402
@@ -46,8 +46,7 @@ def load(name):
 
 
 def fresh():
-    shutil.rmtree(store.DATA, ignore_errors=True)
-    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in DOCS:
@@ -405,8 +404,7 @@ print("\n■ ⑤ E2 — 인입 순서 무관 결정성 (mock 폴백 어휘 한�
 
 
 def build_in(order):
-    shutil.rmtree(store.DATA, ignore_errors=True)
-    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in order:

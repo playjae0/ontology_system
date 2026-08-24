@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import gate, store                              # noqa: E402
+from core import init, gate, store                              # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.ids import is_ulid                              # noqa: E402
 from core.ingest import ingest                            # noqa: E402
@@ -52,7 +52,7 @@ def reset():
     옛 골격이 살아남는다 — 멱등성(D-41)이 막는 것은 "같은 canonical의 재발급"이지
     "canonical 체계 변경"이 아니다. 기대값 대조는 반드시 이 경로로 한다.
     """
-    shutil.rmtree(store.DATA, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     return bootstrap("process", echo=False)
 
 
@@ -72,6 +72,39 @@ for p in ROOT.rglob("*.py"):
         if PAT.search(line) and not line.lstrip().startswith("#"):
             hits.append(f"{p.relative_to(ROOT)}:{i}")
 show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", not hits, str(hits))
+
+# **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
+# 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
+# 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.
+PATH_HACK = "sys" + r"\.path\.insert"
+import re as _re
+_pat = _re.compile(PATH_HACK)
+cli_hits = [f"{p.relative_to(ROOT)}:{i}"
+            for p in sorted((ROOT / "cli").glob("*.py"))
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if _pat.search(line) and not line.lstrip().startswith("#")]
+show("cli/ 8종에 sys.path 조작 0지점 — 실행은 python -m cli.{진입점}",
+     not cli_hits, str(cli_hits))
+
+# **원자적 쓰기가 배선돼 있는가** (문서 7 §7.1 저장 계층).
+# 직접 덮어쓰면 build가 쓰기 도중 죽었을 때 진실이 반쯤 쓰인 채 남는다 —
+# data/는 백업 대상이지 재생성 대상이 아니라 복구가 불가능하다.
+_src = (ROOT / "core" / "store.py").read_text(encoding="utf-8")
+_gsrc = (ROOT / "core" / "graph.py").read_text(encoding="utf-8")
+show("저장 쓰기가 tmp+os.replace·flock 경유다 (직접 덮어쓰기 0)",
+     "os.replace" in _src and "flock" in _src
+     and "atomic_write_bytes" in _gsrc
+     and "write_bytes(_dumps(" not in _gsrc)
+
+# **빈 상태의 형태가 §7.2 말미와 같은가** — 클린의 정의가 하나여야
+# 회귀 규약(§7.5-7)과 완료판정 4번이 같은 바닥 위에 선다.
+from core import init as _init                                # noqa: E402
+_init.init(fresh_=True)
+_want = {store.CHUNKS: {"chunks": {}, "describes": []},
+         store.DICTIONARY: {}, store.QUEUE: []}
+_got = {n: store.read(n, "없음") for n in _want}
+show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
+     _got == _want, str(_got))
 
 g, m, _, flow = reset()
 show("계기판 7 (graph 저장 크기) 출력", "gauge7_graph_bytes" in m,

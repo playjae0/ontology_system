@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import store                                   # noqa: E402
+from core import init, store                                   # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.build import Builder                           # noqa: E402
 from core.extract import EXTRACT_DIR                     # noqa: E402
@@ -42,8 +42,7 @@ DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
 
 
 def full_run():
-    shutil.rmtree(store.DATA, ignore_errors=True)
-    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)      # 파생 흐름 출력은 사람 대조용 — 판정은 test_g1_g2
     flags = {}

@@ -33,15 +33,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "kit"))
 
-from core import registry, store                            # noqa: E402
-from parser import pipeline, preflight, reader              # noqa: E402
-from render_review import render                            # noqa: E402
-from run_adapter import load_blocks                         # noqa: E402
-from router import discover                                 # noqa: E402
+from core import registry, store
+from parser import pipeline, preflight, reader
+from kit.render_review import render
+from kit.run_adapter import load_blocks
+from router import discover
 
 REVIEW = ROOT / "review"
 KIT = ROOT / "kit"

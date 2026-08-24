@@ -23,12 +23,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import store
+from . import log, store
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = ROOT / "schemas"
 
 BUILTIN = "builtin"
+
+_LOG = log.get(__name__)
 REGISTERED = "registered"
 
 
@@ -97,9 +99,13 @@ def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
     **내장 이름과의 충돌도 거부**다(내장도 조회 대상이다).
     """
     if not approved_by:
-        raise ValueError("승인자 미지정 — 무수정 자동 통과는 금지다 (틀 §2)")
+        log.explicit_fail(_LOG, "core.registry.register",
+                          "승인자 미지정 — 무수정 자동 통과는 금지다")
+        raise ValueError("승인자 미지정 — 무수정 자동 통과는 금지다 (문서 1 §승인 게이트)")
     reg = _registered()
     if doc_type in reg or doc_type in _builtin():
+        log.explicit_fail(_LOG, "core.registry.register",
+                          f"doc_type 이름 중복 — '{doc_type}'")
         raise ValueError(f"doc_type 이름 중복 — '{doc_type}'은 이미 등록돼 있다")
     reg[doc_type] = {
         "doc_type": doc_type, "status": REGISTERED, "layer": layer,

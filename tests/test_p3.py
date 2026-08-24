@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "kit"))
 
 from cli import register as R                              # noqa: E402
-from core import registry, store                           # noqa: E402
+from core import init, registry, store                           # noqa: E402
 from core.bootstrap import bootstrap                       # noqa: E402
 from parser import pipeline                                # noqa: E402
 
@@ -55,7 +55,7 @@ def reset(doc_type):
 
 
 # 깨끗한 상태에서 시작한다 — 등록부는 실행 산출물이다
-shutil.rmtree(store.DATA, ignore_errors=True)
+init.init(fresh_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
 for lay in ("process", "quality"):
     bootstrap(lay, echo=False)
 for dt in ("ipqc", "toc_report"):
@@ -244,7 +244,9 @@ from cli.scan import adapters                                # noqa: E402
 paths = {f.name for f, _m in adapters()}
 show("② preflight(n9 지문 스캔) — 등록부의 어댑터가 대조 대상에 든다",
      "ipqc.py" in paths and "toc_report.py" not in {} , str(sorted(paths)))
-out = subprocess.run([sys.executable, str(ROOT / "cli/platform.py"), "doctypes"],
+# 실행은 `python -m cli.{진입점}`이다 (문서 7 §7.1 패키지화) — 파일 직접 실행은
+# sys.path 조작에 의존했고, 그 조작을 없앴으므로 이 형태가 정본이다.
+out = subprocess.run([sys.executable, "-m", "cli.platform", "doctypes"],
                      capture_output=True, text=True, cwd=str(ROOT)).stdout
 show("③ 플랫폼 노출 — 같은 등록부를 열람한다 (D-67 계보)",
      "ipqc" in out and "status=registered" in out and "승인=검수자 한지우" in out)
@@ -264,7 +266,7 @@ show("n6 검수 뷰에 **층 초안 구획이 없다** (층 검수 뷰로 이관
 show("층 등록 기능(R1)을 만들지 않았다 — 존재하는 층만 지정 가능",
      "국면 2" in src and "discover()" in src)
 show("렌더러·하네스를 복제하지 않았다 (kit 실물 호출)",
-     "from render_review import render" in src and "run_adapter.py" in src
+     "from kit.render_review import render" in src and "run_adapter.py" in src
      and "def render(" not in src)
 
 reset("ipqc")

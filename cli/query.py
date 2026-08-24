@@ -7,21 +7,17 @@
 층을 발견해 순회하는 절차만 갖는다 — 층이 늘어도 이 파일은 그대로다(§3.4-(가)).
 core에 두지 않는 이유: 라우팅은 조립이지 읽기 파이프라인이 아니다.
 
-사용: python cli/query.py "<질문>"        (또는 python run.py query "<질문>")
+사용: python cli/query.py "<질문>"        (또는 python -m cli.query "<질문>")
 """
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from core import query as Q, store                      # noqa: E402
-from core.ids import norm                               # noqa: E402
-from core.bootstrap import load_config, open_graph      # noqa: E402
-from router import discover                             # noqa: E402
+from core import query as Q, store
+from core.ids import norm
+from core.bootstrap import load_config, open_graph
+from router import discover
 
 GENERAL = "[일반지식 — 사내 검증 필요]"
 

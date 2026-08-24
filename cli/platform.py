@@ -16,7 +16,7 @@ subprocess로 부르고, 표시는 data/의 JSON(진실)을 읽어서 한다 —
   ops                I축 연산 이력(ops_log) 열람 + 툼스톤 계수
   gauges             계기판 8종 (CH5 5.5 — 별도 호출로 계산, build·query 무오염)
 
-사용: python cli/platform.py <명령> [인자...]   (또는 python run.py platform ...)
+사용: python cli/platform.py <명령> [인자...]   (또는 python -m cli.platform ...)
 """
 from __future__ import annotations
 
@@ -26,14 +26,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from core import store                                  # noqa: E402
-from core.bootstrap import load_config, open_graph      # noqa: E402
-from core.extract import EXTRACT_DIR                    # noqa: E402
-from core.ops import is_live                            # noqa: E402
-from router import discover                             # noqa: E402
+from core import store
+from core.bootstrap import load_config, open_graph
+from core.extract import EXTRACT_DIR
+from core.ops import is_live
+from router import discover
 
 # 수정 큐 kind — **닫힌 20종**(구현문서 §2.3의 13종 + 증분0 §6-5의 확장 7종 · D-54).
 # 열람 화면의 상수다: 0건인 kind도 화면에 떠야 "닫힌 목록"이 보인다.

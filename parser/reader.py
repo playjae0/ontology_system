@@ -28,11 +28,18 @@ pptx →
   "slides": [{"index": 1, "shapes": ["제목", "본문 …"], "notes": ""}]
 }
 """
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-
-
 def read_xlsx(path):
+    """**import는 함수 안이다** (문서 7 §7.1 선택 의존의 지연 import 격리).
+
+    최상단 import면 `parser.reader`를 import하는 것만으로 openpyxl이 필요해진다 —
+    그러면 패키지 미설치 환경에서 `USE_MOCK=1` 전체 실행이 ImportError로 죽어
+    "외부 의존 없이 전체가 동작한다"(문서 1 B12)가 **실측으로** 깨진다. 문면상
+    "요구하지 않는다"까지만 두면 최상단 import가 위반이 아니게 되는 것이 그 구멍이다.
+    같은 파일의 `read_pptx`가 이미 이 형태다.
+    """
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+
     wb = load_workbook(path, data_only=True)
     sheets = []
     for ws in wb.worksheets:

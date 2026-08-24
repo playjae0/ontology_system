@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """산출물 열람 — **시각화 없이 텍스트로 본다** (명세 §11 · 카드 P5).
 
-    python run.py show tree   [층]           골격 트리 (사내 공정이 맞게 섰나)
-    python run.py show node   <이름>          노드 하나 전부 — 값·별칭·출처·연결
-    python run.py show doc    <doc_id>        그 문서가 만든 것 전부 (역추적)
-    python run.py show chunk  <doc_id|id>     청크 원문 (답의 근거로 실린 그 문장)
-    python run.py show edges  [층] [관계]      엣지 목록
-    python run.py show schema <doc_type>      매칭 스키마 — 필드→role 배정표
-    python run.py show meta                   메타데이터 계약 3층을 실물로
+    python -m cli.show tree   [층]           골격 트리 (사내 공정이 맞게 섰나)
+    python -m cli.show node   <이름>          노드 하나 전부 — 값·별칭·출처·연결
+    python -m cli.show doc    <doc_id>        그 문서가 만든 것 전부 (역추적)
+    python -m cli.show chunk  <doc_id|id>     청크 원문 (답의 근거로 실린 그 문장)
+    python -m cli.show edges  [층] [관계]      엣지 목록
+    python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표
+    python -m cli.show meta                   메타데이터 계약 3층을 실물로
 
 **진실은 `data/`의 JSON이다.** Cypher·Mermaid·임베딩은 전부 거기서 파생되는
 재생성 가능물이고(P5), 이 파일은 그 JSON을 **사람이 읽는 모양으로** 옮길 뿐이다.
@@ -22,14 +22,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from core import registry, store                            # noqa: E402
-from core.bootstrap import load_config, open_graph          # noqa: E402
-from core.ids import norm                                   # noqa: E402
-from core.ops import is_live                                # noqa: E402
-from router import discover                                 # noqa: E402
+from core import registry, store
+from core.bootstrap import load_config, open_graph
+from core.ids import norm
+from core.ops import is_live
+from router import discover
 
 
 def _graphs():

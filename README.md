@@ -49,10 +49,10 @@ platform · scan · parse · register`.
 
 | | |
 |---|---|
-| Python | **3.9+** (개발·검증은 3.11) |
+| Python | **3.10+** (개발·검증은 3.11) — `sys.stdlib_module_names`를 쓴다 |
 | 코어 의존 | **없다.** `core/`는 표준 라이브러리만 쓴다 — 폐쇄망에서 설치 없이 돈다 |
-| 파서 의존 | `openpyxl` · `python-pptx` (xlsx·pptx 읽기 전용) |
-| 선택 | `orjson` (직렬화 가속 — 없으면 표준 json 폴백) |
+| 파서 의존 | `openpyxl` · `python-pptx` — **선택**이다(지연 import). 없어도 `USE_MOCK=1` 전 경로가 완주한다 |
+| 선택 | `orjson` (직렬화 가속 — 없으면 표준 json 폴백). 전량은 `requirements.txt` |
 | 네트워크 | **불필요.** `USE_MOCK=1`(기본)에서 전 경로가 로컬로 돈다 |
 
 ## 무엇이 진짜고 무엇이 mock인가

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """내보내기 — 시각화·외부 도구용 **파생물** (명세 §11 · 카드 P5).
 
-    python run.py export cypher [출력.cypher]    Neo4j 적재용
-    python run.py export csv    [출력디렉터리]    nodes.csv · edges.csv (Gephi·엑셀)
-    python run.py export mermaid [층]            보고서용 다이어그램 (골격)
+    python -m cli.export cypher [출력.cypher]    Neo4j 적재용
+    python -m cli.export csv    [출력디렉터리]    nodes.csv · edges.csv (Gephi·엑셀)
+    python -m cli.export mermaid [층]            보고서용 다이어그램 (골격)
 
 **여기서 나오는 것은 전부 파생물이다.** 진실은 `data/`의 JSON 그래프 + 청크 저장소이고
 (P5), 이 파일들은 언제든 다시 만들 수 있다 — 그래서 **되돌려 읽지 않는다.** 시각화
@@ -19,13 +19,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from core import store                                      # noqa: E402
-from core.bootstrap import open_graph                       # noqa: E402
-from core.ops import is_live                                # noqa: E402
-from router import discover                                 # noqa: E402
+from core import store
+from core.bootstrap import open_graph
+from core.ops import is_live
+from router import discover
 
 
 def _q(v):
