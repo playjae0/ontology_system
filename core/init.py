@@ -26,8 +26,17 @@ from router import discover
 ROOT = Path(__file__).resolve().parent.parent
 _LOG = log.get(__name__)
 
-# 실행 산출물 디렉터리 — 버전 추적하지 않는다(§7.8). data/만 진실이고 나머지는 파생·세션 산출.
-WIPE = ("data", "extract", "review", "export")
+# 지우는 것 — **`review/`는 넣지 않는다.**
+#
+# §7.6-4는 클린을 "**data/ 하위**를 빈 상태로 생성·재생성"으로 정의한다. `extract/`를
+# 함께 지우는 것은 회귀 규약(§7.5-7 클린 단독 실행)이 요구하는 범위다 — 추출
+# 체크포인트가 스위트 사이에 살아남으면 그 규약이 막으려던 순서 의존이 그대로 생긴다.
+#
+# **`review/{doc_type}/approval.json`은 승인 기록의 물리 정본이고 사람 판단 기록이라
+# 재생성되지 않는다**(§7.8). 그것을 클린이 지우면 사내에서 `init --fresh` 한 번에
+# 승인 이력이 사라진다 — 실증했다(확정 후 approval.json 존재 → init --fresh 후 0).
+# 등록 산출의 정리는 그 세션이 자기 디렉터리를 지운다(테스트가 이미 그 형태다).
+WIPE = ("data", "extract", "export")
 
 # 빈 상태의 형태 — 문서 7 §7.2 말미가 정본이다.
 EMPTY = {

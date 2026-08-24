@@ -106,6 +106,20 @@ _got = {n: store.read(n, "없음") for n in _want}
 show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
      _got == _want, str(_got))
 
+# **클린이 승인 기록을 지우지 않는가** (§7.8 — 사람 판단 기록은 재생성되지 않는다).
+# `review/{doc_type}/approval.json`이 승인의 물리 정본이라, 클린이 그것을 지우면
+# 사내에서 `init --fresh` 한 번에 승인 이력이 사라진다(실증된 결함).
+from core import init as _init2                                 # noqa: E402
+_probe = ROOT / "review" / "_clean_probe"
+_probe.mkdir(parents=True, exist_ok=True)
+(_probe / "approval.json").write_text('{"approved_by": "시험자"}', encoding="utf-8")
+_init2.init(fresh_=True)
+_kept = (_probe / "approval.json").exists()
+show("run.py init --fresh 가 review/의 승인 기록을 지우지 않는다 (§7.8)",
+     _kept and "review" not in _init2.WIPE, str(_init2.WIPE))
+import shutil as _sh
+_sh.rmtree(_probe, ignore_errors=True)
+
 # **core 접근 경계 3종이 관문으로 서 있는가** (문서 7 §7.1).
 # 자산에 파일과 의미론만 있고 관문이 없으면 호출부마다 제 규칙으로 붙는다 —
 # 실제로 사전 접근이 5곳으로 흩어져 있었고 provenance 필수는 한 곳만 지켰다.
