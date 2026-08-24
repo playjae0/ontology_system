@@ -17,8 +17,9 @@ USE_MOCK=1에서는 ③이 문자열 정규화 규칙이다(구현문서 §8) �
 """
 from __future__ import annotations
 
-import os
+import json
 
+from . import llm, log
 from .ids import norm
 from .naming import POLARITY_NONE
 from .ops import is_live
@@ -29,9 +30,16 @@ MATCH = "match"
 NEW = "new"
 UNCERTAIN = "uncertain"
 
+# 판정 반환의 정본 형태 — 문서 4 §4.3-6. 두 갈래가 이것을 함께 지킨다.
+JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {"type": {"type": "string", "enum": [MATCH, NEW, UNCERTAIN]},
+                   "matched_id": {"type": ["string", "null"]},
+                   "confidence": {"type": "number"}},
+    "required": ["type", "matched_id", "confidence"], "additionalProperties": False,
+}
 
-def _use_mock():
-    return os.environ.get("USE_MOCK", "1") == "1"
+_LOG = log.get(__name__)
 
 
 def _similarity(a, b):
@@ -128,12 +136,19 @@ def match(surface, candidates, category):
     분리는 어렵다. 잘못 합치면 사람이 배분표를 써야 하지만, 잘못 나누면 병합
     도구가 자동으로 되돌린다.
     """
-    best, score = None, 0.0
-    for c in candidates:
-        if c.get("category") != category:
-            continue                                 # 카테고리 불일치 안전망 재확인
-        if c.get("exact"):
+    pool = [c for c in candidates if c.get("category") == category]
+    for c in pool:
+        if c.get("exact"):                           # 사전 히트 — 결정적·무LLM 경로
             return {"type": MATCH, "matched_id": c["id"], "confidence": 1.0}
+    if not pool:
+        return {"type": NEW, "matched_id": None, "confidence": 0.0}
+
+    if not llm.use_mock():
+        return _judge_live(surface, pool, category)
+    llm.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
+
+    best, score = None, 0.0
+    for c in pool:
         # canonical에는 포함 규칙까지 적용하지만(표기 변형 흡수 — "노칭정밀도" ↔
         # "노칭::노칭 정밀도"), **alias에는 정확 일치만** 적용한다. alias는 조립 전
         # 표면형이라("노칭 프레스") 포함 규칙을 걸면 "cathode 노칭 프레스"가 무극성
@@ -150,6 +165,42 @@ def match(surface, candidates, category):
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
         return {"type": UNCERTAIN, "matched_id": None, "confidence": score}
     return {"type": NEW, "matched_id": None, "confidence": 0.0}
+
+
+def _judge_live(surface, pool, category):
+    """지점 ② 개체 동일성 판정의 실호출 갈래 — **반환 계약이 mock과 같다.**
+
+    입력은 `mention` + 후보들이고 후보 하나는 `canonical`·`aliases`·부착 위치·
+    `category`로 구성한다(문서 4 §4.3-6). 정의문과 비대칭 기준은 층 config가
+    프롬프트로 주입하는데, 그 주입 통로는 별개 갭 항목이다 — 여기서는 이음매를
+    세우고 후보 형태와 반환 계약을 지킨다.
+
+    **판정기가 후보 밖의 id를 답하면 버린다.** 모델이 지어낸 id가 엣지 끝점이
+    되면 그래프에 없는 노드를 가리키는 엣지가 선다.
+    """
+    ids = {c["id"] for c in pool}
+    out = llm.chat(
+        [{"role": "system", "content":
+          "두 이름이 같은 실물을 가리키는지 판정한다. 확신이 없으면 uncertain이다 "
+          "— 병합은 쉽고 분리는 어렵다. matched_id는 반드시 후보 목록 안의 id다."},
+         {"role": "user", "content": json.dumps(
+             {"mention": surface, "category": category, "candidates": pool},
+             ensure_ascii=False)}],
+        json_schema=JUDGE_SCHEMA, point="judge")
+    vtype = out.get("type")
+    mid = out.get("matched_id")
+    conf = float(out.get("confidence") or 0.0)
+    if vtype == MATCH and mid not in ids:
+        _LOG.warning("판정이 후보 밖 id를 답했다 — 버리고 uncertain으로 둔다: %r", mid)
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+    if vtype == MATCH and conf < THRESHOLD:
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+    if vtype not in (MATCH, NEW, UNCERTAIN):
+        _LOG.warning("판정 분기가 닫힌 3값 밖이다 — uncertain으로 둔다: %r", vtype)
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+    return {"type": vtype,
+            "matched_id": mid if vtype == MATCH else None,
+            "confidence": conf}
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,

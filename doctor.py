@@ -41,6 +41,7 @@ SUITES = [
     ("test_p1", 46, "파서 공용 코어 6종 · 구조 지도 · 역산 정합"),
     ("test_p2", 45, "어댑터 생성 킷 6종 · 검수 뷰 렌더러"),
     ("test_p3", 45, "구축 모드 등록 3단 (생성·검수·확정)"),
+    ("test_2a_gateway", 26, "게이트웨이 골조 — LLM 지점 8종 mock/실호출 분기"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
 
@@ -311,17 +312,38 @@ def transition():
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
          if not reg else f"등록됨: {reg}")
 
-    # ── 3. 실LLM 훅 ───────────────────────────────────────────────
-    hooks = []
-    for p in list((ROOT / "core").glob("*.py")) + list((ROOT / "parser").glob("*.py")) \
-            + list((ROOT / "cli").glob("*.py")):
-        for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if "HOOK" in ln:
-                hooks.append(f"{p.relative_to(ROOT)}:{i}")
-    line(WARN, f"[3] 실LLM 훅 {len(hooks)}곳이 비어 있다 (USE_MOCK=1로 우회 중)",
-         "사내 LLM 게이트웨이가 서면 여기에 붙인다 — 각 자리에 반환 형식이 적혀 있다:\n"
-         + "\n".join(f"         · {h}" for h in hooks)
-         + "\n         **없어도 전 파이프라인이 돈다** — 추출·판정이 규칙 폴백으로 대체될 뿐이다")
+    # ── 3. LLM 지점 8종의 실호출 분기 ─────────────────────────────
+    # **주석을 세지 않는다.** 여태 이 자리가 문자열 "HOOK"을 세어, 전부 주석이던
+    # 5곳을 구현된 것으로 보고했다(문서 7 §7.6-B-2: 주석은 실행되지 않는다).
+    # 이제 세는 것은 **실제 분기의 존재**다 — 각 지점이 `llm.use_mock()`(또는
+    # 파서 쪽의 동형 판독)으로 갈리고 실호출 갈래를 갖는가.
+    from core.llm import POINTS                                   # noqa: E402
+    WIRED = {
+        "extract": ("core/extract.py", "_candidates_for"),
+        "judge": ("core/matcher.py", "_judge_live"),
+        "embed": ("core/embeddings.py", "def embed"),
+        "image_summary": ("parser/tagger.py", "allow_mock"),
+        "generate": ("cli/register.py", "_draft_live"),
+        "link": ("core/query.py", "_link_deep"),
+        "struct_map": ("parser/struct_map.py", "ask is None"),
+        "answer": ("cli/query.py", "def generate"),
+    }
+    wired, missing = [], []
+    for key, label in POINTS.items():
+        where, needle = WIRED.get(key, (None, None))
+        src = (ROOT / where).read_text(encoding="utf-8") if where else ""
+        # 분기의 조건: 실호출 갈래의 이름이 있고, mock 갈래와 갈리는 판독이 있다.
+        gate = ("use_mock" in src or "USE_MOCK" in src or "allow_mock" in src)
+        (wired if (needle and needle in src and gate) else missing).append(
+            f"{label} ({where})")
+    line(OK if not missing else NG,
+         f"[3] LLM 지점 {len(wired)}/{len(POINTS)}종에 mock/실호출 분기가 서 있다",
+         ("게이트웨이 골조는 섰고 **설정만 비어 있다** — ONTO_LLM_URL·ONTO_LLM_MODEL을\n"
+          "         주면 USE_MOCK=0으로 돈다. 미설정 상태의 USE_MOCK=0은 조용히 mock으로\n"
+          "         떨어지지 않고 명시적으로 실패한다(문서 7 §7.6-B-4).\n"
+          "         **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다"
+          ) if not missing else
+         "분기가 없는 지점:\n" + "\n".join(f"         · {m}" for m in missing))
 
     # ── 4. 계기판 첫 측정 ─────────────────────────────────────────
     line(WARN, "[4] 계기판은 mock 수치다 — 품질 측정이 아니다",

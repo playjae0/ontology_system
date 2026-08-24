@@ -34,7 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import registry, store
+from core import llm, registry, store
 from parser import pipeline, preflight, reader
 from kit.render_review import render
 from kit.run_adapter import load_blocks
@@ -85,14 +85,57 @@ def draft(doc_type, revision=0):
     스냅샷**이다. 사람이 손으로 써서 넣으면 그 리허설은 아무것도 검증하지 않는다.
     재생성 지시가 오면 대안본(`…_rev1`)을 반환해 **루프 배선을 검증**한다.
 
-    HOOK: 실물 경로는 여기서 생성 LLM에 입력 패키지를 넘긴다. 반환 형태는 같다 —
-    (어댑터 경로, 스키마 경로). 소비 쪽은 출처를 몰라도 된다.
+    분기는 `if USE_MOCK: <fixture> else: <실호출>`이고 **반환 형태가 같다** —
+    `(어댑터 경로, 스키마 경로)`. 소비 쪽(하네스·검수 뷰)은 출처를 몰라도 된다.
+    실호출 갈래도 파일로 떨어뜨린다: 하네스가 실행으로 판정하는 대상이 파일이고,
+    승인 기록(approval.json)이 가리키는 것도 파일이다.
     """
-    for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
-        ad, sc = FIXTURES / "adapters" / f"{stem}.py", FIXTURES / "schemas" / f"{stem}.json"
-        if ad.exists() and sc.exists():
-            return ad, sc
-    return None, None
+    if llm.use_mock():
+        llm.mock("generate", f"fixture {doc_type} rev{revision}")
+        for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
+            ad = FIXTURES / "adapters" / f"{stem}.py"
+            sc = FIXTURES / "schemas" / f"{stem}.json"
+            if ad.exists() and sc.exists():
+                return ad, sc
+        return None, None
+    return _draft_live(doc_type, revision)
+
+
+GENERATE_SCHEMA = {
+    "type": "object",
+    "properties": {"adapter_py": {"type": "string"},
+                   "schema_json": {"type": "string"}},
+    "required": ["adapter_py", "schema_json"], "additionalProperties": False,
+}
+
+
+def _draft_live(doc_type, revision):
+    """지점 ⑤의 실호출 갈래 — 생성 LLM에 입력 패키지를 넘긴다.
+
+    입력 패키지(사람 4 + 시스템 5)는 이미 `input_package.json`으로 서 있다 —
+    그것이 프롬프트의 입력이고, 여기서 새로 만들지 않는다.
+
+    산출은 **`review/{doc_type}/`에 떨어뜨린다** — `mock/fixtures/`가 아니다.
+    fixtures는 외부 LLM 실산출 스냅샷 전용이고 사람도 코드도 손대지 않는 자리다
+    (문서 7 §7.5-4 — 디렉터리 경계가 지위 경계다).
+    """
+    llm.require("generate")          # 설정 미비를 먼저 알린다 — 준비 순서가 그쪽이 먼저다
+    pkg = REVIEW / doc_type / "input_package.json"
+    if not pkg.exists():
+        raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — 생성 전에 서야 한다")
+    tmpl = ROOT / "kit" / "생성프롬프트_템플릿_v0.4.md"
+    out = llm.chat(
+        [{"role": "system", "content": tmpl.read_text(encoding="utf-8")},
+         {"role": "user", "content": pkg.read_text(encoding="utf-8")}],
+        json_schema=GENERATE_SCHEMA, point="generate")
+    d = REVIEW / doc_type
+    d.mkdir(parents=True, exist_ok=True)
+    suffix = f"_rev{revision}" if revision else ""
+    ad = d / f"adapter{suffix}.py"
+    sc = d / f"schema{suffix}.json"
+    ad.write_text(out["adapter_py"], encoding="utf-8")
+    sc.write_text(out["schema_json"], encoding="utf-8")
+    return ad, sc
 
 
 def basic_adapter_proposal(samples):

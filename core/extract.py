@@ -26,7 +26,7 @@ import os
 import re
 from pathlib import Path
 
-from . import log, store
+from . import llm, log, store
 from .ids import norm
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -92,16 +92,70 @@ def _patterns(cfg):
             for p in (cfg.get("extract_patterns") or [])]
 
 
+# 지점 ① 비정형 추출 — `if USE_MOCK: <mock> else: <실호출>` (문서 7 §7.6-B-3).
+# **두 갈래가 같은 반환 계약을 지킨다** — {chunk_id, entities, relations, attach}.
+# 소비부(구축)는 어느 쪽인지 몰라야 하고, 그래야 mock 회귀가 실 연결에도 유효하다.
+EXTRACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "entities": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"surface": {"type": "string"},
+                           "category": {"type": "string"}},
+            "required": ["surface", "category"], "additionalProperties": False}},
+        "relations": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"src": {"type": "string"}, "rel": {"type": "string"},
+                           "dst": {"type": "string"}},
+            "required": ["src", "rel", "dst"], "additionalProperties": False}},
+        "attach": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"surface": {"type": "string"},
+                           "attach_to": {"type": ["string", "null"]}},
+            "required": ["surface", "attach_to"], "additionalProperties": False}},
+    },
+    "required": ["entities", "relations", "attach"], "additionalProperties": False,
+}
+
+
+def _candidates_for(chunk_id, chunk, cfg, vocab):
+    """추출 후보 1청크 — mock/실호출 분기의 **단일 지점**이다.
+
+    후보는 **표면형만** 낸다(문서 4 §4.10-1) — 노드 id가 들어가면 추출이 그래프
+    상태에 의존해 체크포인트의 독립성이 깨진다. `confidence`·`span`도 두지 않는다.
+    """
+    if llm.use_mock():
+        llm.mock("extract", f"문형 규칙 · {chunk_id}")
+        return _mock_candidates(chunk_id, chunk.get("text", ""), cfg, vocab)
+
+    # 실호출 — 지시문 템플릿(파일) + 층 어휘(config)를 실행 시 조립한다(문서 4 §4.10).
+    # 조립부의 완성(정의문·부착 후보 목록 삽입)은 별개 갭 항목이다 — 여기서는
+    # 이음매만 세우고, 템플릿과 층 어휘가 각자 제자리에서 오는 형태를 지킨다(B9).
+    tmpl = (PROMPTS_DIR / "extract.md").read_text(encoding="utf-8")
+    out = llm.chat(
+        [{"role": "system", "content": tmpl},
+         {"role": "user", "content": json.dumps(
+             {"categories": cfg.get("categories"),
+              "relations": cfg.get("relations"),
+              "chunk": chunk.get("text", "")}, ensure_ascii=False)}],
+        json_schema=EXTRACT_SCHEMA, point="extract")
+    return {"chunk_id": chunk_id,
+            "entities": out.get("entities", []),
+            "relations": out.get("relations", []),
+            "attach": out.get("attach", [])}
+
+
 def _mock_candidates(chunk_id, text, cfg, vocab):
     """문형 규칙 폴백. 카테고리는 config 정의문 예시·사전 매칭으로 정한다.
 
     **USE_MOCK 한정이다.** 경계가 코드에 없어 실LLM 경로에서도 이 규칙이 돌았다
     (G6.5 E3이 이 게이트를 세웠다). 실물 경로는 미구현이므로 **명시적으로 실패**한다.
     """
-    if os.environ.get("USE_MOCK", "1") != "1":
+    if not llm.use_mock():
         raise NotImplementedError(
-            "문형 폴백은 USE_MOCK 한정이다 (한시 예외 3호) — "
-            "실LLM 추출 경로는 미구현이다. HOOK: 여기에 추출 에이전트를 붙인다")
+            "문형 폴백은 USE_MOCK 한정이다 — 실호출 갈래는 `_candidates_for`가 "
+            "`core.llm`을 부른다. 이 함수가 USE_MOCK=0에서 불렸다면 분기를 "
+            "우회한 호출부가 있다는 뜻이다")
     entities, relations = [], []
 
     def cat_of(surface):
@@ -151,7 +205,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
                                "relations": h.get("relations", []),
                                "attach": h.get("attach", [])})
         else:
-            candidates.append(_mock_candidates(cid, c.get("text", ""), cfg, vocab))
+            candidates.append(_candidates_for(cid, c, cfg, vocab))
 
     out = {
         "doc_id": doc_id,

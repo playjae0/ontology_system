@@ -16,8 +16,12 @@ LLM은 그래프를 직접 읽지 않는다 — 그것이 이 4단을 나눈 이
 """
 from __future__ import annotations
 
+import json
+
 from . import store
+from . import embeddings, llm
 from .ids import norm
+from .ops import is_live
 
 COLLECT_LIMIT = 8               # ③ 수집 상한 (CH5 5.1 규약 6). 초과분은 tier2부터 자른다.
 
@@ -36,6 +40,64 @@ INTENT_PATH = {"flow": PATH_GRAPH, "order": PATH_GRAPH, "value": PATH_GRAPH,
 
 
 # ---------------------------------------------------------------- ① 링킹
+LINK_SCHEMA = {
+    "type": "object",
+    "properties": {"node_ids": {"type": "array", "items": {"type": "string"}}},
+    "required": ["node_ids"], "additionalProperties": False,
+}
+
+
+def _link_deep(question, dictionary, graphs, found):
+    """링킹 2·3단 — **벡터 검색 → LLM 지명** (LLM 지점 ⑥ · 문서 5).
+
+    1단(사전 스캔)은 무LLM·결정적이고 위에서 이미 돌았다. 여기는 그 미스를 받는다.
+
+    **USE_MOCK에서는 돌지 않는다** — mock 대체가 sha256 벡터라 유사도가 가짜
+    확신이고(§7.5-1), 1단이 미스한 표기를 가짜 벡터로 이어 붙이면 링킹 미스 로그가
+    거짓으로 비워져 하이브리드 도입 판정(P7)의 재료가 오염된다. mock에서 이 자리가
+    비는 것이 **설계**이고, 그래서 미스는 로그로 쌓인다.
+
+    실호출 갈래도 **후보 밖 id는 버린다** — 모델이 지어낸 id로 질의가 답하면
+    그래프에 없는 근거를 제시하게 된다.
+    """
+    if llm.use_mock():
+        return []
+    # **관문을 진입부에 둔다.** 후보가 0이라 그냥 반환하면 미설정 상태가 조용히
+    # 통과한다 — 빈 그래프에서 실측으로 걸린 자리다. 링킹 2·3단은 USE_MOCK=0에서
+    # 항상 모델을 쓰므로(1단 히트가 있어도 2·3단은 돈다 — 문서 5), 설정 미비는
+    # 첫 문서에서 터지기 전에 여기서 알리는 것이 맞다.
+    llm.require("link", need=("url", "model", "embed_model"))
+    live = {nid: (lay, n) for lay, g in graphs.items()
+            for nid, n in g.nodes.items() if is_live(n)}
+    scored = sorted(
+        ((embeddings.cosine(embeddings.embed(question),
+                            embeddings.embed(n["canonical"])), nid)
+         for nid, (_lay, n) in live.items() if nid not in found),
+        reverse=True)[:VECTOR_TOPK]
+    if not scored:
+        return []
+    pool = [{"id": nid, "canonical": live[nid][1]["canonical"],
+             "category": live[nid][1]["category"]} for _s, nid in scored]
+    out = llm.chat(
+        [{"role": "system", "content":
+          "질문이 실제로 가리키는 개체만 고른다. 애매하면 고르지 않는다 — "
+          "링킹 과잉은 답변 컨텍스트를 부풀린다. node_ids는 후보 목록 안의 id다."},
+         {"role": "user", "content": json.dumps(
+             {"question": question, "candidates": pool}, ensure_ascii=False)}],
+        json_schema=LINK_SCHEMA, point="link")
+    ids = {p["id"] for p in pool}
+    hits = []
+    for nid in out.get("node_ids", []):
+        if nid not in ids:
+            continue                     # 후보 밖 id는 버린다
+        lay, n = live[nid]
+        hits.append({"surface": n["canonical"], "node_id": nid, "layer": lay})
+    return hits
+
+
+VECTOR_TOPK = 20        # 2단이 3단에 넘기는 후보 상한. 넓히는 판정은 미스율이 쌓인 뒤(P7).
+
+
 def link(question, dictionary, graphs):
     """표기 → 노드. **사전 스캔 우선**(무LLM)이며 **긴 표면형이 이긴다**.
 
@@ -60,6 +122,9 @@ def link(question, dictionary, graphs):
                 n = g.get(nid)
                 if n is not None:
                     hits.append({"surface": surface, "node_id": nid, "layer": layer})
+    # 2·3단 — 1단이 미스한 것을 받는다. USE_MOCK에서는 빈 목록이고 미스는 로그로 쌓인다.
+    hits += _link_deep(question, dictionary, graphs,
+                       {h["node_id"] for h in hits})
     return hits
 
 
@@ -294,7 +359,9 @@ def intent_of(question, cfg):
     층이 값으로 선언한다. 우선순위는 선언 순서다.
 
     이 표기 대조는 **USE_MOCK의 결정적 분류기**다(구현문서 §8 — 문형 규칙).
-    # HOOK: llm_intent — 실물 경로에서는 LLM이 질문 유형을 판정하고, 그때도 유형의
+    # (LLM 지점 **8종 밖**의 여지다 — §7.6-B-2의 닫힌 목록에 질문 유형 판정은
+    #  없다. 규칙 분류기로 충분한지는 미스율이 쌓인 뒤 판정한다(P7).)
+    # 실물 경로에서는 LLM이 질문 유형을 판정할 수 있고, 그때도 유형의
     # 이름과 답의 소재(INTENT_PATH)는 그대로다. 바뀌는 것은 분류 수단뿐이다.
     """
     q = norm(question)

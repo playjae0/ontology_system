@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+from core import llm
 from parser import pipeline, preflight, reader, validator
 
 REVIEW = ROOT / "review"
@@ -36,7 +37,10 @@ def load_adapter(path):
 def cmd_run(args):
     adapter_path, doc_id, doc = args[0], args[1], args[2]
     out = args[3] if len(args) > 3 else None
-    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc)
+    # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
+    # import하지 않는다(P1). USE_MOCK이면 None이 오고 파서가 고정 문자열을 쓴다.
+    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc,
+                         summarize=llm.image_summarizer())
     print(f"[parse] {res}")
     for f in res.failures:
         print(f"   [{f['kind']}] {f['reason']}")
@@ -102,7 +106,8 @@ def cmd_build(args):
     for i, s in enumerate(samples, 1):
         raw = reader.read(s)
         pf_ok, pf_detail = preflight.check(mod, raw)
-        res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s)
+        res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
+                             summarize=llm.image_summarizer())
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "
               f"파싱 {'OK' if res.ok else 'FAIL'} · 조각 {res.report.get('pieces', 0)}")

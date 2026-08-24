@@ -78,8 +78,8 @@ def cmd_all():
 
 def cmd_query(args):
     """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다."""
-    from cli.query import answer, render
-    print(render(answer(" ".join(args))))
+    from cli.query import answer, generate
+    print(generate(answer(" ".join(args))))
 
 
 def cmd_ops(args):

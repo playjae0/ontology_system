@@ -213,7 +213,8 @@ def merge_candidates(g, a, b):
     있어서다. 그래서 여기는 제시만 하고 확정은 사람이 한다. USE_MOCK의 "1추천"은
     결정적 규칙(빈도 최다 → 동률이면 status 등급 → 그래도 동률이면 정렬상 앞)이며
     실물 경로에서는 LLM이 그 자리에 온다.
-    # HOOK: llm_canonical_suggest
+    # (LLM 지점 **8종 밖**의 여지다 — canonical 제안은 §7.6-B-2 목록에 없고,
+    #  확정은 어차피 사람이 한다. 제시 품질이 문제로 측정되면 그때 붙인다.)
     """
     out = []
     for n in (a, b):
