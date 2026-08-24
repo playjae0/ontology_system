@@ -48,13 +48,14 @@ def link(question, dictionary, graphs):
     """
     q = norm(question)
     hits, taken = [], []
-    for surface in sorted(dictionary, key=len, reverse=True):
+    # 사전 스캔은 관문 경유다 (문서 7 §7.1) — 긴 표기 우선으로 훑는다.
+    for surface in sorted(dictionary.surfaces(), key=len, reverse=True):
         if not surface or surface not in q:
             continue
         if any(surface in t for t in taken):        # 이미 더 긴 표기로 잡힌 자리
             continue
         taken.append(surface)
-        for nid in dictionary[surface]:
+        for nid in dictionary.lookup(surface):
             for layer, g in graphs.items():
                 n = g.get(nid)
                 if n is not None:

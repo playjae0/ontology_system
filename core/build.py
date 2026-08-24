@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from . import gate, store
+from .dictionary import Dictionary
 from .ids import norm
 from .matcher import MATCH, NEW, UNCERTAIN, resolve
 from .naming import bind_polarity, derive_polarity, is_bound, scope_canonical
@@ -31,7 +32,7 @@ class Builder:
         self.schema = schema
         self.doc_id = doc_id
         self.layer = layer
-        self.dict = store.read(store.DICTIONARY, {})
+        self.dict = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
         self.buffer: dict[str, str] = {}     # 문서 해소 버퍼 (2-pass Pass 1)
         self.subs: dict[str, "Builder"] = {}  # 걸침 층별 하위 빌더 — 아래 for_layer
 
@@ -62,17 +63,19 @@ class Builder:
 
     # ---------------------------------------------------------------- 사전
     def _register(self, surface, nid, prov):
-        """사전 등재에는 **provenance가 필수**다 (CH3A 3.3 규약 5)."""
-        self.dict.setdefault(norm(surface), [])
-        if nid not in self.dict[norm(surface)]:
-            self.dict[norm(surface)].append(nid)
+        """사전 등재는 관문이 한다 — **provenance 필수 강제가 그쪽에 있다**(§7.1).
+
+        alias 항목(`{surface, provenance}`)은 노드 레코드에 살므로(§7.2) 그
+        붙이기만 여기 남는다 — 사전이 그래프를 쓰면 저장 계층 경계가 무너진다.
+        """
+        self.dict.register(surface, nid, provenance=prov)
         n = self.g.get(nid)
         if norm(surface) != norm(n["canonical"]) and \
                 not any(a["surface"] == surface for a in n["aliases"]):
             n["aliases"].append({"surface": surface, "provenance": [prov]})
 
     def flush(self):
-        store.write(store.DICTIONARY, self.dict)
+        self.dict.save()
 
     # ---------------------------------------------------------------- anchor
     def _graph_for(self, category):
@@ -104,7 +107,7 @@ class Builder:
         if not surface:
             return None, None
         g, _ = self._graph_for(category)          # 걸침 anchor는 다른 층에서 찾는다
-        hits = [nid for nid in self.dict.get(norm(surface), [])
+        hits = [nid for nid in self.dict.lookup(surface)
                 if (g.get(nid) or {}).get("category") == category]
         if len(hits) == 1:
             return hits[0], g
@@ -131,7 +134,7 @@ class Builder:
         g = g or self.g
         skel_cat = (g.nodes.get(ref_id) or {}).get("category")
         gid = None
-        for nid in self.dict.get(norm(group_surface), []):
+        for nid in self.dict.lookup(group_surface):
             if (g.get(nid) or {}).get("category") == skel_cat:
                 gid = nid
                 break

@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 
 
+from core.dictionary import Dictionary
 from core import query as Q, store
 from core.ids import norm
 from core.bootstrap import load_config, open_graph
@@ -35,7 +36,7 @@ def answer(question):
     "사내 근거를 찾지 못했다"를 먼저 밝히고 일반지식 표시 / 링킹 미스 → 로그 축적.
     """
     graphs, configs = _world()
-    dictionary = store.read(store.DICTIONARY, {})
+    dictionary = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
     hits = Q.link(question, dictionary, graphs)
 
     res = {"question": question, "linked": [], "facts": [], "chunks": [],

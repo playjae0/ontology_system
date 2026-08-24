@@ -132,6 +132,15 @@ def cmd_node(args):
         for k, v in attrs.items():
             items = v if isinstance(v, list) else [v]
             for it in items:
+                # **열람은 진실을 판정하지 않는다.** 값 항목의 정본 형태는
+                # `{value, provenance}` 또는 `{context, value, provenance}`이고
+                # (문서 2 · §7.2), 그 형태가 아닌 것이 실려 있으면 그것은 쓰기
+                # 측의 결함이다 — 여기서 죽으면 **그 결함을 볼 창구가 함께
+                # 사라진다.** 그래서 있는 대로 보여주고 형태가 다른 것은
+                # 다르다고 표시한다.
+                if not isinstance(it, dict):
+                    print(f"    {k:<12} {it!r}   ← 값 항목 형태 아님 (쓰기 측 결함)")
+                    continue
                 ctx = it.get("context") or {}
                 ctx_s = f"[{', '.join(f'{a}={b}' for a, b in ctx.items())}] " if ctx else ""
                 print(f"    {k:<12} {ctx_s}{it.get('value')}"

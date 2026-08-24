@@ -106,6 +106,52 @@ _got = {n: store.read(n, "없음") for n in _want}
 show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
      _got == _want, str(_got))
 
+# **core 접근 경계 3종이 관문으로 서 있는가** (문서 7 §7.1).
+# 자산에 파일과 의미론만 있고 관문이 없으면 호출부마다 제 규칙으로 붙는다 —
+# 실제로 사전 접근이 5곳으로 흩어져 있었고 provenance 필수는 한 곳만 지켰다.
+_DICT_KEY = "store" + r"\.(?:read|write)\(store\.DICTIONARY"
+import re as _re2
+_dp = _re2.compile(_DICT_KEY)
+_bypass = [f"{p.relative_to(ROOT)}:{i}"
+           for p in sorted(list((ROOT / "core").glob("*.py")) + list((ROOT / "cli").glob("*.py")))
+           if p.name != "dictionary.py"
+           for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+           if _dp.search(line) and not line.lstrip().startswith("#")]
+show("core/dictionary.py 밖에서 사전을 직접 여는 코드 0지점", not _bypass, str(_bypass))
+
+from core.dictionary import Dictionary                          # noqa: E402
+_d = Dictionary()
+try:
+    _d.register("표기", "N1", provenance=None)
+    _prov_forced = False
+except ValueError:
+    _prov_forced = True
+show("사전 등재의 provenance 필수가 관문에서 강제된다 (문서 1 G2)", _prov_forced)
+
+from core import matcher as _M                                  # noqa: E402
+show("matcher가 match(surface, candidates, category) 계약을 갖는다 (§7.1)",
+     all(hasattr(_M, f) for f in ("match", "candidates", "resolve"))
+     and list(_M.match.__code__.co_varnames[:3]) == ["surface", "candidates", "category"])
+_v = _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
+                      "category": "Unit", "exact": False}], "Unit")
+show("판정 반환이 {type, matched_id, confidence} 3키다 (문서 4 §4.3-6)",
+     set(_v) == {"type", "matched_id", "confidence"} and _v["matched_id"] == "N9", str(_v))
+show("카테고리 불일치는 후보에서 제외된다 — 판정이 재확인한다 (규약 3)",
+     _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
+                      "category": "Property", "exact": False}], "Unit")["type"] == _M.NEW)
+
+import core.skeleton as _SK                                     # noqa: E402
+show("골격 심기가 core/skeleton.py에 산다 (§7.1 — 파생이 loader에 섞이지 않는다)",
+     all(hasattr(_SK, f) for f in ("plant", "_plant_tree", "_link_seed_mirrors"))
+     and "_TreeParser" in dir(_SK))
+_bsrc = (ROOT / "core" / "bootstrap.py").read_text(encoding="utf-8")
+show("bootstrap에 트리 파싱·모양 분기가 남아 있지 않다",
+     "_TreeParser" not in _bsrc and "TYPE_FLAT" not in _bsrc)
+
+from core import ops as _OPS                                    # noqa: E402
+show("I2 병합 후보가 판정 경유로 제안된다 (문서 4 §4.3 재사용 3지점 중 하나)",
+     hasattr(_OPS, "merge_targets"))
+
 g, m, _, flow = reset()
 show("계기판 7 (graph 저장 크기) 출력", "gauge7_graph_bytes" in m,
      f"{m['gauge7_graph_mb']}MB")
