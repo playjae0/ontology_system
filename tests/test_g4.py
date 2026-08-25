@@ -206,6 +206,36 @@ _tiers = [c.get("tier") for c in _res["chunks"]]
 show("tier1이 항상 tier2보다 앞이다 (정렬은 tier 안에서만)",
      _tiers == sorted(_tiers), str(_tiers))
 
+# ============================================================ 관측 창구
+print("\n■ 관측 창구 — 문서가 「직접 열람」이라 적은 자리에 명령이 있는가 (문서 7 §7.8)")
+import subprocess as _sp2                                       # noqa: E402
+def _run(*a):
+    return _sp2.run([sys.executable, str(ROOT / "run.py"), *a],
+                    capture_output=True, text=True, cwd=str(ROOT))
+
+_ls = _run("show", "log")
+show("show log — 로그 4종 요약이 돈다", _ls.returncode == 0
+     and all(k in _ls.stdout for k in ("defects", "gate", "link_miss", "truncated")))
+show("show log gate — 게이트 거부를 연다 (큐가 아니라 관측 신호)",
+     _run("show", "log", "gate").returncode == 0)
+show("show log link_miss / truncated — **두 계기판 로그를 각각** 연다",
+     _run("show", "log", "link_miss").returncode == 0
+     and _run("show", "log", "truncated").returncode == 0)
+_se = _run("show", "extract")
+show("show extract — 상태가 아니라 **내용**을 연다 (계약 B)",
+     _se.returncode == 0 and "청크" in _se.stdout
+     and _run("show", "extract", "PPT02").returncode == 0
+     and "부착" in _run("show", "extract", "PPT02").stdout)
+show("export html — 실물 파일을 낸다 (외부 CDN 없음)",
+     _run("export", "html").returncode == 0
+     and (ROOT / "export" / "graph.html").exists()
+     and "cdn" not in (ROOT / "export" / "graph.html").read_text(
+         encoding="utf-8").lower())
+show("export mermaid quality — **빈 출력을 성공으로 내지 않는다**",
+     _run("export", "mermaid", "quality").returncode != 0)
+show("export mermaid cross — 걸침 관계를 층 구분과 함께 그린다",
+     "occurs_in" in _run("export", "mermaid", "cross").stdout)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G4 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

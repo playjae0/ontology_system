@@ -356,12 +356,174 @@ def cmd_meta(args):
     return 0
 
 
+# ---------------------------------------------------------------- log
+LOGS = {
+    "defects": (store.DEFECTS, "결함 로그", "조용히 버리지 않기 위한 자리"),
+    "gate": (store.GATE_REJECTS, "게이트 거부", "큐가 아니라 **관측 신호**다 (D-7)"),
+    "link_miss": (store.LINK_MISS, "링킹 미스", "**계기판 5**의 재료 (문서 5 §5.5)"),
+    "truncated": (store.CHUNK_TRUNCATED, "청크 잘림", "**계기판 4**의 재료"),
+}
+
+
+def _json_items(p):
+    """JSON 로그의 **항목 배열**을 꺼낸다.
+
+    형태가 둘이다 — 배열 그대로인 것과 `{rejects: [...], counts: {...}}`처럼
+    묶음인 것. 파일마다 다른 것은 각 로그의 소유자가 정한 형태이고, 열람이
+    그것을 알아서 편다.
+    """
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if isinstance(d, list):
+        return d
+    if isinstance(d, dict):
+        for k in ("rejects", "items", "entries"):
+            if isinstance(d.get(k), list):
+                return d[k]
+    return []
+
+
+def _json_counts(p):
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return d.get("counts") if isinstance(d, dict) else None
+
+
+def cmd_log(args):
+    """로그 열람 — **문서가 「직접 열람」이라 적은 자리에 명령이 없었다**.
+
+        run.py show log                 4종 요약
+        run.py show log <이름> [N]      그 로그 마지막 N줄 (기본 40)
+
+    이름: `defects` · `gate` · `link_miss` · `truncated`.
+
+    **두 계기판 로그는 별도 파일이다**(문서 7 §7.1·§7.8) — 한 파일에 섞으면
+    잘림 1건이 링킹 미스율의 분자로 잡힌다. 그래서 여기서도 각각 연다.
+
+    **로그는 사건이 있어야 생긴다**(§7.8) — 없으면 그런 일이 없었다는 뜻이지
+    고장이 아니다. 그 구분을 화면이 말한다.
+    """
+    if not args:
+        print("로그 4종 — 사건이 있어야 생긴다 (없음 = 그런 일이 없었다)\n")
+        for key, (name, label, why) in LOGS.items():
+            p = store.path(name)
+            if not p.exists():
+                print(f"  {key:<10} {label:<10} (없음)          {why}")
+                continue
+            if name.endswith(".json"):
+                n = len(_json_items(p))
+            else:
+                n = sum(1 for _ in p.read_text(encoding="utf-8").splitlines() if _.strip())
+            print(f"  {key:<10} {label:<10} {n:>5}건        {why}")
+        print("\n  내용: run.py show log <이름> [줄수]")
+        return 0
+
+    key = args[0]
+    if key not in LOGS:
+        print(f"알 수 없는 로그: {key} — {', '.join(LOGS)}")
+        return 1
+    name, label, why = LOGS[key]
+    n = int(args[1]) if len(args) > 1 else 40
+    p = store.path(name)
+    print(f"■ {label}  ({name})   {why}")
+    if not p.exists():
+        print("  (없음) — 그런 사건이 없었다는 뜻이다. 고장이 아니다.")
+        return 0
+    if name.endswith(".json"):
+        items = _json_items(p)
+        print(f"  {len(items)}건 · 마지막 {min(n, len(items))}건\n")
+        for it in items[-n:]:
+            if isinstance(it, dict):
+                head = it.get("reason") or it.get("verdict") or it.get("rel") or ""
+                rest = {k: v for k, v in it.items() if k not in ("reason", "verdict")}
+                print(f"  · {head}")
+                print(f"      {json.dumps(rest, ensure_ascii=False)[:150]}")
+            else:
+                print(f"  · {it}")
+        counts = _json_counts(p)
+        if counts:
+            print("\n  사유별 건수: " + " · ".join(f"{k} {v}" for k, v in counts.items()))
+    else:
+        lines = [x for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+        print(f"  {len(lines)}줄 · 마지막 {min(n, len(lines))}줄\n")
+        for x in lines[-n:]:
+            print(f"  · {x}")
+    return 0
+
+
+# ---------------------------------------------------------------- extract
+def cmd_extract(args):
+    """추출 체크포인트 — **존재 여부가 아니라 내용**을 본다.
+
+        run.py show extract              문서별 상태 (파일 존재 = 추출 완료)
+        run.py show extract <doc_id>     그 문서의 후보 전량
+
+    `extract/{doc_id}.json`이 추출↔구축의 **계약 B**다(문서 4 §4.10) — 구축이
+    무엇을 받았는지가 여기 있고, 그래프에 뜻대로 안 실렸을 때 **파서가 잘못
+    냈는지 구축이 잘못 읽었는지**를 가르는 자리다. 상태만 보여서는 그것을
+    가릴 수 없다.
+
+    **후보는 표면형만이다** — 노드 id가 들어가면 추출이 그래프 상태에 의존해
+    체크포인트의 독립성이 깨진다(§4.10-1).
+    """
+    ext = ROOT / "extract"
+    if not args:
+        docs = store.read(store.DOC_REGISTRY, {})
+        print("추출 체크포인트 — 파일 존재 = **추출 완료**(§7.8 · P-1)\n")
+        for doc_id in docs:
+            p = ext / f"{doc_id}.json"
+            if not p.exists():
+                print(f"  {doc_id:<10} ―  (추출 경로 아님 — 정형 인입)")
+                continue
+            d = json.loads(p.read_text(encoding="utf-8"))
+            c = d.get("candidates") or []
+            n_e = sum(len(x.get("entities") or []) for x in c)
+            n_r = sum(len(x.get("relations") or []) for x in c)
+            n_a = sum(len(x.get("attach") or []) for x in c)
+            print(f"  {doc_id:<10} 청크 {len(c):>2} · 개체 {n_e:>2} · 관계 {n_r:>2} "
+                  f"· 부착 {n_a:>2}   [{d.get('prompt_version')} / "
+                  f"{d.get('config_version')}]")
+        print("\n  내용: run.py show extract <doc_id>")
+        return 0
+
+    doc_id = args[0]
+    p = ext / f"{doc_id}.json"
+    if not p.exists():
+        print(f"'{doc_id}' 추출 체크포인트 없음 — 정형 인입이거나 아직 안 돌았다")
+        return 1
+    d = json.loads(p.read_text(encoding="utf-8"))
+    print(f"■ {doc_id}   [{d.get('stage')} · 층 {d.get('layer')}]")
+    print(f"  재현성 3입력   adapter {d.get('adapter_version')} · "
+          f"prompt {d.get('prompt_version')} · config {d.get('config_version')}")
+    print(f"  추출 시점      {d.get('extracted_at')}")
+    ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    for c in d.get("candidates") or []:
+        cid = c.get("chunk_id")
+        text = (ch.get(cid, {}).get("text") or "")[:60]
+        print(f"\n  ── {cid} ──  {text}")
+        for e in c.get("entities") or []:
+            print(f"     개체  {e.get('surface')}  ({e.get('category')})")
+        for r in c.get("relations") or []:
+            print(f"     관계  {r.get('src')} ─{r.get('rel')}→ {r.get('dst')}")
+        for a in c.get("attach") or []:
+            tgt = a.get("attach_to")
+            tgt_s = (f"{tgt.get('name')} ({tgt.get('category') or '카테고리 미정'})"
+                     if isinstance(tgt, dict) else (tgt or "null"))
+            print(f"     부착  {a.get('surface')} → {tgt_s}")
+    return 0
+
+
 def main(argv):
     if not argv:
         raise SystemExit(__doc__)
     cmd, rest = argv[0], argv[1:]
     table = {"tree": cmd_tree, "node": cmd_node, "doc": cmd_doc, "chunk": cmd_chunk,
-             "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta}
+             "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
+             "log": cmd_log, "extract": cmd_extract}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")
     return table[cmd](rest)

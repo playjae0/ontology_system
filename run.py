@@ -136,7 +136,7 @@ def cmd_export(args):
 if __name__ == "__main__":
     log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
-    {"init": lambda: cmd_init(sys.argv[2:]),
+    _rc = {"init": lambda: cmd_init(sys.argv[2:]),
      "bootstrap": lambda: cmd_bootstrap(),
      # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
      # 부르는 이름은 계약의 일부다. `ingest`는 같은 함수의 옛 이름이다.
@@ -155,3 +155,7 @@ if __name__ == "__main__":
      "register": lambda: cmd_register(sys.argv[2:]),
      "show": lambda: cmd_show(sys.argv[2:]),
      "export": lambda: cmd_export(sys.argv[2:])}[cmd]()
+    # **반환값을 종료 코드로 쓴다.** 안 그러면 실패한 명령이 exit 0으로 끝나
+    # 플랫폼·스크립트가 "성공"으로 읽는다 — 실측: `export mermaid quality`가
+    # 빈 다이어그램을 내고 0으로 끝났고, 그 뒤 실패 판정을 붙여도 여전히 0이었다.
+    sys.exit(_rc or 0)
