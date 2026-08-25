@@ -20,7 +20,10 @@
     "attach": [
       {
         "surface": "노즐 세척 주기",
-        "attach_to": "주액기"
+        "attach_to": {
+          "name": "주액기",
+          "category": "Unit"
+        }
       }
     ]
   }

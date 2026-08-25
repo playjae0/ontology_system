@@ -181,10 +181,19 @@ def cmd_generate(doc_type, layer, samples, hint=""):
         "system": {
             "reader_head": [{"path": str(s), "head": reader.head(reader.read(str(s)), 12)}
                             for s in samples],
+            # **원천은 골격 닫힌 목록 스냅샷의 지정 층 몫이다**(문서 6 §6.7 킷 #1 ·
+            # 문서 1 M21) — 층 자산 `layers/{층}/skeleton.json`을 읽지 않는다.
+            # 그 파일은 `skeleton` 선언이 `source`를 쓰는 층에만 있어(품질층은
+            # 인라인) 층 자산을 읽는 구현은 그 층의 등록에서 렌더가 죽는다.
+            # **canonical과 alias를 함께** 싣는다 — 표기 변형이 빠지면 생성 세션이
+            # 문서의 표기를 목록 밖으로 판정해 anchor를 세우지 못한다.
             "skeleton_closed_list": {"skeleton_version": snap.get("skeleton_version"),
                                      "count": snap.get("count"),
-                                     "surfaces": [n["canonical"] for n in
-                                                  (snap.get("nodes") or [])]},
+                                     "surfaces": [
+                                         {"canonical": n["canonical"],
+                                          "aliases": n.get("aliases") or [],
+                                          "tier": n.get("tier")}
+                                         for n in (snap.get("nodes") or [])]},
             "layer_vocabulary": {"categories": cfg.get("categories"),
                                  "relations": cfg.get("relations"),
                                  "relation_patterns": cfg.get("relation_patterns")},

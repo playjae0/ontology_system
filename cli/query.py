@@ -94,7 +94,13 @@ def answer(question):
             continue
         collected[lay] = Q.expand(g, direct, cfg)
 
-    # cross-layer 브리지 1홉 — 걸침 엣지는 출발 층 그래프에 있으므로 그쪽을 훑는다
+    # cross-layer 브리지 1홉 — 걸침 엣지는 출발 층 그래프에 있으므로 그쪽을 훑는다.
+    #
+    # **브리지는 프론티어 전파 루프 밖에서 1회만 적용한다**(문서 5 §5.1-4). 위
+    # `Q.expand`(층내 확장)가 이미 끝난 뒤이므로 **브리지로 건너간 노드에는 도착층의
+    # `query_traverse`가 적용되지 않는다** — 건너간 노드는 프론티어에 들어가지
+    # 않는다. 적용하면 한 홉짜리 브리지가 도착층 전체로 번져 확장 범위가 층 수만큼
+    # 곱해지고, 홉 수 상한이 층마다 다르게 소진된다.
     crossed = []
     for lay, ids in list(collected.items()):
         found, edges = Q.bridge(ids, lay, graphs, configs)

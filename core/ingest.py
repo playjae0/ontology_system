@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import store
+from . import log, store
 from .ids import US, OccCounter, chunk_id, doc_hash, norm, record_id
 
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
@@ -24,6 +24,8 @@ SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
 # 이것을 내리면 재인입 한 번에 미검토 노드 목록이 증발한다(20회차 실측 61 → 11).
 # 나머지 kind는 이번 인입이 현재 스냅샷을 다시 싣는다(D-59가 가른 "싣는 쪽/내리는 쪽").
 STANDING_KINDS = {"auto_node", "uncertain_match"}
+
+_LOG = log.get(__name__)
 
 
 def load_schema(doc_type):
@@ -56,17 +58,43 @@ class IngestResult:
 
 
 # ---------------------------------------------------------------- ① n2
-def check_doc_hash(env):
+def check_doc_hash(env, *, allow_duplicate=False):
     """같은 내용이 **다른 doc_id**로 이미 있으면 보류한다.
 
     같은 doc_id는 재인입(정상 경로)이므로 통과시킨다 — 개정은 revision이 가른다.
     판정 기준은 내용 해시 단일이며, 파일명·크기는 화면 표시용 참고일 뿐이다(N8).
     보류 문서는 **그래프·청크에 아무것도 쓰지 않는다.**
+
+    **보류 해제는 사람의 2택이다**(문서 2 §2.7-①) — 코드가 고르지 않는다:
+
+    | 판단 | 실행 | 결과 |
+    |---|---|---|
+    | ㉠ **같은 문서로 인정** | 아무것도 하지 않는다 | 이번 인입을 폐기하고 항목을 종결한다. **같은 파일을 다시 넣어도 같은 판정이 반복되므로 재투입으로는 흐름에 돌아오지 못한다** |
+    | ㉡ **다른 문서로 인정** | `--allow-duplicate` | 그 doc_id를 인입하고 `doc_registry`에 **그 doc_hash의 예외를 등재**해 이후 인입이 다시 걸리지 않게 한다 |
+
+    예외는 **그 doc_id에 붙는다** — 전역 예외를 두면 이후 어떤 문서든 그 내용으로
+    무제한 통과한다.
     """
     doc_id, dh = env["doc_id"], doc_hash(env)
     reg = store.read(store.DOC_REGISTRY, {})
+    if (reg.get(doc_id) or {}).get("duplicate_ok") == dh:
+        return dh, None                 # ㉡로 이미 등재된 예외 — 다시 걸지 않는다
     for other, rec in reg.items():
         if rec["doc_hash"] == dh and other != doc_id:
+            if allow_duplicate:
+                # ㉡ 다른 문서로 인정 — 예외를 등재하고 항목을 종결한다.
+                entry = dict(reg.get(doc_id) or {})
+                entry["duplicate_ok"] = dh
+                reg[doc_id] = entry
+                store.write(store.DOC_REGISTRY, reg)
+                store.drop("duplicate_doc_hold",
+                           lambda pl: pl.get("doc_id") == doc_id)
+                _LOG.info("duplicate_doc_hold 해제 ㉡ — %s를 %s와 **다른 문서로** "
+                          "인정하고 doc_hash 예외를 등재했다", doc_id, other)
+                return dh, None
+            _LOG.info("duplicate_doc_hold — %s는 %s와 내용이 같다. 해제는 사람의 "
+                      "2택이다: ㉠그대로 두면 폐기·종결 · ㉡--allow-duplicate로 "
+                      "다른 문서 인정", doc_id, other)
             store.enqueue(
                 "duplicate_doc_hold",
                 f"같은 내용이 이미 {other}로 인입되어 있다",
@@ -165,11 +193,18 @@ def withdraw(env, doc_id):
 def register_doc(env, dh):
     reg = store.read(store.DOC_REGISTRY, {})
     doc_id = env["doc_id"]
-    first = reg.get(doc_id, {}).get("first_ingested_at") or env.get("parsed_at")
-    reg[doc_id] = {"doc_hash": dh, "revision": env.get("revision"),
-                   "source_path": env.get("source_path"),
-                   "doc_type": env.get("doc_type"),
-                   "first_ingested_at": first}
+    prev = reg.get(doc_id, {})
+    first = prev.get("first_ingested_at") or env.get("parsed_at")
+    entry = {"doc_hash": dh, "revision": env.get("revision"),
+             "source_path": env.get("source_path"),
+             "doc_type": env.get("doc_type"),
+             "first_ingested_at": first}
+    # **`duplicate_ok` 예외는 보존한다** — 사람의 판단이고 인입이 지울 것이 아니다
+    # (문서 2 §2.7-① ㉡). 항목을 통째로 새로 만들면 재투입 때 같은 판정이 다시
+    # 걸려 ㉡ 해제가 1회용이 된다.
+    if prev.get("duplicate_ok"):
+        entry["duplicate_ok"] = prev["duplicate_ok"]
+    reg[doc_id] = entry
     store.write(store.DOC_REGISTRY, reg)
 
 
@@ -185,8 +220,11 @@ def _join_values(rec, schema):
     return [rec[k] for k in sorted(rec) if k != "source_locator"]
 
 
-def ingest(env):
+def ingest(env, *, allow_duplicate=False):
     """계약 JSON 하나를 인입해 근거 축 id를 확정한다.
+
+    `allow_duplicate`는 `duplicate_doc_hold` 보류의 **㉡ 해제**다(문서 2 §2.7-①) —
+    사람의 2택 중 하나이고 코드가 고르지 않는다.
 
     **멱등**하다 — 같은 문서를 두 번 넣어도, 조각 순서를 셔플해 넣어도
     같은 id 집합이 나온다. 발급이 아니라 내용 계산이기 때문이다.
@@ -194,7 +232,7 @@ def ingest(env):
     doc_id = env["doc_id"]
     res = IngestResult(doc_id)
 
-    dh, dup = check_doc_hash(env)                       # ①
+    dh, dup = check_doc_hash(env, allow_duplicate=allow_duplicate)      # ①
     if dup:
         res.status = "held"
         res.reason = f"duplicate_doc_hold (기존 {dup})"

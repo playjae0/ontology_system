@@ -7,7 +7,10 @@
 사용:
   python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
   python run.py bootstrap          층 골격 심기 (n10)
-  python run.py build <parsed.json...>  계약 JSON 인입 — **플랫폼 계약 이름**(§7.1)
+  python run.py build <parsed.json...> [--allow-duplicate]
+                                   계약 JSON 인입 — **플랫폼 계약 이름**(§7.1).
+                                   --allow-duplicate는 duplicate_doc_hold 보류의
+                                   ㉡ 해제다(다른 문서로 인정 — 문서 2 §2.7-①)
   python run.py ingest <파일...>   상동 (구 이름 — 같은 기능을 두 이름으로 두지 않으려
                                    남기되, 계약 이름은 build다)
   python run.py all                bootstrap + mock/parsed 전량 인입
@@ -55,10 +58,10 @@ def cmd_bootstrap():
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
 
 
-def cmd_ingest(paths, finalize=True):
+def cmd_ingest(paths, finalize=True, allow_duplicate=False):
     """`finalize`는 전 문서 인입 뒤 도는 빌드 말미 패스다 — 낱개 인입에서도 기본 수행한다."""
     for p in paths:
-        r, m, extracted = run_document(_load(p))
+        r, m, extracted = run_document(_load(p), allow_duplicate=allow_duplicate)
         mark = "보류" if r.status == "held" else "인입"
         tail = f"  ({r.reason})" if r.reason else (
             "  [추출 실행]" if extracted else "  [추출 체크포인트 재사용]")
@@ -137,8 +140,11 @@ if __name__ == "__main__":
      "bootstrap": lambda: cmd_bootstrap(),
      # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
      # 부르는 이름은 계약의 일부다. `ingest`는 같은 함수의 옛 이름이다.
-     "build": lambda: cmd_ingest(sys.argv[2:]),
-     "ingest": lambda: cmd_ingest(sys.argv[2:]),
+     # `--allow-duplicate`는 duplicate_doc_hold 보류의 **㉡ 해제**다(문서 2 §2.7-①).
+     "build": lambda: cmd_ingest([a for a in sys.argv[2:] if not a.startswith("--")],
+                                 allow_duplicate="--allow-duplicate" in sys.argv),
+     "ingest": lambda: cmd_ingest([a for a in sys.argv[2:] if not a.startswith("--")],
+                                  allow_duplicate="--allow-duplicate" in sys.argv),
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),
      "ops": lambda: cmd_ops(sys.argv[2:]),
