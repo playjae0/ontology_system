@@ -64,7 +64,8 @@ def group_of(node, nodes):
     return None
 
 
-def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref", pick=None):
+def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
+        pick=None, doc_type=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 
     **LLM 지점 ⑨다**(문서 7 §7.6-B-2). 목록에 있다는 것과 mock에서 모델을 부른다는
@@ -92,6 +93,14 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref", pick=No
     out = []
     for p in pieces:
         r = dict(p)
+        # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
+        # `source_locator`·`doc_type`·`process_group`·`process_ref`·
+        # `electrode_type`을 달고 들어온다. 어댑터가 좌표를 못 뽑는 계열(기본
+        # 어댑터의 슬라이드 분할 등)에서도 **키는 있어야 한다** — 값이 null인 것과
+        # 키가 없는 것은 다르다: 후자면 인입의 필드 검증이 "부재"를 판정할 대상을
+        # 잃고, 조각 공통 층이 계약이 아니라 어댑터별 재량이 된다.
+        for k in ("doc_type", "process_group", "process_ref", "electrode_type"):
+            r.setdefault(k, doc_type if k == "doc_type" else None)
         ref = r.get(ref_field)
         node = idx.get(ref) if ref else None
         if ref and node is None and pick is not None:

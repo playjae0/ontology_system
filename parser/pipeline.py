@@ -112,7 +112,8 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
         struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id,
                                  "image_summaries": kept_img})
-    pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord)
+    pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
+                        doc_type=a["doc_type"])
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
     unresolved = [p["source_locator"] for p in pieces

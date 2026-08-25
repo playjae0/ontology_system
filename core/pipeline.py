@@ -17,8 +17,11 @@ from .bootstrap import load_config, open_graph
 from .ingest import IngestResult, ingest, load_schema
 from .ops import is_live
 
-STRUCTURAL = {"process_group", "process_ref", "process_no", "electrode_type",
-              "source_locator", "section", "context"}
+# **구조 필드** — role 핸들러를 타지 않고 시스템이 직접 읽는다(문서 2 §2.5 규약 3).
+# `doc_type`은 조각 공통 층의 일원이고(§2.2 계약 ①) 스키마 조회 키다(봉투 값의 반복) —
+# 여기 없으면 조각이 계약대로 달고 온 필드가 `unknown_field` 큐로 간다.
+STRUCTURAL = {"doc_type", "process_group", "process_ref", "process_no",
+              "electrode_type", "source_locator", "section", "context"}
 
 # 봉투 `payload_kind`의 **닫힌 2값**(CH2 2.2). 밖의 값은 폴백 대상이 아니라 계약 위반이다.
 PAYLOAD_KINDS = ("table", "prose")

@@ -13,6 +13,7 @@
   "chunks": [
     {
       "source_locator": "PPT02-L1",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "전해액주입",
       "electrode_type": "both",
@@ -22,6 +23,7 @@
     },
     {
       "source_locator": "PPT02-L2",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "전해액주입",
       "electrode_type": "both",

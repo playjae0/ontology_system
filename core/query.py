@@ -227,6 +227,25 @@ def _find(graphs, nid):
 
 
 # ---------------------------------------------------------------- ③ 수집
+class _desc:
+    """문자열을 **내림차순**으로 비교하는 래퍼 — 정렬 키 안에서 한 축만 뒤집는다.
+
+    `reverse=True`는 전체 키를 뒤집으므로 tier·chunk_id까지 함께 뒤집힌다.
+    음수화가 안 되는 문자열 축을 뒤집는 표준 수단이 없어 비교만 뒤집는다.
+    """
+
+    __slots__ = ("v",)
+
+    def __init__(self, v):
+        self.v = v
+
+    def __lt__(self, other):
+        return self.v > other.v
+
+    def __eq__(self, other):
+        return self.v == other.v
+
+
 def collect_chunks(node_ids, direct):
     """2-tier(직접 링킹 > 확장) · 상한 8 · 최신순. **잘림은 로그로 남긴다**(계기판 재료)."""
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
@@ -236,8 +255,21 @@ def collect_chunks(node_ids, direct):
     tier1 = [(1, cid) for nid in direct for cid in by_node.get(nid, [])]
     tier2 = [(2, cid) for nid in node_ids if nid not in direct
              for cid in by_node.get(nid, [])]
+
+    # **정렬 키는 셋이다**(문서 5 §5.1-6): ①tier(1이 항상 앞) ②청크의 `parsed_at`
+    # **내림차순** ③동률은 `chunk_id` 사전순.
+    #
+    # 기준 필드가 없으면 구현이 파일 mtime·describes 삽입 순서를 **발명**하고,
+    # 상한 8이 무작위 축에서 잘린다. 그 차이는 계기판 4(청크 잘림률)에 잡히지
+    # 않는다 — **잘린 건수는 같고 잘린 대상만 다르기 때문이다.**
+    def _key(item):
+        tier, cid = item
+        c = ch["chunks"].get(cid) or {}
+        # parsed_at 내림차순 — 문자열 역순 정렬을 위해 튜플에서 뒤집는다.
+        return (tier, _desc(c.get("parsed_at") or ""), cid)
+
     ordered, seen = [], set()
-    for tier, cid in tier1 + tier2:                 # tier1이 앞이라 잘림은 바깥부터다
+    for tier, cid in sorted(tier1 + tier2, key=_key):
         if cid in seen:
             continue
         seen.add(cid)

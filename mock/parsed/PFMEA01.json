@@ -13,6 +13,7 @@
   "records": [
     {
       "source_locator": "PFMEA01-R1",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -27,6 +28,7 @@
     },
     {
       "source_locator": "PFMEA01-R2",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -41,6 +43,7 @@
     },
     {
       "source_locator": "PFMEA01-R3",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -55,6 +58,7 @@
     },
     {
       "source_locator": "PFMEA01-R4",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-20",
       "process_ref": "스태킹",
@@ -68,6 +72,7 @@
     },
     {
       "source_locator": "PFMEA01-R5",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-20",
       "process_ref": "스태킹",
@@ -82,6 +87,7 @@
     },
     {
       "source_locator": "PFMEA01-R6",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-20",
       "process_ref": "스태킹",
@@ -96,6 +102,7 @@
     },
     {
       "source_locator": "PFMEA01-R7",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-30",
       "process_ref": "탭용접",
@@ -110,6 +117,7 @@
     },
     {
       "source_locator": "PFMEA01-R8",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-30",
       "process_ref": "탭용접",
@@ -124,6 +132,7 @@
     },
     {
       "source_locator": "PFMEA01-R9",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-40",
       "process_ref": "패키징",
@@ -138,6 +147,7 @@
     },
     {
       "source_locator": "PFMEA01-R10",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-50",
       "process_ref": "전해액주입",
@@ -152,6 +162,7 @@
     },
     {
       "source_locator": "PFMEA01-R11",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-60",
       "process_ref": "사이드 실링",
@@ -166,6 +177,7 @@
     },
     {
       "source_locator": "PFMEA01-R12",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -181,6 +193,7 @@
     },
     {
       "source_locator": "PFMEA01-R13",
+      "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-15",
       "process_ref": "레이저노칭",

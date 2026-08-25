@@ -13,6 +13,7 @@
   "records": [
     {
       "source_locator": "CP01-C1",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -25,6 +26,7 @@
     },
     {
       "source_locator": "CP01-C2",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -37,6 +39,7 @@
     },
     {
       "source_locator": "CP01-C3",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-20",
       "process_ref": "스태킹",
@@ -49,6 +52,7 @@
     },
     {
       "source_locator": "CP01-C4",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-20",
       "process_ref": "스태킹",
@@ -61,6 +65,7 @@
     },
     {
       "source_locator": "CP01-C5",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-30",
       "process_ref": "탭용접",
@@ -73,6 +78,7 @@
     },
     {
       "source_locator": "CP01-C6",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-60",
       "process_ref": "사이드 실링",
@@ -85,6 +91,7 @@
     },
     {
       "source_locator": "CP01-C7",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-20",
       "process_ref": "스태킹",
@@ -100,6 +107,7 @@
     },
     {
       "source_locator": "CP01-C8",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -112,6 +120,7 @@
     },
     {
       "source_locator": "CP01-C9",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -124,6 +133,7 @@
     },
     {
       "source_locator": "CP01-C10",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -136,6 +146,7 @@
     },
     {
       "source_locator": "CP01-C11",
+      "doc_type": "cp",
       "process_group": "스태킹",
       "process_no": "OP-10",
       "process_ref": "노칭",
@@ -148,6 +159,7 @@
     },
     {
       "source_locator": "CP01-C12",
+      "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-30",
       "process_ref": "cathode 탭용접",

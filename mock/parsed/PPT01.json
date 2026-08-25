@@ -13,6 +13,7 @@
   "chunks": [
     {
       "source_locator": "PPT01-C001",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",
@@ -22,6 +23,7 @@
     },
     {
       "source_locator": "PPT01-C002",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",
@@ -31,6 +33,7 @@
     },
     {
       "source_locator": "PPT01-C003",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "스태킹",
       "electrode_type": "both",
@@ -40,6 +43,7 @@
     },
     {
       "source_locator": "PPT01-C004",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "cathode 탭용접",
       "electrode_type": "both",
@@ -49,6 +53,7 @@
     },
     {
       "source_locator": "PPT01-C005",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "패키징",
       "electrode_type": "both",
@@ -58,6 +63,7 @@
     },
     {
       "source_locator": "PPT01-C006",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "전해액주입",
       "electrode_type": "both",
@@ -67,6 +73,7 @@
     },
     {
       "source_locator": "PPT01-C007",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "사이드 실링",
       "electrode_type": "both",
@@ -80,6 +87,7 @@
     },
     {
       "source_locator": "PPT01-C008",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",

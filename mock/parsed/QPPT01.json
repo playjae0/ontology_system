@@ -13,6 +13,7 @@
   "chunks": [
     {
       "source_locator": "QPPT01-K1",
+      "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",
@@ -22,6 +23,7 @@
     },
     {
       "source_locator": "QPPT01-K2",
+      "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",
@@ -31,6 +33,7 @@
     },
     {
       "source_locator": "QPPT01-K3",
+      "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "스태킹",
       "electrode_type": "both",
@@ -40,6 +43,7 @@
     },
     {
       "source_locator": "QPPT01-K4",
+      "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "사이드 실링",
       "electrode_type": "both",
