@@ -118,6 +118,45 @@ EXTRACT_SCHEMA = {
 }
 
 
+def attach_candidates(process_ref, layer="process"):
+    """프롬프트에 삽입할 **부착 후보 목록** (문서 4 §4.10).
+
+    무엇을 넣나 — 그 청크의 `process_ref`가 가리키는 **골격 노드와 그 하위
+    part_of 골격 노드(세부공정)의 canonical**. **좌표가 null이면 세부공정 목록만**
+    넣는다.
+
+    **설비는 골격에 없으므로 후보 목록에 오르지 않는다** — 산문에서 발견된 설비의
+    표기 통일은 §4.10 규약 8의 「목록에 없으면 본문의 이름 그대로(발견 보존)」
+    갈래가 맡고, 재해소는 orphan_attach 재시도 배치(§4.7-5)가 한다. 설비를 후보로
+    적으면 읽기 원천(seed)에 그것이 없어 구현이 사전·그래프 폴백으로 샌다.
+
+    **읽기 원천은 골격 스냅샷(`status="seed"` 노드)뿐이다 — 현재 사전도 현재
+    그래프도 읽지 않는다.** 그것을 읽으면 그 시점까지의 인입 상태에 의존해 문서
+    순서가 바뀔 때 추출 경계가 달라지고 체크포인트가 그 우연을 고정한다(실측:
+    정순 66 · 역순 65 노드로 갈렸다). 멱등성(§4.8-6)의 전제다.
+    """
+    snap = (store.read(store.SKELETON_LIST, {}).get(layer) or {})
+    nodes = snap.get("nodes") or []
+    if not process_ref:
+        # 좌표 null — **세부공정 목록만**. tier는 스냅샷이 이미 싣고 있다.
+        return sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
+    key = norm(process_ref)
+    ref = next((n for n in nodes
+                if norm(n["canonical"]) == key or key in
+                {norm(a) for a in (n.get("aliases") or [])}), None)
+    if ref is None:
+        return sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
+    out = {ref["canonical"]}
+    # 하위 part_of 골격 노드 — 스냅샷의 `parent` 링크로 훑는다(그래프를 읽지 않는다).
+    frontier = {ref["canonical"]}
+    while frontier:
+        nxt = {n["canonical"] for n in nodes if n.get("parent") in frontier}
+        nxt -= out
+        out |= nxt
+        frontier = nxt
+    return sorted(out)
+
+
 def _candidates_for(chunk_id, chunk, cfg, vocab):
     """추출 후보 1청크 — mock/실호출 분기의 **단일 지점**이다.
 
@@ -128,15 +167,16 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
         llm.mock("extract", f"문형 규칙 · {chunk_id}")
         return _mock_candidates(chunk_id, chunk.get("text", ""), cfg, vocab)
 
-    # 실호출 — 지시문 템플릿(파일) + 층 어휘(config)를 실행 시 조립한다(문서 4 §4.10).
-    # 조립부의 완성(정의문·부착 후보 목록 삽입)은 별개 갭 항목이다 — 여기서는
-    # 이음매만 세우고, 템플릿과 층 어휘가 각자 제자리에서 오는 형태를 지킨다(B9).
+    # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
+    # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
     tmpl = (PROMPTS_DIR / "extract.md").read_text(encoding="utf-8")
     out = llm.chat(
         [{"role": "system", "content": tmpl},
          {"role": "user", "content": json.dumps(
              {"categories": cfg.get("categories"),
               "relations": cfg.get("relations"),
+              "attach_candidates": attach_candidates(chunk.get("process_ref"),
+                                                     cfg["layer"]),
               "chunk": chunk.get("text", "")}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
     return {"chunk_id": chunk_id,

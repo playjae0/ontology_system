@@ -374,7 +374,10 @@ def cmd_review(doc_type, instruct=None):
           f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
 
     mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
-    results = [pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"])
+    # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
+    # import하지 않는다(P1). 등록 리허설도 운영 파싱과 같은 배선을 탄다.
+    results = [pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"],
+                              summarize=llm.image_summarizer())
                for i, s in enumerate(samples, 1)]
     for r in results:
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
@@ -399,6 +402,39 @@ def cmd_review(doc_type, instruct=None):
     return 0 if st["machine_gate"] == "PASS" else 1
 
 
+ADAPTERS_DIR = ROOT / "adapters"        # 확정 어댑터의 **정본 자리** (문서 6 §6.4·§6.5)
+
+
+def _promote_paths(doc_type):
+    """정본 자리의 경로 — **등재는 이 경로로 하고 복사는 그 뒤에 한다**."""
+    return (f"adapters/{doc_type}.py", f"schemas/{doc_type}.json")
+
+
+def _promote(doc_type, st):
+    """확정 산출을 **검수 자리에서 정본 자리로 옮긴다** (문서 6 §6.5).
+
+    어댑터는 `adapters/{doc_type}.py`, 매칭 스키마는 `schemas/{doc_type}.json`이고
+    등록부 등재가 그 활성화다. `review/{doc_type}/`에 남는 것은 입력 패키지·뷰
+    데이터·정적 HTML·**승인 기록**이지 정본 실물이 아니다.
+
+    이행이 없으면 확정본이 검수 산출 디렉터리에 남는데, **그 디렉터리는 버전 추적
+    대상이 아니라** 재생성 시 확정된 어댑터가 함께 사라진다.
+
+    **원본은 지우지 않는다** — fixture(외부 LLM 실산출 스냅샷)가 원본인 경우가 있고
+    그것은 손대지 않는 자리다(문서 7 §7.5-4). 복사로 이행한다.
+    """
+    a_rel, s_rel = _promote_paths(doc_type)
+    src_a, src_s = ROOT / st["adapter"], ROOT / st["schema"]
+    dst_a, dst_s = ROOT / a_rel, ROOT / s_rel
+    dst_a.parent.mkdir(parents=True, exist_ok=True)
+    dst_s.parent.mkdir(parents=True, exist_ok=True)
+    if src_a.resolve() != dst_a.resolve():
+        dst_a.write_bytes(src_a.read_bytes())
+    if src_s.resolve() != dst_s.resolve():
+        dst_s.write_bytes(src_s.read_bytes())
+    return (a_rel, s_rel)
+
+
 # ================================================================ ③ 확정
 def cmd_confirm(doc_type, approved_by):
     """③ 확정 — 승인 1회로 등록부에 등재한다.
@@ -417,11 +453,16 @@ def cmd_confirm(doc_type, approved_by):
 
     mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
     at = _now()
+    # **등재가 먼저, 승격이 나중이다.** 반대로 하면 등재가 거부됐을 때 승격된
+    # 파일만 남아 조회에는 잡히고 등록부에는 없는 반쪽 상태가 되고, 그 이름의
+    # 재등록이 「내장 중복」으로 영영 막힌다(실측).
+    adapter_path, schema_path = _promote_paths(doc_type)
     entry = registry.register(
-        doc_type, layer=st["layer"], adapter=st["adapter"], schema=st["schema"],
+        doc_type, layer=st["layer"], adapter=adapter_path, schema=schema_path,
         adapter_version=mod.ADAPTER.get("adapter_version"),
         approved_by=approved_by, approved_at=at,
         instructions=st.get("instructions") or [])
+    _promote(doc_type, st)              # 등재가 성립한 뒤에만 실물을 옮긴다
     approval = {"doc_type": doc_type,
                 "adapter_version": mod.ADAPTER.get("adapter_version"),
                 "승인자": approved_by, "시점": at,

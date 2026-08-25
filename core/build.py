@@ -21,7 +21,8 @@ from .dictionary import Dictionary
 from .ids import norm
 from .matcher import MATCH, NEW, UNCERTAIN, resolve
 from .ops import is_live
-from .naming import bind_polarity, derive_polarity, is_bound, scope_canonical
+from .naming import (POLARITY_NONE, bind_polarity, derive_polarity,
+                     is_bound, scope_canonical)
 
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
@@ -357,11 +358,19 @@ class Builder:
                     if prov not in it["provenance"]:
                         it["provenance"].append(prov)
                     return
+                # **대상 노드의 polarity를 동봉한다**(문서 4 §4.7). 무극성(`none`)
+                # 건은 **I3 분리 후보**로 표시한다 — 극성이 갈린 값이 한 노드에
+                # 쌓인 것일 수 있고, 그 경우 사람이 볼 것은 "값 충돌"이 아니라
+                # "노드가 둘이어야 하는가"다. 표시가 없으면 두 사건이 큐에서
+                # 구분되지 않아 판정자가 매번 그래프를 다시 열어야 한다.
+                pol = n.get("polarity") or POLARITY_NONE
                 store.enqueue("spec_conflict",
                               f"{n['canonical']}의 {name}: 같은 맥락에 다른 값",
                               self.doc_id,
                               {"node_id": node_id, "attr": name, "context": context,
                                "existing": it["value"], "incoming": value,
+                               "polarity": pol,
+                               "split_candidate": pol == POLARITY_NONE,
                                "provenance": prov})
                 return
         items.append({"context": context, "value": value, "provenance": [prov]})

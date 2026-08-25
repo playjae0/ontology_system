@@ -245,6 +245,70 @@ show("S13 — attach가 다른 청크(L1)의 개체로 붙어 has_property 생�
          and e["dst"] == [nid for nid, n in P.nodes.items()
                           if n is nozzle[0]][0] for e in P.edges))
 
+# S13 부정 경로 — **미해소 attach_to는 임시 노드·엣지를 만들지 않는다**(문서 7 §7.5).
+# 성공 경로만 시험하면 미해소에 임시 노드를 만들거나 표면형을 그대로 엣지 끝점에
+# 채우는 구현이 회귀를 통과한다 — 임시 노드 금지(문서 3)와 선언된 4경로 밖 엣지
+# 금지(문서 1 I12)가 완료판정에서 걸러지지 않는다.
+_hint = ROOT / "mock" / "extract_hints" / "S13NEG.json"
+_hint.write_text(json.dumps({"S13NEG-C001": {
+    "entities": [{"surface": "세척 노즐 압력", "category": "Property"}],
+    "relations": [],
+    "attach": [{"surface": "세척 노즐 압력", "attach_to": "존재하지않는설비ZZZ"}],
+}}, ensure_ascii=False), encoding="utf-8")
+_env = {"doc_id": "S13NEG", "doc_type": "ppt_process", "payload_kind": "prose",
+        "source_path": "S13NEG.pptx", "revision": "R1",
+        "parsed_at": "2026-01-05T00:00:00", "parser_version": "p1-1.0",
+        "adapter_version": "b-1.0",
+        "chunks": [{"source_locator": "S13NEG-C001", "doc_type": "ppt_process",
+                    "process_group": "조립", "process_ref": "노칭",
+                    "electrode_type": "both",
+                    "text": "노칭 공정의 세척 노즐 압력을 관리한다.",
+                    "section": "슬라이드 1", "meta": {}}]}
+
+def _counts():
+    n = e = 0
+    for lay in ("process", "quality"):
+        g = open_graph(lay)
+        n += len(g.nodes); e += len(g.edges)
+    return n, e
+
+_n0, _e0 = _counts()
+_bad = dict(_env, doc_id="S13NEG2",
+            chunks=[dict(_env["chunks"][0], source_locator="S13NEG2-C001",
+                         process_ref="레이저노칭")])   # 좌표까지 미해소 — 연쇄 드롭
+(ROOT / "mock" / "extract_hints" / "S13NEG2.json").write_text(
+    json.dumps({"S13NEG2-C001": _hint and json.loads(_hint.read_text(encoding="utf-8"))["S13NEG-C001"]},
+               ensure_ascii=False), encoding="utf-8")
+run_document(_bad)
+_n1, _e1 = _counts()
+show("S13 부정 — 좌표·부착 둘 다 미해소면 엣지 증가 0 (연쇄 드롭 · 임시 노드 금지)",
+     _e1 == _e0, f"엣지 {_e0} → {_e1} · 노드 {_n0} → {_n1}")
+show("S13 부정 — 표면형이 엣지 끝점에 그대로 들어가지 않는다 (I12)",
+     all(isinstance(x["src"], str) and x["src"] in open_graph(l).nodes
+         for l in ("process", "quality") for x in open_graph(l).edges))
+
+run_document(_env)                      # 좌표는 해소, 부착 대상만 미해소
+_n2, _e2 = _counts()
+_oa = q("orphan_attach")
+show("S13 부정 — 미해소 attach_to가 orphan_attach로 착지 (조용히 사라지지 않는다)",
+     len(_oa) >= 1 and all(x["payload"].get("attach_to") for x in _oa),
+     str([x["payload"].get("attach_to") for x in _oa]))
+# **임시 노드 금지**(문서 3) — 미해소 *부착 대상*의 노드를 만들지 않는다.
+# 자식(Property)은 추출이 개체로 낸 것이라 정상 생성이고, 좌표 미해소 시에는
+# 부모 미해소 노드로 남아 §4.5-6이 병합 후보에서 배제한다.
+_names = [n["canonical"] for l in ("process", "quality")
+          for n in open_graph(l).nodes.values()]
+show("S13 부정 — 미해소 부착 대상의 임시 노드를 만들지 않는다 (문서 3)",
+     not any("존재하지않는설비ZZZ" in nm for nm in _names))
+show("S13 부정 — 규칙 B 폴백으로 좌표에 저해상도 부착 1건 (문서 4 §4.4-4)",
+     _e2 - _e1 == 1, f"엣지 {_e1} → {_e2}")
+show("S13 부정 — 좌표 미해소 자식은 부모 미해소로 남는다 (§4.5-6 병합 배제 대상)",
+     any(n.get("_scoped") is False or "::" not in n["canonical"]
+         for l in ("process",) for n in open_graph(l).nodes.values()
+         if "세척 노즐 압력" in n["canonical"]))
+for _f in ("S13NEG", "S13NEG2"):
+    (ROOT / "mock" / "extract_hints" / f"{_f}.json").unlink(missing_ok=True)
+
 # 체크포인트 재사용
 before = (EXTRACT_DIR / "QPPT01.json").read_text(encoding="utf-8")
 _, _, again = run_document(load("QPPT01.json"))

@@ -16,7 +16,9 @@ data/
 extract/
 
 # review/ = 구축 모드 산출물(검수 뷰 데이터·승인 기록). 실행 산출물이라 추적하지 않는다.
-#   `python run.py parse build ...` 로 재생성된다. 등록 확정분의 보존은 P3 소관이다.
+#   `python run.py parse build ...` 로 재생성된다.
+#   **확정본은 여기 남지 않는다** — register confirm이 adapters/{doc_type}.py ·
+#   schemas/{doc_type}.json 으로 옮긴다(문서 6 §6.5). 그 둘은 추적 대상이다.
 review/
 
 # export/ = 시각화·외부 도구용 파생물(cypher·csv·mermaid). 진실은 data/의 JSON이다(P5).

@@ -9,6 +9,7 @@
  raw를 파싱한 records의 **앞 N건(prefix)**이 mock/parsed/*.json 의 records와 일치한다.
  확대분은 그 뒤에 붙으며 기존 노드·판정에 영향을 주지 않는 신규 항목으로만 구성한다.
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,60 @@ from pptx import Presentation
 # 환경변수 RAW_DIR 로 덮어쓸 수 있다. (구판의 절대경로 하드코딩 대체 — 08-07 13회차 판정)
 RAW = os.environ.get("RAW_DIR") or str(Path(__file__).resolve().parent.parent / "mock" / "raw")
 DITTO = {"〃", "〝", "same as above", "상동"}
+
+# ---------- 기대값의 정본은 mock/parsed/{doc_id}.json 이다 ----------
+# **인라인 기대값을 두지 않는다**(문서 7 §7.5 · impl-B-50). 수기 계약 JSON이 S14의
+# 대조 검체인데(§7.5 경로 규약) 스크립트가 그 값을 따로 베껴 들면 **검체가 둘이
+# 되고**, 계약이 개정될 때 한쪽만 고쳐진다. 실제로 그 상태였다.
+#
+# raw의 원본 헤더명과 계약의 필드명은 다르다 — 매핑의 정본은 **어댑터 `expects`의
+# `columns`**다(같은 열 문자를 가리키는 두 이름이 거기 나란히 있다). 코드가 매핑을
+# 다시 적으면 그것이 세 번째 검체가 된다.
+PARSED = Path(__file__).resolve().parent.parent / "mock" / "parsed"
+ADAPTERS = Path(__file__).resolve().parent.parent / "mock" / "adapters"
+
+
+def _adapter(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(f"_ad_{name}", ADAPTERS / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.ADAPTER
+
+
+def header_to_field(adapter_name):
+    """원본 헤더명 → 계약 필드명. `columns`와 `header_labels`가 **열 문자**로 만난다."""
+    exp = _adapter(adapter_name)["expects"]
+    cols = exp["columns"]                      # 계약 필드명 → 열 문자
+    labels = exp["header_labels"]              # 원본 헤더명 (열 순서)
+    letter_of_label = {lab: chr(ord("A") + i) for i, lab in enumerate(labels)}
+    out = {}
+    for field, letter in cols.items():
+        for lab, lt in letter_of_label.items():
+            if lt == letter:
+                out[lab] = field
+    return out
+
+
+def expected(doc_id, adapter_name, keys, context_key=None):
+    """수기 계약 JSON에서 기대 튜플을 만든다 — `keys`는 **원본 헤더명**이다."""
+    recs = json.loads((PARSED / f"{doc_id}.json").read_text(encoding="utf-8"))["records"]
+    h2f = header_to_field(adapter_name)
+    out = []
+    for r in recs:
+        row = []
+        for k in keys:
+            field = h2f.get(k, k)
+            if field == "context":
+                v = (r.get("context") or {}).get(context_key)
+            else:
+                v = r.get(field)
+            row.append(v)
+        out.append(tuple(row))
+    return out
+
+
+
 MULTI_SEP = [",", "/", "\n"]          # 가결정 D-12 기본 닫힌 목록
 
 
@@ -104,29 +159,8 @@ recs, fails, dit = normalize(h, rows, ["설비", "관리항목"], ["공정명", 
 # 튜플 = (공정구분, 공정명, 극성, 설비, 관리항목, 규격, 적용모델)
 # 공정구분은 C11(coord_mismatch)을 어서션하기 위해 08-07에 추가됐다 — 그 전에는
 # 전 행이 "조립"이라 비교에 넣을 이유가 없었다.
-EXP_CP = [
-    ("조립", "노칭", "both", "노칭 프레스", "노칭 정밀도", "±0.1mm", None),
-    ("조립", "노칭", "both", "노칭 프레스", "금형 클리어런스", "20±2㎛", None),
-    ("조립", "스태킹", "both", "스태커", "적층 정렬도", "±0.2mm", None),
-    ("조립", "스태킹", "both", "스태커", "적층 정렬도", "±0.3mm", None),
-    ("조립", "탭용접", "both", "초음파 융착기", "용접 가압력", "0.3MPa", None),
-    # 골격 v3.2에서 bare "실링"은 무배정이다 — 사이드/프리 중 어느 쪽인지는 문서가
-    # 정하는 것이 아니라 행의 관리항목이 말해 준다(D-48 재매핑). 온도·압력·폭·강도는
-    # 파우치 외곽 봉지(사이드), 시간 계열은 주액 뒤 가실링(프리)이다.
-    ("조립", "사이드 실링", "both", "실러", "실링 온도", "180±5℃", None),
-    ("조립", "스태킹", "both", "스태커", "적층 정렬도", "±0.25mm", "M2"),
-    ("조립", "노칭", "cathode", "노칭 프레스", "노칭 정밀도", "±0.1mm", None),
-    ("조립", "노칭", "anode", "노칭 프레스", "노칭 정밀도", "±0.12mm", None),
-    ("조립", "노칭", "anode", "노칭 프레스", "버 높이", "30㎛ 이하", None),
-    # C11 — coord_mismatch: 공정구분 "스태킹"과 공정명 "노칭"이 둘 다 골격에 실존하나
-    # 조상 관계가 아니다. 파서는 그대로 태깅하고 에이전트 인입 검증이 큐로 잡는다(D-15).
-    ("스태킹", "노칭", "both", "노칭 프레스", "노칭 피치", "50±0.2mm", None),
-    # C12 — coord_mismatch(극성판, A11-9 ②): 좌표는 인스턴스(`cathode 탭용접` →
-    # 탭용접::cathode)인데 그 행의 극성은 anode다. **둘 다 확정이고 서로 다르므로**
-    # 조용히 한쪽을 택하지 않고 큐로 표면화한다. C11이 좌표축(조상)의 불일치라면
-    # 이쪽은 같은 계열의 극성축 불일치다 — 규칙 ②의 유일한 실발화 지점이다.
-    ("조립", "cathode 탭용접", "anode", "초음파 융착기", "용접 강도", "8N 이상", None),
-]
+CP_KEYS = ["공정구분", "공정명", "극성", "설비", "관리항목", "규격", "적용모델"]
+EXP_CP = expected("CP01", "cp", CP_KEYS, context_key="model")
 got = [(r["공정구분"], r["공정명"], r["극성"], r["설비"], r["관리항목"],
         r["규격"], r["적용모델"]) for _, r in recs]
 allok &= show("헤더 = cp 계약 10열", h == CP_COLS, str(h))
@@ -161,21 +195,8 @@ print("\n■ PFMEA01.xlsx — 역산 정합 prefix 13건 + 확대분")
 h, rows, merged = read_table(f"{RAW}/PFMEA01.xlsx")
 recs, fails, dit = normalize(h, rows, ["고장모드", "고장원인"],
                              ["공정명", "고장모드", "고장원인"])
-EXP_FM = [
-    ("노칭", "전극 치수 불량", "금형 마모", "방전기능상실", 8, "금형 클리어런스"),
-    ("노칭", "전극 치수 불량", "타발 속도 과다", "방전기능상실", 8, "타발 속도"),
-    ("노칭", "절연 파괴", "이물 유입", "단락", 9, "이물 검출 감도"),
-    ("스태킹", "내부 단락", "절연 파괴", "단락", 9, None),
-    ("스태킹", "적층 어긋남", "정렬 센서 오차", "충전기능상실", 7, "적층 정렬도"),
-    ("스태킹", "적층 어긋남", "흡착 불량", "충전기능상실", 7, "흡착 압력"),
-    ("탭용접", "용접 강도 부족", "가압력 부족", "방전기능상실", 8, "용접 가압력"),
-    ("탭용접", "용접 강도 부족", "진폭 이상", "방전기능상실", 8, "용접 진폭"),
-    ("패키징", "실링 파단", "실링 온도 저하", "셀 부풀음", 8, "실링 온도"),
-    ("전해액주입", "주액량 편차", "주액 노즐 막힘", "충전기능상실", 7, "주액량"),
-    ("사이드 실링", "밀봉 불량", "이물 유입", "화재", 9, "이물 검출 감도"),
-    ("노칭", "버 발생", "금형 마모", "단락", 9, "노칭정밀도"),
-    ("레이저노칭", "슬리팅 버", "빔 출력 편차", "단락", 9, "빔 출력"),
-]
+FM_KEYS = ["공정명", "고장모드", "고장원인", "영향분류", "심각도", "관리항목(원인)"]
+EXP_FM = expected("PFMEA01", "pfmea", FM_KEYS)
 got = [(r["공정명"], r["고장모드"], r["고장원인"], r["영향분류"], r["심각도"],
         r["관리항목(원인)"]) for _, r in recs]
 allok &= show("자기완결 실패 0건", not fails, str(fails))

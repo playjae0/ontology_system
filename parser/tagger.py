@@ -88,7 +88,7 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref"):
     return out
 
 
-def complete_images(pieces, summarize=None, *, allow_mock=True):
+def complete_images(pieces, summarize=None, *, allow_mock=True, kept=None):
     """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §6 규약 3).
 
     **여기가 조용한 오염이 나던 자리다.** 호출부가 `summarize`를 빼먹으면 고정 문자열
@@ -116,10 +116,21 @@ def complete_images(pieces, summarize=None, *, allow_mock=True):
     for p in pieces:
         r = dict(p)
         ref = r.get("image_ref")
+        if ref and not r.get("text") and kept is not None and ref in kept:
+            # **보존분 재사용** — 매 인입 새로 부르면 text가 흔들려 그 문서의
+            # chunk_id가 전량 이동한다(문서 6 §6.3 · chunk_id 결정성 §7.2).
+            r["text"] = kept[ref]
+            m = r.setdefault("meta", {})
+            m["image_summary"] = True
+            m["image_summary_source"] = "kept"
+            out.append(r)
+            continue
         if ref and not r.get("text"):
             if summarize is not None:
                 r["text"] = summarize(ref)
                 src = "live"
+                if kept is not None:
+                    kept[ref] = r["text"]        # **보존** — 재인입에 재사용(§6.3)
             elif allow_mock:
                 r["text"] = MOCK_IMAGE_SUMMARY.format(image_ref=ref)
                 src = "mock"

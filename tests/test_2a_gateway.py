@@ -128,7 +128,7 @@ WIRED = {"extract": ("core/extract.py", "_candidates_for"),
          "embed": ("core/embeddings.py", "llm.require"),
          "image_summary": ("parser/tagger.py", "allow_mock"),
          "generate": ("cli/register.py", "_draft_live"),
-         "link": ("core/query.py", "_link_deep"),
+         "link": ("core/query.py", "_link_llm"),
          "struct_map": ("parser/struct_map.py", "ask is None"),
          "answer": ("cli/query.py", "def generate")}
 for key, (where, needle) in WIRED.items():

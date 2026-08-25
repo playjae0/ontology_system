@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
     ("test_g1_g2", 58, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종"),
-    ("test_g3", 60, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
+    ("test_g3", 66, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 27, "질의 4단 · 품질층 등록 · 재인입 회귀"),
     ("test_g5", 36, "I축 도구 4연산 (개명·병합·분리·폐기)"),
     ("test_g6", 30, "플랫폼 창구 · 계기판 8종 · 지문 스캔"),
@@ -324,7 +324,7 @@ def transition():
         "embed": ("core/embeddings.py", "def embed"),
         "image_summary": ("parser/tagger.py", "allow_mock"),
         "generate": ("cli/register.py", "_draft_live"),
-        "link": ("core/query.py", "_link_deep"),
+        "link": ("core/query.py", "_link_llm"),
         "struct_map": ("parser/struct_map.py", "ask is None"),
         "answer": ("cli/query.py", "def generate"),
     }
