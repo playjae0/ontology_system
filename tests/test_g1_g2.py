@@ -219,6 +219,52 @@ _after = len([x for x in store.read(store.QUEUE, [])
 show("재인입 회수가 **사람의 판단이 기록된 항목**을 보존한다 (§4.8-2③ · H6)",
      _before > 0 and _after == _before, f"{_before} → {_after}")
 
+# ============================================================ 진입점 계약
+print("\n■ 진입점 계약 — 문서 7 §7.1 「플랫폼이 subprocess로 부르는 이름은 계약이다」")
+# 같은 기능을 다른 이름으로 제공하지 않는다 — 플랫폼↔파이프라인 결합이 "CLI+파일"이라
+# **명령 이름이 계약의 일부**인데, 일반형만 두면 기능은 있어도 외부 스크립트와
+# 호환되지 않는다.
+def _rc(*argv):
+    return _sp.run([sys.executable, *argv], capture_output=True, text=True,
+                   cwd=str(ROOT))
+
+_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+        capture_output=True, cwd=str(ROOT))
+_sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
+        capture_output=True, cwd=str(ROOT))
+
+show("구축 `python run.py build <parsed.json …>` (§7.1)",
+     _rc(str(ROOT / "run.py"), "build", str(ROOT / "mock/parsed/CP01.json")).returncode == 0)
+show("추출 `python -m cli.extract <parsed.json>` (§7.1)",
+     _rc("-m", "cli.extract", str(ROOT / "mock/parsed/PPT01.json")).returncode == 0)
+show("지문 스캔 `python -m cli.scan <문서>` (§7.1)",
+     _rc("-m", "cli.scan", str(ROOT / "mock/raw/CP01.xlsx")).returncode == 0)
+show("플랫폼 관측 `python -m cli.platform ops` · `doctypes` (§7.1)",
+     _rc("-m", "cli.platform", "ops").returncode == 0
+     and _rc("-m", "cli.platform", "doctypes").returncode == 0)
+show("I축 전 연산에 --actor 필수 (§7.1 · 문서 4 §4.7-4)",
+     _rc("-m", "cli.ops", "rename", "--layer", "process", "--node", "x",
+         "--canonical", "y").returncode != 0)
+
+_parse = _rc("-m", "cli.parse", "run", str(ROOT / "mock/adapters/cp.py"), "CP01",
+             str(ROOT / "mock/raw/CP01.xlsx"))
+show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — 파일 존재 = 파싱 완료)",
+     _parse.returncode == 0 and (ROOT / "parsed" / "CP01.json").exists())
+
+# 클린 범위 — §7.6-4가 이번 개정에서 확정했다.
+from core import init as _init3                                 # noqa: E402
+show("클린 범위가 parsed/·extract/를 포함한다 (체크포인트 잔존 = 순서 의존)",
+     "parsed" in _init3.WIPE and "extract" in _init3.WIPE, str(_init3.WIPE))
+show("클린이 data/doc_types.json을 보존한다 (승인 1회의 등재 — 재생성 불가)",
+     "doc_types.json" in _init3.KEEP_IN_DATA)
+_dt = ROOT / "data" / "doc_types.json"
+_dt.parent.mkdir(parents=True, exist_ok=True)
+_dt.write_text('{"_probe": {"doc_type": "_probe"}}', encoding="utf-8")
+_init3.init(fresh_=True)
+show("실측 — init --fresh 후에도 doc_types.json이 남는다",
+     _dt.exists() and "_probe" in _dt.read_text(encoding="utf-8"))
+_dt.unlink(missing_ok=True)
+
 g, m, _, flow = reset()
 show("계기판 7 (graph 저장 크기) 출력", "gauge7_graph_bytes" in m,
      f"{m['gauge7_graph_mb']}MB")

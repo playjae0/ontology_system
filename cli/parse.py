@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+PARSED_DIR = ROOT / "parsed"   # 운영 산출 자리 (문서 7 §7.8 — 파일 존재 = 파싱 완료)
 
 from core import llm
 from parser import pipeline, preflight, reader, validator
@@ -35,8 +36,12 @@ def load_adapter(path):
 
 
 def cmd_run(args):
+    """운영 파싱 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
+    (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
+    있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
+    """
     adapter_path, doc_id, doc = args[0], args[1], args[2]
-    out = args[3] if len(args) > 3 else None
+    out = args[3] if len(args) > 3 else str(PARSED_DIR / f"{doc_id}.json")
     # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
     # import하지 않는다(P1). USE_MOCK이면 None이 오고 파서가 고정 문자열을 쓴다.
     res = pipeline.parse(load_adapter(adapter_path), doc_id, doc,

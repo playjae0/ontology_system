@@ -7,7 +7,9 @@
 사용:
   python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
   python run.py bootstrap          층 골격 심기 (n10)
-  python run.py ingest <파일...>   계약 JSON 인입 (n2 → n1)
+  python run.py build <parsed.json...>  계약 JSON 인입 — **플랫폼 계약 이름**(§7.1)
+  python run.py ingest <파일...>   상동 (구 이름 — 같은 기능을 두 이름으로 두지 않으려
+                                   남기되, 계약 이름은 build다)
   python run.py all                bootstrap + mock/parsed 전량 인입
   python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
   python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
@@ -133,6 +135,9 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
     {"init": lambda: cmd_init(sys.argv[2:]),
      "bootstrap": lambda: cmd_bootstrap(),
+     # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
+     # 부르는 이름은 계약의 일부다. `ingest`는 같은 함수의 옛 이름이다.
+     "build": lambda: cmd_ingest(sys.argv[2:]),
      "ingest": lambda: cmd_ingest(sys.argv[2:]),
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),
