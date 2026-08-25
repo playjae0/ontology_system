@@ -227,8 +227,14 @@ def gauges():
                if qpath.exists() else {"queries": []})
     smoke = queries["queries"]
 
+    # **끄는 것은 재료 로그뿐이다.** 측정이 `link_miss`·`chunk_truncated`를
+    # 오염시키면 다음 측정이 자기 흔적을 세지만(§5.5 규율 4), `defects.log`까지
+    # 함께 죽이면 **측정 중 발생한 결함이 조용히 사라진다** — G5(아무것도 조용히
+    # 버리지 않는다)를 측정이 우회하는 셈이다.
+    _MUTE = {store.LINK_MISS, store.CHUNK_TRUNCATED}
     _orig = store.append_line
-    store.append_line = lambda *a, **k: None            # 측정 무오염
+    store.append_line = (lambda name, line, _o=_orig:
+                         None if name in _MUTE else _o(name, line))
     try:
         results = {q["id"]: R.answer(q["q"]) for q in smoke}
     finally:

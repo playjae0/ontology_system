@@ -175,7 +175,16 @@ class GraphStore:
         공정→(part_of 하향)→설비→(has_property)→인자 2홉이 성립하는 근거다.
         traverse_spec의 내용은 config가 소유하고 여기서는 인자로 받는다(B).
         """
-        seen, frontier = set(ids), list(ids)
+        seen = set(ids)
+        # **새로 발견된 노드에도 관계 규칙이 적용된다**(문서 5 §5.1-5).
+        # `recursive: false`는 "**같은 관계**를 연달아 재추적하지 않음"일 뿐이고
+        # **다른 관계로 도달한 노드에의 적용은 막지 않는다** — 공정→(part_of
+        # 하향)→설비→(has_property)→인자 2홉이 성립하는 근거가 그것이다.
+        #
+        # 그래서 프론티어에는 **어느 관계로 왔는지를 함께** 싣는다. 구판은
+        # 비재귀로 도달한 노드를 프론티어에서 통째로 빼서, 그 노드에서 뻗는
+        # **다른** 관계가 한 번도 적용되지 않았다.
+        frontier = [(i, None) for i in ids]
         while frontier:
             nxt = []
             for e in self.edges:
@@ -183,18 +192,19 @@ class GraphStore:
                     continue
                 for spec in (traverse_spec.get(e["rel"]) or {}).values():
                     d, rec = spec.get("direction", "both"), spec.get("recursive", False)
-                    hits = []
-                    if d in ("out", "both") and e["src"] in frontier:
-                        hits.append(e["dst"])
-                    if d in ("in", "both") and e["dst"] in frontier:
-                        hits.append(e["src"])
-                    for h in hits:
-                        if h not in seen:
-                            seen.add(h)
-                            if rec:
-                                nxt.append(h)
-                            else:
-                                seen.add(h)
+                    for nid, via in frontier:
+                        # 비재귀 규칙은 **그 관계로 도달한 노드**에 다시 걸지 않는다.
+                        if not rec and via == e["rel"]:
+                            continue
+                        h = None
+                        if d in ("out", "both") and e["src"] == nid:
+                            h = e["dst"]
+                        elif d in ("in", "both") and e["dst"] == nid:
+                            h = e["src"]
+                        if h is None or h in seen:
+                            continue
+                        seen.add(h)                 # 방문 집합으로 순환을 막는다
+                        nxt.append((h, e["rel"]))
             frontier = nxt
         return seen
 

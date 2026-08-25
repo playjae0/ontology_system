@@ -49,6 +49,11 @@ EMPTY = {
     store.CHUNKS: {"chunks": {}, "describes": []},
     store.DICTIONARY: {},
     store.QUEUE: [],
+    # **층 등록부와 문서 대장도 빈 객체로 초기화한다**(문서 7 §7.2 빈 상태 불릿) —
+    # 전자는 부트스트랩이 매 실행 재생성하고, 후자는 인입이 채운다. 파일이 아예
+    # 없으면 클린의 대조 단위가 "파일 없음"과 "빈 파일"로 갈린다.
+    store.REGISTRY: {},
+    store.DOC_REGISTRY: {},
 }
 
 

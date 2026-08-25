@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures, llm, registry, store
 from parser import pipeline, preflight, reader
+from parser.adapters import basic_ppt
 from kit.render_review import render
 from kit.run_adapter import load_blocks
 from router import discover
@@ -233,11 +234,16 @@ def basic_adapter_proposal(samples):
     """
     if not all(str(s).lower().endswith(".pptx") for s in samples):
         return None
+    # **임계는 어댑터가 소유한다**(문서 6 §6.4-5) — 판단 상수는 `ADAPTER.expects`에
+    # 산다(문서 7 §7.1 관리 자산의 원칙). 여기에 숫자를 복제하면 "조정은 어댑터
+    # 한 곳에서"가 깨지고, 어댑터를 고쳐도 이 화면의 판정은 옛 임계로 남는다.
+    exp = basic_ppt.ADAPTER["expects"]
+    max_chars, max_shapes = exp["max_chars"], exp["max_shapes"]
     over = 0
     for s in samples:
         for sl in reader.read(str(s)).get("slides", []):
             shapes = [x for x in sl.get("shapes", []) if x and x.strip()]
-            if sum(len(x) for x in shapes) > 600 or len(shapes) > 5:
+            if sum(len(x) for x in shapes) > max_chars or len(shapes) > max_shapes:
                 over += 1
     return {"adapter": "parser/adapters/basic_ppt.py",
             "reason": "PPT는 분할이 자명하다 — 슬라이드가 청크다. 생성 세션이 필요 없다",
@@ -281,7 +287,13 @@ def cmd_generate(doc_type, layer, samples, hint=""):
                                           "aliases": n.get("aliases") or [],
                                           "tier": n.get("tier")}
                                          for n in (snap.get("nodes") or [])]},
-            "layer_vocabulary": {"categories": cfg.get("categories"),
+            # **존재하는 층 목록은 「층 어휘」 안에 든다**(문서 6 §6.5) — 지정 층의
+            # 어휘만 보내면 생성 세션이 걸침(`target_layer`)을 선언할 때 어느 층
+            # 이름이 유효한지 모른 채 지어낸다. **시스템 5키를 6키로 늘리지
+            # 않는다** — 그 수가 명세이고 회귀가 그것을 센다.
+            "layer_vocabulary": {"layer": layer,
+                                 "layers": sorted(discover()),
+                                 "categories": cfg.get("categories"),
                                  "relations": cfg.get("relations"),
                                  "relation_patterns": cfg.get("relation_patterns")},
             "blocks": json.loads((ROOT / "schemas" / "blocks.json")
@@ -370,8 +382,42 @@ def unmappable_of(schema, adapter_mod):
     labels, cols = exp.get("header_labels") or [], exp.get("columns") or {}
     if not labels or not cols:
         return []
+    # **위치 가정을 두지 않는다**(문서 6 §6.4-6: "빈 셀은 배열에 넣지 않는다").
+    # `labels`의 i번째가 i+1번째 열이라고 보면 헤더 행에 빈 칸이 하나만 있어도
+    # 그 뒤 전부가 한 칸씩 밀려 **엉뚱한 열이 UNMAPPABLE로 뜬다** — 사람이
+    # 판정해야 할 것이 화면에서 바뀌는 셈이다.
+    #
+    # 대신 **실물 헤더에서 열 문자를 다시 읽는다.** 읽을 수 없으면(표본 경로가
+    # 없거나 포맷 패키지가 없으면) 위치 가정으로 떨어지되 **그 사실을 남긴다** —
+    # 조용히 틀린 답을 내지 않는다.
     used = set(cols.values())
+    pos = _label_columns(exp, adapter_mod)
+    if pos:
+        return [lab for lab, letter in pos.items() if letter not in used]
+    store.append_defect(
+        f"UNMAPPABLE 복원이 위치 가정으로 떨어졌다 — 실물 헤더를 읽지 못했다 "
+        f"(doc_type={(getattr(adapter_mod, 'ADAPTER', {}) or {}).get('doc_type')})")
     return [labels[i] for i in range(len(labels)) if _col(i + 1) not in used]
+
+
+def _label_columns(exp, adapter_mod):
+    """헤더 라벨 → **실제 열 문자**. 실물을 못 읽으면 빈 dict."""
+    sample = getattr(adapter_mod, "SAMPLE", None) or exp.get("sample_path")
+    if not sample or not Path(sample).exists():
+        return {}
+    try:
+        raw = reader.read(str(sample))
+        hr = exp.get("header_row")
+        cells = (raw.get("sheets") or [{}])[0].get("cells") or {}
+        out = {}
+        for addr, v in cells.items():
+            letters = "".join(ch for ch in str(addr) if ch.isalpha())
+            digits = "".join(ch for ch in str(addr) if ch.isdigit())
+            if digits and int(digits) == hr and v is not None:
+                out[str(v)] = letters
+        return out
+    except Exception:
+        return {}
 
 
 def build_view(st, results, harness_ok, harness_out):

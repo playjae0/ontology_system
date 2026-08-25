@@ -147,6 +147,12 @@ class Builder:
             return None, None
 
         if len(tier1) == 1:
+            # **해소된 좌표도 문서 버퍼에 싣는다**(문서 4 §4.2 Pass 1) — 버퍼는
+            # `정규화 표면형 → node_id` 맵이고 anchor·entity를 **둘 다** 담는다.
+            # 안 실으면 `attach_to`가 골격 노드 표기를 가리킬 때(산문이 공정에
+            # 직접 붙이는 정상 경로) 버퍼 조회가 미스가 되어 사전으로 새고,
+            # 같은 문서 안의 해소 결과가 재사용되지 않는다.
+            self.buffer[norm(surface)] = tier1[0]
             return tier1[0], g
         if len(tier1) > 1:
             return _hold(f"표기 모호 — '{surface}'가 골격 노드 여럿을 가리킨다",

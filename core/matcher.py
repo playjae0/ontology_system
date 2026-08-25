@@ -24,7 +24,18 @@ from .ids import norm
 from .naming import POLARITY_NONE
 from .ops import is_live
 
-THRESHOLD = 0.85        # 단일 임계. 세분화는 판정 보류율이 쌓인 뒤에만(P7·E2).
+# 판정 임계 — **층 config `match_threshold`가 소유한다**(문서 3 §3.1 키 일람).
+# 판단에 영향을 주는 자산은 코드에 박지 않는다(문서 7 §7.1 관리 자산의 원칙).
+# 아래 상수는 config가 그 키를 선언하지 않았을 때의 폴백이다.
+THRESHOLD = 0.85
+
+
+def threshold(cfg=None):
+    """이 층의 판정 임계. 세분화는 판정 보류율이 쌓인 뒤에만(P7·E2)."""
+    if cfg is None:
+        return THRESHOLD
+    v = cfg.get("match_threshold")
+    return float(v) if v is not None else THRESHOLD
 
 MATCH = "match"
 NEW = "new"
@@ -121,7 +132,7 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
     return out
 
 
-def match(surface, candidates, category):
+def match(surface, candidates, category, cfg=None):
     """**개체 판정은 이 함수 하나로 수렴한다** (문서 7 §7.1 core 접근 경계).
 
     입력은 `mention` + 후보들, 출력은 `{"type", "matched_id", "confidence"}`다
@@ -144,7 +155,7 @@ def match(surface, candidates, category):
         return {"type": NEW, "matched_id": None, "confidence": 0.0}
 
     if not llm.use_mock():
-        return _judge_live(surface, pool, category)
+        return _judge_live(surface, pool, category, cfg)
     llm.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
 
     best, score = None, 0.0
@@ -159,7 +170,7 @@ def match(surface, candidates, category):
         if s > score:
             best, score = c["id"], s
 
-    if score >= THRESHOLD:
+    if score >= threshold(cfg):
         return {"type": MATCH, "matched_id": best, "confidence": score}
     if score > 0.0:
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
@@ -167,7 +178,7 @@ def match(surface, candidates, category):
     return {"type": NEW, "matched_id": None, "confidence": 0.0}
 
 
-def _judge_live(surface, pool, category):
+def _judge_live(surface, pool, category, cfg=None):
     """지점 ② 개체 동일성 판정의 실호출 갈래 — **반환 계약이 mock과 같다.**
 
     입력은 `mention` + 후보들이고 후보 하나는 `canonical`·`aliases`·부착 위치·
@@ -193,7 +204,7 @@ def _judge_live(surface, pool, category):
     if vtype == MATCH and mid not in ids:
         _LOG.warning("판정이 후보 밖 id를 답했다 — 버리고 uncertain으로 둔다: %r", mid)
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
-    if vtype == MATCH and conf < THRESHOLD:
+    if vtype == MATCH and conf < threshold(cfg):
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
     if vtype not in (MATCH, NEW, UNCERTAIN):
         _LOG.warning("판정 분기가 닫힌 3값 밖이다 — uncertain으로 둔다: %r", vtype)
@@ -213,5 +224,6 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     """
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity)
-    v = match(surface, cands, category)
+    from .bootstrap import load_config
+    v = match(surface, cands, category, load_config(layer))
     return v["type"], v["matched_id"], v["confidence"]

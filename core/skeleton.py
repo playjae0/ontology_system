@@ -16,9 +16,11 @@ config에서 받는 통로가 지점마다 갈리고**, 층 어휘 0(문서 1 A/
 """
 from __future__ import annotations
 
-from . import store
+from . import log, store
 from .ids import norm
 from .naming import POLARITY_NONE
+
+_LOG = log.get(__name__)
 
 
 def _pad(text, width):
@@ -365,4 +367,11 @@ def plant(g, seed, skel, cfg, register):
                             tier=TIER_BY_DEPTH[1], polarity=POLARITY_NONE)
                for item in seed["data"]}
         return ids, None, [], []
+    # **명시적 실패는 raise로 드러내는 데 그치지 않고 장부에도 병기한다**
+    # (문서 7 §7.4) — 런타임 예외로만 남으면 "어느 결정점이 config로 표현되지
+    # 않았나"의 실측이 축적되지 않아, core 패턴 승격 판단을 나중에 처음부터
+    # 다시 하게 된다.
+    log.explicit_fail(_LOG, "core.skeleton.plant",
+                      f"config 표현 밖 — 골격 모양 {kind!r}. "
+                      f"닫힌 2값은 {TYPE_TREE!r}·{TYPE_FLAT!r}이다")
     raise SeedError(f"골격 모양을 알 수 없다: {kind!r}")

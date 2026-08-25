@@ -417,7 +417,7 @@ def merge_targets(layer, nid, limit=5):
 def _survivor(a, b, override=None):
     """생존자 3단 규칙 (R3-⑴).
 
-    ①사람 override는 **항상 최상위** ②status 등급(seed > registered > auto)
+    ①사람 override는 **항상 최상위** ②status 등급(seed > confirmed > auto)
     ③정렬상 앞선 id(ULID = 생성순이라 결정적).
 
     ②가 ③보다 위인 이유는 정확성이 아니라 **골격 보호**다 — auto가 seed를 흡수하면
@@ -522,7 +522,11 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
     keep["status"] = keep["status"] if STATUS_RANK.get(keep["status"], 0) >= \
         STATUS_RANK.get(gone["status"], 0) else gone["status"]
 
+    # 툼스톤 필드는 **`merged_into`·`target`·`at`**이다(문서 7 §7.2 노드 레코드).
+    # 리다이렉트 포인터를 키 하나로만 두면 `status`가 `merged_into`인 노드에서
+    # 생존자를 찾는 코드가 kind별로 다른 키를 보게 된다.
     g.nodes[gone["id"]] = {"id": gone["id"], STATUS_MERGED: keep["id"],
+                           "target": keep["id"],
                            "status": STATUS_MERGED, "at": _now(),
                            "canonical": gone["canonical"], "category": gone["category"],
                            "layer": gone["layer"], "attrs": {}, "aliases": [],
