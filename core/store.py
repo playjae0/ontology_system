@@ -147,6 +147,31 @@ def drop(kind, match):
     return len(q) - len(kept)
 
 
+def resolve_item(kind, match, *, actor, decision, at, note=""):
+    """큐 항목에 **사람의 판단을 기록한다** (문서 7 §7.2 `resolution`).
+
+    `resolution`이 있는 항목이 「사람의 판단이 기록된 항목」이고, 재인입 회수가
+    그것을 **보존한다**(문서 4 §4.8-2③ · 문서 1 H6). 표시 필드가 없으면 회수가
+    kind 화이트리스트로 대신하는데, 그것은 "재검출되지 않는 상시 목록"이지 "사람이
+    판단한 항목"이 아니어서 사람의 판정이 조용히 지워진다.
+
+    항목을 **내리지 않는다** — 내리는 것은 조건이 해소됐을 때 `drop`의 일이고,
+    여기는 "봤고 이렇게 판단했다"를 남기는 자리다.
+    """
+    q = read(QUEUE, [])
+    n = 0
+    for x in q:
+        if x.get("kind") != kind or not match(x.get("payload") or {}):
+            continue
+        x["resolution"] = {"actor": actor, "at": at, "decision": decision,
+                           "note": note}
+        n += 1
+    if n:
+        write(QUEUE, q)
+        _LOG.info("큐 판정 %s — %s가 %d건을 '%s'로", kind, actor, n, decision)
+    return n
+
+
 def enqueue(kind, reason, doc_id, payload):
     """수정 큐. 처리 못 한 것은 전부 종류가 붙은 큐 항목이 된다 —
     실패는 예외가 아니라 등급이다(CH3B 3.7 규약 2).

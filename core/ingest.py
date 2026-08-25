@@ -104,7 +104,11 @@ def withdraw(env, doc_id):
       사람이 "왜 사라졌나"를 물을 자리도 없어진다 — L9). 그 판정은 여기가 아니라
       **빌드 말미**(`pipeline.finalize`)가 한다 — 회수 직후는 아직 재적재 전이라
       "근거 0"이 참이 아니고, 그때 울리면 매 재인입마다 거짓 항목이 쌓인다(D-65와 같은 자리).
-    ②**보존** — 살아있는 노드의 사전·alias, 그리고 미검토 작업목록(`STANDING_KINDS`).
+    ②**보존** — 살아있는 노드의 사전·alias · 미검토 작업목록(`STANDING_KINDS`) ·
+      **`resolution`을 보유한 항목**(문서 7 §7.2 · 문서 4 §4.8-2③ · 문서 1 H6).
+      `resolution`이 있는 항목이 「사람의 판단이 기록된 항목」이다 — 표시 필드 없이
+      kind 화이트리스트로 대신하면 그것은 "재검출되지 않는 상시 목록"이지 "사람이
+      판단한 항목"이 아니어서 **사람의 판정이 조용히 지워진다.**
     ③**재평가** — 그 문서발 조건 큐를 내리고, 이번 인입이 현재 스냅샷을 다시 싣는다.
       근거 문장이 삭제되면 그 조건도 함께 내려가야 한다 — 큐는 이력이 아니라 화면이다.
     """
@@ -117,7 +121,9 @@ def withdraw(env, doc_id):
     # ③ 먼저 내린다 — 회수가 싣는 evidence_lost가 같은 손에 지워지면 안 된다.
     q = store.read(store.QUEUE, [])
     kept = [x for x in q
-            if x.get("doc_id") != doc_id or x.get("kind") in STANDING_KINDS]
+            if x.get("doc_id") != doc_id
+            or x.get("kind") in STANDING_KINDS
+            or x.get("resolution")]     # **사람의 판단이 기록된 항목**은 회수하지 않는다
     if len(kept) != len(q):
         store.write(store.QUEUE, kept)
 
@@ -206,6 +212,7 @@ def ingest(env):
     chunks = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     occ = OccCounter()
     adapter_version = env.get("adapter_version")        # 봉투 1회 → 청크로 복사(C9)
+    parsed_at = env.get("parsed_at")                    # 상동 — 청크 레코드 필수(§7.2)
 
     def put_chunk(cid, text, section, src_loc, meta):
         prev = chunks["chunks"].get(cid)
@@ -218,6 +225,7 @@ def ingest(env):
             "text": text,                               # 원문 무손실 (카드 C8)
             "section": section,
             "source_locator": src_loc,
+            "parsed_at": parsed_at,     # 봉투에서 온다 (문서 7 §7.2 청크 레코드)
             "adapter_version": adapter_version,
             "meta": meta or {},
             "linked": False,                            # 링킹 0건도 보존 (카드 C6)
