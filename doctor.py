@@ -41,7 +41,7 @@ SUITES = [
     ("test_p1", 46, "파서 공용 코어 6종 · 구조 지도 · 역산 정합"),
     ("test_p2", 45, "어댑터 생성 킷 6종 · 검수 뷰 렌더러"),
     ("test_p3", 45, "구축 모드 등록 3단 (생성·검수·확정)"),
-    ("test_2a_gateway", 26, "게이트웨이 골조 — LLM 지점 8종 mock/실호출 분기"),
+    ("test_2a_gateway", 28, "게이트웨이 골조 — LLM 지점 9종 mock/실호출 분기"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
 
@@ -327,6 +327,7 @@ def transition():
         "link": ("core/query.py", "_link_llm"),
         "struct_map": ("parser/struct_map.py", "ask is None"),
         "answer": ("cli/query.py", "def generate"),
+        "coord_tag": ("parser/tagger.py", "pick is not None"),
     }
     wired, missing = [], []
     for key, label in POINTS.items():
@@ -338,7 +339,7 @@ def transition():
             f"{label} ({where})")
     line(OK if not missing else NG,
          f"[3] LLM 지점 {len(wired)}/{len(POINTS)}종에 mock/실호출 분기가 서 있다",
-         ("게이트웨이 골조는 섰고 **설정만 비어 있다** — ONTO_LLM_URL·ONTO_LLM_MODEL을\n"
+         ("게이트웨이 골조는 섰고 **설정만 비어 있다** — LLM_GATEWAY_URL·CHAT_MODEL을\n"
           "         주면 USE_MOCK=0으로 돈다. 미설정 상태의 USE_MOCK=0은 조용히 mock으로\n"
           "         떨어지지 않고 명시적으로 실패한다(문서 7 §7.6-B-4).\n"
           "         **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다"

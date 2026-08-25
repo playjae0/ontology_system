@@ -377,7 +377,8 @@ def cmd_review(doc_type, instruct=None):
     # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
     # import하지 않는다(P1). 등록 리허설도 운영 파싱과 같은 배선을 탄다.
     results = [pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"],
-                              summarize=llm.image_summarizer())
+                              summarize=llm.image_summarizer(),
+                             pick_coord=llm.coord_picker())
                for i, s in enumerate(samples, 1)]
     for r in results:
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "

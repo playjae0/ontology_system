@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """2A 게이트웨이 골조 — LLM 지점 8종의 mock/실호출 분기 (문서 7 §7.6-B).
 
-**이 스위트가 잠그는 것**: USE_MOCK=0에서 설정이 비어 있을 때 8지점이 각각
+**이 스위트가 잠그는 것**: USE_MOCK=0에서 설정이 비어 있을 때 9지점이 각각
 **명시적으로 실패하는가**. 조용히 mock으로 떨어지는 지점이 하나라도 있으면 그것이
 "모델 미연결 상태가 완료판정을 통과하는" 경로다 — 국면 1에서 실제로 일어난 일이다.
 
@@ -37,11 +37,11 @@ show("core/llm.py — chat(messages, *, model, json_schema)",
      hasattr(llm, "chat")
      and {"model", "json_schema"} <= set(llm.chat.__code__.co_varnames))
 show("core/embeddings.py — embed(text) -> vector", hasattr(embeddings, "embed"))
-show("LLM 지점 목록이 닫힌 8종이다 (§7.6-B-2)",
-     len(llm.POINTS) == 8 and "answer" in llm.POINTS, ", ".join(llm.POINTS))
+show("LLM 지점 목록이 닫힌 **9종**이다 (§7.6-B-2 — ⑨좌표 태깅 포함)",
+     len(llm.POINTS) == 9 and {"answer", "coord_tag"} <= set(llm.POINTS), ", ".join(llm.POINTS))
 
 # 설정 접근이 이 파일 하나로 수렴하는가 — 호출부가 환경변수를 직접 읽지 않는다.
-_ENV = ("ONTO_LLM_URL", "ONTO_LLM_KEY", "ONTO_LLM_MODEL", "ONTO_EMBED_MODEL")
+_ENV = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL")
 leaks = [f"{p.relative_to(ROOT)}:{i}"
          for d in ("core", "cli", "parser")
          for p in sorted((ROOT / d).glob("*.py")) if p.name != "llm.py"
@@ -72,7 +72,7 @@ show("실호출 갈래는 source=live로 갈린다 — 두 갈래가 같은 반�
      and set(m["meta"]) == set(live["meta"]))
 
 # ============================================================ USE_MOCK=0
-print("\n■ USE_MOCK=0 + 설정 미설정 → 8지점 각각 명시적 실패 (§7.6-B-4 · 완료판정 5)")
+print("\n■ USE_MOCK=0 + 설정 미설정 → 9지점 각각 명시적 실패 (§7.6-B-4 · 완료판정 5)")
 
 PROBE = r'''
 import json, sys
@@ -92,6 +92,10 @@ CASES = {
  "generate":      lambda: __import__("cli.register", fromlist=["x"])._draft_live("cp", 0),
  "link":          lambda: Q.link("노칭", Dictionary({}), {"process": g}),
  "struct_map":    lambda: struct_map.propose("D1", [(1, "1. 가")]),
+ "coord_tag":     lambda: tagger.tag(
+                      [{"source_locator": "S", "process_ref": "없는공정zzz"}],
+                      layer="process", nodes=tagger.closed_list("process"),
+                      pick=llm.coord_picker()),
  "answer":        lambda: __import__("cli.query", fromlist=["x"]).generate(
                       {"question": "가", "facts": [], "chunks": [], "path": "graph_fact",
                        "linked": [], "note": None, "truncated": 0, "transit": []}),
@@ -114,7 +118,8 @@ import json                                                      # noqa: E402
 
 line = next((l for l in r.stdout.splitlines() if l.startswith("RESULT ")), None)
 res = json.loads(line[len("RESULT "):]) if line else {}
-show("8지점 전부가 실행됐다 (탐침이 완주)", len(res) == 8,
+show(f"{len(llm.POINTS)}지점 전부가 실행됐다 (탐침이 완주)",
+     len(res) == len(llm.POINTS),
      r.stderr.strip().splitlines()[-1:] and r.stderr.strip().splitlines()[-1] or "")
 for key, label in llm.POINTS.items():
     got = res.get(key, "(미실행)")
@@ -130,7 +135,8 @@ WIRED = {"extract": ("core/extract.py", "_candidates_for"),
          "generate": ("cli/register.py", "_draft_live"),
          "link": ("core/query.py", "_link_llm"),
          "struct_map": ("parser/struct_map.py", "ask is None"),
-         "answer": ("cli/query.py", "def generate")}
+         "answer": ("cli/query.py", "def generate"),
+         "coord_tag": ("parser/tagger.py", "pick is not None")}
 for key, (where, needle) in WIRED.items():
     src = (ROOT / where).read_text(encoding="utf-8")
     show(f"{llm.POINTS[key]} — 실호출 갈래가 {where}에 있다", needle in src)

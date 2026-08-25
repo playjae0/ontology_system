@@ -46,14 +46,23 @@ class OpRefused(Exception):
 
 
 def is_live(node):
-    """툼스톤인가 아닌가.
+    """**매칭 후보 판정** — `merged_into` 툼스톤과 `status: obsolete`를 **둘 다** 제외한다.
+
+    생존 판정은 두 갈래다(문서 4 §4.7). 이것은 그중 **매칭 후보** 쪽이고, 사전
+    조회·후보 검색·anchor 조회 전부에 적용되며 **I4 이유 ②(재인입 부활 차단)의
+    강제 지점**이다. `merged_into`만 보면 폐기 노드가 후보로 돌아와 부활 차단이
+    사전에서 새어 나간다.
+
+    연산 대상 판정(I축이 "이 노드를 만질 수 있나"를 묻는 쪽)은 `_target`이 갖는다 —
+    폐기 노드도 연산 대상일 수 있으므로 그쪽은 다른 갈래다.
 
     **툼스톤은 `canonical`을 그대로 지닌다** — 옛 이름을 화면에 보여 주기 위해서다.
     그래서 canonical로 노드를 찾는 코드는 반드시 이 판정을 거쳐야 한다. 안 거치면
     옛 이름이 산 노드를 가리는 사고가 난다(실측: 병합 툼스톤을 폐기 처리해 한 노드가
     `merged_into`와 `obsolete`를 동시에 갖는 모순 상태가 됐다).
     """
-    return bool(node) and node.get(STATUS_MERGED) is None
+    return (bool(node) and node.get(STATUS_MERGED) is None
+            and node.get("status") != STATUS_OBSOLETE)
 
 
 def _target(g, nid):

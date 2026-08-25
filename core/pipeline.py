@@ -75,7 +75,10 @@ def _context(holder, prov, doc_id):
 
 
 def _scalar(value, field, prov, doc_id):
-    """role 핸들러는 **단일 값만 본다**는 전제를 코드가 방어한다 (카드 D6).
+    """**entity·anchor**의 값이 단일이라는 전제를 코드가 방어한다 (문서 2 §2.7).
+
+    **attribute는 대상이 아니다** — §2.4-③이 "구조체·배열도 통째로 하나의 값"으로
+    저장한다고 규정한다. 여기서 막는 것은 리스트가 사전을 오염시키는 경로다.
 
     복수값 전개는 파서 몫이지만(normalizer), 계약이 핸들러 측 방어를 따로 요구한다 —
     리스트가 그대로 오면 `norm()`의 `str()` 강제 변환과 포함 규칙을 타고 **기존 노드에
@@ -313,7 +316,11 @@ def build_table(env, cfg, schema, graph):
             if f not in rec or rec[f] in (None, ""):
                 continue
             role = spec.get("role")
-            if role in ("entity", "attribute", "anchor") and \
+            # **attribute는 이 방어의 대상이 아니다**(문서 2 §2.7 · §2.4-③) —
+            # 구조체·배열을 통째로 하나의 값으로 저장한다. 이 방어가 막는 것은
+            # 리스트가 표면형 정규화(문자열 강제·포함 규칙)를 타고 기존 노드에
+            # 흡수되는 **사전 오염**인데, attribute 값은 사전을 타지 않는다.
+            if role in ("entity", "anchor") and \
                     not _scalar(rec[f], f, prov, env["doc_id"]):
                 continue
             if role not in HANDLERS:

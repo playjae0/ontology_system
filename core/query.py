@@ -248,7 +248,7 @@ def collect_chunks(node_ids, direct):
                             "source_locator": c.get("source_locator")})
     dropped = max(0, len(ordered) - COLLECT_LIMIT)
     if dropped:
-        store.append_line(store.LINK_MISS, f"[collect_truncated] {dropped}건 잘림")
+        store.append_line(store.CHUNK_TRUNCATED, f"{dropped}건 잘림")
     return ordered[:COLLECT_LIMIT], dropped
 
 

@@ -50,7 +50,10 @@ OPS_LOG = "ops_log.json"              # I축 연산 로그 (D-8)
 GATE_REJECTS = "gate_rejects.json"    # 게이트 거부 로그 — 큐가 아니다 (D-7)
 SKELETON_LIST = "skeleton_closed_list.json"   # 골격 닫힌 목록 스냅샷 (D-11 확정)
 DEFECTS = "defects.log"               # 결함 로그 (n1 id 충돌 등)
-LINK_MISS = "link_miss.log"           # 질의 링킹 미스·수집 잘림 (CH5 5.1 규약 6·5.2 규약 3)
+LINK_MISS = "link_miss.log"           # 질의 링킹 미스 — **계기판 5의 재료** (문서 5 §5.5)
+# **두 계기판 로그는 별도 파일로 둔다**(문서 7 §7.1·§7.8) — 한 파일에 섞으면
+# 측정이 서로를 오염시킨다: 잘림 1건이 링킹 미스율의 분자로 잡힌다.
+CHUNK_TRUNCATED = "chunk_truncated.log"   # 청크 잘림 — **계기판 4의 재료**
 
 _LOG = log.get(__name__)
 

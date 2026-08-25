@@ -64,12 +64,28 @@ def group_of(node, nodes):
     return None
 
 
-def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref"):
+def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref", pick=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 
-    **목록 밖이면 비운다**(null 허용 — §4 "닫힌 목록에서 선택 또는 null").
-    검증은 인입 소관이고 파서는 좌표를 판정하지 않는다 — 태거가 임의로 고쳐 넣으면
-    그 순간 파서가 골격을 해석하게 된다.
+    **LLM 지점 ⑨다**(문서 7 §7.6-B-2). 목록에 있다는 것과 mock에서 모델을 부른다는
+    것은 다른 말이다:
+
+    | | 갈래 |
+    |---|---|
+    | `pick=None` (USE_MOCK=1) | **닫힌 목록 스냅샷의 정확 일치 대조 — 모델을 부르지 않는다**(§7.1 대체 표) |
+    | `pick` 주입 (USE_MOCK=0) | 모델이 **닫힌 목록 중에서 고르거나 null**을 낸다 |
+
+    대체가 선언되지 않은 LLM 지점은 USE_MOCK=1에서 실호출로 흘러 외부 의존 0
+    (문서 1 B12)이 깨지고 **미설치 환경에서 실행 자체가 죽는다** — 그래서 mock
+    갈래가 명세에 못박혀 있고, 이 함수의 기본값이 그것이다.
+
+    **목록 밖이면 값을 고치지 않고 그대로 둔다**(null 허용 — §4 "닫힌 목록에서 선택
+    또는 null"). 검증은 인입 소관이고 파서는 좌표를 판정하지 않는다 — 태거가 임의로
+    고쳐 넣으면 그 순간 파서가 골격을 해석하게 된다.
+
+    실호출 갈래도 **목록 밖 답은 버린다** — 모델이 지어낸 좌표가 태깅되면 인입의
+    orphan_anchor가 그것을 골격으로 착각한다. 파서는 `core/`를 import하지 않으므로
+    (P1) `pick`은 **주입**받는다.
     """
     nodes = nodes if nodes is not None else closed_list(layer)
     idx = surfaces(nodes)
@@ -78,6 +94,13 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref"):
         r = dict(p)
         ref = r.get(ref_field)
         node = idx.get(ref) if ref else None
+        if ref and node is None and pick is not None:
+            # 실호출 갈래 — 닫힌 목록을 선택지로 넘긴다. 목록 밖 답은 버린다.
+            chosen = pick(ref, sorted(idx))
+            if chosen and chosen in idx:
+                r[ref_field] = chosen
+                node = idx[chosen]
+                r.setdefault("meta", {})["coord_tag_source"] = "live"
         if ref and node is None:
             r[ref_field] = ref                      # 그대로 둔다 — orphan_anchor는 인입 몫
         if node is not None and not r.get("process_group"):

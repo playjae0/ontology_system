@@ -19,12 +19,16 @@
 | 변수 | 무엇 | 없으면 |
 |---|---|---|
 | `USE_MOCK` | `1`(기본)이면 전 지점이 mock 갈래 | mock으로 돈다 |
-| `ONTO_LLM_URL` | 사내 게이트웨이 주소 | USE_MOCK=0에서 **명시적 실패** |
-| `ONTO_LLM_KEY` | 인증 토큰 | 게이트웨이가 요구하면 실패 |
-| `ONTO_LLM_MODEL` | 모델명 | USE_MOCK=0에서 **명시적 실패** |
-| `ONTO_EMBED_MODEL` | 임베딩 모델명 | 임베딩 지점에서 실패 |
-| `ONTO_LLM_TIMEOUT` | 초 (기본 60) | 60 |
-| `ONTO_LLM_RETRY` | 재시도 횟수 (기본 2) | 2 |
+| `LLM_GATEWAY_URL` | 사내 게이트웨이 주소 | USE_MOCK=0에서 **명시적 실패** |
+| `LLM_API_KEY` | 인증 | 게이트웨이가 요구하면 실패 |
+| `CHAT_MODEL` | 모델명 | USE_MOCK=0에서 **명시적 실패** |
+| `EMBED_MODEL` | 임베딩 모델명 | 임베딩 지점에서 실패 |
+| `LLM_TIMEOUT` | 초 (기본 60) | 60 |
+| `LLM_RETRY` | 재시도 횟수 (기본 2) | 2 |
+
+**기본 명칭은 명세가 정한다**(§7.6-B-1) — 사내 게이트웨이가 다른 이름을 쓰면 그때
+대체하되 **이름을 비워 두지 않는다**: 이름이 없으면 구현자가 임의로 만들고, 같은
+배포 환경에서 한쪽만 `USE_MOCK=0` 실호출에 연결된다.
 
 **실명칭은 [사내 확인]이다** — 사내 게이트웨이 실물이 아직 없다. 그래서 이 파일이
 세우는 것은 **이음매**이고, 프로토콜은 OpenAI 호환 `/chat/completions`를 기본으로
@@ -49,7 +53,11 @@ from . import log
 
 _LOG = log.get(__name__)
 
-# LLM 지점 8종 — §7.6-B-2. **이 목록이 점검의 분모다.**
+# LLM 지점 **9종** — §7.6-B-2. **이 목록이 점검의 분모다.**
+# ⑨좌표 태깅이 목록에 있는 이유: **대체가 선언되지 않은 LLM 지점은 USE_MOCK=1에서
+# 실호출로 흘러** 외부 의존 0(문서 1 B12)이 깨지고 미설치 환경에서 실행이 죽는다.
+# USE_MOCK 대체는 §7.1 표 — **닫힌 목록 스냅샷의 정확 일치 대조이며 모델을 부르지
+# 않는다.** 목록에 있다는 것과 mock에서 모델을 부른다는 것은 다른 말이다.
 POINTS = {
     "extract": "①비정형 추출",
     "judge": "②개체 동일성 판정",
@@ -59,6 +67,7 @@ POINTS = {
     "link": "⑥질의 링킹 (사전 스캔 → LLM 폴백 → 임베딩 훅 3단)",
     "struct_map": "⑦구조 지도 패스",
     "answer": "⑧답변 생성",
+    "coord_tag": "⑨좌표 태깅 (닫힌 목록 선택 또는 null)",
 }
 
 
@@ -79,12 +88,12 @@ def mock(point, detail=""):
 # ---------------------------------------------------------------- 설정
 def config():
     """게이트웨이 설정. **비어 있으면 그 사실을 그대로 돌려준다** — 여기서 채우지 않는다."""
-    return {"url": os.environ.get("ONTO_LLM_URL", "").rstrip("/"),
-            "key": os.environ.get("ONTO_LLM_KEY", ""),
-            "model": os.environ.get("ONTO_LLM_MODEL", ""),
-            "embed_model": os.environ.get("ONTO_EMBED_MODEL", ""),
-            "timeout": float(os.environ.get("ONTO_LLM_TIMEOUT", "60")),
-            "retry": int(os.environ.get("ONTO_LLM_RETRY", "2"))}
+    return {"url": os.environ.get("LLM_GATEWAY_URL", "").rstrip("/"),
+            "key": os.environ.get("LLM_API_KEY", ""),
+            "model": os.environ.get("CHAT_MODEL", ""),
+            "embed_model": os.environ.get("EMBED_MODEL", ""),
+            "timeout": float(os.environ.get("LLM_TIMEOUT", "60")),
+            "retry": int(os.environ.get("LLM_RETRY", "2"))}
 
 
 class NotConfigured(RuntimeError):
@@ -100,8 +109,8 @@ def require(point, *, need=("url", "model")):
     cfg = config()
     missing = [k for k in need if not cfg.get(k)]
     if missing:
-        env = {"url": "ONTO_LLM_URL", "model": "ONTO_LLM_MODEL",
-               "embed_model": "ONTO_EMBED_MODEL", "key": "ONTO_LLM_KEY"}
+        env = {"url": "LLM_GATEWAY_URL", "model": "CHAT_MODEL",
+               "embed_model": "EMBED_MODEL", "key": "LLM_API_KEY"}
         names = ", ".join(env.get(m, m) for m in missing)
         reason = (f"{POINTS.get(point, point)} — 실호출 경로가 비어 있다: {names} 미설정. "
                   f"USE_MOCK=0에서는 조용히 mock으로 떨어지지 않는다 (문서 7 §7.6-B-4)")
@@ -187,3 +196,38 @@ def image_summarizer():
         return None
     require("image_summary")        # 미설정이면 파싱 전에 명시적으로 실패한다
     return summarize_image
+
+
+COORD_SCHEMA = {
+    "type": "object",
+    "properties": {"canonical": {"type": ["string", "null"]}},
+    "required": ["canonical"], "additionalProperties": False,
+}
+
+
+def pick_coord(surface, choices):
+    """지점 ⑨ 좌표 태깅의 **실호출 갈래** — 닫힌 목록에서 고르거나 null.
+
+    **고르는 것이지 만드는 것이 아니다.** 목록 밖 답은 호출부(파서)가 버린다 —
+    모델이 지어낸 좌표가 태깅되면 인입의 orphan_anchor가 그것을 골격으로 착각한다.
+    """
+    out = chat([{"role": "system", "content":
+                 "문서가 말한 공정 이름이 아래 목록의 어느 항목인지 고른다. "
+                 "표기가 다를 뿐 같은 것이면 고르고, **목록에 없으면 null**이다. "
+                 "목록에 없는 이름을 지어내지 않는다."},
+                {"role": "user", "content": json.dumps(
+                    {"surface": surface, "choices": choices}, ensure_ascii=False)}],
+               json_schema=COORD_SCHEMA, point="coord_tag")
+    return out.get("canonical")
+
+
+def coord_picker():
+    """USE_MOCK이면 None(닫힌 목록 정확 일치 — **모델을 부르지 않는다**), 아니면 실호출.
+
+    `image_summarizer()`와 같은 형태다 — **None이 mock 갈래의 표현이고**, 파서의
+    `tag()`가 그 분기를 이미 갖고 있다.
+    """
+    if use_mock():
+        return None
+    require("coord_tag")
+    return pick_coord
