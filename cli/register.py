@@ -77,6 +77,93 @@ def _save_state(doc_type, st):
         json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+# ================================================================ ⓪ role 실험
+ROLE_HINTS = {
+    "anchor": ("공정·설비 좌표", ("공정", "라인", "설비", "호기", "process")),
+    "entity": ("이름을 갖고 구별되는 것", ("항목", "설비", "모드", "원인", "부품")),
+    "attribute": ("값", ("규격", "값", "치수", "온도", "압력", "속도", "주기",
+                         "기준", "심각도", "등급", "번호")),
+    "content": ("자유 서술", ("조치", "대응", "계획", "설명", "비고", "내용", "방법")),
+    "meta": ("관리 정보", ("작성", "승인", "판번", "개정", "일자", "문서번호")),
+}
+
+# **자재 열은 개체로 만들지 않는다** (갭 spec-A-103 · role-104).
+# 자재/BOM은 **3번째 층 후보**이고(미결 R5) 지금 층에는 대응 카테고리가 없다 —
+# Property로 배정하면 "관리·측정되는 항목"이 아닌 것이 그 카테고리에 섞이고,
+# entity로 배정하면 층이 서기 전에 노드가 생겨 나중에 이관 대상이 된다.
+# **관찰 항목이다**: 자재 열이 실제로 얼마나 자주 나오는지가 R5 판정의 재료다.
+MATERIAL_KEYS = ("자재", "소재", "부품", "원료", "BOM", "품번", "자재번호")
+
+
+def cmd_roles(args):
+    """**⓪ role 배정 실험** — 등록 세션 **진입 전에** 돈다 (갭 spec-A-201 · role-136).
+
+        python run.py register roles <문서.xlsx> [헤더행]
+
+    **실행만 하고 등록부는 건드리지 않는다.** 문서의 열 이름 전량에 role 5종 +
+    UNMAPPABLE 배정을 시도해 보고, **어디서 막히는지**를 먼저 본다. 이것 없이
+    `register generate`로 가면 생성 세션이 무엇을 물어볼지 모른 채 시작한다.
+
+    **추측을 답으로 내놓지 않는다** — 여기서 나오는 것은 **제안**이고, 확정은
+    검수 뷰의 6지선다에서 사람이 한다(문서 6 §6.5). 그래서 확신이 없는 열은
+    `UNMAPPABLE`로 남기고 **질문 형태로** 표시한다.
+    """
+    if not args:
+        raise SystemExit("문서를 달라: run.py register roles <문서.xlsx> [헤더행]")
+    path = args[0]
+    hrow = int(args[1]) if len(args) > 1 else 3
+    raw = reader.read(path)
+    from parser.preflight import header_labels
+    try:
+        labels = header_labels(raw, hrow)
+    except Exception as e:
+        print(f"[roles] 헤더를 못 읽었다 ({type(e).__name__}: {e}) — 헤더 행을 지정해라")
+        return 1
+    if not labels:
+        print(f"[roles] {hrow}행에 헤더가 없다 — 비정형이거나 행 번호가 다르다")
+        return 1
+
+    blocks = json.loads((ROOT / "schemas" / "blocks.json").read_text(encoding="utf-8"))
+    block_fields = {f for b, spec in blocks.items() if not b.startswith("_")
+                    for f in spec}
+
+    print(f"■ role 배정 실험 — {path} (헤더 {hrow}행 · {len(labels)}열)")
+    print("  **실행만 한다 — 등록부를 건드리지 않는다.** 확정은 검수 뷰의 6지선다다.\n")
+    rows, unmapped, materials = [], [], []
+    for lab in labels:
+        s = str(lab)
+        best, why = None, None
+        for role, (desc, keys) in ROLE_HINTS.items():
+            if any(k in s for k in keys):
+                best, why = role, desc
+                break
+        if any(k in s for k in MATERIAL_KEYS):
+            best, why = ("content", "**자재 열** — 개체로 만들지 않는다 "
+                                    "(3번째 층 후보 · 미결 R5). meta도 가능")
+            materials.append(s)
+        if s in block_fields or any(k in s for k in ("공정구분", "공정명", "공정번호")):
+            best, why = "(공용 블록)", "process_coord·common_core가 준다 — 스키마에 다시 안 쓴다"
+        if best is None:
+            unmapped.append(s)
+            best, why = "UNMAPPABLE", "**사람에게 질문** — 5종 어디에도 안 맞는다"
+        rows.append((s, best, why))
+    w = max(len(r[0]) for r in rows) + 2
+    for s, role, why in rows:
+        print(f"  {s:<{w}} {role:<12} {why}")
+
+    print(f"\n  배정 제안 {len(rows) - len(unmapped)}/{len(rows)} · "
+          f"**UNMAPPABLE {len(unmapped)}**")
+    if materials:
+        print(f"  **자재 열 관찰 {len(materials)}건**: " + " · ".join(materials))
+        print("  → 개체로 만들지 않는다. 빈도가 쌓이면 3번째 층(R5) 판정의 재료다.")
+    if unmapped:
+        print("  질문할 열: " + " · ".join(unmapped))
+        print("  → 이 열들이 생성 세션의 첫 안건이다. 답을 준비하고 register generate로.")
+    else:
+        print("  → 막히는 열이 없다. register generate로 진행해도 된다.")
+    return 0
+
+
 # ================================================================ ① 생성
 def draft(doc_type, revision=0):
     """어댑터·매칭 스키마 **초안** — USE_MOCK은 fixture 반환이다 (D-10 · D-26).
@@ -503,6 +590,9 @@ def main(argv):
             return v
         return default
 
+    if cmd == "roles":
+        # **⓪ 등록 세션 진입 전** — 실행만 하고 등록부는 건드리지 않는다.
+        return cmd_roles(rest)
     if cmd == "generate":
         hint = opt("--hint", "")
         return cmd_generate(rest[0], rest[1], rest[2:], hint)

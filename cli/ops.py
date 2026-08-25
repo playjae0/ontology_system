@@ -36,9 +36,24 @@ def show_preview(pv):
             print(f"      · {c}")
 
 
+def _small(pv):
+    """**파급 1건 이하면 미리보기·`--yes`를 생략한다** (문서 4 §4.7).
+
+    미리보기의 목적은 **위험 제거가 아니라 가시화**다 — 사람이 실행 전에 규모를
+    보고 판단한다. 차단형 승인 게이트가 아니다(승인 게이트는 폐기됐다). 1건짜리
+    작업에까지 확인을 강제하면 그것이 게이트가 되고, 폐기된 것이 이름만 바꿔
+    돌아온다.
+
+    판정은 `preview()`의 **노드·엣지 계수**로 한다 — 둘 다 1 이하일 때만 작다.
+    """
+    return (pv.get("nodes", 99) <= 1 and pv.get("edges", 99) <= 1
+            and not pv.get("canonical_chain"))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
-    p.add_argument("op", choices=["rename", "merge", "split", "obsolete", "delete-edge"])
+    p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
+                                  "transfer", "delete-edge"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -46,6 +61,7 @@ def main(argv=None):
     p.add_argument("--canonical", help="I2 — 사람이 확정한 canonical")
     p.add_argument("--survivor", help="I2 — 생존 id override (3단 규칙의 1순위)")
     p.add_argument("--replaced-by", dest="replaced_by", help="I4 — 대체 노드 id")
+    p.add_argument("--parent", help="이관 — 새 부모 노드 id (소속 변경)")
     p.add_argument("--yes", action="store_true", help="미리보기 확인 후 실행")
     a = p.parse_args(argv)
 
@@ -53,6 +69,9 @@ def main(argv=None):
         if a.op == "rename":
             nid, new = a.args
             pv = ops.rename(a.layer, nid, new, a.actor, a.reason, dry_run=True)
+            if _small(pv):
+                ops.rename(a.layer, nid, new, a.actor, a.reason)
+                return 0
             show_preview(pv)
             if a.yes:
                 ops.rename(a.layer, nid, new, a.actor, a.reason)
@@ -70,10 +89,28 @@ def main(argv=None):
             show_preview(pv)
             if a.yes:
                 ops.split(a.layer, nid, plan, a.actor, a.reason)
+        elif a.op == "transfer":
+            # **이관 — 스코프 변경 연쇄**(문서 4 §4.7 미리보기 대상 · §4.9).
+            # I축 4연산과 별개 작업이고 **건별 사람 판단**이다.
+            nid = a.args[0]
+            new_parent = a.parent or (a.args[1] if len(a.args) > 1 else None)
+            if not new_parent:
+                print("■ 거부 — 새 부모를 달라: --parent <node_id>")
+                return 2
+            pv = ops.transfer(a.layer, nid, new_parent, a.actor, a.reason, dry_run=True)
+            if _small(pv):
+                ops.transfer(a.layer, nid, new_parent, a.actor, a.reason)
+                return 0
+            show_preview(pv)
+            if a.yes:
+                ops.transfer(a.layer, nid, new_parent, a.actor, a.reason)
         elif a.op == "obsolete":
             (nid,) = a.args
             pv = ops.obsolete(a.layer, nid, a.actor, a.replaced_by, a.reason,
                               dry_run=True)
+            if _small(pv):
+                ops.obsolete(a.layer, nid, a.actor, a.replaced_by, a.reason)
+                return 0
             show_preview(pv)
             if a.yes:
                 ops.obsolete(a.layer, nid, a.actor, a.replaced_by, a.reason)

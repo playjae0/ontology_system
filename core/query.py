@@ -93,6 +93,51 @@ def _link_llm(question, graphs):
     return hits
 
 
+def nearby(question, dictionary, graphs, limit=5):
+    """근거 없음일 때 **인접 등록 개체**를 제시한다 (갭 spec-A-153 · impl-B-19).
+
+    **답이 아니라 재질문의 재료다.** 근거가 없다고만 말하면 사람이 표기를 바꿔
+    가며 되묻고, 그 재시도가 전부 링킹 미스로 적재되어 **계기판 5(링킹 미스율)의
+    분자를 오염시킨다** — 미스가 아니라 표기 탐색인데 미스로 세어진다.
+
+    **판정 파이프라인을 쓰지 않는다** — 여기서 고르는 것은 "같은 개념인가"가
+    아니라 "사람이 다시 물어볼 만한 이름인가"이고, 판정을 태우면 그 결과가
+    링킹인 것처럼 보인다. 질문의 어절과 등재 표기의 **글자 겹침**으로만 고른다.
+
+    **읽기 전용이다**(P6) — 아무것도 쓰지 않고 로그도 남기지 않는다.
+    """
+    q = norm(question)
+    toks = [w for w in q.split() if len(w) >= 2]
+    if not toks:
+        return []
+    scored = []
+    for surface in dictionary.surfaces():
+        if not surface or len(surface) < 2:
+            continue
+        s = max((len(set(surface) & set(w)) / max(len(set(surface)), 1)
+                 for w in toks), default=0.0)
+        if s < 0.5:
+            continue
+        for nid in dictionary.lookup(surface):
+            for layer, g in graphs.items():
+                n = g.get(nid)
+                if n is None or not is_live(n):
+                    continue
+                scored.append((s, surface, nid, layer, n["category"]))
+                break
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    out, seen = [], set()
+    for s, surface, nid, layer, cat in scored:
+        if nid in seen:
+            continue
+        seen.add(nid)
+        out.append({"surface": surface, "node_id": nid, "layer": layer,
+                    "category": cat})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def link(question, dictionary, graphs):
     """표기 → 노드. **사전 스캔 우선**(무LLM)이며 **긴 표면형이 이긴다**.
 

@@ -75,6 +75,15 @@ def answer(question):
         res["note"] = ("사내 문서에서 근거를 찾지 못했다. " + GENERAL if not hits
                        else "그래프 밖 지식이다. " + GENERAL)
         res["path"] = Q.PATH_GENERAL
+        # **인접 등록 개체를 함께 제시해 재질문을 유도한다**(갭 spec-A-153·impl-B-19).
+        # 근거가 없다고만 말하면 사람이 표기를 바꿔 가며 되묻고, 그 재시도가 전부
+        # 링킹 미스로 적재되어 **계기판 5의 분자를 오염시킨다** — 미스가 아니라
+        # 표기 탐색인데 미스로 세어진다. 제시는 사전·그래프에서 오고 **답이 아니다**.
+        near = Q.nearby(question, dictionary, graphs)
+        if near:
+            res["suggest"] = near
+            res["note"] += ("\n   비슷한 등록 개체: "
+                            + " · ".join(f"{n['surface']} [{n['layer']}]" for n in near))
         return res
 
     direct_by_layer = {}

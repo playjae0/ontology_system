@@ -344,6 +344,165 @@ def cmd_gauges():
     return m
 
 
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def cmd_accuracy():
+    """**판정 정확도 측정** — 계기판 8종과 **별도**다 (갭 spec-s7-11-14).
+
+    계기판 8종은 파이프라인 건강 지표이고, 이것은 **판정이 얼마나 맞았나**를 잰다.
+    표를 건드리지 않는 이유: 8종은 그 자체로 닫힌 목록이고(문서 5 §5.5) 여기에
+    항목을 끼워 넣으면 그 목록의 지위가 흔들린다.
+
+    재는 것 둘:
+
+    1. **골든셋 대조** — 있으면 문항별 `expected_path`와 실제 경로를 맞춰 본다.
+       **mock으로는 품질을 재지 않는다**(§7.5-1: 가짜 데이터의 점수는 가짜
+       확신이다) — 그래서 mock 세트로 돌 때는 **"메커니즘 점검"이라고 밝힌다.**
+    2. **수정 큐로 가는 건수의 추이** — 판정이 확신하지 못한 것이 큐로 간다.
+       `uncertain_match`·`orphan_anchor`·`orphan_attach`·`spec_conflict`가 그
+       재료이고, **절대값이 아니라 추이**가 신호다.
+
+    추이를 보려면 기준선이 있어야 한다 — `data/accuracy_log.json`에 실행마다
+    한 줄 쌓는다(로그이지 큐가 아니다).
+    """
+    from collections import Counter
+    from cli.query import answer
+
+    qpath = fixtures.QUERIES
+    smoke = (json.loads(qpath.read_text(encoding="utf-8")).get("queries") or []
+             if qpath.exists() else [])
+    golden = ROOT / "golden" / "queries.json"
+    is_golden = golden.exists()
+    if is_golden:
+        smoke = json.loads(golden.read_text(encoding="utf-8")).get("queries") or []
+
+    print("■ 판정 정확도 — 계기판 8종과 **별도 측정**이다\n")
+    if not smoke:
+        print("  대조 세트가 없다 — 골든셋(golden/queries.json)도 스모크 세트도 없다.")
+        print("  **품질은 실데이터·골든셋의 몫이다**(§7.5-1). 세트가 서면 여기서 잰다.")
+    else:
+        src = "골든셋" if is_golden else "mock 스모크"
+        hit = 0
+        rows = []
+        for q in smoke:
+            want = q.get("expected_path")
+            got = answer(q["q"])["path"]
+            ok = (want == got)
+            hit += ok
+            rows.append((ok, q.get("id", q["q"][:12]), want, got))
+        rate = round(hit / len(smoke), 3)
+        print(f"  경로 일치 {hit}/{len(smoke)} = {rate}   [{src}]")
+        if not is_golden:
+            print("  ※ **mock 세트다 — 품질 점수가 아니라 메커니즘 점검이다**"
+                  "(가짜 데이터의 점수는 가짜 확신이다 · §7.5-1)")
+        for ok, qid, want, got in rows:
+            if not ok:
+                print(f"    ✗ {qid:<12} 기대 {want} · 실제 {got}")
+
+    q = store.read(store.QUEUE, [])
+    JUDGE = ("uncertain_match", "orphan_anchor", "orphan_attach", "spec_conflict")
+    c = Counter(x["kind"] for x in q if x["kind"] in JUDGE)
+    total = sum(c.values())
+    print(f"\n  판정이 확신하지 못한 건수 {total} — "
+          + (" · ".join(f"{k} {c[k]}" for k in JUDGE if c[k]) or "0"))
+    print("  **절대값이 아니라 추이가 신호다** — 아래 이력과 비교한다.")
+
+    hist = store.read("accuracy_log.json", [])
+    hist.append({"at": _now(), "queue_uncertain": total,
+                 "by_kind": {k: c[k] for k in JUDGE},
+                 "path_match": (rate if smoke else None),
+                 "set": ("golden" if is_golden else "mock" if smoke else None)})
+    store.write("accuracy_log.json", hist[-50:])
+    if len(hist) > 1:
+        prev = hist[-2]
+        d = total - prev["queue_uncertain"]
+        print(f"  직전 대비 {d:+d}건 (직전 {prev['queue_uncertain']} @ {prev['at'][:19]})")
+    else:
+        print("  (첫 측정 — 이 값이 기준선이 된다)")
+    return 0
+
+
+def cmd_dashboard():
+    """**Q7류 집계 대시보드** — 플랫폼 노출 목록의 한 화면 (갭 spec-s7-11-85).
+
+    Q7은 *"이 공정에 걸린 관리항목이 몇 개인가"* 같은 **집계** 질문이다. 질의 4단은
+    개체 하나의 근거를 찾는 경로라 집계를 답하지 않는다 — 그래서 화면이 따로 선다.
+
+    **읽기 전용이다**(P6) · **GraphStore 경유로 읽는다**(B6).
+    """
+    from collections import Counter
+    graphs = {lay: open_graph(lay) for lay in discover()}
+    print("■ Q7 집계 — 화면이 답하는 것 (질의 4단은 개체 하나의 근거를 찾는다)\n")
+
+    for lay, g in graphs.items():
+        live = [n for n in g.nodes.values() if is_live(n)]
+        cats = Counter(n["category"] for n in live)
+        print(f"  [{lay}] 노드 {len(live)} — "
+              + " · ".join(f"{k} {v}" for k, v in cats.most_common()))
+        rels = Counter(e["rel"] for e in g.edges
+                       if e.get("status") != "deleted_by_user")
+        print(f"          엣지 {sum(rels.values())} — "
+              + " · ".join(f"{k} {v}" for k, v in rels.most_common()))
+
+    # 공정별 관리항목 수 — Q7의 대표 형태
+    print("\n  공정별 관리항목 수 (상위 8)")
+    g = graphs.get("process")
+    if g:
+        pair = (load_config("process").get("category_pair_map") or {})
+        rel = pair.get("Process,Property") or "has_property"
+        cnt = Counter()
+        names = {i: n["canonical"] for i, n in g.nodes.items()}
+        for e in g.edges:
+            if e["rel"] != rel or e.get("status") == "deleted_by_user":
+                continue
+            cnt[names.get(e["src"], e["src"])] += 1
+        # 설비를 통한 간접 보유도 센다 — 사람이 묻는 것은 "그 공정에 걸린 것"이다
+        child = ((load_config("process").get("skeleton") or {})
+                 .get("relations") or {}).get("child")
+        under = {}
+        for e in g.edges:
+            if e["rel"] == child and e.get("status") != "deleted_by_user":
+                under.setdefault(e["dst"], set()).add(e["src"])
+        for proc, kids in under.items():
+            for k in kids:
+                cnt[names.get(proc, proc)] += sum(
+                    1 for e in g.edges
+                    if e["src"] == k and e["rel"] == rel
+                    and e.get("status") != "deleted_by_user")
+        for name, c in cnt.most_common(8):
+            print(f"    {name:<28} {c}")
+
+    # 큐·툼스톤 — 수정 도구 세트가 다루는 대상의 규모
+    q = store.read(store.QUEUE, [])
+    print(f"\n  수정 큐 {len(q)}건 — " + " · ".join(
+        f"{k} {v}" for k, v in Counter(x["kind"] for x in q).most_common(6)))
+    for lay, g in graphs.items():
+        tomb = Counter()
+        for n in g.nodes.values():
+            if n.get("merged_into"):
+                tomb["merged_into"] += 1
+            elif n.get("status") == "obsolete":
+                tomb["obsolete"] += 1
+        dele = sum(1 for e in g.edges if e.get("status") == "deleted_by_user")
+        print(f"  [{lay}] 툼스톤 " + (" · ".join(f"{k} {v}" for k, v in tomb.items())
+                                     or "0") + f" · 사람 삭제 엣지 {dele}")
+
+    print("\n  ── 수정 도구 세트 (플랫폼 창구 등재 — 문서 7 §7.8) ──")
+    print("    I축 4연산   python -m cli.ops {rename|merge|split|obsolete} <층> … --actor <행위자>")
+    print("    이관        python -m cli.ops transfer <층> <노드> --parent <새 부모> --actor <행위자>")
+    print("    엣지 삭제   python -m cli.ops delete-edge <층> <src> <rel> <dst> --actor <행위자>")
+    print("    큐 판정     core.store.resolve_item(...)  — resolution이 회수에서 보존된다")
+    print("\n  ── 스키마 등록 워크플로우 (플랫폼 창구 등재) ──")
+    print("    ①생성  python run.py register generate <doc_type> <층> <표본...>")
+    print("    ②검수  python run.py register review <doc_type>   → review/<dt>/view.html")
+    print("    ③확정  python run.py register confirm <doc_type> --by <승인자>")
+    print("           확정 산출은 adapters/<dt>.py · schemas/<dt>.json으로 이행된다")
+    return 0
+
+
 def main(argv):
     if not argv:
         raise SystemExit(__doc__)
@@ -356,7 +515,11 @@ def main(argv):
      "registry": lambda: cmd_registry(),
      "doctypes": lambda: cmd_doctypes(),
      "ops": lambda: cmd_ops(),
-     "gauges": lambda: cmd_gauges()}[cmd]()
+     "gauges": lambda: cmd_gauges(),
+     # **Q7류 집계 대시보드**(갭 spec-s7-11-85) — 질의 4단이 답하지 않는 자리.
+     "dashboard": lambda: cmd_dashboard(),
+     # **판정 정확도** — 계기판 8종과 별도다(갭 spec-s7-11-14).
+     "accuracy": lambda: cmd_accuracy()}[cmd]()
 
 
 if __name__ == "__main__":
