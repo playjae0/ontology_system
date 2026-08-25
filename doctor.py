@@ -299,7 +299,7 @@ def transition():
     seed = json.loads((ROOT / "layers/process/skeleton.json").read_text(encoding="utf-8"))
     snap = (store.read(store.SKELETON_LIST, {}).get("process") or {})
     line(WARN, f"[1] 골격 seed가 아직 창작 mock이다 — 노드 {snap.get('count', '?')} · "
-               f"seed 형식 v{seed.get('skeleton_version')}",
+               f"seed 문법 v{seed.get('seed_format')}",
          "**사내 첫 작업이 이것이다.** layers/process/skeleton.json을 사내 공정 체계로\n"
          "         바꾸고 `python run.py bootstrap`. 코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
          "         형식은 docs/skeleton_seed.md · 마커 4종(:: · @split · @unordered · @noflow)")

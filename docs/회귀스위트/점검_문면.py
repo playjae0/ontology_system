@@ -4,11 +4,10 @@
 """
 import re, sys, glob, os, json, collections
 
-BASE = os.environ.get("REFINED_DIR", "docs/spec")
-# 레포 반입 시 파일명이 접두 '정제본' 없는 형태로 바뀌었다(docs/spec/) — 목록을 실물에 맞춘다.
-DOCS = ["README.md", "0_기반과원칙.md", "1_금지와불변.md",
-        "2_계약.md", "3_구조.md", "4_쓰기절차.md", "5_읽기절차.md",
-        "6_파서와구축모드.md", "7_구현규격과검증.md", "부록_용어.md"]
+BASE = os.environ.get("REFINED_DIR", "/home/claude/plan21")
+DOCS = ["README.md","0_기반과원칙.md","1_금지와불변.md",
+        "2_계약.md","3_구조.md","4_쓰기절차.md","5_읽기절차.md",
+        "6_파서와구축모드.md","7_구현규격과검증.md","부록_용어.md"]
 BODY = [d for d in DOCS[1:9] if "금지와불변" not in d]  # 문서 0·2~7 — 문서 1은 검사기 자신이라 역참조 대상 아님
 V = []
 def bad(rule, doc, detail): V.append({"rule":rule,"doc":doc,"detail":detail})

@@ -35,7 +35,10 @@ STATUS_OBSOLETE = "obsolete"
 # 병합 생존자의 status 등급 — **높은 쪽이 이긴다** (R3-⑴ 2순위).
 # seed가 관여하면 생존자는 무조건 seed다. auto가 seed를 흡수하면 골격이 데이터
 # 조작으로 훼손되고, 그 복구 경로는 I1 개명이나 seed 개정이지 병합이 아니다.
-STATUS_RANK = {"seed": 3, "registered": 2, "auto": 1}
+# I2 병합 생존자의 등급 (문서 4 §4.7-4) — **`seed > confirmed > auto`**.
+# `registered`는 층 등록부의 낱말이지 노드 status가 아니다 — 이름이 어긋나면
+# confirmed 노드가 auto와 같은 0점을 받아 사람이 보증한 쪽이 흡수된다.
+STATUS_RANK = {"seed": 3, "confirmed": 2, "auto": 1}
 
 
 class OpRefused(Exception):

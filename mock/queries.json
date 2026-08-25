@@ -9,8 +9,8 @@
     {"id": 6,  "type": "Q4", "q": "노칭 정밀도 규격이 뭐야?",              "expected_path": "graph_fact"},
     {"id": 7,  "type": "Q4", "q": "실링 온도 규격은?",                     "expected_path": "graph_fact"},
     {"id": 8,  "type": "Q5", "q": "금형 클리어런스를 관리하는 설비는?",    "expected_path": "graph_fact"},
-    {"id": 9,  "type": "Q5-cross", "q": "노칭에서 발생할 수 있는 불량은?", "expected_path": "graph_fact"},
-    {"id": 10, "type": "cross", "q": "단락으로 이어질 수 있는 불량은 뭐가 있어?", "expected_path": "graph_fact"},
+    {"id": 9,  "type": "Q5", "q": "노칭에서 발생할 수 있는 불량은?", "expected_path": "graph_fact"},
+    {"id": 10, "type": "Q5", "q": "단락으로 이어질 수 있는 불량은 뭐가 있어?", "expected_path": "graph_fact"},
     {"id": 11, "type": "Q8", "q": "노칭이 영어로 뭐야?",                   "expected_path": "general_knowledge"},
     {"id": 12, "type": "Q8", "q": "리튬이온 배터리 동작 원리 설명해줘",    "expected_path": "general_knowledge"}
   ],

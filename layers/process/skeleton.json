@@ -1,5 +1,5 @@
 {
-  "skeleton_version": 3,
+  "seed_format": 3,
   "AXIS_LABELS": { "cathode": "양극", "anode": "음극" },
   "TREE": [
     { "조립": [
