@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-OUT = ROOT / "mock" / "parsed"
+OUT = ROOT / "tests" / "fixtures" / "parsed"
 
 # tests/verify_roundtrip.py의 참조 구현(reader+normalizer)을 그대로 쓴다 —
 # 파서가 실제로 내놓을 값과 parsed mock이 같은 함수에서 나와야 정합이 성립한다.
@@ -47,7 +47,7 @@ def envelope(doc_id, doc_type, source_path, revision, kind, payload_key, payload
 
 def build(doc_id, xlsx, entity_cols, required, field_map, prefix_n, tag,
           model_col="적용모델", extra_cols=()):
-    h, rows, _ = read_table(ROOT / "mock" / "raw" / xlsx)
+    h, rows, _ = read_table(ROOT / "tests" / "fixtures" / "raw" / xlsx)
     recs, fails, _ = normalize(h, rows, entity_cols, required)
     assert not fails, f"{doc_id}: 자기완결 실패 {fails}"
     out = []
@@ -82,7 +82,7 @@ def main():
                ["공정명", "설비", "관리항목"],
                {k: k for k in ["설비", "관리항목", "규격", "측정방법", "대응계획"]},
                12, "C")
-    write("CP01.json", envelope("CP01", "cp", "mock/raw/CP01.xlsx", "R3",
+    write("CP01.json", envelope("CP01", "cp", "tests/fixtures/raw/CP01.xlsx", "R3",
                                 "table", "records", cp))
 
     # ---- CP01B : CP01과 records 동일 · doc_id만 다름 (S5 doc_hash 차단) ----
@@ -100,7 +100,7 @@ def main():
                 "관리항목(원인)": "control_item_for_cause",
                 "예방관리": "prevention_control", "검출관리": "detection_control"},
                13, "R", model_col=None, extra_cols=("비고",))
-    write("PFMEA01.json", envelope("PFMEA01", "pfmea", "mock/raw/PFMEA01.xlsx",
+    write("PFMEA01.json", envelope("PFMEA01", "pfmea", "tests/fixtures/raw/PFMEA01.xlsx",
                                    "R3", "table", "records", fm))
     return cp, fm
 

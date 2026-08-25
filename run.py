@@ -13,7 +13,7 @@
                                    ㉡ 해제다(다른 문서로 인정 — 문서 2 §2.7-①)
   python run.py ingest <파일...>   상동 (구 이름 — 같은 기능을 두 이름으로 두지 않으려
                                    남기되, 계약 이름은 build다)
-  python run.py all                bootstrap + mock/parsed 전량 인입
+  python run.py all                bootstrap + 픽스처 계약 JSON 전량 인입
   python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
   python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
   python run.py gauges             계기판 8종 (cli/platform.py로 위임)
@@ -74,7 +74,16 @@ def cmd_ingest(paths, finalize=True, allow_duplicate=False):
 
 def cmd_all():
     cmd_bootstrap()
-    mock = sorted((ROOT / "mock" / "parsed").glob("*.json"))
+    from core import fixtures
+    # **없으면 조용히 아무것도 안 하지 않는다** — 구판은 빈 glob로 0건 인입하고
+    # 성공처럼 끝났다(§2-4 실측). 픽스처는 사내에서 없는 것이 정상이므로
+    # 실패가 아니라 **말하고** 끝낸다.
+    if not fixtures.PARSED.is_dir():
+        print(f"[all] 인입할 계약 JSON이 없다 — {fixtures.PARSED}가 없다.")
+        print("      사내에서는 정상이다: `run.py parse run …`으로 실문서를 파싱한 뒤")
+        print("      `run.py build parsed/<doc_id>.json`으로 넣는다.")
+        return
+    mock = sorted(fixtures.PARSED.glob("*.json"))
     order = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
     idx = {n: i for i, n in enumerate(order)}
     cmd_ingest(sorted([p for p in mock if p.stem != "CP01B"],

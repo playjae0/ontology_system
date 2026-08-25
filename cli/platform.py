@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import store
+from core import fixtures, store
 from core.bootstrap import load_config, open_graph
 from core.extract import EXTRACT_DIR
 from core.ops import is_live
@@ -202,6 +202,12 @@ def cmd_ops():
 
 
 # ---------------------------------------------------------------- 계기판 8종
+def _rate(num, den):
+    """비율 — **분모가 0이면 `None`이다.** 0.0은 "측정했더니 0"이라는 뜻이라
+    측정 자체가 없었던 것과 구분되지 않는다."""
+    return round(num / den, 3) if den else None
+
+
 def gauges():
     """계기판 8종 (CH5 5.5) — **별도 호출로 계산한다**: build·query 경로에 계산을
     심지 않는다(8번 지표가 자기 자신을 오염시키면 안 된다).
@@ -213,7 +219,12 @@ def gauges():
     from cli import query as R
     from core import query as Q
 
-    queries = json.loads((ROOT / "mock" / "queries.json").read_text(encoding="utf-8"))
+    # **없으면 0으로 세고 계속 돈다** — 무가드 read였고, 픽스처를 들어내면
+    # `gauges`가 통째로 죽었다(§2-4 실측). 스모크 세트는 계기판의 **분모**이지
+    # 계기판의 전제가 아니다.
+    qpath = fixtures.QUERIES
+    queries = (json.loads(qpath.read_text(encoding="utf-8"))
+               if qpath.exists() else {"queries": []})
     smoke = queries["queries"]
 
     _orig = store.append_line
@@ -292,9 +303,12 @@ def gauges():
         "2_plateau": {"series": plateau,
                       "last_rate": plateau[-1]["rate"] if plateau else None},
         "3_hold_rate": {"value": hold_rate, "queue": len(q), "pieces": pieces},
-        "4_truncation_rate": {"value": round(len(truncated) / len(smoke), 3),
+        # **분모가 0이면 비율이 아니라 `null`이다** — 스모크 세트가 없는 상태에서
+        # 0.0을 찍으면 "잘림 0%"라는 **없는 측정**이 계기판에 실린다. 세트는
+        # 계기판의 분모이지 계기판의 전제가 아니다(픽스처 격리 — §2-4).
+        "4_truncation_rate": {"value": _rate(len(truncated), len(smoke)),
                               "truncated": len(truncated), "of": len(smoke)},
-        "5_miss_rate": {"value": round(len(missed) / len(smoke), 3),
+        "5_miss_rate": {"value": _rate(len(missed), len(smoke)),
                         "missed": [q["q"] for q in missed], "of": len(smoke)},
         "6_hub_degree": hubs,
         "7_graph_size": {lay: {"mb": m["gauge7_graph_mb"], "over_alarm": m["gauge7_over_alarm"]}

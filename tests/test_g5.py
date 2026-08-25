@@ -36,7 +36,7 @@ def show(label, ok, detail=""):
 
 
 def load(name):
-    return json.loads((ROOT / "mock" / "parsed" / name).read_text(encoding="utf-8"))
+    return json.loads((ROOT / "tests" / "fixtures" / "parsed" / name).read_text(encoding="utf-8"))
 
 
 def full_run():

@@ -28,7 +28,7 @@ from run_adapter import load_blocks                           # noqa: E402
 
 allok = True
 KIT = ROOT / "kit"
-VIEWS = ROOT / "mock" / "review_views"
+VIEWS = ROOT / "tests" / "fixtures" / "review_views"
 
 
 def show(label, ok, detail=""):
@@ -64,7 +64,7 @@ show("판 계보 보존 — v0.1·v0.2·v0.3이 남아 있다 (v0.4는 신설이
 # ---- ② 스켈레톤이 자기 안내대로 거동하는가 ----
 r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                     str(KIT / "어댑터_스켈레톤.py"), str(ROOT / "schemas/cp.json"),
-                    str(ROOT / "mock/raw/CP01.xlsx")],
+                    str(ROOT / "tests/fixtures/raw/CP01.xlsx")],
                    capture_output=True, text=True, cwd=str(ROOT))
 fail_labels = {re.sub(r"\s+—.*$", "", ln.strip()[7:]).strip()
                for ln in r.stdout.splitlines() if ln.strip().startswith("[FAIL]")}
@@ -93,9 +93,9 @@ show("③ 3층 구조와 닫힌 2값·정본 id 금지가 주입 블록에 실�
                                "정본 id를 만들지 않는다", "임의 딕셔너리")))
 
 # ---- ④ 참조 어댑터는 원본 무손질 복사본 ----
-REFS = {"ipqc.py": ROOT / "mock/fixtures/adapters/ipqc.py",
-        "toc_report.py": ROOT / "mock/fixtures/adapters/toc_report.py",
-        "cp.py": ROOT / "mock/adapters/cp.py"}
+REFS = {"ipqc.py": ROOT / "tests/fixtures/fixtures/adapters/ipqc.py",
+        "toc_report.py": ROOT / "tests/fixtures/fixtures/adapters/toc_report.py",
+        "cp.py": ROOT / "tests/fixtures/adapters/cp.py"}
 show("④ few-shot 3종 실물 (어댑터 + 매칭 스키마 쌍)",
      all((KIT / "참조어댑터" / f).exists() for f in REFS)
      and all((KIT / "참조어댑터" / f).exists()
@@ -115,12 +115,12 @@ show("④ table 1·prose 1 포함 조건 충족", set(kinds.values()) == {"table
 # ============================================================ ⑥ 하네스 — 판정 불변
 print("\n■ ⑥ 하네스 use_blocks 보강 — v0.3 공식 재실행 (봉인 로그 대비)")
 SEALED = {
-    "ipqc": (ROOT / "mock/fixtures/log/harness_ipqc_공식.txt",
-             ["mock/fixtures/adapters/ipqc.py", "mock/fixtures/schemas/ipqc.json",
-              "mock/raw/IPQC01.xlsx", "mock/raw/IPQC02.xlsx"]),
-    "toc": (ROOT / "mock/fixtures/log/harness_toc_공식.txt",
-            ["mock/fixtures/adapters/toc_report.py", "mock/fixtures/schemas/toc_report.json",
-             "mock/raw/TOC01.xlsx", "mock/raw/TOC02.xlsx"]),
+    "ipqc": (ROOT / "tests/fixtures/fixtures/log/harness_ipqc_공식.txt",
+             ["tests/fixtures/fixtures/adapters/ipqc.py", "tests/fixtures/fixtures/schemas/ipqc.json",
+              "tests/fixtures/raw/IPQC01.xlsx", "tests/fixtures/raw/IPQC02.xlsx"]),
+    "toc": (ROOT / "tests/fixtures/fixtures/log/harness_toc_공식.txt",
+            ["tests/fixtures/fixtures/adapters/toc_report.py", "tests/fixtures/fixtures/schemas/toc_report.json",
+             "tests/fixtures/raw/TOC01.xlsx", "tests/fixtures/raw/TOC02.xlsx"]),
 }
 for name, (sealed, args) in SEALED.items():
     out = subprocess.run([sys.executable, str(KIT / "run_adapter.py")] + args,
@@ -137,7 +137,7 @@ for name, (sealed, args) in SEALED.items():
         show("§4.4 결함 해소 — 좌표를 블록에 위임한 스키마도 anchor가 드라이런된다",
              anchor and int(anchor.group(1)) > 0, f"anchor={anchor.group(1)}")
 
-sch = json.loads((ROOT / "mock/fixtures/schemas/ipqc.json").read_text(encoding="utf-8"))
+sch = json.loads((ROOT / "tests/fixtures/fixtures/schemas/ipqc.json").read_text(encoding="utf-8"))
 merged, from_blocks = load_blocks(sch)
 show("⑥ 로더가 blocks.json 선언을 전개한다 (하드코딩 목록이 아니다)",
      from_blocks == {"source_locator", "process_group", "process_ref", "process_no"},

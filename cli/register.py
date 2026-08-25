@@ -34,7 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import llm, registry, store
+from core import fixtures, llm, registry, store
 from parser import pipeline, preflight, reader
 from kit.render_review import render
 from kit.run_adapter import load_blocks
@@ -42,7 +42,7 @@ from router import discover
 
 REVIEW = ROOT / "review"
 KIT = ROOT / "kit"
-FIXTURES = ROOT / "mock" / "fixtures"
+FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/fixtures.py가 소유
 
 # D-22 확장 문구 — 표본 1부 등록의 경고. **문면이 규격이다.**
 SOLO_WARNING = ("표본 1부 · 변형 미관찰 — **선언된 관계는 근거 1건일 수 있음**. "

@@ -39,7 +39,7 @@ def show(label, ok, detail=""):
 
 
 def load(name):
-    return json.loads((ROOT / "mock" / "parsed" / name).read_text(encoding="utf-8"))
+    return json.loads((ROOT / "tests" / "fixtures" / "parsed" / name).read_text(encoding="utf-8"))
 
 
 def canon(g):
@@ -234,11 +234,11 @@ _sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
         capture_output=True, cwd=str(ROOT))
 
 show("구축 `python run.py build <parsed.json …>` (§7.1)",
-     _rc(str(ROOT / "run.py"), "build", str(ROOT / "mock/parsed/CP01.json")).returncode == 0)
+     _rc(str(ROOT / "run.py"), "build", str(ROOT / "tests/fixtures/parsed/CP01.json")).returncode == 0)
 show("추출 `python -m cli.extract <parsed.json>` (§7.1)",
-     _rc("-m", "cli.extract", str(ROOT / "mock/parsed/PPT01.json")).returncode == 0)
+     _rc("-m", "cli.extract", str(ROOT / "tests/fixtures/parsed/PPT01.json")).returncode == 0)
 show("지문 스캔 `python -m cli.scan <문서>` (§7.1)",
-     _rc("-m", "cli.scan", str(ROOT / "mock/raw/CP01.xlsx")).returncode == 0)
+     _rc("-m", "cli.scan", str(ROOT / "tests/fixtures/raw/CP01.xlsx")).returncode == 0)
 show("플랫폼 관측 `python -m cli.platform ops` · `doctypes` (§7.1)",
      _rc("-m", "cli.platform", "ops").returncode == 0
      and _rc("-m", "cli.platform", "doctypes").returncode == 0)
@@ -246,8 +246,8 @@ show("I축 전 연산에 --actor 필수 (§7.1 · 문서 4 §4.7-4)",
      _rc("-m", "cli.ops", "rename", "--layer", "process", "--node", "x",
          "--canonical", "y").returncode != 0)
 
-_parse = _rc("-m", "cli.parse", "run", str(ROOT / "mock/adapters/cp.py"), "CP01",
-             str(ROOT / "mock/raw/CP01.xlsx"))
+_parse = _rc("-m", "cli.parse", "run", str(ROOT / "tests/fixtures/adapters/cp.py"), "CP01",
+             str(ROOT / "tests/fixtures/raw/CP01.xlsx"))
 show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — 파일 존재 = 파싱 완료)",
      _parse.returncode == 0 and (ROOT / "parsed" / "CP01.json").exists())
 

@@ -28,7 +28,7 @@ from core.bootstrap import bootstrap                       # noqa: E402
 from parser import pipeline                                # noqa: E402
 
 allok = True
-RAW = ROOT / "mock" / "raw"
+RAW = ROOT / "tests" / "fixtures" / "raw"
 REVIEW = ROOT / "review"
 
 
@@ -87,7 +87,7 @@ show("① 시스템 5 — reader head·골격 닫힌 목록·층 어휘·공용 
                             "blocks", "adapter_skeleton"}
      and pkg["system"]["skeleton_closed_list"]["count"] == 46)
 show("① 초안은 fixture가 반환한다 (USE_MOCK — D-10·D-26)",
-     "mock/fixtures/adapters/toc_report.py" in r.stdout)
+     "tests/fixtures/fixtures/adapters/toc_report.py" in r.stdout)
 
 r = run("review", "toc_report", "--instruct", "공정명 헤딩 레벨을 2단까지만 잡아라")
 show("② 검수 — 기계 관문(하네스)이 사람 앞에 선다",

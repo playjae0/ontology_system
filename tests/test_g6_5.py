@@ -43,7 +43,7 @@ def show(label, ok, detail=""):
 
 
 def load(name):
-    return json.loads((ROOT / "mock" / "parsed" / f"{name}.json").read_text(encoding="utf-8"))
+    return json.loads((ROOT / "tests" / "fixtures" / "parsed" / f"{name}.json").read_text(encoding="utf-8"))
 
 
 def fresh():

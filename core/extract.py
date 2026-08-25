@@ -31,7 +31,11 @@ from .ids import norm
 
 ROOT = Path(__file__).resolve().parent.parent
 EXTRACT_DIR = ROOT / "extract"
-HINTS_DIR = ROOT / "mock" / "extract_hints"
+# 픽스처 소재는 `core/fixtures.py`가 소유한다 — 코어 본체가 mock 경로를
+# 무조건 상수로 알면 그 자산을 들어낼 때 코어가 죽는다(§2-4 격리).
+from . import fixtures as _fx
+
+HINTS_DIR = _fx.EXTRACT_HINTS
 
 _LOG = log.get(__name__)
 

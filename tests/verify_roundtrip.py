@@ -6,7 +6,7 @@
  ② 그 참조 구현으로 raw를 읽어 기존 parsed JSON 명세와 대조한다.
 
 역산 정합의 정의 (가결정 D-18, 확대판에서 정밀화):
- raw를 파싱한 records의 **앞 N건(prefix)**이 mock/parsed/*.json 의 records와 일치한다.
+ raw를 파싱한 records의 **앞 N건(prefix)**이 tests/fixtures/parsed/*.json 의 records와 일치한다.
  확대분은 그 뒤에 붙으며 기존 노드·판정에 영향을 주지 않는 신규 항목으로만 구성한다.
 """
 import json
@@ -19,10 +19,11 @@ from pptx import Presentation
 
 # 레포 루트 기준으로 raw mock 위치를 잡는다 — 이 파일은 tests/ 에 있으므로 부모가 루트다.
 # 환경변수 RAW_DIR 로 덮어쓸 수 있다. (구판의 절대경로 하드코딩 대체 — 08-07 13회차 판정)
-RAW = os.environ.get("RAW_DIR") or str(Path(__file__).resolve().parent.parent / "mock" / "raw")
+RAW = os.environ.get("RAW_DIR") or str(
+    Path(__file__).resolve().parent / "fixtures" / "raw")
 DITTO = {"〃", "〝", "same as above", "상동"}
 
-# ---------- 기대값의 정본은 mock/parsed/{doc_id}.json 이다 ----------
+# ---------- 기대값의 정본은 tests/fixtures/parsed/{doc_id}.json 이다 ----------
 # **인라인 기대값을 두지 않는다**(문서 7 §7.5 · impl-B-50). 수기 계약 JSON이 S14의
 # 대조 검체인데(§7.5 경로 규약) 스크립트가 그 값을 따로 베껴 들면 **검체가 둘이
 # 되고**, 계약이 개정될 때 한쪽만 고쳐진다. 실제로 그 상태였다.
@@ -30,8 +31,8 @@ DITTO = {"〃", "〝", "same as above", "상동"}
 # raw의 원본 헤더명과 계약의 필드명은 다르다 — 매핑의 정본은 **어댑터 `expects`의
 # `columns`**다(같은 열 문자를 가리키는 두 이름이 거기 나란히 있다). 코드가 매핑을
 # 다시 적으면 그것이 세 번째 검체가 된다.
-PARSED = Path(__file__).resolve().parent.parent / "mock" / "parsed"
-ADAPTERS = Path(__file__).resolve().parent.parent / "mock" / "adapters"
+PARSED = Path(__file__).resolve().parent / "fixtures" / "parsed"
+ADAPTERS = Path(__file__).resolve().parent / "fixtures" / "adapters"
 
 
 def _adapter(name):
