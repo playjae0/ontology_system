@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -36,15 +37,30 @@ MAPPED = "mapped"
 
 
 # ---------------------------------------------------------------- ① 지도 산출
-def propose(doc_id, lines):
+def propose(doc_id, lines, ask=None):
     """지도 산출 — USE_MOCK은 파일 우선, 없으면 결정적 휴리스틱 (증분0 §5-4).
 
     지도 형식: `{"doc_id":…, "source":…, "rows":[{"row":n, "heading":bool, "level":int}]}`
     **레벨은 1부터**이고 본문 행은 `heading=false · level=0`이다.
 
-    HOOK: 실물 경로는 여기서 추출 에이전트에 지도를 요청한다. 반환 형식은 같다 —
+    분기는 `if USE_MOCK: <파일·휴리스틱> else: <실호출>`이고 **반환 형식이 같다** —
     지도는 데이터이므로 소비 쪽(타당성 검사·분할기)은 출처를 몰라도 된다.
+    `source` 필드가 어느 갈래인지 데이터로 남긴다: `mock_file` · `heuristic` · `live`.
+
+    파서는 `core/`를 import하지 않으므로(P1) 실호출 경로는 **주입**받는다 —
+    `propose(doc_id, lines, ask=…)`. USE_MOCK=0인데 `ask`가 없으면 **명시적
+    실패**다: 휴리스틱으로 조용히 떨어지면 그 지도가 청크 경계를 정하고, 잘못된
+    경계는 chunk_id를 바꿔 재인입 멱등성까지 흔든다(문서 7 §7.6-B-4).
     """
+    if os.environ.get("USE_MOCK", "1") != "1":
+        if ask is None:
+            raise RuntimeError(
+                f"구조 지도 실호출 경로가 비어 있다 (doc_id={doc_id}) — "
+                "USE_MOCK=0에서는 ask를 주입해야 한다 (문서 7 §7.6-B-4)")
+        m = ask(doc_id, lines)
+        m.setdefault("doc_id", doc_id)
+        m["source"] = "live"
+        return m
     p = MAPS_DIR / f"{doc_id}.json"
     if p.exists():
         m = json.loads(p.read_text(encoding="utf-8"))

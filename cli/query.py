@@ -7,21 +7,21 @@
 층을 발견해 순회하는 절차만 갖는다 — 층이 늘어도 이 파일은 그대로다(§3.4-(가)).
 core에 두지 않는 이유: 라우팅은 조립이지 읽기 파이프라인이 아니다.
 
-사용: python cli/query.py "<질문>"        (또는 python run.py query "<질문>")
+사용: python cli/query.py "<질문>"        (또는 python -m cli.query "<질문>")
 """
 from __future__ import annotations
 
+import json
+
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from core import query as Q, store                      # noqa: E402
-from core.ids import norm                               # noqa: E402
-from core.bootstrap import load_config, open_graph      # noqa: E402
-from router import discover                             # noqa: E402
+from core import llm
+from core.dictionary import Dictionary
+from core import query as Q, store
+from core.ids import norm
+from core.bootstrap import load_config, open_graph
+from router import discover
 
 GENERAL = "[일반지식 — 사내 검증 필요]"
 
@@ -39,7 +39,7 @@ def answer(question):
     "사내 근거를 찾지 못했다"를 먼저 밝히고 일반지식 표시 / 링킹 미스 → 로그 축적.
     """
     graphs, configs = _world()
-    dictionary = store.read(store.DICTIONARY, {})
+    dictionary = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
     hits = Q.link(question, dictionary, graphs)
 
     res = {"question": question, "linked": [], "facts": [], "chunks": [],
@@ -144,7 +144,52 @@ def _order_facts(g, cfg, direct):
     return out
 
 
+# ================================================================ ④ 답변 생성
+# LLM 지점 ⑧ — §7.6-B-2. 이 지점이 목록에서 빠지면 USE_MOCK=1에서 무엇으로 도는지가
+# 미정이라 답변에서만 실제 모델을 호출해 외부 의존 0(문서 1 B12)을 깨거나, 임의
+# 포맷으로 나열해 12문항 스모크의 출력이 구현마다 달라진다.
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}},
+    "required": ["answer"], "additionalProperties": False,
+}
+
+
+def generate(res):
+    """두 채널을 답으로 만든다 — `if USE_MOCK: <나열> else: <실호출>`.
+
+    **mock 갈래는 문장을 만들지 않는다**(§7.1 대체 표: "두 채널을 정형 텍스트로
+    나열, 문장 생성 없음"). 그것이 `render()`이고 스모크 12문항의 출력 형태다.
+
+    실호출 갈래는 두 채널을 **구분해** 넘긴다(문서 5 §5.4-5) — 한 덩어리로 붙이면
+    답변 LLM이 둘을 동급으로 섞어, 구조·값 질문에서 청크의 옛 서술이 그래프 사실을
+    덮어쓴 답이 나오고 출처 등급이 뭉개진다.
+
+    **그래프는 답변 LLM이 직접 읽지 않는다**(문서 0) — 넘기는 것은 문장화된
+    사실과 청크 원문뿐이다.
+    """
+    if llm.use_mock():
+        llm.mock("answer", "두 채널 정형 나열 (문장 생성 없음)")
+        return render(res)
+
+    out = llm.chat(
+        [{"role": "system", "content":
+          "[그래프 사실]은 시스템이 보증하는 구조 정보이고 [문서 근거]는 서술 "
+          "정보다. 둘을 동급으로 섞지 않는다 — 구조·순서·규격은 그래프 사실이 "
+          "이긴다. 근거에 없는 것을 답하지 않고, 없으면 없다고 밝힌다. "
+          "답에 출처를 함께 적는다."},
+         {"role": "user", "content": json.dumps(
+             {"question": res["question"],
+              "그래프_사실": res["facts"],
+              "문서_근거": [{"출처": f"{c['doc_id']} {c['source_locator']}",
+                          "원문": c["text"]} for c in res["chunks"]]},
+             ensure_ascii=False)}],
+        json_schema=ANSWER_SCHEMA, point="answer")
+    return out["answer"]
+
+
 def render(res):
+    """두 채널의 정형 나열 — **mock 갈래의 고정 형태**이자 사람이 뒷면을 보는 창구다."""
     lines = [f"Q. {res['question']}", f"   [경로] {res['path']}"]
     if res["linked"]:
         lines.append(f"   [링킹] {', '.join(res['linked'])}")
@@ -162,4 +207,4 @@ def render(res):
 
 
 if __name__ == "__main__":
-    print(render(answer(" ".join(sys.argv[1:]))))
+    print(generate(answer(" ".join(sys.argv[1:]))))

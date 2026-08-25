@@ -5,6 +5,7 @@
 **build는 직렬 실행**이다 — 저장이 비원자적이라 호출부가 직렬화를 보장한다.
 
 사용:
+  python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
   python run.py bootstrap          층 골격 심기 (n10)
   python run.py ingest <파일...>   계약 JSON 인입 (n2 → n1)
   python run.py all                bootstrap + mock/parsed 전량 인입
@@ -22,7 +23,7 @@ import json
 import sys
 from pathlib import Path
 
-from core import store
+from core import log, store
 from core.bootstrap import bootstrap, open_graph
 from core.pipeline import run_document
 from router import discover
@@ -32,6 +33,13 @@ ROOT = Path(__file__).resolve().parent
 
 def _load(p):
     return json.loads(Path(p).read_text(encoding="utf-8"))
+
+
+def cmd_init(args):
+    """클린 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다."""
+    from core.init import init
+    made = init("--fresh" in args)
+    print(f"[init] 빈 상태 {len(made)}개 — {', '.join(made) or '이미 있음'}")
 
 
 def cmd_bootstrap():
@@ -70,8 +78,8 @@ def cmd_all():
 
 def cmd_query(args):
     """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다."""
-    from cli.query import answer, render
-    print(render(answer(" ".join(args))))
+    from cli.query import answer, generate
+    print(generate(answer(" ".join(args))))
 
 
 def cmd_ops(args):
@@ -121,8 +129,10 @@ def cmd_export(args):
 
 
 if __name__ == "__main__":
+    log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
-    {"bootstrap": lambda: cmd_bootstrap(),
+    {"init": lambda: cmd_init(sys.argv[2:]),
+     "bootstrap": lambda: cmd_bootstrap(),
      "ingest": lambda: cmd_ingest(sys.argv[2:]),
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),

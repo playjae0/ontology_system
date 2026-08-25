@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cli import query as R                              # noqa: E402
-from core import query as Q                             # noqa: E402
+from core import init, query as Q                             # noqa: E402
 from core import store                                  # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
@@ -45,8 +45,7 @@ QUERIES = json.loads((ROOT / "mock" / "queries.json").read_text(encoding="utf-8"
 
 
 def full_run():
-    shutil.rmtree(store.DATA, ignore_errors=True)
-    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in DOCS:

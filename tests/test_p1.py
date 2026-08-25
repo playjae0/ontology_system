@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import store                                        # noqa: E402
+from core import init, store                                        # noqa: E402
 from core.bootstrap import bootstrap                          # noqa: E402
 from parser import normalizer, pipeline, preflight, struct_map, tagger, validator  # noqa: E402
 from parser.adapters import basic_ppt                         # noqa: E402
@@ -57,7 +57,7 @@ IPQC = load_adapter("mock/fixtures/adapters/ipqc.py", "ad_ipqc")
 
 # ============================================================ 스냅샷
 print("\n■ 골격 닫힌 목록 스냅샷 — 파서·에이전트 공유 자산 (D-11 확정)")
-shutil.rmtree(store.DATA, ignore_errors=True)
+init.init(fresh_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
 for lay in ("process", "quality"):
     bootstrap(lay, echo=False)
 snap_path = store.path(store.SKELETON_LIST)

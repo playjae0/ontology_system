@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cli import query as R                              # noqa: E402
-from core import ops, store                             # noqa: E402
+from core import init, ops, store                             # noqa: E402
 from core.bootstrap import bootstrap, open_graph        # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
 from core.ids import norm                               # noqa: E402
@@ -40,8 +40,7 @@ def load(name):
 
 
 def full_run():
-    shutil.rmtree(store.DATA, ignore_errors=True)
-    shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in DOCS:

@@ -88,19 +88,49 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref"):
     return out
 
 
-def complete_images(pieces, summarize=None):
-    """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §5 규약 3).
+def complete_images(pieces, summarize=None, *, allow_mock=True):
+    """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §6 규약 3).
 
-    USE_MOCK은 고정 문자열이다(증분0 §5-3). 실물 경로는 `summarize(image_ref)`.
+    **여기가 조용한 오염이 나던 자리다.** 호출부가 `summarize`를 빼먹으면 고정 문자열
+    `"MOCK 요약: img_001"`이 청크 텍스트가 되어 색인되고, 답변 근거로 되돌아온다 —
+    크래시가 아니라 오염이라 더 위험하다(문서 7 §7.6-B-4).
+
+    그래서 갈림길을 **인자로 드러낸다**:
+
+    | | `summarize` 있음 | 없음 |
+    |---|---|---|
+    | `allow_mock=True` (USE_MOCK=1) | 실호출 | 고정 문자열 + `source="mock"` |
+    | `allow_mock=False` (USE_MOCK=0) | 실호출 | **RuntimeError** — 조용히 mock으로 떨어지지 않는다 |
+
+    표시는 **주석이 아니라 데이터**다(§7.5 「실호출로만 검증되는 항목의 표시」와 같은 결):
+
+    - `meta.image_summary = True` — 이 텍스트는 원문이 아니라 요약이다(§7.1 대체 표).
+    - `meta.image_summary_source = "mock" | "live"` — **어느 갈래가 만들었나.**
+      `image_summary`만으로는 mock 산출과 실산출이 구분되지 않아, 오염을 소비부에서
+      걸러낼 근거가 데이터에 남지 않는다.
+
+    파서는 `core/`를 import하지 않는다(P1 — 결합은 파일 계약뿐). 그래서 실호출 경로는
+    **주입**받는다: 판단은 호출부(`parser/pipeline.py`)가 하고 여기는 계약만 지킨다.
     """
     out = []
     for p in pieces:
         r = dict(p)
         ref = r.get("image_ref")
         if ref and not r.get("text"):
-            r["text"] = (summarize(ref) if summarize
-                         else MOCK_IMAGE_SUMMARY.format(image_ref=ref))
-            r.setdefault("meta", {})["image_summary"] = True
+            if summarize is not None:
+                r["text"] = summarize(ref)
+                src = "live"
+            elif allow_mock:
+                r["text"] = MOCK_IMAGE_SUMMARY.format(image_ref=ref)
+                src = "mock"
+            else:
+                raise RuntimeError(
+                    f"이미지 요약 실호출 경로가 비어 있다 (image_ref={ref}) — "
+                    "USE_MOCK=0에서는 summarize를 주입해야 한다. mock 고정 문자열을 "
+                    "청크로 실으면 그것이 답변 근거로 되돌아온다 (문서 7 §7.6-B-4)")
+            m = r.setdefault("meta", {})
+            m["image_summary"] = True
+            m["image_summary_source"] = src
         out.append(r)
     return out
 

@@ -14,7 +14,7 @@
 대신한다. 등록부가 서면 registry의 expects가 정본이 된다.
 
 사용: python cli/scan.py <문서.xlsx> [--adapters 경로...] [--confirm <doc_type>]
-      (또는 python run.py scan ...)
+      (또는 python -m cli.scan ...)
 """
 from __future__ import annotations
 
@@ -24,10 +24,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from parser.reader import read                          # noqa: E402
+from parser.reader import read
 
 # **등록부가 정본**이다(n6 확정분 — P3). 등록부에 어댑터가 없는 내장 doc_type을 위해
 # mock 소재지를 뒤에 둔다 — P트랙 이전의 잔재이고, 등록이 쌓이면 자연히 비어 간다.

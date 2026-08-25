@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -31,7 +32,7 @@ ROOT = Path(__file__).resolve().parent
 # 회귀 10종 — **각각을 클린 상태에서 단독 실행**한다(증분0 §8 실행 규약).
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
-    ("test_g1_g2", 46, "저장 계층 · 근거 축 id · 부트스트랩"),
+    ("test_g1_g2", 58, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종"),
     ("test_g3", 60, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 27, "질의 4단 · 품질층 등록 · 재인입 회귀"),
     ("test_g5", 36, "I축 도구 4연산 (개명·병합·분리·폐기)"),
@@ -40,12 +41,18 @@ SUITES = [
     ("test_p1", 46, "파서 공용 코어 6종 · 구조 지도 · 역산 정합"),
     ("test_p2", 45, "어댑터 생성 킷 6종 · 검수 뷰 렌더러"),
     ("test_p3", 45, "구축 모드 등록 3단 (생성·검수·확정)"),
+    ("test_2a_gateway", 26, "게이트웨이 골조 — LLM 지점 8종 mock/실호출 분기"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
 
-REQUIRED = [("openpyxl", "xlsx 읽기 — 파서 전용"),
-            ("pptx", "pptx 읽기 — 파서 전용 (패키지명 python-pptx)")]
-OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으로 돈다")]
+# **필수는 없다.** 문서 포맷 패키지는 **선택 의존**이다(문서 7 §7.1) — 지연 import로
+# 격리돼 있어 `USE_MOCK=1` 전 경로가 이것들 없이 완주한다. 아래 「미설치 실측」이
+# 그것을 매번 실행으로 확인한다. REQUIRED로 두면 폐쇄망 반입 첫 화면이 실제로는
+# 없어도 되는 것을 [필요]로 띄워 다음 사람을 헛되이 멈춰 세운다.
+REQUIRED = []
+OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으로 돈다"),
+            ("openpyxl", "xlsx 읽기 — 파서 전용·지연 import"),
+            ("pptx", "pptx 읽기 — 파서 전용·지연 import (패키지명 python-pptx)")]
 
 OK, WARN, NG = "  OK ", " 주의 ", " 필요 "
 _fail = 0
@@ -62,14 +69,25 @@ def head(title):
     print(f"\n{'─' * 66}\n■ {title}\n{'─' * 66}")
 
 
+def _clean():
+    """클린 상태 — **`run.py init --fresh`가 정의한다**(문서 7 §7.6-4).
+
+    여기서 rmtree를 제 손으로 하면 "클린"의 정의가 doctor와 테스트와 완료판정에서
+    각자 달라진다. subprocess로 부르는 이유는 doctor가 core를 import하기 전에도
+    돌아야 하기 때문이다 — 반입 직후 첫 확인이 이 파일의 일이다.
+    """
+    subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+                   capture_output=True, text=True, cwd=str(ROOT))
+
+
 # ================================================================ ① 환경
 def check_env():
     head("① 환경 — 이 기계에서 돌아가는가")
 
     v = sys.version_info
-    line(OK if v >= (3, 9) else NG, f"Python {platform.python_version()}",
-         "3.9 이상이 필요하다 (walrus·타입 힌트). 개발·검증은 3.11에서 했다"
-         if v >= (3, 9) else "3.9 미만이면 돌지 않는다")
+    line(OK if v >= (3, 10) else NG, f"Python {platform.python_version()}",
+         "3.10 이상이 필요하다 — 코드가 sys.stdlib_module_names(3.10 신설)를\n         쓴다. 개발·검증은 3.11에서 했다"
+         if v >= (3, 10) else "3.10 미만이면 돌지 않는다 (문서 7 §7.1 런타임 전제)")
 
     for mod, why in REQUIRED:
         try:
@@ -89,6 +107,33 @@ def check_env():
     # **코어는 stdlib만 쓴다** — 반입에서 가장 중요한 사실이라 실측해 보인다.
     # 선택 의존(`try: import … except ImportError:` 폴백)은 필수가 아니므로 뺀다 —
     # 없어도 도는 것을 "예상 밖"이라 부르면 그 경고가 다음 사람을 헛되이 멈춰 세운다.
+    # **포맷 패키지 미설치 상태로 전 경로가 완주하는가** — 실측한다(문서 7 §7.1).
+    # "요구하지 않는다"까지만 두면 모듈 최상단 import가 문면상 위반이 아니게 되어,
+    # 미설치 환경에서 USE_MOCK=1 전체 실행이 ImportError로 죽는 것을 아무도 모른다.
+    guard = ROOT / "doctor_noformat"
+    guard.mkdir(exist_ok=True)
+    (guard / "sitecustomize.py").write_text(
+        "import builtins\n_real = builtins.__import__\n"
+        "def _g(n, *a, **k):\n"
+        "    if n.split('.')[0] in ('openpyxl', 'pptx'):\n"
+        "        raise ImportError('미설치 모사: ' + n)\n"
+        "    return _real(n, *a, **k)\n"
+        "builtins.__import__ = _g\n", encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(guard), USE_MOCK="1")
+    _clean()
+    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
+                       capture_output=True, text=True, cwd=str(ROOT), env=env)
+    q = subprocess.run([sys.executable, str(ROOT / "run.py"), "query", "노칭 다음 공정은?"],
+                       capture_output=True, text=True, cwd=str(ROOT), env=env)
+    shutil.rmtree(guard, ignore_errors=True)
+    ok_np = r.returncode == 0 and q.returncode == 0 and "[그래프 사실]" in q.stdout
+    line(OK if ok_np else NG,
+         "포맷 패키지 미설치 상태로 전 경로 완주" + ("" if ok_np else " — 실패"),
+         "openpyxl·python-pptx를 import 불가로 막고 build+query를 실행했다 — "
+         "선택 의존이 실제로 격리돼 있다" if ok_np
+         else (r.stderr or q.stderr).strip().splitlines()[-1:] and
+              (r.stderr or q.stderr).strip().splitlines()[-1])
+
     optional = {m for m, _why in OPTIONAL}
     hard = set()
     for f in (ROOT / "core").glob("*.py"):
@@ -118,6 +163,53 @@ def check_env():
     return _fail == 0
 
 
+def _idempotent():
+    """**클린 2회 동일 그래프** — 구현 국면 완료판정 4번 (문서 7 §7.6-4).
+
+    이 판정을 세는 것이 여태 없었다. 시나리오 통과만 세면 멱등성이 조용히 깨진
+    상태로도 판정이 통과한다.
+
+    대조 단위를 셋으로 나눈다:
+
+    - **그래프**: 바이트 동일이어야 한다. 다르면 노드가 증식했거나 id가 재발급됐다.
+    - **큐**: `(kind, doc_id, payload)` **집합**으로 본다. 순서까지 같기를 요구하지
+      않는 것은 재인입이 그 문서의 비상시(non-STANDING) 큐를 회수한 뒤 다시 싣기
+      때문이다 — 살아남은 상시 항목은 제자리에 있고 회수분은 뒤에 붙어 순서가
+      바뀐다. 증식·유실이 없다는 것이 멱등성이고, 파일 안 배열 순서는 아니다.
+    - **거부 로그**: 큐가 아니라 관측 신호다(§7.8) — 계수만 본다.
+    """
+    def snap():
+        graphs, queue, rejects = {}, set(), 0
+        for f in sorted((ROOT / "data").rglob("*.json")):
+            rel = str(f.relative_to(ROOT / "data"))
+            if rel.endswith("graph" + ".json"):
+                graphs[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
+        for x in json.loads((ROOT / "data" / "review_queue.json").read_text(encoding="utf-8")):
+            queue.add((x["kind"], x["doc_id"],
+                       json.dumps(x["payload"], sort_keys=True, ensure_ascii=False)))
+        rj = ROOT / "data" / "gate_rejects.json"
+        if rj.exists():
+            rejects = len(json.loads(rj.read_text(encoding="utf-8")))
+        return graphs, queue, rejects
+
+    subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+                   capture_output=True, text=True, cwd=str(ROOT))
+    subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
+                   capture_output=True, text=True, cwd=str(ROOT))
+    g1, q1, r1 = snap()
+    subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
+                   capture_output=True, text=True, cwd=str(ROOT))
+    g2, q2, r2 = snap()
+
+    same_g, same_q = g1 == g2, q1 == q2
+    detail = (f"그래프 {len(g1)}층 바이트 동일 · 큐 {len(q1)}항목 집합 동일 · "
+              f"거부 로그 {r1}→{r2}") if same_g and same_q else (
+              f"그래프 {'동일' if same_g else '다름'} · "
+              f"큐 1회만 {len(q1 - q2)}건 / 2회만 {len(q2 - q1)}건")
+    line(OK if same_g and same_q else NG,
+         "클린 2회 동일 그래프 (완료판정 4)", detail)
+
+
 # ================================================================ ② 자체 검증
 def run_suites(quick=False):
     head("② 자체 검증 — 가져온 것이 온전한가 (회귀 10종)")
@@ -129,8 +221,7 @@ def run_suites(quick=False):
           "  (증분0 §8 실행 규약: 스위트가 data/를 공유해 순서 의존이 관측됐다)\n")
     total_ok, results = True, []
     for name, expect, what in SUITES:
-        for d in ("data", "extract", "review"):
-            shutil.rmtree(ROOT / d, ignore_errors=True)
+        _clean()
         t0 = time.time()
         r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")],
                            capture_output=True, text=True, cwd=str(ROOT))
@@ -152,12 +243,13 @@ def run_suites(quick=False):
 
     got = sum(p for _n, p, _f, _e, _o in results)
     want = sum(e for _n, _p, _f, e, _o in results)
+    _idempotent()
+
     print()
     line(OK if total_ok else NG, f"합계 {got}/{want} PASS",
          "국면 1 완료판정의 회귀 기준선과 일치한다" if total_ok
          else "기준선과 다르다 — 반입이 온전하지 않거나 환경이 다르다")
-    for d in ("data", "extract", "review"):
-        shutil.rmtree(ROOT / d, ignore_errors=True)
+    _clean()
     return total_ok
 
 
@@ -169,8 +261,7 @@ def show_state():
     from core.bootstrap import bootstrap, open_graph              # noqa: E402
     from router import discover                                   # noqa: E402
 
-    for d in ("data", "extract", "review"):
-        shutil.rmtree(ROOT / d, ignore_errors=True)
+    _clean()
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
                    capture_output=True, text=True, cwd=str(ROOT))
 
@@ -221,17 +312,38 @@ def transition():
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
          if not reg else f"등록됨: {reg}")
 
-    # ── 3. 실LLM 훅 ───────────────────────────────────────────────
-    hooks = []
-    for p in list((ROOT / "core").glob("*.py")) + list((ROOT / "parser").glob("*.py")) \
-            + list((ROOT / "cli").glob("*.py")):
-        for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if "HOOK" in ln:
-                hooks.append(f"{p.relative_to(ROOT)}:{i}")
-    line(WARN, f"[3] 실LLM 훅 {len(hooks)}곳이 비어 있다 (USE_MOCK=1로 우회 중)",
-         "사내 LLM 게이트웨이가 서면 여기에 붙인다 — 각 자리에 반환 형식이 적혀 있다:\n"
-         + "\n".join(f"         · {h}" for h in hooks)
-         + "\n         **없어도 전 파이프라인이 돈다** — 추출·판정이 규칙 폴백으로 대체될 뿐이다")
+    # ── 3. LLM 지점 8종의 실호출 분기 ─────────────────────────────
+    # **주석을 세지 않는다.** 여태 이 자리가 문자열 "HOOK"을 세어, 전부 주석이던
+    # 5곳을 구현된 것으로 보고했다(문서 7 §7.6-B-2: 주석은 실행되지 않는다).
+    # 이제 세는 것은 **실제 분기의 존재**다 — 각 지점이 `llm.use_mock()`(또는
+    # 파서 쪽의 동형 판독)으로 갈리고 실호출 갈래를 갖는가.
+    from core.llm import POINTS                                   # noqa: E402
+    WIRED = {
+        "extract": ("core/extract.py", "_candidates_for"),
+        "judge": ("core/matcher.py", "_judge_live"),
+        "embed": ("core/embeddings.py", "def embed"),
+        "image_summary": ("parser/tagger.py", "allow_mock"),
+        "generate": ("cli/register.py", "_draft_live"),
+        "link": ("core/query.py", "_link_deep"),
+        "struct_map": ("parser/struct_map.py", "ask is None"),
+        "answer": ("cli/query.py", "def generate"),
+    }
+    wired, missing = [], []
+    for key, label in POINTS.items():
+        where, needle = WIRED.get(key, (None, None))
+        src = (ROOT / where).read_text(encoding="utf-8") if where else ""
+        # 분기의 조건: 실호출 갈래의 이름이 있고, mock 갈래와 갈리는 판독이 있다.
+        gate = ("use_mock" in src or "USE_MOCK" in src or "allow_mock" in src)
+        (wired if (needle and needle in src and gate) else missing).append(
+            f"{label} ({where})")
+    line(OK if not missing else NG,
+         f"[3] LLM 지점 {len(wired)}/{len(POINTS)}종에 mock/실호출 분기가 서 있다",
+         ("게이트웨이 골조는 섰고 **설정만 비어 있다** — ONTO_LLM_URL·ONTO_LLM_MODEL을\n"
+          "         주면 USE_MOCK=0으로 돈다. 미설정 상태의 USE_MOCK=0은 조용히 mock으로\n"
+          "         떨어지지 않고 명시적으로 실패한다(문서 7 §7.6-B-4).\n"
+          "         **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다"
+          ) if not missing else
+         "분기가 없는 지점:\n" + "\n".join(f"         · {m}" for m in missing))
 
     # ── 4. 계기판 첫 측정 ─────────────────────────────────────────
     line(WARN, "[4] 계기판은 mock 수치다 — 품질 측정이 아니다",

@@ -13,6 +13,9 @@
 """
 from __future__ import annotations
 
+import logging
+import os
+
 from . import normalizer, preflight, struct_map, tagger, validator
 from .reader import read
 
@@ -36,6 +39,21 @@ class ParseResult:
                 f"failures={[f['kind'] for f in self.failures]}>")
 
 
+def _image_gate(doc_id, summarize):
+    """이미지 요약(LLM 지점 ④)의 mock 허용 여부 — **판독을 한 자리에 모은다**.
+
+    파서는 `core/`를 import하지 않으므로(P1) 여기서 환경변수를 직접 읽는다 —
+    `USE_MOCK`은 런타임 계약이고 층 어휘가 아니라서 B1을 건드리지 않는다.
+    MOCK이 실제로 도는 자리는 **로그로 남긴다**(문서 7 §7.8 3종 중 하나) — 표준출력으로만
+    나가면 자동 점검이 세지 못해 비어 있는 지점이 구현된 것으로 보고된다.
+    """
+    mock = os.environ.get("USE_MOCK", "1") == "1"
+    if mock and summarize is None:
+        logging.getLogger("onto.parser").info(
+            "MOCK ④이미지 요약 [%s] — 고정 문자열 + meta.image_summary_source=mock", doc_id)
+    return mock
+
+
 def _map_hook(doc_id):
     """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다)."""
     def hook(key, lines, locator):
@@ -44,8 +62,14 @@ def _map_hook(doc_id):
 
 
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
-          context=None, closed_list=None, parsed_at="2026-01-05T00:00:00"):
-    """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체)."""
+          context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
+          summarize=None):
+    """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
+
+    `summarize(image_ref) -> str`은 **이미지 요약 실호출 경로**다(LLM 지점 ④).
+    주입되지 않으면 USE_MOCK=1에서는 고정 문자열, USE_MOCK=0에서는 명시적 실패다 —
+    판단은 `_image_gate()`가 하고 `tagger.complete_images`는 계약만 지킨다.
+    """
     res = ParseResult(doc_id)
     a = adapter.ADAPTER
     exp = a.get("expects") or {}
@@ -78,7 +102,8 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     res.report["normalizer"] = rep
 
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
-    pieces = tagger.complete_images(pieces)                           # ⑤ tagger
+    pieces = tagger.complete_images(pieces, summarize,               # ⑤ tagger
+                                   allow_mock=_image_gate(doc_id, summarize))
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes)
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.

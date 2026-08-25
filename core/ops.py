@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from . import store
+from .dictionary import Dictionary
 from .graph import STATUS_DELETED, GraphStore
 from .ids import norm
 
@@ -116,18 +117,6 @@ def resolve_chain(graph, nid, field, depth=0, seen=None):
         cur = n[field]
 
 
-def _dict_redirect(dictionary, old_id, new_id):
-    """사전 리다이렉트 — 옛 id를 가리키던 표면형이 전부 생존자를 가리킨다.
-
-    이것이 없으면 같은 문서를 재인입할 때 흡수된 노드가 **다시 선다**(중복 부활).
-    """
-    for surface, ids in dictionary.items():
-        if old_id in ids:
-            ids.remove(old_id)
-            if new_id and new_id not in ids:
-                ids.append(new_id)
-
-
 # ---------------------------------------------------------------- 파급 미리보기
 def preview(layer, op, nid, **kw):
     """실행 **전에** 파급을 제시한다 (카드 G6 — 1건을 넘는 작업은 전부 대상).
@@ -190,19 +179,16 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
 
     children = _scope_children(g, old, cfg)
     sep = _sep(cfg)
-    dictionary = store.read(store.DICTIONARY, {})
+    dictionary = Dictionary.open()       # 사전 접근은 관문 경유로만 (문서 7 §7.1)
 
     def _rename_one(n, new_name):
         prev = n["canonical"]
         n["canonical"] = new_name
         if not any(a["surface"] == prev for a in n["aliases"]):
             n["aliases"].append({"surface": prev, "provenance": [f"op:rename:{actor}"]})
-        dictionary.setdefault(norm(prev), [])
-        if n["id"] not in dictionary[norm(prev)]:
-            dictionary[norm(prev)].append(n["id"])          # 옛 이름으로도 찾힌다
-        dictionary.setdefault(norm(new_name), [])
-        if n["id"] not in dictionary[norm(new_name)]:
-            dictionary[norm(new_name)].append(n["id"])
+        prov = f"op:rename:{actor}"
+        dictionary.register(prev, n["id"], provenance=prov)      # 옛 이름으로도 찾힌다
+        dictionary.register(new_name, n["id"], provenance=prov)
 
     _rename_one(node, new_canonical)
     for c in children:                                       # 연쇄 — 주소가 바뀌었으므로
@@ -212,7 +198,7 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
     for c in g.nodes.values():
         if c.get("mirror_scope") == old:
             c["mirror_scope"] = new_canonical
-    store.write(store.DICTIONARY, dictionary)
+    dictionary.save()
     g.save()
     log_op("I1:rename", actor, [nid], reason,
            {"from": old, "to": new_canonical, "chained": pv["canonical_chain"]})
@@ -227,7 +213,8 @@ def merge_candidates(g, a, b):
     있어서다. 그래서 여기는 제시만 하고 확정은 사람이 한다. USE_MOCK의 "1추천"은
     결정적 규칙(빈도 최다 → 동률이면 status 등급 → 그래도 동률이면 정렬상 앞)이며
     실물 경로에서는 LLM이 그 자리에 온다.
-    # HOOK: llm_canonical_suggest
+    # (LLM 지점 **8종 밖**의 여지다 — canonical 제안은 §7.6-B-2 목록에 없고,
+    #  확정은 어차피 사람이 한다. 제시 품질이 문제로 측정되면 그때 붙인다.)
     """
     out = []
     for n in (a, b):
@@ -239,6 +226,40 @@ def merge_candidates(g, a, b):
                         "rank": STATUS_RANK.get(st, 0)})
     out.sort(key=lambda c: (-c["freq"], -c["rank"], c["canonical"]))
     return out
+
+
+def merge_targets(layer, nid, limit=5):
+    """**병합 상대 후보를 제안한다** — 판정은 `matcher.match`가 한다(문서 7 §7.1).
+
+    문서 4가 attach_to 해소·orphan 재시도·**병합 후보** 세 곳에서 판정 파이프라인
+    재사용을 요구한다. 재사용 대상이 없으면 지점마다 별도 판정 코드가 생겨,
+    카테고리 불일치 안전망·극성 후보 제외·생존 판정(is_live)이 한 곳에만 적용된다.
+
+    **제안뿐이고 자동 병합은 없다**(I2는 사람 확인 연산이다 — 문서 4 §4.7).
+    돌려주는 것은 `[{id, canonical, confidence}]`이고 `merge()`의 `into` 인자에
+    사람이 골라 넣는다. 그래서 `uncertain`도 함께 낸다 — 확신되지 않은 후보를
+    감추면 사람이 볼 것이 줄어들고, 판정을 감춘 자리에서 오병합이 난다.
+    """
+    from . import matcher
+    from .bootstrap import open_graph
+    from .dictionary import Dictionary
+
+    g = open_graph(layer)
+    node = g.get(nid)
+    if node is None or not is_live(node):
+        return []
+    cands = [c for c in matcher.candidates(
+        node["canonical"], node["category"], node.get("layer") or layer,
+        g, Dictionary.open(), polarity=node.get("polarity"))
+        if c["id"] != nid]
+    out = []
+    for c in cands:
+        v = matcher.match(node["canonical"], [dict(c, exact=False)], node["category"])
+        if v["type"] in (matcher.MATCH, matcher.UNCERTAIN) and v["confidence"] > 0:
+            out.append({"id": c["id"], "canonical": c["canonical"],
+                        "confidence": v["confidence"], "verdict": v["type"]})
+    out.sort(key=lambda x: -x["confidence"])
+    return out[:limit]
 
 
 def _survivor(a, b, override=None):
@@ -354,13 +375,12 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
                            "canonical": gone["canonical"], "category": gone["category"],
                            "layer": gone["layer"], "attrs": {}, "aliases": [],
                            "provenance": []}
-    dictionary = store.read(store.DICTIONARY, {})
-    _dict_redirect(dictionary, gone["id"], keep["id"])
+    dictionary = Dictionary.open()
+    dictionary.redirect(gone["id"], keep["id"])
     for al in keep["aliases"]:                               # 이관된 표기도 찾히게
-        dictionary.setdefault(norm(al["surface"]), [])
-        if keep["id"] not in dictionary[norm(al["surface"])]:
-            dictionary[norm(al["surface"])].append(keep["id"])
-    store.write(store.DICTIONARY, dictionary)
+        dictionary.register(al["surface"], keep["id"],
+                            provenance=(al.get("provenance") or [f"op:merge:{actor}"])[0])
+    dictionary.save()
     g.save()
     log_op("I2:merge", actor, [gone["id"], keep["id"]], reason,
            {"survivor": keep["id"], "canonical": keep["canonical"]})
@@ -405,7 +425,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     if dry_run:
         return pv
 
-    dictionary = store.read(store.DICTIONARY, {})
+    dictionary = Dictionary.open()
     new_ids = []
     for t in plan["targets"]:
         new = g.add_node(t["canonical"], node["category"], node["status"],
@@ -422,13 +442,10 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
             g.add_edge(new if e["src"] == nid else e["src"], e["rel"],
                        new if e["dst"] == nid else e["dst"],
                        e["status"], e["provenance"])
-        dictionary.setdefault(norm(t["canonical"]), [])
-        if new not in dictionary[norm(t["canonical"])]:
-            dictionary[norm(t["canonical"])].append(new)
+        prov = f"op:split:{actor}"                  # 배분은 사람 판단이 근거다
+        dictionary.register(t["canonical"], new, provenance=prov)
         for s in (t.get("aliases") or []):
-            dictionary.setdefault(norm(s), [])
-            if new not in dictionary[norm(s)]:
-                dictionary[norm(s)].append(new)
+            dictionary.register(s, new, provenance=prov)
 
     # 원본은 첫 산출물로 리다이렉트한다 — 삭제하지 않는다(옛 id 참조 보존)
     for i in own_edges:
@@ -440,8 +457,8 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     # 배분표가 각 표기를 자기 타깃에 이미 등재했다 — 여기서는 **옛 id만 걷는다.**
     # 병합용 리다이렉트를 그대로 쓰면 다른 타깃에 배분된 표기까지 첫 산출물을 가리켜
     # 한 표기가 두 노드를 동시에 가리킨다(사전 오염 — 조용한 유실 금지의 반대편).
-    _dict_redirect(dictionary, nid, None)
-    store.write(store.DICTIONARY, dictionary)
+    dictionary.redirect(nid, None)      # new_id=None → 걷어만 낸다
+    dictionary.save()
     g.save()
     log_op("I3:split", actor, [nid] + new_ids, reason, {"targets": new_ids})
     return pv

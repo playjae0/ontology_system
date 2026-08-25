@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import gate, store                              # noqa: E402
+from core import init, gate, store                              # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.ids import is_ulid                              # noqa: E402
 from core.ingest import ingest                            # noqa: E402
@@ -52,7 +52,7 @@ def reset():
     옛 골격이 살아남는다 — 멱등성(D-41)이 막는 것은 "같은 canonical의 재발급"이지
     "canonical 체계 변경"이 아니다. 기대값 대조는 반드시 이 경로로 한다.
     """
-    shutil.rmtree(store.DATA, ignore_errors=True)
+    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     return bootstrap("process", echo=False)
 
 
@@ -72,6 +72,99 @@ for p in ROOT.rglob("*.py"):
         if PAT.search(line) and not line.lstrip().startswith("#"):
             hits.append(f"{p.relative_to(ROOT)}:{i}")
 show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", not hits, str(hits))
+
+# **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
+# 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
+# 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.
+PATH_HACK = "sys" + r"\.path\.insert"
+import re as _re
+_pat = _re.compile(PATH_HACK)
+cli_hits = [f"{p.relative_to(ROOT)}:{i}"
+            for p in sorted((ROOT / "cli").glob("*.py"))
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if _pat.search(line) and not line.lstrip().startswith("#")]
+show("cli/ 8종에 sys.path 조작 0지점 — 실행은 python -m cli.{진입점}",
+     not cli_hits, str(cli_hits))
+
+# **원자적 쓰기가 배선돼 있는가** (문서 7 §7.1 저장 계층).
+# 직접 덮어쓰면 build가 쓰기 도중 죽었을 때 진실이 반쯤 쓰인 채 남는다 —
+# data/는 백업 대상이지 재생성 대상이 아니라 복구가 불가능하다.
+_src = (ROOT / "core" / "store.py").read_text(encoding="utf-8")
+_gsrc = (ROOT / "core" / "graph.py").read_text(encoding="utf-8")
+show("저장 쓰기가 tmp+os.replace·flock 경유다 (직접 덮어쓰기 0)",
+     "os.replace" in _src and "flock" in _src
+     and "atomic_write_bytes" in _gsrc
+     and "write_bytes(_dumps(" not in _gsrc)
+
+# **빈 상태의 형태가 §7.2 말미와 같은가** — 클린의 정의가 하나여야
+# 회귀 규약(§7.5-7)과 완료판정 4번이 같은 바닥 위에 선다.
+from core import init as _init                                # noqa: E402
+_init.init(fresh_=True)
+_want = {store.CHUNKS: {"chunks": {}, "describes": []},
+         store.DICTIONARY: {}, store.QUEUE: []}
+_got = {n: store.read(n, "없음") for n in _want}
+show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
+     _got == _want, str(_got))
+
+# **클린이 승인 기록을 지우지 않는가** (§7.8 — 사람 판단 기록은 재생성되지 않는다).
+# `review/{doc_type}/approval.json`이 승인의 물리 정본이라, 클린이 그것을 지우면
+# 사내에서 `init --fresh` 한 번에 승인 이력이 사라진다(실증된 결함).
+from core import init as _init2                                 # noqa: E402
+_probe = ROOT / "review" / "_clean_probe"
+_probe.mkdir(parents=True, exist_ok=True)
+(_probe / "approval.json").write_text('{"approved_by": "시험자"}', encoding="utf-8")
+_init2.init(fresh_=True)
+_kept = (_probe / "approval.json").exists()
+show("run.py init --fresh 가 review/의 승인 기록을 지우지 않는다 (§7.8)",
+     _kept and "review" not in _init2.WIPE, str(_init2.WIPE))
+import shutil as _sh
+_sh.rmtree(_probe, ignore_errors=True)
+
+# **core 접근 경계 3종이 관문으로 서 있는가** (문서 7 §7.1).
+# 자산에 파일과 의미론만 있고 관문이 없으면 호출부마다 제 규칙으로 붙는다 —
+# 실제로 사전 접근이 5곳으로 흩어져 있었고 provenance 필수는 한 곳만 지켰다.
+_DICT_KEY = "store" + r"\.(?:read|write)\(store\.DICTIONARY"
+import re as _re2
+_dp = _re2.compile(_DICT_KEY)
+_bypass = [f"{p.relative_to(ROOT)}:{i}"
+           for p in sorted(list((ROOT / "core").glob("*.py")) + list((ROOT / "cli").glob("*.py")))
+           if p.name != "dictionary.py"
+           for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+           if _dp.search(line) and not line.lstrip().startswith("#")]
+show("core/dictionary.py 밖에서 사전을 직접 여는 코드 0지점", not _bypass, str(_bypass))
+
+from core.dictionary import Dictionary                          # noqa: E402
+_d = Dictionary()
+try:
+    _d.register("표기", "N1", provenance=None)
+    _prov_forced = False
+except ValueError:
+    _prov_forced = True
+show("사전 등재의 provenance 필수가 관문에서 강제된다 (문서 1 G2)", _prov_forced)
+
+from core import matcher as _M                                  # noqa: E402
+show("matcher가 match(surface, candidates, category) 계약을 갖는다 (§7.1)",
+     all(hasattr(_M, f) for f in ("match", "candidates", "resolve"))
+     and list(_M.match.__code__.co_varnames[:3]) == ["surface", "candidates", "category"])
+_v = _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
+                      "category": "Unit", "exact": False}], "Unit")
+show("판정 반환이 {type, matched_id, confidence} 3키다 (문서 4 §4.3-6)",
+     set(_v) == {"type", "matched_id", "confidence"} and _v["matched_id"] == "N9", str(_v))
+show("카테고리 불일치는 후보에서 제외된다 — 판정이 재확인한다 (규약 3)",
+     _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
+                      "category": "Property", "exact": False}], "Unit")["type"] == _M.NEW)
+
+import core.skeleton as _SK                                     # noqa: E402
+show("골격 심기가 core/skeleton.py에 산다 (§7.1 — 파생이 loader에 섞이지 않는다)",
+     all(hasattr(_SK, f) for f in ("plant", "_plant_tree", "_link_seed_mirrors"))
+     and "_TreeParser" in dir(_SK))
+_bsrc = (ROOT / "core" / "bootstrap.py").read_text(encoding="utf-8")
+show("bootstrap에 트리 파싱·모양 분기가 남아 있지 않다",
+     "_TreeParser" not in _bsrc and "TYPE_FLAT" not in _bsrc)
+
+from core import ops as _OPS                                    # noqa: E402
+show("I2 병합 후보가 판정 경유로 제안된다 (문서 4 §4.3 재사용 3지점 중 하나)",
+     hasattr(_OPS, "merge_targets"))
 
 g, m, _, flow = reset()
 show("계기판 7 (graph 저장 크기) 출력", "gauge7_graph_bytes" in m,

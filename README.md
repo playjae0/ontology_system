@@ -3,8 +3,8 @@
 사내 문서(관리계획서·PFMEA·검사 성적서·보고서…)를 읽어 **공정 지식 그래프**를 만들고,
 그 위에서 질문에 **출처와 함께** 답한다. 답의 근거는 두 채널이다 — 그래프 사실과 문서 원문.
 
-**현재: 국면 1 완료 (2026-08-20).** 외부에서 mock으로 전 기능을 구현·검증했다.
-다음은 국면 2 — 사내 이식이다.
+**현재: 국면 2A 진행.** 국면 1(mock 전 기능 구현·검증)은 2026-08-20에 닫혔고
+(태그 `phase1-complete`), 지금은 명세↔코드 갭을 메우며 실 모델을 연결하는 중이다.
 
 ---
 
@@ -29,6 +29,7 @@ python doctor.py --quick  # 회귀 생략 (느린 기계)
 ## 돌려보기
 
 ```bash
+python run.py init --fresh                # 클린 상태 (이것이 "클린"의 정의다)
 python run.py all                        # 골격 심기 + mock 문서 전량 인입
 python run.py query "노칭 다음 공정은?"    # 질의 4단
 python run.py show tree                  # 골격 트리 (텍스트)
@@ -43,16 +44,18 @@ python run.py export cypher              # Neo4j용 (파생물 — 진실은 dat
 
 `run.py`가 단일 진입점이고 전 단계가 CLI + 파일 입출력이다 — 플랫폼은 이것을
 subprocess로 부른다. 하위 명령: `bootstrap · ingest · all · query · ops · gauges ·
-platform · scan · parse · register`.
+platform · scan · parse · register · show · export`.
+`init`이 클린의 단일 정의다 — 회귀 규약과 멱등성 판정이 같은 바닥을 쓴다.
 
 ## 환경
 
 | | |
 |---|---|
-| Python | **3.9+** (개발·검증은 3.11) |
+| Python | **3.10+** (개발·검증은 3.11) — `sys.stdlib_module_names`를 쓴다 |
 | 코어 의존 | **없다.** `core/`는 표준 라이브러리만 쓴다 — 폐쇄망에서 설치 없이 돈다 |
-| 파서 의존 | `openpyxl` · `python-pptx` (xlsx·pptx 읽기 전용) |
-| 선택 | `orjson` (직렬화 가속 — 없으면 표준 json 폴백) |
+| 파서 의존 | `openpyxl` · `python-pptx` — **선택**이다(지연 import). 없어도 `USE_MOCK=1` 전 경로가 완주한다 |
+| 선택 | `orjson` (직렬화 가속 — 없으면 표준 json 폴백). 전량은 `requirements.txt` |
+| 실 모델 | `USE_MOCK=0` + `ONTO_LLM_*` 4종. 미설정이면 **명시적 실패**(조용한 폴백 없음) |
 | 네트워크 | **불필요.** `USE_MOCK=1`(기본)에서 전 경로가 로컬로 돈다 |
 
 ## 무엇이 진짜고 무엇이 mock인가
@@ -60,8 +63,12 @@ platform · scan · parse · register`.
 **전부 진짜다 — 데이터만 창작이다.** 파이프라인·계약·판정은 실물이고, 들어 있는 문서와
 공정 체계가 창작 표본이다. 사내 유래 정보는 이 레포에 **한 글자도 없다**.
 
-LLM이 붙을 자리 5곳은 비어 있고 규칙 폴백이 대신한다(`grep -rn HOOK core/ parser/ cli/`).
-**없어도 전 파이프라인이 돈다** — 추출·판정의 정밀도만 규칙 수준일 뿐이다.
+**LLM 지점 8종은 골조가 서 있고 설정만 비어 있다** — 각 지점이
+`if USE_MOCK: <mock> else: <실호출>`로 갈리고 두 갈래가 같은 반환 계약을 지킨다.
+연결은 환경변수 4종(`ONTO_LLM_URL`·`ONTO_LLM_KEY`·`ONTO_LLM_MODEL`·`ONTO_EMBED_MODEL`)
++ `USE_MOCK=0`이고 **코드 수정은 0**이다. `doctor.py` ④절이 8/8을 매번 실측한다.
+**USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준일 뿐이다.
+미설정 상태의 `USE_MOCK=0`은 조용히 mock으로 떨어지지 않고 **명시적으로 실패한다**.
 
 ## 사내 이식 — 권장 순서
 
@@ -88,21 +95,27 @@ kit/            어댑터 생성 킷 6종 (외부 전달물 — 사내 반입 �
 layers/         층 선언 — config.json + skeleton.json  (코드 아님, 데이터)
 schemas/        doc_type 매칭 스키마 · 공용 블록
 mock/           창작 표본 — raw 문서 10종 · 계약 JSON · fixture
-tests/          회귀 10종 (423 PASS)
-docs/           정본 — 틀 · 불변식 카드 · 용어 대장 · CH1~CH7 · 파서 명세 · 증분0
+tests/          회귀 11종 (461 PASS)
+docs/spec/      **정본 명세 11종** — 0 기반·1 금지와불변·2 계약·3 구조·4 쓰기·5 읽기·
+                6 파서와구축모드·7 구현규격 + README·부록_용어·개정대장
+docs/회귀스위트/  명세 문면 기계 점검 + 자산
 ```
 
 ## 읽는 순서 (문서)
 
-1. `docs/CH1_기반.md` — 목적 · PoC 범위 · **불변 원칙 P1~P7**
-2. `docs/00_틀_확정본.md` — 돌아오는 기준점
-3. `docs/00_불변식_카드.md` — 압축 검사기 (설계가 어긋나면 여기서 걸린다)
-4. `docs/증분0_구현.md` §3 — 단위별 정의와 완료판정
-5. `CLAUDE.md` — 세션 진행 규칙 · 판본 기준점
+**명세는 `docs/spec/` 11종뿐이다.** 옛 챕터군(CH1~CH7·틀·카드·증분0·파서 명세)은
+정제본으로 통합돼 제거됐다 — 돌아갈 좌표는 태그 `phase1-complete`다.
 
-장부 둘: `DECISIONS.md`(가결정 82건) · `BLOCKERS.md`(멈춤 0). 진행 이력은 `PROGRESS.md`.
+1. `docs/spec/README.md` — 11종의 지도와 소유 경계
+2. `docs/spec/0_기반과원칙.md` — 목적 · 범위 · **불변 원칙 P1~P7**
+3. `docs/spec/1_금지와불변.md` — 압축 검사기 (설계가 어긋나면 여기서 걸린다)
+4. `docs/spec/7_구현규격과검증.md` — 코드 배치 · id 산식 · 완료판정 · 산출물 표
+5. `CLAUDE.md` — 세션 진행 규칙
 
-## 설계 원칙 (P1~P7 요약 — 정본은 CH1)
+**명세가 답하지 않는 지점은 추측으로 메우지 않는다** — `BLOCKERS.md`에 신고하고 멈춘다.
+장부 둘: `DECISIONS.md`(가결정) · `BLOCKERS.md`(멈춤). 진행 이력은 `PROGRESS.md`.
+
+## 설계 원칙 (P1~P7 요약 — 정본은 `docs/spec/0_기반과원칙.md`)
 
 | | |
 |---|---|

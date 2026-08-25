@@ -11,10 +11,11 @@ import json
 from pathlib import Path
 
 from . import extract as extract_mod
-from . import gate, store
+from . import gate, matcher, store
 from .build import Builder
 from .bootstrap import load_config, open_graph
 from .ingest import IngestResult, ingest, load_schema
+from .ops import is_live
 
 STRUCTURAL = {"process_group", "process_ref", "process_no", "electrode_type",
               "source_locator", "section", "context"}
@@ -287,7 +288,7 @@ def build_prose(env, cfg, graph, candidates):
         # attach — ③의 폴백. 해소 범위는 **문서 버퍼 전체 + 사전**이며 청크 경계가 없다.
         for a in cand.get("attach", []):
             child = b.buffer.get(_n(a["surface"]))
-            target = b.buffer.get(_n(a["attach_to"])) or _dict_hit(b, a["attach_to"])
+            target = b.buffer.get(_n(a["attach_to"])) or _dict_hit(b, a["attach_to"], graph)
             if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
                 store.append_defect(
                     f"{env['doc_id']}: attach 자식 미해소 — "
@@ -314,9 +315,49 @@ def _n(s):
     return norm(s)
 
 
-def _dict_hit(b, surface):
-    hits = b.dict.get(_n(surface), [])
-    return hits[0] if hits else None
+def _dict_hit(b, surface, graph):
+    """attach 대상의 사전 해소 — **판정 파이프라인을 재사용한다**(문서 4 §4.4-3).
+
+    여태 `hits[0]`을 무조건 골랐다. 사전은 **전 층 단일**이라 같은 표면형에 여러
+    노드가 달릴 수 있고(§7.1), 첫 히트를 조용히 고르면 그것이 판정을 대신한다 —
+    카테고리 불일치 안전망도 극성 후보 제외도 툼스톤 제외도 적용되지 않은 선택이
+    엣지의 끝점이 된다.
+
+    그래서 후보를 사전 히트로 **조립만** 하고 판정은 `matcher.match`가 한다.
+    카테고리는 후보 자신의 것을 쓴다 — attach는 anchor 경로가 아니라 대상의
+    카테고리가 정해져 있지 않고(auto 설비에도 붙는다), 관계는 그 뒤에
+    카테고리쌍 매핑이 결정한다.
+    """
+    hits = [nid for nid in b.dict.lookup(surface) if graph.get(nid)]
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return hits[0] if is_live(graph.get(hits[0])) else None
+    # 여러 개면 판정이 고른다 — 카테고리별로 갈라 각각 판정하고 확신된 것만 쓴다.
+    from collections import defaultdict
+    by_cat = defaultdict(list)
+    for nid in hits:
+        n = graph.get(nid)
+        if not is_live(n):
+            continue
+        by_cat[n["category"]].append(
+            {"id": nid, "canonical": n["canonical"],
+             "aliases": [a["surface"] for a in n.get("aliases") or []],
+             "category": n["category"], "layer": n.get("layer"),
+             "polarity": n.get("polarity"), "exact": False})
+    picked = []
+    for cat, cands in by_cat.items():
+        v = matcher.match(surface, cands, cat)
+        if v["type"] == matcher.MATCH:
+            picked.append(v["matched_id"])
+    if len(picked) == 1:
+        return picked[0]
+    # 확신이 하나로 모이지 않았다 — **조용히 첫 히트를 고르지 않는다.**
+    # 미해소로 두면 호출부가 orphan_attach 큐를 단다(문서 4 §4.4-5).
+    store.append_defect(
+        f"attach 대상 다중 해소 — '{surface}' → 후보 {len(hits)}건 · 확신 "
+        f"{len(picked)}건. 첫 히트 임의 선택을 하지 않고 미해소로 둔다")
+    return None
 
 
 def _pair_relation(cfg, src_cat, dst_cat):

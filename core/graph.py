@@ -84,6 +84,14 @@ class GraphStore:
         self.metrics: dict = {}
 
     # ---------- 수명주기 ----------
+    def exists(self):
+        """저장 파일이 이미 있나 — **경로를 밖에 내주지 않고** 답한다(문서 1 B6).
+
+        경계는 "여는 코드"뿐 아니라 "저장 위치를 아는 코드"까지다. 호출부가
+        `data/{층}/graph.json`을 스스로 조립해 exists를 보면 그 경계가 무너진다.
+        """
+        return self._path.exists()
+
     def load(self):
         if self._path.exists():
             data = _loads(self._path.read_bytes())
@@ -95,9 +103,15 @@ class GraphStore:
         return self
 
     def save(self):
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_bytes(_dumps({"nodes": self.nodes, "edges": self.edges}))
-        return self._path.stat().st_size
+        """원자적 쓰기 + 파일 락으로 저장한다 (문서 7 §7.1).
+
+        직접 덮어쓰면 build가 쓰기 도중 죽었을 때 graph.json이 반쯤 쓰인 채 남고,
+        data/는 백업 대상이라 진실이 복구 불가로 유실된다. 산식은 store가 소유한다 —
+        같은 방어를 두 벌 쓰면 한쪽만 고쳐지는 날이 온다.
+        """
+        from . import store
+        return store.atomic_write_bytes(
+            self._path, _dumps({"nodes": self.nodes, "edges": self.edges}))
 
     def _reindex_tombstones(self):
         self._tombstones = {

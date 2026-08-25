@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from cli import platform as PF                          # noqa: E402
 from cli import scan as SC                              # noqa: E402
-from core import store                                  # noqa: E402
+from core import init, store                                  # noqa: E402
 from core.bootstrap import load_config, open_graph      # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
 from core import ops                                    # noqa: E402
@@ -44,8 +44,7 @@ def data_hash():
 
 # ============================================================ 4′ 기존 단위 4
 print("\n■ 4′ — 기존 단위 4: subprocess build/query · 2층+cross 표시 · 큐 열람")
-shutil.rmtree(store.DATA, ignore_errors=True)
-shutil.rmtree(EXTRACT_DIR, ignore_errors=True)
+init.init(fresh_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
 
 r = PF.call(["all"])                        # 플랫폼→파이프라인 결합은 subprocess뿐(§16.1)
 show("플랫폼이 build를 subprocess로 호출 (파일 계약 — 코드 의존 0)",
