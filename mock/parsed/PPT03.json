@@ -13,6 +13,7 @@
   "chunks": [
     {
       "source_locator": "PPT03-C001",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",
@@ -22,6 +23,7 @@
     },
     {
       "source_locator": "PPT03-C002",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",
@@ -31,6 +33,7 @@
     },
     {
       "source_locator": "PPT03-C003",
+      "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
       "electrode_type": "both",

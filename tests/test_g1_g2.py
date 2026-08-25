@@ -166,6 +166,105 @@ from core import ops as _OPS                                    # noqa: E402
 show("I2 병합 후보가 판정 경유로 제안된다 (문서 4 §4.3 재사용 3지점 중 하나)",
      hasattr(_OPS, "merge_targets"))
 
+# ============================================================ 저장 레코드 스키마
+print("\n■ 저장 레코드 스키마 — 문서 7 §7.2 전문 대조")
+# 이 절이 이번 개정에서 **형태 전체**를 못박았다. 직렬화에서 필드가 떨어지면
+# mirrors 페어링·순서 파생·process_group 파생이 전부 canonical 문자열 파싱으로
+# 되돌아가고, 그것은 문서 4 §4.5와 문서 1 C10이 정면으로 금지한 것이다.
+import subprocess as _sp                                       # noqa: E402
+_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+        capture_output=True, cwd=str(ROOT))
+_sp.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT))
+
+_g = open_graph("process")
+_NODE_MIN = {"id", "canonical", "category", "layer", "status",
+             "attrs", "aliases", "provenance"}
+show("노드 레코드가 명세 최소 집합을 전부 보유 (§7.2)",
+     all(_NODE_MIN <= set(n) for n in _g.nodes.values()))
+_POL = {"cathode", "anode", "none", "unbound"}
+show("polarity가 **최상위 파생 필드**이고 닫힌 4값이다 (attrs 우회 금지)",
+     all(n.get("polarity") in _POL for n in _g.nodes.values())
+     and not any("polarity" in (n.get("attrs") or {}) for n in _g.nodes.values()))
+show("tier가 최상위이고 닫힌 3값 (골격 유래 한정)",
+     all(n.get("tier") in (None, "main", "sub", "detail") for n in _g.nodes.values())
+     and any(n.get("tier") for n in _g.nodes.values()))
+show("alias 항목이 {surface, provenance} 형태다 (문자열 배열 금지 — G2)",
+     all(isinstance(a, dict) and {"surface", "provenance"} <= set(a)
+         for n in _g.nodes.values() for a in n["aliases"]))
+show("엣지 레코드가 {src, rel, dst, status, provenance} 5키다",
+     all({"src", "rel", "dst", "status", "provenance"} <= set(e) for e in _g.edges))
+
+_ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})["chunks"]
+_CHUNK = {"doc_id", "text", "section", "source_locator", "parsed_at",
+          "meta", "adapter_version", "linked"}
+show("청크 레코드가 명세 8필드를 보유 (parsed_at 포함 — §7.2)",
+     _ch and all(_CHUNK <= set(c) for c in _ch.values()),
+     str(sorted(_CHUNK - set(next(iter(_ch.values()))))) if _ch else "청크 0")
+
+# **resolution** — 사람의 판단이 기록된 항목의 표시. 회수가 그것을 보존한다.
+_n = store.resolve_item("auto_node", lambda p: True, actor="시험자",
+                        decision="confirmed", at="2026-01-05T00:00:00")
+_q = store.read(store.QUEUE, [])
+_marked = [x for x in _q if x.get("resolution")]
+show("큐 항목에 resolution을 기록할 수 있다 (§7.2 · 4요소)",
+     _n > 0 and all({"actor", "at", "decision", "note"} == set(x["resolution"])
+                    for x in _marked), f"{_n}건")
+# 회수가 그것을 보존하는가 — 판단이 기록된 항목은 재인입에 지워지지 않는다.
+from core.ingest import withdraw                              # noqa: E402
+_doc = next((x["doc_id"] for x in _marked if x.get("doc_id")), None)
+_before = len([x for x in _q if x.get("doc_id") == _doc and x.get("resolution")])
+withdraw({"doc_id": _doc, "source_path": None}, _doc)
+_after = len([x for x in store.read(store.QUEUE, [])
+              if x.get("doc_id") == _doc and x.get("resolution")])
+show("재인입 회수가 **사람의 판단이 기록된 항목**을 보존한다 (§4.8-2③ · H6)",
+     _before > 0 and _after == _before, f"{_before} → {_after}")
+
+# ============================================================ 진입점 계약
+print("\n■ 진입점 계약 — 문서 7 §7.1 「플랫폼이 subprocess로 부르는 이름은 계약이다」")
+# 같은 기능을 다른 이름으로 제공하지 않는다 — 플랫폼↔파이프라인 결합이 "CLI+파일"이라
+# **명령 이름이 계약의 일부**인데, 일반형만 두면 기능은 있어도 외부 스크립트와
+# 호환되지 않는다.
+def _rc(*argv):
+    return _sp.run([sys.executable, *argv], capture_output=True, text=True,
+                   cwd=str(ROOT))
+
+_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+        capture_output=True, cwd=str(ROOT))
+_sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
+        capture_output=True, cwd=str(ROOT))
+
+show("구축 `python run.py build <parsed.json …>` (§7.1)",
+     _rc(str(ROOT / "run.py"), "build", str(ROOT / "mock/parsed/CP01.json")).returncode == 0)
+show("추출 `python -m cli.extract <parsed.json>` (§7.1)",
+     _rc("-m", "cli.extract", str(ROOT / "mock/parsed/PPT01.json")).returncode == 0)
+show("지문 스캔 `python -m cli.scan <문서>` (§7.1)",
+     _rc("-m", "cli.scan", str(ROOT / "mock/raw/CP01.xlsx")).returncode == 0)
+show("플랫폼 관측 `python -m cli.platform ops` · `doctypes` (§7.1)",
+     _rc("-m", "cli.platform", "ops").returncode == 0
+     and _rc("-m", "cli.platform", "doctypes").returncode == 0)
+show("I축 전 연산에 --actor 필수 (§7.1 · 문서 4 §4.7-4)",
+     _rc("-m", "cli.ops", "rename", "--layer", "process", "--node", "x",
+         "--canonical", "y").returncode != 0)
+
+_parse = _rc("-m", "cli.parse", "run", str(ROOT / "mock/adapters/cp.py"), "CP01",
+             str(ROOT / "mock/raw/CP01.xlsx"))
+show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — 파일 존재 = 파싱 완료)",
+     _parse.returncode == 0 and (ROOT / "parsed" / "CP01.json").exists())
+
+# 클린 범위 — §7.6-4가 이번 개정에서 확정했다.
+from core import init as _init3                                 # noqa: E402
+show("클린 범위가 parsed/·extract/를 포함한다 (체크포인트 잔존 = 순서 의존)",
+     "parsed" in _init3.WIPE and "extract" in _init3.WIPE, str(_init3.WIPE))
+show("클린이 data/doc_types.json을 보존한다 (승인 1회의 등재 — 재생성 불가)",
+     "doc_types.json" in _init3.KEEP_IN_DATA)
+_dt = ROOT / "data" / "doc_types.json"
+_dt.parent.mkdir(parents=True, exist_ok=True)
+_dt.write_text('{"_probe": {"doc_type": "_probe"}}', encoding="utf-8")
+_init3.init(fresh_=True)
+show("실측 — init --fresh 후에도 doc_types.json이 남는다",
+     _dt.exists() and "_probe" in _dt.read_text(encoding="utf-8"))
+_dt.unlink(missing_ok=True)
+
 g, m, _, flow = reset()
 show("계기판 7 (graph 저장 크기) 출력", "gauge7_graph_bytes" in m,
      f"{m['gauge7_graph_mb']}MB")

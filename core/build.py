@@ -20,7 +20,9 @@ from . import gate, store
 from .dictionary import Dictionary
 from .ids import norm
 from .matcher import MATCH, NEW, UNCERTAIN, resolve
-from .naming import bind_polarity, derive_polarity, is_bound, scope_canonical
+from .ops import is_live
+from .naming import (POLARITY_NONE, bind_polarity, derive_polarity,
+                     is_bound, scope_canonical)
 
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
@@ -88,7 +90,7 @@ class Builder:
             return self.g, self.layer
         return self.for_layer(lay).g, lay
 
-    def resolve_anchor(self, surface, category, prov):
+    def resolve_anchor(self, surface, category, prov, *, defer=None):
         """골격 조회 전용 — anchor는 새로 만들지 않는다.
 
         돌려주는 것은 **(node_id, 그 노드가 사는 그래프)**다. 걸침 anchor는 다른 층에
@@ -103,25 +105,51 @@ class Builder:
         개념 노드가 단독 소유하고, 극성 수식 표기는 인스턴스의 auto alias다. 남는
         orphan_anchor 경로는 **"목록 밖 이름"**과 **"표기 모호"** 둘뿐이며, 후자에서도
         임의 선택하지 않는다 — 쓰기는 좁게(3.5 규약 7).
+
+        **적재는 즉시 하지 않고 `defer`에 미룬다**(문서 2 §2.4-① · 문서 4 §4.7-5).
+        큐 항목이 재시도 배치의 **유일한 손잡이**인데, 좌표를 못 찾은 시점에는 그
+        행이 무엇을 만들었는지가 아직 정해지지 않았다 — 생략된 엣지의 출발 노드도,
+        연쇄 드롭된 걸침 entity도, 보류된 attribute도 레코드 처리가 끝나야 안다.
+        즉시 적재하면 그것들이 payload 밖에 남아 **골격이 나중에 자라도 그 노드는
+        영영 공정에 붙지 않는다.**
+
+        `defer`가 None이면 종전대로 즉시 싣는다 — 레코드 맥락 없이 부르는 자리
+        (골격 대조 등)를 위한 갈래다.
         """
         if not surface:
             return None, None
         g, _ = self._graph_for(category)          # 걸침 anchor는 다른 층에서 찾는다
-        hits = [nid for nid in self.dict.lookup(surface)
-                if (g.get(nid) or {}).get("category") == category]
-        if len(hits) == 1:
-            return hits[0], g
-        if len(hits) > 1:
-            store.enqueue("orphan_anchor",
-                          f"표기 모호 — '{surface}'가 골격 노드 여럿을 가리킨다",
-                          self.doc_id,
-                          {"surface": surface, "candidates":
-                           [g.get(h)["canonical"] for h in hits], "provenance": prov})
+        live = [nid for nid in self.dict.lookup(surface)
+                if is_live(g.get(nid) or {}) and
+                (g.get(nid) or {}).get("category") == category]
+        # **Tier1 한정** — 조회 결과가 auto 노드뿐이면 anchor로 쓰지 않는다(문서 2 §2.4-①).
+        # 산문에서 스쳐 언급된 auto 노드가 골격 행세하는 우회로를 막는다.
+        tier1 = [nid for nid in live if g.get(nid).get("status") in ("seed", "confirmed")]
+        autos = [nid for nid in live if nid not in tier1]
+
+        def _hold(reason, extra):
+            payload = {"surface": surface, "category": category, "provenance": prov}
+            # 조회된 auto 후보를 싣는다 — 동봉하지 않으면 사람이 큐 화면에서
+            # 후보를 다시 검색해야 판단할 수 있다(문서 2 §2.4-①).
+            if autos:
+                payload["auto_candidates"] = [
+                    {"id": a, "canonical": g.get(a)["canonical"]} for a in autos]
+            payload.update(extra)
+            item = {"kind": "orphan_anchor", "reason": reason, "payload": payload}
+            if defer is None:
+                store.enqueue("orphan_anchor", reason, self.doc_id, payload)
+            else:
+                defer.append(item)
             return None, None
-        store.enqueue("orphan_anchor", f"골격에 없는 좌표 — '{surface}'",
-                      self.doc_id, {"surface": surface, "category": category,
-                                    "provenance": prov})
-        return None, None
+
+        if len(tier1) == 1:
+            return tier1[0], g
+        if len(tier1) > 1:
+            return _hold(f"표기 모호 — '{surface}'가 골격 노드 여럿을 가리킨다",
+                         {"candidates": [g.get(h)["canonical"] for h in tier1]})
+        if autos:
+            return _hold(f"골격 밖 — '{surface}'는 auto 노드로만 있다 (Tier1 한정)", {})
+        return _hold(f"골격에 없는 좌표 — '{surface}'", {})
 
     def check_coord(self, group_surface, ref_id, prov, g=None):
         """③ process_group은 **부착하지 않고 골격 조상 대조만** 한다.
@@ -330,11 +358,19 @@ class Builder:
                     if prov not in it["provenance"]:
                         it["provenance"].append(prov)
                     return
+                # **대상 노드의 polarity를 동봉한다**(문서 4 §4.7). 무극성(`none`)
+                # 건은 **I3 분리 후보**로 표시한다 — 극성이 갈린 값이 한 노드에
+                # 쌓인 것일 수 있고, 그 경우 사람이 볼 것은 "값 충돌"이 아니라
+                # "노드가 둘이어야 하는가"다. 표시가 없으면 두 사건이 큐에서
+                # 구분되지 않아 판정자가 매번 그래프를 다시 열어야 한다.
+                pol = n.get("polarity") or POLARITY_NONE
                 store.enqueue("spec_conflict",
                               f"{n['canonical']}의 {name}: 같은 맥락에 다른 값",
                               self.doc_id,
                               {"node_id": node_id, "attr": name, "context": context,
                                "existing": it["value"], "incoming": value,
+                               "polarity": pol,
+                               "split_candidate": pol == POLARITY_NONE,
                                "provenance": prov})
                 return
         items.append({"context": context, "value": value, "provenance": [prov]})

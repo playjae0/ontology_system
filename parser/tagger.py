@@ -64,20 +64,52 @@ def group_of(node, nodes):
     return None
 
 
-def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref"):
+def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
+        pick=None, doc_type=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 
-    **목록 밖이면 비운다**(null 허용 — §4 "닫힌 목록에서 선택 또는 null").
-    검증은 인입 소관이고 파서는 좌표를 판정하지 않는다 — 태거가 임의로 고쳐 넣으면
-    그 순간 파서가 골격을 해석하게 된다.
+    **LLM 지점 ⑨다**(문서 7 §7.6-B-2). 목록에 있다는 것과 mock에서 모델을 부른다는
+    것은 다른 말이다:
+
+    | | 갈래 |
+    |---|---|
+    | `pick=None` (USE_MOCK=1) | **닫힌 목록 스냅샷의 정확 일치 대조 — 모델을 부르지 않는다**(§7.1 대체 표) |
+    | `pick` 주입 (USE_MOCK=0) | 모델이 **닫힌 목록 중에서 고르거나 null**을 낸다 |
+
+    대체가 선언되지 않은 LLM 지점은 USE_MOCK=1에서 실호출로 흘러 외부 의존 0
+    (문서 1 B12)이 깨지고 **미설치 환경에서 실행 자체가 죽는다** — 그래서 mock
+    갈래가 명세에 못박혀 있고, 이 함수의 기본값이 그것이다.
+
+    **목록 밖이면 값을 고치지 않고 그대로 둔다**(null 허용 — §4 "닫힌 목록에서 선택
+    또는 null"). 검증은 인입 소관이고 파서는 좌표를 판정하지 않는다 — 태거가 임의로
+    고쳐 넣으면 그 순간 파서가 골격을 해석하게 된다.
+
+    실호출 갈래도 **목록 밖 답은 버린다** — 모델이 지어낸 좌표가 태깅되면 인입의
+    orphan_anchor가 그것을 골격으로 착각한다. 파서는 `core/`를 import하지 않으므로
+    (P1) `pick`은 **주입**받는다.
     """
     nodes = nodes if nodes is not None else closed_list(layer)
     idx = surfaces(nodes)
     out = []
     for p in pieces:
         r = dict(p)
+        # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
+        # `source_locator`·`doc_type`·`process_group`·`process_ref`·
+        # `electrode_type`을 달고 들어온다. 어댑터가 좌표를 못 뽑는 계열(기본
+        # 어댑터의 슬라이드 분할 등)에서도 **키는 있어야 한다** — 값이 null인 것과
+        # 키가 없는 것은 다르다: 후자면 인입의 필드 검증이 "부재"를 판정할 대상을
+        # 잃고, 조각 공통 층이 계약이 아니라 어댑터별 재량이 된다.
+        for k in ("doc_type", "process_group", "process_ref", "electrode_type"):
+            r.setdefault(k, doc_type if k == "doc_type" else None)
         ref = r.get(ref_field)
         node = idx.get(ref) if ref else None
+        if ref and node is None and pick is not None:
+            # 실호출 갈래 — 닫힌 목록을 선택지로 넘긴다. 목록 밖 답은 버린다.
+            chosen = pick(ref, sorted(idx))
+            if chosen and chosen in idx:
+                r[ref_field] = chosen
+                node = idx[chosen]
+                r.setdefault("meta", {})["coord_tag_source"] = "live"
         if ref and node is None:
             r[ref_field] = ref                      # 그대로 둔다 — orphan_anchor는 인입 몫
         if node is not None and not r.get("process_group"):
@@ -88,7 +120,7 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref"):
     return out
 
 
-def complete_images(pieces, summarize=None, *, allow_mock=True):
+def complete_images(pieces, summarize=None, *, allow_mock=True, kept=None):
     """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §6 규약 3).
 
     **여기가 조용한 오염이 나던 자리다.** 호출부가 `summarize`를 빼먹으면 고정 문자열
@@ -116,10 +148,21 @@ def complete_images(pieces, summarize=None, *, allow_mock=True):
     for p in pieces:
         r = dict(p)
         ref = r.get("image_ref")
+        if ref and not r.get("text") and kept is not None and ref in kept:
+            # **보존분 재사용** — 매 인입 새로 부르면 text가 흔들려 그 문서의
+            # chunk_id가 전량 이동한다(문서 6 §6.3 · chunk_id 결정성 §7.2).
+            r["text"] = kept[ref]
+            m = r.setdefault("meta", {})
+            m["image_summary"] = True
+            m["image_summary_source"] = "kept"
+            out.append(r)
+            continue
         if ref and not r.get("text"):
             if summarize is not None:
                 r["text"] = summarize(ref)
                 src = "live"
+                if kept is not None:
+                    kept[ref] = r["text"]        # **보존** — 재인입에 재사용(§6.3)
             elif allow_mock:
                 r["text"] = MOCK_IMAGE_SUMMARY.format(image_ref=ref)
                 src = "mock"

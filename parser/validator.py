@@ -49,6 +49,14 @@ def check(envelope, closed_list=None):
             d.append(f"{key}[{i}]: source_locator 부재 (조각 공통 필수)")
         else:
             locs.append(loc)
+        # **좌표 존재 검사** — 문서 6 §6.2-5. "좌표 존재"는 **필드의 존재**이지
+        # 닫힌 목록 대조가 아니다(대조는 인입 소관 — D-77). 값이 null인 것과
+        # 키가 없는 것은 다르다: 후자면 인입의 필드 검증이 "부재"를 판정할 대상을
+        # 잃고, 조각 공통 층(§2.2 계약 ①)이 계약이 아니라 어댑터별 재량이 된다.
+        for ck in ("doc_type", "process_group", "process_ref", "electrode_type"):
+            if ck not in piece:
+                d.append(f"{key}[{i}]: 조각 공통 키 부재 — {ck} "
+                         f"(값 null은 허용, 키 부재는 계약 위반)")
         # 정본 id는 파서가 부여하지 않는다 (틀 A7-1 — 에이전트 계산)
         bad = {"chunk_id", "record_id", "doc_hash"} & set(piece)
         if bad:

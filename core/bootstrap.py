@@ -112,8 +112,11 @@ def write_closed_list(layer, g, cfg, seed=None):
     좌표 태깅이 고를 닫힌 목록을 파일 하나로 내보내야 둘이 **같은 실물**을 본다.
 
     목록 = **골격 전 노드**(개념 + 인스턴스)이며 canonical과 alias를 함께 싣는다
-    (A11-6 · D-45 — 구 "세부공정 목록" 서술은 폐기됐다). `skeleton_version`을 함께
-    적어 표류를 대조할 수 있게 한다.
+    (A11-6 · D-45 — 구 "세부공정 목록" 서술은 폐기됐다). 층 config의
+    `skeleton_version`(골격 판번호)과 seed 파일의 `seed_format`(seed **문법**
+    판번호)을 함께 적어 표류를 대조할 수 있게 한다 — **둘은 다른 것이고 같은
+    낱말을 쓰면 안 된다**: 하나는 "이 골격이 몇 판인가", 다른 하나는 "이 파일을
+    어느 문법으로 읽어야 하나"다.
 
     **파생물이다**(P5) — 골격을 재빌드하면 loader가 다시 만든다. 손으로 고치지 않는다.
     """
@@ -138,7 +141,7 @@ def write_closed_list(layer, g, cfg, seed=None):
     snap = store.read(store.SKELETON_LIST, {})
     snap[layer] = {
         "skeleton_version": cfg.get("skeleton_version"),
-        "seed_version": (seed or {}).get("skeleton_version"),
+        "seed_version": (seed or {}).get("seed_format"),
         "category": (cfg.get("skeleton") or {}).get("category"),
         "count": len(entries),
         "nodes": entries,
@@ -201,7 +204,7 @@ def bootstrap(layer="process", echo=True):
         # 코드가 층 이름으로 가르면 그 자체가 층 어휘다.
         "status": cfg.get("registration", "registered"),
         "skeleton_version": cfg.get("skeleton_version"),
-        "seed_version": seed.get("skeleton_version"),
+        "seed_version": seed.get("seed_format"),
         "categories": list(cfg["categories"]),
         "relations": cfg["relations"],
     }

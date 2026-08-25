@@ -276,6 +276,39 @@ show("확정은 승인 기록까지 — registry 등재는 P3의 몫이다 (경�
 shutil.rmtree(ROOT / "review" / "ipqc_p1", ignore_errors=True)
 shutil.rmtree(ROOT / "review" / "ipqc_p1_solo", ignore_errors=True)
 
+# ============================================================ 조각 공통 층 (§2.2 계약 ①)
+print("\n■ 조각 공통 층 — 모든 record/chunk가 달고 들어온다 (문서 2 §2.2)")
+import importlib.util as _iu                                    # noqa: E402
+_s = _iu.spec_from_file_location("_bp", ROOT / "parser/adapters/basic_ppt.py")
+_bp = _iu.module_from_spec(_s); _s.loader.exec_module(_bp)
+_r = pipeline.parse(_bp, "PPTXCOMMON", str(ROOT / "mock/raw/PPT_basic.pptx"))
+_COMMON = {"source_locator", "doc_type", "process_group", "process_ref",
+           "electrode_type"}
+show("기본 어댑터 산출도 조각 공통 5키를 전부 갖는다 (값 null 허용·키 부재 금지)",
+     _r.ok and all(_COMMON <= set(c) for c in _r.envelope["chunks"]),
+     str(sorted(_COMMON - set(_r.envelope["chunks"][0]))) if _r.ok else str(_r.failures))
+show("validator가 조각 공통 키 부재를 잡는다 (§6.2-5 「좌표 존재」)",
+     not validator.check({"doc_id": "X", "doc_type": "t", "payload_kind": "prose",
+                          "source_path": "x", "revision": "R1",
+                          "parsed_at": "t", "parser_version": "p",
+                          "adapter_version": "a",
+                          "chunks": [{"source_locator": "X-1", "text": "가"}]})[0])
+
+# ⑨좌표 태깅의 mock 갈래는 **모델을 부르지 않는다** (조항 B12 · §7.1 대체 표)
+_calls = []
+from core import llm as _LLM                                    # noqa: E402
+for _n in ("chat", "require", "_post"):
+    _o = getattr(_LLM, _n)
+    setattr(_LLM, _n, (lambda *a, _x=_n, _f=_o, **k: (_calls.append(_x), _f(*a, **k))[1]))
+_nodes = tagger.closed_list("process")
+_tagged = tagger.tag([{"source_locator": "T-1", "process_ref": "노칭"},
+                      {"source_locator": "T-2", "process_ref": "없는공정zzz"}],
+                     layer="process", nodes=_nodes, pick=_LLM.coord_picker())
+show("⑨좌표 태깅 mock 갈래가 모델을 부르지 않는다 (조항 B12)", not _calls, str(_calls))
+show("⑨목록 밖 좌표는 값을 고치지 않고 그대로 둔다 (판정은 인입 소관)",
+     _tagged[1]["process_ref"] == "없는공정zzz"
+     and _tagged[0]["process_group"] == "조립")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

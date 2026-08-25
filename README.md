@@ -55,7 +55,7 @@ platform · scan · parse · register · show · export`.
 | 코어 의존 | **없다.** `core/`는 표준 라이브러리만 쓴다 — 폐쇄망에서 설치 없이 돈다 |
 | 파서 의존 | `openpyxl` · `python-pptx` — **선택**이다(지연 import). 없어도 `USE_MOCK=1` 전 경로가 완주한다 |
 | 선택 | `orjson` (직렬화 가속 — 없으면 표준 json 폴백). 전량은 `requirements.txt` |
-| 실 모델 | `USE_MOCK=0` + `ONTO_LLM_*` 4종. 미설정이면 **명시적 실패**(조용한 폴백 없음) |
+| 실 모델 | `USE_MOCK=0` + `LLM_GATEWAY_URL 등` 4종. 미설정이면 **명시적 실패**(조용한 폴백 없음) |
 | 네트워크 | **불필요.** `USE_MOCK=1`(기본)에서 전 경로가 로컬로 돈다 |
 
 ## 무엇이 진짜고 무엇이 mock인가
@@ -65,7 +65,7 @@ platform · scan · parse · register · show · export`.
 
 **LLM 지점 8종은 골조가 서 있고 설정만 비어 있다** — 각 지점이
 `if USE_MOCK: <mock> else: <실호출>`로 갈리고 두 갈래가 같은 반환 계약을 지킨다.
-연결은 환경변수 4종(`ONTO_LLM_URL`·`ONTO_LLM_KEY`·`ONTO_LLM_MODEL`·`ONTO_EMBED_MODEL`)
+연결은 환경변수 4종(`LLM_GATEWAY_URL`·`LLM_API_KEY`·`CHAT_MODEL`·`EMBED_MODEL`)
 + `USE_MOCK=0`이고 **코드 수정은 0**이다. `doctor.py` ④절이 8/8을 매번 실측한다.
 **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준일 뿐이다.
 미설정 상태의 `USE_MOCK=0`은 조용히 mock으로 떨어지지 않고 **명시적으로 실패한다**.

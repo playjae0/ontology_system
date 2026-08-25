@@ -41,6 +41,71 @@ PROSE_SIGNALS = ("heading_pattern", "split_on", "indent", "bold", "text_column",
                  "struct_map")
 
 
+# 구조 가변 prose의 **지문 키** — 힌트와 별개다 (문서 6 §6.4-9).
+# 힌트(heading_pattern 등)는 **강제가 아니므로** 지문이 따로 없으면 adapter_mismatch
+# 판정이 성립하지 않는다 — "선언돼 있나"만 보면 어떤 문서를 넣어도 통과한다.
+PROSE_FINGERPRINTS = ("title_row", "max_col")
+
+
+def _first_sheet(raw):
+    return (raw.get("sheets") or [{}])[0]
+
+
+def _fp_title_row(exp, raw):
+    """`title_row`: 그 행에 **내용이 있는가.** 값이 문자열이면 그 문자열과 대조한다."""
+    want = exp["title_row"]
+    cells = _first_sheet(raw).get("cells") or {}
+    row = want if isinstance(want, int) else 1
+    got = [v for k, v in cells.items() if str(k)[1:].isdigit() and int(str(k)[1:]) == row]
+    if isinstance(want, str):
+        return (want in [str(v) for v in got]), {"want": want, "got": got[:3]}
+    return bool(got), {"want_row": row, "got": got[:3]}
+
+
+def _fp_max_col(exp, raw):
+    """`max_col`: 실제 최대 열 수가 선언을 넘지 않는가 — 넘으면 양식 표류다."""
+    want = exp["max_col"]
+    cells = _first_sheet(raw).get("cells") or {}
+    cols = {"".join(ch for ch in str(k) if ch.isalpha()) for k in cells}
+    n = max((len(c) * 26 - 26 + (ord(c[-1]) - 64) if c else 0) for c in cols) if cols else 0
+    return n <= int(want), {"want_max": want, "actual_max": n}
+
+
+FP_CHECKS = {"title_row": _fp_title_row, "max_col": _fp_max_col}
+
+
+def _prose(exp, raw, detail):
+    """prose preflight — **prose라고 생략하지 않는다** (문서 6 §6.4-9).
+
+    두 갈래다:
+
+    - **구조 가변 prose**: `expects`에 지문 키(`title_row`·`max_col` 등)를 두고
+      **실물과 대조**한다. 지도 패스가 분할을 맡더라도 "이 문서가 그 계열이 맞나"는
+      지문이 답해야 한다.
+    - **분할 자명 prose**: 분할 신호 상수(`split_on`·`max_chars` 등)가 **그대로
+      지문**이다. 선언이 있는지만 본다 — 슬라이드 문서에는 대조할 행·열이 없다.
+
+    지문 키가 하나라도 선언돼 있으면 첫째 갈래로 판정한다. 지문이 어긋나면
+    `adapter_mismatch`이고, detail에 **무엇이 어긋났는지**가 실린다.
+    """
+    fps = [k for k in PROSE_FINGERPRINTS if k in exp]
+    detail["signals"] = sorted(exp)
+    if fps:
+        detail["fingerprints"] = {}
+        ok = True
+        for k in fps:
+            good, info = FP_CHECKS[k](exp, raw)
+            detail["fingerprints"][k] = {"ok": good, **info}
+            ok = ok and good
+        if not ok:
+            detail["reason"] = "구조 가변 prose 지문 불일치"
+        return ok, detail
+    has = any(any(sg in str(k).lower() for sg in PROSE_SIGNALS) for k in exp)
+    if not has:
+        detail["reason"] = "분할 신호 상수가 expects에 없다 (지문이 없으면 판정 불가)"
+    return has, detail
+
+
 def check(adapter, raw):
     """(ok, detail) — detail은 사람이 판정할 차이 내역이다.
 
@@ -51,11 +116,7 @@ def check(adapter, raw):
     detail = {"doc_type": a.get("doc_type"), "adapter_version": a.get("adapter_version")}
 
     if a.get("payload_kind") == "prose":
-        # 비정형은 헤더 행이 없다 — 분할 신호 상수가 선언돼 있는지만 본다.
-        # (구조 가변 prose는 지도 패스가 분할하므로 힌트만 있어도 성립한다 — D-58)
-        has = any(any(sg in str(k).lower() for sg in PROSE_SIGNALS) for k in exp)
-        detail["signals"] = sorted(exp)
-        return has, detail
+        return _prose(exp, raw, detail)
 
     hr = exp.get("header_row")
     declared = exp.get("header_labels")

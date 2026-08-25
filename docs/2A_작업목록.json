@@ -1,0 +1,408 @@
+[
+ {
+  "id": "spec-12-16-78",
+  "verdict": "코드가어김",
+  "evidence": "core/store.py:56-58 `def write(name, obj): DATA.mkdir(parents=True, exist_ok=True); path(name).write_bytes(_dumps(obj))` — 대상 파일을 직접 덮어쓴다. core/graph.py:97-100 `def save(self): self._path.parent.mkdir(...); self._path.write_bytes(_dumps({\"nodes\": self.nodes, \"edges\": self.edges}))` — graph.json도 동일. 레포 전체에 fcntl·flock·os.replace·tempfile 참조 0건(grep --include=*.py). run.py:5 docstring이 스스로 인정한다: \"**build는 직렬 실행**이다 — 저장이 비원자적이라 호출부가 직렬화를 보장한다.\" 즉 저장 측 방어가 0이고 약속만 호출부에 있다.",
+  "gap": "store.write()·GraphStore.save()를 공용 원자적 쓰기(같은 디렉터리 tmp 파일 + os.replace)로 바꾸고 쓰기 구간에 파일 락(fcntl.flock)을 건다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-99",
+  "verdict": "코드가어김",
+  "evidence": "run.py:124-137 진입점 dispatch dict에 init이 없다 — bootstrap·ingest·all·query·ops·gauges·platform·scan·parse·register·show·export 12종뿐. 실행 확인: `python3 run.py init --fresh` → `Traceback … File \"/home/claude/repo/run.py\", line 125 … KeyError: 'init'`. 클린의 실체는 수동 삭제다 — .gitignore:8-13이 \"data/ = 실행 산출물 … `python run.py all` 한 번으로 재생성된다\"로 두고, 실제 클린 재현은 `rm -rf data extract` 후 run.py all이었다.",
+  "gap": "run.py에 `init [--fresh]` 진입점을 신설해 data/ 하위를 7.2 빈 상태 형태로 생성·재생성한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-115",
+  "verdict": "코드가어김",
+  "evidence": "①은 지킴 — core/pipeline.py:288-300의 attach는 `resolve_anchor`(=Tier1 골격 한정)를 타지 않고 290행 `target = b.buffer.get(_n(a[\"attach_to\"])) or _dict_hit(b, a[\"attach_to\"])`로 문서 버퍼+사전에서 해소한다. 실측: PPT02-L2의 attach_to '주액기'는 산문 발견 auto Unit(provenance ['PPT02-L1'], status auto)인데 `주액기 -has_property-> 패키징::전해액 주액::노즐 세척 주기` 엣지가 정상 생성됐다. ②③은 어김 — 297-299행 `store.enqueue(\"orphan_attach\", …, {\"surface\": a[\"surface\"], \"attach_to\": a[\"attach_to\"]})`이고 dedup 키는 core/store.py:101-106의 `(x.get(\"kind\"), x.get(\"doc_id\"), x.get(\"payload\"))` — payload에 노드 id도 정규화 표면형도 없고 **원 표면형 2개**다. attach_to가 null이어도 큐를 단다: 289-290행 `_n(None)`이 core/ids.py:56-62 `norm()`의 `str(text)`로 문자열 `\"None\"`이 되어 미해소로 떨어진다. 실측(미해소 attach 1건 강제 투입) → 큐 적재 `payload={\"surface\":\"세척주기Z\",\"attach_to\":null}`, reason=\"부착 대상 미해소 — 'None'\". 폴백은 없다(300행 `continue`).",
+  "gap": "pipeline.py:288-300에 attach_to null 분기를 두어 큐를 달지 않고 폴백만 하게 하고, orphan_attach payload를 (자식 node_id, norm(attach_to))로 바꾼다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-37",
+  "verdict": "코드가어김",
+  "evidence": "core/pipeline.py:146-149 `for f, spec in attrs: tgt = resolved.get(spec.get(\"attach_to_field\")); if tgt is None: continue` — 부착 대상 미해소 시 큐도 결함 로그도 없이 값을 버린다(= 명세가 금지한 세 갈래 중 '조용한 폐기'). 실측 재현: mock/parsed/PFMEA01.json의 PFMEA01-R9는 effect_category='셀 부풀음'이 골격 밖이라 core/build.py:118-121에서 orphan_anchor로 떨어지고(data/review_queue.json: \"골격에 없는 좌표 — '셀 부풀음'\"), 같은 행의 `severity: 8`은 data/*/graph.json 어느 노드의 attrs에도 PFMEA01-R9 provenance로 존재하지 않는다(전수 스캔 0건). 같은 파일 39-41행이 unknown_field에 대해서는 \"레코드는 어디에도 저장되지 않으므로, 여기서 안 실으면 그 값은 영구 소실이다 — 카드 G5\"라며 값을 동봉하는 것과 대칭이 깨져 있다. 처분용 kind `attach_conflict`는 cli/platform.py:43에 선언만 있고 store.enqueue 호출 0건(전 호출부 전수 확인).",
+  "gap": "pipeline.py:146-149(및 content의 155-158)에서 tgt 미해소 시 값·부착대상·provenance를 동봉해 attach_conflict 큐로 보류한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-s7-11-36",
+  "verdict": "코드가어김",
+  "evidence": "core/query.py:192-220 `facts()`는 수집 노드 집합 안의 **모든** 엣지(201-206행)와 모든 attr 항목(207-219행)을 fact_templates로 문장화해 그대로 반환한다 — 질문 관련성 판정이 어디에도 없다. cli/query.py:105-108이 `res[\"facts\"] += Q.cross_facts(...)`와 층별 `Q.facts(...)`를 무필터로 누적하고, 147-161 `render()`는 `[그래프 사실]` 접두만 붙인다. 답변 LLM 자체가 없다 — core/ 디렉터리에 llm.py가 없고, 레포 전체 LLM 클라이언트 호출 0건(openai/anthropic/httpx/requests 매치는 kit/run_adapter.py:32 BANNED_IMPORTS 금지목록 하나뿐). 대칭 통제인 청크 쪽만 걸려 있다 — core/query.py:22 `COLLECT_LIMIT = 8`, 185-188 tier2 잘림 + 잘림 로그. 그래서 브리지(112-137)와 part_of 하향 재귀(graph.py:156-185)로 모인 노드의 사실이 상한 없이 프롬프트 자리로 간다.",
+  "gap": "cli/query.py의 facts 합성 뒤에 질문 관련성 필터 단계(답변 LLM 또는 명시적 훅)를 신설한다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-s7-11-51",
+  "verdict": "코드가어김",
+  "evidence": "[표행 1]은 있다 — 엣지 삭제 도구 core/ops.py:479-496 `delete_edge()`가 `e[\"status\"] = STATUS_DELETED`(core/graph.py:54 `STATUS_DELETED = \"deleted_by_user\"`)로 툼스톤을 심고 재인입 부활을 core/graph.py:133-134가 막는다; 창구는 cli/ops.py:44·83-86 `delete-edge`. 열람 명령도 실물이다 — cli/show.py:59-104 tree · 108-140 node · 257 `def cmd_edges(args)` · 352-357 main 라우팅. **[표행 2]의 우선순위 정렬이 없다** — cli/platform.py:135-146 `cmd_queue(kind)`는 QUEUE_KINDS 고정 순서로 건수만 찍고(138-139행), kind별 항목은 144-146행 `for x in v[\"items\"]:`로 **적재 순서 그대로** 출력한다. 참조 수(엣지 차수)로 auto 노드를 앞세우는 정렬 코드가 레포 어디에도 없다 — cli/platform.py의 sorted 호출은 doctypes(176행)·허브 차수(278행)뿐이고 큐에는 없다.",
+  "gap": "cmd_queue의 kind별 항목 출력을 payload.node_id의 엣지 참조 수 내림차순으로 정렬한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-81",
+  "verdict": "코드가어김",
+  "evidence": "기준선은 잠겨 있다 — tests/test_g3.py:79-80 `show(\"C4 spec_conflict 1건 (같은 context 그룹, 다른 값)\", len(q(\"spec_conflict\")) == 1, …)`이고, 클린 재빌드 실측에서도 spec_conflict는 정확히 1건(지정 행 CP01-C4: 스태킹::적층 정렬도 spec ±0.2mm↔±0.3mm)이다. 신규 Property의 auto 생성도 동작한다 — core/build.py:295-301 `nid = self.g.add_node(canonical, category, \"auto\", provenance=[prov], **extra)` + auto_node 큐(실측 50건). **부착 폴백(규칙 B)이 없다** — core/pipeline.py:296-300 `if target is None: store.enqueue(\"orphan_attach\", …); continue` 뿐이고, 같은 루프가 260-262행에서 이미 해소해 둔 그 청크의 공정좌표 `ref`(및 build_table의 146-149행 attribute 경로)로 폴백 부착하는 코드가 전혀 없다. 실측: 미해소 attach 1건 투입 시 노드·엣지 증가 0, 큐만 1건.",
+  "gap": "pipeline.py:296-300에 규칙 B 폴백을 넣는다 — 미해소·null attach_to면 그 행/청크의 공정좌표(ref)에 `_pair_relation`으로 부착한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-101",
+  "verdict": "코드가어김",
+  "evidence": "`__init__.py`는 core/(6줄)·cli/(빈 파일)·parser/에 있고 import도 절대경로다. 그러나 **sys.path 조작이 전 CLI에 박혀 있다** — cli/query.py:18-19, cli/ops.py:21-22, cli/platform.py:29-30, cli/show.py:25-26, cli/export.py:22-23, cli/parse.py:23-24, cli/scan.py:27-28이 모두 `if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))`이고 cli/register.py:37-38은 거기에 `sys.path.insert(0, str(ROOT / \"kit\"))`까지 더한다. 문서화된 실행형도 `python -m`이 아니라 스크립트 경로다 — cli/ops.py:4-8 \"python cli/ops.py rename <층> …\", cli/query.py:10, cli/platform.py:19, cli/show.py:4-10, cli/register.py:21-24; run.py:11-20도 `python run.py …` 단일 진입점이다. 이 sys.path 삽입이 정확히 \"실행 위치 의존\"을 감추는 장치다(삭제하면 `python cli/ops.py …`가 즉시 깨진다). layers/에는 __init__.py가 없으나 그 폴더는 config.json·skeleton.json만 있는 데이터 디렉터리다.",
+  "gap": "cli/* 8개 파일의 sys.path.insert를 제거하고 진입점 docstring·doctor 안내를 `python -m cli.{진입점}`으로 통일한다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-12-16-71",
+  "verdict": "코드가어김",
+  "evidence": "런타임 동작은 규범대로다 — core/pipeline.py:296-300 `if target is None: store.enqueue(\"orphan_attach\", f\"부착 대상 미해소 — '{a['attach_to']}'\", env[\"doc_id\"], {…}); continue` — 임시 노드도, 표면형을 끝점에 채운 엣지도 만들지 않는다(실측: 미해소 attach 1건 투입 → 노드·엣지 증가 0, orphan_attach 1건). **회귀 스위트에 부정 경로가 없다** — tests/test_g3.py:238-247의 S13은 성공 경로 둘만 어서션한다: 239행 `show(\"S13 — orphan_attach 0건\", len(q(\"orphan_attach\")) == 0, …)`, 243-247행 `show(\"S13 — attach가 다른 청크(L1)의 개체로 붙어 has_property 생성\", …)`. 미해소 attach_to를 투입해 임시 노드·엣지 0을 확인하는 케이스가 스위트 전체에 없다(grep S13: test_g3.py:5·238·239·243이 전부). 즉 임시 노드를 만드는 구현이 들어와도 지금 스위트는 통과한다.",
+  "gap": "tests/test_g3.py S13에 부정 경로 어서션을 추가한다 — 미해소 attach_to 투입 후 노드·엣지 증가 0 + orphan_attach 1건.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-164",
+  "verdict": "코드가어김",
+  "evidence": "②후보 검색에 임베딩이 없다 — core/matcher.py:83-104가 `for nid, n in graph.nodes.items()` 선형 순회로 후보를 훑고 점수는 core/matcher.py:37-51 `_similarity(a, b)`(공백 제거 후 `x == y` → 1.0, `x in y or y in x` → 0.95, 아니면 0.0)뿐이다. 벡터·임베딩 코드가 레포 전체에 0건이다 — grep(embed/vector/임베딩/벡터, core·cli·parser·layers·schemas·tests·run.py·doctor.py) 결과는 core/query.py:43 docstring \"3단(임베딩 검색)은 이연이며 훅만 둔다\"와 cli/show.py:12 docstring 둘뿐이고 실행 코드가 아니다(그 자리에는 HOOK 마커조차 없다). 정의문도 후보 검색에 들어가지 않는다 — layers/*/config.json의 `categories` 값(정의문)은 core/build.py:257-266의 선언 여부 판정과 cli/register.py:148 입력 패키지 표시에만 쓰인다. 재생성 시점 규정도 코드에 없다.",
+  "gap": "노드 canonical + 카테고리 정의문을 로드 시 1회 임베딩해 후보 검색에 쓰는 단계를 신설한다(또는 그 자리를 명시적 훅으로 봉인).",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-s7-11-56",
+  "verdict": "코드가어김",
+  "evidence": "미리보기가 **차단형 승인 게이트로** 구현돼 있다 — cli/ops.py:52 `p.add_argument(\"--yes\", action=\"store_true\", help=\"미리보기 확인 후 실행\")`이고 60·68·75·82행이 `if a.yes:`일 때만 실제 연산을 부르며 90-91행이 \"(미리보기만 수행했다. 실행하려면 --yes)\"로 멈춘다. 같은 파일 10-11행이 설계 의도를 못 박는다: \"`--yes` 없이는 미리보기만 내고 멈춘다 — 승인 없는 파급은 이 도구의 설계상 존재하지 않는다.\" 파급 규모 분기가 없다 — core/ops.py:187(rename)·327(merge)·466(obsolete)이 조건 없이 `pv = preview(...)`를 부르고 core/ops.py:14도 \"미리보기 없이 도는 연산은 없다\"다. 그래서 파급 0~1건인 폐기도 미리보기+`--yes`를 거친다. 유일한 예외가 하드코딩된 엣지 삭제뿐이다(cli/ops.py:83-86 — preview 없이 즉시 실행). 대상 측면에서도 이관(스코프 변경 연쇄)과 골격 개정에 대응하는 연산·미리보기가 core/ops.py에 없다(연산 5종: rename·merge·split·obsolete·delete_edge).",
+  "gap": "파급 계수를 보고 ≤1이면 미리보기·--yes를 생략하는 분기를 cli/ops.py에 세우고 차단형 승인 게이트를 걷는다; 미리보기 대상에 이관·골격 개정을 넣는다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-s7-11-59",
+  "verdict": "코드가어김",
+  "evidence": "중간 삽입(골격 엣지 재배선) 연산도 제안 경로도 없다 — core/ops.py:1-4가 소유한 연산은 I1 개명·I2 병합·I3 분리·I4 폐기 + 엣지 삭제 5종뿐이고 `structural_proposal` enqueue는 0건이다. 실재하는 유일한 골격 개정 경로(seed 편집 후 재-bootstrap)는 **하위 canonical을 불변으로 두지 못한다** — core/bootstrap.py:240-241 `tier = TIER_BY_DEPTH.get(depth, TIER_DEEP)` / `canonical = name if tier != TIER_DEEP else f\"{parent.canonical}{self.sep}{name}\"`라 canonical이 부모 경로에 종속된다. 실측(_TreeParser 직접 호출): `조립>노칭>[전극 언와인딩, 노칭 타발]` → 중간 노드 `전극공정` 삽입 시 `('노칭','sub')`가 `('전극공정::노칭','detail')`로, `('노칭::전극 언와인딩','detail')`가 `('전극공정::노칭::전극 언와인딩','detail')`로 전부 바뀐다. 재배선도 없다 — core/graph.py:127-143 `add_edge()`는 추가만 하고 옛 A→B 골격 엣지를 지우지 않으며, core/bootstrap.py:409-419 `_stale_skeleton()`은 남은 옛 노드를 결함 로그로 알릴 뿐이다.",
+  "gap": "골격 중간 삽입(엣지 재배선) 연산을 신설하고, canonical 파생을 부모 경로 종속에서 떼어 하위 canonical 불변을 성립시킨다.",
+  "effort": "설계"
+ },
+ {
+  "id": "spec-A-160",
+  "verdict": "코드가어김",
+  "evidence": "양방향 확장은 있다 — core/graph.py:170-176 `if d in (\"out\",\"both\") … if d in (\"in\",\"both\") …`, cross-layer도 core/query.py:126-133 `bridge()`가 `d = spec[e[\"rel\"]].get(\"direction\", \"both\")`로 양방향이다. **후보 좁히기 주체가 없다** — core/query.py:192-220 `facts()`가 수집 노드 집합의 전 엣지·전 attr를 문장화하고 cli/query.py:105-108이 무필터로 합친다. 코드 필터도 답변 LLM도 없다(core/llm.py 부재, LLM 클라이언트 호출 0건; kit/run_adapter.py:32의 openai/anthropic 매치는 금지목록이다). Q5 문항 mock/queries.json:11 `{\"id\":8,\"type\":\"Q5\",\"q\":\"금형 클리어런스를 관리하는 설비는?\",\"expected_path\":\"graph_fact\"}`은 tests/test_g4.py:64-66에서 경로 값만 대조되고 좁히기 여부는 어떤 어서션에도 걸리지 않는다.",
+  "gap": "확장 결과를 답변으로 넘기기 전에 관련성 필터(주체 = 답변 LLM)를 둔다 — spec-s7-11-36과 같은 수리 자리.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-s7-11-85",
+  "verdict": "코드가어김",
+  "evidence": "③계기판만 요건을 채운다 — cli/platform.py:207-307 `gauges()` + 310-332 `cmd_gauges()`가 별도 명령이고(347행 라우팅, run.py:83-86 `gauges`), 파이프라인에 심기지도 않았다(core/pipeline.py:340-378 `run_document()`가 계산하는 것은 graph.build_end()의 7·8뿐이고 1~6은 없다; platform.py:207-213 docstring이 \"build·query 경로에 계산을 심지 않는다\"). **④Q7류 집계 대시보드가 없다** — Q7·집계·dashboard·대시보드 grep 결과 코드 0건. ①스키마 등록 워크플로우와 ②수정 도구 세트도 플랫폼 화면 목록 밖이다 — cli/platform.py:339-347 노출 목록은 build·query·graph·queue·extract·registry·doctypes·ops·gauges 9종이고, 등록은 cli/register.py, I축 4연산은 cli/ops.py라는 별개 CLI다(플랫폼은 queue 열람 135-146행과 ops 이력 조회 196-203행만 한다).",
+  "gap": "플랫폼 노출 목록에 Q7류 집계 대시보드 화면을 신설하고, 스키마 등록 워크플로우와 수정 도구 세트를 플랫폼 창구로 등재한다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-s7-11-56",
+  "verdict": "코드가어김",
+  "evidence": "검사기 문면만 읽은 구현이 실제로 차단형 게이트가 됐다 — core/ops.py:14 docstring \"**파급이 1건을 넘으면 실행 전에 보여준다**(G6). 미리보기 없이 도는 연산은 없다\"가 조건 없는 강제로 번역돼, core/ops.py:187·327·466이 파급 규모와 무관하게 `preview()`를 부르고, cli/ops.py:10-11이 \"승인 없는 파급은 이 도구의 설계상 존재하지 않는다\"고 선언하며 52행 `--yes`와 60·68·75·82·90-91행이 승인 없이는 실행을 막는다. 목적(가시화)·예외(파급 1건 이하 불요)를 표현하는 분기가 코드에 없다 — 유일한 예외는 cli/ops.py:83-86 delete-edge 하드코딩이고, 엣지 없는 노드의 obsolete(파급 1)도 미리보기+`--yes`를 거친다. core/ops.py:132-152 `preview()`는 노드 수·엣지 수·canonical 연쇄 목록만 돌려주므로 \"파급 ≤1\" 판정에 쓸 재료는 이미 있다.",
+  "gap": "preview()의 nodes·edges 계수로 파급 ≤1을 판정해 미리보기와 --yes 차단을 건너뛰는 공통 분기를 cli/ops.py에 둔다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-100",
+  "verdict": "코드가어김",
+  "evidence": "네 형태를 **파일로 만드는 코드가 없다** — init 진입점이 없고(run.py:124-137), .gitignore:8-13이 data/를 \"실행 산출물 … run.py all 한 번으로 재생성\"으로 두어 현행 클린이 `rm -rf data`(파일 없음)다. 명시된 형태는 읽기 기본값으로만 존재한다 — core/store.py:51-54 `read(name, default)`에 호출부가 넘기는 값이 `store.read(store.QUEUE, [])`(store.py:81·101), `store.read(store.CHUNKS, {\"chunks\": {}, \"describes\": []})`(ingest.py:114·206, pipeline.py:237·251·367), `store.read(store.DICTIONARY, {})`(build.py:34, ops.py:193·357, cli/query.py:42)이고, 그래프는 core/graph.py:92-93 `self.nodes, self.edges = {}, []` + 99행 `_dumps({\"nodes\": self.nodes, \"edges\": self.edges})`다. 즉 형태는 코드가 알지만 \"빈 상태\"를 실물 파일로 확정하는 자리가 없어 클린 2회 동일 판정의 대조 단위가 실행마다 달라진다.",
+  "gap": "impl-B-99의 init --fresh가 graph.json={\"nodes\":{},\"edges\":[]} · dictionary.json={} · chunks.json={\"chunks\":{},\"describes\":[]} · review_queue.json=[] 네 파일을 실제로 생성하게 한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-15",
+  "verdict": "코드가어김",
+  "evidence": "`core/dictionary.py`가 존재하지 않는다(core/ 파일 16종: bootstrap·build·extract·gate·graph·ids·ingest·matcher·naming·ops·pipeline·query·registry·store). 사전 접근이 관문 없이 5곳으로 흩어져 있다: core/build.py:34 `self.dict = store.read(store.DICTIONARY, {})` + :64-72 `_register()` + :75 `flush()` / core/ops.py:193·215(rename)·357-363(merge)·408-444(split) 직접 read/write / core/bootstrap.py:483-517 직접 read/write / cli/query.py:42 `dictionary = store.read(store.DICTIONARY, {})` / core/matcher.py:59 dict를 인자로 직수령. GraphStore(core/graph.py:61-75 `for_layer`가 파일 이름까지 소유)와 대칭인 경계가 dictionary.json에는 없다. tests/test_g5.py:78-81·173-175는 테스트가 사전을 직접 write까지 한다.",
+  "gap": "`core/dictionary.py`를 신설해 register/lookup 단일 관문으로 만들고, build·ops·bootstrap·query·matcher의 직접 read/write 전부를 그 모듈 경유로 돌린다(등재 시 provenance 필수 강제를 그 자리에 둔다)",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-49",
+  "verdict": "코드가어김",
+  "evidence": "골격은 맞다 — core/graph.py:99 `_dumps({\"nodes\": self.nodes, \"edges\": self.edges})`(nodes=dict, edges=list), 노드 레코드 core/graph.py:117-122 `{id, canonical, category, layer, status, attrs, aliases, provenance}`, 엣지 레코드 :141-142 `{src, rel, dst, status, provenance}`, alias 항목은 문자열이 아니라 dict — core/build.py:72 `n[\"aliases\"].append({\"surface\": surface, \"provenance\": [prov]})`, core/ops.py:199·337-338·414도 동형. **어긋나는 곳은 attrs 컨테이너 하나다**: core/bootstrap.py:404 `g.add_node(..., attrs={\"process_no\": None}, ...)`가 값 항목 리스트가 아니라 스칼라 None을 넣는다 — 실측 data/process/graph.json에서 76노드 중 46노드의 attrs 값이 리스트가 아니다. core/build.py:322-323이 `if not isinstance(items, list): items = attrs[name] = [items]`로 승격시키는데, None이 승격되면 [None]이 되어 :324 `it.get(\"context\")`가 AttributeError로 죽는 잠복 경로다.",
+  "gap": "core/bootstrap.py:404의 `attrs={\"process_no\": None}`를 제거하거나 값 항목 리스트 형태로 바꾼다(process_no는 role=meta라 attrs에 있을 자리가 아니다 — schemas/blocks.json:9)",
+  "effort": "1줄"
+ },
+ {
+  "id": "spec-s7-11-26",
+  "verdict": "코드가어김",
+  "evidence": "①occurs_in 미생성은 지킨다 — core/gate.py:104-109 `s=...get(src) if src else None … if not s or not d: log_reject(..., UNRESOLVED_ENDPOINT, ...); return`. 실측: `python3 run.py all` 후 gate_rejects에 `('occurs_in','unresolved_endpoint') 2건`. ②그러나 **그 Failure를 보유하는 큐 항목이 없다** — core/build.py:118-121 `store.enqueue(\"orphan_anchor\", f\"골격에 없는 좌표 — '{surface}'\", self.doc_id, {\"surface\": surface, \"category\": category, \"provenance\": prov})`. 실측 payload: `{\"surface\":\"레이저노칭\",\"category\":\"Process\",\"provenance\":\"PFMEA01-R13\"}` — 그 행이 만든 Failure 노드 id가 없다. ③**orphan 재시도 배치(4.7-5)가 아예 없다** — 레포 전체 `grep -rn \"retry|재시도\" --include=*.py` 0건. 결과적으로 재시도 손잡이는 gate_rejects 로그뿐이며, 이것이 norm이 금지한 바로 그 상태다.",
+  "gap": "orphan_anchor payload에 그 행이 만든 Failure(및 미부착 개체) node_id를 실어 재시도 손잡이로 만들고, 그 큐를 소비하는 orphan 재시도 배치를 신설한다",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-s7-11-51",
+  "verdict": "코드가어김",
+  "evidence": "뒷부분(엣지 삭제 도구)은 지킨다 — core/ops.py:479-496 `def delete_edge(layer, src, rel, dst, actor, reason=\"\")` + cli/ops.py:44 `choices=[\"rename\",\"merge\",\"split\",\"obsolete\",\"delete-edge\"]`. **앞부분(큐 우선순위 정렬)이 없다** — core/store.py:294-316 `enqueue()`는 `q.append(item)`로 삽입순 평면 append만 하고, 열람도 정렬하지 않는다: cli/platform.py:121-146 `queue_view()`는 kind별 건수만 세고 `cmd_queue`는 `for x in v[\"items\"]`를 삽입순 출력한다. 참조 수(차수) 기반 정렬은 어디에도 없다 — 차수 계산은 계기판 6(cli/platform.py:270-281)에만 있고 큐와 연결돼 있지 않다. 실측: 큐 69건 중 auto_node 52건이 정렬 없이 삽입순으로 쌓여 있다.",
+  "gap": "큐 열람에 정렬 규칙을 넣는다 — auto_node/uncertain_match 항목을 그 node_id의 엣지 차수(참조 수) 내림차순으로 앞세운다(cli/platform.py queue_view 또는 store 측 정렬 함수)",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-84",
+  "verdict": "코드가어김",
+  "evidence": "[그래프 사실] 채널에 **관련성 필터가 전혀 없다**. cli/query.py:105-108 `res[\"facts\"] += Q.cross_facts(crossed, graphs, configs)` / `for lay, ids in collected.items(): res[\"facts\"] += Q.facts(graphs[lay], ids, configs[lay])` — 수집 노드의 엣지·값을 전량 문장화해 그대로 싣는다. core/query.py:192-220 `facts()`도 상한·필터가 없다(청크만 core/query.py:22 `COLLECT_LIMIT = 8` + :185-188 잘림 로그). 답변 LLM 단계 자체가 없다 — `core/llm.py` 부재, HOOK 5곳(parser/struct_map.py:45, cli/register.py:91, core/extract.py:78, core/query.py:296, core/ops.py:230)은 전부 주석·문자열이고 답변 단계 훅은 그중에도 없다. 실측: `run.py query \"노칭에 어떤 설비가 있어?\"` → [그래프 사실] 28줄이 무필터로 출력되며 part_of 하향 재귀 노드와 cross 브리지 Failure 사실이 전부 섞여 나온다. 계기판 4(cli/platform.py:297)는 청크 기준이라 이 팽창을 잡지 못한다.",
+  "gap": "답변 단계를 두고 [그래프 사실] 채널을 질문 관련성으로 거르게 한다(현재 답변 LLM 단계 자체가 없어 채널 분리의 절반이 비어 있다)",
+  "effort": "설계"
+ },
+ {
+  "id": "spec-A-16",
+  "verdict": "코드가어김",
+  "evidence": "모듈은 있으나 **계약도 단일 진입점도 성립하지 않는다**. core/matcher.py:59 `def resolve(surface, category, layer, graph, dictionary, *, scoped=True, polarity=None)` — 이름이 `match`가 아니고, `candidates`를 받지 않고 :101 `for nid, n in graph.nodes.items()`로 스스로 전수 스캔한다. 호출부는 프로덕션 전체에서 **1곳뿐**이다(core/build.py:21 import, :277 `verdict, nid, _ = resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity)`; 나머지 히트는 tests/test_g6_5.py:30). 재사용 3지점이 전부 이 함수를 거치지 않는다 — (a) attach_to 해소: core/pipeline.py:290 `target = b.buffer.get(_n(a[\"attach_to\"])) or _dict_hit(b, a[\"attach_to\"])` + :317-319 `_dict_hit`는 사전 첫 히트만 집는다(판정 없음), (b) orphan 재시도: 코드 자체가 없음, (c) I2 병합 후보: core/ops.py:223-241 `merge_candidates()`가 빈도·status 정렬만 하고 matcher를 부르지 않는다. 그 결과 카테고리 안전망(matcher.py:404)·극성 후보 제외(:408)·생존 판정 is_live(:402)가 build 경로 한 곳에만 적용된다 — norm이 경고한 그 상태다.",
+  "gap": "matcher를 `match(surface, candidates, category)` 계약으로 정리하고(후보 검색을 호출부/별도 함수로 분리), attach_to 해소와 I2 병합 후보를 그 함수로 배선한다",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-031",
+  "verdict": "코드가어김",
+  "evidence": "spec-A-15와 동일 규범이며 결과도 같다 — `core/dictionary.py` 부재, `register`/`lookup` 단일 관문 없음. 등재는 core/build.py:64-72 `_register()`가(여기만 provenance 필수를 지킨다), 다른 경로는 관문 없이 직접 쓴다: core/ops.py:200-205(rename, provenance 없이 `dictionary[norm(prev)].append(n[\"id\"])`), :360-362(merge), :425-431(split), core/bootstrap.py:483-517(seed 등재). 조회도 관문 없이 직접 한다: core/matcher.py:64 `for nid in dictionary.get(norm(surface), [])`, core/build.py:107 `self.dict.get(norm(surface), [])`, core/pipeline.py:318 `b.dict.get(_n(surface), [])`, cli/query.py:42-43. GraphStore(core/graph.py:69-75가 `FILENAME`까지 소유)와 동형인 관문이 사전에는 없다.",
+  "gap": "spec-A-15과 한 건으로 처리 — core/dictionary.py 신설 후 위 등재 4경로·조회 4경로를 전부 그 모듈 경유로 돌린다",
+  "effort": "모듈"
+ },
+ {
+  "id": "impl-B-23",
+  "verdict": "코드가어김",
+  "evidence": "두 규칙 중 auto 생성만 있고 **부착 폴백(규칙 B)이 없다**. auto 생성은 실재 — core/build.py:295-301 `nid = self.g.add_node(canonical, category, \"auto\", provenance=[prov], **extra)` + auto_node 큐. 폴백은 두 경로 모두 부재: (a) 정형 core/pipeline.py:146-149 `for f, spec in attrs: tgt = resolved.get(spec.get(\"attach_to_field\")); if tgt is None: continue` — 공정좌표로 내려가지 않고 그냥 버린다, (b) 비정형 core/pipeline.py:296-300 `if target is None: store.enqueue(\"orphan_attach\", f\"부착 대상 미해소 — '{a['attach_to']}'\", …); continue` — 큐만 달고 `ref`(그 청크의 공정좌표)에 부착하지 않는다. 판정 배정도 norm이 우려한 그대로다 — tests/test_g3.py:239-240 `show(\"S13 — orphan_attach 0건\", len(q(\"orphan_attach\")) == 0)`이라 폴백 경로는 어느 시나리오에서도 실행되지 않는다.",
+  "gap": "core/pipeline.py의 attach 처리에 규칙 B를 넣는다 — 부착 대상이 없거나 미해소면 그 행/청크의 `ref`(process_ref 해소 노드)에 저해상도 부착하고, attach_to가 null이면 큐를 달지 않고 폴백만 한다",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-102",
+  "verdict": "코드가어김",
+  "evidence": "**표준 로깅 모듈이 레포 전체에서 한 번도 쓰이지 않는다** — `grep -rn \"logging|getLogger|basicConfig\" --include=*.py .` 0건. 레벨 INFO 설정도 없다. 3종의 현재 착지점은 전부 로깅 밖이다: ①MOCK 경고 — 경고 자체가 없다(core/matcher.py:349-350 `_use_mock()`은 정의만 있고 호출 0회, doctor.py:106-108은 print 1줄, core/extract.py:75-78은 USE_MOCK=0일 때만 예외를 던진다), ②큐 적재 — core/store.py:294-316 `enqueue()`가 review_queue.json에 append할 뿐 로그를 남기지 않는다, ③명시적 실패 — core/ops.py:40-41 `class OpRefused(Exception)`는 예외 메시지로만, core/store.py:274-276 `append_defect()`는 defects.log 파일 직접 append로 나간다(core/pipeline.py:123·232·284, core/ops.py:110·114·298). 자동 점검이 이것을 세지 못하는 실례가 이미 있다 — doctor.py:229 `if \"HOOK\" in ln:`가 주석 5곳을 훅 구현으로 세어 보고한다.",
+  "gap": "표준 logging(레벨 INFO)을 도입하고 MOCK 경고·큐 적재·명시적 실패 3종을 로거 경유로 남긴다 — 현재 print/예외/파일직접append로 흩어진 착지점을 그쪽으로 모은다",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-12-16-80",
+  "verdict": "코드가어김",
+  "evidence": "시각화 3형태 중 mermaid만 cross-layer를 못 그린다. cypher는 지킨다 — cli/export.py:90-97 `live = {i for g in _world().values() for i, n in g.nodes.items() if is_live(n)}` 후 :92 `L.append(f\"// ── {lay} 엣지 (걸침 포함) ──\")`, 끝점 판정이 전 층 합집합이라 occurs_in·controlled_by가 실린다. csv도 동일(:127·:152). **mermaid는 층별 골격 precedes만 그린다** — cli/export.py:169 `lay = args[0] if args else \"process\"`, :173 `sib = …relations.get(\"sibling\")`, :178-179 `for e in g.edges: if e[\"rel\"] != sib or e[\"src\"] not in seed or e[\"dst\"] not in seed: continue`. 실측 `run.py export mermaid` 출력은 precedes 화살표만 나오고 occurs_in·controlled_by 브리지 0건이다(품질층은 아예 인자로 지정해야 보이고, 지정해도 skeleton flat이라 sibling이 없어 빈 그래프다).",
+  "gap": "cli/export.py cmd_mermaid에 cross_layer_traverse 관계(occurs_in·controlled_by)를 층 구분 표기와 함께 추가로 그리는 갈래를 넣는다 — 골격만 그리더라도 브리지는 남긴다",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-116",
+  "verdict": "코드가어김",
+  "evidence": "입력·출력 계약이 둘 다 다르다. 입력: core/matcher.py:59 `def resolve(surface, category, layer, graph, dictionary, *, scoped=True, polarity=None)` — `mention + 후보들`이 아니라 그래프·사전을 통째로 받아 :101 `for nid, n in graph.nodes.items()`로 자체 스캔한다. 후보 구성(canonical·aliases·부착 위치·category)도 구조체로 존재하지 않는다 — :414-416이 노드 dict에서 직접 읽는다. 출력: :422·424·427·428 `return MATCH, best, score` / `return UNCERTAIN, None, score` / `return NEW, None, 0.0` — **3-튜플이지 `{\"type\",\"matched_id\",\"confidence\"}` dict가 아니다**. 프롬프트 주입도 없다 — layers/process/config.json:82 `\"judge\": \"(명세 §5.4-2 규칙 …)\"`를 읽는 코드가 0곳이다(`grep '\"prompts\"|get(\"prompts\")' --include=*.py` 0건). USE_MOCK 갈래와 실호출 갈래를 가르는 지점 자체가 없다 — core/matcher.py:349 `_use_mock()`은 호출 0회의 죽은 코드이고 :353-367 `_similarity()`가 무조건 돈다.",
+  "gap": "판정 함수의 입출력을 계약대로 고정한다 — 입력을 mention+후보 목록으로, 출력을 `{\"type\",\"matched_id\",\"confidence\"}` dict로 바꾸고 층 config의 정의문·비대칭 기준을 프롬프트로 주입하는 자리를 만든다",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-080",
+  "verdict": "코드가어김",
+  "evidence": "spec_conflict를 극성 분리 신호로 읽는 코드가 없다. 생산부는 극성을 payload에 담지도 않는다 — core/build.py:330-335 `store.enqueue(\"spec_conflict\", f\"{n['canonical']}의 {name}: 같은 맥락에 다른 값\", self.doc_id, {\"node_id\": node_id, \"attr\": name, \"context\": context, \"existing\": it[\"value\"], \"incoming\": value, \"provenance\": prov})` — 대상 노드의 `polarity`(none/unbound 여부)가 실리지 않는다. 소비부는 아예 없다 — `grep -rn \"spec_conflict\" --include=*.py`의 프로덕션 히트는 이 생산 1곳과 cli/platform.py:44(열람용 kind 목록)뿐이고, 열람은 cli/platform.py:135-146이 kind별 건수·reason만 찍는다. I3 도구에도 발동 조건이 없다 — core/ops.py:371-384 `split()`은 배분표 유무만 검사하고 촉발 신호를 참조하지 않는다. 실측 spec_conflict 1건의 payload에도 극성 정보가 없다.",
+  "gap": "spec_conflict 적재 시 대상 노드의 polarity를 payload에 싣고, 무극성(none) 노드의 spec_conflict를 큐 열람에서 'I3 분리 후보'로 구분해 표면화한다",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-s7-11-62",
+  "verdict": "코드가어김",
+  "evidence": "이동(=이관) 연산이 존재하지 않는다. I축 도구는 4연산+엣지삭제로 닫혀 있다 — core/ops.py:171 `rename`, :304 `merge`, :371 `split`, :451 `obsolete`, :479 `delete_edge`; cli/ops.py:44 `choices=[\"rename\",\"merge\",\"split\",\"obsolete\",\"delete-edge\"]`. 파급 미리보기도 이동을 모른다 — core/ops.py:132-152 `preview(layer, op, nid, **kw)`가 `op == \"rename\"`일 때만 canonical 연쇄를 계산하고(:145 `chained = _scope_children(g, node[\"canonical\"], cfg) if op == \"rename\" else []`), `op == \"merge\"`만 추가 분기가 있다. 삽입(중간 삽입/골격 개정 제안) 쪽도 없다 — `structural_proposal`은 cli/platform.py:45의 열람 목록에만 있고 `store.enqueue(\"structural_proposal\"…)` 호출이 0건이다. 결과적으로 \"인자가 잘못된 공정에 붙어 있다\"를 고칠 정본 경로가 코드에 없다(rename은 canonical만 바꾸고 part_of·has_property 엣지를 옮기지 않는다 — :207-214).",
+  "gap": "소속 변경(이관) 연산을 삽입과 분리된 별개 op으로 신설한다 — 엣지 재배선 + canonical 연쇄(_scope_children 재사용) + preview 지원 + actor/로그, 건별 승인(--yes) 경유",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-s7-11-14",
+  "verdict": "코드가어김",
+  "evidence": "도입 트리거 두 지표 중 **판정 정확도를 재는 장치가 없다**. 보류율만 있다 — cli/platform.py:257-267 `# 3 판정 보류율 — 큐 유입 ÷ 발자국을 남긴 조각 수` / `hold_rate = round(len(q) / pieces, 3)`, 반환 :296 `\"3_hold_rate\": {\"value\": hold_rate, \"queue\": len(q), \"pieces\": pieces}`. gauges()가 돌려주는 8종(:290-307)에 오판정·정확도 지표가 없고, 레포 전체에 정답 대조 자산도 없다 — mock/queries.json은 `expected_path`(경로)만 갖지 기대 매칭 결과를 갖지 않으며 cli/platform.py:293 주석이 `\"골든셋은 국면 2\"`라고 스스로 적고 있다. 즉 \"보류율이 낮아도 오판정이 많은 상태\"는 현행 계기판에 전혀 잡히지 않는다 — norm이 지목한 그 상태다.",
+  "gap": "판정 정확도(틀린 매칭이 조용히 통과한 비율)를 재는 장치를 만든다 — 골든셋 대조 기반 측정치와 '수정 큐로 가는 건수' 추이. 계기판 8종 표는 건드리지 않고 별도 측정으로 둔다",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-96",
+  "verdict": "코드가어김",
+  "evidence": "런타임 바닥이 3.10+가 아니라 3.9로 선언·집행돼 있고, 정작 코드는 3.10 전용 API를 쓴다. 선언: README.md:52 `| Python | **3.9+** (개발·검증은 3.11) |`, 집행: doctor.py:70-73 `line(OK if v >= (3, 9) else NG, f\"Python {platform.python_version()}\", \"3.9 이상이 필요하다 …\")`. 그런데 doctor.py:98 `hard -= {\"core\", \"router\"} | optional | set(sys.stdlib_module_names)` — `sys.stdlib_module_names`는 Python 3.10 신설이라 3.9에서는 AttributeError로 죽는다. 표준 라이브러리 목록 중 `logging`은 0회 사용(impl-B-102), `dataclasses`도 0회 사용(`grep -rn dataclass --include=*.py .` 0건). \"외부 패키지 필수 의존 0\"은 core/ 한정으로만 참이고(doctor.py:92-103이 core/만 검사) 레포 전체로는 아니다 — doctor.py:46-48 `REQUIRED = [(\"openpyxl\", …), (\"pptx\", …)]`.",
+  "gap": "doctor.py:70과 README.md:52의 버전 바닥을 3.10+로 올린다(코드가 이미 3.10 전용 sys.stdlib_module_names를 쓴다) — 표준 라이브러리 기준선과 '외부 의존 0'의 적용 범위(core/ 한정)도 함께 명시",
+  "effort": "1줄"
+ },
+ {
+  "id": "spec-A-16",
+  "verdict": "코드가어김",
+  "evidence": "판정 함수는 core/matcher.py:59 `resolve(surface, category, layer, graph, dictionary, *, scoped, polarity)` 하나이고 호출부는 core/build.py:277 단 1곳이다(grep 결과 test 외 호출 0). 요구된 3곳 중 어느 것도 재사용하지 않는다. ①attach_to 해소 = core/pipeline.py:290 `target = b.buffer.get(_n(a[\"attach_to\"])) or _dict_hit(b, a[\"attach_to\"])` + core/pipeline.py:317-319 `_dict_hit`이 `hits[0]`을 무조건 집는 별도 코드 — 카테고리 일치 안전망(matcher.py:74)·is_live 필터(matcher.py:70)·극성 후보 제외(matcher.py:77)가 전부 빠진다. ②orphan 재시도 배치 = 존재하지 않는다(core/build.py:112,118·core/pipeline.py:297에서 orphan_anchor/orphan_attach를 enqueue만 하고 소비·재시도 코드 grep 0). ③병합 후보 = core/ops.py:223 `merge_candidates(g,a,b)`는 canonical 표기 나열이지 판정 파이프라인이 아니며 대상 두 id는 사람이 준다(cli/ops.py:63-68). 참고로 core/matcher.py:33 `_use_mock()`은 정의만 있고 호출 0회다.",
+  "gap": "attach_to 해소·orphan 재시도·병합 후보 판정을 matcher.resolve로 수렴시키고, pipeline._dict_hit의 무조건 첫 히트 선택을 제거한다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "impl-B-92",
+  "verdict": "코드가어김",
+  "evidence": "⑧답변 생성 지점(cli/query.py:35-121 `answer()` + :147-161 `render()`)에 USE_MOCK 분기도 주입 훅도 없다 — 이 파일 전체에 USE_MOCK·HOOK 문자열 0. 레포에서 **실행되는** mock/실호출 분기는 core/extract.py:75 `if os.environ.get(\"USE_MOCK\",\"1\") != \"1\": raise NotImplementedError(...)` 와 주입형인 parser/tagger.py:101 `summarize(ref) if summarize else MOCK_IMAGE_SUMMARY…` 둘뿐이고, 나머지 '훅 5곳'(parser/struct_map.py:45·cli/register.py:91·core/extract.py:78·core/query.py:296·core/ops.py:230)은 전부 docstring·주석·예외 문자열이다(doctor.py:229 `if \"HOOK\" in ln`이 그 문자열을 세어 5곳으로 보고). 단, 7.1 표행의 USE_MOCK 대체 문면(두 채널 정형 나열·문장 생성 없음)은 cli/query.py:155-158 `[그래프 사실]`·`[문서 근거]` 나열이 그대로 지킨다.",
+  "gap": "답변 생성 지점에 주입형 mock/실호출 분기를 세우고 mock 측을 현행 render 나열로 고정한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-s7-11-55",
+  "verdict": "코드가어김",
+  "evidence": "미리보기 함수 core/ops.py:132-152 `preview()`는 rename(:145 `_scope_children`)과 merge(:146-149)만 실질 계산한다. **이관(소속 변경) 연산 자체가 없다** — cli/ops.py:44 `p.add_argument(\"op\", choices=[\"rename\",\"merge\",\"split\",\"obsolete\",\"delete-edge\"])`이 전부이고, 레포에서 reparent/transfer/이관 연산 grep 0(core/ops.py의 '이관'은 :13,:333,:359 provenance·alias 이관 문구뿐). Tier1 골격 개정에도 실행 전 미리보기가 없다: core/bootstrap.py:466-545 `bootstrap(layer, echo=True)`에 dry_run/preview 인자가 없고, 심은 **뒤에** 파생 흐름만 출력한다(:527-540).",
+  "gap": "이관(스코프 변경 연쇄)을 4.9 정의대로 별개 연산으로 신설해 preview 대상에 넣고, bootstrap(골격 개정)에 실행 전 파급 미리보기를 붙인다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-12-16-94",
+  "verdict": "코드가어김",
+  "evidence": "일람 밖 키가 실재하고 코드가 그것을 읽는다. layers/process/config.json 일람 밖 7종: `layer · mirrors · match_threshold · skeleton_version · config_version · registration · query_intents`. layers/quality/config.json 일람 밖 7종: `layer · mirrors · match_threshold · cross_layer_traverse · config_version · registration · query_intents`. 소비처: core/build.py:358·382-385 `cfg.get(\"mirrors\")`, core/query.py:300 `cfg.get(\"query_intents\")`, core/query.py:123 `configs[layer].get(\"cross_layer_traverse\")`, core/extract.py:135 `cfg.get(\"config_version\")`, core/bootstrap.py:517 `cfg.get(\"registration\", \"registered\")`, core/pipeline.py:92 `cfg[\"layer\"]`. 반대로 `match_threshold`는 config에만 있고 읽는 코드 0 — core/matcher.py:26 `THRESHOLD = 0.85` 상수를 쓴다.",
+  "gap": "실사용 7~8키를 일람에 등재하거나 config에서 제거한다 — config-only 확증의 대상 범위를 다시 정하는 결정이 선행해야 한다.",
+  "effort": "설계"
+ },
+ {
+  "id": "spec-A-103",
+  "verdict": "코드가어김",
+  "evidence": "레포 전체 `자재` grep 0건 — 스키마(schemas/cp.json fields 5종: 설비·관리항목·규격·측정방법·대응계획)에도, mock/raw 실물 헤더에도 없다(CP01~CP04 헤더 = 공정구분·공정번호·공정명·극성·설비·관리항목·규격·측정방법·대응계획·적용모델). 배정 규칙이 없으므로 미매핑 열의 기본 귀결은 cli/register.py:206-208 `rows.append({\"field\": f, \"role\": \"UNMAPPABLE\", …})`(= 스키마 fields·어댑터 출력에서 제외) 또는 core/pipeline.py:46 `store.enqueue(\"unknown_field\", …)`다 — 규범이 경고한 바로 그 경로. '등장 빈도 관찰 항목'도 없다: cli/platform.py:294-310 계기판 8종(링킹 recall·plateau·보류율·잘림률·미스율·허브 차수·저장 크기·build 시간)에 열 빈도 항목이 없다.",
+  "gap": "자재 열을 content/meta로 배정하는 스키마 규칙과 열 등장 빈도 관찰 항목(계기판 또는 관찰 로그)을 신설한다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-78",
+  "verdict": "코드가어김",
+  "evidence": "spec_conflict 적재부 core/build.py:330-336 `store.enqueue(\"spec_conflict\", f\"{n['canonical']}의 {name}: 같은 맥락에 다른 값\", self.doc_id, {\"node_id\":…, \"attr\":…, \"context\":…, \"existing\":…, \"incoming\":…, \"provenance\":…})` — 대상 노드의 `polarity`를 payload에 싣지 않고, 무극성(none·unbound) 여부로 신호를 가르지도 않는다. 소비처도 없다: spec_conflict를 읽는 코드는 cli/platform.py:44 큐 열람 kind 목록 하나뿐이고, I3(core/ops.py:371 `split`)를 촉발·추천하는 코드는 grep 0. 운영자가 화면에서 단순 값 충돌과 극성 분리 신호를 구별할 근거가 코드에 없다.",
+  "gap": "spec_conflict payload에 대상 노드 polarity를 싣고, 무극성 노드 건은 극성 분리(I3) 촉발 신호로 표시한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-106",
+  "verdict": "코드가어김",
+  "evidence": "attach_to를 **산출**하는 유일한 코드 경로가 우선순위를 갖지 않는다 — core/extract.py:69-101 `_mock_candidates`는 entities/relations만 만들고 :100-101 `return {\"chunk_id\": chunk_id, \"entities\": entities, \"relations\": relations, \"attach\": []}`로 attach를 항상 빈 리스트로 돌려준다. '후보 목록'(process_ref 서브트리) 공급 코드도 없다(grep 0) — 우선순위 1순위의 대상 자체가 없다. attach가 실제로 오는 곳은 손으로 쓴 mock/extract_hints/*.json뿐이다(core/extract.py:104-106, :121-126). 소비 측 core/pipeline.py:288-300은 표면형 문자열을 그대로 받아 buffer→`_dict_hit`(:317-319) 순으로 찾을 뿐이라 표기가 흔들리면 dedup·재해소가 헛돈다. 프롬프트 자산도 비어 있다 — layers/*/config.json `prompts.extract`는 `\"(명세 §5.4-1 규칙 — 정의문 3종 삽입, 주제만, 목록 밖 버림, 애매하면 제외)\"` 자리표시 문자열이라 우선순위 문면이 없다.",
+  "gap": "추출 산출 계약에 attach_to 3단 우선순위(후보 목록 표기 → 본문 이름 → null)를 구현하고 후보 목록 공급을 붙이며, prompts.extract 자산에 문면을 싣는다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-153",
+  "verdict": "코드가어김",
+  "evidence": "근거 없음 경로에 등록 개체 안내가 없다 — cli/query.py:72-78 `if not hits or intent == \"general\": … res[\"note\"] = (\"사내 문서에서 근거를 찾지 못했다. \" + GENERAL if not hits else …); res[\"path\"] = Q.PATH_GENERAL; return res` (cli/query.py:26 `GENERAL = \"[일반지식 — 사내 검증 필요]\"`). 두 번째 general 경로 :119-121도 note 한 줄만 붙인다. 인접 등록 개체를 모으는 코드가 없다(render는 cli/query.py:147-161 — linked/facts/chunks만 출력). 실행 확인: `python3 run.py query \"코팅 두께 산포 관리 어떻게 해?\"` → `[경로] general_knowledge` + `사내 문서에서 근거를 찾지 못했다. [일반지식 — 사내 검증 필요]` 두 줄이 전부.",
+  "gap": "근거 없음 경로에서 사전·그래프의 인접 등록 개체를 함께 제시해 재질문을 유도한다(링킹 미스율 오염 방지).",
+  "effort": "함수1개"
+ },
+ {
+  "id": "role-136",
+  "verdict": "코드가어김",
+  "evidence": "코드가 사내 첫 작업을 다르게 단정한다 — doctor.py:210-214 `line(WARN, f\"[1] 골격 seed가 아직 창작 mock이다 …\", \"**사내 첫 작업이 이것이다.** layers/process/skeleton.json을 사내 공정 체계로\\n         바꾸고 `python run.py bootstrap`. …\")`. 권장 순서에도 role 배정 실험이 없다 — doctor.py:246-247 `print(f\"  {'권장 순서':<10} ① seed 교체 → bootstrap  ② doc_type 1종 등록  ③ 실문서 인입  ④ 질의  ⑤ 계기판\")`. 등록 세션 진입부에도 '이 실험 없이 들어가지 않는다'를 강제하는 게이트가 없다 — cli/register.py:139-175 `generate`는 표본과 fixture만 확인하고 role 배정 실험 산출물을 요구하지 않는다(레포 전체 'role 배정 실험' grep 0).",
+  "gap": "doctor.py 전환 안내(transition)의 첫 걸음을 role 배정 실험으로 바꾸고, register generate에 실험 산출물 확인 절차를 넣는다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-97",
+  "verdict": "코드가어김",
+  "evidence": "parser/reader.py:31-32가 모듈 최상단에서 `from openpyxl import load_workbook` / `from openpyxl.utils import get_column_letter` — 같은 파일의 read_pptx(74)는 `from pptx import Presentation`을 함수 안에 두는데 xlsx만 최상단이라 격리가 반쪽이다. 이 모듈을 cli/register.py:41 `from parser import pipeline, preflight, reader`, cli/scan.py:31 `from parser.reader import read`, cli/parse.py:26이 최상단에서 끌어온다. 실측(openpyxl·pptx import를 차단하고 실행): `USE_MOCK=1 run.py register`가 등록부 JSON만 읽는 명령인데도 ImportError: openpyxl로 죽는다(run.py all·query·gauges·show·export·doctor·test_g1_g2는 통과, test_p1/p2/p3도 같은 ImportError). 게다가 doctor.py:46-47 `REQUIRED = [(\"openpyxl\",…),(\"pptx\",…)]`는 이 둘을 선택이 아니라 필수로 분류해 미설치를 NG로 찍는다 — 검증 가능한 조건이 '코어 stdlib 전용'(doctor.py:92-102)까지만 있고 'USE_MOCK=1 전 경로'에는 없다.",
+  "gap": "openpyxl import를 read_xlsx 안으로 내려 read_pptx와 동형으로 만들고, doctor의 REQUIRED→OPTIONAL 재분류 + 'USE_MOCK=1 전 경로가 포맷 패키지 없이 완주하는가'를 실측 항목으로 추가",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-35",
+  "verdict": "코드가어김",
+  "evidence": "세 불릿 중 첫째만 지켜진다. ①occurs_in 드롭은 성립 — core/pipeline.py:161-169가 미해소 끝점도 게이트에 넘기고 core/gate.py:104-109 `if not s or not d: log_reject(..., UNRESOLVED_ENDPOINT, ...); return`이 커밋을 막는다(실측: PFMEA01-R13 process_ref='레이저노칭'의 occurs_in 1건이 data/gate_rejects.json에 unresolved_endpoint로 착지). ②규칙 B 폴백 부착이 코드에 아예 없다 — prose 경로 core/pipeline.py:288-299는 target 미해소 시 `store.enqueue(\"orphan_attach\", …)` 후 `continue`만 하고 @process_ref 폴백을 하지 않으며, table 경로에도 폴백이 없다. 실측: data/process/graph.json에 PFMEA 유래 엣지 0건인데 R1이 만든 auto Property '노칭::cathode::금형 클리어런스'(provenance ['PFMEA01-R1'])는 부착 없이 떠 있다. 즉 '연쇄로 함께 드롭'이 아니라 '항상 부착 안 함'이다. ③orphan_anchor 항목이 그 Failure를 보유하지 않는다 — core/build.py:118-121이 싣는 payload는 {surface, category, provenance}뿐이고 실측 항목도 {\"surface\":\"레이저노칭\",\"category\":\"Process\",\"provenance\":\"PFMEA01-R13\"}이다. orphan 재시도 배치는 레포 전체에 없다(재시도/retry 진입점 grep 0건).",
+  "gap": "규칙 B 폴백 부착을 table·prose 양쪽에 실장하고, orphan_anchor payload에 그 행이 만든 노드 id(Failure·Property)를 동봉하며, orphan 재시도 배치를 신설",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-104",
+  "verdict": "코드가어김",
+  "evidence": "프롬프트 조립부가 레포에 없다. 추출 단계 전부인 core/extract.py에서 PROMPT_VERSION=\"e-1.0\"(36)은 체크포인트에 적히는 문자열일 뿐이고(134), 후보는 core/extract.py:104-106 `_load_hints`(mock/extract_hints/*.json)나 :69-101 `_mock_candidates`(config extract_patterns 정규식)로 만든다 — 지시문 템플릿·층 어휘·부착 후보 목록을 문자열로 조립하는 코드가 한 줄도 없다. 따라서 'process_ref가 가리키는 세부공정과 그 하위 part_of 설비의 canonical을 삽입', '좌표 null이면 세부공정 목록만' 분기 둘 다 부재. 실LLM 경로는 core/extract.py:75-78에서 NotImplementedError로 명시 실패하고, core/llm.py 자체가 존재하지 않는다(ls core/).",
+  "gap": "추출 프롬프트 조립부 신설 — 지시문 템플릿 + 층 어휘 정의문 + 해소된 process_ref의 세부공정·하위 part_of 설비 canonical 목록을 삽입하고, 좌표 null이면 세부공정 목록만 넣는 분기",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-98",
+  "verdict": "코드가어김",
+  "evidence": "`handle(value, spec, ctx)` 형태의 핸들러가 존재하지 않는다(레포 전체에 `def handle` 0건). role 처리는 core/pipeline.py:113-144의 인라인 if/elif 체인이고(125 anchor · 130 entity · 141 attribute · 143 content), 각 분기가 시그니처가 서로 다른 Builder 메서드를 부른다 — core/build.py:88 `resolve_anchor(self, surface, category, prov)`, :241 `resolve_entity(self, surface, category, prov, *, electrode_type, parent_canonical, anchor_polarity)`, :306 `put_attribute(self, node_id, name, value, context, prov, contextual)`. ctx(층별 graph 묶음·dic·queue·record·schema) 객체도 없다 — graph는 self.g/for_layer, 사전은 self.dict, 큐는 store.enqueue 직접 호출, record·schema는 호출부 지역변수로 흩어져 있다.",
+  "gap": "role 5종 공통 시그니처 handle(value, spec, ctx)와 ctx 묶음을 도입하고, 반환 3형태(resolved_id|value|None)로 edges 후처리의 '미해소' 판별을 단일화",
+  "effort": "모듈"
+ },
+ {
+  "id": "role-023",
+  "verdict": "코드가어김",
+  "evidence": "core/build.py:88-121 resolve_anchor는 사전 히트를 카테고리로만 거른 뒤(107-108 `hits = [nid for nid in self.dict.get(norm(surface), []) if (g.get(nid) or {}).get(\"category\") == category]`), 미해소면 core/build.py:118-121 `store.enqueue(\"orphan_anchor\", f\"골격에 없는 좌표 — '{surface}'\", self.doc_id, {\"surface\": surface, \"category\": category, \"provenance\": prov})`만 싣는다 — 같은 표면형의 auto 노드를 조회하는 코드가 없고 payload에 후보 id도 없다. 실측 큐 항목: {\"surface\":\"레이저노칭\",\"category\":\"Process\",\"provenance\":\"PFMEA01-R13\"} / {\"surface\":\"셀 부풀음\",\"category\":\"FailureEffect\",\"provenance\":\"PFMEA01-R9\"} — 둘 다 후보 없음. 표기 모호 분기(112-116)에만 `candidates`가 있으나 그것은 골격(Tier1) 히트의 canonical이지 조회된 auto 노드의 id가 아니다.",
+  "gap": "resolve_anchor의 미해소 경로에서 같은 표면형·카테고리의 auto 노드를 조회해 orphan_anchor payload에 후보 node_id를 동봉",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-19",
+  "verdict": "코드가어김",
+  "evidence": "표시와 로그는 있으나 등록 개체 안내가 없다. 있는 것: cli/query.py:26 `GENERAL = \"[일반지식 — 사내 검증 필요]\"`, :74 `Q.log_miss(question)` → core/query.py:95-97 `store.append_line(store.LINK_MISS, question)`, :75-76 `res[\"note\"] = (\"사내 문서에서 근거를 찾지 못했다. \" + GENERAL if not hits else \"그래프 밖 지식이다. \" + GENERAL)`. 없는 것: 링킹 0건 분기(cli/query.py:72-78)는 note와 path만 세팅하고 곧바로 return하며, 그래프·사전에서 인접 등록 개체를 뽑아 동봉하는 코드가 없다(`res[\"linked\"]`는 :60-61에서 링킹 히트로만 채워지므로 이 분기에선 빈 배열). 렌더러 cli/query.py:147-161에도 안내 줄이 없다. 실측: 미링킹 질문의 출력은 [경로] general + note 한 줄뿐이라 사용자가 무엇을 물어야 걸리는지 알 길이 없다.",
+  "gap": "근거 없음 분기에서 등록 개체(사전·그래프의 인접 canonical) 후보를 뽑아 응답에 담고 render에 안내 줄 추가",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-50",
+  "verdict": "코드가어김",
+  "evidence": "자리 자체는 있다 — mock/parsed/에 CP01·CP01B·PFMEA01·PPT01~03·QPPT01 7개의 수기 계약 JSON이 있고 run.py:64 `sorted((ROOT / \"mock\" / \"parsed\").glob(\"*.json\"))`가 이것을 인입한다. 그러나 S14(역산 정합)가 대조하는 검체가 그 파일이 아니다 — tests/verify_roundtrip.py는 mock/parsed를 한 번도 읽지 않고(`json.load` 0건, 경로 상수는 :21 `RAW = … \"mock\" / \"raw\"` 하나뿐), 기대값을 :108-128 `EXP_CP`와 :164 `EXP_FM`의 인라인 튜플 리터럴로 하드코딩한 뒤 :137 `got[:12] == EXP_CP` · :183 `got[:13] == EXP_FM`로 비교한다. 그 리터럴의 키는 원본 헤더명(공정구분·공정명·극성)이라 계약 JSON의 필드명(process_group·process_ref·electrode_type)과 형태도 다르다 — 검체가 두 벌이라 조용히 어긋날 수 있고, 파일 쪽을 고쳐도 S14는 통과한다.",
+  "gap": "verify_roundtrip이 mock/parsed/{doc_id}.json을 읽어 대조하도록 바꾼다(원본 헤더명 ↔ 계약 필드명 매핑 포함) — 인라인 EXP_CP·EXP_FM 제거",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-38",
+  "verdict": "코드가어김",
+  "evidence": "run.py:123-136 디스패치 dict의 키는 bootstrap/ingest/all/query/ops/gauges/platform/scan/parse/register/show/export뿐 — `init`도 `--fresh`도 없다. 실행 확인: `python3 run.py init --fresh` → `KeyError: 'init'` (run.py:125). 클린 상태는 전부 수동 삭제로 만든다 — doctor.py:132-133 `for d in (\"data\",\"extract\",\"review\"): shutil.rmtree(ROOT / d, ignore_errors=True)`, 동일 패턴이 doctor.py:159-160·172-173, tests/test_g1_g2.py:55, test_g3.py:45-46, test_g4.py:48-49, test_g5.py:43, test_g6.py:47-48, test_g6_5.py:49-50·408-409, test_p1.py:60, test_p3.py:58에 반복된다.",
+  "gap": "run.py에 `init [--fresh]` 진입점을 만들어 data/ 하위 빈 상태 생성·재생성을 한 곳에 정의하고, doctor.py와 10개 테스트의 rmtree 3줄 반복을 그 진입점 호출로 바꾼다. 부수적으로 트리가 선언한 build/test/status 이름도 현행 all/(없음)/(없음)과 어긋난다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "impl-B-58",
+  "verdict": "코드가어김",
+  "evidence": "mock 자산 어디에도 '실호출로만 검증' 표시 데이터 필드가 없다. mock/queries.json:4-15의 항목 필드는 id·type·q·expected_path 4개뿐이고, mock/parsed/*.json 전 키를 덤프해도 records/chunks 필드에 그런 플래그가 없다(adapter_version·doc_id·payload_kind·source_locator·… 만). 반대로 표기 변형 판정의 경계는 **주석으로만** 있다 — core/matcher.py:37-51 docstring \"USE_MOCK 판정 규칙 — 공백 제거 후 동일/포함이면 0.95\"와 코드 `if x in y or y in x: return 0.95`, 그리고 core/matcher.py:26 `THRESHOLD = 0.85`. 즉 명세가 경고한 '임계를 느슨하게 해 mock을 통과시키는' 형태(0.95 ≥ 0.85)가 실제로 들어가 있고, 표시는 없다. 게다가 core/matcher.py:33-34 `def _use_mock()`은 정의만 있고 호출 0회(레포 전역 grep)라 mock/실호출 갈래 분기 자체가 코드에 없다.",
+  "gap": "mock 항목에 실호출 전용 표시 필드(예: `verified_by: \"live\"`)를 넣고, 채점부(tests/test_g4.py:63-66의 expected_path 대조, cli/platform.py:218-231 계기판 1)가 그 필드를 읽어 mock 실패를 정상으로 처리하게 배선한다. matcher의 0.95 포함 규칙은 그 표시가 선 뒤에 재검토 대상이다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-A-95",
+  "verdict": "코드가어김",
+  "evidence": "판정 호출은 core/matcher.py:59-61 `def resolve(surface, category, layer, graph, dictionary, *, scoped=True, polarity=None)` 하나이고, 명세의 입출력 계약과 세 곳이 다르다. ①입력에 `mention + 후보들` 구조가 없다 — 후보 객체(canonical·aliases·부착 위치·category)를 조립해 넘기지 않고 matcher.py:85-101이 `graph.nodes`를 직접 훑는다. 부착 위치는 core/build.py:277-279에서 `canonical` 문자열에 접두로 녹여 넣고 `scoped` bool 하나만 별도로 넘긴다(build.py:280-282) — 부모·스코프가 구조 인자가 아니다. ②출력이 dict가 아니라 3-튜플이다 — matcher.py:105-112 `return MATCH, best, score` / `return UNCERTAIN, None, score` / `return NEW, None, 0.0`. `{\"type\",\"matched_id\",\"confidence\"}` 키는 레포 어디에도 없다. ③정의문·비대칭 기준의 프롬프트 주입이 없다 — layers/process/config.json:80-83 `\"prompts\": {\"extract\": …, \"judge\": …}`를 읽는 코드가 0곳이다(전역 grep에서 `prompts` 참조는 core/extract.py:134의 `prompt_version` 문자열뿐). ④USE_MOCK/실호출 갈래 자체가 없다 — matcher.py:33-34 `_use_mock()`은 호출 0회다.",
+  "gap": "resolve를 (mention, candidates[{canonical, aliases, parent, scope, category}]) 입력 · {type, matched_id, confidence} 반환으로 재계약하고, 후보 조립부를 build.py에서 분리하며, config `prompts.judge`를 실제로 주입하는 통로와 USE_MOCK/실호출 분기를 세운다. 반환 계약이 바뀌면 build.py:281-303 호출부와 tests/test_g6_5.py:30 임포트가 함께 움직인다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-A-201",
+  "verdict": "코드가어김",
+  "evidence": "사내 작업 순서를 실행 가능하게 선언하는 자리는 doctor.py:201-244 `transition()`이고, 거기에 role 배정 실험이 없다. doctor.py:209-215이 [1]로 지목하는 사내 첫 작업은 `layers/process/skeleton.json`을 사내 공정 체계로 바꾸는 것이고, doctor.py:217-223 [2]가 곧바로 `python run.py register generate <이름> <층> <표본...>` → `review` → `confirm`으로 등록 세션을 지시한다 — 그 사이에 실물 문서 열 이름 전체에 role을 미리 배정해 보는 단계도, 그 실험을 요구하는 관문도 없다. 실제로 role 배정표와 L3/L4에 해당하는 UNMAPPABLE 판정은 등록 검수 화면에서 처음 계산된다 — cli/register.py:189-208 `role_table()`이 `rows.append({\"field\": f, \"role\": \"UNMAPPABLE\", \"reason\": \"5종 어디에도 맞지 않는다 — 사람 판정 대기 (D-30)\"})`를 만들고, cli/register.py:220-240 `unmappable_of()`가 어댑터 `header_labels` − `columns` 차집합으로 그것을 복원한다. 명세가 \"등록 검수 화면에서 처음 터진다\"고 경고한 형태 그대로다. cli/register.py:122-135 `cmd_generate`의 사전 검사는 이름 중복(130)과 층 존재(133)뿐이다.",
+  "gap": "등록 세션 진입 전에 도는 role 배정 시험 명령(문서 열 이름 전량 → role 5종/L3/L4 배정 시도, 실행만 하고 등록부는 건드리지 않음)을 만들고, doctor.py transition()의 [1]·[2] 사이에 그 단계를 넣어 실험 산출 없이는 register generate로 가지 않게 한다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-s7-11-26",
+  "verdict": "코드가어김",
+  "evidence": "orphan_anchor 큐 항목의 payload에 출발 노드가 없다. core/build.py:118-120 `store.enqueue(\"orphan_anchor\", f\"골격에 없는 좌표 — '{surface}'\", self.doc_id, {\"surface\": surface, \"category\": category, \"provenance\": prov})` — 키는 surface·category·provenance 셋뿐이다. 표기 모호 갈래도 같다: core/build.py:112-116 payload는 `{\"surface\", \"candidates\", \"provenance\"}`. 실측 덤프: `{'surface': '레이저노칭', 'category': 'Process', 'provenance': 'PFMEA01-R13'}` — 이 행에서 occurs_in이 생략된 Failure '슬리팅 버'의 node_id가 항목에 없다. 구조적으로도 담을 수 없다 — 큐 적재 시점(core/pipeline.py:100 resolve_anchor)이 entity 해소(pipeline.py:130-140)보다 **앞서** 있어 그 시점엔 출발 노드가 아직 만들어지지 않았다.",
+  "gap": "resolve_anchor의 enqueue를 즉시 적재에서 레코드 처리 말미로 미루거나 큐 항목 핸들을 돌려받아, entity 해소가 끝난 뒤 생략된 엣지의 출발 node_id(들)를 payload에 적어 넣는다. core/build.py:104-121과 core/pipeline.py:96-169(정형)·249-285(비정형) 양쪽 레코드 루프가 함께 움직인다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "impl-B-104",
+  "verdict": "코드가어김",
+  "evidence": "노드 2개 add → 저장 → 로드 → 복원 동일을 확인하는 판정이 없다. GraphStore의 왕복 경로는 core/graph.py:87-100 `load()` / `save()`로 존재하지만, tests/ 전체에서 save 후 재로드해 내용을 대조하는 어서션이 0건이다 — tests/test_g5.py:74-77은 `g.add_node(...)` 후 `g.save()`만 하고 복원 대조를 하지 않고, tests/test_g5.py:212-231의 '재인입 왕복'은 문서 재인입 회귀이지 직렬화 왕복이 아니며, tests/verify_roundtrip.py:9는 \"raw를 파싱한 records의 앞 N건이 mock/parsed/*.json과 일치한다\"는 파서 역산 정합이라 저장 계층과 무관하다. id 쪽도 절반만 있다 — tests/test_g1_g2.py:171 `show(\"의미 축 id가 전부 ULID …\", all(is_ulid(i) for i in g.nodes) and not (store.DATA/\"id_seq.json\").exists())`는 형식만 보고 층을 가로지르는 전역 유일성이나 복원 동일성은 보지 않는다. 저장 단위 판정이 없어 직렬화 결함은 tests/test_g4.py의 전체 빌드에서야 드러난다.",
+  "gap": "코어(저장) 단위 판정 하나를 추가한다 — 임시 data_dir에 GraphStore를 열어 노드 2개를 add하고 save한 뒤 새 인스턴스로 load해 (a) 두 id가 서로 다르고 다른 층 그래프의 id와도 겹치지 않으며 (b) nodes/edges 덤프가 저장 전과 완전 동일함을 대조한다. GraphStore.for_layer(layer, data_dir=...)가 이미 인자를 받으므로(core/graph.py:72-75) 기존 data/를 건드리지 않고 쓸 수 있다.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "spec-12-16-70",
+  "verdict": "코드가어김",
+  "evidence": "orphan 재시도 자체가 없어 이 판정이 걸릴 대상이 없다. ①재시도 배치 코드 0곳 — 레포 전역에서 '재시도'·'retry'·'재부착'·'reattach'·'갈아끼' 문자열이 .py에 하나도 없다(유일 hit는 tests/verify_roundtrip.py:8의 '정밀화'로 무관한 문맥). ②재부착 (a) 갈아끼움도 없다 — core/gate.py:93-115 `commit_edge`는 `graph.add_edge(...)` 한 방향뿐이고 기존 저해상도 엣지를 찾아 provenance를 회수하거나 지우는 경로가 없으며, core/graph.py:127 `add_edge(self, src, rel, dst, status, provenance=None)`에도 대체 인자가 없다. ③provenance 회수는 재인입 경로에만 있다 — core/ingest.py:134-138 `strip(holder)`는 문서 재인입 시 doc 단위로만 걷어내고, 정밀 엣지가 저해상도 엣지의 몫을 회수하는 호출부가 0곳이다. ④따라서 tests/에도 대응 판정이 없다 — orphan 관련 어서션은 tests/test_g3.py:146-152(orphan_anchor 사유 구분)와 :243-245(orphan_attach 0건)뿐으로, 전부 '큐에 올랐는가'이지 '재시도 후 갈아끼움·회수가 됐는가'가 아니다.",
+  "gap": "spec-12-16-69의 갈아끼움 기구가 선 뒤에, 그것을 확인하는 단위 판정을 붙인다 — 저해상도 부착 1건을 만든 뒤 골격을 자라게 해 재시도하고, (a) 고해상도 엣지가 서고 (b) 저해상도 엣지의 해당 provenance가 회수돼 같은 지식이 두 벌로 남지 않으며 (c) 재인입 2회에 결과가 같음을 대조한다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-12-16-69",
+  "verdict": "코드가어김",
+  "evidence": "보류 해제 조건은 충족됐는데 갈아끼움 기구가 아예 없다. ①2홉 도달성 검증은 존재하고 통과한다 — tests/test_g4.py:75-78 `show(\"2홉 도달 — part_of 하향으로 닿은 설비의 has_property 인자까지 수집\", any(\"스태커의 관리인자\" in f for f in results[4][\"facts\"]))`, 실행 결과 `[PASS] … — ['스태커의 관리인자: 스태킹::적층 정렬도']`. 근거 기구도 있다(core/graph.py:156-185 프론티어 BFS). ②그런데 '같은 출처의 정밀화'를 인지하는 코드가 0곳이다 — core/pipeline.py:96-169(정형)·249-309(비정형) 어디에도 기존 저해상도 부착과 새 고해상도 부착을 같은 출처로 짝짓는 판정이 없고, core/build.py:88-121 `resolve_anchor`는 매번 사전 조회 결과를 그대로 쓴다. ③저해상도 엣지의 provenance 회수 호출부도 0곳이다 — 회수 함수 core/ingest.py:134-138 `strip()`은 `withdraw()`(재인입)에서만 불린다. ④보류를 명시하는 표식도 없다 — HOOK 5곳(parser/struct_map.py:45, cli/register.py:91, core/extract.py:78, core/query.py:296, core/ops.py:230) 중 이 자리에 해당하는 것이 없고, 큐 kind 닫힌 20종(cli/platform.py:41-50)에도 정밀화 관련 kind가 없다.",
+  "gap": "같은 출처(같은 source_locator 계열)의 부착 해상도가 올라갔을 때를 인지하는 판정을 인입 경로에 세우고, 고해상도 엣지 커밋 + 저해상도 엣지의 해당 provenance 회수 + 근거 0이 된 엣지의 착지(core/pipeline.py:196-214 `_evidence_lost`와 연결)를 한 흐름으로 잇는다. core/build.py·core/pipeline.py·core/gate.py 3파일이 함께 움직인다.",
+  "effort": "모듈"
+ },
+ {
+  "id": "spec-s7-11-18",
+  "verdict": "코드가어김",
+  "evidence": "갭 4종 중 2종만 관찰되고 2종은 관찰자가 0곳이다. 관찰되는 쪽: ②상동/병합 셀 — parser/normalizer.py:31 `expand_merged` · :68 `resolve_ditto`가 처리하고 :154-163 `normalize()`가 `{\"ditto\": d, \"multi\": m, \"nested\": f}` 건수를 보고하며 parser/validator.py:57-59가 미해소 상동을 문서 단위 실패로 잡는다. ③복수값 셀 — parser/normalizer.py:94 `split_multi` + core/pipeline.py:74-87 `_scalar()`가 `missing_field` 큐로 표면화한다. 관찰되지 않는 쪽: ①빈 셀 부착(부착 대상 부재) — core/pipeline.py:146-149 `for f, spec in attrs: tgt = resolved.get(spec.get(\"attach_to_field\")); if tgt is None: continue` 이 무음 skip이고 큐도 로그도 남기지 않는다(content 쪽 :155-158도 같다). 이를 받을 kind는 이미 있는데 생산자가 없다 — cli/platform.py:44 `\"attach_conflict\"`의 `store.enqueue(\"attach_conflict\"…)` 호출이 레포 전역 0곳. ④entity 칸의 혼입 산문 — 판별하는 코드가 어디에도 없다(전역 grep '혼입' 0건, entity 값 길이·문장성 검사 0곳). 또한 core/pipeline.py:113-144의 role 분기에는 관찰 단계 자체가 없다.",
+  "gap": "role 핸들러 분기에 관찰 지점을 만들어 ①빈 셀 부착(attach_to_field 대상 미해소)을 이미 선언된 `attach_conflict` 큐로 올리고, ④entity 값의 산문 혼입 판정을 하나 세운다. ②③은 파서 자기완결 계약이 1차 방어선이므로 추가 작업 없음.",
+  "effort": "함수1개"
+ },
+ {
+  "id": "role-104",
+  "verdict": "코드가어김",
+  "evidence": "Property 정의문을 담은 코드 자산이 이 문구를 갖고 있지 않다 — layers/process/config.json:6 `\"Property\": \"공정/설비에서 관리·측정·통제되는 항목의 이름(예: 노칭 정밀도). 관리항목/특성/CTQ 포함. 규격값·측정값·판정결과는 제외(attribute).\"` 로 끝나고, '측정방법·주기·샘플도 제외'가 이어 붙어 있지 않다. 실제 배정은 이미 옳다 — schemas/cp.json:10 `\"측정방법\": {\"role\": \"attribute\", \"attach_to_field\": \"관리항목\", \"optional\": true}` 로 관리항목에 붙는 attribute이고, layers/process/config.json:75 `\"attr:측정방법\"` 문장 틀도 attribute 전제다(주기·샘플 열은 현행 스키마 3종에 없다). 즉 손으로는 맞게 배정했으나 배정 근거가 되는 정의문에는 그 판별이 없다.",
+  "gap": "layers/process/config.json:6 Property 정의문 끝에 '측정방법·주기·샘플도 제외(관리항목에 붙는 attribute)'를 이어 붙인다. 이 정의문은 아직 코드가 값으로 읽지 않지만(prompts 주입이 미배선 — spec-A-95 참조) 등록 세션 role 배정과 추출 프롬프트의 근거 자산이므로 문면이 정본이어야 한다.",
+  "effort": "1줄"
+ },
+ {
+  "id": "impl-B-03",
+  "verdict": "코드가어김",
+  "evidence": "`core/skeleton.py`가 존재하지 않는다 — core/ 파일은 __init__.py·bootstrap.py·build.py·extract.py·gate.py·graph.py·ids.py·ingest.py·matcher.py·naming.py·ops.py·pipeline.py·query.py·registry.py·store.py 15개뿐이다. 골격 심기 코드는 core/bootstrap.py(545줄) 안에 들어 있다 — bootstrap.py:126-283 `_TreeParser`(중첩·마커 파싱), :284-311 `_plant_tree`(중첩→child, 순서→sibling 파생), :313-350 `_link_seed_mirrors`, :460-545 `bootstrap()`. 같은 파일이 config 로딩·사전 적재·registry 등재·닫힌 목록 스냅샷 기록까지 겸하고 있어, 명세가 지정한 '골격 심기 모듈의 자리'가 별도 자리로 서 있지 않다. 파생 규칙의 config 소유(bootstrap.py:294-295 `skel[\"relations\"][\"child\"]`/`[\"sibling\"]`)와 층 어휘 0은 지켜지고 있으므로, 어긋난 것은 배치뿐이다.",
+  "gap": "`core/skeleton.py`를 만들어 `_TreeParser`·`_plant_tree`·`_link_seed_mirrors`와 flat 골격 분기(bootstrap.py:502-508)를 옮기고, bootstrap.py는 config 로딩·적재·등록부 갱신만 남긴다. 호출부는 bootstrap.py:497-508 한 곳이라 이동 자체는 좁지만 모듈 분할이다.",
+  "effort": "모듈"
+ }
+]

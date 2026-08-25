@@ -26,7 +26,50 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MAPS_DIR = ROOT / "mock" / "struct_maps"
+MAPS_DIR = ROOT / "mock" / "struct_maps"          # USE_MOCK 고정 지도 (문서 7 §7.1)
+KEEP_DIR = ROOT / "extract" / "struct_maps"       # **보존 자리** (문서 6 §6.3)
+
+
+def keep_path(doc_id):
+    return KEEP_DIR / f"{doc_id}.json"
+
+
+def load_kept(doc_id, doc_hash=None):
+    """보존된 지도를 읽는다 — **doc_hash가 같을 때만** 재사용한다(문서 6 §6.3).
+
+    같은 지도 → 같은 분할 → 같은 chunk_id다. 매 인입 새로 산출하면 그 문서의
+    chunk_id가 전량 이동해 재인입 멱등성이 깨진다. doc_hash가 바뀌면 추출
+    체크포인트와 함께 무효화된다(§4.8-8과 같은 손잡이).
+    """
+    p = keep_path(doc_id)
+    if not p.exists():
+        return None
+    m = json.loads(p.read_text(encoding="utf-8"))
+    if doc_hash is not None and m.get("doc_hash") not in (None, doc_hash):
+        return None
+    return m
+
+
+def keep(doc_id, m, doc_hash=None):
+    """지도를 보존한다. **보존 자리는 클린 범위(`extract/`) 안이다**(§6.3).
+
+    밖에 두면 「클린 2회 동일 그래프」가 1회차 지도를 물고 통과해 멱등성의 전면
+    검증이 거짓 통과한다.
+    """
+    KEEP_DIR.mkdir(parents=True, exist_ok=True)
+    out = dict(m)
+    if doc_hash is not None:
+        out["doc_hash"] = doc_hash
+    keep_path(doc_id).write_text(
+        json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return out
+
+
+def invalidate(doc_id):
+    """재인입으로 doc_hash가 바뀌면 보존분을 버린다 — 추출 체크포인트와 같은 손잡이."""
+    p = keep_path(doc_id)
+    if p.exists():
+        p.unlink()
 
 # 결정적 휴리스틱 폴백 — **현행 toc 어댑터의 heading_pattern 로직을 코어로 이관**한 것이다
 # (복제가 아니다). 번호 패턴은 **구문 마커**이지 층 어휘가 아니다.
@@ -37,7 +80,7 @@ MAPPED = "mapped"
 
 
 # ---------------------------------------------------------------- ① 지도 산출
-def propose(doc_id, lines, ask=None):
+def propose(doc_id, lines, ask=None, doc_hash=None):
     """지도 산출 — USE_MOCK은 파일 우선, 없으면 결정적 휴리스틱 (증분0 §5-4).
 
     지도 형식: `{"doc_id":…, "source":…, "rows":[{"row":n, "heading":bool, "level":int}]}`
@@ -52,6 +95,10 @@ def propose(doc_id, lines, ask=None):
     실패**다: 휴리스틱으로 조용히 떨어지면 그 지도가 청크 경계를 정하고, 잘못된
     경계는 chunk_id를 바꿔 재인입 멱등성까지 흔든다(문서 7 §7.6-B-4).
     """
+    kept = load_kept(doc_id, doc_hash)
+    if kept is not None:
+        kept["source"] = kept.get("source", "kept")
+        return kept                          # **보존분 재사용** — 같은 분할·같은 chunk_id
     if os.environ.get("USE_MOCK", "1") != "1":
         if ask is None:
             raise RuntimeError(
@@ -60,7 +107,7 @@ def propose(doc_id, lines, ask=None):
         m = ask(doc_id, lines)
         m.setdefault("doc_id", doc_id)
         m["source"] = "live"
-        return m
+        return keep(doc_id, m, doc_hash)     # 실산출은 보존한다(§6.3)
     p = MAPS_DIR / f"{doc_id}.json"
     if p.exists():
         m = json.loads(p.read_text(encoding="utf-8"))

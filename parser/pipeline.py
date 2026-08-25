@@ -63,7 +63,7 @@ def _map_hook(doc_id):
 
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
-          summarize=None):
+          summarize=None, pick_coord=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     `summarize(image_ref) -> str`은 **이미지 요약 실호출 경로**다(LLM 지점 ④).
@@ -102,9 +102,18 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     res.report["normalizer"] = rep
 
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
+    # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
+    # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.
+    kept_map = struct_map.load_kept(doc_id) or {}
+    kept_img = dict(kept_map.get("image_summaries") or {})
     pieces = tagger.complete_images(pieces, summarize,               # ⑤ tagger
-                                   allow_mock=_image_gate(doc_id, summarize))
-    pieces = tagger.tag(pieces, layer=layer, nodes=nodes)
+                                    allow_mock=_image_gate(doc_id, summarize),
+                                    kept=kept_img)
+    if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
+        struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id,
+                                 "image_summaries": kept_img})
+    pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
+                        doc_type=a["doc_type"])
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
     unresolved = [p["source_locator"] for p in pieces

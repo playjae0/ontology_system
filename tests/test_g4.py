@@ -192,6 +192,20 @@ show("재인입 후에도 질의 응답 동일 (판정 무오염)",
       zip([q["id"] for q in QUERIES["queries"]], QUERIES["queries"])}
      == {i: r["path"] for i, r in results.items()})
 
+# ============================================================ 근거 정렬 결정성
+print("\n■ 근거 청크 정렬 — 결정적인가 (문서 5 §5.1-6)")
+# 정렬 키 셋: ①tier(1이 앞) ②parsed_at 내림차순 ③chunk_id 사전순.
+# 기준이 없으면 상한 8이 **무작위 축에서** 잘리고, 그 차이는 계기판 4에 잡히지
+# 않는다 — 잘린 건수는 같고 잘린 대상만 다르기 때문이다.
+_runs = [tuple(c["chunk_id"] for c in R.answer("노칭에서 발생할 수 있는 불량은?")["chunks"])
+         for _ in range(5)]
+show("같은 질문 5회의 근거 청크 집합·순서가 동일하다", len(set(_runs)) == 1,
+     f"{len(set(_runs))}가지")
+_res = R.answer("노칭에서 발생할 수 있는 불량은?")
+_tiers = [c.get("tier") for c in _res["chunks"]]
+show("tier1이 항상 tier2보다 앞이다 (정렬은 tier 안에서만)",
+     _tiers == sorted(_tiers), str(_tiers))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G4 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

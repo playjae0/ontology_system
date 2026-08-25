@@ -50,7 +50,10 @@ OPS_LOG = "ops_log.json"              # I축 연산 로그 (D-8)
 GATE_REJECTS = "gate_rejects.json"    # 게이트 거부 로그 — 큐가 아니다 (D-7)
 SKELETON_LIST = "skeleton_closed_list.json"   # 골격 닫힌 목록 스냅샷 (D-11 확정)
 DEFECTS = "defects.log"               # 결함 로그 (n1 id 충돌 등)
-LINK_MISS = "link_miss.log"           # 질의 링킹 미스·수집 잘림 (CH5 5.1 규약 6·5.2 규약 3)
+LINK_MISS = "link_miss.log"           # 질의 링킹 미스 — **계기판 5의 재료** (문서 5 §5.5)
+# **두 계기판 로그는 별도 파일로 둔다**(문서 7 §7.1·§7.8) — 한 파일에 섞으면
+# 측정이 서로를 오염시킨다: 잘림 1건이 링킹 미스율의 분자로 잡힌다.
+CHUNK_TRUNCATED = "chunk_truncated.log"   # 청크 잘림 — **계기판 4의 재료**
 
 _LOG = log.get(__name__)
 
@@ -145,6 +148,31 @@ def drop(kind, match):
     if len(kept) != len(q):
         write(QUEUE, kept)
     return len(q) - len(kept)
+
+
+def resolve_item(kind, match, *, actor, decision, at, note=""):
+    """큐 항목에 **사람의 판단을 기록한다** (문서 7 §7.2 `resolution`).
+
+    `resolution`이 있는 항목이 「사람의 판단이 기록된 항목」이고, 재인입 회수가
+    그것을 **보존한다**(문서 4 §4.8-2③ · 문서 1 H6). 표시 필드가 없으면 회수가
+    kind 화이트리스트로 대신하는데, 그것은 "재검출되지 않는 상시 목록"이지 "사람이
+    판단한 항목"이 아니어서 사람의 판정이 조용히 지워진다.
+
+    항목을 **내리지 않는다** — 내리는 것은 조건이 해소됐을 때 `drop`의 일이고,
+    여기는 "봤고 이렇게 판단했다"를 남기는 자리다.
+    """
+    q = read(QUEUE, [])
+    n = 0
+    for x in q:
+        if x.get("kind") != kind or not match(x.get("payload") or {}):
+            continue
+        x["resolution"] = {"actor": actor, "at": at, "decision": decision,
+                           "note": note}
+        n += 1
+    if n:
+        write(QUEUE, q)
+        _LOG.info("큐 판정 %s — %s가 %d건을 '%s'로", kind, actor, n, decision)
+    return n
 
 
 def enqueue(kind, reason, doc_id, payload):

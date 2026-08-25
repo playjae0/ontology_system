@@ -11,17 +11,22 @@ import json
 from pathlib import Path
 
 from . import extract as extract_mod
-from . import gate, matcher, store
+from . import gate, log, matcher, store
 from .build import Builder
 from .bootstrap import load_config, open_graph
 from .ingest import IngestResult, ingest, load_schema
 from .ops import is_live
 
-STRUCTURAL = {"process_group", "process_ref", "process_no", "electrode_type",
-              "source_locator", "section", "context"}
+# **구조 필드** — role 핸들러를 타지 않고 시스템이 직접 읽는다(문서 2 §2.5 규약 3).
+# `doc_type`은 조각 공통 층의 일원이고(§2.2 계약 ①) 스키마 조회 키다(봉투 값의 반복) —
+# 여기 없으면 조각이 계약대로 달고 온 필드가 `unknown_field` 큐로 간다.
+STRUCTURAL = {"doc_type", "process_group", "process_ref", "process_no",
+              "electrode_type", "source_locator", "section", "context"}
 
 # 봉투 `payload_kind`의 **닫힌 2값**(CH2 2.2). 밖의 값은 폴백 대상이 아니라 계약 위반이다.
 PAYLOAD_KINDS = ("table", "prose")
+
+_LOG = log.get(__name__)
 
 # 공정좌표 anchor의 목표 카테고리 — 공용 블록(schemas/blocks.json)이 소유한다.
 COORD_CATEGORY = json.loads(
@@ -73,7 +78,10 @@ def _context(holder, prov, doc_id):
 
 
 def _scalar(value, field, prov, doc_id):
-    """role 핸들러는 **단일 값만 본다**는 전제를 코드가 방어한다 (카드 D6).
+    """**entity·anchor**의 값이 단일이라는 전제를 코드가 방어한다 (문서 2 §2.7).
+
+    **attribute는 대상이 아니다** — §2.4-③이 "구조체·배열도 통째로 하나의 값"으로
+    저장한다고 규정한다. 여기서 막는 것은 리스트가 사전을 오염시키는 경로다.
 
     복수값 전개는 파서 몫이지만(normalizer), 계약이 핸들러 측 방어를 따로 요구한다 —
     리스트가 그대로 오면 `norm()`의 `str()` 강제 변환과 포함 규칙을 타고 **기존 노드에
@@ -88,6 +96,189 @@ def _scalar(value, field, prov, doc_id):
     return False
 
 
+
+def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_chunk=None):
+    """**규칙 B — 부착 폴백** (문서 4 §4.4-4).
+
+    부착 대상이 없거나 미해소면 그 행/청크의 **공정좌표(`process_ref` 해소 노드)**에
+    붙인다. 이것은 오류가 아니라 **저해상도**이고, 더 정밀한 소속이 확보되면(정형
+    edges·attach 해소·재시도 성공) 보강된다.
+
+    **좌표도 미해소면 아무것도 만들지 않는다** — 연쇄 드롭이 정상 동작이다(§4.4-97):
+    좌표 없이 Property를 만들면 canonical 스코프를 붙일 수 없어 §4.5-6이 병합
+    후보에서 영구 배제하는 **부모 미해소 노드**가 된다.
+
+    관계는 카테고리쌍 매핑이 정한다 — 코드가 관계 이름을 알지 않는다(B1).
+    매핑에 없는 쌍이면 엣지를 만들지 않고 결함 로그로 드러낸다.
+    """
+    if child is None or ref is None:
+        return False
+    tg = ref_g if ref_g is not None else graph
+    rel = _pair_relation(cfg, (tg.get(ref) or {}).get("category"),
+                         (graph.get(child) or {}).get("category"))
+    if not rel:
+        store.append_defect(
+            f"{doc_id}: 규칙 B 폴백 — 카테고리쌍 매핑 없음 "
+            f"({(tg.get(ref) or {}).get('category')} → "
+            f"{(graph.get(child) or {}).get('category')})")
+        return False
+    gate.commit_edge(graph, ref, rel, child, cfg, gate.PATH_SCHEMA,
+                     [prov], doc_id, evidence_chunk=evidence_chunk,
+                     src_graph=tg, dst_graph=graph)
+    return True
+
+
+def _field_surface(name, rec):
+    """엣지 끝점이 가리키는 **원 표면형** — 재시도 배치가 다시 해소할 재료다."""
+    if str(name).startswith("@"):
+        return rec.get(str(name)[1:])
+    return rec.get(name)
+
+
+def _blank_endpoint(edge, rec, fields):
+    """이 엣지의 끝점이 **빈 행**인가 — 미해소와 다르다.
+
+    `optional: true`의 의미는 "from/to가 **빈 행**에서 해당 엣지만 조용히 생략"이다
+    (문서 2 §2.4-⑥ · §2.7-③). **미해소는 빈 행이 아니다** — 값이 있는데 못 찾은
+    것은 큐로 가야 할 사건이고, 그것까지 조용히 생략하면 「아무것도 조용히 버리지
+    않는다」가 optional 선언 하나로 무력화된다.
+
+    `@좌표` 표기는 구조 필드를 가리키므로 레코드에서 직접 본다.
+    """
+    for side in ("from", "to"):
+        name = edge.get(side)
+        if str(name).startswith("@"):
+            if rec.get(str(name)[1:]) in (None, ""):
+                return True
+        elif name in fields and rec.get(name) in (None, ""):
+            return True
+    return False
+
+
+def _land_deferred(defer, dropped, pending, doc_id):
+    """미뤄 둔 큐 적재를 **레코드 말미에** 착지시킨다 (문서 2 §2.4-①·③).
+
+    큐 항목이 **재시도 배치의 유일한 손잡이**다(문서 4 §4.7-5). 그래서 항목이
+    보유해야 하는 것이 셋이다:
+
+    1. **생략된 엣지의 출발 노드** — 골격이 자라면 그 노드를 좌표에 붙인다.
+    2. **연쇄 드롭된 표면형** — 끝점이 표면형으로만 남은 것. 재해소의 재료다.
+    3. **보류된 attribute**(`pending_attrs`) — 좌표가 해소되면 그때 저장한다.
+
+    보유하지 않으면 골격이 나중에 자라도 그 노드·값은 영영 붙지 않는다 —
+    시스템이 자동으로 기존 문서를 다시 읽는 경로는 없다(문서 4 §4.8-7).
+    """
+    for item in defer:
+        pl = dict(item["payload"])
+        if dropped:
+            pl["dropped_edges"] = dropped
+        if pending:
+            pl["pending_attrs"] = pending
+        store.enqueue("orphan_anchor", item["reason"], doc_id, pl)
+    return defer
+
+
+# ================================================================ 핸들러 루프
+# 문서 2 §2.7 — **코드에는 필드명이 등장하지 않고 role만이 분기 스위치다.**
+# core는 스키마를 순회할 뿐이다("모든 문서를 수용하는 똑똑한 실행기"가 아니라
+# "가정을 안 하는 단순한 순회기").
+
+
+class Ctx:
+    """핸들러 공통 맥락 — 문서 2 §2.7이 **여섯**으로 못박은 구성이다.
+
+    | 이름 | 무엇 |
+    |---|---|
+    | `graphs` | 층별 graph 묶음 — 걸침 entity가 다른 층에 앉는다 |
+    | `dic` | 전 층 공유 동의어 사전 (`core/dictionary.py` 관문) |
+    | `buffer` | **문서 해소 버퍼** — `정규화 표면형 → node_id`, 수명은 문서 하나 |
+    | `queue` | 수정 큐 적재 창구 |
+    | `record` | 지금 처리 중인 레코드(또는 청크) |
+    | `schema` | 매칭 스키마 |
+
+    **버퍼를 열거에서 빼지 않는다** — 빠지면 핸들러가 attach_to의 해소 범위(문서 4
+    §4.10-6 — 문서 해소 버퍼 전체 + 사전)에 손이 닿지 않아 그 조항이 구현 불가가 된다.
+    레코드 단위 `resolved`(필드명이 키)와는 **다른 그릇**이다.
+
+    `state`는 여섯의 확장이 아니라 **레코드 유도값 캐시**다 — 좌표(`ref`)·부모
+    canonical·극성처럼 `record`+`graphs`+`dic`에서 매번 다시 계산할 수 있는 것을
+    레코드당 한 번만 구해 둔다. 계약은 여섯이고 이것은 그 위의 편의다.
+    """
+
+    __slots__ = ("graphs", "dic", "buffer", "queue", "record", "schema", "state")
+
+    def __init__(self, graphs, dic, buffer, queue, record, schema, state):
+        self.graphs, self.dic, self.buffer = graphs, dic, buffer
+        self.queue, self.record, self.schema, self.state = queue, record, schema, state
+
+
+def h_anchor(value, spec, ctx):
+    """**anchor — 닻.** 골격 노드를 *찾는다*. 새로 만들지 않는다(P2).
+
+    반환: `resolved_id` 또는 `None`. 미해소는 `orphan_anchor`로 가되 **적재는
+    레코드 말미로 미룬다**(문서 2 §2.4-①) — 그 행이 무엇을 만들었는지가 아직
+    정해지지 않았고, 큐 항목이 재시도의 손잡이이기 때문이다.
+    """
+    st = ctx.state
+    nid, ng = st["b"].resolve_anchor(value, spec["target_category"], st["prov"],
+                                     defer=st["defer"])
+    if nid is not None and ng is not st["graph"]:
+        st["external"][st["field"]] = ng
+    return nid
+
+
+def h_entity(value, spec, ctx):
+    """**entity — 개체.** 노드가 될 자격이 있는 것. 3분기(매칭/신규/불확실).
+
+    **스키마가 층을 선언하면 그 층에 해소한다**(`target_layer`). 선언을 안 읽으면
+    걸침 개체가 자기 층에 복제되어 문서 간 병합이 조용히 깨진다.
+
+    해소 결과는 **문서 해소 버퍼에도 싣는다** — attach_to의 해소 범위가 청크·행
+    경계를 넘기 때문이다(문서 4 §4.10-6). 층 간 동명은 **마지막 해소가 이긴다**(§4.2).
+    """
+    st = ctx.state
+    eb = st["b"].for_layer(spec.get("target_layer") or st["cfg"]["layer"])
+    nid = eb.resolve_entity(value, spec["category"], st["prov"],
+                            electrode_type=st["et"],
+                            parent_canonical=st["parent"],
+                            anchor_polarity=st["anchor_pol"])
+    if eb is not st["b"]:
+        st["external"][st["field"]] = eb.g
+    if nid is not None:
+        ctx.buffer[_n(value)] = nid          # 층으로 나누지 않는다 (문서 4 §4.2)
+    return nid
+
+
+def h_attribute(value, spec, ctx):
+    """**attribute — 속성값.** 노드를 만들지 않고 필드에 저장한다.
+
+    반환은 **값**이다(3형태의 둘째). 저장은 Pass 2가 하고 여기서는 값을 통과시킨다 —
+    부착 대상이 아직 해소되지 않았을 수 있기 때문이다(2-pass의 이유 그대로).
+    """
+    return value
+
+
+def h_content(value, spec, ctx):
+    """**content — 서술.** 청크로 보존하고 노드에 describes로 잇는다.
+
+    반환은 **값**이다. 청크 생성은 Pass 2가 한다 — 대상 해소가 먼저다.
+    """
+    return value
+
+
+def h_meta(value, spec, ctx):
+    """**meta — 관리 정보.** 출처 장부에만 남고 **그래프에 들어가지 않는다.**
+
+    반환은 값이다 — edges가 `@좌표필드`가 아닌 meta 필드를 끝점으로 지목하면
+    게이트가 그 값을 노드 id로 보지 못해 미해소로 떨어진다(정상 동작).
+    """
+    return value
+
+
+HANDLERS = {"anchor": h_anchor, "entity": h_entity, "attribute": h_attribute,
+            "content": h_content, "meta": h_meta}
+
+
 # ---------------------------------------------------------------- 정형 (1c′)
 def build_table(env, cfg, schema, graph):
     b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
@@ -97,8 +288,13 @@ def build_table(env, cfg, schema, graph):
     for rec in env.get("records", []):
         prov = _prov(rec)
         _check_fields(rec, fields, prov, env["doc_id"])
+        # **적재를 레코드 말미로 미루는 그릇 셋** (문서 2 §2.4-①·③ · 문서 4 §4.7-5).
+        # 큐 항목이 재시도의 유일한 손잡이라, 그 행이 무엇을 만들었는지가 정해진
+        # 뒤에 실어야 한다.
+        defer, dropped, pending = [], [], []
         # ③ 좌표: 부착은 process_ref 하나. process_group은 조상 대조만.
-        ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov)
+        ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov,
+                                      defer=defer)
         et = rec.get("electrode_type")                  # ④ 구조 필드 — 직접 읽는다
         ref = b.descend_anchor(ref, et, ref_g)          # ⓪ 하강 부착 (A11-9 ⓪)
         b.check_coord(rec.get("process_group"), ref, prov, ref_g)
@@ -111,44 +307,52 @@ def build_table(env, cfg, schema, graph):
         b.check_polarity(ref, et, prov, ref_g)
 
         resolved, attrs, contents, external = {}, [], [], {}
+        state = {"b": b, "graph": graph, "cfg": cfg, "prov": prov, "ref": ref,
+                 "ref_g": ref_g, "parent": parent, "et": et,
+                 "anchor_pol": anchor_pol, "external": external,
+                 "defer": defer, "field": None}
+        hctx = Ctx(graphs=b.graphs(), dic=b.dict, buffer=b.buffer, queue=store,
+                   record=rec, schema=schema, state=state)
+
+        # **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7).
         for f, spec in fields.items():
             if f not in rec or rec[f] in (None, ""):
                 continue
             role = spec.get("role")
-            if role in ("entity", "attribute", "anchor") and \
+            # **attribute는 이 방어의 대상이 아니다**(문서 2 §2.7 · §2.4-③) —
+            # 구조체·배열을 통째로 하나의 값으로 저장한다. 이 방어가 막는 것은
+            # 리스트가 표면형 정규화(문자열 강제·포함 규칙)를 타고 기존 노드에
+            # 흡수되는 **사전 오염**인데, attribute 값은 사전을 타지 않는다.
+            if role in ("entity", "anchor") and \
                     not _scalar(rec[f], f, prov, env["doc_id"]):
                 continue
-            if role not in ("anchor", "entity", "attribute", "content", "meta"):
+            if role not in HANDLERS:
                 # D-30 — 알 수 없는 role에 KeyError로 죽지 않는다.
                 store.append_defect(                    # 큐가 아니라 로그다 (D-30)
                     f"{env['doc_id']}: invalid_role '{role}' @ 필드 '{f}'")
                 continue
-            if role == "anchor":
-                nid, ng = b.resolve_anchor(rec[f], spec["target_category"], prov)
-                resolved[f] = nid
-                if nid is not None and ng is not graph:
-                    external[f] = ng
-            elif role == "entity":
-                # **스키마가 층을 선언하면 그 층에 해소한다**(D1). 선언을 안 읽으면
-                # 걸침 개체가 자기 층에 복제되어 CP↔PFMEA 병합이 조용히 깨진다
-                # (실측: 관리항목 11종이 품질층에 중복 생성).
-                eb = b.for_layer(spec.get("target_layer") or cfg["layer"])
-                resolved[f] = eb.resolve_entity(
-                    rec[f], spec["category"], prov,
-                    electrode_type=et, parent_canonical=parent,
-                    anchor_polarity=anchor_pol)
-                if eb is not b:
-                    external[f] = eb.g
-            elif role == "attribute":
+            state["field"] = f
+            out = HANDLERS[role](rec[f], spec, hctx)
+            resolved[f] = out                           # 반환 3형태 (문서 2 §2.7)
+            if role == "attribute":
                 attrs.append((f, spec))
             elif role == "content":
                 contents.append((f, spec))
 
         for f, spec in attrs:
-            tgt = resolved.get(spec.get("attach_to_field"))
+            af = spec.get("attach_to_field")
+            tgt = resolved.get(af)
             if tgt is None:
+                # **부착 대상 미해소 → 값을 보류하고 큐 항목이 보유한다**
+                # (문서 2 §2.4-③ `pending_attrs`). 조용히 버리면 좌표가 나중에
+                # 해소돼도 그 값은 영영 노드에 붙지 않는다.
+                pending.append({"attr_name": spec.get("attr_name", f),
+                                "value": rec[f],
+                                "context": ctx or None,
+                                "provenance": prov,
+                                "attach_to_field": af})
                 continue
-            tg = external.get(spec.get("attach_to_field"), graph)
+            tg = external.get(af, graph)
             # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
             ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
             ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], ctx, prov,
@@ -164,10 +368,43 @@ def build_table(env, cfg, schema, graph):
                                 env["doc_id"])
             dst, dg = _endpoint(e["to"], resolved, ref, ref_g, external, graph,
                                 env["doc_id"])
+            if e.get("optional") and _blank_endpoint(e, rec, fields):
+                continue        # **빈 행의 optional 엣지는 조용히 생략**(문서 2 §2.4-⑥)
+            if src is None or dst is None:
+                # 미해소 끝점 — 생략된 엣지의 **출발 노드를 큐 손잡이에 싣는다**
+                # (문서 2 §2.4-① · 문서 4 §4.4). 게이트의 unresolved_endpoint는
+                # 거부 **기록**이지 재시도 손잡이가 아니다 — 로그와 큐는 다른 자리다.
+                dropped.append({"relation": e["relation"], "from": e["from"],
+                                "to": e["to"],
+                                "src": src, "dst": dst,
+                                "src_surface": _field_surface(e["from"], rec),
+                                "dst_surface": _field_surface(e["to"], rec)})
             # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
             gate.commit_edge(graph, src, e["relation"], dst, cfg,
                              gate.PATH_SCHEMA, [prov], env["doc_id"],
                              src_graph=sg, dst_graph=dg)
+
+        # **규칙 B 폴백 — 정형 경로**(문서 4 §4.4-4). 이 레코드가 만든 entity 중
+        # **어느 엣지에도 끝점으로 서지 못한 것**을 좌표에 저해상도로 붙인다.
+        # "부착 대상이 없거나 미해소면 행의 공정좌표에 부착" — 여기서 "없다"는
+        # 스키마 edges가 그 필드를 지목하지 않은 경우다.
+        if ref is not None:
+            touched = set()
+            for e in schema.get("edges", []):
+                for side in ("from", "to"):
+                    nid = resolved.get(e.get(side))
+                    if nid:
+                        touched.add(nid)
+            for f, spec in fields.items():
+                if spec.get("role") != "entity":
+                    continue
+                nid = resolved.get(f)
+                if nid is None or nid in touched:
+                    continue
+                tg = external.get(f, graph)
+                _fallback_attach(b, cfg, tg, nid, ref, ref_g, prov, env["doc_id"])
+
+        _land_deferred(defer, dropped, pending, env["doc_id"])
 
     b.flush()
     return b
@@ -192,6 +429,214 @@ def finalize(layers=None):
         Builder(g, load_config(layer), None, None, layer).link_mirrors()
         _evidence_lost(g)
         g.build_end()
+    retry_orphans(layers)
+
+
+# ---------------------------------------------------------------- orphan 재시도
+RETRY_KINDS = ("orphan_anchor", "orphan_attach", "orphan_chunk_link")
+
+
+def retry_orphans(layers=None):
+    """**orphan 재시도 배치** — 문서 4 §4.7-5 · §4.8-5.
+
+    **주기의 정본은 빌드 말미 sweep 1회다.** 별도 스케줄러도 전용 서브커맨드도 두지
+    않는다 — 그래프가 자라는 시점이 곧 재시도가 의미를 갖는 유일한 시점이고, 주기와
+    호출자가 비어 있으면 큐 항목이 **아무도 부르지 않는 배치를 기다린다.**
+
+    각 항목의 보존 표면형을 **판정 파이프라인(§4.3)에 다시 태운다** — 재사용 지점이
+    `matcher.match` 하나라는 것이 §7.1의 요구다. 확신되면 자동 해소하고, 불확실이면
+    항목을 그대로 큐에 남긴다.
+
+    **provenance는 큐 항목이 보유한 원 문서 발자국 그대로다** — `auto:{규칙명}`을
+    쓰지 않는다(§4.7-5). 문서 발자국이 아니면 재인입 회수 대상 밖으로 나가, 개정으로
+    사라진 행의 엣지가 살아남는다.
+
+    재시도는 **같은 그래프 상태에서 같은 판정을 내는 결정적 연산**이라 「클린 2회
+    동일 그래프」 판정을 깨지 않는다.
+
+    돌려주는 것: `{kind: 해소 건수}` — 계기판·보고용이다.
+    """
+    from router import discover
+    from .dictionary import Dictionary
+
+    lays = layers or discover()
+    graphs = {lay: open_graph(lay) for lay in lays}
+    cfgs = {lay: load_config(lay) for lay in lays}
+    dic = Dictionary.open()
+    healed = {k: 0 for k in RETRY_KINDS}
+
+    queue = store.read(store.QUEUE, [])
+    for item in list(queue):
+        kind = item.get("kind")
+        if kind not in RETRY_KINDS:
+            continue
+        pl = item.get("payload") or {}
+        if kind == "orphan_attach":
+            if _retry_attach(pl, item, graphs, cfgs, dic):
+                healed[kind] += 1
+        elif kind == "orphan_anchor":
+            if _retry_anchor(pl, item, graphs, cfgs, dic):
+                healed[kind] += 1
+        # orphan_chunk_link의 생산자가 아직 없다 — 항목이 생기면 같은 자리에서 돈다.
+
+    for lay, g in graphs.items():
+        g.save()
+    dic.save()
+    if any(healed.values()):
+        _LOG.info("orphan 재시도 — %s",
+                  ", ".join(f"{k} {v}" for k, v in healed.items() if v))
+    return healed
+
+
+def _pick_any(surface, graphs, cfgs, dic):
+    """카테고리가 선언되지 않은 표면형(attach 대상)을 판정한다.
+
+    **첫 히트를 임의로 고르지 않는다.** attach 대상은 카테고리가 선언돼 있지 않아
+    후보가 여러 카테고리에 걸친다 — 카테고리를 순서대로 훑어 먼저 맞는 것을 쓰면
+    **순회 순서가 답을 정한다.** 실측: `'정밀 노칭 프레스'`가 `Process/노칭`(0.95)과
+    `Unit/노칭 프레스`(0.95) 양쪽에 걸렸고, 선언 순서상 앞선 Process가 이겨
+    설비 자리에 공정이 들어갔다.
+
+    그래서 **카테고리별로 판정하고 확신을 모은 뒤, 하나로 수렴할 때만** 쓴다.
+    사전 정확 히트(`exact`)가 있으면 그것이 우선이고, 수렴하지 않으면 미해소로
+    두어 항목을 큐에 남긴다 — `_dict_hit`과 같은 규율이다(문서 4 §4.4-3).
+    """
+    exact, fuzzy = {}, {}
+    for lay, g in graphs.items():
+        for cat in (cfgs[lay].get("categories") or {}):
+            cands = matcher.candidates(surface, cat, lay, g, dic)
+            if not cands:
+                continue
+            if any(c.get("exact") for c in cands):
+                for c in cands:
+                    if c.get("exact"):
+                        exact[c["id"]] = (lay, g)
+                continue
+            v = matcher.match(surface, cands, cat)
+            if v["type"] == matcher.MATCH and v["matched_id"]:
+                fuzzy[v["matched_id"]] = (lay, g)
+    pool = exact or fuzzy
+    if len(pool) != 1:
+        return None, None, None
+    nid, (lay, g) = next(iter(pool.items()))
+    return nid, lay, g
+
+
+def _retry_attach(pl, item, graphs, cfgs, dic):
+    """미해소 attach 재시도 — 성공하면 **저해상도 부착을 갈아끼운다**(§4.4-8 (a)).
+
+    갈아끼움은 ①고해상도 엣지 커밋 ②저해상도 엣지의 **그 provenance만 회수**
+    ③근거 0이 된 엣지의 착지(`_evidence_lost`가 다음 sweep에서 본다) 셋이다.
+    회수하지 않으면 같은 지식이 두 벌로 남아 질의 근거가 중복되고, 재인입 때
+    회수 대상이 어긋나 멱등성이 조용히 깨진다.
+    """
+    child_id, surface = pl.get("node_id"), pl.get("attach_to")
+    if not child_id or not surface:
+        return False
+    child, clay, cg = None, None, None
+    for lay, g in graphs.items():
+        if child_id in g.nodes:
+            child, clay, cg = g.get(child_id), lay, g
+            break
+    if child is None or not is_live(child):
+        store.drop(item["kind"], lambda p: p == pl)     # 대상이 사라졌다 — 항목도 내린다
+        return False
+
+    # 대상 이름을 다시 해소한다 — 카테고리 선언이 없으므로 수렴 판정을 쓴다.
+    target, tlay, tg = _pick_any(surface, graphs, cfgs, dic)
+    if target is None or target == child_id:
+        return False                                    # 불확실 — 항목을 큐에 남긴다
+
+    cfg = cfgs[tlay]
+    rel = _pair_relation(cfg, tg.get(target)["category"], child["category"])
+    if not rel:
+        store.append_defect(
+            f"orphan 재시도: 카테고리쌍 매핑 없음 "
+            f"({tg.get(target)['category']} → {child['category']})")
+        return False
+    prov = pl.get("provenance")
+    gate.commit_edge(cg, target, rel, child_id, cfg, gate.PATH_EXTRACT,
+                     [prov] if prov else [], item.get("doc_id"),
+                     src_graph=tg, dst_graph=cg)
+    _withdraw_lowres(cg, child_id, target, prov)
+    store.drop(item["kind"], lambda p: p == pl)         # self-heal
+    return True
+
+
+def _withdraw_lowres(g, child_id, new_target, prov):
+    """저해상도 부착의 **그 provenance만** 회수한다 (§4.4-8 (a) 갈아끼움).
+
+    엣지를 지우지 않고 발자국만 뺀다 — 다른 문서가 같은 저해상도 부착을 주장하고
+    있으면 그 근거는 살아 있어야 한다. 근거가 0이 되면 다음 sweep의
+    `_evidence_lost`가 그것을 표시한다(삭제가 아니라 표시 — 카드 L9).
+    """
+    if not prov:
+        return
+    for e in g.edges:
+        if e["dst"] != child_id or e["src"] == new_target:
+            continue
+        if e.get("status") == "deleted_by_user":
+            continue
+        if prov in (e.get("provenance") or []):
+            e["provenance"] = [x for x in e["provenance"] if x != prov]
+
+
+def _retry_anchor(pl, item, graphs, cfgs, dic):
+    """미해소 좌표 재시도 — 성공하면 **보유분을 전부 착지시킨다**(§4.4-98).
+
+    큐 항목이 보유한 것 셋을 각각 처리한다:
+    ①`dropped_edges` — 생략된 엣지를 다시 커밋
+    ②`pending_attrs` — 보류된 값을 해소된 노드에 저장
+    ③(연쇄 걸침 entity는 `dropped_edges`의 표면형으로 되살린다)
+    """
+    surface, category = pl.get("surface"), pl.get("category")
+    if not surface or not category:
+        return False
+    # **좌표 재시도는 anchor의 해소 규칙을 그대로 쓴다** — 유사도 판정을 태우지 않는다.
+    #
+    # 재시도가 존재하는 이유는 **그래프가 자랐기 때문**이지 매칭이 느슨해졌기
+    # 때문이 아니다(§4.7-5 "그래프가 자라면 해소될 수 있으므로"). 판정 파이프라인의
+    # ②후보검색을 좌표에 태우면 USE_MOCK 규칙(공백 제거 후 **포함**이면 0.95 —
+    # §7.1)이 `레이저노칭`을 `노칭`에 붙인다. 실측으로 그렇게 됐고, 그것은 골격에
+    # 없는 공정을 있는 공정으로 만드는 오해소다.
+    #
+    # anchor는 Tier1(seed·confirmed) 한정이고 새로 만들지 않는다(문서 2 §2.4-①).
+    # 재시도도 그 경계를 그대로 지킨다.
+    ref, rlay, rg = None, None, None
+    for lay, g in graphs.items():
+        hits = [nid for nid in dic.lookup(surface)
+                if nid in g.nodes and is_live(g.get(nid))
+                and g.get(nid)["category"] == category
+                and g.get(nid).get("status") in ("seed", "confirmed")]
+        if len(hits) == 1:
+            ref, rlay, rg = hits[0], lay, g
+            break
+    if ref is None:
+        return False                                    # 아직 골격에 없다 — 남긴다
+    cfg, prov = cfgs[rlay], pl.get("provenance")
+    did = item.get("doc_id")
+    n = 0
+    for d in pl.get("dropped_edges") or []:
+        src, dst = d.get("src"), d.get("dst")
+        if d.get("from") == "@process_ref":
+            src = ref
+        if d.get("to") == "@process_ref":
+            dst = ref
+        if not src or not dst:
+            continue
+        sg = next((g for g in graphs.values() if src in g.nodes), rg)
+        dg = next((g for g in graphs.values() if dst in g.nodes), rg)
+        gate.commit_edge(sg, src, d["relation"], dst, cfg, gate.PATH_SCHEMA,
+                         [prov] if prov else [], did, src_graph=sg, dst_graph=dg)
+        n += 1
+    for a in pl.get("pending_attrs") or []:
+        b = Builder(rg, cfg, None, did, rlay)
+        b.put_attribute(ref, a["attr_name"], a["value"], a.get("context") or {},
+                        a.get("provenance"), bool(a.get("context")))
+        b.flush()
+        n += 1
+    store.drop(item["kind"], lambda p: p == pl)         # self-heal
+    return True
 
 
 def _evidence_lost(g):
@@ -295,9 +740,19 @@ def build_prose(env, cfg, graph, candidates):
                     f"'{a['surface']}' → '{a['attach_to']}' @ {cid}")
                 continue
             if target is None:
-                store.enqueue("orphan_attach", f"부착 대상 미해소 — '{a['attach_to']}'",
-                              env["doc_id"], {"surface": a["surface"],
-                                              "attach_to": a["attach_to"]})
+                # **규칙 B 폴백** — 좌표에 저해상도로 붙인다(문서 4 §4.4-4).
+                _fallback_attach(b, cfg, graph, child, ref, ref_g, prov,
+                                 env["doc_id"], evidence_chunk=cid)
+                # **`attach_to`가 null이면 폴백만 하고 큐를 달지 않는다**(§4.7-5) —
+                # null은 추출이 애초에 부착 대상을 말하지 않은 정상 케이스라,
+                # 큐로 보내면 처리 불가능한 노이즈가 큐를 채운다.
+                if a.get("attach_to"):
+                    store.enqueue(
+                        "orphan_attach", f"부착 대상 미해소 — '{a['attach_to']}'",
+                        env["doc_id"],
+                        {"node_id": child, "surface": a["surface"],
+                         "attach_to": _n(a["attach_to"]),   # dedup 키 (§4.7-5)
+                         "provenance": prov, "chunk_id": cid})
                 continue
             rel = _pair_relation(cfg, graph.get(target)["category"],
                                  graph.get(child)["category"])

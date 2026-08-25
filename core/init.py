@@ -26,17 +26,23 @@ from router import discover
 ROOT = Path(__file__).resolve().parent.parent
 _LOG = log.get(__name__)
 
-# 지우는 것 — **`review/`는 넣지 않는다.**
+# 클린의 범위 — **문서 7 §7.6-4가 이번 개정에서 확정했다.**
 #
-# §7.6-4는 클린을 "**data/ 하위**를 빈 상태로 생성·재생성"으로 정의한다. `extract/`를
-# 함께 지우는 것은 회귀 규약(§7.5-7 클린 단독 실행)이 요구하는 범위다 — 추출
-# 체크포인트가 스위트 사이에 살아남으면 그 규약이 막으려던 순서 의존이 그대로 생긴다.
+#   `data/` 전체 (**예외: `doc_types.json`**) + `parsed/` + `extract/` 전체.
+#   `review/`는 지우지 않는다. `export/`는 파생물이라 어느 쪽이든 무해하다.
 #
-# **`review/{doc_type}/approval.json`은 승인 기록의 물리 정본이고 사람 판단 기록이라
-# 재생성되지 않는다**(§7.8). 그것을 클린이 지우면 사내에서 `init --fresh` 한 번에
-# 승인 이력이 사라진다 — 실증했다(확정 후 approval.json 존재 → init --fresh 후 0).
-# 등록 산출의 정리는 그 세션이 자기 디렉터리를 지운다(테스트가 이미 그 형태다).
-WIPE = ("data", "extract", "export")
+# **`parsed/`·`extract/`는 체크포인트다** — 파일이 남으면 다음 실행이 앞 단계
+# (파싱·추출)를 건너뛰어, 회귀 규약(§7.5-7)이 막으려는 순서 의존이 그대로 생긴다.
+#
+# **`doc_types.json`은 예외다** — 등록 파이프라인이 **승인 1회로** 등재한 것이라
+# 재생성되지 않으며 `review/{doc_type}/approval.json`과 한 쌍이다. 지우면 사람 쪽과
+# 시스템 쪽이 등록 여부를 다르게 알게 되고, 다음 인입이 그 문서를 "미등록 →
+# 구축 모드"로 되돌린다.
+#
+# **`review/{doc_type}/approval.json`도 재생성되지 않는 사람 판단 기록이다**(§7.8).
+# 클린이 그것을 지우면 `init --fresh` 한 번에 승인 이력이 사라진다 — 실증했다.
+WIPE = ("parsed", "extract", "export")     # `data/`는 아래 `fresh()`가 예외를 두고 지운다
+KEEP_IN_DATA = ("doc_types.json",)         # 승인 1회의 등재 — 재생성되지 않는다
 
 # 빈 상태의 형태 — 문서 7 §7.2 말미가 정본이다.
 EMPTY = {
@@ -47,9 +53,21 @@ EMPTY = {
 
 
 def fresh():
-    """실행 산출물 4종을 지운다. **`data/`도 지운다** — 클린의 정의가 그것이다."""
+    """클린 상태를 만든다 — 범위는 위 `WIPE` + `data/`(예외 `KEEP_IN_DATA`)다."""
     for d in WIPE:
         shutil.rmtree(ROOT / d, ignore_errors=True)
+    data = ROOT / "data"
+    if data.exists():
+        keep = {}
+        for name in KEEP_IN_DATA:
+            p = data / name
+            if p.exists():
+                keep[name] = p.read_bytes()
+        shutil.rmtree(data, ignore_errors=True)
+        if keep:
+            data.mkdir(parents=True, exist_ok=True)
+            for name, blob in keep.items():
+                (data / name).write_bytes(blob)
 
 
 def ensure():

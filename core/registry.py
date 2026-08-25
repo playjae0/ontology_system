@@ -118,10 +118,26 @@ def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
 
 
 def unregister(doc_type):
-    """등재 취소 — 시험·복구용. 내장은 지울 수 없다(파일이 원천이다)."""
+    """등재 취소 — 시험·복구용. **레포가 싣고 나온 내장은 지울 수 없다**(파일이 원천이다).
+
+    다만 **확정이 승격시킨 실물은 함께 걷는다** — 확정은 어댑터·스키마를 검수 자리에서
+    정본 자리(`adapters/{doc_type}.py`·`schemas/{doc_type}.json`)로 옮기고(문서 6 §6.5),
+    승격된 스키마는 그 순간부터 **내장 출처**가 된다. 등재만 지우고 파일을 남기면
+    조회에는 계속 잡히면서 등록부에는 없는 반쪽 상태가 되고, 같은 이름의 재등록이
+    「내장 중복」으로 영영 막힌다(실측).
+
+    **등재 항목이 가리키는 경로만** 지운다 — 레포가 싣고 나온 `schemas/cp.json` 같은
+    것은 등재 항목이 없으므로 대상이 아니다.
+    """
     reg = _registered()
-    if doc_type in reg:
-        del reg[doc_type]
-        store.write(store.DOC_TYPES, reg)
-        return True
-    return False
+    entry = reg.get(doc_type)
+    if entry is None:
+        return False
+    for key, base in (("adapter", "adapters"), ("schema", "schemas")):
+        rel = entry.get(key) or ""
+        p = ROOT / rel
+        if rel.startswith(base + "/") and p.exists():
+            p.unlink()
+    del reg[doc_type]
+    store.write(store.DOC_TYPES, reg)
+    return True

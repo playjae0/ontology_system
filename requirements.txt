@@ -23,4 +23,4 @@ orjson>=3.9          ; python_version >= "3.10"
 # 사내 게이트웨이의 실물·프로토콜이 아직 [사내 확인]이다. core/llm.py는 표준
 # urllib로 HTTP를 부르므로 **추가 패키지 없이 동작한다** — 게이트웨이가 전용
 # SDK를 요구하면 그때 이 자리에 적는다. USE_MOCK=0의 설정은 환경변수로 받는다
-# (ONTO_LLM_* — core/llm.py 머리말 참조).
+# (LLM_GATEWAY_URL 등 — core/llm.py 머리말 참조).
