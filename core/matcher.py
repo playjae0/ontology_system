@@ -191,9 +191,12 @@ def _judge_live(surface, pool, category, cfg=None):
     """
     ids = {c["id"] for c in pool}
     out = llm.chat(
-        [{"role": "system", "content":
-          "두 이름이 같은 실물을 가리키는지 판정한다. 확신이 없으면 uncertain이다 "
-          "— 병합은 쉽고 분리는 어렵다. matched_id는 반드시 후보 목록 안의 id다."},
+        # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
+        # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
+        [{"role": "system",
+          "content": llm.prompt("judge")
+          + ("\n\n## 층 어휘\n" + (cfg or {}).get("prompts", {}).get("judge", "")
+             if (cfg or {}).get("prompts", {}).get("judge") else "")},
          {"role": "user", "content": json.dumps(
              {"mention": surface, "category": category, "candidates": pool},
              ensure_ascii=False)}],

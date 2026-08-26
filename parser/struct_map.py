@@ -37,23 +37,47 @@ def keep_path(doc_id):
     return KEEP_DIR / f"{doc_id}.json"
 
 
-def load_kept(doc_id, doc_hash=None):
-    """보존된 지도를 읽는다 — **doc_hash가 같을 때만** 재사용한다(문서 6 §6.3).
+def source_hash(path):
+    """**원본 파일의 바이트 해시** — 파서의 지도 재사용 판정에 쓴다.
+
+    `doc_hash`와 **다른 값이고 다른 이름이다**(2A P-D 허브 판정):
+
+    | | 소유 | 무엇 | 언제 |
+    |---|---|---|---|
+    | `source_hash` | **파서** | 원본 파일 바이트 | 파싱 시점 |
+    | `doc_hash` | **에이전트** | 문서 전체 내용 해시(청크 해시의 부산물) | 인입 시점 |
+
+    **파싱은 인입보다 먼저 돈다** — 파서가 지도 재사용을 판단할 시점에 `doc_hash`는
+    아직 없다. 그래서 파서는 자기가 볼 수 있는 것으로 판단한다(§2.7-①: "진입 검증은
+    파서가 하지 않는다 — 파서는 다른 문서의 존재를 알 필요가 없다").
+
+    **두 값을 같은 이름으로 부르지 않는다** — 같은 이름이면 한쪽 구현이 다른 쪽 값을
+    쓰게 되고, 정규화 전후가 달라 재사용 판정이 어긋난다.
+    """
+    import hashlib
+    p = Path(path)
+    if not p.exists():
+        return None
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def load_kept(doc_id, src_hash=None):
+    """보존된 지도를 읽는다 — **`source_hash`가 같을 때만** 재사용한다(문서 6 §6.3).
 
     같은 지도 → 같은 분할 → 같은 chunk_id다. 매 인입 새로 산출하면 그 문서의
-    chunk_id가 전량 이동해 재인입 멱등성이 깨진다. doc_hash가 바뀌면 추출
-    체크포인트와 함께 무효화된다(§4.8-8과 같은 손잡이).
+    chunk_id가 전량 이동해 재인입 멱등성이 깨진다. 파일이 바뀌면 무효화되고
+    추출 체크포인트도 함께 버려진다(§4.8-8과 같은 손잡이).
     """
     p = keep_path(doc_id)
     if not p.exists():
         return None
     m = json.loads(p.read_text(encoding="utf-8"))
-    if doc_hash is not None and m.get("doc_hash") not in (None, doc_hash):
+    if src_hash is not None and m.get("source_hash") not in (None, src_hash):
         return None
     return m
 
 
-def keep(doc_id, m, doc_hash=None):
+def keep(doc_id, m, src_hash=None):
     """지도를 보존한다. **보존 자리는 클린 범위(`extract/`) 안이다**(§6.3).
 
     밖에 두면 「클린 2회 동일 그래프」가 1회차 지도를 물고 통과해 멱등성의 전면
@@ -61,8 +85,8 @@ def keep(doc_id, m, doc_hash=None):
     """
     KEEP_DIR.mkdir(parents=True, exist_ok=True)
     out = dict(m)
-    if doc_hash is not None:
-        out["doc_hash"] = doc_hash
+    if src_hash is not None:
+        out["source_hash"] = src_hash       # **파서 소유** — doc_hash와 다른 값이다
     keep_path(doc_id).write_text(
         json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return out
@@ -83,7 +107,7 @@ MAPPED = "mapped"
 
 
 # ---------------------------------------------------------------- ① 지도 산출
-def propose(doc_id, lines, ask=None, doc_hash=None):
+def propose(doc_id, lines, ask=None, src_hash=None):
     """지도 산출 — USE_MOCK은 파일 우선, 없으면 결정적 휴리스틱 (증분0 §5-4).
 
     지도 형식: `{"doc_id":…, "source":…, "rows":[{"row":n, "heading":bool, "level":int}]}`
@@ -98,7 +122,7 @@ def propose(doc_id, lines, ask=None, doc_hash=None):
     실패**다: 휴리스틱으로 조용히 떨어지면 그 지도가 청크 경계를 정하고, 잘못된
     경계는 chunk_id를 바꿔 재인입 멱등성까지 흔든다(문서 7 §7.6-B-4).
     """
-    kept = load_kept(doc_id, doc_hash)
+    kept = load_kept(doc_id, src_hash)
     if kept is not None:
         kept["source"] = kept.get("source", "kept")
         return kept                          # **보존분 재사용** — 같은 분할·같은 chunk_id
@@ -110,7 +134,11 @@ def propose(doc_id, lines, ask=None, doc_hash=None):
         m = ask(doc_id, lines)
         m.setdefault("doc_id", doc_id)
         m["source"] = "live"
-        return keep(doc_id, m, doc_hash)     # 실산출은 보존한다(§6.3)
+        return keep(doc_id, m, src_hash)     # 실산출은 보존한다(§6.3)
+    # **USE_MOCK 갈래는 보존하지 않는다** — 지도가 **고정 파일**이라 같은 입력이면
+    # 늘 같은 지도가 나오고, 보존은 그 위에 아무것도 더하지 않는다(§6.3이 그
+    # 사실을 명시한다: "mock만으로는 이 결함이 드러나지 않는다"). 보존이 필요한
+    # 것은 **매 인입 새로 산출되는** 실호출 갈래다.
     p = MAPS_DIR / f"{doc_id}.json"
     if p.exists():
         m = json.loads(p.read_text(encoding="utf-8"))

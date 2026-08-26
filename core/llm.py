@@ -120,6 +120,39 @@ def require(point, *, need=("url", "model")):
 
 
 # ---------------------------------------------------------------- 호출
+PROMPTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts")
+
+
+def prompt(name):
+    """지시문 템플릿을 **파일에서 읽는다** (문서 7 §7.6-B-5).
+
+    *"프롬프트 템플릿은 파일이 정본이고 코드가 그것을 읽는다 — 버전 문자열을 코드에
+    적어 두고 템플릿 파일을 읽지 않는 구조를 두지 않는다."* 판단·성능에 영향을 주는
+    자산은 **코드 안에 박지 않고 자산별 지정 파일**로 둔다(§7.1 관리 자산의 원칙).
+
+    파일이 없으면 **명시적 실패**다 — 조용히 기본 문안으로 떨어지면 그 호출은
+    자산이 정하지 않은 지시로 돌고, 파일을 고쳐도 동작이 바뀌지 않는다.
+    """
+    p = os.path.join(PROMPTS_DIR, f"{name}.md")
+    if not os.path.exists(p):
+        log.explicit_fail(_LOG, f"core.llm.prompt[{name}]",
+                          f"지시문 템플릿이 없다: {p} — 파일이 정본이다(§7.6-B-5)")
+        raise FileNotFoundError(f"지시문 템플릿 없음: {p}")
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+
+def prompt_version(name):
+    """그 템플릿의 판본 — 머리말 `version:` 줄이 정본이다."""
+    for line in prompt(name).splitlines()[:10]:
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    log.explicit_fail(_LOG, f"core.llm.prompt_version[{name}]",
+                      f"{name}.md 머리말에 version: 줄이 없다")
+    raise ValueError(f"{name}.md: 머리말 version: 줄이 없다")
+
+
 def _post(url, payload, key, timeout):
     """게이트웨이 HTTP 1회. 표준 urllib만 쓴다 — 코어 외부 의존 0."""
     req = urllib.request.Request(
@@ -178,9 +211,7 @@ def summarize_image(image_ref):
     주입하는 쪽이 인입·파싱 진입점이다. mock 갈래는 파서 안의 고정 문자열이고
     `meta.image_summary_source`가 어느 갈래인지 데이터로 남긴다(§7.6-B-4).
     """
-    out = chat([{"role": "system", "content":
-                 "문서에 실린 그림을 한두 문장으로 요약한다. 그림에 없는 것을 "
-                 "지어내지 않는다 — 요약은 원문 자리에 청크로 실린다."},
+    out = chat([{"role": "system", "content": prompt("image_summary")},
                 {"role": "user", "content": f"이미지 참조: {image_ref}"}],
                point="image_summary")
     return out["text"]

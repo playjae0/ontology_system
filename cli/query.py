@@ -165,8 +165,15 @@ def _order_facts(g, cfg, direct):
 # 포맷으로 나열해 12문항 스모크의 출력이 구현마다 달라진다.
 ANSWER_SCHEMA = {
     "type": "object",
-    "properties": {"answer": {"type": "string"}},
-    "required": ["answer"], "additionalProperties": False,
+    "properties": {
+        "answer": {"type": "string"},
+        # **필터의 주체는 답변 LLM이다**(문서 5 §5.3 Q5) — 무엇을 남겼는지 세려면
+        # 그 선택이 반환에 있어야 한다. 주체가 미정이면 확장 결과 전량이 답변으로
+        # 넘어가 수집 상한에서 잘리거나(오답), 코드 필터를 임의 구현해 config 밖
+        # 층 어휘가 코드에 들어간다.
+        "used_facts": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["answer", "used_facts"], "additionalProperties": False,
 }
 
 
@@ -188,18 +195,25 @@ def generate(res):
         return render(res)
 
     out = llm.chat(
-        [{"role": "system", "content":
-          "[그래프 사실]은 시스템이 보증하는 구조 정보이고 [문서 근거]는 서술 "
-          "정보다. 둘을 동급으로 섞지 않는다 — 구조·순서·규격은 그래프 사실이 "
-          "이긴다. 근거에 없는 것을 답하지 않고, 없으면 없다고 밝힌다. "
-          "답에 출처를 함께 적는다."},
+        [{"role": "system", "content": llm.prompt("answer")},
+         # 사실에 **인덱스를 붙여** 넘긴다 — 무엇을 썼는지 되돌려 받으려면
+         # 양쪽이 같은 번호를 봐야 한다.
          {"role": "user", "content": json.dumps(
              {"question": res["question"],
-              "그래프_사실": res["facts"],
+              "그래프_사실": [{"i": i, "문장": f}
+                          for i, f in enumerate(res["facts"])],
               "문서_근거": [{"출처": f"{c['doc_id']} {c['source_locator']}",
                           "원문": c["text"]} for c in res["chunks"]]},
              ensure_ascii=False)}],
         json_schema=ANSWER_SCHEMA, point="answer")
+
+    # **필터가 실제로 좁혔는가를 기록한다**(문서 5 §5.3 Q5). 답변 LLM이 고른
+    # 인덱스만 남겨 호출부·계기판이 before/after를 셀 수 있게 한다 — 주체가
+    # 답변 LLM이라는 것이 문면으로만 있으면 그것이 도는지 아무도 모른다.
+    used = [i for i in (out.get("used_facts") or []) if 0 <= i < len(res["facts"])]
+    if used:
+        res["facts_before_filter"] = len(res["facts"])
+        res["facts"] = [res["facts"][i] for i in used]
     return out["answer"]
 
 

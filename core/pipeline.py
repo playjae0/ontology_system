@@ -176,7 +176,7 @@ def _blank_endpoint(edge, rec, fields):
     return False
 
 
-def _land_deferred(defer, dropped, pending, doc_id):
+def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None):
     """미뤄 둔 큐 적재를 **레코드 말미에** 착지시킨다 (문서 2 §2.4-①·③).
 
     큐 항목이 **재시도 배치의 유일한 손잡이**다(문서 4 §4.7-5). 그래서 항목이
@@ -195,6 +195,10 @@ def _land_deferred(defer, dropped, pending, doc_id):
             pl["dropped_edges"] = dropped
         if pending:
             pl["pending_attrs"] = pending
+        if dropped_entities:
+            # **연쇄 드롭된 entity의 표면형·target_layer·category**(§4.4) —
+            # 재시도가 좌표를 해소하면 이것으로 노드를 **새로 세운다.**
+            pl["dropped_entities"] = dropped_entities
         store.enqueue("orphan_anchor", item["reason"], doc_id, pl)
     return defer
 
@@ -258,7 +262,28 @@ def h_entity(value, spec, ctx):
     경계를 넘기 때문이다(문서 4 §4.10-6). 층 간 동명은 **마지막 해소가 이긴다**(§4.2).
     """
     st = ctx.state
-    eb = st["b"].for_layer(spec.get("target_layer") or st["cfg"]["layer"])
+    lay = spec.get("target_layer") or st["cfg"]["layer"]
+
+    # **좌표 없는 노드를 미리 만들어 두지 않는다**(문서 4 §4.4 — B14).
+    #
+    # 가르는 기준은 **좌표가 canonical에 들어가는가**다:
+    #   · 스코프를 못 붙이는 노드(Property·걸침) → **만들지 않는다**
+    #   · 스코프와 무관한 노드(Failure)          → 만든다 (occurs_in의 출발 노드)
+    #
+    # 만들면 §4.5-6이 병합 후보에서 **영구 배제**하는 부모 미해소 노드가 되고,
+    # 그 배제는 영구라 나중에 좌표가 해소돼도 흡수되지 않는다. 재시도 배치는 큐
+    # 항목이 보유한 재료로 노드를 **새로 세우므로** 미리 만든 것은 중복으로 남는다.
+    # 실측(2A P-C): `레이저노칭` 미해소 행에서 `cathode 빔 출력`이 엣지 0·attrs
+    # 빈 채로 남아 **어느 경로로도 회수되지 않았다.**
+    #
+    # 대신 그 재료를 `orphan_anchor` 큐 항목이 보유한다 — 그것이 재시도의 손잡이다.
+    if st["ref"] is None and _scoped_category(spec["category"], lay, st["b"]):
+        st["dropped_entities"].append(
+            {"surface": value, "category": spec["category"],
+             "target_layer": lay, "field": st["field"]})
+        return None
+
+    eb = st["b"].for_layer(lay)
     nid = eb.resolve_entity(value, spec["category"], st["prov"],
                             electrode_type=st["et"],
                             parent_canonical=st["parent"],
@@ -268,6 +293,22 @@ def h_entity(value, spec, ctx):
     if nid is not None:
         ctx.buffer[_n(value)] = nid          # 층으로 나누지 않는다 (문서 4 §4.2)
     return nid
+
+
+def _scoped_category(category, layer, builder):
+    """이 카테고리는 **좌표가 canonical에 들어가는가** (문서 4 §4.4 — B14의 기준).
+
+    판정은 층 config의 `canonical_scope.bind_categories`가 한다 — **코드가 카테고리
+    이름을 알지 않는다**(B1). 걸침(다른 층 선언)도 같은 기준으로 그 층 config에
+    물어본다.
+    """
+    from .bootstrap import load_config
+    try:
+        cfg = load_config(layer)
+    except Exception:
+        return False
+    sc = cfg.get("canonical_scope") or {}
+    return category in (sc.get("bind_categories") or [])
 
 
 def h_attribute(value, spec, ctx):
@@ -313,6 +354,9 @@ def build_table(env, cfg, schema, graph):
         # 큐 항목이 재시도의 유일한 손잡이라, 그 행이 무엇을 만들었는지가 정해진
         # 뒤에 실어야 한다.
         defer, dropped, pending = [], [], []
+        # **연쇄 드롭된 entity의 재료** — 좌표가 미해소라 만들지 않은 것들.
+        # 큐 항목이 이것을 보유해야 재시도가 노드를 새로 세울 수 있다(§4.4).
+        dropped_ents = []
         # ③ 좌표: 부착은 process_ref 하나. process_group은 조상 대조만.
         ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov,
                                       defer=defer)
@@ -329,6 +373,7 @@ def build_table(env, cfg, schema, graph):
 
         resolved, attrs, contents, external = {}, [], [], {}
         state = {"b": b, "graph": graph, "cfg": cfg, "prov": prov, "ref": ref,
+                 "dropped_entities": dropped_ents,
                  "ref_g": ref_g, "parent": parent, "et": et,
                  "anchor_pol": anchor_pol, "external": external,
                  "defer": defer, "field": None}
@@ -448,7 +493,8 @@ def build_table(env, cfg, schema, graph):
                 tg = external.get(f, graph)
                 _fallback_attach(b, cfg, tg, nid, ref, ref_g, prov, env["doc_id"])
 
-        _land_deferred(defer, dropped, pending, env["doc_id"])
+        _land_deferred(defer, dropped, pending, env["doc_id"],
+                       dropped_entities=dropped_ents)
 
     b.flush()
     return b
@@ -679,12 +725,36 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     cfg, prov = cfgs[rlay], pl.get("provenance")
     did = item.get("doc_id")
     n = 0
+
+    # ① **연쇄 드롭된 entity를 새로 세운다**(문서 4 §4.4 — B14).
+    # 좌표가 해소됐으므로 이제 스코프를 붙일 수 있다 — 미리 만들어 둔 것이
+    # 없으니 중복도 없다. 세운 노드의 id를 dropped_edges 해소에 쓴다.
+    revived = {}
+    parent = (rg.get(ref) or {}).get("canonical")
+    for d in pl.get("dropped_entities") or []:
+        lay2 = d.get("target_layer") or rlay
+        g2 = graphs.get(lay2)
+        if g2 is None:
+            continue
+        b2 = Builder(g2, cfgs[lay2], None, did, lay2)
+        nid2 = b2.resolve_entity(d["surface"], d["category"], prov,
+                                 parent_canonical=parent)
+        b2.flush()
+        if nid2:
+            revived[d.get("field") or d["surface"]] = nid2
+            revived[d["surface"]] = nid2
+            n += 1
+
     for d in pl.get("dropped_edges") or []:
         src, dst = d.get("src"), d.get("dst")
         if d.get("from") == "@process_ref":
             src = ref
+        elif src is None:
+            src = revived.get(d.get("from")) or revived.get(d.get("src_surface"))
         if d.get("to") == "@process_ref":
             dst = ref
+        elif dst is None:
+            dst = revived.get(d.get("to")) or revived.get(d.get("dst_surface"))
         if not src or not dst:
             continue
         sg = next((g for g in graphs.values() if src in g.nodes), rg)
