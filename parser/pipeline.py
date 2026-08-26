@@ -54,10 +54,24 @@ def _image_gate(doc_id, summarize):
     return mock
 
 
-def _map_hook(doc_id):
-    """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다)."""
+def _map_hook(doc_id, kept=None, made=None):
+    """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다).
+
+    `kept`는 보존분의 프레임별 지도(`{key: smap}`), `made`는 이번 인입에서 새로
+    산출된 것을 담을 자리다. **한 문서가 여러 프레임(시트·슬라이드)을 가지므로 지도는
+    프레임 키로 갈라 담는다** — 보존 파일은 문서 하나에 하나이고(§6.3), 그 안에서
+    `maps[key]`로 나뉜다. 재사용은 호출부가 `source_hash`로 이미 판정한 뒤이므로
+    여기서는 «있으면 쓴다»만 한다.
+    """
+    kept = kept or {}
     def hook(key, lines, locator):
-        return struct_map.apply(f"{doc_id}:{key}", lines, locator)
+        hit = kept.get(key)
+        if hit is not None:
+            return hit
+        smap = struct_map.apply(f"{doc_id}:{key}", lines, locator)
+        if made is not None:
+            made[key] = smap
+        return smap
     return hook
 
 
@@ -76,6 +90,15 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
 
     raw = read(path)
 
+    # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
+    # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.
+    # **원본 파일 바이트 해시**로 재사용을 판정한다 — `doc_hash`는 에이전트 소유라
+    # 파싱 시점에는 아직 없다(2A P-D 허브 판정 · §2.7-①).
+    src_hash = struct_map.source_hash(path)
+    kept_map = struct_map.load_kept(doc_id, src_hash) or {}
+    kept_maps = dict(kept_map.get("maps") or {})
+    made_maps = {}
+
     ok, detail = preflight.check(adapter, raw)                       # ② preflight
     if not ok:
         return res.fail("adapter_mismatch",
@@ -85,7 +108,8 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     try:                                                             # ③ extract
         if a.get("payload_kind") == "prose":
             try:
-                pieces = adapter.extract(raw, struct_map_fn=_map_hook(doc_id))
+                pieces = adapter.extract(
+                    raw, struct_map_fn=_map_hook(doc_id, kept_maps, made_maps))
             except TypeError:
                 pieces = adapter.extract(raw)                        # 지도 훅 없는 어댑터
         else:
@@ -104,14 +128,21 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.
-    kept_map = struct_map.load_kept(doc_id) or {}
+    # **원본 파일 바이트 해시**로 재사용을 판정한다 — `doc_hash`는 에이전트 소유라
+    # 파싱 시점에는 아직 없다(2A P-D 허브 판정 · §2.7-①).
     kept_img = dict(kept_map.get("image_summaries") or {})
     pieces = tagger.complete_images(pieces, summarize,               # ⑤ tagger
                                     allow_mock=_image_gate(doc_id, summarize),
                                     kept=kept_img)
+    # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
+    # mtime이 흔들려 «재사용했나»가 파일로 판정되지 않는다.
+    fresh = {}
+    if made_maps:
+        fresh["maps"] = {**kept_maps, **made_maps}
     if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
-        struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id,
-                                 "image_summaries": kept_img})
+        fresh["image_summaries"] = kept_img
+    if fresh:
+        struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id, **fresh}, src_hash)
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
                         doc_type=a["doc_type"])
 

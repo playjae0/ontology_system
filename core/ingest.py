@@ -252,12 +252,31 @@ def ingest(env, *, allow_duplicate=False):
     adapter_version = env.get("adapter_version")        # 봉투 1회 → 청크로 복사(C9)
     parsed_at = env.get("parsed_at")                    # 상동 — 청크 레코드 필수(§7.2)
 
+    written = set()
+
     def put_chunk(cid, text, section, src_loc, meta):
-        prev = chunks["chunks"].get(cid)
-        if prev is not None and prev.get("doc_id") != doc_id:
-            msg = f"{doc_id}: chunk_id 충돌 {cid} @ {src_loc}"
+        """**계산된 id가 이미 존재하면 조용히 덮어쓰지 않고 결함으로 로그한다**(§7.2).
+
+        **판정은 「이번 인입에서 이미 쓴 cid인가」다.** 구판은
+        `prev.get("doc_id") != doc_id`를 봤는데, cid는 항상 `{doc_id}:…` 꼴이라
+        **그 조건이 참이 될 수 없었다** — 같은 문서 안의 충돌(occ 계산이 어긋나
+        두 청크가 같은 id를 받는 경우)이 통째로 안 잡혔다. 재인입은 그 문서
+        몫을 회수한 뒤 다시 쓰는 정상 경로이므로 **저장소에 남은 옛 청크는
+        충돌이 아니다** — 이번 인입 안에서 두 번 쓰는 것만 충돌이다.
+
+        **조용한 덮어쓰기는 근거를 바꾼다** — 같은 id에 다른 청크가 실리면
+        답변이 인용하는 원문이 소리 없이 달라진다. 덮어쓰되 **로그로 드러낸다**
+        (버리면 그 문서의 다른 청크까지 잃는다).
+        """
+        if cid in written:
+            prev = chunks["chunks"].get(cid) or {}
+            msg = (f"{doc_id}: chunk_id 충돌 {cid} @ {src_loc} — "
+                   f"이번 인입에서 이미 쓴 id다 "
+                   f"(앞: {(prev.get('source_locator') or '?')!r} "
+                   f"{(prev.get('text') or '')[:30]!r})")
             store.append_defect(msg)                    # 조용히 덮지 않는다
             res.defects.append(msg)
+        written.add(cid)
         chunks["chunks"][cid] = {
             "doc_id": doc_id,
             "text": text,                               # 원문 무손실 (카드 C8)

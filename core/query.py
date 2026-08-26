@@ -77,9 +77,7 @@ def _link_llm(question, graphs):
     pool = [{"id": nid, "canonical": n["canonical"], "category": n["category"]}
             for nid, (_lay, n) in live.items()]
     out = llm.chat(
-        [{"role": "system", "content":
-          "질문이 실제로 가리키는 개체만 고른다. 애매하면 고르지 않는다 — "
-          "링킹 과잉은 답변 컨텍스트를 부풀린다. node_ids는 후보 목록 안의 id다."},
+        [{"role": "system", "content": llm.prompt("link")},
          {"role": "user", "content": json.dumps(
              {"question": question, "candidates": pool}, ensure_ascii=False)}],
         json_schema=LINK_SCHEMA, point="link")
@@ -227,8 +225,13 @@ def bridge(src_ids, home_layer, graphs, configs):
     """
     found, crossed = {}, []
     for layer, g in graphs.items():
-        if layer == home_layer:
-            continue
+        # **홈층 특례를 두지 않는다**(문서 5 §5.1-4 — 허브 판정 2A P-D).
+        #
+        # §5.1-4의 "라우터가 **홈층이 아닌 전 층의** config에서 이 키를 읽고"는
+        # **타층을 빠뜨리지 말라는 요구**이지 홈층을 빼라는 뜻이 아니다. 브리지는
+        # 양방향 1홉이고 중복은 아래 방문 집합이 막는다. 특례를 두면 **같은
+        # 질문이 어느 층에서 출발하느냐에 따라 다른 답을 낸다** — 홈층이 선언층인
+        # 관계(quality의 occurs_in·controlled_by)가 quality발 질의에서만 사라진다.
         spec = (configs[layer].get("cross_layer_traverse") or {})
         if not spec:
             continue
@@ -240,8 +243,10 @@ def bridge(src_ids, home_layer, graphs, configs):
                    or (d in ("in", "both") and e["src"] in src_ids))
             if not hit:
                 continue
-            found.setdefault(layer, set()).add(
-                e["src"] if e["dst"] in src_ids else e["dst"])
+            other = e["src"] if e["dst"] in src_ids else e["dst"]
+            if other in src_ids:
+                continue                    # 출발 집합으로 되돌아오는 것은 확장이 아니다
+            found.setdefault(layer, set()).add(other)
             crossed.append((layer, e))
     return found, crossed
 
@@ -342,11 +347,19 @@ def facts(graph, node_ids, cfg):
     for e in graph.edges:
         if e.get("status") == "deleted_by_user":
             continue
-        if e["src"] in node_ids and e["dst"] in node_ids and e["rel"] in tpl:
-            out.append(tpl[e["rel"]].format(src=graph.get(e["src"])["canonical"],
-                                            dst=graph.get(e["dst"])["canonical"]))
+        if e["src"] not in node_ids or e["dst"] not in node_ids or e["rel"] not in tpl:
+            continue
+        s, d = graph.get(e["src"]), graph.get(e["dst"])
+        # **이 층에 없는 끝점은 여기서 문장화하지 않는다** — 걸침 엣지의 반대쪽이고
+        # 그 자리는 `cross_facts`다(가리키는 층의 템플릿을 쓴다 — 문서 5 §5.4-1).
+        # 홈층 브리지가 켜지면서 collected에 타층 id가 섞여 실측으로 드러났다.
+        if s is None or d is None:
+            continue
+        out.append(tpl[e["rel"]].format(src=s["canonical"], dst=d["canonical"]))
     for nid in node_ids:
         n = graph.get(nid)
+        if n is None:
+            continue                        # 상동 — 타층 노드는 그 층이 문장화한다
         for name, val in (n.get("attrs") or {}).items():
             t = tpl.get(f"attr:{name}")
             if not t or val is None:
