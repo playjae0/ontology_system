@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -55,6 +56,10 @@ OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으�
             ("pptx", "pptx 읽기 — 파서 전용·지연 import (패키지명 python-pptx)")]
 
 OK, WARN, NG = "  OK ", " 주의 ", " 필요 "
+# **[다음]은 결함이 아니다.** §④는 「사내에서 남은 작업」을 적는 자리인데 §①②③과
+# 같은 [주의]를 쓰고 있었고, 실제로 사용자가 그것을 고장으로 읽었다(2B 실사고).
+# 마크를 갈라 「할 일」과 「고장」이 화면에서 구분되게 한다. `_fail`은 [필요]만 센다.
+NEXT = " 다음 "
 _fail = 0
 
 
@@ -72,12 +77,20 @@ def head(title):
 def _clean():
     """클린 상태 — **`run.py init --fresh`가 정의한다**(문서 7 §7.6-4).
 
+    반환은 `(returncode, 잔재 경로 목록)`이다.
+
     여기서 rmtree를 제 손으로 하면 "클린"의 정의가 doctor와 테스트와 완료판정에서
     각자 달라진다. subprocess로 부르는 이유는 doctor가 core를 import하기 전에도
     돌아야 하기 때문이다 — 반입 직후 첫 확인이 이 파일의 일이다.
     """
-    subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+                       capture_output=True, text=True, cwd=str(ROOT))
+    # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
+    # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아
+    # 「클린 단독 실행」이라는 판정의 바닥이 무너진다(회귀 규약 §7.5-7).
+    residue = [d for d in ("parsed", "extract")
+               if (ROOT / d).exists() and any((ROOT / d).iterdir())]
+    return r.returncode, residue
 
 
 # ================================================================ ① 환경
@@ -192,8 +205,14 @@ def _idempotent():
             rejects = len(json.loads(rj.read_text(encoding="utf-8")))
         return graphs, queue, rejects
 
-    subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+                       capture_output=True, text=True, cwd=str(ROOT))
+    # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
+    # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아
+    # 「클린 단독 실행」이라는 판정의 바닥이 무너진다(회귀 규약 §7.5-7).
+    residue = [d for d in ("parsed", "extract")
+               if (ROOT / d).exists() and any((ROOT / d).iterdir())]
+    return r.returncode, residue
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
                    capture_output=True, text=True, cwd=str(ROOT))
     g1, q1, r1 = snap()
@@ -211,6 +230,93 @@ def _idempotent():
 
 
 # ================================================================ ② 자체 검증
+def _why(name, r, p, expect):
+    """실패한 스위트의 **원인을 화면에 낸다** — 사내망은 출력을 밖으로 못 가져온다.
+
+    구판은 원인을 숨겼다: ①`[PASS]`가 하나라도 찍히면(`p > 0`) stderr를 아예 안 냈고
+    ②내더라도 **마지막 1줄**이라 traceback의 원인 줄(ImportError·UnicodeEncodeError)이
+    화면에 오지 않았다. 그래서 "8건 [필요]"만 뜨고 왜인지 알 방법이 없었다.
+    """
+    fails = [ln.strip()[:110] for ln in r.stdout.splitlines() if "[FAIL]" in ln]
+    for ln in fails[:5]:
+        print(f"           {ln}")
+    if len(fails) > 5:
+        print(f"           … 외 {len(fails) - 5}건")
+
+    err = (r.stderr or "").strip()
+    if err and (r.returncode or p != expect):
+        # **마지막 15줄** — 원인 줄은 traceback 끝에 있다. p>0인지와 무관하게 낸다:
+        # 스위트가 중간에 크래시하면 앞선 [PASS]가 남은 채 죽는다.
+        tail = err.splitlines()[-15:]
+        print(f"           ── stderr (마지막 {len(tail)}줄) ──")
+        for ln in tail:
+            print(f"           {ln}")
+    elif not err and p < expect:
+        # stderr가 비었는데 PASS가 모자라면 **조용한 조기 종료**다 —
+        # 어디까지 갔는지는 stdout 끝에만 남아 있다.
+        tail = r.stdout.strip().splitlines()[-10:]
+        print(f"           ── stdout 끝 {len(tail)}줄 (조용한 조기 종료) ──")
+        for ln in tail:
+            print(f"           {ln}")
+    print(f"           재현: python tests/{name}.py")
+
+
+def _env_diff(clean_rc, residue):
+    """②가 실패했을 때만 내는 **환경 차이 표** — 사람이 판단할 재료다.
+
+    같은 커밋이 한 기계에서 526/526이고 다른 기계에서 아니면 원인은 코드가 아니라
+    환경이다. 그 후보를 화면이 스스로 지목한다 — 사내망에서는 출력을 밖으로 가져와
+    물어볼 수 없으므로, **진단이 화면에서 끝나야 한다.**
+    """
+    print("\n  ── 환경 차이 점검 (② 실패 시에만 낸다) ──")
+    rows = []
+
+    enc = (sys.stdout.encoding or "").lower()
+    rows.append((OK if "utf" in enc else WARN, "표준 출력 인코딩", enc or "(불명)",
+                 "utf-8이 아니면 한글 출력에서 스위트가 죽는다 — "
+                 "PYTHONIOENCODING=utf-8 로 다시 돌려 본다"
+                 if "utf" not in enc else "한글 출력이 안전하다"))
+
+    fse = (sys.getfilesystemencoding() or "").lower()
+    rows.append((OK if "utf" in fse else WARN, "파일시스템 인코딩", fse or "(불명)",
+                 "한글 경로·파일명 자산이 있다 — utf-8이 아니면 못 연다"
+                 if "utf" not in fse else "한글 경로를 연다"))
+
+    v = sys.version_info
+    rows.append((OK if v >= (3, 10) else NG, "Python 버전", platform.python_version(),
+                 "3.10 미만은 문법부터 죽는다" if v < (3, 10) else "개발·검증은 3.11"))
+
+    crlf = None
+    for f in sorted((ROOT / "tests").glob("*.py")):
+        crlf = b"\r\n" in f.read_bytes()
+        break
+    rows.append((WARN if crlf else OK, "줄바꿈", "CRLF" if crlf else "LF",
+                 "git autocrlf가 켜져 파일이 바뀌었다 — core.autocrlf=false 로 다시 클론"
+                 if crlf else "원본 그대로다"))
+
+    cwd = os.getcwd()
+    same = Path(cwd).resolve() == ROOT
+    rows.append((OK if same else NG, "작업 디렉터리", cwd,
+                 "레포 루트가 아니다 — 상대 경로가 깨진다. 루트에서 다시 돌린다"
+                 if not same else "레포 루트와 같다"))
+
+    rows.append((OK if (clean_rc == 0 and not residue) else NG,
+                 "data/·extract/ 잔재",
+                 "없음" if not residue else ", ".join(residue),
+                 "클린이 조용히 실패했다(권한?) — 순서 의존이 살아 있어 "
+                 "단독 실행 판정이 성립하지 않는다"
+                 if (clean_rc or residue) else "run.py init --fresh가 실제로 비웠다"))
+
+    # 한글은 터미널에서 **두 칸**을 먹는다 — `len()`으로 맞추면 열이 어긋난다.
+    def _w(s):
+        return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+    w = max(_w(a) for _m, a, _b, _c in rows)
+    for mark, what, val, why in rows:
+        print(f"  [{mark}] {what}{' ' * (w - _w(what))}  {val}")
+        print(f"         {why}")
+
+
 def run_suites(quick=False):
     head("② 자체 검증 — 가져온 것이 온전한가 (회귀 10종)")
     if quick:
@@ -220,8 +326,11 @@ def run_suites(quick=False):
     print("  각 스위트를 **클린 상태에서 단독 실행**한다 — 연속 실행은 판정 규격이 아니다\n"
           "  (증분0 §8 실행 규약: 스위트가 data/를 공유해 순서 의존이 관측됐다)\n")
     total_ok, results = True, []
+    clean_rc, residue = 0, []
     for name, expect, what in SUITES:
-        _clean()
+        rc, res = _clean()
+        clean_rc = clean_rc or rc
+        residue = residue or res              # 한 번이라도 남았으면 그것이 신호다
         t0 = time.time()
         r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")],
                            capture_output=True, text=True, cwd=str(ROOT))
@@ -235,11 +344,7 @@ def run_suites(quick=False):
         note = "" if ok else f"기대 {expect} PASS · FAIL 0"
         line(mark, f"{name:<17} {p:>3} PASS / {f} FAIL   ({dt:.0f}s)  {what}", note)
         if not ok:
-            for ln in r.stdout.splitlines():
-                if "[FAIL]" in ln:
-                    print(f"           {ln.strip()[:110]}")
-            if r.returncode and not p:
-                print(f"           {(r.stderr or '').strip().splitlines()[-1:]}")
+            _why(name, r, p, expect)
 
     got = sum(p for _n, p, _f, _e, _o in results)
     want = sum(e for _n, _p, _f, e, _o in results)
@@ -249,6 +354,9 @@ def run_suites(quick=False):
     line(OK if total_ok else NG, f"합계 {got}/{want} PASS",
          "국면 1 완료판정의 회귀 기준선과 일치한다" if total_ok
          else "기준선과 다르다 — 반입이 온전하지 않거나 환경이 다르다")
+    if not total_ok:
+        # **성공하면 화면을 늘리지 않는다** — 실패할 때만 원인 후보를 낸다.
+        _env_diff(clean_rc, residue)
     _clean()
     return total_ok
 
@@ -292,13 +400,14 @@ def show_state():
 # ================================================================ ④ 사내 전환
 def transition():
     head("④ 사내 전환 — 다음에 무엇을 해야 하나 (실측 판정)")
+    print("  아래는 결함이 아니라 사내에서 남은 작업이다. `[필요]`가 뜨면 그때가 고장이다.\n")
     sys.path.insert(0, str(ROOT))
     from core import registry, store                              # noqa: E402
 
     # ── 1. 골격 seed ──────────────────────────────────────────────
     seed = json.loads((ROOT / "layers/process/skeleton.json").read_text(encoding="utf-8"))
     snap = (store.read(store.SKELETON_LIST, {}).get("process") or {})
-    line(WARN, f"[1] 골격 seed가 아직 창작 mock이다 — 노드 {snap.get('count', '?')} · "
+    line(NEXT, f"[1] 골격 seed가 아직 창작 mock이다 — 노드 {snap.get('count', '?')} · "
                f"seed 문법 v{seed.get('seed_format')}",
          "**사내 첫 작업이 이것이다.** layers/process/skeleton.json을 사내 공정 체계로\n"
          "         바꾸고 `python run.py bootstrap`. 코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
@@ -308,14 +417,14 @@ def transition():
     # **등록 세션 진입 전에 이것이 먼저다**(갭 spec-A-201 · role-136).
     # 실험 없이 register generate로 가면 생성 세션이 무엇을 물어볼지 모른 채
     # 시작한다 — 6지선다의 여섯째 경로(UNMAPPABLE)가 무엇인지를 먼저 본다.
-    line(WARN, "[1′] 사내 문서로 **role 배정 실험**을 먼저 돌린다",
+    line(NEXT, "[1′] 사내 문서로 **role 배정 실험**을 먼저 돌린다",
          "`python run.py register roles <문서.xlsx> [헤더행]`\n"
          "         실행만 하고 등록부는 건드리지 않는다 — 어느 열이 UNMAPPABLE로\n"
          "         떨어지는지가 **생성 세션의 첫 안건**이다. 답을 준비하고 [2]로 간다")
 
     # ── 2. doc_type 등록 ──────────────────────────────────────────
     reg = [k for k, v in registry.all_doc_types().items() if v["status"] == "registered"]
-    line(WARN if not reg else OK,
+    line(NEXT if not reg else OK,
          f"[2] 사내 doc_type 등록 {len(reg)}종",
          "표본 2부를 골라 `python run.py register generate <이름> <층> <표본...>` →\n"
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
@@ -356,7 +465,7 @@ def transition():
          "분기가 없는 지점:\n" + "\n".join(f"         · {m}" for m in missing))
 
     # ── 4. 계기판 첫 측정 ─────────────────────────────────────────
-    line(WARN, "[4] 계기판은 mock 수치다 — 품질 측정이 아니다",
+    line(NEXT, "[4] 계기판은 mock 수치다 — 품질 측정이 아니다",
          "실데이터 인입 후 `python run.py gauges`가 첫 진짜 측정이다.\n"
          "         그 수치가 P7 판정(하이브리드·랭킹·저장 전환)의 근거가 된다")
 
