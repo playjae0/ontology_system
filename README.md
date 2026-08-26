@@ -65,8 +65,9 @@ platform · scan · parse · register · show · export`.
 
 **LLM 지점 8종은 골조가 서 있고 설정만 비어 있다** — 각 지점이
 `if USE_MOCK: <mock> else: <실호출>`로 갈리고 두 갈래가 같은 반환 계약을 지킨다.
-연결은 환경변수 4종(`LLM_GATEWAY_URL`·`LLM_API_KEY`·`CHAT_MODEL`·`EMBED_MODEL`)
-+ `USE_MOCK=0`이고 **코드 수정은 0**이다. `doctor.py` ④절이 8/8을 매번 실측한다.
+연결은 환경변수 3종(`LLM_GATEWAY_URL`·`LLM_API_KEY`·`CHAT_MODEL`)
++ `USE_MOCK=0`이고 **코드 수정은 0**이다. 임베딩 모델명은 필요 없다 — **임베딩은
+호출부 0건의 이연 항목**이다(질의 3단은 「구현하지 않는다」 · P7). `doctor.py` ④절이 8/8을 매번 실측한다.
 **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준일 뿐이다.
 미설정 상태의 `USE_MOCK=0`은 조용히 mock으로 떨어지지 않고 **명시적으로 실패한다**.
 
