@@ -26,7 +26,10 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MAPS_DIR = ROOT / "mock" / "struct_maps"          # USE_MOCK 고정 지도 (문서 7 §7.1)
+# **파서는 `core/`를 import하지 않는다**(P1) — 그래서 같은 환경변수를 여기서도
+# 읽는다. 픽스처가 없으면 번호 패턴 휴리스틱으로 간다(크래시 아님).
+MAPS_DIR = Path(os.environ.get("ONTO_FIXTURES")
+                or (ROOT / "tests" / "fixtures")) / "struct_maps"
 KEEP_DIR = ROOT / "extract" / "struct_maps"       # **보존 자리** (문서 6 §6.3)
 
 

@@ -58,6 +58,18 @@ CHUNK_TRUNCATED = "chunk_truncated.log"   # 청크 잘림 — **계기판 4의 �
 _LOG = log.get(__name__)
 
 
+def _now():
+    """적재 시각 — **실제 시각이다.** 상수로 죽여 멱등을 사지 않는다.
+
+    명세가 이미 멱등 판정에서 `created`를 **빼라**고 못박았으므로(문서 7 §7.6-4:
+    "적재 시각(`created`)까지 비교하면 멱등한 두 실행이 항상 불일치로 잡힌다"),
+    시각을 위조할 이유가 없다 — 위조하면 "언제 들어온 항목인가"를 화면이 답하지
+    못한다. ops_log의 시점을 실제 값으로 고친 것과 같은 자리다(D-74 ④).
+    """
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def path(name) -> Path:
     return DATA / name
 
@@ -190,7 +202,7 @@ def enqueue(kind, reason, doc_id, payload):
     """
     q = read(QUEUE, [])
     item = {"kind": kind, "payload": payload, "reason": reason,
-            "doc_id": doc_id, "created": "2026-01-05T00:00:00"}
+            "doc_id": doc_id, "created": _now()}
     for x in q:
         if (x.get("kind"), x.get("doc_id"), x.get("payload")) \
                 == (kind, doc_id, payload):

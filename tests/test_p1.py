@@ -30,7 +30,7 @@ from parser.adapters import basic_ppt                         # noqa: E402
 from parser.reader import read                                # noqa: E402
 
 allok = True
-RAW = ROOT / "mock" / "raw"
+RAW = ROOT / "tests" / "fixtures" / "raw"
 SKIP = {"parsed_at", "source_path", "parser_version", "adapter_version",
         "process_no", "source_locator"}
 
@@ -49,10 +49,10 @@ def load_adapter(path, name):
     return mod
 
 
-CP = load_adapter("mock/adapters/cp.py", "ad_cp")
-PFMEA = load_adapter("mock/adapters/pfmea.py", "ad_pfmea")
-TOC = load_adapter("mock/fixtures/adapters/toc_report.py", "ad_toc")
-IPQC = load_adapter("mock/fixtures/adapters/ipqc.py", "ad_ipqc")
+CP = load_adapter("tests/fixtures/adapters/cp.py", "ad_cp")
+PFMEA = load_adapter("tests/fixtures/adapters/pfmea.py", "ad_pfmea")
+TOC = load_adapter("tests/fixtures/fixtures/adapters/toc_report.py", "ad_toc")
+IPQC = load_adapter("tests/fixtures/fixtures/adapters/ipqc.py", "ad_ipqc")
 
 
 # ============================================================ 스냅샷
@@ -191,7 +191,7 @@ print("\n■ S14 역산 정합 — 실물 파서 산출 = parsed JSON prefix (D-
 for doc, adapter, n_prefix in (("CP01", CP, 12), ("PFMEA01", PFMEA, 13)):
     res = pipeline.parse(adapter, doc, str(RAW / f"{doc}.xlsx"))
     got = (res.envelope or {}).get("records", [])
-    want = json.loads((ROOT / "mock/parsed" / f"{doc}.json").read_text(
+    want = json.loads((ROOT / "tests/fixtures/parsed" / f"{doc}.json").read_text(
         encoding="utf-8"))["records"]
     bad = []
     for i, (g, e) in enumerate(zip(got[:n_prefix], want[:n_prefix]), 1):
@@ -253,7 +253,7 @@ show("헤딩 0건도 결정적으로 잡는다 (평면 폴백)",
 print("\n■ 생성 하네스 — 구축 모드 3단 배선 (생성 → 검수 → 확정)")
 from cli.parse import cmd_build                              # noqa: E402
 
-rc = cmd_build(["mock/fixtures/adapters/ipqc.py", "ipqc_p1",
+rc = cmd_build(["tests/fixtures/fixtures/adapters/ipqc.py", "ipqc_p1",
                 str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx")])
 outdir = ROOT / "review" / "ipqc_p1"
 show("3단이 파일로 이어진다 — 입력 패키지 · 검수 뷰 데이터 · 승인 기록",
@@ -265,7 +265,7 @@ show("검수 뷰 **데이터**까지가 P1이다 (HTML 렌더는 P2 — 경계)"
 show("기계 관문이 검수 앞에 선다 (preflight + 파싱 + self-check 전 표본)",
      rc == 0 and all(s["preflight"] and s["parsed"] for s in view["samples"]))
 show("표본 2부면 1부 경고가 뜨지 않는다", not view["warnings"])
-cmd_build(["mock/fixtures/adapters/ipqc.py", "ipqc_p1_solo", str(RAW / "IPQC01.xlsx")])
+cmd_build(["tests/fixtures/fixtures/adapters/ipqc.py", "ipqc_p1_solo", str(RAW / "IPQC01.xlsx")])
 solo = json.loads((ROOT / "review/ipqc_p1_solo/view.json").read_text(encoding="utf-8"))
 show("표본 1부면 '변형 미관찰 · 근거 1건일 수 있음' 경고 (D-22 확장 문구)",
      solo["warnings"] and "근거 1건" in solo["warnings"][0])
@@ -281,7 +281,7 @@ print("\n■ 조각 공통 층 — 모든 record/chunk가 달고 들어온다 (�
 import importlib.util as _iu                                    # noqa: E402
 _s = _iu.spec_from_file_location("_bp", ROOT / "parser/adapters/basic_ppt.py")
 _bp = _iu.module_from_spec(_s); _s.loader.exec_module(_bp)
-_r = pipeline.parse(_bp, "PPTXCOMMON", str(ROOT / "mock/raw/PPT_basic.pptx"))
+_r = pipeline.parse(_bp, "PPTXCOMMON", str(ROOT / "tests/fixtures/raw/PPT_basic.pptx"))
 _COMMON = {"source_locator", "doc_type", "process_group", "process_ref",
            "electrode_type"}
 show("기본 어댑터 산출도 조각 공통 5키를 전부 갖는다 (값 null 허용·키 부재 금지)",

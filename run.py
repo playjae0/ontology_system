@@ -7,10 +7,13 @@
 사용:
   python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
   python run.py bootstrap          층 골격 심기 (n10)
-  python run.py build <parsed.json...>  계약 JSON 인입 — **플랫폼 계약 이름**(§7.1)
+  python run.py build <parsed.json...> [--allow-duplicate]
+                                   계약 JSON 인입 — **플랫폼 계약 이름**(§7.1).
+                                   --allow-duplicate는 duplicate_doc_hold 보류의
+                                   ㉡ 해제다(다른 문서로 인정 — 문서 2 §2.7-①)
   python run.py ingest <파일...>   상동 (구 이름 — 같은 기능을 두 이름으로 두지 않으려
                                    남기되, 계약 이름은 build다)
-  python run.py all                bootstrap + mock/parsed 전량 인입
+  python run.py all                bootstrap + 픽스처 계약 JSON 전량 인입
   python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
   python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
   python run.py gauges             계기판 8종 (cli/platform.py로 위임)
@@ -55,10 +58,10 @@ def cmd_bootstrap():
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
 
 
-def cmd_ingest(paths, finalize=True):
+def cmd_ingest(paths, finalize=True, allow_duplicate=False):
     """`finalize`는 전 문서 인입 뒤 도는 빌드 말미 패스다 — 낱개 인입에서도 기본 수행한다."""
     for p in paths:
-        r, m, extracted = run_document(_load(p))
+        r, m, extracted = run_document(_load(p), allow_duplicate=allow_duplicate)
         mark = "보류" if r.status == "held" else "인입"
         tail = f"  ({r.reason})" if r.reason else (
             "  [추출 실행]" if extracted else "  [추출 체크포인트 재사용]")
@@ -71,7 +74,16 @@ def cmd_ingest(paths, finalize=True):
 
 def cmd_all():
     cmd_bootstrap()
-    mock = sorted((ROOT / "mock" / "parsed").glob("*.json"))
+    from core import fixtures
+    # **없으면 조용히 아무것도 안 하지 않는다** — 구판은 빈 glob로 0건 인입하고
+    # 성공처럼 끝났다(§2-4 실측). 픽스처는 사내에서 없는 것이 정상이므로
+    # 실패가 아니라 **말하고** 끝낸다.
+    if not fixtures.PARSED.is_dir():
+        print(f"[all] 인입할 계약 JSON이 없다 — {fixtures.PARSED}가 없다.")
+        print("      사내에서는 정상이다: `run.py parse run …`으로 실문서를 파싱한 뒤")
+        print("      `run.py build parsed/<doc_id>.json`으로 넣는다.")
+        return
+    mock = sorted(fixtures.PARSED.glob("*.json"))
     order = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
     idx = {n: i for i, n in enumerate(order)}
     cmd_ingest(sorted([p for p in mock if p.stem != "CP01B"],
@@ -133,12 +145,15 @@ def cmd_export(args):
 if __name__ == "__main__":
     log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
-    {"init": lambda: cmd_init(sys.argv[2:]),
+    _rc = {"init": lambda: cmd_init(sys.argv[2:]),
      "bootstrap": lambda: cmd_bootstrap(),
      # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
      # 부르는 이름은 계약의 일부다. `ingest`는 같은 함수의 옛 이름이다.
-     "build": lambda: cmd_ingest(sys.argv[2:]),
-     "ingest": lambda: cmd_ingest(sys.argv[2:]),
+     # `--allow-duplicate`는 duplicate_doc_hold 보류의 **㉡ 해제**다(문서 2 §2.7-①).
+     "build": lambda: cmd_ingest([a for a in sys.argv[2:] if not a.startswith("--")],
+                                 allow_duplicate="--allow-duplicate" in sys.argv),
+     "ingest": lambda: cmd_ingest([a for a in sys.argv[2:] if not a.startswith("--")],
+                                  allow_duplicate="--allow-duplicate" in sys.argv),
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),
      "ops": lambda: cmd_ops(sys.argv[2:]),
@@ -149,3 +164,7 @@ if __name__ == "__main__":
      "register": lambda: cmd_register(sys.argv[2:]),
      "show": lambda: cmd_show(sys.argv[2:]),
      "export": lambda: cmd_export(sys.argv[2:])}[cmd]()
+    # **반환값을 종료 코드로 쓴다.** 안 그러면 실패한 명령이 exit 0으로 끝나
+    # 플랫폼·스크립트가 "성공"으로 읽는다 — 실측: `export mermaid quality`가
+    # 빈 다이어그램을 내고 0으로 끝났고, 그 뒤 실패 판정을 붙여도 여전히 0이었다.
+    sys.exit(_rc or 0)

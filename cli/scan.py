@@ -25,11 +25,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+from core import fixtures
 from parser.reader import read
 
 # **등록부가 정본**이다(n6 확정분 — P3). 등록부에 어댑터가 없는 내장 doc_type을 위해
 # mock 소재지를 뒤에 둔다 — P트랙 이전의 잔재이고, 등록이 쌓이면 자연히 비어 간다.
-ADAPTER_DIRS = [ROOT / "mock" / "adapters", ROOT / "mock" / "fixtures" / "adapters"]
+# **존재하는 것만 돌려준다** — 구판은 없는 디렉터리를 그대로 glob해 모듈로
+# 로드하려다 하드 크래시했다(§2-4 실측). 참조 어댑터는 픽스처이고, 사내에서는
+# 없는 것이 정상이다 — 정본 어댑터는 등록부가 가리킨다.
+ADAPTER_DIRS = fixtures.dirs(fixtures.ADAPTERS, fixtures.FIXTURE_ADAPTERS)
 
 
 def _load(path):

@@ -31,6 +31,7 @@ MAX_CHAIN = 16
 
 STATUS_MERGED = "merged_into"
 STATUS_OBSOLETE = "obsolete"
+SEED_STATUS = "seed"     # 골격 유래 — 원천이 사람의 파일이다(문서 4 §4.9-1)
 
 # 병합 생존자의 status 등급 — **높은 쪽이 이긴다** (R3-⑴ 2순위).
 # seed가 관여하면 생존자는 무조건 seed다. auto가 seed를 흡수하면 골격이 데이터
@@ -143,7 +144,10 @@ def preview(layer, op, nid, **kw):
     if node is None:
         raise OpRefused(f"대상 노드가 없다: {nid}")
     edges = [e for e in g.edges if e["src"] == nid or e["dst"] == nid]
-    chained = _scope_children(g, node["canonical"], cfg) if op == "rename" else []
+    # **이관도 미리보기 대상이다**(문서 4 §4.7) — 소속 변경은 canonical 연쇄를
+    # 일으키므로 개명과 같은 이유로 규모를 먼저 봐야 한다.
+    chained = (_scope_children(g, node["canonical"], cfg)
+               if op in ("rename", "transfer") else [])
     if op == "merge":
         other = g.get(kw.get("into"))
         edges += [e for e in g.edges
@@ -169,6 +173,142 @@ def _scope_children(g, parent_canonical, cfg):
 
 
 # ---------------------------------------------------------------- I1 개명
+def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
+    """**이관 — 스코프 변경 연쇄** (문서 4 §4.7 미리보기 대상 · §4.9).
+
+    *"이 인자는 사실 새 공정 소속"*이라는 **소속 변경**이다. I축 4연산(개명·병합·
+    분리·폐기)과 **별개 작업**이며 **건별 사람 판단**이다 — canonical 연쇄를
+    일으키기 때문이다.
+
+    개명(I1)과 무엇이 다른가: 개명은 **이름**을 바꾸고 이관은 **소속**을 바꾼다.
+    소속이 바뀌면 스코프 canonical(`{세부공정}::{표면형}`)의 **앞부분**이 바뀌고,
+    그와 함께 **골격에 매단 엣지도 새 부모로 재배선**된다. 개명에는 그 재배선이
+    없다.
+
+    하는 일 넷:
+
+    1. **엣지 재배선** — 옛 부모로 향하던 골격 관계를 새 부모로 옮긴다.
+       `add_edge` 경유라 중복 무시·provenance 합집합·툼스톤 존중이 공짜로 성립한다.
+    2. **canonical 연쇄** — 자기 이름의 스코프 접두를 갈고, `_scope_children`으로
+       걸린 자식들도 함께 간다(개명과 같은 기구를 **재사용**한다).
+    3. **옛 이름은 alias로 남긴다** — 문서에는 옛 이름이 계속 나오므로 사라지면
+       재매칭이 깨져 같은 개념에 새 노드가 선다(I1과 같은 이유).
+    4. **actor·로그** — 5요소를 남긴다. 행위자 없는 연산은 거부한다.
+
+    **파급 미리보기의 대상이다**(§4.7) — `preview(layer, "transfer", nid,
+    new_parent=…)`가 규모를 먼저 보여준다.
+    """
+    g = GraphStore.for_layer(layer).load()
+    cfg = _cfg(layer)
+    node = _target(g, nid)
+    parent = _target(g, new_parent) if new_parent else None
+    if parent is None:
+        raise OpRefused(f"새 부모 노드가 없다: {new_parent}")
+    if node["id"] == parent["id"]:
+        raise OpRefused("자기 자신으로 이관할 수 없다")
+    if node.get("status") == SEED_STATUS:
+        raise OpRefused(
+            "seed 노드는 이관 대상이 아니다 — 골격의 원천은 사람의 파일이고 "
+            "구조 개정의 정본 경로는 seed 개정이다(문서 4 §4.9-1)")
+
+    sc = cfg.get("canonical_scope") or {}
+    sep = _sep(cfg)
+    old = node["canonical"]
+    # 옛 스코프 접두 — 스코프가 걸린 카테고리만 이름이 주소를 담는다.
+    scoped = node["category"] in (sc.get("bind_categories") or [])
+    tail = old.split(sep)[-1] if scoped and sep in old else old
+    new_canonical = f"{parent['canonical']}{sep}{tail}" if scoped else old
+
+    pv = preview(layer, "transfer", nid, new_parent=new_parent)
+    if dry_run:
+        return pv
+
+    # ① 엣지 재배선 — 골격에 매단 관계를 새 부모로.
+    skel_rels = set((cfg.get("skeleton") or {}).get("relations", {}).values())
+    pair = (cfg.get("category_pair_map") or {})
+    moved = 0
+    # **옮기는 것은 「소속을 주장하는 엣지」다.** 옛 소속 관계는 둘 중 하나다:
+    #   ① 옛 부모(같은 카테고리)를 직접 가리키는 엣지 — 저해상도 좌표 부착
+    #   ② 옛 부모의 **하위 설비**를 가리키는 엣지 — 정상 경로의 has_property
+    # ②까지 옮겨야 소속 변경이 그래프에 실제로 반영된다. ②의 상대는 새 부모
+    # 아래에 대응물이 없을 수 있으므로, **그때는 옮기지 않고 좌표 부착만** 새
+    # 부모로 세운다 — 없는 설비를 만들지 않는다(P2).
+    child_rel = ((cfg.get("skeleton") or {}).get("relations") or {}).get("child")
+    # **옛 부모는 canonical 스코프 접두가 말한다** — 이 노드의 엣지에서 찾으면
+    # 좌표 직접 부착이 없는 경우(정상 경로: 설비를 통해 붙는다)를 놓친다.
+    old_parent_name = old.rsplit(sep, 1)[0] if scoped and sep in old else None
+    old_parent = next((n for n in g.nodes.values()
+                       if is_live(n) and n["canonical"] == old_parent_name), None)
+    under_old = set()
+    if old_parent is not None:
+        frontier = {old_parent["id"]}
+        while frontier:
+            nxt = {e["src"] for e in g.edges
+                   if e["rel"] == child_rel and e["dst"] in frontier
+                   and e.get("status") != STATUS_DELETED}
+            nxt -= under_old
+            under_old |= nxt
+            frontier = nxt
+        # 그 하위 골격에 매달린 설비(Unit 등)도 소속 주장의 경유지다.
+        under_old |= {e["src"] for e in g.edges
+                      if e["rel"] in skel_rels and e["dst"] in under_old | {old_parent["id"]}
+                      and e.get("status") != STATUS_DELETED}
+    for e in list(g.edges):
+        if e.get("status") == STATUS_DELETED:
+            continue
+        other = e["dst"] if e["src"] == nid else (e["src"] if e["dst"] == nid else None)
+        if other is None or other == parent["id"]:
+            continue
+        if e["rel"] not in skel_rels and e["rel"] not in set(pair.values()):
+            continue
+        on = g.get(other)
+        if not on:
+            continue
+        if on["category"] == parent["category"]:
+            # ① 좌표 직접 부착 — 새 부모로 갈아 끼운다.
+            e["status"] = STATUS_DELETED      # 옛 소속은 툼스톤으로 남긴다
+            src = parent["id"] if e["src"] == other else e["src"]
+            dst = parent["id"] if e["dst"] == other else e["dst"]
+            g.add_edge(src, e["rel"], dst, "auto", list(e.get("provenance") or []))
+            moved += 1
+        elif other in under_old:
+            # ② 옛 부모 하위 설비를 통한 부착 — 그 소속 주장을 걷고 새 부모에
+            #    좌표 부착을 세운다. 새 부모 아래 대응 설비를 **만들지 않는다**.
+            e["status"] = STATUS_DELETED
+            rel = pair.get(f"{parent['category']},{node['category']}")
+            if rel:
+                g.add_edge(parent["id"], rel, nid, "auto",
+                           list(e.get("provenance") or []))
+            moved += 1
+
+    # ② canonical 연쇄 — 개명과 같은 기구를 재사용한다.
+    dictionary = Dictionary.open()
+    prov = f"op:transfer:{actor}"
+    chained = _scope_children(g, old, cfg) if scoped else []
+
+    def _rename_one(n, name):
+        prev = n["canonical"]
+        if prev == name:
+            return
+        n["canonical"] = name
+        if not any(a["surface"] == prev for a in n["aliases"]):
+            n["aliases"].append({"surface": prev, "provenance": [prov]})
+        dictionary.register(prev, n["id"], provenance=prov)   # 옛 이름으로도 찾힌다
+        dictionary.register(name, n["id"], provenance=prov)
+
+    _rename_one(node, new_canonical)
+    for c in chained:
+        _rename_one(c, new_canonical + c["canonical"][len(old):])
+    node["parent"] = parent["id"]
+    dictionary.save()
+    g.save()
+    log_op("I5:transfer", actor, [nid, parent["id"]], reason,
+           {"from": old, "to": new_canonical, "new_parent": parent["canonical"],
+            "edges_moved": moved, "chained": pv["canonical_chain"]})
+    return {"node": nid, "canonical": new_canonical, "edges_moved": moved,
+            "chained": len(chained)}
+
+
 def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
     """I1 — canonical 변경. **id 불변**(P4) · 옛 canonical은 **alias로 자동 강등** ·
     스코프 자식 canonical **연쇄 변경**.
@@ -277,7 +417,7 @@ def merge_targets(layer, nid, limit=5):
 def _survivor(a, b, override=None):
     """생존자 3단 규칙 (R3-⑴).
 
-    ①사람 override는 **항상 최상위** ②status 등급(seed > registered > auto)
+    ①사람 override는 **항상 최상위** ②status 등급(seed > confirmed > auto)
     ③정렬상 앞선 id(ULID = 생성순이라 결정적).
 
     ②가 ③보다 위인 이유는 정확성이 아니라 **골격 보호**다 — auto가 seed를 흡수하면
@@ -382,7 +522,11 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
     keep["status"] = keep["status"] if STATUS_RANK.get(keep["status"], 0) >= \
         STATUS_RANK.get(gone["status"], 0) else gone["status"]
 
+    # 툼스톤 필드는 **`merged_into`·`target`·`at`**이다(문서 7 §7.2 노드 레코드).
+    # 리다이렉트 포인터를 키 하나로만 두면 `status`가 `merged_into`인 노드에서
+    # 생존자를 찾는 코드가 kind별로 다른 키를 보게 된다.
     g.nodes[gone["id"]] = {"id": gone["id"], STATUS_MERGED: keep["id"],
+                           "target": keep["id"],
                            "status": STATUS_MERGED, "at": _now(),
                            "canonical": gone["canonical"], "category": gone["category"],
                            "layer": gone["layer"], "attrs": {}, "aliases": [],

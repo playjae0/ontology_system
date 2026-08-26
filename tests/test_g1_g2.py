@@ -39,7 +39,7 @@ def show(label, ok, detail=""):
 
 
 def load(name):
-    return json.loads((ROOT / "mock" / "parsed" / name).read_text(encoding="utf-8"))
+    return json.loads((ROOT / "tests" / "fixtures" / "parsed" / name).read_text(encoding="utf-8"))
 
 
 def canon(g):
@@ -234,11 +234,11 @@ _sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
         capture_output=True, cwd=str(ROOT))
 
 show("구축 `python run.py build <parsed.json …>` (§7.1)",
-     _rc(str(ROOT / "run.py"), "build", str(ROOT / "mock/parsed/CP01.json")).returncode == 0)
+     _rc(str(ROOT / "run.py"), "build", str(ROOT / "tests/fixtures/parsed/CP01.json")).returncode == 0)
 show("추출 `python -m cli.extract <parsed.json>` (§7.1)",
-     _rc("-m", "cli.extract", str(ROOT / "mock/parsed/PPT01.json")).returncode == 0)
+     _rc("-m", "cli.extract", str(ROOT / "tests/fixtures/parsed/PPT01.json")).returncode == 0)
 show("지문 스캔 `python -m cli.scan <문서>` (§7.1)",
-     _rc("-m", "cli.scan", str(ROOT / "mock/raw/CP01.xlsx")).returncode == 0)
+     _rc("-m", "cli.scan", str(ROOT / "tests/fixtures/raw/CP01.xlsx")).returncode == 0)
 show("플랫폼 관측 `python -m cli.platform ops` · `doctypes` (§7.1)",
      _rc("-m", "cli.platform", "ops").returncode == 0
      and _rc("-m", "cli.platform", "doctypes").returncode == 0)
@@ -246,8 +246,8 @@ show("I축 전 연산에 --actor 필수 (§7.1 · 문서 4 §4.7-4)",
      _rc("-m", "cli.ops", "rename", "--layer", "process", "--node", "x",
          "--canonical", "y").returncode != 0)
 
-_parse = _rc("-m", "cli.parse", "run", str(ROOT / "mock/adapters/cp.py"), "CP01",
-             str(ROOT / "mock/raw/CP01.xlsx"))
+_parse = _rc("-m", "cli.parse", "run", str(ROOT / "tests/fixtures/adapters/cp.py"), "CP01",
+             str(ROOT / "tests/fixtures/raw/CP01.xlsx"))
 show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — 파일 존재 = 파싱 완료)",
      _parse.returncode == 0 and (ROOT / "parsed" / "CP01.json").exists())
 
@@ -263,6 +263,55 @@ _dt.write_text('{"_probe": {"doc_type": "_probe"}}', encoding="utf-8")
 _init3.init(fresh_=True)
 show("실측 — init --fresh 후에도 doc_types.json이 남는다",
      _dt.exists() and "_probe" in _dt.read_text(encoding="utf-8"))
+show("빈 상태에 층 등록부·문서 대장도 든다 (§7.2 빈 상태 불릿)",
+     store.REGISTRY in _init3.EMPTY and store.DOC_REGISTRY in _init3.EMPTY)
+# **탐침을 걷는다** — `doc_types.json`은 이제 클린이 보존하므로, 남기면 뒤의
+# 등록부 조회가 필드 없는 항목을 만나 깨진다(실측).
+_dt.unlink(missing_ok=True)
+_init3.init(fresh_=True)
+
+# ============================================================ 2B 감사 반영
+print("\n■ 감사 확인 항목 — 명세 실물로 재확인한 것 (2B 감사 37건 중)")
+# 병합 툼스톤은 `merged_into`·`target`·`at` 셋이다(문서 7 §7.2 노드 레코드) —
+# 리다이렉트 포인터를 키 하나로만 두면 생존자를 찾는 코드가 kind별로 다른 키를 본다.
+_src_ops = (ROOT / "core" / "ops.py").read_text(encoding="utf-8")
+show("병합 툼스톤이 target 키를 함께 갖는다 (§7.2)", '"target": keep["id"]' in _src_ops)
+# **등급 어휘**에서만 본다 — `registered`가 왜 금지인지를 설명하는 주석은 대상이
+# 아니다(그 문장이 사라지면 다음 사람이 같은 실수를 되풀이한다).
+_grade_lines = [l for l in _src_ops.splitlines()
+                if "registered" in l and (">" in l or "STATUS_RANK" in l)]
+show("I2 등급 어휘에 `registered`를 쓰지 않는다 (§4.7-4)",
+     not _grade_lines, str(_grade_lines[:2]))
+
+# 큐 항목의 `created`는 **실제 시각**이다 — 명세가 멱등 판정에서 그것을 빼라고
+# 못박았으므로(§7.6-4) 시각을 상수로 죽여 멱등을 살 이유가 없다.
+_q0 = store.read(store.QUEUE, [])
+store.enqueue("auto_node", "created 실측", "PROBE", {"probe": 1})
+_it = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == "PROBE"]
+show("큐 항목의 created가 실제 시각이다 (상수 위조 아님 — §7.6-4)",
+     _it and _it[0]["created"].startswith("20") and _it[0]["created"] != "2026-01-05T00:00:00",
+     _it[0]["created"] if _it else "")
+store.drop("auto_node", lambda p: p.get("probe") == 1)
+
+# 판정 임계는 층 config가 소유한다(문서 3 §3.1 · 문서 7 §7.1 관리 자산의 원칙).
+from core import matcher as _M2                                 # noqa: E402
+show("판정 임계를 층 config에서 읽는다 (코드 상수는 폴백)",
+     _M2.threshold({"match_threshold": 0.9}) == 0.9
+     and _M2.threshold({}) == _M2.THRESHOLD)
+
+# 확장은 프론티어 전파다 — `recursive: false`는 **같은 관계**를 연달아 재추적하지
+# 않는다는 뜻일 뿐, 다른 관계로 도달한 노드에의 적용을 막지 않는다(문서 5 §5.1-5).
+# 위 클린이 그래프를 비웠으므로 다시 세운다. **2홉의 도착점(Property)은 골격이
+# 아니라 문서가 만든다** — 골격만 심으면 확장할 인자가 0이다.
+_sp.run([sys.executable, str(ROOT / "run.py"), "all"],
+        capture_output=True, cwd=str(ROOT))
+_g5 = open_graph("process")
+_cfg5 = load_config("process")
+_proc = next(i for i, n in _g5.nodes.items() if n["canonical"] == "노칭")
+_out = _g5.neighbors([_proc], _cfg5["query_traverse"])
+_props = [i for i in _out if _g5.get(i)["category"] == "Property"]
+show("2홉이 성립한다 — 공정→(part_of 하향)→설비→(has_property)→인자 (§5.1-5)",
+     len(_props) >= 3, f"Property {len(_props)}건")
 _dt.unlink(missing_ok=True)
 
 g, m, _, flow = reset()

@@ -35,7 +35,7 @@ def show(label, ok, detail=""):
 
 
 def load(name):
-    return json.loads((ROOT / "mock" / "parsed" / name).read_text(encoding="utf-8"))
+    return json.loads((ROOT / "tests" / "fixtures" / "parsed" / name).read_text(encoding="utf-8"))
 
 
 DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
@@ -249,7 +249,7 @@ show("S13 — attach가 다른 청크(L1)의 개체로 붙어 has_property 생�
 # 성공 경로만 시험하면 미해소에 임시 노드를 만들거나 표면형을 그대로 엣지 끝점에
 # 채우는 구현이 회귀를 통과한다 — 임시 노드 금지(문서 3)와 선언된 4경로 밖 엣지
 # 금지(문서 1 I12)가 완료판정에서 걸러지지 않는다.
-_hint = ROOT / "mock" / "extract_hints" / "S13NEG.json"
+_hint = ROOT / "tests" / "fixtures" / "extract_hints" / "S13NEG.json"
 _hint.write_text(json.dumps({"S13NEG-C001": {
     "entities": [{"surface": "세척 노즐 압력", "category": "Property"}],
     "relations": [],
@@ -276,7 +276,7 @@ _n0, _e0 = _counts()
 _bad = dict(_env, doc_id="S13NEG2",
             chunks=[dict(_env["chunks"][0], source_locator="S13NEG2-C001",
                          process_ref="레이저노칭")])   # 좌표까지 미해소 — 연쇄 드롭
-(ROOT / "mock" / "extract_hints" / "S13NEG2.json").write_text(
+(ROOT / "tests" / "fixtures" / "extract_hints" / "S13NEG2.json").write_text(
     json.dumps({"S13NEG2-C001": _hint and json.loads(_hint.read_text(encoding="utf-8"))["S13NEG-C001"]},
                ensure_ascii=False), encoding="utf-8")
 run_document(_bad)
@@ -307,7 +307,7 @@ show("S13 부정 — 좌표 미해소 자식은 부모 미해소로 남는다 (�
          for l in ("process",) for n in open_graph(l).nodes.values()
          if "세척 노즐 압력" in n["canonical"]))
 for _f in ("S13NEG", "S13NEG2"):
-    (ROOT / "mock" / "extract_hints" / f"{_f}.json").unlink(missing_ok=True)
+    (ROOT / "tests" / "fixtures" / "extract_hints" / f"{_f}.json").unlink(missing_ok=True)
 
 # 체크포인트 재사용
 before = (EXTRACT_DIR / "QPPT01.json").read_text(encoding="utf-8")

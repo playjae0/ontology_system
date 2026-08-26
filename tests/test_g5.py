@@ -17,10 +17,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cli import query as R                              # noqa: E402
-from core import init, ops, store                             # noqa: E402
-from core.bootstrap import bootstrap, open_graph        # noqa: E402
+from core import init, ops, registry, store                    # noqa: E402
+from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
 from core.ids import norm                               # noqa: E402
+from router import discover                            # noqa: E402
 from core.pipeline import finalize, run_document        # noqa: E402
 
 allok = True
@@ -36,7 +37,7 @@ def show(label, ok, detail=""):
 
 
 def load(name):
-    return json.loads((ROOT / "mock" / "parsed" / name).read_text(encoding="utf-8"))
+    return json.loads((ROOT / "tests" / "fixtures" / "parsed" / name).read_text(encoding="utf-8"))
 
 
 def full_run():
@@ -233,6 +234,92 @@ show("개명·병합 후 재인입해도 중복 노드가 서지 않는다 (사�
      not dup, str(dup))
 show("개명된 노드가 옛 이름의 문서로 재매칭된다 (id 불변 유지)",
      open_graph("process").get(스태킹)["canonical"] == "스태킹(개선)")
+
+# ============================================================ 운영 도구 나머지
+print("\n■ 이관(스코프 변경 연쇄) — I축 4연산과 별개 작업 (문서 4 §4.7·§4.9)")
+import subprocess as _sp5                                       # noqa: E402
+full_run()
+_g = open_graph("process")
+_prop = next(i for i, n in _g.nodes.items() if n["canonical"] == "노칭::노칭 정밀도")
+_newp = next(i for i, n in _g.nodes.items()
+             if n.get("tier") == "sub" and "스태킹" in n["canonical"])
+_before = [(_g.get(e["src"])["canonical"], e["rel"]) for e in _g.edges
+           if e["dst"] == _prop and e.get("status") != "deleted_by_user"]
+_pv = ops.transfer("process", _prop, _newp, "시험자", dry_run=True)
+show("이관이 **파급 미리보기 대상**이다 (§4.7)",
+     _pv.get("op") == "transfer" and "nodes" in _pv and "edges" in _pv, str(_pv))
+ops.transfer("process", _prop, _newp, "시험자", reason="회귀")
+_g2 = open_graph("process")
+show("이관이 canonical 스코프를 갈아 끼운다 (소속이 주소다)",
+     _g2.get(_prop)["canonical"] == "스태킹::노칭 정밀도",
+     _g2.get(_prop)["canonical"])
+show("옛 이름이 alias로 남는다 (문서에는 옛 이름이 계속 나온다 — I1과 같은 이유)",
+     any(a["surface"] == "노칭::노칭 정밀도" for a in _g2.get(_prop)["aliases"]))
+_after = [(_g2.get(e["src"])["canonical"], e["rel"]) for e in _g2.edges
+          if e["dst"] == _prop and e.get("status") != "deleted_by_user"]
+show("**엣지가 새 부모로 재배선된다** — 개명에는 없는 일이다",
+     any(s == "스태킹" for s, _r in _after), f"{_before} → {_after}")
+show("옛 소속은 툼스톤으로 남는다 (조용히 지우지 않는다)",
+     any(e["dst"] == _prop and e.get("status") == "deleted_by_user" for e in _g2.edges))
+_ops = store.read(store.OPS_LOG, [])
+show("이관이 로그 5요소를 남긴다 (연산·행위자·시점·대상·사유)",
+     any(x.get("op") == "I5:transfer" and x.get("actor") and x.get("at")
+         and x.get("targets") for x in _ops))
+try:
+    _seed = next(i for i, n in _g2.nodes.items() if n.get("status") == "seed")
+    ops.transfer("process", _seed, _newp, "시험자")
+    _refused = False
+except ops.OpRefused:
+    _refused = True
+show("seed 노드의 이관은 거부한다 (골격의 원천은 사람의 파일 — §4.9-1)", _refused)
+
+print("\n■ 파급 ≤1이면 미리보기·--yes 생략 (문서 4 §4.7 — 게이트가 아니라 가시화)")
+from cli.ops import _small                                      # noqa: E402
+show("파급 계수로 판정한다 (노드·엣지 둘 다 1 이하 + 연쇄 없음)",
+     _small({"nodes": 1, "edges": 1, "canonical_chain": []})
+     and not _small({"nodes": 1, "edges": 5, "canonical_chain": []})
+     and not _small({"nodes": 1, "edges": 1, "canonical_chain": ["x"]}))
+
+print("\n■ 플랫폼 창구 신설 2종 (갭 spec-s7-11-85 · spec-s7-11-14)")
+def _pf(*a):
+    return _sp5.run([sys.executable, "-m", "cli.platform", *a],
+                    capture_output=True, text=True, cwd=str(ROOT))
+full_run()
+_sp5.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT))
+_d = _pf("dashboard")
+show("platform dashboard — Q7류 집계 + 수정 도구 세트 + 등록 워크플로우 등재",
+     _d.returncode == 0 and "Q7 집계" in _d.stdout
+     and "수정 도구 세트" in _d.stdout and "스키마 등록 워크플로우" in _d.stdout)
+_ac = _pf("accuracy")
+show("platform accuracy — 판정 정확도를 **계기판 8종과 별도로** 잰다",
+     _ac.returncode == 0 and "별도 측정" in _ac.stdout
+     and "메커니즘 점검" in _ac.stdout)
+
+print("\n■ role 배정 실험 · 자재 열 (갭 spec-A-201 · spec-A-103)")
+_r = _sp5.run([sys.executable, str(ROOT / "run.py"), "register", "roles",
+               str(ROOT / "tests/fixtures/raw/IPQC01.xlsx")],
+              capture_output=True, text=True, cwd=str(ROOT))
+show("register roles — 등록 **전에** 돌고 UNMAPPABLE을 먼저 뽑는다",
+     _r.returncode == 0 and "UNMAPPABLE" in _r.stdout and "질문할 열" in _r.stdout)
+show("실행만 하고 등록부를 건드리지 않는다",
+     "등록부를 건드리지 않는다" in _r.stdout
+     and "ipqc" not in set(registry.all_doc_types()))
+from cli.register import MATERIAL_KEYS                          # noqa: E402
+show("자재 열은 개체로 만들지 않는다 (3번째 층 후보 — 미결 R5)",
+     "자재" in MATERIAL_KEYS
+     and "자재" in json.dumps(load_config("process")["categories"]["Property"],
+                             ensure_ascii=False))
+
+print("\n■ 근거 없음 경로 — 인접 등록 개체 제시 (갭 spec-A-153 · impl-B-19)")
+from core import query as _Q                                    # noqa: E402
+from core.dictionary import Dictionary as _D                    # noqa: E402
+_graphs = {l: open_graph(l) for l in discover()}
+_near = _Q.nearby("용접강도 기준", _D.open(), _graphs)
+show("미스 질의에 비슷한 등록 개체를 제시한다 (재질문 유도)",
+     _near and any("용접 강도" in x["surface"] for x in _near),
+     str([x["surface"] for x in _near]))
+show("제시는 판정이 아니다 — 링킹 미스율을 오염시키지 않는다",
+     all(set(x) == {"surface", "node_id", "layer", "category"} for x in _near))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G5 완료판정 충족" if allok else "FAIL")

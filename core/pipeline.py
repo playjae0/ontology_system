@@ -97,6 +97,27 @@ def _scalar(value, field, prov, doc_id):
 
 
 
+def _attach_target(a):
+    """`attach_to`를 **`{name, category}`**로 정규화한다 (문서 4 §4.10 규약 8 — B11).
+
+    추출이 이름만 내면 판정기가 카테고리를 몰라 **후보 검색이 전 카테고리를 훑고
+    선언 순서가 답을 정한다** — 실측으로 `정밀 노칭 프레스`가 Process(노칭)와
+    Unit(노칭 프레스) 양쪽에 0.95로 걸렸다.
+
+    **카테고리를 못 고르면 `null`이다** — 추측해서 채우지 않고 그 부착은 규칙 B
+    폴백으로 간다(§4.4-4).
+
+    옛 형태(문자열)도 받는다 — 힌트 자산·외부 산출이 섞여 들어올 수 있고, 그때는
+    `category: None`으로 올려 폴백 갈래를 태운다. **조용히 카테고리를 지어내지 않는다.**
+    """
+    v = a.get("attach_to")
+    if v is None:
+        return None, None
+    if isinstance(v, str):
+        return (v or None), None
+    return (v.get("name") or None), v.get("category")
+
+
 def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_chunk=None):
     """**규칙 B — 부착 폴백** (문서 4 §4.4-4).
 
@@ -343,9 +364,18 @@ def build_table(env, cfg, schema, graph):
             af = spec.get("attach_to_field")
             tgt = resolved.get(af)
             if tgt is None:
-                # **부착 대상 미해소 → 값을 보류하고 큐 항목이 보유한다**
-                # (문서 2 §2.4-③ `pending_attrs`). 조용히 버리면 좌표가 나중에
-                # 해소돼도 그 값은 영영 노드에 붙지 않는다.
+                # **「미해소」와 「값 없음」을 가른다**(문서 4 §4.4-4 — B12).
+                #
+                # `attach_to_field`가 가리키는 필드가 그 행에서 **빈 셀이면 아무것도
+                # 하지 않는다** — 붙일 대상 자체가 그 행에 없으므로 attribute가
+                # 성립하지 않는다. 없는 값을 저해상도로 만들어 붙이면 **문서에 없던
+                # 사실이 그래프에 생긴다**.
+                #
+                # **값은 있는데 해소에 실패한 경우만** 보류한다 — 그때는 좌표가
+                # 나중에 해소되면 붙어야 할 값이고, 조용히 버리면 그 기회가 사라진다
+                # (문서 2 §2.4-③ `pending_attrs`).
+                if af and rec.get(af) in (None, ""):
+                    continue                    # 값 없음 — 폴백도 보류도 하지 않는다
                 pending.append({"attr_name": spec.get("attr_name", f),
                                 "value": rec[f],
                                 "context": ctx or None,
@@ -358,9 +388,17 @@ def build_table(env, cfg, schema, graph):
             ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], ctx, prov,
                              bool(spec.get("contextual")))
         for f, spec in contents:                        # describes — 필드별 청크(D8)
-            tgt = resolved.get(spec.get("attach_to_field"))
+            af2 = spec.get("attach_to_field")
+            tgt = resolved.get(af2)
             if tgt is not None:
                 _describe(env["doc_id"], rec, f, tgt)
+            elif af2 and rec.get(af2) not in (None, ""):
+                # 값은 있는데 대상이 미해소다 — 청크는 이미 보존돼 있고(링킹 0건
+                # 청크도 남긴다) 연결만 못 한 것이므로 결함 로그로 드러낸다.
+                # 빈 셀이면 기록하지 않는다 — 그 행에 대상이 없는 것이 정상이다(B12).
+                store.append_defect(
+                    f"{env['doc_id']}: content 부착 대상 미해소 — "
+                    f"'{f}' → '{af2}'={rec.get(af2)!r} @ {prov}")
 
         # ② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다.
         for e in schema.get("edges", []):
@@ -386,8 +424,8 @@ def build_table(env, cfg, schema, graph):
 
         # **규칙 B 폴백 — 정형 경로**(문서 4 §4.4-4). 이 레코드가 만든 entity 중
         # **어느 엣지에도 끝점으로 서지 못한 것**을 좌표에 저해상도로 붙인다.
-        # "부착 대상이 없거나 미해소면 행의 공정좌표에 부착" — 여기서 "없다"는
-        # 스키마 edges가 그 필드를 지목하지 않은 경우다.
+        # §2.4-②의 "attach 대상이 **없거나** 미해소면" 중 "없다"는 그 entity를
+        # 아무 경로도 붙이지 않은 경우다. **빈 셀은 그 갈래가 아니다**(B12).
         if ref is not None:
             touched = set()
             for e in schema.get("edges", []):
@@ -400,6 +438,12 @@ def build_table(env, cfg, schema, graph):
                     continue
                 nid = resolved.get(f)
                 if nid is None or nid in touched:
+                    continue
+                # **B12 — 빈 셀은 폴백 대상이 아니다.** 이 entity가 `attach_to_field`를
+                # 선언했는데 그 필드가 이 행에서 비어 있으면, 붙을 대상이 그 행에
+                # 없는 것이지 해소에 실패한 것이 아니다(문서 4 §4.4-4).
+                af3 = spec.get("attach_to_field")
+                if af3 and rec.get(af3) in (None, ""):
                     continue
                 tg = external.get(f, graph)
                 _fallback_attach(b, cfg, tg, nid, ref, ref_g, prov, env["doc_id"])
@@ -488,6 +532,21 @@ def retry_orphans(layers=None):
     return healed
 
 
+def _pick_cat(surface, category, graphs, dic):
+    """카테고리가 **선언된** 표면형을 판정한다 (B11 — 정상 경로).
+
+    카테고리가 하나로 정해져 있으므로 순회도 수렴 판정도 필요 없다.
+    """
+    for lay, g in graphs.items():
+        cands = matcher.candidates(surface, category, lay, g, dic)
+        if not cands:
+            continue
+        v = matcher.match(surface, cands, category)
+        if v["type"] == matcher.MATCH and v["matched_id"]:
+            return v["matched_id"], lay, g
+    return None, None, None
+
+
 def _pick_any(surface, graphs, cfgs, dic):
     """카테고리가 선언되지 않은 표면형(attach 대상)을 판정한다.
 
@@ -542,8 +601,13 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
         store.drop(item["kind"], lambda p: p == pl)     # 대상이 사라졌다 — 항목도 내린다
         return False
 
-    # 대상 이름을 다시 해소한다 — 카테고리 선언이 없으므로 수렴 판정을 쓴다.
-    target, tlay, tg = _pick_any(surface, graphs, cfgs, dic)
+    # 대상 이름을 다시 해소한다. **큐 항목이 카테고리를 보유하면 그것 하나로**
+    # 판정한다(B11) — 보유하지 않은 옛 항목만 수렴 판정으로 떨어진다.
+    cat = pl.get("attach_category")
+    if cat:
+        target, tlay, tg = _pick_cat(surface, cat, graphs, dic)
+    else:
+        target, tlay, tg = _pick_any(surface, graphs, cfgs, dic)
     if target is None or target == child_id:
         return False                                    # 불확실 — 항목을 큐에 남긴다
 
@@ -592,16 +656,15 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     surface, category = pl.get("surface"), pl.get("category")
     if not surface or not category:
         return False
-    # **좌표 재시도는 anchor의 해소 규칙을 그대로 쓴다** — 유사도 판정을 태우지 않는다.
+    # **좌표 재시도도 anchor의 해소 규칙을 그대로 쓴다 — 사전(정확 일치·alias)까지다.**
+    #
+    # 문서 2 §2.4-①: "사전 조회(정확 일치·alias) → 해소, 미스면 곧바로
+    # orphan_anchor 큐. **anchor 해소에는 후보검색·유사도·LLM 판정을 쓰지 않는다**
+    # — 골격은 사람이 고정한 유형이고(P2), 추론으로 끌어당기면 사람의 보증을 코드가
+    # 뒤집는다." 좌표 태깅이 닫힌 목록의 정확 일치 대조인 것과 같은 성질이다.
     #
     # 재시도가 존재하는 이유는 **그래프가 자랐기 때문**이지 매칭이 느슨해졌기
-    # 때문이 아니다(§4.7-5 "그래프가 자라면 해소될 수 있으므로"). 판정 파이프라인의
-    # ②후보검색을 좌표에 태우면 USE_MOCK 규칙(공백 제거 후 **포함**이면 0.95 —
-    # §7.1)이 `레이저노칭`을 `노칭`에 붙인다. 실측으로 그렇게 됐고, 그것은 골격에
-    # 없는 공정을 있는 공정으로 만드는 오해소다.
-    #
-    # anchor는 Tier1(seed·confirmed) 한정이고 새로 만들지 않는다(문서 2 §2.4-①).
-    # 재시도도 그 경계를 그대로 지킨다.
+    # 때문이 아니다(§4.7-5). anchor는 Tier1(seed·confirmed) 한정이다.
     ref, rlay, rg = None, None, None
     for lay, g in graphs.items():
         hits = [nid for nid in dic.lookup(surface)
@@ -699,6 +762,17 @@ def build_prose(env, cfg, graph, candidates):
     loc_of = {cid: c.get("source_locator") for cid, c in ch["chunks"].items()
               if c.get("doc_id") == env["doc_id"]}
 
+    # ════════════════ Pass 1 (해소) ════════════════
+    # **문서 전체의 anchor·entity를 먼저 전부 해소해 버퍼에 담는다**(문서 4 §4.2).
+    # 부착은 해소가 끝난 뒤에만 시작한다 — 그래야 **문서 안에서 뒤에 나오는 개체를
+    # 앞의 청크가 참조해도** 붙는다. 이 분리 덕에 부착 실패의 원인이 구분된다:
+    # Pass 1에 없는 대상을 가리키면 진짜 미해소(큐로), 있는데 실패하면 구현 결함.
+    #
+    # 버퍼는 `정규화 표면형 → node_id` 맵이고 수명은 문서 하나이며 **층으로 나누지
+    # 않는다**(걸침 하위 빌더가 같은 버퍼를 공유한다 — §4.2). 층 간 동명 표면형은
+    # **마지막 해소가 이긴다** — 버퍼는 사전과 달리 후보 목록을 두지 않으므로,
+    # 카테고리로 선별해야 하는 소비처는 사전을 함께 조회한다.
+    coords = {}
     for cand in candidates:
         cid = cand["chunk_id"]
         src = by_locator.get(loc_of.get(cid), {})
@@ -708,12 +782,26 @@ def build_prose(env, cfg, graph, candidates):
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         b.check_polarity(ref, src.get("electrode_type"), prov, ref_g)
+        coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol)
 
         for e in cand.get("entities", []):
-            nid = b.resolve_entity(e["surface"], e["category"], prov,
-                                   electrode_type=src.get("electrode_type"),
-                                   parent_canonical=parent,
-                                   anchor_polarity=anchor_pol)
+            b.resolve_entity(e["surface"], e["category"], prov,
+                             electrode_type=src.get("electrode_type"),
+                             parent_canonical=parent,
+                             anchor_polarity=anchor_pol)
+
+    # ════════════════ Pass 2 (부착) ════════════════
+    # **비정형의 순회 단위는 레코드가 아니라 청크(추출 후보)다**(문서 4 §4.2).
+    # 그 청크의 후보에서 **해소된 언급 전부**에 describes를 만든다 — 부착·엣지
+    # 성립 여부와 무관하다. 청크의 `linked`는 그 결과의 재계산이다(§4.8-2①).
+    for cand in candidates:
+        cid = cand["chunk_id"]
+        src, prov, ref, ref_g, parent, anchor_pol = coords[cid]
+
+        for e in cand.get("entities", []):
+            nid = b.buffer.get(_n(e["surface"]))
+            if nid is None:
+                continue                        # Pass 1이 못 세운 것 — 부착도 없다
             if {"chunk_id": cid, "node_id": nid} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": nid})
             ch["chunks"][cid]["linked"] = True          # 상동 — 재인입이 거짓으로 되돌리지 않는다
@@ -733,25 +821,33 @@ def build_prose(env, cfg, graph, candidates):
         # attach — ③의 폴백. 해소 범위는 **문서 버퍼 전체 + 사전**이며 청크 경계가 없다.
         for a in cand.get("attach", []):
             child = b.buffer.get(_n(a["surface"]))
-            target = b.buffer.get(_n(a["attach_to"])) or _dict_hit(b, a["attach_to"], graph)
+            name, cat = _attach_target(a)       # {name, category} (§4.10 규약 8 — B11)
+            target = b.buffer.get(_n(name)) if name else None
+            if target is None and name and cat:
+                # **카테고리가 있으니 판정기가 그것 하나로 판정한다** — 전 카테고리를
+                # 훑지 않으므로 선언 순서가 답을 정하는 일이 없다.
+                target = _dict_hit(b, name, graph, category=cat)
             if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
                 store.append_defect(
                     f"{env['doc_id']}: attach 자식 미해소 — "
-                    f"'{a['surface']}' → '{a['attach_to']}' @ {cid}")
+                    f"'{a['surface']}' → '{name}' @ {cid}")
                 continue
             if target is None:
                 # **규칙 B 폴백** — 좌표에 저해상도로 붙인다(문서 4 §4.4-4).
+                # 비정형의 「미해소」는 `attach_to`가 null이거나 **카테고리를 못 고른**
+                # 경우까지다(§4.4-4 — B11).
                 _fallback_attach(b, cfg, graph, child, ref, ref_g, prov,
                                  env["doc_id"], evidence_chunk=cid)
                 # **`attach_to`가 null이면 폴백만 하고 큐를 달지 않는다**(§4.7-5) —
                 # null은 추출이 애초에 부착 대상을 말하지 않은 정상 케이스라,
                 # 큐로 보내면 처리 불가능한 노이즈가 큐를 채운다.
-                if a.get("attach_to"):
+                if name:
                     store.enqueue(
-                        "orphan_attach", f"부착 대상 미해소 — '{a['attach_to']}'",
+                        "orphan_attach", f"부착 대상 미해소 — '{name}'",
                         env["doc_id"],
                         {"node_id": child, "surface": a["surface"],
-                         "attach_to": _n(a["attach_to"]),   # dedup 키 (§4.7-5)
+                         "attach_to": _n(name),            # dedup 키 (§4.7-5)
+                         "attach_category": cat,
                          "provenance": prov, "chunk_id": cid})
                 continue
             rel = _pair_relation(cfg, graph.get(target)["category"],
@@ -770,49 +866,31 @@ def _n(s):
     return norm(s)
 
 
-def _dict_hit(b, surface, graph):
+def _dict_hit(b, surface, graph, *, category):
     """attach 대상의 사전 해소 — **판정 파이프라인을 재사용한다**(문서 4 §4.4-3).
 
-    여태 `hits[0]`을 무조건 골랐다. 사전은 **전 층 단일**이라 같은 표면형에 여러
-    노드가 달릴 수 있고(§7.1), 첫 히트를 조용히 고르면 그것이 판정을 대신한다 —
-    카테고리 불일치 안전망도 극성 후보 제외도 툼스톤 제외도 적용되지 않은 선택이
-    엣지의 끝점이 된다.
+    **카테고리는 추출이 함께 낸다**(§4.10 규약 8 — B11). 그래서 여기는 그 카테고리
+    하나로만 판정한다 — 전 카테고리를 훑지 않으므로 **선언 순서가 답을 정하는 일이
+    없다**. 그것이 P-B의 임시 「수렴 판정」이 있던 자리이고, 추출 계약이 카테고리를
+    내면서 순회도 수렴 판정도 필요 없어졌다.
 
-    그래서 후보를 사전 히트로 **조립만** 하고 판정은 `matcher.match`가 한다.
-    카테고리는 후보 자신의 것을 쓴다 — attach는 anchor 경로가 아니라 대상의
-    카테고리가 정해져 있지 않고(auto 설비에도 붙는다), 관계는 그 뒤에
-    카테고리쌍 매핑이 결정한다.
+    후보를 사전 히트로 **조립만** 하고 판정은 `matcher.match`가 한다 — 사전은 전 층
+    단일이라(§7.1) 첫 히트를 조용히 고르면 그것이 판정을 대신하고, 카테고리 불일치
+    안전망·극성 후보 제외·생존 판정이 적용되지 않은 선택이 엣지 끝점이 된다.
     """
-    hits = [nid for nid in b.dict.lookup(surface) if graph.get(nid)]
-    if not hits:
-        return None
-    if len(hits) == 1:
-        return hits[0] if is_live(graph.get(hits[0])) else None
-    # 여러 개면 판정이 고른다 — 카테고리별로 갈라 각각 판정하고 확신된 것만 쓴다.
-    from collections import defaultdict
-    by_cat = defaultdict(list)
-    for nid in hits:
+    cands = []
+    for nid in b.dict.lookup(surface):
         n = graph.get(nid)
-        if not is_live(n):
+        if not n or not is_live(n) or n["category"] != category:
             continue
-        by_cat[n["category"]].append(
-            {"id": nid, "canonical": n["canonical"],
-             "aliases": [a["surface"] for a in n.get("aliases") or []],
-             "category": n["category"], "layer": n.get("layer"),
-             "polarity": n.get("polarity"), "exact": False})
-    picked = []
-    for cat, cands in by_cat.items():
-        v = matcher.match(surface, cands, cat)
-        if v["type"] == matcher.MATCH:
-            picked.append(v["matched_id"])
-    if len(picked) == 1:
-        return picked[0]
-    # 확신이 하나로 모이지 않았다 — **조용히 첫 히트를 고르지 않는다.**
-    # 미해소로 두면 호출부가 orphan_attach 큐를 단다(문서 4 §4.4-5).
-    store.append_defect(
-        f"attach 대상 다중 해소 — '{surface}' → 후보 {len(hits)}건 · 확신 "
-        f"{len(picked)}건. 첫 히트 임의 선택을 하지 않고 미해소로 둔다")
-    return None
+        cands.append({"id": nid, "canonical": n["canonical"],
+                      "aliases": [a["surface"] for a in n.get("aliases") or []],
+                      "category": n["category"], "layer": n.get("layer"),
+                      "polarity": n.get("polarity"), "exact": True})
+    if not cands:
+        return None
+    v = matcher.match(surface, cands, category)
+    return v["matched_id"] if v["type"] == matcher.MATCH else None
 
 
 def _pair_relation(cfg, src_cat, dst_cat):
@@ -833,7 +911,7 @@ def _reject(doc_id, reason, payload):
     return res, None, False
 
 
-def run_document(path_or_env, layer=None):
+def run_document(path_or_env, layer=None, *, allow_duplicate=False):
     env = path_or_env
     doc_id, doc_type = env["doc_id"], env["doc_type"]
 
@@ -848,7 +926,7 @@ def run_document(path_or_env, layer=None):
     layer = layer or schema["layer"]
     cfg = load_config(layer)
 
-    res = ingest(env)                                    # ① doc_hash → ② 근거 축 id
+    res = ingest(env, allow_duplicate=allow_duplicate)   # ①doc_hash ①′회수 ②id ③필드
     if res.status == "held":
         return res, None, False
 

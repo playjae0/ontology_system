@@ -31,7 +31,11 @@ from .ids import norm
 
 ROOT = Path(__file__).resolve().parent.parent
 EXTRACT_DIR = ROOT / "extract"
-HINTS_DIR = ROOT / "mock" / "extract_hints"
+# 픽스처 소재는 `core/fixtures.py`가 소유한다 — 코어 본체가 mock 경로를
+# 무조건 상수로 알면 그 자산을 들어낼 때 코어가 죽는다(§2-4 격리).
+from . import fixtures as _fx
+
+HINTS_DIR = _fx.EXTRACT_HINTS
 
 _LOG = log.get(__name__)
 
@@ -108,10 +112,22 @@ EXTRACT_SCHEMA = {
             "properties": {"src": {"type": "string"}, "rel": {"type": "string"},
                            "dst": {"type": "string"}},
             "required": ["src", "rel", "dst"], "additionalProperties": False}},
+        # **`attach_to`는 이름과 카테고리를 함께 낸다**(문서 4 §4.10 규약 8 — B11).
+        # 판정기 계약(§4.3)이 `category`를 필수로 받는데 비정형에서 뽑은 이름에는
+        # 카테고리가 없어, 없이 두면 **후보 검색이 전 카테고리를 훑고 선언 순서가
+        # 답을 정한다**(2A P-B 실측: `정밀 노칭 프레스`가 Process·Unit 양쪽에 0.95).
+        # 카테고리는 층 어휘의 닫힌 목록에서만 고르고, **고르지 못하면 null**로 내어
+        # 규칙 B 폴백으로 보낸다 — 추측해서 채우지 않는다.
         "attach": {"type": "array", "items": {
             "type": "object",
-            "properties": {"surface": {"type": "string"},
-                           "attach_to": {"type": ["string", "null"]}},
+            "properties": {
+                "surface": {"type": "string"},
+                "attach_to": {
+                    "type": ["object", "null"],
+                    "properties": {"name": {"type": "string"},
+                                   "category": {"type": ["string", "null"]}},
+                    "required": ["name", "category"], "additionalProperties": False},
+            },
             "required": ["surface", "attach_to"], "additionalProperties": False}},
     },
     "required": ["entities", "relations", "attach"], "additionalProperties": False,
