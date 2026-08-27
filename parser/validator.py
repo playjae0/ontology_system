@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from . import normalizer
+
 ENVELOPE_KEYS = ("doc_id", "doc_type", "source_path", "revision",
                  "parsed_at", "parser_version", "adapter_version", "payload_kind")
 PAYLOAD_KINDS = ("table", "prose")
@@ -62,8 +64,13 @@ def check(envelope, closed_list=None):
         if bad:
             d.append(f"{key}[{i}]: 파서가 정본 id를 부여했다 — {sorted(bad)}")
         # ③ 자기완결 — 상동 기호·미전개 흔적이 남아 있으면 안 된다
+        #
+        # **목록을 여기 복제하지 않는다** — `normalizer.DITTO`가 정본이다. 복제본은
+        # `"same as above"`를 빠뜨리고 있었고(실측), 그러면 **normalizer가 못 푼
+        # 영문 상동을 validator도 못 잡아** 그대로 그래프에 들어간다. 푸는 쪽과
+        # 잡는 쪽이 같은 목록을 봐야 그 구멍이 닫힌다.
         for f, v in piece.items():
-            if isinstance(v, str) and v.strip() in {"〃", "〝", "상동"}:
+            if isinstance(v, str) and v.strip() in normalizer.DITTO:
                 d.append(f"{key}[{i}].{f}: 상동 기호가 해소되지 않았다")
         if kind == "prose" and not (piece.get("text") or piece.get("image_ref")):
             d.append(f"{key}[{i}]: prose 조각에 text도 image_ref도 없다")

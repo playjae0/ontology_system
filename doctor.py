@@ -39,9 +39,9 @@ SUITES = [
     ("test_g5", 51, "I축 4연산 + 이관 · 운영 도구"),
     ("test_g6", 36, "플랫폼 창구 · 계기판 8종 · 지문 스캔"),
     ("test_g6_5", 38, "계약 미배선 24건 수리"),
-    ("test_p1", 50, "파서 공용 코어 6종 · 구조 지도 · 역산 정합"),
+    ("test_p1", 62, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합"),
     ("test_p2", 45, "어댑터 생성 킷 6종 · 검수 뷰 렌더러"),
-    ("test_p3", 45, "구축 모드 등록 3단 (생성·검수·확정)"),
+    ("test_p3", 71, "구축 모드 등록 3단 · 2B 등록 개선 6건"),
     ("test_2a_gateway", 28, "게이트웨이 골조 — LLM 지점 9종 mock/실호출 분기"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
@@ -116,6 +116,10 @@ def check_env():
             line(OK, f"{mod} (선택)", why)
         except ImportError:
             line(OK, f"{mod} 없음 (선택 — 문제 아님)", why)
+    # **CSV는 의존이 없다** — 표준 `csv` 모듈이라 선택 의존 목록에 오르지 않는다.
+    line(OK, "csv/tsv 읽기 (표준 라이브러리)",
+         "reader가 받는 포맷: .xlsx · .xlsm · .pptx · .csv · .tsv — "
+         "CSV는 설치할 것이 없다")
 
     # **코어는 stdlib만 쓴다** — 반입에서 가장 중요한 사실이라 실측해 보인다.
     # 선택 의존(`try: import … except ImportError:` 폴백)은 필수가 아니므로 뺀다 —

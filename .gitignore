@@ -28,3 +28,9 @@ review/
 # export/ = 시각화·외부 도구용 파생물(cypher·csv·mermaid). 진실은 data/의 JSON이다(P5).
 #   `python run.py export <형식>`으로 언제든 재생성된다.
 export/
+
+# LLM 게이트웨이 설정 — **자격증명이 담긴다. 커밋하지 않는다.**
+# 읽는 자리는 `core/llm.py::config()` 하나다(§7.6-B-1 수렴).
+# 우선순위는 환경변수 > 설정 파일이고, 파일 자리는
+# ONTO_CONFIG > ~/.onto/llm.json > 여기(레포 루트)다.
+llm.local.json

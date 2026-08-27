@@ -17,7 +17,7 @@ import logging
 import os
 
 from . import normalizer, preflight, struct_map, tagger, validator
-from .reader import read
+from .reader import head, read
 
 PARSER_VERSION = "p1-1.0"
 
@@ -77,7 +77,7 @@ def _map_hook(doc_id, kept=None, made=None):
 
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
-          summarize=None, pick_coord=None):
+          summarize=None, pick_coord=None, max_rows=None, progress=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     `summarize(image_ref) -> str`은 **이미지 요약 실호출 경로**다(LLM 지점 ④).
@@ -89,6 +89,19 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     exp = a.get("expects") or {}
 
     raw = read(path)
+    # **부분 리허설** — 등록 검수의 리허설 파싱을 앞 N행으로 제한한다(2B ⑥-2).
+    # 전량 파싱은 좌표 미스 행마다 LLM을 부르므로 수천 행이면 몇 시간이다.
+    # `reader.head`가 이미 「앞 N행」의 정의를 갖고 있어 그것을 그대로 쓴다 —
+    # 자르는 규칙이 둘이면 「앞 200행」이 자리마다 다른 뜻이 된다.
+    # **봉투에 잘랐다는 사실을 싣는다**: 검수 뷰가 그것을 승인 근거로 표시한다.
+    full_rows = max((s.get("max_row") or 0) for s in raw["sheets"]) if raw.get("sheets") \
+        else len(raw.get("slides") or [])
+    truncated = False
+    if max_rows and full_rows > max_rows:
+        raw = head(raw, max_rows)
+        truncated = True
+    res.report["rehearsal"] = {"max_rows": max_rows, "full_rows": full_rows,
+                               "truncated": truncated}
 
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.
@@ -144,7 +157,7 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     if fresh:
         struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id, **fresh}, src_hash)
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
-                        doc_type=a["doc_type"])
+                        doc_type=a["doc_type"], progress=progress)
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
     unresolved = [p["source_locator"] for p in pieces

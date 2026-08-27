@@ -68,6 +68,22 @@ def queue_put(logger, kind, reason, doc_id=None):
     logger.info("큐 %s%s — %s", kind, f" [{doc_id}]" if doc_id else "", reason)
 
 
+def llm_usage(logger, point, usage, finish=None):
+    """LLM 1회 호출의 토큰 사용량 — **지점 이름과 함께** 남긴다(§7.8 로그).
+
+    `usage`가 없는 게이트웨이도 있다 — **없으면 조용히 넘어간다**(치명 아님).
+    다만 `finish_reason == "length"`는 **경고**다: 응답이 잘렸다는 뜻이고, 그러면
+    산출물이 불완전한 채로 하류에 흘러간다 — 조용하면 아무도 그것을 모른다.
+    """
+    if usage:
+        logger.info("LLM 사용량 %s — 입력 %s · 출력 %s · 합계 %s", point,
+                    usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"),
+                    usage.get("total_tokens", "?"))
+    if finish == "length":
+        logger.warning("LLM 응답 잘림 %s — finish_reason=length. "
+                       "산출물이 불완전하다(최대 토큰을 올리거나 입력을 줄인다)", point)
+
+
 def explicit_fail(logger, point, reason):
     """config로 표현되지 않아 core가 시끄럽게 실패하는 지점.
 

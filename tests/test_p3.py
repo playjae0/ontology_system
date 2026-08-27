@@ -271,6 +271,122 @@ show("렌더러·하네스를 복제하지 않았다 (kit 실물 호출)",
 
 reset("ipqc")
 reset("toc_report")
+# ============================================================ 2B 등록 개선 6건
+print("\n■ 2B 등록 파이프라인 개선 — 실행으로 잠근다")
+from core import llm as _LLM                                        # noqa: E402
+from parser import normalizer as _NZ                                # noqa: E402
+_R, _pl = R, pipeline
+
+
+def _kit_banned():
+    """하네스의 금지 import 목록 — **실물에서 읽는다**(문자열을 세지 않는다)."""
+    ns = {}
+    for ln in (ROOT / "kit/run_adapter.py").read_text(encoding="utf-8").splitlines():
+        if ln.startswith("BANNED_IMPORTS"):
+            exec(ln, ns)
+            break
+    return ns.get("BANNED_IMPORTS", set())
+
+
+def _make_big_sample():
+    """부분 리허설 판정용 대형 표본 — 회귀가 자기 재료를 만든다."""
+    from openpyxl import Workbook
+    out = ROOT / "extract" / "_p3_big.xlsx"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook(); ws = wb.active; ws.title = "CP"
+    ws.append([]); ws.append([])
+    ws.append(["공정구분", "공정번호", "공정명", "극성", "설비", "관리항목",
+               "규격", "측정방법", "대응계획", "적용모델"])
+    for i in range(600):
+        ws.append(["조립", f"P{i:04d}", ["노칭", "미등록공정Z"][i % 2], "cathode",
+                   f"설비{i % 5}", f"관리항목{i % 7}", "±0.05", "게이지", "재검사", "M1"])
+    wb.save(out)
+    return str(out)
+
+
+_cpmod = R._load(ROOT / "tests/fixtures/adapters/cp.py", "p3_cp")
+
+# ⑤ 어댑터가 공용 코어를 쓴다 — **주석이 아니라 호출부를 센다**
+for _f in ("tests/fixtures/adapters/cp.py", "tests/fixtures/adapters/pfmea.py",
+           "kit/어댑터_스켈레톤.py", "kit/참조어댑터/cp.py"):
+    _src = (ROOT / _f).read_text(encoding="utf-8")
+    show(f"⑤ {_f.split('/')[-1]} 가 공용 코어를 호출한다",
+         "normalizer.expand_merged(" in _src and "normalizer.resolve_ditto(" in _src,
+         _f)
+    show(f"⑤ {_f.split('/')[-1]} 에 자체 재구현이 남지 않았다",
+         "_expand_merged" not in _src and "_col_to_idx" not in _src)
+show("⑤ 하네스 순수성 검사가 parser import를 막지 않는다 (금지 목록 방식)",
+     "parser" not in _kit_banned(), str(sorted(_kit_banned())))
+show("⑤ validator의 상동 집합이 normalizer.DITTO 하나에서 온다",
+     "same as above" in _NZ.DITTO
+     and "normalizer.DITTO" in (ROOT / "parser/validator.py").read_text(encoding="utf-8"))
+
+# ⑥ 부분 리허설 · 진행 · 미스 계수
+_big = _make_big_sample()
+_r200 = _pl.parse(_cpmod, "B1", _big, max_rows=200)
+_rall = _pl.parse(_cpmod, "B2", _big)
+show("⑥ --rows N 이 리허설을 앞 N행으로 자른다",
+     (_r200.report["rehearsal"]["truncated"] is True
+      and _rall.report["rehearsal"]["truncated"] is False
+      and len(_r200.envelope["records"]) < len(_rall.envelope["records"])),
+     f"{len(_r200.envelope['records'])} vs {len(_rall.envelope['records'])}")
+show("⑥ 자른 사실이 봉투 리포트에 남는다 (승인 근거라 숨기지 않는다)",
+     _r200.report["rehearsal"]["full_rows"] > _r200.report["rehearsal"]["max_rows"])
+_seen = []
+_pl.parse(_cpmod, "B3", _big, max_rows=100,
+          progress=lambda i, n, c: _seen.append((i, n, c)))
+show("⑥ 진행 콜백이 행 단위로 흐른다", len(_seen) > 0 and _seen[-1][0] == _seen[-1][1],
+     str(_seen[-1]) if _seen else "없음")
+show("⑥ 좌표 미스를 LLM 없이 먼저 센다", len(_R._coord_misses([_r200], "process")) > 0)
+show("⑥ 동의 없으면 LLM 보조가 꺼진다 (기본 N)",
+     _R._ask_llm_coord(["a", "b"], None) is False)
+show("⑥ 인자로 켤 수 있다", _R._ask_llm_coord(["a"], True) is True)
+
+# ④ 문답 — 종료는 사람만 한다
+_pkg = {"human": {"hint": ""}, "system": {"reader_head": [
+    {"head": {"sheets": [{"cells": {"A1": "공정명", "B1": "설비"}}]}}]}}
+_r1 = _R._interview_round(_pkg, [])
+_r2 = _R._interview_round(_pkg, [{"round": 1, "understanding": "x",
+                                  "questions": [], "answer": "병합은 위 값 채움"}])
+show("④ 이해 요약이 사람의 교정을 반영해 바뀐다",
+     _r1["understanding"] != _r2["understanding"]
+     and "병합은 위 값 채움" in _r2["understanding"])
+show("④ 스키마가 understanding·questions 둘을 요구한다",
+     set(_R.INTERVIEW_SCHEMA["required"]) == {"understanding", "questions"})
+show("④ 종료어에 «진행»이 있다 (끝내는 것은 사람이다)", "진행" in _R.INTERVIEW_STOP)
+
+# ① 산출 JSON 표기 — 잎을 접되 json.load 결과는 같다
+_obj = {"a": 1, "fields": {"x": {"role": "entity", "category": "Unit"},
+                           "y": {"role": "meta"}}, "edges": [], "u": ["p", "q"]}
+_txt = _R._pretty_json(_obj)
+show("① json.load 결과가 이전과 완전히 같다", json.loads(_txt) == _obj)
+show("① 가장 안쪽 dict/list가 한 줄이다",
+     '"x": {"role": "entity", "category": "Unit"}' in _txt and '"u": ["p", "q"]' in _txt)
+show("① 바깥 구조는 들여쓰기로 남는다", '\n  "fields": {\n' in _txt)
+
+# ② 사용량 — 지점명과 함께 세고, 잘림을 경고한다
+_before = dict(_LLM.USAGE)
+_LLM._account("judge", {"usage": {"prompt_tokens": 10, "completion_tokens": 5,
+                                  "total_tokens": 15},
+                        "choices": [{"finish_reason": "length"}]})
+show("② usage를 누계에 더한다",
+     _LLM.usage_total()["total_tokens"] == _before["total_tokens"] + 15
+     and _LLM.usage_total()["calls"] == _before["calls"] + 1)
+show("② finish_reason=length를 잘림으로 센다",
+     _LLM.usage_total()["truncated"] == _before["truncated"] + 1)
+_LLM._account("judge", {"choices": [{"finish_reason": "stop"}]})
+show("② usage가 없는 게이트웨이도 조용히 넘어가되 호출 수는 센다",
+     _LLM.usage_total()["calls"] == _before["calls"] + 2)
+
+# ③ 힌트 안내 — 표본 자리의 비파일을 조용히 무시하지 않는다
+try:
+    _R.cmd_generate("zz_hint", "process", ["tests/fixtures/raw/CP01.xlsx", "힌트문장"], "")
+    _caught = ""
+except SystemExit as e:
+    _caught = str(e)
+show("③ 표본 자리의 비파일을 지목하고 --hint 를 안내한다",
+     "힌트문장" in _caught and "--hint" in _caught, _caught.splitlines()[0] if _caught else "")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

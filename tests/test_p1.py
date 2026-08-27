@@ -25,7 +25,8 @@ sys.path.insert(0, str(ROOT))
 
 from core import init, store                                        # noqa: E402
 from core.bootstrap import bootstrap                          # noqa: E402
-from parser import normalizer, pipeline, preflight, struct_map, tagger, validator  # noqa: E402
+from parser import (normalizer, pipeline, preflight, reader, struct_map, tagger,  # noqa: E402
+                    validator)
 from parser.adapters import basic_ppt                         # noqa: E402
 from parser.reader import read                                # noqa: E402
 
@@ -308,6 +309,52 @@ show("⑨좌표 태깅 mock 갈래가 모델을 부르지 않는다 (조항 B12)
 show("⑨목록 밖 좌표는 값을 고치지 않고 그대로 둔다 (판정은 인입 소관)",
      _tagged[1]["process_ref"] == "없는공정zzz"
      and _tagged[0]["process_group"] == "조립")
+
+# ============================================================ CSV reader (2B 신설)
+# **CSV는 xlsx와 같은 구조를 낸다** — 어댑터가 포맷을 몰라도 되게(요청 §2-1).
+# `format`만 "csv"로 갈라 거짓말을 하지 않는다.
+print("\n■ CSV reader — xlsx와 같은 구조 · 인코딩·구분자 판정")
+_RAW = ROOT / "tests" / "fixtures" / "raw"
+_c1 = reader.read(str(_RAW / "CSV01.csv"))
+_s1 = _c1["sheets"][0]
+show("format은 'csv'다 (xlsx로 위장하지 않는다)", _c1["format"] == "csv", _c1["format"])
+show("xlsx와 같은 시트 구조 (cells·merged·indent·bold·images 키 존재)",
+     all(k in _s1 for k in ("name", "max_row", "max_col", "cells",
+                            "merged", "indent", "bold", "images")))
+show("CSV에 없는 개념은 빈 값이되 키는 둔다",
+     _s1["merged"] == [] and _s1["indent"] == {} and _s1["bold"] == []
+     and _s1["images"] == [])
+show("셀은 열문자 표기다 (A1 · C2)",
+     _s1["cells"].get("A1") == "대공정" and _s1["cells"].get("C2") == "노칭 정밀도")
+show("빈 셀은 cells에 넣지 않는다 (xlsx와 같게)", "D4" not in _s1["cells"])
+show("max_col은 **최장 행** 기준이다 (짧은 행이 있어도 4)", _s1["max_col"] == 4,
+     f"max_row={_s1['max_row']} max_col={_s1['max_col']}")
+
+_c2 = reader.read(str(_RAW / "CSV02_cp949.csv"))
+show("cp949 CSV를 읽는다 (BOM utf-8과 같은 결과)",
+     _c2["encoding"] == "cp949"
+     and _c2["sheets"][0]["cells"] == _s1["cells"], _c2["encoding"])
+show("utf-8-sig(BOM) CSV의 첫 셀에 BOM이 남지 않는다",
+     _c1["encoding"] == "utf-8-sig" and _s1["cells"]["A1"] == "대공정")
+
+# **탭 파일이 한 열로 뭉개지지 않는다** — csv.Sniffer가 작은 표에서 실제로
+# 실패했다(실측: 4행 탭 파일). 확장자·빈도 판정이 그 자리를 받는다.
+_c3 = reader.read(str(_RAW / "CSV03_tab.tsv"))
+show("탭 구분(.tsv)이 한 열로 뭉개지지 않는다",
+     _c3["delimiter"] == "\t" and _c3["sheets"][0]["max_col"] == 4,
+     f"delim={_c3['delimiter']!r} max_col={_c3['sheets'][0]['max_col']}")
+_c4 = reader.read(str(_RAW / "CSV04_tab_in_csv.csv"))
+show("확장자가 .csv인 탭 파일도 갈라 읽는다 (Sniffer/빈도)",
+     _c4["delimiter"] == "\t" and _c4["sheets"][0]["max_col"] == 3)
+
+show("head()가 csv에서 죽지 않는다 (분기는 이름이 아니라 구조)",
+     "sheets" in reader.head(_c1, 2) and len(reader.head(_c1, 2)["sheets"]) == 1)
+try:
+    reader.read(str(_RAW / "CP01.xlsx") + ".zzz")
+    _unsup = False
+except ValueError as e:
+    _unsup = "csv" in str(e) and "tsv" in str(e)
+show("지원 포맷 목록이 실패 문장에 나온다 (.csv·.tsv 포함)", _unsup)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")

@@ -65,7 +65,7 @@ def group_of(node, nodes):
 
 
 def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
-        pick=None, doc_type=None):
+        pick=None, doc_type=None, progress=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 
     **LLM 지점 ⑨다**(문서 7 §7.6-B-2). 목록에 있다는 것과 mock에서 모델을 부른다는
@@ -91,7 +91,11 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
     nodes = nodes if nodes is not None else closed_list(layer)
     idx = surfaces(nodes)
     out = []
-    for p in pieces:
+    # **진행을 밖으로 흘린다.** `pick`은 좌표가 닫힌 목록과 정확히 일치하지 않는
+    # 조각마다 불린다 — 수천 행이면 수천 회다. 그 사이 화면이 조용하면 사람은
+    # «멈췄다»고 읽는다(사내 실측). 콜백은 선택이고 없으면 아무 일도 안 한다.
+    total, calls = len(pieces), 0
+    for i, p in enumerate(pieces, 1):
         r = dict(p)
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
@@ -105,6 +109,7 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
         node = idx.get(ref) if ref else None
         if ref and node is None and pick is not None:
             # 실호출 갈래 — 닫힌 목록을 선택지로 넘긴다. 목록 밖 답은 버린다.
+            calls += 1
             chosen = pick(ref, sorted(idx))
             if chosen and chosen in idx:
                 r[ref_field] = chosen
@@ -117,6 +122,8 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
             if g:
                 r["process_group"] = g
         out.append(r)
+        if progress is not None:
+            progress(i, total, calls)
     return out
 
 
