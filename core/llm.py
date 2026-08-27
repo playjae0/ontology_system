@@ -86,18 +86,97 @@ def mock(point, detail=""):
 
 
 # ---------------------------------------------------------------- 설정
-def config():
-    """게이트웨이 설정. **비어 있으면 그 사실을 그대로 돌려준다** — 여기서 채우지 않는다."""
-    return {"url": os.environ.get("LLM_GATEWAY_URL", "").rstrip("/"),
-            "key": os.environ.get("LLM_API_KEY", ""),
-            "model": os.environ.get("CHAT_MODEL", ""),
-            "embed_model": os.environ.get("EMBED_MODEL", ""),
-            "timeout": float(os.environ.get("LLM_TIMEOUT", "60")),
-            "retry": int(os.environ.get("LLM_RETRY", "2"))}
-
-
 class NotConfigured(RuntimeError):
     """실호출 경로가 비어 있다 — **조용히 mock으로 떨어지지 않는다**(§7.6-B-4)."""
+
+
+# 설정 파일을 찾는 자리 — **순서가 곧 우선순위**다. `config()` 하나만 이것을 안다.
+CONFIG_ENV = "ONTO_CONFIG"
+CONFIG_PATHS = ("~/.onto/llm.json", "llm.local.json")
+
+
+def config_file():
+    """실제로 읽을 설정 파일 경로 — **없으면 None**이다.
+
+    없는 것이 정상이다(환경변수로만 쓰는 사람이 있고, 회귀·CI가 그 경로로 돈다).
+    """
+    # **`ONTO_CONFIG`를 지정했으면 그것만 본다.** 지정한 경로가 없다고 다른 파일로
+    # 넘어가면, 「이 설정으로 돌려라」가 조용히 무시되고 **엉뚱한 자리의 설정이
+    # 이긴다** — 회귀가 운영자의 `~/.onto/llm.json`을 물어 「설정 없음」 판정이
+    # 통째로 무너진 실측이 그 형태다.
+    explicit = os.environ.get(CONFIG_ENV)
+    if explicit:
+        return explicit if os.path.isfile(explicit) else None
+    cand = [os.path.expanduser(CONFIG_PATHS[0]),
+            os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))), CONFIG_PATHS[1])]
+    for c in cand:
+        if c and os.path.isfile(c):
+            return c
+    return None
+
+
+def _from_file():
+    """설정 파일의 내용. **키 이름은 환경변수와 같다** — 둘을 외우게 하지 않는다.
+
+    **파싱 실패는 명시적 실패다.** 조용히 무시하면 파일을 만들어 둔 사람이 왜
+    안 붙는지 알 방법이 없다 — 그 상태가 「조용히 mock으로 떨어진다」와 같은 구조다
+    (§7.6-B-4). 없는 파일은 실패가 아니다.
+    """
+    path = config_file()
+    if not path:
+        return {}, None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+        reason = (f"설정 파일을 읽지 못했다: {path} — {type(e).__name__}: {e}. "
+                  f"키 이름은 환경변수와 같다(LLM_GATEWAY_URL·LLM_API_KEY·CHAT_MODEL)")
+        log.explicit_fail(_LOG, "core.llm.config", reason)
+        raise NotConfigured(reason) from e
+    if not isinstance(data, dict):
+        reason = f"설정 파일의 최상위가 객체가 아니다: {path} ({type(data).__name__})"
+        log.explicit_fail(_LOG, "core.llm.config", reason)
+        raise NotConfigured(reason)
+    return data, path
+
+
+def file_state():
+    """설정 파일의 **자리와 권한**만. 값은 만들지 않는다 — 화면 캡처가 밖으로 나간다."""
+    path = config_file()
+    if not path:
+        return None, None
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except OSError:
+        return path, None
+    return path, ("그룹·타인이 읽을 수 있다(권한 %o) — chmod 600 을 권한다" % mode
+                  if mode & 0o077 else None)
+
+
+def config():
+    """게이트웨이 설정. **비어 있으면 그 사실을 그대로 돌려준다** — 여기서 채우지 않는다.
+
+    **우선순위: 환경변수 > 설정 파일 > 빈 값.** 환경변수 갈래를 그대로 남기는 이유는
+    회귀·CI가 그것으로 돌기 때문이다 — 파일을 더하는 것이지 바꾸는 것이 아니다.
+
+    **파일을 여는 코드는 여기 하나다**(§7.6-B-1 수렴). 호출부가 각자 열면 우선순위가
+    지점마다 갈리고, 그때 "왜 이 지점만 안 붙나"의 답이 코드 전체에 흩어진다.
+    """
+    f, _src = _from_file()
+
+    def get(name, default=""):
+        v = os.environ.get(name)
+        if v is None or v == "":
+            v = f.get(name, default)
+        return default if v is None else v
+
+    return {"url": str(get("LLM_GATEWAY_URL")).rstrip("/"),
+            "key": str(get("LLM_API_KEY")),
+            "model": str(get("CHAT_MODEL")),
+            "embed_model": str(get("EMBED_MODEL")),
+            "timeout": float(get("LLM_TIMEOUT", 60)),
+            "retry": int(get("LLM_RETRY", 2))}
 
 
 def require(point, *, need=("url", "model")):
@@ -241,7 +320,10 @@ def key_state():
 
     사내 화면 캡처가 밖으로 나갈 수 있다 — 마스킹이 아니라 **아예 만들지 않는다.**
     """
-    k = config()["key"]
+    try:
+        k = config()["key"]
+    except NotConfigured:
+        return "판독 불가 (설정 파일 오류 — ① 참조)"
     return f"설정됨(길이 {len(k)})" if k else "미설정"
 
 
@@ -260,9 +342,6 @@ def probe(points=None, *, timeout=None):
 
     **`USE_MOCK` 값과 무관하게 실호출을 시도한다** — 이 함수의 목적이 그것이다.
     """
-    cfg = config()
-    if timeout:
-        cfg = {**cfg, "timeout": timeout}
     S = []
 
     def add(i, label, ok, detail="", fatal=False):
@@ -270,13 +349,34 @@ def probe(points=None, *, timeout=None):
                   "detail": detail, "fatal": fatal})
         return ok
 
+    # **설정 파일이 깨진 것도 ①의 실패다.** 여기서 잡지 않으면 `config()`가 던지는
+    # NotConfigured가 CLI를 뚫고 생 traceback으로 나간다 — 「화면이 원인을 말한다」는
+    # 이 명령의 취지가 바로 그 자리에서 깨진다(실측).
+    try:
+        cfg = config()
+    except NotConfigured as e:
+        add("①", "설정", False, str(e), fatal=True)
+        return S
+    if timeout:
+        cfg = {**cfg, "timeout": timeout}
+
     # ① 설정 — 실패 문장은 require()가 이미 만든다. 여기서 새로 짓지 않는다.
+    src, warn = file_state()
+    where = f"설정 파일 {src}" if src else "설정 파일 없음 (환경변수만)"
     try:
         require("chat")
         add("①", "설정", True, f"CHAT_MODEL={cfg['model']} · "
-                              f"LLM_API_KEY {key_state()}")
+                              f"LLM_API_KEY {key_state()} · {where}"
+                              + (f"\n{warn}" if warn else ""))
     except NotConfigured as e:
-        add("①", "설정", False, str(e), fatal=True)
+        # **파일로 넣는 법을 함께 낸다** — 변수 이름만 말하면 매 세션 export를
+        # 다시 하는 상태가 계속된다(사내 실측).
+        add("①", "설정", False,
+            f"{e}\n{where}\n"
+            f"설정 자리: ~/.onto/llm.json (또는 {CONFIG_ENV} 지정 · "
+            f"레포 루트 llm.local.json) · 환경변수도 그대로 쓸 수 있다\n"
+            f'형태: {{"LLM_GATEWAY_URL": "…", "LLM_API_KEY": "…", "CHAT_MODEL": "…"}}',
+            fatal=True)
         return S
 
     # ②③④ 한 번의 왕복이 셋을 가른다 — 어디서 끊겼는지가 곧 원인이다.

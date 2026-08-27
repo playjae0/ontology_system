@@ -113,7 +113,12 @@ for k, fn in CASES.items():
 print("RESULT " + json.dumps(out, ensure_ascii=False))
 '''
 
-env = dict(os.environ, USE_MOCK="0")
+# **「설정 없음」은 환경변수를 지우는 것만으로 성립하지 않는다** — 2B에서 설정
+# 파일 갈래(`~/.onto/llm.json` 등)가 생겼고, 운영자 기계에 그 파일이 있으면 이
+# 탐침이 «설정된 상태»로 돌아 **조용한 통과 4건**이 뜬다(실측). 회귀가 운영자의
+# 홈 디렉터리에 의존하면 그것은 판정이 아니다. 없는 경로를 명시해 갈래를 끈다.
+env = dict(os.environ, USE_MOCK="0",
+           ONTO_CONFIG=str(ROOT / "tests" / "fixtures" / "_no_such_llm_config.json"))
 for e in _ENV:
     env.pop(e, None)
 r = subprocess.run([sys.executable, "-c", PROBE], capture_output=True, text=True,
