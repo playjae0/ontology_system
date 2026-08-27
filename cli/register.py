@@ -207,6 +207,66 @@ GENERATE_SCHEMA = {
 }
 
 
+KIT_NOTE = ("킷 조립 규칙", "킷 유지 규칙")
+
+
+def _strip_kit_notes(text):
+    """**킷을 고치는 사람이 읽을 것**을 조립 시점에 덜어낸다 (문서 6 §6.7 킷 #1).
+
+    두 가지를 뺀다:
+      ① 머리말 — 파일 시작부터 `## [지시]` 직전까지. **판 계보는 킷을 고치는
+         사람의 것**이지 생성 세션이 읽을 것이 아니다(v0.5 실측: 1,682자 = 전체의
+         14%이고 그 안에 `Process` 2·`Unit` 2·`Property` 1이 들어 있었다).
+      ② 스스로 「킷 조립 규칙」·「킷 유지 규칙」이라고 표시한 인용 문단.
+         그 주석은 *"LLM 지시가 아니다"*라고 말하면서 LLM에게 가고, **제외하려던
+         층 어휘를 다시 실어 나른다** — v0.5 치환 결과의 잔재 3건이 전부 그 안이었다.
+
+    **인용 블록 통째로 지우지 않는다.** 같은 `>` 블록 안에 LLM이 읽어야 하는 문단이
+    섞여 있다 — 예: 「패턴표에 없는 관계를 `edges`에 쓰지 마라」. 그래서 빈 인용
+    줄(`>`)로 갈라 **문단 단위**로 판정하고, **표시된 것만** 뺀다.
+
+    **파일은 건드리지 않는다** — 제거는 조립 시점뿐이고 킷은 근거를 계속 보유한다.
+    """
+    lines = text.split("\n")
+    head = next((i for i, ln in enumerate(lines) if ln.startswith("## [지시]")), 0)
+    lines = lines[head:]
+
+    out, para, in_q = [], [], False
+    def flush():
+        if para and not any(m in "".join(para) for m in KIT_NOTE):
+            out.extend(para)
+        para.clear()
+
+    for ln in lines:
+        q = ln.startswith(">")
+        if q:
+            in_q = True
+            if ln.strip() == ">":            # 인용 안의 문단 경계
+                flush()
+                para.append(ln)
+                flush()
+            else:
+                para.append(ln)
+            continue
+        if in_q:
+            flush()
+            in_q = False
+        out.append(ln)
+    flush()
+
+    # 문단을 빼며 남은 빈 인용 줄·연속 공백 줄을 정리한다 — 화면 잡음이지 지시가 아니다.
+    cleaned = []
+    for ln in out:
+        if ln.strip() == ">" and (not cleaned or cleaned[-1].strip() in ("", ">")):
+            continue
+        if ln.strip() == "" and cleaned and cleaned[-1].strip() == "":
+            continue
+        cleaned.append(ln)
+    while cleaned and cleaned[-1].strip() == ">":
+        cleaned.pop()
+    return "\n".join(cleaned)
+
+
 def _dump_prompt(doc_type, text):
     """`ONTO_DUMP_PROMPT=1`이면 조립된 지시문을 파일로 떨군다 — **관측용이다.**
 
@@ -298,7 +358,9 @@ def _render_template(text, pkg):
                       ("{{공용_블록_목록}}", blocks_md),
                       ("{{골격_닫힌_목록}}", sk_md)):
         text = text.replace(mark, val)
-    return text
+    # **치환 뒤에 덜어낸다.** 주석 안에도 주입 자리가 있어(공용 블록 절) 먼저 빼면
+    # `{{…}}`가 남았는지의 판정이 흐려진다 — 치환은 전량 하고 그 뒤 걷어낸다.
+    return _strip_kit_notes(text)
 
 
 def _draft_live(doc_type, revision):
