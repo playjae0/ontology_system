@@ -142,6 +142,12 @@ def cmd_export(args):
     return main(args)
 
 
+def cmd_llm_check(args):
+    """게이트웨이 연결 확인 — 붙었는가를 단계로 끊어 본다(문서 7 §7.6-B)."""
+    from cli.llmcheck import main
+    return main(args)
+
+
 if __name__ == "__main__":
     log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
@@ -163,7 +169,8 @@ if __name__ == "__main__":
      "parse": lambda: cmd_parse(sys.argv[2:]),
      "register": lambda: cmd_register(sys.argv[2:]),
      "show": lambda: cmd_show(sys.argv[2:]),
-     "export": lambda: cmd_export(sys.argv[2:])}[cmd]()
+     "export": lambda: cmd_export(sys.argv[2:]),
+     "llm-check": lambda: cmd_llm_check(sys.argv[2:])}[cmd]()
     # **반환값을 종료 코드로 쓴다.** 안 그러면 실패한 명령이 exit 0으로 끝나
     # 플랫폼·스크립트가 "성공"으로 읽는다 — 실측: `export mermaid quality`가
     # 빈 다이어그램을 내고 0으로 끝났고, 그 뒤 실패 판정을 붙여도 여전히 0이었다.
