@@ -1668,3 +1668,58 @@ if r.returncode and not p:                                  # ← p>0이면 아�
 
 - 정상 상태 `doctor.py` **exit 0** · 회귀 **526/526 PASS** · `tests/` 변경 0건(원복 확인).
 - 문면 검사 위반 0 · 문서 간 0건 통과.
+
+---
+
+## 2B 가이드 3종 교체 + export 결함 3건 수리 (2026-08-27)
+
+### 가이드 3종 교체 (허브 반입)
+
+`docs/가이드/`의 2B_작업가이드 · config작성_가이드 · 골격작성_가이드를 교체했다.
+핵심 변화는 **초안 프롬프트가 양식을 베껴 쓰지 않고 실물 파일을 첨부하게 바뀐 것**이다
+(README 「복제 금지」 — 프롬프트가 자산을 이기는 실패가 세 번 실측됐다). 그 밖에
+3단계(층 config)가 「건너뛸 수 있다」로 표시됐고, `EMBED_MODEL` 정정이 반영됐다.
+
+### 교체분의 실물 대조 — 어긋난 것 7건 (고치지 않고 보고)
+
+가이드가 단정하는 수치·명령을 레포와 대조했다:
+
+| 가이드 문면 | 실물 | |
+|---|---|---|
+| `confirm <doc_type> --approved-by <이름>` | **`--by <승인자>`** | 그대로 치면 승인이 안 된다 |
+| `python -m cli.query ask "…"` | **`python -m cli.query "…"`** (ask 하위명령 없음) | |
+| `layers/process/config.json` (2.7KB) | **5,870 B (5.7KB)** | |
+| `layers/quality/config.json` (2.7KB) | **4,640 B (4.5KB)** | |
+| `layers/process/skeleton.json` (1.9KB) | **2,882 B (2.8KB)** | |
+| config 「19종」·「18키」 | **process 22 · quality 18** | |
+| 「배터리 mock 골격 = 공정 26개」 | **TREE 이름 노드 30 (중복 제외 29)** | |
+
+quality에 없는 키는 가이드 말대로 `canonical_scope`·`polarity`·`skeleton_version`이
+맞다(+`_fact_note`·`_relation_patterns_note` 주석 키 2종).
+
+### export 결함 3건 — 가이드가 시키는 명령이 죽어 있었다
+
+가이드의 `python -m cli.export html`을 실제로 돌려 보다가 찾았다.
+
+1. **`python -m cli.export html` → `NameError: cmd_html`.** `if __name__ == "__main__":`
+   가드가 파일 중간(278행)에 있어, 그 아래 502행에 정의된 `cmd_html`이 디스패치 표를
+   만들 때 아직 없었다. **import 경로는 파일을 끝까지 읽으므로 회귀가 못 잡았다** —
+   회귀가 부르는 갈래와 사람이 부르는 갈래가 갈려 있었다. 가드를 파일 끝으로.
+2. **`run.py export html <경로>` → `ValueError`(relative_to).** 파일은 48,861 B로
+   만들어진 뒤 **경로를 찍는 자리에서** 죽었다. 레포 밖 절대 경로든 상대 경로든 죽는다.
+   `cypher`·`csv`도 같은 자리였다. `_short()`로 감쌌다.
+3. **`export html` 어서션이 무작위로 붉어졌다** — `"cdn" not in html.lower()`가
+   ULID에 우연히 든 「CDN」을 CDN 사용으로 오판한다(실측 20회 중 1회 ·
+   `01M10DM4QSCDN9YQP6PC35RADS`). **526 기준선 자체가 흔들리고 있었다.**
+   판정을 「바깥을 부르는 행위 8종」으로 바꿨다.
+
+3번은 새 진단 화면이 잡았다 — doctor 3회 중 1회 붉어졌고, 화면이 **어느 어서션인지**를
+바로 말해 줬다. 이전 화면이었으면 「합계 525/526」만 보였다.
+
+### 판정
+
+- 수리 후 `export html`을 세 진입점(`python -m`·`run.py` 절대·상대)에서 전부 확인 ·
+  `cypher`·`csv`도 재확인 · 새 어서션이 진짜 CDN 4종(script src·link href·@import·fetch)을
+  **전부 잡는 것**을 주입으로 확인.
+- test_g4 **20회 연속 클린 단독 실행 실패 0회**(수리 전 20회 중 1회).
+- 회귀 **526/526 PASS** · 문면 검사 위반 0 · 문서 간 0건 통과.

@@ -37,6 +37,18 @@ def _world():
 
 
 # ---------------------------------------------------------------- cypher
+def _short(p):
+    """출력 경로 표기 — **레포 밖이면 절대 경로 그대로 낸다.**
+
+    `Path.relative_to`는 밖의 경로에 ValueError를 던진다. 산출은 이미 끝난 뒤라
+    **파일은 만들어졌는데 화면이 크래시하는** 모양이 된다(실측).
+    """
+    try:
+        return Path(p).resolve().relative_to(ROOT)
+    except ValueError:
+        return Path(p).resolve()
+
+
 def cmd_cypher(args):
     """Neo4j 적재 스크립트.
 
@@ -109,8 +121,8 @@ def cmd_cypher(args):
           "//   MATCH (f:Failure)-[:occurs_in]->(p:Process) RETURN f.name, p.name;"]
 
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
-    print(f"[export] 노드 {n_node} · 엣지 {n_edge} → {out.relative_to(ROOT)}")
-    print("  적재: cypher-shell -f " + str(out.relative_to(ROOT)))
+    print(f"[export] 노드 {n_node} · 엣지 {n_edge} → {_short(out)}")
+    print("  적재: cypher-shell -f " + str(_short(out)))
     print("  ※ 파생물이다 — 여기서 고친 것은 돌아오지 않는다. 고치려면 run.py ops")
     return 0
 
@@ -153,7 +165,7 @@ def cmd_csv(args):
                             e["dst"], names.get(e["dst"], ""), lay,
                             e.get("status"), " | ".join(e.get("provenance") or [])])
 
-    print(f"[export] {d.relative_to(ROOT)}/nodes.csv · edges.csv  (엑셀용 BOM 포함)")
+    print(f"[export] {_short(d)}/nodes.csv · edges.csv  (엑셀용 BOM 포함)")
     return 0
 
 
@@ -273,10 +285,6 @@ def main(argv):
     if cmd not in table:
         raise SystemExit(f"알 수 없는 형식: {cmd}\n{__doc__}")
     return table[cmd](rest)
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]) or 0)
 
 
 # ---------------------------------------------------------------- html
@@ -560,8 +568,15 @@ def cmd_html(args):
     out.write_text(head + data + _HTML_TAIL, encoding="utf-8")
     size = out.stat().st_size / 1024
     print(f"[export] 노드 {len(nodes)} · 엣지 {len(edges)} "
-          f"(걸침 {n_cross}) → {out.relative_to(ROOT)}  [{size:.0f}KB]")
+          f"(걸침 {n_cross}) → {_short(out)}  [{size:.0f}KB]")
     print(f"  브라우저로 연다: file://{out}")
     print("  ※ 외부 CDN 없음 — 사내망·오프라인에서 그대로 열린다")
     print("  ※ 파생물이다 — 여기서 고친 것은 돌아오지 않는다(P5). 고치려면 run.py ops")
     return 0
+
+
+# **진입점은 파일 끝이다.** 중간에 두면 그 아래 정의된 명령(cmd_html)이 `main()`의
+# 디스패치 표를 만들 때 아직 없어 NameError로 죽는다 — import 경로는 파일을 끝까지
+# 읽으므로 회귀가 이것을 못 잡았다(실측: `python -m cli.export html` → NameError).
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]) or 0)
