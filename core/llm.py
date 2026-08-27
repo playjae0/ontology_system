@@ -143,6 +143,17 @@ def prompt(name):
         return f.read()
 
 
+def has_prompt(name):
+    """지시문 파일이 있는가 — **묻기만 하고 실패를 기록하지 않는다.**
+
+    `prompt()`는 없으면 「명시적 실패」를 로그에 남긴다(그것이 호출 경로의 규율이다).
+    연결 확인처럼 **있는지 물어보는 것이 목적인 자리**가 그 함수를 부르면, 정상
+    경로가 ERROR 세 줄로 화면에 뜬다 — 실측으로 그랬고, 사내에서 그것은 고장으로
+    읽힌다. 묻는 것과 쓰는 것을 가른다.
+    """
+    return os.path.exists(os.path.join(PROMPTS_DIR, f"{name}.md"))
+
+
 def prompt_version(name):
     """그 템플릿의 판본 — 머리말 `version:` 줄이 정본이다."""
     for line in prompt(name).splitlines()[:10]:
@@ -201,6 +212,178 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0)
     reason = f"{POINTS.get(point, point)} — 재시도 소진: {type(last).__name__}: {last}"
     log.explicit_fail(_LOG, f"core.llm[{point}]", reason)
     raise RuntimeError(reason)
+
+
+# ---------------------------------------------------------------- 연결 확인
+# **연결 확인은 여기 산다** — 게이트웨이 주소·인증·경로 조립을 아는 코드는 이 파일
+# 하나여야 한다(§7.6-B-1 수렴). CLI는 아래 `probe()`가 돌려준 단계 기록을 **화면으로
+# 옮기기만** 한다. 여기 없이 CLI가 직접 `_post`를 부르면 수렴점이 둘이 되고, 사내
+# 게이트웨이가 비호환일 때 고칠 자리가 한 곳이라는 보장이 깨진다.
+#
+# **`chat()`을 쓰지 않는 이유**: chat은 재시도를 삼키고 실패를 한 문장으로 뭉친다 —
+# 그러면 «어디까지 갔는가»가 사라진다. 사내망은 출력을 밖으로 가져올 수 없으므로
+# 화면이 스스로 원인을 갈라야 한다(doctor.py와 같은 원칙).
+
+PING = "ping"
+
+
+def mock_state():
+    """지금 mock인가를 **문장으로** 돌려준다 — 호출부가 환경변수를 읽지 않게.
+
+    판독은 `use_mock()` 하나가 한다(§7.6-B-1). 화면에 값을 찍자고 호출부가
+    `os.environ`을 열면 수렴점이 둘이 된다.
+    """
+    return f"USE_MOCK={'1' if use_mock() else '0'}"
+
+
+def key_state():
+    """`LLM_API_KEY`의 **설정 여부와 길이만.** 값도, 앞뒤 일부도 내지 않는다.
+
+    사내 화면 캡처가 밖으로 나갈 수 있다 — 마스킹이 아니라 **아예 만들지 않는다.**
+    """
+    k = config()["key"]
+    return f"설정됨(길이 {len(k)})" if k else "미설정"
+
+
+def _proxy_env():
+    """프록시 환경변수의 **이름만** 모은다 — 값에 자격증명이 실릴 수 있다."""
+    names = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+             "http_proxy", "https_proxy", "no_proxy")
+    return [n for n in names if os.environ.get(n)]
+
+
+def probe(points=None, *, timeout=None):
+    """게이트웨이 왕복을 **단계별로 끊어** 확인한다. 돌려주는 것은 단계 기록이다.
+
+    각 단계는 `{"id","label","ok","detail","fatal"}`이고, 치명 단계에서 멈춘다.
+    `points`를 주면 그 지점들을 **얕게 1회씩** 더 시험한다(지점당 호출 1회).
+
+    **`USE_MOCK` 값과 무관하게 실호출을 시도한다** — 이 함수의 목적이 그것이다.
+    """
+    cfg = config()
+    if timeout:
+        cfg = {**cfg, "timeout": timeout}
+    S = []
+
+    def add(i, label, ok, detail="", fatal=False):
+        S.append({"id": i, "label": label, "ok": ok,
+                  "detail": detail, "fatal": fatal})
+        return ok
+
+    # ① 설정 — 실패 문장은 require()가 이미 만든다. 여기서 새로 짓지 않는다.
+    try:
+        require("chat")
+        add("①", "설정", True, f"CHAT_MODEL={cfg['model']} · "
+                              f"LLM_API_KEY {key_state()}")
+    except NotConfigured as e:
+        add("①", "설정", False, str(e), fatal=True)
+        return S
+
+    # ②③④ 한 번의 왕복이 셋을 가른다 — 어디서 끊겼는지가 곧 원인이다.
+    url = f"{cfg['url']}/chat/completions"
+    payload = {"model": cfg["model"], "temperature": 0,
+               "messages": [{"role": "user", "content": PING}]}
+    raw = None
+    try:
+        raw = _post(url, payload, cfg["key"], cfg["timeout"])
+        add("②", "도달", True, f"{cfg['url']} — 응답 받음")
+        add("③", "인증", True, f"LLM_API_KEY {key_state()}")
+    except urllib.error.HTTPError as e:
+        add("②", "도달", True, f"{cfg['url']} — HTTP {e.code}")
+        if e.code in (401, 403):
+            add("③", "인증", False,
+                f"HTTP {e.code} — LLM_API_KEY {key_state()}. "
+                f"키가 맞는지·게이트웨이가 다른 헤더를 쓰는지 확인한다 "
+                f"(헤더는 core/llm.py::_post)", fatal=True)
+        else:
+            add("③", "인증", False,
+                f"HTTP {e.code} {e.reason} — 인증 문제는 아니다. "
+                f"모델명({cfg['model']})·경로(/chat/completions)를 확인한다",
+                fatal=True)
+        return S
+    except Exception as e:                       # URLError·timeout·그 밖
+        px = _proxy_env()
+        add("②", "도달", False,
+            f"{cfg['url']} — {type(e).__name__}: {e} · "
+            f"프록시 환경변수 {', '.join(px) if px else '없음'} · "
+            f"타임아웃 {cfg['timeout']}초", fatal=True)
+        return S
+
+    # ④ 응답 형태 — OpenAI 호환인가. **값이 아니라 키 목록만** 낸다.
+    try:
+        text = raw["choices"][0]["message"]["content"]
+        add("④", "응답 형태", True,
+            f"choices[0].message.content 실재 — 앞 40자: {str(text)[:40]!r}")
+    except (KeyError, IndexError, TypeError):
+        add("④", "응답 형태", False,
+            f"choices[0].message.content 경로가 없다. "
+            f"응답 최상위 키: {sorted(raw) if isinstance(raw, dict) else type(raw).__name__} — "
+            f"사내 게이트웨이가 OpenAI 호환이 아니다. "
+            f"고칠 곳은 core/llm.py 한 파일(_post와 chat의 응답 파싱)이다",
+            fatal=True)
+        return S
+
+    # ⑤ 구조화 출력 — 안 먹어도 치명은 아니다(대안이 있다).
+    sch = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+           "required": ["ok"], "additionalProperties": False}
+    try:
+        r2 = _post(url, {**payload, "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "out", "schema": sch, "strict": True}},
+            "messages": [{"role": "user",
+                          "content": 'reply {"ok": true}'}]},
+            cfg["key"], cfg["timeout"])
+        json.loads(r2["choices"][0]["message"]["content"])
+        add("⑤", "구조화 출력", True, "response_format.json_schema 통과")
+    except Exception as e:
+        add("⑤", "구조화 출력", False,
+            f"{type(e).__name__}: {e} — **치명 아님.** 다만 판정 지점(②개체 판정·"
+            f"⑧답변·⑨좌표)이 JSON을 요구하므로, 게이트웨이가 스키마를 안 받으면 "
+            f"프롬프트 지시로 대신해야 한다(core/llm.py::chat)")
+
+    # ⑥ 임베딩 — **미설정이 정상이다**(호출부 0건의 이연 항목).
+    if not cfg["embed_model"]:
+        add("⑥", "임베딩", None,
+            "EMBED_MODEL 미설정 — **정상이다.** 임베딩은 호출부가 0건인 이연 "
+            "항목이고 질의 3단은 「구현하지 않는다」가 명세다(§5.1-4 · P7)")
+    else:
+        try:
+            e_raw = _post(f"{cfg['url']}/embeddings",
+                          {"model": cfg["embed_model"], "input": PING},
+                          cfg["key"], cfg["timeout"])
+            v = e_raw["data"][0]["embedding"]
+            add("⑥", "임베딩", True, f"{cfg['embed_model']} — {len(v)}차 벡터")
+        except Exception as e:
+            add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
+
+    # ⑦ 지점별 얕은 왕복 — `--all`일 때만. **지점당 1회**다(비용).
+    #
+    # 지시문 파일이 있는 지점은 그것을 실어 보낸다 — 프롬프트가 게이트웨이를
+    # 통과하는지까지 봐야 «붙었다»가 실전 의미를 갖는다. 파일이 없는 지점
+    # (⑤생성·⑦구조지도·⑨좌표)은 지시문 없이 왕복만 시험한다.
+    for pt in (points or []):
+        label = f"지점 {POINTS.get(pt, pt)}"
+        try:
+            if pt == "embed":
+                if not cfg["embed_model"]:
+                    add("·", label, None, "EMBED_MODEL 미설정 — 이연 항목(⑥ 참조)")
+                    continue
+                e_raw = _post(f"{cfg['url']}/embeddings",
+                              {"model": cfg["embed_model"], "input": PING},
+                              cfg["key"], cfg["timeout"])
+                add("·", label, True,
+                    f"{len(e_raw['data'][0]['embedding'])}차 벡터")
+                continue
+            msgs = ([{"role": "system", "content": prompt(pt)}]
+                    if has_prompt(pt) else [])
+            msgs.append({"role": "user", "content": PING})
+            out = chat(msgs, point=pt)
+            add("·", label, True,
+                f"응답 앞 40자: {str(out.get('text'))[:40]!r}"
+                + ("" if has_prompt(pt) else "  (지시문 파일 없는 지점 — 왕복만)"))
+        except Exception as e:
+            add("·", label, False, f"{type(e).__name__}: {e}")
+    return S
 
 
 # ---------------------------------------------------------------- 지점별 얇은 배선

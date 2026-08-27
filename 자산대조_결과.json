@@ -57,7 +57,7 @@
  {
   "구분": "형태",
   "대상": "`mirrors`",
-  "실태": "process: dict · 깊이 1 · 최상위 2 | quality: dict · 깊이 1 · 최상위 1   ▸ 명세: [6_파서와구축모드] | 1 | 생성 프롬프트 템플릿 | 사람이 확정·버전 관리하는 자산. payload_kind 분기(prose는 fields `{}`)·header_labels 필수(table 한정)·UNMAPPABLE 출력 제외·구조 필드는 6지선다 대상 아님·골격 닫힌 목록은 **골격 닫힌 목록 스냅샷(`skeleto ‖ [3_구조] **⑻ 극성의 저장 — electrode_type은 구조 필드, polarity는 파생 필드.** `electrode_type`은 role 배정 대상이 아닌 구조 필드다(문서 2 — fields·블록에 넣지 않고 검수 뷰 6지선다에 올리지 않으며, 소비자는 entity 해소 코드 하나). 해소 코드는 극"
+  "실태": "process: dict · 깊이 1 · 최상위 2 | quality: dict · 깊이 1 · 최상위 1   ▸ 명세: [6_파서와구축모드] | 1 | 생성 프롬프트 템플릿 | 사람이 확정·버전 관리하는 자산. payload_kind 분기(prose는 fields `{}`)·header_labels 필수(table 한정)·UNMAPPABLE 출력 제외·구조 필드는 6지선다 대상 아님·**층 어휘(층 이름·존재하는 층 목록·카테고리 정의문·관계 ‖ [3_구조] **⑻ 극성의 저장 — electrode_type은 구조 필드, polarity는 파생 필드.** `electrode_type`은 role 배정 대상이 아닌 구조 필드다(문서 2 — fields·블록에 넣지 않고 검수 뷰 6지선다에 올리지 않으며, 소비자는 entity 해소 코드 하나). 해소 코드는 극"
  },
  {
   "구분": "형태",

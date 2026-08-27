@@ -226,11 +226,19 @@ show("show extract — 상태가 아니라 **내용**을 연다 (계약 B)",
      _se.returncode == 0 and "청크" in _se.stdout
      and _run("show", "extract", "PPT02").returncode == 0
      and "부착" in _run("show", "extract", "PPT02").stdout)
-show("export html — 실물 파일을 낸다 (외부 CDN 없음)",
-     _run("export", "html").returncode == 0
-     and (ROOT / "export" / "graph.html").exists()
-     and "cdn" not in (ROOT / "export" / "graph.html").read_text(
-         encoding="utf-8").lower())
+# **문자열 "cdn"을 세지 않는다.** 노드 id가 ULID(Crockford base32)라 26자 안에
+# "CDN"이 우연히 들어간다 — 실측: 20회 중 1회 `01M10DM4QSCDN9YQP6PC35RADS`.
+# 그 어서션은 무작위로 붉어져 526 기준선을 흔들었다. 재는 것은 이름이 아니라
+# **바깥을 부르는 행위**다(§7.8 — 사내망에서 화면이 비어 뜨는 것을 막는 요구).
+_EXTERNAL = ("http://", "https://", "//cdn", "@import", "fetch(",
+             "xmlhttprequest", "<script src", "<link ")
+_html = ROOT / "export" / "graph.html"
+_hrc = _run("export", "html").returncode
+_htxt = _html.read_text(encoding="utf-8").lower() if _html.exists() else ""
+show("export html — 실물 파일을 낸다 (외부 자원 호출 0)",
+     _hrc == 0 and _html.exists()
+     and not [m for m in _EXTERNAL if m in _htxt],
+     "" if _html.exists() else "파일 없음")
 show("export mermaid quality — **빈 출력을 성공으로 내지 않는다**",
      _run("export", "mermaid", "quality").returncode != 0)
 show("export mermaid cross — 걸침 관계를 층 구분과 함께 그린다",

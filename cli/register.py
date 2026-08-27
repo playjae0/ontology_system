@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -180,6 +182,14 @@ def draft(doc_type, revision=0):
     """
     if llm.use_mock():
         llm.mock("generate", f"fixture {doc_type} rev{revision}")
+        # **mock에서도 지시문을 조립해 덤프한다**(플래그가 켜졌을 때만) — 조립이
+        # 맞는지는 실호출 여부와 무관한 관측 대상이고, 사내에서 실호출 전에
+        # 확인할 수 있어야 한다. fixture 반환 자체는 바뀌지 않는다.
+        pkg = REVIEW / doc_type / "input_package.json"
+        if os.environ.get("ONTO_DUMP_PROMPT") == "1" and pkg.exists():
+            _dump_prompt(doc_type, _render_template(
+                _newest_template().read_text(encoding="utf-8"),
+                json.loads(pkg.read_text(encoding="utf-8"))))
         for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
             ad = FIXTURES / "adapters" / f"{stem}.py"
             sc = FIXTURES / "schemas" / f"{stem}.json"
@@ -197,6 +207,162 @@ GENERATE_SCHEMA = {
 }
 
 
+KIT_NOTE = ("킷 조립 규칙", "킷 유지 규칙")
+
+
+def _strip_kit_notes(text):
+    """**킷을 고치는 사람이 읽을 것**을 조립 시점에 덜어낸다 (문서 6 §6.7 킷 #1).
+
+    두 가지를 뺀다:
+      ① 머리말 — 파일 시작부터 `## [지시]` 직전까지. **판 계보는 킷을 고치는
+         사람의 것**이지 생성 세션이 읽을 것이 아니다(v0.5 실측: 1,682자 = 전체의
+         14%이고 그 안에 `Process` 2·`Unit` 2·`Property` 1이 들어 있었다).
+      ② 스스로 「킷 조립 규칙」·「킷 유지 규칙」이라고 표시한 인용 문단.
+         그 주석은 *"LLM 지시가 아니다"*라고 말하면서 LLM에게 가고, **제외하려던
+         층 어휘를 다시 실어 나른다** — v0.5 치환 결과의 잔재 3건이 전부 그 안이었다.
+
+    **인용 블록 통째로 지우지 않는다.** 같은 `>` 블록 안에 LLM이 읽어야 하는 문단이
+    섞여 있다 — 예: 「패턴표에 없는 관계를 `edges`에 쓰지 마라」. 그래서 빈 인용
+    줄(`>`)로 갈라 **문단 단위**로 판정하고, **표시된 것만** 뺀다.
+
+    **파일은 건드리지 않는다** — 제거는 조립 시점뿐이고 킷은 근거를 계속 보유한다.
+    """
+    lines = text.split("\n")
+    head = next((i for i, ln in enumerate(lines) if ln.startswith("## [지시]")), 0)
+    lines = lines[head:]
+
+    out, para, in_q = [], [], False
+    def flush():
+        if para and not any(m in "".join(para) for m in KIT_NOTE):
+            out.extend(para)
+        para.clear()
+
+    for ln in lines:
+        q = ln.startswith(">")
+        if q:
+            in_q = True
+            if ln.strip() == ">":            # 인용 안의 문단 경계
+                flush()
+                para.append(ln)
+                flush()
+            else:
+                para.append(ln)
+            continue
+        if in_q:
+            flush()
+            in_q = False
+        out.append(ln)
+    flush()
+
+    # 문단을 빼며 남은 빈 인용 줄·연속 공백 줄을 정리한다 — 화면 잡음이지 지시가 아니다.
+    cleaned = []
+    for ln in out:
+        if ln.strip() == ">" and (not cleaned or cleaned[-1].strip() in ("", ">")):
+            continue
+        if ln.strip() == "" and cleaned and cleaned[-1].strip() == "":
+            continue
+        cleaned.append(ln)
+    while cleaned and cleaned[-1].strip() == ">":
+        cleaned.pop()
+    return "\n".join(cleaned)
+
+
+def _dump_prompt(doc_type, text):
+    """`ONTO_DUMP_PROMPT=1`이면 조립된 지시문을 파일로 떨군다 — **관측용이다.**
+
+    치환이 실제로 됐는지는 **조립된 문자열을 눈으로 봐야** 판정된다. 코드를 읽어
+    「될 것이다」로 판정하면, 자리 하나가 빠져도 `{{…}}`가 그대로 모델에 나가는
+    상태를 아무도 모른다 — 실제로 `{{골격_닫힌_목록}}`이 그 상태였다.
+    기본은 꺼져 있다(산출물을 늘리지 않는다).
+    """
+    if os.environ.get("ONTO_DUMP_PROMPT") != "1":
+        return None
+    d = _dir(doc_type)
+    out = d / "prompt_rendered.md"
+    out.write_text(text, encoding="utf-8")
+    print(f"   [덤프] 조립된 지시문 → {out.relative_to(ROOT)} ({len(text)}자)")
+    return out
+
+
+def _newest_template():
+    """`kit/`의 생성 프롬프트 템플릿 중 **가장 높은 판**을 고른다.
+
+    파일명을 코드에 박으면 판이 오를 때마다 코드가 따라 움직여야 하고, 옛 판을
+    보존하는 킷 규칙(판 계보)과 겹쳐 **어느 판이 실제로 쓰이는지가 파일 목록으로는
+    안 보인다.** 판 번호는 자산이 스스로 말하게 한다.
+    """
+    cands = sorted(KIT.glob("생성프롬프트_템플릿_v*.md"),
+                   key=lambda f: [int(x) for x in
+                                  re.findall(r"\d+", f.stem.split("_v")[-1])])
+    if not cands:
+        raise SystemExit(f"[생성] 프롬프트 템플릿이 없다: {KIT}/생성프롬프트_템플릿_v*.md")
+    return cands[-1]
+
+
+def _render_template(text, pkg):
+    """템플릿의 주입 자리 6개를 **입력 패키지의 값으로** 치환한다.
+
+    **왜 필요한가.** v0.4는 `Process`·`Unit`·`Property` 정의문과 `Unit part_of
+    Process` 삼항을 본문에 직접 적었다. 그런데 `cmd_generate`는 같은 정보를
+    `layer_vocabulary`로 이미 싣는다 — **같은 사실이 두 곳에 살고 하나가 고정**인
+    상태였고, 품질층 등록에서 템플릿과 입력 패키지가 서로 다른 어휘를 말한다.
+    `{{골격_닫힌_목록}}`도 치환하는 코드가 없어 **글자 그대로** 나가고 있었다.
+
+    **값은 전부 `pkg["system"]`에 이미 있다** — 새 키를 만들지 않는다(시스템 5키가
+    명세이고 회귀가 센다). 치환은 있는 값을 렌더하는 일이다.
+    """
+    sysd = pkg.get("system") or {}
+    voc = sysd.get("layer_vocabulary") or {}
+
+    cats = voc.get("categories") or {}
+    cat_md = "\n".join(f"- `{k}` — {v}" for k, v in cats.items()) or "- (없음)"
+
+    rows = ["| 관계 | 삼항 | 정의문 |", "|---|---|---|"]
+    for r in (voc.get("relation_patterns") or []):
+        sym = " · **대칭**" if r.get("symmetric") else ""
+        rows.append(f"| `{r.get('rel')}`{sym} | `{r.get('src')} {r.get('rel')} "
+                    f"{r.get('dst')}` | {r.get('정의문') or r.get('definition') or ''} |")
+    rel_md = "\n".join(rows) if len(rows) > 2 else "(패턴 없음)"
+
+    blocks, bl = sysd.get("blocks") or {}, []
+    for name, body in blocks.items():
+        # `_`로 시작하는 키는 주석·구조 메모다 — 블록이 아니므로 목록에 올리지 않는다.
+        if name.startswith("_") or not isinstance(body, dict):
+            continue
+        fields = ", ".join(f"`{f}`" for f in body if not f.startswith("_"))
+        bl.append(f"- `{name}` — 제공 필드: {fields or '(없음)'}")
+    blocks_md = "\n".join(bl) or "- (이 층이 쓸 수 있는 블록이 없다)"
+
+    surf = (sysd.get("skeleton_closed_list") or {}).get("surfaces") or []
+    sk = []
+    for n in surf:
+        al = n.get("aliases") or []
+        sk.append(f"- `{n.get('canonical')}`"
+                  + (f"  (별칭: {', '.join(al)})" if al else ""))
+    sk_md = "\n".join(sk) or "- (골격 닫힌 목록이 비었다)"
+
+    # **힌트 자리도 채운다.** 요청 표에는 6개가 적혔지만 템플릿에는 자리가 일곱이고,
+    # 하나라도 남으면 `{{…}}`라는 글자가 그대로 모델에 나간다 — 지시문이 스스로
+    # 「여기 렌더된다」고 말하면서 렌더되지 않는 상태가 v0.4의 결함이었다.
+    # 값은 `pkg["human"]["hint"]`에 이미 있다(새 키가 아니다).
+    hint = (pkg.get("human") or {}).get("hint") or ""
+    text = re.sub(r"\{\{사용자 자유 텍스트[^}]*\}\}",
+                  hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",
+                  text)
+
+    layers = voc.get("layers") or []
+    for mark, val in (("{{층_이름}}", str(voc.get("layer") or "")),
+                      ("{{존재하는_층_목록}}", " · ".join(f"`{x}`" for x in layers)),
+                      ("{{카테고리_정의문}}", cat_md),
+                      ("{{관계_패턴_표}}", rel_md),
+                      ("{{공용_블록_목록}}", blocks_md),
+                      ("{{골격_닫힌_목록}}", sk_md)):
+        text = text.replace(mark, val)
+    # **치환 뒤에 덜어낸다.** 주석 안에도 주입 자리가 있어(공용 블록 절) 먼저 빼면
+    # `{{…}}`가 남았는지의 판정이 흐려진다 — 치환은 전량 하고 그 뒤 걷어낸다.
+    return _strip_kit_notes(text)
+
+
 def _draft_live(doc_type, revision):
     """지점 ⑤의 실호출 갈래 — 생성 LLM에 입력 패키지를 넘긴다.
 
@@ -211,10 +377,15 @@ def _draft_live(doc_type, revision):
     pkg = REVIEW / doc_type / "input_package.json"
     if not pkg.exists():
         raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — 생성 전에 서야 한다")
-    tmpl = ROOT / "kit" / "생성프롬프트_템플릿_v0.4.md"
+    raw_pkg = pkg.read_text(encoding="utf-8")
+    system = _render_template(_newest_template().read_text(encoding="utf-8"),
+                              json.loads(raw_pkg))
+    _dump_prompt(doc_type, system)          # ONTO_DUMP_PROMPT=1일 때만
     out = llm.chat(
-        [{"role": "system", "content": tmpl.read_text(encoding="utf-8")},
-         {"role": "user", "content": pkg.read_text(encoding="utf-8")}],
+        # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
+        # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
+        [{"role": "system", "content": system},
+         {"role": "user", "content": raw_pkg}],
         json_schema=GENERATE_SCHEMA, point="generate")
     d = REVIEW / doc_type
     d.mkdir(parents=True, exist_ok=True)

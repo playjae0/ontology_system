@@ -460,7 +460,8 @@ def transition():
          ("게이트웨이 골조는 섰고 **설정만 비어 있다** — LLM_GATEWAY_URL·CHAT_MODEL을\n"
           "         주면 USE_MOCK=0으로 돈다. 미설정 상태의 USE_MOCK=0은 조용히 mock으로\n"
           "         떨어지지 않고 명시적으로 실패한다(문서 7 §7.6-B-4).\n"
-          "         **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다"
+          "         **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다\n"
+          "         연결 확인: python run.py llm-check"
           ) if not missing else
          "분기가 없는 지점:\n" + "\n".join(f"         · {m}" for m in missing))
 
