@@ -14,6 +14,14 @@ import os
 import sys
 from pathlib import Path
 
+ROOT_ = Path(__file__).resolve().parent.parent
+if str(ROOT_) not in sys.path:
+    # **어댑터가 `parser.normalizer`를 부른다**(문서 6 §6.2 공용 코어 의무).
+    # 이 파일은 어댑터를 파일 경로로 로드하므로, 레포 루트가 import 경로에 없으면
+    # 그 import가 `ModuleNotFoundError`로 죽는다 — 다른 회귀 10종은 이미 같은 줄을
+    # 갖고 있고, 여기만 자체 참조 구현으로 돌아 레포 모듈을 import하지 않았다.
+    sys.path.insert(0, str(ROOT_))
+
 from openpyxl import load_workbook
 from pptx import Presentation
 

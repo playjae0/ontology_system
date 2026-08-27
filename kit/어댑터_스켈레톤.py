@@ -32,6 +32,13 @@
 """
 import re  # noqa: F401  — 열 매핑·패턴이 필요하면 쓴다. 안 쓰면 지워도 된다.
 
+# **공용 코어를 부른다 — 직접 구현하지 마라**(문서 6 §6.2).
+# 병합 전개·상동 치환·복수값 전개·열문자 변환은 `parser.normalizer`가 소유한다.
+# 어댑터가 재구현하면 어댑터마다 같은 일을 하는 다른 코드가 쌓이고, 병합 처리에
+# 버그가 나오면 **어댑터 전부를 고쳐야 한다.** 참조 어댑터 3종이 실제로 그 상태였다.
+# `parser.normalizer` import는 순수성 위반이 아니다 — 파서 내부의 순수 함수다.
+from parser import normalizer
+
 ADAPTER = {
     # ── 신원 ────────────────────────────────────────────────────────────
     "doc_type": "",              # [빈칸] 등록 이름. 기존 doc_type과 중복 불가.
@@ -87,11 +94,42 @@ def extract(raw) -> list[dict]:
     빈 행 판정 주의: **전 열이 빈 행만 빈 행이다.** 일부만 비었으면 그것은 여백이
     아니라 결측이고, 빈 행으로 삼키면 그 행이 조용히 사라진다(C14 위반).
     """
-    exp = ADAPTER["expects"]                                    # noqa: F841
+    exp = ADAPTER["expects"]
     fragments = []
-    for _unit in (raw.get("sheets") or raw.get("slides") or []):
-        # [빈칸] 여기서 조각을 만든다.
-        #   table: 행마다 {출력 필드명: 값} + source_locator
-        #   prose: 분할 단위마다 {text, section, meta, source_locator}
+
+    # ── table 계열 뼈대 ─────────────────────────────────────────────
+    # **채우는 것은 「이 문서의 열이 어디 있고 무엇인가」뿐이다.**
+    # 병합·상동·복수값·열문자는 아래 공용 코어 호출이 이미 처리한다.
+    for sheet in (raw.get("sheets") or []):
+        cells = normalizer.expand_merged(sheet)       # ② 병합 전개 — 직접 짜지 않는다
+        rows = []
+        for row in range(exp.get("data_start_row", 1),
+                         int(sheet.get("max_row", 0)) + 1):
+            rec = {}
+            for field, col in (exp.get("columns") or {}).items():   # [빈칸] columns
+                v = cells.get(f"{col}{row}", "")
+                rec[field] = "" if v is None else str(v).strip()
+            if all(v == "" for v in rec.values()):
+                continue                  # 전 열이 빈 행만 빈 행이다 (C14)
+            rows.append((row, rec))
+
+        recs, _d = normalizer.resolve_ditto(          # ① 상동 — 직접 짜지 않는다
+            [r for _n, r in rows],
+            marks={exp["ditto_mark"]} if exp.get("ditto_mark") else None)
+        for (row, _r0), rec in zip(rows, recs or []):
+            miss = [c for c in (exp.get("required") or []) if rec.get(c, "") == ""]
+            if miss:
+                raise ValueError(f"자기완결 실패 row {row}: 필수 결측 {miss} (C14)")
+            # [빈칸] 이 문서만의 후처리 — 예: context를 딕셔너리로 감싼다
+            rec["source_locator"] = f"{sheet.get('name', 'sheet')}!R{row}"
+            fragments.append(rec)
+
+    # ── prose 계열 뼈대 ─────────────────────────────────────────────
+    for _slide in (raw.get("slides") or []):
+        # [빈칸] 분할 단위마다 {text, section, meta, source_locator}
         pass
+
+    if exp.get("multi_value_fields"):
+        fragments, _m = normalizer.split_multi(       # ③ 복수값 — 직접 짜지 않는다
+            fragments, exp["multi_value_fields"], exp.get("multi_value_seps"))
     return fragments

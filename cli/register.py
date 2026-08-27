@@ -18,8 +18,12 @@
   · **층 초안 구획은 없다** — 층 등록(R1)은 국면 2 게이트이고 여기는 doc_type 전용이다.
 
 사용:
-  python cli/register.py generate <doc_type> <층> <표본...> [--hint "..."]
-  python cli/register.py review   <doc_type> [--instruct "수정 지시"]
+  python cli/register.py generate <doc_type> <층> <표본...> [--hint "..."] [--interview]
+       --hint       자유 텍스트. 표본만으로 안 보이는 것을 적는다("3~7행 병합은 위 값 채움")
+       --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
+  python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
+       --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
+       --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
   python cli/register.py confirm  <doc_type> --by <승인자>
   python cli/register.py list
 """
@@ -37,7 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures, llm, registry, store
-from parser import pipeline, preflight, reader
+from parser import pipeline, preflight, reader, tagger
 from parser.adapters import basic_ppt
 from kit.render_review import render
 from kit.run_adapter import load_blocks
@@ -346,6 +350,15 @@ def _render_template(text, pkg):
     # 「여기 렌더된다」고 말하면서 렌더되지 않는 상태가 v0.4의 결함이었다.
     # 값은 `pkg["human"]["hint"]`에 이미 있다(새 키가 아니다).
     hint = (pkg.get("human") or {}).get("hint") or ""
+    if isinstance(hint, dict):
+        # `--interview`면 힌트는 **문답 전문**이다 — 지시문에는 사람이 준 자유
+        # 텍스트와 라운드별 이해·답을 함께 싣는다(LLM이 무엇에 합의했는지가 입력이다).
+        parts = [hint.get("text") or ""]
+        for r in hint.get("interview") or []:
+            parts.append(f"[문답 라운드 {r['round']}] 이해: {r['understanding']}")
+            if r.get("answer"):
+                parts.append(f"  사람의 답/교정: {r['answer']}")
+        hint = "\n".join(x for x in parts if x.strip())
     text = re.sub(r"\{\{사용자 자유 텍스트[^}]*\}\}",
                   hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",
                   text)
@@ -361,6 +374,59 @@ def _render_template(text, pkg):
     # **치환 뒤에 덜어낸다.** 주석 안에도 주입 자리가 있어(공용 블록 절) 먼저 빼면
     # `{{…}}`가 남았는지의 판정이 흐려진다 — 치환은 전량 하고 그 뒤 걷어낸다.
     return _strip_kit_notes(text)
+
+
+def _pretty_json(obj, indent=2):
+    """**가장 안쪽 dict/list를 한 줄로** 낸 JSON 문자열 (요청 ①).
+
+    매칭 스키마는 사람이 검수 화면과 나란히 읽는 자산이다. 표준 `indent=2`는
+    `{"role": "entity", "category": "Unit"}` 같은 **잎 하나를 세 줄로** 벌려 놓아,
+    열이 40개면 화면이 120줄이 된다 — 배정표를 훑는 눈이 그 사이에서 길을 잃는다.
+    컨테이너를 더 품지 않은 것만 접는다: 구조는 보이고 잎은 한 줄이다.
+
+    **`json.load` 결과는 이전과 완전히 같다** — 바뀌는 것은 공백뿐이다.
+    `data/` 저장 레코드는 이 함수를 타지 않는다(`core/store.py`의 소관이고,
+    거기는 바이트 동일 판정이 걸려 있다).
+    """
+    def leaf(o):
+        return not any(isinstance(v, (dict, list))
+                       for v in (o.values() if isinstance(o, dict) else o))
+
+    def go(o, d):
+        pad, pad2 = " " * (indent * d), " " * (indent * (d + 1))
+        if isinstance(o, dict):
+            if not o:
+                return "{}"
+            if leaf(o):
+                return json.dumps(o, ensure_ascii=False)
+            body = ",\n".join(f"{pad2}{json.dumps(k, ensure_ascii=False)}: "
+                               f"{go(v, d + 1)}" for k, v in o.items())
+            return "{\n" + body + "\n" + pad + "}"
+        if isinstance(o, list):
+            if not o:
+                return "[]"
+            if leaf(o):
+                return json.dumps(o, ensure_ascii=False)
+            body = ",\n".join(f"{pad2}{go(v, d + 1)}" for v in o)
+            return "[\n" + body + "\n" + pad + "]"
+        return json.dumps(o, ensure_ascii=False)
+
+    return go(obj, 0) + "\n"
+
+
+def _write_schema(path, text):
+    """매칭 스키마를 **사람이 읽는 표기**로 쓴다. 파싱 실패면 원문 그대로 둔다.
+
+    LLM 산출이 깨진 JSON일 수 있다 — 그때 표기를 고치겠다고 내용을 잃으면 안 된다.
+    원문 보존이 우선이고 미화는 그다음이다.
+    """
+    try:
+        obj = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        path.write_text(text, encoding="utf-8")
+        return False
+    path.write_text(_pretty_json(obj), encoding="utf-8")
+    return True
 
 
 def _draft_live(doc_type, revision):
@@ -393,7 +459,7 @@ def _draft_live(doc_type, revision):
     ad = d / f"adapter{suffix}.py"
     sc = d / f"schema{suffix}.json"
     ad.write_text(out["adapter_py"], encoding="utf-8")
-    sc.write_text(out["schema_json"], encoding="utf-8")
+    _write_schema(sc, out["schema_json"])
     return ad, sc
 
 
@@ -423,7 +489,90 @@ def basic_adapter_proposal(samples):
                      "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
 
 
-def cmd_generate(doc_type, layer, samples, hint=""):
+INTERVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        # **이해 요약이 이 설계의 심장이다** — 사람이 판정하는 대상은 "질문에 다
+        # 답했나"가 아니라 **"LLM의 이해가 맞아졌나"**다.
+        "understanding": {"type": "string"},
+        "questions": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"q": {"type": "string"},
+                           "options": {"type": "array", "items": {"type": "string"}}},
+            "required": ["q", "options"], "additionalProperties": False}},
+    },
+    "required": ["understanding", "questions"], "additionalProperties": False,
+}
+
+INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
+
+
+def _interview_round(pkg, history):
+    """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
+
+    LLM은 «이해했다, 진행하겠다»를 판단하지 않는다(I4: 제어 흐름은 코드+사람
+    소유). 매 라운드 요약과 질문을 낼 뿐이고, **끝내는 것은 사람**이다.
+
+    mock 갈래는 **표본 관찰 재료와 누적 답변에서 규칙으로** 요약을 만든다 —
+    미리 적어 둔 문장을 되읽으면 「교정이 반영되는가」를 아무것도 검증하지 않는다.
+    """
+    heads = (pkg.get("system") or {}).get("reader_head") or []
+    cols = []
+    for h in heads:
+        for sh in (h.get("head") or {}).get("sheets") or []:
+            cols += [v for a, v in (sh.get("cells") or {}).items()
+                     if a.endswith("1") and isinstance(v, str)]
+    if llm.use_mock():
+        llm.mock("generate", f"문답 라운드 {len(history) + 1} — 규칙 요약")
+        base = (f"열 {len(cols)}개를 관찰했다: {', '.join(cols[:6])}"
+                if cols else "표본에서 열을 관찰하지 못했다")
+        fixes = [h["answer"] for h in history if h.get("answer")]
+        return {"understanding": base + ("" if not fixes else
+                                         " · 교정 반영: " + " / ".join(fixes)),
+                "questions": ([] if fixes else
+                              [{"q": "병합된 좌측 열은 어떻게 다루나",
+                                "options": ["위 값 채움", "행 독립", "모름"]}])}
+
+    convo = [{"role": "system", "content": llm.prompt("interview")},
+             {"role": "user", "content": json.dumps(
+                 {"입력_패키지": pkg, "지난_문답": history}, ensure_ascii=False)}]
+    return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
+
+
+def _interview(pkg):
+    """생성 전 문답 — **끝내는 것은 사람뿐이다.** 상한 없음(§6.5 재생성 루프와 같은 원리).
+
+    돌려주는 것은 라운드 이력이다: 매 라운드의 요약·질문·답이 전부 남는다.
+    기록이 없으면 **같은 등록을 재현할 수 없다.**
+    """
+    history, blanks = [], 0
+    print("\n■ 생성 전 문답 — 이해 요약을 보고 교정한다. "
+          f"끝내려면 «{INTERVIEW_STOP[0]}» (상한 없음)")
+    while True:
+        out = _interview_round(pkg, history)
+        n = len(history) + 1
+        print(f"\n[라운드 {n}] 이해 요약")
+        print(f"   {out['understanding']}")
+        for i, q in enumerate(out.get("questions") or [], 1):
+            print(f"   Q{i}. {q['q']}")
+            print(f"       선택지: {' · '.join(q.get('options') or [])}")
+        try:
+            ans = input("   답/교정 (빈 줄 2회 또는 «진행»이면 종료) > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            ans = INTERVIEW_STOP[0]
+            print(f"   (입력 없음 — {ans})")
+        history.append({"round": n, "understanding": out["understanding"],
+                        "questions": out.get("questions") or [], "answer": ans})
+        if ans.lower() in INTERVIEW_STOP:
+            print(f"   → 사람이 종료했다. 라운드 {n}회 · 생성으로 간다")
+            return history
+        blanks = blanks + 1 if not ans else 0
+        if blanks >= 2:
+            print(f"   → 빈 입력 2연속 — 종료로 읽는다. 라운드 {n}회")
+            return history
+
+
+def cmd_generate(doc_type, layer, samples, hint="", interview=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -432,6 +581,17 @@ def cmd_generate(doc_type, layer, samples, hint=""):
     """
     if registry.lookup(doc_type):
         raise SystemExit(f"[생성] doc_type 이름 중복 — '{doc_type}'은 이미 등록돼 있다")
+
+    # **표본 자리의 비파일을 조용히 무시하지 않는다.** 힌트를 따옴표 없이 적으면
+    # 그 단어들이 표본 목록으로 들어오고, 지금까지는 reader가 「지원하지 않는 포맷」으로
+    # 죽거나 조용히 빠졌다 — 어느 쪽이든 사람은 «힌트를 줬다»고 믿는다.
+    bad = [s for s in samples if not Path(s).is_file()]
+    if bad:
+        raise SystemExit(
+            f"[생성] 표본 자리에 파일이 아닌 값이 있다: {bad}\n"
+            f"        힌트라면 --hint \"…\" 로 준다 (따옴표로 묶는다):\n"
+            f"        python -m cli.register generate {doc_type} {layer} "
+            f"<표본.xlsx> --hint \"{' '.join(str(b) for b in bad)[:60]}\"")
     layers = discover()
     if layer not in layers:                       # ⑵-③ 층 선행 완결
         raise SystemExit(f"[생성] 존재하지 않는 층 '{layer}' — 층 등록(R1)은 국면 2다. "
@@ -440,6 +600,9 @@ def cmd_generate(doc_type, layer, samples, hint=""):
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
     cfg = json.loads((ROOT / "layers" / layer / "config.json").read_text(encoding="utf-8"))
     pkg = {
+        # **첫 키가 읽는 법이다** — 이 파일을 처음 여는 사람이 어디를 볼지 모른다.
+        "_읽는 법": "사람이 볼 것은 human.hint(사람이 준 것)와 "
+                  "system.reader_head(표본 관찰 재료)다. 나머지는 시스템이 채운다",
         "human": {"doc_type": doc_type, "layer": layer,
                   "samples": [str(s) for s in samples], "hint": hint},
         "system": {
@@ -478,6 +641,16 @@ def cmd_generate(doc_type, layer, samples, hint=""):
 
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부)")
     print(f"   입력 패키지: 사람 4 + 시스템 5 → {(d / 'input_package.json').relative_to(ROOT)}")
+
+    if interview:
+        # **문답은 패키지가 선 뒤다** — 문답의 입력이 그 패키지(표본 관찰 재료)다.
+        # 끝나면 전문을 `human.hint`에 구조화해 다시 싣는다: 기록이 없으면 같은
+        # 등록을 재현할 수 없다. **시스템 5키는 그대로다.**
+        rounds = _interview(pkg)
+        pkg["human"]["hint"] = {"text": hint, "interview": rounds}
+        (d / "input_package.json").write_text(
+            json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록")
     proposal = basic_adapter_proposal(samples)
     if proposal:
         print(f"   ▶ 기본 어댑터 적용 제안 — {proposal['reason']}")
@@ -487,8 +660,14 @@ def cmd_generate(doc_type, layer, samples, hint=""):
         raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
                          f"'{doc_type}' 부재 (D-10). 실물 경로는 생성 LLM 훅이다")
     print(f"   초안 수령: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
+    u = llm.usage_total()
+    if u["calls"]:
+        print(f"   LLM 사용량 — 호출 {u['calls']:,}회 · 토큰 {u['total_tokens']:,}"
+              f"(입력 {u['prompt_tokens']:,} · 출력 {u['completion_tokens']:,})"
+              + (f" · **응답 잘림 {u['truncated']}회**" if u["truncated"] else ""))
     _save_state(doc_type, {"doc_type": doc_type, "layer": layer,
-                           "samples": [str(s) for s in samples], "hint": hint,
+                           "samples": [str(s) for s in samples],
+                           "hint": pkg["human"]["hint"],
                            "adapter": str(ad.relative_to(ROOT)),
                            "schema": str(sc.relative_to(ROOT)),
                            "revision": 0, "instructions": [],
@@ -607,6 +786,23 @@ def build_view(st, results, harness_ok, harness_out):
             for k in keys} if pieces else {}
 
     anomalies = []
+    # **부분 리허설은 숨기지 않는다** — 이 화면이 승인 근거다. 앞 200행만 보고
+    # 승인했는데 그 사실이 화면에 없으면, 승인자는 전량을 봤다고 믿는다.
+    reh = {}
+    for r in results:
+        d = r.report.get("rehearsal") or {}
+        if d.get("truncated"):
+            reh = d
+            anomalies.append({
+                "kind": "warning",
+                "message": (f"부분 리허설 — 전 {d['full_rows']:,}행 중 앞 "
+                            f"{d['max_rows']:,}행만 파싱했다. 뒤 구간의 변형은 "
+                            f"관찰되지 않았다"),
+                "where": r.doc_id,
+                "detail": {"full_rows": d["full_rows"], "rehearsed_rows": d["max_rows"],
+                           "note": "전량은 `--rows all`"}})
+            break
+
     if len(st["samples"]) < 2:                     # D-22 확장 문구 — **필수 표시**
         anomalies.append({"kind": "warning", "message": SOLO_WARNING,
                           "where": Path(st["samples"][0]).name,
@@ -639,6 +835,7 @@ def build_view(st, results, harness_ok, harness_out):
         "sections": {
             "parse_result": {
                 "summary": {"samples": len(st["samples"]), "pieces": len(pieces),
+                            "rehearsal": reh,
                             "failures": sum(1 for a in anomalies if a["kind"] == "failure"),
                             "warnings": sum(1 for a in anomalies if a["kind"] == "warning"),
                             "fill_rate": fill},
@@ -657,7 +854,95 @@ def build_view(st, results, harness_ok, harness_out):
     }
 
 
-def cmd_review(doc_type, instruct=None):
+REHEARSAL_ROWS = 200        # 부분 리허설 기본값 — `--rows all`이면 전량
+
+
+def _gateway_ready():
+    """리허설 파싱 **전에** 게이트웨이 왕복 1회. 실패면 그 자리에서 멈춘다(2B ⑥-1).
+
+    이것이 없으면 사내에서 무슨 일이 나나: 리허설 파싱은 좌표 미스 행마다 실호출을
+    한다 — 게이트웨이가 안 닿으면 **타임아웃 60초 × 재시도 × 미스 행 수**를 말없이
+    기다린다. 사용자는 «멈췄다»고 읽고, 실제로 몇 시간을 기다렸다(실측).
+    **판정은 `core/llm.py::probe()`가 한다** — llm-check가 쓰는 그 함수다.
+    """
+    if llm.use_mock():
+        return True
+    print("   게이트웨이 확인 중… (리허설 전 왕복 1회)")
+    stages = llm.probe()
+    bad = [s for s in stages if s["ok"] is False and s["fatal"]]
+    if not bad:
+        ok = [s for s in stages if s["ok"]]
+        print(f"   게이트웨이 OK — {len(ok)}단계 통과")
+        return True
+    s = bad[0]
+    print(f"   ✗ 게이트웨이 {s['id']} {s['label']} 실패")
+    for ln in str(s["detail"]).split("\n"):
+        if ln.strip():
+            print(f"     {ln}")
+    raise SystemExit("[검수] 게이트웨이가 준비되지 않았다 — "
+                     "`python run.py llm-check`로 단계별 원인을 본다. "
+                     "USE_MOCK=1로 돌리면 LLM 없이 리허설만 볼 수 있다")
+
+
+def _coord_misses(results, layer):
+    """좌표가 **닫힌 목록과 정확히 일치하지 않는** 조각을 센다 — LLM을 부르지 않는다.
+
+    이 수가 곧 «LLM 보조를 켜면 몇 회 부르는가»다(tagger는 미스 행마다 pick를 부른다).
+    **몇천 회 호출은 사람이 모르고 시작하면 안 된다** — 그래서 먼저 세고 물어본다.
+    """
+    idx = tagger.surfaces(tagger.closed_list(layer))
+    miss = []
+    for r in results:
+        env = r.envelope or {}
+        for p in (env.get("records") or env.get("chunks") or []):
+            ref = p.get("process_ref")
+            if ref and ref not in idx:
+                miss.append(ref)
+    return miss
+
+
+def _ask_llm_coord(misses, assume=None):
+    """LLM 좌표 보조를 켤지 **묻는다.** 기본은 끈다.
+
+    미스를 그대로 두는 것은 오류가 아니다 — 인입에서 `orphan_anchor` 큐로 가는
+    정상 경로가 있고(문서 4 §4.4), 사람이 자기 리듬으로 처리한다. 반면 켜면
+    **미스 수만큼 실호출**이다.
+    """
+    n = len(misses)
+    if n == 0:
+        return False
+    sample = ", ".join(sorted(set(misses))[:5])
+    print(f"   좌표 미스 {n:,}건 (예: {sample}{' …' if len(set(misses)) > 5 else ''})")
+    if assume is not None:
+        print(f"   → LLM 보조 {'켬' if assume else '끔'} (인자로 지정됨)")
+        return assume
+    if llm.use_mock():
+        return False
+    try:
+        ans = input(f"   LLM 보조를 켜면 최대 {n:,}회 호출한다. 켤까? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""                       # 대화형이 아니면 **끄고 진행**한다
+    on = ans in ("y", "yes")
+    print(f"   → LLM 보조 {'켬' if on else '끔 (미스는 인입에서 orphan_anchor로 간다)'}")
+    return on
+
+
+def _progress(i, total, calls, *, label=""):
+    """진행 한 줄 — **주기 갱신**. 매 행 찍으면 그것이 잡음이 된다.
+
+    보폭은 **최소 50행**이다: 33행짜리 표본까지 한 줄씩 찍으면 화면이 진행 표시로
+    덮여 정작 읽어야 할 이상 신호가 밀려난다(실측). 큰 표본에서는 10회 안팎으로
+    갱신된다. `\r` 덮어쓰기는 터미널일 때만 — 파이프로 받으면 매 줄이 남는다.
+    """
+    stride = max(50, total // 10)
+    if not (i == 1 or i == total or i % stride == 0):
+        return
+    tty = sys.stdout.isatty()
+    print(f"   파싱 {label} · 행 {i:,}/{total:,} · LLM 호출 {calls:,}회",
+          end="\r" if (tty and i < total) else "\n", flush=True)
+
+
+def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
     """② 검수 — 기계 관문 → 뷰 데이터 → HTML. 지시가 오면 **재생성 루프**를 돈다.
 
     **상한은 없다**(§7 규약 2 · A8 — 근거 없는 수치 금지). 매회 지시가 이력에 남고
@@ -687,15 +972,35 @@ def cmd_review(doc_type, instruct=None):
           f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
 
     mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
+
+    _gateway_ready()          # ⑥-1 연결 확인이 먼저다 — 60초×N을 기다리게 하지 않는다
+
+    # ⑥-3 **좌표 미스를 먼저 세고, LLM 보조는 물어보고 켠다.**
+    #     1차는 무LLM(정확 일치 대조만) — 빠르고, 그 결과가 미스 계수의 재료다.
     # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
     # import하지 않는다(P1). 등록 리허설도 운영 파싱과 같은 배선을 탄다.
-    results = [pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"],
-                              summarize=llm.image_summarizer(),
-                             pick_coord=llm.coord_picker())
-               for i, s in enumerate(samples, 1)]
+    def _run(pick):
+        out = []
+        for i, s in enumerate(samples, 1):
+            lbl = f"{i}/{len(samples)} ({Path(s).name})"
+            out.append(pipeline.parse(
+                mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"],
+                summarize=llm.image_summarizer(), pick_coord=pick,
+                max_rows=rows,
+                progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
+        return out
+
+    results = _run(None)
+    misses = _coord_misses(results, st["layer"])
+    if _ask_llm_coord(misses, llm_coord):
+        results = _run(llm.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
+
     for r in results:
+        reh = r.report.get("rehearsal") or {}
+        part = (f" · **부분 리허설** 전 {reh['full_rows']:,}행 중 앞 {reh['max_rows']:,}행"
+                if reh.get("truncated") else "")
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
-              f"조각 {r.report.get('pieces', 0)}")
+              f"조각 {r.report.get('pieces', 0)}{part}")
 
     view = build_view(st, results, ok, out)
     d = _dir(doc_type)
@@ -812,9 +1117,26 @@ def main(argv):
         return cmd_roles(rest)
     if cmd == "generate":
         hint = opt("--hint", "")
-        return cmd_generate(rest[0], rest[1], rest[2:], hint)
+        interview = "--interview" in rest
+        if interview:
+            rest.remove("--interview")
+        return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview)
     if cmd == "review":
-        return cmd_review(rest[0], opt("--instruct"))
+        raw_rows = opt("--rows", str(REHEARSAL_ROWS))
+        if str(raw_rows).lower() == "all":
+            rows = None                      # 전량 — 자르지 않는다
+        else:
+            try:
+                rows = int(raw_rows)
+            except (TypeError, ValueError):
+                raise SystemExit(f"[검수] --rows 는 정수 또는 all 이다: {raw_rows!r}")
+        # 좌표 LLM 보조는 **기본이 「묻는다」**이고, 스크립트용으로만 미리 정한다.
+        coord = True if "--llm-coord" in rest else (
+            False if "--no-llm-coord" in rest else None)
+        for f in ("--llm-coord", "--no-llm-coord"):
+            if f in rest:
+                rest.remove(f)
+        return cmd_review(rest[0], opt("--instruct"), rows=rows, llm_coord=coord)
     if cmd == "confirm":
         return cmd_confirm(rest[0], opt("--by"))
     if cmd == "list":

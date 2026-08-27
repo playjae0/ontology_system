@@ -9,7 +9,7 @@ expects·extract가 있어야 하는데 레포에 없었다(정식 산출은 P2�
 구조는 `cp.py`와 같다 — 두 파일이 doc_type별로 다른 것은 **expects(관찰 상수)**뿐이고
 extract 본체가 같다는 것이 어댑터 계약이 의도한 모양이다(§5: 선언 1개 + 함수 1개).
 """
-import re
+from parser import normalizer
 
 ADAPTER = {
     "doc_type": "pfmea",
@@ -40,43 +40,10 @@ ADAPTER = {
     },
 }
 
-_CELL_RE = re.compile(r"^([A-Z]+)(\d+)$")
 
 
-def _col_to_idx(col):
-    n = 0
-    for ch in col:
-        n = n * 26 + (ord(ch) - 64)
-    return n
-
-
-def _idx_to_col(n):
-    s = ""
-    while n:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s
-
-
-def _expand_merged(cells, merged):
-    for rng in merged:
-        if ":" not in str(rng):
-            continue
-        tl, br = str(rng).split(":", 1)
-        m1, m2 = _CELL_RE.match(tl), _CELL_RE.match(br)
-        if not m1 or not m2:
-            continue
-        c1, r1 = _col_to_idx(m1.group(1)), int(m1.group(2))
-        c2, r2 = _col_to_idx(m2.group(1)), int(m2.group(2))
-        val = cells.get(tl)
-        if val is None:
-            continue
-        for r in range(r1, r2 + 1):
-            for c in range(c1, c2 + 1):
-                key = "%s%d" % (_idx_to_col(c), r)
-                if cells.get(key) in (None, ""):
-                    cells[key] = val
-    return cells
+# 열문자 변환·병합 전개·상동 치환·복수값 전개는 **공용 코어**를 부른다
+# (문서 6 §6.2). 어댑터가 아는 것은 이 문서의 열 위치와 뜻뿐이다.
 
 
 def extract(raw) -> list[dict]:
@@ -84,44 +51,33 @@ def extract(raw) -> list[dict]:
     ints = set(exp.get("int_fields") or ())
     fragments = []
     for sheet in raw.get("sheets", []):
-        cells = _expand_merged(dict(sheet.get("cells", {})), sheet.get("merged", []))
-        prev = {}
+        cells = normalizer.expand_merged(sheet)          # ② 병합 전개 — 공용 코어
+        rows = []
         for row in range(exp["data_start_row"], int(sheet.get("max_row", 0)) + 1):
             rec = {}
             for field, col in exp["columns"].items():
                 raw_v = cells.get("%s%d" % (col, row), "")
-                v = "" if raw_v is None else str(raw_v).strip()
-                if v == exp["ditto_mark"]:
-                    v = prev.get(col, "")
-                if v != "":
-                    prev[col] = v
-                rec[field] = int(v) if (field in ints and v.isdigit()) else v
+                rec[field] = "" if raw_v is None else str(raw_v).strip()
             if all(v == "" for v in rec.values()):
                 continue                     # 빈 행은 **전 열이 빈** 행뿐이다 (C14)
+            rows.append((row, rec))
+
+        # ① 상동 해소 — 공용 코어. **int 변환은 그 뒤다**: `〃`가 숫자 열에 오면
+        # 먼저 변환할 값 자체가 없다.
+        recs, _h = normalizer.resolve_ditto(
+            [r for _n, r in rows], marks={exp["ditto_mark"]})
+
+        for (row, _r0), rec in zip(rows, recs):
             miss = [c for c in exp["required"] if rec.get(c, "") == ""]
             if miss:
                 raise ValueError(f"자기완결 실패 row {row}: 필수 결측 {miss} (C14)")
+            for f in ints:
+                v = rec.get(f)
+                if isinstance(v, str) and v.isdigit():
+                    rec[f] = int(v)
+            rec["source_locator"] = "%s!R%d" % (sheet.get("name", "sheet"), row)
+            fragments.append(rec)
 
-            base = "%s!R%d" % (sheet.get("name", "sheet"), row)
-            expand = None
-            for c in exp["multi_value_fields"]:
-                v = rec.get(c, "")
-                if not isinstance(v, str):
-                    continue
-                for sep in exp["multi_value_seps"]:
-                    if sep in v:
-                        expand = (c, [x.strip() for x in v.split(sep) if x.strip()])
-                        break
-                if expand:
-                    break
-            if not expand or len(expand[1]) <= 1:
-                rec["source_locator"] = base
-                fragments.append(rec)
-            else:
-                col_name, parts = expand
-                for i, part in enumerate(parts, 1):
-                    r2 = dict(rec)
-                    r2[col_name] = part
-                    r2["source_locator"] = "%s#%d" % (base, i)
-                    fragments.append(r2)
+    fragments, _m = normalizer.split_multi(                # ③ 복수값 — 공용 코어
+        fragments, exp["multi_value_fields"], exp["multi_value_seps"])
     return fragments

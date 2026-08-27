@@ -243,6 +243,41 @@ def prompt_version(name):
     raise ValueError(f"{name}.md: 머리말 version: 줄이 없다")
 
 
+# 세션 누계 — `register generate`가 끝에 한 줄로 보고한다. **프로세스 수명 동안만**
+# 산다: 파일로 남기면 «측정»이 아니라 «장부»가 되고, 그것은 이 파일의 일이 아니다.
+USAGE = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+         "total_tokens": 0, "truncated": 0}
+
+
+def usage_total():
+    """세션 누계 스냅샷. 호출부가 화면에 한 줄로 낸다."""
+    return dict(USAGE)
+
+
+def _account(point, raw):
+    """응답 1건의 사용량을 누계에 더하고 로그로 남긴다.
+
+    **게이트웨이가 `usage`를 안 주면 조용히 넘어간다** — OpenAI 호환이라도 필드가
+    선택인 구현이 있다. 다만 `calls`는 언제나 센다: 「몇 번 불렀나」는 usage 없이도
+    알 수 있고, ⑥의 「몇천 회 호출」 문제에서 그 수가 판단 재료다.
+    """
+    USAGE["calls"] += 1
+    u = (raw or {}).get("usage") if isinstance(raw, dict) else None
+    fin = None
+    try:
+        fin = raw["choices"][0].get("finish_reason")
+    except (KeyError, IndexError, TypeError):
+        pass
+    if isinstance(u, dict):
+        for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            v = u.get(k)
+            if isinstance(v, (int, float)):
+                USAGE[k] += int(v)
+    if fin == "length":
+        USAGE["truncated"] += 1
+    log.llm_usage(_LOG, POINTS.get(point, point), u if isinstance(u, dict) else None, fin)
+
+
 def _post(url, payload, key, timeout):
     """게이트웨이 HTTP 1회. 표준 urllib만 쓴다 — 코어 외부 의존 0."""
     req = urllib.request.Request(
@@ -278,6 +313,7 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0)
         try:
             raw = _post(f"{cfg['url']}/chat/completions", payload,
                         cfg["key"], cfg["timeout"])
+            _account(point, raw)          # 파싱 전에 센다 — 잘린 응답도 사용량이다
             text = raw["choices"][0]["message"]["content"]
             return json.loads(text) if json_schema else {"text": text}
         except (urllib.error.URLError, KeyError, IndexError,
@@ -287,6 +323,11 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0)
                          POINTS.get(point, point), attempt + 1,
                          cfg["retry"] + 1, type(e).__name__, e)
             if attempt < cfg["retry"]:
+                # **재시도 중임이 화면에 보여야 한다**(⑥-5) — 로그 레벨이 낮으면
+                # 사람은 «멈췄다»고 읽는다. 실측: 게이트웨이 무응답에서 사용자가
+                # 타임아웃×재시도×건수를 말없이 기다렸다.
+                print(f"   ⏳ 재시도 {attempt + 2}/{cfg['retry'] + 1} — "
+                      f"{POINTS.get(point, point)}: {type(e).__name__}", flush=True)
                 time.sleep(2 ** attempt)
     reason = f"{POINTS.get(point, point)} — 재시도 소진: {type(last).__name__}: {last}"
     log.explicit_fail(_LOG, f"core.llm[{point}]", reason)

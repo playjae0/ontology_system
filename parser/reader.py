@@ -231,7 +231,12 @@ def head(raw, n=12):
     for sh in raw["sheets"]:
         cells = {a: v for a, v in sh["cells"].items()
                  if int("".join(ch for ch in a if ch.isdigit())) <= n}
+        # **`max_row`도 함께 줄인다.** 안 줄이면 어댑터가 원래 행 수까지 훑고,
+        # 잘린 구간의 빈 셀이 «결측»으로 잡혀 **자르지 않았으면 없었을 C14 실패**가
+        # 난다(실측: 병합이 절단면을 걸치면 그 행만 부분적으로 채워진다).
+        # 「앞 N행」은 셀만이 아니라 **시트의 크기**까지의 말이다.
         out.append({**sh, "cells": cells,
+                    "max_row": min(int(sh.get("max_row") or 0), n),
                     "indent": {a: v for a, v in sh["indent"].items()
                                if int("".join(ch for ch in a if ch.isdigit())) <= n}})
     return {**raw, "sheets": out}
