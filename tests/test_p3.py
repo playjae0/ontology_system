@@ -387,6 +387,60 @@ except SystemExit as e:
 show("③ 표본 자리의 비파일을 지목하고 --hint 를 안내한다",
      "힌트문장" in _caught and "--hint" in _caught, _caught.splitlines()[0] if _caught else "")
 
+# ============================================================ B25 골격 확정
+print("\n■ B25 골격 seed 확정 — 확정 없이 쓰이는 경로가 없는가")
+from cli import skeleton as _SK                                     # noqa: E402
+
+# ⓔ **「누가 파일을 쓰느냐」는 검사할 수 없고 「확정 없이 쓰이는 경로가 있느냐」는
+#    검사할 수 있다**(문서 3 §3.7). 레포 코드가 seed 파일을 **쓰기 모드로** 여는
+#    자리를 AST로 센다 — 문자열을 세지 않는다.
+import ast as _ast                                                  # noqa: E402
+_WRITE = {"w", "wb", "a", "ab", "w+", "r+", "x", "xb"}
+_writers = []
+for _p in sorted(ROOT.glob("**/*.py")):
+    _rel = str(_p.relative_to(ROOT))
+    if _rel.startswith(("tests/", "tools/", "docs/")) or "__pycache__" in _rel:
+        continue
+    _src = _p.read_text(encoding="utf-8")
+    if "skeleton" not in _src:
+        continue
+    for _n in _ast.walk(_ast.parse(_src)):
+        # `open(..., "w")` 계열
+        if isinstance(_n, _ast.Call) and getattr(_n.func, "id", "") == "open":
+            _mode = next((a.value for a in _n.args[1:]
+                          if isinstance(a, _ast.Constant)), "r")
+            if _mode in _WRITE and "skeleton" in _ast.dump(_n):
+                _writers.append(f"{_rel}:{_n.lineno} open(mode={_mode})")
+        # `Path(...).write_text/write_bytes`
+        if isinstance(_n, _ast.Call) and getattr(_n.func, "attr", "") in (
+                "write_text", "write_bytes") and "skeleton.json" in _ast.dump(_n):
+            _writers.append(f"{_rel}:{_n.lineno} {_n.func.attr}")
+show("ⓔ 레포 코드에 layers/*/skeleton.json 을 쓰는 경로가 0이다 (B25 기계 판정)",
+     not _writers, str(_writers))
+show("ⓔ 확정 명령 자신도 seed 를 쓰지 않는다",
+     "PREV" in dir(_SK) and _SK.PREV == "skeleton.prev.json"
+     and "skeleton.json" not in _SK.PREV)
+
+# 조건 ① 확정자 · ③ 뷰 대조 우회 불가 — 거부 갈래를 실행으로 잠근다
+def _sc(args, stdin_tty=False):
+    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "skeleton-confirm"]
+                       + args, capture_output=True, text=True, cwd=str(ROOT))
+    return r.returncode, r.stdout + r.stderr
+
+_rc, _o = _sc(["process"])
+show("① --by 없이는 확정하지 않는다 (확정자가 기록에 남아야 확정이다)",
+     _rc != 0 and "--by" in _o)
+_rc, _o = _sc(["process", "--by", "회귀"])
+show("③ 비대화형은 확정하지 않는다 (뷰 대조 우회 불가)",
+     _rc != 0 and "비대화형" in _o and "§3.7" in _o)
+show("③ 그래도 파생 흐름 뷰는 보여 준다 (대조 재료는 낸다)", "[n10]" in _o)
+show("확정 거부 시 기록 파일이 생기지 않는다",
+     not (ROOT / "layers/process/confirmations.json").exists())
+show("골격을 인라인 선언한 층은 대상이 아님을 말한다",
+     "인라인" in _sc(["quality", "--by", "회귀"])[1])
+show("문법 깨진 seed 는 loader 실패 문면으로 멈춘다", _SK.seed_path("process").name
+     == "skeleton.json" and _SK.seed_path("quality") is None)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

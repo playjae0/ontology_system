@@ -1,0 +1,19 @@
+[
+ {
+  "id": "I14 ↔ 문서3 §3.7 규약3 (골격 seed — LLM 초안·사람 확정)",
+  "mirror": {
+   "doc": "1_금지와불변.md",
+   "anchor": "| I14 |",
+   "kind": "row"
+  },
+  "body": {
+   "doc": "3_구조.md",
+   "anchor": "**규약 3 · 골격 — 데이터는 입력이지 산출물이 아니다.**",
+   "kind": "para"
+  },
+  "sealed": {
+   "mirror": "a3429594c2bedce0",
+   "body": "43b6d935b14cc319"
+  }
+ }
+]

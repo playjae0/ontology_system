@@ -142,6 +142,12 @@ def cmd_export(args):
     return main(args)
 
 
+def cmd_skeleton_confirm(args):
+    """골격 seed 확정 — 검증·뷰 대조·기록만. **파일은 사람이 놓는다**(문서 3 §3.7)."""
+    from cli.skeleton import main
+    return main(args)
+
+
 def cmd_llm_check(args):
     """게이트웨이 연결 확인 — 붙었는가를 단계로 끊어 본다(문서 7 §7.6-B)."""
     from cli.llmcheck import main
@@ -170,7 +176,8 @@ if __name__ == "__main__":
      "register": lambda: cmd_register(sys.argv[2:]),
      "show": lambda: cmd_show(sys.argv[2:]),
      "export": lambda: cmd_export(sys.argv[2:]),
-     "llm-check": lambda: cmd_llm_check(sys.argv[2:])}[cmd]()
+     "llm-check": lambda: cmd_llm_check(sys.argv[2:]),
+     "skeleton-confirm": lambda: cmd_skeleton_confirm(sys.argv[2:])}[cmd]()
     # **반환값을 종료 코드로 쓴다.** 안 그러면 실패한 명령이 exit 0으로 끝나
     # 플랫폼·스크립트가 "성공"으로 읽는다 — 실측: `export mermaid quality`가
     # 빈 다이어그램을 내고 0으로 끝났고, 그 뒤 실패 판정을 붙여도 여전히 0이었다.
