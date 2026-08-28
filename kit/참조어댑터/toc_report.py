@@ -1,3 +1,6 @@
+# 원본: tests/fixtures/fixtures/adapters/toc_report.py (외부 LLM 실산출 스냅샷)
+# — prose 계열이라 병합·상동·복수값 로직이 없다: 규약 10 전환 대상이 아니다(B27).
+# 스냅샷 원문은 fixture가 보관한다 — 여기는 **모범 전시장**이다.
 import re
 
 ADAPTER = {

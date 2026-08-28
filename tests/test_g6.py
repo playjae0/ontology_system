@@ -89,8 +89,11 @@ show("등록부 조회 — builtin 1층 + registered 1층 (J10)",
 
 # ops_log 노출 — 실물로 실증한다: I축 연산 1건을 돌리고 열람에 뜨는지 본다
 g = open_graph("process")
+# [B26] Unit이 스코프 카테고리가 되어 auto 노드에 좌표 접두가 붙는다.
+# **이름 전문을 박지 않는다** — 끝이름으로 찾아 접두 변화에 흔들리지 않게 한다.
 nid = next(i for i, n in g.nodes.items()
-           if ops.is_live(n) and n["canonical"] == "주액기" and n["status"] == "auto")
+           if ops.is_live(n) and n["canonical"].split("::")[-1] == "주액기"
+           and n["status"] == "auto")
 ops.rename("process", nid, "주액 설비 (G6 노출 검증)", actor="시험자", reason="4′ 노출 실증")
 ov = PF.ops_view()
 show("ops_log 열람 — I축 연산 이력이 5요소로 뜬다",

@@ -100,9 +100,34 @@ show("④ few-shot 3종 실물 (어댑터 + 매칭 스키마 쌍)",
      all((KIT / "참조어댑터" / f).exists() for f in REFS)
      and all((KIT / "참조어댑터" / f).exists()
              for f in ("ipqc.json", "toc_report.json", "cp.json")))
-drift = [f for f, src in REFS.items()
-         if (KIT / "참조어댑터" / f).read_bytes() != src.read_bytes()]
-show("④ **원본 무손질** — 복사본이 바이트 그대로다 (D-26)", not drift, str(drift))
+# [B27 — 판정필요-13 판정] `kit/참조어댑터/`는 **모범 전시장**이고 스냅샷 보관은
+# fixture 몫이다. 그래서 「바이트 동일」이 아니라 **전시물의 자격**을 잰다 —
+# 어서션을 지우지 않고 표적을 바꾼다. 원본은 fixture에 그대로 남아 있고(아래 ⓒ),
+# 전시물은 규약 10을 지키며 자기 출처를 밝힌다.
+_undeclared = [f for f in REFS
+               if "# 원본:" not in (KIT / "참조어댑터" / f).read_text(encoding="utf-8")]
+show("④ⓑ 전시물이 **출처를 밝힌다** — 머리에 원본 경로 (B27)",
+     not _undeclared, str(_undeclared))
+_selfmade, _nocore = [], []
+for f in REFS:
+    _src = (KIT / "참조어댑터" / f).read_text(encoding="utf-8")
+    if any(k in _src for k in ("def _expand_merged", "def _col_to_idx",
+                               "def _idx_to_col")):
+        _selfmade.append(f)
+    _mod = importlib.util.module_from_spec(
+        importlib.util.spec_from_file_location(f"chk_{f[:-3]}", KIT / "참조어댑터" / f))
+    _mod.__spec__.loader.exec_module(_mod)
+    # **table 계열만 공용 코어 의무다** — prose는 병합·상동·복수값 개념이 없다.
+    if _mod.ADAPTER["payload_kind"] == "table" and \
+            "from parser import normalizer" not in _src:
+        _nocore.append(f)
+show("④ⓐ 전시물에 자기 재구현이 0건이다 (규약 10 — 전 계열)",
+     not _selfmade, str(_selfmade))
+show("④ⓐ table 계열 전시물은 공용 코어를 호출한다 (prose는 의무 없음)",
+     not _nocore, str(_nocore))
+show("④ⓒ 스냅샷 원본은 fixture에 그대로 있다 (1바이트도 손대지 않는다)",
+     all(src.exists() and src.read_bytes() for src in REFS.values()),
+     str({f: src.stat().st_size for f, src in REFS.items()}))
 kinds = {}
 for f in REFS:
     spec = importlib.util.spec_from_file_location(f"ref_{f[:-3]}", KIT / "참조어댑터" / f)

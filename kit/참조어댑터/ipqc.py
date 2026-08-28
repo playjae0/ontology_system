@@ -1,4 +1,9 @@
+# 원본: tests/fixtures/fixtures/adapters/ipqc.py (외부 LLM 실산출 스냅샷)
+# — 규약 10(공용 코어 호출) 전환본. 봉인 43판정 보존·산출 바이트 동일 실측(B27).
+# 스냅샷 원문은 fixture가 보관한다 — 여기는 **모범 전시장**이다.
 import re
+
+from parser import normalizer
 
 ADAPTER = {
     "doc_type": "ipqc",
@@ -41,46 +46,10 @@ ADAPTER = {
     },
 }
 
-_CELL_RE = re.compile(r"^([A-Z]+)(\d+)$")
 
 
-def _col_to_idx(col):
-    n = 0
-    for ch in col:
-        n = n * 26 + (ord(ch) - 64)
-    return n
-
-
-def _idx_to_col(n):
-    s = ""
-    while n:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s
-
-
-def _expand_merged(cells, merged):
-    """병합 범위의 좌상단 값을 범위 내 전 셀에 복제한다(자기완결성 규약 5)."""
-    for rng in merged:
-        try:
-            tl, br = rng.split(":")
-            m1 = _CELL_RE.match(tl)
-            m2 = _CELL_RE.match(br)
-            if not m1 or not m2:
-                continue
-        except ValueError:
-            continue
-        c1, r1 = _col_to_idx(m1.group(1)), int(m1.group(2))
-        c2, r2 = _col_to_idx(m2.group(1)), int(m2.group(2))
-        val = cells.get(tl)
-        if val is None:
-            continue
-        for r in range(r1, r2 + 1):
-            for c in range(c1, c2 + 1):
-                key = "%s%d" % (_idx_to_col(c), r)
-                if key not in cells or cells[key] in (None, ""):
-                    cells[key] = val
-    return cells
+# 열문자 변환·병합 전개·상동 치환·복수값 전개는 **공용 코어**를 부른다
+# (문서 6 §6.4 규약 10). 어댑터가 아는 것은 이 문서의 열 위치와 뜻뿐이다.
 
 
 def extract(raw) -> list[dict]:
@@ -88,8 +57,7 @@ def extract(raw) -> list[dict]:
     exp = ADAPTER["expects"]
     fragments = []
     for sheet in raw.get("sheets", []):
-        cells = dict(sheet.get("cells", {}))
-        _expand_merged(cells, sheet.get("merged", []))
+        cells = normalizer.expand_merged(sheet)          # ② 병합 전개 — 공용 코어
 
         # context 기본값: 문서 정보행에서 파싱 (예: "적용모델(기본): M1")
         default_ctx = ""
@@ -98,36 +66,26 @@ def extract(raw) -> list[dict]:
         if m:
             default_ctx = m.group(1)
 
-        prev = {}  # 열문자 → 직전 실값 (상동 기호 치환용)
+        rows = []
         for row in range(exp["data_start_row"], int(sheet.get("max_row", 0)) + 1):
             rec = {}
             for field, col in exp["columns"].items():
                 v = cells.get("%s%d" % (col, row), "")
-                v = "" if v is None else str(v).strip()
-                if v == exp["ditto_mark"]:
-                    v = prev.get(col, "")
-                if v != "":
-                    prev[col] = v
-                rec[field] = v
+                rec[field] = "" if v is None else str(v).strip()
+            rows.append((row, rec))
 
+        recs, _d = normalizer.resolve_ditto(              # ① 상동 — 공용 코어
+            [r for _n, r in rows], marks={exp["ditto_mark"]})
+
+        for (row, _r0), rec in zip(rows, recs):
             # 검사항목이 없는 행은 record가 아니다
             if rec.get("검사항목", "") == "":
                 continue
-
             if rec.get("context", "") == "":
                 rec["context"] = default_ctx
+            rec["source_locator"] = "%s!R%d" % (sheet.get("name", "sheet"), row)
+            fragments.append(rec)
 
-            base_loc = "%s!R%d" % (sheet.get("name", "sheet"), row)
-
-            # 한 셀 복수값 → 행으로 전개 (locator에 접미사로 유일성 보장)
-            parts = [p.strip() for p in rec[exp["multi_value_field"]].split(exp["multi_value_sep"]) if p.strip()]
-            if len(parts) <= 1:
-                rec["source_locator"] = base_loc
-                fragments.append(rec)
-            else:
-                for i, part in enumerate(parts, 1):
-                    r2 = dict(rec)
-                    r2[exp["multi_value_field"]] = part
-                    r2["source_locator"] = "%s#%d" % (base_loc, i)
-                    fragments.append(r2)
+    fragments, _m = normalizer.split_multi(               # ③ 복수값 — 공용 코어
+        fragments, [exp["multi_value_field"]], [exp["multi_value_sep"]])
     return fragments
