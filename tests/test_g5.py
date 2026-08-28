@@ -69,7 +69,10 @@ full_run()
 # ============================================================ I-1 병합
 print("\n■ I-1 병합 (I2) — 정보 손실 0 · 툼스톤 리다이렉트")
 g = open_graph("process")
-주액기 = nid_of("주액기")
+# [B26] Unit이 스코프 카테고리가 되어 auto 노드도 좌표를 달고 선다.
+# **찾는 것은 노드이지 이름이 아니다** — 아래 병합·분리가 사람이 정하는 canonical
+# (`"주액기"`)은 그대로다(문서 4 §4.5-5 · L7 「canonical은 사람 확정」).
+주액기 = nid_of("패키징::전해액 주액::주액기")
 # 상대 노드는 시나리오가 요구하는 "신규 창작 노드"다 — 같은 실물의 다른 표기.
 새 = g.add_node("주액 설비", "Unit", "auto", provenance=["창작:I-1"],
                 aliases=[{"surface": "주액장치", "provenance": ["창작:I-1"]}],
@@ -139,9 +142,14 @@ half = {"targets": [{"canonical": "주액기", "aliases": ["주액장치"],
 show("잔여가 있으면 실행 거부 + 잔여 목록 출력 (조용한 유실 금지)",
      "잔여" in (refused(ops.split, "process", tgt, half, ACTOR) or ""),
      (refused(ops.split, "process", tgt, half, ACTOR) or "")[:60])
+# **배분표는 실물의 alias를 전수 담아야 한다** — 잔여가 있으면 위 어서션대로
+# 거부된다(조용한 유실 금지). [B26] 병합 흡수로 옛 스코프 canonical이 alias로
+# 강등돼 목록이 늘었으므로, 그것을 정체성을 잇는 쪽(`주액기`)에 배분한다.
+_alias = sorted(a["surface"] for a in node["aliases"])
 plan = {"targets": [
-    {"canonical": "주액기", "aliases": [], "provenance": node["provenance"],
-     "edges": own_edges},
+    {"canonical": "주액기",
+     "aliases": [a for a in _alias if a != "주액장치"],
+     "provenance": node["provenance"], "edges": own_edges},
     {"canonical": "주액 설비", "aliases": ["주액장치"], "provenance": [], "edges": []}]}
 ops.split("process", tgt, plan, ACTOR, reason="다른 실물로 판정")
 g = open_graph("process")

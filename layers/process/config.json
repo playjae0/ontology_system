@@ -30,7 +30,8 @@
   },
   "canonical_scope": {
     "bind_categories": [
-      "Property"
+      "Property",
+      "Unit"
     ],
     "sep": "::"
   },

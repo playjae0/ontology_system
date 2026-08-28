@@ -84,8 +84,13 @@ show("C7 병렬 항목 (context 상이 → 충돌 아님)",
      == {'{"model": "M1"}', '{"model": "M2"}'},
      str([s["context"] for s in specs]))
 
-show("C8·C9 극성 결합 canonical 2노드",
-     {"cathode 노칭 프레스", "anode 노칭 프레스"} <= canon(P))
+# 기대값 이동 [B26]: `Unit`이 `canonical_scope.bind_categories`에 들어와
+# **극성이 이름이 아니라 주소에 실린다** — 부착 노드가 극성 인스턴스면 극성이
+# 스코프에 이미 담기므로 표면형 결합을 생략한다(문서 4 §4.5-3①).
+# **판정의 본체는 그대로다**: 극성별로 노드가 갈리는가.
+show("C8·C9 극성 결합 canonical 2노드 (B26 — 극성이 주소에 실린다)",
+     {"노칭::cathode::노칭 프레스", "노칭::anode::노칭 프레스"} <= canon(P),
+     str(sorted(c for c in canon(P) if "노칭 프레스" in c)))
 show("mirrors 엣지 생성", rel["mirrors"] > 0, str(rel["mirrors"]))
 # 짝은 **polarity 필드**로 찾는다(F3 — 문자열 파싱 폐지). 스코프가 붙은 관리항목의
 # 짝도 찾아야 하며, 못 찾으면 정상 쌍이 비대칭 큐로 새어 나간다.
@@ -120,10 +125,23 @@ _dup = [c for c, k in Counter((n["canonical"], n["category"])
                               for n in P.nodes.values()).items() if k > 1]
 show("canonical 중복 0건 (스코프 없는 Unit은 F1 극성 결합을 유지한다)",
      not _dup, str(_dup))
-show("Unit은 극성이 이름에 실린다 / Property는 주소에 실린다",
-     "anode 초음파 융착기" in canon(P) and "초음파 융착기" in canon(P)
-     and "탭용접::cathode::용접 강도" in canon(P),
-     str(sorted(c for c in canon(P) if "융착" in c)))
+# [B26] 옛 문장은 «Unit은 이름에 · Property는 주소에»였다 — **옛 정체성 모델**이다.
+# 이제 가르는 축은 카테고리가 아니라 **스코프 대상인가**다(문서 4 §4.5-5):
+# 스코프 카테고리는 주소에, 비스코프는 이름에.
+_scoped = set(load_config("process")["canonical_scope"]["bind_categories"])
+_bad = [n["canonical"] for n in P.nodes.values()
+        if n["status"] != "seed" and n["category"] in _scoped
+        and "::" not in n["canonical"]]
+show("스코프 카테고리는 주소에 실린다 (B26 — Property·Unit 둘 다)",
+     not _bad and {"탭용접::cathode::초음파 융착기", "탭용접::초음파 융착기",
+                   "탭용접::cathode::용접 강도"} <= canon(P),
+     str(_bad or sorted(c for c in canon(P) if "융착" in c)))
+show("비스코프 카테고리는 이름에 실린다 (F1 결합 유지)",
+     all("::" not in n["canonical"] for n in P.nodes.values()
+         if n["status"] != "seed" and n["category"] not in _scoped
+         and n["category"] != "Process"),
+     str(sorted({n["category"] for n in P.nodes.values()
+                 if n["status"] != "seed"} - _scoped)))
 # 기대값 이동 [P1 §0 — A11-9 ⓪ 하강 부착]: C8·C9는 좌표가 **개념**(`노칭`)이고 극성이
 # 확정이라 이제 `노칭::cathode`·`노칭::anode` 인스턴스로 하강해 부착한다. 그래서
 # canonical이 F1 결합형(`노칭::cathode 노칭 정밀도`)에서 스코프형으로 이동했다.
@@ -211,9 +229,11 @@ p5 = [c for c in ch["chunks"].values()
       if c["doc_id"] == "PPT01" and c["source_locator"] == "PPT01-C005"]
 show("P5 linked=false 보존 (개체 없는 청크도 버리지 않는다)",
      p5 and p5[0]["linked"] is False)
+# 기대값 이동 [B26]: Unit이 스코프 카테고리라 auto 노드도 좌표를 달고 선다.
 show("P6 신규 entity auto 생성 + 큐 ('주액기')",
-     any(n["canonical"] == "주액기" and n["status"] == "auto"
-         for n in P.nodes.values()) and len(q("auto_node")) > 0)
+     any(n["canonical"] == "패키징::전해액 주액::주액기" and n["status"] == "auto"
+         for n in P.nodes.values()) and len(q("auto_node")) > 0,
+     str(sorted(c for c in canon(P) if "주액기" in c)))
 show("describes 연결 생성", len(ch["describes"]) > 0, f"{len(ch['describes'])}건")
 
 # ============================================================ n3
@@ -238,7 +258,8 @@ show("S2 — 관계 후보 출력 (K1 causes)",
 show("S13 — orphan_attach 0건", len(q("orphan_attach")) == 0,
      str([x["reason"] for x in q("orphan_attach")]))
 nozzle = [n for n in P.nodes.values() if "노즐 세척 주기" in n["canonical"]]
-juaek = [nid for nid, n in P.nodes.items() if n["canonical"] == "주액기"]
+juaek = [nid for nid, n in P.nodes.items()
+         if n["canonical"] == "패키징::전해액 주액::주액기"]
 show("S13 — attach가 다른 청크(L1)의 개체로 붙어 has_property 생성",
      nozzle and juaek and any(
          e["src"] == juaek[0] and e["rel"] == "has_property"
@@ -400,6 +421,91 @@ _res, _ref, _g = {"설비": "N1"}, "NREF", P
 show("엣지 끝점 `@process_ref`가 from·to 양쪽에서 같게 해소된다",
      _endpoint("@process_ref", _res, _ref, _g, {}, P, "T")[0] == _ref
      and _endpoint("설비", _res, _ref, _g, {}, P, "T")[0] == "N1")
+
+# ============================================================ B26 — Unit 스코프
+# **B26의 목적 그 자체**: 노칭의 커터와 탭용접의 커터는 다른 실물이다.
+# 스코프가 없으면 canonical이 같아 한 노드로 병합되고 part_of가 양쪽에 걸린다
+# (실측 — 좌표를 바꿔 두 번 해소해 같은 id가 나왔다 · 문서 4 §4.5-5).
+print("\n■ B26 — Unit이 스코프 카테고리다 (같은 이름, 다른 공정 = 다른 노드)")
+from core.ids import norm as _norm                              # noqa: E402
+_cfg = load_config("process")
+_g26 = open_graph("process")
+_b26 = Builder(_g26, _cfg, None, "B26", "process")
+_cut = {p: _b26.resolve_entity("커터", "Unit", "B26-1", parent_canonical=p)
+        for p in ("노칭", "탭용접")}
+show("★ 같은 Unit 표면형을 두 공정 좌표로 해소하면 **다른 노드**다",
+     _cut["노칭"] != _cut["탭용접"],
+     " / ".join(f"{k}={_g26.get(v)['canonical']}" for k, v in _cut.items()))
+show("★ canonical에 각자의 공정 좌표가 실린다",
+     _g26.get(_cut["노칭"])["canonical"] == "노칭::커터"
+     and _g26.get(_cut["탭용접"])["canonical"] == "탭용접::커터")
+# **엣지는 실물 빌드로 판정한다** — `resolve_entity`는 노드를 세울 뿐이고
+# part_of는 스키마 edges 선언이 만든다(합성 호출로는 재지 못한다).
+_uparents = {}
+for _n in P.nodes.values():
+    if _n["category"] != "Unit":
+        continue
+    _uparents[_n["canonical"]] = sorted(
+        P.get(e["dst"])["canonical"] for e in P.edges
+        if e["src"] == _n["id"] and e["rel"] == "part_of")
+show("★ part_of가 **자기 좌표의 공정에만** 걸린다 (양쪽에 걸리지 않는다)",
+     all(len(v) <= 1 and (not v or k.rsplit("::", 1)[0] == v[0])
+         for k, v in _uparents.items()),
+     str(_uparents))
+show("★ 같은 이름의 Unit이 공정 수만큼 갈린다 (노칭 프레스 3 · 초음파 융착기 2)",
+     len([c for c in _uparents if c.endswith("노칭 프레스")]) == 3
+     and len([c for c in _uparents if c.endswith("초음파 융착기")]) == 2,
+     str(sorted(_uparents)))
+
+# ⓐ 극성 상속 — 부모가 극성 인스턴스면 극성이 **주소에** 담기고 표면형 결합을
+#    생략한다(문서 4 §4.5-3① — 스코프 카테고리 한정).
+_polu = [n for n in P.nodes.values()
+         if n["category"] == "Unit" and n["polarity"] in ("cathode", "anode")]
+show("ⓐ 부모가 극성 인스턴스면 polarity를 상속한다",
+     _polu and all(n["canonical"].split("::")[-2] == n["polarity"] for n in _polu),
+     str(sorted(f"{n['canonical']}({n['polarity']})" for n in _polu)))
+show("ⓐ 표면형 결합을 생략한다 — 이름부에 극성이 없다 (이중 결합 방지)",
+     all(not n["canonical"].split("::")[-1].startswith(("cathode ", "anode "))
+         for n in _polu),
+     str([n["canonical"].split("::")[-1] for n in _polu]))
+show("ⓐ 부모가 개념 노드면 극성 없음 (F1 결합 대상이 아니다)",
+     all(n["polarity"] == "none" for n in P.nodes.values()
+         if n["category"] == "Unit" and n["canonical"].count("::") == 1),
+     str([(n["canonical"], n["polarity"]) for n in P.nodes.values()
+          if n["category"] == "Unit" and n["canonical"].count("::") == 1]))
+
+# ⓑ mirrors 페어링 — 접두가 이름부 파싱과 얽히지 않는가
+_upairs = [(a["canonical"], b["canonical"])
+           for e in P.edges if e["rel"] == "mirrors"
+           for a, b in [(P.get(e["src"]), P.get(e["dst"]))]
+           if a and b and a["category"] == "Unit"]
+show("ⓑ 스코프 접두가 붙은 극성 유닛 쌍도 자동 페어링된다",
+     any({"cathode", "anode"} == {P.get(e["src"])["polarity"], P.get(e["dst"])["polarity"]}
+         for e in P.edges if e["rel"] == "mirrors"
+         and P.get(e["src"]) and P.get(e["src"])["category"] == "Unit"),
+     str(_upairs))
+show("ⓑ 짝 키의 이름부가 접두를 포함하지 않는다 (mirror_name은 자기 이름부만)",
+     all("::" not in (n.get("mirror_name") or "") for n in P.nodes.values()),
+     str([n["canonical"] for n in P.nodes.values()
+          if "::" in (n.get("mirror_name") or "")][:3]))
+
+# ⓒ alias·질의 — 접두 없는 표면형으로 링킹된다
+_np = [n for n in P.nodes.values() if n["canonical"] == "노칭::노칭 프레스"]
+show("ⓒ 스코프 노드가 접두 없는 원형 표면형을 alias로 등재한다",
+     _np and "노칭 프레스" in {a["surface"] for a in _np[0]["aliases"]},
+     str(sorted(a["surface"] for a in _np[0]["aliases"])) if _np else "노드 없음")
+show("ⓒ 접두 없는 질의가 사전으로 링킹된다 (후보 여럿이면 후보 목록 경로)",
+     len(store.read(store.DICTIONARY, {}).get(_norm("노칭 프레스")) or []) >= 1,
+     str(store.read(store.DICTIONARY, {}).get(_norm("노칭 프레스"))))
+
+# ⓓ 재인입 멱등 — 새 스코프 id로도 중복 0
+_before = len(P.nodes)
+full_run()
+_g2 = open_graph("process")
+_dup26 = [c for c, k in Counter((n["canonical"], n["category"])
+                                for n in _g2.nodes.values()).items() if k > 1]
+show("ⓓ 재인입이 새 스코프 id로 멱등이다 (중복 노드 0)",
+     not _dup26 and len(_g2.nodes) == _before, f"{_before} → {len(_g2.nodes)} · {_dup26}")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G3 완료판정 충족" if allok else "FAIL")
