@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import importlib.util
+import ast
 import json
 import os
 import re
@@ -288,6 +289,42 @@ def _dump_prompt(doc_type, text):
     return out
 
 
+def _strip_module_doc(src):
+    """모듈 docstring을 떼고 그 뒤만 돌려준다 — **위치로 판정한다.**
+
+    스켈레톤 머리의 「사람용 안내」(빈칸 상태 FAIL 4건 실측 등)는 **킷을 고치는
+    사람이 읽을 것**이지 생성 세션이 읽을 것이 아니다. `_strip_kit_notes`와 같은
+    원리이되 판정 기준이 다르다: 저기는 **스스로 표시한 문면**을, 여기는
+    **구문상의 자리**(모듈 docstring)를 본다.
+
+    **내용 문자열로 판정하지 않는다** — 「FAIL 4건」 같은 낱말을 세면 안내를 고칠
+    때마다 이 코드가 따라 움직이고, 안내가 바뀌면 조용히 안 떼어진다.
+    """
+    tree = ast.parse(src)
+    doc = ast.get_docstring(tree, clean=False)
+    if doc is None or not tree.body:
+        return src
+    first = tree.body[0]
+    if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)):
+        return src
+    lines = src.split("\n")
+    return "\n".join(lines[first.end_lineno:]).lstrip("\n")
+
+
+def _reference_adapter(samples):
+    """표본의 **reader 형식**으로 few-shot 전시물 1종을 고른다.
+
+    payload_kind는 아직 생성 세션이 판정하기 전이다 — 그래서 이미 아는 것으로
+    고른다: reader가 무엇으로 읽었는가. 혼재면 **첫 표본** 기준이다(둘을 다 실으면
+    프롬프트가 두 배가 되고, 어느 쪽이 모범인지도 흐려진다).
+    """
+    first = str(samples[0]).lower() if samples else ""
+    name = "toc_report.py" if first.endswith((".pptx", ".ppt")) else "cp.py"
+    p = KIT / "참조어댑터" / name
+    return name, (p.read_text(encoding="utf-8") if p.exists() else "")
+
+
 def _newest_template():
     """`kit/`의 생성 프롬프트 템플릿 중 **가장 높은 판**을 고른다.
 
@@ -363,8 +400,17 @@ def _render_template(text, pkg):
                   hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",
                   text)
 
+    # **참조 어댑터 few-shot**(B29 ★②) — 표본의 reader 형식으로 1종을 고른다.
+    # 전시물 머리의 출처 표기(B27)는 **함께 싣는다**: 킷 유지 규칙이 아니라
+    # 전시물의 일부이고, 「이것은 다른 문서의 것」이라는 사실 자체가 지시다.
+    _name, _body = _reference_adapter(
+        (pkg.get("human") or {}).get("samples") or [])
+    ref_md = (f"```python\n# ── {_name} (kit/참조어댑터/{_name})\n{_body}```"
+              if _body else "(참조 어댑터를 찾지 못했다 — kit/참조어댑터/ 확인)")
+
     layers = voc.get("layers") or []
-    for mark, val in (("{{층_이름}}", str(voc.get("layer") or "")),
+    for mark, val in (("{{참조_어댑터}}", ref_md),
+                      ("{{층_이름}}", str(voc.get("layer") or "")),
                       ("{{존재하는_층_목록}}", " · ".join(f"`{x}`" for x in layers)),
                       ("{{카테고리_정의문}}", cat_md),
                       ("{{관계_패턴_표}}", rel_md),
@@ -632,7 +678,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False):
                                  "relation_patterns": cfg.get("relation_patterns")},
             "blocks": json.loads((ROOT / "schemas" / "blocks.json")
                                  .read_text(encoding="utf-8")),
-            "adapter_skeleton": str((KIT / "어댑터_스켈레톤.py").relative_to(ROOT)),
+            # **경로가 아니라 본문을 싣는다**(B29 ★①) — 경로만 보내면 생성 세션이
+            # 그 파일을 열 수 없어 뼈대를 **작문**하게 된다. 실측: 전송분의 extract가
+            # 시그니처와 docstring에서 끝났다. 시스템 키는 **5 그대로**다 — 값의
+            # 형태만 바뀐다(문서 6 §6.5 표).
+            "adapter_skeleton": _strip_module_doc(
+                (KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8")),
         },
     }
     d = _dir(doc_type)

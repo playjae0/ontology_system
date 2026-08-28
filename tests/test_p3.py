@@ -441,6 +441,48 @@ show("골격을 인라인 선언한 층은 대상이 아님을 말한다",
 show("문법 깨진 seed 는 loader 실패 문면으로 멈춘다", _SK.seed_path("process").name
      == "skeleton.json" and _SK.seed_path("quality") is None)
 
+# ============================================================ B29 조립 프롬프트
+# **전송분을 직접 잰다.** 지금까지 「킷 주석 0·`{{` 0」은 수동 탐침이었고 어서션이
+# 아니었다 — 조립이 조용히 어긋나도 회귀가 몰랐다. 네 항을 함께 세운다.
+print("\n■ B29 — 조립된 전송 프롬프트 (스켈레톤 본문 · 참조 어댑터 few-shot)")
+_pkg29 = json.loads((ROOT / "review/ipqc/input_package.json").read_text(encoding="utf-8")) \
+    if (ROOT / "review/ipqc/input_package.json").exists() else None
+if _pkg29 is None:
+    # 패키지만 필요하다 — 초안 수령은 fixture 소관이라 여기서 SystemExit로 끝난다
+    # (D-10). 패키지는 그 전에 이미 파일로 서 있다.
+    try:
+        R.cmd_generate("b29probe", "process",
+                       [str(ROOT / "tests/fixtures/raw/IPQC01.xlsx")], "")
+    except SystemExit:
+        pass
+    _pkg29 = json.loads(
+        (ROOT / "review/b29probe/input_package.json").read_text(encoding="utf-8"))
+_sent = R._render_template(
+    R._newest_template().read_text(encoding="utf-8"), _pkg29)
+
+show("ⓐ 스켈레톤 **본문**이 실렸다 (경로 문자열이 아니다)",
+     "from parser import normalizer" in _sent
+     and "normalizer.expand_merged(sheet)" in _sent,
+     f"{len(_sent):,}B")
+show("ⓐ 스켈레톤의 **사람용 안내**는 실리지 않는다 (모듈 docstring 위치로 판정)",
+     "FAIL 4건" not in _sent and "빈칸 상태로 하네스에 넣으면" not in _sent)
+show("ⓑ 참조 어댑터가 few-shot으로 실렸다 — ADAPTER 선언 2개 (스켈레톤 1 + 전시물 1)",
+     _sent.count("ADAPTER = {") == 2, str(_sent.count("ADAPTER = {")))
+show("ⓑ 전시물은 표본의 **reader 형식**으로 고른다 (xlsx·csv → cp · pptx → toc_report)",
+     R._reference_adapter(["a.xlsx"])[0] == "cp.py"
+     and R._reference_adapter(["a.csv"])[0] == "cp.py"
+     and R._reference_adapter(["a.pptx"])[0] == "toc_report.py",
+     str([R._reference_adapter([x])[0] for x in ("a.xlsx", "a.csv", "a.pptx")]))
+# **기존 두 항이 스켈레톤 본문·전시물이 실려도 깨지지 않는지** — 그것이 이 항의 일이다.
+show("치환 누락 0 (`{{` 잔존 0) — 주입 자리가 늘어도 유지된다", "{{" not in _sent)
+show("킷 유지 주석 0 — 전시물 머리의 출처 표기는 킷 주석이 아니다",
+     not any(m in _sent for m in R.KIT_NOTE) and "# 원본:" in _sent)
+show("조립은 결정적이다 (같은 패키지 → 같은 전송분)",
+     _sent == R._render_template(
+         R._newest_template().read_text(encoding="utf-8"), _pkg29))
+show("시스템 키는 5 그대로다 (값의 형태만 바뀌었다)", len(_pkg29["system"]) == 5,
+     str(list(_pkg29["system"])))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
