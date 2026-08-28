@@ -31,6 +31,13 @@ from parser.reader import read
 ROLES = {"anchor", "entity", "attribute", "content", "meta"}
 BANNED_IMPORTS = {"requests", "urllib", "httpx", "openai", "anthropic", "socket"}
 
+# 규약 10(B31) — 자기완결 연산을 어댑터가 재구현하면 여기서 잡는다.
+# **AST로 함수 정의를 본다**(문자열 검색이 아니다): 주석·docstring에 이름이 나오는
+# 것과 실제로 정의한 것은 다르고, 이 프로젝트는 문자열을 세어 있는 것처럼 보고한
+# 실사고를 겪었다.
+SELFMADE = {"_expand_merged", "_col_to_idx", "_idx_to_col", "_col", "_resolve_ditto",
+            "_split_multi", "_ditto", "_expand_multi"}
+
 # 구조 필드 — role 배정 대상이 아닌 것들(C17). 공용 블록이 선언하지 **않는** 것만 여기 둔다.
 # `process_group`·`process_ref`·`process_no`·`source_locator`는 `schemas/blocks.json`이
 # 소유하므로 아래에 중복해 적지 않는다 — 적어 두면 블록 파일이 바뀌어도 하네스가 모른다.
@@ -90,6 +97,36 @@ def load_adapter(path):
             imports.add(n.module.split(".")[0])
     show("순수 함수 계약 — 네트워크/LLM 호출 없음 (§5 규약 2)",
          not (imports & BANNED_IMPORTS), str(sorted(imports & BANNED_IMPORTS)))
+
+    # 규약 10 (B31) — 공용 코어 호출 의무. **기계가 사람 앞에 선다.**
+    defs = {n.name for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    remade = sorted(defs & SELFMADE)
+    show("규약 10 — 자기완결 연산을 재구현하지 않았다 (parser.normalizer 몫)",
+         not remade,
+         (f"재구현 정의 {remade} — 병합/상동/복수값/열변환은 "
+          f"normalizer.expand_merged·resolve_ditto·split_multi를 부른다") if remade else "")
+    _kind = None
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign) and any(
+                getattr(x, "id", "") == "ADAPTER" for x in n.targets) and \
+                isinstance(n.value, ast.Dict):
+            for k, v in zip(n.value.keys, n.value.values):
+                if getattr(k, "value", None) == "payload_kind":
+                    _kind = getattr(v, "value", None)
+    # **table 계열만 의무다** — prose에는 병합·상동·복수값 개념이 없다.
+    #
+    # **호출을 센다 — 문자열이 아니다.** `"normalizer" in src`로 재면 머리 주석의
+    # 「규약 10(공용 코어 호출)」 같은 문면이 잡혀, normalizer를 하나도 부르지 않는
+    # 어댑터가 통과한다(실측: 검체 nocore가 그렇게 PASS했다). import는 있는데
+    # 부르지 않는 것도 구현이 아니다 — 이 레포의 규율 그대로다.
+    calls = sorted({n.func.attr for n in ast.walk(tree)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and getattr(n.func.value, "id", "") == "normalizer"})
+    show("규약 10 — table 계열은 parser.normalizer를 **부른다** (prose는 의무 없음)",
+         _kind != "table" or bool(calls),
+         f"payload_kind={_kind} · 호출 {calls or '0건'}")
     spec = importlib.util.spec_from_file_location("gen_adapter", path)
     mod = importlib.util.module_from_spec(spec)
     try:

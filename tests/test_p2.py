@@ -153,10 +153,28 @@ for name, (sealed, args) in SEALED.items():
     old, new = verdicts(sealed.read_text(encoding="utf-8")), verdicts(out)
     lost = [k for k in old if new[k] < old[k]]
     added = [k for k in new if new[k] > old.get(k, 0)]
-    show(f"{name}: 봉인 43판정이 전건 보존 (사라진 판정 0)", not lost, str(lost))
-    show(f"{name}: 추가는 use_blocks 전개 1종뿐 · FAIL 0",
-         added == ["use_blocks 전개"] and "[FAIL]" not in out,
-         f"{sum(old.values())} → {sum(new.values())}")
+    # [B31] **판정 수는 늘 수 있다.** 하네스에 규약 10 판정 2종이 들어왔고,
+    # 앞으로도 기계 관문은 자란다. 봉인이 보증하는 것은 **「사라진 판정 0 ·
+    # 기존 판정 전건 보존 · FAIL 0」**이지 판정의 개수가 아니다 — 개수를 못박으면
+    # 관문을 강화할 때마다 봉인이 깨져, 봉인이 개선을 막는 자리가 된다.
+    show(f"{name}: 봉인 {sum(old.values())}판정이 전건 보존 (사라진 판정 0)",
+         not lost, str(lost))
+    # **「FAIL 0」의 범위는 봉인분이다.** 새 관문이 옛 스냅샷을 옳게 붉히는 것은
+    # 봉인 위반이 아니다 — 봉인은 「그때 이 산출이 이 판정들을 통과했다」의 기록이고,
+    # 나중에 생긴 기준까지 소급해 보증하지 않는다. 반대로 보증 범위를 전체로 두면
+    # **관문을 강화할 때마다 봉인이 깨져 봉인이 개선을 막는다.**
+    _fails = [ln.strip() for ln in out.splitlines() if "[FAIL]" in ln]
+    _sealed_fail = [ln for ln in _fails
+                    if any(k in ln for k in old)]
+    show(f"{name}: 봉인분 판정에 FAIL 0 (새 관문의 FAIL은 범위 밖)",
+         not _sealed_fail and all(new.get(k, 0) >= v for k, v in old.items()),
+         f"{sum(old.values())} → {sum(new.values())} (추가 {added})")
+    # **새 관문의 FAIL은 숨기지 않는다** — 그것이 옛 스냅샷의 실태다.
+    if _fails and not _sealed_fail:
+        print(f"           ※ 봉인 밖 판정 {len(_fails)}건 FAIL — "
+              f"{[ln.split(']')[1].strip()[:40] for ln in _fails]}")
+        print(f"             (B27 이전 스냅샷이라 규약 10을 지키지 않는다 — "
+              f"fixture는 손대지 않는다 · D-26)")
     if name == "ipqc":
         anchor = re.search(r"anchor=(\d+)", out)
         show("§4.4 결함 해소 — 좌표를 블록에 위임한 스키마도 anchor가 드라이런된다",

@@ -101,7 +101,7 @@ def cmd_build(args):
     pkg = {"doc_type": doc_type, "samples": []}
     for s in samples:
         raw = reader.read(s)
-        pkg["samples"].append({"path": s, "head": reader.head(raw, 12)})
+        pkg["samples"].append({"path": s, "head": reader.head(raw)})
         print(f"   {Path(s).name}: {raw['format']} · "
               f"{len(raw.get('sheets') or raw.get('slides') or [])} 단위")
     (outdir / "input_package.json").write_text(

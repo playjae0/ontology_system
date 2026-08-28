@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,7 @@ sys.path.insert(0, str(ROOT / "kit"))
 from cli import register as R                              # noqa: E402
 from core import init, registry, store                           # noqa: E402
 from core.bootstrap import bootstrap                       # noqa: E402
-from parser import pipeline                                # noqa: E402
+from parser import pipeline, reader                        # noqa: E402
 
 allok = True
 RAW = ROOT / "tests" / "fixtures" / "raw"
@@ -92,9 +93,13 @@ show("① 초안은 fixture가 반환한다 (USE_MOCK — D-10·D-26)",
 r = run("review", "toc_report", "--instruct", "공정명 헤딩 레벨을 2단까지만 잡아라")
 show("② 검수 — 기계 관문(하네스)이 사람 앞에 선다",
      "기계 관문(하네스): PASS" in r.stdout and r.returncode == 0)
+# **판정 수를 박지 않는다** — 기계 관문은 자란다(B31이 2종을 더했다). 박아 두면
+# 관문을 강화할 때마다 이 줄이 깨져, 어서션이 개선을 막는 자리가 된다.
+_m = re.search(r"기계 관문\(하네스\): PASS — (\d+) PASS / (\d+) FAIL", r.stdout)
 show("② 하네스는 kit 실물을 **호출**한다 (재작성 아님)",
      "run_adapter.py" in (ROOT / "cli/register.py").read_text(encoding="utf-8")
-     and "45 PASS" in r.stdout)
+     and _m and int(_m.group(1)) >= 45 and int(_m.group(2)) == 0,
+     _m.group(0) if _m else "관문 줄 없음")
 v = view_of("toc_report")
 SCHEMA = json.loads((ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
 show("② 뷰 데이터가 D-79 스키마를 따른다 (3구획 · 구획 1은 3층)",
@@ -160,9 +165,15 @@ print("\n■ S15 정형 등록 — ipqc 2부 · 봉인 정답표 대조")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
     "--hint", "16열 검사 성적서")
 r = run("review", "ipqc")
-show("ipqc 2부 검수 통과 — 기계 관문 PASS · 조각 33+20",
-     "기계 관문(하네스): PASS" in r.stdout and "조각 33" in r.stdout
-     and "조각 20" in r.stdout)
+# [B31] **관문이 새로 생겨 이 fixture를 막는다 — 그것이 관문이 도는 증거다.**
+# mock 초안은 fixture를 그대로 돌려주고(D-10) 그 fixture는 **B27 이전 스냅샷**이라
+# 규약 10을 지키지 않는다. 파싱·배정표·봉인 대조는 그대로 돌지만 기계 관문은
+# FAIL이고, 그래서 **확정(S15 뒤)이 막힌다** — 판정필요-14로 신고했다.
+show("[B31] 기계 관문이 규약 10 미준수 fixture를 막는다 (관문이 실제로 돈다)",
+     "기계 관문(하네스): FAIL" in r.stdout,
+     [l.strip() for l in r.stdout.splitlines() if "기계 관문" in l][:1])
+show("ipqc 2부 파싱은 그대로 돈다 — 조각 33+20 (관문과 파싱은 다른 축)",
+     "조각 33" in r.stdout and "조각 20" in r.stdout)
 v = view_of("ipqc")
 roles = {x["field"]: x["role"] for x in v["sections"]["role_table"]}
 
@@ -217,19 +228,29 @@ show("UNMAPPABLE은 **질문 형태**로 이상 신호에 뜬다 (§7 규약 5)"
      q and "어디에 배정합니까" in q[0]["message"], f"{len(q)}건")
 show("UNMAPPABLE 열은 스키마 fields에 없고 어댑터 출력에도 없다 (D-30)",
      "최근 불량 이력" not in json.loads(
-         (ROOT / registry.lookup("ipqc")["schema"]).read_text(encoding="utf-8"))["fields"]
-     if registry.lookup("ipqc") else True)
+         (ROOT / registry.lookup("toc_report")["schema"]).read_text(encoding="utf-8"))["fields"]
+     if registry.lookup("toc_report") else True)
 
 show("2부면 1부 경고가 뜨지 않는다 (표본 수가 판정한다)",
      not [a for a in v["sections"]["parse_result"]["anomalies"]
           if "변형 미관찰" in a["message"]])
 
+# [B31 · 판정필요-14] ipqc fixture는 규약 10 미준수라 **관문이 확정을 막는다.**
+# 그것이 관문의 일이다 — 확정은 기계 관문 PASS를 전제한다(§6.5).
 r = run("confirm", "ipqc", "--by", "검수자 한지우")
-show("S15 확정 — 등록부 등재 + approval.json",
-     r.returncode == 0 and registry.lookup("ipqc")["status"] == "registered"
-     and (REVIEW / "ipqc" / "approval.json").exists())
+show("[B31] 관문 FAIL이면 확정이 막힌다 (미준수 어댑터가 등재되지 않는다)",
+     r.returncode != 0 and not registry.lookup("ipqc"))
+
+# [B31 이관] ipqc는 규약 10 미준수라 확정이 막히므로(판정필요-14), **여기서 다시
+# 확정해** 뒤 구획(3소비자)이 볼 등재분을 세운다 — 앞선 확정은 지문 스캔 탐침이
+# 등록부를 비운 뒤라 남아 있지 않다. 커버리지를 잃지 않기 위한 이관이다.
+# 이 구획은 앞과 **다른 환경**에서 돈다(탐침이 review/·등록부를 새로 세운다).
+# 그래서 여기서 준수 doc_type을 처음부터 세워 확정까지 잇는다.
+run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"), "--hint", "목차형")
+run("review", "toc_report")
+run("confirm", "toc_report", "--by", "검수자 한지우")
 show("이름 중복은 거부한다 (조회가 어느 쪽을 답할지 정해지지 않는다)",
-     run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx")).returncode != 0)
+     run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx")).returncode != 0)
 show("존재하지 않는 층 지정은 거부한다 (층 선행 완결 — ⑵-③ · R1은 국면 2)",
      run("generate", "새유형", "없는층", str(RAW / "IPQC01.xlsx")).returncode != 0)
 
@@ -237,7 +258,7 @@ show("존재하지 않는 층 지정은 거부한다 (층 선행 완결 — ⑵-
 print("\n■ 등록부 3소비자 — 같은 실물을 읽는다 (장부는 하나다)")
 from core.ingest import load_schema                          # noqa: E402
 show("① M2 조회(인입) — 등록된 doc_type의 스키마를 찾는다",
-     (load_schema("ipqc") or {}).get("doc_type") == "ipqc")
+     (load_schema("toc_report") or {}).get("doc_type") == "toc_report")
 show("① 미등록은 None — 인입이 명시적으로 실패한다 (G6.5 B3)",
      load_schema("없는유형") is None)
 from cli.scan import adapters                                # noqa: E402
@@ -249,10 +270,11 @@ show("② preflight(n9 지문 스캔) — 등록부의 어댑터가 대조 대�
 out = subprocess.run([sys.executable, "-m", "cli.platform", "doctypes"],
                      capture_output=True, text=True, cwd=str(ROOT)).stdout
 show("③ 플랫폼 노출 — 같은 등록부를 열람한다 (D-67 계보)",
-     "ipqc" in out and "status=registered" in out and "승인=검수자 한지우" in out)
+     "toc_report" in out and "status=registered" in out
+     and "승인=검수자 한지우" in out)
 registered = json.loads(store.path(store.DOC_TYPES).read_text(encoding="utf-8"))
 show("셋이 같은 실물을 본다 — 등록부 파일 하나 (data/doc_types.json)",
-     store.path(store.DOC_TYPES).exists() and set(registered) == {"ipqc"},
+     store.path(store.DOC_TYPES).exists() and set(registered) == {"toc_report"},
      str(sorted(registered)))
 show("층 등록부와는 다른 장부다 — 목적이 다르면 장부도 다르다 (D-8)",
      set(store.read(store.REGISTRY, {})) == {"process", "quality"})
@@ -482,6 +504,69 @@ show("조립은 결정적이다 (같은 패키지 → 같은 전송분)",
          R._newest_template().read_text(encoding="utf-8"), _pkg29))
 show("시스템 키는 5 그대로다 (값의 형태만 바뀌었다)", len(_pkg29["system"]) == 5,
      str(list(_pkg29["system"])))
+
+# ============================================================ 등록 2차 개선
+print("\n■ B30·B32·B34 — 문답 어휘 주입 · 크기 손잡이 · 관찰 범위")
+from core import llm                                        # noqa: E402
+from core.bootstrap import load_config                      # noqa: E402
+
+# ① B32 — 문답 system에 판정 어휘가 이어 붙는다. **정본은 생성 템플릿 하나다.**
+_voc = R._vocab_excerpt(_pkg29)
+show("① 문답 system 발췌에 role 어휘 구획이 실린다",
+     "UNMAPPABLE" in _voc and "## [role 어휘" in _voc, f"{len(_voc):,}B")
+show("① 발췌에 **지정 층의 카테고리 이름**이 실린다 (렌더 뒤 앵커)",
+     all(c in _voc for c in load_config("process")["categories"]),
+     str(list(load_config("process")["categories"])))
+show("① 구획 셋이 전부 실린다 (role 어휘 · 비배정 필드 · 층 어휘)",
+     all(s in _voc for s in R.VOCAB_SECTIONS), str(R.VOCAB_SECTIONS))
+# **금지된 것은 이름의 등장이 아니라 정의의 복제다.** iv-2.0은 role 이름을
+# 「뒤에 어휘가 붙어 온다」는 전제와 선택지 표기로만 쓴다 — 그것은 포인터이지
+# 정의가 아니다. 정의가 두 곳에 살면 한쪽이 낡고, 그때 문답이 묻는 어휘와 생성이
+# 쓰는 어휘가 갈린다.
+_iv = llm.prompt("interview")
+_defs = ("| role | 뜻 | 판별 |", "그 필드의 값으로 그래프에 수행하는 쓰기 동작",
+         "이것에 대해 더 말할 게 생기는가")
+show("① interview.md는 어휘를 **가리키기만** 한다 (정의는 생성 템플릿 하나가 갖는다)",
+     not any(d in _iv for d in _defs) and any(d in _voc for d in _defs),
+     str([d for d in _defs if d in _iv]))
+
+# ② B30 — 전시물 손잡이. 스켈레톤 본문은 유지된다.
+# **재현 조건은 `hint` 안에 산다** — 사람 4키를 늘리지 않기 위해(D-101과 같은 자리).
+_pkg_off = dict(_pkg29)
+_pkg_off["human"] = {**_pkg29["human"],
+                     "hint": {"text": "", "no_fewshot": True}}
+_off = R._render_template(R._newest_template().read_text(encoding="utf-8"), _pkg_off)
+_on = R._render_template(R._newest_template().read_text(encoding="utf-8"), _pkg29)
+show("② --no-fewshot이면 ADAPTER 선언이 1개다 (스켈레톤뿐)",
+     _off.count("ADAPTER = {") == 1 and _on.count("ADAPTER = {") == 2,
+     f"끔 {_off.count('ADAPTER = {')} / 켬 {_on.count('ADAPTER = {')}")
+show("② 끄더라도 스켈레톤 **본문**은 남는다 (규약 문면과 뼈대는 유지)",
+     "normalizer.expand_merged(sheet)" in _off and len(_off) < len(_on),
+     f"{len(_off):,}B < {len(_on):,}B")
+_h_off = _pkg_off["human"]["hint"]
+show("② 끈 사실이 패키지에 기록되되 **사람 4키는 그대로다** (재현 조건)",
+     _h_off.get("no_fewshot") is True
+     and set(_pkg_off["human"]) == {"samples", "doc_type", "layer", "hint"},
+     str(sorted(_pkg_off["human"])))
+
+# ④ⓐ 판 꼬리표 소거 — **같은 유형 세 번째다**(v0.5 잔재·v0.6 정리·이번)
+show("④ 전송분에 판 꼬리표가 없다 (`[v0.` 0건)", "[v0." not in _on,
+     str([l for l in _on.split("\n") if "[v0." in l][:2]))
+
+# ⑤ⓑ 그래프 입장 시험 발췌
+show("⑤ 전송분에 그래프 입장 시험이 실린다 (질문 시험·의심스러우면 내린다)",
+     "질문 시험" in _on and "의심스러우면 내린다" in _on and "충돌 시험" in _on)
+show("⑤ 정본이 문서 2임을 병기한다 (발췌가 갈리면 문서 2가 이긴다)",
+     "문서 2" in _on and "이긴다" in _on)
+show("⑤ 문답 발췌에도 함께 실린다 (B32 배선이 role 구획을 나른다)",
+     "질문 시험" in _voc and "의심스러우면 내린다" in _voc)
+
+# ⑥ B34 — 관찰 범위 20
+show("⑥ 관찰 범위 기본값이 20이다 (다단 헤더에서 12줄은 얕다)",
+     reader.OBSERVE_ROWS == 20 and
+     max(int("".join(ch for ch in a if ch.isdigit()))
+         for a in (_pkg29["system"]["reader_head"][0]["head"]["sheets"][0]["cells"])) <= 20,
+     str(reader.OBSERVE_ROWS))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
