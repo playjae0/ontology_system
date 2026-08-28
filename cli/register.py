@@ -21,6 +21,7 @@
   python cli/register.py generate <doc_type> <층> <표본...> [--hint "..."] [--interview]
        --hint       자유 텍스트. 표본만으로 안 보이는 것을 적는다("3~7행 병합은 위 값 채움")
        --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
+       --no-fewshot 참조 어댑터 주입을 끈다(스켈레톤 본문은 유지) — 컨텍스트가 좁을 때
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -403,10 +404,19 @@ def _render_template(text, pkg):
     # **참조 어댑터 few-shot**(B29 ★②) — 표본의 reader 형식으로 1종을 고른다.
     # 전시물 머리의 출처 표기(B27)는 **함께 싣는다**: 킷 유지 규칙이 아니라
     # 전시물의 일부이고, 「이것은 다른 문서의 것」이라는 사실 자체가 지시다.
-    _name, _body = _reference_adapter(
-        (pkg.get("human") or {}).get("samples") or [])
+    _human = pkg.get("human") or {}
+    # **끈 사실이 패키지에 남는다**(B30) — 재현 조건이다. 같은 표본으로 다시 돌려도
+    # 이 값이 없으면 왜 전시물이 빠졌는지 되짚을 수 없다.
+    _hint = _human.get("hint")
+    _off = isinstance(_hint, dict) and _hint.get("no_fewshot")
+    _name, _body = ("(없음)", "") if _off else \
+        _reference_adapter(_human.get("samples") or [])
     ref_md = (f"```python\n# ── {_name} (kit/참조어댑터/{_name})\n{_body}```"
-              if _body else "(참조 어댑터를 찾지 못했다 — kit/참조어댑터/ 확인)")
+              if _body else
+              "(이번 조립은 참조 어댑터를 싣지 않았다 — `--no-fewshot`. "
+              "규약 10의 실물이 없으므로 규약 문면과 스켈레톤 뼈대만 보고 낸다)"
+              if _off else
+              "(참조 어댑터를 찾지 못했다 — kit/참조어댑터/ 확인)")
 
     layers = voc.get("layers") or []
     for mark, val in (("{{참조_어댑터}}", ref_md),
@@ -493,6 +503,9 @@ def _draft_live(doc_type, revision):
     system = _render_template(_newest_template().read_text(encoding="utf-8"),
                               json.loads(raw_pkg))
     _dump_prompt(doc_type, system)          # ONTO_DUMP_PROMPT=1일 때만
+    _msgs = [{"role": "system", "content": system},
+             {"role": "user", "content": raw_pkg}]
+    _sent_size(_msgs, f"생성 초안 {doc_type}")
     out = llm.chat(
         # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
         # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
@@ -553,6 +566,50 @@ INTERVIEW_SCHEMA = {
 INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
 
 
+VOCAB_SECTIONS = ("## [role 어휘", "## [role 배정 대상이 아닌 필드", "## [층 어휘")
+
+
+def _vocab_excerpt(pkg):
+    """생성 템플릿에서 **판정 어휘 세 구획**을 발췌한다 (B32).
+
+    **두 지시문에 같은 어휘를 따로 적지 않는다** — 정본은 생성 템플릿 하나이고,
+    문답 지시문(`prompts/interview.md`)에는 *"판정 어휘가 뒤에 붙어 온다"*는 전제만
+    있다. 따로 적으면 한쪽이 낡고, 그때 문답이 묻는 어휘와 생성이 쓰는 어휘가
+    갈린다 — 이 프로젝트가 세 번 실측한 미러 실패의 구조다.
+
+    **발췌는 구획 제목 앵커로** 한다: 렌더 뒤라 층 이름이 이미 치환돼 있어
+    (`## [층 어휘 — quality 층]`) 접두 일치가 유일하게 안전한 판정이다.
+    """
+    doc = _render_template(_newest_template().read_text(encoding="utf-8"), pkg)
+    lines = doc.split("\n")
+    starts = [i for i, ln in enumerate(lines)
+              if any(ln.startswith(s) for s in VOCAB_SECTIONS)]
+    out = []
+    for i in starts:
+        j = next((k for k in range(i + 1, len(lines))
+                  if lines[k].startswith("## [")), len(lines))
+        out.append("\n".join(lines[i:j]).rstrip())
+    return "\n\n".join(out)
+
+
+def _sent_size(msgs, label):
+    """전송 크기를 화면에 1줄 (B30) — **부르기 직전에** 잰다.
+
+    게이트웨이 컨텍스트를 넘기면 응답이 잘리는 게 아니라 **요청이 거부된다** —
+    `finish_reason=length` 경고는 응답 쪽이라 그것을 잡지 못한다. 사람이 보내기
+    전에 크기를 알아야 전시물을 끄든 표본을 줄이든 판단할 수 있다.
+    """
+    sys_b = sum(len(m["content"].encode("utf-8"))
+                for m in msgs if m["role"] == "system")
+    usr_b = sum(len(m["content"].encode("utf-8"))
+                for m in msgs if m["role"] != "system")
+    tot = sys_b + usr_b
+    # 한글 혼재 기준의 **거친 어림**이다(3바이트/토큰) — 정밀 계수는 게이트웨이 몫.
+    print(f"   [전송] {label} — system {sys_b:,}B + user {usr_b:,}B "
+          f"= {tot:,}B (약 {tot // 3:,} 토큰)", flush=True)
+    return tot
+
+
 def _interview_round(pkg, history):
     """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
 
@@ -579,9 +636,14 @@ def _interview_round(pkg, history):
                               [{"q": "병합된 좌측 열은 어떻게 다루나",
                                 "options": ["위 값 채움", "행 독립", "모름"]}])}
 
-    convo = [{"role": "system", "content": llm.prompt("interview")},
+    # **판정 어휘를 이어 붙인다**(B32) — 문답이 role·층 어휘를 모른 채 물으면
+    # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
+    convo = [{"role": "system",
+              "content": llm.prompt("interview") + "\n\n---\n\n"
+                         + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
                  {"입력_패키지": pkg, "지난_문답": history}, ensure_ascii=False)}]
+    _sent_size(convo, f"문답 라운드 {len(history) + 1}")
     return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
 
 
@@ -618,7 +680,8 @@ def _interview(pkg):
             return history
 
 
-def cmd_generate(doc_type, layer, samples, hint="", interview=False):
+def cmd_generate(doc_type, layer, samples, hint="", interview=False,
+                 no_fewshot=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -650,9 +713,14 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False):
         "_읽는 법": "사람이 볼 것은 human.hint(사람이 준 것)와 "
                   "system.reader_head(표본 관찰 재료)다. 나머지는 시스템이 채운다",
         "human": {"doc_type": doc_type, "layer": layer,
-                  "samples": [str(s) for s in samples], "hint": hint},
+                  "samples": [str(s) for s in samples],
+                  # **끈 사실을 기록하되 사람 4키를 늘리지 않는다**(B30 재현 조건 ·
+                  # 문서 6 §6.5 표). `hint`가 「사람이 준 것」의 자리이므로 그 안에
+                  # 싣는다 — 문답 전문을 같은 자리에 실은 D-101과 같은 규칙이다.
+                  "hint": ({"text": hint, "no_fewshot": True}
+                           if no_fewshot else hint)},
         "system": {
-            "reader_head": [{"path": str(s), "head": reader.head(reader.read(str(s)), 12)}
+            "reader_head": [{"path": str(s), "head": reader.head(reader.read(str(s)))}
                             for s in samples],
             # **원천은 골격 닫힌 목록 스냅샷의 지정 층 몫이다**(문서 6 §6.7 킷 #1 ·
             # 문서 1 M21) — 층 자산 `layers/{층}/skeleton.json`을 읽지 않는다.
@@ -1171,7 +1239,11 @@ def main(argv):
         interview = "--interview" in rest
         if interview:
             rest.remove("--interview")
-        return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview)
+        no_few = "--no-fewshot" in rest
+        if no_few:
+            rest.remove("--no-fewshot")
+        return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview,
+                            no_fewshot=no_few)
     if cmd == "review":
         raw_rows = opt("--rows", str(REHEARSAL_ROWS))
         if str(raw_rows).lower() == "all":
