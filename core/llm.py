@@ -72,8 +72,35 @@ POINTS = {
 
 
 def use_mock():
-    """mock 갈래인가. **판독은 이 함수 하나가 한다** — 지점마다 읽으면 갈린다."""
-    return os.environ.get("USE_MOCK", "1") == "1"
+    """mock 갈래인가. **판독은 이 함수 하나가 한다** — 지점마다 읽으면 갈린다.
+
+    **환경변수 > 설정 파일 > mock**(B42 · `config()`와 같은 우선순위). 설정 파일을
+    지원하는 이유는 실측이다 — 운영자가 `llm.json`을 만들어 두고도 `USE_MOCK`을
+    export하지 않아 mock 고정 문안을 실호출 오동작으로 읽었다. **읽는 곳은
+    여전히 여기 하나다.**
+
+    둘 다 없으면 mock이다(조항 B12 — 외부 의존 0으로 전 경로가 돈다).
+    """
+    v = os.environ.get("USE_MOCK")
+    if v is None or v == "":
+        try:
+            v = _from_file()[0].get("USE_MOCK")
+        except NotConfigured:
+            v = None        # 설정 파일이 깨진 것은 config()가 시끄럽게 말한다
+    return "1" if v is None else str(v) == "1"
+
+
+def mode_line():
+    """LLM을 부를 수 있는 화면 명령의 **머리 한 줄**(B42 ⑤).
+
+    실측: 설정 파일을 만든 운영자가 **mock 문답의 고정 문안을 실호출 오동작으로
+    읽었다.** 어느 갈래로 도는지가 화면 첫 줄에 없으면 사람은 자기가 켠 줄 안다.
+    """
+    if use_mock():
+        return ('모드: mock (기본 — 실호출은 llm.json의 "USE_MOCK": 0 또는 '
+                'USE_MOCK=0)')
+    src, _warn = file_state()
+    return f"모드: 실호출 (게이트웨이 설정: {src or '환경변수'})"
 
 
 def mock(point, detail=""):
@@ -354,6 +381,24 @@ def mock_state():
     `os.environ`을 열면 수렴점이 둘이 된다.
     """
     return f"USE_MOCK={'1' if use_mock() else '0'}"
+
+
+def context_limit():
+    """컨텍스트 한도 — **설정 파일의 선택 키**(B41). 없으면 `None`이고 대조는 생략된다.
+
+    **기본값을 코드에 박지 않는다.** 게이트웨이마다 다르고, 박아 둔 수치는 틀렸을 때
+    「보내도 되는데 막는」 쪽으로도 「막아야 하는데 보내는」 쪽으로도 조용히 틀린다.
+    운영자가 자기 게이트웨이의 수치를 적을 때만 대조가 산다.
+    """
+    try:
+        v = os.environ.get("LLM_CONTEXT_TOKENS") or _from_file()[0].get(
+            "LLM_CONTEXT_TOKENS")
+    except NotConfigured:
+        return None
+    try:
+        return int(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
 
 
 def key_state():
