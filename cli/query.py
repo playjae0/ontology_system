@@ -236,4 +236,5 @@ def render(res):
 
 
 if __name__ == "__main__":
+    print(f"  {llm.mode_line()}")          # B42 ⑤
     print(generate(answer(" ".join(sys.argv[1:]))))

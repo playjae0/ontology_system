@@ -616,7 +616,7 @@ def _vocab_excerpt(pkg):
     return "\n\n".join(out)
 
 
-def _sent_size(msgs, label):
+def _sent_size(msgs, label, _n_samples=1):
     """전송 크기를 화면에 1줄 (B30) — **부르기 직전에** 잰다.
 
     게이트웨이 컨텍스트를 넘기면 응답이 잘리는 게 아니라 **요청이 거부된다** —
@@ -629,8 +629,23 @@ def _sent_size(msgs, label):
                 for m in msgs if m["role"] != "system")
     tot = sys_b + usr_b
     # 한글 혼재 기준의 **거친 어림**이다(3바이트/토큰) — 정밀 계수는 게이트웨이 몫.
+    est = tot // 3          # 한글 혼재의 거친 어림 — 정밀 계수는 게이트웨이 몫
+    lim = llm.context_limit()
     print(f"   [전송] {label} — system {sys_b:,}B + user {usr_b:,}B "
-          f"= {tot:,}B (약 {tot // 3:,} 토큰)", flush=True)
+          f"= {tot:,}B (약 {est:,} 토큰"
+          + (f" / 한도 {lim:,})" if lim else ")"), flush=True)
+    if lim and est > lim:
+        # **초과면 보내지 않고 멈춘다** — 컨텍스트 초과는 응답이 잘리는 게 아니라
+        # 요청이 거부되고, 그 거부는 게이트웨이마다 문면이 달라 원인이 안 보인다.
+        # 감축 수단을 **순서대로** 낸다: 싸고 손실 적은 것부터.
+        raise SystemExit(
+            f"[전송] 예산 초과 — 약 {est:,} 토큰 > 한도 {lim:,}. 보내지 않았다.\n"
+            f"   감축 순서:\n"
+            f"     ① --no-fewshot        참조 어댑터 주입을 끈다 (약 −2,100 토큰)\n"
+            f"     ② 프로파일 대표값 축소   parser/profile.py의 FULL_LIST_MAX·"
+            f"SAMPLE_VALUES를 줄인다 (열당 약 −30 토큰)\n"
+            f"     ③ 표본 부수 축소        표본 1부당 약 −{usr_b // 3 // max(1, _n_samples):,} 토큰\n"
+            f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다")
     return tot
 
 
@@ -793,6 +808,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     (d / "input_package.json").write_text(
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+    print(f"  {llm.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부)")
     print(f"   입력 패키지: 사람 4 + 시스템 5 → {(d / 'input_package.json').relative_to(ROOT)}")
 
@@ -1159,6 +1175,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
             print(f"   재생성 {st['revision']}회째 → {ad.relative_to(ROOT)}")
 
     samples = st["samples"]
+    print(f"  {llm.mode_line()}")          # B42 ⑤
     print(f"■ ② 검수 — {doc_type} (표본 {len(samples)}부)")
     ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples)
     print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "

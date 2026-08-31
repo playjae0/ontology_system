@@ -73,6 +73,8 @@ def cmd_ingest(paths, finalize=True, allow_duplicate=False):
 
 
 def cmd_all():
+    from core import llm
+    print(f"  {llm.mode_line()}")          # B42 ⑤
     cmd_bootstrap()
     from core import fixtures
     # **없으면 조용히 아무것도 안 하지 않는다** — 구판은 빈 glob로 0건 인입하고
@@ -93,6 +95,8 @@ def cmd_all():
 def cmd_query(args):
     """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다."""
     from cli.query import answer, generate
+    from core import llm
+    print(f"  {llm.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
     print(generate(answer(" ".join(args))))
 
 

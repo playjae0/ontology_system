@@ -576,17 +576,21 @@ _pr = _PF.profile(_sh, header_row=3, data_start=4)
 show("① 전 행을 센다 — 앞 N줄이 아니다 (창 밖의 사실을 준다)",
      _pr["전체_행수"] == 30 and _pr["열수"] == 10,
      f"{_pr['전체_행수']}행 {_pr['열수']}열")
+# [B40 ③] 대표값 자리는 고유값 수에 따라 `대표값` 또는 `고유값_전목록`이다.
+def _vals(c):
+    return c.get("고유값_전목록") or c.get("대표값") or []
 show("① 열별 통계 6종이 실린다",
      all(k in _pr["열"]["G"] for k in
-         ("비지_않은_행수", "고유값수", "빈셀비율", "대표값", "형태", "기계제안")))
+         ("비지_않은_행수", "고유값수", "빈셀비율", "형태", "기계제안"))
+     and _vals(_pr["열"]["G"]))
 show("① 허브 실측과 일치 — 규격 고유 29 · 설비 9 · 적용모델 2행",
      _pr["열"]["G"]["고유값수"] == 29 and _pr["열"]["E"]["고유값수"] == 9
      and _pr["열"]["J"]["비지_않은_행수"] == 2,
      f"G={_pr['열']['G']['고유값수']} E={_pr['열']['E']['고유값수']} "
      f"J={_pr['열']['J']['비지_않은_행수']}")
-show("① 대표값은 길이를 자른다 (프롬프트가 부풀지 않게)",
-     all(len(v) <= _PF.SAMPLE_CHARS
-         for c in _pr["열"].values() for v in c["대표값"]))
+show("① 값은 길이를 자른다 (프롬프트가 부풀지 않게)",
+     all(len(v.split('"')[1]) <= _PF.SAMPLE_CHARS
+         for c in _pr["열"].values() for v in _vals(c) if '"' in v))
 show("① **결정적이다** — 두 번 계산해 같다",
      _PF.profile(_sh, header_row=3, data_start=4) == _pr)
 show("① 좌표 열을 모르면 좌표기준_변동성을 내지 않는다 (추측한 통계 금지)",
@@ -628,6 +632,59 @@ show("ⓑ 시스템 키는 5 그대로다 (프로파일은 그릇 안의 항목)
      len(_pkg39["system"]) == 5
      and "열_프로파일" in _pkg39["system"]["reader_head"][0],
      str(list(_pkg39["system"])))
+
+# ============================================================ B40~B42
+print("\n■ B40·B41·B42 — 행 번호 병기 · 예산 대조 · 설정 파일 USE_MOCK")
+_sh40 = reader.read(str(ROOT / "tests/fixtures/raw/CP01.xlsx"))["sheets"][0]
+_a40 = _PF.profile(_sh40)                                   # 헤더 미상
+_b40 = _PF.profile(_sh40, header_row=3, data_start=4)       # 헤더 확정
+
+# ① 행 번호 병기 — 헤더 여부가 값으로 자명해진다
+_avals = _a40["열"]["A"].get("고유값_전목록") or _a40["열"]["A"]["대표값"]
+show("① 대표값에 출현 행 번호가 병기된다",
+     all(v.startswith(tuple("0123456789")) and "행 " in v for v in _avals),
+     str(_avals[:2]))
+show("① 헤더 행이 값으로 자명해진다 (1행에만 있는 값)",
+     any(v.startswith("3행") or v.startswith("1행") for v in _avals))
+show("① 연속 행은 구간으로 접는다 (목록이 길어지지 않게)",
+     _PF._ranges([4, 5, 6, 9]) == "4~6,9" and _PF._ranges([1]) == "1")
+
+# ② 헤더 확정 시 재계산
+show("② 헤더 확정이 프로파일을 바꾼다 (고유값·헤더행_제외)",
+     _a40["헤더행_제외"] is False and _b40["헤더행_제외"] is True
+     and _b40["열"]["A"]["고유값수"] < _a40["열"]["A"]["고유값수"],
+     f"A {_a40['열']['A']['고유값수']} → {_b40['열']['A']['고유값수']}")
+
+# ③ 고유값이 적으면 전부 나열
+show("③ 고유값 ≤ 임계면 전 목록을 낸다 (대표값 몇 개가 아니라)",
+     len(_b40["열"]["E"]["고유값_전목록"]) == _b40["열"]["E"]["고유값수"] == 9,
+     f"{_b40['열']['E']['고유값수']}개 전량")
+show("③ 고유값이 많으면 대표값만 낸다 (프롬프트가 부풀지 않게)",
+     "대표값" in _b40["열"]["G"] and len(_b40["열"]["G"]["대표값"]) <= _PF.SAMPLE_VALUES,
+     f"G 고유 {_b40['열']['G']['고유값수']} → 대표 {len(_b40['열']['G']['대표값'])}")
+show("③ 임계는 가결정 상수 하나다 (D-105)", isinstance(_PF.FULL_LIST_MAX, int))
+
+# ④ 설정 파일 USE_MOCK — 환경변수가 이긴다 · 읽는 곳은 하나
+import os as _os                                                    # noqa: E402
+show("④ 환경변수가 설정 파일을 이긴다",
+     (lambda: (_os.environ.__setitem__("USE_MOCK", "1"), llm.use_mock())[1])() is True)
+show("④ 판독은 use_mock() 하나다 (읽는 곳을 늘리지 않았다)",
+     sum(1 for f in (ROOT / "core").glob("*.py")
+         for ln in f.read_text(encoding="utf-8").splitlines()
+         if 'environ.get("USE_MOCK"' in ln) == 1)
+show("④ 기본은 mock이다 (둘 다 없으면 — 조항 B12)",
+     llm.use_mock() is True)
+
+# ⑤ 모드 줄 — LLM을 부를 수 있는 화면 명령 머리
+show("⑤ mock이면 켜는 법을 함께 말한다", 'llm.json' in llm.mode_line()
+     and "mock" in llm.mode_line())
+for _f, _n in ((ROOT / "cli/register.py", "register"), (ROOT / "run.py", "run")):
+    show(f"⑤ {_n} 이 모드 줄을 낸다", "mode_line()" in _f.read_text(encoding="utf-8"))
+
+# B41 예산 — 한도가 없으면 대조하지 않는다
+show("⑥ 컨텍스트 한도는 **선택**이다 — 기본값을 코드에 박지 않았다",
+     llm.context_limit() is None
+     and "LLM_CONTEXT_TOKENS" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

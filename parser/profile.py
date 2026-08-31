@@ -17,8 +17,11 @@ from collections import Counter, defaultdict
 
 # ── 기계 제안의 임계 (가결정 — DECISIONS D-104 · 실측 후 조정 대상) ──────
 SPARSE_EMPTY_RATIO = 0.7      # 빈 셀이 이 비율을 넘으면 「판정 보류 제안」
-SAMPLE_VALUES = 4             # 대표값 개수
-SAMPLE_CHARS = 30             # 대표값 1개의 최대 길이
+SAMPLE_VALUES = 4             # 대표값 개수 (고유값이 많을 때)
+SAMPLE_CHARS = 30             # 값 1개의 최대 길이
+# **고유값이 적으면 전부 나열한다**(B40 ③) — 20행 원문과 전 목록을 둘 다 본다.
+# 대표값 몇 개로는 「이 열이 반복인가」가 보여도 「무엇이 반복되는가」가 안 보인다.
+FULL_LIST_MAX = 10            # 가결정 — 실측 후 조정 (D-105)
 SEQ_PATTERN = re.compile(r"^\s*(no\.?|#)?\s*\d{1,6}\s*$", re.I)
 NUM_UNIT = re.compile(r"^\s*[±<>~]?\s*-?\d+(\.\d+)?\s*[^\d\s]{0,6}\s*$")
 
@@ -43,6 +46,19 @@ def columns(sheet, *, header_row=None, data_start=None):
             continue
         out[col].append((row, str(v).strip()))
     return dict(out)
+
+
+def _ranges(rows):
+    """행 번호를 구간으로 접는다 — `1` · `4~33` · `2,5,9`. 목록이 길어지지 않게."""
+    rows = sorted(rows)
+    out, i = [], 0
+    while i < len(rows):
+        j = i
+        while j + 1 < len(rows) and rows[j + 1] == rows[j] + 1:
+            j += 1
+        out.append(str(rows[i]) if i == j else f"{rows[i]}~{rows[j]}")
+        i = j + 1
+    return ",".join(out[:4]) + ("…" if len(out) > 4 else "")
 
 
 def _shape(vals):
@@ -94,23 +110,35 @@ def profile(sheet, *, header_row=None, data_start=None, coord_col=None):
     coord_var = _coord_variation(colvals, coord_col, total)
 
     prof = {}
+    excluded = bool(header_row or data_start)
     for col in sorted(colvals, key=lambda c: (len(c), c)):
         vals = [v for _r, v in colvals[col]]
         uniq = Counter(vals)
         filled = len(vals)
-        rep = [v[:SAMPLE_CHARS] for v, _ in uniq.most_common(SAMPLE_VALUES)]
+        rows_of = defaultdict(list)
+        for r, v in colvals[col]:
+            rows_of[v].append(r)
+        full = len(uniq) <= FULL_LIST_MAX
+        picked = (sorted(uniq, key=lambda v: (-len(rows_of[v]), rows_of[v][0]))
+                  if full else [v for v, _ in uniq.most_common(SAMPLE_VALUES)])
+        rep = [f'{_ranges(rows_of[v])}행 "{v[:SAMPLE_CHARS]}"' for v in picked]
         item = {
             "비지_않은_행수": filled,
             "고유값수": len(uniq),
             "빈셀비율": round(1 - filled / total, 2) if total else 0.0,
-            "대표값": rep,
+            # **행 번호를 병기한다**(B40 ①) — 헤더를 포함해 세더라도 「1행에만 있는
+            # 값」이 헤더임이 값으로 자명해진다. 헤더 행을 추측하지 않고도 읽힌다.
+            ("고유값_전목록" if full else "대표값"): rep,
             "형태": _shape(vals),
             "기계제안": _suggest(filled, len(uniq), total, vals),
         }
         if coord_var and col in coord_var:
             item["좌표기준_변동성"] = coord_var[col]
         prof[col] = item
-    return {"전체_행수": total, "열수": len(prof), "열": prof}
+    # **헤더 제외 여부를 값으로 싣는다**(B40 ②) — 힌트·문답으로 헤더가 확정되면
+    # 호출부가 `header_row`를 주고, 그때 이 값이 True로 바뀐다. 추측하지 않는다.
+    return {"전체_행수": total, "열수": len(prof), "헤더행_제외": excluded,
+            "열": prof}
 
 
 def _suggest(filled, uniq, total, vals):
