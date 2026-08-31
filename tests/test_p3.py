@@ -568,6 +568,67 @@ show("⑥ 관찰 범위 기본값이 20이다 (다단 헤더에서 12줄은 얕�
          for a in (_pkg29["system"]["reader_head"][0]["head"]["sheets"][0]["cells"])) <= 20,
      str(reader.OBSERVE_ROWS))
 
+# ============================================================ B39 열 프로파일
+print("\n■ B39 — 열 프로파일 · 3단 깔때기 (무LLM · 결정적)")
+from parser import profile as _PF                                   # noqa: E402
+_sh = reader.read(str(ROOT / "tests/fixtures/raw/CP01.xlsx"))["sheets"][0]
+_pr = _PF.profile(_sh, header_row=3, data_start=4)
+show("① 전 행을 센다 — 앞 N줄이 아니다 (창 밖의 사실을 준다)",
+     _pr["전체_행수"] == 30 and _pr["열수"] == 10,
+     f"{_pr['전체_행수']}행 {_pr['열수']}열")
+show("① 열별 통계 6종이 실린다",
+     all(k in _pr["열"]["G"] for k in
+         ("비지_않은_행수", "고유값수", "빈셀비율", "대표값", "형태", "기계제안")))
+show("① 허브 실측과 일치 — 규격 고유 29 · 설비 9 · 적용모델 2행",
+     _pr["열"]["G"]["고유값수"] == 29 and _pr["열"]["E"]["고유값수"] == 9
+     and _pr["열"]["J"]["비지_않은_행수"] == 2,
+     f"G={_pr['열']['G']['고유값수']} E={_pr['열']['E']['고유값수']} "
+     f"J={_pr['열']['J']['비지_않은_행수']}")
+show("① 대표값은 길이를 자른다 (프롬프트가 부풀지 않게)",
+     all(len(v) <= _PF.SAMPLE_CHARS
+         for c in _pr["열"].values() for v in c["대표값"]))
+show("① **결정적이다** — 두 번 계산해 같다",
+     _PF.profile(_sh, header_row=3, data_start=4) == _pr)
+show("① 좌표 열을 모르면 좌표기준_변동성을 내지 않는다 (추측한 통계 금지)",
+     all("좌표기준_변동성" not in c for c in _pr["열"].values()))
+_cv = _PF.profile(_sh, header_row=3, data_start=4, coord_col="C")
+show("① 좌표 열을 주면 변동성을 낸다",
+     any("좌표기준_변동성" in c for c in _cv["열"].values()))
+
+# ② 기계 제안 — 판정이 아니라 재료
+_sug = _PF.summary(_pr)
+show("② 기계 제안이 분류를 낸다 (판정 대상/보류/meta/UNMAPPABLE)",
+     "role 판정 대상" in _sug and sum(_sug.values()) == _pr["열수"], str(_sug))
+show("② 희소 열은 판정 보류 제안 (적용모델 2/30행)",
+     _pr["열"]["J"]["기계제안"]["제안"] == "판정 보류",
+     _pr["열"]["J"]["기계제안"]["사유"])
+show("② 임계는 한 곳에 모여 있다 (가결정 — 실측 후 조정)",
+     isinstance(_PF.SPARSE_EMPTY_RATIO, float) and 0 < _PF.SPARSE_EMPTY_RATIO < 1)
+
+# ③ 템플릿 v0.9 — 근거 3원천·깔때기가 지시문에 실린다
+_sent39 = R._render_template(R._newest_template().read_text(encoding="utf-8"), _pkg29)
+for _k, _lbl in (("근거는 셋뿐이다", "근거 3원천"),
+                 ("기계 제안은 재료다", "제안의 지위"),
+                 ("확신 경계선", "경계선"),
+                 ("배정 통계를 스스로 보고", "자기 보고"),
+                 ("정의문이 이긴다", "정의문 우선")):
+    show(f"③ 전송분에 {_lbl} 규율이 실린다", _k in _sent39)
+show("③ 판 꼬리표는 여전히 0건이다 (v0.9도)", "[v0." not in _sent39)
+
+# 산출 스키마 — 기존 소비처를 깨지 않는다
+show("③ GENERATE_SCHEMA 필수는 둘 그대로 (새 항목은 선택)",
+     R.GENERATE_SCHEMA["required"] == ["adapter_py", "schema_json"]
+     and {"role_counts", "attribute_ranking", "confidence_cut"}
+     <= set(R.GENERATE_SCHEMA["properties"]))
+
+# 패키지 — 시스템 키 5 불변
+_pkg39 = json.loads(
+    (ROOT / "review/b29probe/input_package.json").read_text(encoding="utf-8"))
+show("ⓑ 시스템 키는 5 그대로다 (프로파일은 그릇 안의 항목)",
+     len(_pkg39["system"]) == 5
+     and "열_프로파일" in _pkg39["system"]["reader_head"][0],
+     str(list(_pkg39["system"])))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

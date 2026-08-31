@@ -43,7 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures, llm, registry, store
-from parser import pipeline, preflight, reader, tagger
+from parser import pipeline, preflight, profile, reader, tagger
 from parser.adapters import basic_ppt
 from kit.render_review import render
 from kit.run_adapter import load_blocks
@@ -207,8 +207,24 @@ def draft(doc_type, revision=0):
 
 GENERATE_SCHEMA = {
     "type": "object",
-    "properties": {"adapter_py": {"type": "string"},
-                   "schema_json": {"type": "string"}},
+    "properties": {
+        "adapter_py": {"type": "string"},
+        "schema_json": {"type": "string"},
+        # **배정 통계 자기 보고**(B39 ④) — 몇 개를 올렸는지 스스로 세지 않으면
+        # 25개를 평평하게 올려놓고도 그것이 많다는 것을 그 자리에서 아무도 모른다.
+        "role_counts": {"type": "object",
+                        "additionalProperties": {"type": "integer"}},
+        # **attribute 랭킹 + 확신 경계선**(B39 ③) — 고정 상한은 두지 않는다.
+        # 경계선 아래는 「판정 불가」이고, 사람이 위아래로 옮긴다.
+        "attribute_ranking": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"field": {"type": "string"},
+                           "rank": {"type": "integer"},
+                           "근거": {"type": "string"}},
+            "required": ["field", "rank", "근거"], "additionalProperties": False}},
+        "confidence_cut": {"type": "integer"},
+    },
+    # **기존 소비처를 깨지 않는다** — 필수는 그대로 둘이고 새 항목은 선택이다.
     "required": ["adapter_py", "schema_json"], "additionalProperties": False,
 }
 
@@ -519,6 +535,14 @@ def _draft_live(doc_type, revision):
     sc = d / f"schema{suffix}.json"
     ad.write_text(out["adapter_py"], encoding="utf-8")
     _write_schema(sc, out["schema_json"])
+    # **랭킹·경계선·통계는 산출의 일부다** — 파일 둘로는 담기지 않아 상태에 남긴다.
+    # 검수 뷰가 이것으로 「갈린 열」과 「경계선 부근」을 먼저 보인다(B39 ③).
+    meta = {k: out[k] for k in ("role_counts", "attribute_ranking", "confidence_cut")
+            if out.get(k) is not None}
+    if meta:
+        st = _state(doc_type) or {}
+        st["generation_report"] = meta
+        _save_state(doc_type, {**st, "doc_type": doc_type})
     return ad, sc
 
 
@@ -720,8 +744,19 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                   "hint": ({"text": hint, "no_fewshot": True}
                            if no_fewshot else hint)},
         "system": {
-            "reader_head": [{"path": str(s), "head": reader.head(reader.read(str(s)))}
-                            for s in samples],
+            # **관찰 재료 그릇 안에 열 프로파일을 함께 싣는다**(B39·B36) —
+            # 시스템 5키를 늘리지 않는다. 앞 N줄 창으로는 보이지 않는 사실(행마다
+            # 고유한가·거의 비었는가)을 **전 행 스캔**으로 공짜로 준다.
+            # **헤더 행은 아직 모른다** — 어댑터가 없는 시점이라 추측하지 않고
+            # 포함해 세고, 그 사실을 값으로 밝힌다(추측한 통계 = 지어낸 근거).
+            "reader_head": [{"path": str(s), "head": _h,
+                             "열_프로파일": [
+                                 {**profile.profile(sh), "시트": sh.get("name"),
+                                  "헤더행_제외": False}
+                                 for sh in (_raw.get("sheets") or [])]}
+                            for s in samples
+                            for _raw in [reader.read(str(s))]
+                            for _h in [reader.head(_raw)]],
             # **원천은 골격 닫힌 목록 스냅샷의 지정 층 몫이다**(문서 6 §6.7 킷 #1 ·
             # 문서 1 M21) — 층 자산 `layers/{층}/skeleton.json`을 읽지 않는다.
             # 그 파일은 `skeleton` 선언이 `source`를 쓰는 층에만 있어(품질층은
@@ -803,7 +838,17 @@ def harness(adapter, schema, samples):
     return r.returncode == 0, r.stdout
 
 
-def role_table(schema, adapter_mod):
+def _profiles(doc_type):
+    """입력 패키지의 열 프로파일 — **파일에서 읽는다**(상태에 복제하지 않는다)."""
+    p = REVIEW / doc_type / "input_package.json"
+    if not p.exists():
+        return []
+    pkg = json.loads(p.read_text(encoding="utf-8"))
+    return [pp for h in ((pkg.get("system") or {}).get("reader_head") or [])
+            for pp in (h.get("열_프로파일") or [])]
+
+
+def role_table(schema, adapter_mod, st=None, prof=None):
     """구획 2 — 필드 → role 배정표. **근거를 병기**한다(§7 구조).
 
     **6지선다는 role 5종 + UNMAPPABLE**이고, 구조 필드·payload 고정 키는 그 대상이
@@ -823,6 +868,35 @@ def role_table(schema, adapter_mod):
     for f in unmappable_of(schema, adapter_mod):
         rows.append({"field": f, "role": "UNMAPPABLE",
                      "reason": "5종 어디에도 맞지 않는다 — 사람 판정 대기 (D-30)"})
+
+    # ── 사람이 볼 것을 줄인다 (B39 ③ — 3단 깔때기의 셋째 단) ──────────
+    # **전 열을 평평하게 보이면 이 절차의 목적이 달성되지 않는다**(실측: attribute
+    # 25개가 평평하게 올라왔다). 먼저 볼 것 둘을 표시한다:
+    #   ①기계 제안과 LLM 판정이 갈린 열  ②확신 경계선 부근
+    rep = (st or {}).get("generation_report") or {}
+    rank = {x["field"]: x["rank"] for x in (rep.get("attribute_ranking") or [])}
+    cut = rep.get("confidence_cut")
+    sug = {}
+    for s in (prof or []):
+        for col, v in (s.get("열") or {}).items():
+            sug[col] = (v.get("기계제안") or {}).get("제안")
+    for r in rows:
+        marks = []
+        # 열문자 매핑은 어댑터의 columns가 갖는다 — 없으면 이름으로 맞춰 본다.
+        col = (getattr(adapter_mod, "ADAPTER", {}).get("expects", {})
+               .get("columns", {}) or {}).get(r["field"])
+        s = sug.get(col) if col else None
+        if s and s != "role 판정 대상" and r.get("role") != s:
+            marks.append(f"기계 제안({s})과 갈림")
+            r["machine_suggest"] = s
+        if r["field"] in rank:
+            r["rank"] = rank[r["field"]]
+            if cut is not None and abs(rank[r["field"]] - cut) <= 1:
+                marks.append("확신 경계선 부근")
+        if marks:
+            r["attention"] = " · ".join(marks)
+    # **먼저 볼 것을 위로 올린다** — 화면 순서가 곧 검토 순서다.
+    rows.sort(key=lambda r: (0 if r.get("attention") else 1, r.get("rank", 999)))
     return rows
 
 
@@ -963,7 +1037,7 @@ def build_view(st, results, harness_ok, harness_out):
                            "columns": keys if kind == "table" else [],
                            "tree": tree if kind == "prose" else []},
             },
-            "role_table": role_table(schema, mod),
+            "role_table": role_table(schema, mod, st, _profiles(st["doc_type"])),
             "adapter_summary": {
                 "expects": mod.ADAPTER.get("expects") or {},
                 "adapter_version": mod.ADAPTER.get("adapter_version"),
