@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from . import normalizer, preflight, struct_map, tagger, validator
 from .reader import head, read
@@ -72,6 +73,45 @@ def _split_stats(pieces, map_picks):
                     "목표구간": [lo, hi],
                     "너무_짧은_청크": sum(1 for s in sizes if s < lo),
                     "너무_긴_청크": sum(1 for s in sizes if s > hi)})
+    return out
+
+
+def _adapter_level_picks(adapter, raw):
+    """어댑터 경로의 레벨별 분포 — **지도 경로와 같은 계산**(`level_stats`)을 쓴다.
+
+    어댑터가 `expects.heading_pattern`으로 헤딩을 알아보므로, 그 패턴으로 레벨을
+    읽어 지도 경로와 **같은 형태**의 분포를 낸다. 새로 짜지 않는 이유는 화면이
+    둘로 갈리지 않게 하기 위해서다.
+
+    패턴이 없거나 헤딩이 안 잡히면 **아무것도 내지 않는다** — 지어낸 분포는
+    사람이 상수를 고를 재료가 못 된다.
+    """
+    exp = adapter.get("expects") or {}
+    pat = exp.get("heading_pattern")
+    if not pat or not raw.get("sheets"):
+        return []
+    rx = re.compile(pat)
+    col = exp.get("content_column", "A")
+    out = []
+    for sh in raw["sheets"]:
+        cells = sh.get("cells") or {}
+        lines = [(r, str(cells[f"{col}{r}"]).strip())
+                 for r in range(1, int(sh.get("max_row") or 0) + 1)
+                 if cells.get(f"{col}{r}") and str(cells[f"{col}{r}"]).strip()]
+        rows = []
+        for n, txt in lines:
+            m = rx.match(txt)
+            lvl = len(m.group(1).split(".")) if (m and m.groups()) else 0
+            rows.append({"row": n, "heading": bool(m), "level": lvl})
+        st = struct_map.level_stats({"rows": rows}, lines)
+        if st:
+            out.append({"프레임": sh.get("name"),
+                        "분할_레벨": exp.get("split_level"),
+                        "분할_레벨_사유": (
+                            f"어댑터 상수 expects.split_level={exp['split_level']}"
+                            if exp.get("split_level") is not None else
+                            "상수 없음 — 전 헤딩 분할(종전 동작)"),
+                        "레벨_분포": st})
     return out
 
 
@@ -212,5 +252,12 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     res.ok, res.envelope = True, env
     res.report["pieces"] = len(pieces)
     # **분할 크기 분포**(B45) — 자르는 규칙은 건드리지 않고 결과만 잰다.
+    # **어댑터 경로에도 레벨별 분포를 낸다**(B45 정정 ④) — 사람이 상수를 고를
+    # 재료다. 지도 경로가 이미 내는 그 형태를 쓴다: 새 형태를 만들면 화면이 둘로
+    # 갈린다. `split_level`을 선언한 어댑터면 고른 값도 함께 보인다.
+    if not map_picks and a.get("payload_kind") == "prose":
+        picks = _adapter_level_picks(a, raw)
+        if picks:
+            map_picks = picks
     res.report["split"] = _split_stats(pieces, map_picks)
     return res
