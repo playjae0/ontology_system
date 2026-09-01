@@ -223,11 +223,19 @@ for doc in ("TOC01", "TOC02"):
         doc, lines,
         lambda a, b: f"{name}!A{a}" if a == b else f"{name}!A{a}:A{b}")
     ref = [p for p in TOC.extract(raw) if "text" in p]
-    same = (len(mapped) == len(ref) and all(
-        a["source_locator"] == b["source_locator"] and a["section"] == b["section"]
-        and a["text"] == b["text"] for a, b in zip(mapped, ref)))
-    show(f"지도 경로 동치 — {doc}: 상수 어댑터 산출과 청크·section 동일",
-         same and not reasons, f"지도 {len(mapped)} · 어댑터 {len(ref)}")
+    # [B43 ③] 지도 경로는 **레벨을 골라** 자르므로 상수 어댑터(전 헤딩 분할)보다
+    # 굵다 — 「청크 수 동일」은 더는 참이 아니고 참이어서도 안 된다. 지켜야 할
+    # 불변은 **내용이 하나도 새지 않는가**다: 어댑터의 각 청크 본문이 지도 청크
+    # 어딘가에 통째로 들어 있고, section 경로도 그 안에 있다.
+    _mtext = "\n".join(c["text"] for c in mapped)
+    _msec = {c["section"] for c in mapped}
+    lost = [b["text"][:40] for b in ref if b["text"] not in _mtext]
+    show(f"지도 경로 — {doc}: 어댑터 산출이 **하나도 새지 않는다** (굵기만 다르다)",
+         not lost and not reasons,
+         f"지도 {len(mapped)} · 어댑터 {len(ref)} · 유실 {lost}")
+    show(f"지도 경로 — {doc}: 고른 레벨과 근거가 지도에 남는다 (같은 지도 → 같은 분할)",
+         "분할_레벨" in smap and "레벨_분포" in smap,
+         f"레벨 {smap.get('분할_레벨')} — {smap.get('분할_레벨_사유', '')[:50]}")
 
 lines = [(r, f"{r}행 본문") for r in range(2, 20)]
 for r, txt in ((2, "1. 첫 장"), (4, "1.1 절"), (7, "1.2 절"), (10, "2. 둘째 장")):

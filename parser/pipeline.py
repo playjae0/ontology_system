@@ -156,6 +156,10 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
         fresh["image_summaries"] = kept_img
     if fresh:
         struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id, **fresh}, src_hash)
+    # **section에서 좌표를 먼저 세운다**(B43 ④) — 산문의 헤딩 경로가 골격 이름이면
+    # 그것이 좌표다. 태깅보다 앞에 두는 이유: 태깅은 좌표가 **있는** 조각을 다듬고,
+    # 이것은 좌표가 **없는** 조각에 세운다. 순서가 바뀌면 pick이 헛돈다.
+    pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes)
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
                         doc_type=a["doc_type"], progress=progress)
 
