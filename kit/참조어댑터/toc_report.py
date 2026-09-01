@@ -12,6 +12,17 @@ ADAPTER = {
         "content_column": "A",            # 두 표본 모두 max_col=1, 단일 열
         "heading_pattern": r"^(\d+(?:\.\d+)*)\.?\s+\S",  # "1." / "1.1" / "1.1.1" — 두 표본에서 3계층 반복 관찰
         "section_sep": " > ",             # section 헤딩 경로 구분자
+        # **판단 상수 — preflight 지문이 아니다**(문서 6 §6.4-4). 값이 달라도
+        # `adapter_mismatch`를 내지 않는다: 「이 양식이 맞나」가 아니라 「얼마나
+        # 굵게 자르나」의 선택이다.
+        #
+        # **1을 고른 근거 — 레벨별 분포 실측**(B45 분포 화면):
+        #   TOC01 · 레벨 1: 3청크 2~10행(평균 5.3) · 구간(5~40)내 1
+        #           레벨 2: 7청크 1~4행(2.3) · 구간내 0 / 레벨 3: 9청크 1~2행 · 0
+        #   TOC02 · 레벨 1: 3청크 2~7행(4.3) · 구간내 1 / 레벨 2: 8청크 1~3행 · 0
+        # 레벨 2·3에서는 **한 청크가 1~4행**이라 근거로 못 쓴다. 레벨 1만이
+        # 목표 구간에 든다. **결정은 등록 때 한 번이다** — 매 문서 모델이 고르지 않는다.
+        "split_level": 1,
         "max_col": 1,
     },
 }
@@ -76,8 +87,14 @@ def extract(raw) -> list[dict]:
             text = str(val).strip()
             m = _HEADING_RE.match(text)
             if m:
-                flush()
                 depth = len(m.group(1).split("."))
+                # **상수 이하 깊이에서만 자른다**(B45 정정). 상수가 없으면 종전
+                # 동작(전 헤딩 분할) — 기존 어댑터가 깨지지 않아야 한다.
+                # **`section` 경로는 상수와 무관하게 전 헤딩을 반영한다** —
+                # 자르지 않은 깊은 헤딩도 경로에는 남는다(좌표 파생 B43의 재료다).
+                lvl = ADAPTER["expects"].get("split_level")
+                if lvl is None or depth <= lvl:
+                    flush()
                 while stack and stack[-1][0] >= depth:
                     stack.pop()
                 stack.append((depth, text))

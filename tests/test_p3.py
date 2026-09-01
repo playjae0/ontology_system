@@ -845,6 +845,52 @@ _ref45 = [x for x in _il.import_module("tests.fixtures.fixtures.adapters.toc_rep
 show("③ 어댑터 경로 산출은 바뀌지 않는다 (굵기 교정의 정본은 어댑터 개정)",
      len(_ref45) == 9, f"TOC01 어댑터 청크 {len(_ref45)}")
 
+# ============================================================ B45 정정
+print("\n■ B45 정정 — 어댑터 경로에도 분할 레벨 상수 (판정이 뒤집혔다)")
+import importlib.util as _iu45                                      # noqa: E402
+
+
+def _load45(path, name):
+    s = _iu45.spec_from_file_location(name, ROOT / path)
+    m = _iu45.module_from_spec(s); s.loader.exec_module(m); return m
+
+
+_old45 = _load45("tests/fixtures/fixtures/adapters/toc_report.py", "t45o")  # 상수 없음
+_new45 = _load45("kit/참조어댑터/toc_report.py", "t45n")                      # split_level=1
+show("① 판단 상수가 expects에 있다 (preflight 지문이 아니다)",
+     _new45.ADAPTER["expects"].get("split_level") == 1
+     and "split_level" not in (_old45.ADAPTER["expects"]),
+     str(_new45.ADAPTER["expects"]["split_level"]))
+
+
+def _d45(mod, doc):
+    ch = [x for x in mod.extract(reader.read(str(RAW / f"{doc}.xlsx")))
+          if "text" in x]
+    sz = [len(x["text"].split("\n")) for x in ch]
+    return ch, len(ch), sum(1 for s in sz if s < _SM.CHUNK_MIN)
+
+
+_a01, _n01, _s01 = _d45(_old45, "TOC01")
+_b01, _m01, _t01 = _d45(_new45, "TOC01")
+show("ⓐ 상수가 있으면 그 레벨에서만 자른다 — 청크가 굵어진다",
+     _m01 < _n01 and _t01 < _s01, f"청크 {_n01}→{_m01} · 짧음 {_s01}→{_t01}")
+show("ⓑ 상수가 없는 어댑터는 종전 동작 그대로다", _n01 == 9, f"{_n01}")
+show("ⓒ 산출 유실 0 — 내용이 하나도 새지 않는다",
+     not [x for x in _a01 if x["text"] not in "\n".join(y["text"] for y in _b01)])
+show("ⓒ `section` 경로는 상수와 무관하게 전 헤딩을 반영한다 (좌표 파생의 재료)",
+     max(len(x["section"].split(" > ")) for x in _b01) == 3,
+     f"최대 깊이 {max(len(x['section'].split(' > ')) for x in _b01)}단")
+show("④ 어댑터 경로도 레벨별 분포를 낸다 (지도 경로와 같은 형태)",
+     (lambda r: bool((r.report.get("split") or {}).get("레벨_선택")))(
+         pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))))
+show("④ 상수를 밝힌다 (사람이 고칠 재료 — 매 문서 모델이 고르지 않는다)",
+     "expects.split_level=1" in str(
+         pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))
+         .report["split"]["레벨_선택"]))
+show("fixture는 손대지 않았다 (D-26)", "split_level" not in
+     (ROOT / "tests/fixtures/fixtures/adapters/toc_report.py").read_text(
+         encoding="utf-8"))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
