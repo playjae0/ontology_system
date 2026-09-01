@@ -22,6 +22,7 @@
        --hint       자유 텍스트. 표본만으로 안 보이는 것을 적는다("3~7행 병합은 위 값 채움")
        --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
        --no-fewshot 참조 어댑터 주입을 끈다(스켈레톤 본문은 유지) — 컨텍스트가 좁을 때
+       --resume     기존 입력 패키지로 **초안만** 다시 받는다 (문답을 다시 하지 않는다)
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -205,27 +206,45 @@ def draft(doc_type, revision=0):
     return _draft_live(doc_type, revision)
 
 
+# **구조화 출력의 strict 요건**(B44): 최상위·중첩을 막론하고 모든 object에서
+# `required`가 `properties`의 전 키를 포함해야 하고 `additionalProperties: false`여야
+# 한다. **자유 키 사전은 쓸 수 없다** — 실측 400: *"'required' is required to be
+# supplied and to be an array including every key in properties.
+# Missing 'attribute_ranking'"*.
+#
+# **못 채울 수 있는 필드는 required에서 빼지 않고 타입을 null 허용으로 연다** —
+# 빼면 그 순간 strict 위반이 되고, 게이트웨이는 그 이유를 400 본문에만 적는다.
+_ROLES = ("anchor", "entity", "attribute", "content", "meta", "unmappable")
+
 GENERATE_SCHEMA = {
     "type": "object",
     "properties": {
         "adapter_py": {"type": "string"},
         "schema_json": {"type": "string"},
-        # **배정 통계 자기 보고**(B39 ④) — 몇 개를 올렸는지 스스로 세지 않으면
-        # 25개를 평평하게 올려놓고도 그것이 많다는 것을 그 자리에서 아무도 모른다.
-        "role_counts": {"type": "object",
-                        "additionalProperties": {"type": "integer"}},
-        # **attribute 랭킹 + 확신 경계선**(B39 ③) — 고정 상한은 두지 않는다.
-        # 경계선 아래는 「판정 불가」이고, 사람이 위아래로 옮긴다.
-        "attribute_ranking": {"type": "array", "items": {
+        # 자유 키 사전 → **고정 키**(B44). role은 닫힌 6종이라 고정할 수 있다.
+        "role_counts": {
             "type": "object",
-            "properties": {"field": {"type": "string"},
-                           "rank": {"type": "integer"},
-                           "근거": {"type": "string"}},
-            "required": ["field", "rank", "근거"], "additionalProperties": False}},
-        "confidence_cut": {"type": "integer"},
+            "properties": {r: {"type": "integer"} for r in _ROLES},
+            "required": list(_ROLES),
+            "additionalProperties": False,
+        },
+        "attribute_ranking": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                # 한글 키 `근거` → `reason` (B44 — 소비처도 함께 고쳤다)
+                "properties": {"field": {"type": "string"},
+                               "rank": {"type": "integer"},
+                               "reason": {"type": "string"}},
+                "required": ["field", "rank", "reason"],
+                "additionalProperties": False,
+            },
+        },
+        "confidence_cut": {"type": ["integer", "null"]},
     },
-    # **기존 소비처를 깨지 않는다** — 필수는 그대로 둘이고 새 항목은 선택이다.
-    "required": ["adapter_py", "schema_json"], "additionalProperties": False,
+    "required": ["adapter_py", "schema_json", "role_counts",
+                 "attribute_ranking", "confidence_cut"],
+    "additionalProperties": False,
 }
 
 
@@ -340,6 +359,30 @@ def _reference_adapter(samples):
     name = "toc_report.py" if first.endswith((".pptx", ".ppt")) else "cp.py"
     p = KIT / "참조어댑터" / name
     return name, (p.read_text(encoding="utf-8") if p.exists() else "")
+
+
+import contextlib                                              # noqa: E402
+
+
+@contextlib.contextmanager
+def _dump_error_on_fail(doc_type):
+    """실패하면 **원인이 적힌 유일한 자리**를 남긴다 — `review/{}/last_error.json`.
+
+    게이트웨이의 400 본문은 화면을 스쳐 지나가고 로그는 다음 실행에 묻힌다.
+    검수 디렉터리에 남겨야 사람이 그 문서를 다시 볼 때 함께 본다.
+    **인증 헤더·키는 남기지 않는다** — `core/llm.py`가 애초에 담지 않는다.
+    """
+    try:
+        yield
+    except Exception as e:
+        if llm.LAST_ERROR:
+            d = _dir(doc_type)
+            (d / "last_error.json").write_text(
+                json.dumps({**llm.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
+                           ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(f"   [오류] 게이트웨이 응답을 남겼다 → "
+                  f"{(d / 'last_error.json').relative_to(ROOT)}")
+        raise
 
 
 def _newest_template():
@@ -522,12 +565,13 @@ def _draft_live(doc_type, revision):
     _msgs = [{"role": "system", "content": system},
              {"role": "user", "content": raw_pkg}]
     _sent_size(_msgs, f"생성 초안 {doc_type}")
-    out = llm.chat(
-        # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
-        # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
-        [{"role": "system", "content": system},
-         {"role": "user", "content": raw_pkg}],
-        json_schema=GENERATE_SCHEMA, point="generate")
+    with _dump_error_on_fail(doc_type):
+        out = llm.chat(
+            # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
+            # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
+            [{"role": "system", "content": system},
+             {"role": "user", "content": raw_pkg}],
+            json_schema=GENERATE_SCHEMA, point="generate")
     d = REVIEW / doc_type
     d.mkdir(parents=True, exist_ok=True)
     suffix = f"_rev{revision}" if revision else ""
@@ -575,16 +619,31 @@ def basic_adapter_proposal(samples):
 INTERVIEW_SCHEMA = {
     "type": "object",
     "properties": {
+        # **진행 재료**(B43 ⑥) — 사람이 「이제 진행해도 되나」를 판단할 근거다.
+        # LLM이 세지 않으면 라운드가 끝없이 이어져도 남은 양이 안 보인다.
+        "progress": {
+            "type": "object",
+            "properties": {"columns": {"type": "integer"},
+                           "decided": {"type": "integer"},
+                           "undecided": {"type": "integer"},
+                           "by_role": {"type": "string"}},
+            "required": ["columns", "decided", "undecided", "by_role"],
+            "additionalProperties": False,
+        },
         # **이해 요약이 이 설계의 심장이다** — 사람이 판정하는 대상은 "질문에 다
         # 답했나"가 아니라 **"LLM의 이해가 맞아졌나"**다.
         "understanding": {"type": "string"},
         "questions": {"type": "array", "items": {
             "type": "object",
             "properties": {"q": {"type": "string"},
-                           "options": {"type": "array", "items": {"type": "string"}}},
-            "required": ["q", "options"], "additionalProperties": False}},
+                           "options": {"type": "array", "items": {"type": "string"}},
+                           # **중요도**(B43 ⑥) — 3개씩 무한정 나오면 끝이 안 보인다.
+                           "importance": {"type": "string"}},
+            "required": ["q", "options", "importance"],
+            "additionalProperties": False}},
     },
-    "required": ["understanding", "questions"], "additionalProperties": False,
+    "required": ["progress", "understanding", "questions"],
+    "additionalProperties": False,
 }
 
 INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
@@ -669,11 +728,16 @@ def _interview_round(pkg, history):
         base = (f"열 {len(cols)}개를 관찰했다: {', '.join(cols[:6])}"
                 if cols else "표본에서 열을 관찰하지 못했다")
         fixes = [h["answer"] for h in history if h.get("answer")]
+        qs = ([] if fixes else
+              [{"q": "병합된 좌측 열은 어떻게 다루나",
+                "options": ["위 값 채움", "행 독립", "모름"],
+                "importance": "높음 — 좌표 해소가 여기 걸린다"}])
         return {"understanding": base + ("" if not fixes else
                                          " · 교정 반영: " + " / ".join(fixes)),
-                "questions": ([] if fixes else
-                              [{"q": "병합된 좌측 열은 어떻게 다루나",
-                                "options": ["위 값 채움", "행 독립", "모름"]}])}
+                "progress": {"columns": len(cols), "decided": len(fixes),
+                             "undecided": max(0, len(cols) - len(fixes)),
+                             "by_role": "(mock — 규칙 요약이라 role 배정이 없다)"},
+                "questions": qs}
 
     # **판정 어휘를 이어 붙인다**(B32) — 문답이 role·층 어휘를 모른 채 물으면
     # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
@@ -686,7 +750,26 @@ def _interview_round(pkg, history):
     return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
 
 
-def _interview(pkg):
+def _prof_hint(pkg, top=6):
+    """열 프로파일 요약을 **사람에게도** 보인다 (B43 ⑥-3).
+
+    LLM은 이 재료를 이미 받아 쓰는데 사람 화면에는 없었다 — 그러면 사람은 LLM의
+    판정을 근거 없이 믿거나 근거 없이 의심한다.
+    """
+    profs = [pp for h in ((pkg.get("system") or {}).get("reader_head") or [])
+             for pp in (h.get("열_프로파일") or [])]
+    cols = [(c, v) for s in profs for c, v in (s.get("열") or {}).items()]
+    if not cols:
+        return
+    print(f"   [근거] 열 프로파일 {len(cols)}열 — 고유값/형태 (앞 {top}열)")
+    for c, v in cols[:top]:
+        sh = v.get("형태") or {}
+        print(f"     {c}: 고유 {v['고유값수']:>3} / {v['비지_않은_행수']:>3}행 · "
+              f"빈셀 {v['빈셀비율']} · 수치단위 {sh.get('수치단위_비율', '?')} · "
+              f"제안 {v['기계제안']['제안']}")
+
+
+def _interview(pkg, on_round=None):
     """생성 전 문답 — **끝내는 것은 사람뿐이다.** 상한 없음(§6.5 재생성 루프와 같은 원리).
 
     돌려주는 것은 라운드 이력이다: 매 라운드의 요약·질문·답이 전부 남는다.
@@ -698,10 +781,21 @@ def _interview(pkg):
     while True:
         out = _interview_round(pkg, history)
         n = len(history) + 1
-        print(f"\n[라운드 {n}] 이해 요약")
+        pg = out.get("progress") or {}
+        # **진행 1줄**(B43 ⑥) — 「이제 진행해도 되나」의 판단 근거다.
+        if pg:
+            print(f"\n[라운드 {n}] 열 {pg.get('columns', '?')}개 · "
+                  f"판정 {pg.get('decided', '?')} ({pg.get('by_role', '')}) · "
+                  f"미정 {pg.get('undecided', '?')} · "
+                  f"이번 질문 {len(out.get('questions') or [])}")
+        else:
+            print(f"\n[라운드 {n}]")
+        print("이해 요약")
         print(f"   {out['understanding']}")
+        _prof_hint(pkg)                       # 판정 근거를 사람에게도 보인다
         for i, q in enumerate(out.get("questions") or [], 1):
-            print(f"   Q{i}. {q['q']}")
+            imp = q.get("importance")
+            print(f"   Q{i}. {q['q']}" + (f"   [{imp}]" if imp else ""))
             print(f"       선택지: {' · '.join(q.get('options') or [])}")
         try:
             ans = input("   답/교정 (빈 줄 2회 또는 «진행»이면 종료) > ").strip()
@@ -709,7 +803,10 @@ def _interview(pkg):
             ans = INTERVIEW_STOP[0]
             print(f"   (입력 없음 — {ans})")
         history.append({"round": n, "understanding": out["understanding"],
-                        "questions": out.get("questions") or [], "answer": ans})
+                        "questions": out.get("questions") or [], "answer": ans,
+                        "progress": pg})
+        if on_round:
+            on_round(history)                 # **라운드마다 즉시 저장**(B43 ⑤)
         if ans.lower() in INTERVIEW_STOP:
             print(f"   → 사람이 종료했다. 라운드 {n}회 · 생성으로 간다")
             return history
@@ -720,13 +817,42 @@ def _interview(pkg):
 
 
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
-                 no_fewshot=False):
+                 no_fewshot=False, resume=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
       사람 — 표본 · doc_type 이름 · 층 지정 · 힌트(자유 텍스트)
       시스템 — reader 원시 추출 · 골격 닫힌 목록 · 층 어휘 · 공용 블록 · 어댑터 스켈레톤
     """
+    if resume:
+        # **패키지 조립과 문답을 건너뛰고 draft만 한다**(B43 ⑤). 문답이 몇 라운드
+        # 돌고 죽었을 때, 그 전부를 다시 하지 않으려는 자리다 — 패키지에 이미
+        # 문답 전문이 실려 있다(라운드마다 즉시 저장하므로).
+        pkg_path = REVIEW / doc_type / "input_package.json"
+        if not pkg_path.exists():
+            raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다: {pkg_path}\n"
+                             f"        먼저 --resume 없이 한 번 돌린다")
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        print(f"  {llm.mode_line()}")
+        print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
+        _r = (pkg.get("human") or {}).get("hint")
+        if isinstance(_r, dict) and _r.get("interview"):
+            print(f"   문답 {len(_r['interview'])}라운드가 패키지에 남아 있다")
+        ad, sc = draft(doc_type)
+        if ad is None:
+            raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
+                             f"'{doc_type}' 부재 (D-10)")
+        print(f"   초안 수령: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
+        st = _state(doc_type) or {}
+        _save_state(doc_type, {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
+                               "samples": pkg["human"]["samples"],
+                               "hint": pkg["human"]["hint"],
+                               "adapter": str(ad.relative_to(ROOT)),
+                               "schema": str(sc.relative_to(ROOT)),
+                               "revision": st.get("revision", 0),
+                               "instructions": st.get("instructions", [])})
+        return 0
+
     if registry.lookup(doc_type):
         raise SystemExit(f"[생성] doc_type 이름 중복 — '{doc_type}'은 이미 등록돼 있다")
 
@@ -816,10 +942,16 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # **문답은 패키지가 선 뒤다** — 문답의 입력이 그 패키지(표본 관찰 재료)다.
         # 끝나면 전문을 `human.hint`에 구조화해 다시 싣는다: 기록이 없으면 같은
         # 등록을 재현할 수 없다. **시스템 5키는 그대로다.**
-        rounds = _interview(pkg)
-        pkg["human"]["hint"] = {"text": hint, "interview": rounds}
-        (d / "input_package.json").write_text(
-            json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # **라운드마다 즉시 저장한다**(B43 ⑤) — 전 라운드가 끝나야 쓰면 중간에
+        # 죽었을 때 전부 잃는다. 사람의 답은 다시 만들 수 없는 재료다.
+        def _persist(rounds):
+            pkg["human"]["hint"] = {"text": hint, "interview": rounds}
+            (d / "input_package.json").write_text(
+                json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8")
+
+        rounds = _interview(pkg, on_round=_persist)
+        _persist(rounds)
         print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록")
     proposal = basic_adapter_proposal(samples)
     if proposal:
@@ -1045,6 +1177,15 @@ def build_view(st, results, harness_ok, harness_out):
             "parse_result": {
                 "summary": {"samples": len(st["samples"]), "pieces": len(pieces),
                             "rehearsal": reh,
+                            # **분할 크기 분포**(B45) — 값은 여기서 채우고 렌더러는
+                            # 그리기만 한다(§6.6-3). **`summary` 안이다**: 구획 1은
+                            # `summary·anomalies·normal` 3층으로 닫혀 있어(D-79)
+                            # 네 번째 키를 만들면 스키마 계약이 깨진다.
+                            # 두 경로(지도·어댑터) 모두 같은 자리에 실리고, 지도
+                            # 경로면 고른 레벨과 분포가 `레벨_선택`에 함께 온다.
+                            "split": [{"doc_id": r.doc_id,
+                                       **(r.report.get("split") or {})}
+                                      for r in results if r.report.get("split")],
                             "failures": sum(1 for a in anomalies if a["kind"] == "failure"),
                             "warnings": sum(1 for a in anomalies if a["kind"] == "warning"),
                             "fill_rate": fill},
@@ -1333,8 +1474,11 @@ def main(argv):
         no_few = "--no-fewshot" in rest
         if no_few:
             rest.remove("--no-fewshot")
+        resume = "--resume" in rest
+        if resume:
+            rest.remove("--resume")
         return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview,
-                            no_fewshot=no_few)
+                            no_fewshot=no_few, resume=resume)
     if cmd == "review":
         raw_rows = opt("--rows", str(REHEARSAL_ROWS))
         if str(raw_rows).lower() == "all":

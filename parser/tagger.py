@@ -64,6 +64,36 @@ def group_of(node, nodes):
     return None
 
 
+def coord_from_section(pieces, *, layer="process", nodes=None,
+                       ref_field="process_ref", sep=" > "):
+    """산문 조각의 `section`(헤딩 경로)에서 좌표를 세운다 (B43 ④).
+
+    **대조는 `surfaces()` 하나를 재사용한다** — 좌표 태깅과 같은 연산이다.
+    새로 짜면 「무엇이 일치인가」가 두 곳에 살고 하나가 낡는다.
+
+    규칙 셋:
+      ①**정확 일치만** — 추론도 문자열 파싱도 하지 않는다. 일치가 없으면 비운다.
+      ②경로에 일치가 여럿이면 **가장 깊은 것**(뒤쪽) — 좁은 좌표가 더 많은 것을
+        말한다.
+      ③**이미 값이 있으면 덮지 않는다** — 어댑터가 낸 좌표가 우선이다.
+
+    일치 없음은 실패가 아니다: 인입이 `orphan_anchor`로 받아 사람에게 올린다.
+    """
+    nodes = nodes if nodes is not None else closed_list(layer)
+    idx = surfaces(nodes)
+    out = []
+    for p in pieces:
+        r = dict(p)
+        if not r.get(ref_field) and r.get("section"):
+            hit = [seg.strip() for seg in str(r["section"]).split(sep)
+                   if seg.strip() in idx]
+            if hit:
+                r[ref_field] = hit[-1]          # 가장 깊은 일치
+                r.setdefault("meta", {})["coord_from_section"] = True
+        out.append(r)
+    return out
+
+
 def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
         pick=None, doc_type=None, progress=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.

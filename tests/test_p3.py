@@ -373,8 +373,11 @@ _r2 = _R._interview_round(_pkg, [{"round": 1, "understanding": "x",
 show("④ 이해 요약이 사람의 교정을 반영해 바뀐다",
      _r1["understanding"] != _r2["understanding"]
      and "병합은 위 값 채움" in _r2["understanding"])
-show("④ 스키마가 understanding·questions 둘을 요구한다",
-     set(_R.INTERVIEW_SCHEMA["required"]) == {"understanding", "questions"})
+# [B43 ⑥] 진행 재료가 더해져 셋이다 — strict 요건상 required는 properties 전량이다.
+show("④ 스키마가 이해 요약·질문·진행을 요구한다",
+     set(_R.INTERVIEW_SCHEMA["required"])
+     == {"understanding", "questions", "progress"},
+     str(sorted(_R.INTERVIEW_SCHEMA["required"])))
 show("④ 종료어에 «진행»이 있다 (끝내는 것은 사람이다)", "진행" in _R.INTERVIEW_STOP)
 
 # ① 산출 JSON 표기 — 잎을 접되 json.load 결과는 같다
@@ -620,8 +623,10 @@ for _k, _lbl in (("근거는 셋뿐이다", "근거 3원천"),
 show("③ 판 꼬리표는 여전히 0건이다 (v0.9도)", "[v0." not in _sent39)
 
 # 산출 스키마 — 기존 소비처를 깨지 않는다
-show("③ GENERATE_SCHEMA 필수는 둘 그대로 (새 항목은 선택)",
-     R.GENERATE_SCHEMA["required"] == ["adapter_py", "schema_json"]
+# [B44] strict 요건이 「required = properties 전량」을 강제한다 — 선택 항목이라는
+# 개념 자체가 없다. 못 채울 수 있는 것은 **타입으로** 연다(confidence_cut: null 허용).
+show("③ GENERATE_SCHEMA가 랭킹·경계선·통계를 담고 strict를 지킨다",
+     set(R.GENERATE_SCHEMA["required"]) == set(R.GENERATE_SCHEMA["properties"])
      and {"role_counts", "attribute_ranking", "confidence_cut"}
      <= set(R.GENERATE_SCHEMA["properties"]))
 
@@ -685,6 +690,160 @@ for _f, _n in ((ROOT / "cli/register.py", "register"), (ROOT / "run.py", "run"))
 show("⑥ 컨텍스트 한도는 **선택**이다 — 기본값을 코드에 박지 않았다",
      llm.context_limit() is None
      and "LLM_CONTEXT_TOKENS" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
+
+# ============================================================ B43·B44
+print("\n■ B43·B44 — 스키마 strict · 오류 본문 · 분할 레벨 · section 좌표")
+import importlib as _il                                             # noqa: E402
+from parser import struct_map as _SM, tagger as _TG                 # noqa: E402
+
+
+def _strict(s, path="$"):
+    """구조화 출력의 strict 요건 — 모든 object에서 properties == required ·
+    additionalProperties is False · **자유 키 사전 없음**."""
+    bad = []
+    if isinstance(s, dict):
+        if s.get("type") == "object" or "properties" in s:
+            if set(s.get("properties") or {}) != set(s.get("required") or []):
+                bad.append(f"{path}: properties != required")
+            ap = s.get("additionalProperties")
+            if ap is not False:
+                bad.append(f"{path}: additionalProperties={ap!r}"
+                           + (" (자유 키 사전)" if isinstance(ap, dict) else ""))
+        for k, v in (s.get("properties") or {}).items():
+            bad += _strict(v, f"{path}.{k}")
+        if "items" in s:
+            bad += _strict(s["items"], f"{path}[]")
+    return bad
+
+
+# ① **코드의 전 json_schema**를 훑는다 — 하나라도 어기면 그 지점이 400으로 죽는다
+_schemas = []
+for _m in ("cli.register", "cli.query", "core.query", "core.llm", "core.matcher"):
+    _mod = _il.import_module(_m)
+    for _n in dir(_mod):
+        if _n.endswith("_SCHEMA") and isinstance(getattr(_mod, _n), dict):
+            _schemas.append((f"{_m}.{_n}", getattr(_mod, _n)))
+_viol = [(n, b) for n, s in _schemas for b in [_strict(s, n)] if b]
+show(f"① 전 구조화 출력 스키마 {len(_schemas)}종이 strict 요건을 지킨다",
+     not _viol, str(_viol))
+show("① 자유 키 사전이 0건이다 (role_counts는 고정 키)",
+     R.GENERATE_SCHEMA["properties"]["role_counts"]["additionalProperties"] is False
+     and set(R.GENERATE_SCHEMA["properties"]["role_counts"]["properties"]) == set(R._ROLES))
+show("① 못 채울 수 있는 필드는 required에서 빼지 않고 null을 연다",
+     R.GENERATE_SCHEMA["properties"]["confidence_cut"]["type"] == ["integer", "null"]
+     and "confidence_cut" in R.GENERATE_SCHEMA["required"])
+show("① 한글 키 `근거`가 `reason`으로 바뀌었다 (소비처 포함)",
+     R.GENERATE_SCHEMA["properties"]["attribute_ranking"]["items"]["required"]
+     == ["field", "rank", "reason"])
+
+# ② 오류 본문 보존 — 키는 남기지 않는다
+show("② GatewayError가 상태 코드와 본문을 지닌다",
+     hasattr(llm, "GatewayError") and hasattr(llm, "LAST_ERROR")
+     and "e.read()" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
+show("② 4xx는 재시도하지 않는다 (같은 400을 세 번 받지 않는다)",
+     "except GatewayError:" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
+show("② 본문은 길이 상한으로 자른다", isinstance(llm.ERR_BODY_MAX, int))
+
+# ③ 분할 레벨 — 결정적이고 근거가 지도에 남는다
+def _mk(fine):
+    ls, n = [], 0
+    for i in range(3):
+        n += 1; ls.append((n, f"{i+1}. 대절"))
+        if fine:
+            for k in range(4):
+                n += 1; ls.append((n, f"{i+1}.{k+1} 소절"))
+                for j in range(2):
+                    n += 1; ls.append((n, f"본문{i}{k}{j}"))
+        else:
+            for j in range(12):
+                n += 1; ls.append((n, f"본문{i}{j}"))
+    return ls
+
+
+def _rows(ls):
+    out = []
+    for n, x in ls:
+        h = x[0].isdigit() and "." in x.split()[0]
+        out.append({"row": n, "heading": h,
+                    "level": (x.split()[0].rstrip(".").count(".") + 1) if h else 0})
+    return out
+
+
+_fine = _mk(True)
+_smap = {"rows": _rows(_fine)}
+_st43 = _SM.level_stats(_smap, _fine)
+_pick, _why = _SM.choose_level(_st43)
+_loc = lambda a, b: f"L{a}-{b}"
+_before = len(_SM.split({"rows": _smap["rows"], "분할_레벨": None}, _fine, _loc))
+_after = len(_SM.split({**_smap, "분할_레벨": _pick}, _fine, _loc))
+show("③ 레벨별 분포를 센다 (청크 수·행 수)",
+     set(_st43) == {1, 2} and _st43[2]["청크수"] > _st43[1]["청크수"], str(_st43))
+show("③ 목표 구간에 가장 많이 드는 레벨을 고른다", _pick == 1, f"{_pick} — {_why}")
+show("③ 세밀 헤딩에서 청크가 합쳐진다 (부서지지 않는다)",
+     _before == 12 and _after == 3, f"{_before} → {_after}")
+_coarse = _mk(False)
+_p2, _w2 = _SM.choose_level(_SM.level_stats({"rows": _rows(_coarse)}, _coarse))
+show("③ 레벨이 하나뿐이면 지금 동작을 유지한다 (무리한 병합 없음)",
+     _p2 is None and "하나뿐" in _w2, _w2)
+show("③ 선택 근거가 지도에 보존된다 (같은 지도 → 같은 분할)",
+     "분할_레벨" in _SM.apply("T43", _fine, _loc)[1]
+     and "레벨_분포" in _SM.apply("T43", _fine, _loc)[1])
+show("③ 목표 구간은 가결정 상수다 (D-106)",
+     isinstance(_SM.CHUNK_MIN, int) and isinstance(_SM.CHUNK_MAX, int))
+
+# ④ section 좌표 — 정확 일치만·가장 깊은 것·덮지 않음
+_nodes = _TG.closed_list("process")
+_out = _TG.coord_from_section(
+    [{"section": "조립 > 노칭 > 노칭 타발", "source_locator": "S1"},
+     {"section": "없는절 > 또없는절", "source_locator": "S2"},
+     {"section": "조립 > 노칭", "process_ref": "스태킹", "source_locator": "S3"}],
+    layer="process", nodes=_nodes)
+show("④ 경로에 일치가 여럿이면 **가장 깊은 것**", _out[0]["process_ref"] == "노칭 타발")
+show("④ 일치 없으면 비운다 (추론·문자열 파싱 금지)",
+     not _out[1].get("process_ref"))
+show("④ 이미 값이 있으면 덮지 않는다", _out[2]["process_ref"] == "스태킹")
+show("④ 대조는 좌표 태깅과 **같은 연산**을 재사용한다 (새로 짜지 않았다)",
+     "surfaces(nodes)" in (ROOT / "parser/tagger.py").read_text(encoding="utf-8"))
+
+# ⑤⑥ resume · 진행 · 근거
+_src5 = (ROOT / "cli/register.py").read_text(encoding="utf-8")
+show("⑤ --resume이 사용법과 파싱에 있다",
+     "--resume" in _src5 and "resume=resume" in _src5)
+show("⑤ 문답이 라운드마다 즉시 저장된다 (중간에 죽어도 잃지 않는다)",
+     "on_round(history)" in _src5)
+show("⑥ 문답 스키마가 진행 재료와 중요도를 요구한다",
+     "progress" in R.INTERVIEW_SCHEMA["required"]
+     and "importance" in R.INTERVIEW_SCHEMA["properties"]["questions"]["items"]["required"])
+show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hint(pkg)" in _src5)
+
+# ============================================================ B45 분할 분포
+print("\n■ B45 — 분할 크기 분포를 검수 뷰에 (자르는 규칙은 안 건드린다)")
+run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"),
+    str(RAW / "TOC02.xlsx"), "--hint", "목차형")
+run("review", "toc_report")
+_v45 = view_of("toc_report")
+_sp = (_v45["sections"]["parse_result"]["summary"] or {}).get("split") or []
+show("① 분포가 뷰 데이터에 실린다 (표본마다 1건)", len(_sp) == 2, str(len(_sp)))
+show("① 청크 수·행수(최소·최대·평균)·목표 구간 밖(짧음/긺)이 전부 있다",
+     all(k in _sp[0] for k in ("청크수", "행수_최소", "행수_최대", "행수_평균",
+                               "목표구간", "너무_짧은_청크", "너무_긴_청크")),
+     str({k: _sp[0][k] for k in ("청크수", "행수_평균", "너무_짧은_청크")}))
+show("① 상수가 부적절하면 화면에 드러난다 (한 줄짜리 청크가 짧음으로 집계)",
+     _sp[0]["너무_짧은_청크"] > 0,
+     f"{_sp[0]['doc_id']}: 짧음 {_sp[0]['너무_짧은_청크']}/{_sp[0]['청크수']}")
+_html45 = (REVIEW / "toc_report" / "view.html").read_text(encoding="utf-8")
+show("② 렌더러는 **그리기만** 한다 (계산은 산출자 · §6.6-3)",
+     "분할 크기 분포" in _html45
+     and "너무_짧은_청크" not in (ROOT / "kit/render_review.py").read_text(
+         encoding="utf-8").split("def _split")[1].split("return")[0].replace(
+         'r.get("너무_짧은_청크")', ""))
+show("② 구획 1의 3층 계약을 지킨다 (split은 summary 안이다 — D-79)",
+     set(_v45["sections"]["parse_result"]) == {"summary", "anomalies", "normal"})
+# ⓑ 어댑터 경로는 바뀌지 않는다 — 고를 레벨이 없기 때문이다(B45 판정)
+_ref45 = [x for x in _il.import_module("tests.fixtures.fixtures.adapters.toc_report")
+          .extract(reader.read(str(RAW / "TOC01.xlsx"))) if "text" in x]
+show("③ 어댑터 경로 산출은 바뀌지 않는다 (굵기 교정의 정본은 어댑터 개정)",
+     len(_ref45) == 9, f"TOC01 어댑터 청크 {len(_ref45)}")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

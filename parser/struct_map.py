@@ -183,13 +183,77 @@ def validate(smap, lines):
 
 
 # ---------------------------------------------------------------- ③ 결정적 분할기
+# 분할 레벨 선택의 목표 구간 — **가결정**(D-106 · 실측 후 조정 대상).
+# 명세는 값을 정하지 않는다(허브 참고치 5~40행).
+CHUNK_MIN, CHUNK_MAX = 5, 40
+
+
+def level_stats(smap, lines):
+    """레벨 1..N 각각의 **청크 수와 청크별 행 수 분포** — 결정적·무LLM.
+
+    「어느 레벨에서 자르면 청크가 몇 개고 얼마나 굵은가」를 세어 놓는다. 그것이
+    레벨 선택의 근거이고, **지도에 함께 보존해야 같은 지도 → 같은 분할**이 성립한다.
+    """
+    heads = [(r["row"], r.get("level") or 0)
+             for r in (smap.get("rows") or []) if r.get("heading")]
+    rows = [n for n, _t in lines]
+    if not heads or not rows:
+        return {}
+    out = {}
+    for lv in sorted({l for _r, l in heads}):
+        cuts = sorted(n for n, l in heads if l <= lv)
+        sizes, i = [], 0
+        bounds = cuts + [rows[-1] + 1]
+        for a, b in zip(bounds, bounds[1:]):
+            body = [n for n in rows if a < n < b and n not in dict(heads)]
+            if body:
+                sizes.append(len(body))
+        if not sizes:
+            continue
+        out[lv] = {"청크수": len(sizes),
+                   "행수_최소": min(sizes), "행수_최대": max(sizes),
+                   "행수_평균": round(sum(sizes) / len(sizes), 1),
+                   "구간내_청크수": sum(1 for s in sizes
+                                   if CHUNK_MIN <= s <= CHUNK_MAX)}
+    return out
+
+
+def choose_level(stats):
+    """**목표 구간에 가장 많이 드는 레벨**을 고른다. 돌려주는 것은 `(레벨, 사유)`.
+
+    어느 레벨에서도 구간에 들지 않으면 `None`이다 — 그때는 **지금 동작(전 헤딩
+    분할)을 유지한다.** 무리한 병합은 하지 않는다: 잘못 묶은 청크는 근거 인용이
+    통째로 어긋나고, 그것은 잘게 자른 것보다 되돌리기 어렵다.
+    """
+    if not stats:
+        return None, "헤딩 없음"
+    best = max(stats.items(), key=lambda kv: (kv[1]["구간내_청크수"], -kv[0]))
+    if best[1]["구간내_청크수"] == 0:
+        return None, f"어느 레벨도 목표 구간({CHUNK_MIN}~{CHUNK_MAX}행)에 들지 않는다"
+    if len(stats) == 1:
+        return None, "헤딩 레벨이 하나뿐이다 — 고를 것이 없다"
+    return best[0], (f"레벨 {best[0]}이 목표 구간에 {best[1]['구간내_청크수']}청크로 "
+                     f"가장 많이 든다 (전체 {best[1]['청크수']})")
+
+
 def split(smap, lines, locator, sep=" > "):
     """지도를 적용해 자른다 — **여기에 LLM은 없다.** 같은 지도면 같은 분할이다.
 
     헤딩 행은 청크가 아니라 `section` 경로를 만들고, 그 아래 연속 본문이 청크다.
+
+    **모든 헤딩에서 자르지 않는다**(B43): 세밀한 헤딩 문서에서는 청크가 한두 줄로
+    부서져 근거로 쓸 수 없다. 레벨별 분포를 세어 **목표 구간에 가장 많이 드는
+    레벨까지만** 자르고, 그 레벨에서도 상한을 크게 넘는 청크는 **한 단계만** 더
+    쪼갠다(재귀 금지 — 재귀는 다시 부수는 길이다).
     """
-    level_of = {r["row"]: (r.get("level") or 0) for r in smap.get("rows") or []
+    stats = smap.get("레벨_분포") or level_stats(smap, lines)
+    pick = smap.get("분할_레벨")
+    if pick is None and "분할_레벨" not in smap:
+        pick, _why = choose_level(stats)
+    all_head = {r["row"]: (r.get("level") or 0) for r in smap.get("rows") or []
                 if r.get("heading")}
+    level_of = ({n: l for n, l in all_head.items() if l <= pick}
+                if pick else dict(all_head))
     text_of = dict(lines)
     out, stack, buf = [], [], []
 
@@ -212,6 +276,42 @@ def split(smap, lines, locator, sep=" > "):
         else:
             buf.append(n)
     flush()
+
+    # **상한을 크게 넘는 청크만 한 단계 더 쪼갠다** — 재귀하지 않는다.
+    if pick and any(len(c["text"].split("\n")) > CHUNK_MAX * 2 for c in out):
+        deeper = {n: l for n, l in all_head.items() if l == pick + 1}
+        if deeper:
+            out = _resplit(out, deeper, lines, locator, sep)
+    return out
+
+
+def _resplit(chunks, deeper, lines, locator, sep):
+    """상한 초과 청크를 **바로 아래 레벨의 헤딩에서만** 한 번 더 가른다."""
+    text_of = dict(lines)
+    row_of = {v: k for k, v in text_of.items()}
+    out = []
+    for c in chunks:
+        body = c["text"].split("\n")
+        if len(body) <= CHUNK_MAX * 2:
+            out.append(c)
+            continue
+        rows = [row_of.get(x) for x in body]
+        cur, seg = [], []
+        for r, x in zip(rows, body):
+            if r in deeper and seg:
+                cur.append(seg); seg = []
+            seg.append((r, x))
+        if seg:
+            cur.append(seg)
+        if len(cur) <= 1:
+            out.append(c)
+            continue
+        for part in cur:
+            rs = [r for r, _x in part if r is not None]
+            out.append({**c,
+                        "source_locator": locator(rs[0], rs[-1]) if rs
+                        else c["source_locator"],
+                        "text": "\n".join(x for _r, x in part)})
     return out
 
 
@@ -238,4 +338,13 @@ def apply(doc_id, lines, locator, sep=" > "):
     smap["reasons"] = reasons
     if reasons:
         return flat(lines, locator), smap, reasons
+    # **선택 근거를 지도에 보존한다**(B43 ③) — 같은 지도 → 같은 분할이 성립해야
+    # 재인입 멱등이 유지된다. 보존분을 재사용할 때 레벨을 다시 고르면, 표본이
+    # 조금만 달라져도 분할이 흔들려 chunk_id가 전량 이동한다.
+    if "분할_레벨" not in smap:
+        stats = level_stats(smap, lines)
+        pick, why = choose_level(stats)
+        smap["레벨_분포"] = stats
+        smap["분할_레벨"] = pick
+        smap["분할_레벨_사유"] = why
     return split(smap, lines, locator, sep), smap, []

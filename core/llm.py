@@ -305,15 +305,50 @@ def _account(point, raw):
     log.llm_usage(_LOG, POINTS.get(point, point), u if isinstance(u, dict) else None, fin)
 
 
+ERR_BODY_MAX = 1200          # 오류 본문 보존 상한 — 로그가 본문으로 덮이지 않게
+LAST_ERROR = {}              # 마지막 실패의 재료 — 호출부가 파일로 떨군다(B44)
+
+
+class GatewayError(RuntimeError):
+    """게이트웨이가 **이유를 말한** 실패 — 상태 코드와 본문을 지닌다."""
+
+    def __init__(self, status, body, url):
+        self.status, self.body, self.url = status, body, url
+        super().__init__(f"HTTP {status} — {body}")
+
+
 def _post(url, payload, key, timeout):
-    """게이트웨이 HTTP 1회. 표준 urllib만 쓴다 — 코어 외부 의존 0."""
+    """게이트웨이 HTTP 1회. 표준 urllib만 쓴다 — 코어 외부 의존 0.
+
+    **오류 본문을 버리지 않는다**(B44). `urlopen`은 4xx/5xx에 `HTTPError`를 던지는데,
+    그것을 잡지 않으면 `HTTPError.read()`가 호출되지 않아 **게이트웨이가 적어 보낸
+    이유가 통째로 사라진다** — 실측: 400 본문에 *"Missing 'attribute_ranking'"*이
+    적혀 있었는데 화면에는 `HTTP Error 400: Bad Request`만 떴다.
+
+    **인증 헤더·키는 남기지 않는다** — 본문과 상태 코드까지다.
+    """
+    body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
-        url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        url, data=body_bytes,
         headers={"Content-Type": "application/json",
                  **({"Authorization": f"Bearer {key}"} if key else {})},
         method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            body = "(본문을 읽지 못했다)"
+        body = body[:ERR_BODY_MAX] + ("…(잘림)" if len(body) > ERR_BODY_MAX else "")
+        LAST_ERROR.clear()
+        LAST_ERROR.update({"status": e.code, "url": url,
+                           "요청_바이트": len(body_bytes),
+                           "응답_본문": body,
+                           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        _LOG.error("게이트웨이 HTTP %s — %s", e.code, body)
+        raise GatewayError(e.code, body, url) from e
 
 
 def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0):
@@ -343,6 +378,10 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0)
             _account(point, raw)          # 파싱 전에 센다 — 잘린 응답도 사용량이다
             text = raw["choices"][0]["message"]["content"]
             return json.loads(text) if json_schema else {"text": text}
+        except GatewayError:
+            # **4xx는 재시도로 낫지 않는다** — 같은 요청을 세 번 보내 같은 400을
+            # 받고 그 사이 화면은 「재시도 중」만 말한다. 즉시 올린다.
+            raise
         except (urllib.error.URLError, KeyError, IndexError,
                 json.JSONDecodeError, TimeoutError) as e:
             last = e
