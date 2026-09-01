@@ -54,7 +54,28 @@ def _image_gate(doc_id, summarize):
     return mock
 
 
-def _map_hook(doc_id, kept=None, made=None):
+def _split_stats(pieces, map_picks):
+    """분할 산출의 크기 분포 (B45) — **보이기만 한다.**
+
+    상수가 부적절해 한 줄짜리 청크가 쏟아져도 지금은 등록 시점에 드러나지 않는다:
+    사람이 상수를 고칠 판단 재료가 화면에 없었다. 목표 구간 밖을 **짧은 쪽·긴 쪽
+    각각** 세는 이유는 처방이 다르기 때문이다 — 짧으면 분할 신호가 과하고, 길면
+    모자라다.
+    """
+    sizes = [len(str(p.get("text") or "").split("\n"))
+             for p in pieces if p.get("text")]
+    out = {"청크수": len(sizes), "레벨_선택": map_picks or None}
+    if sizes:
+        lo, hi = struct_map.CHUNK_MIN, struct_map.CHUNK_MAX
+        out.update({"행수_최소": min(sizes), "행수_최대": max(sizes),
+                    "행수_평균": round(sum(sizes) / len(sizes), 1),
+                    "목표구간": [lo, hi],
+                    "너무_짧은_청크": sum(1 for s in sizes if s < lo),
+                    "너무_긴_청크": sum(1 for s in sizes if s > hi)})
+    return out
+
+
+def _map_hook(doc_id, kept=None, made=None, seen=None):
     """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다).
 
     `kept`는 보존분의 프레임별 지도(`{key: smap}`), `made`는 이번 인입에서 새로
@@ -71,6 +92,12 @@ def _map_hook(doc_id, kept=None, made=None):
         smap = struct_map.apply(f"{doc_id}:{key}", lines, locator)
         if made is not None:
             made[key] = smap
+        if seen is not None and isinstance(smap, dict):
+            # **선택 레벨과 레벨별 분포를 밖으로 흘린다**(B45) — 검수 뷰가 그리려면
+            # 값이 뷰 데이터에 있어야 하고, 렌더러는 계산하지 않는다(§6.6-3).
+            seen.append({"프레임": key, "분할_레벨": smap.get("분할_레벨"),
+                         "분할_레벨_사유": smap.get("분할_레벨_사유"),
+                         "레벨_분포": smap.get("레벨_분포")})
         return smap
     return hook
 
@@ -110,7 +137,7 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     src_hash = struct_map.source_hash(path)
     kept_map = struct_map.load_kept(doc_id, src_hash) or {}
     kept_maps = dict(kept_map.get("maps") or {})
-    made_maps = {}
+    made_maps, map_picks = {}, []
 
     ok, detail = preflight.check(adapter, raw)                       # ② preflight
     if not ok:
@@ -122,7 +149,8 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
         if a.get("payload_kind") == "prose":
             try:
                 pieces = adapter.extract(
-                    raw, struct_map_fn=_map_hook(doc_id, kept_maps, made_maps))
+                    raw, struct_map_fn=_map_hook(doc_id, kept_maps, made_maps,
+                                                map_picks))
             except TypeError:
                 pieces = adapter.extract(raw)                        # 지도 훅 없는 어댑터
         else:
@@ -183,4 +211,6 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
 
     res.ok, res.envelope = True, env
     res.report["pieces"] = len(pieces)
+    # **분할 크기 분포**(B45) — 자르는 규칙은 건드리지 않고 결과만 잰다.
+    res.report["split"] = _split_stats(pieces, map_picks)
     return res

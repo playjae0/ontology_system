@@ -1177,6 +1177,15 @@ def build_view(st, results, harness_ok, harness_out):
             "parse_result": {
                 "summary": {"samples": len(st["samples"]), "pieces": len(pieces),
                             "rehearsal": reh,
+                            # **분할 크기 분포**(B45) — 값은 여기서 채우고 렌더러는
+                            # 그리기만 한다(§6.6-3). **`summary` 안이다**: 구획 1은
+                            # `summary·anomalies·normal` 3층으로 닫혀 있어(D-79)
+                            # 네 번째 키를 만들면 스키마 계약이 깨진다.
+                            # 두 경로(지도·어댑터) 모두 같은 자리에 실리고, 지도
+                            # 경로면 고른 레벨과 분포가 `레벨_선택`에 함께 온다.
+                            "split": [{"doc_id": r.doc_id,
+                                       **(r.report.get("split") or {})}
+                                      for r in results if r.report.get("split")],
                             "failures": sum(1 for a in anomalies if a["kind"] == "failure"),
                             "warnings": sum(1 for a in anomalies if a["kind"] == "warning"),
                             "fill_rate": fill},

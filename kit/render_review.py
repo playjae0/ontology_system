@@ -46,6 +46,7 @@ th { background: var(--bg2); white-space: nowrap; }
 .stat b { display: block; font-size: 20px; }
 .anom { border-left: 4px solid var(--bd); padding: 8px 12px; margin: 8px 0;
         background: var(--bg2); }
+td.warn { color: var(--warn); font-weight: 600; }
 .anom.failure { border-color: var(--fail); } .anom.warning { border-color: var(--warn); }
 .anom.question { border-color: var(--ask); }
 .tag { font-size: 12px; font-weight: 700; letter-spacing: .04em; }
@@ -178,6 +179,47 @@ def _regen(items):
 
 
 # ---------------------------------------------------------------- 진입점
+def _split(rows):
+    """분할 크기 분포 (B45) — **그리기만 한다.** 값은 산출자가 채웠다.
+
+    상수가 부적절해 한 줄짜리 청크가 쏟아지는 것을 **등록 시점에** 보이는 자리다.
+    목표 구간 밖을 짧은 쪽·긴 쪽으로 갈라 보이는 이유는 처방이 다르기 때문이다.
+    """
+    if not rows:
+        return ""
+    out = ['<h3 style="font-size:15px;margin:16px 0 4px">분할 크기 분포</h3>',
+           '<table><tr><th>문서</th><th>청크</th><th>행수 최소~최대(평균)</th>'
+           '<th>목표 구간</th><th>너무 짧음</th><th>너무 긺</th></tr>']
+    for r in rows:
+        g = r.get("목표구간") or []
+        warn = ' class="warn"' if (r.get("너무_짧은_청크") or 0) else ""
+        out.append(
+            f'<tr><td>{e(r.get("doc_id"))}</td><td>{e(r.get("청크수"))}</td>'
+            f'<td>{e(r.get("행수_최소"))}~{e(r.get("행수_최대"))}'
+            f' ({e(r.get("행수_평균"))})</td>'
+            f'<td>{e(g[0] if g else "")}~{e(g[1] if len(g) > 1 else "")}</td>'
+            f'<td{warn}>{e(r.get("너무_짧은_청크"))}</td>'
+            f'<td>{e(r.get("너무_긴_청크"))}</td></tr>')
+    out.append("</table>")
+    for r in rows:
+        for pick in (r.get("레벨_선택") or []):
+            out.append(f'<p class="sub">지도 경로 — 고른 레벨 '
+                       f'<b>{e(pick.get("분할_레벨"))}</b>: '
+                       f'{e(pick.get("분할_레벨_사유"))}</p>')
+            dist = pick.get("레벨_분포") or {}
+            if dist:
+                out.append('<table><tr><th>레벨</th><th>청크</th>'
+                           '<th>행수 최소~최대(평균)</th><th>구간내</th></tr>')
+                for lv, d in dist.items():
+                    out.append(
+                        f'<tr><td>{e(lv)}</td><td>{e(d.get("청크수"))}</td>'
+                        f'<td>{e(d.get("행수_최소"))}~{e(d.get("행수_최대"))}'
+                        f' ({e(d.get("행수_평균"))})</td>'
+                        f'<td>{e(d.get("구간내_청크수"))}</td></tr>')
+                out.append("</table>")
+    return "\n".join(out)
+
+
 def render(view):
     """뷰 데이터 → HTML 문자열. **계산하지 않는다** — 있는 것을 그린다."""
     s = view["sections"]
@@ -196,6 +238,7 @@ def render(view):
 {_summary(pr.get('summary') or {})}
 <h3 style="font-size:15px;margin:16px 0 4px">이상 신호 — 전량</h3>
 {_anomalies(pr.get('anomalies') or [])}
+{_split((pr.get('summary') or {}).get('split') or [])}
 {_normal(pr.get('normal') or {}, kind)}
 
 <h2>구획 2 · 필드 → role 배정표</h2>

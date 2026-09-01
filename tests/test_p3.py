@@ -816,6 +816,35 @@ show("⑥ 문답 스키마가 진행 재료와 중요도를 요구한다",
      and "importance" in R.INTERVIEW_SCHEMA["properties"]["questions"]["items"]["required"])
 show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hint(pkg)" in _src5)
 
+# ============================================================ B45 분할 분포
+print("\n■ B45 — 분할 크기 분포를 검수 뷰에 (자르는 규칙은 안 건드린다)")
+run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"),
+    str(RAW / "TOC02.xlsx"), "--hint", "목차형")
+run("review", "toc_report")
+_v45 = view_of("toc_report")
+_sp = (_v45["sections"]["parse_result"]["summary"] or {}).get("split") or []
+show("① 분포가 뷰 데이터에 실린다 (표본마다 1건)", len(_sp) == 2, str(len(_sp)))
+show("① 청크 수·행수(최소·최대·평균)·목표 구간 밖(짧음/긺)이 전부 있다",
+     all(k in _sp[0] for k in ("청크수", "행수_최소", "행수_최대", "행수_평균",
+                               "목표구간", "너무_짧은_청크", "너무_긴_청크")),
+     str({k: _sp[0][k] for k in ("청크수", "행수_평균", "너무_짧은_청크")}))
+show("① 상수가 부적절하면 화면에 드러난다 (한 줄짜리 청크가 짧음으로 집계)",
+     _sp[0]["너무_짧은_청크"] > 0,
+     f"{_sp[0]['doc_id']}: 짧음 {_sp[0]['너무_짧은_청크']}/{_sp[0]['청크수']}")
+_html45 = (REVIEW / "toc_report" / "view.html").read_text(encoding="utf-8")
+show("② 렌더러는 **그리기만** 한다 (계산은 산출자 · §6.6-3)",
+     "분할 크기 분포" in _html45
+     and "너무_짧은_청크" not in (ROOT / "kit/render_review.py").read_text(
+         encoding="utf-8").split("def _split")[1].split("return")[0].replace(
+         'r.get("너무_짧은_청크")', ""))
+show("② 구획 1의 3층 계약을 지킨다 (split은 summary 안이다 — D-79)",
+     set(_v45["sections"]["parse_result"]) == {"summary", "anomalies", "normal"})
+# ⓑ 어댑터 경로는 바뀌지 않는다 — 고를 레벨이 없기 때문이다(B45 판정)
+_ref45 = [x for x in _il.import_module("tests.fixtures.fixtures.adapters.toc_report")
+          .extract(reader.read(str(RAW / "TOC01.xlsx"))) if "text" in x]
+show("③ 어댑터 경로 산출은 바뀌지 않는다 (굵기 교정의 정본은 어댑터 개정)",
+     len(_ref45) == 9, f"TOC01 어댑터 청크 {len(_ref45)}")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
