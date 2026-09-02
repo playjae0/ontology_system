@@ -51,6 +51,14 @@ from kit.render_review import render
 from kit.run_adapter import load_blocks
 from router import discover
 
+# **분할 뒤 재수출** — 등록 흐름은 여기 남고, 조립·문답은 제 모듈로 갔다.
+# 이름을 그대로 내보내는 이유: 테스트와 외부가 `cli.register.<이름>`으로 부른다.
+from cli.prompt import (  # noqa: F401
+    KIT_NOTE, VOCAB_SECTIONS, _strip_kit_notes, _dump_prompt, _strip_module_doc,
+    _reference_adapter, _newest_template, _render_template, _vocab_excerpt, _sent_size)
+from cli.interview import (  # noqa: F401
+    INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview)
+
 REVIEW = ROOT / "review"
 KIT = ROOT / "kit"
 FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/fixtures.py가 소유
@@ -59,7 +67,6 @@ FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/fixtures.py가 소�
 SOLO_WARNING = ("표본 1부 · 변형 미관찰 — **선언된 관계는 근거 1건일 수 있음**. "
                 "1부 등록의 선언 edges는 특별 확인 대상이다")
 EXCERPT = 3                                   # 정상 조각 발췌 건수(전량은 접힘에 실린다)
-
 
 
 def _load(path, name):
@@ -246,247 +253,21 @@ GENERATE_SCHEMA = {
 }
 
 
-KIT_NOTE = ("킷 조립 규칙", "킷 유지 규칙")
-
-
-def _strip_kit_notes(text):
-    """**킷을 고치는 사람이 읽을 것**을 조립 시점에 덜어낸다 (문서 6 §6.7 킷 #1).
-
-    두 가지를 뺀다:
-      ① 머리말 — 파일 시작부터 `## [지시]` 직전까지. **판 계보는 킷을 고치는
-         사람의 것**이지 생성 세션이 읽을 것이 아니다(v0.5 실측: 1,682자 = 전체의
-         14%이고 그 안에 `Process` 2·`Unit` 2·`Property` 1이 들어 있었다).
-      ② 스스로 「킷 조립 규칙」·「킷 유지 규칙」이라고 표시한 인용 문단.
-         그 주석은 *"LLM 지시가 아니다"*라고 말하면서 LLM에게 가고, **제외하려던
-         층 어휘를 다시 실어 나른다** — v0.5 치환 결과의 잔재 3건이 전부 그 안이었다.
-
-    **인용 블록 통째로 지우지 않는다.** 같은 `>` 블록 안에 LLM이 읽어야 하는 문단이
-    섞여 있다 — 예: 「패턴표에 없는 관계를 `edges`에 쓰지 마라」. 그래서 빈 인용
-    줄(`>`)로 갈라 **문단 단위**로 판정하고, **표시된 것만** 뺀다.
-
-    **파일은 건드리지 않는다** — 제거는 조립 시점뿐이고 킷은 근거를 계속 보유한다.
-    """
-    lines = text.split("\n")
-    head = next((i for i, ln in enumerate(lines) if ln.startswith("## [지시]")), 0)
-    lines = lines[head:]
-
-    out, para, in_q = [], [], False
-    def flush():
-        if para and not any(m in "".join(para) for m in KIT_NOTE):
-            out.extend(para)
-        para.clear()
-
-    for ln in lines:
-        q = ln.startswith(">")
-        if q:
-            in_q = True
-            if ln.strip() == ">":            # 인용 안의 문단 경계
-                flush()
-                para.append(ln)
-                flush()
-            else:
-                para.append(ln)
-            continue
-        if in_q:
-            flush()
-            in_q = False
-        out.append(ln)
-    flush()
-
-    # 문단을 빼며 남은 빈 인용 줄·연속 공백 줄을 정리한다 — 화면 잡음이지 지시가 아니다.
-    cleaned = []
-    for ln in out:
-        if ln.strip() == ">" and (not cleaned or cleaned[-1].strip() in ("", ">")):
-            continue
-        if ln.strip() == "" and cleaned and cleaned[-1].strip() == "":
-            continue
-        cleaned.append(ln)
-    while cleaned and cleaned[-1].strip() == ">":
-        cleaned.pop()
-    return "\n".join(cleaned)
-
-
-def _dump_prompt(doc_type, text):
-    """`ONTO_DUMP_PROMPT=1`이면 조립된 지시문을 파일로 떨군다 — **관측용이다.**
-
-    치환이 실제로 됐는지는 **조립된 문자열을 눈으로 봐야** 판정된다. 코드를 읽어
-    「될 것이다」로 판정하면, 자리 하나가 빠져도 `{{…}}`가 그대로 모델에 나가는
-    상태를 아무도 모른다 — 실제로 `{{골격_닫힌_목록}}`이 그 상태였다.
-    기본은 꺼져 있다(산출물을 늘리지 않는다).
-    """
-    if os.environ.get("ONTO_DUMP_PROMPT") != "1":
-        return None
-    d = _dir(doc_type)
-    out = d / "prompt_rendered.md"
-    out.write_text(text, encoding="utf-8")
-    print(f"   [덤프] 조립된 지시문 → {out.relative_to(ROOT)} ({len(text)}자)")
-    return out
-
-
-def _strip_module_doc(src):
-    """모듈 docstring을 떼고 그 뒤만 돌려준다 — **위치로 판정한다.**
-
-    스켈레톤 머리의 「사람용 안내」(빈칸 상태 FAIL 4건 실측 등)는 **킷을 고치는
-    사람이 읽을 것**이지 생성 세션이 읽을 것이 아니다. `_strip_kit_notes`와 같은
-    원리이되 판정 기준이 다르다: 저기는 **스스로 표시한 문면**을, 여기는
-    **구문상의 자리**(모듈 docstring)를 본다.
-
-    **내용 문자열로 판정하지 않는다** — 「FAIL 4건」 같은 낱말을 세면 안내를 고칠
-    때마다 이 코드가 따라 움직이고, 안내가 바뀌면 조용히 안 떼어진다.
-    """
-    tree = ast.parse(src)
-    doc = ast.get_docstring(tree, clean=False)
-    if doc is None or not tree.body:
-        return src
-    first = tree.body[0]
-    if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)):
-        return src
-    lines = src.split("\n")
-    return "\n".join(lines[first.end_lineno:]).lstrip("\n")
-
-
-def _reference_adapter(samples):
-    """표본의 **reader 형식**으로 few-shot 전시물 1종을 고른다.
-
-    payload_kind는 아직 생성 세션이 판정하기 전이다 — 그래서 이미 아는 것으로
-    고른다: reader가 무엇으로 읽었는가. 혼재면 **첫 표본** 기준이다(둘을 다 실으면
-    프롬프트가 두 배가 되고, 어느 쪽이 모범인지도 흐려진다).
-    """
-    first = str(samples[0]).lower() if samples else ""
-    name = "toc_report.py" if first.endswith((".pptx", ".ppt")) else "cp.py"
-    p = KIT / "참조어댑터" / name
-    return name, (p.read_text(encoding="utf-8") if p.exists() else "")
-
-
-import contextlib                                              # noqa: E402
-
-
-@contextlib.contextmanager
-def _dump_error_on_fail(doc_type):
+def _note_error(doc_type, e):
     """실패하면 **원인이 적힌 유일한 자리**를 남긴다 — `review/{}/last_error.json`.
 
     게이트웨이의 400 본문은 화면을 스쳐 지나가고 로그는 다음 실행에 묻힌다.
     검수 디렉터리에 남겨야 사람이 그 문서를 다시 볼 때 함께 본다.
     **인증 헤더·키는 남기지 않는다** — `core/llm.py`가 애초에 담지 않는다.
     """
-    try:
-        yield
-    except Exception as e:
-        if llm.LAST_ERROR:
-            d = _dir(doc_type)
-            (d / "last_error.json").write_text(
-                json.dumps({**llm.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
-                           ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            print(f"   [오류] 게이트웨이 응답을 남겼다 → "
-                  f"{(d / 'last_error.json').relative_to(ROOT)}")
-        raise
-
-
-def _newest_template():
-    """`kit/`의 생성 프롬프트 템플릿 중 **가장 높은 판**을 고른다.
-
-    파일명을 코드에 박으면 판이 오를 때마다 코드가 따라 움직여야 하고, 옛 판을
-    보존하는 킷 규칙(판 계보)과 겹쳐 **어느 판이 실제로 쓰이는지가 파일 목록으로는
-    안 보인다.** 판 번호는 자산이 스스로 말하게 한다.
-    """
-    cands = sorted(KIT.glob("생성프롬프트_템플릿_v*.md"),
-                   key=lambda f: [int(x) for x in
-                                  re.findall(r"\d+", f.stem.split("_v")[-1])])
-    if not cands:
-        raise SystemExit(f"[생성] 프롬프트 템플릿이 없다: {KIT}/생성프롬프트_템플릿_v*.md")
-    return cands[-1]
-
-
-def _render_template(text, pkg):
-    """템플릿의 주입 자리 6개를 **입력 패키지의 값으로** 치환한다.
-
-    **왜 필요한가.** v0.4는 `Process`·`Unit`·`Property` 정의문과 `Unit part_of
-    Process` 삼항을 본문에 직접 적었다. 그런데 `cmd_generate`는 같은 정보를
-    `layer_vocabulary`로 이미 싣는다 — **같은 사실이 두 곳에 살고 하나가 고정**인
-    상태였고, 품질층 등록에서 템플릿과 입력 패키지가 서로 다른 어휘를 말한다.
-    `{{골격_닫힌_목록}}`도 치환하는 코드가 없어 **글자 그대로** 나가고 있었다.
-
-    **값은 전부 `pkg["system"]`에 이미 있다** — 새 키를 만들지 않는다(시스템 5키가
-    명세이고 회귀가 센다). 치환은 있는 값을 렌더하는 일이다.
-    """
-    sysd = pkg.get("system") or {}
-    voc = sysd.get("layer_vocabulary") or {}
-
-    cats = voc.get("categories") or {}
-    cat_md = "\n".join(f"- `{k}` — {v}" for k, v in cats.items()) or "- (없음)"
-
-    rows = ["| 관계 | 삼항 | 정의문 |", "|---|---|---|"]
-    for r in (voc.get("relation_patterns") or []):
-        sym = " · **대칭**" if r.get("symmetric") else ""
-        rows.append(f"| `{r.get('rel')}`{sym} | `{r.get('src')} {r.get('rel')} "
-                    f"{r.get('dst')}` | {r.get('정의문') or r.get('definition') or ''} |")
-    rel_md = "\n".join(rows) if len(rows) > 2 else "(패턴 없음)"
-
-    blocks, bl = sysd.get("blocks") or {}, []
-    for name, body in blocks.items():
-        # `_`로 시작하는 키는 주석·구조 메모다 — 블록이 아니므로 목록에 올리지 않는다.
-        if name.startswith("_") or not isinstance(body, dict):
-            continue
-        fields = ", ".join(f"`{f}`" for f in body if not f.startswith("_"))
-        bl.append(f"- `{name}` — 제공 필드: {fields or '(없음)'}")
-    blocks_md = "\n".join(bl) or "- (이 층이 쓸 수 있는 블록이 없다)"
-
-    surf = (sysd.get("skeleton_closed_list") or {}).get("surfaces") or []
-    sk = []
-    for n in surf:
-        al = n.get("aliases") or []
-        sk.append(f"- `{n.get('canonical')}`"
-                  + (f"  (별칭: {', '.join(al)})" if al else ""))
-    sk_md = "\n".join(sk) or "- (골격 닫힌 목록이 비었다)"
-
-    # **힌트 자리도 채운다.** 요청 표에는 6개가 적혔지만 템플릿에는 자리가 일곱이고,
-    # 하나라도 남으면 `{{…}}`라는 글자가 그대로 모델에 나간다 — 지시문이 스스로
-    # 「여기 렌더된다」고 말하면서 렌더되지 않는 상태가 v0.4의 결함이었다.
-    # 값은 `pkg["human"]["hint"]`에 이미 있다(새 키가 아니다).
-    hint = (pkg.get("human") or {}).get("hint") or ""
-    if isinstance(hint, dict):
-        # `--interview`면 힌트는 **문답 전문**이다 — 지시문에는 사람이 준 자유
-        # 텍스트와 라운드별 이해·답을 함께 싣는다(LLM이 무엇에 합의했는지가 입력이다).
-        parts = [hint.get("text") or ""]
-        for r in hint.get("interview") or []:
-            parts.append(f"[문답 라운드 {r['round']}] 이해: {r['understanding']}")
-            if r.get("answer"):
-                parts.append(f"  사람의 답/교정: {r['answer']}")
-        hint = "\n".join(x for x in parts if x.strip())
-    text = re.sub(r"\{\{사용자 자유 텍스트[^}]*\}\}",
-                  hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",
-                  text)
-
-    # **참조 어댑터 few-shot**(B29 ★②) — 표본의 reader 형식으로 1종을 고른다.
-    # 전시물 머리의 출처 표기(B27)는 **함께 싣는다**: 킷 유지 규칙이 아니라
-    # 전시물의 일부이고, 「이것은 다른 문서의 것」이라는 사실 자체가 지시다.
-    _human = pkg.get("human") or {}
-    # **끈 사실이 패키지에 남는다**(B30) — 재현 조건이다. 같은 표본으로 다시 돌려도
-    # 이 값이 없으면 왜 전시물이 빠졌는지 되짚을 수 없다.
-    _hint = _human.get("hint")
-    _off = isinstance(_hint, dict) and _hint.get("no_fewshot")
-    _name, _body = ("(없음)", "") if _off else \
-        _reference_adapter(_human.get("samples") or [])
-    ref_md = (f"```python\n# ── {_name} (kit/참조어댑터/{_name})\n{_body}```"
-              if _body else
-              "(이번 조립은 참조 어댑터를 싣지 않았다 — `--no-fewshot`. "
-              "규약 10의 실물이 없으므로 규약 문면과 스켈레톤 뼈대만 보고 낸다)"
-              if _off else
-              "(참조 어댑터를 찾지 못했다 — kit/참조어댑터/ 확인)")
-
-    layers = voc.get("layers") or []
-    for mark, val in (("{{참조_어댑터}}", ref_md),
-                      ("{{층_이름}}", str(voc.get("layer") or "")),
-                      ("{{존재하는_층_목록}}", " · ".join(f"`{x}`" for x in layers)),
-                      ("{{카테고리_정의문}}", cat_md),
-                      ("{{관계_패턴_표}}", rel_md),
-                      ("{{공용_블록_목록}}", blocks_md),
-                      ("{{골격_닫힌_목록}}", sk_md)):
-        text = text.replace(mark, val)
-    # **치환 뒤에 덜어낸다.** 주석 안에도 주입 자리가 있어(공용 블록 절) 먼저 빼면
-    # `{{…}}`가 남았는지의 판정이 흐려진다 — 치환은 전량 하고 그 뒤 걷어낸다.
-    return _strip_kit_notes(text)
+    if not llm.LAST_ERROR:
+        return
+    d = _dir(doc_type)
+    (d / "last_error.json").write_text(
+        json.dumps({**llm.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
+                   ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"   [오류] 게이트웨이 응답을 남겼다 → "
+          f"{(d / 'last_error.json').relative_to(ROOT)}")
 
 
 def _pretty_json(obj, indent=2):
@@ -560,16 +341,16 @@ def _draft_live(doc_type, revision):
     system = _render_template(_newest_template().read_text(encoding="utf-8"),
                               json.loads(raw_pkg))
     _dump_prompt(doc_type, system)          # ONTO_DUMP_PROMPT=1일 때만
-    _msgs = [{"role": "system", "content": system},
-             {"role": "user", "content": raw_pkg}]
-    _sent_size(_msgs, f"생성 초안 {doc_type}")
-    with _dump_error_on_fail(doc_type):
-        out = llm.chat(
-            # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
-            # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
-            [{"role": "system", "content": system},
-             {"role": "user", "content": raw_pkg}],
-            json_schema=GENERATE_SCHEMA, point="generate")
+    # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
+    # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
+    msgs = [{"role": "system", "content": system},
+            {"role": "user", "content": raw_pkg}]
+    _sent_size(msgs, f"생성 초안 {doc_type}")
+    try:
+        out = llm.chat(msgs, json_schema=GENERATE_SCHEMA, point="generate")
+    except Exception as e:
+        _note_error(doc_type, e)
+        raise
     d = REVIEW / doc_type
     d.mkdir(parents=True, exist_ok=True)
     suffix = f"_rev{revision}" if revision else ""
@@ -612,206 +393,6 @@ def basic_adapter_proposal(samples):
             "over_threshold_slides": over,
             "note": ("임계 초과 슬라이드가 있어 자명함이 조건부다 — shape 분할·지도 폴백이 "
                      "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
-
-
-INTERVIEW_SCHEMA = {
-    "type": "object",
-    "properties": {
-        # **진행 재료**(B43 ⑥) — 사람이 「이제 진행해도 되나」를 판단할 근거다.
-        # LLM이 세지 않으면 라운드가 끝없이 이어져도 남은 양이 안 보인다.
-        "progress": {
-            "type": "object",
-            "properties": {"columns": {"type": "integer"},
-                           "decided": {"type": "integer"},
-                           "undecided": {"type": "integer"},
-                           "by_role": {"type": "string"}},
-            "required": ["columns", "decided", "undecided", "by_role"],
-            "additionalProperties": False,
-        },
-        # **이해 요약이 이 설계의 심장이다** — 사람이 판정하는 대상은 "질문에 다
-        # 답했나"가 아니라 **"LLM의 이해가 맞아졌나"**다.
-        "understanding": {"type": "string"},
-        "questions": {"type": "array", "items": {
-            "type": "object",
-            "properties": {"q": {"type": "string"},
-                           "options": {"type": "array", "items": {"type": "string"}},
-                           # **중요도**(B43 ⑥) — 3개씩 무한정 나오면 끝이 안 보인다.
-                           "importance": {"type": "string"}},
-            "required": ["q", "options", "importance"],
-            "additionalProperties": False}},
-    },
-    "required": ["progress", "understanding", "questions"],
-    "additionalProperties": False,
-}
-
-INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
-
-
-VOCAB_SECTIONS = ("## [role 어휘", "## [role 배정 대상이 아닌 필드", "## [층 어휘")
-
-
-def _vocab_excerpt(pkg):
-    """생성 템플릿에서 **판정 어휘 세 구획**을 발췌한다 (B32).
-
-    **두 지시문에 같은 어휘를 따로 적지 않는다** — 정본은 생성 템플릿 하나이고,
-    문답 지시문(`prompts/interview.md`)에는 *"판정 어휘가 뒤에 붙어 온다"*는 전제만
-    있다. 따로 적으면 한쪽이 낡고, 그때 문답이 묻는 어휘와 생성이 쓰는 어휘가
-    갈린다 — 이 프로젝트가 세 번 실측한 미러 실패의 구조다.
-
-    **발췌는 구획 제목 앵커로** 한다: 렌더 뒤라 층 이름이 이미 치환돼 있어
-    (`## [층 어휘 — quality 층]`) 접두 일치가 유일하게 안전한 판정이다.
-    """
-    doc = _render_template(_newest_template().read_text(encoding="utf-8"), pkg)
-    lines = doc.split("\n")
-    starts = [i for i, ln in enumerate(lines)
-              if any(ln.startswith(s) for s in VOCAB_SECTIONS)]
-    out = []
-    for i in starts:
-        j = next((k for k in range(i + 1, len(lines))
-                  if lines[k].startswith("## [")), len(lines))
-        out.append("\n".join(lines[i:j]).rstrip())
-    return "\n\n".join(out)
-
-
-def _sent_size(msgs, label, _n_samples=1):
-    """전송 크기를 화면에 1줄 (B30) — **부르기 직전에** 잰다.
-
-    게이트웨이 컨텍스트를 넘기면 응답이 잘리는 게 아니라 **요청이 거부된다** —
-    `finish_reason=length` 경고는 응답 쪽이라 그것을 잡지 못한다. 사람이 보내기
-    전에 크기를 알아야 전시물을 끄든 표본을 줄이든 판단할 수 있다.
-    """
-    sys_b = sum(len(m["content"].encode("utf-8"))
-                for m in msgs if m["role"] == "system")
-    usr_b = sum(len(m["content"].encode("utf-8"))
-                for m in msgs if m["role"] != "system")
-    tot = sys_b + usr_b
-    # 한글 혼재 기준의 **거친 어림**이다(3바이트/토큰) — 정밀 계수는 게이트웨이 몫.
-    est = tot // 3          # 한글 혼재의 거친 어림 — 정밀 계수는 게이트웨이 몫
-    lim = llm.context_limit()
-    print(f"   [전송] {label} — system {sys_b:,}B + user {usr_b:,}B "
-          f"= {tot:,}B (약 {est:,} 토큰"
-          + (f" / 한도 {lim:,})" if lim else ")"), flush=True)
-    if lim and est > lim:
-        # **초과면 보내지 않고 멈춘다** — 컨텍스트 초과는 응답이 잘리는 게 아니라
-        # 요청이 거부되고, 그 거부는 게이트웨이마다 문면이 달라 원인이 안 보인다.
-        # 감축 수단을 **순서대로** 낸다: 싸고 손실 적은 것부터.
-        raise SystemExit(
-            f"[전송] 예산 초과 — 약 {est:,} 토큰 > 한도 {lim:,}. 보내지 않았다.\n"
-            f"   감축 순서:\n"
-            f"     ① --no-fewshot        참조 어댑터 주입을 끈다 (약 −2,100 토큰)\n"
-            f"     ② 프로파일 대표값 축소   parser/profile.py의 FULL_LIST_MAX·"
-            f"SAMPLE_VALUES를 줄인다 (열당 약 −30 토큰)\n"
-            f"     ③ 표본 부수 축소        표본 1부당 약 −{usr_b // 3 // max(1, _n_samples):,} 토큰\n"
-            f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다")
-    return tot
-
-
-def _interview_round(pkg, history):
-    """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
-
-    LLM은 «이해했다, 진행하겠다»를 판단하지 않는다(I4: 제어 흐름은 코드+사람
-    소유). 매 라운드 요약과 질문을 낼 뿐이고, **끝내는 것은 사람**이다.
-
-    mock 갈래는 **표본 관찰 재료와 누적 답변에서 규칙으로** 요약을 만든다 —
-    미리 적어 둔 문장을 되읽으면 「교정이 반영되는가」를 아무것도 검증하지 않는다.
-    """
-    heads = (pkg.get("system") or {}).get("reader_head") or []
-    cols = []
-    for h in heads:
-        for sh in (h.get("head") or {}).get("sheets") or []:
-            cols += [v for a, v in (sh.get("cells") or {}).items()
-                     if a.endswith("1") and isinstance(v, str)]
-    if llm.use_mock():
-        llm.mock("generate", f"문답 라운드 {len(history) + 1} — 규칙 요약")
-        base = (f"열 {len(cols)}개를 관찰했다: {', '.join(cols[:6])}"
-                if cols else "표본에서 열을 관찰하지 못했다")
-        fixes = [h["answer"] for h in history if h.get("answer")]
-        qs = ([] if fixes else
-              [{"q": "병합된 좌측 열은 어떻게 다루나",
-                "options": ["위 값 채움", "행 독립", "모름"],
-                "importance": "높음 — 좌표 해소가 여기 걸린다"}])
-        return {"understanding": base + ("" if not fixes else
-                                         " · 교정 반영: " + " / ".join(fixes)),
-                "progress": {"columns": len(cols), "decided": len(fixes),
-                             "undecided": max(0, len(cols) - len(fixes)),
-                             "by_role": "(mock — 규칙 요약이라 role 배정이 없다)"},
-                "questions": qs}
-
-    # **판정 어휘를 이어 붙인다**(B32) — 문답이 role·층 어휘를 모른 채 물으면
-    # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
-    convo = [{"role": "system",
-              "content": llm.prompt("interview") + "\n\n---\n\n"
-                         + _vocab_excerpt(pkg)},
-             {"role": "user", "content": json.dumps(
-                 {"입력_패키지": pkg, "지난_문답": history}, ensure_ascii=False)}]
-    _sent_size(convo, f"문답 라운드 {len(history) + 1}")
-    return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
-
-
-def _prof_hint(pkg, top=6):
-    """열 프로파일 요약을 **사람에게도** 보인다 (B43 ⑥-3).
-
-    LLM은 이 재료를 이미 받아 쓰는데 사람 화면에는 없었다 — 그러면 사람은 LLM의
-    판정을 근거 없이 믿거나 근거 없이 의심한다.
-    """
-    profs = [pp for h in ((pkg.get("system") or {}).get("reader_head") or [])
-             for pp in (h.get("열_프로파일") or [])]
-    cols = [(c, v) for s in profs for c, v in (s.get("열") or {}).items()]
-    if not cols:
-        return
-    print(f"   [근거] 열 프로파일 {len(cols)}열 — 고유값/형태 (앞 {top}열)")
-    for c, v in cols[:top]:
-        sh = v.get("형태") or {}
-        print(f"     {c}: 고유 {v['고유값수']:>3} / {v['비지_않은_행수']:>3}행 · "
-              f"빈셀 {v['빈셀비율']} · 수치단위 {sh.get('수치단위_비율', '?')} · "
-              f"제안 {v['기계제안']['제안']}")
-
-
-def _interview(pkg, on_round=None):
-    """생성 전 문답 — **끝내는 것은 사람뿐이다.** 상한 없음(§6.5 재생성 루프와 같은 원리).
-
-    돌려주는 것은 라운드 이력이다: 매 라운드의 요약·질문·답이 전부 남는다.
-    기록이 없으면 **같은 등록을 재현할 수 없다.**
-    """
-    history, blanks = [], 0
-    print("\n■ 생성 전 문답 — 이해 요약을 보고 교정한다. "
-          f"끝내려면 «{INTERVIEW_STOP[0]}» (상한 없음)")
-    while True:
-        out = _interview_round(pkg, history)
-        n = len(history) + 1
-        pg = out.get("progress") or {}
-        # **진행 1줄**(B43 ⑥) — 「이제 진행해도 되나」의 판단 근거다.
-        if pg:
-            print(f"\n[라운드 {n}] 열 {pg.get('columns', '?')}개 · "
-                  f"판정 {pg.get('decided', '?')} ({pg.get('by_role', '')}) · "
-                  f"미정 {pg.get('undecided', '?')} · "
-                  f"이번 질문 {len(out.get('questions') or [])}")
-        else:
-            print(f"\n[라운드 {n}]")
-        print("이해 요약")
-        print(f"   {out['understanding']}")
-        _prof_hint(pkg)                       # 판정 근거를 사람에게도 보인다
-        for i, q in enumerate(out.get("questions") or [], 1):
-            imp = q.get("importance")
-            print(f"   Q{i}. {q['q']}" + (f"   [{imp}]" if imp else ""))
-            print(f"       선택지: {' · '.join(q.get('options') or [])}")
-        try:
-            ans = input("   답/교정 (빈 줄 2회 또는 «진행»이면 종료) > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            ans = INTERVIEW_STOP[0]
-            print(f"   (입력 없음 — {ans})")
-        history.append({"round": n, "understanding": out["understanding"],
-                        "questions": out.get("questions") or [], "answer": ans,
-                        "progress": pg})
-        if on_round:
-            on_round(history)                 # **라운드마다 즉시 저장**(B43 ⑤)
-        if ans.lower() in INTERVIEW_STOP:
-            print(f"   → 사람이 종료했다. 라운드 {n}회 · 생성으로 간다")
-            return history
-        blanks = blanks + 1 if not ans else 0
-        if blanks >= 2:
-            print(f"   → 빈 입력 2연속 — 종료로 읽는다. 라운드 {n}회")
-            return history
 
 
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
@@ -1044,7 +625,6 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     # **먼저 볼 것을 위로 올린다** — 화면 순서가 곧 검토 순서다.
     rows.sort(key=lambda r: (0 if r.get("attention") else 1, r.get("rank", 999)))
     return rows
-
 
 
 def unmappable_of(schema, adapter_mod):

@@ -807,14 +807,15 @@ show("④ 대조는 좌표 태깅과 **같은 연산**을 재사용한다 (새�
 
 # ⑤⑥ resume · 진행 · 근거
 _src5 = (ROOT / "cli/register.py").read_text(encoding="utf-8")
+_src5i = (ROOT / "cli/interview.py").read_text(encoding="utf-8")   # 문답은 제 모듈로 갔다
 show("⑤ --resume이 사용법과 파싱에 있다",
      "--resume" in _src5 and "resume=resume" in _src5)
 show("⑤ 문답이 라운드마다 즉시 저장된다 (중간에 죽어도 잃지 않는다)",
-     "on_round(history)" in _src5)
+     "on_round(history)" in _src5i)
 show("⑥ 문답 스키마가 진행 재료와 중요도를 요구한다",
      "progress" in R.INTERVIEW_SCHEMA["required"]
      and "importance" in R.INTERVIEW_SCHEMA["properties"]["questions"]["items"]["required"])
-show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hint(pkg)" in _src5)
+show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hint(pkg)" in _src5i)
 
 # ============================================================ B45 분할 분포
 print("\n■ B45 — 분할 크기 분포를 검수 뷰에 (자르는 규칙은 안 건드린다)")
