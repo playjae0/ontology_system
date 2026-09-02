@@ -342,162 +342,206 @@ HANDLERS = {"anchor": h_anchor, "entity": h_entity, "attribute": h_attribute,
 
 
 # ---------------------------------------------------------------- 정형 (1c′)
-def build_table(env, cfg, schema, graph):
-    b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
-    fields = schema["fields"]
-    envelope_ctx = _context(env, env.get("source_path"), env["doc_id"])
+class _Row:
+    """레코드 하나의 작업 상태 — 단계 함수 6개가 공유하는 그릇.
 
-    for rec in env.get("records", []):
-        prov = _prov(rec)
-        _check_fields(rec, fields, prov, env["doc_id"])
+    `build_table`이 156줄·분기 35짜리 한 덩어리였다(구조 진단 2026-08-27 · 2순위).
+    단계별로 떼되 **행 안에서 쌓이는 것**(해소 결과·보류·드롭·외부 그래프)은 여기 한
+    곳에 둔다 — 인자로 넘기면 단계 함수 서명이 열두 개짜리가 된다.
+    """
+    __slots__ = ("rec", "prov", "ref", "ref_g", "et", "ctx", "parent", "anchor_pol",
+                 "resolved", "external", "attrs", "contents",
+                 "defer", "dropped", "pending", "dropped_ents")
+
+    def __init__(self, rec):
+        self.rec, self.prov = rec, _prov(rec)
+        self.ref = self.ref_g = self.et = self.parent = self.anchor_pol = None
+        self.ctx = {}
+        self.resolved, self.external = {}, {}
+        self.attrs, self.contents = [], []
         # **적재를 레코드 말미로 미루는 그릇 셋** (문서 2 §2.4-①·③ · 문서 4 §4.7-5).
         # 큐 항목이 재시도의 유일한 손잡이라, 그 행이 무엇을 만들었는지가 정해진
         # 뒤에 실어야 한다.
-        defer, dropped, pending = [], [], []
+        self.defer, self.dropped, self.pending = [], [], []
         # **연쇄 드롭된 entity의 재료** — 좌표가 미해소라 만들지 않은 것들.
         # 큐 항목이 이것을 보유해야 재시도가 노드를 새로 세울 수 있다(§4.4).
-        dropped_ents = []
-        # ③ 좌표: 부착은 process_ref 하나. process_group은 조상 대조만.
-        ref, ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, prov,
-                                      defer=defer)
-        et = rec.get("electrode_type")                  # ④ 구조 필드 — 직접 읽는다
-        ref = b.descend_anchor(ref, et, ref_g)          # ⓪ 하강 부착 (A11-9 ⓪)
-        b.check_coord(rec.get("process_group"), ref, prov, ref_g)
-        ctx = dict(envelope_ctx)
-        ctx.update(_context(rec, prov, env["doc_id"]))  # 봉투 → 레코드 상속·덮어쓰기
-        parent = ref_g.get(ref)["canonical"] if ref else None
-        # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
-        # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch
-        anchor_pol = b.anchor_polarity(ref, ref_g)
-        b.check_polarity(ref, et, prov, ref_g)
+        self.dropped_ents = []
 
-        resolved, attrs, contents, external = {}, [], [], {}
-        state = {"b": b, "graph": graph, "cfg": cfg, "prov": prov, "ref": ref,
-                 "dropped_entities": dropped_ents,
-                 "ref_g": ref_g, "parent": parent, "et": et,
-                 "anchor_pol": anchor_pol, "external": external,
-                 "defer": defer, "field": None}
-        hctx = Ctx(graphs=b.graphs(), dic=b.dict, buffer=b.buffer, queue=store,
-                   record=rec, schema=schema, state=state)
 
-        # **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7).
-        for f, spec in fields.items():
-            if f not in rec or rec[f] in (None, ""):
-                continue
-            role = spec.get("role")
-            # **attribute는 이 방어의 대상이 아니다**(문서 2 §2.7 · §2.4-③) —
-            # 구조체·배열을 통째로 하나의 값으로 저장한다. 이 방어가 막는 것은
-            # 리스트가 표면형 정규화(문자열 강제·포함 규칙)를 타고 기존 노드에
-            # 흡수되는 **사전 오염**인데, attribute 값은 사전을 타지 않는다.
-            if role in ("entity", "anchor") and \
-                    not _scalar(rec[f], f, prov, env["doc_id"]):
-                continue
-            if role not in HANDLERS:
-                # D-30 — 알 수 없는 role에 KeyError로 죽지 않는다.
-                store.append_defect(                    # 큐가 아니라 로그다 (D-30)
-                    f"{env['doc_id']}: invalid_role '{role}' @ 필드 '{f}'")
-                continue
-            state["field"] = f
-            out = HANDLERS[role](rec[f], spec, hctx)
-            resolved[f] = out                           # 반환 3형태 (문서 2 §2.7)
-            if role == "attribute":
-                attrs.append((f, spec))
-            elif role == "content":
-                contents.append((f, spec))
+def build_table(env, cfg, schema, graph):
+    """정형 인입 — 레코드마다 ⓪좌표 → ①role 분기 → attribute → content → ②edges →
+    규칙 B 폴백 → 말미 적재. 단계의 순서가 계약이다(문서 2 §2.4 · 문서 4 §4.4)."""
+    b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
+    fields = schema["fields"]
+    doc_id = env["doc_id"]
+    envelope_ctx = _context(env, env.get("source_path"), doc_id)
 
-        for f, spec in attrs:
-            af = spec.get("attach_to_field")
-            tgt = resolved.get(af)
-            if tgt is None:
-                # **「미해소」와 「값 없음」을 가른다**(문서 4 §4.4-4 — B12).
-                #
-                # `attach_to_field`가 가리키는 필드가 그 행에서 **빈 셀이면 아무것도
-                # 하지 않는다** — 붙일 대상 자체가 그 행에 없으므로 attribute가
-                # 성립하지 않는다. 없는 값을 저해상도로 만들어 붙이면 **문서에 없던
-                # 사실이 그래프에 생긴다**.
-                #
-                # **값은 있는데 해소에 실패한 경우만** 보류한다 — 그때는 좌표가
-                # 나중에 해소되면 붙어야 할 값이고, 조용히 버리면 그 기회가 사라진다
-                # (문서 2 §2.4-③ `pending_attrs`).
-                if af and rec.get(af) in (None, ""):
-                    continue                    # 값 없음 — 폴백도 보류도 하지 않는다
-                pending.append({"attr_name": spec.get("attr_name", f),
-                                "value": rec[f],
-                                "context": ctx or None,
-                                "provenance": prov,
-                                "attach_to_field": af})
-                continue
-            tg = external.get(af, graph)
-            # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
-            ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
-            ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], ctx, prov,
-                             bool(spec.get("contextual")))
-        for f, spec in contents:                        # describes — 필드별 청크(D8)
-            af2 = spec.get("attach_to_field")
-            tgt = resolved.get(af2)
-            if tgt is not None:
-                _describe(env["doc_id"], rec, f, tgt)
-            elif af2 and rec.get(af2) not in (None, ""):
-                # 값은 있는데 대상이 미해소다 — 청크는 이미 보존돼 있고(링킹 0건
-                # 청크도 남긴다) 연결만 못 한 것이므로 결함 로그로 드러낸다.
-                # 빈 셀이면 기록하지 않는다 — 그 행에 대상이 없는 것이 정상이다(B12).
-                store.append_defect(
-                    f"{env['doc_id']}: content 부착 대상 미해소 — "
-                    f"'{f}' → '{af2}'={rec.get(af2)!r} @ {prov}")
-
-        # ② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다.
-        for e in schema.get("edges", []):
-            src, sg = _endpoint(e["from"], resolved, ref, ref_g, external, graph,
-                                env["doc_id"])
-            dst, dg = _endpoint(e["to"], resolved, ref, ref_g, external, graph,
-                                env["doc_id"])
-            if e.get("optional") and _blank_endpoint(e, rec, fields):
-                continue        # **빈 행의 optional 엣지는 조용히 생략**(문서 2 §2.4-⑥)
-            if src is None or dst is None:
-                # 미해소 끝점 — 생략된 엣지의 **출발 노드를 큐 손잡이에 싣는다**
-                # (문서 2 §2.4-① · 문서 4 §4.4). 게이트의 unresolved_endpoint는
-                # 거부 **기록**이지 재시도 손잡이가 아니다 — 로그와 큐는 다른 자리다.
-                dropped.append({"relation": e["relation"], "from": e["from"],
-                                "to": e["to"],
-                                "src": src, "dst": dst,
-                                "src_surface": _field_surface(e["from"], rec),
-                                "dst_surface": _field_surface(e["to"], rec)})
-            # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
-            gate.commit_edge(graph, src, e["relation"], dst, cfg,
-                             gate.PATH_SCHEMA, [prov], env["doc_id"],
-                             src_graph=sg, dst_graph=dg)
-
-        # **규칙 B 폴백 — 정형 경로**(문서 4 §4.4-4). 이 레코드가 만든 entity 중
-        # **어느 엣지에도 끝점으로 서지 못한 것**을 좌표에 저해상도로 붙인다.
-        # §2.4-②의 "attach 대상이 **없거나** 미해소면" 중 "없다"는 그 entity를
-        # 아무 경로도 붙이지 않은 경우다. **빈 셀은 그 갈래가 아니다**(B12).
-        if ref is not None:
-            touched = set()
-            for e in schema.get("edges", []):
-                for side in ("from", "to"):
-                    nid = resolved.get(e.get(side))
-                    if nid:
-                        touched.add(nid)
-            for f, spec in fields.items():
-                if spec.get("role") != "entity":
-                    continue
-                nid = resolved.get(f)
-                if nid is None or nid in touched:
-                    continue
-                # **B12 — 빈 셀은 폴백 대상이 아니다.** 이 entity가 `attach_to_field`를
-                # 선언했는데 그 필드가 이 행에서 비어 있으면, 붙을 대상이 그 행에
-                # 없는 것이지 해소에 실패한 것이 아니다(문서 4 §4.4-4).
-                af3 = spec.get("attach_to_field")
-                if af3 and rec.get(af3) in (None, ""):
-                    continue
-                tg = external.get(f, graph)
-                _fallback_attach(b, cfg, tg, nid, ref, ref_g, prov, env["doc_id"])
-
-        _land_deferred(defer, dropped, pending, env["doc_id"],
-                       dropped_entities=dropped_ents)
+    for rec in env.get("records", []):
+        r = _Row(rec)
+        _check_fields(rec, fields, r.prov, doc_id)
+        _row_anchor(b, r, envelope_ctx, doc_id)
+        _row_roles(b, r, fields, schema, graph, cfg, doc_id)
+        _row_attributes(b, r, graph)
+        _row_contents(r, doc_id)
+        _row_edges(r, schema, fields, graph, cfg, doc_id)
+        _row_fallback(b, r, schema, fields, graph, cfg, doc_id)
+        _land_deferred(r.defer, r.dropped, r.pending, doc_id,
+                       dropped_entities=r.dropped_ents)
 
     b.flush()
     return b
+
+
+def _row_anchor(b, r, envelope_ctx, doc_id):
+    """⓪ 좌표·문맥 — 부착은 process_ref 하나. process_group은 조상 대조만."""
+    rec = r.rec
+    r.ref, r.ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, r.prov,
+                                      defer=r.defer)
+    r.et = rec.get("electrode_type")                # ④ 구조 필드 — 직접 읽는다
+    r.ref = b.descend_anchor(r.ref, r.et, r.ref_g)  # ⓪ 하강 부착 (A11-9 ⓪)
+    b.check_coord(rec.get("process_group"), r.ref, r.prov, r.ref_g)
+    r.ctx = dict(envelope_ctx)
+    r.ctx.update(_context(rec, r.prov, doc_id))     # 봉투 → 레코드 상속·덮어쓰기
+    r.parent = r.ref_g.get(r.ref)["canonical"] if r.ref else None
+    # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
+    # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch
+    r.anchor_pol = b.anchor_polarity(r.ref, r.ref_g)
+    b.check_polarity(r.ref, r.et, r.prov, r.ref_g)
+
+
+def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
+    """① **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7)."""
+    rec = r.rec
+    state = {"b": b, "graph": graph, "cfg": cfg, "prov": r.prov, "ref": r.ref,
+             "dropped_entities": r.dropped_ents,
+             "ref_g": r.ref_g, "parent": r.parent, "et": r.et,
+             "anchor_pol": r.anchor_pol, "external": r.external,
+             "defer": r.defer, "field": None}
+    hctx = Ctx(graphs=b.graphs(), dic=b.dict, buffer=b.buffer, queue=store,
+               record=rec, schema=schema, state=state)
+    for f, spec in fields.items():
+        if f not in rec or rec[f] in (None, ""):
+            continue
+        role = spec.get("role")
+        # **attribute는 이 방어의 대상이 아니다**(문서 2 §2.7 · §2.4-③) —
+        # 구조체·배열을 통째로 하나의 값으로 저장한다. 이 방어가 막는 것은
+        # 리스트가 표면형 정규화(문자열 강제·포함 규칙)를 타고 기존 노드에
+        # 흡수되는 **사전 오염**인데, attribute 값은 사전을 타지 않는다.
+        if role in ("entity", "anchor") and not _scalar(rec[f], f, r.prov, doc_id):
+            continue
+        if role not in HANDLERS:
+            # D-30 — 알 수 없는 role에 KeyError로 죽지 않는다.
+            store.append_defect(                    # 큐가 아니라 로그다 (D-30)
+                f"{doc_id}: invalid_role '{role}' @ 필드 '{f}'")
+            continue
+        state["field"] = f
+        r.resolved[f] = HANDLERS[role](rec[f], spec, hctx)   # 반환 3형태 (문서 2 §2.7)
+        if role == "attribute":
+            r.attrs.append((f, spec))
+        elif role == "content":
+            r.contents.append((f, spec))
+
+
+def _row_attributes(b, r, graph):
+    """attribute 부착 — **「미해소」와 「값 없음」을 가른다**(문서 4 §4.4-4 — B12).
+
+    `attach_to_field`가 가리키는 필드가 그 행에서 **빈 셀이면 아무것도 하지 않는다** —
+    붙일 대상 자체가 그 행에 없으므로 attribute가 성립하지 않는다. 없는 값을
+    저해상도로 만들어 붙이면 **문서에 없던 사실이 그래프에 생긴다**.
+
+    **값은 있는데 해소에 실패한 경우만** 보류한다 — 그때는 좌표가 나중에 해소되면
+    붙어야 할 값이고, 조용히 버리면 그 기회가 사라진다(문서 2 §2.4-③ `pending_attrs`).
+    """
+    rec = r.rec
+    for f, spec in r.attrs:
+        af = spec.get("attach_to_field")
+        tgt = r.resolved.get(af)
+        if tgt is None:
+            if af and rec.get(af) in (None, ""):
+                continue                    # 값 없음 — 폴백도 보류도 하지 않는다
+            r.pending.append({"attr_name": spec.get("attr_name", f),
+                              "value": rec[f],
+                              "context": r.ctx or None,
+                              "provenance": r.prov,
+                              "attach_to_field": af})
+            continue
+        tg = r.external.get(af, graph)
+        # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
+        ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
+        ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], r.ctx, r.prov,
+                         bool(spec.get("contextual")))
+
+
+def _row_contents(r, doc_id):
+    """content — describes 연결, 필드별 청크(D8)."""
+    rec = r.rec
+    for f, spec in r.contents:
+        af2 = spec.get("attach_to_field")
+        tgt = r.resolved.get(af2)
+        if tgt is not None:
+            _describe(doc_id, rec, f, tgt)
+        elif af2 and rec.get(af2) not in (None, ""):
+            # 값은 있는데 대상이 미해소다 — 청크는 이미 보존돼 있고(링킹 0건
+            # 청크도 남긴다) 연결만 못 한 것이므로 결함 로그로 드러낸다.
+            # 빈 셀이면 기록하지 않는다 — 그 행에 대상이 없는 것이 정상이다(B12).
+            store.append_defect(
+                f"{doc_id}: content 부착 대상 미해소 — "
+                f"'{f}' → '{af2}'={rec.get(af2)!r} @ {r.prov}")
+
+
+def _row_edges(r, schema, fields, graph, cfg, doc_id):
+    """② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다."""
+    rec = r.rec
+    for e in schema.get("edges", []):
+        src, sg = _endpoint(e["from"], r.resolved, r.ref, r.ref_g, r.external, graph,
+                            doc_id)
+        dst, dg = _endpoint(e["to"], r.resolved, r.ref, r.ref_g, r.external, graph,
+                            doc_id)
+        if e.get("optional") and _blank_endpoint(e, rec, fields):
+            continue        # **빈 행의 optional 엣지는 조용히 생략**(문서 2 §2.4-⑥)
+        if src is None or dst is None:
+            # 미해소 끝점 — 생략된 엣지의 **출발 노드를 큐 손잡이에 싣는다**
+            # (문서 2 §2.4-① · 문서 4 §4.4). 게이트의 unresolved_endpoint는
+            # 거부 **기록**이지 재시도 손잡이가 아니다 — 로그와 큐는 다른 자리다.
+            r.dropped.append({"relation": e["relation"], "from": e["from"],
+                              "to": e["to"],
+                              "src": src, "dst": dst,
+                              "src_surface": _field_surface(e["from"], rec),
+                              "dst_surface": _field_surface(e["to"], rec)})
+        # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
+        gate.commit_edge(graph, src, e["relation"], dst, cfg,
+                         gate.PATH_SCHEMA, [r.prov], doc_id,
+                         src_graph=sg, dst_graph=dg)
+
+
+def _row_fallback(b, r, schema, fields, graph, cfg, doc_id):
+    """**규칙 B 폴백 — 정형 경로**(문서 4 §4.4-4). 이 레코드가 만든 entity 중
+    **어느 엣지에도 끝점으로 서지 못한 것**을 좌표에 저해상도로 붙인다.
+    §2.4-②의 "attach 대상이 **없거나** 미해소면" 중 "없다"는 그 entity를
+    아무 경로도 붙이지 않은 경우다. **빈 셀은 그 갈래가 아니다**(B12)."""
+    if r.ref is None:
+        return
+    rec = r.rec
+    touched = set()
+    for e in schema.get("edges", []):
+        for side in ("from", "to"):
+            nid = r.resolved.get(e.get(side))
+            if nid:
+                touched.add(nid)
+    for f, spec in fields.items():
+        if spec.get("role") != "entity":
+            continue
+        nid = r.resolved.get(f)
+        if nid is None or nid in touched:
+            continue
+        # **B12 — 빈 셀은 폴백 대상이 아니다.** 이 entity가 `attach_to_field`를
+        # 선언했는데 그 필드가 이 행에서 비어 있으면, 붙을 대상이 그 행에
+        # 없는 것이지 해소에 실패한 것이 아니다(문서 4 §4.4-4).
+        af3 = spec.get("attach_to_field")
+        if af3 and rec.get(af3) in (None, ""):
+            continue
+        tg = r.external.get(f, graph)
+        _fallback_attach(b, cfg, tg, nid, r.ref, r.ref_g, r.prov, doc_id)
 
 
 def finalize(layers=None):
