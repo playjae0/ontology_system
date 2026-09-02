@@ -348,3 +348,64 @@ def apply(doc_id, lines, locator, sep=" > "):
         smap["분할_레벨"] = pick
         smap["분할_레벨_사유"] = why
     return split(smap, lines, locator, sep), smap, []
+
+
+# ---------------------------------------------------------------- 분포 (B45)
+def split_stats(pieces, map_picks):
+    """분할 산출의 크기 분포 (B45) — **보이기만 한다.**
+
+    상수가 부적절해 한 줄짜리 청크가 쏟아져도 지금은 등록 시점에 드러나지 않는다:
+    사람이 상수를 고칠 판단 재료가 화면에 없었다. 목표 구간 밖을 **짧은 쪽·긴 쪽
+    각각** 세는 이유는 처방이 다르기 때문이다 — 짧으면 분할 신호가 과하고, 길면
+    모자라다.
+    """
+    sizes = [len(str(p.get("text") or "").split("\n"))
+             for p in pieces if p.get("text")]
+    out = {"청크수": len(sizes), "레벨_선택": map_picks or None}
+    if sizes:
+        lo, hi = CHUNK_MIN, CHUNK_MAX
+        out.update({"행수_최소": min(sizes), "행수_최대": max(sizes),
+                    "행수_평균": round(sum(sizes) / len(sizes), 1),
+                    "목표구간": [lo, hi],
+                    "너무_짧은_청크": sum(1 for s in sizes if s < lo),
+                    "너무_긴_청크": sum(1 for s in sizes if s > hi)})
+    return out
+
+
+def adapter_level_picks(adapter, raw):
+    """어댑터 경로의 레벨별 분포 — **지도 경로와 같은 계산**(`level_stats`)을 쓴다.
+
+    어댑터가 `expects.heading_pattern`으로 헤딩을 알아보므로, 그 패턴으로 레벨을
+    읽어 지도 경로와 **같은 형태**의 분포를 낸다. 새로 짜지 않는 이유는 화면이
+    둘로 갈리지 않게 하기 위해서다.
+
+    패턴이 없거나 헤딩이 안 잡히면 **아무것도 내지 않는다** — 지어낸 분포는
+    사람이 상수를 고를 재료가 못 된다.
+    """
+    exp = adapter.get("expects") or {}
+    pat = exp.get("heading_pattern")
+    if not pat or not raw.get("sheets"):
+        return []
+    rx = re.compile(pat)
+    col = exp.get("content_column", "A")
+    out = []
+    for sh in raw["sheets"]:
+        cells = sh.get("cells") or {}
+        lines = [(r, str(cells[f"{col}{r}"]).strip())
+                 for r in range(1, int(sh.get("max_row") or 0) + 1)
+                 if cells.get(f"{col}{r}") and str(cells[f"{col}{r}"]).strip()]
+        rows = []
+        for n, txt in lines:
+            m = rx.match(txt)
+            lvl = len(m.group(1).split(".")) if (m and m.groups()) else 0
+            rows.append({"row": n, "heading": bool(m), "level": lvl})
+        st = level_stats({"rows": rows}, lines)
+        if st:
+            out.append({"프레임": sh.get("name"),
+                        "분할_레벨": exp.get("split_level"),
+                        "분할_레벨_사유": (
+                            f"어댑터 상수 expects.split_level={exp['split_level']}"
+                            if exp.get("split_level") is not None else
+                            "상수 없음 — 전 헤딩 분할(종전 동작)"),
+                        "레벨_분포": st})
+    return out

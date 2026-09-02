@@ -274,7 +274,7 @@ def _vocab_excerpt(pkg):
     return "\n\n".join(out)
 
 
-def _sent_size(msgs, label, _n_samples=1):
+def _sent_size(msgs, label):
     """전송 크기를 화면에 1줄 (B30) — **부르기 직전에** 잰다.
 
     게이트웨이 컨텍스트를 넘기면 응답이 잘리는 게 아니라 **요청이 거부된다** —
