@@ -8,9 +8,33 @@
 from __future__ import annotations
 
 import json
+import re
 
 from core import llm
 from cli.prompt import _sent_size, _vocab_excerpt
+
+# 입력은 이 이름을 거친다 — 테스트가 갈아끼운다(대화형이라 파이프로는 못 잰다)
+_ask = input
+_RULE = "   " + "─" * 56
+
+
+def _pick_option(ans, options):
+    """«1» · «1번» · «1)» · «1번으로 진행»처럼 **번호로 시작하는 답**을 선택지 본문으로 푼다.
+
+    번호가 아니거나 범위 밖이면 None — 그때는 문장 그대로 답이다. 번호만 쳐도, 문장으로
+    써도 통해야 한다(등록개선 ⑤-2).
+    """
+    m = re.match(r"\s*(\d+)\s*(번|\)|\.)?", ans or "")
+    if not m:
+        return None
+    i = int(m.group(1))
+    return options[i - 1] if options and 1 <= i <= len(options) else None
+
+
+def _rank(q):
+    """중요도 정렬 키 — 높음 → 중간 → 낮음 → 표시 없음. 번호는 정렬 뒤에 붙는다."""
+    s = str(q.get("importance") or "")
+    return 0 if s.startswith("높") else 1 if s.startswith("중") else 2 if s.startswith("낮") else 3
 
 
 INTERVIEW_SCHEMA = {
@@ -132,21 +156,52 @@ def _interview(pkg, on_round=None):
         print("이해 요약")
         print(f"   {out['understanding']}")
         _prof_hint(pkg)                       # 판정 근거를 사람에게도 보인다
-        for i, q in enumerate(out.get("questions") or [], 1):
+        # **질문 하나 = 한 구획**(등록개선 ⑤) — 중요도 순으로 번호를 매기고, 구획마다
+        # 구분선·번호 선택지·입력 한 줄. 이어 붙이면 어느 답이 어느 열 것인지 안 보인다.
+        qs = sorted(out.get("questions") or [], key=_rank)
+        answers, stop = [], False
+        for i, q in enumerate(qs, 1):
+            opts = q.get("options") or []
             imp = q.get("importance")
+            print(_RULE)
             print(f"   Q{i}. {q['q']}" + (f"   [{imp}]" if imp else ""))
-            print(f"       선택지: {' · '.join(q.get('options') or [])}")
-        try:
-            ans = input("   답/교정 (빈 줄 2회 또는 «진행»이면 종료) > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            ans = INTERVIEW_STOP[0]
-            print(f"   (입력 없음 — {ans})")
+            if opts:
+                print("       " + "  ".join(f"{k}) {o}" for k, o in enumerate(opts, 1)))
+            try:
+                raw = _ask(f"   Q{i} 답 (번호 또는 문장 · 빈 줄=건너뜀 · «진행»=종료) > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                raw = INTERVIEW_STOP[0]
+                print(f"   (입력 없음 — {raw})")
+            chosen = _pick_option(raw, opts)
+            if chosen:
+                print(f"       → {chosen}")
+            answers.append({"q": q["q"], "answer": raw, "chosen": chosen})
+            if raw.lower() in INTERVIEW_STOP:
+                stop = True
+                break
+        print(_RULE)
+        if not stop:
+            try:
+                extra = _ask("   교정/추가 (없으면 빈 줄 · «진행»=종료) > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                extra = INTERVIEW_STOP[0]
+                print(f"   (입력 없음 — {extra})")
+            stop = extra.lower() in INTERVIEW_STOP
+        else:
+            extra = ""
+        # `answer`는 지난 문답으로 LLM에 되돌아가는 **한 줄 문장**이다 — 번호는 본문으로
+        # 풀어 싣는다(모델은 «1»이 무엇이었는지 모른다). 낱개 답은 `answers`에 그대로.
+        ans = "; ".join(f"{a['q']} → {a['chosen'] or a['answer']}"
+                        for a in answers if a["answer"] and a["answer"].lower()
+                        not in INTERVIEW_STOP)
+        if extra and extra.lower() not in INTERVIEW_STOP:
+            ans = (ans + "; " if ans else "") + f"교정: {extra}"
         history.append({"round": n, "understanding": out["understanding"],
-                        "questions": out.get("questions") or [], "answer": ans,
+                        "questions": qs, "answers": answers, "answer": ans,
                         "progress": pg})
         if on_round:
             on_round(history)                 # **라운드마다 즉시 저장**(B43 ⑤)
-        if ans.lower() in INTERVIEW_STOP:
+        if stop:
             print(f"   → 사람이 종료했다. 라운드 {n}회 · 생성으로 간다")
             return history
         blanks = blanks + 1 if not ans else 0

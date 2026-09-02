@@ -23,6 +23,8 @@
        --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
        --no-fewshot 참조 어댑터 주입을 끈다(스켈레톤 본문은 유지) — 컨텍스트가 좁을 때
        --resume     기존 입력 패키지로 **초안만** 다시 받는다 (문답을 다시 하지 않는다)
+       --use-basic  분할 자명 계열(PPT)은 LLM 생성을 건너뛰고 **기본 어댑터를 정본으로**
+                    등재 경로에 놓는다 (§6.4-5) — 검수·승인 1회는 그대로다(M4)
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -396,7 +398,7 @@ def basic_adapter_proposal(samples):
 
 
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
-                 no_fewshot=False, resume=False):
+                 no_fewshot=False, resume=False, use_basic=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -449,6 +451,16 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     if layer not in layers:                       # ⑵-③ 층 선행 완결
         raise SystemExit(f"[생성] 존재하지 않는 층 '{layer}' — 층 등록(R1)은 국면 2다. "
                          f"현재 층: {layers}")
+    if use_basic:
+        # **제안이 서지 않는 표본에는 거부한다** — 조용히 LLM 생성으로 떨어지면 사람은
+        # «기본 어댑터로 등록됐다»고 믿는다. 거부는 사유를 들고 멈춘다.
+        proposal = basic_adapter_proposal(samples)
+        if proposal is None:
+            raise SystemExit(
+                f"[생성] --use-basic 거부 — 기본 어댑터 제안이 서지 않는 표본이다: "
+                f"분할 자명 계열(pptx)이 아니다 {[Path(s).name for s in samples]}. "
+                f"LLM 생성 경로(--use-basic 없이)로 등록한다 (§6.4-5)")
+        return _use_basic(doc_type, layer, samples, hint, proposal)
 
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
     cfg = json.loads((ROOT / "layers" / layer / "config.json").read_text(encoding="utf-8"))
@@ -553,6 +565,59 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                            "schema": str(sc.relative_to(ROOT)),
                            "revision": 0, "instructions": [],
                            "basic_adapter_proposal": proposal})
+    return 0
+
+
+def _use_basic(doc_type, layer, samples, hint, proposal):
+    """② 기본 어댑터 수용 — **LLM 호출 0회**로 검수 자리에 정본 후보를 놓는다 (§6.4-5).
+
+    어댑터는 코어의 `parser/adapters/basic_ppt.py`를 **위임하는 래퍼**다 — 복사하지
+    않는다. 봉투 doc_type은 `ADAPTER["doc_type"]`에서 오므로(parser/pipeline) 이름만
+    이 doc_type으로 바꾸고 임계·분할은 코어 어댑터 한 곳에 남긴다(D-111: 조정은 그 어댑터
+    1곳의 개정이고 doc_type별로 갈리지 않는다 — §6.4-5). 매칭 스키마는 prose 계약대로
+    `fields {}`다. **검수·승인 1회는 생략하지 않는다**(M4) — 다음은 `review`다.
+    """
+    u0 = llm.usage_total()["calls"]          # 이 명령이 부른 횟수를 재려면 시작점이 필요하다
+    d = _dir(doc_type)
+    pkg = {"_읽는 법": "기본 어댑터 경로 — 생성 세션 없음. human.hint에 그 사실이 있다",
+           "human": {"doc_type": doc_type, "layer": layer,
+                     "samples": [str(s) for s in samples],
+                     "hint": {"text": hint, "use_basic": True, "proposal": proposal}},
+           "system": {"reader_head": [], "skeleton_closed_list": {},
+                      "layer_vocabulary": {"layer": layer}, "blocks": {},
+                      "adapter_skeleton": ""}}
+    (d / "input_package.json").write_text(
+        json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ad, sc = d / "adapter.py", d / "schema.json"
+    ad.write_text(
+        "# -*- coding: utf-8 -*-\n"
+        f"\"\"\"{doc_type} — 코어 기본 어댑터(PPT)를 **그대로** 쓴다 (문서 6 §6.4-5 · D-111).\n\n"
+        "임계·분할 규칙은 `parser/adapters/basic_ppt.py` 한 곳에 산다 — 여기는 doc_type 이름만\n"
+        "이 등록의 것으로 바꾼 위임 래퍼다. 상수를 여기 복제하지 않는다.\n\"\"\"\n"
+        "from parser.adapters import basic_ppt\n\n"
+        f"ADAPTER = {{**basic_ppt.ADAPTER, \"doc_type\": {doc_type!r}}}\n"
+        "extract = basic_ppt.extract\n", encoding="utf-8")
+    _write_schema(sc, json.dumps(
+        {"doc_type": doc_type, "schema_version": 1, "layer": layer,
+         "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],
+         "_note": "비정형 — role 매핑 표가 없다. 층 선언이 계약의 전부다(B1)",
+         "fields": {}, "edges": []}, ensure_ascii=False))
+    print(f"  {llm.mode_line()}")
+    print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부) — **기본 어댑터 경로**")
+    print(f"   ▶ {proposal['reason']}")
+    print(f"     {proposal['note']}")
+    print(f"   어댑터(위임 래퍼) · 스키마: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
+    u = llm.usage_total()
+    print(f"   LLM 사용량 — 이 명령에서 호출 {u['calls'] - u0:,}회 "
+          f"(기본 어댑터 — 생성 세션 없음 · 프로세스 누계 {u['calls']:,}회)")
+    print(f"   다음: python run.py register review {doc_type}  (검수·승인 1회는 그대로다 — M4)")
+    _save_state(doc_type, {"doc_type": doc_type, "layer": layer,
+                           "samples": [str(s) for s in samples],
+                           "hint": pkg["human"]["hint"],
+                           "adapter": str(ad.relative_to(ROOT)),
+                           "schema": str(sc.relative_to(ROOT)),
+                           "revision": 0, "instructions": [],
+                           "basic_adapter_proposal": proposal, "use_basic": True})
     return 0
 
 
@@ -1013,6 +1078,12 @@ def cmd_confirm(doc_type, approved_by):
     print(f"■ ③ 확정 — {doc_type} 등록부 등재 (승인 {approved_by} @ {at})")
     print(f"   어댑터·스키마 활성: {entry['adapter']} · {entry['schema']}")
     print(f"   승인 기록 → {(_dir(doc_type) / 'approval.json').relative_to(ROOT)}")
+    # **등록은 여기서 끝이고 인입은 자동으로 이어지지 않는다** — 그래프까지 간 줄 알고
+    # 멈춘 실측이 있어 다음 두 줄을 그대로 낸다(등록개선 ③).
+    print("   다음 — 인입은 이 명령으로 (등록이 그래프를 만들지는 않는다):")
+    print(f"     python run.py parse run {entry['adapter']} <doc_id> <문서>")
+    print("     python run.py build parsed/<doc_id>.json")
+    print(f"     (한 번에: python run.py ingest-file <문서> --doc-type {doc_type})")
     return 0
 
 
@@ -1048,8 +1119,11 @@ def main(argv):
         resume = "--resume" in rest
         if resume:
             rest.remove("--resume")
+        use_basic = "--use-basic" in rest
+        if use_basic:
+            rest.remove("--use-basic")
         return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview,
-                            no_fewshot=no_few, resume=resume)
+                            no_fewshot=no_few, resume=resume, use_basic=use_basic)
     if cmd == "review":
         raw_rows = opt("--rows", str(REHEARSAL_ROWS))
         if str(raw_rows).lower() == "all":

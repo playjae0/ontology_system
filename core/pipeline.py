@@ -770,7 +770,7 @@ def _reject(doc_id, reason, payload):
     return res, None, False
 
 
-def run_document(path_or_env, layer=None, *, allow_duplicate=False):
+def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None):
     env = path_or_env
     doc_id, doc_type = env["doc_id"], env["doc_type"]
 
@@ -785,7 +785,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False):
     layer = layer or schema["layer"]
     cfg = load_config(layer)
 
-    res = ingest(env, allow_duplicate=allow_duplicate)   # ①doc_hash ①′회수 ②id ③필드
+    res = ingest(env, allow_duplicate=allow_duplicate,   # ①doc_hash ①′회수 ②id ③필드
+                 routing=routing)
     if res.status == "held":
         return res, None, False
 

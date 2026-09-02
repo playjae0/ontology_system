@@ -3003,3 +3003,26 @@ TOC01 **9청크** · TOC02 **8청크** — 지난 회차와 동일. `toc_report.
   `cli/query.answer`(102·25). 각각 별 요청으로.
 - 직접 회귀 없는 core 모듈 2: `core/naming.py`(94줄) · `core/log.py`(76줄).
 
+## 등록·인입 개선 5건 (2026-09-02)
+
+**반입**: `docs/spec/6_파서와구축모드.md`(B46 · [정정]38) · `개정대장.md` · `docs/회귀스위트/점검_문서간.py`(개정 번호 오검출 수정) · 요청문 → `docs/요청문_등록개선_5건.md`.
+
+**전제 대조**: 5개 중 4개 일치. 1개는 **시점이 지났다** — 요청문은 `toc_report.py`가 «`if m: flush()` (depth 비교 없음)»이라고 했으나, 지난 「B45 정정 요청문」(D-107 · 커밋 `5a0c816`)이 이미 `expects.split_level=1`과 `depth <= lvl` 자르기를 넣었다. **①은 이미 반영돼 있어 이번에 코드를 더 바꾸지 않았고 ⓐ만 실측했다.**
+
+| 항목 | 한 것 | 실행 결과 |
+|---|---|---|
+| ① 분할 레벨 상수 | (기존 D-107) | ⓐ **TOC01 전/후**: 상수 없음(fixture) **11청크 · 행 1~2 · 너무 짧음 11** → `split_level=1`(kit) **6청크 · 행 1~8 · 너무 짧음 5**. 텍스트 총행 **18 = 18**(산출 유실 0). 상수 없는 어댑터(fixture)는 동작 불변 |
+| ② `generate --use-basic` | 위임 래퍼 어댑터(D-111) + prose 스키마를 검수 자리에. 제안 없는 표본은 거부 | ⓑ PPT_basic: 생성 «이 명령에서 호출 0회» → 검수 하네스 **29 PASS · LLM 호출 0회** → 확정 등재 → `ingest-file --doc-type` 인입(chunk 24). CP01에 주면 거부 |
+| ③ 확정 화면 안내 | `parse run` · `build parsed/` 2줄 + `ingest-file` 1줄 | ⓒ confirm 출력 실물(위) |
+| ④ `ingest-file`·`ingest-dir` | `cli/ingest.py` 신설 — 선택(지정 > 스캔 유일 일치) → `cli.parse.run_parse` → `core.pipeline.run_document(routing=…)`. 근거는 `doc_registry.json`의 `routing`에 | ⓓ 4건 일괄: **성공 2(CP01·CP04) · 실패 1(CP03_bad — C14) · 미선택 1(TOC01)**, 실패 뒤 문서도 인입. `--dry-run` 선택만. 같은 지문 어댑터 2개(`cp_a`·`cp_b`) → **ambiguous · 사람에게**. `tests/fixtures/raw` 14건 dry-run: 선택 4 · 미선택 10(표류·CSV·비정형·미등록) |
+| ⑤ 문답 화면 | 질문마다 구분선 · 번호 선택지 `1) …  2) …` · 질문별 입력 · 중요도 정렬 · 번호 → 본문 풀이 | ⓔ stdin «1 · 빈줄 · 진행»: `→ 위 값 채움` 표시 · `answers[0].chosen == "위 값 채움"` · 라운드 2에서 종료 |
+
+**가결정**: D-110(doc_id = 파일명 stem · 경로 무관 · 하위 폴더 미포함) · D-111(래퍼 위임 · 임계 초과는 거부 아님).
+**신고**: 판정필요-16 — B46이 문서 1 C15·문서 6 §6.6 요약과 어긋난다(구현은 B46대로).
+
+**바뀐 파일**: `core/ingest.py` · `core/pipeline.py`(routing 통로) · `cli/parse.py`(`run_parse`) · **`cli/ingest.py`(신설)** · `run.py` · `cli/register.py` · `cli/interview.py` · `cli/scan.py`(열 문자 자기 구현 → `normalizer._col`) · `tests/test_p3.py`(+18) · `tests/test_g6.py`(+13) · `doctor.py` · `산출물_지도.md` · 장부 3종.
+
+**회귀**: 691 → **722/722**(+31). 검사 4종 통과(점검_문서간 반입판이 개정 번호를 조항으로 잡지 않음 — 0건).
+
+**명세 개정 필요(고치지 않고 보고)**: ⑴ 판정필요-16의 C15·§6.6 ⑵ §6.4-5에 «래퍼로 붙인다»(D-111) ⑶ §6.4에 doc_id 규칙(D-110) ⑷ CSV는 지문 스캔 대상이 아니다(`_header_actual`이 xlsx만 본다 — 종전 동작) — 정형 CSV의 자동 선택을 원하면 §6.4의 지문 정의를 넓혀야 한다.
+

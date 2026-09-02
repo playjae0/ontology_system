@@ -190,7 +190,10 @@ def withdraw(env, doc_id):
         g.save()
 
 
-def register_doc(env, dh):
+def register_doc(env, dh, routing=None):
+    """doc_id → doc_hash 대장 갱신. `routing`은 **무엇으로 doc_type을 골랐는가**(B46 조건 ①) —
+    일괄 투입이 지문 스캔으로 골랐으면 그 근거가, 사람이 지정했으면 그 사실이 남는다.
+    이 기록이 없으면 오배정률(P7 승격 조건)을 영영 잴 수 없다."""
     reg = store.read(store.DOC_REGISTRY, {})
     doc_id = env["doc_id"]
     prev = reg.get(doc_id, {})
@@ -204,6 +207,8 @@ def register_doc(env, dh):
     # 걸려 ㉡ 해제가 1회용이 된다.
     if prev.get("duplicate_ok"):
         entry["duplicate_ok"] = prev["duplicate_ok"]
+    if routing:
+        entry["routing"] = routing
     reg[doc_id] = entry
     store.write(store.DOC_REGISTRY, reg)
 
@@ -220,7 +225,7 @@ def _join_values(rec, schema):
     return [rec[k] for k in sorted(rec) if k != "source_locator"]
 
 
-def ingest(env, *, allow_duplicate=False):
+def ingest(env, *, allow_duplicate=False, routing=None):
     """계약 JSON 하나를 인입해 근거 축 id를 확정한다.
 
     `allow_duplicate`는 `duplicate_doc_hold` 보류의 **㉡ 해제**다(문서 2 §2.7-①) —
@@ -314,5 +319,5 @@ def ingest(env, *, allow_duplicate=False):
                       text, section, c.get("source_locator"), c.get("meta"))
 
     store.write(store.CHUNKS, chunks)
-    register_doc(env, dh)
+    register_doc(env, dh, routing)
     return res

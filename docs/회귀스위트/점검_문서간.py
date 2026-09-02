@@ -54,11 +54,18 @@ for (subj, unit), obs in sorted(counts.items()):
             f"`{subj}` {unit}  →  " + " ‖ ".join(f"{n}{unit} [{d} {s}]" for n, d, s in sorted(obs)))
 
 # ── ② 조항 참조 무결
+# **개정 번호는 조항 번호가 아니다** — 둘이 같은 문자 공간(B##)을 쓴다. 문서 1의
+# 조항 `B12`와 개정 대장의 개정 `B46`은 다른 장부의 번호이므로, 대장이 발번한 것은
+# 조항 미존재로 잡지 않는다. 이 구분이 없으면 개정을 인용할 때마다 거짓 검출이 난다.
+_lg = os.path.join(SPEC, "개정대장.md")
+LEDGER = open(_lg, encoding="utf-8").read() if os.path.isfile(_lg) else ""
+REVISIONS = set(re.findall(r'\[(?:개정|복원|정정)\]\s*([A-P][0-9]{1,2})', LEDGER))
+
 for doc, txt in DOCS.items():
     if doc == CLAUSE_DOC: continue
     for m in re.finditer(r'(?<![A-Za-z0-9])([A-P][0-9]{1,2})(?![0-9A-Za-z])', txt):
         c = m.group(1)
-        if c not in CLAUSES and re.search(r'(조항|불변|금지|참조|지키|위반)', txt[max(0,m.start()-60):m.start()+60]):
+        if c not in CLAUSES and c not in REVISIONS and re.search(r'(조항|불변|금지|참조|지키|위반)', txt[max(0,m.start()-60):m.start()+60]):
             findings["② 조항 참조 무결"].append(f"`{c}`  ← {doc} {secs(txt, m.start())} — 문서 1에 없는 조항 번호")
 
 # (소유 중복은 검사가 아니라 반영 도구가 답한다 — 조회_대상.py 참조.

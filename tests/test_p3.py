@@ -892,6 +892,84 @@ show("fixture는 손대지 않았다 (D-26)", "split_level" not in
      (ROOT / "tests/fixtures/fixtures/adapters/toc_report.py").read_text(
          encoding="utf-8"))
 
+# ============================================================ 등록개선 5건 (②·③·⑤)
+print("\n■ 등록개선 — ② --use-basic · ③ 확정 안내 · ⑤ 문답 번호 선택지")
+import contextlib as _ctx                                           # noqa: E402
+import io as _io                                                    # noqa: E402
+from cli import interview as _IV                                    # noqa: E402
+from core import registry as _REG                                   # noqa: E402
+_PPT = str(ROOT / "tests/fixtures/raw/PPT_basic.xlsx").replace(".xlsx", ".pptx")
+# ② 거부 — 제안이 서지 않는 표본(정형)
+try:
+    R.cmd_generate("cpx_basic", "process", [str(RAW / "CP01.xlsx")], use_basic=True)
+    show("② 제안 없는 표본에 --use-basic은 거부된다", False)
+except SystemExit as e:
+    show("② 제안 없는 표본에 --use-basic은 거부되고 사유를 말한다", "거부" in str(e) and "pptx" in str(e))
+show("② 거부는 검수 자리를 만들지 않는다", not (ROOT / "review" / "cpx_basic").exists())
+# ② 수용 — PPT 표본: LLM 호출 0회로 생성 → 검수 → 확정
+_calls0 = llm.usage_total()["calls"]
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    R.cmd_generate("pptb_t", "quality", [_PPT], use_basic=True)
+_gen = _buf.getvalue()
+show("② --use-basic — 위임 래퍼 어댑터가 검수 자리에 선다 (상수는 basic_ppt 한 곳 — D-111)",
+     "from parser.adapters import basic_ppt" in (ROOT / "review/pptb_t/adapter.py").read_text(encoding="utf-8")
+     and "max_chars" not in (ROOT / "review/pptb_t/adapter.py").read_text(encoding="utf-8"))
+show("② 매칭 스키마는 prose 계약 — fields {} · layer 선언",
+     (lambda s: s["fields"] == {} and s["layer"] == "quality" and s["doc_type"] == "pptb_t")(
+         json.loads((ROOT / "review/pptb_t/schema.json").read_text(encoding="utf-8"))))
+show("② 화면이 «호출 0회»를 말한다 (사용량으로 증명)", "호출 0회" in _gen)
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    R.cmd_review("pptb_t", llm_coord=False)
+show("② 검수·승인 1회는 생략하지 않는다 — 기계 관문 PASS가 확정의 전제 (M4)",
+     R._state("pptb_t").get("machine_gate") == "PASS", str(R._state("pptb_t").get("machine_gate")))
+show("② 생성+검수 동안 LLM 호출 0회 (usage_total 불변)",
+     llm.usage_total()["calls"] == _calls0, f"{_calls0} → {llm.usage_total()['calls']}")
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    R.cmd_confirm("pptb_t", "테스트")
+_conf = _buf.getvalue()
+show("② 확정 — 등록부 등재 + adapters/·schemas/ 정본",
+     _REG.lookup("pptb_t") is not None and (ROOT / "adapters/pptb_t.py").exists()
+     and (ROOT / "schemas/pptb_t.json").exists())
+# ③ 확정 화면 다음 명령 2줄
+show("③ confirm 끝에 인입 명령 2줄 — parse run · build parsed/",
+     "run.py parse run adapters/pptb_t.py" in _conf and "run.py build parsed/" in _conf)
+show("③ 한 번에 가는 명령(ingest-file --doc-type)도 함께", "ingest-file" in _conf and "--doc-type pptb_t" in _conf)
+# 정리 — 회귀가 남기는 것 0
+_REG.unregister("pptb_t")
+for _p in (ROOT / "adapters/pptb_t.py", ROOT / "schemas/pptb_t.json"):
+    _p.unlink(missing_ok=True)
+shutil.rmtree(ROOT / "review/pptb_t", ignore_errors=True)
+shutil.rmtree(ROOT / "review/cpx_basic", ignore_errors=True)
+# ⑤ 번호 선택지
+_opts = ["위 값 채움", "행 독립", "모름"]
+show("⑤ 번호만 쳐도 통한다 — «1» → 첫째", _IV._pick_option("1", _opts) == "위 값 채움")
+show("⑤ 문장으로 써도 통한다 — «2번으로 진행» → 둘째", _IV._pick_option("2번으로 진행", _opts) == "행 독립")
+show("⑤ «3)»·«3.» 표기도", _IV._pick_option("3)", _opts) == "모름" and _IV._pick_option("3.", _opts) == "모름")
+show("⑤ 범위 밖·비번호는 문장 그대로 (None)", _IV._pick_option("9", _opts) is None
+     and _IV._pick_option("병합은 위 값", _opts) is None)
+show("⑤ 중요도 정렬 — 높음이 앞", [q["q"] for q in sorted(
+    [{"q": "b", "importance": "낮음"}, {"q": "a", "importance": "높음 — 좌표"}, {"q": "c"}], key=_IV._rank)] == ["a", "b", "c"])
+_feed = iter(["1", "", "진행"])
+_orig_ask = _IV._ask
+_IV._ask = lambda prompt="": next(_feed)
+_buf = _io.StringIO()
+# 패키지는 최소형 — 문답 화면·번호 풀이를 재는 것이지 관찰 재료를 재는 것이 아니다
+_pkg = {"human": {"doc_type": "ivx", "layer": "quality", "samples": [], "hint": ""},
+        "system": {"reader_head": [], "skeleton_closed_list": {}, "layer_vocabulary": {},
+                   "blocks": {}, "adapter_skeleton": ""}}
+with _ctx.redirect_stdout(_buf):
+    _hist = _IV._interview(_pkg)
+_IV._ask = _orig_ask
+_scr = _buf.getvalue()
+show("⑤ 화면 — 질문마다 구분선 + 번호 선택지 «1) …  2) …»", "─" in _scr and "1) " in _scr and "2) " in _scr)
+show("⑤ 번호 답이 선택지 본문으로 풀려 기록된다 (모델은 «1»이 무엇인지 모른다)",
+     _hist[0]["answers"][0]["answer"] == "1" and _hist[0]["answers"][0]["chosen"] == _hist[0]["questions"][0]["options"][0]
+     and _hist[0]["questions"][0]["options"][0] in _hist[0]["answer"])
+show("⑤ «진행»은 어느 자리에서든 종료다 — 라운드 2에서 멈춤", len(_hist) == 2)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

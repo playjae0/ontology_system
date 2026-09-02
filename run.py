@@ -21,6 +21,11 @@
   python run.py scan <문서> ...    n9 지문 스캔 (cli/scan.py로 위임)
   python run.py parse <명령> ...   파서 n7 (cli/parse.py로 위임 — run·head·build)
   python run.py register <명령>    n6 구축 모드 등록 (cli/register.py로 위임)
+  python run.py ingest-file <문서> [--doc-type X] [--dry-run]
+                                   일괄 투입 1건 — 선택(지문 스캔 유일 일치 또는 지정)
+                                   → 파싱 → 인입 (B46 · cli/ingest.py로 위임)
+  python run.py ingest-dir <경로> [--doc-type X] [--dry-run]
+                                   경로의 문서 전부를 문서 단위 독립으로 투입
   python run.py show <명령> ...    산출물 열람 — tree·node·doc·chunk·edges·schema·meta
   python run.py export <형식>      파생물 — cypher · csv · mermaid
 """
@@ -134,6 +139,12 @@ def cmd_register(args):
     return main(args)
 
 
+def cmd_ingest_batch(args):
+    """일괄 투입 — `parse run` + `build` 위의 편의 명령(B46). 같은 코드를 부른다."""
+    from cli.ingest import main
+    return main(args)
+
+
 def cmd_show(args):
     """산출물 열람 — 읽기 전용, 시각화 없이 텍스트로."""
     from cli.show import main
@@ -178,6 +189,8 @@ if __name__ == "__main__":
      "scan": lambda: cmd_scan(sys.argv[2:]),
      "parse": lambda: cmd_parse(sys.argv[2:]),
      "register": lambda: cmd_register(sys.argv[2:]),
+     "ingest-file": lambda: cmd_ingest_batch(sys.argv[2:]),
+     "ingest-dir": lambda: cmd_ingest_batch(sys.argv[2:]),
      "show": lambda: cmd_show(sys.argv[2:]),
      "export": lambda: cmd_export(sys.argv[2:]),
      "llm-check": lambda: cmd_llm_check(sys.argv[2:]),
