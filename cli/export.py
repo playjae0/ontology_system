@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from core import store
 from core.bootstrap import open_graph
-from core.ops import is_live
+from core.status import is_live
 from router import discover
 
 

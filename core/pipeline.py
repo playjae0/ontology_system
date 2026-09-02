@@ -15,7 +15,7 @@ from . import gate, log, matcher, store
 from .build import Builder
 from .bootstrap import load_config, open_graph
 from .ingest import IngestResult, ingest, load_schema
-from .ops import is_live
+from .status import is_live
 from .retry import retry_orphans
 
 # **구조 필드** — role 핸들러를 타지 않고 시스템이 직접 읽는다(문서 2 §2.5 규약 3).

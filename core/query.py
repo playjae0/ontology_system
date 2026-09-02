@@ -21,7 +21,7 @@ import json
 from . import store
 from . import llm
 from .ids import norm
-from .ops import is_live
+from .status import STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain
 
 COLLECT_LIMIT = 8               # ③ 수집 상한 (CH5 5.1 규약 6). 초과분은 tier2부터 자른다.
 
@@ -179,9 +179,8 @@ def transit(graph, nid, cfg):
       · `obsolete` + `replaced_by` 없음 → 일반 결과에서 **제외**하되, 정확 이름으로
         직접 지명한 질의에는 **"폐기됨"을 명시**해 답한다 — 침묵 소실 금지(D-30 계보)
 
-    체인 추적의 순환·깊이 방어는 `core.ops.resolve_chain`이 소유한다(L8 읽기 측).
+    체인 추적의 순환·깊이 방어는 `core.status.resolve_chain`이 소유한다(L8 읽기 측).
     """
-    from .ops import STATUS_MERGED, STATUS_OBSOLETE, resolve_chain
     tpl = cfg.get("fact_templates") or {}
     n = graph.get(nid)
     if n is None:

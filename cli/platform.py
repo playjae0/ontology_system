@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import fixtures, store
 from core.bootstrap import load_config, open_graph
 from core.extract import EXTRACT_DIR
-from core.ops import is_live
+from core.status import is_live
 from router import discover
 
 # 수정 큐 kind — **닫힌 20종**(구현문서 §2.3의 13종 + 증분0 §6-5의 확장 7종 · D-54).

@@ -20,7 +20,7 @@ from . import gate, store
 from .dictionary import Dictionary
 from .ids import norm
 from .matcher import MATCH, NEW, UNCERTAIN, resolve
-from .ops import is_live
+from .status import is_live
 from .naming import (POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
 

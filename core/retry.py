@@ -12,7 +12,7 @@ from __future__ import annotations
 from . import gate, log, matcher, store
 from .bootstrap import load_config, open_graph
 from .build import Builder
-from .ops import is_live
+from .status import is_live
 
 _LOG = log.get(__name__)
 
