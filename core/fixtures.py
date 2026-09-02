@@ -42,10 +42,6 @@ EXTRACT_HINTS = ROOT_DIR / "extract_hints"
 STRUCT_MAPS = ROOT_DIR / "struct_maps"
 
 
-def available():
-    """지금 이 클론에 픽스처가 있는가 — 사내에서는 없는 것이 정상이다."""
-    return ROOT_DIR.is_dir()
-
 
 def dirs(*paths):
     """존재하는 디렉터리만 돌려준다 — **없는 것을 모듈로 로드하려다 죽지 않게.**"""

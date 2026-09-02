@@ -31,6 +31,8 @@ pptx →
 import logging
 import os
 
+from .normalizer import _col
+
 _LOG = logging.getLogger("onto.parser.reader")
 
 
@@ -99,15 +101,6 @@ def read_pptx(path):
 
 ENCODINGS = ("utf-8-sig", "cp949", "utf-8")
 
-
-def _col(i):
-    """0-기반 열 번호 → 엑셀 열문자. `openpyxl`을 쓰지 않는다(CSV는 외부 의존 0)."""
-    s = ""
-    i += 1
-    while i:
-        i, r = divmod(i - 1, 26)
-        s = chr(65 + r) + s
-    return s
 
 
 DELIMS = (",", "\t", ";", "|")
@@ -197,7 +190,7 @@ def read_csv(path):
             v = v.strip() if isinstance(v, str) else v
             if v == "" or v is None:
                 continue                     # xlsx와 같게 — 값 있는 셀만
-            cells[f"{_col(c)}{r}"] = v
+            cells[f"{_col(c + 1)}{r}"] = v
     return {"format": "csv", "path": path,
             "sheets": [{"name": os.path.splitext(os.path.basename(path))[0],
                         "max_row": len(rows), "max_col": max_col,

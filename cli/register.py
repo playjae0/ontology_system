@@ -45,6 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures, llm, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
+from parser.normalizer import _col
 from parser.adapters import basic_ppt
 from kit.render_review import render
 from kit.run_adapter import load_blocks
@@ -59,9 +60,6 @@ SOLO_WARNING = ("표본 1부 · 변형 미관찰 — **선언된 관계는 근�
                 "1부 등록의 선언 edges는 특별 확인 대상이다")
 EXCERPT = 3                                   # 정상 조각 발췌 건수(전량은 접힘에 실린다)
 
-
-def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _load(path, name):
@@ -1048,13 +1046,6 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     return rows
 
 
-def _col(i):
-    s = ""
-    while i:
-        i, r = divmod(i - 1, 26)
-        s = chr(65 + r) + s
-    return s
-
 
 def unmappable_of(schema, adapter_mod):
     """UNMAPPABLE 열 — **어댑터가 스스로 밝힌 미매핑분**에서 판정한다.
@@ -1305,7 +1296,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
     if instruct:                                   # 재생성 루프 1회
         st["revision"] += 1
         st.setdefault("instructions", []).append(
-            {"n": st["revision"], "instruction": instruct, "at": _now()})
+            {"n": st["revision"], "instruction": instruct, "at": store._now()})
         ad, sc = draft(doc_type, st["revision"])
         if ad is None:
             print(f"   ⚠ 재생성 대안본 부재 — 초안을 유지한다 "
@@ -1422,7 +1413,7 @@ def cmd_confirm(doc_type, approved_by):
         raise SystemExit("[확정] 승인자 미지정 — 무수정 자동 통과는 금지다 (틀 §2)")
 
     mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
-    at = _now()
+    at = store._now()
     # **등재가 먼저, 승격이 나중이다.** 반대로 하면 등재가 거부됐을 때 승격된
     # 파일만 남아 조회에는 잡히고 등록부에는 없는 반쪽 상태가 되고, 그 이름의
     # 재등록이 「내장 중복」으로 영영 막힌다(실측).

@@ -156,16 +156,11 @@ class GraphStore:
                            "status": status, "provenance": list(provenance or [])})
         return True
 
-    def update_node(self, nid, **changes):
-        self.nodes[nid].update(changes)
 
     # ---------- 읽기 ----------
     def get(self, nid):
         return self.nodes.get(nid)
 
-    def find(self, **cond):
-        return [n for n in self.nodes.values()
-                if all(n.get(k) == v for k, v in cond.items())]
 
     def neighbors(self, ids, traverse_spec):
         """프론티어 큐(BFS) 전파 — 명세 §5.6.2 v1.17.
