@@ -2931,3 +2931,47 @@ TOC01 **9청크** · TOC02 **8청크** — 지난 회차와 동일. `toc_report.
 **§6.4-4의 「판단 상수」 목록에 `split_level`이 없다**(D-107). *"분할 임계 등"*이라는
 예시는 있으나 이름이 정해지지 않아, 다음 어댑터가 다른 이름을 쓰면 코드가 그것을
 못 읽는다 — 지금은 이름을 코드가 안다.
+
+## 코드 전체 검토 — 리팩터 4단계 (2026-09-02)
+
+**요청**: 코드 전체를 검토해 구조 문제를 고치고 불필요한 것을 간소화한다. 명세는 불변.
+**판정 기준**: 단계마다 `run.py init --fresh` + `doctor.py` **678/678** · 검사 4종 기준선
+동일(점검_자산 13건은 착수 전 HEAD에서도 13건). 줄어든 어서션 **0건**.
+
+### 조사 결과 (착수 전)
+
+- 경계 위반(§7.1 진입 모듈 3종 밖에서 저장소를 여는 곳) **0건**.
+- 응집 문제 2곳 — `cli/register.py`(1,506줄 · 46함수: 흐름·조립·문답이 한 파일) ·
+  `core/pipeline.py`(1,054줄: 빌드와 재시도가 한 파일).
+- 같은 헬퍼 중복 — `_col` 4벌 · `_now` 5벌. 참조 0 정의 9건 중 진짜 사어 4건.
+
+### 한 것 (커밋 4건)
+
+| 단계 | 커밋 | 내용 | 결과 |
+|---|---|---|---|
+| 1 | `228c496` | `_col` 4벌 → `parser/normalizer._col` · `_now` 3벌 → `core/store._now` · 사어 4건 제거(`GraphStore.find`·`update_node`·`dictionary.surfaces_of`·`fixtures.available`) | 678/678 |
+| 2 | `cb8ccbe` | `cli/register.py` → `cli/prompt.py`(조립 10종) + `cli/interview.py`(문답 5종) + 흐름(1,497 → 1,088줄). 이름 15종 재수출. `_dump_error_on_fail` contextmanager → `_note_error` + try/except | 678/678 · mock `generate --interview → review` 실행 정상 |
+| 3 | `791968d` | `core/pipeline.py` 재시도 7종 → `core/retry.py`(1,054 → 799줄) · `_pair_relation` → `gate.pair_relation` | 678/678 |
+| 4 | `7532e40` | `split_stats`·`adapter_level_picks` → `parser/struct_map.py`(pipeline 263 → 202줄) · `_sent_size` 미사용 인자 제거 | 678/678 |
+
+**테스트 변경은 1곳**: `tests/test_p3.py`의 문답 텍스트 검사 2건이 읽는 파일을
+`cli/interview.py`로 — 검사 내용은 그대로다. 어서션 증감 **0**.
+
+### 검토에서 나온 신고 1건 — 판정필요-15
+
+파서 2곳이 `USE_MOCK`을 환경변수에서 직접 읽어 **파일 설정만으로 `USE_MOCK=0`을 준
+경우** `core`는 실호출·파서는 mock으로 갈린다. 산문 문서의 구조 지도가 예외 없이
+휴리스틱으로 떨어진다(§7.6-B-4의 조용한 통과). P1 규율과 명세가 부딪혀 코드로 메우지
+않았다 — `BLOCKERS.md` 판정필요-15에 선택지 3.
+
+### 명세 개정 필요 (고치지 않고 보고)
+
+문서 7 §7.1 코드 배치에 `cli/prompt.py`·`cli/interview.py`·`core/retry.py`가 없다.
+새 모듈은 진입 모듈 3종·게이트웨이 2파일의 **뒤**에 서고 저장소를 직접 열지 않으므로
+경계 규칙은 그대로다 — 배치 표에 이름만 더하면 된다(D-108).
+
+### 문서 정합
+
+`docs/가이드/register_구조도.md`는 함수 이름으로 흐름을 그리므로 여전히 맞다(이름 불변).
+다만 「한 파일」이 아니라 **세 파일**이 됐다 — 가이드는 허브 소유라 손대지 않고 보고한다.
+
