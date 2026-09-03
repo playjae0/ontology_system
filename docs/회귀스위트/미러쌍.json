@@ -15,5 +15,22 @@
    "mirror": "a3429594c2bedce0",
    "body": "ab617861ed427c9c"
   }
+ },
+ {
+  "id": "C15 ↔ 문서6 §6.4 투입 분류 (지문 스캔·조건부 자동 라우팅)",
+  "mirror": {
+   "doc": "1_금지와불변.md",
+   "anchor": "| C15 |",
+   "kind": "row"
+  },
+  "body": {
+   "doc": "6_파서와구축모드.md",
+   "anchor": "**투입 분류 — doc_type 지정.**",
+   "kind": "para"
+  },
+  "sealed": {
+   "mirror": "f333d69d8905db2b",
+   "body": "a431b28f7463f3fd"
+  }
  }
 ]
