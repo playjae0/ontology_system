@@ -485,6 +485,60 @@ show("S5 — 보류 문서는 청크에 아무것도 쓰지 않음", before == a
 same = ingest(load("CP01.json"))
 show("S5 대조 — 같은 doc_id 재인입은 통과(정상 경로)", same.status == "ok")
 
+# ============================================================ gs
+print("\n■ gs — GraphStore 전용 (core/graph.py — 구조 진단 3순위: 직접 겨냥한 회귀 0)")
+from core.graph import GraphStore, STATUS_DELETED, ALARM_BYTES     # noqa: E402
+import tempfile                                                    # noqa: E402
+_td = Path(tempfile.mkdtemp(prefix="gs_"))
+gs = GraphStore.for_layer("t", data_dir=_td)
+show("for_layer — 경로를 밖에 내주지 않고 exists로 답한다 (B6)", gs.exists() is False)
+n1 = gs.add_node("A", "Process", "seed", tier="root")
+n2 = gs.add_node("B", "Unit", "auto", attrs={"k": {"value": 1}}, aliases=["b"],
+                 provenance=["p1"])
+n3 = gs.add_node("C", "Property", "auto")
+show("add_node — id는 ULID, 발급 후 노드에 박힌다 (P4)",
+     is_ulid(n1) and gs.get(n1)["id"] == n1 and n1 != n2)
+show("add_node — 기본값(attrs {} · aliases [] · provenance []) + 파생 필드 병합",
+     gs.get(n1)["attrs"] == {} and gs.get(n1)["aliases"] == []
+     and gs.get(n1)["provenance"] == [] and gs.get(n1)["tier"] == "root"
+     and gs.get(n1)["layer"] == "t" and gs.get(n2)["aliases"] == ["b"])
+show("add_edge — 첫 삽입 True · 같은 (src,rel,dst) 재삽입 False",
+     gs.add_edge(n1, "part_of", n2, "auto", ["p1"]) is True
+     and gs.add_edge(n1, "part_of", n2, "auto", ["p2"]) is False)
+show("add_edge — 중복 엣지는 provenance만 합집합",
+     len(gs.edges) == 1 and gs.edges[0]["provenance"] == ["p1", "p2"])
+gs.add_edge(n2, "has_property", n3, "auto")
+gs.add_edge(n3, "precedes", n1, "auto")          # 순환 — neighbors가 멈춰야 한다
+show("get — 없는 id는 None", gs.get("없음") is None)
+_spec = {"part_of": {"x": {"direction": "out", "recursive": False}},
+         "has_property": {"y": {"direction": "out", "recursive": False}}}
+show("neighbors — 비재귀 관계도 **다른 관계로 도달한 노드**에는 적용된다 (2홉, 문서 5 §5.1-5)",
+     gs.neighbors([n1], _spec) == {n1, n2, n3})
+show("neighbors — direction=in 은 역방향만",
+     gs.neighbors([n2], {"part_of": {"x": {"direction": "in"}}}) == {n1, n2})
+show("neighbors — 순환 그래프(C→A)에서 멈춘다 (방문 집합)",
+     gs.neighbors([n1], {"part_of": {"x": {"direction": "both", "recursive": True}},
+                         "has_property": {"y": {"direction": "both", "recursive": True}},
+                         "precedes": {"z": {"direction": "both", "recursive": True}}})
+     == {n1, n2, n3})
+gs.build_begin()
+m = gs.build_end()
+show("build_end — 계기판 7·8 (bytes = 실제 파일 크기 · 알람선 미달)",
+     m["gauge7_graph_bytes"] == gs._path.stat().st_size and m["gauge7_over_alarm"] is False
+     and m["gauge8_over_alarm"] is False and m["nodes"] == 3 and m["edges"] == 3
+     and ALARM_BYTES > m["gauge7_graph_bytes"])
+gs2 = GraphStore.for_layer("t", data_dir=_td).load()
+show("save → load 왕복 — 노드·엣지 동일", gs2.nodes == gs.nodes and gs2.edges == gs.edges
+     and gs2.exists() is True)
+gs2.edges[0]["status"] = STATUS_DELETED
+gs2.save()
+gs3 = GraphStore.for_layer("t", data_dir=_td).load()
+show("툼스톤 — 사람이 지운 (src,rel,dst)는 재인입이 되살리지 못한다 (명세 §5.5-3)",
+     gs3.add_edge(n1, "part_of", n2, "auto") is False
+     and (n1, "part_of", n2) in gs3._tombstones)
+show("neighbors — 삭제된 엣지는 전파에서 제외", gs3.neighbors([n1], _spec) == {n1})
+shutil.rmtree(_td, ignore_errors=True)
+
 # ============================================================
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G1+G2 완료판정 충족" if allok else "FAIL")

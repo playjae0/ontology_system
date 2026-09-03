@@ -242,6 +242,67 @@ finally:
     _sp3.run([sys.executable, str(ROOT / "run.py"), "all"],
              capture_output=True, cwd=str(ROOT))
 
+# ============================================================ B46 일괄 투입
+print("\n■ B46 — 일괄 투입 ingest-file · ingest-dir (문서 6 §6.4 · 조건 셋)")
+from cli import ingest as IG                                      # noqa: E402
+import tempfile as _tf                                            # noqa: E402
+_RAW = ROOT / "tests" / "fixtures" / "raw"
+show("doc_id 파생 — 파일명 stem · 공백은 _ · 경로 무관 (D-110)",
+     IG.doc_id_of("/a/b/관리 계획서 v3.xlsx") == "관리_계획서_v3"
+     and IG.doc_id_of("x/CP01.xlsx") == IG.doc_id_of("y/CP01.xlsx") == "CP01")
+_sel = IG.select(_RAW / "CP04_unlabeled.xlsx")
+show("선택 — 유일 일치는 자동 (cp) · 근거가 실린다 (조건 ①)",
+     _sel["status"] == "chosen" and _sel["doc_type"] == "cp" and _sel["basis"]["by"] == "scan"
+     and "완전 일치 10/10" in _sel["basis"]["match"], str(_sel["basis"])[:80])
+show("선택 — 표류 문서는 0건 → 사람에게 (조건 ③)",
+     IG.select(_RAW / "CP02_drift.xlsx")["status"] == "none")
+show("선택 — 비정형(pptx)은 스캔하지 않는다 · 지정 필수",
+     IG.select(_RAW / "PPT_basic.pptx")["status"] == "none"
+     and IG.select(_RAW / "PPT_basic.pptx", doc_type="ppt_quality")["status"] == "none")  # 내장 스키마만 · 어댑터 없음
+show("선택 — --doc-type 지정은 스캔 없이 그것으로 (사람 지정 기록)",
+     (lambda s: s["status"] == "chosen" and s["basis"] == {"by": "human", "doc_type": "cp"})(
+         IG.select(_RAW / "CP02_drift.xlsx", doc_type="cp")))
+# 다중 일치 — 같은 지문의 어댑터 둘
+_td = Path(_tf.mkdtemp(prefix="multi_"))
+_src = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+for _nm in ("cp_a", "cp_b"):
+    (_td / f"{_nm}.py").write_text(_src.replace('"doc_type": "cp"', f'"doc_type": "{_nm}"', 1), encoding="utf-8")
+_amb = IG.select(_RAW / "CP04_unlabeled.xlsx", adapter_paths=[str(_td)])
+show("다중 일치 — 둘 이상이면 자동으로 넘기지 않고 사람에게 올린다 (조건 ③)",
+     _amb["status"] == "ambiguous" and sorted(_amb["candidates"]) == ["cp_a", "cp_b"], str(_amb["candidates"]))
+shutil.rmtree(_td, ignore_errors=True)
+# dry-run — 선택만
+_before = data_hash()
+_row = IG.ingest_file(_RAW / "CP04_unlabeled.xlsx", dry_run=True)
+show("--dry-run — 선택 결과만 · 파싱·인입 0 (조건 ②)",
+     _row["status"] == "선택만" and data_hash() == _before
+     and not (ROOT / "parsed" / "CP04_unlabeled.json").exists())
+# 실제 — 파일 1건
+_row = IG.ingest_file(_RAW / "CP04_unlabeled.xlsx")
+_reg = store.read(store.DOC_REGISTRY, {}).get("CP04_unlabeled") or {}
+show("ingest-file — 선택 → 파싱 → 인입 완주 (record 12)", _row["status"] == "성공" and "record 12" in _row["reason"])
+show("인입 기록에 선택 근거가 남는다 — doc_registry.routing (조건 ① · 오배정률의 재료)",
+     _reg.get("routing", {}).get("by") == "scan" and _reg["routing"]["doc_type"] == "cp", str(_reg.get("routing"))[:80])
+# 경로 — 문서 단위 독립 · 성공/실패/미선택
+_bd = Path(_tf.mkdtemp(prefix="batch_"))
+for _f in ("CP01.xlsx", "CP03_bad.xlsx", "CP04_unlabeled.xlsx", "TOC01.xlsx"):
+    shutil.copy(_RAW / _f, _bd / _f)
+_rows = IG.ingest_dir(_bd)
+_st = {r["doc_id"]: r["status"] for r in _rows}
+show("ingest-dir — 4건 순회 · 성공 2 · 실패 1(C14 파싱 실패) · 미선택 1(지문 0건)",
+     _st == {"CP01": "성공", "CP03_bad": "실패", "CP04_unlabeled": "성공", "TOC01": "미선택"}, str(_st))
+show("한 건의 실패가 나머지를 멈추지 않는다 — 실패 뒤의 문서도 인입됐다",
+     [r["doc_id"] for r in _rows].index("CP03_bad") < [r["doc_id"] for r in _rows].index("CP04_unlabeled")
+     and _st["CP04_unlabeled"] == "성공")
+show("끝에 모아 보이는 목록 — 성공·실패·미선택 3구획",
+     all(k in IG.summary(_rows) for k in ("[성공]", "[실패]", "[미선택]")))
+_dry = IG.ingest_dir(_bd, dry_run=True)
+show("ingest-dir --dry-run — 전부 선택만/미선택, 인입 0",
+     all(r["status"] in ("선택만", "미선택") for r in _dry))
+shutil.rmtree(_bd, ignore_errors=True)
+for _f in ("CP01", "CP03_bad", "CP04_unlabeled"):
+    (ROOT / "parsed" / f"{_f}.json").unlink(missing_ok=True)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G6 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

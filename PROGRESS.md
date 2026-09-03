@@ -2931,3 +2931,98 @@ TOC01 **9청크** · TOC02 **8청크** — 지난 회차와 동일. `toc_report.
 **§6.4-4의 「판단 상수」 목록에 `split_level`이 없다**(D-107). *"분할 임계 등"*이라는
 예시는 있으나 이름이 정해지지 않아, 다음 어댑터가 다른 이름을 쓰면 코드가 그것을
 못 읽는다 — 지금은 이름을 코드가 안다.
+
+## 코드 전체 검토 — 리팩터 4단계 (2026-09-02)
+
+**요청**: 코드 전체를 검토해 구조 문제를 고치고 불필요한 것을 간소화한다. 명세는 불변.
+**판정 기준**: 단계마다 `run.py init --fresh` + `doctor.py` **678/678** · 검사 4종 기준선
+동일(점검_자산 13건은 착수 전 HEAD에서도 13건). 줄어든 어서션 **0건**.
+
+### 조사 결과 (착수 전)
+
+- 경계 위반(§7.1 진입 모듈 3종 밖에서 저장소를 여는 곳) **0건**.
+- 응집 문제 2곳 — `cli/register.py`(1,506줄 · 46함수: 흐름·조립·문답이 한 파일) ·
+  `core/pipeline.py`(1,054줄: 빌드와 재시도가 한 파일).
+- 같은 헬퍼 중복 — `_col` 4벌 · `_now` 5벌. 참조 0 정의 9건 중 진짜 사어 4건.
+
+### 한 것 (커밋 4건)
+
+| 단계 | 커밋 | 내용 | 결과 |
+|---|---|---|---|
+| 1 | `228c496` | `_col` 4벌 → `parser/normalizer._col` · `_now` 3벌 → `core/store._now` · 사어 4건 제거(`GraphStore.find`·`update_node`·`dictionary.surfaces_of`·`fixtures.available`) | 678/678 |
+| 2 | `cb8ccbe` | `cli/register.py` → `cli/prompt.py`(조립 10종) + `cli/interview.py`(문답 5종) + 흐름(1,497 → 1,088줄). 이름 15종 재수출. `_dump_error_on_fail` contextmanager → `_note_error` + try/except | 678/678 · mock `generate --interview → review` 실행 정상 |
+| 3 | `791968d` | `core/pipeline.py` 재시도 7종 → `core/retry.py`(1,054 → 799줄) · `_pair_relation` → `gate.pair_relation` | 678/678 |
+| 4 | `7532e40` | `split_stats`·`adapter_level_picks` → `parser/struct_map.py`(pipeline 263 → 202줄) · `_sent_size` 미사용 인자 제거 | 678/678 |
+
+**테스트 변경은 1곳**: `tests/test_p3.py`의 문답 텍스트 검사 2건이 읽는 파일을
+`cli/interview.py`로 — 검사 내용은 그대로다. 어서션 증감 **0**.
+
+### 검토에서 나온 신고 1건 — 판정필요-15
+
+파서 2곳이 `USE_MOCK`을 환경변수에서 직접 읽어 **파일 설정만으로 `USE_MOCK=0`을 준
+경우** `core`는 실호출·파서는 mock으로 갈린다. 산문 문서의 구조 지도가 예외 없이
+휴리스틱으로 떨어진다(§7.6-B-4의 조용한 통과). P1 규율과 명세가 부딪혀 코드로 메우지
+않았다 — `BLOCKERS.md` 판정필요-15에 선택지 3.
+
+### 명세 개정 필요 (고치지 않고 보고)
+
+문서 7 §7.1 코드 배치에 `cli/prompt.py`·`cli/interview.py`·`core/retry.py`가 없다.
+새 모듈은 진입 모듈 3종·게이트웨이 2파일의 **뒤**에 서고 저장소를 직접 열지 않으므로
+경계 규칙은 그대로다 — 배치 표에 이름만 더하면 된다(D-108).
+
+### 문서 정합
+
+`docs/가이드/register_구조도.md`는 함수 이름으로 흐름을 그리므로 여전히 맞다(이름 불변).
+다만 「한 파일」이 아니라 **세 파일**이 됐다 — 가이드는 허브 소유라 손대지 않고 보고한다.
+
+## 구조 진단 아티팩트 반영 — 리팩터 5·6단계 (2026-09-02)
+
+**입력**: 사용자가 준 「온톨로지 시스템 구조 진단」(AST 실측 · 2026-08-27 `main` 기준 ·
+76파일 16,952줄). 진단의 권고 순서 STEP 1~4를 지금 코드와 대조해 반영했다.
+
+| 진단 항목 | 진단 시점 | 지금 | 한 것 |
+|---|---|---|---|
+| 1순위 순환 3개(`ops→build→ops` 등, 원인 `is_live`) | 3 | **0** (지연 포함 0) | `core/status.py` 신설(61줄) · 호출부 8곳 · ops 지연 import 4곳 최상단 복귀 — 커밋 `9e704a2` |
+| 2순위 `build_table` 156줄·분기 35 | 35 | **22줄·분기 1** (단계 함수 최대 31줄·분기 10) | `_Row` + 단계 6개 — 커밋 |
+| 3순위 `core/graph.py` 직접 회귀 0 | 0 | **13건** | `test_g1_g2` gs 블록 — 같은 커밋 |
+| 4순위 죽은 정의 4 | 4 | **0** (3 제거 · 1은 진단 오류) | `surfaces_of`·`available`·`update_node`는 1단계에서 제거. `merge_targets`는 **API다**(test_g1_g2:167 `hasattr` 어서션) — 지우지 않음 |
+| 이름 충돌 5쌍(`lookup`·`check`·`split`·`read`·`write`) | 5 | 5 | **손대지 않음** — 전부 모듈 접두로 읽히고(`store.read`/`reader.read`), 개명은 호출 계약을 바꾼다 |
+| 고아 파일 9 | 9 | 9 | 진단대로 설계 의도(동적 로드 5 · 단독 점검 4) |
+
+**진단 시점과 지금의 차이 하나**: 진단은 `is_live` import를 7곳으로 셌는데 지금은 8곳이다 —
+3단계에서 생긴 `core/retry.py`가 하나 더 가져갔다. 같이 돌렸다.
+
+### 회귀
+
+678 → **691/691**(+13, 전부 GraphStore 전용). 검사 4종 기준선 동일. 줄어든 어서션 0.
+
+### 남은 것 (진단이 꼽았으나 이번에 안 한 것)
+
+- 분기 큰 함수 나머지: `ops.transfer`(134줄·분기 41 — `cli/ops.py`가 쓰므로 서명 유지 필요) ·
+  `llm.probe`(132·24) · `platform.gauges`(115·26) · `pipeline.build_prose`(104·19) ·
+  `cli/query.answer`(102·25). 각각 별 요청으로.
+- 직접 회귀 없는 core 모듈 2: `core/naming.py`(94줄) · `core/log.py`(76줄).
+
+## 등록·인입 개선 5건 (2026-09-02)
+
+**반입**: `docs/spec/6_파서와구축모드.md`(B46 · [정정]38) · `개정대장.md` · `docs/회귀스위트/점검_문서간.py`(개정 번호 오검출 수정) · 요청문 → `docs/요청문_등록개선_5건.md`.
+
+**전제 대조**: 5개 중 4개 일치. 1개는 **시점이 지났다** — 요청문은 `toc_report.py`가 «`if m: flush()` (depth 비교 없음)»이라고 했으나, 지난 「B45 정정 요청문」(D-107 · 커밋 `5a0c816`)이 이미 `expects.split_level=1`과 `depth <= lvl` 자르기를 넣었다. **①은 이미 반영돼 있어 이번에 코드를 더 바꾸지 않았고 ⓐ만 실측했다.**
+
+| 항목 | 한 것 | 실행 결과 |
+|---|---|---|
+| ① 분할 레벨 상수 | (기존 D-107) | ⓐ **TOC01 전/후**: 상수 없음(fixture) **11청크 · 행 1~2 · 너무 짧음 11** → `split_level=1`(kit) **6청크 · 행 1~8 · 너무 짧음 5**. 텍스트 총행 **18 = 18**(산출 유실 0). 상수 없는 어댑터(fixture)는 동작 불변 |
+| ② `generate --use-basic` | 위임 래퍼 어댑터(D-111) + prose 스키마를 검수 자리에. 제안 없는 표본은 거부 | ⓑ PPT_basic: 생성 «이 명령에서 호출 0회» → 검수 하네스 **29 PASS · LLM 호출 0회** → 확정 등재 → `ingest-file --doc-type` 인입(chunk 24). CP01에 주면 거부 |
+| ③ 확정 화면 안내 | `parse run` · `build parsed/` 2줄 + `ingest-file` 1줄 | ⓒ confirm 출력 실물(위) |
+| ④ `ingest-file`·`ingest-dir` | `cli/ingest.py` 신설 — 선택(지정 > 스캔 유일 일치) → `cli.parse.run_parse` → `core.pipeline.run_document(routing=…)`. 근거는 `doc_registry.json`의 `routing`에 | ⓓ 4건 일괄: **성공 2(CP01·CP04) · 실패 1(CP03_bad — C14) · 미선택 1(TOC01)**, 실패 뒤 문서도 인입. `--dry-run` 선택만. 같은 지문 어댑터 2개(`cp_a`·`cp_b`) → **ambiguous · 사람에게**. `tests/fixtures/raw` 14건 dry-run: 선택 4 · 미선택 10(표류·CSV·비정형·미등록) |
+| ⑤ 문답 화면 | 질문마다 구분선 · 번호 선택지 `1) …  2) …` · 질문별 입력 · 중요도 정렬 · 번호 → 본문 풀이 | ⓔ stdin «1 · 빈줄 · 진행»: `→ 위 값 채움` 표시 · `answers[0].chosen == "위 값 채움"` · 라운드 2에서 종료 |
+
+**가결정**: D-110(doc_id = 파일명 stem · 경로 무관 · 하위 폴더 미포함) · D-111(래퍼 위임 · 임계 초과는 거부 아님).
+**신고**: 판정필요-16 — B46이 문서 1 C15·문서 6 §6.6 요약과 어긋난다(구현은 B46대로).
+
+**바뀐 파일**: `core/ingest.py` · `core/pipeline.py`(routing 통로) · `cli/parse.py`(`run_parse`) · **`cli/ingest.py`(신설)** · `run.py` · `cli/register.py` · `cli/interview.py` · `cli/scan.py`(열 문자 자기 구현 → `normalizer._col`) · `tests/test_p3.py`(+18) · `tests/test_g6.py`(+13) · `doctor.py` · `산출물_지도.md` · 장부 3종.
+
+**회귀**: 691 → **722/722**(+31). 검사 4종 통과(점검_문서간 반입판이 개정 번호를 조항으로 잡지 않음 — 0건).
+
+**명세 개정 필요(고치지 않고 보고)**: ⑴ 판정필요-16의 C15·§6.6 ⑵ §6.4-5에 «래퍼로 붙인다»(D-111) ⑶ §6.4에 doc_id 규칙(D-110) ⑷ CSV는 지문 스캔 대상이 아니다(`_header_actual`이 xlsx만 본다 — 종전 동작) — 정형 CSV의 자동 선택을 원하면 §6.4의 지문 정의를 넓혀야 한다.
+

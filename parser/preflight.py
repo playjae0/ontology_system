@@ -14,13 +14,8 @@ prose는 헤더 행이 없으므로 **분할 신호 상수의 존재**를 본다
 """
 from __future__ import annotations
 
+from .normalizer import _col
 
-def _col(n):
-    s = ""
-    while n:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s
 
 
 def header_labels(raw, header_row, sheet=0):

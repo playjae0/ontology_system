@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import registry, store
 from core.bootstrap import load_config, open_graph
 from core.ids import norm
-from core.ops import is_live
+from core.status import is_live
 from router import discover
 
 

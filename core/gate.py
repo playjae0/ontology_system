@@ -58,6 +58,16 @@ def _index(cfg):
     return forward, reverse, declared
 
 
+def pair_relation(cfg, src_cat, dst_cat):
+    """관계는 category_pair_map이 결정한다 — 게이트 패턴표의 특수형(§6-3).
+
+    표·산문·재시도 세 경로가 같은 표를 읽는다. 한 곳에 두어야 표의 키 형식
+    (`"src,dst"`)이 세 벌로 갈리지 않는다.
+    """
+    return (cfg.get("category_pair_map") or {}).get(f"{src_cat},{dst_cat}")
+
+
+
 def judge(src_cat, rel, dst_cat, cfg, path):
     """한 후보의 분기를 정한다. 그래프는 건드리지 않는다 — 판정만 한다."""
     forward, reverse, declared = _index(cfg)

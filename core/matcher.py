@@ -22,7 +22,7 @@ import json
 from . import llm, log
 from .ids import norm
 from .naming import POLARITY_NONE
-from .ops import is_live
+from .status import is_live
 
 # 판정 임계 — **층 config `match_threshold`가 소유한다**(문서 3 §3.1 키 일람).
 # 판단에 영향을 주는 자산은 코드에 박지 않는다(문서 7 §7.1 관리 자산의 원칙).

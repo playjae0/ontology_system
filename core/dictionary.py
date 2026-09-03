@@ -94,9 +94,6 @@ class Dictionary:
         """
         return list(self._d.keys())
 
-    def surfaces_of(self, node_id):
-        """이 노드를 가리키는 표면형 전부 — 회수·리다이렉트가 대상을 찾을 때."""
-        return [k for k, v in self._d.items() if node_id in v]
 
     # ------------------------------------------------------------ I축 연산
     def redirect(self, old_id, new_id):

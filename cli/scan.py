@@ -26,6 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures
+from parser.normalizer import _col
 from parser.reader import read
 
 # **등록부가 정본**이다(n6 확정분 — P3). 등록부에 어댑터가 없는 내장 doc_type을 위해
@@ -73,12 +74,7 @@ def _header_actual(raw, header_row):
     cells = raw["sheets"][0]["cells"]
     out = []
     for col in range(1, raw["sheets"][0]["max_col"] + 1):
-        s = ""
-        n = col
-        while n:
-            n, r = divmod(n - 1, 26)
-            s = chr(65 + r) + s
-        v = cells.get(f"{s}{header_row}")
+        v = cells.get(f"{_col(col)}{header_row}")
         if v is not None and str(v).strip():
             out.append(str(v).strip())
     return out

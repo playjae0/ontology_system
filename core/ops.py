@@ -22,15 +22,18 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from . import store
+from . import matcher
+from .bootstrap import load_config, open_graph
+from .build import Builder
 from .dictionary import Dictionary
 from .graph import STATUS_DELETED, GraphStore
 from .ids import norm
+# 생존 판정·툼스톤 체인은 core/status.py가 소유한다 — 이름은 여기서도 그대로 보인다
+# (`ops.is_live`·`ops.STATUS_MERGED`·`ops.resolve_chain`·`ops.MAX_CHAIN` — 호출 계약 유지).
+from .status import (  # noqa: F401
+    MAX_CHAIN, STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain)
 
-# 읽기 추적의 최대 깊이 — 조절점(코드 상수, 초과는 결함 로그. L8).
-MAX_CHAIN = 16
 
-STATUS_MERGED = "merged_into"
-STATUS_OBSOLETE = "obsolete"
 SEED_STATUS = "seed"     # 골격 유래 — 원천이 사람의 파일이다(문서 4 §4.9-1)
 
 # 병합 생존자의 status 등급 — **높은 쪽이 이긴다** (R3-⑴ 2순위).
@@ -44,26 +47,6 @@ STATUS_RANK = {"seed": 3, "confirmed": 2, "auto": 1}
 
 class OpRefused(Exception):
     """쓰기 거부 — 조용히 넘어가지 않는다. 사유를 들고 멈춘다."""
-
-
-def is_live(node):
-    """**매칭 후보 판정** — `merged_into` 툼스톤과 `status: obsolete`를 **둘 다** 제외한다.
-
-    생존 판정은 두 갈래다(문서 4 §4.7). 이것은 그중 **매칭 후보** 쪽이고, 사전
-    조회·후보 검색·anchor 조회 전부에 적용되며 **I4 이유 ②(재인입 부활 차단)의
-    강제 지점**이다. `merged_into`만 보면 폐기 노드가 후보로 돌아와 부활 차단이
-    사전에서 새어 나간다.
-
-    연산 대상 판정(I축이 "이 노드를 만질 수 있나"를 묻는 쪽)은 `_target`이 갖는다 —
-    폐기 노드도 연산 대상일 수 있으므로 그쪽은 다른 갈래다.
-
-    **툼스톤은 `canonical`을 그대로 지닌다** — 옛 이름을 화면에 보여 주기 위해서다.
-    그래서 canonical로 노드를 찾는 코드는 반드시 이 판정을 거쳐야 한다. 안 거치면
-    옛 이름이 산 노드를 가리는 사고가 난다(실측: 병합 툼스톤을 폐기 처리해 한 노드가
-    `merged_into`와 `obsolete`를 동시에 갖는 모순 상태가 됐다).
-    """
-    return (bool(node) and node.get(STATUS_MERGED) is None
-            and node.get("status") != STATUS_OBSOLETE)
 
 
 def _target(g, nid):
@@ -82,17 +65,11 @@ def _target(g, nid):
 
 # ---------------------------------------------------------------- 공통
 def _cfg(layer):
-    from .bootstrap import load_config
     return load_config(layer)
 
 
 def _sep(cfg):
     return (cfg.get("canonical_scope") or {}).get("sep", "::")
-
-
-def _now():
-    """연산 시점 — 로그 5요소의 하나다. 상수로 두면 그 자리가 **위조값**이 된다."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def log_op(op, actor, targets, reason, detail=None):
@@ -102,32 +79,10 @@ def log_op(op, actor, targets, reason, detail=None):
     행위자 없는 I축 연산은 거부한다 — 누가 그래프를 고쳤는지 모르면 로그가 로그가 아니다.
     """
     log = store.read(store.OPS_LOG, [])
-    log.append({"op": op, "actor": actor, "at": _now(),
+    log.append({"op": op, "actor": actor, "at": store._now(),
                 "targets": list(targets), "reason": reason, "detail": detail or {}})
     store.write(store.OPS_LOG, log)
     return log[-1]
-
-
-def resolve_chain(graph, nid, field, depth=0, seen=None):
-    """툼스톤 체인 추적 — **방문집합 + 깊이 제한**, 초과는 결함 로그(L8 읽기 측).
-
-    조용히 멈추지 않는다. 순환은 쓰기에서 이미 막지만, 읽기 측 방어를 함께 두는 것은
-    데이터가 다른 경로로 오염됐을 때 질의가 무한히 도는 것을 막기 위해서다.
-    """
-    seen = seen or set()
-    cur = nid
-    while True:
-        n = graph.get(cur)
-        if n is None or n.get(field) in (None, ""):
-            return cur
-        if cur in seen:
-            store.append_defect(f"ops: {field} 체인 순환 — {cur}")
-            return cur
-        seen.add(cur)
-        if len(seen) > MAX_CHAIN:
-            store.append_defect(f"ops: {field} 체인 깊이 {MAX_CHAIN} 초과 — {nid}")
-            return cur
-        cur = n[field]
 
 
 # ---------------------------------------------------------------- 파급 미리보기
@@ -392,10 +347,6 @@ def merge_targets(layer, nid, limit=5):
     사람이 골라 넣는다. 그래서 `uncertain`도 함께 낸다 — 확신되지 않은 후보를
     감추면 사람이 볼 것이 줄어들고, 판정을 감춘 자리에서 오병합이 난다.
     """
-    from . import matcher
-    from .bootstrap import open_graph
-    from .dictionary import Dictionary
-
     g = open_graph(layer)
     node = g.get(nid)
     if node is None or not is_live(node):
@@ -441,7 +392,6 @@ def _merge_attrs(g, layer, keep, gone):
     새로 쓰지 않고 `Builder.put_attribute`를 그대로 부른다: 같은 이름은 context 그룹별로
     합쳐지고, 같은 그룹의 다른 값은 `spec_conflict` 큐로 간다(3.7 I2 문면 그대로).
     """
-    from .build import Builder
     b = Builder(g, _cfg(layer), None, None, keep["layer"])
     for name, val in (gone.get("attrs") or {}).items():
         items = val if isinstance(val, list) else [
@@ -527,7 +477,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
     # 생존자를 찾는 코드가 kind별로 다른 키를 보게 된다.
     g.nodes[gone["id"]] = {"id": gone["id"], STATUS_MERGED: keep["id"],
                            "target": keep["id"],
-                           "status": STATUS_MERGED, "at": _now(),
+                           "status": STATUS_MERGED, "at": store._now(),
                            "canonical": gone["canonical"], "category": gone["category"],
                            "layer": gone["layer"], "attrs": {}, "aliases": [],
                            "provenance": []}
@@ -607,7 +557,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     for i in own_edges:
         g.edges[i]["status"] = STATUS_DELETED
     g.nodes[nid] = {"id": nid, STATUS_MERGED: new_ids[0], "status": STATUS_MERGED,
-                    "at": _now(), "canonical": node["canonical"],
+                    "at": store._now(), "canonical": node["canonical"],
                     "category": node["category"], "layer": node["layer"],
                     "attrs": {}, "aliases": [], "provenance": []}
     # 배분표가 각 표기를 자기 타깃에 이미 등재했다 — 여기서는 **옛 id만 걷는다.**
@@ -641,7 +591,7 @@ def obsolete(layer, nid, actor, replaced_by=None, reason="", dry_run=False):
         return pv
     node["status"] = STATUS_OBSOLETE
     node["replaced_by"] = replaced_by
-    node["obsoleted_at"] = _now()
+    node["obsoleted_at"] = store._now()
     node["obsolete_reason"] = reason
     g.save()
     log_op("I4:obsolete", actor, [nid], reason, {"replaced_by": replaced_by})

@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import fixtures, store
 from core.bootstrap import load_config, open_graph
 from core.extract import EXTRACT_DIR
-from core.ops import is_live
+from core.status import is_live
 from router import discover
 
 # 수정 큐 kind — **닫힌 20종**(구현문서 §2.3의 13종 + 증분0 §6-5의 확장 7종 · D-54).
@@ -350,10 +350,6 @@ def cmd_gauges():
     return m
 
 
-def _now():
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
 
 def cmd_accuracy():
     """**판정 정확도 측정** — 계기판 8종과 **별도**다 (갭 spec-s7-11-14).
@@ -417,7 +413,7 @@ def cmd_accuracy():
     print("  **절대값이 아니라 추이가 신호다** — 아래 이력과 비교한다.")
 
     hist = store.read("accuracy_log.json", [])
-    hist.append({"at": _now(), "queue_uncertain": total,
+    hist.append({"at": store._now(), "queue_uncertain": total,
                  "by_kind": {k: c[k] for k in JUDGE},
                  "path_match": (rate if smoke else None),
                  "set": ("golden" if is_golden else "mock" if smoke else None)})
