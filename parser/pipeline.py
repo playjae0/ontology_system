@@ -62,10 +62,15 @@ def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None):
         hit = kept.get(key)
         if hit is not None:
             return hit
-        smap = struct_map.apply(f"{doc_id}:{key}", lines, locator, ask=ask)
-        if made is not None:
-            made[key] = smap
-        if seen is not None and isinstance(smap, dict):
+        # `apply()`는 **3짝**을 돌려준다 — 어댑터가 그대로 풀어 쓴다.
+        out = struct_map.apply(f"{doc_id}:{key}", lines, locator, ask=ask)
+        _chunks, smap, _reasons = out
+        # **사유 지도는 보존분에 담지 않는다**(문서 6 §6.3 · [정정] 39). `propose`가
+        # 프레임 단위로 안 담아도, 여기서 담으면 문서 단위 보존 파일에 실려 재인입이
+        # 그것을 재사용한다 — 한도를 올려도 **영영 평면**이다.
+        if made is not None and not smap.get("unavailable"):
+            made[key] = out
+        if seen is not None:
             # **선택 레벨과 레벨별 분포를 밖으로 흘린다**(B45) — 검수 뷰가 그리려면
             # 값이 뷰 데이터에 있어야 하고, 렌더러는 계산하지 않는다(§6.6-3).
             # **출처와 지시문 판본도 함께 흘린다**(B48 ②-7) — 휴리스틱 지도는
@@ -75,8 +80,9 @@ def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None):
                          "분할_레벨_사유": smap.get("분할_레벨_사유"),
                          "레벨_분포": smap.get("레벨_분포"),
                          "지도_출처": smap.get("source"),
-                         "지시문_판본": smap.get("prompt_version")})
-        return smap
+                         "지시문_판본": smap.get("prompt_version"),
+                         "지도_없음": smap.get("unavailable")})
+        return out
     return hook
 
 

@@ -301,6 +301,61 @@ show("⑦의 통로가 apply()까지 이어진다 (파라미터만 있고 값이
      "ask" in struct_map.apply.__code__.co_varnames
      and "ask=ask" in _smsrc)
 
+# ============================================================ ⑦ 폴백 ([정정] 39)
+print("\n■ ⑦ 예산 초과·판정 불가는 문서를 죽이지 않는다 (문서 6 §6.2·§6.3 · D-113 조정)")
+from core import llm as _LLM                                        # noqa: E402
+_PPTDOC = str(RAW / "PPT_basic.pptx")
+
+
+def _map_run(doc_id, reply, limit):
+    """실호출 갈래(`llm.map_structure`)를 **그대로 태운다** — 가짜는 게이트웨이 응답과
+    한도뿐이다. 파서에 주입되는 함수는 운영과 같은 것이라 배선까지 함께 잰다."""
+    struct_map.invalidate(doc_id)
+    _oc, _ol = _LLM.chat, _LLM.context_limit
+    _LLM.chat = lambda *a, **k: reply
+    _LLM.context_limit = lambda: limit
+    try:
+        return pipeline.parse(basic_ppt, doc_id, _PPTDOC,
+                              map_structure=_LLM.map_structure)
+    finally:
+        _LLM.chat, _LLM.context_limit = _oc, _ol
+
+
+def _queue_reasons(res):
+    return [x for c in (res.envelope or {}).get("chunks", [])
+            for x in ((c.get("meta") or {}).get("unresolved_reasons") or [])]
+
+
+# ⓐ 예산 초과 — 보내지 않되 문서는 산다
+_a = _map_run("PPTBUDGET", {"headings": [], "note": None}, 1)
+show("ⓐ 예산 초과여도 파싱은 완주한다 (문서 단위 실패가 아니다 — §6.2 폴백)",
+     _a.ok and [f["kind"] for f in _a.failures] == ["hierarchy_unresolved"],
+     f"ok={_a.ok} · {[f['kind'] for f in _a.failures]}")
+show("ⓐ 큐 사유에 「크기 예산 초과」가 실린다 (사람이 왜를 들고 검수 화면에 간다)",
+     any("크기 예산 초과" in r for r in _queue_reasons(_a)),
+     str(_queue_reasons(_a))[:100])
+show("ⓐ 사유 지도는 보존하지 않는다 — 보존하면 재인입이 영영 평면이다",
+     not struct_map.keep_path("PPTBUDGET").exists())
+
+# ⓑ 한도를 올리면 다시 시도된다 (ⓐ가 보존을 안 남겼다는 증명)
+_b = _map_run("PPTBUDGET", {"headings": [{"row": 1, "level": 1, "title": "제목"}],
+                            "note": None}, 10 ** 6)
+_kept = json.loads(struct_map.keep_path("PPTBUDGET").read_text(encoding="utf-8")) \
+    if struct_map.keep_path("PPTBUDGET").exists() else {}
+_maps = list((_kept.get("maps") or {}).values())
+show("ⓑ 한도를 올린 재인입에서 실호출 지도가 서고 **보존된다**",
+     bool(_maps) and all(m[1].get("source") == "live" and not m[1].get("unavailable")
+                         for m in _maps),
+     f"보존 프레임 {list((_kept.get('maps') or {}).keys())}")
+struct_map.invalidate("PPTBUDGET")
+
+# ⓒ 모델의 「판정 불가」가 큐 사유에 보인다
+_c = _map_run("PPTNOTE", {"headings": [], "note": "표 하나로만 된 문서"}, 10 ** 6)
+show("ⓒ 헤딩 0건 + 모델 note가 큐 사유 문면에 실린다 (§6.2 「판정 불가로 올린다」)",
+     any("모델: 표 하나로만 된 문서" in r for r in _queue_reasons(_c)),
+     str(_queue_reasons(_c))[:100])
+struct_map.invalidate("PPTNOTE")
+
 # ============================================================ 생성 하네스
 print("\n■ 생성 하네스 — 구축 모드 3단 배선 (생성 → 검수 → 확정)")
 from cli.parse import cmd_build                              # noqa: E402
