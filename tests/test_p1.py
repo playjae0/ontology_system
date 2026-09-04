@@ -336,6 +336,10 @@ show("ⓐ 큐 사유에 「크기 예산 초과」가 실린다 (사람이 왜�
      str(_queue_reasons(_a))[:100])
 show("ⓐ 사유 지도는 보존하지 않는다 — 보존하면 재인입이 영영 평면이다",
      not struct_map.keep_path("PPTBUDGET").exists())
+show("ⓐ 사유 문면이 **다음 행동**을 낸다 — 귀결 한 줄 + 줄이는 법 두 가지",
+     any("평면으로 인입된다" in r and "LLM_CONTEXT_TOKENS가 게이트웨이" in r
+         and "시트·슬라이드 단위로 나눠" in r for r in _queue_reasons(_a)),
+     str(_queue_reasons(_a))[:80])
 
 # ⓑ 한도를 올리면 다시 시도된다 (ⓐ가 보존을 안 남겼다는 증명)
 _b = _map_run("PPTBUDGET", {"headings": [{"row": 1, "level": 1, "title": "제목"}],

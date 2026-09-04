@@ -1010,6 +1010,22 @@ show("③ 관문 호출은 CLI 진입점 4곳뿐이다 — core·parser에는 �
      len(_gcalls) == 4 and not any(g.startswith(("core/", "parser/")) for g in _gcalls),
      str(_gcalls))
 
+# ============================================================ --resume 인자 (후속 ①)
+print("\n■ --resume은 층·표본을 요구하지 않는다 (실사용 IndexError 수리)")
+_r1 = run("generate", "toc_report", "--resume")
+show("① doc_type 하나로 돈다 (IndexError 0)",
+     _r1.returncode == 0 and "이어하기" in _r1.stdout, _r1.stderr.strip()[-70:])
+_r2 = run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"), "--resume")
+show("① 층·표본을 줘도 돌고, 무시한다는 경고가 뜬다 (침묵으로 넘기지 않는다)",
+     _r2.returncode == 0 and "층·표본 인자는 무시한다" in _r2.stdout
+     and "layer=" in _r2.stdout,
+     [l for l in _r2.stdout.splitlines() if "무시한다" in l][:1])
+_r3 = run("generate")
+show("① 위치 인자 0개면 죽지 않고 사용법을 낸다",
+     "generate <doc_type>" in (_r3.stdout + _r3.stderr))
+show("① 사용법에 resume 단독 줄이 있다",
+     "generate <doc_type> --resume" in (ROOT / "cli/register.py").read_text(encoding="utf-8"))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

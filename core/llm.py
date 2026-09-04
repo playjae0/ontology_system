@@ -730,9 +730,17 @@ def map_structure(doc_id, lines):
         # §6.2가 그 폴백을 이미 정해 두었다. 그래서 **지도 형태로 사유를 돌려준다**:
         # `unavailable` 키가 있으면 「지도 없음 + 사유」이고, 파서는 그것을 타당성
         # 실패로 받아 평면 폴백 + 큐로 보낸다. 관측(explicit_fail)은 그대로다.
+        # **관측은 행동으로 이어져야 한다** — 생성 경로(`cli/prompt._sent_size`)가
+        # 감축 3단을 내듯, 여기도 「그래서 무엇이 되고 무엇을 하면 되는가」를 낸다.
+        # 이 문면 그대로 `explicit_fail` 로그와 큐 사유(`unavailable`)에 실린다.
         reason = (f"{POINTS['struct_map']} — 크기 예산 초과: 약 {est:,} 토큰 > "
                   f"한도 {lim:,} (행 {len(lines):,}개를 앞 {width}자로 줄인 뒤에도). "
-                  f"보내지 않았다")
+                  f"보내지 않았다\n"
+                  f"   이 문서는 평면으로 인입된다(구조 지도 없이 · "
+                  f"hierarchy_unresolved 큐).\n"
+                  f"   줄이려면: ①LLM_CONTEXT_TOKENS가 게이트웨이 실제 한도와 "
+                  f"맞는지 확인\n"
+                  f"             ②문서를 시트·슬라이드 단위로 나눠 인입")
         log.explicit_fail(_LOG, "core.llm[struct_map]", reason)
         return {"doc_id": doc_id, "source": "live", "rows": [],
                 "unavailable": reason,

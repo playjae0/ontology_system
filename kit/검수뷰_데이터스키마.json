@@ -44,6 +44,42 @@
                 "pieces": {"type": "integer"},
                 "failures": {"type": "integer"},
                 "warnings": {"type": "integer"},
+                "split": {
+                  "type": "array",
+                  "_note": "분할 크기 분포(B45) — 두 경로(지도·어댑터)가 같은 자리에 싣는다. 값은 산출자가 채우고 렌더러는 그린다.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "doc_id": {"type": "string"},
+                      "청크수": {"type": "integer"},
+                      "행수_최소": {"type": "integer"},
+                      "행수_최대": {"type": "integer"},
+                      "행수_평균": {"type": "number"},
+                      "목표구간": {"type": "array", "items": {"type": "integer"}},
+                      "너무_짧은_청크": {"type": "integer"},
+                      "너무_긴_청크": {"type": "integer"},
+                      "레벨_선택": {
+                        "type": ["array", "null"],
+                        "_note": "프레임별 지도 판정. **지도_출처·지시문_판본·지도_없음 셋은 「어느 지도가 실호출이었나」를 사람이 보는 자리다**(B48 ②-7 · 후속 ②) — 휴리스틱 지도는 보존하지 않으므로 이 값이 없으면 디스크 어디에도 남지 않는다.",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "프레임": {"type": "string"},
+                            "분할_레벨": {"type": ["integer", "null"]},
+                            "분할_레벨_사유": {"type": ["string", "null"]},
+                            "레벨_분포": {"type": ["object", "null"]},
+                            "지도_출처": {"enum": ["live", "heuristic", "kept", null],
+                                       "_note": "live=모델이 냈다 · heuristic=번호 패턴(모델 안 부름) · kept=보존분 재사용"},
+                            "지시문_판본": {"type": ["string", "null"],
+                                       "_note": "live일 때 prompts/struct_map.md의 version (재현 조건)"},
+                            "지도_없음": {"type": ["string", "null"],
+                                      "_note": "지도를 못 낸 사유(예산 초과 등) — 있으면 평면 폴백이다(문서 6 §6.3)"}
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
                 "fill_rate": {
                   "type": "object",
                   "_note": "{필드명: 0.0~1.0}. 산출자가 계산한다 — 렌더러가 계산하면 계약이 렌더러에 종속된다.",

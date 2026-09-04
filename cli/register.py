@@ -23,6 +23,8 @@
        --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
        --no-fewshot 참조 어댑터 주입을 끈다(스켈레톤 본문은 유지) — 컨텍스트가 좁을 때
        --resume     기존 입력 패키지로 **초안만** 다시 받는다 (문답을 다시 하지 않는다)
+  python cli/register.py generate <doc_type> --resume
+       └ resume은 **doc_type 하나만** 필요하다 — 층·표본은 패키지에서 읽는다
        --use-basic  분할 자명 계열(PPT)은 LLM 생성을 건너뛰고 **기본 어댑터를 정본으로**
                     등재 경로에 놓는다 (§6.4-5) — 검수·승인 1회는 그대로다(M4)
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
@@ -418,6 +420,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
         print(f"  {llm.mode_line()}")
         print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
+        if layer or samples:
+            # **무시하되 말한다** — 사람이 준 값이 안 쓰였다는 사실을 침묵으로
+            # 넘기면, 층을 바꾸려고 다시 준 사람이 바뀐 줄 안다.
+            print(f"   [생성] --resume — 층·표본 인자는 무시한다 (패키지의 값을 쓴다: "
+                  f"layer={pkg['human']['layer']}, "
+                  f"표본 {len(pkg['human']['samples'])}건)")
         _r = (pkg.get("human") or {}).get("hint")
         if isinstance(_r, dict) and _r.get("interview"):
             print(f"   문답 {len(_r['interview'])}라운드가 패키지에 남아 있다")
@@ -1132,7 +1140,13 @@ def main(argv):
         use_basic = "--use-basic" in rest
         if use_basic:
             rest.remove("--use-basic")
-        return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview,
+        # **위치 인자가 모자라면 죽지 말고 사용법을 낸다.** `--resume`은 doc_type
+        # 하나만 필요하다 — 층·표본은 패키지에 이미 있고 resume 갈래가 그것을
+        # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
+        if not rest or (not resume and len(rest) < 2):
+            raise SystemExit(__doc__)
+        return cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
+                            hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic)
     if cmd == "review":
         raw_rows = opt("--rows", str(REHEARSAL_ROWS))
