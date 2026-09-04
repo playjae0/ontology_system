@@ -13,7 +13,7 @@
 | `queries.json` | 계기판이 질의 스모크 항목을 **0으로 세고 계속 돈다** (`gauges` 사망 금지) |
 | `fixtures/adapters` | 지문 스캔이 그 디렉터리를 **건너뛴다** (하드 크래시 금지) |
 | `extract_hints` | 문형 규칙 폴백으로 간다 — **결과가 조용히 달라진다**(아래) |
-| `struct_maps` | 번호 패턴 휴리스틱으로 간다 |
+| ~~`struct_maps`~~ | **여기 없다**(B48) — 운영 코드는 fixture 지도를 찾지 않는다. 고정 지도가 필요한 시험이 `struct_map.apply(..., ask=)`로 직접 주입한다(문서 7 §7.1 대체 표 ⑦행) |
 
 **`extract_hints` 부재는 크래시가 아니라 결과를 바꾼다** — 실측 대조: 동일 문서에서
 `주액기`(Unit) → `주액`(Process), attach 1건 → 0건. 그래서 이 자산은 **옮기되
@@ -39,7 +39,6 @@ ADAPTERS = ROOT_DIR / "adapters"
 FIXTURE_ADAPTERS = ROOT_DIR / "fixtures" / "adapters"
 FIXTURE_SCHEMAS = ROOT_DIR / "fixtures" / "schemas"
 EXTRACT_HINTS = ROOT_DIR / "extract_hints"
-STRUCT_MAPS = ROOT_DIR / "struct_maps"
 
 
 

@@ -241,10 +241,28 @@ lines = [(r, f"{r}행 본문") for r in range(2, 20)]
 for r, txt in ((2, "1. 첫 장"), (4, "1.1 절"), (7, "1.2 절"), (10, "2. 둘째 장")):
     lines[r - 2] = (r, txt)
 loc = (lambda a, b: f"L{a}" if a == b else f"L{a}-{b}")
-ok_chunks, ok_map, ok_reasons = struct_map.apply("MAPMOCK_OK", lines, loc)
-show("지도 mock 파일이 휴리스틱보다 우선한다 (증분0 §5-4 — 지위는 mock 힌트)",
-     ok_map["source"].startswith("손작성") and not ok_reasons and ok_map["verdict"] == "mapped")
-bad_chunks, bad_map, bad_reasons = struct_map.apply("MAPMOCK_BROKEN", lines, loc)
+# **고정 지도는 시험이 주입한다**(B48 ⑤ · 문서 7 §7.1 대체 표 ⑦행) — 운영 코드는
+# fixture 파일을 찾지 않는다: 미리 놓은 정답을 돌려주는 갈래는 배선이 없어도 초록이라
+# 결함을 가린다(⑦ 미배선이 그렇게 숨었다). 파일은 그대로 있고 **자리만 바뀐다**(A11).
+_MAPS = ROOT / "tests" / "fixtures" / "struct_maps"
+
+
+def _fixed_map(name):
+    """`ask=`로 주입할 고정 지도 — 실호출 경로가 타는 그 통로를 그대로 쓴다."""
+    def ask(doc_id, lines):
+        return json.loads((_MAPS / f"{name}.json").read_text(encoding="utf-8"))
+    return ask
+
+
+for _n in ("MAPMOCK_OK", "MAPMOCK_BROKEN"):
+    struct_map.invalidate(f"{_n}")      # 주입분은 보존된다 — 앞 실행분을 물지 않게
+ok_chunks, ok_map, ok_reasons = struct_map.apply("MAPMOCK_OK", lines, loc,
+                                                 ask=_fixed_map("MAPMOCK_OK"))
+show("주입된 지도가 휴리스틱보다 우선한다 (운영 코드는 fixture를 찾지 않는다 — B48)",
+     ok_map["source"] == "live" and not ok_reasons and ok_map["verdict"] == "mapped",
+     f"source={ok_map['source']}")
+bad_chunks, bad_map, bad_reasons = struct_map.apply("MAPMOCK_BROKEN", lines, loc,
+                                                    ask=_fixed_map("MAPMOCK_BROKEN"))
 show("지도 실패 경로 — 레벨 비단조를 결정적으로 잡는다",
      bad_map["verdict"] == "flat" and any("비단조" in r for r in bad_reasons),
      str(bad_reasons[:1]))
@@ -257,6 +275,31 @@ show("휴리스틱 폴백은 번호 패턴이다 — 구문 마커이지 층 어
 empty = struct_map.apply("없는문서", [(1, "헤딩 없는 본문"), (2, "또 본문")], loc)
 show("헤딩 0건도 결정적으로 잡는다 (평면 폴백)",
      empty[1]["verdict"] == "flat" and any("헤딩 0건" in r for r in empty[2]))
+
+# ============================================================ 파서 무판독 (B48 ①)
+print("\n■ 파서 무판독 — 모드는 진입점이 정하고 파서는 함수 유무만 본다 (문서 7 §7.6-B-1)")
+_pyfiles = sorted((ROOT / "parser").rglob("*.py"))
+_umock = [f"{p.relative_to(ROOT)}:{i}"
+          for p in _pyfiles
+          for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+          if "USE_MOCK" in ln]
+show(f"파서 {len(_pyfiles)}파일 전수에 USE_MOCK 문자열 0건 (주석·docstring 포함)",
+     not _umock, str(_umock[:3]))
+_envread = [f"{p.relative_to(ROOT)}:{i}"
+            for p in _pyfiles
+            for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if "os.environ" in ln and not ln.lstrip().startswith("#")]
+show("mock 여부를 환경변수로 정하는 줄 0건 — 판독이 두 곳이면 갈린다(B42 실측)",
+     not _envread, str(_envread[:3]))
+_smsrc = (ROOT / "parser" / "struct_map.py").read_text(encoding="utf-8")
+show("⑤ 운영 코드가 fixture 지도를 찾지 않는다 (MAPS_DIR 삭제 · KEEP_DIR 보존은 별개)",
+     "MAPS_DIR" not in _smsrc and "struct_maps" in _smsrc and "KEEP_DIR" in _smsrc)
+show("④·⑦·⑨가 parse()의 인자로 서 있다 — 함수가 오는 통로가 있다",
+     {"summarize", "map_structure", "pick_coord"}
+     <= set(pipeline.parse.__code__.co_varnames))
+show("⑦의 통로가 apply()까지 이어진다 (파라미터만 있고 값이 올 길이 없으면 배선이 아니다)",
+     "ask" in struct_map.apply.__code__.co_varnames
+     and "ask=ask" in _smsrc)
 
 # ============================================================ 생성 하네스
 print("\n■ 생성 하네스 — 구축 모드 3단 배선 (생성 → 검수 → 확정)")

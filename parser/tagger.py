@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = ROOT / "data" / "skeleton_closed_list.json"
 
-MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # USE_MOCK 고정 문자열 (증분0 §5-3)
+MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 
 
 def closed_list(layer="process", path=None):
@@ -103,12 +103,13 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
 
     | | 갈래 |
     |---|---|
-    | `pick=None` (USE_MOCK=1) | **닫힌 목록 스냅샷의 정확 일치 대조 — 모델을 부르지 않는다**(§7.1 대체 표) |
-    | `pick` 주입 (USE_MOCK=0) | 모델이 **닫힌 목록 중에서 고르거나 null**을 낸다 |
+    | `pick=None` | **닫힌 목록 스냅샷의 정확 일치 대조 — 모델을 부르지 않는다**(§7.1 대체 표) |
+    | `pick` 주입 | 모델이 **닫힌 목록 중에서 고르거나 null**을 낸다 |
 
-    대체가 선언되지 않은 LLM 지점은 USE_MOCK=1에서 실호출로 흘러 외부 의존 0
-    (문서 1 B12)이 깨지고 **미설치 환경에서 실행 자체가 죽는다** — 그래서 mock
-    갈래가 명세에 못박혀 있고, 이 함수의 기본값이 그것이다.
+    **판정은 함수 유무 하나다**(B48) — 파서는 모드를 읽지 않는다. 대체가 선언되지
+    않은 LLM 지점은 모델 없는 실행에서 실호출로 흘러 외부 의존 0(문서 1 B12)이
+    깨지고 **미설치 환경에서 실행 자체가 죽는다** — 그래서 대체 갈래가 명세에
+    못박혀 있고, 이 함수의 기본값이 그것이다.
 
     **목록 밖이면 값을 고치지 않고 그대로 둔다**(null 허용 — §4 "닫힌 목록에서 선택
     또는 null"). 검증은 인입 소관이고 파서는 좌표를 판정하지 않는다 — 태거가 임의로
@@ -157,19 +158,15 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
     return out
 
 
-def complete_images(pieces, summarize=None, *, allow_mock=True, kept=None):
+def complete_images(pieces, summarize=None, *, kept=None):
     """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §6 규약 3).
 
-    **여기가 조용한 오염이 나던 자리다.** 호출부가 `summarize`를 빼먹으면 고정 문자열
-    `"MOCK 요약: img_001"`이 청크 텍스트가 되어 색인되고, 답변 근거로 되돌아온다 —
-    크래시가 아니라 오염이라 더 위험하다(문서 7 §7.6-B-4).
+    **갈림길은 함수 유무 하나다**(B48 · 문서 7 §7.6-B-1): `summarize`가 오면 실호출,
+    안 오면 고정 문자열 + `source="mock"`. 파서는 모드를 읽지 않는다.
 
-    그래서 갈림길을 **인자로 드러낸다**:
-
-    | | `summarize` 있음 | 없음 |
-    |---|---|---|
-    | `allow_mock=True` (USE_MOCK=1) | 실호출 | 고정 문자열 + `source="mock"` |
-    | `allow_mock=False` (USE_MOCK=0) | 실호출 | **RuntimeError** — 조용히 mock으로 떨어지지 않는다 |
+    **「함수 없이 실호출 모드」는 여기까지 오지 않는다** — 팩토리(`llm.image_summarizer()`)가
+    미설정이면 `require()`로 파싱 전에 멈춘다. 구판은 그 검사를 여기서도 했고, 그러려면
+    파서가 모드를 알아야 했다(그 판독이 설정 파일 갈래를 못 봐 갈렸다 — B42·B48).
 
     표시는 **주석이 아니라 데이터**다(§7.5 「실호출로만 검증되는 항목의 표시」와 같은 결):
 
@@ -200,14 +197,9 @@ def complete_images(pieces, summarize=None, *, allow_mock=True, kept=None):
                 src = "live"
                 if kept is not None:
                     kept[ref] = r["text"]        # **보존** — 재인입에 재사용(§6.3)
-            elif allow_mock:
+            else:
                 r["text"] = MOCK_IMAGE_SUMMARY.format(image_ref=ref)
                 src = "mock"
-            else:
-                raise RuntimeError(
-                    f"이미지 요약 실호출 경로가 비어 있다 (image_ref={ref}) — "
-                    "USE_MOCK=0에서는 summarize를 주입해야 한다. mock 고정 문자열을 "
-                    "청크로 실으면 그것이 답변 근거로 되돌아온다 (문서 7 §7.6-B-4)")
             m = r.setdefault("meta", {})
             m["image_summary"] = True
             m["image_summary_source"] = src

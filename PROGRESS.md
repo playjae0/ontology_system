@@ -3026,3 +3026,161 @@ TOC01 **9청크** · TOC02 **8청크** — 지난 회차와 동일. `toc_report.
 
 **명세 개정 필요(고치지 않고 보고)**: ⑴ 판정필요-16의 C15·§6.6 ⑵ §6.4-5에 «래퍼로 붙인다»(D-111) ⑶ §6.4에 doc_id 규칙(D-110) ⑷ CSV는 지문 스캔 대상이 아니다(`_header_actual`이 xlsx만 본다 — 종전 동작) — 정형 CSV의 자동 선택을 원하면 §6.4의 지문 정의를 넓혀야 한다.
 
+## B47 명세 배치 — 판정필요-16 해소 · 가결정 2건 승격 (2026-09-03)
+
+**반입**(요청문 없음 · 배치만): `docs/spec/1_금지와불변.md` · `docs/spec/6_파서와구축모드.md` ·
+`docs/spec/개정대장.md` · `docs/회귀스위트/미러쌍.json`. **코드 변경 0.**
+
+| 파일 | 바뀐 것 |
+|---|---|
+| 문서 1 | **C15** — 「유일 일치 자동 라우팅은 측정 후 승격(P7)」 → **조건 셋 아래 허용**(근거 기록·dry-run·다중/0건은 사람). 1행 |
+| 문서 6 | **§6.4-5**에 «등재는 위임 래퍼로 한다 · 임계 초과는 거부 사유가 아니다»(D-111) · **§6.4**에 «doc_id는 파일명 기준, 경로는 보지 않는다 + 경로 상이 시 경고»(D-110) · **§6.6 요약**의 「자동 라우팅 금지」 → 「조건부 자동 라우팅」. 3행 |
+| 개정대장 | **§AE B47** 신설 — 누적 [개정] 88 → **89** |
+| 미러쌍.json | **C15 ↔ §6.4 투입 분류** 쌍 등재(봉인 포함) — 쌍 1 → 2 |
+
+**실행 결과**
+
+- 검사 4종: 문면 위반 0(부정형 595 → **597**) · 문서간 0 · **미러 쌍 2 · 위반 0** · 자산 13건.
+  미러가 새 쌍의 봉인까지 통과했다 — C15 행과 §6.4 본문이 서로의 규격이라는 사실이 이제 기계로 지켜진다.
+- 회귀: 클린 단독 `init --fresh` + `doctor` **722/722 PASS** (배치 전과 동일 — 코드 불변).
+
+**장부 반영**: 판정필요-16 **종결**(원문 보존 · 머리에 종결 근거) · **D-110·D-111 확정 승격**
+(가결정 → 확정, 확정 경로 열에 B47 좌표).
+
+**남은 미결(대장이 명시)**: CSV 지문 스캔 — `_header_actual`이 xlsx만 본다(종전 동작).
+트리거는 «사내에서 CSV 정형 문서를 일괄 인입하려 할 때»이고, 지금은 `--doc-type` 지정으로 받는다.
+**열려 있는 신고 2건은 그대로다** — 판정필요-14(ipqc 재스냅샷 · 실 게이트웨이 필요) ·
+판정필요-15(파서의 USE_MOCK 판독이 파일 설정 갈래에서 갈린다).
+
+## B48 — 파서 무판독 · 지점 ⑦ 배선 · mock 관문 · 도달 가능성 (2026-09-04)
+
+**반입**: `docs/spec/6·7·개정대장`(§AF B48) · `prompts/struct_map.md`(신설 sm-1.0) ·
+`docs/안건/B48_요청문.md`. **전제 대조 11행 중 10행 일치**(나머지 1행 = 회귀 722/722·
+doctor [3] 9/9도 실행으로 확인). 어긋난 전제 0건.
+
+### ① 파서 무판독 — 함수 유무로만
+
+`parser/` 전수에서 `USE_MOCK` **17건 → 0건**, 환경변수 판독 **2건 → 0건**.
+`_image_gate` 삭제 · `complete_images`의 `allow_mock` 인자와 RuntimeError 갈래 삭제 ·
+`propose`의 환경변수 분기 삭제. 주입 통로는 `parse(summarize=, map_structure=, pick_coord=)`
+셋이고 `apply(..., ask=)`가 ⑦의 통로다.
+
+**①ⓑ 실행 — 파일 설정만으로 `USE_MOCK: 0`(환경변수 없음)**
+
+```
+설정 출처: …/llm_live.json
+모드     : 모드: 실호출 (게이트웨이 설정: …/llm_live.json)
+주입 summarize      → summarize_image  (non-None: True)
+주입 pick_coord     → pick_coord  (non-None: True)
+주입 map_structure  → map_structure  (non-None: True)
+```
+
+### ② 지점 ⑦ 실호출 배선
+
+`core/llm.py`에 `STRUCT_MAP_SCHEMA`(strict) · `map_structure()` · `struct_mapper()` 신설.
+**변환은 코어가 한다** — 모델의 `headings`를 파서 지도 형식(`rows`)으로 바꾸고, 입력에
+없는 행·`level<1`은 버려 `meta.dropped`에 센다. `note`는 `meta.note`로, `prompt_version`은
+지도에 남는다. `_map_hook`의 `seen`에 `지도_출처`·`지시문_판본`을 함께 흘린다(②-7).
+
+**②ⓐ 실행 — `USE_MOCK=0` + 게이트웨이 미설정 (파일 설정 갈래)**
+
+```
+core.llm.NotConfigured: ④이미지 요약 — 실호출 경로가 비어 있다: LLM_GATEWAY_URL, CHAT_MODEL 미설정.
+USE_MOCK=0에서는 조용히 mock으로 떨어지지 않는다 (문서 7 §7.6-B-4)
+  종료 코드: 1
+```
+```
+llm.struct_mapper() 단독:
+NotConfigured: ⑦구조 지도 패스 — 실호출 경로가 비어 있다: LLM_GATEWAY_URL, CHAT_MODEL 미설정.
+USE_MOCK=0에서는 조용히 mock으로 떨어지지 않는다 (문서 7 §7.6-B-4)
+```
+주입 조립이 사전 3종을 만드는 순서상 **④가 먼저 말한다** — 셋 다 미설정이므로 어느
+지점이 말하든 「파싱 전에 멈춘다」는 같고, ⑦ 단독 호출은 위 둘째 화면이다.
+
+### ⑤ fixture를 운영 코드 밖으로
+
+`parser/struct_map.py`의 `MAPS_DIR` 삭제(대체 갈래 = 번호 패턴 휴리스틱 하나) ·
+`core/fixtures.py`의 `STRUCT_MAPS` 제거 + 표 갱신. MAPMOCK 2종은 시험이 `ask=`로 주입한다
+(파일은 그대로 — A11).
+
+### ④ 탐침과 doctor [3] — 도달 가능성
+
+**`tests/points_probe.py` 신설**: 9지점 탐침을 파일 하나로 모으고 `test_2a_gateway`와
+`doctor.py`가 **같은 것을 실행**한다. 파서 3지점은 팩토리 경유(직접 호출이 아니다).
+doctor [3]은 문자열 계수(`"USE_MOCK" in src`)를 버리고 실행 판정으로 바뀌었다 —
+문면도 「분기가 서 있다」 → 「실호출 갈래가 호출자로부터 도달 가능하다」.
+
+**④ⓑ 변이 시험 — 배선을 하나 빼면 붉는가**
+
+```
+[PASS] 변이 — ⑦ 주입을 빼면 실호출 모드에서 붉는다 (조용한 휴리스틱 폴백 0)
+       — NotConfigured — 실호출 모드인데 파서 주입 함수가 비어 있다: ['map_structure']
+[PASS] 변이 — 되돌리면 초록이다 (시험 자체가 늘 붉는 것이 아니다)  — 통과
+```
+
+### ③ mock 관문
+
+`cli/_gate.py::require_live_or_allow` 신설. 대상은 `register generate/review/confirm` ·
+`parse run` · `ingest-file/ingest-dir` · `build`/`ingest` · `query`.
+비대상은 `doctor`·`init`·`bootstrap`·`llm-check`·`skeleton-confirm`·회귀.
+
+**③ⓐ 실행**
+
+```
+  모드: mock (기본 — 실호출은 llm.json의 "USE_MOCK": 0 또는 USE_MOCK=0)
+[register generate] mock 모드입니다 — 실산출이 아닙니다. 계속하려면 --allow-mock (실호출: llm.json의 "USE_MOCK": 0 또는 USE_MOCK=0)
+  종료 코드: 2
+```
+```
+[parse run] 같은 문면 · 종료 코드 2 → --allow-mock을 붙이면:
+[parse] <Parse TOCGATE ok failures=[]>
+   → parsed/TOCGATE.json
+```
+
+**`--allow-mock`을 붙인 호출 자리 — 5곳**: `doctor.py`(query) · `tests/test_g1_g2.py`(build ·
+`-m cli.parse run`) · `tests/test_g6.py`(플랫폼 창구 query) · `tests/test_p3.py`(register 헬퍼 —
+generate·review·confirm에만). **`cli/platform.py`는 붙이지 않았다** — 플랫폼 창구로 질의해도
+mock이면 멈춘다(D-114).
+
+### 회귀
+
+**722 → 744/744**(+22). 검사 4종 통과(문면 600 · 문서간 0 · 미러 2쌍 0 · 자산 13).
+
+| 스위트 | 증감 | 내용 |
+|---|---|---|
+| test_p1 | 64 → 69 | 파서 무판독 5건(USE_MOCK 0건 · 환경변수 0건 · MAPS_DIR 삭제 · 인자 3종 · ⑦ 통로) |
+| test_2a_gateway | 28 → 36 | ⑦ 변환 6건 + 변이 2건 |
+| test_p3 | 185 → 194 | mock 관문 9건 |
+
+**삭제한 어서션 0건.** 표적을 바꾼 것 넷: ①「지도 mock 파일이 휴리스틱보다 우선한다」 →
+「주입된 지도가 우선한다」 ②탐침 9건의 「조용한 통과가 아니다」 → 「NotConfigured에 닿는다」
+③파서 3지점의 문자열 대조(`allow_mock`·`ask is None`) → 팩토리→주입→인자 배선 대조
+④doctor [3]의 문자열 계수 → 실행 판정.
+
+### 함께 고친 것 — 잠복 NameError 1건 (내 리팩터 4단계의 잔재)
+
+`cli/prompt._sent_size`가 본문에서 `_n_samples`를 참조하는데 인자는 리팩터 때 지웠다.
+`LLM_CONTEXT_TOKENS`를 설정하고 예산을 넘겨야 도는 자리라 회귀에 안 걸렸다 —
+**예산 초과 안내 대신 NameError로 죽었을 것이다.** 표본 부수 문안을 user 메시지 총량으로
+바꿔 고쳤고, 실행으로 확인했다.
+
+### 명세 개정 필요 (고치지 않고 보고)
+
+1. **§7.6-B-2의 「9종은 전부 mock/실호출 분기를 갖는다」** — 파서 3지점에는 이제 분기가
+   없다(함수 유무만 본다). 다음 회차 예고에 이 개정이 걸려 있으나, 그 전까지 문면과
+   코드가 어긋난 채로 있다.
+2. **`prompts/struct_map.md`의 `{{lines}}`** — 지시문 파일은 자리표시자를 표로 설명하고
+   실제 입력은 user 메시지로 간다(`extract.md`·`image_summary.md`와 같은 관례). 「치환
+   자리」인지 「설명」인지 §7.6-B-5가 말하지 않는다.
+3. **⑦의 감축 사다리 수치**(D-113) — §6.5 B41의 감축 순서는 생성 지시문의 것이라 ⑦에
+   대응하지 않는다. 앞자리 80/40/20은 레포 가결정이다.
+4. **`parse()`의 ⑦ 인자명**(D-112) — 요청문의 `struct_map=`은 같은 파일의 모듈명을 가려
+   쓸 수 없다. `map_structure=`로 두었다.
+
+### 사내 이관 주의
+
+이 회차 이후 **파일 설정만으로 `USE_MOCK: 0`을 준 사내 환경에서 산문 문서의 구조 지도가
+처음으로 LLM을 부른다.** 종전 산문 인입분은 **전부 휴리스틱 지도**다(실호출 경로가 존재하지
+않았다 — 세어 볼 필요가 없다). 청크 경계가 바뀌므로 **산문 doc_type 전수가 재인입 대상**이고,
+재인입은 문서 4 §4.8의 회수 → 재적재를 탄다.
+

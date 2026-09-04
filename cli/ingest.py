@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from cli import scan as scan_mod
+from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import run_parse
 from core import registry, store
 from core.pipeline import finalize, run_document
@@ -195,7 +196,7 @@ def summary(rows):
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         raise SystemExit(__doc__)
-    args = list(argv)
+    args = require_live_or_allow(argv, command="ingest")   # mock 관문 (B48)
     dry = "--dry-run" in args
     if dry:
         args.remove("--dry-run")

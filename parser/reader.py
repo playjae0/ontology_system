@@ -40,7 +40,7 @@ def read_xlsx(path):
     """**import는 함수 안이다** (문서 7 §7.1 선택 의존의 지연 import 격리).
 
     최상단 import면 `parser.reader`를 import하는 것만으로 openpyxl이 필요해진다 —
-    그러면 패키지 미설치 환경에서 `USE_MOCK=1` 전체 실행이 ImportError로 죽어
+    그러면 패키지 미설치 환경에서 **모델 없는 전체 실행**이 ImportError로 죽어
     "외부 의존 없이 전체가 동작한다"(문서 1 B12)가 **실측으로** 깨진다. 문면상
     "요구하지 않는다"까지만 두면 최상단 import가 위반이 아니게 되는 것이 그 구멍이다.
     같은 파일의 `read_pptx`가 이미 이 형태다.

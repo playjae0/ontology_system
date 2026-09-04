@@ -39,10 +39,10 @@ SUITES = [
     ("test_g5", 51, "I축 4연산 + 이관 · 운영 도구"),
     ("test_g6", 49, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입"),
     ("test_g6_5", 38, "계약 미배선 24건 수리"),
-    ("test_p1", 64, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합"),
+    ("test_p1", 69, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독"),
     ("test_p2", 48, "어댑터 생성 킷 6종 · 검수 뷰 렌더러"),
-    ("test_p3", 185, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건"),
-    ("test_2a_gateway", 28, "게이트웨이 골조 — LLM 지점 9종 mock/실호출 분기"),
+    ("test_p3", 194, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건"),
+    ("test_2a_gateway", 36, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
 
@@ -140,7 +140,8 @@ def check_env():
     _clean()
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
                        capture_output=True, text=True, cwd=str(ROOT), env=env)
-    q = subprocess.run([sys.executable, str(ROOT / "run.py"), "query", "노칭 다음 공정은?"],
+    q = subprocess.run([sys.executable, str(ROOT / "run.py"), "query",
+                        "노칭 다음 공정은?", "--allow-mock"],   # 진단은 관문 비대상
                        capture_output=True, text=True, cwd=str(ROOT), env=env)
     shutil.rmtree(guard, ignore_errors=True)
     ok_np = r.returncode == 0 and q.returncode == 0 and "[그래프 사실]" in q.stdout
@@ -434,40 +435,34 @@ def transition():
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
          if not reg else f"등록됨: {reg}")
 
-    # ── 3. LLM 지점 8종의 실호출 분기 ─────────────────────────────
-    # **주석을 세지 않는다.** 여태 이 자리가 문자열 "HOOK"을 세어, 전부 주석이던
-    # 5곳을 구현된 것으로 보고했다(문서 7 §7.6-B-2: 주석은 실행되지 않는다).
-    # 이제 세는 것은 **실제 분기의 존재**다 — 각 지점이 `llm.use_mock()`(또는
-    # 파서 쪽의 동형 판독)으로 갈리고 실호출 갈래를 갖는가.
+    # ── 3. LLM 지점 9종의 **도달 가능성** ─────────────────────────
+    # **문자열을 세지 않는다.** 여태 이 자리가 소스에 `use_mock`·`allow_mock` 같은
+    # 낱말이 있는지를 보고 「분기가 서 있다」로 보고했다 — 그래서 ⑦구조 지도가
+    # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
+    # 이제 재는 것은 「실 호출 경로를 타서 미설정 실패에 닿는가」이고, 판정은
+    # 회귀와 **같은 탐침 파일**(tests/points_probe.py)을 실행해서 한다.
     from core.llm import POINTS                                   # noqa: E402
-    WIRED = {
-        "extract": ("core/extract.py", "_candidates_for"),
-        "judge": ("core/matcher.py", "_judge_live"),
-        "embed": ("core/embeddings.py", "def embed"),
-        "image_summary": ("parser/tagger.py", "allow_mock"),
-        "generate": ("cli/register.py", "_draft_live"),
-        "link": ("core/query.py", "_link_llm"),
-        "struct_map": ("parser/struct_map.py", "ask is None"),
-        "answer": ("cli/query.py", "def generate"),
-        "coord_tag": ("parser/tagger.py", "pick is not None"),
-    }
-    wired, missing = [], []
-    for key, label in POINTS.items():
-        where, needle = WIRED.get(key, (None, None))
-        src = (ROOT / where).read_text(encoding="utf-8") if where else ""
-        # 분기의 조건: 실호출 갈래의 이름이 있고, mock 갈래와 갈리는 판독이 있다.
-        gate = ("use_mock" in src or "USE_MOCK" in src or "allow_mock" in src)
-        (wired if (needle and needle in src and gate) else missing).append(
-            f"{label} ({where})")
+    import importlib.util as _ilu                                 # noqa: E402
+    _spec = _ilu.spec_from_file_location("points_probe",
+                                         ROOT / "tests" / "points_probe.py")
+    _pp = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_pp)
+    res, _r = _pp.run()
+    reached = [POINTS[k] for k in POINTS if res.get(k) == "NotConfigured"]
+    missing = [f"{POINTS[k]} — {res.get(k, '(미실행)')}"
+               for k in POINTS if res.get(k) != "NotConfigured"]
     line(OK if not missing else NG,
-         f"[3] LLM 지점 {len(wired)}/{len(POINTS)}종에 mock/실호출 분기가 서 있다",
+         f"[3] LLM 지점 {len(reached)}/{len(POINTS)}종의 실호출 갈래가 호출자로부터 "
+         f"도달 가능하다",
          ("게이트웨이 골조는 섰고 **설정만 비어 있다** — LLM_GATEWAY_URL·CHAT_MODEL을\n"
           "         주면 USE_MOCK=0으로 돈다. 미설정 상태의 USE_MOCK=0은 조용히 mock으로\n"
           "         떨어지지 않고 명시적으로 실패한다(문서 7 §7.6-B-4).\n"
-          "         **USE_MOCK=1에서는 없어도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다\n"
+          "         **모델 없이도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다\n"
           "         연결 확인: python run.py llm-check"
           ) if not missing else
-         "분기가 없는 지점:\n" + "\n".join(f"         · {m}" for m in missing))
+         ("실 경로가 미설정 실패에 닿지 않는 지점 — 「통과」는 대체 갈래가 돌았다는\n"
+          "         뜻이고, 그것은 배선이 있다는 뜻이 아니다(문서 7 §7.6-B-2):\n"
+          + "\n".join(f"         · {m}" for m in missing)))
 
     # ── 4. 계기판 첫 측정 ─────────────────────────────────────────
     line(NEXT, "[4] 계기판은 mock 수치다 — 품질 측정이 아니다",

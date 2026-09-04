@@ -22,10 +22,36 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PARSED_DIR = ROOT / "parsed"   # 운영 산출 자리 (문서 7 §7.8 — 파일 존재 = 파싱 완료)
 
+from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from core import llm
 from parser import pipeline, preflight, reader, validator
 
 REVIEW = ROOT / "review"
+
+
+def injections():
+    """파서에 내려보낼 **LLM 함수 3종을 한 번에 만든다** (문서 7 §7.6-B-1 · B48).
+
+    **모드는 여기서 한 번 정하고 아래로 내려간다.** 파서에는 「지금 mock인가」라는
+    질문이 없으므로(파서 무판독), 「실호출 모드인데 함수가 안 왔다」를 잡을 수 있는
+    자리는 **만드는 쪽**뿐이다. 그 검사가 아래 assert이고, 그것이 곧
+    「진입점이 한 번 정해 전부 내려보낸다」의 기계 판정이다(§7.6-B-2 도달 가능성).
+
+    팩토리는 실호출 모드에서 미설정이면 `require()`로 이미 멈춘다 — 그래서 여기
+    None은 **mock 모드에서만** 온다. 배선이 하나 빠지면(팩토리가 없거나 주입을
+    빠뜨리면) 실호출 모드에서 None이 남아 이 자리가 붉는다.
+    """
+    fns = {"summarize": llm.image_summarizer(),
+           "pick_coord": llm.coord_picker(),
+           "map_structure": llm.struct_mapper()}
+    if not llm.use_mock():
+        missing = [k for k, v in fns.items() if v is None]
+        if missing:
+            raise llm.NotConfigured(
+                f"실호출 모드인데 파서 주입 함수가 비어 있다: {missing} — "
+                f"휴리스틱으로 조용히 떨어지면 그 지도가 청크 경계를 정하고, "
+                f"바뀐 경계는 chunk_id를 바꿔 재인입 멱등까지 흔든다 (문서 7 §7.6-B-2)")
+    return fns
 
 
 def load_adapter(path):
@@ -45,11 +71,9 @@ def run_parse(adapter_path, doc_id, doc, out=None):
     돌려주는 것은 `(ParseResult, 쓴 경로 또는 None)`이다.
     """
     out = out or str(PARSED_DIR / f"{doc_id}.json")
-    # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
-    # import하지 않는다(P1). USE_MOCK이면 None이 오고 파서가 고정 문자열을 쓴다.
-    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc,
-                         summarize=llm.image_summarizer(),
-                         pick_coord=llm.coord_picker())
+    # LLM 3지점(④·⑦·⑨)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
+    # 않는다(A1). mock이면 None이 오고 파서가 §7.1 대체를 쓴다.
+    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections())
     written = None
     if res.ok and out:
         Path(out).parent.mkdir(parents=True, exist_ok=True)
@@ -124,9 +148,7 @@ def cmd_build(args):
     for i, s in enumerate(samples, 1):
         raw = reader.read(s)
         pf_ok, pf_detail = preflight.check(mod, raw)
-        res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
-                             summarize=llm.image_summarizer(),
-                             pick_coord=llm.coord_picker())
+        res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s, **injections())
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "
               f"파싱 {'OK' if res.ok else 'FAIL'} · 조각 {res.report.get('pieces', 0)}")
@@ -162,7 +184,10 @@ def cmd_build(args):
 def main(argv):
     if not argv:
         raise SystemExit(__doc__)
-    return {"run": cmd_run, "head": cmd_head, "build": cmd_build}[argv[0]](argv[1:]) or 0
+    cmd, rest = argv[0], list(argv[1:])
+    if cmd == "run":                       # 운영 파싱 — mock 관문 대상(B48)
+        rest = require_live_or_allow(rest, command="parse run")
+    return {"run": cmd_run, "head": cmd_head, "build": cmd_build}[cmd](rest) or 0
 
 
 if __name__ == "__main__":

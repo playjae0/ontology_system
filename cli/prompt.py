@@ -302,6 +302,6 @@ def _sent_size(msgs, label):
             f"     ① --no-fewshot        참조 어댑터 주입을 끈다 (약 −2,100 토큰)\n"
             f"     ② 프로파일 대표값 축소   parser/profile.py의 FULL_LIST_MAX·"
             f"SAMPLE_VALUES를 줄인다 (열당 약 −30 토큰)\n"
-            f"     ③ 표본 부수 축소        표본 1부당 약 −{usr_b // 3 // max(1, _n_samples):,} 토큰\n"
+            f"     ③ 표본 부수 축소        user 메시지 전체가 약 {usr_b // 3:,} 토큰이다\n"
             f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다")
     return tot

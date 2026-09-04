@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from . import normalizer, preflight, struct_map, tagger, validator
 from .reader import head, read
@@ -39,22 +38,17 @@ class ParseResult:
                 f"failures={[f['kind'] for f in self.failures]}>")
 
 
-def _image_gate(doc_id, summarize):
-    """이미지 요약(LLM 지점 ④)의 mock 허용 여부 — **판독을 한 자리에 모은다**.
+def _mock_log(doc_id, point, detail):
+    """대체 갈래가 실제로 도는 자리를 **로그로 남긴다**(문서 7 §7.8 3종 중 하나).
 
-    파서는 `core/`를 import하지 않으므로(P1) 여기서 환경변수를 직접 읽는다 —
-    `USE_MOCK`은 런타임 계약이고 층 어휘가 아니라서 B1을 건드리지 않는다.
-    MOCK이 실제로 도는 자리는 **로그로 남긴다**(문서 7 §7.8 3종 중 하나) — 표준출력으로만
-    나가면 자동 점검이 세지 못해 비어 있는 지점이 구현된 것으로 보고된다.
+    표준출력으로만 나가면 자동 점검이 세지 못해 비어 있는 지점이 구현된 것으로
+    보고된다. **조건은 「함수가 없다」이지 「모드가 mock이다」가 아니다**(B48) —
+    파서는 모드를 읽지 않는다.
     """
-    mock = os.environ.get("USE_MOCK", "1") == "1"
-    if mock and summarize is None:
-        logging.getLogger("onto.parser").info(
-            "MOCK ④이미지 요약 [%s] — 고정 문자열 + meta.image_summary_source=mock", doc_id)
-    return mock
+    logging.getLogger("onto.parser").info("MOCK %s [%s] — %s", point, doc_id, detail)
 
 
-def _map_hook(doc_id, kept=None, made=None, seen=None):
+def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None):
     """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다).
 
     `kept`는 보존분의 프레임별 지도(`{key: smap}`), `made`는 이번 인입에서 새로
@@ -68,27 +62,40 @@ def _map_hook(doc_id, kept=None, made=None, seen=None):
         hit = kept.get(key)
         if hit is not None:
             return hit
-        smap = struct_map.apply(f"{doc_id}:{key}", lines, locator)
+        smap = struct_map.apply(f"{doc_id}:{key}", lines, locator, ask=ask)
         if made is not None:
             made[key] = smap
         if seen is not None and isinstance(smap, dict):
             # **선택 레벨과 레벨별 분포를 밖으로 흘린다**(B45) — 검수 뷰가 그리려면
             # 값이 뷰 데이터에 있어야 하고, 렌더러는 계산하지 않는다(§6.6-3).
+            # **출처와 지시문 판본도 함께 흘린다**(B48 ②-7) — 휴리스틱 지도는
+            # 보존하지 않으므로, 이 값이 없으면 «어느 지도가 실호출이었나»가
+            # 디스크 어디에도 남지 않는다. 검수 뷰와 재인입 판정이 그것을 본다.
             seen.append({"프레임": key, "분할_레벨": smap.get("분할_레벨"),
                          "분할_레벨_사유": smap.get("분할_레벨_사유"),
-                         "레벨_분포": smap.get("레벨_분포")})
+                         "레벨_분포": smap.get("레벨_분포"),
+                         "지도_출처": smap.get("source"),
+                         "지시문_판본": smap.get("prompt_version")})
         return smap
     return hook
 
 
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
-          summarize=None, pick_coord=None, max_rows=None, progress=None):
+          summarize=None, pick_coord=None, map_structure=None,
+          max_rows=None, progress=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
-    `summarize(image_ref) -> str`은 **이미지 요약 실호출 경로**다(LLM 지점 ④).
-    주입되지 않으면 USE_MOCK=1에서는 고정 문자열, USE_MOCK=0에서는 명시적 실패다 —
-    판단은 `_image_gate()`가 하고 `tagger.complete_images`는 계약만 지킨다.
+    **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
+
+    | 인자 | 지점 | 오면 | 안 오면(§7.1 대체) |
+    |---|---|---|---|
+    | `summarize(image_ref)` | ④이미지 요약 | 실호출 | 고정 문자열 |
+    | `map_structure(doc_id, lines)` | ⑦구조 지도 | 실호출 | 번호 패턴 휴리스틱 |
+    | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
+
+    만드는 것은 CLI 진입점이다(`cli.parse.injections()`) — 모드는 거기서 한 번 정해
+    아래로 내려온다. 「함수 없이 실호출 모드」는 그 조립 지점이 막는다.
     """
     res = ParseResult(doc_id)
     a = adapter.ADAPTER
@@ -129,7 +136,7 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
             try:
                 pieces = adapter.extract(
                     raw, struct_map_fn=_map_hook(doc_id, kept_maps, made_maps,
-                                                map_picks))
+                                                 map_picks, ask=map_structure))
             except TypeError:
                 pieces = adapter.extract(raw)                        # 지도 훅 없는 어댑터
         else:
@@ -151,9 +158,10 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     # **원본 파일 바이트 해시**로 재사용을 판정한다 — `doc_hash`는 에이전트 소유라
     # 파싱 시점에는 아직 없다(2A P-D 허브 판정 · §2.7-①).
     kept_img = dict(kept_map.get("image_summaries") or {})
-    pieces = tagger.complete_images(pieces, summarize,               # ⑤ tagger
-                                    allow_mock=_image_gate(doc_id, summarize),
-                                    kept=kept_img)
+    if summarize is None:
+        _mock_log(doc_id, "④이미지 요약",
+                  "고정 문자열 + meta.image_summary_source=mock")
+    pieces = tagger.complete_images(pieces, summarize, kept=kept_img)  # ⑤ tagger
     # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
     # mtime이 흔들려 «재사용했나»가 파일로 판정되지 않는다.
     fresh = {}
