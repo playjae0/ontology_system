@@ -21,15 +21,10 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# **파서는 `core/`를 import하지 않는다**(P1) — 그래서 같은 환경변수를 여기서도
-# 읽는다. 픽스처가 없으면 번호 패턴 휴리스틱으로 간다(크래시 아님).
-MAPS_DIR = Path(os.environ.get("ONTO_FIXTURES")
-                or (ROOT / "tests" / "fixtures")) / "struct_maps"
 KEEP_DIR = ROOT / "extract" / "struct_maps"       # **보존 자리** (문서 6 §6.3)
 
 
@@ -108,42 +103,35 @@ MAPPED = "mapped"
 
 # ---------------------------------------------------------------- ① 지도 산출
 def propose(doc_id, lines, ask=None, src_hash=None):
-    """지도 산출 — USE_MOCK은 파일 우선, 없으면 결정적 휴리스틱 (증분0 §5-4).
+    """지도 산출 — **함수가 오면 그것으로, 안 오면 번호 패턴 휴리스틱**(B48).
 
     지도 형식: `{"doc_id":…, "source":…, "rows":[{"row":n, "heading":bool, "level":int}]}`
     **레벨은 1부터**이고 본문 행은 `heading=false · level=0`이다.
 
-    분기는 `if USE_MOCK: <파일·휴리스틱> else: <실호출>`이고 **반환 형식이 같다** —
-    지도는 데이터이므로 소비 쪽(타당성 검사·분할기)은 출처를 몰라도 된다.
-    `source` 필드가 어느 갈래인지 데이터로 남긴다: `mock_file` · `heuristic` · `live`.
+    **여기에 「지금 mock인가」라는 질문이 없다**(문서 7 §7.6-B-1). 모드를 정하는 것은
+    CLI 진입점이고, 파서는 `ask`가 **왔는가**만 본다 — 판독이 두 곳이면 갈린다:
+    파서가 환경변수를 직접 읽던 구판은 설정 파일 갈래(B42)를 못 봐서, 파일로만
+    실호출을 켠 운영에서 core는 실호출·파서는 휴리스틱으로 갈렸다.
 
-    파서는 `core/`를 import하지 않으므로(P1) 실호출 경로는 **주입**받는다 —
-    `propose(doc_id, lines, ask=…)`. USE_MOCK=0인데 `ask`가 없으면 **명시적
-    실패**다: 휴리스틱으로 조용히 떨어지면 그 지도가 청크 경계를 정하고, 잘못된
-    경계는 chunk_id를 바꿔 재인입 멱등성까지 흔든다(문서 7 §7.6-B-4).
+    반환 형식은 두 갈래가 같다 — 지도는 데이터이므로 소비 쪽(타당성 검사·분할기)은
+    출처를 몰라도 된다. `source`가 어느 갈래인지 데이터로 남긴다: `heuristic`·`live`.
+
+    **고정 지도가 필요한 시험은 `ask=`로 직접 주입한다**(문서 7 §7.1 대체 표 ⑦행) —
+    운영 코드는 fixture 파일을 찾지 않는다: 미리 놓은 정답을 돌려주는 갈래는 배선이
+    없어도 초록이라 결함을 가린다(B48 — ⑦ 미배선이 그렇게 숨었다).
     """
     kept = load_kept(doc_id, src_hash)
     if kept is not None:
         kept["source"] = kept.get("source", "kept")
         return kept                          # **보존분 재사용** — 같은 분할·같은 chunk_id
-    if os.environ.get("USE_MOCK", "1") != "1":
-        if ask is None:
-            raise RuntimeError(
-                f"구조 지도 실호출 경로가 비어 있다 (doc_id={doc_id}) — "
-                "USE_MOCK=0에서는 ask를 주입해야 한다 (문서 7 §7.6-B-4)")
+    if ask is not None:
         m = ask(doc_id, lines)
         m.setdefault("doc_id", doc_id)
         m["source"] = "live"
         return keep(doc_id, m, src_hash)     # 실산출은 보존한다(§6.3)
-    # **USE_MOCK 갈래는 보존하지 않는다** — 지도가 **고정 파일**이라 같은 입력이면
-    # 늘 같은 지도가 나오고, 보존은 그 위에 아무것도 더하지 않는다(§6.3이 그
-    # 사실을 명시한다: "mock만으로는 이 결함이 드러나지 않는다"). 보존이 필요한
-    # 것은 **매 인입 새로 산출되는** 실호출 갈래다.
-    p = MAPS_DIR / f"{doc_id}.json"
-    if p.exists():
-        m = json.loads(p.read_text(encoding="utf-8"))
-        m.setdefault("source", "mock_file")
-        return m
+    # 대체 갈래는 **보존하지 않는다** — 휴리스틱은 같은 입력이면 늘 같은 지도라
+    # 보존이 그 위에 아무것도 더하지 않는다. 보존이 필요한 것은 **매 인입 새로
+    # 산출되는** 실호출 갈래다(§6.3).
     rows = []
     for n, text in lines:
         m = HEADING_RE.match((text or "").strip())
@@ -326,13 +314,17 @@ def flat(lines, locator):
 
 
 # ---------------------------------------------------------------- 진입점
-def apply(doc_id, lines, locator, sep=" > "):
+def apply(doc_id, lines, locator, sep=" > ", ask=None):
     """지도 패스 1회 — `(chunks, smap, reasons)`.
 
     `reasons`가 비어 있지 않으면 **평면 폴백**이고, 호출부가 그것을 큐로 올린다.
     지도는 실패해도 함께 돌려준다 — 무엇을 보고 실패했는지가 판정 재료다.
+
+    `ask`는 **실호출 경로의 통로**다(B48). 구판은 `propose(ask=)`만 있고 이 자리에
+    통로가 없어, 어떤 설정에서도 모델이 불리지 않았다 — 파라미터만 있고 값이 올
+    길이 없으면 배선이 아니다(문서 7 §7.6-B-2).
     """
-    smap = propose(doc_id, lines)
+    smap = propose(doc_id, lines, ask=ask)
     reasons = validate(smap, lines)
     smap["verdict"] = FLAT if reasons else MAPPED
     smap["reasons"] = reasons

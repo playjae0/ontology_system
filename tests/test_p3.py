@@ -42,7 +42,11 @@ def show(label, ok, detail=""):
 
 def run(*args):
     """CLI 진입점으로 부른다 — 플랫폼이 subprocess로 부르는 그 경로다(§16.1)."""
-    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *args],
+    # **회귀는 mock 관문 비대상이다**(B48) — 구현 환경에는 게이트웨이가 없고
+    # 그 환경의 실행이 검증의 바닥이다(B12).
+    flag = ["--allow-mock"] if args and args[0] in ("generate", "review", "confirm") else []
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register",
+                           *args, *flag],
                           capture_output=True, text=True, cwd=str(ROOT))
 
 
@@ -969,6 +973,42 @@ show("⑤ 번호 답이 선택지 본문으로 풀려 기록된다 (모델은 «
      _hist[0]["answers"][0]["answer"] == "1" and _hist[0]["answers"][0]["chosen"] == _hist[0]["questions"][0]["options"][0]
      and _hist[0]["questions"][0]["options"][0] in _hist[0]["answer"])
 show("⑤ «진행»은 어느 자리에서든 종료다 — 라운드 2에서 멈춤", len(_hist) == 2)
+
+# ============================================================ mock 관문 (B48 ③)
+print("\n■ mock 관문 — 운영 명령은 mock에서 실행 전에 멈춘다 (문서 7 §7.6-B-1)")
+from cli import _gate as _G                                         # noqa: E402
+_bare = subprocess.run([sys.executable, "-m", "cli.register", "generate", "gate_t", "process"],
+                       capture_output=True, text=True, cwd=str(ROOT))
+show("③ 설정 없이 register generate → 종료 코드 ≠ 0", _bare.returncode != 0, str(_bare.returncode))
+show("③ 문면이 --allow-mock과 켜는 법을 함께 말한다",
+     "--allow-mock" in _bare.stdout and "실산출이 아닙니다" in _bare.stdout
+     and "USE_MOCK" in _bare.stdout, _bare.stdout.strip().splitlines()[-1:][0][:70]
+     if _bare.stdout.strip() else "(빈 출력)")
+show("③ 모드 표시 다음에 멈춘다 (B42 ⑤ → 관문)", "모드:" in _bare.stdout)
+show("③ 멈춘 명령은 아무것도 만들지 않았다 — LLM 지점 호출 0회",
+     not (ROOT / "review" / "gate_t").exists())
+_allowed = run("generate", "gate_t", "process", str(RAW / "CP01.xlsx"))
+show("③ --allow-mock을 붙이면 종전대로 진행한다",
+     (ROOT / "review" / "gate_t" / "input_package.json").exists(), _allowed.stdout[-80:])
+shutil.rmtree(ROOT / "review" / "gate_t", ignore_errors=True)
+for _c in ("init", "bootstrap"):
+    _r = subprocess.run([sys.executable, str(ROOT / "run.py"), _c],
+                        capture_output=True, text=True, cwd=str(ROOT))
+    show(f"③ {_c}은 관문 비대상 — 플래그 없이 종전대로", _r.returncode == 0, str(_r.returncode))
+show("③ 관문 대상 목록이 코드에 있다 — register는 생성·검수·확정만(열람은 아니다)",
+     R.GATED == ("generate", "review", "confirm"))
+# **관문의 자리는 CLI 진입점이다**(§7.6-B-1) — 지점마다 두면 판독처가 다시 여럿이
+# 되고, 그것이 판정필요-15가 신고한 병(파서가 따로 읽어 갈렸다)의 재발이다.
+_gcalls = [f"{f.relative_to(ROOT)}:{i}"
+           for f in [ROOT / "run.py", *sorted((ROOT / "cli").glob("*.py")),
+                     *sorted((ROOT / "core").glob("*.py")),
+                     *sorted((ROOT / "parser").glob("*.py"))]
+           for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1)
+           if "require_live_or_allow(" in ln and "def " not in ln
+           and not ln.lstrip().startswith(("#", "from", "import"))]
+show("③ 관문 호출은 CLI 진입점 4곳뿐이다 — core·parser에는 없다",
+     len(_gcalls) == 4 and not any(g.startswith(("core/", "parser/")) for g in _gcalls),
+     str(_gcalls))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

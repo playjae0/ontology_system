@@ -58,6 +58,8 @@ from router import discover
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, _newest_template, _render_template, _vocab_excerpt, _sent_size)
+from cli._gate import require_live_or_allow    # mock 관문 (B48)
+from cli.parse import injections               # 주입 조립은 한 자리다(B48)
 from cli.interview import (  # noqa: F401
     INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview)
 
@@ -970,9 +972,11 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
         out = []
         for i, s in enumerate(samples, 1):
             lbl = f"{i}/{len(samples)} ({Path(s).name})"
+            # **주입 조립은 한 자리다**(B48) — 좌표 보조만 사람이 끌 수 있으므로
+            # 그 하나를 덮어쓴다. 나머지 둘은 진입점이 정한 그대로 내려간다.
             out.append(pipeline.parse(
                 mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"],
-                summarize=llm.image_summarizer(), pick_coord=pick,
+                **{**injections(), "pick_coord": pick},
                 max_rows=rows,
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
@@ -1092,10 +1096,16 @@ def cmd_list():
     return cmd_doctypes()
 
 
+#: mock 관문 대상 — 사람이 치는 운영 명령(§7.6-B-1 · B48). `roles`·`list`는 열람이다.
+GATED = ("generate", "review", "confirm")
+
+
 def main(argv):
     if not argv:
         raise SystemExit(__doc__)
     cmd, rest = argv[0], list(argv[1:])
+    if cmd in GATED:
+        rest = require_live_or_allow(rest, command=f"register {cmd}")
 
     def opt(name, default=None):
         if name in rest:

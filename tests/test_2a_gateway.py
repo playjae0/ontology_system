@@ -74,81 +74,102 @@ show("실호출 갈래는 source=live로 갈린다 — 두 갈래가 같은 반�
 # ============================================================ USE_MOCK=0
 print("\n■ USE_MOCK=0 + 설정 미설정 → 9지점 각각 명시적 실패 (§7.6-B-4 · 완료판정 5)")
 
-PROBE = r'''
-import json, sys
-from core import embeddings, llm, matcher, query as Q
-from core.bootstrap import open_graph
-from core.dictionary import Dictionary
-from parser import struct_map, tagger
-g = open_graph("process")
-n = {"id": "N1", "canonical": "나", "aliases": [], "category": "Unit", "exact": False}
-CASES = {
- # **실물 config를 쓴다** — 축약 dict를 넘기면 프롬프트 조립이 `cfg["layer"]`에서
- # 먼저 깨져 KeyError가 나고, 그것이 「명시적 실패」로 잘못 세어진다(실측).
- "extract":       lambda: __import__("core.extract", fromlist=["x"])._candidates_for(
-                      "C1", {"text": "가", "process_ref": "노칭"},
-                      __import__("core.bootstrap", fromlist=["x"]).load_config("process"),
-                      {}),
- "judge":         lambda: matcher.match("가", [n], "Unit"),
- "embed":         lambda: embeddings.embed("가"),
- "image_summary": lambda: tagger.complete_images(
-                      [{"source_locator": "S", "image_ref": "i1"}], None, allow_mock=False),
- "generate":      lambda: __import__("cli.register", fromlist=["x"])._draft_live("cp", 0),
- "link":          lambda: Q.link("노칭", Dictionary({}), {"process": g}),
- "struct_map":    lambda: struct_map.propose("D1", [(1, "1. 가")]),
- "coord_tag":     lambda: tagger.tag(
-                      [{"source_locator": "S", "process_ref": "없는공정zzz"}],
-                      layer="process", nodes=tagger.closed_list("process"),
-                      pick=llm.coord_picker()),
- "answer":        lambda: __import__("cli.query", fromlist=["x"]).generate(
-                      {"question": "가", "facts": [], "chunks": [], "path": "graph_fact",
-                       "linked": [], "note": None, "truncated": 0, "transit": []}),
-}
-out = {}
-for k, fn in CASES.items():
-    try:
-        fn(); out[k] = "통과"
-    except BaseException as e:
-        out[k] = type(e).__name__
-print("RESULT " + json.dumps(out, ensure_ascii=False))
-'''
+# **탐침은 `tests/points_probe.py` 하나다**(B48) — `doctor.py`가 같은 파일을 실행한다.
+# 두 벌로 두면 한쪽만 고쳐지는 날이 오고, 그날 화면은 초록인데 배선은 없다.
+sys.path.insert(0, str(ROOT / "tests"))
+from points_probe import run as _probe                           # noqa: E402
 
-# **「설정 없음」은 환경변수를 지우는 것만으로 성립하지 않는다** — 2B에서 설정
-# 파일 갈래(`~/.onto/llm.json` 등)가 생겼고, 운영자 기계에 그 파일이 있으면 이
-# 탐침이 «설정된 상태»로 돌아 **조용한 통과 4건**이 뜬다(실측). 회귀가 운영자의
-# 홈 디렉터리에 의존하면 그것은 판정이 아니다. 없는 경로를 명시해 갈래를 끈다.
-env = dict(os.environ, USE_MOCK="0",
-           ONTO_CONFIG=str(ROOT / "tests" / "fixtures" / "_no_such_llm_config.json"))
-for e in _ENV:
-    env.pop(e, None)
-r = subprocess.run([sys.executable, "-c", PROBE], capture_output=True, text=True,
-                   cwd=str(ROOT), env=env)
-import json                                                      # noqa: E402
-
-line = next((l for l in r.stdout.splitlines() if l.startswith("RESULT ")), None)
-res = json.loads(line[len("RESULT "):]) if line else {}
+res, _r = _probe()
 show(f"{len(llm.POINTS)}지점 전부가 실행됐다 (탐침이 완주)",
      len(res) == len(llm.POINTS),
-     r.stderr.strip().splitlines()[-1:] and r.stderr.strip().splitlines()[-1] or "")
+     _r.stderr.strip().splitlines()[-1:] and _r.stderr.strip().splitlines()[-1] or "")
 for key, label in llm.POINTS.items():
     got = res.get(key, "(미실행)")
-    show(f"{label} → 조용한 통과가 아니다", got != "통과", got)
+    # **재는 것은 「도달 가능성」이다**(§7.6-B-2) — 조용한 통과가 아닌 것만으로는
+    # 모자라다: 파서 3지점은 대체 갈래가 정상으로 도는 것이 「통과」이므로, 실제
+    # 호출자가 타는 길(팩토리)이 **미설정 실패에 닿는가**를 잰다.
+    show(f"{label} → 실 호출 경로가 NotConfigured에 닿는다", got == "NotConfigured", got)
+
+# ============================================================ 지점 ⑦ 변환
+print("\n■ ⑦구조 지도 — 변환은 코어가 한다 (파서는 LLM 스키마를 모른다 · B48 ②)")
+_lines = [(2, "1. 개요"), (3, "본문 한 줄"), (4, "1.1 절"), (5, "또 본문")]
+_fake = {"headings": [{"row": 2, "level": 1, "title": "1. 개요"},
+                      {"row": 4, "level": 2, "title": "1.1 절"},
+                      {"row": 99, "level": 1, "title": "입력에 없는 행"},
+                      {"row": 3, "level": 0, "title": "급이 0"}],
+         "note": "위계가 뒤섞여 급을 매길 수 없음"}
+_ochat = llm.chat
+llm.chat = lambda *a, **k: _fake            # 게이트웨이 없이 변환만 잰다
+try:
+    _sm = llm.map_structure("D1", _lines)
+finally:
+    llm.chat = _ochat
+show("headings → 파서 지도 형식(rows) — 목록에 있는 행만 heading=true",
+     [(r["row"], r["heading"], r["level"]) for r in _sm["rows"]]
+     == [(2, True, 1), (3, False, 0), (4, True, 2), (5, False, 0)],
+     str(_sm["rows"]))
+show("지어낸 행과 급 0을 버리고 센다 — meta.dropped (지시문 규약 4)",
+     _sm["meta"]["dropped"] == 2, str(_sm["meta"]))
+show("note를 meta로 실어 하류가 「판정 불가」로 올릴 수 있다 (문서 6 §6.2)",
+     _sm["meta"]["note"] == "위계가 뒤섞여 급을 매길 수 없음")
+show("재현 조건 — source=live · 지시문 판본이 지도에 남는다 (B36 동형)",
+     _sm["source"] == "live" and _sm["prompt_version"] == llm.prompt_version("struct_map"),
+     f"{_sm['source']} · {_sm.get('prompt_version')}")
+show("입력 본문은 «행번호<TAB>앞N자» 목록이다",
+     llm._map_lines([(7, "가나다라마바사")], 3) == "7\t가나다")
+show("크기 예산은 감축 사다리를 탄다 — 행을 빼지 않고 앞자리를 줄인다 (B41)",
+     llm.MAP_LINE_WIDTHS[0] == 80 and list(llm.MAP_LINE_WIDTHS) == sorted(
+         llm.MAP_LINE_WIDTHS, reverse=True))
 
 # ============================================================ 분기 실물
 print("\n■ 분기가 실물로 서 있는가 — 주석을 세지 않는다 (§7.6-B-2)")
 
+# core 6지점 — **종전 방식 유지**(인라인 분기. 팩토리로 옮기는 것은 다음 회차)
 WIRED = {"extract": ("core/extract.py", "_candidates_for"),
          "judge": ("core/matcher.py", "_judge_live"),
          "embed": ("core/embeddings.py", "llm.require"),
-         "image_summary": ("parser/tagger.py", "allow_mock"),
          "generate": ("cli/register.py", "_draft_live"),
          "link": ("core/query.py", "_link_llm"),
-         "struct_map": ("parser/struct_map.py", "ask is None"),
-         "answer": ("cli/query.py", "def generate"),
-         "coord_tag": ("parser/tagger.py", "pick is not None")}
+         "answer": ("cli/query.py", "def generate")}
 for key, (where, needle) in WIRED.items():
     src = (ROOT / where).read_text(encoding="utf-8")
     show(f"{llm.POINTS[key]} — 실호출 갈래가 {where}에 있다", needle in src)
+
+# 파서 3지점 — **문자열이 아니라 통로를 잰다**(B48). 파서에는 판독이 없으므로
+# 「분기가 있다」로는 셀 것이 없고, 팩토리 → 주입 조립 → 파서 인자가 이어져야 배선이다.
+import inspect                                                   # noqa: E402
+from cli.parse import injections as _inj                         # noqa: E402
+from parser import pipeline as _PL                               # noqa: E402
+
+_pv = set(inspect.signature(_PL.parse).parameters)
+_asm = _inj()
+for key, factory, kw in (("image_summary", "image_summarizer", "summarize"),
+                         ("struct_map", "struct_mapper", "map_structure"),
+                         ("coord_tag", "coord_picker", "pick_coord")):
+    show(f"{llm.POINTS[key]} — 팩토리→주입 조립→파서 인자가 이어진다 "
+         f"(llm.{factory}() → {kw}=)",
+         callable(getattr(llm, factory, None)) and kw in _asm and kw in _pv)
+
+# ── 변이 시험 — **배선을 하나 빼면 붉는가**(§7.6-B-2 · B48 ④-2)
+# 잡는 자리는 주입 조립 지점이다: 파서는 모드를 모르므로 「실호출 모드인데 함수가
+# 없다」를 알 수 있는 것은 만드는 쪽뿐이다. 이 어서션이 곧 「진입점이 한 번 정해
+# 전부 내려보낸다」의 기계 판정이다.
+_orig = (llm.use_mock, llm.image_summarizer, llm.coord_picker, llm.struct_mapper)
+llm.use_mock = lambda: False
+llm.image_summarizer = lambda: (lambda ref: "요약")
+llm.coord_picker = lambda: (lambda s, c: None)
+llm.struct_mapper = lambda: None                # ← ⑦ 배선을 뺀다
+try:
+    _inj()
+    _mut = "통과 — 붉지 않았다"
+except llm.NotConfigured as e:
+    _mut = f"NotConfigured — {str(e)[:60]}"
+llm.struct_mapper = lambda: (lambda d, l: {"rows": []})   # ← 되돌린다
+_back = "통과" if _inj().get("map_structure") else "여전히 None"
+llm.use_mock, llm.image_summarizer, llm.coord_picker, llm.struct_mapper = _orig
+show("변이 — ⑦ 주입을 빼면 실호출 모드에서 붉는다 (조용한 휴리스틱 폴백 0)",
+     _mut.startswith("NotConfigured"), _mut)
+show("변이 — 되돌리면 초록이다 (시험 자체가 늘 붉는 것이 아니다)", _back == "통과", _back)
 
 hooks = [f"{p.relative_to(ROOT)}:{i}"
          for d in ("core", "cli", "parser")

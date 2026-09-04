@@ -49,7 +49,7 @@ init.init(fresh_=True)              # 클린의 정의는 진입점이 갖는다
 r = PF.call(["all"])                        # 플랫폼→파이프라인 결합은 subprocess뿐(§16.1)
 show("플랫폼이 build를 subprocess로 호출 (파일 계약 — 코드 의존 0)",
      r.returncode == 0 and "[bootstrap]" in r.stdout)
-r = PF.call(["query", "노칭 다음 공정은?"])
+r = PF.call(["query", "노칭 다음 공정은?", "--allow-mock"])   # 회귀는 관문 비대상(B48)
 show("플랫폼이 query를 subprocess로 호출", r.returncode == 0
      and "노칭 다음 공정은 스태킹이다" in r.stdout)
 

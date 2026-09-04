@@ -5,6 +5,10 @@
 **build는 직렬 실행**이다 — 저장이 비원자적이라 호출부가 직렬화를 보장한다.
 
 사용:
+  **mock 관문**: 사람이 치는 운영 명령(register generate/review/confirm · parse run ·
+  build · ingest-file/ingest-dir · query)은 mock 모드에서 실행 전에 멈춘다 —
+  계속하려면 `--allow-mock`을 적는다 (문서 7 §7.6-B-1 · B48).
+
   python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
   python run.py bootstrap          층 골격 심기 (n10)
   python run.py build <parsed.json...> [--allow-duplicate]
@@ -172,6 +176,11 @@ def cmd_llm_check(args):
 if __name__ == "__main__":
     log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
+    # **mock 관문**(B48) — 여기서 도는 것은 제 모듈 main이 없는 운영 명령뿐이다.
+    # register·parse·ingest-file/dir은 그쪽 main이 관문을 지나므로 두 번 걸지 않는다.
+    if cmd in ("build", "ingest", "query"):
+        from cli._gate import require_live_or_allow
+        sys.argv = [sys.argv[0], cmd] + require_live_or_allow(sys.argv[2:], command=cmd)
     _rc = {"init": lambda: cmd_init(sys.argv[2:]),
      "bootstrap": lambda: cmd_bootstrap(),
      # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
