@@ -243,6 +243,19 @@ def _split(rows):
     return "\n".join(out)
 
 
+def _excluded(rows):
+    """**판정해서 뺀 열** — 질문이 아니라 목록이다(B49). 무엇을 뺐는지가 승인 재료다."""
+    if not rows:
+        return ""
+    out = ['<h3 style="font-size:15px;margin:16px 0 4px">제외한 열 — 생성이 판정했다 '
+           f'({len(rows)}건 · 질문 아님)</h3>',
+           "<table><tr><th>열</th><th>사유</th></tr>"]
+    for r in rows:
+        out.append(f'<tr><td>{e(r.get("field"))}</td><td>{e(r.get("reason"))}</td></tr>')
+    out.append("</table>")
+    return "\n".join(out)
+
+
 def render(view):
     """뷰 데이터 → HTML 문자열. **계산하지 않는다** — 있는 것을 그린다."""
     s = view["sections"]
@@ -262,6 +275,7 @@ def render(view):
 <h3 style="font-size:15px;margin:16px 0 4px">이상 신호 — 전량</h3>
 {_anomalies(pr.get('anomalies') or [])}
 {_split((pr.get('summary') or {}).get('split') or [])}
+{_excluded((pr.get('normal') or {}).get('excluded') or [])}
 {_normal(pr.get('normal') or {}, kind)}
 
 <h2>구획 2 · 필드 → role 배정표</h2>

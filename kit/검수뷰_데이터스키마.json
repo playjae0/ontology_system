@@ -107,6 +107,17 @@
               "_note": "③ 정상 조각 — **발췌 기본 + 전량 접힘**. excerpt는 화면에 펼쳐지고 all은 접힌다.",
               "required": ["excerpt", "all"],
               "properties": {
+                "excluded": {
+                  "type": "array",
+                  "_note": "**판정해서 뺀 열**(B49 · C19 개정) — 사유와 함께 목록으로 보인다. 이상 신호가 아니라 정상 구획이다: 판정이 끝났으므로 질문으로 뜨지 않는다. 다만 화면에서 사라지면 안 된다 — 무엇을 뺐는지가 승인 재료다.",
+                  "items": {
+                    "type": "object",
+                    "required": ["field", "kind", "reason"],
+                    "properties": {"field": {"type": "string"},
+                                   "kind": {"enum": ["excluded"]},
+                                   "reason": {"type": "string"}}
+                  }
+                },
                 "excerpt": {"type": "array", "items": {"type": "object"}},
                 "all": {"type": "array", "items": {"type": "object"}},
                 "columns": {

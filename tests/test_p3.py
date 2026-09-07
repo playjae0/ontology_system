@@ -1026,6 +1026,77 @@ show("① 위치 인자 0개면 죽지 않고 사용법을 낸다",
 show("① 사용법에 resume 단독 줄이 있다",
      "generate <doc_type> --resume" in (ROOT / "cli/register.py").read_text(encoding="utf-8"))
 
+# ============================================================ B49 전 열 판정
+print("\n■ B49 — 모든 열은 판정을 갖는다 (C19 개정 · 부재로 추론하지 않는다)")
+_DEMO = ROOT / "review" / "b49demo"
+_DEMO.mkdir(parents=True, exist_ok=True)
+(_DEMO / "adapter.py").write_text(
+    '# -*- coding: utf-8 -*-\n'
+    'ADAPTER = {"doc_type": "b49demo", "adapter_version": "1.0", "payload_kind": "table",\n'
+    '           "expects": {"header_row": 1,\n'
+    '                       "header_labels": ["공정명", "규격", "비고", "최근 불량 이력", "신규 열"],\n'
+    '                       "columns": {"process_ref": "A", "규격": "B"}}}\n'
+    'def extract(raw):\n    return []\n', encoding="utf-8")
+_dsch = {"doc_type": "b49demo", "schema_version": 1, "layer": "quality",
+         "payload_kind": "table", "use_blocks": [],
+         "fields": {"규격": {"role": "attribute", "attr_name": "규격",
+                           "attach_to_field": "process_ref"}},
+         "edges": [],
+         "unmappable": [
+             {"field": "최근 불량 이력", "kind": "excluded",
+              "reason": "집계 이력 — 개체도 값도 아니고 시점마다 바뀐다"},
+             {"field": "비고", "kind": "undecided",
+              "reason": "표본 3부 전부 비어 있어 무엇이 오는지 관찰되지 않았다"}]}
+(_DEMO / "schema.json").write_text(json.dumps(_dsch, ensure_ascii=False, indent=2),
+                                   encoding="utf-8")
+_dst = {"doc_type": "b49demo", "layer": "quality",
+        "samples": [str(RAW / "IPQC01.xlsx")],
+        "adapter": "review/b49demo/adapter.py", "schema": "review/b49demo/schema.json"}
+_dmod = R._load(ROOT / _dst["adapter"], "reg_b49demo_t")
+_ex, _un, _orp = R.unmappable_of(_dsch, _dmod)
+show("① 셋으로 갈린다 — excluded · undecided · orphan (구판은 셋이 같은 질문이었다)",
+     [u["field"] for u in _ex] == ["최근 불량 이력"]
+     and [u["field"] for u in _un] == ["비고"]
+     and [u["field"] for u in _orp] == ["신규 열"],
+     f"{[u['field'] for u in _ex]} / {[u['field'] for u in _un]} / {[u['field'] for u in _orp]}")
+_dv = R.build_view(_dst, [], True, "")
+_dpr = _dv["sections"]["parse_result"]
+show("① excluded는 anomalies에 0건이다 — 판정이 끝난 열은 질문이 아니다",
+     not [a for a in _dpr["anomalies"] if "최근 불량 이력" in a["message"]]
+     and [u["field"] for u in _dpr["normal"]["excluded"]] == ["최근 불량 이력"])
+show("① undecided는 question이다 — 사유가 문면에 실린다",
+     any(a["kind"] == "question" and "'비고'" in a["message"]
+         and "표본 3부 전부 비어" in a["message"] for a in _dpr["anomalies"]))
+show("① orphan은 failure다 — 「사람이 판정할 것」이 아니라 「대장이 어긋났다」",
+     any(a["kind"] == "failure" and "'신규 열'" in a["message"]
+         and "스키마 대장에 없다" in a["message"] for a in _dpr["anomalies"]))
+show("① 배정표(6지선다)에는 undecided만 오른다",
+     [r["field"] for r in _dv["sections"]["role_table"] if r.get("role") == "UNMAPPABLE"]
+     == ["비고"])
+show("① orphan이 있으면 기계 관문이 막힌다 (하네스·파싱이 통과여도)",
+     R.gate_verdict(True, True, _orp) == "FAIL"
+     and R.gate_verdict(True, True, []) == "PASS")
+_legacy = {**_dsch}
+del _legacy["unmappable"]
+_lex, _lun, _lorp = R.unmappable_of(_legacy, _dmod)
+show("① 구판 스키마(키 없음)는 차집합 전량을 undecided로 — 기존 등록분이 안 깨진다",
+     not _lex and not _lorp
+     and sorted(u["field"] for u in _lun) == sorted(
+         ["비고", "신규 열", "최근 불량 이력"]),
+     str([u["field"] for u in _lun]))
+show("① kind가 닫힌 2값 밖이면 undecided로 받는다 (모르면 묻는다)",
+     R.unmappable_of({**_dsch, "unmappable": [{"field": "X", "kind": "몰라", "reason": ""}]},
+                     _dmod)[1][0]["kind"] == "undecided")
+show("① 생성 스키마가 unmappable을 required로 요구한다 (strict — B44)",
+     "unmappable" in R.GENERATE_SCHEMA["required"]
+     and R.GENERATE_SCHEMA["properties"]["unmappable"]["items"]["properties"]["kind"]
+     ["enum"] == ["excluded", "undecided"])
+show("① 템플릿 v1.0이 스키마에 싣도록 지시한다 (산출물 3만 적던 것을 고쳤다)",
+     (lambda t: "쓰지 않기로 한 열" in t and '"kind": "excluded"' in t
+      and "스키마·출력에는 넣지 않는다" not in t)(
+         (ROOT / "kit/생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8")))
+shutil.rmtree(_DEMO, ignore_errors=True)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
