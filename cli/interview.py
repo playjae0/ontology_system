@@ -71,8 +71,12 @@ INTERVIEW_SCHEMA = {
 INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
 
 
-def _interview_round(pkg, history):
+def _interview_round(pkg, history, context=None):
     """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
+
+    `context`는 **생성 전이 아니라 실패 뒤에 열 때** 오는 재료다(B50) — 기계 관문의
+    실패 문면이다. **입력 패키지에 키를 더하지 않는다**(사람 4 + 시스템 5 불변) —
+    이것은 그 라운드의 메시지에만 실린다.
 
     LLM은 «이해했다, 진행하겠다»를 판단하지 않는다(I4: 제어 흐름은 코드+사람
     소유). 매 라운드 요약과 질문을 낼 뿐이고, **끝내는 것은 사람**이다.
@@ -95,6 +99,12 @@ def _interview_round(pkg, history):
               [{"q": "병합된 좌측 열은 어떻게 다루나",
                 "options": ["위 값 채움", "행 독립", "모름"],
                 "importance": "높음 — 좌표 해소가 여기 걸린다"}])
+        if context and not fixes:
+            # 실패 뒤에 연 문답이면 **무엇이 막혔는지**를 먼저 묻는다.
+            qs = [{"q": f"기계 관문이 막혔다: {context[0][:60]} — 무엇을 바꿀까",
+                   "options": ["표본을 바꾼다", "힌트를 더한다", "모름"],
+                   "importance": "높음 — 이것이 풀려야 산출이 선다"}] + qs
+            base = f"기계 관문 실패 {len(context)}건을 보고 다시 묻는다. " + base
         return {"understanding": base + ("" if not fixes else
                                          " · 교정 반영: " + " / ".join(fixes)),
                 "progress": {"columns": len(cols), "decided": len(fixes),
@@ -108,7 +118,9 @@ def _interview_round(pkg, history):
               "content": llm.prompt("interview") + "\n\n---\n\n"
                          + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
-                 {"입력_패키지": pkg, "지난_문답": history}, ensure_ascii=False)}]
+                 {"입력_패키지": pkg, "지난_문답": history,
+                  **({"기계_관문_실패": context} if context else {})},
+                 ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")
     return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
 
@@ -132,17 +144,25 @@ def _prof_hint(pkg, top=6):
               f"제안 {v['기계제안']['제안']}")
 
 
-def _interview(pkg, on_round=None):
-    """생성 전 문답 — **끝내는 것은 사람뿐이다.** 상한 없음(§6.5 재생성 루프와 같은 원리).
+def _interview(pkg, on_round=None, context=None):
+    """문답 — **끝내는 것은 사람뿐이다.** 상한 없음(§6.5 재생성 루프와 같은 원리).
+
+    **생성 전에도, 기계 관문 실패 뒤에도 같은 장치다**(B50) — 실패 뒤에 여는 경우
+    `context`(실패 문면)를 함께 넣는다. 장치를 둘로 두면 번호 선택지·즉시 저장 같은
+    규율이 한쪽에만 남는다.
 
     돌려주는 것은 라운드 이력이다: 매 라운드의 요약·질문·답이 전부 남는다.
     기록이 없으면 **같은 등록을 재현할 수 없다.**
     """
     history, blanks = [], 0
-    print("\n■ 생성 전 문답 — 이해 요약을 보고 교정한다. "
-          f"끝내려면 «{INTERVIEW_STOP[0]}» (상한 없음)")
+    print(f"\n■ {'기계 관문 실패 뒤 문답' if context else '생성 전 문답'} — "
+          f"이해 요약을 보고 교정한다. 끝내려면 «{INTERVIEW_STOP[0]}» (상한 없음)")
+    if context:
+        print(f"   기계 관문 실패 {len(context)}건 — 문면이 답을 담지 않아 묻는다")
+        for c in context[:5]:
+            print(f"     · {c}")
     while True:
-        out = _interview_round(pkg, history)
+        out = _interview_round(pkg, history, context)
         n = len(history) + 1
         pg = out.get("progress") or {}
         # **진행 1줄**(B43 ⑥) — 「이제 진행해도 되나」의 판단 근거다.

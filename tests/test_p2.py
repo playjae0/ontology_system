@@ -72,13 +72,16 @@ EXPECT_FAIL = {
     "payload_kind가 닫힌 2값",
     "adapter.doc_type == schema.doc_type",
     "expects.header_row 선언됨",
-    "payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)"}
+    "payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)",
+    # **하네스 수리분**(B50): 구판은 0건일 때 이 검사에 닿기 전에 돌아가 **아무것도
+    # 추출하지 못한 어댑터가 PASS로 통과했다.** 빈칸 스켈레톤이 바로 그 상태다.
+    "조각 0건 산출 (0건 아님)"}
 show("② 스켈레톤이 하네스 ①단에서 문법·순수성·인터페이스를 통과한다",
      r.stdout.count("[PASS] 문법 오류 없음") == 1
      and "[PASS] 순수 함수 계약" in r.stdout
      and "[PASS] locate 함수 없음" in r.stdout)
-show("② 빈칸 상태의 FAIL은 4건이고 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
-     r.stdout.count("[FAIL]") == 4 and fail_labels == EXPECT_FAIL,
+show("② 빈칸 상태의 FAIL은 5건이고 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
+     r.stdout.count("[FAIL]") == 5 and fail_labels == EXPECT_FAIL,
      f"FAIL {r.stdout.count('[FAIL]')}건 · 예상 밖 {sorted(fail_labels - EXPECT_FAIL)}")
 sk = (KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8")
 show("② 안내가 '필수 키 4종은 PASS'를 정확히 적었다 (키 존재만 보고 값은 안 본다)",

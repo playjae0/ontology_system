@@ -205,9 +205,13 @@ def run_extract(mod, raw, label):
     show("예외 없이 실행", True)
     show("list[dict] 반환", isinstance(pieces, list) and all(isinstance(p, dict) for p in pieces),
          f"{type(pieces).__name__} / {len(pieces) if isinstance(pieces, list) else '-'}건")
+    # **판정이 먼저고 조기 반환이 나중이다.** 구판은 0건일 때 이 줄에 닿기 전에
+    # 돌아가서, **아무것도 추출하지 못한 어댑터가 PASS로 통과했다**(실측 — B50에서
+    # 「조각 0건」 갈래를 시험하다 드러났다). 검사를 건너뛰는 조기 반환은 그 검사를
+    # 없앤 것과 같다.
+    show(f"조각 {len(pieces)}건 산출 (0건 아님)", len(pieces) > 0)
     if not pieces:
         return pieces
-    show(f"조각 {len(pieces)}건 산출 (0건 아님)", len(pieces) > 0)
     locs = [p.get("source_locator") for p in pieces]
     show("전 조각에 source_locator 존재", all(locs))
     show("source_locator가 문서 내 유일 (§5 규약 1)", len(set(locs)) == len(locs),
