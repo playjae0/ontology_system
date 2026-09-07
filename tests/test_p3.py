@@ -431,6 +431,7 @@ from cli import skeleton as _SK                                     # noqa: E402
 #    검사할 수 있다**(문서 3 §3.7). 레포 코드가 seed 파일을 **쓰기 모드로** 여는
 #    자리를 AST로 센다 — 문자열을 세지 않는다.
 import ast as _ast                                                  # noqa: E402
+from kit import render_review as _RR                                # noqa: E402
 _WRITE = {"w", "wb", "a", "ab", "w+", "r+", "x", "xb"}
 _writers = []
 for _p in sorted(ROOT.glob("**/*.py")):
@@ -1198,6 +1199,91 @@ show("② 하네스 수리 — 조각 0건이 이제 FAIL이다 (구판은 검�
      (lambda t: t.index("조각 {len(pieces)}건 산출")
       < t.index("if not pieces:\n        return pieces"))(
          (ROOT / "kit/run_adapter.py").read_text(encoding="utf-8")))
+
+# ============================================================ [정정]40 검수 지시 관문
+print("\n■ [정정]40 — --instruct 재생성분도 기계 관문을 지난다 (M9)")
+_f40 = Path(_tf.mkdtemp(prefix="fx40_", dir=str(ROOT)))
+(_f40 / "fixtures/adapters").mkdir(parents=True)
+(_f40 / "fixtures/schemas").mkdir(parents=True)
+_g40 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+_M40 = ("\n\ndef _expand_merged(sheet):\n"
+        "    # 병합 전개를 재구현했다 — 규약 10 위반\n"
+        "    return dict(sheet.get('cells') or {})\n\n\n"
+        "def _col_to_idx(col):\n"
+        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
+        "\n\nADAPTER = {")
+_b40 = _g40.replace("\nADAPTER = {", _M40, 1)
+_s40 = json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8"))
+for _dt, _pairs in (("f40ok", (("", _g40), ("_rev1", _b40), ("_rev2", _g40))),
+                    ("f40no", (("", _g40), ("_rev1", _b40), ("_rev2", _b40)))):
+    for _sfx, _src in _pairs:
+        (_f40 / "fixtures/adapters" / f"{_dt}{_sfx}.py").write_text(
+            _src.replace('"doc_type": "cp"', f'"doc_type": "{_dt}"', 1), encoding="utf-8")
+        (_f40 / "fixtures/schemas" / f"{_dt}{_sfx}.json").write_text(
+            json.dumps({**_s40, "doc_type": _dt}, ensure_ascii=False), encoding="utf-8")
+_e40 = {**_os.environ, "ONTO_FIXTURES": str(_f40)}
+
+
+def _reg40(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e40, stdin=subprocess.DEVNULL)
+
+
+_reg40("generate", "f40ok", "process", str(RAW / "CP01.xlsx"))
+_r40 = _reg40("review", "f40ok", "--instruct", "복수값 구분자를 더 받아라",
+              "--no-llm-coord")
+show("① --instruct 재생성분이 하네스를 지난다 — FAIL이면 자동 해소가 돈다",
+     "기계 관문(하네스): FAIL" in _r40.stdout
+     and "재생성 지시 (자동(하네스))" in _r40.stdout
+     and "기계 관문(하네스): PASS" in _r40.stdout, _r40.stdout[-90:])
+_st40 = json.loads((REVIEW / "f40ok" / "state.json").read_text(encoding="utf-8"))
+show("① 지시 이력이 한 사슬이다 — 사람(검수 지시) → 자동(하네스)",
+     [(i["n"], i["by"]) for i in _st40["instructions"]]
+     == [(1, "사람(검수 지시)"), (2, "자동(하네스)")], str(_st40["instructions"])[:60])
+show("① 통과하면 뷰가 선다", _st40["machine_gate"] == "PASS"
+     and (REVIEW / "f40ok" / "view.json").exists() and _r40.returncode == 0)
+_reg40("generate", "f40no", "process", str(RAW / "CP01.xlsx"))
+_r41 = _reg40("review", "f40no", "--instruct", "이렇게 고쳐라", "--no-llm-coord")
+_st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8"))
+# **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 뷰가 생겨 붉는다.
+show("① 해소 못 하면 **뷰를 만들지 않는다** · machine_gate=FAIL (변이 검출 지점)",
+     _st41["machine_gate"] == "FAIL"
+     and not (REVIEW / "f40no" / "view.json").exists()
+     and "검수 뷰를 만들지 않았다" in _r41.stdout and _r41.returncode != 0,
+     [l.strip() for l in _r41.stdout.splitlines() if "만들지 않았다" in l][:1])
+show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
+     _calls.get("cmd_review", []).count("machine_gate") == 1)
+for _d in ("f40ok", "f40no"):
+    shutil.rmtree(REVIEW / _d, ignore_errors=True)
+shutil.rmtree(_f40, ignore_errors=True)
+
+# ── ② D-79에 rehearsal · 렌더러가 낸다
+_vs = json.loads((ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
+_summ = (_vs["properties"]["sections"]["properties"]["parse_result"]
+         ["properties"]["summary"]["properties"])
+show("② D-79 계약에 summary.rehearsal이 있다 (실려 있는데 계약에 없던 키)",
+     "rehearsal" in _summ
+     and set(_summ["rehearsal"]["properties"]) == {"max_rows", "full_rows", "truncated"})
+_rh = _RR.render({"doc_type": "x", "adapter_version": "1", "payload_kind": "table",
+                  "sections": {"parse_result": {
+                      "summary": {"samples": 2, "pieces": 200, "fill_rate": {},
+                                  "rehearsal": {"max_rows": 200, "full_rows": 5231,
+                                                "truncated": True}},
+                      "anomalies": [], "normal": {"excerpt": [], "all": [],
+                                                  "columns": [], "tree": []}},
+                      "role_table": [], "adapter_summary": {}}})
+show("② 렌더러가 「부분 리허설 — 전 M행 중 앞 N행」을 요약에 낸다 (승인 근거)",
+     "부분 리허설 — 전 5,231행 중 앞 200행만 파싱했다" in _rh,
+     [l for l in _rh.splitlines() if "부분 리허설" in l][:1])
+show("② 전량 파싱이면 그 줄이 없다 (없는 사실을 만들지 않는다)",
+     "부분 리허설" not in _RR.render(
+         {"doc_type": "x", "adapter_version": "1", "payload_kind": "table",
+          "sections": {"parse_result": {"summary": {"samples": 1, "pieces": 3,
+                                                    "fill_rate": {}, "rehearsal": {}},
+                                        "anomalies": [], "normal": {"excerpt": [], "all": [],
+                                                                    "columns": [], "tree": []}},
+                       "role_table": [], "adapter_summary": {}}}))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

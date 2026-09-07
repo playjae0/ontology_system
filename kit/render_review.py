@@ -77,6 +77,15 @@ def _summary(s):
     out = ["<div class='stat'>"]
     out += [f"<div><b>{e(v)}</b>{e(k)}</div>" for k, v in cells]
     out.append("</div>")
+    reh = s.get("rehearsal") or {}
+    if reh.get("truncated"):
+        # **승인 근거 화면의 필수 표시**(§6.5 · [정정] 40) — 이상 신호에도 뜨지만
+        # 요약에도 둔다: 사람이 먼저 보는 자리가 요약이다.
+        full = reh.get("full_rows") or 0
+        part = reh.get("max_rows") or 0
+        out.append('<p class="warn-note">부분 리허설 — 전 '
+                   + e(f"{full:,}") + "행 중 앞 " + e(f"{part:,}")
+                   + "행만 파싱했다 (전량은 --rows all)</p>")
     fill = s.get("fill_rate") or {}
     if fill:
         out.append("<table><tr><th>필드</th>"

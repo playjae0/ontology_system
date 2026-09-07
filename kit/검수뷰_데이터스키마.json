@@ -44,6 +44,15 @@
                 "pieces": {"type": "integer"},
                 "failures": {"type": "integer"},
                 "warnings": {"type": "integer"},
+                "rehearsal": {
+                  "type": "object",
+                  "_note": "**부분 리허설 표시**(2B ⑥-2 · [정정] 40) — 앞 N행만 파싱했다는 사실. 이 화면이 승인 근거이므로 숨기지 않는다: 앞 200행만 보고 승인했는데 그 사실이 화면에 없으면 승인자는 전량을 봤다고 믿는다. 전량 파싱이면 빈 객체다.",
+                  "properties": {
+                    "max_rows": {"type": ["integer", "null"]},
+                    "full_rows": {"type": "integer"},
+                    "truncated": {"type": "boolean"}
+                  }
+                },
                 "split": {
                   "type": "array",
                   "_note": "분할 크기 분포(B45) — 두 경로(지도·어댑터)가 같은 자리에 싣는다. 값은 산출자가 채우고 렌더러는 그린다.",

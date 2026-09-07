@@ -1203,6 +1203,21 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
         else:
             st["adapter"], st["schema"] = (str(_rel(ad)), str(_rel(sc)))
             print(f"   재생성 {st['revision']}회째 → {_rel(ad)}")
+            # **지시는 사람 것이지만 산출은 LLM 것이다**([정정] 40 · M9). 관문을
+            # 안 지난 산출이 확정되면 「통과분만 확정」(B50)이 검수 지시 한 번으로
+            # 뚫린다 — 규약 10을 어긴 어댑터가 `--instruct` 한 줄로 등록부에 든다.
+            # **생성 단계와 같은 함수·같은 해소 절차**(자동 1회 → 문답 → [y/N])다.
+            _pkg_path = REVIEW / doc_type / "input_package.json"
+            _pkg = (json.loads(_pkg_path.read_text(encoding="utf-8"))
+                    if _pkg_path.exists() else None)
+            st["machine_gate"] = machine_gate(doc_type, st, st["samples"], _pkg)
+            _save_state(doc_type, st)
+            if st["machine_gate"] != "PASS":
+                print(f"   기계 관문 FAIL — **검수 뷰를 만들지 않았다.** 산출은 "
+                      f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
+                print(f"   지시를 바꿔 다시: python run.py register review "
+                      f"{doc_type} --instruct \"…\"")
+                return 1
 
     samples = st["samples"]
     print(f"  {llm.mode_line()}")          # B42 ⑤
