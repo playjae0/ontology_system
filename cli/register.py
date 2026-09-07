@@ -23,6 +23,8 @@
        --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
        --no-fewshot 참조 어댑터 주입을 끈다(스켈레톤 본문은 유지) — 컨텍스트가 좁을 때
        --resume     기존 입력 패키지로 **초안만** 다시 받는다 (문답을 다시 하지 않는다)
+  python cli/register.py generate <doc_type> --resume
+       └ resume은 **doc_type 하나만** 필요하다 — 층·표본은 패키지에서 읽는다
        --use-basic  분할 자명 계열(PPT)은 LLM 생성을 건너뛰고 **기본 어댑터를 정본으로**
                     등재 경로에 놓는다 (§6.4-5) — 검수·승인 1회는 그대로다(M4)
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
@@ -250,11 +252,41 @@ GENERATE_SCHEMA = {
             },
         },
         "confidence_cut": {"type": ["integer", "null"]},
+        # **안 쓰는 열도 판정을 갖는다**(C19 개정 · B49). 부재로 추론하지 않는다 —
+        # 차집합은 「판정해서 뺀 열」·「판단이 안 선 열」·「생성이 빠뜨린 열」 셋을
+        # 가르지 못한다. `kind`의 닫힌 2값은 **enum으로 잠그고 코드가 다시 검증한다**
+        # (게이트웨이가 enum을 무시해도 조용히 흐르지 않게 — `unmappable_of`).
+        "unmappable": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"field": {"type": "string"},
+                               "kind": {"type": "string",
+                                        "enum": ["excluded", "undecided"]},
+                               "reason": {"type": "string"}},
+                "required": ["field", "kind", "reason"],
+                "additionalProperties": False,
+            },
+        },
     },
     "required": ["adapter_py", "schema_json", "role_counts",
-                 "attribute_ranking", "confidence_cut"],
+                 "attribute_ranking", "confidence_cut", "unmappable"],
     "additionalProperties": False,
 }
+
+
+def _rel(p):
+    """레포 기준 상대 경로 — **밖이면 절대 경로 그대로**다.
+
+    `ONTO_FIXTURES`는 「사내에서 mock을 통째로 들어내고 실자산으로 갈아 끼울 때의
+    손잡이」(core/fixtures.py)라 레포 밖을 가리킬 수 있다. 그때 `relative_to`는
+    `ValueError`로 죽는다 — 손잡이를 실제로 당기면 생성이 크래시했다(실측).
+    `ROOT / <절대 경로>`는 절대 경로를 그대로 돌려주므로 상태에 실어도 안전하다.
+    """
+    try:
+        return p.relative_to(ROOT)
+    except ValueError:
+        return p
 
 
 def _note_error(doc_type, e):
@@ -361,7 +393,20 @@ def _draft_live(doc_type, revision):
     ad = d / f"adapter{suffix}.py"
     sc = d / f"schema{suffix}.json"
     ad.write_text(out["adapter_py"], encoding="utf-8")
-    _write_schema(sc, out["schema_json"])
+    # **`unmappable`은 코드가 스키마에 병합한다**(B49). 모델에게 `schema_json`
+    # 문자열 **안에** 직접 넣게 하면 두 자리(최상위 키와 문자열 속)가 어긋날 때
+    # 어느 쪽이 정본인지 정해지지 않는다 — 산출은 최상위 키 하나로 받고 병합은
+    # 결정적 코드가 한다. **깨진 JSON이면 원문을 보존한다**(_write_schema와 같은 규율).
+    sc_text = out["schema_json"]
+    if out.get("unmappable") is not None:
+        try:
+            obj = json.loads(sc_text) if isinstance(sc_text, str) else dict(sc_text)
+            obj["unmappable"] = out["unmappable"]
+            sc_text = json.dumps(obj, ensure_ascii=False)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            store.append_defect(
+                f"{doc_type}: schema_json이 JSON이 아니라 unmappable을 병합하지 못했다")
+    _write_schema(sc, sc_text)
     # **랭킹·경계선·통계는 산출의 일부다** — 파일 둘로는 담기지 않아 상태에 남긴다.
     # 검수 뷰가 이것으로 「갈린 열」과 「경계선 부근」을 먼저 보인다(B39 ③).
     meta = {k: out[k] for k in ("role_counts", "attribute_ranking", "confidence_cut")
@@ -418,6 +463,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
         print(f"  {llm.mode_line()}")
         print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
+        if layer or samples:
+            # **무시하되 말한다** — 사람이 준 값이 안 쓰였다는 사실을 침묵으로
+            # 넘기면, 층을 바꾸려고 다시 준 사람이 바뀐 줄 안다.
+            print(f"   [생성] --resume — 층·표본 인자는 무시한다 (패키지의 값을 쓴다: "
+                  f"layer={pkg['human']['layer']}, "
+                  f"표본 {len(pkg['human']['samples'])}건)")
         _r = (pkg.get("human") or {}).get("hint")
         if isinstance(_r, dict) and _r.get("interview"):
             print(f"   문답 {len(_r['interview'])}라운드가 패키지에 남아 있다")
@@ -425,16 +476,16 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         if ad is None:
             raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
                              f"'{doc_type}' 부재 (D-10)")
-        print(f"   초안 수령: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
+        print(f"   초안 수령: {_rel(ad)} · {_rel(sc)}")
         st = _state(doc_type) or {}
-        _save_state(doc_type, {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
-                               "samples": pkg["human"]["samples"],
-                               "hint": pkg["human"]["hint"],
-                               "adapter": str(ad.relative_to(ROOT)),
-                               "schema": str(sc.relative_to(ROOT)),
-                               "revision": st.get("revision", 0),
-                               "instructions": st.get("instructions", [])})
-        return 0
+        st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
+              "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"],
+              "adapter": str(_rel(ad)),
+              "schema": str(_rel(sc)),
+              "revision": st.get("revision", 0),
+              "instructions": st.get("instructions", [])}
+        _save_state(doc_type, st)
+        return _finish_generate(doc_type, st, st["samples"], pkg)
 
     if registry.lookup(doc_type):
         raise SystemExit(f"[생성] doc_type 이름 중복 — '{doc_type}'은 이미 등록돼 있다")
@@ -554,20 +605,21 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     if ad is None:
         raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
                          f"'{doc_type}' 부재 (D-10). 실물 경로는 생성 LLM 훅이다")
-    print(f"   초안 수령: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
+    print(f"   초안 수령: {_rel(ad)} · {_rel(sc)}")
     u = llm.usage_total()
     if u["calls"]:
         print(f"   LLM 사용량 — 호출 {u['calls']:,}회 · 토큰 {u['total_tokens']:,}"
               f"(입력 {u['prompt_tokens']:,} · 출력 {u['completion_tokens']:,})"
               + (f" · **응답 잘림 {u['truncated']}회**" if u["truncated"] else ""))
-    _save_state(doc_type, {"doc_type": doc_type, "layer": layer,
-                           "samples": [str(s) for s in samples],
-                           "hint": pkg["human"]["hint"],
-                           "adapter": str(ad.relative_to(ROOT)),
-                           "schema": str(sc.relative_to(ROOT)),
-                           "revision": 0, "instructions": [],
-                           "basic_adapter_proposal": proposal})
-    return 0
+    st = {"doc_type": doc_type, "layer": layer,
+          "samples": [str(s) for s in samples],
+          "hint": pkg["human"]["hint"],
+          "adapter": str(_rel(ad)),
+          "schema": str(_rel(sc)),
+          "revision": 0, "instructions": [],
+          "basic_adapter_proposal": proposal}
+    _save_state(doc_type, st)
+    return _finish_generate(doc_type, st, samples, pkg)
 
 
 def _use_basic(doc_type, layer, samples, hint, proposal):
@@ -613,14 +665,15 @@ def _use_basic(doc_type, layer, samples, hint, proposal):
     print(f"   LLM 사용량 — 이 명령에서 호출 {u['calls'] - u0:,}회 "
           f"(기본 어댑터 — 생성 세션 없음 · 프로세스 누계 {u['calls']:,}회)")
     print(f"   다음: python run.py register review {doc_type}  (검수·승인 1회는 그대로다 — M4)")
-    _save_state(doc_type, {"doc_type": doc_type, "layer": layer,
-                           "samples": [str(s) for s in samples],
-                           "hint": pkg["human"]["hint"],
-                           "adapter": str(ad.relative_to(ROOT)),
-                           "schema": str(sc.relative_to(ROOT)),
-                           "revision": 0, "instructions": [],
-                           "basic_adapter_proposal": proposal, "use_basic": True})
-    return 0
+    st = {"doc_type": doc_type, "layer": layer,
+          "samples": [str(s) for s in samples],
+          "hint": pkg["human"]["hint"],
+          "adapter": str(_rel(ad)),
+          "schema": str(_rel(sc)),
+          "revision": 0, "instructions": [],
+          "basic_adapter_proposal": proposal, "use_basic": True}
+    _save_state(doc_type, st)
+    return _finish_generate(doc_type, st, samples, pkg)
 
 
 # ================================================================ ② 검수
@@ -630,6 +683,141 @@ def harness(adapter, schema, samples):
                         str(adapter), str(schema)] + [str(s) for s in samples],
                        capture_output=True, text=True, cwd=str(ROOT))
     return r.returncode == 0, r.stdout
+
+
+# **실패 분류표**(B50 · 문서 6 §6.5) — 「문면이 고칠 방법을 담는가」로 가른다.
+# 담으면 그 문면을 **그대로 지시로 실어** 재생성한다(사람의 통역을 거치지 않는다 —
+# C27: 사내는 코딩하지 않는다). 담지 않으면 원인 규명이 필요하므로 **묻는다.**
+#
+# **목록 밖은 기본이 문답이다.** 새 하네스 항목이 생겨도 조용히 자동으로 흐르지
+# 않는다 — 모르는 실패를 자동으로 되돌리면 같은 실패가 무한히 왕복한다.
+AUTO_FIX = {
+    "규약 10": "재구현 대신 무엇을 부를지가 문면에 있다 (parser.normalizer)",
+    "source_locator가 문서 내 유일": "중복된 locator가 문면에 있다",
+    "원본 헤더 문자열이 전부 expects에 실림": "빠진 헤더 목록이 문면에 있다",
+    "전 필드의 role이 닫힌 5종 안": "닫힌 5종 밖 값이 문면에 있다",
+    "파서 출력에 스키마 밖 필드 없음": "스키마 밖 필드 이름이 문면에 있다",
+    "adapter.doc_type == schema.doc_type": "어긋난 두 값이 문면에 있다",
+    "필수 키 4종": "빠진 키 이름이 문면에 있다",
+    "헤더 4키": "빠진 키 이름이 문면에 있다",
+}
+
+
+def classify_failures(harness_out):
+    """하네스 `[FAIL]` 줄을 `(자동, 문답)` 둘로 가른다 (B50).
+
+    가르는 기준은 **문면이 답을 담는가** 하나다. 「조각 0건」은 왜 0건인지를 문면이
+    말하지 않으므로 자동으로 되돌릴 것이 없고, 「규약 10 재구현」은 무엇을 부르라는
+    말이 문면에 이미 있다.
+    """
+    auto, ask = [], []
+    for ln in [x.strip() for x in harness_out.splitlines() if "[FAIL]" in x]:
+        (auto if any(k in ln for k in AUTO_FIX) else ask).append(ln)
+    return auto, ask
+
+
+def _orphan_of(st):
+    """스키마 대장에 없는 열 — 관문의 셋째 조건(B49). 어댑터를 못 읽으면 빈 목록이다
+    (그 경우 하네스가 이미 FAIL이므로 여기서 다시 말할 것이 없다)."""
+    try:
+        mod = _load(ROOT / st["adapter"], f"gate_{st['doc_type']}")
+        schema = json.loads((ROOT / st["schema"]).read_text(encoding="utf-8"))
+        return unmappable_of(schema, mod)[2]
+    except Exception:
+        return []
+
+
+def _ask_more(n):
+    """1회 재생성 뒤에도 실패하면 **묻고 진행한다** — 비용 동의(좌표 보조와 동형)."""
+    try:
+        ans = input(f"   1회 재생성 후에도 FAIL {n}건이다. 더 돌릴까? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("   (비대화형 — 끄고 실패로 끝낸다)")
+        ans = ""
+    return ans in ("y", "yes")
+
+
+def _finish_generate(doc_type, st, samples, pkg=None):
+    """생성의 끝 — **기계 관문을 세우고 그 사실을 화면이 말한다** (M9 개정 · B50).
+
+    통과하지 못하면 산출은 `review/`에 남되 **검수로 넘어가지 않는다**: 미통과
+    산출을 검수 화면에 올리면 사람이 기계의 몫을 대신 지게 된다.
+    """
+    st["machine_gate"] = machine_gate(doc_type, st, samples, pkg)
+    _save_state(doc_type, st)
+    if st["machine_gate"] == "PASS":
+        print(f"   기계 관문 PASS — 검수로 넘어간다: "
+              f"python run.py register review {doc_type}")
+        return 0
+    print(f"   기계 관문 FAIL — **검수로 넘어가지 않았다.** 산출은 "
+          f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
+    print(f"   같은 표본으로 다시 시도: python run.py register generate "
+          f"{doc_type} --resume")
+    return 1
+
+
+def machine_gate(doc_type, st, samples, pkg=None):
+    """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
+
+    구판은 하네스를 검수에서 돌려 실패를 **사람 화면에 올렸다.** 그러면 사내가
+    기계 실패를 자연어로 통역해 `--instruct`로 되돌려주는 것이 유일한 해소 수단이
+    되는데, **사내는 코딩하지 않는다**(C27) — 그 통역을 할 수 있는 사람이 없다.
+
+    그래서 여기서 돌고, 실패는 **문면이 답을 담는지**로 갈라 처리한다(`AUTO_FIX`):
+    담으면 그 문면을 그대로 지시로 실어 **자동 재생성 1회**, 담지 않으면 **문답**.
+    1회 뒤에도 실패하면 묻고 진행한다 — 같은 항목이 또 실패하면 프롬프트가 그것을
+    못 고치는 것이고, 다른 항목이 실패하면 재생성이 맞던 곳을 깬 것이라 둘 다 사람
+    판단이 필요하다.
+    """
+    tries = 0
+    while True:
+        ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples)
+        print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
+              f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
+        orphan = _orphan_of(st)
+        if orphan:
+            print(f"   스키마 대장에 없는 열 {len(orphan)}건 — "
+                  f"{[u['field'] for u in orphan]}")
+        verdict = gate_verdict(ok, True, orphan)
+        st["harness_out"] = out
+        if verdict == "PASS":
+            return verdict
+        auto, ask = classify_failures(out)
+        for ln in auto + ask:
+            print(f"     {ln}")
+        if orphan and not (auto or ask):
+            # 하네스는 통과했는데 대장만 어긋났다 — 재생성 지시가 될 문면이 있다.
+            auto = [f"[FAIL] 원본 헤더의 열 {[u['field'] for u in orphan]}이 스키마의 "
+                    f"fields에도 unmappable에도 없다 — 전 열이 둘 중 하나에 있어야 한다"]
+        if tries >= 1 and not _ask_more(len(auto) + len(ask)):
+            return "FAIL"
+        tries += 1
+        if ask:
+            print(f"   → 문면이 답을 담지 않는 실패 {len(ask)}건 — 문답을 연다")
+            rounds = _interview(pkg or {}, context=ask)
+            answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
+            instruction = ("사람 문답: " + answered) if answered else "\n".join(ask)
+            by = "사람(문답)" if answered else "자동(하네스 문면 — 문답 무응답)"
+        else:
+            instruction, by = "\n".join(auto), "자동(하네스)"
+        print(f"   → 재생성 지시 ({by}) — 보낸 문면 그대로:")
+        for ln in instruction.splitlines():
+            print(f"     {ln}")
+        st["revision"] = st.get("revision", 0) + 1
+        # **자동으로 보낸 지시도 이력에 남긴다**(B50) — 조용히 도는 구간을 두지
+        # 않는다: 남지 않으면 「몇 회 만에 통과했나」가 축적되지 않아 프롬프트 품질
+        # 문제와 수렴 문제를 나중에 가를 수 없다.
+        st.setdefault("instructions", []).append(
+            {"n": st["revision"], "instruction": instruction,
+             "at": store._now(), "by": by})
+        ad, sc = draft(doc_type, st["revision"])
+        if ad is None:
+            print(f"   재생성 초안을 얻지 못했다 — "
+                  f"fixture '{doc_type}_rev{st['revision']}' 없음")
+            return "FAIL"
+        st["adapter"] = str(_rel(ad))
+        st["schema"] = str(_rel(sc))
+        print(f"   재생성 {st['revision']}회째 → {_rel(ad)}")
 
 
 def _profiles(doc_type):
@@ -659,9 +847,12 @@ def role_table(schema, adapter_mod, st=None, prof=None):
                      or ("공용 블록이 선언한 필드다" if f in from_blocks
                          else "생성 세션의 배정 근거"),
                      **({"from_block": "공용 블록"} if f in from_blocks else {})})
-    for f in unmappable_of(schema, adapter_mod):
-        rows.append({"field": f, "role": "UNMAPPABLE",
-                     "reason": "5종 어디에도 맞지 않는다 — 사람 판정 대기 (D-30)"})
+    # **여섯째 경로에 올리는 것은 「판단이 안 선 열」뿐이다**(B49 · C19 개정).
+    # 판정해서 뺀 열(`excluded`)은 제외 목록이 자리이고, 대장에 없는 열(`orphan`)은
+    # 결함이다 — 셋을 한 표에 섞으면 구판처럼 다시 「같은 질문」이 된다.
+    for u in unmappable_of(schema, adapter_mod)[1]:
+        rows.append({"field": u["field"], "role": "UNMAPPABLE",
+                     "reason": f"생성이 판단하지 못했다: {u.get('reason') or '사유 없음'}"})
 
     # ── 사람이 볼 것을 줄인다 (B39 ③ — 3단 깔때기의 셋째 단) ──────────
     # **전 열을 평평하게 보이면 이 절차의 목적이 달성되지 않는다**(실측: attribute
@@ -694,20 +885,14 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     return rows
 
 
-def unmappable_of(schema, adapter_mod):
-    """UNMAPPABLE 열 — **어댑터가 스스로 밝힌 미매핑분**에서 판정한다.
+def _unmapped_labels(exp, adapter_mod):
+    """어댑터가 **출력하지 않는** 헤더 라벨 — 차집합 복원.
 
-    D-30은 "UNMAPPABLE 열은 스키마 fields에 넣지 않고 어댑터 출력에서도 제외"라고
-    정한다. 그러면 그 열은 어디에도 이름이 남지 않아 배정표에서 사라지고, **6지선다의
-    여섯째 경로가 화면에서 증발한다** — 사람이 판정해야 할 것이 판정 화면에 없다.
-
-    복원 경로는 어댑터의 선언 둘의 차집합이다: `header_labels`(원본 헤더 전량 — D-29)
-    에 있는데 `columns`(출력 필드명 매핑)가 가리키지 않는 열. 스키마가 `unmappable`을
-    명시하면 그쪽이 이긴다 — 명시는 판정이고 차집합은 복원이다.
+    구판 스키마의 복원 재료이자, 신판에서 `orphan`(대장에 없는 열)을 찾는 재료다.
+    `columns`가 가리키는 열은 여기 오지 않는다 — **구조 필드**(`process_ref`·
+    `electrode_type` 등)가 그 자리이고, 그것은 UNMAPPABLE이 아니라 정상·완결이다
+    (D-46 · 생성 템플릿 「구조 필드는 UNMAPPABLE이 아니다」).
     """
-    if schema.get("unmappable"):
-        return list(schema["unmappable"])
-    exp = (getattr(adapter_mod, "ADAPTER", {}) or {}).get("expects") or {}
     labels, cols = exp.get("header_labels") or [], exp.get("columns") or {}
     if not labels or not cols:
         return []
@@ -729,6 +914,50 @@ def unmappable_of(schema, adapter_mod):
     return [labels[i] for i in range(len(labels)) if _col(i + 1) not in used]
 
 
+def unmappable_of(schema, adapter_mod):
+    """전 열의 판정 — **`(excluded, undecided, orphan)` 셋**으로 가른다 (C19 개정 · B49).
+
+    | 갈래 | 무엇 | 화면 |
+    |---|---|---|
+    | `excluded` | 생성이 **판정해서 뺐다**(사유 필수) | 제외 목록 — **질문이 아니다** |
+    | `undecided` | 생성이 **판단을 못 했다** | 6지선다 질문 |
+    | `orphan` | 헤더에 있는데 **어느 쪽에도 없다** | 결함 — 기계 관문을 막는다 |
+
+    셋을 가르는 이유(실측): 구판은 차집합 하나로 복원해 셋이 **같은 질문**으로 떴다.
+    그래서 「생성 때 이미 판정한 열」이 검수에서 다시 물어졌고(사내 실사용 신고),
+    「생성이 빠뜨린 열」은 그 질문 더미에 묻혀 보이지 않았다.
+
+    **구판 스키마**(`unmappable` 키 없음)는 차집합 결과를 전부 `undecided`로 본다 —
+    「판정해서 뺐다」고 말할 근거가 어디에도 없기 때문이다(하위 호환).
+    """
+    exp = (getattr(adapter_mod, "ADAPTER", {}) or {}).get("expects") or {}
+    declared = schema.get("unmappable")
+    if declared is None:
+        return [], [{"field": f, "kind": "undecided",
+                     "reason": "구판 스키마 — 판정 기록이 없다 "
+                               "(generate --resume으로 다시 뽑으면 갈린다)"}
+                    for f in _unmapped_labels(exp, adapter_mod)], []
+    excluded, undecided = [], []
+    for u in declared:
+        item = dict(u) if isinstance(u, dict) else {"field": str(u), "reason": ""}
+        kind = item.get("kind")
+        if kind == "excluded":
+            excluded.append(item)
+            continue
+        if kind != "undecided":
+            # **모르면 묻는다** — enum 밖의 값을 조용히 「제외」로 치지 않는다.
+            store.append_defect(
+                f"unmappable.kind가 닫힌 2값 밖이다 — {kind!r} "
+                f"(field={item.get('field')!r})")
+            item = {**item, "kind": "undecided"}
+        undecided.append(item)
+    named = {i.get("field") for i in excluded + undecided}
+    orphan = [{"field": lab, "kind": "orphan",
+               "reason": "스키마 대장에 없다 — 생성이 빠뜨렸거나 문서 양식이 바뀌었다"}
+              for lab in _unmapped_labels(exp, adapter_mod) if lab not in named]
+    return excluded, undecided, orphan
+
+
 def _label_columns(exp, adapter_mod):
     """헤더 라벨 → **실제 열 문자**. 실물을 못 읽으면 빈 dict."""
     sample = getattr(adapter_mod, "SAMPLE", None) or exp.get("sample_path")
@@ -747,6 +976,17 @@ def _label_columns(exp, adapter_mod):
         return out
     except Exception:
         return {}
+
+
+def gate_verdict(harness_ok, parses_ok, orphan):
+    """기계 관문의 판정 — **셋이 모두 참이어야 PASS**다 (§6.6-6 · B49).
+
+    `orphan`(스키마 대장에 없는 열)이 여기 있는 이유: 판정되지 않은 열이 있는 채로
+    확정되면 **그 열은 영영 안 보인다** — 등록부에 오른 스키마가 그 열을 모르므로
+    인입도, 검수도, 질의도 그 열을 지나친다. 사람이 판정할 것이 아니라 대장이
+    어긋난 것이므로 질문이 아니라 관문이다.
+    """
+    return "PASS" if (harness_ok and parses_ok and not orphan) else "FAIL"
 
 
 def build_view(st, results, harness_ok, harness_out):
@@ -797,10 +1037,18 @@ def build_view(st, results, harness_ok, harness_out):
         for f in r.failures:
             anomalies.append({"kind": "failure", "message": f["reason"],
                               "where": r.doc_id, "detail": f.get("detail") or {}})
-    for f in unmappable_of(schema, mod):
+    # **셋을 갈라 낸다**(B49) — 판정된 제외는 질문이 아니고, 대장에 없는 열은 결함이다.
+    excluded, undecided, orphan = unmappable_of(schema, mod)
+    for u in undecided:
         anomalies.append({"kind": "question",
-                          "message": f"'{f}' 열은 role 5종 어디에 배정합니까 — "
-                                     f"생성 세션이 UNMAPPABLE로 올렸다",
+                          "message": f"'{u['field']}' 열은 role 5종 어디에 배정합니까 — "
+                                     f"생성이 판단하지 못했다: "
+                                     f"{u.get('reason') or '사유 없음'}",
+                          "where": st["doc_type"]})
+    for u in orphan:
+        anomalies.append({"kind": "failure",
+                          "message": f"'{u['field']}' 열이 스키마 대장에 없다 — "
+                                     f"생성이 빠뜨렸거나 문서 양식이 바뀌었다",
                           "where": st["doc_type"]})
 
     tree = [{"section": p.get("section", ""), "locator": p["source_locator"],
@@ -828,7 +1076,10 @@ def build_view(st, results, harness_ok, harness_out):
                             "warnings": sum(1 for a in anomalies if a["kind"] == "warning"),
                             "fill_rate": fill},
                 "anomalies": anomalies,
-                "normal": {"excerpt": pieces[:EXCERPT], "all": pieces,
+                # **제외 목록은 정상 구획이다** — 판정이 끝난 열이라 이상 신호가
+                # 아니다. 다만 화면에서 사라지면 안 된다(무엇을 뺐는지가 승인 재료다).
+                "normal": {"excluded": excluded,
+                           "excerpt": pieces[:EXCERPT], "all": pieces,
                            "columns": keys if kind == "table" else [],
                            "tree": tree if kind == "prose" else []},
             },
@@ -943,22 +1194,40 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
     if instruct:                                   # 재생성 루프 1회
         st["revision"] += 1
         st.setdefault("instructions", []).append(
-            {"n": st["revision"], "instruction": instruct, "at": store._now()})
+            {"n": st["revision"], "instruction": instruct, "at": store._now(),
+             "by": "사람(검수 지시)"})
         ad, sc = draft(doc_type, st["revision"])
         if ad is None:
             print(f"   ⚠ 재생성 대안본 부재 — 초안을 유지한다 "
                   f"(USE_MOCK: fixture '{doc_type}_rev{st['revision']}' 없음)")
         else:
-            st["adapter"], st["schema"] = (str(ad.relative_to(ROOT)),
-                                           str(sc.relative_to(ROOT)))
-            print(f"   재생성 {st['revision']}회째 → {ad.relative_to(ROOT)}")
+            st["adapter"], st["schema"] = (str(_rel(ad)), str(_rel(sc)))
+            print(f"   재생성 {st['revision']}회째 → {_rel(ad)}")
+            # **지시는 사람 것이지만 산출은 LLM 것이다**([정정] 40 · M9). 관문을
+            # 안 지난 산출이 확정되면 「통과분만 확정」(B50)이 검수 지시 한 번으로
+            # 뚫린다 — 규약 10을 어긴 어댑터가 `--instruct` 한 줄로 등록부에 든다.
+            # **생성 단계와 같은 함수·같은 해소 절차**(자동 1회 → 문답 → [y/N])다.
+            _pkg_path = REVIEW / doc_type / "input_package.json"
+            _pkg = (json.loads(_pkg_path.read_text(encoding="utf-8"))
+                    if _pkg_path.exists() else None)
+            st["machine_gate"] = machine_gate(doc_type, st, st["samples"], _pkg)
+            _save_state(doc_type, st)
+            if st["machine_gate"] != "PASS":
+                print(f"   기계 관문 FAIL — **검수 뷰를 만들지 않았다.** 산출은 "
+                      f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
+                print(f"   지시를 바꿔 다시: python run.py register review "
+                      f"{doc_type} --instruct \"…\"")
+                return 1
 
     samples = st["samples"]
     print(f"  {llm.mode_line()}")          # B42 ⑤
     print(f"■ ② 검수 — {doc_type} (표본 {len(samples)}부)")
-    ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples)
-    print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
-          f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
+    # **하네스는 여기서 돌지 않는다**(M9 개정 · B50) — 생성이 이미 돌려 통과분만
+    # 넘겼다. 검수는 **내용 판단**이다: role 배정·제외 열·분할을 사람이 본다.
+    ok = st.get("machine_gate") == "PASS"
+    out = st.get("harness_out", "")
+    print(f"   기계 관문: 생성 단계에서 {'PASS' if ok else 'FAIL'} "
+          f"(하네스는 생성이 돌린다 — 검수는 내용을 본다)")
 
     mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
 
@@ -998,7 +1267,15 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
     (d / "view.json").write_text(json.dumps(view, ensure_ascii=False, indent=2) + "\n",
                                  encoding="utf-8")
     (d / "view.html").write_text(render(view), encoding="utf-8")   # kit 렌더러 호출
-    st["machine_gate"] = "PASS" if (ok and all(r.ok for r in results)) else "FAIL"
+    # **판정되지 않은 열이 있는 채로 확정되면 그 열은 영영 안 보인다**(B49) —
+    # orphan은 기계 관문을 막는다. 「사람이 판정할 것」이 아니라 「대장이 어긋났다」다.
+    # **생성이 세운 값과 파싱 결과의 AND**(B50 ⑧) — 리허설이 깨지면 여전히 FAIL이다.
+    _orphan = unmappable_of(
+        json.loads((ROOT / st["schema"]).read_text(encoding="utf-8")), mod)[2]
+    if _orphan:
+        print(f"   스키마 대장에 없는 열 {len(_orphan)}건 — "
+              f"{[u['field'] for u in _orphan]} (기계 관문 FAIL)")
+    st["machine_gate"] = gate_verdict(ok, all(r.ok for r in results), _orphan)
     _save_state(doc_type, st)
 
     an = view["sections"]["parse_result"]["anomalies"]
@@ -1132,7 +1409,13 @@ def main(argv):
         use_basic = "--use-basic" in rest
         if use_basic:
             rest.remove("--use-basic")
-        return cmd_generate(rest[0], rest[1], rest[2:], hint, interview=interview,
+        # **위치 인자가 모자라면 죽지 말고 사용법을 낸다.** `--resume`은 doc_type
+        # 하나만 필요하다 — 층·표본은 패키지에 이미 있고 resume 갈래가 그것을
+        # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
+        if not rest or (not resume and len(rest) < 2):
+            raise SystemExit(__doc__)
+        return cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
+                            hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic)
     if cmd == "review":
         raw_rows = opt("--rows", str(REHEARSAL_ROWS))

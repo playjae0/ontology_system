@@ -128,6 +128,11 @@ def propose(doc_id, lines, ask=None, src_hash=None):
         m = ask(doc_id, lines)
         m.setdefault("doc_id", doc_id)
         m["source"] = "live"
+        if m.get("unavailable"):
+            # **사유는 보존하지 않는다**(문서 6 §6.3 · [정정] 39) — 보존하면 재인입이
+            # 그것을 재사용해 **영영 평면**이다. 한도를 올려도, 문서를 줄여도 다시
+            # 시도되지 않는다. 보존이 필요한 것은 실제로 산출된 지도뿐이다.
+            return m
         return keep(doc_id, m, src_hash)     # 실산출은 보존한다(§6.3)
     # 대체 갈래는 **보존하지 않는다** — 휴리스틱은 같은 입력이면 늘 같은 지도라
     # 보존이 그 위에 아무것도 더하지 않는다. 보존이 필요한 것은 **매 인입 새로
@@ -147,11 +152,23 @@ def validate(smap, lines):
     셋을 본다: ①헤딩 0건 ②레벨 비단조(1 → 3처럼 건너뜀, 또는 첫 헤딩이 1이 아님)
     ③커버리지 이상(지도가 가리키는 행 집합이 실물 행 집합과 다르다).
     """
+    # **지도가 아예 없는 경우가 먼저다**(문서 6 §6.3 · [정정] 39). `unavailable`은
+    # **데이터 키**다 — 파서는 core의 예외 타입을 알지 않는다(문서 1 A1). 여기서
+    # 끝내는 이유: 아래 검사들이 빈 지도에 대고 사유를 둘 더 붙여, 큐 항목이
+    # 「왜」 대신 겹친 증상 셋을 들고 검수 화면에 가게 된다.
+    if smap.get("unavailable"):
+        return [smap["unavailable"]]
+
     reasons = []
     rows = smap.get("rows") or []
     heads = [r for r in rows if r.get("heading")]
     if not heads:
-        reasons.append("헤딩 0건 — 지도가 구조를 못 찾았다")
+        # 모델이 「판정 불가」를 말했으면 **그 말을 사유로 싣는다**(문서 6 §6.2 —
+        # 「판정 불가로 검수 화면에 올린다」의 실물). 사람이 보는 것은 큐 항목이고,
+        # 거기에 「왜」가 없으면 그 화면은 증상만 말한다.
+        _note = ((smap.get("meta") or {}).get("note") or "").strip()
+        reasons.append(f"헤딩 0건 — 모델: {_note}" if _note
+                       else "헤딩 0건 — 지도가 구조를 못 찾았다")
 
     prev = 0
     for r in heads:

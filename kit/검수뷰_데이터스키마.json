@@ -44,6 +44,51 @@
                 "pieces": {"type": "integer"},
                 "failures": {"type": "integer"},
                 "warnings": {"type": "integer"},
+                "rehearsal": {
+                  "type": "object",
+                  "_note": "**부분 리허설 표시**(2B ⑥-2 · [정정] 40) — 앞 N행만 파싱했다는 사실. 이 화면이 승인 근거이므로 숨기지 않는다: 앞 200행만 보고 승인했는데 그 사실이 화면에 없으면 승인자는 전량을 봤다고 믿는다. 전량 파싱이면 빈 객체다.",
+                  "properties": {
+                    "max_rows": {"type": ["integer", "null"]},
+                    "full_rows": {"type": "integer"},
+                    "truncated": {"type": "boolean"}
+                  }
+                },
+                "split": {
+                  "type": "array",
+                  "_note": "분할 크기 분포(B45) — 두 경로(지도·어댑터)가 같은 자리에 싣는다. 값은 산출자가 채우고 렌더러는 그린다.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "doc_id": {"type": "string"},
+                      "청크수": {"type": "integer"},
+                      "행수_최소": {"type": "integer"},
+                      "행수_최대": {"type": "integer"},
+                      "행수_평균": {"type": "number"},
+                      "목표구간": {"type": "array", "items": {"type": "integer"}},
+                      "너무_짧은_청크": {"type": "integer"},
+                      "너무_긴_청크": {"type": "integer"},
+                      "레벨_선택": {
+                        "type": ["array", "null"],
+                        "_note": "프레임별 지도 판정. **지도_출처·지시문_판본·지도_없음 셋은 「어느 지도가 실호출이었나」를 사람이 보는 자리다**(B48 ②-7 · 후속 ②) — 휴리스틱 지도는 보존하지 않으므로 이 값이 없으면 디스크 어디에도 남지 않는다.",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "프레임": {"type": "string"},
+                            "분할_레벨": {"type": ["integer", "null"]},
+                            "분할_레벨_사유": {"type": ["string", "null"]},
+                            "레벨_분포": {"type": ["object", "null"]},
+                            "지도_출처": {"enum": ["live", "heuristic", "kept", null],
+                                       "_note": "live=모델이 냈다 · heuristic=번호 패턴(모델 안 부름) · kept=보존분 재사용"},
+                            "지시문_판본": {"type": ["string", "null"],
+                                       "_note": "live일 때 prompts/struct_map.md의 version (재현 조건)"},
+                            "지도_없음": {"type": ["string", "null"],
+                                      "_note": "지도를 못 낸 사유(예산 초과 등) — 있으면 평면 폴백이다(문서 6 §6.3)"}
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
                 "fill_rate": {
                   "type": "object",
                   "_note": "{필드명: 0.0~1.0}. 산출자가 계산한다 — 렌더러가 계산하면 계약이 렌더러에 종속된다.",
@@ -71,6 +116,17 @@
               "_note": "③ 정상 조각 — **발췌 기본 + 전량 접힘**. excerpt는 화면에 펼쳐지고 all은 접힌다.",
               "required": ["excerpt", "all"],
               "properties": {
+                "excluded": {
+                  "type": "array",
+                  "_note": "**판정해서 뺀 열**(B49 · C19 개정) — 사유와 함께 목록으로 보인다. 이상 신호가 아니라 정상 구획이다: 판정이 끝났으므로 질문으로 뜨지 않는다. 다만 화면에서 사라지면 안 된다 — 무엇을 뺐는지가 승인 재료다.",
+                  "items": {
+                    "type": "object",
+                    "required": ["field", "kind", "reason"],
+                    "properties": {"field": {"type": "string"},
+                                   "kind": {"enum": ["excluded"]},
+                                   "reason": {"type": "string"}}
+                  }
+                },
                 "excerpt": {"type": "array", "items": {"type": "object"}},
                 "all": {"type": "array", "items": {"type": "object"}},
                 "columns": {

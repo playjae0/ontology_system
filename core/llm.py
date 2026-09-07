@@ -723,13 +723,31 @@ def map_structure(doc_id, lines):
         if not lim or est <= lim:
             break
     if lim and est > lim:
-        # **보내지 않고 멈춘다**(B41) — 컨텍스트 초과는 응답이 잘리는 게 아니라
-        # 요청이 거부되고, 그 거부는 게이트웨이마다 문면이 달라 원인이 안 보인다.
+        # **보내지 않되 문서를 죽이지 않는다**(문서 6 §6.3 · [정정] 39 — D-113 조정).
+        # 컨텍스트 초과는 응답이 잘리는 게 아니라 요청이 거부되므로 보내지 않는다.
+        # 다만 여기서 예외를 올리면 어댑터 예외가 되어 **문서 단위 실패**(§6.4-7)로
+        # 떨어지고, 지도 없이도 성립하는 평면 인입 + 좌표 태깅까지 함께 잃는다 —
+        # §6.2가 그 폴백을 이미 정해 두었다. 그래서 **지도 형태로 사유를 돌려준다**:
+        # `unavailable` 키가 있으면 「지도 없음 + 사유」이고, 파서는 그것을 타당성
+        # 실패로 받아 평면 폴백 + 큐로 보낸다. 관측(explicit_fail)은 그대로다.
+        # **관측은 행동으로 이어져야 한다** — 생성 경로(`cli/prompt._sent_size`)가
+        # 감축 3단을 내듯, 여기도 「그래서 무엇이 되고 무엇을 하면 되는가」를 낸다.
+        # 이 문면 그대로 `explicit_fail` 로그와 큐 사유(`unavailable`)에 실린다.
         reason = (f"{POINTS['struct_map']} — 크기 예산 초과: 약 {est:,} 토큰 > "
                   f"한도 {lim:,} (행 {len(lines):,}개를 앞 {width}자로 줄인 뒤에도). "
-                  f"보내지 않았다")
+                  f"보내지 않았다\n"
+                  f"   이 문서는 평면으로 인입된다(구조 지도 없이 · "
+                  f"hierarchy_unresolved 큐).\n"
+                  f"   줄이려면: ①LLM_CONTEXT_TOKENS가 게이트웨이 실제 한도와 "
+                  f"맞는지 확인\n"
+                  f"             ②문서를 시트·슬라이드 단위로 나눠 인입")
         log.explicit_fail(_LOG, "core.llm[struct_map]", reason)
-        raise RuntimeError(reason)
+        return {"doc_id": doc_id, "source": "live", "rows": [],
+                "unavailable": reason,
+                "prompt_version": prompt_version("struct_map"),
+                "meta": {"dropped": 0, "note": None, "행_앞자리": width,
+                         "감축": (f"앞 {MAP_LINE_WIDTHS[0]}자 → {width}자 (크기 예산 B41)"
+                                if width != MAP_LINE_WIDTHS[0] else None)}}
     out = chat([{"role": "system", "content": sys_msg},
                 {"role": "user", "content": body}],
                json_schema=STRUCT_MAP_SCHEMA, point="struct_map")

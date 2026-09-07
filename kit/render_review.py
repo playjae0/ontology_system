@@ -47,6 +47,7 @@ th { background: var(--bg2); white-space: nowrap; }
 .anom { border-left: 4px solid var(--bd); padding: 8px 12px; margin: 8px 0;
         background: var(--bg2); }
 td.warn { color: var(--warn); font-weight: 600; }
+p.warn-note { color: var(--warn); font-weight: 600; margin: 0 0 8px; }
 .anom.failure { border-color: var(--fail); } .anom.warning { border-color: var(--warn); }
 .anom.question { border-color: var(--ask); }
 .tag { font-size: 12px; font-weight: 700; letter-spacing: .04em; }
@@ -76,6 +77,15 @@ def _summary(s):
     out = ["<div class='stat'>"]
     out += [f"<div><b>{e(v)}</b>{e(k)}</div>" for k, v in cells]
     out.append("</div>")
+    reh = s.get("rehearsal") or {}
+    if reh.get("truncated"):
+        # **승인 근거 화면의 필수 표시**(§6.5 · [정정] 40) — 이상 신호에도 뜨지만
+        # 요약에도 둔다: 사람이 먼저 보는 자리가 요약이다.
+        full = reh.get("full_rows") or 0
+        part = reh.get("max_rows") or 0
+        out.append('<p class="warn-note">부분 리허설 — 전 '
+                   + e(f"{full:,}") + "행 중 앞 " + e(f"{part:,}")
+                   + "행만 파싱했다 (전량은 --rows all)</p>")
     fill = s.get("fill_rate") or {}
     if fill:
         out.append("<table><tr><th>필드</th>"
@@ -202,10 +212,32 @@ def _split(rows):
             f'<td>{e(r.get("너무_긴_청크"))}</td></tr>')
     out.append("</table>")
     for r in rows:
-        for pick in (r.get("레벨_선택") or []):
-            out.append(f'<p class="sub">지도 경로 — 고른 레벨 '
-                       f'<b>{e(pick.get("분할_레벨"))}</b>: '
-                       f'{e(pick.get("분할_레벨_사유"))}</p>')
+        picks = r.get("레벨_선택") or []
+        if picks:
+            # **어느 지도가 실호출이었나**를 사람이 본다(B48 ②-7 · 후속 ②).
+            # 휴리스틱 지도는 보존하지 않으므로 이 화면이 아니면 볼 자리가 없다.
+            out.append('<table><tr><th>프레임</th><th>지도 출처</th>'
+                       '<th>지시문 판본</th><th>고른 레벨</th><th>근거</th></tr>')
+            for pick in picks:
+                src = pick.get("지도_출처")
+                w = ' class="warn"' if src == "heuristic" else ""
+                out.append(
+                    f'<tr><td>{e(pick.get("프레임"))}</td>'
+                    f'<td{w}>{e(src)}</td>'
+                    f'<td>{e(pick.get("지시문_판본"))}</td>'
+                    f'<td>{e(pick.get("분할_레벨"))}</td>'
+                    f'<td>{e(pick.get("분할_레벨_사유"))}</td></tr>')
+            out.append("</table>")
+            if any(p.get("지도_출처") == "heuristic" for p in picks):
+                out.append('<p class="warn-note">지도 출처 <b>heuristic</b> — '
+                           '모델을 부르지 않았다 · 게이트웨이 설정을 확인하라</p>')
+            for pick in picks:
+                if pick.get("지도_없음"):
+                    out.append(
+                        f'<p class="warn-note">프레임 '
+                        f'<b>{e(pick.get("프레임"))}</b> — 지도 없음: '
+                        + e(pick.get("지도_없음")).replace("\n", "<br>") + '</p>')
+        for pick in picks:
             dist = pick.get("레벨_분포") or {}
             if dist:
                 out.append('<table><tr><th>레벨</th><th>청크</th>'
@@ -217,6 +249,19 @@ def _split(rows):
                         f' ({e(d.get("행수_평균"))})</td>'
                         f'<td>{e(d.get("구간내_청크수"))}</td></tr>')
                 out.append("</table>")
+    return "\n".join(out)
+
+
+def _excluded(rows):
+    """**판정해서 뺀 열** — 질문이 아니라 목록이다(B49). 무엇을 뺐는지가 승인 재료다."""
+    if not rows:
+        return ""
+    out = ['<h3 style="font-size:15px;margin:16px 0 4px">제외한 열 — 생성이 판정했다 '
+           f'({len(rows)}건 · 질문 아님)</h3>',
+           "<table><tr><th>열</th><th>사유</th></tr>"]
+    for r in rows:
+        out.append(f'<tr><td>{e(r.get("field"))}</td><td>{e(r.get("reason"))}</td></tr>')
+    out.append("</table>")
     return "\n".join(out)
 
 
@@ -239,6 +284,7 @@ def render(view):
 <h3 style="font-size:15px;margin:16px 0 4px">이상 신호 — 전량</h3>
 {_anomalies(pr.get('anomalies') or [])}
 {_split((pr.get('summary') or {}).get('split') or [])}
+{_excluded((pr.get('normal') or {}).get('excluded') or [])}
 {_normal(pr.get('normal') or {}, kind)}
 
 <h2>구획 2 · 필드 → role 배정표</h2>

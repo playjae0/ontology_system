@@ -95,14 +95,18 @@ show("① 초안은 fixture가 반환한다 (USE_MOCK — D-10·D-26)",
      "tests/fixtures/fixtures/adapters/toc_report.py" in r.stdout)
 
 r = run("review", "toc_report", "--instruct", "공정명 헤딩 레벨을 2단까지만 잡아라")
-show("② 검수 — 기계 관문(하네스)이 사람 앞에 선다",
-     "기계 관문(하네스): PASS" in r.stdout and r.returncode == 0)
+# **관문은 생성 안에서 돈다**(M9 개정 · B50) — 검수는 내용을 본다. 통과분만 넘어오므로
+# 검수 화면은 「생성 단계에서 PASS」를 확인만 한다.
+show("② 검수는 생성이 세운 관문 값을 확인만 한다 (하네스는 여기서 돌지 않는다)",
+     "기계 관문: 생성 단계에서 PASS" in r.stdout and r.returncode == 0,
+     [l.strip() for l in r.stdout.splitlines() if "기계 관문" in l][:1])
 # **판정 수를 박지 않는다** — 기계 관문은 자란다(B31이 2종을 더했다). 박아 두면
 # 관문을 강화할 때마다 이 줄이 깨져, 어서션이 개선을 막는 자리가 된다.
-_m = re.search(r"기계 관문\(하네스\): PASS — (\d+) PASS / (\d+) FAIL", r.stdout)
-show("② 하네스는 kit 실물을 **호출**한다 (재작성 아님)",
+_gen = run("generate", "toc_report", "--resume")
+_m = re.search(r"기계 관문\(하네스\): PASS — (\d+) PASS / (\d+) FAIL", _gen.stdout)
+show("② 하네스는 **생성 안에서** kit 실물을 호출한다 (재작성 아님)",
      "run_adapter.py" in (ROOT / "cli/register.py").read_text(encoding="utf-8")
-     and _m and int(_m.group(1)) >= 45 and int(_m.group(2)) == 0,
+     and _m and int(_m.group(1)) >= 25 and int(_m.group(2)) == 0,
      _m.group(0) if _m else "관문 줄 없음")
 v = view_of("toc_report")
 SCHEMA = json.loads((ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
@@ -168,14 +172,17 @@ reset("ipqc")
 print("\n■ S15 정형 등록 — ipqc 2부 · 봉인 정답표 대조")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
     "--hint", "16열 검사 성적서")
+_gi = run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
+          "--hint", "16열 검사 성적서")
 r = run("review", "ipqc")
 # [B31] **관문이 새로 생겨 이 fixture를 막는다 — 그것이 관문이 도는 증거다.**
 # mock 초안은 fixture를 그대로 돌려주고(D-10) 그 fixture는 **B27 이전 스냅샷**이라
 # 규약 10을 지키지 않는다. 파싱·배정표·봉인 대조는 그대로 돌지만 기계 관문은
 # FAIL이고, 그래서 **확정(S15 뒤)이 막힌다** — 판정필요-14로 신고했다.
-show("[B31] 기계 관문이 규약 10 미준수 fixture를 막는다 (관문이 실제로 돈다)",
-     "기계 관문(하네스): FAIL" in r.stdout,
-     [l.strip() for l in r.stdout.splitlines() if "기계 관문" in l][:1])
+show("[B31] 기계 관문이 규약 10 미준수 fixture를 막는다 — **생성에서** 막힌다(B50)",
+     "기계 관문(하네스): FAIL" in _gi.stdout
+     and "검수로 넘어가지 않았다" in _gi.stdout,
+     [l.strip() for l in _gi.stdout.splitlines() if "기계 관문" in l][:2])
 show("ipqc 2부 파싱은 그대로 돈다 — 조각 33+20 (관문과 파싱은 다른 축)",
      "조각 33" in r.stdout and "조각 20" in r.stdout)
 v = view_of("ipqc")
@@ -424,6 +431,7 @@ from cli import skeleton as _SK                                     # noqa: E402
 #    검사할 수 있다**(문서 3 §3.7). 레포 코드가 seed 파일을 **쓰기 모드로** 여는
 #    자리를 AST로 센다 — 문자열을 세지 않는다.
 import ast as _ast                                                  # noqa: E402
+from kit import render_review as _RR                                # noqa: E402
 _WRITE = {"w", "wb", "a", "ab", "w+", "r+", "x", "xb"}
 _writers = []
 for _p in sorted(ROOT.glob("**/*.py")):
@@ -1009,6 +1017,273 @@ _gcalls = [f"{f.relative_to(ROOT)}:{i}"
 show("③ 관문 호출은 CLI 진입점 4곳뿐이다 — core·parser에는 없다",
      len(_gcalls) == 4 and not any(g.startswith(("core/", "parser/")) for g in _gcalls),
      str(_gcalls))
+
+# ============================================================ --resume 인자 (후속 ①)
+print("\n■ --resume은 층·표본을 요구하지 않는다 (실사용 IndexError 수리)")
+_r1 = run("generate", "toc_report", "--resume")
+show("① doc_type 하나로 돈다 (IndexError 0)",
+     _r1.returncode == 0 and "이어하기" in _r1.stdout, _r1.stderr.strip()[-70:])
+_r2 = run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"), "--resume")
+show("① 층·표본을 줘도 돌고, 무시한다는 경고가 뜬다 (침묵으로 넘기지 않는다)",
+     _r2.returncode == 0 and "층·표본 인자는 무시한다" in _r2.stdout
+     and "layer=" in _r2.stdout,
+     [l for l in _r2.stdout.splitlines() if "무시한다" in l][:1])
+_r3 = run("generate")
+show("① 위치 인자 0개면 죽지 않고 사용법을 낸다",
+     "generate <doc_type>" in (_r3.stdout + _r3.stderr))
+show("① 사용법에 resume 단독 줄이 있다",
+     "generate <doc_type> --resume" in (ROOT / "cli/register.py").read_text(encoding="utf-8"))
+
+# ============================================================ B49 전 열 판정
+print("\n■ B49 — 모든 열은 판정을 갖는다 (C19 개정 · 부재로 추론하지 않는다)")
+_DEMO = ROOT / "review" / "b49demo"
+_DEMO.mkdir(parents=True, exist_ok=True)
+(_DEMO / "adapter.py").write_text(
+    '# -*- coding: utf-8 -*-\n'
+    'ADAPTER = {"doc_type": "b49demo", "adapter_version": "1.0", "payload_kind": "table",\n'
+    '           "expects": {"header_row": 1,\n'
+    '                       "header_labels": ["공정명", "규격", "비고", "최근 불량 이력", "신규 열"],\n'
+    '                       "columns": {"process_ref": "A", "규격": "B"}}}\n'
+    'def extract(raw):\n    return []\n', encoding="utf-8")
+_dsch = {"doc_type": "b49demo", "schema_version": 1, "layer": "quality",
+         "payload_kind": "table", "use_blocks": [],
+         "fields": {"규격": {"role": "attribute", "attr_name": "규격",
+                           "attach_to_field": "process_ref"}},
+         "edges": [],
+         "unmappable": [
+             {"field": "최근 불량 이력", "kind": "excluded",
+              "reason": "집계 이력 — 개체도 값도 아니고 시점마다 바뀐다"},
+             {"field": "비고", "kind": "undecided",
+              "reason": "표본 3부 전부 비어 있어 무엇이 오는지 관찰되지 않았다"}]}
+(_DEMO / "schema.json").write_text(json.dumps(_dsch, ensure_ascii=False, indent=2),
+                                   encoding="utf-8")
+_dst = {"doc_type": "b49demo", "layer": "quality",
+        "samples": [str(RAW / "IPQC01.xlsx")],
+        "adapter": "review/b49demo/adapter.py", "schema": "review/b49demo/schema.json"}
+_dmod = R._load(ROOT / _dst["adapter"], "reg_b49demo_t")
+_ex, _un, _orp = R.unmappable_of(_dsch, _dmod)
+show("① 셋으로 갈린다 — excluded · undecided · orphan (구판은 셋이 같은 질문이었다)",
+     [u["field"] for u in _ex] == ["최근 불량 이력"]
+     and [u["field"] for u in _un] == ["비고"]
+     and [u["field"] for u in _orp] == ["신규 열"],
+     f"{[u['field'] for u in _ex]} / {[u['field'] for u in _un]} / {[u['field'] for u in _orp]}")
+_dv = R.build_view(_dst, [], True, "")
+_dpr = _dv["sections"]["parse_result"]
+show("① excluded는 anomalies에 0건이다 — 판정이 끝난 열은 질문이 아니다",
+     not [a for a in _dpr["anomalies"] if "최근 불량 이력" in a["message"]]
+     and [u["field"] for u in _dpr["normal"]["excluded"]] == ["최근 불량 이력"])
+show("① undecided는 question이다 — 사유가 문면에 실린다",
+     any(a["kind"] == "question" and "'비고'" in a["message"]
+         and "표본 3부 전부 비어" in a["message"] for a in _dpr["anomalies"]))
+show("① orphan은 failure다 — 「사람이 판정할 것」이 아니라 「대장이 어긋났다」",
+     any(a["kind"] == "failure" and "'신규 열'" in a["message"]
+         and "스키마 대장에 없다" in a["message"] for a in _dpr["anomalies"]))
+show("① 배정표(6지선다)에는 undecided만 오른다",
+     [r["field"] for r in _dv["sections"]["role_table"] if r.get("role") == "UNMAPPABLE"]
+     == ["비고"])
+show("① orphan이 있으면 기계 관문이 막힌다 (하네스·파싱이 통과여도)",
+     R.gate_verdict(True, True, _orp) == "FAIL"
+     and R.gate_verdict(True, True, []) == "PASS")
+_legacy = {**_dsch}
+del _legacy["unmappable"]
+_lex, _lun, _lorp = R.unmappable_of(_legacy, _dmod)
+show("① 구판 스키마(키 없음)는 차집합 전량을 undecided로 — 기존 등록분이 안 깨진다",
+     not _lex and not _lorp
+     and sorted(u["field"] for u in _lun) == sorted(
+         ["비고", "신규 열", "최근 불량 이력"]),
+     str([u["field"] for u in _lun]))
+show("① kind가 닫힌 2값 밖이면 undecided로 받는다 (모르면 묻는다)",
+     R.unmappable_of({**_dsch, "unmappable": [{"field": "X", "kind": "몰라", "reason": ""}]},
+                     _dmod)[1][0]["kind"] == "undecided")
+show("① 생성 스키마가 unmappable을 required로 요구한다 (strict — B44)",
+     "unmappable" in R.GENERATE_SCHEMA["required"]
+     and R.GENERATE_SCHEMA["properties"]["unmappable"]["items"]["properties"]["kind"]
+     ["enum"] == ["excluded", "undecided"])
+show("① 템플릿 v1.0이 스키마에 싣도록 지시한다 (산출물 3만 적던 것을 고쳤다)",
+     (lambda t: "쓰지 않기로 한 열" in t and '"kind": "excluded"' in t
+      and "스키마·출력에는 넣지 않는다" not in t)(
+         (ROOT / "kit/생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8")))
+shutil.rmtree(_DEMO, ignore_errors=True)
+
+# ============================================================ B50 생성 안의 관문
+print("\n■ B50 — 하네스는 생성 안에서 돌고, 실패는 문면이 답을 담는지로 갈린다 (M9 개정)")
+import ast as _ast                                                  # noqa: E402
+import tempfile as _tf                                              # noqa: E402
+
+# ── 분류표 — 자동은 「문면이 답을 담는」 것뿐이고 **목록 밖은 문답**이다
+_auto_lines = [
+    "  [FAIL] 규약 10 — 자기완결 연산을 재구현하지 않았다 (parser.normalizer 몫)",
+    "  [FAIL] source_locator가 문서 내 유일 (§5 규약 1)  — 중복 3건",
+    "  [FAIL] 원본 헤더 문자열이 전부 expects에 실림 → 표류 감지 가능  — 누락 ['비고']",
+    "  [FAIL] 전 필드의 role이 닫힌 5종 안  — {'X': 'wrong'}",
+    "  [FAIL] 파서 출력에 스키마 밖 필드 없음 (unknown_field 큐 예상분)  — ['Y']",
+    "  [FAIL] adapter.doc_type == schema.doc_type  — cp / pfmea",
+    "  [FAIL] 필수 키 4종 (doc_type·adapter_version·payload_kind·expects)",
+]
+_ask_lines = [
+    "  [FAIL] 조각 0건 산출 (0건 아님)",
+    "  [FAIL] 예외 없이 실행  — KeyError: 'cells'",
+    "  [FAIL] prose 조각에 text 또는 image_ref 존재",
+]
+_a, _k = R.classify_failures("\n".join(_auto_lines))
+show("② 문면이 답을 담는 실패 7종은 전부 자동 갈래다", len(_a) == 7 and not _k,
+     f"자동 {len(_a)} · 문답 {len(_k)}")
+_a2, _k2 = R.classify_failures("\n".join(_ask_lines))
+show("② 원인 규명이 필요한 실패는 문답 갈래다 (조각 0건 · extract 예외 · prose 본문)",
+     not _a2 and len(_k2) == 3, f"자동 {len(_a2)} · 문답 {len(_k2)}")
+# **변이 시험** — 분류표에 없는 새 하네스 항목이 생겨도 조용히 자동으로 흐르지 않는다
+_a3, _k3 = R.classify_failures("  [FAIL] 새로 생긴 관문 항목 — 아직 표에 없다")
+show("② 변이 — 목록 밖 실패는 기본이 문답이다 (모르면 묻는다)",
+     not _a3 and len(_k3) == 1, f"자동 {len(_a3)} · 문답 {len(_k3)}")
+show("② 분류표가 코드에 표로 있다 — 자동 갈래는 열거된 것뿐",
+     isinstance(R.AUTO_FIX, dict) and len(R.AUTO_FIX) == 8)
+
+# ── ⓔ 검수는 하네스를 돌리지 않는다 (AST — 문자열이 아니라 호출을 센다)
+_rt = _ast.parse((ROOT / "cli/register.py").read_text(encoding="utf-8"))
+_calls = {n.name: [c.func.id for c in _ast.walk(n)
+                   if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)]
+          for n in _rt.body if isinstance(n, _ast.FunctionDef)}
+show("② cmd_review에 harness 호출 0건 — 검수는 내용만 본다",
+     _calls.get("cmd_review", []).count("harness") == 0)
+show("② 하네스 호출은 machine_gate 한 곳이다 (생성이 부른다)",
+     _calls.get("machine_gate", []).count("harness") == 1
+     and _calls.get("cmd_generate", []).count("_finish_generate") >= 1)
+
+# ── ⓐ 자동 갈래 실물 — 규약 10을 어긴 판 → 자동 재생성 → PASS
+_fx = Path(_tf.mkdtemp(prefix="b50fx_", dir=str(ROOT)))
+(_fx / "fixtures/adapters").mkdir(parents=True)
+(_fx / "fixtures/schemas").mkdir(parents=True)
+_good = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8").replace(
+    '"doc_type": "cp"', '"doc_type": "b50t"', 1)
+_MUT = ("\n\ndef _expand_merged(sheet):\n"
+        "    # 병합 전개를 재구현했다 — 규약 10 위반(하네스가 잡는다)\n"
+        "    return dict(sheet.get('cells') or {})\n\n\n"
+        "def _col_to_idx(col):\n"
+        "    # 열 문자 변환도 재구현 — parser.normalizer._col의 몫이다\n"
+        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
+        "\n\nADAPTER = {")
+_bad = _good.replace("\nADAPTER = {", _MUT, 1)
+(_fx / "fixtures/adapters/b50t.py").write_text(_bad, encoding="utf-8")
+(_fx / "fixtures/adapters/b50t_rev1.py").write_text(_good, encoding="utf-8")
+_csch = {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+         "doc_type": "b50t"}
+for _n in ("b50t", "b50t_rev1"):
+    (_fx / "fixtures/schemas" / f"{_n}.json").write_text(
+        json.dumps(_csch, ensure_ascii=False), encoding="utf-8")
+_env = {**_os.environ, "ONTO_FIXTURES": str(_fx)}
+_r50 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
+                       "b50t", "process", str(RAW / "CP01.xlsx"), "--allow-mock"],
+                      capture_output=True, text=True, cwd=str(ROOT), env=_env,
+                      stdin=subprocess.DEVNULL)
+show("② ⓐ 자동 갈래 — 하네스 FAIL → 자동 재생성 → PASS (사람의 통역 0)",
+     "기계 관문(하네스): FAIL" in _r50.stdout
+     and "재생성 지시 (자동(하네스))" in _r50.stdout
+     and "기계 관문 PASS" in _r50.stdout and _r50.returncode == 0,
+     (_r50.stdout.strip().splitlines() or ["(빈 출력)"])[-1])
+show("② ⓐ 보낸 지시는 실패 문면 그대로다 (통역하지 않는다)",
+     "규약 10" in _r50.stdout.split("재생성 지시")[1].split("재생성 1회째")[0])
+_st50 = json.loads((REVIEW / "b50t" / "state.json").read_text(encoding="utf-8"))
+show("② ⓐ 지시 이력에 주체가 남는다 — by: 자동(하네스)",
+     [i["by"] for i in _st50["instructions"]] == ["자동(하네스)"]
+     and _st50["machine_gate"] == "PASS", str(_st50.get("instructions"))[:90])
+shutil.rmtree(_fx, ignore_errors=True)
+shutil.rmtree(REVIEW / "b50t", ignore_errors=True)
+
+# ── ⓓ 미통과는 검수로 넘어가지 않는다 (ipqc — 규약 10 미준수 스냅샷)
+show("② ⓓ 미통과 산출은 검수로 넘어가지 않는다 · 화면이 그 사실을 말한다",
+     "검수로 넘어가지 않았다" in _gi.stdout and _gi.returncode != 0,
+     [l.strip() for l in _gi.stdout.splitlines() if "넘어가지" in l][:1])
+show("② ⓒ 1회 뒤에도 실패하면 묻고 진행한다 (비대화형이면 끄고 끝낸다)",
+     "1회 재생성 후에도 FAIL" in _gi.stdout and "비대화형" in _gi.stdout)
+show("② 하네스 수리 — 조각 0건이 이제 FAIL이다 (구판은 검사 전에 돌아갔다)",
+     (lambda t: t.index("조각 {len(pieces)}건 산출")
+      < t.index("if not pieces:\n        return pieces"))(
+         (ROOT / "kit/run_adapter.py").read_text(encoding="utf-8")))
+
+# ============================================================ [정정]40 검수 지시 관문
+print("\n■ [정정]40 — --instruct 재생성분도 기계 관문을 지난다 (M9)")
+_f40 = Path(_tf.mkdtemp(prefix="fx40_", dir=str(ROOT)))
+(_f40 / "fixtures/adapters").mkdir(parents=True)
+(_f40 / "fixtures/schemas").mkdir(parents=True)
+_g40 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+_M40 = ("\n\ndef _expand_merged(sheet):\n"
+        "    # 병합 전개를 재구현했다 — 규약 10 위반\n"
+        "    return dict(sheet.get('cells') or {})\n\n\n"
+        "def _col_to_idx(col):\n"
+        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
+        "\n\nADAPTER = {")
+_b40 = _g40.replace("\nADAPTER = {", _M40, 1)
+_s40 = json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8"))
+for _dt, _pairs in (("f40ok", (("", _g40), ("_rev1", _b40), ("_rev2", _g40))),
+                    ("f40no", (("", _g40), ("_rev1", _b40), ("_rev2", _b40)))):
+    for _sfx, _src in _pairs:
+        (_f40 / "fixtures/adapters" / f"{_dt}{_sfx}.py").write_text(
+            _src.replace('"doc_type": "cp"', f'"doc_type": "{_dt}"', 1), encoding="utf-8")
+        (_f40 / "fixtures/schemas" / f"{_dt}{_sfx}.json").write_text(
+            json.dumps({**_s40, "doc_type": _dt}, ensure_ascii=False), encoding="utf-8")
+_e40 = {**_os.environ, "ONTO_FIXTURES": str(_f40)}
+
+
+def _reg40(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e40, stdin=subprocess.DEVNULL)
+
+
+_reg40("generate", "f40ok", "process", str(RAW / "CP01.xlsx"))
+_r40 = _reg40("review", "f40ok", "--instruct", "복수값 구분자를 더 받아라",
+              "--no-llm-coord")
+show("① --instruct 재생성분이 하네스를 지난다 — FAIL이면 자동 해소가 돈다",
+     "기계 관문(하네스): FAIL" in _r40.stdout
+     and "재생성 지시 (자동(하네스))" in _r40.stdout
+     and "기계 관문(하네스): PASS" in _r40.stdout, _r40.stdout[-90:])
+_st40 = json.loads((REVIEW / "f40ok" / "state.json").read_text(encoding="utf-8"))
+show("① 지시 이력이 한 사슬이다 — 사람(검수 지시) → 자동(하네스)",
+     [(i["n"], i["by"]) for i in _st40["instructions"]]
+     == [(1, "사람(검수 지시)"), (2, "자동(하네스)")], str(_st40["instructions"])[:60])
+show("① 통과하면 뷰가 선다", _st40["machine_gate"] == "PASS"
+     and (REVIEW / "f40ok" / "view.json").exists() and _r40.returncode == 0)
+_reg40("generate", "f40no", "process", str(RAW / "CP01.xlsx"))
+_r41 = _reg40("review", "f40no", "--instruct", "이렇게 고쳐라", "--no-llm-coord")
+_st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8"))
+# **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 뷰가 생겨 붉는다.
+show("① 해소 못 하면 **뷰를 만들지 않는다** · machine_gate=FAIL (변이 검출 지점)",
+     _st41["machine_gate"] == "FAIL"
+     and not (REVIEW / "f40no" / "view.json").exists()
+     and "검수 뷰를 만들지 않았다" in _r41.stdout and _r41.returncode != 0,
+     [l.strip() for l in _r41.stdout.splitlines() if "만들지 않았다" in l][:1])
+show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
+     _calls.get("cmd_review", []).count("machine_gate") == 1)
+for _d in ("f40ok", "f40no"):
+    shutil.rmtree(REVIEW / _d, ignore_errors=True)
+shutil.rmtree(_f40, ignore_errors=True)
+
+# ── ② D-79에 rehearsal · 렌더러가 낸다
+_vs = json.loads((ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
+_summ = (_vs["properties"]["sections"]["properties"]["parse_result"]
+         ["properties"]["summary"]["properties"])
+show("② D-79 계약에 summary.rehearsal이 있다 (실려 있는데 계약에 없던 키)",
+     "rehearsal" in _summ
+     and set(_summ["rehearsal"]["properties"]) == {"max_rows", "full_rows", "truncated"})
+_rh = _RR.render({"doc_type": "x", "adapter_version": "1", "payload_kind": "table",
+                  "sections": {"parse_result": {
+                      "summary": {"samples": 2, "pieces": 200, "fill_rate": {},
+                                  "rehearsal": {"max_rows": 200, "full_rows": 5231,
+                                                "truncated": True}},
+                      "anomalies": [], "normal": {"excerpt": [], "all": [],
+                                                  "columns": [], "tree": []}},
+                      "role_table": [], "adapter_summary": {}}})
+show("② 렌더러가 「부분 리허설 — 전 M행 중 앞 N행」을 요약에 낸다 (승인 근거)",
+     "부분 리허설 — 전 5,231행 중 앞 200행만 파싱했다" in _rh,
+     [l for l in _rh.splitlines() if "부분 리허설" in l][:1])
+show("② 전량 파싱이면 그 줄이 없다 (없는 사실을 만들지 않는다)",
+     "부분 리허설" not in _RR.render(
+         {"doc_type": "x", "adapter_version": "1", "payload_kind": "table",
+          "sections": {"parse_result": {"summary": {"samples": 1, "pieces": 3,
+                                                    "fill_rate": {}, "rehearsal": {}},
+                                        "anomalies": [], "normal": {"excerpt": [], "all": [],
+                                                                    "columns": [], "tree": []}},
+                       "role_table": [], "adapter_summary": {}}}))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

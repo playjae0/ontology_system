@@ -39,9 +39,9 @@ SUITES = [
     ("test_g5", 51, "I축 4연산 + 이관 · 운영 도구"),
     ("test_g6", 49, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입"),
     ("test_g6_5", 38, "계약 미배선 24건 수리"),
-    ("test_p1", 69, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독"),
-    ("test_p2", 48, "어댑터 생성 킷 6종 · 검수 뷰 렌더러"),
-    ("test_p3", 194, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건"),
+    ("test_p1", 75, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독 · ⑦ 폴백"),
+    ("test_p2", 52, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋"),
+    ("test_p3", 228, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건"),
     ("test_2a_gateway", 36, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
@@ -340,8 +340,12 @@ def run_suites(quick=False):
         r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")],
                            capture_output=True, text=True, cwd=str(ROOT))
         dt = time.time() - t0
-        p = r.stdout.count("[PASS]")
-        f = r.stdout.count("[FAIL]")
+        # **판정 줄만 센다** — 어서션의 **세부 문면**에 `[FAIL]`이 들어갈 수 있다
+        # (하네스 실패 문면을 그대로 싣는 자리가 그렇다 — B50). 부분 문자열을 세면
+        # 통과한 검사가 실패로 세어진다(실측: test_p3의 지시 이력 어서션).
+        _lines = [ln.strip() for ln in r.stdout.splitlines()]
+        p = sum(1 for ln in _lines if ln.startswith("[PASS]"))
+        f = sum(1 for ln in _lines if ln.startswith("[FAIL]"))
         ok = (f == 0 and p == expect)
         total_ok &= ok
         results.append((name, p, f, expect, ok))

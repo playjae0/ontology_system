@@ -72,13 +72,16 @@ EXPECT_FAIL = {
     "payload_kind가 닫힌 2값",
     "adapter.doc_type == schema.doc_type",
     "expects.header_row 선언됨",
-    "payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)"}
+    "payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)",
+    # **하네스 수리분**(B50): 구판은 0건일 때 이 검사에 닿기 전에 돌아가 **아무것도
+    # 추출하지 못한 어댑터가 PASS로 통과했다.** 빈칸 스켈레톤이 바로 그 상태다.
+    "조각 0건 산출 (0건 아님)"}
 show("② 스켈레톤이 하네스 ①단에서 문법·순수성·인터페이스를 통과한다",
      r.stdout.count("[PASS] 문법 오류 없음") == 1
      and "[PASS] 순수 함수 계약" in r.stdout
      and "[PASS] locate 함수 없음" in r.stdout)
-show("② 빈칸 상태의 FAIL은 4건이고 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
-     r.stdout.count("[FAIL]") == 4 and fail_labels == EXPECT_FAIL,
+show("② 빈칸 상태의 FAIL은 5건이고 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
+     r.stdout.count("[FAIL]") == 5 and fail_labels == EXPECT_FAIL,
      f"FAIL {r.stdout.count('[FAIL]')}건 · 예상 밖 {sorted(fail_labels - EXPECT_FAIL)}")
 sk = (KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8")
 show("② 안내가 '필수 키 4종은 PASS'를 정확히 적었다 (키 존재만 보고 값은 안 본다)",
@@ -248,6 +251,35 @@ show("렌더러가 계산하지 않는다 (채움율·이상 판정은 산출자
      or "sum(" not in src.split("def render")[0].split("def _summary")[1].split("def ")[0])
 show("렌더러는 파서·core를 import하지 않는다 (JSON만 읽는다 — 교체 가능)",
      not re.search(r"^(from|import)\s+(core|parser)\b", src, re.M))
+
+# ── 지도 필드 셋 — 「어느 지도가 실호출이었나」 (B48 ②-7 · 후속 ② · D-79 확장)
+_picks = [{"프레임": "슬라이드 3", "분할_레벨": 1, "분할_레벨_사유": "레벨 1만 구간에 든다",
+           "지도_출처": "live", "지시문_판본": "sm-1.1", "지도_없음": None},
+          {"프레임": "슬라이드 7", "분할_레벨": None, "분할_레벨_사유": None,
+           "지도_출처": "heuristic", "지시문_판본": None, "지도_없음": None},
+          {"프레임": "슬라이드 11", "분할_레벨": None, "분할_레벨_사유": None,
+           "지도_출처": "live", "지시문_판본": "sm-1.1",
+           "지도_없음": "크기 예산 초과: 약 1,391 토큰 > 한도 1\n   이 문서는 평면으로 인입된다"}]
+_mv = {"doc_type": "x", "adapter_version": "1", "payload_kind": "prose",
+       "sections": {"parse_result": {
+           "summary": {"samples": 1, "pieces": 6, "fill_rate": {},
+                       "split": [{"doc_id": "D1", "청크수": 6, "레벨_선택": _picks}]},
+           "anomalies": [], "normal": {"excerpt": [], "all": [], "columns": [], "tree": []}},
+           "role_table": [], "adapter_summary": {}}}
+_mh = render(_mv)
+show("지도 표에 출처·지시문 판본이 프레임별로 그려진다 (B48 ②-7의 나머지 절반)",
+     "<th>지도 출처</th>" in _mh and "<th>지시문 판본</th>" in _mh
+     and "<td>sm-1.1</td>" in _mh and "슬라이드 7" in _mh)
+show("heuristic 프레임은 경고색 + 한 줄 주석 — 모델을 안 불렀다는 사실이 눈에 띈다",
+     '<td class="warn">heuristic</td>' in _mh
+     and "모델을 부르지 않았다" in _mh and "게이트웨이 설정을 확인하라" in _mh)
+show("지도_없음 프레임은 사유를 그대로 보인다 (여러 줄도 끊기지 않는다)",
+     "지도 없음: 크기 예산 초과" in _mh and "<br>" in _mh
+     and "평면으로 인입된다" in _mh)
+show("계약이 먼저다 — D-79 스키마가 세 키를 선언한다 (렌더러가 계약을 앞서지 않는다)",
+     (lambda sc: all(k in sc for k in ("지도_출처", "지시문_판본", "지도_없음"))
+      and "split" in sc)(
+         (ROOT / "kit" / "검수뷰_데이터스키마.json").read_text(encoding="utf-8")))
 
 empty = render({"doc_type": "x", "adapter_version": "1", "payload_kind": "table",
                 "sections": {"parse_result": {}, "role_table": [], "adapter_summary": {}}})
