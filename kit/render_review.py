@@ -153,6 +153,64 @@ def _normal(normal, kind):
 
 
 # ---------------------------------------------------------------- 구획 2·3
+def _extract_rehearsal(x, cats_known=None):
+    """prose ②구획 — **층 어휘가 이 문서에 적용된 결과**(B51).
+
+    table의 배정표와 같은 자리·같은 목적이다: 「무엇이 개체·값이 되는가」를 승인
+    **전에** 본다. 집계를 먼저 내고 청크별은 접는다 — 한눈에 보는 것이 먼저다.
+    """
+    if not x:
+        return ("<p class='none'>배정표 없음 — prose는 fields가 빈 목록이다 "
+                "(D-31)</p>")
+    if not x.get("totals"):
+        return (f"<p class='warn-note'>"
+                f"{e(x.get('note') or '추출 리허설 없음')}</p>")
+    t = x["totals"]
+    out = [f"<p class='sub'>출처 <b>{e(x.get('source'))}</b>"
+           + (f" · 지시문 {e(x.get('prompt_version'))}" if x.get("prompt_version") else "")
+           + (f" · config {e(x.get('config_version'))}" if x.get("config_version") else "")
+           + "</p>"]
+    if x.get("note"):
+        out.append(f"<p class='warn-note'>{e(x['note'])}</p>")
+    out.append("<div class='stat'>"
+               + "".join(f"<div><b>{e(v)}</b>{e(k)}</div>" for k, v in
+                         (("청크", t.get("chunks", 0)), ("개체", t.get("entities", 0)),
+                          ("관계", t.get("relations", 0)), ("부착", t.get("attach", 0)),
+                          ("미해소", t.get("unresolved", 0))))
+               + "</div>")
+    cats = x.get("category_counts") or {}
+    if cats:
+        out.append("<table><tr><th>카테고리</th>"
+                   + "".join(f"<th>{e(k)}</th>" for k in cats) + "</tr><tr><td>개체 후보</td>"
+                   + "".join(
+                       (f"<td class='warn'>{e(v)}</td>"
+                        if cats_known and k not in cats_known else f"<td>{e(v)}</td>")
+                       for k, v in cats.items())
+                   + "</tr></table>")
+        unknown = [k for k in cats if cats_known and k not in cats_known]
+        if unknown:
+            out.append(f"<p class='warn-note'>층 config에 없는 카테고리 {e(unknown)} — "
+                       f"추출이 닫힌 목록 밖을 냈다</p>")
+    rows = x.get("by_chunk") or []
+    if rows:
+        body = ["<table><tr><th>청크</th><th>개체</th><th>관계</th><th>부착</th></tr>"]
+        for c in rows:
+            ents = " · ".join(f"{e(v.get('surface'))}({e(v.get('category'))})"
+                              for v in c.get("entities") or []) or "-"
+            rels = " · ".join(f"{e(v.get('src'))}→{e(v.get('rel'))}→{e(v.get('dst'))}"
+                              for v in c.get("relations") or []) or "-"
+            att = " · ".join(
+                f"{e(v.get('surface'))}→{e((v.get('attach_to') or {}).get('name') or '미해소')}"
+                for v in c.get("attach") or []) or "-"
+            body.append(f"<tr><td>{e(c.get('section') or c.get('chunk_id'))}"
+                        f"<br><span class='where'>{e(c.get('excerpt'))}</span></td>"
+                        f"<td>{ents}</td><td>{rels}</td><td>{att}</td></tr>")
+        body.append("</table>")
+        out.append(f"<details><summary>청크별 후보 ({len(rows)}건)</summary>"
+                   + "".join(body) + "</details>")
+    return "\n".join(out)
+
+
 def _roles(rows):
     if not rows:
         return "<p class='none'>배정표 없음 — prose는 fields가 빈 목록이다 (D-31)</p>"
@@ -287,8 +345,10 @@ def render(view):
 {_excluded((pr.get('normal') or {}).get('excluded') or [])}
 {_normal(pr.get('normal') or {}, kind)}
 
-<h2>구획 2 · 필드 → role 배정표</h2>
-{_roles(s.get('role_table') or [])}
+<h2>구획 2 · {"추출 리허설 — 층 어휘가 이 문서에 적용된 결과"
+              if view.get("payload_kind") == "prose" else "필드 → role 배정표"}</h2>
+{_extract_rehearsal(s.get('extract_rehearsal'))
+ if view.get("payload_kind") == "prose" else _roles(s.get('role_table') or [])}
 
 <h2>구획 3 · 어댑터 요약</h2>
 {_adapter(s.get('adapter_summary') or {})}

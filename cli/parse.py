@@ -4,7 +4,9 @@
 모든 단계는 **CLI 진입점 + 파일 입출력**이다(§16.1 계약 1) — 플랫폼이 subprocess로
 부른다. 파서는 별도 프로그램이고 에이전트와의 결합은 **계약 JSON 하나**다(D-9).
 
-  python cli/parse.py run   <어댑터.py> <doc_id> <문서> [출력.json]   운영 파싱 1회
+  python cli/parse.py run   <어댑터.py> <문서> [출력.json] [--doc-id X]  운영 파싱 1회
+       └ doc_id는 생략하면 **파일명에서 파생**한다 — `ingest-file`과 같은 함수(D-110)
+         구형 `<어댑터.py> <doc_id> <문서> [출력.json]`도 그대로 받는다
   python cli/parse.py head  <문서> [N]                                관찰 재료(등록 세션 공급)
   python cli/parse.py build <어댑터.py> <doc_type> <표본...>          구축 모드 3단 배선
 
@@ -84,8 +86,31 @@ def run_parse(adapter_path, doc_id, doc, out=None):
 
 
 def cmd_run(args):
-    adapter_path, doc_id, doc = args[0], args[1], args[2]
-    res, out = run_parse(adapter_path, doc_id, doc, args[3] if len(args) > 3 else None)
+    """운영 파싱 1회 — `doc_id`는 **선택**이다(§7.1 · B51).
+
+    **파생 규칙을 여기서 다시 쓰지 않는다** — `ingest-file`이 쓰는 함수를 그대로
+    부른다. 규칙이 둘이면 같은 문서가 명령에 따라 다른 `doc_id`를 받고, 그 순간
+    재인입이 개정이 아니라 신규가 된다(D-110).
+
+    구형(`<어댑터> <doc_id> <문서>`)도 받는다. 가르는 기준은 **둘째 인자가 존재하는
+    파일인가**다 — 파일이면 새 형이고 그 자리가 문서다.
+    """
+    from cli.ingest import doc_id_of          # 파생은 한 곳이다 (복제 금지)
+    args = list(args)
+    given = None
+    if "--doc-id" in args:
+        i = args.index("--doc-id")
+        given = args[i + 1] if i + 1 < len(args) else None
+        del args[i:i + 2]
+    adapter_path = args[0]
+    if len(args) > 1 and Path(args[1]).is_file():        # 새 형 — 둘째가 문서다
+        doc, rest = args[1], args[2:]
+        doc_id, how = (given, "지정") if given else (doc_id_of(doc), "파일명 파생")
+    else:                                                # 구형 4인자
+        doc_id, doc, rest = (given or args[1]), args[2], args[3:]
+        how = "지정" if given else "인자"
+    print(f"[parse] doc_id = {doc_id} ({how})")
+    res, out = run_parse(adapter_path, doc_id, doc, rest[0] if rest else None)
     print(f"[parse] {res}")
     for f in res.failures:
         print(f"   [{f['kind']}] {f['reason']}")

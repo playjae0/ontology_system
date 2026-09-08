@@ -27,8 +27,8 @@
     },
     "sections": {
       "type": "object",
-      "required": ["parse_result", "role_table", "adapter_summary"],
-      "_note": "구획 3개. 구판의 구획 4(층 초안)는 층 등록 세션의 검수 뷰로 이관됐다 — doc_type 등록 화면에 뜰 일이 없다(§7 ⑺-⓪).",
+      "required": ["parse_result", "adapter_summary"],
+      "_note": "구획 3개. 구판의 구획 4(층 초안)는 층 등록 세션의 검수 뷰로 이관됐다 — doc_type 등록 화면에 뜰 일이 없다(§7 ⑺-⓪). **둘째 구획은 payload_kind가 가른다**(B51): table이면 `role_table`, prose면 `extract_rehearsal`이 **그 자리에** 선다 — 자리를 더하지 않으므로 구획 수는 셋 그대로다.",
       "properties": {
         "parse_result": {
           "type": "object",
@@ -147,6 +147,21 @@
                 }
               }
             }
+          }
+        },
+        "extract_rehearsal": {
+          "type": "object",
+          "_note": "구획 2의 **prose 판**(B51) — table이 role 배정표를 보고 승인하듯, prose는 층 어휘가 표본 청크에 실제로 적용된 결과를 보고 승인한다. 운영과 **같은 함수**(`cli.extract`)가 만든 체크포인트를 그대로 싣는다 — 확정 뒤 같은 문서를 인입하면 재사용되어 LLM 호출이 늘지 않는다. `source`가 `none`이면 끄고 진행했다는 뜻이고 화면이 그것을 말한다.",
+          "properties": {
+            "source": {"enum": ["live", "mock", "none"]},
+            "prompt_version": {"type": ["string", "null"]},
+            "config_version": {"type": ["string", "null"]},
+            "kept": {"type": "boolean",
+                     "_note": "부분 리허설이면 false — 체크포인트를 남기지 않는다(운영이 앞 N행만 본 추출을 재사용하면 뒷 구간이 영영 안 뽑힌다)"},
+            "note": {"type": ["string", "null"]},
+            "totals": {"type": "object"},
+            "by_chunk": {"type": "array", "items": {"type": "object"}},
+            "category_counts": {"type": "object"}
           }
         },
         "role_table": {

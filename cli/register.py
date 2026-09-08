@@ -30,6 +30,7 @@
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
+       --extract / --no-extract       prose 추출 리허설을 미리 정한다 (기본: 물어본다)
   python cli/register.py confirm  <doc_type> --by <승인자>
   python cli/register.py list
 """
@@ -989,7 +990,7 @@ def gate_verdict(harness_ok, parses_ok, orphan):
     return "PASS" if (harness_ok and parses_ok and not orphan) else "FAIL"
 
 
-def build_view(st, results, harness_ok, harness_out):
+def build_view(st, results, harness_ok, harness_out, rehearsal=None):
     """뷰 데이터 산출 — **D-79 스키마가 계약**이고 여기가 산출자다.
 
     렌더러는 아무것도 계산하지 않으므로 **채움율·이상 신호 판정을 여기서 다 채운다.**
@@ -1083,7 +1084,14 @@ def build_view(st, results, harness_ok, harness_out):
                            "columns": keys if kind == "table" else [],
                            "tree": tree if kind == "prose" else []},
             },
-            "role_table": role_table(schema, mod, st, _profiles(st["doc_type"])),
+            # **②구획은 payload_kind가 가른다**(문서 6 §6.6 · B51) — table은 role
+            # 배정표, prose는 추출 리허설이 **그 자리에** 선다. 화면의 목적이 같다:
+            # 「무엇이 개체·값이 되는가」를 승인 **전에** 본다.
+            # **구획 수는 셋 그대로다**(D-79) — 자리를 더하지 않고 갈아 끼운다.
+            **({"extract_rehearsal": rehearsal or {"source": "none"}}
+               if kind == "prose" else
+               {"role_table": role_table(schema, mod, st,
+                                         _profiles(st["doc_type"]))}),
             "adapter_summary": {
                 "expects": mod.ADAPTER.get("expects") or {},
                 "adapter_version": mod.ADAPTER.get("adapter_version"),
@@ -1181,7 +1189,79 @@ def _progress(i, total, calls, *, label=""):
           end="\r" if (tty and i < total) else "\n", flush=True)
 
 
-def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
+def _extract_rehearsal(st, results, samples, want, truncated):
+    """**prose ②구획 — 층 어휘가 이 문서에 적용된 결과** (문서 6 §6.6 · B51).
+
+    table은 role 배정표(「이 열이 attribute가 된다」)를 보고 승인한다. prose는 청크
+    분할만 보고 승인해 왔다 — **층 어휘가 이 문서에 어떻게 적용되는지를 한 번도 안
+    본 채** 확정되고, 그 결과를 처음 보는 시점이 운영 인입 뒤 `show extract`였다.
+
+    **리허설은 운영과 같은 함수·같은 파일이다** — `cli.extract.run()`을 부르고 그
+    체크포인트를 그대로 싣는다. 그래서 `doc_id`도 **운영의 것**(파일명 파생)을 쓴다:
+    리허설 id를 따로 쓰면 확정 뒤 운영 인입이 그 체크포인트를 못 찾아 같은 문서를
+    다시 뽑는다 — LLM 호출이 두 배가 되고, 두 산출이 다를 수 있다.
+
+    **부분 리허설이면 체크포인트를 남기지 않는다** — 앞 N행만 본 추출을 운영이
+    재사용하면 뒷 구간이 영영 안 뽑힌다.
+    """
+    from cli.extract import run as extract_run
+    from cli.ingest import doc_id_of
+    from core import extract as EX
+    if not want:
+        return {"source": "none", "note": "추출 리허설 없음 — 끄고 진행했다"}
+    made, ids = [], []
+    for r, s in zip(results, samples):
+        if not r.ok:
+            continue
+        env = dict(r.envelope)
+        env["doc_id"] = doc_id_of(s)          # **운영의 doc_id** — 재사용의 조건이다
+        ids.append(env["doc_id"])
+        p = _dir(st["doc_type"]) / f"_rehearsal_{env['doc_id']}.json"
+        p.write_text(json.dumps(env, ensure_ascii=False), encoding="utf-8")
+        made.append(p)
+    extract_run([str(p) for p in made], layer=st["layer"])
+    for p in made:
+        p.unlink(missing_ok=True)
+    cps = [json.loads(EX.checkpoint_path(i).read_text(encoding="utf-8"))
+           for i in ids if EX.has_checkpoint(i)]
+    if truncated:
+        for i in ids:
+            EX.invalidate(i)                  # 부분 리허설분은 운영이 재사용하면 안 된다
+    if not cps:
+        return {"source": "none", "note": "추출 산출이 없다 (표본 파싱 실패 또는 청크 0)"}
+    # **본문은 산출자가 채운다** — 체크포인트는 후보만 담고(§4.2) 렌더러는 계산하지
+    # 않는다(D-79). 청크 저장소가 그 문서의 본문·구획을 갖고 있다.
+    _ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    by_chunk, cats = [], {}
+    for cp in cps:
+        for c in cp.get("candidates") or []:
+            for e in c.get("entities") or []:
+                cats[e.get("category")] = cats.get(e.get("category"), 0) + 1
+            src = _ch.get(c.get("chunk_id")) or {}
+            by_chunk.append({"chunk_id": c.get("chunk_id"),
+                             "section": src.get("section") or "",
+                             "excerpt": (src.get("text") or "")[:60],
+                             "entities": c.get("entities") or [],
+                             "relations": c.get("relations") or [],
+                             "attach": c.get("attach") or []})
+    tot = {"chunks": len(by_chunk),
+           "entities": sum(len(c["entities"]) for c in by_chunk),
+           "relations": sum(len(c["relations"]) for c in by_chunk),
+           "attach": sum(1 for c in by_chunk for a in c["attach"]
+                         if a.get("attach_to")),
+           "unresolved": sum(1 for c in by_chunk for a in c["attach"]
+                             if not a.get("attach_to"))}
+    return {"source": "mock" if llm.use_mock() else "live",
+            "prompt_version": cps[0].get("prompt_version"),
+            "config_version": cps[0].get("config_version"),
+            "kept": not truncated,
+            "note": ("부분 리허설이라 체크포인트를 남기지 않았다 — 운영이 다시 뽑는다"
+                     if truncated else None),
+            "totals": tot, "by_chunk": by_chunk, "category_counts": cats}
+
+
+def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
+               extract=None):
     """② 검수 — 기계 관문 → 뷰 데이터 → HTML. 지시가 오면 **재생성 루프**를 돈다.
 
     **상한은 없다**(§7 규약 2 · A8 — 근거 없는 수치 금지). 매회 지시가 이력에 남고
@@ -1262,7 +1342,33 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None):
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
               f"조각 {r.report.get('pieces', 0)}{part}")
 
-    view = build_view(st, results, ok, out)
+    # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
+    kind = mod.ADAPTER.get("payload_kind")
+    _trunc = any((r.report.get("rehearsal") or {}).get("truncated") for r in results)
+    rehearsal = None
+    if kind == "prose" and st.get("machine_gate") == "PASS":
+        n = sum(r.report.get("pieces", 0) for r in results if r.ok)
+        want = extract
+        if want is None:
+            print(f"   추출 리허설 {n:,}청크 → LLM {n:,}회.")
+            try:
+                want = input("   켤까? [Y/n] ").strip().lower() not in ("n", "no")
+            except (EOFError, KeyboardInterrupt):
+                # **비대화형이면 끄고 그 사실을 뷰에 남긴다** — 조용히 도는 구간을
+                # 두지 않는다: 승인자는 「추출을 보고 승인했다」고 믿으면 안 된다.
+                want = False
+                print("   (비대화형 — 끄고 진행한다. 뷰에 「추출 리허설 없음」)")
+        print(f"   → 추출 리허설 {'켬' if want else '끔'}")
+        rehearsal = _extract_rehearsal(st, results, samples, want, _trunc)
+        if rehearsal.get("totals"):
+            t = rehearsal["totals"]
+            print(f"   추출 리허설({rehearsal['source']}) — 청크 {t['chunks']} · "
+                  f"개체 {t['entities']} · 관계 {t['relations']} · "
+                  f"부착 {t['attach']} · 미해소 {t['unresolved']}")
+            if rehearsal.get("note"):
+                print(f"     {rehearsal['note']}")
+
+    view = build_view(st, results, ok, out, rehearsal)
     d = _dir(doc_type)
     (d / "view.json").write_text(json.dumps(view, ensure_ascii=False, indent=2) + "\n",
                                  encoding="utf-8")
@@ -1354,6 +1460,15 @@ def cmd_confirm(doc_type, approved_by):
                 "adapter_version": mod.ADAPTER.get("adapter_version"),
                 "승인자": approved_by, "시점": at,
                 "수정 지시 이력": st.get("instructions") or []}
+    # **무엇이 뽑히는 것을 보고 승인했나**(B51) — prose의 승인 근거는 추출 리허설이다.
+    _vw = _dir(doc_type) / "view.json"
+    if _vw.exists():
+        _ex = ((json.loads(_vw.read_text(encoding="utf-8")).get("sections") or {})
+               .get("extract_rehearsal") or {})
+        if _ex:
+            approval["추출 리허설"] = {k: _ex.get(k) for k in
+                                   ("source", "prompt_version", "config_version",
+                                    "totals", "category_counts")}
     (_dir(doc_type) / "approval.json").write_text(
         json.dumps(approval, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"■ ③ 확정 — {doc_type} 등록부 등재 (승인 {approved_by} @ {at})")
@@ -1418,7 +1533,13 @@ def main(argv):
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic)
     if cmd == "review":
-        raw_rows = opt("--rows", str(REHEARSAL_ROWS))
+        # **prose의 리허설 기본은 전량이다**(B51) — 부분 리허설의 근거(좌표 미스
+        # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.
+        _st0 = _state(rest[0]) if rest else None
+        _prose = bool(_st0) and str(_st0.get("schema", "")).endswith(".json") and (
+            (json.loads((ROOT / _st0["schema"]).read_text(encoding="utf-8"))
+             .get("payload_kind") == "prose") if (ROOT / _st0["schema"]).exists() else False)
+        raw_rows = opt("--rows", "all" if _prose else str(REHEARSAL_ROWS))
         if str(raw_rows).lower() == "all":
             rows = None                      # 전량 — 자르지 않는다
         else:
@@ -1432,7 +1553,14 @@ def main(argv):
         for f in ("--llm-coord", "--no-llm-coord"):
             if f in rest:
                 rest.remove(f)
-        return cmd_review(rest[0], opt("--instruct"), rows=rows, llm_coord=coord)
+        # 추출 리허설도 **기본은 「묻는다」**이고 스크립트용으로만 미리 정한다.
+        ex = True if "--extract" in rest else (
+            False if "--no-extract" in rest else None)
+        for f in ("--extract", "--no-extract"):
+            if f in rest:
+                rest.remove(f)
+        return cmd_review(rest[0], opt("--instruct"), rows=rows, llm_coord=coord,
+                          extract=ex)
     if cmd == "confirm":
         return cmd_confirm(rest[0], opt("--by"))
     if cmd == "list":
