@@ -3667,3 +3667,72 @@ $ git status --short docs/spec/           # (출력 없음 — 변화 0)
   아니라 미러 개정 없이 4쌍 0을 유지했다.
 - `DECISIONS.md` D-120 ①을 **확정**으로 올렸다 — 확정 경로였던 「§6.6 명시 여부(허브 몫)」가 실렸다.
 - 명세 개정 필요 **0건**.
+
+## B52 — `query --json` 출력 계약 · `run.py viewer` 검증 뷰어 (2026-09-08)
+
+전제 대조표 6행 전건 일치. 한 가지 나온 것: 5행의 확인 명령
+`python run.py query "…" 2>/dev/null`은 **mock 관문에 먼저 걸려** 답이 나오지 않는다
+(`--allow-mock`이 있어야 한다). 주장 자체(INFO는 stderr로 간다)는 참이다.
+
+### ① `query --json` — 문서 5 §5.2-6
+
+`cli/query.py`에 `as_json(res)`와 `main(args)`를 두고 `run.py cmd_query`는 위임만 한다.
+출력 갈래를 run.py에 두면 `-m cli.query`와 `run.py query`가 다른 것을 낸다.
+
+- `answer()`가 `linked_nodes: [{layer, node_id, canonical}]`를 **함께** 싣는다.
+  node_id를 가진 `kept`가 `answer()` 안에서만 살고, 밖에서 `linked` 문자열을 되파싱하면
+  표제어에 `:`이 하나만 있어도 갈라지기 때문이다. 옛 `linked`(문자열)는 그대로다.
+- `as_json()`은 **`generate()`를 먼저 부른다** — 실호출에서 답변 LLM이 쓴 사실만 남겨
+  `res["facts"]`를 좁히므로(§5.3 Q5), 순서가 반대면 묶음이 「이 답의 근거」라고 거짓말한다.
+- `--json`이면 **stdout에 묶음 하나뿐**이고 모드 줄은 stderr다.
+
+### ② `run.py viewer` — 문서 7 시각화 3형태
+
+`cli/viewer.py` 한 파일 · `ThreadingHTTPServer` · 표준 라이브러리만 · CDN 0 · pip 0.
+`/`(HTML) · `/api/query?q=`(①과 같은 묶음) · `/api/health` 셋뿐이고 **쓰기 라우트가 없다**
+(`do_POST`를 두지 않아 501로 거절된다 — 파생물에서 그래프를 고치는 경로는 없다, 문서 1 P5).
+`127.0.0.1`에만 바인딩하고 빈 포트를 자동 탐색한다.
+
+**템플릿은 하나다.** `cli/export.py`의 HTML 생성을 `graph_data(world)` +
+`build_html(world, *, query_panel=False)`로 빼고 `cmd_html`은 그것을 부른다.
+플래그는 **템플릿 자리 5개를 채우느냐 비우느냐** 하나뿐이며, 끄면 옛 산출과
+**바이트 동일**이다(옛 `cli/export.py`로 뽑은 47,063바이트와 대조 — 일치).
+
+강조는 **링킹된 노드에만** 칠한다. 경로·확장으로 닿은 노드는 칠하지 않는다 —
+시스템이 trace를 내기 전까지 「아마 이 노드였을 것」을 그리면 화면이 추정을 사실로
+보이게 한다. 스냅샷에 없는 id는 칩에 「그래프에 없음」으로 드러낸다.
+
+### 실행 결과
+
+```
+$ python run.py viewer --no-browser --port 8912
+[viewer] http://127.0.0.1:8912/
+  모드 mock · 노드 99 · 엣지 149 · 층 2
+  라우트: / · /api/query?q=… · /api/health   (쓰기 없음 — 읽기 전용)
+
+$ curl -s "http://127.0.0.1:8912/api/health"
+{"mode": "mock", "nodes": 99, "edges": 149, "layers": 2}
+
+$ curl -sG --data-urlencode "q=노칭 다음 공정은?" ".../api/query"
+키: ['answer','chunks','facts','linked','linked_nodes','note','path','question','transit','truncated']
+path: graph_fact · facts 3 · chunks 8 · linked_nodes 1
+$ curl -o /dev/null -w "%{http_code}" .../nope   → 404
+$ curl -X POST .../                              → 501   (쓰기 라우트 없음)
+```
+
+스크린샷 3장 — `export/viewer_shots/{단일링킹,극성3노드,미스}.png`.
+`export/`는 gitignore 대상(파생물)이라 **추적하지 않는다**. 강조 수는 1 · 3 · 0이고,
+미스 문항은 강조 0 + `사내 문서에서 근거를 찾지 못했다. [일반지식 — 사내 검증 필요]`.
+
+### 어서션 +22 (36 → 58, `test_g4`) · 삭제 0
+
+①이 11건(12문항 대조 4 · linked_nodes 2 · answer 1 · CLI stdout·stderr 2 · 텍스트 무변화 1
+· 그 외), ②가 11건(템플릿 동일성 3 · 외부 자원 0 · API 4 · 404·400·501 3).
+`doctor.py` SUITES 기준선 36 → 58.
+
+**내가 처음 쓴 어서션 하나를 스스로 물렸다.** 「CDN·외부 URL 0」을 문자열 `cdn`·`http://`로
+셌더니 붉어졌는데, 걸린 것은 두 파일에 있는 **「CDN을 쓰지 않는다」는 문면**과
+뷰어 **제 주소** `http://127.0.0.1`이었다. 이 레포가 이미 겪은 병이고 `test_g4`의
+`_EXTERNAL` 주석이 그것을 적어 두었다 — 재는 것은 이름이 아니라 **바깥을 부르는 행위**다.
+자원을 실제로 불러오는 구문(`<script src`·`<link `·`@import`·절대 URL·비상대 `fetch`)만
+세도록 고쳤다.
