@@ -27,7 +27,15 @@ from core.ingest import ingest, load_schema
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run(paths, *, force=False):
+def run(paths, *, force=False, layer=None):
+    """추출 1회 — 산출은 체크포인트다.
+
+    `layer`는 **등록 전 리허설의 통로**다(B51): 검수 시점의 doc_type은 아직 등록부에
+    없어 `load_schema`가 답하지 못한다. 층을 아는 호출자(등록 세션)가 그것을 주면
+    등록 조회를 건너뛴다 — **그 밖의 경로는 운영과 한 글자도 다르지 않다.** 별도
+    「리허설 추출」을 만들지 않는 이유가 이것이다: 두 벌이면 리허설이 통과시킨 것을
+    운영이 다시 뽑고, 그 둘이 다를 수 있다.
+    """
     rc = 0
     for p in paths:
         env = json.loads(Path(p).read_text(encoding="utf-8"))
@@ -37,7 +45,7 @@ def run(paths, *, force=False):
                   f"— 추출은 비정형만이다 (문서 4 §4.1)")
             continue
         schema = load_schema(env.get("doc_type"))
-        if schema is None:
+        if schema is None and layer is None:
             print(f"[실패] {doc_id}: 미등록 doc_type '{env.get('doc_type')}' "
                   f"— 구축 모드 대상이다")
             rc = 1
@@ -59,7 +67,7 @@ def run(paths, *, force=False):
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == doc_id}
-        cfg = load_config(schema.get("layer") or "process")
+        cfg = load_config(layer or (schema or {}).get("layer") or "process")
         from core.pipeline import _vocab
         out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])

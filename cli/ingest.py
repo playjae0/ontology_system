@@ -143,13 +143,17 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_
                 f"[{f['kind']}] {f['reason']}" for f in res.failures)[:300])
             print(f"   {row['reason']}")
             return row
-        r, m, _ex = run_document(res.envelope, routing=sel["basis"])
+        r, m, _extracted = run_document(res.envelope, routing=sel["basis"])
         if r.status == "held":
             row.update(status=FAIL, reason=f"보류 — {r.reason}")
             print(f"   {row['reason']}")
             return row
+        # **추출을 다시 돌렸나**를 말한다 — 등록 검수의 리허설이 남긴 체크포인트를
+        # 운영이 재사용하면 LLM 호출이 0회다(B51). 그 사실이 화면에 없으면 「리허설과
+        # 운영이 같은 함수」가 지켜졌는지 사람이 볼 수 없다.
         row.update(status=OK, reason=f"record {len(r.record_ids)} · chunk {len(r.chunk_ids)}"
-                   + (f" · 그래프 노드 {m['nodes']}" if m else ""))
+                   + (f" · 그래프 노드 {m['nodes']}" if m else "")
+                   + ("  [추출 실행]" if _extracted else "  [추출 체크포인트 재사용]"))
         print(f"   인입 — {row['reason']} → {out}")
         if finalize_after:
             finalize()

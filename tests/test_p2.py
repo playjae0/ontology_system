@@ -199,7 +199,11 @@ SCHEMA = json.loads((KIT / "검수뷰_데이터스키마.json").read_text(encodi
 show("뷰 데이터 스키마가 파일로 확정됐다 (P3 n6과의 경계 계약)",
      (KIT / "검수뷰_데이터스키마.json").exists()
      and list(SCHEMA["properties"]["sections"]["properties"])
-     == ["parse_result", "role_table", "adapter_summary"])
+     # **둘째 구획은 payload_kind가 가른다**(B51) — 자리는 셋 그대로이고
+     # table이면 role_table, prose면 extract_rehearsal이 그 자리에 선다.
+     == ["parse_result", "extract_rehearsal", "role_table", "adapter_summary"]
+     and SCHEMA["properties"]["sections"]["required"]
+     == ["parse_result", "adapter_summary"])
 show("스키마가 3층 표시를 강제한다 (요약 / 이상 신호 / 정상 발췌+전량)",
      SCHEMA["properties"]["sections"]["properties"]["parse_result"]["required"]
      == ["summary", "anomalies", "normal"])
@@ -209,10 +213,11 @@ for name, kind in (("ipqc_table", "table"), ("toc_prose", "prose")):
     h = render(view)
     pr = view["sections"]["parse_result"]
     print(f"  · {name} ({kind})")
+    _sec2 = ("구획 2 · 추출 리허설" if kind == "prose"
+             else "구획 2 · 필드 → role 배정표")
     show("   3구획이 전부 렌더된다 (구판 구획 4[층 초안]는 없다)",
-         all(s in h for s in ("구획 1 · 파싱 결과", "구획 2 · 필드 → role 배정표",
-                              "구획 3 · 어댑터 요약"))
-         and "층 초안" not in h)
+         all(s in h for s in ("구획 1 · 파싱 결과", _sec2, "구획 3 · 어댑터 요약"))
+         and "층 초안" not in h and len(view["sections"]) == 3)
     show("   ① 요약 통계 — 조각 수·채움율",
          f">{pr['summary']['pieces']}</b>조각" in h.replace("<b>", ">")
          or str(pr["summary"]["pieces"]) in h)
@@ -238,11 +243,11 @@ for name, kind in (("ipqc_table", "table"), ("toc_prose", "prose")):
         show("   표본 1부 경고가 이상 신호로 뜬다 (D-22 확장 문구)",
              "근거 1건일 수 있음" in h)
 
-show("**3구획 구조는 payload_kind와 무관하게 같다** — 다른 것은 구획 1의 렌더뿐",
+show("**구획은 셋으로 같다** — 다른 것은 구획 1·2의 렌더뿐 (B51: 둘째는 payload_kind가 가른다)",
      all(all(s in render(json.loads((VIEWS / f"{n}.json").read_text(encoding="utf-8")))
-             for s in ("구획 1 · 파싱 결과", "구획 2 · 필드 → role 배정표",
-                       "구획 3 · 어댑터 요약"))
-         for n in ("ipqc_table", "toc_prose")))
+             for s in ("구획 1 · 파싱 결과", _s2, "구획 3 · 어댑터 요약"))
+         for n, _s2 in (("ipqc_table", "구획 2 · 필드 → role 배정표"),
+                        ("toc_prose", "구획 2 · 추출 리허설"))))
 
 # 데이터와 표현의 분리 — 렌더러는 계산하지 않는다
 src = (KIT / "render_review.py").read_text(encoding="utf-8")

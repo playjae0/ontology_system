@@ -13,6 +13,8 @@
 import re, json, glob, os, sys
 
 SPEC = os.environ.get("REFINED_DIR", "docs/spec")
+# **산출은 구조도 자리다**(B51) — 명세 디렉터리는 정본만 둔다(자동 생성물과 섞지 않는다).
+OUT = os.environ.get("STRUCT_DIR", "docs/구조도")
 
 # ── 사람의 판단이 들어가는 유일한 자리: 무엇을 부품으로 보는가
 #    (문서·절 좌표 · 사람이 개입하는가 · 파이프라인 어느 단계인가)
@@ -163,7 +165,7 @@ def make_cards(parts, back):
     서술은 사람/에이전트가 한 번 쓰고, **좌표·조항 참조의 유효성은 여기서 검증한다.**
     참조가 깨지면 exit 1 — 카드가 명세보다 낡았다는 신호다.
     """
-    path = os.environ.get("CARDS", "docs/가이드/부품카드.json")
+    path = os.environ.get("CARDS", "docs/구조도/부품카드.json")
     if not os.path.exists(path): return None, ["부품카드.json 없음 — 서술이 아직 없다"]
     cards = {c["부품"]: c for c in json.load(open(path, encoding="utf-8"))}
     t1 = ""
@@ -241,7 +243,7 @@ def main():
     for p in parts:
         assets = (p["자산"] + p["코드"])[:2]
         print(f"  {p['부품']:<14}{p['단계']:<6}{p['주체']:<6}{p['bytes']//1024:>5}{p['금지']:>5}{len(p['조항']):>5}  {' '.join(assets)[:44]}")
-    open(f"{SPEC}/구조_지도.md", "w", encoding="utf-8").write(
+    open(f"{OUT}/구조_지도.md", "w", encoding="utf-8").write(
         "# 한 장 지도 — 문서가 답이 되기까지\n\n"
         "> **자동 생성**(`회귀스위트/추출_구조.py`). 손으로 고치지 않는다 — 명세가 바뀌면 다시 돌린다.\n"
         "> 👤 사람 · 🤖 LLM(런타임) · **🤖→👤 생성은 LLM, 확정은 사람** · 📄 자산(파일) · ⚙ 코드\n\n"
@@ -255,7 +257,7 @@ def main():
                 "> 서술은 명세에서 뽑아 한 번 쓴 것이고, **명세가 바뀌면 그 부품 카드를 다시 쓴다.**\n"
                 "> 👤 사람 · 🤖 LLM(런타임) · **🤖→👤 생성은 LLM, 확정은 사람** · 📄 자산(파일) · ⚙ 코드\n\n"
                 "**이 카드는 명세를 대신하지 않는다** — 401KB의 **입구**다. 「어느 부품인가」를 알고 「어느 절로 들어가는가」를 대는 것이 전부이며, 판단이 갈리면 **명세가 이긴다.**\n")
-        open(f"{SPEC}/부품카드.md", "w", encoding="utf-8").write(head + body + "\n")
+        open(f"{OUT}/부품카드.md", "w", encoding="utf-8").write(head + body + "\n")
         print(f"부품카드.md 생성 — 참조 오류 {len(cerr)}건")
         for e in cerr[:6]: print("   ", e)
         if cerr: bad.append({"부품": "카드"})

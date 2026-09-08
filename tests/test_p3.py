@@ -111,7 +111,10 @@ show("② 하네스는 **생성 안에서** kit 실물을 호출한다 (재작�
 v = view_of("toc_report")
 SCHEMA = json.loads((ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
 show("② 뷰 데이터가 D-79 스키마를 따른다 (3구획 · 구획 1은 3층)",
-     list(v["sections"]) == list(SCHEMA["properties"]["sections"]["properties"])
+     len(v["sections"]) == 3
+     and set(v["sections"]) <= set(SCHEMA["properties"]["sections"]["properties"])
+     # prose면 둘째 구획이 추출 리허설이다(B51) — 자리는 셋 그대로.
+     and ("extract_rehearsal" in v["sections"]) == (v["payload_kind"] == "prose")
      and set(v["sections"]["parse_result"]) == {"summary", "anomalies", "normal"})
 show("② 산출자가 채움율을 채운다 — 렌더러는 계산하지 않는다 (P-2)",
      isinstance(v["sections"]["parse_result"]["summary"]["fill_rate"], dict)
@@ -130,7 +133,10 @@ show("③ 확정 — 승인 1회로 등록부에 등재된다",
      r.returncode == 0 and registry.lookup("toc_report")["status"] == "registered")
 appr = json.loads((REVIEW / "toc_report" / "approval.json").read_text(encoding="utf-8"))
 show("③ 승인 기록 4요소 — doc_type·adapter_version·승인자·시점 + 수정 지시 이력",
-     {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력"} == set(appr)
+     # prose면 **무엇이 뽑히는 것을 보고 승인했나**가 함께 실린다(B51).
+     {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력"}
+     <= set(appr) and set(appr) - {"추출 리허설"}
+     == {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력"}
      and appr["승인자"] == "검수자 박서준" and len(appr["수정 지시 이력"]) == 1)
 show("③ **승인자 없이는 등재하지 않는다** — 무수정 자동 통과 금지 (틀 §2)",
      run("confirm", "toc_report", "--by", "").returncode != 0)
@@ -1284,6 +1290,95 @@ show("② 전량 파싱이면 그 줄이 없다 (없는 사실을 만들지 않�
                                         "anomalies": [], "normal": {"excerpt": [], "all": [],
                                                                     "columns": [], "tree": []}},
                        "role_table": [], "adapter_summary": {}}}))
+
+# ============================================================ B51 추출 리허설 · doc_id
+print("\n■ B51 — prose ②구획은 추출 리허설 · parse run의 doc_id 파생")
+from core import extract as _EX                                     # noqa: E402
+
+# ── ② parse run — doc_id는 선택이다 (§7.1)
+def _prun(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "parse", "run",
+                           "--allow-mock", *a], capture_output=True, text=True,
+                          cwd=str(ROOT), stdin=subprocess.DEVNULL)
+
+
+_p1 = _prun(str(ROOT / "tests/fixtures/adapters/cp.py"), str(RAW / "CP01.xlsx"))
+show("② 새 형 — doc_id를 파일명에서 파생한다 (ingest-file과 같은 규칙)",
+     "doc_id = CP01 (파일명 파생)" in _p1.stdout and _p1.returncode == 0,
+     _p1.stdout.splitlines()[:1])
+_p2 = _prun(str(ROOT / "tests/fixtures/adapters/cp.py"), "CPOLD", str(RAW / "CP01.xlsx"))
+show("② 구형 4인자도 그대로 받는다 (둘째가 파일이 아니면 doc_id다)",
+     "doc_id = CPOLD (인자)" in _p2.stdout and _p2.returncode == 0)
+_p3 = _prun(str(ROOT / "tests/fixtures/adapters/cp.py"), str(RAW / "CP01.xlsx"),
+            "--doc-id", "지정본")
+show("② --doc-id가 파생을 이긴다", "doc_id = 지정본 (지정)" in _p3.stdout)
+show("② 파생 함수는 한 곳이다 — cli/ingest.doc_id_of를 부른다(복제 0)",
+     "from cli.ingest import doc_id_of" in
+     (ROOT / "cli/parse.py").read_text(encoding="utf-8")
+     and "def doc_id_of" not in (ROOT / "cli/parse.py").read_text(encoding="utf-8"))
+for _n in ("CP01", "CPOLD", "지정본"):
+    (ROOT / "parsed" / f"{_n}.json").unlink(missing_ok=True)
+
+# ── ① prose 검수 뷰 — 추출 리허설이 운영과 같은 함수·같은 파일이다
+reset("toc_report")
+_EX.invalidate("TOC01")
+run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
+_rv = run("review", "toc_report", "--no-llm-coord", "--extract")
+_v51 = view_of("toc_report")
+_xr = _v51["sections"].get("extract_rehearsal") or {}
+show("① prose ②구획이 추출 리허설이다 (배정표가 아니다)",
+     "extract_rehearsal" in _v51["sections"] and "role_table" not in _v51["sections"]
+     and len(_v51["sections"]) == 3)
+show("① 청크별 후보와 카테고리 집계가 데이터에 있다 (렌더러는 계산하지 않는다)",
+     _xr.get("totals", {}).get("chunks", 0) > 0 and isinstance(_xr.get("by_chunk"), list)
+     and isinstance(_xr.get("category_counts"), dict),
+     str(_xr.get("totals")))
+show("① 재현 조건이 실린다 — 출처·지시문 판본·config 판본",
+     _xr.get("source") in ("mock", "live") and _xr.get("prompt_version")
+     and _xr.get("config_version"), f"{_xr.get('source')} · {_xr.get('prompt_version')}")
+show("① ⓑ 리허설이 **운영의 doc_id**로 체크포인트를 남긴다 (재사용의 조건)",
+     _EX.has_checkpoint("TOC01"), str(_EX.checkpoint_path("TOC01")))
+_html51 = (REVIEW / "toc_report" / "view.html").read_text(encoding="utf-8")
+show("① 화면 제목이 「추출 리허설 — 층 어휘가 이 문서에 적용된 결과」다",
+     "구획 2 · 추출 리허설 — 층 어휘가 이 문서에 적용된 결과" in _html51
+     and "청크별 후보" in _html51)
+run("confirm", "toc_report", "--by", "검수자")
+_ing = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
+                       str(RAW / "TOC01.xlsx"), "--doc-type", "toc_report",
+                       "--allow-mock"], capture_output=True, text=True, cwd=str(ROOT),
+                      stdin=subprocess.DEVNULL)
+show("① ⓑ 확정 뒤 운영 인입이 그 체크포인트를 **재사용**한다 (LLM 호출 추가 0)",
+     "[추출 체크포인트 재사용]" in _ing.stdout,
+     [l.strip() for l in _ing.stdout.splitlines() if "성공" in l][:1])
+_appr51 = json.loads((REVIEW / "toc_report" / "approval.json").read_text(encoding="utf-8"))
+show("① ⓔ 승인 기록에 요약이 실린다 — 무엇이 뽑히는 것을 보고 승인했나",
+     (_appr51.get("추출 리허설") or {}).get("totals")
+     and (_appr51["추출 리허설"]).get("category_counts") is not None)
+
+# ── ⓒ 부분 리허설이면 체크포인트를 남기지 않는다
+reset("toc_report")
+_EX.invalidate("TOC01")
+(ROOT / "parsed" / "TOC01.json").unlink(missing_ok=True)
+run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
+run("review", "toc_report", "--rows", "5", "--no-llm-coord", "--extract")
+_xr2 = view_of("toc_report")["sections"].get("extract_rehearsal") or {}
+show("① ⓒ 부분 리허설이면 체크포인트가 **안 남는다** (운영이 앞 N행만 본 추출을 쓰면 안 된다)",
+     not _EX.has_checkpoint("TOC01") and _xr2.get("kept") is False
+     and "체크포인트를 남기지 않았다" in (_xr2.get("note") or ""), str(_xr2.get("note")))
+
+# ── ⓓ 비대화형이면 끄고 그 사실을 뷰가 말한다
+reset("toc_report")
+run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
+run("review", "toc_report", "--no-llm-coord")          # --extract 없음 = 물어본다
+_xr3 = view_of("toc_report")["sections"].get("extract_rehearsal") or {}
+show("① ⓓ 비대화형이면 끄고 뷰에 「추출 리허설 없음」을 남긴다 (조용한 구간 0)",
+     _xr3.get("source") == "none" and "없음" in (_xr3.get("note") or ""),
+     str(_xr3))
+show("① prose의 리허설 기본은 전량이다 (부분 리허설의 근거는 table의 것)",
+     not (view_of("toc_report")["sections"]["parse_result"]["summary"]
+          .get("rehearsal") or {}).get("truncated"))
+reset("toc_report")
+_EX.invalidate("TOC01")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
