@@ -237,7 +237,7 @@ def main():
         for p in bad: print(f"   {p['부품']} — 절 {p['좌표없음']} 못 찾음")
     else:
         print("좌표 전건 유효")
-    json.dump({"parts": parts, "back": back}, open(f"{SPEC}/구조_추출.json", "w", encoding="utf-8"),
+    json.dump({"parts": parts, "back": back}, open(f"{OUT}/구조_추출.json", "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)
     print(f"\n{'부품':<16}{'단계':<6}{'주체':<6}{'KB':>5}{'금지':>5}{'조항':>5}  자산·코드")
     for p in parts:
