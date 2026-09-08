@@ -244,6 +244,156 @@ show("export mermaid quality — **빈 출력을 성공으로 내지 않는다**
 show("export mermaid cross — 걸침 관계를 층 구분과 함께 그린다",
      "occurs_in" in _run("export", "mermaid", "cross").stdout)
 
+
+# ── B52 ① `query --json` 출력 계약 (문서 5 §5.2-6) ─────────────────────────
+print("\n[B52 ①] query --json — 답 묶음 출력 계약")
+
+from core import llm as llm_mod                                  # noqa: E402
+from cli.export import _world, build_html, graph_data            # noqa: E402
+
+_w = _world()
+
+
+def _raises(fn):
+    try:
+        fn()
+    except BaseException:                                        # noqa: BLE001
+        return True
+    return False
+
+_J = {q["q"]: R.as_json(R.answer(q["q"])) for q in QUERIES["queries"]}
+_T = {q["q"]: R.generate(R.answer(q["q"])) for q in QUERIES["queries"]}
+
+
+def _count(text, marker):
+    return sum(1 for ln in text.split("\n") if ln.strip().startswith(marker))
+
+
+# **두 출력이 같은 것을 세는가**가 이 계약의 전부다. 화면(JSON)이 사람이 읽은
+# 텍스트보다 넓거나 좁으면 「이 답의 근거」가 거짓이 된다.
+_bad_f = [q for q, j in _J.items() if len(j["facts"]) != _count(_T[q], "[그래프 사실]")]
+_bad_c = [q for q, j in _J.items() if len(j["chunks"]) != _count(_T[q], "[문서 근거]")]
+_bad_p = [q for q, j in _J.items() if f"[경로] {j['path']}" not in _T[q]]
+_bad_l = [q for q, j in _J.items()
+          if j["linked"] and f"[링킹] {', '.join(j['linked'])}" not in _T[q]]
+show(f"--json facts 건수 = 텍스트 [그래프 사실] 줄 수 (12문항)", not _bad_f, str(_bad_f[:2]))
+show(f"--json chunks 건수 = 텍스트 [문서 근거] 줄 수 (12문항)", not _bad_c, str(_bad_c[:2]))
+show(f"--json path = 텍스트 [경로] (12문항)", not _bad_p, str(_bad_p[:2]))
+show(f"--json linked = 텍스트 [링킹] (12문항)", not _bad_l, str(_bad_l[:2]))
+
+# `linked`(문자열)를 지우지 않았고, `linked_nodes`가 그것과 같은 것을 가리킨다.
+_ln_ok = all(len(j["linked_nodes"]) == len(j["linked"])
+             and all(f"{n['layer']}:{n['canonical']}" == s
+                     for n, s in zip(j["linked_nodes"], j["linked"]))
+             for j in _J.values())
+show("linked_nodes = linked와 같은 수·같은 순서 (옛 키를 지우지 않았다)", _ln_ok)
+
+_G = {i for g in _w.values() for i in g.nodes}
+_nid_ok = all(n["node_id"] in _G for j in _J.values() for n in j["linked_nodes"])
+show("linked_nodes[].node_id가 실제 그래프 노드다 (화면이 칠할 수 있다)", _nid_ok)
+
+show("--json 묶음에 answer(생성된 답 텍스트)가 실린다",
+     all(isinstance(j.get("answer"), str) and j["answer"] for j in _J.values()))
+
+# **stdout에는 묶음 하나뿐**이다 — 모드 줄이 섞이면 파이프가 깨진다.
+_jr = _run("query", "노칭 다음 공정은?", "--json", "--allow-mock")
+try:
+    _jp = json.loads(_jr.stdout)
+except Exception as _e:                                          # noqa: BLE001
+    _jp, _e = None, _e
+show("run.py query --json — stdout이 JSON 한 덩어리다 (모드 줄은 stderr)",
+     _jr.returncode == 0 and isinstance(_jp, dict) and _jp.get("path") == "graph_fact",
+     _jr.stdout[:80])
+show("--json 모드 줄이 stderr로 간다", "모드:" in _jr.stderr and "모드:" not in _jr.stdout)
+
+# ③ 텍스트 경로는 변하지 않았다 — 플래그가 없으면 옛 화면 그대로다.
+_tr = _run("query", "노칭 다음 공정은?", "--allow-mock")
+show("--json 없으면 텍스트 경로 그대로 (모드 줄 + Q. 로 시작)",
+     _tr.returncode == 0 and "모드:" in _tr.stdout and "\nQ. 노칭 다음 공정은?" in _tr.stdout)
+
+# ── B52 ② run.py viewer — 검증 뷰어 ────────────────────────────────────────
+print("\n[B52 ②] run.py viewer — 그래프 위의 질의")
+
+import threading as _th                                          # noqa: E402
+import urllib.error as _ue                                       # noqa: E402
+import urllib.parse as _up                                       # noqa: E402
+import urllib.request as _ur                                     # noqa: E402
+from http.server import ThreadingHTTPServer                      # noqa: E402
+
+from cli import viewer as V                                      # noqa: E402
+
+_pg_on = build_html(_w, query_panel=True)
+_pg_off = build_html(_w, query_panel=False)
+
+# ⓒ **같은 템플릿, 플래그 하나** — 끄면 옛 산출과 한 글자도 다르지 않아야 한다.
+_exported = (ROOT / "export" / "graph.html")
+show("build_html(query_panel=False) == export html 산출 (템플릿은 하나다)",
+     _exported.exists() and _exported.read_text(encoding="utf-8") == _pg_off)
+_MARKS = ("qside", "highlight", "/api/query", "focusNode")
+show("뷰어 HTML에 질문 패널·highlight 코드가 있다",
+     all(m in _pg_on for m in _MARKS))
+show("export html 산출에는 **없다** (파일 하나로 여는 산출은 물어볼 서버가 없다)",
+     not [m for m in _MARKS if m in _pg_off])
+
+# ⓔ 외부 자원 0 — 사내망에서 화면이 비어 뜨지 않는다.
+_src = "".join((ROOT / "cli" / f).read_text(encoding="utf-8")
+               for f in ("viewer.py", "export.py"))
+# **재는 것은 이름이 아니라 바깥을 부르는 행위다** — 위 `_EXTERNAL` 주석이 말한
+# 그대로다. 이 두 파일에는 「CDN을 쓰지 않는다」는 **문면**이 있고, 문자열 "cdn"을
+# 세면 그 문면이 위반으로 잡힌다. `http://127.0.0.1`도 뷰어 제 주소이지 바깥이
+# 아니다. 그래서 자원을 실제로 불러오는 구문과 절대 URL만 센다.
+_out = [ln.strip()[:70] for ln in _src.split("\n")
+        if any(m in ln.lower() for m in ("https://", "@import", "<script src", "<link "))
+        or ("http://" in ln and "127.0.0.1" not in ln and "{HOST}" not in ln)
+        or ('fetch("' in ln and 'fetch("/' not in ln)]
+show("cli/viewer.py · cli/export.py — 바깥 자원을 부르는 자리 0", not _out, str(_out[:2]))
+
+# ⓑ 서버를 빈 포트에 띄워 `/api/query`가 `--json`과 같은 묶음을 내는지 대조한다.
+_port = V._free_port(8790)
+_health = {"mode": "mock" if llm_mod.use_mock() else "실호출",
+           "nodes": len(graph_data(_w)[0]), "edges": len(graph_data(_w)[1]),
+           "layers": len(_w)}
+_srv = ThreadingHTTPServer((V.HOST, _port), V._handler(_pg_on.encode("utf-8"), _health))
+_th.Thread(target=_srv.serve_forever, daemon=True).start()
+
+
+def _get(path, data=None, method="GET"):
+    req = _ur.Request(f"http://{V.HOST}:{_port}{path}", data=data, method=method)
+    try:
+        with _ur.urlopen(req, timeout=60) as r:
+            return r.status, r.read().decode("utf-8")
+    except _ue.HTTPError as e:
+        return e.code, e.read().decode("utf-8")
+
+
+try:
+    _q = "노칭 다음 공정은?"
+    _sc, _body = _get("/api/query?q=" + _up.quote(_q))
+    _api = json.loads(_body) if _sc == 200 else {}
+    show("/api/query — --json과 **키 집합이 같다**",
+         _sc == 200 and set(_api) == set(_J[_q]), f"{_sc} · {sorted(set(_api) ^ set(_J[_q]))}")
+    show("/api/query — 같은 질문에 같은 값 (path·facts·chunks·linked_nodes)",
+         _sc == 200 and all(_api.get(k) == _J[_q][k]
+                            for k in ("path", "facts", "chunks", "linked_nodes")))
+    _sc_h, _body_h = _get("/api/health")
+    _h = json.loads(_body_h) if _sc_h == 200 else {}
+    show("/api/health — mode·nodes·edges·layers",
+         _sc_h == 200 and set(_h) == {"mode", "nodes", "edges", "layers"}
+         and _h["nodes"] == _health["nodes"] and _h["mode"] in ("mock", "실호출"))
+    show("/ — 뷰어 HTML을 낸다", _get("/")[0] == 200)
+    show("q가 비면 400 (조용히 빈 답을 내지 않는다)", _get("/api/query?q=")[0] == 400)
+    show("그 밖의 경로는 404", _get("/nope")[0] == 404)
+    # **쓰기 라우트가 없다** — 파생물에서 그래프를 고치는 경로는 없다(문서 1 P5).
+    show("쓰기 라우트 없음 — POST는 501로 거절된다",
+         _get("/", data=b"{}", method="POST")[0] == 501
+         and not hasattr(V._handler(b"", {}), "do_POST"))
+finally:
+    _srv.shutdown()
+    _srv.server_close()
+
+show("--port 뒤 번호가 없으면 멈춘다 (조용히 기본 포트로 가지 않는다)",
+     _raises(lambda: V.main(["--port"])))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G4 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

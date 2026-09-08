@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -313,13 +314,14 @@ _HTML_HEAD = """<!doctype html>
    border-radius:6px;padding:8px 10px;max-width:340px;display:none;font-size:12px}}
  #tip b{{color:#fff}} #tip .k{{color:var(--dim)}}
  #hint{{position:absolute;left:12px;bottom:10px;color:var(--dim);font-size:11px}}
+/*__PANEL_CSS__*/
 </style>
 <div id="wrap"><div id="side">
  <h1>{title}</h1><div class="sub">{sub}</div>
  <div id="filters"></div>
  <div id="stat"></div>
 </div><div id="stage"><canvas id="cv"></canvas><div id="tip"></div>
-<div id="hint">드래그 = 이동 · 휠 = 확대 · 노드 클릭 = 고정/해제</div></div></div>
+<div id="hint">드래그 = 이동 · 휠 = 확대 · 노드 클릭 = 고정/해제</div></div><!--__PANEL_HTML__--></div>
 <script>
 const DATA = """
 
@@ -441,6 +443,7 @@ function draw(){
   const order = [...nodes].sort((a,b)=>(deg.get(b.id)||0)-(deg.get(a.id)||0));
   for(const n of order){
     const [x,y]=P(n), r=(n.tier==="main"?9:n.tier==="sub"?7:5.5)*Math.min(view.k,1.6);
+    /*__HL_BEFORE__*/
     ctx.fillStyle=color(n[COLOR_AX]??"(없음)");
     ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
     if(fixed.has(n.id)){ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();}
@@ -462,6 +465,7 @@ function draw(){
         ctx.fillText(s, x, ly);
       }
     }
+    /*__HL_AFTER__*/
   }
   const cross = edges.filter(e=>e.cross).length;
   document.getElementById("stat").innerHTML =
@@ -501,10 +505,196 @@ cv.onmousemove=e=>{
 cv.onwheel=e=>{e.preventDefault(); const f=e.deltaY<0?1.12:1/1.12;
   view.x=e.offsetX-(e.offsetX-view.x)*f; view.y=e.offsetY-(e.offsetY-view.y)*f;
   view.k*=f; draw();};
+/*__PANEL_JS__*/
 window.onresize=resize;
 resize(); layout(); draw();
 </script>
 """
+
+
+_PANEL_CSS = r"""
+ #qside{width:400px;flex:0 0 400px;background:var(--panel);border-left:1px solid var(--line);
+   padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+ #qside h2{font-size:13px;margin:0}
+ #qbadge{font-size:11px;padding:2px 7px;border-radius:10px;font-weight:700}
+ #qbadge.mock{background:#e0af68;color:#1a1a1a} #qbadge.live{background:#9ece6a;color:#12210f}
+ #qrow{display:flex;gap:6px} #q{flex:1;min-width:0}
+ #q,#qgo{background:#0f1115;color:var(--fg);border:1px solid var(--line);
+   border-radius:5px;padding:7px 9px;font:inherit}
+ #qgo{cursor:pointer;background:#7aa2f7;color:#0f1115;border:none;font-weight:700}
+ #qex{display:flex;flex-wrap:wrap;gap:4px}
+ #qex button{background:transparent;color:var(--dim);border:1px solid var(--line);
+   border-radius:10px;padding:3px 8px;font:11px inherit;cursor:pointer;text-align:left}
+ #qex button:hover{color:var(--fg);border-color:#7aa2f7}
+ #qout{font-size:12px;line-height:1.6}
+ #qout .badge{display:inline-block;background:#7aa2f7;color:#0f1115;font-weight:700;
+   border-radius:4px;padding:1px 6px;font-size:11px}
+ #qout .chip{display:inline-block;background:#2a2f3a;border:1px solid #ffd866;
+   color:#ffd866;border-radius:10px;padding:2px 8px;margin:2px 3px 0 0;cursor:pointer;font-size:11px}
+ #qout .chip.gone{border-color:var(--line);color:var(--dim);cursor:default}
+ /* **두 채널은 눈으로 갈린다** — 그래프 사실과 문서 근거가 섞이면 어느 것이
+    추론이고 어느 것이 원문인지 화면에서 사라진다(문서 5 §5.2 규약 3). */
+ #qout .sec{margin-top:12px;border-left:3px solid;padding-left:8px}
+ #qout .sec.g{border-color:#9ece6a} #qout .sec.c{border-color:#7dcfff}
+ #qout .sec h3{font-size:11px;margin:0 0 4px;letter-spacing:.5px}
+ #qout .sec.g h3{color:#9ece6a} #qout .sec.c h3{color:#7dcfff}
+ #qout .sec li{margin-bottom:5px}
+ #qout .src{color:var(--dim);font-size:11px;display:block}
+ #qout .ans{background:#1c2230;border:1px solid #7aa2f7;border-radius:6px;
+   padding:8px 10px;white-space:pre-wrap}
+ #qout .warn{color:#e0af68} #qout .err{color:#f7768e}
+ #qout ul{margin:0;padding-left:16px}
+"""
+
+_PANEL_HTML = """<div id="qside">
+ <div style="display:flex;align-items:center;gap:8px">
+   <h2>질의</h2><span id="qbadge">…</span></div>
+ <div id="qrow"><input id="q" placeholder="질문을 적는다" autocomplete="off"><button id="qgo">묻기</button></div>
+ <div id="qex"></div>
+ <div id="qout"><span style="color:var(--dim)">질문하면 링킹된 노드가 그래프에 칠해진다.</span></div>
+</div>"""
+
+# **강조는 링킹된 노드에만 칠한다**(B52). 경로·확장으로 닿은 노드는 칠하지 않는다 —
+# 시스템이 trace를 내기 전까지 「아마 이 노드였을 것」을 그리면 화면이 추정을 사실로
+# 보이게 한다. 없는 것은 없다고 두는 편이 정직하다.
+_HL_BEFORE = 'const _on = !highlight.size || highlight.has(n.id); ctx.globalAlpha = _on ? 1 : 0.13;'
+_HL_AFTER = ('if(highlight.has(n.id)){ctx.beginPath();ctx.arc(x,y,r,0,7);'
+             'ctx.fillStyle="#ffd866";ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2.5;'
+             'ctx.beginPath();ctx.arc(x,y,r+3.5,0,7);ctx.stroke();} ctx.globalAlpha=1;')
+
+_PANEL_JS = r"""
+const highlight = new Set();          // 링킹된 node_id — 새 질의마다 비운다
+const EXAMPLES = ["노칭 다음 공정은?","노칭 정밀도 규격 알려줘","노칭의 관리인자는?",
+                  "버 이슈는 어느 설비에서?","수율 올리려면 뭘 봐야 해?"];
+const qbox=document.getElementById("q"), qout=document.getElementById("qout");
+for(const ex of EXAMPLES){const b=document.createElement("button");
+  b.textContent=ex; b.onclick=()=>{qbox.value=ex; ask();}; document.getElementById("qex").appendChild(b);}
+document.getElementById("qgo").onclick=ask;
+qbox.onkeydown=e=>{if(e.key==="Enter") ask();};
+
+function esc(s){const d=document.createElement("div"); d.textContent=s==null?"":String(s); return d.innerHTML;}
+function focusNode(id){const n=byId.get(id); if(!n) return;
+  view.k=Math.max(view.k,1.5); view.x=cv.width/2-n.x*view.k; view.y=cv.height/2-n.y*view.k; draw();}
+
+fetch("/api/health").then(r=>r.json()).then(h=>{
+  const b=document.getElementById("qbadge");
+  b.textContent=h.mode; b.className=h.mode==="mock"?"mock":"live";
+}).catch(()=>{document.getElementById("qbadge").textContent="?";});
+
+async function ask(){
+  const q=qbox.value.trim(); if(!q) return;
+  qout.innerHTML='<span style="color:var(--dim)">묻는 중…</span>';
+  highlight.clear(); draw();
+  let r, j;
+  try{
+    const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),120000);
+    r=await fetch("/api/query?q="+encodeURIComponent(q),{signal:ctl.signal});
+    clearTimeout(t);
+    if(!r.ok){qout.innerHTML=`<div class=err>서버가 ${r.status}로 답했다 — ${esc(await r.text())}</div>`; return;}
+    j=await r.json();
+  }catch(e){
+    qout.innerHTML='<div class=err>답을 받지 못했다 — '+esc(e.name==="AbortError"?"120초 초과":e.message)+'</div>';
+    return;
+  }
+  // **그래프에 없는 id는 없다고 적는다** — 스냅샷은 뜬 시점의 것이라, 그 뒤 인입된
+  // 노드는 화면에 없다. 조용히 안 칠하면 「링킹이 안 됐다」로 잘못 읽힌다.
+  const gone=[];
+  for(const ln of (j.linked_nodes||[])){ byId.has(ln.node_id) ? highlight.add(ln.node_id) : gone.push(ln.node_id); }
+  draw();
+
+  let h = `<div><span class=badge>${esc(j.path)}</span></div>`;
+  if(j.answer && j.path!=="general_knowledge" && !/^Q\. /.test(j.answer))
+    h += `<div class="ans" style="margin-top:8px">${esc(j.answer)}</div>`;
+  if((j.linked_nodes||[]).length){
+    h += '<div style="margin-top:8px">';
+    for(const ln of j.linked_nodes){
+      const off = gone.includes(ln.node_id);
+      h += `<span class="chip${off?" gone":""}" data-id="${esc(ln.node_id)}">`
+         + `${esc(ln.layer)}:${esc(ln.canonical)}${off?" · 그래프에 없음":""}</span>`;
+    }
+    h += '</div>';
+  }
+  if(j.note) h += `<div class="warn" style="margin-top:8px">${esc(j.note)}</div>`;
+  for(const t of (j.transit||[])) h += `<div class="warn">[전이] ${esc(t)}</div>`;
+  if((j.facts||[]).length)
+    h += '<div class="sec g"><h3>[그래프 사실]</h3><ul>'
+       + j.facts.map(f=>`<li>${esc(f)}</li>`).join("") + '</ul></div>';
+  if((j.chunks||[]).length)
+    h += '<div class="sec c"><h3>[문서 근거]</h3><ul>'
+       + j.chunks.map(c=>`<li><span class=src>${esc(c.doc_id)} · ${esc(c.section)} · `
+           + `${esc(c.source_locator)} · tier ${esc(c.tier)}</span>${esc(c.text)}</li>`).join("")
+       + '</ul></div>';
+  if(j.truncated) h += `<div class="warn" style="margin-top:8px">[잘림] 근거 ${j.truncated}건이 상한에서 잘렸다</div>`;
+  if(!(j.facts||[]).length && !(j.chunks||[]).length && !j.note)
+    h += '<div style="margin-top:8px;color:var(--dim)">두 채널 모두 비었다.</div>';
+  qout.innerHTML = h;
+  for(const c of qout.querySelectorAll(".chip:not(.gone)"))
+    c.onclick=()=>focusNode(c.dataset.id);
+}
+"""
+
+_SLOTS = ("/*__PANEL_CSS__*/", "<!--__PANEL_HTML__-->", "/*__HL_BEFORE__*/",
+          "/*__HL_AFTER__*/", "/*__PANEL_JS__*/")
+
+
+def graph_data(world):
+    """월드 → 화면이 먹는 nodes/edges 배열. **변환 지점 둘은 여기 하나뿐이다.**"""
+    live = {i for g in world.values() for i, n in g.nodes.items() if is_live(n)}
+    layer_of = {i: lay for lay, g in world.items() for i in g.nodes}
+
+    nodes = []
+    for lay, g in world.items():
+        for n in g.nodes.values():                  # ① id-keyed dict → 배열
+            if not is_live(n):
+                continue
+            nodes.append({
+                "id": n["id"], "name": n["canonical"], "layer": lay,
+                "category": n["category"], "status": n.get("status"),
+                "tier": n.get("tier"), "polarity": n.get("polarity"),
+                "prov": ", ".join((n.get("provenance") or [])[:4]),
+            })
+
+    edges = []
+    for lay, g in world.items():
+        for e in g.edges:
+            if e.get("status") == "deleted_by_user":
+                continue
+            if e["src"] not in live or e["dst"] not in live:
+                continue
+            edges.append({                          # ② layer 주입 + cross 표시
+                "src": e["src"], "dst": e["dst"], "rel": e["rel"], "layer": lay,
+                "cross": layer_of.get(e["src"]) != layer_of.get(e["dst"]),
+            })
+    return nodes, edges
+
+
+def build_html(world, *, query_panel=False):
+    """**템플릿은 하나다** — 파일로 저장하는 `export html`과 뷰어가 같은 것을 쓴다.
+
+    복제하면 한쪽만 고쳐지고, 그 순간 「뷰어에서 본 그림」과 「내보낸 그림」이 다른
+    것이 된다 — 화면이 증거인 시스템에서 그것은 증거가 갈리는 것이다.
+
+    `query_panel`은 **자리 5개를 채우느냐 비우느냐** 하나다. 끄면 옛 산출과
+    한 글자도 다르지 않다(질문 패널도 `highlight`도 들어가지 않는다).
+    """
+    nodes, edges = graph_data(world)
+    n_cross = sum(1 for e in edges if e["cross"])
+    head = _HTML_HEAD.format(
+        title="온톨로지 그래프",
+        sub=f"노드 {len(nodes)} · 엣지 {len(edges)} · 걸침 {n_cross} · "
+            f"층 {len(world)}")
+    html = head + json.dumps({"nodes": nodes, "edges": edges},
+                             ensure_ascii=False) + _HTML_TAIL
+    fill = ((_PANEL_CSS, _PANEL_HTML, _HL_BEFORE, _HL_AFTER, _PANEL_JS)
+            if query_panel else ("",) * 5)
+    for slot, code in zip(_SLOTS, fill):
+        assert slot in html, slot          # 자리가 사라지면 조용히 빈 화면이 된다
+        if not code:
+            # 빈 자리는 **줄째로** 걷어낸다 — 빈 줄이 남으면 「패널을 끄면 옛 산출
+            # 그대로」가 참이 아니게 되고, 그 한 글자를 누가 또 대조하게 된다.
+            html = re.sub(r"^[ \t]*" + re.escape(slot) + r"\n", "", html, flags=re.M)
+        html = html.replace(slot, code)
+    return html
 
 
 def cmd_html(args):
@@ -532,40 +722,11 @@ def cmd_html(args):
     out.parent.mkdir(parents=True, exist_ok=True)
 
     world = _world()
-    live = {i for g in world.values() for i, n in g.nodes.items() if is_live(n)}
-    layer_of = {i: lay for lay, g in world.items() for i in g.nodes}
-
-    nodes = []
-    for lay, g in world.items():
-        for n in g.nodes.values():                  # ① id-keyed dict → 배열
-            if not is_live(n):
-                continue
-            nodes.append({
-                "id": n["id"], "name": n["canonical"], "layer": lay,
-                "category": n["category"], "status": n.get("status"),
-                "tier": n.get("tier"), "polarity": n.get("polarity"),
-                "prov": ", ".join((n.get("provenance") or [])[:4]),
-            })
-
-    edges = []
-    for lay, g in world.items():
-        for e in g.edges:
-            if e.get("status") == "deleted_by_user":
-                continue
-            if e["src"] not in live or e["dst"] not in live:
-                continue
-            edges.append({                          # ② layer 주입 + cross 표시
-                "src": e["src"], "dst": e["dst"], "rel": e["rel"], "layer": lay,
-                "cross": layer_of.get(e["src"]) != layer_of.get(e["dst"]),
-            })
-
-    data = json.dumps({"nodes": nodes, "edges": edges}, ensure_ascii=False)
+    nodes, edges = graph_data(world)
     n_cross = sum(1 for e in edges if e["cross"])
-    head = _HTML_HEAD.format(
-        title="온톨로지 그래프",
-        sub=f"노드 {len(nodes)} · 엣지 {len(edges)} · 걸침 {n_cross} · "
-            f"층 {len(world)}")
-    out.write_text(head + data + _HTML_TAIL, encoding="utf-8")
+    # **질문 패널 없이 낸다** — 파일 하나로 열리는 산출이라 물어볼 서버가 없다.
+    # 패널을 넣으면 열리기는 하되 모든 질문이 실패하는 화면이 된다(B52).
+    out.write_text(build_html(world, query_panel=False), encoding="utf-8")
     size = out.stat().st_size / 1024
     print(f"[export] 노드 {len(nodes)} · 엣지 {len(edges)} "
           f"(걸침 {n_cross}) → {_short(out)}  [{size:.0f}KB]")

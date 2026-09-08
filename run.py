@@ -18,7 +18,11 @@
   python run.py ingest <파일...>   상동 (구 이름 — 같은 기능을 두 이름으로 두지 않으려
                                    남기되, 계약 이름은 build다)
   python run.py all                bootstrap + 픽스처 계약 JSON 전량 인입
-  python run.py query "<질문>"     질의 4단 (cli/query.py 라우터로 위임)
+  python run.py viewer [--port N] [--no-browser]
+                                  그래프 뷰어 + 질문 칸 (읽기 전용 · 표준 라이브러리만)
+  python run.py query "<질문>" [--json]
+                                  질의 4단 (cli/query.py 라우터로 위임).
+                                  --json = 답 묶음을 stdout에 한 덩어리로 (모드 줄은 stderr)
   python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
   python run.py gauges             계기판 8종 (cli/platform.py로 위임)
   python run.py platform <명령>    플랫폼 창구 4′ (cli/platform.py로 위임)
@@ -104,11 +108,19 @@ def cmd_all():
 
 
 def cmd_query(args):
-    """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다."""
-    from cli.query import answer, generate
-    from core import llm
-    print(f"  {llm.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
-    print(generate(answer(" ".join(args))))
+    """질의는 **라우터가 단일 진입점**이다(§8-R1) — 여기서는 위임만 한다.
+
+    출력 갈래(텍스트/`--json`)도 라우터가 갖는다 — 여기서 갈래를 만들면
+    `-m cli.query`와 `run.py query`가 다른 것을 내게 된다(B52).
+    """
+    from cli.query import main
+    return main(args)
+
+
+def cmd_viewer(args):
+    """검증 뷰어 — 그래프 위에서 질의가 도는지 본다(B52). 위임만 한다."""
+    from cli.viewer import main
+    return main(args)
 
 
 def cmd_ops(args):
@@ -194,6 +206,8 @@ if __name__ == "__main__":
                                   allow_duplicate="--allow-duplicate" in sys.argv),
      "all": lambda: cmd_all(),
      "query": lambda: cmd_query(sys.argv[2:]),
+     # **관측 창구다** — mock 관문 비대상(doctor와 같은 자리). 모드는 화면 배지로 뜬다.
+     "viewer": lambda: cmd_viewer(sys.argv[2:]),
      "ops": lambda: cmd_ops(sys.argv[2:]),
      "gauges": lambda: cmd_gauges(),
      "platform": lambda: cmd_platform(sys.argv[2:]),

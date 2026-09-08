@@ -59,6 +59,14 @@ def answer(question):
     res["transit"] = notes
     res["linked"] = [f"{h['layer']}:{graphs[h['layer']].get(h['node_id'])['canonical']}"
                      for h in kept]
+    # **화면이 그래프 위에 칠하려면 id가 있어야 한다**(문서 5 §5.2-6 · B52).
+    # 문자열 `linked`는 사람이 읽는 것이라 층·표제어만 담고 node_id를 잃는다 —
+    # 그것을 파싱해 되찾는 순간 표제어에 `:`이 하나만 있어도 갈라진다. 그래서
+    # **버리지 않고 나란히 싣는다**. 옛 키는 그대로 둔다(호출부 4곳이 읽는다).
+    res["linked_nodes"] = [
+        {"layer": h["layer"], "node_id": h["node_id"],
+         "canonical": graphs[h["layer"]].get(h["node_id"])["canonical"]}
+        for h in kept]
     if notes and not hits:
         res["note"] = " · ".join(notes)
         res["path"] = Q.PATH_GENERAL
@@ -235,6 +243,43 @@ def render(res):
     return "\n".join(lines)
 
 
+JSON_FLAG = "--json"
+
+
+def as_json(res):
+    """`--json`·`/api/query`가 내는 **한 덩어리** (문서 5 §5.2-6 · B52).
+
+    `answer()`의 묶음 **그대로**에 `answer`(생성된 답 텍스트) 하나를 얹는다 —
+    키 이름을 바꾸지 않는다. 화면·플랫폼이 읽는 것이 텍스트 렌더와 같은 자료여야
+    「화면에 보이는 것」과 「사람이 읽은 것」이 어긋나지 않는다.
+
+    **`generate()`를 먼저 부른다.** 실호출 갈래에서 답변 LLM이 쓴 사실만 남겨
+    `res["facts"]`를 좁히기 때문이다(§5.3 Q5) — 답보다 넓은 근거 목록을 함께 내면
+    묶음이 「이 답의 근거」라고 거짓말을 한다. mock이면 `render(res)`라 변화가 없다.
+    """
+    text = generate(res)
+    return dict(res, answer=text)
+
+
+def main(args):
+    """텍스트/JSON 두 출력의 **단일 진입점** — run.py와 `-m cli.query`가 같이 쓴다.
+
+    `--json`이면 **stdout에는 묶음 하나뿐**이다. 모드 줄은 stderr로 보낸다 —
+    파이프로 받는 쪽(`| python -m json.tool`)이 사람용 한 줄에 깨지지 않게.
+    """
+    args = list(args)
+    want_json = JSON_FLAG in args
+    while JSON_FLAG in args:
+        args.remove(JSON_FLAG)          # 남으면 질문 문장으로 흘러 들어간다
+    question = " ".join(args)
+    if want_json:
+        print(f"  {llm.mode_line()}", file=sys.stderr)
+        print(json.dumps(as_json(answer(question)), ensure_ascii=False))
+    else:
+        print(f"  {llm.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
+        print(generate(answer(question)))
+    return 0
+
+
 if __name__ == "__main__":
-    print(f"  {llm.mode_line()}")          # B42 ⑤
-    print(generate(answer(" ".join(sys.argv[1:]))))
+    main(sys.argv[1:])
