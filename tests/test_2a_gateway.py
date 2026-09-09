@@ -65,11 +65,17 @@ m = tagger.complete_images([{"source_locator": "S", "image_ref": "i1"}])[0]
 show("이미지 요약 mock이 데이터로 표시된다 (§7.6-B-4)",
      m["meta"].get("image_summary") is True
      and m["meta"].get("image_summary_source") == "mock", str(m["meta"]))
-live = tagger.complete_images([{"source_locator": "S", "image_ref": "i1"}],
-                              lambda r: f"요약({r})")[0]
+# **주입 서명은 계약이다** — B53에서 `summarize(ref, image=, mime=, context=, page=)`로
+# 넓어졌다(구판은 참조 문자열 1인자라 모델이 그림을 못 봤다 — 개정대장 §AJ).
+live = tagger.complete_images(
+    [{"source_locator": "S", "image_ref": "i1", "context": "맥락"}],
+    lambda r, *, image=None, mime=None, context="", page=None: f"요약({r}·{context})",
+    images={"i1": (b"\x89PNG", "image/png")})[0]
 show("실호출 갈래는 source=live로 갈린다 — 두 갈래가 같은 반환 계약",
      live["meta"]["image_summary_source"] == "live"
-     and set(m["meta"]) == set(live["meta"]))
+     and set(m["meta"]) <= set(live["meta"]))
+show("주입 서명이 바이트·맥락을 받는다 (B53 — 참조 문자열만 보내지 않는다)",
+     live["text"] == "요약(i1·맥락)" and live["meta"]["image_bytes_len"] == 4)
 
 # ============================================================ USE_MOCK=0
 print("\n■ USE_MOCK=0 + 설정 미설정 → 9지점 각각 명시적 실패 (§7.6-B-4 · 완료판정 5)")

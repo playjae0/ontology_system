@@ -158,7 +158,21 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
     return out
 
 
-def complete_images(pieces, summarize=None, *, kept=None):
+def _mark(m, blob, mime, page):
+    """**바이트가 왔는가를 데이터로 남긴다** — mock·재사용 갈래에서도 잰다.
+
+    실호출 없이 「그림이 실제로 ④까지 도달했나」를 재는 유일한 자리다(b-ⓐ).
+    `slide_render`는 쪽 전체 그림을 붙였는지이고, 못 붙였으면 **`none`으로 남긴다** —
+    조용히 다르게 돌지 않는다(문서 6 §6.4-5).
+    """
+    if blob is not None:
+        m["image_bytes_len"] = len(blob)
+    if mime:
+        m["image_mime"] = mime
+    m["slide_render"] = "page" if page else "none"
+
+
+def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=None):
     """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §6 규약 3).
 
     **갈림길은 함수 유무 하나다**(B48 · 문서 7 §7.6-B-1): `summarize`가 오면 실호출,
@@ -175,13 +189,26 @@ def complete_images(pieces, summarize=None, *, kept=None):
       `image_summary`만으로는 mock 산출과 실산출이 구분되지 않아, 오염을 소비부에서
       걸러낼 근거가 데이터에 남지 않는다.
 
+    **보내는 것은 참조 문자열이 아니라 바이트다**(B53). `images[ref] = (바이트, mime)`는
+    리더가 원본에서 뜬 것이고, `pages[쪽번호]`는 쪽 전체 렌더다. 구판은 `summarize(ref)`
+    한 인자였고 실호출 갈래가 `"이미지 참조: img_001"` 문자열을 모델에 보냈다 —
+    모델은 그림을 본 적이 없으므로 요약을 **지어냈다**(개정대장 §AJ).
+
+    `meta.image_bytes_len`을 **mock에서도** 남긴다 — 바이트가 실제로 여기까지 왔는지를
+    실호출 없이 재는 유일한 자리다(완료판정 b-ⓐ). 「도달 가능」이 통과하고도 내용이
+    비어 있던 것이 이 회차가 닫는 결함이다.
+
     파서는 `core/`를 import하지 않는다(P1 — 결합은 파일 계약뿐). 그래서 실호출 경로는
     **주입**받는다: 판단은 호출부(`parser/pipeline.py`)가 하고 여기는 계약만 지킨다.
     """
+    images = images or {}
+    pages = pages or {}
     out = []
     for p in pieces:
         r = dict(p)
         ref = r.get("image_ref")
+        blob, mime = images.get(ref, (None, None)) if ref else (None, None)
+        page = pages.get((r.get("meta") or {}).get("slide")) if ref else None
         if ref and not r.get("text") and kept is not None and ref in kept:
             # **보존분 재사용** — 매 인입 새로 부르면 text가 흔들려 그 문서의
             # chunk_id가 전량 이동한다(문서 6 §6.3 · chunk_id 결정성 §7.2).
@@ -189,11 +216,16 @@ def complete_images(pieces, summarize=None, *, kept=None):
             m = r.setdefault("meta", {})
             m["image_summary"] = True
             m["image_summary_source"] = "kept"
+            # **근거 표시는 재사용 갈래에서도 남는다** — 여기서 빠뜨리면 재인입한
+            # 문서만 `slide_render`·`image_bytes_len`이 없어 같은 문서의 두 판이
+            # 다른 모양이 된다(첫 인입만 검사에 걸린다).
+            _mark(m, blob, mime, page)
             out.append(r)
             continue
         if ref and not r.get("text"):
             if summarize is not None:
-                r["text"] = summarize(ref)
+                r["text"] = summarize(ref, image=blob, mime=mime,
+                                      context=r.get("context") or "", page=page)
                 src = "live"
                 if kept is not None:
                     kept[ref] = r["text"]        # **보존** — 재인입에 재사용(§6.3)
@@ -203,6 +235,7 @@ def complete_images(pieces, summarize=None, *, kept=None):
             m = r.setdefault("meta", {})
             m["image_summary"] = True
             m["image_summary_source"] = src
+            _mark(m, blob, mime, page)
         out.append(r)
     return out
 

@@ -18,6 +18,8 @@ import logging
 from . import normalizer, preflight, struct_map, tagger, validator
 from .reader import head, read
 
+_LOG = logging.getLogger("onto.parser.pipeline")
+
 PARSER_VERSION = "p1-1.0"
 
 
@@ -86,6 +88,37 @@ def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None):
     return hook
 
 
+
+def _page_map(path, raw):
+    """슬라이드/페이지 index → 쪽 렌더 PNG. **숨김이 쪽 번호를 민다.**
+
+    LibreOffice는 PPTX를 PDF로 낼 때 **숨긴 슬라이드를 빼고** 찍는다(실측: 10장
+    중 1장 숨김 → 9쪽). 그래서 `pages[10]`이 10번 슬라이드가 아니다 — 보이는
+    슬라이드만 세어 이어 붙여야 그림과 쪽이 어긋나지 않는다. 어긋나면 ④가
+    **다른 슬라이드를 보고** 요약하고, 그 문장이 근거로 실린다.
+
+    렌더가 없으면 빈 dict다 — 호출부가 `slide_render="none"`을 데이터에 남긴다.
+    """
+    try:
+        from . import render
+        got = render.render_pages(path)
+    except Exception as e:                                  # noqa: BLE001
+        _LOG.warning("쪽 렌더 실패 — %s: %s", type(e).__name__, e)
+        return {}
+    if not got:
+        return {}
+    slides = raw.get("slides")
+    if slides is None:                                      # PDF — 쪽이 곧 index
+        return got
+    visible = [s["index"] for s in slides if not s.get("hidden")]
+    if len(visible) != len(got):
+        # **셈이 안 맞으면 붙이지 않는다** — 틀린 쪽을 보내느니 없는 편이 낫다.
+        _LOG.warning("쪽 렌더 %d장 · 보이는 슬라이드 %d장 — 대응이 서지 않아 "
+                     "쪽 그림을 붙이지 않는다", len(got), len(visible))
+        return {}
+    return {idx: got[n] for n, idx in enumerate(visible, start=1)}
+
+
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
@@ -96,7 +129,7 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
 
     | 인자 | 지점 | 오면 | 안 오면(§7.1 대체) |
     |---|---|---|---|
-    | `summarize(image_ref)` | ④이미지 요약 | 실호출 | 고정 문자열 |
+    | `summarize(ref, image=, mime=, context=, page=)` | ④이미지 요약 | 실호출 | 고정 문자열 |
     | `map_structure(doc_id, lines)` | ⑦구조 지도 | 실호출 | 번호 패턴 휴리스틱 |
     | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
 
@@ -167,7 +200,12 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     if summarize is None:
         _mock_log(doc_id, "④이미지 요약",
                   "고정 문자열 + meta.image_summary_source=mock")
-    pieces = tagger.complete_images(pieces, summarize, kept=kept_img)  # ⑤ tagger
+    # **바이트와 쪽 그림은 여기서 붙인다**(B53) — 리더 raw가 이 함수의 손에 있고,
+    # 어댑터는 순수 함수라 원본 파일을 다시 열 수 없다(§6.4-2).
+    imgs = raw.get("_images") or {}
+    pages = _page_map(path, raw) if (imgs and summarize is not None) else {}
+    pieces = tagger.complete_images(pieces, summarize, kept=kept_img,
+                                    images=imgs, pages=pages)          # ⑤ tagger
     # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
     # mtime이 흔들려 «재사용했나»가 파일로 판정되지 않는다.
     fresh = {}

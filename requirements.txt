@@ -5,7 +5,13 @@
 # 실측은 `python doctor.py --env`가 매번 한다.
 #
 #   pip install -r requirements.txt          전부
-#   pip install openpyxl python-pptx         문서 읽기만 (실문서 인입에 필요)
+#   pip install openpyxl python-pptx PyMuPDF 문서 읽기만 (실문서 인입에 필요)
+#
+# **패키지가 아닌 의존 하나**: LibreOffice(`soffice`)는 PPTX→PDF 변환에 쓰는 **외부
+# 프로그램**이고 pip로 들어오지 않는다. 없어도 완주하며 부재는 데이터로 남는다
+# (`meta.slide_render=none` — 문서 7 §7.6-B-6). 있는지는 `python doctor.py --env`가 잰다.
+# 주의: `soffice`가 PATH에 있어도 **impress 필터가 없으면 변환은 실패한다**(실측:
+# libreoffice-core만 설치된 환경) — 그 경우도 같은 자리로 떨어진다.
 #
 # 런타임: Python 3.10+ (문서 7 §7.1 런타임 전제)
 
@@ -14,6 +20,9 @@
 # mock/parsed/의 계약 JSON을 인입하므로 파일 읽기 단계를 타지 않는다.
 openpyxl>=3.1        ; python_version >= "3.10"
 python-pptx>=0.6.21  ; python_version >= "3.10"
+# 없으면: `.pdf` 읽기와 **쪽 전체 렌더**(④ 이미지 요약의 맥락)가 빠진다. PPTX·XLSX는
+# 그대로 돌고 그림 요약도 개별 그림만으로 돈다 — 데이터에 `slide_render=none`이 남는다.
+PyMuPDF>=1.23        ; python_version >= "3.10"
 
 # ── 직렬화 가속 (선택) ────────────────────────────────────────────────────
 # 없으면: 표준 json으로 폴백한다. 계기판 7(graph MB)의 직렬화 방식 표기가 바뀔 뿐이다.

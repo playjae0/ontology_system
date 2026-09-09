@@ -34,3 +34,10 @@ export/
 # 우선순위는 환경변수 > 설정 파일이고, 파일 자리는
 # ONTO_CONFIG > ~/.onto/llm.json > 여기(레포 루트)다.
 llm.local.json
+
+# 생성 픽스처 — `tests/fixtures/make_{ppt,pdf}.py`가 만든다(B53).
+#   ① 바이너리를 커밋하지 않아도 **무엇이 들었는지가 생성기 diff에 보인다**
+#   ② 없으면 테스트가 그 자리에서 다시 만든다 (`make_*.build()`)
+# 손으로 만든 검체(PPT_basic.pptx·CP01.xlsx 등)는 그대로 추적한다 — 그쪽은 입력 원본이다.
+tests/fixtures/raw/PPT_shapes.pptx
+tests/fixtures/raw/PDF_basic.pdf
