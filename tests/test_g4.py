@@ -394,6 +394,183 @@ finally:
 show("--port 뒤 번호가 없으면 멈춘다 (조용히 기본 포트로 가지 않는다)",
      _raises(lambda: V.main(["--port"])))
 
+
+# ── B54 골든셋 채점기 · BM-25 대조군 (문서 5 §5.5-2·3·4) ────────────────────
+print("\n[B54] 골든셋 채점기 · BM-25 상시 대조군")
+
+import ast as _ast                                                # noqa: E402
+from collections import Counter                                    # noqa: E402
+from core import bm25 as _bm                                      # noqa: E402
+from cli import golden as _G                                      # noqa: E402
+
+# ③ **대조군의 정의는 「무엇을 안 읽는가」다** — 그래프·사전·골격을 읽으면
+# 대조군이 아니라 이 시스템의 일부가 되어 비교의 뜻이 사라진다.
+_src = (ROOT / "core" / "bm25.py").read_text(encoding="utf-8")
+_imported = set()
+for _n in _ast.walk(_ast.parse(_src)):
+    if isinstance(_n, _ast.ImportFrom) and (_n.module or "").startswith("core"):
+        _imported |= {a.name for a in _n.names}
+    elif isinstance(_n, _ast.Import):
+        _imported |= {a.name.split(".")[1] for a in _n.names
+                      if a.name.startswith("core.")}
+show("core/bm25.py가 import하는 core 모듈은 store 하나다 (대조군의 정의)",
+     _imported == {"store"}, str(sorted(_imported)))
+show("그래프·사전·골격·임베딩·LLM을 읽지 않는다",
+     not [w for w in ("graph", "dictionary", "skeleton", "matcher",
+                      "embeddings", "llm") if f"core import {w}" in _src
+          or f"core.{w}" in _src])
+show("BM-25 상수가 한 곳에 있다 (k1·b)",
+     _src.count("K1 = ") == 1 and _src.count("B = ") == 1
+     and _bm.K1 == 1.5 and _bm.B == 0.75)
+# 토큰화 — CJK 2-gram의 근거가 실제로 성립하는가
+_t1, _t2 = set(_bm.tokens("노칭 프레스")), set(_bm.tokens("노칭프레스"))
+show("CJK 2-gram — 「노칭 프레스」와 「노칭프레스」가 토큰을 공유한다",
+     len(_t1 & _t2) >= 3, f"{sorted(_t1 & _t2)}")
+show("영숫자는 단어로, CJK는 2-gram으로 가른다",
+     "cp01" in _bm.tokens("CP01 노칭") and "노칭" in _bm.tokens("CP01 노칭"))
+show("한 글자 낱말은 그 자체가 토큰이다 (2-gram이 삼키지 않는다)",
+     _bm.tokens("탭 용접")[:1] == ["탭"] or "탭" in _bm.tokens("탭 용접"))
+_idx = _bm.build()
+show("인덱스는 청크 텍스트로 선다 (store 경유)", len(_idx.ids) > 0 and _idx.avg > 0,
+     f"청크 {len(_idx.ids)} · 어휘 {len(_idx.idf)}")
+_h1 = _bm.search("노칭 프레스 금형 관리", 5, index=_idx)
+show("search가 상위 k를 점수 내림차순으로 낸다",
+     len(_h1) == 5 and all(_h1[i][1] >= _h1[i + 1][1] for i in range(4)))
+show("동점은 chunk_id로 갈라 결정적이다 (같은 입력 → 같은 출력)",
+     _bm.search("노칭", 8, index=_idx) == _bm.search("노칭", 8, index=_idx))
+show("docs_of가 chunk_id에서 doc_id를 뽑는다 ({doc_id}:… 계약)",
+     _bm.docs_of([("CP01:abc", 1.0), ("PPT01:x-y", 0.5)]) == ["CP01", "PPT01"])
+show("인덱스를 저장하지 않는다 (파생물 — P5)",
+     not (ROOT / "data" / "bm25_index.json").exists()
+     and "atomic_write" not in _src and "store.write" not in _src)
+
+# ① 문항 틀 — §5.5-2 기준 구성
+_blank = _G.blank_set()
+_bt = Counter(q["type"] for q in _blank["queries"])
+show("golden init 틀이 기준 120건이다 (§5.5-2)", len(_blank["queries"]) == 120,
+     str(len(_blank["queries"])))
+show("유형 구성 — 지원 6종 각 15 · noanswer/multihop/out 각 10",
+     all(_bt[t] == 15 for t in ("Q1", "Q2", "Q3", "Q4", "Q5", "Q8"))
+     and all(_bt[t] == 10 for t in ("noanswer", "multihop", "out")))
+show("expected_path가 유형에서 파생된다 (§5.3 유형표 대응)",
+     _G.TYPE_PATH["Q1"] == "chunk" and _G.TYPE_PATH["Q2"] == "graph_fact"
+     and _G.TYPE_PATH["Q8"] == "general_knowledge"
+     and _G.TYPE_PATH["multihop"] == "both"
+     and _G.TYPE_PATH["noanswer"] == _G.TYPE_PATH["out"] == "general_knowledge")
+show("expected_path는 닫힌 4값 안이다 (문서 7 §7.6)",
+     set(_G.TYPE_PATH.values()) <= set(_G.PATHS) and len(_G.PATHS) == 4)
+
+# 형식 검사는 **문항 단위**다 — 사내가 채워 가는 중간 상태를 허용한다
+_mixed = ROOT / "data" / "_b54_mixed.json"
+_mixed.write_text(json.dumps({"version": 1, "queries": [
+    {"id": "OK1", "type": "Q1", "q": "노칭 다음 공정은?", "expected_path": "chunk"},
+    {"id": "EMPTY", "type": "Q1", "q": "  ", "expected_path": "chunk"},
+    {"id": "BADT", "type": "Q9", "q": "x", "expected_path": "chunk"},
+    {"id": "BADP", "type": "Q1", "q": "x", "expected_path": "없는경로"},
+]}, ensure_ascii=False), encoding="utf-8")
+_okq, _skip = _G.load(_mixed)
+show("형식 밖 문항은 **건너뛰고 파일 전체를 거부하지 않는다**",
+     [q["id"] for q in _okq] == ["OK1"] and len(_skip) == 3)
+show("건너뛴 사유를 문항마다 남긴다 (조용히 빠뜨리지 않는다)",
+     all(w for _, w in _skip)
+     and any("닫힌 값 밖" in w for _, w in _skip)
+     and any("q가 비었다" in w for _, w in _skip), str(_skip[1])[:52])
+_mixed.unlink()
+
+# ② 채점 4축 — expected_*가 없으면 그 축은 **채점하지 않는다**(0점이 아니다)
+_gs = ROOT / "tests" / "fixtures" / "golden_sample.json"
+_gq, _ = _G.load(_gs)
+_rows = _G.score_set(_gq, 8)
+_agg = _G.aggregate(_rows, 8)
+show("골든셋 3문항이 4축 전부 채점된다",
+     _agg["n"] == 3 and _agg["path_n"] == 3 and _agg["evidence_n"] == 3
+     and _agg["bm25_n"] == 3 and _agg["linking_n"] == 3)
+# ⓒ **둘 다 계산되고 서로 다른 값을 낸다** — 같으면 대조군이 의미 없다.
+show("evidence@k와 bm25@k가 **둘 다 계산된다**",
+     _agg["evidence_at_k"] is not None and _agg["bm25_at_k"] is not None,
+     f"evidence {_agg['evidence_at_k']} · bm25 {_agg['bm25_at_k']}")
+show("두 축이 **다른 값**이다 — 대조군이 들러리가 아니다",
+     _agg["evidence_at_k"] != _agg["bm25_at_k"])
+show("대조군이 이기는 문항도 있다 (한쪽으로만 기울면 비교가 아니다)",
+     any(r["bm25"]["ok"] and not r["evidence"]["ok"] for r in _rows)
+     and any(r["evidence"]["ok"] and not r["bm25"]["ok"] for r in _rows))
+_noexp = _G.score_set([{"id": "N", "type": "Q1", "q": "노칭 다음 공정은?",
+                        "expected_path": "graph_fact"}], 8)
+show("expected_linked/docs가 없으면 그 축은 None이다 (0점이 아니다)",
+     _noexp[0]["linking"] is None and _noexp[0]["evidence"] is None
+     and _noexp[0]["bm25"] is None and _noexp[0]["path"]["ok"] is True)
+show("linking은 부분집합 판정이다 — 기대가 실제에 다 들어야 ok",
+     _G._grade({"type": "Q1", "q": "x", "expected_path": "chunk",
+                "expected_linked": ["a", "b"]},
+               {"path": "chunk", "linked": ["a"], "chunks": []},
+               _idx, 8)["linking"]["ok"] is False)
+
+# ⓔ 측정이 재료 로그를 오염시키지 않는다 (§5.5 규율 4)
+_lm = store.path(store.LINK_MISS)
+_b = _lm.stat().st_size if _lm.exists() else 0
+_G.score_set(_gq + [{"id": "MISS", "type": "out", "q": "탕수육 부먹 찍먹?",
+                     "expected_path": "general_knowledge"}], 8)
+_a = _lm.stat().st_size if _lm.exists() else 0
+show("채점 중 link_miss가 늘지 않는다 (측정이 제 흔적을 세지 않는다)", _a == _b,
+     f"{_b} → {_a}")
+# **끄는 것은 재료 로그뿐이다** — 결함까지 죽이면 G5를 측정이 우회한다.
+_df = store.path(store.DEFECTS)
+_b2 = _df.stat().st_size if _df.exists() else 0
+with store.muted_material_logs():
+    store.append_line(store.LINK_MISS, "MUTED")
+    store.append_line(store.DEFECTS, "B54 뮤트 시험 — 결함은 살아야 한다")
+show("뮤트는 재료 로그만 끈다 — defects는 살아 있다 (G5를 우회하지 않는다)",
+     _df.stat().st_size > _b2 and (_lm.stat().st_size if _lm.exists() else 0) == _a)
+show("뮤트가 끝나면 원래 함수로 복구된다",
+     store.append_line.__name__ == "append_line")
+show("스위치는 store 하나다 — 계기판이 제 벌을 들지 않는다",
+     "muted_material_logs" in (ROOT / "cli" / "platform.py").read_text(encoding="utf-8")
+     and "store.append_line = " not in
+     (ROOT / "cli" / "platform.py").read_text(encoding="utf-8"))
+
+# 채점은 answer()까지다 — ⑧(답변 생성)을 부르지 않는다
+show("채점기가 generate(⑧)를 부르지 않는다 (재는 것은 근거 선택이지 문장이 아니다)",
+     "generate" not in (ROOT / "cli" / "golden.py").read_text(encoding="utf-8"))
+# 같은 계산이 두 벌이 되지 않는다
+_plat = (ROOT / "cli" / "platform.py").read_text(encoding="utf-8")
+show("cmd_accuracy가 채점기를 부른다 (경로 일치를 다시 세지 않는다)",
+     "G.score_set" in _plat and "G.render" in _plat)
+show("계기판 1 분모가 골든셋이 서면 바뀐다 (§5.5-1)",
+     "골든셋 {len(smoke)}문항" in _plat and "_basis" in _plat)
+
+# 로그는 **명령**이 쓴다 — CLI를 실제로 돌려 잰다(정의만 보고 세지 않는다).
+_n0 = len(store.read(_G.LOG, []))
+_gr = _run("golden", "score", "--set", str(_gs))
+_log = store.read(_G.LOG, [])
+show("golden score가 돈다 — 4축 표와 「메커니즘 점검」 문면",
+     _gr.returncode == 0 and "bm25@k" in _gr.stdout
+     and "메커니즘 점검" in _gr.stdout and "대조군 대비" in _gr.stdout)
+show("golden_log.json이 한 줄씩 쌓인다 (로그이지 큐가 아니다 · 최근 50)",
+     len(_log) == _n0 + 1 and len(_log) <= 50
+     and {"at", "set", "n", "k", "path_rate", "linking_recall",
+          "evidence_at_k", "bm25_at_k", "by_type"} <= set(_log[-1]),
+     f"{_n0} → {len(_log)}")
+_gj = _run("golden", "score", "--set", str(_gs), "--json")
+show("--json이 같은 것을 JSON으로 낸다",
+     _gj.returncode == 0
+     and set(json.loads(_gj.stdout)) == {"summary", "rows", "skipped"}
+     and json.loads(_gj.stdout)["summary"]["bm25_at_k"] == _agg["bm25_at_k"])
+_gi = _run("golden", "init", str(ROOT / "data" / "_b54_init.json"))
+_made = json.loads((ROOT / "data" / "_b54_init.json").read_text(encoding="utf-8"))
+show("golden init이 120건 틀을 쓰고 유형 분포를 찍는다",
+     _gi.returncode == 0 and len(_made["queries"]) == 120
+     and "유형 분포" in _gi.stdout and "기대 경로" in _gi.stdout)
+_gi2 = _run("golden", "init", str(ROOT / "data" / "_b54_init.json"))
+show("이미 있으면 **덮지 않는다** (사내가 채운 문항을 지우는 명령이 아니다)",
+     "덮지 않는다" in _gi2.stdout
+     and json.loads((ROOT / "data" / "_b54_init.json").read_text(encoding="utf-8"))
+     == _made)
+(ROOT / "data" / "_b54_init.json").unlink()
+_sb = _run("show", "bm25", "노칭 프레스 금형 관리", "3")
+show("show bm25 — 대조군을 사람이 직접 본다",
+     _sb.returncode == 0 and "대조군이다" in _sb.stdout
+     and "그래프·사전·LLM을 쓰지 않는다" in _sb.stdout)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G4 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

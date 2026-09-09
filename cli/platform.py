@@ -222,23 +222,31 @@ def gauges():
     # **없으면 0으로 세고 계속 돈다** — 무가드 read였고, 픽스처를 들어내면
     # `gauges`가 통째로 죽었다(§2-4 실측). 스모크 세트는 계기판의 **분모**이지
     # 계기판의 전제가 아니다.
-    qpath = fixtures.QUERIES
-    queries = (json.loads(qpath.read_text(encoding="utf-8"))
-               if qpath.exists() else {"queries": []})
-    smoke = queries["queries"]
+    # **골든셋이 서면 recall류의 분모가 골든셋이다**(문서 5 §5.5-1 · B54).
+    # 그 전까지는 mock 스모크 12문항이 분모다 — 골든셋은 실물 문항의 장치라
+    # 그 전에는 recall의 데이터 기준이 없다. `basis` 문자열이 어느 쪽인지 밝힌다.
+    from cli import golden as G
+    if G.GOLDEN.exists():
+        smoke, _skip = G.load(G.GOLDEN)
+        _basis = f"골든셋 {len(smoke)}문항 (문서 5 §5.5-1)"
+    else:
+        smoke, _basis = [], "mock 스모크 12문항 (구현문서 §6.4 — 골든셋은 국면 2)"
+    if not smoke:
+        qpath = fixtures.QUERIES
+        queries = (json.loads(qpath.read_text(encoding="utf-8"))
+                   if qpath.exists() else {"queries": []})
+        smoke = queries["queries"]
+        _basis = ("mock 스모크 12문항 (구현문서 §6.4 — 골든셋은 국면 2)"
+                  if not G.GOLDEN.exists() else
+                  f"mock 스모크 {len(smoke)}문항 — 골든셋은 있으나 채점 가능한 문항이 0건이다")
 
     # **끄는 것은 재료 로그뿐이다.** 측정이 `link_miss`·`chunk_truncated`를
     # 오염시키면 다음 측정이 자기 흔적을 세지만(§5.5 규율 4), `defects.log`까지
     # 함께 죽이면 **측정 중 발생한 결함이 조용히 사라진다** — G5(아무것도 조용히
     # 버리지 않는다)를 측정이 우회하는 셈이다.
-    _MUTE = {store.LINK_MISS, store.CHUNK_TRUNCATED}
-    _orig = store.append_line
-    store.append_line = (lambda name, line, _o=_orig:
-                         None if name in _MUTE else _o(name, line))
-    try:
+    # **스위치는 `store` 하나다**(B54) — 골든셋 채점기가 같은 것을 쓴다.
+    with store.muted_material_logs():
         results = {q["id"]: R.answer(q["q"]) for q in smoke}
-    finally:
-        store.append_line = _orig
 
     linkable = [q for q in smoke if q["expected_path"] != Q.PATH_GENERAL]
     linked = [q for q in linkable if results[q["id"]]["linked"]]
@@ -305,7 +313,7 @@ def gauges():
     return {
         "1_linking_recall": {"value": round(len(linked) / len(linkable), 3) if linkable else None,
                              "linked": len(linked), "expected_linkable": len(linkable),
-                             "basis": "mock 스모크 12문항 (구현문서 §6.4 — 골든셋은 국면 2)"},
+                             "basis": _basis},
         "2_plateau": {"series": plateau,
                       "last_rate": plateau[-1]["rate"] if plateau else None},
         "3_hold_rate": {"value": hold_rate, "queue": len(q), "pieces": pieces},
@@ -371,38 +379,29 @@ def cmd_accuracy():
     한 줄 쌓는다(로그이지 큐가 아니다).
     """
     from collections import Counter
-    from cli.query import answer
+    from cli import golden as G
 
-    qpath = fixtures.QUERIES
-    smoke = (json.loads(qpath.read_text(encoding="utf-8")).get("queries") or []
-             if qpath.exists() else [])
-    golden = ROOT / "golden" / "queries.json"
-    is_golden = golden.exists()
-    if is_golden:
-        smoke = json.loads(golden.read_text(encoding="utf-8")).get("queries") or []
+    # **같은 계산을 두 벌로 두지 않는다**(B54) — 골든셋 대조는 채점기가 한다.
+    # 여기 있던 「경로 일치만 센다」는 그 채점기의 첫 축이 됐고, 나머지 셋
+    # (linking·evidence·bm25)은 이 화면에서도 그대로 보인다.
+    gset = G.GOLDEN if G.GOLDEN.exists() else fixtures.QUERIES
+    is_golden = G.GOLDEN.exists()
+    rate = None
 
     print("■ 판정 정확도 — 계기판 8종과 **별도 측정**이다\n")
-    if not smoke:
+    queries, skipped = (G.load(gset) if gset.exists() else ([], []))
+    if not queries:
         print("  대조 세트가 없다 — 골든셋(golden/queries.json)도 스모크 세트도 없다.")
         print("  **품질은 실데이터·골든셋의 몫이다**(§7.5-1). 세트가 서면 여기서 잰다.")
+        if skipped:
+            print(f"  (형식으로 건너뛴 문항 {len(skipped)}건 — `run.py golden score`가 사유를 찍는다)")
     else:
-        src = "골든셋" if is_golden else "mock 스모크"
-        hit = 0
-        rows = []
-        for q in smoke:
-            want = q.get("expected_path")
-            got = answer(q["q"])["path"]
-            ok = (want == got)
-            hit += ok
-            rows.append((ok, q.get("id", q["q"][:12]), want, got))
-        rate = round(hit / len(smoke), 3)
-        print(f"  경로 일치 {hit}/{len(smoke)} = {rate}   [{src}]")
-        if not is_golden:
-            print("  ※ **mock 세트다 — 품질 점수가 아니라 메커니즘 점검이다**"
-                  "(가짜 데이터의 점수는 가짜 확신이다 · §7.5-1)")
-        for ok, qid, want, got in rows:
-            if not ok:
-                print(f"    ✗ {qid:<12} 기대 {want} · 실제 {got}")
+        rows = G.score_set(queries, G.DEFAULT_K)
+        agg = G.aggregate(rows, G.DEFAULT_K)
+        rate = agg["path_rate"]
+        print(G.render(agg, rows, src=G._rel(gset), is_mock=not is_golden,
+                       skipped=skipped, k=G.DEFAULT_K))
+        print()
 
     q = store.read(store.QUEUE, [])
     JUDGE = ("uncertain_match", "orphan_anchor", "orphan_attach", "spec_conflict")
@@ -415,8 +414,8 @@ def cmd_accuracy():
     hist = store.read("accuracy_log.json", [])
     hist.append({"at": store._now(), "queue_uncertain": total,
                  "by_kind": {k: c[k] for k in JUDGE},
-                 "path_match": (rate if smoke else None),
-                 "set": ("golden" if is_golden else "mock" if smoke else None)})
+                 "path_match": rate,
+                 "set": ("golden" if is_golden else "mock" if queries else None)})
     store.write("accuracy_log.json", hist[-50:])
     if len(hist) > 1:
         prev = hist[-2]

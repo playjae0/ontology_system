@@ -193,12 +193,25 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               "relations": cfg.get("relations"),
               "attach_candidates": attach_candidates(chunk.get("process_ref"),
                                                      cfg["layer"]),
-              "chunk": chunk.get("text", "")}, ensure_ascii=False)}],
+              "chunk": _with_path(chunk)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
     return {"chunk_id": chunk_id,
             "entities": out.get("entities", []),
             "relations": out.get("relations", []),
             "attach": out.get("attach", [])}
+
+
+def _with_path(chunk):
+    """청크 텍스트 앞에 `section_path` 한 줄 — **문서 안 어디인가**를 준다(B53).
+
+    prose 청크는 슬라이드 한 장 분량이라 그 자체로는 「무엇에 대한 글인가」가
+    자주 빠진다(「20±2㎛로 관리한다」가 어느 공정인지 본문에 없다). 경로는
+    **앞뒤 슬라이드 본문을 넣지 않고** 그 자리를 메우는 값싼 맥락이다 —
+    본문을 넣으면 비용이 3배가 되고 잡음이 함께 들어온다(문서 6 §6.4-5).
+    """
+    text = chunk.get("text", "")
+    path = (chunk.get("meta") or {}).get("section_path")
+    return f"[{path}]\n{text}" if path else text
 
 
 def _mock_candidates(chunk_id, text, cfg, vocab):

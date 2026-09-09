@@ -425,7 +425,12 @@ def basic_adapter_proposal(samples):
     자명한 것을 매번 생성시키면 검수 비용만 늘고 산출은 같다. 다만 임계를 넘는
     슬라이드가 있으면 자명함이 조건부가 되므로(C13 v18) 그 사실도 함께 말한다.
     """
-    if not all(str(s).lower().endswith(".pptx") for s in samples):
+    # **표본이 전부 `.pptx` 또는 전부 `.pdf`일 때다**(문서 6 §6.4-5 · B53).
+    # 섞이면 어느 어댑터를 위임할지가 갈리므로 제안하지 않는다.
+    kinds = {Path(str(x)).suffix.lower() for x in samples}
+    if kinds == {".pdf"}:
+        return _basic_pdf_proposal(samples)
+    if kinds != {".pptx"}:
         return None
     # **임계는 어댑터가 소유한다**(문서 6 §6.4-5) — 판단 상수는 `ADAPTER.expects`에
     # 산다(문서 7 §7.1 관리 자산의 원칙). 여기에 숫자를 복제하면 "조정은 어댑터
@@ -435,14 +440,46 @@ def basic_adapter_proposal(samples):
     over = 0
     for s in samples:
         for sl in reader.read(str(s)).get("slides", []):
-            shapes = [x for x in sl.get("shapes", []) if x and x.strip()]
-            if sum(len(x) for x in shapes) > max_chars or len(shapes) > max_shapes:
+            if sl.get("hidden"):                    # 숨김은 청크가 아니다 (B53)
+                continue
+            # **임계는 본문 텍스트로 잰다** — 리더가 shape **레코드**를 내므로(B53)
+            # 표·차트·그림은 각자 청크가 되고 본문 분할 판정에 들어가지 않는다.
+            body = [r.get("text", "") for r in sl.get("shapes", [])
+                    if r.get("kind") not in ("table", "chart", "picture")
+                    and r.get("text")]
+            if sum(len(x) for x in body) > max_chars or len(body) > max_shapes:
                 over += 1
     return {"adapter": "parser/adapters/basic_ppt.py",
             "reason": "PPT는 분할이 자명하다 — 슬라이드가 청크다. 생성 세션이 필요 없다",
             "over_threshold_slides": over,
             "note": ("임계 초과 슬라이드가 있어 자명함이 조건부다 — shape 분할·지도 폴백이 "
                      "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
+
+
+def _basic_pdf_proposal(samples):
+    """PDF의 위임 제안 — **쪽이 청크다**(D-111과 같은 래퍼 방식).
+
+    PPT의 임계 셈이 여기 없는 것은 의도다: 기본 PDF 어댑터는 쪽을 쪼개지 않으므로
+    「임계 초과 쪽」이라는 판정 자체가 없다(`parser/adapters/basic_pdf.py` 머리말).
+    대신 사람이 알아야 할 것 둘을 센다 — **목차 유무**(`section`이 어디서 오는가)와
+    **텍스트 0자 쪽**(스캔본 — 그 쪽의 근거는 그림뿐이다).
+    """
+    pages = no_text = 0
+    has_toc = False
+    for s in samples:
+        raw = reader.read(str(s))
+        has_toc = has_toc or bool(raw.get("toc"))
+        for pg in raw.get("pages", []):
+            pages += 1
+            if not (pg.get("text") or "").strip():
+                no_text += 1
+    return {"adapter": "parser/adapters/basic_pdf.py",
+            "reason": "PDF는 분할이 자명하다 — 쪽이 청크다. 생성 세션이 필요 없다",
+            "pages": pages, "no_text_pages": no_text,
+            "note": (f"목차에서 section을 만든다" if has_toc
+                     else "목차가 없다 — section은 「페이지 N」이 된다")
+                    + (f" · 텍스트 0자 쪽 {no_text}장은 그림 요약이 유일한 근거다"
+                       if no_text else "")}
 
 
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
@@ -644,14 +681,18 @@ def _use_basic(doc_type, layer, samples, hint, proposal):
     (d / "input_package.json").write_text(
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     ad, sc = d / "adapter.py", d / "schema.json"
+    # **위임 대상은 제안이 정한다** — PPT면 `basic_ppt`, PDF면 `basic_pdf`(B53).
+    # 여기에 이름을 박으면 PDF 등록분이 PPT 어댑터를 물어 조각 0건이 된다.
+    mod = Path(proposal["adapter"]).stem
+    kind = "PDF" if mod.endswith("pdf") else "PPT"
     ad.write_text(
         "# -*- coding: utf-8 -*-\n"
-        f"\"\"\"{doc_type} — 코어 기본 어댑터(PPT)를 **그대로** 쓴다 (문서 6 §6.4-5 · D-111).\n\n"
-        "임계·분할 규칙은 `parser/adapters/basic_ppt.py` 한 곳에 산다 — 여기는 doc_type 이름만\n"
+        f"\"\"\"{doc_type} — 코어 기본 어댑터({kind})를 **그대로** 쓴다 (문서 6 §6.4-5 · D-111).\n\n"
+        f"임계·분할 규칙은 `{proposal['adapter']}` 한 곳에 산다 — 여기는 doc_type 이름만\n"
         "이 등록의 것으로 바꾼 위임 래퍼다. 상수를 여기 복제하지 않는다.\n\"\"\"\n"
-        "from parser.adapters import basic_ppt\n\n"
-        f"ADAPTER = {{**basic_ppt.ADAPTER, \"doc_type\": {doc_type!r}}}\n"
-        "extract = basic_ppt.extract\n", encoding="utf-8")
+        f"from parser.adapters import {mod}\n\n"
+        f"ADAPTER = {{**{mod}.ADAPTER, \"doc_type\": {doc_type!r}}}\n"
+        f"extract = {mod}.extract\n", encoding="utf-8")
     _write_schema(sc, json.dumps(
         {"doc_type": doc_type, "schema_version": 1, "layer": layer,
          "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],

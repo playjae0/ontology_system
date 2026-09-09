@@ -517,13 +517,39 @@ def cmd_extract(args):
     return 0
 
 
+def cmd_bm25(args):
+    """BM-25 **대조군**의 상위 k를 사람이 직접 보는 창구 (문서 5 §5.5-3).
+
+    질의 경로가 아니다 — 여기서 나온 것은 답이 아니라 **비교 기준**이다.
+    그래프·사전을 읽지 않으므로 「키워드만으로 어디까지 되나」가 그대로 보인다.
+    """
+    if not args:
+        raise SystemExit('사용: run.py show bm25 "<질문>" [k]')
+    from core import bm25
+    q = args[0]
+    k = int(args[1]) if len(args) > 1 and args[1].isdigit() else 8
+    ch = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}
+    hits = bm25.search(q, k)
+    print(f"BM-25 대조군 — {q!r}   (청크 {len(ch)}건 인덱스 · 상위 {k})")
+    print("  ※ **대조군이다** — 그래프·사전·LLM을 쓰지 않는다. 질의의 답이 아니다")
+    if not hits:
+        print("  일치 0건 — 질문의 토큰이 어느 청크에도 없다")
+        return 0
+    for cid, sc in hits:
+        c = ch.get(cid) or {}
+        print(f"  {sc:6.2f}  {cid}")
+        print(f"          ({c.get('doc_id')} {c.get('source_locator')}) "
+              f"{(c.get('text') or '')[:64]}")
+    return 0
+
+
 def main(argv):
     if not argv:
         raise SystemExit(__doc__)
     cmd, rest = argv[0], argv[1:]
     table = {"tree": cmd_tree, "node": cmd_node, "doc": cmd_doc, "chunk": cmd_chunk,
              "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
-             "log": cmd_log, "extract": cmd_extract}
+             "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")
     return table[cmd](rest)

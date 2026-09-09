@@ -43,6 +43,7 @@
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -354,6 +355,12 @@ def _post(url, payload, key, timeout):
 def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0):
     """모델 호출 + JSON 파싱 + 재시도. **돌려주는 것은 dict다.**
 
+    **`content`는 문자열이거나 리스트다**(B53). 리스트면 OpenAI 호환 멀티모달
+    (`[{"type":"text",…},{"type":"image_url","image_url":{"url":"data:…;base64,…"}}]`)을
+    **그대로** 전송한다 — 이 함수는 형태를 짜지 않는다. ④가 참조 문자열만 보내던
+    결함(개정대장 §AJ)은 여기가 문자열만 받아서가 아니라 부르는 쪽이 그림을
+    안 실어서였다: 통로는 여기에 두고 무엇을 실을지는 지점이 정한다.
+
     `json_schema`를 주면 구조화 출력을 요청하고 **파싱까지 여기서 한다** — 파싱을
     호출부에 두면 지점마다 다른 관용도로 깨진 JSON을 다루게 되고, mock 갈래와
     반환 계약이 갈린다(§7.6-B-3: 소비부는 어느 쪽인지 몰라야 한다).
@@ -581,7 +588,30 @@ def probe(points=None, *, timeout=None):
         except Exception as e:
             add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
 
-    # ⑦ 지점별 얕은 왕복 — `--all`일 때만. **지점당 1회**다(비용).
+    # ⑦ 이미지 입력 — **④가 실제로 쓰는 형태**를 1×1 PNG 한 장으로 왕복시킨다.
+    #
+    # ④는 바이트를 보낸다(B53). 게이트웨이가 멀티모달 content를 안 받으면 그
+    # 사실이 **사내 첫 파싱에서** 드러나는데, 그때는 이미 문서를 돌린 뒤다.
+    # 여기서 1회에 판정한다 — 실패해도 치명은 아니다(그림 없는 문서는 돈다).
+    try:
+        _post(f"{cfg['url']}/chat/completions",
+              {"model": cfg["model"], "temperature": 0,
+               "messages": [{"role": "user", "content": [
+                   {"type": "text", "text": "이 그림에 무엇이 보이나?"},
+                   {"type": "image_url",
+                    "image_url": {"url": _data_uri(_PING_PNG, "image/png")}}]}]},
+              cfg["key"], cfg["timeout"])
+        add("⑦", "이미지 입력", True,
+            "멀티모달 content 통과 — ④이미지 요약이 바이트를 보낼 수 있다")
+    except GatewayError as e:
+        add("⑦", "이미지 입력", False,
+            f"HTTP {e.code} — 게이트웨이가 이미지 입력을 받지 않는다. "
+            f"④는 이 상태에서 NotConfigured로 멈춘다(요약을 지어내지 않는다). "
+            f"**치명 아님** — 그림 없는 문서는 그대로 돈다")
+    except Exception as e:                                  # noqa: BLE001
+        add("⑦", "이미지 입력", False, f"{type(e).__name__}: {e}")
+
+    # ⑧ 지점별 얕은 왕복 — `--all`일 때만. **지점당 1회**다(비용).
     #
     # 지시문 파일이 있는 지점은 그것을 실어 보낸다 — 프롬프트가 게이트웨이를
     # 통과하는지까지 봐야 «붙었다»가 실전 의미를 갖는다. 파일이 없는 지점
@@ -612,16 +642,57 @@ def probe(points=None, *, timeout=None):
 
 
 # ---------------------------------------------------------------- 지점별 얇은 배선
-def summarize_image(image_ref):
-    """지점 ④ 이미지 요약의 **실호출 갈래**.
+# 1×1 투명 PNG — `llm-check` ⑦의 왕복 시험에만 쓴다(가장 작은 실제 이미지).
+_PING_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+    "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
-    파서는 `core/`를 import하지 않으므로(P1) 이 함수는 **주입되어** 파서에 들어간다 —
-    주입하는 쪽이 인입·파싱 진입점이다. mock 갈래는 파서 안의 고정 문자열이고
-    `meta.image_summary_source`가 어느 갈래인지 데이터로 남긴다(§7.6-B-4).
+
+def _data_uri(blob, mime):
+    """바이트 → `data:` URI. **키·경로가 아니라 내용을 보낸다.**"""
+    return f"data:{mime or 'image/png'};base64,{base64.b64encode(blob).decode()}"
+
+
+def _image_part(blob, mime):
+    return {"type": "image_url", "image_url": {"url": _data_uri(blob, mime)}}
+
+
+def summarize_image(image_ref, *, image=None, mime=None, context="", page=None):
+    """지점 ④ 이미지 요약의 **실호출 갈래** — 보내는 것은 **바이트 + 맥락**이다.
+
+    **구판은 `"이미지 참조: img_001"` 문자열을 보냈다**(개정대장 §AJ). 모델은 그림을
+    본 적이 없으므로 요약을 지어냈고, 그 문장이 청크 텍스트가 되어 답변의 「문서
+    근거」로 되돌아왔다 — 크래시가 아니라 **조용한 오염**이다. 「9종 도달 가능」
+    어서션은 통과했다: **도달과 내용은 다르다.**
+
+    `context`는 같은 슬라이드/페이지의 텍스트다 — 그림만 보내면 「무엇의 그림인가」를
+    모델이 지어낸다(문서 6 §6.1). `page`가 있으면 슬라이드 **전체 그림**을 둘째
+    이미지로 함께 보낸다 — 잘라낸 그림 하나로는 축·범례가 화면 밖에 있다.
+
+    파서는 `core/`를 import하지 않으므로(P1) 이 함수는 **주입되어** 파서에 들어간다.
+    mock 갈래는 파서 안의 고정 문자열이고 `meta.image_summary_source`가 어느 갈래인지
+    데이터로 남긴다(§7.6-B-4).
     """
-    out = chat([{"role": "system", "content": prompt("image_summary")},
-                {"role": "user", "content": f"이미지 참조: {image_ref}"}],
-               point="image_summary")
+    parts = [{"type": "text",
+              "text": (f"[맥락] {context}\n\n" if context else "")
+                      + f"[그림] {image_ref}"}]
+    if image:
+        parts.append(_image_part(image, mime))
+    if page:
+        parts.append({"type": "text", "text": "[전체 화면] 위 그림이 실린 쪽 전체다."})
+        parts.append(_image_part(page, "image/png"))
+    try:
+        out = chat([{"role": "system", "content": prompt("image_summary")},
+                    {"role": "user", "content": parts}],
+                   point="image_summary")
+    except GatewayError as e:
+        # **이미지를 못 받는 게이트웨이는 설정 결함이다** — 조용히 텍스트만 보내
+        # 「요약했다」고 하면 그 문장이 근거가 된다. `require()`와 같은 결로 멈춘다.
+        if e.status == 400 and image:
+            raise NotConfigured(
+                "image_summary: 게이트웨이가 이미지 입력을 받지 않는다 — "
+                "HTTP 400. `python run.py llm-check`의 ⑦ 단계로 확인한다") from e
+        raise
     return out["text"]
 
 

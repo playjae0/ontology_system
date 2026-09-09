@@ -20,6 +20,14 @@ ENVELOPE_KEYS = ("doc_id", "doc_type", "source_path", "revision",
 PAYLOAD_KINDS = ("table", "prose")
 
 
+
+# **계약 A `meta.shape_kind`의 닫힌 8종**(문서 2). 파서가 낼 수 있는 값의 전부다 —
+# 리더가 안에서 더 잘게 가르더라도(예: 제목/부제) 계약으로 나가는 이름은 이 목록이다.
+SHAPE_KINDS = ("text", "title", "table", "chart", "picture", "smartart",
+               "notes", "page")
+# 슬라이드 전체 그림을 ④에 붙였는가 — 붙이지 못했으면 `none`으로 **남긴다**.
+SLIDE_RENDER = ("page", "none")
+
 def check(envelope, closed_list=None):
     """(ok, defects) — defects는 문서 단위 실패의 사유 목록이다."""
     d = []
@@ -74,6 +82,18 @@ def check(envelope, closed_list=None):
                 d.append(f"{key}[{i}].{f}: 상동 기호가 해소되지 않았다")
         if kind == "prose" and not (piece.get("text") or piece.get("image_ref")):
             d.append(f"{key}[{i}]: prose 조각에 text도 image_ref도 없다")
+        # ④ `meta`의 근거 필드는 **값 어휘가 닫혀 있다**(문서 2 계약 A · B53).
+        # 목록 밖 값이 들어오면 소비부(추출 지시문·검수 뷰)가 모르는 것을 받고도
+        # 조용히 넘긴다 — 닫힌 목록은 검사하는 자리가 있어야 닫힌 것이다.
+        m = piece.get("meta") or {}
+        sk = m.get("shape_kind")
+        if sk is not None and sk not in SHAPE_KINDS:
+            d.append(f"{key}[{i}].meta.shape_kind: 닫힌 {len(SHAPE_KINDS)}종 밖 — "
+                     f"{sk!r} (허용: {', '.join(SHAPE_KINDS)})")
+        sr = m.get("slide_render")
+        if sr is not None and sr not in SLIDE_RENDER:
+            d.append(f"{key}[{i}].meta.slide_render: {sr!r} — "
+                     f"허용: {', '.join(SLIDE_RENDER)}")
 
     if len(set(locs)) != len(locs):
         dup = sorted({x for x in locs if locs.count(x) > 1})

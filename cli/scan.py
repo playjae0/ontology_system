@@ -101,9 +101,20 @@ def match_detail(raw, mod):
             "candidate": not missing and not extra}
 
 
+# 헤더 지문이 성립하는 **문서 포맷**. 지문은 「헤더 행의 문자열 배열」이라
+# 행·열이 있는 포맷에서만 뜻이 있다(파서_명세 §5).
+FINGERPRINTABLE = ("xlsx",)
+
+
 def scan(doc_path, adapter_paths=None):
     """일괄 대조 — 후보 목록을 돌려줄 뿐 **파싱하지 않는다**(자동 라우팅 금지)."""
     raw = read(str(doc_path))
+    # **PDF·PPTX는 지문 대상이 아니다**(B53) — 헤더 행이라는 것이 없다. 그대로
+    # 대조하면 전 표 어댑터에 대해 「누락 13건」이 줄줄이 떠서, 화면이 「맞는 게
+    # 하나도 없다」로 보인다 — 실은 **물어볼 수 없는 질문**을 한 것이다.
+    if raw.get("format") not in FINGERPRINTABLE:
+        return {"doc": str(doc_path), "details": [], "candidates": [],
+                "not_fingerprintable": raw.get("format"), "_mods": {}}
     details, mods = [], {}
     for f, mod in adapters(adapter_paths):
         d = match_detail(raw, mod)
@@ -119,6 +130,9 @@ def scan(doc_path, adapter_paths=None):
 def confirm(doc_path, doc_type, adapter_paths=None):
     """사람 확정 후에만 여기로 온다 — 이후는 preflight부터의 정상 경로다."""
     res = scan(doc_path, adapter_paths)
+    if res.get("not_fingerprintable"):
+        raise SystemExit(f"[scan] {res['not_fingerprintable']}는 지문 대상이 아니다 — "
+                         f"확정할 지문이 없다. doc_type 지정 투입 또는 --use-basic 등록이다")
     if doc_type not in res["_mods"]:
         raise SystemExit(f"[scan] '{doc_type}' 어댑터를 소재지에서 찾지 못했다")
     f, mod = res["_mods"][doc_type]
@@ -133,6 +147,12 @@ def confirm(doc_path, doc_type, adapter_paths=None):
 
 def render(res):
     lines = [f"지문 스캔 — {res['doc']}"]
+    fmt = res.get("not_fingerprintable")
+    if fmt:
+        lines.append(f"  · {fmt} — **지문 대상이 아니다.** 헤더 행이 없는 포맷이라")
+        lines.append("    대조할 것이 없다(비정형). doc_type을 지정해 투입하거나,")
+        lines.append("    기본 어댑터로 등록한다: register generate <이름> <층> <표본> --use-basic")
+        return "\n".join(lines)
     for d in res["details"]:
         if not d["eligible"]:
             lines.append(f"  · {d['doc_type']:<12} 대상 아님 — {d['note']}")

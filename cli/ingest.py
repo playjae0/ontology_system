@@ -31,9 +31,9 @@ from core.pipeline import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# reader가 여는 포맷 — 그 밖은 「지원 밖」으로 목록에만 남긴다
-SUPPORTED = (".xlsx", ".xlsm", ".pptx", ".csv", ".tsv")
-PROSE_EXT = (".pptx",)                    # 헤더 지문이 없는 포맷 — 지정 필수
+# reader가 여는 포맷 — 그 밖은 「지원 밖」으로 목록에만 남긴다.
+# **목록은 리더가 소유한다**(B53) — 여기에 복제하면 리더에 포맷을 더해도 투입이 막는다.
+from parser.reader import PROSE_EXT, SUPPORTED       # noqa: E402,F401
 
 OK, FAIL, SKIP = "성공", "실패", "미선택"
 

@@ -25,7 +25,34 @@ pptx →
 {
   "format": "pptx",
   "path": "...",
-  "slides": [{"index": 1, "shapes": ["제목", "본문 …"], "notes": ""}]
+  "deck_title": "덱 제목",
+  "slides": [{
+      "index":  1,
+      "hidden": False,                      # 숨김 슬라이드 — 어댑터가 거른다
+      "title":  "노칭 설비 구성",             # 제목 플레이스홀더 (없으면 "")
+      "layout": "Title and Content",        # 구획 헤더 판정에 쓴다
+      "shapes": [                           # **시각 순서**(top→left) · 닫힌 8종
+        {"id": "S1-T1",  "kind": "title",    "text": "…"},
+        {"id": "S1-TB1", "kind": "table",    "text": "A | B\n1 | 2", "rows": 5, "cols": 2},
+        {"id": "S1-CH1", "kind": "chart",    "text": "[차트: …] …", "chart_type": "LINE"},
+        {"id": "S1-P1",  "kind": "picture",  "image_ref": "S1-P1",
+                         "mime": "image/png", "bytes_len": 48213},
+        {"id": "S1-SA1", "kind": "smartart", "text": "…"},
+      ],
+      "notes": "",
+      "unresolved_reasons": [],
+  }],
+  "_images": {"S1-P1": (b"…", "image/png")},   # **바이트는 여기만** — 계약 JSON에
+                                               # 나가지 않는다(문서 5 §5.2-2)
+}
+
+pdf →
+{
+  "format": "pdf",
+  "path": "...",
+  "toc":   [{"level": 1, "title": "1. 노칭", "page": 1}, ...],   # 없으면 []
+  "pages": [{"index": 1, "text": "쪽 전문", "images": [{…picture 레코드…}]}],
+  "_images": {"P1-P1": (b"…", "image/png")},
 }
 """
 import logging
@@ -85,18 +112,318 @@ def read_xlsx(path):
     return {"format": "xlsx", "path": path, "sheets": sheets}
 
 
+# ---------------------------------------------------------------- pptx
+# **리더가 안에서 쓰는 종류**다 — 계약으로 나가는 이름이 아니다.
+# 계약 A `meta.shape_kind`의 닫힌 8종은 `parser/validator.py::SHAPE_KINDS`이고,
+# 거기에 `subtitle`은 없다. 부제는 본문에 합쳐져 나가므로 계약에 닿지 않는다.
+READER_KINDS = ("title", "subtitle", "text", "table", "chart",
+                "picture", "smartart")
+
+# id 접두 — `S8-TB1`처럼 **원본에서 다시 열 수 있는 좌표**를 만든다(문서 6 §6.4-5).
+_KIND_TAG = {"title": "T", "subtitle": "ST", "text": "B", "table": "TB",
+             "chart": "CH", "picture": "P", "smartart": "SA"}
+
+_A_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+
+
+def _pos(sh):
+    """(top, left) — **시각 순서**로 정렬하기 위한 좌표.
+
+    좌표가 없는 shape(자동 배치)는 맨 뒤로 보낸다. XML 순서는 사람이 본 순서와
+    다르다 — 나중에 옮긴 상자가 XML 앞에 남아 있는 일이 흔하고, 그대로 읽으면
+    근거의 순서가 화면과 어긋난다.
+    """
+    top = getattr(sh, "top", None)
+    left = getattr(sh, "left", None)
+    return (top if top is not None else 1 << 40,
+            left if left is not None else 1 << 40)
+
+
+def _table_text(sh):
+    """표 → 행 단위 ` | ` 이음. **병합은 전개하지 않는다** — 원문 위치 그대로.
+
+    전개하면 파서가 「이 값이 이 행에도 해당한다」는 판정을 한 것이 된다. 그것은
+    normalizer의 규약이 정할 일이고 포맷 판독의 몫이 아니다(A1 — 파서는 의미를
+    판정하지 않는다). 빈 칸은 빈 문자열로 남겨 자리를 지킨다.
+    """
+    t = sh.table
+    rows = []
+    for r in t.rows:
+        rows.append(" | ".join((c.text or "").strip().replace("\n", " ")
+                               for c in r.cells))
+    n_cols = len(t.columns._gridCol_lst) if hasattr(t.columns, "_gridCol_lst") else 0
+    return "\n".join(rows), len(t.rows), (n_cols or (len(t.rows[0].cells) if t.rows else 0))
+
+
+def _chart_text(sh):
+    """차트 → 제목·축 제목·카테고리·계열 값을 **텍스트 표**로.
+
+    **그림으로 찍어 요약하지 않는다**(문서 6 §6.4-5) — 값이 있는데 요약을 쓰면
+    정확도를 버린다. 값은 **있는 그대로** 싣는다(반올림 금지).
+    """
+    ch = sh.chart
+    try:
+        ctype = str(ch.chart_type).split()[0]
+    except Exception:                                       # noqa: BLE001
+        ctype = "?"
+    title = ""
+    try:
+        if ch.has_title:
+            title = ch.chart_title.text_frame.text.strip()
+    except Exception:                                       # noqa: BLE001
+        pass
+    axes = []
+    for attr, tag in (("category_axis", "X"), ("value_axis", "Y")):
+        try:
+            ax = getattr(ch, attr)
+            if ax.has_title:
+                axes.append(f"{tag} {ax.axis_title.text_frame.text.strip()}")
+        except Exception:                                   # noqa: BLE001
+            continue
+    head = f"[차트: {title or '제목 없음'}]"
+    meta = " · ".join([f"종류 {ctype}"] + axes)
+
+    cats, series = [], []
+    try:
+        for plot in ch.plots:
+            cats = [str(c) for c in plot.categories]
+            break
+    except Exception:                                       # noqa: BLE001
+        cats = []
+    try:
+        for s in ch.series:
+            series.append((s.name, list(s.values)))
+    except Exception:                                       # noqa: BLE001
+        series = []
+
+    if not series:
+        # 외부 링크 차트는 값이 워크북에 없다 — **없다고 적는다**(빈 채로 두면
+        # 「값이 0이다」와 구분되지 않는다).
+        return f"{head} {meta} — 값 없음".strip(), ctype
+
+    lines = [f"{head} {meta}".strip()]
+    for i, cat in enumerate(cats or range(len(series[0][1]))):
+        parts = []
+        for name, vals in series:
+            v = vals[i] if i < len(vals) else None
+            parts.append(f"{name} {'' if v is None else v}".strip())
+        lines.append(f"{cat}: " + " · ".join(parts))
+    if not cats:
+        for name, vals in series:
+            lines.append(f"{name}: " + " · ".join("" if v is None else str(v) for v in vals))
+    return "\n".join(lines), ctype
+
+
+def _smartart_text(sh, slide):
+    """SmartArt(diagram) 텍스트 — `python-pptx`가 열지 않으므로 파트를 직접 연다.
+
+    graphicFrame의 rel에서 `diagramData` 파트를 찾아 `<a:t>`를 **문서 순서대로**
+    잇는다. 실패하면 빈 텍스트로 두고 사유를 남긴다 — 조용히 빠뜨리지 않는다.
+    """
+    try:
+        el = sh._element
+        rids = [v for k, v in el.attrib.items() if k.endswith("}dm") or k.endswith("}relId")]
+        blip = el.findall(f".//{{http://schemas.openxmlformats.org/drawingml/2006/diagram}}relIds")
+        for b in blip:
+            rids += [v for k, v in b.attrib.items()]
+        part = slide.part
+        for rid in rids:
+            try:
+                target = part.rels[rid].target_part
+            except Exception:                               # noqa: BLE001
+                continue
+            if "diagramData" not in target.partname and "data" not in str(target.partname):
+                continue
+            from lxml import etree
+            root = etree.fromstring(target.blob)
+            texts = [t.text for t in root.iter(f"{_A_NS}t") if t.text and t.text.strip()]
+            if texts:
+                return "\n".join(x.strip() for x in texts), None
+        return "", "SmartArt 다이어그램 파트를 찾지 못했다"
+    except Exception as e:                                  # noqa: BLE001
+        return "", f"SmartArt 판독 실패: {type(e).__name__}"
+
+
+def _shape_kind(sh):
+    """플레이스홀더 타입으로 title/subtitle/text를 가른다."""
+    try:
+        from pptx.enum.shapes import PP_PLACEHOLDER
+        if sh.is_placeholder:
+            t = sh.placeholder_format.type
+            if t in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE):
+                return "title"
+            if t == PP_PLACEHOLDER.SUBTITLE:
+                return "subtitle"
+    except Exception:                                       # noqa: BLE001
+        pass
+    return "text"
+
+
+def _walk(shapes, slide, prefix, images, counters, reasons):
+    """shape 트리를 **시각 순서**로 훑어 레코드 배열을 만든다. 그룹은 재귀."""
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    out = []
+    for sh in sorted(shapes, key=_pos):
+        try:
+            stype = sh.shape_type
+        except Exception:                                   # noqa: BLE001
+            stype = None
+
+        if stype == MSO_SHAPE_TYPE.GROUP:
+            counters["G"] = counters.get("G", 0) + 1
+            out += _walk(sh.shapes, slide, f"{prefix}-G{counters['G']}",
+                         images, counters, reasons)
+            continue
+
+        def _id(kind):
+            tag = _KIND_TAG[kind]
+            counters[tag] = counters.get(tag, 0) + 1
+            return f"{prefix}-{tag}{counters[tag]}"
+
+        if getattr(sh, "has_table", False):
+            text, nr, nc = _table_text(sh)
+            if text.strip():
+                out.append({"id": _id("table"), "kind": "table", "text": text,
+                            "rows": nr, "cols": nc})
+            continue
+
+        if getattr(sh, "has_chart", False):
+            text, ctype = _chart_text(sh)
+            out.append({"id": _id("chart"), "kind": "chart", "text": text,
+                        "chart_type": ctype})
+            continue
+
+        if stype == MSO_SHAPE_TYPE.PICTURE or (
+                stype == MSO_SHAPE_TYPE.PLACEHOLDER and getattr(sh, "image", None) is not None):
+            try:
+                img = sh.image
+                ref = _id("picture")
+                # **바이트는 raw에만 싣는다** — 계약 JSON에는 `image_ref`만 나간다
+                # (문서 5 §5.2-2 원본 바이너리 비저장). 요약만 보존된다.
+                images[ref] = (img.blob, img.content_type)
+                out.append({"id": ref, "kind": "picture", "image_ref": ref,
+                            "mime": img.content_type, "bytes_len": len(img.blob)})
+            except Exception as e:                          # noqa: BLE001
+                reasons.append(f"그림 판독 실패: {type(e).__name__}")
+            continue
+
+        if stype == MSO_SHAPE_TYPE.PLACEHOLDER and _is_diagram(sh):
+            text, why = _smartart_text(sh, slide)
+            out.append({"id": _id("smartart"), "kind": "smartart", "text": text})
+            if why:
+                reasons.append(why)
+            continue
+
+        if _is_diagram(sh):
+            text, why = _smartart_text(sh, slide)
+            out.append({"id": _id("smartart"), "kind": "smartart", "text": text})
+            if why:
+                reasons.append(why)
+            continue
+
+        if getattr(sh, "has_text_frame", False):
+            text = sh.text_frame.text.strip()
+            if not text:
+                continue
+            kind = _shape_kind(sh)
+            out.append({"id": _id(kind), "kind": kind, "text": text,
+                        "top": getattr(sh, "top", None), "left": getattr(sh, "left", None)})
+    return out
+
+
+def _is_diagram(sh):
+    """graphicFrame이 diagram(SmartArt)인지 — 표·차트가 아닌 graphicFrame이다."""
+    try:
+        if getattr(sh, "has_table", False) or getattr(sh, "has_chart", False):
+            return False
+        el = sh._element
+        return el.tag.endswith("}graphicFrame") and b"diagram" in _et_tostring(el)
+    except Exception:                                       # noqa: BLE001
+        return False
+
+
+def _et_tostring(el):
+    from lxml import etree
+    return etree.tostring(el)
+
+
 def read_pptx(path):
+    """PPTX 판독 — **텍스트 프레임과 노트만이 아니다**(B53).
+
+    표·차트·그림·그룹·SmartArt를 읽고 **시각 순서**(top→left)로 낸다. 표·차트를
+    텍스트로 푸는 것은 **형태 변환이지 의미 판정이 아니다** — 무엇이 개체인지는
+    여전히 추출(①)이 정한다(A1: 파서는 층 어휘를 모른다).
+
+    그림 **바이트는 `raw["_images"]`에만** 있고 계약 JSON으로 나가지 않는다
+    (문서 5 §5.2-2 — 원본 바이너리를 저장하지 않는다). 요약만 보존된다.
+    """
     from pptx import Presentation
     prs = Presentation(path)
-    slides = []
+    slides, images = [], {}
+    deck_title = ""
     for i, s in enumerate(prs.slides, start=1):
-        shapes = [sh.text_frame.text.strip() for sh in s.shapes
-                  if sh.has_text_frame and sh.text_frame.text.strip()]
+        reasons = []
+        recs = _walk(s.shapes, s, f"S{i}", images, {}, reasons)
+        title = next((r["text"] for r in recs if r["kind"] == "title"), "")
+        if i == 1 and title:
+            deck_title = title
         notes = ""
         if s.has_notes_slide and s.notes_slide.notes_text_frame is not None:
             notes = s.notes_slide.notes_text_frame.text.strip()
-        slides.append({"index": i, "shapes": shapes, "notes": notes})
-    return {"format": "pptx", "path": path, "slides": slides}
+        try:
+            layout = s.slide_layout.name or ""
+        except Exception:                                   # noqa: BLE001
+            layout = ""
+        slides.append({
+            "index": i,
+            # **숨김 슬라이드는 데이터로 남기고 어댑터가 거른다** — 리더에서 빼면
+            # 「없었다」와 「감췄다」가 구분되지 않는다.
+            "hidden": s._element.get("show") == "0",
+            "title": title, "layout": layout,
+            "shapes": recs, "notes": notes,
+            "unresolved_reasons": reasons,
+        })
+    return {"format": "pptx", "path": path, "deck_title": deck_title,
+            "slides": slides, "_images": images}
+
+
+def read_pdf(path):
+    """PDF 판독 — PyMuPDF. **페이지가 조각의 단위다**(문서 6 §6.4-5 · B53).
+
+    PPTX와 달리 변환이 없다 — 쪽 렌더가 원본 그대로라 ④ 맥락이 항상 붙는다.
+    그림 **바이트는 `_images`에만** 있고 계약 JSON으로 나가지 않는다.
+
+    목차(outline)가 있으면 함께 낸다 — 어댑터가 `section`을 거기서 만든다.
+    없으면 「페이지 N」으로 떨어진다(조용히 비우지 않는다).
+    """
+    import fitz                                             # PyMuPDF — 지연 import
+
+    doc = fitz.open(path)
+    pages, images = [], {}
+    try:
+        toc = [{"level": lv, "title": (t or "").strip(), "page": pg}
+               for lv, t, pg in (doc.get_toc() or [])]
+        for i, page in enumerate(doc, start=1):
+            imgs = []
+            for n, info in enumerate(page.get_images(full=True), start=1):
+                ref = f"P{i}-P{n}"
+                try:
+                    ext = doc.extract_image(info[0])
+                except Exception:                           # noqa: BLE001
+                    continue
+                blob = ext.get("image")
+                if not blob:
+                    continue
+                mime = f"image/{ext.get('ext') or 'png'}"
+                images[ref] = (blob, mime)
+                imgs.append({"id": ref, "kind": "picture", "image_ref": ref,
+                             "mime": mime, "bytes_len": len(blob)})
+            pages.append({"index": i, "text": page.get_text("text") or "",
+                          "images": imgs})
+    finally:
+        doc.close()
+    return {"format": "pdf", "path": path, "toc": toc,
+            "pages": pages, "_images": images}
 
 
 ENCODINGS = ("utf-8-sig", "cp949", "utf-8")
@@ -199,15 +526,25 @@ def read_csv(path):
             "encoding": enc, "delimiter": delim}
 
 
+# **리더가 여는 확장자의 정본은 여기다.** 호출부(`cli/ingest.py`)가 제 목록을 들면
+# 리더에 포맷을 더해도 투입이 「지원하지 않는 포맷」으로 막는다 — 실측: `.pdf`를
+# 더한 회차에 정확히 그렇게 됐다(B53).
+SUPPORTED = (".xlsx", ".xlsm", ".pptx", ".pdf", ".csv", ".tsv")
+# 헤더 지문이 없는 포맷 — doc_type 지정이 필수다(§5 지문 스캔 대상 아님).
+PROSE_EXT = (".pptx", ".pdf")
+
+
 def read(path):
     if path.lower().endswith((".xlsx", ".xlsm")):
         return read_xlsx(path)
     if path.lower().endswith(".pptx"):
         return read_pptx(path)
+    if path.lower().endswith(".pdf"):
+        return read_pdf(path)
     if path.lower().endswith((".csv", ".tsv")):
         return read_csv(path)
     raise ValueError(f"지원하지 않는 포맷: {path} — "
-                     f"받는 것은 .xlsx · .xlsm · .pptx · .csv · .tsv 다")
+                     f"받는 것은 {' · '.join(SUPPORTED)} 다")
 
 
 # 관찰 범위 — **다단 헤더 문서에서 12줄은 얕다**(B34): 헤더 3행 + 데이터 9행이면
