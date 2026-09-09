@@ -1380,6 +1380,177 @@ show("① prose의 리허설 기본은 전량이다 (부분 리허설의 근거�
 reset("toc_report")
 _EX.invalidate("TOC01")
 
+
+# ── B55 ① 재생성 지시가 **모델에 닿는다** (문서 6 §6.5 · [정정] 40) ──────────
+#
+# **이 어서션이 없어서 H20이 살아남았다.** mock의 `draft`는 `{doc_type}_rev{N}`이라는
+# **다른 파일**을 돌려주므로 재생성 루프가 도는 것처럼 보였고, 「지시가 실제로
+# 모델에 실렸나」를 재는 자리가 없어 B50·[정정] 40의 어서션이 전부 초록이었다.
+# 여기서 재는 것은 **조립된 전송분**이다 — 기록이 아니라 전송이다.
+from core import llm as _llm                                       # noqa: E402
+print("\n■ B55 ① — 재생성 지시가 조립 메시지에 실린다")
+
+_b55_sent = {}
+_b55_post, _b55_req, _b55_mock = _llm._post, _llm.require, _llm.use_mock
+
+
+def _b55_capture():
+    _llm.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
+                               "timeout": 5, "retry": 0}
+    _llm.use_mock = lambda: False
+    _llm._post = lambda u, p, k, t: _b55_sent.update(payload=p) or {
+        "choices": [{"message": {"content": json.dumps(
+            {"adapter_py": "# x\nADAPTER = {}\ndef extract(raw):\n    return []",
+             "schema_json": "{}"})}}]}
+
+
+def _b55_restore():
+    _llm._post, _llm.require, _llm.use_mock = _b55_post, _b55_req, _b55_mock
+
+
+def _b55_system(**kw):
+    """`draft`를 태워 **전송 직전 dict**의 system 메시지를 돌려준다."""
+    _b55_sent.clear()
+    R.draft("b55i", kw.pop("revision", 0), **kw)
+    return _b55_sent["payload"]["messages"][0]["content"]
+
+
+_b55_dir = R._dir("b55i")
+_b55_dir.mkdir(parents=True, exist_ok=True)
+(_b55_dir / "input_package.json").write_text(json.dumps(
+    {"human": {"doc_type": "b55i", "layer": "process",
+               "samples": ["tests/fixtures/raw/CP01.xlsx"], "hint": ""},
+     "system": {"reader_head": [], "skeleton_closed_list": {},
+                "layer_vocabulary": {"layer": "process"}, "blocks": {},
+                "adapter_skeleton": ""}}, ensure_ascii=False), encoding="utf-8")
+_b55_capture()
+try:
+    _sys0 = _b55_system()                                   # 초회 — 지시 없음
+    _hist2 = [{"n": 1, "instruction": "헤더는 2행이다", "by": "사람(검수 지시)"},
+              {"n": 2, "instruction": "극성 열은 쓰지 않는다", "by": "자동(하네스 문면)"}]
+    _sys2 = _b55_system(revision=2, instruction="극성 열은 쓰지 않는다",
+                        history=_hist2)
+finally:
+    _b55_restore()
+
+# ①ⓐ **둘 다 실린다** — 2회차 지시가 1회차를 덮으면 사람이 같은 교정을 두 번 적는다.
+show("① 지시가 조립된 system에 **실제로 실린다** (기록이 아니라 전송분)",
+     "헤더는 2행이다" in _sys2 and "극성 열은 쓰지 않는다" in _sys2,
+     f"{len(_sys2.encode()):,}B")
+show("① 누적 2회 — 앞 지시가 뒤 지시에 덮이지 않는다",
+     _sys2.index("헤더는 2행이다") < _sys2.index("극성 열은 쓰지 않는다"))
+# ①ⓒ 초회에는 구획 자체가 없다
+show("① 초회에는 지시 구획이 없다 (없는 것을 빈 칸으로 넣지 않는다)",
+     "헤더는 2행이다" not in _sys0
+     and len(_sys0.encode()) < len(_sys2.encode()),
+     f"{len(_sys0.encode()):,}B → {len(_sys2.encode()):,}B")
+# **전송 크기(B30)가 지시 구획을 포함한다** — 사람이 보내기 전에 크기를 알아야 한다
+show("① 전송 크기 표시가 지시 구획을 포함한다 (부르기 직전에 잰다)",
+     len(_sys2.encode()) - len(_sys0.encode())
+     >= len("극성 열은 쓰지 않는다".encode()) + len("헤더는 2행이다".encode()))
+shutil.rmtree(_b55_dir, ignore_errors=True)
+
+# ①-후속-2 — **고정 문장은 템플릿의 것이다** (문서 7 §7.6-B-5 · B18 경계).
+#
+# 문구를 grep으로 잠그면 **성질이 아니라 글자**를 잠근다 — 한 글자만 바꿔 코드로
+# 되돌리면 통과한다. 그래서 **템플릿에서 그 문장만 지운 사본**으로 렌더해
+# ①문장이 사라지고 ②주입된 지시는 그대로인지를 본다(둘째가 없으면 「렌더가 깨진
+# 것」과 구분되지 않는다).
+_b55_tmpl = R._newest_template().read_text(encoding="utf-8")
+_b55_pkgmin = {"human": {"doc_type": "t", "layer": "process", "samples": ["s"],
+                         "hint": ""},
+               "system": {"reader_head": [], "skeleton_closed_list": {},
+                          "layer_vocabulary": {"layer": "process"}, "blocks": {},
+                          "adapter_skeleton": ""}}
+_b55_items = R.instruction_items(
+    "극성 열은 쓰지 않는다",
+    [{"n": 1, "instruction": "헤더는 2행이다", "by": "사람(검수 지시)"}])
+_B55_FIXED = "앞 초안이 아래 지시를 받았다"
+_b55_full = R._render_template(_b55_tmpl, _b55_pkgmin, regeneration=_b55_items)
+_b55_cut = R._render_template(_b55_tmpl.replace(_B55_FIXED, ""), _b55_pkgmin,
+                              regeneration=_b55_items)
+show("①-후속-2 구획의 고정 문장이 **템플릿에서** 온다 "
+     "(문장을 지운 사본으로 렌더하면 사라진다)",
+     _B55_FIXED in _b55_full and _B55_FIXED not in _b55_cut)
+show("①-후속-2 그때도 **주입된 지시 목록은 그대로다** (렌더가 깨진 것과 구분)",
+     "헤더는 2행이다" in _b55_cut and "극성 열은 쓰지 않는다" in _b55_cut
+     and "## [재생성 지시]" in _b55_cut)
+show("①-후속-2 지시가 없으면 구획째 빠진다 (빈 칸을 남기지 않는다)",
+     "## [재생성 지시]" not in
+     R._render_template(_b55_tmpl, _b55_pkgmin, regeneration=[]))
+show("①-후속-2 치환 누락 0 — 지시 자리가 늘어도 `{{` 잔존 0",
+     "{{" not in _b55_full)
+# 판 계보는 킷 규칙이다 — 옛 판을 고쳐 쓰지 않는다.
+show("①-후속-2 v1.0을 고치지 않고 v1.1을 세웠다 (판 계보 보존)",
+     (R.KIT / "생성프롬프트_템플릿_v1.1.md").exists()
+     and R._newest_template().name == "생성프롬프트_템플릿_v1.1.md"
+     and "{{재생성_지시}}" not in
+     (R.KIT / "생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8"))
+
+# ── B55 ② 문답은 누적된다 — 재현 조건의 그릇은 `human.hint`다 (B36 · §6.5) ──
+print("\n■ B55 ② — 문답 묶음이 쌓이고 표본이 바뀌면 stale로 남는다")
+
+# **먼저 지운다** — 앞선 실행의 패키지가 남아 있으면 「이어 붙인다」를 재는 검사가
+# 그 잔재까지 세어, 묶음 수가 실행 이력에 따라 달라진다(단독 실행이 판정 규격이다).
+shutil.rmtree(R._dir("b55iv"), ignore_errors=True)
+_b55_feed = iter(["표본은 CP 양식이다", "진행", "헤더는 4행이다", "진행",
+                  "다른 문서다", "진행"])
+_b55_ask = _IV._ask
+_IV._ask = lambda prompt="": next(_b55_feed)
+_CP1 = str(RAW / "CP01.xlsx")
+_PF1 = str(RAW / "PFMEA01.xlsx")
+_b55_buf = _io.StringIO()
+try:
+    def _b55_gen(samples):
+        # **패키지는 draft보다 먼저 쓰인다** — fixture가 없어 초안 단계에서 멈춰도
+        # 여기서 재는 것(문답이 패키지에 남았나)은 이미 결정돼 있다.
+        try:
+            with _ctx.redirect_stdout(_b55_buf):
+                R.cmd_generate("b55iv", "process", samples, "", interview=True)
+        except SystemExit:
+            pass
+        return json.loads((R._dir("b55iv") / "input_package.json")
+                          .read_text(encoding="utf-8"))
+
+    _pk1 = _b55_gen([_CP1])
+    _pk2 = _b55_gen([_CP1])
+    _pk3 = _b55_gen([_PF1])
+finally:
+    _IV._ask = _b55_ask
+
+
+def _b55_batches(pk):
+    return R._hint_batches((pk["human"] or {}).get("hint"))
+
+
+# ②ⓐ **재실행이 덮지 않는다** — 구판은 이번 실행분으로 치환했다.
+show("② --interview 2회 — 묶음이 **둘 다 남는다** (덮지 않는다)",
+     len(_b55_batches(_pk1)) == 1 and len(_b55_batches(_pk2)) == 2,
+     f"{len(_b55_batches(_pk1))} → {len(_b55_batches(_pk2))}묶음")
+show("② 1회차 답이 2회차 패키지에 그대로 있다 (사람의 답은 다시 못 만든다)",
+     any("표본은 CP 양식이다" in (r.get("answer") or "")
+         for b in _b55_batches(_pk2) for r in b["rounds"]))
+# ②ⓒ 표본이 바뀌면 **표시하되 지우지 않는다**
+_b55_stale = [b for b in _b55_batches(_pk3) if b.get("stale")]
+show("② 표본을 바꾸면 이전 묶음이 **stale로 남는다** (지워지지 않는다)",
+     len(_b55_batches(_pk3)) == 3 and len(_b55_stale) == 2
+     and all(b["samples"] == [_CP1] for b in _b55_stale),
+     f"묶음 {len(_b55_batches(_pk3))} · stale {len(_b55_stale)}")
+show("② 묶음마다 그때의 표본과 시각을 단다 (재현 조건)",
+     all(b.get("samples") is not None and b.get("at") for b in _b55_batches(_pk3)))
+# ②ⓕ **키 수가 명세다** — 항목으로 늘고 키로 늘지 않는다(B36)
+show("② 사람 4키·시스템 5키 불변 — 문답은 hint 그릇 **안에서** 는다",
+     all(len(p["human"]) == 4 and len(p["system"]) == 5
+         for p in (_pk1, _pk2, _pk3)),
+     f"human {len(_pk3['human'])} · system {len(_pk3['system'])}")
+# ②-2 **모델도 그것을 본다** — 저장만 이어 붙이면 사람이 두 번 답한다
+_b55_fresh, _b55_old = _IV._prior_rounds(_pk3)
+show("② 문답 세션이 이전 라운드를 받는다 — stale은 **구분해서**",
+     len(_b55_fresh) == 1 and len(_b55_old) == 2
+     and "다른 문서다" in (_b55_fresh[0].get("answer") or ""),
+     f"현재 {len(_b55_fresh)} · 이전 표본 {len(_b55_old)}")
+shutil.rmtree(R._dir("b55iv"), ignore_errors=True)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

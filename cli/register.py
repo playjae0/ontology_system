@@ -219,8 +219,8 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
         if os.environ.get("ONTO_DUMP_PROMPT") == "1" and pkg.exists():
             _dump_prompt(doc_type, _render_template(
                 _newest_template().read_text(encoding="utf-8"),
-                json.loads(pkg.read_text(encoding="utf-8")))
-                + instruction_block(instruction, history))
+                json.loads(pkg.read_text(encoding="utf-8")),
+                regeneration=instruction_items(instruction, history)))
         for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
             ad = FIXTURES / "adapters" / f"{stem}.py"
             sc = FIXTURES / "schemas" / f"{stem}.json"
@@ -373,11 +373,12 @@ def _write_schema(path, text):
     return True
 
 
-INSTRUCTION_HEAD = "\n\n---\n\n## 재생성 지시 (사람·기계 관문이 준 것)\n"
+def instruction_items(instruction, history=None):
+    """지시 **목록만** 만든다 — 구획 머리와 안내 문장은 **템플릿의 것이다**.
 
-
-def instruction_block(instruction, history=None):
-    """지시 구획 — **없으면 빈 문자열이다**(초회에는 구획 자체가 없다).
+    모델에게 하는 말은 지시문 파일에 산다(문서 7 §7.6-B-5 · B18이 세운 「고정 문장은
+    파일 · 가변 값은 주입」 경계). 코드가 채우는 것은 값뿐이고, 없으면 빈 리스트라
+    렌더가 구획째 걷어낸다(초회에는 구획 자체가 없다).
 
     **입력 패키지 파일을 다시 쓰지 않는다.** 재현 조건의 그릇은 `human.hint`이고
     (B36), 지시는 그 그릇에 이미 `instructions`로 남아 있다 — 여기서 파일을 고치면
@@ -390,17 +391,11 @@ def instruction_block(instruction, history=None):
     prev = [h for h in (history or [])
             if (h.get("instruction") or "").strip()
             and (h.get("instruction") or "").strip() != (instruction or "").strip()]
-    if not prev and not (instruction or "").strip():
-        return ""
-    L = [INSTRUCTION_HEAD,
-         "**앞 초안이 이 지시를 받았다. 지시가 가리키는 것을 고쳐 다시 낸다** — "
-         "지시에 없는 부분을 임의로 바꾸지 않는다.\n"]
-    for h in prev:
-        L.append(f"- ({h.get('n', '?')}회 · {h.get('by', '?')}) "
-                 f"{(h.get('instruction') or '').strip()}")
+    items = [f"- ({h.get('n', '?')}회 · {h.get('by', '?')}) "
+             f"{(h.get('instruction') or '').strip()}" for h in prev]
     if (instruction or "").strip():
-        L.append(f"- **이번 지시** — {instruction.strip()}")
-    return "\n".join(L) + "\n"
+        items.append(f"- **이번 지시** — {instruction.strip()}")
+    return items
 
 
 def _draft_live(doc_type, revision, *, instruction=None, history=None):
@@ -418,12 +413,13 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     if not pkg.exists():
         raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — 생성 전에 서야 한다")
     raw_pkg = pkg.read_text(encoding="utf-8")
+    # **지시는 지시문의 자리에 «치환»된다** — user는 패키지 JSON 그대로여야 「입력의
+    # 정본은 패키지」가 유지되고(아래 주석), 지시는 그 입력을 어떻게 다시 다루라는
+    # 말이라 지시문의 몫이다. 렌더 뒤에 이어 붙이면 그 문장이 다시 템플릿 밖에
+    # 사는 것이고, 그것이 이 회차가 고친 결함이다.
     system = _render_template(_newest_template().read_text(encoding="utf-8"),
-                              json.loads(raw_pkg))
-    # **지시는 지시문 쪽에 붙인다** — user는 패키지 JSON 그대로여야 「입력의 정본은
-    # 패키지」가 유지된다(아래 주석). 지시는 그 입력을 어떻게 다시 다루라는 말이므로
-    # 지시문의 몫이다.
-    system += instruction_block(instruction, history)
+                              json.loads(raw_pkg),
+                              regeneration=instruction_items(instruction, history))
     _dump_prompt(doc_type, system)          # ONTO_DUMP_PROMPT=1일 때만
     # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
     # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.

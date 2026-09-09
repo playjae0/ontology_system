@@ -157,8 +157,26 @@ def _newest_template():
     return cands[-1]
 
 
-def _render_template(text, pkg):
-    """템플릿의 주입 자리 6개를 **입력 패키지의 값으로** 치환한다.
+# 재생성 구획의 자리 — 템플릿이 소유하는 문장은 전부 파일에 있고 코드는 목록만 채운다.
+REGEN_SLOT = "{{재생성_지시}}"
+_REGEN_SECTION = re.compile(
+    r"\n---\n\n## \[재생성 지시\].*?" + re.escape(REGEN_SLOT) + r"\n?", re.S)
+
+
+def _fill_regeneration(text, items):
+    """지시 목록을 자리에 넣거나, 지시가 없으면 **구획째** 지운다."""
+    if not items:
+        return _REGEN_SECTION.sub("", text)
+    return text.replace(REGEN_SLOT, "\n".join(items))
+
+
+def _render_template(text, pkg, *, regeneration=None):
+    """템플릿의 주입 자리를 **입력 패키지의 값으로** 치환한다.
+
+    **`regeneration`은 패키지에 없는 유일한 재료다**(B55 ①-후속-2) — 재생성 지시는
+    이번 호출의 것이지 패키지의 것이 아니다(패키지는 다시 쓰지 않는다 — B36).
+    그래서 인자로 받되 **치환으로** 넣는다: 렌더 뒤에 문자열을 이어 붙이면 그 문장이
+    다시 템플릿 밖에 사는 것이고, 그것이 방금 고친 결함 자체다.
 
     **왜 필요한가.** v0.4는 `Process`·`Unit`·`Property` 정의문과 `Unit part_of
     Process` 삼항을 본문에 직접 적었다. 그런데 `cmd_generate`는 같은 정보를
@@ -227,6 +245,10 @@ def _render_template(text, pkg):
     text = re.sub(r"\{\{사용자 자유 텍스트[^}]*\}\}",
                   hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",
                   text)
+
+    # **재생성 지시 구획** — 지시가 없는 초회에는 **구획째 걷어낸다**. 빈 칸을 남기면
+    # 「지시를 받았는데 비어 있다」로 읽혀, 모델이 없는 지시를 찾는다.
+    text = _fill_regeneration(text, regeneration)
 
     # **참조 어댑터 few-shot**(B29 ★②) — 표본의 reader 형식으로 1종을 고른다.
     # 전시물 머리의 출처 표기(B27)는 **함께 싣는다**: 킷 유지 규칙이 아니라
