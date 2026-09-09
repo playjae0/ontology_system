@@ -620,6 +620,10 @@ def _describe(doc_id, rec, field, node_id):
 
 # ---------------------------------------------------------------- 비정형 (1d′)
 def build_prose(env, cfg, graph, candidates):
+    # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
+    # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
+    # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
+    candidates = [c for c in candidates if not c.get("failed")]
     b = Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     by_locator = {c["source_locator"]: c for c in env.get("chunks", [])}

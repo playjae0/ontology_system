@@ -38,6 +38,14 @@ from parser.reader import PROSE_EXT, SUPPORTED       # noqa: E402,F401
 OK, FAIL, SKIP = "성공", "실패", "미선택"
 
 
+def _norm_path(p):
+    """경로 비교용 정규화 — 상대/절대·`./`·심볼릭 링크 차이로 헛경고를 내지 않는다."""
+    try:
+        return str(Path(p).resolve())
+    except OSError:
+        return str(Path(p).absolute())
+
+
 def doc_id_of(path):
     """**같은 문서는 항상 같은 doc_id** (재인입 계약) — 파일명 stem, 공백은 `_`.
 
@@ -129,7 +137,10 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_
         return row
     print(f"   선택 근거: {row['basis']}")
     prev = store.read(store.DOC_REGISTRY, {}).get(sel["doc_id"])
-    if prev and prev.get("source_path") and Path(prev["source_path"]).name != Path(doc).name:
+    # **경로 전체를 비교한다**(B55 ⑧). 구판은 **파일명**을 비교했는데 doc_id가
+    # 파일명 stem 파생이라(D-110) 같은 doc_id면 파일명이 항상 같다 — 조건이 참이 될
+    # 수 없어, 「다른 폴더의 같은 이름」이라는 D-110의 **대가**가 화면에 뜬 적이 없다.
+    if prev and prev.get("source_path") and _norm_path(prev["source_path"]) != _norm_path(doc):
         print(f"   ⚠ 같은 doc_id가 다른 경로에서 인입된 적 있다({prev['source_path']}) — "
               f"개정(재인입)으로 취급된다(D-110)")
     if dry_run:

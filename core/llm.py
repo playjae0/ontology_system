@@ -520,16 +520,21 @@ def probe(points=None, *, timeout=None):
         raw = _post(url, payload, cfg["key"], cfg["timeout"])
         add("②", "도달", True, f"{cfg['url']} — 응답 받음")
         add("③", "인증", True, f"LLM_API_KEY {key_state()}")
-    except urllib.error.HTTPError as e:
-        add("②", "도달", True, f"{cfg['url']} — HTTP {e.code}")
-        if e.code in (401, 403):
+    except GatewayError as e:
+        # **`_post`가 `HTTPError`를 `GatewayError`로 바꿔 던진다**(:352) — 구판은
+        # `except urllib.error.HTTPError`라 **도달하지 않았고**, 401/403이 아래
+        # `except Exception`으로 떨어져 「②도달 실패」로 보고됐다. 키가 틀렸는데
+        # 화면은 「주소에 못 닿았다」고 말했다 — B19의 「어디까지 갔는지가 곧
+        # 원인이다」가 이 자리에서 거짓말했다(B55 ⑦).
+        add("②", "도달", True, f"{cfg['url']} — HTTP {e.status}")
+        if e.status in (401, 403):
             add("③", "인증", False,
-                f"HTTP {e.code} — LLM_API_KEY {key_state()}. "
+                f"HTTP {e.status} — LLM_API_KEY {key_state()}. "
                 f"키가 맞는지·게이트웨이가 다른 헤더를 쓰는지 확인한다 "
                 f"(헤더는 core/llm.py::_post)", fatal=True)
         else:
             add("③", "인증", False,
-                f"HTTP {e.code} {e.reason} — 인증 문제는 아니다. "
+                f"HTTP {e.status} — 인증 문제는 아니다. 응답 본문: {str(e.body)[:120]} · "
                 f"모델명({cfg['model']})·경로(/chat/completions)를 확인한다",
                 fatal=True)
         return S

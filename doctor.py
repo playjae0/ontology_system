@@ -35,13 +35,13 @@ ROOT = Path(__file__).resolve().parent
 SUITES = [
     ("test_g1_g2", 94, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용"),
     ("test_g3", 79, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
-    ("test_g4", 94, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
+    ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 51, "I축 4연산 + 이관 · 운영 도구"),
     ("test_g6", 49, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입"),
     ("test_g6_5", 38, "계약 미배선 24건 수리"),
     ("test_p1", 117, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독 · ⑦ 폴백"),
     ("test_p2", 52, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋"),
-    ("test_p3", 242, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건"),
+    ("test_p3", 279, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건"),
     ("test_2a_gateway", 37, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
 ]
@@ -197,6 +197,12 @@ def _idempotent():
     - **거부 로그**: 큐가 아니라 관측 신호다(§7.8) — 계수만 본다.
     """
     def snap():
+        # **여기서만 `graph.json`을 바이트로 연다** — B6(GraphStore 경유)의 예외이고
+        # 그 근거를 남긴다: 재는 것이 **파일 바이트의 동일성**이기 때문이다.
+        # GraphStore로 읽으면 그 계층이 정규화·정렬해 돌려주므로, 지금 잡으려는
+        # 차이(노드 증식·id 재발급으로 생긴 바이트 차)가 바로 그 정규화에 지워진다.
+        # 이것은 그래프를 **쓰거나 해석하는** 경로가 아니라 진단의 측정이다 —
+        # 파생물에서 그래프를 고치는 경로는 여전히 없다(P5).
         graphs, queue, rejects = {}, set(), 0
         for f in sorted((ROOT / "data").rglob("*.json")):
             rel = str(f.relative_to(ROOT / "data"))
@@ -210,14 +216,16 @@ def _idempotent():
             rejects = len(json.loads(rj.read_text(encoding="utf-8")))
         return graphs, queue, rejects
 
-    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
-                       capture_output=True, text=True, cwd=str(ROOT))
-    # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
-    # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아
-    # 「클린 단독 실행」이라는 판정의 바닥이 무너진다(회귀 규약 §7.5-7).
-    residue = [d for d in ("parsed", "extract")
-               if (ROOT / d).exists() and any((ROOT / d).iterdir())]
-    return r.returncode, residue
+    # **클린은 `_clean()`이 정의한다** — 여기 있던 것은 그 함수 본문의 **복사본**이고,
+    # 그 복사본의 `return`이 아래 계측 전부를 도달 불가로 만들고 있었다(B55 ⑨).
+    # 구현 국면 완료판정 4가 **한 번도 계측된 적이 없다** — 두 번 돌려 비교하는
+    # 코드가 통째로 죽어 있었고, 화면에 그 줄이 뜨지 않는다는 사실로만 드러났다.
+    rc, residue = _clean()
+    if rc or residue:
+        line(NG, "클린 2회 동일 그래프 (완료판정 4)",
+             f"클린을 못 만들어 재지 않았다 — init --fresh rc={rc} · 잔재 {residue}")
+        return
+
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
                    capture_output=True, text=True, cwd=str(ROOT))
     g1, q1, r1 = snap()

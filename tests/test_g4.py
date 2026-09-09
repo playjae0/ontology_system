@@ -571,6 +571,16 @@ show("show bm25 — 대조군을 사람이 직접 본다",
      _sb.returncode == 0 and "대조군이다" in _sb.stdout
      and "그래프·사전·LLM을 쓰지 않는다" in _sb.stdout)
 
+
+print("\n[B55 ⑩] 골든셋 유형 — Q6·Q7은 범위 밖이다")
+show("⑩ 골든셋 type 닫힌 값에서 Q6·Q7이 빠졌다 (§5.3이 범위 밖으로 둔 유형)",
+     "Q6" not in _G.TYPE_PATH and "Q7" not in _G.TYPE_PATH
+     and _G.TYPES == ("Q1", "Q2", "Q3", "Q4", "Q5", "Q8",
+                      "noanswer", "multihop", "out"))
+show("⑩ 그런 질문은 out이다 (닫힌 값 밖은 문항 단위로 건너뛴다)",
+     _G.TYPE_PATH["out"] == "general_knowledge"
+     and _G.load.__doc__ and "건너뛴다" in _G.load.__doc__)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G4 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
