@@ -109,21 +109,6 @@ def check_doc_hash(env, *, allow_duplicate=False):
 
 
 # ---------------------------------------------------------------- 재인입 회수
-def doc_locators(env, doc_id, chunks):
-    """그 문서 몫의 provenance 문자열 — **봉투(현행 개정판) + 기존 청크(구판)**.
-
-    새 인덱스를 만들지 않는다. 조각은 전부 `source_locator`를 갖고(계약 v2 ①),
-    청크는 `doc_id`를 갖는다(§2.3) — 둘의 합집합이 그 문서의 발자국이다.
-    개정판에서 **삭제된 행**은 봉투에 없으므로 기존 청크가 그 자리를 메우고,
-    청크를 남기지 않은 행(content 필드 없는 레코드)은 doc_id 접두로 걷는다.
-    """
-    locs = {r.get("source_locator") for r in env.get("records", [])}
-    locs |= {c.get("source_locator") for c in env.get("chunks", [])}
-    locs |= {c.get("source_locator") for c in chunks["chunks"].values()
-             if c.get("doc_id") == doc_id}
-    return {loc for loc in locs if loc}
-
-
 def withdraw(env, doc_id):
     """재인입 회수 3분류 (CH3B 3.8 H2 — 이 절이 오래 미완이었다).
 
@@ -144,7 +129,6 @@ def withdraw(env, doc_id):
     from .bootstrap import open_graph
 
     chunks = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
-    locs = doc_locators(env, doc_id, chunks)
 
     # ③ 먼저 내린다 — 회수가 싣는 evidence_lost가 같은 손에 지워지면 안 된다.
     q = store.read(store.QUEUE, [])
@@ -163,7 +147,14 @@ def withdraw(env, doc_id):
     store.write(store.CHUNKS, chunks)
 
     def mine(p):
-        return p in locs or p == doc_id or str(p).startswith(doc_id + "-")
+        """그 문서에서 온 provenance인가 — **접두 하나로 판정한다**([정정] 43).
+
+        구판은 「봉투 + 기존 청크」의 locator 합집합(`doc_locators()`)을 만들어
+        대조했다. 그 인덱스가 필요했던 이유는 locator가 문서를 말하지 않아서다 —
+        이제 항목 자신이 `{doc_id}#…`로 말하므로 발자국을 따로 모을 일이 없다.
+        `p == doc_id`는 문서 단위로 달린 근거(청크 없는 레코드)의 자리다.
+        """
+        return p == doc_id or str(p).startswith(doc_id + "#")
 
     def strip(holder):
         """그 문서 유래 provenance 항목을 걷어낸다. 남은 개수를 돌려준다."""

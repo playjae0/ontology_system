@@ -179,7 +179,16 @@ class GraphStore:
         # 그래서 프론티어에는 **어느 관계로 왔는지를 함께** 싣는다. 구판은
         # 비재귀로 도달한 노드를 프론티어에서 통째로 빼서, 그 노드에서 뻗는
         # **다른** 관계가 한 번도 적용되지 않았다.
-        frontier = [(i, None) for i in ids]
+        # **프론티어는 `(관계, 방향)`을 들고 다닌다**(문서 5 §5.1-5 · B56-3).
+        # 「어느 관계로 왔나」만으로는 모자랐다: 한 관계에 규칙이 둘 이상이면
+        # (공정층 `part_of` = 하향 재귀 + 상향 1홉) **상향 1홉으로 도달한 부모에
+        # 하향 재귀가 다시 걸려 형제 전부**가 들어왔다. 「부모 맥락 한 겹」이
+        # 트리 전체가 되고, 수집 상한 8에서 잘려 오답이 되는데 **잘린 건수는 같고
+        # 대상만 달라 잘림률 계기판에 잡히지 않는다**(실측).
+        #
+        # 기준이 규칙 이름이 아니라 **방향**인 것은 규칙 이름이 임의 라벨이기
+        # 때문이다(§5.1-4 — core는 값만 순회한다).
+        frontier = [(i, None, None) for i in ids]
         while frontier:
             nxt = []
             for e in self.edges:
@@ -187,19 +196,26 @@ class GraphStore:
                     continue
                 for spec in (traverse_spec.get(e["rel"]) or {}).values():
                     d, rec = spec.get("direction", "both"), spec.get("recursive", False)
-                    for nid, via in frontier:
-                        # 비재귀 규칙은 **그 관계로 도달한 노드**에 다시 걸지 않는다.
-                        if not rec and via == e["rel"]:
-                            continue
+                    for nid, via, via_dir in frontier:
                         h = None
                         if d in ("out", "both") and e["src"] == nid:
-                            h = e["dst"]
+                            h, step = e["dst"], "out"
                         elif d in ("in", "both") and e["dst"] == nid:
-                            h = e["src"]
-                        if h is None or h in seen:
+                            h, step = e["src"], "in"
+                        if h is None:
+                            continue
+                        if via == e["rel"]:
+                            # 비재귀 규칙은 **그 관계로 도달한 노드**에 다시 안 건다.
+                            if not rec:
+                                continue
+                            # **방향이 반대면 재귀 규칙도 안 건다** — 상향으로 온
+                            # 부모에서 하향 재귀를 열면 형제 전부가 딸려 온다.
+                            if via_dir and via_dir != step:
+                                continue
+                        if h in seen:
                             continue
                         seen.add(h)                 # 방문 집합으로 순환을 막는다
-                        nxt.append((h, e["rel"]))
+                        nxt.append((h, e["rel"], step))
             frontier = nxt
         return seen
 

@@ -12,7 +12,7 @@
   "payload_kind": "table",
   "records": [
     {
-      "source_locator": "PFMEA01-R1",
+      "source_locator": "R1",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -27,7 +27,7 @@
       "detection_control": "타발 후 치수를 자동 측정한다."
     },
     {
-      "source_locator": "PFMEA01-R2",
+      "source_locator": "R2",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -42,7 +42,7 @@
       "detection_control": "속도 이상 시 설비가 자동 정지한다."
     },
     {
-      "source_locator": "PFMEA01-R3",
+      "source_locator": "R3",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -57,7 +57,7 @@
       "detection_control": "이물 검출 카메라로 전수 검사한다."
     },
     {
-      "source_locator": "PFMEA01-R4",
+      "source_locator": "R4",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-20",
@@ -71,7 +71,7 @@
       "detection_control": "절연 저항을 전수 측정한다."
     },
     {
-      "source_locator": "PFMEA01-R5",
+      "source_locator": "R5",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-20",
@@ -86,7 +86,7 @@
       "detection_control": "적층 후 비전으로 정렬도를 측정한다."
     },
     {
-      "source_locator": "PFMEA01-R6",
+      "source_locator": "R6",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-20",
@@ -101,7 +101,7 @@
       "detection_control": "흡착 압력 저하 시 알람이 발생한다."
     },
     {
-      "source_locator": "PFMEA01-R7",
+      "source_locator": "R7",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-30",
@@ -116,7 +116,7 @@
       "detection_control": "인장 시험으로 주기 확인한다."
     },
     {
-      "source_locator": "PFMEA01-R8",
+      "source_locator": "R8",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-30",
@@ -131,7 +131,7 @@
       "detection_control": "진폭 이상 시 설비가 인터록된다."
     },
     {
-      "source_locator": "PFMEA01-R9",
+      "source_locator": "R9",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-40",
@@ -146,7 +146,7 @@
       "detection_control": "실링부 외관을 전수 검사한다."
     },
     {
-      "source_locator": "PFMEA01-R10",
+      "source_locator": "R10",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-50",
@@ -161,7 +161,7 @@
       "detection_control": "중량 검사로 주액량을 확인한다."
     },
     {
-      "source_locator": "PFMEA01-R11",
+      "source_locator": "R11",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-60",
@@ -176,7 +176,7 @@
       "detection_control": "누설 검사를 전수 수행한다."
     },
     {
-      "source_locator": "PFMEA01-R12",
+      "source_locator": "R12",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -192,7 +192,7 @@
       "비고": "재발 2건"
     },
     {
-      "source_locator": "PFMEA01-R13",
+      "source_locator": "R13",
       "doc_type": "pfmea",
       "process_group": "조립",
       "process_no": "OP-15",

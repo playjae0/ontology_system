@@ -618,7 +618,7 @@
  {
   "origin": "원천13종",
   "doc": "A_정제입력/규범/00_틀_확정본.md (v2.11, 2026-08-19)",
-  "norm": "극성이 주소(스코프 접두)에 실린 카테고리(현행 Property)에는 표면형 극성 결합을 다시 하지 않는다(이중 표기) — 스코프 없는 카테고리(Unit)는 F1 결합을 유지한다.",
+  "norm": "극성이 주소(스코프 접두)에 실린 카테고리에는 표면형 극성 결합을 다시 하지 않는다(이중 표기). **대상 카테고리 목록은 층 config `canonical_scope.bind_categories`가 갖는다 — 조항은 이름을 적지 않는다.** [정정] 45 — B26이 Unit을 스코프 대상에 넣어 이 한정은 효력이 없다. 대상 카테고리는 config `canonical_scope.bind_categories`가 갖고 조항은 이름을 적지 않는다(문서 1 F1 · 문서 4 §4.5-3 ①).",
   "quote": "표면형 극성 결합을 생략한다",
   "kind": "한정"
  },
@@ -3824,8 +3824,8 @@
  {
   "origin": "원천13종",
   "doc": "/home/claude/plan21/A_정제입력/챕터/CH3B_인입규칙.md (CH3B · 인입 데이터 규칙과 수명주기, v2.4)",
-  "norm": "규약 3-①의 결합 생략은 부착 주소가 canonical에 들어가는 카테고리(현행 Property)에만 적용한다 — 스코프 없는 카테고리(Unit)에는 적용하지 않고 기존 F1 극성 결합을 유지한다.",
-  "quote": "카테고리(현행 Property)에 한한다",
+  "norm": "규약 3-①의 결합 생략은 부착 주소가 canonical에 들어가는 카테고리에만 적용한다 — 그 목록은 config `canonical_scope.bind_categories`가 갖는다 [정정] 45 — B26이 Unit을 스코프 대상에 넣어 이 한정은 효력이 없다. 대상 카테고리는 config `canonical_scope.bind_categories`가 갖고 조항은 이름을 적지 않는다(문서 1 F1 · 문서 4 §4.5-3 ①).",
+  "quote": "스코프 접두가 canonical에 들어가는 카테고리 한정",
   "kind": "한정"
  },
  {

@@ -12,7 +12,7 @@
   "payload_kind": "prose",
   "chunks": [
     {
-      "source_locator": "QPPT01-K1",
+      "source_locator": "K1",
       "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "노칭",
@@ -22,7 +22,7 @@
       "meta": {}
     },
     {
-      "source_locator": "QPPT01-K2",
+      "source_locator": "K2",
       "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "노칭",
@@ -32,7 +32,7 @@
       "meta": {}
     },
     {
-      "source_locator": "QPPT01-K3",
+      "source_locator": "K3",
       "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "스태킹",
@@ -42,7 +42,7 @@
       "meta": {}
     },
     {
-      "source_locator": "QPPT01-K4",
+      "source_locator": "K4",
       "doc_type": "ppt_quality",
       "process_group": "조립",
       "process_ref": "사이드 실링",

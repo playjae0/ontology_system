@@ -66,5 +66,22 @@
    "mirror": "66e20b505ca3dfbc",
    "body": "d16badb67c75ed4b"
   }
+ },
+ {
+  "id": "F1 ↔ 문서4 §4.5-3 ① (스코프 카테고리 한정 — 값은 config, B26/B56)",
+  "mirror": {
+   "doc": "1_금지와불변.md",
+   "anchor": "| F1 |",
+   "kind": "row"
+  },
+  "body": {
+   "doc": "4_쓰기절차.md",
+   "anchor": "3. **부착 정합** — 문서 3(3.9-⑼)이 정본이다",
+   "kind": "para"
+  },
+  "sealed": {
+   "mirror": "5a79f4a7ef7e149d",
+   "body": "94d552d55211d28a"
+  }
  }
 ]

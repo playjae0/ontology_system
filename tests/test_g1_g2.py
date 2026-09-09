@@ -418,7 +418,7 @@ print("\n■ n1 — 근거 축 id (내용 계산)")
 reset()
 r3 = ingest(load("PPT03.json"))
 c = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
-m23 = [k for k, v in c.items() if v["source_locator"] in ("PPT03-C002", "PPT03-C003")]
+m23 = [k for k, v in c.items() if v["source_locator"] in ("C002", "C003")]
 show("S6 — 동일 (section, text) 2건의 chunk_id가 서로 다름 (occ 0·1)",
      len(set(m23)) == 2, str(sorted(m23)))
 show("S6 — 충돌 결함 로그 0건", not r3.defects and

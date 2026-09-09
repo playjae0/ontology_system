@@ -1,5 +1,5 @@
 {
-  "PPT02-L1": {
+  "L1": {
     "entities": [
       {
         "surface": "주액기",
@@ -9,7 +9,7 @@
     "relations": [],
     "attach": []
   },
-  "PPT02-L2": {
+  "L2": {
     "entities": [
       {
         "surface": "노즐 세척 주기",

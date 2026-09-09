@@ -76,8 +76,67 @@ def main():
         json.dump(pairs, open(PAIRS_FILE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         print(f"봉인 갱신 — {len(pairs)}쌍")
         return 0
+    _candidates(pairs)
     print(f"\n미러 쌍 {len(pairs)} · 위반 {bad}건 — " + ("판정 대상" if bad else "통과"))
     return 1 if bad else 0
+
+
+# ── 미등재 미러 후보 ([개정] B56-6) ───────────────────────────────────────
+# **판정은 사람이 한다.** 자동 봉인하지 않고 목록만 낸다 — 어휘가 겹친다는 것과
+# 「같은 말을 한다」는 것은 다르고, 후자는 이 검사의 능력 밖이다(머리말 참조).
+# 쌍 등재는 「실제로 어긋났던 자리부터」가 규칙이라, 이 목록은 **다음 개정 때
+# 어디를 볼지**를 알려 주는 것이지 등재 지시가 아니다.
+_STOP = set("그 이 저 것 수 등 및 또는 때 곳 안 밖 위 아래 전 후 중 시 은 는 이 가 을 를 의 에 와 과 로 으로 도 만 며 고 다 한 할 하는 하지 않는다 아니다 있다 없다 대한 대해 따라 위해 통해 문서 규약 조항 절 항 카드".split())
+_MIN_OVERLAP = 0.34          # 어휘 자카드 — 이 이상이면 사람이 볼 값어치가 있다
+
+
+def _tok(text):
+    return {w for w in re.findall(r"[가-힣A-Za-z_][가-힣A-Za-z0-9_]{1,}", text or "")
+            if w not in _STOP and len(w) > 1}
+
+
+def _candidates(pairs, top=6):
+    """문서 1 조항 행 ↔ 본문 문단의 어휘 겹침이 높은데 **미등재**인 쌍."""
+    try:
+        checker = _read("1_금지와불변.md")
+    except OSError:
+        return
+    sealed = {(p["mirror"]["anchor"], p["body"]["doc"]) for p in pairs}
+    sealed_anchors = {p["mirror"]["anchor"] for p in pairs}
+    rows = [ln for ln in checker.split("\n")
+            if ln.startswith("| ") and ln.count("|") >= 3 and len(ln) > 120]
+    bodies = []
+    for doc in ("3_구조.md", "4_쓰기절차.md", "5_읽기절차.md",
+                "6_파서와구축모드.md", "7_구현규격과검증.md", "2_계약.md"):
+        try:
+            txt = _read(doc)
+        except OSError:
+            continue
+        for para in txt.split("\n\n"):
+            if len(para) > 200:
+                bodies.append((doc, para))
+    out = []
+    for row in rows:
+        rid = row.split("|")[1].strip()
+        if any(a.startswith("| " + rid) or a.strip().startswith(rid)
+               for a in sealed_anchors):
+            continue
+        rt = _tok(row)
+        if len(rt) < 8:
+            continue
+        best = max(((len(rt & _tok(b)) / len(rt | _tok(b)), doc, b)
+                    for doc, b in bodies), default=(0, None, None))
+        if best[0] >= _MIN_OVERLAP:
+            out.append((round(best[0], 2), rid, best[1], best[2][:56].replace("\n", " ")))
+    if not out:
+        print("\n  미등재 미러 후보 0건")
+        return
+    out.sort(reverse=True)
+    print(f"\n  미등재 미러 후보 {len(out)}건 — **판정은 사람이 한다**(자동 봉인 없음):")
+    for sc, rid, doc, head in out[:top]:
+        print(f"    {sc:.2f}  문서1 [{rid}] ↔ {doc} — {head}…")
+    if len(out) > top:
+        print(f"    … 외 {len(out) - top}건")
 
 
 if __name__ == "__main__":

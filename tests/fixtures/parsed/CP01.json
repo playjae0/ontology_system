@@ -12,7 +12,7 @@
   "payload_kind": "table",
   "records": [
     {
-      "source_locator": "CP01-C1",
+      "source_locator": "C1",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -25,7 +25,7 @@
       "대응계획": "공정 정지 후 금형 점검"
     },
     {
-      "source_locator": "CP01-C2",
+      "source_locator": "C2",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -38,7 +38,7 @@
       "대응계획": "클리어런스 재조정 후 초도품 확인"
     },
     {
-      "source_locator": "CP01-C3",
+      "source_locator": "C3",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-20",
@@ -51,7 +51,7 @@
       "대응계획": "정렬 보정 후 재적층"
     },
     {
-      "source_locator": "CP01-C4",
+      "source_locator": "C4",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-20",
@@ -64,7 +64,7 @@
       "대응계획": "정렬 보정 후 재적층"
     },
     {
-      "source_locator": "CP01-C5",
+      "source_locator": "C5",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-30",
@@ -77,7 +77,7 @@
       "대응계획": "가압 조건 재설정"
     },
     {
-      "source_locator": "CP01-C6",
+      "source_locator": "C6",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-60",
@@ -90,7 +90,7 @@
       "대응계획": "히터 유닛 교체"
     },
     {
-      "source_locator": "CP01-C7",
+      "source_locator": "C7",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-20",
@@ -106,7 +106,7 @@
       }
     },
     {
-      "source_locator": "CP01-C8",
+      "source_locator": "C8",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -119,7 +119,7 @@
       "대응계획": "공정 정지 후 금형 점검"
     },
     {
-      "source_locator": "CP01-C9",
+      "source_locator": "C9",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -132,7 +132,7 @@
       "대응계획": "공정 정지 후 금형 점검"
     },
     {
-      "source_locator": "CP01-C10",
+      "source_locator": "C10",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-10",
@@ -145,7 +145,7 @@
       "대응계획": "금형 연마 후 재검사"
     },
     {
-      "source_locator": "CP01-C11",
+      "source_locator": "C11",
       "doc_type": "cp",
       "process_group": "스태킹",
       "process_no": "OP-10",
@@ -158,7 +158,7 @@
       "대응계획": "피치 보정 후 초도품 확인"
     },
     {
-      "source_locator": "CP01-C12",
+      "source_locator": "C12",
       "doc_type": "cp",
       "process_group": "조립",
       "process_no": "OP-30",

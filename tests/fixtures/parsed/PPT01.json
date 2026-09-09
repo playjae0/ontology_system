@@ -12,7 +12,7 @@
   "payload_kind": "prose",
   "chunks": [
     {
-      "source_locator": "PPT01-C001",
+      "source_locator": "C001",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
@@ -22,7 +22,7 @@
       "meta": {}
     },
     {
-      "source_locator": "PPT01-C002",
+      "source_locator": "C002",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
@@ -32,7 +32,7 @@
       "meta": {}
     },
     {
-      "source_locator": "PPT01-C003",
+      "source_locator": "C003",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "스태킹",
@@ -42,7 +42,7 @@
       "meta": {}
     },
     {
-      "source_locator": "PPT01-C004",
+      "source_locator": "C004",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "cathode 탭용접",
@@ -52,7 +52,7 @@
       "meta": {}
     },
     {
-      "source_locator": "PPT01-C005",
+      "source_locator": "C005",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "패키징",
@@ -62,7 +62,7 @@
       "meta": {}
     },
     {
-      "source_locator": "PPT01-C006",
+      "source_locator": "C006",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "전해액주입",
@@ -72,7 +72,7 @@
       "meta": {}
     },
     {
-      "source_locator": "PPT01-C007",
+      "source_locator": "C007",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "사이드 실링",
@@ -86,7 +86,7 @@
       }
     },
     {
-      "source_locator": "PPT01-C008",
+      "source_locator": "C008",
       "doc_type": "ppt_process",
       "process_group": "조립",
       "process_ref": "노칭",
