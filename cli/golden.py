@@ -36,7 +36,8 @@ TYPE_PATH = {
     "Q1": "chunk",                  # 청크
     "Q2": "graph_fact", "Q3": "graph_fact",
     "Q4": "graph_fact", "Q5": "graph_fact",     # 엣지·노드 필드
-    "Q6": "graph_fact", "Q7": "graph_fact",     # 범위 밖이나 값은 정의돼 있다
+    # **Q6·Q7은 없다**(문서 5 §5.5-4 B54-2 · B55 ⑩) — §5.3이 **범위 밖**으로 둔
+    # 유형이라 값으로 받지 않는다. 그런 질문은 `out`이다.
     "Q8": "general_knowledge",      # 그래프 밖
     "noanswer": "general_knowledge",            # 환각 검증 — 「근거 없음」 선언
     "multihop": "both",             # 프론티어 전파·cross 브리지

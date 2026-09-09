@@ -1499,6 +1499,8 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     if not st:
         raise SystemExit(f"[검수] '{doc_type}' 생성 단계가 먼저다")
 
+    from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
+
     if instruct:                                   # 재생성 루프 1회
         st["revision"] += 1
         st.setdefault("instructions", []).append(
@@ -1552,8 +1554,12 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
             lbl = f"{i}/{len(samples)} ({Path(s).name})"
             # **주입 조립은 한 자리다**(B48) — 좌표 보조만 사람이 끌 수 있으므로
             # 그 하나를 덮어쓴다. 나머지 둘은 진입점이 정한 그대로 내려간다.
+            # **리허설 파싱도 운영의 doc_id를 쓴다**(문서 6 §6.6 B51-2 · B55 ⑤).
+            # 구판은 `{DOC_TYPE}{i:02d}`라, 구조 지도·이미지 요약 보존분이 `CP01`
+            # 대신 그 이름으로 남아 **운영 인입이 못 찾았다** — 체크포인트 키가
+            # 같아야 재사용이 성립한다. `_extract_rehearsal`만 고쳐져 있었다.
             out.append(pipeline.parse(
-                mod, f"{doc_type.upper()}{i:02d}", s, layer=st["layer"],
+                mod, doc_id_of(s), s, layer=st["layer"],
                 **{**injections(), "pick_coord": pick},
                 max_rows=rows,
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))

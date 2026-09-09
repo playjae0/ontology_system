@@ -1551,6 +1551,227 @@ show("② 문답 세션이 이전 라운드를 받는다 — stale은 **구분�
      f"현재 {len(_b55_fresh)} · 이전 표본 {len(_b55_old)}")
 shutil.rmtree(R._dir("b55iv"), ignore_errors=True)
 
+
+# ── B55 ③~⑩ 감사 2차 A군 수리 ─────────────────────────────────────────────
+print("\n■ B55 ③ — 추출 실패의 처분은 청크 단위다 (문서 4 §4.10 규약 9)")
+
+from core import extract as _EX                                   # noqa: E402
+
+_b55_env = {"doc_id": "B55FAIL", "adapter_version": "1.0", "parsed_at": "t",
+            "chunks": [{"source_locator": f"L{i}", "text": f"노칭 공정 {i}"}
+                       for i in (1, 2, 3)]}
+_b55_ids = {f"L{i}": f"B55FAIL:c{i}" for i in (1, 2, 3)}
+_b55_cfg = {"layer": "process", "config_version": "1", "categories": {}, "relations": []}
+_b55_real = _EX._candidates_for
+
+
+def _b55_one_bad(cid, chunk, cfg, vocab):
+    if cid.endswith("c2"):
+        raise ValueError("주입한 실패")
+    return _b55_real(cid, chunk, cfg, vocab)
+
+
+_EX.checkpoint_path("B55FAIL").unlink(missing_ok=True)
+_b55_d = store.path(store.DEFECTS)
+_b55_b0 = _b55_d.stat().st_size if _b55_d.exists() else 0
+_EX._candidates_for = _b55_one_bad
+try:
+    _b55_out, _b55_made = _EX.extract(_b55_env, _b55_cfg, _b55_ids, {})
+finally:
+    _EX._candidates_for = _b55_real
+_b55_ok = [c for c in _b55_out["candidates"] if not c.get("failed")]
+_b55_bad = [c for c in _b55_out["candidates"] if c.get("failed")]
+# ③ⓐ **한 청크의 예외가 문서를 죽이지 않는다** — 3천 청크 문서가 한 줄로 통째로 빠지면
+# 그 문서는 영영 안 들어간다.
+show("③ⓐ 청크 하나가 실패해도 나머지는 산출된다",
+     len(_b55_ok) == 2 and len(_b55_bad) == 1, f"성공 {len(_b55_ok)} · 실패 {len(_b55_bad)}")
+# ③ⓑ **무후보와 구분한다** — `entities: []`는 「봤는데 없었다」, `failed`는 「보지 못했다」.
+show("③ⓑ 체크포인트에 failed가 사유와 함께 남는다 (무후보와 구분)",
+     _b55_bad[0]["failed"].startswith("ValueError")
+     and _b55_bad[0]["entities"] == [], _b55_bad[0]["failed"])
+show("③ⓒ defects.log에 남는다 — 큐가 아니라 결함 로그다 (새 kind 0)",
+     (_b55_d.stat().st_size if _b55_d.exists() else 0) > _b55_b0
+     and "추출 실패" in _b55_d.read_text(encoding="utf-8"))
+show("③ 구축이 failed 청크를 건너뛴다 (결함이 「후보 0건」 통계에 녹지 않는다)",
+     "if not c.get(\"failed\")" in
+     (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8"))
+# ③ⓓ **전건 실패면 체크포인트를 쓰지 않는다** — 「파일 존재 = 추출 완료」(P-1).
+_EX.checkpoint_path("B55FAIL").unlink(missing_ok=True)
+_EX._candidates_for = lambda *a, **k: (_ for _ in ()).throw(ValueError("전건"))
+try:
+    _b55_all, _b55_made2 = _EX.extract(
+        dict(_b55_env, doc_id="B55ALL"), _b55_cfg,
+        {f"L{i}": f"B55ALL:c{i}" for i in (1, 2, 3)}, {})
+finally:
+    _EX._candidates_for = _b55_real
+show("③ⓓ 전 청크 실패면 체크포인트를 남기지 않는다 (재시도가 막히지 않는다)",
+     not _EX.checkpoint_path("B55ALL").exists()
+     and _b55_all.get("all_failed") is True and _b55_made2 is False)
+
+print("\n■ B55 ④ — 프레임 지도가 source_hash 무효화를 우회하지 않는다 (§6.3 · B16)")
+
+import shutil as _b55_sh                                          # noqa: E402
+from parser import struct_map as _SM, tagger as _tagger                              # noqa: E402
+from parser.adapters import basic_ppt as _BP                      # noqa: E402
+
+_b55_src = ROOT / "data" / "_b55_map.pptx"
+_b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
+_b55_calls = []
+
+
+def _b55_ask(doc_id, lines):
+    _b55_calls.append(doc_id)
+    return {"doc_id": doc_id, "source": "live", "prompt_version": "s-1.0",
+            "rows": [{"row": n, "heading": t.strip()[:2] in ("1.", "2.", "3."),
+                      "level": 1 if t.strip()[:2] in ("1.", "2.", "3.") else 0}
+                     for n, t in lines]}
+
+
+def _b55_parse():
+    _b55_calls.clear()
+    pipeline.parse(_BP, "B55MAP", str(_b55_src), map_structure=_b55_ask)
+    return len(_b55_calls)
+
+
+_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_n1 = _b55_parse()
+_b55_files = sorted(p.name for p in _SM.KEEP_DIR.glob("*"))
+_b55_n2 = _b55_parse()                       # 같은 원본 — 재사용
+_b55_src.write_bytes(_b55_src.read_bytes() + b"\x00")   # 1바이트 변경
+_b55_n3 = _b55_parse()
+# ④ⓑ **문서당 파일 하나**다 — 구판은 `{doc_id}:{프레임}.json`을 따로 만들었다.
+show("④ⓑ 보존 파일은 {doc_id}.json 하나다 (프레임은 그 안의 maps[키])",
+     _b55_files == ["B55MAP.json"], str(_b55_files))
+show("④ⓒ 같은 원본 재파싱은 재사용한다 (LLM 0회)",
+     _b55_n1 == 1 and _b55_n2 == 0, f"1회차 {_b55_n1} · 2회차 {_b55_n2}")
+# ④ⓐ **원본이 바뀌면 옛 지도가 살아나지 않는다** — 구판은 프레임 지도를 해시 대조
+# 없이 읽어 영영 옛 분할을 썼고, chunk_id 결정성의 근거가 무너졌다.
+show("④ⓐ 원본 1바이트 변경 → 지도를 새로 산출한다 (해시 대조를 우회하지 않는다)",
+     _b55_n3 == 1, f"3회차 {_b55_n3}회")
+_b55_kept = json.loads((_SM.KEEP_DIR / "B55MAP.json").read_text(encoding="utf-8"))
+show("④ 보존 파일이 source_hash와 maps를 함께 갖는다",
+     bool(_b55_kept.get("source_hash")) and bool(_b55_kept.get("maps")),
+     f"프레임 {sorted(_b55_kept.get('maps') or {})}")
+_b55_src.unlink(missing_ok=True)
+_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+
+print("\n■ B55 ⑤ — 리허설 파싱도 운영 doc_id를 쓴다 (§6.6 B51-2)")
+
+from cli.ingest import doc_id_of as _b55_did                      # noqa: E402
+
+show("⑤ 리허설 파싱이 doc_id_of(표본)를 쓴다 ({DOC_TYPE}NN이 아니다)",
+     "mod, doc_id_of(s), s, layer=" in
+     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+# **키가 같아야 재사용이 성립한다** — 구판은 리허설이 다른 이름으로 써서 못 만났다.
+_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
+_b55_calls.clear()
+pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
+_b55_rehearsal = len(_b55_calls)
+_b55_calls.clear()
+pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
+show("⑤ⓐ 리허설이 남긴 지도를 운영 인입이 찾는다 (재사용 — LLM 0회)",
+     _b55_rehearsal == 1 and len(_b55_calls) == 0)
+_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_calls.clear()
+pipeline.parse(_BP, "B55OLD01", str(_b55_src), map_structure=_b55_ask)   # 구판 이름
+_b55_calls.clear()
+pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
+show("⑤ [대조] 이름이 다르면 못 찾는다 — 고친 것이 이것이다",
+     len(_b55_calls) == 1)
+_b55_src.unlink(missing_ok=True)
+_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+
+print("\n■ B55 ⑥ — PDF 쪽 렌더가 ④에 닿는다")
+
+from parser.adapters import basic_pdf as _BPDF                    # noqa: E402
+
+
+def _b55_sum(ref, *, image=None, mime=None, context="", page=None):
+    return f"요약(page={'있음' if page else '없음'})"
+
+
+_b55_pdf = pipeline.parse(_BPDF, "B55PDF", str(RAW / "PDF_basic.pdf"),
+                          summarize=_b55_sum)
+_b55_pic = [c for c in _b55_pdf.envelope["chunks"]
+            if (c.get("meta") or {}).get("shape_kind") == "picture"][0]
+# 구판은 `meta["slide"]`만 봐서 PDF는 늘 `pages.get(None)` → 항상 none이었다.
+show("⑥ⓐ PDF 그림 청크의 slide_render가 page다 (meta.page를 본다)",
+     _b55_pic["meta"]["slide_render"] == "page"
+     and _b55_pic["meta"].get("page") is not None,
+     f"page={_b55_pic['meta'].get('page')} · {_b55_pic['meta']['slide_render']}")
+show("⑥ 조회 키 결정은 한 자리다 (tagger._page_no)",
+     _tagger._page_no({"meta": {"slide": 3}}) == 3
+     and _tagger._page_no({"meta": {"page": 7}}) == 7
+     and _tagger._page_no({"meta": {}}) is None)
+
+print("\n■ B55 ⑦ — llm-check의 401/403이 ③인증으로 간다")
+
+_b55_req, _b55_cfgf, _b55_postf = llm.require, llm.config, llm._post
+try:
+    llm.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
+                              "timeout": 5, "retry": 0}
+    llm.config = lambda: {"url": "https://x", "model": "m", "key": "k",
+                          "timeout": 5, "retry": 0, "embed_model": None}
+
+    def _b55_probe(exc):
+        llm._post = lambda u, p, k, t: (_ for _ in ()).throw(exc)
+        return {s["id"]: s for s in llm.probe()}
+
+    _p401 = _b55_probe(llm.GatewayError(401, "invalid api key", "u"))
+    _p500 = _b55_probe(llm.GatewayError(500, "upstream boom", "u"))
+    _purl = _b55_probe(__import__("urllib.error", fromlist=["x"]).URLError("no route"))
+finally:
+    llm.require, llm.config, llm._post = _b55_req, _b55_cfgf, _b55_postf
+# **어디까지 갔는지가 곧 원인이다**(B19) — 키가 틀렸는데 「주소에 못 닿았다」고
+# 말하면 사람이 엉뚱한 곳을 고친다.
+show("⑦ⓐ 401 → ②도달 PASS · ③인증 FAIL",
+     _p401["②"]["ok"] is True and _p401["③"]["ok"] is False
+     and "401" in _p401["③"]["detail"])
+show("⑦ⓑ 500 → ③이 「인증 문제는 아니다」라고 말한다",
+     _p500["③"]["ok"] is False and "인증 문제는 아니다" in _p500["③"]["detail"]
+     and "upstream boom" in _p500["③"]["detail"])
+show("⑦ⓒ URLError → ②도달 FAIL 그대로 (③은 아예 나오지 않는다)",
+     _purl["②"]["ok"] is False and "③" not in _purl)
+# **`_post`의 HTTPError 포착은 남는다** — 거기가 GatewayError로 바꿔 던지는 자리다.
+# 죽어 있던 것은 `probe` 안의 갈래이고, 그 함수 본문만 본다.
+_b55_llmsrc = (ROOT / "core" / "llm.py").read_text(encoding="utf-8")
+_b55_probe_src = _b55_llmsrc[_b55_llmsrc.index("def probe("):]
+_b55_probe_src = _b55_probe_src[:_b55_probe_src.index("\ndef ", 1)]
+# **주석은 코드가 아니다** — 무엇이 왜 죽어 있었는지 적은 문장이 그 자리에 있고,
+# 문자열로 세면 그 설명이 위반으로 잡힌다(§7.5 「주석을 구현으로 세지 않는다」의 역).
+_b55_probe_code = "\n".join(
+    ln for ln in _b55_probe_src.split("\n") if not ln.strip().startswith("#"))
+show("⑦ probe에 죽은 HTTPError 갈래가 없다 (GatewayError로 받는다)",
+     "except urllib.error.HTTPError" not in _b55_probe_code
+     and "except GatewayError as e" in _b55_probe_code
+     and "e.status" in _b55_probe_code)
+show("⑦ _post의 HTTPError 포착은 그대로다 (바꿔 던지는 자리다)",
+     "except urllib.error.HTTPError" in _b55_llmsrc
+     and "raise GatewayError(e.code, body, url) from e" in _b55_llmsrc)
+
+print("\n■ B55 ⑧⑨ — 경로 경고 · 멱등 계측 · 골든셋 유형")
+
+from cli import ingest as _ING                                    # noqa: E402
+
+# doc_id가 파일명 stem 파생이라(D-110) **파일명 비교는 참이 될 수 없었다**.
+show("⑧ 경로 비교가 파일명이 아니라 전체 경로다 (D-110의 대가가 화면에 뜬다)",
+     "_norm_path(prev[\"source_path\"]) != _norm_path(doc)" in
+     (ROOT / "cli" / "ingest.py").read_text(encoding="utf-8")
+     and _ING._norm_path("./a/x.xlsx") != _ING._norm_path("./b/x.xlsx")
+     and _ING._norm_path("a/x.xlsx") == _ING._norm_path("./a/x.xlsx"))
+# `return` 아래가 통째로 도달 불가였다 — 완료판정 4가 한 번도 계측된 적이 없다.
+_b55_doc = (ROOT / "doctor.py").read_text(encoding="utf-8")
+show("⑨ 멱등 계측이 도달 가능하다 (헬퍼 `_clean()`을 부르고 2회 실행·비교한다)",
+     "rc, residue = _clean()" in _b55_doc
+     and _b55_doc.index("rc, residue = _clean()")
+     < _b55_doc.index("g1, q1, r1 = snap()")
+     and "클린 2회 동일 그래프" in _b55_doc)
+# **문면을 조각으로 쓴다** — 이 줄이 「층 그래프 파일을 아는 코드」 검사(test_g1_g2)에
+# 걸리지 않게. `doctor.py`가 같은 이유로 `"graph" + ".json"`을 쓴다(레포의 관용).
+show("⑨ snap()이 층 그래프 파일을 바이트로 여는 근거가 주석에 있다 (B6 예외 명시)",
+     "B6(GraphStore 경유)의 예외이고" in _b55_doc)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

@@ -256,25 +256,55 @@ def _load_hints(doc_id):
 
 
 def extract(env, cfg, chunk_ids_by_locator, vocab):
-    """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다."""
+    """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
+
+    **실패의 처분은 청크 단위다**(문서 4 §4.10 규약 9). 한 청크의 예외가 문서
+    전체를 중단시키면, 3천 청크짜리 문서가 한 줄 때문에 통째로 안 들어간다.
+    실패한 청크는 `{"chunk_id":…, "failed":"사유"}`로 **체크포인트에 남겨**
+    무후보(`entities: []`)와 구분하고, 구축은 그 청크만 건너뛴다.
+
+    처분 급은 **큐가 아니라 결함 로그**다 — 사람이 처리할 항목이 아니라 관측
+    신호이고, 새 큐 kind를 만들지 않는다(닫힌 20종).
+
+    **전 청크가 실패하면 체크포인트를 쓰지 않는다** — 「파일 존재 = 추출 완료」가
+    계약이므로(P-1), 아무것도 못 뽑은 상태를 완료로 남기면 재시도가 영영 막힌다.
+    """
     doc_id = env["doc_id"]
     if has_checkpoint(doc_id):
         return json.loads(checkpoint_path(doc_id).read_text(encoding="utf-8")), False
 
     hints = _load_hints(doc_id)
     candidates = []
+    failed = 0
     for c in env.get("chunks", []):
         cid = chunk_ids_by_locator.get(c.get("source_locator"))
         if cid is None:
             continue
-        if hints and c.get("source_locator") in hints:
-            h = hints[c["source_locator"]]
-            candidates.append({"chunk_id": cid,
-                               "entities": h.get("entities", []),
-                               "relations": h.get("relations", []),
-                               "attach": h.get("attach", [])})
-        else:
-            candidates.append(_candidates_for(cid, c, cfg, vocab))
+        try:
+            if hints and c.get("source_locator") in hints:
+                h = hints[c["source_locator"]]
+                candidates.append({"chunk_id": cid,
+                                   "entities": h.get("entities", []),
+                                   "relations": h.get("relations", []),
+                                   "attach": h.get("attach", [])})
+            else:
+                candidates.append(_candidates_for(cid, c, cfg, vocab))
+        except Exception as e:                              # noqa: BLE001
+            # **무후보와 구분한다** — `entities: []`는 「봤는데 없었다」이고
+            # `failed`는 「보지 못했다」다. 둘을 같은 모양으로 두면 구축이
+            # 「후보 0건인 청크」로 세어 결함이 통계에 녹는다.
+            why = f"{type(e).__name__}: {e}"
+            candidates.append({"chunk_id": cid, "failed": why,
+                               "entities": [], "relations": [], "attach": []})
+            failed += 1
+            store.append_defect(f"{doc_id}: 추출 실패 {cid} — {why}")
+
+    # **전건 실패면 체크포인트를 남기지 않는다** — 「파일 존재 = 추출 완료」(P-1).
+    if candidates and failed == len(candidates):
+        store.append_defect(
+            f"{doc_id}: 전 청크 추출 실패 {failed}건 — 체크포인트를 쓰지 않는다")
+        return {"doc_id": doc_id, "stage": "extract", "candidates": candidates,
+                "all_failed": True}, False
 
     out = {
         "doc_id": doc_id,

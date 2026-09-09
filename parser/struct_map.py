@@ -56,12 +56,18 @@ def source_hash(path):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-def load_kept(doc_id, src_hash=None):
+def load_kept(doc_id, src_hash=None, *, frame=None):
     """보존된 지도를 읽는다 — **`source_hash`가 같을 때만** 재사용한다(문서 6 §6.3).
 
     같은 지도 → 같은 분할 → 같은 chunk_id다. 매 인입 새로 산출하면 그 문서의
     chunk_id가 전량 이동해 재인입 멱등성이 깨진다. 파일이 바뀌면 무효화되고
     추출 체크포인트도 함께 버려진다(§4.8-8과 같은 손잡이).
+
+    **`frame`은 문서 안의 프레임 키다**(B16 — 「문서당 파일 하나이고 그 안에서
+    프레임 키로 가른다」). 구판은 `{doc_id}:{key}`를 통째로 doc_id 자리에 넣어
+    **별도 파일**을 만들었고, 그 경로의 `src_hash` 기본이 `None`이라 **대조 없이**
+    재사용됐다 — 원본이 바뀌어도 옛 지도가 살아나 chunk_id 결정성의 근거가
+    무너졌다(B55 ④). 프레임 지도는 이제 문서 파일 안에서만 산다.
     """
     p = keep_path(doc_id)
     if not p.exists():
@@ -69,6 +75,8 @@ def load_kept(doc_id, src_hash=None):
     m = json.loads(p.read_text(encoding="utf-8"))
     if src_hash is not None and m.get("source_hash") not in (None, src_hash):
         return None
+    if frame is not None:
+        return (m.get("maps") or {}).get(frame)
     return m
 
 
@@ -102,7 +110,7 @@ MAPPED = "mapped"
 
 
 # ---------------------------------------------------------------- ① 지도 산출
-def propose(doc_id, lines, ask=None, src_hash=None):
+def propose(doc_id, lines, ask=None, src_hash=None, *, frame=None):
     """지도 산출 — **함수가 오면 그것으로, 안 오면 번호 패턴 휴리스틱**(B48).
 
     지도 형식: `{"doc_id":…, "source":…, "rows":[{"row":n, "heading":bool, "level":int}]}`
@@ -120,8 +128,10 @@ def propose(doc_id, lines, ask=None, src_hash=None):
     운영 코드는 fixture 파일을 찾지 않는다: 미리 놓은 정답을 돌려주는 갈래는 배선이
     없어도 초록이라 결함을 가린다(B48 — ⑦ 미배선이 그렇게 숨었다).
     """
-    kept = load_kept(doc_id, src_hash)
-    if kept is not None:
+    kept = load_kept(doc_id, src_hash, frame=frame)
+    if isinstance(kept, (list, tuple)):      # 프레임 보존분은 `apply`의 3짝이다
+        kept = kept[1] if len(kept) > 1 else None
+    if isinstance(kept, dict):
         kept["source"] = kept.get("source", "kept")
         return kept                          # **보존분 재사용** — 같은 분할·같은 chunk_id
     if ask is not None:
@@ -132,6 +142,11 @@ def propose(doc_id, lines, ask=None, src_hash=None):
             # **사유는 보존하지 않는다**(문서 6 §6.3 · [정정] 39) — 보존하면 재인입이
             # 그것을 재사용해 **영영 평면**이다. 한도를 올려도, 문서를 줄여도 다시
             # 시도되지 않는다. 보존이 필요한 것은 실제로 산출된 지도뿐이다.
+            return m
+        if frame is not None:
+            # **프레임 지도는 여기서 쓰지 않는다** — 문서 단위 보존 파일의 `maps`에
+            # 담기고 그 파일을 쓰는 자리는 `pipeline.parse` 끝 한 곳이다(§6.3 ·
+            # B16). 여기서도 쓰면 같은 사실이 두 자리에 살고 하나가 낡는다.
             return m
         return keep(doc_id, m, src_hash)     # 실산출은 보존한다(§6.3)
     # 대체 갈래는 **보존하지 않는다** — 휴리스틱은 같은 입력이면 늘 같은 지도라
@@ -331,7 +346,7 @@ def flat(lines, locator):
 
 
 # ---------------------------------------------------------------- 진입점
-def apply(doc_id, lines, locator, sep=" > ", ask=None):
+def apply(doc_id, lines, locator, sep=" > ", ask=None, src_hash=None, *, frame=None):
     """지도 패스 1회 — `(chunks, smap, reasons)`.
 
     `reasons`가 비어 있지 않으면 **평면 폴백**이고, 호출부가 그것을 큐로 올린다.
@@ -341,7 +356,7 @@ def apply(doc_id, lines, locator, sep=" > ", ask=None):
     통로가 없어, 어떤 설정에서도 모델이 불리지 않았다 — 파라미터만 있고 값이 올
     길이 없으면 배선이 아니다(문서 7 §7.6-B-2).
     """
-    smap = propose(doc_id, lines, ask=ask)
+    smap = propose(doc_id, lines, ask=ask, src_hash=src_hash, frame=frame)
     reasons = validate(smap, lines)
     smap["verdict"] = FLAT if reasons else MAPPED
     smap["reasons"] = reasons

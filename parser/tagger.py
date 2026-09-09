@@ -158,6 +158,22 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
     return out
 
 
+def _page_no(piece):
+    """쪽 그림을 찾을 번호 — **어댑터마다 이름이 다르다**(B55 ⑥).
+
+    PPT는 `meta.slide`, PDF는 `meta.page`다. 구판은 `slide`만 봐서 PDF에서는
+    늘 `pages.get(None)` → `slide_render="none"`이었고, B53 c의 「페이지 렌더를
+    항상 ④ 맥락으로」가 PDF에서 **한 번도 돌지 않았다.**
+
+    **조회는 여기 한 자리다.** 어댑터가 `slide`도 함께 싣게 하는 쪽이 아니라 이쪽을
+    고른 이유: 어댑터는 순수 함수이고 그 문서의 어휘(쪽/슬라이드)로 말하는 것이
+    맞다 — 두 이름을 하나로 접는 것은 그 둘을 함께 쓰는 **소비부**의 몫이다.
+    """
+    m = piece.get("meta") or {}
+    n = m.get("slide")
+    return m.get("page") if n is None else n
+
+
 def _mark(m, blob, mime, page):
     """**바이트가 왔는가를 데이터로 남긴다** — mock·재사용 갈래에서도 잰다.
 
@@ -208,7 +224,7 @@ def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=Non
         r = dict(p)
         ref = r.get("image_ref")
         blob, mime = images.get(ref, (None, None)) if ref else (None, None)
-        page = pages.get((r.get("meta") or {}).get("slide")) if ref else None
+        page = pages.get(_page_no(r)) if ref else None
         if ref and not r.get("text") and kept is not None and ref in kept:
             # **보존분 재사용** — 매 인입 새로 부르면 text가 흔들려 그 문서의
             # chunk_id가 전량 이동한다(문서 6 §6.3 · chunk_id 결정성 §7.2).

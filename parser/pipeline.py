@@ -50,7 +50,7 @@ def _mock_log(doc_id, point, detail):
     logging.getLogger("onto.parser").info("MOCK %s [%s] — %s", point, doc_id, detail)
 
 
-def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None):
+def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None, src_hash=None):
     """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다).
 
     `kept`는 보존분의 프레임별 지도(`{key: smap}`), `made`는 이번 인입에서 새로
@@ -65,7 +65,12 @@ def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None):
         if hit is not None:
             return hit
         # `apply()`는 **3짝**을 돌려준다 — 어댑터가 그대로 풀어 쓴다.
-        out = struct_map.apply(f"{doc_id}:{key}", lines, locator, ask=ask)
+        # **프레임 키는 인자다** — 구판은 `f"{doc_id}:{key}"`를 doc_id 자리에 넣어
+        # 별도 파일 `{doc_id}:{key}.json`을 만들었고, 그 경로가 `src_hash` 없이
+        # 재사용돼 원본이 바뀌어도 옛 지도가 살아났다(B55 ④). 지도는 문서 파일
+        # 하나 안에서 프레임 키로 갈린다(B16).
+        out = struct_map.apply(doc_id, lines, locator, ask=ask,
+                               src_hash=src_hash, frame=key)
         _chunks, smap, _reasons = out
         # **사유 지도는 보존분에 담지 않는다**(문서 6 §6.3 · [정정] 39). `propose`가
         # 프레임 단위로 안 담아도, 여기서 담으면 문서 단위 보존 파일에 실려 재인입이
@@ -175,7 +180,8 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
             try:
                 pieces = adapter.extract(
                     raw, struct_map_fn=_map_hook(doc_id, kept_maps, made_maps,
-                                                 map_picks, ask=map_structure))
+                                                 map_picks, ask=map_structure,
+                                                 src_hash=src_hash))
             except TypeError:
                 pieces = adapter.extract(raw)                        # 지도 훅 없는 어댑터
         else:
