@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from pathlib import Path
@@ -140,6 +141,28 @@ def append_line(name: str, line: str):
     DATA.mkdir(parents=True, exist_ok=True)
     with path(name).open("a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
+
+
+@contextlib.contextmanager
+def muted_material_logs():
+    """**측정 중에는 재료 로그 적재를 끈다** (문서 5 §5.5 규율 4).
+
+    측정이 `link_miss`·`chunk_truncated`를 오염시키면 **다음 측정이 제 흔적을 센다**.
+    계기판과 골든셋 채점이 같은 문항으로 `answer()`를 도는 이상 스위치도 하나여야
+    한다 — 두 벌로 두면 한쪽만 고쳐지는 날이 오고, 그날 수치는 조용히 부푼다.
+
+    **끄는 것은 재료 로그뿐이다.** `defects.log`까지 죽이면 측정 중 발생한 결함이
+    조용히 사라져, G5(아무것도 조용히 버리지 않는다)를 측정이 우회하게 된다.
+    """
+    mute = {LINK_MISS, CHUNK_TRUNCATED}
+    global append_line
+    orig = append_line
+    append_line = (lambda name, line, _o=orig:
+                   None if name in mute else _o(name, line))
+    try:
+        yield
+    finally:
+        append_line = orig
 
 
 def append_defect(line: str):

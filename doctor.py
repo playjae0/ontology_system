@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent
 SUITES = [
     ("test_g1_g2", 94, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용"),
     ("test_g3", 79, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
-    ("test_g4", 58, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer"),
+    ("test_g4", 94, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 51, "I축 4연산 + 이관 · 운영 도구"),
     ("test_g6", 49, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입"),
     ("test_g6_5", 38, "계약 미배선 24건 수리"),

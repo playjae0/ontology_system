@@ -18,6 +18,11 @@
   python run.py ingest <파일...>   상동 (구 이름 — 같은 기능을 두 이름으로 두지 않으려
                                    남기되, 계약 이름은 build다)
   python run.py all                bootstrap + 픽스처 계약 JSON 전량 인입
+  python run.py golden init        골든셋 빈 문항 틀 (기준 120건 · 문서 5 §5.5-2)
+  python run.py golden score [--set F] [--k 8] [--json]
+                                  채점 4축 + BM-25 대조군 (LLM 0 — answer()까지만)
+  python run.py show bm25 "<질문>" [k]
+                                  BM-25 대조군을 직접 본다 (그래프·사전 안 읽는다)
   python run.py viewer [--port N] [--no-browser]
                                   그래프 뷰어 + 질문 칸 (읽기 전용 · 표준 라이브러리만)
   python run.py query "<질문>" [--json]
@@ -117,6 +122,12 @@ def cmd_query(args):
     return main(args)
 
 
+def cmd_golden(args):
+    """골든셋 틀·채점 — 위임만 한다(B54)."""
+    from cli.golden import main
+    return main(args)
+
+
 def cmd_viewer(args):
     """검증 뷰어 — 그래프 위에서 질의가 도는지 본다(B52). 위임만 한다."""
     from cli.viewer import main
@@ -208,6 +219,8 @@ if __name__ == "__main__":
      "query": lambda: cmd_query(sys.argv[2:]),
      # **관측 창구다** — mock 관문 비대상(doctor와 같은 자리). 모드는 화면 배지로 뜬다.
      "viewer": lambda: cmd_viewer(sys.argv[2:]),
+     # **골든셋은 파이프라인이 아니다**(문서 5 §5.5) — 측정 장치라 관문 비대상이다.
+     "golden": lambda: cmd_golden(sys.argv[2:]),
      "ops": lambda: cmd_ops(sys.argv[2:]),
      "gauges": lambda: cmd_gauges(),
      "platform": lambda: cmd_platform(sys.argv[2:]),

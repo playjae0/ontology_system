@@ -41,3 +41,11 @@ llm.local.json
 # 손으로 만든 검체(PPT_basic.pptx·CP01.xlsx 등)는 그대로 추적한다 — 그쪽은 입력 원본이다.
 tests/fixtures/raw/PPT_shapes.pptx
 tests/fixtures/raw/PDF_basic.pdf
+
+# golden/ = **사내 골든셋**. 추적하지 않는다 (반출입 경계 — doctor [5]).
+#   문항은 사내 실문서·실공정을 그대로 인용한다("노칭 프레스 금형 클리어런스는?").
+#   그것이 커밋되면 이 레포가 **사내 정보를 밖으로 내보내는 통로**가 된다 —
+#   「코드는 들어가고 실물 문서는 나오지 않는다」가 깨지는 자리가 정확히 여기다.
+#   틀은 `run.py golden init`이 언제든 다시 만들고, 시험용 3문항은
+#   tests/fixtures/golden_sample.json(전량 창작)으로 추적한다.
+golden/
