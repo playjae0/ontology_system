@@ -27,6 +27,8 @@
        └ resume은 **doc_type 하나만** 필요하다 — 층·표본은 패키지에서 읽는다
        --use-basic  분할 자명 계열(PPT)은 LLM 생성을 건너뛰고 **기본 어댑터를 정본으로**
                     등재 경로에 놓는다 (§6.4-5) — 검수·승인 1회는 그대로다(M4)
+       --drop-interview  이전 문답을 **버린다.** 기본은 이어가기다 — 사람의 답은
+                    다시 만들 수 없는 재료라, 버리는 쪽이 명시를 요구한다(B55)
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -187,8 +189,17 @@ def cmd_roles(args):
 
 
 # ================================================================ ① 생성
-def draft(doc_type, revision=0):
+def draft(doc_type, revision=0, *, instruction=None, history=None):
     """어댑터·매칭 스키마 **초안** — USE_MOCK은 fixture 반환이다 (D-10 · D-26).
+
+    **`instruction`은 모델에 닿아야 한다**(B55 ①). 구판은 지시를 `st["instructions"]`에
+    **기록만** 하고 `draft(doc_type, revision)`로 넘겨, 실호출 갈래는 같은 입력 패키지를
+    다시 받았다 — 「실패 문면을 그대로 지시로」(문서 6 §6.5)와 「지시는 사람 것이지만
+    산출은 LLM 것이다」([정정] 40)가 둘 다 공문이었다. mock은 `{doc_type}_rev{N}`이라는
+    **다른 파일**을 돌려주므로 루프가 도는 것처럼 보였고 그래서 어서션이 초록이었다.
+
+    `history`는 누적 지시 전량이다 — 2회차 지시가 1회차를 덮으면 사람이 같은 교정을
+    다시 적게 된다.
 
     fixture는 "미리 만든 정답"이 아니라 **외부 세션에서 실제 LLM이 산출한 결과물의
     스냅샷**이다. 사람이 손으로 써서 넣으면 그 리허설은 아무것도 검증하지 않는다.
@@ -208,14 +219,16 @@ def draft(doc_type, revision=0):
         if os.environ.get("ONTO_DUMP_PROMPT") == "1" and pkg.exists():
             _dump_prompt(doc_type, _render_template(
                 _newest_template().read_text(encoding="utf-8"),
-                json.loads(pkg.read_text(encoding="utf-8"))))
+                json.loads(pkg.read_text(encoding="utf-8")))
+                + instruction_block(instruction, history))
         for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
             ad = FIXTURES / "adapters" / f"{stem}.py"
             sc = FIXTURES / "schemas" / f"{stem}.json"
             if ad.exists() and sc.exists():
                 return ad, sc
         return None, None
-    return _draft_live(doc_type, revision)
+    return _draft_live(doc_type, revision,
+                       instruction=instruction, history=history)
 
 
 # **구조화 출력의 strict 요건**(B44): 최상위·중첩을 막론하고 모든 object에서
@@ -360,7 +373,37 @@ def _write_schema(path, text):
     return True
 
 
-def _draft_live(doc_type, revision):
+INSTRUCTION_HEAD = "\n\n---\n\n## 재생성 지시 (사람·기계 관문이 준 것)\n"
+
+
+def instruction_block(instruction, history=None):
+    """지시 구획 — **없으면 빈 문자열이다**(초회에는 구획 자체가 없다).
+
+    **입력 패키지 파일을 다시 쓰지 않는다.** 재현 조건의 그릇은 `human.hint`이고
+    (B36), 지시는 그 그릇에 이미 `instructions`로 남아 있다 — 여기서 파일을 고치면
+    「패키지가 입력의 정본」이라는 규율과 지시 이력이 두 자리로 갈린다.
+
+    누적 지시를 **먼저** 놓고 이번 지시를 마지막에 둔다 — 모델이 가장 최근 교정을
+    마지막에 읽게 하되, 앞선 교정을 잊지 않게 한다(2회차가 1회차를 덮으면 사람이
+    같은 것을 두 번 적는다).
+    """
+    prev = [h for h in (history or [])
+            if (h.get("instruction") or "").strip()
+            and (h.get("instruction") or "").strip() != (instruction or "").strip()]
+    if not prev and not (instruction or "").strip():
+        return ""
+    L = [INSTRUCTION_HEAD,
+         "**앞 초안이 이 지시를 받았다. 지시가 가리키는 것을 고쳐 다시 낸다** — "
+         "지시에 없는 부분을 임의로 바꾸지 않는다.\n"]
+    for h in prev:
+        L.append(f"- ({h.get('n', '?')}회 · {h.get('by', '?')}) "
+                 f"{(h.get('instruction') or '').strip()}")
+    if (instruction or "").strip():
+        L.append(f"- **이번 지시** — {instruction.strip()}")
+    return "\n".join(L) + "\n"
+
+
+def _draft_live(doc_type, revision, *, instruction=None, history=None):
     """지점 ⑤의 실호출 갈래 — 생성 LLM에 입력 패키지를 넘긴다.
 
     입력 패키지(사람 4 + 시스템 5)는 이미 `input_package.json`으로 서 있다 —
@@ -377,6 +420,10 @@ def _draft_live(doc_type, revision):
     raw_pkg = pkg.read_text(encoding="utf-8")
     system = _render_template(_newest_template().read_text(encoding="utf-8"),
                               json.loads(raw_pkg))
+    # **지시는 지시문 쪽에 붙인다** — user는 패키지 JSON 그대로여야 「입력의 정본은
+    # 패키지」가 유지된다(아래 주석). 지시는 그 입력을 어떻게 다시 다루라는 말이므로
+    # 지시문의 몫이다.
+    system += instruction_block(instruction, history)
     _dump_prompt(doc_type, system)          # ONTO_DUMP_PROMPT=1일 때만
     # user 메시지는 **원본 패키지 JSON 그대로** 보낸다 — 치환은 지시문의 일이고
     # 입력의 정본은 패키지다. 둘을 섞으면 어느 쪽이 정본인지 갈린다.
@@ -482,8 +529,91 @@ def _basic_pdf_proposal(samples):
                        if no_text else "")}
 
 
+# ── 문답 누적 — 「재현 조건의 자리는 `human.hint` 그릇이다」(B36 · 문서 6 §6.5) ──
+#
+# **키가 아니라 항목으로 는다.** 사람 4키·시스템 5키는 불변이고, 문답 묶음은 전부
+# `human.hint.interview` 안에서 산다. 묶음 하나 = `{samples, at, stale?, rounds[]}`.
+
+def _keep_prior(prior):
+    """**멈추고 묻는다**(B55 ②-4) — 사람의 답은 다시 만들 수 없는 재료다.
+
+    기본은 이어가기다: 비대화형에서 조용히 버리면 그것이 바로 이 회차가 고치는
+    병이다(구판은 경고 한 줄 없이 덮어썼다). 버리려면 사람이 답하거나
+    `--drop-interview`를 적어야 한다.
+    """
+    n = sum(len(b.get("rounds") or []) for b in prior)
+    print(f"\n   이 등록에 **이전 문답 {n}라운드**가 남아 있다 "
+          f"(묶음 {len(prior)}개).")
+    for b in prior[-3:]:
+        print(f"     · {b.get('at', '?')[:19]} · 표본 "
+              f"{[Path(x).name for x in (b.get('samples') or [])]} · "
+              f"{len(b.get('rounds') or [])}라운드")
+    try:
+        ans = input("   이어갈까? [Y/n]  (n이면 버린다 · 사람의 답은 다시 못 만든다) "
+                    ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("   (비대화형 — **이어간다.** 버리려면 --drop-interview)")
+        return True
+    return ans not in ("n", "no")
+
+
+def _new_batch(samples):
+    return {"samples": sorted(samples), "at": store._now(), "rounds": []}
+
+
+def _hint_batches(hint):
+    """`hint`가 어떤 꼴이든 문답 묶음 리스트를 돌려준다.
+
+    옛 꼴 셋을 다 받는다 — ①문자열 힌트 ②`{text, interview: [라운드…]}`(B55 이전)
+    ③`{text, interview: [묶음…]}`(지금). ②는 묶음 하나로 감싼다: **옛 패키지를
+    읽지 못해 이전 문답을 잃는 것이 바로 이 회차가 고치는 병이다.**
+    """
+    if not isinstance(hint, dict):
+        return []
+    iv = hint.get("interview") or []
+    if iv and isinstance(iv[0], dict) and "rounds" not in iv[0]:
+        return [{"samples": [], "at": None, "rounds": iv}]      # 옛 꼴 → 묶음 1개
+    return [b for b in iv if isinstance(b, dict) and "rounds" in b]
+
+
+def prior_interview(pkg_path):
+    """기존 패키지의 문답 묶음. 파일이 없거나 깨졌으면 빈 리스트다."""
+    try:
+        old = json.loads(Path(pkg_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return _hint_batches(((old.get("human") or {}).get("hint")))
+
+
+def _age_rounds(batches, samples):
+    """표본이 바뀐 묶음에 `stale`을 단다. **지우지 않는다.**
+
+    지우면 재현 조건이 사라지고(그 답으로 만들어진 산출이 왜 그렇게 됐는지 못
+    되짚는다), 구분 없이 누적하면 **다른 문서에 대한 이해가 현재 판정에 섞인다.**
+    그래서 남기되 표시한다 — 문답 세션은 이것을 「이전 표본에 대한 이해」로 따로 싣는다.
+    """
+    now = sorted(samples)
+    out = []
+    for b in batches:
+        b = dict(b)
+        if sorted(b.get("samples") or []) != now:
+            b["stale"] = True
+        else:
+            b.pop("stale", None)
+        out.append(b)
+    return out
+
+
+def _merge_hint(hint, batches):
+    """묶음 리스트를 `hint` 그릇에 되돌린다 — **다른 키는 건드리지 않는다.**"""
+    base = dict(hint) if isinstance(hint, dict) else {"text": hint or ""}
+    base["interview"] = batches
+    return base
+
+
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
-                 no_fewshot=False, resume=False, use_basic=False):
+                 no_fewshot=False, resume=False, use_basic=False,
+                 drop_interview=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -613,6 +743,20 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         },
     }
     d = _dir(doc_type)
+    # **사람의 답은 다시 만들 수 없는 재료다**(B55 ②) — 재실행이 패키지를 새로
+    # 조립해 덮어쓰면 이전 문답이 경고 한 줄 없이 사라진다. 이어 붙이고, 표본이
+    # 바뀌었으면 지우지 않고 `stale`로 표시한다(지우면 재현 조건이 사라지고,
+    # 무구분 누적이면 다른 문서에 대한 이해가 현재 판정에 섞인다).
+    prior = prior_interview(d / "input_package.json")
+    if prior and drop_interview:
+        print(f"   ⚠ 이전 문답 {sum(len(b['rounds']) for b in prior)}라운드를 **버린다** "
+              f"(--drop-interview)")
+    elif prior:
+        if _keep_prior(prior):
+            kept = _age_rounds(prior, [str(x) for x in samples])
+            pkg["human"]["hint"] = _merge_hint(pkg["human"]["hint"], kept)
+        else:
+            print("   → 이전 문답을 버리고 새로 시작한다")
     (d / "input_package.json").write_text(
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -626,15 +770,26 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # 등록을 재현할 수 없다. **시스템 5키는 그대로다.**
         # **라운드마다 즉시 저장한다**(B43 ⑤) — 전 라운드가 끝나야 쓰면 중간에
         # 죽었을 때 전부 잃는다. 사람의 답은 다시 만들 수 없는 재료다.
+        _batch = _new_batch([str(x) for x in samples])
+
         def _persist(rounds):
-            pkg["human"]["hint"] = {"text": hint, "interview": rounds}
+            _batch["rounds"] = rounds
+            pkg["human"]["hint"] = _merge_hint(
+                pkg["human"]["hint"],
+                [b for b in _hint_batches(pkg["human"]["hint"])
+                 if b is not _batch] + [_batch])
             (d / "input_package.json").write_text(
                 json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8")
 
+        # **이전 라운드를 문답에 실어 보낸다**(②-2) — 저장만 이어 붙이고 모델이
+        # 처음부터 물으면 사람이 두 번 답한다.
         rounds = _interview(pkg, on_round=_persist)
         _persist(rounds)
-        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록")
+        _old = sum(len(b["rounds"]) for b in _hint_batches(pkg["human"]["hint"])
+                   if b is not _batch)
+        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록"
+              + (f" (이전 {_old}라운드 유지)" if _old else ""))
     proposal = basic_adapter_proposal(samples)
     if proposal:
         print(f"   ▶ 기본 어댑터 적용 제안 — {proposal['reason']}")
@@ -779,6 +934,35 @@ def _ask_more(n):
     return ans in ("y", "yes")
 
 
+def _failure_persist(doc_type, pkg, samples, ask):
+    """실패 뒤 문답의 라운드 저장기 — 패키지의 `human.hint`에 **이어 붙인다.**
+
+    묶음에 `context`를 달아 생성 전 문답과 구분한다: 같은 그릇이지만 물은 이유가
+    다르고, 재현할 때 「무엇을 보고 답했나」가 달라진다.
+    """
+    d = _dir(doc_type)
+    path = d / "input_package.json"
+    batch = _new_batch([str(x) for x in (samples or [])])
+    batch["context"] = "기계 관문 실패"
+
+    def _persist(rounds):
+        try:
+            obj = json.loads(path.read_text(encoding="utf-8")) if path.exists() \
+                else {"human": {"hint": {}}}
+        except (OSError, json.JSONDecodeError):
+            return                              # 패키지를 못 읽으면 조용히 지나간다
+        batch["rounds"] = rounds
+        hint = (obj.get("human") or {}).get("hint")
+        keep = [b for b in _hint_batches(hint) if b.get("at") != batch["at"]]
+        obj.setdefault("human", {})["hint"] = _merge_hint(hint, keep + [batch])
+        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+        if isinstance(pkg, dict):               # 메모리 사본도 같이 맞춘다
+            pkg.setdefault("human", {})["hint"] = obj["human"]["hint"]
+
+    return _persist
+
+
 def _finish_generate(doc_type, st, samples, pkg=None):
     """생성의 끝 — **기계 관문을 세우고 그 사실을 화면이 말한다** (M9 개정 · B50).
 
@@ -836,7 +1020,11 @@ def machine_gate(doc_type, st, samples, pkg=None):
         tries += 1
         if ask:
             print(f"   → 문면이 답을 담지 않는 실패 {len(ask)}건 — 문답을 연다")
-            rounds = _interview(pkg or {}, context=ask)
+            # **여기도 라운드마다 즉시 저장한다**(B55 ②-3) — 구판은 `st`에 한 줄
+            # 요약만 남기고 전문이 사라졌으며, 라운드 저장이 없어 중간에 죽으면
+            # 전량 유실이었다. B43 ⑤가 생성 전 문답에서 막은 것과 같은 유실이다.
+            rounds = _interview(pkg or {}, context=ask,
+                                on_round=_failure_persist(doc_type, pkg, samples, ask))
             answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
             instruction = ("사람 문답: " + answered) if answered else "\n".join(ask)
             by = "사람(문답)" if answered else "자동(하네스 문면 — 문답 무응답)"
@@ -852,7 +1040,10 @@ def machine_gate(doc_type, st, samples, pkg=None):
         st.setdefault("instructions", []).append(
             {"n": st["revision"], "instruction": instruction,
              "at": store._now(), "by": by})
-        ad, sc = draft(doc_type, st["revision"])
+        # **지시를 넘긴다**(B55 ①) — 기록만 하고 안 넘기면 모델은 같은 입력을
+        # 다시 받고, 「실패 문면을 그대로 지시로」가 공문이 된다.
+        ad, sc = draft(doc_type, st["revision"], instruction=instruction,
+                       history=st.get("instructions"))
         if ad is None:
             print(f"   재생성 초안을 얻지 못했다 — "
                   f"fixture '{doc_type}_rev{st['revision']}' 없음")
@@ -1317,7 +1508,8 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
         st.setdefault("instructions", []).append(
             {"n": st["revision"], "instruction": instruct, "at": store._now(),
              "by": "사람(검수 지시)"})
-        ad, sc = draft(doc_type, st["revision"])
+        ad, sc = draft(doc_type, st["revision"], instruction=instruct,
+                       history=st.get("instructions"))
         if ad is None:
             print(f"   ⚠ 재생성 대안본 부재 — 초안을 유지한다 "
                   f"(USE_MOCK: fixture '{doc_type}_rev{st['revision']}' 없음)")
@@ -1565,6 +1757,10 @@ def main(argv):
         use_basic = "--use-basic" in rest
         if use_basic:
             rest.remove("--use-basic")
+        # **사람의 답을 버리려면 적어야 한다**(B55 ②-4) — 기본은 이어가기다.
+        drop_iv = "--drop-interview" in rest
+        if drop_iv:
+            rest.remove("--drop-interview")
         # **위치 인자가 모자라면 죽지 말고 사용법을 낸다.** `--resume`은 doc_type
         # 하나만 필요하다 — 층·표본은 패키지에 이미 있고 resume 갈래가 그것을
         # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
@@ -1572,7 +1768,8 @@ def main(argv):
             raise SystemExit(__doc__)
         return cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
                             hint, interview=interview,
-                            no_fewshot=no_few, resume=resume, use_basic=use_basic)
+                            no_fewshot=no_few, resume=resume, use_basic=use_basic,
+                            drop_interview=drop_iv)
     if cmd == "review":
         # **prose의 리허설 기본은 전량이다**(B51) — 부분 리허설의 근거(좌표 미스
         # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.

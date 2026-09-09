@@ -207,11 +207,22 @@ def _render_template(text, pkg):
     if isinstance(hint, dict):
         # `--interview`면 힌트는 **문답 전문**이다 — 지시문에는 사람이 준 자유
         # 텍스트와 라운드별 이해·답을 함께 싣는다(LLM이 무엇에 합의했는지가 입력이다).
+        # **문답은 묶음으로 쌓인다**(B55 ②) — 라운드 배열이 아니라
+        # `{samples, at, stale?, rounds[]}`의 리스트다. 옛 꼴(라운드 배열)도
+        # 그대로 받는다: 읽지 못하면 그 패키지의 문답이 통째로 지시문에서 빠진다.
+        from cli.register import _hint_batches
         parts = [hint.get("text") or ""]
-        for r in hint.get("interview") or []:
-            parts.append(f"[문답 라운드 {r['round']}] 이해: {r['understanding']}")
-            if r.get("answer"):
-                parts.append(f"  사람의 답/교정: {r['answer']}")
+        for b in _hint_batches(hint):
+            if b.get("stale"):
+                # 이전 표본에 대한 이해는 **표시해서** 싣는다 — 빼면 재현 조건이
+                # 사라지고, 무구분이면 다른 문서에 대한 판단이 현재에 섞인다.
+                parts.append(f"[이전 표본에 대한 이해 — 지금 표본이 아니다: "
+                             f"{', '.join(b.get('samples') or []) or '표본 미상'}]")
+            for r in b.get("rounds") or []:
+                n = r.get("round", "?")
+                parts.append(f"[문답 라운드 {n}] 이해: {r.get('understanding', '')}")
+                if r.get("answer"):
+                    parts.append(f"  사람의 답/교정: {r['answer']}")
         hint = "\n".join(x for x in parts if x.strip())
     text = re.sub(r"\{\{사용자 자유 텍스트[^}]*\}\}",
                   hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",

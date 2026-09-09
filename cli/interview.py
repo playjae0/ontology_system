@@ -114,15 +114,34 @@ def _interview_round(pkg, history, context=None):
 
     # **판정 어휘를 이어 붙인다**(B32) — 문답이 role·층 어휘를 모른 채 물으면
     # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
+    # **이전 표본에 대한 이해는 구분해 싣는다**(B55 ②-1) — 같은 자리에 섞으면
+    # 다른 문서에 대한 판단이 현재 판정에 들어오고, 빼면 재현 조건이 사라진다.
+    fresh, stale = _prior_rounds(pkg)
     convo = [{"role": "system",
               "content": llm.prompt("interview") + "\n\n---\n\n"
                          + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
-                 {"입력_패키지": pkg, "지난_문답": history,
+                 {"입력_패키지": pkg, "지난_문답": fresh + history,
+                  **({"이전_표본에_대한_이해": stale} if stale else {}),
                   **({"기계_관문_실패": context} if context else {})},
                  ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")
     return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
+
+
+def _prior_rounds(pkg):
+    """패키지에 이미 있는 문답을 `(현재 표본분, 이전 표본분)`으로 가른다.
+
+    **저장만 이어 붙이고 모델이 처음부터 물으면 사람이 두 번 답한다**(B55 ②-2) —
+    구판은 `history`를 빈 리스트로 시작해, 라운드가 파일에 쌓여도 다음 실행의
+    모델은 그것을 본 적이 없었다.
+    """
+    from cli.register import _hint_batches
+    hint = ((pkg or {}).get("human") or {}).get("hint")
+    fresh, stale = [], []
+    for b in _hint_batches(hint):
+        (stale if b.get("stale") else fresh).extend(b.get("rounds") or [])
+    return fresh, stale
 
 
 def _prof_hint(pkg, top=6):
