@@ -869,6 +869,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
     if kind == "table":
         builder = build_table(env, cfg, schema, graph)
     else:
+        _land_hierarchy(env)
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == env["doc_id"]}
@@ -882,6 +883,51 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
     metrics = graph.build_end()
     _record_build(doc_id, metrics)
     return res, metrics, extracted
+
+
+def _land_hierarchy(env):
+    """분할 판정의 두 표시를 **큐로 착지시킨다** (문서 4 §4.7-3 · [정정] 46).
+
+    `hierarchy_unresolved`는 닫힌 20종에 자리가 있는데 **enqueue하는 코드가 어디에도
+    없었다** — 파서가 `ParseResult.failures`로 말하면 그것은 화면에 한 번 찍히고
+    사라졌고, 「아무것도 조용히 버리지 않는다」(§4.7-2)가 이 경로에서만 공문이었다.
+
+    한 kind에 두 경우가 실리므로 payload의 `case`가 가른다 — 처방이 다르다:
+
+    | case | 무슨 일 | 사람이 할 일 |
+    |---|---|---|
+    | `flat_fallback` | 계층 신호가 없어 통째로 실었다 | 문서를 보고 분할 방법을 정한다 |
+    | `level_out_of_range` | 레벨은 골랐으나 청크가 목표 구간 밖이다 | 레벨을 바꿀지 정한다 |
+
+    **새 kind를 만들지 않는다**(문서 1 G7 — 닫힌 20종). **자동으로 지도 패스(LLM)로
+    넘기지 않는다**([정정] 46) — 넘기면 인입마다 비용이 조용히 붙는다.
+
+    문서당 case별 1건이다 — 청크마다 달면 세밀한 목차 하나가 큐를 통째로 채운다.
+    """
+    doc_id = env["doc_id"]
+    cases = {
+        "flat_fallback": ("계층 신호가 없어 통째로 실었다 — 분할 방법은 사람이 정한다",
+                          lambda m: m.get("hierarchy_unresolved")),
+        "level_out_of_range": ("분할 레벨이 목표 구간 밖이다 — 최근접 레벨로 실었다. "
+                               "레벨을 바꿀지는 사람이 정한다",
+                               lambda m: m.get("split_level_out_of_range")),
+    }
+    for case, (reason, hit) in cases.items():
+        got = [c for c in env.get("chunks") or [] if hit(c.get("meta") or {})]
+        if not got:
+            continue
+        metas = [c.get("meta") or {} for c in got]
+        store.enqueue("hierarchy_unresolved", reason, doc_id, {
+            "case": case,
+            "doc_id": doc_id,
+            "chunks": len(got),
+            "locators": [c.get("source_locator") for c in got][:10],
+            "frames": sorted({m["frame"] for m in metas if m.get("frame")}),
+            "split_levels": sorted({m["split_level"] for m in metas
+                                    if m.get("split_level") is not None}),
+            "reasons": sorted({m["unresolved_reason"] for m in metas
+                               if m.get("unresolved_reason")}),
+        })
 
 
 BUILD_METRICS = "build_metrics.json"

@@ -794,19 +794,29 @@ def _rows(ls):
 _fine = _mk(True)
 _smap = {"rows": _rows(_fine)}
 _st43 = _SM.level_stats(_smap, _fine)
-_pick, _why = _SM.choose_level(_st43)
+# **[정정] 46이 규칙을 바꿨다** — 「구간에 가장 많이 드는 레벨」에서 「구간 안의
+# 레벨 중 중앙 최근접」으로. 돌려주는 것도 `(레벨, 사유, 구간밖)` 3짝이다.
+_pick, _why, _oor = _SM.choose_level(_st43)
 _loc = lambda a, b: f"L{a}-{b}"
 _before = len(_SM.split({"rows": _smap["rows"], "분할_레벨": None}, _fine, _loc))
 _after = len(_SM.split({**_smap, "분할_레벨": _pick}, _fine, _loc))
 show("③ 레벨별 분포를 센다 (청크 수·행 수)",
      set(_st43) == {1, 2} and _st43[2]["청크수"] > _st43[1]["청크수"], str(_st43))
-show("③ 목표 구간에 가장 많이 드는 레벨을 고른다", _pick == 1, f"{_pick} — {_why}")
+show("③ 구간 중앙에 평균이 가장 가까운 레벨을 고른다 ([정정] 46)",
+     _pick == 1 and not _oor, f"{_pick} — {_why}")
 show("③ 세밀 헤딩에서 청크가 합쳐진다 (부서지지 않는다)",
      _before == 12 and _after == 3, f"{_before} → {_after}")
 _coarse = _mk(False)
-_p2, _w2 = _SM.choose_level(_SM.level_stats({"rows": _rows(_coarse)}, _coarse))
-show("③ 레벨이 하나뿐이면 지금 동작을 유지한다 (무리한 병합 없음)",
-     _p2 is None and "하나뿐" in _w2, _w2)
+_p2, _w2, _oor2 = _SM.choose_level(_SM.level_stats({"rows": _rows(_coarse)}, _coarse))
+# **레벨이 하나뿐이어도 그 레벨을 고른다** — 자르는 결과는 전 헤딩 분할과 같지만
+# (`l <= pick`이 전부를 포함한다), 구간 밖이면 그 사실이 화면·큐로 나가야 한다.
+# 구판은 여기서 `None`을 돌려줘 「고르지 않았다」로 남았고, 그러면 구간 밖 표시도
+# 함께 사라졌다.
+show("③ 레벨이 하나뿐이면 그 레벨을 고른다 — 분할 결과는 같고 구간밖은 드러난다",
+     _p2 == 1
+     and len(_SM.split({"rows": _rows(_coarse), "분할_레벨": _p2}, _coarse, _loc))
+     == len(_SM.split({"rows": _rows(_coarse), "분할_레벨": None}, _coarse, _loc)),
+     f"{_p2} · 구간밖={_oor2} — {_w2[:40]}")
 show("③ 선택 근거가 지도에 보존된다 (같은 지도 → 같은 분할)",
      "분할_레벨" in _SM.apply("T43", _fine, _loc)[1]
      and "레벨_분포" in _SM.apply("T43", _fine, _loc)[1])
@@ -878,12 +888,16 @@ def _load45(path, name):
     m = _iu45.module_from_spec(s); s.loader.exec_module(m); return m
 
 
-_old45 = _load45("tests/fixtures/fixtures/adapters/toc_report.py", "t45o")  # 상수 없음
-_new45 = _load45("kit/참조어댑터/toc_report.py", "t45n")                      # split_level=1
-show("① 판단 상수가 expects에 있다 (preflight 지문이 아니다)",
-     _new45.ADAPTER["expects"].get("split_level") == 1
-     and "split_level" not in (_old45.ADAPTER["expects"]),
-     str(_new45.ADAPTER["expects"]["split_level"]))
+_old45 = _load45("tests/fixtures/fixtures/adapters/toc_report.py", "t45o")  # 스냅샷
+_new45 = _load45("kit/참조어댑터/toc_report.py", "t45n")                      # 전시물
+# **[정정] 46이 판단 상수를 폐지했다** — 구판 전시물은 `expects.split_level=1`을
+# 박고 「결정은 등록 때 한 번」이라 적었다. 지금 전시물은 규칙을 부른다.
+show("① 전시물에 분할 레벨 상수가 없다 ([정정] 46 — 레벨은 인입마다 규칙이 센다)",
+     "split_level" not in _new45.ADAPTER["expects"]
+     and "split_level" not in _old45.ADAPTER["expects"])
+show("① 전시물이 규칙을 **부른다** (재구현하지 않는다 — 규약 10과 같은 결)",
+     "struct_map.choose_level(" in
+     (ROOT / "kit" / "참조어댑터" / "toc_report.py").read_text(encoding="utf-8"))
 
 
 def _d45(mod, doc):
@@ -895,9 +909,10 @@ def _d45(mod, doc):
 
 _a01, _n01, _s01 = _d45(_old45, "TOC01")
 _b01, _m01, _t01 = _d45(_new45, "TOC01")
-show("ⓐ 상수가 있으면 그 레벨에서만 자른다 — 청크가 굵어진다",
+show("ⓐ 규칙이 고른 레벨에서만 자른다 — 청크가 굵어진다",
      _m01 < _n01 and _t01 < _s01, f"청크 {_n01}→{_m01} · 짧음 {_s01}→{_t01}")
-show("ⓑ 상수가 없는 어댑터는 종전 동작 그대로다", _n01 == 9, f"{_n01}")
+show("ⓑ 규칙을 부르지 않는 구판 스냅샷은 종전 동작 그대로다 (전 헤딩 분할)",
+     _n01 == 9, f"{_n01}")
 show("ⓒ 산출 유실 0 — 내용이 하나도 새지 않는다",
      not [x for x in _a01 if x["text"] not in "\n".join(y["text"] for y in _b01)])
 show("ⓒ `section` 경로는 상수와 무관하게 전 헤딩을 반영한다 (좌표 파생의 재료)",
@@ -906,10 +921,22 @@ show("ⓒ `section` 경로는 상수와 무관하게 전 헤딩을 반영한다 
 show("④ 어댑터 경로도 레벨별 분포를 낸다 (지도 경로와 같은 형태)",
      (lambda r: bool((r.report.get("split") or {}).get("레벨_선택")))(
          pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))))
-show("④ 상수를 밝힌다 (사람이 고칠 재료 — 매 문서 모델이 고르지 않는다)",
-     "expects.split_level=1" in str(
-         pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))
-         .report["split"]["레벨_선택"]))
+# **화면이 「규칙이 고른 레벨」을 밝힌다**(§6.6-1) — 구판은 여기서
+# `expects.split_level=1`이라는 **폐지된 상수**를 찍었다. 사유가 상수를 가리키면
+# 승인자는 규칙이 무엇을 골랐는지 끝내 못 본다.
+_pk45 = pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx")
+                       ).report["split"]["레벨_선택"][0]
+show("④ 화면이 규칙이 고른 레벨과 그 사유를 밝힌다 (폐지된 상수를 읽지 않는다)",
+     _pk45["분할_레벨"] == 1 and "구간" in _pk45["분할_레벨_사유"]
+     and _pk45["분할_레벨_구간밖"] is False
+     and "split_level=" not in str(_pk45),
+     _pk45["분할_레벨_사유"][:44])
+# **같은 doc_type의 다른 판본이 갈린다** — 상수를 버린 근거가 바로 이것이다.
+_pk46 = pipeline.parse(_new45, "T46", str(RAW / "TOC02.xlsx")
+                       ).report["split"]["레벨_선택"][0]
+show("④ 같은 어댑터의 다른 판본이 갈린다 (상수를 버린 근거 — [정정] 46)",
+     _pk46["분할_레벨_구간밖"] is True and _pk45["분할_레벨_구간밖"] is False,
+     f"TOC01 구간내 · TOC02 {_pk46['분할_레벨_사유'][:30]}")
 show("fixture는 손대지 않았다 (D-26)", "split_level" not in
      (ROOT / "tests/fixtures/fixtures/adapters/toc_report.py").read_text(
          encoding="utf-8"))

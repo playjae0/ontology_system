@@ -238,22 +238,51 @@ def level_stats(smap, lines):
     return out
 
 
-def choose_level(stats):
-    """**목표 구간에 가장 많이 드는 레벨**을 고른다. 돌려주는 것은 `(레벨, 사유)`.
+CHUNK_CENTER = (CHUNK_MIN + CHUNK_MAX) / 2        # 목표 구간의 중앙 — 22.5행
 
-    어느 레벨에서도 구간에 들지 않으면 `None`이다 — 그때는 **지금 동작(전 헤딩
-    분할)을 유지한다.** 무리한 병합은 하지 않는다: 잘못 묶은 청크는 근거 인용이
-    통째로 어긋나고, 그것은 잘게 자른 것보다 되돌리기 어렵다.
+
+def choose_level(stats):
+    """**구간 중앙에 평균이 가장 가까운 레벨**을 고른다 ([정정] 46).
+
+    돌려주는 것은 `(레벨, 사유, 구간밖)`이다.
+
+    **구판은 「구간에 가장 많이 드는 레벨」이었고, 어디에도 안 들면 `None`(전 헤딩
+    분할)이었다.** 두 가지가 바뀌었다:
+
+    | | 구판 | 신판 |
+    |---|---|---|
+    | 고르는 기준 | 구간내 **청크 수** 최대 | 구간 안의 레벨 중 **평균이 중앙에 최근접** |
+    | 아무 레벨도 못 들면 | `None` — 전 헤딩 분할 | **최근접 레벨을 쓰고 `구간밖`을 세운다** |
+
+    **왜 평균인가.** 「구간에 몇 개 들었나」는 굵은 청크 하나와 얇은 청크 여럿이
+    섞인 레벨을 구간 한복판의 고른 레벨보다 높게 친다 — 세는 것이 분포가 아니라
+    적중 횟수여서다. 참조 어댑터 표본에서 **11청크 전부가 구간 미만**이었던 실측이
+    그 증상이다(§6.4 · [정정] 46).
+
+    **왜 폴백이 `None`이 아닌가.** 전 헤딩 분할은 「고르지 않았다」가 아니라
+    **가장 깊은 레벨을 고른 것**이고, 세밀한 목차에서 그것은 한두 줄짜리 청크를
+    쏟아낸다. 최근접을 쓰고 **그 사실을 큐와 화면에 남기는 편**이 정직하다 —
+    자동으로 지도 패스(LLM)로 넘기지 않는다(비용이 조용히 붙는다).
+
+    **동점은 얕은 레벨이다** — 무엇이든 정해 두어야 같은 문서가 항상 같은 청크가
+    된다(멱등성 · 문서 4 §4.8-6). 얕은 쪽인 근거는 되돌리기다: 굵게 묶은 것은
+    더 쪼갤 수 있지만 잘게 부순 근거 인용은 되붙이지 못한다.
     """
     if not stats:
-        return None, "헤딩 없음"
-    best = max(stats.items(), key=lambda kv: (kv[1]["구간내_청크수"], -kv[0]))
-    if best[1]["구간내_청크수"] == 0:
-        return None, f"어느 레벨도 목표 구간({CHUNK_MIN}~{CHUNK_MAX}행)에 들지 않는다"
-    if len(stats) == 1:
-        return None, "헤딩 레벨이 하나뿐이다 — 고를 것이 없다"
-    return best[0], (f"레벨 {best[0]}이 목표 구간에 {best[1]['구간내_청크수']}청크로 "
-                     f"가장 많이 든다 (전체 {best[1]['청크수']})")
+        return None, "헤딩 없음", False
+    def _dist(lv):
+        return abs(stats[lv]["행수_평균"] - CHUNK_CENTER)
+    inside = [lv for lv in stats
+              if CHUNK_MIN <= stats[lv]["행수_평균"] <= CHUNK_MAX]
+    pick = min(sorted(inside or stats), key=_dist)      # 동점 → 얕은 레벨
+    avg = stats[pick]["행수_평균"]
+    if inside:
+        return pick, (f"레벨 {pick}의 평균 {avg}행이 목표 구간"
+                      f"({CHUNK_MIN}~{CHUNK_MAX}행) 안이고 중앙 {CHUNK_CENTER:g}행에 "
+                      f"가장 가깝다"), False
+    return pick, (f"어느 레벨도 목표 구간({CHUNK_MIN}~{CHUNK_MAX}행)에 들지 않는다 — "
+                  f"**최근접 레벨 {pick}**(평균 {avg}행)을 쓴다. 레벨을 바꾸려면 "
+                  f"사람이 정한다(자동으로 지도 패스로 넘기지 않는다)"), True
 
 
 def split(smap, lines, locator, sep=" > "):
@@ -262,14 +291,17 @@ def split(smap, lines, locator, sep=" > "):
     헤딩 행은 청크가 아니라 `section` 경로를 만들고, 그 아래 연속 본문이 청크다.
 
     **모든 헤딩에서 자르지 않는다**(B43): 세밀한 헤딩 문서에서는 청크가 한두 줄로
-    부서져 근거로 쓸 수 없다. 레벨별 분포를 세어 **목표 구간에 가장 많이 드는
-    레벨까지만** 자르고, 그 레벨에서도 상한을 크게 넘는 청크는 **한 단계만** 더
-    쪼갠다(재귀 금지 — 재귀는 다시 부수는 길이다).
+    부서져 근거로 쓸 수 없다. 레벨별 분포를 세어 **규칙이 고른 레벨까지만**
+    자르고([정정] 46 — `choose_level`), 그 레벨에서도 상한을 크게 넘는 청크는
+    **한 단계만** 더 쪼갠다(재귀 금지 — 재귀는 다시 부수는 길이다).
+
+    **구간 밖으로 떨어진 사실은 조각마다 싣는다** — 레벨을 적용하는 자리가 여기
+    하나뿐이라, 여기서 안 실으면 경로마다 따로 실어야 하고 하나가 빠지는 날이 온다.
     """
     stats = smap.get("레벨_분포") or level_stats(smap, lines)
     pick = smap.get("분할_레벨")
     if pick is None and "분할_레벨" not in smap:
-        pick, _why = choose_level(stats)
+        pick, _why, _oor = choose_level(stats)
     all_head = {r["row"]: (r.get("level") or 0) for r in smap.get("rows") or []
                 if r.get("heading")}
     level_of = ({n: l for n, l in all_head.items() if l <= pick}
@@ -277,13 +309,15 @@ def split(smap, lines, locator, sep=" > "):
     text_of = dict(lines)
     out, stack, buf = [], [], []
 
+    oor = bool(smap.get("분할_레벨_구간밖"))
+
     def flush():
         if not buf:
             return
         out.append({"source_locator": locator(buf[0], buf[-1]),
                     "section": sep.join(h for _, h in stack),
                     "text": "\n".join(text_of[n] for n in buf),
-                    "meta": {}})
+                    "meta": {"split_level_out_of_range": True} if oor else {}})
         buf.clear()
 
     for n, text in lines:
@@ -367,10 +401,14 @@ def apply(doc_id, lines, locator, sep=" > ", ask=None, src_hash=None, *, frame=N
     # 조금만 달라져도 분할이 흔들려 chunk_id가 전량 이동한다.
     if "분할_레벨" not in smap:
         stats = level_stats(smap, lines)
-        pick, why = choose_level(stats)
+        pick, why, oor = choose_level(stats)
         smap["레벨_분포"] = stats
         smap["분할_레벨"] = pick
         smap["분할_레벨_사유"] = why
+        # **구간 밖으로 떨어졌다는 사실을 지도에 싣는다**([정정] 46) — 큐와 검수
+        # 화면이 이 값을 읽는다. 사유 문장에서 되찾으려 하면 문면을 고칠 때마다
+        # 큐가 조용히 사라진다(문자열을 판정 근거로 쓰지 않는다).
+        smap["분할_레벨_구간밖"] = oor
     return split(smap, lines, locator, sep), smap, []
 
 
@@ -425,11 +463,12 @@ def adapter_level_picks(adapter, raw):
             rows.append({"row": n, "heading": bool(m), "level": lvl})
         st = level_stats({"rows": rows}, lines)
         if st:
+            # **규칙이 고른다**([정정] 46) — 구판은 `expects.split_level` 상수를
+            # 읽고 없으면 「상수 없음 — 전 헤딩 분할」로 찍었다. 그 상수는 폐지됐고,
+            # 화면이 폐지된 자리를 계속 읽으면 승인자는 **규칙이 고른 레벨을 끝내
+            # 못 본다**(§6.6-1이 「규칙이 고른 레벨·그 사유」를 요구한다).
+            pick, why, oor = choose_level(st)
             out.append({"프레임": sh.get("name"),
-                        "분할_레벨": exp.get("split_level"),
-                        "분할_레벨_사유": (
-                            f"어댑터 상수 expects.split_level={exp['split_level']}"
-                            if exp.get("split_level") is not None else
-                            "상수 없음 — 전 헤딩 분할(종전 동작)"),
-                        "레벨_분포": st})
+                        "분할_레벨": pick, "분할_레벨_사유": why,
+                        "분할_레벨_구간밖": oor, "레벨_분포": st})
     return out

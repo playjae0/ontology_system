@@ -3,6 +3,8 @@
 # 스냅샷 원문은 fixture가 보관한다 — 여기는 **모범 전시장**이다.
 import re
 
+from parser import struct_map
+
 ADAPTER = {
     "doc_type": "toc_report",
     "adapter_version": "1.0",
@@ -12,17 +14,16 @@ ADAPTER = {
         "content_column": "A",            # 두 표본 모두 max_col=1, 단일 열
         "heading_pattern": r"^(\d+(?:\.\d+)*)\.?\s+\S",  # "1." / "1.1" / "1.1.1" — 두 표본에서 3계층 반복 관찰
         "section_sep": " > ",             # section 헤딩 경로 구분자
-        # **판단 상수 — preflight 지문이 아니다**(문서 6 §6.4-4). 값이 달라도
-        # `adapter_mismatch`를 내지 않는다: 「이 양식이 맞나」가 아니라 「얼마나
-        # 굵게 자르나」의 선택이다.
+        # **분할 레벨 상수는 없다**([정정] 46). 구판 전시물은 여기에
+        # `"split_level": 1`을 박고 「결정은 등록 때 한 번이다」라고 적었는데,
+        # 그 설계가 뒤집혔다 — **레벨은 인입마다 규칙이 계산한다.**
         #
-        # **1을 고른 근거 — 레벨별 분포 실측**(B45 분포 화면):
-        #   TOC01 · 레벨 1: 3청크 2~10행(평균 5.3) · 구간(5~40)내 1
-        #           레벨 2: 7청크 1~4행(2.3) · 구간내 0 / 레벨 3: 9청크 1~2행 · 0
-        #   TOC02 · 레벨 1: 3청크 2~7행(4.3) · 구간내 1 / 레벨 2: 8청크 1~3행 · 0
-        # 레벨 2·3에서는 **한 청크가 1~4행**이라 근거로 못 쓴다. 레벨 1만이
-        # 목표 구간에 든다. **결정은 등록 때 한 번이다** — 매 문서 모델이 고르지 않는다.
-        "split_level": 1,
+        # 근거는 실측이다: 같은 doc_type의 두 표본이 이미 갈렸다.
+        #   TOC01 · 레벨 1의 평균 5.3행 — 목표 구간(5~40) **안**
+        #   TOC02 · 레벨 1의 평균 4.3행 — 목표 구간 **밖**(최근접으로 떨어진다)
+        # 판본마다 목차 세밀도가 다르면 등록 때 박은 상수는 구조적으로 못 따라간다.
+        # 규칙은 `parser.struct_map.choose_level` 하나이고 **재구현하지 않는다**
+        # (규약 10과 같은 결 — 두 벌이면 화면의 레벨과 자른 레벨이 갈린다).
         "max_col": 1,
     },
 }
@@ -52,6 +53,22 @@ def extract(raw) -> list[dict]:
             if m:
                 images_by_row.setdefault(int(m.group(1)), []).append(img)
 
+        # **레벨은 자르기 전에 규칙이 정한다**([정정] 46) — 줄 목록과 헤딩 레벨을
+        # 먼저 훑어 분포를 세고, `choose_level`이 고른다. 매 문서 모델을 부르지
+        # 않으므로 「규칙 고정 → 결정적 실행」이 유지된다.
+        _lines, _rows = [], []
+        for _r in range(2, sheet["max_row"] + 1):
+            _v = cells.get(f"A{_r}")
+            _t = "" if _v is None else str(_v).strip()
+            if not _t:
+                continue
+            _lines.append((_r, _t))
+            _m = _HEADING_RE.match(_t)
+            _rows.append({"row": _r, "heading": bool(_m),
+                          "level": len(_m.group(1).split(".")) if _m else 0})
+        lvl, _why, _oor = struct_map.choose_level(
+            struct_map.level_stats({"rows": _rows}, _lines))
+
         title = str(cells.get("A1", "")).strip()
         stack = []   # [(depth, heading_text)] — 현재 헤딩 경로
         buf = []     # [(row, text)] — 현재 청크로 모이는 본문 행
@@ -64,10 +81,15 @@ def extract(raw) -> list[dict]:
                 return
             start, end = buf[0][0], buf[-1][0]
             loc = f"{name}!A{start}" if start == end else f"{name}!A{start}:A{end}"
+            meta = {"doc_title": title, "split_level": lvl}
+            if _oor:
+                # 규칙이 목표 구간을 못 맞춰 최근접으로 떨어졌다 — 인입이 이
+                # 표시를 보고 `hierarchy_unresolved` 큐를 단다([정정] 46).
+                meta["split_level_out_of_range"] = True
             fragments.append({
                 "text": "\n".join(t for _, t in buf),
                 "section": section_path(),
-                "meta": {"doc_title": title},
+                "meta": meta,
                 "source_locator": loc,
             })
             buf.clear()
@@ -88,11 +110,10 @@ def extract(raw) -> list[dict]:
             m = _HEADING_RE.match(text)
             if m:
                 depth = len(m.group(1).split("."))
-                # **상수 이하 깊이에서만 자른다**(B45 정정). 상수가 없으면 종전
-                # 동작(전 헤딩 분할) — 기존 어댑터가 깨지지 않아야 한다.
-                # **`section` 경로는 상수와 무관하게 전 헤딩을 반영한다** —
+                # **규칙이 고른 레벨 이하에서만 자른다.** 헤딩이 없어 규칙이
+                # 고를 것이 없으면(`None`) 종전 동작인 전 헤딩 분할이다.
+                # **`section` 경로는 레벨과 무관하게 전 헤딩을 반영한다** —
                 # 자르지 않은 깊은 헤딩도 경로에는 남는다(좌표 파생 B43의 재료다).
-                lvl = ADAPTER["expects"].get("split_level")
                 if lvl is None or depth <= lvl:
                     flush()
                 while stack and stack[-1][0] >= depth:

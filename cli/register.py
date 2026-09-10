@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import fixtures, llm, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
-from parser.adapters import basic_ppt
+from parser.adapters import basic_ppt, basic_prose_xlsx
 from kit.render_review import render
 from kit.run_adapter import load_blocks
 from router import discover
@@ -476,6 +476,11 @@ def basic_adapter_proposal(samples):
     kinds = {Path(str(x)).suffix.lower() for x in samples}
     if kinds == {".pdf"}:
         return _basic_pdf_proposal(samples)
+    # **격자 포맷은 계층이 서야 제안이 선다**(B58 ③) — `.pptx`·`.pdf`와 달리
+    # 여기엔 포맷이 주는 경계가 없어, 신호 넷으로 계층이 잡히지 않으면 「분할
+    # 자명」이 성립하지 않는다. 그 판정은 어댑터가 실제로 돌려 본 결과로 한다.
+    if kinds and kinds <= set(reader.GRID_EXT):
+        return _basic_prose_xlsx_proposal(samples)
     if kinds != {".pptx"}:
         return None
     # **임계는 어댑터가 소유한다**(문서 6 §6.4-5) — 판단 상수는 `ADAPTER.expects`에
@@ -500,6 +505,39 @@ def basic_adapter_proposal(samples):
             "over_threshold_slides": over,
             "note": ("임계 초과 슬라이드가 있어 자명함이 조건부다 — shape 분할·지도 폴백이 "
                      "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
+
+
+def _basic_prose_xlsx_proposal(samples):
+    """격자 포맷(xlsx·csv)의 위임 제안 — **계층이 서면 산문으로 읽는다** (B58 ③).
+
+    `.pptx`(슬라이드)·`.pdf`(쪽)는 포맷이 경계를 주지만 스프레드시트는 주지 않는다.
+    그래서 제안의 조건이 하나 더 있다: **어댑터를 실제로 돌려 청크가 둘 이상 서야
+    한다.** 관리계획서 같은 표를 이 어댑터에 넣으면 헤딩이 굵은 머리 한 줄뿐이라
+    **시트 통째로 1청크**가 나오는데, 그것은 분할이 아니라 분할 실패다.
+
+    문면이 아니라 **산출을 본다** — 「표처럼 보인다」는 인상이 아니라 「잘리지
+    않았다」는 실행 결과가 거부의 근거다. 형태 판정(table이냐 prose냐)의 정본은
+    문서 6 §6.4이고 여기는 그중 **분할 신호 하나**를 볼 뿐이다.
+    """
+    frames, picks, oor, chunks = 0, [], 0, 0
+    for s in samples:
+        raw = reader.read(str(s))
+        rep = basic_prose_xlsx.level_report(raw)
+        frames += len(rep)
+        picks += [r["분할_레벨"] for r in rep]
+        oor += sum(1 for r in rep if r["분할_레벨_구간밖"])
+        chunks += len(basic_prose_xlsx.extract(raw))
+    if not frames or chunks <= len(samples):
+        return None                     # 시트당 1청크 = 분할이 서지 않았다
+    return {"adapter": "parser/adapters/basic_prose_xlsx.py",
+            "reason": ("스프레드시트 산문 — 계층 신호(번호·굵게·들여쓰기·가로병합)로 "
+                       "레벨이 정해진다. 생성 세션이 필요 없다"),
+            "frames": frames, "chunks": chunks,
+            "levels": sorted({p for p in picks if p}),
+            "out_of_range_frames": oor,
+            "note": (f"프레임 {frames}개 · 청크 {chunks}건 · 고른 레벨 {sorted({p for p in picks if p})}"
+                     + (f" · **목표 구간 밖 {oor}프레임** — 최근접 레벨로 떨어졌다"
+                        f"(검수 화면과 큐에 남는다)" if oor else ""))}
 
 
 def _basic_pdf_proposal(samples):
@@ -872,7 +910,8 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     # **위임 대상은 제안이 정한다** — PPT면 `basic_ppt`, PDF면 `basic_pdf`(B53).
     # 여기에 이름을 박으면 PDF 등록분이 PPT 어댑터를 물어 조각 0건이 된다.
     mod = Path(proposal["adapter"]).stem
-    kind = "PDF" if mod.endswith("pdf") else "PPT"
+    kind = {"basic_pdf": "PDF", "basic_ppt": "PPT",
+            "basic_prose_xlsx": "스프레드시트 산문"}.get(mod, mod)
     ad.write_text(
         "# -*- coding: utf-8 -*-\n"
         f"\"\"\"{doc_type} — 코어 기본 어댑터({kind})를 **그대로** 쓴다 (문서 6 §6.4-5 · D-111).\n\n"

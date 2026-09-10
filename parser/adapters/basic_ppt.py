@@ -188,7 +188,9 @@ def extract(raw, struct_map_fn=None) -> list[dict]:
                 for c in chunks:
                     out.append(_chunk(c["source_locator"], section, c["text"], PATH_MAP,
                                       s, section_override=c.get("section"),
-                                      section_path=spath))
+                                      section_path=spath,
+                                      out_of_range=(c.get("meta") or {}).get(
+                                          "split_level_out_of_range", False)))
                 out += _tail
                 continue
             out.append(_chunk(loc, section, "\n".join(body), PATH_FLAT, s,
@@ -242,8 +244,12 @@ def _image_chunk(base, r, context):
 
 
 def _chunk(locator, slide_section, text, split, slide, section_override=None,
-           unresolved=None, section_path=None):
+           unresolved=None, section_path=None, out_of_range=False):
     meta = {"split_path": split, "slide": slide["index"]}
+    if out_of_range:
+        # 지도가 고른 레벨이 목표 구간 밖이다([정정] 46) — 인입이 이 표시를 보고
+        # `hierarchy_unresolved` 큐를 단다. 산문 경로 둘이 같은 표시를 쓴다.
+        meta["split_level_out_of_range"] = True
     if section_path:
         meta["section_path"] = section_path
     if slide.get("notes"):

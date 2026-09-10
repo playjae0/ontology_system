@@ -532,6 +532,10 @@ def read_csv(path):
 SUPPORTED = (".xlsx", ".xlsm", ".pptx", ".pdf", ".csv", ".tsv")
 # 헤더 지문이 없는 포맷 — doc_type 지정이 필수다(§5 지문 스캔 대상 아님).
 PROSE_EXT = (".pptx", ".pdf")
+# **격자 포맷** — 시트/행열로 오는 것들. 이쪽은 `table`일 수도 `prose`일 수도 있어
+# **형태 판정의 대상**이다(문서 1 C37 · 문서 6 §6.4). `PROSE_EXT`가 「지문이 없으니
+# 무조건 prose」인 것과 대비되는 자리라, 목록을 한 곳에 둔다.
+GRID_EXT = (".xlsx", ".xlsm", ".csv", ".tsv")
 
 
 def read(path):

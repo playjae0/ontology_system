@@ -253,7 +253,12 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     # 재료다. 지도 경로가 이미 내는 그 형태를 쓴다: 새 형태를 만들면 화면이 둘로
     # 갈린다. `split_level`을 선언한 어댑터면 고른 값도 함께 보인다.
     if not map_picks and a.get("payload_kind") == "prose":
-        picks = struct_map.adapter_level_picks(a, raw)
+        # **어댑터가 제 계산을 내놓으면 그것이 정본이다**(B58 ③) — 고정 산문
+        # 어댑터는 신호 넷(번호·굵게·들여쓰기·가로병합)으로 계층을 읽는데,
+        # `adapter_level_picks`는 번호 패턴 하나만 본다. 두 벌이 다른 답을 내면
+        # 화면의 레벨과 실제로 자른 레벨이 갈린다.
+        rep = getattr(adapter, "level_report", None)
+        picks = rep(raw) if callable(rep) else struct_map.adapter_level_picks(a, raw)
         if picks:
             map_picks = picks
     res.report["split"] = struct_map.split_stats(pieces, map_picks)

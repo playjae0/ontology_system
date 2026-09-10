@@ -174,14 +174,24 @@ show("② 임계 초과 + 다프레임 → shape 단위 분할 (결정적)",
      len(paths.get("shape", [])) == 6
      and all(p["source_locator"].startswith("슬라이드 10#") for p in paths["shape"]),
      str([p["source_locator"] for p in paths.get("shape", [])][:3]))
+# **청크 수를 못박지 않는다**([정정] 46) — 레벨 규칙이 바뀌면 개수도 바뀐다.
+# 구판은 「구간에 못 들면 전 헤딩 분할」이라 9청크였고 신판은 최근접 레벨이라
+# 3청크다. 잠글 것은 개수가 아니라 **통청크가 아니라는 것**과 좌표의 모양이다.
 show("③ 임계 초과 + 단일 거대 프레임 → struct-map 폴백 (지도 기반 분할)",
-     len(paths.get("struct_map", [])) >= 5
+     len(paths.get("struct_map", [])) >= 2
      and all(p["source_locator"].startswith("슬라이드 11#L")
              for p in paths["struct_map"]),
      f"{len(paths.get('struct_map', []))}청크")
-show("③ 지도 분할이 헤딩 경로를 section으로 싣는다",
-     any(" > " in p["section"] for p in paths.get("struct_map", [])),
+show("③ 지도 분할이 **헤딩을** section으로 싣는다 (슬라이드 제목이 아니다)",
+     paths.get("struct_map")
+     and all(p["section"] and p["section"] != p["meta"].get("section_path")
+             for p in paths["struct_map"]),
      str([p["section"] for p in paths.get("struct_map", [])][:2]))
+# **구간 밖으로 떨어진 사실이 조각에 실린다**([정정] 46) — 이 표본이 그 경우다
+# (레벨 1의 평균 3.0행 · 목표 5~40행). 인입이 이것을 보고 큐를 단다.
+show("③ 지도 경로도 구간 밖을 조각에 싣는다 (산문 두 경로가 같은 표시를 쓴다)",
+     all(p["meta"].get("split_level_out_of_range")
+         for p in paths.get("struct_map", [])))
 noflat = basic_ppt.extract(raw)                       # 지도 훅 미주입
 show("어댑터는 스스로 LLM을 부르지 않는다 — 지도 훅이 없으면 ④ 폴백 + 표시",
      any(p["meta"].get("hierarchy_unresolved") for p in noflat)
@@ -706,6 +716,120 @@ show("위임 래퍼가 제안이 정한 어댑터를 문다 (PDF가 PPT 어댑�
      "basic_pdf" in (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
      and 'mod = Path(proposal["adapter"]).stem'
      in (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+
+# ── B58 ③ 고정 prose xlsx 어댑터 + 레벨 규칙 ([정정] 46) ──────────────────
+print("\n■ B58 ③ — 스프레드시트 산문: 규칙이 레벨을 고른다")
+
+from parser.adapters import basic_prose_xlsx as _BPX          # noqa: E402
+from core import pipeline as _CP                              # noqa: E402
+from core import registry as _RG                              # noqa: E402
+from cli.parse import run_parse as _run_parse                 # noqa: E402
+
+# **규칙 자체를 잠근다** — 화면 문구가 아니라 무엇을 고르는가다.
+_C = struct_map.CHUNK_CENTER
+show("③ 목표 구간의 중앙이 상수에서 파생된다 (숫자를 두 곳에 적지 않는다)",
+     _C == (struct_map.CHUNK_MIN + struct_map.CHUNK_MAX) / 2
+     and (struct_map.CHUNK_MIN, struct_map.CHUNK_MAX) == (5, 40),
+     f"중앙 {_C}")
+# 구간 안이 둘이면 **중앙 최근접**이지 청크 수 최대가 아니다 — 구판이 그랬다.
+_st = {1: {"행수_평균": 6.0, "구간내_청크수": 9, "청크수": 9},
+       2: {"행수_평균": 22.0, "구간내_청크수": 1, "청크수": 1}}
+show("③ⓑ 구간 안에서는 중앙 최근접을 고른다 (구판의 「구간내 청크수 최대」가 아니다)",
+     struct_map.choose_level(_st)[0] == 2, str(struct_map.choose_level(_st)[:1]))
+_out = {2: {"행수_평균": 2.3, "구간내_청크수": 0, "청크수": 7},
+        3: {"행수_평균": 1.8, "구간내_청크수": 0, "청크수": 9}}
+_p, _w, _oor = struct_map.choose_level(_out)
+show("③ⓓ 아무 레벨도 구간 안이 아니면 **최근접을 쓰고 구간밖을 세운다** (None이 아니다)",
+     _p == 2 and _oor is True)
+# 동점은 얕은 레벨 — 무엇이든 정해져 있어야 같은 문서가 같은 청크가 된다.
+_tie = {1: {"행수_평균": 12.5, "구간내_청크수": 2, "청크수": 2},
+        2: {"행수_평균": 32.5, "구간내_청크수": 2, "청크수": 2}}
+show("③ 동점은 얕은 레벨이다 (멱등성 — 고르는 규칙에 빈틈을 두지 않는다)",
+     struct_map.choose_level(_tie)[0] == 1)
+
+# **LLM 0** — 어댑터가 지도 훅을 받고도 부르지 않는다. 문면이 아니라 호출을 센다.
+_called = []
+_raw01 = read(str(RAW / "TOC01.xlsx"))
+_pieces = _BPX.extract(_raw01, struct_map_fn=lambda *a, **k: _called.append(a) or ([], {}, []))
+show("③ⓐ 고정 어댑터가 구조 지도(⑦)를 부르지 않는다 — 인입마다 비용이 붙지 않는다",
+     not _called and len(_pieces) == 3, f"호출 {len(_called)}회 · 조각 {len(_pieces)}건")
+show("③ⓑ 신호 넷이 계층을 만든다 (번호·굵게·들여쓰기·가로병합)",
+     _BPX.ADAPTER["expects"]["heading_signals"]
+     == ["번호", "굵게", "들여쓰기", "가로병합"]
+     and "split_level" not in _BPX.ADAPTER["expects"])
+_rep01 = _BPX.level_report(_raw01)
+show("③ⓑ 레벨별 분포와 고른 레벨·사유가 함께 나온다 (승인의 1차 근거 · §6.6-1)",
+     len(_rep01) == 1 and _rep01[0]["분할_레벨"] == 1
+     and _rep01[0]["분할_레벨_구간밖"] is False
+     and set(_rep01[0]["레벨_분포"]) == {1, 2, 3},
+     _rep01[0]["분할_레벨_사유"][:40])
+_rep02 = _BPX.level_report(read(str(RAW / "TOC02.xlsx")))
+show("③ⓓ 구간을 못 맞춘 표본은 그 사실을 산출에 싣는다 (TOC02 — 평균 4.3행)",
+     _rep02[0]["분할_레벨_구간밖"] is True
+     and all(p["meta"].get("split_level_out_of_range")
+             for p in _BPX.extract(read(str(RAW / "TOC02.xlsx")))))
+
+# **화면의 출처가 규칙이다** — 폐지된 상수(`expects.split_level`)를 읽지 않는다.
+_apick = struct_map.adapter_level_picks(
+    {"expects": {"heading_pattern": r"^(\d+(?:\.\d+)*)[.)]?\s+", "content_column": "A"}},
+    _raw01)
+show("③ⓑ 어댑터 경로의 화면도 규칙이 고른 레벨을 낸다 (「상수 없음」이 아니다)",
+     _apick and _apick[0]["분할_레벨"] == 1
+     and "구간" in _apick[0]["분할_레벨_사유"], str(_apick[0]["분할_레벨"]))
+
+# **표를 이 어댑터에 넣으면 제안이 서지 않는다** — 시트당 1청크는 분할이 아니라 실패다.
+show("③ 격자 포맷이라고 무조건 제안하지 않는다 (표는 거부 — 산출로 판정한다)",
+     _reg.basic_adapter_proposal([str(RAW / "CP01.xlsx")]) is None
+     and (_reg.basic_adapter_proposal([str(RAW / "TOC01.xlsx")]) or {}).get("adapter")
+     == "parser/adapters/basic_prose_xlsx.py")
+
+# ⓐⓒⓓ — 인입 2회로 실증한다. **클린에서 시작한다**(찌꺼기가 판정에 섞이지 않게).
+init.init(fresh_=True)
+bootstrap("process", echo=False)
+_W = ROOT / "_b58_toc_wrapper.py"
+_W.write_text("# -*- coding: utf-8 -*-\n"
+              "from parser.adapters import basic_prose_xlsx\n"
+              "ADAPTER = {**basic_prose_xlsx.ADAPTER, 'doc_type': 'toc_basic'}\n"
+              "extract = basic_prose_xlsx.extract\n"
+              "level_report = basic_prose_xlsx.level_report\n", encoding="utf-8")
+_S = ROOT / "schemas" / "toc_basic.json"
+_S.write_text(json.dumps({"doc_type": "toc_basic", "schema_version": 1,
+                          "layer": "process", "payload_kind": "prose",
+                          "use_blocks": ["common_core", "process_coord"],
+                          "fields": {}, "edges": []}, ensure_ascii=False) + "\n",
+              encoding="utf-8")
+try:
+    _u0 = _LLM.usage_total()["calls"]
+
+    def _ingest_once(tag):
+        for d in ("TOC01", "TOC02"):
+            _o = ROOT / "parsed" / f"{d}_{tag}.json"
+            _run_parse(str(_W), d, str(RAW / f"{d}.xlsx"), str(_o))
+            _CP.run_document(json.loads(_o.read_text(encoding="utf-8")))
+            _o.unlink(missing_ok=True)
+
+    _ingest_once("g1")
+    _snap1 = json.dumps(store.read(store.CHUNKS, {"chunks": {}})["chunks"],
+                        ensure_ascii=False, sort_keys=True)
+    show("③ⓐ 인입에 LLM 호출 0회 (고정 어댑터 — 사용량 계기로 증명)",
+         _LLM.usage_total()["calls"] == _u0,
+         f"{_LLM.usage_total()['calls'] - _u0}회")
+    _q = [x for x in store.read(store.QUEUE, []) if x["kind"] == "hierarchy_unresolved"]
+    show("③ⓓ 구간 밖 표본이 **큐 1건**을 남긴다 (닫힌 20종 안 · 새 kind 0)",
+         len(_q) == 1 and _q[0]["doc_id"] == "TOC02"
+         and _q[0]["payload"]["case"] == "level_out_of_range",
+         str([(x["doc_id"], x["payload"]["case"]) for x in _q]))
+    _ingest_once("g2")
+    _snap2 = json.dumps(store.read(store.CHUNKS, {"chunks": {}})["chunks"],
+                        ensure_ascii=False, sort_keys=True)
+    show("③ⓒ 같은 문서 2회 인입 → 청크 바이트 동일 (멱등성 · §4.8-6)",
+         _snap1 == _snap2 and len(json.loads(_snap1)) == 6,
+         f"{len(json.loads(_snap1))}청크")
+finally:
+    _W.unlink(missing_ok=True)
+    _S.unlink(missing_ok=True)
+    _RG.unregister("toc_basic")
+
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")
