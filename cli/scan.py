@@ -13,7 +13,12 @@
 어댑터 소재지: 등록부(P3 n6)가 서기 전에는 CLI 인자·기본 소재지 목록이 그 자리를
 대신한다. 등록부가 서면 registry의 expects가 정본이 된다.
 
+**형태 판정은 다른 판정이다**(문서 1 C37): 여기가 「어느 어댑터인가」라면 그쪽은
+「이 문서를 table로 읽을 것인가 prose로 읽을 것인가」다. 두 판정을 한 명령에 두는
+것은 **같은 문서를 한 번 읽어 둘 다 답하기** 위해서이지 하나로 합치기 위해서가 아니다.
+
 사용: python cli/scan.py <문서.xlsx> [--adapters 경로...] [--confirm <doc_type>]
+      python cli/scan.py --form <문서...|디렉터리>   ← 형태 판정표 (C37)
       (또는 python -m cli.scan ...)
 """
 from __future__ import annotations
@@ -27,7 +32,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures
 from parser.normalizer import _col
-from parser.reader import read
+from parser.reader import GRID_EXT, read
+from parser import form as form_mod
 
 # **등록부가 정본**이다(n6 확정분 — P3). 등록부에 어댑터가 없는 내장 doc_type을 위해
 # mock 소재지를 뒤에 둔다 — P트랙 이전의 잔재이고, 등록이 쌓이면 자연히 비어 간다.
@@ -169,9 +175,48 @@ def render(res):
     return "\n".join(lines)
 
 
+def form_table(docs):
+    """형태 판정표 — **신호값 다섯을 그대로** 보인다 (문서 1 C37 · 문서 6 §6.4).
+
+    요약만 보이면 문턱이 왜 그렇게 갈렸는지 사람이 판단할 재료가 없다. 이 화면이
+    문턱 조정의 재료이자, 사람에게 올라온 문서를 사람이 정하는 자리다.
+    """
+    rows = []
+    for d in docs:
+        p = Path(d)
+        if p.is_dir():
+            rows += [x for x in sorted(p.iterdir())
+                     if x.suffix.lower() in GRID_EXT]
+        elif p.suffix.lower() in GRID_EXT:
+            rows.append(p)
+    out = ["■ 형태 판정 — table이냐 prose냐 (결정적 · LLM 0 — 문서 1 C37)",
+           f"   문턱 {json.dumps(form_mod.THRESHOLDS, ensure_ascii=False)}",
+           f"   자동 조건: 찬성 ≥{form_mod.AUTO_MIN_FOR} · 반대 "
+           f"{form_mod.AUTO_MAX_AGAINST} — 그 외는 **사람**",
+           "",
+           f"   {'문서':24}{'판정':8}{'자동':6}" + "".join(f"{k:>19}" for k in form_mod.SIGNALS)]
+    # **문서마다 한 번만 판정한다** — 집계에서 다시 부르면 같은 파일을 몇 번씩
+    # 읽는다(실측: CSV 리더 로그가 4회씩 찍혔다). 판정은 결정적이라 결과가
+    # 달라지지는 않지만, 재는 일에 값을 치를 이유가 없다.
+    judged = [(p, form_mod.judge(read(str(p)))) for p in rows]
+    for p, r in judged:
+        sg, v = r["signals"], r["votes"]
+        out.append(f"   {p.name:24}{(r['verdict'] or '사람'):8}"
+                   f"{('예' if r['auto'] else '**아니오**'):6}"
+                   + "".join(f"{str(sg[k]) + '[' + v[k][0] + ']':>19}"
+                             for k in form_mod.SIGNALS))
+    out += ["", f"   {len(judged)}건 — " + " · ".join(
+        f"{k}: {sum(1 for _p, r in judged if (r['verdict'] or '사람') == k)}건"
+        for k in ("table", "prose", "사람"))]
+    return "\n".join(out)
+
+
 def main(argv):
     if not argv:
         raise SystemExit(__doc__)
+    if argv[0] == "--form":
+        print(form_table(argv[1:] or [ROOT / "tests" / "fixtures" / "raw"]))
+        return
     doc = argv[0]
     paths, confirm_to = [], None
     it = iter(argv[1:])

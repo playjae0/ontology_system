@@ -33,7 +33,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # reader가 여는 포맷 — 그 밖은 「지원 밖」으로 목록에만 남긴다.
 # **목록은 리더가 소유한다**(B53) — 여기에 복제하면 리더에 포맷을 더해도 투입이 막는다.
-from parser.reader import PROSE_EXT, SUPPORTED       # noqa: E402,F401
+from parser.reader import GRID_EXT, PROSE_EXT, SUPPORTED   # noqa: E402,F401
+from parser import form as form_mod, reader as reader_mod  # noqa: E402
 
 OK, FAIL, SKIP = "성공", "실패", "미선택"
 
@@ -54,6 +55,27 @@ def doc_id_of(path):
     대장의 `source_path`가 다르면 화면에 경고한다.
     """
     return re.sub(r"\s+", "_", Path(path).stem.strip())
+
+
+def form_of(doc):
+    """형태 판정(table/prose) — **격자 포맷만**. `.pptx`·`.pdf`는 포맷이 prose를 함의한다.
+
+    선택 근거(`basis`)에 실어 인입 기록으로 보낸다 — **기록이 이 기능의 절반이다**
+    (문서 1 C37): 문턱 조정과 애매 구간 측정의 유일한 재료이고, 그 크기가 재어진
+    뒤에야 LLM 보조를 검토한다.
+
+    판정이 **선택을 바꾸지는 않는다** — doc_type이 정해지면 어댑터가 갈래를 이미
+    말한다. 여기서 하는 일은 ①기록 ②그 둘이 어긋날 때 화면 경고다. 판정으로
+    어댑터를 갈아 끼우면 사람이 지정한 doc_type이 조용히 무시된다.
+    """
+    p = Path(doc)
+    if p.suffix.lower() not in GRID_EXT:
+        return None
+    try:
+        return form_mod.judge(reader_mod.read(str(p)))
+    except Exception as e:                       # 판정 실패가 인입을 막지 않는다
+        return {"verdict": None, "auto": False, "signals": {},
+                "why": f"형태 판정 불가 — {type(e).__name__}: {e}"}
 
 
 def select(doc, doc_type=None, adapter_paths=None):
@@ -81,7 +103,8 @@ def select(doc, doc_type=None, adapter_paths=None):
                               f"`parse run <어댑터> …`로 직접 넣거나 register로 어댑터를 등록한다"}
         return {**out, "status": "chosen", "doc_type": doc_type,
                 "adapter": Path(found[doc_type]),
-                "basis": {"by": "human", "doc_type": doc_type}}
+                "basis": {"by": "human", "doc_type": doc_type,
+                          "form": form_of(p)}}
     if p.suffix.lower() in PROSE_EXT:
         return {**out, "status": "none",
                 "reason": "비정형(pptx) — 헤더 지문이 없어 스캔 대상이 아니다. --doc-type 지정 필수"}
@@ -102,7 +125,7 @@ def select(doc, doc_type=None, adapter_paths=None):
                 "basis": {"by": "scan", "doc_type": dt,
                           "match": f"header_labels 완전 일치 {d['matched']}/{d['declared']} "
                                    f"(누락 0 · 잉여 0)",
-                          "rejected": rejected}}
+                          "rejected": rejected, "form": form_of(p)}}
     if len(cands) > 1:
         return {**out, "status": "ambiguous",
                 "reason": f"지문이 {len(cands)}개 어댑터와 일치 {cands} — 사람이 --doc-type으로 고른다"}
@@ -118,11 +141,30 @@ def select(doc, doc_type=None, adapter_paths=None):
 def _basis_line(sel):
     b = sel.get("basis") or {}
     if b.get("by") == "human":
-        return f"사람 지정 --doc-type {b['doc_type']}"
-    if b.get("by") == "scan":
-        return f"지문 스캔 유일 일치 → {b['doc_type']} · {b['match']}" + (
+        out = f"사람 지정 --doc-type {b['doc_type']}"
+    elif b.get("by") == "scan":
+        out = f"지문 스캔 유일 일치 → {b['doc_type']} · {b['match']}" + (
             f" · 불일치 {b['rejected']}" if b.get("rejected") else "")
-    return "-"
+    else:
+        return "-"
+    return out + _form_line(b.get("form"))
+
+
+def _form_line(f):
+    """형태 판정의 화면 한 줄 — **신호값 다섯을 그대로** 싣는다(문서 1 C37).
+
+    요약만 보이면 문턱이 왜 그렇게 갈렸는지 사람이 판단할 재료가 없다. 사람에게
+    올라온 문서는 특히 그렇다 — 그가 보고 정할 것이 이 다섯 값이다.
+    """
+    if not f:
+        return ""
+    head = f["verdict"] or "**사람 판정 대상**"
+    line = f"\n     형태 판정: {head} ({'자동' if f.get('auto') else '자동 아님'}) — {f['why']}"
+    if f.get("signals"):
+        line += "\n     신호값: " + " · ".join(
+            f"{k}={f['signals'][k]}[{(f.get('votes') or {}).get(k, '?')[0]}]"
+            for k in form_mod.SIGNALS if k in f["signals"])
+    return line
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_after=True):
@@ -136,6 +178,15 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_
         print(f"   미선택 — {sel['reason']}")
         return row
     print(f"   선택 근거: {row['basis']}")
+    # **판정과 어댑터가 어긋나면 말한다** — 조용히 넘기면 관리계획서가 산문으로,
+    # 목차 보고서가 표로 읽히고 그 사실이 어디에도 남지 않는다. 막지는 않는다:
+    # 사람이 지정한 doc_type을 판정이 뒤집으면 지정이 무의미해진다(C37은 「어느
+    # 갈래로 읽는가」를 정할 뿐 「사람의 지정을 이긴다」고 하지 않는다).
+    _f = (sel.get("basis") or {}).get("form") or {}
+    _kind = (registry.schema_of(sel["doc_type"]) or {}).get("payload_kind")
+    if _f.get("verdict") and _kind and _f["verdict"] != _kind:
+        print(f"   ⚠ 형태 판정({_f['verdict']})과 어댑터의 payload_kind({_kind})가 "
+              f"어긋난다 — 지정대로 진행하되 이 사실이 인입 기록에 남는다")
     prev = store.read(store.DOC_REGISTRY, {}).get(sel["doc_id"])
     # **경로 전체를 비교한다**(B55 ⑧). 구판은 **파일명**을 비교했는데 doc_id가
     # 파일명 stem 파생이라(D-110) 같은 doc_id면 파일명이 항상 같다 — 조건이 참이 될

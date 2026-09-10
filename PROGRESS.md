@@ -4147,3 +4147,63 @@ mock 생성이 반환하는 fixture 중 **table 계열은 `ipqc` 하나**이고,
 
 - 회귀 **990 → 1006/1006** (+16, 삭제 0): `test_p1` 117 → 131 · `test_p3` 289 → 291.
 - 검사 4종 **전부 통과** (미러 6쌍 0건 — C15는 허브가 C37 신설로 해소했다).
+
+## B58 ④ — 형태 판정 table/prose (문서 1 C37) · 2026-09-10
+
+`parser/form.py` 신설 — 신호 다섯 · 각 3값 · **찬성 ≥2 · 반대 0이면 자동, 그 외는 사람.**
+문턱은 `THRESHOLDS` 한 자리이고 층 config가 아니다. 모듈이 import하는 것은
+`__future__`·`re` 둘뿐이다 — **게이트웨이를 알지 못한다**(C37의 금지를 import로 잠갔다).
+
+### ⓐ 판정표 — `python run.py scan --form tests/fixtures/raw`
+
+```
+   문서                      판정      자동      column_count  min_unique_ratio  max_text_share  indent_share  numbered_rows
+   CP01.xlsx               table   예             10[t]         0.129[t]        0.237[t]      0.0[t]         0[t]
+   CP02_drift.xlsx         table   예             10[t]         0.235[t]        0.218[t]      0.0[t]         0[t]
+   CP03_bad.xlsx           table   예             10[t]         0.312[t]        0.195[t]      0.0[t]         0[t]
+   CP04_unlabeled.xlsx     table   예             10[t]         0.364[t]        0.154[t]      0.0[t]         0[t]
+   IPQC01.xlsx             table   예             16[t]         0.121[t]        0.172[t]      0.0[t]         0[t]
+   IPQC02.xlsx             table   예             16[t]         0.143[t]        0.169[t]      0.0[t]         0[t]
+   PFMEA01.xlsx            table   예             13[t]         0.121[t]        0.272[t]      0.0[t]         0[t]
+   TOC01.xlsx              prose   예              1[p]           1.0[p]          1.0[p]    0.871[p]        14[p]
+   TOC02.xlsx              prose   예              1[p]           1.0[p]          1.0[p]     0.84[p]        11[p]
+```
+
+**table 7 · prose 2 · 사람 0** — 명세가 문턱을 뽑은 그 표본에서 전 신호가 겹침 없이
+갈린다. csv 4건도 함께 돌려 전부 table로 자동 판정된다(13건 · 사람 0).
+
+### ⓒⓓ 인위적 표본 — 기권 구간과 반대표 0이 각각 사는가
+
+```
+ⓒ 열 4개 + indent 60% → prose(자동) · 찬성 4 · 반대 0 · **기권 1(column_count)**
+ⓓ 열 12개 + indent 85% → **사람** · table 3 · prose 2 · 기권 0
+```
+
+**변이 시험**: `column_count` 문턱을 `(2,5)` → `(2,3)`으로 좁혀 기권 구간을 없애자
+ⓒ가 **사람으로 넘어갔다** — prose 4표를 열 신호 하나가 뒤집는다. 명세가 「기권 구간이
+없으면 열 서넛짜리 산문에서 열 신호가 판정을 뒤집는다」고 말한 그 병이다.
+
+### ⓔ 기록 — `doc_registry.json`의 `routing.form`
+
+```json
+{"by": "human", "doc_type": "cp",
+ "form": {"signals": {"column_count": 10, "min_unique_ratio": 0.129,
+                      "max_text_share": 0.237, "indent_share": 0.0, "numbered_rows": 0},
+          "votes": {...}, "verdict": "table", "auto": true,
+          "why": "table 찬성 5(...) · 반대 0 · 기권 0"}}
+```
+
+**판정은 선택을 갈아 끼우지 않는다** — 어댑터의 `payload_kind`와 어긋나면 경고하고
+지정대로 간다. 뒤집으면 사람의 `--doc-type` 지정이 조용히 무시된다.
+
+### 회차 중 잡은 것
+
+1. 판정표가 집계에서 판정을 **다시 돌아 같은 파일을 4번씩 읽었다**(CSV 리더 로그로
+   드러났다). 문서마다 한 번만 판정하도록 고쳤다.
+2. `test_g6`이 `basis`를 정확히 `{"by","doc_type"}`으로 못박고 있었다 — 몰래 늘어나는
+   것을 막는 장치라 **`form`의 이름을 적어 넣고** 늘렸다. 그 자리에 기록 어서션도 붙였다.
+
+### 결과
+
+- 회귀 **1006 → 1017/1017** (+11, 삭제 0): `test_p1` 131 → 141 · `test_g6` 49 → 50.
+- 검사 4종 전부 통과.

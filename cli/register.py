@@ -56,6 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import fixtures, llm, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
+from parser import form
 from parser.adapters import basic_ppt, basic_prose_xlsx
 from kit.render_review import render
 from kit.run_adapter import load_blocks
@@ -519,17 +520,27 @@ def _basic_prose_xlsx_proposal(samples):
     않았다」는 실행 결과가 거부의 근거다. 형태 판정(table이냐 prose냐)의 정본은
     문서 6 §6.4이고 여기는 그중 **분할 신호 하나**를 볼 뿐이다.
     """
-    frames, picks, oor, chunks = 0, [], 0, 0
+    frames, picks, oor, chunks, forms = 0, [], 0, 0, []
     for s in samples:
         raw = reader.read(str(s))
+        # **형태 판정이 먼저다**(문서 1 C37) — 「어느 갈래로 읽는가」를 정하고
+        # 나서야 「어느 산문 어댑터인가」가 성립한다. table으로 자동 판정된
+        # 표본에 산문 어댑터를 얹으면 관리계획서가 통청크로 들어온다.
+        forms.append(form.judge(raw))
         rep = basic_prose_xlsx.level_report(raw)
         frames += len(rep)
         picks += [r["분할_레벨"] for r in rep]
         oor += sum(1 for r in rep if r["분할_레벨_구간밖"])
         chunks += len(basic_prose_xlsx.extract(raw))
+    if any(f["verdict"] == form.TABLE for f in forms):
+        return None                     # 표로 자동 판정된 표본이 섞였다
     if not frames or chunks <= len(samples):
         return None                     # 시트당 1청크 = 분할이 서지 않았다
+    _human = [f for f in forms if not f["auto"]]
     return {"adapter": "parser/adapters/basic_prose_xlsx.py",
+            "form": [{"signals": f["signals"], "votes": f["votes"],
+                      "verdict": f["verdict"], "auto": f["auto"], "why": f["why"]}
+                     for f in forms],
             "reason": ("스프레드시트 산문 — 계층 신호(번호·굵게·들여쓰기·가로병합)로 "
                        "레벨이 정해진다. 생성 세션이 필요 없다"),
             "frames": frames, "chunks": chunks,
@@ -537,7 +548,9 @@ def _basic_prose_xlsx_proposal(samples):
             "out_of_range_frames": oor,
             "note": (f"프레임 {frames}개 · 청크 {chunks}건 · 고른 레벨 {sorted({p for p in picks if p})}"
                      + (f" · **목표 구간 밖 {oor}프레임** — 최근접 레벨로 떨어졌다"
-                        f"(검수 화면과 큐에 남는다)" if oor else ""))}
+                        f"(검수 화면과 큐에 남는다)" if oor else "")
+                     + (f" · **형태 판정이 사람에게 올라온 표본 {len(_human)}부** — "
+                        f"신호값을 보고 정한다" if _human else ""))}
 
 
 def _basic_pdf_proposal(samples):

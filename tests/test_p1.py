@@ -831,6 +831,97 @@ finally:
     _RG.unregister("toc_basic")
 
 
+# ── B58 ④ 형태 판정 — table이냐 prose냐 (문서 1 C37) ─────────────────────
+print("\n■ B58 ④ — 형태 판정: 결정적 · LLM 0")
+
+from parser import form as _FM                                # noqa: E402
+from cli import ingest as _IN                                 # noqa: E402
+
+# ⓐ **픽스처 9건의 판정** — 명세가 문턱을 뽑은 그 표본이다(table 7 · prose 2).
+_XL = sorted(RAW.glob("*.xlsx"))
+_J = {p.name: _FM.judge(read(str(p))) for p in _XL}
+show("④ⓐ xlsx 픽스처 9건이 전부 자동 판정된다 (사람에게 올라오는 것 0건)",
+     len(_J) == 9 and all(j["auto"] for j in _J.values()),
+     str([n for n, j in _J.items() if not j["auto"]]))
+# ⓑ **판정이 고정이다** — 문턱을 건드리면 여기서 잡힌다. 이름을 적어 둔다:
+#    무엇이 table이고 무엇이 prose인지가 이 기능의 계약이다.
+_EXPECT = {"CP01.xlsx": "table", "CP02_drift.xlsx": "table", "CP03_bad.xlsx": "table",
+           "CP04_unlabeled.xlsx": "table", "IPQC01.xlsx": "table",
+           "IPQC02.xlsx": "table", "PFMEA01.xlsx": "table",
+           "TOC01.xlsx": "prose", "TOC02.xlsx": "prose"}
+show("④ⓑ 9건의 판정이 고정이다 — table 7 · prose 2",
+     {n: j["verdict"] for n, j in _J.items()} == _EXPECT,
+     str({n: j["verdict"] for n, j in _J.items() if _EXPECT[n] != j["verdict"]}))
+# **결정적이다** — 같은 입력을 두 번 넣으면 같은 답이다(멱등성의 입구 · C37).
+show("④ 같은 문서를 두 번 판정하면 같다 (입구의 비결정성 0 — 문서 4 §4.8-6)",
+     all(_FM.judge(read(str(p))) == _J[p.name] for p in _XL))
+# **LLM 0** — 모듈이 게이트웨이를 알지 못한다. 주석이 아니라 import를 본다.
+_FSRC = (ROOT / "parser" / "form.py").read_text(encoding="utf-8")
+show("④ 판정기가 LLM을 알지 못한다 (core.llm import 0 — C37의 금지)",
+     "core" not in {l.split()[1].split(".")[0]
+                    for l in _FSRC.splitlines()
+                    if l.startswith(("import ", "from "))},
+     str(sorted({l.split()[1].split(".")[0] for l in _FSRC.splitlines()
+                 if l.startswith(("import ", "from "))})))
+
+
+def _synth(cells, indent_ratio, cols):
+    _ind = {}
+    for _a in list(cells)[:int(round(len(cells) * indent_ratio))]:
+        _ind[_a] = 1
+    return {"format": "xlsx", "sheets": [{
+        "name": "S", "max_row": max(int(a[1:]) for a in cells), "max_col": cols,
+        "cells": cells, "merged": [], "indent": _ind, "bold": [], "images": []}]}
+
+
+# ⓒ **애매 표본 — 열 4개 + indent 60% → 자동 prose.** 잠그는 것은 판정 자체가
+# 아니라 **기권 구간이 사는가**다: 열 4개는 기권해야 하고, 기권은 거부권이
+# 아니어야 한다. 기권 구간이 없으면 이 문서는 열 신호 하나에 table로 넘어간다.
+_amb = {}
+for _r in range(1, 21):
+    _amb[f"A{_r}"] = (f"{_r}. 구획 제목 {_r}" if _r <= 6 else
+                      f"본문 문장 {_r} — 공정 조건과 관리 인자를 서술한 긴 문단이다. " * 2)
+    if _r % 4 == 1:
+        _amb[f"B{_r}"], _amb[f"C{_r}"], _amb[f"D{_r}"] = f"작성 {_r}", f"2026-0{_r % 9 + 1}", f"비고{_r}"
+_ja = _FM.judge(_synth(_amb, 0.60, 4))
+show("④ⓒ 열 4개 + indent 60% → **자동 prose** (기권 구간이 거부권을 쓰지 않는다)",
+     _ja["verdict"] == "prose" and _ja["auto"]
+     and _ja["votes"]["column_count"] == _FM.ABSTAIN,
+     _ja["why"])
+
+# ⓓ **모순 표본 — 열 12개 + indent 85% → 사람.** 반대표 0 요건이 사는 자리다.
+_con = {}
+for _r in range(1, 21):
+    for _i in range(12):
+        _con[f"{chr(65 + _i)}{_r}"] = f"{chr(65 + _i)}{_r} 고유값 {_r}-{_i}"
+_jc = _FM.judge(_synth(_con, 0.85, 12))
+show("④ⓓ 열 12개 + indent 85% → **사람에게** (반대표 0 요건이 산다)",
+     _jc["verdict"] is None and not _jc["auto"]
+     and _jc["votes"]["column_count"] == _FM.TABLE
+     and _jc["votes"]["indent_share"] == _FM.PROSE,
+     _jc["why"])
+
+# ⓔ **기록** — 선택 근거에 신호값이 실려 인입 기록으로 간다. 문턱 조정의 유일한 재료다.
+_b = (_IN.select(str(RAW / "CP01.xlsx"), doc_type="cp") or {}).get("basis") or {}
+show("④ⓔ 선택 근거에 신호값 다섯과 판정이 실린다 (인입 기록 → 문턱 조정의 재료)",
+     set((_b.get("form") or {}).get("signals") or {}) == set(_FM.SIGNALS)
+     and _b["form"]["verdict"] == "table" and _b["form"]["auto"] is True,
+     str(sorted((_b.get("form") or {}).get("signals") or {})))
+show("④ⓔ 격자 포맷만 판정한다 (.pptx·.pdf는 포맷이 prose를 함의한다)",
+     _IN.form_of(str(RAW / "PPT_basic.pptx")) is None
+     and _IN.form_of(str(RAW / "CP01.xlsx")) is not None)
+# **문턱은 코어 상수 한 자리다** — 층 config 키 일람(19종) 밖이다(문서 3 §3.1).
+show("④ 문턱이 한 자리에 있다 (층 config가 아니다 — 조정이 코드 수색이 되지 않게)",
+     set(_FM.THRESHOLDS) == set(_FM.SIGNALS) and len(_FM.SIGNALS) == 5
+     and not [k for k in _FM.THRESHOLDS
+              if k in json.loads((ROOT / "layers" / "process" / "config.json"
+                                  ).read_text(encoding="utf-8"))])
+# **판정이 사람의 지정을 이기지 않는다** — C37은 「어느 갈래로 읽는가」를 정할 뿐이다.
+show("④ 판정은 선택을 갈아 끼우지 않는다 — 어긋나면 경고하고 지정대로 간다",
+     _IN.select(str(RAW / "TOC01.xlsx"), doc_type="cp")["doc_type"] == "cp",
+     "지정 우선")
+
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
