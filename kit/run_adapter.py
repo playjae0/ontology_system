@@ -5,12 +5,23 @@
   "LLM이 코드 안에서 도는가"가 아니라
   "LLM이 내놓은 schema/adapter를 넣었을 때 파이프라인이 실제로 도는가"
 
-검사 4단
+검사 5단
   ① adapter 로드    — 문법 오류·ADAPTER 선언 형식·순수성(금지 import) 검사
   ② preflight       — ADAPTER.expects ↔ 실물 지문 대조
   ③ extract 실행    — 조각 산출 · 계약 3층 구조 self-check(validator)
   ④ 스키마 정합     — 스키마 fields ↔ 조각 필드 대조 + role 루프 드라이런
                      (fields의 정답은 payload_kind가 정한다 — prose는 `{}`가 정답, D-31)
+  ⑤ 파서 전 구간    — `parser.pipeline.parse`를 그대로 돌린다 (B58 ②)
+
+**⑤가 있는 이유** — ①~④는 `extract`까지만 봤다. 그 뒤의 normalizer·tagger·envelope·
+validator는 검수 화면에서 처음 돌았고, 거기서 깨지면 **사내가 기계 오류를 자연어로
+통역해 되돌려야** 했다(C27: 사내는 코딩하지 않는다). 관문이 파서 전 구간을 돌면
+**검수에서 기계 오류가 날 자리가 없다** — 남으면 그것이 결함이다.
+
+⑤는 **LLM을 부르지 않는다.** 세 지점(④이미지 요약·⑦구조 지도·⑨좌표 태깅)을 주입 없이
+돌려 §7.1 무LLM 대체 경로로 보낸다 — 좌표는 닫힌 목록 정확 일치만, 이미지 요약은
+고정 문자열이다. **비용 관문은 검수에 그대로 남는다**: 여기서 표본마다 몇천 회를
+부르면 관문이 관문이 아니라 청구서가 된다.
 
 사용: python run_adapter.py <adapter.py> <schema.json> <문서.xlsx> [문서2.xlsx ...]
 """
@@ -305,6 +316,70 @@ def check_schema(schema, pieces, label, payload_kind=None):
     return True
 
 
+# ------------------------------------------------- ⑤ 파서 전 구간 (B58 ②)
+# **LLM 지점 3종은 주입하지 않는다** — 이름을 여기 적어 두는 이유는, 나중에 누가
+# 「관문에서도 실호출로 봐야 정확하다」며 하나를 꽂으면 관문이 청구서가 되기
+# 때문이다. 안 부르는 것이 규격이고, 그 사실을 아래 어서션이 매번 확인한다.
+NO_LLM_POINTS = ("summarize", "pick_coord", "map_structure")
+
+
+def run_pipeline(mod, schema, doc, label):
+    """⑤ — `parser.pipeline.parse`를 **그대로** 돌린다. 재구현하지 않는다.
+
+    범위가 ③(extract)에서 여기까지 넓어진 것이 B58 ②다. 관문이 보지 않던
+    normalizer·tagger·envelope·validator가 이제 관문 안에서 돈다.
+
+    `doc_id`는 **관문 전용 이름**을 쓴다 — 운영 `doc_id`를 그대로 쓰면 관문이 그
+    문서의 구조 지도 보존(`extract/struct_maps/`)을 덮어써, 아직 등록도 안 된
+    어댑터의 산출이 운영 인입의 chunk_id를 흔든다. 관문이 남긴 자리는 관문이 치운다.
+    """
+    from parser import pipeline as parser_pipeline      # 지연 import — ①~④는 필요 없다
+    from parser import struct_map
+
+    print(f"\n⑤ 파서 전 구간(pipeline.parse) — {label}")
+    doc_id = "_gate_" + re.sub(r"[^0-9A-Za-z_]+", "_", f'{schema.get("doc_type")}_{Path(doc).stem}')
+    try:
+        res = parser_pipeline.parse(mod, doc_id, doc,
+                                    layer=schema.get("layer") or "process")
+    except Exception as e:
+        show("파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)",
+             False, f"{type(e).__name__}: {e}")
+        return None
+    finally:
+        struct_map.keep_path(doc_id).unlink(missing_ok=True)
+
+    show("파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)", True)
+    fails = {f["kind"] for f in res.failures}
+    # **구조 미확정은 표시이지 실패가 아니다**(D-5) — 문서는 들어가고 큐가 뜬다.
+    # 관문이 이것으로 막으면 지도 폴백을 쓰는 문서는 영영 등록되지 못한다.
+    blocking = sorted(fails - {"hierarchy_unresolved"})
+    show("계약 self-check 통과 — validator 결함 0 (검수에서 날 기계 오류가 여기서 난다)",
+         res.ok and not blocking, str(blocking) if blocking else "")
+    for f in res.failures:
+        print(f"      [{f['kind']}] {f['reason']}")
+        if f.get("detail"):
+            print(f"        {json.dumps(f['detail'], ensure_ascii=False)[:240]}")
+    if res.ok:
+        env = res.envelope or {}
+        show("봉투 3층이 섰다 (header·payload·evidence 또는 그 계약 자리)",
+             isinstance(env, dict) and bool(env), f'키 {sorted(env)[:6]}')
+        rep = res.report or {}
+        co = rep.get("coords") or {}
+        # 좌표 목록 밖 이름은 **인입 소관**(orphan_anchor)이라 관문의 실패가 아니다 —
+        # 세어서 보이기만 한다. 여기서 막으면 골격에 아직 없는 신설 공정을 담은
+        # 문서가 어댑터 결함으로 오인된다.
+        print(f"      조각 {rep.get('pieces')}건 · 좌표 보고 {json.dumps(co, ensure_ascii=False)[:200]}")
+        sp = rep.get("split") or {}
+        if sp:
+            print(f"      분할 분포 {json.dumps(sp, ensure_ascii=False)[:240]}")
+    # **LLM 0** — 주입이 하나도 없었고 게이트웨이 모듈은 적재조차 되지 않았다.
+    # 문자열이 아니라 **적재된 모듈**을 본다: 「부르지 않는다」는 주석은 아무것도
+    # 막지 않는다(이 레포가 겪은 실사고 그대로).
+    show("관문이 LLM을 부르지 않는다 — core.llm 미적재 · 지점 3종 주입 0",
+         "core.llm" not in sys.modules and not (set(sys.modules) & {"openai", "anthropic"}),
+         str(sorted(m for m in sys.modules if m.startswith("core"))))
+    return res
+
 # ---------------------------------------------------------------- main
 if __name__ == "__main__":
     adapter_path, schema_path, *docs = sys.argv[1:]
@@ -326,6 +401,7 @@ if __name__ == "__main__":
         check_schema(schema, pieces, label, payload_kind_of(schema, mod))
         if pieces:
             print(f"\n      [조각 1 표본] {json.dumps(pieces[0], ensure_ascii=False)[:300]}")
+        run_pipeline(mod, schema, d, label)          # ⑤ 파서 전 구간 (B58 ②)
     print("\n" + "=" * 66)
     print("실행 하네스 결과:", "PASS — 산출물이 파이프라인에서 동작함" if ok_all
           else "FAIL — 위 항목 확인 필요")

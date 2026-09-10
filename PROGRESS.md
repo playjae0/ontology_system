@@ -4030,3 +4030,70 @@ path · linking recall · evidence@k · **bm25@k**. `generate`(⑧)는 부르지
   `6_파서와구축모드.md` 본문에 「단 「이 문서를 table로 읽을 것인가 prose로 읽을
   것인가」는 별개의 판정이고, 그것은 시스템이 한다」가 붙었는데 미러 봉인이 그것을
   모른다. **명세는 이 세션의 수정 대상이 아니다** — 보고만 한다.
+
+## B58 ② — 기계 관문의 범위를 파서 전 구간으로 · 2026-09-10
+
+**막혀 있던 자리**: 관문은 `extract`까지만 봤다. 그 뒤의 normalizer·tagger·envelope·
+validator는 **사람의 검수 화면에서 처음 돌았고**, 거기서 깨지면 사내가 「unhashable
+type」을 자연어로 통역해 `--instruct`로 되돌려야 했다(C27: 사내는 코딩하지 않는다).
+
+`kit/run_adapter.py`에 **⑤단**을 붙였다 — `parser.pipeline.parse`를 **그대로 부른다**
+(재구현 아님, 하네스를 부르는 구조도 그대로). LLM 지점 3종은 **주입하지 않아**
+§7.1 무LLM 대체 경로로 돈다. 비용 관문은 검수에 그대로 남는다.
+
+### 실행 결과 — ⓑ 깨지는 검체 (`tests/fixtures/검체/gate_break_tagger.py`)
+
+`process_ref`에 문자열 대신 리스트를 싣는 어댑터다. 흔한 결함이다 — 복수값 셀을
+전개하지 않으면 이 모양이 된다.
+
+```
+④ 매칭 스키마 정합 — CP01.xlsx
+  [PASS] … (①~④ 전항 PASS — 조각도 나오고 스키마도 맞다)
+⑤ 파서 전 구간(pipeline.parse) — CP01.xlsx
+  [FAIL] 파서 전 구간이 예외 없이 완주  — TypeError: unhashable type: 'list'
+실행 하네스 결과: FAIL
+```
+
+**변이 시험**: ⑤ 호출 한 줄을 떼자 같은 검체가 `PASS — 산출물이 파이프라인에서
+동작함`으로 통과했다. 그것이 구판 관문의 실제 거동이고, B58 ②가 막은 자리다.
+
+### 실행 결과 — ⓐ prose 실증 (toc_report)
+
+```
+기계 관문(하네스): PASS — 55 PASS / 0 FAIL
+⑤ 파서 전 구간(pipeline.parse) — TOC01.xlsx
+  [PASS] 파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)
+  [PASS] 계약 self-check 통과 — validator 결함 0
+  [PASS] 관문이 LLM을 부르지 않는다 — core.llm 미적재 · 지점 3종 주입 0
+…
+■ ② 검수 — toc_report   파싱 TOC01: OK · 조각 11 · 파싱 TOC02: OK · 조각 9
+   뷰 데이터 → review/toc_report/view.json  (이상 신호 0건)
+```
+
+### ⓐ의 table 절반 — 실증하지 못했다 (전제 어긋남 · 보고 대상)
+
+mock 생성이 반환하는 fixture 중 **table 계열은 `ipqc` 하나**이고, 그 스냅샷은
+**규약 10을 어긴다**(`_expand_merged`·`_col_to_idx`·`_idx_to_col` 재구현 · normalizer
+호출 0건). 관문이 그것을 잡아 `FAIL`이므로 **검수로 넘어가지 않는다** — 「관문 PASS
+뒤 검수」라는 상황 자체가 만들어지지 않는다. fixture는 외부 LLM 실산출 스냅샷이라
+손대지 않는다(D-26). 대신 실증한 것 둘:
+
+- **관문 쪽**: 참조 table 어댑터 `cp` + `schemas/cp.json` + CP01 → `PASS`(⑤ 포함).
+- **검수 쪽**: `ipqc`의 ⑤도 전항 PASS다(막은 것은 규약 10이지 파서 뒷단이 아니다).
+- **구조적 잠금**: 관문과 검수 리허설이 **같은 함수**(`pipeline.parse`)를 부른다 —
+  AST로 호출을 세어 어서션했다. 이것이 「관문 PASS 뒤 검수에 기계 오류가 날 자리가
+  없다」의 근거다.
+
+### 회차 중 잡은 것
+
+1. **검체를 `tests/fixtures/adapters/`에 두었더니 `test_g6` 8건이 붉었다** — 그 자리가
+   지문 스캔 소재지라 `cp`와 지문이 같은 후보가 둘이 되어 「유일 일치만 자동」(B46
+   조건 ③)이 깨졌다. `tests/fixtures/검체/`로 옮겼다.
+2. `test_p2`의 「빈칸 스켈레톤 FAIL 5건」이 6건이 됐다 — 새 FAIL도 「아직 안 채웠다」라
+   목록에 이름을 적어 넣고, **박아 둔 수는 걷었다**(관문은 자란다 — 수를 박으면
+   어서션이 관문 강화를 막는 자리가 된다).
+
+### 결과
+
+- 회귀 **980 → 990/990** (+10, 삭제 0): `test_p3` 279 → 289.
+- 검사 4종 — 문면·문서간·자산 통과. 미러 C15 1건은 ①과 같은 건(허브 몫)이다.

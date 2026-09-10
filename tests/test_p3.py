@@ -1776,6 +1776,71 @@ show("⑨ 멱등 계측이 도달 가능하다 (헬퍼 `_clean()`을 부르고 2
 show("⑨ snap()이 층 그래프 파일을 바이트로 여는 근거가 주석에 있다 (B6 예외 명시)",
      "B6(GraphStore 경유)의 예외이고" in _b55_doc)
 
+# ── B58 ② 기계 관문의 범위 = 파서 전 구간 ────────────────────────────────
+print("\n■ B58 ② — 관문이 pipeline.parse 전 구간을 돈다")
+
+_KIT_SRC = (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
+
+# ⓐ **관문과 검수 리허설이 같은 함수를 부른다.** 이것이 「관문 PASS 뒤 검수에서
+# 기계 오류가 날 자리가 없다」의 근거다 — 두 곳이 다른 함수를 부르면 한쪽만 통과하는
+# 경로가 생기고, 그 틈이 곧 사내가 겪던 「검수에서 처음 깨진다」다.
+# **부르는 것을 센다**(AST) — 「pipeline.parse를 돈다」는 주석은 아무것도 돌리지 않는다.
+_kit_calls = {n.func.attr for n in _ast.walk(_ast.parse(_KIT_SRC))
+              if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute)}
+_reg_src = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+_reg_calls = {n.func.attr for n in _ast.walk(_ast.parse(_reg_src))
+              if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute)}
+show("②ⓐ 관문이 pipeline.parse를 **부른다** (검수 리허설과 같은 함수)",
+     "parse" in _kit_calls and "parse" in _reg_calls)
+show("②ⓐ 관문은 하네스 실물을 부르는 구조 그대로다 (재작성 아님)",
+     "run_adapter.py" in _reg_src)
+
+# ⓒ **관문이 LLM을 부르지 않는다.** 무엇을 주입하지 않는가가 규격이라, 주입 인자
+# 이름이 하네스 안에 **하나도 나타나지 않는 것**으로 잰다.
+_gate_body = _KIT_SRC.split("def run_pipeline")[1].split("\n# ---")[0]
+_gate_code = "\n".join(l for l in _gate_body.splitlines()
+                       if not l.lstrip().startswith("#"))
+_injected = [pt for pt in ("summarize=", "pick_coord=", "map_structure=")
+             if pt in _gate_code]
+show("②ⓒ 관문이 LLM 지점 3종을 주입하지 않는다 (무LLM 대체 경로로 돈다)",
+     not _injected, str(_injected))
+show("②ⓒ 관문 안에 LLM 게이트웨이 미적재 어서션이 있다 (문면이 아니라 sys.modules)",
+     '"core.llm" not in sys.modules' in _KIT_SRC)
+
+# ⓑ **tagger에서 깨지는 검체는 관문에서 잡힌다** — 검수까지 가지 않는다.
+# 이 검체는 ①~④를 통과한다(조각도 나오고 스키마도 맞다). 구판 관문은 통과시켰다.
+_BRK = ROOT / "tests/fixtures/검체/gate_break_tagger.py"
+_brk_ok, _brk_out = R.harness(_BRK, _BRK.with_suffix(".json"), [RAW / "CP01.xlsx"])
+_stages = _brk_out.split("⑤ 파서 전 구간")
+show("②ⓑ 깨지는 검체가 관문에서 FAIL이다 (검수까지 가지 않는다)",
+     not _brk_ok and len(_stages) == 2)
+show("②ⓑ ①~④는 통과했다 — 구판 관문이 이 어댑터를 놓친 자리다",
+     "[FAIL]" not in _stages[0], str([l.strip() for l in _stages[0].splitlines()
+                                      if "[FAIL]" in l][:2]))
+show("②ⓑ 잡은 자리가 ⑤다 — 파서 전 구간이 예외로 멈췄다",
+     "[FAIL] 파서 전 구간이 예외 없이 완주" in _stages[1]
+     and "unhashable" in _stages[1],
+     [l.strip() for l in _stages[1].splitlines() if "[FAIL]" in l][:1])
+
+# ⓐ 실증 — prose 1건은 관문 PASS 뒤 검수에서 이상 0이다.
+reset("toc_report")
+_g = run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"))
+_hp = "⑤ 파서 전 구간" in json.loads(
+    (REVIEW / "toc_report" / "state.json").read_text(encoding="utf-8"))["harness_out"]
+show("②ⓐ prose — 관문이 ⑤까지 돌고 PASS했다",
+     "기계 관문 PASS" in _g.stdout and _hp)
+run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
+_an = view_of("toc_report")["sections"]["parse_result"]["anomalies"]
+show("②ⓐ prose — 검수 화면에 기계 오류 0 (failure 종 0건)",
+     not [a for a in _an if a["kind"] == "failure"], str(_an[:2]))
+
+# **관문이 남긴 자리는 관문이 치운다** — 운영 doc_id의 구조 지도를 덮으면 아직
+# 등록도 안 된 어댑터의 산출이 운영 인입의 chunk_id를 흔든다.
+show("②ⓐ 관문이 자기 구조 지도를 남기지 않는다 (운영 보존분과 섞이지 않는다)",
+     not [q for q in (ROOT / "extract" / "struct_maps").glob("_gate_*.json")],
+     str([q.name for q in (ROOT / "extract" / "struct_maps").glob("*.json")][:4]))
+
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
