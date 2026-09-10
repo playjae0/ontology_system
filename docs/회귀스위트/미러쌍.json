@@ -30,7 +30,7 @@
   },
   "sealed": {
    "mirror": "f333d69d8905db2b",
-   "body": "a431b28f7463f3fd"
+   "body": "e9ec362b3705d136"
   }
  },
  {
@@ -82,6 +82,23 @@
   "sealed": {
    "mirror": "5a79f4a7ef7e149d",
    "body": "94d552d55211d28a"
+  }
+ },
+ {
+  "id": "C37 ↔ 문서6 §6.4 형태 판정 (table/prose · 결정적 · B58)",
+  "mirror": {
+   "doc": "1_금지와불변.md",
+   "anchor": "| C37 |",
+   "kind": "row"
+  },
+  "body": {
+   "doc": "6_파서와구축모드.md",
+   "anchor": "**형태 판정 — table이냐 prose냐**",
+   "kind": "para"
+  },
+  "sealed": {
+   "mirror": "03e9a48eb45a80d5",
+   "body": "c1feb522a2f75544"
   }
  }
 ]
