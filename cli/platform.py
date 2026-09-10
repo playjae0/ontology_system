@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures, store
+from core import graph as graph_mod, pipeline as pipeline_mod
 from core.bootstrap import load_config, open_graph
 from core.extract import EXTRACT_DIR
 from core.status import is_live
@@ -259,7 +260,13 @@ def gauges():
 
     # 2 plateau — 문서별 신규 개체율 (인입 순서 = doc_registry 등재 순서)
     def doc_of(loc):
-        return next((d for d in docs if loc.startswith(d + "-")), None)
+        """provenance 항목 → 문서. **접두를 가른다**([정정] 43).
+
+        구판은 등재 문서를 훑어 `startswith(d + "-")`로 맞췄다 — 실파서 locator는
+        `Sheet1!R12` 꼴이라 어느 문서로도 시작하지 않아 **전부 None**이었고,
+        계기판 2는 접두를 가진 mock 픽스처에서만 값을 냈다(§7.5-1의 교과서 사례).
+        """
+        return loc.split("#", 1)[0] if "#" in loc else None
 
     plateau = []
     for d in docs:
@@ -303,12 +310,33 @@ def gauges():
         hubs[lay] = [{"canonical": g.nodes[nid]["canonical"], "degree": d}
                      for d, nid in top]
 
-    # 7·8 — 저장 계층 운영 지표. run.py gauges와 같은 재측정 경로(내용 동일 재기록).
+    # 7·8 — 저장 계층 운영 지표. **빌드가 남긴 것을 읽는다**([정정] 44).
+    #
+    # 구판은 여기서 `build_begin()/build_end()`를 돌려 **`save()` 시간**을 쟀다.
+    # 그것은 직렬화 시간이지 빌드 소요가 아니라, 「build 30초 초과 = R10 판정 개시」의
+    # 재료가 되지 못했다 — 계기판이 자기가 만든 수치를 자기 지표로 보고한 셈이다.
+    # 이제 빌드가 `data/build_metrics.json`에 남기고 계기판은 **읽기만** 한다.
+    _bm = store.read(pipeline_mod.BUILD_METRICS, [])
     storage = {}
     for lay in layers:
         g = open_graph(lay)
-        g.build_begin()
-        storage[lay] = g.build_end()
+        _size = g.save_size() if hasattr(g, "save_size") else None
+        _last = next((h for h in reversed(_bm)
+                      if lay in (h.get("bytes_by_layer") or {})), None)
+        _bytes = (_last or {}).get("bytes_by_layer", {}).get(lay)
+        _secs = (_last or {}).get("seconds")
+        storage[lay] = {
+            "layer": lay, "serializer": graph_mod.SERIALIZER,
+            "gauge7_graph_bytes": _bytes,
+            "gauge7_graph_mb": round(_bytes / 1024 / 1024, 3) if _bytes else None,
+            "gauge7_over_alarm": bool(_bytes and _bytes > graph_mod.ALARM_BYTES),
+            "gauge8_build_seconds": _secs,
+            "gauge8_over_alarm": bool(_secs and _secs > graph_mod.ALARM_BUILD_SECONDS),
+            "nodes": len(g.nodes), "edges": len(g.edges),
+            "measured_at": (_last or {}).get("at"),
+            "source": "build_metrics.json (빌드가 남긴 것)" if _last
+                      else "빌드 기록 없음 — 아직 한 번도 빌드하지 않았다",
+        }
 
     return {
         "1_linking_recall": {"value": round(len(linked) / len(linkable), 3) if linkable else None,
@@ -327,7 +355,11 @@ def gauges():
         "6_hub_degree": hubs,
         "7_graph_size": {lay: {"mb": m["gauge7_graph_mb"], "over_alarm": m["gauge7_over_alarm"]}
                          for lay, m in storage.items()},
-        "8_build_seconds": {lay: {"s": m["gauge8_build_seconds"], "over_alarm": m["gauge8_over_alarm"]}
+        # **출처를 함께 낸다**([정정] 44) — 「빌드가 남긴 것」인지 「아직 빌드 없음」인지가
+        # 값만으로는 구분되지 않는다(둘 다 화면엔 숫자 아니면 빈칸이다).
+        "8_build_seconds": {lay: {"s": m["gauge8_build_seconds"],
+                                  "over_alarm": m["gauge8_over_alarm"],
+                                  "source": m["source"], "measured_at": m["measured_at"]}
                             for lay, m in storage.items()},
         "_alarm": {"gauge7": "200MB → R10 판정 개시 (틀 A8-3)", "gauge8": "30초 → 동상"},
     }

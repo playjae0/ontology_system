@@ -117,6 +117,56 @@ def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
     return reg[doc_type]
 
 
+def revise(doc_type, *, adapter, schema, adapter_version, approved_by,
+           approved_at, instructions=None):
+    """**등록된 doc_type의 새 판** — 이름은 그대로, 정본을 교체하고 `revision`을 올린다.
+
+    구판은 재등록 경로가 아예 없었다(H27): `register`가 이름 중복을 거부하고
+    `cli.register`의 generate 진입도 막아, **어댑터를 고쳐 다시 등록할 길이 없었다.**
+    사내가 지금 그 자리에서 멈춰 있다.
+
+    **승인 기록은 덮지 않고 누적한다** — 「누가 언제 무엇을 승인했나」가 판 하나로
+    줄어들면 옛 판으로 인입된 문서의 근거가 사라진다. `approvals`가 그 이력이고
+    최상위 `approved_by`·`approved_at`은 **현행 판**의 것이다.
+
+    **기존 인입분을 자동으로 다시 읽지 않는다**(문서 4 §4.8-7) — 재인입은 사람이 정한다.
+    """
+    reg = _registered()
+    if doc_type not in reg:
+        log.explicit_fail(_LOG, "core.registry.revise",
+                          f"등록되지 않은 doc_type — '{doc_type}'")
+        raise ValueError(f"'{doc_type}'은 등록돼 있지 않다 — 새 판은 등록분에만 낸다")
+    if not approved_by:
+        raise ValueError("승인자 미지정 — 무수정 자동 통과는 금지다 (문서 1 §승인 게이트)")
+    cur = reg[doc_type]
+    hist = list(cur.get("approvals") or [])
+    if not hist and cur.get("approved_by"):     # 구판 항목의 첫 승인을 이력에 옮긴다
+        hist.append({"revision": cur.get("revision", 0),
+                     "approved_by": cur["approved_by"],
+                     "approved_at": cur.get("approved_at"),
+                     "adapter_version": cur.get("adapter_version")})
+    rev = int(cur.get("revision", 0)) + 1
+    hist.append({"revision": rev, "approved_by": approved_by,
+                 "approved_at": approved_at, "adapter_version": adapter_version})
+    reg[doc_type] = {**cur, "adapter": adapter, "schema": schema,
+                     "adapter_version": adapter_version, "revision": rev,
+                     "approved_by": approved_by, "approved_at": approved_at,
+                     "approvals": hist,
+                     "instructions": list(instructions or [])}
+    store.write(store.DOC_TYPES, reg)
+    return reg[doc_type]
+
+
+def ingested_docs(doc_type):
+    """그 doc_type으로 **이미 인입된 문서** 목록 — 재인입 판단의 재료다.
+
+    새 판을 확정해도 시스템이 자동으로 다시 읽지 않으므로(§4.8-7), 무엇이 옛 판으로
+    들어와 있는지를 화면이 말해야 사람이 정할 수 있다.
+    """
+    reg = store.read(store.DOC_REGISTRY, {})
+    return sorted(d for d, v in reg.items() if (v or {}).get("doc_type") == doc_type)
+
+
 def unregister(doc_type):
     """등재 취소 — 시험·복구용. **레포가 싣고 나온 내장은 지울 수 없다**(파일이 원천이다).
 

@@ -35,8 +35,25 @@ COORD_CATEGORY = json.loads(
     .read_text(encoding="utf-8"))["process_coord"]["process_ref"]["target_category"]
 
 
-def _prov(rec):
-    return rec.get("source_locator")
+def _prov(rec, doc_id=None):
+    """provenance 한 항목 — **문서 이름이 함께 실린다**(`{doc_id}#{locator}` · [정정] 43).
+
+    구판은 locator만 실었다. 그런데 locator는 **문서 안에서만** 유일하다 —
+    실파서가 내는 것은 `Sheet1!R12`·`슬라이드 3` 꼴이라 두 문서가 같은 문자열을
+    쓴다. 그러면 재인입 회수(`withdraw`)가 **다른 문서의 근거까지 걷어내고**,
+    계기판 2는 어느 문서 것인지 가르지 못한다.
+
+    **접두가 붙는 것은 provenance뿐이다** — 계약 A의 `source_locator`는 끝까지
+    접두가 없다([정정] 42). 청크 대응표(`by_locator`·`loc_of`·`loc2id`)는 raw
+    locator로 맞추는 자리이고, 거기에 접두가 섞이면 대응이 통째로 깨진다.
+
+    `seed`·`auto:{규칙}`은 문서 조각에서 오지 않으므로 대상이 아니다 — 이 함수가
+    레코드에서만 불리므로 자연히 그렇고, 어서션이 그것을 잠근다.
+    """
+    loc = rec.get("source_locator")
+    if not loc:
+        return loc
+    return f"{doc_id}#{loc}" if doc_id else loc
 
 
 def _check_fields(rec, fields, prov, doc_id):
@@ -176,7 +193,8 @@ def _blank_endpoint(edge, rec, fields):
     return False
 
 
-def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None):
+def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None,
+                   coord_missing=False, prov=None):
     """미뤄 둔 큐 적재를 **레코드 말미에** 착지시킨다 (문서 2 §2.4-①·③).
 
     큐 항목이 **재시도 배치의 유일한 손잡이**다(문서 4 §4.7-5). 그래서 항목이
@@ -200,6 +218,23 @@ def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None):
             # 재시도가 좌표를 해소하면 이것으로 노드를 **새로 세운다.**
             pl["dropped_entities"] = dropped_entities
         store.enqueue("orphan_anchor", item["reason"], doc_id, pl)
+    if coord_missing and not defer:
+        # **좌표 값이 아예 없는 행**([개정] B56-2). `resolve_anchor`는 표면형이
+        # 없으면 일찍 돌아오므로 `defer`가 비어 있다 — 구판은 `for item in defer:`
+        # 라 **0건 적재**였고, 그 행이 만든 드롭·보류가 어디에도 안 남았다.
+        # **새 kind를 만들지 않는다** — `missing_field`가 「필수 값 부재」를 덮고,
+        # 재시도 대상이 아니라 sweep이 물지 않는다.
+        pl = {"field": "process_ref", "provenance": prov,
+              "note": "process_ref·process_group이 둘 다 없다 — 좌표가 서지 않는다"}
+        if dropped:
+            pl["dropped_edges"] = dropped
+        if pending:
+            pl["pending_attrs"] = pending
+        if dropped_entities:
+            pl["dropped_entities"] = dropped_entities
+        store.enqueue("missing_field",
+                      "공정좌표 값 부재 — process_ref·process_group 둘 다 null",
+                      doc_id, pl)
     return defer
 
 
@@ -351,11 +386,12 @@ class _Row:
     """
     __slots__ = ("rec", "prov", "ref", "ref_g", "et", "ctx", "parent", "anchor_pol",
                  "resolved", "external", "attrs", "contents",
-                 "defer", "dropped", "pending", "dropped_ents")
+                 "defer", "dropped", "pending", "dropped_ents", "coord_case")
 
-    def __init__(self, rec):
-        self.rec, self.prov = rec, _prov(rec)
+    def __init__(self, rec, doc_id=None):
+        self.rec, self.prov = rec, _prov(rec, doc_id)
         self.ref = self.ref_g = self.et = self.parent = self.anchor_pol = None
+        self.coord_case = "present"     # present · low_res · missing ([개정] B56-2)
         self.ctx = {}
         self.resolved, self.external = {}, {}
         self.attrs, self.contents = [], []
@@ -377,7 +413,7 @@ def build_table(env, cfg, schema, graph):
     envelope_ctx = _context(env, env.get("source_path"), doc_id)
 
     for rec in env.get("records", []):
-        r = _Row(rec)
+        r = _Row(rec, doc_id)
         _check_fields(rec, fields, r.prov, doc_id)
         _row_anchor(b, r, envelope_ctx, doc_id)
         _row_roles(b, r, fields, schema, graph, cfg, doc_id)
@@ -386,17 +422,45 @@ def build_table(env, cfg, schema, graph):
         _row_edges(r, schema, fields, graph, cfg, doc_id)
         _row_fallback(b, r, schema, fields, graph, cfg, doc_id)
         _land_deferred(r.defer, r.dropped, r.pending, doc_id,
-                       dropped_entities=r.dropped_ents)
+                       dropped_entities=r.dropped_ents,
+                       coord_missing=(r.coord_case == "missing"), prov=r.prov)
 
     b.flush()
     return b
 
 
 def _row_anchor(b, r, envelope_ctx, doc_id):
-    """⓪ 좌표·문맥 — 부착은 process_ref 하나. process_group은 조상 대조만."""
+    """⓪ 좌표·문맥 — 부착은 process_ref 하나. process_group은 조상 대조만.
+
+    **값 부재의 처분은 사다리 셋이다**([개정] B56-2):
+
+    | 경우 | 처분 |
+    |---|---|
+    | `process_ref` 있음 | 종전 그대로 (해소 실패면 `orphan_anchor`) |
+    | `process_ref` null · `process_group` 있음 | **저해상도 부착** — 그룹으로 해소하고 **큐를 달지 않는다** |
+    | 둘 다 null | `missing_field` + 드롭·보류 재료 동봉 |
+
+    **검사의 자리가 여기인 이유**: 필드 검증 루프에 두면 `process_ref`가 구조 필드인
+    것(§2.5 규약 3)과 부딪혀, 조각이 계약대로 달고 온 필드가 `unknown_field`로
+    쏟아진다. `STRUCTURAL`을 건드려 푸는 문제가 아니다.
+
+    저해상도에 큐를 달지 않는 이유: 그룹으로라도 붙었으면 **그 지식은 그래프에 있다.**
+    큐는 사람이 처리할 것을 담는 자리이고, 여기서 사람이 할 일은 없다 —
+    해상도가 낮다는 사실은 붙은 노드가 개념 노드라는 것으로 이미 드러난다.
+    """
     rec = r.rec
-    r.ref, r.ref_g = b.resolve_anchor(rec.get("process_ref"), COORD_CATEGORY, r.prov,
+    _ref_s, _grp_s = rec.get("process_ref"), rec.get("process_group")
+    r.ref, r.ref_g = b.resolve_anchor(_ref_s, COORD_CATEGORY, r.prov,
                                       defer=r.defer)
+    if not _ref_s:
+        if _grp_s:
+            # **저해상도 부착** — 그룹은 조상 대조용이지만, 좌표가 아예 없으면
+            # 그것이 이 행이 가진 유일한 좌표다. 붙이되 큐는 달지 않는다.
+            r.ref, r.ref_g = b.resolve_anchor(_grp_s, COORD_CATEGORY, r.prov,
+                                              defer=r.defer)
+            r.coord_case = "low_res" if r.ref else "missing"
+        else:
+            r.coord_case = "missing"
     r.et = rec.get("electrode_type")                # ④ 구조 필드 — 직접 읽는다
     r.ref = b.descend_anchor(r.ref, r.et, r.ref_g)  # ⓪ 하강 부착 (A11-9 ⓪)
     b.check_coord(rec.get("process_group"), r.ref, r.prov, r.ref_g)
@@ -644,7 +708,10 @@ def build_prose(env, cfg, graph, candidates):
     for cand in candidates:
         cid = cand["chunk_id"]
         src = by_locator.get(loc_of.get(cid), {})
-        prov = src.get("source_locator") or cid
+        # 비정형도 같은 조립이다 — 청크가 없으면 chunk_id가 이미 `{doc_id}:…` 꼴이라
+        # 문서를 갖고 있다(§7.2). 있으면 locator에 접두를 붙인다.
+        _loc = src.get("source_locator")
+        prov = f"{env['doc_id']}#{_loc}" if _loc else cid
         ref, ref_g = b.resolve_anchor(src.get("process_ref"), COORD_CATEGORY, prov)
         ref = b.descend_anchor(ref, src.get("electrode_type"), ref_g)   # ⓪ 비정형도 동일
         parent = ref_g.get(ref)["canonical"] if ref else None
@@ -813,7 +880,34 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
         if other is not graph:
             other.save()
     metrics = graph.build_end()
+    _record_build(doc_id, metrics)
     return res, metrics, extracted
+
+
+BUILD_METRICS = "build_metrics.json"
+
+
+def _record_build(doc_id, metrics):
+    """**빌드가 자기 소요를 남긴다** ([정정] 44).
+
+    구판은 계기판 7·8이 `open_graph().build_begin()/build_end()`를 돌려 **`save()`
+    시간**을 쟀다 — 그것은 빌드 소요가 아니라 직렬화 시간이라, 「build 30초 초과 =
+    R10 판정 개시」(문서 7 · 계기판 8)의 재료가 될 수 없었다. 재는 자리는 빌드다.
+
+    **로그이지 큐가 아니다** — 아무도 처리하지 않고 추이만 본다(§5.5 규율 5).
+    규율 5(측정이 재료를 오염시키지 않는다)는 유지된다: 막는 것은 **측정의 자기
+    오염**이지 빌드가 제 소요를 적는 것이 아니다(§5.5 단서).
+    """
+    try:
+        hist = store.read(BUILD_METRICS, [])
+        hist.append({"at": store._now(), "doc_id": doc_id,
+                     "seconds": metrics.get("gauge8_build_seconds"),
+                     "bytes_by_layer": {metrics.get("layer"):
+                                        metrics.get("gauge7_graph_bytes")}})
+        store.write(BUILD_METRICS, hist[-50:])
+    except Exception as e:                                  # noqa: BLE001
+        # 계측 실패가 빌드를 죽이지 않는다 — 남기지 못한 사실만 결함으로 드러낸다.
+        store.append_defect(f"{doc_id}: 빌드 계측 기록 실패 — {type(e).__name__}: {e}")
 
 
 def skeleton_closed_list(layer):

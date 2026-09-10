@@ -75,13 +75,20 @@ EXPECT_FAIL = {
     "payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)",
     # **하네스 수리분**(B50): 구판은 0건일 때 이 검사에 닿기 전에 돌아가 **아무것도
     # 추출하지 못한 어댑터가 PASS로 통과했다.** 빈칸 스켈레톤이 바로 그 상태다.
-    "조각 0건 산출 (0건 아님)"}
+    "조각 0건 산출 (0건 아님)",
+    # **⑤ 파서 전 구간**(B58 ②) — 관문이 extract에서 멈추지 않고 tagger·validator까지
+    # 돈다. 빈칸 스켈레톤은 `expects`가 비어 preflight가 다시 걸리므로, ②단의 FAIL과
+    # **같은 빈칸**을 ⑤단에서 한 번 더 말한다. 중복이지만 지우지 않는다 — 관문이
+    # 「어디까지 돌았나」를 화면이 그대로 보여야 사내가 다음 칸을 안다.
+    "계약 self-check 통과"}
 show("② 스켈레톤이 하네스 ①단에서 문법·순수성·인터페이스를 통과한다",
      r.stdout.count("[PASS] 문법 오류 없음") == 1
      and "[PASS] 순수 함수 계약" in r.stdout
      and "[PASS] locate 함수 없음" in r.stdout)
-show("② 빈칸 상태의 FAIL은 5건이고 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
-     r.stdout.count("[FAIL]") == 5 and fail_labels == EXPECT_FAIL,
+show("② 빈칸 상태의 FAIL이 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
+     # **수를 박지 않고 집합을 본다** — 관문은 자란다(B31이 2종, B58 ②가 ⑤단을
+     # 더했다). 수를 박으면 관문 강화가 이 줄을 깨, 어서션이 개선을 막는 자리가 된다.
+     fail_labels == EXPECT_FAIL,
      f"FAIL {r.stdout.count('[FAIL]')}건 · 예상 밖 {sorted(fail_labels - EXPECT_FAIL)}")
 sk = (KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8")
 show("② 안내가 '필수 키 4종은 PASS'를 정확히 적었다 (키 존재만 보고 값은 안 본다)",

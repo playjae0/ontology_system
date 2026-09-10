@@ -290,10 +290,15 @@ class Builder:
 
         **생략은 스코프 카테고리에 한정한다** [틀 v2.7 · CH3B v2.2 3.5 규약 3 ·
         카드 F1]. 생략의 근거는 "극성이 이미 주소에 있다"인데, 주소가 canonical에
-        실리는 것은 `canonical_scope`가 걸린 카테고리(현행 Property)뿐이다.
-        스코프가 없는 카테고리(Unit)에 생략을 적용하면 표면형에도 주소에도 극성이
-        없어져 **polarity 필드만 다르고 canonical이 같은 노드 2개가 공존**한다
-        (P4 취지 위반 — C12 실측). 그래서 Unit은 F1 극성 결합을 유지한다.
+        실리는 것은 `canonical_scope`가 걸린 카테고리뿐이다 — **어느 카테고리인지는
+        config의 `bind_categories`가 정하고 코드는 그것을 읽는다**(B26에서 Unit이
+        더해졌다 · [정정] 45). 구판 주석은 「현행 Property」라고 적어 두었는데,
+        그것은 D-57 시점의 사실이고 **동작은 이미 config를 읽고 있었다** —
+        주석만 거짓말하고 있었다.
+
+        스코프가 없는 카테고리에 생략을 적용하면 표면형에도 주소에도 극성이 없어져
+        **polarity 필드만 다르고 canonical이 같은 노드 2개가 공존**한다(P4 취지
+        위반 — C12 실측). 그 성질은 이제 회귀 어서션이 지킨다.
         """
         from .bootstrap import layer_of_category
         if layer_of_category(category) is None:

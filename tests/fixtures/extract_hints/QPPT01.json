@@ -1,5 +1,5 @@
 {
-  "QPPT01-K1": {
+  "K1": {
     "entities": [
       {
         "surface": "이물 유입",
@@ -19,7 +19,7 @@
     ],
     "attach": []
   },
-  "QPPT01-K2": {
+  "K2": {
     "entities": [
       {
         "surface": "절연 파괴",
@@ -39,7 +39,7 @@
     ],
     "attach": []
   },
-  "QPPT01-K3": {
+  "K3": {
     "entities": [
       {
         "surface": "단락",
@@ -59,7 +59,7 @@
     ],
     "attach": []
   },
-  "QPPT01-K4": {
+  "K4": {
     "entities": [],
     "relations": [],
     "attach": []

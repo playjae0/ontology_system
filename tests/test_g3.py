@@ -176,7 +176,7 @@ def _axis_twice(c):
     return any(c.count(v) > 1 for v in ("cathode", "anode"))
 
 
-# 증인은 **정형 유래**(CP01-C12)를 쓴다 — 아래 126행이 이미 신뢰하는 노드이고,
+# 증인은 **정형 유래**(CP01#C12)를 쓴다 — 아래 126행이 이미 신뢰하는 노드이고,
 # 표 경로라 인입 순서에 무관하다. 구판 증인(PPT01 유래 `…용접 가압력`)은 G6.5 E2가
 # mock 폴백 어휘를 골격 닫힌 목록으로 한정하면서 corpus에서 사라졌다.
 show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
@@ -226,7 +226,7 @@ show("Property canonical이 세부공정 스코프", any("::" in c for c in cano
 print("\n■ 1d′ — 비정형 인입")
 ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
 p5 = [c for c in ch["chunks"].values()
-      if c["doc_id"] == "PPT01" and c["source_locator"] == "PPT01-C005"]
+      if c["doc_id"] == "PPT01" and c["source_locator"] == "C005"]
 show("P5 linked=false 보존 (개체 없는 청크도 버리지 않는다)",
      p5 and p5[0]["linked"] is False)
 # 기대값 이동 [B26]: Unit이 스코프 카테고리라 auto 노드도 좌표를 달고 선다.
