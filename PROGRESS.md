@@ -4304,3 +4304,60 @@ mock 생성이 반환하는 fixture 중 **table 계열은 `ipqc` 하나**이고,
 
 - 회귀 **1023 → 1037/1037** (+14, 삭제 0): `test_p3` 291 → 305.
 - 검사 4종 전부 통과.
+
+## B58 ⑥ — 산출 스키마의 계열 분기 · 2026-09-10
+
+**스키마 `required`는 모델이 빠져나갈 수 없는 자리다.** 구판은 한 벌뿐이라 열이라는
+것이 없는 산문 문서에서 모델이 **있지도 않은 role 집계를 지어내야 했다.** 템플릿
+문면과 달리 실해악이다 — 지어낸 값이 검수 뷰의 「갈린 열」·「경계선 부근」 화면에
+그대로 실린다.
+
+```
+table  → required=[adapter_py, attribute_ranking, confidence_cut, role_counts,
+                   schema_json, unmappable]
+prose  → required=[adapter_py, schema_json, unmappable]
+None   → required=[adapter_py, schema_json, unmappable]
+         (세 계열 모두 required == properties — strict 요건이 선다)
+```
+
+**`required`에서만 빼지 않고 `properties`에서도 뺐다.** strict가 「`required`는
+`properties`의 전 키를 포함」이라(B44 실측 400), 한쪽만 줄이면 게이트웨이가 요청을
+통째로 거부한다. 이 스키마에 「선택 항목」이라는 개념은 없다.
+
+**계열의 출처는 형태 판정 하나다**(`parser/form.py`) — 생성에서 따로 재지 않는다.
+`.pptx`·`.pdf`는 포맷이 prose를 함의한다. 실측:
+
+```
+CP01.xlsx → table · TOC01.xlsx → prose · PPT_basic.pptx → prose
+PDF_basic.pdf → prose · [CP01 + TOC01] → None (섞이면 판정이 서지 않는다)
+```
+
+### attribute 경계선 — 템플릿 v1.2 (B58-6)
+
+규약 3에 **「위 3개·아래 3개와 각각의 사유」**를 더했다. **숫자 눈금은 넣지 않았다**
+— 사내 표본 0건이고, 근거 없는 수를 지시문에 박으면 그것이 사실이 된다(P7).
+v1.1은 손대지 않았다(판 계보 12판).
+
+### 어서션 — 성질 하나
+
+허브가 기준을 바꿨다: 화면 문면을 세지 말고 성질을 잠근다.
+
+```
+[PASS] ⑥ prose 산출 스키마의 required에 role 키가 없다  — []
+[PASS] ⑥ 계열 전부가 strict 요건을 지킨다 (required = properties 전량)
+[PASS] ⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 prose에서만이다)
+```
+
+**변이 시험**: 계열 분기를 떼자 prose의 `required`에 role 키 3종이 되살아났다.
+
+### 회차 중 잡은 것
+
+**판 번호를 못박은 어서션이 있었다** — `_newest_template().name == "…v1.1.md"`.
+판이 오를 때마다 깨져 어서션이 템플릿 개정을 막는 자리가 된다(관문 판정 수에서
+같은 병을 이미 겪었다). 잠글 성질인 **「옛 판을 고치지 않고 새 판을 세운다」**로
+다시 썼다.
+
+### 결과
+
+- 회귀 **1037 → 1040/1040** (+3, 삭제 0): `test_p3` 305 → 308.
+- 검사 4종 전부 통과.

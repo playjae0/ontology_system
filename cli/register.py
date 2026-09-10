@@ -292,6 +292,60 @@ GENERATE_SCHEMA = {
     "additionalProperties": False,
 }
 
+# **role 집계 3종** — 「어느 열이 무슨 role인가」를 재는 값들이라 **표 계열에서만
+# 뜻이 있다.** prose 조각에는 열이 없다(고정 키 4종은 payload 구조 필드다 — D-31).
+ROLE_KEYS = ("role_counts", "attribute_ranking", "confidence_cut")
+
+
+def generate_schema(payload_kind):
+    """계열별 산출 스키마 (B58 ⑥) — **prose에서는 role 집계를 요구하지 않는다.**
+
+    구판은 한 벌뿐이었고 `required`가 셋을 강제했다. **스키마 `required`는 모델이
+    빠져나갈 수 없는 자리라**, 열이라는 것이 없는 산문 문서에서 모델이 **있지도
+    않은 role 집계를 지어내야 했다.** 템플릿 문면과 달리 이것은 실해악이다 —
+    지어낸 값이 검수 뷰의 「갈린 열」·「경계선 부근」 화면에 그대로 실린다.
+
+    **`required`에서만 빼지 않고 `properties`에서도 뺀다.** strict 요건이
+    「`required`는 `properties`의 전 키를 포함」이라(B44 실측 400), 한쪽만 줄이면
+    게이트웨이가 요청을 통째로 거부한다. 「선택 항목」이라는 개념이 없는 스키마다.
+
+    계열의 출처는 **형태 판정 하나다**(문서 1 C37) — 여기서 따로 재지 않는다.
+    """
+    if payload_kind == "table":
+        return GENERATE_SCHEMA
+    return {**GENERATE_SCHEMA,
+            "properties": {k: v for k, v in GENERATE_SCHEMA["properties"].items()
+                           if k not in ROLE_KEYS},
+            "required": [k for k in GENERATE_SCHEMA["required"]
+                         if k not in ROLE_KEYS]}
+
+
+def payload_kind_of_samples(samples):
+    """표본의 계열 — `table` · `prose` · `None`(판정이 안 섰다).
+
+    **판정기는 한 자리다**(`parser/form.py`) — 계열을 여기서 따로 재면 등록
+    화면·인입 기록·산출 스키마가 서로 다른 답을 낼 수 있다.
+
+    `.pptx`·`.pdf`는 포맷이 이미 prose를 함의한다(§6.4-5). 격자 포맷인데 판정이
+    자동으로 서지 않으면 `None`이고, **그때도 role 집계를 강요하지 않는다** —
+    산문일 수 있는 문서에 지어내게 하는 것이 이 항목이 없애려는 해악이고,
+    표라면 모델이 못 채워도 검수 뷰가 그 자리를 비워 둘 뿐이다(복구 가능).
+    """
+    kinds = set()
+    for smp in samples:
+        sfx = Path(str(smp)).suffix.lower()
+        if sfx in reader.PROSE_EXT:
+            kinds.add("prose")
+            continue
+        if sfx not in reader.GRID_EXT:
+            kinds.add(None)
+            continue
+        try:
+            kinds.add(form.judge(reader.read(str(smp)))["verdict"])
+        except Exception:
+            kinds.add(None)
+    return kinds.pop() if len(kinds) == 1 else None
+
 
 def _rel(p):
     """레포 기준 상대 경로 — **밖이면 절대 경로 그대로**다.
@@ -431,7 +485,10 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
             {"role": "user", "content": raw_pkg}]
     _sent_size(msgs, f"생성 초안 {doc_type}")
     try:
-        out = llm.chat(msgs, json_schema=GENERATE_SCHEMA, point="generate")
+        # **계열이 스키마를 가른다**(B58 ⑥) — prose에는 role 집계를 요구하지 않는다.
+        _kind = payload_kind_of_samples(
+            (json.loads(raw_pkg).get("human") or {}).get("samples") or [])
+        out = llm.chat(msgs, json_schema=generate_schema(_kind), point="generate")
     except Exception as e:
         _note_error(doc_type, e)
         raise

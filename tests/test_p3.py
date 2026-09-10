@@ -1518,11 +1518,17 @@ show("①-후속-2 지시가 없으면 구획째 빠진다 (빈 칸을 남기지
 show("①-후속-2 치환 누락 0 — 지시 자리가 늘어도 `{{` 잔존 0",
      "{{" not in _b55_full)
 # 판 계보는 킷 규칙이다 — 옛 판을 고쳐 쓰지 않는다.
-show("①-후속-2 v1.0을 고치지 않고 v1.1을 세웠다 (판 계보 보존)",
-     (R.KIT / "생성프롬프트_템플릿_v1.1.md").exists()
-     and R._newest_template().name == "생성프롬프트_템플릿_v1.1.md"
+# **판 번호를 박지 않는다** — 박으면 판이 오를 때마다 이 줄이 깨져, 어서션이
+# 템플릿 개정을 막는 자리가 된다(관문 판정 수에서 같은 병을 이미 겪었다).
+# 잠글 성질은 **「옛 판을 고치지 않고 새 판을 세운다」** 하나다.
+_tmpls = sorted(R.KIT.glob("생성프롬프트_템플릿_v*.md"))
+show("①-후속-2 옛 판을 고치지 않고 새 판을 세운다 (판 계보 보존)",
+     len(_tmpls) >= 2
+     and R._newest_template() != (R.KIT / "생성프롬프트_템플릿_v1.0.md")
+     and "{{재생성_지시}}" in R._newest_template().read_text(encoding="utf-8")
      and "{{재생성_지시}}" not in
-     (R.KIT / "생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8"))
+     (R.KIT / "생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8"),
+     f"현행 {R._newest_template().name} · 계보 {len(_tmpls)}판")
 
 # ── B55 ② 문답은 누적된다 — 재현 조건의 그릇은 `human.hint`다 (B36 · §6.5) ──
 print("\n■ B55 ② — 문답 묶음이 쌓이고 표본이 바뀌면 stale로 남는다")
@@ -1980,6 +1986,24 @@ show("⑤ 시험이 승격시킨 정본을 치웠다 (다음 실행으로 새지
      registry.lookup("toc_report") is None
      and not (ROOT / "adapters" / "toc_report.py").exists()
      and not (ROOT / "schemas" / "toc_report.json").exists())
+
+
+# ── B58 ⑥ 산출 스키마의 계열 분기 ────────────────────────────────────────
+print("\n■ B58 ⑥ — prose 스키마는 role 집계를 요구하지 않는다")
+
+# **잠글 성질 하나**: prose 계열의 `required`에 role 키가 없다. 스키마 `required`는
+# 모델이 빠져나갈 수 없는 자리라, 열이 없는 산문 문서에서 **있지도 않은 role
+# 집계를 지어내게** 한다. 화면 문면이 아니라 스키마의 모양을 본다.
+show("⑥ prose 산출 스키마의 required에 role 키가 없다",
+     not (set(R.ROLE_KEYS) & set(R.generate_schema("prose")["required"])),
+     str(sorted(set(R.ROLE_KEYS) & set(R.generate_schema("prose")["required"]))))
+# **strict 요건은 「required = properties 전량」이다**(B44 실측 400) — `required`에서만
+# 빼면 게이트웨이가 요청을 통째로 거부한다. 계열 전부에서 그 요건이 선다.
+show("⑥ 계열 전부가 strict 요건을 지킨다 (required = properties 전량)",
+     all(set(R.generate_schema(k)["required"]) == set(R.generate_schema(k)["properties"])
+         for k in ("table", "prose", None)))
+show("⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 prose에서만이다)",
+     set(R.ROLE_KEYS) <= set(R.generate_schema("table")["required"]))
 
 
 print("\n" + "=" * 62)
