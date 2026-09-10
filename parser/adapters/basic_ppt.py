@@ -189,8 +189,8 @@ def extract(raw, struct_map_fn=None) -> list[dict]:
                     out.append(_chunk(c["source_locator"], section, c["text"], PATH_MAP,
                                       s, section_override=c.get("section"),
                                       section_path=spath,
-                                      out_of_range=(c.get("meta") or {}).get(
-                                          "split_level_out_of_range", False)))
+                                      band={k: v for k, v in (c.get("meta") or {}).items()
+                                            if k.startswith("split_level")}))
                 out += _tail
                 continue
             out.append(_chunk(loc, section, "\n".join(body), PATH_FLAT, s,
@@ -244,12 +244,14 @@ def _image_chunk(base, r, context):
 
 
 def _chunk(locator, slide_section, text, split, slide, section_override=None,
-           unresolved=None, section_path=None, out_of_range=False):
+           unresolved=None, section_path=None, band=None):
     meta = {"split_path": split, "slide": slide["index"]}
-    if out_of_range:
-        # 지도가 고른 레벨이 목표 구간 밖이다([정정] 46) — 인입이 이 표시를 보고
-        # `hierarchy_unresolved` 큐를 단다. 산문 경로 둘이 같은 표시를 쓴다.
-        meta["split_level_out_of_range"] = True
+    if band:
+        # 지도가 고른 레벨이 목표 구간 밖이다([정정] 46·48) — 인입이 이 표시를
+        # 보고 `hierarchy_unresolved`(case=size_out_of_band) 큐를 단다.
+        # **판단 재료를 통째로 이어받는다** — 여기서 골라 담으면 재료 하나가
+        # 빠졌을 때 큐 화면이 조용히 반쪽이 된다. 산문 경로 둘이 같은 표시를 쓴다.
+        meta.update(band)
     if section_path:
         meta["section_path"] = section_path
     if slide.get("notes"):

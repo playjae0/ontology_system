@@ -309,7 +309,20 @@ def split(smap, lines, locator, sep=" > "):
     text_of = dict(lines)
     out, stack, buf = [], [], []
 
+    # **구간 밖이면 판단 재료를 함께 싣는다**([정정] 48 ①) — 큐 항목이 「어느
+    # 레벨을 골랐고, 평균이 몇 행이며, 목표가 어디이고, 어느 쪽으로 벗어났나」를
+    # 말해야 사람이 레벨을 얕게 할지 깊게 할지 정한다. 여기서 안 실으면
+    # 인입 쪽이 청크 길이로 되재는데, 그것은 **규칙이 본 값이 아니다**
+    # (level_stats의 평균은 헤딩 행을 빼고 세므로 청크 줄 수와 다르다).
     oor = bool(smap.get("분할_레벨_구간밖"))
+    band_meta = {}
+    if oor:
+        band_meta = {"split_level_out_of_range": True,
+                     "split_level_band": [CHUNK_MIN, CHUNK_MAX],
+                     "split_level": pick}
+        _st = (stats or {}).get(pick) or {}
+        if _st.get("행수_평균") is not None:
+            band_meta["split_level_avg_rows"] = _st["행수_평균"]
 
     def flush():
         if not buf:
@@ -317,7 +330,7 @@ def split(smap, lines, locator, sep=" > "):
         out.append({"source_locator": locator(buf[0], buf[-1]),
                     "section": sep.join(h for _, h in stack),
                     "text": "\n".join(text_of[n] for n in buf),
-                    "meta": {"split_level_out_of_range": True} if oor else {}})
+                    "meta": dict(band_meta)})
         buf.clear()
 
     for n, text in lines:

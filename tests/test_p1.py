@@ -817,8 +817,17 @@ try:
     _q = [x for x in store.read(store.QUEUE, []) if x["kind"] == "hierarchy_unresolved"]
     show("③ⓓ 구간 밖 표본이 **큐 1건**을 남긴다 (닫힌 20종 안 · 새 kind 0)",
          len(_q) == 1 and _q[0]["doc_id"] == "TOC02"
-         and _q[0]["payload"]["case"] == "level_out_of_range",
+         and _q[0]["payload"]["case"] == "size_out_of_band",
          str([(x["doc_id"], x["payload"]["case"]) for x in _q]))
+    # ④-후속 ([정정] 48 ①) — **판단 재료 넷**이 실린다. 없으면 사람이 큐 화면에서
+    # 레벨을 얕게 할지 깊게 할지 정할 재료가 없다.
+    _pl = _q[0]["payload"]
+    show("③ⓓ size_out_of_band에 판단 재료 넷이 실린다 (레벨·평균·목표 구간·어느 쪽)",
+         _pl["chosen_level"] == 1 and _pl["chosen_avg_rows"] == 4.3
+         and _pl["target_band"] == [struct_map.CHUNK_MIN, struct_map.CHUNK_MAX]
+         and _pl["side"] == "short",
+         str({k: _pl[k] for k in ("chosen_level", "chosen_avg_rows",
+                                  "target_band", "side")}))
     _ingest_once("g2")
     _snap2 = json.dumps(store.read(store.CHUNKS, {"chunks": {}})["chunks"],
                         ensure_ascii=False, sort_keys=True)
@@ -920,6 +929,46 @@ show("④ 문턱이 한 자리에 있다 (층 config가 아니다 — 조정이 
 show("④ 판정은 선택을 갈아 끼우지 않는다 — 어긋나면 경고하고 지정대로 간다",
      _IN.select(str(RAW / "TOC01.xlsx"), doc_type="cp")["doc_type"] == "cp",
      "지정 우선")
+
+
+# ── B58 ④-후속 — case 두 값과 side의 파생 ([정정] 48 ①) ────────────────
+print("\n■ B58 ④-후속 — 큐 case는 닫힌 두 값 · side는 파생값")
+
+from core.pipeline import _band_material as _BM                # noqa: E402
+
+# **side를 박아 두면 절반의 문서에 틀린 처방이 나간다** — 짧은 쪽은 「레벨을 얕게」,
+# 긴 쪽은 「깊게」로 처방이 **반대**다. 그래서 avg와 target_band에서 파생되는지를
+# 양쪽 표본으로 본다: 한쪽만 보면 상수로 박아 두어도 초록이다.
+_short = [{"split_level": 1, "split_level_band": [5, 40], "split_level_avg_rows": 4.3}]
+_long = [{"split_level": 1, "split_level_band": [5, 40], "split_level_avg_rows": 91.0}]
+show("④-후속 side가 avg·target_band에서 파생된다 (둘 다 short로 박혀 있지 않다)",
+     _BM(_short)["side"] == "short" and _BM(_long)["side"] == "long",
+     f"{_BM(_short)['side']} / {_BM(_long)['side']}")
+# 프레임이 갈리면 **가장 멀리 벗어난 값**이 대표다 — 가장 급한 것이 머리에 온다.
+_both = _short + _long
+show("④-후속 프레임이 갈리면 가장 멀리 벗어난 값이 대표다",
+     _BM(_both)["chosen_avg_rows"] == 91.0 and _BM(_both)["side"] == "long"
+     and _BM(_both)["chosen_level"] == 1)
+# 재료가 없으면 **지어내지 않는다** — None으로 남기고 화면이 그 사실을 보인다.
+show("④-후속 재료가 없으면 지어내지 않는다 (side는 None)",
+     _BM([{"split_level": 1}])["side"] is None
+     and _BM([{"split_level": 1}])["target_band"] is None)
+
+# **case는 닫힌 두 값이다** — 코드가 그 둘만 만든다.
+import re as _re                                              # noqa: E402
+_CPSRC = (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8")
+_cases = set(_re.findall(r'"(flat_fallback|size_out_of_band|level_out_of_range)"', _CPSRC))
+show("④-후속 case는 flat_fallback · size_out_of_band 둘뿐이다 (옛 이름 0)",
+     _cases == {"flat_fallback", "size_out_of_band"}, str(sorted(_cases)))
+
+# **계층을 못 세운 문서는 flat_fallback이다** — 처방이 반대라 갈라져야 한다.
+_noh = {"format": "xlsx", "sheets": [{
+    "name": "S", "max_row": 4, "max_col": 1, "merged": [], "indent": {}, "bold": [],
+    "images": [], "cells": {f"A{i}": f"헤딩 신호가 없는 줄 {i}" for i in range(1, 5)}}]}
+_flat = _BPX.extract(_noh)
+show("④-후속 계층 신호 0건 → flat_fallback 쪽 표시 (size 표시가 아니다)",
+     len(_flat) == 1 and _flat[0]["meta"].get("hierarchy_unresolved") is True
+     and not _flat[0]["meta"].get("split_level_out_of_range"))
 
 
 print("\n" + "=" * 62)

@@ -4207,3 +4207,40 @@ mock 생성이 반환하는 fixture 중 **table 계열은 `ipqc` 하나**이고,
 
 - 회귀 **1006 → 1017/1017** (+11, 삭제 0): `test_p1` 131 → 141 · `test_g6` 49 → 50.
 - 검사 4종 전부 통과.
+
+## B58 ④-후속 — case 이름과 payload를 명세에 맞춘다 ([정정] 48 ①) · 2026-09-10
+
+**변화 0이 아니었다** — 내 구현의 case 이름은 `level_out_of_range`였고 payload에
+판단 재료 넷이 없었다. 둘 다 고쳤다.
+
+| | 전 | 후 |
+|---|---|---|
+| case | `flat_fallback` · `level_out_of_range` | `flat_fallback` · **`size_out_of_band`** |
+| payload | locators · frames · split_levels · reasons | + **chosen_level · chosen_avg_rows · target_band · side** |
+
+```json
+{"case": "size_out_of_band", "doc_id": "TOC02", "chunks": 3,
+ "chosen_level": 1, "chosen_avg_rows": 4.3, "target_band": [5, 40], "side": "short"}
+```
+
+**`chosen_avg_rows`는 규칙이 본 값이다** — `struct_map.split`이 `level_stats`의
+평균을 조각 meta에 실어 보낸다. 인입이 청크 줄 수로 되재면 값이 **달라진다**:
+`level_stats`의 평균은 헤딩 행을 빼고 센다. 큐가 「4.3행이라 구간 밖」이라 말하는데
+화면의 청크가 5줄이면 사람은 큐를 못 믿는다.
+
+### 어서션 — 허브가 지정한 그대로
+
+```
+[PASS] side가 avg·target_band에서 파생된다 (둘 다 short로 박혀 있지 않다) — short / long
+[PASS] 프레임이 갈리면 가장 멀리 벗어난 값이 대표다
+[PASS] 재료가 없으면 지어내지 않는다 (side는 None)
+[PASS] case는 flat_fallback · size_out_of_band 둘뿐이다 (옛 이름 0)
+[PASS] 계층 신호 0건 → flat_fallback 쪽 표시 (size 표시가 아니다)
+```
+
+**양쪽 표본으로 잰다** — 짧은 쪽만 보면 `side`를 `"short"`로 박아 두어도 초록이다.
+
+### 결과
+
+- 회귀 **1017 → 1023/1023** (+6, 삭제 0): `test_p1` 141 → 147.
+- 검사 4종 전부 통과.
