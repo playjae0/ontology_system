@@ -247,6 +247,11 @@ def _regen(items):
 
 
 # ---------------------------------------------------------------- 진입점
+def _w(flag):
+    """경고 칸의 class 속성 — f-string 안에 역슬래시를 넣지 않기 위한 자리."""
+    return ' class="warn"' if flag else ""
+
+
 def _split(rows):
     """분할 크기 분포 (B45) — **그리기만 한다.** 값은 산출자가 채웠다.
 
@@ -255,19 +260,37 @@ def _split(rows):
     """
     if not rows:
         return ""
-    out = ['<h3 style="font-size:15px;margin:16px 0 4px">분할 크기 분포</h3>',
-           '<table><tr><th>문서</th><th>청크</th><th>행수 최소~최대(평균)</th>'
-           '<th>목표 구간</th><th>너무 짧음</th><th>너무 긺</th></tr>']
+    # **최근접 폴백은 머리에 세운다**([정정] 46 · B58 ⑤) — 표 안의 한 칸으로 두면
+    # 접힌 화면에서 보이지 않는다. 승인자가 가장 먼저 알아야 할 것은 「규칙이
+    # 목표를 못 맞췄다」이고, 그 다음이 분포다.
+    out = []
+    _oor = [(r.get("doc_id"), p) for r in rows
+            for p in (r.get("레벨_선택") or []) if p.get("분할_레벨_구간밖")]
+    if _oor:
+        out.append('<p class="warn-note"><b>분할 레벨이 목표 구간 밖이다</b> — '
+                   '최근접 레벨로 실었다. 레벨을 옮길지는 사람이 정한다 '
+                   '(자동으로 지도 패스로 넘기지 않는다): '
+                   + e(" · ".join(f"{d}/{p.get('프레임')} 레벨 {p.get('분할_레벨')}"
+                                  for d, p in _oor)) + '</p>')
+    out += ['<h3 style="font-size:15px;margin:16px 0 4px">분할 크기 분포</h3>',
+            '<p style="font-size:12px;color:#666;margin:0 0 6px">'
+            '목표 구간 밖은 <b>짧은 쪽·긴 쪽을 갈라</b> 센다 — 처방이 다르다: '
+            '짧으면 레벨을 얕게(더 묶는다), 길면 깊게(더 쪼갠다).</p>',
+            '<table><tr><th>문서</th><th>청크</th><th>행수 최소~최대(평균)</th>'
+            '<th>목표 구간</th><th>너무 짧음</th><th>너무 긺</th></tr>']
     for r in rows:
         g = r.get("목표구간") or []
-        warn = ' class="warn"' if (r.get("너무_짧은_청크") or 0) else ""
+        # **양쪽을 각각 표시한다** — 구판은 짧은 쪽만 붉혔다. 긴 쪽이 조용하면
+        # 「굵은 청크가 수집 상한을 통째로 먹는다」가 화면에서 안 보인다.
+        w_short = ' class="warn"' if (r.get("너무_짧은_청크") or 0) else ""
+        w_long = ' class="warn"' if (r.get("너무_긴_청크") or 0) else ""
         out.append(
             f'<tr><td>{e(r.get("doc_id"))}</td><td>{e(r.get("청크수"))}</td>'
             f'<td>{e(r.get("행수_최소"))}~{e(r.get("행수_최대"))}'
             f' ({e(r.get("행수_평균"))})</td>'
             f'<td>{e(g[0] if g else "")}~{e(g[1] if len(g) > 1 else "")}</td>'
-            f'<td{warn}>{e(r.get("너무_짧은_청크"))}</td>'
-            f'<td>{e(r.get("너무_긴_청크"))}</td></tr>')
+            f'<td{w_short}>{e(r.get("너무_짧은_청크"))}</td>'
+            f'<td{w_long}>{e(r.get("너무_긴_청크"))}</td></tr>')
     out.append("</table>")
     for r in rows:
         picks = r.get("레벨_선택") or []
@@ -283,7 +306,8 @@ def _split(rows):
                     f'<tr><td>{e(pick.get("프레임"))}</td>'
                     f'<td{w}>{e(src)}</td>'
                     f'<td>{e(pick.get("지시문_판본"))}</td>'
-                    f'<td>{e(pick.get("분할_레벨"))}</td>'
+                    f'<td{_w(pick.get("분할_레벨_구간밖"))}>'
+                    f'{e(pick.get("분할_레벨"))}</td>'
                     f'<td>{e(pick.get("분할_레벨_사유"))}</td></tr>')
             out.append("</table>")
             if any(p.get("지도_출처") == "heuristic" for p in picks):
@@ -307,6 +331,38 @@ def _split(rows):
                         f' ({e(d.get("행수_평균"))})</td>'
                         f'<td>{e(d.get("구간내_청크수"))}</td></tr>')
                 out.append("</table>")
+    return "\n".join(out)
+
+
+def _form(rows):
+    """형태 판정 — **신호 다섯 값과 각 표를 그대로** (문서 1 C37 · B58 ⑤).
+
+    요약만 보이면 문턱이 왜 그렇게 갈렸는지 사람이 판단할 재료가 없다. 사람에게
+    올라온 문서는 특히 그렇다 — 그가 보고 정할 것이 이 다섯 값이다.
+    """
+    if not rows:
+        return ""
+    sigs = sorted({k for r in rows for k in (r.get("signals") or {})},
+                  key=lambda k: list((rows[0].get("signals") or {})).index(k)
+                  if k in (rows[0].get("signals") or {}) else 99)
+    out = ['<h3 style="font-size:15px;margin:16px 0 4px">형태 판정 — table이냐 '
+           'prose냐 (결정적 · LLM 0)</h3>',
+           '<table><tr><th>문서</th><th>판정</th><th>자동</th>'
+           + "".join(f"<th>{e(k)}</th>" for k in sigs) + "</tr>"]
+    for r in rows:
+        sg, vt = r.get("signals") or {}, r.get("votes") or {}
+        w = "" if r.get("auto") else ' class="warn"'
+        out.append(
+            f'<tr><td>{e(r.get("doc"))}</td>'
+            f'<td{w}>{e(r.get("verdict") or "사람")}</td>'
+            f'<td{w}>{"예" if r.get("auto") else "아니오"}</td>'
+            + "".join(f'<td>{e(sg.get(k))} [{e((vt.get(k) or "?")[0])}]</td>'
+                      for k in sigs) + "</tr>")
+    out.append("</table>")
+    for r in rows:
+        if not r.get("auto"):
+            out.append(f'<p class="warn-note"><b>{e(r.get("doc"))}</b> — '
+                       f'{e(r.get("why"))}</p>')
     return "\n".join(out)
 
 
@@ -341,6 +397,7 @@ def render(view):
 {_summary(pr.get('summary') or {})}
 <h3 style="font-size:15px;margin:16px 0 4px">이상 신호 — 전량</h3>
 {_anomalies(pr.get('anomalies') or [])}
+{_form((pr.get('summary') or {}).get('form') or [])}
 {_split((pr.get('summary') or {}).get('split') or [])}
 {_excluded((pr.get('normal') or {}).get('excluded') or [])}
 {_normal(pr.get('normal') or {}, kind)}

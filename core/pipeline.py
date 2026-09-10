@@ -869,6 +869,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
     if kind == "table":
         builder = build_table(env, cfg, schema, graph)
     else:
+        _land_hierarchy(env)
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == env["doc_id"]}
@@ -882,6 +883,89 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
     metrics = graph.build_end()
     _record_build(doc_id, metrics)
     return res, metrics, extracted
+
+
+def _land_hierarchy(env):
+    """분할 판정의 두 표시를 **큐로 착지시킨다** (문서 4 §4.7-3 · [정정] 46).
+
+    `hierarchy_unresolved`는 닫힌 20종에 자리가 있는데 **enqueue하는 코드가 어디에도
+    없었다** — 파서가 `ParseResult.failures`로 말하면 그것은 화면에 한 번 찍히고
+    사라졌고, 「아무것도 조용히 버리지 않는다」(§4.7-2)가 이 경로에서만 공문이었다.
+
+    한 kind에 두 경우가 실리므로 payload의 `case`가 가른다 — 처방이 다르다:
+
+    **`case`는 닫힌 두 값이다**([정정] 48 ①) — 처방이 **반대**라 갈라야 한다.
+    한 kind에 뭉쳐 두면 사람이 큐 화면에서 무엇을 해야 할지 모른다.
+
+    | case | 무슨 일 | 사람이 할 일 |
+    |---|---|---|
+    | `flat_fallback` | 계층 신호 0건이거나 레벨 비단조 — **계층을 못 세웠다** | 문서·지도를 본다 |
+    | `size_out_of_band` | 계층은 세웠고 레벨도 골랐는데 **크기가 목표 구간 밖** | 레벨을 얕게/깊게 옮긴다 |
+
+    `size_out_of_band`는 **판단 재료 넷**을 싣는다: 고른 레벨 · 그 레벨의 평균
+    행수 · 목표 구간 · 어느 쪽으로 벗어났나(`short`/`long`). **`side`는 박지 않고
+    앞 둘에서 파생한다** — 박아 두면 짧은 쪽 처방(레벨을 얕게)이 긴 쪽 문서에도
+    나가고, 그 오류는 화면만 보아서는 드러나지 않는다.
+
+    **새 kind를 만들지 않는다**(문서 1 G7 — 닫힌 20종). **자동으로 지도 패스(LLM)로
+    넘기지 않는다**([정정] 46) — 넘기면 인입마다 비용이 조용히 붙는다.
+
+    문서당 case별 1건이다 — 청크마다 달면 세밀한 목차 하나가 큐를 통째로 채운다.
+    """
+    doc_id = env["doc_id"]
+    cases = {
+        "flat_fallback": ("계층을 세우지 못해 통째로 실었다 — 문서·지도를 보고 "
+                          "분할 방법을 사람이 정한다",
+                          lambda m: m.get("hierarchy_unresolved")),
+        "size_out_of_band": ("분할 레벨은 골랐으나 청크 크기가 목표 구간 밖이다 — "
+                             "최근접 레벨로 실었다. 레벨을 옮길지는 사람이 정한다",
+                             lambda m: m.get("split_level_out_of_range")),
+    }
+    for case, (reason, hit) in cases.items():
+        got = [c for c in env.get("chunks") or [] if hit(c.get("meta") or {})]
+        if not got:
+            continue
+        metas = [c.get("meta") or {} for c in got]
+        payload = {
+            "case": case,
+            "doc_id": doc_id,
+            "chunks": len(got),
+            "locators": [c.get("source_locator") for c in got][:10],
+            "frames": sorted({m["frame"] for m in metas if m.get("frame")}),
+            "reasons": sorted({m["unresolved_reason"] for m in metas
+                               if m.get("unresolved_reason")}),
+        }
+        if case == "size_out_of_band":
+            payload.update(_band_material(metas))
+        store.enqueue("hierarchy_unresolved", reason, doc_id, payload)
+
+
+def _band_material(metas):
+    """`size_out_of_band`의 판단 재료 넷 ([정정] 48 ①).
+
+    **`side`는 파생값이다** — 평균이 하한 미만이면 `short`(레벨을 얕게 = 더 묶는다),
+    상한 초과면 `long`(레벨을 깊게 = 더 쪼갠다). 처방이 반대이므로 한쪽으로 박히면
+    큐 화면이 절반의 문서에 틀린 처방을 낸다.
+
+    한 문서가 여러 프레임을 가지면 레벨이 갈릴 수 있다 — **목록으로 싣고**
+    평균은 그중 구간에서 가장 멀리 벗어난 값을 대표로 쓴다(가장 급한 것이 머리에
+    오는 편이 사람에게 낫다).
+    """
+    band = next((m["split_level_band"] for m in metas if m.get("split_level_band")),
+                None)
+    levels = sorted({m["split_level"] for m in metas
+                     if m.get("split_level") is not None})
+    avgs = [m["split_level_avg_rows"] for m in metas
+            if m.get("split_level_avg_rows") is not None]
+    out = {"chosen_level": levels[0] if len(levels) == 1 else (levels or None),
+           "chosen_avg_rows": None, "target_band": band, "side": None}
+    if not (band and avgs):
+        return out
+    lo, hi = band
+    avg = max(avgs, key=lambda a: max(lo - a, a - hi))     # 가장 멀리 벗어난 값
+    out["chosen_avg_rows"] = avg
+    out["side"] = "short" if avg < lo else ("long" if avg > hi else None)
+    return out
 
 
 BUILD_METRICS = "build_metrics.json"

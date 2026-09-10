@@ -56,7 +56,8 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import fixtures, llm, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
-from parser.adapters import basic_ppt
+from parser import form
+from parser.adapters import basic_ppt, basic_prose_xlsx
 from kit.render_review import render
 from kit.run_adapter import load_blocks
 from router import discover
@@ -291,6 +292,60 @@ GENERATE_SCHEMA = {
     "additionalProperties": False,
 }
 
+# **role 집계 3종** — 「어느 열이 무슨 role인가」를 재는 값들이라 **표 계열에서만
+# 뜻이 있다.** prose 조각에는 열이 없다(고정 키 4종은 payload 구조 필드다 — D-31).
+ROLE_KEYS = ("role_counts", "attribute_ranking", "confidence_cut")
+
+
+def generate_schema(payload_kind):
+    """계열별 산출 스키마 (B58 ⑥) — **prose에서는 role 집계를 요구하지 않는다.**
+
+    구판은 한 벌뿐이었고 `required`가 셋을 강제했다. **스키마 `required`는 모델이
+    빠져나갈 수 없는 자리라**, 열이라는 것이 없는 산문 문서에서 모델이 **있지도
+    않은 role 집계를 지어내야 했다.** 템플릿 문면과 달리 이것은 실해악이다 —
+    지어낸 값이 검수 뷰의 「갈린 열」·「경계선 부근」 화면에 그대로 실린다.
+
+    **`required`에서만 빼지 않고 `properties`에서도 뺀다.** strict 요건이
+    「`required`는 `properties`의 전 키를 포함」이라(B44 실측 400), 한쪽만 줄이면
+    게이트웨이가 요청을 통째로 거부한다. 「선택 항목」이라는 개념이 없는 스키마다.
+
+    계열의 출처는 **형태 판정 하나다**(문서 1 C37) — 여기서 따로 재지 않는다.
+    """
+    if payload_kind == "table":
+        return GENERATE_SCHEMA
+    return {**GENERATE_SCHEMA,
+            "properties": {k: v for k, v in GENERATE_SCHEMA["properties"].items()
+                           if k not in ROLE_KEYS},
+            "required": [k for k in GENERATE_SCHEMA["required"]
+                         if k not in ROLE_KEYS]}
+
+
+def payload_kind_of_samples(samples):
+    """표본의 계열 — `table` · `prose` · `None`(판정이 안 섰다).
+
+    **판정기는 한 자리다**(`parser/form.py`) — 계열을 여기서 따로 재면 등록
+    화면·인입 기록·산출 스키마가 서로 다른 답을 낼 수 있다.
+
+    `.pptx`·`.pdf`는 포맷이 이미 prose를 함의한다(§6.4-5). 격자 포맷인데 판정이
+    자동으로 서지 않으면 `None`이고, **그때도 role 집계를 강요하지 않는다** —
+    산문일 수 있는 문서에 지어내게 하는 것이 이 항목이 없애려는 해악이고,
+    표라면 모델이 못 채워도 검수 뷰가 그 자리를 비워 둘 뿐이다(복구 가능).
+    """
+    kinds = set()
+    for smp in samples:
+        sfx = Path(str(smp)).suffix.lower()
+        if sfx in reader.PROSE_EXT:
+            kinds.add("prose")
+            continue
+        if sfx not in reader.GRID_EXT:
+            kinds.add(None)
+            continue
+        try:
+            kinds.add(form.judge(reader.read(str(smp)))["verdict"])
+        except Exception:
+            kinds.add(None)
+    return kinds.pop() if len(kinds) == 1 else None
+
 
 def _rel(p):
     """레포 기준 상대 경로 — **밖이면 절대 경로 그대로**다.
@@ -430,7 +485,10 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
             {"role": "user", "content": raw_pkg}]
     _sent_size(msgs, f"생성 초안 {doc_type}")
     try:
-        out = llm.chat(msgs, json_schema=GENERATE_SCHEMA, point="generate")
+        # **계열이 스키마를 가른다**(B58 ⑥) — prose에는 role 집계를 요구하지 않는다.
+        _kind = payload_kind_of_samples(
+            (json.loads(raw_pkg).get("human") or {}).get("samples") or [])
+        out = llm.chat(msgs, json_schema=generate_schema(_kind), point="generate")
     except Exception as e:
         _note_error(doc_type, e)
         raise
@@ -476,6 +534,11 @@ def basic_adapter_proposal(samples):
     kinds = {Path(str(x)).suffix.lower() for x in samples}
     if kinds == {".pdf"}:
         return _basic_pdf_proposal(samples)
+    # **격자 포맷은 계층이 서야 제안이 선다**(B58 ③) — `.pptx`·`.pdf`와 달리
+    # 여기엔 포맷이 주는 경계가 없어, 신호 넷으로 계층이 잡히지 않으면 「분할
+    # 자명」이 성립하지 않는다. 그 판정은 어댑터가 실제로 돌려 본 결과로 한다.
+    if kinds and kinds <= set(reader.GRID_EXT):
+        return _basic_prose_xlsx_proposal(samples)
     if kinds != {".pptx"}:
         return None
     # **임계는 어댑터가 소유한다**(문서 6 §6.4-5) — 판단 상수는 `ADAPTER.expects`에
@@ -500,6 +563,51 @@ def basic_adapter_proposal(samples):
             "over_threshold_slides": over,
             "note": ("임계 초과 슬라이드가 있어 자명함이 조건부다 — shape 분할·지도 폴백이 "
                      "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
+
+
+def _basic_prose_xlsx_proposal(samples):
+    """격자 포맷(xlsx·csv)의 위임 제안 — **계층이 서면 산문으로 읽는다** (B58 ③).
+
+    `.pptx`(슬라이드)·`.pdf`(쪽)는 포맷이 경계를 주지만 스프레드시트는 주지 않는다.
+    그래서 제안의 조건이 하나 더 있다: **어댑터를 실제로 돌려 청크가 둘 이상 서야
+    한다.** 관리계획서 같은 표를 이 어댑터에 넣으면 헤딩이 굵은 머리 한 줄뿐이라
+    **시트 통째로 1청크**가 나오는데, 그것은 분할이 아니라 분할 실패다.
+
+    문면이 아니라 **산출을 본다** — 「표처럼 보인다」는 인상이 아니라 「잘리지
+    않았다」는 실행 결과가 거부의 근거다. 형태 판정(table이냐 prose냐)의 정본은
+    문서 6 §6.4이고 여기는 그중 **분할 신호 하나**를 볼 뿐이다.
+    """
+    frames, picks, oor, chunks, forms = 0, [], 0, 0, []
+    for s in samples:
+        raw = reader.read(str(s))
+        # **형태 판정이 먼저다**(문서 1 C37) — 「어느 갈래로 읽는가」를 정하고
+        # 나서야 「어느 산문 어댑터인가」가 성립한다. table으로 자동 판정된
+        # 표본에 산문 어댑터를 얹으면 관리계획서가 통청크로 들어온다.
+        forms.append(form.judge(raw))
+        rep = basic_prose_xlsx.level_report(raw)
+        frames += len(rep)
+        picks += [r["분할_레벨"] for r in rep]
+        oor += sum(1 for r in rep if r["분할_레벨_구간밖"])
+        chunks += len(basic_prose_xlsx.extract(raw))
+    if any(f["verdict"] == form.TABLE for f in forms):
+        return None                     # 표로 자동 판정된 표본이 섞였다
+    if not frames or chunks <= len(samples):
+        return None                     # 시트당 1청크 = 분할이 서지 않았다
+    _human = [f for f in forms if not f["auto"]]
+    return {"adapter": "parser/adapters/basic_prose_xlsx.py",
+            "form": [{"signals": f["signals"], "votes": f["votes"],
+                      "verdict": f["verdict"], "auto": f["auto"], "why": f["why"]}
+                     for f in forms],
+            "reason": ("스프레드시트 산문 — 계층 신호(번호·굵게·들여쓰기·가로병합)로 "
+                       "레벨이 정해진다. 생성 세션이 필요 없다"),
+            "frames": frames, "chunks": chunks,
+            "levels": sorted({p for p in picks if p}),
+            "out_of_range_frames": oor,
+            "note": (f"프레임 {frames}개 · 청크 {chunks}건 · 고른 레벨 {sorted({p for p in picks if p})}"
+                     + (f" · **목표 구간 밖 {oor}프레임** — 최근접 레벨로 떨어졌다"
+                        f"(검수 화면과 큐에 남는다)" if oor else "")
+                     + (f" · **형태 판정이 사람에게 올라온 표본 {len(_human)}부** — "
+                        f"신호값을 보고 정한다" if _human else ""))}
 
 
 def _basic_pdf_proposal(samples):
@@ -872,7 +980,8 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     # **위임 대상은 제안이 정한다** — PPT면 `basic_ppt`, PDF면 `basic_pdf`(B53).
     # 여기에 이름을 박으면 PDF 등록분이 PPT 어댑터를 물어 조각 0건이 된다.
     mod = Path(proposal["adapter"]).stem
-    kind = "PDF" if mod.endswith("pdf") else "PPT"
+    kind = {"basic_pdf": "PDF", "basic_ppt": "PPT",
+            "basic_prose_xlsx": "스프레드시트 산문"}.get(mod, mod)
     ad.write_text(
         "# -*- coding: utf-8 -*-\n"
         f"\"\"\"{doc_type} — 코어 기본 어댑터({kind})를 **그대로** 쓴다 (문서 6 §6.4-5 · D-111).\n\n"
@@ -1006,9 +1115,21 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     st["machine_gate"] = machine_gate(doc_type, st, samples, pkg)
     _save_state(doc_type, st)
     if st["machine_gate"] == "PASS":
-        print(f"   기계 관문 PASS — 검수로 넘어간다: "
-              f"python run.py register review {doc_type}")
-        return 0
+        print(f"   기계 관문 PASS — **검수 뷰까지 여기서 만든다**(B58 ⑤)")
+        # **뷰를 만드는 함수는 하나다** — `cmd_review`를 그대로 부른다. 두 벌이면
+        # 「생성이 보여 준 화면」과 「검수가 보여 주는 화면」이 갈리고, 사람이 승인한
+        # 것이 어느 쪽인지 사후에 못 가린다.
+        #
+        # **여기서는 LLM을 켜지 않는다**(`llm_coord=False` · `extract=False`) —
+        # 생성은 사람이 아직 아무것도 고르지 않은 자리이고, 비용 관문은 사람이
+        # 켜는 것이다. 켜려면 `review`로 들어간다 — 그것이 그 명령이 남는 이유다.
+        rc = cmd_review(doc_type, llm_coord=False, extract=False)
+        print(f"\n   ▶ 다음 두 줄이면 끝난다 — 뷰를 보고 승인한다:")
+        print(f"       (뷰 확인) {(REVIEW / doc_type / 'view.html').relative_to(ROOT)}")
+        print(f"       python run.py register confirm {doc_type} --by <승인자>")
+        print(f"   고칠 것이 있을 때만: python run.py register review {doc_type} "
+              f"--instruct \"…\"  (좌표 LLM 보조·추출 리허설도 그쪽이다)")
+        return rc
     print(f"   기계 관문 FAIL — **검수로 넘어가지 않았다.** 산출은 "
           f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
     print(f"   같은 표본으로 다시 시도: python run.py register generate "
@@ -1256,6 +1377,22 @@ def gate_verdict(harness_ok, parses_ok, orphan):
     return "PASS" if (harness_ok and parses_ok and not orphan) else "FAIL"
 
 
+def _form_of_sample(sample):
+    """표본 하나의 형태 판정 — 격자 포맷이 아니면 `None`.
+
+    **판정기는 한 자리다**(`parser/form.py`) — 여기서 다시 세면 등록 화면과 인입
+    기록이 다른 답을 낼 수 있고, 그때 어느 쪽이 근거인지 아무도 모른다.
+    """
+    if Path(sample).suffix.lower() not in reader.GRID_EXT:
+        return None
+    try:
+        j = form.judge(reader.read(str(sample)))
+    except Exception as e:                       # 판정 실패가 검수를 막지 않는다
+        return {"signals": {}, "votes": {}, "verdict": None, "auto": False,
+                "why": f"형태 판정 불가 — {type(e).__name__}: {e}"}
+    return {k: j[k] for k in ("signals", "votes", "verdict", "auto", "why")}
+
+
 def build_view(st, results, harness_ok, harness_out, rehearsal=None):
     """뷰 데이터 산출 — **D-79 스키마가 계약**이고 여기가 산출자다.
 
@@ -1318,6 +1455,32 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
                                      f"생성이 빠뜨렸거나 문서 양식이 바뀌었다",
                           "where": st["doc_type"]})
 
+    # **형태 판정을 화면에 싣는다**(B58 ⑤ · 문서 1 C37) — 격자 포맷 표본만.
+    # 사람에게 올라온 문서는 **이상 신호로도** 뜬다: 「이상 신호는 전량 필수
+    # 표시」(§6.6-1)라 요약 표에만 두면 접힌 화면에서 사라진다.
+    forms = []
+    for smp in st["samples"]:
+        j = _form_of_sample(smp)
+        if j is None:
+            continue
+        forms.append({"doc": Path(smp).name, **j})
+        if not j["auto"]:
+            anomalies.append({
+                "kind": "question",
+                "message": (f"'{Path(smp).name}'의 형태 판정이 자동으로 서지 않는다 — "
+                            f"table로 읽을지 prose로 읽을지 사람이 정한다: {j['why']}"),
+                "where": Path(smp).name,
+                "detail": {"signals": j["signals"], "votes": j["votes"],
+                           "note": "신호값 다섯이 판단 재료다 — 문턱은 parser/form.py"}})
+        elif j["verdict"] != kind:
+            anomalies.append({
+                "kind": "warning",
+                "message": (f"'{Path(smp).name}'의 형태 판정({j['verdict']})이 "
+                            f"이 어댑터의 payload_kind({kind})와 어긋난다 — "
+                            f"지정대로 진행한다([정정] 48 ②)"),
+                "where": Path(smp).name,
+                "detail": {"signals": j["signals"], "votes": j["votes"]}})
+
     tree = [{"section": p.get("section", ""), "locator": p["source_locator"],
              "excerpt": (p.get("text") or "")[:70],
              "depth": (p.get("section") or "").count(">")} for p in pieces]
@@ -1339,6 +1502,10 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
                             "split": [{"doc_id": r.doc_id,
                                        **(r.report.get("split") or {})}
                                       for r in results if r.report.get("split")],
+                            # **형태 판정**(B58 ⑤) — `split`과 같은 자리다. 구획 1은
+                            # `summary·anomalies·normal` 3층으로 닫혀 있어(D-79)
+                            # 네 번째 키를 만들면 스키마 계약이 깨진다.
+                            "form": forms,
                             "failures": sum(1 for a in anomalies if a["kind"] == "failure"),
                             "warnings": sum(1 for a in anomalies if a["kind"] == "warning"),
                             "fill_rate": fill},

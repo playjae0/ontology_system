@@ -794,19 +794,29 @@ def _rows(ls):
 _fine = _mk(True)
 _smap = {"rows": _rows(_fine)}
 _st43 = _SM.level_stats(_smap, _fine)
-_pick, _why = _SM.choose_level(_st43)
+# **[정정] 46이 규칙을 바꿨다** — 「구간에 가장 많이 드는 레벨」에서 「구간 안의
+# 레벨 중 중앙 최근접」으로. 돌려주는 것도 `(레벨, 사유, 구간밖)` 3짝이다.
+_pick, _why, _oor = _SM.choose_level(_st43)
 _loc = lambda a, b: f"L{a}-{b}"
 _before = len(_SM.split({"rows": _smap["rows"], "분할_레벨": None}, _fine, _loc))
 _after = len(_SM.split({**_smap, "분할_레벨": _pick}, _fine, _loc))
 show("③ 레벨별 분포를 센다 (청크 수·행 수)",
      set(_st43) == {1, 2} and _st43[2]["청크수"] > _st43[1]["청크수"], str(_st43))
-show("③ 목표 구간에 가장 많이 드는 레벨을 고른다", _pick == 1, f"{_pick} — {_why}")
+show("③ 구간 중앙에 평균이 가장 가까운 레벨을 고른다 ([정정] 46)",
+     _pick == 1 and not _oor, f"{_pick} — {_why}")
 show("③ 세밀 헤딩에서 청크가 합쳐진다 (부서지지 않는다)",
      _before == 12 and _after == 3, f"{_before} → {_after}")
 _coarse = _mk(False)
-_p2, _w2 = _SM.choose_level(_SM.level_stats({"rows": _rows(_coarse)}, _coarse))
-show("③ 레벨이 하나뿐이면 지금 동작을 유지한다 (무리한 병합 없음)",
-     _p2 is None and "하나뿐" in _w2, _w2)
+_p2, _w2, _oor2 = _SM.choose_level(_SM.level_stats({"rows": _rows(_coarse)}, _coarse))
+# **레벨이 하나뿐이어도 그 레벨을 고른다** — 자르는 결과는 전 헤딩 분할과 같지만
+# (`l <= pick`이 전부를 포함한다), 구간 밖이면 그 사실이 화면·큐로 나가야 한다.
+# 구판은 여기서 `None`을 돌려줘 「고르지 않았다」로 남았고, 그러면 구간 밖 표시도
+# 함께 사라졌다.
+show("③ 레벨이 하나뿐이면 그 레벨을 고른다 — 분할 결과는 같고 구간밖은 드러난다",
+     _p2 == 1
+     and len(_SM.split({"rows": _rows(_coarse), "분할_레벨": _p2}, _coarse, _loc))
+     == len(_SM.split({"rows": _rows(_coarse), "분할_레벨": None}, _coarse, _loc)),
+     f"{_p2} · 구간밖={_oor2} — {_w2[:40]}")
 show("③ 선택 근거가 지도에 보존된다 (같은 지도 → 같은 분할)",
      "분할_레벨" in _SM.apply("T43", _fine, _loc)[1]
      and "레벨_분포" in _SM.apply("T43", _fine, _loc)[1])
@@ -878,12 +888,16 @@ def _load45(path, name):
     m = _iu45.module_from_spec(s); s.loader.exec_module(m); return m
 
 
-_old45 = _load45("tests/fixtures/fixtures/adapters/toc_report.py", "t45o")  # 상수 없음
-_new45 = _load45("kit/참조어댑터/toc_report.py", "t45n")                      # split_level=1
-show("① 판단 상수가 expects에 있다 (preflight 지문이 아니다)",
-     _new45.ADAPTER["expects"].get("split_level") == 1
-     and "split_level" not in (_old45.ADAPTER["expects"]),
-     str(_new45.ADAPTER["expects"]["split_level"]))
+_old45 = _load45("tests/fixtures/fixtures/adapters/toc_report.py", "t45o")  # 스냅샷
+_new45 = _load45("kit/참조어댑터/toc_report.py", "t45n")                      # 전시물
+# **[정정] 46이 판단 상수를 폐지했다** — 구판 전시물은 `expects.split_level=1`을
+# 박고 「결정은 등록 때 한 번」이라 적었다. 지금 전시물은 규칙을 부른다.
+show("① 전시물에 분할 레벨 상수가 없다 ([정정] 46 — 레벨은 인입마다 규칙이 센다)",
+     "split_level" not in _new45.ADAPTER["expects"]
+     and "split_level" not in _old45.ADAPTER["expects"])
+show("① 전시물이 규칙을 **부른다** (재구현하지 않는다 — 규약 10과 같은 결)",
+     "struct_map.choose_level(" in
+     (ROOT / "kit" / "참조어댑터" / "toc_report.py").read_text(encoding="utf-8"))
 
 
 def _d45(mod, doc):
@@ -895,9 +909,10 @@ def _d45(mod, doc):
 
 _a01, _n01, _s01 = _d45(_old45, "TOC01")
 _b01, _m01, _t01 = _d45(_new45, "TOC01")
-show("ⓐ 상수가 있으면 그 레벨에서만 자른다 — 청크가 굵어진다",
+show("ⓐ 규칙이 고른 레벨에서만 자른다 — 청크가 굵어진다",
      _m01 < _n01 and _t01 < _s01, f"청크 {_n01}→{_m01} · 짧음 {_s01}→{_t01}")
-show("ⓑ 상수가 없는 어댑터는 종전 동작 그대로다", _n01 == 9, f"{_n01}")
+show("ⓑ 규칙을 부르지 않는 구판 스냅샷은 종전 동작 그대로다 (전 헤딩 분할)",
+     _n01 == 9, f"{_n01}")
 show("ⓒ 산출 유실 0 — 내용이 하나도 새지 않는다",
      not [x for x in _a01 if x["text"] not in "\n".join(y["text"] for y in _b01)])
 show("ⓒ `section` 경로는 상수와 무관하게 전 헤딩을 반영한다 (좌표 파생의 재료)",
@@ -906,10 +921,22 @@ show("ⓒ `section` 경로는 상수와 무관하게 전 헤딩을 반영한다 
 show("④ 어댑터 경로도 레벨별 분포를 낸다 (지도 경로와 같은 형태)",
      (lambda r: bool((r.report.get("split") or {}).get("레벨_선택")))(
          pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))))
-show("④ 상수를 밝힌다 (사람이 고칠 재료 — 매 문서 모델이 고르지 않는다)",
-     "expects.split_level=1" in str(
-         pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))
-         .report["split"]["레벨_선택"]))
+# **화면이 「규칙이 고른 레벨」을 밝힌다**(§6.6-1) — 구판은 여기서
+# `expects.split_level=1`이라는 **폐지된 상수**를 찍었다. 사유가 상수를 가리키면
+# 승인자는 규칙이 무엇을 골랐는지 끝내 못 본다.
+_pk45 = pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx")
+                       ).report["split"]["레벨_선택"][0]
+show("④ 화면이 규칙이 고른 레벨과 그 사유를 밝힌다 (폐지된 상수를 읽지 않는다)",
+     _pk45["분할_레벨"] == 1 and "구간" in _pk45["분할_레벨_사유"]
+     and _pk45["분할_레벨_구간밖"] is False
+     and "split_level=" not in str(_pk45),
+     _pk45["분할_레벨_사유"][:44])
+# **같은 doc_type의 다른 판본이 갈린다** — 상수를 버린 근거가 바로 이것이다.
+_pk46 = pipeline.parse(_new45, "T46", str(RAW / "TOC02.xlsx")
+                       ).report["split"]["레벨_선택"][0]
+show("④ 같은 어댑터의 다른 판본이 갈린다 (상수를 버린 근거 — [정정] 46)",
+     _pk46["분할_레벨_구간밖"] is True and _pk45["분할_레벨_구간밖"] is False,
+     f"TOC01 구간내 · TOC02 {_pk46['분할_레벨_사유'][:30]}")
 show("fixture는 손대지 않았다 (D-26)", "split_level" not in
      (ROOT / "tests/fixtures/fixtures/adapters/toc_report.py").read_text(
          encoding="utf-8"))
@@ -1254,12 +1281,18 @@ show("① 지시 이력이 한 사슬이다 — 사람(검수 지시) → 자동
 show("① 통과하면 뷰가 선다", _st40["machine_gate"] == "PASS"
      and (REVIEW / "f40ok" / "view.json").exists() and _r40.returncode == 0)
 _reg40("generate", "f40no", "process", str(RAW / "CP01.xlsx"))
+# **생성이 이미 뷰를 만들었다**(B58 ⑤) — 초안은 관문을 지났기 때문이다. 잠글
+# 성질은 「뷰가 없다」가 아니라 **「관문을 못 지난 산출로 뷰를 갈아 치우지
+# 않는다」**로 바뀐다: 붉은 재생성분이 화면을 덮으면 사람이 그것을 보고 승인한다.
+_v41 = REVIEW / "f40no" / "view.json"
+_before41 = _v41.read_bytes() if _v41.exists() else None
 _r41 = _reg40("review", "f40no", "--instruct", "이렇게 고쳐라", "--no-llm-coord")
 _st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8"))
-# **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 뷰가 생겨 붉는다.
-show("① 해소 못 하면 **뷰를 만들지 않는다** · machine_gate=FAIL (변이 검출 지점)",
+# **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 붉은
+# 산출이 뷰를 덮어써 붉는다.
+show("① 해소 못 하면 **뷰를 갈아 치우지 않는다** · machine_gate=FAIL (변이 검출 지점)",
      _st41["machine_gate"] == "FAIL"
-     and not (REVIEW / "f40no" / "view.json").exists()
+     and (_v41.read_bytes() if _v41.exists() else None) == _before41
      and "검수 뷰를 만들지 않았다" in _r41.stdout and _r41.returncode != 0,
      [l.strip() for l in _r41.stdout.splitlines() if "만들지 않았다" in l][:1])
 show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
@@ -1485,11 +1518,17 @@ show("①-후속-2 지시가 없으면 구획째 빠진다 (빈 칸을 남기지
 show("①-후속-2 치환 누락 0 — 지시 자리가 늘어도 `{{` 잔존 0",
      "{{" not in _b55_full)
 # 판 계보는 킷 규칙이다 — 옛 판을 고쳐 쓰지 않는다.
-show("①-후속-2 v1.0을 고치지 않고 v1.1을 세웠다 (판 계보 보존)",
-     (R.KIT / "생성프롬프트_템플릿_v1.1.md").exists()
-     and R._newest_template().name == "생성프롬프트_템플릿_v1.1.md"
+# **판 번호를 박지 않는다** — 박으면 판이 오를 때마다 이 줄이 깨져, 어서션이
+# 템플릿 개정을 막는 자리가 된다(관문 판정 수에서 같은 병을 이미 겪었다).
+# 잠글 성질은 **「옛 판을 고치지 않고 새 판을 세운다」** 하나다.
+_tmpls = sorted(R.KIT.glob("생성프롬프트_템플릿_v*.md"))
+show("①-후속-2 옛 판을 고치지 않고 새 판을 세운다 (판 계보 보존)",
+     len(_tmpls) >= 2
+     and R._newest_template() != (R.KIT / "생성프롬프트_템플릿_v1.0.md")
+     and "{{재생성_지시}}" in R._newest_template().read_text(encoding="utf-8")
      and "{{재생성_지시}}" not in
-     (R.KIT / "생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8"))
+     (R.KIT / "생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8"),
+     f"현행 {R._newest_template().name} · 계보 {len(_tmpls)}판")
 
 # ── B55 ② 문답은 누적된다 — 재현 조건의 그릇은 `human.hint`다 (B36 · §6.5) ──
 print("\n■ B55 ② — 문답 묶음이 쌓이고 표본이 바뀌면 stale로 남는다")
@@ -1839,6 +1878,132 @@ show("②ⓐ prose — 검수 화면에 기계 오류 0 (failure 종 0건)",
 show("②ⓐ 관문이 자기 구조 지도를 남기지 않는다 (운영 보존분과 섞이지 않는다)",
      not [q for q in (ROOT / "extract" / "struct_maps").glob("_gate_*.json")],
      str([q.name for q in (ROOT / "extract" / "struct_maps").glob("*.json")][:4]))
+
+
+# ── B58 ⑤ 검수 뷰는 생성이 만든다 + 분할 분포 ──────────────────────────
+print("\n■ B58 ⑤ — generate가 뷰까지 만든다 · review는 고칠 때만")
+
+reset("toc_report")
+_g5 = run("generate", "toc_report", "process",
+          str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+_vh = REVIEW / "toc_report" / "view.html"
+show("⑤ⓐ generate가 관문 PASS 뒤 view.html까지 만든다",
+     _g5.returncode == 0 and _vh.exists() and _vh.stat().st_size > 0)
+show("⑤ⓐ 그 경로를 화면이 찍는다 (사람이 어디를 볼지 안다)",
+     "view.html" in _g5.stdout and "register confirm toc_report" in _g5.stdout)
+# **뷰를 만드는 함수는 하나다** — 두 벌이면 「생성이 보여 준 화면」과 「검수가
+# 보여 주는 화면」이 갈리고, 사람이 승인한 것이 어느 쪽인지 사후에 못 가린다.
+show("⑤ⓐ 생성이 검수와 **같은 함수**를 부른다 (뷰 경로가 둘이 아니다)",
+     "cmd_review(doc_type, llm_coord=False, extract=False)" in
+     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+# **생성은 LLM을 켜지 않는다** — 비용 관문은 사람이 켜는 것이고, 그 자리가 review다.
+show("⑤ⓐ 생성의 뷰 산출에 LLM 호출 0 (좌표 보조·추출 리허설을 켜지 않는다)",
+     "추출 리허설 끔" in _g5.stdout and "LLM 호출 0회" in _g5.stdout)
+# **review는 남는다** — 없애면 재생성 지시·좌표 보조·추출 리허설의 자리가 사라진다.
+_r5 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
+show("⑤ review는 선택 명령으로 남는다 (고칠 때 들어가는 자리)",
+     _r5.returncode == 0 and "■ ② 검수" in _r5.stdout)
+# ⓐ **review 없이 confirm이 된다.**
+reset("toc_report")
+run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+_c5 = run("confirm", "toc_report", "--by", "검수자 정")
+show("⑤ⓐ review를 거치지 않고 confirm이 선다 (generate → 뷰 확인 → confirm)",
+     _c5.returncode == 0 and registry.lookup("toc_report") is not None)
+
+_v5 = view_of("toc_report")
+_sum5 = _v5["sections"]["parse_result"]["summary"]
+_html5 = _vh.read_text(encoding="utf-8")
+# ⓑ **분포·고른 레벨·사유** — 값은 산출자가 채우고 렌더러는 그린다(§6.6-3).
+_pick5 = [p for r in _sum5["split"] for p in (r.get("레벨_선택") or [])]
+show("⑤ⓑ prose 화면에 레벨별 분포가 있다 (청크수·행수 min/max/avg·구간내)",
+     _pick5 and all({"청크수", "행수_최소", "행수_최대", "행수_평균", "구간내_청크수"}
+                    <= set(d) for p in _pick5 for d in (p["레벨_분포"] or {}).values()))
+show("⑤ⓑ 규칙이 고른 레벨과 사유가 함께 있다",
+     all(p.get("분할_레벨") is not None and p.get("분할_레벨_사유") for p in _pick5)
+     and "목표 구간" in _pick5[0]["분할_레벨_사유"])
+# ⓒ **짧은 쪽·긴 쪽 분리** — 처방이 다르다. 값도 화면도 갈라져 있어야 한다.
+show("⑤ⓒ 목표 구간 밖이 짧은 쪽·긴 쪽으로 갈려 있다 (값)",
+     all({"너무_짧은_청크", "너무_긴_청크", "목표구간"} <= set(r)
+         for r in _sum5["split"]))
+show("⑤ⓒ 화면이 둘을 각각 센다 — 처방이 다르다는 말이 함께 있다",
+     "너무 짧음" in _html5 and "너무 긺" in _html5
+     and "짧으면 레벨을 얕게" in _html5 and "길면 깊게" in _html5)
+# **최근접 폴백은 머리에 선다** — 표 안의 한 칸이면 접힌 화면에서 사라진다.
+show("⑤ⓒ 최근접 폴백이 머리에 표시된다 (TOC02가 그 경우다)",
+     any(p.get("분할_레벨_구간밖") for p in _pick5)
+     and "분할 레벨이 목표 구간 밖이다" in _html5
+     and _html5.index("분할 레벨이 목표 구간 밖이다") < _html5.index("분할 크기 분포"))
+# **형태 판정 다섯 값이 화면에 그대로** — 사람이 정할 것이 그 값이다.
+show("⑤ 형태 판정 다섯 값이 뷰와 화면에 그대로 실린다 (문서 1 C37)",
+     len(_sum5["form"]) == 2
+     and all(len(f["signals"]) == 5 and len(f["votes"]) == 5 for f in _sum5["form"])
+     and "형태 판정 — table이냐 prose냐" in _html5
+     and "indent_share" in _html5)
+
+# **사람에게 올라온 문서는 이상 신호로도 뜬다** — 요약 표에만 두면 접힌 화면에서
+# 사라진다(§6.6-1 「이상 신호는 전량 필수 표시」). 판정기를 직접 넣어 확인한다.
+_amb = {}
+for _r in range(1, 21):
+    for _i in range(12):
+        _amb[f"{chr(65 + _i)}{_r}"] = f"{chr(65 + _i)}{_r} 고유값 {_r}-{_i}"
+_ind = {a: 1 for a in list(_amb)[:int(round(len(_amb) * 0.85))]}
+_raw_amb = {"format": "xlsx", "sheets": [{"name": "S", "max_row": 20, "max_col": 12,
+            "cells": _amb, "merged": [], "indent": _ind, "bold": [], "images": []}]}
+from parser import form as _FORM                                    # noqa: E402
+
+
+class _FakeRes:
+    """`build_view`가 보는 최소 파싱 결과 — 형태 판정 갈래만 보려는 자리다."""
+    ok, doc_id, failures = True, "AMB01", []
+    report, envelope = {}, {"chunks": []}
+
+
+_st_amb = json.loads((REVIEW / "toc_report" / "state.json").read_text(encoding="utf-8"))
+_amb_path = ROOT / "_b58_amb.xlsx"
+_orig_judge, _orig_read = _FORM.judge, R.reader.read
+try:
+    # 표본 하나가 **사람에게 올라오는** 상황을 만든다 — 판정기는 그대로 두고
+    # 그 문서의 raw만 갈아 끼운다(판정 규칙을 흉내 내지 않는다).
+    _amb_path.write_bytes(b"")
+    R.reader.read = lambda pth: _raw_amb if str(pth).endswith("_b58_amb.xlsx") else _orig_read(pth)
+    _view_amb = R.build_view({**_st_amb, "samples": [str(_amb_path)]},
+                             [_FakeRes()], True, "")
+    _qs = [a for a in _view_amb["sections"]["parse_result"]["anomalies"]
+           if a["kind"] == "question" and "형태 판정" in a["message"]]
+    show("⑤ 사람에게 올라온 형태 판정은 **이상 신호로도** 뜬다 (§6.6-1 전량 표시)",
+         _FORM.judge(_raw_amb)["verdict"] is None and len(_qs) == 1
+         and len(_qs[0]["detail"]["signals"]) == 5,
+         _qs[0]["message"][:60] if _qs else "질문 0건")
+finally:
+    R.reader.read = _orig_read
+    _amb_path.unlink(missing_ok=True)
+
+# **시험이 자기 등재를 치운다** — ⓐ의 confirm이 어댑터·스키마를 정본 자리로
+# 승격시킨다(문서 6 §6.5). 남기면 다음 실행에서 `toc_report`가 **내장**으로 보여
+# 이 스위트의 앞머리가 통째로 붉는다(실측: 4 PASS / 1 FAIL로 멈췄다).
+reset("toc_report")
+show("⑤ 시험이 승격시킨 정본을 치웠다 (다음 실행으로 새지 않는다)",
+     registry.lookup("toc_report") is None
+     and not (ROOT / "adapters" / "toc_report.py").exists()
+     and not (ROOT / "schemas" / "toc_report.json").exists())
+
+
+# ── B58 ⑥ 산출 스키마의 계열 분기 ────────────────────────────────────────
+print("\n■ B58 ⑥ — prose 스키마는 role 집계를 요구하지 않는다")
+
+# **잠글 성질 하나**: prose 계열의 `required`에 role 키가 없다. 스키마 `required`는
+# 모델이 빠져나갈 수 없는 자리라, 열이 없는 산문 문서에서 **있지도 않은 role
+# 집계를 지어내게** 한다. 화면 문면이 아니라 스키마의 모양을 본다.
+show("⑥ prose 산출 스키마의 required에 role 키가 없다",
+     not (set(R.ROLE_KEYS) & set(R.generate_schema("prose")["required"])),
+     str(sorted(set(R.ROLE_KEYS) & set(R.generate_schema("prose")["required"]))))
+# **strict 요건은 「required = properties 전량」이다**(B44 실측 400) — `required`에서만
+# 빼면 게이트웨이가 요청을 통째로 거부한다. 계열 전부에서 그 요건이 선다.
+show("⑥ 계열 전부가 strict 요건을 지킨다 (required = properties 전량)",
+     all(set(R.generate_schema(k)["required"]) == set(R.generate_schema(k)["properties"])
+         for k in ("table", "prose", None)))
+show("⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 prose에서만이다)",
+     set(R.ROLE_KEYS) <= set(R.generate_schema("table")["required"]))
 
 
 print("\n" + "=" * 62)

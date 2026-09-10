@@ -259,9 +259,18 @@ show("선택 — 표류 문서는 0건 → 사람에게 (조건 ③)",
 show("선택 — 비정형(pptx)은 스캔하지 않는다 · 지정 필수",
      IG.select(_RAW / "PPT_basic.pptx")["status"] == "none"
      and IG.select(_RAW / "PPT_basic.pptx", doc_type="ppt_quality")["status"] == "none")  # 내장 스키마만 · 어댑터 없음
+# **`form`이 근거에 붙었다**(B58 ④ · 문서 1 C37) — 형태 판정은 선택을 바꾸지
+# 않지만 **기록은 남긴다**: 문턱 조정과 애매 구간 측정의 유일한 재료다.
+# 키 집합을 못박는 것은 몰래 늘어나는 것을 막는 장치라, 늘릴 때 이름을 적는다.
+_hsel = IG.select(_RAW / "CP02_drift.xlsx", doc_type="cp")
 show("선택 — --doc-type 지정은 스캔 없이 그것으로 (사람 지정 기록)",
-     (lambda s: s["status"] == "chosen" and s["basis"] == {"by": "human", "doc_type": "cp"})(
-         IG.select(_RAW / "CP02_drift.xlsx", doc_type="cp")))
+     _hsel["status"] == "chosen"
+     and {k: v for k, v in _hsel["basis"].items() if k != "form"}
+     == {"by": "human", "doc_type": "cp"},
+     str(_hsel["basis"])[:60])
+show("선택 — 근거에 형태 판정이 함께 남는다 (C37 — 기록이 이 기능의 절반이다)",
+     (_hsel["basis"].get("form") or {}).get("verdict") == "table"
+     and len((_hsel["basis"]["form"].get("signals") or {})) == 5)
 # 다중 일치 — 같은 지문의 어댑터 둘
 _td = Path(_tf.mkdtemp(prefix="multi_"))
 _src = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")

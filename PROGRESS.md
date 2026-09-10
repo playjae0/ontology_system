@@ -4097,3 +4097,267 @@ mock 생성이 반환하는 fixture 중 **table 계열은 `ipqc` 하나**이고,
 
 - 회귀 **980 → 990/990** (+10, 삭제 0): `test_p3` 279 → 289.
 - 검사 4종 — 문면·문서간·자산 통과. 미러 C15 1건은 ①과 같은 건(허브 몫)이다.
+
+## B58 ③ — 고정 prose xlsx 어댑터 + 레벨 규칙 ([정정] 46) · 2026-09-10
+
+### 셋을 했다
+
+1. **레벨 규칙 교체** — `struct_map.choose_level`이 「구간에 가장 많이 드는 레벨」에서
+   **「구간 안의 레벨 중 평균이 중앙(22.5행)에 최근접」**으로 바뀌었다. 못 맞추면
+   `None`(전 헤딩 분할)이 아니라 **최근접 레벨 + `구간밖` 표시**다. 새 함수를 만들지
+   않고 **기존 규칙을 갈아 끼웠다** — 규칙이 둘이면 화면의 레벨과 자른 레벨이 갈린다.
+2. **`parser/adapters/basic_prose_xlsx.py` 신설** — 신호 넷(번호·굵게·들여쓰기·
+   가로병합)으로 계층을 읽고, 자르는 일은 `struct_map.split`이 한다(재구현 0).
+   **지도 훅을 받고도 부르지 않는다** — 인입마다 LLM 비용이 붙지 않는다.
+3. **`hierarchy_unresolved` 큐를 실제로 단다** — 닫힌 20종에 자리는 있는데
+   **enqueue하는 코드가 0지점이었다.** `core/pipeline._land_hierarchy`가 그 자리다.
+
+### 실행 결과
+
+```
+ⓐ LLM 사용량 — 인입 2건(TOC01·TOC02) 동안 호출 0회 · 청크 6건
+ⓑ TOC02 레벨_선택 →
+     분할_레벨 1 · 분할_레벨_구간밖 true
+     사유: "어느 레벨도 목표 구간(5~40행)에 들지 않는다 — **최근접 레벨 1**
+            (평균 4.3행)을 쓴다. 레벨을 바꾸려면 사람이 정한다"
+     레벨_분포: {1: 3청크 2~7행(4.3), 2: 8청크 1~3행(1.6)}
+ⓒ 같은 문서 2회 인입 → 청크 바이트 동일: True (6청크)
+ⓓ hierarchy_unresolved 큐 1건 — TOC02 · case=level_out_of_range
+```
+
+**표는 거부된다**: CP01·IPQC01을 이 어댑터에 넣으면 시트당 1청크(=분할 실패)라
+제안이 서지 않는다. 인상이 아니라 **산출**로 판정한다.
+
+### 회차 중 잡은 것
+
+1. **화면이 폐지된 상수를 읽고 있었다** — `adapter_level_picks`가
+   `expects.split_level`을 찍어 「상수 없음 — 전 헤딩 분할(종전 동작)」로 나왔다.
+   [정정] 46이 없앤 자리라 승인자가 **규칙이 고른 레벨을 끝내 못 본다**(§6.6-1 위반).
+   규칙을 읽도록 고쳤다.
+2. 그러자 **`kit/참조어댑터/toc_report.py`가 실제로는 상수로 자르는데** 화면은
+   규칙의 레벨을 말하게 됐다 — 화면이 거짓말을 한다. 전시물의 상수를 걷고 규칙을
+   부르게 했다. 전시장은 **지금 설계**를 보이는 자리다.
+3. **레벨 규칙 교체가 PPT 지도 경로의 분할을 바꿨다** — 11번 슬라이드가 9청크(1행씩)
+   → 3청크(3행씩). 옛 규칙의 귀결을 못박던 어서션 둘을 새 규칙의 **성질**로 바꿨다
+   (청크 수를 못박지 않는다 — 규칙이 바뀌면 개수도 바뀐다).
+4. 산문 경로 둘이 구간밖 표시를 각자 세우고 있었다 — **레벨을 적용하는 유일한
+   자리**(`struct_map.split`)로 내렸다. 경로마다 실으면 하나가 빠지는 날이 온다.
+
+### 결과
+
+- 회귀 **990 → 1006/1006** (+16, 삭제 0): `test_p1` 117 → 131 · `test_p3` 289 → 291.
+- 검사 4종 **전부 통과** (미러 6쌍 0건 — C15는 허브가 C37 신설로 해소했다).
+
+## B58 ④ — 형태 판정 table/prose (문서 1 C37) · 2026-09-10
+
+`parser/form.py` 신설 — 신호 다섯 · 각 3값 · **찬성 ≥2 · 반대 0이면 자동, 그 외는 사람.**
+문턱은 `THRESHOLDS` 한 자리이고 층 config가 아니다. 모듈이 import하는 것은
+`__future__`·`re` 둘뿐이다 — **게이트웨이를 알지 못한다**(C37의 금지를 import로 잠갔다).
+
+### ⓐ 판정표 — `python run.py scan --form tests/fixtures/raw`
+
+```
+   문서                      판정      자동      column_count  min_unique_ratio  max_text_share  indent_share  numbered_rows
+   CP01.xlsx               table   예             10[t]         0.129[t]        0.237[t]      0.0[t]         0[t]
+   CP02_drift.xlsx         table   예             10[t]         0.235[t]        0.218[t]      0.0[t]         0[t]
+   CP03_bad.xlsx           table   예             10[t]         0.312[t]        0.195[t]      0.0[t]         0[t]
+   CP04_unlabeled.xlsx     table   예             10[t]         0.364[t]        0.154[t]      0.0[t]         0[t]
+   IPQC01.xlsx             table   예             16[t]         0.121[t]        0.172[t]      0.0[t]         0[t]
+   IPQC02.xlsx             table   예             16[t]         0.143[t]        0.169[t]      0.0[t]         0[t]
+   PFMEA01.xlsx            table   예             13[t]         0.121[t]        0.272[t]      0.0[t]         0[t]
+   TOC01.xlsx              prose   예              1[p]           1.0[p]          1.0[p]    0.871[p]        14[p]
+   TOC02.xlsx              prose   예              1[p]           1.0[p]          1.0[p]     0.84[p]        11[p]
+```
+
+**table 7 · prose 2 · 사람 0** — 명세가 문턱을 뽑은 그 표본에서 전 신호가 겹침 없이
+갈린다. csv 4건도 함께 돌려 전부 table로 자동 판정된다(13건 · 사람 0).
+
+### ⓒⓓ 인위적 표본 — 기권 구간과 반대표 0이 각각 사는가
+
+```
+ⓒ 열 4개 + indent 60% → prose(자동) · 찬성 4 · 반대 0 · **기권 1(column_count)**
+ⓓ 열 12개 + indent 85% → **사람** · table 3 · prose 2 · 기권 0
+```
+
+**변이 시험**: `column_count` 문턱을 `(2,5)` → `(2,3)`으로 좁혀 기권 구간을 없애자
+ⓒ가 **사람으로 넘어갔다** — prose 4표를 열 신호 하나가 뒤집는다. 명세가 「기권 구간이
+없으면 열 서넛짜리 산문에서 열 신호가 판정을 뒤집는다」고 말한 그 병이다.
+
+### ⓔ 기록 — `doc_registry.json`의 `routing.form`
+
+```json
+{"by": "human", "doc_type": "cp",
+ "form": {"signals": {"column_count": 10, "min_unique_ratio": 0.129,
+                      "max_text_share": 0.237, "indent_share": 0.0, "numbered_rows": 0},
+          "votes": {...}, "verdict": "table", "auto": true,
+          "why": "table 찬성 5(...) · 반대 0 · 기권 0"}}
+```
+
+**판정은 선택을 갈아 끼우지 않는다** — 어댑터의 `payload_kind`와 어긋나면 경고하고
+지정대로 간다. 뒤집으면 사람의 `--doc-type` 지정이 조용히 무시된다.
+
+### 회차 중 잡은 것
+
+1. 판정표가 집계에서 판정을 **다시 돌아 같은 파일을 4번씩 읽었다**(CSV 리더 로그로
+   드러났다). 문서마다 한 번만 판정하도록 고쳤다.
+2. `test_g6`이 `basis`를 정확히 `{"by","doc_type"}`으로 못박고 있었다 — 몰래 늘어나는
+   것을 막는 장치라 **`form`의 이름을 적어 넣고** 늘렸다. 그 자리에 기록 어서션도 붙였다.
+
+### 결과
+
+- 회귀 **1006 → 1017/1017** (+11, 삭제 0): `test_p1` 131 → 141 · `test_g6` 49 → 50.
+- 검사 4종 전부 통과.
+
+## B58 ④-후속 — case 이름과 payload를 명세에 맞춘다 ([정정] 48 ①) · 2026-09-10
+
+**변화 0이 아니었다** — 내 구현의 case 이름은 `level_out_of_range`였고 payload에
+판단 재료 넷이 없었다. 둘 다 고쳤다.
+
+| | 전 | 후 |
+|---|---|---|
+| case | `flat_fallback` · `level_out_of_range` | `flat_fallback` · **`size_out_of_band`** |
+| payload | locators · frames · split_levels · reasons | + **chosen_level · chosen_avg_rows · target_band · side** |
+
+```json
+{"case": "size_out_of_band", "doc_id": "TOC02", "chunks": 3,
+ "chosen_level": 1, "chosen_avg_rows": 4.3, "target_band": [5, 40], "side": "short"}
+```
+
+**`chosen_avg_rows`는 규칙이 본 값이다** — `struct_map.split`이 `level_stats`의
+평균을 조각 meta에 실어 보낸다. 인입이 청크 줄 수로 되재면 값이 **달라진다**:
+`level_stats`의 평균은 헤딩 행을 빼고 센다. 큐가 「4.3행이라 구간 밖」이라 말하는데
+화면의 청크가 5줄이면 사람은 큐를 못 믿는다.
+
+### 어서션 — 허브가 지정한 그대로
+
+```
+[PASS] side가 avg·target_band에서 파생된다 (둘 다 short로 박혀 있지 않다) — short / long
+[PASS] 프레임이 갈리면 가장 멀리 벗어난 값이 대표다
+[PASS] 재료가 없으면 지어내지 않는다 (side는 None)
+[PASS] case는 flat_fallback · size_out_of_band 둘뿐이다 (옛 이름 0)
+[PASS] 계층 신호 0건 → flat_fallback 쪽 표시 (size 표시가 아니다)
+```
+
+**양쪽 표본으로 잰다** — 짧은 쪽만 보면 `side`를 `"short"`로 박아 두어도 초록이다.
+
+### 결과
+
+- 회귀 **1017 → 1023/1023** (+6, 삭제 0): `test_p1` 141 → 147.
+- 검사 4종 전부 통과.
+
+## B58 ⑤ — 검수 뷰는 생성이 만든다 + 분할 분포 · 2026-09-10
+
+**사람이 치는 것은 두 줄이 됐다.**
+
+```
+   기계 관문 PASS — **검수 뷰까지 여기서 만든다**(B58 ⑤)
+   …
+   뷰 데이터 → review/toc_report/view.json  (이상 신호 0건 — 전량 표시)
+   HTML     → review/toc_report/view.html  (kit 렌더러)
+
+   ▶ 다음 두 줄이면 끝난다 — 뷰를 보고 승인한다:
+       (뷰 확인) review/toc_report/view.html
+       python run.py register confirm toc_report --by <승인자>
+   고칠 것이 있을 때만: python run.py register review toc_report --instruct "…"
+```
+
+**뷰를 만드는 함수는 하나다** — 생성이 `cmd_review`를 그대로 부른다. 두 벌이면
+「생성이 보여 준 화면」과 「검수가 보여 주는 화면」이 갈리고, 사람이 승인한 것이
+어느 쪽인지 사후에 못 가린다. 생성 쪽은 `llm_coord=False`·`extract=False`다 —
+비용 관문은 사람이 켜고, 그 자리가 `review`다(그래서 남긴다).
+
+### ⓑⓒ 화면 (HTML 실물)
+
+```
+ 형태 판정 — table이냐 prose냐 (결정적 · LLM 0)
+ 문서        판정  자동  column_count  min_unique_ratio  max_text_share  indent_share  numbered_rows
+ TOC01.xlsx  prose  예       1 [p]         1.0 [p]          1.0 [p]       0.871 [p]      14 [p]
+ TOC02.xlsx  prose  예       1 [p]         1.0 [p]          1.0 [p]        0.84 [p]      11 [p]
+
+ 분할 레벨이 목표 구간 밖이다 — 최근접 레벨로 실었다. 레벨을 옮길지는 사람이
+ 정한다 (자동으로 지도 패스로 넘기지 않는다): TOC02/보고서 레벨 1
+ 분할 크기 분포
+ 목표 구간 밖은 짧은 쪽·긴 쪽을 갈라 센다 — 처방이 다르다: 짧으면 레벨을
+ 얕게(더 묶는다), 길면 깊게(더 쪼갠다).
+ 문서  청크  행수 최소~최대(평균)  목표 구간  너무 짧음  너무 긺
+```
+
+- **최근접 폴백은 머리에 선다** — 표 안의 한 칸이면 접힌 화면에서 사라진다.
+- **긴 쪽도 붉힌다** — 구판은 짧은 쪽만 붉혀, 「굵은 청크가 수집 상한을 통째로
+  먹는다」가 화면에서 안 보였다.
+- **사람에게 올라온 형태 판정은 `anomalies`에 `question`으로도 뜬다**(§6.6-1).
+
+### 회차 중 잡은 것
+
+1. **`[정정]40`의 어서션이 성질을 바꿔야 했다.** 「관문 FAIL이면 뷰가 **없다**」는
+   생성이 이미 뷰를 만들므로 더는 참이 아니다. 잠글 성질은
+   **「관문을 못 지난 산출로 뷰를 갈아 치우지 않는다」**다 — 붉은 재생성분이 화면을
+   덮으면 사람이 그것을 보고 승인한다. 바이트 비교로 다시 썼다.
+2. **내 ⑤ 블록이 confirm 뒤 정본을 승격시켜 두고 치우지 않았다** — 다음 실행에서
+   `toc_report`가 내장으로 보여 스위트 앞머리가 통째로 붉었다(4 PASS / 1 FAIL).
+   `reset`을 붙이고 뒷정리 자체도 어서션으로 세웠다.
+3. 렌더러의 f-string 안에 역슬래시를 넣어 `SyntaxError` — `_w()` 헬퍼로 뺐다.
+
+**변이 시험**: 생성의 `cmd_review` 호출을 떼자 `view.html`이 서지 않았다.
+
+### 결과
+
+- 회귀 **1023 → 1037/1037** (+14, 삭제 0): `test_p3` 291 → 305.
+- 검사 4종 전부 통과.
+
+## B58 ⑥ — 산출 스키마의 계열 분기 · 2026-09-10
+
+**스키마 `required`는 모델이 빠져나갈 수 없는 자리다.** 구판은 한 벌뿐이라 열이라는
+것이 없는 산문 문서에서 모델이 **있지도 않은 role 집계를 지어내야 했다.** 템플릿
+문면과 달리 실해악이다 — 지어낸 값이 검수 뷰의 「갈린 열」·「경계선 부근」 화면에
+그대로 실린다.
+
+```
+table  → required=[adapter_py, attribute_ranking, confidence_cut, role_counts,
+                   schema_json, unmappable]
+prose  → required=[adapter_py, schema_json, unmappable]
+None   → required=[adapter_py, schema_json, unmappable]
+         (세 계열 모두 required == properties — strict 요건이 선다)
+```
+
+**`required`에서만 빼지 않고 `properties`에서도 뺐다.** strict가 「`required`는
+`properties`의 전 키를 포함」이라(B44 실측 400), 한쪽만 줄이면 게이트웨이가 요청을
+통째로 거부한다. 이 스키마에 「선택 항목」이라는 개념은 없다.
+
+**계열의 출처는 형태 판정 하나다**(`parser/form.py`) — 생성에서 따로 재지 않는다.
+`.pptx`·`.pdf`는 포맷이 prose를 함의한다. 실측:
+
+```
+CP01.xlsx → table · TOC01.xlsx → prose · PPT_basic.pptx → prose
+PDF_basic.pdf → prose · [CP01 + TOC01] → None (섞이면 판정이 서지 않는다)
+```
+
+### attribute 경계선 — 템플릿 v1.2 (B58-6)
+
+규약 3에 **「위 3개·아래 3개와 각각의 사유」**를 더했다. **숫자 눈금은 넣지 않았다**
+— 사내 표본 0건이고, 근거 없는 수를 지시문에 박으면 그것이 사실이 된다(P7).
+v1.1은 손대지 않았다(판 계보 12판).
+
+### 어서션 — 성질 하나
+
+허브가 기준을 바꿨다: 화면 문면을 세지 말고 성질을 잠근다.
+
+```
+[PASS] ⑥ prose 산출 스키마의 required에 role 키가 없다  — []
+[PASS] ⑥ 계열 전부가 strict 요건을 지킨다 (required = properties 전량)
+[PASS] ⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 prose에서만이다)
+```
+
+**변이 시험**: 계열 분기를 떼자 prose의 `required`에 role 키 3종이 되살아났다.
+
+### 회차 중 잡은 것
+
+**판 번호를 못박은 어서션이 있었다** — `_newest_template().name == "…v1.1.md"`.
+판이 오를 때마다 깨져 어서션이 템플릿 개정을 막는 자리가 된다(관문 판정 수에서
+같은 병을 이미 겪었다). 잠글 성질인 **「옛 판을 고치지 않고 새 판을 세운다」**로
+다시 썼다.
+
+### 결과
+
+- 회귀 **1037 → 1040/1040** (+3, 삭제 0): `test_p3` 305 → 308.
+- 검사 4종 전부 통과.
