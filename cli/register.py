@@ -1058,9 +1058,21 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     st["machine_gate"] = machine_gate(doc_type, st, samples, pkg)
     _save_state(doc_type, st)
     if st["machine_gate"] == "PASS":
-        print(f"   기계 관문 PASS — 검수로 넘어간다: "
-              f"python run.py register review {doc_type}")
-        return 0
+        print(f"   기계 관문 PASS — **검수 뷰까지 여기서 만든다**(B58 ⑤)")
+        # **뷰를 만드는 함수는 하나다** — `cmd_review`를 그대로 부른다. 두 벌이면
+        # 「생성이 보여 준 화면」과 「검수가 보여 주는 화면」이 갈리고, 사람이 승인한
+        # 것이 어느 쪽인지 사후에 못 가린다.
+        #
+        # **여기서는 LLM을 켜지 않는다**(`llm_coord=False` · `extract=False`) —
+        # 생성은 사람이 아직 아무것도 고르지 않은 자리이고, 비용 관문은 사람이
+        # 켜는 것이다. 켜려면 `review`로 들어간다 — 그것이 그 명령이 남는 이유다.
+        rc = cmd_review(doc_type, llm_coord=False, extract=False)
+        print(f"\n   ▶ 다음 두 줄이면 끝난다 — 뷰를 보고 승인한다:")
+        print(f"       (뷰 확인) {(REVIEW / doc_type / 'view.html').relative_to(ROOT)}")
+        print(f"       python run.py register confirm {doc_type} --by <승인자>")
+        print(f"   고칠 것이 있을 때만: python run.py register review {doc_type} "
+              f"--instruct \"…\"  (좌표 LLM 보조·추출 리허설도 그쪽이다)")
+        return rc
     print(f"   기계 관문 FAIL — **검수로 넘어가지 않았다.** 산출은 "
           f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
     print(f"   같은 표본으로 다시 시도: python run.py register generate "
@@ -1308,6 +1320,22 @@ def gate_verdict(harness_ok, parses_ok, orphan):
     return "PASS" if (harness_ok and parses_ok and not orphan) else "FAIL"
 
 
+def _form_of_sample(sample):
+    """표본 하나의 형태 판정 — 격자 포맷이 아니면 `None`.
+
+    **판정기는 한 자리다**(`parser/form.py`) — 여기서 다시 세면 등록 화면과 인입
+    기록이 다른 답을 낼 수 있고, 그때 어느 쪽이 근거인지 아무도 모른다.
+    """
+    if Path(sample).suffix.lower() not in reader.GRID_EXT:
+        return None
+    try:
+        j = form.judge(reader.read(str(sample)))
+    except Exception as e:                       # 판정 실패가 검수를 막지 않는다
+        return {"signals": {}, "votes": {}, "verdict": None, "auto": False,
+                "why": f"형태 판정 불가 — {type(e).__name__}: {e}"}
+    return {k: j[k] for k in ("signals", "votes", "verdict", "auto", "why")}
+
+
 def build_view(st, results, harness_ok, harness_out, rehearsal=None):
     """뷰 데이터 산출 — **D-79 스키마가 계약**이고 여기가 산출자다.
 
@@ -1370,6 +1398,32 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
                                      f"생성이 빠뜨렸거나 문서 양식이 바뀌었다",
                           "where": st["doc_type"]})
 
+    # **형태 판정을 화면에 싣는다**(B58 ⑤ · 문서 1 C37) — 격자 포맷 표본만.
+    # 사람에게 올라온 문서는 **이상 신호로도** 뜬다: 「이상 신호는 전량 필수
+    # 표시」(§6.6-1)라 요약 표에만 두면 접힌 화면에서 사라진다.
+    forms = []
+    for smp in st["samples"]:
+        j = _form_of_sample(smp)
+        if j is None:
+            continue
+        forms.append({"doc": Path(smp).name, **j})
+        if not j["auto"]:
+            anomalies.append({
+                "kind": "question",
+                "message": (f"'{Path(smp).name}'의 형태 판정이 자동으로 서지 않는다 — "
+                            f"table로 읽을지 prose로 읽을지 사람이 정한다: {j['why']}"),
+                "where": Path(smp).name,
+                "detail": {"signals": j["signals"], "votes": j["votes"],
+                           "note": "신호값 다섯이 판단 재료다 — 문턱은 parser/form.py"}})
+        elif j["verdict"] != kind:
+            anomalies.append({
+                "kind": "warning",
+                "message": (f"'{Path(smp).name}'의 형태 판정({j['verdict']})이 "
+                            f"이 어댑터의 payload_kind({kind})와 어긋난다 — "
+                            f"지정대로 진행한다([정정] 48 ②)"),
+                "where": Path(smp).name,
+                "detail": {"signals": j["signals"], "votes": j["votes"]}})
+
     tree = [{"section": p.get("section", ""), "locator": p["source_locator"],
              "excerpt": (p.get("text") or "")[:70],
              "depth": (p.get("section") or "").count(">")} for p in pieces]
@@ -1391,6 +1445,10 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
                             "split": [{"doc_id": r.doc_id,
                                        **(r.report.get("split") or {})}
                                       for r in results if r.report.get("split")],
+                            # **형태 판정**(B58 ⑤) — `split`과 같은 자리다. 구획 1은
+                            # `summary·anomalies·normal` 3층으로 닫혀 있어(D-79)
+                            # 네 번째 키를 만들면 스키마 계약이 깨진다.
+                            "form": forms,
                             "failures": sum(1 for a in anomalies if a["kind"] == "failure"),
                             "warnings": sum(1 for a in anomalies if a["kind"] == "warning"),
                             "fill_rate": fill},

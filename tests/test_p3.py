@@ -1281,12 +1281,18 @@ show("① 지시 이력이 한 사슬이다 — 사람(검수 지시) → 자동
 show("① 통과하면 뷰가 선다", _st40["machine_gate"] == "PASS"
      and (REVIEW / "f40ok" / "view.json").exists() and _r40.returncode == 0)
 _reg40("generate", "f40no", "process", str(RAW / "CP01.xlsx"))
+# **생성이 이미 뷰를 만들었다**(B58 ⑤) — 초안은 관문을 지났기 때문이다. 잠글
+# 성질은 「뷰가 없다」가 아니라 **「관문을 못 지난 산출로 뷰를 갈아 치우지
+# 않는다」**로 바뀐다: 붉은 재생성분이 화면을 덮으면 사람이 그것을 보고 승인한다.
+_v41 = REVIEW / "f40no" / "view.json"
+_before41 = _v41.read_bytes() if _v41.exists() else None
 _r41 = _reg40("review", "f40no", "--instruct", "이렇게 고쳐라", "--no-llm-coord")
 _st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8"))
-# **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 뷰가 생겨 붉는다.
-show("① 해소 못 하면 **뷰를 만들지 않는다** · machine_gate=FAIL (변이 검출 지점)",
+# **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 붉은
+# 산출이 뷰를 덮어써 붉는다.
+show("① 해소 못 하면 **뷰를 갈아 치우지 않는다** · machine_gate=FAIL (변이 검출 지점)",
      _st41["machine_gate"] == "FAIL"
-     and not (REVIEW / "f40no" / "view.json").exists()
+     and (_v41.read_bytes() if _v41.exists() else None) == _before41
      and "검수 뷰를 만들지 않았다" in _r41.stdout and _r41.returncode != 0,
      [l.strip() for l in _r41.stdout.splitlines() if "만들지 않았다" in l][:1])
 show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
@@ -1866,6 +1872,114 @@ show("②ⓐ prose — 검수 화면에 기계 오류 0 (failure 종 0건)",
 show("②ⓐ 관문이 자기 구조 지도를 남기지 않는다 (운영 보존분과 섞이지 않는다)",
      not [q for q in (ROOT / "extract" / "struct_maps").glob("_gate_*.json")],
      str([q.name for q in (ROOT / "extract" / "struct_maps").glob("*.json")][:4]))
+
+
+# ── B58 ⑤ 검수 뷰는 생성이 만든다 + 분할 분포 ──────────────────────────
+print("\n■ B58 ⑤ — generate가 뷰까지 만든다 · review는 고칠 때만")
+
+reset("toc_report")
+_g5 = run("generate", "toc_report", "process",
+          str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+_vh = REVIEW / "toc_report" / "view.html"
+show("⑤ⓐ generate가 관문 PASS 뒤 view.html까지 만든다",
+     _g5.returncode == 0 and _vh.exists() and _vh.stat().st_size > 0)
+show("⑤ⓐ 그 경로를 화면이 찍는다 (사람이 어디를 볼지 안다)",
+     "view.html" in _g5.stdout and "register confirm toc_report" in _g5.stdout)
+# **뷰를 만드는 함수는 하나다** — 두 벌이면 「생성이 보여 준 화면」과 「검수가
+# 보여 주는 화면」이 갈리고, 사람이 승인한 것이 어느 쪽인지 사후에 못 가린다.
+show("⑤ⓐ 생성이 검수와 **같은 함수**를 부른다 (뷰 경로가 둘이 아니다)",
+     "cmd_review(doc_type, llm_coord=False, extract=False)" in
+     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+# **생성은 LLM을 켜지 않는다** — 비용 관문은 사람이 켜는 것이고, 그 자리가 review다.
+show("⑤ⓐ 생성의 뷰 산출에 LLM 호출 0 (좌표 보조·추출 리허설을 켜지 않는다)",
+     "추출 리허설 끔" in _g5.stdout and "LLM 호출 0회" in _g5.stdout)
+# **review는 남는다** — 없애면 재생성 지시·좌표 보조·추출 리허설의 자리가 사라진다.
+_r5 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
+show("⑤ review는 선택 명령으로 남는다 (고칠 때 들어가는 자리)",
+     _r5.returncode == 0 and "■ ② 검수" in _r5.stdout)
+# ⓐ **review 없이 confirm이 된다.**
+reset("toc_report")
+run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+_c5 = run("confirm", "toc_report", "--by", "검수자 정")
+show("⑤ⓐ review를 거치지 않고 confirm이 선다 (generate → 뷰 확인 → confirm)",
+     _c5.returncode == 0 and registry.lookup("toc_report") is not None)
+
+_v5 = view_of("toc_report")
+_sum5 = _v5["sections"]["parse_result"]["summary"]
+_html5 = _vh.read_text(encoding="utf-8")
+# ⓑ **분포·고른 레벨·사유** — 값은 산출자가 채우고 렌더러는 그린다(§6.6-3).
+_pick5 = [p for r in _sum5["split"] for p in (r.get("레벨_선택") or [])]
+show("⑤ⓑ prose 화면에 레벨별 분포가 있다 (청크수·행수 min/max/avg·구간내)",
+     _pick5 and all({"청크수", "행수_최소", "행수_최대", "행수_평균", "구간내_청크수"}
+                    <= set(d) for p in _pick5 for d in (p["레벨_분포"] or {}).values()))
+show("⑤ⓑ 규칙이 고른 레벨과 사유가 함께 있다",
+     all(p.get("분할_레벨") is not None and p.get("분할_레벨_사유") for p in _pick5)
+     and "목표 구간" in _pick5[0]["분할_레벨_사유"])
+# ⓒ **짧은 쪽·긴 쪽 분리** — 처방이 다르다. 값도 화면도 갈라져 있어야 한다.
+show("⑤ⓒ 목표 구간 밖이 짧은 쪽·긴 쪽으로 갈려 있다 (값)",
+     all({"너무_짧은_청크", "너무_긴_청크", "목표구간"} <= set(r)
+         for r in _sum5["split"]))
+show("⑤ⓒ 화면이 둘을 각각 센다 — 처방이 다르다는 말이 함께 있다",
+     "너무 짧음" in _html5 and "너무 긺" in _html5
+     and "짧으면 레벨을 얕게" in _html5 and "길면 깊게" in _html5)
+# **최근접 폴백은 머리에 선다** — 표 안의 한 칸이면 접힌 화면에서 사라진다.
+show("⑤ⓒ 최근접 폴백이 머리에 표시된다 (TOC02가 그 경우다)",
+     any(p.get("분할_레벨_구간밖") for p in _pick5)
+     and "분할 레벨이 목표 구간 밖이다" in _html5
+     and _html5.index("분할 레벨이 목표 구간 밖이다") < _html5.index("분할 크기 분포"))
+# **형태 판정 다섯 값이 화면에 그대로** — 사람이 정할 것이 그 값이다.
+show("⑤ 형태 판정 다섯 값이 뷰와 화면에 그대로 실린다 (문서 1 C37)",
+     len(_sum5["form"]) == 2
+     and all(len(f["signals"]) == 5 and len(f["votes"]) == 5 for f in _sum5["form"])
+     and "형태 판정 — table이냐 prose냐" in _html5
+     and "indent_share" in _html5)
+
+# **사람에게 올라온 문서는 이상 신호로도 뜬다** — 요약 표에만 두면 접힌 화면에서
+# 사라진다(§6.6-1 「이상 신호는 전량 필수 표시」). 판정기를 직접 넣어 확인한다.
+_amb = {}
+for _r in range(1, 21):
+    for _i in range(12):
+        _amb[f"{chr(65 + _i)}{_r}"] = f"{chr(65 + _i)}{_r} 고유값 {_r}-{_i}"
+_ind = {a: 1 for a in list(_amb)[:int(round(len(_amb) * 0.85))]}
+_raw_amb = {"format": "xlsx", "sheets": [{"name": "S", "max_row": 20, "max_col": 12,
+            "cells": _amb, "merged": [], "indent": _ind, "bold": [], "images": []}]}
+from parser import form as _FORM                                    # noqa: E402
+
+
+class _FakeRes:
+    """`build_view`가 보는 최소 파싱 결과 — 형태 판정 갈래만 보려는 자리다."""
+    ok, doc_id, failures = True, "AMB01", []
+    report, envelope = {}, {"chunks": []}
+
+
+_st_amb = json.loads((REVIEW / "toc_report" / "state.json").read_text(encoding="utf-8"))
+_amb_path = ROOT / "_b58_amb.xlsx"
+_orig_judge, _orig_read = _FORM.judge, R.reader.read
+try:
+    # 표본 하나가 **사람에게 올라오는** 상황을 만든다 — 판정기는 그대로 두고
+    # 그 문서의 raw만 갈아 끼운다(판정 규칙을 흉내 내지 않는다).
+    _amb_path.write_bytes(b"")
+    R.reader.read = lambda pth: _raw_amb if str(pth).endswith("_b58_amb.xlsx") else _orig_read(pth)
+    _view_amb = R.build_view({**_st_amb, "samples": [str(_amb_path)]},
+                             [_FakeRes()], True, "")
+    _qs = [a for a in _view_amb["sections"]["parse_result"]["anomalies"]
+           if a["kind"] == "question" and "형태 판정" in a["message"]]
+    show("⑤ 사람에게 올라온 형태 판정은 **이상 신호로도** 뜬다 (§6.6-1 전량 표시)",
+         _FORM.judge(_raw_amb)["verdict"] is None and len(_qs) == 1
+         and len(_qs[0]["detail"]["signals"]) == 5,
+         _qs[0]["message"][:60] if _qs else "질문 0건")
+finally:
+    R.reader.read = _orig_read
+    _amb_path.unlink(missing_ok=True)
+
+# **시험이 자기 등재를 치운다** — ⓐ의 confirm이 어댑터·스키마를 정본 자리로
+# 승격시킨다(문서 6 §6.5). 남기면 다음 실행에서 `toc_report`가 **내장**으로 보여
+# 이 스위트의 앞머리가 통째로 붉는다(실측: 4 PASS / 1 FAIL로 멈췄다).
+reset("toc_report")
+show("⑤ 시험이 승격시킨 정본을 치웠다 (다음 실행으로 새지 않는다)",
+     registry.lookup("toc_report") is None
+     and not (ROOT / "adapters" / "toc_report.py").exists()
+     and not (ROOT / "schemas" / "toc_report.json").exists())
 
 
 print("\n" + "=" * 62)
