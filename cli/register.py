@@ -29,6 +29,9 @@
                     등재 경로에 놓는다 (§6.4-5) — 검수·승인 1회는 그대로다(M4)
        --drop-interview  이전 문답을 **버린다.** 기본은 이어가기다 — 사람의 답은
                     다시 만들 수 없는 재료라, 버리는 쪽이 명시를 요구한다(B55)
+       --revise     **등록분의 새 판.** 이름은 그대로이고 확정이 정본을 교체하며
+                    revision이 오른다. 승인 기록은 누적한다 (H27)
+       --as <이름>  **변형 등록.** 기존 doc_type은 그대로 두고 새 이름으로 간다
   python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -609,13 +612,33 @@ def _merge_hint(hint, batches):
 
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                  no_fewshot=False, resume=False, use_basic=False,
-                 drop_interview=False):
+                 drop_interview=False, revise=False, as_name=None):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
       사람 — 표본 · doc_type 이름 · 층 지정 · 힌트(자유 텍스트)
       시스템 — reader 원시 추출 · 골격 닫힌 목록 · 층 어휘 · 공용 블록 · 어댑터 스켈레톤
+
+    **등록분에도 다시 들어올 수 있다**(H27 · B58 ①): `--revise`는 같은 이름의 새 판,
+    `--as <이름>`은 변형 등록이다. 구판은 등록된 이름이면 통째로 거부해 **어댑터를
+    고쳐 다시 등록할 길이 없었다** — 사내가 그 자리에서 멈춰 있었다.
     """
+    if as_name:
+        # **변형 등록** — 기존 doc_type은 손대지 않고 새 이름으로 정상 경로를 간다.
+        print(f"  ▶ 변형 등록 — '{doc_type}'은 그대로 두고 '{as_name}'으로 간다")
+        doc_type = as_name
+    if revise:
+        # **새 판** — 이름은 그대로다. 확정이 정본을 교체하고 revision을 올린다.
+        if not registry.lookup(doc_type):
+            raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "
+                             f"'{doc_type}'은 등록돼 있지 않다 (그냥 generate로 간다)")
+        _cur = registry.lookup(doc_type)
+        _docs = registry.ingested_docs(doc_type)
+        print(f"  ▶ 새 판 — '{doc_type}'의 정본을 교체한다 "
+              f"(현행 revision {_cur.get('revision', 0)})")
+        if _docs:
+            print(f"    ※ 이 doc_type으로 인입된 문서 {len(_docs)}건 — "
+                  f"확정해도 **자동 재인입은 없다**(문서 4 §4.8-7)")
     if resume:
         # **패키지 조립과 문답을 건너뛰고 draft만 한다**(B43 ⑤). 문답이 몇 라운드
         # 돌고 죽었을 때, 그 전부를 다시 하지 않으려는 자리다 — 패키지에 이미
@@ -651,8 +674,21 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         _save_state(doc_type, st)
         return _finish_generate(doc_type, st, st["samples"], pkg)
 
-    if registry.lookup(doc_type):
-        raise SystemExit(f"[생성] doc_type 이름 중복 — '{doc_type}'은 이미 등록돼 있다")
+    if registry.lookup(doc_type) and not revise:
+        # **막다른 길만 말하지 않는다**(H27) — 구판은 여기서 끝이라, 어댑터를 고쳐
+        # 다시 등록할 길이 아예 없었다. 두 경로가 있고 화면이 그것을 알려 준다.
+        _docs = registry.ingested_docs(doc_type)
+        raise SystemExit(
+            f"[생성] '{doc_type}'은 이미 등록돼 있다. 두 길 중 하나를 고른다:\n"
+            f"   ① 같은 이름의 **새 판** — 어댑터를 고쳐 정본을 교체한다\n"
+            f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
+            f"<표본...> --revise\n"
+            f"   ② **변형 등록** — 기존은 그대로 두고 다른 이름으로 간다\n"
+            f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
+            f"<표본...> --as <새이름>\n"
+            + (f"   ※ 이 doc_type으로 인입된 문서 {len(_docs)}건이 있다 — "
+               f"새 판을 확정해도 **자동 재인입은 없다**(문서 4 §4.8-7)\n"
+               if _docs else ""))
 
     # **표본 자리의 비파일을 조용히 무시하지 않는다.** 힌트를 따옴표 없이 적으면
     # 그 단어들이 표본 목록으로 들어오고, 지금까지는 reader가 「지원하지 않는 포맷」으로
@@ -677,7 +713,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                 f"[생성] --use-basic 거부 — 기본 어댑터 제안이 서지 않는 표본이다: "
                 f"분할 자명 계열(pptx)이 아니다 {[Path(s).name for s in samples]}. "
                 f"LLM 생성 경로(--use-basic 없이)로 등록한다 (§6.4-5)")
-        return _use_basic(doc_type, layer, samples, hint, proposal)
+        return _use_basic(doc_type, layer, samples, hint, proposal, revise)
 
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
     cfg = json.loads((ROOT / "layers" / layer / "config.json").read_text(encoding="utf-8"))
@@ -806,12 +842,13 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
           "adapter": str(_rel(ad)),
           "schema": str(_rel(sc)),
           "revision": 0, "instructions": [],
+          "revise_of": doc_type if revise else None,   # **새 판인가**(H27)
           "basic_adapter_proposal": proposal}
     _save_state(doc_type, st)
     return _finish_generate(doc_type, st, samples, pkg)
 
 
-def _use_basic(doc_type, layer, samples, hint, proposal):
+def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     """② 기본 어댑터 수용 — **LLM 호출 0회**로 검수 자리에 정본 후보를 놓는다 (§6.4-5).
 
     어댑터는 코어의 `parser/adapters/basic_ppt.py`를 **위임하는 래퍼**다 — 복사하지
@@ -864,6 +901,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal):
           "adapter": str(_rel(ad)),
           "schema": str(_rel(sc)),
           "revision": 0, "instructions": [],
+          "revise_of": doc_type if revise else None,   # **새 판인가**(H27)
           "basic_adapter_proposal": proposal, "use_basic": True}
     _save_state(doc_type, st)
     return _finish_generate(doc_type, st, samples, pkg)
@@ -1685,11 +1723,17 @@ def cmd_confirm(doc_type, approved_by):
     # 파일만 남아 조회에는 잡히고 등록부에는 없는 반쪽 상태가 되고, 그 이름의
     # 재등록이 「내장 중복」으로 영영 막힌다(실측).
     adapter_path, schema_path = _promote_paths(doc_type)
-    entry = registry.register(
-        doc_type, layer=st["layer"], adapter=adapter_path, schema=schema_path,
+    # **새 판이면 교체다**(H27 · B58 ①) — 이름 중복 거부가 아니라 정본 교체이고
+    # `revision`이 오른다. 승인 기록은 덮지 않고 누적한다(옛 판으로 인입된 문서의
+    # 근거가 사라지면 안 된다).
+    _revising = bool(st.get("revise_of")) and bool(registry.lookup(doc_type))
+    _fn = registry.revise if _revising else registry.register
+    _kw = {} if _revising else {"layer": st["layer"]}
+    entry = _fn(
+        doc_type, adapter=adapter_path, schema=schema_path,
         adapter_version=mod.ADAPTER.get("adapter_version"),
         approved_by=approved_by, approved_at=at,
-        instructions=st.get("instructions") or [])
+        instructions=st.get("instructions") or [], **_kw)
     _promote(doc_type, st)              # 등재가 성립한 뒤에만 실물을 옮긴다
     approval = {"doc_type": doc_type,
                 "adapter_version": mod.ADAPTER.get("adapter_version"),
@@ -1704,10 +1748,30 @@ def cmd_confirm(doc_type, approved_by):
             approval["추출 리허설"] = {k: _ex.get(k) for k in
                                    ("source", "prompt_version", "config_version",
                                     "totals", "category_counts")}
-    (_dir(doc_type) / "approval.json").write_text(
-        json.dumps(approval, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"■ ③ 확정 — {doc_type} 등록부 등재 (승인 {approved_by} @ {at})")
+    _ap = _dir(doc_type) / "approval.json"
+    if _ap.exists():
+        # **덮지 않는다** — 판마다 무엇을 보고 승인했나가 이력이다.
+        try:
+            _prev = json.loads(_ap.read_text(encoding="utf-8"))
+            approval["이전 승인"] = ((_prev.pop("이전 승인", None) or []) + [_prev])[-20:]
+        except json.JSONDecodeError:
+            pass
+    approval["revision"] = entry.get("revision", 0)
+    _ap.write_text(json.dumps(approval, ensure_ascii=False, indent=2) + "\n",
+                   encoding="utf-8")
+    if _revising:
+        print(f"■ ③ 확정 — {doc_type} **새 판 등재** "
+              f"(revision {entry.get('revision')} · 승인 {approved_by} @ {at})")
+        print(f"   승인 이력 {len(entry.get('approvals') or [])}건 — 덮지 않고 쌓는다")
+    else:
+        print(f"■ ③ 확정 — {doc_type} 등록부 등재 (승인 {approved_by} @ {at})")
     print(f"   어댑터·스키마 활성: {entry['adapter']} · {entry['schema']}")
+    # **자동 재인입은 없다**(문서 4 §4.8-7) — 무엇이 옛 판으로 들어와 있는지 보인다.
+    _ing = registry.ingested_docs(doc_type)
+    if _ing:
+        print(f"   이 doc_type으로 인입된 문서 {len(_ing)}건 — "
+              f"**재인입은 사람이 정한다**(자동으로 다시 읽지 않는다)")
+        print(f"     {', '.join(_ing[:8])}" + (f" 외 {len(_ing) - 8}건" if len(_ing) > 8 else ""))
     print(f"   승인 기록 → {(_dir(doc_type) / 'approval.json').relative_to(ROOT)}")
     # **등록은 여기서 끝이고 인입은 자동으로 이어지지 않는다** — 그래프까지 간 줄 알고
     # 멈춘 실측이 있어 다음 두 줄을 그대로 낸다(등록개선 ③).
@@ -1763,6 +1827,11 @@ def main(argv):
         drop_iv = "--drop-interview" in rest
         if drop_iv:
             rest.remove("--drop-interview")
+        # **재등록 두 경로**(H27 · B58 ①)
+        revise = "--revise" in rest
+        if revise:
+            rest.remove("--revise")
+        as_name = opt("--as", None)
         # **위치 인자가 모자라면 죽지 말고 사용법을 낸다.** `--resume`은 doc_type
         # 하나만 필요하다 — 층·표본은 패키지에 이미 있고 resume 갈래가 그것을
         # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
@@ -1771,7 +1840,7 @@ def main(argv):
         return cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
-                            drop_interview=drop_iv)
+                            drop_interview=drop_iv, revise=revise, as_name=as_name)
     if cmd == "review":
         # **prose의 리허설 기본은 전량이다**(B51) — 부분 리허설의 근거(좌표 미스
         # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.

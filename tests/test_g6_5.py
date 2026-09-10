@@ -738,6 +738,71 @@ show("⑤ 회귀 대조 자산이 개정본 기준이다 (감사 에이전트가
      and "반전] B26" in
      (ROOT / "docs" / "회귀스위트" / "자산" / "V1_정답행.json").read_text(encoding="utf-8"))
 
+# ── B58 ① 재등록 경로 (H27) ─────────────────────────────────────────────
+# **잠그는 성질: 승인 기록은 누적된다.** 새 판을 올릴 때 이전 승인자가 사라지면
+# 「이 문서는 누가 승인한 판으로 들어왔나」를 되짚을 수 없다 — 옛 판으로 인입된
+# 문서가 남아 있는 한(자동 재인입은 없다) 그 이력이 곧 근거다.
+# 문구가 아니라 **자료의 모양**을 본다: 화면 문안은 바뀌어도 이 성질은 남아야 한다.
+print("\n■ B58 ① — 재등록: 승인 기록이 누적된다")
+
+from core import registry                                     # noqa: E402
+
+_B58 = "b58revtype"
+_reg0 = store.read(store.DOC_TYPES, {})
+_reg0.pop(_B58, None)
+store.write(store.DOC_TYPES, _reg0)
+
+registry.register(_B58, layer="quality", adapter="adapters/b58.py", schema="schemas/b58.json",
+                  adapter_version="1.0", approved_by="갑", approved_at="2026-01-01T00:00:00+00:00")
+_e1 = registry.revise(_B58, adapter="adapters/b58.py", schema="schemas/b58.json",
+                      adapter_version="1.1", approved_by="을",
+                      approved_at="2026-02-01T00:00:00+00:00")
+_e2 = registry.revise(_B58, adapter="adapters/b58.py", schema="schemas/b58.json",
+                      adapter_version="1.2", approved_by="병",
+                      approved_at="2026-03-01T00:00:00+00:00")
+
+_who = [a.get("approved_by") for a in (_e2.get("approvals") or [])]
+show("①ⓔ 승인 이력이 쌓인다 — 첫 승인자가 살아 있다 (덮이지 않는다)",
+     _who == ["갑", "을", "병"], str(_who))
+show("①ⓔ 판 번호가 기록마다 다르다 — 어느 판을 누가 승인했는지 갈린다",
+     [a.get("revision") for a in _e2["approvals"]] == [0, 1, 2])
+show("①ⓔ 이름은 그대로고 정본만 바뀐다 (변형 등록이 아니다)",
+     _e2["doc_type"] == _B58 and _e2["revision"] == 2
+     and _e2["adapter_version"] == "1.2"
+     and registry.lookup(_B58)["revision"] == 2)
+show("①ⓔ 한 번 쌓인 기록은 다음 판에서도 그대로다 (재계산이 아니라 누적)",
+     (_e1.get("approvals") or [])[:2] == (_e2.get("approvals") or [])[:2])
+
+# **등록되지 않은 이름에는 새 판이 없다** — revise가 register를 겸하면 오타 하나가
+# 조용히 새 doc_type을 만든다(그 반대가 `--as`다).
+try:
+    registry.revise("b58_없는이름", adapter="a.py", schema="s.json",
+                    adapter_version="1.0", approved_by="갑", approved_at="x")
+    _raised = False
+except ValueError:
+    _raised = True
+show("①ⓔ 등록되지 않은 이름에 --revise는 막힌다 (오타가 새 doc_type을 만들지 않는다)",
+     _raised)
+
+# ⓓ 화면이 세는 수의 출처 — **그 doc_type으로 인입된 문서만** 센다.
+_dr = store.read(store.DOC_REGISTRY, {})
+_dr["B58DOC"] = {**(_dr.get("CP01") or {}), "doc_type": _B58}
+store.write(store.DOC_REGISTRY, _dr)
+show("①ⓓ 인입 문서 집계는 그 doc_type의 것만 센다",
+     registry.ingested_docs(_B58) == ["B58DOC"]
+     and "B58DOC" not in registry.ingested_docs("cp_table"),
+     str(registry.ingested_docs(_B58)))
+
+# **시험용 등재를 걷는다** — 남기면 다음 스위트가 「등록부에 모르는 이름이 있다」로
+# 걸린다(실사고). 시험은 자기가 만든 것을 자기가 치운다.
+_reg9 = store.read(store.DOC_TYPES, {}); _reg9.pop(_B58, None)
+store.write(store.DOC_TYPES, _reg9)
+_dr9 = store.read(store.DOC_REGISTRY, {}); _dr9.pop("B58DOC", None)
+store.write(store.DOC_REGISTRY, _dr9)
+show("①ⓔ 시험이 자기 등재를 치웠다 (다음 스위트로 새지 않는다)",
+     registry.lookup(_B58) is None and registry.ingested_docs(_B58) == [])
+
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G6.5 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

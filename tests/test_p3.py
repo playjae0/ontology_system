@@ -134,9 +134,13 @@ show("③ 확정 — 승인 1회로 등록부에 등재된다",
 appr = json.loads((REVIEW / "toc_report" / "approval.json").read_text(encoding="utf-8"))
 show("③ 승인 기록 4요소 — doc_type·adapter_version·승인자·시점 + 수정 지시 이력",
      # prose면 **무엇이 뽑히는 것을 보고 승인했나**가 함께 실린다(B51).
-     {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력"}
-     <= set(appr) and set(appr) - {"추출 리허설"}
-     == {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력"}
+     # `revision`은 **몇 번째 판을 승인했나**다(B58 ①) — 재등록 경로가 생기면서
+     # 판 번호 없는 승인 기록은 어느 판의 것인지 갈리지 않는다.
+     # 키 집합을 통째로 못박는 것은 **몰래 늘어나는 것을 막는 장치**다 — 늘릴 때는
+     # 여기에 이름을 적고 늘린다.
+     {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력", "revision"}
+     <= set(appr) and set(appr) - {"추출 리허설", "이전 승인"}
+     == {"doc_type", "adapter_version", "승인자", "시점", "수정 지시 이력", "revision"}
      and appr["승인자"] == "검수자 박서준" and len(appr["수정 지시 이력"]) == 1)
 show("③ **승인자 없이는 등재하지 않는다** — 무수정 자동 통과 금지 (틀 §2)",
      run("confirm", "toc_report", "--by", "").returncode != 0)
