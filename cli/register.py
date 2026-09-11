@@ -73,7 +73,8 @@ from cli.prompt import (  # noqa: F401
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import injections               # 주입 조립은 한 자리다(B48)
 from cli.interview import (  # noqa: F401
-    INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview)
+    INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
+    finalize as iv_finalize)
 
 REVIEW = ROOT / "review"
 KIT = ROOT / "kit"
@@ -680,7 +681,71 @@ def _keep_prior(prior):
 
 
 def _new_batch(samples):
-    return {"samples": sorted(samples), "at": store._now(), "rounds": []}
+    # `decisions`가 **확정 요약의 자리**다(B60 ②) — 라운드 전문(`rounds`)은 이력으로
+    # 남고, 생성 프롬프트에는 이것만 실린다. 자리는 항상 있다(빈 리스트라도).
+    return {"samples": sorted(samples), "at": store._now(), "rounds": [],
+            "decisions": []}
+
+
+def decisions_of(hint):
+    """`hint` 그릇의 **현재 표본분** 확정 사항 — 생성이 읽는 것이다.
+
+    stale 묶음의 결정은 여기 오지 않는다(이전 표본에 대한 판단이 현재 판정에 섞이면
+    안 된다 — B55 ②의 규율 그대로). 렌더가 그것을 표시해서 따로 싣는다.
+    """
+    out = []
+    for b in _hint_batches(hint):
+        if not b.get("stale"):
+            out.extend(b.get("decisions") or [])
+    return out
+
+
+def hint_only_decisions(text):
+    """문답 없이 `--hint`만 준 경우의 확정 사항 — **힌트 문장 그대로 한 항목**(B60 ②).
+
+    자리는 항상 있어야 한다: 생성 프롬프트의 `[확정 사항]`이 「문답을 했나」에 따라
+    있다 없다 하면, 모델이 없는 절을 찾거나 힌트를 결정보다 약하게 읽는다.
+    """
+    t = (text or "").strip()
+    return [{"topic": "힌트", "decision": t, "reason": "사람 힌트(자유 텍스트)",
+             "round": None}] if t else []
+
+
+def apply_instruction_to_decisions(doc_type, instruction, rev):
+    """`--instruct`가 **확정 사항을 갱신한다**(B60 ②) — LLM 0.
+
+    지시와 결정이 따로 살면 다음 재생성이 옛 결정을 다시 쓴다. 규칙은 결정적이다:
+    지시 문면에 **어느 항목의 `topic`이 그대로 들어 있으면** 그 항목의 `decision`을
+    지시로 바꾸고 `reason`에 「사람 지시 (rev N)」를 붙인다. 어느 topic도 안 들어
+    있으면 **새 항목**으로 붙인다 — 지시를 버리지 않는다(무엇에 대한 것인지 사람이
+    topic을 안 적었을 뿐이다). 매칭에 LLM을 쓰지 않는 이유: 이 갱신이 판단이 되면
+    「지시가 결정을 뒤집었다」가 사람 눈에 안 보이는 자리에서 일어난다.
+    """
+    path = REVIEW / doc_type / "input_package.json"
+    if not path.exists() or not (instruction or "").strip():
+        return None
+    obj = json.loads(path.read_text(encoding="utf-8"))
+    hint = (obj.get("human") or {}).get("hint")
+    batches = _hint_batches(hint)
+    live = [b for b in batches if not b.get("stale")]
+    if not live:
+        live = [_new_batch((obj.get("human") or {}).get("samples") or [])]
+        batches = batches + live
+    hit = 0
+    for b in live:
+        for d in b.get("decisions") or []:
+            t = (d.get("topic") or "").strip()
+            if t and t in instruction:
+                d["decision"] = instruction.strip()
+                d["reason"] = f"사람 지시 (rev {rev}) — 이전: {d.get('reason', '')}"
+                hit += 1
+    if not hit:
+        live[-1].setdefault("decisions", []).append(
+            {"topic": f"지시 (rev {rev})", "decision": instruction.strip(),
+             "reason": f"사람 지시 (rev {rev})", "round": None})
+    obj.setdefault("human", {})["hint"] = _merge_hint(hint, batches)
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return hit
 
 
 def _hint_batches(hint):
@@ -963,11 +1028,24 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # **이전 라운드를 문답에 실어 보낸다**(②-2) — 저장만 이어 붙이고 모델이
         # 처음부터 물으면 사람이 두 번 답한다.
         rounds = _interview(pkg, on_round=_persist)
+        # **확정 요약이 생성의 입력이다**(B60 ②) — 전문은 이력으로 남고, 사람이
+        # 화면에서 요약을 확인한다. 요약도 즉시 저장한다(라운드와 같은 이유).
+        _batch["decisions"] = iv_finalize(pkg, rounds)
         _persist(rounds)
         _old = sum(len(b["rounds"]) for b in _hint_batches(pkg["human"]["hint"])
                    if b is not _batch)
-        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록"
+        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록 · "
+              f"확정 사항 {len(_batch['decisions'])}항목"
               + (f" (이전 {_old}라운드 유지)" if _old else ""))
+    elif (hint or "").strip():
+        # **문답 없이 힌트만** — 힌트 문장이 그대로 한 항목의 확정 사항이다. 자리는
+        # 항상 있어야 하므로 여기서 묶음을 세운다(사람 4키는 그대로 — `hint` 안이다).
+        _hb = _new_batch([str(x) for x in samples])
+        _hb["decisions"] = hint_only_decisions(hint)
+        pkg["human"]["hint"] = _merge_hint(
+            pkg["human"]["hint"], _hint_batches(pkg["human"]["hint"]) + [_hb])
+        (d / "input_package.json").write_text(
+            json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     proposal = basic_adapter_proposal(samples)
     if proposal:
         print(f"   ▶ 기본 어댑터 적용 제안 — {proposal['reason']}")
@@ -1282,13 +1360,15 @@ def _failure_persist(doc_type, pkg, samples, ask):
     batch = _new_batch([str(x) for x in (samples or [])])
     batch["context"] = "기계 관문 실패"
 
-    def _persist(rounds):
+    def _persist(rounds, decisions=None):
         try:
             obj = json.loads(path.read_text(encoding="utf-8")) if path.exists() \
                 else {"human": {"hint": {}}}
         except (OSError, json.JSONDecodeError):
             return                              # 패키지를 못 읽으면 조용히 지나간다
         batch["rounds"] = rounds
+        if decisions is not None:
+            batch["decisions"] = decisions      # 확정 요약(B60 ②) — 전문과 같은 묶음에
         hint = (obj.get("human") or {}).get("hint")
         keep = [b for b in _hint_batches(hint) if b.get("at") != batch["at"]]
         obj.setdefault("human", {})["hint"] = _merge_hint(hint, keep + [batch])
@@ -1379,8 +1459,9 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
             # **여기도 라운드마다 즉시 저장한다**(B55 ②-3) — 구판은 `st`에 한 줄
             # 요약만 남기고 전문이 사라졌으며, 라운드 저장이 없어 중간에 죽으면
             # 전량 유실이었다. B43 ⑤가 생성 전 문답에서 막은 것과 같은 유실이다.
-            rounds = _interview(pkg or {}, context=ask,
-                                on_round=_failure_persist(doc_type, pkg, samples, ask))
+            _fp = _failure_persist(doc_type, pkg, samples, ask)
+            rounds = _interview(pkg or {}, context=ask, on_round=_fp)
+            _fp(rounds, decisions=iv_finalize(pkg or {}, rounds, context=ask))
             answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
             # **원문은 답이 있어도 함께 보낸다**(B59 ②). 구판은 사람이 답하면
             # `"사람 문답: …"`만 보내 **예외 원문·validator 결함 목록이 지시에서
@@ -1919,6 +2000,12 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
         st.setdefault("instructions", []).append(
             {"n": st["revision"], "instruction": instruct, "at": store._now(),
              "by": "사람(검수 지시)"})
+        # **지시는 확정 사항을 갱신한다**(B60 ②) — draft가 패키지를 읽기 **전에**.
+        # 지시와 결정이 따로 살면 이 재생성이 옛 결정을 다시 쓴다.
+        _hit = apply_instruction_to_decisions(doc_type, instruct, st["revision"])
+        if _hit is not None:
+            print(f"   확정 사항 갱신 — {'항목 ' + str(_hit) + '건 교체' if _hit else '새 항목 추가'}"
+                  f" (사람 지시 rev {st['revision']})")
         ad, sc = draft(doc_type, st["revision"], instruction=instruct,
                        history=st.get("instructions"))
         if ad is None:

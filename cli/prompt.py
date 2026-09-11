@@ -170,6 +170,33 @@ def _fill_regeneration(text, items):
     return text.replace(REGEN_SLOT, "\n".join(items))
 
 
+def _decision_lines(decisions):
+    out = []
+    for d in decisions or []:
+        rd = f" (r{d['round']})" if d.get("round") is not None else ""
+        out.append(f"- 항목: {d.get('topic', '')} · 결정: {d.get('decision', '')} · "
+                   f"근거: {d.get('reason', '')}{rd}")
+    return out
+
+
+def _decisions_block(batches):
+    """`[확정 사항]` 절 — 항목·결정·근거 세 칸 (B60 ②).
+
+    현재 표본분이 본문이고, stale 묶음의 결정은 **표시해서** 뒤에 붙는다 — 빼면 재현
+    조건이 사라지고, 무구분이면 다른 문서에 대한 판단이 현재에 섞인다. 자리는 항상
+    있다: 없으면 「없다」고 적는다 — 모델이 없는 절을 찾게 두지 않는다.
+    """
+    live = [d for b in batches if not b.get("stale") for d in (b.get("decisions") or [])]
+    lines = ["[확정 사항 — 문답·힌트에서 정해진 것 · 이것을 그대로 따른다]"]
+    lines += _decision_lines(live) or ["- (확정 사항 없음 — 문답도 힌트도 없다)"]
+    for b in batches:
+        if b.get("stale") and b.get("decisions"):
+            lines.append(f"[이전 표본의 확정 사항 — 지금 표본이 아니다: "
+                         f"{', '.join(b.get('samples') or []) or '표본 미상'}]")
+            lines += _decision_lines(b["decisions"])
+    return "\n".join(lines)
+
+
 def _render_template(text, pkg, *, regeneration=None):
     """템플릿의 주입 자리를 **입력 패키지의 값으로** 치환한다.
 
@@ -229,18 +256,12 @@ def _render_template(text, pkg, *, regeneration=None):
         # `{samples, at, stale?, rounds[]}`의 리스트다. 옛 꼴(라운드 배열)도
         # 그대로 받는다: 읽지 못하면 그 패키지의 문답이 통째로 지시문에서 빠진다.
         from cli.register import _hint_batches
+        # **확정 사항만 싣는다**(B60 ②) — 라운드 전문은 싣지 않는다. 전문을 같이
+        # 실으면 모델이 요약과 대화 사이에서 또 고른다(실측: 묶음이 둘일 때 「결국
+        # 헤더는 몇 행」을 대화에서 재구성하다 어긋났다). **대화는 이력, 판단은 요약
+        # 하나다.** 전문은 패키지에 그대로 남아 재현 근거가 된다.
         parts = [hint.get("text") or ""]
-        for b in _hint_batches(hint):
-            if b.get("stale"):
-                # 이전 표본에 대한 이해는 **표시해서** 싣는다 — 빼면 재현 조건이
-                # 사라지고, 무구분이면 다른 문서에 대한 판단이 현재에 섞인다.
-                parts.append(f"[이전 표본에 대한 이해 — 지금 표본이 아니다: "
-                             f"{', '.join(b.get('samples') or []) or '표본 미상'}]")
-            for r in b.get("rounds") or []:
-                n = r.get("round", "?")
-                parts.append(f"[문답 라운드 {n}] 이해: {r.get('understanding', '')}")
-                if r.get("answer"):
-                    parts.append(f"  사람의 답/교정: {r['answer']}")
+        parts.append(_decisions_block(_hint_batches(hint)))
         hint = "\n".join(x for x in parts if x.strip())
     text = re.sub(r"\{\{사용자 자유 텍스트[^}]*\}\}",
                   hint if hint.strip() else "(힌트 없음 — 사람이 준 자유 텍스트가 없다)",

@@ -70,6 +70,121 @@ INTERVIEW_SCHEMA = {
 
 INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
 
+# **확정 요약**(B60 ②) — 문답이 끝날 때 모델이 내는 마지막 턴. **새 지점이 아니다**
+# (같은 `interview` 자리). 대화는 이력이고 판단은 이 목록 하나다 — 생성 프롬프트에는
+# 이것만 실린다. strict 요건상 required = properties 전량(B44).
+DECISIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "decisions": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"topic": {"type": "string"},
+                           "decision": {"type": "string"},
+                           "reason": {"type": "string"},
+                           "round": {"type": ["integer", "null"]}},
+            "required": ["topic", "decision", "reason", "round"],
+            "additionalProperties": False}},
+    },
+    "required": ["decisions"],
+    "additionalProperties": False,
+}
+
+
+def _summarize(pkg, history, context=None):
+    """마지막 턴 — 라운드 전문에서 **확정 사항 목록**을 낸다.
+
+    mock 갈래는 **답에서 규칙으로** 만든다: 답한 질문 하나가 결정 하나다. 미리 적어
+    둔 문장을 되읽으면 「답이 결정으로 옮겨지는가」를 아무것도 검증하지 않는다.
+    """
+    if llm.use_mock():
+        llm.mock("generate", f"문답 확정 요약 — 라운드 {len(history)}에서 규칙 요약")
+        out = []
+        for r in history:
+            n = r.get("round")
+            for a in r.get("answers") or []:
+                raw = (a.get("answer") or "").strip()
+                if not raw or raw.lower() in INTERVIEW_STOP:
+                    continue
+                out.append({"topic": (a.get("q") or "")[:40],
+                            "decision": a.get("chosen") or raw,
+                            "reason": f"{n}라운드 사람 답", "round": n})
+            ans = r.get("answer") or ""
+            if "교정: " in ans:
+                out.append({"topic": f"교정 (r{n})",
+                            "decision": ans.split("교정: ", 1)[1],
+                            "reason": f"{n}라운드 사람 교정", "round": n})
+        if not out and history:
+            last = history[-1]
+            out.append({"topic": "이해 요약",
+                        "decision": last.get("understanding") or "",
+                        "reason": f"{last.get('round')}라운드 이해 — 사람이 교정 없이 진행",
+                        "round": last.get("round")})
+        return out
+    convo = [{"role": "system",
+              "content": llm.prompt("interview") + "\n\n---\n\n" + _vocab_excerpt(pkg)},
+             {"role": "user", "content": json.dumps(
+                 {"입력_패키지": pkg, "문답_전문": history,
+                  **({"기계_관문_실패": context} if context else {}),
+                  "요청": "마지막 턴 — 확정 요약을 내라 (지시문 「마지막 턴」 절)"},
+                 ensure_ascii=False)}]
+    _sent_size(convo, "문답 확정 요약")
+    return (llm.chat(convo, json_schema=DECISIONS_SCHEMA, point="generate")
+            or {}).get("decisions") or []
+
+
+def _show_decisions(decisions):
+    print(f"\n■ 확정 요약 — {len(decisions)}항목 (이것이 생성의 입력이다 · 전문은 이력으로 남는다)")
+    for i, d in enumerate(decisions, 1):
+        rd = f" (r{d['round']})" if d.get("round") is not None else ""
+        print(f"   {i}. [{d.get('topic', '')}] {d.get('decision', '')}"
+              f"  — {d.get('reason', '')}{rd}")
+
+
+def finalize(pkg, history, context=None):
+    """문답이 끝난 자리 — **확정 요약을 내고 사람이 확인한다** (B60 ②).
+
+    실측: 라운드 전문을 그대로 생성에 실었더니 표본이 바뀌어 묶음이 둘일 때 모델이
+    「결국 헤더는 몇 행으로 정해졌나」를 대화에서 재구성했고 거기서 어긋났다.
+    **대화는 이력, 판단은 정본** — 이 시스템이 `DECISIONS.md`와 대화를 가르는 원칙과
+    같다. 전문은 그대로 남는다(재현 근거).
+
+    화면: 요약을 찍고 `[Y/n/수정]`. **짧아서 볼 수 있다** — 전문은 못 보지만 요약은
+    본다. 이것이 사람이 최종 판단을 확인하는 자리다. `수정`(또는 항목 번호)이면 그
+    항목만 다시 묻고, `n`이면 모델이 요약을 다시 낸다(1회). 비대화형이면 그대로 간다.
+    """
+    if not history:
+        return []
+    decisions = _summarize(pkg, history, context)
+    retried = False
+    while True:
+        _show_decisions(decisions)
+        try:
+            raw = _ask("   확정 요약이 맞나? [Y/n/수정(번호)] > ").strip()
+        except (EOFError, KeyboardInterrupt, StopIteration):
+            print("   (입력 없음 — 요약 그대로 진행)")
+            return decisions
+        low = raw.lower()
+        if low in ("", "y", "yes", "예") or low in INTERVIEW_STOP:
+            return decisions
+        if low in ("n", "no") and not retried:
+            retried = True
+            print("   → 요약을 다시 낸다 (1회)")
+            decisions = _summarize(pkg, history, context)
+            continue
+        m = re.match(r"\s*(?:수정\s*)?(\d+)", raw)
+        idx = int(m.group(1)) if m else None
+        if idx is None or not (1 <= idx <= len(decisions)):
+            print(f"   항목 번호를 적어라 (1~{len(decisions)}) — 예: 수정 2")
+            continue
+        d = decisions[idx - 1]
+        try:
+            fix = _ask(f"   [{d.get('topic', '')}] 결정을 어떻게 고칠까 > ").strip()
+        except (EOFError, KeyboardInterrupt, StopIteration):
+            return decisions
+        if fix:
+            decisions[idx - 1] = {**d, "decision": fix,
+                                  "reason": f"사람이 요약 확인에서 수정 — 이전: {d.get('reason', '')}"}
+
 
 def _interview_round(pkg, history, context=None):
     """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
