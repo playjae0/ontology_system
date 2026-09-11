@@ -45,6 +45,13 @@ def run(*args):
     # **회귀는 mock 관문 비대상이다**(B48) — 구현 환경에는 게이트웨이가 없고
     # 그 환경의 실행이 검증의 바닥이다(B12).
     flag = ["--allow-mock"] if args and args[0] in ("generate", "review", "confirm") else []
+    # **LLM 생성 경로를 재는 시험은 `--no-basic`을 붙인다**(B59 ③). 표본이 전부 산문
+    # 포맷이면 `generate`는 이제 **고정 어댑터로 간다** — 그것이 새 기본값이고,
+    # TOC 표본은 형태 판정이 prose다. 이 헬퍼로 도는 시험들은 생성 세션(초안·
+    # 재생성·문답)을 재므로 그 경로를 명시해야 한다. ③의 기본값 자체를 재는
+    # 어서션은 이 헬퍼를 쓰지 않고 플래그 없이 직접 부른다.
+    if args and args[0] == "generate":
+        flag.append("--no-basic")
     return subprocess.run([sys.executable, str(ROOT / "run.py"), "register",
                            *args, *flag],
                           capture_output=True, text=True, cwd=str(ROOT))
@@ -189,10 +196,12 @@ r = run("review", "ipqc")
 # mock 초안은 fixture를 그대로 돌려주고(D-10) 그 fixture는 **B27 이전 스냅샷**이라
 # 규약 10을 지키지 않는다. 파싱·배정표·봉인 대조는 그대로 돌지만 기계 관문은
 # FAIL이고, 그래서 **확정(S15 뒤)이 막힌다** — 판정필요-14로 신고했다.
+# **문면을 세지 않는다**(B59 어서션 기준) — 막혔다는 성질은 ①rc ②코드 붙은 FAIL
+# 줄이 화면에 되살아났다는 것으로 잰다. 화면 문안은 한 글자만 바꿔도 통과한다.
 show("[B31] 기계 관문이 규약 10 미준수 fixture를 막는다 — **생성에서** 막힌다(B50)",
-     "기계 관문(하네스): FAIL" in _gi.stdout
-     and "검수로 넘어가지 않았다" in _gi.stdout,
-     [l.strip() for l in _gi.stdout.splitlines() if "기계 관문" in l][:2])
+     "기계 관문(하네스): FAIL" in _gi.stdout and _gi.returncode != 0
+     and [c for c, _l, _d in R.fail_lines(_gi.stdout)],
+     str([c for c, _l, _d in R.fail_lines(_gi.stdout)][:3]))
 show("ipqc 2부 파싱은 그대로 돈다 — 조각 33+20 (관문과 파싱은 다른 축)",
      "조각 33" in r.stdout and "조각 20" in r.stdout)
 v = view_of("ipqc")
@@ -1227,9 +1236,13 @@ shutil.rmtree(_fx, ignore_errors=True)
 shutil.rmtree(REVIEW / "b50t", ignore_errors=True)
 
 # ── ⓓ 미통과는 검수로 넘어가지 않는다 (ipqc — 규약 10 미준수 스냅샷)
-show("② ⓓ 미통과 산출은 검수로 넘어가지 않는다 · 화면이 그 사실을 말한다",
-     "검수로 넘어가지 않았다" in _gi.stdout and _gi.returncode != 0,
-     [l.strip() for l in _gi.stdout.splitlines() if "넘어가지" in l][:1])
+# **막고, 그 자리에서 다음 줄을 준다**(B59 ①) — 구판은 「검수로 넘어가지 않았다」만
+# 말해 사내가 막다른 길에 섰다. 잠글 성질은 ①뷰로 넘어가지 않았다(rc) ②FAIL 줄이
+# 코드와 함께 화면에 있다 ③칠 수 있는 명령이 함께 있다.
+_nx = [l for l in _gi.stdout.splitlines() if "python run.py register" in l]
+show("② ⓓ 미통과는 뷰로 넘어가지 않는다 · 화면이 이유와 다음 줄을 준다",
+     _gi.returncode != 0 and R.fail_lines(_gi.stdout) and _nx,
+     f"FAIL {len(R.fail_lines(_gi.stdout))}줄 · 다음 줄 {len(_nx)}개")
 show("② ⓒ 1회 뒤에도 실패하면 묻고 진행한다 (비대화형이면 끄고 끝낸다)",
      "1회 재생성 후에도 FAIL" in _gi.stdout and "비대화형" in _gi.stdout)
 show("② 하네스 수리 — 조각 0건이 이제 FAIL이다 (구판은 검사 전에 돌아갔다)",
@@ -1293,8 +1306,8 @@ _st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8")
 show("① 해소 못 하면 **뷰를 갈아 치우지 않는다** · machine_gate=FAIL (변이 검출 지점)",
      _st41["machine_gate"] == "FAIL"
      and (_v41.read_bytes() if _v41.exists() else None) == _before41
-     and "검수 뷰를 만들지 않았다" in _r41.stdout and _r41.returncode != 0,
-     [l.strip() for l in _r41.stdout.splitlines() if "만들지 않았다" in l][:1])
+     and R.fail_lines(_r41.stdout) and _r41.returncode != 0,
+     f"FAIL {len(R.fail_lines(_r41.stdout))}줄 · rc={_r41.returncode}")
 show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
      _calls.get("cmd_review", []).count("machine_gate") == 1)
 for _d in ("f40ok", "f40no"):
@@ -1856,10 +1869,12 @@ show("②ⓑ 깨지는 검체가 관문에서 FAIL이다 (검수까지 가지 �
 show("②ⓑ ①~④는 통과했다 — 구판 관문이 이 어댑터를 놓친 자리다",
      "[FAIL]" not in _stages[0], str([l.strip() for l in _stages[0].splitlines()
                                       if "[FAIL]" in l][:2]))
-show("②ⓑ 잡은 자리가 ⑤다 — 파서 전 구간이 예외로 멈췄다",
-     "[FAIL] 파서 전 구간이 예외 없이 완주" in _stages[1]
-     and "unhashable" in _stages[1],
-     [l.strip() for l in _stages[1].splitlines() if "[FAIL]" in l][:1])
+# **코드로 잰다**(B59 ①) — 라벨 문면은 바뀔 수 있지만 `G51`은 그 검사에 박힌
+# 고정값이고, 예외 원문이 상세에 실려 있다는 것이 ②의 성질이다.
+_f5 = R.fail_lines(_stages[1])
+show("②ⓑ 잡은 자리가 ⑤다 — G51(파서 전 구간)이 예외 원문과 함께 FAIL이다",
+     [c for c, _l, _d in _f5] == ["G51"] and "unhashable" in _f5[0][2],
+     str(_f5[:1]))
 
 # ⓐ 실증 — prose 1건은 관문 PASS 뒤 검수에서 이상 0이다.
 reset("toc_report")
@@ -1902,7 +1917,8 @@ show("⑤ⓐ 생성의 뷰 산출에 LLM 호출 0 (좌표 보조·추출 리허�
 # **review는 남는다** — 없애면 재생성 지시·좌표 보조·추출 리허설의 자리가 사라진다.
 _r5 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
 show("⑤ review는 선택 명령으로 남는다 (고칠 때 들어가는 자리)",
-     _r5.returncode == 0 and "■ ② 검수" in _r5.stdout)
+     _r5.returncode == 0
+     and (REVIEW / "toc_report" / "view.json").exists())
 # ⓐ **review 없이 confirm이 된다.**
 reset("toc_report")
 run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
@@ -2004,6 +2020,104 @@ show("⑥ 계열 전부가 strict 요건을 지킨다 (required = properties 전
          for k in ("table", "prose", None)))
 show("⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 prose에서만이다)",
      set(R.ROLE_KEYS) <= set(R.generate_schema("table")["required"]))
+
+
+# ── B59 관문이 막을 때 사람이 다음 줄을 안다 ────────────────────────────
+print("\n■ B59 — 막는 것은 맞다. 안 알려주는 게 틀렸다")
+
+import re as _re                                              # noqa: E402
+_KIT59 = (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
+_REG59 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+
+# ①ⓑ **셋이 같은 함수를 부른다** — 문면이 세 벌이면 그중 하나만 고쳐지는 날이 오고,
+# 사람은 어느 화면을 믿을지 모른다. 호출을 센다(주석이 아니다).
+_t59 = _ast.parse(_REG59)
+_calls59 = {}
+for _n in _ast.walk(_t59):
+    if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+        _calls59[_n.name] = {c.func.id for c in _ast.walk(_n)
+                             if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)}
+show("①ⓑ confirm·review·status 셋이 **같은 함수**(gate_block)를 부른다",
+     all("gate_block" in _calls59.get(f, set())
+         for f in ("cmd_confirm", "cmd_review", "cmd_status")),
+     str({f: "gate_block" in _calls59.get(f, set())
+          for f in ("cmd_confirm", "cmd_review", "cmd_status")}))
+
+# ①ⓒ **태그는 라벨에 1:1로 박힌다** — 코드 없는 라벨 0 · 한 코드에 두 라벨 0.
+# 순번이 아니라 고정값이라야 단이 늘어도 밀리지 않는다.
+_labels59 = _re.findall(r'show\(\s*f?"([^"]+)"', _KIT59)
+_nocode = [l for l in _labels59 if not _re.match(r"^G[0-9A-Z]{2}  ", l)]
+_bycode = {}
+for _l in _labels59:
+    _bycode.setdefault(_l[:3], set()).add(_l[5:])
+_dup59 = {c: v for c, v in _bycode.items() if len(v) > 1}
+show("①ⓒ 모든 판정 라벨에 태그가 있다 (코드 없는 라벨 0)",
+     not _nocode and len(_labels59) >= 40, f"라벨 {len(_labels59)} · 무태그 {len(_nocode)}")
+show("①ⓒ 태그와 라벨이 1:1이다 (한 태그에 두 라벨 0)",
+     not _dup59 and len(_bycode) >= 35, f"태그 {len(_bycode)}종 · 충돌 {len(_dup59)}")
+# **문면 규격의 정본은 킷이다** — register가 제 정규식을 따로 갖지 않는다.
+show("①ⓒ 판정 줄 문면 규격이 한 자리다 (register가 킷의 LINE_RE를 읽는다)",
+     "LINE_RE" in _KIT59 and "_kit_line_re()" in _REG59
+     and R._kit_line_re() == _re.search(r'^LINE_RE = r"(.+)"$', _KIT59, _re.M).group(1))
+# **블록이 코드·라벨·상세를 되살린다** — 사람이 state.json을 열지 않는다.
+_demo59 = ('  [PASS] G11  문법 오류 없음\n'
+           '  [FAIL] G13  규약 10 — 자기완결 연산을 재구현하지 않았다 (x)  — 정의 [a]\n'
+           '  [FAIL] G51  파서 전 구간이 예외 없이 완주 (y)  — TypeError: boom')
+show("① FAIL 줄만 코드·라벨·상세로 되살아난다 (PASS는 섞이지 않는다)",
+     [x[0] for x in R.fail_lines(_demo59)] == ["G13", "G51"]
+     and R.fail_lines(_demo59)[1][2] == "TypeError: boom")
+
+# ①ⓓ **사람 화면에서 「검수」를 쓰지 않는다** — 사람이 할 수 없는 일의 이름이었다.
+# 주석·docstring은 대상이 아니다(판 이력과 근거는 남아야 한다).
+_screen59 = []
+for _ln in _REG59.splitlines():
+    _t = _ln.strip()
+    if "검수" not in _t or _t.startswith("#"):
+        continue
+    if "print(" in _t or "SystemExit(" in _t:
+        _screen59.append(_t[:80])
+show("①ⓓ 사람 화면 문면에 「검수」가 0건이다 (기계 관문 / 뷰 확인으로 갈렸다)",
+     not _screen59, str(_screen59[:2]))
+
+# ②ⓑ **⑤단 라벨이 전부 분류돼 있다** — 어디로도 안 가는 라벨이 0이어야
+# 「들어갔을 때 나갈 길」이 막히지 않는다.
+_five59 = sorted({l for l in _re.findall(
+    r'show\(\s*f?"([^"]+)"',
+    _KIT59.split("def run_pipeline")[1].split("\n# ---")[0])})
+_unclassified = [l for l in _five59
+                 if l[:3] not in R.GATE_SELF
+                 and not any(k in l[5:] for k in R.AUTO_FIX)
+                 and l[:3] not in R.WITH_EVIDENCE]
+show("②ⓑ ⑤단 라벨 중 분류되지 않은 것이 0이다 (auto / 원문 동봉 / 관문 자체)",
+     not _unclassified and len(_five59) == 4, str(_unclassified))
+
+# ②ⓒ **원문이 지시에 실린다** — 사람이 답해도 사라지지 않는다. 둘은 짝이다.
+show("②ⓒ 문답 지시에 관문 판정 원문이 함께 간다 (답만 보내지 않는다)",
+     '"[관문 판정 원문]' in _REG59.replace("\\n", "").replace("\n", "")
+     or "[관문 판정 원문]" in _REG59)
+
+# ③ⓒ **전부 산문 포맷이면 LLM 호출 0** — 그 길로 안 들어가게 하는 것이 먼저다.
+reset("pptx_b59")
+# **플래그 없이** 부른다 — 재는 것이 「기본값이 고정 어댑터인가」다. `run()` 헬퍼는
+# LLM 경로를 재려고 `--no-basic`을 붙이므로 여기서는 쓰지 않는다.
+_g59 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
+                       "pptx_b59", "quality", str(RAW / "PPT_basic.pptx"),
+                       "--allow-mock"], capture_output=True, text=True,
+                      cwd=str(ROOT), stdin=subprocess.DEVNULL)
+_st59 = json.loads((REVIEW / "pptx_b59" / "state.json").read_text(encoding="utf-8"))
+show("③ⓒ 전부 산문 포맷이고 플래그가 없으면 고정 어댑터로 가고 LLM 호출 0",
+     _g59.returncode == 0 and _st59.get("use_basic") is True
+     and "호출 0회" in _g59.stdout, _g59.stdout[-80:].strip()[:70])
+show("③ⓑ --no-basic이면 LLM 생성 경로로 간다 (사람이 고를 수 있다)",
+     "--no-basic" in _REG59 and "no_basic=no_basic" in _REG59)
+reset("pptx_b59")
+
+# ④ **어느 폴더·어느 판으로 돌았나**가 관문 산출 첫 줄에 있다.
+_ok59, _out59 = R.harness(ROOT / "tests/fixtures/adapters/cp.py",
+                          ROOT / "schemas/cp.json", [RAW / "CP01.xlsx"])
+show("④ 관문 산출 첫 줄이 ROOT를 밝힌다 (폴더를 나눠 쓸 때 어느 사본인가)",
+     _out59.splitlines()[0].startswith("[관문] ROOT=")
+     and str(ROOT) in _out59.splitlines()[0], _out59.splitlines()[0][:70])
 
 
 print("\n" + "=" * 62)
