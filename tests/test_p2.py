@@ -38,10 +38,24 @@ def show(label, ok, detail=""):
     return bool(ok)
 
 
+_CODE = re.compile(r"^G[0-9A-Z]{2}\s\s")
+
+
+def label_of(line):
+    """판정 줄 → **라벨만**. 상세(— 뒤)와 **태그(B59 ①)**를 뺀다.
+
+    태그를 빼는 이유: 봉인 로그는 **외부 LLM 실산출 스냅샷 자리**라 손대지 않는다
+    (D-26). 태그는 그때 없던 **메타**이고 판정 자체가 아니므로, 봉인이 보증하는
+    「그때 이 산출이 이 판정들을 통과했다」는 태그와 무관하게 성립해야 한다.
+    태그를 넣은 채 비교하면 봉인이 43건 전부 «사라졌다»고 말한다(실측).
+    """
+    t = re.sub(r"\s+—.*$", "", line.strip()[7:]).strip()
+    return _CODE.sub("", t)
+
+
 def verdicts(text):
-    """하네스 출력에서 판정 라벨만 뽑는다 — 상세(— 뒤)는 실행마다 달라지므로 뺀다."""
-    return Counter(re.sub(r"\s+—.*$", "", ln.strip()[7:]).strip()
-                   for ln in text.splitlines()
+    """하네스 출력에서 판정 라벨만 뽑는다 — 상세·태그는 뺀다."""
+    return Counter(label_of(ln) for ln in text.splitlines()
                    if ln.strip().startswith(("[PASS]", "[FAIL]")))
 
 
@@ -66,8 +80,8 @@ r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                     str(KIT / "어댑터_스켈레톤.py"), str(ROOT / "schemas/cp.json"),
                     str(ROOT / "tests/fixtures/raw/CP01.xlsx")],
                    capture_output=True, text=True, cwd=str(ROOT))
-fail_labels = {re.sub(r"\s+—.*$", "", ln.strip()[7:]).strip()
-               for ln in r.stdout.splitlines() if ln.strip().startswith("[FAIL]")}
+fail_labels = {label_of(ln) for ln in r.stdout.splitlines()
+               if ln.strip().startswith("[FAIL]")}
 EXPECT_FAIL = {
     "payload_kind가 닫힌 2값",
     "adapter.doc_type == schema.doc_type",
@@ -81,10 +95,13 @@ EXPECT_FAIL = {
     # **같은 빈칸**을 ⑤단에서 한 번 더 말한다. 중복이지만 지우지 않는다 — 관문이
     # 「어디까지 돌았나」를 화면이 그대로 보여야 사내가 다음 칸을 안다.
     "계약 self-check 통과"}
+# **태그로 잰다**(B59 ①) — 라벨 문면은 바뀌지만 G11·G12·G1A는 그 검사에 박힌
+# 고정값이다. 문면을 세면 한 글자 수정에 이 줄이 깨진다.
+_pass_codes = {m.group(1) for m in
+               (re.match(r"\[PASS\]\s+(G[0-9A-Z]{2})", ln.strip())
+                for ln in r.stdout.splitlines()) if m}
 show("② 스켈레톤이 하네스 ①단에서 문법·순수성·인터페이스를 통과한다",
-     r.stdout.count("[PASS] 문법 오류 없음") == 1
-     and "[PASS] 순수 함수 계약" in r.stdout
-     and "[PASS] locate 함수 없음" in r.stdout)
+     {"G11", "G12", "G1A"} <= _pass_codes, str(sorted(_pass_codes))[:70])
 show("② 빈칸 상태의 FAIL이 전부 '아직 안 채웠다'다 (동봉 안내와 일치)",
      # **수를 박지 않고 집합을 본다** — 관문은 자란다(B31이 2종, B58 ②가 ⑤단을
      # 더했다). 수를 박으면 관문 강화가 이 줄을 깨, 어서션이 개선을 막는 자리가 된다.
@@ -174,8 +191,7 @@ for name, (sealed, args) in SEALED.items():
     # 나중에 생긴 기준까지 소급해 보증하지 않는다. 반대로 보증 범위를 전체로 두면
     # **관문을 강화할 때마다 봉인이 깨져 봉인이 개선을 막는다.**
     _fails = [ln.strip() for ln in out.splitlines() if "[FAIL]" in ln]
-    _sealed_fail = [ln for ln in _fails
-                    if any(k in ln for k in old)]
+    _sealed_fail = [ln for ln in _fails if label_of(ln) in old]
     show(f"{name}: 봉인분 판정에 FAIL 0 (새 관문의 FAIL은 범위 밖)",
          not _sealed_fail and all(new.get(k, 0) >= v for k, v in old.items()),
          f"{sum(old.values())} → {sum(new.values())} (추가 {added})")

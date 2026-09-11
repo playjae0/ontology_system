@@ -2,7 +2,7 @@
 """n6 구축 모드 등록 파이프라인 — doc_type 등록의 3단 (파서_명세 §6·§7 · 틀 §2).
 
     ① 생성  입력 패키지(사람 4 + 시스템 5) → reader head 공급 → 어댑터·스키마 초안
-    ② 검수  실행 하네스(기계 관문) → 뷰 데이터 JSON → 렌더러로 HTML → 재생성 루프
+    ② 뷰 확인  기계 관문(실행 하네스)이 먼저 거르고, 사람은 그 뒤 뷰를 본다 → 재생성 루프
     ③ 확정  승인 1회 → doc_type 등록부 등재
 
 **틀 §2가 정한 검수 수준**: 사람은 코드가 아니라 **결과 뷰**를 보고, 통과는 승인 1회다.
@@ -25,6 +25,8 @@
        --resume     기존 입력 패키지로 **초안만** 다시 받는다 (문답을 다시 하지 않는다)
   python cli/register.py generate <doc_type> --resume
        └ resume은 **doc_type 하나만** 필요하다 — 층·표본은 패키지에서 읽는다
+       --no-basic   표본이 전부 산문 포맷이어도 **LLM 생성으로 간다** — 기본은 고정
+                    어댑터를 권하고 묻는다(B59 ③). 비대화형이면 고정 어댑터로 간다
        --use-basic  분할 자명 계열(PPT)은 LLM 생성을 건너뛰고 **기본 어댑터를 정본으로**
                     등재 경로에 놓는다 (§6.4-5) — 검수·승인 1회는 그대로다(M4)
        --drop-interview  이전 문답을 **버린다.** 기본은 이어가기다 — 사람의 답은
@@ -37,6 +39,7 @@
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
        --extract / --no-extract       prose 추출 리허설을 미리 정한다 (기본: 물어본다)
   python cli/register.py confirm  <doc_type> --by <승인자>
+  python cli/register.py status   <doc_type>   ← 관문이 막는 이유와 **다음 줄**
   python cli/register.py list
 """
 from __future__ import annotations
@@ -156,7 +159,7 @@ def cmd_roles(args):
                     for f in spec}
 
     print(f"■ role 배정 실험 — {path} (헤더 {hrow}행 · {len(labels)}열)")
-    print("  **실행만 한다 — 등록부를 건드리지 않는다.** 확정은 검수 뷰의 6지선다다.\n")
+    print("  **실행만 한다 — 등록부를 건드리지 않는다.** 확정은 **뷰 확인**의 6지선다다.\n")
     rows, unmapped, materials = [], [], []
     for lab in labels:
         s = str(lab)
@@ -523,6 +526,18 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     return ad, sc
 
 
+def _all_prose(samples):
+    """표본이 **전부** 산문 포맷인가 (B59 ③).
+
+    `.pptx`·`.pdf`는 포맷이 prose를 함의하고(§6.4-5), 격자 포맷은 **형태 판정이
+    prose라고 말할 때만** 그렇다(문서 1 C37). 「전부」를 요구하는 이유: 섞이면
+    어느 어댑터를 위임할지가 갈리고, 그 판단은 사람 몫이다.
+
+    계열의 출처는 형태 판정 하나다 — 여기서 다시 재지 않는다.
+    """
+    return bool(samples) and payload_kind_of_samples(samples) == "prose"
+
+
 def basic_adapter_proposal(samples):
     """분할이 **자명한 계열**이면 기본 어댑터를 제안한다 (파서_명세 §5 규약 5 · C13).
 
@@ -720,7 +735,8 @@ def _merge_hint(hint, batches):
 
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                  no_fewshot=False, resume=False, use_basic=False,
-                 drop_interview=False, revise=False, as_name=None):
+                 drop_interview=False, revise=False, as_name=None,
+                 no_basic=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -822,6 +838,28 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                 f"분할 자명 계열(pptx)이 아니다 {[Path(s).name for s in samples]}. "
                 f"LLM 생성 경로(--use-basic 없이)로 등록한다 (§6.4-5)")
         return _use_basic(doc_type, layer, samples, hint, proposal, revise)
+
+    # **산문 포맷이면 고정 어댑터를 먼저 권한다**(B59 ③) — 그 길로 안 들어가게 하는
+    # 것이 먼저다. 실측: 사내가 PPT 하나 넣으려고 LLM 생성으로 갔고, 관문 FAIL →
+    # 막다른 길이었다. 고정 어댑터는 생성 LLM 0회이고 관문을 그냥 지난다.
+    if not no_basic:
+        _prop = basic_adapter_proposal(samples)
+        if _prop and _all_prose(samples):
+            print(f"  표본이 전부 산문 포맷이다 — LLM 생성 대신 고정 어댑터를 "
+                  f"쓰는 것이 기본이다:")
+            print(f"     python run.py register generate {doc_type} {layer} "
+                  f"{' '.join(str(x) for x in samples)} --use-basic")
+            print(f"       └ {_prop['reason']}")
+            print(f"  그래도 LLM 생성으로 가려면 --no-basic 을 붙여라.")
+            try:
+                _go = input("  고정 어댑터로 갈까? [Y/n] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                # **비대화형이면 고정 어댑터로 간다** — 기본값이 「안전한 쪽」이다.
+                _go = ""
+                print("  (비대화형 — 고정 어댑터로 간다)")
+            if _go not in ("n", "no"):
+                return _use_basic(doc_type, layer, samples, hint, _prop, revise)
+            print("  → LLM 생성으로 간다 (사람이 골랐다)")
 
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
     cfg = json.loads((ROOT / "layers" / layer / "config.json").read_text(encoding="utf-8"))
@@ -1003,7 +1041,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     u = llm.usage_total()
     print(f"   LLM 사용량 — 이 명령에서 호출 {u['calls'] - u0:,}회 "
           f"(기본 어댑터 — 생성 세션 없음 · 프로세스 누계 {u['calls']:,}회)")
-    print(f"   다음: python run.py register review {doc_type}  (검수·승인 1회는 그대로다 — M4)")
+    print(f"   다음: python run.py register review {doc_type}  (뷰 확인·승인 1회는 그대로다 — M4)")
     st = {"doc_type": doc_type, "layer": layer,
           "samples": [str(s) for s in samples],
           "hint": pkg["human"]["hint"],
@@ -1043,6 +1081,30 @@ AUTO_FIX = {
 }
 
 
+# ⑤단(파서 전 구간) 판정의 처분표 — **B58 ②가 단을 더했는데 이 표가 8줄 그대로라
+# 새 단의 실패가 전부 문답으로 가고 있었다**(B59 ②). 셋으로 가른다:
+#
+# | 처분 | 무엇 | 왜 |
+# |---|---|---|
+# | `AUTO_FIX` | 라벨 문면이 고칠 방법을 담는다 | 그 문면을 그대로 지시로 실어 자동 1회 |
+# | `WITH_EVIDENCE` | 담지 않지만 **상세가 원문을 담는다** | 문답이 원문을 보고 통역한다 |
+# | `GATE_SELF` | **어댑터 결함이 아니다 — 관문 자체다** | 재생성으로 고칠 수 없다 |
+#
+# ⑤단 넷 중 `AUTO_FIX`에 드는 것은 **하나도 없다** — 라벨이 「완주했다」·「결함 0」처럼
+# **결과**를 말하고 처방을 말하지 않기 때문이다. 그래서 원문 동봉이 이 단의 핵이다.
+WITH_EVIDENCE = {
+    "G51": "예외 원문 (`{예외형}: {메시지}`)",
+    "G52": "validator 결함 원문 (kind · reason · detail)",
+    "G53": "봉투에 선 키 목록",
+}
+# **관문 자체의 결함**은 지시로 보내지 않는다 — 어댑터를 고쳐도 안 낫는다.
+# 「관문이 LLM을 부르지 않는다」가 깨졌다면 깨진 것은 관문이고, 사람이 볼 곳은
+# `kit/run_adapter.py`다. 이것을 문답에 보내면 모델이 어댑터를 엉뚱하게 고친다.
+GATE_SELF = {
+    "G54": "관문이 LLM을 불렀다 — 어댑터 결함이 아니라 관문 결함이다",
+}
+
+
 def classify_failures(harness_out):
     """하네스 `[FAIL]` 줄을 `(자동, 문답)` 둘로 가른다 (B50).
 
@@ -1054,6 +1116,112 @@ def classify_failures(harness_out):
     for ln in [x.strip() for x in harness_out.splitlines() if "[FAIL]" in x]:
         (auto if any(k in ln for k in AUTO_FIX) else ask).append(ln)
     return auto, ask
+
+
+def _kit_line_re():
+    """하네스 판정 줄의 정규식 — **킷 모듈에서 읽는다**(정본이 거기다).
+
+    import이 아니라 문면 추출인 이유: `kit/run_adapter.py`는 **독립 실행 스크립트**라
+    import하면 그 머리의 `sys.path` 조작과 `openpyxl` 지연 import가 여기로 끌려온다.
+    뽑는 것은 상수 한 줄이고, 없으면 시끄럽게 실패한다(조용한 폴백을 두지 않는다).
+    """
+    src = (KIT / "run_adapter.py").read_text(encoding="utf-8")
+    m = re.search(r'^LINE_RE = r"(.+)"$', src, re.M)
+    if not m:
+        raise SystemExit("[관문] kit/run_adapter.py의 LINE_RE를 찾지 못했다 — "
+                         "판정 줄 문면 규격이 정본에서 사라졌다")
+    return m.group(1)
+
+
+# 하네스 판정 줄의 문면 규격 — **정본은 `kit/run_adapter.py`의 `LINE_RE`다.**
+# 여기서 다시 쓰지 않는 이유: 두 벌이면 관문이 문면을 바꿀 때 이쪽이 조용히
+# 아무 줄도 못 읽고, 그 결과가 「막는데 이유를 안 알려 준다」로 되돌아간다.
+_GATE_LINE = re.compile(_kit_line_re())
+
+
+def fail_lines(harness_out):
+    """`[(코드, 라벨, 상세)]` — 하네스 산출에서 **FAIL 줄만**.
+
+    사람이 `state.json`을 열게 하지 않으려고 있는 함수다(B59 ①). 코드가 없는
+    줄은 `None`으로 온다 — 지어내지 않는다.
+    """
+    out = []
+    for ln in harness_out.splitlines():
+        m = _GATE_LINE.match(ln)
+        if m and m.group(1) == "FAIL":
+            out.append((m.group(2), m.group(3).strip(), (m.group(4) or "").strip()))
+    return out
+
+
+def _instruct_of(fails):
+    """`--instruct`에 넣을 문면 — **`AUTO_FIX`가 답을 담는다고 판정한 줄**에서 딴다.
+
+    담지 않는 줄로 지시를 만들면 「이렇게 고쳐라」가 내용 없이 나가고, 재생성은
+    같은 실패를 되풀이한다. 하나도 없으면 `None`이고 화면은 문답 경로를 권한다.
+    """
+    for code, label, detail in fails:
+        key = next((k for k in AUTO_FIX if k in label), None)
+        if key:
+            return f"{label}: {detail}" if detail else label
+    return None
+
+
+def gate_block(doc_type, st=None, *, stream=None):
+    """**관문이 막을 때 뜨는 블록** — 이유와 **칠 수 있는 다음 줄** (B59 ①).
+
+    실측 결함이 이것이다: 관문 FAIL 뒤 `confirm`은 「검수를 먼저 통과시켜라」라고만
+    했고 `review`도 막았다 — **사내는 막다른 길에 섰다.** 막는 것은 설계대로다
+    (통과분만 확정 — B50). 설계대로가 아닌 것은 **왜 막는지와 무엇을 치면 되는지를
+    주지 않은 화면**이고, 그것이 C27(사내는 코딩하지 않는다) 위반의 실물이다.
+
+    **세 명령이 이 함수 하나를 부른다**(`confirm`·`review`·`status`) — 문면이 세 벌이면
+    그중 하나만 고쳐지는 날이 오고, 사람은 어느 화면을 믿을지 모른다.
+
+    `stream`은 시험용이다(기본은 화면).
+    """
+    pr = (lambda *a: print(*a, file=stream)) if stream else print
+    st = st or _state(doc_type) or {}
+    fails = fail_lines(st.get("harness_out") or "")
+    pr(f"■ 기계 관문 FAIL — {doc_type}")
+    if fails:
+        for code, label, detail in fails:
+            pr(f"  [FAIL] {code}  {label}" + (f"  — {detail}" if detail else ""))
+    else:
+        pr("  (판정 줄이 남아 있지 않다 — 생성을 다시 돌려라)")
+    pr("")
+    pr("  ▶ 다음 줄:")
+    for line in _next_lines(doc_type, st, fails):
+        pr(f"     {line}")
+    return fails
+
+
+def _next_lines(doc_type, st, fails):
+    """칠 수 있는 **완성된 명령** 목록 — 동사가 아니라 한 줄이다.
+
+    「검수를 통과시켜라」는 사람이 할 수 없는 일이라 문장 자체를 두지 않는다.
+    """
+    out = []
+    inst = _instruct_of(fails)
+    if inst:
+        out.append(f'python run.py register review {doc_type} '
+                   f'--instruct "{inst}"')
+    else:
+        # 문면이 답을 담지 않는 실패다 — 문답이 그것을 통역하는 자리다(B50).
+        out.append(f"python run.py register review {doc_type} "
+                   f"--instruct \"<무엇을 고칠지 한 줄>\"")
+        out.append("     └ 위 FAIL 줄이 고칠 방법을 담지 않는다 — "
+                   "문답이 예외 원문을 모델에 넘겨 통역한다")
+    samples = st.get("samples") or []
+    if samples and not st.get("use_basic"):
+        prop = basic_adapter_proposal(samples)
+        if prop:
+            out.append(f"python run.py register generate {doc_type} "
+                       f"{st.get('layer', '<층>')} "
+                       f"{' '.join(str(x) for x in samples)} --use-basic")
+            out.append(f"     └ {prop['reason']}")
+    out.append(f"python run.py register status {doc_type}"
+               "   (이 블록을 다시 본다)")
+    return out
 
 
 def _orphan_of(st):
@@ -1115,7 +1283,7 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     st["machine_gate"] = machine_gate(doc_type, st, samples, pkg)
     _save_state(doc_type, st)
     if st["machine_gate"] == "PASS":
-        print(f"   기계 관문 PASS — **검수 뷰까지 여기서 만든다**(B58 ⑤)")
+        print(f"   기계 관문 PASS — **뷰까지 여기서 만든다**(B58 ⑤)")
         # **뷰를 만드는 함수는 하나다** — `cmd_review`를 그대로 부른다. 두 벌이면
         # 「생성이 보여 준 화면」과 「검수가 보여 주는 화면」이 갈리고, 사람이 승인한
         # 것이 어느 쪽인지 사후에 못 가린다.
@@ -1130,10 +1298,11 @@ def _finish_generate(doc_type, st, samples, pkg=None):
         print(f"   고칠 것이 있을 때만: python run.py register review {doc_type} "
               f"--instruct \"…\"  (좌표 LLM 보조·추출 리허설도 그쪽이다)")
         return rc
-    print(f"   기계 관문 FAIL — **검수로 넘어가지 않았다.** 산출은 "
-          f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
-    print(f"   같은 표본으로 다시 시도: python run.py register generate "
-          f"{doc_type} --resume")
+    print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
+          f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
+    gate_block(doc_type, st)
+    print(f"     python run.py register generate {doc_type} --resume"
+          f"   (같은 표본으로 초안만 다시 받는다)")
     return 1
 
 
@@ -1181,7 +1350,13 @@ def machine_gate(doc_type, st, samples, pkg=None):
             rounds = _interview(pkg or {}, context=ask,
                                 on_round=_failure_persist(doc_type, pkg, samples, ask))
             answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
-            instruction = ("사람 문답: " + answered) if answered else "\n".join(ask)
+            # **원문은 답이 있어도 함께 보낸다**(B59 ②). 구판은 사람이 답하면
+            # `"사람 문답: …"`만 보내 **예외 원문·validator 결함 목록이 지시에서
+            # 사라졌다** — 사람의 답은 「무엇을 고치고 싶다」이고, 모델이 그것을
+            # 코드 수정으로 옮기려면 「무엇이 어떻게 깨졌나」가 함께 있어야 한다.
+            # 둘은 대체재가 아니라 짝이다.
+            instruction = ("사람 문답: " + answered + "\n\n[관문 판정 원문]\n"
+                           + "\n".join(ask)) if answered else "\n".join(ask)
             by = "사람(문답)" if answered else "자동(하네스 문면 — 문답 무응답)"
         else:
             instruction, by = "\n".join(auto), "자동(하네스)"
@@ -1559,7 +1734,7 @@ def _gateway_ready():
     for ln in str(s["detail"]).split("\n"):
         if ln.strip():
             print(f"     {ln}")
-    raise SystemExit("[검수] 게이트웨이가 준비되지 않았다 — "
+    raise SystemExit("[뷰 확인] 게이트웨이가 준비되지 않았다 — "
                      "`python run.py llm-check`로 단계별 원인을 본다. "
                      "USE_MOCK=1로 돌리면 LLM 없이 리허설만 볼 수 있다")
 
@@ -1702,7 +1877,8 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     """
     st = _state(doc_type)
     if not st:
-        raise SystemExit(f"[검수] '{doc_type}' 생성 단계가 먼저다")
+        raise SystemExit(f"[뷰 확인] '{doc_type}'의 생성이 먼저다 — "
+                         f"python run.py register generate {doc_type} <층> <표본...>")
 
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
 
@@ -1729,15 +1905,20 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
             st["machine_gate"] = machine_gate(doc_type, st, st["samples"], _pkg)
             _save_state(doc_type, st)
             if st["machine_gate"] != "PASS":
-                print(f"   기계 관문 FAIL — **검수 뷰를 만들지 않았다.** 산출은 "
-                      f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다")
-                print(f"   지시를 바꿔 다시: python run.py register review "
-                      f"{doc_type} --instruct \"…\"")
+                print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
+                      f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
+                gate_block(doc_type, st)
                 return 1
 
     samples = st["samples"]
     print(f"  {llm.mode_line()}")          # B42 ⑤
-    print(f"■ ② 검수 — {doc_type} (표본 {len(samples)}부)")
+    if st.get("machine_gate") != "PASS":
+        # **막는 이유와 다음 줄을 여기서도 준다**(B59 ①) — 세 명령이 같은 블록이다.
+        # 뷰는 그래도 만든다: 이상 신호에 그 FAIL이 실려 있고, 사람이 **무엇이
+        # 뽑혔는지**를 보고 지시를 쓸 재료가 그 화면이다. 확정은 관문이 막는다.
+        gate_block(doc_type, st)
+        print("")
+    print(f"■ ② 뷰 확인 — {doc_type} (표본 {len(samples)}부)")
     # **하네스는 여기서 돌지 않는다**(M9 개정 · B50) — 생성이 이미 돌려 통과분만
     # 넘겼다. 검수는 **내용 판단**이다: role 배정·제외 열·분할을 사람이 본다.
     ok = st.get("machine_gate") == "PASS"
@@ -1868,6 +2049,31 @@ def _promote(doc_type, st):
     return (a_rel, s_rel)
 
 
+def cmd_status(doc_type):
+    """관문 상태 한 화면 (B59 ①) — **화면이 흘러간 뒤 다시 볼 자리.**
+
+    찍는 것은 `gate_block`과 같은 블록이다. 통과했으면 다음 두 줄을 말한다 —
+    「무엇을 치면 되는지」가 통과 쪽에서도 화면에 있어야 대칭이 선다.
+    """
+    st = _state(doc_type)
+    if not st:
+        raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "
+                         f"python run.py register generate {doc_type} <층> <표본...>")
+    if st.get("machine_gate") != "PASS":
+        gate_block(doc_type, st)
+        return 1
+    print(f"■ 기계 관문 PASS — {doc_type}")
+    _vw = _dir(doc_type) / "view.html"
+    print("")
+    print("  ▶ 다음 줄:")
+    if _vw.exists():
+        print(f"     (뷰 확인) {_vw.relative_to(ROOT)}")
+    print(f"     python run.py register confirm {doc_type} --by <승인자>")
+    print(f"     python run.py register review {doc_type} --instruct \"…\""
+          f"   (고칠 것이 있을 때만)")
+    return 0
+
+
 # ================================================================ ③ 확정
 def cmd_confirm(doc_type, approved_by):
     """③ 확정 — 승인 1회로 등록부에 등재한다.
@@ -1877,10 +2083,12 @@ def cmd_confirm(doc_type, approved_by):
     """
     st = _state(doc_type)
     if not st:
-        raise SystemExit(f"[확정] '{doc_type}' 생성·검수가 먼저다")
+        raise SystemExit(f"[확정] '{doc_type}'의 생성이 먼저다 — "
+                         f"python run.py register generate {doc_type} <층> <표본...>")
     if st.get("machine_gate") != "PASS":
-        raise SystemExit(f"[확정] 기계 관문 미통과 — 검수를 먼저 통과시켜라 "
-                         f"(현재 {st.get('machine_gate')})")
+        # **막되 막다른 길로 두지 않는다**(B59 ①) — 이유와 칠 수 있는 다음 줄을 준다.
+        gate_block(doc_type, st)
+        return 1
     if not approved_by:
         raise SystemExit("[확정] 승인자 미지정 — 무수정 자동 통과는 금지다 (틀 §2)")
 
@@ -1987,6 +2195,9 @@ def main(argv):
         resume = "--resume" in rest
         if resume:
             rest.remove("--resume")
+        no_basic = "--no-basic" in rest
+        if no_basic:
+            rest.remove("--no-basic")
         use_basic = "--use-basic" in rest
         if use_basic:
             rest.remove("--use-basic")
@@ -2007,7 +2218,8 @@ def main(argv):
         return cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
-                            drop_interview=drop_iv, revise=revise, as_name=as_name)
+                            drop_interview=drop_iv, revise=revise, as_name=as_name,
+                            no_basic=no_basic)
     if cmd == "review":
         # **prose의 리허설 기본은 전량이다**(B51) — 부분 리허설의 근거(좌표 미스
         # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.
@@ -2022,7 +2234,7 @@ def main(argv):
             try:
                 rows = int(raw_rows)
             except (TypeError, ValueError):
-                raise SystemExit(f"[검수] --rows 는 정수 또는 all 이다: {raw_rows!r}")
+                raise SystemExit(f"[뷰 확인] --rows 는 정수 또는 all 이다: {raw_rows!r}")
         # 좌표 LLM 보조는 **기본이 「묻는다」**이고, 스크립트용으로만 미리 정한다.
         coord = True if "--llm-coord" in rest else (
             False if "--no-llm-coord" in rest else None)
@@ -2039,6 +2251,8 @@ def main(argv):
                           extract=ex)
     if cmd == "confirm":
         return cmd_confirm(rest[0], opt("--by"))
+    if cmd == "status":
+        return cmd_status(rest[0])
     if cmd == "list":
         return cmd_list()
     raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")
