@@ -1183,16 +1183,42 @@ def gate_block(doc_type, st=None, *, stream=None):
     st = st or _state(doc_type) or {}
     fails = fail_lines(st.get("harness_out") or "")
     pr(f"■ 기계 관문 FAIL — {doc_type}")
-    if fails:
-        for code, label, detail in fails:
-            pr(f"  [FAIL] {code}  {label}" + (f"  — {detail}" if detail else ""))
-    else:
-        pr("  (판정 줄이 남아 있지 않다 — 생성을 다시 돌려라)")
+    for code, label, detail in fails:
+        pr(f"  [FAIL] {code}  {label}" + (f"  — {detail}" if detail else ""))
+    if not fails:
+        # 판정 줄이 없다 — 옛 판(태그 없는 줄)이거나 관문이 예외로 죽은 경우다.
+        # **여기서 지어내지 않는다** — 호출자가 `regate`로 다시 돌린 뒤 온다.
+        pr("  (판정 줄을 읽지 못했다 — 관문 산출이 옛 판이거나 비어 있다)")
     pr("")
     pr("  ▶ 다음 줄:")
     for line in _next_lines(doc_type, st, fails):
         pr(f"     {line}")
     return fails
+
+
+def regate(doc_type, st):
+    """**관문을 지금 코드로 다시 돈다** — 저장된 판정을 믿지 않는다 (B60 ①).
+
+    실측 둘째: B59 이전에 만든 어댑터에 `status`가 「판정 줄이 남아 있지 않다」며
+    **생성부터 다시 하라고 했다.** 어댑터·표본·패키지가 전부 디스크에 있는데 다시
+    만들라고 한 것이다 — 저장된 `harness_out`이 태그 없는 옛 판이었고 폴백이 막다른
+    길이었다. 그 폴백 문면은 없앴다: 판정 줄이 없으면 그 자리에서 돈다.
+
+    저장값을 믿지 않는 근거 셋:
+    ① **옛 `state.json`이 막다른 길이 된다** — 판정 줄의 문면은 바뀐다(B59가 태그를 붙였다).
+    ② **관문이 넓어지면 옛 PASS는 무효다** — ①~④단 PASS로 ①~⑤단 관문을 지난 셈 치면
+       안 된다. `confirm`은 **지금 코드의 관문**을 지나야 한다.
+    ③ **코드 폴더를 나눠 쓴다** — 어느 판으로 돌았는지는 저장값이 말하지 않는다.
+       다시 돌면 첫 줄 `[관문] ROOT=… git …`이 지금 것을 찍는다.
+
+    비용은 표본 파싱 수 초, LLM 0이다. 재생성·문답은 타지 않는다(`fix=False`).
+    저장된 `harness_out`은 이력이고 새 실행이 덮는다.
+    """
+    pkg_path = REVIEW / doc_type / "input_package.json"
+    pkg = json.loads(pkg_path.read_text(encoding="utf-8")) if pkg_path.exists() else None
+    st["machine_gate"] = machine_gate(doc_type, st, st["samples"], pkg, fix=False)
+    _save_state(doc_type, st)
+    return st["machine_gate"]
 
 
 def _next_lines(doc_type, st, fails):
@@ -1306,7 +1332,7 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     return 1
 
 
-def machine_gate(doc_type, st, samples, pkg=None):
+def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
 
     구판은 하네스를 검수에서 돌려 실패를 **사람 화면에 올렸다.** 그러면 사내가
@@ -1331,6 +1357,12 @@ def machine_gate(doc_type, st, samples, pkg=None):
         verdict = gate_verdict(ok, True, orphan)
         st["harness_out"] = out
         if verdict == "PASS":
+            return verdict
+        if not fix:
+            # **판정만 다시 낸다**(B60 ①) — `status`·`confirm`의 갈래다. 재생성·문답을
+            # 타지 않는다: 그 둘은 LLM을 부르고, 상태를 보러 온 사람이 그것을
+            # 시작하게 두면 안 된다. 고치는 일은 `review --instruct`가 하고 그
+            # 명령이 다음 줄로 화면에 뜬다.
             return verdict
         auto, ask = classify_failures(out)
         for ln in auto + ask:
@@ -2059,7 +2091,7 @@ def cmd_status(doc_type):
     if not st:
         raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "
                          f"python run.py register generate {doc_type} <층> <표본...>")
-    if st.get("machine_gate") != "PASS":
+    if regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate_block(doc_type, st)
         return 1
     print(f"■ 기계 관문 PASS — {doc_type}")
@@ -2085,7 +2117,8 @@ def cmd_confirm(doc_type, approved_by):
     if not st:
         raise SystemExit(f"[확정] '{doc_type}'의 생성이 먼저다 — "
                          f"python run.py register generate {doc_type} <층> <표본...>")
-    if st.get("machine_gate") != "PASS":
+    # **저장된 PASS만으로 확정하지 않는다**(B60 ①) — 지금 코드의 관문을 지난다.
+    if regate(doc_type, st) != "PASS":
         # **막되 막다른 길로 두지 않는다**(B59 ①) — 이유와 칠 수 있는 다음 줄을 준다.
         gate_block(doc_type, st)
         return 1

@@ -4439,3 +4439,43 @@ v1.1은 손대지 않았다(판 계보 12판).
 
 - 회귀 **1040 → 1051/1051** (+11, 삭제 0): `test_p3` 308 → 319.
 - 검사 4종 전부 통과.
+
+## B60 ① — 관문은 다시 돈다 · 2026-09-11
+
+실측 둘째를 재현했다: B59 이전 꼴 `state.json`(태그 없는 `harness_out`)에 `status`가
+「판정 줄이 남아 있지 않다 — 생성을 다시 돌려라」. 어댑터·표본·패키지가 전부
+디스크에 있었다. **저장된 판정을 믿는 것이 병이었다.**
+
+### ①ⓐ 옛 state.json에 status (화면 그대로)
+
+```
+   기계 관문(하네스): FAIL — 31 PASS / 2 FAIL
+■ 기계 관문 FAIL — ipqc
+  [FAIL] G13  규약 10 — 자기완결 연산을 재구현하지 않았다 (parser.normalizer 몫)  — 재구현 정의 […]
+  [FAIL] G14  규약 10 — table 계열은 parser.normalizer를 **부른다** (prose는 의무 없음)  — payload_kind=table · 호출 0건
+
+  ▶ 다음 줄:
+     python run.py register review ipqc --instruct "규약 10 — …"
+     python run.py register status ipqc   (이 블록을 다시 본다)
+```
+
+첫 줄이 **지금 관문을 돈 흔적**이다. `status`·`confirm`이 `regate()`를 거쳐
+`machine_gate(..., fix=False)`를 부른다 — 판정만 내고 재생성·문답(LLM)은 타지
+않는다. 저장된 `harness_out`은 이력이고 새 실행이 덮는다.
+
+### ①ⓒ 저장값 PASS를 믿지 않는다 (화면 그대로)
+
+```
+   기계 관문(하네스): PASS — 33 PASS / 0 FAIL        ← generate 시점 저장값
+  (어댑터에 _expand_merged 재구현을 심었다 — 규약 10 위반)
+   기계 관문(하네스): FAIL — 32 PASS / 1 FAIL        ← confirm이 다시 돈 결과
+■ 기계 관문 FAIL — cp59
+  [FAIL] G13  규약 10 — 자기완결 연산을 재구현하지 않았다 (parser.normalizer 몫)  — 재구현 정의 ['_expand_merged'] …
+  rc=1
+```
+
+### 결과
+
+- 「생성을 다시 돌려라」 문면 **0건**(①ⓓ). 어서션 5건 — 호출 계수·fix=False·문면 0·
+  저장값 불신·옛 판 처리. 변이(confirm이 저장값을 읽게 되돌림) → ①ⓑ 붉음.
+- 회귀 **1051 → 1056/1056** (+5). 검사 4종 통과.

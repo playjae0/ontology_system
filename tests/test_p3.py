@@ -2120,6 +2120,77 @@ show("④ 관문 산출 첫 줄이 ROOT를 밝힌다 (폴더를 나눠 쓸 때 �
      and str(ROOT) in _out59.splitlines()[0], _out59.splitlines()[0][:70])
 
 
+# ── B60 ① 관문은 다시 돈다 — 저장된 판정을 믿지 않는다 ────────────────────
+print("\n■ B60 ① — status·confirm은 지금 코드의 관문을 다시 돈다")
+
+_REG60 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+# ①ⓑ **호출 계수** — status·confirm이 regate를 거쳐 machine_gate에 닿는다.
+_t60 = _ast.parse(_REG60)
+_calls60 = {}
+for _n in _ast.walk(_t60):
+    if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+        _calls60[_n.name] = {c.func.id for c in _ast.walk(_n)
+                             if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)}
+show("①ⓑ status·confirm이 관문을 다시 돈다 (regate → machine_gate 호출 계수)",
+     all("regate" in _calls60.get(f, set()) for f in ("cmd_status", "cmd_confirm"))
+     and "machine_gate" in _calls60.get("regate", set()),
+     str({f: "regate" in _calls60.get(f, set()) for f in ("cmd_status", "cmd_confirm")}))
+# 재실행 갈래는 **재생성·문답을 타지 않는다** — 상태를 보러 온 사람이 LLM을 시작하게
+# 두지 않는다. `fix=False`가 그 갈래이고 regate가 그것을 쓴다.
+show("① 재실행은 판정만 낸다 — 재생성·문답 없음 (fix=False)",
+     "fix=False" in _REG60.split("def regate")[1].split("\ndef ")[0])
+# ①ⓓ 폴백 문면이 없다 — 판정 줄이 없으면 그 자리에서 돈다.
+show("①ⓓ 「생성을 다시 돌려라」 문면 0건 (판정 줄이 없으면 돌린다)",
+     "생성을 다시 돌려라" not in _REG60)
+
+# ①ⓒ **저장값이 PASS인데 어댑터가 디스크에서 규약 10 위반으로 바뀌면 confirm이 막는다.**
+_fx60 = Path(_tf.mkdtemp(prefix="fx60_", dir=str(ROOT)))
+(_fx60 / "fixtures/adapters").mkdir(parents=True)
+(_fx60 / "fixtures/schemas").mkdir(parents=True)
+_cp60 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+(_fx60 / "fixtures/adapters/cp60.py").write_text(
+    _cp60.replace('"doc_type": "cp"', '"doc_type": "cp60"', 1), encoding="utf-8")
+(_fx60 / "fixtures/schemas/cp60.json").write_text(json.dumps(
+    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp60"},
+    ensure_ascii=False), encoding="utf-8")
+_e60 = {**_os.environ, "ONTO_FIXTURES": str(_fx60)}
+
+
+def _reg60(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e60, stdin=subprocess.DEVNULL)
+
+
+reset("cp60")
+_reg60("generate", "cp60", "process", str(RAW / "CP01.xlsx"), "--no-basic")
+_st60 = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
+_saved_pass = _st60["machine_gate"] == "PASS"
+# 디스크의 어댑터만 바꾼다 — 저장값은 PASS 그대로다.
+_ad60 = _fx60 / "fixtures/adapters/cp60.py"
+_ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
+    "\nADAPTER = {",
+    "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
+    encoding="utf-8")
+_c60 = _reg60("confirm", "cp60", "--by", "검수자")
+_st60b = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
+show("①ⓒ 저장값 PASS + 어댑터 규약 10 위반 → confirm이 FAIL로 막는다 (저장값을 안 믿는다)",
+     _saved_pass and _c60.returncode != 0 and registry.lookup("cp60") is None
+     and _st60b["machine_gate"] == "FAIL"
+     and "G13" in [c for c, _l, _d in R.fail_lines(_c60.stdout)],
+     f"저장 PASS={_saved_pass} · rc={_c60.returncode} · 지금={_st60b['machine_gate']}")
+# 옛 판(태그 없는 harness_out)을 두고 status → 관문이 돌고 태그 붙은 블록이 뜬다.
+_st60b["harness_out"] = _re.sub(r"(\[(?:PASS|FAIL)\])\s+G[0-9A-Z]{2}\s\s", r"\1 ", _st60b["harness_out"])
+(REVIEW / "cp60" / "state.json").write_text(json.dumps(_st60b, ensure_ascii=False), encoding="utf-8")
+_s60 = _reg60("status", "cp60")
+show("①ⓐ 태그 없는 옛 harness_out에도 status가 관문을 돌려 태그 붙은 블록을 낸다",
+     _s60.returncode != 0 and [c for c, _l, _d in R.fail_lines(_s60.stdout)] == ["G13"]
+     and "[관문] ROOT=" in json.loads(
+         (REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))["harness_out"])
+reset("cp60")
+shutil.rmtree(_fx60, ignore_errors=True)
+
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
