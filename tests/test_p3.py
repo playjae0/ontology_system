@@ -1549,8 +1549,9 @@ print("\n■ B55 ② — 문답 묶음이 쌓이고 표본이 바뀌면 stale로
 # **먼저 지운다** — 앞선 실행의 패키지가 남아 있으면 「이어 붙인다」를 재는 검사가
 # 그 잔재까지 세어, 묶음 수가 실행 이력에 따라 달라진다(단독 실행이 판정 규격이다).
 shutil.rmtree(R._dir("b55iv"), ignore_errors=True)
-_b55_feed = iter(["표본은 CP 양식이다", "진행", "헤더는 4행이다", "진행",
-                  "다른 문서다", "진행"])
+# 세션마다 「답 · 진행 · **Y**」다 — 「진행」 뒤에 확정 요약 확인이 한 번 더 온다(B60 ②).
+_b55_feed = iter(["표본은 CP 양식이다", "진행", "Y", "헤더는 4행이다", "진행", "Y",
+                  "다른 문서다", "진행", "Y"])
 _b55_ask = _IV._ask
 _IV._ask = lambda prompt="": next(_b55_feed)
 _CP1 = str(RAW / "CP01.xlsx")
@@ -2118,6 +2119,184 @@ _ok59, _out59 = R.harness(ROOT / "tests/fixtures/adapters/cp.py",
 show("④ 관문 산출 첫 줄이 ROOT를 밝힌다 (폴더를 나눠 쓸 때 어느 사본인가)",
      _out59.splitlines()[0].startswith("[관문] ROOT=")
      and str(ROOT) in _out59.splitlines()[0], _out59.splitlines()[0][:70])
+
+
+# ── B60 ① 관문은 다시 돈다 — 저장된 판정을 믿지 않는다 ────────────────────
+print("\n■ B60 ① — status·confirm은 지금 코드의 관문을 다시 돈다")
+
+_REG60 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+# ①ⓑ **호출 계수** — status·confirm이 regate를 거쳐 machine_gate에 닿는다.
+_t60 = _ast.parse(_REG60)
+_calls60 = {}
+for _n in _ast.walk(_t60):
+    if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+        _calls60[_n.name] = {c.func.id for c in _ast.walk(_n)
+                             if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)}
+show("①ⓑ status·confirm이 관문을 다시 돈다 (regate → machine_gate 호출 계수)",
+     all("regate" in _calls60.get(f, set()) for f in ("cmd_status", "cmd_confirm"))
+     and "machine_gate" in _calls60.get("regate", set()),
+     str({f: "regate" in _calls60.get(f, set()) for f in ("cmd_status", "cmd_confirm")}))
+# 재실행 갈래는 **재생성·문답을 타지 않는다** — 상태를 보러 온 사람이 LLM을 시작하게
+# 두지 않는다. `fix=False`가 그 갈래이고 regate가 그것을 쓴다.
+show("① 재실행은 판정만 낸다 — 재생성·문답 없음 (fix=False)",
+     "fix=False" in _REG60.split("def regate")[1].split("\ndef ")[0])
+# ①ⓓ 폴백 문면이 없다 — 판정 줄이 없으면 그 자리에서 돈다.
+show("①ⓓ 「생성을 다시 돌려라」 문면 0건 (판정 줄이 없으면 돌린다)",
+     "생성을 다시 돌려라" not in _REG60)
+
+# ①ⓒ **저장값이 PASS인데 어댑터가 디스크에서 규약 10 위반으로 바뀌면 confirm이 막는다.**
+_fx60 = Path(_tf.mkdtemp(prefix="fx60_", dir=str(ROOT)))
+(_fx60 / "fixtures/adapters").mkdir(parents=True)
+(_fx60 / "fixtures/schemas").mkdir(parents=True)
+_cp60 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+(_fx60 / "fixtures/adapters/cp60.py").write_text(
+    _cp60.replace('"doc_type": "cp"', '"doc_type": "cp60"', 1), encoding="utf-8")
+(_fx60 / "fixtures/schemas/cp60.json").write_text(json.dumps(
+    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp60"},
+    ensure_ascii=False), encoding="utf-8")
+_e60 = {**_os.environ, "ONTO_FIXTURES": str(_fx60)}
+
+
+def _reg60(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e60, stdin=subprocess.DEVNULL)
+
+
+reset("cp60")
+_reg60("generate", "cp60", "process", str(RAW / "CP01.xlsx"), "--no-basic")
+_st60 = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
+_saved_pass = _st60["machine_gate"] == "PASS"
+# 디스크의 어댑터만 바꾼다 — 저장값은 PASS 그대로다.
+_ad60 = _fx60 / "fixtures/adapters/cp60.py"
+_ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
+    "\nADAPTER = {",
+    "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
+    encoding="utf-8")
+_c60 = _reg60("confirm", "cp60", "--by", "검수자")
+_st60b = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
+show("①ⓒ 저장값 PASS + 어댑터 규약 10 위반 → confirm이 FAIL로 막는다 (저장값을 안 믿는다)",
+     _saved_pass and _c60.returncode != 0 and registry.lookup("cp60") is None
+     and _st60b["machine_gate"] == "FAIL"
+     and "G13" in [c for c, _l, _d in R.fail_lines(_c60.stdout)],
+     f"저장 PASS={_saved_pass} · rc={_c60.returncode} · 지금={_st60b['machine_gate']}")
+# 옛 판(태그 없는 harness_out)을 두고 status → 관문이 돌고 태그 붙은 블록이 뜬다.
+_st60b["harness_out"] = _re.sub(r"(\[(?:PASS|FAIL)\])\s+G[0-9A-Z]{2}\s\s", r"\1 ", _st60b["harness_out"])
+(REVIEW / "cp60" / "state.json").write_text(json.dumps(_st60b, ensure_ascii=False), encoding="utf-8")
+_s60 = _reg60("status", "cp60")
+show("①ⓐ 태그 없는 옛 harness_out에도 status가 관문을 돌려 태그 붙은 블록을 낸다",
+     _s60.returncode != 0 and [c for c, _l, _d in R.fail_lines(_s60.stdout)] == ["G13"]
+     and "[관문] ROOT=" in json.loads(
+         (REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))["harness_out"])
+reset("cp60")
+shutil.rmtree(_fx60, ignore_errors=True)
+
+
+# ── B60 ② 문답의 확정 요약이 생성의 입력이다 ──────────────────────────────
+print("\n■ B60 ② — 대화는 이력, 판단은 확정 요약 하나")
+
+_fx62 = Path(_tf.mkdtemp(prefix="fx62_", dir=str(ROOT)))
+(_fx62 / "fixtures/adapters").mkdir(parents=True)
+(_fx62 / "fixtures/schemas").mkdir(parents=True)
+(_fx62 / "fixtures/adapters/cp62.py").write_text(
+    (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+    .replace('"doc_type": "cp"', '"doc_type": "cp62"', 1), encoding="utf-8")
+(_fx62 / "fixtures/schemas/cp62.json").write_text(json.dumps(
+    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp62"},
+    ensure_ascii=False), encoding="utf-8")
+_e62 = {**_os.environ, "ONTO_FIXTURES": str(_fx62), "ONTO_DUMP_PROMPT": "1"}
+
+
+def _reg62(*a, feed=""):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock", "--no-basic"] if a[0] == "generate" else
+                          [sys.executable, str(ROOT / "run.py"), "register", *a, "--allow-mock"],
+                          capture_output=True, text=True, cwd=str(ROOT), env=_e62, input=feed)
+
+
+reset("cp62")
+# 문답: r1 Q1=«1»(위 값 채움)·교정 빈줄 → r2 교정 문장 → r3 «진행» → 요약 확인 «Y»
+_g62 = _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--interview",
+              feed="1\n\n헤더 행은 2행이다 — 1행은 제목\n진행\nY\n")
+_pk62 = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
+_b62 = R._hint_batches(_pk62["human"]["hint"])[-1]
+_pr62 = (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8")
+
+# ②ⓑ **프롬프트에는 확정 사항만** — 전문은 싣지 않는다.
+show("②ⓑ 생성 프롬프트에 [확정 사항]이 있고 [문답 라운드 전문이 없다",
+     "[확정 사항" in _pr62 and "[문답 라운드" not in _pr62
+     and all(d["decision"] in _pr62 for d in _b62["decisions"]),
+     f"확정 {len(_b62['decisions'])}항목 · 라운드 {len(_b62['rounds'])}")
+# 전문은 **그대로 남는다** — 이력이다(넣지 않는 것: 라운드 전문 삭제).
+show("② 라운드 전문은 패키지에 그대로 남는다 (이력 · 재현 근거)",
+     len(_b62["rounds"]) >= 2 and all("understanding" in r for r in _b62["rounds"]))
+# ②ⓓ **사람 4키·시스템 5키 불변** — decisions는 hint 안의 묶음에 산다.
+show("②ⓓ 사람 4키·시스템 5키 불변 — decisions는 human.hint 묶음 안이다",
+     set(_pk62["human"]) == {"doc_type", "layer", "samples", "hint"}
+     and len(_pk62["system"]) == 5 and "decisions" in _b62
+     and "decisions" not in _pk62["human"] and "decisions" not in _pk62["system"])
+# ②ⓒ **--instruct가 결정을 뒤집는다** — topic이 든 지시는 그 항목을 바꾼다.
+_topic62 = _b62["decisions"][0]["topic"]
+_old_dec = _b62["decisions"][0]["decision"]
+_reg62("review", "cp62", "--instruct", f"{_topic62}: 행 독립으로 읽어라", "--no-llm-coord")
+_pk62b = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
+_d62 = [d for b in R._hint_batches(_pk62b["human"]["hint"]) for d in b["decisions"]
+        if d["topic"] == _topic62][0]
+show("②ⓒ --instruct로 결정을 뒤집으면 decisions의 그 항목이 바뀐다 (reason에 사람 지시 rev)",
+     _d62["decision"] != _old_dec and "행 독립" in _d62["decision"]
+     and "사람 지시 (rev" in _d62["reason"],
+     _d62["reason"][:40])
+# topic이 안 든 지시는 **새 항목**으로 붙는다 — 지시를 버리지 않는다.
+_n_before = sum(len(b["decisions"]) for b in R._hint_batches(_pk62b["human"]["hint"]))
+_reg62("review", "cp62", "--instruct", "복수값 구분자에 슬래시도 받아라", "--no-llm-coord")
+_pk62c = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
+_n_after = sum(len(b["decisions"]) for b in R._hint_batches(_pk62c["human"]["hint"]))
+show("②ⓒ topic이 안 든 지시는 새 항목으로 붙는다 (지시를 버리지 않는다)",
+     _n_after == _n_before + 1)
+# ②ⓔ **크기** — 요약이 전문보다 짧다(변이 시험: 전문을 실었을 때와 비교).
+from cli.prompt import _decisions_block as _DB                       # noqa: E402
+_bs62 = R._hint_batches(_pk62c["human"]["hint"])
+_summary62 = _DB(_bs62)
+_transcript62 = "\n".join(
+    f"[문답 라운드 {r.get('round')}] 이해: {r.get('understanding', '')}"
+    + (f"\n  사람의 답/교정: {r['answer']}" if r.get("answer") else "")
+    for b in _bs62 for r in b["rounds"])
+show("②ⓔ 확정 요약이 라운드 전문보다 짧다 (프롬프트가 줄어든다)",
+     0 < len(_summary62) < len(_transcript62),
+     f"요약 {len(_summary62)}자 · 전문 {len(_transcript62)}자")
+# **힌트만 준 경우** — 힌트 문장이 그대로 한 항목. 자리는 항상 있다.
+reset("cp62")
+_reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--hint", "3~7행 병합은 위 값 채움")
+_pk62h = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
+_dh = [d for b in R._hint_batches(_pk62h["human"]["hint"]) for d in b["decisions"]]
+show("② 문답 없이 --hint만 주면 힌트 문장이 확정 사항 한 항목이다 (자리는 항상 있다)",
+     len(_dh) == 1 and _dh[0]["decision"] == "3~7행 병합은 위 값 채움"
+     and "[확정 사항" in (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8"))
+# **LLM 지점이 늘지 않는다** — 요약은 interview와 같은 자리(point="generate")다.
+_IVSRC = (ROOT / "cli" / "interview.py").read_text(encoding="utf-8")
+show("② 요약은 새 LLM 지점이 아니다 (interview와 같은 point · DECISIONS_SCHEMA strict)",
+     'point="generate"' in _IVSRC.split("def _summarize")[1].split("\ndef ")[0]
+     and set(_IV.DECISIONS_SCHEMA["required"]) == set(_IV.DECISIONS_SCHEMA["properties"]))
+# **수정 흐름** — «수정 2»면 그 항목만 바뀌고 나머지는 그대로다(단위 시험 · _ask 패치).
+_hist62 = [{"round": 1, "understanding": "u1",
+            "questions": [{"q": "헤더 행", "options": ["1행", "2행"]}],
+            "answers": [{"q": "헤더 행", "answer": "1", "chosen": "1행"}],
+            "answer": "헤더 행 → 1행", "progress": {}},
+           {"round": 2, "understanding": "u2", "questions": [], "answers": [],
+            "answer": "교정: 병합은 위 값 채움", "progress": {}}]
+_feed62 = iter(["수정 1", "2행이다 — 1행은 제목", "Y"])
+_ask62 = _IV._ask
+_IV._ask = lambda prompt="": next(_feed62)
+try:
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _dec62 = _IV.finalize({"human": {"hint": ""}, "system": {}}, _hist62)
+finally:
+    _IV._ask = _ask62
+show("②ⓐ 요약 확인에서 «수정 n»은 그 항목만 바꾼다 (나머지 그대로)",
+     len(_dec62) == 2 and _dec62[0]["decision"] == "2행이다 — 1행은 제목"
+     and "수정" in _dec62[0]["reason"] and _dec62[1]["decision"] == "병합은 위 값 채움")
+reset("cp62")
+shutil.rmtree(_fx62, ignore_errors=True)
 
 
 print("\n" + "=" * 62)

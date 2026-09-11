@@ -73,7 +73,8 @@ from cli.prompt import (  # noqa: F401
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import injections               # 주입 조립은 한 자리다(B48)
 from cli.interview import (  # noqa: F401
-    INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview)
+    INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
+    finalize as iv_finalize)
 
 REVIEW = ROOT / "review"
 KIT = ROOT / "kit"
@@ -680,7 +681,71 @@ def _keep_prior(prior):
 
 
 def _new_batch(samples):
-    return {"samples": sorted(samples), "at": store._now(), "rounds": []}
+    # `decisions`가 **확정 요약의 자리**다(B60 ②) — 라운드 전문(`rounds`)은 이력으로
+    # 남고, 생성 프롬프트에는 이것만 실린다. 자리는 항상 있다(빈 리스트라도).
+    return {"samples": sorted(samples), "at": store._now(), "rounds": [],
+            "decisions": []}
+
+
+def decisions_of(hint):
+    """`hint` 그릇의 **현재 표본분** 확정 사항 — 생성이 읽는 것이다.
+
+    stale 묶음의 결정은 여기 오지 않는다(이전 표본에 대한 판단이 현재 판정에 섞이면
+    안 된다 — B55 ②의 규율 그대로). 렌더가 그것을 표시해서 따로 싣는다.
+    """
+    out = []
+    for b in _hint_batches(hint):
+        if not b.get("stale"):
+            out.extend(b.get("decisions") or [])
+    return out
+
+
+def hint_only_decisions(text):
+    """문답 없이 `--hint`만 준 경우의 확정 사항 — **힌트 문장 그대로 한 항목**(B60 ②).
+
+    자리는 항상 있어야 한다: 생성 프롬프트의 `[확정 사항]`이 「문답을 했나」에 따라
+    있다 없다 하면, 모델이 없는 절을 찾거나 힌트를 결정보다 약하게 읽는다.
+    """
+    t = (text or "").strip()
+    return [{"topic": "힌트", "decision": t, "reason": "사람 힌트(자유 텍스트)",
+             "round": None}] if t else []
+
+
+def apply_instruction_to_decisions(doc_type, instruction, rev):
+    """`--instruct`가 **확정 사항을 갱신한다**(B60 ②) — LLM 0.
+
+    지시와 결정이 따로 살면 다음 재생성이 옛 결정을 다시 쓴다. 규칙은 결정적이다:
+    지시 문면에 **어느 항목의 `topic`이 그대로 들어 있으면** 그 항목의 `decision`을
+    지시로 바꾸고 `reason`에 「사람 지시 (rev N)」를 붙인다. 어느 topic도 안 들어
+    있으면 **새 항목**으로 붙인다 — 지시를 버리지 않는다(무엇에 대한 것인지 사람이
+    topic을 안 적었을 뿐이다). 매칭에 LLM을 쓰지 않는 이유: 이 갱신이 판단이 되면
+    「지시가 결정을 뒤집었다」가 사람 눈에 안 보이는 자리에서 일어난다.
+    """
+    path = REVIEW / doc_type / "input_package.json"
+    if not path.exists() or not (instruction or "").strip():
+        return None
+    obj = json.loads(path.read_text(encoding="utf-8"))
+    hint = (obj.get("human") or {}).get("hint")
+    batches = _hint_batches(hint)
+    live = [b for b in batches if not b.get("stale")]
+    if not live:
+        live = [_new_batch((obj.get("human") or {}).get("samples") or [])]
+        batches = batches + live
+    hit = 0
+    for b in live:
+        for d in b.get("decisions") or []:
+            t = (d.get("topic") or "").strip()
+            if t and t in instruction:
+                d["decision"] = instruction.strip()
+                d["reason"] = f"사람 지시 (rev {rev}) — 이전: {d.get('reason', '')}"
+                hit += 1
+    if not hit:
+        live[-1].setdefault("decisions", []).append(
+            {"topic": f"지시 (rev {rev})", "decision": instruction.strip(),
+             "reason": f"사람 지시 (rev {rev})", "round": None})
+    obj.setdefault("human", {})["hint"] = _merge_hint(hint, batches)
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return hit
 
 
 def _hint_batches(hint):
@@ -963,11 +1028,24 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # **이전 라운드를 문답에 실어 보낸다**(②-2) — 저장만 이어 붙이고 모델이
         # 처음부터 물으면 사람이 두 번 답한다.
         rounds = _interview(pkg, on_round=_persist)
+        # **확정 요약이 생성의 입력이다**(B60 ②) — 전문은 이력으로 남고, 사람이
+        # 화면에서 요약을 확인한다. 요약도 즉시 저장한다(라운드와 같은 이유).
+        _batch["decisions"] = iv_finalize(pkg, rounds)
         _persist(rounds)
         _old = sum(len(b["rounds"]) for b in _hint_batches(pkg["human"]["hint"])
                    if b is not _batch)
-        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록"
+        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록 · "
+              f"확정 사항 {len(_batch['decisions'])}항목"
               + (f" (이전 {_old}라운드 유지)" if _old else ""))
+    elif (hint or "").strip():
+        # **문답 없이 힌트만** — 힌트 문장이 그대로 한 항목의 확정 사항이다. 자리는
+        # 항상 있어야 하므로 여기서 묶음을 세운다(사람 4키는 그대로 — `hint` 안이다).
+        _hb = _new_batch([str(x) for x in samples])
+        _hb["decisions"] = hint_only_decisions(hint)
+        pkg["human"]["hint"] = _merge_hint(
+            pkg["human"]["hint"], _hint_batches(pkg["human"]["hint"]) + [_hb])
+        (d / "input_package.json").write_text(
+            json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     proposal = basic_adapter_proposal(samples)
     if proposal:
         print(f"   ▶ 기본 어댑터 적용 제안 — {proposal['reason']}")
@@ -1183,16 +1261,42 @@ def gate_block(doc_type, st=None, *, stream=None):
     st = st or _state(doc_type) or {}
     fails = fail_lines(st.get("harness_out") or "")
     pr(f"■ 기계 관문 FAIL — {doc_type}")
-    if fails:
-        for code, label, detail in fails:
-            pr(f"  [FAIL] {code}  {label}" + (f"  — {detail}" if detail else ""))
-    else:
-        pr("  (판정 줄이 남아 있지 않다 — 생성을 다시 돌려라)")
+    for code, label, detail in fails:
+        pr(f"  [FAIL] {code}  {label}" + (f"  — {detail}" if detail else ""))
+    if not fails:
+        # 판정 줄이 없다 — 옛 판(태그 없는 줄)이거나 관문이 예외로 죽은 경우다.
+        # **여기서 지어내지 않는다** — 호출자가 `regate`로 다시 돌린 뒤 온다.
+        pr("  (판정 줄을 읽지 못했다 — 관문 산출이 옛 판이거나 비어 있다)")
     pr("")
     pr("  ▶ 다음 줄:")
     for line in _next_lines(doc_type, st, fails):
         pr(f"     {line}")
     return fails
+
+
+def regate(doc_type, st):
+    """**관문을 지금 코드로 다시 돈다** — 저장된 판정을 믿지 않는다 (B60 ①).
+
+    실측 둘째: B59 이전에 만든 어댑터에 `status`가 「판정 줄이 남아 있지 않다」며
+    **생성부터 다시 하라고 했다.** 어댑터·표본·패키지가 전부 디스크에 있는데 다시
+    만들라고 한 것이다 — 저장된 `harness_out`이 태그 없는 옛 판이었고 폴백이 막다른
+    길이었다. 그 폴백 문면은 없앴다: 판정 줄이 없으면 그 자리에서 돈다.
+
+    저장값을 믿지 않는 근거 셋:
+    ① **옛 `state.json`이 막다른 길이 된다** — 판정 줄의 문면은 바뀐다(B59가 태그를 붙였다).
+    ② **관문이 넓어지면 옛 PASS는 무효다** — ①~④단 PASS로 ①~⑤단 관문을 지난 셈 치면
+       안 된다. `confirm`은 **지금 코드의 관문**을 지나야 한다.
+    ③ **코드 폴더를 나눠 쓴다** — 어느 판으로 돌았는지는 저장값이 말하지 않는다.
+       다시 돌면 첫 줄 `[관문] ROOT=… git …`이 지금 것을 찍는다.
+
+    비용은 표본 파싱 수 초, LLM 0이다. 재생성·문답은 타지 않는다(`fix=False`).
+    저장된 `harness_out`은 이력이고 새 실행이 덮는다.
+    """
+    pkg_path = REVIEW / doc_type / "input_package.json"
+    pkg = json.loads(pkg_path.read_text(encoding="utf-8")) if pkg_path.exists() else None
+    st["machine_gate"] = machine_gate(doc_type, st, st["samples"], pkg, fix=False)
+    _save_state(doc_type, st)
+    return st["machine_gate"]
 
 
 def _next_lines(doc_type, st, fails):
@@ -1256,13 +1360,15 @@ def _failure_persist(doc_type, pkg, samples, ask):
     batch = _new_batch([str(x) for x in (samples or [])])
     batch["context"] = "기계 관문 실패"
 
-    def _persist(rounds):
+    def _persist(rounds, decisions=None):
         try:
             obj = json.loads(path.read_text(encoding="utf-8")) if path.exists() \
                 else {"human": {"hint": {}}}
         except (OSError, json.JSONDecodeError):
             return                              # 패키지를 못 읽으면 조용히 지나간다
         batch["rounds"] = rounds
+        if decisions is not None:
+            batch["decisions"] = decisions      # 확정 요약(B60 ②) — 전문과 같은 묶음에
         hint = (obj.get("human") or {}).get("hint")
         keep = [b for b in _hint_batches(hint) if b.get("at") != batch["at"]]
         obj.setdefault("human", {})["hint"] = _merge_hint(hint, keep + [batch])
@@ -1306,7 +1412,7 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     return 1
 
 
-def machine_gate(doc_type, st, samples, pkg=None):
+def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
 
     구판은 하네스를 검수에서 돌려 실패를 **사람 화면에 올렸다.** 그러면 사내가
@@ -1332,6 +1438,12 @@ def machine_gate(doc_type, st, samples, pkg=None):
         st["harness_out"] = out
         if verdict == "PASS":
             return verdict
+        if not fix:
+            # **판정만 다시 낸다**(B60 ①) — `status`·`confirm`의 갈래다. 재생성·문답을
+            # 타지 않는다: 그 둘은 LLM을 부르고, 상태를 보러 온 사람이 그것을
+            # 시작하게 두면 안 된다. 고치는 일은 `review --instruct`가 하고 그
+            # 명령이 다음 줄로 화면에 뜬다.
+            return verdict
         auto, ask = classify_failures(out)
         for ln in auto + ask:
             print(f"     {ln}")
@@ -1347,8 +1459,9 @@ def machine_gate(doc_type, st, samples, pkg=None):
             # **여기도 라운드마다 즉시 저장한다**(B55 ②-3) — 구판은 `st`에 한 줄
             # 요약만 남기고 전문이 사라졌으며, 라운드 저장이 없어 중간에 죽으면
             # 전량 유실이었다. B43 ⑤가 생성 전 문답에서 막은 것과 같은 유실이다.
-            rounds = _interview(pkg or {}, context=ask,
-                                on_round=_failure_persist(doc_type, pkg, samples, ask))
+            _fp = _failure_persist(doc_type, pkg, samples, ask)
+            rounds = _interview(pkg or {}, context=ask, on_round=_fp)
+            _fp(rounds, decisions=iv_finalize(pkg or {}, rounds, context=ask))
             answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
             # **원문은 답이 있어도 함께 보낸다**(B59 ②). 구판은 사람이 답하면
             # `"사람 문답: …"`만 보내 **예외 원문·validator 결함 목록이 지시에서
@@ -1887,6 +2000,12 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
         st.setdefault("instructions", []).append(
             {"n": st["revision"], "instruction": instruct, "at": store._now(),
              "by": "사람(검수 지시)"})
+        # **지시는 확정 사항을 갱신한다**(B60 ②) — draft가 패키지를 읽기 **전에**.
+        # 지시와 결정이 따로 살면 이 재생성이 옛 결정을 다시 쓴다.
+        _hit = apply_instruction_to_decisions(doc_type, instruct, st["revision"])
+        if _hit is not None:
+            print(f"   확정 사항 갱신 — {'항목 ' + str(_hit) + '건 교체' if _hit else '새 항목 추가'}"
+                  f" (사람 지시 rev {st['revision']})")
         ad, sc = draft(doc_type, st["revision"], instruction=instruct,
                        history=st.get("instructions"))
         if ad is None:
@@ -2059,7 +2178,7 @@ def cmd_status(doc_type):
     if not st:
         raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "
                          f"python run.py register generate {doc_type} <층> <표본...>")
-    if st.get("machine_gate") != "PASS":
+    if regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate_block(doc_type, st)
         return 1
     print(f"■ 기계 관문 PASS — {doc_type}")
@@ -2085,7 +2204,8 @@ def cmd_confirm(doc_type, approved_by):
     if not st:
         raise SystemExit(f"[확정] '{doc_type}'의 생성이 먼저다 — "
                          f"python run.py register generate {doc_type} <층> <표본...>")
-    if st.get("machine_gate") != "PASS":
+    # **저장된 PASS만으로 확정하지 않는다**(B60 ①) — 지금 코드의 관문을 지난다.
+    if regate(doc_type, st) != "PASS":
         # **막되 막다른 길로 두지 않는다**(B59 ①) — 이유와 칠 수 있는 다음 줄을 준다.
         gate_block(doc_type, st)
         return 1

@@ -2,6 +2,7 @@
 
 > **실물 기준**: `parser/reader.py::read_pptx` · `parser/adapters/basic_ppt.py` · `parser/tagger.py`(④ 이미지 요약 · ⑨ 좌표) — 원격 `55f9c59` (B58 ⑤). 정본은 문서 6 §6.1·§6.4-3·§6.4-5.
 > **확정**: 미확정. 사내 실측 대기.
+> **등록**: PPT는 `generate` 때 **플래그 없이 넣어도** 고정 어댑터로 간다(B59 ③ — 물어보고 감). LLM 생성 0회.
 
 ## 한 줄
 
