@@ -1243,8 +1243,13 @@ _nx = [l for l in _gi.stdout.splitlines() if "python run.py register" in l]
 show("② ⓓ 미통과는 뷰로 넘어가지 않는다 · 화면이 이유와 다음 줄을 준다",
      _gi.returncode != 0 and R.fail_lines(_gi.stdout) and _nx,
      f"FAIL {len(R.fail_lines(_gi.stdout))}줄 · 다음 줄 {len(_nx)}개")
-show("② ⓒ 1회 뒤에도 실패하면 묻고 진행한다 (비대화형이면 끄고 끝낸다)",
-     "1회 재생성 후에도 FAIL" in _gi.stdout and "비대화형" in _gi.stdout)
+# **B62 ④가 이 자리를 바꿨다** — 기본값이 N(막다른 길)에서 Y(이어가기)로 갔고,
+# 종료 조건은 「같은 FAIL이 되풀이된다」다. 잠글 성질은 ①자동 수정이 한 번 돌았다
+# ②끝날 때 **왜 끝나는지**를 말한다 ③rc가 실패다 — 문면 한 줄이 아니다.
+show("② ⓒ 자동 수정 1회 뒤 같은 FAIL이면 사유를 말하고 끝낸다 (기본은 이어가기)",
+     "자동 수정 1회" in _gi.stdout or "같은 FAIL이 되풀이된다" in _gi.stdout,
+     [l.strip() for l in _gi.stdout.splitlines()
+      if "되풀이" in l or "자동 수정" in l][:1])
 show("② 하네스 수리 — 조각 0건이 이제 FAIL이다 (구판은 검사 전에 돌아갔다)",
      (lambda t: t.index("조각 {len(pieces)}건 산출")
       < t.index("if not pieces:\n        return pieces"))(
@@ -1584,9 +1589,13 @@ def _b55_batches(pk):
 show("② --interview 2회 — 묶음이 **둘 다 남는다** (덮지 않는다)",
      len(_b55_batches(_pk1)) == 1 and len(_b55_batches(_pk2)) == 2,
      f"{len(_b55_batches(_pk1))} → {len(_b55_batches(_pk2))}묶음")
-show("② 1회차 답이 2회차 패키지에 그대로 있다 (사람의 답은 다시 못 만든다)",
+# **자리가 옮겨졌다**(B62 ②) — 전문은 로그에, 판단은 패키지에. 잠글 성질은
+# 그대로다: **사람의 답은 다시 못 만드니 사라지지 않는다.**
+_b55_log = R.read_log("b55iv")
+show("② 1회차 답이 그대로 있다 — 전문은 로그에 (사람의 답은 다시 못 만든다)",
      any("표본은 CP 양식이다" in (r.get("answer") or "")
-         for b in _b55_batches(_pk2) for r in b["rounds"]))
+         for rounds in _b55_log.values() for r in rounds),
+     f"로그 묶음 {len(_b55_log)}개")
 # ②ⓒ 표본이 바뀌면 **표시하되 지우지 않는다**
 _b55_stale = [b for b in _b55_batches(_pk3) if b.get("stale")]
 show("② 표본을 바꾸면 이전 묶음이 **stale로 남는다** (지워지지 않는다)",
@@ -1601,11 +1610,15 @@ show("② 사람 4키·시스템 5키 불변 — 문답은 hint 그릇 **안에�
          for p in (_pk1, _pk2, _pk3)),
      f"human {len(_pk3['human'])} · system {len(_pk3['system'])}")
 # ②-2 **모델도 그것을 본다** — 저장만 이어 붙이면 사람이 두 번 답한다
-_b55_fresh, _b55_old = _IV._prior_rounds(_pk3)
-show("② 문답 세션이 이전 라운드를 받는다 — stale은 **구분해서**",
-     len(_b55_fresh) == 1 and len(_b55_old) == 2
-     and "다른 문서다" in (_b55_fresh[0].get("answer") or ""),
-     f"현재 {len(_b55_fresh)} · 이전 표본 {len(_b55_old)}")
+# **B62 ②가 이 자리를 좁혔다** — 이전 표본(stale)의 **전문**은 싣지 않는다.
+# 같은 전문이 패키지와 이 자리 둘로 나가던 것을 끊었고, 이전 표본의 **판단**은
+# `decisions`로 남아 생성 지시문이 표시해서 싣는다.
+_b55_fresh = _IV._prior_rounds(_pk3)
+show("② 문답 세션이 **현재 표본 묶음의** 이전 라운드만 받는다 (전문은 로그에서)",
+     len(_b55_fresh) == 1 and "다른 문서다" in (_b55_fresh[0].get("answer") or ""),
+     f"현재 {len(_b55_fresh)}라운드")
+show("② 이전 표본의 판단은 decisions로 남는다 (전문이 아니라 결정이 건너간다)",
+     all(b.get("decisions") is not None for b in _b55_batches(_pk3) if b.get("stale")))
 shutil.rmtree(R._dir("b55iv"), ignore_errors=True)
 
 
@@ -2168,7 +2181,10 @@ _reg60("generate", "cp60", "process", str(RAW / "CP01.xlsx"), "--no-basic")
 _st60 = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
 _saved_pass = _st60["machine_gate"] == "PASS"
 # 디스크의 어댑터만 바꾼다 — 저장값은 PASS 그대로다.
-_ad60 = _fx60 / "fixtures/adapters/cp60.py"
+# **바꿀 곳은 작업 사본이다**(B62 ①-c) — 관문 입구에서 시스템이 `review/`로 복사해
+# 거기에 채우므로, 그 뒤로 관문이 읽는 어댑터는 `state.adapter`가 가리키는 사본이다.
+# fixture 원본은 손대지 않는 자리라(D-26) 거기를 고치면 아무 데도 안 닿는다.
+_ad60 = ROOT / _st60["adapter"]
 _ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
     "\nADAPTER = {",
     "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
@@ -2221,15 +2237,18 @@ _g62 = _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--intervie
 _pk62 = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
 _b62 = R._hint_batches(_pk62["human"]["hint"])[-1]
 _pr62 = (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8")
+_rd62 = R.read_log("cp62").get(_b62["at"]) or []
 
 # ②ⓑ **프롬프트에는 확정 사항만** — 전문은 싣지 않는다.
 show("②ⓑ 생성 프롬프트에 [확정 사항]이 있고 [문답 라운드 전문이 없다",
      "[확정 사항" in _pr62 and "[문답 라운드" not in _pr62
      and all(d["decision"] in _pr62 for d in _b62["decisions"]),
-     f"확정 {len(_b62['decisions'])}항목 · 라운드 {len(_b62['rounds'])}")
-# 전문은 **그대로 남는다** — 이력이다(넣지 않는 것: 라운드 전문 삭제).
-show("② 라운드 전문은 패키지에 그대로 남는다 (이력 · 재현 근거)",
-     len(_b62["rounds"]) >= 2 and all("understanding" in r for r in _b62["rounds"]))
+     f"확정 {len(_b62['decisions'])}항목 · 라운드 {len(_rd62)}")
+# 전문은 **사라지지 않는다** — 자리가 로그로 옮겨졌을 뿐이다(B62 ②). 잠글 성질은
+# 그대로다: 사람의 답은 다시 못 만드니 어딘가에 남아 있어야 한다.
+show("② 라운드 전문은 로그에 그대로 남는다 (이력 · 재현 근거)",
+     len(_rd62) >= 2 and all("understanding" in r for r in _rd62)
+     and "rounds" not in _b62)
 # ②ⓓ **사람 4키·시스템 5키 불변** — decisions는 hint 안의 묶음에 산다.
 show("②ⓓ 사람 4키·시스템 5키 불변 — decisions는 human.hint 묶음 안이다",
      set(_pk62["human"]) == {"doc_type", "layer", "samples", "hint"}
@@ -2257,10 +2276,11 @@ show("②ⓒ topic이 안 든 지시는 새 항목으로 붙는다 (지시를 �
 from cli.prompt import _decisions_block as _DB                       # noqa: E402
 _bs62 = R._hint_batches(_pk62c["human"]["hint"])
 _summary62 = _DB(_bs62)
+_log62 = R.read_log("cp62")
 _transcript62 = "\n".join(
     f"[문답 라운드 {r.get('round')}] 이해: {r.get('understanding', '')}"
     + (f"\n  사람의 답/교정: {r['answer']}" if r.get("answer") else "")
-    for b in _bs62 for r in b["rounds"])
+    for b in _bs62 for r in (_log62.get(b["at"]) or []))
 show("②ⓔ 확정 요약이 라운드 전문보다 짧다 (프롬프트가 줄어든다)",
      0 < len(_summary62) < len(_transcript62),
      f"요약 {len(_summary62)}자 · 전문 {len(_transcript62)}자")
@@ -2297,6 +2317,248 @@ show("②ⓐ 요약 확인에서 «수정 n»은 그 항목만 바꾼다 (나머
      and "수정" in _dec62[0]["reason"] and _dec62[1]["decision"] == "병합은 위 값 채움")
 reset("cp62")
 shutil.rmtree(_fx62, ignore_errors=True)
+
+
+# ── B62 ①ⓓ·③·④ 관문 입구에서 시스템이 쓴다 ───────────────────────────────
+print("\n■ B62 — 관문이 채우고 찍는다 · 재시도의 기본은 이어가기")
+
+_fx63 = Path(_tf.mkdtemp(prefix="fx63_", dir=str(ROOT)))
+(_fx63 / "fixtures/adapters").mkdir(parents=True)
+(_fx63 / "fixtures/schemas").mkdir(parents=True)
+# **LLM이 쓴 header_labels에 한 글자 오타**가 있는 어댑터 — ①-a 이전 코드의 산출이다.
+_AD63 = '''# -*- coding: utf-8 -*-
+from parser import normalizer
+
+ADAPTER = {
+    "doc_type": "%s",
+    "adapter_version": "1.0",
+    "payload_kind": "table",
+    "expects": {
+        "header_row": 1,
+        "data_start_row": 2,
+        "header_labels": ["대공정", "세부공정", "공정번호", "설비",
+                          "관리항목", "규격", "측정방"],
+        "columns": {"process_group": "A", "process_ref": "B", "process_no": "C",
+                    "설비": "D", "관리항목": "E", "규격": "F", "측정방법": "G"},
+        "multi_value_seps": [",", "/"],
+        "multi_value_fields": ["설비"],
+        "required": ["process_ref", "설비", "관리항목"],
+    },
+}
+
+
+def extract(raw) -> list[dict]:
+    exp = ADAPTER["expects"]
+    out = []
+    for sheet in raw.get("sheets", []):
+        cells = normalizer.expand_merged(sheet)
+        for row in range(exp["data_start_row"], int(sheet.get("max_row", 0)) + 1):
+            rec = {f: str(cells.get("%%s%%d" %% (c, row), "") or "").strip()
+                   for f, c in exp["columns"].items()}
+            if all(v == "" for v in rec.values()):
+                continue
+            rec["source_locator"] = "%%s!R%%d" %% (sheet.get("name", "sheet"), row)
+            out.append(rec)
+    out, _ = normalizer.split_multi(out, exp["multi_value_fields"], exp["multi_value_seps"])
+    return out
+'''
+_SC63 = {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+         "fields": {"설비": {"role": "entity", "category": "Unit"},
+                    "관리항목": {"role": "entity", "category": "Property"},
+                    "규격": {"role": "attribute", "attach_to_field": "관리항목",
+                           "attr_name": "spec", "contextual": True, "optional": True},
+                    "측정방법": {"role": "attribute", "attach_to_field": "관리항목",
+                              "optional": True}},
+         "edges": []}
+for _dt in ("csv63", "csv63_rev1"):
+    (_fx63 / f"fixtures/adapters/{_dt}.py").write_text(_AD63 % "csv63", encoding="utf-8")
+    (_fx63 / f"fixtures/schemas/{_dt}.json").write_text(
+        json.dumps({**_SC63, "doc_type": "csv63"}, ensure_ascii=False), encoding="utf-8")
+_e63 = {**_os.environ, "ONTO_FIXTURES": str(_fx63)}
+_CSV63 = str(RAW / "CSV05_wide.csv")
+
+
+def _reg63(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e63, stdin=subprocess.DEVNULL)
+
+
+reset("csv63")
+_g63 = _reg63("generate", "csv63", "process", _CSV63, "--no-basic")
+_st63 = json.loads((REVIEW / "csv63" / "state.json").read_text(encoding="utf-8"))
+_mod63 = R._load(ROOT / _st63["adapter"], "b62_csv63")
+_actual63 = _PF63 = None
+from parser import preflight as _PFM                              # noqa: E402
+_actual63 = _PFM.header_labels(reader.read(_CSV63), 1, _mod63.ADAPTER["expects"])
+# ①ⓐ **CSV table 어댑터가 관문을 지난다** — 구판은 무조건 G52 adapter_mismatch였다.
+show("①ⓐ CSV 표본으로 관문 PASS · orphan 0 (구판은 무조건 adapter_mismatch)",
+     _g63.returncode == 0 and _st63["machine_gate"] == "PASS"
+     and not R.fail_lines(_g63.stdout), str(R.fail_lines(_g63.stdout)[:1]))
+show("①ⓐ 어댑터의 header_labels가 표본 실물과 같다 (LLM 오타를 시스템이 덮었다)",
+     _mod63.ADAPTER["expects"]["header_labels"] == _actual63
+     and "측정방" not in _mod63.ADAPTER["expects"]["header_labels"],
+     str(_actual63))
+# **원본은 손대지 않는다** — fixture는 외부 LLM 실산출 스냅샷이다(D-26).
+show("① 채우기는 작업 사본에만 한다 (fixture 원본 무손질 · D-26)",
+     "시스템이 채운다" not in (_fx63 / "fixtures/adapters/csv63.py").read_text(encoding="utf-8")
+     and str(_st63["adapter"]).startswith("review/"))
+# ③ **판 번호는 시스템이 찍는다** — state.revision과 같은 카운터 하나다.
+show("③ adapter_version 끝자리 == state.revision (LLM이 쓴 1.0을 무시한다)",
+     _mod63.ADAPTER["adapter_version"] == f"1.{_st63['revision']}",
+     f"{_mod63.ADAPTER['adapter_version']} · revision {_st63['revision']}")
+# ①ⓓ **①-a 이전 코드로 만든 review/를 그대로 두고** status → confirm. LLM 0.
+_old63 = REVIEW / "csv63old"
+_old63.mkdir(parents=True, exist_ok=True)
+(_old63 / "adapter.py").write_text(_AD63 % "csv63old", encoding="utf-8")
+(_old63 / "schema.json").write_text(
+    json.dumps({**_SC63, "doc_type": "csv63old"}, ensure_ascii=False), encoding="utf-8")
+(_old63 / "input_package.json").write_text(json.dumps(
+    {"human": {"doc_type": "csv63old", "layer": "process", "samples": [_CSV63],
+               "hint": ""},
+     "system": {"reader_head": [], "skeleton_closed_list": {}, "layer_vocabulary": {},
+                "blocks": {}, "adapter_skeleton": ""}}, ensure_ascii=False), encoding="utf-8")
+(_old63 / "state.json").write_text(json.dumps(
+    {"doc_type": "csv63old", "layer": "process", "samples": [_CSV63],
+     "adapter": "review/csv63old/adapter.py", "schema": "review/csv63old/schema.json",
+     "revision": 0, "instructions": [], "machine_gate": "FAIL",
+     "harness_out": "  [FAIL] 계약 self-check 통과  — adapter_mismatch"},
+    ensure_ascii=False), encoding="utf-8")
+_s63 = _reg63("status", "csv63old")
+_c63 = _reg63("confirm", "csv63old", "--by", "사내")
+show("①ⓓ 옛 review/를 그대로 두고 status → PASS · confirm 성공 (재생성 없이)",
+     _s63.returncode == 0 and _c63.returncode == 0
+     and registry.lookup("csv63old") is not None,
+     f"status rc={_s63.returncode} · confirm rc={_c63.returncode}")
+show("①ⓓ 그 경로에 LLM 호출 0 (mock 로그 0줄)",
+     "MOCK" not in _s63.stdout and "MOCK" not in _c63.stdout)
+reset("csv63old")
+
+# ④ **재시도의 기본은 이어가기** — 구판은 기본값이 막다른 길이었다.
+_RSRC63 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+_ask63 = _RSRC63.split("def _ask_more")[1].split("\ndef ")[0]
+show("④ⓑ 비대화형 기본이 Y다 (구판은 N — 기본값이 막다른 길이었다)",
+     'ans not in ("n", "no")' in _ask63 and "[Y/n]" in _ask63)
+show("④ⓑ GATE_SELF만 남으면 _ask_more를 부르지 않는다",
+     "all(c in GATE_SELF for c in _codes)" in _RSRC63
+     and _RSRC63.index("all(c in GATE_SELF for c in _codes)")
+     < _RSRC63.index("if tries >= 1 and not _ask_more("))
+shutil.rmtree(_fx63, ignore_errors=True)
+reset("csv63")
+
+
+# ── B62 ② 라운드 전문은 패키지 밖으로 ────────────────────────────────────
+print("\n■ B62 ② — 대화는 이력(로그), 판단은 정본(패키지)")
+
+_fx64 = Path(_tf.mkdtemp(prefix="fx64_", dir=str(ROOT)))
+(_fx64 / "fixtures/adapters").mkdir(parents=True)
+(_fx64 / "fixtures/schemas").mkdir(parents=True)
+(_fx64 / "fixtures/adapters/b64.py").write_text(
+    (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+    .replace('"doc_type": "cp"', '"doc_type": "b64"', 1), encoding="utf-8")
+(_fx64 / "fixtures/schemas/b64.json").write_text(json.dumps(
+    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+     "doc_type": "b64"}, ensure_ascii=False), encoding="utf-8")
+_e64 = {**_os.environ, "ONTO_FIXTURES": str(_fx64)}
+
+
+def _reg64(*a, feed=""):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e64, input=feed)
+
+
+reset("b64")
+_reg64("generate", "b64", "process", str(RAW / "CP01.xlsx"), "--interview", "--no-basic",
+       feed="1\n\n헤더는 3행이다\n진행\nY\n")
+_pk64 = json.loads((REVIEW / "b64" / "input_package.json").read_text(encoding="utf-8"))
+_lg64 = json.loads((REVIEW / "b64" / "interview_log.json").read_text(encoding="utf-8"))
+_b64 = R._hint_batches(_pk64["human"]["hint"])[-1]
+
+# ⓑ **패키지에 전문이 없다** — 생성 user 메시지가 패키지 원문 통째이므로
+# 패키지가 깨끗해야 보내는 것이 깨끗하다(걷어내는 방식은 잊을 자리를 만든다).
+show("②ⓑ 패키지 묶음에 rounds가 없다 (전문은 로그로 갔다)",
+     "rounds" not in _b64 and set(_b64) == {"samples", "at", "decisions"},
+     str(sorted(_b64)))
+show("②ⓑ 로그에 전문이 그대로 있다 — at으로 짝이 맞는다 (버린 것이 아니다)",
+     sum(len(b["rounds"]) for b in _lg64["batches"]) >= 2
+     and {b["at"] for b in _lg64["batches"]} >= {_b64["at"]})
+show("②ⓑ decisions는 패키지에 그대로다 (생성이 읽는 것이 그것이다)",
+     len(_b64["decisions"]) >= 1
+     and all({"topic", "decision", "reason"} <= set(d) for d in _b64["decisions"]))
+# ⓒ **렌더가 전문을 알지 못한다** — 자리가 없으면 되살아날 길이 없다.
+show("②ⓒ 렌더러가 rounds를 모른다 (cli/prompt.py에 그 문자열 0줄)",
+     '"rounds"' not in (ROOT / "cli" / "prompt.py").read_text(encoding="utf-8"))
+
+# ⓐ **라운드가 30개 늘어도 보내는 크기가 같다** — 전문이 입력이 아니기 때문이다.
+def _sent64():
+    _raw = (REVIEW / "b64" / "input_package.json").read_text(encoding="utf-8")
+    _sys = _PR64._render_template(_PR64._newest_template().read_text(encoding="utf-8"),
+                                  json.loads(_raw), regeneration=[])
+    return len(_sys.encode("utf-8")), len(_raw.encode("utf-8"))
+
+
+from cli import prompt as _PR64                                   # noqa: E402
+_before64 = _sent64()
+_lg64["batches"][0]["rounds"] += [
+    {"round": i, "understanding": "열별 판독 선언 " * 40, "questions": [],
+     "answers": [], "answer": "답" * 60, "progress": {}} for i in range(50, 80)]
+(REVIEW / "b64" / "interview_log.json").write_text(
+    json.dumps(_lg64, ensure_ascii=False), encoding="utf-8")
+_after64 = _sent64()
+show("②ⓐ 로그에 라운드 30개를 더해도 생성이 보내는 크기가 같다",
+     _before64 == _after64 and _before64[1] > 0,
+     f"user {_before64[1]:,}B → {_after64[1]:,}B")
+
+# ⓓ **B60 이전 패키지** — 이관 한 줄 + 확정 사항 없음 경고 + **진행은 된다**.
+reset("b64old")
+(_fx64 / "fixtures/adapters/b64old.py").write_text(
+    (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+    .replace('"doc_type": "cp"', '"doc_type": "b64old"', 1), encoding="utf-8")
+(_fx64 / "fixtures/schemas/b64old.json").write_text(json.dumps(
+    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+     "doc_type": "b64old"}, ensure_ascii=False), encoding="utf-8")
+_d64 = REVIEW / "b64old"
+_d64.mkdir(parents=True, exist_ok=True)
+(_d64 / "input_package.json").write_text(json.dumps(
+    {"human": {"doc_type": "b64old", "layer": "process",
+               "samples": [str(RAW / "CP01.xlsx")],
+               "hint": {"text": "", "interview": [
+                   {"samples": [str(RAW / "CP01.xlsx")], "at": "2026-09-01T00:00:00+00:00",
+                    "rounds": [{"round": i, "understanding": f"이해 {i}", "questions": [],
+                                "answers": [], "answer": f"답 {i}", "progress": {}}
+                               for i in (1, 2, 3)]}]}},
+     "system": {"reader_head": [], "skeleton_closed_list": {}, "layer_vocabulary": {},
+                "blocks": {}, "adapter_skeleton": ""}}, ensure_ascii=False),
+    encoding="utf-8")
+_r64 = _reg64("generate", "b64old", "--resume")
+_pk64o = json.loads((_d64 / "input_package.json").read_text(encoding="utf-8"))
+_b64o = R._hint_batches(_pk64o["human"]["hint"])[0]
+_lg64o = json.loads((_d64 / "interview_log.json").read_text(encoding="utf-8"))
+show("②ⓑ 옛 꼴 패키지를 읽으면 로그가 생기고 패키지에서 rounds가 사라진다",
+     "rounds" not in _b64o
+     and sum(len(b["rounds"]) for b in _lg64o["batches"]) == 3
+     and _lg64o["batches"][0]["at"] == _b64o["at"])
+# **죽지 않는다** — 경고이지 거부가 아니다. 다음 줄 둘이 함께 온다.
+_nx64 = [l for l in _r64.stdout.splitlines() if "register review b64old" in l
+         or "register generate b64old" in l]
+show("②ⓓ decisions 없는 옛 패키지 — 경고가 뜨고 **진행은 된다** (다음 줄 둘)",
+     _r64.returncode == 0 and not _b64o.get("decisions") and len(_nx64) >= 2,
+     f"rc={_r64.returncode} · 다음 줄 {len(_nx64)}개")
+# **이어하기 화면이 전문 건수를 안다** — 패키지에 없는 것을 패키지에서 세지 않는다.
+_n64 = [l for l in _r64.stdout.splitlines() if "라운드 전문" in l]
+show("②ⓑ 이어하기 화면의 라운드 건수가 로그에서 온다 (패키지에는 전문이 없다)",
+     len(_n64) == 1
+     and str(sum(len(b["rounds"]) for b in _lg64o["batches"])) in _n64[0]
+     and "rounds" not in _b64o,
+     _n64[0].strip() if _n64 else "(줄 없음)")
+# **힌트만 준 패키지는 해당 없음** — `hint_only_decisions`가 이미 한 항목을 세운다.
+show("②ⓓ 힌트만 준 패키지는 경고 대상이 아니다 (결정이 이미 있다)",
+     R.warn_no_decisions("x", {"human": {"hint": {"text": "h", "interview": [
+         {"samples": [], "at": "t", "decisions": R.hint_only_decisions("h")}]}}}) is None)
+reset("b64old")
+reset("b64")
+shutil.rmtree(_fx64, ignore_errors=True)
 
 
 print("\n" + "=" * 62)

@@ -38,6 +38,7 @@ from openpyxl.utils import range_boundaries, get_column_letter
 # (구판의 절대경로 sys.path 하드코딩을 대체 — 08-07 13회차 판정)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from parser import preflight as preflight_mod, reader as reader_mod
 from parser.reader import read
 
 ROLES = {"anchor", "entity", "attribute", "content", "meta"}
@@ -203,20 +204,30 @@ def preflight(mod, raw, label):
         return show("G21  분할 신호 상수가 expects에 선언됨 (prose는 header_row 대상 아님)",
                     has, f"keys={list(exp)[:6]}")
 
-    if raw["format"] != "xlsx":
-        return show("G22  xlsx 아님 — 헤더 지문 대조 대상 아님", True)
-    sh = raw["sheets"][0]
+    # **격자인가는 `sheets`가 답한다 — `format`이 아니다**(B62 ①-a). 구판은
+    # `format != "xlsx"`를 보고 CSV를 통째로 건너뛰었다: 대조하지 않고 PASS를 줬으니
+    # CSV table 어댑터는 여기서 초록이고 ⑤단에서 붉는, 가장 나쁜 모양이었다.
+    sh, sh_err = reader_mod.sheet_of(raw, exp)
+    if sh_err and not raw.get("sheets"):
+        return show("G22  격자 포맷 아님 — 헤더 지문 대조 대상 아님", True)
+    if sh_err:
+        return show("G27  시트가 정해진다 (둘 이상이면 expects.sheet 선언)",
+                    False, sh_err["reason"])
     hr = exp.get("header_row")
     if not hr:
         return show("G23  expects.header_row 선언됨", False, "선언 없음")
-    actual = [str(sh["cells"].get(f"{get_column_letter(c)}{hr}", "")).strip()
-              for c in range(1, sh["max_col"] + 1)]
-    actual = [a for a in actual if a]
+    # **`columns`가 가리키는 열의 헤더 셀이 비었나** — 비었으면 `header_row`가 틀린
+    # 것이고, 그 상태로 헤더 문자열을 채우면 빈 배열로 덮어써 표류 감지가 죽는다.
+    suspect = preflight_mod.header_row_suspect(raw, exp)
+    show("G26  header_row가 columns의 헤더 셀을 가리킨다", not suspect,
+         (suspect or {}).get("reason", ""))
+    actual = preflight_mod.header_labels(raw, hr, exp)
     show(f"G24  header_row {hr}행에 헤더 {len(actual)}개 존재", len(actual) >= 5, str(actual[:4]))
+    strings = {reader_mod.norm_label(x) for x in strings}
     missing = [a for a in actual if a not in strings]
     show("G25  원본 헤더 문자열이 전부 expects에 실림 → 표류 감지 가능",
          not missing, f"미포함 {len(missing)}개: {missing}")
-    return not missing
+    return not missing and not suspect
 
 
 # ---------------------------------------------------------------- ③ extract

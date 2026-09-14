@@ -655,22 +655,125 @@ def _basic_pdf_proposal(samples):
 # ── 문답 누적 — 「재현 조건의 자리는 `human.hint` 그릇이다」(B36 · 문서 6 §6.5) ──
 #
 # **키가 아니라 항목으로 는다.** 사람 4키·시스템 5키는 불변이고, 문답 묶음은 전부
-# `human.hint.interview` 안에서 산다. 묶음 하나 = `{samples, at, stale?, rounds[]}`.
+# `human.hint.interview` 안에서 산다. 묶음 하나 = `{samples, at, stale?, decisions[]}` —
+# **라운드 전문은 여기 없다**(B62 ②): 패키지는 생성 user 메시지에 원문 통째로 실리는
+# 자리라, 전문이 살면 대화가 매 생성마다 모델에 다시 간다. 전문의 자리는 로그다.
 
-def _keep_prior(prior):
+INTERVIEW_LOG = "interview_log.json"     # `review/<doc_type>/` 안 — 라운드 전문의 자리
+
+
+def _batch_at():
+    """묶음의 시각 — **짝을 맞추는 키라 초 해상도로는 모자란다** (B62 ②).
+
+    `store._now()`는 초까지다(적재 시각의 규격이다). 그 값을 묶음 키로 쓰면 **같은
+    초에 만들어진 두 묶음이 한 키가 되고**, 로그가 같은 키의 앞 묶음을 치환해
+    **사람의 답이 조용히 사라진다**(실측: 한 번의 검사에서 세 묶음이 한 묶음으로
+    접혔다). 시각을 위조하는 것이 아니라 **같은 실제 시각을 더 잘게 읽는다.**
+    """
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def log_path(doc_type):
+    return _dir(doc_type) / INTERVIEW_LOG
+
+
+def read_log(doc_type):
+    """`{at: [라운드…]}` — 없거나 깨졌으면 빈 dict.
+
+    **묶음과 짝은 `at`으로 맞춘다**(B62 ②). 순서로 맞추면 묶음 하나가 지워지는 날
+    전 묶음의 전문이 한 칸씩 밀려 다른 표본의 대화가 된다.
+    """
+    try:
+        obj = json.loads(log_path(doc_type).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {b.get("at"): (b.get("rounds") or [])
+            for b in (obj.get("batches") or []) if b.get("at")}
+
+
+def write_rounds(doc_type, at, samples, rounds):
+    """한 묶음의 라운드 전문을 로그에 쓴다 — **패키지에는 쓰지 않는다**(B62 ②).
+
+    전문이 패키지에 살면 생성 user 메시지(패키지 원문 통째)에 그대로 실려 모델에
+    간다 — 사내 실측 3천 줄이었다. B60 ②가 system 프롬프트의 힌트 자리만 요약으로
+    바꿨고 **user 쪽은 그대로였다.** 보내는 쪽에서 걷어내지 않고 **패키지를
+    깨끗하게** 한다: 걷어내는 방식은 잊을 자리를 하나 더 만든다.
+    """
+    d = _dir(doc_type)
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        obj = json.loads(log_path(doc_type).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        obj = {}
+    batches = [b for b in (obj.get("batches") or []) if b.get("at") != at]
+    batches.append({"at": at, "samples": sorted(samples or []), "rounds": rounds})
+    log_path(doc_type).write_text(
+        json.dumps({"_읽는 법": "문답 라운드 전문 — **이력이다.** 판단은 입력 패키지의 "
+                              "human.hint.interview[].decisions에 있고 생성은 그것만 읽는다",
+                    "batches": batches}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8")
+
+
+def migrate_rounds(doc_type, pkg):
+    """옛 패키지의 인라인 `rounds`를 **로그로 한 번 옮긴다** (B62 ②).
+
+    `--resume`이 이 경로로 들어온다. 옮긴 뒤 패키지 묶음은
+    `{samples, at, stale?, decisions[]}`만 남는다 — 돌려주는 것은 화면 한 줄이거나
+    `None`이다. 옮기는 것이지 버리는 것이 아니다: 전문은 재현 근거다.
+    """
+    hint = ((pkg or {}).get("human") or {}).get("hint")
+    batches = _hint_batches(hint)
+    moved = [b for b in batches if b.get("rounds")]
+    if not moved:
+        return None
+    n = 0
+    for b in moved:
+        at = b.get("at") or _batch_at()
+        b["at"] = at
+        write_rounds(doc_type, at, b.get("samples") or [], b["rounds"])
+        n += len(b["rounds"])
+        del b["rounds"]
+    pkg.setdefault("human", {})["hint"] = _merge_hint(hint, batches)
+    return (f"   문답 라운드 {n}건을 로그로 옮겼다 → "
+            f"{log_path(doc_type).relative_to(ROOT)}  "
+            f"(패키지에는 확정 사항만 남는다 — 생성이 읽는 것이 그것이다)")
+
+
+def warn_no_decisions(doc_type, pkg):
+    """묶음은 있는데 **확정 사항이 하나도 없다** — B60 이전 패키지다 (B62 ②ⓓ).
+
+    죽이지 않는다. 진행은 되지만 **생성이 읽을 판단이 없다**는 사실을 말하고, 그것을
+    세울 명령 둘을 함께 준다. 힌트만 준 패키지는 해당 없다(`hint_only_decisions`가
+    이미 한 항목을 세웠다).
+    """
+    batches = _hint_batches(((pkg or {}).get("human") or {}).get("hint"))
+    if not batches or any(b.get("decisions") for b in batches):
+        return None
+    return (f"   ⚠ 이 패키지에 **확정 사항이 없다** — 문답 묶음 {len(batches)}개는 "
+            f"있는데 결정이 비어 있다(B60 이전 산출). 생성이 읽을 판단이 없다.\n"
+            f"     python -m cli.register review {doc_type} "
+            f"--instruct \"<결정 한 문장>\"\n"
+            f"     python -m cli.register generate {doc_type} <층> <표본...> --interview")
+
+
+def _keep_prior(prior, counts=None):
     """**멈추고 묻는다**(B55 ②-4) — 사람의 답은 다시 만들 수 없는 재료다.
 
     기본은 이어가기다: 비대화형에서 조용히 버리면 그것이 바로 이 회차가 고치는
     병이다(구판은 경고 한 줄 없이 덮어썼다). 버리려면 사람이 답하거나
     `--drop-interview`를 적어야 한다.
     """
-    n = sum(len(b.get("rounds") or []) for b in prior)
+    counts = counts or {}
+    def _n(b):
+        return len(counts.get(b.get("at")) or b.get("rounds") or [])
+    n = sum(_n(b) for b in prior)
     print(f"\n   이 등록에 **이전 문답 {n}라운드**가 남아 있다 "
           f"(묶음 {len(prior)}개).")
     for b in prior[-3:]:
         print(f"     · {b.get('at', '?')[:19]} · 표본 "
               f"{[Path(x).name for x in (b.get('samples') or [])]} · "
-              f"{len(b.get('rounds') or [])}라운드")
+              f"{_n(b)}라운드")
     try:
         ans = input("   이어갈까? [Y/n]  (n이면 버린다 · 사람의 답은 다시 못 만든다) "
                     ).strip().lower()
@@ -683,8 +786,10 @@ def _keep_prior(prior):
 def _new_batch(samples):
     # `decisions`가 **확정 요약의 자리**다(B60 ②) — 라운드 전문(`rounds`)은 이력으로
     # 남고, 생성 프롬프트에는 이것만 실린다. 자리는 항상 있다(빈 리스트라도).
-    return {"samples": sorted(samples), "at": store._now(), "rounds": [],
-            "decisions": []}
+    # **라운드 전문은 여기 없다**(B62 ②) — 로그(`interview_log.json`)로 간다.
+    # 묶음이 패키지에 사는 이유는 `decisions`가 생성의 입력이기 때문이고,
+    # 전문은 입력이 아니라 이력이다.
+    return {"samples": sorted(samples), "at": _batch_at(), "decisions": []}
 
 
 def decisions_of(hint):
@@ -748,6 +853,9 @@ def apply_instruction_to_decisions(doc_type, instruction, rev):
     return hit
 
 
+_BATCH_KEYS = ("decisions", "rounds", "samples")
+
+
 def _hint_batches(hint):
     """`hint`가 어떤 꼴이든 문답 묶음 리스트를 돌려준다.
 
@@ -758,9 +866,11 @@ def _hint_batches(hint):
     if not isinstance(hint, dict):
         return []
     iv = hint.get("interview") or []
-    if iv and isinstance(iv[0], dict) and "rounds" not in iv[0]:
+    # **묶음인가는 묶음 키로 가른다** — `rounds`만 보면 B62 ② 이후 묶음
+    # (`{samples, at, decisions}`)을 통째로 못 읽어 확정 사항이 사라진다.
+    if iv and isinstance(iv[0], dict) and not any(k in iv[0] for k in _BATCH_KEYS):
         return [{"samples": [], "at": None, "rounds": iv}]      # 옛 꼴 → 묶음 1개
-    return [b for b in iv if isinstance(b, dict) and "rounds" in b]
+    return [b for b in iv if isinstance(b, dict) and any(k in b for k in _BATCH_KEYS)]
 
 
 def prior_interview(pkg_path):
@@ -839,6 +949,15 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
         print(f"  {llm.mode_line()}")
         print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
+        # **옛 패키지의 인라인 전문을 로그로 옮긴다**(B62 ②) — 로드 시 한 번.
+        _mv = migrate_rounds(doc_type, pkg)
+        if _mv:
+            print(_mv)
+            pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
+                                encoding="utf-8")
+        _wn = warn_no_decisions(doc_type, pkg)
+        if _wn:
+            print(_wn)
         if layer or samples:
             # **무시하되 말한다** — 사람이 준 값이 안 쓰였다는 사실을 침묵으로
             # 넘기면, 층을 바꾸려고 다시 준 사람이 바뀐 줄 안다.
@@ -847,7 +966,16 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                   f"표본 {len(pkg['human']['samples'])}건)")
         _r = (pkg.get("human") or {}).get("hint")
         if isinstance(_r, dict) and _r.get("interview"):
-            print(f"   문답 {len(_r['interview'])}라운드가 패키지에 남아 있다")
+            # **묶음과 전문을 갈라 말한다**(B62 ②) — 구판은 묶음 수를 「라운드」라
+            # 불렀고, 전문이 로그로 간 뒤에는 그 문면이 거짓이 된다. 전문 건수는
+            # 로그에서 읽는다: 패키지에 없는 것을 패키지에서 세지 않는다.
+            _bs = _hint_batches(_r)
+            _lg = read_log(doc_type)
+            print(f"   문답 묶음 {len(_bs)}개 · 확정 사항 "
+                  f"{sum(len(b.get('decisions') or []) for b in _bs)}항목 "
+                  f"(라운드 전문 "
+                  f"{sum(len(_lg.get(b.get('at')) or []) for b in _bs)}건은 "
+                  f"{INTERVIEW_LOG})")
         ad, sc = draft(doc_type)
         if ad is None:
             raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
@@ -991,15 +1119,33 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     # 바뀌었으면 지우지 않고 `stale`로 표시한다(지우면 재현 조건이 사라지고,
     # 무구분 누적이면 다른 문서에 대한 이해가 현재 판정에 섞인다).
     prior = prior_interview(d / "input_package.json")
+    # **옛 패키지는 로드 시 한 번 옮긴다**(B62 ②) — 여기도 로드 경로다.
+    if prior and any(b.get("rounds") for b in prior):
+        _old_pkg = json.loads((d / "input_package.json").read_text(encoding="utf-8"))
+        _mv = migrate_rounds(doc_type, _old_pkg)
+        if _mv:
+            print(_mv)
+            (d / "input_package.json").write_text(
+                json.dumps(_old_pkg, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8")
+            prior = prior_interview(d / "input_package.json")
     if prior and drop_interview:
-        print(f"   ⚠ 이전 문답 {sum(len(b['rounds']) for b in prior)}라운드를 **버린다** "
-              f"(--drop-interview)")
+        _lg = read_log(doc_type)
+        print(f"   ⚠ 이전 문답 "
+              f"{sum(len(_lg.get(b.get('at')) or []) for b in prior)}라운드를 "
+              f"**버린다** (--drop-interview)")
     elif prior:
-        if _keep_prior(prior):
+        if _keep_prior(prior, read_log(doc_type)):
             kept = _age_rounds(prior, [str(x) for x in samples])
             pkg["human"]["hint"] = _merge_hint(pkg["human"]["hint"], kept)
         else:
             print("   → 이전 문답을 버리고 새로 시작한다")
+    if not interview:
+        # **문답을 열지 않는 실행에서만 말한다**(B62 ②ⓓ) — 바로 문답이 열리면
+        # 「결정을 세워라」가 아니라 열리는 문답이 답이다.
+        _wn = warn_no_decisions(doc_type, pkg)
+        if _wn:
+            print(_wn)
     (d / "input_package.json").write_text(
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -1016,7 +1162,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         _batch = _new_batch([str(x) for x in samples])
 
         def _persist(rounds):
-            _batch["rounds"] = rounds
+            # **전문은 로그, 판단은 패키지**(B62 ②) — 쓰는 자리에서 가른다.
+            write_rounds(doc_type, _batch["at"], _batch["samples"], rounds)
             pkg["human"]["hint"] = _merge_hint(
                 pkg["human"]["hint"],
                 [b for b in _hint_batches(pkg["human"]["hint"])
@@ -1032,10 +1179,11 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # 화면에서 요약을 확인한다. 요약도 즉시 저장한다(라운드와 같은 이유).
         _batch["decisions"] = iv_finalize(pkg, rounds)
         _persist(rounds)
-        _old = sum(len(b["rounds"]) for b in _hint_batches(pkg["human"]["hint"])
-                   if b is not _batch)
-        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록 · "
-              f"확정 사항 {len(_batch['decisions'])}항목"
+        _log = read_log(doc_type)
+        _old = sum(len(_log.get(b.get("at")) or [])
+                   for b in _hint_batches(pkg["human"]["hint"]) if b is not _batch)
+        print(f"   문답 {len(rounds)}라운드 → {log_path(doc_type).relative_to(ROOT)} · "
+              f"확정 사항 {len(_batch['decisions'])}항목 → human.hint"
               + (f" (이전 {_old}라운드 유지)" if _old else ""))
     elif (hint or "").strip():
         # **문답 없이 힌트만** — 힌트 문장이 그대로 한 항목의 확정 사항이다. 자리는
@@ -1339,14 +1487,24 @@ def _orphan_of(st):
         return []
 
 
-def _ask_more(n):
-    """1회 재생성 뒤에도 실패하면 **묻고 진행한다** — 비용 동의(좌표 보조와 동형)."""
+def _ask_more(doc_type, codes):
+    """1회 재생성 뒤에도 실패하면 **묻고 진행한다** — 비용 동의(좌표 보조와 동형).
+
+    구판은 `더 돌릴까? [y/N]` 한 줄이었다(B62 ④). 이미 한 번 고쳤다는 것, y가 무엇을
+    여는지, N이 **막다른 길**이라는 것을 아무것도 말하지 않았고 **기본값이 그 막다른
+    길**이었다. 기본을 y로 돌리고, n을 골라도 이어갈 명령을 함께 준다.
+    """
+    print(f"   자동 수정 1회 뒤에도 FAIL {len(codes)}건 ({' · '.join(codes) or '?'})")
+    print(f"   [Y] 문답을 열고 재생성한다 (LLM 호출)   "
+          f"[n] 여기서 끝 — 관문 FAIL이라 confirm은 막힌다.")
+    print(f"       n 뒤에도 이어갈 수 있다:  "
+          f"python -m cli.register review {doc_type} --instruct \"…\"")
     try:
-        ans = input(f"   1회 재생성 후에도 FAIL {n}건이다. 더 돌릴까? [y/N] ").strip().lower()
+        ans = input("   더 돌릴까? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
-        print("   (비대화형 — 끄고 실패로 끝낸다)")
+        print("   (비대화형 — 기본 Y로 이어간다)")
         ans = ""
-    return ans in ("y", "yes")
+    return ans not in ("n", "no")
 
 
 def _failure_persist(doc_type, pkg, samples, ask):
@@ -1361,14 +1519,15 @@ def _failure_persist(doc_type, pkg, samples, ask):
     batch["context"] = "기계 관문 실패"
 
     def _persist(rounds, decisions=None):
+        # **전문은 로그로**(B62 ②) — 패키지를 못 읽어도 전문은 남아야 한다.
+        write_rounds(doc_type, batch["at"], batch["samples"], rounds)
         try:
             obj = json.loads(path.read_text(encoding="utf-8")) if path.exists() \
                 else {"human": {"hint": {}}}
         except (OSError, json.JSONDecodeError):
             return                              # 패키지를 못 읽으면 조용히 지나간다
-        batch["rounds"] = rounds
         if decisions is not None:
-            batch["decisions"] = decisions      # 확정 요약(B60 ②) — 전문과 같은 묶음에
+            batch["decisions"] = decisions      # 확정 요약(B60 ②) — 판단은 패키지에
         hint = (obj.get("human") or {}).get("hint")
         keep = [b for b in _hint_batches(hint) if b.get("at") != batch["at"]]
         obj.setdefault("human", {})["hint"] = _merge_hint(hint, keep + [batch])
@@ -1412,6 +1571,106 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     return 1
 
 
+# 시스템이 채운 값이 사는 자리 — 어댑터 파일 **끝**의 표시 블록. 다시 채울 때
+# 이 표시부터 파일 끝까지를 갈아 끼우므로 **되풀이해도 하나**다(멱등).
+_FILLED_MARK = "# ── 시스템이 채운다 (B62 ①-c)"
+
+
+def stamp_system_fields(st, samples):
+    """**관문 입구에서 시스템이 아는 값을 시스템이 쓴다** (B62 ①-c·③).
+
+    둘이다 — `expects.header_labels`(표본의 실물 헤더)와 `adapter_version`(판 번호).
+    원리 하나로 묶인다: **시스템이 이미 아는 값은 LLM이 쓰지 않는다.** 받아 적게
+    하고 글자로 대조하면 한 글자 흘린 것이 `adapter_mismatch`가 되고, 판 번호는
+    템플릿 예시의 `"1.0"`이 그대로 베껴져 **아무도 안 올린다**(재생성 2회째
+    `adapter_rev2.py` 안이 `1.0`이었다 — `state.revision`과 서로 모르는 두 카운터).
+
+    LLM이 원본 헤더 문자열을 받아 적고 시스템이 그것을 글자로 대조하는 구조였다 —
+    한 글자만 흘려도 `adapter_mismatch`이고, 그 값은 **시스템이 표본에서 읽으면
+    되는 것**이다. 원리: **시스템이 아는 값은 LLM이 쓰지 않는다.**
+
+    자리가 「초안 저장 시점」이 아니라 **관문 입구**인 이유 둘:
+    ① 결정적·멱등이라 판단을 바꾸는 일이 아니다 — `fix` 양쪽(generate·status·confirm)
+       어디서 들어와도 같은 값이 된다.
+    ② **이미 만들어진 어댑터가 재생성 없이 살아난다** — ①-a 이전 코드로 생성한
+       `review/<doc_type>/`가 `status` → `confirm`으로 확정될 수 있어야 하고,
+       그 경로에 **LLM 호출이 0이어야** 한다.
+
+    `table`에만 한다(`header_labels`는 D-29의 table 한정). prose 위임 래퍼는
+    `ADAPTER = {**basic_ppt.ADAPTER, …}`라 `expects`가 **코어 어댑터와 같은 객체**다 —
+    거기에 쓰면 코어 어댑터가 런타임에 오염된다.
+
+    **채우기 전에 위치를 검증한다**: `columns`가 가리키는 헤더 셀이 비어 있으면
+    `header_row`가 틀린 것이므로 채우지 않고 그대로 둔다 — 관문의 G26이 그것을
+    말한다. 빈 배열로 덮어쓰면 표류 감지가 조용히 죽는다.
+
+    돌려주는 것은 화면 한 줄(정보)이거나 `None`이다.
+    """
+    path = ROOT / st["adapter"]
+    try:
+        mod = _load(path, f"fill_{st['doc_type']}")
+        a = mod.ADAPTER
+    except Exception:
+        return None                         # 못 읽으면 관문의 ①단이 말한다
+    exp = a.get("expects") or {}
+    # **판 번호는 계열과 무관하다** — prose도 판이 오른다. `1.{revision}`이고
+    # `--revise`는 revision을 이어가므로 새 판이 옛 판보다 작아지지 않는다.
+    want_ver = f"1.{st.get('revision', 0)}"
+    if a.get("payload_kind") != "table" or not exp.get("header_row"):
+        return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
+    raw = None
+    for smp in samples:
+        try:
+            raw = reader.read(str(smp))
+            break
+        except Exception:
+            continue
+    if raw is None or preflight.header_row_suspect(raw, exp) is not None:
+        # **위치가 의심스러우면 채우지 않는다** — 빈 행을 읽어 `[]`로 덮어쓰면
+        # 표류 감지가 조용히 죽는다. 관문의 G26이 그 사실을 말한다.
+        return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
+    actual = preflight.header_labels(raw, exp["header_row"], exp)
+    if not actual:
+        return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
+    declared = [reader.norm_label(x) for x in (exp.get("header_labels") or [])]
+    note = _write_stamp(st, path, (actual, raw, exp, samples), want_ver,
+                        a.get("adapter_version"))
+    if declared == actual:
+        return note
+    diff = [x for x in actual if x not in declared] + \
+           [x for x in declared if x not in actual]
+    return (f"   헤더 문자열은 시스템이 채운다 — LLM 선언 {len(declared)} / "
+            f"실물 {len(actual)} · 다른 것 {len(diff)}: {diff[:5]}")
+
+
+def _write_stamp(st, path, header, want_ver, had_ver):
+    """표시 블록을 **작업 사본**에 쓴다 — 되풀이해도 하나다(멱등).
+
+    **원본에 쓰지 않는다.** 초안의 출처는 fixture(외부 LLM 실산출 스냅샷 · D-26)이거나
+    킷 전시물일 수 있고 **그 둘은 손대지 않는 자리다**. 고치는 것은 언제나
+    `review/<doc_type>/`이고, 확정이 거기서 정본으로 승격한다.
+    """
+    src = path.read_text(encoding="utf-8")
+    if REVIEW not in path.parents:
+        path = _dir(st["doc_type"]) / "adapter.py"
+        st["adapter"] = str(_rel(path))
+    lines = [f"{_FILLED_MARK} — 관문이 그 자리에서 채운다. 손으로 고치지 마라."]
+    if header:
+        actual, raw, exp, samples = header
+        lines += [f"#    표본: {Path(str(samples[0])).name} · header_row "
+                  f"{exp['header_row']} · 시트 "
+                  f"{(reader.sheet_of(raw, exp)[0] or {}).get('name')}",
+                  f"ADAPTER[\"expects\"][\"header_labels\"] = {actual!r}"]
+    lines.append(f"ADAPTER[\"adapter_version\"] = {want_ver!r}"
+                 f"   # state.revision = {st.get('revision', 0)}")
+    head = src.split(_FILLED_MARK)[0].rstrip("\n")
+    path.write_text(head + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    if had_ver and str(had_ver) != want_ver:
+        return (f"   판 번호는 시스템이 찍는다 — LLM 선언 {had_ver!r} → "
+                f"{want_ver!r} (state.revision {st.get('revision', 0)})")
+    return None
+
+
 def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
 
@@ -1425,8 +1684,12 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     못 고치는 것이고, 다른 항목이 실패하면 재생성이 맞던 곳을 깬 것이라 둘 다 사람
     판단이 필요하다.
     """
-    tries = 0
+    tries, prev_codes = 0, None
     while True:
+        # **관문 입구다**(B62 ①-c) — `fix` 양쪽에서 돈다. 하네스가 읽기 전에 채운다.
+        _info = stamp_system_fields(st, samples)
+        if _info:
+            print(_info)
         ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
@@ -1451,8 +1714,27 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
             # 하네스는 통과했는데 대장만 어긋났다 — 재생성 지시가 될 문면이 있다.
             auto = [f"[FAIL] 원본 헤더의 열 {[u['field'] for u in orphan]}이 스키마의 "
                     f"fields에도 unmappable에도 없다 — 전 열이 둘 중 하나에 있어야 한다"]
-        if tries >= 1 and not _ask_more(len(auto) + len(ask)):
+        # **관문 자체 결함만 남았으면 묻지 않는다**(B62 ④ · B59 ② `GATE_SELF`) —
+        # 재생성으로 못 고치는 것을 두고 「더 돌릴까」를 묻는 것은 비용만 쓰는 질문이다.
+        _codes = [c for c, _l, _d in fail_lines(out)]
+        if _codes and all(c in GATE_SELF for c in _codes):
+            print(f"   남은 FAIL이 관문 자체 결함뿐이다 ({' · '.join(_codes)}) — "
+                  f"재생성으로 고칠 수 없어 묻지 않고 끝낸다")
             return "FAIL"
+        # **같은 실패가 되풀이되면 멈춘다** — 이 함수의 머리말이 이미 말하는 성질이다:
+        # 「같은 항목이 또 실패하면 프롬프트가 그것을 못 고치는 것」. 기본값이 Y가
+        # 되면서(B62 ④) 이 자리가 **유일한 종료 조건**이 됐다 — 없으면 비대화형
+        # 실행이 같은 산출을 무한히 다시 받는다(실측: mock에서 대안본이 없으면
+        # `draft`가 같은 초안을 돌려줘 루프가 끝나지 않았다).
+        if tries >= 1 and _codes == prev_codes:
+            print(f"   같은 FAIL이 되풀이된다 ({' · '.join(_codes) or '?'}) — "
+                  f"재생성이 이것을 못 고친다. 여기서 끝낸다.")
+            print(f"   이어가려면: python -m cli.register review {doc_type} "
+                  f"--instruct \"…\"")
+            return "FAIL"
+        if tries >= 1 and not _ask_more(doc_type, _codes):
+            return "FAIL"
+        prev_codes = _codes
         tries += 1
         if ask:
             print(f"   → 문면이 답을 담지 않는 실패 {len(ask)}건 — 문답을 연다")
@@ -1642,13 +1924,17 @@ def _label_columns(exp, adapter_mod):
     try:
         raw = reader.read(str(sample))
         hr = exp.get("header_row")
-        cells = (raw.get("sheets") or [{}])[0].get("cells") or {}
+        sh, err = reader.sheet_of(raw, exp)     # **시트 해석기는 리더 하나다**(B62 ①-b)
+        if err:
+            return {}
         out = {}
-        for addr, v in cells.items():
+        for addr, v in (sh.get("cells") or {}).items():
             letters = "".join(ch for ch in str(addr) if ch.isalpha())
             digits = "".join(ch for ch in str(addr) if ch.isdigit())
-            if digits and int(digits) == hr and v is not None:
-                out[str(v)] = letters
+            # **정규화도 한 자리다**(B62 ①-c) — 구판은 여기가 `str(v)`, preflight가
+            # `str(v).strip()`이라 같은 셀을 다르게 읽었다.
+            if digits and int(digits) == hr and reader.norm_label(v):
+                out[reader.norm_label(v)] = letters
         return out
     except Exception:
         return {}
