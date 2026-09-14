@@ -2689,6 +2689,93 @@ show("⑤ 변이 — 스탬프를 끄면 초안 값이 남아 붉어진다 (되�
      and _recompute64()["adapter_version"] == "1.0")
 _sh64 = shutil.rmtree(_d64, ignore_errors=True)
 
+# ── B65 ①② 하네스가 LLM 산출을 실행 전에 어휘로 거른다 ──────────────────
+print("\n■ B65 — 어휘가 닫힌 자리는 실행 전에 정적으로 대조한다")
+
+_d65 = Path(_tf.mkdtemp(prefix="b65_", dir=str(ROOT)))
+_cp65 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+_sc65 = ROOT / "schemas" / "cp.json"
+
+
+def _gate65(adapter_src, schema=_sc65, name="a"):
+    """어댑터 원문으로 관문을 한 번 돌린다 — 판정 줄만 돌려준다."""
+    f = _d65 / f"{name}.py"
+    f.write_text(adapter_src, encoding="utf-8")
+    _ok, _out = R.harness(f, schema, [RAW / "CP01.xlsx"])
+    return {c: (l, d) for c, l, d in R.fail_lines(_out)}, _out
+
+
+# ①ⓑ **없는 이름은 로드 단계에서 잡힌다** — 실행(G31)까지 가지 않는다.
+_bad65, _out65 = _gate65(
+    _cp65.replace("    fragments = []",
+                  "    fragments = []\n    _x = normalizer.col_to_letter(3)", 1),
+    name="badcall")
+show("①ⓑ 없는 normalizer 이름이 로드 단계에서 FAIL이다 (실행 전에 걸린다)",
+     "G1B" in _bad65 and "G31" not in _bad65,
+     f"{sorted(_bad65)} · 상세 {_bad65.get('G1B', ('', ''))[1][:40]}")
+show("①ⓑ 상세가 있는 것의 목록을 담는다 (AUTO_FIX — 사람이 통역하지 않는다)",
+     all(k in _bad65["G1B"][1] for k in ("col_to_letter", "expand_merged", "split_multi"))
+     and not R.classify_failures(_out65)[1])
+# **비공개 이름도 FAIL** — 오늘 도는 것이 다음 판에 사라져도 약속 위반이 아니다.
+_priv65, _ = _gate65(
+    _cp65.replace("    fragments = []",
+                  "    fragments = []\n    _x = normalizer._col(3)", 1), name="priv")
+show("①ⓑ 밑줄 이름(비공개) 참조도 FAIL이다", "G1B" in _priv65)
+# **있는 이름만 쓰면 PASS** — 시험 자체가 늘 붉는 것이 아니다.
+_good65, _ = _gate65(_cp65, name="good")
+show("①ⓑ 있는 이름만 쓴 어댑터는 G1B가 뜨지 않는다", "G1B" not in _good65,
+     str(sorted(_good65)))
+
+# ②ⓑ **어휘 셋** — 목록 밖 값은 FAIL이고 문면이 목록을 담는다.
+_pf65 = json.loads((ROOT / "schemas/pfmea.json").read_text(encoding="utf-8"))
+_pfa65 = ROOT / "tests/fixtures/adapters/pfmea.py"
+
+
+def _vgate65(mut, name):
+    sch = json.loads(json.dumps(_pf65))
+    mut(sch)
+    f = _d65 / f"s_{name}.json"
+    f.write_text(json.dumps(sch, ensure_ascii=False), encoding="utf-8")
+    _ok, _out = R.harness(_pfa65, f, [RAW / "PFMEA01.xlsx"])
+    return {c: (l, d) for c, l, d in R.fail_lines(_out)}, _out
+
+
+def _set_cat(s):
+    s["fields"]["cause"]["category"] = "Cause"
+
+
+def _set_rel(s):
+    s["edges"][0]["relation"] = "cause_of"
+
+
+def _set_tri(s):
+    s["edges"][1]["to"] = "cause"
+
+
+_c65, _co65 = _vgate65(_set_cat, "cat")
+_r65, _ro65 = _vgate65(_set_rel, "rel")
+_t65, _to65 = _vgate65(_set_tri, "tri")
+show("②ⓑ 층 목록 밖 category가 FAIL이고 있는 것이 문면에 있다 (G4C)",
+     "G4C" in _c65 and "Cause" in _c65["G4C"][1] and "Failure" in _c65["G4C"][1],
+     _c65.get("G4C", ("", ""))[1][:70])
+show("②ⓑ 층 목록 밖 relation이 FAIL이고 있는 것이 문면에 있다 (G4D)",
+     "G4D" in _r65 and "cause_of" in _r65["G4D"][1] and "affects" in _r65["G4D"][1],
+     _r65.get("G4D", ("", ""))[1][:70])
+show("②ⓑ 패턴표 밖 삼항이 FAIL이고 허용 삼항이 문면에 있다 (G4E)",
+     "G4E" in _t65 and "affects" in _t65["G4E"][1]
+     and "FailureEffect" in _t65["G4E"][1],
+     _t65.get("G4E", ("", ""))[1][:70])
+show("②ⓑ 셋 다 AUTO_FIX 갈래다 (문면이 목록을 담는다)",
+     all(not R.classify_failures(o)[1] for o in (_co65, _ro65, _to65)))
+# **걸침 필드는 대상 층의 목록으로 · `@좌표필드`는 블록의 target_category로 판정**
+_ok65, _ = R.harness(_pfa65, ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"]), None
+_pass65, _pout65 = R.harness(_pfa65, ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+_codes65 = [c for c, _l, _d in R.fail_lines(_pout65)]
+show("②ⓑ 걸침 필드(target_layer)·@좌표필드가 있는 스키마가 초록이다 "
+     "(다른 층 카테고리를 오판하지 않는다)",
+     not [c for c in _codes65 if c in ("G4C", "G4D", "G4E")], str(_codes65))
+shutil.rmtree(_d65, ignore_errors=True)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
