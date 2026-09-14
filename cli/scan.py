@@ -31,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core import fixtures
+from parser import preflight
 from parser.normalizer import _col
 from parser.reader import GRID_EXT, read
 from parser import form as form_mod
@@ -73,17 +74,14 @@ def adapters(paths=None):
     return out
 
 
-def _header_actual(raw, header_row):
-    """그 행의 실물 헤더 문자열 배열 — preflight가 보는 것과 같은 지문."""
-    if raw.get("format") != "xlsx" or not raw.get("sheets"):
-        return []
-    cells = raw["sheets"][0]["cells"]
-    out = []
-    for col in range(1, raw["sheets"][0]["max_col"] + 1):
-        v = cells.get(f"{_col(col)}{header_row}")
-        if v is not None and str(v).strip():
-            out.append(str(v).strip())
-    return out
+def _header_actual(raw, header_row, expects=None):
+    """그 행의 실물 헤더 문자열 배열 — **preflight 함수를 그대로 부른다**(B62 ①).
+
+    구판은 같은 계산을 여기서 다시 썼고, `format != "xlsx"` 검사까지 복제해
+    **CSV에 대해 preflight와 똑같이 눈을 감았다** — 지문 스캔도 CSV를 영영 못 골랐다.
+    두 벌이면 한쪽만 고쳐지는 날이 온다.
+    """
+    return preflight.header_labels(raw, header_row, expects)
 
 
 def match_detail(raw, mod):

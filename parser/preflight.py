@@ -15,20 +15,52 @@ prose는 헤더 행이 없으므로 **분할 신호 상수의 존재**를 본다
 from __future__ import annotations
 
 from .normalizer import _col
+from .reader import norm_label, sheet_of
 
 
 
-def header_labels(raw, header_row, sheet=0):
-    """그 행의 실물 헤더 문자열 배열 — 지문. 빈 셀은 건너뛴다."""
-    if raw.get("format") != "xlsx" or not raw.get("sheets"):
+def header_labels(raw, header_row, expects=None):
+    """그 행의 실물 헤더 문자열 배열 — 지문. 빈 셀은 건너뛴다.
+
+    **`format`을 보지 않는다**(B62 ①-a). 구판은 `format != "xlsx"`면 `[]`를 돌려줬고,
+    CSV 리더는 「xlsx로 위장하지 않는다」고 정직하게 `format: "csv"`를 내므로 **CSV
+    table 어댑터는 preflight를 통과할 수 없었다** — 선언한 열이 전부 `missing`이 된다
+    (실측: 19개 선언 · missing 19 · extra 0). 격자인가는 `sheets`가 답한다.
+    """
+    sh, err = sheet_of(raw, expects)
+    if err:
         return []
-    sh = raw["sheets"][sheet]
     out = []
-    for c in range(1, sh["max_col"] + 1):
-        v = sh["cells"].get(f"{_col(c)}{header_row}")
-        if v is not None and str(v).strip():
-            out.append(str(v).strip())
+    for c in range(1, (sh.get("max_col") or 0) + 1):
+        v = norm_label(sh.get("cells", {}).get(f"{_col(c)}{header_row}"))
+        if v:
+            out.append(v)
     return out
+
+
+def header_row_suspect(raw, exp):
+    """`columns`가 가리키는 열의 **헤더 셀이 비어 있나** — 비면 detail, 아니면 `None`.
+
+    시스템이 헤더 문자열을 채우기 **전에** 위치를 검증하는 자리다(B62 ①-c). 채우는
+    일은 결정적이지만 **`header_row`가 틀렸으면 결정적으로 틀린 값을 채운다** — 빈
+    행을 읽어 `header_labels`를 `[]`로 덮어쓰면 표류 감지가 조용히 죽는다.
+    """
+    hr, cols = exp.get("header_row"), (exp.get("columns") or {})
+    if not hr or not cols:
+        return None
+    sh, err = sheet_of(raw, exp)
+    if err:
+        return None                       # 시트 해석 실패는 check()가 따로 말한다
+    cells = sh.get("cells") or {}
+    empty = sorted({str(v) for v in cols.values()
+                    if isinstance(v, str) and not norm_label(cells.get(f"{v}{hr}"))})
+    if not empty:
+        return None
+    got = [norm_label(cells.get(f"{_col(c)}{hr}"))
+           for c in range(1, (sh.get("max_col") or 0) + 1)]
+    return {"reason": f"header_row 의심 — {sh.get('name')}!{hr}행에서 읽힌 값: "
+                      f"{[g for g in got if g][:5]}",
+            "empty_columns": empty, "header_row": hr}
 
 
 PROSE_SIGNALS = ("heading_pattern", "split_on", "indent", "bold", "text_column",
@@ -42,14 +74,16 @@ PROSE_SIGNALS = ("heading_pattern", "split_on", "indent", "bold", "text_column",
 PROSE_FINGERPRINTS = ("title_row", "max_col")
 
 
-def _first_sheet(raw):
-    return (raw.get("sheets") or [{}])[0]
+def _sheet(raw, exp=None):
+    """지문 검사용 시트 — **해석기는 리더 하나다**(B62 ①-b). 못 고르면 빈 dict."""
+    sh, err = sheet_of(raw, exp)
+    return {} if err else sh
 
 
 def _fp_title_row(exp, raw):
     """`title_row`: 그 행에 **내용이 있는가.** 값이 문자열이면 그 문자열과 대조한다."""
     want = exp["title_row"]
-    cells = _first_sheet(raw).get("cells") or {}
+    cells = _sheet(raw, exp).get("cells") or {}
     row = want if isinstance(want, int) else 1
     got = [v for k, v in cells.items() if str(k)[1:].isdigit() and int(str(k)[1:]) == row]
     if isinstance(want, str):
@@ -60,7 +94,7 @@ def _fp_title_row(exp, raw):
 def _fp_max_col(exp, raw):
     """`max_col`: 실제 최대 열 수가 선언을 넘지 않는가 — 넘으면 양식 표류다."""
     want = exp["max_col"]
-    cells = _first_sheet(raw).get("cells") or {}
+    cells = _sheet(raw, exp).get("cells") or {}
     cols = {"".join(ch for ch in str(k) if ch.isalpha()) for k in cells}
     n = max((len(c) * 26 - 26 + (ord(c[-1]) - 64) if c else 0) for c in cols) if cols else 0
     return n <= int(want), {"want_max": want, "actual_max": n}
@@ -119,8 +153,21 @@ def check(adapter, raw):
         detail["reason"] = "expects에 header_row/header_labels가 없다 (D-29 필수)"
         return False, detail
 
-    actual = header_labels(raw, hr)
-    detail.update({"declared": declared, "actual": actual,
+    # **시트 해석 실패는 그 자체가 표류다**(B62 ①-b) — 어느 시트인지 정해지지
+    # 않은 채로 헤더를 읽으면 그 선택이 어디에도 안 남는다.
+    _sh, _err = sheet_of(raw, exp)
+    if _err:
+        detail.update(_err)
+        detail["reason"] = _err["reason"]
+        return False, detail
+    suspect = header_row_suspect(raw, exp)
+    if suspect:
+        detail.update(suspect)
+        return False, detail
+    # **선언은 정규화해서 맞춘다** — 실물 쪽만 정규화하면 같은 셀이 다르게 읽힌다.
+    declared = [norm_label(h) for h in declared]
+    actual = header_labels(raw, hr, exp)
+    detail.update({"declared": declared, "actual": actual, "sheet": _sh.get("name"),
                    "missing": [h for h in declared if h not in actual],
                    "extra": [h for h in actual if h not in declared]})
     return not detail["missing"] and not detail["extra"], detail

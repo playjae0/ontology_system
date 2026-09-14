@@ -57,6 +57,8 @@ pdf →
 """
 import logging
 import os
+import re
+import unicodedata
 
 from .normalizer import _col
 
@@ -529,6 +531,51 @@ def read_csv(path):
 # **리더가 여는 확장자의 정본은 여기다.** 호출부(`cli/ingest.py`)가 제 목록을 들면
 # 리더에 포맷을 더해도 투입이 「지원하지 않는 포맷」으로 막는다 — 실측: `.pdf`를
 # 더한 회차에 정확히 그렇게 됐다(B53).
+def norm_label(v):
+    """헤더 라벨 정규화 — **한 자리** (B62 ①-c).
+
+    구판은 preflight가 `str(v).strip()`, `_label_columns`가 `str(v)`를 써 **같은 셀을
+    다르게 읽었다.** 두 곳이 다르면 「선언 19 / 실물 19인데 3개가 다르다」가 조용히
+    난다. 정규화는 셋: NFKC(전각→반각·호환 문자) · 연속 공백/줄바꿈 접기 · strip.
+
+    **내용을 바꾸지 않는다** — 대소문자·기호는 그대로 둔다. 그것까지 접으면 실제로
+    다른 두 열이 같은 이름이 되고, 표류 감지가 도리어 눈을 감는다.
+    """
+    return re.sub(r"\s+", " ", unicodedata.normalize(
+        "NFKC", "" if v is None else str(v))).strip()
+
+
+def sheet_of(raw, expects=None):
+    """**시트 해석기는 여기 하나다** — `(시트, 오류 detail 또는 None)` (B62 ①-b).
+
+    규칙은 둘뿐이다:
+
+    - `expects.sheet`가 **시트 이름**이면 그 시트. 없으면 오류(이름 목록을 함께 낸다).
+    - 생략이면 **유일한 시트**. 시트가 둘 이상이면 오류 — 어느 시트인지는 사람이
+      정할 일이고, 코드가 0번을 고르면 그 선택이 어디에도 안 남는다.
+
+    구판은 `sheets[0]`이 네 곳에 흩어져 있었다. 흩어지면 한 곳만 고쳐지는 날이 오고,
+    그때 preflight가 보는 시트와 어댑터가 읽는 시트가 갈린다.
+
+    **CSV는 시트가 하나**라 생략이 맞다 — 그리고 시트 이름이 **파일 이름**이므로
+    이름을 선언하면 다음 파일에서 깨진다(문서에 그 한 줄이 있다).
+    """
+    sheets = raw.get("sheets") or []
+    names = [sh.get("name") for sh in sheets]
+    want = (expects or {}).get("sheet")
+    if want:
+        for sh in sheets:
+            if sh.get("name") == want:
+                return sh, None
+        return None, {"reason": f"expects.sheet '{want}'인 시트가 없다",
+                      "sheets": names}
+    if len(sheets) == 1:
+        return sheets[0], None
+    if not sheets:
+        return None, {"reason": "시트가 없다 — 격자 포맷이 아니다", "sheets": []}
+    return None, {"reason": f"sheet 선언이 필요하다 — 시트: {names}", "sheets": names}
+
+
 SUPPORTED = (".xlsx", ".xlsm", ".pptx", ".pdf", ".csv", ".tsv")
 # 헤더 지문이 없는 포맷 — doc_type 지정이 필수다(§5 지문 스캔 대상 아님).
 PROSE_EXT = (".pptx", ".pdf")

@@ -971,6 +971,68 @@ show("④-후속 계층 신호 0건 → flat_fallback 쪽 표시 (size 표시가
      and not _flat[0]["meta"].get("split_level_out_of_range"))
 
 
+# ── B62 ① 헤더 위치 — 선언 하나, 리더 하나, 대조는 시스템이 ────────────────
+print("\n■ B62 ① — 시스템이 아는 값은 LLM이 쓰지 않는다")
+
+from parser import preflight as _PF                              # noqa: E402
+
+# ①-a **`format`을 보지 않는다** — CSV 리더는 「xlsx로 위장하지 않는다」고 정직하게
+# 내는데 preflight가 xlsx만 받아, CSV table 어댑터는 **통과할 수 없었다**.
+_csv62 = read(str(RAW / "CSV05_wide.csv"))
+show("①ⓑ csv raw로 header_labels()가 비어 있지 않다 (format을 보지 않는다)",
+     _csv62["format"] == "csv" and len(_PF.header_labels(_csv62, 1, {})) == 7,
+     str(_PF.header_labels(_csv62, 1, {})[:3]))
+# 정규화는 **한 자리**다 — 두 곳이 다르면 같은 셀을 다르게 읽는다.
+show("① 라벨 정규화가 한 자리다 (NFKC · 공백 접기 · strip · 내용은 안 바꾼다)",
+     reader.norm_label("  Ａ\n B  ") == "A B" and reader.norm_label(None) == ""
+     and reader.norm_label("Center") == "Center")
+
+# ①-b **시트 해석기 하나** — 둘 이상인데 생략이면 adapter_mismatch이고 이름 목록이 온다.
+_two62 = {"format": "xlsx", "sheets": [
+    {"name": "앞", "max_row": 2, "max_col": 2, "cells": {"A1": "가", "B1": "나"}},
+    {"name": "뒤", "max_row": 2, "max_col": 2, "cells": {"A1": "다", "B1": "라"}}]}
+
+
+class _Ad62:
+    ADAPTER = {"doc_type": "t62", "adapter_version": "1.0", "payload_kind": "table",
+               "expects": {"header_row": 1, "header_labels": ["가", "나"],
+                           "columns": {"a": "A", "b": "B"}}}
+
+
+_ok62, _d62 = _PF.check(_Ad62, _two62)
+show("①ⓑ 시트 둘 + sheet 생략 → adapter_mismatch · detail에 시트 이름 목록",
+     not _ok62 and _d62.get("sheets") == ["앞", "뒤"] and "sheet" in _d62["reason"],
+     _d62["reason"])
+_Ad62.ADAPTER["expects"]["sheet"] = "뒤"
+_Ad62.ADAPTER["expects"]["header_labels"] = ["다", "라"]
+show("①ⓑ sheet 이름을 선언하면 그 시트를 읽는다",
+     _PF.check(_Ad62, _two62)[0]
+     and _PF.header_labels(_two62, 1, _Ad62.ADAPTER["expects"]) == ["다", "라"])
+
+# ①-c **채우기 전 위치 검증** — columns가 빈 헤더 셀을 가리키면 관문 FAIL.
+_susp62 = {"format": "csv", "sheets": [
+    {"name": "s", "max_row": 3, "max_col": 3,
+     "cells": {"A2": "가", "B2": "나", "A3": "1", "B3": "2"}}]}
+_exp62 = {"header_row": 1, "columns": {"a": "A", "b": "B"}, "header_labels": []}
+show("①ⓑ columns가 빈 헤더 셀을 가리키면 header_row 의심이다 (채우지 않는다)",
+     (_PF.header_row_suspect(_susp62, _exp62) or {}).get("empty_columns") == ["A", "B"]
+     and _PF.header_row_suspect(_susp62, {**_exp62, "header_row": 2}) is None,
+     (_PF.header_row_suspect(_susp62, _exp62) or {}).get("reason", "")[:48])
+
+# ①ⓒ **시트 0 고정은 리더 안에만** — 흩어지면 한 곳만 고쳐지는 날이 온다.
+import re as _re62                                                # noqa: E402
+_PAT62 = _re62.compile(r'\["sheets"\]\[0\]|sheets\[0\]|\)\[0\]\.get\("cells"\)')
+_outside = [f"{f}:{i}" for d in ("parser", "cli", "kit")
+            for f in sorted((ROOT / d).rglob("*.py"))
+            if f.name != "reader.py"
+            for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1)
+            if _PAT62.search(ln)]
+show("①ⓒ 시트 0 직접 참조가 리더 밖에 0줄이다", not _outside, str(_outside[:2]))
+# 지문 스캔도 **같은 함수**를 부른다 — 구판은 제 구현을 들고 CSV에 똑같이 눈을 감았다.
+show("① 지문 스캔이 preflight의 헤더 함수를 부른다 (두 벌이 아니다)",
+     "preflight.header_labels(" in (ROOT / "cli" / "scan.py").read_text(encoding="utf-8"))
+
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

@@ -1339,14 +1339,24 @@ def _orphan_of(st):
         return []
 
 
-def _ask_more(n):
-    """1회 재생성 뒤에도 실패하면 **묻고 진행한다** — 비용 동의(좌표 보조와 동형)."""
+def _ask_more(doc_type, codes):
+    """1회 재생성 뒤에도 실패하면 **묻고 진행한다** — 비용 동의(좌표 보조와 동형).
+
+    구판은 `더 돌릴까? [y/N]` 한 줄이었다(B62 ④). 이미 한 번 고쳤다는 것, y가 무엇을
+    여는지, N이 **막다른 길**이라는 것을 아무것도 말하지 않았고 **기본값이 그 막다른
+    길**이었다. 기본을 y로 돌리고, n을 골라도 이어갈 명령을 함께 준다.
+    """
+    print(f"   자동 수정 1회 뒤에도 FAIL {len(codes)}건 ({' · '.join(codes) or '?'})")
+    print(f"   [Y] 문답을 열고 재생성한다 (LLM 호출)   "
+          f"[n] 여기서 끝 — 관문 FAIL이라 confirm은 막힌다.")
+    print(f"       n 뒤에도 이어갈 수 있다:  "
+          f"python -m cli.register review {doc_type} --instruct \"…\"")
     try:
-        ans = input(f"   1회 재생성 후에도 FAIL {n}건이다. 더 돌릴까? [y/N] ").strip().lower()
+        ans = input("   더 돌릴까? [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
-        print("   (비대화형 — 끄고 실패로 끝낸다)")
+        print("   (비대화형 — 기본 Y로 이어간다)")
         ans = ""
-    return ans in ("y", "yes")
+    return ans not in ("n", "no")
 
 
 def _failure_persist(doc_type, pkg, samples, ask):
@@ -1412,6 +1422,106 @@ def _finish_generate(doc_type, st, samples, pkg=None):
     return 1
 
 
+# 시스템이 채운 값이 사는 자리 — 어댑터 파일 **끝**의 표시 블록. 다시 채울 때
+# 이 표시부터 파일 끝까지를 갈아 끼우므로 **되풀이해도 하나**다(멱등).
+_FILLED_MARK = "# ── 시스템이 채운다 (B62 ①-c)"
+
+
+def stamp_system_fields(st, samples):
+    """**관문 입구에서 시스템이 아는 값을 시스템이 쓴다** (B62 ①-c·③).
+
+    둘이다 — `expects.header_labels`(표본의 실물 헤더)와 `adapter_version`(판 번호).
+    원리 하나로 묶인다: **시스템이 이미 아는 값은 LLM이 쓰지 않는다.** 받아 적게
+    하고 글자로 대조하면 한 글자 흘린 것이 `adapter_mismatch`가 되고, 판 번호는
+    템플릿 예시의 `"1.0"`이 그대로 베껴져 **아무도 안 올린다**(재생성 2회째
+    `adapter_rev2.py` 안이 `1.0`이었다 — `state.revision`과 서로 모르는 두 카운터).
+
+    LLM이 원본 헤더 문자열을 받아 적고 시스템이 그것을 글자로 대조하는 구조였다 —
+    한 글자만 흘려도 `adapter_mismatch`이고, 그 값은 **시스템이 표본에서 읽으면
+    되는 것**이다. 원리: **시스템이 아는 값은 LLM이 쓰지 않는다.**
+
+    자리가 「초안 저장 시점」이 아니라 **관문 입구**인 이유 둘:
+    ① 결정적·멱등이라 판단을 바꾸는 일이 아니다 — `fix` 양쪽(generate·status·confirm)
+       어디서 들어와도 같은 값이 된다.
+    ② **이미 만들어진 어댑터가 재생성 없이 살아난다** — ①-a 이전 코드로 생성한
+       `review/<doc_type>/`가 `status` → `confirm`으로 확정될 수 있어야 하고,
+       그 경로에 **LLM 호출이 0이어야** 한다.
+
+    `table`에만 한다(`header_labels`는 D-29의 table 한정). prose 위임 래퍼는
+    `ADAPTER = {**basic_ppt.ADAPTER, …}`라 `expects`가 **코어 어댑터와 같은 객체**다 —
+    거기에 쓰면 코어 어댑터가 런타임에 오염된다.
+
+    **채우기 전에 위치를 검증한다**: `columns`가 가리키는 헤더 셀이 비어 있으면
+    `header_row`가 틀린 것이므로 채우지 않고 그대로 둔다 — 관문의 G26이 그것을
+    말한다. 빈 배열로 덮어쓰면 표류 감지가 조용히 죽는다.
+
+    돌려주는 것은 화면 한 줄(정보)이거나 `None`이다.
+    """
+    path = ROOT / st["adapter"]
+    try:
+        mod = _load(path, f"fill_{st['doc_type']}")
+        a = mod.ADAPTER
+    except Exception:
+        return None                         # 못 읽으면 관문의 ①단이 말한다
+    exp = a.get("expects") or {}
+    # **판 번호는 계열과 무관하다** — prose도 판이 오른다. `1.{revision}`이고
+    # `--revise`는 revision을 이어가므로 새 판이 옛 판보다 작아지지 않는다.
+    want_ver = f"1.{st.get('revision', 0)}"
+    if a.get("payload_kind") != "table" or not exp.get("header_row"):
+        return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
+    raw = None
+    for smp in samples:
+        try:
+            raw = reader.read(str(smp))
+            break
+        except Exception:
+            continue
+    if raw is None or preflight.header_row_suspect(raw, exp) is not None:
+        # **위치가 의심스러우면 채우지 않는다** — 빈 행을 읽어 `[]`로 덮어쓰면
+        # 표류 감지가 조용히 죽는다. 관문의 G26이 그 사실을 말한다.
+        return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
+    actual = preflight.header_labels(raw, exp["header_row"], exp)
+    if not actual:
+        return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
+    declared = [reader.norm_label(x) for x in (exp.get("header_labels") or [])]
+    note = _write_stamp(st, path, (actual, raw, exp, samples), want_ver,
+                        a.get("adapter_version"))
+    if declared == actual:
+        return note
+    diff = [x for x in actual if x not in declared] + \
+           [x for x in declared if x not in actual]
+    return (f"   헤더 문자열은 시스템이 채운다 — LLM 선언 {len(declared)} / "
+            f"실물 {len(actual)} · 다른 것 {len(diff)}: {diff[:5]}")
+
+
+def _write_stamp(st, path, header, want_ver, had_ver):
+    """표시 블록을 **작업 사본**에 쓴다 — 되풀이해도 하나다(멱등).
+
+    **원본에 쓰지 않는다.** 초안의 출처는 fixture(외부 LLM 실산출 스냅샷 · D-26)이거나
+    킷 전시물일 수 있고 **그 둘은 손대지 않는 자리다**. 고치는 것은 언제나
+    `review/<doc_type>/`이고, 확정이 거기서 정본으로 승격한다.
+    """
+    src = path.read_text(encoding="utf-8")
+    if REVIEW not in path.parents:
+        path = _dir(st["doc_type"]) / "adapter.py"
+        st["adapter"] = str(_rel(path))
+    lines = [f"{_FILLED_MARK} — 관문이 그 자리에서 채운다. 손으로 고치지 마라."]
+    if header:
+        actual, raw, exp, samples = header
+        lines += [f"#    표본: {Path(str(samples[0])).name} · header_row "
+                  f"{exp['header_row']} · 시트 "
+                  f"{(reader.sheet_of(raw, exp)[0] or {}).get('name')}",
+                  f"ADAPTER[\"expects\"][\"header_labels\"] = {actual!r}"]
+    lines.append(f"ADAPTER[\"adapter_version\"] = {want_ver!r}"
+                 f"   # state.revision = {st.get('revision', 0)}")
+    head = src.split(_FILLED_MARK)[0].rstrip("\n")
+    path.write_text(head + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    if had_ver and str(had_ver) != want_ver:
+        return (f"   판 번호는 시스템이 찍는다 — LLM 선언 {had_ver!r} → "
+                f"{want_ver!r} (state.revision {st.get('revision', 0)})")
+    return None
+
+
 def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
 
@@ -1425,8 +1535,12 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     못 고치는 것이고, 다른 항목이 실패하면 재생성이 맞던 곳을 깬 것이라 둘 다 사람
     판단이 필요하다.
     """
-    tries = 0
+    tries, prev_codes = 0, None
     while True:
+        # **관문 입구다**(B62 ①-c) — `fix` 양쪽에서 돈다. 하네스가 읽기 전에 채운다.
+        _info = stamp_system_fields(st, samples)
+        if _info:
+            print(_info)
         ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
@@ -1451,8 +1565,27 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
             # 하네스는 통과했는데 대장만 어긋났다 — 재생성 지시가 될 문면이 있다.
             auto = [f"[FAIL] 원본 헤더의 열 {[u['field'] for u in orphan]}이 스키마의 "
                     f"fields에도 unmappable에도 없다 — 전 열이 둘 중 하나에 있어야 한다"]
-        if tries >= 1 and not _ask_more(len(auto) + len(ask)):
+        # **관문 자체 결함만 남았으면 묻지 않는다**(B62 ④ · B59 ② `GATE_SELF`) —
+        # 재생성으로 못 고치는 것을 두고 「더 돌릴까」를 묻는 것은 비용만 쓰는 질문이다.
+        _codes = [c for c, _l, _d in fail_lines(out)]
+        if _codes and all(c in GATE_SELF for c in _codes):
+            print(f"   남은 FAIL이 관문 자체 결함뿐이다 ({' · '.join(_codes)}) — "
+                  f"재생성으로 고칠 수 없어 묻지 않고 끝낸다")
             return "FAIL"
+        # **같은 실패가 되풀이되면 멈춘다** — 이 함수의 머리말이 이미 말하는 성질이다:
+        # 「같은 항목이 또 실패하면 프롬프트가 그것을 못 고치는 것」. 기본값이 Y가
+        # 되면서(B62 ④) 이 자리가 **유일한 종료 조건**이 됐다 — 없으면 비대화형
+        # 실행이 같은 산출을 무한히 다시 받는다(실측: mock에서 대안본이 없으면
+        # `draft`가 같은 초안을 돌려줘 루프가 끝나지 않았다).
+        if tries >= 1 and _codes == prev_codes:
+            print(f"   같은 FAIL이 되풀이된다 ({' · '.join(_codes) or '?'}) — "
+                  f"재생성이 이것을 못 고친다. 여기서 끝낸다.")
+            print(f"   이어가려면: python -m cli.register review {doc_type} "
+                  f"--instruct \"…\"")
+            return "FAIL"
+        if tries >= 1 and not _ask_more(doc_type, _codes):
+            return "FAIL"
+        prev_codes = _codes
         tries += 1
         if ask:
             print(f"   → 문면이 답을 담지 않는 실패 {len(ask)}건 — 문답을 연다")
@@ -1642,13 +1775,17 @@ def _label_columns(exp, adapter_mod):
     try:
         raw = reader.read(str(sample))
         hr = exp.get("header_row")
-        cells = (raw.get("sheets") or [{}])[0].get("cells") or {}
+        sh, err = reader.sheet_of(raw, exp)     # **시트 해석기는 리더 하나다**(B62 ①-b)
+        if err:
+            return {}
         out = {}
-        for addr, v in cells.items():
+        for addr, v in (sh.get("cells") or {}).items():
             letters = "".join(ch for ch in str(addr) if ch.isalpha())
             digits = "".join(ch for ch in str(addr) if ch.isdigit())
-            if digits and int(digits) == hr and v is not None:
-                out[str(v)] = letters
+            # **정규화도 한 자리다**(B62 ①-c) — 구판은 여기가 `str(v)`, preflight가
+            # `str(v).strip()`이라 같은 셀을 다르게 읽었다.
+            if digits and int(digits) == hr and reader.norm_label(v):
+                out[reader.norm_label(v)] = letters
         return out
     except Exception:
         return {}

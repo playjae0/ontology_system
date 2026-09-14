@@ -4536,3 +4536,72 @@ topic이 지시 문면에 있으면 교체, 없으면 새 항목 — 지시를 �
 ### 결과
 
 - 어서션 9건(성질만). 회귀 **1056 → 1065/1065** (+9). 검사 4종 통과.
+
+## B62 ①③④ — 시스템이 아는 값은 LLM이 쓰지 않는다 · 2026-09-14
+
+### ①ⓐ CSV 표본으로 generate (화면 그대로)
+
+```
+   헤더 문자열은 시스템이 채운다 — LLM 선언 7 / 실물 7 · 다른 것 2: ['측정방법', '측정방']
+   기계 관문(하네스): PASS — 34 PASS / 0 FAIL
+```
+
+구판은 **무조건** G52 `adapter_mismatch`였다 — `header_labels()`가 `format != "xlsx"`면
+`[]`를 돌려줬고 CSV 리더는 「xlsx로 위장하지 않는다」고 정직하게 `format: "csv"`를 내므로
+**선언한 열이 전부 `missing`**이 됐다. 격자인가는 이제 `sheets`가 답한다.
+
+`review/csvw/adapter.py` 끝:
+
+```python
+# ── 시스템이 채운다 (B62 ①-c) — 관문이 그 자리에서 채운다. 손으로 고치지 마라.
+#    표본: CSV05_wide.csv · header_row 1 · 시트 CSV05_wide
+ADAPTER["expects"]["header_labels"] = ['대공정', '세부공정', '공정번호', '설비', '관리항목', '규격', '측정방법']
+ADAPTER["adapter_version"] = '1.0'   # state.revision = 0
+```
+
+### ①ⓓ 사내가 지금 만든 어댑터를 살리는 경로 (화면 그대로)
+
+오타 든 `header_labels`와 `machine_gate: FAIL`이 든 옛 `review/csvold/`를 **그대로 두고**:
+
+```
+   헤더 문자열은 시스템이 채운다 — LLM 선언 7 / 실물 7 · 다른 것 2: ['측정방법', '측정방']
+   기계 관문(하네스): PASS — 34 PASS / 0 FAIL
+■ 기계 관문 PASS — csvold
+■ ③ 확정 — csvold 등록부 등재 (승인 사내 @ …)
+```
+
+**LLM 호출 0** · 재생성 0. `status` rc=0 → `confirm` rc=0.
+
+### ④ 재시도 문면 (화면 그대로)
+
+```
+   자동 수정 1회 뒤에도 FAIL 2건 (G13 · G14)
+   [Y] 문답을 열고 재생성한다 (LLM 호출)   [n] 여기서 끝 — 관문 FAIL이라 confirm은 막힌다.
+       n 뒤에도 이어갈 수 있다:  python -m cli.register review ipqc --instruct "…"
+   더 돌릴까? [Y/n]    (비대화형 — 기본 Y로 이어간다)
+```
+
+### 회차 중 잡은 것
+
+1. **기본값 Y가 무한 루프를 만들었다** — mock에서 대안본이 없으면 `draft`가 같은 초안을
+   돌려주므로 재생성이 영원히 돈다(시험이 600초에 죽었다). 종료 조건을 **성질**로
+   세웠다: 「같은 FAIL이 되풀이되면 재생성이 못 고치는 것」 — 횟수 상한이 아니다.
+   ```
+   같은 FAIL이 되풀이된다 (G13 · G14) — 재생성이 이것을 못 고친다. 여기서 끝낸다.
+   이어가려면: python -m cli.register review ipqc --instruct "…"
+   ```
+2. **채우기가 fixture 원본을 덮어쓸 뻔했다**(D-26 위반) — mock에서 `state.adapter`가
+   fixture를 직접 가리킨다. `ipqc`·`toc_report`가 table이라 실제로 덮어썼을 것이다.
+   **작업 사본(`review/`)으로 복사한 뒤 채우도록** 고쳤다.
+3. **지문 스캔이 같은 병을 따로 앓고 있었다** — `cli/scan.py`가 헤더 계산을 두 벌로
+   갖고 `format != "xlsx"`까지 복제해, CSV를 영영 후보로 못 골랐다. preflight 함수를
+   부르게 했다.
+4. `G22`에 라벨이 둘 붙어 B59의 「태그 1:1」이 깨졌다 — 시트 해석 실패를 `G27`로 갈랐다.
+5. **B62 zip이 B57 ⑤에서 개정한 회귀 자산 둘을 옛 판으로 되돌렸다**(아래 보고).
+6. 컨테이너 재시작으로 `openpyxl`·`python-pptx`·`PyMuPDF`·`libreoffice-impress`가
+   빠져 있었다 — 복구했다(B62 무관, HEAD에서도 붉던 항목 1건이 그것이었다).
+
+### 결과
+
+- 회귀 **1065 → 1080/1080** (+15, 삭제 0): `test_p1` 147 → 154 · `test_p3` 333 → 341.
+- 검사 4종 전부 통과. 변이 둘(format 검사 복원 · 판 번호 스탬프 제거) 다 붉어진다.

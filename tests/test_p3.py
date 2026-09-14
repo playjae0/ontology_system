@@ -1243,8 +1243,13 @@ _nx = [l for l in _gi.stdout.splitlines() if "python run.py register" in l]
 show("② ⓓ 미통과는 뷰로 넘어가지 않는다 · 화면이 이유와 다음 줄을 준다",
      _gi.returncode != 0 and R.fail_lines(_gi.stdout) and _nx,
      f"FAIL {len(R.fail_lines(_gi.stdout))}줄 · 다음 줄 {len(_nx)}개")
-show("② ⓒ 1회 뒤에도 실패하면 묻고 진행한다 (비대화형이면 끄고 끝낸다)",
-     "1회 재생성 후에도 FAIL" in _gi.stdout and "비대화형" in _gi.stdout)
+# **B62 ④가 이 자리를 바꿨다** — 기본값이 N(막다른 길)에서 Y(이어가기)로 갔고,
+# 종료 조건은 「같은 FAIL이 되풀이된다」다. 잠글 성질은 ①자동 수정이 한 번 돌았다
+# ②끝날 때 **왜 끝나는지**를 말한다 ③rc가 실패다 — 문면 한 줄이 아니다.
+show("② ⓒ 자동 수정 1회 뒤 같은 FAIL이면 사유를 말하고 끝낸다 (기본은 이어가기)",
+     "자동 수정 1회" in _gi.stdout or "같은 FAIL이 되풀이된다" in _gi.stdout,
+     [l.strip() for l in _gi.stdout.splitlines()
+      if "되풀이" in l or "자동 수정" in l][:1])
 show("② 하네스 수리 — 조각 0건이 이제 FAIL이다 (구판은 검사 전에 돌아갔다)",
      (lambda t: t.index("조각 {len(pieces)}건 산출")
       < t.index("if not pieces:\n        return pieces"))(
@@ -2168,7 +2173,10 @@ _reg60("generate", "cp60", "process", str(RAW / "CP01.xlsx"), "--no-basic")
 _st60 = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
 _saved_pass = _st60["machine_gate"] == "PASS"
 # 디스크의 어댑터만 바꾼다 — 저장값은 PASS 그대로다.
-_ad60 = _fx60 / "fixtures/adapters/cp60.py"
+# **바꿀 곳은 작업 사본이다**(B62 ①-c) — 관문 입구에서 시스템이 `review/`로 복사해
+# 거기에 채우므로, 그 뒤로 관문이 읽는 어댑터는 `state.adapter`가 가리키는 사본이다.
+# fixture 원본은 손대지 않는 자리라(D-26) 거기를 고치면 아무 데도 안 닿는다.
+_ad60 = ROOT / _st60["adapter"]
 _ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
     "\nADAPTER = {",
     "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
@@ -2297,6 +2305,134 @@ show("②ⓐ 요약 확인에서 «수정 n»은 그 항목만 바꾼다 (나머
      and "수정" in _dec62[0]["reason"] and _dec62[1]["decision"] == "병합은 위 값 채움")
 reset("cp62")
 shutil.rmtree(_fx62, ignore_errors=True)
+
+
+# ── B62 ①ⓓ·③·④ 관문 입구에서 시스템이 쓴다 ───────────────────────────────
+print("\n■ B62 — 관문이 채우고 찍는다 · 재시도의 기본은 이어가기")
+
+_fx63 = Path(_tf.mkdtemp(prefix="fx63_", dir=str(ROOT)))
+(_fx63 / "fixtures/adapters").mkdir(parents=True)
+(_fx63 / "fixtures/schemas").mkdir(parents=True)
+# **LLM이 쓴 header_labels에 한 글자 오타**가 있는 어댑터 — ①-a 이전 코드의 산출이다.
+_AD63 = '''# -*- coding: utf-8 -*-
+from parser import normalizer
+
+ADAPTER = {
+    "doc_type": "%s",
+    "adapter_version": "1.0",
+    "payload_kind": "table",
+    "expects": {
+        "header_row": 1,
+        "data_start_row": 2,
+        "header_labels": ["대공정", "세부공정", "공정번호", "설비",
+                          "관리항목", "규격", "측정방"],
+        "columns": {"process_group": "A", "process_ref": "B", "process_no": "C",
+                    "설비": "D", "관리항목": "E", "규격": "F", "측정방법": "G"},
+        "multi_value_seps": [",", "/"],
+        "multi_value_fields": ["설비"],
+        "required": ["process_ref", "설비", "관리항목"],
+    },
+}
+
+
+def extract(raw) -> list[dict]:
+    exp = ADAPTER["expects"]
+    out = []
+    for sheet in raw.get("sheets", []):
+        cells = normalizer.expand_merged(sheet)
+        for row in range(exp["data_start_row"], int(sheet.get("max_row", 0)) + 1):
+            rec = {f: str(cells.get("%%s%%d" %% (c, row), "") or "").strip()
+                   for f, c in exp["columns"].items()}
+            if all(v == "" for v in rec.values()):
+                continue
+            rec["source_locator"] = "%%s!R%%d" %% (sheet.get("name", "sheet"), row)
+            out.append(rec)
+    out, _ = normalizer.split_multi(out, exp["multi_value_fields"], exp["multi_value_seps"])
+    return out
+'''
+_SC63 = {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+         "fields": {"설비": {"role": "entity", "category": "Unit"},
+                    "관리항목": {"role": "entity", "category": "Property"},
+                    "규격": {"role": "attribute", "attach_to_field": "관리항목",
+                           "attr_name": "spec", "contextual": True, "optional": True},
+                    "측정방법": {"role": "attribute", "attach_to_field": "관리항목",
+                              "optional": True}},
+         "edges": []}
+for _dt in ("csv63", "csv63_rev1"):
+    (_fx63 / f"fixtures/adapters/{_dt}.py").write_text(_AD63 % "csv63", encoding="utf-8")
+    (_fx63 / f"fixtures/schemas/{_dt}.json").write_text(
+        json.dumps({**_SC63, "doc_type": "csv63"}, ensure_ascii=False), encoding="utf-8")
+_e63 = {**_os.environ, "ONTO_FIXTURES": str(_fx63)}
+_CSV63 = str(RAW / "CSV05_wide.csv")
+
+
+def _reg63(*a):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=_e63, stdin=subprocess.DEVNULL)
+
+
+reset("csv63")
+_g63 = _reg63("generate", "csv63", "process", _CSV63, "--no-basic")
+_st63 = json.loads((REVIEW / "csv63" / "state.json").read_text(encoding="utf-8"))
+_mod63 = R._load(ROOT / _st63["adapter"], "b62_csv63")
+_actual63 = _PF63 = None
+from parser import preflight as _PFM                              # noqa: E402
+_actual63 = _PFM.header_labels(reader.read(_CSV63), 1, _mod63.ADAPTER["expects"])
+# ①ⓐ **CSV table 어댑터가 관문을 지난다** — 구판은 무조건 G52 adapter_mismatch였다.
+show("①ⓐ CSV 표본으로 관문 PASS · orphan 0 (구판은 무조건 adapter_mismatch)",
+     _g63.returncode == 0 and _st63["machine_gate"] == "PASS"
+     and not R.fail_lines(_g63.stdout), str(R.fail_lines(_g63.stdout)[:1]))
+show("①ⓐ 어댑터의 header_labels가 표본 실물과 같다 (LLM 오타를 시스템이 덮었다)",
+     _mod63.ADAPTER["expects"]["header_labels"] == _actual63
+     and "측정방" not in _mod63.ADAPTER["expects"]["header_labels"],
+     str(_actual63))
+# **원본은 손대지 않는다** — fixture는 외부 LLM 실산출 스냅샷이다(D-26).
+show("① 채우기는 작업 사본에만 한다 (fixture 원본 무손질 · D-26)",
+     "시스템이 채운다" not in (_fx63 / "fixtures/adapters/csv63.py").read_text(encoding="utf-8")
+     and str(_st63["adapter"]).startswith("review/"))
+# ③ **판 번호는 시스템이 찍는다** — state.revision과 같은 카운터 하나다.
+show("③ adapter_version 끝자리 == state.revision (LLM이 쓴 1.0을 무시한다)",
+     _mod63.ADAPTER["adapter_version"] == f"1.{_st63['revision']}",
+     f"{_mod63.ADAPTER['adapter_version']} · revision {_st63['revision']}")
+# ①ⓓ **①-a 이전 코드로 만든 review/를 그대로 두고** status → confirm. LLM 0.
+_old63 = REVIEW / "csv63old"
+_old63.mkdir(parents=True, exist_ok=True)
+(_old63 / "adapter.py").write_text(_AD63 % "csv63old", encoding="utf-8")
+(_old63 / "schema.json").write_text(
+    json.dumps({**_SC63, "doc_type": "csv63old"}, ensure_ascii=False), encoding="utf-8")
+(_old63 / "input_package.json").write_text(json.dumps(
+    {"human": {"doc_type": "csv63old", "layer": "process", "samples": [_CSV63],
+               "hint": ""},
+     "system": {"reader_head": [], "skeleton_closed_list": {}, "layer_vocabulary": {},
+                "blocks": {}, "adapter_skeleton": ""}}, ensure_ascii=False), encoding="utf-8")
+(_old63 / "state.json").write_text(json.dumps(
+    {"doc_type": "csv63old", "layer": "process", "samples": [_CSV63],
+     "adapter": "review/csv63old/adapter.py", "schema": "review/csv63old/schema.json",
+     "revision": 0, "instructions": [], "machine_gate": "FAIL",
+     "harness_out": "  [FAIL] 계약 self-check 통과  — adapter_mismatch"},
+    ensure_ascii=False), encoding="utf-8")
+_s63 = _reg63("status", "csv63old")
+_c63 = _reg63("confirm", "csv63old", "--by", "사내")
+show("①ⓓ 옛 review/를 그대로 두고 status → PASS · confirm 성공 (재생성 없이)",
+     _s63.returncode == 0 and _c63.returncode == 0
+     and registry.lookup("csv63old") is not None,
+     f"status rc={_s63.returncode} · confirm rc={_c63.returncode}")
+show("①ⓓ 그 경로에 LLM 호출 0 (mock 로그 0줄)",
+     "MOCK" not in _s63.stdout and "MOCK" not in _c63.stdout)
+reset("csv63old")
+
+# ④ **재시도의 기본은 이어가기** — 구판은 기본값이 막다른 길이었다.
+_RSRC63 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+_ask63 = _RSRC63.split("def _ask_more")[1].split("\ndef ")[0]
+show("④ⓑ 비대화형 기본이 Y다 (구판은 N — 기본값이 막다른 길이었다)",
+     'ans not in ("n", "no")' in _ask63 and "[Y/n]" in _ask63)
+show("④ⓑ GATE_SELF만 남으면 _ask_more를 부르지 않는다",
+     "all(c in GATE_SELF for c in _codes)" in _RSRC63
+     and _RSRC63.index("all(c in GATE_SELF for c in _codes)")
+     < _RSRC63.index("if tries >= 1 and not _ask_more("))
+shutil.rmtree(_fx63, ignore_errors=True)
+reset("csv63")
 
 
 print("\n" + "=" * 62)
