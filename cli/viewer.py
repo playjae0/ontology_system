@@ -40,7 +40,9 @@ def _free_port(start):
                 return p
             except OSError:
                 continue
-    raise SystemExit(f"[viewer] {start}부터 {PORT_TRIES}개를 봤지만 빈 포트가 없다")
+    raise SystemExit(f"[viewer] {start}부터 {PORT_TRIES}개를 봤지만 빈 포트가 없다\n"  # [상태]
+                     f"  ▶ 다음 줄 — 빈 번호를 직접 준다:\n"
+                     f"     python run.py viewer --port <번호>")
 
 
 def _world_snapshot():
@@ -105,7 +107,7 @@ def main(args):
         try:
             port = int(args[i + 1])
         except (IndexError, ValueError):
-            raise SystemExit("[viewer] --port 뒤에 번호가 필요하다")
+            raise SystemExit("[viewer] --port 뒤에 번호가 필요하다")               # [사용법]
         del args[i:i + 2]
 
     mode = "mock" if llm.use_mock() else "실호출"

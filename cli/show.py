@@ -106,7 +106,7 @@ def cmd_tree(args):
 def cmd_node(args):
     """노드 하나 전부 — **값·별칭·출처·연결**. 질의 답의 뒷면이 여기다."""
     if not args:
-        raise SystemExit("이름을 달라: run.py show node '노칭 정밀도'")
+        raise SystemExit("이름을 달라: run.py show node '노칭 정밀도'")             # [사용법]
     name = " ".join(args)
     hits = _find(name)
     if not hits:
@@ -231,7 +231,7 @@ def cmd_doc(args):
 def cmd_chunk(args):
     """청크 원문 — **질의가 '문서 근거'로 내놓는 그 문장**이다."""
     if not args:
-        raise SystemExit("doc_id 또는 chunk_id를 달라")
+        raise SystemExit("doc_id 또는 chunk_id를 달라")                        # [사용법]
     key = args[0]
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     hit = {cid: c for cid, c in ch["chunks"].items()
@@ -293,7 +293,7 @@ def cmd_schema(args):
     dt = args[0]
     s = registry.schema_of(dt)
     if not s:
-        print(f"'{dt}' 미등록 — 등록은 run.py register")
+        print(f"'{dt}' 미등록 — 등록은 python -m cli.register")
         return 1
     print(f"■ {dt}   [층 {s.get('layer')} · schema v{s.get('schema_version')}"
           f" · 블록 {s.get('use_blocks')}]\n")
@@ -524,7 +524,7 @@ def cmd_bm25(args):
     그래프·사전을 읽지 않으므로 「키워드만으로 어디까지 되나」가 그대로 보인다.
     """
     if not args:
-        raise SystemExit('사용: run.py show bm25 "<질문>" [k]')
+        raise SystemExit('사용: run.py show bm25 "<질문>" [k]')               # [사용법]
     from core import bm25
     q = args[0]
     k = int(args[1]) if len(args) > 1 and args[1].isdigit() else 8
@@ -545,13 +545,13 @@ def cmd_bm25(args):
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     cmd, rest = argv[0], argv[1:]
     table = {"tree": cmd_tree, "node": cmd_node, "doc": cmd_doc, "chunk": cmd_chunk,
              "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
              "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25}
     if cmd not in table:
-        raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")
+        raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)
 
 

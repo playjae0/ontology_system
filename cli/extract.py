@@ -78,11 +78,11 @@ def run(paths, *, force=False, layer=None):
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     force = "--force" in argv
     paths = [a for a in argv if not a.startswith("--")]
     if not paths:
-        raise SystemExit("계약 JSON 경로를 달라\n" + __doc__)
+        raise SystemExit("계약 JSON 경로를 달라\n" + __doc__)                    # [사용법]
     return run(paths, force=force)
 
 

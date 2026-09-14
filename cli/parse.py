@@ -208,7 +208,7 @@ def cmd_build(args):
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     cmd, rest = argv[0], list(argv[1:])
     if cmd == "run":                       # 운영 파싱 — mock 관문 대상(B48)
         rest = require_live_or_allow(rest, command="parse run")

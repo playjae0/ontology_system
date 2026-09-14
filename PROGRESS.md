@@ -4733,3 +4733,87 @@ $ grep -n '문서가 말한 공정 이름이' core/llm.py | wc -l      →  0
 - 회귀 **1090 → 1092/1092**. **①의 증감은 0이다**(1090 → 1090) — 옮긴 자리를 가리키던
   어서션 6건은 **재조준**했고 수를 바꾸지 않았다. +2는 전부 ②의 대장 잠금이다.
 - 검사 4종 전부 통과.
+
+## B61 ①~④ — 상태 거부는 원인과 다음 줄을 낸다 · 2026-09-14
+
+정본 번호는 칸 대장(1.5 · 0.1 · 3.1). **LLM 0.**
+
+### 전제 대조표 4행
+
+| # | Expect | 실측 |
+|---|---|---|
+| 1 | `SystemExit` ~56곳 | **55곳** (범위 안) |
+| 2 | 「확정하지 않았다」 1 hit | **2 hits** — 128행 비대화형 안내 + 136행 실제 거부 |
+| 3 | 「양식 표류면 어댑터 개정」 1 hit · 명령 없음 | 일치 |
+| 4 | parse_failure 착지는 큐 — 화면 자리를 보고 | **파싱 실패 경로에는 큐도 없었다**(아래 ⑤) |
+
+### ①ⓐ 상태 거부 목록 — 55곳 전수 분류 (지금은 58곳)
+
+분류는 **`raise` 줄에 박는다**(`# [상태]` · `# [사용법]`). 바깥 표로 두면 줄 번호가
+밀리고, 표가 초록인 채로 거부가 는다.
+
+```
+  cli/_gate.py     상태  1 · 사용법  0      cli/prompt.py    상태  1 · 사용법  0
+  cli/export.py    상태  0 · 사용법  2      cli/register.py  상태 14 · 사용법  6
+  cli/extract.py   상태  0 · 사용법  2      cli/scan.py      상태  3 · 사용법  1
+  cli/golden.py    상태  2 · 사용법  3      cli/show.py      상태  0 · 사용법  5
+  cli/ingest.py    상태  1 · 사용법  2      cli/skeleton.py  상태  8 · 사용법  3
+  cli/parse.py     상태  0 · 사용법  1      cli/viewer.py    상태  1 · 사용법  1
+  cli/platform.py  상태  0 · 사용법  1
+  총 58곳 — 상태 31 · 사용법 27 · 미분류 0 · 계약 위반 0
+```
+
+스캐너는 `tests/exits_scan.py` 하나다(`python3 tests/exits_scan.py`로 목록을 낸다).
+문면이 상수·함수에 살면 표시가 그것을 가리킨다 — `# [상태] 문면=MESSAGE`(mock 관문은
+종료 코드 2를 값으로 낸다) · `# [상태] 문면=block`.
+
+### ②ⓐ 골격 확정 거부 — 위반 둘을 심은 seed (화면 그대로)
+
+```
+■ 골격 확정 거부 — process
+  [FAIL] K05  극성 마커 문법 — '::cathod' — 축값은 ['anode', 'cathode']뿐이다 (12행)
+  [FAIL] K02  canonical 중복 — '노칭' — main·sub 자리에 2번 (6행 · 16행)
+  ▶ 다음 줄:
+     (seed의 위 줄을 고친 뒤)  python run.py skeleton-status process
+     (판정이 비면)            python run.py skeleton-confirm process --by <이름>
+```
+
+`skeleton-status <층>`은 **확정 없이 판정만** 한다(위반 있으면 rc=1). `confirm`은
+같은 `check()`를 부른다 — 판정이 두 벌이면 status가 초록인데 confirm이 막는 날이 온다.
+
+### ③ⓐ 인입 실패 — 계약 위반 행이 화면에 (화면 그대로)
+
+```
+■ 인입 실패 — CP03_bad.xlsx (doc_id CP03_bad)
+  [FAIL] P31  parse_failure — ValueError: 자기완결 실패 row 15: 필수 결측 ['설비', '관리항목'] (C14)
+  큐: parse_failure 1건 (같은 내용)
+  ▶ 다음 줄:
+     (문서를 고친 뒤)      python run.py ingest-file tests/fixtures/raw/CP03_bad.xlsx
+     양식이 바뀐 거면:     python -m cli.register generate cp --revise
+```
+
+### ④ 등록 명령 형태 통일
+
+```
+$ git grep 'run.py register' -- cli/   →  0줄
+```
+`cli/register.py` 17 · `cli/platform.py` 3 · `cli/show.py` 1을 `python -m cli.register`로.
+`run.py`의 `register` 서브커맨드 자체는 그대로다 — 화면 문면만 통일했다.
+
+### 회차 중 잡은 것
+
+1. **파싱 실패 자리에 큐가 없었다.** C14는 「문서 통째 미인입 + `parse_failure` 큐」인데
+   `ingest-file`의 파싱 실패 경로는 **화면 한 줄만 찍고 큐가 비어 있었다**(큐는 인입
+   보류 경로에서만 찼다). 화면 블록과 **같은 재료**를 큐에도 싣게 고쳤다 — 화면을
+   놓치면 기록이 없는 상태를 없앤다.
+2. **화면의 `[FAIL]` 줄이 회귀 계수에 섞였다.** doctor는 스위트 stdout의 줄머리
+   `[FAIL]`을 세는데, ②③이 만든 블록이 그 꼴이다(B59가 `G##`에서 이미 겪은 자리).
+   시험이 블록을 **받아서 검사**하도록 바꿨다(`redirect_stdout`) — 화면 규격은 그대로.
+3. ④가 B59의 어서션 하나를 낡게 만들었다(`"python run.py register"`를 찾던 줄) —
+   문면이 아니라 성질(칠 수 있는 명령이 함께 있다)로 다시 조준했다.
+
+### 결과
+
+- 회귀 **1092 → 1103/1103** (+11, 삭제 0): `test_g1_g2` 94 → 98 · `test_g3` 79 → 82 ·
+  `test_g6` 50 → 54 · `test_p3` 351(불변 · 재조준 1).
+- 검사 4종 전부 통과. 변이 셋(표시 없는 거부 · 골격 위반 둘 · 지시문 이름) 다 붉어진다.

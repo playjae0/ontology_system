@@ -19,8 +19,11 @@ from core import llm
 
 FLAG = "--allow-mock"
 
-MESSAGE = ('mock 모드입니다 — 실산출이 아닙니다. 계속하려면 --allow-mock '
-           '(실호출: llm.json의 "USE_MOCK": 0 또는 USE_MOCK=0)')
+MESSAGE = ('mock 모드입니다 — 실산출이 아닙니다.\n'
+           '  ▶ 다음 줄 — 둘 중 하나:\n'
+           '     (mock 산출로 진행한다)  python run.py <친 명령> --allow-mock\n'
+           '     (실호출로 돌린다)      python run.py llm-check   '
+           '→ llm.json의 "USE_MOCK": 0 또는 USE_MOCK=0')
 
 
 def require_live_or_allow(argv, *, command=""):
@@ -40,4 +43,4 @@ def require_live_or_allow(argv, *, command=""):
     # **stdout으로 낸다** — 플랫폼 창구(`cli/platform.py`)가 subprocess의 stdout만
     # 넘기므로, stderr로 내면 사람 화면에 모드 줄만 뜨고 사유가 사라진다.
     print(f"[{command or 'mock 관문'}] {MESSAGE}")
-    raise SystemExit(2)
+    raise SystemExit(2)                          # [상태] 문면=MESSAGE

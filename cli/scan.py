@@ -135,16 +135,32 @@ def confirm(doc_path, doc_type, adapter_paths=None):
     """사람 확정 후에만 여기로 온다 — 이후는 preflight부터의 정상 경로다."""
     res = scan(doc_path, adapter_paths)
     if res.get("not_fingerprintable"):
-        raise SystemExit(f"[scan] {res['not_fingerprintable']}는 지문 대상이 아니다 — "
-                         f"확정할 지문이 없다. doc_type 지정 투입 또는 --use-basic 등록이다")
+        raise SystemExit(f"[scan] {res['not_fingerprintable']}는 지문 대상이 아니다 — "  # [상태]
+                         f"확정할 지문이 없다 (격자 포맷이 아니다).\n"
+                         f"  ▶ 다음 줄 — 둘 중 하나:\n"
+                         f"     (등록된 doc_type이 있다)  "
+                         f"python run.py ingest-file {doc_path} --doc-type <이름>\n"
+                         f"     (새 양식이다)            "
+                         f"python -m cli.register generate <새이름> <층> {doc_path}"
+                         f" --use-basic")
     if doc_type not in res["_mods"]:
-        raise SystemExit(f"[scan] '{doc_type}' 어댑터를 소재지에서 찾지 못했다")
+        raise SystemExit(f"[scan] '{doc_type}' 어댑터를 소재지에서 찾지 못했다 — "     # [상태]
+                         f"등록되지 않았거나 이름이 다르다.\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     (등록 목록)  python run.py platform doctypes\n"
+                         f"     (새로 등록)  python -m cli.register generate {doc_type}"
+                         f" <층> {doc_path}")
     f, mod = res["_mods"][doc_type]
     detail = next(d for d in res["details"] if d["doc_type"] == doc_type)
     if not detail.get("candidate"):
-        raise SystemExit(f"[scan] '{doc_type}'은 지문 불일치다 — 확정 거부 "
-                         f"(누락 {detail.get('missing')} · 잉여 {detail.get('extra')}). "
-                         f"양식 표류면 어댑터 개정, 새 양식이면 신규 doc_type 등록이다 (C15)")
+        raise SystemExit(f"[scan] '{doc_type}'은 지문 불일치다 — 확정 거부 "         # [상태]
+                         f"(누락 {detail.get('missing')} · 잉여 {detail.get('extra')}) "
+                         f"(C15)\n"
+                         f"  ▶ 다음 줄 — 둘 중 하나:\n"
+                         f"     (양식이 표류했다 — 같은 문서의 새 판)\n"
+                         f"       python -m cli.register generate {doc_type} --revise\n"
+                         f"     (다른 양식이다 — 새 doc_type)\n"
+                         f"       python -m cli.register generate <새이름> <층> {doc_path}")
     pieces = mod.extract(read(str(doc_path)))
     return res, pieces
 
@@ -211,7 +227,7 @@ def form_table(docs):
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     if argv[0] == "--form":
         print(form_table(argv[1:] or [ROOT / "tests" / "fixtures" / "raw"]))
         return

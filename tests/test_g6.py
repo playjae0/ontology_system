@@ -11,7 +11,9 @@
 """
 from __future__ import annotations
 
+import contextlib as _ctx
 import hashlib
+import io as _io
 import json
 import shutil
 import sys
@@ -296,21 +298,63 @@ show("인입 기록에 선택 근거가 남는다 — doc_registry.routing (조�
 _bd = Path(_tf.mkdtemp(prefix="batch_"))
 for _f in ("CP01.xlsx", "CP03_bad.xlsx", "CP04_unlabeled.xlsx", "TOC01.xlsx"):
     shutil.copy(_RAW / _f, _bd / _f)
-_rows = IG.ingest_dir(_bd)
+# **블록은 사람 화면의 것이다** — 스위트 stdout에 `[FAIL]`이 섞이면 doctor가
+# 그것을 스위트의 실패로 센다(계수는 줄머리로 한다). 받아서 검사만 한다.
+_buf6 = _io.StringIO()
+with _ctx.redirect_stdout(_buf6):
+    _rows = IG.ingest_dir(_bd)
+_out6 = _buf6.getvalue()
 _st = {r["doc_id"]: r["status"] for r in _rows}
 show("ingest-dir — 4건 순회 · 성공 2 · 실패 1(C14 파싱 실패) · 미선택 1(지문 0건)",
      _st == {"CP01": "성공", "CP03_bad": "실패", "CP04_unlabeled": "성공", "TOC01": "미선택"}, str(_st))
 show("한 건의 실패가 나머지를 멈추지 않는다 — 실패 뒤의 문서도 인입됐다",
      [r["doc_id"] for r in _rows].index("CP03_bad") < [r["doc_id"] for r in _rows].index("CP04_unlabeled")
      and _st["CP04_unlabeled"] == "성공")
+show("③ 실패 문서의 화면에 블록이 떴다 (태그·다음 줄 — B61)",
+     "[FAIL] P31" in _out6 and "▶ 다음 줄" in _out6
+     and "python -m cli.register" in _out6)
 show("끝에 모아 보이는 목록 — 성공·실패·미선택 3구획",
      all(k in IG.summary(_rows) for k in ("[성공]", "[실패]", "[미선택]")))
-_dry = IG.ingest_dir(_bd, dry_run=True)
+with _ctx.redirect_stdout(_io.StringIO()):
+    _dry = IG.ingest_dir(_bd, dry_run=True)
 show("ingest-dir --dry-run — 전부 선택만/미선택, 인입 0",
      all(r["status"] in ("선택만", "미선택") for r in _dry))
 shutil.rmtree(_bd, ignore_errors=True)
 for _f in ("CP01", "CP03_bad", "CP04_unlabeled"):
     (ROOT / "parsed" / f"{_f}.json").unlink(missing_ok=True)
+
+# ── B61 ① 상태 거부는 원인과 다음 줄을 낸다 ──────────────────────────────
+print("\n■ B61 ① — 상태 거부 문면의 계약 (사람이 치는 자리 전수)")
+
+sys.path.insert(0, str(ROOT / "tests"))
+import exits_scan as _EX                                         # noqa: E402
+
+_rows61 = _EX.scan()
+_st61 = [r for r in _rows61 if r["mark"] == "상태"]
+# ⓑ **상태 거부 전건이 계약을 지킨다** — 원인만 말하고 끝내지 않는다.
+def _at61(rows):
+    return [r["file"] + ":" + str(r["line"]) for r in rows]
+
+
+show("①ⓑ 상태 거부 전건에 그대로 칠 수 있는 다음 줄이 있다",
+     _st61 and not _EX.broken(_rows61),
+     f"상태 {len(_st61)}곳 · 위반 {_at61(_EX.broken(_rows61))}")
+# ⓒ **분류 없는 거부가 0이다** — 새 `SystemExit`은 목록에 들거나 사용법으로 표시돼야
+# 한다. 이것이 **다음 자리를 잡는 장치**다: 자리마다 고치면 다음 자리에서 또 난다.
+show("①ⓒ 분류 없는 SystemExit이 0건이다 (새 거부는 표시해야 통과한다)",
+     not _EX.unmarked(_rows61),
+     f"{len(_rows61)}곳 전수 · 미분류 {_at61(_EX.unmarked(_rows61))}")
+# ⓓ **변이** — 표시 없는 거부를 하나 넣으면 붉어진다(그리고 되돌린다).
+_p61 = ROOT / "cli" / "viewer.py"
+_src61 = _p61.read_text(encoding="utf-8")
+_p61.write_text(_src61 + '\n\ndef _b61_probe():\n'
+                         '    raise SystemExit("표시 없는 거부")\n', encoding="utf-8")
+try:
+    _mut61 = len(_EX.unmarked())
+finally:
+    _p61.write_text(_src61, encoding="utf-8")
+show("①ⓓ 표시 없는 거부를 하나 넣으면 붉어진다 (되돌리면 초록)",
+     _mut61 == 1 and not _EX.unmarked(), f"심었을 때 미분류 {_mut61}건")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G6 완료판정 충족" if allok else "FAIL")

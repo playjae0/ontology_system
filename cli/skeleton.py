@@ -26,6 +26,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core import skeleton as SK
 from core.bootstrap import load_config, load_seed
 from core.graph import GraphStore
 from core.skeleton import plant
@@ -65,6 +66,151 @@ def _view(layer):
     return seed, flow
 
 
+# ── 골격 문법 판정 — `status`·`confirm`이 **같은 함수**를 부른다 (B61 ②) ──────
+#
+# **막는 건 맞다. 어느 줄이 어느 규칙인지를 안 말하는 것이 틀렸다.**
+# 태그(`K##`)는 관문의 `G##`과 같은 방식이다 — 정본은 여기 한 자리이고, 사내는
+# 복사가 안 되는 환경이라 **읽어서 전달**한다.
+#
+# **loader의 판정을 다시 쓰지 않는다**(미러 금지) — 「무엇이 canonical인가」는
+# `core/skeleton.py`가 갖고, 여기는 **파일의 어디가 어긋났나**만 본다: 줄 번호는
+# 파일에만 있고 loader는 그것을 모른다. loader가 먼저 죽는 위반은 그 문면 그대로
+# `K09`로 싣는다 — 같은 사실을 두 곳이 말하면 하나가 낡는다.
+
+K_READ = "K01"      # seed를 읽지 못했다 (JSON 문법)
+K_DUP = "K02"       # 같은 자리에 같은 이름이 둘 (main·sub 충돌의 원천)
+K_MARK = "K05"      # 마커 어휘 밖 (`::축값` 오타 · `@마커` 오타)
+K_LOAD = "K09"      # loader가 낸 위반 — 문면은 loader의 것
+
+_MARKERS = {SK.MARK_SPLIT, SK.MARK_UNORDERED, SK.MARK_NOFLOW}
+
+
+def _tree_span(text):
+    """TREE 블록의 줄 범위 — 이름이 ALIASES에도 나오므로 **선언 자리만** 센다."""
+    lines = text.splitlines()
+    lo = next((i for i, ln in enumerate(lines, 1) if f'"{SK.KEY_TREE}"' in ln), 1)
+    hi = next((i for i, ln in enumerate(lines, 1)
+               if i > lo and f'"{SK.KEY_ALIASES}"' in ln), len(lines) + 1)
+    return lo, hi
+
+
+def _lines_of(text, token, span=None):
+    """그 이름이 **선언된** 줄 번호 전부 — 없으면 빈 목록."""
+    lo, hi = span or (1, len(text.splitlines()) + 1)
+    return [i for i, ln in enumerate(text.splitlines(), 1)
+            if lo <= i < hi and f'"{token}"' in ln]
+
+
+def _names(node, depth, out):
+    """TREE를 훑어 `(이름, 깊이)`와 마커 문자열을 모은다 — 판정은 부르는 쪽이 한다."""
+    if isinstance(node, list):
+        for item in node:
+            _names(item, depth, out)
+    elif isinstance(node, dict):
+        for k, v in node.items():
+            out.append((k, depth))
+            _names(v, depth + 1, out)
+    elif isinstance(node, str):
+        out.append((node, depth))
+
+
+def check(layer):
+    """골격 seed의 문법 판정 — **위반 전건**을 `[{tag, label, lines}]`로 돌려준다.
+
+    첫 하나에서 멈추지 않는다: 사람이 seed를 고치고 다시 돌렸을 때 다음 위반이
+    처음 보이면, 고치는 왕복이 위반 수만큼 는다.
+    """
+    src = seed_path(layer)
+    if src is None or not src.exists():
+        return []                      # 확정 대상 파일이 없는 층 — 호출부가 따로 말한다
+    text = src.read_text(encoding="utf-8")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        return [{"tag": K_READ, "label": "seed를 읽지 못했다 (JSON 문법)",
+                 "detail": f"{e.msg}", "lines": [e.lineno]}]
+
+    out = []
+    span = _tree_span(text)
+    labels = set((data.get(SK.KEY_LABELS) or {}))
+    pairs = []
+    _names(data.get(SK.KEY_TREE) or [], 1, pairs)
+
+    # K05 — 마커 어휘. 코드가 아는 것은 구문 마커 4종뿐이다(문서 1).
+    for name, _d in pairs:
+        if name.startswith(SK.MARK_PREFIX):
+            if name not in _MARKERS and name[1:] not in labels:
+                out.append({"tag": K_MARK, "label": "마커 어휘 밖",
+                            "detail": f"'{name}' — 마커는 {sorted(_MARKERS)} "
+                                      f"또는 @<축값> {sorted(labels)}",
+                            "lines": _lines_of(text, name, span)})
+        elif name.startswith("::"):
+            if name[2:] not in labels:
+                out.append({"tag": K_MARK, "label": "극성 마커 문법",
+                            "detail": f"'{name}' — 축값은 {sorted(labels)}뿐이다",
+                            "lines": _lines_of(text, name, span)})
+
+    # K02 — main·sub 자리의 같은 이름. canonical이 짧은 이름 그대로라 충돌하면
+    # 두 개념이 한 노드가 된다(loader `_check_name_collision`이 막는 그 자리).
+    seen = {}
+    for name, d in pairs:
+        if d > 2 or name.startswith(("@", "::")):
+            continue
+        seen.setdefault(name, 0)
+        seen[name] += 1
+    for name, n in seen.items():
+        if n > 1:
+            out.append({"tag": K_DUP, "label": "canonical 중복",
+                        "detail": f"'{name}' — main·sub 자리에 {n}번",
+                        "lines": _lines_of(text, name, span)})
+
+    # K09 — 위 셋이 못 본 위반은 loader가 낸다. **문면을 새로 짓지 않는다.**
+    if not out:
+        try:
+            _view(layer)
+        except Exception as e:
+            out.append({"tag": K_LOAD, "label": f"{type(e).__name__}",
+                        "detail": str(e), "lines": []})
+    return out
+
+
+def block(layer, rows, title="골격 확정 거부"):
+    """거부 블록 — 화면 문면 한 자리 (B59 관문 블록과 같은 꼴)."""
+    lines = [f"■ {title} — {layer}"]
+    for r in rows:
+        loc = (" (" + " · ".join(f"{n}행" for n in r["lines"]) + ")") if r["lines"] else ""
+        lines.append(f"  [FAIL] {r['tag']}  {r['label']} — {r['detail']}{loc}")
+    lines.append("  ▶ 다음 줄:")
+    lines.append(f"     (seed의 위 줄을 고친 뒤)  python run.py skeleton-status {layer}")
+    lines.append(f"     (판정이 비면)            python run.py skeleton-confirm "
+                 f"{layer} --by <이름>")
+    return "\n".join(lines)
+
+
+def cmd_status(argv):
+    """**확정 없이 판정만** (B61 ②) — 뷰도 기록도 없다. 위반이 있으면 rc=1."""
+    args = [a for a in argv if not a.startswith("--")]
+    if not args:
+        raise SystemExit("사용: python run.py skeleton-status <층>")             # [사용법]
+    layer = args[0]
+    if not (LAYERS / layer).is_dir():
+        _ls = sorted(p.name for p in LAYERS.iterdir() if p.is_dir())
+        raise SystemExit(f"[골격 판정] 없는 층: {layer} — 현재 층: {_ls}\n"        # [상태]
+                         f"  ▶ 다음 줄:\n"
+                         f"     python run.py skeleton-status "
+                         f"{_ls[0] if _ls else '<층>'}")
+    rows = check(layer)
+    if not rows:
+        src = seed_path(layer)
+        print(f"■ 골격 판정 — {layer}: 문법 위반 0건"
+              + (f" · {src.relative_to(ROOT)}" if src else " (파일 seed 없음)"))
+        print(f"  ▶ 다음 줄:\n"
+              f"     python run.py skeleton-confirm {layer} --by <이름>")
+        return 0
+    print(block(layer, rows, f"골격 판정 · 위반 {len(rows)}건"))
+    return 1
+
+
 def _record_path(layer):
     return LAYERS / layer / RECORD
 
@@ -77,37 +223,50 @@ def cmd_confirm(argv):
         i = argv.index("--by")
         by = argv[i + 1] if i + 1 < len(argv) else None
     if not args:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     layer = args[0]
 
     # ── 관문 ① 확정자 ─────────────────────────────────────────────
     # **`--by` 없이는 기록하지 않는다**(§3.7 조건 ① · 등록 `confirm --by`와 같은 원리).
     # 여기서 막는 이유: 뷰를 보여 준 뒤에 거절하면 사람이 대조를 한 번 헛한다.
     if not by:
-        raise SystemExit("[골격 확정] --by <확정자>가 필요하다 — "
+        raise SystemExit("[골격 확정] --by <확정자>가 필요하다 — "                    # [사용법]
                          "확정자가 기록에 남지 않으면 확정이 아니다 (문서 3 §3.7)")
 
     if not (LAYERS / layer).is_dir():
-        raise SystemExit(f"[골격 확정] 없는 층: {layer} — "
-                         f"현재 층: {sorted(p.name for p in LAYERS.iterdir() if p.is_dir())}")
+        _ls = sorted(p.name for p in LAYERS.iterdir() if p.is_dir())
+        raise SystemExit(f"[골격 확정] 없는 층: {layer} — 현재 층: {_ls}\n"       # [상태]
+                         f"  ▶ 다음 줄:\n"
+                         f"     python run.py skeleton-confirm {_ls[0] if _ls else '<층>'}"
+                         f" --by <이름>")
 
-    # ── 관문 ② 문법 검증 — loader를 그대로 재사용한다 ────────────
-    # 실패 문면을 여기서 새로 짓지 않는다: loader가 이미 「어느 키가 왜 틀렸나」를
-    # 말한다. 다시 쓰면 같은 사실을 두 곳이 말하고 하나가 낡는다.
+    # ── 관문 ② 문법 검증 — **`status`와 같은 함수**다 (B61 ②) ────
+    # 위반 전건을 줄 번호와 함께 낸다. 첫 하나에서 멈추면 사람이 고치는 왕복이
+    # 위반 수만큼 는다. 판정이 두 벌이면 status가 초록인데 confirm이 막는 날이 온다.
+    _bad = check(layer)
+    if _bad:
+        raise SystemExit(block(layer, _bad))                # [상태] 문면=block
     try:
         seed, flow = _view(layer)
     except Exception as e:
-        raise SystemExit(f"[골격 확정] seed를 읽지 못했다 — {type(e).__name__}: {e}")
+        raise SystemExit(f"[골격 확정] seed를 읽지 못했다 — {type(e).__name__}: {e}\n"  # [상태]
+                         f"  ▶ 다음 줄:\n"
+                         f"     (seed를 고친 뒤)  python run.py skeleton-status {layer}")
     if seed is None:
-        raise SystemExit(f"[골격 확정] '{layer}' 층은 골격을 선언하지 않는다 "
-                         f"(config.skeleton 없음) — 확정할 것이 없다")
+        raise SystemExit(f"[골격 확정] '{layer}' 층은 골격을 선언하지 않는다 "            # [상태]
+                         f"(config.skeleton 없음) — 확정할 것이 없다\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     (층 등록부를 본다)  "
+                         f"python run.py platform registry")
 
     src = seed_path(layer)
     if src is None:
-        raise SystemExit(
+        raise SystemExit(                                                 # [상태]
             f"[골격 확정] '{layer}' 층은 골격을 **config 안에 인라인**으로 선언한다 "
             f"(config.skeleton.source 없음) — 확정 대상 파일이 없다. "
-            f"이 명령은 파일 seed를 쓰는 층의 것이다")
+            f"이 명령은 파일 seed를 쓰는 층의 것이다\n"
+            f"  ▶ 다음 줄:\n"
+            f"     (문법 판정만 본다)  python run.py skeleton-status {layer}")
 
     print("=" * 66)
     print(f"  골격 확정 — {layer} · {src.relative_to(ROOT)}")
@@ -124,16 +283,23 @@ def cmd_confirm(argv):
     if not sys.stdin.isatty():
         # **비대화형은 확정하지 않는다**(§3.7 조건 ③ — 뷰 대조 우회 불가).
         # 파이프로 y를 먹이면 「사람이 뷰를 봤다」가 거짓이 된다.
-        raise SystemExit(
-            "\n[골격 확정] 비대화형이라 확정하지 않았다 — "
-            "뷰 대조는 건너뛸 수 없다(문서 3 §3.7 조건 ③). "
-            "터미널에서 다시 실행한다")
+        raise SystemExit(                                                 # [상태]
+            f"\n[골격 확정] 비대화형이라 확정하지 않았다 — "
+            f"뷰 대조는 건너뛸 수 없다(문서 3 §3.7 조건 ③).\n"
+            f"  ▶ 다음 줄:\n"
+            f"     (터미널에서)  python run.py skeleton-confirm {layer} --by <이름>")
     try:
         ans = input("\n  이 흐름이 근거 문서와 맞습니까? [y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         ans = ""
     if ans not in ("y", "yes"):
-        raise SystemExit("[골격 확정] 확정하지 않았다 — seed를 고쳐 다시 실행한다")
+        raise SystemExit(f"[골격 확정] 확정하지 않았다 — 사람이 뷰 대조에서 "    # [상태]
+                         f"N을 골랐다 (문서 3 §3.7 조건 ③)\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     (seed를 고친 뒤 문법만 본다)  "
+                         f"python run.py skeleton-status {layer}\n"
+                         f"     (그 판정이 비면)              "
+                         f"python run.py skeleton-confirm {layer} --by <이름>")
 
     # ── 확정본 보존 (1세대 — 더 깊은 이력은 git 몫) ───────────────
     # **`skeleton.prev.json`은 「마지막으로 확정된 seed의 사본」이다.**

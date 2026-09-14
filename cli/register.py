@@ -130,7 +130,7 @@ MATERIAL_KEYS = ("자재", "소재", "부품", "원료", "BOM", "품번", "자�
 def cmd_roles(args):
     """**⓪ role 배정 실험** — 등록 세션 **진입 전에** 돈다 (갭 spec-A-201 · role-136).
 
-        python run.py register roles <문서.xlsx> [헤더행]
+        python -m cli.register roles <문서.xlsx> [헤더행]
 
     **실행만 하고 등록부는 건드리지 않는다.** 문서의 열 이름 전량에 role 5종 +
     UNMAPPABLE 배정을 시도해 보고, **어디서 막히는지**를 먼저 본다. 이것 없이
@@ -141,7 +141,7 @@ def cmd_roles(args):
     `UNMAPPABLE`로 남기고 **질문 형태로** 표시한다.
     """
     if not args:
-        raise SystemExit("문서를 달라: run.py register roles <문서.xlsx> [헤더행]")
+        raise SystemExit("문서를 달라: python -m cli.register roles <문서.xlsx> [헤더행]")  # [사용법]
     path = args[0]
     hrow = int(args[1]) if len(args) > 1 else 3
     raw = reader.read(path)
@@ -473,7 +473,11 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     llm.require("generate")          # 설정 미비를 먼저 알린다 — 준비 순서가 그쪽이 먼저다
     pkg = REVIEW / doc_type / "input_package.json"
     if not pkg.exists():
-        raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — 생성 전에 서야 한다")
+        raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — "                  # [상태]
+                         f"생성 전에 서야 한다\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"<층> <표본...>")
     raw_pkg = pkg.read_text(encoding="utf-8")
     # **지시는 지시문의 자리에 «치환»된다** — user는 패키지 JSON 그대로여야 「입력의
     # 정본은 패키지」가 유지되고(아래 주석), 지시는 그 입력을 어떻게 다시 다루라는
@@ -929,8 +933,11 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     if revise:
         # **새 판** — 이름은 그대로다. 확정이 정본을 교체하고 revision을 올린다.
         if not registry.lookup(doc_type):
-            raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "
-                             f"'{doc_type}'은 등록돼 있지 않다 (그냥 generate로 간다)")
+            raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "            # [상태]
+                             f"'{doc_type}'은 등록돼 있지 않다\n"
+                             f"  ▶ 다음 줄:\n"
+                             f"     python -m cli.register generate {doc_type} "
+                             f"{layer or '<층>'} <표본...>")
         _cur = registry.lookup(doc_type)
         _docs = registry.ingested_docs(doc_type)
         print(f"  ▶ 새 판 — '{doc_type}'의 정본을 교체한다 "
@@ -944,8 +951,10 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # 문답 전문이 실려 있다(라운드마다 즉시 저장하므로).
         pkg_path = REVIEW / doc_type / "input_package.json"
         if not pkg_path.exists():
-            raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다: {pkg_path}\n"
-                             f"        먼저 --resume 없이 한 번 돌린다")
+            raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다: {pkg_path}\n"  # [상태]
+                             f"  ▶ 다음 줄 — 먼저 --resume 없이 한 번 돌린다:\n"
+                             f"     python -m cli.register generate {doc_type} "
+                             f"<층> <표본...>")
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
         print(f"  {llm.mode_line()}")
         print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
@@ -978,8 +987,13 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                   f"{INTERVIEW_LOG})")
         ad, sc = draft(doc_type)
         if ad is None:
-            raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
-                             f"'{doc_type}' 부재 (D-10)")
+            raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "       # [상태]
+                             f"'{doc_type}' 부재 (D-10). mock에 이 이름의 초안이 "
+                             f"없다\n"
+                             f"  ▶ 다음 줄 — 실호출로 돌린다:\n"
+                             f"     python run.py llm-check\n"
+                             f"     USE_MOCK=0 python -m cli.register generate "
+                             f"{doc_type} --resume")
         print(f"   초안 수령: {_rel(ad)} · {_rel(sc)}")
         st = _state(doc_type) or {}
         st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
@@ -995,7 +1009,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # **막다른 길만 말하지 않는다**(H27) — 구판은 여기서 끝이라, 어댑터를 고쳐
         # 다시 등록할 길이 아예 없었다. 두 경로가 있고 화면이 그것을 알려 준다.
         _docs = registry.ingested_docs(doc_type)
-        raise SystemExit(
+        raise SystemExit(                                                 # [상태]
             f"[생성] '{doc_type}'은 이미 등록돼 있다. 두 길 중 하나를 고른다:\n"
             f"   ① 같은 이름의 **새 판** — 어댑터를 고쳐 정본을 교체한다\n"
             f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
@@ -1012,24 +1026,31 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     # 죽거나 조용히 빠졌다 — 어느 쪽이든 사람은 «힌트를 줬다»고 믿는다.
     bad = [s for s in samples if not Path(s).is_file()]
     if bad:
-        raise SystemExit(
+        raise SystemExit(                                                 # [상태]
             f"[생성] 표본 자리에 파일이 아닌 값이 있다: {bad}\n"
             f"        힌트라면 --hint \"…\" 로 준다 (따옴표로 묶는다):\n"
             f"        python -m cli.register generate {doc_type} {layer} "
             f"<표본.xlsx> --hint \"{' '.join(str(b) for b in bad)[:60]}\"")
     layers = discover()
     if layer not in layers:                       # ⑵-③ 층 선행 완결
-        raise SystemExit(f"[생성] 존재하지 않는 층 '{layer}' — 층 등록(R1)은 국면 2다. "
-                         f"현재 층: {layers}")
+        raise SystemExit(f"[생성] 존재하지 않는 층 '{layer}' — 층 등록(R1)은 국면 2다. "  # [상태]
+                         f"현재 층: {layers}\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"{layers[0] if layers else '<층>'} "
+                         f"{' '.join(str(x) for x in samples) or '<표본...>'}")
     if use_basic:
         # **제안이 서지 않는 표본에는 거부한다** — 조용히 LLM 생성으로 떨어지면 사람은
         # «기본 어댑터로 등록됐다»고 믿는다. 거부는 사유를 들고 멈춘다.
         proposal = basic_adapter_proposal(samples)
         if proposal is None:
-            raise SystemExit(
+            raise SystemExit(                                             # [상태]
                 f"[생성] --use-basic 거부 — 기본 어댑터 제안이 서지 않는 표본이다: "
                 f"분할 자명 계열(pptx)이 아니다 {[Path(s).name for s in samples]}. "
-                f"LLM 생성 경로(--use-basic 없이)로 등록한다 (§6.4-5)")
+                f"(§6.4-5)\n"
+                f"  ▶ 다음 줄 — LLM 생성 경로로 등록한다:\n"
+                f"     python -m cli.register generate {doc_type} {layer} "
+                f"{' '.join(str(x) for x in samples)}")
         return _use_basic(doc_type, layer, samples, hint, proposal, revise)
 
     # **산문 포맷이면 고정 어댑터를 먼저 권한다**(B59 ③) — 그 길로 안 들어가게 하는
@@ -1040,7 +1061,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         if _prop and _all_prose(samples):
             print(f"  표본이 전부 산문 포맷이다 — LLM 생성 대신 고정 어댑터를 "
                   f"쓰는 것이 기본이다:")
-            print(f"     python run.py register generate {doc_type} {layer} "
+            print(f"     python -m cli.register generate {doc_type} {layer} "
                   f"{' '.join(str(x) for x in samples)} --use-basic")
             print(f"       └ {_prop['reason']}")
             print(f"  그래도 LLM 생성으로 가려면 --no-basic 을 붙여라.")
@@ -1200,8 +1221,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         print(f"     {proposal['note']}")
     ad, sc = draft(doc_type)
     if ad is None:
-        raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
-                         f"'{doc_type}' 부재 (D-10). 실물 경로는 생성 LLM 훅이다")
+        raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "           # [상태]
+                         f"'{doc_type}' 부재 (D-10). 실물 경로는 생성 LLM 훅이다\n"
+                         f"  ▶ 다음 줄 — 실호출로 돌린다:\n"
+                         f"     python run.py llm-check\n"
+                         f"     USE_MOCK=0 python -m cli.register generate "
+                         f"{doc_type} --resume")
     print(f"   초안 수령: {_rel(ad)} · {_rel(sc)}")
     u = llm.usage_total()
     if u["calls"]:
@@ -1267,7 +1292,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     u = llm.usage_total()
     print(f"   LLM 사용량 — 이 명령에서 호출 {u['calls'] - u0:,}회 "
           f"(기본 어댑터 — 생성 세션 없음 · 프로세스 누계 {u['calls']:,}회)")
-    print(f"   다음: python run.py register review {doc_type}  (뷰 확인·승인 1회는 그대로다 — M4)")
+    print(f"   다음: python -m cli.register review {doc_type}  (뷰 확인·승인 1회는 그대로다 — M4)")
     st = {"doc_type": doc_type, "layer": layer,
           "samples": [str(s) for s in samples],
           "hint": pkg["human"]["hint"],
@@ -1354,8 +1379,11 @@ def _kit_line_re():
     src = (KIT / "run_adapter.py").read_text(encoding="utf-8")
     m = re.search(r'^LINE_RE = r"(.+)"$', src, re.M)
     if not m:
-        raise SystemExit("[관문] kit/run_adapter.py의 LINE_RE를 찾지 못했다 — "
-                         "판정 줄 문면 규격이 정본에서 사라졌다")
+        raise SystemExit("[관문] kit/run_adapter.py의 LINE_RE를 찾지 못했다 — "    # [상태]
+                         "판정 줄 문면 규격이 정본에서 사라졌다 (관문 자체 결함 — "
+                         "어댑터 잘못이 아니다)\n"
+                         "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"
+                         "     python run.py doctor")
     return m.group(1)
 
 
@@ -1455,11 +1483,11 @@ def _next_lines(doc_type, st, fails):
     out = []
     inst = _instruct_of(fails)
     if inst:
-        out.append(f'python run.py register review {doc_type} '
+        out.append(f'python -m cli.register review {doc_type} '
                    f'--instruct "{inst}"')
     else:
         # 문면이 답을 담지 않는 실패다 — 문답이 그것을 통역하는 자리다(B50).
-        out.append(f"python run.py register review {doc_type} "
+        out.append(f"python -m cli.register review {doc_type} "
                    f"--instruct \"<무엇을 고칠지 한 줄>\"")
         out.append("     └ 위 FAIL 줄이 고칠 방법을 담지 않는다 — "
                    "문답이 예외 원문을 모델에 넘겨 통역한다")
@@ -1467,11 +1495,11 @@ def _next_lines(doc_type, st, fails):
     if samples and not st.get("use_basic"):
         prop = basic_adapter_proposal(samples)
         if prop:
-            out.append(f"python run.py register generate {doc_type} "
+            out.append(f"python -m cli.register generate {doc_type} "
                        f"{st.get('layer', '<층>')} "
                        f"{' '.join(str(x) for x in samples)} --use-basic")
             out.append(f"     └ {prop['reason']}")
-    out.append(f"python run.py register status {doc_type}"
+    out.append(f"python -m cli.register status {doc_type}"
                "   (이 블록을 다시 본다)")
     return out
 
@@ -1559,14 +1587,14 @@ def _finish_generate(doc_type, st, samples, pkg=None):
         rc = cmd_review(doc_type, llm_coord=False, extract=False)
         print(f"\n   ▶ 다음 두 줄이면 끝난다 — 뷰를 보고 승인한다:")
         print(f"       (뷰 확인) {(REVIEW / doc_type / 'view.html').relative_to(ROOT)}")
-        print(f"       python run.py register confirm {doc_type} --by <승인자>")
-        print(f"   고칠 것이 있을 때만: python run.py register review {doc_type} "
+        print(f"       python -m cli.register confirm {doc_type} --by <승인자>")
+        print(f"   고칠 것이 있을 때만: python -m cli.register review {doc_type} "
               f"--instruct \"…\"  (좌표 LLM 보조·추출 리허설도 그쪽이다)")
         return rc
     print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
           f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
     gate_block(doc_type, st)
-    print(f"     python run.py register generate {doc_type} --resume"
+    print(f"     python -m cli.register generate {doc_type} --resume"
           f"   (같은 표본으로 초안만 다시 받는다)")
     return 1
 
@@ -2133,7 +2161,7 @@ def _gateway_ready():
     for ln in str(s["detail"]).split("\n"):
         if ln.strip():
             print(f"     {ln}")
-    raise SystemExit("[뷰 확인] 게이트웨이가 준비되지 않았다 — "
+    raise SystemExit("[뷰 확인] 게이트웨이가 준비되지 않았다 — "                          # [상태]
                      "`python run.py llm-check`로 단계별 원인을 본다. "
                      "USE_MOCK=1로 돌리면 LLM 없이 리허설만 볼 수 있다")
 
@@ -2276,8 +2304,8 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     """
     st = _state(doc_type)
     if not st:
-        raise SystemExit(f"[뷰 확인] '{doc_type}'의 생성이 먼저다 — "
-                         f"python run.py register generate {doc_type} <층> <표본...>")
+        raise SystemExit(f"[뷰 확인] '{doc_type}'의 생성이 먼저다 — "               # [상태]
+                         f"python -m cli.register generate {doc_type} <층> <표본...>")
 
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
 
@@ -2462,8 +2490,8 @@ def cmd_status(doc_type):
     """
     st = _state(doc_type)
     if not st:
-        raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "
-                         f"python run.py register generate {doc_type} <층> <표본...>")
+        raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "                  # [상태]
+                         f"python -m cli.register generate {doc_type} <층> <표본...>")
     if regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate_block(doc_type, st)
         return 1
@@ -2473,8 +2501,8 @@ def cmd_status(doc_type):
     print("  ▶ 다음 줄:")
     if _vw.exists():
         print(f"     (뷰 확인) {_vw.relative_to(ROOT)}")
-    print(f"     python run.py register confirm {doc_type} --by <승인자>")
-    print(f"     python run.py register review {doc_type} --instruct \"…\""
+    print(f"     python -m cli.register confirm {doc_type} --by <승인자>")
+    print(f"     python -m cli.register review {doc_type} --instruct \"…\""
           f"   (고칠 것이 있을 때만)")
     return 0
 
@@ -2488,15 +2516,15 @@ def cmd_confirm(doc_type, approved_by):
     """
     st = _state(doc_type)
     if not st:
-        raise SystemExit(f"[확정] '{doc_type}'의 생성이 먼저다 — "
-                         f"python run.py register generate {doc_type} <층> <표본...>")
+        raise SystemExit(f"[확정] '{doc_type}'의 생성이 먼저다 — "                 # [상태]
+                         f"python -m cli.register generate {doc_type} <층> <표본...>")
     # **저장된 PASS만으로 확정하지 않는다**(B60 ①) — 지금 코드의 관문을 지난다.
     if regate(doc_type, st) != "PASS":
         # **막되 막다른 길로 두지 않는다**(B59 ①) — 이유와 칠 수 있는 다음 줄을 준다.
         gate_block(doc_type, st)
         return 1
     if not approved_by:
-        raise SystemExit("[확정] 승인자 미지정 — 무수정 자동 통과는 금지다 (틀 §2)")
+        raise SystemExit("[확정] 승인자 미지정 — 무수정 자동 통과는 금지다 (틀 §2)")          # [사용법]
 
     mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
     at = store._now()
@@ -2574,7 +2602,7 @@ GATED = ("generate", "review", "confirm")
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     cmd, rest = argv[0], list(argv[1:])
     if cmd in GATED:
         rest = require_live_or_allow(rest, command=f"register {cmd}")
@@ -2620,7 +2648,7 @@ def main(argv):
         # 하나만 필요하다 — 층·표본은 패키지에 이미 있고 resume 갈래가 그것을
         # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
         if not rest or (not resume and len(rest) < 2):
-            raise SystemExit(__doc__)
+            raise SystemExit(__doc__)                                     # [사용법]
         return cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
@@ -2640,7 +2668,7 @@ def main(argv):
             try:
                 rows = int(raw_rows)
             except (TypeError, ValueError):
-                raise SystemExit(f"[뷰 확인] --rows 는 정수 또는 all 이다: {raw_rows!r}")
+                raise SystemExit(f"[뷰 확인] --rows 는 정수 또는 all 이다: {raw_rows!r}")  # [사용법]
         # 좌표 LLM 보조는 **기본이 「묻는다」**이고, 스크립트용으로만 미리 정한다.
         coord = True if "--llm-coord" in rest else (
             False if "--no-llm-coord" in rest else None)
@@ -2661,7 +2689,7 @@ def main(argv):
         return cmd_status(rest[0])
     if cmd == "list":
         return cmd_list()
-    raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")
+    raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                      # [사용법]
 
 
 if __name__ == "__main__":

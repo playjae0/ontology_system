@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import contextlib as _ctx
+import io as _io
 import json
 import shutil
 import sys
@@ -506,6 +508,41 @@ _dup26 = [c for c, k in Counter((n["canonical"], n["category"])
                                 for n in _g2.nodes.values()).items() if k > 1]
 show("ⓓ 재인입이 새 스코프 id로 멱등이다 (중복 노드 0)",
      not _dup26 and len(_g2.nodes) == _before, f"{_before} → {len(_g2.nodes)} · {_dup26}")
+
+# ── B61 ③ 인입 실패가 화면에 이유와 행을 낸다 (칸 3.1 · C14) ─────────────
+print("\n■ B61 ③ — 문서 단위 실패가 화면에 뜨고 큐와 같은 재료다")
+
+from cli import ingest as _IG61                                  # noqa: E402
+from core import store as _ST61                                  # noqa: E402
+
+_before61 = [q for q in _ST61.read(_ST61.QUEUE, []) if q["kind"] == "parse_failure"]
+# **블록은 사람 화면의 것이다** — 스위트 stdout에 `[FAIL]`이 섞이면 doctor가 그것을
+# 스위트의 실패로 센다. 받아서 검사만 한다.
+_buf61 = _io.StringIO()
+with _ctx.redirect_stdout(_buf61):
+    _row61 = _IG61.ingest_file(ROOT / "tests" / "fixtures" / "raw" / "CP03_bad.xlsx")
+_out61 = _buf61.getvalue()
+_q61 = [q for q in _ST61.read(_ST61.QUEUE, [])
+        if q["kind"] == "parse_failure" and q["doc_id"] == "CP03_bad"]
+# ⓑ **같은 재료다** — 화면에 찍는 것과 큐에 싣는 것이 한 재료의 두 표시다.
+# 두 자리에 두 사실을 두면 하나가 낡고, 그때 사람은 화면을 믿는다.
+_screen61 = _IG61.fail_block("x.xlsx", "CP03_bad",
+                             _IG61.fail_rows([{"kind": "parse_failure",
+                                               "reason": (_q61[0]["reason"] if _q61 else ""),
+                                               "detail": {}}]), queued=1)
+show("③ⓑ 화면의 FAIL 줄과 큐 payload가 같은 재료다",
+     _row61["status"] == "실패" and _q61
+     and all(d in _q61[0]["reason"] for d in _q61[0]["payload"]["defects"])
+     and _q61[0]["payload"]["defects"][0] in _screen61,
+     (_q61[0]["payload"]["defects"][0][:60] if _q61 else "큐 0건"))
+show("③ 화면 블록이 태그·doc_id·다음 줄 셋을 낸다",
+     all(t in _out61 for t in ("[FAIL] P31", "CP03_bad", "▶ 다음 줄", "--revise"))
+     and "[FAIL] P31" in _screen61)
+# **결함 전건을 편다** — 한 줄로 합쳐 자르면 둘째 결함이 화면에서 사라진다.
+show("③ validator 결함 여러 건이 각각 한 줄이 된다 (합쳐 자르지 않는다)",
+     len(_IG61.fail_rows([{"kind": "parse_failure", "reason": "r",
+                           "detail": {"defects": ["A", "B", "C"]}}])) == 3)
+(ROOT / "parsed" / "CP03_bad.json").unlink(missing_ok=True)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G3 완료판정 충족" if allok else "FAIL")
