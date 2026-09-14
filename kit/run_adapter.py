@@ -189,6 +189,50 @@ def _flatten_strings(obj):
     return out
 
 
+# **열 프로파일은 패키지에 있다**(B64 ② — 새 계산 0). 관문이 그 값을 읽어 FAIL 줄
+# 아래 한 줄로 싣는다: 「한 값도 안 읽혔는지」를 사람이 화면에서 바로 안다.
+# **라벨 한 자리**(B59 ①) — G26은 한 태그·한 라벨이고 원인은 상세가 가른다.
+G26 = "G26  columns 값이 header_row의 헤더로 확정된다"
+
+PKG_FLAG = "--package"
+PACKAGE = None
+
+
+def _profiles():
+    """입력 패키지의 열 프로파일 — 없으면 빈 dict. **계산하지 않는다.**"""
+    if not PACKAGE or not Path(PACKAGE).exists():
+        return {}
+    try:
+        pkg = json.load(open(PACKAGE, encoding="utf-8"))
+    except Exception:
+        return {}
+    out = {}
+    for h in ((pkg.get("system") or {}).get("reader_head") or []):
+        for pp in (h.get("열_프로파일") or []):
+            for col, item in (pp.get("열") or {}).items():
+                out[col] = {**item, "전체_행수": pp.get("전체_행수")}
+    return out
+
+
+def _profile_line(exp, item):
+    """FAIL 줄에 붙는 열 프로파일 — 관련 열만, 있으면. 없으면 빈 문자열."""
+    prof = _profiles()
+    cands = item.get("candidates") or ([item["value"]]
+                                       if item["reason"] != "not_found" else [])
+    out = ""
+    for c in cands:
+        pp = prof.get(c)
+        if not pp:
+            continue
+        tot = pp.get("전체_행수")
+        sug = (pp.get("기계제안") or {}).get("제안")
+        out += (f"\n              {c} 비지 않은 행 {pp.get('비지_않은_행수')}"
+                + (f"/{tot}" if tot else "")
+                + f" · 고유 {pp.get('고유값수')}"
+                + (f" · 기계 제안 {sug}" if sug else ""))
+    return out
+
+
 def preflight(mod, raw, label):
     """preflight의 기능은 '양식 표류 감지'다. 특정 키 배치를 요구하지 않고
     **표류를 감지할 수 있는 지문이 expects에 실려 있는가**를 검사한다."""
@@ -216,11 +260,30 @@ def preflight(mod, raw, label):
     hr = exp.get("header_row")
     if not hr:
         return show("G23  expects.header_row 선언됨", False, "선언 없음")
-    # **`columns`가 가리키는 열의 헤더 셀이 비었나** — 비었으면 `header_row`가 틀린
-    # 것이고, 그 상태로 헤더 문자열을 채우면 빈 배열로 덮어써 표류 감지가 죽는다.
+    # **G26은 세 원인을 가른다**(B64 ②) — 구판은 「header_row 의심」 한 문면으로
+    # 「매핑이 틀렸다」와 「행이 틀렸다」를 같이 말했고, 그래서 문답 LLM이 사람에게
+    # 「원본이 비었나 매핑이 비었나」를 되물었다(사내 실측). 원인마다 다른 문면 +
+    # **그대로 칠 수 있는 다음 값**을 담는다(B61 계약 · AUTO_FIX 대상).
+    _cols, bad = preflight_mod.resolve_columns(raw, exp)
     suspect = preflight_mod.header_row_suspect(raw, exp)
-    show("G26  header_row가 columns의 헤더 셀을 가리킨다", not suspect,
-         (suspect or {}).get("reason", ""))
+    hr_ = exp.get("header_row")
+    # **라벨은 태그와 한 몸이다**(B59 ①) — 한 태그에 두 라벨을 두면 사람이 읽어
+    # 전달한 코드가 두 가지를 가리킨다. 그래서 G26의 라벨은 하나이고, **원인 셋은
+    # 상세가 가른다**: 없음 · 중복 · 빈 헤더.
+    for it in bad:
+        if it["reason"] == "not_found":
+            det = (f"{it['field']}: columns 값 {it['value']!r}는 {hr_}행 헤더에 없다 "
+                   f"— 헤더: {it['headers'][:8]}")
+        elif it["reason"] == "ambiguous":
+            det = (f"{it['field']}: columns 값 {it['value']!r}가 {hr_}행에 "
+                   f"{len(it['candidates'])}개 ({' · '.join(it['candidates'])}) — "
+                   f"열문자로 지정하거나 {it['candidates']!r}로 합쳐라")
+        else:
+            det = (f"{it['field']}: {it['value']}열 {hr_}행이 비었다 — "
+                   f"header_row 의심")
+        show(G26, False, det + _profile_line(exp, it))
+    if not bad:
+        show(G26, not suspect, (suspect or {}).get("reason", ""))
     actual = preflight_mod.header_labels(raw, hr, exp)
     show(f"G24  header_row {hr}행에 헤더 {len(actual)}개 존재", len(actual) >= 5, str(actual[:4]))
     strings = {reader_mod.norm_label(x) for x in strings}
@@ -445,7 +508,12 @@ def _where():
 
 # ---------------------------------------------------------------- main
 if __name__ == "__main__":
-    adapter_path, schema_path, *docs = sys.argv[1:]
+    _argv = sys.argv[1:]
+    if PKG_FLAG in _argv:
+        _i = _argv.index(PKG_FLAG)
+        PACKAGE = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+    adapter_path, schema_path, *docs = _argv
     print(_where())
     print("=" * 66)
     print(f"실행 하네스 — {adapter_path}  +  {schema_path}")

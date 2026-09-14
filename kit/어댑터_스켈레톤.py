@@ -107,7 +107,15 @@ def extract(raw) -> list[dict]:
                          int(sheet.get("max_row", 0)) + 1):
             rec = {}
             for field, col in (exp.get("columns") or {}).items():   # [빈칸] columns
-                v = cells.get(f"{col}{row}", "")
+                # **값이 리스트면 합치기다**(B64 ①) — 앞에서부터 **첫 비지 않은 값**.
+                # 같은 이름의 열이 둘일 때 사람이 「하나만 있으면 그 값, 둘 다면
+                # 첫째」라고 정한 것이 이 꼴이다. 관문 입구가 열문자로 확정한 뒤라
+                # 여기서는 결정적이다 — 라벨은 여기까지 오지 않는다.
+                v = ""
+                for c in (col if isinstance(col, (list, tuple)) else [col]):
+                    v = cells.get(f"{c}{row}", "")
+                    if v is not None and str(v).strip():
+                        break
                 rec[field] = "" if v is None else str(v).strip()
             if all(v == "" for v in rec.values()):
                 continue                  # 전 열이 빈 행만 빈 행이다 (C14)

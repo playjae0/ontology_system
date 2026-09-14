@@ -1182,8 +1182,14 @@ show("② 원인 규명이 필요한 실패는 문답 갈래다 (조각 0건 · 
 _a3, _k3 = R.classify_failures("  [FAIL] 새로 생긴 관문 항목 — 아직 표에 없다")
 show("② 변이 — 목록 밖 실패는 기본이 문답이다 (모르면 묻는다)",
      not _a3 and len(_k3) == 1, f"자동 {len(_a3)} · 문답 {len(_k3)}")
+# **수를 박지 않는다**(B58 ②에서 같은 병을 겪었다) — 분류표는 관문이 자랄 때 함께
+# 자란다. 잠글 성질은 **「자동 갈래는 표에 열거된 것뿐」** 하나다: 표의 항목은 전부
+# 자동으로 가고(위 변이가 그 반대쪽을 잠근다), 표 밖은 문답이다.
+_auto_all = all(not R.classify_failures(f"  [FAIL] G99  {k} — 상세")[1]
+                for k in R.AUTO_FIX)
 show("② 분류표가 코드에 표로 있다 — 자동 갈래는 열거된 것뿐",
-     isinstance(R.AUTO_FIX, dict) and len(R.AUTO_FIX) == 8)
+     isinstance(R.AUTO_FIX, dict) and R.AUTO_FIX and _auto_all,
+     f"표 {len(R.AUTO_FIX)}항목 전건이 자동")
 
 # ── ⓔ 검수는 하네스를 돌리지 않는다 (AST — 문자열이 아니라 호출을 센다)
 _rt = _ast.parse((ROOT / "cli/register.py").read_text(encoding="utf-8"))
@@ -2563,6 +2569,64 @@ reset("b64old")
 reset("b64")
 shutil.rmtree(_fx64, ignore_errors=True)
 
+
+# ── B64 ①②③ columns는 시스템이 해석한다 ─────────────────────────────────
+print("\n■ B64 — columns 값 셋(열문자·라벨·합치기)을 시스템이 열문자로 확정한다")
+
+from parser import preflight as _PF64                             # noqa: E402
+
+# 같은 라벨이 두 열(D·G)에 있는 표본을 만든다 — 사내 실측의 모양이다.
+_d64 = Path(_tf.mkdtemp(prefix="b64_", dir=str(ROOT)))
+_csv64 = _d64 / "dup64.csv"
+_csv64.write_text("대공정,세부공정,공정번호,Center,관리항목,규격,Center\n"
+                  "조립,노칭,OP-10,노칭 프레스,노칭 정밀도,±0.05mm,\n"
+                  "조립,노칭,OP-10,,버 높이,10um 이하,비전 측정기\n"
+                  "조립,스태킹,OP-20,스태커,적층 정렬도,±0.1mm,\n", encoding="utf-8")
+_raw64 = reader.read(str(_csv64))
+_exp64 = {"header_row": 1,
+          "columns": {"a": "대공정", "center": ["Center", "G"], "amb": "Center",
+                      "empty": "ZZ", "nope": "없는이름"}}
+_cols64, _bad64 = _PF64.resolve_columns(_raw64, _exp64)
+_by64 = {b["field"]: b for b in _bad64}
+
+# ③ **대응은 리스트다** — 같은 라벨의 둘째 열이 사라지지 않는다.
+_lab64 = _PF64.label_columns(_raw64, _exp64)
+show("③ 중복 헤더 라벨의 대응이 열 전부를 담는다 (둘째 열이 사라지지 않는다)",
+     _lab64.get("Center") == ["D", "G"] and _lab64.get("대공정") == ["A"],
+     str(_lab64.get("Center")))
+# ①ⓑ **라벨 → 열문자 확정** · **합치기 리스트는 펼쳐진다**
+show("①ⓑ 헤더 라벨이 열문자로 확정된다 (세는 일은 시스템 몫)",
+     _cols64["a"] == "A" and "a" not in _by64)
+show("①ⓑ 합치기 리스트의 라벨은 그 이름의 열 전부로 펼쳐진다 (중복 제거)",
+     _cols64["center"] == ["D", "G"])
+# ①ⓑ **원인 셋이 서로 다르다** — 「header_row 의심」 하나로 뭉치지 않는다(②ⓑ).
+show("②ⓑ 세 원인이 서로 다른 코드로 갈린다 (중복·없음·빈 헤더)",
+     _by64["amb"]["reason"] == "ambiguous" and _by64["nope"]["reason"] == "not_found"
+     and _by64["empty"]["reason"] == "empty"
+     and _by64["amb"]["candidates"] == ["D", "G"],
+     " · ".join(f"{k}:{v['reason']}" for k, v in sorted(_by64.items())))
+show("①ⓑ 중복 라벨의 상세에 후보 열문자 목록이 있다 (다음 값이 문면에 있다)",
+     _by64["amb"].get("candidates") and _by64["nope"].get("headers"))
+# **멱등** — 열문자로 확정된 뒤 다시 지나도 같다(관문 입구 → 하네스 두 번 지난다).
+show("① 해석은 멱등이다 (열문자를 다시 해석해도 같다)",
+     _PF64.resolve_columns(_raw64, {**_exp64, "columns": _cols64})[0] == _cols64)
+# ①ⓑ **합치기** — 앞에서부터 첫 비지 않은 값. D가 비면 G를 쓴다.
+_sk64 = {"header_row": 1, "data_start_row": 2, "columns": {"center": ["D", "G"]}}
+_cells64 = (_raw64["sheets"][0].get("cells") or {})
+_merge64 = []
+for _r in (2, 3, 4):
+    _v = ""
+    for _c in _sk64["columns"]["center"]:
+        _v = _cells64.get(f"{_c}{_r}", "")
+        if _v is not None and str(_v).strip():
+            break
+    _merge64.append(str(_v).strip())
+show("①ⓑ 합치기는 앞에서부터 첫 비지 않은 값이다 (D가 비면 G)",
+     _merge64 == ["노칭 프레스", "비전 측정기", "스태커"], str(_merge64))
+# ①ⓑ **orphan 집합이 리스트를 펼친다** — 합쳐진 둘째 열은 쓴 열이다.
+show("①ⓑ 쓴 열 집합이 리스트를 펼친다 (합쳐진 열은 orphan이 아니다)",
+     R.col_values({"x": ["D", "G"], "y": "A"}) == {"D", "G", "A"})
+_sh64 = shutil.rmtree(_d64, ignore_errors=True)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

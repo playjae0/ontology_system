@@ -14,8 +14,15 @@ prose는 헤더 행이 없으므로 **분할 신호 상수의 존재**를 본다
 """
 from __future__ import annotations
 
+import re
+
 from .normalizer import _col
 from .reader import norm_label, sheet_of
+
+# 열문자의 꼴 — `A`·`AB`·`ZZZ`. **먼저 대조한다**(B64 ①): 지금까지 쓰인 어댑터의
+# `columns` 값은 전부 열문자이므로, 이 꼴이면 옛 뜻을 그대로 지켜야 한다. 헤더 라벨이
+# 마침 이 꼴이면(한 글자 대문자 헤더) 그 열은 열문자로 가리킨다.
+COL_LETTERS = re.compile(r"^[A-Z]{1,3}$")
 
 
 
@@ -38,6 +45,91 @@ def header_labels(raw, header_row, expects=None):
     return out
 
 
+def label_columns(raw, exp):
+    """헤더 라벨 → **열문자 리스트** (B64 ③ — 같은 라벨이 두 열에 있을 수 있다).
+
+    구판은 `{라벨: 열문자}` dict라 둘째 열이 앞 열을 덮어 **조용히 사라졌다**(사내
+    실측: 「Center」 두 열). 중복은 사람이 판정할 재료다 — 셋 다 살려 둔다.
+
+    **한 자리다** — 지문 스캔·orphan 복원·`columns` 해석이 이 함수를 부른다.
+    """
+    hr = exp.get("header_row")
+    sh, err = sheet_of(raw, exp)
+    if err or not hr:
+        return {}
+    out = {}
+    for addr, v in (sh.get("cells") or {}).items():
+        letters = "".join(ch for ch in str(addr) if ch.isalpha())
+        digits = "".join(ch for ch in str(addr) if ch.isdigit())
+        if digits and int(digits) == int(hr) and norm_label(v):
+            out.setdefault(norm_label(v), []).append(letters)
+    return {lab: sorted(cs, key=lambda c: (len(c), c)) for lab, cs in out.items()}
+
+
+def resolve_columns(raw, exp):
+    """`columns` 값 셋을 **열문자로 확정한다** — `(해석된 columns, 오류 목록)` (B64 ①).
+
+    받는 꼴 셋: 열문자 `"D"` · 헤더 라벨 `"Center"` · 리스트 `["Center", "K"]`(합치기).
+    **원리는 B62 그대로다** — LLM은 「어느 헤더인가」를 고르고, 「어느 글자인가」는
+    시스템이 표본에서 센다. 열문자를 세는 일을 모델에게 시키면 한 칸 밀린 답이 계약
+    위반으로 돌아오고, 그 왕복을 사람이 통역해야 한다(C27).
+
+    **멱등이다** — 이미 열문자면 그대로 둔다. 관문 입구에서 해석한 뒤 하네스가 다시
+    지나므로 그래야 한다.
+
+    오류는 세 갈래고 **문면이 답을 담는다**(B61 계약):
+      `not_found`  라벨이 헤더에 없다 — 헤더 목록을 함께 낸다
+      `ambiguous`  라벨이 두 열 이상 — 후보 열문자를 함께 낸다
+      `empty`      열문자의 헤더 셀이 비었다 — `header_row`가 의심스럽다
+    """
+    cols = exp.get("columns") or {}
+    hr = exp.get("header_row")
+    if not cols or not hr:
+        return dict(cols), []
+    sh, err = sheet_of(raw, exp)
+    if err:
+        return dict(cols), []             # 시트 해석 실패는 관문이 따로 말한다
+    cells = sh.get("cells") or {}
+    labels = label_columns(raw, exp)
+    out, bad = {}, []
+
+    def one(field, v, *, in_list):
+        """한 값 → 열문자 **리스트**(리스트 안에서는 펼쳐지므로 리스트로 돌려준다)."""
+        v = str(v)
+        if COL_LETTERS.match(v):
+            if not norm_label(cells.get(f"{v}{hr}")):
+                bad.append({"field": field, "value": v, "reason": "empty",
+                            "header_row": hr})
+            return [v]
+        hits = labels.get(norm_label(v)) or []
+        if not hits:
+            bad.append({"field": field, "value": v, "reason": "not_found",
+                        "headers": sorted(labels)})
+            return [v]
+        if len(hits) > 1 and not in_list:
+            # **스칼라 자리의 중복은 사람이 판정한다** — 어느 열인지 시스템이 고를
+            # 근거가 없다. 합치기라면 리스트로 적으면 되고, 문면이 그 답을 담는다.
+            bad.append({"field": field, "value": v, "reason": "ambiguous",
+                        "candidates": hits})
+            return [v]
+        # **리스트 안의 라벨은 그 이름의 열 전부로 펼친다** — 합치기의 뜻이 그것이다
+        # (「하나만 있으면 그 값, 둘 다면 첫째」). 순서는 열문자 순이고 뒤에 적힌
+        # 열문자와 겹치면 한 번만 남는다.
+        return list(hits)
+
+    for field, v in cols.items():
+        if isinstance(v, (list, tuple)):
+            flat = []
+            for x in v:
+                for c in one(field, x, in_list=True):
+                    if c not in flat:
+                        flat.append(c)
+            out[field] = flat
+        else:
+            out[field] = one(field, v, in_list=False)[0]
+    return out, bad
+
+
 def header_row_suspect(raw, exp):
     """`columns`가 가리키는 열의 **헤더 셀이 비어 있나** — 비면 detail, 아니면 `None`.
 
@@ -52,8 +144,13 @@ def header_row_suspect(raw, exp):
     if err:
         return None                       # 시트 해석 실패는 check()가 따로 말한다
     cells = sh.get("cells") or {}
-    empty = sorted({str(v) for v in cols.values()
-                    if isinstance(v, str) and not norm_label(cells.get(f"{v}{hr}"))})
+    # **해석된 열문자만 본다**(B64 ①) — 값이 헤더 라벨이면 `"Center3"` 같은 주소를
+    # 찾다가 「비었다」고 말한다(사내 실측: `empty_columns`에 라벨이 그대로 떴다).
+    # 라벨의 처분은 `resolve_columns`가 세 갈래로 가른다.
+    empty = sorted({x for v in cols.values()
+                    for x in (v if isinstance(v, (list, tuple)) else [v])
+                    if isinstance(x, str) and COL_LETTERS.match(x)
+                    and not norm_label(cells.get(f"{x}{hr}"))})
     if not empty:
         return None
     got = [norm_label(cells.get(f"{_col(c)}{hr}"))
