@@ -52,12 +52,15 @@ def prompt_version(name="extract"):
     파일이 없으면 **명시적 실패**다(§7.6-B-4) — 재현성 기록의 근거가 없는데 조용히
     기본값을 적으면 그 체크포인트로는 추출을 재현할 수 없다.
     """
-    p = PROMPTS_DIR / f"{name}.md"
-    if not p.exists():
+    # **파일을 찾는 자리는 게이트웨이 하나다**(B63 ① — 칸 ID가 파일 이름에 붙었고,
+    # 여기에 두 번째 해석기를 두면 한쪽만 고쳐지는 날 이 함수가 조용히 죽는다).
+    p = llm.prompt_path(name)
+    if not p:
         log.explicit_fail(_LOG, "core.extract.prompt_version",
-                          f"지시문 템플릿이 없다: {p} — prompt_version의 정본은 "
-                          "파일이다(문서 7 §7.6-B-5)")
-        raise FileNotFoundError(f"지시문 템플릿 없음: {p}")
+                          f"지시문 템플릿이 없다: {PROMPTS_DIR}/<칸ID>_{name}.md — "
+                          "prompt_version의 정본은 파일이다(문서 7 §7.6-B-5)")
+        raise FileNotFoundError(f"지시문 템플릿 없음: <칸ID>_{name}.md")
+    p = Path(p)
     for line in p.read_text(encoding="utf-8").splitlines()[:10]:
         if line.startswith("version:"):
             return line.split(":", 1)[1].strip()
@@ -185,7 +188,7 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
 
     # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
     # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
-    tmpl = (PROMPTS_DIR / "extract.md").read_text(encoding="utf-8")
+    tmpl = llm.prompt("extract")
     out = llm.chat(
         [{"role": "system", "content": tmpl},
          {"role": "user", "content": json.dumps(

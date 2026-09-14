@@ -62,7 +62,8 @@ def verdicts(text):
 # ============================================================ 킷 6종 실물
 print("\n■ 킷 6종 실물 — 외부 전달물 (파서_명세 §9)")
 KIT_ITEMS = {
-    "① 생성 프롬프트 템플릿": KIT / "생성프롬프트_템플릿_v0.4.md",
+    # **①의 자리가 옮겨졌다**(B63 ① · 칸 1.4) — 지시문 9종이 한 폴더에 산다.
+    "① 생성 지시문": ROOT / "prompts" / "1.4_generate.md",
     "② 어댑터 스켈레톤": KIT / "어댑터_스켈레톤.py",
     "③ 표적 출력 정의 주입": KIT / "표적출력_정의.md",
     "④ 참조 어댑터 예시": KIT / "참조어댑터" / "README.md",
@@ -71,9 +72,13 @@ KIT_ITEMS = {
 }
 for label, p in KIT_ITEMS.items():
     show(f"{label} 실물", p.exists(), str(p.relative_to(ROOT)))
-show("판 계보 보존 — v0.1·v0.2·v0.3이 남아 있다 (v0.4는 신설이지 덮어쓰기가 아니다)",
-     all((KIT / f"생성프롬프트_템플릿_{v}.md").exists()
-         for v in ("v0.1", "v0.2", "v0.3")))
+# **판 계보의 자리가 바뀌었다**(B63 ①) — 파일로 보존하던 것을 git 이력이 갖는다.
+# 잠글 성질은 그 뒤집힘 그대로다: **쓰이는 판이 목록에 하나로 보인다.** 구판은
+# 12개가 나란히 있고 코드가 glob으로 골라, 어느 것이 쓰이는지 목록이 답하지 못했다.
+show("판은 하나다 — kit에 템플릿 0 · 지시문 1개 · 판 번호는 머리말이 말한다",
+     not list(KIT.glob("생성프롬프트_템플릿_v*.md"))
+     and (ROOT / "prompts" / "1.4_generate.md").read_text(
+         encoding="utf-8").split("\n")[1].startswith("version:"))
 
 # ---- ② 스켈레톤이 자기 안내대로 거동하는가 ----
 r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),

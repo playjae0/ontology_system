@@ -128,7 +128,7 @@ def _summarize(pkg, history, context=None):
                   "요청": "마지막 턴 — 확정 요약을 내라 (지시문 「마지막 턴」 절)"},
                  ensure_ascii=False)}]
     _sent_size(convo, "문답 확정 요약")
-    return (llm.chat(convo, json_schema=DECISIONS_SCHEMA, point="generate")
+    return (llm.chat(convo, json_schema=DECISIONS_SCHEMA, point="interview")
             or {}).get("decisions") or []
 
 
@@ -240,7 +240,7 @@ def _interview_round(pkg, history, context=None):
                   **({"기계_관문_실패": context} if context else {})},
                  ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")
-    return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="generate")
+    return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="interview")
 
 
 def _prior_rounds(pkg):

@@ -46,6 +46,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -70,6 +71,18 @@ POINTS = {
     "answer": "⑧답변 생성",
     "coord_tag": "⑨좌표 태깅 (닫힌 목록 선택 또는 null)",
 }
+
+
+# **호출 태그 → 지점** (B63 ② · 칸 대장 1.3·1.4). **지점은 닫힌 9종 그대로다**
+# (문서 7 §7.6-B-2) — 한 지점 안에 호출이 여럿일 수 있고, 칸 대장이 칸마다 태그를
+# 준다(1.3 문답 · 1.4 생성). 화면·로그는 태그를 받아도 **어느 지점인가**를 답해야
+# 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
+CALL_TAGS = {"interview": "generate"}
+
+
+def point_label(point):
+    """화면·로그에 쓰는 지점 이름 — 호출 태그면 그 지점의 이름으로 되돌린다."""
+    return POINTS.get(point) or POINTS.get(CALL_TAGS.get(point, ""), point)
 
 
 def use_mock():
@@ -110,7 +123,7 @@ def mock(point, detail=""):
     표준출력으로만 나가면 자동 점검이 세지 못해 **비어 있는 지점이 구현된 것으로
     보고된다** — 그것이 "훅 5곳"이 전부 주석이었던 사고의 구조다.
     """
-    log.mock_warn(_LOG, POINTS.get(point, point), detail)
+    log.mock_warn(_LOG, point_label(point), detail)
 
 
 # ---------------------------------------------------------------- 설정
@@ -219,7 +232,7 @@ def require(point, *, need=("url", "model")):
         env = {"url": "LLM_GATEWAY_URL", "model": "CHAT_MODEL",
                "embed_model": "EMBED_MODEL", "key": "LLM_API_KEY"}
         names = ", ".join(env.get(m, m) for m in missing)
-        reason = (f"{POINTS.get(point, point)} — 실호출 경로가 비어 있다: {names} 미설정. "
+        reason = (f"{point_label(point)} — 실호출 경로가 비어 있다: {names} 미설정. "
                   f"USE_MOCK=0에서는 조용히 mock으로 떨어지지 않는다 (문서 7 §7.6-B-4)")
         log.explicit_fail(_LOG, f"core.llm[{point}]", reason)
         raise NotConfigured(reason)
@@ -229,6 +242,33 @@ def require(point, *, need=("url", "model")):
 # ---------------------------------------------------------------- 호출
 PROMPTS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts")
+
+
+_PROMPT_RE = re.compile(r"^\d+\.\d+_(?P<name>.+)\.md$")
+
+
+def prompt_path(name):
+    """`prompts/<칸ID>_<이름>.md` **하나**를 찾는다 (B63 ①).
+
+    호출부는 **이름으로 부른다**(`prompt("interview")`) — 칸 ID가 붙거나 칸이 옮겨져도
+    호출부가 따라 움직이지 않는다. 파일 이름이 칸 ID를 다는 이유는 반대쪽이다:
+    **어느 칸의 지시문인지를 파일 목록이 답해야** 고칠 자리를 번호로 찾는다
+    (`docs/구조도/00_칸_대장.md`).
+
+    같은 이름이 두 파일에 있으면 **죽는다.** 조용히 첫 것을 고르면 어느 지시문이
+    모델에 갔는지 화면이 답하지 못하고, 고친 파일이 안 쓰이는 상태가 보이지 않는다.
+    """
+    try:
+        names = sorted(os.listdir(PROMPTS_DIR))
+    except OSError:
+        names = []
+    hits = [f for f in names
+            if (m := _PROMPT_RE.match(f)) and m.group("name") == name]
+    if len(hits) > 1:
+        reason = f"지시문 이름이 겹친다: {name} → {hits} — 이름은 하나여야 한다(B63 ①)"
+        log.explicit_fail(_LOG, f"core.llm.prompt[{name}]", reason)
+        raise FileNotFoundError(reason)
+    return os.path.join(PROMPTS_DIR, hits[0]) if hits else None
 
 
 def prompt(name):
@@ -241,11 +281,12 @@ def prompt(name):
     파일이 없으면 **명시적 실패**다 — 조용히 기본 문안으로 떨어지면 그 호출은
     자산이 정하지 않은 지시로 돌고, 파일을 고쳐도 동작이 바뀌지 않는다.
     """
-    p = os.path.join(PROMPTS_DIR, f"{name}.md")
-    if not os.path.exists(p):
+    p = prompt_path(name)
+    if not p:
         log.explicit_fail(_LOG, f"core.llm.prompt[{name}]",
-                          f"지시문 템플릿이 없다: {p} — 파일이 정본이다(§7.6-B-5)")
-        raise FileNotFoundError(f"지시문 템플릿 없음: {p}")
+                          f"지시문 템플릿이 없다: {PROMPTS_DIR}/<칸ID>_{name}.md "
+                          f"— 파일이 정본이다(§7.6-B-5)")
+        raise FileNotFoundError(f"지시문 템플릿 없음: <칸ID>_{name}.md")
     with open(p, encoding="utf-8") as f:
         return f.read()
 
@@ -258,7 +299,10 @@ def has_prompt(name):
     경로가 ERROR 세 줄로 화면에 뜬다 — 실측으로 그랬고, 사내에서 그것은 고장으로
     읽힌다. 묻는 것과 쓰는 것을 가른다.
     """
-    return os.path.exists(os.path.join(PROMPTS_DIR, f"{name}.md"))
+    try:
+        return prompt_path(name) is not None
+    except FileNotFoundError:               # 이름이 겹친다 — 있다고 답하지 않는다
+        return False
 
 
 def prompt_version(name):
@@ -303,7 +347,7 @@ def _account(point, raw):
                 USAGE[k] += int(v)
     if fin == "length":
         USAGE["truncated"] += 1
-    log.llm_usage(_LOG, POINTS.get(point, point), u if isinstance(u, dict) else None, fin)
+    log.llm_usage(_LOG, point_label(point), u if isinstance(u, dict) else None, fin)
 
 
 ERR_BODY_MAX = 1200          # 오류 본문 보존 상한 — 로그가 본문으로 덮이지 않게
@@ -393,16 +437,16 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0)
                 json.JSONDecodeError, TimeoutError) as e:
             last = e
             _LOG.warning("LLM %s 시도 %d/%d 실패 — %s: %s",
-                         POINTS.get(point, point), attempt + 1,
+                         point_label(point), attempt + 1,
                          cfg["retry"] + 1, type(e).__name__, e)
             if attempt < cfg["retry"]:
                 # **재시도 중임이 화면에 보여야 한다**(⑥-5) — 로그 레벨이 낮으면
                 # 사람은 «멈췄다»고 읽는다. 실측: 게이트웨이 무응답에서 사용자가
                 # 타임아웃×재시도×건수를 말없이 기다렸다.
                 print(f"   ⏳ 재시도 {attempt + 2}/{cfg['retry'] + 1} — "
-                      f"{POINTS.get(point, point)}: {type(e).__name__}", flush=True)
+                      f"{point_label(point)}: {type(e).__name__}", flush=True)
                 time.sleep(2 ** attempt)
-    reason = f"{POINTS.get(point, point)} — 재시도 소진: {type(last).__name__}: {last}"
+    reason = f"{point_label(point)} — 재시도 소진: {type(last).__name__}: {last}"
     log.explicit_fail(_LOG, f"core.llm[{point}]", reason)
     raise RuntimeError(reason)
 
@@ -726,10 +770,7 @@ def pick_coord(surface, choices):
     **고르는 것이지 만드는 것이 아니다.** 목록 밖 답은 호출부(파서)가 버린다 —
     모델이 지어낸 좌표가 태깅되면 인입의 orphan_anchor가 그것을 골격으로 착각한다.
     """
-    out = chat([{"role": "system", "content":
-                 "문서가 말한 공정 이름이 아래 목록의 어느 항목인지 고른다. "
-                 "표기가 다를 뿐 같은 것이면 고르고, **목록에 없으면 null**이다. "
-                 "목록에 없는 이름을 지어내지 않는다."},
+    out = chat([{"role": "system", "content": prompt("coord_tag")},
                 {"role": "user", "content": json.dumps(
                     {"surface": surface, "choices": choices}, ensure_ascii=False)}],
                json_schema=COORD_SCHEMA, point="coord_tag")

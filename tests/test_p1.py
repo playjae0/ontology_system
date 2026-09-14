@@ -671,9 +671,11 @@ show("닫힌 목록 밖 shape_kind를 잡는다 (검사하는 자리가 있어�
      _ok_g and not _ok_b and len(_d_b) == 1 and "shape_kind" in _d_b[0],
      _d_b[0][:64] if _d_b else "")
 
+# **경로를 박지 않는다**(B63 ① — 지시문 파일에 칸 ID가 붙었다). 잠글 성질은 그대로다:
+# 두 지시문의 판이 그때 올랐고 **판은 파일이 말한다**(§7.6-B-5).
 show("지시문 판이 올랐다 — image_summary i-2.0 · extract e-1.1",
-     "version: i-2.0" in (ROOT / "prompts" / "image_summary.md").read_text(encoding="utf-8")
-     and "version: e-1.1" in (ROOT / "prompts" / "extract.md").read_text(encoding="utf-8"))
+     "version: i-2.0" in llm.prompt("image_summary")
+     and "version: e-1.1" in llm.prompt("extract"))
 
 # ── B53 c. 기본 PDF 어댑터 ────────────────────────────────────────────────
 print("\n[B53 c] 기본 PDF 어댑터 — 쪽이 청크다")

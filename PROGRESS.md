@@ -4664,3 +4664,72 @@ system 프롬프트의 힌트 자리만 `[확정 사항]`으로 바꿨고 **user
 
 - 회귀 **1080 → 1090/1090** (+10, 삭제 0): `test_p3` 341 → 351.
 - 검사 4종 전부 통과. `grep -n '"rounds"' cli/prompt.py` = 0줄.
+
+## B63 ①② — 칸 번호 하나 · 지시문 한 자리 · 대장 잠금 (동작 변경 0) · 2026-09-14
+
+착수 직전 태그 `pre-b63-structure`(`9f58ec9`) · 마감 태그 `b63-structure`.
+정본은 `docs/구조도/00_칸_대장.md`(파트 4 · 칸 28 · 종류 H/C/L/G).
+
+### 전제 대조표 7행 — 6행 일치, 1행 어긋남
+
+| # | Expect | 실측 |
+|---|---|---|
+| 1 | generate 3 · answer · coord_tag · extract · image_summary · judge · link · struct_map · chat | 일치 |
+| 2 | interview.py 2 · register.py 1 | 일치 |
+| 3 | coord_tag 리터럴 1건 | 일치 |
+| 4 | 템플릿 13판 | **12판** (v0.1~v1.2 — 옛 판은 12가 아니라 11) |
+| 5 | 정의 1 · 호출 3 | 일치 (그 밖에 glob 1줄은 정의 안 · import 1줄) |
+| 6 | prompts/ 7개 | 일치 |
+| 7 | 문서 7 §7.1 · 문서 6 §6.7 | 일치 |
+
+4행은 **수가 하나 다를 뿐 할 일이 갈리지 않는다**(`kit/생성프롬프트_템플릿_v*.md`를
+전부 걷어낸다) — 멈추지 않고 진행하고 여기 적는다.
+
+### ① 완료판정 (화면 그대로)
+
+```
+$ ls prompts/
+1.3_interview.md  1.4_generate.md  2.4_struct_map.md  2.8_coord_tag.md
+2.8_image_summary.md  3.3_extract.md  3.4_judge.md  4.1_link.md  4.4_answer.md
+$ ls kit/생성프롬프트*        →  No such file or directory
+$ grep -rn '_newest_template' cli/ --include=*.py | wc -l   →  0
+$ grep -n '문서가 말한 공정 이름이' core/llm.py | wc -l      →  0
+```
+
+`kit/`에 남은 것: `어댑터_스켈레톤.py` · `run_adapter.py` · `render_review.py` ·
+`검수뷰_데이터스키마.json` · `참조어댑터/` · `표적출력_정의.md` (+`__init__.py`).
+`정답표_ipqc_봉인.md`는 `tests/fixtures/`로 옮겼다.
+
+### ② 완료판정 — 일부러 어긋나게 하면 빨간불 (화면 그대로)
+
+`core/query.py`의 `point="link"`를 `point="foo"`로 한 줄 바꾸면:
+
+```
+  [FAIL] ②L칸 == 호출 지점 — 코드의 point 집합이 대장 L칸과 같다  — 코드에만 ['foo'] · 대장에만 ['link']
+  [PASS] ②지시문 == 파일 — 대장이 적은 prompts/ 집합이 실물과 같다  — 9개
+전체 결과: FAIL 1건
+```
+
+지시문 쪽도 같다 — `prompts/4.1_link.md`를 `4.1_linkX.md`로 바꾸면
+`대장에만 ['4.1_link.md'] · 실물에만 ['4.1_linkX.md']`. **둘 다 되돌리면 초록이다.**
+`grep -c 'point="interview"' cli/interview.py` = **2**.
+
+### 회차 중 잡은 것
+
+1. **`core/extract.py`가 두 번째 파일 해석기를 갖고 있었다** — `PROMPTS_DIR / f"{name}.md"`를
+   제 손으로 조립해, 칸 ID가 붙자마자 `prompt_version()`이 죽었다(test_p1·test_p3 적색).
+   게이트웨이 로더 하나를 부르게 했다. **자리를 옮기면 그 자리를 해석하던 코드가
+   전부 한 곳을 보게 해야 한다.**
+2. **`point="interview"`를 `POINTS`에 넣지 않았다.** 넣으면 문서 7 §7.6-B-2가 닫아 둔
+   **지점 9종**이 흔들리고 탐침·계기판·명세가 함께 움직인다 — 「동작 변경 0」이 깨진다.
+   호출 태그와 지점을 가르고(`CALL_TAGS`·`point_label()`) 화면·로그는 태그를 받아도
+   **⑤구축 모드 생성**이라 답한다. 요청문이 말한 「point별 모델·온도 표」는 실물에 없다 —
+   게이트웨이 설정은 `config()` 하나라 point별로 갈릴 값이 없다(그래서 동작 변경 0이다).
+3. **판 번호 키는 `version:`을 썼다**(요청문 문면은 `prompt_version: 1.3`) — 지시문 9종이
+   한 규약을 쓰고 `llm.prompt_version()`이 읽는 키가 그것이다. 두 키를 두면 미러다.
+
+### 결과
+
+- 회귀 **1090 → 1092/1092**. **①의 증감은 0이다**(1090 → 1090) — 옮긴 자리를 가리키던
+  어서션 6건은 **재조준**했고 수를 바꾸지 않았다. +2는 전부 ②의 대장 잠금이다.
+- 검사 4종 전부 통과.

@@ -69,7 +69,7 @@ from router import discover
 # 이름을 그대로 내보내는 이유: 테스트와 외부가 `cli.register.<이름>`으로 부른다.
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _strip_kit_notes, _dump_prompt, _strip_module_doc,
-    _reference_adapter, _newest_template, _render_template, _vocab_excerpt, _sent_size)
+    _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import injections               # 주입 조립은 한 자리다(B48)
 from cli.interview import (  # noqa: F401
@@ -226,7 +226,7 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
         pkg = REVIEW / doc_type / "input_package.json"
         if os.environ.get("ONTO_DUMP_PROMPT") == "1" and pkg.exists():
             _dump_prompt(doc_type, _render_template(
-                _newest_template().read_text(encoding="utf-8"),
+                generate_template(),
                 json.loads(pkg.read_text(encoding="utf-8")),
                 regeneration=instruction_items(instruction, history)))
         for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
@@ -479,7 +479,7 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     # 정본은 패키지」가 유지되고(아래 주석), 지시는 그 입력을 어떻게 다시 다루라는
     # 말이라 지시문의 몫이다. 렌더 뒤에 이어 붙이면 그 문장이 다시 템플릿 밖에
     # 사는 것이고, 그것이 이 회차가 고친 결함이다.
-    system = _render_template(_newest_template().read_text(encoding="utf-8"),
+    system = _render_template(generate_template(),
                               json.loads(raw_pkg),
                               regeneration=instruction_items(instruction, history))
     _dump_prompt(doc_type, system)          # ONTO_DUMP_PROMPT=1일 때만
