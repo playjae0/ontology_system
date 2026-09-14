@@ -231,13 +231,12 @@ def _interview_round(pkg, history, context=None):
     # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
     # **이전 표본에 대한 이해는 구분해 싣는다**(B55 ②-1) — 같은 자리에 섞으면
     # 다른 문서에 대한 판단이 현재 판정에 들어오고, 빼면 재현 조건이 사라진다.
-    fresh, stale = _prior_rounds(pkg)
+    fresh = _prior_rounds(pkg)
     convo = [{"role": "system",
               "content": llm.prompt("interview") + "\n\n---\n\n"
                          + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
                  {"입력_패키지": pkg, "지난_문답": fresh + history,
-                  **({"이전_표본에_대한_이해": stale} if stale else {}),
                   **({"기계_관문_실패": context} if context else {})},
                  ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")
@@ -245,18 +244,33 @@ def _interview_round(pkg, history, context=None):
 
 
 def _prior_rounds(pkg):
-    """패키지에 이미 있는 문답을 `(현재 표본분, 이전 표본분)`으로 가른다.
+    """**현재 표본 묶음의 라운드**를 로그에서 읽는다 (B55 ②-2 · B62 ②).
 
-    **저장만 이어 붙이고 모델이 처음부터 물으면 사람이 두 번 답한다**(B55 ②-2) —
-    구판은 `history`를 빈 리스트로 시작해, 라운드가 파일에 쌓여도 다음 실행의
-    모델은 그것을 본 적이 없었다.
+    **저장만 이어 붙이고 모델이 처음부터 물으면 사람이 두 번 답한다** — 구판은
+    `history`를 빈 리스트로 시작해, 라운드가 파일에 쌓여도 다음 실행의 모델은
+    그것을 본 적이 없었다. 그래서 지난 라운드를 실어 보낸다.
+
+    **이전 표본(stale)의 전문은 싣지 않는다**(B62 ②). 구판은 「이전 표본에 대한
+    이해」로 구분해 함께 보냈는데, 그러면 같은 전문이 **패키지와 이 자리 둘로**
+    나간다. 이전 표본의 **판단**은 `decisions`로 남아 생성 지시문이 표시해서
+    싣는다 — 대화는 이력이고 판단은 정본이라는 규율 그대로다.
+
+    전문은 로그에 산다(`review/<doc_type>/interview_log.json`) — 패키지에 두면
+    생성 user 메시지(패키지 원문 통째)에 그대로 실린다.
     """
-    from cli.register import _hint_batches
-    hint = ((pkg or {}).get("human") or {}).get("hint")
-    fresh, stale = [], []
-    for b in _hint_batches(hint):
-        (stale if b.get("stale") else fresh).extend(b.get("rounds") or [])
-    return fresh, stale
+    from cli.register import _hint_batches, read_log
+    human = (pkg or {}).get("human") or {}
+    doc_type = human.get("doc_type")
+    if not doc_type:
+        return []
+    log = read_log(doc_type)
+    now = sorted(str(x) for x in (human.get("samples") or []))
+    out = []
+    for b in _hint_batches(human.get("hint")):
+        if b.get("stale") or sorted(b.get("samples") or []) != now:
+            continue
+        out += log.get(b.get("at")) or b.get("rounds") or []
+    return out
 
 
 def _prof_hint(pkg, top=6):

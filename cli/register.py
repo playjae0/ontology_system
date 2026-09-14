@@ -655,22 +655,125 @@ def _basic_pdf_proposal(samples):
 # ── 문답 누적 — 「재현 조건의 자리는 `human.hint` 그릇이다」(B36 · 문서 6 §6.5) ──
 #
 # **키가 아니라 항목으로 는다.** 사람 4키·시스템 5키는 불변이고, 문답 묶음은 전부
-# `human.hint.interview` 안에서 산다. 묶음 하나 = `{samples, at, stale?, rounds[]}`.
+# `human.hint.interview` 안에서 산다. 묶음 하나 = `{samples, at, stale?, decisions[]}` —
+# **라운드 전문은 여기 없다**(B62 ②): 패키지는 생성 user 메시지에 원문 통째로 실리는
+# 자리라, 전문이 살면 대화가 매 생성마다 모델에 다시 간다. 전문의 자리는 로그다.
 
-def _keep_prior(prior):
+INTERVIEW_LOG = "interview_log.json"     # `review/<doc_type>/` 안 — 라운드 전문의 자리
+
+
+def _batch_at():
+    """묶음의 시각 — **짝을 맞추는 키라 초 해상도로는 모자란다** (B62 ②).
+
+    `store._now()`는 초까지다(적재 시각의 규격이다). 그 값을 묶음 키로 쓰면 **같은
+    초에 만들어진 두 묶음이 한 키가 되고**, 로그가 같은 키의 앞 묶음을 치환해
+    **사람의 답이 조용히 사라진다**(실측: 한 번의 검사에서 세 묶음이 한 묶음으로
+    접혔다). 시각을 위조하는 것이 아니라 **같은 실제 시각을 더 잘게 읽는다.**
+    """
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def log_path(doc_type):
+    return _dir(doc_type) / INTERVIEW_LOG
+
+
+def read_log(doc_type):
+    """`{at: [라운드…]}` — 없거나 깨졌으면 빈 dict.
+
+    **묶음과 짝은 `at`으로 맞춘다**(B62 ②). 순서로 맞추면 묶음 하나가 지워지는 날
+    전 묶음의 전문이 한 칸씩 밀려 다른 표본의 대화가 된다.
+    """
+    try:
+        obj = json.loads(log_path(doc_type).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {b.get("at"): (b.get("rounds") or [])
+            for b in (obj.get("batches") or []) if b.get("at")}
+
+
+def write_rounds(doc_type, at, samples, rounds):
+    """한 묶음의 라운드 전문을 로그에 쓴다 — **패키지에는 쓰지 않는다**(B62 ②).
+
+    전문이 패키지에 살면 생성 user 메시지(패키지 원문 통째)에 그대로 실려 모델에
+    간다 — 사내 실측 3천 줄이었다. B60 ②가 system 프롬프트의 힌트 자리만 요약으로
+    바꿨고 **user 쪽은 그대로였다.** 보내는 쪽에서 걷어내지 않고 **패키지를
+    깨끗하게** 한다: 걷어내는 방식은 잊을 자리를 하나 더 만든다.
+    """
+    d = _dir(doc_type)
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        obj = json.loads(log_path(doc_type).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        obj = {}
+    batches = [b for b in (obj.get("batches") or []) if b.get("at") != at]
+    batches.append({"at": at, "samples": sorted(samples or []), "rounds": rounds})
+    log_path(doc_type).write_text(
+        json.dumps({"_읽는 법": "문답 라운드 전문 — **이력이다.** 판단은 입력 패키지의 "
+                              "human.hint.interview[].decisions에 있고 생성은 그것만 읽는다",
+                    "batches": batches}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8")
+
+
+def migrate_rounds(doc_type, pkg):
+    """옛 패키지의 인라인 `rounds`를 **로그로 한 번 옮긴다** (B62 ②).
+
+    `--resume`이 이 경로로 들어온다. 옮긴 뒤 패키지 묶음은
+    `{samples, at, stale?, decisions[]}`만 남는다 — 돌려주는 것은 화면 한 줄이거나
+    `None`이다. 옮기는 것이지 버리는 것이 아니다: 전문은 재현 근거다.
+    """
+    hint = ((pkg or {}).get("human") or {}).get("hint")
+    batches = _hint_batches(hint)
+    moved = [b for b in batches if b.get("rounds")]
+    if not moved:
+        return None
+    n = 0
+    for b in moved:
+        at = b.get("at") or _batch_at()
+        b["at"] = at
+        write_rounds(doc_type, at, b.get("samples") or [], b["rounds"])
+        n += len(b["rounds"])
+        del b["rounds"]
+    pkg.setdefault("human", {})["hint"] = _merge_hint(hint, batches)
+    return (f"   문답 라운드 {n}건을 로그로 옮겼다 → "
+            f"{log_path(doc_type).relative_to(ROOT)}  "
+            f"(패키지에는 확정 사항만 남는다 — 생성이 읽는 것이 그것이다)")
+
+
+def warn_no_decisions(doc_type, pkg):
+    """묶음은 있는데 **확정 사항이 하나도 없다** — B60 이전 패키지다 (B62 ②ⓓ).
+
+    죽이지 않는다. 진행은 되지만 **생성이 읽을 판단이 없다**는 사실을 말하고, 그것을
+    세울 명령 둘을 함께 준다. 힌트만 준 패키지는 해당 없다(`hint_only_decisions`가
+    이미 한 항목을 세웠다).
+    """
+    batches = _hint_batches(((pkg or {}).get("human") or {}).get("hint"))
+    if not batches or any(b.get("decisions") for b in batches):
+        return None
+    return (f"   ⚠ 이 패키지에 **확정 사항이 없다** — 문답 묶음 {len(batches)}개는 "
+            f"있는데 결정이 비어 있다(B60 이전 산출). 생성이 읽을 판단이 없다.\n"
+            f"     python -m cli.register review {doc_type} "
+            f"--instruct \"<결정 한 문장>\"\n"
+            f"     python -m cli.register generate {doc_type} <층> <표본...> --interview")
+
+
+def _keep_prior(prior, counts=None):
     """**멈추고 묻는다**(B55 ②-4) — 사람의 답은 다시 만들 수 없는 재료다.
 
     기본은 이어가기다: 비대화형에서 조용히 버리면 그것이 바로 이 회차가 고치는
     병이다(구판은 경고 한 줄 없이 덮어썼다). 버리려면 사람이 답하거나
     `--drop-interview`를 적어야 한다.
     """
-    n = sum(len(b.get("rounds") or []) for b in prior)
+    counts = counts or {}
+    def _n(b):
+        return len(counts.get(b.get("at")) or b.get("rounds") or [])
+    n = sum(_n(b) for b in prior)
     print(f"\n   이 등록에 **이전 문답 {n}라운드**가 남아 있다 "
           f"(묶음 {len(prior)}개).")
     for b in prior[-3:]:
         print(f"     · {b.get('at', '?')[:19]} · 표본 "
               f"{[Path(x).name for x in (b.get('samples') or [])]} · "
-              f"{len(b.get('rounds') or [])}라운드")
+              f"{_n(b)}라운드")
     try:
         ans = input("   이어갈까? [Y/n]  (n이면 버린다 · 사람의 답은 다시 못 만든다) "
                     ).strip().lower()
@@ -683,8 +786,10 @@ def _keep_prior(prior):
 def _new_batch(samples):
     # `decisions`가 **확정 요약의 자리**다(B60 ②) — 라운드 전문(`rounds`)은 이력으로
     # 남고, 생성 프롬프트에는 이것만 실린다. 자리는 항상 있다(빈 리스트라도).
-    return {"samples": sorted(samples), "at": store._now(), "rounds": [],
-            "decisions": []}
+    # **라운드 전문은 여기 없다**(B62 ②) — 로그(`interview_log.json`)로 간다.
+    # 묶음이 패키지에 사는 이유는 `decisions`가 생성의 입력이기 때문이고,
+    # 전문은 입력이 아니라 이력이다.
+    return {"samples": sorted(samples), "at": _batch_at(), "decisions": []}
 
 
 def decisions_of(hint):
@@ -748,6 +853,9 @@ def apply_instruction_to_decisions(doc_type, instruction, rev):
     return hit
 
 
+_BATCH_KEYS = ("decisions", "rounds", "samples")
+
+
 def _hint_batches(hint):
     """`hint`가 어떤 꼴이든 문답 묶음 리스트를 돌려준다.
 
@@ -758,9 +866,11 @@ def _hint_batches(hint):
     if not isinstance(hint, dict):
         return []
     iv = hint.get("interview") or []
-    if iv and isinstance(iv[0], dict) and "rounds" not in iv[0]:
+    # **묶음인가는 묶음 키로 가른다** — `rounds`만 보면 B62 ② 이후 묶음
+    # (`{samples, at, decisions}`)을 통째로 못 읽어 확정 사항이 사라진다.
+    if iv and isinstance(iv[0], dict) and not any(k in iv[0] for k in _BATCH_KEYS):
         return [{"samples": [], "at": None, "rounds": iv}]      # 옛 꼴 → 묶음 1개
-    return [b for b in iv if isinstance(b, dict) and "rounds" in b]
+    return [b for b in iv if isinstance(b, dict) and any(k in b for k in _BATCH_KEYS)]
 
 
 def prior_interview(pkg_path):
@@ -839,6 +949,15 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
         print(f"  {llm.mode_line()}")
         print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
+        # **옛 패키지의 인라인 전문을 로그로 옮긴다**(B62 ②) — 로드 시 한 번.
+        _mv = migrate_rounds(doc_type, pkg)
+        if _mv:
+            print(_mv)
+            pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
+                                encoding="utf-8")
+        _wn = warn_no_decisions(doc_type, pkg)
+        if _wn:
+            print(_wn)
         if layer or samples:
             # **무시하되 말한다** — 사람이 준 값이 안 쓰였다는 사실을 침묵으로
             # 넘기면, 층을 바꾸려고 다시 준 사람이 바뀐 줄 안다.
@@ -847,7 +966,16 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                   f"표본 {len(pkg['human']['samples'])}건)")
         _r = (pkg.get("human") or {}).get("hint")
         if isinstance(_r, dict) and _r.get("interview"):
-            print(f"   문답 {len(_r['interview'])}라운드가 패키지에 남아 있다")
+            # **묶음과 전문을 갈라 말한다**(B62 ②) — 구판은 묶음 수를 「라운드」라
+            # 불렀고, 전문이 로그로 간 뒤에는 그 문면이 거짓이 된다. 전문 건수는
+            # 로그에서 읽는다: 패키지에 없는 것을 패키지에서 세지 않는다.
+            _bs = _hint_batches(_r)
+            _lg = read_log(doc_type)
+            print(f"   문답 묶음 {len(_bs)}개 · 확정 사항 "
+                  f"{sum(len(b.get('decisions') or []) for b in _bs)}항목 "
+                  f"(라운드 전문 "
+                  f"{sum(len(_lg.get(b.get('at')) or []) for b in _bs)}건은 "
+                  f"{INTERVIEW_LOG})")
         ad, sc = draft(doc_type)
         if ad is None:
             raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "
@@ -991,15 +1119,33 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     # 바뀌었으면 지우지 않고 `stale`로 표시한다(지우면 재현 조건이 사라지고,
     # 무구분 누적이면 다른 문서에 대한 이해가 현재 판정에 섞인다).
     prior = prior_interview(d / "input_package.json")
+    # **옛 패키지는 로드 시 한 번 옮긴다**(B62 ②) — 여기도 로드 경로다.
+    if prior and any(b.get("rounds") for b in prior):
+        _old_pkg = json.loads((d / "input_package.json").read_text(encoding="utf-8"))
+        _mv = migrate_rounds(doc_type, _old_pkg)
+        if _mv:
+            print(_mv)
+            (d / "input_package.json").write_text(
+                json.dumps(_old_pkg, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8")
+            prior = prior_interview(d / "input_package.json")
     if prior and drop_interview:
-        print(f"   ⚠ 이전 문답 {sum(len(b['rounds']) for b in prior)}라운드를 **버린다** "
-              f"(--drop-interview)")
+        _lg = read_log(doc_type)
+        print(f"   ⚠ 이전 문답 "
+              f"{sum(len(_lg.get(b.get('at')) or []) for b in prior)}라운드를 "
+              f"**버린다** (--drop-interview)")
     elif prior:
-        if _keep_prior(prior):
+        if _keep_prior(prior, read_log(doc_type)):
             kept = _age_rounds(prior, [str(x) for x in samples])
             pkg["human"]["hint"] = _merge_hint(pkg["human"]["hint"], kept)
         else:
             print("   → 이전 문답을 버리고 새로 시작한다")
+    if not interview:
+        # **문답을 열지 않는 실행에서만 말한다**(B62 ②ⓓ) — 바로 문답이 열리면
+        # 「결정을 세워라」가 아니라 열리는 문답이 답이다.
+        _wn = warn_no_decisions(doc_type, pkg)
+        if _wn:
+            print(_wn)
     (d / "input_package.json").write_text(
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -1016,7 +1162,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         _batch = _new_batch([str(x) for x in samples])
 
         def _persist(rounds):
-            _batch["rounds"] = rounds
+            # **전문은 로그, 판단은 패키지**(B62 ②) — 쓰는 자리에서 가른다.
+            write_rounds(doc_type, _batch["at"], _batch["samples"], rounds)
             pkg["human"]["hint"] = _merge_hint(
                 pkg["human"]["hint"],
                 [b for b in _hint_batches(pkg["human"]["hint"])
@@ -1032,10 +1179,11 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # 화면에서 요약을 확인한다. 요약도 즉시 저장한다(라운드와 같은 이유).
         _batch["decisions"] = iv_finalize(pkg, rounds)
         _persist(rounds)
-        _old = sum(len(b["rounds"]) for b in _hint_batches(pkg["human"]["hint"])
-                   if b is not _batch)
-        print(f"   문답 {len(rounds)}라운드 → human.hint 에 전문 기록 · "
-              f"확정 사항 {len(_batch['decisions'])}항목"
+        _log = read_log(doc_type)
+        _old = sum(len(_log.get(b.get("at")) or [])
+                   for b in _hint_batches(pkg["human"]["hint"]) if b is not _batch)
+        print(f"   문답 {len(rounds)}라운드 → {log_path(doc_type).relative_to(ROOT)} · "
+              f"확정 사항 {len(_batch['decisions'])}항목 → human.hint"
               + (f" (이전 {_old}라운드 유지)" if _old else ""))
     elif (hint or "").strip():
         # **문답 없이 힌트만** — 힌트 문장이 그대로 한 항목의 확정 사항이다. 자리는
@@ -1371,14 +1519,15 @@ def _failure_persist(doc_type, pkg, samples, ask):
     batch["context"] = "기계 관문 실패"
 
     def _persist(rounds, decisions=None):
+        # **전문은 로그로**(B62 ②) — 패키지를 못 읽어도 전문은 남아야 한다.
+        write_rounds(doc_type, batch["at"], batch["samples"], rounds)
         try:
             obj = json.loads(path.read_text(encoding="utf-8")) if path.exists() \
                 else {"human": {"hint": {}}}
         except (OSError, json.JSONDecodeError):
             return                              # 패키지를 못 읽으면 조용히 지나간다
-        batch["rounds"] = rounds
         if decisions is not None:
-            batch["decisions"] = decisions      # 확정 요약(B60 ②) — 전문과 같은 묶음에
+            batch["decisions"] = decisions      # 확정 요약(B60 ②) — 판단은 패키지에
         hint = (obj.get("human") or {}).get("hint")
         keep = [b for b in _hint_batches(hint) if b.get("at") != batch["at"]]
         obj.setdefault("human", {})["hint"] = _merge_hint(hint, keep + [batch])
