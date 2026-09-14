@@ -1306,10 +1306,15 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
 
 
 # ================================================================ ② 검수
-def harness(adapter, schema, samples):
-    """기계 관문 — **kit/run_adapter.py를 그대로 부른다**(재작성 아님)."""
+def harness(adapter, schema, samples, package=None):
+    """기계 관문 — **kit/run_adapter.py를 그대로 부른다**(재작성 아님).
+
+    `package`는 입력 패키지 경로다(B64 ②) — 관문이 FAIL 줄에 **열 프로파일**을 실을
+    때 쓴다. 관문은 계산하지 않는다: 그 값은 패키지 조립이 이미 전 행 스캔으로 냈다.
+    """
+    pkg = ([("--package"), str(package)] if package and Path(package).exists() else [])
     r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
-                        str(adapter), str(schema)] + [str(s) for s in samples],
+                        str(adapter), str(schema)] + pkg + [str(s) for s in samples],
                        capture_output=True, text=True, cwd=str(ROOT))
     return r.returncode == 0, r.stdout
 
@@ -1329,6 +1334,9 @@ AUTO_FIX = {
     "adapter.doc_type == schema.doc_type": "어긋난 두 값이 문면에 있다",
     "필수 키 4종": "빠진 키 이름이 문면에 있다",
     "헤더 4키": "빠진 키 이름이 문면에 있다",
+    # **고칠 값이 문면에 있다**(B64 ②) — 후보 열문자·헤더 목록·의심 행이 상세에 있고,
+    # 재생성은 그 문면을 그대로 지시로 받는다. 사람의 통역을 거치지 않는다(C27).
+    "columns 값이 header_row": "고칠 값이 문면에 있다 (후보 열문자 · 헤더 목록)",
 }
 
 
@@ -1402,9 +1410,19 @@ def fail_lines(harness_out):
     out = []
     for ln in harness_out.splitlines():
         m = _GATE_LINE.match(ln)
-        if m and m.group(1) == "FAIL":
-            out.append((m.group(2), m.group(3).strip(), (m.group(4) or "").strip()))
-    return out
+        if m:
+            if m.group(1) == "FAIL":
+                out.append([m.group(2), m.group(3).strip(),
+                            (m.group(4) or "").strip()])
+            else:
+                out.append(None)          # PASS — 이어지는 줄의 주인이 아니다
+            continue
+        # **판정 줄에 딸린 이어지는 줄을 잃지 않는다**(B64 ②) — 관문이 FAIL 아래에
+        # 열 프로파일을 한 줄 더 싣는다. 한 줄 정규식만 보면 그 줄이 화면 재구성에서
+        # 사라져, 사람이 원본 화면과 `status` 화면에서 **다른 것을 본다**.
+        if out and out[-1] and ln.strip() and ln.startswith(" "):
+            out[-1][2] = (out[-1][2] + "\n" + ln.rstrip()).strip()
+    return [tuple(x) for x in out if x]
 
 
 def _instruct_of(fails):
@@ -1653,16 +1671,21 @@ def stamp_system_fields(st, samples):
             break
         except Exception:
             continue
-    if raw is None or preflight.header_row_suspect(raw, exp) is not None:
+    # **`columns`도 시스템이 확정한다**(B64 ①) — 값이 헤더 라벨이거나 합치기
+    # 리스트여도 여기서 열문자가 된다. 원리는 header_labels와 같다: 어느 헤더인가는
+    # LLM이 고르고 **어느 글자인가는 시스템이 표본에서 센다.**
+    cols, bad = ({}, []) if raw is None else preflight.resolve_columns(raw, exp)
+    if raw is None or bad or preflight.header_row_suspect(raw, exp) is not None:
         # **위치가 의심스러우면 채우지 않는다** — 빈 행을 읽어 `[]`로 덮어쓰면
-        # 표류 감지가 조용히 죽는다. 관문의 G26이 그 사실을 말한다.
+        # 표류 감지가 조용히 죽는다. 관문의 G26이 그 사실을 말한다(해석 실패도 거기서).
         return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
     actual = preflight.header_labels(raw, exp["header_row"], exp)
     if not actual:
         return _write_stamp(st, path, None, want_ver, a.get("adapter_version"))
     declared = [reader.norm_label(x) for x in (exp.get("header_labels") or [])]
     note = _write_stamp(st, path, (actual, raw, exp, samples), want_ver,
-                        a.get("adapter_version"))
+                        a.get("adapter_version"),
+                        cols if cols != (exp.get("columns") or {}) else None)
     if declared == actual:
         return note
     diff = [x for x in actual if x not in declared] + \
@@ -1671,7 +1694,7 @@ def stamp_system_fields(st, samples):
             f"실물 {len(actual)} · 다른 것 {len(diff)}: {diff[:5]}")
 
 
-def _write_stamp(st, path, header, want_ver, had_ver):
+def _write_stamp(st, path, header, want_ver, had_ver, cols=None):
     """표시 블록을 **작업 사본**에 쓴다 — 되풀이해도 하나다(멱등).
 
     **원본에 쓰지 않는다.** 초안의 출처는 fixture(외부 LLM 실산출 스냅샷 · D-26)이거나
@@ -1689,6 +1712,10 @@ def _write_stamp(st, path, header, want_ver, had_ver):
                   f"{exp['header_row']} · 시트 "
                   f"{(reader.sheet_of(raw, exp)[0] or {}).get('name')}",
                   f"ADAPTER[\"expects\"][\"header_labels\"] = {actual!r}"]
+    if cols:
+        # **해석된 열문자를 쓴다**(B64 ①) — 이후 코드(스켈레톤 extract·preflight·
+        # orphan)는 열문자만 본다. 라벨은 여기까지다.
+        lines.append(f"ADAPTER[\"expects\"][\"columns\"] = {cols!r}")
     lines.append(f"ADAPTER[\"adapter_version\"] = {want_ver!r}"
                  f"   # state.revision = {st.get('revision', 0)}")
     head = src.split(_FILLED_MARK)[0].rstrip("\n")
@@ -1718,7 +1745,8 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         _info = stamp_system_fields(st, samples)
         if _info:
             print(_info)
-        ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples)
+        ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples,
+                          package=REVIEW / doc_type / "input_package.json")
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
         orphan = _orphan_of(st)
@@ -1871,6 +1899,18 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     return rows
 
 
+def col_values(cols):
+    """`columns` 값을 **열문자 집합**으로 편다 — 값 셋(열문자·라벨·리스트) 공통 (B64 ①).
+
+    해석이 끝난 뒤에는 전부 열문자이지만, 해석 전(사람이 라벨을 적은 채)의 어댑터도
+    이 함수를 지난다 — 그때는 라벨이 섞여 있고 그것은 관문이 FAIL로 답한다.
+    """
+    out = set()
+    for v in (cols or {}).values():
+        out |= {str(x) for x in v} if isinstance(v, (list, tuple)) else {str(v)}
+    return out
+
+
 def _unmapped_labels(exp, adapter_mod):
     """어댑터가 **출력하지 않는** 헤더 라벨 — 차집합 복원.
 
@@ -1890,10 +1930,16 @@ def _unmapped_labels(exp, adapter_mod):
     # 대신 **실물 헤더에서 열 문자를 다시 읽는다.** 읽을 수 없으면(표본 경로가
     # 없거나 포맷 패키지가 없으면) 위치 가정으로 떨어지되 **그 사실을 남긴다** —
     # 조용히 틀린 답을 내지 않는다.
-    used = set(cols.values())
+    # **리스트를 펼쳐 센다**(B64 ①) — `columns` 값은 열문자·라벨·리스트 셋이고,
+    # 합친 열도 **쓴 열**이다. 펼치지 않으면 집합에 리스트가 들어가 계산이 깨지거나
+    # (대조표 6) 합쳐진 둘째 열이 orphan으로 잘못 뜬다.
+    used = col_values(cols)
     pos = _label_columns(exp, adapter_mod)
     if pos:
-        return [lab for lab, letter in pos.items() if letter not in used]
+        # 라벨의 열 **전부**가 쓰였을 때만 쓴 것이다 — 둘 중 하나만 쓰면 나머지는
+        # 판정되지 않은 열이고, 그것이 화면에서 사라지면 안 된다(D-82).
+        return [lab for lab, letters in pos.items()
+                if any(x not in used for x in letters)]
     store.append_defect(
         f"UNMAPPABLE 복원이 위치 가정으로 떨어졌다 — 실물 헤더를 읽지 못했다 "
         f"(doc_type={(getattr(adapter_mod, 'ADAPTER', {}) or {}).get('doc_type')})")
@@ -1945,25 +1991,16 @@ def unmappable_of(schema, adapter_mod):
 
 
 def _label_columns(exp, adapter_mod):
-    """헤더 라벨 → **실제 열 문자**. 실물을 못 읽으면 빈 dict."""
+    """헤더 라벨 → **실제 열 문자 리스트**. 실물을 못 읽으면 빈 dict (B64 ③)."""
     sample = getattr(adapter_mod, "SAMPLE", None) or exp.get("sample_path")
     if not sample or not Path(sample).exists():
         return {}
     try:
         raw = reader.read(str(sample))
-        hr = exp.get("header_row")
-        sh, err = reader.sheet_of(raw, exp)     # **시트 해석기는 리더 하나다**(B62 ①-b)
-        if err:
-            return {}
-        out = {}
-        for addr, v in (sh.get("cells") or {}).items():
-            letters = "".join(ch for ch in str(addr) if ch.isalpha())
-            digits = "".join(ch for ch in str(addr) if ch.isdigit())
-            # **정규화도 한 자리다**(B62 ①-c) — 구판은 여기가 `str(v)`, preflight가
-            # `str(v).strip()`이라 같은 셀을 다르게 읽었다.
-            if digits and int(digits) == hr and reader.norm_label(v):
-                out[reader.norm_label(v)] = letters
-        return out
+        # **대응을 여기서 다시 짓지 않는다**(B64 ③) — 정규화도 중복 처리도 한 자리다
+        # (`preflight.label_columns`). 두 벌이던 동안 한쪽은 `str(v)`, 다른 쪽은
+        # `str(v).strip()`이라 같은 셀을 다르게 읽었다(B62 ①-c가 고친 자리).
+        return preflight.label_columns(raw, exp)
     except Exception:
         return {}
 

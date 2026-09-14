@@ -60,19 +60,31 @@ for (subj, unit), obs in sorted(counts.items()):
 _lg = os.path.join(SPEC, "개정대장.md")
 LEDGER = open(_lg, encoding="utf-8").read() if os.path.isfile(_lg) else ""
 REVISIONS = set(re.findall(r'\[(?:개정|복원|정정)\]\s*([A-P][0-9]{1,2})', LEDGER))
+# **화면 태그도 조항 번호가 아니다** — 개정 번호와 같은 이유로 뺀다(세 번째 장부다).
+# 관문 `G##` · 골격 `K##` · 인입 `P##`은 사람이 읽어 전달하는 **화면의 태그**이고,
+# 정본은 코드다 — 목록을 여기 베끼지 않고 **그 파일에서 읽는다**: 베끼면 태그가 늘 때
+# 검사기가 옛 목록으로 판정하고, 그 거짓 검출을 지우려 다시 베끼게 된다.
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TAG_SRC = ("kit/run_adapter.py", "cli/skeleton.py", "cli/ingest.py")
+SCREEN_TAGS = set()
+for _f in TAG_SRC:
+    _p = os.path.join(_ROOT, _f)
+    if os.path.isfile(_p):
+        SCREEN_TAGS |= set(re.findall(r'"([GKP][0-9]{2})(?![0-9A-Za-z])',
+                                      open(_p, encoding="utf-8").read()))
 
 for doc, txt in DOCS.items():
     if doc == CLAUSE_DOC: continue
     for m in re.finditer(r'(?<![A-Za-z0-9])([A-P][0-9]{1,2})(?![0-9A-Za-z])', txt):
         c = m.group(1)
-        if c not in CLAUSES and c not in REVISIONS and re.search(r'(조항|불변|금지|참조|지키|위반)', txt[max(0,m.start()-60):m.start()+60]):
+        if c not in CLAUSES and c not in REVISIONS and c not in SCREEN_TAGS and re.search(r'(조항|불변|금지|참조|지키|위반)', txt[max(0,m.start()-60):m.start()+60]):
             findings["② 조항 참조 무결"].append(f"`{c}`  ← {doc} {secs(txt, m.start())} — 문서 1에 없는 조항 번호")
 
 # (소유 중복은 검사가 아니라 반영 도구가 답한다 — 조회_대상.py 참조.
 #  "몇 문서에 나오나"는 신호가 아니다: anchor가 6문서에 나오는 것은 정상이다.)
 
 # ── 출력
-print(f"문서 간 정합 — 문서 {len(DOCS)}종 · 검사기={CLAUSE_DOC} · 조항·원칙 {len(CLAUSES)}건 · 수치 주장 {len(counts)}개")
+print(f"문서 간 정합 — 문서 {len(DOCS)}종 · 검사기={CLAUSE_DOC} · 조항·원칙 {len(CLAUSES)}건 · 화면 태그 {len(SCREEN_TAGS)}종(코드에서 읽음) · 수치 주장 {len(counts)}개")
 tot = 0
 for k in sorted(findings):
     print(f"\n[{k}]  {len(findings[k])}건")
