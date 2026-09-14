@@ -100,5 +100,22 @@
    "mirror": "03e9a48eb45a80d5",
    "body": "c1feb522a2f75544"
   }
+ },
+ {
+  "id": "C38 ↔ 문서6 §6.5 관문 입구 스탬프 (LLM은 고르고 시스템이 쓴다 · B62·B64)",
+  "mirror": {
+   "doc": "1_금지와불변.md",
+   "anchor": "| C38 |",
+   "kind": "row"
+  },
+  "body": {
+   "doc": "6_파서와구축모드.md",
+   "anchor": "**관문 입구에서 시스템이 아는 값을 시스템이 쓴다**",
+   "kind": "para"
+  },
+  "sealed": {
+   "mirror": "8b97fae6044da69d",
+   "body": "88a351ca0cd4eadf"
+  }
  }
 ]

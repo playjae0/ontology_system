@@ -2626,6 +2626,67 @@ show("①ⓑ 합치기는 앞에서부터 첫 비지 않은 값이다 (D가 비�
 # ①ⓑ **orphan 집합이 리스트를 펼친다** — 합쳐진 둘째 열은 쓴 열이다.
 show("①ⓑ 쓴 열 집합이 리스트를 펼친다 (합쳐진 열은 orphan이 아니다)",
      R.col_values({"x": ["D", "G"], "y": "A"}) == {"D", "G", "A"})
+
+# ── ⑤ C38 잠금 — 시스템 필드는 LLM 출력과 무관하다 (문서 1 C38 · 칸 1.5) ──────
+#
+# **LLM은 고르고, 시스템이 쓴다.** 초안이 무엇을 썼든 저장본의 시스템 필드는
+# **표본에서 독립적으로 재계산한 값**이다. 시스템 필드가 늘면 아래 표에 행을 더한다.
+_draft64 = _d64 / "c38_draft.py"
+_draft64.write_text(
+    "ADAPTER = {\n"
+    "    'doc_type': 'c38t', 'adapter_version': '9.9', 'payload_kind': 'table',\n"
+    "    'expects': {'header_row': 1, 'data_start_row': 2,\n"
+    "                'header_labels': ['대공정', '세부공정', '공정번호', 'Centre',\n"
+    "                                  '관리항목', '규격', 'Centre'],\n"
+    "                'columns': {'process': '대공정', 'center': ['Center', 'G'],\n"
+    "                            'item': '관리항목'}},\n"
+    "}\n\n\n"
+    "def extract(raw, struct_map_fn=None):\n"
+    "    return []\n", encoding="utf-8")
+_st64 = {"doc_type": "c38t", "adapter": str(_draft64.relative_to(ROOT)), "revision": 0}
+R.stamp_system_fields(_st64, [str(_csv64)])
+_after64 = R._load(ROOT / _st64["adapter"], "c38_after").ADAPTER
+_exp_after = _after64["expects"]
+
+
+def _recompute64():
+    """표본에서 **독립적으로** 다시 센다 — 저장본을 읽지 않는다."""
+    raw = reader.read(str(_csv64))
+    draft = R._load(_draft64, "c38_draft_ro").ADAPTER["expects"]
+    return {"header_labels": _PF64.header_labels(raw, draft["header_row"], draft),
+            "adapter_version": f"1.{_st64.get('revision', 0)}",
+            "columns": _PF64.resolve_columns(raw, draft)[0]}
+
+
+_re64 = _recompute64()
+show("⑤ C38 — 저장본의 시스템 필드가 표본 재계산값과 같다 (LLM 출력과 무관)",
+     _exp_after["header_labels"] == _re64["header_labels"]
+     and _after64["adapter_version"] == _re64["adapter_version"]
+     and _exp_after["columns"] == _re64["columns"],
+     f"판 {_after64['adapter_version']} · center {_exp_after['columns'].get('center')}")
+# **초안이 틀린 값을 써도 붉어지지 않는다 — 덮는 것이 성질이다.**
+_dr64 = R._load(_draft64, "c38_draft_chk").ADAPTER
+show("⑤ 초안의 틀린 값 셋이 저장본에 남지 않는다 (오타 라벨 · 9.9 · 라벨 표기)",
+     "Centre" in _dr64["expects"]["header_labels"]
+     and "Centre" not in _exp_after["header_labels"]
+     and _dr64["adapter_version"] == "9.9" and _after64["adapter_version"] == "1.0"
+     and _dr64["expects"]["columns"]["center"] == ["Center", "G"]
+     and _exp_after["columns"]["center"] == ["D", "G"])
+# **변이 — 스탬프를 끄면 붉어진다**(그리고 되돌린다). 스탬프가 없으면 관문이 읽는
+# 것은 초안 그대로이고, 그 값은 재계산값과 다르다 — 그것이 C38이 막는 상태다.
+_st64["adapter"] = str(_draft64.relative_to(ROOT))     # 작업 사본 이전으로 되돌린다
+shutil.rmtree(R.REVIEW / "c38t", ignore_errors=True)
+_keep64, R.stamp_system_fields = R.stamp_system_fields, lambda st, samples: None
+try:
+    R.stamp_system_fields(_st64, [str(_csv64)])
+    _off64 = R._load(ROOT / _st64["adapter"], "c38_off").ADAPTER
+finally:
+    R.stamp_system_fields = _keep64
+show("⑤ 변이 — 스탬프를 끄면 초안 값이 남아 붉어진다 (되돌리면 초록)",
+     _off64["adapter_version"] == "9.9"
+     and "Centre" in _off64["expects"]["header_labels"]
+     and _off64["expects"]["columns"]["center"] == ["Center", "G"]
+     and _recompute64()["adapter_version"] == "1.0")
 _sh64 = shutil.rmtree(_d64, ignore_errors=True)
 
 print("\n" + "=" * 62)
