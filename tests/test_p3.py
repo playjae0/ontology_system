@@ -962,7 +962,10 @@ try:
     R.cmd_generate("cpx_basic", "process", [str(RAW / "CP01.xlsx")], use_basic=True)
     show("② 제안 없는 표본에 --use-basic은 거부된다", False)
 except SystemExit as e:
-    show("② 제안 없는 표본에 --use-basic은 거부되고 사유를 말한다", "거부" in str(e) and "pptx" in str(e))
+    # **문면을 세지 않는다** — 잠글 성질은 「거부 + 사유(어느 표본) + 다음 줄」이다.
+    # 계열 이름을 박으면 계열이 늘 때(B58 ③이 격자 산문을 더했다) 이 줄이 깨진다.
+    show("② 제안 없는 표본에 --use-basic은 거부되고 사유를 말한다",
+         "거부" in str(e) and "CP01.xlsx" in str(e) and "--no-basic" in str(e))
 show("② 거부는 검수 자리를 만들지 않는다", not (ROOT / "review" / "cpx_basic").exists())
 # ② 수용 — PPT 표본: LLM 호출 0회로 생성 → 검수 → 확정
 _calls0 = llm.usage_total()["calls"]
@@ -2775,6 +2778,86 @@ show("②ⓑ 걸침 필드(target_layer)·@좌표필드가 있는 스키마가 �
      "(다른 층 카테고리를 오판하지 않는다)",
      not [c for c in _codes65 if c in ("G4C", "G4D", "G4E")], str(_codes65))
 shutil.rmtree(_d65, ignore_errors=True)
+
+# ── B65 ④⑤ 형태 판정은 사람에게 · 고정 어댑터는 재생성 대상이 아니다 ────────
+print("\n■ B65 ⑤ — 형태 판정이 안 서면 사람에게 묻는다 (C37 「그 외는 사람」)")
+
+_d66 = Path(_tf.mkdtemp(prefix="b65f_", dir=str(ROOT)))
+_amb66 = _d66 / "amb.csv"
+_rows66 = [["내용", "비고", "쪽"]]
+for _i in range(1, 5):
+    _rows66.append([f"{_i}. 장 제목 {_i}", "", ""])
+    for _j in range(1, 4):
+        _rows66.append([f"{_i}.{_j} 절 제목 {_j}", "", ""])
+        for _k in range(3):
+            _rows66.append([f"본문 문장 {_i}-{_j}-{_k} — 설명이 길게 이어지는 줄이다",
+                            "", ""])
+_amb66.write_text("\n".join(",".join(r) for r in _rows66) + "\n", encoding="utf-8")
+
+_j66 = _FORM.judge(reader.read(str(_amb66)))
+show("⑤ 표본이 자동 판정되지 않는다 (시험의 전제 — 찬성≥2·반대0 미충족)",
+     _j66["verdict"] is None and not _j66["auto"], _j66["why"][:50])
+
+
+def _gen66(*args, feed=""):
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
+                           "b65f", "process", str(_amb66), *args, "--allow-mock"],
+                          capture_output=True, text=True, cwd=str(ROOT), input=feed)
+
+
+reset("b65f")
+_r66 = _gen66(feed="prose\n")
+_st66 = json.loads((REVIEW / "b65f" / "state.json").read_text(encoding="utf-8"))
+# ⓑ **판정이 안 서면 draft 전에 사람 입력 또는 플래그가 있어야 한다.**
+show("⑤ⓑ 판정이 안 서면 화면이 신호·투표를 보이고 묻는다",
+     "형태 판정" in _r66.stdout and "자동 판정 불가" in _r66.stdout
+     and "[table/prose]" in _r66.stdout)
+show("⑤ⓑ prose 답이면 고정 어댑터로 가고 LLM 호출 0이다",
+     _st66.get("use_basic") is True and "호출 0회" in _r66.stdout,
+     f"use_basic={_st66.get('use_basic')}")
+show("⑤ⓑ 판정과 **누가 정했나**가 상태에 남는다 (form.verdict · form.by)",
+     (_st66.get("form") or {}).get("verdict") == "prose"
+     and (_st66.get("form") or {}).get("by") == "human",
+     str(_st66.get("form", {}).get("by")))
+# ⓑ **비대화형은 상태 거부**(B61 계약) — 조용히 LLM 생성으로 가지 않는다.
+reset("b65f")
+_r66n = _gen66(feed="")
+show("⑤ⓑ 비대화형은 상태 거부이고 다음 줄 둘을 준다 (조용히 생성으로 가지 않는다)",
+     _r66n.returncode != 0 and "--use-basic" in _r66n.stdout + _r66n.stderr
+     and "--no-basic" in _r66n.stdout + _r66n.stderr,
+     f"rc={_r66n.returncode}")
+# ⓑ **`--use-basic`은 verdict와 무관하게 prose다** — 사람이 플래그로 이긴다.
+reset("b65f")
+_r66b = _gen66("--use-basic")
+_st66b = json.loads((REVIEW / "b65f" / "state.json").read_text(encoding="utf-8"))
+show("⑤ⓑ --use-basic은 묻지 않고 고정 어댑터다 (판정과 무관)",
+     _st66b.get("use_basic") is True and "[table/prose]" not in _r66b.stdout)
+
+print("\n■ B65 ④ — 고정 어댑터 doc_type은 재생성 대상이 아니다")
+
+_rv66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "review",
+                        "b65f", "--instruct", "레벨을 2로", "--allow-mock"],
+                       capture_output=True, text=True, cwd=str(ROOT))
+_rr66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
+                        "b65f", "process", str(_amb66), "--revise", "--allow-mock"],
+                       capture_output=True, text=True, cwd=str(ROOT))
+_both66 = _rv66.stdout + _rv66.stderr + _rr66.stdout + _rr66.stderr
+show("④ⓑ instruct·revise 둘 다 거부이고 다음 줄 셋을 준다",
+     "재생성 대상이 아니다" in _rv66.stdout + _rv66.stderr
+     and "재생성 대상이 아니다" in _rr66.stdout + _rr66.stderr
+     and all(k in _both66 for k in ("의 상수", "schemas/b65f.json", "--as <새이름>")))
+# **LLM 0** — 거부이므로 생성 세션이 돌지 않는다.
+show("④ⓑ 거부 경로에 LLM 호출이 없다 (draft를 부르지 않는다)",
+     "MOCK ⑤구축 모드 생성" not in _both66 and "초안 수령" not in _both66)
+# **status·confirm·플래그 없는 review는 그대로다** — 막는 것은 재생성뿐이다.
+_sv66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "status",
+                        "b65f", "--allow-mock"], capture_output=True, text=True,
+                       cwd=str(ROOT))
+show("④ⓑ status는 그대로 돈다 (막는 것은 재생성뿐)",
+     "재생성 대상이 아니다" not in _sv66.stdout + _sv66.stderr
+     and _sv66.returncode == 0, f"rc={_sv66.returncode}")
+reset("b65f")
+shutil.rmtree(_d66, ignore_errors=True)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

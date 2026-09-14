@@ -543,6 +543,116 @@ def _all_prose(samples):
     return bool(samples) and payload_kind_of_samples(samples) == "prose"
 
 
+def refuse_regenerate(doc_type, st, what):
+    """고정 어댑터 doc_type은 **재생성 대상이 아니다** — 상태 거부 (B65 ④ · §6.5).
+
+    `generate`가 산문 포맷을 고정 어댑터로 보낸 뒤(B59 ③), 같은 doc_type에
+    `review --instruct`나 `generate --revise`를 치면 구판은 `use_basic`을 보지 않고
+    `draft()`로 **LLM 재생성**에 들어갔다 — 명세가 「prose는 생성 세션이 없다」고 한
+    자리에서 고정 어댑터가 LLM 산출로 바뀌어치기된다.
+
+    막되 **다음 줄 셋**을 준다(B61 계약): 분할·판독은 어댑터 상수, 매칭은 스키마,
+    LLM 생성으로 가려면 새 이름이다.
+    """
+    mod = Path(str(st.get("adapter") or "")).name or "basic_*"
+    prop = (st.get("basic_adapter_proposal") or {}).get("adapter") or ""
+    base = Path(prop).name or mod
+    raise SystemExit(                                                     # [상태]
+        f"[{what}] 재생성 대상이 아니다 — '{doc_type}'은 고정 어댑터"
+        f"({base})로 등록됐다 (§6.5 — prose는 생성 세션이 없다)\n"
+        f"  ▶ 다음 줄 — 셋 중 하나:\n"
+        f"     (분할·판독을 바꾼다)   {prop or 'parser/adapters/basic_*.py'} 의 상수 "
+        f"— 구조도 06 손잡이 2.6\n"
+        f"     (매칭 스키마를 바꾼다) schemas/{doc_type}.json 을 고치고  "
+        f"python -m cli.register status {doc_type}\n"
+        f"     (LLM 생성으로 바꾼다) python -m cli.register generate {doc_type} "
+        f"{st.get('layer') or '<층>'} <표본...> --as <새이름> --no-basic")
+
+
+def _refuse_basic(doc_type, layer, samples):
+    """고정 어댑터 제안이 서지 않는다 — **`--use-basic`과 사람의 답이 같은 말이다**.
+
+    문면이 한 자리인 이유(B65 ⑤): 플래그로 온 길과 물어서 온 길이 **다른 문면으로
+    거부하면** 사람은 두 가지가 다른 일이라고 읽는다. 답이 곧 플래그다.
+    """
+    raise SystemExit(                                                     # [상태]
+        f"[생성] 고정 어댑터 거부 — 기본 어댑터 제안이 서지 않는 표본이다: "
+        f"분할 자명 계열이 아니다 {[Path(s).name for s in samples]} (§6.4-5)\n"
+        f"  ▶ 다음 줄 — LLM 생성 경로로 등록한다:\n"
+        f"     python -m cli.register generate {doc_type} {layer} "
+        f"{' '.join(str(x) for x in samples)} --no-basic")
+
+
+def form_block(samples):
+    """격자 표본의 **형태 판정 화면** — 신호·투표를 그대로 보인다 (B65 ⑤ · C37).
+
+    자동으로 섰든 아니든 찍는다: 사람이 「표로 판정됐지만 내가 보기엔 산문이다」를
+    알아야 `--use-basic`으로 이길 수 있고, 지금도 이길 수 있었으나 **보이지 않았다.**
+    돌려주는 것은 `(화면 줄 목록, 판정 dict 목록)`이다 — 판정은 `form.judge` 하나가
+    낸다(계열의 출처는 하나 — 문서 1 C37).
+    """
+    lines, judged = [], []
+    for smp in samples:
+        if Path(str(smp)).suffix.lower() not in reader.GRID_EXT:
+            continue
+        try:
+            res = form.judge(reader.read(str(smp)))
+        except Exception as e:
+            res = {"verdict": None, "auto": False, "signals": {}, "votes": {},
+                   "why": f"형태 판정 불가 — {type(e).__name__}: {e}"}
+        judged.append(res)
+        lines.append(f"■ 형태 판정 — {Path(str(smp)).name}")
+        if res.get("signals"):
+            lines.append("  신호: " + " · ".join(
+                f"{k}={res['signals'][k]}[{(res.get('votes') or {}).get(k, '?')[0]}]"
+                for k in form.SIGNALS if k in res["signals"]))
+        lines.append(f"  투표: {res['why']}"
+                     + ("" if res.get("auto") else "  →  자동 판정 불가 (C37)"))
+    return lines, judged
+
+
+def ask_form(doc_type, layer, samples, judged):
+    """판정이 안 서면 **사람에게 묻는다** — C37 「그 외는 사람」의 자리 (B65 ⑤).
+
+    구판은 `verdict`가 `None`이면 아무것도 묻지 않고 **LLM 생성으로 갔다**(실측:
+    xlsx 산문이 생성에 들어가 「공정 좌표가 무엇인가」를 되물었다). 판정이 안 선
+    것은 **모른다는 뜻**이지 table이라는 뜻이 아니다.
+
+    **새 플래그를 만들지 않는다** — 답은 이미 있는 두 플래그와 같은 말이다:
+    `--use-basic` = prose · `--no-basic` = table. 비대화형은 상태 거부(B61 계약).
+    돌려주는 것은 `"prose"` · `"table"`이다.
+    """
+    print("  이 문서는 표(table)인가 산문(prose)인가?  "
+          "table = LLM 생성 · prose = 고정 어댑터(LLM 0)")
+    try:
+        ans = input("  [table/prose] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ans = ""
+    if ans.startswith("p"):
+        return "prose"
+    if ans.startswith("t"):
+        return "table"
+    raise SystemExit(                                                     # [상태]
+        f"[생성] 형태 판정이 자동으로 서지 않았고 답을 받지 못했다 "
+        f"(C37 — 찬성 ≥2 · 반대 0이 아니면 사람이 정한다)\n"
+        f"  ▶ 다음 줄 — 둘 중 하나:\n"
+        f"     (산문이다 — 고정 어댑터 · LLM 0)  python -m cli.register generate "
+        f"{doc_type} {layer} {' '.join(str(x) for x in samples)} --use-basic\n"
+        f"     (표다 — LLM 생성)                python -m cli.register generate "
+        f"{doc_type} {layer} {' '.join(str(x) for x in samples)} --no-basic")
+
+
+def save_form(doc_type, judged, by):
+    """판정과 **누가 정했나**를 상태에 남긴다 (B65 ⑤) — 뷰·리허설이 읽는 그 값이다."""
+    if not judged:
+        return
+    st = _state(doc_type) or {}
+    st["form"] = {"verdict": judged[-1].get("verdict"), "by": by,
+                  "why": judged[-1].get("why"),
+                  "signals": judged[-1].get("signals")}
+    _save_state(doc_type, {**st, "doc_type": doc_type})
+
+
 def basic_adapter_proposal(samples):
     """분할이 **자명한 계열**이면 기본 어댑터를 제안한다 (파서_명세 §5 규약 5 · C13).
 
@@ -932,6 +1042,9 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         doc_type = as_name
     if revise:
         # **새 판** — 이름은 그대로다. 확정이 정본을 교체하고 revision을 올린다.
+        _st_prev = _state(doc_type) or {}
+        if _st_prev.get("use_basic"):
+            refuse_regenerate(doc_type, _st_prev, "생성")    # B65 ④
         if not registry.lookup(doc_type):
             raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "            # [상태]
                              f"'{doc_type}'은 등록돼 있지 않다\n"
@@ -1044,18 +1157,39 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # «기본 어댑터로 등록됐다»고 믿는다. 거부는 사유를 들고 멈춘다.
         proposal = basic_adapter_proposal(samples)
         if proposal is None:
-            raise SystemExit(                                             # [상태]
-                f"[생성] --use-basic 거부 — 기본 어댑터 제안이 서지 않는 표본이다: "
-                f"분할 자명 계열(pptx)이 아니다 {[Path(s).name for s in samples]}. "
-                f"(§6.4-5)\n"
-                f"  ▶ 다음 줄 — LLM 생성 경로로 등록한다:\n"
-                f"     python -m cli.register generate {doc_type} {layer} "
-                f"{' '.join(str(x) for x in samples)}")
+            _refuse_basic(doc_type, layer, samples)
         return _use_basic(doc_type, layer, samples, hint, proposal, revise)
 
     # **산문 포맷이면 고정 어댑터를 먼저 권한다**(B59 ③) — 그 길로 안 들어가게 하는
     # 것이 먼저다. 실측: 사내가 PPT 하나 넣으려고 LLM 생성으로 갔고, 관문 FAIL →
     # 막다른 길이었다. 고정 어댑터는 생성 LLM 0회이고 관문을 그냥 지난다.
+    # **형태 판정을 화면에 올린다**(B65 ⑤ · C37) — 자동으로 섰든 아니든 신호·투표를
+    # 보인다. 안 섰으면 **사람에게 묻는다**: 구판은 아무것도 묻지 않고 LLM 생성으로
+    # 갔고(실측: xlsx 산문이 생성에 들어가 「공정 좌표가 무엇인가」를 되물었다),
+    # 판정이 안 선 것은 **모른다는 뜻**이지 table이라는 뜻이 아니다.
+    _flines, _judged = form_block(samples)
+    for _ln in _flines:
+        print(_ln)
+    _by = "auto"
+    if _judged and all(j.get("verdict") is None for j in _judged) \
+            and not use_basic and not no_basic:
+        _ans = ask_form(doc_type, layer, samples, _judged)
+        _by = "human"
+        for _j in _judged:
+            _j["verdict"] = _ans
+        if _ans == "prose":
+            # **답이 곧 `--use-basic`이다** — 제안이 서지 않으면 그 플래그와 **같은
+            # 거부**를 낸다(문면 한 자리). 조용히 LLM 생성으로 흘리지 않는다: 사람은
+            # 「산문이라고 답했다」고 믿는데 LLM이 도는 것이 이 항목이 없애려는 상태다.
+            _prop = basic_adapter_proposal(samples)
+            save_form(doc_type, _judged, _by)
+            if not _prop:
+                _refuse_basic(doc_type, layer, samples)
+            return _use_basic(doc_type, layer, samples, hint, _prop, revise)
+        else:
+            no_basic = True          # 사람이 표라고 정했다 — 권유를 다시 하지 않는다
+    save_form(doc_type, _judged, _by)
+
     if not no_basic:
         _prop = basic_adapter_proposal(samples)
         if _prop and _all_prose(samples):
@@ -1301,6 +1435,11 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
           "revision": 0, "instructions": [],
           "revise_of": doc_type if revise else None,   # **새 판인가**(H27)
           "basic_adapter_proposal": proposal, "use_basic": True}
+    # **형태 판정 기록을 잃지 않는다**(B65 ⑤) — 이 자리가 상태를 새로 쓰므로,
+    # 앞에서 남긴 `form`(판정 · 누가 정했나)을 이어 싣는다. 뷰·리허설이 읽는 값이다.
+    _prev_form = (_state(doc_type) or {}).get("form")
+    if _prev_form:
+        st["form"] = _prev_form
     _save_state(doc_type, st)
     return _finish_generate(doc_type, st, samples, pkg)
 
@@ -2352,6 +2491,10 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
 
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
 
+    if instruct and st.get("use_basic"):
+        # **고정 어댑터는 재생성하지 않는다**(B65 ④) — 여기서 막지 않으면 `draft`가
+        # LLM으로 가고, 사람은 「지시를 줬다」고 믿는데 산출이 통째로 바뀐다.
+        refuse_regenerate(doc_type, st, "뷰 확인")
     if instruct:                                   # 재생성 루프 1회
         st["revision"] += 1
         st.setdefault("instructions", []).append(

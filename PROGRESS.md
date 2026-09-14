@@ -4982,3 +4982,54 @@ ADAPTER["expects"]["columns"] = {'process': 'A', 'sub_process': 'B', 'process_no
 
 - 회귀 **1114 → 1123/1123** (+9, 삭제 0): `test_p3` 362 → 371.
 - 검사 4종 전부 통과(미러 7쌍 포함).
+
+## B65 ⑤④ — 형태 판정이 안 서면 사람에게 묻는다 · 고정 어댑터는 재생성 대상이 아니다 · 2026-09-15
+
+칸 1.1 · 2.3 · 1.6 · 1.8. **LLM 0.**
+
+### ⑤ⓐ 판정이 안 서는 격자 표본 (화면 그대로)
+
+```
+■ 형태 판정 — amb5.csv
+  신호: column_count=3[a] · min_unique_ratio=1.0[p] · max_text_share=0.998[p] · indent_share=0.0[t] · numbered_rows=16[p]
+  투표: 자동 조건(찬성 ≥2 · 반대 0) 미충족 — table 1 · prose 3 · 기권 1. **사람이 정한다**  →  자동 판정 불가 (C37)
+  이 문서는 표(table)인가 산문(prose)인가?  table = LLM 생성 · prose = 고정 어댑터(LLM 0)
+  [table/prose] prose
+■ ① 생성 — amb65 (층 process · 표본 1부) — **기본 어댑터 경로**
+   LLM 사용량 — 이 명령에서 호출 0회 (기본 어댑터 — 생성 세션 없음 · 프로세스 누계 0회)
+   기계 관문(하네스): PASS — 37 PASS / 0 FAIL
+```
+
+`state.json`에 남는 것: `form = {verdict: prose, by: human, why: …, signals: {…}}`.
+비대화형이면 **상태 거부**(B61 계약)이고 다음 줄 둘(`--use-basic` / `--no-basic`)을 준다 —
+조용히 LLM 생성으로 가지 않는다. 자동으로 섰을 때도 신호·투표는 찍는다(사람이
+`--use-basic`으로 이길 수 있다는 것이 화면에 보여야 한다).
+
+### ④ⓐ 고정 어댑터 doc_type에 `--instruct` (화면 그대로 · rc=1 · LLM 0)
+
+```
+[뷰 확인] 재생성 대상이 아니다 — 'amb65'은 고정 어댑터(basic_prose_xlsx.py)로 등록됐다 (§6.5 — prose는 생성 세션이 없다)
+  ▶ 다음 줄 — 셋 중 하나:
+     (분할·판독을 바꾼다)   parser/adapters/basic_prose_xlsx.py 의 상수 — 구조도 06 손잡이 2.6
+     (매칭 스키마를 바꾼다) schemas/amb65.json 을 고치고  python -m cli.register status amb65
+     (LLM 생성으로 바꾼다) python -m cli.register generate amb65 process <표본...> --as <새이름> --no-basic
+```
+
+`generate --revise`도 같은 블록이다(머리만 `[생성]`). **막는 것은 재생성뿐** —
+`status`·`confirm`·플래그 없는 `review`는 그대로 돈다.
+
+### 회차 중 잡은 것
+
+1. **답이 곧 플래그다.** `prose` 답 뒤에 제안이 서지 않으면 조용히 LLM 생성으로
+   흐르던 첫 판을 고쳤다 — `--use-basic`과 **같은 거부**를 낸다(문면 한 자리).
+   두 길이 다른 문면으로 거부하면 사람은 두 가지 일이라고 읽는다.
+2. **`_use_basic`이 상태를 새로 써서 `form` 기록이 사라졌다** — 앞서 남긴 값을
+   읽어 이어 싣게 했다.
+3. B58 ③ 이후 「제안이 서지 않는다」의 사유가 pptx 계열만이 아니게 됐는데, 어서션
+   하나가 `"pptx"`라는 **문면**을 세고 있었다 — 성질(거부 + 어느 표본 + 다음 줄)로
+   재조준했다.
+
+### 결과
+
+- 회귀 **1123 → 1132/1132** (+9, 삭제 0): `test_p3` 371 → 380.
+- 검사 4종 전부 통과. 상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 · 계약 위반 0**.
