@@ -184,7 +184,7 @@
                                 "string",
                                 "null"
                               ],
-                              "_note": "live일 때 prompts/struct_map.md의 version (재현 조건)"
+                              "_note": "live일 때 prompts/2.4_struct_map.md의 version (재현 조건)"
                             },
                             "지도_없음": {
                               "type": [

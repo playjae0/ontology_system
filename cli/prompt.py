@@ -5,7 +5,7 @@
 바뀌는 이유가 다르다 — 앞은 명세 §6.5의 절차가, 뒤는 템플릿 판과 주입 자리가 바꾼다.
 한 파일에 있으면 템플릿 판을 올릴 때 확정 로직 옆을 지나가야 한다.
 
-**규칙은 그대로다**: 판 선택은 `kit/`의 최신 판 · 킷 유지 주석은 조립 시 제거 ·
+**규칙은 그대로다**: 지시문은 `prompts/1.4_generate.md` 하나 · 킷 유지 주석은 조립 시 제거 ·
 스켈레톤은 모듈 docstring을 위치로 떼고 본문만 · 참조 어댑터는 reader 형식으로 1종.
 """
 from __future__ import annotations
@@ -142,19 +142,16 @@ def _reference_adapter(samples):
     return name, (p.read_text(encoding="utf-8") if p.exists() else "")
 
 
-def _newest_template():
-    """`kit/`의 생성 프롬프트 템플릿 중 **가장 높은 판**을 고른다.
+def generate_template():
+    """생성 지시문 **본문** — 자리는 `prompts/1.4_generate.md` 하나다 (B63 ① · 칸 1.4).
 
-    파일명을 코드에 박으면 판이 오를 때마다 코드가 따라 움직여야 하고, 옛 판을
-    보존하는 킷 규칙(판 계보)과 겹쳐 **어느 판이 실제로 쓰이는지가 파일 목록으로는
-    안 보인다.** 판 번호는 자산이 스스로 말하게 한다.
+    구판은 `kit/생성프롬프트_템플릿_v*.md`를 glob으로 훑어 **가장 높은 판**을 골랐다.
+    판 계보를 파일로 보존하는 규칙과 겹쳐 **어느 판이 실제로 쓰이는지가 파일 목록으로는
+    안 보였고**, 지시문 9종 중 이 하나만 다른 폴더·다른 로더를 탔다. 이제 판 계보는
+    git 이력이 갖고(`git show pre-b63-structure:kit/`), 현재 판은 파일 하나이며 판
+    번호는 그 머리말 `version:`이 말한다 — 자산이 스스로 말하는 것은 그대로다.
     """
-    cands = sorted(KIT.glob("생성프롬프트_템플릿_v*.md"),
-                   key=lambda f: [int(x) for x in
-                                  re.findall(r"\d+", f.stem.split("_v")[-1])])
-    if not cands:
-        raise SystemExit(f"[생성] 프롬프트 템플릿이 없다: {KIT}/생성프롬프트_템플릿_v*.md")
-    return cands[-1]
+    return llm.prompt("generate")
 
 
 # 재생성 구획의 자리 — 템플릿이 소유하는 문장은 전부 파일에 있고 코드는 목록만 채운다.
@@ -309,14 +306,14 @@ def _vocab_excerpt(pkg):
     """생성 템플릿에서 **판정 어휘 세 구획**을 발췌한다 (B32).
 
     **두 지시문에 같은 어휘를 따로 적지 않는다** — 정본은 생성 템플릿 하나이고,
-    문답 지시문(`prompts/interview.md`)에는 *"판정 어휘가 뒤에 붙어 온다"*는 전제만
+    문답 지시문(`prompts/1.3_interview.md`)에는 *"판정 어휘가 뒤에 붙어 온다"*는 전제만
     있다. 따로 적으면 한쪽이 낡고, 그때 문답이 묻는 어휘와 생성이 쓰는 어휘가
     갈린다 — 이 프로젝트가 세 번 실측한 미러 실패의 구조다.
 
     **발췌는 구획 제목 앵커로** 한다: 렌더 뒤라 층 이름이 이미 치환돼 있어
     (`## [층 어휘 — quality 층]`) 접두 일치가 유일하게 안전한 판정이다.
     """
-    doc = _render_template(_newest_template().read_text(encoding="utf-8"), pkg)
+    doc = _render_template(generate_template(), pkg)
     lines = doc.split("\n")
     starts = [i for i, ln in enumerate(lines)
               if any(ln.startswith(s) for s in VOCAB_SECTIONS)]

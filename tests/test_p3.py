@@ -220,7 +220,7 @@ show("공용 블록 유래 필드는 출처를 밝히고 뜬다",
              if x["field"] in {"process_group", "process_ref"}))
 
 # ---- 봉인 정답표 대조 ----
-ANSWER = {  # kit/정답표_ipqc_봉인.md 「필드 role 배정 (16열)」
+ANSWER = {  # tests/fixtures/정답표_ipqc_봉인.md 「필드 role 배정 (16열)」
     "대공정": "anchor", "공정No": "meta", "공정명": "anchor",
     "극성": None, "검사설비": "entity", "검사항목": "entity",
     "규격": "attribute", "측정방법": "attribute", "판정기준": "attribute",
@@ -514,7 +514,7 @@ if _pkg29 is None:
     _pkg29 = json.loads(
         (ROOT / "review/b29probe/input_package.json").read_text(encoding="utf-8"))
 _sent = R._render_template(
-    R._newest_template().read_text(encoding="utf-8"), _pkg29)
+    R.generate_template(), _pkg29)
 
 show("ⓐ 스켈레톤 **본문**이 실렸다 (경로 문자열이 아니다)",
      "from parser import normalizer" in _sent
@@ -535,7 +535,7 @@ show("킷 유지 주석 0 — 전시물 머리의 출처 표기는 킷 주석이
      not any(m in _sent for m in R.KIT_NOTE) and "# 원본:" in _sent)
 show("조립은 결정적이다 (같은 패키지 → 같은 전송분)",
      _sent == R._render_template(
-         R._newest_template().read_text(encoding="utf-8"), _pkg29))
+         R.generate_template(), _pkg29))
 show("시스템 키는 5 그대로다 (값의 형태만 바뀌었다)", len(_pkg29["system"]) == 5,
      str(list(_pkg29["system"])))
 
@@ -569,8 +569,8 @@ show("① interview.md는 어휘를 **가리키기만** 한다 (정의는 생성
 _pkg_off = dict(_pkg29)
 _pkg_off["human"] = {**_pkg29["human"],
                      "hint": {"text": "", "no_fewshot": True}}
-_off = R._render_template(R._newest_template().read_text(encoding="utf-8"), _pkg_off)
-_on = R._render_template(R._newest_template().read_text(encoding="utf-8"), _pkg29)
+_off = R._render_template(R.generate_template(), _pkg_off)
+_on = R._render_template(R.generate_template(), _pkg29)
 show("② --no-fewshot이면 ADAPTER 선언이 1개다 (스켈레톤뿐)",
      _off.count("ADAPTER = {") == 1 and _on.count("ADAPTER = {") == 2,
      f"끔 {_off.count('ADAPTER = {')} / 켬 {_on.count('ADAPTER = {')}")
@@ -644,7 +644,7 @@ show("② 임계는 한 곳에 모여 있다 (가결정 — 실측 후 조정)",
      isinstance(_PF.SPARSE_EMPTY_RATIO, float) and 0 < _PF.SPARSE_EMPTY_RATIO < 1)
 
 # ③ 템플릿 v0.9 — 근거 3원천·깔때기가 지시문에 실린다
-_sent39 = R._render_template(R._newest_template().read_text(encoding="utf-8"), _pkg29)
+_sent39 = R._render_template(R.generate_template(), _pkg29)
 for _k, _lbl in (("근거는 셋뿐이다", "근거 3원천"),
                  ("기계 제안은 재료다", "제안의 지위"),
                  ("확신 경계선", "경계선"),
@@ -1145,10 +1145,11 @@ show("① 생성 스키마가 unmappable을 required로 요구한다 (strict —
      "unmappable" in R.GENERATE_SCHEMA["required"]
      and R.GENERATE_SCHEMA["properties"]["unmappable"]["items"]["properties"]["kind"]
      ["enum"] == ["excluded", "undecided"])
-show("① 템플릿 v1.0이 스키마에 싣도록 지시한다 (산출물 3만 적던 것을 고쳤다)",
+# **판 번호를 박지 않는다**(B63 ① — 지시문은 이제 한 판이다). 잠글 성질은 그대로다:
+# 「쓰지 않기로 한 열」을 스키마에 싣도록 지시문이 말한다.
+show("① 생성 지시문이 UNMAPPABLE을 스키마에 싣도록 지시한다 (산출물 3만 적던 것을 고쳤다)",
      (lambda t: "쓰지 않기로 한 열" in t and '"kind": "excluded"' in t
-      and "스키마·출력에는 넣지 않는다" not in t)(
-         (ROOT / "kit/생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8")))
+      and "스키마·출력에는 넣지 않는다" not in t)(R.generate_template()))
 shutil.rmtree(_DEMO, ignore_errors=True)
 
 # ============================================================ B50 생성 안의 관문
@@ -1511,7 +1512,7 @@ shutil.rmtree(_b55_dir, ignore_errors=True)
 # 되돌리면 통과한다. 그래서 **템플릿에서 그 문장만 지운 사본**으로 렌더해
 # ①문장이 사라지고 ②주입된 지시는 그대로인지를 본다(둘째가 없으면 「렌더가 깨진
 # 것」과 구분되지 않는다).
-_b55_tmpl = R._newest_template().read_text(encoding="utf-8")
+_b55_tmpl = R.generate_template()
 _b55_pkgmin = {"human": {"doc_type": "t", "layer": "process", "samples": ["s"],
                          "hint": ""},
                "system": {"reader_head": [], "skeleton_closed_list": {},
@@ -1535,18 +1536,15 @@ show("①-후속-2 지시가 없으면 구획째 빠진다 (빈 칸을 남기지
      R._render_template(_b55_tmpl, _b55_pkgmin, regeneration=[]))
 show("①-후속-2 치환 누락 0 — 지시 자리가 늘어도 `{{` 잔존 0",
      "{{" not in _b55_full)
-# 판 계보는 킷 규칙이다 — 옛 판을 고쳐 쓰지 않는다.
-# **판 번호를 박지 않는다** — 박으면 판이 오를 때마다 이 줄이 깨져, 어서션이
-# 템플릿 개정을 막는 자리가 된다(관문 판정 수에서 같은 병을 이미 겪었다).
-# 잠글 성질은 **「옛 판을 고치지 않고 새 판을 세운다」** 하나다.
+# **판 계보의 자리가 바뀌었다**(B63 ① — 파일 12개 → git 이력). 여기서 잠그는 성질도
+# 뒤집힌다: 「옛 판을 남긴다」가 아니라 **「쓰이는 판이 하나이고 그 자리가 보인다」**.
+# 판 번호는 여전히 박지 않는다 — 박으면 판이 오를 때마다 이 줄이 깨진다.
 _tmpls = sorted(R.KIT.glob("생성프롬프트_템플릿_v*.md"))
-show("①-후속-2 옛 판을 고치지 않고 새 판을 세운다 (판 계보 보존)",
-     len(_tmpls) >= 2
-     and R._newest_template() != (R.KIT / "생성프롬프트_템플릿_v1.0.md")
-     and "{{재생성_지시}}" in R._newest_template().read_text(encoding="utf-8")
-     and "{{재생성_지시}}" not in
-     (R.KIT / "생성프롬프트_템플릿_v1.0.md").read_text(encoding="utf-8"),
-     f"현행 {R._newest_template().name} · 계보 {len(_tmpls)}판")
+show("①-후속-2 생성 지시문은 한 자리다 (킷 glob 폐지 · 이름으로 집는다)",
+     not _tmpls
+     and llm.prompt_path("generate").endswith("/1.4_generate.md")
+     and "{{재생성_지시}}" in R.generate_template(),
+     f"kit 템플릿 {len(_tmpls)}개 · {Path(llm.prompt_path('generate')).name}")
 
 # ── B55 ② 문답은 누적된다 — 재현 조건의 그릇은 `human.hint`다 (B36 · §6.5) ──
 print("\n■ B55 ② — 문답 묶음이 쌓이고 표본이 바뀌면 stale로 남는다")
@@ -2292,11 +2290,16 @@ _dh = [d for b in R._hint_batches(_pk62h["human"]["hint"]) for d in b["decisions
 show("② 문답 없이 --hint만 주면 힌트 문장이 확정 사항 한 항목이다 (자리는 항상 있다)",
      len(_dh) == 1 and _dh[0]["decision"] == "3~7행 병합은 위 값 채움"
      and "[확정 사항" in (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8"))
-# **LLM 지점이 늘지 않는다** — 요약은 interview와 같은 자리(point="generate")다.
+# **LLM 지점이 늘지 않는다** — 요약은 문답 라운드와 같은 자리다. B63 ②가 호출 태그를
+# `interview`로 갈랐지만 **지점은 그대로 ⑤** 하나다(문서 7 §7.6-B-2의 닫힌 9종).
 _IVSRC = (ROOT / "cli" / "interview.py").read_text(encoding="utf-8")
-show("② 요약은 새 LLM 지점이 아니다 (interview와 같은 point · DECISIONS_SCHEMA strict)",
-     'point="generate"' in _IVSRC.split("def _summarize")[1].split("\ndef ")[0]
-     and set(_IV.DECISIONS_SCHEMA["required"]) == set(_IV.DECISIONS_SCHEMA["properties"]))
+_pt_of = lambda fn: set(_re.findall(
+    r'point="([a-z_]+)"', _IVSRC.split(f"def {fn}")[1].split("\ndef ")[0]))
+show("② 요약은 새 LLM 지점이 아니다 (문답 라운드와 같은 point · 지점은 ⑤ 하나)",
+     _pt_of("_summarize") == _pt_of("_interview_round") != set()
+     and llm.point_label("interview") == llm.POINTS["generate"]
+     and set(_IV.DECISIONS_SCHEMA["required"]) == set(_IV.DECISIONS_SCHEMA["properties"]),
+     f"{sorted(_pt_of('_summarize'))} → {llm.point_label('interview')}")
 # **수정 흐름** — «수정 2»면 그 항목만 바뀌고 나머지는 그대로다(단위 시험 · _ask 패치).
 _hist62 = [{"round": 1, "understanding": "u1",
             "questions": [{"q": "헤더 행", "options": ["1행", "2행"]}],
@@ -2493,7 +2496,7 @@ show("②ⓒ 렌더러가 rounds를 모른다 (cli/prompt.py에 그 문자열 0�
 # ⓐ **라운드가 30개 늘어도 보내는 크기가 같다** — 전문이 입력이 아니기 때문이다.
 def _sent64():
     _raw = (REVIEW / "b64" / "input_package.json").read_text(encoding="utf-8")
-    _sys = _PR64._render_template(_PR64._newest_template().read_text(encoding="utf-8"),
+    _sys = _PR64._render_template(_PR64.generate_template(),
                                   json.loads(_raw), regeneration=[])
     return len(_sys.encode("utf-8")), len(_raw.encode("utf-8"))
 

@@ -177,6 +177,53 @@ show("변이 — ⑦ 주입을 빼면 실호출 모드에서 붉는다 (조용�
      _mut.startswith("NotConfigured"), _mut)
 show("변이 — 되돌리면 초록이다 (시험 자체가 늘 붉는 것이 아니다)", _back == "통과", _back)
 
+# ============================================================ B63 ② 대장 잠금
+print("\n■ B63 ② — 코드와 칸 대장이 어긋나면 빨간불 (00_칸_대장.md이 정본)")
+
+import re                                                        # noqa: E402
+
+_LEDGER = ROOT / "docs" / "구조도" / "00_칸_대장.md"
+_led = _LEDGER.read_text(encoding="utf-8")
+
+
+def _ledger_points():
+    """대장의 L칸 행에서 `point \`…\`` 를 모은다 — **대장은 파일로 읽는다.**
+
+    문면을 코드에 복사해 두면 잠금이 스스로를 잠그는 꼴이 된다 — 대장을 고쳐도
+    사본이 그대로라 초록이고, 어긋남을 잡으라고 세운 장치가 어긋남을 감춘다.
+    """
+    out = set()
+    for ln in _led.splitlines():
+        if not ln.startswith("|") or "| L |" not in ln:
+            continue
+        i = ln.find("point ")
+        if i >= 0:
+            out |= set(re.findall(r"`([a-z_]+)`", ln[i:]))
+    return out
+
+
+def _code_points():
+    """코드가 실제로 붙이는 호출 태그 — `chat`은 게이트웨이 기본값이라 칸이 아니다(0.4)."""
+    return {m for d in ("cli", "core", "parser")
+            for f in sorted((ROOT / d).glob("*.py"))
+            for m in re.findall(r'point="([a-z_]+)"',
+                                f.read_text(encoding="utf-8"))} - {"chat"}
+
+
+_cp, _lp = _code_points(), _ledger_points()
+# **누락 방지의 방향**: 코드에 point가 생겼는데 대장에 없으면 빨간불이다. 반대로
+# 대장에만 있는 칸은 C·H·G일 수 있으나, L칸의 point는 코드에 있어야 칸이 산다.
+show("②L칸 == 호출 지점 — 코드의 point 집합이 대장 L칸과 같다",
+     _cp == _lp,
+     f"코드에만 {sorted(_cp - _lp)} · 대장에만 {sorted(_lp - _cp)}" if _cp != _lp
+     else f"{len(_cp)}종")
+_lf = set(re.findall(r"`prompts/([^`]+\.md)`", _led))
+_af = {f.name for f in (ROOT / "prompts").glob("*.md")}
+show("②지시문 == 파일 — 대장이 적은 prompts/ 집합이 실물과 같다",
+     _lf == _af,
+     f"대장에만 {sorted(_lf - _af)} · 실물에만 {sorted(_af - _lf)}" if _lf != _af
+     else f"{len(_af)}개")
+
 hooks = [f"{p.relative_to(ROOT)}:{i}"
          for d in ("core", "cli", "parser")
          for p in sorted((ROOT / d).glob("*.py"))
