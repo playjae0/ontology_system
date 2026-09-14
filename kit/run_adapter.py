@@ -105,6 +105,14 @@ def show(label, ok, detail=""):
     return bool(ok)
 
 
+# **공개 API는 모듈이 정본이다**(B65 ①) — 목록을 여기 베끼면 normalizer가 자랄 때
+# 관문이 옛 목록으로 판정하고, 그 거짓 검출을 지우려 다시 베끼게 된다.
+from parser import normalizer as normalizer_mod            # noqa: E402
+
+NORMALIZER_API = tuple(x for x in dir(normalizer_mod) if not x.startswith("_")
+                       and callable(getattr(normalizer_mod, x)))
+
+
 # ---------------------------------------------------------------- ① 로드
 def load_adapter(path):
     src = open(path, encoding="utf-8").read()
@@ -153,6 +161,31 @@ def load_adapter(path):
     show("G14  규약 10 — table 계열은 parser.normalizer를 **부른다** (prose는 의무 없음)",
          _kind != "table" or bool(calls),
          f"payload_kind={_kind} · 호출 {calls or '0건'}")
+
+    # **어휘가 닫힌 자리는 실행 전에 대조한다**(B65 ① · C38의 결). LLM이 없는 함수를
+    # 불러도 여기까지는 아무도 모르고, ③단(G31)에 가서야 `AttributeError`로 터진다 —
+    # 그 문면은 「무엇이 있나」를 말하지 못해 자동 수정이 안 되고 문답으로 간다
+    # (사내 실측: `normalizer.col_to_letter`). 이름은 **정적으로** 대조할 수 있다.
+    #
+    # **밑줄 이름도 FAIL이다** — 비공개는 계약이 아니다. 오늘 도는 것이 다음 판에
+    # 사라져도 아무도 약속을 어긴 것이 아니라, 그때 어댑터만 조용히 죽는다.
+    refs = sorted({n.attr for n in ast.walk(tree)
+                   if isinstance(n, ast.Attribute)
+                   and getattr(n.value, "id", "") == "normalizer"})
+    public = sorted(x for x in dir(normalizer_mod) if not x.startswith("_"))
+    unknown = [r for r in refs if r.startswith("_") or r not in public]
+    show("G1B  normalizer 참조가 실재한다 (없는 이름·비공개 이름 0)",
+         not unknown,
+         (f"{unknown}는 parser.normalizer에 없다 · 있는 것: "
+          f"{' · '.join(NORMALIZER_API)}") if unknown else f"참조 {refs or '0건'}")
+    if unknown:
+        # **여기서 멈춘다 — 실행할 수 없는 어댑터다.** 뒤 단계를 돌리면 같은 결함이
+        # ③단의 `AttributeError`(G31)와 ⑤단의 계약 실패(G52)로 **그림자처럼** 다시
+        # 뜨고, 그 줄들은 문면이 답을 담지 않아 처분이 **문답으로 간다** — 사람이
+        # 기계 실패를 통역해야 하는 그 자리다(C27). 원인 한 줄만 남기면 자동 수정이
+        # 목록 안에서 고른다. **뒤를 빼는 것이 아니라 앞에서 끝내는 것이다.**
+        print("   → 로드 단계에서 멈춘다 — 없는 이름을 부르는 어댑터는 실행하지 않는다")
+        return None
     spec = importlib.util.spec_from_file_location("gen_adapter", path)
     mod = importlib.util.module_from_spec(spec)
     try:
@@ -340,6 +373,104 @@ def payload_kind_of(schema, mod):
     return schema.get("payload_kind") or (mod.ADAPTER or {}).get("payload_kind")
 
 
+def _vocab(layer):
+    """층 어휘 — **패키지가 먼저다**(B65 ② — 새 계산 0), 없으면 층 config를 읽는다.
+
+    패키지 `system.layer_vocabulary`는 등록 시점의 스냅샷이고 config는 실물이다.
+    둘은 같은 자산이라 어느 쪽을 읽어도 판정이 갈리지 않는다 — 관문이 패키지 없이
+    돌 때(회귀·수동 실행)도 대조가 살아 있어야 하므로 폴백을 둔다.
+    """
+    pkg_v = {}
+    if PACKAGE and Path(PACKAGE).exists():
+        try:
+            lv = ((json.load(open(PACKAGE, encoding="utf-8")).get("system") or {})
+                  .get("layer_vocabulary") or {})
+            if lv.get("layer") == layer and lv.get("categories"):
+                pkg_v = lv
+        except Exception:
+            pkg_v = {}
+    if pkg_v:
+        return pkg_v
+    cfg = ROOT / "layers" / str(layer) / "config.json"
+    if not cfg.exists():
+        return {}
+    try:
+        c = json.load(open(cfg, encoding="utf-8"))
+    except Exception:
+        return {}
+    return {"layer": layer, "categories": c.get("categories"),
+            "relations": c.get("relations"),
+            "relation_patterns": c.get("relation_patterns")}
+
+
+def _cat_of(fields, name):
+    """필드 이름(또는 `@좌표필드`) → 카테고리. 모르면 `None`."""
+    f = fields.get(str(name).lstrip("@")) or {}
+    return f.get("category") or f.get("target_category")
+
+
+def check_vocab(schema, fields, label):
+    """**어휘가 닫힌 자리를 등록 시점에 대조한다** (B65 ② · 칸 1.5).
+
+    커밋 게이트(3.6)가 인입 때 같은 것을 거르지만, 그때는 문서가 이미 들어가는
+    중이고 사람은 `gate_rejects.json`을 열어야 안다. **여기서 걸러야 등록이 끝나기
+    전에 고친다** — 문면이 「있는 것」을 담으므로 자동 재생성이 목록 안에서 고른다.
+    """
+    layer = schema.get("layer")
+    voc = _vocab(layer)
+    if not voc.get("categories"):
+        # **한 태그·한 라벨**(B59 ①) — 층 어휘를 못 읽은 것도 이 판정의 한 원인이다.
+        return show("G4C  전 필드의 category가 층 목록 안", False,
+                    f"층 어휘를 못 읽었다 — layers/{layer}/config.json도 패키지도 "
+                    f"어휘를 주지 않는다(층 이름이 틀렸거나 층이 없다)")
+    cats, rels = voc.get("categories") or {}, voc.get("relations") or {}
+    pats = voc.get("relation_patterns") or []
+
+    # G4C — category는 **그 층이 말하는 카테고리** 안이다.
+    #
+    # 「그 층이 말하는 것」 = 자기 `categories` + **패턴표가 이름 붙인 카테고리**다.
+    # 층은 제 패턴표에서 다른 층의 카테고리를 부른다(quality의 `Failure occurs_in
+    # Process`) — 좌표 블록의 `target_category`가 그 자리다. 패턴표에 없는 이름만
+    # 걸리므로 오타(`Proces`)는 그대로 잡힌다. 걸침 필드(`target_layer`)는 그 층의
+    # 목록으로 본다 — 사람이 층을 지정했으면 그 층이 정본이다.
+    spoken = set(cats) | {p.get(k) for p in pats for k in ("src", "dst") if p.get(k)}
+    bad_c = []
+    for name, f in fields.items():
+        for key in ("category", "target_category"):
+            v = f.get(key)
+            if not v:
+                continue
+            tl = f.get("target_layer")
+            own = set(_vocab(tl).get("categories") or {}) if tl else spoken
+            if v not in own:
+                bad_c.append(f"{name}.{key}={v!r}는 {tl or layer} 카테고리에 없다 · "
+                             f"있는 것: {' · '.join(sorted(own)) or '(어휘 없음)'}")
+    show("G4C  전 필드의 category가 층 목록 안", not bad_c, " ‖ ".join(bad_c))
+
+    edges = schema.get("edges", []) or []
+    # G4D — relation은 층 관계 목록 안이다.
+    bad_r = [f"{e.get('relation')!r}는 {layer} 관계에 없다 · "
+             f"있는 것: {' · '.join(sorted(rels))}"
+             for e in edges if e.get("relation") not in rels]
+    show("G4D  전 edges의 relation이 층 목록 안", not bad_r, " ‖ ".join(sorted(set(bad_r))))
+
+    # G4E — 삼항이 패턴표 안이다. 카테고리를 모르는 쪽은 대조하지 않는다(모르면
+    # 묻지 않고 넘긴다 — G47·G48이 그 자리를 이미 본다).
+    ok_tri = {(p.get("src"), p.get("rel"), p.get("dst")) for p in pats}
+    bad_t = []
+    for e in edges:
+        src, dst = _cat_of(fields, e.get("from")), _cat_of(fields, e.get("to"))
+        rel = e.get("relation")
+        if not (src and dst and rel in rels):
+            continue
+        if (src, rel, dst) not in ok_tri:
+            allow = [f"{p['src']} → {p['dst']}" for p in pats if p.get("rel") == rel]
+            bad_t.append(f"({src}, {rel}, {dst})는 패턴표에 없다 · "
+                         f"{rel}의 허용: {' · '.join(allow) or '(없음)'}")
+    show("G4E  전 edges의 삼항이 relation_patterns 안", not bad_t, " ‖ ".join(bad_t))
+    return not (bad_c or bad_r or bad_t)
+
+
 def check_schema(schema, pieces, label, payload_kind=None):
     print(f"\n④ 매칭 스키마 정합 — {label}")
     show("G41  헤더 4키 (doc_type·schema_version·layer·use_blocks)",
@@ -376,8 +507,17 @@ def check_schema(schema, pieces, label, payload_kind=None):
         for side in ("from", "to"):
             t = str(e.get(side, ""))
             refs.add(t[1:] if t.startswith("@") else t)
+    # **`attach_to_field`도 같은 꼴의 참조다**(B65 ② — 태그 신설 0): 선언되지 않은
+    # 필드를 가리키면 부착이 조용히 사라진다. from/to와 한 줄로 본다.
+    refs |= {str(v.get("attach_to_field")) for v in fields.values()
+             if v.get("attach_to_field")}
     unknown = sorted(r for r in refs if r and r not in fields and r not in struct)
-    show(f"G48  edges {len(edges)}건의 from/to가 전부 선언된 필드", not unknown, str(unknown))
+    # **라벨을 바꾸지 않는다** — 봉인 로그가 이 이름으로 판정을 보증한다(D-26 · B59).
+    # 넓어진 범위(`attach_to_field`)는 상세가 말한다: 이름이 바뀌면 봉인은 그 판정이
+    # **사라졌다**고 말하고, 그것은 거짓이다.
+    show(f"G48  edges {len(edges)}건의 from/to가 전부 선언된 필드",
+         not unknown, str(unknown) + " (attach_to_field 포함)")
+    check_vocab(schema, fields, label)
     # 조각 ↔ 스키마 대조 (인입 검증 ③단계의 드라이런)
     if pieces:
         piece_keys = set().union(*[set(p) for p in pieces])

@@ -4922,3 +4922,63 @@ ADAPTER["expects"]["columns"] = {'process': 'A', 'sub_process': 'B', 'process_no
 - 회귀 **1111 → 1114/1114** (+3, 삭제 0): `test_p3` 359 → 362.
 - 검사 4종 전부 통과. 반입분(문서 1 C38 · 문서 6 · 개정대장 §AZ·§BA · 가이드 §7 ·
   구조도 01·06 · 성능모듈 01 · 이연대장) 뒤에도 문면·문서간·미러·자산 전부 rc=0.
+
+## B65 ①②③ — 하네스가 LLM 산출을 실행 전에 어휘로 거른다 · 2026-09-15
+
+칸 1.4 · 1.5. **LLM 0**(자동 재생성의 호출은 기존 경로). 사내 실측 다섯째(PFMEA)에서
+`AttributeError: module 'parser.normalizer' has no attribute 'col_to_letter'` — LLM이
+**없는 함수**를 불렀고 실행 단계에 가서야 예외로 잡혀 문답으로 갔다.
+
+### 전제 대조표 6행 — 전건 일치
+
+| # | Expect | 실측 |
+|---|---|---|
+| 1 | 규약 10이 열문자 변환을 말하며 이름 셋만 준다 | 일치 (1.4_generate.md:253) |
+| 2 | `_col`·`_idx`는 밑줄 · 공개 5종 | 일치 |
+| 3 | G13·G14만 · 이름 존재 검사 0 | 일치 |
+| 4 | G46·G47·G48만 · 어휘 대조 0 | 일치 |
+| 5 | AUTO_FIX 9항목 | 일치 |
+| 6 | `version: 1.4` | 일치 |
+
+### ①ⓐ 없는 함수를 심은 초안 (화면 그대로)
+
+```
+   기계 관문(하네스): FAIL — 4 PASS / 1 FAIL
+     [FAIL] G1B  normalizer 참조가 실재한다 (없는 이름·비공개 이름 0)  — ['col_to_letter']는 parser.normalizer에 없다 · 있는 것: expand_merged · flatten · normalize · resolve_ditto · split_multi
+   → 재생성 지시 (자동(하네스)) — 보낸 문면 그대로:
+   재생성 1회째 → …/adapters/b65t_rev1.py
+   기계 관문(하네스): PASS — 38 PASS / 0 FAIL
+```
+
+**문답 0 · 재생성 1회.** 구판은 같은 초안에서 G31·G52가 함께 떠 문면이 답을 담지
+않아 문답으로 갔다 — 지금은 **로드 단에서 멈춘다**: 없는 이름을 부르는 어댑터는
+실행하지 않는다(그림자 FAIL을 만들지 않는다).
+
+### ②ⓐ 어휘 셋 (화면 그대로 · 하나씩 심었다)
+
+```
+  [FAIL] G4C  전 필드의 category가 층 목록 안  — cause.category='Cause'는 quality 카테고리에 없다 · 있는 것: Failure · FailureEffect · Process · Property
+  [FAIL] G4D  전 edges의 relation이 층 목록 안  — 'cause_of'는 quality 관계에 없다 · 있는 것: affects · causes · controlled_by · occurs_in
+  [FAIL] G4E  전 edges의 삼항이 relation_patterns 안  — (Failure, affects, Failure)는 패턴표에 없다 · affects의 허용: Failure → FailureEffect
+```
+
+셋 다 AUTO_FIX다. 층 어휘는 **패키지 `system.layer_vocabulary`를 읽고**(새 계산 0),
+패키지 없이 도는 실행(회귀·수동)에서는 층 config로 폴백한다 — 같은 자산이다.
+
+### 회차 중 잡은 것
+
+1. **자기 층 목록만 보면 지금 도는 스키마가 전부 붉었다** — 좌표 블록의
+   `target_category: Process`는 quality 스키마에 실리지만 process의 카테고리다.
+   층은 **제 패턴표에서 다른 층의 카테고리를 부른다**(`Failure occurs_in Process`).
+   그래서 판정 기준을 「자기 목록 + 패턴표가 이름 붙인 것」으로 잡았다 — 오타
+   (`Cause`)는 그대로 걸린다.
+2. **G48의 라벨을 바꿨다가 봉인이 「판정이 사라졌다」고 말했다**(D-26). `attach_to_field`
+   합류는 **상세**로 적고 라벨은 되돌렸다 — 봉인은 문면이 아니라 **판정의 이름**을
+   보증한다.
+3. **G4C에 라벨이 둘 붙어 「태그 1:1」이 또 깨졌다**(층 어휘 부재 갈래) — 한 태그·한
+   라벨로 합치고 원인은 상세에 넣었다. B62 G22·B64 G26에 이어 세 번째다.
+
+### 결과
+
+- 회귀 **1114 → 1123/1123** (+9, 삭제 0): `test_p3` 362 → 371.
+- 검사 4종 전부 통과(미러 7쌍 포함).
