@@ -167,6 +167,53 @@ def _form_line(f):
     return line
 
 
+# ── 인입 실패 화면 — 이유와 행이 **화면에** 뜬다 (B61 ③ · 칸 3.1 · C14) ────────
+#
+# 사람은 `ingest-file`을 치고 **화면을 본다** — 큐를 먼저 열지 않는다. 사유는 이미 큐
+# payload에 있으므로 **같은 재료를 화면에도 찍는다**(두 자리에 두 사실이 아니라 한
+# 재료의 두 표시다). 태그(`P##`)는 관문의 `G##`·골격의 `K##`과 같은 방식이고 **정본은
+# 여기 한 자리**다 — 앞자리가 단이다: 2 어댑터/지문 · 3 계약(validator) · 4 구조 ·
+# 5 인입 보류.
+
+FAIL_TAGS = {"adapter_mismatch": "P21",        # 지문이 어긋났다 (양식 표류)
+             "parse_failure": "P31",           # 계약 self-check — validator 결함
+             "hierarchy_unresolved": "P41"}    # 구조 미확정 (평면 폴백)
+HELD_TAG = "P51"                               # 인입 보류 — 중복·미등록·payload_kind
+
+
+def fail_rows(failures):
+    """`ParseResult.failures` → 화면 줄의 재료 `[{tag, kind, reason}]`.
+
+    **결함 전건을 편다** — validator는 `detail.defects`에 여러 건을 담는다. 한 줄로
+    합쳐 300자에서 자르면 두 번째 결함이 화면에서 사라지고, 사람은 하나를 고친 뒤
+    같은 명령을 다시 쳐서 다음 것을 만난다(골격 ②와 같은 병).
+    """
+    rows = []
+    for f in failures or []:
+        tag = FAIL_TAGS.get(f.get("kind"), "P01")
+        defects = ((f.get("detail") or {}).get("defects")) or []
+        if defects:
+            rows += [{"tag": tag, "kind": f["kind"], "reason": d} for d in defects]
+        else:
+            rows.append({"tag": tag, "kind": f.get("kind", "?"),
+                         "reason": f.get("reason", "")})
+    return rows
+
+
+def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
+    """인입 실패 블록 — 화면 문면 한 자리."""
+    out = [f"■ 인입 실패 — {Path(doc).name} (doc_id {doc_id})"]
+    for r in rows:
+        out.append(f"  [FAIL] {r['tag']}  {r['kind']} — {r['reason']}")
+    if queued:
+        out.append(f"  큐: parse_failure {queued}건 (같은 내용)")
+    out.append("  ▶ 다음 줄:")
+    out.append(f"     (문서를 고친 뒤)      python run.py ingest-file {doc}")
+    out.append(f"     양식이 바뀐 거면:     python -m cli.register generate "
+               f"{doc_type or '<doc_type>'} --revise")
+    return "\n".join(out)
+
+
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_after=True):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
@@ -201,14 +248,25 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_
     try:
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc))
         if not res.ok:
+            rows = fail_rows(res.failures)
+            # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
+            # 경로에서 화면에만 한 줄 찍고 큐가 비어 있었다: 「화면을 놓치면 기록이
+            # 없다」가 되어, 일괄 투입에서 실패가 조용히 지나갔다.
+            store.enqueue("parse_failure", "; ".join(r["reason"] for r in rows)[:300],
+                          sel["doc_id"], {"doc_type": sel.get("doc_type"),
+                                          "source_path": str(doc),
+                                          "defects": [r["reason"] for r in rows]})
             row.update(status=FAIL, reason="파싱 실패 — " + "; ".join(
-                f"[{f['kind']}] {f['reason']}" for f in res.failures)[:300])
-            print(f"   {row['reason']}")
+                f"[{r['kind']}] {r['reason']}" for r in rows)[:300])
+            print(fail_block(doc, sel["doc_id"], rows,
+                             doc_type=sel.get("doc_type"), queued=1))
             return row
         r, m, _extracted = run_document(res.envelope, routing=sel["basis"])
         if r.status == "held":
             row.update(status=FAIL, reason=f"보류 — {r.reason}")
-            print(f"   {row['reason']}")
+            print(fail_block(doc, sel["doc_id"],
+                             [{"tag": HELD_TAG, "kind": "인입 보류", "reason": r.reason}],
+                             doc_type=sel.get("doc_type"), queued=1))
             return row
         # **추출을 다시 돌렸나**를 말한다 — 등록 검수의 리허설이 남긴 체크포인트를
         # 운영이 재사용하면 LLM 호출이 0회다(B51). 그 사실이 화면에 없으면 「리허설과
@@ -233,7 +291,10 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None):
     """
     p = Path(path)
     if not p.is_dir():
-        raise SystemExit(f"[투입] 경로가 아니다: {p}")
+        raise SystemExit(f"[투입] 경로가 아니다: {p} — "                          # [상태]
+                         f"폴더가 아니거나 없다\n"
+                         f"  ▶ 다음 줄 — 문서 한 건이면:\n"
+                         f"     python run.py ingest-file {p}")
     files = sorted(x for x in p.iterdir() if x.is_file() and not x.name.startswith(("~", ".")))
     rows = []
     for f in files:
@@ -261,7 +322,7 @@ def summary(rows):
 
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     args = require_live_or_allow(argv, command="ingest")   # mock 관문 (B48)
     dry = "--dry-run" in args
     if dry:
@@ -277,7 +338,7 @@ def main(argv):
         paths = [args[i + 1]] if i + 1 < len(args) else None
         del args[i:i + 2]
     if not args:
-        raise SystemExit("[투입] 대상(문서 또는 경로)이 없다\n" + __doc__)
+        raise SystemExit("[투입] 대상(문서 또는 경로)이 없다\n" + __doc__)             # [사용법]
     target = Path(args[0])
     if target.is_dir():
         rows = ingest_dir(target, dt, dry, paths)

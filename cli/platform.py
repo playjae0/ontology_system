@@ -529,16 +529,16 @@ def cmd_dashboard():
     print("    엣지 삭제   python -m cli.ops delete-edge <층> <src> <rel> <dst> --actor <행위자>")
     print("    큐 판정     core.store.resolve_item(...)  — resolution이 회수에서 보존된다")
     print("\n  ── 스키마 등록 워크플로우 (플랫폼 창구 등재) ──")
-    print("    ①생성  python run.py register generate <doc_type> <층> <표본...>")
-    print("    ②검수  python run.py register review <doc_type>   → review/<dt>/view.html")
-    print("    ③확정  python run.py register confirm <doc_type> --by <승인자>")
+    print("    ①생성  python -m cli.register generate <doc_type> <층> <표본...>")
+    print("    ②검수  python -m cli.register review <doc_type>   → review/<dt>/view.html")
+    print("    ③확정  python -m cli.register confirm <doc_type> --by <승인자>")
     print("           확정 산출은 adapters/<dt>.py · schemas/<dt>.json으로 이행된다")
     return 0
 
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     cmd, args = argv[0], argv[1:]
     {"build": lambda: cmd_build(),
      "query": lambda: cmd_query(args),

@@ -1240,7 +1240,7 @@ shutil.rmtree(REVIEW / "b50t", ignore_errors=True)
 # **막고, 그 자리에서 다음 줄을 준다**(B59 ①) — 구판은 「검수로 넘어가지 않았다」만
 # 말해 사내가 막다른 길에 섰다. 잠글 성질은 ①뷰로 넘어가지 않았다(rc) ②FAIL 줄이
 # 코드와 함께 화면에 있다 ③칠 수 있는 명령이 함께 있다.
-_nx = [l for l in _gi.stdout.splitlines() if "python run.py register" in l]
+_nx = [l for l in _gi.stdout.splitlines() if "python -m cli.register" in l]
 show("② ⓓ 미통과는 뷰로 넘어가지 않는다 · 화면이 이유와 다음 줄을 준다",
      _gi.returncode != 0 and R.fail_lines(_gi.stdout) and _nx,
      f"FAIL {len(R.fail_lines(_gi.stdout))}줄 · 다음 줄 {len(_nx)}개")

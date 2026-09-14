@@ -347,12 +347,15 @@ def _sent_size(msgs, label):
         # **초과면 보내지 않고 멈춘다** — 컨텍스트 초과는 응답이 잘리는 게 아니라
         # 요청이 거부되고, 그 거부는 게이트웨이마다 문면이 달라 원인이 안 보인다.
         # 감축 수단을 **순서대로** 낸다: 싸고 손실 적은 것부터.
-        raise SystemExit(
+        raise SystemExit(                                                 # [상태]
             f"[전송] 예산 초과 — 약 {est:,} 토큰 > 한도 {lim:,}. 보내지 않았다.\n"
             f"   감축 순서:\n"
             f"     ① --no-fewshot        참조 어댑터 주입을 끈다 (약 −2,100 토큰)\n"
             f"     ② 프로파일 대표값 축소   parser/profile.py의 FULL_LIST_MAX·"
             f"SAMPLE_VALUES를 줄인다 (열당 약 −30 토큰)\n"
             f"     ③ 표본 부수 축소        user 메시지 전체가 약 {usr_b // 3:,} 토큰이다\n"
-            f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다")
+            f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다\n"
+            f"  ▶ 다음 줄 — ①부터 적용한다:\n"
+            f"     python -m cli.register generate <doc_type> <층> <표본...> "
+            f"--no-fewshot")
     return tot

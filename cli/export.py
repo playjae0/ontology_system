@@ -279,12 +279,12 @@ def _mermaid_cross():
 
 def main(argv):
     if not argv:
-        raise SystemExit(__doc__)
+        raise SystemExit(__doc__)                                         # [사용법]
     table = {"cypher": cmd_cypher, "csv": cmd_csv, "mermaid": cmd_mermaid,
              "html": cmd_html}
     cmd, rest = argv[0], argv[1:]
     if cmd not in table:
-        raise SystemExit(f"알 수 없는 형식: {cmd}\n{__doc__}")
+        raise SystemExit(f"알 수 없는 형식: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)
 
 

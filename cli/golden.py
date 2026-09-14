@@ -268,7 +268,7 @@ def cmd_score(args):
         try:
             k = int(args[i + 1])
         except (IndexError, ValueError):
-            raise SystemExit("[golden] --k 뒤에 숫자가 필요하다")
+            raise SystemExit("[golden] --k 뒤에 숫자가 필요하다")                  # [사용법]
         del args[i:i + 2]
     path = None
     if "--set" in args:
@@ -276,7 +276,7 @@ def cmd_score(args):
         try:
             path = args[i + 1]
         except IndexError:
-            raise SystemExit("[golden] --set 뒤에 파일 경로가 필요하다")
+            raise SystemExit("[golden] --set 뒤에 파일 경로가 필요하다")             # [사용법]
         del args[i:i + 2]
 
     from tests import fixtures                                    # noqa: F401
@@ -289,12 +289,16 @@ def cmd_score(args):
     else:
         is_mock = "fixtures" in str(path)
     if not Path(path).exists():
-        raise SystemExit(f"[golden] 세트가 없다 — {path}. `run.py golden init`이 틀을 만든다")
+        raise SystemExit(f"[golden] 세트가 없다 — {path}\n"                     # [상태]
+                         f"  ▶ 다음 줄 — 빈 문항 틀을 만든다:\n"
+                         f"     python run.py golden init")
 
     queries, skipped = load(path)
     if not queries:
-        raise SystemExit(f"[golden] 채점할 문항이 0건이다 — {_rel(path)} "
-                         f"(건너뜀 {len(skipped)}건: q가 비었거나 형식 밖)")
+        raise SystemExit(f"[golden] 채점할 문항이 0건이다 — {_rel(path)} "         # [상태]
+                         f"(건너뜀 {len(skipped)}건: q가 비었거나 형식 밖)\n"
+                         f"  ▶ 다음 줄 — 문항의 q를 채운 뒤:\n"
+                         f"     python run.py golden score --set {_rel(path)}")
     rows = score_set(queries, k)
     agg = aggregate(rows, k)
 
@@ -324,7 +328,7 @@ def cmd_score(args):
 
 def main(argv):
     if not argv or argv[0] not in ("init", "score"):
-        raise SystemExit('사용: run.py golden init | golden score '
+        raise SystemExit('사용: run.py golden init | golden score '         # [사용법]
                          '[--set <파일>] [--k 8] [--json]')
     return (cmd_init if argv[0] == "init" else cmd_score)(argv[1:])
 

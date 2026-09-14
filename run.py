@@ -41,6 +41,10 @@
                                    → 파싱 → 인입 (B46 · cli/ingest.py로 위임)
   python run.py ingest-dir <경로> [--doc-type X] [--dry-run]
                                    경로의 문서 전부를 문서 단위 독립으로 투입
+  python run.py skeleton-status <층>
+                                   골격 seed 문법 판정만 — 확정·뷰 없음 (칸 0.1)
+  python run.py skeleton-confirm <층> --by <이름>
+                                   골격 확정 — 판정 → 뷰 대조 → 기록
   python run.py show <명령> ...    산출물 열람 — tree·node·doc·chunk·edges·schema·meta
   python run.py export <형식>      파생물 — cypher · csv · mermaid
 """
@@ -186,6 +190,12 @@ def cmd_export(args):
     return main(args)
 
 
+def cmd_skeleton_status(args):
+    """골격 문법 판정만 — 확정도 뷰도 없다 (B61 ② · 칸 0.1)."""
+    from cli.skeleton import cmd_status
+    return cmd_status(args)
+
+
 def cmd_skeleton_confirm(args):
     """골격 seed 확정 — 검증·뷰 대조·기록만. **파일은 사람이 놓는다**(문서 3 §3.7)."""
     from cli.skeleton import main
@@ -232,7 +242,8 @@ if __name__ == "__main__":
      "show": lambda: cmd_show(sys.argv[2:]),
      "export": lambda: cmd_export(sys.argv[2:]),
      "llm-check": lambda: cmd_llm_check(sys.argv[2:]),
-     "skeleton-confirm": lambda: cmd_skeleton_confirm(sys.argv[2:])}[cmd]()
+     "skeleton-confirm": lambda: cmd_skeleton_confirm(sys.argv[2:]),
+     "skeleton-status": lambda: cmd_skeleton_status(sys.argv[2:])}[cmd]()
     # **반환값을 종료 코드로 쓴다.** 안 그러면 실패한 명령이 exit 0으로 끝나
     # 플랫폼·스크립트가 "성공"으로 읽는다 — 실측: `export mermaid quality`가
     # 빈 다이어그램을 내고 0으로 끝났고, 그 뒤 실패 판정을 붙여도 여전히 0이었다.

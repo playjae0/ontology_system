@@ -541,6 +541,42 @@ show("툼스톤 — 사람이 지운 (src,rel,dst)는 재인입이 되살리지 
 show("neighbors — 삭제된 엣지는 전파에서 제외", gs3.neighbors([n1], _spec) == {n1})
 shutil.rmtree(_td, ignore_errors=True)
 
+# ── B61 ② 골격 확정 거부 — 어느 줄이 어느 규칙인가 (칸 0.1) ──────────────
+print("\n■ B61 ② — 골격 확정 거부가 위반 전건을 줄 번호와 함께 낸다")
+
+import shutil as _sh61                                           # noqa: E402
+from cli import skeleton as _SK61                                # noqa: E402
+
+_seed61 = ROOT / "layers" / "process" / "skeleton.json"
+_keep61 = _seed61.read_text(encoding="utf-8")
+# **위반 둘을 심는다** — 극성 마커 오타 하나, main·sub 이름 중복 하나.
+_bad61 = (_keep61.replace('{ "탭용접": ["::cathode", "::anode",',
+                          '{ "탭용접": ["::cathod", "::anode",', 1)
+                 .replace('{ "패키징": ["파우치 포밍"', '{ "노칭": ["파우치 포밍"', 1))
+_seed61.write_text(_bad61, encoding="utf-8")
+try:
+    _rows61 = _SK61.check("process")
+    _tags61 = sorted(r["tag"] for r in _rows61)
+    # ⓑ **전건이 줄 번호와 함께** — 첫 하나에서 멈추지 않는다.
+    show("②ⓑ 위반 전건이 줄 번호와 함께 나온다 (첫 하나에서 멈추지 않는다)",
+         len(_rows61) == 2 and _tags61 == ["K02", "K05"]
+         and all(r["lines"] for r in _rows61),
+         " · ".join(f"{r['tag']}{r['lines']}" for r in _rows61))
+    # ⓒ **status와 confirm이 같은 판정 함수** — 두 벌이면 한쪽만 초록인 날이 온다.
+    _src61 = (ROOT / "cli" / "skeleton.py").read_text(encoding="utf-8")
+    _calls61 = {fn for fn in ("cmd_status", "cmd_confirm")
+                if "check(layer)" in _src61.split(f"def {fn}")[1].split("\ndef ")[0]}
+    show("②ⓒ status·confirm이 같은 판정 함수를 부른다",
+         _calls61 == {"cmd_status", "cmd_confirm"}, str(sorted(_calls61)))
+    _blk61 = _SK61.block("process", _rows61)
+    show("②ⓑ 거부 블록이 태그·규칙·다음 줄 셋을 낸다",
+         all(t in _blk61 for t in ("[FAIL] K02", "[FAIL] K05", "▶ 다음 줄"))
+         and "python run.py skeleton-confirm process" in _blk61)
+finally:
+    _seed61.write_text(_keep61, encoding="utf-8")
+show("② 되돌리면 위반 0건이다 (시험 자체가 늘 붉는 것이 아니다)",
+     _SK61.check("process") == [])
+
 # ============================================================
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G1+G2 완료판정 충족" if allok else "FAIL")
