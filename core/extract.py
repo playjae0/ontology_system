@@ -254,6 +254,15 @@ def _mock_candidates(chunk_id, text, cfg, vocab):
 
 
 def _load_hints(doc_id):
+    """추출 힌트 — **mock 자산이다**(문서 7 §7.5 대체 표 「추출」 행 · B71 ①).
+
+    `USE_MOCK=0`이면 파일이 있어도 읽지 않는다. 구판은 모드와 무관하게 먼저 봐서,
+    사내 `doc_id`가 픽스처 이름(`PPT02`·`QPPT01`)과 겹치는 날 **실호출 결과가
+    조용히 mock 힌트로 바뀐다** — B70이 걷어낸 것과 같은 병이고, 조용한 쪽이
+    더 나쁘다(틀린 답이 성공으로 보인다).
+    """
+    if not llm.use_mock():
+        return None
     p = HINTS_DIR / f"{doc_id}.json"
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
