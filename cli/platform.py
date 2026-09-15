@@ -168,15 +168,32 @@ def cmd_registry():
 
 
 def cmd_doctypes():
-    """doc_type 등록부 — **인입·지문 스캔과 같은 실물**을 읽는다(장부는 하나다)."""
-    from core.registry import all_doc_types
+    """doc_type 등록부 — **인입·지문 스캔과 같은 실물**을 읽는다(장부는 하나다).
+
+    **실물 유무를 함께 찍는다**(B70 ②) — 등록 산출은 git 추적 밖이라 코드만 옮기면
+    따라오지 않는다. 그때 등록부에는 이름이 있고 파일은 없다: 그 상태가 화면에
+    보이지 않으면 사람은 「등록이 사라졌다」고만 안다.
+    """
+    from core.registry import all_doc_types, missing_assets
+    from core import llm
     reg = all_doc_types()
-    print(f"doc_type 등록부 — {len(reg)}종")
+    miss = {(m["doc_type"], m["kind"]) for m in missing_assets()}
+    print(f"doc_type 등록부 — {len(reg)}종"
+          + ("" if llm.use_mock() else "  (USE_MOCK=0 — 등록부만 · 내장 제외)"))
     for dt, m in sorted(reg.items()):
+        def _mark(kind):
+            rel = m.get(kind)
+            return "—" if not rel else ("✗" if (dt, kind) in miss else "✓")
+
         print(f"  {dt:<14} status={m.get('status'):<10} 층={m.get('layer')} · "
+              f"adapter {_mark('adapter')} · schema {_mark('schema')} · "
               f"스키마={m.get('schema')}"
               + (f" · 어댑터={m['adapter']}" if m.get("adapter") else "")
               + (f" · 승인={m['approved_by']}" if m.get("approved_by") else ""))
+    if miss:
+        print(f"  ⚠ 실물 없는 등록 {len(miss)}건 — scan·인입이 여기서 멈춘다. "
+              f"이식이면 data/doc_types.json · adapters/ · schemas/ · review/를 "
+              f"같이 옮긴다")
 
 
 def ops_view():

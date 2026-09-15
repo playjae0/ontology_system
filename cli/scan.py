@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures
+from core import fixtures, llm, registry
 from parser import preflight
 from parser.normalizer import _col
 from parser.reader import GRID_EXT, read
@@ -44,6 +44,28 @@ from parser import form as form_mod
 ADAPTER_DIRS = fixtures.dirs(fixtures.ADAPTERS, fixtures.FIXTURE_ADAPTERS)
 
 
+def _refuse_missing(miss):
+    """등록부 결손의 상태 거부 — 원인 + 그대로 칠 수 있는 다음 줄 (B61 계약).
+
+    **빼지 않고 막는다.** 결손을 목록에서 빼면 화면이 조용해지고, 그 조용함이
+    이번 실측의 증상이다.
+    """
+    if not miss:
+        return
+    head = miss[0]
+    who = (f" · 승인 {head['approved_by']}" if head.get("approved_by") else "")
+    when = (f"등록 {str(head.get('approved_at'))[:10]}" if head.get("approved_at")
+            else "등록 시점 미상")
+    raise SystemExit(                                                      # [상태]
+        f"[등록부] '{head['doc_type']}'이 가리키는 {head['path']}가 없다 "
+        f"({when}{who})"
+        + (f" · 결손 {len(miss)}건" if len(miss) > 1 else "") + "\n"
+        f"  ▶ 다음 줄 — 이식이면 넷을 같이 옮긴다: data/doc_types.json · "
+        f"adapters/<dt>.py · schemas/<dt>.json · review/<dt>/\n"
+        f"     아니면 등록을 다시 한다: python -m cli.register generate "
+        f"{head['doc_type']} {head.get('layer') or '<층>'} <표본> --revise")
+
+
 def _load(path):
     spec = importlib.util.spec_from_file_location(f"scan_{Path(path).stem}", path)
     mod = importlib.util.module_from_spec(spec)
@@ -52,15 +74,25 @@ def _load(path):
 
 
 def adapters(paths=None):
-    """어댑터 실물 목록 — 경로가 오면 그것만, 없으면 **등록부 + 기본 소재지**.
+    """어댑터 실물 목록 — 경로가 오면 그것만, 없으면 **등록부 (+ mock이면 기본 소재지)**.
 
     등록부가 앞에 온다 — 같은 doc_type이 양쪽에 있으면 등록된 실물이 정본이다.
+
+    **기본 소재지는 mock 자산이다**(B70 ① · 문서 7 §7.5) — 픽스처 어댑터 폴더가
+    `USE_MOCK`과 무관하게 열려, 사내 화면이 cp·pfmea·ipqc를 대조 목록에 띄웠다
+    (실측 열째). `--adapters <경로>`로 **사람이 준 경로는 그대로** 쓴다: 명시는
+    의도다.
+
+    **등록부 결손은 조용히 넘기지 않는다**(B70 ②) — 등록부가 가리키는 실물이
+    없으면 여기서 멈춘다. 거르고 진행하면 같은 화면이 「내장 셋만 있다」로 보이고,
+    사람은 자기가 등록한 doc_type이 사라진 이유를 어디에서도 못 본다.
     """
     from core.registry import adapter_paths
     files = []
     if paths is None:
+        _refuse_missing(registry.missing_assets())
         files += [p for _dt, p in adapter_paths()]
-    for p in (paths or ADAPTER_DIRS):
+    for p in (paths if paths else (ADAPTER_DIRS if llm.use_mock() else [])):
         p = Path(p)
         files += sorted(p.glob("*.py")) if p.is_dir() else [p]
     out, seen = [], set()

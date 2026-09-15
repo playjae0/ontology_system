@@ -5324,3 +5324,57 @@ pipeline이 채우고 뷰만 읽음 · generate 화면의 분할 줄 0 · 레벨
   `test_g6` 54 → 57 · `test_p1` 161 → 173 · `test_p3` 414 → 422.
 - 검사 4종 전부 통과. 상태 거부 스캐너: **62곳 · 상태 34 · 사용법 28 · 미분류 0 ·
   계약 위반 0 · 없는 명령 0**.
+
+## B70 ①② — mock 자산은 운영 경로에 섞이지 않는다 · 등록부 결손은 막는다 · 2026-09-15
+
+요청문 `docs/안건/B70_요청문.md`. 전제 대조표 6항목 전부 실물과 일치 —
+`_builtin()`의 `schemas/*.json` glob 1 hit(48행) · `adapter_paths`의 `if exists`
+1 hit(90행) · `ADAPTER_DIRS = fixtures.dirs` 1 hit · 두 파일에 `use_mock` 0/0 ·
+`schemas/`에 blocks·cp·pfmea·ppt_process·ppt_quality · 명세 「운영 경로」 1
+(이번 zip에서 허브가 넣었다). **명세 개정 0 · LLM 0.**
+
+### ① `USE_MOCK=0` 화면 (화면 그대로)
+
+```
+$ USE_MOCK=0 python3 -m cli.platform doctypes
+doc_type 등록부 — 0종  (USE_MOCK=0 — 등록부만 · 내장 제외)
+
+$ USE_MOCK=0 python3 run.py scan tests/fixtures/raw/CP01.csv
+지문 스캔 — tests/fixtures/raw/CP01.csv
+  → 후보 없음 — 신규 doc_type 등록(구축 모드) 또는 지정 투입 대상
+```
+
+`USE_MOCK=1`은 그대로다 — cp·pfmea·ipqc가 뜨고 후보 `['cp']`가 나온다(회귀
+1206건이 이 세계에서 돈다). 가르는 조건은 `all_doc_types()` **한 자리**이고,
+`--adapters <경로>`로 사람이 준 경로는 게이트 밖이다(명시는 의도).
+
+### ② 등록부 결손 화면 (화면 그대로)
+
+```
+$ python3 run.py scan tests/fixtures/raw/CP01.csv        # adapters/toc_report.py를 지운 뒤
+[등록부] 'toc_report'이 가리키는 adapters/toc_report.py가 없다 (등록 2026-09-15 · 승인 홍길동)
+  ▶ 다음 줄 — 이식이면 넷을 같이 옮긴다: data/doc_types.json · adapters/<dt>.py · schemas/<dt>.json · review/<dt>/
+     아니면 등록을 다시 한다: python -m cli.register generate toc_report quality <표본> --revise
+
+$ python3 -m cli.platform doctypes
+  toc_report     status=registered 층=quality · adapter ✗ · schema ✓ · … · 승인=홍길동
+  ⚠ 실물 없는 등록 1건 — scan·인입이 여기서 멈춘다. 이식이면 data/doc_types.json · adapters/ · schemas/ · review/를 같이 옮긴다
+```
+
+`ingest-file`도 같은 거부다(같은 함수를 지난다). **빼지 않고 막는다** — 빼면
+지금까지의 「조용한 화면」이 그대로다.
+
+### 회차 중 잡은 것
+
+1. **`register()`의 내장 중복 검사는 게이트 밖에 둬야 했다** — 조회를 가리는 것과
+   덮어쓰기를 막는 것은 다른 판정이다. 시험에서 `schemas/b70x.json`을 먼저 만들자
+   그 파일의 실재가 곧 내장 등록이라 `register`가 이름 중복으로 막았다(그 규칙은
+   그대로 옳다 — 시험의 순서를 고쳤다).
+2. **막는 자리는 진입 하나**다 — `core/registry`는 `missing_assets()`로 판정만
+   낸다. core가 `SystemExit`을 던지면 라이브러리가 화면을 갖는다.
+
+### 결과
+
+- 회귀 **1196 → 1206/1206** (+10, 삭제 0): `test_g6` 57 → 67.
+- 검사 4종 전부 통과. 상태 거부 스캐너: **63곳 · 상태 35 · 사용법 28 · 미분류 0 ·
+  계약 위반 0 · 없는 명령 0**.
