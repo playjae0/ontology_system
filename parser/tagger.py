@@ -95,7 +95,7 @@ def coord_from_section(pieces, *, layer="process", nodes=None,
 
 
 def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
-        pick=None, doc_type=None, progress=None):
+        pick=None, doc_type=None, progress=None, notice=None, cap=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 
     **LLM 지점 ⑨다**(문서 7 §7.6-B-2). 목록에 있다는 것과 mock에서 모델을 부른다는
@@ -111,6 +111,17 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
     깨지고 **미설치 환경에서 실행 자체가 죽는다** — 그래서 대체 갈래가 명세에
     못박혀 있고, 이 함수의 기본값이 그것이다.
 
+    **묻는 단위는 행이 아니라 표기다**(B69 ① · 사내 실측 아홉째). 구판은 목록 밖
+    좌표를 **행마다** 물었다 — 같은 표기(「노칭」)가 200행에 있으면 200회이고,
+    온도 0이라 **답은 200번 같다.** 사람은 그 로그를 「무한」으로 읽고 껐다.
+    미스 표기를 먼저 모아 표기마다 한 번 묻고 답(채택 노드 또는 null)을 전 행에
+    배분한다 — null도 기억한다: 같은 표기를 다시 묻지 않는다. **결과는 같고 호출만
+    준다**(결정적 dedupe).
+
+    `cap`은 **묻는 표기 종수의 상한**이다(B69 ③). 넘는 표기는 묻지 않고 그대로
+    둔다 — 목록 밖은 인입의 `orphan_anchor`로 가는 설계대로다. 배치(인입)는
+    멈추지 않는다: 동의 프롬프트가 아니라 상한이 그 자리다.
+
     **목록 밖이면 값을 고치지 않고 그대로 둔다**(null 허용 — §4 "닫힌 목록에서 선택
     또는 null"). 검증은 인입 소관이고 파서는 좌표를 판정하지 않는다 — 태거가 임의로
     고쳐 넣으면 그 순간 파서가 골격을 해석하게 된다.
@@ -118,15 +129,45 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
     실호출 갈래도 **목록 밖 답은 버린다** — 모델이 지어낸 좌표가 태깅되면 인입의
     orphan_anchor가 그것을 골격으로 착각한다. 파서는 `core/`를 import하지 않으므로
     (P1) `pick`은 **주입**받는다.
+
+    `notice`는 **비용을 화면에 올리는 자리**다(B22의 정신 — 인입 갈래). 호출 전에
+    한 번(`단계="예고"`), 끝나고 한 번(`단계="끝"`) 같은 그릇으로 온다. `progress`는
+    **표기 단위**로 흐른다 — 부르지 않으면 진행도 없다.
     """
     nodes = nodes if nodes is not None else closed_list(layer)
     idx = surfaces(nodes)
+
+    # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
+    refs = [(p.get(ref_field) or None) for p in pieces]
+    exact = sum(1 for r in refs if r and r in idx)
+    misses, miss_rows = [], 0
+    for r in refs:
+        if r and r not in idx:
+            miss_rows += 1
+            if r not in misses:
+                misses.append(r)
+    ask = misses if pick is not None else []
+    if cap is not None:
+        ask = ask[:max(0, int(cap))]
+    plan = {"단계": "예고", "조각": len(pieces), "정확_일치": exact,
+            "표기_종수": len(misses), "미스_행": miss_rows,
+            "묻는_종수": len(ask), "상한": cap, "LLM": pick is not None}
+    if notice is not None:
+        notice(dict(plan))
+
+    # ── ② 표기마다 한 번 — 답을 기억한다(null도).
+    memo, calls, adopted = {}, 0, 0
+    for n, ref in enumerate(ask, 1):
+        chosen = pick(ref, sorted(idx))
+        calls += 1
+        memo[ref] = chosen if (chosen and chosen in idx) else None
+        if memo[ref]:
+            adopted += 1
+        if progress is not None:
+            progress(n, len(ask), adopted)
+
     out = []
-    # **진행을 밖으로 흘린다.** `pick`은 좌표가 닫힌 목록과 정확히 일치하지 않는
-    # 조각마다 불린다 — 수천 행이면 수천 회다. 그 사이 화면이 조용하면 사람은
-    # «멈췄다»고 읽는다(사내 실측). 콜백은 선택이고 없으면 아무 일도 안 한다.
-    total, calls = len(pieces), 0
-    for i, p in enumerate(pieces, 1):
+    for p, ref in zip(pieces, refs):
         r = dict(p)
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
@@ -136,16 +177,11 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
         # 잃고, 조각 공통 층이 계약이 아니라 어댑터별 재량이 된다.
         for k in ("doc_type", "process_group", "process_ref", "electrode_type"):
             r.setdefault(k, doc_type if k == "doc_type" else None)
-        ref = r.get(ref_field)
         node = idx.get(ref) if ref else None
-        if ref and node is None and pick is not None:
-            # 실호출 갈래 — 닫힌 목록을 선택지로 넘긴다. 목록 밖 답은 버린다.
-            calls += 1
-            chosen = pick(ref, sorted(idx))
-            if chosen and chosen in idx:
-                r[ref_field] = chosen
-                node = idx[chosen]
-                r.setdefault("meta", {})["coord_tag_source"] = "live"
+        if ref and node is None and memo.get(ref):
+            r[ref_field] = memo[ref]
+            node = idx[memo[ref]]
+            r.setdefault("meta", {})["coord_tag_source"] = "live"
         if ref and node is None:
             r[ref_field] = ref                      # 그대로 둔다 — orphan_anchor는 인입 몫
         if node is not None and not r.get("process_group"):
@@ -153,8 +189,9 @@ def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
             if g:
                 r["process_group"] = g
         out.append(r)
-        if progress is not None:
-            progress(i, total, calls)
+    if notice is not None:
+        notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
+                "목록밖": len(misses) - adopted})
     return out
 
 

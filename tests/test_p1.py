@@ -1084,6 +1084,86 @@ show("① 지도 경로 pick에도 분할_기준이 있다 (한 필드 이름, �
 show("① 어댑터 경로의 지도_출처는 adapter:… 다 (구판은 이 자리가 비었다)",
      all(str(x.get("지도_출처")).startswith("adapter:") for x in _rep68))
 
+# ── B69 ①③ — 묻는 단위는 행이 아니라 표기다 ─────────────────────────────
+#
+# 사내 실측 아홉째: CSV를 넣자 `coord_tag` 로그가 30줄 넘게 이어져 사람이 「무한」으로
+# 읽고 껐다. 무한이 아니라 **행당 1회**였다 — 같은 표기가 200행에 있으면 200회이고
+# 온도 0이라 답은 200번 같다. 결과는 그대로 두고 호출만 줄인다(결정적 dedupe).
+print("\n■ B69 ①③ — 좌표 태깅: 표기당 1회 · 상한")
+
+_NODES69 = [{"canonical": "노칭", "aliases": [], "tier": 1},
+            {"canonical": "스태킹", "aliases": [], "tier": 1}]
+
+
+def _pieces69(refs):
+    return [{"source_locator": f"R{i}", "text": "x", "process_ref": r}
+            for i, r in enumerate(refs, 1)]
+
+
+def _picker69(log, answer=None):
+    def pick(ref, choices):
+        log.append(ref)
+        return answer
+    return pick
+
+
+_log69 = []
+_out69 = tagger.tag(_pieces69(["없는공정"] * 200), nodes=_NODES69,
+                    pick=_picker69(_log69))
+show("① 같은 목록 밖 표기 200행 → pick 호출 1회 (행이 아니라 표기가 단위다)",
+     len(_log69) == 1, f"호출 {len(_log69)}회 · 조각 {len(_out69)}")
+show("① 전 행의 값이 같다 — 한 번 물은 답을 배분한다",
+     {p["process_ref"] for p in _out69} == {"없는공정"})
+_log69b = []
+tagger.tag(_pieces69(["A", "B", "C", "A", "B"]), nodes=_NODES69,
+           pick=_picker69(_log69b))
+show("① 서로 다른 표기 k종 → 호출 k회 (중복은 묻지 않는다 · null 답도 기억한다)",
+     len(_log69b) == 3 and _log69b == ["A", "B", "C"], str(_log69b))
+_log69c = []
+_exact69 = tagger.tag(_pieces69(["노칭", "스태킹"] * 50), nodes=_NODES69,
+                      pick=_picker69(_log69c))
+show("① 정확 일치 행은 호출 0 (지금과 같다)",
+     not _log69c and all(p["process_ref"] in ("노칭", "스태킹") for p in _exact69))
+# **결과가 dedupe 전과 같다** — 행별 값을 그대로 비교한다(호출만 줄었다는 뜻).
+_mix69 = ["노칭", "없는공정", "스태킹", "없는공정", "다른공정"]
+_a69 = tagger.tag(_pieces69(_mix69), nodes=_NODES69, pick=_picker69([], "노칭"))
+_want69 = ["노칭", "노칭", "스태킹", "노칭", "노칭"]   # 목록 밖은 채택 답으로 바뀐다
+show("① 태깅 결과가 행별로 같다 — 채택은 전 행에, 목록 밖은 원문 그대로",
+     [p["process_ref"] for p in _a69] == _want69,
+     str([p["process_ref"] for p in _a69]))
+_b69 = tagger.tag(_pieces69(_mix69), nodes=_NODES69, pick=_picker69([], "목록밖답"))
+show("① 목록 밖 답은 버린다 — 원문이 남는다 (orphan_anchor는 인입 몫)",
+     [p["process_ref"] for p in _b69] == _mix69)
+
+# ② 예고는 **호출 전에** 무LLM으로 센 숫자다 — 비용이 화면에 오른다(B22의 정신).
+_note69, _log69d = [], []
+tagger.tag(_pieces69(["A", "A", "B", "노칭"]), nodes=_NODES69,
+           pick=_picker69(_log69d), notice=_note69.append)
+_pre69 = next(x for x in _note69 if x["단계"] == "예고")
+_end69 = next(x for x in _note69 if x["단계"] == "끝")
+show("② 예고의 표기 종수 == 실제 호출 횟수 (상한 미만일 때)",
+     _pre69["묻는_종수"] == len(_log69d) == _end69["호출"] == 2,
+     f"예고 {_pre69['묻는_종수']} · 실제 {len(_log69d)}")
+show("② 예고가 조각·정확 일치·미스 행을 함께 센다 (호출 전에 안다)",
+     (_pre69["조각"], _pre69["정확_일치"], _pre69["표기_종수"], _pre69["미스_행"])
+     == (4, 1, 2, 3), str(_pre69))
+_note69m = []
+tagger.tag(_pieces69(["A", "B"]), nodes=_NODES69, notice=_note69m.append)
+show("② mock(pick 없음)이면 LLM 0 — 예고가 그 사실을 값으로 말한다",
+     _note69m[0]["LLM"] is False and _note69m[0]["묻는_종수"] == 0
+     and _note69m[-1]["호출"] == 0)
+# ③ 상한 — 넘는 표기는 **묻지 않고 그대로 둔다**(멈추지 않는다).
+_log69e = []
+_cap69 = tagger.tag(_pieces69(["A", "B", "C", "D"]), nodes=_NODES69,
+                    pick=_picker69(_log69e, "노칭"), cap=2)
+show("③ 상한 n이면 호출 ≤ n", len(_log69e) == 2, f"호출 {len(_log69e)}")
+show("③ 초과분 행의 좌표는 원문 그대로다 (목록 밖 → 인입의 orphan_anchor)",
+     [p["process_ref"] for p in _cap69] == ["노칭", "노칭", "C", "D"],
+     str([p["process_ref"] for p in _cap69]))
+_log69f = []
+tagger.tag(_pieces69(["A", "B"]), nodes=_NODES69, pick=_picker69(_log69f), cap=0)
+show("③ off(0)면 호출 0 — 정확 일치만", not _log69f)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

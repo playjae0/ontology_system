@@ -2705,8 +2705,10 @@ def _gateway_ready():
 def _coord_misses(results, layer):
     """좌표가 **닫힌 목록과 정확히 일치하지 않는** 조각을 센다 — LLM을 부르지 않는다.
 
-    이 수가 곧 «LLM 보조를 켜면 몇 회 부르는가»다(tagger는 미스 행마다 pick를 부른다).
     **몇천 회 호출은 사람이 모르고 시작하면 안 된다** — 그래서 먼저 세고 물어본다.
+    호출 수는 이 목록의 **길이가 아니라 종수**다(B69 ① — tagger가 표기마다 한 번
+    묻는다). 목록을 그대로 돌려주는 것은 행 수와 종수를 **둘 다** 화면이 말해야
+    하기 때문이다: 「3,000행이 12종이다」가 사람이 켤지 정하는 재료다.
     """
     idx = tagger.surfaces(tagger.closed_list(layer))
     miss = []
@@ -2724,20 +2726,24 @@ def _ask_llm_coord(misses, assume=None):
 
     미스를 그대로 두는 것은 오류가 아니다 — 인입에서 `orphan_anchor` 큐로 가는
     정상 경로가 있고(문서 4 §4.4), 사람이 자기 리듬으로 처리한다. 반면 켜면
-    **미스 수만큼 실호출**이다.
+    **표기 종수만큼 실호출**이다(B69 ① — 같은 표기가 여러 행에 있어도 한 번이다).
+    켤지 묻는 자리이므로 **수가 맞아야 한다**: 구판은 행 수를 호출 수라고 말했고,
+    그 수는 실제보다 훨씬 컸다.
     """
-    n = len(misses)
+    n, kinds = len(misses), sorted(set(misses))
     if n == 0:
         return False
-    sample = ", ".join(sorted(set(misses))[:5])
-    print(f"   좌표 미스 {n:,}건 (예: {sample}{' …' if len(set(misses)) > 5 else ''})")
+    sample = ", ".join(kinds[:5])
+    print(f"   좌표 미스 {n:,}행 · 표기 {len(kinds):,}종 "
+          f"(예: {sample}{' …' if len(kinds) > 5 else ''})")
     if assume is not None:
         print(f"   → LLM 보조 {'켬' if assume else '끔'} (인자로 지정됨)")
         return assume
     if llm.use_mock():
         return False
     try:
-        ans = input(f"   LLM 보조를 켜면 최대 {n:,}회 호출한다. 켤까? [y/N] ").strip().lower()
+        ans = input(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). "
+                    f"켤까? [y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         ans = ""                       # 대화형이 아니면 **끄고 진행**한다
     on = ans in ("y", "yes")
@@ -2745,19 +2751,22 @@ def _ask_llm_coord(misses, assume=None):
     return on
 
 
-def _progress(i, total, calls, *, label=""):
-    """진행 한 줄 — **주기 갱신**. 매 행 찍으면 그것이 잡음이 된다.
+def _progress(done, total, adopted, *, label=""):
+    """진행 한 줄 — **주기 갱신**. 매 번 찍으면 그것이 잡음이 된다.
 
-    보폭은 **최소 50행**이다: 33행짜리 표본까지 한 줄씩 찍으면 화면이 진행 표시로
-    덮여 정작 읽어야 할 이상 신호가 밀려난다(실측). 큰 표본에서는 10회 안팎으로
-    갱신된다. `\r` 덮어쓰기는 터미널일 때만 — 파이프로 받으면 매 줄이 남는다.
+    **단위는 표기다**(B69 ① — 행이 아니다): 리허설에서 도는 것은 좌표 태깅의
+    표기 루프이고, 그 루프가 곧 LLM 호출이다. 부르지 않으면(정확 일치만) 진행도
+    없다 — 결정적 구간은 빠르고, 조용한 것이 맞다.
+
+    보폭은 10회 안팎으로 갱신되게 잡는다. `\r` 덮어쓰기는 터미널일 때만 —
+    파이프로 받으면 매 줄이 남는다.
     """
-    stride = max(50, total // 10)
-    if not (i == 1 or i == total or i % stride == 0):
+    stride = max(1, total // 10)
+    if not (done == 1 or done == total or done % stride == 0):
         return
     tty = sys.stdout.isatty()
-    print(f"   파싱 {label} · 행 {i:,}/{total:,} · LLM 호출 {calls:,}회",
-          end="\r" if (tty and i < total) else "\n", flush=True)
+    print(f"   좌표 태깅 {label} · 표기 {done:,}/{total:,} · 채택 {adopted:,}",
+          end="\r" if (tty and done < total) else "\n", flush=True)
 
 
 def _extract_rehearsal(st, results, samples, want, truncated):

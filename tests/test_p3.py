@@ -384,11 +384,20 @@ show("⑥ --rows N 이 리허설을 앞 N행으로 자른다",
      f"{len(_r200.envelope['records'])} vs {len(_rall.envelope['records'])}")
 show("⑥ 자른 사실이 봉투 리포트에 남는다 (승인 근거라 숨기지 않는다)",
      _r200.report["rehearsal"]["full_rows"] > _r200.report["rehearsal"]["max_rows"])
+# **진행은 표기 단위다**(B69 ①) — 구판은 행 단위였고, 그래서 같은 표기를 행마다
+# 물었다. 이제 도는 루프가 곧 LLM 호출이라 **부르지 않으면 진행도 없다**.
 _seen = []
 _pl.parse(_cpmod, "B3", _big, max_rows=100,
           progress=lambda i, n, c: _seen.append((i, n, c)))
-show("⑥ 진행 콜백이 행 단위로 흐른다", len(_seen) > 0 and _seen[-1][0] == _seen[-1][1],
-     str(_seen[-1]) if _seen else "없음")
+show("⑥ 정확 일치만이면 진행이 흐르지 않는다 (진행은 호출을 따라간다)", not _seen,
+     str(_seen[:1]))
+_seen2 = []
+_pl.parse(_cpmod, "B3b", _big, max_rows=100,
+          pick_coord=lambda ref, choices: None,
+          progress=lambda i, n, c: _seen2.append((i, n, c)))
+show("⑥ 진행 콜백이 **표기 단위**로 흐르고 끝에서 총수와 같다",
+     len(_seen2) > 0 and _seen2[-1][0] == _seen2[-1][1],
+     str(_seen2[-1]) if _seen2 else "없음")
 show("⑥ 좌표 미스를 LLM 없이 먼저 센다", len(_R._coord_misses([_r200], "process")) > 0)
 show("⑥ 동의 없으면 LLM 보조가 꺼진다 (기본 N)",
      _R._ask_llm_coord(["a", "b"], None) is False)
@@ -1939,8 +1948,14 @@ show("⑤ⓐ 생성이 검수와 **같은 함수**를 부른다 (뷰 경로가 �
      "cmd_review(doc_type, llm_coord=False, extract=False)" in
      (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
 # **생성은 LLM을 켜지 않는다** — 비용 관문은 사람이 켜는 것이고, 그 자리가 review다.
-show("⑤ⓐ 생성의 뷰 산출에 LLM 호출 0 (좌표 보조·추출 리허설을 켜지 않는다)",
-     "추출 리허설 끔" in _g5.stdout and "LLM 호출 0회" in _g5.stdout)
+# **성질은 「생성이 비용 스위치를 켜지 않는다」이지 화면에 어느 문장이 있느냐가
+# 아니다**(B69 ② — 진행 줄이 표기 단위가 되면서 옛 문면이 사라졌다). 켜는 자리는
+# review이고, 생성은 둘 다 끈 채로 부른다.
+show("⑤ⓐ 생성의 뷰 산출에 비용 스위치가 꺼져 있다 (좌표 보조·추출 리허설)",
+     "추출 리허설 끔" in _g5.stdout
+     and "cmd_review(doc_type, llm_coord=False, extract=False)" in
+     (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+     and "[좌표 태깅]" not in _g5.stdout)
 # **review는 남는다** — 없애면 재생성 지시·좌표 보조·추출 리허설의 자리가 사라진다.
 _r5 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
 show("⑤ review는 선택 명령으로 남는다 (고칠 때 들어가는 자리)",
@@ -3186,6 +3201,75 @@ show("② 고정 어댑터 래퍼가 level_report까지 위임한다",
      "level_report = basic_prose_xlsx.level_report"
      in (REVIEW / "b68" / "adapter.py").read_text(encoding="utf-8"))
 reset("b68")
+
+# ── B69 ②③ — 인입 화면: 예고 · 진행 · 끝 · 상한 ─────────────────────────
+#
+# 등록 리허설에는 관문이 있었고(B22 — 앞 200행 · 기본 끔 · 동의) **운영 인입은
+# 뚫려 있었다.** 배치에는 동의 프롬프트가 아니라 예고와 상한이 맞다.
+print("\n■ B69 ②③ — 좌표 태깅 예고·진행·상한 (ingest-file · ingest-dir · parse run)")
+
+from cli import parse as _PS                                       # noqa: E402
+
+_ing69 = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
+                         str(RAW / "CP01.xlsx"), "--doc-type", "cp", "--allow-mock"],
+                        capture_output=True, text=True, cwd=str(ROOT),
+                        stdin=subprocess.DEVNULL)
+_pr69 = subprocess.run([sys.executable, str(ROOT / "run.py"), "parse", "run",
+                        str(ROOT / "tests/fixtures/adapters/cp.py"),
+                        str(RAW / "CP01.xlsx"), "--allow-mock"],
+                       capture_output=True, text=True, cwd=str(ROOT),
+                       stdin=subprocess.DEVNULL)
+_dir69 = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-dir",
+                         str(RAW), "--doc-type", "cp", "--allow-mock"],
+                        capture_output=True, text=True, cwd=str(ROOT),
+                        stdin=subprocess.DEVNULL)
+
+
+def _coord69(out):
+    return [l.strip() for l in out.splitlines() if "좌표 태깅 —" in l]
+
+
+show("② 세 명령 모두 좌표 태깅을 예고한다 (구판은 인입 갈래에 줄이 0이었다)",
+     all(_coord69(r.stdout) for r in (_ing69, _pr69, _dir69)),
+     str(_coord69(_ing69.stdout)[:1]))
+show("② mock이면 예고가 LLM 0회를 말한다 (부르지 않는다는 사실이 화면에 있다)",
+     all("LLM 0회" in l for r in (_ing69, _pr69) for l in _coord69(r.stdout)))
+show("② 예고의 숫자가 계약 JSON의 조각 수와 맞는다 (화면이 제 계산을 하지 않는다)",
+     f"조각 {len(json.loads((ROOT / 'parsed' / 'CP01.json').read_text(encoding='utf-8'))['records']):,}"
+     in _coord69(_ing69.stdout)[0], _coord69(_ing69.stdout)[0])
+# ③ 상한 손잡이 — 값의 정본은 `cli/parse.py` 상수 하나다.
+show("③ --coord-llm off|<종수>가 상한을 정한다 · 기본은 상수 하나",
+     _PS.coord_cap_of(["x", "--coord-llm", "off"]) == (["x"], 0)
+     and _PS.coord_cap_of(["x", "--coord-llm", "200"]) == (["x"], 200)
+     and _PS.coord_cap_of(["x"]) == (["x"], _PS.COORD_CAP),
+     f"기본 {_PS.COORD_CAP}")
+# 값이 종수도 off도 아니면 **사용법 거부**다 — 조용히 기본으로 떨어지면 사람은
+# 상한을 준 줄 안다.
+try:
+    _PS.coord_cap_of(["x", "--coord-llm", "많이"])
+    _bad69 = False
+except SystemExit as e:
+    _bad69 = "--coord-llm" in str(e)
+show("③ 종수도 off도 아닌 값은 예를 보이고 멈춘다 (기본으로 조용히 떨어지지 않는다)",
+     _bad69)
+# ③ 상한 초과 화면 — **막지 않고 말한다**(B61 계약: 원인 + 칠 수 있는 다음 줄).
+_buf69 = _io.StringIO()
+_n69, _p69 = _PS.coord_screen()
+with _ctx.redirect_stdout(_buf69):
+    _n69({"단계": "예고", "조각": 412, "정확_일치": 152, "표기_종수": 137,
+          "미스_행": 260, "묻는_종수": 100, "상한": 100, "LLM": True})
+    _p69(10, 100, 5)        # 보폭 갱신 — 매 표기 찍으면 그것이 잡음이다
+    _n69({"단계": "끝", "호출": 100, "채택": 21, "목록밖": 116})
+_scr69 = _buf69.getvalue()
+show("③ 상한 초과 화면이 원인과 **그대로 칠 수 있는 다음 줄**을 준다",
+     "상한 초과" in _scr69 and "--coord-llm 137" in _scr69
+     and "orphan_anchor" in _scr69,
+     [l.strip() for l in _scr69.splitlines() if "다음:" in l][:1])
+show("② 진행 줄은 표기 단위이고 끝 줄이 채택·목록 밖을 센다",
+     "표기 10/100" in _scr69 and "좌표 태깅 끝" in _scr69
+     and "채택 21" in _scr69)
+for _f69 in ("CP01", "CP02_drift", "CP03_bad", "CP04_unlabeled"):
+    (ROOT / "parsed" / f"{_f69}.json").unlink(missing_ok=True)
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
