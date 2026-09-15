@@ -5378,3 +5378,78 @@ $ python3 -m cli.platform doctypes
 - 회귀 **1196 → 1206/1206** (+10, 삭제 0): `test_g6` 57 → 67.
 - 검사 4종 전부 통과. 상태 거부 스캐너: **63곳 · 상태 35 · 사용법 28 · 미분류 0 ·
   계약 위반 0 · 없는 명령 0**.
+
+## B71 ①② — 추출 힌트도 mock 자산이다 · 사내 조건 스위트 · 2026-09-15
+
+요청문 `docs/안건/B71_요청문.md`. 전제 대조표 5항목 전부 실물과 일치 —
+`hints = _load_hints(doc_id)`(279) · `if hints and …`(287) 사이에 가드 없음 ·
+`HINTS_DIR = _fx.EXTRACT_HINTS` 1 hit · 픽스처 힌트 `PPT02.json`·`QPPT01.json` ·
+`USE_MOCK="0"` 서브프로세스 틀 있음. 대조표 5의 목록에 `test_g6.py`가 하나 늘어
+있다(B70 ①이 `use_mock()`을 in-process로 뒤집는다) — **서브프로세스·env·픽스처
+없는 조건을 도는 스위트는 여전히 0**이라 전제는 그대로다. **명세 개정 0.**
+
+### ① 추출 힌트는 `USE_MOCK=1`에서만 (칸 3.3)
+
+`_load_hints`가 `llm.use_mock()`이 거짓이면 `None`을 돌려준다. 실측:
+
+```
+mock True  → [{"chunk_id": "cid1", "entities": [{"surface": "세척 노즐 압력", …}]}]   ← 힌트 사용
+mock False → [{"chunk_id": "cid1", "failed": "NotConfigured: ①비정형 추출 — 실호출 경로가 비어 있다: LLM_GATEWAY_URL, CHAT_MODEL 미설정…"}]
+```
+
+**시끄럽게 실패하는 것이 증거다** — 힌트가 있어도 읽지 않고 실호출 경로로 갔다.
+
+### ② 사내 조건 스위트 — `tests/test_onsite.py` (상시 회귀 · 12건)
+
+조건 셋: `USE_MOCK=0` · `ONTO_FIXTURES`가 빈 폴더 · 등록 산출 넷만
+(`data/doc_types.json` · `adapters/<dt>.py` · `schemas/<dt>.json` · `review/<dt>/`).
+
+```
+■ B71 ① — 추출 힌트는 USE_MOCK=1에서만
+  [PASS] ① USE_MOCK=1이면 힌트를 쓴다 (지금과 같다 — 회귀가 이 세계에서 돈다)
+  [PASS] ① USE_MOCK=0이면 힌트 파일이 있어도 쓰지 않는다 — 실호출 경로로 간다
+
+■ B71 ② — 사내 조건(USE_MOCK=0 · 픽스처 없음 · 등록 산출만)
+  [PASS] ② platform doctypes — 목록이 등록부뿐이다 (mock 자산 이름 0)
+  [PASS] ② scan — 대조 목록이 등록부 어댑터뿐이다
+  [PASS] ② 지정 없이 넣으면 **스캔이** 등록 doc_type을 고른다 (basis.by == scan)
+  [PASS] ② ingest-file --dry-run이 사내 조건에서 돈다 (LLM 0 · mock 이름 0)
+  [PASS] ② register list — 등록 1건 (내장은 목록에 없다)
+  [PASS] ② doctor 환경 점검이 이 조건에서 완주한다 (전체는 재귀라 돌리지 않는다)
+  [PASS] ② 등록부 결손은 **상태 거부**다 — 이름과 다음 줄이 문면에 있다
+  [PASS] ② 픽스처가 디스크에 있어도 USE_MOCK=0이면 섞이지 않는다 (이식의 실제 모습)
+  [PASS] ② 변이 — 기본 소재지의 mock 가드를 빼면 mock 자산이 화면에 돌아온다
+  [PASS] ② 되돌리면 다시 0이다
+```
+
+판정은 **성질**이다 — 출력에 mock 자산 이름(cp·pfmea·ipqc·ppt_*·toc_report)이
+낱말 경계로 0회 등장한다는 것과 등록부 집합 등식. 문면은 세지 않는다.
+
+### 변이 (붉은 화면 — 심고 되돌렸다)
+
+`cli/scan.py`의 `(ADAPTER_DIRS if llm.use_mock() else [])`에서 가드를 빼고
+`USE_MOCK=0`으로(픽스처는 디스크에 있는 상태 — 이식의 실제 모습):
+
+```
+지문 스캔 — tests/fixtures/raw/CP01.csv
+  ◎ 후보 cp           일치 10/10
+    불일치 pfmea        일치 4/13 · 누락 [...]
+    불일치 ipqc         일치 5/16 · 누락 [...]
+  · toc_report   대상 아님 — 비정형(prose) — 헤더 지문 대상 아님(지정 필수)
+  → 후보 ['cp'] — 확정은 사람 몫이다 …
+```
+
+되돌린 뒤: `→ 후보 없음 — 신규 doc_type 등록(구축 모드) 또는 지정 투입 대상`.
+
+### 회차 중 잡은 것
+
+1. **빈 픽스처 폴더만으로는 변이가 안 잡혔다** — 폴더가 비어 가드를 빼도 초록이다.
+   사내가 본 조건은 **레포를 통째로 옮겨 픽스처가 디스크에 있는** 상태였다. 그
+   조건을 스위트에 함께 넣고 변이도 거기서 잰다(D-150 ①).
+2. **`doctor.py` 전체는 돌리지 않는다** — doctor가 이 스위트를 부르므로 무한이다.
+   `--env`만 돌려 「이 조건에서 죽지 않는가」를 잠갔다.
+
+### 결과
+
+- 회귀 **1206 → 1218/1218** (+12, 삭제 0): 새 스위트 `test_onsite` 12건.
+- 검사 4종 전부 통과. 상태 거부 스캐너: **63곳 · 미분류 0 · 계약 위반 0 · 없는 명령 0**.
