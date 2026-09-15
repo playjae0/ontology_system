@@ -5126,3 +5126,74 @@ ADAPTER["expects"]["columns"] = {'process': 'A', 'sub_process': 'B', 'process_no
   `test_p3` 380 → 392.
 - 검사 4종 전부 통과(문면 위반 0 · 문서간 0 · 미러 7쌍 0 · 자산 13건 판정 대상).
   상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 · 계약 위반 0**.
+
+## B67 ②①③ — 이어하기는 코드가 아니라 판단을 이어받는다 · 열 판정 대장 · 2026-09-15
+
+요청문 `docs/안건/B67_요청문.md`. 전제 대조표 8항목 전부 실물과 일치 —
+`draft(doc_type)` 2 hit(1101 resume · 1356 초회) · 이력은 1117에서 저장만 ·
+`chat(..., temperature=0)` · `iv_finalize` 1335·1947 · `generation_report` 529 ·
+`apply_instruction_to_decisions` 정의 1 + 호출 1(검수 지시뿐) · `_decisions_block`
+187 · `"gate"` 0 hit. **B66이 만진 register.py는 2774행 근처라 위 번호는 그대로였다.**
+명세 개정 0 · 대장 경로의 LLM 호출 0.
+
+### ② 열 판정 대장 — `review/<dt>/columns.json` (실물)
+
+```json
+{ "doc_type": "ipqc", "at": "…",
+  "columns": [
+    { "col": "A", "label": "대공정", "role": "anchor", "field": "process_group",
+      "by": "generate rev0", "status": "decided" },
+    { "col": "O", "label": "최근 불량 이력", "role": null, "field": null,
+      "by": "generate rev0", "status": "open:undecided" } ] }
+```
+
+**16행 = 열 프로파일 16열**(IPQC 2부). 쓰는 자리 넷은 전부 시스템이고 결정적이다 —
+관문 입구(`stamp_system_fields` 직후 · 초회·재생성 매번) · `iv_finalize` 직후 ·
+`--instruct` · 관문 FAIL이 이름을 부른 열(`open:G26`). **LLM은 대장을 쓰지 않는다**(C38).
+
+사내 CSV 표본 기준의 「열 수 == 프로파일 열 수」는 사내 실행 몫이다 — 이 레포의
+CSV 표본(`CP01.csv`)은 내장 어댑터라 등록 경로를 지나지 않는다. 성질은 어서션이
+잠갔다(대장 행 집합 == 프로파일 열 집합).
+
+### ① `--resume` — 관문 먼저, 지난 실패를 지시로 (화면 그대로)
+
+```
+■ ① 생성 (이어하기) — ipqc · 기존 패키지 재사용
+   이어하기 = 같은 입력 + 지난 실패 · 처음부터 = --resume 없이
+   기계 관문(하네스): FAIL — 62 PASS / 2 FAIL
+  열 판정 대장 — 16열 (1건 미해결)  review/ipqc/columns.json
+   [이어하기] 지난 초안 관문 FAIL 2건(G13 · G14)을 지시로 싣는다 · 지시 이력 1건
+```
+
+관문 PASS면 초안을 **다시 받지 않는다**(`draft` 0회): 통과한 것을 이유 없이 갈지
+않는다. 초안이 없으면 초회와 같은 입력(지시 0 · rev 0)이다.
+
+### ③ 대장을 화면에 (화면 그대로)
+
+```
+  열 판정 대장 — 16열 (1건 미해결)  review/ipqc/columns.json
+     A   대공정                role anchor      필드 process_group        decided  ← generate rev0
+     D   극성                 role —           필드 electrode_type       decided  ← generate rev0
+     O   최근 불량 이력           role —           필드 —                    open:undecided  ← generate rev0
+     P   관련 표준문서            role attribute   필드 관련 표준문서              decided  ← generate rev0
+```
+
+관문의 **반환 자리**에서 찍는다 — `generate`·`status`·`confirm`이 같은 블록을 본다.
+검수 뷰의 갈린 열·경계선도 대장의 열문자를 읽는다(어긋나면 대장이 정본).
+
+### 회차 중 잡은 것
+
+1. **prose에 대장을 세우니 본문 열 하나가 「빠뜨린 열」로 떴다**(거짓 신호) —
+   table에만 세운다(D-146 ③).
+2. **`--instruct`로 정한 role이 다음 관문에서 지워졌다** — 산출에서 다시 뽑으면
+   그 열은 여전히 미배정이기 때문이다. 사람 출처 행은 role·출처를 유지하고
+   `status`만 산출의 것을 쓴다: 「사람은 정했고 코드는 아직 안 썼다」가 남는다.
+3. **헤더 라벨이 전부 비어 있었다** — `_label_columns`가 어댑터의 `SAMPLE`을 보는데
+   생성 초안에는 그 상수가 없다. 표본(`st["samples"]`)에서 읽게 고쳤다(대조 함수는
+   그대로 `preflight.label_columns` 하나다).
+
+### 결과
+
+- 회귀 **1144 → 1158/1158** (+14, 삭제 0): `test_p3` 392 → 406.
+- 검사 4종 전부 통과. 상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 ·
+  계약 위반 0**.

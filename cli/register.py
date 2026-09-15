@@ -1098,17 +1098,53 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                   f"(라운드 전문 "
                   f"{sum(len(_lg.get(b.get('at')) or []) for b in _bs)}건은 "
                   f"{INTERVIEW_LOG})")
-        ad, sc = draft(doc_type)
+        # **이어하기는 코드가 아니라 판단을 이어받는다**(B67 ①).
+        #
+        # 구판은 `draft(doc_type)`를 지시·이력 **없이** 불렀다. 생성은
+        # `temperature=0`이라 같은 입력이면 같은 코드가 나오고, 그래서 사내에서
+        # G31(`AttributeError`)로 끝난 등록을 이어가자 **같은 G31**이 났다 —
+        # 이어하기가 재생성이 아니라 **재현**이었다. 초안이 이미 있으면:
+        #   ① 관문을 먼저 돌린다(B60 ① — 저장 판정을 믿지 않는다 · LLM 0)
+        #   ② FAIL이면 그 판정 문면과 지시 이력을 재생성 지시로 **싣는다**
+        #   ③ PASS면 초안을 다시 받지 않는다 — 통과한 것을 이유 없이 갈지 않는다
+        print("   이어하기 = 같은 입력 + 지난 실패 · 처음부터 = --resume 없이")
+        st = _state(doc_type) or {}
+        st.setdefault("samples", pkg["human"]["samples"])
+        _prior = ROOT / st["adapter"] if st.get("adapter") else None
+        _instruction = None
+        if _prior and _prior.exists() and st.get("schema"):
+            if regate(doc_type, st) == "PASS":
+                print("   [이어하기] 지난 초안이 관문 PASS — 초안을 다시 받지 "
+                      "않는다 (LLM 호출 0). 갈 곳은 검수·확정이다")
+                st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
+                      "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"]}
+                _save_state(doc_type, st)
+                return _finish_generate(doc_type, st, st["samples"], pkg)
+            _fails = fail_lines(st.get("harness_out") or "")
+            _auto, _ask = classify_failures(st.get("harness_out") or "")
+            _instruction = "\n".join(_auto + _ask)
+            print(f"   [이어하기] 지난 초안 관문 FAIL {len(_fails)}건"
+                  f"({' · '.join(c for c, _l, _d in _fails) or '판정 줄 없음'})을 "
+                  f"지시로 싣는다 · 지시 이력 {len(st.get('instructions') or [])}건")
+        if _instruction:
+            st["revision"] = st.get("revision", 0) + 1
+            st.setdefault("instructions", []).append(
+                {"n": st["revision"], "instruction": _instruction,
+                 "at": store._now(), "by": "자동(이어하기 — 지난 관문 판정)"})
+            ad, sc = draft(doc_type, st["revision"], instruction=_instruction,
+                           history=st.get("instructions"))
+        else:
+            ad, sc = draft(doc_type)
         if ad is None:
+            _want = f"{doc_type}_rev{st['revision']}" if _instruction else doc_type
             raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "       # [상태]
-                             f"'{doc_type}' 부재 (D-10). mock에 이 이름의 초안이 "
+                             f"'{_want}' 부재 (D-10). mock에 이 이름의 초안이 "
                              f"없다\n"
                              f"  ▶ 다음 줄 — 실호출로 돌린다:\n"
                              f"     python run.py llm-check\n"
                              f"     USE_MOCK=0 python -m cli.register generate "
                              f"{doc_type} --resume")
         print(f"   초안 수령: {_rel(ad)} · {_rel(sc)}")
-        st = _state(doc_type) or {}
         st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
               "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"],
               "adapter": str(_rel(ad)),
@@ -1333,6 +1369,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # **확정 요약이 생성의 입력이다**(B60 ②) — 전문은 이력으로 남고, 사람이
         # 화면에서 요약을 확인한다. 요약도 즉시 저장한다(라운드와 같은 이유).
         _batch["decisions"] = iv_finalize(pkg, rounds)
+        # 문답이 정한 열은 대장에도 간다(B67 ②) — 판단의 자리는 하나다.
+        apply_decisions_to_ledger(doc_type, _batch["decisions"])
         _persist(rounds)
         _log = read_log(doc_type)
         _old = sum(len(_log.get(b.get("at")) or [])
@@ -1871,6 +1909,19 @@ def _write_stamp(st, path, header, want_ver, had_ver, cols=None):
     return None
 
 
+def _gate_done(doc_type, verdict):
+    """관문이 판정을 내고 **열 판정 대장을 찍는다** (B67 ③).
+
+    자리가 관문의 반환 자리인 이유: 사람이 보는 「지금 상태」는 판정이 끝난 뒤의
+    대장이다. 루프 중간마다 찍으면 재생성 전 대장이 화면에 남아 마지막 것과
+    섞인다. `status`·`confirm`도 이 함수를 지나므로 **화면 한 벌**이다.
+    """
+    blk = ledger_block(doc_type)
+    if blk:
+        print(blk)
+    return verdict
+
+
 def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
 
@@ -1890,6 +1941,9 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         _info = stamp_system_fields(st, samples)
         if _info:
             print(_info)
+        # **열 판정 대장은 관문 입구에서 선다**(B67 ②) — 스탬프가 `columns`를
+        # 열문자로 확정한 **직후**라야 대장의 열문자가 어댑터의 것과 같다.
+        sync_ledger(doc_type, st, samples)
         ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples,
                           package=REVIEW / doc_type / "input_package.json")
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
@@ -1900,14 +1954,16 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
                   f"{[u['field'] for u in orphan]}")
         verdict = gate_verdict(ok, True, orphan)
         st["harness_out"] = out
+        # 판정이 어느 열을 말하면 그 행이 미해결이다 — 대장만 보고 넘어가지 않게.
+        mark_ledger_fails(doc_type, fail_lines(out))
         if verdict == "PASS":
-            return verdict
+            return _gate_done(doc_type, verdict)
         if not fix:
             # **판정만 다시 낸다**(B60 ①) — `status`·`confirm`의 갈래다. 재생성·문답을
             # 타지 않는다: 그 둘은 LLM을 부르고, 상태를 보러 온 사람이 그것을
             # 시작하게 두면 안 된다. 고치는 일은 `review --instruct`가 하고 그
             # 명령이 다음 줄로 화면에 뜬다.
-            return verdict
+            return _gate_done(doc_type, verdict)
         auto, ask = classify_failures(out)
         for ln in auto + ask:
             print(f"     {ln}")
@@ -1921,7 +1977,7 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         if _codes and all(c in GATE_SELF for c in _codes):
             print(f"   남은 FAIL이 관문 자체 결함뿐이다 ({' · '.join(_codes)}) — "
                   f"재생성으로 고칠 수 없어 묻지 않고 끝낸다")
-            return "FAIL"
+            return _gate_done(doc_type, "FAIL")
         # **같은 실패가 되풀이되면 멈춘다** — 이 함수의 머리말이 이미 말하는 성질이다:
         # 「같은 항목이 또 실패하면 프롬프트가 그것을 못 고치는 것」. 기본값이 Y가
         # 되면서(B62 ④) 이 자리가 **유일한 종료 조건**이 됐다 — 없으면 비대화형
@@ -1932,9 +1988,9 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
                   f"재생성이 이것을 못 고친다. 여기서 끝낸다.")
             print(f"   이어가려면: python -m cli.register review {doc_type} "
                   f"--instruct \"…\"")
-            return "FAIL"
+            return _gate_done(doc_type, "FAIL")
         if tries >= 1 and not _ask_more(doc_type, _codes):
-            return "FAIL"
+            return _gate_done(doc_type, "FAIL")
         prev_codes = _codes
         tries += 1
         if ask:
@@ -1944,7 +2000,9 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
             # 전량 유실이었다. B43 ⑤가 생성 전 문답에서 막은 것과 같은 유실이다.
             _fp = _failure_persist(doc_type, pkg, samples, ask)
             rounds = _interview(pkg or {}, context=ask, on_round=_fp)
-            _fp(rounds, decisions=iv_finalize(pkg or {}, rounds, context=ask))
+            _dec = iv_finalize(pkg or {}, rounds, context=ask)
+            _fp(rounds, decisions=_dec)
+            apply_decisions_to_ledger(doc_type, _dec)
             answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
             # **원문은 답이 있어도 함께 보낸다**(B59 ②). 구판은 사람이 답하면
             # `"사람 문답: …"`만 보내 **예외 원문·validator 결함 목록이 지시에서
@@ -1973,7 +2031,7 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         if ad is None:
             print(f"   재생성 초안을 얻지 못했다 — "
                   f"fixture '{doc_type}_rev{st['revision']}' 없음")
-            return "FAIL"
+            return _gate_done(doc_type, "FAIL")
         st["adapter"] = str(_rel(ad))
         st["schema"] = str(_rel(sc))
         print(f"   재생성 {st['revision']}회째 → {_rel(ad)}")
@@ -2020,6 +2078,8 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     rep = (st or {}).get("generation_report") or {}
     rank = {x["field"]: x["rank"] for x in (rep.get("attribute_ranking") or [])}
     cut = rep.get("confidence_cut")
+    _led_cols = {x["field"]: x["col"] for x in read_ledger((st or {}).get("doc_type", ""))
+                 if x.get("field")}
     sug = {}
     for s in (prof or []):
         for col, v in (s.get("열") or {}).items():
@@ -2027,8 +2087,12 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     for r in rows:
         marks = []
         # 열문자 매핑은 어댑터의 columns가 갖는다 — 없으면 이름으로 맞춰 본다.
-        col = (getattr(adapter_mod, "ADAPTER", {}).get("expects", {})
-               .get("columns", {}) or {}).get(r["field"])
+        # **열문자는 대장에서 읽는다**(B67 ③) — `generation_report`와 어긋나면
+        # 대장이 정본이다. 어댑터의 `columns`는 합치기면 리스트라 열 하나를
+        # 가리키지 못한다(그때 기계 제안 대조가 조용히 빠졌다).
+        col = _led_cols.get(r["field"]) or (
+            getattr(adapter_mod, "ADAPTER", {}).get("expects", {})
+            .get("columns", {}) or {}).get(r["field"])
         s = sug.get(col) if col else None
         if s and s != "role 판정 대상" and r.get("role") != s:
             marks.append(f"기계 제안({s})과 갈림")
@@ -2148,6 +2212,218 @@ def _label_columns(exp, adapter_mod):
         return preflight.label_columns(raw, exp)
     except Exception:
         return {}
+
+
+# ================================================ 열 판정 대장 (B67 ②)
+#
+# **판단과 코드를 가른다.** 생성 LLM이 열마다 내린 판단(role · 필드↔열 대응 · 안 쓰는
+# 열)이 지금까지 **코드 안에만** 살았다 — `adapter.py`·`schema.json`. 그래서 코드를
+# 버리면 판단도 버려지고, 코드를 살리면 오류도 산다(실측: G31로 끝난 등록을
+# `--resume`하면 같은 G31). 대장은 그 판단만 따로 적어 두는 자리다: 재생성은 코드를
+# 새로 받되 **판단은 이어받는다.**
+#
+# **LLM이 대장을 쓰지 않는다**(C38 「LLM은 고르고, 시스템이 쓴다」) — 요약을 또
+# 시키지 않는다. 대장은 산출·판정·지시에서 시스템이 **뽑는** 것이고 전부 결정적이다.
+LEDGER_FILE = "columns.json"
+
+
+def ledger_path(doc_type):
+    return _dir(doc_type) / LEDGER_FILE
+
+
+def read_ledger(doc_type):
+    """대장 행 목록 — 없거나 깨졌으면 빈 목록이다."""
+    p = ledger_path(doc_type)
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("columns") or []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_ledger(doc_type, rows):
+    ledger_path(doc_type).write_text(
+        json.dumps({"doc_type": doc_type, "at": store._now(), "columns": rows},
+                   ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return rows
+
+
+def _col_named(text, row):
+    """이 문면이 **이 열을 이름으로 부르는가** — 열문자·라벨·필드 중 하나로.
+
+    **못 정하면 건드리지 않는다**가 규칙이라 매칭은 좁게 잡는다: 열문자는 따옴표
+    안이거나 `D열`이거나 낱말 경계에 선 것만 센다. 한 글자 열문자가 아무 문장에나
+    걸리면 **엉뚱한 행이 미해결로 뒤집힌다.**
+    """
+    text = text or ""
+    for key in (row.get("label"), row.get("field")):
+        if key and key in text:
+            return True
+    col = row.get("col") or ""
+    if not col:
+        return False
+    if f"'{col}'" in text or f'"{col}"' in text or f"{col}열" in text:
+        return True
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(col)}(?![A-Za-z0-9가-힣])",
+                     text) is not None
+
+
+def _labels_by_col(exp, mod, samples):
+    """열문자 → 헤더 라벨. **표본에서 읽는다** — 어댑터의 `SAMPLE`은 있을 수도 없다.
+
+    대조는 한 함수다(`preflight.label_columns` — B64 ③). 여기서 다시 짓지 않는다.
+    """
+    out = {}
+    for smp in list(samples or []) + [None]:
+        try:
+            raw = reader.read(str(smp)) if smp else None
+            pos = preflight.label_columns(raw, exp) if raw else _label_columns(exp, mod)
+        except Exception:
+            continue
+        for lab, letters in (pos or {}).items():
+            for c in letters:
+                out.setdefault(c, lab)
+        if out:
+            return out
+    return out
+
+
+def sync_ledger(doc_type, st, samples=None):
+    """산출에서 열 판정을 뽑아 대장을 다시 세운다 — **LLM 0 · 결정적**.
+
+    자리는 **관문 입구**(`stamp_system_fields` 직후)다. 초회·재생성 매번 돌고,
+    읽는 것은 셋이다: 확정된 `expects.columns`(C38 스탬프 뒤 열문자) · `schema.json`의
+    필드별 role · `unmappable[]`. **행 집합은 열 프로파일이 정한다** — 표본에 있는
+    열은 판정됐든 아니든 전부 한 행을 갖는다: 빠진 열이 대장에서도 빠지면
+    「생성이 빠뜨렸다」가 보이지 않는다.
+
+    **orphan을 여기서 다시 계산하지 않는다** — `unmappable_of`의 셋째 값을 읽는다.
+    계산이 둘이면 한쪽만 고쳐지는 날이 오고, 그날 관문과 대장이 다른 말을 한다.
+
+    `by`(판단 출처)는 **판단이 그대로면 그대로 둔다** — 관문을 다시 돌렸다고
+    사람이 정한 열이 「생성이 정했다」로 바뀌면 안 된다.
+    """
+    prof = {}
+    for pp in _profiles(doc_type):
+        for col, item in (pp.get("열") or {}).items():
+            prof.setdefault(col, item)
+    try:
+        mod = _load(ROOT / st["adapter"], f"led_{doc_type}")
+        schema = json.loads((ROOT / st["schema"]).read_text(encoding="utf-8"))
+    except Exception:
+        return read_ledger(doc_type)        # 못 읽으면 관문 ①단이 말한다
+    a = getattr(mod, "ADAPTER", {}) or {}
+    if a.get("payload_kind") != "table":
+        # **prose에는 열이 없다** — 대장을 세우면 본문 열 하나가 「생성이 빠뜨린
+        # 열」로 뜬다(거짓). `header_labels`를 table에만 채우는 것과 같은 근거다(D-29).
+        ledger_path(doc_type).unlink(missing_ok=True)
+        return []
+    exp = a.get("expects") or {}
+    fields, _blocks = load_blocks(schema)
+    field_of = {}
+    for f, v in (exp.get("columns") or {}).items():
+        for c in (v if isinstance(v, (list, tuple)) else [v]):
+            field_of.setdefault(str(c), f)
+    label_of = _labels_by_col(exp, mod, samples or st.get("samples"))
+    kind = {}
+    for u in unmappable_of(schema, mod)[0]:
+        kind[u["field"]] = ("decided", "UNMAPPABLE")
+    for u in unmappable_of(schema, mod)[1]:
+        kind[u["field"]] = ("open:undecided", None)
+    for u in unmappable_of(schema, mod)[2]:
+        kind[u["field"]] = ("open:orphan", None)
+    prev = {r.get("col"): r for r in read_ledger(doc_type)}
+    by_now = f"generate rev{st.get('revision', 0)}"
+    rows = []
+    for col in sorted(prof, key=lambda c: (len(c), c)):
+        lab, fld = label_of.get(col), field_of.get(col)
+        st_role = kind.get(lab, (None, None))
+        role = (fields.get(fld) or {}).get("role") if fld else st_role[1]
+        status = "decided" if fld else (st_role[0] or "open:orphan")
+        row = {"col": col, "label": lab, "role": role, "field": fld,
+               "by": by_now, "status": status}
+        old = prev.get(col)
+        if old and (old.get("role"), old.get("field")) == (role, fld) and old.get("by"):
+            row["by"] = old["by"]           # 판단이 그대로면 출처도 그대로
+        elif old and not fld and str(old.get("by") or "").startswith(
+                ("interview", "instruct")):
+            # **사람이 정한 것을 산출이 지우지 않는다**(B67 ② — 이 회차의 성질).
+            # 코드가 아직 그 열을 쓰지 않을 뿐이고, 그 사실은 `status`가 말한다:
+            # role은 사람의 것, status는 산출의 것 — 둘이 갈린 것이 지금 상태다.
+            row["role"], row["by"] = old.get("role") or role, old["by"]
+        rows.append(row)
+    return _save_ledger(doc_type, rows)
+
+
+def mark_ledger_fails(doc_type, fails):
+    """관문 FAIL이 **이름을 부른 열**에 미해결 태그를 단다 — `open:G26`.
+
+    판정이 그 열을 말하는데 대장이 `decided`로 남아 있으면, 대장을 보고 넘어간
+    사람이 막힌 자리를 못 본다.
+    """
+    rows = read_ledger(doc_type)
+    if not rows:
+        return rows
+    for r in rows:
+        for code, _label, detail in fails or []:
+            if _col_named(detail, r):
+                r["status"] = f"open:{code}"
+                break
+    return _save_ledger(doc_type, rows)
+
+
+def apply_to_ledger(doc_type, text, by):
+    """문답의 확정 사항·사람 지시를 대장에 반영한다 — **매칭은 결정적이다**.
+
+    `apply_instruction_to_decisions`(B60 ②)와 같은 규칙이다: 문면이 어느 열을
+    이름으로 부르면 그 행을, 아니면 아무 행도 건드리지 않는다. **추측으로 행을
+    고치지 않는다** — 어느 열인지 못 정한 지시는 이력(`instructions`)에만 남는다.
+
+    role 이름이 문면에 **정확히 하나** 있으면 그 행의 role로 삼는다. 둘 이상이면
+    무엇을 고르는지가 판단이라 손대지 않는다.
+    """
+    rows = read_ledger(doc_type)
+    if not rows or not (text or "").strip():
+        return 0
+    named = [r for r in _ROLES if re.search(rf"(?<![A-Za-z]){r}(?![A-Za-z])", text)]
+    hit = 0
+    for r in rows:
+        if not _col_named(text, r):
+            continue
+        if len(named) == 1:
+            r["role"] = named[0]
+        r["by"], r["status"], hit = by, "decided", hit + 1
+    if hit:
+        _save_ledger(doc_type, rows)
+    return hit
+
+
+def apply_decisions_to_ledger(doc_type, decisions):
+    """문답의 `decisions[]` — 항목마다 그 문면이 부른 열에 반영한다."""
+    hit = 0
+    for d in decisions or []:
+        rd = d.get("round")
+        hit += apply_to_ledger(
+            doc_type, " ".join(str(d.get(k) or "") for k in ("topic", "decision")),
+            f"interview r{rd}" if rd is not None else "interview")
+    return hit
+
+
+def ledger_block(doc_type, rows=None):
+    """대장 한 줄에 한 열 — 관문 화면·`status`가 같은 블록을 쓴다 (B67 ③)."""
+    rows = read_ledger(doc_type) if rows is None else rows
+    if not rows:
+        return ""
+    out = [f"  열 판정 대장 — {len(rows)}열 "
+           f"({sum(1 for r in rows if str(r.get('status')).startswith('open')) or 0}건 미해결)"
+           f"  {ledger_path(doc_type).relative_to(ROOT)}"]
+    for r in rows:
+        out.append(f"     {r.get('col'):<3} {str(r.get('label') or '(헤더 없음)')[:16]:<18}"
+                   f" role {str(r.get('role') or '—'):<11}"
+                   f" 필드 {str(r.get('field') or '—')[:18]:<20}"
+                   f" {r.get('status')}  ← {r.get('by')}")
+    return "\n".join(out)
 
 
 def gate_verdict(harness_ok, parses_ok, orphan):
@@ -2506,6 +2782,11 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
         if _hit is not None:
             print(f"   확정 사항 갱신 — {'항목 ' + str(_hit) + '건 교체' if _hit else '새 항목 추가'}"
                   f" (사람 지시 rev {st['revision']})")
+        # **지시가 열을 이름으로 부르면 대장도 갱신한다**(B67 ②) — 못 부르면
+        # 건드리지 않고 이력에만 남는다(추측으로 행을 고치지 않는다).
+        _lh = apply_to_ledger(doc_type, instruct, f"instruct rev {st['revision']}")
+        if _lh:
+            print(f"   열 판정 대장 갱신 — {_lh}열 (instruct rev {st['revision']})")
         ad, sc = draft(doc_type, st["revision"], instruction=instruct,
                        history=st.get("instructions"))
         if ad is None:

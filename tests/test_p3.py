@@ -2990,6 +2990,152 @@ show("⑤ 변이 — read_csv가 헤더 한 셀을 바꾸면 ⓐ가 붉어진다
      _m66.get("envelope") != _x66.get("envelope"),
      f"{_m66.get('ingest')} — {(_m66.get('reason') or _m66.get('error') or '')[:70]}")
 
+
+# ── B67 ② — 열 판정 대장: 판단과 코드를 가른다 ──────────────────────────
+#
+# 생성 LLM이 열마다 내린 판단(role · 필드↔열 · 안 쓰는 열)이 **코드 안에만** 살았다.
+# 그래서 코드를 버리면 판단도 버려지고, 코드를 살리면 오류도 살았다 — 사내에서
+# G31로 끝난 등록을 `--resume`하면 같은 G31이 났다. 대장은 그 판단만 따로 적는다.
+print("\n■ B67 ② — 열 판정 대장 (columns.json)")
+
+reset("ipqc")
+run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
+_led67 = R.read_ledger("ipqc")
+_pcols67 = {c for pp in R._profiles("ipqc") for c in (pp.get("열") or {})}
+show("② 대장의 행 집합 == 열 프로파일의 열 집합 (판정됐든 아니든 한 열에 한 행)",
+     _led67 and {r["col"] for r in _led67} == _pcols67,
+     f"대장 {len(_led67)}행 · 프로파일 {len(_pcols67)}열")
+show("② 한 열에 한 행 — 열문자 중복 0",
+     len({r["col"] for r in _led67}) == len(_led67))
+show("② 열 전량이 판정을 갖는다 — 필드·role 또는 미해결 태그",
+     all(r.get("field") or r.get("role") or str(r.get("status")).startswith("open")
+         for r in _led67),
+     str([r["col"] for r in _led67 if not (r.get("field") or r.get("role")
+                                           or str(r.get("status")).startswith("open"))]))
+
+# ⓑ **코드만 깨뜨린다** — 판단(role·필드 대응)은 그대로여야 한다. 이것이 이 회차의
+# 성질이다: 재생성은 코드를 새로 받되 판단은 이어받는다.
+_judg67 = {(r["col"], r["role"], r["field"]) for r in _led67}
+_ad67 = REVIEW / "ipqc" / "adapter.py"
+_src67 = _ad67.read_text(encoding="utf-8")
+_ad67.write_text(_src67.replace("def extract(",
+                                "def _b67_broken(raw):\n"
+                                "    return normalizer.no_such_helper(raw)\n\n\n"
+                                "def extract(", 1), encoding="utf-8")
+_calls67a = llm.usage_total()["calls"]
+_v67 = R.regate("ipqc", R._state("ipqc"))       # 관문 재실행 — 재생성·문답 없음
+_led67b = R.read_ledger("ipqc")
+show("②ⓑ 코드에 오류만 심어도 **role·필드 대응은 그대로다** (판단과 코드가 갈렸다)",
+     _v67 != "PASS" and {(r["col"], r["role"], r["field"]) for r in _led67b} == _judg67,
+     f"관문 {_v67} · 대장 {len(_led67b)}행")
+show("②ⓑ 대장 쓰기 경로에 LLM 호출 0 (시스템이 뽑는다 — C38)",
+     llm.usage_total()["calls"] == _calls67a,
+     f"{_calls67a} → {llm.usage_total()['calls']}")
+
+# ⓑ 지시가 열을 이름으로 부르면 그 행이 갱신되고 **출처가 사람으로 바뀐다**
+_o67 = next((r for r in _led67 if str(r.get("status")).startswith("open")), _led67[-1])
+run("review", "ipqc", "--instruct", f"{_o67['col']}열은 attribute다")
+_row67 = next(r for r in R.read_ledger("ipqc") if r["col"] == _o67["col"])
+show("②ⓑ --instruct가 그 열의 행을 갱신하고 출처가 instruct rev N이 된다",
+     _row67.get("role") == "attribute"
+     and str(_row67.get("by", "")).startswith("instruct rev"),
+     f"{_row67['col']} · role {_row67.get('role')} · by {_row67.get('by')}")
+show("②ⓑ 사람이 정한 판단은 뒤 관문이 지우지 않는다 (산출이 아직 안 쓴 열이어도)",
+     R.sync_ledger("ipqc", R._state("ipqc"))
+     and next(r for r in R.read_ledger("ipqc")
+              if r["col"] == _o67["col"]).get("by", "").startswith("instruct"))
+show("② 열을 못 집는 지시는 **대장을 건드리지 않는다** (추측으로 행을 고치지 않는다)",
+     R.apply_to_ledger("ipqc", "전반적으로 더 꼼꼼히 해라", "instruct rev 99") == 0)
+# prose에는 열이 없다 — 대장을 세우면 본문 열 하나가 「빠뜨린 열」로 뜬다(거짓).
+reset("toc_report")
+run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+show("② prose 어댑터에는 대장이 서지 않는다 (열이 없는 자리다)",
+     R._state("toc_report") and not R.ledger_path("toc_report").exists(),
+     f"관문 {(R._state('toc_report') or {}).get('machine_gate')}")
+
+
+# ── B67 ① — 이어하기는 코드가 아니라 판단을 이어받는다 ───────────────────
+#
+# `--resume`이 `draft(doc_type)`를 지시·이력 없이 불렀고 생성은 `temperature=0`이라
+# **같은 입력 → 같은 코드 → 같은 실패**였다. 이어하기가 재생성이 아니라 재현이었다.
+print("\n■ B67 ① — --resume: 관문 먼저 · 지난 실패를 지시로")
+
+_sent67 = []
+_p67, _r67, _m67 = _llm._post, _llm.require, _llm.use_mock
+
+
+def _live67():
+    """전송 직전 payload를 잡는다 — 「지시가 모델에 닿았나」는 전송분이 답한다."""
+    _llm.require = lambda *a, **k: {"url": "http://x", "model": "m", "key": "k",
+                                    "timeout": 5, "retry": 0}
+    _llm.use_mock = lambda: False
+    _llm._post = lambda u, p, k, t: _sent67.append(p) or {
+        "choices": [{"message": {"content": json.dumps(
+            {"adapter_py": "# x\nADAPTER = {}\ndef extract(raw):\n    return []",
+             "schema_json": "{}"})}}]}
+
+
+_live67()
+# **재는 것은 이어하기가 보내는 전송분이다** — 그 뒤의 관문 루프(문답·자동 재생성)는
+# 이 어서션의 대상이 아니라서 끊는다. 끊지 않으면 가짜 응답이 문답 화면으로 흘러간다.
+_fin67 = R._finish_generate
+R._finish_generate = lambda *a, **k: 0
+try:
+    _b67 = _io.StringIO()
+    with _ctx.redirect_stdout(_b67):
+        R.cmd_generate("ipqc", None, [], resume=True)
+finally:
+    R._finish_generate = _fin67
+    _llm._post, _llm.require, _llm.use_mock = _p67, _r67, _m67
+_scr67 = _b67.getvalue()
+_sys67 = _sent67[0]["messages"][0]["content"] if _sent67 else ""
+_tags67 = [c for c, _l, _d in R.fail_lines(R._state("ipqc").get("harness_out") or "")]
+show("①ⓑ 관문 FAIL 상태의 --resume이 **지난 판정을 전송분에 싣는다**",
+     bool(_sent67) and any(t in _sys67 for t in _tags67) if _tags67 else False,
+     f"태그 {_tags67} · system {len(_sys67.encode()):,}B")
+show("①ⓑ 지시 이력도 함께 실린다 (앞 회차의 교정을 사람이 다시 적지 않는다)",
+     bool(_sent67) and "## [재생성 지시]" in _sys67
+     and _sys67.count("- ") > 0, f"전송 {len(_sent67)}회")
+show("①ⓐ 화면이 지난 FAIL 건수와 이력 건수를 말한다",
+     "[이어하기]" in _scr67 and "지시로 싣는다" in _scr67,
+     [l.strip() for l in _scr67.splitlines() if "[이어하기]" in l][:1])
+
+# ⓑ **PASS면 초안을 다시 받지 않는다** — 통과한 것을 이유 없이 갈지 않는다.
+_drafts67 = []
+_d67 = R.draft
+
+
+def _spy67(doc_type, revision=0, *, instruction=None, history=None):
+    _drafts67.append({"dt": doc_type, "rev": revision, "instruction": instruction,
+                      "history": list(history or [])})
+    return _d67(doc_type, revision, instruction=instruction, history=history)
+
+
+R.draft = _spy67
+try:
+    with _ctx.redirect_stdout(_io.StringIO()):
+        R.cmd_generate("toc_report", None, [], resume=True)   # 관문 PASS 상태
+    _pass67 = list(_drafts67)
+    # ⓑ 초안이 없으면 초회와 같은 입력이다 (지시 없음 · rev 0)
+    _drafts67.clear()
+    _st67 = R._state("ipqc")
+    (ROOT / _st67["adapter"]).unlink(missing_ok=True)
+    try:
+        with _ctx.redirect_stdout(_io.StringIO()):
+            R.cmd_generate("ipqc", None, [], resume=True)
+    except SystemExit:
+        pass
+    _none67 = list(_drafts67)
+finally:
+    R.draft = _d67
+show("①ⓑ 관문 PASS 상태의 --resume은 **초안을 다시 받지 않는다** (LLM 호출 0)",
+     _pass67 == [], f"draft {len(_pass67)}회")
+show("①ⓑ 초안이 없는 --resume은 **초회와 같은 입력**이다 (지시 0 · rev 0)",
+     _none67 and _none67[0]["instruction"] is None and _none67[0]["rev"] == 0,
+     str([{k: v for k, v in c.items() if k != "history"} for c in _none67][:1]))
+reset("ipqc")
+reset("toc_report")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
