@@ -210,6 +210,47 @@ def resolve_item(kind, match, *, actor, decision, at, note=""):
     return n
 
 
+# **행 단위 사실을 모으는 큐 kind**(B72 ② · 사내 실측 열한째). 같은 필드가 118행이면
+# 사람이 판정할 것은 **하나**다 — 「meta 열이 스키마에 없다」. 118건으로 쌓이면 화면이
+# 그 하나를 말하지 못하고, 다른 kind가 그 아래 묻힌다. 큐 kind는 닫힌 20종 그대로다 —
+# **세는 단위만 행에서 (문서 × 키)로 바꾼다.**
+AGG_KINDS = ("unknown_field", "missing_field", "orphan_anchor", "orphan_attach")
+LOC_KEEP = 5            # payload에 남기는 locator·값의 앞 N — 사람이 찾아갈 실마리
+
+
+def enqueue_rows(kind, reason, doc_id, key, payload, *, locator=None):
+    """**문서 × 키 단위 1건**으로 모은다 — 행은 `rows`로 세고 앞 N개만 남긴다.
+
+    `key`는 사람이 판정하는 단위다: 필드 이름(`unknown_field`·`missing_field`) 또는
+    표기(`orphan_anchor`·`orphan_attach`). 행마다 다른 재료(재시도의 손잡이 —
+    provenance·dropped_edges·pending_attrs)는 **버리지 않고** `items[]`에 쌓는다:
+    집계는 화면의 일이고, 재시도는 행 단위 재료를 그대로 필요로 한다(§4.7-5).
+
+    `enqueue`와 달리 같은 항목의 재호출이 **갱신**이다 — 그래서 여기서 직접 쓴다.
+    """
+    q = read(QUEUE, [])
+    for x in q:
+        if x.get("kind") == kind and x.get("doc_id") == doc_id \
+                and (x.get("payload") or {}).get("key") == key:
+            pl = x["payload"]
+            pl["rows"] = int(pl.get("rows", 1)) + 1
+            if locator and len(pl.setdefault("locators", [])) < LOC_KEEP:
+                pl["locators"].append(locator)
+            pl.setdefault("items", []).append(payload)
+            x["reason"] = reason
+            write(QUEUE, q)
+            return x
+    item = {"kind": kind, "reason": reason, "doc_id": doc_id,
+            "payload": {**payload, "key": key, "rows": 1,
+                        "locators": [locator] if locator else [],
+                        "items": [payload]},
+            "created": _now()}
+    q.append(item)
+    log.queue_put(_LOG, kind, reason, doc_id)
+    write(QUEUE, q)
+    return item
+
+
 def enqueue(kind, reason, doc_id, payload):
     """수정 큐. 처리 못 한 것은 전부 종류가 붙은 큐 항목이 된다 —
     실패는 예외가 아니라 등급이다(CH3B 3.7 규약 2).

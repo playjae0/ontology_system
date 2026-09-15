@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
-  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--step]
   python run.py ingest-dir  <경로> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
@@ -29,7 +29,7 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
-from core import registry, store
+from core import llm, registry, store
 from core.pipeline import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -243,8 +243,109 @@ def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
     return "\n".join(out)
 
 
+def _orphan_next(doc_id):
+    """`orphan_anchor`가 있으면 **다음 줄**을 큐 줄 옆에 붙인다 (B72 ③).
+
+    화면은 한 벌이다 — 문면의 자리는 `cli/platform.py::orphan_next_lines` 하나이고
+    `platform queue orphan_anchor`가 같은 것을 낸다.
+    """
+    from cli.platform import orphan_next_lines
+    items = [x for x in store.read(store.QUEUE, [])
+             if x.get("kind") == "orphan_anchor"
+             and (doc_id is None or x.get("doc_id") == doc_id)]
+    for x in items[:1]:                  # 표기가 여럿이어도 처방은 하나다
+        pl = x.get("payload") or {}
+        print(f"   보류 {len(items)}표기 — 골격 밖 좌표는 드랍이 아니다"
+              f"(alias가 생기면 다음 인입이 붙인다): "
+              f"{[ (y.get('payload') or {}).get('key') for y in items[:3] ]}")
+        print(orphan_next_lines(x))
+
+
+# **단계 문면의 자리는 여기 하나다**(B72 ④ — `kit/`이 아니라 진입점 옆). 사람이
+# 「무엇을 했고 다음이 무엇인지」를 읽고 멈출 수 있어야 한다: 지금은 자동화보다
+# 이해가 먼저다(사용자). 순서는 실제 파이프라인의 순서와 같다.
+STEPS = [
+    ("선택", "어느 어댑터로 읽을지 정했다. 지문 스캔이 골랐으면 근거가, 사람이 "
+             "지정했으면 그 사실이 위에 있다. 다음은 그 어댑터로 문서를 읽는다."),
+    ("파싱", "어댑터가 문서를 조각(행·청크)으로 만들었다. 아직 그래프에 아무것도 "
+             "쓰지 않았다 — 계약 JSON(parsed/)까지다. 다음은 좌표를 맞춘다."),
+    ("좌표", "조각의 공정좌표를 골격 닫힌 목록과 맞췄다. 목록 밖 표기는 고치지 않고 "
+             "그대로 둔다 — 인입에서 보류(orphan_anchor)로 간다. 다음은 판정 예고다."),
+    ("판정 예고", "개체 판정에 몇 번 부를지를 **부르기 전에** 센다. 사전이 이미 아는 "
+                  "표기는 부르지 않는다. 여기서 멈추면 그래프에 쓴 것이 0이다."),
+    ("판정", "표기마다 기존 노드와 같은 것인지 판정했다. 확신되면 잇고, 아니면 새 "
+             "노드(auto)를 세운다. 다음은 값과 관계를 붙인다."),
+    ("부착·엣지", "속성 값을 노드에 붙이고 관계 엣지를 세웠다. 좌표가 보류면 값도 "
+                  "보류다(버리지 않는다). 카테고리쌍이 없는 관계는 게이트가 막는다."),
+    ("큐·요약", "사람이 판정할 것을 큐에 남기고 한 줄로 요약했다. 큐는 문서 × "
+                "표기/필드 단위 1건이다 — 행 수는 그 안에 있다."),
+]
+
+
+def _step_gate(i, detail=""):
+    """한 단계를 찍고 `[계속 c / 멈춤 q]`를 묻는다 — 돌려주는 것은 계속 여부다.
+
+    **비대화형이면 묻지 않는다**(`--step` 무시 · 한 줄로 그 사실을 말한다) —
+    묻고 EOF를 받아 멈추면 일괄 실행이 전부 중단된다.
+    """
+    name, why = STEPS[i]
+    print(f"\n── [{i + 1}/{len(STEPS)}] {name}" + (f" — {detail}" if detail else ""))
+    print(f"   {why}")
+    try:
+        ans = input("   [계속 c / 멈춤 q] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return True
+    if ans in ("q", "quit", "n"):
+        print(f"   멈춤 — {name}까지의 산출은 남았다(parsed/ · extract/ 체크포인트).")
+        print(f"   ▶ 다음 줄 — 이어서 넣는다: python run.py ingest-file <문서> "
+              f"--doc-type <dt>")
+        print(f"      고치고 넣는다: layers/<층>/skeleton.json alias · "
+              f"schemas/<dt>.json 수정 뒤 같은 명령")
+        return False
+    return True
+
+
+def build_screen(step=False):
+    """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
+
+    예고는 판정 **전에** 무LLM으로 센 수다(B22·B69와 같은 규율): 「표기 k종 중
+    사전이 h종을 이미 안다 → 최대 k−h회」. 요약은 그래프·큐의 **실물 수**다 —
+    화면이 제 계산을 하지 않는다.
+
+    큐는 **집계 단위**로 말한다(B72 ②): `unknown_field 1종(meta 118행)`. 행마다
+    한 건이면 사람이 판정할 하나가 118건 밑에 묻힌다.
+    """
+    def notice(info):
+        if info.get("단계") == "판정예고":
+            if step:
+                return          # 단계 모드에서는 4단계가 이미 같은 수를 찍었다
+            print(f"   판정 예고 — entity 값 {info['값_수']:,}건"
+                  f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
+                  f"{info['사전_히트']:,}종) · 목록 밖 좌표 "
+                  f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
+            return
+        q = info.get("큐") or {}
+        head = " · ".join(f"{k} {n}종({rows}행)" for k, (n, rows) in sorted(q.items()))
+        if step:
+            u2 = llm.usage_total()
+            _step_gate(4, f"새 노드(auto) {info.get('auto', 0)} · "
+                          f"LLM 호출 {u2['calls']:,}")
+            _step_gate(5, f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
+                          f"{info.get('저해상도', 0)}행")
+            _step_gate(6, head or "큐 0")
+        _orphan_next(info.get("doc_id"))
+        u = llm.usage_total()
+        print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
+              f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
+              f"저해상도 부착 {info.get('저해상도', 0):,}행"
+              + (f" · 큐: {head}" if head else " · 큐 0")
+              + f" · LLM 호출 {u['calls']:,} · 토큰 "
+              f"{u.get('total_tokens', 0):,}")
+    return notice
+
+
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
-                finalize_after=True, coord_cap=COORD_CAP):
+                finalize_after=True, coord_cap=COORD_CAP, step=False):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     sel = select(doc, doc_type, adapter_paths)
@@ -255,6 +356,14 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         print(f"   미선택 — {sel['reason']}")
         return row
     print(f"   선택 근거: {row['basis']}")
+    # **`--step`은 대화형에서만 산다**(B72 ④) — 비대화형·일괄에서 묻고 EOF를 받으면
+    # 실행 전체가 첫 단계에서 멈춘다. 무시하되 **그 사실을 말한다.**
+    if step and not sys.stdin.isatty():
+        print("   (--step 무시 — 비대화형이다. 단계별로 보려면 터미널에서 돌린다)")
+        step = False
+    if step and not _step_gate(0, row["basis"]):
+        row.update(status=SKIP, reason="사람이 멈췄다 — 선택까지")
+        return row
     # **판정과 어댑터가 어긋나면 말한다** — 조용히 넘기면 관리계획서가 산문으로,
     # 목차 보고서가 표로 읽히고 그 사실이 어디에도 남지 않는다. 막지는 않는다:
     # 사람이 지정한 doc_type을 판정이 뒤집으면 지정이 무의미해진다(C37은 「어느
@@ -292,7 +401,34 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             print(fail_block(doc, sel["doc_id"], rows,
                              doc_type=sel.get("doc_type"), queued=1))
             return row
-        r, m, _extracted = run_document(res.envelope, routing=sel["basis"])
+        if step:
+            _rep = res.report or {}
+            if not _step_gate(1, f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
+                              f"{res.envelope.get('payload_kind')}"):
+                row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
+                return row
+            _ct = _rep.get("coord_tag") or {}
+            if not _step_gate(2, f"정확 일치 {_ct.get('정확_일치', 0)} · "
+                              f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
+                              f"LLM 호출 {_ct.get('호출', 0)}"):
+                row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
+                return row
+            # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
+            from core.pipeline import _entity_surfaces, decision_plan
+            _sc = registry.schema_of(sel["doc_type"]) or {}
+            _pl = decision_plan(
+                _entity_surfaces(res.envelope, _sc),
+                [x.get("process_ref") for x in (res.envelope.get("records") or [])
+                 if x.get("process_ref")], _sc.get("layer") or "process")
+            if not _step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
+                              f"· 사전 히트 {_pl['사전_히트']}종 → LLM ≤ "
+                              f"{_pl['예상_호출']}회"):
+                row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
+                                               "(그래프 쓰기 0)")
+                return row
+        _u0 = llm.usage_total()["calls"]
+        r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
+                                        notice=build_screen(step=step))
         if r.status == "held":
             row.update(status=FAIL, reason=f"보류 — {r.reason}")
             print(fail_block(doc, sel["doc_id"],
@@ -360,6 +496,9 @@ def main(argv):
     dry = "--dry-run" in args
     if dry:
         args.remove("--dry-run")
+    step = "--step" in args
+    if step:
+        args.remove("--step")
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")
@@ -376,9 +515,13 @@ def main(argv):
         raise SystemExit("[투입] 대상(문서 또는 경로)이 없다\n" + __doc__)             # [사용법]
     target = Path(args[0])
     if target.is_dir():
+        if step:
+            # **일괄에는 단계가 없다**(B72 ④) — 문서마다 멈추면 배치가 아니다.
+            print("[투입] --step 무시 — ingest-dir는 일괄이다 "
+                  "(단계별로 보려면 ingest-file 하나씩)")
         rows = ingest_dir(target, dt, dry, paths, coord_cap=cap)
     else:
-        rows = [ingest_file(target, dt, dry, paths, coord_cap=cap)]
+        rows = [ingest_file(target, dt, dry, paths, coord_cap=cap, step=step)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

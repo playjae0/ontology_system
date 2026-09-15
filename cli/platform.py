@@ -141,8 +141,50 @@ def cmd_queue(kind=None):
     if kind:
         print(f"\n[{kind}] 항목:")
         for x in v["items"]:
-            if x.get("kind") == kind:
-                print(f"  · {x.get('reason')}  (doc={x.get('doc_id')})")
+            if x.get("kind") != kind:
+                continue
+            pl = x.get("payload") or {}
+            # **집계 단위를 화면이 말한다**(B72 ②) — 「표기/필드 · 행 수」가
+            # 사람이 판정하는 단위다. 행마다 한 줄이면 그 하나가 묻힌다.
+            tail = ""
+            if pl.get("key") is not None:
+                tail = f"  [{pl['key']} · {pl.get('rows', 1)}행]"
+                if pl.get("locators"):
+                    tail += f" {pl['locators'][:3]}"
+            print(f"  · {x.get('reason')}  (doc={x.get('doc_id')}){tail}")
+            if kind == "orphan_anchor":
+                print(orphan_next_lines(x))
+
+
+def orphan_next_lines(item, layer=None):
+    """`orphan_anchor`의 **다음 줄** — 골격 표기를 잇는 세 줄 (B72 ③ · B61 계약).
+
+    보류이지 드랍이 아니다(문서 2 §2.4 ①) — alias가 생기면 다음 인입의
+    `retry_orphans`가 붙인다. 그래서 다음 줄은 **`init --fresh`가 아니라
+    `bootstrap`**이다: fresh는 그래프와 사전을 지운다(가이드 §7 정정 — 허브).
+
+    좌표 태깅 LLM이 냈다가 목록 밖이라 버린 후보가 있으면 **사람 재료로만** 붙인다
+    — 자동으로 잇지 않는다(anchor 해소에 추론을 쓰지 않는다).
+    """
+    pl = item.get("payload") or {}
+    surface = pl.get("surface") or pl.get("key") or "<표기>"
+    lay = layer or pl.get("layer") or "<층>"
+    cand = pl.get("llm_candidate")
+    # **그대로 칠 수 있어야 계약이다**(B61) — 인입 기록에서 실제 경로·doc_type을 딴다.
+    reg = store.read(store.DOC_REGISTRY, {}).get(item.get("doc_id") or "") or {}
+    doc = reg.get("source_path") or f"<{item.get('doc_id') or '문서'}>"
+    dt = reg.get("doc_type") or "<dt>"
+    return ("\n".join([
+        f"     ▶ 다음 줄 — 골격 표기를 잇는다"
+        + (f" (LLM 후보: {cand} — 사람이 판단한다)" if cand else "") + ":",
+        f"        layers/{lay}/skeleton.json  ALIASES[\"<골격 canonical>\"]에 "
+        f"\"{surface}\" 추가",
+        "        python run.py bootstrap                 "
+        "← 그래프·사전을 지우지 않는다 · alias만 붙는다",
+        f"        python run.py ingest-file {doc} --doc-type {dt}   "
+        "← 재인입이 보류분을 붙인다",
+        "        (골격에 없는 공정이면 seed에 노드를 더한다 — "
+        "골격작성_가이드 · 사람 판단)"]))
 
 
 def extract_view():

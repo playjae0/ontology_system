@@ -130,8 +130,22 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
     회수하지 않으면 같은 지식이 두 벌로 남아 질의 근거가 중복되고, 재인입 때
     회수 대상이 어긋나 멱등성이 조용히 깨진다.
     """
-    child_id, surface = pl.get("node_id"), pl.get("attach_to")
-    if not child_id or not surface:
+    surface = pl.get("attach_to")
+    if not surface:
+        return False
+    # **행(청크) 단위 재료를 행마다 처리한다**(B72 ②) — 항목은 부착 대상 표기
+    # 단위로 모이고, 붙일 자식 노드와 근거는 행마다 다르다.
+    ents = pl.get("items") or [pl]
+    if len(ents) > 1 or pl.get("items"):
+        done = 0
+        for e in ents:
+            done += 1 if _attach_one(e, surface, graphs, cfgs, dic,
+                                     item.get("doc_id")) else 0
+        if done:
+            store.drop(item["kind"], lambda p: p == pl)
+        return bool(done)
+    child_id = pl.get("node_id")
+    if not child_id:
         return False
     child, clay, cg = None, None, None
     for lay, g in graphs.items():
@@ -166,6 +180,13 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
     _withdraw_lowres(cg, child_id, target, prov)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
     return True
+
+
+def _attach_one(pl, surface, graphs, cfgs, dic, doc_id):
+    """한 행(청크)의 부착 재시도 — 성공하면 True. 본문은 낱개 경로와 같다."""
+    return _retry_attach({**pl, "attach_to": surface},
+                         {"kind": "orphan_attach", "doc_id": doc_id,
+                          "payload": None}, graphs, cfgs, dic)
 
 
 def _withdraw_lowres(g, child_id, new_target, prov):
@@ -217,8 +238,22 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
             break
     if ref is None:
         return False                                    # 아직 골격에 없다 — 남긴다
-    cfg, prov = cfgs[rlay], pl.get("provenance")
+    cfg = cfgs[rlay]
     did = item.get("doc_id")
+    n = 0
+    # **행 단위 재료를 행마다 처리한다**(B72 ②) — 큐 항목은 표기 단위로 모이지만
+    # 재시도의 재료(provenance · dropped_edges · pending_attrs)는 행의 것이다.
+    # 하나의 provenance로 전부 착지시키면 **다른 행의 근거가 뒤섞인다.**
+    # 옛 항목(집계 전 판)은 `items`가 없다 — 그때는 자기 자신이 한 행이다.
+    for _ent in (pl.get("items") or [pl]):
+        n += _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did)
+    store.drop(item["kind"], lambda p: p == pl)         # self-heal
+    return True
+
+
+def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did):
+    """좌표가 해소된 **한 행**의 보유분을 착지시킨다 — 돌려주는 것은 건수다."""
+    prov = pl.get("provenance")
     n = 0
 
     # ① **연쇄 드롭된 entity를 새로 세운다**(문서 4 §4.4 — B14).
@@ -263,5 +298,4 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
                         a.get("provenance"), bool(a.get("context")))
         b.flush()
         n += 1
-    store.drop(item["kind"], lambda p: p == pl)         # self-heal
-    return True
+    return n

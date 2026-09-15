@@ -132,7 +132,10 @@ class Builder:
         autos = [nid for nid in live if nid not in tier1]
 
         def _hold(reason, extra):
-            payload = {"surface": surface, "category": category, "provenance": prov}
+            # **층을 싣는다**(B72 ③) — 다음 줄이 `layers/<층>/skeleton.json`을
+            # 가리키므로, 층을 모르면 사람이 그 줄을 그대로 칠 수 없다.
+            payload = {"surface": surface, "category": category,
+                       "provenance": prov, "layer": self.layer}
             # 조회된 auto 후보를 싣는다 — 동봉하지 않으면 사람이 큐 화면에서
             # 후보를 다시 검색해야 판단할 수 있다(문서 2 §2.4-①).
             if autos:

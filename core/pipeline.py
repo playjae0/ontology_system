@@ -64,17 +64,21 @@ def _check_fields(rec, fields, prov, doc_id):
     `optional` 미선언 필드의 부재는 `missing_field` 큐다. 둘 다 닫힌 20종 안이고
     **문서를 죽이지 않는다** — 문서 단위 실패는 파서 측 계약이다(C14).
     """
+    loc = rec.get("source_locator")
     for f, v in rec.items():
         if f in fields or f in STRUCTURAL:
             continue
-        store.enqueue("unknown_field", f"스키마에 없는 필드 '{f}'", doc_id,
-                      {"field": f, "value": v, "provenance": prov})
+        # **문서 × 필드 단위 1건**(B72 ②) — 같은 열이 118행이면 사람이 판정할 것은
+        # 하나다(「이 열이 스키마에 없다」). 값은 `items[]`에 그대로 남는다(G5).
+        store.enqueue_rows("unknown_field", f"스키마에 없는 필드 '{f}'", doc_id, f,
+                           {"field": f, "value": v, "provenance": prov},
+                           locator=loc)
     for f, spec in fields.items():
         if spec.get("optional") or f in STRUCTURAL:
             continue
         if rec.get(f) in (None, ""):
-            store.enqueue("missing_field", f"필수 필드 '{f}' 부재", doc_id,
-                          {"field": f, "provenance": prov})
+            store.enqueue_rows("missing_field", f"필수 필드 '{f}' 부재", doc_id, f,
+                               {"field": f, "provenance": prov}, locator=loc)
 
 
 def _context(holder, prov, doc_id):
@@ -135,6 +139,11 @@ def _attach_target(a):
     return (v.get("name") or None), v.get("category")
 
 
+# **저해상도 부착 계수** — 문서마다 0으로 시작한다(`run_document`가 리셋).
+# 화면이 제 계산을 하지 않게 **세는 자리는 붙이는 자리**다.
+LOWRES = {"n": 0}
+
+
 def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_chunk=None):
     """**규칙 B — 부착 폴백** (문서 4 §4.4-4).
 
@@ -151,6 +160,7 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     """
     if child is None or ref is None:
         return False
+    LOWRES["n"] += 1                     # 요약 한 줄의 재료 (B72 ②)
     tg = ref_g if ref_g is not None else graph
     rel = gate.pair_relation(cfg, (tg.get(ref) or {}).get("category"),
                          (graph.get(child) or {}).get("category"))
@@ -217,7 +227,12 @@ def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None,
             # **연쇄 드롭된 entity의 표면형·target_layer·category**(§4.4) —
             # 재시도가 좌표를 해소하면 이것으로 노드를 **새로 세운다.**
             pl["dropped_entities"] = dropped_entities
-        store.enqueue("orphan_anchor", item["reason"], doc_id, pl)
+        # **표기 단위 1건**(B72 ②) — 같은 골격 밖 표기가 41행이면 사람이 할 일은
+        # 하나다(그 표기를 골격에 잇는다). 행마다 다른 재시도 재료(provenance ·
+        # dropped_edges · pending_attrs)는 `items[]`에 쌓여 그대로 남는다.
+        store.enqueue_rows("orphan_anchor", item["reason"], doc_id,
+                           pl.get("surface") or item["reason"], pl,
+                           locator=(pl.get("provenance") or "").split("#")[-1] or None)
     if coord_missing and not defer:
         # **좌표 값이 아예 없는 행**([개정] B56-2). `resolve_anchor`는 표면형이
         # 없으면 일찍 돌아오므로 `defer`가 비어 있다 — 구판은 `for item in defer:`
@@ -777,13 +792,14 @@ def build_prose(env, cfg, graph, candidates):
                 # null은 추출이 애초에 부착 대상을 말하지 않은 정상 케이스라,
                 # 큐로 보내면 처리 불가능한 노이즈가 큐를 채운다.
                 if name:
-                    store.enqueue(
+                    store.enqueue_rows(
                         "orphan_attach", f"부착 대상 미해소 — '{name}'",
-                        env["doc_id"],
+                        env["doc_id"], _n(name),           # 집계 키 = 부착 대상 표기
                         {"node_id": child, "surface": a["surface"],
                          "attach_to": _n(name),            # dedup 키 (§4.7-5)
                          "attach_category": cat,
-                         "provenance": prov, "chunk_id": cid})
+                         "provenance": prov, "chunk_id": cid},
+                        locator=(prov or "").split("#")[-1] or None)
                 continue
             rel = gate.pair_relation(cfg, graph.get(target)["category"],
                                  graph.get(child)["category"])
@@ -841,7 +857,76 @@ def _reject(doc_id, reason, payload):
     return res, None, False
 
 
-def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None):
+def _entity_surfaces(env, schema):
+    """이 문서가 **판정에 올릴 표기** — table은 entity role 열의 값들이다.
+
+    LLM 0으로 센다: 스키마가 어느 열을 entity라 했는지와 레코드의 값뿐이다.
+    """
+    fields = (schema or {}).get("fields") or {}
+    out = []
+    for rec in env.get("records") or []:
+        for f, spec in fields.items():
+            if (spec or {}).get("role") != "entity":
+                continue
+            v = rec.get(f)
+            if isinstance(v, str) and v.strip():
+                out.append(v.strip())
+    return out
+
+
+def decision_plan(surfaces, refs, layer):
+    """**판정 예고** — 부르기 전에 몇 번 부를지 센다 (B72 ② · B22의 정신).
+
+    넷을 센다: ①판정에 올라가는 **값의 수**(행 × entity 열) ②문서 내 중복을 제외한
+    표기 종수 ③그중 사전이 이미 아는 것 ④골격 밖 좌표 표기.
+
+    **상한은 ①이다** — 좌표 태깅(B69)과 달리 개체 판정은 **행마다** 돈다: 같은
+    표기라도 부모 좌표가 다르면 다른 노드이고(스코프), 사전 히트도 `matcher.match`를
+    지나 그 안에서 정확 일치로 판정된다. 그래서 표기로 접어 세면 실제보다 적게
+    말하게 된다 — 예고는 **덜 말하면 안 된다**(비용 예고의 요점이 그것이다).
+    ②③은 「이 문서가 얼마나 반복되는가」의 판단 재료로 함께 낸다.
+
+    사전·그래프만 읽는다 — **LLM 0**이다.
+    """
+    from .dictionary import Dictionary
+    from .ids import norm
+    dic = Dictionary.open()
+    g = open_graph(layer)
+    kinds, hits = [], 0
+    for s in surfaces:
+        n = norm(s)
+        if n in kinds:
+            continue
+        kinds.append(n)
+        if dic.lookup(s):
+            hits += 1
+    out_of_list = []
+    for r in refs:
+        n = norm(r)
+        if n in out_of_list:
+            continue
+        if not [nid for nid in dic.lookup(r)
+                if nid in g.nodes
+                and (g.get(nid) or {}).get("status") in ("seed", "confirmed")]:
+            out_of_list.append(n)
+    return {"단계": "판정예고", "값_수": len(surfaces), "표기_종수": len(kinds),
+            "사전_히트": hits, "예상_호출": len(surfaces),
+            "목록밖_좌표": len(out_of_list)}
+
+
+def doc_queue_summary(doc_id):
+    """이 문서가 남긴 큐 — `{kind: (건수, 행수)}` (B72 ② — 집계 단위가 곧 화면이다)."""
+    out = {}
+    for x in store.read(store.QUEUE, []):
+        if x.get("doc_id") != doc_id:
+            continue
+        n, rows = out.get(x["kind"], (0, 0))
+        out[x["kind"]] = (n + 1, rows + int((x.get("payload") or {}).get("rows", 1)))
+    return out
+
+
+def run_document(path_or_env, layer=None, *, allow_duplicate=False,
+                 routing=None, notice=None):
     env = path_or_env
     doc_id, doc_type = env["doc_id"], env["doc_type"]
 
@@ -863,10 +948,19 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
 
     graph = open_graph(layer)
     graph.build_begin()
+    LOWRES["n"] = 0
+    _n0 = len(graph.nodes)
+    _e0 = len(graph.edges)
+    _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
 
     extracted = False
     builder = None
     if kind == "table":
+        if notice is not None:
+            # **판정 전에** 예고한다 — 쓰고 나서 알면 결정할 것이 없다(B22).
+            notice(decision_plan(_entity_surfaces(env, schema),
+                                 [r.get("process_ref") for r in env.get("records") or []
+                                  if r.get("process_ref")], layer))
         builder = build_table(env, cfg, schema, graph)
     else:
         _land_hierarchy(env)
@@ -875,6 +969,13 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
                   if c.get("doc_id") == env["doc_id"]}
         vocab = _vocab(cfg)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab)
+        if notice is not None:
+            # prose의 표기는 **추출이 끝나야** 안다 — 그래서 자리가 여기다.
+            notice(decision_plan(
+                [e.get("surface") for c in ck["candidates"]
+                 for e in (c.get("entities") or []) if e.get("surface")],
+                [c.get("process_ref") for c in env.get("chunks") or []
+                 if c.get("process_ref")], layer))
         builder = build_prose(env, cfg, graph, ck["candidates"])
 
     for other in builder.graphs():          # 걸침 층에 쓴 것도 저장된다 (D3)
@@ -882,6 +983,13 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False, routing=None
             other.save()
     metrics = graph.build_end()
     _record_build(doc_id, metrics)
+    if notice is not None:
+        notice({"단계": "끝", "doc_id": doc_id,
+                "노드": len(graph.nodes) - _n0, "엣지": len(graph.edges) - _e0,
+                "auto": sum(1 for n in graph.nodes.values()
+                            if n.get("status") == "auto") - _a0,
+                "저해상도": LOWRES["n"], "총_노드": metrics.get("nodes"),
+                "큐": doc_queue_summary(doc_id)})
     return res, metrics, extracted
 
 
