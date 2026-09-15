@@ -5033,3 +5033,96 @@ ADAPTER["expects"]["columns"] = {'process': 'A', 'sub_process': 'B', 'process_no
 
 - 회귀 **1123 → 1132/1132** (+9, 삭제 0): `test_p3` 371 → 380.
 - 검사 4종 전부 통과. 상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 · 계약 위반 0**.
+
+## B66 ①~⑤ — 헤더 지문은 포맷을 보지 않는다 · 미선택 네 갈래 · CSV 전 구간 등가 · 2026-09-15
+
+요청문 `docs/안건/B66_요청문.md`. 전제 대조표 7항목 전부 실물과 일치 —
+`FINGERPRINTABLE = ("xlsx",)` 정의 1·검사 1 · `get("format")` 2줄(119·121) ·
+`not_fingerprintable` 0 hit · 「대조할 정형 어댑터가 없다」 1 hit · `_header_actual`이
+이미 preflight 호출 · 확정 화면 「다음」 3줄(2774~2776) · 문서 6 §6.4의
+「포맷을 보지 않는다」 1 hit. **명세 개정 0 · LLM 호출 0.**
+
+### ① 포맷 튜플 폐지 — 지문 대상은 `sheets` 구조다
+
+`cli/scan.py`의 `FINGERPRINTABLE`을 지운다. 거르는 기준은 **reader가 `sheets`를
+냈는가**이고, prose(pptx·pdf)만 「지문 대상 아님」이다. 포맷 이름이 코드에서 0이 된
+것이 이 항목의 성질이다 — 같은 병의 셋째 자리였다(`preflight.header_labels`의
+`format != "xlsx"` · `_header_actual`의 복제본 · 이 튜플).
+
+```
+지문 스캔 — tests/fixtures/raw/CP01.csv
+  ◎ 후보 cp           일치 10/10
+  → 후보 ['cp'] — 확정은 사람 몫이다: --confirm <doc_type> (유일 일치여도 자동 라우팅하지 않는다 — P7)
+```
+
+`--doc-type` 없이 넣은 CSV를 스캔이 고른다(①ⓒ):
+
+```
+[투입] CP01.csv → doc_id CP01
+   선택 근거: 지문 스캔 유일 일치 → cp · header_labels 완전 일치 10/10 (누락 0 · 잉여 0) · 불일치 ['pfmea(누락 9·잉여 6)', 'ipqc(누락 11·잉여 5)']  ← tests/fixtures/adapters/cp.py
+```
+
+### ② 미선택 네 갈래 (화면 그대로)
+
+```
+① 비정형 포맷  미선택 — 비정형(pptx) — 헤더 지문이 없다. 다음: --doc-type <dt> 지정 투입
+② 소재지 빔    미선택 — 대조할 어댑터 0건 — 소재지가 비었다. 다음: python -m cli.register generate <dt> <층> <문서>
+③ 자격 없음    미선택 — 자격 있는 어댑터 0건 — b66prose: 비정형(prose) — 헤더 지문 대상 아님(지정 필수). 다음: --doc-type <dt> 또는 python -m cli.register generate <dt> --revise
+④ 일치 0건     미선택 — 지문 일치 0건 — cp(누락 6·잉여 9) — 상세: python run.py scan tests/fixtures/raw/PFMEA01.xlsx
+```
+
+새 계산 0 — `scan()`이 이미 내던 `not_fingerprintable` · `details[].eligible/note`를
+읽을 뿐이다.
+
+### ③ 확정 화면의 「다음」 = 가이드의 인입 흐름 (화면 그대로)
+
+```
+■ ③ 확정 — toc_report 등록부 등재 (승인 보고 @ 2026-09-15T00:40:15+00:00)
+   어댑터·스키마 활성: adapters/toc_report.py · schemas/toc_report.json
+   승인 기록 → review/toc_report/approval.json
+   다음 — 인입 (등록이 그래프를 만들지는 않는다):
+     python run.py ingest-file <문서> --doc-type toc_report --dry-run   ← 선택·형태 판정만 본다
+     python run.py ingest-file <문서> --doc-type toc_report
+```
+
+`parse run`·`build`는 가이드 §5 부품 표에 남는다 — 확정 화면에서만 뺐다.
+
+### ④ 선택 근거 줄에 어댑터 실물 경로 (화면 그대로)
+
+```
+   선택 근거: 사람 지정 --doc-type cp  ← tests/fixtures/adapters/cp.py
+```
+
+### ⑤ CSV 전 구간 등가 — 같은 표는 포맷이 달라도 같은 지식이 된다
+
+표본 쌍 `CP01.xlsx` ↔ `CP01.csv`(33×10 · 병합을 편 판 — D-145 ④). 스냅샷은
+별도 프로세스(`tests/csv_equiv.py`)가 뜬다: 클린 → 골격 → `ingest-file --doc-type cp`
+→ 봉투·그래프·질의.
+
+- ⓐ 계약 JSON **동일**(records 30) — 뺀 것은 `source_path`·시트 이름·`doc_id` 셋.
+- ⓑ 그래프 **노드 86 · 엣지 133 · 카테고리 {Process 46 · Unit 13 · Property 27}** 동일.
+  어서션 전제에 「노드 > 0」을 넣었다 — 0끼리 같은 것은 판정이 아니다.
+- ⓒ 스모크 12문항 중 **근거 있는 11문항**의 답·근거가 동일. 근거는 id 문자열이
+  아니라 **가리키는 자리**로 본다(D-145 ②) — `chunk_id`는 시트 이름을 포함한
+  로케이터의 해시이고 노드 id는 ULID라 같은 문서를 두 번 돌려도 다르다.
+- **변이**: `reader.read_csv`가 헤더 한 셀(`관리항목`)을 바꾸도록 심으면
+  `[adapter_mismatch] 양식 표류`로 인입이 막히고 ⓐ가 붉어진다.
+
+### 회차 중 잡은 것
+
+1. **첫 `CP01.csv`는 병합 셀이 빈 칸으로 나가 인입이 막혔다**(`자기완결 실패 row 5:
+   필수 결측 ['process_ref']`) — `normalizer.expand_merged`가 편 값으로 다시 냈다.
+   CSV에 병합이라는 개념이 없으니 편 판이 「같은 내용」의 실물이다.
+2. **사실 문장의 출처에도 시트 이름이 박혀 있었다**(`CP01#관리계획서!R19`) — 봉투만
+   정규화하고 질의를 비교하니 7문항이 갈렸다. 제외는 한 번 정하고 **로케이터가
+   나타나는 세 자리 전부**에 같게 적용한다.
+3. **③이 옛 어서션 하나를 붉게 했다** — 화면에서 뺀 명령 이름(`parse run` ·
+   `build parsed/`)을 세던 자리다. 성질(그대로 칠 수 있는 인입 줄 · 방금 확정한
+   doc_type · 먼저 보는 줄)로 재조준했다.
+
+### 결과
+
+- 회귀 **1132 → 1144/1144** (+12, 삭제 1 — 문면 세던 ③ 어서션 2 → 성질 1):
+  `test_p3` 380 → 392.
+- 검사 4종 전부 통과(문면 위반 0 · 문서간 0 · 미러 7쌍 0 · 자산 13건 판정 대상).
+  상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 · 계약 위반 0**.

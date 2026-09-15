@@ -994,10 +994,16 @@ _conf = _buf.getvalue()
 show("② 확정 — 등록부 등재 + adapters/·schemas/ 정본",
      _REG.lookup("pptb_t") is not None and (ROOT / "adapters/pptb_t.py").exists()
      and (ROOT / "schemas/pptb_t.json").exists())
-# ③ 확정 화면 다음 명령 2줄
-show("③ confirm 끝에 인입 명령 2줄 — parse run · build parsed/",
-     "run.py parse run adapters/pptb_t.py" in _conf and "run.py build parsed/" in _conf)
-show("③ 한 번에 가는 명령(ingest-file --doc-type)도 함께", "ingest-file" in _conf and "--doc-type pptb_t" in _conf)
+# ③ 확정 화면의 「다음」 = 가이드가 시키는 인입 흐름 (B66 ③)
+#
+# 구판은 화면에 있는 **명령 이름**(`parse run` · `build parsed/`)을 셌다. 문면은 한
+# 글자만 바꿔도 통과하고, 그 셋은 가이드 §4·§5에 없는 명령이라 사내에서 「가이드에
+# 없는 명령」으로 읽혔다. 잠글 성질은 **사람이 그대로 칠 수 있는 인입 줄을 방금
+# 확정한 doc_type으로 준다**이지 어느 명령이 적혀 있느냐가 아니다.
+_next3 = [l.strip() for l in _conf.splitlines() if "run.py ingest-file" in l]
+show("③ 확정 화면이 인입 줄을 준다 — 방금 확정한 doc_type이 박혀 있고 먼저 보는 줄이 있다",
+     len(_next3) >= 2 and all("--doc-type pptb_t" in l for l in _next3)
+     and any("--dry-run" in l for l in _next3), str(_next3))
 # 정리 — 회귀가 남기는 것 0
 _REG.unregister("pptb_t")
 for _p in (ROOT / "adapters/pptb_t.py", ROOT / "schemas/pptb_t.json"):
@@ -2858,6 +2864,131 @@ show("④ⓑ status는 그대로 돈다 (막는 것은 재생성뿐)",
      and _sv66.returncode == 0, f"rc={_sv66.returncode}")
 reset("b65f")
 shutil.rmtree(_d66, ignore_errors=True)
+
+
+# ── B66 ①② — 헤더 지문은 포맷을 보지 않는다 · 미선택은 네 갈래다 ──────────
+#
+# **셋째 자리였다.** `preflight.header_labels`의 `format != "xlsx"`(B62 ①-a) ·
+# `cli/scan.py::_header_actual`의 복제본 · `FINGERPRINTABLE = ("xlsx",)`. 앞의 둘을
+# 고치고도 CSV가 지문 대조에서 빠진 채 남은 이유는 **CSV 표본으로 스캔을 돌리는
+# 어서션이 하나도 없어서**다. 여기가 그 자리다 — 포맷이 판정에 안 들어가는 것이
+# 성질이고, 다시 들어오면 이 세 줄이 붉어진다.
+from cli import scan as _s66                                       # noqa: E402
+from cli import ingest as _i66                                     # noqa: E402
+print("\n■ B66 ① — 지문 대상은 `sheets` 구조다 (포맷 이름이 아니다)")
+
+_cpa66 = [str(ROOT / "tests" / "fixtures" / "adapters" / "cp.py")]
+_sx66 = _s66.scan(RAW / "CP01.xlsx", _cpa66)
+_sc66 = _s66.scan(RAW / "CP01.csv", _cpa66)
+show("①ⓑ 같은 표의 두 포맷이 **같은 어댑터에서 같은 후보 판정**을 받는다",
+     _sx66["candidates"] == _sc66["candidates"] == ["cp"]
+     and _sx66["details"] == _sc66["details"],
+     f"xlsx {_sx66['candidates']} · csv {_sc66['candidates']}")
+_sel66 = _i66.select(RAW / "CP01.csv", adapter_paths=_cpa66)
+show("①ⓒ doc-type 없이 넣은 CSV를 **스캔이** 고른다 (by == scan)",
+     _sel66["status"] == "chosen" and _sel66["doc_type"] == "cp"
+     and (_sel66["basis"] or {}).get("by") == "scan",
+     f"{_sel66['status']} · {(_sel66.get('basis') or {}).get('by')}")
+
+# ⓓ **포맷 이름으로 갈라지는 자리가 0이다** — 문서 6 §6.4 「포맷을 보지 않는다」.
+# 주석·문자열이 아니라 **동작 줄**을 센다(CLAUDE.md 3). 읽는 쪽이 대상이다:
+# reader가 `format`을 **쓰는** 것은 어댑터에게 사실을 알리는 일이라 남는다.
+_fmt66 = []
+for _d66 in ("cli", "core", "parser", "kit"):
+    for _f66 in sorted((ROOT / _d66).rglob("*.py")):
+        for _n66, _ln66 in enumerate(_f66.read_text(encoding="utf-8").splitlines(), 1):
+            _code66 = _ln66.split("#")[0]
+            if 'get("format")' in _code66 or '["format"]' in _code66:
+                _fmt66.append(f"{_f66.relative_to(ROOT)}:{_n66}")
+show("①ⓓ cli·core·parser·kit에 봉투 format을 읽는 동작 줄 0",
+     not _fmt66, str(_fmt66[:4]))
+
+print("\n■ B66 ② — 미선택 네 갈래 (「없다」는 어댑터가 0건일 때만)")
+#
+# 구판은 한 문면(「지문 일치 0건 — 대조할 정형 어댑터가 없다」)이 서로 다른 넷을
+# 덮었다. 사내에서 CSV가 대조조차 안 된 것(①)이 그 문면으로 나왔고 사람은
+# **어댑터가 없다고 읽었다.** 갈래마다 다음 수가 다르다 — 그래서 문면이 갈린다.
+_d66e = ROOT / "review" / "_b66_empty"          # 소재지는 있는데 어댑터가 0개
+_d66p = ROOT / "review" / "_b66_prose"          # 산문 어댑터만 있다 (자격 없음)
+shutil.rmtree(_d66e, ignore_errors=True)
+shutil.rmtree(_d66p, ignore_errors=True)
+_d66e.mkdir(parents=True)
+_d66p.mkdir(parents=True)
+(_d66p / "b66prose.py").write_text(
+    'ADAPTER = {"doc_type": "b66prose", "payload_kind": "prose", "expects": {}}\n',
+    encoding="utf-8")
+_cases66 = {
+    "포맷":   _i66.select(RAW / "PPT_basic.pptx", adapter_paths=_cpa66),
+    "소재지": _i66.select(RAW / "CP01.csv", adapter_paths=[str(_d66e)]),
+    "자격":   _i66.select(RAW / "CP01.csv", adapter_paths=[str(_d66p)]),
+    "일치":   _i66.select(RAW / "PFMEA01.xlsx", adapter_paths=_cpa66),
+}
+_why66 = {k: v["reason"] for k, v in _cases66.items()}
+show("② 네 경우가 전부 미선택이고 **문면이 서로 다르다**",
+     all(v["status"] == "none" for v in _cases66.values())
+     and len(set(_why66.values())) == 4,
+     " | ".join(f"{k}:{(v or '')[:22]}" for k, v in _why66.items()))
+show("② 「소재지가 비었다」는 어댑터가 0건일 때만 난다",
+     "소재지가 비었다" in _why66["소재지"]
+     and not any("소재지가 비었다" in _why66[k] for k in ("포맷", "자격", "일치")))
+show("② 어댑터가 하나라도 있으면 **그 이름이 문면에 있다** (무엇과 대조했나)",
+     "b66prose" in _why66["자격"] and "cp" in _why66["일치"])
+show("② 지문 대상이 아닌 포맷은 **무엇이라서** 아닌지를 말한다",
+     "pptx" in _why66["포맷"] and "--doc-type" in _why66["포맷"])
+# 네 문면 모두 B61 계약 — 원인 + 그대로 칠 수 있는 다음 줄.
+show("② 네 문면 모두 다음 줄을 준다 (B61 계약)",
+     all(("--doc-type" in v) or ("python " in v) for v in _why66.values()))
+shutil.rmtree(_d66e, ignore_errors=True)
+shutil.rmtree(_d66p, ignore_errors=True)
+
+
+# ── B66 ⑤ — 같은 표는 포맷이 달라도 같은 지식이 된다 ─────────────────────
+#
+# 파서 뒤는 포맷을 모르니 다를 수 없다 — 그것은 **논리**이고 이 프로젝트는 실행으로
+# 판정한다(CLAUDE.md 3). CSV 출처로 그래프를 세우고 질의에 답해 본 적이 한 번도
+# 없었다. 표본 쌍은 `CP01.xlsx`와 그 시트를 그대로 옮긴 `CP01.csv`다.
+#
+# **스냅샷은 별도 프로세스가 뜬다**(`tests/csv_equiv.py`) — 한 프로세스에서 두 번
+# 인입하면 앞 판의 그래프·사전이 살아 있어 둘째 판이 첫 판을 본다.
+print("\n■ B66 ⑤ — CSV 전 구간 등가 (인입 → 그래프 → 질의)")
+
+
+def _snap66(doc, *a):
+    r = subprocess.run([sys.executable, str(ROOT / "tests" / "csv_equiv.py"), str(doc), *a],
+                       capture_output=True, text=True, cwd=str(ROOT),
+                       stdin=subprocess.DEVNULL)
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"error": (r.stderr or r.stdout)[-300:]}
+
+
+_x66 = _snap66(RAW / "CP01.xlsx")
+_c66 = _snap66(RAW / "CP01.csv")
+show("⑤ 두 포맷 모두 인입 성공 (등가 판정의 전제)",
+     _x66.get("ingest") == _c66.get("ingest") == "성공",
+     f"xlsx {_x66.get('ingest')} · csv {_c66.get('ingest')} — {_c66.get('reason')}")
+show("⑤ⓐ 계약 JSON이 같다 — 포맷·시트 이름·doc_id를 뺀 전부 (records 포함)",
+     _x66.get("envelope") and _x66["envelope"] == _c66.get("envelope"),
+     f"records {len((_x66.get('envelope') or {}).get('records') or [])}")
+# **노드 0끼리 같은 것은 판정이 아니다** — 전제를 어서션 안에 둔다.
+_nodes66 = ((_x66.get("graph") or {}).get("process") or {}).get("nodes", 0)
+show("⑤ⓑ 그래프의 노드 수·엣지 수·카테고리별 수가 같다 (전제: 노드 > 0)",
+     _nodes66 > 0 and _x66.get("graph") == _c66.get("graph"),
+     f"노드 {_nodes66} · 엣지 {((_x66.get('graph') or {}).get('process') or {}).get('edges')}"
+     f" · {((_x66.get('graph') or {}).get('process') or {}).get('categories')}")
+# 근거 id는 문자열이 아니라 **가리키는 자리**로 본다(D-146) — `chunk_id`는 시트
+# 이름을 포함한 로케이터의 해시이고 노드 id는 ULID라 같은 문서를 두 번 돌려도 다르다.
+_cp66 = [q for q in (_x66.get("queries") or []) if q["evidence"]]
+show("⑤ⓒ cp 출처를 지나는 스모크 질의의 답·근거가 같다 (전제: 그런 질의 > 0)",
+     len(_cp66) > 0 and _x66.get("queries") == _c66.get("queries"),
+     f"근거 있는 질의 {len(_cp66)}/{len(_x66.get('queries') or [])}")
+# **변이** — 어서션이 정말 두 판을 비교한다는 증거. `reader.read_csv`가 헤더 한
+# 셀을 바꾸면 ⓐ가 붉어야 한다. 초록으로 남으면 그 어서션은 아무것도 잠그지 않는다.
+_m66 = _snap66(RAW / "CP01.csv", "--mut")
+show("⑤ 변이 — read_csv가 헤더 한 셀을 바꾸면 ⓐ가 붉어진다",
+     _m66.get("envelope") != _x66.get("envelope"),
+     f"{_m66.get('ingest')} — {(_m66.get('reason') or _m66.get('error') or '')[:70]}")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

@@ -105,9 +105,6 @@ def select(doc, doc_type=None, adapter_paths=None):
                 "adapter": Path(found[doc_type]),
                 "basis": {"by": "human", "doc_type": doc_type,
                           "form": form_of(p)}}
-    if p.suffix.lower() in PROSE_EXT:
-        return {**out, "status": "none",
-                "reason": "비정형(pptx) — 헤더 지문이 없어 스캔 대상이 아니다. --doc-type 지정 필수"}
     res = scan_mod.scan(p, adapter_paths)
     cands = res["candidates"]
     out["candidates"] = cands
@@ -129,13 +126,33 @@ def select(doc, doc_type=None, adapter_paths=None):
     if len(cands) > 1:
         return {**out, "status": "ambiguous",
                 "reason": f"지문이 {len(cands)}개 어댑터와 일치 {cands} — 사람이 --doc-type으로 고른다"}
+    # **미선택은 네 갈래다**(B66 ② · B61 계약) — 구판은 한 문면(「대조할 정형
+    # 어댑터가 없다」)이 서로 다른 넷을 덮었고, CSV가 대조조차 안 된 것(①)이 그
+    # 문면으로 나와 사람은 **어댑터가 없다고 읽었다**. 재료는 이미 `scan()`이 낸다 —
+    # 읽지 않던 키를 읽을 뿐이고 **새 계산 0**이다.
+    if res.get("not_fingerprintable"):
+        return {**out, "status": "none",
+                "reason": f"비정형({res['not_fingerprintable']}) — 헤더 지문이 없다. "
+                          f"다음: --doc-type <dt> 지정 투입"}
+    if not res["details"]:
+        return {**out, "status": "none",
+                "reason": "대조할 어댑터 0건 — 소재지가 비었다. "
+                          "다음: python -m cli.register generate <dt> <층> <문서>"}
+    eligible = [x for x in res["details"] if x.get("eligible")]
+    if not eligible:
+        why = " · ".join(f"{x['doc_type']}: {x.get('note') or '자격 없음'}"
+                         for x in res["details"])
+        return {**out, "status": "none",
+                "reason": f"자격 있는 어댑터 0건 — {why}. "
+                          f"다음: --doc-type <dt> 또는 "
+                          f"python -m cli.register generate <dt> --revise"}
     # 차이 내역은 **개수만** — 열 이름 전부를 문서마다 늘어놓으면 목록이 읽히지 않는다.
     # 자세한 내역은 `run.py scan <문서>`가 낸다(같은 대조).
     diffs = [f"{x['doc_type']}(누락 {len(x['missing'])}·잉여 {len(x['extra'])})"
-             for x in res["details"] if x.get("eligible")]
+             for x in eligible]
     return {**out, "status": "none",
-            "reason": "지문 일치 0건 — " + (" · ".join(diffs) + " — 상세: run.py scan <문서>"
-                                        if diffs else "대조할 정형 어댑터가 없다")}
+            "reason": f"지문 일치 0건 — {' · '.join(diffs)} — "
+                      f"상세: python run.py scan {p}"}
 
 
 def _basis_line(sel):
@@ -147,6 +164,15 @@ def _basis_line(sel):
             f" · 불일치 {b['rejected']}" if b.get("rejected") else "")
     else:
         return "-"
+    # **어느 파일이 골라졌나**(B66 ④) — 어댑터는 등록부(`adapters/<dt>.py`)를 먼저
+    # 보고 없으면 내장 doc_type의 소재지를 본다. 화면이 그것을 말하지 않으면 사람은
+    # 「mock 소재지가 뭐냐」를 묻게 된다(사내 실측) — 경로 한 조각이 답이다.
+    if sel.get("adapter"):
+        try:
+            _p = Path(sel["adapter"]).resolve().relative_to(ROOT)
+        except ValueError:
+            _p = Path(sel["adapter"])
+        out += f"  ← {_p}"
     return out + _form_line(b.get("form"))
 
 

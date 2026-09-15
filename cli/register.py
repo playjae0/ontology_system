@@ -2770,10 +2770,15 @@ def cmd_confirm(doc_type, approved_by):
     print(f"   승인 기록 → {(_dir(doc_type) / 'approval.json').relative_to(ROOT)}")
     # **등록은 여기서 끝이고 인입은 자동으로 이어지지 않는다** — 그래프까지 간 줄 알고
     # 멈춘 실측이 있어 다음 두 줄을 그대로 낸다(등록개선 ③).
-    print("   다음 — 인입은 이 명령으로 (등록이 그래프를 만들지는 않는다):")
-    print(f"     python run.py parse run {entry['adapter']} <doc_id> <문서>")
-    print("     python run.py build parsed/<doc_id>.json")
-    print(f"     (한 번에: python run.py ingest-file <문서> --doc-type {doc_type})")
+    # **가이드가 사람에게 시키는 흐름 그대로다**(B66 ③) — 구판은 `parse run`·`build`
+    # 두 줄을 먼저 냈는데 가이드 §4·§5에는 없는 명령이라 사내에서 「가이드에 없는
+    # 명령」으로 읽혔다. 부품 명령은 가이드 §5 표에 남고 **확정 화면에서만 뺀다.**
+    # `--doc-type`을 붙여 안내한다: 스캔으로도 고르지만(B66 ①) **방금 확정한
+    # doc_type을 사람이 아는 자리**라 지정이 맞다(P7 — 자동 라우팅 금지와 같은 결).
+    print("   다음 — 인입 (등록이 그래프를 만들지는 않는다):")
+    print(f"     python run.py ingest-file <문서> --doc-type {doc_type} --dry-run"
+          f"   ← 선택·형태 판정만 본다")
+    print(f"     python run.py ingest-file <문서> --doc-type {doc_type}")
     return 0
 
 
