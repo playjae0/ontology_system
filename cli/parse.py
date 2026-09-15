@@ -5,6 +5,7 @@
 부른다. 파서는 별도 프로그램이고 에이전트와의 결합은 **계약 JSON 하나**다(D-9).
 
   python cli/parse.py run   <어댑터.py> <문서> [출력.json] [--doc-id X]  운영 파싱 1회
+       └ `--coord-llm off|<종수>` — 좌표 태깅에서 **묻는 표기 종수**의 상한(기본 100)
        └ doc_id는 생략하면 **파일명에서 파생**한다 — `ingest-file`과 같은 함수(D-110)
          구형 `<어댑터.py> <doc_id> <문서> [출력.json]`도 그대로 받는다
   python cli/parse.py head  <문서> [N]                                관찰 재료(등록 세션 공급)
@@ -63,7 +64,82 @@ def load_adapter(path):
     return mod
 
 
-def run_parse(adapter_path, doc_id, doc, out=None):
+# 좌표 태깅 상한의 **정본**(B69 ③) — 묻는 **표기 종수**의 기본 상한.
+# 행 수가 아니다: 같은 표기를 여러 행이 써도 묻는 것은 한 번이다(B69 ①).
+# `--coord-llm off | <종수>`로 덮는다. 기본을 0(끔)으로 두지 않는 이유: 골격 표기가
+# 조금만 달라도 전 문서가 목록 밖이 되고, 그러면 인입이 orphan_anchor만 쌓는다.
+COORD_CAP = 100
+
+
+def coord_cap_of(args):
+    """`--coord-llm off|<종수>`를 args에서 떼어 `(남은 args, 상한)`.
+
+    **`off`는 0이다** — None(무제한)과 다르다. 값이 숫자가 아니면 사용법 오류다:
+    조용히 기본값으로 떨어지면 사람은 상한을 준 줄 안다.
+    """
+    args = list(args)
+    if "--coord-llm" not in args:
+        return args, COORD_CAP
+    i = args.index("--coord-llm")
+    v = args[i + 1] if i + 1 < len(args) else None
+    del args[i:i + 2]
+    if v == "off":
+        return args, 0
+    try:
+        return args, max(0, int(v))
+    except (TypeError, ValueError):
+        raise SystemExit(f"[parse] --coord-llm 값이 종수나 off가 아니다: {v!r}\n"   # [사용법]
+                         f"  예: --coord-llm 200 · --coord-llm off")
+
+
+def coord_screen():
+    """좌표 태깅의 예고·진행·끝 줄 — `(notice, progress)` (B69 ② · B22의 정신).
+
+    **비용은 화면에 오른다.** 예고는 호출 **전에** 무LLM으로 센 숫자다: 사람이
+    「무한」으로 읽고 끄는 일이 없게 몇 번 부를지를 먼저 말한다(사내 실측 아홉째).
+    진행은 **표기 단위**이고, 끝 줄은 채택·목록 밖을 센다.
+    """
+    def notice(info):
+        if info.get("단계") == "예고":
+            head = (f"   좌표 태깅 — 조각 {info['조각']:,} · "
+                    f"정확 일치 {info['정확_일치']:,} · "
+                    f"목록 밖 표기 {info['표기_종수']:,}종(행 {info['미스_행']:,})")
+            if not info.get("LLM"):
+                print(f"{head} → LLM 0회 — 정확 일치만")
+                return
+            print(f"{head} → LLM 최대 {info['묻는_종수']:,}회"
+                  + (f" (상한 {info['상한']:,})" if info.get("상한") is not None else ""))
+            if info.get("상한") == 0:
+                # **사람이 끈 것과 상한에 걸린 것은 다른 일이다** — 끈 자리에
+                # 「초과」를 찍으면 자기가 준 값이 사고처럼 읽힌다.
+                print(f"   좌표 보조 끔(--coord-llm off) — 목록 밖 "
+                      f"{info['표기_종수']:,}종은 그대로(orphan_anchor)")
+                return
+            if info["묻는_종수"] < info["표기_종수"]:
+                # **막지 않는다 — 말한다**(B61 계약: 원인 + 그대로 칠 수 있는 다음 줄).
+                print(f"   상한 초과 — {info['표기_종수']:,}종 중 "
+                      f"{info['묻는_종수']:,}종만 묻는다 · 나머지 "
+                      f"{info['표기_종수'] - info['묻는_종수']:,}종은 목록 밖 "
+                      f"그대로(orphan_anchor)")
+                print(f"     다음: --coord-llm {max(info['표기_종수'], 1)} "
+                      f"또는 사전 alias 등록")
+            return
+        if info.get("호출"):
+            print(f"   좌표 태깅 끝 — 호출 {info['호출']:,} · 채택 {info['채택']:,} · "
+                  f"목록 밖 {info['목록밖']:,}(orphan_anchor 후보)")
+
+    def progress(done, total, adopted):
+        stride = max(1, total // 10)
+        if done == 1 or done == total or done % stride == 0:
+            tty = sys.stdout.isatty()
+            print(f"   [좌표 태깅] 표기 {done:,}/{total:,} · 채택 {adopted:,} · "
+                  f"목록 밖 {done - adopted:,}",
+                  end="\r" if (tty and done < total) else "\n", flush=True)
+
+    return notice, progress
+
+
+def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
     있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
@@ -75,7 +151,10 @@ def run_parse(adapter_path, doc_id, doc, out=None):
     out = out or str(PARSED_DIR / f"{doc_id}.json")
     # LLM 3지점(④·⑦·⑨)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
     # 않는다(A1). mock이면 None이 오고 파서가 §7.1 대체를 쓴다.
-    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections())
+    _notice, _progress = coord_screen()
+    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(),
+                         coord_notice=_notice, coord_cap=coord_cap,
+                         progress=_progress)
     written = None
     if res.ok and out:
         Path(out).parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +189,9 @@ def cmd_run(args):
         doc_id, doc, rest = (given or args[1]), args[2], args[3:]
         how = "지정" if given else "인자"
     print(f"[parse] doc_id = {doc_id} ({how})")
-    res, out = run_parse(adapter_path, doc_id, doc, rest[0] if rest else None)
+    rest, cap = coord_cap_of(rest)
+    res, out = run_parse(adapter_path, doc_id, doc, rest[0] if rest else None,
+                         coord_cap=cap)
     print(f"[parse] {res}")
     for f in res.failures:
         print(f"   [{f['kind']}] {f['reason']}")

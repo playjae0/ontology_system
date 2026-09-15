@@ -356,6 +356,32 @@ finally:
 show("①ⓓ 표시 없는 거부를 하나 넣으면 붉어진다 (되돌리면 초록)",
      _mut61 == 1 and not _EX.unmarked(), f"심었을 때 미분류 {_mut61}건")
 
+# ── B69 ④ 다음 줄의 명령이 **실재하는가** ────────────────────────────────
+#
+# B68 회차 실측: `python run.py doctor`를 다음 줄로 주던 거부가 있었다 — 그런 명령이
+# 없어 치면 `KeyError`다. 스캐너가 **접두만** 봐서 초록이었다. 「그대로 칠 수 있는
+# 다음 줄」은 **칠 수 있어야** 계약이다(B61). 문면을 세지 않는다 — 이름의 실재만.
+show("④ 다음 줄의 명령이 전부 실재한다 (run.py 명령표 · cli 모듈 · 파일)",
+     not _EX.unknown_next(_rows61),
+     str([r["file"] + ":" + str(r["line"]) + " " + r["cmd"]
+          for r in _EX.unknown_next(_rows61)][:3]))
+show("④ 명령 이름의 정본은 run.py의 명령표다 (문면을 읽지 않는다)",
+     {"ingest-file", "register", "scan"} <= _EX.run_commands()
+     and "doctor" not in _EX.run_commands(), f"{len(_EX.run_commands())}개")
+# ⓑ **변이** — 없는 명령을 하나 심으면 붉어진다(그리고 되돌린다).
+_src69 = _p61.read_text(encoding="utf-8")
+_p61.write_text(_src69 + '\n\ndef _b69_probe():\n'
+                         '    raise SystemExit("[viewer] 없다\\n'
+                         '  ▶ 다음 줄:\\n     python run.py nosuch")  # [상태]\n',
+                encoding="utf-8")
+try:
+    _mut69 = _EX.unknown_next()
+finally:
+    _p61.write_text(_src69, encoding="utf-8")
+show("④ⓑ 없는 명령을 다음 줄로 주면 붉어진다 (되돌리면 초록)",
+     len(_mut69) == 1 and _mut69[0]["cmd"] == "run:nosuch"
+     and not _EX.unknown_next(), str([r["cmd"] for r in _mut69]))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G6 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

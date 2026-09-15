@@ -28,7 +28,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # 사람이 그대로 칠 수 있는 명령의 꼴 — 둘 중 하나가 문면에 있어야 한다.
-NEXT_LINE = ("python run.py", "python -m cli.")
+# **`doctor.py`도 사람이 그대로 치는 진입점이다**(CLAUDE.md 6 · 화면 여러 곳이
+# 그것을 다음 줄로 준다). 목록에 없어서 「반입물이 온전한지 본다」류의 다음 줄이
+# `run.py doctor`라는 **없는 명령**으로 적혀 있었다(B68에서 실측 — 치면 KeyError).
+NEXT_LINE = ("python run.py", "python -m cli.", "python doctor.py")
 MARKS = {"상태", "사용법"}
 _MARK_RE = re.compile(r"#.*\[(상태|사용법)\](?:\s*문면=(\w+))?")
 
@@ -88,6 +91,65 @@ def scan():
     return out
 
 
+# 다음 줄에 등장하는 명령의 세 꼴 — 이름이 **실재하는가**만 본다 (B69 ④).
+# **이름에 쓰이는 글자만 딴다** — 문면은 원문(소스)이라 뒤에 `\n`·조사·따옴표가
+# 붙는다. 그것까지 이름으로 세면 실재하는 명령이 「없는 명령」으로 뜬다.
+_CMD_RUN = re.compile(r"python\s+run\.py\s+([A-Za-z0-9][A-Za-z0-9._-]*)")
+_CMD_CLI = re.compile(r"python\s+-m\s+cli\.([A-Za-z_][A-Za-z0-9_]*)")
+_CMD_FILE = re.compile(r"python\s+([A-Za-z_][A-Za-z0-9_/-]*\.py)")
+_PLACEHOLDER = ("<", "{", "…", "[")
+
+
+def run_commands():
+    """`run.py`가 아는 명령 이름 — **명령 표의 키가 정본이다**(문면을 읽지 않는다).
+
+    표는 `{...}[cmd]()` 꼴로 그 자리에서 불린다 — 이름 붙은 dict가 아니다.
+    그래서 **문자열 키만 가진 dict 리터럴 중 가장 큰 것**을 명령 표로 본다:
+    `run.py`에 그런 표는 하나이고, 둘이 되면 그때 이 함수가 갈라져야 한다.
+    """
+    src = (ROOT / "run.py").read_text(encoding="utf-8")
+    best = set()
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Dict) and node.keys and all(
+                isinstance(k, ast.Constant) and isinstance(k.value, str)
+                for k in node.keys):
+            keys = {k.value for k in node.keys}
+            if len(keys) > len(best):
+                best = keys
+    return best
+
+
+def next_commands(text):
+    """문면이 제시한 명령 — `[(꼴, 이름)]`. 자리표시자(`<명령>`)는 세지 않는다."""
+    out = []
+    for kind, rx in (("run", _CMD_RUN), ("cli", _CMD_CLI), ("file", _CMD_FILE)):
+        for name in rx.findall(text or ""):
+            if not any(c in name for c in _PLACEHOLDER):
+                out.append((kind, name))
+    return out
+
+
+def unknown_next(rows=None):
+    """**없는 명령을 다음 줄로 주는 자리** (B69 ④).
+
+    B68 회차 실측: `_kit_line_re`의 상태 거부가 `python run.py doctor`를 줬는데
+    그런 명령이 없다(치면 `KeyError`). 스캐너가 **접두만** 봐서 초록이었다 —
+    「그대로 칠 수 있는 다음 줄」(B61 계약)은 칠 수 있어야 계약이다.
+
+    문면을 세지 않는다 — **이름의 실재**만 본다.
+    """
+    known = run_commands()
+    bad = []
+    for r in (rows if rows is not None else scan()):
+        for kind, name in next_commands(r["text"]):
+            ok = (name in known if kind == "run" else
+                  (ROOT / "cli" / f"{name}.py").exists() if kind == "cli" else
+                  (ROOT / name).exists())
+            if not ok:
+                bad.append({**r, "cmd": f"{kind}:{name}"})
+    return bad
+
+
 def unmarked(rows=None):
     """분류가 없는 거부 — **새 거부는 여기 뜬다.**"""
     return [r for r in (rows if rows is not None else scan()) if not r["mark"]]
@@ -107,7 +169,9 @@ def main():
     st = [r for r in rows if r["mark"] == "상태"]
     print(f"\n총 {len(rows)}곳 — 상태 {len(st)} · 사용법 "
           f"{len(rows) - len(st) - len(unmarked(rows))} · 미분류 {len(unmarked(rows))}"
-          f" · 계약 위반 {len(broken(rows))}")
+          f" · 계약 위반 {len(broken(rows))} · 없는 명령 {len(unknown_next(rows))}")
+    for r in unknown_next(rows):
+        print(f"   없는 명령 — {r['file']}:{r['line']}  {r['cmd']}")
 
 
 if __name__ == "__main__":

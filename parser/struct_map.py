@@ -481,7 +481,13 @@ def adapter_level_picks(adapter, raw):
             # 화면이 폐지된 자리를 계속 읽으면 승인자는 **규칙이 고른 레벨을 끝내
             # 못 본다**(§6.6-1이 「규칙이 고른 레벨·그 사유」를 요구한다).
             pick, why, oor = choose_level(st)
+            # **기준도 함께 낸다**(B68 ①) — 이 경로가 아는 신호는 번호 패턴
+            # 하나다. 신호 이름을 적지 않으면 화면이 「레벨 2」만 말하고,
+            # 사람은 무엇을 보고 2가 나왔는지 끝내 모른다.
             out.append({"프레임": sh.get("name"),
                         "분할_레벨": pick, "분할_레벨_사유": why,
-                        "분할_레벨_구간밖": oor, "레벨_분포": st})
+                        "분할_레벨_구간밖": oor, "레벨_분포": st,
+                        "분할_기준": f"어댑터 신호: 번호 "
+                                     f"{sum(1 for r in rows if r['heading'])}",
+                        "지도_출처": f"adapter:{adapter.get('doc_type') or '어댑터'}"})
     return out

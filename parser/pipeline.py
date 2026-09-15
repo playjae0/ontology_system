@@ -50,6 +50,15 @@ def _mock_log(doc_id, point, detail):
     logging.getLogger("onto.parser").info("MOCK %s [%s] — %s", point, doc_id, detail)
 
 
+def _map_basis(smap):
+    """지도 경로의 `분할_기준` — 어느 지도로 잘랐나 (B68 ①)."""
+    if smap.get("unavailable"):
+        return "구조 지도 없음 — 평면 폴백"
+    if smap.get("source") == "heuristic":
+        return "구조 지도(heuristic)"
+    return f"구조 지도(LLM · 판본 {smap.get('prompt_version') or '미상'})"
+
+
 def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None, src_hash=None):
     """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다).
 
@@ -87,6 +96,9 @@ def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None, src_hash=None):
                          "분할_레벨_사유": smap.get("분할_레벨_사유"),
                          "레벨_분포": smap.get("레벨_분포"),
                          "지도_출처": smap.get("source"),
+                         # **한 필드 이름, 두 경로**(B68 ①) — 어댑터 경로의
+                         # `분할_기준`과 같은 자리·같은 이름이다.
+                         "분할_기준": _map_basis(smap),
                          "지시문_판본": smap.get("prompt_version"),
                          "지도_없음": smap.get("unavailable")})
         return out
@@ -127,7 +139,7 @@ def _page_map(path, raw):
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
-          max_rows=None, progress=None):
+          max_rows=None, progress=None, coord_notice=None, coord_cap=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -225,8 +237,19 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     # 그것이 좌표다. 태깅보다 앞에 두는 이유: 태깅은 좌표가 **있는** 조각을 다듬고,
     # 이것은 좌표가 **없는** 조각에 세운다. 순서가 바뀌면 pick이 헛돈다.
     pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes)
+    # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
+    # 「몇 종을 물어 몇을 채택했나」가 남아야 한다. 같은 그릇이 두 번 온다(예고·끝).
+    _coord = {}
+
+    def _note(info):
+        _coord.update(info)
+        if coord_notice is not None:
+            coord_notice(info)
+
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
-                        doc_type=a["doc_type"], progress=progress)
+                        doc_type=a["doc_type"], progress=progress,
+                        notice=_note, cap=coord_cap)
+    res.report["coord_tag"] = dict(_coord)
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
     unresolved = [p["source_locator"] for p in pieces

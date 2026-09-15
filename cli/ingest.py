@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
-  python run.py ingest-file <문서> [--doc-type X] [--dry-run]
-  python run.py ingest-dir  <경로> [--doc-type X] [--dry-run]
+  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+  python run.py ingest-dir  <경로> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
 (`cli.parse.run_parse` · `core.pipeline.run_document`).
@@ -11,6 +11,9 @@
   ① 무엇으로 골랐는지 화면과 인입 기록(`doc_registry.json`의 `routing`)에 남긴다.
   ② `--dry-run`은 선택 결과만 보이고 파싱·인입을 하지 않는다.
   ③ 유일 일치만 자동으로 간다 — **둘 이상·0건이면 사람에게 올리고 멈춘다**(미선택).
+`--coord-llm`은 좌표 태깅에서 **묻는 표기 종수의 상한**이다(기본 100 · `off`면 0회).
+행 수가 아니다 — 같은 표기를 여러 행이 써도 묻는 것은 한 번이다(B69 ①). 상한을 넘는
+표기는 묻지 않고 목록 밖 그대로 둔다(인입의 `orphan_anchor`) — 배치는 멈추지 않는다.
 `--doc-type`을 주면 스캔하지 않고 그것으로 본다(사람 지정 — 기본 경로). 비정형(pptx)은
 헤더 지문이 없어 스캔 대상이 아니다 — 지정 없이 오면 미선택으로 남는다.
 
@@ -25,7 +28,7 @@ from pathlib import Path
 
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
-from cli.parse import run_parse
+from cli.parse import COORD_CAP, coord_cap_of, run_parse
 from core import registry, store
 from core.pipeline import finalize, run_document
 
@@ -240,7 +243,8 @@ def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
     return "\n".join(out)
 
 
-def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_after=True):
+def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
+                finalize_after=True, coord_cap=COORD_CAP):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     sel = select(doc, doc_type, adapter_paths)
@@ -272,7 +276,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_
         print("   (dry-run — 파싱·인입 안 함)")
         return row
     try:
-        res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc))
+        res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
+                             coord_cap=coord_cap)
         if not res.ok:
             rows = fail_rows(res.failures)
             # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
@@ -310,7 +315,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None, finalize_
         return row
 
 
-def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None):
+def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
+               coord_cap=COORD_CAP):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -324,7 +330,8 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None):
     files = sorted(x for x in p.iterdir() if x.is_file() and not x.name.startswith(("~", ".")))
     rows = []
     for f in files:
-        rows.append(ingest_file(f, doc_type, dry_run, adapter_paths, finalize_after=False))
+        rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
+                                finalize_after=False, coord_cap=coord_cap))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -363,13 +370,15 @@ def main(argv):
         i = args.index("--adapters")
         paths = [args[i + 1]] if i + 1 < len(args) else None
         del args[i:i + 2]
+    # **상한 손잡이는 인입에도 있다**(B69 ③) — 배치라 동의 프롬프트를 두지 않는다.
+    args, cap = coord_cap_of(args)
     if not args:
         raise SystemExit("[투입] 대상(문서 또는 경로)이 없다\n" + __doc__)             # [사용법]
     target = Path(args[0])
     if target.is_dir():
-        rows = ingest_dir(target, dt, dry, paths)
+        rows = ingest_dir(target, dt, dry, paths, coord_cap=cap)
     else:
-        rows = [ingest_file(target, dt, dry, paths)]
+        rows = [ingest_file(target, dt, dry, paths, coord_cap=cap)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

@@ -298,6 +298,7 @@ def _split(rows):
             # **어느 지도가 실호출이었나**를 사람이 본다(B48 ②-7 · 후속 ②).
             # 휴리스틱 지도는 보존하지 않으므로 이 화면이 아니면 볼 자리가 없다.
             out.append('<table><tr><th>프레임</th><th>지도 출처</th>'
+                       '<th>분할 기준</th>'
                        '<th>지시문 판본</th><th>고른 레벨</th><th>근거</th></tr>')
             for pick in picks:
                 src = pick.get("지도_출처")
@@ -305,6 +306,9 @@ def _split(rows):
                 out.append(
                     f'<tr><td>{e(pick.get("프레임"))}</td>'
                     f'<td{w}>{e(src)}</td>'
+                    # **무엇을 기준으로 잘랐나**(B68 ②) — 지금까지 화면은 「레벨 2」
+                    # 까지만 말하고 그 2가 어느 신호에서 나왔는지는 말하지 않았다.
+                    f'<td>{e(pick.get("분할_기준"))}</td>'
                     f'<td>{e(pick.get("지시문_판본"))}</td>'
                     f'<td{_w(pick.get("분할_레벨_구간밖"))}>'
                     f'{e(pick.get("분할_레벨"))}</td>'

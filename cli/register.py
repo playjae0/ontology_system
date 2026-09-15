@@ -420,6 +420,12 @@ def _pretty_json(obj, indent=2):
     return go(obj, 0) + "\n"
 
 
+def _ad_mod(name):
+    """코어 기본 어댑터 모듈 — 래퍼가 무엇을 위임할 수 있나를 실물에 묻는다."""
+    return {"basic_ppt": basic_ppt, "basic_prose_xlsx": basic_prose_xlsx}.get(
+        name) or __import__(f"parser.adapters.{name}", fromlist=[name])
+
+
 def _write_schema(path, text):
     """매칭 스키마를 **사람이 읽는 표기**로 쓴다. 파싱 실패면 원문 그대로 둔다.
 
@@ -1450,7 +1456,13 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
         "이 등록의 것으로 바꾼 위임 래퍼다. 상수를 여기 복제하지 않는다.\n\"\"\"\n"
         f"from parser.adapters import {mod}\n\n"
         f"ADAPTER = {{**{mod}.ADAPTER, \"doc_type\": {doc_type!r}}}\n"
-        f"extract = {mod}.extract\n", encoding="utf-8")
+        f"extract = {mod}.extract\n"
+        # **제 계산을 내놓는 어댑터면 그것도 위임한다**(B68 ①) — 래퍼가
+        # `level_report`를 안 달면 파이프라인이 번호 패턴만 보는 대체 계산으로
+        # 떨어지고, **화면의 레벨·기준이 실제로 자른 것과 갈린다**(pipeline의
+        # 「어댑터가 제 계산을 내놓으면 그것이 정본이다」 — B58 ③).
+        + (f"level_report = {mod}.level_report\n"
+           if hasattr(_ad_mod(mod), "level_report") else ""), encoding="utf-8")
     _write_schema(sc, json.dumps(
         {"doc_type": doc_type, "schema_version": 1, "layer": layer,
          "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],
@@ -1574,7 +1586,7 @@ def _kit_line_re():
                          "판정 줄 문면 규격이 정본에서 사라졌다 (관문 자체 결함 — "
                          "어댑터 잘못이 아니다)\n"
                          "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"
-                         "     python run.py doctor")
+                         "     python doctor.py")
     return m.group(1)
 
 
@@ -1606,6 +1618,67 @@ def fail_lines(harness_out):
         if out and out[-1] and ln.strip() and ln.startswith(" "):
             out[-1][2] = (out[-1][2] + "\n" + ln.rstrip()).strip()
     return [tuple(x) for x in out if x]
+
+
+# ================================================ 분할 요약 화면 (B68 ②)
+#
+# **무엇을 기준으로 잘랐나**를 등록 화면이 말한다. 사내 실측 여덟째: 산문 xlsx를
+# 고정 어댑터로 등록해 관문도 통과하고 청크도 잘 잘렸는데, 「기준」이 검수 뷰에
+# 없고 generate 화면에는 분할 줄이 한 줄도 없었다.
+#
+# **새 계산 0** — 관문이 이미 `pipeline.parse`를 돌렸고 그 산출(`report["split"]` ·
+# 프레임별 pick)을 한 줄 JSON으로 낸다(`kit/run_adapter.py::SPLIT_MARK`). 여기서
+# 다시 파싱하면 같은 계산이 두 벌이 되고, 한쪽만 고쳐지는 날 화면이 갈린다.
+def _kit_split_mark():
+    """분할 요약 줄의 표시 — **킷에서 읽는다**(정본이 거기다 · `_kit_line_re`와 같은 결)."""
+    m = re.search(r'^SPLIT_MARK = "(.+)"$',
+                  (KIT / "run_adapter.py").read_text(encoding="utf-8"), re.M)
+    if not m:
+        raise SystemExit("[관문] kit/run_adapter.py의 SPLIT_MARK를 찾지 못했다 — "  # [상태]
+                         "분할 요약 줄의 표시가 정본에서 사라졌다 (관문 자체 결함 — "
+                         "어댑터 잘못이 아니다)\n"
+                         "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"
+                         "     python doctor.py")
+    return m.group(1)
+
+
+def split_rows(harness_out):
+    """관문 산출에서 분할 요약을 딴다 — `[{doc, split, picks}]`."""
+    mark = _kit_split_mark()
+    out = []
+    for ln in (harness_out or "").splitlines():
+        if ln.startswith(mark):
+            try:
+                out.append(json.loads(ln[len(mark):]))
+            except json.JSONDecodeError:
+                continue                    # 지어내지 않는다 — 없으면 줄이 없다
+    return out
+
+
+def split_block(harness_out):
+    """프레임마다 한 줄 — 기준 · 레벨 · 크기 분포 (B68 ②).
+
+    프레임이 없으면(table이거나 헤딩 0건) 빈 문자열이다 — 없는 것을 빈 줄로
+    찍지 않는다.
+    """
+    lines = []
+    for item in split_rows(harness_out):
+        sp = item.get("split") or {}
+        g = sp.get("목표구간") or []
+        tail = (f"청크 {sp.get('청크수')} · 행수 {sp.get('행수_최소')}~"
+                f"{sp.get('행수_최대')} · 짧음 {sp.get('너무_짧은_청크')} · "
+                f"긺 {sp.get('너무_긴_청크')}")
+        for pick in item.get("picks") or []:
+            # **평균은 고른 레벨의 것**이다 — 문서 전체 평균을 레벨 옆에 적으면
+            # 「그 레벨로 자르면 이만하다」로 읽히는데 값은 다른 것을 말한다.
+            lv = (pick.get("레벨_분포") or {}).get(str(pick.get("분할_레벨"))) or {}
+            size = (f"평균 {lv.get('행수_평균', sp.get('행수_평균'))}행"
+                    + (f" · 목표 {g[0]}~{g[1]}" if len(g) > 1 else ""))
+            oor = " · 구간 밖 — 최근접 레벨" if pick.get("분할_레벨_구간밖") else ""
+            lines.append(f"   분할 — {pick.get('프레임')}  "
+                         f"기준 {pick.get('분할_기준') or '미상'} · "
+                         f"레벨 {pick.get('분할_레벨')} ({size}) · {tail}{oor}")
+    return "\n".join(lines)
 
 
 def _instruct_of(fails):
@@ -1948,6 +2021,11 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
                           package=REVIEW / doc_type / "input_package.json")
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
+        # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.
+        # `status`·`confirm`도 관문을 다시 도니 같은 재료로 같은 줄을 낸다.
+        _sb = split_block(out)
+        if _sb:
+            print(_sb)
         orphan = _orphan_of(st)
         if orphan:
             print(f"   스키마 대장에 없는 열 {len(orphan)}건 — "
@@ -2627,8 +2705,10 @@ def _gateway_ready():
 def _coord_misses(results, layer):
     """좌표가 **닫힌 목록과 정확히 일치하지 않는** 조각을 센다 — LLM을 부르지 않는다.
 
-    이 수가 곧 «LLM 보조를 켜면 몇 회 부르는가»다(tagger는 미스 행마다 pick를 부른다).
     **몇천 회 호출은 사람이 모르고 시작하면 안 된다** — 그래서 먼저 세고 물어본다.
+    호출 수는 이 목록의 **길이가 아니라 종수**다(B69 ① — tagger가 표기마다 한 번
+    묻는다). 목록을 그대로 돌려주는 것은 행 수와 종수를 **둘 다** 화면이 말해야
+    하기 때문이다: 「3,000행이 12종이다」가 사람이 켤지 정하는 재료다.
     """
     idx = tagger.surfaces(tagger.closed_list(layer))
     miss = []
@@ -2646,20 +2726,24 @@ def _ask_llm_coord(misses, assume=None):
 
     미스를 그대로 두는 것은 오류가 아니다 — 인입에서 `orphan_anchor` 큐로 가는
     정상 경로가 있고(문서 4 §4.4), 사람이 자기 리듬으로 처리한다. 반면 켜면
-    **미스 수만큼 실호출**이다.
+    **표기 종수만큼 실호출**이다(B69 ① — 같은 표기가 여러 행에 있어도 한 번이다).
+    켤지 묻는 자리이므로 **수가 맞아야 한다**: 구판은 행 수를 호출 수라고 말했고,
+    그 수는 실제보다 훨씬 컸다.
     """
-    n = len(misses)
+    n, kinds = len(misses), sorted(set(misses))
     if n == 0:
         return False
-    sample = ", ".join(sorted(set(misses))[:5])
-    print(f"   좌표 미스 {n:,}건 (예: {sample}{' …' if len(set(misses)) > 5 else ''})")
+    sample = ", ".join(kinds[:5])
+    print(f"   좌표 미스 {n:,}행 · 표기 {len(kinds):,}종 "
+          f"(예: {sample}{' …' if len(kinds) > 5 else ''})")
     if assume is not None:
         print(f"   → LLM 보조 {'켬' if assume else '끔'} (인자로 지정됨)")
         return assume
     if llm.use_mock():
         return False
     try:
-        ans = input(f"   LLM 보조를 켜면 최대 {n:,}회 호출한다. 켤까? [y/N] ").strip().lower()
+        ans = input(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). "
+                    f"켤까? [y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         ans = ""                       # 대화형이 아니면 **끄고 진행**한다
     on = ans in ("y", "yes")
@@ -2667,19 +2751,22 @@ def _ask_llm_coord(misses, assume=None):
     return on
 
 
-def _progress(i, total, calls, *, label=""):
-    """진행 한 줄 — **주기 갱신**. 매 행 찍으면 그것이 잡음이 된다.
+def _progress(done, total, adopted, *, label=""):
+    """진행 한 줄 — **주기 갱신**. 매 번 찍으면 그것이 잡음이 된다.
 
-    보폭은 **최소 50행**이다: 33행짜리 표본까지 한 줄씩 찍으면 화면이 진행 표시로
-    덮여 정작 읽어야 할 이상 신호가 밀려난다(실측). 큰 표본에서는 10회 안팎으로
-    갱신된다. `\r` 덮어쓰기는 터미널일 때만 — 파이프로 받으면 매 줄이 남는다.
+    **단위는 표기다**(B69 ① — 행이 아니다): 리허설에서 도는 것은 좌표 태깅의
+    표기 루프이고, 그 루프가 곧 LLM 호출이다. 부르지 않으면(정확 일치만) 진행도
+    없다 — 결정적 구간은 빠르고, 조용한 것이 맞다.
+
+    보폭은 10회 안팎으로 갱신되게 잡는다. `\r` 덮어쓰기는 터미널일 때만 —
+    파이프로 받으면 매 줄이 남는다.
     """
-    stride = max(50, total // 10)
-    if not (i == 1 or i == total or i % stride == 0):
+    stride = max(1, total // 10)
+    if not (done == 1 or done == total or done % stride == 0):
         return
     tty = sys.stdout.isatty()
-    print(f"   파싱 {label} · 행 {i:,}/{total:,} · LLM 호출 {calls:,}회",
-          end="\r" if (tty and i < total) else "\n", flush=True)
+    print(f"   좌표 태깅 {label} · 표기 {done:,}/{total:,} · 채택 {adopted:,}",
+          end="\r" if (tty and done < total) else "\n", flush=True)
 
 
 def _extract_rehearsal(st, results, samples, want, truncated):

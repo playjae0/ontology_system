@@ -227,6 +227,9 @@ def _flatten_strings(obj):
 # **라벨 한 자리**(B59 ①) — G26은 한 태그·한 라벨이고 원인은 상세가 가른다.
 G26 = "G26  columns 값이 header_row의 헤더로 확정된다"
 
+# 분할 요약 줄의 표시 — **정본은 여기다**(등록 화면이 이 이름으로 집는다).
+SPLIT_MARK = "[분할요약] "
+
 PKG_FLAG = "--package"
 PACKAGE = None
 
@@ -607,7 +610,15 @@ def run_pipeline(mod, schema, doc, label):
         print(f"      조각 {rep.get('pieces')}건 · 좌표 보고 {json.dumps(co, ensure_ascii=False)[:200]}")
         sp = rep.get("split") or {}
         if sp:
-            print(f"      분할 분포 {json.dumps(sp, ensure_ascii=False)[:240]}")
+            # **화면을 가진 쪽이 그대로 읽는다**(B68 ② — 새 계산 0). 구판은 240자로
+            # 자른 사람용 한 줄뿐이라, 등록 화면이 분할을 말하려면 같은 계산을 다시
+            # 해야 했다. 관문은 이미 `pipeline.parse`를 돌렸고 그 산출이 여기 있다.
+            # **행 머리에 공백을 두지 않는다** — 들여쓴 줄은 앞 판정 줄의 상세로
+            # 붙는 규약이라(B64 ②) 이 줄이 FAIL 상세를 오염시킨다.
+            print(SPLIT_MARK + json.dumps(
+                {"doc": Path(doc).name,
+                 "split": {k: v for k, v in sp.items() if k != "레벨_선택"},
+                 "picks": sp.get("레벨_선택") or []}, ensure_ascii=False))
     # **LLM 0** — 주입이 하나도 없었고 게이트웨이 모듈은 적재조차 되지 않았다.
     # 문자열이 아니라 **적재된 모듈**을 본다: 「부르지 않는다」는 주석은 아무것도
     # 막지 않는다(이 레포가 겪은 실사고 그대로).
