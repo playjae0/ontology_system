@@ -5033,3 +5033,167 @@ ADAPTER["expects"]["columns"] = {'process': 'A', 'sub_process': 'B', 'process_no
 
 - 회귀 **1123 → 1132/1132** (+9, 삭제 0): `test_p3` 371 → 380.
 - 검사 4종 전부 통과. 상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 · 계약 위반 0**.
+
+## B66 ①~⑤ — 헤더 지문은 포맷을 보지 않는다 · 미선택 네 갈래 · CSV 전 구간 등가 · 2026-09-15
+
+요청문 `docs/안건/B66_요청문.md`. 전제 대조표 7항목 전부 실물과 일치 —
+`FINGERPRINTABLE = ("xlsx",)` 정의 1·검사 1 · `get("format")` 2줄(119·121) ·
+`not_fingerprintable` 0 hit · 「대조할 정형 어댑터가 없다」 1 hit · `_header_actual`이
+이미 preflight 호출 · 확정 화면 「다음」 3줄(2774~2776) · 문서 6 §6.4의
+「포맷을 보지 않는다」 1 hit. **명세 개정 0 · LLM 호출 0.**
+
+### ① 포맷 튜플 폐지 — 지문 대상은 `sheets` 구조다
+
+`cli/scan.py`의 `FINGERPRINTABLE`을 지운다. 거르는 기준은 **reader가 `sheets`를
+냈는가**이고, prose(pptx·pdf)만 「지문 대상 아님」이다. 포맷 이름이 코드에서 0이 된
+것이 이 항목의 성질이다 — 같은 병의 셋째 자리였다(`preflight.header_labels`의
+`format != "xlsx"` · `_header_actual`의 복제본 · 이 튜플).
+
+```
+지문 스캔 — tests/fixtures/raw/CP01.csv
+  ◎ 후보 cp           일치 10/10
+  → 후보 ['cp'] — 확정은 사람 몫이다: --confirm <doc_type> (유일 일치여도 자동 라우팅하지 않는다 — P7)
+```
+
+`--doc-type` 없이 넣은 CSV를 스캔이 고른다(①ⓒ):
+
+```
+[투입] CP01.csv → doc_id CP01
+   선택 근거: 지문 스캔 유일 일치 → cp · header_labels 완전 일치 10/10 (누락 0 · 잉여 0) · 불일치 ['pfmea(누락 9·잉여 6)', 'ipqc(누락 11·잉여 5)']  ← tests/fixtures/adapters/cp.py
+```
+
+### ② 미선택 네 갈래 (화면 그대로)
+
+```
+① 비정형 포맷  미선택 — 비정형(pptx) — 헤더 지문이 없다. 다음: --doc-type <dt> 지정 투입
+② 소재지 빔    미선택 — 대조할 어댑터 0건 — 소재지가 비었다. 다음: python -m cli.register generate <dt> <층> <문서>
+③ 자격 없음    미선택 — 자격 있는 어댑터 0건 — b66prose: 비정형(prose) — 헤더 지문 대상 아님(지정 필수). 다음: --doc-type <dt> 또는 python -m cli.register generate <dt> --revise
+④ 일치 0건     미선택 — 지문 일치 0건 — cp(누락 6·잉여 9) — 상세: python run.py scan tests/fixtures/raw/PFMEA01.xlsx
+```
+
+새 계산 0 — `scan()`이 이미 내던 `not_fingerprintable` · `details[].eligible/note`를
+읽을 뿐이다.
+
+### ③ 확정 화면의 「다음」 = 가이드의 인입 흐름 (화면 그대로)
+
+```
+■ ③ 확정 — toc_report 등록부 등재 (승인 보고 @ 2026-09-15T00:40:15+00:00)
+   어댑터·스키마 활성: adapters/toc_report.py · schemas/toc_report.json
+   승인 기록 → review/toc_report/approval.json
+   다음 — 인입 (등록이 그래프를 만들지는 않는다):
+     python run.py ingest-file <문서> --doc-type toc_report --dry-run   ← 선택·형태 판정만 본다
+     python run.py ingest-file <문서> --doc-type toc_report
+```
+
+`parse run`·`build`는 가이드 §5 부품 표에 남는다 — 확정 화면에서만 뺐다.
+
+### ④ 선택 근거 줄에 어댑터 실물 경로 (화면 그대로)
+
+```
+   선택 근거: 사람 지정 --doc-type cp  ← tests/fixtures/adapters/cp.py
+```
+
+### ⑤ CSV 전 구간 등가 — 같은 표는 포맷이 달라도 같은 지식이 된다
+
+표본 쌍 `CP01.xlsx` ↔ `CP01.csv`(33×10 · 병합을 편 판 — D-145 ④). 스냅샷은
+별도 프로세스(`tests/csv_equiv.py`)가 뜬다: 클린 → 골격 → `ingest-file --doc-type cp`
+→ 봉투·그래프·질의.
+
+- ⓐ 계약 JSON **동일**(records 30) — 뺀 것은 `source_path`·시트 이름·`doc_id` 셋.
+- ⓑ 그래프 **노드 86 · 엣지 133 · 카테고리 {Process 46 · Unit 13 · Property 27}** 동일.
+  어서션 전제에 「노드 > 0」을 넣었다 — 0끼리 같은 것은 판정이 아니다.
+- ⓒ 스모크 12문항 중 **근거 있는 11문항**의 답·근거가 동일. 근거는 id 문자열이
+  아니라 **가리키는 자리**로 본다(D-145 ②) — `chunk_id`는 시트 이름을 포함한
+  로케이터의 해시이고 노드 id는 ULID라 같은 문서를 두 번 돌려도 다르다.
+- **변이**: `reader.read_csv`가 헤더 한 셀(`관리항목`)을 바꾸도록 심으면
+  `[adapter_mismatch] 양식 표류`로 인입이 막히고 ⓐ가 붉어진다.
+
+### 회차 중 잡은 것
+
+1. **첫 `CP01.csv`는 병합 셀이 빈 칸으로 나가 인입이 막혔다**(`자기완결 실패 row 5:
+   필수 결측 ['process_ref']`) — `normalizer.expand_merged`가 편 값으로 다시 냈다.
+   CSV에 병합이라는 개념이 없으니 편 판이 「같은 내용」의 실물이다.
+2. **사실 문장의 출처에도 시트 이름이 박혀 있었다**(`CP01#관리계획서!R19`) — 봉투만
+   정규화하고 질의를 비교하니 7문항이 갈렸다. 제외는 한 번 정하고 **로케이터가
+   나타나는 세 자리 전부**에 같게 적용한다.
+3. **③이 옛 어서션 하나를 붉게 했다** — 화면에서 뺀 명령 이름(`parse run` ·
+   `build parsed/`)을 세던 자리다. 성질(그대로 칠 수 있는 인입 줄 · 방금 확정한
+   doc_type · 먼저 보는 줄)로 재조준했다.
+
+### 결과
+
+- 회귀 **1132 → 1144/1144** (+12, 삭제 1 — 문면 세던 ③ 어서션 2 → 성질 1):
+  `test_p3` 380 → 392.
+- 검사 4종 전부 통과(문면 위반 0 · 문서간 0 · 미러 7쌍 0 · 자산 13건 판정 대상).
+  상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 · 계약 위반 0**.
+
+## B67 ②①③ — 이어하기는 코드가 아니라 판단을 이어받는다 · 열 판정 대장 · 2026-09-15
+
+요청문 `docs/안건/B67_요청문.md`. 전제 대조표 8항목 전부 실물과 일치 —
+`draft(doc_type)` 2 hit(1101 resume · 1356 초회) · 이력은 1117에서 저장만 ·
+`chat(..., temperature=0)` · `iv_finalize` 1335·1947 · `generation_report` 529 ·
+`apply_instruction_to_decisions` 정의 1 + 호출 1(검수 지시뿐) · `_decisions_block`
+187 · `"gate"` 0 hit. **B66이 만진 register.py는 2774행 근처라 위 번호는 그대로였다.**
+명세 개정 0 · 대장 경로의 LLM 호출 0.
+
+### ② 열 판정 대장 — `review/<dt>/columns.json` (실물)
+
+```json
+{ "doc_type": "ipqc", "at": "…",
+  "columns": [
+    { "col": "A", "label": "대공정", "role": "anchor", "field": "process_group",
+      "by": "generate rev0", "status": "decided" },
+    { "col": "O", "label": "최근 불량 이력", "role": null, "field": null,
+      "by": "generate rev0", "status": "open:undecided" } ] }
+```
+
+**16행 = 열 프로파일 16열**(IPQC 2부). 쓰는 자리 넷은 전부 시스템이고 결정적이다 —
+관문 입구(`stamp_system_fields` 직후 · 초회·재생성 매번) · `iv_finalize` 직후 ·
+`--instruct` · 관문 FAIL이 이름을 부른 열(`open:G26`). **LLM은 대장을 쓰지 않는다**(C38).
+
+사내 CSV 표본 기준의 「열 수 == 프로파일 열 수」는 사내 실행 몫이다 — 이 레포의
+CSV 표본(`CP01.csv`)은 내장 어댑터라 등록 경로를 지나지 않는다. 성질은 어서션이
+잠갔다(대장 행 집합 == 프로파일 열 집합).
+
+### ① `--resume` — 관문 먼저, 지난 실패를 지시로 (화면 그대로)
+
+```
+■ ① 생성 (이어하기) — ipqc · 기존 패키지 재사용
+   이어하기 = 같은 입력 + 지난 실패 · 처음부터 = --resume 없이
+   기계 관문(하네스): FAIL — 62 PASS / 2 FAIL
+  열 판정 대장 — 16열 (1건 미해결)  review/ipqc/columns.json
+   [이어하기] 지난 초안 관문 FAIL 2건(G13 · G14)을 지시로 싣는다 · 지시 이력 1건
+```
+
+관문 PASS면 초안을 **다시 받지 않는다**(`draft` 0회): 통과한 것을 이유 없이 갈지
+않는다. 초안이 없으면 초회와 같은 입력(지시 0 · rev 0)이다.
+
+### ③ 대장을 화면에 (화면 그대로)
+
+```
+  열 판정 대장 — 16열 (1건 미해결)  review/ipqc/columns.json
+     A   대공정                role anchor      필드 process_group        decided  ← generate rev0
+     D   극성                 role —           필드 electrode_type       decided  ← generate rev0
+     O   최근 불량 이력           role —           필드 —                    open:undecided  ← generate rev0
+     P   관련 표준문서            role attribute   필드 관련 표준문서              decided  ← generate rev0
+```
+
+관문의 **반환 자리**에서 찍는다 — `generate`·`status`·`confirm`이 같은 블록을 본다.
+검수 뷰의 갈린 열·경계선도 대장의 열문자를 읽는다(어긋나면 대장이 정본).
+
+### 회차 중 잡은 것
+
+1. **prose에 대장을 세우니 본문 열 하나가 「빠뜨린 열」로 떴다**(거짓 신호) —
+   table에만 세운다(D-146 ③).
+2. **`--instruct`로 정한 role이 다음 관문에서 지워졌다** — 산출에서 다시 뽑으면
+   그 열은 여전히 미배정이기 때문이다. 사람 출처 행은 role·출처를 유지하고
+   `status`만 산출의 것을 쓴다: 「사람은 정했고 코드는 아직 안 썼다」가 남는다.
+3. **헤더 라벨이 전부 비어 있었다** — `_label_columns`가 어댑터의 `SAMPLE`을 보는데
+   생성 초안에는 그 상수가 없다. 표본(`st["samples"]`)에서 읽게 고쳤다(대조 함수는
+   그대로 `preflight.label_columns` 하나다).
+
+### 결과
+
+- 회귀 **1144 → 1158/1158** (+14, 삭제 0): `test_p3` 392 → 406.
+- 검사 4종 전부 통과. 상태 거부 스캐너: **60곳 · 상태 33 · 사용법 27 · 미분류 0 ·
+  계약 위반 0**.

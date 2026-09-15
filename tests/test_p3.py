@@ -994,10 +994,16 @@ _conf = _buf.getvalue()
 show("② 확정 — 등록부 등재 + adapters/·schemas/ 정본",
      _REG.lookup("pptb_t") is not None and (ROOT / "adapters/pptb_t.py").exists()
      and (ROOT / "schemas/pptb_t.json").exists())
-# ③ 확정 화면 다음 명령 2줄
-show("③ confirm 끝에 인입 명령 2줄 — parse run · build parsed/",
-     "run.py parse run adapters/pptb_t.py" in _conf and "run.py build parsed/" in _conf)
-show("③ 한 번에 가는 명령(ingest-file --doc-type)도 함께", "ingest-file" in _conf and "--doc-type pptb_t" in _conf)
+# ③ 확정 화면의 「다음」 = 가이드가 시키는 인입 흐름 (B66 ③)
+#
+# 구판은 화면에 있는 **명령 이름**(`parse run` · `build parsed/`)을 셌다. 문면은 한
+# 글자만 바꿔도 통과하고, 그 셋은 가이드 §4·§5에 없는 명령이라 사내에서 「가이드에
+# 없는 명령」으로 읽혔다. 잠글 성질은 **사람이 그대로 칠 수 있는 인입 줄을 방금
+# 확정한 doc_type으로 준다**이지 어느 명령이 적혀 있느냐가 아니다.
+_next3 = [l.strip() for l in _conf.splitlines() if "run.py ingest-file" in l]
+show("③ 확정 화면이 인입 줄을 준다 — 방금 확정한 doc_type이 박혀 있고 먼저 보는 줄이 있다",
+     len(_next3) >= 2 and all("--doc-type pptb_t" in l for l in _next3)
+     and any("--dry-run" in l for l in _next3), str(_next3))
 # 정리 — 회귀가 남기는 것 0
 _REG.unregister("pptb_t")
 for _p in (ROOT / "adapters/pptb_t.py", ROOT / "schemas/pptb_t.json"):
@@ -2858,6 +2864,277 @@ show("④ⓑ status는 그대로 돈다 (막는 것은 재생성뿐)",
      and _sv66.returncode == 0, f"rc={_sv66.returncode}")
 reset("b65f")
 shutil.rmtree(_d66, ignore_errors=True)
+
+
+# ── B66 ①② — 헤더 지문은 포맷을 보지 않는다 · 미선택은 네 갈래다 ──────────
+#
+# **셋째 자리였다.** `preflight.header_labels`의 `format != "xlsx"`(B62 ①-a) ·
+# `cli/scan.py::_header_actual`의 복제본 · `FINGERPRINTABLE = ("xlsx",)`. 앞의 둘을
+# 고치고도 CSV가 지문 대조에서 빠진 채 남은 이유는 **CSV 표본으로 스캔을 돌리는
+# 어서션이 하나도 없어서**다. 여기가 그 자리다 — 포맷이 판정에 안 들어가는 것이
+# 성질이고, 다시 들어오면 이 세 줄이 붉어진다.
+from cli import scan as _s66                                       # noqa: E402
+from cli import ingest as _i66                                     # noqa: E402
+print("\n■ B66 ① — 지문 대상은 `sheets` 구조다 (포맷 이름이 아니다)")
+
+_cpa66 = [str(ROOT / "tests" / "fixtures" / "adapters" / "cp.py")]
+_sx66 = _s66.scan(RAW / "CP01.xlsx", _cpa66)
+_sc66 = _s66.scan(RAW / "CP01.csv", _cpa66)
+show("①ⓑ 같은 표의 두 포맷이 **같은 어댑터에서 같은 후보 판정**을 받는다",
+     _sx66["candidates"] == _sc66["candidates"] == ["cp"]
+     and _sx66["details"] == _sc66["details"],
+     f"xlsx {_sx66['candidates']} · csv {_sc66['candidates']}")
+_sel66 = _i66.select(RAW / "CP01.csv", adapter_paths=_cpa66)
+show("①ⓒ doc-type 없이 넣은 CSV를 **스캔이** 고른다 (by == scan)",
+     _sel66["status"] == "chosen" and _sel66["doc_type"] == "cp"
+     and (_sel66["basis"] or {}).get("by") == "scan",
+     f"{_sel66['status']} · {(_sel66.get('basis') or {}).get('by')}")
+
+# ⓓ **포맷 이름으로 갈라지는 자리가 0이다** — 문서 6 §6.4 「포맷을 보지 않는다」.
+# 주석·문자열이 아니라 **동작 줄**을 센다(CLAUDE.md 3). 읽는 쪽이 대상이다:
+# reader가 `format`을 **쓰는** 것은 어댑터에게 사실을 알리는 일이라 남는다.
+_fmt66 = []
+for _d66 in ("cli", "core", "parser", "kit"):
+    for _f66 in sorted((ROOT / _d66).rglob("*.py")):
+        for _n66, _ln66 in enumerate(_f66.read_text(encoding="utf-8").splitlines(), 1):
+            _code66 = _ln66.split("#")[0]
+            if 'get("format")' in _code66 or '["format"]' in _code66:
+                _fmt66.append(f"{_f66.relative_to(ROOT)}:{_n66}")
+show("①ⓓ cli·core·parser·kit에 봉투 format을 읽는 동작 줄 0",
+     not _fmt66, str(_fmt66[:4]))
+
+print("\n■ B66 ② — 미선택 네 갈래 (「없다」는 어댑터가 0건일 때만)")
+#
+# 구판은 한 문면(「지문 일치 0건 — 대조할 정형 어댑터가 없다」)이 서로 다른 넷을
+# 덮었다. 사내에서 CSV가 대조조차 안 된 것(①)이 그 문면으로 나왔고 사람은
+# **어댑터가 없다고 읽었다.** 갈래마다 다음 수가 다르다 — 그래서 문면이 갈린다.
+_d66e = ROOT / "review" / "_b66_empty"          # 소재지는 있는데 어댑터가 0개
+_d66p = ROOT / "review" / "_b66_prose"          # 산문 어댑터만 있다 (자격 없음)
+shutil.rmtree(_d66e, ignore_errors=True)
+shutil.rmtree(_d66p, ignore_errors=True)
+_d66e.mkdir(parents=True)
+_d66p.mkdir(parents=True)
+(_d66p / "b66prose.py").write_text(
+    'ADAPTER = {"doc_type": "b66prose", "payload_kind": "prose", "expects": {}}\n',
+    encoding="utf-8")
+_cases66 = {
+    "포맷":   _i66.select(RAW / "PPT_basic.pptx", adapter_paths=_cpa66),
+    "소재지": _i66.select(RAW / "CP01.csv", adapter_paths=[str(_d66e)]),
+    "자격":   _i66.select(RAW / "CP01.csv", adapter_paths=[str(_d66p)]),
+    "일치":   _i66.select(RAW / "PFMEA01.xlsx", adapter_paths=_cpa66),
+}
+_why66 = {k: v["reason"] for k, v in _cases66.items()}
+show("② 네 경우가 전부 미선택이고 **문면이 서로 다르다**",
+     all(v["status"] == "none" for v in _cases66.values())
+     and len(set(_why66.values())) == 4,
+     " | ".join(f"{k}:{(v or '')[:22]}" for k, v in _why66.items()))
+show("② 「소재지가 비었다」는 어댑터가 0건일 때만 난다",
+     "소재지가 비었다" in _why66["소재지"]
+     and not any("소재지가 비었다" in _why66[k] for k in ("포맷", "자격", "일치")))
+show("② 어댑터가 하나라도 있으면 **그 이름이 문면에 있다** (무엇과 대조했나)",
+     "b66prose" in _why66["자격"] and "cp" in _why66["일치"])
+show("② 지문 대상이 아닌 포맷은 **무엇이라서** 아닌지를 말한다",
+     "pptx" in _why66["포맷"] and "--doc-type" in _why66["포맷"])
+# 네 문면 모두 B61 계약 — 원인 + 그대로 칠 수 있는 다음 줄.
+show("② 네 문면 모두 다음 줄을 준다 (B61 계약)",
+     all(("--doc-type" in v) or ("python " in v) for v in _why66.values()))
+shutil.rmtree(_d66e, ignore_errors=True)
+shutil.rmtree(_d66p, ignore_errors=True)
+
+
+# ── B66 ⑤ — 같은 표는 포맷이 달라도 같은 지식이 된다 ─────────────────────
+#
+# 파서 뒤는 포맷을 모르니 다를 수 없다 — 그것은 **논리**이고 이 프로젝트는 실행으로
+# 판정한다(CLAUDE.md 3). CSV 출처로 그래프를 세우고 질의에 답해 본 적이 한 번도
+# 없었다. 표본 쌍은 `CP01.xlsx`와 그 시트를 그대로 옮긴 `CP01.csv`다.
+#
+# **스냅샷은 별도 프로세스가 뜬다**(`tests/csv_equiv.py`) — 한 프로세스에서 두 번
+# 인입하면 앞 판의 그래프·사전이 살아 있어 둘째 판이 첫 판을 본다.
+print("\n■ B66 ⑤ — CSV 전 구간 등가 (인입 → 그래프 → 질의)")
+
+
+def _snap66(doc, *a):
+    r = subprocess.run([sys.executable, str(ROOT / "tests" / "csv_equiv.py"), str(doc), *a],
+                       capture_output=True, text=True, cwd=str(ROOT),
+                       stdin=subprocess.DEVNULL)
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"error": (r.stderr or r.stdout)[-300:]}
+
+
+_x66 = _snap66(RAW / "CP01.xlsx")
+_c66 = _snap66(RAW / "CP01.csv")
+show("⑤ 두 포맷 모두 인입 성공 (등가 판정의 전제)",
+     _x66.get("ingest") == _c66.get("ingest") == "성공",
+     f"xlsx {_x66.get('ingest')} · csv {_c66.get('ingest')} — {_c66.get('reason')}")
+show("⑤ⓐ 계약 JSON이 같다 — 포맷·시트 이름·doc_id를 뺀 전부 (records 포함)",
+     _x66.get("envelope") and _x66["envelope"] == _c66.get("envelope"),
+     f"records {len((_x66.get('envelope') or {}).get('records') or [])}")
+# **노드 0끼리 같은 것은 판정이 아니다** — 전제를 어서션 안에 둔다.
+_nodes66 = ((_x66.get("graph") or {}).get("process") or {}).get("nodes", 0)
+show("⑤ⓑ 그래프의 노드 수·엣지 수·카테고리별 수가 같다 (전제: 노드 > 0)",
+     _nodes66 > 0 and _x66.get("graph") == _c66.get("graph"),
+     f"노드 {_nodes66} · 엣지 {((_x66.get('graph') or {}).get('process') or {}).get('edges')}"
+     f" · {((_x66.get('graph') or {}).get('process') or {}).get('categories')}")
+# 근거 id는 문자열이 아니라 **가리키는 자리**로 본다(D-146) — `chunk_id`는 시트
+# 이름을 포함한 로케이터의 해시이고 노드 id는 ULID라 같은 문서를 두 번 돌려도 다르다.
+_cp66 = [q for q in (_x66.get("queries") or []) if q["evidence"]]
+show("⑤ⓒ cp 출처를 지나는 스모크 질의의 답·근거가 같다 (전제: 그런 질의 > 0)",
+     len(_cp66) > 0 and _x66.get("queries") == _c66.get("queries"),
+     f"근거 있는 질의 {len(_cp66)}/{len(_x66.get('queries') or [])}")
+# **변이** — 어서션이 정말 두 판을 비교한다는 증거. `reader.read_csv`가 헤더 한
+# 셀을 바꾸면 ⓐ가 붉어야 한다. 초록으로 남으면 그 어서션은 아무것도 잠그지 않는다.
+_m66 = _snap66(RAW / "CP01.csv", "--mut")
+show("⑤ 변이 — read_csv가 헤더 한 셀을 바꾸면 ⓐ가 붉어진다",
+     _m66.get("envelope") != _x66.get("envelope"),
+     f"{_m66.get('ingest')} — {(_m66.get('reason') or _m66.get('error') or '')[:70]}")
+
+
+# ── B67 ② — 열 판정 대장: 판단과 코드를 가른다 ──────────────────────────
+#
+# 생성 LLM이 열마다 내린 판단(role · 필드↔열 · 안 쓰는 열)이 **코드 안에만** 살았다.
+# 그래서 코드를 버리면 판단도 버려지고, 코드를 살리면 오류도 살았다 — 사내에서
+# G31로 끝난 등록을 `--resume`하면 같은 G31이 났다. 대장은 그 판단만 따로 적는다.
+print("\n■ B67 ② — 열 판정 대장 (columns.json)")
+
+reset("ipqc")
+run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
+_led67 = R.read_ledger("ipqc")
+_pcols67 = {c for pp in R._profiles("ipqc") for c in (pp.get("열") or {})}
+show("② 대장의 행 집합 == 열 프로파일의 열 집합 (판정됐든 아니든 한 열에 한 행)",
+     _led67 and {r["col"] for r in _led67} == _pcols67,
+     f"대장 {len(_led67)}행 · 프로파일 {len(_pcols67)}열")
+show("② 한 열에 한 행 — 열문자 중복 0",
+     len({r["col"] for r in _led67}) == len(_led67))
+show("② 열 전량이 판정을 갖는다 — 필드·role 또는 미해결 태그",
+     all(r.get("field") or r.get("role") or str(r.get("status")).startswith("open")
+         for r in _led67),
+     str([r["col"] for r in _led67 if not (r.get("field") or r.get("role")
+                                           or str(r.get("status")).startswith("open"))]))
+
+# ⓑ **코드만 깨뜨린다** — 판단(role·필드 대응)은 그대로여야 한다. 이것이 이 회차의
+# 성질이다: 재생성은 코드를 새로 받되 판단은 이어받는다.
+_judg67 = {(r["col"], r["role"], r["field"]) for r in _led67}
+_ad67 = REVIEW / "ipqc" / "adapter.py"
+_src67 = _ad67.read_text(encoding="utf-8")
+_ad67.write_text(_src67.replace("def extract(",
+                                "def _b67_broken(raw):\n"
+                                "    return normalizer.no_such_helper(raw)\n\n\n"
+                                "def extract(", 1), encoding="utf-8")
+_calls67a = llm.usage_total()["calls"]
+_v67 = R.regate("ipqc", R._state("ipqc"))       # 관문 재실행 — 재생성·문답 없음
+_led67b = R.read_ledger("ipqc")
+show("②ⓑ 코드에 오류만 심어도 **role·필드 대응은 그대로다** (판단과 코드가 갈렸다)",
+     _v67 != "PASS" and {(r["col"], r["role"], r["field"]) for r in _led67b} == _judg67,
+     f"관문 {_v67} · 대장 {len(_led67b)}행")
+show("②ⓑ 대장 쓰기 경로에 LLM 호출 0 (시스템이 뽑는다 — C38)",
+     llm.usage_total()["calls"] == _calls67a,
+     f"{_calls67a} → {llm.usage_total()['calls']}")
+
+# ⓑ 지시가 열을 이름으로 부르면 그 행이 갱신되고 **출처가 사람으로 바뀐다**
+_o67 = next((r for r in _led67 if str(r.get("status")).startswith("open")), _led67[-1])
+run("review", "ipqc", "--instruct", f"{_o67['col']}열은 attribute다")
+_row67 = next(r for r in R.read_ledger("ipqc") if r["col"] == _o67["col"])
+show("②ⓑ --instruct가 그 열의 행을 갱신하고 출처가 instruct rev N이 된다",
+     _row67.get("role") == "attribute"
+     and str(_row67.get("by", "")).startswith("instruct rev"),
+     f"{_row67['col']} · role {_row67.get('role')} · by {_row67.get('by')}")
+show("②ⓑ 사람이 정한 판단은 뒤 관문이 지우지 않는다 (산출이 아직 안 쓴 열이어도)",
+     R.sync_ledger("ipqc", R._state("ipqc"))
+     and next(r for r in R.read_ledger("ipqc")
+              if r["col"] == _o67["col"]).get("by", "").startswith("instruct"))
+show("② 열을 못 집는 지시는 **대장을 건드리지 않는다** (추측으로 행을 고치지 않는다)",
+     R.apply_to_ledger("ipqc", "전반적으로 더 꼼꼼히 해라", "instruct rev 99") == 0)
+# prose에는 열이 없다 — 대장을 세우면 본문 열 하나가 「빠뜨린 열」로 뜬다(거짓).
+reset("toc_report")
+run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+show("② prose 어댑터에는 대장이 서지 않는다 (열이 없는 자리다)",
+     R._state("toc_report") and not R.ledger_path("toc_report").exists(),
+     f"관문 {(R._state('toc_report') or {}).get('machine_gate')}")
+
+
+# ── B67 ① — 이어하기는 코드가 아니라 판단을 이어받는다 ───────────────────
+#
+# `--resume`이 `draft(doc_type)`를 지시·이력 없이 불렀고 생성은 `temperature=0`이라
+# **같은 입력 → 같은 코드 → 같은 실패**였다. 이어하기가 재생성이 아니라 재현이었다.
+print("\n■ B67 ① — --resume: 관문 먼저 · 지난 실패를 지시로")
+
+_sent67 = []
+_p67, _r67, _m67 = _llm._post, _llm.require, _llm.use_mock
+
+
+def _live67():
+    """전송 직전 payload를 잡는다 — 「지시가 모델에 닿았나」는 전송분이 답한다."""
+    _llm.require = lambda *a, **k: {"url": "http://x", "model": "m", "key": "k",
+                                    "timeout": 5, "retry": 0}
+    _llm.use_mock = lambda: False
+    _llm._post = lambda u, p, k, t: _sent67.append(p) or {
+        "choices": [{"message": {"content": json.dumps(
+            {"adapter_py": "# x\nADAPTER = {}\ndef extract(raw):\n    return []",
+             "schema_json": "{}"})}}]}
+
+
+_live67()
+# **재는 것은 이어하기가 보내는 전송분이다** — 그 뒤의 관문 루프(문답·자동 재생성)는
+# 이 어서션의 대상이 아니라서 끊는다. 끊지 않으면 가짜 응답이 문답 화면으로 흘러간다.
+_fin67 = R._finish_generate
+R._finish_generate = lambda *a, **k: 0
+try:
+    _b67 = _io.StringIO()
+    with _ctx.redirect_stdout(_b67):
+        R.cmd_generate("ipqc", None, [], resume=True)
+finally:
+    R._finish_generate = _fin67
+    _llm._post, _llm.require, _llm.use_mock = _p67, _r67, _m67
+_scr67 = _b67.getvalue()
+_sys67 = _sent67[0]["messages"][0]["content"] if _sent67 else ""
+_tags67 = [c for c, _l, _d in R.fail_lines(R._state("ipqc").get("harness_out") or "")]
+show("①ⓑ 관문 FAIL 상태의 --resume이 **지난 판정을 전송분에 싣는다**",
+     bool(_sent67) and any(t in _sys67 for t in _tags67) if _tags67 else False,
+     f"태그 {_tags67} · system {len(_sys67.encode()):,}B")
+show("①ⓑ 지시 이력도 함께 실린다 (앞 회차의 교정을 사람이 다시 적지 않는다)",
+     bool(_sent67) and "## [재생성 지시]" in _sys67
+     and _sys67.count("- ") > 0, f"전송 {len(_sent67)}회")
+show("①ⓐ 화면이 지난 FAIL 건수와 이력 건수를 말한다",
+     "[이어하기]" in _scr67 and "지시로 싣는다" in _scr67,
+     [l.strip() for l in _scr67.splitlines() if "[이어하기]" in l][:1])
+
+# ⓑ **PASS면 초안을 다시 받지 않는다** — 통과한 것을 이유 없이 갈지 않는다.
+_drafts67 = []
+_d67 = R.draft
+
+
+def _spy67(doc_type, revision=0, *, instruction=None, history=None):
+    _drafts67.append({"dt": doc_type, "rev": revision, "instruction": instruction,
+                      "history": list(history or [])})
+    return _d67(doc_type, revision, instruction=instruction, history=history)
+
+
+R.draft = _spy67
+try:
+    with _ctx.redirect_stdout(_io.StringIO()):
+        R.cmd_generate("toc_report", None, [], resume=True)   # 관문 PASS 상태
+    _pass67 = list(_drafts67)
+    # ⓑ 초안이 없으면 초회와 같은 입력이다 (지시 없음 · rev 0)
+    _drafts67.clear()
+    _st67 = R._state("ipqc")
+    (ROOT / _st67["adapter"]).unlink(missing_ok=True)
+    try:
+        with _ctx.redirect_stdout(_io.StringIO()):
+            R.cmd_generate("ipqc", None, [], resume=True)
+    except SystemExit:
+        pass
+    _none67 = list(_drafts67)
+finally:
+    R.draft = _d67
+show("①ⓑ 관문 PASS 상태의 --resume은 **초안을 다시 받지 않는다** (LLM 호출 0)",
+     _pass67 == [], f"draft {len(_pass67)}회")
+show("①ⓑ 초안이 없는 --resume은 **초회와 같은 입력**이다 (지시 0 · rev 0)",
+     _none67 and _none67[0]["instruction"] is None and _none67[0]["rev"] == 0,
+     str([{k: v for k, v in c.items() if k != "history"} for c in _none67][:1]))
+reset("ipqc")
+reset("toc_report")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")

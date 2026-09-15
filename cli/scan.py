@@ -105,20 +105,23 @@ def match_detail(raw, mod):
             "candidate": not missing and not extra}
 
 
-# 헤더 지문이 성립하는 **문서 포맷**. 지문은 「헤더 행의 문자열 배열」이라
-# 행·열이 있는 포맷에서만 뜻이 있다(파서_명세 §5).
-FINGERPRINTABLE = ("xlsx",)
-
-
 def scan(doc_path, adapter_paths=None):
     """일괄 대조 — 후보 목록을 돌려줄 뿐 **파싱하지 않는다**(자동 라우팅 금지)."""
     raw = read(str(doc_path))
-    # **PDF·PPTX는 지문 대상이 아니다**(B53) — 헤더 행이라는 것이 없다. 그대로
-    # 대조하면 전 표 어댑터에 대해 「누락 13건」이 줄줄이 떠서, 화면이 「맞는 게
-    # 하나도 없다」로 보인다 — 실은 **물어볼 수 없는 질문**을 한 것이다.
-    if raw.get("format") not in FINGERPRINTABLE:
+    # **지문 대상인가는 `sheets`가 답한다 — 포맷 이름이 아니다**(B66 ① · 문서 6
+    # §6.4 「포맷을 보지 않는다 … csv도 같은 규약」 · 문서 1 C37).
+    #
+    # 구판은 `FINGERPRINTABLE = ("xlsx",)`라 **CSV를 대조조차 하지 않았고**, 빈
+    # 결과가 인입에서 「대조할 정형 어댑터가 없다」로 번역됐다(사내 실측). 같은
+    # 병의 셋째 자리다 — `preflight.header_labels`(B62 ①-a) · `_header_actual`의
+    # 복제본 · 이 튜플. **포맷 이름을 코드에 다시 쓰지 않는다**가 이 항목의 성질이다.
+    #
+    # PDF·PPTX는 여전히 대상이 아니다(B53) — 헤더 행이라는 것이 없어 **물어볼 수
+    # 없는 질문**이고, 그대로 대조하면 전 어댑터에 「누락 13건」이 줄줄이 뜬다.
+    if not raw.get("sheets"):
         return {"doc": str(doc_path), "details": [], "candidates": [],
-                "not_fingerprintable": raw.get("format"), "_mods": {}}
+                "not_fingerprintable": Path(str(doc_path)).suffix.lstrip(".").lower()
+                                       or "포맷 미상", "_mods": {}}
     details, mods = [], {}
     for f, mod in adapters(adapter_paths):
         d = match_detail(raw, mod)
