@@ -88,6 +88,11 @@ def _wide_merges(sheet):
     return out
 
 
+# 헤딩 신호의 이름 — 화면·기록이 같은 말을 쓴다 (B68 ①)
+SIG_NUM, SIG_MERGE, SIG_BOLD = "번호", "가로병합", "굵게+들여쓰기"
+MAP_SOURCE = "adapter:basic_prose_xlsx"
+
+
 def _rows_of(sheet, col):
     """`(줄 목록, 헤딩 판정 rows)` — **신호 넷의 우선순위는 명시적이다.**
 
@@ -114,15 +119,32 @@ def _rows_of(sheet, col):
         lines.append((r, text))
         m = _NUM.match(text)
         if m:
-            lv = len(m.group(1).split("."))
+            lv, sig = len(m.group(1).split(".")), SIG_NUM
         elif r in wide:
-            lv = 1
+            lv, sig = 1, SIG_MERGE
         elif a in bold:
-            lv = int(indent.get(a, 0)) + 1
+            lv, sig = int(indent.get(a, 0)) + 1, SIG_BOLD
         else:
-            lv = 0
-        rows.append({"row": r, "heading": bool(lv), "level": lv})
+            lv, sig = 0, None
+        # **무엇으로 정했는지를 남긴다**(B68 ①) — 판정 규칙도 순서도 그대로다.
+        # 구판은 결과(level)만 남기고 신호를 버려서, 사람이 「무엇을 기준으로
+        # 잘랐나」를 화면 어디에서도 볼 수 없었다(사내 실측 여덟째).
+        rows.append({"row": r, "heading": bool(lv), "level": lv, "signal": sig})
     return lines, rows
+
+
+def split_basis(rows):
+    """`분할_기준` 문면 — 헤딩을 **어느 신호로** 잡았나를 신호별 수로.
+
+    합이 헤딩 수와 같다(성질) — 신호 없이 헤딩이 된 행은 없다.
+    """
+    cnt = {}
+    for r in rows:
+        if r.get("heading") and r.get("signal"):
+            cnt[r["signal"]] = cnt.get(r["signal"], 0) + 1
+    inner = " · ".join(f"{k} {cnt[k]}" for k in (SIG_NUM, SIG_MERGE, SIG_BOLD)
+                       if cnt.get(k))
+    return f"어댑터 신호: {inner or '없음'}"
 
 
 def extract(raw, struct_map_fn=None) -> list[dict]:
@@ -191,5 +213,9 @@ def level_report(raw):
         pick, why, oor = struct_map.choose_level(stats)
         out.append({"프레임": sh.get("name"), "분할_레벨": pick,
                     "분할_레벨_사유": why, "레벨_분포": stats,
-                    "분할_레벨_구간밖": oor})
+                    "분할_레벨_구간밖": oor,
+                    # **한 필드 이름, 두 경로**(B68 ①) — 지도 경로의 pick도 같은
+                    # 키를 낸다. 이름이 갈리면 화면이 둘로 갈린다.
+                    "분할_기준": split_basis(rows),
+                    "지도_출처": MAP_SOURCE})
     return out

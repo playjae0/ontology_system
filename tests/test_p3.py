@@ -3136,6 +3136,56 @@ show("①ⓑ 초안이 없는 --resume은 **초회와 같은 입력**이다 (지
 reset("ipqc")
 reset("toc_report")
 
+
+# ── B68 ② — 화면이 분할을 말한다 (generate · status · 뷰) ────────────────
+#
+# 재료는 관문이 이미 냈다(`pipeline.parse` → `report["split"]`). 등록 화면은 그것을
+# **읽어서 찍을 뿐**이다 — 같은 계산을 다시 하면 두 벌이 되고 한쪽만 고쳐진다.
+print("\n■ B68 ② — 분할 줄: 기준 · 레벨 · 크기 분포")
+
+from parser.adapters import basic_prose_xlsx as _bx                 # noqa: E402
+
+reset("b68")
+_g68 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
+                       "b68", "quality", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"),
+                       "--use-basic", "--allow-mock"],
+                      capture_output=True, text=True, cwd=str(ROOT),
+                      stdin=subprocess.DEVNULL)
+_sl68 = [l for l in _g68.stdout.splitlines() if l.strip().startswith("분할 —")]
+# prose 프레임 수 = 표본마다 헤딩이 선 시트 수 — 어댑터의 계산을 그대로 센다.
+_frames68 = sum(len(_bx.level_report(reader.read(str(RAW / f))))
+                for f in ("TOC01.xlsx", "TOC02.xlsx"))
+show("② generate 화면의 분할 줄 수 == prose 프레임 수",
+     _sl68 and len(_sl68) == _frames68, f"줄 {len(_sl68)} · 프레임 {_frames68}")
+_sp68 = view_of("b68")["sections"]["parse_result"]["summary"]["split"]
+show("② 줄의 청크 수 == split_stats의 청크수 (화면이 제 계산을 하지 않는다)",
+     _sp68 and all(any(f"청크 {x['청크수']} ·" in l for l in _sl68) for x in _sp68),
+     str([x.get("청크수") for x in _sp68]))
+show("② 줄이 기준과 레벨을 함께 말한다 (레벨만으로는 무엇을 보고 골랐는지 모른다)",
+     all("기준 " in l and "레벨 " in l for l in _sl68), _sl68[:1])
+# **status도 같은 줄을 낸다** — 관문을 다시 도니 같은 재료가 있다.
+_st68 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "status",
+                        "b68", "--allow-mock"], capture_output=True, text=True,
+                       cwd=str(ROOT), stdin=subprocess.DEVNULL)
+show("② status도 같은 분할 줄을 낸다 (화면 한 벌)",
+     [l for l in _st68.stdout.splitlines() if l.strip().startswith("분할 —")] == _sl68)
+# **table 어댑터에는 줄이 없다** — 없는 것을 빈 줄로 찍지 않는다.
+show("② table 등록에는 분할 줄이 없다",
+     not R.split_block((R._state("ipqc") or {}).get("harness_out") or ""))
+# 뷰: 레벨 선택 표에 기준 열 하나. **계약이 먼저다**(D-115) — 스키마가 키를 선언한다.
+_h68 = (REVIEW / "b68" / "view.html").read_text(encoding="utf-8")
+show("② 뷰의 레벨 선택 표에 분할 기준 열이 있고 값이 실린다",
+     "<th>분할 기준</th>" in _h68
+     and all(x.get("분할_기준") in _h68
+             for x in (_sp68[0].get("레벨_선택") or [])), str(_sp68[0].get("레벨_선택"))[:80])
+show("② 계약이 먼저다 — 뷰 데이터 스키마가 분할_기준을 선언한다",
+     "분할_기준" in (ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
+# **위임 래퍼가 제 계산을 이어받는다** — 안 그러면 화면의 레벨·기준이 실제로 자른
+# 것과 갈린다(파이프라인의 「어댑터가 제 계산을 내놓으면 그것이 정본이다」).
+show("② 고정 어댑터 래퍼가 level_report까지 위임한다",
+     "level_report = basic_prose_xlsx.level_report"
+     in (REVIEW / "b68" / "adapter.py").read_text(encoding="utf-8"))
+reset("b68")
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

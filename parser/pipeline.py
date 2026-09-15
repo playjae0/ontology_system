@@ -50,6 +50,15 @@ def _mock_log(doc_id, point, detail):
     logging.getLogger("onto.parser").info("MOCK %s [%s] — %s", point, doc_id, detail)
 
 
+def _map_basis(smap):
+    """지도 경로의 `분할_기준` — 어느 지도로 잘랐나 (B68 ①)."""
+    if smap.get("unavailable"):
+        return "구조 지도 없음 — 평면 폴백"
+    if smap.get("source") == "heuristic":
+        return "구조 지도(heuristic)"
+    return f"구조 지도(LLM · 판본 {smap.get('prompt_version') or '미상'})"
+
+
 def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None, src_hash=None):
     """어댑터에 주입할 지도 패스 — **코어가 소유한다**(어댑터는 LLM을 부르지 않는다).
 
@@ -87,6 +96,9 @@ def _map_hook(doc_id, kept=None, made=None, seen=None, ask=None, src_hash=None):
                          "분할_레벨_사유": smap.get("분할_레벨_사유"),
                          "레벨_분포": smap.get("레벨_분포"),
                          "지도_출처": smap.get("source"),
+                         # **한 필드 이름, 두 경로**(B68 ①) — 어댑터 경로의
+                         # `분할_기준`과 같은 자리·같은 이름이다.
+                         "분할_기준": _map_basis(smap),
                          "지시문_판본": smap.get("prompt_version"),
                          "지도_없음": smap.get("unavailable")})
         return out

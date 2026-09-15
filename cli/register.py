@@ -420,6 +420,12 @@ def _pretty_json(obj, indent=2):
     return go(obj, 0) + "\n"
 
 
+def _ad_mod(name):
+    """코어 기본 어댑터 모듈 — 래퍼가 무엇을 위임할 수 있나를 실물에 묻는다."""
+    return {"basic_ppt": basic_ppt, "basic_prose_xlsx": basic_prose_xlsx}.get(
+        name) or __import__(f"parser.adapters.{name}", fromlist=[name])
+
+
 def _write_schema(path, text):
     """매칭 스키마를 **사람이 읽는 표기**로 쓴다. 파싱 실패면 원문 그대로 둔다.
 
@@ -1450,7 +1456,13 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
         "이 등록의 것으로 바꾼 위임 래퍼다. 상수를 여기 복제하지 않는다.\n\"\"\"\n"
         f"from parser.adapters import {mod}\n\n"
         f"ADAPTER = {{**{mod}.ADAPTER, \"doc_type\": {doc_type!r}}}\n"
-        f"extract = {mod}.extract\n", encoding="utf-8")
+        f"extract = {mod}.extract\n"
+        # **제 계산을 내놓는 어댑터면 그것도 위임한다**(B68 ①) — 래퍼가
+        # `level_report`를 안 달면 파이프라인이 번호 패턴만 보는 대체 계산으로
+        # 떨어지고, **화면의 레벨·기준이 실제로 자른 것과 갈린다**(pipeline의
+        # 「어댑터가 제 계산을 내놓으면 그것이 정본이다」 — B58 ③).
+        + (f"level_report = {mod}.level_report\n"
+           if hasattr(_ad_mod(mod), "level_report") else ""), encoding="utf-8")
     _write_schema(sc, json.dumps(
         {"doc_type": doc_type, "schema_version": 1, "layer": layer,
          "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],
@@ -1574,7 +1586,7 @@ def _kit_line_re():
                          "판정 줄 문면 규격이 정본에서 사라졌다 (관문 자체 결함 — "
                          "어댑터 잘못이 아니다)\n"
                          "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"
-                         "     python run.py doctor")
+                         "     python doctor.py")
     return m.group(1)
 
 
@@ -1606,6 +1618,67 @@ def fail_lines(harness_out):
         if out and out[-1] and ln.strip() and ln.startswith(" "):
             out[-1][2] = (out[-1][2] + "\n" + ln.rstrip()).strip()
     return [tuple(x) for x in out if x]
+
+
+# ================================================ 분할 요약 화면 (B68 ②)
+#
+# **무엇을 기준으로 잘랐나**를 등록 화면이 말한다. 사내 실측 여덟째: 산문 xlsx를
+# 고정 어댑터로 등록해 관문도 통과하고 청크도 잘 잘렸는데, 「기준」이 검수 뷰에
+# 없고 generate 화면에는 분할 줄이 한 줄도 없었다.
+#
+# **새 계산 0** — 관문이 이미 `pipeline.parse`를 돌렸고 그 산출(`report["split"]` ·
+# 프레임별 pick)을 한 줄 JSON으로 낸다(`kit/run_adapter.py::SPLIT_MARK`). 여기서
+# 다시 파싱하면 같은 계산이 두 벌이 되고, 한쪽만 고쳐지는 날 화면이 갈린다.
+def _kit_split_mark():
+    """분할 요약 줄의 표시 — **킷에서 읽는다**(정본이 거기다 · `_kit_line_re`와 같은 결)."""
+    m = re.search(r'^SPLIT_MARK = "(.+)"$',
+                  (KIT / "run_adapter.py").read_text(encoding="utf-8"), re.M)
+    if not m:
+        raise SystemExit("[관문] kit/run_adapter.py의 SPLIT_MARK를 찾지 못했다 — "  # [상태]
+                         "분할 요약 줄의 표시가 정본에서 사라졌다 (관문 자체 결함 — "
+                         "어댑터 잘못이 아니다)\n"
+                         "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"
+                         "     python doctor.py")
+    return m.group(1)
+
+
+def split_rows(harness_out):
+    """관문 산출에서 분할 요약을 딴다 — `[{doc, split, picks}]`."""
+    mark = _kit_split_mark()
+    out = []
+    for ln in (harness_out or "").splitlines():
+        if ln.startswith(mark):
+            try:
+                out.append(json.loads(ln[len(mark):]))
+            except json.JSONDecodeError:
+                continue                    # 지어내지 않는다 — 없으면 줄이 없다
+    return out
+
+
+def split_block(harness_out):
+    """프레임마다 한 줄 — 기준 · 레벨 · 크기 분포 (B68 ②).
+
+    프레임이 없으면(table이거나 헤딩 0건) 빈 문자열이다 — 없는 것을 빈 줄로
+    찍지 않는다.
+    """
+    lines = []
+    for item in split_rows(harness_out):
+        sp = item.get("split") or {}
+        g = sp.get("목표구간") or []
+        tail = (f"청크 {sp.get('청크수')} · 행수 {sp.get('행수_최소')}~"
+                f"{sp.get('행수_최대')} · 짧음 {sp.get('너무_짧은_청크')} · "
+                f"긺 {sp.get('너무_긴_청크')}")
+        for pick in item.get("picks") or []:
+            # **평균은 고른 레벨의 것**이다 — 문서 전체 평균을 레벨 옆에 적으면
+            # 「그 레벨로 자르면 이만하다」로 읽히는데 값은 다른 것을 말한다.
+            lv = (pick.get("레벨_분포") or {}).get(str(pick.get("분할_레벨"))) or {}
+            size = (f"평균 {lv.get('행수_평균', sp.get('행수_평균'))}행"
+                    + (f" · 목표 {g[0]}~{g[1]}" if len(g) > 1 else ""))
+            oor = " · 구간 밖 — 최근접 레벨" if pick.get("분할_레벨_구간밖") else ""
+            lines.append(f"   분할 — {pick.get('프레임')}  "
+                         f"기준 {pick.get('분할_기준') or '미상'} · "
+                         f"레벨 {pick.get('분할_레벨')} ({size}) · {tail}{oor}")
+    return "\n".join(lines)
 
 
 def _instruct_of(fails):
@@ -1948,6 +2021,11 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
                           package=REVIEW / doc_type / "input_package.json")
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
+        # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.
+        # `status`·`confirm`도 관문을 다시 도니 같은 재료로 같은 줄을 낸다.
+        _sb = split_block(out)
+        if _sb:
+            print(_sb)
         orphan = _orphan_of(st)
         if orphan:
             print(f"   스키마 대장에 없는 열 {len(orphan)}건 — "

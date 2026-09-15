@@ -171,13 +171,28 @@
                               ]
                             },
                             "지도_출처": {
-                              "enum": [
-                                "live",
-                                "heuristic",
-                                "kept",
-                                null
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "live",
+                                    "heuristic",
+                                    "kept",
+                                    null
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "pattern": "^adapter:"
+                                }
                               ],
-                              "_note": "live=모델이 냈다 · heuristic=번호 패턴(모델 안 부름) · kept=보존분 재사용"
+                              "_note": "live=모델이 냈다 · heuristic=번호 패턴(모델 안 부름) · kept=보존분 재사용 · adapter:<doc_type>=지도 경로가 아니라 어댑터 신호로 잘랐다(B68 ① — 구판은 이 자리가 비어 있었다)"
+                            },
+                            "분할_기준": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "_note": "무엇을 기준으로 잘랐나 — 어댑터 경로는 신호별 헤딩 수(`어댑터 신호: 번호 12 · 가로병합 2 · 굵게+들여쓰기 5`), 지도 경로는 `구조 지도(LLM · 판본 n)`·`구조 지도(heuristic)`. **한 필드 이름, 두 경로**(B68 ①) — 이름이 갈리면 화면이 둘로 갈린다."
                             },
                             "지시문_판본": {
                               "type": [

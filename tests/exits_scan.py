@@ -28,7 +28,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # 사람이 그대로 칠 수 있는 명령의 꼴 — 둘 중 하나가 문면에 있어야 한다.
-NEXT_LINE = ("python run.py", "python -m cli.")
+# **`doctor.py`도 사람이 그대로 치는 진입점이다**(CLAUDE.md 6 · 화면 여러 곳이
+# 그것을 다음 줄로 준다). 목록에 없어서 「반입물이 온전한지 본다」류의 다음 줄이
+# `run.py doctor`라는 **없는 명령**으로 적혀 있었다(B68에서 실측 — 치면 KeyError).
+NEXT_LINE = ("python run.py", "python -m cli.", "python doctor.py")
 MARKS = {"상태", "사용법"}
 _MARK_RE = re.compile(r"#.*\[(상태|사용법)\](?:\s*문면=(\w+))?")
 

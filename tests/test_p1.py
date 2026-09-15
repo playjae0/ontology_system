@@ -1035,6 +1035,55 @@ show("① 지문 스캔이 preflight의 헤더 함수를 부른다 (두 벌이 �
      "preflight.header_labels(" in (ROOT / "cli" / "scan.py").read_text(encoding="utf-8"))
 
 
+# ── B68 ① — 분할이 무엇을 기준으로 잘랐는지 기록한다 ──────────────────────
+#
+# 사내 실측 여덟째: 산문 xlsx를 고정 어댑터로 등록해 관문도 통과하고 청크도 잘
+# 잘렸는데 **「무엇을 기준으로 잘랐나」가 어디에도 없었다.** `_rows_of`가 신호를
+# 판정하고 버렸기 때문이다. 판정 규칙은 그대로 두고 **적기만** 한다.
+print("\n■ B68 ① — 분할 기준을 기록한다 (규칙 불변 · LLM 0)")
+
+from parser.adapters import basic_prose_xlsx as _bx68                  # noqa: E402
+
+_raw68 = read(str(ROOT / "tests" / "fixtures" / "raw" / "TOC01.xlsx"))
+_col68 = _bx68._content_column(_raw68["sheets"][0])
+_lines68, _rows68 = _bx68._rows_of(_raw68["sheets"][0], _col68)
+_rep68 = _bx68.level_report(_raw68)
+show("① level_report 항목마다 분할_기준·지도_출처가 있다",
+     _rep68 and all(x.get("분할_기준") and x.get("지도_출처") for x in _rep68),
+     str([(x.get("분할_기준"), x.get("지도_출처")) for x in _rep68])[:120])
+# **합이 헤딩 수와 같다** — 신호 없이 헤딩이 된 행이 있으면 기준이 거짓말을 한다.
+_cnt68 = {}
+for _r in _rows68:
+    if _r["heading"]:
+        _cnt68[_r.get("signal")] = _cnt68.get(_r.get("signal"), 0) + 1
+show("① 신호별 헤딩 수의 합 == 그 프레임의 헤딩 수 (신호 없는 헤딩 0)",
+     sum(_cnt68.values()) == sum(1 for r in _rows68 if r["heading"])
+     and None not in _cnt68, str(_cnt68))
+show("① 기준 문면이 신호별 수를 담는다 (세 신호의 이름은 코드의 상수)",
+     all(str(v) in _bx68.split_basis(_rows68) for v in _cnt68.values())
+     and all(k in _bx68.split_basis(_rows68) for k in _cnt68),
+     _bx68.split_basis(_rows68))
+# 규칙은 그대로다 — 레벨 판정이 신호 기록 전후로 같아야 한다(성질).
+show("① 판정 규칙은 그대로다 — heading·level이 signal과 무관하게 선다",
+     all(bool(r["level"]) == r["heading"] for r in _rows68)
+     and all((r.get("signal") is None) == (not r["heading"]) for r in _rows68))
+_calls68 = _LLM.usage_total()["calls"]
+_bx68.level_report(_raw68)
+struct_map.adapter_level_picks(_bx68.ADAPTER, _raw68)
+show("① 기준 계산 경로에 LLM 호출 0 (시스템이 세는 일이다)",
+     _LLM.usage_total()["calls"] == _calls68,
+     f"{_calls68} → {_LLM.usage_total()['calls']}")
+# **한 필드 이름, 두 경로** — 지도 경로의 pick에도 같은 키가 온다.
+struct_map.invalidate("B68MAP")
+_seen68 = []
+_h68 = pipeline._map_hook("B68MAP", seen=_seen68, ask=_fixed_map("MAPMOCK_OK"))
+_h68("프레임1", lines, loc)
+show("① 지도 경로 pick에도 분할_기준이 있다 (한 필드 이름, 두 경로)",
+     _seen68 and str(_seen68[0].get("분할_기준", "")).startswith("구조 지도"),
+     str([x.get("분할_기준") for x in _seen68]))
+show("① 어댑터 경로의 지도_출처는 adapter:… 다 (구판은 이 자리가 비었다)",
+     all(str(x.get("지도_출처")).startswith("adapter:") for x in _rep68))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P1 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
