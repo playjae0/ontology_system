@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import log, store
+from . import llm, log, store
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = ROOT / "schemas"
@@ -60,8 +60,18 @@ def _builtin():
 
 
 def all_doc_types():
-    """전량 조회 — 내장 + 등록. 같은 이름이면 **등록분이 이긴다**(개정이 나중이다)."""
-    out = _builtin()
+    """전량 조회 — **mock 트랙일 때만** 내장 + 등록. 같은 이름이면 등록분이 이긴다.
+
+    **내장은 mock 자산이다**(B70 ① · 문서 7 §7.5). 레포가 싣고 나온
+    `schemas/{cp,pfmea,…}.json`은 회귀·골든셋·CSV 등가가 쓰는 창작물이고, 사내가
+    등록한 적 없는 이름이다. 그런데 `USE_MOCK`과 무관하게 조회에 섞여, 이식 직후
+    사내 화면이 **cp·pfmea·ipqc를 대조 목록에 띄웠다**(실측 열째 — 「mock이랑 비교
+    돌아가는 거 뭐야」). `USE_MOCK=0`이면 **등록부가 doc_type의 전부다.**
+
+    자리가 여기인 이유: `lookup`·`schema_of`·`adapter_paths`·`platform doctypes`가
+    전부 이 함수를 지난다 — 조건을 호출부마다 두면 그중 하나가 빠지는 날이 온다.
+    """
+    out = _builtin() if llm.use_mock() else {}
     out.update(_registered())
     return out
 
@@ -84,10 +94,34 @@ def adapter_paths():
     """등록된 어댑터의 소재 — 지문 스캔(n9)이 대조할 대상이다.
 
     **등록부가 정본**이고, 등록부에 어댑터가 없는 내장 doc_type은 여기 오지 않는다
-    (내장은 스키마만 싣고 어댑터는 mock 트랙에 있다 — P트랙 이전의 잔재).
+    (내장은 스키마만 싣고 어댑터는 mock 트랙에 있다).
+
+    **없는 파일을 건너뛰지 않는다**(B70 ② — 구판은 `if exists`로 걸렀다). 등록
+    산출(`data/doc_types.json` · `adapters/<dt>.py` · `schemas/<dt>.json` ·
+    `review/<dt>/`)은 git 추적 밖이라 **코드만 옮기면 따라오지 않는데**, 조용히
+    거르면 화면이 「내장 셋만 있다」로 보인다. 결손의 판정은 `missing_assets()`가
+    하고, 막는 자리는 사람이 치는 진입(`cli/scan.py::adapters`)이다.
     """
     return [(dt, ROOT / e["adapter"]) for dt, e in all_doc_types().items()
-            if e.get("adapter") and (ROOT / e["adapter"]).exists()]
+            if e.get("adapter")]
+
+
+def missing_assets():
+    """등록부가 가리키는데 **실물이 없는** 것 — `[{doc_type, kind, path, …}]`.
+
+    조회처는 하나다(이 모듈) — 화면(`platform doctypes`)과 관문(스캔 진입)이 같은
+    판정을 읽는다. 내장은 스키마 파일의 실재가 곧 등록이라 대상이 아니다.
+    """
+    out = []
+    for dt, e in sorted(_registered().items()):
+        for key in ("adapter", "schema"):
+            rel = e.get(key)
+            if rel and not (ROOT / rel).exists():
+                out.append({"doc_type": dt, "kind": key, "path": rel,
+                            "approved_by": e.get("approved_by"),
+                            "approved_at": e.get("approved_at"),
+                            "layer": e.get("layer")})
+    return out
 
 
 def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
