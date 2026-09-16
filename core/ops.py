@@ -598,6 +598,44 @@ def obsolete(layer, nid, actor, replaced_by=None, reason="", dry_run=False):
     return pv
 
 
+def confirm(layer, nid, actor, reason="", dry_run=False):
+    """**자동 노드의 사람 확정** — `status: auto → confirmed` + 큐 종결 (B73 ④ · H12).
+
+    I축 4연산(그래프의 **모양**을 바꾸는 것 — 문서 1 L5)에 다섯째를 더하는 것이
+    아니다: 모양은 그대로이고 **판정의 지위**가 바뀐다. 그래서 미리보기(연쇄
+    계산)가 필요 없고, 되돌리는 것은 `obsolete`·`merge`다.
+
+    이것이 없어서 `auto_node`·`uncertain_match` 큐가 **종결되지 않았다**(감사 H12 —
+    `resolve_item` 호출 0 · `confirmed` 생산자 0): 사람이 「맞다」고 판단할 자리가
+    코드에 없었고, 그래서 auto 노드는 영원히 auto였다. auto는 다음 판정의 후보에서
+    보수적으로 다뤄지므로(B73 ③) 확정은 **판정 품질의 손잡이**이기도 하다.
+
+    거부 셋: 행위자 없음 · 대상 없음(툼스톤·타층 id 포함) · 이미 seed·confirmed.
+    """
+    if not actor:
+        raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
+    g = GraphStore.for_layer(layer).load()
+    node = _target(g, nid)                       # 툼스톤·타층 id는 여기서 거부된다
+    if node.get("status") in ("seed", "confirmed"):
+        raise OpRefused(f"이미 확정된 노드다 — status={node.get('status')}")
+    pv = {"op": "confirm", "layer": layer, "target": nid,
+          "canonical": node.get("canonical"), "from": node.get("status"),
+          "to": "confirmed",
+          "queue": ["auto_node", "uncertain_match"]}
+    if dry_run:
+        return pv
+    node["status"] = "confirmed"
+    node["confirmed_by"], node["confirmed_at"] = actor, store._now()
+    g.save()
+    at = store._now()
+    for kind in ("auto_node", "uncertain_match"):
+        # **큐를 내리지 않고 판단을 기록한다**(§7.2) — 재인입 회수가 그것을 보존한다.
+        store.resolve_item(kind, lambda pl, _n=nid: pl.get("node_id") == _n,
+                           actor=actor, decision="confirmed", at=at, note=reason)
+    log_op("I5:confirm", actor, [nid], reason, {"from": pv["from"]})
+    return pv
+
+
 # ---------------------------------------------------------------- 엣지 삭제
 def delete_edge(layer, src, rel, dst, actor, reason=""):
     """사람이 지운 엣지 — 툼스톤을 남긴다. **재인입이 되살리지 못한다**(명세 §5.5-3).

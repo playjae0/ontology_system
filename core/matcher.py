@@ -75,8 +75,85 @@ def _pol(value):
     return value or POLARITY_NONE
 
 
+# **판정에 올리는 후보의 상한**(B73 ① · 06 대장 3.4). 사내 실측 열두째: 후보가
+# 카테고리·층 **전량**이라 노드가 늘수록 매 판정의 입력이 커졌다(입력 토큰 2만,
+# 출력 40 이하). 명세는 처음부터 다르게 말한다 — 문서 4 §4.2 ②「후보 검색 — 사전
+# 미스 시 임베딩 유사도」. 상한 하나가 그 구현의 손잡이다.
+CANDIDATE_TOP_N = 12
+
+# **판정의 계측** — 화면이 「어떻게 좁혔고 몇 번 불렀나」를 세는 재료다(B73 ①).
+# 세는 자리가 **그 일을 하는 자리**와 같아야 화면과 실물이 갈리지 않는다.
+STATS = {"판정": 0, "사전": 0, "스코프": 0, "임베딩": 0, "겹침": 0,
+         "그대로": 0, "후보합": 0, "조립": 0}
+
+# 진행 콜백 — 호출부가 꽂는다(기본 없음). **판정 중에도 비용이 보인다**(사용자
+# 요청 2026-09-16): 좌표 태깅 진행 줄(B69 ②)과 같은 결이고, 자리는 부르는 자리다.
+PROGRESS = None
+
+
+def reset_stats():
+    for k in STATS:
+        STATS[k] = 0
+    return STATS
+
+
+def _bigrams(text):
+    """정규화 문자 2-gram 집합 — mock의 결정적 유사도 재료."""
+    t = norm(text).replace(" ", "")
+    return {t[i:i + 2] for i in range(len(t) - 1)} or ({t} if t else set())
+
+
+def _overlap(a, b):
+    """2-gram 교집합 비율 — **mock 전용**. 결정적이고 LLM·임베딩을 부르지 않는다.
+
+    mock의 `embed()`는 sha256 해시라 유사도가 아무 뜻이 없다(가짜 확신 — §7.5-1).
+    회귀가 도는 세계에서는 **어휘 겹침**으로 고르고, 실호출 세계에서만 임베딩이
+    돈다. 둘의 반환 계약은 같다: 점수로 정렬한 상위 N.
+    """
+    x, y = _bigrams(a), _bigrams(b)
+    return len(x & y) / max(1, len(x | y))
+
+
+def _narrow(surface, pool, top_n, *, parent=None, scope_cats=(), category=None):
+    """후보를 **상한 안으로 좁힌다** — 스코프 근처 → 임베딩(실호출) / 겹침(mock).
+
+    순서가 규율이다(B73 ①):
+      ① **스코프 근처**(LLM·임베딩 0) — 같은 부모 좌표 아래 노드가 먼저다.
+         공정 아래 관리항목·설비는 그 공정의 것끼리 견주는 것이 맞고, 그 판정에
+         모델을 부를 이유가 없다. 이것으로 상한 안에 들면 여기서 끝난다.
+      ② 그래도 많거나 스코프 없는 카테고리면 **유사도 상위 N**.
+
+    **자르는 것은 판정이 아니라 조립이다** — 잘린 후보는 판정에 오르지 않을 뿐
+    노드로는 살아 있고, 사전 히트는 애초에 여기 오지 않는다(상한과 무관).
+    """
+    if len(pool) <= top_n:
+        return pool, "그대로"
+    how = None
+    if parent and category in (scope_cats or ()):
+        # **같은 부모 아래가 먼저다** — 스코프가 걸린 카테고리에서 다른 공정의
+        # 노드는 애초에 견줄 대상이 아니다. 그 안에서도 많으면 아래 유사도가
+        # 다시 좁히되, **부모가 다른 것이 먼저 오는 일은 없다.**
+        near = [c for c in pool if c.get("parent") == parent]
+        if near:
+            if len(near) <= top_n:
+                return near, "스코프"
+            pool, how = near, "스코프+"
+    if llm.use_mock():
+        scored = sorted(pool, key=lambda c: -_overlap(surface, c["canonical"]))
+        return scored[:top_n], how or "겹침"
+    # **임베딩 대상은 canonical과 정의문이다**(문서 4 §4.2 ② — 정의문이 빠지면
+    # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5).
+    from . import embeddings
+    qv = embeddings.embed(surface)
+    scored = sorted(
+        pool, key=lambda c: -embeddings.cosine(
+            qv, embeddings.embed(" ".join(
+                [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip())))
+    return scored[:top_n], how or "임베딩"
+
+
 def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
-               polarity=None):
+               polarity=None, parent=None, cfg=None, top_n=None):
     """**후보 조립** — 판정과 분리한다 (문서 7 §7.1 · 문서 4 §4.3-6).
 
     후보 하나의 형태는 명세가 정한다 — `canonical` · `aliases` · **부착 위치
@@ -108,6 +185,10 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
                 "parent": n.get("parent") or n.get("mirror_scope"),
                 "scoped": bool(n.get("_scoped")),
                 "polarity": _pol(n.get("polarity")),
+                # **아직 사람이 확인하지 않은 노드인지 판정이 알아야 한다**(B73 ③).
+                # 오판 하나가 다음 문서를 끌어당기는 연쇄를 여기서 끊는다.
+                "status": n.get("status"),
+                "evidence": len(n.get("provenance") or []),
                 "exact": exact}
 
     # ① 사전 조회 — 결정적·무LLM. 층 간 표면형 충돌은 사전이 허용하고 여기서 선별한다.
@@ -118,7 +199,8 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
             out.append(_cand(nid, n, exact=True))
             seen.add(nid)
 
-    # ② 후보 검색 — 위 안전망 넷으로 걸러 담는다.
+    # ② 후보 검색 — 위 안전망 넷으로 걸러 담고, **상한 안으로 좁힌다**(B73 ①).
+    pool = []
     for nid, n in graph.nodes.items():
         if nid in seen or not is_live(n):
             continue
@@ -128,8 +210,15 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
             continue
         if _pol(n.get("polarity")) != want:
             continue
-        out.append(_cand(nid, n))
-    return out
+        pool.append(_cand(nid, n))
+    # **후보 전량을 판정에 올리지 않는다**(B73 ①) — 상한 안으로 좁힌다.
+    scope_cats = ((cfg or {}).get("canonical_scope") or {}).get("bind_categories", [])
+    kept, how = _narrow(surface, pool, top_n or CANDIDATE_TOP_N,
+                        parent=parent, scope_cats=scope_cats, category=category)
+    STATS["조립"] += 1
+    STATS["후보합"] += len(out) + len(kept)
+    STATS[how] = STATS.get(how, 0) + 1
+    return out + kept
 
 
 def match(surface, candidates, category, cfg=None):
@@ -150,9 +239,13 @@ def match(surface, candidates, category, cfg=None):
     pool = [c for c in candidates if c.get("category") == category]
     for c in pool:
         if c.get("exact"):                           # 사전 히트 — 결정적·무LLM 경로
+            STATS["사전"] += 1
             return {"type": MATCH, "matched_id": c["id"], "confidence": 1.0}
     if not pool:
         return {"type": NEW, "matched_id": None, "confidence": 0.0}
+    STATS["판정"] += 1
+    if PROGRESS is not None:
+        PROGRESS(dict(STATS))
 
     if not llm.use_mock():
         return _judge_live(surface, pool, category, cfg)
@@ -171,11 +264,28 @@ def match(surface, candidates, category, cfg=None):
             best, score = c["id"], s
 
     if score >= threshold(cfg):
-        return {"type": MATCH, "matched_id": best, "confidence": score}
+        return _guard_auto({"type": MATCH, "matched_id": best,
+                            "confidence": score}, pool)
     if score > 0.0:
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
         return {"type": UNCERTAIN, "matched_id": None, "confidence": score}
     return {"type": NEW, "matched_id": None, "confidence": 0.0}
+
+
+def _guard_auto(verdict, pool):
+    """**auto 노드에 붙는 매칭은 표기가 같을 때만**이다 (B73 ③).
+
+    `status: auto`는 아직 사람이 확인하지 않은 노드다. 그것에 유사도로 붙이면
+    **오판 하나가 다음 문서를 끌어당기는 연쇄**가 된다 — 판정이 자기 산출을
+    근거로 삼는 꼴이다. 확신 1.0(표기 동일·사전 히트)이 아니면 `uncertain`으로
+    내린다. 계약은 닫힌 3값 그대로이고(`uncertain`은 신규+표시 — 규약 1의
+    비대칭), 큐 kind도 `uncertain_match` 그대로다.
+    """
+    c = next((x for x in pool if x["id"] == verdict.get("matched_id")), None)
+    if c and c.get("status") == "auto" and float(verdict.get("confidence") or 0) < 1.0:
+        return {"type": UNCERTAIN, "matched_id": None,
+                "confidence": verdict.get("confidence", 0.0)}
+    return verdict
 
 
 def _judge_live(surface, pool, category, cfg=None):
@@ -209,6 +319,9 @@ def _judge_live(surface, pool, category, cfg=None):
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
     if vtype == MATCH and conf < threshold(cfg):
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+    if vtype == MATCH:
+        return _guard_auto({"type": MATCH, "matched_id": mid,
+                            "confidence": conf}, pool)
     if vtype not in (MATCH, NEW, UNCERTAIN):
         _LOG.warning("판정 분기가 닫힌 3값 밖이다 — uncertain으로 둔다: %r", vtype)
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
@@ -218,15 +331,16 @@ def _judge_live(surface, pool, category, cfg=None):
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
-            polarity=None):
+            polarity=None, parent=None):
     """후보 조립 + 판정의 2단을 한 번에 — Pass 1 entity 경로의 편의 형태다.
 
     돌려주는 것은 `(분기, node_id 또는 None, 점수)` 튜플이다. **계약의 정본은
     `match`의 dict**이고 이것은 그 위의 얇은 껍데기다 — 판정 로직을 여기 두면
     재사용 지점마다 별도 판정 코드가 생긴다(그것이 고친 결함이다).
     """
-    cands = candidates(surface, category, layer, graph, dictionary,
-                       scoped=scoped, polarity=polarity)
     from .bootstrap import load_config
-    v = match(surface, cands, category, load_config(layer))
+    cfg = load_config(layer)
+    cands = candidates(surface, category, layer, graph, dictionary,
+                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
+    v = match(surface, cands, category, cfg)
     return v["type"], v["matched_id"], v["confidence"]

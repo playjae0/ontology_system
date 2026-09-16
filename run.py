@@ -85,7 +85,9 @@ def cmd_bootstrap():
 def cmd_ingest(paths, finalize=True, allow_duplicate=False):
     """`finalize`는 전 문서 인입 뒤 도는 빌드 말미 패스다 — 낱개 인입에서도 기본 수행한다."""
     for p in paths:
-        r, m, extracted = run_document(_load(p), allow_duplicate=allow_duplicate)
+        from cli.ingest import build_screen        # 화면은 한 벌이다 (B72 ②)
+        r, m, extracted = run_document(_load(p), allow_duplicate=allow_duplicate,
+                                       notice=build_screen())
         mark = "보류" if r.status == "held" else "인입"
         tail = f"  ({r.reason})" if r.reason else (
             "  [추출 실행]" if extracted else "  [추출 체크포인트 재사용]")

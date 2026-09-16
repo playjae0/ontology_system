@@ -132,7 +132,10 @@ class Builder:
         autos = [nid for nid in live if nid not in tier1]
 
         def _hold(reason, extra):
-            payload = {"surface": surface, "category": category, "provenance": prov}
+            # **층을 싣는다**(B72 ③) — 다음 줄이 `layers/<층>/skeleton.json`을
+            # 가리키므로, 층을 모르면 사람이 그 줄을 그대로 칠 수 없다.
+            payload = {"surface": surface, "category": category,
+                       "provenance": prov, "layer": self.layer}
             # 조회된 auto 후보를 싣는다 — 동봉하지 않으면 사람이 큐 화면에서
             # 후보를 다시 검색해야 판단할 수 있다(문서 2 §2.4-①).
             if autos:
@@ -320,9 +323,11 @@ class Builder:
                                    anchor_polarity=anchor_polarity)
         canonical, scoped = scope_canonical(bound, category,
                                             parent_canonical, self.cfg)
+        # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
+        # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
         verdict, nid, _ = resolve(canonical, category, self.layer,
                                   self.g, self.dict, scoped=scoped,
-                                  polarity=polarity)
+                                  polarity=polarity, parent=parent_canonical)
         if verdict == MATCH:
             self._register(surface, nid, prov)
             if prov not in self.g.get(nid)["provenance"]:
@@ -344,7 +349,10 @@ class Builder:
                       f"{'자동 생성' if verdict == NEW else '판정 불확실 — 신규로 생성'}"
                       f": {canonical} ({category})",
                       self.doc_id, {"node_id": nid, "canonical": canonical,
-                                    "surface": surface, "provenance": prov})
+                                    "surface": surface, "provenance": prov,
+                                    # 종결 명령이 층을 요구한다(B73 ④) — 자리표시자를
+                                    # 남기면 사람이 그 줄을 그대로 칠 수 없다.
+                                    "layer": self.layer})
         self.buffer[norm(surface)] = nid
         return nid
 
