@@ -319,6 +319,142 @@ empty = render({"doc_type": "x", "adapter_version": "1", "payload_kind": "table"
 show("빈 뷰 데이터에도 죽지 않는다 (렌더러는 관문이 아니라 표현이다)",
      "구획 1 · 파싱 결과" in empty and "이상 신호 없음" in empty)
 
+# ════════════════════════════════════════════════════════════════════
+# B76 ④ 스켈레톤·공용 코어는 None에 죽지 않는다 · ① 형 검사 관문 G4F
+# ════════════════════════════════════════════════════════════════════
+print("\n── B76 ④ None에 죽지 않는다 ──")
+import shutil as _sh76                                             # noqa: E402
+import tempfile as _tf76                                           # noqa: E402
+from parser import normalizer as _NM76                             # noqa: E402
+
+SKEL = ROOT / "tests/fixtures/skeleton_min"
+SAMPLE76 = ROOT / "tests/fixtures/raw/CSV05_wide.csv"
+
+
+def gate76(adapter, schema, sample=SAMPLE76):
+    """관문을 그대로 돌린다 — 재구현하지 않는다(P2의 규율)."""
+    r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
+                        str(adapter), str(schema), str(sample)],
+                       capture_output=True, text=True, cwd=str(ROOT))
+    return r.returncode == 0, r.stdout
+
+
+def mutate76(src, old, new, name):
+    """변이 하나를 임시 자리에 만든다 — 픽스처는 손대지 않는다(D-26의 결)."""
+    d = Path(_tf76.mkdtemp(prefix="b76_"))
+    txt = Path(src).read_text(encoding="utf-8")
+    assert old in txt, (name, old[:40])
+    (d / Path(src).name).write_text(txt.replace(old, new), encoding="utf-8")
+    return d / Path(src).name, d
+
+
+_r76, _h76 = _NM76.resolve_ditto([{"a": "x"}, {"a": "〃"}], marks=None)
+show("④ⓐ 공용 코어가 `marks=None`에 죽지 않는다 (「상동 없음」이다 · 치환 0)",
+     _h76 == 0 and _r76[1]["a"] == "〃", f"치환 {_h76}건")
+show("④ⓑ 스켈레톤은 상동 기호가 없으면 **빈 집합**을 넘긴다",
+     "else set())" in (KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8"))
+
+_ok76, _out76 = gate76(SKEL / "skelmin.py", SKEL / "skelmin.json")
+show("④ⓒ `ditto_mark` 없는 **스켈레톤 최소 어댑터**가 관문 전 구간을 지난다",
+     _ok76 and "[FAIL]" not in _out76,
+     [l.strip() for l in _out76.splitlines() if "[FAIL]" in l][:1] or "FAIL 0")
+_spec76 = importlib.util.spec_from_file_location("b76_skelmin", SKEL / "skelmin.py")
+_mod76 = importlib.util.module_from_spec(_spec76)
+_spec76.loader.exec_module(_mod76)
+show("④ⓒ 그 어댑터의 선언에 상동 기호가 **없다** (이번 사내 사고의 재현 재료)",
+     "ditto_mark" not in (_mod76.ADAPTER.get("expects") or {}),
+     str(sorted(_mod76.ADAPTER.get("expects") or {})))
+
+_m76, _d76 = mutate76(SKEL / "skelmin.py",
+                      'marks={exp["ditto_mark"]} if exp.get("ditto_mark") else set())',
+                      'marks=123)', "코어에 엉뚱한 형")
+_ok76b, _out76b = gate76(_m76, SKEL / "skelmin.json")
+_g31 = [l.strip() for l in _out76b.splitlines() if "G31" in l and "[FAIL]" in l]
+show("④ⓓ G31 FAIL 문면이 **어댑터 파일:줄**을 말한다 (예외명만으로는 못 짚는다)",
+     _g31 and "skelmin.py:" in _g31[0] and "normalizer.py:" in _g31[0],
+     (_g31[0] if _g31 else "G31 FAIL 없음")[:100])
+_sh76.rmtree(_d76, ignore_errors=True)
+
+_m76c, _d76c = mutate76(SKEL / "skelmin.py",
+                        'rec[field] = "" if v is None else str(v).strip()',
+                        'rec[field] = v.strip()', "셀에 직접 strip")
+_ok76c, _out76c = gate76(_m76c, SKEL / "skelmin.json",
+                         ROOT / "tests/fixtures/raw/CSV01.csv")
+_g3a = [l.strip() for l in _out76c.splitlines() if "G3A" in l]
+show("④ⓔ 셀 하나가 `None`이면 죽는 어댑터를 관문이 잡는다 (표본에 빈 칸이 없어도)",
+     _g3a and "[FAIL]" in _g3a[0] and "None으로 두면" in _g3a[0],
+     (_g3a[0] if _g3a else "G3A 줄 없음")[:90])
+_sh76.rmtree(_d76c, ignore_errors=True)
+show("④ⓔ 참조 어댑터·스켈레톤 어댑터는 셀 None 변이를 지난다",
+     "[PASS] G3A" in _out76 and "[PASS] G3A" in subprocess.run(
+         [sys.executable, str(KIT / "run_adapter.py"),
+          "tests/fixtures/adapters/cp.py", "schemas/cp.json",
+          "tests/fixtures/raw/CP01.xlsx"],
+         capture_output=True, text=True, cwd=str(ROOT)).stdout)
+show("④ 템플릿 판이 올랐고 셀 접근 규약이 실렸다",
+     re.search(r"^version: 1\.7$",
+               (ROOT / "prompts/1.4_generate.md").read_text(encoding="utf-8"), re.M)
+     and "셀 값은 스켈레톤의 읽기 꼴로만" in
+     (ROOT / "prompts/1.4_generate.md").read_text(encoding="utf-8"))
+
+print("\n── B76 ① 형 검사 관문 G4F ──")
+show("① 내장 참조 자산이 전부 G4F를 지난다 (형 표가 실물과 어긋나지 않는다)",
+     all("[PASS] G4F" in subprocess.run(
+         [sys.executable, str(KIT / "run_adapter.py"), a, sc, doc],
+         capture_output=True, text=True, cwd=str(ROOT)).stdout
+         for a, sc, doc in (
+             ("tests/fixtures/adapters/cp.py", "schemas/cp.json",
+              "tests/fixtures/raw/CP01.xlsx"),
+             ("tests/fixtures/adapters/pfmea.py", "schemas/pfmea.json",
+              "tests/fixtures/raw/PFMEA01.xlsx"),
+             ("kit/참조어댑터/ipqc.py", "kit/참조어댑터/ipqc.json",
+              "tests/fixtures/raw/IPQC01.xlsx"))))
+
+_sch76 = json.loads((SKEL / "skelmin.json").read_text(encoding="utf-8"))
+
+
+def schema_mut76(patch):
+    d = Path(_tf76.mkdtemp(prefix="b76s_"))
+    m = json.loads(json.dumps(_sch76))
+    m.update(patch)
+    (d / "s.json").write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+    return d / "s.json", d
+
+
+for _label, _patch, _want in (
+        ("`unmappable[].field`가 리스트",
+         {"unmappable": [{"field": ["F", "G"], "kind": "excluded", "reason": "t"}]},
+         "받은 형 list"),
+        ("`unmappable[].kind`가 닫힌 2값 밖",
+         {"unmappable": [{"field": "F", "kind": "maybe", "reason": "t"}]},
+         "허용 ['excluded', 'undecided']")):
+    _sp, _sd = schema_mut76(_patch)
+    _o = gate76(SKEL / "skelmin.py", _sp)[1]
+    _ln = [l.strip() for l in _o.splitlines() if "G4F" in l]
+    show(f"① {_label} → G4F FAIL이고 문면이 키와 형을 말한다",
+         _ln and "[FAIL]" in _ln[0] and _want in _ln[0],
+         (_ln[0] if _ln else "G4F 줄 없음")[:100])
+    _sh76.rmtree(_sd, ignore_errors=True)
+
+for _label, _old, _new, _fail in (
+        ("합치기 리스트는 **허용**", '"설비": "D"', '"설비": ["D", "E"]', False),
+        ("`columns` 값이 int", '"설비": "D"', '"설비": 4', True),
+        ("`header_row`가 문자열", '"header_row": 1,', '"header_row": "1",', True)):
+    _mp, _md = mutate76(SKEL / "skelmin.py", _old, _new, _label)
+    _o = gate76(_mp, SKEL / "skelmin.json")[1]
+    _ln = [l.strip() for l in _o.splitlines() if "G4F" in l]
+    show(f"① {_label} → G4F {'FAIL' if _fail else 'PASS'}",
+         _ln and (("[FAIL]" in _ln[0]) == _fail),
+         (_ln[0] if _ln else "G4F 줄 없음")[:100])
+    _sh76.rmtree(_md, ignore_errors=True)
+
+_sp76, _sd76 = schema_mut76({"새로운키": {"x": 1}})
+_o76 = gate76(SKEL / "skelmin.py", _sp76)[1]
+show("① 표에 없는 키는 막지 않고 **보고**한다 (모양이 자라는 길을 막지 않는다)",
+     "[PASS] G4F" in _o76 and "[모양]" in _o76 and "새로운키" in _o76,
+     [l.strip() for l in _o76.splitlines() if "[모양]" in l][:1])
+_sh76.rmtree(_sd76, ignore_errors=True)
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P2 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

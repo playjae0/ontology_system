@@ -90,3 +90,42 @@ def explicit_fail(logger, point, reason):
     **raise 전에 부른다** — 예외가 어디서 잡혀도 로그에는 남아야 한다.
     """
     logger.error("명시적 실패 %s — %s", point, reason)
+
+
+def defect(e, *, stage="", extra=""):
+    """**미포착 예외는 문면으로 죽는다** — 한 줄을 돌려주고 장부에 전문을 남긴다.
+
+    사내 실측 열다섯째: 등록 흐름이 `TypeError` traceback으로 죽었고, 사람이
+    스크롤을 올려 프레임을 읽어야 원인 자리가 나왔다(M9 「실패는 문면이 답을
+    담는다」 위반). 화면은 **한 줄**이고 전체 traceback은 `defects.log`에 간다
+    (문서 7 §7.4 — 명시적 실패는 장부에도 병기한다).
+
+    `ONTO_TRACEBACK=1`이면 전문을 화면에도 낸다(개발용).
+
+    **돌려주는 것은 화면 한 줄이다** — 찍는 것은 호출부가 한다: 진입점마다
+    종료 코드 규약이 다르고(상태 거부와 같은 코드 — B61), 그 판단은 여기 것이 아니다.
+    """
+    import os
+    import traceback
+    from pathlib import Path
+    tb = traceback.extract_tb(e.__traceback__)
+    where = ""
+    if tb:
+        fr = tb[-1]
+        where = f"{Path(fr.filename).name}:{fr.lineno} · "
+    line = (f"[결함] {where}{type(e).__name__}: {str(e)[:120]}"
+            + (f" · {stage}" if stage else "") + (f" · {extra}" if extra else ""))
+    full = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+    try:
+        from . import store
+        store.append_defect(line)
+        for ln in full.rstrip().splitlines():
+            store.append_defect("    " + ln)
+    except Exception:                        # pragma: no cover — 장부가 막혀도 문면은 낸다
+        pass
+    # **로거로 또 찍지 않는다** — 화면은 한 줄이고(호출부가 찍는다) 장부는
+    # `defects.log`다(§7.8의 「조용히 버리지 않기 위한 자리」). 둘 다 찍으면
+    # 같은 줄이 두 번 나와 사람이 두 사건으로 읽는다.
+    if os.environ.get("ONTO_TRACEBACK") == "1":
+        print(full)
+    return line

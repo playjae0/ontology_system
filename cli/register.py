@@ -56,7 +56,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, llm, registry, store
+from core import fixtures, llm, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
 from parser import form
@@ -1495,13 +1495,19 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
 
 
 # ================================================================ ② 검수
-def harness(adapter, schema, samples, package=None):
+def harness(adapter, schema, samples, package=None, doc_type=None):
     """기계 관문 — **kit/run_adapter.py를 그대로 부른다**(재작성 아님).
 
     `package`는 입력 패키지 경로다(B64 ②) — 관문이 FAIL 줄에 **열 프로파일**을 실을
     때 쓴다. 관문은 계산하지 않는다: 그 값은 패키지 조립이 이미 전 행 스캔으로 냈다.
+
+    `doc_type`이 오면 **열 판정 대장의 자리**도 넘긴다(B76 ② — G4G). 관문이 대장을
+    만들지는 않는다: 읽고 커버리지만 판정한다.
     """
     pkg = ([("--package"), str(package)] if package and Path(package).exists() else [])
+    led = ledger_path(doc_type) if doc_type else None
+    if led and Path(led).exists():
+        pkg += ["--ledger", str(led)]
     r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                         str(adapter), str(schema)] + pkg + [str(s) for s in samples],
                        capture_output=True, text=True, cwd=str(ROOT))
@@ -1526,6 +1532,8 @@ AUTO_FIX = {
     # **고칠 값이 문면에 있다**(B64 ②) — 후보 열문자·헤더 목록·의심 행이 상세에 있고,
     # 재생성은 그 문면을 그대로 지시로 받는다. 사람의 통역을 거치지 않는다(C27).
     "columns 값이 header_row": "고칠 값이 문면에 있다 (후보 열문자 · 헤더 목록)",
+    # **형 검사**(B76 ①) — 어느 키가 어떤 형이어야 하는지가 문면에 통째로 있다.
+    "키마다 허용 형": "고칠 키·받은 형·허용 형이 문면에 있다",
     # **어휘가 닫힌 자리**(B65) — 문면이 「없는 것 · 있는 것」을 담는다. 목록을
     # 그대로 지시로 실으면 재생성이 목록 안에서 고른다(사람의 통역 0 — C27).
     "normalizer 참조가 실재한다": "있는 이름 목록이 문면에 있다",
@@ -1559,6 +1567,9 @@ WITH_EVIDENCE = {
 # `kit/run_adapter.py`다. 이것을 문답에 보내면 모델이 어댑터를 엉뚱하게 고친다.
 GATE_SELF = {
     "G54": "관문이 LLM을 불렀다 — 어댑터 결함이 아니라 관문 결함이다",
+    # **대장은 산출이 아니라 관문 입구가 세운다**(B67 ② · B76 ②) — 빠진 행은
+    # 생성이 잘못한 것이 아니라 **기계가 빠뜨린 것**이라 재생성이 고치지 못한다.
+    "G4G": "열 판정 대장이 스키마 필드를 덮지 못했다 — 대장을 세우는 자리의 결함이다",
 }
 
 
@@ -2021,7 +2032,8 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         # 열문자로 확정한 **직후**라야 대장의 열문자가 어댑터의 것과 같다.
         sync_ledger(doc_type, st, samples)
         ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples,
-                          package=REVIEW / doc_type / "input_package.json")
+                          package=REVIEW / doc_type / "input_package.json",
+                          doc_type=doc_type)          # G4G 대장 커버리지 (B76 ②)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
         # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.
@@ -2159,22 +2171,26 @@ def role_table(schema, adapter_mod, st=None, prof=None):
     rep = (st or {}).get("generation_report") or {}
     rank = {x["field"]: x["rank"] for x in (rep.get("attribute_ranking") or [])}
     cut = rep.get("confidence_cut")
-    _led_cols = {x["field"]: x["col"] for x in read_ledger((st or {}).get("doc_type", ""))
-                 if x.get("field")}
+    # **한 필드가 열 여럿일 수 있다**(합치기 — B64 ①). 하나로 접으면 뒤 열이
+    # 조용히 사라지고, 그 자리가 이번 사고의 첫 원인이었다(B76 ①).
+    _led_cols = {}
+    for x in read_ledger((st or {}).get("doc_type", "")):
+        if x.get("field"):
+            _led_cols.setdefault(x["field"], []).append(x["col"])
     sug = {}
     for s in (prof or []):
         for col, v in (s.get("열") or {}).items():
             sug[col] = (v.get("기계제안") or {}).get("제안")
     for r in rows:
         marks = []
-        # 열문자 매핑은 어댑터의 columns가 갖는다 — 없으면 이름으로 맞춰 본다.
-        # **열문자는 대장에서 읽는다**(B67 ③) — `generation_report`와 어긋나면
-        # 대장이 정본이다. 어댑터의 `columns`는 합치기면 리스트라 열 하나를
-        # 가리키지 못한다(그때 기계 제안 대조가 조용히 빠졌다).
-        col = _led_cols.get(r["field"]) or (
-            getattr(adapter_mod, "ADAPTER", {}).get("expects", {})
-            .get("columns", {}) or {}).get(r["field"])
-        s = sug.get(col) if col else None
+        # **열문자는 대장에서만 읽는다**(B67 ③ · B76 ②) — 어댑터 `columns` 폴백을
+        # 두면 대장이 빈 필드가 조용히 통과하고(이번 사고의 둘째 원인), 그 값이
+        # 합치기 리스트면 `sug`의 키로 들어가 죽는다(첫 원인 — 형은 G4F가 막는다).
+        # 대장이 스키마 필드 전부를 덮는 것은 `G4G`가 지킨다.
+        cols = _led_cols.get(r["field"]) or []
+        # 합치기면 **기계 제안이 있는 첫 열**로 대조한다 — 열 하나를 가리킬 수
+        # 없다는 사실이 대조를 건너뛸 이유는 아니다.
+        s = next((sug.get(c) for c in cols if sug.get(c)), None)
         if s and s != "role 판정 대상" and r.get("role") != s:
             marks.append(f"기계 제안({s})과 갈림")
             r["machine_suggest"] = s
@@ -2417,7 +2433,14 @@ def sync_ledger(doc_type, st, samples=None):
     prev = {r.get("col"): r for r in read_ledger(doc_type)}
     by_now = f"generate rev{st.get('revision', 0)}"
     rows = []
-    for col in sorted(prof, key=lambda c: (len(c), c)):
+    # **프로파일 열 + 어댑터가 쓰는 열의 합집합으로 돈다**(B76 ②). 프로파일은
+    # 리허설이 읽은 머리(`--rows` 안)라 어댑터가 쓰는 열이 그 밖일 수 있고, 그러면
+    # **스키마에 있어도 대장에 행이 없는 필드**가 생긴다 — 그 필드는 기계 제안
+    # 대조와 「이어가기」에서 조용히 빠졌다(사내 실측 열다섯째의 둘째 원인).
+    # 합치기 리스트는 열마다 행 하나다(같은 `field`).
+    cols = sorted(set(prof) | set(field_of),
+                  key=lambda c: (len(str(c)), str(c)))
+    for col in cols:
         lab, fld = label_of.get(col), field_of.get(col)
         st_role = kind.get(lab, (None, None))
         role = (fields.get(fld) or {}).get("role") if fld else st_role[1]
@@ -3163,6 +3186,24 @@ GATED = ("generate", "review", "confirm")
 
 
 def main(argv):
+    """진입점 — **미포착 예외는 문면으로 죽는다** (B76 ③).
+
+    관문 FAIL·상태 거부(`SystemExit`)는 **판정**이라 그대로 지난다. 여기서 잡는
+    것은 파이썬 예외뿐이고, 화면에는 한 줄(`[결함] 파일:줄 · 예외: 메시지 · 단계 …`)
+    · `defects.log`에는 traceback 전문이다. 사내 실측 열다섯째의 화면은 traceback
+    이었고 사람이 프레임을 읽어야 했다 — 그것이 M9 위반이다.
+    """
+    try:
+        return _run(argv)
+    except SystemExit:
+        raise                       # 관문 FAIL·상태 거부는 판정이다 — 그대로
+    except Exception as e:
+        print(log.defect(e, stage=f"단계 {argv[0] if argv else '?'}",
+                         extra=(f"doc_type {argv[1]}" if len(argv) > 1 else "")))
+        return 1                    # 상태 거부와 같은 종료 코드 (B61 계약)
+
+
+def _run(argv):
     if not argv:
         raise SystemExit(__doc__)                                         # [사용법]
     cmd, rest = argv[0], list(argv[1:])

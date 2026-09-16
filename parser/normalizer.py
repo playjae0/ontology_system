@@ -70,7 +70,14 @@ def resolve_ditto(records, fields=None, marks=DITTO):
 
     직전 값이 없으면(첫 행이 상동) 채울 근거가 없으므로 건드리지 않는다 —
     validator의 자기완결 검사가 그것을 잡는다. 여기서 추측하지 않는다.
+
+    **`marks=None`은 「상동 없음」이다**(B76 ④ⓐ · 사내 실측 열여섯째). 기본값은
+    인자를 **안 줄 때만** 살아서, 호출자가 `None`을 계산해 넘기면 79행이
+    `v.strip() in None`으로 죽었다 — 문자열 셀 하나만 있어도 터진다. 공용 코어가
+    호출자의 `None`에 죽으면 그 위의 **어댑터 전부**가 죽는다(스켈레톤을 그대로
+    채운 어댑터가 정확히 그 모양이었다).
     """
+    marks = set(marks or ())
     prev, out, hits = {}, [], 0
     for rec in records:
         r = dict(rec)

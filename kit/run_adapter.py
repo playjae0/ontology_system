@@ -233,6 +233,11 @@ SPLIT_MARK = "[분할요약] "
 PKG_FLAG = "--package"
 PACKAGE = None
 
+# 열 판정 대장의 자리 — **관문은 그것을 계산하지 않고 읽는다**(B76 ②).
+# 없으면 커버리지 검사를 돌리지 않는다: 킷은 등록 흐름 밖에서도 단독으로 돈다.
+LEDGER_FLAG = "--ledger"
+LEDGER = None
+
 
 def _profiles():
     """입력 패키지의 열 프로파일 — 없으면 빈 dict. **계산하지 않는다.**"""
@@ -387,14 +392,97 @@ def check_output_keys(schema, pieces, label):
                  f"{sorted(fields)[:8]}") if extra else "")
 
 
+def exc_where(e, mod=None):
+    """예외 문면에 **어느 줄에서 죽었는지**를 싣는다 (B76 ④ⓓ).
+
+    사내 실측 열여섯째의 화면은 `TypeError: argument of type 'NoneType' is not
+    iterable` 한 줄이었다 — 사람이 원인을 짚을 수 없었고(M9 「실패는 문면이 답을
+    담는다」), 허브가 traceback을 재현해서야 자리가 나왔다.
+
+    두 자리를 낸다: **어댑터 파일 안의 마지막 프레임**(사람이 고칠 자리)과
+    **traceback의 마지막 프레임**(실제로 죽은 자리 — 공용 코어일 수 있다).
+    둘이 같으면 한 번만 적는다.
+    """
+    import linecache
+    import traceback
+    tb = traceback.extract_tb(e.__traceback__)
+    head = f"{type(e).__name__}: {e}"
+    if not tb:
+        return head
+    src = getattr(mod, "__file__", None)
+    picks = []
+    if src:
+        own = [f for f in tb if Path(f.filename).name == Path(src).name]
+        if own:
+            picks.append(("어댑터", own[-1]))
+    if not picks or tb[-1] is not picks[0][1]:
+        picks.append(("마지막", tb[-1]))
+
+    def one(tag, fr):
+        line = (fr.line or linecache.getline(fr.filename, fr.lineno) or "").strip()
+        return f"{tag} {Path(fr.filename).name}:{fr.lineno}" + (f" `{line[:70]}`" if line else "")
+
+    seen, out = set(), []
+    for tag, fr in picks:
+        k = (fr.filename, fr.lineno)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(one(tag, fr))
+    return head + " — " + " · ".join(out)
+
+
+def _none_cell_probe(mod, raw):
+    """**셀 하나를 `None`으로 바꿔도 사는가** (B76 ④ⓔ).
+
+    reader가 빈 칸을 `None`으로 주는 포맷이 있고, 어댑터가 셀에 직접
+    `strip()`·`in`을 걸면 그 한 칸에 문서 전체가 죽는다. 표본에 빈 셀이 없으면
+    G31이 그것을 못 잡으므로 **관문이 만들어서** 잰다.
+
+    돌려주는 것은 `(대상인가, 살았는가, 상세)`다. 격자가 아니면 대상이 아니다.
+    """
+    import copy
+    sheets = raw.get("sheets") or []
+    if not sheets:
+        return False, True, "격자 아님 — 대상 아님"
+    exp = getattr(mod, "ADAPTER", {}).get("expects") or {}
+    cols = set()
+    for v in (exp.get("columns") or {}).values():
+        cols |= set(v if isinstance(v, (list, tuple)) else [v])
+    start = int(exp.get("data_start_row") or 1)
+    for si, sh in enumerate(sheets):
+        for key, val in sorted((sh.get("cells") or {}).items()):
+            letters = "".join(ch for ch in key if ch.isalpha())
+            digits = "".join(ch for ch in key if ch.isdigit())
+            if not digits or (cols and letters not in cols):
+                continue
+            if int(digits) < start or not str(val or "").strip():
+                continue
+            probe = copy.deepcopy(raw)
+            probe["sheets"][si]["cells"][key] = None
+            try:
+                mod.extract(probe)
+            except Exception as e:
+                return True, False, f"{key}를 None으로 두면 {exc_where(e, mod)}"
+            return True, True, f"{key} → None"
+    return False, True, "바꿀 셀 없음 — 대상 아님"
+
+
 def run_extract(mod, raw, label, schema=None):
     print(f"\n③ extract 실행 — {label}")
     try:
         pieces = mod.extract(raw)
     except Exception as e:
-        show("G31  예외 없이 실행", False, f"{type(e).__name__}: {e}")
+        # **어디서 죽었는지를 문면이 말한다**(B76 ④ⓓ) — 예외명만으로는 고칠 자리를
+        # 짚을 수 없다(사내 실측 열여섯째: G31 한 줄에 파일도 줄도 없었다).
+        show("G31  예외 없이 실행", False, exc_where(e, mod))
         return None
     show("G31  예외 없이 실행", True)
+    # **빈 칸 한 칸에 죽지 않는가**(B76 ④ⓔ) — 표본에 없으면 관문이 만든다.
+    _apply, _alive, _det = _none_cell_probe(mod, raw)
+    if _apply:
+        show("G3A  셀 하나가 None이어도 산다 (reader가 빈 칸을 None으로 주는 포맷)",
+             _alive, _det)
     show("G32  list[dict] 반환", isinstance(pieces, list) and all(isinstance(p, dict) for p in pieces),
          f"{type(pieces).__name__} / {len(pieces) if isinstance(pieces, list) else '-'}건")
     # **판정이 먼저고 조기 반환이 나중이다.** 구판은 0건일 때 이 줄에 닿기 전에
@@ -470,6 +558,153 @@ def _cat_of(fields, name):
     """필드 이름(또는 `@좌표필드`) → 카테고리. 모르면 `None`."""
     f = fields.get(str(name).lstrip("@")) or {}
     return f.get("category") or f.get("target_category")
+
+
+# ---------------------------------------------------------------- ① 형 검사 (B76 ①)
+# **LLM 산출의 키마다 허용 형** — 닫힌 표 하나가 정본이다(06 대장 1.5).
+#
+# 왜 있나: 관문 G4A~G4E는 **키의 존재·어휘**만 재고 **값의 형**은 재지 않았다.
+# 그래서 「리스트가 와도 되는 자리」와 「안 되는 자리」가 코드에만 암묵으로 있었고,
+# 관문 PASS 뒤의 코드가 형을 가정하다 죽었다(사내 실측 열다섯째:
+# `TypeError: unhashable type: 'list'` — 합치기 리스트를 dict 키로 넣었다).
+#
+# 경로 문법: `a.b` 키 · `*` 딕셔너리의 값 전부 · `[]` 리스트의 원소 전부.
+# 형: `str` · `int` · `str[]`(문자열 리스트) · `str|str[]`(합치기 허용 — B64 ①).
+SHAPE_SCHEMA = {
+    "fields.*.role": "str",
+    "fields.*.category": "str",
+    "fields.*.attach_to_field": "str",
+    "fields.*.attr_name": "str",
+    "fields.*.정의문": "str",
+    "edges[].from": "str",
+    # **실물 키는 `relation`이다** — 요청문의 `rel`은 같은 자리의 별명이고,
+    # 스키마·G4D·G48이 전부 `relation`을 읽는다(D-155 ①).
+    "edges[].relation": "str",
+    "edges[].to": "str",
+    "unmappable[].field": "str",
+    "unmappable[].kind": "str",
+    "unmappable[].reason": "str",
+}
+SHAPE_SCHEMA_ENUM = {"unmappable[].kind": ("excluded", "undecided")}
+
+SHAPE_ADAPTER = {
+    "doc_type": "str",
+    "payload_kind": "str",
+    "adapter_version": "str",
+    "expects.columns.*": "str|str[]",       # 합치기 리스트는 **허용**이다(B64 ①)
+    "expects.header_labels": "str[]",
+    "expects.header_row": "int",
+    "expects.sample_path": "str",
+}
+
+# 표에 없는 키를 세는 자리 — 「모양이 늘었다」는 판정이 아니라 보고다.
+SHAPE_KNOWN_SCHEMA = ("doc_type", "schema_version", "layer", "use_blocks",
+                      "fields", "edges", "unmappable")
+SHAPE_KNOWN_ADAPTER = ("doc_type", "adapter_version", "payload_kind", "expects",
+                       "SAMPLE")
+
+
+def _walk(obj, path):
+    """경로가 가리키는 `(표시경로, 값)` 목록. **없는 자리는 건너뛴다**(형 검사다)."""
+    if not path:
+        return [("", obj)]
+    head, _, rest = path.partition(".")
+    out = []
+    if head == "*":
+        for k, v in (obj or {}).items() if isinstance(obj, dict) else []:
+            out += [(f"{k}" + ("." + p if p else ""), x) for p, x in _walk(v, rest)]
+        return out
+    if head.endswith("[]"):
+        key = head[:-2]
+        seq = (obj or {}).get(key) if isinstance(obj, dict) else None
+        if key and not isinstance(seq, list):
+            return []
+        for i, v in enumerate(seq or []):
+            out += [(f"{key}[{i}]" + ("." + p if p else ""), x)
+                    for p, x in _walk(v, rest)]
+        return out
+    if not isinstance(obj, dict) or head not in obj:
+        return []
+    return [(head + ("." + p if p else ""), x) for p, x in _walk(obj[head], rest)]
+
+
+def _type_name(v):
+    return type(v).__name__
+
+
+def _shape_ok(v, want):
+    if want == "str":
+        return isinstance(v, str)
+    if want == "int":
+        return isinstance(v, int) and not isinstance(v, bool)
+    if want == "str[]":
+        return isinstance(v, (list, tuple)) and all(isinstance(x, str) for x in v)
+    if want == "str|str[]":
+        return _shape_ok(v, "str") or _shape_ok(v, "str[]")
+    return True
+
+
+def check_shapes(schema, mod):
+    """**G4F — 키마다 허용 형** (B76 ①). 형이 다르면 FAIL, 표 밖의 키는 보고한다."""
+    A = getattr(mod, "ADAPTER", {}) if mod is not None else {}
+    bad, extra = [], []
+    for obj, table, enums in ((schema or {}, SHAPE_SCHEMA, SHAPE_SCHEMA_ENUM),
+                              (A, SHAPE_ADAPTER, {})):
+        for path, want in table.items():
+            for shown, v in _walk(obj, path):
+                if v is None:
+                    continue
+                if not _shape_ok(v, want):
+                    bad.append(f"{shown} — 받은 형 {_type_name(v)} · 허용 {want} · "
+                               f"값 {str(v)[:60]}")
+                    continue
+                allowed = enums.get(path)
+                if allowed and v not in allowed:
+                    bad.append(f"{shown} — 받은 값 {str(v)[:60]} · "
+                               f"허용 {list(allowed)}")
+    extra += [f"스키마.{k}" for k in (schema or {}) if k not in SHAPE_KNOWN_SCHEMA]
+    extra += [f"ADAPTER.{k}" for k in A if k not in SHAPE_KNOWN_ADAPTER]
+    show("G4F  LLM 산출의 키마다 허용 형 (닫힌 표 — 06 대장 1.5)",
+         not bad, " ‖ ".join(bad))
+    if extra:
+        # **판정이 아니라 보고다** — 모양이 늘었다는 사실은 사람이 볼 것이고,
+        # 표에 없다는 이유로 막으면 명세가 자라는 길이 막힌다.
+        print(f"      [모양] 표에 없는 키 {len(extra)}종 — {', '.join(extra[:8])}")
+    return not bad
+
+
+def check_ledger_coverage(schema, mod):
+    """**G4G — 스키마 `fields` 전부에 대장 행이 있는가** (B76 ②).
+
+    대장(B67)은 열 프로파일로만 세워져, 어댑터가 쓰는 열이 프로파일 밖이면
+    **스키마에 있어도 행이 없는 필드**가 생겼다. 그 필드는 기계 제안 대조와
+    「이어가기」에서 빠진다 — 사람이 판정한 것이 아니라 **기계가 빠뜨린 것**이라
+    질문이 아니라 FAIL이다(사내 실측 열다섯째의 둘째 원인).
+
+    대장 경로가 없으면 대상이 아니다(킷 단독 실행).
+    """
+    if not LEDGER or not Path(LEDGER).exists():
+        return True
+    try:
+        rows = json.load(open(LEDGER, encoding="utf-8"))
+        # 대장 파일의 실물 키는 `columns`다(등록이 쓰는 꼴) — 목록으로 주는
+        # 호출도 받는다(킷을 단독으로 쓰는 자리).
+        if isinstance(rows, dict):
+            rows = rows.get("columns") or rows.get("rows") or []
+    except Exception as e:
+        return show("G4G  열 판정 대장이 스키마 필드 전부를 덮는다",
+                    False, f"대장을 읽지 못했다 — {type(e).__name__}: {e}")
+    fields, _blocks = load_blocks(schema)
+    if not fields:
+        return True
+    have = {r.get("field") for r in (rows or []) if r.get("field")}
+    cols = (getattr(mod, "ADAPTER", {}).get("expects") or {}).get("columns") or {}
+    struct = structural_fields()
+    miss = [f for f in sorted(fields) if f not in have and f not in struct]
+    det = " ‖ ".join(
+        f"대장에 없는 필드 {f} — 어댑터 columns {cols.get(f)!r} · 프로파일 밖"
+        for f in miss)
+    return show("G4G  열 판정 대장이 스키마 필드 전부를 덮는다", not miss, det)
 
 
 def check_vocab(schema, fields, label):
@@ -724,6 +959,10 @@ if __name__ == "__main__":
         _i = _argv.index(PKG_FLAG)
         PACKAGE = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
+    if LEDGER_FLAG in _argv:
+        _i = _argv.index(LEDGER_FLAG)
+        LEDGER = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
     adapter_path, schema_path, *docs = _argv
     print(_where())
     print("=" * 66)
@@ -736,6 +975,9 @@ if __name__ == "__main__":
     show("G01  adapter.doc_type == schema.doc_type",
          mod.ADAPTER.get("doc_type") == schema.get("doc_type"),
          f'{mod.ADAPTER.get("doc_type")} / {schema.get("doc_type")}')
+    # **형이 틀린 산출은 사람에게 올라가지 않는다**(B76 ①) — 표본보다 먼저 본다.
+    check_shapes(schema, mod)
+    check_ledger_coverage(schema, mod)                   # G4G (B76 ②)
     for d in docs:
         raw = read(d)
         label = d.split("/")[-1]

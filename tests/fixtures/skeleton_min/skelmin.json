@@ -1,0 +1,22 @@
+{
+ "doc_type": "skelmin",
+ "schema_version": 1,
+ "layer": "process",
+ "use_blocks": [
+  "common_core",
+  "process_coord"
+ ],
+ "fields": {
+  "설비": {
+   "role": "entity",
+   "category": "Unit"
+  }
+ },
+ "edges": [
+  {
+   "from": "설비",
+   "relation": "part_of",
+   "to": "@process_ref"
+  }
+ ]
+}
