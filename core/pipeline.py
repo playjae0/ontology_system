@@ -1076,6 +1076,15 @@ def doc_queue_summary(doc_id):
     return out
 
 
+class Stopped(Exception):
+    """**사람이 판정 도중 멈췄다** (B75 ③ — `--step-every`).
+
+    진행 콜백이 던지고 `run_document`가 받는다. 계약은 `--step`의 `q`와 같다:
+    **그 문서는 그래프·사전·큐 쓰기 0**이고 체크포인트(parsed/·extract/·청크)는
+    남는다. 부분 쓰기를 남기면 다음 인입이 「반쯤 들어간 문서」 위에 쌓인다.
+    """
+
+
 def run_document(path_or_env, layer=None, *, allow_duplicate=False,
                  routing=None, notice=None):
     env = path_or_env
@@ -1099,6 +1108,11 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
 
     graph = open_graph(layer)
     graph.build_begin()
+    # **되돌릴 자리를 먼저 잡는다**(B75 ③) — 그래프는 말미에 한 번 저장되지만
+    # 큐·청크는 도중에 쓰인다. 사람이 판정 중간에 멈추면 그 둘도 되돌려야
+    # 「그래프 쓰기 0」이 참이 된다.
+    _q0 = store.read(store.QUEUE, [])
+    _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     LOWRES["n"] = 0
     from . import matcher as _mt
     _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
@@ -1106,6 +1120,24 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     _e0 = len(graph.edges)
     _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
 
+    try:
+        _, metrics, extracted = _build_document(
+            env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
+        return res, metrics, extracted
+    except Stopped as stop:
+        # 쓴 것을 되돌린다 — 그래프는 저장 전이라 **디스크가 이미 옛 판**이고,
+        # 큐·청크는 스냅샷으로 돌린다. 메모리의 그래프는 버린다(다음 호출이
+        # 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다).
+        store.write(store.QUEUE, _q0)
+        store.write(store.CHUNKS, _c0)
+        res.status, res.reason = "held", str(stop)
+        return res, None, False
+
+
+def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
+                    notice, _n0, _e0, _a0):
+    """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다."""
+    from . import matcher as _mt
     extracted = False
     builder = None
     if kind == "table":
@@ -1150,7 +1182,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
                             if n.get("status") == "auto") - _a0,
                 "저해상도": LOWRES["n"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id)})
-    return res, metrics, extracted
+    return None, metrics, extracted
 
 
 def _land_hierarchy(env):

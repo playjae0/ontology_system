@@ -83,7 +83,7 @@ CANDIDATE_TOP_N = 12
 
 # **판정의 계측** — 화면이 「어떻게 좁혔고 몇 번 불렀나」를 세는 재료다(B73 ①).
 # 세는 자리가 **그 일을 하는 자리**와 같아야 화면과 실물이 갈리지 않는다.
-STATS = {"판정": 0, "사전": 0, "스코프": 0, "임베딩": 0, "겹침": 0,
+STATS = {"판정": 0, "사전": 0, "스코프": 0, "스코프끝": 0, "임베딩": 0, "겹침": 0,
          "그대로": 0, "후보합": 0, "조립": 0}
 
 # 진행 콜백 — 호출부가 꽂는다(기본 없음). **판정 중에도 비용이 보인다**(사용자
@@ -114,33 +114,44 @@ def _overlap(a, b):
     return len(x & y) / max(1, len(x | y))
 
 
-def _narrow(surface, pool, top_n, *, parent=None, scope_cats=(), category=None):
-    """후보를 **상한 안으로 좁힌다** — 스코프 근처 → 임베딩(실호출) / 겹침(mock).
+def scope_filter(pool, parent, scope_cats, category):
+    """**스코프는 하드 필터다** — 부모가 다른 노드는 후보에 **넣지 않는다** (B75 ②).
 
-    순서가 규율이다(B73 ①):
-      ① **스코프 근처**(LLM·임베딩 0) — 같은 부모 좌표 아래 노드가 먼저다.
-         공정 아래 관리항목·설비는 그 공정의 것끼리 견주는 것이 맞고, 그 판정에
-         모델을 부를 이유가 없다. 이것으로 상한 안에 들면 여기서 끝난다.
-      ② 그래도 많거나 스코프 없는 카테고리면 **유사도 상위 N**.
+    D-152 ①이 적은 규율의 실물이다. 구판은 「상한을 넘을 때만」 부모로 좁혔고, 그
+    결과 둘이 새어 나갔다: ⓐ후보가 12개 이하면 다른 공정의 노드가 그대로 판정에
+    올랐다 ⓑ같은 부모 아래가 **0개면** 필터를 건너뛰어 **다른 공정 전량**이
+    임베딩→판정에 올랐다 — 답이 NEW로 정해져 있는 새 공정의 첫 값들이 매번 모델을
+    불렀다(사내 실측 열넷째: 목록 밖 53종 · 새 공정 다수).
+
+    부모가 다르면 다른 실물이다(문서 4 §4.5-6). 그래서 **0개면 후보 0**이고,
+    `match`가 그 자리에서 NEW를 낸다 — LLM 0 · 임베딩 0.
+
+    부모가 없는 값(좌표 미해소)은 거르지 않는다 — 모르는 것을 근거로 버리지 않는다.
+    """
+    if not parent or category not in (scope_cats or ()):
+        return pool, False
+    return [c for c in pool if c.get("parent") == parent], True
+
+
+def _narrow(surface, pool, top_n, *, scoped=False):
+    """후보를 **상한 안으로 좁힌다** — 임베딩 또는 겹침 (B73 ① · B75 ①).
+
+    스코프 하드 필터는 이 함수 **앞**에서 이미 걸렸다(`scope_filter`) — 여기 오는
+    것은 「같은 자리의 후보」이고, 그것이 상한을 넘을 때만 유사도가 돈다.
+
+    **무엇으로 좁히는지는 설정이 정한다**(`CANDIDATE_NARROW` — B75 ①): 임베딩은
+    선택이고, 없으면 **정규화 문자 2-gram 겹침**으로 고른다. 겹침은 mock의 sha256
+    벡터(가짜 확신 — D-152 ②)와 다르다: 실제 문자 기반이고 결정적이다.
 
     **자르는 것은 판정이 아니라 조립이다** — 잘린 후보는 판정에 오르지 않을 뿐
     노드로는 살아 있고, 사전 히트는 애초에 여기 오지 않는다(상한과 무관).
     """
     if len(pool) <= top_n:
-        return pool, "그대로"
-    how = None
-    if parent and category in (scope_cats or ()):
-        # **같은 부모 아래가 먼저다** — 스코프가 걸린 카테고리에서 다른 공정의
-        # 노드는 애초에 견줄 대상이 아니다. 그 안에서도 많으면 아래 유사도가
-        # 다시 좁히되, **부모가 다른 것이 먼저 오는 일은 없다.**
-        near = [c for c in pool if c.get("parent") == parent]
-        if near:
-            if len(near) <= top_n:
-                return near, "스코프"
-            pool, how = near, "스코프+"
-    if llm.use_mock():
+        return pool, ("스코프" if scoped else "그대로")
+    mode, _why = llm.narrow_choice()
+    if mode == "overlap":
         scored = sorted(pool, key=lambda c: -_overlap(surface, c["canonical"]))
-        return scored[:top_n], how or "겹침"
+        return scored[:top_n], "겹침"
     # **임베딩 대상은 canonical과 정의문이다**(문서 4 §4.2 ② — 정의문이 빠지면
     # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5).
     from . import embeddings
@@ -149,7 +160,7 @@ def _narrow(surface, pool, top_n, *, parent=None, scope_cats=(), category=None):
         pool, key=lambda c: -embeddings.cosine(
             qv, embeddings.embed(" ".join(
                 [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip())))
-    return scored[:top_n], how or "임베딩"
+    return scored[:top_n], "임베딩"
 
 
 # **생성 경로의 닫힌 값**(B74 ②) — 대장이 적는 `path`가 여기 밖이면 FAIL이다.
@@ -157,8 +168,8 @@ def _narrow(surface, pool, top_n, *, parent=None, scope_cats=(), category=None):
 PATHS = ("skeleton", "dictionary", "scope+judge", "embedding+judge",
          "overlap+judge", "none")
 
-# 좁힌 방법 → 경로 이름. `그대로`(좁히지 않음)는 세계가 가른다 — 판정을 무엇이
-# 했는지가 그 자리의 사실이기 때문이다(mock은 문자 겹침, 실호출은 LLM+임베딩).
+# 좁힌 방법 → 경로 이름. `그대로`(좁힐 것도 없었다)는 **그 실행이 고른 방법**의
+# 이름으로 적는다 — 후보를 무엇으로 고르는 세계였는지가 그 자리의 사실이다(B75 ①).
 _HOW_PATH = {"스코프": "scope+judge", "스코프+": "scope+judge",
              "임베딩": "embedding+judge", "겹침": "overlap+judge"}
 
@@ -166,8 +177,10 @@ _HOW_PATH = {"스코프": "scope+judge", "스코프+": "scope+judge",
 def _path_of(pool):
     """이 판정이 **어떻게 여기까지 왔는가** — 후보가 지고 온 사실로 답한다(B74 ②)."""
     how = next((c.get("how") for c in pool if c.get("how")), None)
-    return _HOW_PATH.get(how) or ("overlap+judge" if llm.use_mock()
-                                  else "embedding+judge")
+    if how in _HOW_PATH:
+        return _HOW_PATH[how]
+    return ("embedding+judge" if llm.narrow_choice()[0] == "embed"
+            else "overlap+judge")
 
 
 def _cand(nid, n, exact=False):
@@ -258,9 +271,14 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
         if _pol(n.get("polarity")) != want:
             continue
         pool.append(_cand(nid, n))
+    # **스코프 하드 필터가 먼저다**(B75 ②) — 상한 이하 여부와 무관하다.
+    pool, scoped_hard = scope_filter(pool, parent, scope_cats, category)
+    if scoped_hard and not pool and not out:
+        # 같은 부모 아래가 없다 — 답은 NEW로 정해져 있다. 여기서 끝낸다.
+        STATS["스코프끝"] += 1
     # **후보 전량을 판정에 올리지 않는다**(B73 ①) — 상한 안으로 좁힌다.
     kept, how = _narrow(surface, pool, top_n or CANDIDATE_TOP_N,
-                        parent=parent, scope_cats=scope_cats, category=category)
+                        scoped=scoped_hard)
     STATS["조립"] += 1
     STATS["후보합"] += len(out) + len(kept)
     STATS[how] = STATS.get(how, 0) + 1

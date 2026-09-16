@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
-  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--step]
+  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+                                  [--step] [--step-every N] [--narrow embed|overlap]
   python run.py ingest-dir  <경로> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+                                  [--narrow embed|overlap]
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
 (`cli.parse.run_parse` · `core.pipeline.run_document`).
@@ -29,10 +31,13 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
-from core import llm, registry, store
+from core import llm, log, registry, store
 from core.pipeline import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# **진행 줄은 로그에도 남는다**(B75 ③ⓑ) — 화면을 놓치면 기록이 없다.
+_LOG = log.get("cli.ingest")
 
 # reader가 여는 포맷 — 그 밖은 「지원 밖」으로 목록에만 남긴다.
 # **목록은 리더가 소유한다**(B53) — 여기에 복제하면 리더에 포맷을 더해도 투입이 막는다.
@@ -305,25 +310,56 @@ def _step_gate(i, detail=""):
     return True
 
 
-def judge_progress(total):
-    """판정 진행 줄 — **호출마다** 갱신한다 (B73 ① · 사용자 요청 2026-09-16).
+def judge_progress(total, stage=None, every=0):
+    """판정 진행 줄 — 보폭마다 **새 줄로** 남긴다 (B73 ① · B75 ③ⓑ).
 
     2만 토큰을 쓰고 나서야 비용을 알았다는 것이 이 줄이 생긴 이유다. 좌표 태깅
-    진행 줄(B69 ②)과 같은 자리·같은 결이고, 보폭 갱신이라 잡음이 되지 않는다.
+    진행 줄(B69 ②)과 같은 자리·같은 결이다.
+
+    **`\r` 덮어쓰기를 버렸다**(B75 ③ⓑ): 같은 줄을 덮으면 터미널 스크롤에도, 로그
+    파일에도 남지 않는다 — 중단된 실행에서 「어디까지 얼마를 썼나」를 사후에 볼 수
+    없었다(사내 실측 열넷째). 로그로도 같은 줄을 남긴다.
+
+    `every`가 있으면 값 N개마다 **묻는다**(`--step-every`) — 비용이 쌓이는 단계는
+    판정 하나뿐이라 멈춤 자리도 여기 하나다. `q`면 `Stopped`를 던지고, 그 문서는
+    그래프·사전·큐 쓰기 0이다(되돌림은 `pipeline.run_document`가 한다).
     """
+    def line(n, u):
+        return (f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
+                f"{u.get('total_tokens', 0):,}"
+                f"(입력 {u.get('prompt_tokens', 0):,} · 출력 "
+                f"{u.get('completion_tokens', 0):,})")
+
     def progress(stats):
         n = stats.get("판정", 0)
-        stride = max(1, (total or 1) // 10)
-        if not (n == 1 or n % stride == 0):
-            return
+        if stage is not None:
+            stage["값"] = n
         u = llm.usage_total()
-        tty = sys.stdout.isatty()
-        print(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
-              f"{u.get('total_tokens', 0):,}"
-              f"(입력 {u.get('prompt_tokens', 0):,} · 출력 "
-              f"{u.get('completion_tokens', 0):,})",
-              end="\r" if (tty and n < (total or 0)) else "\n", flush=True)
+        stride = max(1, (total or 1) // 10)
+        if n == 1 or n % stride == 0:
+            print(line(n, u), flush=True)
+            _LOG.info("판정 진행 — 값 %d/%d · 호출 %d · 누적 토큰 %d",
+                      n, total or 0, n, u.get("total_tokens", 0))
+        if every and n % every == 0 and n < (total or 0):
+            _judge_gate(n, total, u)
     return progress
+
+
+def _judge_gate(n, total, u):
+    """판정 **안**의 멈춤 자리 (B75 ③ⓒ). 비대화형이면 묻지 않는다."""
+    if not sys.stdin.isatty():
+        return
+    left = max(0, (total or 0) - n)
+    print(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
+          f"{u.get('total_tokens', 0):,} · 남은 값 {left:,}", flush=True)
+    try:
+        ans = input("   [계속 c / 멈춤 q] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if ans in ("q", "quit", "n"):
+        from core.pipeline import Stopped
+        raise Stopped(f"사람이 멈췄다 — 판정 값 {n}/{total} (그래프 쓰기 0 · "
+                      f"체크포인트는 남는다)")
 
 
 def build_screen(step=False):
@@ -352,9 +388,12 @@ def build_screen(step=False):
             # **어떻게 좁혔나를 화면이 말한다**(B73 ①) — 후보가 전량이던 시절의
             # 비용은 화면 어디에도 없었다.
             from core.matcher import CANDIDATE_TOP_N
+            # **좁힘을 갈라 적는다**(B75 ①) — 임베딩으로 골랐는지 겹침으로 골랐는지가
+            # 같은 문서를 두 설정으로 넣어 견줄 때의 유일한 표지다.
+            # `스코프로 끝`은 **판정 없이** 끝난 수다(B75 ② — 같은 부모 아래 0개).
             print(f"   판정 — 호출 {j.get('판정', 0):,} · 사전 {j.get('사전', 0):,} · "
-                  f"스코프로 끝 {j.get('스코프', 0):,} · "
-                  f"임베딩 {j.get('임베딩', 0) + j.get('겹침', 0):,} · "
+                  f"스코프로 끝 {j.get('스코프끝', 0):,} · "
+                  f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
                   f"(상한 {CANDIDATE_TOP_N})")
         if step:
@@ -375,14 +414,32 @@ def build_screen(step=False):
     return notice
 
 
+def narrow_notice():
+    """후보 좁히기가 **무엇으로** 도는지 — 임베딩이 없어도 인입은 선다(B75 ①).
+
+    사내 실측 열넷째: 임베딩 모델 미설정이 인입을 통째로 세웠다. 이제 겹침으로
+    떨어지되 **그 사실을 말한다** — 말하지 않으면 같은 문서의 두 산출이 왜 다른지
+    사람이 모른다.
+    """
+    mode, why = llm.narrow_choice()
+    if why == "미설정":
+        print("   임베딩 미설정 — 겹침으로 좁힌다(--narrow embed로 강제 가능)")
+    elif why == "플래그":
+        print(f"   후보 좁히기 — {mode} (플래그가 설정을 이긴다)")
+
+
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
-                finalize_after=True, coord_cap=COORD_CAP, step=False):
+                finalize_after=True, coord_cap=COORD_CAP, step=False,
+                step_every=0):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     sel = select(doc, doc_type, adapter_paths)
     row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
            "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
+    # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
+    stage = {"이름": "선택", "값": 0, "총": 0}
     print(f"[투입] {Path(doc).name} → doc_id {sel['doc_id']}")
+    narrow_notice()
     if sel["status"] != "chosen":
         print(f"   미선택 — {sel['reason']}")
         return row
@@ -416,6 +473,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         print("   (dry-run — 파싱·인입 안 함)")
         return row
     try:
+        stage["이름"] = "파싱"
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
                              coord_cap=coord_cap)
         if not res.ok:
@@ -460,18 +518,23 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         _u0 = llm.usage_total()["calls"]
         from core import matcher as _mt
         _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
-        _mt.PROGRESS = judge_progress(_plan_n)
+        stage["이름"], stage["총"] = "판정", _plan_n
+        _mt.PROGRESS = judge_progress(_plan_n, stage=stage, every=step_every)
         try:
             r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
                                             notice=build_screen(step=step))
         finally:
             _mt.PROGRESS = None
         if r.status == "held":
+            # **단계를 올리지 않는다** — 판정에서 멈춘 것을 「부착까지 갔다」고
+            # 적으면 비용 줄이 거짓말을 한다.
             row.update(status=FAIL, reason=f"보류 — {r.reason}")
+            print("   " + spend_line(stage))
             print(fail_block(doc, sel["doc_id"],
                              [{"tag": HELD_TAG, "kind": "인입 보류", "reason": r.reason}],
                              doc_type=sel.get("doc_type"), queued=1))
             return row
+        stage["이름"] = "부착"
         # **추출을 다시 돌렸나**를 말한다 — 등록 검수의 리허설이 남긴 체크포인트를
         # 운영이 재사용하면 LLM 호출이 0회다(B51). 그 사실이 화면에 없으면 「리허설과
         # 운영이 같은 함수」가 지켜졌는지 사람이 볼 수 없다.
@@ -485,7 +548,25 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     except Exception as e:                       # 문서 단위 독립 — 나머지를 멈추지 않는다
         row.update(status=FAIL, reason=f"{type(e).__name__}: {e}"[:300])
         print(f"   실패 — {row['reason']}")
+        # **비용은 실패해도 보인다**(B75 ③ⓐ) — 사내 실측 열넷째는 첫 판정 호출
+        # 전에 서서 진행 줄도 토큰 줄도 없이 끝났다. 무엇을 썼는지 모르면
+        # 「다시 돌려도 되나」를 판단할 재료가 없다.
+        print("   " + spend_line(stage))
         return row
+
+
+def spend_line(stage):
+    """`이 문서까지 — LLM 호출 k · 토큰 t(…) · 멈춘 단계 …` (B75 ③ⓐ).
+
+    수는 `llm.usage_total()` 그대로다 — 화면이 제 계산을 하지 않는다.
+    """
+    u = llm.usage_total()
+    where = stage.get("이름", "선택")
+    if where == "판정" and stage.get("총"):
+        where = f"판정 값 {stage.get('값', 0)}/{stage['총']}"
+    return (f"이 문서까지 — LLM 호출 {u['calls']:,} · 토큰 "
+            f"{u.get('total_tokens', 0):,}(입력 {u.get('prompt_tokens', 0):,} · "
+            f"출력 {u.get('completion_tokens', 0):,}) · 멈춘 단계 {where}")
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
@@ -544,6 +625,24 @@ def main(argv):
     step = "--step" in args
     if step:
         args.remove("--step")
+    # **판정 안에서 멈추는 자리**(B75 ③ⓒ) — `--step`과 독립이고 같이 줄 수 있다.
+    step_every = 0
+    if "--step-every" in args:
+        i = args.index("--step-every")
+        raw = args[i + 1] if i + 1 < len(args) else ""
+        if not str(raw).isdigit() or int(raw) < 1:
+            raise SystemExit("[투입] --step-every 뒤에 1 이상의 수가 필요하다")   # [사용법]
+        step_every = int(raw)
+        del args[i:i + 2]
+    # **후보 좁히기 손잡이**(B75 ①) — 플래그가 설정을 이긴다(한 문서만 바꿔 비교).
+    if "--narrow" in args:
+        i = args.index("--narrow")
+        mode = args[i + 1] if i + 1 < len(args) else ""
+        if mode not in ("embed", "overlap", "auto"):
+            raise SystemExit("[투입] --narrow는 embed|overlap|auto 중 하나다: "   # [사용법]
+                             f"{mode!r}")
+        llm.set_narrow(mode)
+        del args[i:i + 2]
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")
@@ -564,9 +663,13 @@ def main(argv):
             # **일괄에는 단계가 없다**(B72 ④) — 문서마다 멈추면 배치가 아니다.
             print("[투입] --step 무시 — ingest-dir는 일괄이다 "
                   "(단계별로 보려면 ingest-file 하나씩)")
+        if step_every:
+            print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
+                  "(판정 안에서 멈추려면 ingest-file 하나씩)")
         rows = ingest_dir(target, dt, dry, paths, coord_cap=cap)
     else:
-        rows = [ingest_file(target, dt, dry, paths, coord_cap=cap, step=step)]
+        rows = [ingest_file(target, dt, dry, paths, coord_cap=cap, step=step,
+                            step_every=step_every)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

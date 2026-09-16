@@ -5,6 +5,7 @@
     python -m cli.show node   <이름>          노드 하나 전부 — 값·별칭·출처·연결
     python -m cli.show doc    <doc_id>        그 문서가 만든 것 전부 (역추적)
     python -m cli.show report <doc_id> [--json]  그 문서의 **행별 판정 대장** (눈 검수)
+    python -m cli.show report --diff <a.json> <b.json>   두 대장의 **다른 행만** (설정 비교)
     python -m cli.show chunk  <doc_id|id>     청크 원문 (답의 근거로 실린 그 문장)
     python -m cli.show edges  [층] [관계]      엣지 목록
     python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표
@@ -241,6 +242,8 @@ def cmd_report(args):
     어디에 붙었나」도 합계로는 답해지지 않는다. 재료는 인입이 남긴 대장
     (`data/ingest_log/<doc_id>.json`)이고 **여기서 새로 세지 않는다.**
     """
+    if "--diff" in args:
+        return _report_diff([a for a in args if a != "--diff"])
     if not args:
         raise SystemExit("doc_id를 달라: run.py show report CP01")          # [사용법]
     doc = args[0]
@@ -295,6 +298,83 @@ def _cut(text, n):
             return out + "…"
         out += c
     return out
+
+
+def _report_diff(args):
+    """두 대장의 **다른 행만** 본다 — 설정을 바꿔 넣은 두 산출의 비교 (B75 ①).
+
+    비교 단위는 값이다(`locator · 필드 · 표기`). **다름의 기준은 판정과 node**이지
+    경로가 아니다 — 경로는 「무엇으로 골랐나」이고, 그것이 달라도 답이 같으면
+    그 값에서 임베딩과 겹침의 차이는 없었다는 뜻이다. 어느 쪽이 맞는지는 사람이
+    본다 — 도구는 차이만 보인다.
+
+    **node의 동일성은 canonical로 본다** — 의미 축 id는 ULID라 클린 재실행마다
+    다르고(문서 7 §7.2), 그것을 비교하면 **전 행이 다르다**고 나온다. 사람이
+    「같은 것에 붙었나」를 묻는 단위는 이름이다.
+    """
+    if len(args) < 2:
+        raise SystemExit(                                                # [사용법]
+            "두 대장을 달라: run.py show report --diff a.json b.json\n"
+            "  (각각 run.py show report <doc_id> --json > a.json 으로 만든다)")
+    a, b = (_load_ledger_json(x) for x in args[:2])
+
+    def key(r):
+        return (r.get("locator"), r.get("field"), r.get("surface"))
+
+    ai = {key(r): r for r in a["rows"]}
+    bi = {key(r): r for r in b["rows"]}
+    keys = list(ai) + [k for k in bi if k not in ai]
+    diff = [k for k in keys
+            if (ai.get(k) or {}).get("verdict") != (bi.get(k) or {}).get("verdict")
+            or _node_of(ai.get(k)) != _node_of(bi.get(k))]
+    ta = sum(_tok(r) for r in a["rows"])
+    tb = sum(_tok(r) for r in b["rows"])
+    print(f"■ 판정 대장 비교 — 다른 행 {len(diff)} / 전체 {len(keys)} · "
+          f"토큰 {ta:,} vs {tb:,}")
+    print(f"  A {args[0]}  ·  B {args[1]}")
+    if not diff:
+        print("\n  다른 행 없음 — 두 설정이 같은 답을 냈다(비용만 다르다).")
+        return 0
+    print("\n  " + _pad("locator", 16) + _pad("필드", 11) + _pad("표기", 22)
+          + _pad("A 경로 · 판정 · node · 후보", 50) + "B 경로 · 판정 · node · 후보")
+    for k in diff:
+        print("  " + _pad(k[0] or "—", 16) + _pad(k[1] or "—", 11)
+              + _pad(_cut(k[2] or "—", 20), 22)
+              + _pad(_side(ai.get(k)), 50) + _side(bi.get(k)))
+    return 0
+
+
+def _node_of(r):
+    """비교용 노드 동일성 — canonical이 정본이고 없으면 id다(ULID는 실행마다 다르다)."""
+    if not r:
+        return None
+    return r.get("canonical") or r.get("node_id")
+
+
+def _side(r):
+    if not r:
+        return "(없음)"
+    return (f"{r.get('path')} · {r.get('verdict')} · "
+            f"{_cut(_node_of(r) or '—', 18)} · 후보 {r.get('candidates_n', 0)}")
+
+
+def _tok(r):
+    u = r.get("llm") or {}
+    return int(u.get("in_tokens") or 0) + int(u.get("out_tokens") or 0)
+
+
+def _load_ledger_json(path):
+    p = Path(path)
+    if not p.exists():
+        raise SystemExit(f"[대장] 파일이 없다: {p}\n"                      # [상태]
+                         f"  ▶ 다음 줄 — 대장을 파일로 낸다: "
+                         f"python run.py show report <doc_id> --json > {p}")
+    d = json.loads(p.read_text(encoding="utf-8"))
+    if "rows" not in d:
+        raise SystemExit(f"[대장] 행이 없는 파일이다: {p}\n"                # [상태]
+                         f"  ▶ 다음 줄 — 대장을 파일로 낸다: "
+                         f"python run.py show report <doc_id> --json > {p}")
+    return d
 
 
 def _refuse_no_ledger(doc):
