@@ -214,7 +214,11 @@ allok &= show("prefix 13건이 기존 parsed 명세와 일치", got[:13] == EXP_
 if got[:13] != EXP_FM:
     diff_prefix(got[:13], EXP_FM, "R")
 allok &= show("nested 병합 다수 (30건 이상)", len(merged) >= 30, f"{len(merged)}건")
-allok &= show("R12만 비고 열 값 보유 → unknown_field 재료",
+# **재료는 시험이 만든다**(B73 ⑤) — 구판은 「`비고` 열이 스키마에 없다」는 자산의
+# 결함을 `unknown_field` 재료로 썼다. 그 결함을 고치자(role: meta 선언) 이 줄의
+# 문면이 거짓이 됐다. 여기서 재는 것은 **역산 정합의 데이터 성질**이고,
+# `unknown_field` 경로는 `test_g6_5`가 **제 재료를 심어** 잰다(XUNK).
+allok &= show("R12만 비고 열 값 보유 (드문 값이 한 행에만 — 역산 정합의 재료)",
               [r["비고"] for _, r in recs].count("재발 2건") == 1)
 SEV = {"단락": 9, "화재": 9, "방전기능상실": 8, "충전기능상실": 7}
 allok &= show("severity ↔ effect 1:1 정렬 (골격 내 effect 전량)",

@@ -949,6 +949,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     graph = open_graph(layer)
     graph.build_begin()
     LOWRES["n"] = 0
+    from . import matcher as _mt
+    _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
     _n0 = len(graph.nodes)
     _e0 = len(graph.edges)
     _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
@@ -989,7 +991,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
                 "auto": sum(1 for n in graph.nodes.values()
                             if n.get("status") == "auto") - _a0,
                 "저해상도": LOWRES["n"], "총_노드": metrics.get("nodes"),
-                "큐": doc_queue_summary(doc_id)})
+                "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id)})
     return res, metrics, extracted
 
 

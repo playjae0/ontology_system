@@ -329,6 +329,68 @@ show("미스 질의에 비슷한 등록 개체를 제시한다 (재질문 유도
 show("제시는 판정이 아니다 — 링킹 미스율을 오염시키지 않는다",
      all(set(x) == {"surface", "node_id", "layer", "category"} for x in _near))
 
+
+# ── B73 ④ — 자동 노드의 사람 확정 (큐 종결 · 감사 H12) ──────────────────
+#
+# 시스템이 세운 노드(`status: auto`)를 사람이 「맞다」로 끝내는 경로가 **없었다** —
+# `resolve_item` 호출 0 · `confirmed` 생산자 0. 그래서 auto는 영원히 auto였고,
+# 그 노드는 다음 판정의 후보에서 계속 보수적으로 다뤄진다(B73 ③).
+print("\n■ B73 ④ — ops confirm: status 변경 + 큐 종결")
+
+_g74 = open_graph("process")
+_auto74 = [nid for nid, n in _g74.nodes.items() if n.get("status") == "auto"]
+show("④ 시험의 전제 — auto 노드가 있다", bool(_auto74), f"{len(_auto74)}건")
+_nid74 = _auto74[0]
+_q0 = len([x for x in store.read(store.QUEUE, [])
+           if x["kind"] in ("auto_node", "uncertain_match")
+           and (x.get("payload") or {}).get("node_id") == _nid74
+           and not x.get("resolution")])
+_pv74 = ops.confirm("process", _nid74, "홍길동", reason="사내 확인")
+_n74 = open_graph("process").get(_nid74)
+show("④ 확정 뒤 status가 confirmed이고 누가·언제가 남는다",
+     _n74.get("status") == "confirmed" and _n74.get("confirmed_by") == "홍길동"
+     and _n74.get("confirmed_at"),
+     f"{_pv74['from']} → {_n74.get('status')}")
+_q1 = [x for x in store.read(store.QUEUE, [])
+       if (x.get("payload") or {}).get("node_id") == _nid74]
+show("④ 큐 항목이 **종결된다**(내리지 않고 판단을 남긴다 — 회수가 보존한다)",
+     _q0 >= 1 and all((x.get("resolution") or {}).get("decision") == "confirmed"
+                      for x in _q1 if x["kind"] in ("auto_node", "uncertain_match")),
+     str([(x["kind"], (x.get("resolution") or {}).get("decision")) for x in _q1]))
+_log74 = store.read(store.OPS_LOG, [])[-1]
+show("④ ops_log 5요소가 남는다 (무엇을·누가·언제·대상·사유)",
+     {"op", "actor", "at", "targets", "reason"} <= set(_log74)
+     and _log74["op"].endswith("confirm") and _log74["targets"] == [_nid74],
+     _log74["op"])
+# **거부 셋** — 행위자 없음 · 없는 id(타층 포함) · 이미 확정
+_ref74 = []
+for _args in ((("process", _nid74, ""), "행위자"),
+              (("process", "없는id_ZZZ", "홍길동"), "대상"),
+              (("process", _nid74, "홍길동"), "이미 확정")):
+    try:
+        ops.confirm(*_args[0])
+        _ref74.append(f"{_args[1]}: 통과")
+    except Exception as _e74:
+        _ref74.append(f"{_args[1]}: {type(_e74).__name__}")
+show("④ 거부 셋 — 행위자 없음 · 없는 대상 · 이미 확정",
+     all("OpRefused" in x or "KeyError" in x or "ValueError" in x for x in _ref74),
+     str(_ref74))
+show("④ `resolve_item` 호출부가 생겼다 (감사 H12 — 호출 0이던 자리)",
+     "resolve_item(" in (ROOT / "core" / "ops.py").read_text(encoding="utf-8"))
+# 화면 — 큐가 종결분을 빼고 세고, 항목마다 끝내는 세 줄을 준다
+from cli import platform as _PF74                                  # noqa: E402
+import io as _io74, contextlib as _ctx74                           # noqa: E402
+_b74 = _io74.StringIO()
+with _ctx74.redirect_stdout(_b74):
+    _PF74.cmd_queue("auto_node")
+show("④ 화면이 끝내는 세 줄을 준다 (B61 계약 — 그대로 칠 수 있다)",
+     "ops confirm" in _b74.getvalue() and "ops merge" in _b74.getvalue()
+     and "ops obsolete" in _b74.getvalue()
+     and "<층>" not in _b74.getvalue().split("ops confirm")[1][:40],
+     [l.strip() for l in _b74.getvalue().splitlines() if "ops confirm" in l][:1])
+show("④ 종결분은 계수에서 빠진다 (사람이 끝낸 것이 남은 일로 보이지 않는다)",
+     _PF74.queue_view()["kinds"]["auto_node"] < len(
+         [x for x in store.read(store.QUEUE, []) if x["kind"] == "auto_node"]))
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G5 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

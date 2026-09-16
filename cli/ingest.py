@@ -305,6 +305,27 @@ def _step_gate(i, detail=""):
     return True
 
 
+def judge_progress(total):
+    """판정 진행 줄 — **호출마다** 갱신한다 (B73 ① · 사용자 요청 2026-09-16).
+
+    2만 토큰을 쓰고 나서야 비용을 알았다는 것이 이 줄이 생긴 이유다. 좌표 태깅
+    진행 줄(B69 ②)과 같은 자리·같은 결이고, 보폭 갱신이라 잡음이 되지 않는다.
+    """
+    def progress(stats):
+        n = stats.get("판정", 0)
+        stride = max(1, (total or 1) // 10)
+        if not (n == 1 or n % stride == 0):
+            return
+        u = llm.usage_total()
+        tty = sys.stdout.isatty()
+        print(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
+              f"{u.get('total_tokens', 0):,}"
+              f"(입력 {u.get('prompt_tokens', 0):,} · 출력 "
+              f"{u.get('completion_tokens', 0):,})",
+              end="\r" if (tty and n < (total or 0)) else "\n", flush=True)
+    return progress
+
+
 def build_screen(step=False):
     """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
 
@@ -326,6 +347,16 @@ def build_screen(step=False):
             return
         q = info.get("큐") or {}
         head = " · ".join(f"{k} {n}종({rows}행)" for k, (n, rows) in sorted(q.items()))
+        j = info.get("판정") or {}
+        if j.get("조립"):
+            # **어떻게 좁혔나를 화면이 말한다**(B73 ①) — 후보가 전량이던 시절의
+            # 비용은 화면 어디에도 없었다.
+            from core.matcher import CANDIDATE_TOP_N
+            print(f"   판정 — 호출 {j.get('판정', 0):,} · 사전 {j.get('사전', 0):,} · "
+                  f"스코프로 끝 {j.get('스코프', 0):,} · "
+                  f"임베딩 {j.get('임베딩', 0) + j.get('겹침', 0):,} · "
+                  f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
+                  f"(상한 {CANDIDATE_TOP_N})")
         if step:
             u2 = llm.usage_total()
             _step_gate(4, f"새 노드(auto) {info.get('auto', 0)} · "
@@ -427,8 +458,14 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                                                "(그래프 쓰기 0)")
                 return row
         _u0 = llm.usage_total()["calls"]
-        r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
-                                        notice=build_screen(step=step))
+        from core import matcher as _mt
+        _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
+        _mt.PROGRESS = judge_progress(_plan_n)
+        try:
+            r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
+                                            notice=build_screen(step=step))
+        finally:
+            _mt.PROGRESS = None
         if r.status == "held":
             row.update(status=FAIL, reason=f"보류 — {r.reason}")
             print(fail_block(doc, sel["doc_id"],
@@ -465,12 +502,20 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
                          f"     python run.py ingest-file {p}")
     files = sorted(x for x in p.iterdir() if x.is_file() and not x.name.startswith(("~", ".")))
     rows = []
+    u0 = llm.usage_total()
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
+    if not dry_run:
+        # **총계 한 줄**(B73 ①) — 문서마다의 요약은 위에 있고, 배치의 비용은
+        # 여기서만 보인다. 사람이 「이 폴더를 넣으면 얼마」를 알 자리다.
+        u = llm.usage_total()
+        print(f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
+              f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
+              f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})")
     return rows
 
 

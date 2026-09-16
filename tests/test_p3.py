@@ -3329,6 +3329,15 @@ _refmod72.__spec__.loader.exec_module(_refmod72)
 _metaf72 = [k for k, v in _ref72["fields"].items() if v.get("role") == "meta"]
 show("① 가장 단순한 few-shot(cp)이 role: meta를 보인다 (LLM이 본보기대로 낸다)",
      len(_metaf72) >= 1, str(_metaf72))
+# **B73 ⑤ — B72 ①의 발견이 닫혔다.** `pfmea` 쌍의 `비고` 열이 스키마에 없어
+# G39에 걸렸다(의도된 `unknown_field` 재료였다). 허브 판정 ⓐ: role: meta로
+# 선언하고 시험 재료는 시험이 심는다 — **자산의 결함에 기댄 재료는 자산을 고칠
+# 때마다 시험을 깨뜨린다.** 내장 참조 자산도 관문 대상이다(예외를 두지 않는다).
+_pf73, _pfo73 = R.harness(ROOT / "tests/fixtures/adapters/pfmea.py",
+                          ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+show("⑤ 내장 참조 쌍(pfmea)도 관문을 통과한다 — 예외를 두지 않는다",
+     "[FAIL] G39" not in _pfo73 and _pf73,
+     [l.strip() for l in _pfo73.splitlines() if "G39" in l][:1])
 show("① few-shot 쌍이 서로 맞는다 — 스키마의 meta 필드를 어댑터도 낸다",
      all(k in (_refmod72.ADAPTER["expects"]["columns"] or {}) for k in _metaf72),
      str(sorted(_refmod72.ADAPTER["expects"]["columns"]))[:70])

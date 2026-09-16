@@ -124,6 +124,8 @@ def queue_view():
     alien = {}
     for x in q:
         k = x.get("kind")
+        if x.get("resolution"):
+            continue                 # **종결분은 세지 않는다**(B73 ④) — 내리지는 않는다
         if k in counts:
             counts[k] += 1
         else:
@@ -151,9 +153,41 @@ def cmd_queue(kind=None):
                 tail = f"  [{pl['key']} · {pl.get('rows', 1)}행]"
                 if pl.get("locators"):
                     tail += f" {pl['locators'][:3]}"
+            # **재시도 이력**(B73 ②) — 「한 번 해결하고 다시 도는지」를 사람이 본다.
+            if x.get("attempts"):
+                from core.retry import ATTEMPT_MAX
+                tail += (f"  · {x['attempts']}회 재시도 · 첫 발생 "
+                         f"{x.get('doc_id')}"
+                         + (" · **사람 판정 대기**(상한)"
+                            if x["attempts"] >= ATTEMPT_MAX else ""))
+            if x.get("resolution"):
+                # **사람이 판단한 항목은 목록에서 지위를 달리한다**(§7.2) —
+                # 내리지 않되 「끝난 것」으로 보인다.
+                tail += f"  · 종결({x['resolution'].get('decision')})"
             print(f"  · {x.get('reason')}  (doc={x.get('doc_id')}){tail}")
             if kind == "orphan_anchor":
                 print(orphan_next_lines(x))
+            if kind in ("auto_node", "uncertain_match") and not x.get("resolution"):
+                print(auto_next_lines(x))
+
+
+def auto_next_lines(item, layer=None):
+    """`auto_node`·`uncertain_match`의 **다음 줄** — 사람이 종결하는 세 길 (B73 ④).
+
+    시스템이 세운 노드를 사람이 「맞다/합쳐라/아니다」로 끝내는 자리다. 감사 H12:
+    이 세 줄이 없어서 `confirmed` 생산자가 0이었고 auto는 영원히 auto였다.
+    """
+    pl = item.get("payload") or {}
+    nid = pl.get("node_id") or "<node_id>"
+    lay = layer or pl.get("layer") or "<층>"
+    return "\n".join([
+        "     ▶ 다음 줄 — 사람이 끝낸다(셋 중 하나):",
+        f"        python run.py ops confirm  {lay} {nid} --actor <이름>"
+        "          ← 맞다(status auto → confirmed)",
+        f"        python run.py ops merge    {lay} {nid} <기존 node_id> "
+        "--actor <이름> --yes   ← 이미 있는 것",
+        f"        python run.py ops obsolete {lay} {nid} --actor <이름>"
+        "          ← 아니다"])
 
 
 def orphan_next_lines(item, layer=None):

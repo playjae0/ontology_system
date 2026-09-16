@@ -323,9 +323,11 @@ class Builder:
                                    anchor_polarity=anchor_polarity)
         canonical, scoped = scope_canonical(bound, category,
                                             parent_canonical, self.cfg)
+        # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
+        # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
         verdict, nid, _ = resolve(canonical, category, self.layer,
                                   self.g, self.dict, scoped=scoped,
-                                  polarity=polarity)
+                                  polarity=polarity, parent=parent_canonical)
         if verdict == MATCH:
             self._register(surface, nid, prov)
             if prov not in self.g.get(nid)["provenance"]:
@@ -347,7 +349,10 @@ class Builder:
                       f"{'자동 생성' if verdict == NEW else '판정 불확실 — 신규로 생성'}"
                       f": {canonical} ({category})",
                       self.doc_id, {"node_id": nid, "canonical": canonical,
-                                    "surface": surface, "provenance": prov})
+                                    "surface": surface, "provenance": prov,
+                                    # 종결 명령이 층을 요구한다(B73 ④) — 자리표시자를
+                                    # 남기면 사람이 그 줄을 그대로 칠 수 없다.
+                                    "layer": self.layer})
         self.buffer[norm(surface)] = nid
         return nid
 
