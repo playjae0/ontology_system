@@ -711,16 +711,21 @@ show("① mock 세계에서 좁히기에 LLM 0 (어휘 겹침으로 고른다)",
      _MT73.STATS.get("겹침", 0) >= 1 and _MT73.STATS.get("임베딩", 0) == 0,
      str({k: v for k, v in _MT73.STATS.items() if v}))
 # **실호출 갈래는 임베딩을 부른다** — 배선의 증거는 미설정 실패(NotConfigured)다.
+# **조건이 옮겨졌다**(B75 ①): `auto`에서는 임베딩이 없으면 겹침으로 떨어지는 것이
+# 정답이라 이 지점에 닿지 않는다. 그래서 **사람이 켰을 때**(`CANDIDATE_NARROW=embed`)
+# 로 잰다 — 어서션을 지우지 않고 조건을 옮긴다(문서 7 §7.6-2의 9지점 도달성).
 _um73 = _MT73.llm.use_mock
 _MT73.llm.use_mock = lambda: False
+_MT73.llm.set_narrow("embed")
 try:
     _MT73.candidates("노칭::설비XX", "Unit", "process", _g73, _dic73)
     _emb73 = "불렀는데 조용히 통과"
 except Exception as _e73:
     _emb73 = type(_e73).__name__
 finally:
+    _MT73.llm.set_narrow(None)
     _MT73.llm.use_mock = _um73
-show("① 실호출 경로가 embed()에 닿는다 (미설정이면 시끄럽게 실패한다)",
+show("① 실호출 경로가 embed()에 닿는다 (CANDIDATE_NARROW=embed · 미설정이면 시끄럽게)",
      _emb73 == "NotConfigured", _emb73)
 
 # ③ 후보에 status — auto는 표시되고, 유사도 매칭은 uncertain으로 내려간다
@@ -933,6 +938,192 @@ with _ctx.redirect_stdout(_db74):
 show("④ show doc 끝이 행별 명령을 가리킨다 (진입점을 늘리지 않는다)",
      f"show report {_doc74}" in _db74.getvalue(),
      _db74.getvalue().strip().splitlines()[-1].strip()[:70])
+
+# ════════════════════════════════════════════════════════════════════
+# B75 — 임베딩은 선택 · 스코프는 하드 필터 · 비용은 실패해도 보인다
+# ════════════════════════════════════════════════════════════════════
+print("\n── B75 ① 임베딩은 선택이다 ──")
+from core import embeddings as _EM75                              # noqa: E402
+
+init.init(fresh_=True)
+for _lay in ("process", "quality"):
+    bootstrap(_lay, echo=False)
+
+
+def _env75(doc_id, names, ref="노칭"):
+    """같은 공정 아래 **서로 다른 관리항목 N개** — 후보가 상한을 넘게 만드는 재료."""
+    e = json.loads((ROOT / "tests/fixtures/parsed/CP01.json").read_text(encoding="utf-8"))
+    base = dict(e["records"][0])
+    e["doc_id"] = doc_id
+    e["records"] = []
+    for i, nm in enumerate(names):
+        r = dict(base)
+        r.update({"source_locator": f"X{i}", "process_ref": ref,
+                  "process_group": "조립", "관리항목": nm, "설비": "노칭 프레스"})
+        e["records"].append(r)
+    return e
+
+
+# 상한(12)을 넘는 후보를 같은 부모 아래 세운다 — 여기서만 좁히기가 돈다.
+_run72(_env75("B75SEED", [f"노칭 항목{i:02d}" for i in range(20)]))
+_MT74.reset_stats()
+_run72(_env75("B75AUTO", [f"노칭 항목{i:02d}변형" for i in range(6)]))
+_led75 = (_LG74.read("B75AUTO") or {}).get("rows") or []
+_paths75 = {r["path"] for r in _led75}
+show("① 임베딩 미설정·auto에서 인입이 끝까지 돌고 겹침으로 좁힌다",
+     "overlap+judge" in _paths75 and "embedding+judge" not in _paths75
+     and _MT74.STATS["겹침"] >= 1,
+     f"path {sorted(_paths75)} · 겹침 {_MT74.STATS['겹침']} · "
+     f"임베딩 {_MT74.STATS['임베딩']}")
+show("① mock의 기본은 겹침이다 (회귀 세계 불변 — sha256 벡터를 쓰지 않는다)",
+     _LL74.narrow_choice() == ("overlap", "mock"), str(_LL74.narrow_choice()))
+
+_seen75 = []
+_e0 = _EM75.embed
+_EM75.embed = lambda t: _seen75.append(t) or _e0(t)
+_um75 = _MT74.llm.use_mock
+_MT74.llm.use_mock = lambda: False          # 실호출 세계 — 좁히기는 설정이 가른다
+_MT74.llm.set_narrow("overlap")
+try:
+    _MT74.reset_stats()
+    _cdo75 = _MT74.candidates("노칭::항목없음ZZ", "Property", "process",
+                              open_graph("process"), _DIC74.open(),
+                              parent="노칭", cfg=load_config("process"))
+    _over75 = "돌았다"
+except Exception as _x75:
+    _over75 = f"{type(_x75).__name__}: {_x75}"
+finally:
+    _MT74.llm.set_narrow(None)
+    _MT74.llm.use_mock = _um75
+    _EM75.embed = _e0
+show("① `overlap` 강제면 **실호출 모드에서도** embed()에 닿지 않는다",
+     _over75 == "돌았다" and not _seen75 and _MT74.STATS["겹침"] >= 1,
+     f"{_over75} · embed 호출 {len(_seen75)} · 겹침 {_MT74.STATS['겹침']}")
+
+import os as _os75                                                # noqa: E402
+_os75.environ["CANDIDATE_NARROW"] = "embed"
+try:
+    _cfg75 = _LL74.config()["narrow"]
+    _LL74.set_narrow("overlap")
+    _won75 = _LL74.narrow_choice()
+finally:
+    _LL74.set_narrow(None)
+    del _os75.environ["CANDIDATE_NARROW"]
+show("① 플래그가 설정을 이긴다 (한 문서만 바꿔 비교한다)",
+     _cfg75 == "embed" and _won75 == ("overlap", "플래그"),
+     f"설정 {_cfg75} · 플래그 뒤 {_won75}")
+
+# --diff — 다름의 기준은 판정과 node다
+_a75 = {"doc_id": "A", "rows": [
+    {"locator": "R1", "field": "관리항목", "surface": "가", "canonical": "노칭::가",
+     "path": "overlap+judge", "verdict": "match", "node_id": "N1",
+     "candidates_n": 3, "llm": {"in_tokens": 10, "out_tokens": 5}},
+    {"locator": "R2", "field": "관리항목", "surface": "나", "canonical": "노칭::나",
+     "path": "overlap+judge", "verdict": "new", "node_id": "N2",
+     "candidates_n": 3, "llm": {"in_tokens": 10, "out_tokens": 5}}]}
+_b75 = json.loads(json.dumps(_a75))
+_b75["rows"][1].update(verdict="match", canonical="노칭::다", node_id="N9",
+                       path="embedding+judge")
+(ROOT / "data" / "b75a.json").write_text(json.dumps(_a75, ensure_ascii=False),
+                                         encoding="utf-8")
+(ROOT / "data" / "b75b.json").write_text(json.dumps(_b75, ensure_ascii=False),
+                                         encoding="utf-8")
+_db75 = _io.StringIO()
+with _ctx.redirect_stdout(_db75):
+    _SH74.cmd_report(["--diff", str(ROOT / "data/b75a.json"),
+                      str(ROOT / "data/b75b.json")])
+_want75 = sum(1 for x, y in zip(_a75["rows"], _b75["rows"])
+              if x["verdict"] != y["verdict"] or x["canonical"] != y["canonical"])
+show("① `--diff`의 행 수 == 판정 또는 node가 다른 값의 수",
+     f"다른 행 {_want75} / 전체 2" in _db75.getvalue(),
+     _db75.getvalue().splitlines()[0][:70])
+show("① 경로만 달라도 답이 같으면 다른 행이 아니다 (도구는 차이만 보인다)",
+     "다른 행 1 /" in _db75.getvalue())
+for _f75 in ("b75a.json", "b75b.json"):
+    (ROOT / "data" / _f75).unlink(missing_ok=True)      # 시험 재료는 남기지 않는다
+
+print("\n── B75 ② 스코프는 하드 필터다 ──")
+_g75 = open_graph("process")
+_dic75 = _DIC74.open()
+_cfg75b = load_config("process")
+_sc75 = (_cfg75b.get("canonical_scope") or {}).get("bind_categories", [])
+_cd75 = _MT74.candidates("노칭::없는항목ZZ", "Property", "process", _g75, _dic75,
+                         parent="노칭", cfg=_cfg75b)
+show("② 판정에 오른 후보 전부 parent가 값의 parent와 같다",
+     _cd75 and all(c.get("parent") == "노칭" for c in _cd75),
+     f"후보 {len(_cd75)}개 · 부모 {sorted({c.get('parent') for c in _cd75})}")
+_MT74.reset_stats()
+_cd75b = _MT74.candidates("새공정::없는항목ZZ", "Property", "process", _g75, _dic75,
+                          parent="아무도없는공정ZZ", cfg=_cfg75b)
+_v75 = _MT74.match("새공정::없는항목ZZ", _cd75b, "Property", _cfg75b)
+show("② 같은 부모 아래가 0개면 후보 0 · LLM 0 · NEW (답이 정해져 있다)",
+     not _cd75b and _v75["type"] == _MT74.NEW and _MT74.STATS["판정"] == 0
+     and _MT74.STATS["스코프끝"] == 1,
+     f"후보 {len(_cd75b)} · {_v75['type']} · 판정 {_MT74.STATS['판정']}")
+_cd75c = _MT74.candidates("떠도는항목ZZ", "Property", "process", _g75, _dic75,
+                          parent=None, cfg=_cfg75b)
+show("② 부모 없는 값은 거르지 않는다 (모르는 것을 근거로 버리지 않는다)",
+     len(_cd75c) > 0 and len({c.get("parent") for c in _cd75c}) >= 1,
+     f"후보 {len(_cd75c)}개")
+_non75 = _MT74.candidates("버 발생ZZ", "Failure", "quality", open_graph("quality"),
+                          _dic75, parent="노칭", cfg=load_config("quality"))
+show("② 스코프 없는 카테고리는 이전과 같다 (하드 필터는 스코프 카테고리의 것이다)",
+     isinstance(_non75, list), f"후보 {len(_non75)}개")
+
+print("\n── B75 ③ 비용은 실패해도 보인다 ──")
+from cli import ingest as _IG75                                   # noqa: E402
+
+_stage75 = {"이름": "판정", "값": 7, "총": 60}
+_line75 = _IG75.spend_line(_stage75)
+_u75 = _LL74.usage_total()
+show("③ 실패 줄이 비용을 말하고 그 수가 `llm.usage_total()`과 같다",
+     f"호출 {_u75['calls']:,}" in _line75
+     and f"토큰 {_u75.get('total_tokens', 0):,}" in _line75
+     and "판정 값 7/60" in _line75, _line75[:80])
+_pb75 = _io.StringIO()
+with _ctx.redirect_stdout(_pb75):
+    _IG75.judge_progress(20)({"판정": 1})
+    _IG75.judge_progress(20)({"판정": 2})
+show("③ 진행 줄은 덮어쓰지 않는다 (스크롤·로그에 남는다)",
+     "\r" not in _pb75.getvalue() and _pb75.getvalue().count("[판정]") == 2,
+     repr(_pb75.getvalue()[:40]))
+_ni75 = _io.StringIO()
+with _ctx.redirect_stdout(_ni75):
+    _IG75.judge_progress(20, every=1)({"판정": 5})
+show("③ 비대화형에서는 묻지 않는다 (일괄이 첫 값에서 서지 않는다)",
+     "[계속 c / 멈춤 q]" not in _ni75.getvalue())
+
+# `q` — 그래프·사전·큐 쓰기 0
+def _truth75():
+    """되돌림의 대상 셋 — **그래프·사전·큐**다(체크포인트·인입 기록은 남는다)."""
+    return (json.dumps([[sorted(open_graph(l).nodes), len(open_graph(l).edges)]
+                        for l in ("process", "quality")], ensure_ascii=False),
+            json.dumps(store.read(store.QUEUE, []), ensure_ascii=False,
+                       sort_keys=True),
+            json.dumps(_DIC74.open().entries(), ensure_ascii=False, sort_keys=True))
+
+
+_before75 = _truth75()
+from core.pipeline import Stopped as _ST75                        # noqa: E402
+
+
+def _stop75(stats):
+    if stats.get("판정", 0) >= 3:
+        raise _ST75("사람이 멈췄다 — 판정 값 3/20 (그래프 쓰기 0)")
+
+
+_MT74.PROGRESS = _stop75
+try:
+    _r75, _m75, _ = _run72(_env75("B75STOP", [f"멈춤항목{i:02d}" for i in range(8)]))
+finally:
+    _MT74.PROGRESS = None
+_after75 = _truth75()
+show("③ 판정 도중 멈추면 **그래프·큐 쓰기 0**이다 (부분 쓰기 없음)",
+     _r75.status == "held" and _before75[:2] == _after75[:2],
+     f"{_r75.status} · 그래프 {'같다' if _before75[0] == _after75[0] else '다르다'}"
+     f" · 큐 {'같다' if _before75[1] == _after75[1] else '다르다'}")
+show("③ 사전도 그대로다 (판정이 남긴 등재가 되돌려진다)",
+     _before75[2] == _after75[2])
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G6 완료판정 충족" if allok else "FAIL")
