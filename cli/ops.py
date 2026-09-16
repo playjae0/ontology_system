@@ -53,7 +53,7 @@ def _small(pv):
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
-                                  "transfer", "delete-edge"])
+                                  "transfer", "delete-edge", "confirm"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -75,6 +75,13 @@ def main(argv=None):
             show_preview(pv)
             if a.yes:
                 ops.rename(a.layer, nid, new, a.actor, a.reason)
+        elif a.op == "confirm":
+            # **모양이 아니라 지위가 바뀐다**(B73 ④) — 연쇄가 없어 미리보기를
+            # 거치지 않고 바로 확정하고, 무엇이 바뀌었는지 한 줄로 말한다.
+            (nid,) = a.args
+            pv = ops.confirm(a.layer, nid, a.actor, a.reason)
+            print(f"[확정] {pv['canonical']} — status {pv['from']} → confirmed "
+                  f"(by {a.actor}) · 큐 종결 {', '.join(pv['queue'])}")
         elif a.op == "merge":
             nid, into = a.args
             pv = ops.merge(a.layer, nid, into, a.actor, a.canonical, a.survivor,
@@ -121,7 +128,9 @@ def main(argv=None):
     except ops.OpRefused as e:
         print(f"■ 거부 — {e}")
         return 2
-    if not a.yes:
+    if not a.yes and a.op != "confirm":
+        # **확정은 미리보기가 없다**(B73 ④) — 연쇄가 없어 그 자리에서 끝난다.
+        # 이 줄을 그대로 두면 「안 됐다」로 읽힌다(실행은 이미 끝났는데).
         print("\n    (미리보기만 수행했다. 실행하려면 --yes)")
     return 0
 

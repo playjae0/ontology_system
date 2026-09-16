@@ -3270,6 +3270,77 @@ show("② 진행 줄은 표기 단위이고 끝 줄이 채택·목록 밖을 센
      and "채택 21" in _scr69)
 for _f69 in ("CP01", "CP02_drift", "CP03_bad", "CP04_unlabeled"):
     (ROOT / "parsed" / f"{_f69}.json").unlink(missing_ok=True)
+
+# ── B72 ① — 어댑터가 내는 키는 등록에서 막는다 (G39) ─────────────────────
+#
+# 사내 첫 실인입: `ingest-file`이 「스키마에 없는 필드 'meta'」를 **행마다** 찍었다.
+# 어댑터가 meta 열들을 딕셔너리 하나로 묶어 냈고 스키마에는 그 키가 없었다.
+# 템플릿 규약 7이 그것을 금지하는데 **기계가 재지 않았다** — 등록이 통과시킨 것을
+# 인입이 큐로 받았다(사람이 판정할 것도 아닌데).
+print("\n■ B72 ① — 산출 키 ⊆ 스키마 fields ∪ 구조 필드 (G39)")
+
+_cpa72 = ROOT / "tests" / "fixtures" / "adapters" / "cp.py"
+_cps72 = ROOT / "schemas" / "cp.json"
+_ok72, _out72 = R.harness(_cpa72, _cps72, [RAW / "CP01.xlsx"])
+show("① 정상 쌍은 G39가 초록이다 (지금 자산이 규약 7을 지킨다)",
+     "[PASS] G39" in _out72 and "[FAIL] G39" not in _out72,
+     [l.strip() for l in _out72.splitlines() if "G39" in l][:1])
+
+# **변이** — meta 열들을 딕셔너리 하나로 묶는 어댑터(사내가 받은 그 산출).
+_d72 = REVIEW / "_b72"
+_d72.mkdir(parents=True, exist_ok=True)
+_mut72 = _d72 / "cpmeta.py"
+_src72 = _cpa72.read_text(encoding="utf-8")
+_mut72.write_text(_src72.replace(
+    "    return fragments",
+    '    for f in fragments:\n        f["meta"] = {"개정일": "2026-01-01"}\n'
+    "    return fragments", 1), encoding="utf-8")
+_okm72, _outm72 = R.harness(_mut72, _cps72, [RAW / "CP01.xlsx"])
+_g39 = [(c, l, d) for c, l, d in R.fail_lines(_outm72) if c == "G39"]
+show("①ⓑ meta 딕셔너리를 내면 FAIL이고 **그 이름이 문면에 있다**",
+     len(_g39) == 1 and "meta" in _g39[0][2],
+     _g39[0][2][:70] if _g39 else "G39 FAIL 없음")
+show("①ⓑ 문면이 처방을 담는다 — AUTO_FIX 갈래다 (사람의 통역 0)",
+     not R.classify_failures(_outm72)[1]
+     and any("G39" in a for a in R.classify_failures(_outm72)[0]))
+show("①ⓑ 한 태그 한 라벨이다 (원인은 상세가 가른다 — B59 ①)",
+     len({l for _c, l, _d in R.fail_lines(_outm72) if _c == "G39"}) == 1)
+# **구조 필드는 정본에서 읽는다** — 관문이 제 목록을 들면 pipeline이 자랄 때 갈린다.
+import importlib.util as _iu72                                     # noqa: E402
+_ra72 = _iu72.module_from_spec(_iu72.spec_from_file_location("ra72", R.KIT / "run_adapter.py"))
+_ra72.__spec__.loader.exec_module(_ra72)
+from core.pipeline import STRUCTURAL as _ST72                      # noqa: E402
+show("① 구조 필드의 정본은 core/pipeline.py다 (관문이 베끼지 않는다)",
+     _ra72.structural_fields() == set(_ST72) and _ST72,
+     f"{len(_ST72)}종")
+shutil.rmtree(_d72, ignore_errors=True)
+
+# ① 템플릿·few-shot — **본보기가 규약과 같은 말을 한다**
+_tpl72 = R.generate_template()
+show("① 템플릿이 「meta도 role이다 · 딕셔너리로 묶지 마라」를 말한다",
+     "meta`도 role이다" in _tpl72 and "묶지 마라" in _tpl72
+     and "G39" in _tpl72)
+show("① 템플릿 판이 올랐다 (v1.5 → v1.6)",
+     "version: 1.6" in (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8"))
+_ref72 = json.loads((R.KIT / "참조어댑터" / "cp.json").read_text(encoding="utf-8"))
+_refmod72 = _iu72.module_from_spec(
+    _iu72.spec_from_file_location("ref72", R.KIT / "참조어댑터" / "cp.py"))
+_refmod72.__spec__.loader.exec_module(_refmod72)
+_metaf72 = [k for k, v in _ref72["fields"].items() if v.get("role") == "meta"]
+show("① 가장 단순한 few-shot(cp)이 role: meta를 보인다 (LLM이 본보기대로 낸다)",
+     len(_metaf72) >= 1, str(_metaf72))
+# **B73 ⑤ — B72 ①의 발견이 닫혔다.** `pfmea` 쌍의 `비고` 열이 스키마에 없어
+# G39에 걸렸다(의도된 `unknown_field` 재료였다). 허브 판정 ⓐ: role: meta로
+# 선언하고 시험 재료는 시험이 심는다 — **자산의 결함에 기댄 재료는 자산을 고칠
+# 때마다 시험을 깨뜨린다.** 내장 참조 자산도 관문 대상이다(예외를 두지 않는다).
+_pf73, _pfo73 = R.harness(ROOT / "tests/fixtures/adapters/pfmea.py",
+                          ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+show("⑤ 내장 참조 쌍(pfmea)도 관문을 통과한다 — 예외를 두지 않는다",
+     "[FAIL] G39" not in _pfo73 and _pf73,
+     [l.strip() for l in _pfo73.splitlines() if "G39" in l][:1])
+show("① few-shot 쌍이 서로 맞는다 — 스키마의 meta 필드를 어댑터도 낸다",
+     all(k in (_refmod72.ADAPTER["expects"]["columns"] or {}) for k in _metaf72),
+     str(sorted(_refmod72.ADAPTER["expects"]["columns"]))[:70])
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

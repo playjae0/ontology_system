@@ -330,7 +330,64 @@ def preflight(mod, raw, label):
 
 
 # ---------------------------------------------------------------- ③ extract
-def run_extract(mod, raw, label):
+# **구조 필드의 정본은 `core/pipeline.py::STRUCTURAL`이다** — 여기 베끼지 않는다.
+# import하지 않는 이유: `core.pipeline`이 `core.llm`을 끌고 오고, 관문은 스스로
+# 「LLM 미적재」를 판정한다(G54). 그래서 `_kit_line_re`와 같은 결로 **소스에서
+# 상수만 뽑는다** — 못 찾으면 조용히 넘기지 않고 그 판정을 붉게 한다.
+_STRUCTURAL_SRC = Path(__file__).resolve().parent.parent / "core" / "pipeline.py"
+G39 = "G39  어댑터가 내는 키가 전부 스키마 fields에 있다"
+
+
+def structural_fields():
+    """`{구조 필드…}` 또는 빈 집합(못 읽었다는 뜻)."""
+    try:
+        tree = ast.parse(_STRUCTURAL_SRC.read_text(encoding="utf-8"))
+    except OSError:
+        return set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+                getattr(t, "id", "") == "STRUCTURAL" for t in node.targets):
+            try:
+                v = ast.literal_eval(node.value)
+            except ValueError:
+                return set()
+            return set(v) if isinstance(v, (set, list, tuple)) else set()
+    return set()
+
+
+def check_output_keys(schema, pieces, label):
+    """**어댑터가 내는 키 ⊆ 스키마 `fields` ∪ 구조 필드** (B72 ① · 템플릿 규약 7).
+
+    이 검사가 없어서 사내 첫 실인입이 「스키마에 없는 필드 'meta'」를 **행마다**
+    찍었다 — 어댑터가 meta 열들을 딕셔너리 하나로 묶어 냈고 스키마에는 그 키가
+    없었다. 규약 7이 문면으로만 있고 **기계가 재지 않았다**: 등록이 통과시킨 것을
+    인입이 큐로 받는다(사람이 판정할 것도 아닌데).
+
+    **문면이 답을 담는다**(AUTO_FIX) — 빠진 이름과 무엇을 하라는지를 함께 낸다.
+    반대(선언됐는데 한 번도 안 나오는 필드)는 **경고**다: optional일 수 있고,
+    표본에 그 열이 비었을 수도 있다 — 막을 근거가 못 된다.
+    """
+    if not pieces:
+        return True
+    fields, _blk = load_blocks(schema)
+    known = set(fields) | structural_fields()
+    if not structural_fields():
+        return show(G39, False, "core/pipeline.py의 STRUCTURAL을 읽지 못했다 — "
+                                "관문 자체 결함(어댑터 잘못이 아니다)")
+    out_keys = {k for p in pieces for k in p}
+    extra = sorted(out_keys - known)
+    never = sorted(k for k in fields if k not in out_keys)
+    if never:
+        # 판정 줄이 아니다 — 앞 판정의 상세로 붙지 않게 들여쓰지 않는다(B64 ②).
+        print(f"[경고] {label}: 스키마에 선언됐지만 어댑터가 한 번도 내지 않은 "
+              f"필드 {len(never)}종 — {never[:6]} (표본에 그 열이 비었을 수 있다)")
+    return show(G39, not extra,
+                (f"{extra} · 열마다 fields에 role을 선언하라(meta면 role: meta) · "
+                 f"딕셔너리로 묶지 마라 — 지금 스키마의 키: "
+                 f"{sorted(fields)[:8]}") if extra else "")
+
+
+def run_extract(mod, raw, label, schema=None):
     print(f"\n③ extract 실행 — {label}")
     try:
         pieces = mod.extract(raw)
@@ -361,6 +418,9 @@ def run_extract(mod, raw, label):
     ditto = [p for p in pieces for v in p.values()
              if isinstance(v, str) and v.strip() in {"〃", "〝", "상동"}]
     show("G38  상동 기호가 해소됨 (계약 ③)", not ditto, f"{len(ditto)}건 잔존")
+    if schema is not None and pk == "table":
+        # **table 한정**(규약 7) — prose 조각의 키는 계약 고정 4종이라 대상이 아니다.
+        check_output_keys(schema, pieces, label)
     return pieces
 
 
@@ -680,7 +740,7 @@ if __name__ == "__main__":
         raw = read(d)
         label = d.split("/")[-1]
         preflight(mod, raw, label)
-        pieces = run_extract(mod, raw, label)
+        pieces = run_extract(mod, raw, label, schema)
         check_schema(schema, pieces, label, payload_kind_of(schema, mod))
         if pieces:
             print(f"\n      [조각 1 표본] {json.dumps(pieces[0], ensure_ascii=False)[:300]}")

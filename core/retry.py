@@ -20,6 +20,20 @@ _LOG = log.get(__name__)
 # ---------------------------------------------------------------- orphan 재시도
 RETRY_KINDS = ("orphan_anchor", "orphan_attach", "orphan_chunk_link")
 
+# **재시도 상한**(B73 ②) — 넘으면 더 돌지 않고 「사람 판정 대기」다. 같은 그래프
+# 상태에서 같은 답이 반복되는 것을 비용으로 바꾸지 않는다. 큐 kind는 그대로다.
+ATTEMPT_MAX = 5
+
+
+def _fingerprint(graphs):
+    """후보 집합의 **지문** — 층마다 (노드 수 · 엣지 수). 바뀌면 다시 돌 이유가 있다.
+
+    시각이 아니라 **수**를 쓰는 이유: mtime은 같은 초 안의 변화를 못 보고, 시험이
+    그것에 기대면 빠른 실행에서 조용히 통과한다. 수는 결정적이다.
+    """
+    return "|".join(f"{lay}:{len(g.nodes)}:{len(g.edges)}"
+                    for lay, g in sorted(graphs.items()))
+
 
 def retry_orphans(layers=None):
     """**orphan 재시도 배치** — 문서 4 §4.7-5 · §4.8-5.
@@ -50,18 +64,37 @@ def retry_orphans(layers=None):
     dic = Dictionary.open()
     healed = {k: 0 for k in RETRY_KINDS}
 
+    fp = _fingerprint(graphs)
     queue = store.read(store.QUEUE, [])
+    touched = False
     for item in list(queue):
         kind = item.get("kind")
         if kind not in RETRY_KINDS:
             continue
         pl = item.get("payload") or {}
+        # **후보 집합이 그대로면 다시 돌지 않는다**(B73 ②) — 구판은 인입마다 큐
+        # 전량을 다시 돌았고, `orphan_attach`는 그때마다 판정 LLM을 다시 불렀다
+        # (같은 입력 · 같은 답). 재시도가 의미를 갖는 것은 **그래프가 자랐을
+        # 때**뿐이다(§4.7-5) — 그 사실을 지문 하나로 잰다. LLM 0 조건이다.
+        if item.get("last_fp") == fp:
+            continue
+        if int(item.get("attempts", 0)) >= ATTEMPT_MAX:
+            continue                      # 사람 판정 대기 — 더 돌지 않는다
+        # **이력은 항목에 달고 payload에는 넣지 않는다** — payload는 「같은 항목인가」의
+        # 동일성 키이고(`enqueue` 중복 제거 · 멱등 판정의 대조 단위), 거기에 시각이
+        # 들어가면 **클린 2회 동일 그래프**가 깨진다(실측 — 이 회차에서 한 번 깼다).
+        item["attempts"] = int(item.get("attempts", 0)) + 1
+        item.setdefault("first_seen", item.get("created"))
+        item["last_tried"], item["last_fp"] = store._now(), fp
+        touched = True
         if kind == "orphan_attach":
             if _retry_attach(pl, item, graphs, cfgs, dic):
                 healed[kind] += 1
         elif kind == "orphan_anchor":
             if _retry_anchor(pl, item, graphs, cfgs, dic):
                 healed[kind] += 1
+    if touched:
+        store.write(store.QUEUE, queue)
         # orphan_chunk_link의 생산자가 아직 없다 — 항목이 생기면 같은 자리에서 돈다.
 
     for lay, g in graphs.items():
@@ -130,8 +163,22 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
     회수하지 않으면 같은 지식이 두 벌로 남아 질의 근거가 중복되고, 재인입 때
     회수 대상이 어긋나 멱등성이 조용히 깨진다.
     """
-    child_id, surface = pl.get("node_id"), pl.get("attach_to")
-    if not child_id or not surface:
+    surface = pl.get("attach_to")
+    if not surface:
+        return False
+    # **행(청크) 단위 재료를 행마다 처리한다**(B72 ②) — 항목은 부착 대상 표기
+    # 단위로 모이고, 붙일 자식 노드와 근거는 행마다 다르다.
+    ents = pl.get("items") or [pl]
+    if len(ents) > 1 or pl.get("items"):
+        done = 0
+        for e in ents:
+            done += 1 if _attach_one(e, surface, graphs, cfgs, dic,
+                                     item.get("doc_id")) else 0
+        if done:
+            store.drop(item["kind"], lambda p: p == pl)
+        return bool(done)
+    child_id = pl.get("node_id")
+    if not child_id:
         return False
     child, clay, cg = None, None, None
     for lay, g in graphs.items():
@@ -166,6 +213,13 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
     _withdraw_lowres(cg, child_id, target, prov)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
     return True
+
+
+def _attach_one(pl, surface, graphs, cfgs, dic, doc_id):
+    """한 행(청크)의 부착 재시도 — 성공하면 True. 본문은 낱개 경로와 같다."""
+    return _retry_attach({**pl, "attach_to": surface},
+                         {"kind": "orphan_attach", "doc_id": doc_id,
+                          "payload": None}, graphs, cfgs, dic)
 
 
 def _withdraw_lowres(g, child_id, new_target, prov):
@@ -217,8 +271,22 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
             break
     if ref is None:
         return False                                    # 아직 골격에 없다 — 남긴다
-    cfg, prov = cfgs[rlay], pl.get("provenance")
+    cfg = cfgs[rlay]
     did = item.get("doc_id")
+    n = 0
+    # **행 단위 재료를 행마다 처리한다**(B72 ②) — 큐 항목은 표기 단위로 모이지만
+    # 재시도의 재료(provenance · dropped_edges · pending_attrs)는 행의 것이다.
+    # 하나의 provenance로 전부 착지시키면 **다른 행의 근거가 뒤섞인다.**
+    # 옛 항목(집계 전 판)은 `items`가 없다 — 그때는 자기 자신이 한 행이다.
+    for _ent in (pl.get("items") or [pl]):
+        n += _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did)
+    store.drop(item["kind"], lambda p: p == pl)         # self-heal
+    return True
+
+
+def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did):
+    """좌표가 해소된 **한 행**의 보유분을 착지시킨다 — 돌려주는 것은 건수다."""
+    prov = pl.get("provenance")
     n = 0
 
     # ① **연쇄 드롭된 entity를 새로 세운다**(문서 4 §4.4 — B14).
@@ -263,5 +331,4 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
                         a.get("provenance"), bool(a.get("context")))
         b.flush()
         n += 1
-    store.drop(item["kind"], lambda p: p == pl)         # self-heal
-    return True
+    return n

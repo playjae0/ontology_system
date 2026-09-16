@@ -124,6 +124,8 @@ def queue_view():
     alien = {}
     for x in q:
         k = x.get("kind")
+        if x.get("resolution"):
+            continue                 # **종결분은 세지 않는다**(B73 ④) — 내리지는 않는다
         if k in counts:
             counts[k] += 1
         else:
@@ -141,8 +143,82 @@ def cmd_queue(kind=None):
     if kind:
         print(f"\n[{kind}] 항목:")
         for x in v["items"]:
-            if x.get("kind") == kind:
-                print(f"  · {x.get('reason')}  (doc={x.get('doc_id')})")
+            if x.get("kind") != kind:
+                continue
+            pl = x.get("payload") or {}
+            # **집계 단위를 화면이 말한다**(B72 ②) — 「표기/필드 · 행 수」가
+            # 사람이 판정하는 단위다. 행마다 한 줄이면 그 하나가 묻힌다.
+            tail = ""
+            if pl.get("key") is not None:
+                tail = f"  [{pl['key']} · {pl.get('rows', 1)}행]"
+                if pl.get("locators"):
+                    tail += f" {pl['locators'][:3]}"
+            # **재시도 이력**(B73 ②) — 「한 번 해결하고 다시 도는지」를 사람이 본다.
+            if x.get("attempts"):
+                from core.retry import ATTEMPT_MAX
+                tail += (f"  · {x['attempts']}회 재시도 · 첫 발생 "
+                         f"{x.get('doc_id')}"
+                         + (" · **사람 판정 대기**(상한)"
+                            if x["attempts"] >= ATTEMPT_MAX else ""))
+            if x.get("resolution"):
+                # **사람이 판단한 항목은 목록에서 지위를 달리한다**(§7.2) —
+                # 내리지 않되 「끝난 것」으로 보인다.
+                tail += f"  · 종결({x['resolution'].get('decision')})"
+            print(f"  · {x.get('reason')}  (doc={x.get('doc_id')}){tail}")
+            if kind == "orphan_anchor":
+                print(orphan_next_lines(x))
+            if kind in ("auto_node", "uncertain_match") and not x.get("resolution"):
+                print(auto_next_lines(x))
+
+
+def auto_next_lines(item, layer=None):
+    """`auto_node`·`uncertain_match`의 **다음 줄** — 사람이 종결하는 세 길 (B73 ④).
+
+    시스템이 세운 노드를 사람이 「맞다/합쳐라/아니다」로 끝내는 자리다. 감사 H12:
+    이 세 줄이 없어서 `confirmed` 생산자가 0이었고 auto는 영원히 auto였다.
+    """
+    pl = item.get("payload") or {}
+    nid = pl.get("node_id") or "<node_id>"
+    lay = layer or pl.get("layer") or "<층>"
+    return "\n".join([
+        "     ▶ 다음 줄 — 사람이 끝낸다(셋 중 하나):",
+        f"        python run.py ops confirm  {lay} {nid} --actor <이름>"
+        "          ← 맞다(status auto → confirmed)",
+        f"        python run.py ops merge    {lay} {nid} <기존 node_id> "
+        "--actor <이름> --yes   ← 이미 있는 것",
+        f"        python run.py ops obsolete {lay} {nid} --actor <이름>"
+        "          ← 아니다"])
+
+
+def orphan_next_lines(item, layer=None):
+    """`orphan_anchor`의 **다음 줄** — 골격 표기를 잇는 세 줄 (B72 ③ · B61 계약).
+
+    보류이지 드랍이 아니다(문서 2 §2.4 ①) — alias가 생기면 다음 인입의
+    `retry_orphans`가 붙인다. 그래서 다음 줄은 **`init --fresh`가 아니라
+    `bootstrap`**이다: fresh는 그래프와 사전을 지운다(가이드 §7 정정 — 허브).
+
+    좌표 태깅 LLM이 냈다가 목록 밖이라 버린 후보가 있으면 **사람 재료로만** 붙인다
+    — 자동으로 잇지 않는다(anchor 해소에 추론을 쓰지 않는다).
+    """
+    pl = item.get("payload") or {}
+    surface = pl.get("surface") or pl.get("key") or "<표기>"
+    lay = layer or pl.get("layer") or "<층>"
+    cand = pl.get("llm_candidate")
+    # **그대로 칠 수 있어야 계약이다**(B61) — 인입 기록에서 실제 경로·doc_type을 딴다.
+    reg = store.read(store.DOC_REGISTRY, {}).get(item.get("doc_id") or "") or {}
+    doc = reg.get("source_path") or f"<{item.get('doc_id') or '문서'}>"
+    dt = reg.get("doc_type") or "<dt>"
+    return ("\n".join([
+        f"     ▶ 다음 줄 — 골격 표기를 잇는다"
+        + (f" (LLM 후보: {cand} — 사람이 판단한다)" if cand else "") + ":",
+        f"        layers/{lay}/skeleton.json  ALIASES[\"<골격 canonical>\"]에 "
+        f"\"{surface}\" 추가",
+        "        python run.py bootstrap                 "
+        "← 그래프·사전을 지우지 않는다 · alias만 붙는다",
+        f"        python run.py ingest-file {doc} --doc-type {dt}   "
+        "← 재인입이 보류분을 붙인다",
+        "        (골격에 없는 공정이면 seed에 노드를 더한다 — "
+        "골격작성_가이드 · 사람 판단)"]))
 
 
 def extract_view():
