@@ -45,7 +45,7 @@
                                    골격 seed 문법 판정만 — 확정·뷰 없음 (칸 0.1)
   python run.py skeleton-confirm <층> --by <이름>
                                    골격 확정 — 판정 → 뷰 대조 → 기록
-  python run.py show <명령> ...    산출물 열람 — tree·node·doc·chunk·edges·schema·meta
+  python run.py show <명령> ...    산출물 열람 — tree·node·doc·report·chunk·edges·schema·meta
   python run.py export <형식>      파생물 — cypher · csv · mermaid
 """
 import json

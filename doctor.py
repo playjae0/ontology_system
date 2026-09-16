@@ -36,8 +36,8 @@ SUITES = [
     ("test_g1_g2", 98, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
-    ("test_g5", 59, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결)"),
-    ("test_g6", 103, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입 · B58 형태 판정 기록 · B69 다음 줄 명령 실재 · B70 내장은 mock일 때만·등록부 결손 · B72 인입 화면·큐 집계·--step · B73 후보 상한·조건부 retry·auto 표시"),
+    ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
+    ("test_g6", 123, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입 · B58 형태 판정 기록 · B69 다음 줄 명령 실재 · B70 내장은 mock일 때만·등록부 결손 · B72 인입 화면·큐 집계·--step · B73 후보 상한·조건부 retry·auto 표시 · B74 사전 키=조회 키·판정 대장·뷰어 재료·행별 report"),
     ("test_g6_5", 76, "계약 미배선 24건 수리 · B58 재등록"),
     ("test_p1", 173, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독 · ⑦ 폴백 · B58 산문 xlsx · 형태 판정 · B68 분할 기준 · B69 좌표 태깅 dedupe·상한"),
     ("test_p2", 52, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋"),
@@ -342,7 +342,7 @@ def run_suites(quick=False):
     print("  각 스위트를 **클린 상태에서 단독 실행**한다 — 연속 실행은 판정 규격이 아니다\n"
           "  (증분0 §8 실행 규약: 스위트가 data/를 공유해 순서 의존이 관측됐다)\n")
     total_ok, results = True, []
-    clean_rc, residue = 0, []
+    clean_rc, residue, dup = 0, [], []
     for name, expect, what in SUITES:
         rc, res = _clean()
         clean_rc = clean_rc or rc
@@ -365,12 +365,23 @@ def run_suites(quick=False):
         line(mark, f"{name:<17} {p:>3} PASS / {f} FAIL   ({dt:.0f}s)  {what}", note)
         if not ok:
             _why(name, r, p, expect)
+        # **상시 어서션**(B74 ①) — 스위트가 무엇을 돌렸든 끝에 한 번 본다.
+        d = subprocess.run([sys.executable, str(ROOT / "tests" / "dup_scan.py")],
+                           capture_output=True, text=True, cwd=str(ROOT))
+        if d.returncode != 0:
+            dup.append(name)
+            total_ok = False
+            line(NG, f"{name:<17} 중복 canonical",
+                 (d.stdout or "").strip().splitlines()[0] if d.stdout else "")
 
     got = sum(p for _n, p, _f, _e, _o in results)
     want = sum(e for _n, _p, _f, e, _o in results)
     _idempotent()
 
     print()
+    line(OK if not dup else NG,
+         f"상시 어서션 — 중복 canonical 0 (회귀 {len(results)}종 전부)",
+         "" if not dup else f"위반: {', '.join(dup)} (B74 ①)")
     line(OK if total_ok else NG, f"합계 {got}/{want} PASS",
          "국면 1 완료판정의 회귀 기준선과 일치한다" if total_ok
          else "기준선과 다르다 — 반입이 온전하지 않거나 환경이 다르다")

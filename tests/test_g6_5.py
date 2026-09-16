@@ -309,8 +309,8 @@ tomb = next(n2 for n2 in g.nodes.values() if n2.get("merged_into"))
 # 사전을 비워 ②후보 검색 경로로 보낸다 — 봉인 R2-1이 뚫은 바로 그 경로다
 # 사전 접근은 관문 경유다(문서 7 §7.1) — raw dict를 넘기는 우회를 허용하면
 # 관문이 강제하는 provenance 필수·키 규칙이 시험에서만 빠진다.
-verdict, nid, _s = resolve(tomb["canonical"] + "테스트", tomb["category"], "quality",
-                           g, Dictionary({}), polarity=tomb.get("polarity"))
+verdict, nid, _s, _p = resolve(tomb["canonical"] + "테스트", tomb["category"], "quality",
+                               g, Dictionary({}), polarity=tomb.get("polarity"))
 show("C5 후보 검색이 툼스톤에 MATCH하지 않는다 (is_live 필터 — R2-1)",
      nid != tomb["id"], f"{verdict} → {'툼스톤' if nid == tomb['id'] else '생존자/신규'}")
 

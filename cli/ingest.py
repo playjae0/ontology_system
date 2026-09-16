@@ -342,7 +342,7 @@ def build_screen(step=False):
                 return          # 단계 모드에서는 4단계가 이미 같은 수를 찍었다
             print(f"   판정 예고 — entity 값 {info['값_수']:,}건"
                   f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
-                  f"{info['사전_히트']:,}종) · 목록 밖 좌표 "
+                  f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
                   f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
             return
         q = info.get("큐") or {}
@@ -452,7 +452,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 [x.get("process_ref") for x in (res.envelope.get("records") or [])
                  if x.get("process_ref")], _sc.get("layer") or "process")
             if not _step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
-                              f"· 사전 히트 {_pl['사전_히트']}종 → LLM ≤ "
+                              f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
                               f"{_pl['예상_호출']}회"):
                 row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
                                                "(그래프 쓰기 0)")

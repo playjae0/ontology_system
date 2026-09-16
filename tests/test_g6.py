@@ -542,13 +542,16 @@ try:
     _run72(_e72, notice=lambda i: _plan72.update(i) if i.get("단계") == "판정예고" else None)
 finally:
     _MT72.match = _m0
-# **예고는 덜 말하면 안 된다** — 상한이 실제 호출을 덮는다. 개체 판정은 행마다
-# 돌고(스코프가 행마다 다르다) 사전 히트도 `matcher.match`를 지난다 — 좌표
-# 태깅(B69)의 표기 dedupe를 여기에 그대로 적용할 수 없는 이유다(D-151 ②).
+# **예고는 덜 말하면 안 된다** — 상한이 실제를 덮는다. 개체 판정은 행마다 돌고
+# (스코프가 행마다 다르다) — 좌표 태깅(B69)의 표기 dedupe를 여기에 그대로 적용할
+# 수 없는 이유다(D-151 ②). **재는 단위는 판정 함수 도달이다**(B74 ①): 사전 히트는
+# `match`를 지나지만 exact에서 끊겨 LLM을 부르지 않고, 예고는 그 수를 같은 키로
+# 세어 빼기 때문에 상한이 「호출」을 말한다.
 show("② 예고의 상한이 실제 판정 호출을 덮는다 (덜 말하지 않는다)",
-     _plan72 and len(_calls72) <= _plan72["예상_호출"],
-     f"예고 ≤{_plan72.get('예상_호출')} · 실제 {len(_calls72)} "
-     f"(표기 {_plan72.get('표기_종수')}종 · 사전 히트 {_plan72.get('사전_히트')}종)")
+     _plan72 and _MT72.STATS["판정"] <= _plan72["예상_호출"],
+     f"예고 ≤{_plan72.get('예상_호출')} · 실제 {_MT72.STATS['판정']} "
+     f"(match 도달 {len(_calls72)} · 사전 {_MT72.STATS['사전']} "
+     f"· 표기 {_plan72.get('표기_종수')}종)")
 show("② 예고가 표기 종수·사전 히트를 함께 낸다 (반복되는 문서인지가 판단 재료다)",
      _plan72.get("표기_종수") and _plan72["표기_종수"] <= _plan72["값_수"])
 
@@ -776,6 +779,161 @@ with _ctx.redirect_stdout(_qb73):
 show("② 화면이 이력을 말한다 (몇 회 돌았고 끝났는지)",
      "회 재시도" in _qb73.getvalue() and "사람 판정 대기" in _qb73.getvalue(),
      [l.strip() for l in _qb73.getvalue().splitlines() if "재시도" in l][:1])
+# ════════════════════════════════════════════════════════════════════
+# B74 — 사전 키 = 조회 키 · 판정 대장 · 뷰어 재료 · 행별 report
+# ════════════════════════════════════════════════════════════════════
+print("\n── B74 ① 사전이 실제로 히트한다 (키 = 조회 키) ──")
+from core import ledger as _LG74                                   # noqa: E402
+from core import matcher as _MT74                                  # noqa: E402
+from core import llm as _LL74                                      # noqa: E402
+from core.build import entity_key as _KEY74                        # noqa: E402
+from core.dictionary import Dictionary as _DIC74                   # noqa: E402
+
+init.init(fresh_=True)
+for _lay in ("process", "quality"):
+    bootstrap(_lay, echo=False)
+
+
+def _ingest74(doc_id, n=6):
+    """같은 문서를 두 번 넣는 자리 — 예고·판정·실호출 사용량을 같이 받는다."""
+    seen = {"쓴_호출": _LL74.usage_total()["calls"]}
+    _run72(_env72(doc_id, n), notice=lambda i: seen.setdefault(i["단계"], i))
+    seen["쓴_호출"] = _LL74.usage_total()["calls"] - seen["쓴_호출"]
+    return seen
+
+
+_a74 = _ingest74("B74DOC")
+_s1 = dict(_MT74.STATS)
+_b74 = _ingest74("B74DOC")
+_s2 = dict(_MT74.STATS)
+show("① 2회째 인입은 **판정 함수에 도달하지 않는다** (전부 exact 경로)",
+     _s2["판정"] == 0 and _s2["사전"] > 0,
+     f"1회차 판정 {_s1['판정']}·사전 {_s1['사전']} → 2회차 판정 {_s2['판정']}"
+     f"·사전 {_s2['사전']}")
+show("① 예고의 사전 히트 == 판정의 사전 경로 수 (같은 키·같은 함수)",
+     _b74["판정예고"]["사전_히트"] == _s2["사전"],
+     f"예고 {_b74['판정예고']['사전_히트']} · 판정 {_s2['사전']}")
+show("① 예고의 상한이 실제 호출을 덮는다 (처음 인입 — 사전이 도는 중에 찬다)",
+     _a74["판정예고"]["예상_호출"] >= _s1["판정"],
+     f"예고 ≤{_a74['판정예고']['예상_호출']} · 실제 {_s1['판정']}")
+
+_g74 = open_graph("process")
+_cfg74 = load_config("process")
+_dic74 = _DIC74.open()
+_u74 = next(n for n in _g74.nodes.values()
+            if n.get("category") == "Unit" and n.get("status") == "auto")
+_pa74 = _u74.get("parent") or _u74.get("mirror_scope")
+_sc74 = (_cfg74.get("canonical_scope") or {}).get("bind_categories", [])
+_k74, _pol74, _, _ = _KEY74(_u74["canonical"].split("::")[-1], "Unit", _cfg74,
+                            parent_canonical=_pa74)
+show("① 등재된 키가 **해소가 여는 키**다 (exact 후보가 선다)",
+     any(c["id"] == _u74["id"] for c in
+         _MT74.dict_hits(_k74, "Unit", "process", _g74, _dic74,
+                         polarity=_pol74, parent=_pa74, scope_cats=_sc74)),
+     f"키 {_k74!r}")
+show("① 같은 표기·**다른 부모**는 exact에 들지 않는다 (notching/separator의 cutter)",
+     not _MT74.dict_hits(_k74, "Unit", "process", _g74, _dic74,
+                         polarity=_pol74, parent="다른공정XX",
+                         scope_cats=_sc74))
+show("① 원 표기 키는 그대로 남는다 (질의 링킹의 표면형 스캔)",
+     any(_n74 == _u74["canonical"].split("::")[-1]
+         for _n74 in _dic74.surfaces()),
+     f"사전 표기 {len(list(_dic74.surfaces()))}종")
+_dup74 = _sp72.run([sys.executable, str(ROOT / "tests/dup_scan.py")],
+                   capture_output=True, text=True, cwd=str(ROOT))
+show("① 같은 층·같은 canonical·live 노드는 하나뿐이다 (상시 어서션)",
+     _dup74.returncode == 0, (_dup74.stdout or "").strip().splitlines()[-1][:70])
+
+print("\n── B74 ② 판정 대장 ──")
+_led74 = _LG74.read("B74DOC")
+_rows74 = (_led74 or {}).get("rows") or []
+_env74 = _env72("B74DOC", 6)
+_sch74 = json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8"))
+_f74 = _sch74["fields"]
+_vals74 = sum(1 for r in _env74["records"] for f, sp in _f74.items()
+              if sp.get("role") == "entity" and isinstance(r.get(f), str)
+              and r[f].strip())
+_anc74 = len(_env74["records"])
+_att74 = sum(1 for r in _env74["records"] for f, sp in _f74.items()
+             if sp.get("role") in ("attribute", "content")
+             and r.get(f) not in (None, "")
+             and r.get(sp.get("attach_to_field")) not in (None, ""))
+show("② 행 수 == entity 값 수 + anchor 행 수 + 부착 시도 수",
+     len(_rows74) == _vals74 + _anc74 + _att74,
+     f"{len(_rows74)} == {_vals74}+{_anc74}+{_att74}")
+show("② path·verdict가 닫힌 값 밖이면 없다",
+     all(r["path"] in _MT74.PATHS and r["verdict"] in _LG74.VERDICTS
+         for r in _rows74),
+     f"path {sorted({r['path'] for r in _rows74})}")
+show("② 재인입 뒤 이전 대장이 남지 않는다 (덮는다 — 정본이 아니라 장부다)",
+     all(r["verdict"] != "new" for r in _rows74)
+     and sum(1 for r in _rows74 if r["role"] == "entity") == _vals74,
+     f"판정 {sorted({r['verdict'] for r in _rows74})}")
+show("② 대장의 llm.calls 합 == 그 인입이 실제로 부른 수 (mock 세계는 0이다)",
+     sum((r.get("llm") or {}).get("calls", 0) for r in _rows74) == _b74["쓴_호출"],
+     f"대장 {sum((r.get('llm') or {}).get('calls', 0) for r in _rows74)} "
+     f"· 실제 {_b74['쓴_호출']}")
+_v74 = _MT74.match("아무것도없는표기ZZ", [], "Unit", _cfg74)
+show("② 판정 반환에 path 한 키가 늘고 계약 3키는 그대로다 (문서 4 §4.3-6)",
+     set(_v74) >= {"type", "matched_id", "confidence", "path"}
+     and _v74["path"] in _MT74.PATHS, str(_v74))
+
+print("\n── B74 ③ 뷰어 재료 ──")
+from cli import export as _EXP74                                   # noqa: E402
+_nd74, _ed74 = _EXP74.graph_data(_EXP74._world())
+show("③ 엣지가 status·prov·id를 지고 간다 (저장에는 있었는데 화면에 없었다)",
+     all({"status", "prov", "id"} <= set(e) for e in _ed74))
+show("③ 노드의 made_by가 닫힌 집합 ∪ {seed, unknown}이다",
+     all(n["made_by"] in tuple(_MT74.PATHS) + ("seed", "unknown")
+         for n in _nd74),
+     str(sorted({n["made_by"] for n in _nd74})))
+_html74 = _EXP74.build_html(_EXP74._world())
+show("③ html의 DATA에 rel·made_by가 실리고 외부 CDN이 0이다",
+     '"rel"' in _html74 and '"made_by"' in _html74
+     and 'src="http' not in _html74 and 'href="http' not in _html74)
+_doc74 = "B74DOC"
+_filtered = {n["id"] for n in _nd74 if _doc74 in (n.get("docs") or [])}
+_showdoc = {n["id"] for _l, _gg in _EXP74._world().items()
+            for n in _gg.nodes.values()
+            if ops.is_live(n) and any(str(p).startswith(_doc74)
+                                  for p in n.get("provenance") or [])}
+show("③ 문서 필터로 거른 노드 집합 == show doc의 노드 집합",
+     _filtered == _showdoc and _filtered,
+     f"{len(_filtered)}개")
+
+print("\n── B74 ④ 행별 show report ──")
+from cli import show as _SH74                                      # noqa: E402
+_buf74 = _io.StringIO()
+with _ctx.redirect_stdout(_buf74):
+    _SH74.cmd_report([_doc74])
+_out74 = _buf74.getvalue()
+_su74 = _LG74.summary(_rows74)
+show("④ 머리 집계의 각 수 == 대장에서 센 수",
+     all(f"{k} {v}" in _out74 for k, v in
+         (("값", _su74["값"]), ("사전", _su74["사전"]), ("신규", _su74["신규"]),
+          ("불확실", _su74["불확실"]))),
+     _out74.splitlines()[1].strip()[:70])
+_jb74 = _io.StringIO()
+with _ctx.redirect_stdout(_jb74):
+    _SH74.cmd_report([_doc74, "--json"])
+show("④ --json의 행 수 == 대장 행 수",
+     len(json.loads(_jb74.getvalue())["rows"]) == len(_rows74))
+try:
+    _SH74.cmd_report(["없는문서ZZ"])
+    _ref74 = ""
+except SystemExit as e:
+    _ref74 = str(e)
+show("④ 없는 doc_id는 **상태 거부**다 (원인 + 칠 수 있는 다음 줄)",
+     "대장" in _ref74 and "▶ 다음 줄" in _ref74
+     and ("python run.py" in _ref74 or "python -m cli." in _ref74),
+     _ref74.splitlines()[0][:70] if _ref74 else "거부하지 않았다")
+_db74 = _io.StringIO()
+with _ctx.redirect_stdout(_db74):
+    _SH74.cmd_doc([_doc74])
+show("④ show doc 끝이 행별 명령을 가리킨다 (진입점을 늘리지 않는다)",
+     f"show report {_doc74}" in _db74.getvalue(),
+     _db74.getvalue().strip().splitlines()[-1].strip()[:70])
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G6 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

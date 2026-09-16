@@ -148,8 +148,12 @@ show("matcher가 match(surface, candidates, category) 계약을 갖는다 (§7.1
      and list(_M.match.__code__.co_varnames[:3]) == ["surface", "candidates", "category"])
 _v = _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
                       "category": "Unit", "exact": False}], "Unit")
-show("판정 반환이 {type, matched_id, confidence} 3키다 (문서 4 §4.3-6)",
-     set(_v) == {"type", "matched_id", "confidence"} and _v["matched_id"] == "N9", str(_v))
+# **계약 세 키는 그대로이고, 생성 경로 한 키가 더 붙는다**(B74 ② — 명세가 허용한
+# 유일한 추가다). 「정확히 3키」로 잠그면 대장이 판정의 사실을 옮길 통로가 없어
+# 호출부가 경로를 **다시 계산하게** 된다 — 그 복제가 예고와 판정을 갈라 놓았다.
+show("판정 반환이 {type, matched_id, confidence} 세 키를 지킨다 + path (문서 4 §4.3-6)",
+     set(_v) == {"type", "matched_id", "confidence", "path"}
+     and _v["matched_id"] == "N9" and _v["path"] in _M.PATHS, str(_v))
 show("카테고리 불일치는 후보에서 제외된다 — 판정이 재확인한다 (규약 3)",
      _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
                       "category": "Property", "exact": False}], "Unit")["type"] == _M.NEW)

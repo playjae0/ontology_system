@@ -391,6 +391,85 @@ show("④ 화면이 끝내는 세 줄을 준다 (B61 계약 — 그대로 칠 �
 show("④ 종결분은 계수에서 빠진다 (사람이 끝낸 것이 남은 일로 보이지 않는다)",
      _PF74.queue_view()["kinds"]["auto_node"] < len(
          [x for x in store.read(store.QUEUE, []) if x["kind"] == "auto_node"]))
+# ════════════════════════════════════════════════════════════════════
+# B74 ⑤ — ops alias: 사람이 표기를 잇는다
+# ════════════════════════════════════════════════════════════════════
+print("\n── B74 ⑤ ops alias ──")
+from core import matcher as _MT75                                  # noqa: E402
+from core.build import entity_key as _KEY75                        # noqa: E402
+from core.dictionary import Dictionary as _DIC75                   # noqa: E402
+
+_g75 = open_graph("process")
+_cfg75 = load_config("process")
+_sc75 = (_cfg75.get("canonical_scope") or {}).get("bind_categories", [])
+_units75 = [n for n in _g75.nodes.values()
+            if ops.is_live(n) and n.get("category") == "Unit"
+            and (n.get("parent") or n.get("mirror_scope"))]
+_t75 = _units75[0]
+_p75 = _t75.get("parent") or _t75.get("mirror_scope")
+ops.alias("process", _t75["id"], "현장표기ZZ", ACTOR, reason="현장이 그렇게 부른다")
+
+
+def _exact75(surface, parent, category="Unit"):
+    """인입이 그 표기를 만났을 때와 **같은 키·같은 필터**로 본다."""
+    g, dic = open_graph("process"), _DIC75.open()
+    key, pol, _s, _c = _KEY75(surface, category, _cfg75, parent_canonical=parent)
+    return [c["id"] for c in _MT75.dict_hits(key, category, "process", g, dic,
+                                             polarity=pol, parent=parent,
+                                             scope_cats=_sc75)]
+
+
+show("⑤ 등재 뒤 **같은 부모 아래** 그 표기가 exact로 해소된다",
+     _exact75("현장표기ZZ", _p75) == [_t75["id"]],
+     f"{_p75}::현장표기ZZ → {_t75['canonical']}")
+_other75 = next((n for n in _units75
+                 if n["id"] != _t75["id"]
+                 and (n.get("parent") or n.get("mirror_scope")) == _p75), None)
+if _other75 is None:                     # 같은 부모의 짝이 없으면 하나 세운다
+    _oid75 = _g75.add_node(f"{_p75}::짝설비ZZ", "Unit", "auto",
+                           provenance=["시험"], parent=_p75, mirror_scope=_p75)
+    _g75.save()
+    _other75 = _g75.get(_oid75)
+try:
+    ops.alias("process", _other75["id"], "현장표기ZZ", ACTOR)
+    _conf75 = "통과했다"
+except ops.OpRefused as e:
+    _conf75 = str(e)
+show("⑤ 같은 부모 아래 다른 live 노드에 붙은 표기는 **거부**하고 그 노드를 보인다",
+     "OpRefused" not in _conf75 and _t75["canonical"] in _conf75
+     and "ops merge" in _conf75,
+     _conf75.splitlines()[0][:70])
+_tomb75 = next((n for n in open_graph("process").nodes.values()
+                if not ops.is_live(n)), None)
+if _tomb75 is None:
+    _a75 = _g75.add_node("툼스톤시험ZZ", "Unit", "auto", provenance=["시험"])
+    _b75 = _g75.add_node("툼스톤시험YY", "Unit", "auto", provenance=["시험"])
+    _g75.save()
+    ops.merge("process", _a75, _b75, ACTOR)
+    # 생존자는 3단 규칙이 고른다 — **남은 쪽이 아니라 툼스톤을 집는다**.
+    _tomb75 = next(n for n in open_graph("process").nodes.values()
+                   if not ops.is_live(n))
+try:
+    ops.alias("process", _tomb75["id"], "툼스톤표기ZZ", ACTOR)
+    _tr75 = "통과했다"
+except ops.OpRefused as e:
+    _tr75 = str(e)
+show("⑤ 툼스톤은 대상이 아니다 (사람이 지운 것을 표기로 되살리지 않는다)",
+     "툼스톤" in _tr75, _tr75[:60])
+try:
+    ops.alias("process", _t75["id"], "행위자없음ZZ", "")
+    _ar75 = "통과했다"
+except ops.OpRefused as e:
+    _ar75 = str(e)
+show("⑤ `--actor` 없으면 거부 (I축 연산은 행위자를 남긴다)",
+     "행위자" in _ar75, _ar75[:50])
+_log75 = [x for x in store.read(store.OPS_LOG, []) if x["op"] == "I6:alias"]
+show("⑤ ops_log 5요소 — 연산·행위자·시점·대상·사유",
+     _log75 and all(_log75[-1].get(k) for k in ("op", "actor", "at", "targets"))
+     and "reason" in _log75[-1],
+     str({k: _log75[-1][k] for k in ("op", "actor", "targets")})[:70] if _log75
+     else "로그 없음")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G5 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

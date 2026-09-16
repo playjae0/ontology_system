@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import store
+from core import ledger, store
 from core.bootstrap import open_graph
 from core.status import is_live
 from router import discover
@@ -308,6 +308,10 @@ _HTML_HEAD = """<!doctype html>
  label .sw{{width:10px;height:10px;border-radius:2px;flex:0 0 10px}}
  label .n{{margin-left:auto;color:var(--dim);font-size:11px}}
  #stat{{color:var(--dim);font-size:11px;margin-top:10px;line-height:1.7}}
+ #agg{{margin-top:12px;font-size:11px;color:var(--dim);line-height:1.6}}
+ #agg h4{{color:var(--fg);font-size:11px;margin:10px 0 3px;letter-spacing:.4px}}
+ #agg .r{{display:flex;gap:6px}} #agg .r b{{color:var(--fg);font-weight:600}}
+ #agg .r .n{{margin-left:auto}}
  #stage{{flex:1;position:relative}}
  canvas{{display:block;cursor:grab}} canvas.drag{{cursor:grabbing}}
  #tip{{position:absolute;pointer-events:none;background:#000c;border:1px solid var(--line);
@@ -320,6 +324,7 @@ _HTML_HEAD = """<!doctype html>
  <h1>{title}</h1><div class="sub">{sub}</div>
  <div id="filters"></div>
  <div id="stat"></div>
+ <div id="agg"></div>
 </div><div id="stage"><canvas id="cv"></canvas><div id="tip"></div>
 <div id="hint">드래그 = 이동 · 휠 = 확대 · 노드 클릭 = 고정/해제</div></div><!--__PANEL_HTML__--></div>
 <script>
@@ -332,7 +337,9 @@ const PAL = ["#7aa2f7","#9ece6a","#e0af68","#f7768e","#bb9af7","#7dcfff",
 function color(v){let h=0; for(const c of String(v)) h=(h*31+c.charCodeAt(0))|0;
   return PAL[Math.abs(h)%PAL.length];}
 
-const AXES = ["layer","category","status","tier","polarity"];
+// **생성 경로도 축이다**(B74 ③) — 「몇 개가 로직이고 몇 개가 LLM인가」를
+// 색과 필터로 본다. 값은 대장의 닫힌 집합 ∪ {seed, unknown}이다.
+const AXES = ["layer","category","status","tier","polarity","made_by"];
 const state = {};          // 축 → 켜진 값 Set
 const fixed = new Set();
 
@@ -376,7 +383,30 @@ for(const fs of fbox.querySelectorAll("fieldset")){
   if(on) fs.querySelector("legend").textContent += " (색상)";
 }
 
-function visible(n){return AXES.every(ax => !state[ax] || state[ax].has(n[ax]??"(없음)"));}
+// **문서 필터** — 「이 문서가 만든 것만」이 보인다(B74 ③). 값이 여럿인 축이라
+// 체크박스 묶음을 따로 세운다(provenance 접두로 거른다 — show doc와 같은 기준).
+const DOCS = (() => {const m=new Map();
+  for(const n of DATA.nodes) for(const d of n.docs||[]) m.set(d,(m.get(d)||0)+1);
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]);})();
+const docOn = new Set(DOCS.map(d=>d[0]));
+if(DOCS.length > 1){
+  const fs = document.createElement("fieldset");
+  fs.innerHTML = `<legend>문서</legend>`; fs.dataset.ax = "doc";
+  for(const [v,c] of DOCS){
+    const l = document.createElement("label");
+    l.innerHTML = `<input type=checkbox checked><span class=sw`
+                + ` style="border:1px solid var(--line)"></span>`
+                + `<span>${v}</span><span class=n>${c}</span>`;
+    l.querySelector("input").onchange = e => {
+      e.target.checked ? docOn.add(v) : docOn.delete(v); layout(); draw();};
+    fs.appendChild(l);
+  }
+  fbox.appendChild(fs);
+}
+
+function visible(n){
+  if(DOCS.length > 1 && !(n.docs||[]).some(d=>docOn.has(d))) return false;
+  return AXES.every(ax => !state[ax] || state[ax].has(n[ax]??"(없음)"));}
 
 const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
 const tip = document.getElementById("tip"), stage = document.getElementById("stage");
@@ -425,6 +455,7 @@ function P(n){return [n.x*view.k+view.x, n.y*view.k+view.y];}
 
 function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
+  const elab = [];
   for(const e of edges){
     const a=byId.get(e.src), b=byId.get(e.dst), [ax,ay]=P(a), [bx,by]=P(b);
     // **cross-layer 엣지는 걸러 그려도 화면에 남긴다**(문서 7 §7.8) — 층간 연결이
@@ -433,8 +464,27 @@ function draw(){
     ctx.lineWidth = e.cross ? 1.6 : 1;
     if(e.cross){ctx.setLineDash([5,3]);} else {ctx.setLineDash([]);}
     ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+    // **화살촉** — 방향이 없으면 `part_of`가 어느 쪽인지 그림이 답하지 못한다.
+    const d=Math.hypot(bx-ax,by-ay)||1, ux=(bx-ax)/d, uy=(by-ay)/d;
+    const tx=bx-ux*9, ty=by-uy*9, s1=4.5;
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(tx,ty);
+    ctx.lineTo(tx-ux*7+uy*s1, ty-uy*7-ux*s1);
+    ctx.lineTo(tx-ux*7-uy*s1, ty-uy*7+ux*s1);
+    ctx.closePath(); ctx.fillStyle = e.cross ? "#f7768ecc" : "#3a4150"; ctx.fill();
+    if(e.cross){ctx.setLineDash([5,3]);}
+    // **엣지 라벨은 노드 라벨과 같은 LOD다** — 전부 그리면 읽을 수 없다.
+    // 확대했거나 두 끝 중 하나가 고정(클릭)된 엣지에만 관계 이름을 적는다.
+    if(view.k > 1.15 || fixed.has(e.src) || fixed.has(e.dst))
+      elab.push([e.rel, (ax+bx)/2, (ay+by)/2, e.cross]);
   }
   ctx.setLineDash([]);
+  ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+  for(const [rel,x,y,cross] of elab){
+    const w = ctx.measureText(rel).width;
+    ctx.fillStyle = "#0f1115d8"; ctx.fillRect(x-w/2-3, y-7, w+6, 12);
+    ctx.fillStyle = cross ? "#f7768e" : "#8b93a7"; ctx.fillText(rel, x, y+2);
+  }
   const deg = new Map();
   for(const e of edges){deg.set(e.src,(deg.get(e.src)||0)+1);
                         deg.set(e.dst,(deg.get(e.dst)||0)+1);}
@@ -473,11 +523,43 @@ function draw(){
     `보이는 엣지 <b>${edges.length}</b> / ${DATA.edges.length}<br>`+
     `그중 걸침(cross) <b style="color:#f7768e">${cross}</b><br>`+
     `색상 축: ${COLOR_AX}`;
+  aggregate();
+}
+
+// **집계는 보이는 것을 센다** — 새 계산 없이 DATA에서 세고, 필터를 걸면 같이 준다.
+// 평가의 첫 질문이 「몇 개가 로직이고 몇 개가 LLM인가」라서 그 수가 그림 옆에 있다.
+function tally(arr, key){const m=new Map();
+  for(const x of arr){const v=key(x)??"(없음)"; m.set(v,(m.get(v)||0)+1);}
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]);}
+function block(title, rows){
+  if(!rows.length) return "";
+  return `<h4>${title}</h4>` + rows.map(([v,c])=>
+    `<div class=r><b>${v}</b><span class=n>${c}</span></div>`).join("");}
+function aggregate(){
+  const q = nodes.filter(n=>n.queue);
+  document.getElementById("agg").innerHTML =
+    block("노드 by status", tally(nodes, n=>n.status)) +
+    block("노드 by 생성 경로", tally(nodes, n=>n.made_by)) +
+    block("엣지 by rel", tally(edges, e=>e.rel)) +
+    block("큐(미종결)", tally(q, n=>n.queue));
 }
 function hit(mx,my){
   for(let i=nodes.length-1;i>=0;i--){const [x,y]=P(nodes[i]);
     if(Math.hypot(mx-x,my-y)<11) return nodes[i];}
   return null;
+}
+// **엣지도 가리킬 수 있어야 한다**(B74 ③) — 선분까지의 거리로 고른다.
+function hitEdge(mx,my){
+  let best=null, bd=7;
+  for(const e of edges){
+    const a=byId.get(e.src), b=byId.get(e.dst);
+    const [ax,ay]=P(a), [bx,by]=P(b);
+    const dx=bx-ax, dy=by-ay, L=dx*dx+dy*dy;
+    const t = L ? Math.max(0, Math.min(1, ((mx-ax)*dx+(my-ay)*dy)/L)) : 0;
+    const d = Math.hypot(mx-(ax+dx*t), my-(ay+dy*t));
+    if(d < bd){bd = d; best = e;}
+  }
+  return best;
 }
 let drag=null;
 cv.onmousedown=e=>{drag={x:e.offsetX,y:e.offsetY,vx:view.x,vy:view.y,moved:false};
@@ -492,11 +574,28 @@ cv.onmousemove=e=>{
     if(Math.abs(dx)+Math.abs(dy)>3) drag.moved=true;
     view.x=drag.vx+dx; view.y=drag.vy+dy; draw(); return;}
   const n=hit(e.offsetX,e.offsetY);
-  if(!n){tip.style.display="none"; return;}
+  if(!n){
+    // 노드가 없으면 엣지를 본다 — 「이 선이 무엇인가」가 화면에서 답해진다.
+    const ed=hitEdge(e.offsetX,e.offsetY);
+    if(!ed){tip.style.display="none"; return;}
+    const sn=byId.get(ed.src), dn=byId.get(ed.dst);
+    tip.innerHTML=`<b>${ed.rel}</b><br>`+
+      `<span class=k>from</span> ${sn.name}<br>`+
+      `<span class=k>to</span> ${dn.name}<br>`+
+      `<span class=k>status</span> ${ed.status??"—"}`+
+      (ed.cross?`<br><span class=k>걸침</span> 층간`:"")+
+      (ed.prov?`<br><span class=k>출처</span> ${ed.prov}`:"");
+    tip.style.display="block";
+    tip.style.left=Math.min(e.offsetX+14, stage.clientWidth-350)+"px";
+    tip.style.top=(e.offsetY+14)+"px";
+    return;}
   const deg=edges.filter(x=>x.src===n.id||x.dst===n.id).length;
   tip.innerHTML=`<b>${n.name}</b><br>`+
     AXES.map(a=>`<span class=k>${a}</span> ${n[a]??"—"}`).join("<br>")+
     `<br><span class=k>연결</span> ${deg}`+
+    `<br><span class=k>별칭</span> ${n.aliases} · <span class=k>값</span> ${n.attrs}`+
+    (n.queue?`<br><span class=k>큐</span> ${n.queue}`
+            +`<br>▶ 다음 줄 — python run.py ops confirm ${n.layer} ${n.id} --actor <이름>`:"")+
     (n.prov?`<br><span class=k>출처</span> ${n.prov}`:"");
   tip.style.display="block";
   tip.style.left=Math.min(e.offsetX+14, stage.clientWidth-350)+"px";
@@ -637,21 +736,66 @@ _SLOTS = ("/*__PANEL_CSS__*/", "<!--__PANEL_HTML__-->", "/*__HL_BEFORE__*/",
           "/*__HL_AFTER__*/", "/*__PANEL_JS__*/")
 
 
+def _queue_state():
+    """미종결 큐의 `node_id → kind` (B74 ③). 종결분(`resolution`)은 세지 않는다."""
+    out = {}
+    for x in store.read(store.QUEUE, []):
+        if x.get("kind") not in ("auto_node", "uncertain_match"):
+            continue
+        if x.get("resolution"):
+            continue
+        nid = (x.get("payload") or {}).get("node_id")
+        if nid:
+            out.setdefault(nid, x["kind"])
+    return out
+
+
+def _docs_of(provenance):
+    """이 노드를 만든 문서들 — provenance 접두다(`CP01#…`·`CP01:…`).
+
+    근거가 회수돼 provenance가 빈 노드는 **`(없음)`으로 센다** — 빈 목록으로 두면
+    문서 필터가 그것을 영영 못 켜서 「전부 켰는데 안 보이는 노드」가 생긴다.
+    """
+    out = []
+    for p in provenance or []:
+        d = str(p).split("#")[0].split(":")[0]
+        if d and d not in out:
+            out.append(d)
+    return out or ["(없음)"]
+
+
 def graph_data(world):
-    """월드 → 화면이 먹는 nodes/edges 배열. **변환 지점 둘은 여기 하나뿐이다.**"""
+    """월드 → 화면이 먹는 nodes/edges 배열. **변환 지점 둘은 여기 하나뿐이다.**
+
+    엣지가 `status`·`prov`·`id`를 지고 간다(B74 ③) — 저장에는 있는데 화면에는
+    없었다. 노드는 `made_by`(②의 대장이 말하는 **생성 경로**)·별칭 수·값 수·큐를
+    더 지고 간다: 「몇 개가 로직이고 몇 개가 LLM인가」를 그림 위에서 세려면 그 사실이
+    점 하나하나에 붙어 있어야 한다.
+    """
     live = {i for g in world.values() for i, n in g.nodes.items() if is_live(n)}
     layer_of = {i: lay for lay, g in world.items() for i in g.nodes}
+    made = ledger.made_by()
+    queued = _queue_state()
 
     nodes = []
     for lay, g in world.items():
         for n in g.nodes.values():                  # ① id-keyed dict → 배열
             if not is_live(n):
                 continue
+            prov = n.get("provenance") or []
             nodes.append({
                 "id": n["id"], "name": n["canonical"], "layer": lay,
                 "category": n["category"], "status": n.get("status"),
                 "tier": n.get("tier"), "polarity": n.get("polarity"),
-                "prov": ", ".join((n.get("provenance") or [])[:4]),
+                "prov": ", ".join(prov[:4]),
+                # 대장이 모르는 노드는 골격(seed)이거나 대장 이전의 것이다 —
+                # 둘을 섞지 않는다: 「모른다」가 「골격이다」로 읽히면 집계가 거짓말한다.
+                "made_by": made.get(n["id"]) or (
+                    "seed" if n.get("status") == "seed" else "unknown"),
+                "aliases": len(n.get("aliases") or []),
+                "attrs": len(n.get("attrs") or {}),
+                "queue": queued.get(n["id"]),
+                "docs": _docs_of(prov),
             })
 
     edges = []
@@ -662,7 +806,10 @@ def graph_data(world):
             if e["src"] not in live or e["dst"] not in live:
                 continue
             edges.append({                          # ② layer 주입 + cross 표시
+                "id": f"{e['src']}|{e['rel']}|{e['dst']}",
                 "src": e["src"], "dst": e["dst"], "rel": e["rel"], "layer": lay,
+                "status": e.get("status"),
+                "prov": ", ".join((e.get("provenance") or [])[:4]),
                 "cross": layer_of.get(e["src"]) != layer_of.get(e["dst"]),
             })
     return nodes, edges

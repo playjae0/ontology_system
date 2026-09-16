@@ -13,6 +13,7 @@ from pathlib import Path
 from . import extract as extract_mod
 from . import gate, log, matcher, store
 from .build import Builder
+from .ledger import Ledger
 from .bootstrap import load_config, open_graph
 from .ingest import IngestResult, ingest, load_schema
 from .status import is_live
@@ -331,6 +332,7 @@ def h_entity(value, spec, ctx):
         st["dropped_entities"].append(
             {"surface": value, "category": spec["category"],
              "target_layer": lay, "field": st["field"]})
+        _ledger_entity(st, value, lay, None)
         return None
 
     eb = st["b"].for_layer(lay)
@@ -338,11 +340,42 @@ def h_entity(value, spec, ctx):
                             electrode_type=st["et"],
                             parent_canonical=st["parent"],
                             anchor_polarity=st["anchor_pol"])
+    _ledger_entity(st, value, lay, eb.last)
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g
     if nid is not None:
         ctx.buffer[_n(value)] = nid          # 층으로 나누지 않는다 (문서 4 §4.2)
     return nid
+
+
+_VERDICT = {"match": "match", "new": "new", "uncertain": "uncertain",
+            "gate_reject": "gate_reject"}
+
+
+def _ledger_entity(st, surface, layer, last):
+    """entity 값 하나의 대장 행 — **판정이 아는 것을 그대로 옮긴다**(B74 ②).
+
+    `last`가 없으면 판정에 오르지도 못한 값이다(좌표 미해소로 드롭 — 그 재료는
+    `orphan_anchor` 큐가 들고 있다). 그것도 **행으로 남는다**: 대장이 「이 문서의
+    값 전부」를 덮지 않으면 행 단위 눈 검수가 성립하지 않는다.
+    """
+    b = st["b"]
+    if b.ledger is None:
+        return
+    if not last:
+        b.ledger.add(locator=st.get("locator"), field=st.get("field"),
+                     role="entity", surface=surface, layer=layer,
+                     path="none", verdict="orphan", queue_kind="orphan_anchor")
+        return
+    b.ledger.add(locator=st.get("locator"), field=st.get("field"), role="entity",
+                 surface=surface, canonical=last.get("canonical"),
+                 layer=last.get("layer") or layer,
+                 path=last.get("path") or "none",
+                 verdict=_VERDICT.get(last.get("verdict"), "pending"),
+                 node_id=last.get("node_id"),
+                 candidates_n=last.get("candidates_n", 0),
+                 confidence=last.get("confidence", 0.0),
+                 llm=last.get("llm"), queue_kind=last.get("queue_kind"))
 
 
 def _scoped_category(category, layer, builder):
@@ -423,6 +456,7 @@ def build_table(env, cfg, schema, graph):
     """정형 인입 — 레코드마다 ⓪좌표 → ①role 분기 → attribute → content → ②edges →
     규칙 B 폴백 → 말미 적재. 단계의 순서가 계약이다(문서 2 §2.4 · 문서 4 §4.4)."""
     b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
+    b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 행마다 적는다 (B74 ②)
     fields = schema["fields"]
     doc_id = env["doc_id"]
     envelope_ctx = _context(env, env.get("source_path"), doc_id)
@@ -433,7 +467,7 @@ def build_table(env, cfg, schema, graph):
         _row_anchor(b, r, envelope_ctx, doc_id)
         _row_roles(b, r, fields, schema, graph, cfg, doc_id)
         _row_attributes(b, r, graph)
-        _row_contents(r, doc_id)
+        _row_contents(b, r, doc_id)
         _row_edges(r, schema, fields, graph, cfg, doc_id)
         _row_fallback(b, r, schema, fields, graph, cfg, doc_id)
         _land_deferred(r.defer, r.dropped, r.pending, doc_id,
@@ -441,6 +475,7 @@ def build_table(env, cfg, schema, graph):
                        coord_missing=(r.coord_case == "missing"), prov=r.prov)
 
     b.flush()
+    b.ledger.save()
     return b
 
 
@@ -486,12 +521,25 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
     # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch
     r.anchor_pol = b.anchor_polarity(r.ref, r.ref_g)
     b.check_polarity(r.ref, r.et, r.prov, r.ref_g)
+    # **대장의 anchor 행** — 이 행이 어느 좌표에 섰는지가 뒤의 전부를 가른다(B74 ②).
+    if b.ledger is not None:
+        b.ledger.add(locator=rec.get("source_locator"),
+                     field="process_group" if r.coord_case == "low_res"
+                     else "process_ref", role="anchor",
+                     surface=_grp_s if r.coord_case == "low_res" else _ref_s,
+                     canonical=r.parent, layer=r.ref_g.layer if r.ref_g else None,
+                     path="skeleton" if r.ref else "none",
+                     verdict=("lowres" if r.coord_case == "low_res"
+                              else "anchor" if r.ref else "orphan"),
+                     node_id=r.ref,
+                     queue_kind=None if r.ref else "orphan_anchor")
 
 
 def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
     """① **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7)."""
     rec = r.rec
     state = {"b": b, "graph": graph, "cfg": cfg, "prov": r.prov, "ref": r.ref,
+             "locator": rec.get("source_locator"),
              "dropped_entities": r.dropped_ents,
              "ref_g": r.ref_g, "parent": r.parent, "et": r.et,
              "anchor_pol": r.anchor_pol, "external": r.external,
@@ -543,15 +591,17 @@ def _row_attributes(b, r, graph):
                               "context": r.ctx or None,
                               "provenance": r.prov,
                               "attach_to_field": af})
+            _ledger_attach(b, r, f, "attribute", None, "pending")
             continue
         tg = r.external.get(af, graph)
         # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
         ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
         ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], r.ctx, r.prov,
                          bool(spec.get("contextual")))
+        _ledger_attach(b, r, f, "attribute", tgt, "attached", layer=ab.layer)
 
 
-def _row_contents(r, doc_id):
+def _row_contents(b, r, doc_id):
     """content — describes 연결, 필드별 청크(D8)."""
     rec = r.rec
     for f, spec in r.contents:
@@ -559,13 +609,32 @@ def _row_contents(r, doc_id):
         tgt = r.resolved.get(af2)
         if tgt is not None:
             _describe(doc_id, rec, f, tgt)
+            _ledger_attach(b, r, f, "content", tgt, "attached")
         elif af2 and rec.get(af2) not in (None, ""):
+            _ledger_attach(b, r, f, "content", None, "pending")
             # 값은 있는데 대상이 미해소다 — 청크는 이미 보존돼 있고(링킹 0건
             # 청크도 남긴다) 연결만 못 한 것이므로 결함 로그로 드러낸다.
             # 빈 셀이면 기록하지 않는다 — 그 행에 대상이 없는 것이 정상이다(B12).
             store.append_defect(
                 f"{doc_id}: content 부착 대상 미해소 — "
                 f"'{f}' → '{af2}'={rec.get(af2)!r} @ {r.prov}")
+
+
+def _ledger_attach(b, r, field, role, target, verdict, layer=None):
+    """부착 시도 한 건의 대장 행 — **붙었나 보류인가**가 이 표의 종류 열이다(B74 ②).
+
+    부착에는 판정이 없다(대상은 같은 행이 이미 해소한 노드다) — 그래서 `path`는
+    `none`이고 LLM도 0이다. 그래도 행을 남기는 이유: 사람이 문서를 옆에 놓고 볼 때
+    「이 열의 값이 어디에 갔나」가 행 단위로 답해져야 한다.
+    """
+    if b is None or b.ledger is None:
+        return
+    g = b.g
+    n = (g.get(target) or {}) if target else {}
+    b.ledger.add(locator=r.rec.get("source_locator"), field=field, role=role,
+                 surface=None, canonical=n.get("canonical"),
+                 layer=layer or (n.get("layer") if n else None),
+                 path="none", verdict=verdict, node_id=target)
 
 
 def _row_edges(r, schema, fields, graph, cfg, doc_id):
@@ -704,6 +773,7 @@ def build_prose(env, cfg, graph, candidates):
     # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
     candidates = [c for c in candidates if not c.get("failed")]
     b = Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
+    b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 비정형도 같은 표다 (B74 ②)
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     by_locator = {c["source_locator"]: c for c in env.get("chunks", [])}
     loc_of = {cid: c.get("source_locator") for cid, c in ch["chunks"].items()
@@ -733,12 +803,32 @@ def build_prose(env, cfg, graph, candidates):
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         b.check_polarity(ref, src.get("electrode_type"), prov, ref_g)
         coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol)
+        b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
+                     surface=src.get("process_ref"), canonical=parent,
+                     layer=ref_g.layer if ref_g else None,
+                     path="skeleton" if ref else "none",
+                     verdict="anchor" if ref else "orphan", node_id=ref,
+                     queue_kind=None if ref else "orphan_anchor")
 
         for e in cand.get("entities", []):
-            b.resolve_entity(e["surface"], e["category"], prov,
-                             electrode_type=src.get("electrode_type"),
-                             parent_canonical=parent,
-                             anchor_polarity=anchor_pol)
+            eb = b.for_layer(cfg["layer"])
+            nid = b.resolve_entity(e["surface"], e["category"], prov,
+                                   electrode_type=src.get("electrode_type"),
+                                   parent_canonical=parent,
+                                   anchor_polarity=anchor_pol)
+            last = b.last
+            b.ledger.add(locator=_loc or cid, field=e.get("category"),
+                         role="entity", surface=e["surface"],
+                         canonical=(last or {}).get("canonical"),
+                         layer=(last or {}).get("layer") or cfg["layer"],
+                         path=(last or {}).get("path") or "none",
+                         verdict=_VERDICT.get((last or {}).get("verdict"),
+                                              "pending"),
+                         node_id=nid,
+                         candidates_n=(last or {}).get("candidates_n", 0),
+                         confidence=(last or {}).get("confidence", 0.0),
+                         llm=(last or {}).get("llm"),
+                         queue_kind=(last or {}).get("queue_kind"))
 
     # ════════════════ Pass 2 (부착) ════════════════
     # **비정형의 순회 단위는 레코드가 아니라 청크(추출 후보)다**(문서 4 §4.2).
@@ -773,6 +863,12 @@ def build_prose(env, cfg, graph, candidates):
             child = b.buffer.get(_n(a["surface"]))
             name, cat = _attach_target(a)       # {name, category} (§4.10 규약 8 — B11)
             target = b.buffer.get(_n(name)) if name else None
+            # **부착 시도도 같은 표에 남는다**(B74 ②) — 대상이 없어 폴백으로 간
+            # 것과 자식이 미해소라 못 간 것을 종류 열이 가른다.
+            _al = b.ledger.add(locator=(prov or "").split("#")[-1] or cid,
+                               field=name or "(attach_to null)", role="attach",
+                               surface=a.get("surface"), layer=cfg["layer"],
+                               path="none", verdict="pending")
             if target is None and name and cat:
                 # **카테고리가 있으니 판정기가 그것 하나로 판정한다** — 전 카테고리를
                 # 훑지 않으므로 선언 순서가 답을 정하는 일이 없다.
@@ -788,6 +884,7 @@ def build_prose(env, cfg, graph, candidates):
                 # 경우까지다(§4.4-4 — B11).
                 _fallback_attach(b, cfg, graph, child, ref, ref_g, prov,
                                  env["doc_id"], evidence_chunk=cid)
+                _al.update(verdict="lowres" if ref else "pending", node_id=child)
                 # **`attach_to`가 null이면 폴백만 하고 큐를 달지 않는다**(§4.7-5) —
                 # null은 추출이 애초에 부착 대상을 말하지 않은 정상 케이스라,
                 # 큐로 보내면 처리 불가능한 노이즈가 큐를 채운다.
@@ -806,9 +903,12 @@ def build_prose(env, cfg, graph, candidates):
             if rel:
                 gate.commit_edge(graph, target, rel, child, cfg, gate.PATH_EXTRACT,
                                  [prov], env["doc_id"], evidence_chunk=cid)
+            _al.update(verdict="attached", node_id=child,
+                       canonical=(graph.get(target) or {}).get("canonical"))
 
     store.write(store.CHUNKS, ch)
     b.flush()
+    b.ledger.save()
     return b
 
 
@@ -858,9 +958,11 @@ def _reject(doc_id, reason, payload):
 
 
 def _entity_surfaces(env, schema):
-    """이 문서가 **판정에 올릴 표기** — table은 entity role 열의 값들이다.
+    """이 문서가 **판정에 올릴 언급** — table은 entity role 열의 값들이다.
 
-    LLM 0으로 센다: 스키마가 어느 열을 entity라 했는지와 레코드의 값뿐이다.
+    표기만이 아니라 **그 값이 선 자리**(카테고리·좌표·축값·층)를 함께 낸다(B74 ①).
+    예고가 판정과 같은 키로 사전을 보려면 키 재료가 전부 있어야 하고, 그 재료는
+    스키마와 레코드에 있다 — **LLM 0**으로 센다.
     """
     fields = (schema or {}).get("fields") or {}
     out = []
@@ -870,35 +972,84 @@ def _entity_surfaces(env, schema):
                 continue
             v = rec.get(f)
             if isinstance(v, str) and v.strip():
-                out.append(v.strip())
+                out.append({"surface": v.strip(), "field": f,
+                            "category": (spec or {}).get("category"),
+                            "target_layer": (spec or {}).get("target_layer"),
+                            # 좌표는 행이 쓰는 것과 같은 순서다 — ref 없으면 group
+                            "ref": rec.get("process_ref") or rec.get("process_group"),
+                            "electrode_type": rec.get("electrode_type")})
     return out
 
 
-def decision_plan(surfaces, refs, layer):
-    """**판정 예고** — 부르기 전에 몇 번 부를지 센다 (B72 ② · B22의 정신).
+def _plan_hit(b, m, layer):
+    """이 언급이 **사전에 이미 있는가** — 판정이 쓰는 키·필터 그대로다 (B74 ①).
+
+    키를 만드는 함수(`build.entity_key`)와 사전을 보는 함수(`matcher.dict_hits`)를
+    판정과 **공유한다.** 복제하면 그 순간 예고가 다른 키로 사전을 보고, 비용을
+    잘못 말한다 — 고친 결함이 그것이다(허브 실측 열셋째).
+
+    좌표 해소도 판정과 같은 경로(골격 조회 → 하강 → 극성 상속)를 지나되 **쓰지
+    않는다**: 미해소 좌표는 `defer` 자루로 받아 버린다(예고가 큐를 만들지 않는다).
+    """
+    from .build import entity_key
+    from . import matcher
+    surface, category = m.get("surface"), m.get("category")
+    if not surface or not category:
+        return False
+    lay = m.get("target_layer") or layer
+    et = m.get("electrode_type")
+    sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
+    ref_id, ref_g = (b.resolve_anchor(m.get("ref"), COORD_CATEGORY, "(예고)",
+                                      defer=sink)
+                     if m.get("ref") else (None, None))
+    if ref_id:
+        ref_id = b.descend_anchor(ref_id, et, ref_g)
+    parent = ref_g.get(ref_id)["canonical"] if ref_id else None
+    apol = b.anchor_polarity(ref_id, ref_g) if ref_id else None
+    if ref_id is None and _scoped_category(category, lay, b):
+        return False                # 좌표 없는 스코프 개체는 판정에 오르지 않는다
+    eb = b.for_layer(lay)
+    key, pol, _scoped, _sc = entity_key(surface, category, eb.cfg,
+                                        electrode_type=et, parent_canonical=parent,
+                                        anchor_polarity=apol)
+    scope_cats = (eb.cfg.get("canonical_scope") or {}).get("bind_categories", [])
+    return bool(matcher.dict_hits(key, category, lay, eb.g, b.dict,
+                                  polarity=pol, parent=parent,
+                                  scope_cats=scope_cats))
+
+
+def decision_plan(mentions, refs, layer):
+    """**판정 예고** — 부르기 전에 몇 번 부를지 센다 (B72 ② · B74 ① · B22의 정신).
 
     넷을 센다: ①판정에 올라가는 **값의 수**(행 × entity 열) ②문서 내 중복을 제외한
-    표기 종수 ③그중 사전이 이미 아는 것 ④골격 밖 좌표 표기.
+    표기 종수 ③그중 **사전이 이미 아는 것**(값 단위 — 판정과 같은 키) ④골격 밖 좌표.
 
-    **상한은 ①이다** — 좌표 태깅(B69)과 달리 개체 판정은 **행마다** 돈다: 같은
-    표기라도 부모 좌표가 다르면 다른 노드이고(스코프), 사전 히트도 `matcher.match`를
-    지나 그 안에서 정확 일치로 판정된다. 그래서 표기로 접어 세면 실제보다 적게
-    말하게 된다 — 예고는 **덜 말하면 안 된다**(비용 예고의 요점이 그것이다).
-    ②③은 「이 문서가 얼마나 반복되는가」의 판단 재료로 함께 낸다.
+    **상한은 ① − ③이다**: 개체 판정은 **행마다** 돈다(같은 표기라도 부모 좌표가
+    다르면 다른 노드다). 사전 히트는 `match`가 exact로 끊으므로 호출이 없고, 그
+    수를 **판정과 같은 함수로** 세기 때문에 뺄 수 있다(B74 ① — 구판은 원 표기로
+    세어 「31종」이라 하고 판정은 0이었다). 처음 인입은 사전이 **도는 중에** 차므로
+    예고가 덜 세고, 그때도 상한은 실제를 덮는다(덜 세면 상한이 커진다).
 
-    사전·그래프만 읽는다 — **LLM 0**이다.
+    사전·그래프만 읽는다 — **LLM 0**이고, 큐도 만들지 않는다.
     """
     from .dictionary import Dictionary
     from .ids import norm
+    from .build import Builder
     dic = Dictionary.open()
     g = open_graph(layer)
-    kinds, hits = [], 0
-    for s in surfaces:
-        n = norm(s)
-        if n in kinds:
+    b = Builder(g, load_config(layer), None, "(판정예고)", layer)
+    kinds, hits, vals = [], 0, 0
+    for m in mentions:
+        if isinstance(m, str):
+            m = {"surface": m}
+        s = m.get("surface")
+        if not s:
             continue
-        kinds.append(n)
-        if dic.lookup(s):
+        vals += 1
+        n = norm(s)
+        if n not in kinds:
+            kinds.append(n)
+        if _plan_hit(b, m, layer):
             hits += 1
     out_of_list = []
     for r in refs:
@@ -909,8 +1060,8 @@ def decision_plan(surfaces, refs, layer):
                 if nid in g.nodes
                 and (g.get(nid) or {}).get("status") in ("seed", "confirmed")]:
             out_of_list.append(n)
-    return {"단계": "판정예고", "값_수": len(surfaces), "표기_종수": len(kinds),
-            "사전_히트": hits, "예상_호출": len(surfaces),
+    return {"단계": "판정예고", "값_수": vals, "표기_종수": len(kinds),
+            "사전_히트": hits, "예상_호출": max(0, vals - hits),
             "목록밖_좌표": len(out_of_list)}
 
 
@@ -973,8 +1124,15 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab)
         if notice is not None:
             # prose의 표기는 **추출이 끝나야** 안다 — 그래서 자리가 여기다.
+            _by_loc = {c["source_locator"]: c for c in env.get("chunks") or []}
+            _loc_of = {cid: loc for loc, cid in loc2id.items()}
             notice(decision_plan(
-                [e.get("surface") for c in ck["candidates"]
+                [{"surface": e.get("surface"), "category": e.get("category"),
+                  "ref": (_by_loc.get(_loc_of.get(c["chunk_id"])) or {})
+                  .get("process_ref"),
+                  "electrode_type": (_by_loc.get(_loc_of.get(c["chunk_id"])) or {})
+                  .get("electrode_type")}
+                 for c in ck["candidates"]
                  for e in (c.get("entities") or []) if e.get("surface")],
                 [c.get("process_ref") for c in env.get("chunks") or []
                  if c.get("process_ref")], layer))

@@ -6,6 +6,7 @@
     python cli/ops.py split  <층> <id> <배분표.json> --actor …
     python cli/ops.py obsolete <층> <id> --actor … [--replaced-by <id>]
     python cli/ops.py delete-edge <층> <src> <rel> <dst> --actor …
+    python cli/ops.py alias  <층> <node_id|canonical> <표기> --actor <사람>
 
 **파급이 1건을 넘는 작업은 실행 전에 미리보기를 찍는다**(카드 G6). `--yes` 없이는
 미리보기만 내고 멈춘다 — 승인 없는 파급은 이 도구의 설계상 존재하지 않는다.
@@ -53,7 +54,7 @@ def _small(pv):
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
-                                  "transfer", "delete-edge", "confirm"])
+                                  "transfer", "delete-edge", "confirm", "alias"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -82,6 +83,12 @@ def main(argv=None):
             pv = ops.confirm(a.layer, nid, a.actor, a.reason)
             print(f"[확정] {pv['canonical']} — status {pv['from']} → confirmed "
                   f"(by {a.actor}) · 큐 종결 {', '.join(pv['queue'])}")
+        elif a.op == "alias":
+            # **표기 하나를 잇는다** — 파급 1건이라 미리보기가 없다(문서 4 §4.7-4).
+            nid, surface = a.args
+            pv = ops.alias(a.layer, nid, surface, a.actor, a.reason)
+            print(f"[등재] '{pv['surface']}' → {pv['canonical']} ({pv['target'][:6]}) "
+                  f"· 조회 키 '{pv['key']}' · by {a.actor}")
         elif a.op == "merge":
             nid, into = a.args
             pv = ops.merge(a.layer, nid, into, a.actor, a.canonical, a.survivor,
@@ -128,8 +135,9 @@ def main(argv=None):
     except ops.OpRefused as e:
         print(f"■ 거부 — {e}")
         return 2
-    if not a.yes and a.op != "confirm":
-        # **확정은 미리보기가 없다**(B73 ④) — 연쇄가 없어 그 자리에서 끝난다.
+    if not a.yes and a.op not in ("confirm", "alias"):
+        # **확정·표기 등재는 미리보기가 없다**(B73 ④ · B74 ⑤) — 연쇄가 없어
+        # 그 자리에서 끝난다.
         # 이 줄을 그대로 두면 「안 됐다」로 읽힌다(실행은 이미 끝났는데).
         print("\n    (미리보기만 수행했다. 실행하려면 --yes)")
     return 0
