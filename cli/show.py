@@ -4,6 +4,7 @@
     python -m cli.show tree   [층]           골격 트리 (사내 공정이 맞게 섰나)
     python -m cli.show node   <이름>          노드 하나 전부 — 값·별칭·출처·연결
     python -m cli.show doc    <doc_id>        그 문서가 만든 것 전부 (역추적)
+    python -m cli.show report <doc_id> [--json]  그 문서의 **행별 판정 대장** (눈 검수)
     python -m cli.show chunk  <doc_id|id>     청크 원문 (답의 근거로 실린 그 문장)
     python -m cli.show edges  [층] [관계]      엣지 목록
     python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표
@@ -19,11 +20,14 @@ from __future__ import annotations
 
 import json
 import sys
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import registry, store
+from collections import Counter
+
+from core import ledger, registry, store
 from core.bootstrap import load_config, open_graph
 from core.ids import norm
 from core.status import is_live
@@ -224,7 +228,88 @@ def cmd_doc(args):
         print(f"\n  수정 큐 {len(q)}건 — {dict(Counter(x['kind'] for x in q))}")
     if (ROOT / "extract" / f"{doc}.json").exists():
         print(f"  추출 체크포인트 — extract/{doc}.json (show 없이 그대로 읽어도 된다)")
+    # **행별은 다른 명령이다** — 새 최상위 진입점을 늘리지 않는다(문서 7 §7.1).
+    print(f"\n  행별 판정(값마다 어떻게 해소했나) — python run.py show report {doc}")
     return 0
+
+
+# ---------------------------------------------------------------- report
+def cmd_report(args):
+    """**행별 판정 대장** — 사람이 문서를 옆에 놓고 정합성을 행 단위로 본다 (B74 ④).
+
+    평가의 단위가 행이다: 「몇 개가 로직이고 몇 개가 LLM인가」도, 「이 칸의 값이
+    어디에 붙었나」도 합계로는 답해지지 않는다. 재료는 인입이 남긴 대장
+    (`data/ingest_log/<doc_id>.json`)이고 **여기서 새로 세지 않는다.**
+    """
+    if not args:
+        raise SystemExit("doc_id를 달라: run.py show report CP01")          # [사용법]
+    doc = args[0]
+    as_json = "--json" in args
+    data = ledger.read(doc)
+    if data is None:
+        _refuse_no_ledger(doc)
+    rows = data.get("rows") or []
+    if as_json:
+        print(json.dumps({"doc_id": doc, "rows": rows,
+                          "summary": ledger.summary(rows)},
+                         ensure_ascii=False, indent=1))
+        return 0
+    su = ledger.summary(rows)
+    kinds = Counter(r.get("role") for r in rows)
+    print(f"■ {doc} 판정 대장 — 행 {len(rows)}건 "
+          f"(entity {kinds.get('entity', 0)} · anchor {kinds.get('anchor', 0)} · "
+          f"부착 {kinds.get('attribute', 0) + kinds.get('content', 0) + kinds.get('attach', 0)})")
+    print(f"  값 {su['값']} · 사전 {su['사전']} · 스코프→판정 {su['스코프']} · "
+          f"임베딩→판정 {su['임베딩']} · 겹침→판정 {su['겹침']} · 신규 {su['신규']} · "
+          f"불확실 {su['불확실']} · 보류 {su['보류']} · LLM 호출 {su['호출']} · "
+          f"토큰 {su['토큰']}")
+    print("\n  " + _pad("locator", 18) + _pad("필드", 12)
+          + _pad("표기 → canonical", 46) + _pad("경로", 15)
+          + _pad("판정", 11) + "큐")
+    for r in rows:
+        left = (r.get("surface") or "—")
+        right = r.get("canonical") or "—"
+        nid = (r.get("node_id") or "")[:6]
+        arrow = f"{left} → {right}" + (f" ({nid})" if nid else "")
+        print("  " + _pad(r.get("locator") or "—", 18)
+              + _pad(r.get("field") or "—", 12) + _pad(_cut(arrow, 44), 46)
+              + _pad(r.get("path"), 15) + _pad(r.get("verdict"), 11)
+              + (r.get("queue_kind") or ""))
+    return 0
+
+
+def _w(text):
+    """동아시아 폭 — 한글은 두 칸이다. 표가 어긋나면 눈 검수가 느려진다."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1
+               for c in str(text))
+
+
+def _pad(text, n):
+    return str(text) + " " * max(1, n - _w(text))
+
+
+def _cut(text, n):
+    out = ""
+    for c in str(text):
+        if _w(out) + _w(c) > n:
+            return out + "…"
+        out += c
+    return out
+
+
+def _refuse_no_ledger(doc):
+    """대장이 없다 — **원인 + 그대로 칠 수 있는 다음 줄**(B61 계약)."""
+    meta = store.read(store.DOC_REGISTRY, {}).get(doc)
+    src = (meta or {}).get("source_path")
+    dt = (meta or {}).get("doc_type")
+    raise SystemExit(                                                    # [상태] 문면=_refuse_no_ledger
+        f"[대장] '{doc}'의 판정 대장이 없다 — data/ingest_log/{doc}.json "
+        f"(인입 기록은 {'있다' if meta else '없다'} · 대장 파일 "
+        f"{len(list((ROOT / 'data' / 'ingest_log').glob('*.json'))) if (ROOT / 'data' / 'ingest_log').exists() else 0}건)\n"
+        + (f"  ▶ 다음 줄 — 그 문서를 다시 넣으면 대장이 생긴다: "
+           f"python run.py ingest-file {src} --doc-type {dt}"
+           if meta and src and dt else
+           "  ▶ 다음 줄 — 인입된 문서를 먼저 본다: python run.py show doc"))
 
 
 # ---------------------------------------------------------------- chunk
@@ -549,7 +634,8 @@ def main(argv):
     cmd, rest = argv[0], argv[1:]
     table = {"tree": cmd_tree, "node": cmd_node, "doc": cmd_doc, "chunk": cmd_chunk,
              "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
-             "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25}
+             "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25,
+             "report": cmd_report}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)

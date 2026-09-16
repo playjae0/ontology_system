@@ -152,6 +152,69 @@ def _narrow(surface, pool, top_n, *, parent=None, scope_cats=(), category=None):
     return scored[:top_n], how or "임베딩"
 
 
+# **생성 경로의 닫힌 값**(B74 ②) — 대장이 적는 `path`가 여기 밖이면 FAIL이다.
+# 코드가 아는 사실만 적는다(LLM 산출이 아니다 — C38의 결).
+PATHS = ("skeleton", "dictionary", "scope+judge", "embedding+judge",
+         "overlap+judge", "none")
+
+# 좁힌 방법 → 경로 이름. `그대로`(좁히지 않음)는 세계가 가른다 — 판정을 무엇이
+# 했는지가 그 자리의 사실이기 때문이다(mock은 문자 겹침, 실호출은 LLM+임베딩).
+_HOW_PATH = {"스코프": "scope+judge", "스코프+": "scope+judge",
+             "임베딩": "embedding+judge", "겹침": "overlap+judge"}
+
+
+def _path_of(pool):
+    """이 판정이 **어떻게 여기까지 왔는가** — 후보가 지고 온 사실로 답한다(B74 ②)."""
+    how = next((c.get("how") for c in pool if c.get("how")), None)
+    return _HOW_PATH.get(how) or ("overlap+judge" if llm.use_mock()
+                                  else "embedding+judge")
+
+
+def _cand(nid, n, exact=False):
+    """후보 하나의 형태 — 명세가 정한다(문서 4 §4.3-6). 조립 두 갈래가 이것을 쓴다."""
+    return {"id": nid, "canonical": n["canonical"],
+            "aliases": [a["surface"] for a in n.get("aliases") or []],
+            "category": n["category"], "layer": n.get("layer"),
+            "parent": n.get("parent") or n.get("mirror_scope"),
+            "scoped": bool(n.get("_scoped")),
+            "polarity": _pol(n.get("polarity")),
+            # **아직 사람이 확인하지 않은 노드인지 판정이 알아야 한다**(B73 ③).
+            # 오판 하나가 다음 문서를 끌어당기는 연쇄를 여기서 끊는다.
+            "status": n.get("status"),
+            "evidence": len(n.get("provenance") or []),
+            "exact": exact}
+
+
+def dict_hits(surface, category, layer, graph, dictionary, *, polarity=None,
+              parent=None, scope_cats=()):
+    """**사전 exact 후보** — 결정적·무LLM. 후보 조립 ①이고 예고가 같이 쓴다(B74 ①).
+
+    **키가 갈리면 사전은 영영 히트하지 않는다.** 등재는 원 표기로 하고 조회는
+    스코프 canonical로 하던 구판이 그랬다 — 예고는 「사전 히트 31종」이라 하고
+    판정은 「사전 0」이었다(허브 실측 열셋째). 고친 자리는 둘이다: 등재가 두 키를
+    모두 넣고(`build._register`), **세는 함수를 하나로 둔다**(여기).
+
+    안전망 하나를 더 건다 — **부모가 다르면 exact가 아니다**(스코프 카테고리 한정).
+    원 표기 키로 부르는 경로(재시도 `_pick_*`·병합 후보)가 `노칭::cutter`와
+    `세퍼레이터::cutter`를 같은 것으로 올리지 못하게 한다. 부모를 모르는 호출
+    (`parent=None`)은 거르지 않는다 — 모르는 것을 근거로 버리지 않는다.
+    """
+    want = _pol(polarity)
+    scoped_cat = category in (scope_cats or ())
+    out = []
+    for nid in dictionary.lookup(surface):
+        n = graph.get(nid)
+        if not n or n["category"] != category or n["layer"] != layer:
+            continue
+        if _pol(n.get("polarity")) != want:
+            continue
+        if scoped_cat and parent is not None \
+                and (n.get("parent") or n.get("mirror_scope")) != parent:
+            continue
+        out.append(_cand(nid, n, exact=True))
+    return out
+
+
 def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
                polarity=None, parent=None, cfg=None, top_n=None):
     """**후보 조립** — 판정과 분리한다 (문서 7 §7.1 · 문서 4 §4.3-6).
@@ -176,28 +239,12 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
     그것을 1.0으로 인정할 근거가 후보에 남아야 한다.
     """
     want = _pol(polarity)
-    out, seen = [], set()
+    scope_cats = ((cfg or {}).get("canonical_scope") or {}).get("bind_categories", [])
 
-    def _cand(nid, n, exact=False):
-        return {"id": nid, "canonical": n["canonical"],
-                "aliases": [a["surface"] for a in n.get("aliases") or []],
-                "category": n["category"], "layer": n.get("layer"),
-                "parent": n.get("parent") or n.get("mirror_scope"),
-                "scoped": bool(n.get("_scoped")),
-                "polarity": _pol(n.get("polarity")),
-                # **아직 사람이 확인하지 않은 노드인지 판정이 알아야 한다**(B73 ③).
-                # 오판 하나가 다음 문서를 끌어당기는 연쇄를 여기서 끊는다.
-                "status": n.get("status"),
-                "evidence": len(n.get("provenance") or []),
-                "exact": exact}
-
-    # ① 사전 조회 — 결정적·무LLM. 층 간 표면형 충돌은 사전이 허용하고 여기서 선별한다.
-    for nid in dictionary.lookup(surface):
-        n = graph.get(nid)
-        if n and n["category"] == category and n["layer"] == layer \
-                and _pol(n.get("polarity")) == want:
-            out.append(_cand(nid, n, exact=True))
-            seen.add(nid)
+    # ① 사전 조회 — 결정적·무LLM. **예고와 판정이 같은 함수를 쓴다**(B74 ①).
+    out = dict_hits(surface, category, layer, graph, dictionary,
+                    polarity=polarity, parent=parent, scope_cats=scope_cats)
+    seen = {c["id"] for c in out}
 
     # ② 후보 검색 — 위 안전망 넷으로 걸러 담고, **상한 안으로 좁힌다**(B73 ①).
     pool = []
@@ -212,12 +259,15 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
             continue
         pool.append(_cand(nid, n))
     # **후보 전량을 판정에 올리지 않는다**(B73 ①) — 상한 안으로 좁힌다.
-    scope_cats = ((cfg or {}).get("canonical_scope") or {}).get("bind_categories", [])
     kept, how = _narrow(surface, pool, top_n or CANDIDATE_TOP_N,
                         parent=parent, scope_cats=scope_cats, category=category)
     STATS["조립"] += 1
     STATS["후보합"] += len(out) + len(kept)
     STATS[how] = STATS.get(how, 0) + 1
+    for c in kept:
+        # **어떻게 좁혔는가를 후보가 지고 온다**(B74 ②) — 판정이 경로를 적을 때
+        # 그 사실을 다시 계산하지 않는다. 계산한 자리가 아는 것을 실어 올린다.
+        c["how"] = how
     return out + kept
 
 
@@ -240,15 +290,18 @@ def match(surface, candidates, category, cfg=None):
     for c in pool:
         if c.get("exact"):                           # 사전 히트 — 결정적·무LLM 경로
             STATS["사전"] += 1
-            return {"type": MATCH, "matched_id": c["id"], "confidence": 1.0}
+            return {"type": MATCH, "matched_id": c["id"], "confidence": 1.0,
+                    "path": "dictionary"}
     if not pool:
-        return {"type": NEW, "matched_id": None, "confidence": 0.0}
+        return {"type": NEW, "matched_id": None, "confidence": 0.0,
+                "path": "none"}
+    path = _path_of(pool)
     STATS["판정"] += 1
     if PROGRESS is not None:
         PROGRESS(dict(STATS))
 
     if not llm.use_mock():
-        return _judge_live(surface, pool, category, cfg)
+        return _judge_live(surface, pool, category, cfg, path=path)
     llm.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
 
     best, score = None, 0.0
@@ -265,11 +318,12 @@ def match(surface, candidates, category, cfg=None):
 
     if score >= threshold(cfg):
         return _guard_auto({"type": MATCH, "matched_id": best,
-                            "confidence": score}, pool)
+                            "confidence": score, "path": path}, pool)
     if score > 0.0:
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
-        return {"type": UNCERTAIN, "matched_id": None, "confidence": score}
-    return {"type": NEW, "matched_id": None, "confidence": 0.0}
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": score,
+                "path": path}
+    return {"type": NEW, "matched_id": None, "confidence": 0.0, "path": path}
 
 
 def _guard_auto(verdict, pool):
@@ -284,11 +338,12 @@ def _guard_auto(verdict, pool):
     c = next((x for x in pool if x["id"] == verdict.get("matched_id")), None)
     if c and c.get("status") == "auto" and float(verdict.get("confidence") or 0) < 1.0:
         return {"type": UNCERTAIN, "matched_id": None,
-                "confidence": verdict.get("confidence", 0.0)}
+                "confidence": verdict.get("confidence", 0.0),
+                "path": verdict.get("path")}
     return verdict
 
 
-def _judge_live(surface, pool, category, cfg=None):
+def _judge_live(surface, pool, category, cfg=None, *, path=None):
     """지점 ② 개체 동일성 판정의 실호출 갈래 — **반환 계약이 mock과 같다.**
 
     입력은 `mention` + 후보들이고 후보 하나는 `canonical`·`aliases`·부착 위치·
@@ -314,27 +369,32 @@ def _judge_live(surface, pool, category, cfg=None):
     vtype = out.get("type")
     mid = out.get("matched_id")
     conf = float(out.get("confidence") or 0.0)
+    path = path or _path_of(pool)
     if vtype == MATCH and mid not in ids:
         _LOG.warning("판정이 후보 밖 id를 답했다 — 버리고 uncertain으로 둔다: %r", mid)
-        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
+                "path": path}
     if vtype == MATCH and conf < threshold(cfg):
-        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
+                "path": path}
     if vtype == MATCH:
         return _guard_auto({"type": MATCH, "matched_id": mid,
-                            "confidence": conf}, pool)
+                            "confidence": conf, "path": path}, pool)
     if vtype not in (MATCH, NEW, UNCERTAIN):
         _LOG.warning("판정 분기가 닫힌 3값 밖이다 — uncertain으로 둔다: %r", vtype)
-        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf}
+        return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
+                "path": path}
     return {"type": vtype,
             "matched_id": mid if vtype == MATCH else None,
-            "confidence": conf}
+            "confidence": conf, "path": path}
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
             polarity=None, parent=None):
     """후보 조립 + 판정의 2단을 한 번에 — Pass 1 entity 경로의 편의 형태다.
 
-    돌려주는 것은 `(분기, node_id 또는 None, 점수)` 튜플이다. **계약의 정본은
+    돌려주는 것은 `(분기, node_id 또는 None, 점수, 판정 dict)` 튜플이다 — 네 번째는
+    `match`의 반환 그대로이고, 대장이 적을 사실(경로·후보 수)이 거기 있다(B74 ②). **계약의 정본은
     `match`의 dict**이고 이것은 그 위의 얇은 껍데기다 — 판정 로직을 여기 두면
     재사용 지점마다 별도 판정 코드가 생긴다(그것이 고친 결함이다).
     """
@@ -343,4 +403,7 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
     v = match(surface, cands, category, cfg)
-    return v["type"], v["matched_id"], v["confidence"]
+    # **후보 수는 판정의 반환이 아니라 조립의 사실이다** — 계약(문서 4 §4.3-6)의
+    # 세 키에 `path` 하나만 더한다(B74 ②). 대장이 적을 나머지는 여기서 싣는다.
+    v["candidates_n"] = len(cands)
+    return v["type"], v["matched_id"], v["confidence"], v

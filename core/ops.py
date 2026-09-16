@@ -28,6 +28,7 @@ from .build import Builder
 from .dictionary import Dictionary
 from .graph import STATUS_DELETED, GraphStore
 from .ids import norm
+from .naming import scope_canonical
 # 생존 판정·툼스톤 체인은 core/status.py가 소유한다 — 이름은 여기서도 그대로 보인다
 # (`ops.is_live`·`ops.STATUS_MERGED`·`ops.resolve_chain`·`ops.MAX_CHAIN` — 호출 계약 유지).
 from .status import (  # noqa: F401
@@ -634,6 +635,76 @@ def confirm(layer, nid, actor, reason="", dry_run=False):
                            actor=actor, decision="confirmed", at=at, note=reason)
     log_op("I5:confirm", actor, [nid], reason, {"from": pv["from"]})
     return pv
+
+
+def alias(layer, target, surface, actor, reason="", dry_run=False):
+    """**사람이 표기를 잇는다** — 사전에 표기 하나를 손으로 등재한다 (B74 ⑤ · I6).
+
+    지금까지 사전에 표기를 넣는 사람의 길은 골격 alias(seed `ALIASES`)뿐이었고,
+    entity의 alias는 **판정 결과로만** 쌓였다. 사내에서 「이 표기도 같은 것이다」를
+    아는 사람이 그것을 시스템에 말할 자리가 없었다는 뜻이다.
+
+    등재는 인입과 **같은 함수**(`Builder._register`)로 한다(B74 ①) — 원 표기와
+    **조회 키**(그 표기를 이 노드의 부모 아래에서 조립한 스코프 canonical) 둘이
+    같이 들어가야 다음 인입이 그 표기에서 exact로 끊는다.
+
+    거부 셋: 행위자 없음 · 대상 없음(툼스톤·타층 id 포함 — `_target`) ·
+    **같은 부모 아래 다른 live 노드에 이미 붙은 표기**. 마지막이 핵심이다:
+    alias로 두 노드를 한 표기에 묶으면 **병합을 우회한 병합**이 되고, 그것은
+    사람이 배분표를 써야 되돌릴 수 있는 종류의 사고다(I2가 자동 불가인 이유).
+
+    미리보기는 없다 — 파급 1건이다(문서 4 §4.7-4 예외).
+    """
+    if not actor:
+        raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
+    surface = (surface or "").strip()
+    if not surface:
+        raise OpRefused("등재할 표기를 달라")
+    g = GraphStore.for_layer(layer).load()
+    nid = target if g.get(target) else _by_canonical(g, target)
+    node = _target(g, nid)                      # 툼스톤·타층 id는 여기서 거부된다
+    cfg = _cfg(layer)
+    parent = node.get("parent") or node.get("mirror_scope")
+    dic = Dictionary.open()
+    key, _scoped = scope_canonical(surface, node["category"], parent, cfg)
+    for other in set(dic.lookup(surface)) | set(dic.lookup(key)):
+        o = g.get(other)
+        if other == nid or not o or not is_live(o):
+            continue
+        if o["category"] != node["category"]:
+            continue
+        if (o.get("parent") or o.get("mirror_scope")) != parent:
+            continue
+        raise OpRefused(
+            f"'{surface}'는 이미 같은 자리의 다른 노드에 붙어 있다 — "
+            f"'{o['canonical']}' ({other})\n"
+            f"     합칠 것이면 alias가 아니라 병합이다: "
+            f"python run.py ops merge {layer} {other} {nid} --actor {actor} --yes")
+    pv = {"op": "alias", "layer": layer, "target": nid,
+          "canonical": node["canonical"], "surface": surface, "key": key,
+          "parent": parent, "nodes": 1, "edges": 0}
+    if dry_run:
+        return pv
+    prov = f"op:alias:{actor}"
+    b = Builder(g, cfg, None, None, layer)
+    b.dict = dic
+    b._register(surface, nid, prov, key=key)    # ①의 등재 함수 그대로
+    b.flush()
+    g.save()
+    log_op("I6:alias", actor, [nid], reason,
+           {"surface": surface, "key": key, "canonical": node["canonical"]})
+    return pv
+
+
+def _by_canonical(g, name):
+    """canonical로도 집는다 — 사람이 화면에서 보는 것은 id가 아니라 이름이다."""
+    hit = [n["id"] for n in g.nodes.values()
+           if is_live(n) and (n["canonical"] == name or norm(n["canonical"]) == norm(name))]
+    if not hit:
+        raise OpRefused(f"대상 노드가 없다: {name}")
+    if len(hit) > 1:
+        raise OpRefused(f"'{name}'이 여럿이다 — node_id로 지목하라: {hit[:4]}")
+    return hit[0]
 
 
 # ---------------------------------------------------------------- 엣지 삭제

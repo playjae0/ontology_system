@@ -24,6 +24,26 @@ from .status import is_live
 from .naming import (POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
 
+def entity_key(surface, category, cfg, *, electrode_type=None,
+               parent_canonical=None, anchor_polarity=None):
+    """**판정이 사전을 여는 키** — 예고와 판정이 이 함수 하나를 부른다 (B74 ①).
+
+    돌려주는 것은 `(canonical, polarity, scoped, 스코프_카테고리인가)`다. 키 조립이
+    두 곳에 복제되면 예고가 판정과 **다른 키로 사전을 보게 되고**, 그 순간 예고는
+    비용을 잘못 말한다(허브 실측 열셋째: 예고 「사전 히트 31종」 · 판정 「사전 0」).
+    """
+    scoped_category = category in (cfg.get("canonical_scope") or {}) \
+        .get("bind_categories", [])
+    anchor_polarity = anchor_polarity if scoped_category else None
+    inherited = anchor_polarity is not None
+    bound = surface if inherited else \
+        bind_polarity(surface, category, electrode_type, cfg)            # ④
+    polarity = derive_polarity(category, electrode_type, cfg,
+                               anchor_polarity=anchor_polarity)
+    canonical, scoped = scope_canonical(bound, category, parent_canonical, cfg)
+    return canonical, polarity, scoped, scoped_category
+
+
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
 
@@ -37,6 +57,11 @@ class Builder:
         self.dict = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
         self.buffer: dict[str, str] = {}     # 문서 해소 버퍼 (2-pass Pass 1)
         self.subs: dict[str, "Builder"] = {}  # 걸침 층별 하위 빌더 — 아래 for_layer
+        # 마지막 entity 해소의 사실 — **대장이 읽는 자리**다(B74 ②). 판정이 아는
+        # 것(경로·점수·큐)을 호출부가 다시 계산하지 않게 여기 실어 올린다.
+        self.last: dict = {}
+        # 판정 대장 — 문서 하나에 하나이고 걸침 하위 빌더와 **공유한다**(B74 ②).
+        self.ledger = None
 
     # ---------------------------------------------------------------- 걸침
     def for_layer(self, layer):
@@ -55,6 +80,7 @@ class Builder:
                           self.doc_id, layer)
             sub.dict = self.dict
             sub.buffer = self.buffer
+            sub.ledger = self.ledger
             sub.subs = self.subs
             self.subs[layer] = sub
         return self.subs[layer]
@@ -64,14 +90,29 @@ class Builder:
         return [self.g] + [s.g for s in self.subs.values()]
 
     # ---------------------------------------------------------------- 사전
-    def _register(self, surface, nid, prov):
+    def _register(self, surface, nid, prov, key=None):
         """사전 등재는 관문이 한다 — **provenance 필수 강제가 그쪽에 있다**(§7.1).
 
         alias 항목(`{surface, provenance}`)은 노드 레코드에 살므로(§7.2) 그
         붙이기만 여기 남는다 — 사전이 그래프를 쓰면 저장 계층 경계가 무너진다.
+
+        **키 둘을 등재한다**(B74 ①): 원 표기와 **조회 키**(`key` — 해소가 사전을
+        열 때 쓴 스코프 canonical)다.
+
+        · 원 표기는 질의 링킹의 표면형 스캔이 쓴다(문서 5) — 그래서 남긴다.
+        · 조회 키가 없으면 **사전은 영영 히트하지 않는다**: 등재는 `노칭 프레스`로
+          하고 조회는 `노칭::노칭 프레스`로 하던 것이 허브 실측 열셋째의 결함이다.
+        · 판정이 **다른 노드에** 붙였을 때도 키는 그 표기의 것이다 — 그래야 다음
+          문서에서 같은 표기가 같은 부모 아래 다시 나올 때 판정을 다시 부르지 않는다.
+          (`key`를 안 주면 그 노드의 canonical을 쓴다 — 조회 키를 모르는 호출용.)
+
+        스코프 없는 카테고리는 표기와 키가 같으므로 등재는 1건이다.
         """
         self.dict.register(surface, nid, provenance=prov)
         n = self.g.get(nid)
+        key = key or n["canonical"]
+        if norm(key) != norm(surface):
+            self.dict.register(key, nid, provenance=prov)
         if norm(surface) != norm(n["canonical"]) and \
                 not any(a["surface"] == surface for a in n["aliases"]):
             n["aliases"].append({"surface": surface, "provenance": [prov]})
@@ -312,27 +353,38 @@ class Builder:
                           f"층이 선언하지 않은 카테고리 '{category}' — 노드를 만들지 않는다",
                           self.doc_id, {"surface": surface, "category": category,
                                         "provenance": prov})
+            self.last = {"canonical": surface, "verdict": "gate_reject",
+                         "path": "none", "confidence": 0.0, "layer": self.layer,
+                         "queue_kind": "invalid_category", "node_id": None}
             return None
-        scoped_category = category in (self.cfg.get("canonical_scope") or {}) \
-            .get("bind_categories", [])
-        anchor_polarity = anchor_polarity if scoped_category else None
-        inherited = anchor_polarity is not None
-        bound = surface if inherited else \
-            bind_polarity(surface, category, electrode_type, self.cfg)       # ④
-        polarity = derive_polarity(category, electrode_type, self.cfg,
-                                   anchor_polarity=anchor_polarity)
-        canonical, scoped = scope_canonical(bound, category,
-                                            parent_canonical, self.cfg)
+        canonical, polarity, scoped, scoped_category = entity_key(
+            surface, category, self.cfg, electrode_type=electrode_type,
+            parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
         # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
         # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
-        verdict, nid, _ = resolve(canonical, category, self.layer,
-                                  self.g, self.dict, scoped=scoped,
-                                  polarity=polarity, parent=parent_canonical)
+        from . import llm as _llm
+        _u0 = _llm.usage_total()
+        verdict, nid, conf, v = resolve(canonical, category, self.layer,
+                                        self.g, self.dict, scoped=scoped,
+                                        polarity=polarity,
+                                        parent=parent_canonical)
+        _u1 = _llm.usage_total()
+        # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
+        # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
+        self.last = {"canonical": canonical, "verdict": verdict,
+                     "path": v.get("path"), "confidence": conf,
+                     "layer": self.layer, "queue_kind": None,
+                     "candidates_n": v.get("candidates_n", 0),
+                     "llm": {"calls": _u1["calls"] - _u0["calls"],
+                             "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
+                             "out_tokens": (_u1["completion_tokens"]
+                                            - _u0["completion_tokens"])}}
         if verdict == MATCH:
-            self._register(surface, nid, prov)
+            self._register(surface, nid, prov, key=canonical)
             if prov not in self.g.get(nid)["provenance"]:
                 self.g.get(nid)["provenance"].append(prov)
             self.buffer[norm(surface)] = nid
+            self.last["node_id"] = nid
             return nid
 
         extra = {"_scoped": True} if scoped and self.cfg.get("canonical_scope", {}) \
@@ -344,7 +396,8 @@ class Builder:
         extra["mirror_scope"] = parent_canonical if scoped_category else None
         extra["mirror_name"] = norm(surface)
         nid = self.g.add_node(canonical, category, "auto", provenance=[prov], **extra)
-        self._register(surface, nid, prov)
+        self._register(surface, nid, prov, key=canonical)
+        self.last["queue_kind"] = "auto_node" if verdict == NEW else "uncertain_match"
         store.enqueue("auto_node" if verdict == NEW else "uncertain_match",
                       f"{'자동 생성' if verdict == NEW else '판정 불확실 — 신규로 생성'}"
                       f": {canonical} ({category})",
@@ -354,6 +407,7 @@ class Builder:
                                     # 남기면 사람이 그 줄을 그대로 칠 수 없다.
                                     "layer": self.layer})
         self.buffer[norm(surface)] = nid
+        self.last["node_id"] = nid
         return nid
 
     # ---------------------------------------------------------------- attribute
