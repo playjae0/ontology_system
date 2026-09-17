@@ -34,8 +34,10 @@ def cases():
 
     core 6지점은 **종전 방식 그대로**다(인라인 분기 — 팩토리로 옮기는 것은 다음 회차).
     """
-    from core import embeddings, llm, matcher, query as Q
-    from core.bootstrap import load_config, open_graph
+    from core import matcher
+    from core.llm import embeddings, llm
+    from core.query import query as Q
+    from core.state.bootstrap import load_config, open_graph
     from core.dictionary import Dictionary
 
     g = open_graph("process")
@@ -46,7 +48,7 @@ def cases():
         # ── core 6지점 — 인라인 분기(다음 회차에 팩토리로 옮긴다)
         # **실물 config를 쓴다** — 축약 dict를 넘기면 프롬프트 조립이 `cfg["layer"]`에서
         # 먼저 깨져 KeyError가 나고, 그것이 「명시적 실패」로 잘못 세어진다(실측).
-        "extract": lambda: __import__("core.extract", fromlist=["x"])._candidates_for(
+        "extract": lambda: __import__("core.build.extract", fromlist=["x"])._candidates_for(
             "C1", {"text": "가", "process_ref": "노칭"}, load_config("process"), {}),
         "judge": lambda: matcher.match("가", [n], "Unit"),
         "embed": lambda: embeddings.embed("가"),

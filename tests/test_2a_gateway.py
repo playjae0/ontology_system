@@ -31,12 +31,12 @@ def show(label, ok, detail=""):
 # ============================================================ 게이트웨이 2파일
 print("\n■ 게이트웨이 2파일 (§7.6-B-1)")
 
-from core import embeddings, llm                                 # noqa: E402
+from core.llm import embeddings, llm                                 # noqa: E402
 
-show("core/llm.py — chat(messages, *, model, json_schema)",
+show("core/llm/llm.py — chat(messages, *, model, json_schema)",
      hasattr(llm, "chat")
      and {"model", "json_schema"} <= set(llm.chat.__code__.co_varnames))
-show("core/embeddings.py — embed(text) -> vector", hasattr(embeddings, "embed"))
+show("core/llm/embeddings.py — embed(text) -> vector", hasattr(embeddings, "embed"))
 show("LLM 지점 목록이 닫힌 **9종**이다 (§7.6-B-2 — ⑨좌표 태깅 포함)",
      len(llm.POINTS) == 9 and {"answer", "coord_tag"} <= set(llm.POINTS), ", ".join(llm.POINTS))
 
@@ -48,7 +48,7 @@ leaks = [f"{p.relative_to(ROOT)}:{i}"
          for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
          if any(e in ln for e in _ENV) and not ln.lstrip().startswith("#")
          and "|" not in ln]
-show("LLM 설정 접근이 core/llm.py 하나로 수렴한다 (§7.6-B-1)", not leaks, str(leaks))
+show("LLM 설정 접근이 core/llm/llm.py 하나로 수렴한다 (§7.6-B-1)", not leaks, str(leaks))
 
 # ============================================================ mock 갈래
 print("\n■ mock 갈래 — 결정성이 우선이다 (§7.5-1)")
@@ -131,11 +131,11 @@ show("크기 예산은 감축 사다리를 탄다 — 행을 빼지 않고 앞�
 print("\n■ 분기가 실물로 서 있는가 — 주석을 세지 않는다 (§7.6-B-2)")
 
 # core 6지점 — **종전 방식 유지**(인라인 분기. 팩토리로 옮기는 것은 다음 회차)
-WIRED = {"extract": ("core/extract.py", "_candidates_for"),
+WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
          "judge": ("core/matcher.py", "_judge_live"),
-         "embed": ("core/embeddings.py", "llm.require"),
+         "embed": ("core/llm/embeddings.py", "llm.require"),
          "generate": ("cli/register.py", "_draft_live"),
-         "link": ("core/query.py", "_link_llm"),
+         "link": ("core/query/query.py", "_link_llm"),
          "answer": ("cli/query.py", "def generate")}
 for key, (where, needle) in WIRED.items():
     src = (ROOT / where).read_text(encoding="utf-8")
@@ -205,7 +205,7 @@ def _ledger_points():
 def _code_points():
     """코드가 실제로 붙이는 호출 태그 — `chat`은 게이트웨이 기본값이라 칸이 아니다(0.4)."""
     return {m for d in ("cli", "core", "parser")
-            for f in sorted((ROOT / d).glob("*.py"))
+            for f in sorted((ROOT / d).rglob("*.py"))      # 파트 폴더까지 훑는다(B78 2a)
             for m in re.findall(r'point="([a-z_]+)"',
                                 f.read_text(encoding="utf-8"))} - {"chat"}
 

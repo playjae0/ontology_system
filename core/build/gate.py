@@ -33,7 +33,7 @@
 """
 from __future__ import annotations
 
-from . import store
+from core.state import store
 
 COMMIT = "commit"
 DIRECTION_CONFLICT = "direction_conflict"

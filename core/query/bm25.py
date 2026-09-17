@@ -23,7 +23,7 @@ import math
 import re
 from collections import Counter
 
-from core import store
+from core.state import store
 
 # BM-25 상수 — **한 곳에만 있다.** 흩어지면 조정이 코드 수색이 된다.
 K1 = 1.5

@@ -16,11 +16,12 @@ import json
 import sys
 
 
-from core import llm
+from core.llm import llm
 from core.dictionary import Dictionary
-from core import query as Q, store
-from core.ids import norm
-from core.bootstrap import load_config, open_graph
+from core.query import query as Q
+from core.state import store
+from core.state.ids import norm
+from core.state.bootstrap import load_config, open_graph
 from router import discover
 
 GENERAL = "[일반지식 — 사내 검증 필요]"

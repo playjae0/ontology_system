@@ -25,9 +25,10 @@ import json
 import shutil
 from pathlib import Path
 
-from . import log, paths, store
+from core import paths
+from core.state import log, store
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 _LOG = log.get(__name__)
 
 #: 옛 배치의 표식 — 등록부가 진실 옆에 있던 자리다.

@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from . import store
+from core.state import store
 
 # 읽기 추적의 최대 깊이 — 조절점(코드 상수, 초과는 결함 로그. L8).
 MAX_CHAIN = 16

@@ -16,9 +16,9 @@ config에서 받는 통로가 지점마다 갈리고**, 층 어휘 0(문서 1 A/
 """
 from __future__ import annotations
 
-from . import log, store
-from .ids import norm
-from .naming import POLARITY_NONE
+from core.state import log, store
+from core.state.ids import norm
+from core.build.naming import POLARITY_NONE
 
 _LOG = log.get(__name__)
 

@@ -27,7 +27,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# `core/paths.py`가 이 모듈을 읽으므로(픽스처 뿌리) 역참조하지 않는다 — 순환.
+ROOT = Path(__file__).resolve().parent.parent.parent
 
 #: 픽스처 뿌리. 사내 반입 시 `ONTO_FIXTURES`로 갈아 끼운다.
 ROOT_DIR = Path(os.environ.get("ONTO_FIXTURES") or (ROOT / "tests" / "fixtures"))

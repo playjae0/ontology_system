@@ -15,7 +15,7 @@
 """
 from __future__ import annotations
 
-from core import llm
+from core.llm import llm
 
 FLAG = "--allow-mock"
 
@@ -30,10 +30,10 @@ def _migrate_message(command="", pair=None):
     """이관 전 실행의 **거부 문면** — 원인 · 지금 잰 것 · 근거 · 다음 줄(B61 · B77 ③).
 
     문면이 한 자리인 이유: 같은 거부가 `run.py`와 각 `cli/*` 진입에서 다른 말로
-    나오면 사람은 두 가지 고장을 본 것으로 읽는다. 판정은 `core/migrate.py`가
+    나오면 사람은 두 가지 고장을 본 것으로 읽는다. 판정은 `core/state/migrate.py`가
     하고 **화면은 여기다**(D-149 ③ — core는 화면을 갖지 않는다).
     """
-    from core import migrate, store
+    from core.state import migrate, store
     old, home = pair or migrate.needs_migration()
     mark = old / migrate.LEGACY_MARK[0] / migrate.LEGACY_MARK[1]
     return (f"[{command or '상태'}] 이관 먼저 — 옛 배치의 상태를 읽지 않는다 "
@@ -51,9 +51,9 @@ def require_migrated(command=""):
 
     조용히 옛 자리를 읽으면 사람은 이관한 줄 알고, 그때부터 옛 자리와 새 자리가
     갈라진 채 며칠이 간다 — B77 ③이 신고한 「옮기다 빠짐」의 상류다. 판정과 문면은
-    `core/migrate.py`가 갖고(D-149 ③ — core는 화면을 갖지 않는다) 여기서는 멈춘다.
+    `core/state/migrate.py`가 갖고(D-149 ③ — core는 화면을 갖지 않는다) 여기서는 멈춘다.
     """
-    from core import migrate
+    from core.state import migrate
     pair = migrate.needs_migration()
     if pair:
         raise SystemExit(_migrate_message(command, pair))   # [상태] 문면=_migrate_message

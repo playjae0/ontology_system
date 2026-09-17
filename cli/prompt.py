@@ -16,7 +16,8 @@ import os
 import re
 from pathlib import Path
 
-from core import llm, paths
+from core import paths
+from core.llm import llm
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"

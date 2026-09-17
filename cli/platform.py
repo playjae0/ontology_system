@@ -29,11 +29,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, paths, store
-from core import graph as graph_mod, pipeline as pipeline_mod
-from core.bootstrap import load_config, open_graph
-from core.extract import EXTRACT_DIR
-from core.status import is_live
+from core import paths
+from core.state import fixtures, store
+from core import graph as graph_mod
+from core.build import pipeline as pipeline_mod
+from core.state.bootstrap import load_config, open_graph
+from core.build.extract import EXTRACT_DIR
+from core.state.status import is_live
 from router import discover
 
 # 수정 큐 kind — **닫힌 20종**(구현문서 §2.3의 13종 + 증분0 §6-5의 확장 7종 · D-54).
@@ -157,7 +159,7 @@ def cmd_queue(kind=None):
                     tail += f" {pl['locators'][:3]}"
             # **재시도 이력**(B73 ②) — 「한 번 해결하고 다시 도는지」를 사람이 본다.
             if x.get("attempts"):
-                from core.retry import ATTEMPT_MAX
+                from core.build.retry import ATTEMPT_MAX
                 tail += (f"  · {x['attempts']}회 재시도 · 첫 발생 "
                          f"{x.get('doc_id')}"
                          + (" · **사람 판정 대기**(상한)"
@@ -252,8 +254,8 @@ def cmd_doctypes():
     따라오지 않는다. 그때 등록부에는 이름이 있고 파일은 없다: 그 상태가 화면에
     보이지 않으면 사람은 「등록이 사라졌다」고만 안다.
     """
-    from core.registry import all_doc_types, missing_assets, orphan_reviews
-    from core import llm
+    from core.state.registry import all_doc_types, missing_assets, orphan_reviews
+    from core.llm import llm
     reg = all_doc_types()
     miss = {(m["doc_type"], m["kind"]) for m in missing_assets()}
     print(f"doc_type 등록부 — {len(reg)}종"
@@ -281,12 +283,12 @@ def cmd_doctypes():
 
 
 def cmd_migrate(args):
-    """옛 배치 → 5단 배치 이관 (B78 1b). **판정·복사는 `core/migrate.py`가 한다.**
+    """옛 배치 → 5단 배치 이관 (B78 1b). **판정·복사는 `core/state/migrate.py`가 한다.**
 
     화면이 하는 일은 둘이다 — 무엇이 어디로 가는지의 표(`--dry-run`)와, 이관 뒤
     「무엇을 확인해야 하는가」의 다음 줄(`platform doctypes` 역방향 0건).
     """
-    from core import migrate
+    from core.state import migrate
     src = _opt(args, "--from")
     dst = _opt(args, "--to")
     res = migrate.run(src, dst, dry_run="--dry-run" in args)
@@ -354,7 +356,7 @@ def gauges():
     다음 측정이 자기 흔적을 세게 된다.
     """
     from cli import query as R
-    from core import query as Q
+    from core.query import query as Q
 
     # **없으면 0으로 세고 계속 돈다** — 무가드 read였고, 픽스처를 들어내면
     # `gauges`가 통째로 죽었다(§2-4 실측). 스모크 세트는 계기판의 **분모**이지

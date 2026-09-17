@@ -31,8 +31,9 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
-from core import llm, log, registry, store
-from core.pipeline import finalize, run_document
+from core.llm import llm
+from core.state import log, registry, store
+from core.build.pipeline import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -357,7 +358,7 @@ def _judge_gate(n, total, u):
     except (EOFError, KeyboardInterrupt):
         return
     if ans in ("q", "quit", "n"):
-        from core.pipeline import Stopped
+        from core.build.pipeline import Stopped
         raise Stopped(f"사람이 멈췄다 — 판정 값 {n}/{total} (그래프 쓰기 0 · "
                       f"체크포인트는 남는다)")
 
@@ -503,7 +504,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
                 return row
             # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
-            from core.pipeline import _entity_surfaces, decision_plan
+            from core.build.pipeline import _entity_surfaces, decision_plan
             _sc = registry.schema_of(sel["doc_type"]) or {}
             _pl = decision_plan(
                 _entity_surfaces(res.envelope, _sc),

@@ -28,10 +28,12 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from collections import Counter
 
-from core import ledger, paths, registry, store
-from core.bootstrap import load_config, open_graph
-from core.ids import norm
-from core.status import is_live
+from core import paths
+from core.build import ledger
+from core.state import registry, store
+from core.state.bootstrap import load_config, open_graph
+from core.state.ids import norm
+from core.state.status import is_live
 from router import discover
 
 
@@ -690,7 +692,7 @@ def cmd_bm25(args):
     """
     if not args:
         raise SystemExit('사용: run.py show bm25 "<질문>" [k]')               # [사용법]
-    from core import bm25
+    from core.query import bm25
     q = args[0]
     k = int(args[1]) if len(args) > 1 and args[1].isdigit() else 8
     ch = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}

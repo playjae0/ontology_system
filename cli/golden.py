@@ -23,7 +23,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from core import bm25, paths, store
+from core import paths
+from core.query import bm25
+from core.state import store
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = paths.golden("queries.json")

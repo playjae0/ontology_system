@@ -26,10 +26,10 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core import skeleton as SK
-from core.bootstrap import load_config, load_seed
+from core.state import skeleton as SK
+from core.state.bootstrap import load_config, load_seed
 from core.graph import GraphStore
-from core.skeleton import plant
+from core.state.skeleton import plant
 
 ROOT = Path(__file__).resolve().parent.parent
 LAYERS = ROOT / "layers"
@@ -73,7 +73,7 @@ def _view(layer):
 # 복사가 안 되는 환경이라 **읽어서 전달**한다.
 #
 # **loader의 판정을 다시 쓰지 않는다**(미러 금지) — 「무엇이 canonical인가」는
-# `core/skeleton.py`가 갖고, 여기는 **파일의 어디가 어긋났나**만 본다: 줄 번호는
+# `core/state/skeleton.py`가 갖고, 여기는 **파일의 어디가 어긋났나**만 본다: 줄 번호는
 # 파일에만 있고 loader는 그것을 모른다. loader가 먼저 죽는 위반은 그 문면 그대로
 # `K09`로 싣는다 — 같은 사실을 두 곳이 말하면 하나가 낡는다.
 

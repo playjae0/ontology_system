@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 
-from core import llm
+from core.llm import llm
 from cli.prompt import _sent_size, _vocab_excerpt
 
 # 입력은 이 이름을 거친다 — 테스트가 갈아끼운다(대화형이라 파이프로는 못 잰다)

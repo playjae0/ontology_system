@@ -30,7 +30,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, llm, registry
+from core.llm import llm
+from core.state import fixtures, registry
 from parser import preflight
 from parser.normalizer import _col
 from parser.reader import GRID_EXT, read
@@ -87,7 +88,7 @@ def adapters(paths=None):
     없으면 여기서 멈춘다. 거르고 진행하면 같은 화면이 「내장 셋만 있다」로 보이고,
     사람은 자기가 등록한 doc_type이 사라진 이유를 어디에서도 못 본다.
     """
-    from core.registry import adapter_paths
+    from core.state.registry import adapter_paths
     files = []
     if paths is None:
         _refuse_missing(registry.missing_assets())

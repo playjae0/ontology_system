@@ -24,9 +24,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "kit"))
 
 from cli import register as R                              # noqa: E402
-from core import init, registry, store                           # noqa: E402
+from core.state import init, registry, store                           # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap                       # noqa: E402
+from core.state.bootstrap import bootstrap                       # noqa: E402
 from parser import pipeline, reader                        # noqa: E402
 
 allok = True
@@ -288,7 +288,7 @@ show("존재하지 않는 층 지정은 거부한다 (층 선행 완결 — ⑵-
 
 # ============================================================ 3소비자 정합
 print("\n■ 등록부 3소비자 — 같은 실물을 읽는다 (장부는 하나다)")
-from core.ingest import load_schema                          # noqa: E402
+from core.build.ingest import load_schema                          # noqa: E402
 show("① M2 조회(인입) — 등록된 doc_type의 스키마를 찾는다",
      (load_schema("toc_report") or {}).get("doc_type") == "toc_report")
 show("① 미등록은 None — 인입이 명시적으로 실패한다 (G6.5 B3)",
@@ -327,7 +327,7 @@ reset("ipqc")
 reset("toc_report")
 # ============================================================ 2B 등록 개선 6건
 print("\n■ 2B 등록 파이프라인 개선 — 실행으로 잠근다")
-from core import llm as _LLM                                        # noqa: E402
+from core.llm import llm as _LLM                                        # noqa: E402
 from parser import normalizer as _NZ                                # noqa: E402
 _R, _pl = R, pipeline
 
@@ -553,8 +553,8 @@ show("시스템 키는 5 그대로다 (값의 형태만 바뀌었다)", len(_pkg
 
 # ============================================================ 등록 2차 개선
 print("\n■ B30·B32·B34 — 문답 어휘 주입 · 크기 손잡이 · 관찰 범위")
-from core import llm                                        # noqa: E402
-from core.bootstrap import load_config                      # noqa: E402
+from core.llm import llm                                        # noqa: E402
+from core.state.bootstrap import load_config                      # noqa: E402
 
 # ① B32 — 문답 system에 판정 어휘가 이어 붙는다. **정본은 생성 템플릿 하나다.**
 _voc = R._vocab_excerpt(_pkg29)
@@ -723,7 +723,7 @@ import os as _os                                                    # noqa: E402
 show("④ 환경변수가 설정 파일을 이긴다",
      (lambda: (_os.environ.__setitem__("USE_MOCK", "1"), llm.use_mock())[1])() is True)
 show("④ 판독은 use_mock() 하나다 (읽는 곳을 늘리지 않았다)",
-     sum(1 for f in (ROOT / "core").glob("*.py")
+     sum(1 for f in (ROOT / "core").rglob("*.py")
          for ln in f.read_text(encoding="utf-8").splitlines()
          if 'environ.get("USE_MOCK"' in ln) == 1)
 show("④ 기본은 mock이다 (둘 다 없으면 — 조항 B12)",
@@ -738,7 +738,7 @@ for _f, _n in ((ROOT / "cli/register.py", "register"), (ROOT / "run.py", "run"))
 # B41 예산 — 한도가 없으면 대조하지 않는다
 show("⑥ 컨텍스트 한도는 **선택**이다 — 기본값을 코드에 박지 않았다",
      llm.context_limit() is None
-     and "LLM_CONTEXT_TOKENS" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
+     and "LLM_CONTEXT_TOKENS" in (ROOT / "core/llm/llm.py").read_text(encoding="utf-8"))
 
 # ============================================================ B43·B44
 print("\n■ B43·B44 — 스키마 strict · 오류 본문 · 분할 레벨 · section 좌표")
@@ -788,9 +788,9 @@ show("① 한글 키 `근거`가 `reason`으로 바뀌었다 (소비처 포함)"
 # ② 오류 본문 보존 — 키는 남기지 않는다
 show("② GatewayError가 상태 코드와 본문을 지닌다",
      hasattr(llm, "GatewayError") and hasattr(llm, "LAST_ERROR")
-     and "e.read()" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
+     and "e.read()" in (ROOT / "core/llm/llm.py").read_text(encoding="utf-8"))
 show("② 4xx는 재시도하지 않는다 (같은 400을 세 번 받지 않는다)",
-     "except GatewayError:" in (ROOT / "core/llm.py").read_text(encoding="utf-8"))
+     "except GatewayError:" in (ROOT / "core/llm/llm.py").read_text(encoding="utf-8"))
 show("② 본문은 길이 상한으로 자른다", isinstance(llm.ERR_BODY_MAX, int))
 
 # ③ 분할 레벨 — 결정적이고 근거가 지도에 남는다
@@ -973,7 +973,7 @@ print("\n■ 등록개선 — ② --use-basic · ③ 확정 안내 · ⑤ 문답
 import contextlib as _ctx                                           # noqa: E402
 import io as _io                                                    # noqa: E402
 from cli import interview as _IV                                    # noqa: E402
-from core import registry as _REG                                   # noqa: E402
+from core.state import registry as _REG                                   # noqa: E402
 _PPT = str(ROOT / "tests/fixtures/raw/PPT_basic.xlsx").replace(".xlsx", ".pptx")
 # ② 거부 — 제안이 서지 않는 표본(정형)
 try:
@@ -1082,7 +1082,7 @@ show("③ 관문 대상 목록이 코드에 있다 — register는 생성·검�
 # 되고, 그것이 판정필요-15가 신고한 병(파서가 따로 읽어 갈렸다)의 재발이다.
 _gcalls = [f"{f.relative_to(ROOT)}:{i}"
            for f in [ROOT / "run.py", *sorted((ROOT / "cli").glob("*.py")),
-                     *sorted((ROOT / "core").glob("*.py")),
+                     *sorted((ROOT / "core").rglob("*.py")),
                      *sorted((ROOT / "parser").glob("*.py"))]
            for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1)
            if "require_live_or_allow(" in ln and "def " not in ln
@@ -1382,7 +1382,7 @@ show("② 전량 파싱이면 그 줄이 없다 (없는 사실을 만들지 않�
 
 # ============================================================ B51 추출 리허설 · doc_id
 print("\n■ B51 — prose ②구획은 추출 리허설 · parse run의 doc_id 파생")
-from core import extract as _EX                                     # noqa: E402
+from core.build import extract as _EX                                     # noqa: E402
 
 # ── ② parse run — doc_id는 선택이다 (§7.1)
 def _prun(*a):
@@ -1476,7 +1476,7 @@ _EX.invalidate("TOC01")
 # **다른 파일**을 돌려주므로 재생성 루프가 도는 것처럼 보였고, 「지시가 실제로
 # 모델에 실렸나」를 재는 자리가 없어 B50·[정정] 40의 어서션이 전부 초록이었다.
 # 여기서 재는 것은 **조립된 전송분**이다 — 기록이 아니라 전송이다.
-from core import llm as _llm                                       # noqa: E402
+from core.llm import llm as _llm                                       # noqa: E402
 print("\n■ B55 ① — 재생성 지시가 조립 메시지에 실린다")
 
 _b55_sent = {}
@@ -1656,7 +1656,7 @@ shutil.rmtree(R._dir("b55iv"), ignore_errors=True)
 # ── B55 ③~⑩ 감사 2차 A군 수리 ─────────────────────────────────────────────
 print("\n■ B55 ③ — 추출 실패의 처분은 청크 단위다 (문서 4 §4.10 규약 9)")
 
-from core import extract as _EX                                   # noqa: E402
+from core.build import extract as _EX                                   # noqa: E402
 
 _b55_env = {"doc_id": "B55FAIL", "adapter_version": "1.0", "parsed_at": "t",
             "chunks": [{"source_locator": f"L{i}", "text": f"노칭 공정 {i}"}
@@ -1695,7 +1695,7 @@ show("③ⓒ defects.log에 남는다 — 큐가 아니라 결함 로그다 (새
      and "추출 실패" in _b55_d.read_text(encoding="utf-8"))
 show("③ 구축이 failed 청크를 건너뛴다 (결함이 「후보 0건」 통계에 녹지 않는다)",
      "if not c.get(\"failed\")" in
-     (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8"))
+     (ROOT / "core" / "build" / "pipeline.py").read_text(encoding="utf-8"))
 # ③ⓓ **전건 실패면 체크포인트를 쓰지 않는다** — 「파일 존재 = 추출 완료」(P-1).
 _EX.checkpoint_path("B55FAIL").unlink(missing_ok=True)
 _EX._candidates_for = lambda *a, **k: (_ for _ in ()).throw(ValueError("전건"))
@@ -1836,7 +1836,7 @@ show("⑦ⓒ URLError → ②도달 FAIL 그대로 (③은 아예 나오지 않�
      _purl["②"]["ok"] is False and "③" not in _purl)
 # **`_post`의 HTTPError 포착은 남는다** — 거기가 GatewayError로 바꿔 던지는 자리다.
 # 죽어 있던 것은 `probe` 안의 갈래이고, 그 함수 본문만 본다.
-_b55_llmsrc = (ROOT / "core" / "llm.py").read_text(encoding="utf-8")
+_b55_llmsrc = (ROOT / "core" / "llm" / "llm.py").read_text(encoding="utf-8")
 _b55_probe_src = _b55_llmsrc[_b55_llmsrc.index("def probe("):]
 _b55_probe_src = _b55_probe_src[:_b55_probe_src.index("\ndef ", 1)]
 # **주석은 코드가 아니다** — 무엇이 왜 죽어 있었는지 적은 문장이 그 자리에 있고,
@@ -3323,8 +3323,8 @@ show("①ⓑ 한 태그 한 라벨이다 (원인은 상세가 가른다 — B59 
 import importlib.util as _iu72                                     # noqa: E402
 _ra72 = _iu72.module_from_spec(_iu72.spec_from_file_location("ra72", R.KIT / "run_adapter.py"))
 _ra72.__spec__.loader.exec_module(_ra72)
-from core.pipeline import STRUCTURAL as _ST72                      # noqa: E402
-show("① 구조 필드의 정본은 core/pipeline.py다 (관문이 베끼지 않는다)",
+from core.build.pipeline import STRUCTURAL as _ST72                      # noqa: E402
+show("① 구조 필드의 정본은 core/build/pipeline.py다 (관문이 베끼지 않는다)",
      _ra72.structural_fields() == set(_ST72) and _ST72,
      f"{len(_ST72)}종")
 shutil.rmtree(_d72, ignore_errors=True)

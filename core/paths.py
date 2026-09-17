@@ -19,7 +19,7 @@
 **배치는 1b가 옮겼다** — 상태 루트 하나 아래 다섯 단이고(`state/` 기본 ·
 `ONTO_HOME`이 있으면 그 아래 · `USE_MOCK=1`이면 `state_mock/`), 옛 배치(레포 루트의
 `data/`·`review/`·`parsed/`…)는 **읽지 않는다**: 감지하면 `platform migrate`를
-가리키며 멈춘다(`core/migrate.py`). 조용히 옛 자리를 읽는 길은 없다.
+가리키며 멈춘다(`core/state/migrate.py`). 조용히 옛 자리를 읽는 길은 없다.
 
 **`mkdir`은 이 파일에만 있다**(B77 ④의 연장) — 폴더를 만드는 코드가 흩어지면 자리를
 옮길 때 한 곳이 남아 옛 자리를 되살린다.
@@ -61,7 +61,7 @@ def home():
     """
     global _HOME
     if _HOME is None:
-        from . import llm            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
+        from core.llm import llm            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
         if llm.use_mock():
             _HOME = ROOT / MOCK_HOME
         else:
@@ -120,15 +120,15 @@ def fixture_schemas(*parts):
     픽스처 폴더만 읽는다 — 섞일 자리가 없다. 구판은 같은 폴더에 두고
     `use_mock()` 분기로 갈랐고, 그래서 「mock이 이름만 다르게 숨어 있다」였다.
 
-    뿌리는 **mock 소재 단일 지점**(`core/fixtures.py`)에서 받는다 — `ONTO_FIXTURES`로
+    뿌리는 **mock 소재 단일 지점**(`core/state/fixtures.py`)에서 받는다 — `ONTO_FIXTURES`로
     픽스처를 통째로 갈아 끼우는 손잡이가 여기서도 같이 돌아야 한다.
     """
-    from . import fixtures
+    from core.state import fixtures
     return fixtures.ROOT_DIR.joinpath("schemas", *parts)
 
 
 def config_file(name="llm.json"):
-    """설정 파일의 **상태 루트 자리** — `core/llm.py`가 찾는 넷째 자리다(B78 1b).
+    """설정 파일의 **상태 루트 자리** — `core/llm/llm.py`가 찾는 넷째 자리다(B78 1b).
 
     **`home()`을 부르지 않는다.** `home()`은 `llm.use_mock()`을 묻고 `llm`의 설정
     판독이 이 함수를 부르므로, 여기서 `home()`을 부르면 서로를 기다린다. 그래서
@@ -194,7 +194,7 @@ def bind_parser():
     이 모듈을 import하면 자동으로 걸린다(아래 모듈 말미) — 부르는 곳을 기억해야
     하는 규율은 언젠가 한 진입점에서 빠진다.
     """
-    from . import store
+    from core.state import store
     from parser import struct_map, tagger
     struct_map.use_dir(lambda: work("struct_maps"))
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))

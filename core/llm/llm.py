@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """모델 게이트웨이 — **LLM 설정 접근이 이 파일 하나로 수렴한다** (문서 7 §7.6-B-1).
 
-    from core import llm
+    from core.llm import llm
     if llm.use_mock():
         out = <mock 갈래>
     else:
@@ -52,7 +52,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import log
+from core.state import log
 
 _LOG = log.get(__name__)
 
@@ -111,7 +111,7 @@ def mode_line():
     실측: 설정 파일을 만든 운영자가 **mock 문답의 고정 문안을 실호출 오동작으로
     읽었다.** 어느 갈래로 도는지가 화면 첫 줄에 없으면 사람은 자기가 켠 줄 안다.
     """
-    from . import paths                  # 함수 안 import — 모듈 수준 순환 방지
+    from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
     where = f" · 상태 폴더 {paths.home()}"      # 어느 상태에 쓰는지도 화면에 있다(B78 1b)
     if use_mock():
         return ('모드: mock (기본 — 실호출은 llm.json의 "USE_MOCK": 0 또는 '
@@ -151,13 +151,12 @@ def config_file():
     explicit = os.environ.get(CONFIG_ENV)
     if explicit:
         return explicit if os.path.isfile(explicit) else None
-    from . import paths                  # 함수 안 import — 모듈 수준 순환 방지
+    from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
     # 넷째 자리는 **상태 루트**다(B78 1b) — 사내는 `ONTO_HOME`을 코드 밖에 두므로
     # 설정도 상태와 함께 이사한다. `paths.config_file()`은 `home()`을 부르지 않는다
     # (부르면 `use_mock()` → 설정 판독 → 여기로 돌아와 서로를 기다린다).
     cand = [os.path.expanduser(CONFIG_PATHS[0]),
-            os.path.join(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))), CONFIG_PATHS[1]),
+            os.path.join(str(paths.ROOT), CONFIG_PATHS[1]),
             str(paths.config_file())]
     for c in cand:
         if c and os.path.isfile(c):
@@ -289,8 +288,13 @@ def require(point, *, need=("url", "model")):
 
 
 # ---------------------------------------------------------------- 호출
-PROMPTS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts")
+def _paths_root():
+    """레포 루트 — **자리 소유자에게 묻는다**(B78). 함수 안 import로 순환을 피한다."""
+    from core import paths
+    return paths.ROOT
+
+
+PROMPTS_DIR = os.path.join(str(_paths_root()), "prompts")
 
 
 _PROMPT_RE = re.compile(r"^\d+\.\d+_(?P<name>.+)\.md$")
@@ -624,7 +628,7 @@ def probe(points=None, *, timeout=None):
             add("③", "인증", False,
                 f"HTTP {e.status} — LLM_API_KEY {key_state()}. "
                 f"키가 맞는지·게이트웨이가 다른 헤더를 쓰는지 확인한다 "
-                f"(헤더는 core/llm.py::_post)", fatal=True)
+                f"(헤더는 core/llm/llm.py::_post)", fatal=True)
         else:
             add("③", "인증", False,
                 f"HTTP {e.status} — 인증 문제는 아니다. 응답 본문: {str(e.body)[:120]} · "
@@ -649,7 +653,7 @@ def probe(points=None, *, timeout=None):
             f"choices[0].message.content 경로가 없다. "
             f"응답 최상위 키: {sorted(raw) if isinstance(raw, dict) else type(raw).__name__} — "
             f"사내 게이트웨이가 OpenAI 호환이 아니다. "
-            f"고칠 곳은 core/llm.py 한 파일(_post와 chat의 응답 파싱)이다",
+            f"고칠 곳은 core/llm/llm.py 한 파일(_post와 chat의 응답 파싱)이다",
             fatal=True)
         return S
 
@@ -669,7 +673,7 @@ def probe(points=None, *, timeout=None):
         add("⑤", "구조화 출력", False,
             f"{type(e).__name__}: {e} — **치명 아님.** 다만 판정 지점(②개체 판정·"
             f"⑧답변·⑨좌표)이 JSON을 요구하므로, 게이트웨이가 스키마를 안 받으면 "
-            f"프롬프트 지시로 대신해야 한다(core/llm.py::chat)")
+            f"프롬프트 지시로 대신해야 한다(core/llm/llm.py::chat)")
 
     # ⑥ 임베딩 — **미설정이 정상이다**. 후보 좁히기는 겹침으로 떨어지고 인입은 선다.
     if not cfg["embed_model"]:

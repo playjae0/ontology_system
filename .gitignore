@@ -5,8 +5,8 @@
 #                 상태에 한 바이트도 섞이지 않는다. 회귀·doctor가 전부 여기서 돈다.
 # 아래 `data/`·`parsed/`·`extract/`·`review/`·`export/`·`golden/`는 **옛 배치**다
 # (이관 전 클론에 남아 있다 — `run.py platform migrate`가 복사해 간다).
-state/
-state_mock/
+/state/
+/state_mock/
 
 # Python
 __pycache__/

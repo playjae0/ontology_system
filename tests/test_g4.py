@@ -20,12 +20,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cli import query as R                              # noqa: E402
-from core import init, query as Q                             # noqa: E402
+from core.query import query as Q                             # noqa: E402
+from core.state import init
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core import store                                  # noqa: E402
-from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
-from core.extract import EXTRACT_DIR                    # noqa: E402
-from core.pipeline import finalize, run_document                  # noqa: E402
+from core.state import store                                  # noqa: E402
+from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
+from core.build.extract import EXTRACT_DIR                    # noqa: E402
+from core.build.pipeline import finalize, run_document                  # noqa: E402
 
 allok = True
 
@@ -249,7 +250,7 @@ show("export mermaid cross — 걸침 관계를 층 구분과 함께 그린다",
 # ── B52 ① `query --json` 출력 계약 (문서 5 §5.2-6) ─────────────────────────
 print("\n[B52 ①] query --json — 답 묶음 출력 계약")
 
-from core import llm as llm_mod                                  # noqa: E402
+from core.llm import llm as llm_mod                                  # noqa: E402
 from cli.export import _world, build_html, graph_data            # noqa: E402
 
 _w = _world()
@@ -401,12 +402,12 @@ print("\n[B54] 골든셋 채점기 · BM-25 상시 대조군")
 
 import ast as _ast                                                # noqa: E402
 from collections import Counter                                    # noqa: E402
-from core import bm25 as _bm                                      # noqa: E402
+from core.query import bm25 as _bm                                      # noqa: E402
 from cli import golden as _G                                      # noqa: E402
 
 # ③ **대조군의 정의는 「무엇을 안 읽는가」다** — 그래프·사전·골격을 읽으면
 # 대조군이 아니라 이 시스템의 일부가 되어 비교의 뜻이 사라진다.
-_src = (ROOT / "core" / "bm25.py").read_text(encoding="utf-8")
+_src = (ROOT / "core" / "query" / "bm25.py").read_text(encoding="utf-8")
 _imported = set()
 for _n in _ast.walk(_ast.parse(_src)):
     if isinstance(_n, _ast.ImportFrom) and (_n.module or "").startswith("core"):
@@ -414,7 +415,7 @@ for _n in _ast.walk(_ast.parse(_src)):
     elif isinstance(_n, _ast.Import):
         _imported |= {a.name.split(".")[1] for a in _n.names
                       if a.name.startswith("core.")}
-show("core/bm25.py가 import하는 core 모듈은 store 하나다 (대조군의 정의)",
+show("core/query/bm25.py가 import하는 core 모듈은 store 하나다 (대조군의 정의)",
      _imported == {"store"}, str(sorted(_imported)))
 show("그래프·사전·골격·임베딩·LLM을 읽지 않는다",
      not [w for w in ("graph", "dictionary", "skeleton", "matcher",

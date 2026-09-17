@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """orphan **재시도** — 큐에 남은 미부착·미앵커 항목을 다음 빌드 뒤에 다시 시도한다 (문서 4 §4.7-5).
 
-`core/pipeline.py`에서 떼어냈다. 문서 빌드(표·산문 → 노드·엣지)와 「빌드가 끝난 뒤 큐를
+`core/build/pipeline.py`에서 떼어냈다. 문서 빌드(표·산문 → 노드·엣지)와 「빌드가 끝난 뒤 큐를
 다시 훑는 일」은 시점도 재료도 다르다 — 앞은 한 문서 안에서, 뒤는 그래프 전체를 본다.
 진입점은 `retry_orphans(layers)` 하나이고 `pipeline.finalize`가 부른다.
 
@@ -9,10 +9,12 @@
 """
 from __future__ import annotations
 
-from . import gate, log, matcher, store
-from .bootstrap import load_config, open_graph
-from .build import Builder
-from .status import is_live
+from core import matcher
+from core.build import gate
+from core.state import log, store
+from core.state.bootstrap import load_config, open_graph
+from core.build.build import Builder
+from core.state.status import is_live
 
 _LOG = log.get(__name__)
 
@@ -56,7 +58,7 @@ def retry_orphans(layers=None):
     돌려주는 것: `{kind: 해소 건수}` — 계기판·보고용이다.
     """
     from router import discover
-    from .dictionary import Dictionary
+    from core.dictionary import Dictionary
 
     lays = layers or discover()
     graphs = {lay: open_graph(lay) for lay in lays}

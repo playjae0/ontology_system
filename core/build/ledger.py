@@ -13,8 +13,8 @@
 """
 from __future__ import annotations
 
-from . import store
-from .matcher import PATHS
+from core.state import store
+from core.matcher import PATHS
 
 DIR = "ingest_log"
 

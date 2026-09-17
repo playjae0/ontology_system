@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 
-from core import ops
+from core.state import ops
 
 
 def show_preview(pv):

@@ -25,7 +25,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from core import llm
+from core.llm import llm
 
 HOST = "127.0.0.1"          # **바깥에 열지 않는다** — 검증 도구이지 서비스가 아니다
 PORT_TRIES = 40

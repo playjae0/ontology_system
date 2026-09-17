@@ -161,7 +161,7 @@ def check_env():
 
     optional = {m for m, _why in OPTIONAL}
     hard = set()
-    for f in (ROOT / "core").glob("*.py"):
+    for f in (ROOT / "core").rglob("*.py"):
         src = f.read_text(encoding="utf-8")
         for m in re.findall(r"^\s*(?:import|from)\s+([a-zA-Z_][\w]*)", src, re.M):
             hard.add(m)
@@ -401,8 +401,8 @@ def run_suites(quick=False):
 def show_state():
     head("③ 현재 상태 — 무엇이 들어 있나")
     sys.path.insert(0, str(ROOT))
-    from core import registry, store                              # noqa: E402
-    from core.bootstrap import bootstrap, open_graph              # noqa: E402
+    from core.state import registry, store                              # noqa: E402
+    from core.state.bootstrap import bootstrap, open_graph              # noqa: E402
     from router import discover                                   # noqa: E402
 
     _clean()
@@ -438,7 +438,7 @@ def transition():
     head("④ 사내 전환 — 다음에 무엇을 해야 하나 (실측 판정)")
     print("  아래는 결함이 아니라 사내에서 남은 작업이다. `[필요]`가 뜨면 그때가 고장이다.\n")
     sys.path.insert(0, str(ROOT))
-    from core import registry, store                              # noqa: E402
+    from core.state import registry, store                              # noqa: E402
 
     # ── 1. 골격 seed ──────────────────────────────────────────────
     seed = json.loads((ROOT / "layers/process/skeleton.json").read_text(encoding="utf-8"))
@@ -472,7 +472,7 @@ def transition():
     # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
     # 이제 재는 것은 「실 호출 경로를 타서 미설정 실패에 닿는가」이고, 판정은
     # 회귀와 **같은 탐침 파일**(tests/points_probe.py)을 실행해서 한다.
-    from core.llm import POINTS                                   # noqa: E402
+    from core.llm.llm import POINTS                                   # noqa: E402
     import importlib.util as _ilu                                 # noqa: E402
     _spec = _ilu.spec_from_file_location("points_probe",
                                          ROOT / "tests" / "points_probe.py")
@@ -519,7 +519,9 @@ def state_line():
     「아직 옮기지 않았다」일 수 있다.
     """
     sys.path.insert(0, str(ROOT))
-    from core import llm, migrate, paths, registry, store           # noqa: E402
+    from core import paths           # noqa: E402
+    from core.llm import llm
+    from core.state import migrate, registry, store
     from router import discover                                     # noqa: E402
     dts = registry.all_doc_types()
     builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")

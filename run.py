@@ -52,9 +52,9 @@ import json
 import sys
 from pathlib import Path
 
-from core import log, store
-from core.bootstrap import bootstrap, open_graph
-from core.pipeline import run_document
+from core.state import log, store
+from core.state.bootstrap import bootstrap, open_graph
+from core.build.pipeline import run_document
 from router import discover
 
 ROOT = Path(__file__).resolve().parent
@@ -66,7 +66,7 @@ def _load(p):
 
 def cmd_init(args):
     """클린 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다."""
-    from core.init import init
+    from core.state.init import init
     made = init("--fresh" in args)
     print(f"[init] 빈 상태 {len(made)}개 — {', '.join(made) or '이미 있음'}")
 
@@ -94,15 +94,15 @@ def cmd_ingest(paths, finalize=True, allow_duplicate=False):
         print(f"[{mark}] {r.doc_id}: record {len(r.record_ids)} · "
               f"chunk {len(r.chunk_ids)}{tail}")
     if finalize:
-        from core.pipeline import finalize as _fin
+        from core.build.pipeline import finalize as _fin
         _fin()
 
 
 def cmd_all():
-    from core import llm
+    from core.llm import llm
     print(f"  {llm.mode_line()}")          # B42 ⑤
     cmd_bootstrap()
-    from core import fixtures
+    from core.state import fixtures
     # **없으면 조용히 아무것도 안 하지 않는다** — 구판은 빈 glob로 0건 인입하고
     # 성공처럼 끝났다(§2-4 실측). 픽스처는 사내에서 없는 것이 정상이므로
     # 실패가 아니라 **말하고** 끝낸다.

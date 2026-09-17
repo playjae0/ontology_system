@@ -15,8 +15,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import log, paths, store
-from .ids import US, OccCounter, chunk_id, doc_hash, norm, record_id
+from core import paths
+from core.state import log, store
+from core.state.ids import US, OccCounter, chunk_id, doc_hash, norm, record_id
 
 SCHEMA_DIR = paths.schemas()    # 자리는 core/paths.py가 안다 (B78 1a)
 
@@ -35,7 +36,7 @@ def load_schema(doc_type):
     모르고, "묻는 곳이 셋인데 답하는 곳도 셋"이 된다 — 조회가 모드를 가르는 근거를
     잃는다. 내장(builtin)도 등록부가 함께 답하므로 기존 경로는 그대로 산다.
     """
-    from .registry import schema_of
+    from core.state.registry import schema_of
     return schema_of(doc_type)
 
 
@@ -126,7 +127,7 @@ def withdraw(env, doc_id):
       근거 문장이 삭제되면 그 조건도 함께 내려가야 한다 — 큐는 이력이 아니라 화면이다.
     """
     from router import discover
-    from .bootstrap import open_graph
+    from core.state.bootstrap import open_graph
 
     chunks = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
 
@@ -239,7 +240,7 @@ def ingest(env, *, allow_duplicate=False, routing=None):
     if doc_id in reg:
         withdraw(env, doc_id)
         if reg[doc_id].get("doc_hash") != dh:           # 청크가 바뀌었다 (3.11 규약 7)
-            from . import extract as extract_mod
+            from core.build import extract as extract_mod
             extract_mod.invalidate(doc_id)
 
     schema = load_schema(env.get("doc_type"))

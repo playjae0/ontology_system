@@ -23,9 +23,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import init, store                                        # noqa: E402
+from core.state import init, store                                        # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap                          # noqa: E402
+from core.state.bootstrap import bootstrap                          # noqa: E402
 from parser import (normalizer, pipeline, preflight, reader, struct_map, tagger,  # noqa: E402
                     validator)
 from parser.adapters import basic_ppt                         # noqa: E402
@@ -314,7 +314,7 @@ show("⑦의 통로가 apply()까지 이어진다 (파라미터만 있고 값이
 
 # ============================================================ ⑦ 폴백 ([정정] 39)
 print("\n■ ⑦ 예산 초과·판정 불가는 문서를 죽이지 않는다 (문서 6 §6.2·§6.3 · D-113 조정)")
-from core import llm as _LLM                                        # noqa: E402
+from core.llm import llm as _LLM                                        # noqa: E402
 _PPTDOC = str(RAW / "PPT_basic.pptx")
 
 
@@ -418,7 +418,7 @@ show("validator가 조각 공통 키 부재를 잡는다 (§6.2-5 「좌표 존�
 
 # ⑨좌표 태깅의 mock 갈래는 **모델을 부르지 않는다** (조항 B12 · §7.1 대체 표)
 _calls = []
-from core import llm as _LLM                                    # noqa: E402
+from core.llm import llm as _LLM                                    # noqa: E402
 for _n in ("chat", "require", "_post"):
     _o = getattr(_LLM, _n)
     setattr(_LLM, _n, (lambda *a, _x=_n, _f=_o, **k: (_calls.append(_x), _f(*a, **k))[1]))
@@ -482,7 +482,7 @@ show("지원 포맷 목록이 실패 문장에 나온다 (.csv·.tsv 포함)", _
 print("\n[B53 a] PPT 판독 — 텍스트 프레임과 노트만이 아니다")
 
 import shutil as _sh                                              # noqa: E402
-from core import llm                                              # noqa: E402
+from core.llm import llm                                              # noqa: E402
 from parser import render                                         # noqa: E402
 from parser.adapters import basic_pdf                             # noqa: E402
 from cli import register as _reg, scan as _scan_mod               # noqa: E402
@@ -724,8 +724,8 @@ show("위임 래퍼가 제안이 정한 어댑터를 문다 (PDF가 PPT 어댑�
 print("\n■ B58 ③ — 스프레드시트 산문: 규칙이 레벨을 고른다")
 
 from parser.adapters import basic_prose_xlsx as _BPX          # noqa: E402
-from core import pipeline as _CP                              # noqa: E402
-from core import registry as _RG                              # noqa: E402
+from core.build import pipeline as _CP                              # noqa: E402
+from core.state import registry as _RG                              # noqa: E402
 from cli.parse import run_parse as _run_parse                 # noqa: E402
 
 # **규칙 자체를 잠근다** — 화면 문구가 아니라 무엇을 고르는가다.
@@ -939,7 +939,7 @@ show("④ 판정은 선택을 갈아 끼우지 않는다 — 어긋나면 경고
 # ── B58 ④-후속 — case 두 값과 side의 파생 ([정정] 48 ①) ────────────────
 print("\n■ B58 ④-후속 — 큐 case는 닫힌 두 값 · side는 파생값")
 
-from core.pipeline import _band_material as _BM                # noqa: E402
+from core.build.pipeline import _band_material as _BM                # noqa: E402
 
 # **side를 박아 두면 절반의 문서에 틀린 처방이 나간다** — 짧은 쪽은 「레벨을 얕게」,
 # 긴 쪽은 「깊게」로 처방이 **반대**다. 그래서 avg와 target_band에서 파생되는지를
@@ -961,7 +961,7 @@ show("④-후속 재료가 없으면 지어내지 않는다 (side는 None)",
 
 # **case는 닫힌 두 값이다** — 코드가 그 둘만 만든다.
 import re as _re                                              # noqa: E402
-_CPSRC = (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8")
+_CPSRC = (ROOT / "core" / "build" / "pipeline.py").read_text(encoding="utf-8")
 _cases = set(_re.findall(r'"(flat_fallback|size_out_of_band|level_out_of_range)"', _CPSRC))
 show("④-후속 case는 flat_fallback · size_out_of_band 둘뿐이다 (옛 이름 0)",
      _cases == {"flat_fallback", "size_out_of_band"}, str(sorted(_cases)))

@@ -16,12 +16,13 @@
 """
 from __future__ import annotations
 
-from . import gate, store
-from .dictionary import Dictionary
-from .ids import norm
-from .matcher import MATCH, NEW, UNCERTAIN, resolve
-from .status import is_live
-from .naming import (POLARITY_NONE, bind_polarity, derive_polarity,
+from core.build import gate
+from core.state import store
+from core.dictionary import Dictionary
+from core.state.ids import norm
+from core.matcher import MATCH, NEW, UNCERTAIN, resolve
+from core.state.status import is_live
+from core.build.naming import (POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
 
 def entity_key(surface, category, cfg, *, electrode_type=None,
@@ -75,7 +76,7 @@ class Builder:
         if layer == self.layer:
             return self
         if layer not in self.subs:
-            from .bootstrap import load_config, open_graph
+            from core.state.bootstrap import load_config, open_graph
             sub = Builder(open_graph(layer), load_config(layer), self.schema,
                           self.doc_id, layer)
             sub.dict = self.dict
@@ -125,7 +126,7 @@ class Builder:
         """카테고리를 선언한 층의 그래프. 같은 층이면 self.g를 그대로 쓴다."""
         if category in self.cfg.get("categories", {}):
             return self.g, self.layer
-        from .bootstrap import layer_of_category
+        from core.state.bootstrap import layer_of_category
         lay = layer_of_category(category)
         if lay is None or lay == self.layer:
             return self.g, self.layer
@@ -222,7 +223,7 @@ class Builder:
                 break
         if gid is None:
             return True                       # 골격 밖 → orphan_anchor 경로가 이미 처리
-        from .bootstrap import layer_of_category, load_config
+        from core.state.bootstrap import layer_of_category, load_config
         owner = load_config(layer_of_category(skel_cat) or self.layer)
         child_rel = owner["skeleton"]["relations"]["child"]
         ancestors, cur = set(), ref_id
@@ -270,7 +271,7 @@ class Builder:
         child_rel = ((owner.get("skeleton") or {}).get("relations") or {}).get("child")
         if not child_rel:
             return ref_id
-        from .query import _descend                    # A11-5와 같은 하강 (동형 재사용)
+        from core.query.query import _descend                    # A11-5와 같은 하강 (동형 재사용)
         return _descend(g, ref_id, electrode_type, child_rel)
 
     def anchor_polarity(self, ref_id, g=None):
@@ -294,7 +295,7 @@ class Builder:
         """
         if not node or node.get("layer") == self.layer:
             return self.cfg
-        from .bootstrap import load_config
+        from core.state.bootstrap import load_config
         return load_config(node["layer"])
 
     def check_polarity(self, ref_id, electrode_type, prov, g=None):
@@ -344,7 +345,7 @@ class Builder:
         **polarity 필드만 다르고 canonical이 같은 노드 2개가 공존**한다(P4 취지
         위반 — C12 실측). 그 성질은 이제 회귀 어서션이 지킨다.
         """
-        from .bootstrap import layer_of_category
+        from core.state.bootstrap import layer_of_category
         if layer_of_category(category) is None:
             # 카테고리는 **운영 중에 발명되지 않는다**(카드 I3 · CH2 2.9 금지 목록).
             # 추출→구축의 신뢰 경계에서 이것이 유일한 강제 지점이다 — 프롬프트 계약만으로는
@@ -362,7 +363,7 @@ class Builder:
             parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
         # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
         # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
-        from . import llm as _llm
+        from core.llm import llm as _llm
         _u0 = _llm.usage_total()
         verdict, nid, conf, v = resolve(canonical, category, self.layer,
                                         self.g, self.dict, scoped=scoped,

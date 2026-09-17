@@ -19,10 +19,10 @@ import json
 import sys
 from pathlib import Path
 
-from core import extract as EX
-from core import log, store
-from core.bootstrap import load_config
-from core.ingest import ingest, load_schema
+from core.build import extract as EX
+from core.state import log, store
+from core.state.bootstrap import load_config
+from core.build.ingest import ingest, load_schema
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -72,7 +72,7 @@ def run(paths, *, force=False, layer=None):
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == doc_id}
         cfg = load_config(layer or (schema or {}).get("layer") or "process")
-        from core.pipeline import _vocab
+        from core.build.pipeline import _vocab
         out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])
         print(f"[추출] {doc_id}: 청크 {len(out['candidates'])} · 개체 후보 {n} "

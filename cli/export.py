@@ -21,9 +21,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import ledger, paths, store
-from core.bootstrap import open_graph
-from core.status import is_live
+from core import paths
+from core.build import ledger
+from core.state import store
+from core.state.bootstrap import open_graph
+from core.state.status import is_live
 from router import discover
 
 
@@ -199,7 +201,7 @@ def cmd_mermaid(args):
         return _mermaid_cross()
     lay = args[0] if args else "process"
     g = open_graph(lay)
-    from core.bootstrap import load_config
+    from core.state.bootstrap import load_config
     cfg = load_config(lay)
     skel = cfg.get("skeleton") or {}
     sib = (skel.get("relations") or {}).get("sibling")

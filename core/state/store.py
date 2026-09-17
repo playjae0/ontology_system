@@ -14,7 +14,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from . import log, paths
+from core import paths
+from core.state import log
 
 try:
     import fcntl

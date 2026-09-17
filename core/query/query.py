@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import json
 
-from . import store
-from . import llm
-from .ids import norm
-from .status import STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain
+from core.state import store
+from core.llm import llm
+from core.state.ids import norm
+from core.state.status import STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain
 
 COLLECT_LIMIT = 8               # ③ 수집 상한 (CH5 5.1 규약 6). 초과분은 tier2부터 자른다.
 

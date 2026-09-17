@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cli import query as R                              # noqa: E402
-from core import init, ops, registry, store                    # noqa: E402
-from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
-from core.extract import EXTRACT_DIR                    # noqa: E402
-from core.ids import norm                               # noqa: E402
+from core.state import init, ops, registry, store                    # noqa: E402
+from core.state.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
+from core.build.extract import EXTRACT_DIR                    # noqa: E402
+from core.state.ids import norm                               # noqa: E402
 from router import discover                            # noqa: E402
-from core.pipeline import finalize, run_document        # noqa: E402
+from core.build.pipeline import finalize, run_document        # noqa: E402
 
 allok = True
 DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
@@ -319,7 +319,7 @@ show("자재 열은 개체로 만들지 않는다 (3번째 층 후보 — 미결
                              ensure_ascii=False))
 
 print("\n■ 근거 없음 경로 — 인접 등록 개체 제시 (갭 spec-A-153 · impl-B-19)")
-from core import query as _Q                                    # noqa: E402
+from core.query import query as _Q                                    # noqa: E402
 from core.dictionary import Dictionary as _D                    # noqa: E402
 _graphs = {l: open_graph(l) for l in discover()}
 _near = _Q.nearby("용접강도 기준", _D.open(), _graphs)
@@ -376,7 +376,7 @@ show("④ 거부 셋 — 행위자 없음 · 없는 대상 · 이미 확정",
      all("OpRefused" in x or "KeyError" in x or "ValueError" in x for x in _ref74),
      str(_ref74))
 show("④ `resolve_item` 호출부가 생겼다 (감사 H12 — 호출 0이던 자리)",
-     "resolve_item(" in (ROOT / "core" / "ops.py").read_text(encoding="utf-8"))
+     "resolve_item(" in (ROOT / "core" / "state" / "ops.py").read_text(encoding="utf-8"))
 # 화면 — 큐가 종결분을 빼고 세고, 항목마다 끝내는 세 줄을 준다
 from cli import platform as _PF74                                  # noqa: E402
 import io as _io74, contextlib as _ctx74                           # noqa: E402
@@ -396,7 +396,7 @@ show("④ 종결분은 계수에서 빠진다 (사람이 끝낸 것이 남은 �
 # ════════════════════════════════════════════════════════════════════
 print("\n── B74 ⑤ ops alias ──")
 from core import matcher as _MT75                                  # noqa: E402
-from core.build import entity_key as _KEY75                        # noqa: E402
+from core.build.build import entity_key as _KEY75                        # noqa: E402
 from core.dictionary import Dictionary as _DIC75                   # noqa: E402
 
 _g75 = open_graph("process")

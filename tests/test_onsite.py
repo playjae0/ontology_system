@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import registry                                    # noqa: E402
+from core.state import registry                                    # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 
 allok = True
@@ -130,7 +130,7 @@ class Site:
 
 # ── B71 ① 추출 힌트도 mock 자산이다 ─────────────────────────────────────
 #
-# `core/extract.py`가 힌트(`tests/fixtures/extract_hints/<doc_id>.json`)를 모드와
+# `core/build/extract.py`가 힌트(`tests/fixtures/extract_hints/<doc_id>.json`)를 모드와
 # 무관하게 먼저 봤다. 사내 `doc_id`가 픽스처 이름과 겹치는 날 **실호출 결과가
 # 조용히 mock 힌트로 바뀐다** — B70과 같은 병이고, 조용한 쪽이 더 나쁘다.
 print("■ B71 ① — 추출 힌트는 USE_MOCK=1에서만")
@@ -139,9 +139,9 @@ HINT_DOC = "B71HINT"
 _hint = ROOT / "tests" / "fixtures" / "extract_hints" / f"{HINT_DOC}.json"
 _probe = (
     "import json,sys; sys.path.insert(0,'.')\n"
-    "from core import extract as EX\n"
-    "from core.bootstrap import load_config\n"
-    "from core.pipeline import _vocab\n"
+    "from core.build import extract as EX\n"
+    "from core.state.bootstrap import load_config\n"
+    "from core.build.pipeline import _vocab\n"
     f"EX.invalidate({HINT_DOC!r})\n"
     "cfg = load_config('process')\n"
     "env = {'doc_id': %r, 'doc_type': 'ppt_process', 'payload_kind': 'prose',\n"
@@ -261,7 +261,7 @@ with Site() as site:
 print("\n■ B78 1b — 옛 배치 이관(migrate)")
 
 import hashlib                                                    # noqa: E402
-from core import migrate as _MG                                   # noqa: E402
+from core.state import migrate as _MG                                   # noqa: E402
 
 _lg = Path(tempfile.mkdtemp(prefix="b78legacy_"))
 _old, _new = _lg / "code", _lg / "home"

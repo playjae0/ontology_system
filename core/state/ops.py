@@ -21,17 +21,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from . import store
-from . import matcher
-from .bootstrap import load_config, open_graph
-from .build import Builder
-from .dictionary import Dictionary
-from .graph import STATUS_DELETED, GraphStore
-from .ids import norm
-from .naming import scope_canonical
+from core.state import store
+from core import matcher
+from core.state.bootstrap import load_config, open_graph
+from core.build.build import Builder
+from core.dictionary import Dictionary
+from core.graph import STATUS_DELETED, GraphStore
+from core.state.ids import norm
+from core.build.naming import scope_canonical
 # 생존 판정·툼스톤 체인은 core/status.py가 소유한다 — 이름은 여기서도 그대로 보인다
 # (`ops.is_live`·`ops.STATUS_MERGED`·`ops.resolve_chain`·`ops.MAX_CHAIN` — 호출 계약 유지).
-from .status import (  # noqa: F401
+from core.state.status import (  # noqa: F401
     MAX_CHAIN, STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain)
 
 

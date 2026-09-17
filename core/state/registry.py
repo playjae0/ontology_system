@@ -23,9 +23,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import llm, log, paths, store
+from core import paths
+from core.llm import llm
+from core.state import log, store
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 SCHEMA_DIR = paths.schemas()           # **등록된** 스키마의 자리 (②등록 단)
 FIXTURE_SCHEMA_DIR = paths.fixture_schemas()   # **내장(mock)** — 자리로 가른다
 

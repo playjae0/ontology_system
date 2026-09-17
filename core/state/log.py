@@ -117,7 +117,7 @@ def defect(e, *, stage="", extra=""):
             + (f" · {stage}" if stage else "") + (f" · {extra}" if extra else ""))
     full = "".join(traceback.format_exception(type(e), e, e.__traceback__))
     try:
-        from . import store
+        from core.state import store
         store.append_defect(line)
         for ln in full.rstrip().splitlines():
             store.append_defect("    " + ln)

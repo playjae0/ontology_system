@@ -56,7 +56,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, llm, log, paths, registry, store
+from core import paths
+from core.llm import llm
+from core.state import fixtures, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
 from parser import form
@@ -78,7 +80,7 @@ from cli.interview import (  # noqa: F401
 
 REVIEW = paths.review()
 KIT = ROOT / "kit"
-FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/fixtures.py가 소유
+FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/state/fixtures.py가 소유
 
 # D-22 확장 문구 — 표본 1부 등록의 경고. **문면이 규격이다.**
 SOLO_WARNING = ("표본 1부 · 변형 미관찰 — **선언된 관계는 근거 1건일 수 있음**. "
@@ -368,7 +370,7 @@ def _note_error(doc_type, e):
 
     게이트웨이의 400 본문은 화면을 스쳐 지나가고 로그는 다음 실행에 묻힌다.
     검수 디렉터리에 남겨야 사람이 그 문서를 다시 볼 때 함께 본다.
-    **인증 헤더·키는 남기지 않는다** — `core/llm.py`가 애초에 담지 않는다.
+    **인증 헤더·키는 남기지 않는다** — `core/llm/llm.py`가 애초에 담지 않는다.
     """
     if not llm.LAST_ERROR:
         return
@@ -389,7 +391,7 @@ def _pretty_json(obj, indent=2):
     컨테이너를 더 품지 않은 것만 접는다: 구조는 보이고 잎은 한 줄이다.
 
     **`json.load` 결과는 이전과 완전히 같다** — 바뀌는 것은 공백뿐이다.
-    `data/` 저장 레코드는 이 함수를 타지 않는다(`core/store.py`의 소관이고,
+    `data/` 저장 레코드는 이 함수를 타지 않는다(`core/state/store.py`의 소관이고,
     거기는 바이트 동일 판정이 걸려 있다).
     """
     def leaf(o):
@@ -2704,7 +2706,7 @@ def _gateway_ready():
     이것이 없으면 사내에서 무슨 일이 나나: 리허설 파싱은 좌표 미스 행마다 실호출을
     한다 — 게이트웨이가 안 닿으면 **타임아웃 60초 × 재시도 × 미스 행 수**를 말없이
     기다린다. 사용자는 «멈췄다»고 읽고, 실제로 몇 시간을 기다렸다(실측).
-    **판정은 `core/llm.py::probe()`가 한다** — llm-check가 쓰는 그 함수다.
+    **판정은 `core/llm/llm.py::probe()`가 한다** — llm-check가 쓰는 그 함수다.
     """
     if llm.use_mock():
         return True
@@ -2809,7 +2811,7 @@ def _extract_rehearsal(st, results, samples, want, truncated):
     """
     from cli.extract import run as extract_run
     from cli.ingest import doc_id_of
-    from core import extract as EX
+    from core.build import extract as EX
     if not want:
         return {"source": "none", "note": "추출 리허설 없음 — 끄고 진행했다"}
     made, ids = [], []

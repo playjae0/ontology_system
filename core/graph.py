@@ -15,15 +15,15 @@
 
 id 두 축 (CH6 6.1 규약 2):
   의미 축(Process·Unit·Property·Failure) = **발급**, 발급 후 불변. 방식은 ULID.
-  근거 축(문서·청크·레코드) = 내용에서 계산 — core/ids.py 소관이며 여기서는 안 만든다.
+  근거 축(문서·청크·레코드) = 내용에서 계산 — core/state/ids.py 소관이며 여기서는 안 만든다.
 """
 from __future__ import annotations
 
 import time
 from pathlib import Path
 
-from . import paths
-from .ids import new_ulid
+from core import paths
+from core.state.ids import new_ulid
 
 try:                                    # 직렬화 — orjson 우선, 표준 json 폴백
     import orjson
@@ -110,7 +110,7 @@ class GraphStore:
         data/는 백업 대상이라 진실이 복구 불가로 유실된다. 산식은 store가 소유한다 —
         같은 방어를 두 벌 쓰면 한쪽만 고쳐지는 날이 온다.
         """
-        from . import store
+        from core.state import store
         return store.atomic_write_bytes(
             self._path, _dumps({"nodes": self.nodes, "edges": self.edges}))
 

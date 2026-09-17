@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import json
 
-from . import llm, log
-from .ids import norm
-from .naming import POLARITY_NONE
-from .status import is_live
+from core.llm import llm
+from core.state import log
+from core.state.ids import norm
+from core.build.naming import POLARITY_NONE
+from core.state.status import is_live
 
 # 판정 임계 — **층 config `match_threshold`가 소유한다**(문서 3 §3.1 키 일람).
 # 판단에 영향을 주는 자산은 코드에 박지 않는다(문서 7 §7.1 관리 자산의 원칙).
@@ -154,7 +155,7 @@ def _narrow(surface, pool, top_n, *, scoped=False):
         return scored[:top_n], "겹침"
     # **임베딩 대상은 canonical과 정의문이다**(문서 4 §4.2 ② — 정의문이 빠지면
     # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5).
-    from . import embeddings
+    from core.llm import embeddings
     qv = embeddings.embed(surface)
     scored = sorted(
         pool, key=lambda c: -embeddings.cosine(
@@ -416,7 +417,7 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     `match`의 dict**이고 이것은 그 위의 얇은 껍데기다 — 판정 로직을 여기 두면
     재사용 지점마다 별도 판정 코드가 생긴다(그것이 고친 결함이다).
     """
-    from .bootstrap import load_config
+    from core.state.bootstrap import load_config
     cfg = load_config(layer)
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)

@@ -28,15 +28,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import store
-from .dictionary import Dictionary
-from .graph import GraphStore
-from .ids import norm
-from .naming import POLARITY_NONE
-from .skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
+from core import paths
+from core.state import store
+from core.dictionary import Dictionary
+from core.graph import GraphStore
+from core.state.ids import norm
+from core.build.naming import POLARITY_NONE
+from core.state.skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
                        SEED_STATUS, SeedError, _pad, _register_aliases, plant)
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 LAYERS = ROOT / "layers"
 
 

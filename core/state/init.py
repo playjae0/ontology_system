@@ -19,11 +19,12 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from . import log, paths, store
-from .graph import GraphStore
+from core import paths
+from core.state import log, store
+from core.graph import GraphStore
 from router import discover
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 _LOG = log.get(__name__)
 
 # 클린의 범위 — **문서 7 §7.6-4가 이번 개정에서 확정했다.**

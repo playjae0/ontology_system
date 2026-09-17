@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
-from core import llm, paths
+from core import paths
+from core.llm import llm
 from parser import pipeline, preflight, reader, validator
 
 PARSED_DIR = paths.parsed()    # 운영 산출 자리 (문서 7 §7.8 — 파일 존재 = 파싱 완료)

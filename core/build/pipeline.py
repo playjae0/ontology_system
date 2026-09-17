@@ -10,14 +10,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import extract as extract_mod
-from . import gate, log, matcher, paths, store
-from .build import Builder
-from .ledger import Ledger
-from .bootstrap import load_config, open_graph
-from .ingest import IngestResult, ingest, load_schema
-from .status import is_live
-from .retry import retry_orphans
+from core.build import extract as extract_mod
+from core import matcher, paths
+from core.build import gate
+from core.state import log, store
+from core.build.build import Builder
+from core.build.ledger import Ledger
+from core.state.bootstrap import load_config, open_graph
+from core.build.ingest import IngestResult, ingest, load_schema
+from core.state.status import is_live
+from core.build.retry import retry_orphans
 
 # **구조 필드** — role 핸들러를 타지 않고 시스템이 직접 읽는다(문서 2 §2.5 규약 3).
 # `doc_type`은 조각 공통 층의 일원이고(§2.2 계약 ①) 스키마 조회 키다(봉투 값의 반복) —
@@ -385,7 +387,7 @@ def _scoped_category(category, layer, builder):
     이름을 알지 않는다**(B1). 걸침(다른 층 선언)도 같은 기준으로 그 층 config에
     물어본다.
     """
-    from .bootstrap import load_config
+    from core.state.bootstrap import load_config
     try:
         cfg = load_config(layer)
     except Exception:
@@ -913,7 +915,7 @@ def build_prose(env, cfg, graph, candidates):
 
 
 def _n(s):
-    from .ids import norm
+    from core.state.ids import norm
     return norm(s)
 
 
@@ -991,8 +993,8 @@ def _plan_hit(b, m, layer):
     좌표 해소도 판정과 같은 경로(골격 조회 → 하강 → 극성 상속)를 지나되 **쓰지
     않는다**: 미해소 좌표는 `defer` 자루로 받아 버린다(예고가 큐를 만들지 않는다).
     """
-    from .build import entity_key
-    from . import matcher
+    from core.build.build import entity_key
+    from core import matcher
     surface, category = m.get("surface"), m.get("category")
     if not surface or not category:
         return False
@@ -1032,9 +1034,9 @@ def decision_plan(mentions, refs, layer):
 
     사전·그래프만 읽는다 — **LLM 0**이고, 큐도 만들지 않는다.
     """
-    from .dictionary import Dictionary
-    from .ids import norm
-    from .build import Builder
+    from core.dictionary import Dictionary
+    from core.state.ids import norm
+    from core.build.build import Builder
     dic = Dictionary.open()
     g = open_graph(layer)
     b = Builder(g, load_config(layer), None, "(판정예고)", layer)
@@ -1114,7 +1116,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     _q0 = store.read(store.QUEUE, [])
     _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     LOWRES["n"] = 0
-    from . import matcher as _mt
+    from core import matcher as _mt
     _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
     _n0 = len(graph.nodes)
     _e0 = len(graph.edges)
@@ -1137,7 +1139,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
 def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                     notice, _n0, _e0, _a0):
     """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다."""
-    from . import matcher as _mt
+    from core import matcher as _mt
     extracted = False
     builder = None
     if kind == "table":
@@ -1318,7 +1320,7 @@ def _vocab(cfg):
     G6.5에서는 파일이 없어 그래프의 seed 노드를 직독했는데, 그러면 파서와 에이전트가
     **다른 실물**을 보게 된다 — 파서는 이 레포의 그래프를 읽지 않기 때문이다(D-9).
     """
-    from .ids import norm
+    from core.state.ids import norm
     v = {}
     for n in skeleton_closed_list(cfg["layer"]):
         for s in [n["canonical"]] + list(n.get("aliases") or []):

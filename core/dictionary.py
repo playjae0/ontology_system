@@ -27,8 +27,8 @@
 """
 from __future__ import annotations
 
-from . import log, store
-from .ids import norm
+from core.state import log, store
+from core.state.ids import norm
 
 _LOG = log.get(__name__)
 

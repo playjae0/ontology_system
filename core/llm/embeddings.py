@@ -8,7 +8,7 @@ USE_MOCK=1의 대체는 **sha256 해시 → 정규화 벡터**다(§7.1 대체 �
 **판정용 임베딩은 저장하지 않는다**(§7.2 — 재계산 파생물). 청크 인덱스는
 재생성 캐시이므로 여기서 캐시 파일을 만들지 않는다.
 
-설정 접근은 `core/llm.py`로 수렴한다 — 이 파일은 게이트웨이 주소·인증을 직접
+설정 접근은 `core/llm/llm.py`로 수렴한다 — 이 파일은 게이트웨이 주소·인증을 직접
 읽지 않는다.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import math
 
-from . import llm
+from core.llm import llm
 
 DIM = 64            # mock 벡터 차원. 실호출 갈래의 차원은 모델이 정한다.
 
