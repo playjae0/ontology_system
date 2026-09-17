@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 from cli import platform as PF                          # noqa: E402
 from cli import scan as SC                              # noqa: E402
 from core import init, store                                  # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
 from core import ops                                    # noqa: E402
@@ -41,7 +42,7 @@ def show(label, ok, detail=""):
 
 def data_hash():
     return {p.as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted((ROOT / "data").rglob("*.json"))}
+            for p in sorted((_P.data()).rglob("*.json"))}
 
 
 # ============================================================ 4′ 기존 단위 4
@@ -290,7 +291,7 @@ _before = data_hash()
 _row = IG.ingest_file(_RAW / "CP04_unlabeled.xlsx", dry_run=True)
 show("--dry-run — 선택 결과만 · 파싱·인입 0 (조건 ②)",
      _row["status"] == "선택만" and data_hash() == _before
-     and not (ROOT / "parsed" / "CP04_unlabeled.json").exists())
+     and not (_P.parsed() / "CP04_unlabeled.json").exists())
 # 실제 — 파일 1건
 _row = IG.ingest_file(_RAW / "CP04_unlabeled.xlsx")
 _reg = store.read(store.DOC_REGISTRY, {}).get("CP04_unlabeled") or {}
@@ -324,7 +325,7 @@ show("ingest-dir --dry-run — 전부 선택만/미선택, 인입 0",
      all(r["status"] in ("선택만", "미선택") for r in _dry))
 shutil.rmtree(_bd, ignore_errors=True)
 for _f in ("CP01", "CP03_bad", "CP04_unlabeled"):
-    (ROOT / "parsed" / f"{_f}.json").unlink(missing_ok=True)
+    (_P.parsed() / f"{_f}.json").unlink(missing_ok=True)
 
 # ── B61 ① 상태 거부는 원인과 다음 줄을 낸다 ──────────────────────────────
 print("\n■ B61 ① — 상태 거부 문면의 계약 (사람이 치는 자리 전수)")
@@ -423,8 +424,8 @@ try:
          and any(f.name == "cp.py" for f, _m in SC.adapters()))
 
     # ② **결손은 빼지 않고 막는다** — 빼면 지금과 같은 「조용한 화면」이다.
-    _ad70 = ROOT / "adapters" / "b70x.py"
-    _sc70 = ROOT / "schemas" / "b70x.json"
+    _ad70 = _P.adapters() / "b70x.py"
+    _sc70 = _P.schemas() / "b70x.json"
     # **등재가 먼저다** — `schemas/b70x.json`이 먼저 있으면 그 파일의 실재가 곧
     # 내장 등록이라 `register`가 이름 중복으로 막는다(그 규칙은 그대로 옳다).
     _RG.register("b70x", layer="process", adapter="adapters/b70x.py",
@@ -460,7 +461,7 @@ try:
 finally:
     _L70.use_mock = _um70
     _RG.unregister("b70x")
-    for _p70 in (ROOT / "adapters" / "b70x.py", ROOT / "schemas" / "b70x.json"):
+    for _p70 in (_P.adapters() / "b70x.py", _P.schemas() / "b70x.json"):
         _p70.unlink(missing_ok=True)
 show("② 뒷정리 — 결손 0 · 등록부 원상 (회귀가 남기는 것 0)",
      not _RG.missing_assets() and set(store.read(store.DOC_TYPES, {})) == set(_reg70))
@@ -794,7 +795,7 @@ show("② 화면이 이력을 말한다 (몇 회 돌았고 끝났는지)",
 show("③ `[상태]` 거부 전부가 근거 자리(경로)를 말한다 (B61 계약 ④)",
      not _EX.no_evidence(_rows61),
      f"상태 {len(_st61)}곳 · 근거 없음 {_at61(_EX.no_evidence(_rows61))}")
-_orp77 = ROOT / "review" / "옮기다빠진ZZ"
+_orp77 = _P.review() / "옮기다빠진ZZ"
 _orp77.mkdir(parents=True, exist_ok=True)
 (_orp77 / "approval.json").write_text(
     json.dumps({"doc_type": "옮기다빠진ZZ", "approved_by": "시험자"},
@@ -1050,9 +1051,9 @@ _a75 = {"doc_id": "A", "rows": [
 _b75 = json.loads(json.dumps(_a75))
 _b75["rows"][1].update(verdict="match", canonical="노칭::다", node_id="N9",
                        path="embedding+judge")
-(ROOT / "data" / "b75a.json").write_text(json.dumps(_a75, ensure_ascii=False),
+(_P.data() / "b75a.json").write_text(json.dumps(_a75, ensure_ascii=False),
                                          encoding="utf-8")
-(ROOT / "data" / "b75b.json").write_text(json.dumps(_b75, ensure_ascii=False),
+(_P.data() / "b75b.json").write_text(json.dumps(_b75, ensure_ascii=False),
                                          encoding="utf-8")
 _db75 = _io.StringIO()
 with _ctx.redirect_stdout(_db75):
@@ -1066,7 +1067,7 @@ show("① `--diff`의 행 수 == 판정 또는 node가 다른 값의 수",
 show("① 경로만 달라도 답이 같으면 다른 행이 아니다 (도구는 차이만 보인다)",
      "다른 행 1 /" in _db75.getvalue())
 for _f75 in ("b75a.json", "b75b.json"):
-    (ROOT / "data" / _f75).unlink(missing_ok=True)      # 시험 재료는 남기지 않는다
+    (_P.data() / _f75).unlink(missing_ok=True)      # 시험 재료는 남기지 않는다
 
 print("\n── B75 ② 스코프는 하드 필터다 ──")
 _g75 = open_graph("process")

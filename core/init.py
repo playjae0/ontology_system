@@ -19,7 +19,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from . import log, store
+from . import log, paths, store
 from .graph import GraphStore
 from router import discover
 
@@ -61,7 +61,7 @@ def fresh():
     """클린 상태를 만든다 — 범위는 위 `WIPE` + `data/`(예외 `KEEP_IN_DATA`)다."""
     for d in WIPE:
         shutil.rmtree(ROOT / d, ignore_errors=True)
-    data = ROOT / "data"
+    data = paths.data()
     if data.exists():
         keep = {}
         for name in KEEP_IN_DATA:

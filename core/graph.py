@@ -22,6 +22,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from . import paths
 from .ids import new_ulid
 
 try:                                    # 직렬화 — orjson 우선, 표준 json 폴백
@@ -55,7 +56,7 @@ STATUS_DELETED = "deleted_by_user"
 
 
 def _default_data_dir() -> Path:
-    return Path(__file__).resolve().parent.parent / "data"
+    return paths.data()
 
 
 class GraphStore:

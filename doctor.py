@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent
 # 회귀 10종 — **각각을 클린 상태에서 단독 실행**한다(증분0 §8 실행 규약).
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
-    ("test_g1_g2", 98, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용"),
+    ("test_g1_g2", 100, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
@@ -206,15 +206,16 @@ def _idempotent():
         # 차이(노드 증식·id 재발급으로 생긴 바이트 차)가 바로 그 정규화에 지워진다.
         # 이것은 그래프를 **쓰거나 해석하는** 경로가 아니라 진단의 측정이다 —
         # 파생물에서 그래프를 고치는 경로는 여전히 없다(P5).
+        from core import paths as _paths      # 상태 자리는 한 모듈이 안다 (B78 1a)
         graphs, queue, rejects = {}, set(), 0
-        for f in sorted((ROOT / "data").rglob("*.json")):
-            rel = str(f.relative_to(ROOT / "data"))
+        for f in sorted(_paths.data().rglob("*.json")):
+            rel = str(f.relative_to(_paths.data()))
             if rel.endswith("graph" + ".json"):
                 graphs[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
-        for x in json.loads((ROOT / "data" / "review_queue.json").read_text(encoding="utf-8")):
+        for x in json.loads(_paths.data("review_queue.json").read_text(encoding="utf-8")):
             queue.add((x["kind"], x["doc_id"],
                        json.dumps(x["payload"], sort_keys=True, ensure_ascii=False)))
-        rj = ROOT / "data" / "gate_rejects.json"
+        rj = _paths.data("gate_rejects.json")
         if rj.exists():
             rejects = len(json.loads(rj.read_text(encoding="utf-8")))
         return graphs, queue, rejects

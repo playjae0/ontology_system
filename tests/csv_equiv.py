@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 
 from cli import ingest as I, query as R                      # noqa: E402
 from core import init                                        # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.bootstrap import bootstrap, open_graph             # noqa: E402
 from router import discover                                  # noqa: E402
 from parser import reader                                    # noqa: E402
@@ -80,7 +81,7 @@ def sheetless_text(s):
 
 def envelope(doc_id):
     """계약 JSON — 포맷 태생의 차이 셋을 뺀 판."""
-    p = ROOT / "parsed" / f"{doc_id}.json"
+    p = _P.parsed() / f"{doc_id}.json"
     if not p.exists():
         return None
     env = json.loads(p.read_text(encoding="utf-8"))

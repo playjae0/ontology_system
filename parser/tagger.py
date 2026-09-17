@@ -21,6 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = ROOT / "data" / "skeleton_closed_list.json"
+# 상동 — 파서 경계 때문에 `core/paths.py` 밖에 남는 둘 중 하나다(D-157 ①).
+# 이 값은 이미 **인자로 덮을 수 있다**(`load(path=…)`) — 1b가 그 통로를 쓴다.
 
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 

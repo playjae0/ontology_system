@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import init, gate, store                              # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.ids import is_ulid                              # noqa: E402
 from core.ingest import ingest                            # noqa: E402
@@ -73,6 +74,48 @@ for p in ROOT.rglob("*.py"):
             hits.append(f"{p.relative_to(ROOT)}:{i}")
 show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", not hits, str(hits))
 
+# ── B78 1a — **상태의 자리를 아는 모듈은 하나다** ────────────────────────
+# 코드를 새로 가져올 때 `review/`·`data/`·`parsed/`를 전부 같이 옮겨야 했던 이유가
+# 이것이다: 자리를 아는 코드가 26곳(운영)에 복사돼 있었다. 자리를 한 모듈이 알면
+# **코드 교체와 상태 이사가 갈린다**(B78 1a · 칸 0.4).
+#
+# 경계 예외 셋은 **이름으로** 허용한다 — 늘어나면 붉는다:
+#   · `parser/`  2곳 — 파서는 외부 전달물이라 core를 import하지 않는다(문서 6 §6.7)
+#   · `kit/`     1곳 — 킷도 같다(관문 G54가 `core.llm` 미적재를 상시로 잰다)
+import re as _re                                  # noqa: E402
+_STATE = "|".join(("data", "review", "parsed", "extract", "export",
+                   "golden", "adapters", "schemas"))
+_SPAT = _re.compile(r'(ROOT|parent\.parent)\s*/\s*"(?:' + _STATE + r')"')
+_ALLOW = {"core/paths.py", "parser/struct_map.py", "parser/tagger.py",
+          "kit/run_adapter.py"}
+_state_hits = [f"{p.relative_to(ROOT)}:{i}"
+               for d in ("core", "cli", "parser", "kit")
+               for p in sorted((ROOT / d).rglob("*.py"))
+               if "__pycache__" not in p.parts
+               and str(p.relative_to(ROOT)) not in _ALLOW
+               for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+               if _SPAT.search(line) and not line.lstrip().startswith("#")]
+for _f in ("run.py", "doctor.py"):
+    _state_hits += [f"{_f}:{i}" for i, line in enumerate(
+        (ROOT / _f).read_text(encoding="utf-8").splitlines(), 1)
+        if _SPAT.search(line) and not line.lstrip().startswith("#")]
+show("상태 경로를 조립하는 코드가 core/paths.py 밖에 없다 (경계 예외 3곳 제외)",
+     not _state_hits, str(_state_hits))
+
+# **폴더를 만드는 자리도 하나다**(B77 ④의 연장) — 자리를 옮길 때 한 곳이 남으면
+# 그것이 옛 자리를 되살린다. doctor의 시험 보조 폴더는 상태가 아니다.
+_MPAT = _re.compile(r"\.mkdir\(")
+_MKALLOW = {"core/paths.py", "parser/struct_map.py"}
+_mk_hits = [f"{p.relative_to(ROOT)}:{i}"
+            for d in ("core", "cli", "parser", "kit")
+            for p in sorted((ROOT / d).rglob("*.py"))
+            if "__pycache__" not in p.parts
+            and str(p.relative_to(ROOT)) not in _MKALLOW
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if _MPAT.search(line) and not line.lstrip().startswith("#")]
+show("폴더를 만드는 코드가 core/paths.py 밖에 없다 (파서 경계 1곳 제외)",
+     not _mk_hits, str(_mk_hits))
+
 # **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
 # 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
 # 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.
@@ -110,7 +153,7 @@ show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
 # `review/{doc_type}/approval.json`이 승인의 물리 정본이라, 클린이 그것을 지우면
 # 사내에서 `init --fresh` 한 번에 승인 이력이 사라진다(실증된 결함).
 from core import init as _init2                                 # noqa: E402
-_probe = ROOT / "review" / "_clean_probe"
+_probe = _P.review() / "_clean_probe"
 _probe.mkdir(parents=True, exist_ok=True)
 (_probe / "approval.json").write_text('{"approved_by": "시험자"}', encoding="utf-8")
 _init2.init(fresh_=True)
@@ -255,7 +298,7 @@ _parse = _rc("-m", "cli.parse", "run", "--allow-mock",   # 회귀는 관문 비�
              str(ROOT / "tests/fixtures/adapters/cp.py"), "CP01",
              str(ROOT / "tests/fixtures/raw/CP01.xlsx"))
 show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — 파일 존재 = 파싱 완료)",
-     _parse.returncode == 0 and (ROOT / "parsed" / "CP01.json").exists())
+     _parse.returncode == 0 and (_P.parsed() / "CP01.json").exists())
 
 # 클린 범위 — §7.6-4가 이번 개정에서 확정했다.
 from core import init as _init3                                 # noqa: E402
@@ -263,7 +306,7 @@ show("클린 범위가 parsed/·extract/를 포함한다 (체크포인트 잔존
      "parsed" in _init3.WIPE and "extract" in _init3.WIPE, str(_init3.WIPE))
 show("클린이 data/doc_types.json을 보존한다 (승인 1회의 등재 — 재생성 불가)",
      "doc_types.json" in _init3.KEEP_IN_DATA)
-_dt = ROOT / "data" / "doc_types.json"
+_dt = _P.data() / "doc_types.json"
 _dt.parent.mkdir(parents=True, exist_ok=True)
 _dt.write_text('{"_probe": {"doc_type": "_probe"}}', encoding="utf-8")
 _init3.init(fresh_=True)

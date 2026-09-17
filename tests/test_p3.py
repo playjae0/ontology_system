@@ -25,12 +25,13 @@ sys.path.insert(0, str(ROOT / "kit"))
 
 from cli import register as R                              # noqa: E402
 from core import init, registry, store                           # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.bootstrap import bootstrap                       # noqa: E402
 from parser import pipeline, reader                        # noqa: E402
 
 allok = True
 RAW = ROOT / "tests" / "fixtures" / "raw"
-REVIEW = ROOT / "review"
+REVIEW = _P.review()
 
 
 def show(label, ok, detail=""):
@@ -343,7 +344,7 @@ def _kit_banned():
 def _make_big_sample():
     """부분 리허설 판정용 대형 표본 — 회귀가 자기 재료를 만든다."""
     from openpyxl import Workbook
-    out = ROOT / "extract" / "_p3_big.xlsx"
+    out = _P.extract() / "_p3_big.xlsx"
     out.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook(); ws = wb.active; ws.title = "CP"
     ws.append([]); ws.append([])
@@ -982,7 +983,7 @@ except SystemExit as e:
     # 계열 이름을 박으면 계열이 늘 때(B58 ③이 격자 산문을 더했다) 이 줄이 깨진다.
     show("② 제안 없는 표본에 --use-basic은 거부되고 사유를 말한다",
          "거부" in str(e) and "CP01.xlsx" in str(e) and "--no-basic" in str(e))
-show("② 거부는 검수 자리를 만들지 않는다", not (ROOT / "review" / "cpx_basic").exists())
+show("② 거부는 검수 자리를 만들지 않는다", not (_P.review() / "cpx_basic").exists())
 # ② 수용 — PPT 표본: LLM 호출 0회로 생성 → 검수 → 확정
 _calls0 = llm.usage_total()["calls"]
 _buf = _io.StringIO()
@@ -1065,11 +1066,11 @@ show("③ 문면이 --allow-mock과 켜는 법을 함께 말한다",
      if _bare.stdout.strip() else "(빈 출력)")
 show("③ 모드 표시 다음에 멈춘다 (B42 ⑤ → 관문)", "모드:" in _bare.stdout)
 show("③ 멈춘 명령은 아무것도 만들지 않았다 — LLM 지점 호출 0회",
-     not (ROOT / "review" / "gate_t").exists())
+     not (_P.review() / "gate_t").exists())
 _allowed = run("generate", "gate_t", "process", str(RAW / "CP01.xlsx"))
 show("③ --allow-mock을 붙이면 종전대로 진행한다",
-     (ROOT / "review" / "gate_t" / "input_package.json").exists(), _allowed.stdout[-80:])
-shutil.rmtree(ROOT / "review" / "gate_t", ignore_errors=True)
+     (_P.review() / "gate_t" / "input_package.json").exists(), _allowed.stdout[-80:])
+shutil.rmtree(_P.review() / "gate_t", ignore_errors=True)
 for _c in ("init", "bootstrap"):
     _r = subprocess.run([sys.executable, str(ROOT / "run.py"), _c],
                         capture_output=True, text=True, cwd=str(ROOT))
@@ -1107,7 +1108,7 @@ show("① 사용법에 resume 단독 줄이 있다",
 
 # ============================================================ B49 전 열 판정
 print("\n■ B49 — 모든 열은 판정을 갖는다 (C19 개정 · 부재로 추론하지 않는다)")
-_DEMO = ROOT / "review" / "b49demo"
+_DEMO = _P.review() / "b49demo"
 _DEMO.mkdir(parents=True, exist_ok=True)
 (_DEMO / "adapter.py").write_text(
     '# -*- coding: utf-8 -*-\n'
@@ -1404,7 +1405,7 @@ show("② 파생 함수는 한 곳이다 — cli/ingest.doc_id_of를 부른다(�
      (ROOT / "cli/parse.py").read_text(encoding="utf-8")
      and "def doc_id_of" not in (ROOT / "cli/parse.py").read_text(encoding="utf-8"))
 for _n in ("CP01", "CPOLD", "지정본"):
-    (ROOT / "parsed" / f"{_n}.json").unlink(missing_ok=True)
+    (_P.parsed() / f"{_n}.json").unlink(missing_ok=True)
 
 # ── ① prose 검수 뷰 — 추출 리허설이 운영과 같은 함수·같은 파일이다
 reset("toc_report")
@@ -1445,7 +1446,7 @@ show("① ⓔ 승인 기록에 요약이 실린다 — 무엇이 뽑히는 것�
 # ── ⓒ 부분 리허설이면 체크포인트를 남기지 않는다
 reset("toc_report")
 _EX.invalidate("TOC01")
-(ROOT / "parsed" / "TOC01.json").unlink(missing_ok=True)
+(_P.parsed() / "TOC01.json").unlink(missing_ok=True)
 run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
 run("review", "toc_report", "--rows", "5", "--no-llm-coord", "--extract")
 _xr2 = view_of("toc_report")["sections"].get("extract_rehearsal") or {}
@@ -1713,7 +1714,7 @@ import shutil as _b55_sh                                          # noqa: E402
 from parser import struct_map as _SM, tagger as _tagger                              # noqa: E402
 from parser.adapters import basic_ppt as _BP                      # noqa: E402
 
-_b55_src = ROOT / "data" / "_b55_map.pptx"
+_b55_src = _P.data() / "_b55_map.pptx"
 _b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
 _b55_calls = []
 
@@ -1934,8 +1935,8 @@ show("②ⓐ prose — 검수 화면에 기계 오류 0 (failure 종 0건)",
 # **관문이 남긴 자리는 관문이 치운다** — 운영 doc_id의 구조 지도를 덮으면 아직
 # 등록도 안 된 어댑터의 산출이 운영 인입의 chunk_id를 흔든다.
 show("②ⓐ 관문이 자기 구조 지도를 남기지 않는다 (운영 보존분과 섞이지 않는다)",
-     not [q for q in (ROOT / "extract" / "struct_maps").glob("_gate_*.json")],
-     str([q.name for q in (ROOT / "extract" / "struct_maps").glob("*.json")][:4]))
+     not [q for q in (_P.extract() / "struct_maps").glob("_gate_*.json")],
+     str([q.name for q in (_P.extract() / "struct_maps").glob("*.json")][:4]))
 
 
 # ── B58 ⑤ 검수 뷰는 생성이 만든다 + 분할 분포 ──────────────────────────
@@ -2049,8 +2050,8 @@ finally:
 reset("toc_report")
 show("⑤ 시험이 승격시킨 정본을 치웠다 (다음 실행으로 새지 않는다)",
      registry.lookup("toc_report") is None
-     and not (ROOT / "adapters" / "toc_report.py").exists()
-     and not (ROOT / "schemas" / "toc_report.json").exists())
+     and not (_P.adapters() / "toc_report.py").exists()
+     and not (_P.schemas() / "toc_report.json").exists())
 
 
 # ── B58 ⑥ 산출 스키마의 계열 분기 ────────────────────────────────────────
@@ -2725,7 +2726,7 @@ print("\n■ B65 — 어휘가 닫힌 자리는 실행 전에 정적으로 대�
 
 _d65 = Path(_tf.mkdtemp(prefix="b65_", dir=str(ROOT)))
 _cp65 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-_sc65 = ROOT / "schemas" / "cp.json"
+_sc65 = _P.schemas() / "cp.json"
 
 
 def _gate65(adapter_src, schema=_sc65, name="a"):
@@ -2930,8 +2931,8 @@ print("\n■ B66 ② — 미선택 네 갈래 (「없다」는 어댑터가 0건
 # 구판은 한 문면(「지문 일치 0건 — 대조할 정형 어댑터가 없다」)이 서로 다른 넷을
 # 덮었다. 사내에서 CSV가 대조조차 안 된 것(①)이 그 문면으로 나왔고 사람은
 # **어댑터가 없다고 읽었다.** 갈래마다 다음 수가 다르다 — 그래서 문면이 갈린다.
-_d66e = ROOT / "review" / "_b66_empty"          # 소재지는 있는데 어댑터가 0개
-_d66p = ROOT / "review" / "_b66_prose"          # 산문 어댑터만 있다 (자격 없음)
+_d66e = _P.review() / "_b66_empty"          # 소재지는 있는데 어댑터가 0개
+_d66p = _P.review() / "_b66_prose"          # 산문 어댑터만 있다 (자격 없음)
 shutil.rmtree(_d66e, ignore_errors=True)
 shutil.rmtree(_d66p, ignore_errors=True)
 _d66e.mkdir(parents=True)
@@ -3281,7 +3282,7 @@ show("② 진행 줄은 표기 단위이고 끝 줄이 채택·목록 밖을 센
      "표기 10/100" in _scr69 and "좌표 태깅 끝" in _scr69
      and "채택 21" in _scr69)
 for _f69 in ("CP01", "CP02_drift", "CP03_bad", "CP04_unlabeled"):
-    (ROOT / "parsed" / f"{_f69}.json").unlink(missing_ok=True)
+    (_P.parsed() / f"{_f69}.json").unlink(missing_ok=True)
 
 # ── B72 ① — 어댑터가 내는 키는 등록에서 막는다 (G39) ─────────────────────
 #
@@ -3292,7 +3293,7 @@ for _f69 in ("CP01", "CP02_drift", "CP03_bad", "CP04_unlabeled"):
 print("\n■ B72 ① — 산출 키 ⊆ 스키마 fields ∪ 구조 필드 (G39)")
 
 _cpa72 = ROOT / "tests" / "fixtures" / "adapters" / "cp.py"
-_cps72 = ROOT / "schemas" / "cp.json"
+_cps72 = _P.schemas() / "cp.json"
 _ok72, _out72 = R.harness(_cpa72, _cps72, [RAW / "CP01.xlsx"])
 show("① 정상 쌍은 G39가 초록이다 (지금 자산이 규약 7을 지킨다)",
      "[PASS] G39" in _out72 and "[FAIL] G39" not in _out72,
@@ -3430,7 +3431,7 @@ show("① 한 필드가 열 여럿이어도 `role_table`이 죽지 않고 표를
 _lp76.write_text(_save76, encoding="utf-8")
 
 print("\n■ B76 ③ 등록 흐름의 예외는 문면으로 죽는다")
-_dl76 = ROOT / "data" / "defects.log"
+_dl76 = _P.data() / "defects.log"
 _before76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
 _orig76 = R.cmd_list
 

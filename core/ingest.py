@@ -15,10 +15,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import log, store
+from . import log, paths, store
 from .ids import US, OccCounter, chunk_id, doc_hash, norm, record_id
 
-SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
+SCHEMA_DIR = paths.schemas()    # 자리는 core/paths.py가 안다 (B78 1a)
 
 # 재인입 회수에서 **내리지 않는** 큐 kind — 조건 판정이 아니라 상시 작업목록이다.
 # 이것을 내리면 재인입 한 번에 미검토 노드 목록이 증발한다(20회차 실측 61 → 11).

@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import ledger, store
+from core import ledger, paths, store
 from core.bootstrap import open_graph
 from core.status import is_live
 from router import discover
@@ -56,8 +56,8 @@ def out_path(arg, default, *, as_dir=False):
     구판은 세 명령이 각자 만들었다. 파생물은 상태 5단의 ⑤단이고(문서 7 §7.8),
     그 단의 자리를 아는 코드가 흩어지면 자리를 옮길 때 한 곳이 남는다.
     """
-    p = Path(arg) if arg else ROOT / "export" / default
-    (p if as_dir else p.parent).mkdir(parents=True, exist_ok=True)
+    p = Path(arg) if arg else paths.export(default)
+    paths.ensure(p if as_dir else p.parent)
     return p
 
 

@@ -16,11 +16,11 @@ import os
 import re
 from pathlib import Path
 
-from core import llm
+from core import llm, paths
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
-REVIEW = ROOT / "review"
+REVIEW = paths.review()
 
 
 def _dir(doc_type):
@@ -33,7 +33,7 @@ def _dir(doc_type):
     그 반대로 두면 순환이다(D-156 ①).
     """
     d = REVIEW / doc_type
-    d.mkdir(parents=True, exist_ok=True)
+    paths.ensure(d)
     return d
 
 

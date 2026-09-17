@@ -56,7 +56,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, llm, log, registry, store
+from core import fixtures, llm, log, paths, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
 from parser import form
@@ -76,7 +76,7 @@ from cli.interview import (  # noqa: F401
     INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
     finalize as iv_finalize)
 
-REVIEW = ROOT / "review"
+REVIEW = paths.review()
 KIT = ROOT / "kit"
 FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/fixtures.py가 소유
 
@@ -149,7 +149,7 @@ def cmd_roles(args):
         print(f"[roles] {hrow}행에 헤더가 없다 — 비정형이거나 행 번호가 다르다")
         return 1
 
-    blocks = json.loads((ROOT / "schemas" / "blocks.json").read_text(encoding="utf-8"))
+    blocks = json.loads(paths.blocks().read_text(encoding="utf-8"))
     block_fields = {f for b, spec in blocks.items() if not b.startswith("_")
                     for f in spec}
 
@@ -1293,7 +1293,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                                  "categories": cfg.get("categories"),
                                  "relations": cfg.get("relations"),
                                  "relation_patterns": cfg.get("relation_patterns")},
-            "blocks": json.loads((ROOT / "schemas" / "blocks.json")
+            "blocks": json.loads(paths.blocks()
                                  .read_text(encoding="utf-8")),
             # **경로가 아니라 본문을 싣는다**(B29 ★①) — 경로만 보내면 생성 세션이
             # 그 파일을 열 수 없어 뼈대를 **작문**하게 된다. 실측: 전송분의 extract가
@@ -3025,7 +3025,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     return 0 if st["machine_gate"] == "PASS" else 1
 
 
-ADAPTERS_DIR = ROOT / "adapters"        # 확정 어댑터의 **정본 자리** (문서 6 §6.4·§6.5)
+ADAPTERS_DIR = paths.adapters()         # 확정 어댑터의 **정본 자리** (문서 6 §6.4·§6.5)
 
 
 def _promote_paths(doc_type):
@@ -3049,8 +3049,8 @@ def _promote(doc_type, st):
     a_rel, s_rel = _promote_paths(doc_type)
     src_a, src_s = ROOT / st["adapter"], ROOT / st["schema"]
     dst_a, dst_s = ROOT / a_rel, ROOT / s_rel
-    dst_a.parent.mkdir(parents=True, exist_ok=True)
-    dst_s.parent.mkdir(parents=True, exist_ok=True)
+    paths.ensure(dst_a)
+    paths.ensure(dst_s)
     if src_a.resolve() != dst_a.resolve():
         dst_a.write_bytes(src_a.read_bytes())
     if src_s.resolve() != dst_s.resolve():

@@ -23,10 +23,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import llm, log, store
+from . import llm, log, paths, store
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_DIR = ROOT / "schemas"
+SCHEMA_DIR = paths.schemas()
 
 BUILTIN = "builtin"
 
@@ -137,7 +137,7 @@ def orphan_reviews():
     """
     reg = _registered()
     out = []
-    review = ROOT / "review"
+    review = paths.review()
     if not review.exists():
         return out
     for d in sorted(x for x in review.iterdir() if x.is_dir()):

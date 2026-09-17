@@ -14,7 +14,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from . import log
+from . import log, paths
 
 try:
     import fcntl
@@ -38,7 +38,7 @@ except ImportError:                     # pragma: no cover - 폴백 경로
     def _loads(b: bytes):
         return json.loads(b.decode("utf-8"))
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+DATA = paths.data()             # 자리는 core/paths.py가 안다 (B78 1a)
 
 # data/ 파일 이름 (증분0 §6-7 파일 트리 증분)
 CHUNKS = "chunks.json"
@@ -97,7 +97,7 @@ def atomic_write_bytes(target: Path, data: bytes) -> int:
     락 부재로 원자성까지 포기하면 방어가 0으로 되돌아간다.
     """
     target = Path(target)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    paths.ensure(target)               # 폴더를 만드는 자리는 하나다 (B78 1a)
     lock = target.parent / f".{target.name}.lock"   # 숨은 이름 — data/ 열람의 잡음이 아니게
     lf = None
     try:
@@ -142,7 +142,7 @@ def append_line(name: str, line: str):
     **쌓는 쓰기라 원자 쓰기를 타지 않는다** — `data/`를 만드는 두 자리 중 하나가
     여기다(다른 하나는 `atomic_write_bytes`의 부모 mkdir · B77 ④).
     """
-    DATA.mkdir(parents=True, exist_ok=True)
+    paths.ensure(DATA)
     with path(name).open("a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
 
