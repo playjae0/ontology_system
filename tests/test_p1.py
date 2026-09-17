@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import init, store                                        # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.bootstrap import bootstrap                          # noqa: E402
 from parser import (normalizer, pipeline, preflight, reader, struct_map, tagger,  # noqa: E402
                     validator)
@@ -376,7 +377,7 @@ from cli.parse import cmd_build                              # noqa: E402
 
 rc = cmd_build(["tests/fixtures/fixtures/adapters/ipqc.py", "ipqc_p1",
                 str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx")])
-outdir = ROOT / "review" / "ipqc_p1"
+outdir = _P.review() / "ipqc_p1"
 show("3단이 파일로 이어진다 — 입력 패키지 · 검수 뷰 데이터 · 승인 기록",
      all((outdir / f).exists() for f in
          ("input_package.json", "view.json", "approval.json")))
@@ -394,8 +395,8 @@ appr = json.loads((outdir / "approval.json").read_text(encoding="utf-8"))
 show("확정은 승인 기록까지 — registry 등재는 P3의 몫이다 (경계 침범 0)",
      appr["machine_gate"] == "PASS" and appr["approved_by"] is None
      and "ipqc_p1" not in store.read(store.REGISTRY, {}))
-shutil.rmtree(ROOT / "review" / "ipqc_p1", ignore_errors=True)
-shutil.rmtree(ROOT / "review" / "ipqc_p1_solo", ignore_errors=True)
+shutil.rmtree(_P.review() / "ipqc_p1", ignore_errors=True)
+shutil.rmtree(_P.review() / "ipqc_p1_solo", ignore_errors=True)
 
 # ============================================================ 조각 공통 층 (§2.2 계약 ①)
 print("\n■ 조각 공통 층 — 모든 record/chunk가 달고 들어온다 (문서 2 §2.2)")
@@ -794,7 +795,7 @@ _W.write_text("# -*- coding: utf-8 -*-\n"
               "ADAPTER = {**basic_prose_xlsx.ADAPTER, 'doc_type': 'toc_basic'}\n"
               "extract = basic_prose_xlsx.extract\n"
               "level_report = basic_prose_xlsx.level_report\n", encoding="utf-8")
-_S = ROOT / "schemas" / "toc_basic.json"
+_S = _P.schemas() / "toc_basic.json"
 _S.write_text(json.dumps({"doc_type": "toc_basic", "schema_version": 1,
                           "layer": "process", "payload_kind": "prose",
                           "use_blocks": ["common_core", "process_coord"],
@@ -805,7 +806,7 @@ try:
 
     def _ingest_once(tag):
         for d in ("TOC01", "TOC02"):
-            _o = ROOT / "parsed" / f"{d}_{tag}.json"
+            _o = _P.parsed() / f"{d}_{tag}.json"
             _run_parse(str(_W), d, str(RAW / f"{d}.xlsx"), str(_o))
             _CP.run_document(json.loads(_o.read_text(encoding="utf-8")))
             _o.unlink(missing_ok=True)

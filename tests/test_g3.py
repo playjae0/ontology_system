@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import init, store                                   # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.build import Builder                           # noqa: E402
 from core.extract import EXTRACT_DIR                     # noqa: E402
@@ -542,7 +543,7 @@ show("③ 화면 블록이 태그·doc_id·다음 줄 셋을 낸다",
 show("③ validator 결함 여러 건이 각각 한 줄이 된다 (합쳐 자르지 않는다)",
      len(_IG61.fail_rows([{"kind": "parse_failure", "reason": "r",
                            "detail": {"defects": ["A", "B", "C"]}}])) == 3)
-(ROOT / "parsed" / "CP03_bad.json").unlink(missing_ok=True)
+(_P.parsed() / "CP03_bad.json").unlink(missing_ok=True)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G3 완료판정 충족" if allok else "FAIL")

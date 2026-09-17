@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import ledger, store
+from core import ledger, paths, store
 from core.bootstrap import open_graph
 from core.status import is_live
 from router import discover
@@ -50,6 +50,17 @@ def _short(p):
         return Path(p).resolve()
 
 
+def out_path(arg, default, *, as_dir=False):
+    """파생물 산출 자리 — **`export/`를 만드는 자리는 여기 하나다**(B77 ④).
+
+    구판은 세 명령이 각자 만들었다. 파생물은 상태 5단의 ⑤단이고(문서 7 §7.8),
+    그 단의 자리를 아는 코드가 흩어지면 자리를 옮길 때 한 곳이 남는다.
+    """
+    p = Path(arg) if arg else paths.export(default)
+    paths.ensure(p if as_dir else p.parent)
+    return p
+
+
 def cmd_cypher(args):
     """Neo4j 적재 스크립트.
 
@@ -62,8 +73,7 @@ def cmd_cypher(args):
 
     **툼스톤·사람 삭제 엣지는 내보내지 않는다** — 화면에 살아 있는 것만 띄운다.
     """
-    out = Path(args[0]) if args else ROOT / "export" / "graph.cypher"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = out_path(args[0] if args else None, "graph.cypher")
     L, n_node, n_edge = [], 0, 0
 
     L += ["// 온톨로지 그래프 — data/의 JSON에서 파생 (P5: 재생성 가능물)",
@@ -132,8 +142,7 @@ def cmd_cypher(args):
 def cmd_csv(args):
     """`nodes.csv` · `edges.csv` — Gephi·엑셀·pandas용. 표로 훑어보기 좋다."""
     import csv
-    d = Path(args[0]) if args else ROOT / "export"
-    d.mkdir(parents=True, exist_ok=True)
+    d = out_path(args[0] if args else None, "", as_dir=True)
     world = _world()
     live = {i for g in world.values() for i, n in g.nodes.items() if is_live(n)}
 
@@ -865,8 +874,7 @@ def cmd_html(args):
 
     필터·색상 축 5종: `layer` · `category` · `status` · `tier` · `polarity`.
     """
-    out = Path(args[0]) if args else ROOT / "export" / "graph.html"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = out_path(args[0] if args else None, "graph.html")
 
     world = _world()
     nodes, edges = graph_data(world)

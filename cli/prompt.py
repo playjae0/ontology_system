@@ -16,16 +16,24 @@ import os
 import re
 from pathlib import Path
 
-from core import llm
+from core import llm, paths
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
-REVIEW = ROOT / "review"
+REVIEW = paths.review()
 
 
 def _dir(doc_type):
+    """`review/<doc_type>/` — **이 폴더를 만드는 자리는 여기 하나다**(B77 ④).
+
+    구판은 다섯 곳이 각자 만들었다(`register._dir` 복사본 · 인라인 셋). 폴더를
+    만드는 코드가 흩어지면 자리를 옮길 때 한 곳이 남아 옛 자리를 되살린다.
+    소유 모듈의 확정은 B78-1(`core/paths.py`) 몫이고, 그때까지는 **import 방향이
+    허용하는 가장 아래 모듈**이 든다 — `register`가 `prompt`를 import하므로
+    그 반대로 두면 순환이다(D-156 ①).
+    """
     d = REVIEW / doc_type
-    d.mkdir(parents=True, exist_ok=True)
+    paths.ensure(d)
     return d
 
 

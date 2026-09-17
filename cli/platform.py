@@ -250,7 +250,7 @@ def cmd_doctypes():
     따라오지 않는다. 그때 등록부에는 이름이 있고 파일은 없다: 그 상태가 화면에
     보이지 않으면 사람은 「등록이 사라졌다」고만 안다.
     """
-    from core.registry import all_doc_types, missing_assets
+    from core.registry import all_doc_types, missing_assets, orphan_reviews
     from core import llm
     reg = all_doc_types()
     miss = {(m["doc_type"], m["kind"]) for m in missing_assets()}
@@ -270,6 +270,12 @@ def cmd_doctypes():
         print(f"  ⚠ 실물 없는 등록 {len(miss)}건 — scan·인입이 여기서 멈춘다. "
               f"이식이면 data/doc_types.json · adapters/ · schemas/ · review/를 "
               f"같이 옮긴다")
+    # **역방향도 본다**(B77 ③) — 승인 산출은 있는데 등록부에 이름이 없는 경우다.
+    # 한쪽만 재면 「옮기다 빠진 것」이 화면에서 사라진다(사내 실측).
+    for o in orphan_reviews():
+        print(f"  ⚠ 등록부 누락(옮기다 빠짐) — '{o['doc_type']}' · 근거 {o['path']}"
+              + (f" (승인 {o['approved_by']})" if o.get("approved_by") else "")
+              + f" · data/doc_types.json에 키 없음")
 
 
 def ops_view():

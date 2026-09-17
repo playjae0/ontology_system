@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from . import extract as extract_mod
-from . import gate, log, matcher, store
+from . import gate, log, matcher, paths, store
 from .build import Builder
 from .ledger import Ledger
 from .bootstrap import load_config, open_graph
@@ -32,7 +32,7 @@ _LOG = log.get(__name__)
 
 # 공정좌표 anchor의 목표 카테고리 — 공용 블록(schemas/blocks.json)이 소유한다.
 COORD_CATEGORY = json.loads(
-    (Path(__file__).resolve().parent.parent / "schemas" / "blocks.json")
+    paths.blocks()
     .read_text(encoding="utf-8"))["process_coord"]["process_ref"]["target_category"]
 
 

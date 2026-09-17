@@ -19,7 +19,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from . import log, store
+from . import log, paths, store
 from .graph import GraphStore
 from router import discover
 
@@ -61,7 +61,7 @@ def fresh():
     """클린 상태를 만든다 — 범위는 위 `WIPE` + `data/`(예외 `KEEP_IN_DATA`)다."""
     for d in WIPE:
         shutil.rmtree(ROOT / d, ignore_errors=True)
-    data = ROOT / "data"
+    data = paths.data()
     if data.exists():
         keep = {}
         for name in KEEP_IN_DATA:
@@ -69,10 +69,10 @@ def fresh():
             if p.exists():
                 keep[name] = p.read_bytes()
         shutil.rmtree(data, ignore_errors=True)
-        if keep:
-            data.mkdir(parents=True, exist_ok=True)
-            for name, blob in keep.items():
-                (data / name).write_bytes(blob)
+        for name, blob in keep.items():
+            # **폴더를 여기서 만들지 않는다**(B77 ④) — 원자 쓰기가 부모를 만든다.
+            # `data/`의 자리를 아는 코드는 `core/store.py` 하나다.
+            store.atomic_write_bytes(data / name, blob)
 
 
 def ensure():
@@ -82,8 +82,7 @@ def ensure():
     이 모듈이 알지 않는다.** 경로를 직접 조립하면 저장 계층 경계가 "여는 코드"만 막고
     "저장 위치를 아는 코드"를 놓친 상태로 되돌아간다 — 회귀 st가 그것을 잡는다.
     """
-    store.DATA.mkdir(parents=True, exist_ok=True)
-    made = []
+    made = []          # 폴더는 store의 쓰기가 만든다 (B77 ④ — 자리 소유는 하나)
     for name, empty in EMPTY.items():
         if not store.path(name).exists():
             store.write(name, empty)

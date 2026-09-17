@@ -55,7 +55,7 @@ SELFMADE = {"_expand_merged", "_col_to_idx", "_idx_to_col", "_col", "_resolve_di
 # `process_group`·`process_ref`·`process_no`·`source_locator`는 `schemas/blocks.json`이
 # 소유하므로 아래에 중복해 적지 않는다 — 적어 두면 블록 파일이 바뀌어도 하네스가 모른다.
 STRUCT_ONLY = {"electrode_type", "context", "doc_type", "section"}
-BLOCKS_PATH = Path(__file__).resolve().parent.parent / "schemas" / "blocks.json"
+BLOCKS_PATH = ROOT / "schemas" / "blocks.json"   # 킷은 core를 import하지 않는다
 
 
 def load_blocks(schema, path=None):

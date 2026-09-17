@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import registry                                    # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 
 allok = True
 DT = "b71site"                       # 사내가 등록한 것처럼 세우는 doc_type
@@ -59,16 +60,16 @@ class Site:
 
     def __enter__(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="b71site_"))
-        self.ad = ROOT / "adapters" / f"{DT}.py"
-        self.sc = ROOT / "schemas" / f"{DT}.json"
-        self.rv = ROOT / "review" / DT
+        self.ad = _P.adapters() / f"{DT}.py"
+        self.sc = _P.schemas() / f"{DT}.json"
+        self.rv = _P.review() / DT
         # 어댑터·스키마는 **참조 어댑터의 사본**이다(이름만 이 등록의 것) — 새로
         # 짜면 그 코드가 또 하나의 mock 자산이 된다.
         src = (ROOT / "tests" / "fixtures" / "adapters" / "cp.py").read_text(encoding="utf-8")
         self.ad.parent.mkdir(exist_ok=True)
         self.ad.write_text(src.replace('"doc_type": "cp"', f'"doc_type": {DT!r}'),
                            encoding="utf-8")
-        schema = json.loads((ROOT / "schemas" / "cp.json").read_text(encoding="utf-8"))
+        schema = json.loads((_P.schemas() / "cp.json").read_text(encoding="utf-8"))
         # **등재가 먼저다** — 스키마 파일이 먼저 있으면 그 실재가 곧 내장 등록이라
         # `register`가 이름 중복으로 막는다(그 규칙은 옳다 — D-149 ②).
         registry.register(DT, layer=schema.get("layer") or "process",

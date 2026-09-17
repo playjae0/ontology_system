@@ -33,14 +33,14 @@ ROOT = Path(__file__).resolve().parent
 # 회귀 10종 — **각각을 클린 상태에서 단독 실행**한다(증분0 §8 실행 규약).
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
-    ("test_g1_g2", 98, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용"),
+    ("test_g1_g2", 100, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
-    ("test_g6", 138, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입 · B58 형태 판정 기록 · B69 다음 줄 명령 실재 · B70 내장은 mock일 때만·등록부 결손 · B72 인입 화면·큐 집계·--step · B73 후보 상한·조건부 retry·auto 표시 · B74 사전 키=조회 키·판정 대장·뷰어 재료·행별 report · B75 임베딩 선택·스코프 하드 필터·실패 비용"),
+    ("test_g6", 140, "플랫폼 창구 · 계기판 8종 · 지문 스캔 · B46 일괄 투입 · B58 형태 판정 기록 · B69 다음 줄 명령 실재 · B70 내장은 mock일 때만·등록부 결손 · B72 인입 화면·큐 집계·--step · B73 후보 상한·조건부 retry·auto 표시 · B74 사전 키=조회 키·판정 대장·뷰어 재료·행별 report · B75 임베딩 선택·스코프 하드 필터·실패 비용 · B77 근거 자리·역방향 대조"),
     ("test_g6_5", 76, "계약 미배선 24건 수리 · B58 재등록"),
     ("test_p1", 173, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독 · ⑦ 폴백 · B58 산문 xlsx · 형태 판정 · B68 분할 기준 · B69 좌표 태깅 dedupe·상한"),
-    ("test_p2", 67, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋 · B76 스켈레톤 최소 어댑터·형 검사 G4F"),
+    ("test_p2", 68, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋 · B76 스켈레톤 최소 어댑터·형 검사 G4F · B77 전시물 실행 관문"),
     ("test_p3", 445, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건 · B58 관문 범위 · B59 관문 화면 · B60 관문 재실행·확정 요약 · B62 문답 로그 · B64 columns 해석·C38 잠금 · B65 어휘 대조·형태 판정 문의 · B66 포맷 무관 지문·미선택 네 갈래·CSV 전 구간 등가 · B67 열 판정 대장·이어하기 · B68 분할 줄 · B69 좌표 태깅 화면 · B72 G39 산출 키 · B73 pfmea 관문 · B76 대장 커버리지 G4G·등록 예외 경계"),
     ("test_2a_gateway", 39, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험 · B63 대장 잠금"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
@@ -206,15 +206,16 @@ def _idempotent():
         # 차이(노드 증식·id 재발급으로 생긴 바이트 차)가 바로 그 정규화에 지워진다.
         # 이것은 그래프를 **쓰거나 해석하는** 경로가 아니라 진단의 측정이다 —
         # 파생물에서 그래프를 고치는 경로는 여전히 없다(P5).
+        from core import paths as _paths      # 상태 자리는 한 모듈이 안다 (B78 1a)
         graphs, queue, rejects = {}, set(), 0
-        for f in sorted((ROOT / "data").rglob("*.json")):
-            rel = str(f.relative_to(ROOT / "data"))
+        for f in sorted(_paths.data().rglob("*.json")):
+            rel = str(f.relative_to(_paths.data()))
             if rel.endswith("graph" + ".json"):
                 graphs[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
-        for x in json.loads((ROOT / "data" / "review_queue.json").read_text(encoding="utf-8")):
+        for x in json.loads(_paths.data("review_queue.json").read_text(encoding="utf-8")):
             queue.add((x["kind"], x["doc_id"],
                        json.dumps(x["payload"], sort_keys=True, ensure_ascii=False)))
-        rj = ROOT / "data" / "gate_rejects.json"
+        rj = _paths.data("gate_rejects.json")
         if rj.exists():
             rejects = len(json.loads(rj.read_text(encoding="utf-8")))
         return graphs, queue, rejects

@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core import init, gate, ops, store
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.dictionary import Dictionary                            # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
 from core.build import Builder                               # noqa: E402
@@ -475,7 +476,7 @@ show("①ⓑ(i) 추출 힌트 키도 접두가 없다 (locator를 키로 쓰는 
 # ①ⓑ(ii) 그래프의 provenance는 `#`를 갖거나 seed·auto다.
 _b57_bad = []
 for _lay in ("process", "quality"):
-    _g = json.loads((ROOT / "data" / _lay / ("graph" + ".json")).read_text(encoding="utf-8"))
+    _g = json.loads((_P.data() / _lay / ("graph" + ".json")).read_text(encoding="utf-8"))
     _holders = list(_g["nodes"].values()) + list(_g["edges"])
     for _h in _holders:
         for _p in (_h.get("provenance") or []):
@@ -486,7 +487,7 @@ show("①ⓑ(ii) 그래프의 provenance는 전부 `#`를 갖거나 seed·auto:�
      not _b57_bad, str(sorted(set(_b57_bad))[:4]))
 # **seed·auto는 대상이 아니다** — 문서 조각에서 오는 것에만 붙는다.
 _b57_seed = [p for _lay in ("process",)
-             for _g in [json.loads((ROOT / "data" / _lay / ("graph" + ".json"))
+             for _g in [json.loads((_P.data() / _lay / ("graph" + ".json"))
                                    .read_text(encoding="utf-8"))]
              for n in _g["nodes"].values()
              for p in (n.get("provenance") or []) if p == "seed"]

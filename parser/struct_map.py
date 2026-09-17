@@ -26,6 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 KEEP_DIR = ROOT / "extract" / "struct_maps"       # **보존 자리** (문서 6 §6.3)
+# **파서는 `core`를 import하지 않는다**(문서 6 §6.7 외부 전달물 경계) — 그래서
+# 이 자리만 `core/paths.py` 밖에 남는다. 주입으로 푸는 것은 B78 1b다(D-157 ①).
 
 
 def keep_path(doc_id):

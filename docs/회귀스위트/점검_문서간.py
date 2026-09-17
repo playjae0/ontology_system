@@ -92,4 +92,4 @@ for k in sorted(findings):
     if len(findings[k]) > 40: print(f"  … 외 {len(findings[k])-40}건")
     tot += len(findings[k])
 print(f"\n총 {tot}건" + ("" if tot else " — 통과"))
-json.dump({k: v for k, v in findings.items()}, open("문서간_결과.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+json.dump({k: v for k, v in findings.items()}, open(os.path.join(os.path.dirname(__file__), "자산", "문서간_결과.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)

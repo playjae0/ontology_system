@@ -23,13 +23,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PARSED_DIR = ROOT / "parsed"   # 운영 산출 자리 (문서 7 §7.8 — 파일 존재 = 파싱 완료)
 
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
-from core import llm
+from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
+from core import llm, paths
 from parser import pipeline, preflight, reader, validator
 
-REVIEW = ROOT / "review"
+PARSED_DIR = paths.parsed()    # 운영 산출 자리 (문서 7 §7.8 — 파일 존재 = 파싱 완료)
+REVIEW = paths.review()
 
 
 def injections():
@@ -157,7 +158,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP):
                          progress=_progress)
     written = None
     if res.ok and out:
-        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        paths.ensure(Path(out))
         Path(out).write_text(json.dumps(res.envelope, ensure_ascii=False, indent=2)
                              + "\n", encoding="utf-8")
         written = out
@@ -225,8 +226,7 @@ def cmd_build(args):
     """
     adapter_path, doc_type, samples = args[0], args[1], args[2:]
     mod = load_adapter(adapter_path)
-    outdir = REVIEW / doc_type
-    outdir.mkdir(parents=True, exist_ok=True)
+    outdir = review_dir(doc_type)
 
     view = {"doc_type": doc_type, "adapter": str(adapter_path),
             "adapter_version": mod.ADAPTER.get("adapter_version"),

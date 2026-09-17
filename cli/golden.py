@@ -23,10 +23,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from core import bm25, store
+from core import bm25, paths, store
 
 ROOT = Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "golden" / "queries.json"
+GOLDEN = paths.golden("queries.json")
 LOG = "golden_log.json"
 DEFAULT_K = 8                       # 수집 상한과 같다 (문서 5 §5.1 규약 6)
 
@@ -77,7 +77,7 @@ def cmd_init(args):
               f"({len(got) - filled}건 남음)")
         _dist(c, len(got))
         return 0
-    path.parent.mkdir(parents=True, exist_ok=True)
+    paths.ensure(path)
     data = blank_set()
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n",
                     encoding="utf-8")

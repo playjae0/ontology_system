@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from cli import query as R                              # noqa: E402
 from core import init, query as Q                             # noqa: E402
+from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core import store                                  # noqa: E402
 from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.extract import EXTRACT_DIR                    # noqa: E402
@@ -232,7 +233,7 @@ show("show extract — 상태가 아니라 **내용**을 연다 (계약 B)",
 # **바깥을 부르는 행위**다(§7.8 — 사내망에서 화면이 비어 뜨는 것을 막는 요구).
 _EXTERNAL = ("http://", "https://", "//cdn", "@import", "fetch(",
              "xmlhttprequest", "<script src", "<link ")
-_html = ROOT / "export" / "graph.html"
+_html = _P.export() / "graph.html"
 _hrc = _run("export", "html").returncode
 _htxt = _html.read_text(encoding="utf-8").lower() if _html.exists() else ""
 show("export html — 실물 파일을 낸다 (외부 자원 호출 0)",
@@ -326,7 +327,7 @@ _pg_on = build_html(_w, query_panel=True)
 _pg_off = build_html(_w, query_panel=False)
 
 # ⓒ **같은 템플릿, 플래그 하나** — 끄면 옛 산출과 한 글자도 다르지 않아야 한다.
-_exported = (ROOT / "export" / "graph.html")
+_exported = (_P.export() / "graph.html")
 show("build_html(query_panel=False) == export html 산출 (템플릿은 하나다)",
      _exported.exists() and _exported.read_text(encoding="utf-8") == _pg_off)
 _MARKS = ("qside", "highlight", "/api/query", "focusNode")
@@ -441,7 +442,7 @@ show("동점은 chunk_id로 갈라 결정적이다 (같은 입력 → 같은 출
 show("docs_of가 chunk_id에서 doc_id를 뽑는다 ({doc_id}:… 계약)",
      _bm.docs_of([("CP01:abc", 1.0), ("PPT01:x-y", 0.5)]) == ["CP01", "PPT01"])
 show("인덱스를 저장하지 않는다 (파생물 — P5)",
-     not (ROOT / "data" / "bm25_index.json").exists()
+     not (_P.data() / "bm25_index.json").exists()
      and "atomic_write" not in _src and "store.write" not in _src)
 
 # ① 문항 틀 — §5.5-2 기준 구성
@@ -461,7 +462,7 @@ show("expected_path는 닫힌 4값 안이다 (문서 7 §7.6)",
      set(_G.TYPE_PATH.values()) <= set(_G.PATHS) and len(_G.PATHS) == 4)
 
 # 형식 검사는 **문항 단위**다 — 사내가 채워 가는 중간 상태를 허용한다
-_mixed = ROOT / "data" / "_b54_mixed.json"
+_mixed = _P.data() / "_b54_mixed.json"
 _mixed.write_text(json.dumps({"version": 1, "queries": [
     {"id": "OK1", "type": "Q1", "q": "노칭 다음 공정은?", "expected_path": "chunk"},
     {"id": "EMPTY", "type": "Q1", "q": "  ", "expected_path": "chunk"},
@@ -555,17 +556,17 @@ show("--json이 같은 것을 JSON으로 낸다",
      _gj.returncode == 0
      and set(json.loads(_gj.stdout)) == {"summary", "rows", "skipped"}
      and json.loads(_gj.stdout)["summary"]["bm25_at_k"] == _agg["bm25_at_k"])
-_gi = _run("golden", "init", str(ROOT / "data" / "_b54_init.json"))
-_made = json.loads((ROOT / "data" / "_b54_init.json").read_text(encoding="utf-8"))
+_gi = _run("golden", "init", str(_P.data() / "_b54_init.json"))
+_made = json.loads((_P.data() / "_b54_init.json").read_text(encoding="utf-8"))
 show("golden init이 120건 틀을 쓰고 유형 분포를 찍는다",
      _gi.returncode == 0 and len(_made["queries"]) == 120
      and "유형 분포" in _gi.stdout and "기대 경로" in _gi.stdout)
-_gi2 = _run("golden", "init", str(ROOT / "data" / "_b54_init.json"))
+_gi2 = _run("golden", "init", str(_P.data() / "_b54_init.json"))
 show("이미 있으면 **덮지 않는다** (사내가 채운 문항을 지우는 명령이 아니다)",
      "덮지 않는다" in _gi2.stdout
-     and json.loads((ROOT / "data" / "_b54_init.json").read_text(encoding="utf-8"))
+     and json.loads((_P.data() / "_b54_init.json").read_text(encoding="utf-8"))
      == _made)
-(ROOT / "data" / "_b54_init.json").unlink()
+(_P.data() / "_b54_init.json").unlink()
 _sb = _run("show", "bm25", "노칭 프레스 금형 관리", "3")
 show("show bm25 — 대조군을 사람이 직접 본다",
      _sb.returncode == 0 and "대조군이다" in _sb.stdout

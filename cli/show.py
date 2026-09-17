@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from collections import Counter
 
-from core import ledger, registry, store
+from core import ledger, paths, registry, store
 from core.bootstrap import load_config, open_graph
 from core.ids import norm
 from core.status import is_live
@@ -227,7 +227,7 @@ def cmd_doc(args):
     if q:
         from collections import Counter
         print(f"\n  수정 큐 {len(q)}건 — {dict(Counter(x['kind'] for x in q))}")
-    if (ROOT / "extract" / f"{doc}.json").exists():
+    if paths.extract(f"{doc}.json").exists():
         print(f"  추출 체크포인트 — extract/{doc}.json (show 없이 그대로 읽어도 된다)")
     # **행별은 다른 명령이다** — 새 최상위 진입점을 늘리지 않는다(문서 7 §7.1).
     print(f"\n  행별 판정(값마다 어떻게 해소했나) — python run.py show report {doc}")
@@ -635,7 +635,7 @@ def cmd_extract(args):
     **후보는 표면형만이다** — 노드 id가 들어가면 추출이 그래프 상태에 의존해
     체크포인트의 독립성이 깨진다(§4.10-1).
     """
-    ext = ROOT / "extract"
+    ext = paths.extract()
     if not args:
         docs = store.read(store.DOC_REGISTRY, {})
         print("추출 체크포인트 — 파일 존재 = **추출 완료**(§7.8 · P-1)\n")

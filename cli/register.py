@@ -56,7 +56,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, llm, log, registry, store
+from core import fixtures, llm, log, paths, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
 from parser import form
@@ -68,7 +68,7 @@ from router import discover
 # **분할 뒤 재수출** — 등록 흐름은 여기 남고, 조립·문답은 제 모듈로 갔다.
 # 이름을 그대로 내보내는 이유: 테스트와 외부가 `cli.register.<이름>`으로 부른다.
 from cli.prompt import (  # noqa: F401
-    KIT_NOTE, VOCAB_SECTIONS, _strip_kit_notes, _dump_prompt, _strip_module_doc,
+    KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import injections               # 주입 조립은 한 자리다(B48)
@@ -76,7 +76,7 @@ from cli.interview import (  # noqa: F401
     INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
     finalize as iv_finalize)
 
-REVIEW = ROOT / "review"
+REVIEW = paths.review()
 KIT = ROOT / "kit"
 FIXTURES = fixtures.ROOT_DIR / "fixtures"   # 소재는 core/fixtures.py가 소유
 
@@ -91,12 +91,6 @@ def _load(path, name):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
-
-
-def _dir(doc_type):
-    d = REVIEW / doc_type
-    d.mkdir(parents=True, exist_ok=True)
-    return d
 
 
 def _state(doc_type):
@@ -155,7 +149,7 @@ def cmd_roles(args):
         print(f"[roles] {hrow}행에 헤더가 없다 — 비정형이거나 행 번호가 다르다")
         return 1
 
-    blocks = json.loads((ROOT / "schemas" / "blocks.json").read_text(encoding="utf-8"))
+    blocks = json.loads(paths.blocks().read_text(encoding="utf-8"))
     block_fields = {f for b, spec in blocks.items() if not b.startswith("_")
                     for f in spec}
 
@@ -480,7 +474,8 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     pkg = REVIEW / doc_type / "input_package.json"
     if not pkg.exists():
         raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — "                  # [상태]
-                         f"생성 전에 서야 한다\n"
+                         f"생성 전에 서야 한다 (근거 review/{doc_type}/"
+                         f"input_package.json 없음)\n"
                          f"  ▶ 다음 줄:\n"
                          f"     python -m cli.register generate {doc_type} "
                          f"<층> <표본...>")
@@ -506,8 +501,7 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     except Exception as e:
         _note_error(doc_type, e)
         raise
-    d = REVIEW / doc_type
-    d.mkdir(parents=True, exist_ok=True)
+    d = _dir(doc_type)
     suffix = f"_rev{revision}" if revision else ""
     ad = d / f"adapter{suffix}.py"
     sc = d / f"schema{suffix}.json"
@@ -584,6 +578,7 @@ def _refuse_basic(doc_type, layer, samples):
     raise SystemExit(                                                     # [상태]
         f"[생성] 고정 어댑터 거부 — 기본 어댑터 제안이 서지 않는 표본이다: "
         f"분할 자명 계열이 아니다 {[Path(s).name for s in samples]} (§6.4-5)\n"
+        f"  근거 — 표본의 분할 신호 · 기본 어댑터 목록 adapters/basic_*.py\n"
         f"  ▶ 다음 줄 — LLM 생성 경로로 등록한다:\n"
         f"     python -m cli.register generate {doc_type} {layer} "
         f"{' '.join(str(x) for x in samples)} --no-basic")
@@ -641,6 +636,7 @@ def ask_form(doc_type, layer, samples, judged):
     raise SystemExit(                                                     # [상태]
         f"[생성] 형태 판정이 자동으로 서지 않았고 답을 받지 못했다 "
         f"(C37 — 찬성 ≥2 · 반대 0이 아니면 사람이 정한다)\n"
+        f"  근거 — 표본의 형태 신호 5종 (판정 기록은 review/{doc_type}/state.json)\n"
         f"  ▶ 다음 줄 — 둘 중 하나:\n"
         f"     (산문이다 — 고정 어댑터 · LLM 0)  python -m cli.register generate "
         f"{doc_type} {layer} {' '.join(str(x) for x in samples)} --use-basic\n"
@@ -821,7 +817,6 @@ def write_rounds(doc_type, at, samples, rounds):
     깨끗하게** 한다: 걷어내는 방식은 잊을 자리를 하나 더 만든다.
     """
     d = _dir(doc_type)
-    d.mkdir(parents=True, exist_ok=True)
     try:
         obj = json.loads(log_path(doc_type).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -910,19 +905,6 @@ def _new_batch(samples):
     # 묶음이 패키지에 사는 이유는 `decisions`가 생성의 입력이기 때문이고,
     # 전문은 입력이 아니라 이력이다.
     return {"samples": sorted(samples), "at": _batch_at(), "decisions": []}
-
-
-def decisions_of(hint):
-    """`hint` 그릇의 **현재 표본분** 확정 사항 — 생성이 읽는 것이다.
-
-    stale 묶음의 결정은 여기 오지 않는다(이전 표본에 대한 판단이 현재 판정에 섞이면
-    안 된다 — B55 ②의 규율 그대로). 렌더가 그것을 표시해서 따로 싣는다.
-    """
-    out = []
-    for b in _hint_batches(hint):
-        if not b.get("stale"):
-            out.extend(b.get("decisions") or [])
-    return out
 
 
 def hint_only_decisions(text):
@@ -1054,6 +1036,11 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         if not registry.lookup(doc_type):
             raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "            # [상태]
                              f"'{doc_type}'은 등록돼 있지 않다\n"
+                             f"  근거 — data/doc_types.json(키 없음)"
+                             + (f" · review/{doc_type}/는 있다"
+                                f"(approval.json {'있음' if (REVIEW / doc_type / 'approval.json').exists() else '없음'})"
+                                " → 옛 환경의 등록부 항목을 옮기거나 아래로 신규 등록"
+                                if (REVIEW / doc_type).exists() else "") + "\n"
                              f"  ▶ 다음 줄:\n"
                              f"     python -m cli.register generate {doc_type} "
                              f"{layer or '<층>'} <표본...>")
@@ -1070,7 +1057,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # 문답 전문이 실려 있다(라운드마다 즉시 저장하므로).
         pkg_path = REVIEW / doc_type / "input_package.json"
         if not pkg_path.exists():
-            raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다: {pkg_path}\n"  # [상태]
+            raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다 — "          # [상태]
+                             f"근거 review/{doc_type}/input_package.json 없음\n"
                              f"  ▶ 다음 줄 — 먼저 --resume 없이 한 번 돌린다:\n"
                              f"     python -m cli.register generate {doc_type} "
                              f"<층> <표본...>")
@@ -1165,7 +1153,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # 다시 등록할 길이 아예 없었다. 두 경로가 있고 화면이 그것을 알려 준다.
         _docs = registry.ingested_docs(doc_type)
         raise SystemExit(                                                 # [상태]
-            f"[생성] '{doc_type}'은 이미 등록돼 있다. 두 길 중 하나를 고른다:\n"
+            f"[생성] '{doc_type}'은 이미 등록돼 있다 "
+            f"(근거 data/doc_types.json). 두 길 중 하나를 고른다:\n"
             f"   ① 같은 이름의 **새 판** — 어댑터를 고쳐 정본을 교체한다\n"
             f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
             f"<표본...> --revise\n"
@@ -1181,7 +1170,10 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     # 죽거나 조용히 빠졌다 — 어느 쪽이든 사람은 «힌트를 줬다»고 믿는다.
     bad = [s for s in samples if not Path(s).is_file()]
     if bad:
-        raise SystemExit(                                                 # [상태]
+        # **이것은 상태가 아니라 사용법이다**(B77 ③) — 시스템의 상태는 멀쩡하고
+        # 사람이 인자를 잘못 쳤다. 근거 자리가 없는 것이 아니라 **없는 것이 맞다**:
+        # 볼 파일이 없고 볼 것은 방금 친 명령이다(B61의 두 갈래 — D-156 ②).
+        raise SystemExit(                                                 # [사용법]
             f"[생성] 표본 자리에 파일이 아닌 값이 있다: {bad}\n"
             f"        힌트라면 --hint \"…\" 로 준다 (따옴표로 묶는다):\n"
             f"        python -m cli.register generate {doc_type} {layer} "
@@ -1189,7 +1181,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     layers = discover()
     if layer not in layers:                       # ⑵-③ 층 선행 완결
         raise SystemExit(f"[생성] 존재하지 않는 층 '{layer}' — 층 등록(R1)은 국면 2다. "  # [상태]
-                         f"현재 층: {layers}\n"
+                         f"현재 층: {layers} (근거 layers/<층>/config.json · "
+                         f"data/registry.json)\n"
                          f"  ▶ 다음 줄:\n"
                          f"     python -m cli.register generate {doc_type} "
                          f"{layers[0] if layers else '<층>'} "
@@ -1300,7 +1293,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                                  "categories": cfg.get("categories"),
                                  "relations": cfg.get("relations"),
                                  "relation_patterns": cfg.get("relation_patterns")},
-            "blocks": json.loads((ROOT / "schemas" / "blocks.json")
+            "blocks": json.loads(paths.blocks()
                                  .read_text(encoding="utf-8")),
             # **경로가 아니라 본문을 싣는다**(B29 ★①) — 경로만 보내면 생성 세션이
             # 그 파일을 열 수 없어 뼈대를 **작문**하게 된다. 실측: 전송분의 extract가
@@ -2876,7 +2869,10 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     st = _state(doc_type)
     if not st:
         raise SystemExit(f"[뷰 확인] '{doc_type}'의 생성이 먼저다 — "               # [상태]
-                         f"python -m cli.register generate {doc_type} <층> <표본...>")
+                         f"근거 review/{doc_type}/state.json 없음\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"<층> <표본...>")
 
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
 
@@ -3029,7 +3025,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     return 0 if st["machine_gate"] == "PASS" else 1
 
 
-ADAPTERS_DIR = ROOT / "adapters"        # 확정 어댑터의 **정본 자리** (문서 6 §6.4·§6.5)
+ADAPTERS_DIR = paths.adapters()         # 확정 어댑터의 **정본 자리** (문서 6 §6.4·§6.5)
 
 
 def _promote_paths(doc_type):
@@ -3053,8 +3049,8 @@ def _promote(doc_type, st):
     a_rel, s_rel = _promote_paths(doc_type)
     src_a, src_s = ROOT / st["adapter"], ROOT / st["schema"]
     dst_a, dst_s = ROOT / a_rel, ROOT / s_rel
-    dst_a.parent.mkdir(parents=True, exist_ok=True)
-    dst_s.parent.mkdir(parents=True, exist_ok=True)
+    paths.ensure(dst_a)
+    paths.ensure(dst_s)
     if src_a.resolve() != dst_a.resolve():
         dst_a.write_bytes(src_a.read_bytes())
     if src_s.resolve() != dst_s.resolve():
@@ -3071,7 +3067,10 @@ def cmd_status(doc_type):
     st = _state(doc_type)
     if not st:
         raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "                  # [상태]
-                         f"python -m cli.register generate {doc_type} <층> <표본...>")
+                         f"근거 review/{doc_type}/state.json 없음\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"<층> <표본...>")
     if regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate_block(doc_type, st)
         return 1
@@ -3097,7 +3096,10 @@ def cmd_confirm(doc_type, approved_by):
     st = _state(doc_type)
     if not st:
         raise SystemExit(f"[확정] '{doc_type}'의 생성이 먼저다 — "                 # [상태]
-                         f"python -m cli.register generate {doc_type} <층> <표본...>")
+                         f"근거 review/{doc_type}/state.json 없음\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"<층> <표본...>")
     # **저장된 PASS만으로 확정하지 않는다**(B60 ①) — 지금 코드의 관문을 지난다.
     if regate(doc_type, st) != "PASS":
         # **막되 막다른 길로 두지 않는다**(B59 ①) — 이유와 칠 수 있는 다음 줄을 준다.
