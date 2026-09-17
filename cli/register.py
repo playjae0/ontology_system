@@ -346,17 +346,21 @@ def payload_kind_of_samples(samples):
 
 
 def _rel(p):
-    """레포 기준 상대 경로 — **밖이면 절대 경로 그대로**다.
+    """상태에 싣는 경로 — **자리 기준의 상대 경로**다(B78 1b · 상태 루트 무관).
 
-    `ONTO_FIXTURES`는 「사내에서 mock을 통째로 들어내고 실자산으로 갈아 끼울 때의
-    손잡이」(core/fixtures.py)라 레포 밖을 가리킬 수 있다. 그때 `relative_to`는
-    `ValueError`로 죽는다 — 손잡이를 실제로 당기면 생성이 크래시했다(실측).
-    `ROOT / <절대 경로>`는 절대 경로를 그대로 돌려주므로 상태에 실어도 안전하다.
+    `registry/` 아래면 registry 기준, 레포 아래면 레포 기준, 둘 다 아니면 절대 경로
+    그대로다(`ONTO_FIXTURES`는 레포 밖을 가리킬 수 있고 구판은 그때 `relative_to`가
+    죽었다 — 실측). 되읽는 자리는 `_at()` 하나다.
     """
-    try:
-        return p.relative_to(ROOT)
-    except ValueError:
-        return p
+    for base in (paths.registry(), ROOT):
+        try:
+            return p.relative_to(base)
+        except ValueError:
+            continue
+    return p
+
+
+_at = registry.at      # 되읽는 규칙의 자리는 등록부 소유자다(쓰는 쪽과 갈리지 않게)
 
 
 def _note_error(doc_type, e):
@@ -563,7 +567,7 @@ def refuse_regenerate(doc_type, st, what):
         f"  ▶ 다음 줄 — 셋 중 하나:\n"
         f"     (분할·판독을 바꾼다)   {prop or 'parser/adapters/basic_*.py'} 의 상수 "
         f"— 구조도 06 손잡이 2.6\n"
-        f"     (매칭 스키마를 바꾼다) schemas/{doc_type}.json 을 고치고  "
+        f"     (매칭 스키마를 바꾼다) {paths.schemas(doc_type + '.json')} 을 고치고  "
         f"python -m cli.register status {doc_type}\n"
         f"     (LLM 생성으로 바꾼다) python -m cli.register generate {doc_type} "
         f"{st.get('layer') or '<층>'} <표본...> --as <새이름> --no-basic")
@@ -1104,7 +1108,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         print("   이어하기 = 같은 입력 + 지난 실패 · 처음부터 = --resume 없이")
         st = _state(doc_type) or {}
         st.setdefault("samples", pkg["human"]["samples"])
-        _prior = ROOT / st["adapter"] if st.get("adapter") else None
+        _prior = _at(st["adapter"]) if st.get("adapter") else None
         _instruction = None
         if _prior and _prior.exists() and st.get("schema"):
             if regate(doc_type, st) == "PASS":
@@ -1789,8 +1793,8 @@ def _orphan_of(st):
     """스키마 대장에 없는 열 — 관문의 셋째 조건(B49). 어댑터를 못 읽으면 빈 목록이다
     (그 경우 하네스가 이미 FAIL이므로 여기서 다시 말할 것이 없다)."""
     try:
-        mod = _load(ROOT / st["adapter"], f"gate_{st['doc_type']}")
-        schema = json.loads((ROOT / st["schema"]).read_text(encoding="utf-8"))
+        mod = _load(_at(st["adapter"]), f"gate_{st['doc_type']}")
+        schema = json.loads((_at(st["schema"])).read_text(encoding="utf-8"))
         return unmappable_of(schema, mod)[2]
     except Exception:
         return []
@@ -1915,7 +1919,7 @@ def stamp_system_fields(st, samples):
 
     돌려주는 것은 화면 한 줄(정보)이거나 `None`이다.
     """
-    path = ROOT / st["adapter"]
+    path = _at(st["adapter"])
     try:
         mod = _load(path, f"fill_{st['doc_type']}")
         a = mod.ADAPTER
@@ -2024,7 +2028,7 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         # **열 판정 대장은 관문 입구에서 선다**(B67 ②) — 스탬프가 `columns`를
         # 열문자로 확정한 **직후**라야 대장의 열문자가 어댑터의 것과 같다.
         sync_ledger(doc_type, st, samples)
-        ok, out = harness(ROOT / st["adapter"], ROOT / st["schema"], samples,
+        ok, out = harness(_at(st["adapter"]), _at(st["schema"]), samples,
                           package=REVIEW / doc_type / "input_package.json",
                           doc_type=doc_type)          # G4G 대장 커버리지 (B76 ②)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
@@ -2399,8 +2403,8 @@ def sync_ledger(doc_type, st, samples=None):
         for col, item in (pp.get("열") or {}).items():
             prof.setdefault(col, item)
     try:
-        mod = _load(ROOT / st["adapter"], f"led_{doc_type}")
-        schema = json.loads((ROOT / st["schema"]).read_text(encoding="utf-8"))
+        mod = _load(_at(st["adapter"]), f"led_{doc_type}")
+        schema = json.loads((_at(st["schema"])).read_text(encoding="utf-8"))
     except Exception:
         return read_ledger(doc_type)        # 못 읽으면 관문 ①단이 말한다
     a = getattr(mod, "ADAPTER", {}) or {}
@@ -2555,8 +2559,8 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
 
     렌더러는 아무것도 계산하지 않으므로 **채움율·이상 신호 판정을 여기서 다 채운다.**
     """
-    schema = json.loads((ROOT / st["schema"]).read_text(encoding="utf-8"))
-    mod = _load(ROOT / st["adapter"], f"reg_{st['doc_type']}")
+    schema = json.loads((_at(st["schema"])).read_text(encoding="utf-8"))
+    mod = _load(_at(st["adapter"]), f"reg_{st['doc_type']}")
     kind = mod.ADAPTER["payload_kind"]
 
     pieces = [p for r in results if r.ok
@@ -2685,7 +2689,7 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
             "adapter_summary": {
                 "expects": mod.ADAPTER.get("expects") or {},
                 "adapter_version": mod.ADAPTER.get("adapter_version"),
-                "source": (ROOT / st["adapter"]).read_text(encoding="utf-8"),
+                "source": (_at(st["adapter"])).read_text(encoding="utf-8"),
             },
         },
     }
@@ -2935,7 +2939,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     print(f"   기계 관문: 생성 단계에서 {'PASS' if ok else 'FAIL'} "
           f"(하네스는 생성이 돌린다 — 검수는 내용을 본다)")
 
-    mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
+    mod = _load(_at(st["adapter"]), f"reg_{doc_type}")
 
     _gateway_ready()          # ⑥-1 연결 확인이 먼저다 — 60초×N을 기다리게 하지 않는다
 
@@ -3007,7 +3011,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     # orphan은 기계 관문을 막는다. 「사람이 판정할 것」이 아니라 「대장이 어긋났다」다.
     # **생성이 세운 값과 파싱 결과의 AND**(B50 ⑧) — 리허설이 깨지면 여전히 FAIL이다.
     _orphan = unmappable_of(
-        json.loads((ROOT / st["schema"]).read_text(encoding="utf-8")), mod)[2]
+        json.loads((_at(st["schema"])).read_text(encoding="utf-8")), mod)[2]
     if _orphan:
         print(f"   스키마 대장에 없는 열 {len(_orphan)}건 — "
               f"{[u['field'] for u in _orphan]} (기계 관문 FAIL)")
@@ -3023,9 +3027,6 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     if st.get("instructions"):
         print(f"   재생성 {len(st['instructions'])}회 — 상한 없음(중단은 사람 판단)")
     return 0 if st["machine_gate"] == "PASS" else 1
-
-
-ADAPTERS_DIR = paths.adapters()         # 확정 어댑터의 **정본 자리** (문서 6 §6.4·§6.5)
 
 
 def _promote_paths(doc_type):
@@ -3047,8 +3048,8 @@ def _promote(doc_type, st):
     그것은 손대지 않는 자리다(문서 7 §7.5-4). 복사로 이행한다.
     """
     a_rel, s_rel = _promote_paths(doc_type)
-    src_a, src_s = ROOT / st["adapter"], ROOT / st["schema"]
-    dst_a, dst_s = ROOT / a_rel, ROOT / s_rel
+    src_a, src_s = _at(st["adapter"]), _at(st["schema"])
+    dst_a, dst_s = paths.registry() / a_rel, paths.registry() / s_rel
     paths.ensure(dst_a)
     paths.ensure(dst_s)
     if src_a.resolve() != dst_a.resolve():
@@ -3108,7 +3109,7 @@ def cmd_confirm(doc_type, approved_by):
     if not approved_by:
         raise SystemExit("[확정] 승인자 미지정 — 무수정 자동 통과는 금지다 (틀 §2)")          # [사용법]
 
-    mod = _load(ROOT / st["adapter"], f"reg_{doc_type}")
+    mod = _load(_at(st["adapter"]), f"reg_{doc_type}")
     at = store._now()
     # **등재가 먼저, 승격이 나중이다.** 반대로 하면 등재가 거부됐을 때 승격된
     # 파일만 남아 조회에는 잡히고 등록부에는 없는 반쪽 상태가 되고, 그 이름의
@@ -3264,8 +3265,8 @@ def _run(argv):
         # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.
         _st0 = _state(rest[0]) if rest else None
         _prose = bool(_st0) and str(_st0.get("schema", "")).endswith(".json") and (
-            (json.loads((ROOT / _st0["schema"]).read_text(encoding="utf-8"))
-             .get("payload_kind") == "prose") if (ROOT / _st0["schema"]).exists() else False)
+            (json.loads((_at(_st0["schema"])).read_text(encoding="utf-8"))
+             .get("payload_kind") == "prose") if (_at(_st0["schema"])).exists() else False)
         raw_rows = opt("--rows", "all" if _prose else str(REHEARSAL_ROWS))
         if str(raw_rows).lower() == "all":
             rows = None                      # 전량 — 자르지 않는다

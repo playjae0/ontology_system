@@ -20,16 +20,28 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SNAPSHOT = ROOT / "data" / "skeleton_closed_list.json"
-# 상동 — 파서 경계 때문에 `core/paths.py` 밖에 남는 둘 중 하나다(D-157 ①).
-# 이 값은 이미 **인자로 덮을 수 있다**(`load(path=…)`) — 1b가 그 통로를 쓴다.
+SNAPSHOT = ROOT / "data" / "skeleton_closed_list.json"   # **주입 전 기본값**
+# 상동 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7) 자리를 **받는다**(B78 1b).
+# 값이 아니라 함수다: 상태 루트가 갈리면 파서도 같이 움직여야 한다.
+_snapshot_fn = None
+
+
+def use_snapshot(fn):
+    """스냅샷 자리 주입 — 부르는 쪽은 `core/paths.bind_parser()` 하나다."""
+    global _snapshot_fn
+    _snapshot_fn = fn
+
+
+def snapshot_path():
+    """지금의 스냅샷 자리 — 주입이 없으면 옛 기본값이다."""
+    return Path(_snapshot_fn()) if _snapshot_fn else SNAPSHOT
 
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 
 
 def closed_list(layer="process", path=None):
     """골격 닫힌 목록 스냅샷을 읽는다 — 없으면 빈 목록(조용히 그래프로 가지 않는다)."""
-    p = Path(path or SNAPSHOT)
+    p = Path(path or snapshot_path())
     if not p.exists():
         return []
     return (json.loads(p.read_text(encoding="utf-8")).get(layer) or {}).get("nodes", [])

@@ -60,24 +60,34 @@ class Site:
 
     def __enter__(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="b71site_"))
+        # **상태 루트도 사내 조건이다**(B78 1b) — `USE_MOCK=0`은 `state_mock/`이
+        # 아닌 자리를 쓴다. 등록 산출을 mock 루트에 세워 두면 이 스위트의
+        # 하위 프로세스(실호출 모드)는 그것을 영영 보지 못한다.
+        self.home = self.tmp / "home"
+        self._env0 = {k: os.environ.get(k) for k in ("ONTO_HOME", "USE_MOCK")}
+        os.environ["ONTO_HOME"] = str(self.home)
+        os.environ["USE_MOCK"] = "0"
+        _P.reset()
         self.ad = _P.adapters() / f"{DT}.py"
         self.sc = _P.schemas() / f"{DT}.json"
         self.rv = _P.review() / DT
         # 어댑터·스키마는 **참조 어댑터의 사본**이다(이름만 이 등록의 것) — 새로
         # 짜면 그 코드가 또 하나의 mock 자산이 된다.
         src = (ROOT / "tests" / "fixtures" / "adapters" / "cp.py").read_text(encoding="utf-8")
-        self.ad.parent.mkdir(exist_ok=True)
+        _P.ensure(self.ad)
         self.ad.write_text(src.replace('"doc_type": "cp"', f'"doc_type": {DT!r}'),
                            encoding="utf-8")
-        schema = json.loads((_P.schemas() / "cp.json").read_text(encoding="utf-8"))
+        # 스키마 원본은 **내장(mock) 자리**에서 읽는다 — 등록 자리에는 없다(자리로 가른다).
+        schema = json.loads(_P.fixture_schemas("cp.json").read_text(encoding="utf-8"))
         # **등재가 먼저다** — 스키마 파일이 먼저 있으면 그 실재가 곧 내장 등록이라
         # `register`가 이름 중복으로 막는다(그 규칙은 옳다 — D-149 ②).
         registry.register(DT, layer=schema.get("layer") or "process",
                           adapter=f"adapters/{DT}.py", schema=f"schemas/{DT}.json",
                           adapter_version="1.0", approved_by="사내검수자",
                           approved_at="2026-09-15T00:00:00+00:00")
-        self.sc.write_text(json.dumps({**schema, "doc_type": DT},
-                                      ensure_ascii=False, indent=2), encoding="utf-8")
+        _P.ensure(self.sc).write_text(
+            json.dumps({**schema, "doc_type": DT}, ensure_ascii=False, indent=2),
+            encoding="utf-8")
         self.rv.mkdir(parents=True, exist_ok=True)
         (self.rv / "approval.json").write_text(
             json.dumps({"doc_type": DT, "approved_by": "사내검수자"},
@@ -90,6 +100,9 @@ class Site:
             p.unlink(missing_ok=True)
         shutil.rmtree(self.rv, ignore_errors=True)
         shutil.rmtree(self.tmp, ignore_errors=True)
+        for k, v in self._env0.items():          # 환경과 자리를 되돌린다
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        _P.reset()
 
     def env(self, keep_fixtures=False):
         """사내 조건의 환경 — 실호출 모드 · 픽스처 없음 · 설정 없음.
@@ -239,6 +252,103 @@ with Site() as site:
          bool(names_in(_bad.stdout)), f"섞인 이름 {names_in(_bad.stdout)}")
     show("② 되돌리면 다시 0이다",
          not names_in(site.run("scan", str(SAMPLE), keep_fixtures=True).stdout))
+
+# ── B78 1b — 옛 배치 이관 ───────────────────────────────────────────────
+#
+# 사내의 첫 걸음이 이것이다: 코드 폴더 안에 흩어져 있던 상태(`data/`·`review/`·
+# `parsed/`·`extract/`)를 상태 루트 하나로 옮긴다. **옮겨도 같아야 한다**는 것이
+# 이 블록이 재는 성질이고, **옮기기 전에는 멈춘다**는 것이 그다음이다.
+print("\n■ B78 1b — 옛 배치 이관(migrate)")
+
+import hashlib                                                    # noqa: E402
+from core import migrate as _MG                                   # noqa: E402
+
+_lg = Path(tempfile.mkdtemp(prefix="b78legacy_"))
+_old, _new = _lg / "code", _lg / "home"
+_G = "graph" + ".json"          # 조각 — 저장 계층 경계 검사의 대상이 아니다
+(_old / "data" / "process").mkdir(parents=True)
+(_old / "data" / "ingest_log").mkdir(parents=True)
+(_old / "review" / "x").mkdir(parents=True)
+(_old / "adapters").mkdir()
+(_old / "schemas").mkdir()
+(_old / "parsed").mkdir()
+(_old / "extract").mkdir()
+_graph = json.dumps({"nodes": {"n1": {"canonical": "노칭"}}, "edges": []},
+                    ensure_ascii=False)
+_dict = json.dumps({"노칭": "n1"}, ensure_ascii=False)
+(_old / "data" / "process" / _G).write_text(_graph, encoding="utf-8")
+(_old / "data" / "dictionary.json").write_text(_dict, encoding="utf-8")
+(_old / "data" / "gate_rejects.json").write_text("[]", encoding="utf-8")
+(_old / "data" / "ingest_log" / "X1.json").write_text("{}", encoding="utf-8")
+(_old / "data" / "doc_types.json").write_text(json.dumps(
+    {"x": {"doc_type": "x", "status": "registered", "layer": "process",
+           "adapter": "adapters/x.py", "schema": "schemas/x.json",
+           "approved_by": "사내검수자"}}, ensure_ascii=False), encoding="utf-8")
+(_old / "adapters" / "x.py").write_text("ADAPTER = {}\n", encoding="utf-8")
+(_old / "schemas" / "x.json").write_text('{"doc_type": "x"}', encoding="utf-8")
+(_old / "review" / "x" / "approval.json").write_text(
+    '{"doc_type": "x", "approved_by": "사내검수자"}', encoding="utf-8")
+(_old / "parsed" / "X1.json").write_text("{}", encoding="utf-8")
+(_old / "extract" / "X1.json").write_text("{}", encoding="utf-8")
+
+_sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+_res = _MG.run(_old, _new)
+show("③ 이관은 다섯 단의 자리로 나눠 놓는다 (등록·진실·작업)",
+     (_new / "registry" / "doc_types.json").is_file()
+     and (_new / "data" / "process" / _G).is_file()
+     and (_new / "work" / "parsed" / "X1.json").is_file()
+     and (_new / "work" / "ingest_log" / "X1.json").is_file(),
+     str(_res.get("per_tier")))
+show("③ 옮겨도 같다 — 그래프 해시 · 사전 동일",
+     _sha(_new / "data" / "process" / _G)
+     == _sha(_old / "data" / "process" / _G)
+     and _sha(_new / "data" / "dictionary.json")
+     == _sha(_old / "data" / "dictionary.json"))
+_reg_new = json.loads((_new / "registry" / "doc_types.json").read_text(encoding="utf-8"))
+show("③ 등록부는 키도 승인도 그대로다 (옮기는 것은 자리뿐이다)",
+     set(_reg_new) == {"x"} and _reg_new["x"]["approved_by"] == "사내검수자")
+show("③ 등록부 경로가 registry/ 기준 상대 경로다 — 절대 경로·`..` 0 · 실물이 있다",
+     all(not Path(_reg_new["x"][k]).is_absolute() and ".." not in _reg_new["x"][k]
+         and (_new / "registry" / _reg_new["x"][k]).is_file()
+         for k in ("adapter", "schema")), str(_reg_new["x"]))
+show("③ 옛 폴더는 그대로 둔다 — 복사다(되돌릴 자리를 없애지 않는다)",
+     (_old / "data" / "doc_types.json").is_file()
+     and (_old / "review" / "x" / "approval.json").is_file())
+show("③ 이관 로그가 무엇을 어디로 옮겼는지 남긴다 (해시 병기)",
+     _res["log"].is_file()
+     and str(_old) in _res["log"].read_text(encoding="utf-8")
+     and _res["files"] >= 9, f"파일 {_res['files']} · 로그 {_res['log'].name}")
+
+# **이관 전 실행은 상태 거부다** — 조용히 옛 자리를 읽지 않는다.
+_mark = ROOT / "data" / "doc_types.json"
+_made_mark = not _mark.exists()
+if _made_mark:
+    _mark.parent.mkdir(parents=True, exist_ok=True)
+    _mark.write_text("{}", encoding="utf-8")
+try:
+    _empty = Path(tempfile.mkdtemp(prefix="b78empty_"))
+    _e = dict(os.environ, USE_MOCK="0", ONTO_HOME=str(_empty))
+    _e.pop("ONTO_CONFIG", None)
+    _r = subprocess.run([sys.executable, str(ROOT / "run.py"), "platform", "doctypes"],
+                        capture_output=True, text=True, cwd=str(ROOT), env=_e,
+                        stdin=subprocess.DEVNULL)
+    _txt = _r.stdout + _r.stderr
+    show("③ 이관 전 실행은 상태 거부 — 원인·지금 잰 것·근거·다음 줄이 한 화면에 있다",
+         _r.returncode != 0 and "migrate" in _txt and "근거" in _txt
+         and "지금 잰 것" in _txt, _txt.strip().splitlines()[:1])
+    # 같은 조건에서 **이관 명령 자신은** 관문 밖이다(걸리면 칠 다음 줄이 없다).
+    _r2 = subprocess.run([sys.executable, str(ROOT / "run.py"), "platform", "migrate",
+                          "--from", str(_old), "--dry-run"],
+                         capture_output=True, text=True, cwd=str(ROOT), env=_e,
+                         stdin=subprocess.DEVNULL)
+    show("③ 이관 명령 자신은 그 거부에 걸리지 않는다",
+         _r2.returncode == 0 and "이관 예정" in _r2.stdout,
+         (_r2.stdout + _r2.stderr).strip().splitlines()[:1])
+finally:
+    if _made_mark:
+        _mark.unlink(missing_ok=True)
+    shutil.rmtree(_lg, ignore_errors=True)
+    shutil.rmtree(_empty, ignore_errors=True)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — 사내 조건 충족" if allok else "FAIL")

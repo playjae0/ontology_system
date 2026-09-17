@@ -12,7 +12,7 @@
 **네트워크를 쓰지 않는다.** `USE_MOCK=1`(기본)에서 전 경로가 로컬로 돈다 — 사내 폐쇄망
 에서 그대로 돌아간다는 것이 이 점검의 첫 결론이다.
 
-**아무것도 고치지 않는다.** 읽고 재고 보고할 뿐이다. `data/`는 회귀가 쓰고 지운다.
+**아무것도 고치지 않는다.** 읽고 재고 보고할 뿐이다. 상태 폴더는 회귀가 쓰고 지운다.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent
 # 회귀 10종 — **각각을 클린 상태에서 단독 실행**한다(증분0 §8 실행 규약).
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
-    ("test_g1_g2", 100, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자"),
+    ("test_g1_g2", 105, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자 · 1b 자리가 가른다"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
@@ -46,7 +46,7 @@ SUITES = [
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
     # **사내 조건을 상시로 돈다**(B71 ②) — 나머지 전부가 `USE_MOCK=1`이라,
     # 사내에서 처음 밟는 자리를 사용자가 찾아 왔다(B70 · 실측 열째).
-    ("test_onsite", 12, "사내 조건 — USE_MOCK=0 · 픽스처 없음 · 등록 산출만 (내장 섞임 0 · 결손 거부 · 추출 힌트 가드)"),
+    ("test_onsite", 20, "사내 조건 — USE_MOCK=0 · 픽스처 없음 · 등록 산출만 (내장 섞임 0 · 결손 거부 · 추출 힌트 가드 · B78 1b 이관 등가·이관 전 거부)"),
 ]
 
 # **필수는 없다.** 문서 포맷 패키지는 **선택 의존**이다(문서 7 §7.1) — 지연 import로
@@ -91,8 +91,12 @@ def _clean():
     # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
     # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아
     # 「클린 단독 실행」이라는 판정의 바닥이 무너진다(회귀 규약 §7.5-7).
-    residue = [d for d in ("parsed", "extract")
-               if (ROOT / d).exists() and any((ROOT / d).iterdir())]
+    # **자리는 `core/paths.py`가 안다**(B78) — 옛 배치의 `parsed/`·`extract/`를 보면
+    # 이관 전 클론에 남은 폴더를 「클린 실패」로 읽는다(실측).
+    sys.path.insert(0, str(ROOT))
+    from core import paths                                          # noqa: E402
+    residue = [d.name for d in (paths.parsed(), paths.extract())
+               if d.exists() and any(d.iterdir())]
     return r.returncode, residue
 
 
@@ -177,7 +181,7 @@ def check_env():
         probe = ROOT / ".doctor_write_probe"
         probe.write_text("x", encoding="utf-8")
         probe.unlink()
-        line(OK, "레포 쓰기 권한", "data/·extract/·review/를 만들 수 있다")
+        line(OK, "레포 쓰기 권한", "상태 폴더(등록·진실·작업)를 만들 수 있다")
     except OSError as e:
         line(NG, "레포 쓰기 권한 없음", f"{e} — 실행 산출물을 만들 수 없다")
 
@@ -318,7 +322,7 @@ def _env_diff(clean_rc, residue):
                  if not same else "레포 루트와 같다"))
 
     rows.append((OK if (clean_rc == 0 and not residue) else NG,
-                 "data/·extract/ 잔재",
+                 "작업 단(parsed·extract) 잔재",
                  "없음" if not residue else ", ".join(residue),
                  "클린이 조용히 실패했다(권한?) — 순서 의존이 살아 있어 "
                  "단독 실행 판정이 성립하지 않는다"
@@ -507,6 +511,27 @@ def transition():
 
 
 # ================================================================ 진입점
+def state_line():
+    """머리 한 줄 — **지금 어느 상태를 보고 있나**(B78 1b · 요청문 ②).
+
+    화면 맨 앞이 자리를 말해야 「어느 폴더의 수를 본 것인가」가 갈리지 않는다.
+    이관 전이면 그 사실도 여기서 말한다 — 수가 0인 이유가 「비었다」가 아니라
+    「아직 옮기지 않았다」일 수 있다.
+    """
+    sys.path.insert(0, str(ROOT))
+    from core import llm, migrate, paths, registry, store           # noqa: E402
+    from router import discover                                     # noqa: E402
+    dts = registry.all_doc_types()
+    builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")
+    print(f"  상태 폴더 {paths.home()} · 모드 "
+          f"{'mock' if llm.use_mock() else '실호출'} · 등록 {len(dts)}종"
+          + (f"(내장 {builtin})" if builtin else "")
+          + f" · 층 {len(discover())} · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
+    if migrate.needs_migration():
+        print("  ⚠ 이관 전이다 — python run.py platform migrate "
+              "--from <옛 코드 폴더>  (그 전까지 운영 명령은 멈춘다)")
+
+
 def main(argv):
     only_env = "--env" in argv
     quick = "--quick" in argv or only_env
@@ -514,6 +539,7 @@ def main(argv):
     print("=" * 66)
     print("  온톨로지 시스템 — 사내 이식 점검  (국면 1 완료본)")
     print("=" * 66)
+    state_line()
 
     env_ok = check_env()
     if only_env:

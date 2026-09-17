@@ -41,8 +41,14 @@ _LOG = log.get(__name__)
 #
 # **`review/{doc_type}/approval.json`도 재생성되지 않는 사람 판단 기록이다**(§7.8).
 # 클린이 그것을 지우면 `init --fresh` 한 번에 승인 이력이 사라진다 — 실증했다.
-WIPE = ("parsed", "extract", "export")     # `data/`는 아래 `fresh()`가 예외를 두고 지운다
-KEEP_IN_DATA = ("doc_types.json",)         # 승인 1회의 등재 — 재생성되지 않는다
+# **지우는 것은 폴더 둘이다**(B78 1b) — ③진실(`data/`)과 ④작업(`work/`).
+# `registry/`(등록 — 사람 승인 1회)와 설정은 **지우지 않는다**: 재생성되지 않는다.
+# 파생(`export/`)도 지운다 — 되돌려 읽지 않는 것이라 지워도 무해하고, 옛 판이
+# 남아 있으면 사람이 그것을 지금 상태로 읽는다.
+#
+# **`KEEP_IN_DATA` 예외가 사라졌다**(B78 1b): 등록부가 진실 옆에 있어서 생긴
+# 예외였고, 이제 등록은 다른 폴더다 — 예외 없이 폴더째 지운다.
+WIPE_TIERS = ("data", "work", "export")
 
 # 빈 상태의 형태 — 문서 7 §7.2 말미가 정본이다.
 EMPTY = {
@@ -58,21 +64,13 @@ EMPTY = {
 
 
 def fresh():
-    """클린 상태를 만든다 — 범위는 위 `WIPE` + `data/`(예외 `KEEP_IN_DATA`)다."""
-    for d in WIPE:
-        shutil.rmtree(ROOT / d, ignore_errors=True)
-    data = paths.data()
-    if data.exists():
-        keep = {}
-        for name in KEEP_IN_DATA:
-            p = data / name
-            if p.exists():
-                keep[name] = p.read_bytes()
-        shutil.rmtree(data, ignore_errors=True)
-        for name, blob in keep.items():
-            # **폴더를 여기서 만들지 않는다**(B77 ④) — 원자 쓰기가 부모를 만든다.
-            # `data/`의 자리를 아는 코드는 `core/store.py` 하나다.
-            store.atomic_write_bytes(data / name, blob)
+    """클린 상태를 만든다 — **`data/`·`work/`·`export/` 셋을 폴더째** 지운다.
+
+    등록(`registry/`)과 설정은 남는다: 사람 승인 1회의 산출이라 재생성되지 않는다
+    (구판의 `KEEP_IN_DATA` 예외가 그 사실을 파일 단위로 흉내 내던 것이다).
+    """
+    for tier in WIPE_TIERS:
+        shutil.rmtree(getattr(paths, tier)(), ignore_errors=True)
 
 
 def ensure():

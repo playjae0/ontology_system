@@ -82,7 +82,7 @@ show("판은 하나다 — kit에 템플릿 0 · 지시문 1개 · 판 번호는
 
 # ---- ② 스켈레톤이 자기 안내대로 거동하는가 ----
 r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
-                    str(KIT / "어댑터_스켈레톤.py"), str(ROOT / "schemas/cp.json"),
+                    str(KIT / "어댑터_스켈레톤.py"), str(ROOT / "tests/fixtures/schemas/cp.json"),
                     str(ROOT / "tests/fixtures/raw/CP01.xlsx")],
                    capture_output=True, text=True, cwd=str(ROOT))
 fail_labels = {label_of(ln) for ln in r.stdout.splitlines()
@@ -388,7 +388,7 @@ _sh76.rmtree(_d76c, ignore_errors=True)
 show("④ⓔ 참조 어댑터·스켈레톤 어댑터는 셀 None 변이를 지난다",
      "[PASS] G3A" in _out76 and "[PASS] G3A" in subprocess.run(
          [sys.executable, str(KIT / "run_adapter.py"),
-          "tests/fixtures/adapters/cp.py", "schemas/cp.json",
+          "tests/fixtures/adapters/cp.py", "tests/fixtures/schemas/cp.json",
           "tests/fixtures/raw/CP01.xlsx"],
          capture_output=True, text=True, cwd=str(ROOT)).stdout)
 show("④ 템플릿 판이 올랐고 셀 접근 규약이 실렸다",
@@ -403,9 +403,9 @@ show("① 내장 참조 자산이 전부 G4F를 지난다 (형 표가 실물과 
          [sys.executable, str(KIT / "run_adapter.py"), a, sc, doc],
          capture_output=True, text=True, cwd=str(ROOT)).stdout
          for a, sc, doc in (
-             ("tests/fixtures/adapters/cp.py", "schemas/cp.json",
+             ("tests/fixtures/adapters/cp.py", "tests/fixtures/schemas/cp.json",
               "tests/fixtures/raw/CP01.xlsx"),
-             ("tests/fixtures/adapters/pfmea.py", "schemas/pfmea.json",
+             ("tests/fixtures/adapters/pfmea.py", "tests/fixtures/schemas/pfmea.json",
               "tests/fixtures/raw/PFMEA01.xlsx"),
              ("kit/참조어댑터/ipqc.py", "kit/참조어댑터/ipqc.json",
               "tests/fixtures/raw/IPQC01.xlsx"))))

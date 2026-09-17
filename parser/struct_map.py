@@ -25,13 +25,27 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KEEP_DIR = ROOT / "extract" / "struct_maps"       # **보존 자리** (문서 6 §6.3)
+KEEP_DIR = ROOT / "extract" / "struct_maps"       # **주입 전 기본값** (문서 6 §6.3)
 # **파서는 `core`를 import하지 않는다**(문서 6 §6.7 외부 전달물 경계) — 그래서
-# 이 자리만 `core/paths.py` 밖에 남는다. 주입으로 푸는 것은 B78 1b다(D-157 ①).
+# 자리를 **받는다**(B78 1b). 값이 아니라 **함수**를 받는 이유: 상태 루트는 실행
+# 도중에도 갈릴 수 있고(시험의 `paths.reset()` · 이관 직후), 값으로 받으면 파서만
+# 옛 자리에 남는다.
+_keep_dir_fn = None
+
+
+def use_dir(fn):
+    """보존 자리 주입 — 부르는 쪽은 `core/paths.bind_parser()` 하나다."""
+    global _keep_dir_fn
+    _keep_dir_fn = fn
+
+
+def keep_dir():
+    """지금의 보존 자리 — 주입이 없으면 옛 기본값이다."""
+    return Path(_keep_dir_fn()) if _keep_dir_fn else KEEP_DIR
 
 
 def keep_path(doc_id):
-    return KEEP_DIR / f"{doc_id}.json"
+    return keep_dir() / f"{doc_id}.json"
 
 
 def source_hash(path):
@@ -88,7 +102,7 @@ def keep(doc_id, m, src_hash=None):
     밖에 두면 「클린 2회 동일 그래프」가 1회차 지도를 물고 통과해 멱등성의 전면
     검증이 거짓 통과한다.
     """
-    KEEP_DIR.mkdir(parents=True, exist_ok=True)
+    keep_dir().mkdir(parents=True, exist_ok=True)
     out = dict(m)
     if src_hash is not None:
         out["source_hash"] = src_hash       # **파서 소유** — doc_hash와 다른 값이다

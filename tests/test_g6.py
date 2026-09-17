@@ -413,7 +413,7 @@ try:
          f"조회 {sorted(_RG.all_doc_types())} · 등록부 {sorted(_reg70)}")
     show("① USE_MOCK=0이면 스캔의 대조 목록도 등록부뿐이다 (기본 소재지 제외)",
          {str(f) for f, _m in SC.adapters()}
-         == {str(ROOT / e["adapter"]) for e in _reg70.values() if e.get("adapter")},
+         == {str(_P.registry(e["adapter"])) for e in _reg70.values() if e.get("adapter")},
          str(sorted(Path(f).name for f, _m in SC.adapters()))[:80])
     show("① 사람이 준 경로는 그대로 쓴다 — 명시는 의도다",
          [f.name for f, _m in SC.adapters(
@@ -880,7 +880,7 @@ print("\n── B74 ② 판정 대장 ──")
 _led74 = _LG74.read("B74DOC")
 _rows74 = (_led74 or {}).get("rows") or []
 _env74 = _env72("B74DOC", 6)
-_sch74 = json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8"))
+_sch74 = json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8"))
 _f74 = _sch74["fields"]
 _vals74 = sum(1 for r in _env74["records"] for f, sp in _f74.items()
               if sp.get("role") == "entity" and isinstance(r.get(f), str)
@@ -1057,8 +1057,8 @@ _b75["rows"][1].update(verdict="match", canonical="노칭::다", node_id="N9",
                                          encoding="utf-8")
 _db75 = _io.StringIO()
 with _ctx.redirect_stdout(_db75):
-    _SH74.cmd_report(["--diff", str(ROOT / "data/b75a.json"),
-                      str(ROOT / "data/b75b.json")])
+    _SH74.cmd_report(["--diff", str(_P.data("b75a.json")),
+                      str(_P.data("b75b.json"))])
 _want75 = sum(1 for x, y in zip(_a75["rows"], _b75["rows"])
               if x["verdict"] != y["verdict"] or x["canonical"] != y["canonical"])
 show("① `--diff`의 행 수 == 판정 또는 node가 다른 값의 수",
