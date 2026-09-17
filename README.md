@@ -40,7 +40,7 @@ python run.py export cypher              # Neo4j용 (파생물 — 진실은 dat
 ```
 
 **결과는 `data/`의 JSON**이고 시각화 없이 전부 텍스트로 본다 — `run.py show` 7종.
-어디에 무엇이 떨어지는지는 [`산출물_지도.md`](산출물_지도.md).
+어디에 무엇이 떨어지는지는 문서 7 §7.8(산출물 표)과 `docs/가이드/2B_작업가이드.md` §0(실행하면 생기는 폴더)·§5.4(현황·이력 표)가 정본이다 — 옛 `산출물_지도.md`는 `docs/archive/`.
 
 `run.py`가 단일 진입점이고 전 단계가 CLI + 파일 입출력이다 — 플랫폼은 이것을
 subprocess로 부른다. 하위 명령: `bootstrap · ingest · all · query · ops · gauges ·
@@ -114,7 +114,7 @@ docs/회귀스위트/  명세 문면 기계 점검 + 자산
 5. `CLAUDE.md` — 세션 진행 규칙
 
 **명세가 답하지 않는 지점은 추측으로 메우지 않는다** — `BLOCKERS.md`에 신고하고 멈춘다.
-장부 둘: `DECISIONS.md`(가결정) · `BLOCKERS.md`(멈춤). 진행 이력은 `PROGRESS.md`.
+장부 둘: `DECISIONS.md`(가결정) · `BLOCKERS.md`(멈춤 — 열린 것만). 진행 이력은 `PROGRESS.md`(최근 3회차) + `docs/archive/장부/`.
 
 ## 설계 원칙 (P1~P7 요약 — 정본은 `docs/spec/0_기반과원칙.md`)
 

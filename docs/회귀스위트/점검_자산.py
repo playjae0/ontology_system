@@ -112,4 +112,4 @@ for f in sorted(findings, key=lambda x: (x["구분"], x["대상"])):
     loc = f"  ← {sec_of(f['대상'].split('`')[1])}" if f["구분"] == "자산에만" and "`" in f["대상"] else ""
     print(f"  {f['대상']:<{w}}  {f['실태']}{loc}")
 print(f"\n총 {len(findings)}건 — 판정 대상")
-json.dump(findings, open("자산대조_결과.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+json.dump(findings, open(os.path.join(os.path.dirname(__file__), "자산", "자산대조_결과.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
