@@ -57,7 +57,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core import paths
-from core.llm import llm
+from core.llm import check, gateway, points
 from core.state import fixtures, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
@@ -214,8 +214,8 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
     실호출 갈래도 파일로 떨어뜨린다: 하네스가 실행으로 판정하는 대상이 파일이고,
     승인 기록(approval.json)이 가리키는 것도 파일이다.
     """
-    if llm.use_mock():
-        llm.mock("generate", f"fixture {doc_type} rev{revision}")
+    if gateway.use_mock():
+        gateway.mock("generate", f"fixture {doc_type} rev{revision}")
         # **mock에서도 지시문을 조립해 덤프한다**(플래그가 켜졌을 때만) — 조립이
         # 맞는지는 실호출 여부와 무관한 관측 대상이고, 사내에서 실호출 전에
         # 확인할 수 있어야 한다. fixture 반환 자체는 바뀌지 않는다.
@@ -370,13 +370,13 @@ def _note_error(doc_type, e):
 
     게이트웨이의 400 본문은 화면을 스쳐 지나가고 로그는 다음 실행에 묻힌다.
     검수 디렉터리에 남겨야 사람이 그 문서를 다시 볼 때 함께 본다.
-    **인증 헤더·키는 남기지 않는다** — `core/llm/llm.py`가 애초에 담지 않는다.
+    **인증 헤더·키는 남기지 않는다** — `core/llm/gateway.py`가 애초에 담지 않는다.
     """
-    if not llm.LAST_ERROR:
+    if not gateway.LAST_ERROR:
         return
     d = _dir(doc_type)
     (d / "last_error.json").write_text(
-        json.dumps({**llm.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
+        json.dumps({**gateway.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"   [오류] 게이트웨이 응답을 남겼다 → "
           f"{(d / 'last_error.json').relative_to(ROOT)}")
@@ -476,7 +476,7 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     fixtures는 외부 LLM 실산출 스냅샷 전용이고 사람도 코드도 손대지 않는 자리다
     (문서 7 §7.5-4 — 디렉터리 경계가 지위 경계다).
     """
-    llm.require("generate")          # 설정 미비를 먼저 알린다 — 준비 순서가 그쪽이 먼저다
+    gateway.require("generate")          # 설정 미비를 먼저 알린다 — 준비 순서가 그쪽이 먼저다
     pkg = REVIEW / doc_type / "input_package.json"
     if not pkg.exists():
         raise SystemExit(f"[생성] 입력 패키지가 없다: {pkg} — "                  # [상태]
@@ -503,7 +503,7 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
         # **계열이 스키마를 가른다**(B58 ⑥) — prose에는 role 집계를 요구하지 않는다.
         _kind = payload_kind_of_samples(
             (json.loads(raw_pkg).get("human") or {}).get("samples") or [])
-        out = llm.chat(msgs, json_schema=generate_schema(_kind), point="generate")
+        out = gateway.chat(msgs, json_schema=generate_schema(_kind), point="generate")
     except Exception as e:
         _note_error(doc_type, e)
         raise
@@ -1069,7 +1069,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                              f"     python -m cli.register generate {doc_type} "
                              f"<층> <표본...>")
         pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-        print(f"  {llm.mode_line()}")
+        print(f"  {gateway.mode_line()}")
         print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
         # **옛 패키지의 인라인 전문을 로그로 옮긴다**(B62 ②) — 로드 시 한 번.
         _mv = migrate_rounds(doc_type, pkg)
@@ -1345,7 +1345,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     (d / "input_package.json").write_text(
         json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"  {llm.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
+    print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부)")
     print(f"   입력 패키지: 사람 4 + 시스템 5 → {(d / 'input_package.json').relative_to(ROOT)}")
 
@@ -1405,7 +1405,7 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                          f"     USE_MOCK=0 python -m cli.register generate "
                          f"{doc_type} --resume")
     print(f"   초안 수령: {_rel(ad)} · {_rel(sc)}")
-    u = llm.usage_total()
+    u = gateway.usage_total()
     if u["calls"]:
         print(f"   LLM 사용량 — 호출 {u['calls']:,}회 · 토큰 {u['total_tokens']:,}"
               f"(입력 {u['prompt_tokens']:,} · 출력 {u['completion_tokens']:,})"
@@ -1431,7 +1431,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     1곳의 개정이고 doc_type별로 갈리지 않는다 — §6.4-5). 매칭 스키마는 prose 계약대로
     `fields {}`다. **검수·승인 1회는 생략하지 않는다**(M4) — 다음은 `review`다.
     """
-    u0 = llm.usage_total()["calls"]          # 이 명령이 부른 횟수를 재려면 시작점이 필요하다
+    u0 = gateway.usage_total()["calls"]          # 이 명령이 부른 횟수를 재려면 시작점이 필요하다
     d = _dir(doc_type)
     pkg = {"_읽는 법": "기본 어댑터 경로 — 생성 세션 없음. human.hint에 그 사실이 있다",
            "human": {"doc_type": doc_type, "layer": layer,
@@ -1467,12 +1467,12 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
          "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],
          "_note": "비정형 — role 매핑 표가 없다. 층 선언이 계약의 전부다(B1)",
          "fields": {}, "edges": []}, ensure_ascii=False))
-    print(f"  {llm.mode_line()}")
+    print(f"  {gateway.mode_line()}")
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부) — **기본 어댑터 경로**")
     print(f"   ▶ {proposal['reason']}")
     print(f"     {proposal['note']}")
     print(f"   어댑터(위임 래퍼) · 스키마: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
-    u = llm.usage_total()
+    u = gateway.usage_total()
     print(f"   LLM 사용량 — 이 명령에서 호출 {u['calls'] - u0:,}회 "
           f"(기본 어댑터 — 생성 세션 없음 · 프로세스 누계 {u['calls']:,}회)")
     print(f"   다음: python -m cli.register review {doc_type}  (뷰 확인·승인 1회는 그대로다 — M4)")
@@ -2706,12 +2706,12 @@ def _gateway_ready():
     이것이 없으면 사내에서 무슨 일이 나나: 리허설 파싱은 좌표 미스 행마다 실호출을
     한다 — 게이트웨이가 안 닿으면 **타임아웃 60초 × 재시도 × 미스 행 수**를 말없이
     기다린다. 사용자는 «멈췄다»고 읽고, 실제로 몇 시간을 기다렸다(실측).
-    **판정은 `core/llm/llm.py::probe()`가 한다** — llm-check가 쓰는 그 함수다.
+    **판정은 `core/llm/gateway.py::probe()`가 한다** — llm-check가 쓰는 그 함수다.
     """
-    if llm.use_mock():
+    if gateway.use_mock():
         return True
     print("   게이트웨이 확인 중… (리허설 전 왕복 1회)")
-    stages = llm.probe()
+    stages = check.probe()
     bad = [s for s in stages if s["ok"] is False and s["fatal"]]
     if not bad:
         ok = [s for s in stages if s["ok"]]
@@ -2764,7 +2764,7 @@ def _ask_llm_coord(misses, assume=None):
     if assume is not None:
         print(f"   → LLM 보조 {'켬' if assume else '끔'} (인자로 지정됨)")
         return assume
-    if llm.use_mock():
+    if gateway.use_mock():
         return False
     try:
         ans = input(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). "
@@ -2856,7 +2856,7 @@ def _extract_rehearsal(st, results, samples, want, truncated):
                          if a.get("attach_to")),
            "unresolved": sum(1 for c in by_chunk for a in c["attach"]
                              if not a.get("attach_to"))}
-    return {"source": "mock" if llm.use_mock() else "live",
+    return {"source": "mock" if gateway.use_mock() else "live",
             "prompt_version": cps[0].get("prompt_version"),
             "config_version": cps[0].get("config_version"),
             "kept": not truncated,
@@ -2926,7 +2926,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 return 1
 
     samples = st["samples"]
-    print(f"  {llm.mode_line()}")          # B42 ⑤
+    print(f"  {gateway.mode_line()}")          # B42 ⑤
     if st.get("machine_gate") != "PASS":
         # **막는 이유와 다음 줄을 여기서도 준다**(B59 ①) — 세 명령이 같은 블록이다.
         # 뷰는 그래도 만든다: 이상 신호에 그 FAIL이 실려 있고, 사람이 **무엇이
@@ -2969,7 +2969,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     results = _run(None)
     misses = _coord_misses(results, st["layer"])
     if _ask_llm_coord(misses, llm_coord):
-        results = _run(llm.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
+        results = _run(points.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
 
     for r in results:
         reh = r.report.get("rehearsal") or {}

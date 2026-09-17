@@ -25,7 +25,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from core.llm import llm
+from core.llm import gateway
 
 HOST = "127.0.0.1"          # **바깥에 열지 않는다** — 검증 도구이지 서비스가 아니다
 PORT_TRIES = 40
@@ -110,7 +110,7 @@ def main(args):
             raise SystemExit("[viewer] --port 뒤에 번호가 필요하다")               # [사용법]
         del args[i:i + 2]
 
-    mode = "mock" if llm.use_mock() else "실호출"
+    mode = "mock" if gateway.use_mock() else "실호출"
     page, nodes, edges, n_layers = _world_snapshot()
     health = {"mode": mode, "nodes": len(nodes), "edges": len(edges),
               "layers": n_layers}

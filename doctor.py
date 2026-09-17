@@ -472,7 +472,7 @@ def transition():
     # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
     # 이제 재는 것은 「실 호출 경로를 타서 미설정 실패에 닿는가」이고, 판정은
     # 회귀와 **같은 탐침 파일**(tests/points_probe.py)을 실행해서 한다.
-    from core.llm.llm import POINTS                                   # noqa: E402
+    from core.gateway.llm import POINTS                                   # noqa: E402
     import importlib.util as _ilu                                 # noqa: E402
     _spec = _ilu.spec_from_file_location("points_probe",
                                          ROOT / "tests" / "points_probe.py")
@@ -520,13 +520,13 @@ def state_line():
     """
     sys.path.insert(0, str(ROOT))
     from core import paths           # noqa: E402
-    from core.llm import llm
+    from core.llm import gateway
     from core.state import migrate, registry, store
     from router import discover                                     # noqa: E402
     dts = registry.all_doc_types()
     builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")
     print(f"  상태 폴더 {paths.home()} · 모드 "
-          f"{'mock' if llm.use_mock() else '실호출'} · 등록 {len(dts)}종"
+          f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
           + (f"(내장 {builtin})" if builtin else "")
           + f" · 층 {len(discover())} · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
     if migrate.needs_migration():

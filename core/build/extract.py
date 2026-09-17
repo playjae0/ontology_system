@@ -27,7 +27,7 @@ import re
 from pathlib import Path
 
 from core import paths
-from core.llm import llm
+from core.llm import gateway
 from core.state import log, store
 from core.state.ids import doc_hash, norm
 
@@ -56,7 +56,7 @@ def prompt_version(name="extract"):
     """
     # **파일을 찾는 자리는 게이트웨이 하나다**(B63 ① — 칸 ID가 파일 이름에 붙었고,
     # 여기에 두 번째 해석기를 두면 한쪽만 고쳐지는 날 이 함수가 조용히 죽는다).
-    p = llm.prompt_path(name)
+    p = gateway.prompt_path(name)
     if not p:
         log.explicit_fail(_LOG, "core.extract.prompt_version",
                           f"지시문 템플릿이 없다: {PROMPTS_DIR}/<칸ID>_{name}.md — "
@@ -207,14 +207,14 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
     후보는 **표면형만** 낸다(문서 4 §4.10-1) — 노드 id가 들어가면 추출이 그래프
     상태에 의존해 체크포인트의 독립성이 깨진다. `confidence`·`span`도 두지 않는다.
     """
-    if llm.use_mock():
-        llm.mock("extract", f"문형 규칙 · {chunk_id}")
+    if gateway.use_mock():
+        gateway.mock("extract", f"문형 규칙 · {chunk_id}")
         return _mock_candidates(chunk_id, chunk.get("text", ""), cfg, vocab)
 
     # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
     # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
-    tmpl = llm.prompt("extract")
-    out = llm.chat(
+    tmpl = gateway.prompt("extract")
+    out = gateway.chat(
         [{"role": "system", "content": tmpl},
          {"role": "user", "content": json.dumps(
              {"categories": cfg.get("categories"),
@@ -248,7 +248,7 @@ def _mock_candidates(chunk_id, text, cfg, vocab):
     **USE_MOCK 한정이다.** 경계가 코드에 없어 실LLM 경로에서도 이 규칙이 돌았다
     (G6.5 E3이 이 게이트를 세웠다). 실물 경로는 미구현이므로 **명시적으로 실패**한다.
     """
-    if not llm.use_mock():
+    if not gateway.use_mock():
         raise NotImplementedError(
             "문형 폴백은 USE_MOCK 한정이다 — 실호출 갈래는 `_candidates_for`가 "
             "`core.llm`을 부른다. 이 함수가 USE_MOCK=0에서 불렸다면 분기를 "
@@ -286,7 +286,7 @@ def _load_hints(doc_id):
     조용히 mock 힌트로 바뀐다** — B70이 걷어낸 것과 같은 병이고, 조용한 쪽이
     더 나쁘다(틀린 답이 성공으로 보인다).
     """
-    if not llm.use_mock():
+    if not gateway.use_mock():
         return None
     p = HINTS_DIR / f"{doc_id}.json"
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None

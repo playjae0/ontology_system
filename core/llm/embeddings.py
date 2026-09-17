@@ -8,7 +8,7 @@ USE_MOCK=1의 대체는 **sha256 해시 → 정규화 벡터**다(§7.1 대체 �
 **판정용 임베딩은 저장하지 않는다**(§7.2 — 재계산 파생물). 청크 인덱스는
 재생성 캐시이므로 여기서 캐시 파일을 만들지 않는다.
 
-설정 접근은 `core/llm/llm.py`로 수렴한다 — 이 파일은 게이트웨이 주소·인증을 직접
+설정 접근은 `core/llm/gateway.py`로 수렴한다 — 이 파일은 게이트웨이 주소·인증을 직접
 읽지 않는다.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import math
 
-from core.llm import llm
+from core.llm import gateway
 
 DIM = 64            # mock 벡터 차원. 실호출 갈래의 차원은 모델이 정한다.
 
@@ -41,12 +41,12 @@ def embed(text):
     유효하다 — 차원이 다른 것은 계약 위반이 아니다(모델이 정한다), 형태가 다른
     것이 위반이다.
     """
-    if llm.use_mock():
-        llm.mock("embed", f"sha256 → {DIM}차 정규화 벡터")
+    if gateway.use_mock():
+        gateway.mock("embed", f"sha256 → {DIM}차 정규화 벡터")
         return _mock_vector(text)
 
-    cfg = llm.require("embed", need=("url", "embed_model"))
-    raw = llm._post(f"{cfg['url']}/embeddings",
+    cfg = gateway.require("embed", need=("url", "embed_model"))
+    raw = gateway._post(f"{cfg['url']}/embeddings",
                     {"model": cfg["embed_model"], "input": text},
                     cfg["key"], cfg["timeout"])
     return list(raw["data"][0]["embedding"])

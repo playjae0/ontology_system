@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 
-from core.llm import llm
+from core.llm import gateway
 from cli.prompt import _sent_size, _vocab_excerpt
 
 # 입력은 이 이름을 거친다 — 테스트가 갈아끼운다(대화형이라 파이프로는 못 잰다)
@@ -96,8 +96,8 @@ def _summarize(pkg, history, context=None):
     mock 갈래는 **답에서 규칙으로** 만든다: 답한 질문 하나가 결정 하나다. 미리 적어
     둔 문장을 되읽으면 「답이 결정으로 옮겨지는가」를 아무것도 검증하지 않는다.
     """
-    if llm.use_mock():
-        llm.mock("generate", f"문답 확정 요약 — 라운드 {len(history)}에서 규칙 요약")
+    if gateway.use_mock():
+        gateway.mock("generate", f"문답 확정 요약 — 라운드 {len(history)}에서 규칙 요약")
         out = []
         for r in history:
             n = r.get("round")
@@ -121,14 +121,14 @@ def _summarize(pkg, history, context=None):
                         "round": last.get("round")})
         return out
     convo = [{"role": "system",
-              "content": llm.prompt("interview") + "\n\n---\n\n" + _vocab_excerpt(pkg)},
+              "content": gateway.prompt("interview") + "\n\n---\n\n" + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
                  {"입력_패키지": pkg, "문답_전문": history,
                   **({"기계_관문_실패": context} if context else {}),
                   "요청": "마지막 턴 — 확정 요약을 내라 (지시문 「마지막 턴」 절)"},
                  ensure_ascii=False)}]
     _sent_size(convo, "문답 확정 요약")
-    return (llm.chat(convo, json_schema=DECISIONS_SCHEMA, point="interview")
+    return (gateway.chat(convo, json_schema=DECISIONS_SCHEMA, point="interview")
             or {}).get("decisions") or []
 
 
@@ -205,8 +205,8 @@ def _interview_round(pkg, history, context=None):
         for sh in (h.get("head") or {}).get("sheets") or []:
             cols += [v for a, v in (sh.get("cells") or {}).items()
                      if a.endswith("1") and isinstance(v, str)]
-    if llm.use_mock():
-        llm.mock("generate", f"문답 라운드 {len(history) + 1} — 규칙 요약")
+    if gateway.use_mock():
+        gateway.mock("generate", f"문답 라운드 {len(history) + 1} — 규칙 요약")
         base = (f"열 {len(cols)}개를 관찰했다: {', '.join(cols[:6])}"
                 if cols else "표본에서 열을 관찰하지 못했다")
         fixes = [h["answer"] for h in history if h.get("answer")]
@@ -233,14 +233,14 @@ def _interview_round(pkg, history, context=None):
     # 다른 문서에 대한 판단이 현재 판정에 들어오고, 빼면 재현 조건이 사라진다.
     fresh = _prior_rounds(pkg)
     convo = [{"role": "system",
-              "content": llm.prompt("interview") + "\n\n---\n\n"
+              "content": gateway.prompt("interview") + "\n\n---\n\n"
                          + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
                  {"입력_패키지": pkg, "지난_문답": fresh + history,
                   **({"기계_관문_실패": context} if context else {})},
                  ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")
-    return llm.chat(convo, json_schema=INTERVIEW_SCHEMA, point="interview")
+    return gateway.chat(convo, json_schema=INTERVIEW_SCHEMA, point="interview")
 
 
 def _prior_rounds(pkg):

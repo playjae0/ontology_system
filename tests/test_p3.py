@@ -327,7 +327,7 @@ reset("ipqc")
 reset("toc_report")
 # ============================================================ 2B 등록 개선 6건
 print("\n■ 2B 등록 파이프라인 개선 — 실행으로 잠근다")
-from core.llm import llm as _LLM                                        # noqa: E402
+from core.llm import gateway as _LLM                                        # noqa: E402
 from parser import normalizer as _NZ                                # noqa: E402
 _R, _pl = R, pipeline
 
@@ -553,7 +553,7 @@ show("시스템 키는 5 그대로다 (값의 형태만 바뀌었다)", len(_pkg
 
 # ============================================================ 등록 2차 개선
 print("\n■ B30·B32·B34 — 문답 어휘 주입 · 크기 손잡이 · 관찰 범위")
-from core.llm import llm                                        # noqa: E402
+from core.llm import check, gateway                                        # noqa: E402
 from core.state.bootstrap import load_config                      # noqa: E402
 
 # ① B32 — 문답 system에 판정 어휘가 이어 붙는다. **정본은 생성 템플릿 하나다.**
@@ -569,7 +569,7 @@ show("① 구획 셋이 전부 실린다 (role 어휘 · 비배정 필드 · 층
 # 「뒤에 어휘가 붙어 온다」는 전제와 선택지 표기로만 쓴다 — 그것은 포인터이지
 # 정의가 아니다. 정의가 두 곳에 살면 한쪽이 낡고, 그때 문답이 묻는 어휘와 생성이
 # 쓰는 어휘가 갈린다.
-_iv = llm.prompt("interview")
+_iv = gateway.prompt("interview")
 _defs = ("| role | 뜻 | 판별 |", "그 필드의 값으로 그래프에 수행하는 쓰기 동작",
          "이것에 대해 더 말할 게 생기는가")
 show("① interview.md는 어휘를 **가리키기만** 한다 (정의는 생성 템플릿 하나가 갖는다)",
@@ -721,24 +721,24 @@ show("③ 임계는 가결정 상수 하나다 (D-105)", isinstance(_PF.FULL_LIS
 # ④ 설정 파일 USE_MOCK — 환경변수가 이긴다 · 읽는 곳은 하나
 import os as _os                                                    # noqa: E402
 show("④ 환경변수가 설정 파일을 이긴다",
-     (lambda: (_os.environ.__setitem__("USE_MOCK", "1"), llm.use_mock())[1])() is True)
+     (lambda: (_os.environ.__setitem__("USE_MOCK", "1"), gateway.use_mock())[1])() is True)
 show("④ 판독은 use_mock() 하나다 (읽는 곳을 늘리지 않았다)",
      sum(1 for f in (ROOT / "core").rglob("*.py")
          for ln in f.read_text(encoding="utf-8").splitlines()
          if 'environ.get("USE_MOCK"' in ln) == 1)
 show("④ 기본은 mock이다 (둘 다 없으면 — 조항 B12)",
-     llm.use_mock() is True)
+     gateway.use_mock() is True)
 
 # ⑤ 모드 줄 — LLM을 부를 수 있는 화면 명령 머리
-show("⑤ mock이면 켜는 법을 함께 말한다", 'llm.json' in llm.mode_line()
-     and "mock" in llm.mode_line())
+show("⑤ mock이면 켜는 법을 함께 말한다", 'llm.json' in gateway.mode_line()
+     and "mock" in gateway.mode_line())
 for _f, _n in ((ROOT / "cli/register.py", "register"), (ROOT / "run.py", "run")):
     show(f"⑤ {_n} 이 모드 줄을 낸다", "mode_line()" in _f.read_text(encoding="utf-8"))
 
 # B41 예산 — 한도가 없으면 대조하지 않는다
 show("⑥ 컨텍스트 한도는 **선택**이다 — 기본값을 코드에 박지 않았다",
-     llm.context_limit() is None
-     and "LLM_CONTEXT_TOKENS" in (ROOT / "core/llm/llm.py").read_text(encoding="utf-8"))
+     check.context_limit() is None
+     and "LLM_CONTEXT_TOKENS" in (ROOT / "core/llm/check.py").read_text(encoding="utf-8"))
 
 # ============================================================ B43·B44
 print("\n■ B43·B44 — 스키마 strict · 오류 본문 · 분할 레벨 · section 좌표")
@@ -787,11 +787,11 @@ show("① 한글 키 `근거`가 `reason`으로 바뀌었다 (소비처 포함)"
 
 # ② 오류 본문 보존 — 키는 남기지 않는다
 show("② GatewayError가 상태 코드와 본문을 지닌다",
-     hasattr(llm, "GatewayError") and hasattr(llm, "LAST_ERROR")
-     and "e.read()" in (ROOT / "core/llm/llm.py").read_text(encoding="utf-8"))
+     hasattr(gateway, "GatewayError") and hasattr(gateway, "LAST_ERROR")
+     and "e.read()" in (ROOT / "core/llm/gateway.py").read_text(encoding="utf-8"))
 show("② 4xx는 재시도하지 않는다 (같은 400을 세 번 받지 않는다)",
-     "except GatewayError:" in (ROOT / "core/llm/llm.py").read_text(encoding="utf-8"))
-show("② 본문은 길이 상한으로 자른다", isinstance(llm.ERR_BODY_MAX, int))
+     "except GatewayError:" in (ROOT / "core/llm/gateway.py").read_text(encoding="utf-8"))
+show("② 본문은 길이 상한으로 자른다", isinstance(gateway.ERR_BODY_MAX, int))
 
 # ③ 분할 레벨 — 결정적이고 근거가 지도에 남는다
 def _mk(fine):
@@ -986,7 +986,7 @@ except SystemExit as e:
          "거부" in str(e) and "CP01.xlsx" in str(e) and "--no-basic" in str(e))
 show("② 거부는 검수 자리를 만들지 않는다", not (_P.review() / "cpx_basic").exists())
 # ② 수용 — PPT 표본: LLM 호출 0회로 생성 → 검수 → 확정
-_calls0 = llm.usage_total()["calls"]
+_calls0 = gateway.usage_total()["calls"]
 _buf = _io.StringIO()
 with _ctx.redirect_stdout(_buf):
     R.cmd_generate("pptb_t", "quality", [_PPT], use_basic=True)
@@ -1004,7 +1004,7 @@ with _ctx.redirect_stdout(_buf):
 show("② 검수·승인 1회는 생략하지 않는다 — 기계 관문 PASS가 확정의 전제 (M4)",
      R._state("pptb_t").get("machine_gate") == "PASS", str(R._state("pptb_t").get("machine_gate")))
 show("② 생성+검수 동안 LLM 호출 0회 (usage_total 불변)",
-     llm.usage_total()["calls"] == _calls0, f"{_calls0} → {llm.usage_total()['calls']}")
+     gateway.usage_total()["calls"] == _calls0, f"{_calls0} → {gateway.usage_total()['calls']}")
 _buf = _io.StringIO()
 with _ctx.redirect_stdout(_buf):
     R.cmd_confirm("pptb_t", "테스트")
@@ -1476,7 +1476,7 @@ _EX.invalidate("TOC01")
 # **다른 파일**을 돌려주므로 재생성 루프가 도는 것처럼 보였고, 「지시가 실제로
 # 모델에 실렸나」를 재는 자리가 없어 B50·[정정] 40의 어서션이 전부 초록이었다.
 # 여기서 재는 것은 **조립된 전송분**이다 — 기록이 아니라 전송이다.
-from core.llm import llm as _llm                                       # noqa: E402
+from core.llm import gateway as _llm                                       # noqa: E402
 print("\n■ B55 ① — 재생성 지시가 조립 메시지에 실린다")
 
 _b55_sent = {}
@@ -1575,9 +1575,9 @@ show("①-후속-2 치환 누락 0 — 지시 자리가 늘어도 `{{` 잔존 0"
 _tmpls = sorted(R.KIT.glob("생성프롬프트_템플릿_v*.md"))
 show("①-후속-2 생성 지시문은 한 자리다 (킷 glob 폐지 · 이름으로 집는다)",
      not _tmpls
-     and llm.prompt_path("generate").endswith("/1.4_generate.md")
+     and gateway.prompt_path("generate").endswith("/1.4_generate.md")
      and "{{재생성_지시}}" in R.generate_template(),
-     f"kit 템플릿 {len(_tmpls)}개 · {Path(llm.prompt_path('generate')).name}")
+     f"kit 템플릿 {len(_tmpls)}개 · {Path(gateway.prompt_path('generate')).name}")
 
 # ── B55 ② 문답은 누적된다 — 재현 조건의 그릇은 `human.hint`다 (B36 · §6.5) ──
 print("\n■ B55 ② — 문답 묶음이 쌓이고 표본이 바뀌면 stale로 남는다")
@@ -1808,22 +1808,22 @@ show("⑥ 조회 키 결정은 한 자리다 (tagger._page_no)",
 
 print("\n■ B55 ⑦ — llm-check의 401/403이 ③인증으로 간다")
 
-_b55_req, _b55_cfgf, _b55_postf = llm.require, llm.config, llm._post
+_b55_req, _b55_cfgf, _b55_postf = gateway.require, gateway.config, gateway._post
 try:
-    llm.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
+    gateway.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
                               "timeout": 5, "retry": 0}
-    llm.config = lambda: {"url": "https://x", "model": "m", "key": "k",
+    gateway.config = lambda: {"url": "https://x", "model": "m", "key": "k",
                           "timeout": 5, "retry": 0, "embed_model": None}
 
     def _b55_probe(exc):
-        llm._post = lambda u, p, k, t: (_ for _ in ()).throw(exc)
-        return {s["id"]: s for s in llm.probe()}
+        gateway._post = lambda u, p, k, t: (_ for _ in ()).throw(exc)
+        return {s["id"]: s for s in check.probe()}
 
-    _p401 = _b55_probe(llm.GatewayError(401, "invalid api key", "u"))
-    _p500 = _b55_probe(llm.GatewayError(500, "upstream boom", "u"))
+    _p401 = _b55_probe(gateway.GatewayError(401, "invalid api key", "u"))
+    _p500 = _b55_probe(gateway.GatewayError(500, "upstream boom", "u"))
     _purl = _b55_probe(__import__("urllib.error", fromlist=["x"]).URLError("no route"))
 finally:
-    llm.require, llm.config, llm._post = _b55_req, _b55_cfgf, _b55_postf
+    gateway.require, gateway.config, gateway._post = _b55_req, _b55_cfgf, _b55_postf
 # **어디까지 갔는지가 곧 원인이다**(B19) — 키가 틀렸는데 「주소에 못 닿았다」고
 # 말하면 사람이 엉뚱한 곳을 고친다.
 show("⑦ⓐ 401 → ②도달 PASS · ③인증 FAIL",
@@ -1836,16 +1836,19 @@ show("⑦ⓒ URLError → ②도달 FAIL 그대로 (③은 아예 나오지 않�
      _purl["②"]["ok"] is False and "③" not in _purl)
 # **`_post`의 HTTPError 포착은 남는다** — 거기가 GatewayError로 바꿔 던지는 자리다.
 # 죽어 있던 것은 `probe` 안의 갈래이고, 그 함수 본문만 본다.
-_b55_llmsrc = (ROOT / "core" / "llm" / "llm.py").read_text(encoding="utf-8")
-_b55_probe_src = _b55_llmsrc[_b55_llmsrc.index("def probe("):]
-_b55_probe_src = _b55_probe_src[:_b55_probe_src.index("\ndef ", 1)]
+# `probe`는 연결 확인의 자리다 — 분할 뒤 `core/llm/check.py`가 소유한다(B78 2b).
+_b55_chksrc = (ROOT / "core" / "llm" / "check.py").read_text(encoding="utf-8")
+_b55_llmsrc = (ROOT / "core" / "llm" / "gateway.py").read_text(encoding="utf-8")
+_b55_probe_src = _b55_chksrc[_b55_chksrc.index("def probe("):]
+_b55_end = _b55_probe_src.find("\ndef ", 1)          # 파일 끝이면 그대로 (분할 뒤 마지막 함수다)
+_b55_probe_src = _b55_probe_src[:_b55_end] if _b55_end > 0 else _b55_probe_src
 # **주석은 코드가 아니다** — 무엇이 왜 죽어 있었는지 적은 문장이 그 자리에 있고,
 # 문자열로 세면 그 설명이 위반으로 잡힌다(§7.5 「주석을 구현으로 세지 않는다」의 역).
 _b55_probe_code = "\n".join(
     ln for ln in _b55_probe_src.split("\n") if not ln.strip().startswith("#"))
 show("⑦ probe에 죽은 HTTPError 갈래가 없다 (GatewayError로 받는다)",
      "except urllib.error.HTTPError" not in _b55_probe_code
-     and "except GatewayError as e" in _b55_probe_code
+     and "GatewayError as e" in _b55_probe_code
      and "e.status" in _b55_probe_code)
 show("⑦ _post의 HTTPError 포착은 그대로다 (바꿔 던지는 자리다)",
      "except urllib.error.HTTPError" in _b55_llmsrc
@@ -2336,9 +2339,9 @@ _pt_of = lambda fn: set(_re.findall(
     r'point="([a-z_]+)"', _IVSRC.split(f"def {fn}")[1].split("\ndef ")[0]))
 show("② 요약은 새 LLM 지점이 아니다 (문답 라운드와 같은 point · 지점은 ⑤ 하나)",
      _pt_of("_summarize") == _pt_of("_interview_round") != set()
-     and llm.point_label("interview") == llm.POINTS["generate"]
+     and gateway.point_label("interview") == gateway.POINTS["generate"]
      and set(_IV.DECISIONS_SCHEMA["required"]) == set(_IV.DECISIONS_SCHEMA["properties"]),
-     f"{sorted(_pt_of('_summarize'))} → {llm.point_label('interview')}")
+     f"{sorted(_pt_of('_summarize'))} → {gateway.point_label('interview')}")
 # **수정 흐름** — «수정 2»면 그 항목만 바뀌고 나머지는 그대로다(단위 시험 · _ask 패치).
 _hist62 = [{"round": 1, "understanding": "u1",
             "questions": [{"q": "헤더 행", "options": ["1행", "2행"]}],
@@ -3051,15 +3054,15 @@ _ad67.write_text(_src67.replace("def extract(",
                                 "def _b67_broken(raw):\n"
                                 "    return normalizer.no_such_helper(raw)\n\n\n"
                                 "def extract(", 1), encoding="utf-8")
-_calls67a = llm.usage_total()["calls"]
+_calls67a = gateway.usage_total()["calls"]
 _v67 = R.regate("ipqc", R._state("ipqc"))       # 관문 재실행 — 재생성·문답 없음
 _led67b = R.read_ledger("ipqc")
 show("②ⓑ 코드에 오류만 심어도 **role·필드 대응은 그대로다** (판단과 코드가 갈렸다)",
      _v67 != "PASS" and {(r["col"], r["role"], r["field"]) for r in _led67b} == _judg67,
      f"관문 {_v67} · 대장 {len(_led67b)}행")
 show("②ⓑ 대장 쓰기 경로에 LLM 호출 0 (시스템이 뽑는다 — C38)",
-     llm.usage_total()["calls"] == _calls67a,
-     f"{_calls67a} → {llm.usage_total()['calls']}")
+     gateway.usage_total()["calls"] == _calls67a,
+     f"{_calls67a} → {gateway.usage_total()['calls']}")
 
 # ⓑ 지시가 열을 이름으로 부르면 그 행이 갱신되고 **출처가 사람으로 바뀐다**
 _o67 = next((r for r in _led67 if str(r.get("status")).startswith("open")), _led67[-1])

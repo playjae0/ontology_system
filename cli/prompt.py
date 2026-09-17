@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 from core import paths
-from core.llm import llm
+from core.llm import check, gateway
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
@@ -160,7 +160,7 @@ def generate_template():
     git 이력이 갖고(`git show pre-b63-structure:kit/`), 현재 판은 파일 하나이며 판
     번호는 그 머리말 `version:`이 말한다 — 자산이 스스로 말하는 것은 그대로다.
     """
-    return llm.prompt("generate")
+    return gateway.prompt("generate")
 
 
 # 재생성 구획의 자리 — 템플릿이 소유하는 문장은 전부 파일에 있고 코드는 목록만 채운다.
@@ -348,7 +348,7 @@ def _sent_size(msgs, label):
     tot = sys_b + usr_b
     # 한글 혼재 기준의 **거친 어림**이다(3바이트/토큰) — 정밀 계수는 게이트웨이 몫.
     est = tot // 3          # 한글 혼재의 거친 어림 — 정밀 계수는 게이트웨이 몫
-    lim = llm.context_limit()
+    lim = check.context_limit()
     print(f"   [전송] {label} — system {sys_b:,}B + user {usr_b:,}B "
           f"= {tot:,}B (약 {est:,} 토큰"
           + (f" / 한도 {lim:,})" if lim else ")"), flush=True)
@@ -363,7 +363,7 @@ def _sent_size(msgs, label):
             f"     ② 프로파일 대표값 축소   parser/profile.py의 FULL_LIST_MAX·"
             f"SAMPLE_VALUES를 줄인다 (열당 약 −30 토큰)\n"
             f"     ③ 표본 부수 축소        user 메시지 전체가 약 {usr_b // 3:,} 토큰이다\n"
-            f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다\n"
+            f"   한도는 gateway.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다\n"
             f"  ▶ 다음 줄 — ①부터 적용한다:\n"
             f"     python -m cli.register generate <doc_type> <층> <표본...> "
             f"--no-fewshot")

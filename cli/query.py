@@ -16,7 +16,7 @@ import json
 import sys
 
 
-from core.llm import llm
+from core.llm import gateway
 from core.dictionary import Dictionary
 from core.query import query as Q
 from core.state import store
@@ -199,12 +199,12 @@ def generate(res):
     **그래프는 답변 LLM이 직접 읽지 않는다**(문서 0) — 넘기는 것은 문장화된
     사실과 청크 원문뿐이다.
     """
-    if llm.use_mock():
-        llm.mock("answer", "두 채널 정형 나열 (문장 생성 없음)")
+    if gateway.use_mock():
+        gateway.mock("answer", "두 채널 정형 나열 (문장 생성 없음)")
         return render(res)
 
-    out = llm.chat(
-        [{"role": "system", "content": llm.prompt("answer")},
+    out = gateway.chat(
+        [{"role": "system", "content": gateway.prompt("answer")},
          # 사실에 **인덱스를 붙여** 넘긴다 — 무엇을 썼는지 되돌려 받으려면
          # 양쪽이 같은 번호를 봐야 한다.
          {"role": "user", "content": json.dumps(
@@ -274,10 +274,10 @@ def main(args):
         args.remove(JSON_FLAG)          # 남으면 질문 문장으로 흘러 들어간다
     question = " ".join(args)
     if want_json:
-        print(f"  {llm.mode_line()}", file=sys.stderr)
+        print(f"  {gateway.mode_line()}", file=sys.stderr)
         print(json.dumps(as_json(answer(question)), ensure_ascii=False))
     else:
-        print(f"  {llm.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
+        print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
         print(generate(answer(question)))
     return 0
 

@@ -250,7 +250,7 @@ show("export mermaid cross — 걸침 관계를 층 구분과 함께 그린다",
 # ── B52 ① `query --json` 출력 계약 (문서 5 §5.2-6) ─────────────────────────
 print("\n[B52 ①] query --json — 답 묶음 출력 계약")
 
-from core.llm import llm as llm_mod                                  # noqa: E402
+from core.llm import gateway as llm_mod                                  # noqa: E402
 from cli.export import _world, build_html, graph_data            # noqa: E402
 
 _w = _world()

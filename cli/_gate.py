@@ -6,7 +6,7 @@
 `--allow-mock`을 **적어야** 한다.
 
 **자리는 CLI 진입점 한 곳이다.** 지점마다 두면 판독처가 다시 여럿이 되고, 그것이
-판정필요-15가 신고한 병(파서가 따로 읽어 갈렸다)의 재발이다. 여기서 `llm.use_mock()`
+판정필요-15가 신고한 병(파서가 따로 읽어 갈렸다)의 재발이다. 여기서 `gateway.use_mock()`
 하나를 부르고 끝낸다.
 
 **대상이 아닌 것**: `doctor`·`init`·`bootstrap`·`llm-check`·`skeleton-confirm`·회귀.
@@ -15,7 +15,7 @@
 """
 from __future__ import annotations
 
-from core.llm import llm
+from core.llm import gateway
 
 FLAG = "--allow-mock"
 
@@ -23,7 +23,7 @@ MESSAGE = ('mock 모드입니다 — 실산출이 아닙니다.\n'
            '  ▶ 다음 줄 — 둘 중 하나:\n'
            '     (mock 산출로 진행한다)  python run.py <친 명령> --allow-mock\n'
            '     (실호출로 돌린다)      python run.py llm-check   '
-           '→ llm.json의 "USE_MOCK": 0 또는 USE_MOCK=0')
+           '→ gateway.json의 "USE_MOCK": 0 또는 USE_MOCK=0')
 
 
 def _migrate_message(command="", pair=None):
@@ -70,10 +70,10 @@ def require_live_or_allow(argv, *, command=""):
     allow = FLAG in argv
     while FLAG in argv:
         argv.remove(FLAG)
-    if allow or not llm.use_mock():
+    if allow or not gateway.use_mock():
         return argv
     # **표시 후 멈춤**(B42 ⑤ → B48) — 무엇으로 도는지 먼저 말하고 그다음 막는다.
-    print(f"  {llm.mode_line()}")
+    print(f"  {gateway.mode_line()}")
     # **stdout으로 낸다** — 플랫폼 창구(`cli/platform.py`)가 subprocess의 stdout만
     # 넘기므로, stderr로 내면 사람 화면에 모드 줄만 뜨고 사유가 사라진다.
     print(f"[{command or 'mock 관문'}] {MESSAGE}")

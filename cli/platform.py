@@ -255,11 +255,11 @@ def cmd_doctypes():
     보이지 않으면 사람은 「등록이 사라졌다」고만 안다.
     """
     from core.state.registry import all_doc_types, missing_assets, orphan_reviews
-    from core.llm import llm
+    from core.llm import gateway
     reg = all_doc_types()
     miss = {(m["doc_type"], m["kind"]) for m in missing_assets()}
     print(f"doc_type 등록부 — {len(reg)}종"
-          + ("" if llm.use_mock() else "  (USE_MOCK=0 — 등록부만 · 내장 제외)"))
+          + ("" if gateway.use_mock() else "  (USE_MOCK=0 — 등록부만 · 내장 제외)"))
     for dt, m in sorted(reg.items()):
         def _mark(kind):
             rel = m.get(kind)

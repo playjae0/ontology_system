@@ -99,8 +99,8 @@ def cmd_ingest(paths, finalize=True, allow_duplicate=False):
 
 
 def cmd_all():
-    from core.llm import llm
-    print(f"  {llm.mode_line()}")          # B42 ⑤
+    from core.llm import gateway
+    print(f"  {gateway.mode_line()}")          # B42 ⑤
     cmd_bootstrap()
     from core.state import fixtures
     # **없으면 조용히 아무것도 안 하지 않는다** — 구판은 빈 glob로 0건 인입하고

@@ -363,7 +363,7 @@ class Builder:
             parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
         # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
         # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
-        from core.llm import llm as _llm
+        from core.llm import gateway as _llm
         _u0 = _llm.usage_total()
         verdict, nid, conf, v = resolve(canonical, category, self.layer,
                                         self.g, self.dict, scoped=scoped,

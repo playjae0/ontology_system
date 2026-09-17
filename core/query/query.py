@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from core.state import store
-from core.llm import llm
+from core.llm import gateway
 from core.state.ids import norm
 from core.state.status import STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain
 
@@ -67,17 +67,17 @@ def _link_llm(question, graphs):
     실호출 갈래도 **후보 밖 id는 버린다** — 모델이 지어낸 id로 질의가 답하면
     그래프에 없는 근거를 제시하게 된다.
     """
-    if llm.use_mock():
+    if gateway.use_mock():
         return []
-    llm.require("link")
+    gateway.require("link")
     live = {nid: (lay, n) for lay, g in graphs.items()
             for nid, n in g.nodes.items() if is_live(n)}
     if not live:
         return []
     pool = [{"id": nid, "canonical": n["canonical"], "category": n["category"]}
             for nid, (_lay, n) in live.items()]
-    out = llm.chat(
-        [{"role": "system", "content": llm.prompt("link")},
+    out = gateway.chat(
+        [{"role": "system", "content": gateway.prompt("link")},
          {"role": "user", "content": json.dumps(
              {"question": question, "candidates": pool}, ensure_ascii=False)}],
         json_schema=LINK_SCHEMA, point="link")

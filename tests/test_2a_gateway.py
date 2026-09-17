@@ -31,9 +31,9 @@ def show(label, ok, detail=""):
 # ============================================================ 게이트웨이 2파일
 print("\n■ 게이트웨이 2파일 (§7.6-B-1)")
 
-from core.llm import embeddings, llm                                 # noqa: E402
+from core.llm import embeddings, gateway as llm, points, struct_map_pass                                 # noqa: E402
 
-show("core/llm/llm.py — chat(messages, *, model, json_schema)",
+show("core/llm/gateway.py — chat(messages, *, model, json_schema)",
      hasattr(llm, "chat")
      and {"model", "json_schema"} <= set(llm.chat.__code__.co_varnames))
 show("core/llm/embeddings.py — embed(text) -> vector", hasattr(embeddings, "embed"))
@@ -44,11 +44,11 @@ show("LLM 지점 목록이 닫힌 **9종**이다 (§7.6-B-2 — ⑨좌표 태깅
 _ENV = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL")
 leaks = [f"{p.relative_to(ROOT)}:{i}"
          for d in ("core", "cli", "parser")
-         for p in sorted((ROOT / d).glob("*.py")) if p.name != "llm.py"
+         for p in sorted((ROOT / d).rglob("*.py")) if "core/llm/" not in p.as_posix()
          for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
          if any(e in ln for e in _ENV) and not ln.lstrip().startswith("#")
          and "|" not in ln]
-show("LLM 설정 접근이 core/llm/llm.py 하나로 수렴한다 (§7.6-B-1)", not leaks, str(leaks))
+show("LLM 설정 접근이 core/llm/ 하나로 수렴한다 (§7.6-B-1)", not leaks, str(leaks))
 
 # ============================================================ mock 갈래
 print("\n■ mock 갈래 — 결정성이 우선이다 (§7.5-1)")
@@ -105,11 +105,11 @@ _fake = {"headings": [{"row": 2, "level": 1, "title": "1. 개요"},
                       {"row": 3, "level": 0, "title": "급이 0"}],
          "note": "위계가 뒤섞여 급을 매길 수 없음"}
 _ochat = llm.chat
-llm.chat = lambda *a, **k: _fake            # 게이트웨이 없이 변환만 잰다
+llm.chat = struct_map_pass.chat = lambda *a, **k: _fake            # 게이트웨이 없이 변환만 잰다
 try:
-    _sm = llm.map_structure("D1", _lines)
+    _sm = struct_map_pass.map_structure("D1", _lines)
 finally:
-    llm.chat = _ochat
+    llm.chat = struct_map_pass.chat = _ochat
 show("headings → 파서 지도 형식(rows) — 목록에 있는 행만 heading=true",
      [(r["row"], r["heading"], r["level"]) for r in _sm["rows"]]
      == [(2, True, 1), (3, False, 0), (4, True, 2), (5, False, 0)],
@@ -122,10 +122,10 @@ show("재현 조건 — source=live · 지시문 판본이 지도에 남는다 (
      _sm["source"] == "live" and _sm["prompt_version"] == llm.prompt_version("struct_map"),
      f"{_sm['source']} · {_sm.get('prompt_version')}")
 show("입력 본문은 «행번호<TAB>앞N자» 목록이다",
-     llm._map_lines([(7, "가나다라마바사")], 3) == "7\t가나다")
+     struct_map_pass._map_lines([(7, "가나다라마바사")], 3) == "7\t가나다")
 show("크기 예산은 감축 사다리를 탄다 — 행을 빼지 않고 앞자리를 줄인다 (B41)",
-     llm.MAP_LINE_WIDTHS[0] == 80 and list(llm.MAP_LINE_WIDTHS) == sorted(
-         llm.MAP_LINE_WIDTHS, reverse=True))
+     struct_map_pass.MAP_LINE_WIDTHS[0] == 80 and list(struct_map_pass.MAP_LINE_WIDTHS) == sorted(
+         struct_map_pass.MAP_LINE_WIDTHS, reverse=True))
 
 # ============================================================ 분기 실물
 print("\n■ 분기가 실물로 서 있는가 — 주석을 세지 않는다 (§7.6-B-2)")
@@ -133,7 +133,7 @@ print("\n■ 분기가 실물로 서 있는가 — 주석을 세지 않는다 (�
 # core 6지점 — **종전 방식 유지**(인라인 분기. 팩토리로 옮기는 것은 다음 회차)
 WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
          "judge": ("core/matcher.py", "_judge_live"),
-         "embed": ("core/llm/embeddings.py", "llm.require"),
+         "embed": ("core/llm/embeddings.py", "gateway.require"),
          "generate": ("cli/register.py", "_draft_live"),
          "link": ("core/query/query.py", "_link_llm"),
          "answer": ("cli/query.py", "def generate")}
@@ -152,27 +152,30 @@ _asm = _inj()
 for key, factory, kw in (("image_summary", "image_summarizer", "summarize"),
                          ("struct_map", "struct_mapper", "map_structure"),
                          ("coord_tag", "coord_picker", "pick_coord")):
+    _own = struct_map_pass if factory == "struct_mapper" else points
     show(f"{llm.POINTS[key]} — 팩토리→주입 조립→파서 인자가 이어진다 "
-         f"(llm.{factory}() → {kw}=)",
-         callable(getattr(llm, factory, None)) and kw in _asm and kw in _pv)
+         f"({_own.__name__.split('.')[-1]}.{factory}() → {kw}=)",
+         callable(getattr(_own, factory, None)) and kw in _asm and kw in _pv)
 
 # ── 변이 시험 — **배선을 하나 빼면 붉는가**(§7.6-B-2 · B48 ④-2)
 # 잡는 자리는 주입 조립 지점이다: 파서는 모드를 모르므로 「실호출 모드인데 함수가
 # 없다」를 알 수 있는 것은 만드는 쪽뿐이다. 이 어서션이 곧 「진입점이 한 번 정해
 # 전부 내려보낸다」의 기계 판정이다.
-_orig = (llm.use_mock, llm.image_summarizer, llm.coord_picker, llm.struct_mapper)
+_orig = (llm.use_mock, points.image_summarizer, points.coord_picker,
+         struct_map_pass.struct_mapper)
 llm.use_mock = lambda: False
-llm.image_summarizer = lambda: (lambda ref: "요약")
-llm.coord_picker = lambda: (lambda s, c: None)
-llm.struct_mapper = lambda: None                # ← ⑦ 배선을 뺀다
+points.image_summarizer = lambda: (lambda ref: "요약")
+points.coord_picker = lambda: (lambda s, c: None)
+struct_map_pass.struct_mapper = lambda: None    # ← ⑦ 배선을 뺀다
 try:
     _inj()
     _mut = "통과 — 붉지 않았다"
 except llm.NotConfigured as e:
     _mut = f"NotConfigured — {str(e)[:60]}"
-llm.struct_mapper = lambda: (lambda d, l: {"rows": []})   # ← 되돌린다
+struct_map_pass.struct_mapper = lambda: (lambda d, l: {"rows": []})   # ← 되돌린다
 _back = "통과" if _inj().get("map_structure") else "여전히 None"
-llm.use_mock, llm.image_summarizer, llm.coord_picker, llm.struct_mapper = _orig
+(llm.use_mock, points.image_summarizer, points.coord_picker,
+ struct_map_pass.struct_mapper) = _orig
 show("변이 — ⑦ 주입을 빼면 실호출 모드에서 붉는다 (조용한 휴리스틱 폴백 0)",
      _mut.startswith("NotConfigured"), _mut)
 show("변이 — 되돌리면 초록이다 (시험 자체가 늘 붉는 것이 아니다)", _back == "통과", _back)

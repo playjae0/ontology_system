@@ -241,7 +241,7 @@ with Site() as site:
     # ── 변이 — 기본 소재지의 mock 가드를 빼면 붉어진다 ────────────────
     _p = ROOT / "cli" / "scan.py"
     _orig = _p.read_text(encoding="utf-8")
-    _mut = _orig.replace("(ADAPTER_DIRS if llm.use_mock() else [])", "ADAPTER_DIRS")
+    _mut = _orig.replace("(ADAPTER_DIRS if gateway.use_mock() else [])", "ADAPTER_DIRS")
     assert _mut != _orig, "가드 문면이 바뀌었다 — 변이 시험이 대상을 못 찾는다"
     _p.write_text(_mut, encoding="utf-8")
     try:

@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core.llm import llm
+from core.llm import gateway
 from core.state import fixtures, registry
 from parser import preflight
 from parser.normalizer import _col
@@ -93,7 +93,7 @@ def adapters(paths=None):
     if paths is None:
         _refuse_missing(registry.missing_assets())
         files += [p for _dt, p in adapter_paths()]
-    for p in (paths if paths else (ADAPTER_DIRS if llm.use_mock() else [])):
+    for p in (paths if paths else (ADAPTER_DIRS if gateway.use_mock() else [])):
         p = Path(p)
         files += sorted(p.glob("*.py")) if p.is_dir() else [p]
     out, seen = [], set()

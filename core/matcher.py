@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 
-from core.llm import llm
+from core.llm import gateway, narrow
 from core.state import log
 from core.state.ids import norm
 from core.build.naming import POLARITY_NONE
@@ -149,7 +149,7 @@ def _narrow(surface, pool, top_n, *, scoped=False):
     """
     if len(pool) <= top_n:
         return pool, ("스코프" if scoped else "그대로")
-    mode, _why = llm.narrow_choice()
+    mode, _why = narrow.narrow_choice()
     if mode == "overlap":
         scored = sorted(pool, key=lambda c: -_overlap(surface, c["canonical"]))
         return scored[:top_n], "겹침"
@@ -180,7 +180,7 @@ def _path_of(pool):
     how = next((c.get("how") for c in pool if c.get("how")), None)
     if how in _HOW_PATH:
         return _HOW_PATH[how]
-    return ("embedding+judge" if llm.narrow_choice()[0] == "embed"
+    return ("embedding+judge" if narrow.narrow_choice()[0] == "embed"
             else "overlap+judge")
 
 
@@ -319,9 +319,9 @@ def match(surface, candidates, category, cfg=None):
     if PROGRESS is not None:
         PROGRESS(dict(STATS))
 
-    if not llm.use_mock():
+    if not gateway.use_mock():
         return _judge_live(surface, pool, category, cfg, path=path)
-    llm.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
+    gateway.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
 
     best, score = None, 0.0
     for c in pool:
@@ -374,11 +374,11 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None):
     되면 그래프에 없는 노드를 가리키는 엣지가 선다.
     """
     ids = {c["id"] for c in pool}
-    out = llm.chat(
+    out = gateway.chat(
         # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
         # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
         [{"role": "system",
-          "content": llm.prompt("judge")
+          "content": gateway.prompt("judge")
           + ("\n\n## 층 어휘\n" + (cfg or {}).get("prompts", {}).get("judge", "")
              if (cfg or {}).get("prompts", {}).get("judge") else "")},
          {"role": "user", "content": json.dumps(

@@ -245,7 +245,7 @@ def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=Non
     **갈림길은 함수 유무 하나다**(B48 · 문서 7 §7.6-B-1): `summarize`가 오면 실호출,
     안 오면 고정 문자열 + `source="mock"`. 파서는 모드를 읽지 않는다.
 
-    **「함수 없이 실호출 모드」는 여기까지 오지 않는다** — 팩토리(`llm.image_summarizer()`)가
+    **「함수 없이 실호출 모드」는 여기까지 오지 않는다** — 팩토리(`core.llm.points.image_summarizer()`)가
     미설정이면 `require()`로 파싱 전에 멈춘다. 구판은 그 검사를 여기서도 했고, 그러려면
     파서가 모드를 알아야 했다(그 판독이 설정 파일 갈래를 못 봐 갈렸다 — B42·B48).
 

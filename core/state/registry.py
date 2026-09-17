@@ -24,7 +24,7 @@ import json
 from pathlib import Path
 
 from core import paths
-from core.llm import llm
+from core.llm import gateway
 from core.state import log, store
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
@@ -87,7 +87,7 @@ def all_doc_types():
     # 있어서 운영 배치에는 그 폴더가 아예 없다. 그래도 분기를 남기는 이유: 레포를
     # 통째로 이식하면 픽스처가 디스크에 같이 오고(사내 실측), 그때 가르는 것은
     # 모드다(D-150 ① — 「모드가 0이다」가 핵심이지 「폴더가 없다」가 아니다).
-    out = _builtin() if llm.use_mock() else {}
+    out = _builtin() if gateway.use_mock() else {}
     out.update(_registered())
     return out
 

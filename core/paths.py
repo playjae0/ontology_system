@@ -56,13 +56,13 @@ def home():
 
     **한 번만 정하는 이유**: 모드는 프로세스 시작에 정해지고(진입점이 판독한다),
     실행 도중에 루트가 바뀌면 앞 단계가 쓴 자리와 뒤 단계가 읽는 자리가 갈린다.
-    시험이 모드를 갈아 끼우는 자리(`llm.use_mock`를 스텁으로 바꾸는 회귀)에서도
+    시험이 모드를 갈아 끼우는 자리(`gateway.use_mock`를 스텁으로 바꾸는 회귀)에서도
     상태가 따라 움직이지 않아야 한다 — `reset()`이 그 문을 명시적으로 연다.
     """
     global _HOME
     if _HOME is None:
-        from core.llm import llm            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
-        if llm.use_mock():
+        from core.llm import gateway            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
+        if gateway.use_mock():
             _HOME = ROOT / MOCK_HOME
         else:
             v = os.environ.get(HOME_ENV)
@@ -128,9 +128,9 @@ def fixture_schemas(*parts):
 
 
 def config_file(name="llm.json"):
-    """설정 파일의 **상태 루트 자리** — `core/llm/llm.py`가 찾는 넷째 자리다(B78 1b).
+    """설정 파일의 **상태 루트 자리** — `core/llm/gateway.py`가 찾는 넷째 자리다(B78 1b).
 
-    **`home()`을 부르지 않는다.** `home()`은 `llm.use_mock()`을 묻고 `llm`의 설정
+    **`home()`을 부르지 않는다.** `home()`은 `gateway.use_mock()`을 묻고 `llm`의 설정
     판독이 이 함수를 부르므로, 여기서 `home()`을 부르면 서로를 기다린다. 그래서
     `ONTO_HOME`만 직접 읽는다 — 설정은 mock 세계의 것이 아니라 어느 모드에서나
     같은 자리다.

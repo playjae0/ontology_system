@@ -35,7 +35,7 @@ def cases():
     core 6지점은 **종전 방식 그대로**다(인라인 분기 — 팩토리로 옮기는 것은 다음 회차).
     """
     from core import matcher
-    from core.llm import embeddings, llm
+    from core.llm import embeddings, points, struct_map_pass
     from core.query import query as Q
     from core.state.bootstrap import load_config, open_graph
     from core.dictionary import Dictionary
@@ -58,9 +58,9 @@ def cases():
             {"question": "가", "facts": [], "chunks": [], "path": "graph_fact",
              "linked": [], "note": None, "truncated": 0, "transit": []}),
         # ── 파서 3지점 — **팩토리로 잰다**(B48). 파서 함수 직접 호출이 아니다.
-        "image_summary": llm.image_summarizer,
-        "struct_map": llm.struct_mapper,
-        "coord_tag": llm.coord_picker,
+        "image_summary": points.image_summarizer,
+        "struct_map": struct_map_pass.struct_mapper,
+        "coord_tag": points.coord_picker,
     }
 
 
