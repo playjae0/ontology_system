@@ -165,6 +165,22 @@ show("USE_MOCK=1 실행이 ONTO_HOME(운영 루트)에 쓰지 않는다 — 자�
      f"{_after} · rc={_mockrun.returncode}")
 _shutil2.rmtree(_watch, ignore_errors=True)
 
+# ── B78 2b — **모듈은 자기 자리를 한 줄로 말한다** ────────────────────────
+# 단계 3의 코드 지도 생성기가 이 첫 줄을 읽는다. 없으면 그 자리는 지도에서 이름만
+# 남고, 「어느 칸의 코드인가」를 사람이 파일을 열어 추측하게 된다.
+import ast as _ast78                                                # noqa: E402
+_mods78 = [p for d in ("core", "cli", "parser", "kit")
+           for p in sorted((ROOT / d).rglob("*.py")) if "__pycache__" not in p.parts]
+_mods78 += [ROOT / "run.py", ROOT / "doctor.py", ROOT / "router.py"]
+_nodoc78 = [str(p.relative_to(ROOT)) for p in _mods78
+            if not _ast78.get_docstring(_ast78.parse(p.read_text(encoding="utf-8")))]
+show("운영 모듈 중 머리말 없는 파일 0 (자리를 한 줄로 말한다)", not _nodoc78, str(_nodoc78))
+_nokan78 = [str(p.relative_to(ROOT)) for p in _mods78
+            if not (_ast78.get_docstring(_ast78.parse(p.read_text(encoding="utf-8")))
+                    or "").startswith("칸 ")]
+show("머리말 첫 줄이 칸 번호로 시작한다 (칸 대장과 코드가 같은 번호를 쓴다)",
+     not _nokan78, str(_nokan78[:5]))
+
 # **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
 # 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
 # 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.

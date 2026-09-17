@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""validator — 계약 self-check (파서_명세 §8 · CH2 2.2 · 카드 C14).
+"""칸 2.9 — validator — 계약 self-check (파서_명세 §8 · CH2 2.2 · 카드 C14).
 
     ①3층 구조  ②좌표 존재  ③자기완결  ④payload_kind 정합
 

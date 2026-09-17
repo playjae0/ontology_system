@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
+"""칸 3.1 — 일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--step] [--step-every N] [--narrow embed|overlap]

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""tagger — 정규 조각 → 계약 JSON (파서_명세 §3 · CH2 2.2).
+"""칸 2.8 — tagger — 정규 조각 → 계약 JSON (파서_명세 §3 · CH2 2.2).
 
     좌표 태깅 + 봉투 구성 + context + 이미지 placeholder의 요약 완성
 

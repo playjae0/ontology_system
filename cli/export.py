@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""내보내기 — 시각화·외부 도구용 **파생물** (명세 §11 · 카드 P5).
+"""칸 0.3 — 내보내기 — 시각화·외부 도구용 **파생물** (명세 §11 · 카드 P5).
 
     python -m cli.export cypher [출력.cypher]    Neo4j 적재용
     python -m cli.export csv    [출력디렉터리]    nodes.csv · edges.csv (Gephi·엑셀)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""동의어 사전 — **접근의 단일 관문** (문서 7 §7.1 core 접근 경계 3종).
+"""칸 3.4 — 동의어 사전 — **접근의 단일 관문** (문서 7 §7.1 core 접근 경계 3종).
 
     from core.dictionary import Dictionary
     d = Dictionary.open()
