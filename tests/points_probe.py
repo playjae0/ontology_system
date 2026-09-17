@@ -52,7 +52,7 @@ def cases():
             "C1", {"text": "가", "process_ref": "노칭"}, load_config("process"), {}),
         "judge": lambda: matcher.match("가", [n], "Unit"),
         "embed": lambda: embeddings.embed("가"),
-        "generate": lambda: __import__("cli.register", fromlist=["x"])._draft_live("cp", 0),
+        "generate": lambda: __import__("cli.register.draft", fromlist=["x"])._draft_live("cp", 0),
         "link": lambda: Q.link("노칭", Dictionary({}), {"process": g}),
         "answer": lambda: __import__("cli.query", fromlist=["x"]).generate(
             {"question": "가", "facts": [], "chunks": [], "path": "graph_fact",

@@ -261,7 +261,7 @@ def _render_template(text, pkg, *, regeneration=None):
         # **문답은 묶음으로 쌓인다**(B55 ②) — 라운드 배열이 아니라
         # `{samples, at, stale?, rounds[]}`의 리스트다. 옛 꼴(라운드 배열)도
         # 그대로 받는다: 읽지 못하면 그 패키지의 문답이 통째로 지시문에서 빠진다.
-        from cli.register import _hint_batches
+        from cli.register.interview import _hint_batches
         # **확정 사항만 싣는다**(B60 ②) — 라운드 전문은 싣지 않는다. 전문을 같이
         # 실으면 모델이 요약과 대화 사이에서 또 고른다(실측: 묶음이 둘일 때 「결국
         # 헤더는 몇 행」을 대화에서 재구성하다 어긋났다). **대화는 이력, 판단은 요약

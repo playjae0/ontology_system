@@ -56,8 +56,8 @@ def _named(src, name):
 
 
 def targets():
-    """사람이 치는 자리 — `cli/*.py`와 `run.py`."""
-    return sorted((ROOT / "cli").glob("*.py")) + [ROOT / "run.py"]
+    """사람이 치는 자리 — `cli/`의 전 모듈(패키지 포함)과 `run.py`."""
+    return sorted((ROOT / "cli").rglob("*.py")) + [ROOT / "run.py"]
 
 
 def scan():
@@ -142,9 +142,11 @@ def unknown_next(rows=None):
     bad = []
     for r in (rows if rows is not None else scan()):
         for kind, name in next_commands(r["text"]):
+            # `python -m cli.x`는 **모듈이거나 패키지**다(B78 2b — `cli/register/`).
             ok = (name in known if kind == "run" else
-                  (ROOT / "cli" / f"{name}.py").exists() if kind == "cli" else
-                  (ROOT / name).exists())
+                  ((ROOT / "cli" / f"{name}.py").exists()
+                   or (ROOT / "cli" / name / "__main__.py").exists())
+                  if kind == "cli" else (ROOT / name).exists())
             if not ok:
                 bad.append({**r, "cmd": f"{kind}:{name}"})
     return bad

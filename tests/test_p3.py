@@ -24,6 +24,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "kit"))
 
 from cli import register as R                              # noqa: E402
+from cli.register import (__main__ as Rmain, confirm as Rconfirm,   # noqa: E402
+                          draft as Rdraft, gate as Rgate, generate as Rgen,
+                          interview as Rivlog, ledger as Rledger, view as Rview)
 from core.state import init, registry, store                           # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.state.bootstrap import bootstrap                       # noqa: E402
@@ -39,6 +42,12 @@ def show(label, ok, detail=""):
     allok &= bool(ok)
     print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f"  — {detail}" if detail else ""))
     return bool(ok)
+
+def _reg_src():
+    """등록 파트의 소스 전량 — **파트가 파일 여럿이다**(B78 2b). 성질은 「등록 코드가
+    그렇게 한다」이지 「어느 파일에 있다」가 아니므로, 파트를 통째로 읽는다."""
+    return " ".join(_p.read_text(encoding="utf-8")
+                    for _p in sorted((ROOT / "cli" / "register").glob("*.py")))
 
 
 def run(*args):
@@ -114,7 +123,7 @@ show("② 검수는 생성이 세운 관문 값을 확인만 한다 (하네스�
 _gen = run("generate", "toc_report", "--resume")
 _m = re.search(r"기계 관문\(하네스\): PASS — (\d+) PASS / (\d+) FAIL", _gen.stdout)
 show("② 하네스는 **생성 안에서** kit 실물을 호출한다 (재작성 아님)",
-     "run_adapter.py" in (ROOT / "cli/register.py").read_text(encoding="utf-8")
+     "run_adapter.py" in _reg_src()
      and _m and int(_m.group(1)) >= 25 and int(_m.group(2)) == 0,
      _m.group(0) if _m else "관문 줄 없음")
 v = view_of("toc_report")
@@ -203,8 +212,8 @@ r = run("review", "ipqc")
 # 줄이 화면에 되살아났다는 것으로 잰다. 화면 문안은 한 글자만 바꿔도 통과한다.
 show("[B31] 기계 관문이 규약 10 미준수 fixture를 막는다 — **생성에서** 막힌다(B50)",
      "기계 관문(하네스): FAIL" in _gi.stdout and _gi.returncode != 0
-     and [c for c, _l, _d in R.fail_lines(_gi.stdout)],
-     str([c for c, _l, _d in R.fail_lines(_gi.stdout)][:3]))
+     and [c for c, _l, _d in Rgate.fail_lines(_gi.stdout)],
+     str([c for c, _l, _d in Rgate.fail_lines(_gi.stdout)][:3]))
 show("ipqc 2부 파싱은 그대로 돈다 — 조각 33+20 (관문과 파싱은 다른 축)",
      "조각 33" in r.stdout and "조각 20" in r.stdout)
 v = view_of("ipqc")
@@ -313,7 +322,7 @@ show("층 등록부와는 다른 장부다 — 목적이 다르면 장부도 다
 
 # ============================================================ 경계
 print("\n■ 경계 — 하지 않는 것 (M3 · R1)")
-src = (ROOT / "cli/register.py").read_text(encoding="utf-8")
+src = _reg_src()
 show("n6 검수 뷰에 **층 초안 구획이 없다** (층 검수 뷰로 이관 — ⑺-⓪ 종결)",
      "층 초안" not in json.dumps(view_of("ipqc"), ensure_ascii=False)
      and len(view_of("ipqc")["sections"]) == 3)
@@ -401,10 +410,10 @@ _pl.parse(_cpmod, "B3b", _big, max_rows=100,
 show("⑥ 진행 콜백이 **표기 단위**로 흐르고 끝에서 총수와 같다",
      len(_seen2) > 0 and _seen2[-1][0] == _seen2[-1][1],
      str(_seen2[-1]) if _seen2 else "없음")
-show("⑥ 좌표 미스를 LLM 없이 먼저 센다", len(_R._coord_misses([_r200], "process")) > 0)
+show("⑥ 좌표 미스를 LLM 없이 먼저 센다", len(Rview._coord_misses([_r200], "process")) > 0)
 show("⑥ 동의 없으면 LLM 보조가 꺼진다 (기본 N)",
-     _R._ask_llm_coord(["a", "b"], None) is False)
-show("⑥ 인자로 켤 수 있다", _R._ask_llm_coord(["a"], True) is True)
+     Rview._ask_llm_coord(["a", "b"], None) is False)
+show("⑥ 인자로 켤 수 있다", Rview._ask_llm_coord(["a"], True) is True)
 
 # ④ 문답 — 종료는 사람만 한다
 _pkg = {"human": {"hint": ""}, "system": {"reader_head": [
@@ -425,7 +434,7 @@ show("④ 종료어에 «진행»이 있다 (끝내는 것은 사람이다)", "�
 # ① 산출 JSON 표기 — 잎을 접되 json.load 결과는 같다
 _obj = {"a": 1, "fields": {"x": {"role": "entity", "category": "Unit"},
                            "y": {"role": "meta"}}, "edges": [], "u": ["p", "q"]}
-_txt = _R._pretty_json(_obj)
+_txt = Rdraft._pretty_json(_obj)
 show("① json.load 결과가 이전과 완전히 같다", json.loads(_txt) == _obj)
 show("① 가장 안쪽 dict/list가 한 줄이다",
      '"x": {"role": "entity", "category": "Unit"}' in _txt and '"u": ["p", "q"]' in _txt)
@@ -447,7 +456,7 @@ show("② usage가 없는 게이트웨이도 조용히 넘어가되 호출 수�
 
 # ③ 힌트 안내 — 표본 자리의 비파일을 조용히 무시하지 않는다
 try:
-    _R.cmd_generate("zz_hint", "process", ["tests/fixtures/raw/CP01.xlsx", "힌트문장"], "")
+    Rgen.cmd_generate("zz_hint", "process", ["tests/fixtures/raw/CP01.xlsx", "힌트문장"], "")
     _caught = ""
 except SystemExit as e:
     _caught = str(e)
@@ -519,7 +528,7 @@ if _pkg29 is None:
     # 패키지만 필요하다 — 초안 수령은 fixture 소관이라 여기서 SystemExit로 끝난다
     # (D-10). 패키지는 그 전에 이미 파일로 서 있다.
     try:
-        R.cmd_generate("b29probe", "process",
+        Rgen.cmd_generate("b29probe", "process",
                        [str(ROOT / "tests/fixtures/raw/IPQC01.xlsx")], "")
     except SystemExit:
         pass
@@ -675,9 +684,9 @@ show("③ 판 꼬리표는 여전히 0건이다 (v0.9도)", "[v0." not in _sent3
 # [B44] strict 요건이 「required = properties 전량」을 강제한다 — 선택 항목이라는
 # 개념 자체가 없다. 못 채울 수 있는 것은 **타입으로** 연다(confidence_cut: null 허용).
 show("③ GENERATE_SCHEMA가 랭킹·경계선·통계를 담고 strict를 지킨다",
-     set(R.GENERATE_SCHEMA["required"]) == set(R.GENERATE_SCHEMA["properties"])
+     set(Rdraft.GENERATE_SCHEMA["required"]) == set(Rdraft.GENERATE_SCHEMA["properties"])
      and {"role_counts", "attribute_ranking", "confidence_cut"}
-     <= set(R.GENERATE_SCHEMA["properties"]))
+     <= set(Rdraft.GENERATE_SCHEMA["properties"]))
 
 # 패키지 — 시스템 키 5 불변
 _pkg39 = json.loads(
@@ -732,8 +741,9 @@ show("④ 기본은 mock이다 (둘 다 없으면 — 조항 B12)",
 # ⑤ 모드 줄 — LLM을 부를 수 있는 화면 명령 머리
 show("⑤ mock이면 켜는 법을 함께 말한다", 'llm.json' in gateway.mode_line()
      and "mock" in gateway.mode_line())
-for _f, _n in ((ROOT / "cli/register.py", "register"), (ROOT / "run.py", "run")):
-    show(f"⑤ {_n} 이 모드 줄을 낸다", "mode_line()" in _f.read_text(encoding="utf-8"))
+for _src, _n in ((_reg_src(), "register"),
+                 ((ROOT / "run.py").read_text(encoding="utf-8"), "run")):
+    show(f"⑤ {_n} 이 모드 줄을 낸다", "mode_line()" in _src)
 
 # B41 예산 — 한도가 없으면 대조하지 않는다
 show("⑥ 컨텍스트 한도는 **선택**이다 — 기본값을 코드에 박지 않았다",
@@ -776,13 +786,13 @@ _viol = [(n, b) for n, s in _schemas for b in [_strict(s, n)] if b]
 show(f"① 전 구조화 출력 스키마 {len(_schemas)}종이 strict 요건을 지킨다",
      not _viol, str(_viol))
 show("① 자유 키 사전이 0건이다 (role_counts는 고정 키)",
-     R.GENERATE_SCHEMA["properties"]["role_counts"]["additionalProperties"] is False
-     and set(R.GENERATE_SCHEMA["properties"]["role_counts"]["properties"]) == set(R._ROLES))
+     Rdraft.GENERATE_SCHEMA["properties"]["role_counts"]["additionalProperties"] is False
+     and set(Rdraft.GENERATE_SCHEMA["properties"]["role_counts"]["properties"]) == set(Rdraft._ROLES))
 show("① 못 채울 수 있는 필드는 required에서 빼지 않고 null을 연다",
-     R.GENERATE_SCHEMA["properties"]["confidence_cut"]["type"] == ["integer", "null"]
-     and "confidence_cut" in R.GENERATE_SCHEMA["required"])
+     Rdraft.GENERATE_SCHEMA["properties"]["confidence_cut"]["type"] == ["integer", "null"]
+     and "confidence_cut" in Rdraft.GENERATE_SCHEMA["required"])
 show("① 한글 키 `근거`가 `reason`으로 바뀌었다 (소비처 포함)",
-     R.GENERATE_SCHEMA["properties"]["attribute_ranking"]["items"]["required"]
+     Rdraft.GENERATE_SCHEMA["properties"]["attribute_ranking"]["items"]["required"]
      == ["field", "rank", "reason"])
 
 # ② 오류 본문 보존 — 키는 남기지 않는다
@@ -865,7 +875,7 @@ show("④ 대조는 좌표 태깅과 **같은 연산**을 재사용한다 (새�
      "surfaces(nodes)" in (ROOT / "parser/tagger.py").read_text(encoding="utf-8"))
 
 # ⑤⑥ resume · 진행 · 근거
-_src5 = (ROOT / "cli/register.py").read_text(encoding="utf-8")
+_src5 = _reg_src()
 _src5i = (ROOT / "cli/interview.py").read_text(encoding="utf-8")   # 문답은 제 모듈로 갔다
 show("⑤ --resume이 사용법과 파싱에 있다",
      "--resume" in _src5 and "resume=resume" in _src5)
@@ -977,7 +987,7 @@ from core.state import registry as _REG                                   # noqa
 _PPT = str(ROOT / "tests/fixtures/raw/PPT_basic.xlsx").replace(".xlsx", ".pptx")
 # ② 거부 — 제안이 서지 않는 표본(정형)
 try:
-    R.cmd_generate("cpx_basic", "process", [str(RAW / "CP01.xlsx")], use_basic=True)
+    Rgen.cmd_generate("cpx_basic", "process", [str(RAW / "CP01.xlsx")], use_basic=True)
     show("② 제안 없는 표본에 --use-basic은 거부된다", False)
 except SystemExit as e:
     # **문면을 세지 않는다** — 잠글 성질은 「거부 + 사유(어느 표본) + 다음 줄」이다.
@@ -989,7 +999,7 @@ show("② 거부는 검수 자리를 만들지 않는다", not (_P.review() / "c
 _calls0 = gateway.usage_total()["calls"]
 _buf = _io.StringIO()
 with _ctx.redirect_stdout(_buf):
-    R.cmd_generate("pptb_t", "quality", [_PPT], use_basic=True)
+    Rgen.cmd_generate("pptb_t", "quality", [_PPT], use_basic=True)
 _gen = _buf.getvalue()
 show("② --use-basic — 위임 래퍼 어댑터가 검수 자리에 선다 (상수는 basic_ppt 한 곳 — D-111)",
      "from parser.adapters import basic_ppt" in _P.review("pptb_t", "adapter.py").read_text(encoding="utf-8")
@@ -1000,14 +1010,14 @@ show("② 매칭 스키마는 prose 계약 — fields {} · layer 선언",
 show("② 화면이 «호출 0회»를 말한다 (사용량으로 증명)", "호출 0회" in _gen)
 _buf = _io.StringIO()
 with _ctx.redirect_stdout(_buf):
-    R.cmd_review("pptb_t", llm_coord=False)
+    Rview.cmd_review("pptb_t", llm_coord=False)
 show("② 검수·승인 1회는 생략하지 않는다 — 기계 관문 PASS가 확정의 전제 (M4)",
      R._state("pptb_t").get("machine_gate") == "PASS", str(R._state("pptb_t").get("machine_gate")))
 show("② 생성+검수 동안 LLM 호출 0회 (usage_total 불변)",
      gateway.usage_total()["calls"] == _calls0, f"{_calls0} → {gateway.usage_total()['calls']}")
 _buf = _io.StringIO()
 with _ctx.redirect_stdout(_buf):
-    R.cmd_confirm("pptb_t", "테스트")
+    Rconfirm.cmd_confirm("pptb_t", "테스트")
 _conf = _buf.getvalue()
 show("② 확정 — 등록부 등재 + adapters/·schemas/ 정본",
      _REG.lookup("pptb_t") is not None and _P.adapters("pptb_t.py").exists()
@@ -1077,11 +1087,11 @@ for _c in ("init", "bootstrap"):
                         capture_output=True, text=True, cwd=str(ROOT))
     show(f"③ {_c}은 관문 비대상 — 플래그 없이 종전대로", _r.returncode == 0, str(_r.returncode))
 show("③ 관문 대상 목록이 코드에 있다 — register는 생성·검수·확정만(열람은 아니다)",
-     R.GATED == ("generate", "review", "confirm"))
+     Rconfirm.GATED == ("generate", "review", "confirm"))
 # **관문의 자리는 CLI 진입점이다**(§7.6-B-1) — 지점마다 두면 판독처가 다시 여럿이
 # 되고, 그것이 판정필요-15가 신고한 병(파서가 따로 읽어 갈렸다)의 재발이다.
 _gcalls = [f"{f.relative_to(ROOT)}:{i}"
-           for f in [ROOT / "run.py", *sorted((ROOT / "cli").glob("*.py")),
+           for f in [ROOT / "run.py", *sorted((ROOT / "cli").rglob("*.py")),
                      *sorted((ROOT / "core").rglob("*.py")),
                      *sorted((ROOT / "parser").glob("*.py"))]
            for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1)
@@ -1105,7 +1115,7 @@ _r3 = run("generate")
 show("① 위치 인자 0개면 죽지 않고 사용법을 낸다",
      "generate <doc_type>" in (_r3.stdout + _r3.stderr))
 show("① 사용법에 resume 단독 줄이 있다",
-     "generate <doc_type> --resume" in (ROOT / "cli/register.py").read_text(encoding="utf-8"))
+     "generate <doc_type> --resume" in _reg_src())
 
 # ============================================================ B49 전 열 판정
 print("\n■ B49 — 모든 열은 판정을 갖는다 (C19 개정 · 부재로 추론하지 않는다)")
@@ -1133,14 +1143,14 @@ _dsch = {"doc_type": "b49demo", "schema_version": 1, "layer": "quality",
 _dst = {"doc_type": "b49demo", "layer": "quality",
         "samples": [str(RAW / "IPQC01.xlsx")],
         "adapter": "review/b49demo/adapter.py", "schema": "review/b49demo/schema.json"}
-_dmod = R._load(R._at(_dst["adapter"]), "reg_b49demo_t")
-_ex, _un, _orp = R.unmappable_of(_dsch, _dmod)
+_dmod = R._load(Rdraft._at(_dst["adapter"]), "reg_b49demo_t")
+_ex, _un, _orp = Rledger.unmappable_of(_dsch, _dmod)
 show("① 셋으로 갈린다 — excluded · undecided · orphan (구판은 셋이 같은 질문이었다)",
      [u["field"] for u in _ex] == ["최근 불량 이력"]
      and [u["field"] for u in _un] == ["비고"]
      and [u["field"] for u in _orp] == ["신규 열"],
      f"{[u['field'] for u in _ex]} / {[u['field'] for u in _un]} / {[u['field'] for u in _orp]}")
-_dv = R.build_view(_dst, [], True, "")
+_dv = Rview.build_view(_dst, [], True, "")
 _dpr = _dv["sections"]["parse_result"]
 show("① excluded는 anomalies에 0건이다 — 판정이 끝난 열은 질문이 아니다",
      not [a for a in _dpr["anomalies"] if "최근 불량 이력" in a["message"]]
@@ -1155,22 +1165,22 @@ show("① 배정표(6지선다)에는 undecided만 오른다",
      [r["field"] for r in _dv["sections"]["role_table"] if r.get("role") == "UNMAPPABLE"]
      == ["비고"])
 show("① orphan이 있으면 기계 관문이 막힌다 (하네스·파싱이 통과여도)",
-     R.gate_verdict(True, True, _orp) == "FAIL"
-     and R.gate_verdict(True, True, []) == "PASS")
+     Rledger.gate_verdict(True, True, _orp) == "FAIL"
+     and Rledger.gate_verdict(True, True, []) == "PASS")
 _legacy = {**_dsch}
 del _legacy["unmappable"]
-_lex, _lun, _lorp = R.unmappable_of(_legacy, _dmod)
+_lex, _lun, _lorp = Rledger.unmappable_of(_legacy, _dmod)
 show("① 구판 스키마(키 없음)는 차집합 전량을 undecided로 — 기존 등록분이 안 깨진다",
      not _lex and not _lorp
      and sorted(u["field"] for u in _lun) == sorted(
          ["비고", "신규 열", "최근 불량 이력"]),
      str([u["field"] for u in _lun]))
 show("① kind가 닫힌 2값 밖이면 undecided로 받는다 (모르면 묻는다)",
-     R.unmappable_of({**_dsch, "unmappable": [{"field": "X", "kind": "몰라", "reason": ""}]},
+     Rledger.unmappable_of({**_dsch, "unmappable": [{"field": "X", "kind": "몰라", "reason": ""}]},
                      _dmod)[1][0]["kind"] == "undecided")
 show("① 생성 스키마가 unmappable을 required로 요구한다 (strict — B44)",
-     "unmappable" in R.GENERATE_SCHEMA["required"]
-     and R.GENERATE_SCHEMA["properties"]["unmappable"]["items"]["properties"]["kind"]
+     "unmappable" in Rdraft.GENERATE_SCHEMA["required"]
+     and Rdraft.GENERATE_SCHEMA["properties"]["unmappable"]["items"]["properties"]["kind"]
      ["enum"] == ["excluded", "undecided"])
 # **판 번호를 박지 않는다**(B63 ① — 지시문은 이제 한 판이다). 잠글 성질은 그대로다:
 # 「쓰지 않기로 한 열」을 스키마에 싣도록 지시문이 말한다.
@@ -1199,30 +1209,44 @@ _ask_lines = [
     "  [FAIL] 예외 없이 실행  — KeyError: 'cells'",
     "  [FAIL] prose 조각에 text 또는 image_ref 존재",
 ]
-_a, _k = R.classify_failures("\n".join(_auto_lines))
+_a, _k = Rgate.classify_failures("\n".join(_auto_lines))
 show("② 문면이 답을 담는 실패 7종은 전부 자동 갈래다", len(_a) == 7 and not _k,
      f"자동 {len(_a)} · 문답 {len(_k)}")
-_a2, _k2 = R.classify_failures("\n".join(_ask_lines))
+_a2, _k2 = Rgate.classify_failures("\n".join(_ask_lines))
 show("② 원인 규명이 필요한 실패는 문답 갈래다 (조각 0건 · extract 예외 · prose 본문)",
      not _a2 and len(_k2) == 3, f"자동 {len(_a2)} · 문답 {len(_k2)}")
 # **변이 시험** — 분류표에 없는 새 하네스 항목이 생겨도 조용히 자동으로 흐르지 않는다
-_a3, _k3 = R.classify_failures("  [FAIL] 새로 생긴 관문 항목 — 아직 표에 없다")
+_a3, _k3 = Rgate.classify_failures("  [FAIL] 새로 생긴 관문 항목 — 아직 표에 없다")
 show("② 변이 — 목록 밖 실패는 기본이 문답이다 (모르면 묻는다)",
      not _a3 and len(_k3) == 1, f"자동 {len(_a3)} · 문답 {len(_k3)}")
 # **수를 박지 않는다**(B58 ②에서 같은 병을 겪었다) — 분류표는 관문이 자랄 때 함께
 # 자란다. 잠글 성질은 **「자동 갈래는 표에 열거된 것뿐」** 하나다: 표의 항목은 전부
 # 자동으로 가고(위 변이가 그 반대쪽을 잠근다), 표 밖은 문답이다.
-_auto_all = all(not R.classify_failures(f"  [FAIL] G99  {k} — 상세")[1]
-                for k in R.AUTO_FIX)
+_auto_all = all(not Rgate.classify_failures(f"  [FAIL] G99  {k} — 상세")[1]
+                for k in Rgate.AUTO_FIX)
 show("② 분류표가 코드에 표로 있다 — 자동 갈래는 열거된 것뿐",
-     isinstance(R.AUTO_FIX, dict) and R.AUTO_FIX and _auto_all,
-     f"표 {len(R.AUTO_FIX)}항목 전건이 자동")
+     isinstance(Rgate.AUTO_FIX, dict) and Rgate.AUTO_FIX and _auto_all,
+     f"표 {len(Rgate.AUTO_FIX)}항목 전건이 자동")
 
 # ── ⓔ 검수는 하네스를 돌리지 않는다 (AST — 문자열이 아니라 호출을 센다)
-_rt = _ast.parse((ROOT / "cli/register.py").read_text(encoding="utf-8"))
-_calls = {n.name: [c.func.id for c in _ast.walk(n)
-                   if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)]
-          for n in _rt.body if isinstance(n, _ast.FunctionDef)}
+# 등록 파트는 파일 여럿이다(B78 2b) — 파일마다 파싱해 함수→호출 표를 합친다.
+# 호출 표기는 `harness(...)`일 수도 `gate.harness(...)`일 수도 있으므로 **이름**으로 센다.
+def _call_names(node):
+    out = []
+    for c in _ast.walk(node):
+        if not isinstance(c, _ast.Call):
+            continue
+        f = c.func
+        out.append(f.id if isinstance(f, _ast.Name)
+                   else (f.attr if isinstance(f, _ast.Attribute) else ""))
+    return out
+
+
+_calls = {}
+for _rf in sorted((ROOT / "cli" / "register").glob("*.py")):
+    for n in _ast.parse(_rf.read_text(encoding="utf-8")).body:
+        if isinstance(n, _ast.FunctionDef):
+            _calls[n.name] = _call_names(n)
 show("② cmd_review에 harness 호출 0건 — 검수는 내용만 본다",
      _calls.get("cmd_review", []).count("harness") == 0)
 show("② 하네스 호출은 machine_gate 한 곳이다 (생성이 부른다)",
@@ -1275,8 +1299,8 @@ shutil.rmtree(REVIEW / "b50t", ignore_errors=True)
 # 코드와 함께 화면에 있다 ③칠 수 있는 명령이 함께 있다.
 _nx = [l for l in _gi.stdout.splitlines() if "python -m cli.register" in l]
 show("② ⓓ 미통과는 뷰로 넘어가지 않는다 · 화면이 이유와 다음 줄을 준다",
-     _gi.returncode != 0 and R.fail_lines(_gi.stdout) and _nx,
-     f"FAIL {len(R.fail_lines(_gi.stdout))}줄 · 다음 줄 {len(_nx)}개")
+     _gi.returncode != 0 and Rgate.fail_lines(_gi.stdout) and _nx,
+     f"FAIL {len(Rgate.fail_lines(_gi.stdout))}줄 · 다음 줄 {len(_nx)}개")
 # **B62 ④가 이 자리를 바꿨다** — 기본값이 N(막다른 길)에서 Y(이어가기)로 갔고,
 # 종료 조건은 「같은 FAIL이 되풀이된다」다. 잠글 성질은 ①자동 수정이 한 번 돌았다
 # ②끝날 때 **왜 끝나는지**를 말한다 ③rc가 실패다 — 문면 한 줄이 아니다.
@@ -1345,8 +1369,8 @@ _st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8")
 show("① 해소 못 하면 **뷰를 갈아 치우지 않는다** · machine_gate=FAIL (변이 검출 지점)",
      _st41["machine_gate"] == "FAIL"
      and (_v41.read_bytes() if _v41.exists() else None) == _before41
-     and R.fail_lines(_r41.stdout) and _r41.returncode != 0,
-     f"FAIL {len(R.fail_lines(_r41.stdout))}줄 · rc={_r41.returncode}")
+     and Rgate.fail_lines(_r41.stdout) and _r41.returncode != 0,
+     f"FAIL {len(Rgate.fail_lines(_r41.stdout))}줄 · rc={_r41.returncode}")
 show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
      _calls.get("cmd_review", []).count("machine_gate") == 1)
 for _d in ("f40ok", "f40no"):
@@ -1500,7 +1524,7 @@ def _b55_restore():
 def _b55_system(**kw):
     """`draft`를 태워 **전송 직전 dict**의 system 메시지를 돌려준다."""
     _b55_sent.clear()
-    R.draft("b55i", kw.pop("revision", 0), **kw)
+    Rdraft.draft("b55i", kw.pop("revision", 0), **kw)
     return _b55_sent["payload"]["messages"][0]["content"]
 
 
@@ -1551,7 +1575,7 @@ _b55_pkgmin = {"human": {"doc_type": "t", "layer": "process", "samples": ["s"],
                "system": {"reader_head": [], "skeleton_closed_list": {},
                           "layer_vocabulary": {"layer": "process"}, "blocks": {},
                           "adapter_skeleton": ""}}
-_b55_items = R.instruction_items(
+_b55_items = Rdraft.instruction_items(
     "극성 열은 쓰지 않는다",
     [{"n": 1, "instruction": "헤더는 2행이다", "by": "사람(검수 지시)"}])
 _B55_FIXED = "앞 초안이 아래 지시를 받았다"
@@ -1599,7 +1623,7 @@ try:
         # 여기서 재는 것(문답이 패키지에 남았나)은 이미 결정돼 있다.
         try:
             with _ctx.redirect_stdout(_b55_buf):
-                R.cmd_generate("b55iv", "process", samples, "", interview=True)
+                Rgen.cmd_generate("b55iv", "process", samples, "", interview=True)
         except SystemExit:
             pass
         return json.loads((R._dir("b55iv") / "input_package.json")
@@ -1613,7 +1637,7 @@ finally:
 
 
 def _b55_batches(pk):
-    return R._hint_batches((pk["human"] or {}).get("hint"))
+    return Rivlog._hint_batches((pk["human"] or {}).get("hint"))
 
 
 # ②ⓐ **재실행이 덮지 않는다** — 구판은 이번 실행분으로 치환했다.
@@ -1622,7 +1646,7 @@ show("② --interview 2회 — 묶음이 **둘 다 남는다** (덮지 않는다
      f"{len(_b55_batches(_pk1))} → {len(_b55_batches(_pk2))}묶음")
 # **자리가 옮겨졌다**(B62 ②) — 전문은 로그에, 판단은 패키지에. 잠글 성질은
 # 그대로다: **사람의 답은 다시 못 만드니 사라지지 않는다.**
-_b55_log = R.read_log("b55iv")
+_b55_log = Rivlog.read_log("b55iv")
 show("② 1회차 답이 그대로 있다 — 전문은 로그에 (사람의 답은 다시 못 만든다)",
      any("표본은 CP 양식이다" in (r.get("answer") or "")
          for rounds in _b55_log.values() for r in rounds),
@@ -1763,7 +1787,7 @@ from cli.ingest import doc_id_of as _b55_did                      # noqa: E402
 
 show("⑤ 리허설 파싱이 doc_id_of(표본)를 쓴다 ({DOC_TYPE}NN이 아니다)",
      "mod, doc_id_of(s), s, layer=" in
-     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+     _reg_src())
 # **키가 같아야 재사용이 성립한다** — 구판은 리허설이 다른 이름으로 써서 못 만났다.
 _b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
@@ -1888,13 +1912,13 @@ _KIT_SRC = (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
 # **부르는 것을 센다**(AST) — 「pipeline.parse를 돈다」는 주석은 아무것도 돌리지 않는다.
 _kit_calls = {n.func.attr for n in _ast.walk(_ast.parse(_KIT_SRC))
               if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute)}
-_reg_src = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
-_reg_calls = {n.func.attr for n in _ast.walk(_ast.parse(_reg_src))
+_REGSRC = _reg_src()
+_reg_calls = {n.func.attr for n in _ast.walk(_ast.parse(_REGSRC))
               if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute)}
 show("②ⓐ 관문이 pipeline.parse를 **부른다** (검수 리허설과 같은 함수)",
      "parse" in _kit_calls and "parse" in _reg_calls)
 show("②ⓐ 관문은 하네스 실물을 부르는 구조 그대로다 (재작성 아님)",
-     "run_adapter.py" in _reg_src)
+     "run_adapter.py" in _REGSRC)
 
 # ⓒ **관문이 LLM을 부르지 않는다.** 무엇을 주입하지 않는가가 규격이라, 주입 인자
 # 이름이 하네스 안에 **하나도 나타나지 않는 것**으로 잰다.
@@ -1911,7 +1935,7 @@ show("②ⓒ 관문 안에 LLM 게이트웨이 미적재 어서션이 있다 (�
 # ⓑ **tagger에서 깨지는 검체는 관문에서 잡힌다** — 검수까지 가지 않는다.
 # 이 검체는 ①~④를 통과한다(조각도 나오고 스키마도 맞다). 구판 관문은 통과시켰다.
 _BRK = ROOT / "tests/fixtures/검체/gate_break_tagger.py"
-_brk_ok, _brk_out = R.harness(_BRK, _BRK.with_suffix(".json"), [RAW / "CP01.xlsx"])
+_brk_ok, _brk_out = Rgate.harness(_BRK, _BRK.with_suffix(".json"), [RAW / "CP01.xlsx"])
 _stages = _brk_out.split("⑤ 파서 전 구간")
 show("②ⓑ 깨지는 검체가 관문에서 FAIL이다 (검수까지 가지 않는다)",
      not _brk_ok and len(_stages) == 2)
@@ -1920,7 +1944,7 @@ show("②ⓑ ①~④는 통과했다 — 구판 관문이 이 어댑터를 놓�
                                       if "[FAIL]" in l][:2]))
 # **코드로 잰다**(B59 ①) — 라벨 문면은 바뀔 수 있지만 `G51`은 그 검사에 박힌
 # 고정값이고, 예외 원문이 상세에 실려 있다는 것이 ②의 성질이다.
-_f5 = R.fail_lines(_stages[1])
+_f5 = Rgate.fail_lines(_stages[1])
 show("②ⓑ 잡은 자리가 ⑤다 — G51(파서 전 구간)이 예외 원문과 함께 FAIL이다",
      [c for c, _l, _d in _f5] == ["G51"] and "unhashable" in _f5[0][2],
      str(_f5[:1]))
@@ -1959,7 +1983,7 @@ show("⑤ⓐ 그 경로를 화면이 찍는다 (사람이 어디를 볼지 안�
 # 보여 주는 화면」이 갈리고, 사람이 승인한 것이 어느 쪽인지 사후에 못 가린다.
 show("⑤ⓐ 생성이 검수와 **같은 함수**를 부른다 (뷰 경로가 둘이 아니다)",
      "cmd_review(doc_type, llm_coord=False, extract=False)" in
-     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+     _reg_src())
 # **생성은 LLM을 켜지 않는다** — 비용 관문은 사람이 켜는 것이고, 그 자리가 review다.
 # **성질은 「생성이 비용 스위치를 켜지 않는다」이지 화면에 어느 문장이 있느냐가
 # 아니다**(B69 ② — 진행 줄이 표기 단위가 되면서 옛 문면이 사라졌다). 켜는 자리는
@@ -1967,7 +1991,7 @@ show("⑤ⓐ 생성이 검수와 **같은 함수**를 부른다 (뷰 경로가 �
 show("⑤ⓐ 생성의 뷰 산출에 비용 스위치가 꺼져 있다 (좌표 보조·추출 리허설)",
      "추출 리허설 끔" in _g5.stdout
      and "cmd_review(doc_type, llm_coord=False, extract=False)" in
-     (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+     _reg_src()
      and "[좌표 태깅]" not in _g5.stdout)
 # **review는 남는다** — 없애면 재생성 지시·좌표 보조·추출 리허설의 자리가 사라진다.
 _r5 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
@@ -2037,7 +2061,7 @@ try:
     # 그 문서의 raw만 갈아 끼운다(판정 규칙을 흉내 내지 않는다).
     _amb_path.write_bytes(b"")
     R.reader.read = lambda pth: _raw_amb if str(pth).endswith("_b58_amb.xlsx") else _orig_read(pth)
-    _view_amb = R.build_view({**_st_amb, "samples": [str(_amb_path)]},
+    _view_amb = Rview.build_view({**_st_amb, "samples": [str(_amb_path)]},
                              [_FakeRes()], True, "")
     _qs = [a for a in _view_amb["sections"]["parse_result"]["anomalies"]
            if a["kind"] == "question" and "형태 판정" in a["message"]]
@@ -2066,15 +2090,15 @@ print("\n■ B58 ⑥ — prose 스키마는 role 집계를 요구하지 않는�
 # 모델이 빠져나갈 수 없는 자리라, 열이 없는 산문 문서에서 **있지도 않은 role
 # 집계를 지어내게** 한다. 화면 문면이 아니라 스키마의 모양을 본다.
 show("⑥ prose 산출 스키마의 required에 role 키가 없다",
-     not (set(R.ROLE_KEYS) & set(R.generate_schema("prose")["required"])),
-     str(sorted(set(R.ROLE_KEYS) & set(R.generate_schema("prose")["required"]))))
+     not (set(Rdraft.ROLE_KEYS) & set(Rdraft.generate_schema("prose")["required"])),
+     str(sorted(set(Rdraft.ROLE_KEYS) & set(Rdraft.generate_schema("prose")["required"]))))
 # **strict 요건은 「required = properties 전량」이다**(B44 실측 400) — `required`에서만
 # 빼면 게이트웨이가 요청을 통째로 거부한다. 계열 전부에서 그 요건이 선다.
 show("⑥ 계열 전부가 strict 요건을 지킨다 (required = properties 전량)",
-     all(set(R.generate_schema(k)["required"]) == set(R.generate_schema(k)["properties"])
+     all(set(Rdraft.generate_schema(k)["required"]) == set(Rdraft.generate_schema(k)["properties"])
          for k in ("table", "prose", None)))
 show("⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 prose에서만이다)",
-     set(R.ROLE_KEYS) <= set(R.generate_schema("table")["required"]))
+     set(Rdraft.ROLE_KEYS) <= set(Rdraft.generate_schema("table")["required"]))
 
 
 # ── B59 관문이 막을 때 사람이 다음 줄을 안다 ────────────────────────────
@@ -2082,16 +2106,17 @@ print("\n■ B59 — 막는 것은 맞다. 안 알려주는 게 틀렸다")
 
 import re as _re                                              # noqa: E402
 _KIT59 = (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
-_REG59 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+_REG59 = _reg_src()
 
 # ①ⓑ **셋이 같은 함수를 부른다** — 문면이 세 벌이면 그중 하나만 고쳐지는 날이 오고,
 # 사람은 어느 화면을 믿을지 모른다. 호출을 센다(주석이 아니다).
-_t59 = _ast.parse(_REG59)
+# 파트가 파일 여럿이므로(B78 2b) 파일마다 파싱하고, 호출 표기는 **이름**으로 센다
+# (`gate_block(...)`과 `gate.gate_block(...)`은 같은 호출이다).
 _calls59 = {}
-for _n in _ast.walk(_t59):
-    if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-        _calls59[_n.name] = {c.func.id for c in _ast.walk(_n)
-                             if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)}
+for _rf59 in sorted((ROOT / "cli" / "register").glob("*.py")):
+    for _n in _ast.walk(_ast.parse(_rf59.read_text(encoding="utf-8"))):
+        if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            _calls59[_n.name] = set(_call_names(_n))
 show("①ⓑ confirm·review·status 셋이 **같은 함수**(gate_block)를 부른다",
      all("gate_block" in _calls59.get(f, set())
          for f in ("cmd_confirm", "cmd_review", "cmd_status")),
@@ -2113,14 +2138,14 @@ show("①ⓒ 태그와 라벨이 1:1이다 (한 태그에 두 라벨 0)",
 # **문면 규격의 정본은 킷이다** — register가 제 정규식을 따로 갖지 않는다.
 show("①ⓒ 판정 줄 문면 규격이 한 자리다 (register가 킷의 LINE_RE를 읽는다)",
      "LINE_RE" in _KIT59 and "_kit_line_re()" in _REG59
-     and R._kit_line_re() == _re.search(r'^LINE_RE = r"(.+)"$', _KIT59, _re.M).group(1))
+     and Rgate._kit_line_re() == _re.search(r'^LINE_RE = r"(.+)"$', _KIT59, _re.M).group(1))
 # **블록이 코드·라벨·상세를 되살린다** — 사람이 state.json을 열지 않는다.
 _demo59 = ('  [PASS] G11  문법 오류 없음\n'
            '  [FAIL] G13  규약 10 — 자기완결 연산을 재구현하지 않았다 (x)  — 정의 [a]\n'
            '  [FAIL] G51  파서 전 구간이 예외 없이 완주 (y)  — TypeError: boom')
 show("① FAIL 줄만 코드·라벨·상세로 되살아난다 (PASS는 섞이지 않는다)",
-     [x[0] for x in R.fail_lines(_demo59)] == ["G13", "G51"]
-     and R.fail_lines(_demo59)[1][2] == "TypeError: boom")
+     [x[0] for x in Rgate.fail_lines(_demo59)] == ["G13", "G51"]
+     and Rgate.fail_lines(_demo59)[1][2] == "TypeError: boom")
 
 # ①ⓓ **사람 화면에서 「검수」를 쓰지 않는다** — 사람이 할 수 없는 일의 이름이었다.
 # 주석·docstring은 대상이 아니다(판 이력과 근거는 남아야 한다).
@@ -2140,9 +2165,9 @@ _five59 = sorted({l for l in _re.findall(
     r'show\(\s*f?"([^"]+)"',
     _KIT59.split("def run_pipeline")[1].split("\n# ---")[0])})
 _unclassified = [l for l in _five59
-                 if l[:3] not in R.GATE_SELF
-                 and not any(k in l[5:] for k in R.AUTO_FIX)
-                 and l[:3] not in R.WITH_EVIDENCE]
+                 if l[:3] not in Rgate.GATE_SELF
+                 and not any(k in l[5:] for k in Rgate.AUTO_FIX)
+                 and l[:3] not in Rgate.WITH_EVIDENCE]
 show("②ⓑ ⑤단 라벨 중 분류되지 않은 것이 0이다 (auto / 원문 동봉 / 관문 자체)",
      not _unclassified and len(_five59) == 4, str(_unclassified))
 
@@ -2168,7 +2193,7 @@ show("③ⓑ --no-basic이면 LLM 생성 경로로 간다 (사람이 고를 수 
 reset("pptx_b59")
 
 # ④ **어느 폴더·어느 판으로 돌았나**가 관문 산출 첫 줄에 있다.
-_ok59, _out59 = R.harness(ROOT / "tests/fixtures/adapters/cp.py",
+_ok59, _out59 = Rgate.harness(ROOT / "tests/fixtures/adapters/cp.py",
                           ROOT / "tests/fixtures/schemas/cp.json", [RAW / "CP01.xlsx"])
 show("④ 관문 산출 첫 줄이 ROOT를 밝힌다 (폴더를 나눠 쓸 때 어느 사본인가)",
      _out59.splitlines()[0].startswith("[관문] ROOT=")
@@ -2178,14 +2203,13 @@ show("④ 관문 산출 첫 줄이 ROOT를 밝힌다 (폴더를 나눠 쓸 때 �
 # ── B60 ① 관문은 다시 돈다 — 저장된 판정을 믿지 않는다 ────────────────────
 print("\n■ B60 ① — status·confirm은 지금 코드의 관문을 다시 돈다")
 
-_REG60 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+_REG60 = _reg_src()
 # ①ⓑ **호출 계수** — status·confirm이 regate를 거쳐 machine_gate에 닿는다.
-_t60 = _ast.parse(_REG60)
 _calls60 = {}
-for _n in _ast.walk(_t60):
-    if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-        _calls60[_n.name] = {c.func.id for c in _ast.walk(_n)
-                             if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)}
+for _rf60 in sorted((ROOT / "cli" / "register").glob("*.py")):
+    for _n in _ast.walk(_ast.parse(_rf60.read_text(encoding="utf-8"))):
+        if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            _calls60[_n.name] = set(_call_names(_n))
 show("①ⓑ status·confirm이 관문을 다시 돈다 (regate → machine_gate 호출 계수)",
      all("regate" in _calls60.get(f, set()) for f in ("cmd_status", "cmd_confirm"))
      and "machine_gate" in _calls60.get("regate", set()),
@@ -2225,7 +2249,7 @@ _saved_pass = _st60["machine_gate"] == "PASS"
 # **바꿀 곳은 작업 사본이다**(B62 ①-c) — 관문 입구에서 시스템이 `review/`로 복사해
 # 거기에 채우므로, 그 뒤로 관문이 읽는 어댑터는 `state.adapter`가 가리키는 사본이다.
 # fixture 원본은 손대지 않는 자리라(D-26) 거기를 고치면 아무 데도 안 닿는다.
-_ad60 = R._at(_st60["adapter"])
+_ad60 = Rdraft._at(_st60["adapter"])
 _ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
     "\nADAPTER = {",
     "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
@@ -2235,14 +2259,14 @@ _st60b = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8")
 show("①ⓒ 저장값 PASS + 어댑터 규약 10 위반 → confirm이 FAIL로 막는다 (저장값을 안 믿는다)",
      _saved_pass and _c60.returncode != 0 and registry.lookup("cp60") is None
      and _st60b["machine_gate"] == "FAIL"
-     and "G13" in [c for c, _l, _d in R.fail_lines(_c60.stdout)],
+     and "G13" in [c for c, _l, _d in Rgate.fail_lines(_c60.stdout)],
      f"저장 PASS={_saved_pass} · rc={_c60.returncode} · 지금={_st60b['machine_gate']}")
 # 옛 판(태그 없는 harness_out)을 두고 status → 관문이 돌고 태그 붙은 블록이 뜬다.
 _st60b["harness_out"] = _re.sub(r"(\[(?:PASS|FAIL)\])\s+G[0-9A-Z]{2}\s\s", r"\1 ", _st60b["harness_out"])
 (REVIEW / "cp60" / "state.json").write_text(json.dumps(_st60b, ensure_ascii=False), encoding="utf-8")
 _s60 = _reg60("status", "cp60")
 show("①ⓐ 태그 없는 옛 harness_out에도 status가 관문을 돌려 태그 붙은 블록을 낸다",
-     _s60.returncode != 0 and [c for c, _l, _d in R.fail_lines(_s60.stdout)] == ["G13"]
+     _s60.returncode != 0 and [c for c, _l, _d in Rgate.fail_lines(_s60.stdout)] == ["G13"]
      and "[관문] ROOT=" in json.loads(
          (REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))["harness_out"])
 reset("cp60")
@@ -2276,9 +2300,9 @@ reset("cp62")
 _g62 = _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--interview",
               feed="1\n\n헤더 행은 2행이다 — 1행은 제목\n진행\nY\n")
 _pk62 = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
-_b62 = R._hint_batches(_pk62["human"]["hint"])[-1]
+_b62 = Rivlog._hint_batches(_pk62["human"]["hint"])[-1]
 _pr62 = (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8")
-_rd62 = R.read_log("cp62").get(_b62["at"]) or []
+_rd62 = Rivlog.read_log("cp62").get(_b62["at"]) or []
 
 # ②ⓑ **프롬프트에는 확정 사항만** — 전문은 싣지 않는다.
 show("②ⓑ 생성 프롬프트에 [확정 사항]이 있고 [문답 라운드 전문이 없다",
@@ -2300,24 +2324,24 @@ _topic62 = _b62["decisions"][0]["topic"]
 _old_dec = _b62["decisions"][0]["decision"]
 _reg62("review", "cp62", "--instruct", f"{_topic62}: 행 독립으로 읽어라", "--no-llm-coord")
 _pk62b = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
-_d62 = [d for b in R._hint_batches(_pk62b["human"]["hint"]) for d in b["decisions"]
+_d62 = [d for b in Rivlog._hint_batches(_pk62b["human"]["hint"]) for d in b["decisions"]
         if d["topic"] == _topic62][0]
 show("②ⓒ --instruct로 결정을 뒤집으면 decisions의 그 항목이 바뀐다 (reason에 사람 지시 rev)",
      _d62["decision"] != _old_dec and "행 독립" in _d62["decision"]
      and "사람 지시 (rev" in _d62["reason"],
      _d62["reason"][:40])
 # topic이 안 든 지시는 **새 항목**으로 붙는다 — 지시를 버리지 않는다.
-_n_before = sum(len(b["decisions"]) for b in R._hint_batches(_pk62b["human"]["hint"]))
+_n_before = sum(len(b["decisions"]) for b in Rivlog._hint_batches(_pk62b["human"]["hint"]))
 _reg62("review", "cp62", "--instruct", "복수값 구분자에 슬래시도 받아라", "--no-llm-coord")
 _pk62c = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
-_n_after = sum(len(b["decisions"]) for b in R._hint_batches(_pk62c["human"]["hint"]))
+_n_after = sum(len(b["decisions"]) for b in Rivlog._hint_batches(_pk62c["human"]["hint"]))
 show("②ⓒ topic이 안 든 지시는 새 항목으로 붙는다 (지시를 버리지 않는다)",
      _n_after == _n_before + 1)
 # ②ⓔ **크기** — 요약이 전문보다 짧다(변이 시험: 전문을 실었을 때와 비교).
 from cli.prompt import _decisions_block as _DB                       # noqa: E402
-_bs62 = R._hint_batches(_pk62c["human"]["hint"])
+_bs62 = Rivlog._hint_batches(_pk62c["human"]["hint"])
 _summary62 = _DB(_bs62)
-_log62 = R.read_log("cp62")
+_log62 = Rivlog.read_log("cp62")
 _transcript62 = "\n".join(
     f"[문답 라운드 {r.get('round')}] 이해: {r.get('understanding', '')}"
     + (f"\n  사람의 답/교정: {r['answer']}" if r.get("answer") else "")
@@ -2329,7 +2353,7 @@ show("②ⓔ 확정 요약이 라운드 전문보다 짧다 (프롬프트가 줄
 reset("cp62")
 _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--hint", "3~7행 병합은 위 값 채움")
 _pk62h = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
-_dh = [d for b in R._hint_batches(_pk62h["human"]["hint"]) for d in b["decisions"]]
+_dh = [d for b in Rivlog._hint_batches(_pk62h["human"]["hint"]) for d in b["decisions"]]
 show("② 문답 없이 --hint만 주면 힌트 문장이 확정 사항 한 항목이다 (자리는 항상 있다)",
      len(_dh) == 1 and _dh[0]["decision"] == "3~7행 병합은 위 값 채움"
      and "[확정 사항" in (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8"))
@@ -2433,14 +2457,14 @@ def _reg63(*a):
 reset("csv63")
 _g63 = _reg63("generate", "csv63", "process", _CSV63, "--no-basic")
 _st63 = json.loads((REVIEW / "csv63" / "state.json").read_text(encoding="utf-8"))
-_mod63 = R._load(R._at(_st63["adapter"]), "b62_csv63")
+_mod63 = R._load(Rdraft._at(_st63["adapter"]), "b62_csv63")
 _actual63 = _PF63 = None
 from parser import preflight as _PFM                              # noqa: E402
 _actual63 = _PFM.header_labels(reader.read(_CSV63), 1, _mod63.ADAPTER["expects"])
 # ①ⓐ **CSV table 어댑터가 관문을 지난다** — 구판은 무조건 G52 adapter_mismatch였다.
 show("①ⓐ CSV 표본으로 관문 PASS · orphan 0 (구판은 무조건 adapter_mismatch)",
      _g63.returncode == 0 and _st63["machine_gate"] == "PASS"
-     and not R.fail_lines(_g63.stdout), str(R.fail_lines(_g63.stdout)[:1]))
+     and not Rgate.fail_lines(_g63.stdout), str(Rgate.fail_lines(_g63.stdout)[:1]))
 show("①ⓐ 어댑터의 header_labels가 표본 실물과 같다 (LLM 오타를 시스템이 덮었다)",
      _mod63.ADAPTER["expects"]["header_labels"] == _actual63
      and "측정방" not in _mod63.ADAPTER["expects"]["header_labels"],
@@ -2481,7 +2505,7 @@ show("①ⓓ 그 경로에 LLM 호출 0 (mock 로그 0줄)",
 reset("csv63old")
 
 # ④ **재시도의 기본은 이어가기** — 구판은 기본값이 막다른 길이었다.
-_RSRC63 = (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+_RSRC63 = _reg_src()
 _ask63 = _RSRC63.split("def _ask_more")[1].split("\ndef ")[0]
 show("④ⓑ 비대화형 기본이 Y다 (구판은 N — 기본값이 막다른 길이었다)",
      'ans not in ("n", "no")' in _ask63 and "[Y/n]" in _ask63)
@@ -2519,7 +2543,7 @@ _reg64("generate", "b64", "process", str(RAW / "CP01.xlsx"), "--interview", "--n
        feed="1\n\n헤더는 3행이다\n진행\nY\n")
 _pk64 = json.loads((REVIEW / "b64" / "input_package.json").read_text(encoding="utf-8"))
 _lg64 = json.loads((REVIEW / "b64" / "interview_log.json").read_text(encoding="utf-8"))
-_b64 = R._hint_batches(_pk64["human"]["hint"])[-1]
+_b64 = Rivlog._hint_batches(_pk64["human"]["hint"])[-1]
 
 # ⓑ **패키지에 전문이 없다** — 생성 user 메시지가 패키지 원문 통째이므로
 # 패키지가 깨끗해야 보내는 것이 깨끗하다(걷어내는 방식은 잊을 자리를 만든다).
@@ -2579,7 +2603,7 @@ _d64.mkdir(parents=True, exist_ok=True)
     encoding="utf-8")
 _r64 = _reg64("generate", "b64old", "--resume")
 _pk64o = json.loads((_d64 / "input_package.json").read_text(encoding="utf-8"))
-_b64o = R._hint_batches(_pk64o["human"]["hint"])[0]
+_b64o = Rivlog._hint_batches(_pk64o["human"]["hint"])[0]
 _lg64o = json.loads((_d64 / "interview_log.json").read_text(encoding="utf-8"))
 show("②ⓑ 옛 꼴 패키지를 읽으면 로그가 생기고 패키지에서 rounds가 사라진다",
      "rounds" not in _b64o
@@ -2600,8 +2624,8 @@ show("②ⓑ 이어하기 화면의 라운드 건수가 로그에서 온다 (패
      _n64[0].strip() if _n64 else "(줄 없음)")
 # **힌트만 준 패키지는 해당 없음** — `hint_only_decisions`가 이미 한 항목을 세운다.
 show("②ⓓ 힌트만 준 패키지는 경고 대상이 아니다 (결정이 이미 있다)",
-     R.warn_no_decisions("x", {"human": {"hint": {"text": "h", "interview": [
-         {"samples": [], "at": "t", "decisions": R.hint_only_decisions("h")}]}}}) is None)
+     Rivlog.warn_no_decisions("x", {"human": {"hint": {"text": "h", "interview": [
+         {"samples": [], "at": "t", "decisions": Rivlog.hint_only_decisions("h")}]}}}) is None)
 reset("b64old")
 reset("b64")
 shutil.rmtree(_fx64, ignore_errors=True)
@@ -2662,7 +2686,7 @@ show("①ⓑ 합치기는 앞에서부터 첫 비지 않은 값이다 (D가 비�
      _merge64 == ["노칭 프레스", "비전 측정기", "스태커"], str(_merge64))
 # ①ⓑ **orphan 집합이 리스트를 펼친다** — 합쳐진 둘째 열은 쓴 열이다.
 show("①ⓑ 쓴 열 집합이 리스트를 펼친다 (합쳐진 열은 orphan이 아니다)",
-     R.col_values({"x": ["D", "G"], "y": "A"}) == {"D", "G", "A"})
+     Rledger.col_values({"x": ["D", "G"], "y": "A"}) == {"D", "G", "A"})
 
 # ── ⑤ C38 잠금 — 시스템 필드는 LLM 출력과 무관하다 (문서 1 C38 · 칸 1.5) ──────
 #
@@ -2681,8 +2705,8 @@ _draft64.write_text(
     "def extract(raw, struct_map_fn=None):\n"
     "    return []\n", encoding="utf-8")
 _st64 = {"doc_type": "c38t", "adapter": str(_draft64.relative_to(ROOT)), "revision": 0}
-R.stamp_system_fields(_st64, [str(_csv64)])
-_after64 = R._load(R._at(_st64["adapter"]), "c38_after").ADAPTER
+Rgate.stamp_system_fields(_st64, [str(_csv64)])
+_after64 = R._load(Rdraft._at(_st64["adapter"]), "c38_after").ADAPTER
 _exp_after = _after64["expects"]
 
 
@@ -2713,12 +2737,12 @@ show("⑤ 초안의 틀린 값 셋이 저장본에 남지 않는다 (오타 라�
 # 것은 초안 그대로이고, 그 값은 재계산값과 다르다 — 그것이 C38이 막는 상태다.
 _st64["adapter"] = str(_draft64.relative_to(ROOT))     # 작업 사본 이전으로 되돌린다
 shutil.rmtree(R.REVIEW / "c38t", ignore_errors=True)
-_keep64, R.stamp_system_fields = R.stamp_system_fields, lambda st, samples: None
+_keep64, Rgate.stamp_system_fields = Rgate.stamp_system_fields, lambda st, samples: None
 try:
-    R.stamp_system_fields(_st64, [str(_csv64)])
-    _off64 = R._load(R._at(_st64["adapter"]), "c38_off").ADAPTER
+    Rgate.stamp_system_fields(_st64, [str(_csv64)])
+    _off64 = R._load(Rdraft._at(_st64["adapter"]), "c38_off").ADAPTER
 finally:
-    R.stamp_system_fields = _keep64
+    Rgate.stamp_system_fields = _keep64
 show("⑤ 변이 — 스탬프를 끄면 초안 값이 남아 붉어진다 (되돌리면 초록)",
      _off64["adapter_version"] == "9.9"
      and "Centre" in _off64["expects"]["header_labels"]
@@ -2738,8 +2762,8 @@ def _gate65(adapter_src, schema=_sc65, name="a"):
     """어댑터 원문으로 관문을 한 번 돌린다 — 판정 줄만 돌려준다."""
     f = _d65 / f"{name}.py"
     f.write_text(adapter_src, encoding="utf-8")
-    _ok, _out = R.harness(f, schema, [RAW / "CP01.xlsx"])
-    return {c: (l, d) for c, l, d in R.fail_lines(_out)}, _out
+    _ok, _out = Rgate.harness(f, schema, [RAW / "CP01.xlsx"])
+    return {c: (l, d) for c, l, d in Rgate.fail_lines(_out)}, _out
 
 
 # ①ⓑ **없는 이름은 로드 단계에서 잡힌다** — 실행(G31)까지 가지 않는다.
@@ -2752,7 +2776,7 @@ show("①ⓑ 없는 normalizer 이름이 로드 단계에서 FAIL이다 (실행 
      f"{sorted(_bad65)} · 상세 {_bad65.get('G1B', ('', ''))[1][:40]}")
 show("①ⓑ 상세가 있는 것의 목록을 담는다 (AUTO_FIX — 사람이 통역하지 않는다)",
      all(k in _bad65["G1B"][1] for k in ("col_to_letter", "expand_merged", "split_multi"))
-     and not R.classify_failures(_out65)[1])
+     and not Rgate.classify_failures(_out65)[1])
 # **비공개 이름도 FAIL** — 오늘 도는 것이 다음 판에 사라져도 약속 위반이 아니다.
 _priv65, _ = _gate65(
     _cp65.replace("    fragments = []",
@@ -2773,8 +2797,8 @@ def _vgate65(mut, name):
     mut(sch)
     f = _d65 / f"s_{name}.json"
     f.write_text(json.dumps(sch, ensure_ascii=False), encoding="utf-8")
-    _ok, _out = R.harness(_pfa65, f, [RAW / "PFMEA01.xlsx"])
-    return {c: (l, d) for c, l, d in R.fail_lines(_out)}, _out
+    _ok, _out = Rgate.harness(_pfa65, f, [RAW / "PFMEA01.xlsx"])
+    return {c: (l, d) for c, l, d in Rgate.fail_lines(_out)}, _out
 
 
 def _set_cat(s):
@@ -2803,11 +2827,11 @@ show("②ⓑ 패턴표 밖 삼항이 FAIL이고 허용 삼항이 문면에 있�
      and "FailureEffect" in _t65["G4E"][1],
      _t65.get("G4E", ("", ""))[1][:70])
 show("②ⓑ 셋 다 AUTO_FIX 갈래다 (문면이 목록을 담는다)",
-     all(not R.classify_failures(o)[1] for o in (_co65, _ro65, _to65)))
+     all(not Rgate.classify_failures(o)[1] for o in (_co65, _ro65, _to65)))
 # **걸침 필드는 대상 층의 목록으로 · `@좌표필드`는 블록의 target_category로 판정**
-_ok65, _ = R.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"]), None
-_pass65, _pout65 = R.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
-_codes65 = [c for c, _l, _d in R.fail_lines(_pout65)]
+_ok65, _ = Rgate.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"]), None
+_pass65, _pout65 = Rgate.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+_codes65 = [c for c, _l, _d in Rgate.fail_lines(_pout65)]
 show("②ⓑ 걸침 필드(target_layer)·@좌표필드가 있는 스키마가 초록이다 "
      "(다른 층 카테고리를 오판하지 않는다)",
      not [c for c in _codes65 if c in ("G4C", "G4D", "G4E")], str(_codes65))
@@ -3028,11 +3052,11 @@ print("\n■ B67 ② — 열 판정 대장 (columns.json)")
 
 reset("ipqc")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
-_led67 = R.read_ledger("ipqc")
-_pcols67 = {c for pp in R._profiles("ipqc") for c in (pp.get("열") or {})}
+_led67 = Rledger.read_ledger("ipqc")
+_pcols67 = {c for pp in Rledger._profiles("ipqc") for c in (pp.get("열") or {})}
 # **대장은 프로파일 ∪ 어댑터가 쓰는 열이다**(B76 ② — 구판은 프로파일뿐이라
 # 어댑터가 프로파일 밖 열을 쓰면 그 필드의 행이 없었다).
-_acols67 = R.col_values((getattr(
+_acols67 = Rledger.col_values((getattr(
     R._load(ROOT / R._state("ipqc")["adapter"], "p3_led67"), "ADAPTER", {})
     .get("expects") or {}).get("columns"))
 show("② 대장의 행 집합 == 프로파일 열 ∪ 어댑터가 쓰는 열 (한 열에 한 행)",
@@ -3056,8 +3080,8 @@ _ad67.write_text(_src67.replace("def extract(",
                                 "    return normalizer.no_such_helper(raw)\n\n\n"
                                 "def extract(", 1), encoding="utf-8")
 _calls67a = gateway.usage_total()["calls"]
-_v67 = R.regate("ipqc", R._state("ipqc"))       # 관문 재실행 — 재생성·문답 없음
-_led67b = R.read_ledger("ipqc")
+_v67 = Rgate.regate("ipqc", R._state("ipqc"))       # 관문 재실행 — 재생성·문답 없음
+_led67b = Rledger.read_ledger("ipqc")
 show("②ⓑ 코드에 오류만 심어도 **role·필드 대응은 그대로다** (판단과 코드가 갈렸다)",
      _v67 != "PASS" and {(r["col"], r["role"], r["field"]) for r in _led67b} == _judg67,
      f"관문 {_v67} · 대장 {len(_led67b)}행")
@@ -3068,22 +3092,22 @@ show("②ⓑ 대장 쓰기 경로에 LLM 호출 0 (시스템이 뽑는다 — C3
 # ⓑ 지시가 열을 이름으로 부르면 그 행이 갱신되고 **출처가 사람으로 바뀐다**
 _o67 = next((r for r in _led67 if str(r.get("status")).startswith("open")), _led67[-1])
 run("review", "ipqc", "--instruct", f"{_o67['col']}열은 attribute다")
-_row67 = next(r for r in R.read_ledger("ipqc") if r["col"] == _o67["col"])
+_row67 = next(r for r in Rledger.read_ledger("ipqc") if r["col"] == _o67["col"])
 show("②ⓑ --instruct가 그 열의 행을 갱신하고 출처가 instruct rev N이 된다",
      _row67.get("role") == "attribute"
      and str(_row67.get("by", "")).startswith("instruct rev"),
      f"{_row67['col']} · role {_row67.get('role')} · by {_row67.get('by')}")
 show("②ⓑ 사람이 정한 판단은 뒤 관문이 지우지 않는다 (산출이 아직 안 쓴 열이어도)",
-     R.sync_ledger("ipqc", R._state("ipqc"))
-     and next(r for r in R.read_ledger("ipqc")
+     Rledger.sync_ledger("ipqc", R._state("ipqc"))
+     and next(r for r in Rledger.read_ledger("ipqc")
               if r["col"] == _o67["col"]).get("by", "").startswith("instruct"))
 show("② 열을 못 집는 지시는 **대장을 건드리지 않는다** (추측으로 행을 고치지 않는다)",
-     R.apply_to_ledger("ipqc", "전반적으로 더 꼼꼼히 해라", "instruct rev 99") == 0)
+     Rledger.apply_to_ledger("ipqc", "전반적으로 더 꼼꼼히 해라", "instruct rev 99") == 0)
 # prose에는 열이 없다 — 대장을 세우면 본문 열 하나가 「빠뜨린 열」로 뜬다(거짓).
 reset("toc_report")
 run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
 show("② prose 어댑터에는 대장이 서지 않는다 (열이 없는 자리다)",
-     R._state("toc_report") and not R.ledger_path("toc_report").exists(),
+     R._state("toc_report") and not Rledger.ledger_path("toc_report").exists(),
      f"관문 {(R._state('toc_report') or {}).get('machine_gate')}")
 
 
@@ -3111,18 +3135,18 @@ def _live67():
 _live67()
 # **재는 것은 이어하기가 보내는 전송분이다** — 그 뒤의 관문 루프(문답·자동 재생성)는
 # 이 어서션의 대상이 아니라서 끊는다. 끊지 않으면 가짜 응답이 문답 화면으로 흘러간다.
-_fin67 = R._finish_generate
-R._finish_generate = lambda *a, **k: 0
+_fin67 = Rgate._finish_generate
+Rgate._finish_generate = lambda *a, **k: 0
 try:
     _b67 = _io.StringIO()
     with _ctx.redirect_stdout(_b67):
-        R.cmd_generate("ipqc", None, [], resume=True)
+        Rgen.cmd_generate("ipqc", None, [], resume=True)
 finally:
-    R._finish_generate = _fin67
+    Rgate._finish_generate = _fin67
     _llm._post, _llm.require, _llm.use_mock = _p67, _r67, _m67
 _scr67 = _b67.getvalue()
 _sys67 = _sent67[0]["messages"][0]["content"] if _sent67 else ""
-_tags67 = [c for c, _l, _d in R.fail_lines(R._state("ipqc").get("harness_out") or "")]
+_tags67 = [c for c, _l, _d in Rgate.fail_lines(R._state("ipqc").get("harness_out") or "")]
 show("①ⓑ 관문 FAIL 상태의 --resume이 **지난 판정을 전송분에 싣는다**",
      bool(_sent67) and any(t in _sys67 for t in _tags67) if _tags67 else False,
      f"태그 {_tags67} · system {len(_sys67.encode()):,}B")
@@ -3135,7 +3159,7 @@ show("①ⓐ 화면이 지난 FAIL 건수와 이력 건수를 말한다",
 
 # ⓑ **PASS면 초안을 다시 받지 않는다** — 통과한 것을 이유 없이 갈지 않는다.
 _drafts67 = []
-_d67 = R.draft
+_d67 = Rdraft.draft
 
 
 def _spy67(doc_type, revision=0, *, instruction=None, history=None):
@@ -3144,23 +3168,23 @@ def _spy67(doc_type, revision=0, *, instruction=None, history=None):
     return _d67(doc_type, revision, instruction=instruction, history=history)
 
 
-R.draft = _spy67
+Rdraft.draft = _spy67
 try:
     with _ctx.redirect_stdout(_io.StringIO()):
-        R.cmd_generate("toc_report", None, [], resume=True)   # 관문 PASS 상태
+        Rgen.cmd_generate("toc_report", None, [], resume=True)   # 관문 PASS 상태
     _pass67 = list(_drafts67)
     # ⓑ 초안이 없으면 초회와 같은 입력이다 (지시 없음 · rev 0)
     _drafts67.clear()
     _st67 = R._state("ipqc")
-    (R._at(_st67["adapter"])).unlink(missing_ok=True)
+    (Rdraft._at(_st67["adapter"])).unlink(missing_ok=True)
     try:
         with _ctx.redirect_stdout(_io.StringIO()):
-            R.cmd_generate("ipqc", None, [], resume=True)
+            Rgen.cmd_generate("ipqc", None, [], resume=True)
     except SystemExit:
         pass
     _none67 = list(_drafts67)
 finally:
-    R.draft = _d67
+    Rdraft.draft = _d67
 show("①ⓑ 관문 PASS 상태의 --resume은 **초안을 다시 받지 않는다** (LLM 호출 0)",
      _pass67 == [], f"draft {len(_pass67)}회")
 show("①ⓑ 초안이 없는 --resume은 **초회와 같은 입력**이다 (지시 0 · rev 0)",
@@ -3204,7 +3228,7 @@ show("② status도 같은 분할 줄을 낸다 (화면 한 벌)",
      [l for l in _st68.stdout.splitlines() if l.strip().startswith("분할 —")] == _sl68)
 # **table 어댑터에는 줄이 없다** — 없는 것을 빈 줄로 찍지 않는다.
 show("② table 등록에는 분할 줄이 없다",
-     not R.split_block((R._state("ipqc") or {}).get("harness_out") or ""))
+     not Rgate.split_block((R._state("ipqc") or {}).get("harness_out") or ""))
 # 뷰: 레벨 선택 표에 기준 열 하나. **계약이 먼저다**(D-115) — 스키마가 키를 선언한다.
 _h68 = (REVIEW / "b68" / "view.html").read_text(encoding="utf-8")
 show("② 뷰의 레벨 선택 표에 분할 기준 열이 있고 값이 실린다",
@@ -3299,7 +3323,7 @@ print("\n■ B72 ① — 산출 키 ⊆ 스키마 fields ∪ 구조 필드 (G39)
 
 _cpa72 = ROOT / "tests" / "fixtures" / "adapters" / "cp.py"
 _cps72 = _P.fixture_schemas("cp.json")
-_ok72, _out72 = R.harness(_cpa72, _cps72, [RAW / "CP01.xlsx"])
+_ok72, _out72 = Rgate.harness(_cpa72, _cps72, [RAW / "CP01.xlsx"])
 show("① 정상 쌍은 G39가 초록이다 (지금 자산이 규약 7을 지킨다)",
      "[PASS] G39" in _out72 and "[FAIL] G39" not in _out72,
      [l.strip() for l in _out72.splitlines() if "G39" in l][:1])
@@ -3313,16 +3337,16 @@ _mut72.write_text(_src72.replace(
     "    return fragments",
     '    for f in fragments:\n        f["meta"] = {"개정일": "2026-01-01"}\n'
     "    return fragments", 1), encoding="utf-8")
-_okm72, _outm72 = R.harness(_mut72, _cps72, [RAW / "CP01.xlsx"])
-_g39 = [(c, l, d) for c, l, d in R.fail_lines(_outm72) if c == "G39"]
+_okm72, _outm72 = Rgate.harness(_mut72, _cps72, [RAW / "CP01.xlsx"])
+_g39 = [(c, l, d) for c, l, d in Rgate.fail_lines(_outm72) if c == "G39"]
 show("①ⓑ meta 딕셔너리를 내면 FAIL이고 **그 이름이 문면에 있다**",
      len(_g39) == 1 and "meta" in _g39[0][2],
      _g39[0][2][:70] if _g39 else "G39 FAIL 없음")
 show("①ⓑ 문면이 처방을 담는다 — AUTO_FIX 갈래다 (사람의 통역 0)",
-     not R.classify_failures(_outm72)[1]
-     and any("G39" in a for a in R.classify_failures(_outm72)[0]))
+     not Rgate.classify_failures(_outm72)[1]
+     and any("G39" in a for a in Rgate.classify_failures(_outm72)[0]))
 show("①ⓑ 한 태그 한 라벨이다 (원인은 상세가 가른다 — B59 ①)",
-     len({l for _c, l, _d in R.fail_lines(_outm72) if _c == "G39"}) == 1)
+     len({l for _c, l, _d in Rgate.fail_lines(_outm72) if _c == "G39"}) == 1)
 # **구조 필드는 정본에서 읽는다** — 관문이 제 목록을 들면 pipeline이 자랄 때 갈린다.
 import importlib.util as _iu72                                     # noqa: E402
 _ra72 = _iu72.module_from_spec(_iu72.spec_from_file_location("ra72", R.KIT / "run_adapter.py"))
@@ -3353,7 +3377,7 @@ show("① 가장 단순한 few-shot(cp)이 role: meta를 보인다 (LLM이 본�
 # G39에 걸렸다(의도된 `unknown_field` 재료였다). 허브 판정 ⓐ: role: meta로
 # 선언하고 시험 재료는 시험이 심는다 — **자산의 결함에 기댄 재료는 자산을 고칠
 # 때마다 시험을 깨뜨린다.** 내장 참조 자산도 관문 대상이다(예외를 두지 않는다).
-_pf73, _pfo73 = R.harness(ROOT / "tests/fixtures/adapters/pfmea.py",
+_pf73, _pfo73 = Rgate.harness(ROOT / "tests/fixtures/adapters/pfmea.py",
                           ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
 show("⑤ 내장 참조 쌍(pfmea)도 관문을 통과한다 — 예외를 두지 않는다",
      "[FAIL] G39" not in _pfo73 and _pf73,
@@ -3369,11 +3393,11 @@ print("\n■ B76 ② 열 판정 대장 커버리지 (G4G)")
 reset("ipqc")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
 _st76 = R._state("ipqc")
-_sch76 = json.loads((R._at(_st76["schema"])).read_text(encoding="utf-8"))
+_sch76 = json.loads((Rdraft._at(_st76["schema"])).read_text(encoding="utf-8"))
 _fld76, _ = R.load_blocks(_sch76)
 from run_adapter import structural_fields as _sf76                 # noqa: E402
 _struct76 = set(_sf76())
-_have76 = {r.get("field") for r in R.read_ledger("ipqc") if r.get("field")}
+_have76 = {r.get("field") for r in Rledger.read_ledger("ipqc") if r.get("field")}
 show("② 스키마 필드 전부에 대장 행이 있다 (구조 필드 제외)",
      all(f in _have76 for f in _fld76 if f not in _struct76),
      str([f for f in _fld76 if f not in _struct76 and f not in _have76]))
@@ -3382,54 +3406,54 @@ show("② 스키마 필드 전부에 대장 행이 있다 (구조 필드 제외)
 _pkg76 = REVIEW / "ipqc" / "input_package.json"
 _pj76 = json.loads(_pkg76.read_text(encoding="utf-8"))
 # **구조 필드는 G4G의 대상이 아니다** — 스키마 `fields`가 아니라 블록의 것이다.
-_drop76 = next(r["col"] for r in R.read_ledger("ipqc")
+_drop76 = next(r["col"] for r in Rledger.read_ledger("ipqc")
                if r.get("field") and r["field"] in _fld76
                and r["field"] not in _struct76)
-_field76 = next(r["field"] for r in R.read_ledger("ipqc") if r["col"] == _drop76)
+_field76 = next(r["field"] for r in Rledger.read_ledger("ipqc") if r["col"] == _drop76)
 for _h76 in ((_pj76.get("system") or {}).get("reader_head") or []):
     for _pp76 in (_h76.get("열_프로파일") or []):
         (_pp76.get("열") or {}).pop(_drop76, None)
 _pkg76.write_text(json.dumps(_pj76, ensure_ascii=False), encoding="utf-8")
-R.sync_ledger("ipqc", R._state("ipqc"))
+Rledger.sync_ledger("ipqc", R._state("ipqc"))
 show("② 프로파일 밖 열을 쓰는 어댑터도 대장 행을 갖는다 (합집합으로 돈다)",
      any(r.get("col") == _drop76 and r.get("field") == _field76
-         for r in R.read_ledger("ipqc")),
+         for r in Rledger.read_ledger("ipqc")),
      f"{_drop76}열 · 필드 {_field76}")
 
 # 대장 행을 지우면 G4G가 붉는다 — 사람이 판정한 것이 아니라 기계가 빠뜨린 것이다
-_lp76 = R.ledger_path("ipqc")
+_lp76 = Rledger.ledger_path("ipqc")
 _save76 = _lp76.read_text(encoding="utf-8")
 _led76 = json.loads(_save76)
 _led76["columns"] = [r for r in _led76["columns"] if r.get("field") != _field76]
 _lp76.write_text(json.dumps(_led76, ensure_ascii=False), encoding="utf-8")
-_ok76g, _out76g = R.harness(R._at(_st76["adapter"]), R._at(_st76["schema"]),
+_ok76g, _out76g = Rgate.harness(Rdraft._at(_st76["adapter"]), Rdraft._at(_st76["schema"]),
                             [RAW / "IPQC01.xlsx"], doc_type="ipqc")
 _g4g76 = [l.strip() for l in _out76g.splitlines() if "G4G" in l]
 show("② 대장에 없는 필드가 있으면 G4G FAIL이고 문면이 그 필드를 말한다",
      _g4g76 and "[FAIL]" in _g4g76[0] and _field76 in _g4g76[0],
      (_g4g76[0] if _g4g76 else "G4G 줄 없음")[:100])
 show("② G4G는 재생성으로 고칠 수 없다 — 관문 자체 결함으로 분류된다",
-     "G4G" in R.GATE_SELF)
+     "G4G" in Rgate.GATE_SELF)
 _lp76.write_text(_save76, encoding="utf-8")
-_ok76h, _out76h = R.harness(R._at(_st76["adapter"]), R._at(_st76["schema"]),
+_ok76h, _out76h = Rgate.harness(Rdraft._at(_st76["adapter"]), Rdraft._at(_st76["schema"]),
                             [RAW / "IPQC01.xlsx"], doc_type="ipqc")
 show("② 대장이 덮으면 G4G PASS (관문이 대장을 만들지 않고 읽는다)",
      "[PASS] G4G" in _out76h)
 show("② `role_table`이 어댑터 `columns`를 읽지 않는다 (폴백이 없다 — 둘째 원인)",
      "_led_cols.get(r[\"field\"]) or (" not in
-     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+     _reg_src())
 
 # ① 합치기 리스트여도 기계 제안 대조가 돈다(죽지 않는다)
-_mod76r = R._load(R._at(_st76["adapter"]), "p3_b76r")
-_two76 = [r for r in R.read_ledger("ipqc") if r.get("field")][:2]
+_mod76r = R._load(Rdraft._at(_st76["adapter"]), "p3_b76r")
+_two76 = [r for r in Rledger.read_ledger("ipqc") if r.get("field")][:2]
 if len(_two76) == 2:
     _rows76 = json.loads(_lp76.read_text(encoding="utf-8"))
     for r in _rows76["columns"]:
         if r.get("col") == _two76[1]["col"]:
             r["field"] = _two76[0]["field"]        # 한 필드가 열 둘 — 합치기 꼴
     _lp76.write_text(json.dumps(_rows76, ensure_ascii=False), encoding="utf-8")
-_prof76b = R._profiles("ipqc")
-_rt76 = R.role_table(_sch76, _mod76r, R._state("ipqc"), _prof76b)
+_prof76b = Rledger._profiles("ipqc")
+_rt76 = Rledger.role_table(_sch76, _mod76r, R._state("ipqc"), _prof76b)
 show("① 한 필드가 열 여럿이어도 `role_table`이 죽지 않고 표를 낸다",
      isinstance(_rt76, list) and _rt76 and all("field" in r for r in _rt76),
      f"{len(_rt76)}행")
@@ -3438,18 +3462,18 @@ _lp76.write_text(_save76, encoding="utf-8")
 print("\n■ B76 ③ 등록 흐름의 예외는 문면으로 죽는다")
 _dl76 = store.path(store.DEFECTS)
 _before76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
-_orig76 = R.cmd_list
+_orig76 = Rconfirm.cmd_list
 
 
 def _boom76():
     raise TypeError("unhashable type: 'list' (시험 주입)")
 
 
-R.cmd_list = _boom76
+Rconfirm.cmd_list = _boom76
 _buf76 = _io.StringIO()
 with _ctx.redirect_stdout(_buf76):
-    _rc76 = R.main(["list"])
-R.cmd_list = _orig76
+    _rc76 = Rmain.main(["list"])
+Rconfirm.cmd_list = _orig76
 _scr76 = _buf76.getvalue()
 _after76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
 show("③ 화면은 **한 줄**이고 파일:줄·예외·단계를 말한다",
@@ -3464,11 +3488,11 @@ show("③ traceback 전문은 `defects.log`에 남는다 (조용히 버리지 �
 show("③ 종료 코드는 상태 거부와 같다", _rc76 == 1, str(_rc76))
 
 _os.environ["ONTO_TRACEBACK"] = "1"
-R.cmd_list = _boom76
+Rconfirm.cmd_list = _boom76
 _buf76b = _io.StringIO()
 with _ctx.redirect_stdout(_buf76b):
-    R.main(["list"])
-R.cmd_list = _orig76
+    Rmain.main(["list"])
+Rconfirm.cmd_list = _orig76
 del _os.environ["ONTO_TRACEBACK"]
 show("③ `ONTO_TRACEBACK=1`이면 화면에도 전문이 나온다 (개발용)",
      "Traceback (most recent call last)" in _buf76b.getvalue())
@@ -3476,7 +3500,7 @@ show("③ `ONTO_TRACEBACK=1`이면 화면에도 전문이 나온다 (개발용)"
 _sys76 = _io.StringIO()
 try:
     with _ctx.redirect_stdout(_sys76):
-        R.main(["없는명령ZZ"])
+        Rmain.main(["없는명령ZZ"])
     _se76 = "죽지 않았다"
 except SystemExit as _e76:
     _se76 = str(_e76)

@@ -170,7 +170,7 @@ def cmd_parse(args):
 
 def cmd_register(args):
     """n6 구축 모드 — 생성 → 검수 → 확정."""
-    from cli.register import main
+    from cli.register.__main__ import main
     return main(args)
 
 

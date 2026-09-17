@@ -134,7 +134,7 @@ print("\n■ 분기가 실물로 서 있는가 — 주석을 세지 않는다 (�
 WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
          "judge": ("core/matcher.py", "_judge_live"),
          "embed": ("core/llm/embeddings.py", "gateway.require"),
-         "generate": ("cli/register.py", "_draft_live"),
+         "generate": ("cli/register/draft.py", "_draft_live"),
          "link": ("core/query/query.py", "_link_llm"),
          "answer": ("cli/query.py", "def generate")}
 for key, (where, needle) in WIRED.items():

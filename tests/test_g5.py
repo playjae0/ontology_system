@@ -312,7 +312,7 @@ show("register roles — 등록 **전에** 돌고 UNMAPPABLE을 먼저 뽑는다
 show("실행만 하고 등록부를 건드리지 않는다",
      "등록부를 건드리지 않는다" in _r.stdout
      and "ipqc" not in set(registry.all_doc_types()))
-from cli.register import MATERIAL_KEYS                          # noqa: E402
+from cli.register.generate import MATERIAL_KEYS                          # noqa: E402
 show("자재 열은 개체로 만들지 않는다 (3번째 층 후보 — 미결 R5)",
      "자재" in MATERIAL_KEYS
      and "자재" in json.dumps(load_config("process")["categories"]["Property"],

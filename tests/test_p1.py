@@ -43,6 +43,12 @@ def show(label, ok, detail=""):
     print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f"  — {detail}" if detail else ""))
     return bool(ok)
 
+def _reg_src():
+    """등록 파트의 소스 전량 — **파트가 파일 여럿이다**(B78 2b). 성질은 「등록 코드가
+    그렇게 한다」이지 「어느 파일에 있다」가 아니므로, 파트를 통째로 읽는다."""
+    return " ".join(_p.read_text(encoding="utf-8")
+                    for _p in sorted((ROOT / "cli" / "register").glob("*.py")))
+
 
 def load_adapter(path, name):
     spec = importlib.util.spec_from_file_location(name, str(ROOT / path))
@@ -486,6 +492,7 @@ from core.llm import gateway, points, struct_map_pass                           
 from parser import render                                         # noqa: E402
 from parser.adapters import basic_pdf                             # noqa: E402
 from cli import register as _reg, scan as _scan_mod               # noqa: E402
+from cli.register import draft as Rdraft   # noqa: E402
 sys.path.insert(0, str(ROOT / "tests" / "fixtures"))
 import make_pdf, make_ppt                                         # noqa: E402
 
@@ -712,13 +719,13 @@ show("스캔본(텍스트 0자)은 그림 placeholder 하나로 낸다 — 빈 �
 show("PDF는 지문 대상이 아니다 — 표 어댑터와 대조하지 않는다",
      _scan_mod.scan(str(_PDF)).get("not_fingerprintable") == "pdf")
 show("--use-basic이 .pdf 전부에 뜬다 (섞이면 뜨지 않는다)",
-     (_reg.basic_adapter_proposal([str(_PDF)]) or {}).get("adapter")
+     (Rdraft.basic_adapter_proposal([str(_PDF)]) or {}).get("adapter")
      == "parser/adapters/basic_pdf.py"
-     and _reg.basic_adapter_proposal([str(_PDF), str(_PPTX)]) is None)
+     and Rdraft.basic_adapter_proposal([str(_PDF), str(_PPTX)]) is None)
 show("위임 래퍼가 제안이 정한 어댑터를 문다 (PDF가 PPT 어댑터를 물지 않는다)",
-     "basic_pdf" in (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+     "basic_pdf" in _reg_src()
      and 'mod = Path(proposal["adapter"]).stem'
-     in (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+     in _reg_src())
 
 # ── B58 ③ 고정 prose xlsx 어댑터 + 레벨 규칙 ([정정] 46) ──────────────────
 print("\n■ B58 ③ — 스프레드시트 산문: 규칙이 레벨을 고른다")
@@ -782,8 +789,8 @@ show("③ⓑ 어댑터 경로의 화면도 규칙이 고른 레벨을 낸다 (�
 
 # **표를 이 어댑터에 넣으면 제안이 서지 않는다** — 시트당 1청크는 분할이 아니라 실패다.
 show("③ 격자 포맷이라고 무조건 제안하지 않는다 (표는 거부 — 산출로 판정한다)",
-     _reg.basic_adapter_proposal([str(RAW / "CP01.xlsx")]) is None
-     and (_reg.basic_adapter_proposal([str(RAW / "TOC01.xlsx")]) or {}).get("adapter")
+     Rdraft.basic_adapter_proposal([str(RAW / "CP01.xlsx")]) is None
+     and (Rdraft.basic_adapter_proposal([str(RAW / "TOC01.xlsx")]) or {}).get("adapter")
      == "parser/adapters/basic_prose_xlsx.py")
 
 # ⓐⓒⓓ — 인입 2회로 실증한다. **클린에서 시작한다**(찌꺼기가 판정에 섞이지 않게).

@@ -258,7 +258,7 @@ def _prior_rounds(pkg):
     전문은 로그에 산다(`review/<doc_type>/interview_log.json`) — 패키지에 두면
     생성 user 메시지(패키지 원문 통째)에 그대로 실린다.
     """
-    from cli.register import _hint_batches, read_log
+    from cli.register.interview import _hint_batches, read_log
     human = (pkg or {}).get("human") or {}
     doc_type = human.get("doc_type")
     if not doc_type:
