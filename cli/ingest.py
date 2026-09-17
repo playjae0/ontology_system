@@ -546,8 +546,12 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             finalize()
         return row
     except Exception as e:                       # 문서 단위 독립 — 나머지를 멈추지 않는다
+        # **같은 경계다**(B76 ③) — 한 줄에 **파일:줄**이 있고 traceback은
+        # `defects.log`로 간다. 여기는 이미 한 줄이었지만 자리를 말하지 않았다.
+        _line = log.defect(e, stage=f"단계 {stage.get('이름', '?')}",
+                           extra=f"doc_id {sel['doc_id']}")
         row.update(status=FAIL, reason=f"{type(e).__name__}: {e}"[:300])
-        print(f"   실패 — {row['reason']}")
+        print("   " + _line)
         # **비용은 실패해도 보인다**(B75 ③ⓐ) — 사내 실측 열넷째는 첫 판정 호출
         # 전에 서서 진행 줄도 토큰 줄도 없이 끝났다. 무엇을 썼는지 모르면
         # 「다시 돌려도 되나」를 판단할 재료가 없다.

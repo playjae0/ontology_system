@@ -3017,9 +3017,14 @@ reset("ipqc")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
 _led67 = R.read_ledger("ipqc")
 _pcols67 = {c for pp in R._profiles("ipqc") for c in (pp.get("열") or {})}
-show("② 대장의 행 집합 == 열 프로파일의 열 집합 (판정됐든 아니든 한 열에 한 행)",
-     _led67 and {r["col"] for r in _led67} == _pcols67,
-     f"대장 {len(_led67)}행 · 프로파일 {len(_pcols67)}열")
+# **대장은 프로파일 ∪ 어댑터가 쓰는 열이다**(B76 ② — 구판은 프로파일뿐이라
+# 어댑터가 프로파일 밖 열을 쓰면 그 필드의 행이 없었다).
+_acols67 = R.col_values((getattr(
+    R._load(ROOT / R._state("ipqc")["adapter"], "p3_led67"), "ADAPTER", {})
+    .get("expects") or {}).get("columns"))
+show("② 대장의 행 집합 == 프로파일 열 ∪ 어댑터가 쓰는 열 (한 열에 한 행)",
+     _led67 and {r["col"] for r in _led67} == (_pcols67 | _acols67),
+     f"대장 {len(_led67)}행 · 프로파일 {len(_pcols67)}열 · 어댑터 {len(_acols67)}열")
 show("② 한 열에 한 행 — 열문자 중복 0",
      len({r["col"] for r in _led67}) == len(_led67))
 show("② 열 전량이 판정을 갖는다 — 필드·role 또는 미해결 태그",
@@ -3320,8 +3325,10 @@ _tpl72 = R.generate_template()
 show("① 템플릿이 「meta도 role이다 · 딕셔너리로 묶지 마라」를 말한다",
      "meta`도 role이다" in _tpl72 and "묶지 마라" in _tpl72
      and "G39" in _tpl72)
-show("① 템플릿 판이 올랐다 (v1.5 → v1.6)",
-     "version: 1.6" in (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8"))
+show("① 템플릿 판이 올랐다 (판 번호는 머리말 하나가 말한다 — B63 ①)",
+     re.search(r"^version: 1\.7$",
+               (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8"),
+               re.M) is not None)
 _ref72 = json.loads((R.KIT / "참조어댑터" / "cp.json").read_text(encoding="utf-8"))
 _refmod72 = _iu72.module_from_spec(
     _iu72.spec_from_file_location("ref72", R.KIT / "참조어댑터" / "cp.py"))
@@ -3341,6 +3348,128 @@ show("⑤ 내장 참조 쌍(pfmea)도 관문을 통과한다 — 예외를 두�
 show("① few-shot 쌍이 서로 맞는다 — 스키마의 meta 필드를 어댑터도 낸다",
      all(k in (_refmod72.ADAPTER["expects"]["columns"] or {}) for k in _metaf72),
      str(sorted(_refmod72.ADAPTER["expects"]["columns"]))[:70])
+# ════════════════════════════════════════════════════════════════════
+# B76 ② 대장은 스키마 fields 전부를 덮는다 · ③ 예외는 문면으로 죽는다
+# ════════════════════════════════════════════════════════════════════
+print("\n■ B76 ② 열 판정 대장 커버리지 (G4G)")
+
+reset("ipqc")
+run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
+_st76 = R._state("ipqc")
+_sch76 = json.loads((ROOT / _st76["schema"]).read_text(encoding="utf-8"))
+_fld76, _ = R.load_blocks(_sch76)
+from run_adapter import structural_fields as _sf76                 # noqa: E402
+_struct76 = set(_sf76())
+_have76 = {r.get("field") for r in R.read_ledger("ipqc") if r.get("field")}
+show("② 스키마 필드 전부에 대장 행이 있다 (구조 필드 제외)",
+     all(f in _have76 for f in _fld76 if f not in _struct76),
+     str([f for f in _fld76 if f not in _struct76 and f not in _have76]))
+
+# **프로파일 밖 열을 쓰는 어댑터** — 패키지의 열 프로파일에서 한 열을 지운다.
+_pkg76 = REVIEW / "ipqc" / "input_package.json"
+_pj76 = json.loads(_pkg76.read_text(encoding="utf-8"))
+# **구조 필드는 G4G의 대상이 아니다** — 스키마 `fields`가 아니라 블록의 것이다.
+_drop76 = next(r["col"] for r in R.read_ledger("ipqc")
+               if r.get("field") and r["field"] in _fld76
+               and r["field"] not in _struct76)
+_field76 = next(r["field"] for r in R.read_ledger("ipqc") if r["col"] == _drop76)
+for _h76 in ((_pj76.get("system") or {}).get("reader_head") or []):
+    for _pp76 in (_h76.get("열_프로파일") or []):
+        (_pp76.get("열") or {}).pop(_drop76, None)
+_pkg76.write_text(json.dumps(_pj76, ensure_ascii=False), encoding="utf-8")
+R.sync_ledger("ipqc", R._state("ipqc"))
+show("② 프로파일 밖 열을 쓰는 어댑터도 대장 행을 갖는다 (합집합으로 돈다)",
+     any(r.get("col") == _drop76 and r.get("field") == _field76
+         for r in R.read_ledger("ipqc")),
+     f"{_drop76}열 · 필드 {_field76}")
+
+# 대장 행을 지우면 G4G가 붉는다 — 사람이 판정한 것이 아니라 기계가 빠뜨린 것이다
+_lp76 = R.ledger_path("ipqc")
+_save76 = _lp76.read_text(encoding="utf-8")
+_led76 = json.loads(_save76)
+_led76["columns"] = [r for r in _led76["columns"] if r.get("field") != _field76]
+_lp76.write_text(json.dumps(_led76, ensure_ascii=False), encoding="utf-8")
+_ok76g, _out76g = R.harness(ROOT / _st76["adapter"], ROOT / _st76["schema"],
+                            [RAW / "IPQC01.xlsx"], doc_type="ipqc")
+_g4g76 = [l.strip() for l in _out76g.splitlines() if "G4G" in l]
+show("② 대장에 없는 필드가 있으면 G4G FAIL이고 문면이 그 필드를 말한다",
+     _g4g76 and "[FAIL]" in _g4g76[0] and _field76 in _g4g76[0],
+     (_g4g76[0] if _g4g76 else "G4G 줄 없음")[:100])
+show("② G4G는 재생성으로 고칠 수 없다 — 관문 자체 결함으로 분류된다",
+     "G4G" in R.GATE_SELF)
+_lp76.write_text(_save76, encoding="utf-8")
+_ok76h, _out76h = R.harness(ROOT / _st76["adapter"], ROOT / _st76["schema"],
+                            [RAW / "IPQC01.xlsx"], doc_type="ipqc")
+show("② 대장이 덮으면 G4G PASS (관문이 대장을 만들지 않고 읽는다)",
+     "[PASS] G4G" in _out76h)
+show("② `role_table`이 어댑터 `columns`를 읽지 않는다 (폴백이 없다 — 둘째 원인)",
+     "_led_cols.get(r[\"field\"]) or (" not in
+     (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+
+# ① 합치기 리스트여도 기계 제안 대조가 돈다(죽지 않는다)
+_mod76r = R._load(ROOT / _st76["adapter"], "p3_b76r")
+_two76 = [r for r in R.read_ledger("ipqc") if r.get("field")][:2]
+if len(_two76) == 2:
+    _rows76 = json.loads(_lp76.read_text(encoding="utf-8"))
+    for r in _rows76["columns"]:
+        if r.get("col") == _two76[1]["col"]:
+            r["field"] = _two76[0]["field"]        # 한 필드가 열 둘 — 합치기 꼴
+    _lp76.write_text(json.dumps(_rows76, ensure_ascii=False), encoding="utf-8")
+_prof76b = R._profiles("ipqc")
+_rt76 = R.role_table(_sch76, _mod76r, R._state("ipqc"), _prof76b)
+show("① 한 필드가 열 여럿이어도 `role_table`이 죽지 않고 표를 낸다",
+     isinstance(_rt76, list) and _rt76 and all("field" in r for r in _rt76),
+     f"{len(_rt76)}행")
+_lp76.write_text(_save76, encoding="utf-8")
+
+print("\n■ B76 ③ 등록 흐름의 예외는 문면으로 죽는다")
+_dl76 = ROOT / "data" / "defects.log"
+_before76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
+_orig76 = R.cmd_list
+
+
+def _boom76():
+    raise TypeError("unhashable type: 'list' (시험 주입)")
+
+
+R.cmd_list = _boom76
+_buf76 = _io.StringIO()
+with _ctx.redirect_stdout(_buf76):
+    _rc76 = R.main(["list"])
+R.cmd_list = _orig76
+_scr76 = _buf76.getvalue()
+_after76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
+show("③ 화면은 **한 줄**이고 파일:줄·예외·단계를 말한다",
+     _scr76.count("[결함]") == 1 and "단계 list" in _scr76
+     and re.search(r"\[결함\] \S+\.py:\d+ · TypeError", _scr76) is not None,
+     _scr76.strip().splitlines()[0][:90] if _scr76.strip() else "화면 없음")
+show("③ 화면에 traceback이 없다 (사람이 프레임을 읽지 않는다)",
+     "Traceback (most recent call last)" not in _scr76)
+show("③ traceback 전문은 `defects.log`에 남는다 (조용히 버리지 않는다)",
+     "Traceback (most recent call last)" in _after76[len(_before76):]
+     and "시험 주입" in _after76[len(_before76):])
+show("③ 종료 코드는 상태 거부와 같다", _rc76 == 1, str(_rc76))
+
+_os.environ["ONTO_TRACEBACK"] = "1"
+R.cmd_list = _boom76
+_buf76b = _io.StringIO()
+with _ctx.redirect_stdout(_buf76b):
+    R.main(["list"])
+R.cmd_list = _orig76
+del _os.environ["ONTO_TRACEBACK"]
+show("③ `ONTO_TRACEBACK=1`이면 화면에도 전문이 나온다 (개발용)",
+     "Traceback (most recent call last)" in _buf76b.getvalue())
+
+_sys76 = _io.StringIO()
+try:
+    with _ctx.redirect_stdout(_sys76):
+        R.main(["없는명령ZZ"])
+    _se76 = "죽지 않았다"
+except SystemExit as _e76:
+    _se76 = str(_e76)
+show("③ 상태 거부·사용법(SystemExit)은 그대로 지난다 (판정은 결함이 아니다)",
+     "알 수 없는 명령" in _se76, _se76.splitlines()[0][:60])
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)
