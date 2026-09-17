@@ -25,7 +25,7 @@ from core import paths as _P               # 상태 자리는 한 모듈이 안�
 from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.build.build import Builder                           # noqa: E402
 from core.build.extract import EXTRACT_DIR                     # noqa: E402
-from core.build.pipeline import finalize, run_document                   # noqa: E402
+from core.build.entry import finalize, run_document                   # noqa: E402
 
 allok = True
 
@@ -419,7 +419,7 @@ show("계약 위반이 missing_field 큐로 표면화 (새 kind 신설 없음 �
 
 # 엣지 끝점의 `@` 표기는 from·to 어느 쪽에도 온다. 한쪽만 해소하면 스키마가 선언한
 # 엣지가 **큐도 로그도 없이 사라진다**(A-4 관통 실측 — ipqc has_property 0건).
-from core.build.pipeline import _endpoint                            # noqa: E402
+from core.build.table import _endpoint                            # noqa: E402
 _res, _ref, _g = {"설비": "N1"}, "NREF", P
 show("엣지 끝점 `@process_ref`가 from·to 양쪽에서 같게 해소된다",
      _endpoint("@process_ref", _res, _ref, _g, {}, P, "T")[0] == _ref

@@ -72,7 +72,7 @@ def run(paths, *, force=False, layer=None):
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == doc_id}
         cfg = load_config(layer or (schema or {}).get("layer") or "process")
-        from core.build.pipeline import _vocab
+        from core.build.entry import _vocab
         out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])
         print(f"[추출] {doc_id}: 청크 {len(out['candidates'])} · 개체 후보 {n} "

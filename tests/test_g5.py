@@ -22,7 +22,7 @@ from core.state.bootstrap import bootstrap, load_config, open_graph  # noqa: E40
 from core.build.extract import EXTRACT_DIR                    # noqa: E402
 from core.state.ids import norm                               # noqa: E402
 from router import discover                            # noqa: E402
-from core.build.pipeline import finalize, run_document        # noqa: E402
+from core.build.entry import finalize, run_document        # noqa: E402
 
 allok = True
 DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]

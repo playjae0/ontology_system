@@ -724,7 +724,7 @@ show("위임 래퍼가 제안이 정한 어댑터를 문다 (PDF가 PPT 어댑�
 print("\n■ B58 ③ — 스프레드시트 산문: 규칙이 레벨을 고른다")
 
 from parser.adapters import basic_prose_xlsx as _BPX          # noqa: E402
-from core.build import pipeline as _CP                              # noqa: E402
+from core.build import entry as _CP                              # noqa: E402
 from core.state import registry as _RG                              # noqa: E402
 from cli.parse import run_parse as _run_parse                 # noqa: E402
 
@@ -939,7 +939,7 @@ show("④ 판정은 선택을 갈아 끼우지 않는다 — 어긋나면 경고
 # ── B58 ④-후속 — case 두 값과 side의 파생 ([정정] 48 ①) ────────────────
 print("\n■ B58 ④-후속 — 큐 case는 닫힌 두 값 · side는 파생값")
 
-from core.build.pipeline import _band_material as _BM                # noqa: E402
+from core.build.entry import _band_material as _BM                # noqa: E402
 
 # **side를 박아 두면 절반의 문서에 틀린 처방이 나간다** — 짧은 쪽은 「레벨을 얕게」,
 # 긴 쪽은 「깊게」로 처방이 **반대**다. 그래서 avg와 target_band에서 파생되는지를
@@ -961,7 +961,10 @@ show("④-후속 재료가 없으면 지어내지 않는다 (side는 None)",
 
 # **case는 닫힌 두 값이다** — 코드가 그 둘만 만든다.
 import re as _re                                              # noqa: E402
-_CPSRC = (ROOT / "core" / "build" / "pipeline.py").read_text(encoding="utf-8")
+# 구축 파트는 파일 넷이다(B78 2b) — **파트 전체**를 본다: 성질은 「코드가 그 둘만
+# 만든다」이지 「어느 파일에 있다」가 아니다.
+_CPSRC = " ".join(_p.read_text(encoding="utf-8")
+                  for _p in sorted((ROOT / "core" / "build").glob("*.py")))
 _cases = set(_re.findall(r'"(flat_fallback|size_out_of_band|level_out_of_range)"', _CPSRC))
 show("④-후속 case는 flat_fallback · size_out_of_band 둘뿐이다 (옛 이름 0)",
      _cases == {"flat_fallback", "size_out_of_band"}, str(sorted(_cases)))

@@ -474,8 +474,8 @@ show("② 뒷정리 — 결손 0 · 등록부 원상 (회귀가 남기는 것 0)
 print("\n■ B72 ②③④ — 인입 화면(예고 · 큐 집계 · 다음 줄 · --step)")
 
 import subprocess as _sp72                                         # noqa: E402
-from core.build import pipeline as _PL72                                 # noqa: E402
-from core.build.pipeline import run_document as _run72                   # noqa: E402
+from core.build import entry as _PL72                                 # noqa: E402
+from core.build.entry import run_document as _run72                   # noqa: E402
 
 init.init(fresh_=True)
 for _lay in ("process", "quality"):
@@ -1131,7 +1131,7 @@ def _truth75():
 
 
 _before75 = _truth75()
-from core.build.pipeline import Stopped as _ST75                        # noqa: E402
+from core.build.entry import Stopped as _ST75                        # noqa: E402
 
 
 def _stop75(stats):

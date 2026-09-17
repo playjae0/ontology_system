@@ -31,7 +31,8 @@ from core.build.build import Builder                               # noqa: E402
 from core.build.extract import EXTRACT_DIR, checkpoint_path        # noqa: E402
 from core.state.ids import norm                                    # noqa: E402
 from core.matcher import MATCH, resolve                      # noqa: E402
-from core.build.pipeline import build_prose, finalize, run_document  # noqa: E402
+from core.build.entry import finalize, run_document  # noqa: E402
+from core.build.prose import build_prose
 
 allok = True
 DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
@@ -214,8 +215,8 @@ show("B4 층 닫힌 목록 밖 카테고리는 invalid_category 큐 + 노드 미
      and not any(n["canonical"] == "감사표면형" for n in g.nodes.values()),
      str(len(q_of("invalid_category", "XCAT01"))))
 
-core_src = "\n".join((ROOT / "core" / "build" / f).read_text(encoding="utf-8")
-                      for f in ("pipeline.py", "build.py", "gate.py", "ingest.py"))
+core_src = "\n".join(_p.read_text(encoding="utf-8")
+                      for _p in sorted((ROOT / "core" / "build").glob("*.py")))
 from cli.platform import QUEUE_KINDS                          # noqa: E402
 show("B5 invalid_role enqueue가 코드에서 사라진다 — 결함 로그만 (D-30 · 닫힌 20종)",
      'enqueue("invalid_role"' not in core_src and "invalid_role" not in QUEUE_KINDS
@@ -536,7 +537,8 @@ show("①ⓓ doc_locators()가 삭제됐다 (순감소)",
      "def doc_locators" not in _b57_ing
      and 'p == doc_id or str(p).startswith(doc_id + "#")' in _b57_ing)
 # **계약 A의 locator는 손대지 않는다** — 대응표 셋이 raw locator로 맞추는 자리다.
-_b57_pipe = (ROOT / "core" / "build" / "pipeline.py").read_text(encoding="utf-8")
+_b57_pipe = " ".join(_p.read_text(encoding="utf-8")
+                     for _p in sorted((ROOT / "core" / "build").glob("*.py")))
 show("① 청크 대응표는 raw locator 그대로다 (접두를 섞지 않는다)",
      'by_locator = {c["source_locator"]: c' in _b57_pipe
      and 'loc2id = {c["source_locator"]: cid' in _b57_pipe)
@@ -613,11 +615,11 @@ show("②ⓑ 새 큐 kind를 만들지 않는다 (missing_field가 「필수 값
 # **STRUCTURAL을 건드리지 않았다** — 검사의 자리는 좌표 해소 지점이다.
 show("② process_ref는 여전히 구조 필드다 (unknown_field로 쏟아지지 않는다)",
      not [x for x in _b57_q3 if x["kind"] == "unknown_field"]
-     and "coord_case" in (ROOT / "core" / "build" / "pipeline.py").read_text(encoding="utf-8"))
+     and "coord_case" in (ROOT / "core" / "build" / "table.py").read_text(encoding="utf-8"))
 
 
 # ── B57 ③④⑤ ────────────────────────────────────────────────────────────
-from core.build import pipeline as pipeline_mod                          # noqa: E402
+from core.build import entry as pipeline_mod                          # noqa: E402
 from cli.platform import gauges                                    # noqa: E402
 from cli.query import answer as R_answer                           # noqa: E402
 print("\n■ B57 ③ — 방향이 반대인 규칙은 연달아 적용하지 않는다 ([개정] B56-3)")

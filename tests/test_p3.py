@@ -1695,7 +1695,8 @@ show("③ⓒ defects.log에 남는다 — 큐가 아니라 결함 로그다 (새
      and "추출 실패" in _b55_d.read_text(encoding="utf-8"))
 show("③ 구축이 failed 청크를 건너뛴다 (결함이 「후보 0건」 통계에 녹지 않는다)",
      "if not c.get(\"failed\")" in
-     (ROOT / "core" / "build" / "pipeline.py").read_text(encoding="utf-8"))
+     ' '.join(_p.read_text(encoding="utf-8")
+                for _p in sorted((ROOT / "core" / "build").glob("*.py"))))
 # ③ⓓ **전건 실패면 체크포인트를 쓰지 않는다** — 「파일 존재 = 추출 완료」(P-1).
 _EX.checkpoint_path("B55FAIL").unlink(missing_ok=True)
 _EX._candidates_for = lambda *a, **k: (_ for _ in ()).throw(ValueError("전건"))
@@ -3326,8 +3327,8 @@ show("①ⓑ 한 태그 한 라벨이다 (원인은 상세가 가른다 — B59 
 import importlib.util as _iu72                                     # noqa: E402
 _ra72 = _iu72.module_from_spec(_iu72.spec_from_file_location("ra72", R.KIT / "run_adapter.py"))
 _ra72.__spec__.loader.exec_module(_ra72)
-from core.build.pipeline import STRUCTURAL as _ST72                      # noqa: E402
-show("① 구조 필드의 정본은 core/build/pipeline.py다 (관문이 베끼지 않는다)",
+from core.build.loop import STRUCTURAL as _ST72                      # noqa: E402
+show("① 구조 필드의 정본은 core/build/loop.py다 (관문이 베끼지 않는다)",
      _ra72.structural_fields() == set(_ST72) and _ST72,
      f"{len(_ST72)}종")
 shutil.rmtree(_d72, ignore_errors=True)

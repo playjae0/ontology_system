@@ -141,7 +141,7 @@ _probe = (
     "import json,sys; sys.path.insert(0,'.')\n"
     "from core.build import extract as EX\n"
     "from core.state.bootstrap import load_config\n"
-    "from core.build.pipeline import _vocab\n"
+    "from core.build.entry import _vocab\n"
     f"EX.invalidate({HINT_DOC!r})\n"
     "cfg = load_config('process')\n"
     "env = {'doc_id': %r, 'doc_type': 'ppt_process', 'payload_kind': 'prose',\n"

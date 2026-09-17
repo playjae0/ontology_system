@@ -54,7 +54,7 @@ from pathlib import Path
 
 from core.state import log, store
 from core.state.bootstrap import bootstrap, open_graph
-from core.build.pipeline import run_document
+from core.build.entry import run_document
 from router import discover
 
 ROOT = Path(__file__).resolve().parent
@@ -94,7 +94,7 @@ def cmd_ingest(paths, finalize=True, allow_duplicate=False):
         print(f"[{mark}] {r.doc_id}: record {len(r.record_ids)} · "
               f"chunk {len(r.chunk_ids)}{tail}")
     if finalize:
-        from core.build.pipeline import finalize as _fin
+        from core.build.entry import finalize as _fin
         _fin()
 
 

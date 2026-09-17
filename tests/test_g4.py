@@ -26,7 +26,7 @@ from core import paths as _P               # 상태 자리는 한 모듈이 안�
 from core.state import store                                  # noqa: E402
 from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
 from core.build.extract import EXTRACT_DIR                    # noqa: E402
-from core.build.pipeline import finalize, run_document                  # noqa: E402
+from core.build.entry import finalize, run_document                  # noqa: E402
 
 allok = True
 

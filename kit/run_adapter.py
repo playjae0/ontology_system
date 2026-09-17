@@ -335,11 +335,11 @@ def preflight(mod, raw, label):
 
 
 # ---------------------------------------------------------------- ③ extract
-# **구조 필드의 정본은 `core/build/pipeline.py::STRUCTURAL`이다** — 여기 베끼지 않는다.
-# import하지 않는 이유: `core.pipeline`이 `core.llm`을 끌고 오고, 관문은 스스로
+# **구조 필드의 정본은 `core/build/loop.py::STRUCTURAL`이다** — 여기 베끼지 않는다.
+# import하지 않는 이유: `core.build`가 `core.llm`을 끌고 오고, 관문은 스스로
 # 「LLM 미적재」를 판정한다(G54). 그래서 `_kit_line_re`와 같은 결로 **소스에서
 # 상수만 뽑는다** — 못 찾으면 조용히 넘기지 않고 그 판정을 붉게 한다.
-_STRUCTURAL_SRC = Path(__file__).resolve().parent.parent / "core" / "build" / "pipeline.py"
+_STRUCTURAL_SRC = Path(__file__).resolve().parent.parent / "core" / "build" / "loop.py"
 G39 = "G39  어댑터가 내는 키가 전부 스키마 fields에 있다"
 
 
@@ -377,7 +377,7 @@ def check_output_keys(schema, pieces, label):
     fields, _blk = load_blocks(schema)
     known = set(fields) | structural_fields()
     if not structural_fields():
-        return show(G39, False, "core/build/pipeline.py의 STRUCTURAL을 읽지 못했다 — "
+        return show(G39, False, "core/build/loop.py의 STRUCTURAL을 읽지 못했다 — "
                                 "관문 자체 결함(어댑터 잘못이 아니다)")
     out_keys = {k for p in pieces for k in p}
     extra = sorted(out_keys - known)

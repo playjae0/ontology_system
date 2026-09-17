@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import paths
 from core.state import fixtures, store
 from core import graph as graph_mod
-from core.build import pipeline as pipeline_mod
+from core.build import entry as pipeline_mod
 from core.state.bootstrap import load_config, open_graph
 from core.build.extract import EXTRACT_DIR
 from core.state.status import is_live
