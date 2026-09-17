@@ -213,6 +213,11 @@ def cmd_llm_check(args):
 if __name__ == "__main__":
     log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
+    # **이관 관문**(B78 1b) — 옛 배치를 조용히 읽지 않는다. 푸는 명령 자신
+    # (`platform migrate`)과 연결 점검은 관문 밖이다: 걸리면 칠 다음 줄이 없다.
+    if not (cmd == "llm-check" or (cmd == "platform" and "migrate" in sys.argv[2:3])):
+        from cli._gate import require_migrated
+        require_migrated(cmd)
     # **mock 관문**(B48) — 여기서 도는 것은 제 모듈 main이 없는 운영 명령뿐이다.
     # register·parse·ingest-file/dir은 그쪽 main이 관문을 지나므로 두 번 걸지 않는다.
     if cmd in ("build", "ingest", "query"):

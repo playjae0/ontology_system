@@ -40,6 +40,13 @@ except ImportError:                     # pragma: no cover - 폴백 경로
 
 DATA = paths.data()             # 자리는 core/paths.py가 안다 (B78 1a)
 
+# **③진실과 ④장부를 자리로 가른다**(B78 1b · 허브 확정 2026-09-17).
+# `data/`에 남는 것은 사람 판단이 실렸거나 재생성이 곧 재판정인 7종이고,
+# 로그·체크포인트·장부는 `work/`다 — 그래서 백업 순위와 `init --fresh`의 범위가
+# 파일 이름이 아니라 **폴더**로 갈린다.
+WORK_FILES = ("gate_rejects.json", "build_metrics.json",
+              "defects.log", "link_miss.log", "chunk_truncated.log")
+
 # data/ 파일 이름 (증분0 §6-7 파일 트리 증분)
 CHUNKS = "chunks.json"
 DICTIONARY = "dictionary.json"
@@ -72,7 +79,19 @@ def _now():
 
 
 def path(name) -> Path:
-    return DATA / name
+    """이름 → 자리. **진실은 `data/`, 장부·로그는 `work/`**(B78 1b).
+
+    이름으로 가르는 자리는 여기 하나다 — 호출부는 이름만 알고 단은 모른다.
+    """
+    n = str(name)
+    if n == DOC_TYPES:
+        # **등록부는 ②등록 단이다** — 사람 승인 1회의 색인이라 진실과 함께 지워지면
+        # 안 된다(`init --fresh`의 범위가 폴더다). 구판이 `data/` 안에서 이름 하나를
+        # 예외로 지켜 내던 것(`KEEP_IN_DATA`)이 이 한 줄로 대체됐다.
+        return paths.registry(n)
+    if n in WORK_FILES or n.startswith("ingest_log/"):
+        return paths.work(n)
+    return paths.data(n)
 
 
 # ---------------------------------------------------------------- 원자적 쓰기
@@ -142,7 +161,7 @@ def append_line(name: str, line: str):
     **쌓는 쓰기라 원자 쓰기를 타지 않는다** — `data/`를 만드는 두 자리 중 하나가
     여기다(다른 하나는 `atomic_write_bytes`의 부모 mkdir · B77 ④).
     """
-    paths.ensure(DATA)
+    paths.ensure(path(name))
     with path(name).open("a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
 

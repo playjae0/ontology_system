@@ -44,7 +44,11 @@ for name, ks in per.items():
 
 # ── ② 매칭 스키마 필드 spec 속성 · role 값 · 최상위 키
 props, roles, tops = set(), set(), set()
-for f in glob.glob(f"{REPO}/schemas/*.json"):
+# 매칭 스키마의 실물은 **두 자리**다(B78 1b — 자리로 가른다): 등록분은 상태 루트의
+# `registry/schemas/`, 내장(mock)은 `tests/fixtures/schemas/`. 레포 `schemas/`에는
+# 공용 블록만 남는다 — 한 자리만 보면 속성·role이 0으로 세어져 검사가 조용히 준다.
+for f in (glob.glob(f"{REPO}/schemas/*.json")
+          + glob.glob(f"{REPO}/tests/fixtures/schemas/*.json")):
     d = json.load(open(f))
     tops |= {k for k in d if not k.startswith("_")}
     for spec in (d.get("fields") or {}).values():

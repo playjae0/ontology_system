@@ -13,6 +13,8 @@ subprocess로 부르고, 표시는 data/의 JSON(진실)을 읽어서 한다 —
   extract            추출 상태 (extract/{doc_id}.json 존재 = 추출 완료 — P-1)
   registry           층 등록부 조회
   doctypes           doc_type 등록부 조회 (내장 + n6 등록분)
+  migrate [--from R] [--to H] [--dry-run]
+                     옛 배치 → 5단 배치 이관 (복사 · 등록부 경로 재작성 · 이관 로그)
   ops                I축 연산 이력(ops_log) 열람 + 툼스톤 계수
   gauges             계기판 8종 (CH5 5.5 — 별도 호출로 계산, build·query 무오염)
 
@@ -27,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import fixtures, store
+from core import fixtures, paths, store
 from core import graph as graph_mod, pipeline as pipeline_mod
 from core.bootstrap import load_config, open_graph
 from core.extract import EXTRACT_DIR
@@ -268,14 +270,49 @@ def cmd_doctypes():
               + (f" · 승인={m['approved_by']}" if m.get("approved_by") else ""))
     if miss:
         print(f"  ⚠ 실물 없는 등록 {len(miss)}건 — scan·인입이 여기서 멈춘다. "
-              f"이식이면 data/doc_types.json · adapters/ · schemas/ · review/를 "
-              f"같이 옮긴다")
+              f"이식이면 상태 루트({paths.home()})를 통째로 옮긴다 — "
+              f"python run.py platform migrate --from <옛 코드 폴더>")
     # **역방향도 본다**(B77 ③) — 승인 산출은 있는데 등록부에 이름이 없는 경우다.
     # 한쪽만 재면 「옮기다 빠진 것」이 화면에서 사라진다(사내 실측).
     for o in orphan_reviews():
         print(f"  ⚠ 등록부 누락(옮기다 빠짐) — '{o['doc_type']}' · 근거 {o['path']}"
               + (f" (승인 {o['approved_by']})" if o.get("approved_by") else "")
-              + f" · data/doc_types.json에 키 없음")
+              + f" · {paths.registry(store.DOC_TYPES)}에 키 없음")
+
+
+def cmd_migrate(args):
+    """옛 배치 → 5단 배치 이관 (B78 1b). **판정·복사는 `core/migrate.py`가 한다.**
+
+    화면이 하는 일은 둘이다 — 무엇이 어디로 가는지의 표(`--dry-run`)와, 이관 뒤
+    「무엇을 확인해야 하는가」의 다음 줄(`platform doctypes` 역방향 0건).
+    """
+    from core import migrate
+    src = _opt(args, "--from")
+    dst = _opt(args, "--to")
+    res = migrate.run(src, dst, dry_run="--dry-run" in args)
+    if not res.get("ok"):
+        print(f"[이관] {res['reason']}")
+        return 1
+    if res.get("dry_run"):
+        print(f"[이관 예정] {res['src']} → {res['home']} · 파일 {len(res['rows'])}")
+        for s_, d_, tier in res["rows"]:
+            print(f"  {tier}\t{s_} → {d_}")
+        return 0
+    print(f"[이관] {res['src']} → {res['home']} · 파일 {res['files']}"
+          + "".join(f" · {k} {v}" for k, v in sorted(res["per_tier"].items())))
+    print(f"   등록부 경로 재작성 {res['rewritten']}건" +
+          (f" · **실물을 못 찾은 항목 {len(res['missing'])}건** {res['missing']}"
+           if res["missing"] else ""))
+    print(f"   이관 로그 {res['log']}  (옛 폴더는 그대로 둔다 — 복사다)")
+    print(f"   다음: python run.py platform doctypes   "
+          f"(등록 n종 · 역방향 누락 0건을 확인한다)")
+    return 0
+
+
+def _opt(args, name):
+    """`--from X` 꼴의 값 — 없으면 None. 자리를 하나로 둔다."""
+    return args[args.index(name) + 1] if name in args and \
+        args.index(name) + 1 < len(args) else None
 
 
 def ops_view():
@@ -646,6 +683,9 @@ def main(argv):
      "extract": lambda: cmd_extract(),
      "registry": lambda: cmd_registry(),
      "doctypes": lambda: cmd_doctypes(),
+     # **이관은 관문 밖이다**(B78 1b) — 이관 전 거부를 푸는 명령 자신이 그 거부에
+     # 걸리면 사람이 칠 다음 줄이 없다.
+     "migrate": lambda: cmd_migrate(args),
      "ops": lambda: cmd_ops(),
      "gauges": lambda: cmd_gauges(),
      # **Q7류 집계 대시보드**(갭 spec-s7-11-85) — 질의 4단이 답하지 않는 자리.

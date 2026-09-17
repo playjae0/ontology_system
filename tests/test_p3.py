@@ -76,11 +76,12 @@ for dt in ("ipqc", "toc_report"):
 
 # ============================================================ 등록부
 print("\n■ doc_type 등록부 — 묻는 곳은 셋, 답하는 곳은 하나 (카드 M2 · D-8)")
-show("내장(builtin)은 schemas/ 파일 실재가 곧 등록이다 (층의 J10과 같은 결)",
+show("내장(builtin)은 픽스처 스키마 파일의 실재가 곧 등록이다 (자리로 가른다 — B78 1b)",
      {"cp", "pfmea", "ppt_process", "ppt_quality"} <= set(registry.all_doc_types())
      and registry.lookup("cp")["status"] == "builtin")
 show("**ipqc는 내장이 아니다** — 20회차 임시 배치를 걷고 n6 등록 대상으로 되돌렸다",
-     registry.lookup("ipqc") is None and not (ROOT / "schemas/ipqc.json").exists())
+     registry.lookup("ipqc") is None and not _P.fixture_schemas("ipqc.json").exists()
+     and not _P.schemas("ipqc.json").exists())
 show("미등록 doc_type 조회는 None — 그것이 구축 모드 진입 신호다 (M2)",
      registry.lookup("없는유형") is None)
 show("blocks.json은 doc_type이 아니다 (파일 이름이 아니라 내용의 doc_type 키로 가른다)",
@@ -154,7 +155,8 @@ show("③ **승인자 없이는 등재하지 않는다** — 무수정 자동 �
      run("confirm", "toc_report", "--by", "").returncode != 0)
 
 # S1 말단 — 등록 후 파싱 실행
-mod = R._load(ROOT / registry.lookup("toc_report")["adapter"], "s1_toc")
+# 등록 산출의 자리는 **등록부가 답한다** — 경로 조립은 경계 안이다(B78 1b).
+mod = R._load(dict(registry.adapter_paths())["toc_report"], "s1_toc")
 res = pipeline.parse(mod, "TOCX", str(RAW / "TOC02.xlsx"))
 show("S1 말단 — 등록된 어댑터로 운영 파싱이 돈다", res.ok and res.report["pieces"] == 9,
      f"조각 {res.report.get('pieces')}")
@@ -258,8 +260,7 @@ q = [a for a in v["sections"]["parse_result"]["anomalies"] if a["kind"] == "ques
 show("UNMAPPABLE은 **질문 형태**로 이상 신호에 뜬다 (§7 규약 5)",
      q and "어디에 배정합니까" in q[0]["message"], f"{len(q)}건")
 show("UNMAPPABLE 열은 스키마 fields에 없고 어댑터 출력에도 없다 (D-30)",
-     "최근 불량 이력" not in json.loads(
-         (ROOT / registry.lookup("toc_report")["schema"]).read_text(encoding="utf-8"))["fields"]
+     "최근 불량 이력" not in (registry.schema_of("toc_report") or {})["fields"]
      if registry.lookup("toc_report") else True)
 
 show("2부면 1부 경고가 뜨지 않는다 (표본 수가 판정한다)",
@@ -512,8 +513,8 @@ show("문법 깨진 seed 는 loader 실패 문면으로 멈춘다", _SK.seed_pat
 # **전송분을 직접 잰다.** 지금까지 「킷 주석 0·`{{` 0」은 수동 탐침이었고 어서션이
 # 아니었다 — 조립이 조용히 어긋나도 회귀가 몰랐다. 네 항을 함께 세운다.
 print("\n■ B29 — 조립된 전송 프롬프트 (스켈레톤 본문 · 참조 어댑터 few-shot)")
-_pkg29 = json.loads((ROOT / "review/ipqc/input_package.json").read_text(encoding="utf-8")) \
-    if (ROOT / "review/ipqc/input_package.json").exists() else None
+_pkg29 = json.loads(_P.review("ipqc", "input_package.json").read_text(encoding="utf-8")) \
+    if _P.review("ipqc", "input_package.json").exists() else None
 if _pkg29 is None:
     # 패키지만 필요하다 — 초안 수령은 fixture 소관이라 여기서 SystemExit로 끝난다
     # (D-10). 패키지는 그 전에 이미 파일로 서 있다.
@@ -523,7 +524,7 @@ if _pkg29 is None:
     except SystemExit:
         pass
     _pkg29 = json.loads(
-        (ROOT / "review/b29probe/input_package.json").read_text(encoding="utf-8"))
+        _P.review("b29probe", "input_package.json").read_text(encoding="utf-8"))
 _sent = R._render_template(
     R.generate_template(), _pkg29)
 
@@ -680,7 +681,7 @@ show("③ GENERATE_SCHEMA가 랭킹·경계선·통계를 담고 strict를 지�
 
 # 패키지 — 시스템 키 5 불변
 _pkg39 = json.loads(
-    (ROOT / "review/b29probe/input_package.json").read_text(encoding="utf-8"))
+    _P.review("b29probe", "input_package.json").read_text(encoding="utf-8"))
 show("ⓑ 시스템 키는 5 그대로다 (프로파일은 그릇 안의 항목)",
      len(_pkg39["system"]) == 5
      and "열_프로파일" in _pkg39["system"]["reader_head"][0],
@@ -991,11 +992,11 @@ with _ctx.redirect_stdout(_buf):
     R.cmd_generate("pptb_t", "quality", [_PPT], use_basic=True)
 _gen = _buf.getvalue()
 show("② --use-basic — 위임 래퍼 어댑터가 검수 자리에 선다 (상수는 basic_ppt 한 곳 — D-111)",
-     "from parser.adapters import basic_ppt" in (ROOT / "review/pptb_t/adapter.py").read_text(encoding="utf-8")
-     and "max_chars" not in (ROOT / "review/pptb_t/adapter.py").read_text(encoding="utf-8"))
+     "from parser.adapters import basic_ppt" in _P.review("pptb_t", "adapter.py").read_text(encoding="utf-8")
+     and "max_chars" not in _P.review("pptb_t", "adapter.py").read_text(encoding="utf-8"))
 show("② 매칭 스키마는 prose 계약 — fields {} · layer 선언",
      (lambda s: s["fields"] == {} and s["layer"] == "quality" and s["doc_type"] == "pptb_t")(
-         json.loads((ROOT / "review/pptb_t/schema.json").read_text(encoding="utf-8"))))
+         json.loads(_P.review("pptb_t", "schema.json").read_text(encoding="utf-8"))))
 show("② 화면이 «호출 0회»를 말한다 (사용량으로 증명)", "호출 0회" in _gen)
 _buf = _io.StringIO()
 with _ctx.redirect_stdout(_buf):
@@ -1009,8 +1010,8 @@ with _ctx.redirect_stdout(_buf):
     R.cmd_confirm("pptb_t", "테스트")
 _conf = _buf.getvalue()
 show("② 확정 — 등록부 등재 + adapters/·schemas/ 정본",
-     _REG.lookup("pptb_t") is not None and (ROOT / "adapters/pptb_t.py").exists()
-     and (ROOT / "schemas/pptb_t.json").exists())
+     _REG.lookup("pptb_t") is not None and _P.adapters("pptb_t.py").exists()
+     and _P.schemas("pptb_t.json").exists())
 # ③ 확정 화면의 「다음」 = 가이드가 시키는 인입 흐름 (B66 ③)
 #
 # 구판은 화면에 있는 **명령 이름**(`parse run` · `build parsed/`)을 셌다. 문면은 한
@@ -1023,10 +1024,10 @@ show("③ 확정 화면이 인입 줄을 준다 — 방금 확정한 doc_type이
      and any("--dry-run" in l for l in _next3), str(_next3))
 # 정리 — 회귀가 남기는 것 0
 _REG.unregister("pptb_t")
-for _p in (ROOT / "adapters/pptb_t.py", ROOT / "schemas/pptb_t.json"):
+for _p in (_P.adapters("pptb_t.py"), _P.schemas("pptb_t.json")):
     _p.unlink(missing_ok=True)
-shutil.rmtree(ROOT / "review/pptb_t", ignore_errors=True)
-shutil.rmtree(ROOT / "review/cpx_basic", ignore_errors=True)
+shutil.rmtree(_P.review("pptb_t"), ignore_errors=True)
+shutil.rmtree(_P.review("cpx_basic"), ignore_errors=True)
 # ⑤ 번호 선택지
 _opts = ["위 값 채움", "행 독립", "모름"]
 show("⑤ 번호만 쳐도 통한다 — «1» → 첫째", _IV._pick_option("1", _opts) == "위 값 채움")
@@ -1132,7 +1133,7 @@ _dsch = {"doc_type": "b49demo", "schema_version": 1, "layer": "quality",
 _dst = {"doc_type": "b49demo", "layer": "quality",
         "samples": [str(RAW / "IPQC01.xlsx")],
         "adapter": "review/b49demo/adapter.py", "schema": "review/b49demo/schema.json"}
-_dmod = R._load(ROOT / _dst["adapter"], "reg_b49demo_t")
+_dmod = R._load(R._at(_dst["adapter"]), "reg_b49demo_t")
 _ex, _un, _orp = R.unmappable_of(_dsch, _dmod)
 show("① 셋으로 갈린다 — excluded · undecided · orphan (구판은 셋이 같은 질문이었다)",
      [u["field"] for u in _ex] == ["최근 불량 이력"]
@@ -1244,7 +1245,7 @@ _MUT = ("\n\ndef _expand_merged(sheet):\n"
 _bad = _good.replace("\nADAPTER = {", _MUT, 1)
 (_fx / "fixtures/adapters/b50t.py").write_text(_bad, encoding="utf-8")
 (_fx / "fixtures/adapters/b50t_rev1.py").write_text(_good, encoding="utf-8")
-_csch = {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+_csch = {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
          "doc_type": "b50t"}
 for _n in ("b50t", "b50t_rev1"):
     (_fx / "fixtures/schemas" / f"{_n}.json").write_text(
@@ -1301,7 +1302,7 @@ _M40 = ("\n\ndef _expand_merged(sheet):\n"
         "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
         "\n\nADAPTER = {")
 _b40 = _g40.replace("\nADAPTER = {", _M40, 1)
-_s40 = json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8"))
+_s40 = json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8"))
 for _dt, _pairs in (("f40ok", (("", _g40), ("_rev1", _b40), ("_rev2", _g40))),
                     ("f40no", (("", _g40), ("_rev1", _b40), ("_rev2", _b40)))):
     for _sfx, _src in _pairs:
@@ -1733,9 +1734,9 @@ def _b55_parse():
     return len(_b55_calls)
 
 
-_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_n1 = _b55_parse()
-_b55_files = sorted(p.name for p in _SM.KEEP_DIR.glob("*"))
+_b55_files = sorted(p.name for p in _SM.keep_dir().glob("*"))
 _b55_n2 = _b55_parse()                       # 같은 원본 — 재사용
 _b55_src.write_bytes(_b55_src.read_bytes() + b"\x00")   # 1바이트 변경
 _b55_n3 = _b55_parse()
@@ -1748,12 +1749,12 @@ show("④ⓒ 같은 원본 재파싱은 재사용한다 (LLM 0회)",
 # 없이 읽어 영영 옛 분할을 썼고, chunk_id 결정성의 근거가 무너졌다.
 show("④ⓐ 원본 1바이트 변경 → 지도를 새로 산출한다 (해시 대조를 우회하지 않는다)",
      _b55_n3 == 1, f"3회차 {_b55_n3}회")
-_b55_kept = json.loads((_SM.KEEP_DIR / "B55MAP.json").read_text(encoding="utf-8"))
+_b55_kept = json.loads((_SM.keep_dir() / "B55MAP.json").read_text(encoding="utf-8"))
 show("④ 보존 파일이 source_hash와 maps를 함께 갖는다",
      bool(_b55_kept.get("source_hash")) and bool(_b55_kept.get("maps")),
      f"프레임 {sorted(_b55_kept.get('maps') or {})}")
 _b55_src.unlink(missing_ok=True)
-_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 
 print("\n■ B55 ⑤ — 리허설 파싱도 운영 doc_id를 쓴다 (§6.6 B51-2)")
 
@@ -1763,7 +1764,7 @@ show("⑤ 리허설 파싱이 doc_id_of(표본)를 쓴다 ({DOC_TYPE}NN이 아�
      "mod, doc_id_of(s), s, layer=" in
      (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
 # **키가 같아야 재사용이 성립한다** — 구판은 리허설이 다른 이름으로 써서 못 만났다.
-_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
 _b55_calls.clear()
 pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
@@ -1772,7 +1773,7 @@ _b55_calls.clear()
 pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
 show("⑤ⓐ 리허설이 남긴 지도를 운영 인입이 찾는다 (재사용 — LLM 0회)",
      _b55_rehearsal == 1 and len(_b55_calls) == 0)
-_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_calls.clear()
 pipeline.parse(_BP, "B55OLD01", str(_b55_src), map_structure=_b55_ask)   # 구판 이름
 _b55_calls.clear()
@@ -1780,7 +1781,7 @@ pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_a
 show("⑤ [대조] 이름이 다르면 못 찾는다 — 고친 것이 이것이다",
      len(_b55_calls) == 1)
 _b55_src.unlink(missing_ok=True)
-_b55_sh.rmtree(_SM.KEEP_DIR, ignore_errors=True)
+_b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 
 print("\n■ B55 ⑥ — PDF 쪽 렌더가 ④에 닿는다")
 
@@ -2164,7 +2165,7 @@ reset("pptx_b59")
 
 # ④ **어느 폴더·어느 판으로 돌았나**가 관문 산출 첫 줄에 있다.
 _ok59, _out59 = R.harness(ROOT / "tests/fixtures/adapters/cp.py",
-                          ROOT / "schemas/cp.json", [RAW / "CP01.xlsx"])
+                          ROOT / "tests/fixtures/schemas/cp.json", [RAW / "CP01.xlsx"])
 show("④ 관문 산출 첫 줄이 ROOT를 밝힌다 (폴더를 나눠 쓸 때 어느 사본인가)",
      _out59.splitlines()[0].startswith("[관문] ROOT=")
      and str(ROOT) in _out59.splitlines()[0], _out59.splitlines()[0][:70])
@@ -2201,7 +2202,7 @@ _cp60 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
 (_fx60 / "fixtures/adapters/cp60.py").write_text(
     _cp60.replace('"doc_type": "cp"', '"doc_type": "cp60"', 1), encoding="utf-8")
 (_fx60 / "fixtures/schemas/cp60.json").write_text(json.dumps(
-    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp60"},
+    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp60"},
     ensure_ascii=False), encoding="utf-8")
 _e60 = {**_os.environ, "ONTO_FIXTURES": str(_fx60)}
 
@@ -2220,7 +2221,7 @@ _saved_pass = _st60["machine_gate"] == "PASS"
 # **바꿀 곳은 작업 사본이다**(B62 ①-c) — 관문 입구에서 시스템이 `review/`로 복사해
 # 거기에 채우므로, 그 뒤로 관문이 읽는 어댑터는 `state.adapter`가 가리키는 사본이다.
 # fixture 원본은 손대지 않는 자리라(D-26) 거기를 고치면 아무 데도 안 닿는다.
-_ad60 = ROOT / _st60["adapter"]
+_ad60 = R._at(_st60["adapter"])
 _ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
     "\nADAPTER = {",
     "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
@@ -2254,7 +2255,7 @@ _fx62 = Path(_tf.mkdtemp(prefix="fx62_", dir=str(ROOT)))
     (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
     .replace('"doc_type": "cp"', '"doc_type": "cp62"', 1), encoding="utf-8")
 (_fx62 / "fixtures/schemas/cp62.json").write_text(json.dumps(
-    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp62"},
+    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp62"},
     ensure_ascii=False), encoding="utf-8")
 _e62 = {**_os.environ, "ONTO_FIXTURES": str(_fx62), "ONTO_DUMP_PROMPT": "1"}
 
@@ -2403,7 +2404,7 @@ def extract(raw) -> list[dict]:
     out, _ = normalizer.split_multi(out, exp["multi_value_fields"], exp["multi_value_seps"])
     return out
 '''
-_SC63 = {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+_SC63 = {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
          "fields": {"설비": {"role": "entity", "category": "Unit"},
                     "관리항목": {"role": "entity", "category": "Property"},
                     "규격": {"role": "attribute", "attach_to_field": "관리항목",
@@ -2428,7 +2429,7 @@ def _reg63(*a):
 reset("csv63")
 _g63 = _reg63("generate", "csv63", "process", _CSV63, "--no-basic")
 _st63 = json.loads((REVIEW / "csv63" / "state.json").read_text(encoding="utf-8"))
-_mod63 = R._load(ROOT / _st63["adapter"], "b62_csv63")
+_mod63 = R._load(R._at(_st63["adapter"]), "b62_csv63")
 _actual63 = _PF63 = None
 from parser import preflight as _PFM                              # noqa: E402
 _actual63 = _PFM.header_labels(reader.read(_CSV63), 1, _mod63.ADAPTER["expects"])
@@ -2498,7 +2499,7 @@ _fx64 = Path(_tf.mkdtemp(prefix="fx64_", dir=str(ROOT)))
     (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
     .replace('"doc_type": "cp"', '"doc_type": "b64"', 1), encoding="utf-8")
 (_fx64 / "fixtures/schemas/b64.json").write_text(json.dumps(
-    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
      "doc_type": "b64"}, ensure_ascii=False), encoding="utf-8")
 _e64 = {**_os.environ, "ONTO_FIXTURES": str(_fx64)}
 
@@ -2557,7 +2558,7 @@ reset("b64old")
     (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
     .replace('"doc_type": "cp"', '"doc_type": "b64old"', 1), encoding="utf-8")
 (_fx64 / "fixtures/schemas/b64old.json").write_text(json.dumps(
-    {**json.loads((ROOT / "schemas/cp.json").read_text(encoding="utf-8")),
+    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
      "doc_type": "b64old"}, ensure_ascii=False), encoding="utf-8")
 _d64 = REVIEW / "b64old"
 _d64.mkdir(parents=True, exist_ok=True)
@@ -2677,7 +2678,7 @@ _draft64.write_text(
     "    return []\n", encoding="utf-8")
 _st64 = {"doc_type": "c38t", "adapter": str(_draft64.relative_to(ROOT)), "revision": 0}
 R.stamp_system_fields(_st64, [str(_csv64)])
-_after64 = R._load(ROOT / _st64["adapter"], "c38_after").ADAPTER
+_after64 = R._load(R._at(_st64["adapter"]), "c38_after").ADAPTER
 _exp_after = _after64["expects"]
 
 
@@ -2711,7 +2712,7 @@ shutil.rmtree(R.REVIEW / "c38t", ignore_errors=True)
 _keep64, R.stamp_system_fields = R.stamp_system_fields, lambda st, samples: None
 try:
     R.stamp_system_fields(_st64, [str(_csv64)])
-    _off64 = R._load(ROOT / _st64["adapter"], "c38_off").ADAPTER
+    _off64 = R._load(R._at(_st64["adapter"]), "c38_off").ADAPTER
 finally:
     R.stamp_system_fields = _keep64
 show("⑤ 변이 — 스탬프를 끄면 초안 값이 남아 붉어진다 (되돌리면 초록)",
@@ -2726,7 +2727,7 @@ print("\n■ B65 — 어휘가 닫힌 자리는 실행 전에 정적으로 대�
 
 _d65 = Path(_tf.mkdtemp(prefix="b65_", dir=str(ROOT)))
 _cp65 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-_sc65 = _P.schemas() / "cp.json"
+_sc65 = _P.fixture_schemas("cp.json")
 
 
 def _gate65(adapter_src, schema=_sc65, name="a"):
@@ -2759,7 +2760,7 @@ show("①ⓑ 있는 이름만 쓴 어댑터는 G1B가 뜨지 않는다", "G1B" n
      str(sorted(_good65)))
 
 # ②ⓑ **어휘 셋** — 목록 밖 값은 FAIL이고 문면이 목록을 담는다.
-_pf65 = json.loads((ROOT / "schemas/pfmea.json").read_text(encoding="utf-8"))
+_pf65 = json.loads((ROOT / "tests/fixtures/schemas/pfmea.json").read_text(encoding="utf-8"))
 _pfa65 = ROOT / "tests/fixtures/adapters/pfmea.py"
 
 
@@ -2800,8 +2801,8 @@ show("②ⓑ 패턴표 밖 삼항이 FAIL이고 허용 삼항이 문면에 있�
 show("②ⓑ 셋 다 AUTO_FIX 갈래다 (문면이 목록을 담는다)",
      all(not R.classify_failures(o)[1] for o in (_co65, _ro65, _to65)))
 # **걸침 필드는 대상 층의 목록으로 · `@좌표필드`는 블록의 target_category로 판정**
-_ok65, _ = R.harness(_pfa65, ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"]), None
-_pass65, _pout65 = R.harness(_pfa65, ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+_ok65, _ = R.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"]), None
+_pass65, _pout65 = R.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
 _codes65 = [c for c, _l, _d in R.fail_lines(_pout65)]
 show("②ⓑ 걸침 필드(target_layer)·@좌표필드가 있는 스키마가 초록이다 "
      "(다른 층 카테고리를 오판하지 않는다)",
@@ -3147,7 +3148,7 @@ try:
     # ⓑ 초안이 없으면 초회와 같은 입력이다 (지시 없음 · rev 0)
     _drafts67.clear()
     _st67 = R._state("ipqc")
-    (ROOT / _st67["adapter"]).unlink(missing_ok=True)
+    (R._at(_st67["adapter"])).unlink(missing_ok=True)
     try:
         with _ctx.redirect_stdout(_io.StringIO()):
             R.cmd_generate("ipqc", None, [], resume=True)
@@ -3248,7 +3249,7 @@ show("② 세 명령 모두 좌표 태깅을 예고한다 (구판은 인입 갈�
 show("② mock이면 예고가 LLM 0회를 말한다 (부르지 않는다는 사실이 화면에 있다)",
      all("LLM 0회" in l for r in (_ing69, _pr69) for l in _coord69(r.stdout)))
 show("② 예고의 숫자가 계약 JSON의 조각 수와 맞는다 (화면이 제 계산을 하지 않는다)",
-     f"조각 {len(json.loads((ROOT / 'parsed' / 'CP01.json').read_text(encoding='utf-8'))['records']):,}"
+     f"조각 {len(json.loads(_P.parsed('CP01.json').read_text(encoding='utf-8'))['records']):,}"
      in _coord69(_ing69.stdout)[0], _coord69(_ing69.stdout)[0])
 # ③ 상한 손잡이 — 값의 정본은 `cli/parse.py` 상수 하나다.
 show("③ --coord-llm off|<종수>가 상한을 정한다 · 기본은 상수 하나",
@@ -3293,7 +3294,7 @@ for _f69 in ("CP01", "CP02_drift", "CP03_bad", "CP04_unlabeled"):
 print("\n■ B72 ① — 산출 키 ⊆ 스키마 fields ∪ 구조 필드 (G39)")
 
 _cpa72 = ROOT / "tests" / "fixtures" / "adapters" / "cp.py"
-_cps72 = _P.schemas() / "cp.json"
+_cps72 = _P.fixture_schemas("cp.json")
 _ok72, _out72 = R.harness(_cpa72, _cps72, [RAW / "CP01.xlsx"])
 show("① 정상 쌍은 G39가 초록이다 (지금 자산이 규약 7을 지킨다)",
      "[PASS] G39" in _out72 and "[FAIL] G39" not in _out72,
@@ -3349,7 +3350,7 @@ show("① 가장 단순한 few-shot(cp)이 role: meta를 보인다 (LLM이 본�
 # 선언하고 시험 재료는 시험이 심는다 — **자산의 결함에 기댄 재료는 자산을 고칠
 # 때마다 시험을 깨뜨린다.** 내장 참조 자산도 관문 대상이다(예외를 두지 않는다).
 _pf73, _pfo73 = R.harness(ROOT / "tests/fixtures/adapters/pfmea.py",
-                          ROOT / "schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+                          ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
 show("⑤ 내장 참조 쌍(pfmea)도 관문을 통과한다 — 예외를 두지 않는다",
      "[FAIL] G39" not in _pfo73 and _pf73,
      [l.strip() for l in _pfo73.splitlines() if "G39" in l][:1])
@@ -3364,7 +3365,7 @@ print("\n■ B76 ② 열 판정 대장 커버리지 (G4G)")
 reset("ipqc")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
 _st76 = R._state("ipqc")
-_sch76 = json.loads((ROOT / _st76["schema"]).read_text(encoding="utf-8"))
+_sch76 = json.loads((R._at(_st76["schema"])).read_text(encoding="utf-8"))
 _fld76, _ = R.load_blocks(_sch76)
 from run_adapter import structural_fields as _sf76                 # noqa: E402
 _struct76 = set(_sf76())
@@ -3397,7 +3398,7 @@ _save76 = _lp76.read_text(encoding="utf-8")
 _led76 = json.loads(_save76)
 _led76["columns"] = [r for r in _led76["columns"] if r.get("field") != _field76]
 _lp76.write_text(json.dumps(_led76, ensure_ascii=False), encoding="utf-8")
-_ok76g, _out76g = R.harness(ROOT / _st76["adapter"], ROOT / _st76["schema"],
+_ok76g, _out76g = R.harness(R._at(_st76["adapter"]), R._at(_st76["schema"]),
                             [RAW / "IPQC01.xlsx"], doc_type="ipqc")
 _g4g76 = [l.strip() for l in _out76g.splitlines() if "G4G" in l]
 show("② 대장에 없는 필드가 있으면 G4G FAIL이고 문면이 그 필드를 말한다",
@@ -3406,7 +3407,7 @@ show("② 대장에 없는 필드가 있으면 G4G FAIL이고 문면이 그 필�
 show("② G4G는 재생성으로 고칠 수 없다 — 관문 자체 결함으로 분류된다",
      "G4G" in R.GATE_SELF)
 _lp76.write_text(_save76, encoding="utf-8")
-_ok76h, _out76h = R.harness(ROOT / _st76["adapter"], ROOT / _st76["schema"],
+_ok76h, _out76h = R.harness(R._at(_st76["adapter"]), R._at(_st76["schema"]),
                             [RAW / "IPQC01.xlsx"], doc_type="ipqc")
 show("② 대장이 덮으면 G4G PASS (관문이 대장을 만들지 않고 읽는다)",
      "[PASS] G4G" in _out76h)
@@ -3415,7 +3416,7 @@ show("② `role_table`이 어댑터 `columns`를 읽지 않는다 (폴백이 없
      (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
 
 # ① 합치기 리스트여도 기계 제안 대조가 돈다(죽지 않는다)
-_mod76r = R._load(ROOT / _st76["adapter"], "p3_b76r")
+_mod76r = R._load(R._at(_st76["adapter"]), "p3_b76r")
 _two76 = [r for r in R.read_ledger("ipqc") if r.get("field")][:2]
 if len(_two76) == 2:
     _rows76 = json.loads(_lp76.read_text(encoding="utf-8"))
@@ -3431,7 +3432,7 @@ show("① 한 필드가 열 여럿이어도 `role_table`이 죽지 않고 표를
 _lp76.write_text(_save76, encoding="utf-8")
 
 print("\n■ B76 ③ 등록 흐름의 예외는 문면으로 죽는다")
-_dl76 = _P.data() / "defects.log"
+_dl76 = store.path(store.DEFECTS)
 _before76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
 _orig76 = R.cmd_list
 

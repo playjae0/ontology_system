@@ -78,7 +78,7 @@ show("canonical·alias·tier·polarity·parent를 함께 싣는다 (태거가 �
          for n in proc["nodes"]))
 nodes = tagger.closed_list("process")
 show("파서가 그래프가 아니라 **파일**을 읽는다 (D-9 — 결합은 JSON뿐)",
-     len(nodes) == 46 and tagger.SNAPSHOT == snap_path)
+     len(nodes) == 46 and tagger.snapshot_path() == snap_path)
 before = json.dumps(snap, ensure_ascii=False, sort_keys=True)
 bootstrap("process", echo=False)
 show("재빌드가 스냅샷을 재생성한다 (손으로 고치지 않는 파생물)",
@@ -388,7 +388,7 @@ show("기계 관문이 검수 앞에 선다 (preflight + 파싱 + self-check 전
      rc == 0 and all(s["preflight"] and s["parsed"] for s in view["samples"]))
 show("표본 2부면 1부 경고가 뜨지 않는다", not view["warnings"])
 cmd_build(["tests/fixtures/fixtures/adapters/ipqc.py", "ipqc_p1_solo", str(RAW / "IPQC01.xlsx")])
-solo = json.loads((ROOT / "review/ipqc_p1_solo/view.json").read_text(encoding="utf-8"))
+solo = json.loads(_P.review("ipqc_p1_solo", "view.json").read_text(encoding="utf-8"))
 show("표본 1부면 '변형 미관찰 · 근거 1건일 수 있음' 경고 (D-22 확장 문구)",
      solo["warnings"] and "근거 1건" in solo["warnings"][0])
 appr = json.loads((outdir / "approval.json").read_text(encoding="utf-8"))
@@ -795,7 +795,9 @@ _W.write_text("# -*- coding: utf-8 -*-\n"
               "ADAPTER = {**basic_prose_xlsx.ADAPTER, 'doc_type': 'toc_basic'}\n"
               "extract = basic_prose_xlsx.extract\n"
               "level_report = basic_prose_xlsx.level_report\n", encoding="utf-8")
-_S = _P.schemas() / "toc_basic.json"
+# 내장(mock) 스키마의 자리는 픽스처 폴더다(B78 1b — 자리로 가른다). 등록 자리에
+# 두면 등록부에 이름이 없어 조회가 답하지 않는다.
+_S = _P.fixture_schemas("toc_basic.json")
 _S.write_text(json.dumps({"doc_type": "toc_basic", "schema_version": 1,
                           "layer": "process", "payload_kind": "prose",
                           "use_blocks": ["common_core", "process_coord"],

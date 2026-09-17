@@ -27,7 +27,7 @@ import re
 from pathlib import Path
 
 from . import llm, log, paths, store
-from .ids import norm
+from .ids import doc_hash, norm
 
 ROOT = Path(__file__).resolve().parent.parent
 EXTRACT_DIR = paths.extract()   # 자리는 core/paths.py가 안다 (B78 1a)
@@ -75,6 +75,29 @@ def checkpoint_path(doc_id):
 
 def has_checkpoint(doc_id):
     return checkpoint_path(doc_id).exists()
+
+
+def reuse_check(env):
+    """이 체크포인트를 **재사용해도 되는가** — 돌려주는 둘째 값이 「왜 못 쓰는가」다.
+
+    조건은 **`doc_hash`와 `adapter_version`이 둘 다 같을 때**다(B78 1b). 구판의
+    조건은 「파일이 있다」 하나였고, 그래서 어댑터 새 판(`register generate --revise`)
+    뒤에도 옛 추출이 그대로 재사용됐다 — **바뀐 분할로 만든 청크에 옛 판의 후보가
+    붙는다.** 규약 7이 재인입에서 막던 것과 같은 축인데 어댑터 축이 비어 있었다.
+    """
+    p = checkpoint_path(env["doc_id"])
+    if not p.exists():
+        return False, "체크포인트 없음"
+    try:
+        cp = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+        return False, f"체크포인트를 읽지 못했다 — {type(e).__name__}"
+    now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version")}
+    for k, v in now.items():
+        if (cp.get(k) or None) != (v or None):
+            return False, (f"{k} 불일치 — 체크포인트 {str(cp.get(k))[:12] or '없음'} "
+                           f"≠ 지금 문서 {str(v)[:12] or '없음'}")
+    return True, ""
 
 
 def invalidate(doc_id):
@@ -282,8 +305,13 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
     계약이므로(P-1), 아무것도 못 뽑은 상태를 완료로 남기면 재시도가 영영 막힌다.
     """
     doc_id = env["doc_id"]
-    if has_checkpoint(doc_id):
+    ok, why = reuse_check(env)                   # doc_hash + adapter_version (B78 1b)
+    if ok:
         return json.loads(checkpoint_path(doc_id).read_text(encoding="utf-8")), False
+    if has_checkpoint(doc_id):
+        # **조용히 옛 판을 쓰지 않는다** — 조건이 깨졌으면 버리고 다시 뽑는다.
+        _LOG.info("extract: %s 체크포인트 폐기 — %s", doc_id, why)
+        invalidate(doc_id)
 
     hints = _load_hints(doc_id)
     candidates = []
@@ -322,6 +350,8 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
         "doc_id": doc_id,
         "stage": "extract",
         "adapter_version": env.get("adapter_version"),
+        # **재사용 조건의 둘째 축**(B78 1b) — 봉투가 바뀌면 청크가 바뀐다.
+        "doc_hash": doc_hash(env),
         "prompt_version": prompt_version(),
         "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),
         "layer": cfg["layer"],

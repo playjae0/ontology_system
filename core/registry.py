@@ -26,7 +26,8 @@ from pathlib import Path
 from . import llm, log, paths, store
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_DIR = paths.schemas()
+SCHEMA_DIR = paths.schemas()           # **등록된** 스키마의 자리 (②등록 단)
+FIXTURE_SCHEMA_DIR = paths.fixture_schemas()   # **내장(mock)** — 자리로 가른다
 
 BUILTIN = "builtin"
 
@@ -41,11 +42,18 @@ def _registered():
 def _builtin():
     """레포가 싣고 나온 doc_type — 스키마 파일의 실재가 곧 등록이다.
 
-    `blocks.json`은 doc_type이 아니라 공용 블록이므로 제외한다 — 파일 이름이 아니라
-    **내용의 `doc_type` 키**로 가른다(이름으로 가르면 그 자체가 규칙의 누수다).
+    **자리가 가른다**(B78 1b): 내장은 `tests/fixtures/schemas/`에만 있고 등록은
+    `registry/schemas/`에만 있다 — 섞일 자리가 없다. 구판은 같은 폴더에 두고
+    모드(`use_mock()`)로 갈랐고, 그래서 「mock이 이름만 다르게 숨어 있다」였다.
+
+    `blocks.json`은 doc_type이 아니라 공용 블록이므로 레포 `schemas/`에 남는다 —
+    파일 이름이 아니라 **내용의 `doc_type` 키**로 가른다(이름으로 가르면 그 자체가
+    규칙의 누수다).
     """
     out = {}
-    for p in sorted(SCHEMA_DIR.glob("*.json")):
+    if not FIXTURE_SCHEMA_DIR.exists():
+        return out
+    for p in sorted(FIXTURE_SCHEMA_DIR.glob("*.json")):
         try:
             s = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
@@ -55,6 +63,8 @@ def _builtin():
             continue
         out[dt] = {"doc_type": dt, "status": BUILTIN, "layer": s.get("layer"),
                    "schema": str(p.relative_to(ROOT)), "adapter": None,
+                   # 내장은 **레포 기준** 경로다(등록분은 `registry/` 기준 — B78 1b).
+                   "root": "repo",
                    "schema_version": s.get("schema_version")}
     return out
 
@@ -71,6 +81,10 @@ def all_doc_types():
     자리가 여기인 이유: `lookup`·`schema_of`·`adapter_paths`·`platform doctypes`가
     전부 이 함수를 지난다 — 조건을 호출부마다 두면 그중 하나가 빠지는 날이 온다.
     """
+    # **자리가 가르므로 모드 분기는 안전망이다**(B78 1b) — 내장은 픽스처 폴더에만
+    # 있어서 운영 배치에는 그 폴더가 아예 없다. 그래도 분기를 남기는 이유: 레포를
+    # 통째로 이식하면 픽스처가 디스크에 같이 오고(사내 실측), 그때 가르는 것은
+    # 모드다(D-150 ① — 「모드가 0이다」가 핵심이지 「폴더가 없다」가 아니다).
     out = _builtin() if llm.use_mock() else {}
     out.update(_registered())
     return out
@@ -81,12 +95,37 @@ def lookup(doc_type):
     return all_doc_types().get(doc_type)
 
 
+def _abs(entry, rel):
+    """등록부의 상대 경로 → 실물 자리 (B78 1b).
+
+    **등록분은 `registry/` 기준**이다 — 그래야 상태 루트를 옮겨도 등록부를 고칠
+    필요가 없다(옛 항목은 `platform migrate`가 재작성한다). 내장은 레포 기준이다.
+    """
+    base = ROOT if (entry or {}).get("root") == "repo" else paths.registry()
+    return base / rel
+
+
+def at(rel):
+    """**상태에 실린 상대 경로 → 실물 자리** — registry 먼저, 레포 나중(B78 1b).
+
+    `_abs`가 등록부 항목의 규칙이라면 이것은 **검수 상태(`review/<dt>/state.json`)의
+    규칙**이다: 그 초안은 검수 자리(`registry/review/…`)일 수도, 레포의 픽스처·킷
+    전시물일 수도 있다. 규칙이 한 자리에 있어야 쓰는 쪽(`cli/register._rel`)과 읽는
+    쪽이 갈리지 않는다.
+    """
+    p = Path(rel)
+    if p.is_absolute():
+        return p
+    under = paths.registry() / p
+    return under if under.exists() else ROOT / p
+
+
 def schema_of(doc_type):
     """그 doc_type의 매칭 스키마. 등록부가 가리키는 실물을 읽는다."""
     e = lookup(doc_type)
     if not e or not e.get("schema"):
         return None
-    p = ROOT / e["schema"]
+    p = _abs(e, e["schema"])
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
@@ -102,7 +141,7 @@ def adapter_paths():
     거르면 화면이 「내장 셋만 있다」로 보인다. 결손의 판정은 `missing_assets()`가
     하고, 막는 자리는 사람이 치는 진입(`cli/scan.py::adapters`)이다.
     """
-    return [(dt, ROOT / e["adapter"]) for dt, e in all_doc_types().items()
+    return [(dt, _abs(e, e["adapter"])) for dt, e in all_doc_types().items()
             if e.get("adapter")]
 
 
@@ -116,7 +155,7 @@ def missing_assets():
     for dt, e in sorted(_registered().items()):
         for key in ("adapter", "schema"):
             rel = e.get(key)
-            if rel and not (ROOT / rel).exists():
+            if rel and not _abs(e, rel).exists():
                 out.append({"doc_type": dt, "kind": key, "path": rel,
                             "approved_by": e.get("approved_by"),
                             "approved_at": e.get("approved_at"),
@@ -148,7 +187,7 @@ def orphan_reviews():
             meta = json.loads(ap.read_text(encoding="utf-8"))
         except Exception:
             meta = {}
-        out.append({"doc_type": d.name, "path": str(ap.relative_to(ROOT)),
+        out.append({"doc_type": d.name, "path": str(ap),
                     "approved_by": meta.get("approved_by") or meta.get("by"),
                     "approved_at": meta.get("approved_at") or meta.get("at")})
     return out
@@ -240,7 +279,7 @@ def unregister(doc_type):
     조회에는 계속 잡히면서 등록부에는 없는 반쪽 상태가 되고, 같은 이름의 재등록이
     「내장 중복」으로 영영 막힌다(실측).
 
-    **등재 항목이 가리키는 경로만** 지운다 — 레포가 싣고 나온 `schemas/cp.json` 같은
+    **등재 항목이 가리키는 경로만** 지운다 — 레포가 싣고 나온 `tests/fixtures/schemas/cp.json` 같은
     것은 등재 항목이 없으므로 대상이 아니다.
     """
     reg = _registered()
@@ -249,7 +288,7 @@ def unregister(doc_type):
         return False
     for key, base in (("adapter", "adapters"), ("schema", "schemas")):
         rel = entry.get(key) or ""
-        p = ROOT / rel
+        p = _abs(entry, rel)
         if rel.startswith(base + "/") and p.exists():
             p.unlink()
     del reg[doc_type]

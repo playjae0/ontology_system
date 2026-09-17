@@ -52,10 +52,14 @@ def run(paths, *, force=False, layer=None):
             continue
         if force:
             EX.invalidate(doc_id)
-        if EX.has_checkpoint(doc_id):
+        _ok, _why = EX.reuse_check(env)          # doc_hash + adapter_version (B78 1b)
+        if _ok:
             print(f"[재사용] {doc_id}: 체크포인트가 이미 있다 "
-                  f"({EX.checkpoint_path(doc_id).relative_to(ROOT)}) — --force로 재생성")
+                  f"({EX.checkpoint_path(doc_id)}) — --force로 재생성")
             continue
+        if EX.has_checkpoint(doc_id):
+            print(f"[재생성] {doc_id}: {_why} — 옛 체크포인트를 버린다")
+            EX.invalidate(doc_id)
         # 추출은 **청크 id를 입력으로 받는다** — 근거 축 id는 인입이 계산한다(§7.2).
         # 그래서 이 진입점은 인입(id 계산·청크 적재)을 선행시킨 뒤 추출만 돈다.
         # 인입은 멱등하므로(같은 내용 → 같은 id) 이미 들어와 있어도 안전하다.
@@ -72,7 +76,7 @@ def run(paths, *, force=False, layer=None):
         out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])
         print(f"[추출] {doc_id}: 청크 {len(out['candidates'])} · 개체 후보 {n} "
-              f"→ {EX.checkpoint_path(doc_id).relative_to(ROOT)}")
+              f"→ {EX.checkpoint_path(doc_id)}")
     return rc
 
 

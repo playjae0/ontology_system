@@ -111,11 +111,13 @@ def mode_line():
     실측: 설정 파일을 만든 운영자가 **mock 문답의 고정 문안을 실호출 오동작으로
     읽었다.** 어느 갈래로 도는지가 화면 첫 줄에 없으면 사람은 자기가 켠 줄 안다.
     """
+    from . import paths                  # 함수 안 import — 모듈 수준 순환 방지
+    where = f" · 상태 폴더 {paths.home()}"      # 어느 상태에 쓰는지도 화면에 있다(B78 1b)
     if use_mock():
         return ('모드: mock (기본 — 실호출은 llm.json의 "USE_MOCK": 0 또는 '
-                'USE_MOCK=0)')
+                'USE_MOCK=0)' + where)
     src, _warn = file_state()
-    return f"모드: 실호출 (게이트웨이 설정: {src or '환경변수'})"
+    return f"모드: 실호출 (게이트웨이 설정: {src or '환경변수'}){where}"
 
 
 def mock(point, detail=""):
@@ -134,7 +136,7 @@ class NotConfigured(RuntimeError):
 
 # 설정 파일을 찾는 자리 — **순서가 곧 우선순위**다. `config()` 하나만 이것을 안다.
 CONFIG_ENV = "ONTO_CONFIG"
-CONFIG_PATHS = ("~/.onto/llm.json", "llm.local.json")
+CONFIG_PATHS = ("~/.onto/llm.json", "llm.local.json", "$ONTO_HOME/llm.json")
 
 
 def config_file():
@@ -149,9 +151,14 @@ def config_file():
     explicit = os.environ.get(CONFIG_ENV)
     if explicit:
         return explicit if os.path.isfile(explicit) else None
+    from . import paths                  # 함수 안 import — 모듈 수준 순환 방지
+    # 넷째 자리는 **상태 루트**다(B78 1b) — 사내는 `ONTO_HOME`을 코드 밖에 두므로
+    # 설정도 상태와 함께 이사한다. `paths.config_file()`은 `home()`을 부르지 않는다
+    # (부르면 `use_mock()` → 설정 판독 → 여기로 돌아와 서로를 기다린다).
     cand = [os.path.expanduser(CONFIG_PATHS[0]),
             os.path.join(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))), CONFIG_PATHS[1])]
+                os.path.abspath(__file__))), CONFIG_PATHS[1]),
+            str(paths.config_file())]
     for c in cand:
         if c and os.path.isfile(c):
             return c

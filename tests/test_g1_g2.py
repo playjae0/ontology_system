@@ -13,10 +13,14 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import shutil
+import shutil as _shutil2
+import subprocess
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -116,6 +120,50 @@ _mk_hits = [f"{p.relative_to(ROOT)}:{i}"
 show("폴더를 만드는 코드가 core/paths.py 밖에 없다 (파서 경계 1곳 제외)",
      not _mk_hits, str(_mk_hits))
 
+# ── B78 1b — **자리가 가른다**(모드가 아니라) ────────────────────────────
+# ①mock 자산은 픽스처 폴더에만 ②등록은 `registry/`에만 ③mock 실행은 mock 루트에만.
+# 구판은 같은 폴더에 두고 모드로 갈랐고, 그래서 「mock이 이름만 다르게 숨어 있다」였다.
+_repo_schema_dt = sorted(
+    p.name for p in (ROOT / "schemas").glob("*.json")
+    if "doc_type" in json.loads(p.read_text(encoding="utf-8")))
+show("레포 schemas/에 doc_type 키를 가진 파일 0 (공용 블록만 남는다)",
+     not _repo_schema_dt, str(_repo_schema_dt))
+
+show("등록부는 등록 단에 있다 — 진실과 함께 지워지지 않는다",
+     store.path(store.DOC_TYPES).is_relative_to(_P.registry())
+     and not store.path(store.DOC_TYPES).is_relative_to(_P.data()))
+
+_keep_owners = [m for m in (init, store)
+                if any("KEEP_IN" + "_DATA" == n for n in dir(m))]
+show("이름으로 지켜 내는 예외가 코드에 없다 — 자리가 갈리면 규칙이 준다",
+     not _keep_owners, str(_keep_owners))
+
+# **파서는 core를 import하지 않는다**(문서 6 §6.7) — 그래서 자리를 **주입으로** 받는다.
+# 값이 아니라 함수를 받아야 상태 루트가 갈릴 때 파서도 같이 움직인다.
+from parser import struct_map as _SM2, tagger as _TG2            # noqa: E402
+_psrc = "".join((ROOT / "parser" / f).read_text(encoding="utf-8")
+                for f in ("struct_map.py", "tagger.py"))
+show("파서의 상태 자리 둘이 주입으로 상태 루트를 따른다 (파서는 core를 모른다)",
+     _SM2.keep_dir().is_relative_to(_P.work())
+     and _TG2.snapshot_path() == store.path(store.SKELETON_LIST)
+     and "import core" not in _psrc and "from core" not in _psrc,
+     f"{_SM2.keep_dir()} · {_TG2.snapshot_path()}")
+
+# **변이 — 운영 루트에 감시 파일을 두고 mock으로 돌린다.** 한 바이트도 닿지 않아야 한다.
+_watch = Path(tempfile.mkdtemp(prefix="b78watch_"))
+(_watch / "감시.txt").write_text("touched?", encoding="utf-8")
+_before = sorted(str(p.relative_to(_watch)) for p in _watch.rglob("*"))
+_mockrun = subprocess.run(
+    [sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+    capture_output=True, text=True, cwd=str(ROOT),
+    env=dict(os.environ, USE_MOCK="1", ONTO_HOME=str(_watch)),
+    stdin=subprocess.DEVNULL)
+_after = sorted(str(p.relative_to(_watch)) for p in _watch.rglob("*"))
+show("USE_MOCK=1 실행이 ONTO_HOME(운영 루트)에 쓰지 않는다 — 자리로 끊는다",
+     _mockrun.returncode == 0 and _before == _after and _P.is_mock_home(),
+     f"{_after} · rc={_mockrun.returncode}")
+_shutil2.rmtree(_watch, ignore_errors=True)
+
 # **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
 # 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
 # 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.
@@ -159,7 +207,7 @@ _probe.mkdir(parents=True, exist_ok=True)
 _init2.init(fresh_=True)
 _kept = (_probe / "approval.json").exists()
 show("run.py init --fresh 가 review/의 승인 기록을 지우지 않는다 (§7.8)",
-     _kept and "review" not in _init2.WIPE, str(_init2.WIPE))
+     _kept and "registry" not in _init2.WIPE_TIERS, str(_init2.WIPE_TIERS))
 import shutil as _sh
 _sh.rmtree(_probe, ignore_errors=True)
 
@@ -300,17 +348,22 @@ _parse = _rc("-m", "cli.parse", "run", "--allow-mock",   # 회귀는 관문 비�
 show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — 파일 존재 = 파싱 완료)",
      _parse.returncode == 0 and (_P.parsed() / "CP01.json").exists())
 
-# 클린 범위 — §7.6-4가 이번 개정에서 확정했다.
+# 클린 범위 — §7.6-4가 확정하고 B78 1b가 **단(tier)으로** 다시 그었다.
 from core import init as _init3                                 # noqa: E402
-show("클린 범위가 parsed/·extract/를 포함한다 (체크포인트 잔존 = 순서 의존)",
-     "parsed" in _init3.WIPE and "extract" in _init3.WIPE, str(_init3.WIPE))
-show("클린이 data/doc_types.json을 보존한다 (승인 1회의 등재 — 재생성 불가)",
-     "doc_types.json" in _init3.KEEP_IN_DATA)
-_dt = _P.data() / "doc_types.json"
+show("클린 범위가 체크포인트를 포함한다 (잔존 = 순서 의존)",
+     _P.parsed().is_relative_to(_P.work())
+     and _P.extract().is_relative_to(_P.work())
+     and "work" in _init3.WIPE_TIERS, str(_init3.WIPE_TIERS))
+# **등록은 다른 폴더라 예외가 필요 없다**(B78 1b) — 구판은 `data/` 안에 있는
+# 등록부 하나를 이름으로 지켜 냈다(`KEEP_IN_DATA`). 자리가 갈리면 규칙이 준다.
+show("클린이 등록 단을 건드리지 않는다 (승인 1회의 등재 — 재생성 불가)",
+     "registry" not in _init3.WIPE_TIERS
+     and not _P.registry().is_relative_to(_P.data()))
+_dt = _P.registry("doc_types.json")
 _dt.parent.mkdir(parents=True, exist_ok=True)
 _dt.write_text('{"_probe": {"doc_type": "_probe"}}', encoding="utf-8")
 _init3.init(fresh_=True)
-show("실측 — init --fresh 후에도 doc_types.json이 남는다",
+show("실측 — init --fresh 후에도 등록부가 남는다",
      _dt.exists() and "_probe" in _dt.read_text(encoding="utf-8"))
 show("빈 상태에 층 등록부·문서 대장도 든다 (§7.2 빈 상태 불릿)",
      store.REGISTRY in _init3.EMPTY and store.DOC_REGISTRY in _init3.EMPTY)
