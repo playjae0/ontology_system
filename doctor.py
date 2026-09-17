@@ -41,7 +41,15 @@ SUITES = [
     ("test_g6_5", 76, "계약 미배선 24건 수리 · B58 재등록"),
     ("test_p1", 173, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독 · ⑦ 폴백 · B58 산문 xlsx · 형태 판정 · B68 분할 기준 · B69 좌표 태깅 dedupe·상한"),
     ("test_p2", 68, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋 · B76 스켈레톤 최소 어댑터·형 검사 G4F · B77 전시물 실행 관문"),
-    ("test_p3", 445, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건 · B58 관문 범위 · B59 관문 화면 · B60 관문 재실행·확정 요약 · B62 문답 로그 · B64 columns 해석·C38 잠금 · B65 어휘 대조·형태 판정 문의 · B66 포맷 무관 지문·미선택 네 갈래·CSV 전 구간 등가 · B67 열 판정 대장·이어하기 · B68 분할 줄 · B69 좌표 태깅 화면 · B72 G39 산출 키 · B73 pfmea 관문 · B76 대장 커버리지 G4G·등록 예외 경계"),
+    # **P3는 파일 여덟이다**(B78 2b) — 등록 파이프라인의 칸별로 갈랐고 합은 그대로다.
+    ("test_p3_register", 73, "등록부 조회 · 구축 모드 전 과정(S1) · 1부 경고 · 정형 등록(S15)"),
+    ("test_p3_prompt", 60, "골격 확정 · 전송 프롬프트 · 문답 어휘 주입 · 열 프로파일 · 예산"),
+    ("test_p3_gate", 77, "스키마 strict · 오류 본문 · 분할 레벨 · mock 관문 · --resume"),
+    ("test_p3_view", 34, "모든 열은 판정을 갖는다 · 하네스 자동 갈래 · 추출 리허설"),
+    ("test_p3_recover", 38, "재생성 지시 · 문답 누적 · 청크 단위 실패 · 지도 무효화 · llm-check"),
+    ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
+    ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
+    ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
     ("test_2a_gateway", 39, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험 · B63 대장 잠금"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
     # **사내 조건을 상시로 돈다**(B71 ②) — 나머지 전부가 `USE_MOCK=1`이라,
@@ -472,7 +480,7 @@ def transition():
     # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
     # 이제 재는 것은 「실 호출 경로를 타서 미설정 실패에 닿는가」이고, 판정은
     # 회귀와 **같은 탐침 파일**(tests/points_probe.py)을 실행해서 한다.
-    from core.gateway.llm import POINTS                                   # noqa: E402
+    from core.llm.gateway import POINTS                                   # noqa: E402
     import importlib.util as _ilu                                 # noqa: E402
     _spec = _ilu.spec_from_file_location("points_probe",
                                          ROOT / "tests" / "points_probe.py")
