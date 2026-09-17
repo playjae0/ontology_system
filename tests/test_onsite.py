@@ -279,6 +279,7 @@ _dict = json.dumps({"노칭": "n1"}, ensure_ascii=False)
 (_old / "data" / "process" / _G).write_text(_graph, encoding="utf-8")
 (_old / "data" / "dictionary.json").write_text(_dict, encoding="utf-8")
 (_old / "data" / "gate_rejects.json").write_text("[]", encoding="utf-8")
+(_old / "data" / ".dictionary.json.lock").write_text("", encoding="utf-8")   # 락 — 상태가 아니다
 (_old / "data" / "ingest_log" / "X1.json").write_text("{}", encoding="utf-8")
 (_old / "data" / "doc_types.json").write_text(json.dumps(
     {"x": {"doc_type": "x", "status": "registered", "layer": "process",
@@ -311,6 +312,10 @@ show("③ 등록부 경로가 registry/ 기준 상대 경로다 — 절대 경�
      all(not Path(_reg_new["x"][k]).is_absolute() and ".." not in _reg_new["x"][k]
          and (_new / "registry" / _reg_new["x"][k]).is_file()
          for k in ("adapter", "schema")), str(_reg_new["x"]))
+show("③ 락 파일은 이관 대상이 아니다 (원자 쓰기의 부산물 — 옮기면 유령 락이 선다)",
+     not [d for _s, d, _t in _MG.plan(_old, _new) if d.name.endswith(".lock")]
+     and not [p for p in (_new / "data").rglob("*.lock")],
+     str([p.name for p in (_new / "data").rglob("*.lock")]))
 show("③ 옛 폴더는 그대로 둔다 — 복사다(되돌릴 자리를 없애지 않는다)",
      (_old / "data" / "doc_types.json").is_file()
      and (_old / "review" / "x" / "approval.json").is_file())

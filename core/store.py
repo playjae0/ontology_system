@@ -41,7 +41,8 @@ except ImportError:                     # pragma: no cover - 폴백 경로
 DATA = paths.data()             # 자리는 core/paths.py가 안다 (B78 1a)
 
 # **③진실과 ④장부를 자리로 가른다**(B78 1b · 허브 확정 2026-09-17).
-# `data/`에 남는 것은 사람 판단이 실렸거나 재생성이 곧 재판정인 7종이고,
+# `data/`에 남는 것은 사람 판단이 실렸거나 재생성이 곧 재판정인 8종이고
+# (사전·청크·큐·문서 대장·골격 스냅샷·층 등록부·`<층>/graph.json` — 허브 확정),
 # 로그·체크포인트·장부는 `work/`다 — 그래서 백업 순위와 `init --fresh`의 범위가
 # 파일 이름이 아니라 **폴더**로 갈린다.
 WORK_FILES = ("gate_rejects.json", "build_metrics.json",

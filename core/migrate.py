@@ -33,7 +33,8 @@ _LOG = log.get(__name__)
 #: 옛 배치의 표식 — 등록부가 진실 옆에 있던 자리다.
 LEGACY_MARK = ("data", "doc_types.json")
 
-#: ③진실에 남는 파일 (허브 확정 2026-09-17) — 층 폴더(`<층>/graph.json`)는 따로 훑는다.
+#: ③진실에 남는 파일 **7종**(허브 확정 2026-09-17 — 층 등록부 `registry.json`을 포함해
+#: `<층>/graph.json`까지 세면 8종이다). 층 폴더는 아래에서 따로 훑는다.
 TRUTH_FILES = (store.DICTIONARY, store.CHUNKS, store.QUEUE,
                store.DOC_REGISTRY, store.OPS_LOG, store.SKELETON_LIST,
                store.REGISTRY)
@@ -90,7 +91,9 @@ def plan(old, home):
     out = []
 
     def add(src, dst, tier):
-        if src.is_file():
+        # **락은 상태가 아니다**(허브 확정 2026-09-17) — `.<이름>.lock`은 원자 쓰기의
+        # 부산물이고, 옮기면 새 자리에 남의 프로세스 락이 유령으로 선다.
+        if src.is_file() and not src.name.endswith(".lock"):
             out.append((src, dst, tier))
 
     def add_tree(src_dir, dst_dir, tier):
