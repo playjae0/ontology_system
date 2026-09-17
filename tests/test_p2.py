@@ -455,6 +455,24 @@ show("① 표에 없는 키는 막지 않고 **보고**한다 (모양이 자라�
      [l.strip() for l in _o76.splitlines() if "[모양]" in l][:1])
 _sh76.rmtree(_sd76, ignore_errors=True)
 
+# ── B77 ② 전시물과 표본은 짝이다 — **실행으로** 상시 ─────────────────────
+# 전시물(few-shot)은 회귀에 **문자열로만** 있었고(규약 10 호출부 검사), 그래서
+# `kit/참조어댑터/cp.py`가 표본에 없는 열을 내는 상태가 회차 둘을 살아남았다.
+# 관문을 실제로 돌려 짝을 잰다 — 전시물이 규약을 보이려면 먼저 돌아야 한다.
+_bad77 = []
+for _n77, _doc77 in (("cp", "CP01.xlsx"), ("ipqc", "IPQC01.xlsx"),
+                     ("toc_report", "TOC01.xlsx")):
+    _r77 = subprocess.run(
+        [sys.executable, str(KIT / "run_adapter.py"),
+         str(KIT / "참조어댑터" / f"{_n77}.py"), str(KIT / "참조어댑터" / f"{_n77}.json"),
+         str(ROOT / "tests/fixtures/raw" / _doc77)],
+        capture_output=True, text=True, cwd=str(ROOT))
+    if _r77.returncode != 0 or "[FAIL]" in _r77.stdout:
+        _bad77 += [f"{_n77}: {l.strip()}" for l in _r77.stdout.splitlines()
+                   if "[FAIL]" in l][:1] or [f"{_n77}: rc={_r77.returncode}"]
+show("② 전시물 3쌍이 제 표본으로 관문 전 구간을 지난다 (문자열이 아니라 실행)",
+     not _bad77, " ‖ ".join(_bad77) or "FAIL 0")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P2 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

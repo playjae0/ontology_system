@@ -150,6 +150,25 @@ def unknown_next(rows=None):
     return bad
 
 
+# **근거 자리** — 「무엇을 보고 그렇게 판정했나」 (B77 ③ · B61 계약 ④).
+# 사내 실측: `--revise`가 「등록돼 있지 않다」만 말해, 사용자가 `review/`·`data/`를
+# 복사하고도 시스템이 **어느 파일을 보는지** 몰랐다. 문면을 세지 않는다 —
+# **경로 문자열이 하나 이상 있는가**만 본다(성질).
+_PATH_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*/[A-Za-z0-9_<>{}./-]+"
+                      r"|[A-Za-z0-9_]+\.(?:json|md|py|log|html|xlsx|csv)")
+
+
+def evidence(text):
+    """문면이 가리키는 자리들 — 폴더·파일 경로. 없으면 빈 목록이다."""
+    return [m.group(0) for m in _PATH_RE.finditer(text or "")]
+
+
+def no_evidence(rows=None):
+    """**근거 자리가 없는 상태 거부** — 사람이 어디를 볼지 모른다."""
+    return [r for r in (rows if rows is not None else scan())
+            if r["mark"] == "상태" and not evidence(r["text"])]
+
+
 def unmarked(rows=None):
     """분류가 없는 거부 — **새 거부는 여기 뜬다.**"""
     return [r for r in (rows if rows is not None else scan()) if not r["mark"]]
@@ -169,7 +188,11 @@ def main():
     st = [r for r in rows if r["mark"] == "상태"]
     print(f"\n총 {len(rows)}곳 — 상태 {len(st)} · 사용법 "
           f"{len(rows) - len(st) - len(unmarked(rows))} · 미분류 {len(unmarked(rows))}"
-          f" · 계약 위반 {len(broken(rows))} · 없는 명령 {len(unknown_next(rows))}")
+          f" · 계약 위반 {len(broken(rows))} · 없는 명령 {len(unknown_next(rows))}"
+          f" · 근거 없음 {len(no_evidence(rows))}")
+    for r in no_evidence(rows):
+        print(f"   근거 없음 — {r['file']}:{r['line']}  "
+              f"{' '.join(r['text'].split())[:70]}")
     for r in unknown_next(rows):
         print(f"   없는 명령 — {r['file']}:{r['line']}  {r['cmd']}")
 

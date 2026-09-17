@@ -136,11 +136,3 @@ def judge(raw):
             "why": (f"자동 조건(찬성 ≥{AUTO_MIN_FOR} · 반대 {AUTO_MAX_AGAINST}) 미충족 — "
                     f"table {len(tally[TABLE])} · prose {len(tally[PROSE])} · "
                     f"기권 {len(tally[ABSTAIN])}. **사람이 정한다**")}
-
-
-def table_line(res):
-    """판정 한 건의 **한 줄 요약** — 화면이 이 문자열을 쓴다(계산은 여기서 한다)."""
-    s = res["signals"]
-    body = " · ".join(f"{k}={s[k]}[{res['votes'][k][0]}]" for k in SIGNALS)
-    head = res["verdict"] or "사람"
-    return f"{head:5} | {body}"

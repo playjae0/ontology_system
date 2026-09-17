@@ -163,8 +163,11 @@ before = data_hash()
 res = SC.scan(ROOT / "tests" / "fixtures" / "raw" / "CP04_unlabeled.xlsx")
 cp = next(d for d in res["details"] if d["doc_type"] == "cp")
 show("후보 'cp' 제안 — 유일 일치", res["candidates"] == ["cp"], str(res["candidates"]))
-show("일치 내역 포함 — cp 10/10 · 누락 0 · 잉여 0",
-     cp["matched"] == cp["declared"] == 10 and not cp["missing"] and not cp["extra"])
+# **수를 박지 않는다**(B77 ① 재조준) — 성질은 「선언한 것 전부가 맞았고 남는 것이
+# 없다」다. 10을 박아 두면 그 문서가 열 하나를 얻는 날 이 줄이 결함처럼 붉는다.
+show("일치 내역 포함 — 선언분 전량 일치 · 누락 0 · 잉여 0",
+     cp["matched"] == cp["declared"] > 0 and not cp["missing"] and not cp["extra"],
+     f"{cp['matched']}/{cp['declared']}")
 show("타 어댑터의 불일치 내역도 함께 제시된다 (일괄 대조)",
      any(d["doc_type"] == "ipqc" and d["eligible"] and not d["candidate"]
          for d in res["details"]))
@@ -255,7 +258,7 @@ show("doc_id 파생 — 파일명 stem · 공백은 _ · 경로 무관 (D-110)",
 _sel = IG.select(_RAW / "CP04_unlabeled.xlsx")
 show("선택 — 유일 일치는 자동 (cp) · 근거가 실린다 (조건 ①)",
      _sel["status"] == "chosen" and _sel["doc_type"] == "cp" and _sel["basis"]["by"] == "scan"
-     and "완전 일치 10/10" in _sel["basis"]["match"], str(_sel["basis"])[:80])
+     and "완전 일치" in _sel["basis"]["match"], str(_sel["basis"])[:80])
 show("선택 — 표류 문서는 0건 → 사람에게 (조건 ③)",
      IG.select(_RAW / "CP02_drift.xlsx")["status"] == "none")
 show("선택 — 비정형(pptx)은 스캔하지 않는다 · 지정 필수",
@@ -784,6 +787,29 @@ with _ctx.redirect_stdout(_qb73):
 show("② 화면이 이력을 말한다 (몇 회 돌았고 끝났는지)",
      "회 재시도" in _qb73.getvalue() and "사람 판정 대기" in _qb73.getvalue(),
      [l.strip() for l in _qb73.getvalue().splitlines() if "재시도" in l][:1])
+# ── B77 ③ 상태 거부는 **근거 자리**를 말한다 · 등록 넷의 역방향 ──────────
+# B61 계약에 ④근거가 붙었다: 「무엇을 보고 그렇게 판정했나」. 사내 실측에서
+# `--revise`가 「등록돼 있지 않다」만 말해, 사람이 `review/`·`data/`를 옮기고도
+# **시스템이 어느 파일을 보는지** 몰랐다. 문면을 세지 않는다 — 경로가 있는가다.
+show("③ `[상태]` 거부 전부가 근거 자리(경로)를 말한다 (B61 계약 ④)",
+     not _EX.no_evidence(_rows61),
+     f"상태 {len(_st61)}곳 · 근거 없음 {_at61(_EX.no_evidence(_rows61))}")
+_orp77 = ROOT / "review" / "옮기다빠진ZZ"
+_orp77.mkdir(parents=True, exist_ok=True)
+(_orp77 / "approval.json").write_text(
+    json.dumps({"doc_type": "옮기다빠진ZZ", "approved_by": "시험자"},
+               ensure_ascii=False), encoding="utf-8")
+_b77 = _io.StringIO()
+try:
+    with _ctx.redirect_stdout(_b77):
+        PF.cmd_doctypes()
+finally:
+    shutil.rmtree(_orp77, ignore_errors=True)
+show("③ 승인 산출만 있고 등록부에 없는 이름을 화면이 낸다 (역방향 대조)",
+     "옮기다빠진ZZ" in _b77.getvalue()
+     and "review/옮기다빠진ZZ/approval.json" in _b77.getvalue(),
+     [l.strip() for l in _b77.getvalue().splitlines() if "옮기다빠진ZZ" in l][:1])
+
 # ════════════════════════════════════════════════════════════════════
 # B74 — 사전 키 = 조회 키 · 판정 대장 · 뷰어 재료 · 행별 report
 # ════════════════════════════════════════════════════════════════════

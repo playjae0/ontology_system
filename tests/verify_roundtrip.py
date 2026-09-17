@@ -158,8 +158,22 @@ def diff_prefix(got, exp, tag):
 
 
 allok = True
-CP_COLS = ["공정구분", "공정번호", "공정명", "극성", "설비", "관리항목",
-           "규격", "측정방법", "대응계획", "적용모델"]
+
+
+def _declared(adapter_path):
+    """**자산이 선언한 헤더**를 읽는다 — 목록을 여기 베끼지 않는다(B77 ①).
+
+    베껴 두면 문서가 열 하나를 얻을 때마다 이 파일도 같이 고쳐야 하고, 고치지
+    않으면 「자산과 표본이 짝인가」를 재는 줄이 **자기 복사본과** 짝을 맞춘다.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("vr_adapter", adapter_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return list(mod.ADAPTER["expects"]["header_labels"])
+
+
+CP_COLS = _declared(ROOT_ / "tests/fixtures/adapters/cp.py")
 
 # ============================================================
 print("\n■ CP01.xlsx — 역산 정합 prefix 12건 + 확대분")
@@ -172,7 +186,10 @@ CP_KEYS = ["공정구분", "공정명", "극성", "설비", "관리항목", "규
 EXP_CP = expected("CP01", "cp", CP_KEYS, context_key="model")
 got = [(r["공정구분"], r["공정명"], r["극성"], r["설비"], r["관리항목"],
         r["규격"], r["적용모델"]) for _, r in recs]
-allok &= show("헤더 = cp 계약 10열", h == CP_COLS, str(h))
+# **수를 세지 않는다** — 자산(어댑터가 선언한 헤더)과 표본이 **짝인가**가 성질이다
+# (B77 ① 재조준). 열 수를 박으면 문서가 열 하나를 얻을 때마다 이 줄이 붉는다.
+allok &= show("헤더가 cp 어댑터의 선언과 같다 (자산과 표본이 짝이다)",
+              h == CP_COLS, str(h))
 allok &= show("병합 20건 이상", len(merged) >= 20, f"{len(merged)}건")
 allok &= show("상동(〃) 5건 이상 해소", dit >= 5, f"{dit}건")
 allok &= show("자기완결 실패 0건", not fails, str(fails))
@@ -253,7 +270,8 @@ allok &= show("나머지 행은 정상 (문서 단위 실패의 대조군)", len
 print("\n■ CP04_unlabeled.xlsx — 지문 스캔(S11) + 복수값 전개 2건")
 h, rows, _ = read_table(f"{RAW}/CP04_unlabeled.xlsx")
 recs, fails, _ = normalize(h, rows, ["설비", "관리항목"], ["공정명", "설비", "관리항목"])
-allok &= show("헤더가 cp expects와 완전 일치 → 후보 'cp' 제안 성립", h == CP_COLS)
+allok &= show("헤더가 cp expects와 완전 일치 → 후보 'cp' 제안 성립", h == CP_COLS,
+                          str(h[-1:]))
 allok &= show(f"raw {len(rows)}행 → record {len(recs)}건 (복수값 2건 전개)",
               len(recs) == len(rows) + 2)
 items = {r["관리항목"] for _, r in recs}

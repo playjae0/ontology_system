@@ -191,6 +191,8 @@ def confirm(doc_path, doc_type, adapter_paths=None):
         raise SystemExit(f"[scan] '{doc_type}'은 지문 불일치다 — 확정 거부 "         # [상태]
                          f"(누락 {detail.get('missing')} · 잉여 {detail.get('extra')}) "
                          f"(C15)\n"
+                         f"  근거 — 문서의 헤더 행 ↔ adapters/{doc_type}.py의 "
+                         f"expects.header_labels\n"
                          f"  ▶ 다음 줄 — 둘 중 하나:\n"
                          f"     (양식이 표류했다 — 같은 문서의 새 판)\n"
                          f"       python -m cli.register generate {doc_type} --revise\n"

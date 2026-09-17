@@ -348,10 +348,11 @@ def _make_big_sample():
     wb = Workbook(); ws = wb.active; ws.title = "CP"
     ws.append([]); ws.append([])
     ws.append(["공정구분", "공정번호", "공정명", "극성", "설비", "관리항목",
-               "규격", "측정방법", "대응계획", "적용모델"])
+               "규격", "측정방법", "대응계획", "적용모델", "개정일"])
     for i in range(600):
         ws.append(["조립", f"P{i:04d}", ["노칭", "미등록공정Z"][i % 2], "cathode",
-                   f"설비{i % 5}", f"관리항목{i % 7}", "±0.05", "게이지", "재검사", "M1"])
+                   f"설비{i % 5}", f"관리항목{i % 7}", "±0.05", "게이지", "재검사", "M1",
+                   "2026-01-05"])
     wb.save(out)
     return str(out)
 
@@ -616,9 +617,15 @@ print("\n■ B39 — 열 프로파일 · 3단 깔때기 (무LLM · 결정적)")
 from parser import profile as _PF                                   # noqa: E402
 _sh = reader.read(str(ROOT / "tests/fixtures/raw/CP01.xlsx"))["sheets"][0]
 _pr = _PF.profile(_sh, header_row=3, data_start=4)
+# **수를 박지 않는다**(B77 ① 재조준) — 성질은 「관찰 창(`OBSERVE_ROWS`) 밖까지
+# 전부 셌다」이고, 기대값은 표본에서 파생한다(표본이 자라면 같이 자란다).
+_rows_all = int(_sh.get("max_row", 0)) - 4 + 1
+_cols_all = len({"".join(ch for ch in k if ch.isalpha())
+                 for k in _sh["cells"] if k.endswith("3")})
 show("① 전 행을 센다 — 앞 N줄이 아니다 (창 밖의 사실을 준다)",
-     _pr["전체_행수"] == 30 and _pr["열수"] == 10,
-     f"{_pr['전체_행수']}행 {_pr['열수']}열")
+     _pr["전체_행수"] == _rows_all > reader.OBSERVE_ROWS
+     and _pr["열수"] == _cols_all,
+     f"{_pr['전체_행수']}행 {_pr['열수']}열 (창 {reader.OBSERVE_ROWS}행)")
 # [B40 ③] 대표값 자리는 고유값 수에 따라 `대표값` 또는 `고유값_전목록`이다.
 def _vals(c):
     return c.get("고유값_전목록") or c.get("대표값") or []

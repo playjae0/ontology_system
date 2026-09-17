@@ -124,6 +124,36 @@ def missing_assets():
     return out
 
 
+def orphan_reviews():
+    """**등록부에 없는데 `review/<dt>/approval.json`만 있는 이름** (B77 ③).
+
+    `missing_assets()`의 **역방향**이다: 그쪽은 「등록부가 가리키는데 실물이 없다」를
+    재고, 이쪽은 「사람이 승인한 산출은 있는데 등록부에 이름이 없다」를 잰다.
+    사내 실측: `review/`를 옮기고도 `data/doc_types.json`을 안 옮겨 등록부가 비었고,
+    화면은 그 사실을 말하지 않았다 — 사람은 「등록이 사라졌다」고만 알았다.
+
+    승인 기록(`approval.json`)이 있는 것만 센다 — 작업 중인 `review/`는 등록이
+    아니다(문서 7 §7.8: 승인 기록이 등록의 물리 정본이다).
+    """
+    reg = _registered()
+    out = []
+    review = ROOT / "review"
+    if not review.exists():
+        return out
+    for d in sorted(x for x in review.iterdir() if x.is_dir()):
+        ap = d / "approval.json"
+        if d.name in reg or not ap.exists():
+            continue
+        try:
+            meta = json.loads(ap.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+        out.append({"doc_type": d.name, "path": str(ap.relative_to(ROOT)),
+                    "approved_by": meta.get("approved_by") or meta.get("by"),
+                    "approved_at": meta.get("approved_at") or meta.get("at")})
+    return out
+
+
 def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
              approved_at, instructions=None):
     """확정 — 등록부 등재. **승인 1회의 물리적 착지점**이다(틀 §2).

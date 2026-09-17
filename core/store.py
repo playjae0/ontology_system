@@ -132,12 +132,16 @@ def read(name, default):
 
 
 def write(name, obj):
-    DATA.mkdir(parents=True, exist_ok=True)
+    # 폴더는 `atomic_write_bytes`가 만든다(부모 mkdir) — 여기서 또 만들지 않는다(B77 ④).
     atomic_write_bytes(path(name), _dumps(obj))
 
 
 def append_line(name: str, line: str):
-    """줄 단위 로그는 덮지 않고 쌓는다 — 조용히 버리지 않는다(G5)."""
+    """줄 단위 로그는 덮지 않고 쌓는다 — 조용히 버리지 않는다(G5).
+
+    **쌓는 쓰기라 원자 쓰기를 타지 않는다** — `data/`를 만드는 두 자리 중 하나가
+    여기다(다른 하나는 `atomic_write_bytes`의 부모 mkdir · B77 ④).
+    """
     DATA.mkdir(parents=True, exist_ok=True)
     with path(name).open("a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
