@@ -86,13 +86,14 @@ show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", no
 #
 # 경계 예외 셋은 **이름으로** 허용한다 — 늘어나면 붉는다:
 #   · `parser/`  2곳 — 파서는 외부 전달물이라 core를 import하지 않는다(문서 6 §6.7)
-#   · `kit/`     1곳 — 킷도 같다(관문 G54가 `core.llm` 미적재를 상시로 잰다)
+#   · `kit/`     1곳 — 킷도 같다(관문 G54가 `core.llm` 미적재를 상시로 잰다).
+#                 2c에서 표가 갈리며 그 한 곳이 `kit/gate_tables.py`(공용 블록의 자리)다.
 import re as _re                                  # noqa: E402
 _STATE = "|".join(("data", "review", "parsed", "extract", "export",
                    "golden", "adapters", "schemas"))
 _SPAT = _re.compile(r'(ROOT|parent\.parent)\s*/\s*"(?:' + _STATE + r')"')
 _ALLOW = {"core/paths.py", "parser/struct_map.py", "parser/tagger.py",
-          "kit/run_adapter.py"}
+          "kit/gate_tables.py"}
 _state_hits = [f"{p.relative_to(ROOT)}:{i}"
                for d in ("core", "cli", "parser", "kit")
                for p in sorted((ROOT / d).rglob("*.py"))

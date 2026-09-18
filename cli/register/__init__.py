@@ -61,7 +61,7 @@ from parser.normalizer import _col
 from parser import form
 from parser.adapters import basic_ppt, basic_prose_xlsx
 from kit.render_review import render
-from kit.run_adapter import load_blocks
+from kit.gate_tables import load_blocks
 from router import discover
 
 ROOT = paths.ROOT          # 레포 루트는 자리 소유자가 안다 (B78)

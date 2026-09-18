@@ -488,7 +488,7 @@ run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.x
 _st76 = R._state("ipqc")
 _sch76 = json.loads((Rdraft._at(_st76["schema"])).read_text(encoding="utf-8"))
 _fld76, _ = R.load_blocks(_sch76)
-from run_adapter import structural_fields as _sf76                 # noqa: E402
+from gate_tables import structural_fields as _sf76                 # noqa: E402
 _struct76 = set(_sf76())
 _have76 = {r.get("field") for r in Rledger.read_ledger("ipqc") if r.get("field")}
 show("② 스키마 필드 전부에 대장 행이 있다 (구조 필드 제외)",

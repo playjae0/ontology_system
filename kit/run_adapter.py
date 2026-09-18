@@ -38,80 +38,17 @@ from openpyxl.utils import range_boundaries, get_column_letter
 # (구판의 절대경로 sys.path 하드코딩을 대체 — 08-07 13회차 판정)
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from parser import preflight as preflight_mod, reader as reader_mod
+from parser import normalizer as normalizer_mod, preflight as preflight_mod, reader as reader_mod
 from parser.reader import read
 
-ROLES = {"anchor", "entity", "attribute", "content", "meta"}
-BANNED_IMPORTS = {"requests", "urllib", "httpx", "openai", "anthropic", "socket"}
-
-# 규약 10(B31) — 자기완결 연산을 어댑터가 재구현하면 여기서 잡는다.
-# **AST로 함수 정의를 본다**(문자열 검색이 아니다): 주석·docstring에 이름이 나오는
-# 것과 실제로 정의한 것은 다르고, 이 프로젝트는 문자열을 세어 있는 것처럼 보고한
-# 실사고를 겪었다.
-SELFMADE = {"_expand_merged", "_col_to_idx", "_idx_to_col", "_col", "_resolve_ditto",
-            "_split_multi", "_ditto", "_expand_multi"}
-
-# 구조 필드 — role 배정 대상이 아닌 것들(C17). 공용 블록이 선언하지 **않는** 것만 여기 둔다.
-# `process_group`·`process_ref`·`process_no`·`source_locator`는 `schemas/blocks.json`이
-# 소유하므로 아래에 중복해 적지 않는다 — 적어 두면 블록 파일이 바뀌어도 하네스가 모른다.
-STRUCT_ONLY = {"electrode_type", "context", "doc_type", "section"}
-BLOCKS_PATH = ROOT / "schemas" / "blocks.json"   # 킷은 core를 import하지 않는다
-
-
-def load_blocks(schema, path=None):
-    """`use_blocks` 로더 — 스키마가 선언한 공용 블록을 **전개해서** 합친다.
-
-    실행검증_1차 §4.4의 처방이다: 좌표 필드를 `process_coord`에 위임한 스키마는
-    `fields`에 좌표가 없어 **role 루프 드라이런의 `anchor`가 0으로 찍혔다**. 스키마는
-    옳고 하네스가 미완이었다 — 블록을 조립하지 않으면 anchor 경로가 검사되지 않는다.
-
-    돌려주는 것은 `(합쳐진 fields, 블록 유래 필드명 집합)`이다. 블록 유래 필드는
-    **선언된 필드**이므로 `unknown_field` 계산에서 빠지고, role 루프에는 **들어간다.**
-    """
-    p = Path(path or BLOCKS_PATH)
-    blocks = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-    merged, from_blocks = dict(schema.get("fields") or {}), set()
-    for name in schema.get("use_blocks") or []:
-        blk = blocks.get(name)
-        if not isinstance(blk, dict):
-            continue
-        for f, spec in blk.items():
-            if f.startswith("_") or not isinstance(spec, dict):
-                continue
-            from_blocks.add(f)
-            merged.setdefault(f, spec)          # 스키마 선언이 블록을 이긴다
-    return merged, from_blocks
-
-ok_all = True
-
-
-# **판정 줄의 문면 규격** (B59 ①) — `[FAIL] G13  <라벨>  — <상세>`.
-#
-# 코드는 **라벨에 붙은 고정값**이고 순번이 아니다: 단이 늘어도 기존 코드가 밀리지
-# 않는다. 있는 이유는 하나다 — **사내는 복사·붙여넣기가 안 되는 환경이라** 실패
-# 줄을 밖으로 가져올 수 없었다(실측). 세 글자는 사람이 읽어서 전달할 수 있다.
-LINE_RE = r"^\s*\[(PASS|FAIL)\]\s+(G[0-9A-Z]{2})\s\s(.*?)(?:\s\s—\s(.*))?$"
-
-
-def show(label, ok, detail=""):
-    """판정 한 줄. **라벨은 `G\d\w  `로 시작한다** — 그것이 코드다.
-
-    코드 없는 라벨을 만들지 않는다: 화면이 「무엇이 막았나」를 사람이 전달할 수
-    있는 형태로 말해야 하고, 빠진 한 줄은 그 줄에서만 조용히 안 말한다.
-    """
-    global ok_all
-    ok_all = ok_all and bool(ok)
-    print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f"  — {detail}" if detail else ""))
-    return bool(ok)
-
-
-# **공개 API는 모듈이 정본이다**(B65 ①) — 목록을 여기 베끼면 normalizer가 자랄 때
-# 관문이 옛 목록으로 판정하고, 그 거짓 검출을 지우려 다시 베끼게 된다.
-from parser import normalizer as normalizer_mod            # noqa: E402
-
-NORMALIZER_API = tuple(x for x in dir(normalizer_mod) if not x.startswith("_")
-                       and callable(getattr(normalizer_mod, x)))
-
+from gate_screen import LINE_RE, SPLIT_MARK, show, _where   # 화면 규격은 저기가 정본이다
+import gate_screen
+import gate_tables as tables
+from gate_tables import (BANNED_IMPORTS, BLOCKS_PATH, G26, G39, NORMALIZER_API,
+                         ROLES, SELFMADE, STRUCT_ONLY, load_blocks,
+                         structural_fields)
+from gate_checks import (check_ledger_coverage, check_schema, check_shapes,
+                         check_vocab, payload_kind_of)
 
 # ---------------------------------------------------------------- ① 로드
 def load_adapter(path):
@@ -225,26 +162,12 @@ def _flatten_strings(obj):
 # **열 프로파일은 패키지에 있다**(B64 ② — 새 계산 0). 관문이 그 값을 읽어 FAIL 줄
 # 아래 한 줄로 싣는다: 「한 값도 안 읽혔는지」를 사람이 화면에서 바로 안다.
 # **라벨 한 자리**(B59 ①) — G26은 한 태그·한 라벨이고 원인은 상세가 가른다.
-G26 = "G26  columns 값이 header_row의 헤더로 확정된다"
-
-# 분할 요약 줄의 표시 — **정본은 여기다**(등록 화면이 이 이름으로 집는다).
-SPLIT_MARK = "[분할요약] "
-
-PKG_FLAG = "--package"
-PACKAGE = None
-
-# 열 판정 대장의 자리 — **관문은 그것을 계산하지 않고 읽는다**(B76 ②).
-# 없으면 커버리지 검사를 돌리지 않는다: 킷은 등록 흐름 밖에서도 단독으로 돈다.
-LEDGER_FLAG = "--ledger"
-LEDGER = None
-
-
 def _profiles():
     """입력 패키지의 열 프로파일 — 없으면 빈 dict. **계산하지 않는다.**"""
-    if not PACKAGE or not Path(PACKAGE).exists():
+    if not tables.PACKAGE or not Path(tables.PACKAGE).exists():
         return {}
     try:
-        pkg = json.load(open(PACKAGE, encoding="utf-8"))
+        pkg = json.load(open(tables.PACKAGE, encoding="utf-8"))
     except Exception:
         return {}
     out = {}
@@ -335,31 +258,6 @@ def preflight(mod, raw, label):
 
 
 # ---------------------------------------------------------------- ③ extract
-# **구조 필드의 정본은 `core/build/loop.py::STRUCTURAL`이다** — 여기 베끼지 않는다.
-# import하지 않는 이유: `core.build`가 `core.llm`을 끌고 오고, 관문은 스스로
-# 「LLM 미적재」를 판정한다(G54). 그래서 `_kit_line_re`와 같은 결로 **소스에서
-# 상수만 뽑는다** — 못 찾으면 조용히 넘기지 않고 그 판정을 붉게 한다.
-_STRUCTURAL_SRC = Path(__file__).resolve().parent.parent / "core" / "build" / "loop.py"
-G39 = "G39  어댑터가 내는 키가 전부 스키마 fields에 있다"
-
-
-def structural_fields():
-    """`{구조 필드…}` 또는 빈 집합(못 읽었다는 뜻)."""
-    try:
-        tree = ast.parse(_STRUCTURAL_SRC.read_text(encoding="utf-8"))
-    except OSError:
-        return set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and any(
-                getattr(t, "id", "") == "STRUCTURAL" for t in node.targets):
-            try:
-                v = ast.literal_eval(node.value)
-            except ValueError:
-                return set()
-            return set(v) if isinstance(v, (set, list, tuple)) else set()
-    return set()
-
-
 def check_output_keys(schema, pieces, label):
     """**어댑터가 내는 키 ⊆ 스키마 `fields` ∪ 구조 필드** (B72 ① · 템플릿 규약 7).
 
@@ -512,336 +410,6 @@ def run_extract(mod, raw, label, schema=None):
     return pieces
 
 
-# ---------------------------------------------------------------- ④ 스키마 정합
-def payload_kind_of(schema, mod):
-    """payload_kind의 선언처 — **스키마 우선, 없으면 어댑터**.
-
-    둘 다 계약 선언물이고 하네스는 doc_type이 일치하는 한 쌍만 받는다(main의 대조).
-    스키마가 선언하지 않는 경우가 실재하므로(3차 산출 fixture 2종 모두 미선언) 폴백을
-    둔다 — 어느 쪽도 선언하지 않으면 분기 자체가 불가능하니 그때는 명시적 실패다.
-    **값으로 분기하고 doc_type 이름으로 분기하지 않는다**(B1).
-    """
-    return schema.get("payload_kind") or (mod.ADAPTER or {}).get("payload_kind")
-
-
-def _vocab(layer):
-    """층 어휘 — **패키지가 먼저다**(B65 ② — 새 계산 0), 없으면 층 config를 읽는다.
-
-    패키지 `system.layer_vocabulary`는 등록 시점의 스냅샷이고 config는 실물이다.
-    둘은 같은 자산이라 어느 쪽을 읽어도 판정이 갈리지 않는다 — 관문이 패키지 없이
-    돌 때(회귀·수동 실행)도 대조가 살아 있어야 하므로 폴백을 둔다.
-    """
-    pkg_v = {}
-    if PACKAGE and Path(PACKAGE).exists():
-        try:
-            lv = ((json.load(open(PACKAGE, encoding="utf-8")).get("system") or {})
-                  .get("layer_vocabulary") or {})
-            if lv.get("layer") == layer and lv.get("categories"):
-                pkg_v = lv
-        except Exception:
-            pkg_v = {}
-    if pkg_v:
-        return pkg_v
-    cfg = ROOT / "layers" / str(layer) / "config.json"
-    if not cfg.exists():
-        return {}
-    try:
-        c = json.load(open(cfg, encoding="utf-8"))
-    except Exception:
-        return {}
-    return {"layer": layer, "categories": c.get("categories"),
-            "relations": c.get("relations"),
-            "relation_patterns": c.get("relation_patterns")}
-
-
-def _cat_of(fields, name):
-    """필드 이름(또는 `@좌표필드`) → 카테고리. 모르면 `None`."""
-    f = fields.get(str(name).lstrip("@")) or {}
-    return f.get("category") or f.get("target_category")
-
-
-# ---------------------------------------------------------------- ① 형 검사 (B76 ①)
-# **LLM 산출의 키마다 허용 형** — 닫힌 표 하나가 정본이다(06 대장 1.5).
-#
-# 왜 있나: 관문 G4A~G4E는 **키의 존재·어휘**만 재고 **값의 형**은 재지 않았다.
-# 그래서 「리스트가 와도 되는 자리」와 「안 되는 자리」가 코드에만 암묵으로 있었고,
-# 관문 PASS 뒤의 코드가 형을 가정하다 죽었다(사내 실측 열다섯째:
-# `TypeError: unhashable type: 'list'` — 합치기 리스트를 dict 키로 넣었다).
-#
-# 경로 문법: `a.b` 키 · `*` 딕셔너리의 값 전부 · `[]` 리스트의 원소 전부.
-# 형: `str` · `int` · `str[]`(문자열 리스트) · `str|str[]`(합치기 허용 — B64 ①).
-SHAPE_SCHEMA = {
-    "fields.*.role": "str",
-    "fields.*.category": "str",
-    "fields.*.attach_to_field": "str",
-    "fields.*.attr_name": "str",
-    "fields.*.정의문": "str",
-    "edges[].from": "str",
-    # **실물 키는 `relation`이다** — 요청문의 `rel`은 같은 자리의 별명이고,
-    # 스키마·G4D·G48이 전부 `relation`을 읽는다(D-155 ①).
-    "edges[].relation": "str",
-    "edges[].to": "str",
-    "unmappable[].field": "str",
-    "unmappable[].kind": "str",
-    "unmappable[].reason": "str",
-}
-SHAPE_SCHEMA_ENUM = {"unmappable[].kind": ("excluded", "undecided")}
-
-SHAPE_ADAPTER = {
-    "doc_type": "str",
-    "payload_kind": "str",
-    "adapter_version": "str",
-    "expects.columns.*": "str|str[]",       # 합치기 리스트는 **허용**이다(B64 ①)
-    "expects.header_labels": "str[]",
-    "expects.header_row": "int",
-    "expects.sample_path": "str",
-}
-
-# 표에 없는 키를 세는 자리 — 「모양이 늘었다」는 판정이 아니라 보고다.
-SHAPE_KNOWN_SCHEMA = ("doc_type", "schema_version", "layer", "use_blocks",
-                      "fields", "edges", "unmappable")
-SHAPE_KNOWN_ADAPTER = ("doc_type", "adapter_version", "payload_kind", "expects",
-                       "SAMPLE")
-
-
-def _walk(obj, path):
-    """경로가 가리키는 `(표시경로, 값)` 목록. **없는 자리는 건너뛴다**(형 검사다)."""
-    if not path:
-        return [("", obj)]
-    head, _, rest = path.partition(".")
-    out = []
-    if head == "*":
-        for k, v in (obj or {}).items() if isinstance(obj, dict) else []:
-            out += [(f"{k}" + ("." + p if p else ""), x) for p, x in _walk(v, rest)]
-        return out
-    if head.endswith("[]"):
-        key = head[:-2]
-        seq = (obj or {}).get(key) if isinstance(obj, dict) else None
-        if key and not isinstance(seq, list):
-            return []
-        for i, v in enumerate(seq or []):
-            out += [(f"{key}[{i}]" + ("." + p if p else ""), x)
-                    for p, x in _walk(v, rest)]
-        return out
-    if not isinstance(obj, dict) or head not in obj:
-        return []
-    return [(head + ("." + p if p else ""), x) for p, x in _walk(obj[head], rest)]
-
-
-def _type_name(v):
-    return type(v).__name__
-
-
-def _shape_ok(v, want):
-    if want == "str":
-        return isinstance(v, str)
-    if want == "int":
-        return isinstance(v, int) and not isinstance(v, bool)
-    if want == "str[]":
-        return isinstance(v, (list, tuple)) and all(isinstance(x, str) for x in v)
-    if want == "str|str[]":
-        return _shape_ok(v, "str") or _shape_ok(v, "str[]")
-    return True
-
-
-def check_shapes(schema, mod):
-    """**G4F — 키마다 허용 형** (B76 ①). 형이 다르면 FAIL, 표 밖의 키는 보고한다."""
-    A = getattr(mod, "ADAPTER", {}) if mod is not None else {}
-    bad, extra = [], []
-    for obj, table, enums in ((schema or {}, SHAPE_SCHEMA, SHAPE_SCHEMA_ENUM),
-                              (A, SHAPE_ADAPTER, {})):
-        for path, want in table.items():
-            for shown, v in _walk(obj, path):
-                if v is None:
-                    continue
-                if not _shape_ok(v, want):
-                    bad.append(f"{shown} — 받은 형 {_type_name(v)} · 허용 {want} · "
-                               f"값 {str(v)[:60]}")
-                    continue
-                allowed = enums.get(path)
-                if allowed and v not in allowed:
-                    bad.append(f"{shown} — 받은 값 {str(v)[:60]} · "
-                               f"허용 {list(allowed)}")
-    extra += [f"스키마.{k}" for k in (schema or {}) if k not in SHAPE_KNOWN_SCHEMA]
-    extra += [f"ADAPTER.{k}" for k in A if k not in SHAPE_KNOWN_ADAPTER]
-    show("G4F  LLM 산출의 키마다 허용 형 (닫힌 표 — 06 대장 1.5)",
-         not bad, " ‖ ".join(bad))
-    if extra:
-        # **판정이 아니라 보고다** — 모양이 늘었다는 사실은 사람이 볼 것이고,
-        # 표에 없다는 이유로 막으면 명세가 자라는 길이 막힌다.
-        print(f"      [모양] 표에 없는 키 {len(extra)}종 — {', '.join(extra[:8])}")
-    return not bad
-
-
-def check_ledger_coverage(schema, mod):
-    """**G4G — 스키마 `fields` 전부에 대장 행이 있는가** (B76 ②).
-
-    대장(B67)은 열 프로파일로만 세워져, 어댑터가 쓰는 열이 프로파일 밖이면
-    **스키마에 있어도 행이 없는 필드**가 생겼다. 그 필드는 기계 제안 대조와
-    「이어가기」에서 빠진다 — 사람이 판정한 것이 아니라 **기계가 빠뜨린 것**이라
-    질문이 아니라 FAIL이다(사내 실측 열다섯째의 둘째 원인).
-
-    대장 경로가 없으면 대상이 아니다(킷 단독 실행).
-    """
-    if not LEDGER or not Path(LEDGER).exists():
-        return True
-    try:
-        rows = json.load(open(LEDGER, encoding="utf-8"))
-        # 대장 파일의 실물 키는 `columns`다(등록이 쓰는 꼴) — 목록으로 주는
-        # 호출도 받는다(킷을 단독으로 쓰는 자리).
-        if isinstance(rows, dict):
-            rows = rows.get("columns") or rows.get("rows") or []
-    except Exception as e:
-        return show("G4G  열 판정 대장이 스키마 필드 전부를 덮는다",
-                    False, f"대장을 읽지 못했다 — {type(e).__name__}: {e}")
-    fields, _blocks = load_blocks(schema)
-    if not fields:
-        return True
-    have = {r.get("field") for r in (rows or []) if r.get("field")}
-    cols = (getattr(mod, "ADAPTER", {}).get("expects") or {}).get("columns") or {}
-    struct = structural_fields()
-    miss = [f for f in sorted(fields) if f not in have and f not in struct]
-    det = " ‖ ".join(
-        f"대장에 없는 필드 {f} — 어댑터 columns {cols.get(f)!r} · 프로파일 밖"
-        for f in miss)
-    return show("G4G  열 판정 대장이 스키마 필드 전부를 덮는다", not miss, det)
-
-
-def check_vocab(schema, fields, label):
-    """**어휘가 닫힌 자리를 등록 시점에 대조한다** (B65 ② · 칸 1.5).
-
-    커밋 게이트(3.6)가 인입 때 같은 것을 거르지만, 그때는 문서가 이미 들어가는
-    중이고 사람은 `gate_rejects.json`을 열어야 안다. **여기서 걸러야 등록이 끝나기
-    전에 고친다** — 문면이 「있는 것」을 담으므로 자동 재생성이 목록 안에서 고른다.
-    """
-    layer = schema.get("layer")
-    voc = _vocab(layer)
-    if not voc.get("categories"):
-        # **한 태그·한 라벨**(B59 ①) — 층 어휘를 못 읽은 것도 이 판정의 한 원인이다.
-        return show("G4C  전 필드의 category가 층 목록 안", False,
-                    f"층 어휘를 못 읽었다 — layers/{layer}/config.json도 패키지도 "
-                    f"어휘를 주지 않는다(층 이름이 틀렸거나 층이 없다)")
-    cats, rels = voc.get("categories") or {}, voc.get("relations") or {}
-    pats = voc.get("relation_patterns") or []
-
-    # G4C — category는 **그 층이 말하는 카테고리** 안이다.
-    #
-    # 「그 층이 말하는 것」 = 자기 `categories` + **패턴표가 이름 붙인 카테고리**다.
-    # 층은 제 패턴표에서 다른 층의 카테고리를 부른다(quality의 `Failure occurs_in
-    # Process`) — 좌표 블록의 `target_category`가 그 자리다. 패턴표에 없는 이름만
-    # 걸리므로 오타(`Proces`)는 그대로 잡힌다. 걸침 필드(`target_layer`)는 그 층의
-    # 목록으로 본다 — 사람이 층을 지정했으면 그 층이 정본이다.
-    spoken = set(cats) | {p.get(k) for p in pats for k in ("src", "dst") if p.get(k)}
-    bad_c = []
-    for name, f in fields.items():
-        for key in ("category", "target_category"):
-            v = f.get(key)
-            if not v:
-                continue
-            tl = f.get("target_layer")
-            own = set(_vocab(tl).get("categories") or {}) if tl else spoken
-            if v not in own:
-                bad_c.append(f"{name}.{key}={v!r}는 {tl or layer} 카테고리에 없다 · "
-                             f"있는 것: {' · '.join(sorted(own)) or '(어휘 없음)'}")
-    show("G4C  전 필드의 category가 층 목록 안", not bad_c, " ‖ ".join(bad_c))
-
-    edges = schema.get("edges", []) or []
-    # G4D — relation은 층 관계 목록 안이다.
-    bad_r = [f"{e.get('relation')!r}는 {layer} 관계에 없다 · "
-             f"있는 것: {' · '.join(sorted(rels))}"
-             for e in edges if e.get("relation") not in rels]
-    show("G4D  전 edges의 relation이 층 목록 안", not bad_r, " ‖ ".join(sorted(set(bad_r))))
-
-    # G4E — 삼항이 패턴표 안이다. 카테고리를 모르는 쪽은 대조하지 않는다(모르면
-    # 묻지 않고 넘긴다 — G47·G48이 그 자리를 이미 본다).
-    ok_tri = {(p.get("src"), p.get("rel"), p.get("dst")) for p in pats}
-    bad_t = []
-    for e in edges:
-        src, dst = _cat_of(fields, e.get("from")), _cat_of(fields, e.get("to"))
-        rel = e.get("relation")
-        if not (src and dst and rel in rels):
-            continue
-        if (src, rel, dst) not in ok_tri:
-            allow = [f"{p['src']} → {p['dst']}" for p in pats if p.get("rel") == rel]
-            bad_t.append(f"({src}, {rel}, {dst})는 패턴표에 없다 · "
-                         f"{rel}의 허용: {' · '.join(allow) or '(없음)'}")
-    show("G4E  전 edges의 삼항이 relation_patterns 안", not bad_t, " ‖ ".join(bad_t))
-    return not (bad_c or bad_r or bad_t)
-
-
-def check_schema(schema, pieces, label, payload_kind=None):
-    print(f"\n④ 매칭 스키마 정합 — {label}")
-    show("G41  헤더 4키 (doc_type·schema_version·layer·use_blocks)",
-         {"doc_type", "schema_version", "layer"} <= set(schema))
-    declared = schema.get("fields", {})
-    # **공용 블록을 전개해 합친다**(§4.4 처방) — 좌표를 블록에 위임한 스키마도
-    # anchor 경로가 드라이런된다. `fields` 판정(D-31)은 **스키마 선언분**으로 한다:
-    # 블록은 스키마가 쓴 것이 아니라 참조한 것이므로 prose의 `{}` 정답을 흔들면 안 된다.
-    fields, block_fields = load_blocks(schema)
-    struct = STRUCT_ONLY | block_fields
-    if block_fields:
-        show(f"G42  use_blocks 전개 — {schema.get('use_blocks')} → 필드 {len(block_fields)}종 합류",
-             True, str(sorted(block_fields)))
-    # **fields의 정답은 payload_kind가 정한다** [D-31 확정 — 카드 C17 · CH2 2.5/2.6].
-    # prose 조각의 고정 키 4종(text·section·meta·image_ref)은 **payload 구조 필드**라
-    # role 배정 대상이 아니고, 그래서 prose 매칭 스키마의 fields는 `{}`가 정답이다 —
-    # 층·블록 선언이 계약의 전부다. 구판은 이 정답을 FAIL로 찍었다(3차 로그의 유일한 FAIL).
-    if payload_kind == "prose":
-        show("G43  prose 스키마의 fields는 비어 있음 (D-31 — 고정 키는 payload 구조 필드)",
-             not declared, f"{len(declared)}개")
-    elif payload_kind == "table":
-        show("G44  table 스키마의 fields 선언 존재", bool(declared), f"{len(declared)}개")
-    else:
-        show("G45  payload_kind가 스키마 또는 어댑터에 선언됨 (fields 판정의 전제)",
-             False, str(payload_kind))
-    badrole = {k: v.get("role") for k, v in fields.items() if v.get("role") not in ROLES}
-    show("G46  전 필드의 role이 닫힌 5종 안", not badrole, str(badrole))
-    noecat = [k for k, v in fields.items() if v.get("role") == "entity" and not v.get("category")]
-    show("G47  entity 필드에 category 필수", not noecat, str(noecat))
-    # edges 참조 무결성
-    edges = schema.get("edges", [])
-    refs = set()
-    for e in edges:
-        for side in ("from", "to"):
-            t = str(e.get(side, ""))
-            refs.add(t[1:] if t.startswith("@") else t)
-    # **`attach_to_field`도 같은 꼴의 참조다**(B65 ② — 태그 신설 0): 선언되지 않은
-    # 필드를 가리키면 부착이 조용히 사라진다. from/to와 한 줄로 본다.
-    refs |= {str(v.get("attach_to_field")) for v in fields.values()
-             if v.get("attach_to_field")}
-    unknown = sorted(r for r in refs if r and r not in fields and r not in struct)
-    # **라벨을 바꾸지 않는다** — 봉인 로그가 이 이름으로 판정을 보증한다(D-26 · B59).
-    # 넓어진 범위(`attach_to_field`)는 상세가 말한다: 이름이 바뀌면 봉인은 그 판정이
-    # **사라졌다**고 말하고, 그것은 거짓이다.
-    show(f"G48  edges {len(edges)}건의 from/to가 전부 선언된 필드",
-         not unknown, str(unknown) + " (attach_to_field 포함)")
-    check_vocab(schema, fields, label)
-    # 조각 ↔ 스키마 대조 (인입 검증 ③단계의 드라이런)
-    if pieces:
-        piece_keys = set().union(*[set(p) for p in pieces])
-        unknown_field = sorted(piece_keys - set(fields) - struct
-                               - {"text", "section", "meta", "image_ref"})
-        show("G49  파서 출력에 스키마 밖 필드 없음 (unknown_field 큐 예상분)",
-             not unknown_field, str(unknown_field))
-        missing = sorted(k for k, v in fields.items()
-                         if not v.get("optional") and k not in struct
-                         and not any(p.get(k) not in (None, "") for p in pieces))
-        show("G4A  필수 필드가 조각에 실제로 채워짐 (missing_field 큐 예상분)",
-             not missing, str(missing))
-    # role 루프 드라이런 — 핸들러 분기가 전부 도는가
-    HANDLED = {r: 0 for r in ROLES}
-    unmapped_in_fields = [k for k, v in fields.items() if v.get("role") == "UNMAPPABLE"]
-    show("G4B  UNMAPPABLE 필드가 스키마 fields에 들어가지 않음 (등록 제외 대상)",
-         not unmapped_in_fields, str(unmapped_in_fields))
-    for p in (pieces or []):
-        for k, spec in fields.items():
-            if k in p and p[k] is not None and spec.get("role") in HANDLED:
-                HANDLED[spec["role"]] += 1
-    print(f"      role 루프 드라이런: " +
-          " · ".join(f"{r}={HANDLED[r]}" for r in ["anchor", "entity", "attribute", "content", "meta"]))
-    return True
-
-
 # ------------------------------------------------- ⑤ 파서 전 구간 (B58 ②)
 # **LLM 지점 3종은 주입하지 않는다** — 이름을 여기 적어 두는 이유는, 나중에 누가
 # 「관문에서도 실호출로 봐야 정확하다」며 하나를 꽂으면 관문이 청구서가 되기
@@ -922,46 +490,17 @@ def run_pipeline(mod, schema, doc, label):
          str(sorted(m for m in sys.modules if m.startswith("core"))))
     return res
 
-def _where():
-    """**어느 폴더의 어느 판으로 돌았나** — 한 줄 (B59 ④).
-
-    사내가 코드 폴더를 나눠 가며 갱신한다. 같은 표본에서 다른 결과가 나오면 가장
-    먼저 가려야 할 것이 「어느 사본이 돌았나」인데, 상대 경로만 남으면 그것이
-    갈리지 않는다. 그래서 **절대 경로 + 커밋**을 관문 산출의 첫 줄에 박는다.
-
-    `state.json`의 경로가 상대인 것은 그대로 둔다 — 그건 옳다(폴더를 옮겨도 같은
-    문서다 · D-110). 여기 찍는 것은 **실행 환경의 신원**이지 자산의 주소가 아니다.
-
-    git이 없거나 레포가 아니어도 조용히 넘어간다 — 관문이 이것 때문에 멈추면 안 된다.
-    """
-    rev = ""
-    try:
-        import subprocess
-        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                           capture_output=True, text=True, timeout=5,
-                           cwd=str(ROOT))
-        if r.returncode == 0 and r.stdout.strip():
-            rev = r.stdout.strip()
-            d = subprocess.run(["git", "status", "--porcelain"],
-                               capture_output=True, text=True, timeout=5,
-                               cwd=str(ROOT))
-            if d.returncode == 0 and d.stdout.strip():
-                rev += "+dirty"          # 커밋만 찍으면 미커밋 수정이 숨는다
-    except Exception:
-        pass
-    return f"[관문] ROOT={ROOT}" + (f" · git {rev}" if rev else " · git 미확인")
-
 
 # ---------------------------------------------------------------- main
 if __name__ == "__main__":
     _argv = sys.argv[1:]
-    if PKG_FLAG in _argv:
-        _i = _argv.index(PKG_FLAG)
-        PACKAGE = _argv[_i + 1] if _i + 1 < len(_argv) else None
+    if tables.PKG_FLAG in _argv:
+        _i = _argv.index(tables.PKG_FLAG)
+        tables.PACKAGE = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
-    if LEDGER_FLAG in _argv:
-        _i = _argv.index(LEDGER_FLAG)
-        LEDGER = _argv[_i + 1] if _i + 1 < len(_argv) else None
+    if tables.LEDGER_FLAG in _argv:
+        _i = _argv.index(tables.LEDGER_FLAG)
+        tables.LEDGER = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
     adapter_path, schema_path, *docs = _argv
     print(_where())
@@ -988,6 +527,6 @@ if __name__ == "__main__":
             print(f"\n      [조각 1 표본] {json.dumps(pieces[0], ensure_ascii=False)[:300]}")
         run_pipeline(mod, schema, d, label)          # ⑤ 파서 전 구간 (B58 ②)
     print("\n" + "=" * 66)
-    print("실행 하네스 결과:", "PASS — 산출물이 파이프라인에서 동작함" if ok_all
+    print("실행 하네스 결과:", "PASS — 산출물이 파이프라인에서 동작함" if gate_screen.ok_all
           else "FAIL — 위 항목 확인 필요")
-    sys.exit(0 if ok_all else 1)
+    sys.exit(0 if gate_screen.ok_all else 1)
