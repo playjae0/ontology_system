@@ -70,7 +70,9 @@ def metrics(body):
         "금지": len(re.findall(r'않는다', body)),
         "표": len(re.findall(r'^\|', body, re.M)),
         "조항참조": sorted(set(re.findall(r'(?<![A-Za-z0-9])([A-P][0-9]{1,2})(?![0-9A-Za-z])', body))),
-        "자산": sorted(set(re.findall(r'`((?:layers|schemas|kit|data|mock|extract)/[\w/{}.*]+)`', body))),
+        # 상태 5단(`registry/`·`work/`·`export/`·`golden/`)과 픽스처(`tests/fixtures/`)도 자산이다(B78-3) —
+        # `<상태>/` 접두는 벗겨 읽는다.
+        "자산": sorted(set(re.findall(r'`(?:<상태>/|\$ONTO_HOME/)?((?:layers|schemas|kit|data|mock|extract|registry|work|export|golden|tests/fixtures)/[\w/{}.*<>]+)`', body))),
         # **파트 폴더도 읽는다**(B78) — `[\w]+`만 보면 `core/llm/gateway.py`를 놓치고
         # 카드의 「실물」 줄이 조용히 비어 간다.
         "코드": sorted(set(re.findall(r'`((?:core|cli|parser|kit)/[\w/]+\.py)`', body))),

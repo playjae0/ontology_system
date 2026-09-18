@@ -324,7 +324,7 @@ def cmd_score(args):
     else:
         print(render(agg, rows, src=_rel(path), is_mock=is_mock,
                      skipped=skipped, k=k))
-        print(f"\n  → data/{LOG} (최근 50)")
+        print(f"\n  → {store.path(LOG)} (최근 50)")
     return 0
 
 
