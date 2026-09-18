@@ -18,12 +18,12 @@
   · **층 초안 구획은 없다** — 층 등록(R1)은 국면 2 게이트이고 여기는 doc_type 전용이다.
 
 사용:
-  python cli/register.py generate <doc_type> <층> <표본...> [--hint "..."] [--interview]
+  python -m cli.register generate <doc_type> <층> <표본...> [--hint "..."] [--interview]
        --hint       자유 텍스트. 표본만으로 안 보이는 것을 적는다("3~7행 병합은 위 값 채움")
        --interview  생성 전에 LLM의 **이해 요약**을 보고 교정한다 — 끝내는 것은 사람이다
        --no-fewshot 참조 어댑터 주입을 끈다(스켈레톤 본문은 유지) — 컨텍스트가 좁을 때
        --resume     기존 입력 패키지로 **초안만** 다시 받는다 (문답을 다시 하지 않는다)
-  python cli/register.py generate <doc_type> --resume
+  python -m cli.register generate <doc_type> --resume
        └ resume은 **doc_type 하나만** 필요하다 — 층·표본은 패키지에서 읽는다
        --no-basic   표본이 전부 산문 포맷이어도 **LLM 생성으로 간다** — 기본은 고정
                     어댑터를 권하고 묻는다(B59 ③). 비대화형이면 고정 어댑터로 간다
@@ -34,13 +34,13 @@
        --revise     **등록분의 새 판.** 이름은 그대로이고 확정이 정본을 교체하며
                     revision이 오른다. 승인 기록은 누적한다 (H27)
        --as <이름>  **변형 등록.** 기존 doc_type은 그대로 두고 새 이름으로 간다
-  python cli/register.py review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
+  python -m cli.register review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
        --extract / --no-extract       prose 추출 리허설을 미리 정한다 (기본: 물어본다)
-  python cli/register.py confirm  <doc_type> --by <승인자>
-  python cli/register.py status   <doc_type>   ← 관문이 막는 이유와 **다음 줄**
-  python cli/register.py list
+  python -m cli.register confirm  <doc_type> --by <승인자>
+  python -m cli.register status   <doc_type>   ← 관문이 막는 이유와 **다음 줄**
+  python -m cli.register list
 """
 from __future__ import annotations
 import importlib.util
@@ -61,7 +61,7 @@ from parser.normalizer import _col
 from parser import form
 from parser.adapters import basic_ppt, basic_prose_xlsx
 from kit.render_review import render
-from kit.run_adapter import load_blocks
+from kit.gate_tables import load_blocks
 from router import discover
 
 ROOT = paths.ROOT          # 레포 루트는 자리 소유자가 안다 (B78)

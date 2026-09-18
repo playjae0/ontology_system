@@ -242,7 +242,7 @@ show("③ 플랫폼 노출 — 같은 등록부를 열람한다 (D-67 계보)",
      "toc_report" in out and "status=registered" in out
      and "승인=검수자 한지우" in out)
 registered = json.loads(store.path(store.DOC_TYPES).read_text(encoding="utf-8"))
-show("셋이 같은 실물을 본다 — 등록부 파일 하나 (data/doc_types.json)",
+show("셋이 같은 실물을 본다 — 등록부 파일 하나 (registry/doc_types.json)",
      store.path(store.DOC_TYPES).exists() and set(registered) == {"toc_report"},
      str(sorted(registered)))
 show("층 등록부와는 다른 장부다 — 목적이 다르면 장부도 다르다 (D-8)",

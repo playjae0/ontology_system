@@ -63,9 +63,13 @@ for _rf in sorted((ROOT / "cli" / "register").glob("*.py")):
             _calls[n.name] = _call_names(n)
 show("② cmd_review에 harness 호출 0건 — 검수는 내용만 본다",
      _calls.get("cmd_review", []).count("harness") == 0)
+# **생성은 단계 함수로 갈렸다**(B78 2c) — 성질은 「생성 단계 어딘가가 관문으로
+# 넘긴다」이지 「cmd_generate 본문에 그 호출이 있다」가 아니다.
+_gen_calls = [c for f, v in _calls.items() if f.startswith(("cmd_generate", "_cmd_generate"))
+              for c in v]
 show("② 하네스 호출은 machine_gate 한 곳이다 (생성이 부른다)",
      _calls.get("machine_gate", []).count("harness") == 1
-     and _calls.get("cmd_generate", []).count("_finish_generate") >= 1)
+     and _gen_calls.count("_finish_generate") >= 1)
 
 # ── ⓐ 자동 갈래 실물 — 규약 10을 어긴 판 → 자동 재생성 → PASS
 _fx = Path(_tf.mkdtemp(prefix="b50fx_", dir=str(ROOT)))
@@ -188,8 +192,11 @@ show("① 해소 못 하면 **뷰를 갈아 치우지 않는다** · machine_gat
      and (_v41.read_bytes() if _v41.exists() else None) == _before41
      and Rgate.fail_lines(_r41.stdout) and _r41.returncode != 0,
      f"FAIL {len(Rgate.fail_lines(_r41.stdout))}줄 · rc={_r41.returncode}")
+# 검수도 단계 함수로 갈렸다(B78 2c) — 성질은 「검수의 지시 갈래가 관문을 부른다」다.
+_rev_calls = [c for f, v in _calls.items() if f.startswith("cmd_review") or
+              f.startswith("_cmd_review") for c in v]
 show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
-     _calls.get("cmd_review", []).count("machine_gate") == 1)
+     _rev_calls.count("machine_gate") == 1)
 for _d in ("f40ok", "f40no"):
     shutil.rmtree(REVIEW / _d, ignore_errors=True)
 shutil.rmtree(_f40, ignore_errors=True)

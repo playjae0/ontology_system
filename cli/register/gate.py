@@ -118,14 +118,14 @@ def classify_failures(harness_out):
 def _kit_line_re():
     """하네스 판정 줄의 정규식 — **킷 모듈에서 읽는다**(정본이 거기다).
 
-    import이 아니라 문면 추출인 이유: `kit/run_adapter.py`는 **독립 실행 스크립트**라
+    import이 아니라 문면 추출인 이유: 킷은 **독립 실행 스크립트**라
     import하면 그 머리의 `sys.path` 조작과 `openpyxl` 지연 import가 여기로 끌려온다.
     뽑는 것은 상수 한 줄이고, 없으면 시끄럽게 실패한다(조용한 폴백을 두지 않는다).
     """
-    src = (KIT / "run_adapter.py").read_text(encoding="utf-8")
+    src = (KIT / "gate_screen.py").read_text(encoding="utf-8")
     m = re.search(r'^LINE_RE = r"(.+)"$', src, re.M)
     if not m:
-        raise SystemExit("[관문] kit/run_adapter.py의 LINE_RE를 찾지 못했다 — "    # [상태]
+        raise SystemExit("[관문] kit/gate_screen.py의 LINE_RE를 찾지 못했다 — "    # [상태]
                          "판정 줄 문면 규격이 정본에서 사라졌다 (관문 자체 결함 — "
                          "어댑터 잘못이 아니다)\n"
                          "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"
@@ -133,7 +133,7 @@ def _kit_line_re():
     return m.group(1)
 
 
-# 하네스 판정 줄의 문면 규격 — **정본은 `kit/run_adapter.py`의 `LINE_RE`다.**
+# 하네스 판정 줄의 문면 규격 — **정본은 `kit/gate_screen.py`의 `LINE_RE`다.**
 # 여기서 다시 쓰지 않는 이유: 두 벌이면 관문이 문면을 바꿀 때 이쪽이 조용히
 # 아무 줄도 못 읽고, 그 결과가 「막는데 이유를 안 알려 준다」로 되돌아간다.
 _GATE_LINE = re.compile(_kit_line_re())
@@ -170,14 +170,14 @@ def fail_lines(harness_out):
 # 없고 generate 화면에는 분할 줄이 한 줄도 없었다.
 #
 # **새 계산 0** — 관문이 이미 `pipeline.parse`를 돌렸고 그 산출(`report["split"]` ·
-# 프레임별 pick)을 한 줄 JSON으로 낸다(`kit/run_adapter.py::SPLIT_MARK`). 여기서
+# 프레임별 pick)을 한 줄 JSON으로 낸다(`kit/gate_screen.py::SPLIT_MARK`). 여기서
 # 다시 파싱하면 같은 계산이 두 벌이 되고, 한쪽만 고쳐지는 날 화면이 갈린다.
 def _kit_split_mark():
     """분할 요약 줄의 표시 — **킷에서 읽는다**(정본이 거기다 · `_kit_line_re`와 같은 결)."""
     m = re.search(r'^SPLIT_MARK = "(.+)"$',
-                  (KIT / "run_adapter.py").read_text(encoding="utf-8"), re.M)
+                  (KIT / "gate_screen.py").read_text(encoding="utf-8"), re.M)
     if not m:
-        raise SystemExit("[관문] kit/run_adapter.py의 SPLIT_MARK를 찾지 못했다 — "  # [상태]
+        raise SystemExit("[관문] kit/gate_screen.py의 SPLIT_MARK를 찾지 못했다 — "  # [상태]
                          "분할 요약 줄의 표시가 정본에서 사라졌다 (관문 자체 결함 — "
                          "어댑터 잘못이 아니다)\n"
                          "  ▶ 다음 줄 — 반입물이 온전한지 본다:\n"

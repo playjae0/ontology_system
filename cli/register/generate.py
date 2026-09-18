@@ -110,151 +110,144 @@ def cmd_roles(args):
     return 0
 
 
-def cmd_generate(doc_type, layer, samples, hint="", interview=False,
-                 no_fewshot=False, resume=False, use_basic=False,
-                 drop_interview=False, revise=False, as_name=None,
-                 no_basic=False):
-    """① 생성 — 입력 패키지를 세우고 초안을 받는다.
+def _cmd_generate_revise(doc_type, layer):
+    """⓪ **새 판**(`--revise`)의 전제 — 등록분인가 · 고정 어댑터가 아닌가.
 
-    **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
-      사람 — 표본 · doc_type 이름 · 층 지정 · 힌트(자유 텍스트)
-      시스템 — reader 원시 추출 · 골격 닫힌 목록 · 층 어휘 · 공용 블록 · 어댑터 스켈레톤
-
-    **등록분에도 다시 들어올 수 있다**(H27 · B58 ①): `--revise`는 같은 이름의 새 판,
-    `--as <이름>`은 변형 등록이다. 구판은 등록된 이름이면 통째로 거부해 **어댑터를
-    고쳐 다시 등록할 길이 없었다** — 사내가 그 자리에서 멈춰 있었다.
+    `cmd_generate`에서 단계로 떼어냈다(B78 2c) — 한 함수가 404행이면 어느 단계에서
+    막혔는지를 사람이 줄 번호로 찾게 된다.
     """
-    if as_name:
-        # **변형 등록** — 기존 doc_type은 손대지 않고 새 이름으로 정상 경로를 간다.
-        print(f"  ▶ 변형 등록 — '{doc_type}'은 그대로 두고 '{as_name}'으로 간다")
-        doc_type = as_name
-    if revise:
-        # **새 판** — 이름은 그대로다. 확정이 정본을 교체하고 revision을 올린다.
-        _st_prev = _state(doc_type) or {}
-        if _st_prev.get("use_basic"):
-            draft_mod.refuse_regenerate(doc_type, _st_prev, "생성")    # B65 ④
-        if not registry.lookup(doc_type):
-            raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "            # [상태]
-                             f"'{doc_type}'은 등록돼 있지 않다\n"
-                             f"  근거 — data/doc_types.json(키 없음)"
-                             + (f" · review/{doc_type}/는 있다"
-                                f"(approval.json {'있음' if (REVIEW / doc_type / 'approval.json').exists() else '없음'})"
-                                " → 옛 환경의 등록부 항목을 옮기거나 아래로 신규 등록"
-                                if (REVIEW / doc_type).exists() else "") + "\n"
-                             f"  ▶ 다음 줄:\n"
-                             f"     python -m cli.register generate {doc_type} "
-                             f"{layer or '<층>'} <표본...>")
-        _cur = registry.lookup(doc_type)
-        _docs = registry.ingested_docs(doc_type)
-        print(f"  ▶ 새 판 — '{doc_type}'의 정본을 교체한다 "
-              f"(현행 revision {_cur.get('revision', 0)})")
-        if _docs:
-            print(f"    ※ 이 doc_type으로 인입된 문서 {len(_docs)}건 — "
-                  f"확정해도 **자동 재인입은 없다**(문서 4 §4.8-7)")
-    if resume:
-        # **패키지 조립과 문답을 건너뛰고 draft만 한다**(B43 ⑤). 문답이 몇 라운드
-        # 돌고 죽었을 때, 그 전부를 다시 하지 않으려는 자리다 — 패키지에 이미
-        # 문답 전문이 실려 있다(라운드마다 즉시 저장하므로).
-        pkg_path = REVIEW / doc_type / "input_package.json"
-        if not pkg_path.exists():
-            raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다 — "          # [상태]
-                             f"근거 review/{doc_type}/input_package.json 없음\n"
-                             f"  ▶ 다음 줄 — 먼저 --resume 없이 한 번 돌린다:\n"
-                             f"     python -m cli.register generate {doc_type} "
-                             f"<층> <표본...>")
-        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-        print(f"  {gateway.mode_line()}")
-        print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
-        # **옛 패키지의 인라인 전문을 로그로 옮긴다**(B62 ②) — 로드 시 한 번.
-        _mv = ivlog.migrate_rounds(doc_type, pkg)
-        if _mv:
-            print(_mv)
-            pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
-                                encoding="utf-8")
-        _wn = ivlog.warn_no_decisions(doc_type, pkg)
-        if _wn:
-            print(_wn)
-        if layer or samples:
-            # **무시하되 말한다** — 사람이 준 값이 안 쓰였다는 사실을 침묵으로
-            # 넘기면, 층을 바꾸려고 다시 준 사람이 바뀐 줄 안다.
-            print(f"   [생성] --resume — 층·표본 인자는 무시한다 (패키지의 값을 쓴다: "
-                  f"layer={pkg['human']['layer']}, "
-                  f"표본 {len(pkg['human']['samples'])}건)")
-        _r = (pkg.get("human") or {}).get("hint")
-        if isinstance(_r, dict) and _r.get("interview"):
-            # **묶음과 전문을 갈라 말한다**(B62 ②) — 구판은 묶음 수를 「라운드」라
-            # 불렀고, 전문이 로그로 간 뒤에는 그 문면이 거짓이 된다. 전문 건수는
-            # 로그에서 읽는다: 패키지에 없는 것을 패키지에서 세지 않는다.
-            _bs = ivlog._hint_batches(_r)
-            _lg = ivlog.read_log(doc_type)
-            print(f"   문답 묶음 {len(_bs)}개 · 확정 사항 "
-                  f"{sum(len(b.get('decisions') or []) for b in _bs)}항목 "
-                  f"(라운드 전문 "
-                  f"{sum(len(_lg.get(b.get('at')) or []) for b in _bs)}건은 "
-                  f"{ivlog.INTERVIEW_LOG})")
-        # **이어하기는 코드가 아니라 판단을 이어받는다**(B67 ①).
-        #
-        # 구판은 `draft_mod.draft(doc_type)`를 지시·이력 **없이** 불렀다. 생성은
-        # `temperature=0`이라 같은 입력이면 같은 코드가 나오고, 그래서 사내에서
-        # G31(`AttributeError`)로 끝난 등록을 이어가자 **같은 G31**이 났다 —
-        # 이어하기가 재생성이 아니라 **재현**이었다. 초안이 이미 있으면:
-        #   ① 관문을 먼저 돌린다(B60 ① — 저장 판정을 믿지 않는다 · LLM 0)
-        #   ② FAIL이면 그 판정 문면과 지시 이력을 재생성 지시로 **싣는다**
-        #   ③ PASS면 초안을 다시 받지 않는다 — 통과한 것을 이유 없이 갈지 않는다
-        print("   이어하기 = 같은 입력 + 지난 실패 · 처음부터 = --resume 없이")
-        st = _state(doc_type) or {}
-        st.setdefault("samples", pkg["human"]["samples"])
-        _prior = draft_mod._at(st["adapter"]) if st.get("adapter") else None
-        _instruction = None
-        if _prior and _prior.exists() and st.get("schema"):
-            if gate.regate(doc_type, st) == "PASS":
-                print("   [이어하기] 지난 초안이 관문 PASS — 초안을 다시 받지 "
-                      "않는다 (LLM 호출 0). 갈 곳은 검수·확정이다")
-                st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
-                      "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"]}
-                _save_state(doc_type, st)
-                return gate._finish_generate(doc_type, st, st["samples"], pkg)
-            _fails = gate.fail_lines(st.get("harness_out") or "")
-            _auto, _ask = gate.classify_failures(st.get("harness_out") or "")
-            _instruction = "\n".join(_auto + _ask)
-            print(f"   [이어하기] 지난 초안 관문 FAIL {len(_fails)}건"
-                  f"({' · '.join(c for c, _l, _d in _fails) or '판정 줄 없음'})을 "
-                  f"지시로 싣는다 · 지시 이력 {len(st.get('instructions') or [])}건")
-        if _instruction:
-            st["revision"] = st.get("revision", 0) + 1
-            st.setdefault("instructions", []).append(
-                {"n": st["revision"], "instruction": _instruction,
-                 "at": store._now(), "by": "자동(이어하기 — 지난 관문 판정)"})
-            ad, sc = draft_mod.draft(doc_type, st["revision"], instruction=_instruction,
-                           history=st.get("instructions"))
-        else:
-            ad, sc = draft_mod.draft(doc_type)
-        if ad is None:
-            _want = f"{doc_type}_rev{st['revision']}" if _instruction else doc_type
-            raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "       # [상태]
-                             f"'{_want}' 부재 (D-10). mock에 이 이름의 초안이 "
-                             f"없다\n"
-                             f"  ▶ 다음 줄 — 실호출로 돌린다:\n"
-                             f"     python run.py llm-check\n"
-                             f"     USE_MOCK=0 python -m cli.register generate "
-                             f"{doc_type} --resume")
-        print(f"   초안 수령: {draft_mod._rel(ad)} · {draft_mod._rel(sc)}")
-        st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
-              "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"],
-              "adapter": str(draft_mod._rel(ad)),
-              "schema": str(draft_mod._rel(sc)),
-              "revision": st.get("revision", 0),
-              "instructions": st.get("instructions", [])}
-        _save_state(doc_type, st)
-        return gate._finish_generate(doc_type, st, st["samples"], pkg)
+    # **새 판** — 이름은 그대로다. 확정이 정본을 교체하고 revision을 올린다.
+    _st_prev = _state(doc_type) or {}
+    if _st_prev.get("use_basic"):
+        draft_mod.refuse_regenerate(doc_type, _st_prev, "생성")    # B65 ④
+    if not registry.lookup(doc_type):
+        raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "            # [상태]
+                         f"'{doc_type}'은 등록돼 있지 않다\n"
+                         f"  근거 — {store.path(store.DOC_TYPES)}(키 없음)"
+                         + (f" · review/{doc_type}/는 있다"
+                            f"(approval.json {'있음' if (REVIEW / doc_type / 'approval.json').exists() else '없음'})"
+                            " → 옛 환경의 등록부 항목을 옮기거나 아래로 신규 등록"
+                            if (REVIEW / doc_type).exists() else "") + "\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"{layer or '<층>'} <표본...>")
+    _cur = registry.lookup(doc_type)
+    _docs = registry.ingested_docs(doc_type)
+    print(f"  ▶ 새 판 — '{doc_type}'의 정본을 교체한다 "
+          f"(현행 revision {_cur.get('revision', 0)})")
+    if _docs:
+        print(f"    ※ 이 doc_type으로 인입된 문서 {len(_docs)}건 — "
+              f"확정해도 **자동 재인입은 없다**(문서 4 §4.8-7)")
 
+
+def _cmd_generate_resume(doc_type, layer, samples, no_fewshot):
+    """⓪ **이어하기**(`--resume`) — 기존 패키지로 초안만 다시 받는다. 여기서 끝난다."""
+    # **패키지 조립과 문답을 건너뛰고 draft만 한다**(B43 ⑤). 문답이 몇 라운드
+    # 돌고 죽었을 때, 그 전부를 다시 하지 않으려는 자리다 — 패키지에 이미
+    # 문답 전문이 실려 있다(라운드마다 즉시 저장하므로).
+    pkg_path = REVIEW / doc_type / "input_package.json"
+    if not pkg_path.exists():
+        raise SystemExit(f"[생성] --resume 인데 입력 패키지가 없다 — "          # [상태]
+                         f"근거 review/{doc_type}/input_package.json 없음\n"
+                         f"  ▶ 다음 줄 — 먼저 --resume 없이 한 번 돌린다:\n"
+                         f"     python -m cli.register generate {doc_type} "
+                         f"<층> <표본...>")
+    pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+    print(f"  {gateway.mode_line()}")
+    print(f"■ ① 생성 (이어하기) — {doc_type} · 기존 패키지 재사용")
+    # **옛 패키지의 인라인 전문을 로그로 옮긴다**(B62 ②) — 로드 시 한 번.
+    _mv = ivlog.migrate_rounds(doc_type, pkg)
+    if _mv:
+        print(_mv)
+        pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8")
+    _wn = ivlog.warn_no_decisions(doc_type, pkg)
+    if _wn:
+        print(_wn)
+    if layer or samples:
+        # **무시하되 말한다** — 사람이 준 값이 안 쓰였다는 사실을 침묵으로
+        # 넘기면, 층을 바꾸려고 다시 준 사람이 바뀐 줄 안다.
+        print(f"   [생성] --resume — 층·표본 인자는 무시한다 (패키지의 값을 쓴다: "
+              f"layer={pkg['human']['layer']}, "
+              f"표본 {len(pkg['human']['samples'])}건)")
+    _r = (pkg.get("human") or {}).get("hint")
+    if isinstance(_r, dict) and _r.get("interview"):
+        # **묶음과 전문을 갈라 말한다**(B62 ②) — 구판은 묶음 수를 「라운드」라
+        # 불렀고, 전문이 로그로 간 뒤에는 그 문면이 거짓이 된다. 전문 건수는
+        # 로그에서 읽는다: 패키지에 없는 것을 패키지에서 세지 않는다.
+        _bs = ivlog._hint_batches(_r)
+        _lg = ivlog.read_log(doc_type)
+        print(f"   문답 묶음 {len(_bs)}개 · 확정 사항 "
+              f"{sum(len(b.get('decisions') or []) for b in _bs)}항목 "
+              f"(라운드 전문 "
+              f"{sum(len(_lg.get(b.get('at')) or []) for b in _bs)}건은 "
+              f"{ivlog.INTERVIEW_LOG})")
+    # **이어하기는 코드가 아니라 판단을 이어받는다**(B67 ①).
+    #
+    # 구판은 `draft_mod.draft(doc_type)`를 지시·이력 **없이** 불렀다. 생성은
+    # `temperature=0`이라 같은 입력이면 같은 코드가 나오고, 그래서 사내에서
+    # G31(`AttributeError`)로 끝난 등록을 이어가자 **같은 G31**이 났다 —
+    # 이어하기가 재생성이 아니라 **재현**이었다. 초안이 이미 있으면:
+    #   ① 관문을 먼저 돌린다(B60 ① — 저장 판정을 믿지 않는다 · LLM 0)
+    #   ② FAIL이면 그 판정 문면과 지시 이력을 재생성 지시로 **싣는다**
+    #   ③ PASS면 초안을 다시 받지 않는다 — 통과한 것을 이유 없이 갈지 않는다
+    print("   이어하기 = 같은 입력 + 지난 실패 · 처음부터 = --resume 없이")
+    st = _state(doc_type) or {}
+    st.setdefault("samples", pkg["human"]["samples"])
+    _prior = draft_mod._at(st["adapter"]) if st.get("adapter") else None
+    _instruction = None
+    if _prior and _prior.exists() and st.get("schema"):
+        if gate.regate(doc_type, st) == "PASS":
+            print("   [이어하기] 지난 초안이 관문 PASS — 초안을 다시 받지 "
+                  "않는다 (LLM 호출 0). 갈 곳은 검수·확정이다")
+            st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
+                  "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"]}
+            _save_state(doc_type, st)
+            return gate._finish_generate(doc_type, st, st["samples"], pkg)
+        _fails = gate.fail_lines(st.get("harness_out") or "")
+        _auto, _ask = gate.classify_failures(st.get("harness_out") or "")
+        _instruction = "\n".join(_auto + _ask)
+        print(f"   [이어하기] 지난 초안 관문 FAIL {len(_fails)}건"
+              f"({' · '.join(c for c, _l, _d in _fails) or '판정 줄 없음'})을 "
+              f"지시로 싣는다 · 지시 이력 {len(st.get('instructions') or [])}건")
+    if _instruction:
+        st["revision"] = st.get("revision", 0) + 1
+        st.setdefault("instructions", []).append(
+            {"n": st["revision"], "instruction": _instruction,
+             "at": store._now(), "by": "자동(이어하기 — 지난 관문 판정)"})
+        ad, sc = draft_mod.draft(doc_type, st["revision"], instruction=_instruction,
+                       history=st.get("instructions"))
+    else:
+        ad, sc = draft_mod.draft(doc_type)
+    if ad is None:
+        _want = f"{doc_type}_rev{st['revision']}" if _instruction else doc_type
+        raise SystemExit(f"[생성] 초안을 얻지 못했다 — USE_MOCK fixture "       # [상태]
+                         f"'{_want}' 부재 (D-10). mock에 이 이름의 초안이 "
+                         f"없다\n"
+                         f"  ▶ 다음 줄 — 실호출로 돌린다:\n"
+                         f"     python run.py llm-check\n"
+                         f"     USE_MOCK=0 python -m cli.register generate "
+                         f"{doc_type} --resume")
+    print(f"   초안 수령: {draft_mod._rel(ad)} · {draft_mod._rel(sc)}")
+    st = {**st, "doc_type": doc_type, "layer": pkg["human"]["layer"],
+          "samples": pkg["human"]["samples"], "hint": pkg["human"]["hint"],
+          "adapter": str(draft_mod._rel(ad)),
+          "schema": str(draft_mod._rel(sc)),
+          "revision": st.get("revision", 0),
+          "instructions": st.get("instructions", [])}
+    _save_state(doc_type, st)
+    return gate._finish_generate(doc_type, st, st["samples"], pkg)
+
+
+def _cmd_generate_guard(doc_type, layer, samples, revise):
+    """① 전제 검사 — 이름 중복 · 표본 실재 · 층 실재. 막을 것만 막는다."""
     if registry.lookup(doc_type) and not revise:
         # **막다른 길만 말하지 않는다**(H27) — 구판은 여기서 끝이라, 어댑터를 고쳐
         # 다시 등록할 길이 아예 없었다. 두 경로가 있고 화면이 그것을 알려 준다.
         _docs = registry.ingested_docs(doc_type)
         raise SystemExit(                                                 # [상태]
             f"[생성] '{doc_type}'은 이미 등록돼 있다 "
-            f"(근거 data/doc_types.json). 두 길 중 하나를 고른다:\n"
+            f"(근거 {store.path(store.DOC_TYPES)}). 두 길 중 하나를 고른다:\n"
             f"   ① 같은 이름의 **새 판** — 어댑터를 고쳐 정본을 교체한다\n"
             f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
             f"<표본...> --revise\n"
@@ -287,6 +280,13 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                          f"     python -m cli.register generate {doc_type} "
                          f"{layers[0] if layers else '<층>'} "
                          f"{' '.join(str(x) for x in samples) or '<표본...>'}")
+
+
+def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise):
+    """② 형태 판정과 고정 어댑터 권유 — **끝나면 `None`**, 고정 어댑터로 가면 그 결과.
+
+    돌려주는 값이 `None`이 아니면 호출부는 그대로 돌려준다(그 길에서 등록이 끝난다).
+    """
     if use_basic:
         # **제안이 서지 않는 표본에는 거부한다** — 조용히 LLM 생성으로 떨어지면 사람은
         # «기본 어댑터로 등록됐다»고 믿는다. 거부는 사유를 들고 멈춘다.
@@ -343,7 +343,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
             if _go not in ("n", "no"):
                 return _use_basic(doc_type, layer, samples, hint, _prop, revise)
             print("  → LLM 생성으로 간다 (사람이 골랐다)")
+    return None
 
+
+def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
+                          interview, drop_interview):
+    """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`."""
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
     cfg = json.loads((ROOT / "layers" / layer / "config.json").read_text(encoding="utf-8"))
     pkg = {
@@ -442,7 +447,11 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부)")
     print(f"   입력 패키지: 사람 4 + 시스템 5 → {(d / 'input_package.json').relative_to(ROOT)}")
+    return pkg, d
 
+
+def _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview):
+    """③-b 문답 — 패키지가 선 뒤에 돈다. 전문은 로그에, 확정은 패키지에 실린다."""
     if interview:
         # **문답은 패키지가 선 뒤다** — 문답의 입력이 그 패키지(표본 관찰 재료)다.
         # 끝나면 전문을 `human.hint`에 구조화해 다시 싣는다: 기록이 없으면 같은
@@ -486,6 +495,10 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
             pkg["human"]["hint"], ivlog._hint_batches(pkg["human"]["hint"]) + [_hb])
         (d / "input_package.json").write_text(
             json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
+    """④ 초안 — LLM 생성 갈래. 상태를 쓰고 관문으로 넘긴다."""
     proposal = draft_mod.basic_adapter_proposal(samples)
     if proposal:
         print(f"   ▶ 기본 어댑터 적용 제안 — {proposal['reason']}")
@@ -514,6 +527,39 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
           "basic_adapter_proposal": proposal}
     _save_state(doc_type, st)
     return gate._finish_generate(doc_type, st, samples, pkg)
+
+
+def cmd_generate(doc_type, layer, samples, hint="", interview=False,
+                 no_fewshot=False, resume=False, use_basic=False,
+                 drop_interview=False, revise=False, as_name=None,
+                 no_basic=False):
+    """① 생성 — 입력 패키지를 세우고 초안을 받는다.
+
+    **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
+      사람 — 표본 · doc_type 이름 · 층 지정 · 힌트(자유 텍스트)
+      시스템 — reader 원시 추출 · 골격 닫힌 목록 · 층 어휘 · 공용 블록 · 어댑터 스켈레톤
+
+    **등록분에도 다시 들어올 수 있다**(H27 · B58 ①): `--revise`는 같은 이름의 새 판,
+    `--as <이름>`은 변형 등록이다. 구판은 등록된 이름이면 통째로 거부해 **어댑터를
+    고쳐 다시 등록할 길이 없었다** — 사내가 그 자리에서 멈춰 있었다.
+    """
+    if as_name:
+        # **변형 등록** — 기존 doc_type은 손대지 않고 새 이름으로 정상 경로를 간다.
+        print(f"  ▶ 변형 등록 — '{doc_type}'은 그대로 두고 '{as_name}'으로 간다")
+        doc_type = as_name
+    if revise:
+        _cmd_generate_revise(doc_type, layer)
+    if resume:
+        return _cmd_generate_resume(doc_type, layer, samples, no_fewshot)
+    _cmd_generate_guard(doc_type, layer, samples, revise)
+    _r = _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
+    if _r is not None:
+        return _r
+    pkg, d = _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
+                                   interview, drop_interview)
+    _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview)
+    return _cmd_generate_draft(doc_type, layer, samples, pkg, revise)
+
 
 
 def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):

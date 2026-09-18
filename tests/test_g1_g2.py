@@ -86,13 +86,14 @@ show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", no
 #
 # 경계 예외 셋은 **이름으로** 허용한다 — 늘어나면 붉는다:
 #   · `parser/`  2곳 — 파서는 외부 전달물이라 core를 import하지 않는다(문서 6 §6.7)
-#   · `kit/`     1곳 — 킷도 같다(관문 G54가 `core.llm` 미적재를 상시로 잰다)
+#   · `kit/`     1곳 — 킷도 같다(관문 G54가 `core.llm` 미적재를 상시로 잰다).
+#                 2c에서 표가 갈리며 그 한 곳이 `kit/gate_tables.py`(공용 블록의 자리)다.
 import re as _re                                  # noqa: E402
 _STATE = "|".join(("data", "review", "parsed", "extract", "export",
                    "golden", "adapters", "schemas"))
 _SPAT = _re.compile(r'(ROOT|parent\.parent)\s*/\s*"(?:' + _STATE + r')"')
 _ALLOW = {"core/paths.py", "parser/struct_map.py", "parser/tagger.py",
-          "kit/run_adapter.py"}
+          "kit/gate_tables.py"}
 _state_hits = [f"{p.relative_to(ROOT)}:{i}"
                for d in ("core", "cli", "parser", "kit")
                for p in sorted((ROOT / d).rglob("*.py"))
@@ -693,6 +694,24 @@ finally:
     _seed61.write_text(_keep61, encoding="utf-8")
 show("② 되돌리면 위반 0건이다 (시험 자체가 늘 붉는 것이 아니다)",
      _SK61.check("process") == [])
+
+# ── B78 3 — **코드 지도는 생성물이다** ────────────────────────────────
+# 손으로 쓴 구조 설명은 코드가 움직이면 낡고, 낡은 지도는 사람을 없는 자리로 보낸다.
+# 그래서 다시 만들어 레포의 것과 **대조한다** — 다르면 지도가 낡았다는 뜻이고,
+# 고치는 방법은 문장을 손보는 것이 아니라 생성기를 다시 돌리는 것이다.
+_map78 = ROOT / "docs" / "구조도" / "10_코드_지도.md"
+with tempfile.TemporaryDirectory() as _td78:
+    _gen78 = subprocess.run(
+        [sys.executable, str(ROOT / "docs" / "회귀스위트" / "추출_구조.py")],
+        capture_output=True, text=True, cwd=str(ROOT),
+        env={**os.environ, "STRUCT_DIR": _td78, "REFINED_DIR": "docs/spec"})
+    _fresh78 = Path(_td78) / "10_코드_지도.md"
+    _same78 = (_fresh78.exists() and _map78.exists()
+               and _fresh78.read_text(encoding="utf-8") == _map78.read_text(encoding="utf-8"))
+    # 자리 설명은 **임시 폴더가 살아 있는 동안** 잰다(밖에서 재면 늘 「없음」이 뜬다).
+    _det78 = f"rc={_gen78.returncode} · 생성 {_fresh78.exists()} · 줄 {len(_fresh78.read_text(encoding='utf-8').splitlines()) if _fresh78.exists() else 0}"
+show("코드 지도를 다시 만들면 레포의 것과 같다 (지도가 코드보다 낡지 않는다)",
+     _same78, _det78)
 
 # ============================================================
 print("\n" + "=" * 62)

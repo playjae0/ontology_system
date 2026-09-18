@@ -18,28 +18,12 @@ _LOG = log.get(__name__)
 
 
 # ---------------------------------------------------------------- 비정형 (1d′)
-def build_prose(env, cfg, graph, candidates):
-    # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
-    # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
-    # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
-    candidates = [c for c in candidates if not c.get("failed")]
-    b = Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
-    b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 비정형도 같은 표다 (B74 ②)
-    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
-    by_locator = {c["source_locator"]: c for c in env.get("chunks", [])}
-    loc_of = {cid: c.get("source_locator") for cid, c in ch["chunks"].items()
-              if c.get("doc_id") == env["doc_id"]}
+def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
+    """Pass 1 — 청크마다 **좌표부터** 세운다. 돌려주는 것은 `{chunk_id: 좌표 묶음}`.
 
-    # ════════════════ Pass 1 (해소) ════════════════
-    # **문서 전체의 anchor·entity를 먼저 전부 해소해 버퍼에 담는다**(문서 4 §4.2).
-    # 부착은 해소가 끝난 뒤에만 시작한다 — 그래야 **문서 안에서 뒤에 나오는 개체를
-    # 앞의 청크가 참조해도** 붙는다. 이 분리 덕에 부착 실패의 원인이 구분된다:
-    # Pass 1에 없는 대상을 가리키면 진짜 미해소(큐로), 있는데 실패하면 구현 결함.
-    #
-    # 버퍼는 `정규화 표면형 → node_id` 맵이고 수명은 문서 하나이며 **층으로 나누지
-    # 않는다**(걸침 하위 빌더가 같은 버퍼를 공유한다 — §4.2). 층 간 동명 표면형은
-    # **마지막 해소가 이긴다** — 버퍼는 사전과 달리 후보 목록을 두지 않으므로,
-    # 카테고리로 선별해야 하는 소비처는 사전을 함께 조회한다.
+    `build_prose`에서 단계로 떼어냈다(B78 2c) — 두 패스가 한 함수에 있으면
+    「어느 패스가 만든 상태인가」를 사람이 줄 번호로 가르게 된다.
+    """
     coords = {}
     for cand in candidates:
         cid = cand["chunk_id"]
@@ -80,6 +64,32 @@ def build_prose(env, cfg, graph, candidates):
                          confidence=(last or {}).get("confidence", 0.0),
                          llm=(last or {}).get("llm"),
                          queue_kind=(last or {}).get("queue_kind"))
+    return coords
+
+
+def build_prose(env, cfg, graph, candidates):
+    # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
+    # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
+    # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
+    candidates = [c for c in candidates if not c.get("failed")]
+    b = Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
+    b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 비정형도 같은 표다 (B74 ②)
+    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    by_locator = {c["source_locator"]: c for c in env.get("chunks", [])}
+    loc_of = {cid: c.get("source_locator") for cid, c in ch["chunks"].items()
+              if c.get("doc_id") == env["doc_id"]}
+
+    # ════════════════ Pass 1 (해소) ════════════════
+    # **문서 전체의 anchor·entity를 먼저 전부 해소해 버퍼에 담는다**(문서 4 §4.2).
+    # 부착은 해소가 끝난 뒤에만 시작한다 — 그래야 **문서 안에서 뒤에 나오는 개체를
+    # 앞의 청크가 참조해도** 붙는다. 이 분리 덕에 부착 실패의 원인이 구분된다:
+    # Pass 1에 없는 대상을 가리키면 진짜 미해소(큐로), 있는데 실패하면 구현 결함.
+    #
+    # 버퍼는 `정규화 표면형 → node_id` 맵이고 수명은 문서 하나이며 **층으로 나누지
+    # 않는다**(걸침 하위 빌더가 같은 버퍼를 공유한다 — §4.2). 층 간 동명 표면형은
+    # **마지막 해소가 이긴다** — 버퍼는 사전과 달리 후보 목록을 두지 않으므로,
+    # 카테고리로 선별해야 하는 소비처는 사전을 함께 조회한다.
+    coords = _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of)
 
     # ════════════════ Pass 2 (부착) ════════════════
     # **비정형의 순회 단위는 레코드가 아니라 청크(추출 후보)다**(문서 4 §4.2).

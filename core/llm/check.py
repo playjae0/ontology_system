@@ -77,6 +77,85 @@ def _proxy_env():
     return [n for n in names if os.environ.get(n)]
 
 
+def _probe_embed(cfg, add):
+    """⑥⑦ — 임베딩과 이미지 입력. **미설정이 정상**이고, 막히면 그 사실만 말한다.
+
+    `probe`에서 단계로 떼어냈다(B78 2c) — 단계마다 함수가 있으면 「어디서 끊겼나」가
+    호출 순서로도 보인다.
+    """
+    # ⑥ 임베딩 — **미설정이 정상이다**. 후보 좁히기는 겹침으로 떨어지고 인입은 선다.
+    if not cfg["embed_model"]:
+        add("⑥", "임베딩", None,
+            "EMBED_MODEL 미설정 — **겹침 폴백.** 후보 좁히기는 정규화 문자 2-gram "
+            "겹침으로 돌고 인입은 끝까지 간다(B75 ①). 임베딩으로 강제하려면 "
+            "CANDIDATE_NARROW=embed 또는 ingest-file --narrow embed — 그때는 "
+            "여기서 막힌다. 질의 3단은 「구현하지 않는다」가 명세다(§5.1-4 · P7)")
+    else:
+        try:
+            e_raw = gateway._post(f"{cfg['url']}/embeddings",
+                          {"model": cfg["embed_model"], "input": PING},
+                          cfg["key"], cfg["timeout"])
+            v = e_raw["data"][0]["embedding"]
+            add("⑥", "임베딩", True, f"{cfg['embed_model']} — {len(v)}차 벡터")
+        except Exception as e:
+            add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
+
+    # ⑦ 이미지 입력 — **④가 실제로 쓰는 형태**를 1×1 PNG 한 장으로 왕복시킨다.
+    #
+    # ④는 바이트를 보낸다(B53). 게이트웨이가 멀티모달 content를 안 받으면 그
+    # 사실이 **사내 첫 파싱에서** 드러나는데, 그때는 이미 문서를 돌린 뒤다.
+    # 여기서 1회에 판정한다 — 실패해도 치명은 아니다(그림 없는 문서는 돈다).
+    try:
+        gateway._post(f"{cfg['url']}/chat/completions",
+              {"model": cfg["model"], "temperature": 0,
+               "messages": [{"role": "user", "content": [
+                   {"type": "text", "text": "이 그림에 무엇이 보이나?"},
+                   {"type": "image_url",
+                    "image_url": {"url": gateway._data_uri(gateway._PING_PNG, "image/png")}}]}]},
+              cfg["key"], cfg["timeout"])
+        add("⑦", "이미지 입력", True,
+            "멀티모달 content 통과 — ④이미지 요약이 바이트를 보낼 수 있다")
+    except gateway.GatewayError as e:
+        add("⑦", "이미지 입력", False,
+            f"HTTP {e.code} — 게이트웨이가 이미지 입력을 받지 않는다. "
+            f"④는 이 상태에서 NotConfigured로 멈춘다(요약을 지어내지 않는다). "
+            f"**치명 아님** — 그림 없는 문서는 그대로 돈다")
+    except Exception as e:                                  # noqa: BLE001
+        add("⑦", "이미지 입력", False, f"{type(e).__name__}: {e}")
+
+
+def _probe_points(cfg, points, add):
+    """⑧ 지점별 얕은 왕복 — `--all`일 때만. **지점당 1회**다(비용)."""
+
+    # ⑧ 지점별 얕은 왕복 — `--all`일 때만. **지점당 1회**다(비용).
+    #
+    # 지시문 파일이 있는 지점은 그것을 실어 보낸다 — 프롬프트가 게이트웨이를
+    # 통과하는지까지 봐야 «붙었다»가 실전 의미를 갖는다. 파일이 없는 지점
+    # (⑤생성·⑦구조지도·⑨좌표)은 지시문 없이 왕복만 시험한다.
+    for pt in (points or []):
+        label = f"지점 {gateway.POINTS.get(pt, pt)}"
+        try:
+            if pt == "embed":
+                if not cfg["embed_model"]:
+                    add("·", label, None, "EMBED_MODEL 미설정 — 이연 항목(⑥ 참조)")
+                    continue
+                e_raw = gateway._post(f"{cfg['url']}/embeddings",
+                              {"model": cfg["embed_model"], "input": PING},
+                              cfg["key"], cfg["timeout"])
+                add("·", label, True,
+                    f"{len(e_raw['data'][0]['embedding'])}차 벡터")
+                continue
+            msgs = ([{"role": "system", "content": gateway.prompt(pt)}]
+                    if gateway.has_prompt(pt) else [])
+            msgs.append({"role": "user", "content": PING})
+            out = gateway.chat(msgs, point=pt)
+            add("·", label, True,
+                f"응답 앞 40자: {str(out.get('text'))[:40]!r}"
+                + ("" if gateway.has_prompt(pt) else "  (지시문 파일 없는 지점 — 왕복만)"))
+        except Exception as e:
+            add("·", label, False, f"{type(e).__name__}: {e}")
+
+
 def probe(points=None, *, timeout=None):
     """게이트웨이 왕복을 **단계별로 끊어** 확인한다. 돌려주는 것은 단계 기록이다.
 
@@ -123,7 +202,7 @@ def probe(points=None, *, timeout=None):
         return S
 
     # ②③④ 한 번의 왕복이 셋을 가른다 — 어디서 끊겼는지가 곧 원인이다.
-    url = f"{cfg['url']}/gateway.chat/completions"
+    url = f"{cfg['url']}/chat/completions"
     payload = {"model": cfg["model"], "temperature": 0,
                "messages": [{"role": "user", "content": PING}]}
     raw = None
@@ -146,7 +225,7 @@ def probe(points=None, *, timeout=None):
         else:
             add("③", "인증", False,
                 f"HTTP {e.status} — 인증 문제는 아니다. 응답 본문: {str(e.body)[:120]} · "
-                f"모델명({cfg['model']})·경로(/gateway.chat/completions)를 확인한다",
+                f"모델명({cfg['model']})·경로(/chat/completions)를 확인한다",
                 fatal=True)
         return S
     except Exception as e:                       # URLError·timeout·그 밖
@@ -189,71 +268,6 @@ def probe(points=None, *, timeout=None):
             f"⑧답변·⑨좌표)이 JSON을 요구하므로, 게이트웨이가 스키마를 안 받으면 "
             f"프롬프트 지시로 대신해야 한다(core/llm/gateway.py::chat)")
 
-    # ⑥ 임베딩 — **미설정이 정상이다**. 후보 좁히기는 겹침으로 떨어지고 인입은 선다.
-    if not cfg["embed_model"]:
-        add("⑥", "임베딩", None,
-            "EMBED_MODEL 미설정 — **겹침 폴백.** 후보 좁히기는 정규화 문자 2-gram "
-            "겹침으로 돌고 인입은 끝까지 간다(B75 ①). 임베딩으로 강제하려면 "
-            "CANDIDATE_NARROW=embed 또는 ingest-file --narrow embed — 그때는 "
-            "여기서 막힌다. 질의 3단은 「구현하지 않는다」가 명세다(§5.1-4 · P7)")
-    else:
-        try:
-            e_raw = gateway._post(f"{cfg['url']}/embeddings",
-                          {"model": cfg["embed_model"], "input": PING},
-                          cfg["key"], cfg["timeout"])
-            v = e_raw["data"][0]["embedding"]
-            add("⑥", "임베딩", True, f"{cfg['embed_model']} — {len(v)}차 벡터")
-        except Exception as e:
-            add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
-
-    # ⑦ 이미지 입력 — **④가 실제로 쓰는 형태**를 1×1 PNG 한 장으로 왕복시킨다.
-    #
-    # ④는 바이트를 보낸다(B53). 게이트웨이가 멀티모달 content를 안 받으면 그
-    # 사실이 **사내 첫 파싱에서** 드러나는데, 그때는 이미 문서를 돌린 뒤다.
-    # 여기서 1회에 판정한다 — 실패해도 치명은 아니다(그림 없는 문서는 돈다).
-    try:
-        gateway._post(f"{cfg['url']}/gateway.chat/completions",
-              {"model": cfg["model"], "temperature": 0,
-               "messages": [{"role": "user", "content": [
-                   {"type": "text", "text": "이 그림에 무엇이 보이나?"},
-                   {"type": "image_url",
-                    "image_url": {"url": gateway._data_uri(gateway._PING_PNG, "image/png")}}]}]},
-              cfg["key"], cfg["timeout"])
-        add("⑦", "이미지 입력", True,
-            "멀티모달 content 통과 — ④이미지 요약이 바이트를 보낼 수 있다")
-    except gateway.GatewayError as e:
-        add("⑦", "이미지 입력", False,
-            f"HTTP {e.code} — 게이트웨이가 이미지 입력을 받지 않는다. "
-            f"④는 이 상태에서 NotConfigured로 멈춘다(요약을 지어내지 않는다). "
-            f"**치명 아님** — 그림 없는 문서는 그대로 돈다")
-    except Exception as e:                                  # noqa: BLE001
-        add("⑦", "이미지 입력", False, f"{type(e).__name__}: {e}")
-
-    # ⑧ 지점별 얕은 왕복 — `--all`일 때만. **지점당 1회**다(비용).
-    #
-    # 지시문 파일이 있는 지점은 그것을 실어 보낸다 — 프롬프트가 게이트웨이를
-    # 통과하는지까지 봐야 «붙었다»가 실전 의미를 갖는다. 파일이 없는 지점
-    # (⑤생성·⑦구조지도·⑨좌표)은 지시문 없이 왕복만 시험한다.
-    for pt in (points or []):
-        label = f"지점 {gateway.POINTS.get(pt, pt)}"
-        try:
-            if pt == "embed":
-                if not cfg["embed_model"]:
-                    add("·", label, None, "EMBED_MODEL 미설정 — 이연 항목(⑥ 참조)")
-                    continue
-                e_raw = gateway._post(f"{cfg['url']}/embeddings",
-                              {"model": cfg["embed_model"], "input": PING},
-                              cfg["key"], cfg["timeout"])
-                add("·", label, True,
-                    f"{len(e_raw['data'][0]['embedding'])}차 벡터")
-                continue
-            msgs = ([{"role": "system", "content": gateway.prompt(pt)}]
-                    if gateway.has_prompt(pt) else [])
-            msgs.append({"role": "user", "content": PING})
-            out = gateway.chat(msgs, point=pt)
-            add("·", label, True,
-                f"응답 앞 40자: {str(out.get('text'))[:40]!r}"
-                + ("" if gateway.has_prompt(pt) else "  (지시문 파일 없는 지점 — 왕복만)"))
-        except Exception as e:
-            add("·", label, False, f"{type(e).__name__}: {e}")
+    _probe_embed(cfg, add)
+    _probe_points(cfg, points, add)
     return S

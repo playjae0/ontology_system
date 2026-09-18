@@ -39,21 +39,12 @@ def _form_of_sample(sample):
     return {k: j[k] for k in ("signals", "votes", "verdict", "auto", "why")}
 
 
-def build_view(st, results, harness_ok, harness_out, rehearsal=None):
-    """뷰 데이터 산출 — **D-79 스키마가 계약**이고 여기가 산출자다.
+def _build_view_anomalies(st, results, harness_ok, harness_out, schema, mod):
+    """뷰의 **이상 신호**와 리허설 요약 — `(anomalies, reh)`.
 
-    렌더러는 아무것도 계산하지 않으므로 **채움율·이상 신호 판정을 여기서 다 채운다.**
+    `build_view`에서 단계로 떼어냈다(B78 2c). 사람이 보는 「무엇이 이상한가」는
+    한 자리에서 모인다 — 흩어지면 화면마다 다른 기준이 선다.
     """
-    schema = json.loads((draft_mod._at(st["schema"])).read_text(encoding="utf-8"))
-    mod = _load(draft_mod._at(st["adapter"]), f"reg_{st['doc_type']}")
-    kind = mod.ADAPTER["payload_kind"]
-
-    pieces = [p for r in results if r.ok
-              for p in (r.envelope.get("records") or r.envelope.get("chunks"))]
-    keys = sorted({k for p in pieces for k in p})
-    fill = {k: round(sum(1 for p in pieces if p.get(k) not in (None, "")) / len(pieces), 3)
-            for k in keys} if pieces else {}
-
     anomalies = []
     # **부분 리허설은 숨기지 않는다** — 이 화면이 승인 근거다. 앞 200행만 보고
     # 승인했는데 그 사실이 화면에 없으면, 승인자는 전량을 봤다고 믿는다.
@@ -103,6 +94,26 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
 
     # **형태 판정을 화면에 싣는다**(B58 ⑤ · 문서 1 C37) — 격자 포맷 표본만.
     # 사람에게 올라온 문서는 **이상 신호로도** 뜬다: 「이상 신호는 전량 필수
+    return anomalies, reh, excluded
+
+
+def build_view(st, results, harness_ok, harness_out, rehearsal=None):
+    """뷰 데이터 산출 — **D-79 스키마가 계약**이고 여기가 산출자다.
+
+    렌더러는 아무것도 계산하지 않으므로 **채움율·이상 신호 판정을 여기서 다 채운다.**
+    """
+    schema = json.loads((draft_mod._at(st["schema"])).read_text(encoding="utf-8"))
+    mod = _load(draft_mod._at(st["adapter"]), f"reg_{st['doc_type']}")
+    kind = mod.ADAPTER["payload_kind"]
+
+    pieces = [p for r in results if r.ok
+              for p in (r.envelope.get("records") or r.envelope.get("chunks"))]
+    keys = sorted({k for p in pieces for k in p})
+    fill = {k: round(sum(1 for p in pieces if p.get(k) not in (None, "")) / len(pieces), 3)
+            for k in keys} if pieces else {}
+
+    anomalies, reh, excluded = _build_view_anomalies(
+        st, results, harness_ok, harness_out, schema, mod)
     # 표시」(§6.6-1)라 요약 표에만 두면 접힌 화면에서 사라진다.
     forms = []
     for smp in st["samples"]:
@@ -348,6 +359,87 @@ def _extract_rehearsal(st, results, samples, want, truncated):
             "totals": tot, "by_chunk": by_chunk, "category_counts": cats}
 
 
+def _cmd_review_instruct(doc_type, st, instruct):
+    """② -a **재생성 루프 1회** — 지시가 오면 초안을 다시 받고 관문을 다시 지난다.
+
+    `cmd_review`에서 단계로 떼어냈다(B78 2c). 관문이 막으면 **1을 돌려준다** —
+    호출부는 그대로 돌려주고 뷰를 만들지 않는다(막힌 산출로 뷰를 덮지 않는다).
+    """
+    if instruct and st.get("use_basic"):
+        # **고정 어댑터는 재생성하지 않는다**(B65 ④) — 여기서 막지 않으면 `draft_mod.draft`가
+        # LLM으로 가고, 사람은 「지시를 줬다」고 믿는데 산출이 통째로 바뀐다.
+        draft_mod.refuse_regenerate(doc_type, st, "뷰 확인")
+    st["revision"] += 1
+    st.setdefault("instructions", []).append(
+        {"n": st["revision"], "instruction": instruct, "at": store._now(),
+         "by": "사람(검수 지시)"})
+    # **지시는 확정 사항을 갱신한다**(B60 ②) — draft가 패키지를 읽기 **전에**.
+    # 지시와 결정이 따로 살면 이 재생성이 옛 결정을 다시 쓴다.
+    _hit = ivlog.apply_instruction_to_decisions(doc_type, instruct, st["revision"])
+    if _hit is not None:
+        print(f"   확정 사항 갱신 — {'항목 ' + str(_hit) + '건 교체' if _hit else '새 항목 추가'}"
+              f" (사람 지시 rev {st['revision']})")
+    # **지시가 열을 이름으로 부르면 대장도 갱신한다**(B67 ②) — 못 부르면
+    # 건드리지 않고 이력에만 남는다(추측으로 행을 고치지 않는다).
+    _lh = ledger.apply_to_ledger(doc_type, instruct, f"instruct rev {st['revision']}")
+    if _lh:
+        print(f"   열 판정 대장 갱신 — {_lh}열 (instruct rev {st['revision']})")
+    ad, sc = draft_mod.draft(doc_type, st["revision"], instruction=instruct,
+                   history=st.get("instructions"))
+    if ad is None:
+        print(f"   ⚠ 재생성 대안본 부재 — 초안을 유지한다 "
+              f"(USE_MOCK: fixture '{doc_type}_rev{st['revision']}' 없음)")
+    else:
+        st["adapter"], st["schema"] = (str(draft_mod._rel(ad)), str(draft_mod._rel(sc)))
+        print(f"   재생성 {st['revision']}회째 → {draft_mod._rel(ad)}")
+        # **지시는 사람 것이지만 산출은 LLM 것이다**([정정] 40 · M9). 관문을
+        # 안 지난 산출이 확정되면 「통과분만 확정」(B50)이 검수 지시 한 번으로
+        # 뚫린다 — 규약 10을 어긴 어댑터가 `--instruct` 한 줄로 등록부에 든다.
+        # **생성 단계와 같은 함수·같은 해소 절차**(자동 1회 → 문답 → [y/N])다.
+        _pkg_path = REVIEW / doc_type / "input_package.json"
+        _pkg = (json.loads(_pkg_path.read_text(encoding="utf-8"))
+                if _pkg_path.exists() else None)
+        st["machine_gate"] = gate.machine_gate(doc_type, st, st["samples"], _pkg)
+        _save_state(doc_type, st)
+        if st["machine_gate"] != "PASS":
+            print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
+                  f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
+            gate.gate_block(doc_type, st)
+            return 1
+
+
+def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract):
+    """② -b **추출 리허설** — prose일 때만, 사람이 켜면 돈다. 돌려주는 것은 리허설 요약.
+
+    `cmd_review`에서 단계로 떼어냈다(B78 2c).
+    """
+    kind = mod.ADAPTER.get("payload_kind")
+    _trunc = any((r.report.get("rehearsal") or {}).get("truncated") for r in results)
+    rehearsal = None
+    if kind == "prose" and st.get("machine_gate") == "PASS":
+        n = sum(r.report.get("pieces", 0) for r in results if r.ok)
+        want = extract
+        if want is None:
+            print(f"   추출 리허설 {n:,}청크 → LLM {n:,}회.")
+            try:
+                want = input("   켤까? [Y/n] ").strip().lower() not in ("n", "no")
+            except (EOFError, KeyboardInterrupt):
+                # **비대화형이면 끄고 그 사실을 뷰에 남긴다** — 조용히 도는 구간을
+                # 두지 않는다: 승인자는 「추출을 보고 승인했다」고 믿으면 안 된다.
+                want = False
+                print("   (비대화형 — 끄고 진행한다. 뷰에 「추출 리허설 없음」)")
+        print(f"   → 추출 리허설 {'켬' if want else '끔'}")
+        rehearsal = _extract_rehearsal(st, results, samples, want, _trunc)
+        if rehearsal.get("totals"):
+            t = rehearsal["totals"]
+            print(f"   추출 리허설({rehearsal['source']}) — 청크 {t['chunks']} · "
+                  f"개체 {t['entities']} · 관계 {t['relations']} · "
+                  f"부착 {t['attach']} · 미해소 {t['unresolved']}")
+            if rehearsal.get("note"):
+                print(f"     {rehearsal['note']}")
+    return rehearsal
+
+
 def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                extract=None):
     """② 검수 — 기계 관문 → 뷰 데이터 → HTML. 지시가 오면 **재생성 루프**를 돈다.
@@ -365,48 +457,11 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
 
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
 
-    if instruct and st.get("use_basic"):
-        # **고정 어댑터는 재생성하지 않는다**(B65 ④) — 여기서 막지 않으면 `draft_mod.draft`가
-        # LLM으로 가고, 사람은 「지시를 줬다」고 믿는데 산출이 통째로 바뀐다.
-        draft_mod.refuse_regenerate(doc_type, st, "뷰 확인")
     if instruct:                                   # 재생성 루프 1회
-        st["revision"] += 1
-        st.setdefault("instructions", []).append(
-            {"n": st["revision"], "instruction": instruct, "at": store._now(),
-             "by": "사람(검수 지시)"})
-        # **지시는 확정 사항을 갱신한다**(B60 ②) — draft가 패키지를 읽기 **전에**.
-        # 지시와 결정이 따로 살면 이 재생성이 옛 결정을 다시 쓴다.
-        _hit = ivlog.apply_instruction_to_decisions(doc_type, instruct, st["revision"])
-        if _hit is not None:
-            print(f"   확정 사항 갱신 — {'항목 ' + str(_hit) + '건 교체' if _hit else '새 항목 추가'}"
-                  f" (사람 지시 rev {st['revision']})")
-        # **지시가 열을 이름으로 부르면 대장도 갱신한다**(B67 ②) — 못 부르면
-        # 건드리지 않고 이력에만 남는다(추측으로 행을 고치지 않는다).
-        _lh = ledger.apply_to_ledger(doc_type, instruct, f"instruct rev {st['revision']}")
-        if _lh:
-            print(f"   열 판정 대장 갱신 — {_lh}열 (instruct rev {st['revision']})")
-        ad, sc = draft_mod.draft(doc_type, st["revision"], instruction=instruct,
-                       history=st.get("instructions"))
-        if ad is None:
-            print(f"   ⚠ 재생성 대안본 부재 — 초안을 유지한다 "
-                  f"(USE_MOCK: fixture '{doc_type}_rev{st['revision']}' 없음)")
-        else:
-            st["adapter"], st["schema"] = (str(draft_mod._rel(ad)), str(draft_mod._rel(sc)))
-            print(f"   재생성 {st['revision']}회째 → {draft_mod._rel(ad)}")
-            # **지시는 사람 것이지만 산출은 LLM 것이다**([정정] 40 · M9). 관문을
-            # 안 지난 산출이 확정되면 「통과분만 확정」(B50)이 검수 지시 한 번으로
-            # 뚫린다 — 규약 10을 어긴 어댑터가 `--instruct` 한 줄로 등록부에 든다.
-            # **생성 단계와 같은 함수·같은 해소 절차**(자동 1회 → 문답 → [y/N])다.
-            _pkg_path = REVIEW / doc_type / "input_package.json"
-            _pkg = (json.loads(_pkg_path.read_text(encoding="utf-8"))
-                    if _pkg_path.exists() else None)
-            st["machine_gate"] = gate.machine_gate(doc_type, st, st["samples"], _pkg)
-            _save_state(doc_type, st)
-            if st["machine_gate"] != "PASS":
-                print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
-                      f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
-                gate.gate_block(doc_type, st)
-                return 1
+        _rc = _cmd_review_instruct(doc_type, st, instruct)
+        if _rc:
+            return _rc
+        st = _state(doc_type)
 
     samples = st["samples"]
     print(f"  {gateway.mode_line()}")          # B42 ⑤
@@ -462,30 +517,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
               f"조각 {r.report.get('pieces', 0)}{part}")
 
     # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
-    kind = mod.ADAPTER.get("payload_kind")
-    _trunc = any((r.report.get("rehearsal") or {}).get("truncated") for r in results)
-    rehearsal = None
-    if kind == "prose" and st.get("machine_gate") == "PASS":
-        n = sum(r.report.get("pieces", 0) for r in results if r.ok)
-        want = extract
-        if want is None:
-            print(f"   추출 리허설 {n:,}청크 → LLM {n:,}회.")
-            try:
-                want = input("   켤까? [Y/n] ").strip().lower() not in ("n", "no")
-            except (EOFError, KeyboardInterrupt):
-                # **비대화형이면 끄고 그 사실을 뷰에 남긴다** — 조용히 도는 구간을
-                # 두지 않는다: 승인자는 「추출을 보고 승인했다」고 믿으면 안 된다.
-                want = False
-                print("   (비대화형 — 끄고 진행한다. 뷰에 「추출 리허설 없음」)")
-        print(f"   → 추출 리허설 {'켬' if want else '끔'}")
-        rehearsal = _extract_rehearsal(st, results, samples, want, _trunc)
-        if rehearsal.get("totals"):
-            t = rehearsal["totals"]
-            print(f"   추출 리허설({rehearsal['source']}) — 청크 {t['chunks']} · "
-                  f"개체 {t['entities']} · 관계 {t['relations']} · "
-                  f"부착 {t['attach']} · 미해소 {t['unresolved']}")
-            if rehearsal.get("note"):
-                print(f"     {rehearsal['note']}")
+    rehearsal = _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract)
 
     view = build_view(st, results, ok, out, rehearsal)
     d = _dir(doc_type)

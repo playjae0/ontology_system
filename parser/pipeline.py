@@ -136,6 +136,69 @@ def _page_map(path, raw):
     return {idx: got[n] for n, idx in enumerate(visible, start=1)}
 
 
+def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps,
+                  made_maps, map_picks, src_hash):
+    """④ 이미지 요약 — 보존분 재사용과 새로 받은 것의 저장. 돌려주는 것은 조각이다.
+
+    `parse`에서 단계로 떼어냈다(B78 2c) — 지도·요약의 보존 규칙이 한 자리에 모인다.
+    """
+    # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.
+    # **원본 파일 바이트 해시**로 재사용을 판정한다 — `doc_hash`는 에이전트 소유라
+    # 파싱 시점에는 아직 없다(2A P-D 허브 판정 · §2.7-①).
+    kept_img = dict(kept_map.get("image_summaries") or {})
+    if summarize is None:
+        _mock_log(doc_id, "④이미지 요약",
+                  "고정 문자열 + meta.image_summary_source=mock")
+    # **바이트와 쪽 그림은 여기서 붙인다**(B53) — 리더 raw가 이 함수의 손에 있고,
+    # 어댑터는 순수 함수라 원본 파일을 다시 열 수 없다(§6.4-2).
+    imgs = raw.get("_images") or {}
+    pages = _page_map(path, raw) if (imgs and summarize is not None) else {}
+    pieces = tagger.complete_images(pieces, summarize, kept=kept_img,
+                                    images=imgs, pages=pages)          # ⑤ tagger
+    # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
+    # mtime이 흔들려 «재사용했나»가 파일로 판정되지 않는다.
+    fresh = {}
+    if made_maps:
+        fresh["maps"] = {**kept_maps, **made_maps}
+    if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
+        fresh["image_summaries"] = kept_img
+    if fresh:
+        struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id, **fresh}, src_hash)
+    # **section에서 좌표를 먼저 세운다**(B43 ④) — 산문의 헤딩 경로가 골격 이름이면
+    # 그것이 좌표다. 태깅보다 앞에 두는 이유: 태깅은 좌표가 **있는** 조각을 다듬고,
+    # 이것은 좌표가 **없는** 조각에 세운다. 순서가 바뀌면 pick이 헛돈다.
+    return pieces
+
+
+def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
+                 coord_notice, progress):
+    """⑨ 좌표 태깅 — 닫힌 목록에서 고르고, 못 고른 것은 그 사실을 보고에 남긴다.
+
+    `parse`에서 단계로 떼어냈다(B78 2c).
+    """
+    # 「몇 종을 물어 몇을 채택했나」가 남아야 한다. 같은 그릇이 두 번 온다(예고·끝).
+    _coord = {}
+
+    def _note(info):
+        _coord.update(info)
+        if coord_notice is not None:
+            coord_notice(info)
+
+    pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
+                        doc_type=a["doc_type"], progress=progress,
+                        notice=_note, cap=coord_cap)
+    res.report["coord_tag"] = dict(_coord)
+
+    # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
+    unresolved = [p["source_locator"] for p in pieces
+                  if (p.get("meta") or {}).get("hierarchy_unresolved")]
+    if unresolved:
+        res.fail("hierarchy_unresolved",
+                 f"구조 미확정 {len(unresolved)}건 — 평면 폴백으로 실었다",
+                 {"locators": unresolved[:10]})
+    return pieces
+
+
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
@@ -211,53 +274,12 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
 
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
-    # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.
-    # **원본 파일 바이트 해시**로 재사용을 판정한다 — `doc_hash`는 에이전트 소유라
-    # 파싱 시점에는 아직 없다(2A P-D 허브 판정 · §2.7-①).
-    kept_img = dict(kept_map.get("image_summaries") or {})
-    if summarize is None:
-        _mock_log(doc_id, "④이미지 요약",
-                  "고정 문자열 + meta.image_summary_source=mock")
-    # **바이트와 쪽 그림은 여기서 붙인다**(B53) — 리더 raw가 이 함수의 손에 있고,
-    # 어댑터는 순수 함수라 원본 파일을 다시 열 수 없다(§6.4-2).
-    imgs = raw.get("_images") or {}
-    pages = _page_map(path, raw) if (imgs and summarize is not None) else {}
-    pieces = tagger.complete_images(pieces, summarize, kept=kept_img,
-                                    images=imgs, pages=pages)          # ⑤ tagger
-    # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
-    # mtime이 흔들려 «재사용했나»가 파일로 판정되지 않는다.
-    fresh = {}
-    if made_maps:
-        fresh["maps"] = {**kept_maps, **made_maps}
-    if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
-        fresh["image_summaries"] = kept_img
-    if fresh:
-        struct_map.keep(doc_id, {**kept_map, "doc_id": doc_id, **fresh}, src_hash)
-    # **section에서 좌표를 먼저 세운다**(B43 ④) — 산문의 헤딩 경로가 골격 이름이면
-    # 그것이 좌표다. 태깅보다 앞에 두는 이유: 태깅은 좌표가 **있는** 조각을 다듬고,
-    # 이것은 좌표가 **없는** 조각에 세운다. 순서가 바뀌면 pick이 헛돈다.
+    pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
+                           kept_maps, made_maps, map_picks, src_hash)
     pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes)
     # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
-    # 「몇 종을 물어 몇을 채택했나」가 남아야 한다. 같은 그릇이 두 번 온다(예고·끝).
-    _coord = {}
-
-    def _note(info):
-        _coord.update(info)
-        if coord_notice is not None:
-            coord_notice(info)
-
-    pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
-                        doc_type=a["doc_type"], progress=progress,
-                        notice=_note, cap=coord_cap)
-    res.report["coord_tag"] = dict(_coord)
-
-    # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
-    unresolved = [p["source_locator"] for p in pieces
-                  if (p.get("meta") or {}).get("hierarchy_unresolved")]
-    if unresolved:
-        res.fail("hierarchy_unresolved",
-                 f"구조 미확정 {len(unresolved)}건 — 평면 폴백으로 실었다",
-                 {"locators": unresolved[:10]})
+    pieces = _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
+                          coord_notice, progress)
 
     env = tagger.envelope(adapter, doc_id, path, pieces, revision=revision,
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,

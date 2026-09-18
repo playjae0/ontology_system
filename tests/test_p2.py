@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "kit"))
 
 from render_review import render                              # noqa: E402
-from run_adapter import load_blocks                           # noqa: E402
+from gate_tables import load_blocks                           # noqa: E402
 
 allok = True
 KIT = ROOT / "kit"

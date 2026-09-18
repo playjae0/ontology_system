@@ -223,7 +223,10 @@ show("⑥ table 계열은 종전대로 role 집계를 요구한다 (해제는 pr
 print("\n■ B59 — 막는 것은 맞다. 안 알려주는 게 틀렸다")
 
 import re as _re                                              # noqa: E402
-_KIT59 = (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
+# 관문은 파일 넷이다(B78 2c — 표·화면·검사·실행기). 라벨은 **파트 전체**에서 센다.
+_KIT59 = " ".join(_p.read_text(encoding="utf-8")
+                  for _p in sorted((ROOT / "kit").glob("gate_*.py"))
+                  ) + (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
 _REG59 = _reg_src()
 
 # ①ⓑ **셋이 같은 함수를 부른다** — 문면이 세 벌이면 그중 하나만 고쳐지는 날이 오고,

@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 from core.llm import gateway
-from core.state import fixtures, registry
+from core.state import fixtures, registry, store
 from parser import preflight
 from parser.normalizer import _col
 from parser.reader import GRID_EXT, read
@@ -61,7 +61,7 @@ def _refuse_missing(miss):
         f"[등록부] '{head['doc_type']}'이 가리키는 {head['path']}가 없다 "
         f"({when}{who})"
         + (f" · 결손 {len(miss)}건" if len(miss) > 1 else "") + "\n"
-        f"  ▶ 다음 줄 — 이식이면 넷을 같이 옮긴다: data/doc_types.json · "
+        f"  ▶ 다음 줄 — 이식이면 넷을 같이 옮긴다: {store.path(store.DOC_TYPES)} · "
         f"adapters/<dt>.py · schemas/<dt>.json · review/<dt>/\n"
         f"     아니면 등록을 다시 한다: python -m cli.register generate "
         f"{head['doc_type']} {head.get('layer') or '<층>'} <표본> --revise")

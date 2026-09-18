@@ -7,7 +7,7 @@ from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from core.state import fixtures, log, registry, store
-from kit.run_adapter import load_blocks
+from kit.gate_tables import load_blocks
 from parser import pipeline, preflight, profile, reader, tagger
 from parser.normalizer import _col
 from pathlib import Path

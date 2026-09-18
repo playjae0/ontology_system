@@ -23,7 +23,7 @@ def summarize_image(image_ref, *, image=None, mime=None, context="", page=None):
     이미지로 함께 보낸다 — 잘라낸 그림 하나로는 축·범례가 화면 밖에 있다.
 
     파서는 `core/`를 import하지 않으므로(P1) 이 함수는 **주입되어** 파서에 들어간다.
-    gateway.mock 갈래는 파서 안의 고정 문자열이고 `meta.image_summary_source`가 어느 갈래인지
+    mock 갈래는 파서 안의 고정 문자열이고 `meta.image_summary_source`가 어느 갈래인지
     데이터로 남긴다(§7.6-B-4).
     """
     parts = [{"type": "text",
@@ -52,7 +52,7 @@ def summarize_image(image_ref, *, image=None, mime=None, context="", page=None):
 def image_summarizer():
     """USE_MOCK이면 None(파서가 고정 문자열을 쓴다), 아니면 실호출 함수.
 
-    **None을 돌려주는 것이 gateway.mock 갈래의 표현이다** — 파서의 `complete_images`가
+    **None을 돌려주는 것이 mock 갈래의 표현이다** — 파서의 `complete_images`가
     `summarize=None` + `allow_mock`으로 그 분기를 이미 갖고 있다.
     """
     if gateway.use_mock():
@@ -84,7 +84,7 @@ def pick_coord(surface, choices):
 def coord_picker():
     """USE_MOCK이면 None(닫힌 목록 정확 일치 — **모델을 부르지 않는다**), 아니면 실호출.
 
-    `image_summarizer()`와 같은 형태다 — **None이 gateway.mock 갈래의 표현이고**, 파서의
+    `image_summarizer()`와 같은 형태다 — **None이 mock 갈래의 표현이고**, 파서의
     `tag()`가 그 분기를 이미 갖고 있다.
     """
     if gateway.use_mock():

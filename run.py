@@ -35,7 +35,7 @@
   python run.py parse <명령> ...   파서 n7 (cli/parse.py로 위임 — run·head·build)
                                    run은 `<어댑터.py> <문서> [출력.json] [--doc-id X]` —
                                    doc_id 생략 시 파일명에서 파생(ingest-file과 같은 규칙)
-  python run.py register <명령>    n6 구축 모드 등록 (cli/register.py로 위임)
+  python run.py register <명령>    n6 구축 모드 등록 (cli.register 패키지로 위임)
   python run.py ingest-file <문서> [--doc-type X] [--dry-run]
                                    일괄 투입 1건 — 선택(지문 스캔 유일 일치 또는 지정)
                                    → 파싱 → 인입 (B46 · cli/ingest.py로 위임)
