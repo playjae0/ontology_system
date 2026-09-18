@@ -10,7 +10,7 @@
    ],
    "단계": "인입",
    "주체": "자산",
-   "bytes": 27467,
+   "bytes": 27593,
    "금지": 40,
    "표행": 7,
    "조항": [
@@ -34,7 +34,9 @@
     "P51",
     "P7"
    ],
-   "자산": [],
+   "자산": [
+    "registry/adapters/{doc_type}.py"
+   ],
    "코드": [],
    "좌표없음": []
   },
@@ -46,22 +48,25 @@
    ],
    "단계": "인입",
    "주체": "LLM",
-   "bytes": 10137,
+   "bytes": 10236,
    "금지": 11,
    "표행": 0,
    "조항": [
     "B43",
     "B45",
+    "B78",
     "C13",
     "C7",
     "I6",
     "P7"
    ],
    "자산": [
-    "extract/struct_maps/{doc_id}.json",
-    "mock/struct_maps/"
+    "tests/fixtures/struct_maps/",
+    "work/struct_maps/{doc_id}.json"
    ],
-   "코드": [],
+   "코드": [
+    "core/paths.py"
+   ],
    "좌표없음": []
   },
   {
@@ -96,13 +101,14 @@
    ],
    "단계": "인입",
    "주체": "자산",
-   "bytes": 23575,
+   "bytes": 23770,
    "금지": 25,
    "표행": 24,
    "조항": [
     "B33",
     "B56",
     "B58",
+    "B78",
     "L1",
     "L3",
     "L4",
@@ -110,8 +116,8 @@
     "P7"
    ],
    "자산": [
-    "schemas/pfmea.json",
-    "schemas/{doc_type}.json"
+    "registry/schemas/{doc_type}.json",
+    "tests/fixtures/schemas/pfmea.json"
    ],
    "코드": [],
    "좌표없음": []
@@ -239,7 +245,7 @@
     "P7"
    ],
    "자산": [
-    "data/defects.log"
+    "work/defects.log"
    ],
    "코드": [],
    "좌표없음": []
@@ -333,8 +339,8 @@
     "P7"
    ],
    "자산": [
-    "data/defects.log",
-    "layers/{층}/config.json"
+    "layers/{층}/config.json",
+    "work/defects.log"
    ],
    "코드": [],
    "좌표없음": []
@@ -375,20 +381,22 @@
    ],
    "단계": "운영",
    "주체": "사람",
-   "bytes": 7164,
+   "bytes": 7326,
    "금지": 9,
    "표행": 10,
    "조항": [
     "A8",
     "B54",
     "B56",
+    "B78",
     "N5",
     "P6",
     "P7"
    ],
    "자산": [
-    "data/build_metrics.json",
-    "data/golden_log.json"
+    "golden/queries.json",
+    "work/build_metrics.json",
+    "work/golden_log.json"
    ],
    "코드": [],
    "좌표없음": []
@@ -402,8 +410,8 @@
    ],
    "단계": "저장",
    "주체": "기계",
-   "bytes": 28958,
-   "금지": 38,
+   "bytes": 33703,
+   "금지": 40,
    "표행": 11,
    "조항": [
     "B12",
@@ -419,6 +427,8 @@
     "B71",
     "B73",
     "B75",
+    "B77",
+    "B78",
     "C10",
     "D8",
     "G2",
@@ -432,16 +442,21 @@
     "P7"
    ],
    "자산": [
-    "data/doc_types.json",
-    "layers/{층}/config.json"
+    "layers/{층}/config.json",
+    "registry/doc_types.json",
+    "registry/schemas/<dt>.json",
+    "schemas/blocks.json",
+    "tests/fixtures/extract_hints/{doc_id}.json",
+    "work/migrate.log"
    ],
    "코드": [
     "core/dictionary.py",
     "core/graph.py",
     "core/matcher.py",
-    "core/registry.py",
-    "core/skeleton.py",
-    "core/store.py"
+    "core/paths.py",
+    "core/state/registry.py",
+    "core/state/skeleton.py",
+    "core/state/store.py"
    ],
    "좌표없음": []
   },
@@ -453,7 +468,7 @@
    ],
    "단계": "인입",
    "주체": "LLM",
-   "bytes": 10501,
+   "bytes": 10629,
    "금지": 12,
    "표행": 0,
    "조항": [
@@ -464,12 +479,13 @@
     "B53",
     "B60",
     "B63",
-    "B75"
+    "B75",
+    "B78"
    ],
    "자산": [],
    "코드": [
-    "core/embeddings.py",
-    "core/llm.py"
+    "core/llm/embeddings.py",
+    "core/llm/gateway.py"
    ],
    "좌표없음": []
   },
@@ -532,7 +548,9 @@
    "자산": [
     "kit/run_adapter.py",
     "layers/{층}/skeleton.json",
-    "schemas/{doc_type}.json"
+    "schemas/<dt>.json",
+    "schemas/{doc_type}.json",
+    "tests/fixtures/skeleton_min/"
    ],
    "코드": [
     "kit/run_adapter.py"

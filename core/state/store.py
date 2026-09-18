@@ -46,7 +46,7 @@ DATA = paths.data()             # 자리는 core/paths.py가 안다 (B78 1a)
 # (사전·청크·큐·문서 대장·골격 스냅샷·층 등록부·`<층>/graph.json` — 허브 확정),
 # 로그·체크포인트·장부는 `work/`다 — 그래서 백업 순위와 `init --fresh`의 범위가
 # 파일 이름이 아니라 **폴더**로 갈린다.
-WORK_FILES = ("gate_rejects.json", "build_metrics.json",
+WORK_FILES = ("gate_rejects.json", "build_metrics.json", "golden_log.json",
               "defects.log", "link_miss.log", "chunk_truncated.log")
 
 # data/ 파일 이름 (증분0 §6-7 파일 트리 증분)
