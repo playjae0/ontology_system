@@ -34,9 +34,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from cli import ingest as I, query as R                      # noqa: E402
-from core import init                                        # noqa: E402
+from core.state import init                                        # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap, open_graph             # noqa: E402
+from core.state.bootstrap import bootstrap, open_graph             # noqa: E402
 from router import discover                                  # noqa: E402
 from parser import reader                                    # noqa: E402
 

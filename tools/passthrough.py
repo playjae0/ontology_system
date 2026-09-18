@@ -19,9 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import store                                    # noqa: E402
-from core.bootstrap import bootstrap, open_graph          # noqa: E402
-from core.pipeline import finalize, run_document          # noqa: E402
+from core.state import store                                    # noqa: E402
+from core.state.bootstrap import bootstrap, open_graph          # noqa: E402
+from core.build.entry import finalize, run_document          # noqa: E402
 from parser.reader import read                            # noqa: E402
 from router import discover                               # noqa: E402
 

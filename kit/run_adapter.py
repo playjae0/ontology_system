@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""실행 하네스 — LLM이 산출한 adapter 코드와 매칭 스키마를 **실제로 돌려** 검증한다.
+"""칸 1.5 — 실행 하네스 — LLM이 산출한 adapter 코드와 매칭 스키마를 **실제로 돌려** 검증한다.
 
 새 성공 판정(사용자 확정, 2026-08-01):
   "LLM이 코드 안에서 도는가"가 아니라
@@ -335,11 +335,11 @@ def preflight(mod, raw, label):
 
 
 # ---------------------------------------------------------------- ③ extract
-# **구조 필드의 정본은 `core/pipeline.py::STRUCTURAL`이다** — 여기 베끼지 않는다.
-# import하지 않는 이유: `core.pipeline`이 `core.llm`을 끌고 오고, 관문은 스스로
+# **구조 필드의 정본은 `core/build/loop.py::STRUCTURAL`이다** — 여기 베끼지 않는다.
+# import하지 않는 이유: `core.build`가 `core.llm`을 끌고 오고, 관문은 스스로
 # 「LLM 미적재」를 판정한다(G54). 그래서 `_kit_line_re`와 같은 결로 **소스에서
 # 상수만 뽑는다** — 못 찾으면 조용히 넘기지 않고 그 판정을 붉게 한다.
-_STRUCTURAL_SRC = Path(__file__).resolve().parent.parent / "core" / "pipeline.py"
+_STRUCTURAL_SRC = Path(__file__).resolve().parent.parent / "core" / "build" / "loop.py"
 G39 = "G39  어댑터가 내는 키가 전부 스키마 fields에 있다"
 
 
@@ -377,7 +377,7 @@ def check_output_keys(schema, pieces, label):
     fields, _blk = load_blocks(schema)
     known = set(fields) | structural_fields()
     if not structural_fields():
-        return show(G39, False, "core/pipeline.py의 STRUCTURAL을 읽지 못했다 — "
+        return show(G39, False, "core/build/loop.py의 STRUCTURAL을 읽지 못했다 — "
                                 "관문 자체 결함(어댑터 잘못이 아니다)")
     out_keys = {k for p in pieces for k in p}
     extra = sorted(out_keys - known)

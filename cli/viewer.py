@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""검증 뷰어 — 그래프 그림 위에서 질의가 도는지 보는 창구 (문서 7 시각화 3형태 · B52).
+"""칸 0.3 — 검증 뷰어 — 그래프 그림 위에서 질의가 도는지 보는 창구 (문서 7 시각화 3형태 · B52).
 
 **플랫폼이 아니다.** 사내 서비스 창구는 별도 레포이고, 이것은 **이 시스템 안에서
 「그래프와 답이 서로 맞는가」를 눈으로 보는 검증 도구**다. 그래서 규율이 다르다:
@@ -25,7 +25,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from core import llm
+from core.llm import gateway
 
 HOST = "127.0.0.1"          # **바깥에 열지 않는다** — 검증 도구이지 서비스가 아니다
 PORT_TRIES = 40
@@ -110,7 +110,7 @@ def main(args):
             raise SystemExit("[viewer] --port 뒤에 번호가 필요하다")               # [사용법]
         del args[i:i + 2]
 
-    mode = "mock" if llm.use_mock() else "실호출"
+    mode = "mock" if gateway.use_mock() else "실호출"
     page, nodes, edges, n_layers = _world_snapshot()
     health = {"mode": mode, "nodes": len(nodes), "edges": len(edges),
               "layers": n_layers}

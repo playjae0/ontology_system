@@ -23,9 +23,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import init, store                                        # noqa: E402
+from core.state import init, store                                        # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap                          # noqa: E402
+from core.state.bootstrap import bootstrap                          # noqa: E402
 from parser import (normalizer, pipeline, preflight, reader, struct_map, tagger,  # noqa: E402
                     validator)
 from parser.adapters import basic_ppt                         # noqa: E402
@@ -42,6 +42,12 @@ def show(label, ok, detail=""):
     allok &= bool(ok)
     print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f"  — {detail}" if detail else ""))
     return bool(ok)
+
+def _reg_src():
+    """등록 파트의 소스 전량 — **파트가 파일 여럿이다**(B78 2b). 성질은 「등록 코드가
+    그렇게 한다」이지 「어느 파일에 있다」가 아니므로, 파트를 통째로 읽는다."""
+    return " ".join(_p.read_text(encoding="utf-8")
+                    for _p in sorted((ROOT / "cli" / "register").glob("*.py")))
 
 
 def load_adapter(path, name):
@@ -314,22 +320,22 @@ show("⑦의 통로가 apply()까지 이어진다 (파라미터만 있고 값이
 
 # ============================================================ ⑦ 폴백 ([정정] 39)
 print("\n■ ⑦ 예산 초과·판정 불가는 문서를 죽이지 않는다 (문서 6 §6.2·§6.3 · D-113 조정)")
-from core import llm as _LLM                                        # noqa: E402
+from core.llm import check, gateway as _LLM, points, struct_map_pass                                        # noqa: E402
 _PPTDOC = str(RAW / "PPT_basic.pptx")
 
 
 def _map_run(doc_id, reply, limit):
-    """실호출 갈래(`llm.map_structure`)를 **그대로 태운다** — 가짜는 게이트웨이 응답과
+    """실호출 갈래(`struct_map_pass.map_structure`)를 **그대로 태운다** — 가짜는 게이트웨이 응답과
     한도뿐이다. 파서에 주입되는 함수는 운영과 같은 것이라 배선까지 함께 잰다."""
     struct_map.invalidate(doc_id)
-    _oc, _ol = _LLM.chat, _LLM.context_limit
+    _oc, _ol = _LLM.chat, check.context_limit
     _LLM.chat = lambda *a, **k: reply
-    _LLM.context_limit = lambda: limit
+    check.context_limit = lambda: limit
     try:
         return pipeline.parse(basic_ppt, doc_id, _PPTDOC,
-                              map_structure=_LLM.map_structure)
+                              map_structure=struct_map_pass.map_structure)
     finally:
-        _LLM.chat, _LLM.context_limit = _oc, _ol
+        _LLM.chat, check.context_limit = _oc, _ol
 
 
 def _queue_reasons(res):
@@ -418,14 +424,14 @@ show("validator가 조각 공통 키 부재를 잡는다 (§6.2-5 「좌표 존�
 
 # ⑨좌표 태깅의 mock 갈래는 **모델을 부르지 않는다** (조항 B12 · §7.1 대체 표)
 _calls = []
-from core import llm as _LLM                                    # noqa: E402
+from core.llm import check, gateway as _LLM, points, struct_map_pass                                    # noqa: E402
 for _n in ("chat", "require", "_post"):
     _o = getattr(_LLM, _n)
     setattr(_LLM, _n, (lambda *a, _x=_n, _f=_o, **k: (_calls.append(_x), _f(*a, **k))[1]))
 _nodes = tagger.closed_list("process")
 _tagged = tagger.tag([{"source_locator": "T-1", "process_ref": "노칭"},
                       {"source_locator": "T-2", "process_ref": "없는공정zzz"}],
-                     layer="process", nodes=_nodes, pick=_LLM.coord_picker())
+                     layer="process", nodes=_nodes, pick=points.coord_picker())
 show("⑨좌표 태깅 mock 갈래가 모델을 부르지 않는다 (조항 B12)", not _calls, str(_calls))
 show("⑨목록 밖 좌표는 값을 고치지 않고 그대로 둔다 (판정은 인입 소관)",
      _tagged[1]["process_ref"] == "없는공정zzz"
@@ -482,10 +488,11 @@ show("지원 포맷 목록이 실패 문장에 나온다 (.csv·.tsv 포함)", _
 print("\n[B53 a] PPT 판독 — 텍스트 프레임과 노트만이 아니다")
 
 import shutil as _sh                                              # noqa: E402
-from core import llm                                              # noqa: E402
+from core.llm import gateway, points, struct_map_pass                                              # noqa: E402
 from parser import render                                         # noqa: E402
 from parser.adapters import basic_pdf                             # noqa: E402
 from cli import register as _reg, scan as _scan_mod               # noqa: E402
+from cli.register import draft as Rdraft   # noqa: E402
 sys.path.insert(0, str(ROOT / "tests" / "fixtures"))
 import make_pdf, make_ppt                                         # noqa: E402
 
@@ -598,13 +605,13 @@ show("쪽 렌더 여부가 데이터에 남는다 — page | none",
 
 # b-ⓑ chat() 멀티모달 페이로드 — 전송 직전 dict를 잡는다
 _sent = {}
-_real_post, _real_req = llm._post, llm.require
+_real_post, _real_req = gateway._post, gateway.require
 try:
-    llm._post = lambda u, p, k, t: _sent.update(payload=p) or {
+    gateway._post = lambda u, p, k, t: _sent.update(payload=p) or {
         "choices": [{"message": {"content": "요약"}}]}
-    llm.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
+    gateway.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
                               "timeout": 5, "retry": 0}
-    llm.summarize_image("R1", image=b"\x89PNG\x00", mime="image/png",
+    points.summarize_image("R1", image=b"\x89PNG\x00", mime="image/png",
                         context="맥락", page=b"\x89PNGpage")
     _parts = _sent["payload"]["messages"][-1]["content"]
     _imgs = [p for p in _parts if p.get("type") == "image_url"]
@@ -617,28 +624,28 @@ try:
 
     # b-ⓕ 게이트웨이가 이미지를 400으로 거절하면 **NotConfigured**로 멈춘다
     def _p400(u, p, k, t):
-        raise llm.GatewayError(400, "unsupported content type: image_url", u)
-    llm._post = _p400
+        raise gateway.GatewayError(400, "unsupported content type: image_url", u)
+    gateway._post = _p400
     try:
-        llm.summarize_image("R1", image=b"\x89PNG", mime="image/png")
+        points.summarize_image("R1", image=b"\x89PNG", mime="image/png")
         _nc = "통과했다"
-    except llm.NotConfigured as e:
+    except gateway.NotConfigured as e:
         _nc = str(e)
     except Exception as e:                                        # noqa: BLE001
         _nc = f"{type(e).__name__}"
     show("게이트웨이 400(이미지 거부) → NotConfigured — 요약을 지어내지 않는다",
          "게이트웨이가 이미지 입력을 받지 않는다" in _nc, _nc[:52])
     try:                       # 이미지 없는 400은 설정 결함이 아니다 — 그대로 올린다
-        llm.summarize_image("R1", context="c")
+        points.summarize_image("R1", context="c")
         _tc = "통과"
-    except llm.NotConfigured:
+    except gateway.NotConfigured:
         _tc = "NotConfigured(과잉)"
-    except llm.GatewayError:
+    except gateway.GatewayError:
         _tc = "GatewayError"
     show("이미지 없는 400은 NotConfigured로 바꾸지 않는다 (원인을 옮기지 않는다)",
          _tc == "GatewayError", _tc)
 finally:
-    llm._post, llm.require = _real_post, _real_req
+    gateway._post, gateway.require = _real_post, _real_req
 
 # b-ⓓ soffice가 없어도 **문서는 완주한다**
 _realwhich = _sh.which
@@ -675,8 +682,8 @@ show("닫힌 목록 밖 shape_kind를 잡는다 (검사하는 자리가 있어�
 # **경로를 박지 않는다**(B63 ① — 지시문 파일에 칸 ID가 붙었다). 잠글 성질은 그대로다:
 # 두 지시문의 판이 그때 올랐고 **판은 파일이 말한다**(§7.6-B-5).
 show("지시문 판이 올랐다 — image_summary i-2.0 · extract e-1.1",
-     "version: i-2.0" in llm.prompt("image_summary")
-     and "version: e-1.1" in llm.prompt("extract"))
+     "version: i-2.0" in gateway.prompt("image_summary")
+     and "version: e-1.1" in gateway.prompt("extract"))
 
 # ── B53 c. 기본 PDF 어댑터 ────────────────────────────────────────────────
 print("\n[B53 c] 기본 PDF 어댑터 — 쪽이 청크다")
@@ -712,20 +719,20 @@ show("스캔본(텍스트 0자)은 그림 placeholder 하나로 낸다 — 빈 �
 show("PDF는 지문 대상이 아니다 — 표 어댑터와 대조하지 않는다",
      _scan_mod.scan(str(_PDF)).get("not_fingerprintable") == "pdf")
 show("--use-basic이 .pdf 전부에 뜬다 (섞이면 뜨지 않는다)",
-     (_reg.basic_adapter_proposal([str(_PDF)]) or {}).get("adapter")
+     (Rdraft.basic_adapter_proposal([str(_PDF)]) or {}).get("adapter")
      == "parser/adapters/basic_pdf.py"
-     and _reg.basic_adapter_proposal([str(_PDF), str(_PPTX)]) is None)
+     and Rdraft.basic_adapter_proposal([str(_PDF), str(_PPTX)]) is None)
 show("위임 래퍼가 제안이 정한 어댑터를 문다 (PDF가 PPT 어댑터를 물지 않는다)",
-     "basic_pdf" in (ROOT / "cli" / "register.py").read_text(encoding="utf-8")
+     "basic_pdf" in _reg_src()
      and 'mod = Path(proposal["adapter"]).stem'
-     in (ROOT / "cli" / "register.py").read_text(encoding="utf-8"))
+     in _reg_src())
 
 # ── B58 ③ 고정 prose xlsx 어댑터 + 레벨 규칙 ([정정] 46) ──────────────────
 print("\n■ B58 ③ — 스프레드시트 산문: 규칙이 레벨을 고른다")
 
 from parser.adapters import basic_prose_xlsx as _BPX          # noqa: E402
-from core import pipeline as _CP                              # noqa: E402
-from core import registry as _RG                              # noqa: E402
+from core.build import entry as _CP                              # noqa: E402
+from core.state import registry as _RG                              # noqa: E402
 from cli.parse import run_parse as _run_parse                 # noqa: E402
 
 # **규칙 자체를 잠근다** — 화면 문구가 아니라 무엇을 고르는가다.
@@ -782,8 +789,8 @@ show("③ⓑ 어댑터 경로의 화면도 규칙이 고른 레벨을 낸다 (�
 
 # **표를 이 어댑터에 넣으면 제안이 서지 않는다** — 시트당 1청크는 분할이 아니라 실패다.
 show("③ 격자 포맷이라고 무조건 제안하지 않는다 (표는 거부 — 산출로 판정한다)",
-     _reg.basic_adapter_proposal([str(RAW / "CP01.xlsx")]) is None
-     and (_reg.basic_adapter_proposal([str(RAW / "TOC01.xlsx")]) or {}).get("adapter")
+     Rdraft.basic_adapter_proposal([str(RAW / "CP01.xlsx")]) is None
+     and (Rdraft.basic_adapter_proposal([str(RAW / "TOC01.xlsx")]) or {}).get("adapter")
      == "parser/adapters/basic_prose_xlsx.py")
 
 # ⓐⓒⓓ — 인입 2회로 실증한다. **클린에서 시작한다**(찌꺼기가 판정에 섞이지 않게).
@@ -939,7 +946,7 @@ show("④ 판정은 선택을 갈아 끼우지 않는다 — 어긋나면 경고
 # ── B58 ④-후속 — case 두 값과 side의 파생 ([정정] 48 ①) ────────────────
 print("\n■ B58 ④-후속 — 큐 case는 닫힌 두 값 · side는 파생값")
 
-from core.pipeline import _band_material as _BM                # noqa: E402
+from core.build.entry import _band_material as _BM                # noqa: E402
 
 # **side를 박아 두면 절반의 문서에 틀린 처방이 나간다** — 짧은 쪽은 「레벨을 얕게」,
 # 긴 쪽은 「깊게」로 처방이 **반대**다. 그래서 avg와 target_band에서 파생되는지를
@@ -961,7 +968,10 @@ show("④-후속 재료가 없으면 지어내지 않는다 (side는 None)",
 
 # **case는 닫힌 두 값이다** — 코드가 그 둘만 만든다.
 import re as _re                                              # noqa: E402
-_CPSRC = (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8")
+# 구축 파트는 파일 넷이다(B78 2b) — **파트 전체**를 본다: 성질은 「코드가 그 둘만
+# 만든다」이지 「어느 파일에 있다」가 아니다.
+_CPSRC = " ".join(_p.read_text(encoding="utf-8")
+                  for _p in sorted((ROOT / "core" / "build").glob("*.py")))
 _cases = set(_re.findall(r'"(flat_fallback|size_out_of_band|level_out_of_range)"', _CPSRC))
 show("④-후속 case는 flat_fallback · size_out_of_band 둘뿐이다 (옛 이름 0)",
      _cases == {"flat_fallback", "size_out_of_band"}, str(sorted(_cases)))

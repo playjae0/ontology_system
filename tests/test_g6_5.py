@@ -22,15 +22,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import init, gate, ops, store
+from core.build import gate
+from core.state import init, ops, store
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 from core.dictionary import Dictionary                            # noqa: E402
-from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
-from core.build import Builder                               # noqa: E402
-from core.extract import EXTRACT_DIR, checkpoint_path        # noqa: E402
-from core.ids import norm                                    # noqa: E402
+from core.state.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
+from core.build.build import Builder                               # noqa: E402
+from core.build.extract import EXTRACT_DIR, checkpoint_path        # noqa: E402
+from core.state.ids import norm                                    # noqa: E402
 from core.matcher import MATCH, resolve                      # noqa: E402
-from core.pipeline import build_prose, finalize, run_document  # noqa: E402
+from core.build.entry import finalize, run_document  # noqa: E402
+from core.build.prose import build_prose
 
 allok = True
 DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
@@ -213,8 +215,8 @@ show("B4 층 닫힌 목록 밖 카테고리는 invalid_category 큐 + 노드 미
      and not any(n["canonical"] == "감사표면형" for n in g.nodes.values()),
      str(len(q_of("invalid_category", "XCAT01"))))
 
-core_src = "\n".join((ROOT / "core" / f).read_text(encoding="utf-8")
-                      for f in ("pipeline.py", "build.py", "gate.py", "ingest.py"))
+core_src = "\n".join(_p.read_text(encoding="utf-8")
+                      for _p in sorted((ROOT / "core" / "build").glob("*.py")))
 from cli.platform import QUEUE_KINDS                          # noqa: E402
 show("B5 invalid_role enqueue가 코드에서 사라진다 — 결함 로그만 (D-30 · 닫힌 20종)",
      'enqueue("invalid_role"' not in core_src and "invalid_role" not in QUEUE_KINDS
@@ -384,7 +386,7 @@ show("E1 게이트 도달 전 소멸분(관계 끝점·attach 자식)이 결함 
 
 r = subprocess.run([sys.executable, "-c",
                     "import sys; sys.path.insert(0,'.');"
-                    "from core.extract import _mock_candidates;"
+                    "from core.build.extract import _mock_candidates;"
                     "_mock_candidates('c', '노칭으로 인해 불량이 발생', {}, {})"],
                    cwd=str(ROOT), capture_output=True, text=True,
                    env=dict(os.environ, USE_MOCK="0"))
@@ -530,12 +532,13 @@ show("①ⓒ 계기판 2가 실파서 꼴 locator에서 None이 아닌 값을 �
      f"{[(s['doc'], s['mentioned']) for s in _b57_series][:3]}")
 
 # ①ⓓ `doc_locators()`는 삭제됐다 — 접두가 문서를 말하므로 발자국 인덱스가 필요 없다.
-_b57_ing = (ROOT / "core" / "ingest.py").read_text(encoding="utf-8")
+_b57_ing = (ROOT / "core" / "build" / "ingest.py").read_text(encoding="utf-8")
 show("①ⓓ doc_locators()가 삭제됐다 (순감소)",
      "def doc_locators" not in _b57_ing
      and 'p == doc_id or str(p).startswith(doc_id + "#")' in _b57_ing)
 # **계약 A의 locator는 손대지 않는다** — 대응표 셋이 raw locator로 맞추는 자리다.
-_b57_pipe = (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8")
+_b57_pipe = " ".join(_p.read_text(encoding="utf-8")
+                     for _p in sorted((ROOT / "core" / "build").glob("*.py")))
 show("① 청크 대응표는 raw locator 그대로다 (접두를 섞지 않는다)",
      'by_locator = {c["source_locator"]: c' in _b57_pipe
      and 'loc2id = {c["source_locator"]: cid' in _b57_pipe)
@@ -612,11 +615,11 @@ show("②ⓑ 새 큐 kind를 만들지 않는다 (missing_field가 「필수 값
 # **STRUCTURAL을 건드리지 않았다** — 검사의 자리는 좌표 해소 지점이다.
 show("② process_ref는 여전히 구조 필드다 (unknown_field로 쏟아지지 않는다)",
      not [x for x in _b57_q3 if x["kind"] == "unknown_field"]
-     and "coord_case" in (ROOT / "core" / "pipeline.py").read_text(encoding="utf-8"))
+     and "coord_case" in (ROOT / "core" / "build" / "table.py").read_text(encoding="utf-8"))
 
 
 # ── B57 ③④⑤ ────────────────────────────────────────────────────────────
-from core import pipeline as pipeline_mod                          # noqa: E402
+from core.build import entry as pipeline_mod                          # noqa: E402
 from cli.platform import gauges                                    # noqa: E402
 from cli.query import answer as R_answer                           # noqa: E402
 print("\n■ B57 ③ — 방향이 반대인 규칙은 연달아 적용하지 않는다 ([개정] B56-3)")
@@ -727,7 +730,7 @@ show("⑤ⓐ polarity만 다르고 canonical이 같은 노드 0건 (D-57이 지�
 # 카테고리 이름은 **config가 갖는다** — 코드도 조항도 복제하지 않는다.
 # **단정하는 문장**이 사라졌는지를 본다 — 「구판은 …라고 적어 두었다」는 설명은
 # 남아야 한다(왜 고쳤는지가 기록이다). 문자열을 통째로 세면 그 설명이 걸린다.
-_b57_bsrc = (ROOT / "core" / "build.py").read_text(encoding="utf-8")
+_b57_bsrc = (ROOT / "core" / "build" / "build.py").read_text(encoding="utf-8")
 show("⑤ 스코프 대상 카테고리는 config가 갖는다 (코드가 이름을 단정하지 않는다)",
      load_config("process").get("canonical_scope", {}).get("bind_categories")
      == ["Property", "Unit"]
@@ -746,7 +749,7 @@ show("⑤ 회귀 대조 자산이 개정본 기준이다 (감사 에이전트가
 # 문구가 아니라 **자료의 모양**을 본다: 화면 문안은 바뀌어도 이 성질은 남아야 한다.
 print("\n■ B58 ① — 재등록: 승인 기록이 누적된다")
 
-from core import registry                                     # noqa: E402
+from core.state import registry                                     # noqa: E402
 
 _B58 = "b58revtype"
 _reg0 = store.read(store.DOC_TYPES, {})

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""골든셋 — 문항 틀과 채점기 (문서 5 §5.5-2·3·4 · B54).
+"""칸 0.3 — 골든셋 — 문항 틀과 채점기 (문서 5 §5.5-2·3·4 · B54).
 
 **골든셋은 파이프라인이 아니다**(§5.5 경계) — 없어도 인입·질의는 돈다. 여기 코드가
 질의 경로에 불려 들어가면 그 경계가 무너진다.
@@ -23,7 +23,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from core import bm25, paths, store
+from core import paths
+from core.query import bm25
+from core.state import store
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = paths.golden("queries.json")

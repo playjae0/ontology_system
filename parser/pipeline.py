@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""파서 진입점 — 코어 6종을 순서대로 엮는다 (파서_명세 §3 · D-2 확정 배열).
+"""칸 2.5·2.9 — 파서 진입점 — 코어 6종을 순서대로 엮는다 (파서_명세 §3 · D-2 확정 배열).
 
     reader → preflight → [struct-map] → adapter → normalizer → tagger → validator
 

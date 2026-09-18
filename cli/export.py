@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""내보내기 — 시각화·외부 도구용 **파생물** (명세 §11 · 카드 P5).
+"""칸 0.3 — 내보내기 — 시각화·외부 도구용 **파생물** (명세 §11 · 카드 P5).
 
     python -m cli.export cypher [출력.cypher]    Neo4j 적재용
     python -m cli.export csv    [출력디렉터리]    nodes.csv · edges.csv (Gephi·엑셀)
@@ -21,9 +21,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from core import ledger, paths, store
-from core.bootstrap import open_graph
-from core.status import is_live
+from core import paths
+from core.build import ledger
+from core.state import store
+from core.state.bootstrap import open_graph
+from core.state.status import is_live
 from router import discover
 
 
@@ -199,7 +201,7 @@ def cmd_mermaid(args):
         return _mermaid_cross()
     lay = args[0] if args else "process"
     g = open_graph(lay)
-    from core.bootstrap import load_config
+    from core.state.bootstrap import load_config
     cfg = load_config(lay)
     skel = cfg.get("skeleton") or {}
     sib = (skel.get("relations") or {}).get("sibling")
@@ -298,448 +300,24 @@ def main(argv):
 
 
 # ---------------------------------------------------------------- html
-_HTML_HEAD = """<!doctype html>
-<meta charset="utf-8">
-<title>온톨로지 그래프 — {title}</title>
-<style>
- :root{{--bg:#0f1115;--fg:#e6e6e6;--dim:#8b93a1;--line:#2a2f3a;--panel:#161a22}}
- *{{box-sizing:border-box}}
- body{{margin:0;background:var(--bg);color:var(--fg);
-   font:13px/1.5 -apple-system,"Segoe UI","Noto Sans KR",sans-serif;overflow:hidden}}
- #wrap{{display:flex;height:100vh}}
- #side{{width:280px;flex:0 0 280px;background:var(--panel);border-right:1px solid var(--line);
-   padding:14px;overflow:auto}}
- #side h1{{font-size:14px;margin:0 0 4px}}
- #side .sub{{color:var(--dim);font-size:11px;margin-bottom:14px}}
- fieldset{{border:1px solid var(--line);border-radius:6px;margin:0 0 12px;padding:8px 10px}}
- legend{{color:var(--dim);font-size:11px;padding:0 4px}}
- label{{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer}}
- label .sw{{width:10px;height:10px;border-radius:2px;flex:0 0 10px}}
- label .n{{margin-left:auto;color:var(--dim);font-size:11px}}
- #stat{{color:var(--dim);font-size:11px;margin-top:10px;line-height:1.7}}
- #agg{{margin-top:12px;font-size:11px;color:var(--dim);line-height:1.6}}
- #agg h4{{color:var(--fg);font-size:11px;margin:10px 0 3px;letter-spacing:.4px}}
- #agg .r{{display:flex;gap:6px}} #agg .r b{{color:var(--fg);font-weight:600}}
- #agg .r .n{{margin-left:auto}}
- #stage{{flex:1;position:relative}}
- canvas{{display:block;cursor:grab}} canvas.drag{{cursor:grabbing}}
- #tip{{position:absolute;pointer-events:none;background:#000c;border:1px solid var(--line);
-   border-radius:6px;padding:8px 10px;max-width:340px;display:none;font-size:12px}}
- #tip b{{color:#fff}} #tip .k{{color:var(--dim)}}
- #hint{{position:absolute;left:12px;bottom:10px;color:var(--dim);font-size:11px}}
-/*__PANEL_CSS__*/
-</style>
-<div id="wrap"><div id="side">
- <h1>{title}</h1><div class="sub">{sub}</div>
- <div id="filters"></div>
- <div id="stat"></div>
- <div id="agg"></div>
-</div><div id="stage"><canvas id="cv"></canvas><div id="tip"></div>
-<div id="hint">드래그 = 이동 · 휠 = 확대 · 노드 클릭 = 고정/해제</div></div><!--__PANEL_HTML__--></div>
-<script>
-const DATA = """
-
-_HTML_TAIL = r""";
-// ── 색상: 축별 결정적 팔레트. 같은 값은 언제나 같은 색이다.
-const PAL = ["#7aa2f7","#9ece6a","#e0af68","#f7768e","#bb9af7","#7dcfff",
-             "#ff9e64","#73daca","#c0caf5","#f4bf75","#a6e3a1","#eba0ac"];
-function color(v){let h=0; for(const c of String(v)) h=(h*31+c.charCodeAt(0))|0;
-  return PAL[Math.abs(h)%PAL.length];}
-
-// **생성 경로도 축이다**(B74 ③) — 「몇 개가 로직이고 몇 개가 LLM인가」를
-// 색과 필터로 본다. 값은 대장의 닫힌 집합 ∪ {seed, unknown}이다.
-const AXES = ["layer","category","status","tier","polarity","made_by"];
-const state = {};          // 축 → 켜진 값 Set
-const fixed = new Set();
-
-function values(ax){const m=new Map();
-  for(const n of DATA.nodes){const v=n[ax]??"(없음)"; m.set(v,(m.get(v)||0)+1);} 
-  return [...m.entries()].sort((a,b)=>b[1]-a[1]);}
-
-// 색상 축 — 값이 가장 많이 갈리는 축을 고른다. 필터를 만들기 **전에** 정한다.
-const COLOR_AX = (() => {
-  let best = "layer", n = 0;
-  for(const ax of AXES){const c = values(ax).length; if(c > n){n = c; best = ax;}}
-  return best;
-})();
-
-const fbox = document.getElementById("filters");
-for(const ax of AXES){
-  const vs = values(ax);
-  if(vs.length<=1 && vs[0] && vs[0][0]==="(없음)") continue;
-  state[ax] = new Set(vs.map(v=>v[0]));
-  const fs = document.createElement("fieldset");
-  fs.innerHTML = `<legend>${ax}</legend>`;
-  fs.dataset.ax = ax;
-  for(const [v,c] of vs){
-    const l = document.createElement("label");
-    // 스와치는 **색상 축에서만** 실제 색이다 — 다른 축에서 색을 칠하면 화면의
-    // 색과 어긋나 범례가 거짓말을 한다.
-    l.innerHTML = `<input type=checkbox checked><span class=sw data-v="${v}"></span>`
-                + `<span>${v}</span><span class=n>${c}</span>`;
-    l.querySelector("input").onchange = e => {
-      e.target.checked ? state[ax].add(v) : state[ax].delete(v); layout(); draw();};
-    fs.appendChild(l);
-  }
-  fbox.appendChild(fs);
-}
-// 색상 축의 스와치만 실제 색으로 칠하고, 나머지 축은 중립 테두리로 둔다.
-for(const fs of fbox.querySelectorAll("fieldset")){
-  const on = fs.dataset.ax === COLOR_AX;
-  for(const sw of fs.querySelectorAll(".sw"))
-    sw.style.background = on ? color(sw.dataset.v) : "transparent",
-    sw.style.border = on ? "none" : "1px solid var(--line)";
-  if(on) fs.querySelector("legend").textContent += " (색상)";
-}
-
-// **문서 필터** — 「이 문서가 만든 것만」이 보인다(B74 ③). 값이 여럿인 축이라
-// 체크박스 묶음을 따로 세운다(provenance 접두로 거른다 — show doc와 같은 기준).
-const DOCS = (() => {const m=new Map();
-  for(const n of DATA.nodes) for(const d of n.docs||[]) m.set(d,(m.get(d)||0)+1);
-  return [...m.entries()].sort((a,b)=>b[1]-a[1]);})();
-const docOn = new Set(DOCS.map(d=>d[0]));
-if(DOCS.length > 1){
-  const fs = document.createElement("fieldset");
-  fs.innerHTML = `<legend>문서</legend>`; fs.dataset.ax = "doc";
-  for(const [v,c] of DOCS){
-    const l = document.createElement("label");
-    l.innerHTML = `<input type=checkbox checked><span class=sw`
-                + ` style="border:1px solid var(--line)"></span>`
-                + `<span>${v}</span><span class=n>${c}</span>`;
-    l.querySelector("input").onchange = e => {
-      e.target.checked ? docOn.add(v) : docOn.delete(v); layout(); draw();};
-    fs.appendChild(l);
-  }
-  fbox.appendChild(fs);
-}
-
-function visible(n){
-  if(DOCS.length > 1 && !(n.docs||[]).some(d=>docOn.has(d))) return false;
-  return AXES.every(ax => !state[ax] || state[ax].has(n[ax]??"(없음)"));}
-
-const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-const tip = document.getElementById("tip"), stage = document.getElementById("stage");
-let view = {x:0,y:0,k:1}, nodes = [], edges = [], byId = new Map();
-
-function layout(){
-  nodes = DATA.nodes.filter(visible);
-  byId = new Map(nodes.map(n=>[n.id,n]));
-  edges = DATA.edges.filter(e => byId.has(e.src) && byId.has(e.dst));
-  // 결정적 초기 배치 — 층/카테고리별 원형 클러스터. 같은 데이터는 같은 그림이다.
-  const groups = new Map();
-  for(const n of nodes){const g=n[COLOR_AX]??"(없음)";
-    if(!groups.has(g)) groups.set(g,[]); groups.get(g).push(n);}
-  const gs=[...groups.keys()].sort(), R=Math.max(260, nodes.length*3.2);
-  gs.forEach((g,gi)=>{
-    const cx=Math.cos(gi/gs.length*2*Math.PI)*R, cy=Math.sin(gi/gs.length*2*Math.PI)*R;
-    const arr=groups.get(g), r=Math.max(70, arr.length*7);
-    arr.forEach((n,i)=>{ if(fixed.has(n.id)) return;
-      const a=i/arr.length*2*Math.PI;
-      n.x=cx+Math.cos(a)*r; n.y=cy+Math.sin(a)*r;});
-  });
-  for(let it=0; it<160; it++) relax();   // 짧은 완화 — 결정적 반복 횟수
-  fit();
-}
-function relax(){
-  for(const e of edges){const a=byId.get(e.src),b=byId.get(e.dst);
-    const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1, f=(d-110)*0.012;
-    if(!fixed.has(a.id)){a.x+=dx/d*f; a.y+=dy/d*f;}
-    if(!fixed.has(b.id)){b.x-=dx/d*f; b.y-=dy/d*f;}}
-  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
-    const a=nodes[i],b=nodes[j],dx=b.x-a.x,dy=b.y-a.y,d2=dx*dx+dy*dy;
-    if(d2>9000||d2===0) continue; const d=Math.sqrt(d2),f=(95-d)*0.03;
-    if(!fixed.has(a.id)){a.x-=dx/d*f; a.y-=dy/d*f;}
-    if(!fixed.has(b.id)){b.x+=dx/d*f; b.y+=dy/d*f;}}
-}
-function fit(){
-  if(!nodes.length) return;
-  const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
-  const w=Math.max(...xs)-Math.min(...xs)||1, h=Math.max(...ys)-Math.min(...ys)||1;
-  view.k=Math.min(cv.width/(w+180), cv.height/(h+180), 2.2);
-  view.x=cv.width/2-(Math.min(...xs)+w/2)*view.k;
-  view.y=cv.height/2-(Math.min(...ys)+h/2)*view.k;
-}
-function resize(){cv.width=stage.clientWidth; cv.height=stage.clientHeight; draw();}
-function P(n){return [n.x*view.k+view.x, n.y*view.k+view.y];}
-
-function draw(){
-  ctx.clearRect(0,0,cv.width,cv.height);
-  const elab = [];
-  for(const e of edges){
-    const a=byId.get(e.src), b=byId.get(e.dst), [ax,ay]=P(a), [bx,by]=P(b);
-    // **cross-layer 엣지는 걸러 그려도 화면에 남긴다**(문서 7 §7.8) — 층간 연결이
-    // 이 시스템의 존재 이유이고, 그것을 눈으로 볼 창구가 여기다.
-    ctx.strokeStyle = e.cross ? "#f7768ecc" : "#2a2f3a";
-    ctx.lineWidth = e.cross ? 1.6 : 1;
-    if(e.cross){ctx.setLineDash([5,3]);} else {ctx.setLineDash([]);}
-    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
-    // **화살촉** — 방향이 없으면 `part_of`가 어느 쪽인지 그림이 답하지 못한다.
-    const d=Math.hypot(bx-ax,by-ay)||1, ux=(bx-ax)/d, uy=(by-ay)/d;
-    const tx=bx-ux*9, ty=by-uy*9, s1=4.5;
-    ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(tx,ty);
-    ctx.lineTo(tx-ux*7+uy*s1, ty-uy*7-ux*s1);
-    ctx.lineTo(tx-ux*7-uy*s1, ty-uy*7+ux*s1);
-    ctx.closePath(); ctx.fillStyle = e.cross ? "#f7768ecc" : "#3a4150"; ctx.fill();
-    if(e.cross){ctx.setLineDash([5,3]);}
-    // **엣지 라벨은 노드 라벨과 같은 LOD다** — 전부 그리면 읽을 수 없다.
-    // 확대했거나 두 끝 중 하나가 고정(클릭)된 엣지에만 관계 이름을 적는다.
-    if(view.k > 1.15 || fixed.has(e.src) || fixed.has(e.dst))
-      elab.push([e.rel, (ax+bx)/2, (ay+by)/2, e.cross]);
-  }
-  ctx.setLineDash([]);
-  ctx.font = "10px sans-serif"; ctx.textAlign = "center";
-  for(const [rel,x,y,cross] of elab){
-    const w = ctx.measureText(rel).width;
-    ctx.fillStyle = "#0f1115d8"; ctx.fillRect(x-w/2-3, y-7, w+6, 12);
-    ctx.fillStyle = cross ? "#f7768e" : "#8b93a7"; ctx.fillText(rel, x, y+2);
-  }
-  const deg = new Map();
-  for(const e of edges){deg.set(e.src,(deg.get(e.src)||0)+1);
-                        deg.set(e.dst,(deg.get(e.dst)||0)+1);}
-  const taken = [];
-  // 차수가 큰 노드를 먼저 그려 라벨 자리를 먼저 잡게 한다 — 허브가 이름을 갖는다.
-  const order = [...nodes].sort((a,b)=>(deg.get(b.id)||0)-(deg.get(a.id)||0));
-  for(const n of order){
-    const [x,y]=P(n), r=(n.tier==="main"?9:n.tier==="sub"?7:5.5)*Math.min(view.k,1.6);
-    /*__HL_BEFORE__*/
-    ctx.fillStyle=color(n[COLOR_AX]??"(없음)");
-    ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
-    if(fixed.has(n.id)){ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();}
-    // **라벨은 겹치면 읽을 수 없다** — 확대 전에는 골격 상위와 연결이 많은 노드만
-    // 적는다(LOD). 그린 자리를 기록해 겹치는 라벨은 건너뛴다.
-    const show = view.k > 1.15 || n.tier === "main" || n.tier === "sub"
-                 || (deg.get(n.id) || 0) >= 4;
-    if(show){
-      const s = n.name.split("::").pop();
-      ctx.font = "11px sans-serif";
-      const w = ctx.measureText(s).width, ly = y - r - 5;
-      const box = [x - w/2 - 2, ly - 10, w + 4, 13];
-      if(!taken.some(b => box[0] < b[0]+b[2] && b[0] < box[0]+box[2]
-                       && box[1] < b[1]+b[3] && b[1] < box[1]+box[3])){
-        taken.push(box);
-        ctx.fillStyle = "#0f1115d0";
-        ctx.fillRect(box[0], box[1], box[2], box[3]);
-        ctx.fillStyle = "#c0caf5"; ctx.textAlign = "center";
-        ctx.fillText(s, x, ly);
-      }
-    }
-    /*__HL_AFTER__*/
-  }
-  const cross = edges.filter(e=>e.cross).length;
-  document.getElementById("stat").innerHTML =
-    `보이는 노드 <b>${nodes.length}</b> / ${DATA.nodes.length}<br>`+
-    `보이는 엣지 <b>${edges.length}</b> / ${DATA.edges.length}<br>`+
-    `그중 걸침(cross) <b style="color:#f7768e">${cross}</b><br>`+
-    `색상 축: ${COLOR_AX}`;
-  aggregate();
-}
-
-// **집계는 보이는 것을 센다** — 새 계산 없이 DATA에서 세고, 필터를 걸면 같이 준다.
-// 평가의 첫 질문이 「몇 개가 로직이고 몇 개가 LLM인가」라서 그 수가 그림 옆에 있다.
-function tally(arr, key){const m=new Map();
-  for(const x of arr){const v=key(x)??"(없음)"; m.set(v,(m.get(v)||0)+1);}
-  return [...m.entries()].sort((a,b)=>b[1]-a[1]);}
-function block(title, rows){
-  if(!rows.length) return "";
-  return `<h4>${title}</h4>` + rows.map(([v,c])=>
-    `<div class=r><b>${v}</b><span class=n>${c}</span></div>`).join("");}
-function aggregate(){
-  const q = nodes.filter(n=>n.queue);
-  document.getElementById("agg").innerHTML =
-    block("노드 by status", tally(nodes, n=>n.status)) +
-    block("노드 by 생성 경로", tally(nodes, n=>n.made_by)) +
-    block("엣지 by rel", tally(edges, e=>e.rel)) +
-    block("큐(미종결)", tally(q, n=>n.queue));
-}
-function hit(mx,my){
-  for(let i=nodes.length-1;i>=0;i--){const [x,y]=P(nodes[i]);
-    if(Math.hypot(mx-x,my-y)<11) return nodes[i];}
-  return null;
-}
-// **엣지도 가리킬 수 있어야 한다**(B74 ③) — 선분까지의 거리로 고른다.
-function hitEdge(mx,my){
-  let best=null, bd=7;
-  for(const e of edges){
-    const a=byId.get(e.src), b=byId.get(e.dst);
-    const [ax,ay]=P(a), [bx,by]=P(b);
-    const dx=bx-ax, dy=by-ay, L=dx*dx+dy*dy;
-    const t = L ? Math.max(0, Math.min(1, ((mx-ax)*dx+(my-ay)*dy)/L)) : 0;
-    const d = Math.hypot(mx-(ax+dx*t), my-(ay+dy*t));
-    if(d < bd){bd = d; best = e;}
-  }
-  return best;
-}
-let drag=null;
-cv.onmousedown=e=>{drag={x:e.offsetX,y:e.offsetY,vx:view.x,vy:view.y,moved:false};
-  cv.classList.add("drag");};
-cv.onmouseup=e=>{cv.classList.remove("drag");
-  if(drag && !drag.moved){const n=hit(e.offsetX,e.offsetY);
-    if(n){fixed.has(n.id)?fixed.delete(n.id):fixed.add(n.id); draw();}}
-  drag=null;};
-cv.onmouseleave=()=>{drag=null;cv.classList.remove("drag");tip.style.display="none";};
-cv.onmousemove=e=>{
-  if(drag){const dx=e.offsetX-drag.x, dy=e.offsetY-drag.y;
-    if(Math.abs(dx)+Math.abs(dy)>3) drag.moved=true;
-    view.x=drag.vx+dx; view.y=drag.vy+dy; draw(); return;}
-  const n=hit(e.offsetX,e.offsetY);
-  if(!n){
-    // 노드가 없으면 엣지를 본다 — 「이 선이 무엇인가」가 화면에서 답해진다.
-    const ed=hitEdge(e.offsetX,e.offsetY);
-    if(!ed){tip.style.display="none"; return;}
-    const sn=byId.get(ed.src), dn=byId.get(ed.dst);
-    tip.innerHTML=`<b>${ed.rel}</b><br>`+
-      `<span class=k>from</span> ${sn.name}<br>`+
-      `<span class=k>to</span> ${dn.name}<br>`+
-      `<span class=k>status</span> ${ed.status??"—"}`+
-      (ed.cross?`<br><span class=k>걸침</span> 층간`:"")+
-      (ed.prov?`<br><span class=k>출처</span> ${ed.prov}`:"");
-    tip.style.display="block";
-    tip.style.left=Math.min(e.offsetX+14, stage.clientWidth-350)+"px";
-    tip.style.top=(e.offsetY+14)+"px";
-    return;}
-  const deg=edges.filter(x=>x.src===n.id||x.dst===n.id).length;
-  tip.innerHTML=`<b>${n.name}</b><br>`+
-    AXES.map(a=>`<span class=k>${a}</span> ${n[a]??"—"}`).join("<br>")+
-    `<br><span class=k>연결</span> ${deg}`+
-    `<br><span class=k>별칭</span> ${n.aliases} · <span class=k>값</span> ${n.attrs}`+
-    (n.queue?`<br><span class=k>큐</span> ${n.queue}`
-            +`<br>▶ 다음 줄 — python run.py ops confirm ${n.layer} ${n.id} --actor <이름>`:"")+
-    (n.prov?`<br><span class=k>출처</span> ${n.prov}`:"");
-  tip.style.display="block";
-  tip.style.left=Math.min(e.offsetX+14, stage.clientWidth-350)+"px";
-  tip.style.top=(e.offsetY+14)+"px";
-};
-cv.onwheel=e=>{e.preventDefault(); const f=e.deltaY<0?1.12:1/1.12;
-  view.x=e.offsetX-(e.offsetX-view.x)*f; view.y=e.offsetY-(e.offsetY-view.y)*f;
-  view.k*=f; draw();};
-/*__PANEL_JS__*/
-window.onresize=resize;
-resize(); layout(); draw();
-</script>
-"""
+# **템플릿은 파일이다**(B78 2b) — 900행 파일의 3분의 2가 HTML·CSS·JS 문자열이었고,
+# 그 안은 파이썬 도구가 읽지 못한다(문법 강조도 검사도 없다). 자리는 `cli/viewer.html`
+# 하나이고, 이 파일은 **자리를 채우는 일**만 한다. CDN은 그대로 0이다.
+VIEWER_HTML = Path(__file__).resolve().parent / "viewer.html"
+_SECTION = re.compile(r"^<!--#SECTION ([a-z_]+)-->$", re.M)
 
 
-_PANEL_CSS = r"""
- #qside{width:400px;flex:0 0 400px;background:var(--panel);border-left:1px solid var(--line);
-   padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
- #qside h2{font-size:13px;margin:0}
- #qbadge{font-size:11px;padding:2px 7px;border-radius:10px;font-weight:700}
- #qbadge.mock{background:#e0af68;color:#1a1a1a} #qbadge.live{background:#9ece6a;color:#12210f}
- #qrow{display:flex;gap:6px} #q{flex:1;min-width:0}
- #q,#qgo{background:#0f1115;color:var(--fg);border:1px solid var(--line);
-   border-radius:5px;padding:7px 9px;font:inherit}
- #qgo{cursor:pointer;background:#7aa2f7;color:#0f1115;border:none;font-weight:700}
- #qex{display:flex;flex-wrap:wrap;gap:4px}
- #qex button{background:transparent;color:var(--dim);border:1px solid var(--line);
-   border-radius:10px;padding:3px 8px;font:11px inherit;cursor:pointer;text-align:left}
- #qex button:hover{color:var(--fg);border-color:#7aa2f7}
- #qout{font-size:12px;line-height:1.6}
- #qout .badge{display:inline-block;background:#7aa2f7;color:#0f1115;font-weight:700;
-   border-radius:4px;padding:1px 6px;font-size:11px}
- #qout .chip{display:inline-block;background:#2a2f3a;border:1px solid #ffd866;
-   color:#ffd866;border-radius:10px;padding:2px 8px;margin:2px 3px 0 0;cursor:pointer;font-size:11px}
- #qout .chip.gone{border-color:var(--line);color:var(--dim);cursor:default}
- /* **두 채널은 눈으로 갈린다** — 그래프 사실과 문서 근거가 섞이면 어느 것이
-    추론이고 어느 것이 원문인지 화면에서 사라진다(문서 5 §5.2 규약 3). */
- #qout .sec{margin-top:12px;border-left:3px solid;padding-left:8px}
- #qout .sec.g{border-color:#9ece6a} #qout .sec.c{border-color:#7dcfff}
- #qout .sec h3{font-size:11px;margin:0 0 4px;letter-spacing:.5px}
- #qout .sec.g h3{color:#9ece6a} #qout .sec.c h3{color:#7dcfff}
- #qout .sec li{margin-bottom:5px}
- #qout .src{color:var(--dim);font-size:11px;display:block}
- #qout .ans{background:#1c2230;border:1px solid #7aa2f7;border-radius:6px;
-   padding:8px 10px;white-space:pre-wrap}
- #qout .warn{color:#e0af68} #qout .err{color:#f7768e}
- #qout ul{margin:0;padding-left:16px}
-"""
+def _sections():
+    """`cli/viewer.html`을 구획으로 읽는다 — `{이름: 본문}`.
 
-_PANEL_HTML = """<div id="qside">
- <div style="display:flex;align-items:center;gap:8px">
-   <h2>질의</h2><span id="qbadge">…</span></div>
- <div id="qrow"><input id="q" placeholder="질문을 적는다" autocomplete="off"><button id="qgo">묻기</button></div>
- <div id="qex"></div>
- <div id="qout"><span style="color:var(--dim)">질문하면 링킹된 노드가 그래프에 칠해진다.</span></div>
-</div>"""
+    구획 표시 줄의 앞뒤 줄바꿈 **한 개씩**만 걷는다: 본문 안의 빈 줄은 산출의
+    일부이고(옛 문자열 상수가 그대로 싣던 것), 그것을 지우면 파생물이 한 글자
+    달라진다 — 화면이 증거인 자리에서 그 한 글자를 또 누가 대조하게 된다.
+    """
+    parts = _SECTION.split(VIEWER_HTML.read_text(encoding="utf-8"))
+    return {name: body.removeprefix("\n").removesuffix("\n")
+            for name, body in zip(parts[1::2], parts[2::2])}
 
-# **강조는 링킹된 노드에만 칠한다**(B52). 경로·확장으로 닿은 노드는 칠하지 않는다 —
-# 시스템이 trace를 내기 전까지 「아마 이 노드였을 것」을 그리면 화면이 추정을 사실로
-# 보이게 한다. 없는 것은 없다고 두는 편이 정직하다.
-_HL_BEFORE = 'const _on = !highlight.size || highlight.has(n.id); ctx.globalAlpha = _on ? 1 : 0.13;'
-_HL_AFTER = ('if(highlight.has(n.id)){ctx.beginPath();ctx.arc(x,y,r,0,7);'
-             'ctx.fillStyle="#ffd866";ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2.5;'
-             'ctx.beginPath();ctx.arc(x,y,r+3.5,0,7);ctx.stroke();} ctx.globalAlpha=1;')
-
-_PANEL_JS = r"""
-const highlight = new Set();          // 링킹된 node_id — 새 질의마다 비운다
-const EXAMPLES = ["노칭 다음 공정은?","노칭 정밀도 규격 알려줘","노칭의 관리인자는?",
-                  "버 이슈는 어느 설비에서?","수율 올리려면 뭘 봐야 해?"];
-const qbox=document.getElementById("q"), qout=document.getElementById("qout");
-for(const ex of EXAMPLES){const b=document.createElement("button");
-  b.textContent=ex; b.onclick=()=>{qbox.value=ex; ask();}; document.getElementById("qex").appendChild(b);}
-document.getElementById("qgo").onclick=ask;
-qbox.onkeydown=e=>{if(e.key==="Enter") ask();};
-
-function esc(s){const d=document.createElement("div"); d.textContent=s==null?"":String(s); return d.innerHTML;}
-function focusNode(id){const n=byId.get(id); if(!n) return;
-  view.k=Math.max(view.k,1.5); view.x=cv.width/2-n.x*view.k; view.y=cv.height/2-n.y*view.k; draw();}
-
-fetch("/api/health").then(r=>r.json()).then(h=>{
-  const b=document.getElementById("qbadge");
-  b.textContent=h.mode; b.className=h.mode==="mock"?"mock":"live";
-}).catch(()=>{document.getElementById("qbadge").textContent="?";});
-
-async function ask(){
-  const q=qbox.value.trim(); if(!q) return;
-  qout.innerHTML='<span style="color:var(--dim)">묻는 중…</span>';
-  highlight.clear(); draw();
-  let r, j;
-  try{
-    const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),120000);
-    r=await fetch("/api/query?q="+encodeURIComponent(q),{signal:ctl.signal});
-    clearTimeout(t);
-    if(!r.ok){qout.innerHTML=`<div class=err>서버가 ${r.status}로 답했다 — ${esc(await r.text())}</div>`; return;}
-    j=await r.json();
-  }catch(e){
-    qout.innerHTML='<div class=err>답을 받지 못했다 — '+esc(e.name==="AbortError"?"120초 초과":e.message)+'</div>';
-    return;
-  }
-  // **그래프에 없는 id는 없다고 적는다** — 스냅샷은 뜬 시점의 것이라, 그 뒤 인입된
-  // 노드는 화면에 없다. 조용히 안 칠하면 「링킹이 안 됐다」로 잘못 읽힌다.
-  const gone=[];
-  for(const ln of (j.linked_nodes||[])){ byId.has(ln.node_id) ? highlight.add(ln.node_id) : gone.push(ln.node_id); }
-  draw();
-
-  let h = `<div><span class=badge>${esc(j.path)}</span></div>`;
-  if(j.answer && j.path!=="general_knowledge" && !/^Q\. /.test(j.answer))
-    h += `<div class="ans" style="margin-top:8px">${esc(j.answer)}</div>`;
-  if((j.linked_nodes||[]).length){
-    h += '<div style="margin-top:8px">';
-    for(const ln of j.linked_nodes){
-      const off = gone.includes(ln.node_id);
-      h += `<span class="chip${off?" gone":""}" data-id="${esc(ln.node_id)}">`
-         + `${esc(ln.layer)}:${esc(ln.canonical)}${off?" · 그래프에 없음":""}</span>`;
-    }
-    h += '</div>';
-  }
-  if(j.note) h += `<div class="warn" style="margin-top:8px">${esc(j.note)}</div>`;
-  for(const t of (j.transit||[])) h += `<div class="warn">[전이] ${esc(t)}</div>`;
-  if((j.facts||[]).length)
-    h += '<div class="sec g"><h3>[그래프 사실]</h3><ul>'
-       + j.facts.map(f=>`<li>${esc(f)}</li>`).join("") + '</ul></div>';
-  if((j.chunks||[]).length)
-    h += '<div class="sec c"><h3>[문서 근거]</h3><ul>'
-       + j.chunks.map(c=>`<li><span class=src>${esc(c.doc_id)} · ${esc(c.section)} · `
-           + `${esc(c.source_locator)} · tier ${esc(c.tier)}</span>${esc(c.text)}</li>`).join("")
-       + '</ul></div>';
-  if(j.truncated) h += `<div class="warn" style="margin-top:8px">[잘림] 근거 ${j.truncated}건이 상한에서 잘렸다</div>`;
-  if(!(j.facts||[]).length && !(j.chunks||[]).length && !j.note)
-    h += '<div style="margin-top:8px;color:var(--dim)">두 채널 모두 비었다.</div>';
-  qout.innerHTML = h;
-  for(const c of qout.querySelectorAll(".chip:not(.gone)"))
-    c.onclick=()=>focusNode(c.dataset.id);
-}
-"""
 
 _SLOTS = ("/*__PANEL_CSS__*/", "<!--__PANEL_HTML__-->", "/*__HL_BEFORE__*/",
           "/*__HL_AFTER__*/", "/*__PANEL_JS__*/")
@@ -835,14 +413,14 @@ def build_html(world, *, query_panel=False):
     """
     nodes, edges = graph_data(world)
     n_cross = sum(1 for e in edges if e["cross"])
-    head = _HTML_HEAD.format(
-        title="온톨로지 그래프",
-        sub=f"노드 {len(nodes)} · 엣지 {len(edges)} · 걸침 {n_cross} · "
-            f"층 {len(world)}")
-    html = head + json.dumps({"nodes": nodes, "edges": edges},
-                             ensure_ascii=False) + _HTML_TAIL
-    fill = ((_PANEL_CSS, _PANEL_HTML, _HL_BEFORE, _HL_AFTER, _PANEL_JS)
-            if query_panel else ("",) * 5)
+    sec = _sections()
+    html = (sec["page"].replace("__TITLE__", "온톨로지 그래프")
+            .replace("__SUB__", f"노드 {len(nodes)} · 엣지 {len(edges)} · "
+                                f"걸침 {n_cross} · 층 {len(world)}")
+            .replace("/*__DATA__*/", json.dumps({"nodes": nodes, "edges": edges},
+                                                ensure_ascii=False)))
+    fill = ((sec["panel_css"], sec["panel_html"], sec["hl_before"],
+             sec["hl_after"], sec["panel_js"]) if query_panel else ("",) * 5)
     for slot, code in zip(_SLOTS, fill):
         assert slot in html, slot          # 자리가 사라지면 조용히 빈 화면이 된다
         if not code:

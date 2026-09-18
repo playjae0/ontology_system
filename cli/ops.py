@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""I축 도구 CLI — n5의 사람 진입점 (CLI+파일, 구현문서 §0).
+"""칸 0.3 — I축 도구 CLI — n5의 사람 진입점 (CLI+파일, 구현문서 §0).
 
     python cli/ops.py rename <층> <id> <새 canonical> --actor <사람> [--reason …]
     python cli/ops.py merge  <층> <id> <into-id> --actor … [--canonical …] [--survivor <id>]
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 
-from core import ops
+from core.state import ops
 
 
 def show_preview(pv):

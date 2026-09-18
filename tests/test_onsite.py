@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import registry                                    # noqa: E402
+from core.state import registry                                    # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
 
 allok = True
@@ -130,7 +130,7 @@ class Site:
 
 # ── B71 ① 추출 힌트도 mock 자산이다 ─────────────────────────────────────
 #
-# `core/extract.py`가 힌트(`tests/fixtures/extract_hints/<doc_id>.json`)를 모드와
+# `core/build/extract.py`가 힌트(`tests/fixtures/extract_hints/<doc_id>.json`)를 모드와
 # 무관하게 먼저 봤다. 사내 `doc_id`가 픽스처 이름과 겹치는 날 **실호출 결과가
 # 조용히 mock 힌트로 바뀐다** — B70과 같은 병이고, 조용한 쪽이 더 나쁘다.
 print("■ B71 ① — 추출 힌트는 USE_MOCK=1에서만")
@@ -139,9 +139,9 @@ HINT_DOC = "B71HINT"
 _hint = ROOT / "tests" / "fixtures" / "extract_hints" / f"{HINT_DOC}.json"
 _probe = (
     "import json,sys; sys.path.insert(0,'.')\n"
-    "from core import extract as EX\n"
-    "from core.bootstrap import load_config\n"
-    "from core.pipeline import _vocab\n"
+    "from core.build import extract as EX\n"
+    "from core.state.bootstrap import load_config\n"
+    "from core.build.entry import _vocab\n"
     f"EX.invalidate({HINT_DOC!r})\n"
     "cfg = load_config('process')\n"
     "env = {'doc_id': %r, 'doc_type': 'ppt_process', 'payload_kind': 'prose',\n"
@@ -241,7 +241,7 @@ with Site() as site:
     # ── 변이 — 기본 소재지의 mock 가드를 빼면 붉어진다 ────────────────
     _p = ROOT / "cli" / "scan.py"
     _orig = _p.read_text(encoding="utf-8")
-    _mut = _orig.replace("(ADAPTER_DIRS if llm.use_mock() else [])", "ADAPTER_DIRS")
+    _mut = _orig.replace("(ADAPTER_DIRS if gateway.use_mock() else [])", "ADAPTER_DIRS")
     assert _mut != _orig, "가드 문면이 바뀌었다 — 변이 시험이 대상을 못 찾는다"
     _p.write_text(_mut, encoding="utf-8")
     try:
@@ -261,7 +261,7 @@ with Site() as site:
 print("\n■ B78 1b — 옛 배치 이관(migrate)")
 
 import hashlib                                                    # noqa: E402
-from core import migrate as _MG                                   # noqa: E402
+from core.state import migrate as _MG                                   # noqa: E402
 
 _lg = Path(tempfile.mkdtemp(prefix="b78legacy_"))
 _old, _new = _lg / "code", _lg / "home"
@@ -279,6 +279,7 @@ _dict = json.dumps({"노칭": "n1"}, ensure_ascii=False)
 (_old / "data" / "process" / _G).write_text(_graph, encoding="utf-8")
 (_old / "data" / "dictionary.json").write_text(_dict, encoding="utf-8")
 (_old / "data" / "gate_rejects.json").write_text("[]", encoding="utf-8")
+(_old / "data" / ".dictionary.json.lock").write_text("", encoding="utf-8")   # 락 — 상태가 아니다
 (_old / "data" / "ingest_log" / "X1.json").write_text("{}", encoding="utf-8")
 (_old / "data" / "doc_types.json").write_text(json.dumps(
     {"x": {"doc_type": "x", "status": "registered", "layer": "process",
@@ -311,6 +312,10 @@ show("③ 등록부 경로가 registry/ 기준 상대 경로다 — 절대 경�
      all(not Path(_reg_new["x"][k]).is_absolute() and ".." not in _reg_new["x"][k]
          and (_new / "registry" / _reg_new["x"][k]).is_file()
          for k in ("adapter", "schema")), str(_reg_new["x"]))
+show("③ 락 파일은 이관 대상이 아니다 (원자 쓰기의 부산물 — 옮기면 유령 락이 선다)",
+     not [d for _s, d, _t in _MG.plan(_old, _new) if d.name.endswith(".lock")]
+     and not [p for p in (_new / "data").rglob("*.lock")],
+     str([p.name for p in (_new / "data").rglob("*.lock")]))
 show("③ 옛 폴더는 그대로 둔다 — 복사다(되돌릴 자리를 없애지 않는다)",
      (_old / "data" / "doc_types.json").is_file()
      and (_old / "review" / "x" / "approval.json").is_file())

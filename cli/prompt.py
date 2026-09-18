@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""생성 지시문 **조립** — 템플릿·주입·스트립·크기 (문서 6 §6.7 킷 #1 · B29~B41).
+"""칸 1.4 — 생성 지시문 **조립** — 템플릿·주입·스트립·크기 (문서 6 §6.7 킷 #1 · B29~B41).
 
 `cli/register.py`에서 떼어냈다: 등록 흐름(생성·검수·확정)과 「지시문을 어떻게 조립하나」는
 바뀌는 이유가 다르다 — 앞은 명세 §6.5의 절차가, 뒤는 템플릿 판과 주입 자리가 바꾼다.
@@ -16,7 +16,8 @@ import os
 import re
 from pathlib import Path
 
-from core import llm, paths
+from core import paths
+from core.llm import check, gateway
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
@@ -159,7 +160,7 @@ def generate_template():
     git 이력이 갖고(`git show pre-b63-structure:kit/`), 현재 판은 파일 하나이며 판
     번호는 그 머리말 `version:`이 말한다 — 자산이 스스로 말하는 것은 그대로다.
     """
-    return llm.prompt("generate")
+    return gateway.prompt("generate")
 
 
 # 재생성 구획의 자리 — 템플릿이 소유하는 문장은 전부 파일에 있고 코드는 목록만 채운다.
@@ -260,7 +261,7 @@ def _render_template(text, pkg, *, regeneration=None):
         # **문답은 묶음으로 쌓인다**(B55 ②) — 라운드 배열이 아니라
         # `{samples, at, stale?, rounds[]}`의 리스트다. 옛 꼴(라운드 배열)도
         # 그대로 받는다: 읽지 못하면 그 패키지의 문답이 통째로 지시문에서 빠진다.
-        from cli.register import _hint_batches
+        from cli.register.interview import _hint_batches
         # **확정 사항만 싣는다**(B60 ②) — 라운드 전문은 싣지 않는다. 전문을 같이
         # 실으면 모델이 요약과 대화 사이에서 또 고른다(실측: 묶음이 둘일 때 「결국
         # 헤더는 몇 행」을 대화에서 재구성하다 어긋났다). **대화는 이력, 판단은 요약
@@ -347,7 +348,7 @@ def _sent_size(msgs, label):
     tot = sys_b + usr_b
     # 한글 혼재 기준의 **거친 어림**이다(3바이트/토큰) — 정밀 계수는 게이트웨이 몫.
     est = tot // 3          # 한글 혼재의 거친 어림 — 정밀 계수는 게이트웨이 몫
-    lim = llm.context_limit()
+    lim = check.context_limit()
     print(f"   [전송] {label} — system {sys_b:,}B + user {usr_b:,}B "
           f"= {tot:,}B (약 {est:,} 토큰"
           + (f" / 한도 {lim:,})" if lim else ")"), flush=True)
@@ -362,7 +363,7 @@ def _sent_size(msgs, label):
             f"     ② 프로파일 대표값 축소   parser/profile.py의 FULL_LIST_MAX·"
             f"SAMPLE_VALUES를 줄인다 (열당 약 −30 토큰)\n"
             f"     ③ 표본 부수 축소        user 메시지 전체가 약 {usr_b // 3:,} 토큰이다\n"
-            f"   한도는 llm.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다\n"
+            f"   한도는 gateway.json의 \"LLM_CONTEXT_TOKENS\"다 — 지우면 대조하지 않는다\n"
             f"  ▶ 다음 줄 — ①부터 적용한다:\n"
             f"     python -m cli.register generate <doc_type> <층> <표본...> "
             f"--no-fewshot")

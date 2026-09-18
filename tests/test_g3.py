@@ -20,12 +20,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import init, store                                   # noqa: E402
+from core.state import init, store                                   # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
-from core.build import Builder                           # noqa: E402
-from core.extract import EXTRACT_DIR                     # noqa: E402
-from core.pipeline import finalize, run_document                   # noqa: E402
+from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
+from core.build.build import Builder                           # noqa: E402
+from core.build.extract import EXTRACT_DIR                     # noqa: E402
+from core.build.entry import finalize, run_document                   # noqa: E402
 
 allok = True
 
@@ -389,7 +389,7 @@ show("D-30 — invalid_role 결함 로그 경로 존재 (KeyError로 죽지 않�
 import re as _re
 _ACCESS = _re.compile(r"""(\[["']classification["']\]|get\(["']classification["']\)"""
                       r"""|\.classification\b)""")
-_reads = [f"{p.name}:{i}" for p in (ROOT / "core").glob("*.py")
+_reads = [f"{p.name}:{i}" for p in (ROOT / "core").rglob("*.py")
           for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
           if _ACCESS.search(ln)]
 show("D-37 — classification을 **읽는** 코드 0지점 (자리만 인정, 소비 로직 없음)",
@@ -419,7 +419,7 @@ show("계약 위반이 missing_field 큐로 표면화 (새 kind 신설 없음 �
 
 # 엣지 끝점의 `@` 표기는 from·to 어느 쪽에도 온다. 한쪽만 해소하면 스키마가 선언한
 # 엣지가 **큐도 로그도 없이 사라진다**(A-4 관통 실측 — ipqc has_property 0건).
-from core.pipeline import _endpoint                            # noqa: E402
+from core.build.table import _endpoint                            # noqa: E402
 _res, _ref, _g = {"설비": "N1"}, "NREF", P
 show("엣지 끝점 `@process_ref`가 from·to 양쪽에서 같게 해소된다",
      _endpoint("@process_ref", _res, _ref, _g, {}, P, "T")[0] == _ref
@@ -430,7 +430,7 @@ show("엣지 끝점 `@process_ref`가 from·to 양쪽에서 같게 해소된다"
 # 스코프가 없으면 canonical이 같아 한 노드로 병합되고 part_of가 양쪽에 걸린다
 # (실측 — 좌표를 바꿔 두 번 해소해 같은 id가 나왔다 · 문서 4 §4.5-5).
 print("\n■ B26 — Unit이 스코프 카테고리다 (같은 이름, 다른 공정 = 다른 노드)")
-from core.ids import norm as _norm                              # noqa: E402
+from core.state.ids import norm as _norm                              # noqa: E402
 _cfg = load_config("process")
 _g26 = open_graph("process")
 _b26 = Builder(_g26, _cfg, None, "B26", "process")
@@ -514,7 +514,7 @@ show("ⓓ 재인입이 새 스코프 id로 멱등이다 (중복 노드 0)",
 print("\n■ B61 ③ — 문서 단위 실패가 화면에 뜨고 큐와 같은 재료다")
 
 from cli import ingest as _IG61                                  # noqa: E402
-from core import store as _ST61                                  # noqa: E402
+from core.state import store as _ST61                                  # noqa: E402
 
 _before61 = [q for q in _ST61.read(_ST61.QUEUE, []) if q["kind"] == "parse_failure"]
 # **블록은 사람 화면의 것이다** — 스위트 stdout에 `[FAIL]`이 섞이면 doctor가 그것을

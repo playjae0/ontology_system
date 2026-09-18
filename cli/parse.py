@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""파서 CLI — 운영 파싱 + 구축 모드 3단 배선 (파서_명세 §6 · 증분0 §3 P1).
+"""칸 2.1~2.9 — 파서 CLI — 운영 파싱 + 구축 모드 3단 배선 (파서_명세 §6 · 증분0 §3 P1).
 
 모든 단계는 **CLI 진입점 + 파일 입출력**이다(§16.1 계약 1) — 플랫폼이 subprocess로
 부른다. 파서는 별도 프로그램이고 에이전트와의 결합은 **계약 JSON 하나**다(D-9).
@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
-from core import llm, paths
+from core import paths
+from core.llm import gateway, points, struct_map_pass
 from parser import pipeline, preflight, reader, validator
 
 PARSED_DIR = paths.parsed()    # 운영 산출 자리 (문서 7 §7.8 — 파일 존재 = 파싱 완료)
@@ -45,13 +46,13 @@ def injections():
     None은 **mock 모드에서만** 온다. 배선이 하나 빠지면(팩토리가 없거나 주입을
     빠뜨리면) 실호출 모드에서 None이 남아 이 자리가 붉는다.
     """
-    fns = {"summarize": llm.image_summarizer(),
-           "pick_coord": llm.coord_picker(),
-           "map_structure": llm.struct_mapper()}
-    if not llm.use_mock():
+    fns = {"summarize": points.image_summarizer(),
+           "pick_coord": points.coord_picker(),
+           "map_structure": struct_map_pass.struct_mapper()}
+    if not gateway.use_mock():
         missing = [k for k, v in fns.items() if v is None]
         if missing:
-            raise llm.NotConfigured(
+            raise gateway.NotConfigured(
                 f"실호출 모드인데 파서 주입 함수가 비어 있다: {missing} — "
                 f"휴리스틱으로 조용히 떨어지면 그 지도가 청크 경계를 정하고, "
                 f"바뀐 경계는 chunk_id를 바꿔 재인입 멱등까지 흔든다 (문서 7 §7.6-B-2)")

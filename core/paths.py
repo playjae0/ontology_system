@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""**상태의 자리를 아는 유일한 모듈** (B78 1a · 칸 0.4).
+"""칸 0.3 — **상태의 자리를 아는 유일한 모듈** (B78 1a · 칸 0.4).
 
 왜 있나: 코드를 새로 가져올 때 `review/`·`data/`·`parsed/`를 **전부 같이 옮겨야**
 정상이 됐다. 상태가 코드 폴더 안에 흩어져 있고, 그 자리를 아는 코드가 26곳(운영)·
@@ -19,7 +19,7 @@
 **배치는 1b가 옮겼다** — 상태 루트 하나 아래 다섯 단이고(`state/` 기본 ·
 `ONTO_HOME`이 있으면 그 아래 · `USE_MOCK=1`이면 `state_mock/`), 옛 배치(레포 루트의
 `data/`·`review/`·`parsed/`…)는 **읽지 않는다**: 감지하면 `platform migrate`를
-가리키며 멈춘다(`core/migrate.py`). 조용히 옛 자리를 읽는 길은 없다.
+가리키며 멈춘다(`core/state/migrate.py`). 조용히 옛 자리를 읽는 길은 없다.
 
 **`mkdir`은 이 파일에만 있다**(B77 ④의 연장) — 폴더를 만드는 코드가 흩어지면 자리를
 옮길 때 한 곳이 남아 옛 자리를 되살린다.
@@ -56,13 +56,13 @@ def home():
 
     **한 번만 정하는 이유**: 모드는 프로세스 시작에 정해지고(진입점이 판독한다),
     실행 도중에 루트가 바뀌면 앞 단계가 쓴 자리와 뒤 단계가 읽는 자리가 갈린다.
-    시험이 모드를 갈아 끼우는 자리(`llm.use_mock`를 스텁으로 바꾸는 회귀)에서도
+    시험이 모드를 갈아 끼우는 자리(`gateway.use_mock`를 스텁으로 바꾸는 회귀)에서도
     상태가 따라 움직이지 않아야 한다 — `reset()`이 그 문을 명시적으로 연다.
     """
     global _HOME
     if _HOME is None:
-        from . import llm            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
-        if llm.use_mock():
+        from core.llm import gateway            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
+        if gateway.use_mock():
             _HOME = ROOT / MOCK_HOME
         else:
             v = os.environ.get(HOME_ENV)
@@ -120,17 +120,17 @@ def fixture_schemas(*parts):
     픽스처 폴더만 읽는다 — 섞일 자리가 없다. 구판은 같은 폴더에 두고
     `use_mock()` 분기로 갈랐고, 그래서 「mock이 이름만 다르게 숨어 있다」였다.
 
-    뿌리는 **mock 소재 단일 지점**(`core/fixtures.py`)에서 받는다 — `ONTO_FIXTURES`로
+    뿌리는 **mock 소재 단일 지점**(`core/state/fixtures.py`)에서 받는다 — `ONTO_FIXTURES`로
     픽스처를 통째로 갈아 끼우는 손잡이가 여기서도 같이 돌아야 한다.
     """
-    from . import fixtures
+    from core.state import fixtures
     return fixtures.ROOT_DIR.joinpath("schemas", *parts)
 
 
 def config_file(name="llm.json"):
-    """설정 파일의 **상태 루트 자리** — `core/llm.py`가 찾는 넷째 자리다(B78 1b).
+    """설정 파일의 **상태 루트 자리** — `core/llm/gateway.py`가 찾는 넷째 자리다(B78 1b).
 
-    **`home()`을 부르지 않는다.** `home()`은 `llm.use_mock()`을 묻고 `llm`의 설정
+    **`home()`을 부르지 않는다.** `home()`은 `gateway.use_mock()`을 묻고 `llm`의 설정
     판독이 이 함수를 부르므로, 여기서 `home()`을 부르면 서로를 기다린다. 그래서
     `ONTO_HOME`만 직접 읽는다 — 설정은 mock 세계의 것이 아니라 어느 모드에서나
     같은 자리다.
@@ -194,7 +194,7 @@ def bind_parser():
     이 모듈을 import하면 자동으로 걸린다(아래 모듈 말미) — 부르는 곳을 기억해야
     하는 규율은 언젠가 한 진입점에서 빠진다.
     """
-    from . import store
+    from core.state import store
     from parser import struct_map, tagger
     struct_map.use_dir(lambda: work("struct_maps"))
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))

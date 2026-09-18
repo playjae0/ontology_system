@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""사내 이식 점검기 — **가져온 것이 온전한가 · 다음에 무엇을 해야 하는가** (국면 2 진입 도구).
+"""칸 0.3 — 사내 이식 점검기 — **가져온 것이 온전한가 · 다음에 무엇을 해야 하는가** (국면 2 진입 도구).
 
     python doctor.py            전체 (환경 → 자체 검증 → 상태 → 사내 전환 판정)
     python doctor.py --quick    회귀 생략 (느린 기계용 — 전체도 보통 20초 안이다)
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent
 # 회귀 10종 — **각각을 클린 상태에서 단독 실행**한다(증분0 §8 실행 규약).
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
-    ("test_g1_g2", 105, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자 · 1b 자리가 가른다"),
+    ("test_g1_g2", 107, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자 · 1b 자리가 가른다 · 2b 모듈 머리말"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
@@ -41,12 +41,20 @@ SUITES = [
     ("test_g6_5", 76, "계약 미배선 24건 수리 · B58 재등록"),
     ("test_p1", 173, "파서 공용 코어 6종 · 구조 지도 · CSV reader · 역산 정합 · 파서 무판독 · ⑦ 폴백 · B58 산문 xlsx · 형태 판정 · B68 분할 기준 · B69 좌표 태깅 dedupe·상한"),
     ("test_p2", 68, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋 · B76 스켈레톤 최소 어댑터·형 검사 G4F · B77 전시물 실행 관문"),
-    ("test_p3", 445, "구축 모드 등록 3단 · 2B 등록 개선 6건 · 등록개선 5건 · B58 관문 범위 · B59 관문 화면 · B60 관문 재실행·확정 요약 · B62 문답 로그 · B64 columns 해석·C38 잠금 · B65 어휘 대조·형태 판정 문의 · B66 포맷 무관 지문·미선택 네 갈래·CSV 전 구간 등가 · B67 열 판정 대장·이어하기 · B68 분할 줄 · B69 좌표 태깅 화면 · B72 G39 산출 키 · B73 pfmea 관문 · B76 대장 커버리지 G4G·등록 예외 경계"),
+    # **P3는 파일 여덟이다**(B78 2b) — 등록 파이프라인의 칸별로 갈랐고 합은 그대로다.
+    ("test_p3_register", 73, "등록부 조회 · 구축 모드 전 과정(S1) · 1부 경고 · 정형 등록(S15)"),
+    ("test_p3_prompt", 60, "골격 확정 · 전송 프롬프트 · 문답 어휘 주입 · 열 프로파일 · 예산"),
+    ("test_p3_gate", 77, "스키마 strict · 오류 본문 · 분할 레벨 · mock 관문 · --resume"),
+    ("test_p3_view", 34, "모든 열은 판정을 갖는다 · 하네스 자동 갈래 · 추출 리허설"),
+    ("test_p3_recover", 38, "재생성 지시 · 문답 누적 · 청크 단위 실패 · 지도 무효화 · llm-check"),
+    ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
+    ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
+    ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
     ("test_2a_gateway", 39, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험 · B63 대장 잠금"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
     # **사내 조건을 상시로 돈다**(B71 ②) — 나머지 전부가 `USE_MOCK=1`이라,
     # 사내에서 처음 밟는 자리를 사용자가 찾아 왔다(B70 · 실측 열째).
-    ("test_onsite", 20, "사내 조건 — USE_MOCK=0 · 픽스처 없음 · 등록 산출만 (내장 섞임 0 · 결손 거부 · 추출 힌트 가드 · B78 1b 이관 등가·이관 전 거부)"),
+    ("test_onsite", 21, "사내 조건 — USE_MOCK=0 · 픽스처 없음 · 등록 산출만 (내장 섞임 0 · 결손 거부 · 추출 힌트 가드 · B78 1b 이관 등가·이관 전 거부)"),
 ]
 
 # **필수는 없다.** 문서 포맷 패키지는 **선택 의존**이다(문서 7 §7.1) — 지연 import로
@@ -161,7 +169,7 @@ def check_env():
 
     optional = {m for m, _why in OPTIONAL}
     hard = set()
-    for f in (ROOT / "core").glob("*.py"):
+    for f in (ROOT / "core").rglob("*.py"):
         src = f.read_text(encoding="utf-8")
         for m in re.findall(r"^\s*(?:import|from)\s+([a-zA-Z_][\w]*)", src, re.M):
             hard.add(m)
@@ -401,8 +409,8 @@ def run_suites(quick=False):
 def show_state():
     head("③ 현재 상태 — 무엇이 들어 있나")
     sys.path.insert(0, str(ROOT))
-    from core import registry, store                              # noqa: E402
-    from core.bootstrap import bootstrap, open_graph              # noqa: E402
+    from core.state import registry, store                              # noqa: E402
+    from core.state.bootstrap import bootstrap, open_graph              # noqa: E402
     from router import discover                                   # noqa: E402
 
     _clean()
@@ -438,7 +446,7 @@ def transition():
     head("④ 사내 전환 — 다음에 무엇을 해야 하나 (실측 판정)")
     print("  아래는 결함이 아니라 사내에서 남은 작업이다. `[필요]`가 뜨면 그때가 고장이다.\n")
     sys.path.insert(0, str(ROOT))
-    from core import registry, store                              # noqa: E402
+    from core.state import registry, store                              # noqa: E402
 
     # ── 1. 골격 seed ──────────────────────────────────────────────
     seed = json.loads((ROOT / "layers/process/skeleton.json").read_text(encoding="utf-8"))
@@ -472,7 +480,7 @@ def transition():
     # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
     # 이제 재는 것은 「실 호출 경로를 타서 미설정 실패에 닿는가」이고, 판정은
     # 회귀와 **같은 탐침 파일**(tests/points_probe.py)을 실행해서 한다.
-    from core.llm import POINTS                                   # noqa: E402
+    from core.llm.gateway import POINTS                                   # noqa: E402
     import importlib.util as _ilu                                 # noqa: E402
     _spec = _ilu.spec_from_file_location("points_probe",
                                          ROOT / "tests" / "points_probe.py")
@@ -519,12 +527,14 @@ def state_line():
     「아직 옮기지 않았다」일 수 있다.
     """
     sys.path.insert(0, str(ROOT))
-    from core import llm, migrate, paths, registry, store           # noqa: E402
+    from core import paths           # noqa: E402
+    from core.llm import gateway
+    from core.state import migrate, registry, store
     from router import discover                                     # noqa: E402
     dts = registry.all_doc_types()
     builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")
     print(f"  상태 폴더 {paths.home()} · 모드 "
-          f"{'mock' if llm.use_mock() else '실호출'} · 등록 {len(dts)}종"
+          f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
           + (f"(내장 {builtin})" if builtin else "")
           + f" · 층 {len(discover())} · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
     if migrate.needs_migration():

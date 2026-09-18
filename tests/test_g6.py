@@ -24,11 +24,11 @@ sys.path.insert(0, str(ROOT))
 
 from cli import platform as PF                          # noqa: E402
 from cli import scan as SC                              # noqa: E402
-from core import init, store                                  # noqa: E402
+from core.state import init, store                                  # noqa: E402
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
-from core.extract import EXTRACT_DIR                    # noqa: E402
-from core import ops                                    # noqa: E402
+from core.state.bootstrap import bootstrap, load_config, open_graph  # noqa: E402
+from core.build.extract import EXTRACT_DIR                    # noqa: E402
+from core.state import ops                                    # noqa: E402
 
 allok = True
 
@@ -206,7 +206,7 @@ print("\n■ mock 격리 — 픽스처를 들어내도 본체가 도는가 (§2-
 # 죽고 회귀가 붕괴한 것이 실측이고, 원인은 본체가 mock 경로를 **무조건 상수**로
 # 알고 있다는 것이었다 — 분기 안에 있는 참조가 0건이었다.
 import shutil as _sh2, subprocess as _sp3                       # noqa: E402
-from core import fixtures as _FX                                # noqa: E402
+from core.state import fixtures as _FX                                # noqa: E402
 
 _src = (ROOT / "core").rglob("*.py")
 _hard = [f"{p.relative_to(ROOT)}:{i}"
@@ -217,7 +217,7 @@ _hard = [f"{p.relative_to(ROOT)}:{i}"
          # 격리 대상이 아니다(그것은 어느 갈래가 만들었나의 표시다).
          if ('/ "mock"' in ln or '"mock/' in ln) and not ln.lstrip().startswith("#")]
 show("본체(core·parser·cli)에 mock 경로 상수 0지점", not _hard, str(_hard))
-show("픽스처 소재가 core/fixtures.py 한 곳으로 수렴한다",
+show("픽스처 소재가 core/state/fixtures.py 한 곳으로 수렴한다",
      hasattr(_FX, "PARSED") and hasattr(_FX, "QUERIES") and hasattr(_FX, "dirs"))
 
 _away = ROOT / "_fixtures_away"
@@ -394,8 +394,8 @@ show("④ⓑ 없는 명령을 다음 줄로 주면 붉어진다 (되돌리면 �
 # `USE_MOCK`과 무관하게 열렸기 때문이다. mock 트랙은 남는다 — 섞이는 것만 걷는다.
 print("\n■ B70 ①② — 내장은 mock일 때만 · 등록부 결손은 상태 거부")
 
-from core import llm as _L70                                       # noqa: E402
-from core import registry as _RG                                   # noqa: E402
+from core.llm import gateway as _L70                                       # noqa: E402
+from core.state import registry as _RG                                   # noqa: E402
 
 _um70 = _L70.use_mock
 _reg70 = dict(store.read(store.DOC_TYPES, {}))
@@ -474,8 +474,8 @@ show("② 뒷정리 — 결손 0 · 등록부 원상 (회귀가 남기는 것 0)
 print("\n■ B72 ②③④ — 인입 화면(예고 · 큐 집계 · 다음 줄 · --step)")
 
 import subprocess as _sp72                                         # noqa: E402
-from core import pipeline as _PL72                                 # noqa: E402
-from core.pipeline import run_document as _run72                   # noqa: E402
+from core.build import entry as _PL72                                 # noqa: E402
+from core.build.entry import run_document as _run72                   # noqa: E402
 
 init.init(fresh_=True)
 for _lay in ("process", "quality"):
@@ -718,17 +718,17 @@ show("① mock 세계에서 좁히기에 LLM 0 (어휘 겹침으로 고른다)",
 # **조건이 옮겨졌다**(B75 ①): `auto`에서는 임베딩이 없으면 겹침으로 떨어지는 것이
 # 정답이라 이 지점에 닿지 않는다. 그래서 **사람이 켰을 때**(`CANDIDATE_NARROW=embed`)
 # 로 잰다 — 어서션을 지우지 않고 조건을 옮긴다(문서 7 §7.6-2의 9지점 도달성).
-_um73 = _MT73.llm.use_mock
-_MT73.llm.use_mock = lambda: False
-_MT73.llm.set_narrow("embed")
+_um73 = _MT73.gateway.use_mock
+_MT73.gateway.use_mock = lambda: False
+_MT73.narrow.set_narrow("embed")
 try:
     _MT73.candidates("노칭::설비XX", "Unit", "process", _g73, _dic73)
     _emb73 = "불렀는데 조용히 통과"
 except Exception as _e73:
     _emb73 = type(_e73).__name__
 finally:
-    _MT73.llm.set_narrow(None)
-    _MT73.llm.use_mock = _um73
+    _MT73.narrow.set_narrow(None)
+    _MT73.gateway.use_mock = _um73
 show("① 실호출 경로가 embed()에 닿는다 (CANDIDATE_NARROW=embed · 미설정이면 시끄럽게)",
      _emb73 == "NotConfigured", _emb73)
 
@@ -749,7 +749,7 @@ show("③ 지시문이 그 규칙을 말하고 판이 올랐다",
      and "version: j-1.1" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8"))
 
 # ② retry는 조건부다 — 후보 집합이 그대로면 LLM 0
-from core import retry as _RT73                                    # noqa: E402
+from core.build import retry as _RT73                                    # noqa: E402
 init.init(fresh_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
@@ -815,10 +815,10 @@ show("③ 승인 산출만 있고 등록부에 없는 이름을 화면이 낸다
 # B74 — 사전 키 = 조회 키 · 판정 대장 · 뷰어 재료 · 행별 report
 # ════════════════════════════════════════════════════════════════════
 print("\n── B74 ① 사전이 실제로 히트한다 (키 = 조회 키) ──")
-from core import ledger as _LG74                                   # noqa: E402
+from core.build import ledger as _LG74                                   # noqa: E402
 from core import matcher as _MT74                                  # noqa: E402
-from core import llm as _LL74                                      # noqa: E402
-from core.build import entity_key as _KEY74                        # noqa: E402
+from core.llm import gateway as _LL74, narrow                                      # noqa: E402
+from core.build.build import entity_key as _KEY74                        # noqa: E402
 from core.dictionary import Dictionary as _DIC74                   # noqa: E402
 
 init.init(fresh_=True)
@@ -970,7 +970,7 @@ show("④ show doc 끝이 행별 명령을 가리킨다 (진입점을 늘리지 
 # B75 — 임베딩은 선택 · 스코프는 하드 필터 · 비용은 실패해도 보인다
 # ════════════════════════════════════════════════════════════════════
 print("\n── B75 ① 임베딩은 선택이다 ──")
-from core import embeddings as _EM75                              # noqa: E402
+from core.llm import embeddings as _EM75                              # noqa: E402
 
 init.init(fresh_=True)
 for _lay in ("process", "quality"):
@@ -1003,14 +1003,14 @@ show("① 임베딩 미설정·auto에서 인입이 끝까지 돌고 겹침으�
      f"path {sorted(_paths75)} · 겹침 {_MT74.STATS['겹침']} · "
      f"임베딩 {_MT74.STATS['임베딩']}")
 show("① mock의 기본은 겹침이다 (회귀 세계 불변 — sha256 벡터를 쓰지 않는다)",
-     _LL74.narrow_choice() == ("overlap", "mock"), str(_LL74.narrow_choice()))
+     narrow.narrow_choice() == ("overlap", "mock"), str(narrow.narrow_choice()))
 
 _seen75 = []
 _e0 = _EM75.embed
 _EM75.embed = lambda t: _seen75.append(t) or _e0(t)
-_um75 = _MT74.llm.use_mock
-_MT74.llm.use_mock = lambda: False          # 실호출 세계 — 좁히기는 설정이 가른다
-_MT74.llm.set_narrow("overlap")
+_um75 = _MT74.gateway.use_mock
+_MT74.gateway.use_mock = lambda: False          # 실호출 세계 — 좁히기는 설정이 가른다
+_MT74.narrow.set_narrow("overlap")
 try:
     _MT74.reset_stats()
     _cdo75 = _MT74.candidates("노칭::항목없음ZZ", "Property", "process",
@@ -1020,8 +1020,8 @@ try:
 except Exception as _x75:
     _over75 = f"{type(_x75).__name__}: {_x75}"
 finally:
-    _MT74.llm.set_narrow(None)
-    _MT74.llm.use_mock = _um75
+    _MT74.narrow.set_narrow(None)
+    _MT74.gateway.use_mock = _um75
     _EM75.embed = _e0
 show("① `overlap` 강제면 **실호출 모드에서도** embed()에 닿지 않는다",
      _over75 == "돌았다" and not _seen75 and _MT74.STATS["겹침"] >= 1,
@@ -1031,10 +1031,10 @@ import os as _os75                                                # noqa: E402
 _os75.environ["CANDIDATE_NARROW"] = "embed"
 try:
     _cfg75 = _LL74.config()["narrow"]
-    _LL74.set_narrow("overlap")
-    _won75 = _LL74.narrow_choice()
+    narrow.set_narrow("overlap")
+    _won75 = narrow.narrow_choice()
 finally:
-    _LL74.set_narrow(None)
+    narrow.set_narrow(None)
     del _os75.environ["CANDIDATE_NARROW"]
 show("① 플래그가 설정을 이긴다 (한 문서만 바꿔 비교한다)",
      _cfg75 == "embed" and _won75 == ("overlap", "플래그"),
@@ -1131,7 +1131,7 @@ def _truth75():
 
 
 _before75 = _truth75()
-from core.pipeline import Stopped as _ST75                        # noqa: E402
+from core.build.entry import Stopped as _ST75                        # noqa: E402
 
 
 def _stop75(stats):

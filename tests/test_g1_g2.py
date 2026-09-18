@@ -27,11 +27,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import init, gate, store                              # noqa: E402
+from core.build import gate                              # noqa: E402
+from core.state import init, store
 from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
-from core.ids import is_ulid                              # noqa: E402
-from core.ingest import ingest                            # noqa: E402
+from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
+from core.state.ids import is_ulid                              # noqa: E402
+from core.build.ingest import ingest                            # noqa: E402
 
 allok = True
 
@@ -164,6 +165,22 @@ show("USE_MOCK=1 실행이 ONTO_HOME(운영 루트)에 쓰지 않는다 — 자�
      f"{_after} · rc={_mockrun.returncode}")
 _shutil2.rmtree(_watch, ignore_errors=True)
 
+# ── B78 2b — **모듈은 자기 자리를 한 줄로 말한다** ────────────────────────
+# 단계 3의 코드 지도 생성기가 이 첫 줄을 읽는다. 없으면 그 자리는 지도에서 이름만
+# 남고, 「어느 칸의 코드인가」를 사람이 파일을 열어 추측하게 된다.
+import ast as _ast78                                                # noqa: E402
+_mods78 = [p for d in ("core", "cli", "parser", "kit")
+           for p in sorted((ROOT / d).rglob("*.py")) if "__pycache__" not in p.parts]
+_mods78 += [ROOT / "run.py", ROOT / "doctor.py", ROOT / "router.py"]
+_nodoc78 = [str(p.relative_to(ROOT)) for p in _mods78
+            if not _ast78.get_docstring(_ast78.parse(p.read_text(encoding="utf-8")))]
+show("운영 모듈 중 머리말 없는 파일 0 (자리를 한 줄로 말한다)", not _nodoc78, str(_nodoc78))
+_nokan78 = [str(p.relative_to(ROOT)) for p in _mods78
+            if not (_ast78.get_docstring(_ast78.parse(p.read_text(encoding="utf-8")))
+                    or "").startswith("칸 ")]
+show("머리말 첫 줄이 칸 번호로 시작한다 (칸 대장과 코드가 같은 번호를 쓴다)",
+     not _nokan78, str(_nokan78[:5]))
+
 # **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
 # 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
 # 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.
@@ -180,7 +197,7 @@ show("cli/ 8종에 sys.path 조작 0지점 — 실행은 python -m cli.{진입�
 # **원자적 쓰기가 배선돼 있는가** (문서 7 §7.1 저장 계층).
 # 직접 덮어쓰면 build가 쓰기 도중 죽었을 때 진실이 반쯤 쓰인 채 남는다 —
 # data/는 백업 대상이지 재생성 대상이 아니라 복구가 불가능하다.
-_src = (ROOT / "core" / "store.py").read_text(encoding="utf-8")
+_src = (ROOT / "core" / "state" / "store.py").read_text(encoding="utf-8")
 _gsrc = (ROOT / "core" / "graph.py").read_text(encoding="utf-8")
 show("저장 쓰기가 tmp+os.replace·flock 경유다 (직접 덮어쓰기 0)",
      "os.replace" in _src and "flock" in _src
@@ -189,7 +206,7 @@ show("저장 쓰기가 tmp+os.replace·flock 경유다 (직접 덮어쓰기 0)",
 
 # **빈 상태의 형태가 §7.2 말미와 같은가** — 클린의 정의가 하나여야
 # 회귀 규약(§7.5-7)과 완료판정 4번이 같은 바닥 위에 선다.
-from core import init as _init                                # noqa: E402
+from core.state import init as _init                                # noqa: E402
 _init.init(fresh_=True)
 _want = {store.CHUNKS: {"chunks": {}, "describes": []},
          store.DICTIONARY: {}, store.QUEUE: []}
@@ -200,7 +217,7 @@ show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
 # **클린이 승인 기록을 지우지 않는가** (§7.8 — 사람 판단 기록은 재생성되지 않는다).
 # `review/{doc_type}/approval.json`이 승인의 물리 정본이라, 클린이 그것을 지우면
 # 사내에서 `init --fresh` 한 번에 승인 이력이 사라진다(실증된 결함).
-from core import init as _init2                                 # noqa: E402
+from core.state import init as _init2                                 # noqa: E402
 _probe = _P.review() / "_clean_probe"
 _probe.mkdir(parents=True, exist_ok=True)
 (_probe / "approval.json").write_text('{"approved_by": "시험자"}', encoding="utf-8")
@@ -218,7 +235,7 @@ _DICT_KEY = "store" + r"\.(?:read|write)\(store\.DICTIONARY"
 import re as _re2
 _dp = _re2.compile(_DICT_KEY)
 _bypass = [f"{p.relative_to(ROOT)}:{i}"
-           for p in sorted(list((ROOT / "core").glob("*.py")) + list((ROOT / "cli").glob("*.py")))
+           for p in sorted(list((ROOT / "core").rglob("*.py")) + list((ROOT / "cli").glob("*.py")))
            if p.name != "dictionary.py"
            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
            if _dp.search(line) and not line.lstrip().startswith("#")]
@@ -249,15 +266,15 @@ show("카테고리 불일치는 후보에서 제외된다 — 판정이 재확�
      _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
                       "category": "Property", "exact": False}], "Unit")["type"] == _M.NEW)
 
-import core.skeleton as _SK                                     # noqa: E402
-show("골격 심기가 core/skeleton.py에 산다 (§7.1 — 파생이 loader에 섞이지 않는다)",
+import core.state.skeleton as _SK                                     # noqa: E402
+show("골격 심기가 core/state/skeleton.py에 산다 (§7.1 — 파생이 loader에 섞이지 않는다)",
      all(hasattr(_SK, f) for f in ("plant", "_plant_tree", "_link_seed_mirrors"))
      and "_TreeParser" in dir(_SK))
-_bsrc = (ROOT / "core" / "bootstrap.py").read_text(encoding="utf-8")
+_bsrc = (ROOT / "core" / "state" / "bootstrap.py").read_text(encoding="utf-8")
 show("bootstrap에 트리 파싱·모양 분기가 남아 있지 않다",
      "_TreeParser" not in _bsrc and "TYPE_FLAT" not in _bsrc)
 
-from core import ops as _OPS                                    # noqa: E402
+from core.state import ops as _OPS                                    # noqa: E402
 show("I2 병합 후보가 판정 경유로 제안된다 (문서 4 §4.3 재사용 3지점 중 하나)",
      hasattr(_OPS, "merge_targets"))
 
@@ -305,7 +322,7 @@ show("큐 항목에 resolution을 기록할 수 있다 (§7.2 · 4요소)",
      _n > 0 and all({"actor", "at", "decision", "note"} == set(x["resolution"])
                     for x in _marked), f"{_n}건")
 # 회수가 그것을 보존하는가 — 판단이 기록된 항목은 재인입에 지워지지 않는다.
-from core.ingest import withdraw                              # noqa: E402
+from core.build.ingest import withdraw                              # noqa: E402
 _doc = next((x["doc_id"] for x in _marked if x.get("doc_id")), None)
 _before = len([x for x in _q if x.get("doc_id") == _doc and x.get("resolution")])
 withdraw({"doc_id": _doc, "source_path": None}, _doc)
@@ -349,7 +366,7 @@ show("파싱의 운영 산출 자리가 parsed/{doc_id}.json 이다 (§7.8 — �
      _parse.returncode == 0 and (_P.parsed() / "CP01.json").exists())
 
 # 클린 범위 — §7.6-4가 확정하고 B78 1b가 **단(tier)으로** 다시 그었다.
-from core import init as _init3                                 # noqa: E402
+from core.state import init as _init3                                 # noqa: E402
 show("클린 범위가 체크포인트를 포함한다 (잔존 = 순서 의존)",
      _P.parsed().is_relative_to(_P.work())
      and _P.extract().is_relative_to(_P.work())
@@ -376,7 +393,7 @@ _init3.init(fresh_=True)
 print("\n■ 감사 확인 항목 — 명세 실물로 재확인한 것 (2B 감사 37건 중)")
 # 병합 툼스톤은 `merged_into`·`target`·`at` 셋이다(문서 7 §7.2 노드 레코드) —
 # 리다이렉트 포인터를 키 하나로만 두면 생존자를 찾는 코드가 kind별로 다른 키를 본다.
-_src_ops = (ROOT / "core" / "ops.py").read_text(encoding="utf-8")
+_src_ops = (ROOT / "core" / "state" / "ops.py").read_text(encoding="utf-8")
 show("병합 툼스톤이 target 키를 함께 갖는다 (§7.2)", '"target": keep["id"]' in _src_ops)
 # **등급 어휘**에서만 본다 — `registered`가 왜 금지인지를 설명하는 주석은 대상이
 # 아니다(그 문장이 사라지면 다음 사람이 같은 실수를 되풀이한다).
@@ -502,7 +519,7 @@ _verdicts = {f"{r}/{p}": gate.judge(SKEL_CAT, r, SKEL_CAT, CFG, p)[0]
 show("② 문서·규칙 경로(②③④) 어느 쪽도 골격 관계를 커밋하지 못한다",
      gate.COMMIT not in _verdicts.values(), str(_verdicts))
 show("③ loader가 게이트를 부르지 않는다 (경유 자체가 없다)",
-     "gate" not in (ROOT / "core" / "bootstrap.py").read_text(encoding="utf-8"))
+     "gate" not in (ROOT / "core" / "state" / "bootstrap.py").read_text(encoding="utf-8"))
 show("골격 엣지 status = seed · 게이트 거부 로그 0건",
      {e["status"] for e in g.edges} == {"seed"}
      and not store.path(store.GATE_REJECTS).exists())

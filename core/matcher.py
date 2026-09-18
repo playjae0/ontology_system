@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""개체 판정 — "그것이 기존의 무엇인가" (CH3A 3.3).
+"""칸 3.4 — 개체 판정 — "그것이 기존의 무엇인가" (CH3A 3.3).
 
     표면형 → ①사전 조회 → (미스) ②후보 검색 → ③LLM 동일성 판정 → 3분기
 
@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import json
 
-from . import llm, log
-from .ids import norm
-from .naming import POLARITY_NONE
-from .status import is_live
+from core.llm import gateway, narrow
+from core.state import log
+from core.state.ids import norm
+from core.build.naming import POLARITY_NONE
+from core.state.status import is_live
 
 # 판정 임계 — **층 config `match_threshold`가 소유한다**(문서 3 §3.1 키 일람).
 # 판단에 영향을 주는 자산은 코드에 박지 않는다(문서 7 §7.1 관리 자산의 원칙).
@@ -148,13 +149,13 @@ def _narrow(surface, pool, top_n, *, scoped=False):
     """
     if len(pool) <= top_n:
         return pool, ("스코프" if scoped else "그대로")
-    mode, _why = llm.narrow_choice()
+    mode, _why = narrow.narrow_choice()
     if mode == "overlap":
         scored = sorted(pool, key=lambda c: -_overlap(surface, c["canonical"]))
         return scored[:top_n], "겹침"
     # **임베딩 대상은 canonical과 정의문이다**(문서 4 §4.2 ② — 정의문이 빠지면
     # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5).
-    from . import embeddings
+    from core.llm import embeddings
     qv = embeddings.embed(surface)
     scored = sorted(
         pool, key=lambda c: -embeddings.cosine(
@@ -179,7 +180,7 @@ def _path_of(pool):
     how = next((c.get("how") for c in pool if c.get("how")), None)
     if how in _HOW_PATH:
         return _HOW_PATH[how]
-    return ("embedding+judge" if llm.narrow_choice()[0] == "embed"
+    return ("embedding+judge" if narrow.narrow_choice()[0] == "embed"
             else "overlap+judge")
 
 
@@ -318,9 +319,9 @@ def match(surface, candidates, category, cfg=None):
     if PROGRESS is not None:
         PROGRESS(dict(STATS))
 
-    if not llm.use_mock():
+    if not gateway.use_mock():
         return _judge_live(surface, pool, category, cfg, path=path)
-    llm.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
+    gateway.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
 
     best, score = None, 0.0
     for c in pool:
@@ -373,11 +374,11 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None):
     되면 그래프에 없는 노드를 가리키는 엣지가 선다.
     """
     ids = {c["id"] for c in pool}
-    out = llm.chat(
+    out = gateway.chat(
         # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
         # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
         [{"role": "system",
-          "content": llm.prompt("judge")
+          "content": gateway.prompt("judge")
           + ("\n\n## 층 어휘\n" + (cfg or {}).get("prompts", {}).get("judge", "")
              if (cfg or {}).get("prompts", {}).get("judge") else "")},
          {"role": "user", "content": json.dumps(
@@ -416,7 +417,7 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     `match`의 dict**이고 이것은 그 위의 얇은 껍데기다 — 판정 로직을 여기 두면
     재사용 지점마다 별도 판정 코드가 생긴다(그것이 고친 결함이다).
     """
-    from .bootstrap import load_config
+    from core.state.bootstrap import load_config
     cfg = load_config(layer)
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)

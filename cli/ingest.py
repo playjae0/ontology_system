@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
+"""칸 3.1 — 일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--step] [--step-every N] [--narrow embed|overlap]
@@ -31,8 +31,9 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
-from core import llm, log, registry, store
-from core.pipeline import finalize, run_document
+from core.llm import gateway, narrow
+from core.state import log, registry, store
+from core.build.entry import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -334,7 +335,7 @@ def judge_progress(total, stage=None, every=0):
         n = stats.get("판정", 0)
         if stage is not None:
             stage["값"] = n
-        u = llm.usage_total()
+        u = gateway.usage_total()
         stride = max(1, (total or 1) // 10)
         if n == 1 or n % stride == 0:
             print(line(n, u), flush=True)
@@ -357,7 +358,7 @@ def _judge_gate(n, total, u):
     except (EOFError, KeyboardInterrupt):
         return
     if ans in ("q", "quit", "n"):
-        from core.pipeline import Stopped
+        from core.build.entry import Stopped
         raise Stopped(f"사람이 멈췄다 — 판정 값 {n}/{total} (그래프 쓰기 0 · "
                       f"체크포인트는 남는다)")
 
@@ -397,14 +398,14 @@ def build_screen(step=False):
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
                   f"(상한 {CANDIDATE_TOP_N})")
         if step:
-            u2 = llm.usage_total()
+            u2 = gateway.usage_total()
             _step_gate(4, f"새 노드(auto) {info.get('auto', 0)} · "
                           f"LLM 호출 {u2['calls']:,}")
             _step_gate(5, f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
                           f"{info.get('저해상도', 0)}행")
             _step_gate(6, head or "큐 0")
         _orphan_next(info.get("doc_id"))
-        u = llm.usage_total()
+        u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
               f"저해상도 부착 {info.get('저해상도', 0):,}행"
@@ -421,7 +422,7 @@ def narrow_notice():
     떨어지되 **그 사실을 말한다** — 말하지 않으면 같은 문서의 두 산출이 왜 다른지
     사람이 모른다.
     """
-    mode, why = llm.narrow_choice()
+    mode, why = narrow.narrow_choice()
     if why == "미설정":
         print("   임베딩 미설정 — 겹침으로 좁힌다(--narrow embed로 강제 가능)")
     elif why == "플래그":
@@ -503,7 +504,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
                 return row
             # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
-            from core.pipeline import _entity_surfaces, decision_plan
+            from core.build.entry import _entity_surfaces, decision_plan
             _sc = registry.schema_of(sel["doc_type"]) or {}
             _pl = decision_plan(
                 _entity_surfaces(res.envelope, _sc),
@@ -515,7 +516,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
                                                "(그래프 쓰기 0)")
                 return row
-        _u0 = llm.usage_total()["calls"]
+        _u0 = gateway.usage_total()["calls"]
         from core import matcher as _mt
         _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
         stage["이름"], stage["총"] = "판정", _plan_n
@@ -562,9 +563,9 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
 def spend_line(stage):
     """`이 문서까지 — LLM 호출 k · 토큰 t(…) · 멈춘 단계 …` (B75 ③ⓐ).
 
-    수는 `llm.usage_total()` 그대로다 — 화면이 제 계산을 하지 않는다.
+    수는 `gateway.usage_total()` 그대로다 — 화면이 제 계산을 하지 않는다.
     """
-    u = llm.usage_total()
+    u = gateway.usage_total()
     where = stage.get("이름", "선택")
     if where == "판정" and stage.get("총"):
         where = f"판정 값 {stage.get('값', 0)}/{stage['총']}"
@@ -587,7 +588,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
                          f"     python run.py ingest-file {p}")
     files = sorted(x for x in p.iterdir() if x.is_file() and not x.name.startswith(("~", ".")))
     rows = []
-    u0 = llm.usage_total()
+    u0 = gateway.usage_total()
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap))
@@ -597,7 +598,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
     if not dry_run:
         # **총계 한 줄**(B73 ①) — 문서마다의 요약은 위에 있고, 배치의 비용은
         # 여기서만 보인다. 사람이 「이 폴더를 넣으면 얼마」를 알 자리다.
-        u = llm.usage_total()
+        u = gateway.usage_total()
         print(f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
               f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
               f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})")
@@ -645,7 +646,7 @@ def main(argv):
         if mode not in ("embed", "overlap", "auto"):
             raise SystemExit("[투입] --narrow는 embed|overlap|auto 중 하나다: "   # [사용법]
                              f"{mode!r}")
-        llm.set_narrow(mode)
+        narrow.set_narrow(mode)
         del args[i:i + 2]
     dt = None
     if "--doc-type" in args:
