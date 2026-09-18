@@ -429,21 +429,19 @@ def narrow_notice():
         print(f"   후보 좁히기 — {mode} (플래그가 설정을 이긴다)")
 
 
-def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
-                finalize_after=True, coord_cap=COORD_CAP, step=False,
-                step_every=0):
-    """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
-    던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
-    sel = select(doc, doc_type, adapter_paths)
-    row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
-           "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
-    # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
+def _ingest_file_select(doc, sel, row, dry_run, step):
+    """선택 판정과 그 앞 검사 — 형태 대조 · 경로 경고 · `--dry-run`.
+
+    `ingest_file`에서 단계로 떼어냈다(B78 2c). 돌려주는 값이 `None`이 아니면
+    호출부는 그 행을 그대로 돌려준다(여기서 끝난다). `step`은 **되돌려 준다** —
+    비대화형이면 여기서 꺼지고, 그 사실이 호출부에도 반영돼야 한다.
+    """
     stage = {"이름": "선택", "값": 0, "총": 0}
     print(f"[투입] {Path(doc).name} → doc_id {sel['doc_id']}")
     narrow_notice()
     if sel["status"] != "chosen":
         print(f"   미선택 — {sel['reason']}")
-        return row
+        return row, None, step
     print(f"   선택 근거: {row['basis']}")
     # **`--step`은 대화형에서만 산다**(B72 ④) — 비대화형·일괄에서 묻고 EOF를 받으면
     # 실행 전체가 첫 단계에서 멈춘다. 무시하되 **그 사실을 말한다.**
@@ -452,7 +450,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         step = False
     if step and not _step_gate(0, row["basis"]):
         row.update(status=SKIP, reason="사람이 멈췄다 — 선택까지")
-        return row
+        return row, None, step
     # **판정과 어댑터가 어긋나면 말한다** — 조용히 넘기면 관리계획서가 산문으로,
     # 목차 보고서가 표로 읽히고 그 사실이 어디에도 남지 않는다. 막지는 않는다:
     # 사람이 지정한 doc_type을 판정이 뒤집으면 지정이 무의미해진다(C37은 「어느
@@ -472,7 +470,22 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     if dry_run:
         row["status"] = "선택만"
         print("   (dry-run — 파싱·인입 안 함)")
-        return row
+        return row, None, step
+    return None, stage, step
+
+
+def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
+                finalize_after=True, coord_cap=COORD_CAP, step=False,
+                step_every=0):
+    """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
+    던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
+    sel = select(doc, doc_type, adapter_paths)
+    row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
+           "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
+    # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
+    _r, stage, step = _ingest_file_select(doc, sel, row, dry_run, step)
+    if _r is not None:
+        return _r
     try:
         stage["이름"] = "파싱"
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),

@@ -347,13 +347,10 @@ def _rate(num, den):
     return round(num / den, 3) if den else None
 
 
-def gauges():
-    """계기판 8종 (CH5 5.5) — **별도 호출로 계산한다**: build·query 경로에 계산을
-    심지 않는다(8번 지표가 자기 자신을 오염시키면 안 된다).
+def _gauges_smoke():
+    """계기판 1·2의 재료 — 골든셋 스모크 질의 결과. `(smoke, results, 파생 넷, 근거)`.
 
-    국면 1 데이터 기준: 1(recall류)은 mock 스모크 12문항, 2~6은 mock 인입 실측.
-    측정 중에는 운영 로그 적재를 끈다 — 측정이 재료 로그(link_miss)를 오염시키면
-    다음 측정이 자기 흔적을 세게 된다.
+    `gauges`에서 단계로 떼어냈다(B78 2c).
     """
     from cli import query as R
     from core.query import query as Q
@@ -391,48 +388,11 @@ def gauges():
     linked = [q for q in linkable if results[q["id"]]["linked"]]
     missed = [q for q in smoke if not results[q["id"]]["linked"]]
     truncated = [q for q in smoke if results[q["id"]]["truncated"]]
+    return smoke, results, linkable, linked, missed, truncated, _basis
 
-    layers = discover()
-    graphs = {lay: open_graph(lay) for lay in layers}
-    docs = list(store.read(store.DOC_REGISTRY, {}))
 
-    # 2 plateau — 문서별 신규 개체율 (인입 순서 = doc_registry 등재 순서)
-    def doc_of(loc):
-        """provenance 항목 → 문서. **접두를 가른다**([정정] 43).
-
-        구판은 등재 문서를 훑어 `startswith(d + "-")`로 맞췄다 — 실파서 locator는
-        `Sheet1!R12` 꼴이라 어느 문서로도 시작하지 않아 **전부 None**이었고,
-        계기판 2는 접두를 가진 mock 픽스처에서만 값을 냈다(§7.5-1의 교과서 사례).
-        """
-        return loc.split("#", 1)[0] if "#" in loc else None
-
-    plateau = []
-    for d in docs:
-        mentioned = new = 0
-        for g in graphs.values():
-            for n in g.nodes.values():
-                if not is_live(n):
-                    continue
-                prov = n.get("provenance") or []
-                if any(doc_of(p) == d for p in prov):
-                    mentioned += 1
-                    firsts = [p for p in prov if p != "seed"]
-                    if "seed" not in prov and firsts and doc_of(firsts[0]) == d:
-                        new += 1
-        plateau.append({"doc": d, "mentioned": mentioned, "new": new,
-                        "rate": round(new / mentioned, 3) if mentioned else None})
-
-    # 3 판정 보류율 — 큐 유입 ÷ 발자국을 남긴 조각 수 (record locator + chunk)
-    q = store.read(store.QUEUE, [])
-    locs = set()
-    for g in graphs.values():
-        for n in g.nodes.values():
-            locs |= {p for p in (n.get("provenance") or []) if p != "seed"}
-        for e in g.edges:
-            locs |= {p for p in (e.get("provenance") or []) if p != "seed"}
-    chunks = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
-    pieces = len(locs | set(chunks))
-    hold_rate = round(len(q) / pieces, 3) if pieces else None
+def _gauges_size(layers, graphs):
+    """계기판 7·8의 재료 — 허브 상위·층별 저장 크기·빌드 소요."""
 
     # 6 허브 노드 차수 (카드 J9) — 층별 상위 3
     hubs = {}
@@ -475,6 +435,62 @@ def gauges():
             "source": "build_metrics.json (빌드가 남긴 것)" if _last
                       else "빌드 기록 없음 — 아직 한 번도 빌드하지 않았다",
         }
+    return hubs, _bm, storage
+
+
+def gauges():
+    """계기판 8종 (CH5 5.5) — **별도 호출로 계산한다**: build·query 경로에 계산을
+    심지 않는다(8번 지표가 자기 자신을 오염시키면 안 된다).
+
+    국면 1 데이터 기준: 1(recall류)은 mock 스모크 12문항, 2~6은 mock 인입 실측.
+    측정 중에는 운영 로그 적재를 끈다 — 측정이 재료 로그(link_miss)를 오염시키면
+    다음 측정이 자기 흔적을 세게 된다.
+    """
+    (smoke, results, linkable, linked, missed, truncated,
+     _basis) = _gauges_smoke()
+
+    layers = discover()
+    graphs = {lay: open_graph(lay) for lay in layers}
+    docs = list(store.read(store.DOC_REGISTRY, {}))
+
+    # 2 plateau — 문서별 신규 개체율 (인입 순서 = doc_registry 등재 순서)
+    def doc_of(loc):
+        """provenance 항목 → 문서. **접두를 가른다**([정정] 43).
+
+        구판은 등재 문서를 훑어 `startswith(d + "-")`로 맞췄다 — 실파서 locator는
+        `Sheet1!R12` 꼴이라 어느 문서로도 시작하지 않아 **전부 None**이었고,
+        계기판 2는 접두를 가진 mock 픽스처에서만 값을 냈다(§7.5-1의 교과서 사례).
+        """
+        return loc.split("#", 1)[0] if "#" in loc else None
+
+    plateau = []
+    for d in docs:
+        mentioned = new = 0
+        for g in graphs.values():
+            for n in g.nodes.values():
+                if not is_live(n):
+                    continue
+                prov = n.get("provenance") or []
+                if any(doc_of(p) == d for p in prov):
+                    mentioned += 1
+                    firsts = [p for p in prov if p != "seed"]
+                    if "seed" not in prov and firsts and doc_of(firsts[0]) == d:
+                        new += 1
+        plateau.append({"doc": d, "mentioned": mentioned, "new": new,
+                        "rate": round(new / mentioned, 3) if mentioned else None})
+
+    # 3 판정 보류율 — 큐 유입 ÷ 발자국을 남긴 조각 수 (record locator + chunk)
+    q = store.read(store.QUEUE, [])
+    locs = set()
+    for g in graphs.values():
+        for n in g.nodes.values():
+            locs |= {p for p in (n.get("provenance") or []) if p != "seed"}
+        for e in g.edges:
+            locs |= {p for p in (e.get("provenance") or []) if p != "seed"}
+    chunks = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    pieces = len(locs | set(chunks))
+    hold_rate = round(len(q) / pieces, 3) if pieces else None
+    hubs, _bm, storage = _gauges_size(layers, graphs)
 
     return {
         "1_linking_recall": {"value": round(len(linked) / len(linkable), 3) if linkable else None,
