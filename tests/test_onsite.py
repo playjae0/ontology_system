@@ -8,7 +8,7 @@
 
 **조건 셋**: ①`USE_MOCK=0`(설정은 없다 — 실호출을 부르는 명령은 돌리지 않는다)
 ②`ONTO_FIXTURES`가 빈 폴더(mock 자산이 디스크에 없다) ③등록 산출 넷만 있다
-(`data/doc_types.json` · `adapters/<dt>.py` · `schemas/<dt>.json` · `review/<dt>/`).
+(`<상태>/registry/doc_types.json` · `adapters/<dt>.py` · `schemas/<dt>.json` · `review/<dt>/`).
 
 **판정은 성질이다** — 출력에 mock 자산 이름이 0이라는 것과 등록부 집합 등식.
 문면을 세지 않는다.

@@ -695,6 +695,24 @@ finally:
 show("② 되돌리면 위반 0건이다 (시험 자체가 늘 붉는 것이 아니다)",
      _SK61.check("process") == [])
 
+# ── B78 3 — **코드 지도는 생성물이다** ────────────────────────────────
+# 손으로 쓴 구조 설명은 코드가 움직이면 낡고, 낡은 지도는 사람을 없는 자리로 보낸다.
+# 그래서 다시 만들어 레포의 것과 **대조한다** — 다르면 지도가 낡았다는 뜻이고,
+# 고치는 방법은 문장을 손보는 것이 아니라 생성기를 다시 돌리는 것이다.
+_map78 = ROOT / "docs" / "구조도" / "10_코드_지도.md"
+with tempfile.TemporaryDirectory() as _td78:
+    _gen78 = subprocess.run(
+        [sys.executable, str(ROOT / "docs" / "회귀스위트" / "추출_구조.py")],
+        capture_output=True, text=True, cwd=str(ROOT),
+        env={**os.environ, "STRUCT_DIR": _td78, "REFINED_DIR": "docs/spec"})
+    _fresh78 = Path(_td78) / "10_코드_지도.md"
+    _same78 = (_fresh78.exists() and _map78.exists()
+               and _fresh78.read_text(encoding="utf-8") == _map78.read_text(encoding="utf-8"))
+    # 자리 설명은 **임시 폴더가 살아 있는 동안** 잰다(밖에서 재면 늘 「없음」이 뜬다).
+    _det78 = f"rc={_gen78.returncode} · 생성 {_fresh78.exists()} · 줄 {len(_fresh78.read_text(encoding='utf-8').splitlines()) if _fresh78.exists() else 0}"
+show("코드 지도를 다시 만들면 레포의 것과 같다 (지도가 코드보다 낡지 않는다)",
+     _same78, _det78)
+
 # ============================================================
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G1+G2 완료판정 충족" if allok else "FAIL")

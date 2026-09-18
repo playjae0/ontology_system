@@ -424,7 +424,7 @@ def run_pipeline(mod, schema, doc, label):
     normalizer·tagger·envelope·validator가 이제 관문 안에서 돈다.
 
     `doc_id`는 **관문 전용 이름**을 쓴다 — 운영 `doc_id`를 그대로 쓰면 관문이 그
-    문서의 구조 지도 보존(`extract/struct_maps/`)을 덮어써, 아직 등록도 안 된
+    문서의 구조 지도 보존(`<상태>/work/struct_maps/`)을 덮어써, 아직 등록도 안 된
     어댑터의 산출이 운영 인입의 chunk_id를 흔든다. 관문이 남긴 자리는 관문이 치운다.
     """
     from parser import pipeline as parser_pipeline      # 지연 import — ①~④는 필요 없다

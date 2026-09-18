@@ -260,3 +260,41 @@ B61 계약에 ④근거(「무엇을 보고 그렇게 판정했나」)를 더했
   `tests/test_g6` 1,157 · `kit/run_adapter` 993 · `tests/test_g6_5` 812) ·
   함수 9종(최대 `cli/register/generate.py::cmd_generate` 404행). 요청문의 분할 표에
   없어 손대지 않았다(D-158 ⑦).
+
+## B78 단계 2c·3 — 상한 위반 0 · 코드 지도는 생성물이다 (2026-09-18)
+
+### 2c — 상한 13건 → 0
+
+| 전 (5c23fe1) | 후 |
+|---|---|
+| `tests/test_p1.py` 1,182 | `p1_common` + 칸별 5(core6 43 · wiring 21 · csv 54 · form 29 · coord 26 = **173 불변**) |
+| `tests/test_g6.py` 1,157 | `g6_common` + 칸별 6(platform 20 · scan 16 · batch 21 · registry 10 · ingest 19 · narrow 54 = **140 불변**) |
+| `tests/test_g6_5.py` 812 | `g65_common` + 칸별 4(contract 28 · cross 10 · prov 18 · rules 20 = **76 불변**) |
+| `kit/run_adapter.py` 993 | 표 `gate_tables` 149 · 검사 `gate_checks` 305 · 화면 `gate_screen` 67 · 실행기 `run_adapter` 532 |
+| 함수 9종(최대 `cmd_generate` 404) | 하위 함수 **19개 추출**(`_<원함수>_<단계>`) — 최장 `machine_gate` 119 |
+
+- 코드 표면: **사라진 이름 0** · 신설은 추출 하위 함수 19뿐(`_cmd_generate_{revise,resume,guard,form,package,interview,draft}` · `_probe_{embed,points}` · `_cmd_review_{instruct,rehearsal}` · `_gauges_{smoke,size}` · `_parse_{images,coord}` · `_build_prose_pass1` · `_build_view_anomalies` · `_transfer_edges` · `_ingest_file_select`).
+- **전수 실측**: 파일 위반 0 · 함수 위반 0 (운영 93모듈 23,801행 · 시험 포함).
+
+### 3 코드 몫 — 옛 경로 검사 · 코드 지도 생성기
+
+- `docs/회귀스위트/점검_경로.py` 신설(검사 5종째) — 옮긴 이름 34종을 레포 전체에서
+  훑는다. 이력(archive·안건·DECISIONS·PROGRESS·실측대장·기준선)과 재생성물·등록
+  자산·`prompts/`는 뺀다. **코드·자산 0건** / 문서 115건은 허브 개정 목록이다.
+- `docs/구조도/10_코드_지도.md` 신설(258행) — `추출_구조.py`가 AST·파일시스템에서
+  뽑는다(손으로 쓰는 문장 0): ⓐ폴더=파트 ⓑ진입점(run.py 21 · `-m` 14) ⓒ접근 경계 4
+  ⓓ상태 자리 14 ⓔ크기(위반 0). 생성기가 `ONTO_HOME`·`USE_MOCK`을 고정해 **환경이
+  달라도 같은 표**를 낸다.
+- 화면 문면 3자리 수리: `cli/register` 사용법 6줄이 **돌지 않는 명령**
+  (`python cli/register.py …`)을 가리켰다 → `python -m cli.register` · run.py 위임 줄 ·
+  등록부 근거 줄 3곳은 잰 경로(`store.path(store.DOC_TYPES)`)로 낸다.
+
+### 실행으로 확인한 것
+
+- 회귀 **1,361 → 1,362/1,362** · FAIL 0 (순증 1 = 코드 지도 재생성 diff 0 · 삭제 0).
+  붉음 확인: 지도에 한 줄을 더하면 그 어서션이 FAIL로 뒤집힌다.
+- 클린 2회 동일 그래프 OK · `doctor.py` EXIT=0 · `git diff core/` 없음(커밋 완료).
+- 동작 등가 네 벌 **diff 0**(vs `046c05d` — 사전 250 · 대장 196 · 엣지 105/44 ·
+  노드 75/24 · 큐 66) · 대표 명령 12종 화면 **diff 0** · 명령 표면 diff 0 ·
+  코드 표면 HEAD 대비 증감 0(3의 변경은 전부 문면·주석).
+- 검사 5종: 문면 0 · 문서간 0 · 미러 0 · 자산 19건 · **경로 115건**(전부 낡은 절).

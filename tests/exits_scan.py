@@ -156,8 +156,12 @@ def unknown_next(rows=None):
 # 사내 실측: `--revise`가 「등록돼 있지 않다」만 말해, 사용자가 `review/`·`data/`를
 # 복사하고도 시스템이 **어느 파일을 보는지** 몰랐다. 문면을 세지 않는다 —
 # **경로 문자열이 하나 이상 있는가**만 본다(성질).
+# **잰 자리도 자리다**(B78 3) — 상태 루트가 옮겨 다니므로 근거를 문자열로 박으면
+# 화면이 옛 자리를 말한다. `store.path(...)`·`paths.*()`로 **실경로를 끼워 넣는**
+# 문면은 근거가 있는 것으로 센다 — 사람이 보는 화면에는 진짜 경로가 뜬다.
 _PATH_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*/[A-Za-z0-9_<>{}./-]+"
-                      r"|[A-Za-z0-9_]+\.(?:json|md|py|log|html|xlsx|csv)")
+                      r"|[A-Za-z0-9_]+\.(?:json|md|py|log|html|xlsx|csv)"
+                      r"|store\.path\(|paths\.[a-z_]+\(")
 
 
 def evidence(text):

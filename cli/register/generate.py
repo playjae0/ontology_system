@@ -123,7 +123,7 @@ def _cmd_generate_revise(doc_type, layer):
     if not registry.lookup(doc_type):
         raise SystemExit(f"[생성] --revise는 **등록분**에만 쓴다 — "            # [상태]
                          f"'{doc_type}'은 등록돼 있지 않다\n"
-                         f"  근거 — data/doc_types.json(키 없음)"
+                         f"  근거 — {store.path(store.DOC_TYPES)}(키 없음)"
                          + (f" · review/{doc_type}/는 있다"
                             f"(approval.json {'있음' if (REVIEW / doc_type / 'approval.json').exists() else '없음'})"
                             " → 옛 환경의 등록부 항목을 옮기거나 아래로 신규 등록"
@@ -247,7 +247,7 @@ def _cmd_generate_guard(doc_type, layer, samples, revise):
         _docs = registry.ingested_docs(doc_type)
         raise SystemExit(                                                 # [상태]
             f"[생성] '{doc_type}'은 이미 등록돼 있다 "
-            f"(근거 data/doc_types.json). 두 길 중 하나를 고른다:\n"
+            f"(근거 {store.path(store.DOC_TYPES)}). 두 길 중 하나를 고른다:\n"
             f"   ① 같은 이름의 **새 판** — 어댑터를 고쳐 정본을 교체한다\n"
             f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
             f"<표본...> --revise\n"
