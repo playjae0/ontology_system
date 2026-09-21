@@ -76,7 +76,11 @@
   `core/query/`·`core/state/` — 파트가 곧 폴더이고 파일 첫 줄 머리말이 칸 번호를 말한다.
   전수 지도는 `docs/구조도/10_코드_지도.md`(생성물 — 손으로 고치지 않는다).
 - **상태는 코드 밖 한 루트다**: `$ONTO_HOME/`(기본 `./state` · `USE_MOCK=1`은 `./state_mock`).
-  상태 경로 조립·`mkdir`은 `core/paths.py`에만 — 다른 모듈은 이름으로 묻는다.
+  상태 경로 조립·`mkdir`은 `core/paths.py`에만 — 다른 모듈은 이름으로 묻는다(예외 둘 — 이관은
+  양쪽 뿌리를 인자로, 킷은 `--layers` 플래그로 · D-160). **층 자산 `layers/`도 상태 루트에
+  산다**(B79 — 레포 `layers/`는 mock 기본 seed일 뿐 · `USE_MOCK=0`에서 없으면 상태 거부).
+  **레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지
+  않는다** — `doctor`가 `자산_해시.json`과 대조해 다르면 ⚠ · 갱신은 구현 세션이 회차마다 `--write`.
 - **골격 심기의 자리는 `core/state/skeleton.py`다** — 파생이 loader에 섞이면 관계 이름을
   config에서 받는 통로가 갈린다.
 - **게이트웨이는 패키지 `core/llm/`**: 설정 접근은 `gateway.py` 하나로 수렴 ·
@@ -107,8 +111,9 @@
   얹지 말고 자리가 없으면 그 회차에서 파일을 나눈다. **상한: 파일 800행 · 함수 120행** —
   넘기면 같은 회차에서 분할하고 보고에 적는다(넘긴 채 마감하지 않는다). B78-2c 이후 위반 0이고
   `10_코드_지도.md` ⓔ가 매 회귀에서 센다 — 예외는 없다.
-- **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ①자산(레포 · git) ②등록(`registry/` — 사람
-  승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`)
+- **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ⓪원본(`docs/` — 사람이 넣는 문서 · 재구축 입력)
+  ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
+  승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/` · 층 config·seed)
   ③진실(`data/` 8종 — 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
   재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·로그) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
