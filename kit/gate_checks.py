@@ -49,7 +49,7 @@ def _vocab(layer):
             pkg_v = {}
     if pkg_v:
         return pkg_v
-    cfg = ROOT / "layers" / str(layer) / "config.json"
+    cfg = tables.layers_dir() / str(layer) / "config.json"
     if not cfg.exists():
         return {}
     try:

@@ -116,7 +116,8 @@ def mode_line():
     읽었다.** 어느 갈래로 도는지가 화면 첫 줄에 없으면 사람은 자기가 켠 줄 안다.
     """
     from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
-    where = f" · 상태 폴더 {paths.home()}"      # 어느 상태에 쓰는지도 화면에 있다(B78 1b)
+    # 어느 상태에 쓰는지도 화면에 있다(B78 1b) + 그 자리가 **어디서 왔는지**(B79 ④)
+    where = f" · 상태 폴더 {paths.home()}{paths.home_note()}"
     if use_mock():
         return ('모드: mock (기본 — 실호출은 llm.json의 "USE_MOCK": 0 또는 '
                 'USE_MOCK=0)' + where)

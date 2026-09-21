@@ -26,13 +26,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core import paths
 from core.state import skeleton as SK
 from core.state.bootstrap import load_config, load_seed
 from core.graph import GraphStore
 from core.state.skeleton import plant
 
 ROOT = Path(__file__).resolve().parent.parent
-LAYERS = ROOT / "layers"
+# 층 자산은 상태 루트에 산다(B79 ①) — 자리는 `paths.layers()`에 묻는다.
 RECORD = "confirmations.json"
 PREV = "skeleton.prev.json"
 
@@ -45,7 +46,7 @@ def seed_path(layer):
     """확정 대상 파일 — **config가 값으로 가리킨다**(D-42). 경로를 코드가 짓지 않는다."""
     skel = (load_config(layer) or {}).get("skeleton") or {}
     src = skel.get("source")
-    return (LAYERS / layer / src) if src else None
+    return paths.layers(layer, src) if src else None
 
 
 def _view(layer):
@@ -193,8 +194,9 @@ def cmd_status(argv):
     if not args:
         raise SystemExit("사용: python run.py skeleton-status <층>")             # [사용법]
     layer = args[0]
-    if not (LAYERS / layer).is_dir():
-        _ls = sorted(p.name for p in LAYERS.iterdir() if p.is_dir())
+    if not paths.layers(layer).is_dir():
+        _ls = sorted(p.name for p in paths.layers().iterdir() if p.is_dir()) \
+            if paths.layers().exists() else []
         raise SystemExit(f"[골격 판정] 없는 층: {layer} — 현재 층: {_ls}\n"        # [상태]
                          f"  ▶ 다음 줄:\n"
                          f"     python run.py skeleton-status "
@@ -212,7 +214,7 @@ def cmd_status(argv):
 
 
 def _record_path(layer):
-    return LAYERS / layer / RECORD
+    return paths.layers(layer, RECORD)
 
 
 def cmd_confirm(argv):
@@ -233,8 +235,9 @@ def cmd_confirm(argv):
         raise SystemExit("[골격 확정] --by <확정자>가 필요하다 — "                    # [사용법]
                          "확정자가 기록에 남지 않으면 확정이 아니다 (문서 3 §3.7)")
 
-    if not (LAYERS / layer).is_dir():
-        _ls = sorted(p.name for p in LAYERS.iterdir() if p.is_dir())
+    if not paths.layers(layer).is_dir():
+        _ls = sorted(p.name for p in paths.layers().iterdir() if p.is_dir()) \
+            if paths.layers().exists() else []
         raise SystemExit(f"[골격 확정] 없는 층: {layer} — 현재 층: {_ls}\n"       # [상태]
                          f"  ▶ 다음 줄:\n"
                          f"     python run.py skeleton-confirm {_ls[0] if _ls else '<층>'}"
@@ -311,7 +314,7 @@ def cmd_confirm(argv):
     sha = hashlib.sha256(blob).hexdigest()
     rec_path = _record_path(layer)
     prior = json.loads(rec_path.read_text(encoding="utf-8")) if rec_path.exists() else []
-    (LAYERS / layer / PREV).write_bytes(blob)
+    paths.layers(layer, PREV).write_bytes(blob)
 
     # ── 확정 기록 ─────────────────────────────────────────────────
     entry = {"by": by, "at": _now(), "seed_sha256": sha}
@@ -320,7 +323,7 @@ def cmd_confirm(argv):
                         encoding="utf-8")
     print(f"\n  확정 기록 → {rec_path.relative_to(ROOT)} "
           f"({len(prior)}번째 · {by} · {sha[:12]}…)")
-    print(f"  확정본 사본 → {(LAYERS / layer / PREV).relative_to(ROOT)} "
+    print(f"  확정본 사본 → {paths.layers(layer, PREV)} "
           f"(다음 판을 놓은 뒤 «확정된 것은 무엇이었나»를 답한다)")
     print(f"  다음: python run.py init --fresh && python run.py bootstrap")
     return 0

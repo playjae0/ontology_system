@@ -33,13 +33,16 @@ ROOT = Path(__file__).resolve().parent
 # 회귀 10종 — **각각을 클린 상태에서 단독 실행**한다(증분0 §8 실행 규약).
 # 연속 실행은 판정 규격이 아니다: 스위트가 `data/`를 공유해 순서 의존이 관측됐다.
 SUITES = [
-    ("test_g1_g2", 108, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · B78 1a 자리 소유자 · 1b 자리가 가른다 · 2b 모듈 머리말 · 3 코드 지도 재생성"),
+    ("test_g1_g2", 86, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · 저장 레코드 스키마 · 진입점 계약"),
+    # **자리는 따로 돈다**(B79 — `test_g1_g2` 834행 분할): 저장·주소 규격과 자리
+    # 배치는 바뀌는 이유가 다르다.
+    ("test_places", 31, "자리 소유자·자리가 가른다·모듈 머리말·코드 지도 재생성 · B79 층 자산 상태 루트·미정의 이름 0·루트 출처·레포 정본 자산 해시"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
     ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
     ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
     ("test_g6_platform", 20, "플랫폼 창구 · 2층+cross 표시 · 큐 열람 · 계기판 8종"),
     ("test_g6_scan", 16, "지문 스캔(S11) · mock 격리"),
-    ("test_g6_batch", 21, "일괄 투입 조건 셋 · 상태 거부 문면의 계약"),
+    ("test_g6_batch", 25, "일괄 투입 조건 셋 · 상태 거부 문면의 계약 · B79 원본 자리(⓪)·기록 표기"),
     ("test_g6_registry", 10, "내장은 mock일 때만 · 등록부 결손은 상태 거부"),
     ("test_g6_ingest", 19, "인입 화면 — 예고·큐 집계·다음 줄·--step"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
@@ -63,11 +66,11 @@ SUITES = [
     ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
     ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
     ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
-    ("test_2a_gateway", 39, "게이트웨이 골조 — 9지점 도달 가능성 · ⑦ 배선 · 변이 시험 · B63 대장 잠금"),
+    ("test_2a_gateway", 50, "게이트웨이 골조 — 9지점 도달 가능성 · **9지점 본문 스모크**(B79 ③ⓒ) · ⑦ 배선 · 변이 시험 · B63 대장 잠금"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
     # **사내 조건을 상시로 돈다**(B71 ②) — 나머지 전부가 `USE_MOCK=1`이라,
     # 사내에서 처음 밟는 자리를 사용자가 찾아 왔다(B70 · 실측 열째).
-    ("test_onsite", 21, "사내 조건 — USE_MOCK=0 · 픽스처 없음 · 등록 산출만 (내장 섞임 0 · 결손 거부 · 추출 힌트 가드 · B78 1b 이관 등가·이관 전 거부)"),
+    ("test_onsite", 27, "사내 조건 — USE_MOCK=0 · 픽스처 없음 · 등록 산출만 (내장 섞임 0 · 결손 거부 · 추출 힌트 가드 · B78 1b 이관 등가·이관 전 거부 · B79 층 자산 관문·migrate --assets·원본 포맷 가름)"),
 ]
 
 # **필수는 없다.** 문서 포맷 패키지는 **선택 의존**이다(문서 7 §7.1) — 지연 import로
@@ -197,6 +200,20 @@ def check_env():
     line(OK if mock == "1" else WARN, f"USE_MOCK={mock}",
          "1 = LLM 없이 전 경로가 로컬로 돈다(네트워크 0). 사내 첫 실행은 이 상태여야 한다"
          if mock == "1" else "0 = 실LLM 경로. 아직 훅이 비어 있어 추출에서 명시 실패한다")
+
+    # **레포 정본 자산이 레포 판인가**(B79 ④ · 사용자 확정 2026-09-21) —
+    # `prompts/`·`kit/`·`schemas/blocks.json`·(레포)`layers/`는 사내에서 고치지 않는다.
+    # 고치면 「어느 판으로 잰 결과인가」가 사라진다 — 고칠 것은 허브로 요청한다.
+    sys.path.insert(0, str(ROOT / "tests"))
+    from asset_hashes import diff as _asset_diff, RECORD as _asset_rec  # noqa: E402
+    _chg, _add, _gone = _asset_diff()
+    if not (_chg or _add or _gone):
+        line(OK, "레포 정본 자산이 레포 판이다",
+             f"prompts · kit · schemas/blocks.json · layers(seed) — 기록 {_asset_rec.name}")
+    else:
+        line(WARN, "레포 정본 자산이 레포 판과 다르다 — 사내에서 고치지 않는다(허브로 요청)",
+             " · ".join([f"다름 {x}" for x in _chg] + [f"기록 없음 {x}" for x in _add]
+                        + [f"사라짐 {x}" for x in _gone])[:400])
 
     try:
         probe = ROOT / ".doctor_write_probe"
@@ -459,15 +476,19 @@ def transition():
     head("④ 사내 전환 — 다음에 무엇을 해야 하나 (실측 판정)")
     print("  아래는 결함이 아니라 사내에서 남은 작업이다. `[필요]`가 뜨면 그때가 고장이다.\n")
     sys.path.insert(0, str(ROOT))
+    from core import paths                                              # noqa: E402
     from core.state import registry, store                              # noqa: E402
 
     # ── 1. 골격 seed ──────────────────────────────────────────────
-    seed = json.loads((ROOT / "layers/process/skeleton.json").read_text(encoding="utf-8"))
+    seed = json.loads(paths.layers("process", "skeleton.json")
+                      .read_text(encoding="utf-8"))
     snap = (store.read(store.SKELETON_LIST, {}).get("process") or {})
     line(NEXT, f"[1] 골격 seed가 아직 창작 mock이다 — 노드 {snap.get('count', '?')} · "
                f"seed 문법 v{seed.get('seed_format')}",
-         "**사내 첫 작업이 이것이다.** layers/process/skeleton.json을 사내 공정 체계로\n"
-         "         바꾸고 `python run.py bootstrap`. 코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
+         "**사내 첫 작업이 이것이다.** 층 자산은 상태 루트에 산다(B79 ①) —\n"
+         f"         {paths.layers('process', 'skeleton.json')}\n"
+         "         을 사내 공정 체계로 바꾸고 `python run.py bootstrap`.\n"
+         "         코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
          "         형식은 docs/skeleton_seed.md · 마커 4종(:: · @split · @unordered · @noflow)")
 
     # ── 1′. role 배정 실험 ────────────────────────────────────────
@@ -546,10 +567,11 @@ def state_line():
     from router import discover                                     # noqa: E402
     dts = registry.all_doc_types()
     builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")
-    print(f"  상태 폴더 {paths.home()} · 모드 "
+    print(f"  상태 폴더 {paths.home()}{paths.home_note()} · 모드 "
           f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
           + (f"(내장 {builtin})" if builtin else "")
-          + f" · 층 {len(discover())} · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
+          + f" · 층 {len(discover())}(상태 루트)"
+          + f" · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
     if migrate.needs_migration():
         print("  ⚠ 이관 전이다 — python run.py platform migrate "
               "--from <옛 코드 폴더>  (그 전까지 운영 명령은 멈춘다)")

@@ -143,6 +143,19 @@ def structural_fields():
 PKG_FLAG = "--package"
 PACKAGE = None
 
+# 층 자산의 자리 — **킷은 `core`를 import하지 않는다**(문서 6 §6.7). 그래서
+# `paths.layers()`를 부를 수 없고, 하네스는 subprocess라 함수 주입도 닿지 않는다.
+# 등록 흐름은 CLI가 `--layers <자리>`로 건네주고(상태 루트), 단독 실행은 레포
+# `layers/`를 본다 — 킷은 레포 자산이고 그 기준은 레포다(B79 ①).
+LAYERS_FLAG = "--layers"
+LAYERS_DIR = None
+
+
+def layers_dir():
+    """층 자산 폴더 — 건네받은 자리가 있으면 그것, 없으면 레포 seed."""
+    return Path(LAYERS_DIR) if LAYERS_DIR else (ROOT / "layers")
+
+
 # 열 판정 대장의 자리 — **관문은 그것을 계산하지 않고 읽는다**(B76 ②).
 # 없으면 커버리지 검사를 돌리지 않는다: 킷은 등록 흐름 밖에서도 단독으로 돈다.
 LEDGER_FLAG = "--ledger"

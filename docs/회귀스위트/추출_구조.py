@@ -390,17 +390,29 @@ def _paths_table():
     os.environ["USE_MOCK"] = "1"
     from core import paths as P
     P.reset()
-    stage = {"home": "—", "registry": "②등록", "review": "②등록", "adapters": "②등록",
-             "schemas": "②등록", "fixture_schemas": "①자산", "blocks": "①자산",
+    # 단 이름은 표로 두고, **함수 목록은 모듈에서 읽는다**(B79) — 새 자리가 생기면
+    # 지도에 자동으로 뜬다. 표에만 있으면 `docs()`·`layers()`처럼 새로 난 자리를
+    # 지도가 조용히 빠뜨린다.
+    stage = {"home": "—", "docs": "⓪원본", "layers": "②등록", "registry": "②등록",
+             "review": "②등록", "adapters": "②등록", "schemas": "②등록",
+             "fixture_schemas": "①자산", "blocks": "①자산", "seed_layers": "①자산",
              "config_file": "①자산", "data": "③진실", "work": "④작업·장부",
              "parsed": "④작업·장부", "extract": "④작업·장부", "export": "⑤파생",
              "golden": "⑤파생"}
+    # 자리를 **묻는** 함수만 싣는다 — 행동(`reset`·`bind_parser`·`ensure`)과
+    # 판정(`is_mock_home`)은 자리가 아니다.
+    ACTIONS = {"reset", "bind_parser", "ensure", "is_mock_home", "home_note",
+               "rel_to_home", "from_home"}
+    names = [n for n in dir(P) if not n.startswith("_") and n not in ACTIONS
+             and callable(getattr(P, n)) and getattr(P, n).__module__ == P.__name__]
     rows = []
-    for name, st in stage.items():
-        fn = getattr(P, name, None)
-        if fn is None:
+    order = ["—", "⓪원본", "①자산", "②등록", "③진실", "④작업·장부", "⑤파생"]
+    for name in sorted(names, key=lambda n: (order.index(stage.get(n, "—")), n)):
+        fn = getattr(P, name)
+        try:
+            got = _P(fn())
+        except TypeError:                 # 인자가 필요한 것은 자리를 묻는 함수가 아니다
             continue
-        got = _P(fn())
         try:
             shown = "<상태>/" + got.relative_to(P.home()).as_posix()
         except ValueError:
@@ -411,7 +423,7 @@ def _paths_table():
         if name == "home":
             shown = "<상태>"
         doc = (fn.__doc__ or "").splitlines()[0].replace("**", "")
-        rows.append((name, st, shown, doc))
+        rows.append((name, stage.get(name, "—"), shown, doc))
     return rows
 
 

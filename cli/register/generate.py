@@ -350,7 +350,7 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
                           interview, drop_interview):
     """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`."""
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
-    cfg = json.loads((ROOT / "layers" / layer / "config.json").read_text(encoding="utf-8"))
+    cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
     pkg = {
         # **첫 키가 읽는 법이다** — 이 파일을 처음 여는 사람이 어디를 볼지 모른다.
         "_읽는 법": "사람이 볼 것은 human.hint(사람이 준 것)와 "

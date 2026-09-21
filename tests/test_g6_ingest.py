@@ -111,7 +111,7 @@ show("③ `init --fresh`를 시키지 않는다 (그래프·사전을 지운다 
      "--fresh" not in _next72)
 
 # ③ⓑ alias 추가 + bootstrap(fresh 없이) → 노드·사전 불변 · 재인입이 보류분을 붙인다
-_seed72 = ROOT / "layers" / "process" / "skeleton.json"
+_seed72 = _P.layers("process", "skeleton.json")   # 층 자산은 상태 루트다(B79 ①)
 _orig72 = _seed72.read_text(encoding="utf-8")
 _n72 = len(open_graph("process").nodes)
 try:

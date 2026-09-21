@@ -204,7 +204,8 @@ def cmd_doc(args):
         print(f"'{doc}' 인입 기록 없음")
         return 1
     print(f"■ {doc}   [{meta.get('doc_type')} · rev {meta.get('revision')}]")
-    print(f"  원본       {meta.get('source_path')}")
+    print(f"  원본       {paths.from_home(meta['source_path'])}"
+          if meta.get("source_path") else "  원본       —")
     print(f"  doc_hash   {meta.get('doc_hash', '')[:16]}…")
     print(f"  최초 인입   {meta.get('first_ingested_at')}")
 

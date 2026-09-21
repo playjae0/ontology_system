@@ -31,6 +31,7 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
+from core import paths
 from core.llm import gateway, narrow
 from core.state import log, registry, store
 from core.build.entry import finalize, run_document
@@ -49,11 +50,15 @@ OK, FAIL, SKIP = "성공", "실패", "미선택"
 
 
 def _norm_path(p):
-    """경로 비교용 정규화 — 상대/절대·`./`·심볼릭 링크 차이로 헛경고를 내지 않는다."""
+    """경로 비교용 정규화 — 상대/절대·`./`·심볼릭 링크 차이로 헛경고를 내지 않는다.
+
+    대장의 표기는 **상태 루트 기준 상대**일 수 있다(B79 ②) — 되돌려서 비교한다.
+    그러지 않으면 이사 한 번에 「다른 경로에서 인입된 적 있다」가 전건 뜬다.
+    """
     try:
-        return str(Path(p).resolve())
+        return str(paths.from_home(p).resolve())
     except OSError:
-        return str(Path(p).absolute())
+        return str(paths.from_home(p).absolute())
 
 
 def doc_id_of(path):
@@ -305,7 +310,7 @@ def _step_gate(i, detail=""):
         print(f"   멈춤 — {name}까지의 산출은 남았다(parsed/ · extract/ 체크포인트).")
         print(f"   ▶ 다음 줄 — 이어서 넣는다: python run.py ingest-file <문서> "
               f"--doc-type <dt>")
-        print(f"      고치고 넣는다: layers/<층>/skeleton.json alias · "
+        print(f"      고치고 넣는다: {paths.layers('<층>', 'skeleton.json')} alias · "
               f"schemas/<dt>.json 수정 뒤 같은 명령")
         return False
     return True
@@ -588,10 +593,14 @@ def spend_line(stage):
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
-               coord_cap=COORD_CAP):
+               coord_cap=COORD_CAP, recurse=False):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
+
+    `recurse`는 **원본 자리(⓪)를 돌 때만** 참이다(B79 ②): 그 폴더는 사람이 제
+    분류로 하위 폴더를 만들어 넣는 자리라 한 겹만 보면 대부분을 지나친다. 경로를
+    직접 준 경우는 D-110 그대로다 — 사람이 적은 범위를 넓히지 않는다.
     """
     p = Path(path)
     if not p.is_dir():
@@ -599,7 +608,10 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
                          f"폴더가 아니거나 없다\n"
                          f"  ▶ 다음 줄 — 문서 한 건이면:\n"
                          f"     python run.py ingest-file {p}")
-    files = sorted(x for x in p.iterdir() if x.is_file() and not x.name.startswith(("~", ".")))
+    _it = p.rglob("*") if recurse else p.iterdir()
+    files = sorted(x for x in _it if x.is_file()
+                   and not x.name.startswith(("~", "."))
+                   and "__pycache__" not in x.parts)
     rows = []
     u0 = gateway.usage_total()
     for f in files:
@@ -666,15 +678,31 @@ def main(argv):
         i = args.index("--doc-type")
         dt = args[i + 1] if i + 1 < len(args) else None
         del args[i:i + 2]
-    paths = None
+    # 이름은 `adapter_paths`다 — `paths`로 두면 자리 소유자 모듈을 가린다(B79 ②).
+    adapter_paths = None
     if "--adapters" in args:
         i = args.index("--adapters")
-        paths = [args[i + 1]] if i + 1 < len(args) else None
+        adapter_paths = [args[i + 1]] if i + 1 < len(args) else None
         del args[i:i + 2]
     # **상한 손잡이는 인입에도 있다**(B69 ③) — 배치라 동의 프롬프트를 두지 않는다.
     args, cap = coord_cap_of(args)
+    # **인자가 없으면 ⓪원본 폴더 전체다**(B79 ②) — 사람이 `<상태>/docs/`에 넣고
+    # 명령은 그 자리를 안다. 자리가 비어 있으면 그 사실을 말한다(빈 배치가 아니다).
     if not args:
-        raise SystemExit("[투입] 대상(문서 또는 경로)이 없다\n" + __doc__)             # [사용법]
+        _docs = paths.docs()
+        if not _docs.is_dir() or not any(p.is_file() for p in _docs.rglob("*")):
+            raise SystemExit(                                             # [상태]
+                f"[투입] 넣을 문서가 없다 — {_docs}가 "
+                f"{'비어 있다' if _docs.is_dir() else '없다'}\n"
+                f"  지금 잰 것 — 원본 자리(⓪) {_docs}\n"
+                f"  근거 — 인자 없는 ingest-dir는 원본 자리 전체를 돈다"
+                f"(`core/paths.docs()`)\n"
+                f"  ▶ 다음 줄 — 원본을 넣고 다시 돌린다:\n"
+                f"     mkdir -p {_docs} && cp <문서...> {_docs}\n"
+                f"     python run.py ingest-dir            (또는 경로를 직접 적는다)")
+        args, _from_docs = [str(_docs)], True
+    else:
+        _from_docs = False
     target = Path(args[0])
     if target.is_dir():
         if step:
@@ -684,9 +712,10 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
-        rows = ingest_dir(target, dt, dry, paths, coord_cap=cap)
+        rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
+                          recurse=_from_docs)
     else:
-        rows = [ingest_file(target, dt, dry, paths, coord_cap=cap, step=step,
+        rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1

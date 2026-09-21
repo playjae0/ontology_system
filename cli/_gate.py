@@ -59,6 +59,41 @@ def require_migrated(command=""):
         raise SystemExit(_migrate_message(command, pair))   # [상태] 문면=_migrate_message
 
 
+def _layers_message(command=""):
+    """층 자산이 없을 때의 **거부 문면** — 원인 · 지금 잰 것 · 근거 · 다음 줄.
+
+    조용히 레포 seed로 떨어지지 않는 이유(B79 ①): 그러면 사내 골격이 mock 판으로
+    **되돌아간 채** 인입이 돌고, 그래프가 다 선 뒤에야 「공정 이름이 우리 것이 아니다」를
+    사람이 알아챈다. 자리가 비면 멈추는 것이 값싸다.
+    """
+    from core import paths
+    home = paths.home()
+    return (f"[{command or '상태'}] 층 자산 먼저 — 상태 루트에 층이 없다 "
+            f"(B79 ① · 문서 7 §7.8)\n"
+            f"  지금 잰 것 — {paths.layers()} "
+            f"{'있으나 config.json이 0개' if paths.layers().exists() else '없음'} · "
+            f"상태 루트 {home}\n"
+            f"  근거 — 층 발견은 `<상태>/layers/<층>/config.json`을 센다"
+            f"(`router.discover()`)\n"
+            f"  ▶ 다음 줄 — 둘 중 하나:\n"
+            f"     (이미 이관했다)  python run.py platform migrate --assets "
+            f"--from <옛 코드 폴더>\n"
+            f"     (처음 옮긴다)    cp -r <옛 코드 폴더>/layers {paths.layers()}")
+
+
+def require_layers(command=""):
+    """**운영에서 층 자산이 비면 멈춘다** (B79 ①).
+
+    mock은 대상이 아니다 — `init`이 레포 seed를 mock 루트에 심으므로 언제나 있다.
+    자리로 가르는 규율 그대로다(모드 분기가 아니라 어느 루트인가).
+    """
+    from core import paths
+    from router import discover
+    if paths.is_mock_home() or discover():
+        return
+    raise SystemExit(_layers_message(command))          # [상태] 문면=_layers_message
+
+
 def require_live_or_allow(argv, *, command=""):
     """`argv`에서 플래그를 떼고 돌려준다. mock인데 플래그가 없으면 **멈춘다.**
 

@@ -190,8 +190,11 @@ def register_doc(env, dh, routing=None):
     doc_id = env["doc_id"]
     prev = reg.get(doc_id, {})
     first = prev.get("first_ingested_at") or env.get("parsed_at")
+    # **기록 표기는 상태 루트 기준이다**(B79 ②) — 루트를 옮겨도 대장이 낡지 않는다.
+    # 밖의 문서는 절대 경로 그대로다(옮길 수 있는 자리가 아니다).
+    _src = env.get("source_path")
     entry = {"doc_hash": dh, "revision": env.get("revision"),
-             "source_path": env.get("source_path"),
+             "source_path": paths.rel_to_home(_src) if _src else _src,
              "doc_type": env.get("doc_type"),
              "first_ingested_at": first}
     # **`duplicate_ok` 예외는 보존한다** — 사람의 판단이고 인입이 지울 것이 아니다

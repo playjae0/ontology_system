@@ -71,6 +71,22 @@ def home():
     return _HOME
 
 
+def home_note():
+    """상태 루트의 **출처** 한 조각 — 화면이 「어디에」와 함께 「왜 거기인가」를 말한다.
+
+    사내 실측(2026-09-21): 가이드 예시 경로를 그대로 쳐서 공용 디스크 루트에 상태가
+    생겼고, 새 터미널에서 `export ONTO_HOME=…`이 빠지자 **다른 루트**를 보며
+    「가져온 게 사라졌다」로 읽었다. 거부가 아니라 표시다 — 기본 루트로 쓰는 것도
+    정당한 배치이고, 다만 그것이 **선택이었는지 빠뜨린 것인지**를 화면이 말한다.
+
+    문면이 한 자리인 이유는 여느 문면과 같다 — 모드 줄과 doctor 첫 줄이 같은 사실을
+    다른 말로 하면 사람은 둘을 다른 것으로 읽는다.
+    """
+    if is_mock_home() or os.environ.get(HOME_ENV):
+        return ""
+    return f" (ONTO_HOME 미설정 — 기본 루트 {ROOT / DEFAULT_HOME})"
+
+
 def reset():
     """루트 판정을 다시 하게 한다 — **시험과 `migrate`의 문**이다."""
     global _HOME
@@ -87,6 +103,43 @@ def _under(name, *parts):
     return home().joinpath(name, *parts)
 
 
+# ---------------------------------------------------------------- ⓪원본
+def docs(*parts):
+    """원본 문서 — `$ONTO_HOME/docs/` (B79 ②). **사람이 넣고 시스템은 읽기만 한다.**
+
+    사내 물음(2026-09-21): 「원본 문서·layers·review도 `ONTO_HOME`에 있어야 하는 것
+    아닌가」. 그렇다 — 원본은 재생성되지 않는 사내 자료이고, 코드 폴더에 두면 코드
+    교체가 그것을 밟는다. 시스템은 읽기만 하므로 단으로는 ⓪이고 백업 대상이다.
+
+    `ingest-dir`가 인자 없이 돌면 이 폴더 전체를 돈다.
+    """
+    return _under("docs", *parts)
+
+
+def rel_to_home(p):
+    """기록용 표기 — **상태 루트 아래면 루트 기준 상대**, 밖이면 절대 경로.
+
+    폴더를 옮겨도 기록이 낡지 않게 하는 자리다(B79 ②): 절대 경로로 박아 두면
+    상태 루트를 옮긴 다음 대장의 `source_path`가 전부 없는 자리를 가리키고,
+    「같은 doc_id가 다른 경로에서」 경고가 이사 한 번에 전건 뜬다.
+    """
+    q = Path(p)
+    try:
+        q = q.expanduser().resolve()
+    except OSError:
+        pass
+    try:
+        return q.relative_to(home()).as_posix()
+    except ValueError:
+        return str(q)
+
+
+def from_home(p):
+    """기록 표기 → 실경로. 상대면 상태 루트 아래로 되돌린다."""
+    q = Path(p)
+    return q if q.is_absolute() else (home() / q)
+
+
 # ---------------------------------------------------------------- ②등록
 def registry(*parts):
     """등록 단 — **사람 승인 1회의 산출**. 재생성되지 않고 백업 1순위다.
@@ -96,6 +149,26 @@ def registry(*parts):
     「코드를 새로 가져오면 `review`·`data`를 다 옮겨야」 했다.
     """
     return _under("registry", *parts)
+
+
+def layers(*parts):
+    """층 자산 — `$ONTO_HOME/layers/<층>/{config,skeleton}.json` (B79 ①).
+
+    **②등록 단이다.** 사람이 사내 공정 체계로 고쳐 `skeleton-confirm`으로 승인 1회
+    하는 것이라 재생성되지 않고, 코드를 갈아 끼울 때 함께 가야 한다 — B78은 이것을
+    ①자산(git)으로 보았고, 사내 실측(2026-09-21)에서 **코드 폴더 교체가 사내 골격을
+    레포 mock 판으로 되돌릴 수 있다**는 것이 드러났다.
+
+    레포의 `layers/`는 남는다 — **mock 검증 바닥의 seed**이고(내장 스키마가
+    `tests/fixtures/schemas/`에 남는 것과 같은 지위), `init --fresh`가 mock 루트에
+    그것을 복사한다. 운영 루트는 복사하지 않는다(②등록은 클린 밖 · 문서 7 §7.6-4).
+    """
+    return _under("layers", *parts)
+
+
+def seed_layers():
+    """레포의 기본 seed 자리 — **복사의 출발점**이지 읽는 자리가 아니다."""
+    return ROOT / "layers"
 
 
 def review(*parts):

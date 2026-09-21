@@ -219,8 +219,8 @@ show("④ⓔ 격자 포맷만 판정한다 (.pptx·.pdf는 포맷이 prose를 �
 show("④ 문턱이 한 자리에 있다 (층 config가 아니다 — 조정이 코드 수색이 되지 않게)",
      set(_FM.THRESHOLDS) == set(_FM.SIGNALS) and len(_FM.SIGNALS) == 5
      and not [k for k in _FM.THRESHOLDS
-              if k in json.loads((ROOT / "layers" / "process" / "config.json"
-                                  ).read_text(encoding="utf-8"))])
+              if k in json.loads(_P.layers("process", "config.json")
+                                 .read_text(encoding="utf-8"))])
 # **판정이 사람의 지정을 이기지 않는다** — C37은 「어느 갈래로 읽는가」를 정할 뿐이다.
 show("④ 판정은 선택을 갈아 끼우지 않는다 — 어긋나면 경고하고 지정대로 간다",
      _IN.select(str(RAW / "TOC01.xlsx"), doc_type="cp")["doc_type"] == "cp",

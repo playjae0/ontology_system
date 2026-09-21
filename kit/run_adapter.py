@@ -502,6 +502,10 @@ if __name__ == "__main__":
         _i = _argv.index(tables.LEDGER_FLAG)
         tables.LEDGER = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
+    if tables.LAYERS_FLAG in _argv:
+        _i = _argv.index(tables.LAYERS_FLAG)
+        tables.LAYERS_DIR = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
     adapter_path, schema_path, *docs = _argv
     print(_where())
     print("=" * 66)
