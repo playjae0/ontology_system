@@ -207,6 +207,43 @@ def file_state():
                   if mode & 0o077 else None)
 
 
+class _Unset:
+    """「싣지 않는다」를 값으로 나타내는 자리 — `None`과 구분해야 한다.
+
+    `None`은 **설정에 그렇게 적힌 것**이고(= 싣지 않는다), `UNSET`은 **아직 아무도
+    정하지 않았다**는 뜻이다. 둘을 하나로 두면 「인자를 안 준 것」과 「인자로 끄라고
+    한 것」이 같아져, 호출부가 설정을 이길 방법이 없어진다.
+    """
+
+    def __repr__(self):
+        return "UNSET"
+
+
+UNSET = _Unset()
+
+
+def _temperature(raw):
+    """`CHAT_TEMPERATURE` → 실을 값 또는 `UNSET`(키를 넣지 않는다).
+
+    **기본이 「안 싣는다」인 이유**(사내 실측 2026-09-22): 새 모델 계열은
+    `temperature`를 받지 않거나 기본값만 받아 **실으면 400**이다. 받는 모델은
+    기본값으로 돌아간다 — 그래서 없는 쪽이 안전한 기본이고, 재현성이 필요한 사람이
+    `0`을 적는다(재현성은 설정의 결과이지 코드의 약속이 아니다).
+
+    숫자가 아닌 값은 **명시적 실패**다 — 조용히 무시하면 「적어 뒀는데 안 실리는」
+    상태가 화면에 보이지 않는다.
+    """
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return UNSET
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        reason = (f"CHAT_TEMPERATURE가 숫자가 아니다: {raw!r} — 숫자를 적거나 "
+                  f"키를 비운다(비우면 요청에 싣지 않는다)")
+        log.explicit_fail(_LOG, "core.llm.config", reason)
+        raise NotConfigured(reason)
+
+
 def config():
     """게이트웨이 설정. **비어 있으면 그 사실을 그대로 돌려준다** — 여기서 채우지 않는다.
 
@@ -228,9 +265,19 @@ def config():
             "key": str(get("LLM_API_KEY")),
             "model": str(get("CHAT_MODEL")),
             "embed_model": str(get("EMBED_MODEL")),
+            # **임베딩은 두 갈래다**(B80 ③ · 사내 실측 2026-09-22): 게이트웨이 API와
+            # **디스크의 로컬 모델 폴더**. 사내 임베딩 모델이 후자였고, 코드가 전자만
+            # 알아서 폴더 경로를 모델 이름으로 삼아 POST하고 404를 받았다.
+            "embed_backend": (str(get("EMBED_BACKEND", "gateway")).strip().lower()
+                              or "gateway"),
+            # 임베딩 주소는 채팅과 **다를 수 있다** — 없으면 채팅 base를 쓴다.
+            "embed_url": (str(get("EMBED_GATEWAY_URL")).rstrip("/")
+                          or str(get("LLM_GATEWAY_URL")).rstrip("/")),
             # **후보 좁히기는 선택이다**(B75 ①) — 임베딩이 없어도 인입은 선다.
             "narrow": (str(get("CANDIDATE_NARROW", "auto")).strip().lower()
                        or "auto"),
+            # **요청 파라미터의 손잡이**(B80 ①) — 비우면 payload에 키가 없다.
+            "temperature": _temperature(get("CHAT_TEMPERATURE", None)),
             "timeout": float(get("LLM_TIMEOUT", 60)),
             "retry": int(get("LLM_RETRY", 2))}
 
@@ -244,7 +291,8 @@ def require(point, *, need=("url", "model")):
     missing = [k for k in need if not cfg.get(k)]
     if missing:
         env = {"url": "LLM_GATEWAY_URL", "model": "CHAT_MODEL",
-               "embed_model": "EMBED_MODEL", "key": "LLM_API_KEY"}
+               "embed_model": "EMBED_MODEL", "key": "LLM_API_KEY",
+               "embed_url": "EMBED_GATEWAY_URL(또는 LLM_GATEWAY_URL)"}
         names = ", ".join(env.get(m, m) for m in missing)
         reason = (f"{point_label(point)} — 실호출 경로가 비어 있다: {names} 미설정. "
                   f"USE_MOCK=0에서는 조용히 mock으로 떨어지지 않는다 (문서 7 §7.6-B-4)")
@@ -378,7 +426,10 @@ class GatewayError(RuntimeError):
 
     def __init__(self, status, body, url):
         self.status, self.body, self.url = status, body, url
-        super().__init__(f"HTTP {status} — {body}")
+        # **어느 주소를 쳤는지 말한다**(B80 ③ · 사내 실측 2026-09-22): 404는 「그
+        # 주소에 그 경로가 없다」인데 주소가 안 보이면 사람이 설정을 못 고친다.
+        # 임베딩이 채팅과 다른 base를 쓸 수 있게 된 뒤로는 더 그렇다(M9).
+        super().__init__(f"HTTP {status} — POST {url} — {body}")
 
 
 def _post(url, payload, key, timeout):
@@ -415,7 +466,37 @@ def _post(url, payload, key, timeout):
         raise GatewayError(e.code, body, url) from e
 
 
-def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0):
+def _payload(cfg, messages, *, model=None, json_schema=None, temperature=UNSET):
+    """**게이트웨이 요청을 조립하는 유일한 자리** (B80 ① · 문서 7 §7.6-B-1).
+
+    여기 하나인 이유: 구판은 `chat()`과 `llm-check`의 탐침 둘이 payload를 **따로**
+    조립했다. 그래서 요청 모양에 손잡이를 더하면 `llm-check`는 옛 모양을 보내
+    「점검은 통과했는데 인입은 400」이 난다(같은 기능 두 자리 — B77 ④).
+
+    `temperature`의 우선순위는 **인자 > 설정 > 없음**이다. 인자를 주는 호출부는
+    지점마다 값을 정할 수 있고(지금 그런 호출부는 0), 아무도 정하지 않으면 키가
+    payload에 **없다**.
+    """
+    out = {"model": model or cfg["model"], "messages": messages}
+    t = cfg.get("temperature", UNSET) if temperature is UNSET else temperature
+    if not (t is UNSET or t is None):
+        out["temperature"] = t
+    if json_schema:
+        out["response_format"] = {"type": "json_schema",
+                                  "json_schema": {"name": "out",
+                                                  "schema": json_schema,
+                                                  "strict": True}}
+    return out
+
+
+def temperature_line(cfg=None):
+    """화면 한 조각 — 「지금 무엇을 싣는가」. `llm-check` ①이 이것을 낸다."""
+    c = cfg or config()
+    t = c.get("temperature", UNSET)
+    return "안 싣는다(모델 기본)" if t is UNSET or t is None else f"{t}"
+
+
+def chat(messages, *, model=None, json_schema=None, point="chat", temperature=UNSET):
     """모델 호출 + JSON 파싱 + 재시도. **돌려주는 것은 dict다.**
 
     **`content`는 문자열이거나 리스트다**(B53). 리스트면 OpenAI 호환 멀티모달
@@ -433,13 +514,8 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=0)
     조종하지 않는다(§7.3-4).
     """
     cfg = require(point)
-    payload = {"model": model or cfg["model"],
-               "messages": messages, "temperature": temperature}
-    if json_schema:
-        payload["response_format"] = {"type": "json_schema",
-                                      "json_schema": {"name": "out",
-                                                      "schema": json_schema,
-                                                      "strict": True}}
+    payload = _payload(cfg, messages, model=model, json_schema=json_schema,
+                       temperature=temperature)
     last = None
     for attempt in range(cfg["retry"] + 1):
         try:

@@ -645,6 +645,51 @@ def summary(rows):
     return "\n".join(lines)
 
 
+def _is_doc(p):
+    """파서가 읽는 포맷의 파일인가 — **기준은 `reader.SUPPORTED` 하나다**(B80 ②).
+
+    ⓪원본 자리에는 사람이 자기 분류로 아무것이나 넣는다(메모·이미지·엑셀 임시파일).
+    선별 기준을 여기서 새로 쓰면 파서가 여는 목록과 갈린다 — 그래서 그 목록을 묻는다.
+    """
+    return (p.is_file() and p.suffix.lower() in SUPPORTED
+            and not p.name.startswith(("~", ".")))
+
+
+def _raw_target():
+    """인자 없는 `ingest-dir`의 대상 — ⓪원본 자리 (B80 ②).
+
+    두 가지를 말한다. ①자리가 비면 **빈 배치로 조용히 끝내지 않는다** ②옛 이름
+    (`docs/`)에 문서가 있으면 **상태 거부**다 — 이름이 `raw/`로 바뀐 것을 모르는
+    사람에게 「0건」만 보여 주면 자기 문서가 왜 안 들어가는지 알 길이 없다.
+    """
+    raw = paths.raw()
+    old = paths.legacy_raw()          # 옛 이름도 자리 소유자가 안다(B80 ②)
+    if not raw.is_dir() or not any(_is_doc(p) for p in raw.rglob("*")):
+        if old.is_dir() and any(_is_doc(p) for p in old.rglob("*")):
+            raise SystemExit(                                             # [상태]
+                f"[투입] 원본 자리가 `raw/`로 바뀌었다 — 옛 이름에 문서가 있다"
+                f"(B80 ②)\n"
+                f"  지금 잰 것 — {old} 문서 "
+                f"{sum(1 for p in old.rglob('*') if _is_doc(p))}건 · "
+                f"{raw} {'비어 있다' if raw.is_dir() else '없다'}\n"
+                f"  근거 — 인자 없는 ingest-dir는 `<상태>/raw/`를 돈다"
+                f"(`core/paths.raw()`) · 레포의 `docs/`는 명세 폴더라 이름이 갈렸다\n"
+                f"  ▶ 다음 줄 — 옮기고 다시 돌린다:\n"
+                f"     mv {old} {raw}\n"
+                f"     python run.py ingest-dir")
+        raise SystemExit(                                                 # [상태]
+            f"[투입] 넣을 문서가 없다 — {raw}가 "
+            f"{'비어 있다' if raw.is_dir() else '없다'}\n"
+            f"  지금 잰 것 — 원본 자리(⓪) {raw} · 파서가 읽는 포맷 "
+            f"{' '.join(SUPPORTED)}\n"
+            f"  근거 — 인자 없는 ingest-dir는 원본 자리 전체를 돈다"
+            f"(`core/paths.raw()`)\n"
+            f"  ▶ 다음 줄 — 원본을 넣고 다시 돌린다:\n"
+            f"     mkdir -p {raw} && cp <문서...> {raw}\n"
+            f"     python run.py ingest-dir            (또는 경로를 직접 적는다)")
+    return raw
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         raise SystemExit(__doc__)                                         # [사용법]
@@ -686,23 +731,12 @@ def main(argv):
         del args[i:i + 2]
     # **상한 손잡이는 인입에도 있다**(B69 ③) — 배치라 동의 프롬프트를 두지 않는다.
     args, cap = coord_cap_of(args)
-    # **인자가 없으면 ⓪원본 폴더 전체다**(B79 ②) — 사람이 `<상태>/docs/`에 넣고
-    # 명령은 그 자리를 안다. 자리가 비어 있으면 그 사실을 말한다(빈 배치가 아니다).
+    # **인자가 없으면 ⓪원본 폴더 전체다**(B79 ② · 자리 이름은 B80 ②) — 사람이
+    # `<상태>/raw/`에 넣고 명령은 그 자리를 안다. 비어 있으면 그 사실을 말한다.
     if not args:
-        _docs = paths.docs()
-        if not _docs.is_dir() or not any(p.is_file() for p in _docs.rglob("*")):
-            raise SystemExit(                                             # [상태]
-                f"[투입] 넣을 문서가 없다 — {_docs}가 "
-                f"{'비어 있다' if _docs.is_dir() else '없다'}\n"
-                f"  지금 잰 것 — 원본 자리(⓪) {_docs}\n"
-                f"  근거 — 인자 없는 ingest-dir는 원본 자리 전체를 돈다"
-                f"(`core/paths.docs()`)\n"
-                f"  ▶ 다음 줄 — 원본을 넣고 다시 돌린다:\n"
-                f"     mkdir -p {_docs} && cp <문서...> {_docs}\n"
-                f"     python run.py ingest-dir            (또는 경로를 직접 적는다)")
-        args, _from_docs = [str(_docs)], True
+        args, _from_raw = [str(_raw_target())], True
     else:
-        _from_docs = False
+        _from_raw = False
     target = Path(args[0])
     if target.is_dir():
         if step:
@@ -713,7 +747,7 @@ def main(argv):
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
-                          recurse=_from_docs)
+                          recurse=_from_raw)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every)]

@@ -15,10 +15,20 @@ from __future__ import annotations
 
 import hashlib
 import math
+from pathlib import Path
 
 from core.llm import gateway
 
 DIM = 64            # mock 벡터 차원. 실호출 갈래의 차원은 모델이 정한다.
+
+_LOG = gateway.log.get(__name__)
+
+#: 닫힌 2종 — `gateway`(API) · `local`(디스크의 모델 폴더). 다른 값은 명시적 실패다.
+BACKENDS = ("gateway", "local")
+
+#: 로컬 모델은 **프로세스당 한 번** 로드한다 — `(경로, 모델)`.
+#: 매 호출 로드하면 판정 하나에 수 초가 붙는다(`paths.home()`과 같은 규율).
+_LOCAL = (None, None)
 
 
 def _mock_vector(text, dim=DIM):
@@ -34,19 +44,70 @@ def _mock_vector(text, dim=DIM):
     return [v / norm for v in vals]
 
 
+def model_dir(raw):
+    """`EMBED_MODEL`을 **폴더 경로**로 읽는다 — `~`·상대 허용(`paths`와 같은 규칙)."""
+    return Path(str(raw)).expanduser().resolve()
+
+
+def _local_model(raw):
+    """로컬 임베딩 모델 — **지연 import · 프로세스당 1회 로드** (B80 ③).
+
+    `sentence_transformers`는 **선택 의존**이다(`parser/reader.py`의 `openpyxl`과 같은
+    결): 함수 안에서 import하므로 `USE_MOCK=1` 경로는 이 패키지를 건드리지 않고,
+    코어 필수 외부 의존 0이 유지된다.
+
+    없는 것은 **조용히 넘기지 않는다** — 패키지가 없거나 폴더가 없으면 명시적
+    실패다. `CANDIDATE_NARROW=auto`의 겹침 폴백은 **`EMBED_MODEL` 미설정**일 때의
+    길이고(B75 ①), 설정해 놓고 못 부르는 것은 실패다.
+    """
+    global _LOCAL
+    path = model_dir(raw)
+    if _LOCAL[0] == path and _LOCAL[1] is not None:
+        return _LOCAL[1]
+    if not path.is_dir():
+        reason = (f"EMBED_BACKEND=local인데 모델 폴더가 없다: {path} — "
+                  f"EMBED_MODEL에 로컬 모델 폴더 경로를 적는다"
+                  f"(게이트웨이 API를 쓰려면 EMBED_BACKEND=gateway)")
+        gateway.log.explicit_fail(_LOG, "core.llm[embed]", reason)
+        raise gateway.NotConfigured(reason)
+    try:
+        from sentence_transformers import SentenceTransformer   # 선택 의존 · 지연 import
+    except ImportError as e:
+        reason = ("EMBED_BACKEND=local인데 sentence-transformers가 없다 — "
+                  "pip install sentence-transformers · "
+                  "또는 EMBED_BACKEND=gateway")
+        gateway.log.explicit_fail(_LOG, "core.llm[embed]", reason)
+        raise gateway.NotConfigured(reason) from e
+    _LOCAL = (path, SentenceTransformer(str(path)))
+    _LOG.info("로컬 임베딩 모델 로드 — %s (프로세스당 1회)", path)
+    return _LOCAL[1]
+
+
 def embed(text):
-    """텍스트 하나를 벡터로. **두 갈래가 같은 반환 계약을 지킨다** — `list[float]`.
+    """텍스트 하나를 벡터로. **갈래가 셋이어도 반환 계약은 하나다** — `list[float]`.
 
     소비부는 어느 쪽인지 몰라야 한다(§7.6-B-3). 그래야 mock 회귀가 실 연결에도
     유효하다 — 차원이 다른 것은 계약 위반이 아니다(모델이 정한다), 형태가 다른
-    것이 위반이다.
+    것이 위반이다. **갈래가 갈리는 자리는 이 함수 하나다**(B80 ③).
     """
     if gateway.use_mock():
         gateway.mock("embed", f"sha256 → {DIM}차 정규화 벡터")
         return _mock_vector(text)
 
-    cfg = gateway.require("embed", need=("url", "embed_model"))
-    raw = gateway._post(f"{cfg['url']}/embeddings",
+    backend = gateway.config().get("embed_backend") or "gateway"
+    if backend not in BACKENDS:
+        reason = (f"EMBED_BACKEND가 닫힌 2종 밖이다: {backend!r} — "
+                  f"{' | '.join(BACKENDS)}")
+        gateway.log.explicit_fail(_LOG, "core.llm[embed]", reason)
+        raise gateway.NotConfigured(reason)
+    if backend == "local":
+        cfg = gateway.require("embed", need=("embed_model",))
+        vec = _local_model(cfg["embed_model"]).encode(text,
+                                                      normalize_embeddings=True)
+        return [float(x) for x in vec]
+
+    cfg = gateway.require("embed", need=("embed_url", "embed_model"))
+    raw = gateway._post(f"{cfg['embed_url']}/embeddings",
                     {"model": cfg["embed_model"], "input": text},
                     cfg["key"], cfg["timeout"])
     return list(raw["data"][0]["embedding"])

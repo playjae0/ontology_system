@@ -31,10 +31,6 @@ from core.state import log, store
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 _LOG = log.get(__name__)
 
-#: 원본 문서의 확장자 — **파서가 읽는 포맷**(`parser/reader.SUPPORTED`)과 같다.
-#: 킷·파서를 import하지 않는다(core의 의존 방향) — 목록이 갈리면 회귀가 잡는다.
-DOC_EXT = (".xlsx", ".xlsm", ".pptx", ".pdf", ".csv", ".tsv")
-
 #: 옛 배치의 표식 — 등록부가 진실 옆에 있던 자리다.
 LEGACY_MARK = ("data", "doc_types.json")
 
@@ -138,14 +134,9 @@ def plan(old, home):
     for name in store.WORK_FILES:
         add(old / "data" / name, work_dir / name, "작업")
 
-    # ⓪원본 — **파서가 읽는 포맷만**(B79 ②). 옛 코드 폴더의 `docs/`는 이 레포에서
-    # **명세 폴더**이기도 하다: 통째로 옮기면 정제본·가이드가 원본 자리에 앉고
-    # 인자 없는 `ingest-dir`가 그것을 문서로 집는다. 그래서 확장자로 가른다 —
-    # 옮기는 것은 「사람이 넣은 실물 문서」뿐이다(D-160 ②).
-    if (old / "docs").is_dir():
-        for s in sorted((old / "docs").rglob("*")):
-            if s.is_file() and s.suffix.lower() in DOC_EXT:
-                add(s, home / "docs" / s.relative_to(old / "docs"), "원본")
+    # ⓪원본은 **이관 대상이 아니다**(B80 ②). 옛 코드 폴더의 `docs/`는 이 레포에서
+    # 명세 폴더이고, 원본 자리는 이제 `raw/`다 — 사람이 넣는 자리라 옮길 것이 없다.
+    # (B79는 확장자로 둘을 가르는 예외를 두었다 — 이름이 갈리자 그 예외가 없어졌다.)
 
     # ②등록 — **층 자산**(B79 ①). 사내가 공정 체계로 고쳐 승인 1회 한 것이라
     # 코드 폴더에 두면 코드 교체가 사내 골격을 레포 seed 판으로 되돌린다.

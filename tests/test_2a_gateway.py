@@ -10,8 +10,10 @@
 from __future__ import annotations
 
 import os
+import shutil as _shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -95,6 +97,94 @@ for key, label in llm.POINTS.items():
     # 모자라다: 파서 3지점은 대체 갈래가 정상으로 도는 것이 「통과」이므로, 실제
     # 호출자가 타는 길(팩토리)이 **미설정 실패에 닿는가**를 잰다.
     show(f"{label} → 실 호출 경로가 NotConfigured에 닿는다", got == "NotConfigured", got)
+
+# ============================================================ 요청 조립
+# **요청 모양에 손잡이가 있고, 조립은 한 자리다**(B80 ①). 사내 실측(2026-09-22):
+# 새 모델이 `temperature`를 받지 않아 막혔는데 코드는 그것을 **모든 요청에 고정으로**
+# 싣고 설정으로 끌 자리가 없었다. 게다가 `llm-check`의 탐침이 payload를 따로 조립해
+# 손잡이를 더해도 「점검은 통과, 인입은 400」이 날 자리였다.
+print("\n■ 요청 조립 — CHAT_TEMPERATURE · payload는 한 자리 (B80 ①)")
+import request_probe as _RP                                      # noqa: E402
+
+_pay_none, _got_none = _RP.chat_payload()
+_pay_03, _ = _RP.chat_payload({"CHAT_TEMPERATURE": "0.3"})
+_pay_arg, _ = _RP.chat_payload({"CHAT_TEMPERATURE": "0.3"}, extra=", temperature=0")
+show("설정이 비면 payload에 temperature 키가 없다 (모델 기본값으로 간다)",
+     "temperature" not in _pay_none and _got_none["error"] is None, str(_pay_none))
+show("CHAT_TEMPERATURE=0.3이면 그 값을 싣는다",
+     _pay_03.get("temperature") == 0.3, str(_pay_03.get("temperature")))
+show("인자가 설정을 이긴다 (지점마다 정할 자리는 남긴다)",
+     _pay_arg.get("temperature") == 0, str(_pay_arg.get("temperature")))
+_chk_none, _got_chk = _RP.check_payloads()
+_chk_03, _ = _RP.check_payloads({"CHAT_TEMPERATURE": "0.3"})
+show("llm-check 탐침도 같은 조립을 쓴다 (점검과 인입이 같은 모양을 보낸다)",
+     _chk_none and all("temperature" not in x for x in _chk_none)
+     and _chk_03 and all(x.get("temperature") == 0.3 for x in _chk_03),
+     f"미설정 {[x.get('temperature') for x in _chk_none]} · "
+     f"0.3 {[x.get('temperature') for x in _chk_03]}")
+show("게이트웨이 단계가 전부 돌았다 (탐침이 완주 — 조립 교체가 단계를 줄이지 않았다)",
+     _got_chk["value"] == ["①", "②", "③", "④", "⑤", "⑥", "⑦"], str(_got_chk["value"]))
+# **조립하는 자리는 하나다** — `"messages":`를 코드에서 세어 잰다(문면이 아니라 AST의 결).
+# **줄 번호를 세지 않는다** — 재는 것은 「그 일을 하는 파일이 몇이냐」다.
+_msg_hits = sorted({f"{p.relative_to(ROOT)}"
+                    for d in ("core", "cli")
+                    for p in sorted((ROOT / d).rglob("*.py"))
+                    if "__pycache__" not in p.parts
+                    for line in p.read_text(encoding="utf-8").splitlines()
+                    if '"messages":' in line and not line.lstrip().startswith("#")})
+show("게이트웨이 요청을 조립하는 자리가 한 곳이다 (탐침이 따로 짜지 않는다)",
+     _msg_hits == ["core/llm/gateway.py"], str(_msg_hits))
+
+# ============================================================ 임베딩 백엔드
+# **임베딩은 게이트웨이 API만이 아니다**(B80 ③ · 사내 실측 2026-09-22): 사내 모델은
+# 디스크의 폴더였고, 코드가 그 경로를 모델 이름으로 삼아 POST해 404를 받았다.
+print("\n■ 임베딩 백엔드 — gateway | local · 주소 · 오류 문면 (B80 ③)")
+_gw1, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_MODEL": "bge-m3"})
+_gw2, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_MODEL": "bge-m3",
+                                   "EMBED_GATEWAY_URL": "http://embed.stub/v1"})
+show("gateway 갈래는 EMBED_GATEWAY_URL을 base로 쓴다 (없으면 채팅 base)",
+     _gw1["cap"][0]["url"] == "http://chat.stub/v1/embeddings"
+     and _gw2["cap"][0]["url"] == "http://embed.stub/v1/embeddings",
+     f"{_gw1['cap'][0]['url']} · {_gw2['cap'][0]['url']}")
+_dir80 = Path(tempfile.mkdtemp(prefix="b80model_"))
+_loc, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_BACKEND": "local",
+                                   "EMBED_MODEL": str(_dir80)}, stub_local=True)
+show("local 갈래는 로컬 모델을 부르고 게이트웨이에 닿지 않는다",
+     _loc["value"] == [0.1, 0.2, 0.3] and not _loc["cap"]
+     and _loc["stub"]["encode"] == 2, f"{_loc['value']} · 전송 {len(_loc['cap'])}")
+show("로컬 모델은 프로세스당 한 번 로드한다 (판정마다 다시 읽지 않는다)",
+     _loc["stub"]["init"] == 1, f"생성자 {_loc['stub']['init']}회 · encode {_loc['stub']['encode']}회")
+_nopkg, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_BACKEND": "local",
+                                     "EMBED_MODEL": str(_dir80)})
+show("패키지가 없으면 명시적 실패다 — 문면이 설치 줄을 준다 (조용히 안 떨어진다)",
+     "NotConfigured" in (_nopkg["error"] or "")
+     and "pip install sentence-transformers" in (_nopkg["error"] or ""),
+     (_nopkg["error"] or "")[:60])
+_nodir, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_BACKEND": "local",
+                                     "EMBED_MODEL": str(_dir80 / "없는폴더")},
+                    stub_local=True)
+show("모델 폴더가 없으면 명시적 실패다 — 문면이 그 경로를 말한다",
+     "NotConfigured" in (_nodir["error"] or "") and "없는폴더" in (_nodir["error"] or ""),
+     (_nodir["error"] or "")[:60])
+_bad, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_BACKEND": "wat", "EMBED_MODEL": "x"})
+show("EMBED_BACKEND는 닫힌 2종이다 (모르는 값은 명시적 실패)",
+     "NotConfigured" in (_bad["error"] or "") and "gateway | local" in (_bad["error"] or ""),
+     (_bad["error"] or "")[:60])
+_shutil.rmtree(_dir80, ignore_errors=True)
+show("임베딩 요청을 조립하는 자리가 한 곳이다 (탐침이 따로 짜지 않는다)",
+     [f"{p.relative_to(ROOT)}"
+      for d in ("core", "cli") for p in sorted((ROOT / d).rglob("*.py"))
+      if "__pycache__" not in p.parts and "/embeddings" in p.read_text(encoding="utf-8")]
+     == ["core/llm/embeddings.py"])
+# **오류 문면이 주소를 말한다** — 404는 「그 주소에 그 경로가 없다」다.
+_ge = llm.GatewayError(404, "not found", "http://embed.stub/v1/embeddings")
+show("GatewayError 문면에 POST 주소가 있다 (M9 — 어디를 쳤는지 모르면 설정을 못 고친다)",
+     "POST http://embed.stub/v1/embeddings" in str(_ge), str(_ge))
+# **USE_MOCK=1 경로는 선택 의존을 import하지 않는다**(문서 7 §7.1).
+show("mock 갈래는 sentence_transformers를 import하지 않는다 (선택 의존 격리)",
+     "sentence_transformers" not in sys.modules
+     and isinstance(embeddings.embed("가"), list),
+     str(sorted(m for m in sys.modules if "sentence" in m)))
 
 # ============================================================ 본문 스모크
 # **도달과 실행은 다르다**(B79 ③ⓒ). 위의 탐침은 `require`의 `NotConfigured`까지

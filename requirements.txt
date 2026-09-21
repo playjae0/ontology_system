@@ -29,7 +29,13 @@ PyMuPDF>=1.23        ; python_version >= "3.10"
 orjson>=3.9          ; python_version >= "3.10"
 
 # ── 모델 클라이언트 ───────────────────────────────────────────────────────
-# 사내 게이트웨이의 실물·프로토콜이 아직 [사내 확인]이다. core/llm.py는 표준
-# urllib로 HTTP를 부르므로 **추가 패키지 없이 동작한다** — 게이트웨이가 전용
-# SDK를 요구하면 그때 이 자리에 적는다. USE_MOCK=0의 설정은 환경변수로 받는다
-# (LLM_GATEWAY_URL 등 — core/llm.py 머리말 참조).
+# 게이트웨이는 OpenAI 호환 HTTP다. `core/llm/gateway.py`가 표준 urllib로 부르므로
+# **추가 패키지 없이 동작한다** — 전용 SDK를 요구하는 게이트웨이면 그때 이 자리에
+# 적는다. USE_MOCK=0의 설정은 환경변수나 `llm.json`으로 받는다
+# (LLM_GATEWAY_URL·CHAT_MODEL·CHAT_TEMPERATURE 등 — `core/llm/gateway.py` 머리말 참조).
+
+# ── 로컬 임베딩 (선택 · EMBED_BACKEND=local일 때만) ────────────────────────
+# 없으면: `EMBED_BACKEND=local`이 **명시적 실패**한다(조용히 게이트웨이로 떨어지지
+# 않는다 — B80 ③). `EMBED_BACKEND=gateway`(기본)는 이 패키지 없이 돈다.
+# `EMBED_MODEL`은 그때 **로컬 모델 폴더 경로**다(예: bge-m3 계열).
+sentence-transformers>=2.2  ; python_version >= "3.10"

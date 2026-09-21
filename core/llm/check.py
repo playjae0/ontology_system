@@ -77,6 +77,18 @@ def _proxy_env():
     return [n for n in names if os.environ.get(n)]
 
 
+def embed_line(cfg):
+    """① 설정 줄의 임베딩 조각 — `embed <backend> <model|폴더> [url]` (B80 ③).
+
+    주소를 함께 내는 이유: 임베딩이 채팅과 **다른 base**를 쓸 수 있게 됐고
+    (`EMBED_GATEWAY_URL`), 어디를 쳤는지가 화면에 없으면 404를 사람이 못 짚는다.
+    """
+    backend = cfg.get("embed_backend") or "gateway"
+    model = cfg.get("embed_model") or "미설정"
+    where = f" {cfg.get('embed_url')}" if backend == "gateway" else ""
+    return f"embed {backend} {model}{where}"
+
+
 def _probe_embed(cfg, add):
     """⑥⑦ — 임베딩과 이미지 입력. **미설정이 정상**이고, 막히면 그 사실만 말한다.
 
@@ -92,11 +104,13 @@ def _probe_embed(cfg, add):
             "여기서 막힌다. 질의 3단은 「구현하지 않는다」가 명세다(§5.1-4 · P7)")
     else:
         try:
-            e_raw = gateway._post(f"{cfg['url']}/embeddings",
-                          {"model": cfg["embed_model"], "input": PING},
-                          cfg["key"], cfg["timeout"])
-            v = e_raw["data"][0]["embedding"]
-            add("⑥", "임베딩", True, f"{cfg['embed_model']} — {len(v)}차 벡터")
+            # **탐침도 실물을 부른다**(B80 ③) — 여기서 payload를 따로 짜면
+            # 게이트웨이/로컬 갈래가 두 자리로 갈리고, 점검이 통과한 뒤 인입이
+            # 막힌다(①과 같은 병). `embed()`가 갈래를 아는 유일한 자리다.
+            from core.llm import embeddings as _EM
+            v = _EM.embed(PING)
+            add("⑥", "임베딩", True,
+                f"{cfg['embed_backend']} · {cfg['embed_model']} — {len(v)}차 벡터")
         except Exception as e:
             add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
 
@@ -106,13 +120,14 @@ def _probe_embed(cfg, add):
     # 사실이 **사내 첫 파싱에서** 드러나는데, 그때는 이미 문서를 돌린 뒤다.
     # 여기서 1회에 판정한다 — 실패해도 치명은 아니다(그림 없는 문서는 돈다).
     try:
-        gateway._post(f"{cfg['url']}/chat/completions",
-              {"model": cfg["model"], "temperature": 0,
-               "messages": [{"role": "user", "content": [
-                   {"type": "text", "text": "이 그림에 무엇이 보이나?"},
-                   {"type": "image_url",
-                    "image_url": {"url": gateway._data_uri(gateway._PING_PNG, "image/png")}}]}]},
-              cfg["key"], cfg["timeout"])
+        gateway._post(
+            f"{cfg['url']}/chat/completions",
+            gateway._payload(cfg, [{"role": "user", "content": [
+                {"type": "text", "text": "이 그림에 무엇이 보이나?"},
+                {"type": "image_url",
+                 "image_url": {"url": gateway._data_uri(gateway._PING_PNG,
+                                                        "image/png")}}]}]),
+            cfg["key"], cfg["timeout"])
         add("⑦", "이미지 입력", True,
             "멀티모달 content 통과 — ④이미지 요약이 바이트를 보낼 수 있다")
     except gateway.GatewayError as e:
@@ -139,11 +154,9 @@ def _probe_points(cfg, points, add):
                 if not cfg["embed_model"]:
                     add("·", label, None, "EMBED_MODEL 미설정 — 이연 항목(⑥ 참조)")
                     continue
-                e_raw = gateway._post(f"{cfg['url']}/embeddings",
-                              {"model": cfg["embed_model"], "input": PING},
-                              cfg["key"], cfg["timeout"])
+                from core.llm import embeddings as _EM     # 갈래는 한 자리다(B80 ③)
                 add("·", label, True,
-                    f"{len(e_raw['data'][0]['embedding'])}차 벡터")
+                    f"{cfg['embed_backend']} · {len(_EM.embed(PING))}차 벡터")
                 continue
             msgs = ([{"role": "system", "content": gateway.prompt(pt)}]
                     if gateway.has_prompt(pt) else [])
@@ -188,7 +201,9 @@ def probe(points=None, *, timeout=None):
     try:
         gateway.require("chat")
         add("①", "설정", True, f"CHAT_MODEL={cfg['model']} · "
-                              f"LLM_API_KEY {key_state()} · {where}"
+                              f"temperature {gateway.temperature_line(cfg)} · "
+                              f"LLM_API_KEY {key_state()} · {embed_line(cfg)} · "
+                              f"{where}"
                               + (f"\n{warn}" if warn else ""))
     except gateway.NotConfigured as e:
         # **파일로 넣는 법을 함께 낸다** — 변수 이름만 말하면 매 세션 export를
@@ -203,8 +218,9 @@ def probe(points=None, *, timeout=None):
 
     # ②③④ 한 번의 왕복이 셋을 가른다 — 어디서 끊겼는지가 곧 원인이다.
     url = f"{cfg['url']}/chat/completions"
-    payload = {"model": cfg["model"], "temperature": 0,
-               "messages": [{"role": "user", "content": PING}]}
+    # **조립은 `gateway._payload` 하나다**(B80 ①) — 탐침이 따로 짜면 손잡이를 더해도
+    # 점검은 옛 모양을 보내고 인입만 400이 난다.
+    payload = gateway._payload(cfg, [{"role": "user", "content": PING}])
     raw = None
     try:
         raw = gateway._post(url, payload, cfg["key"], cfg["timeout"])
@@ -254,11 +270,11 @@ def probe(points=None, *, timeout=None):
     sch = {"type": "object", "properties": {"ok": {"type": "boolean"}},
            "required": ["ok"], "additionalProperties": False}
     try:
-        r2 = gateway._post(url, {**payload, "response_format": {
-            "type": "json_schema",
-            "json_schema": {"name": "out", "schema": sch, "strict": True}},
-            "messages": [{"role": "user",
-                          "content": 'reply {"ok": true}'}]},
+        r2 = gateway._post(
+            url,
+            gateway._payload(cfg, [{"role": "user",
+                                    "content": 'reply {"ok": true}'}],
+                             json_schema=sch),
             cfg["key"], cfg["timeout"])
         json.loads(r2["choices"][0]["message"]["content"])
         add("⑤", "구조화 출력", True, "response_format.json_schema 통과")
