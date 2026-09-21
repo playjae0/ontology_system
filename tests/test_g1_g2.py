@@ -27,21 +27,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core.build import gate                              # noqa: E402
-from core.state import init, store
-from core import paths as _P               # 상태 자리는 한 모듈이 안다 (B78 1a)
-from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E402
+from g1_common import *          # noqa: F401,F403 — 바닥은 하나다
+from g1_common import (_P, _re, _shutil2, done, reset, show,     # noqa: F401
+                       ROOT, init, store, bootstrap, load_config, open_graph)
+
+from core.build import gate                                     # noqa: E402
 from core.state.ids import is_ulid                              # noqa: E402
 from core.build.ingest import ingest                            # noqa: E402
-
-allok = True
-
-
-def show(label, ok, detail=""):
-    global allok
-    allok &= bool(ok)
-    print(f"  [{'PASS' if ok else 'FAIL'}] {label}" + (f"  — {detail}" if detail else ""))
-    return bool(ok)
 
 
 def load(name):
@@ -52,14 +44,8 @@ def canon(g):
     return {n["canonical"] for n in g.nodes.values()}
 
 
-def reset():
-    """**깨끗한 그래프에서 전체 재빌드.** v3.2는 canonical 체계 자체가 바뀌었으므로
-    (sub 이하 부모 경로 접두 · 인스턴스 `{개념}::{축값}`) 기존 그래프 위에 다시 심으면
-    옛 골격이 살아남는다 — 멱등성(D-41)이 막는 것은 "같은 canonical의 재발급"이지
-    "canonical 체계 변경"이 아니다. 기대값 대조는 반드시 이 경로로 한다.
-    """
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
-    return bootstrap("process", echo=False)
+# `reset()`은 공용 바닥이 갖는다(`g1_common`) — v3.2는 canonical 체계가 바뀌어
+# 기존 그래프 위에 다시 심으면 옛 골격이 살아남는다. 기대값 대조는 그 경로로 한다.
 
 
 # ============================================================ st
@@ -78,206 +64,6 @@ for p in ROOT.rglob("*.py"):
         if PAT.search(line) and not line.lstrip().startswith("#"):
             hits.append(f"{p.relative_to(ROOT)}:{i}")
 show("core/graph.py 밖에서 층 그래프 파일을 아는 코드 0지점", not hits, str(hits))
-
-# ── B78 1a — **상태의 자리를 아는 모듈은 하나다** ────────────────────────
-# 코드를 새로 가져올 때 `review/`·`data/`·`parsed/`를 전부 같이 옮겨야 했던 이유가
-# 이것이다: 자리를 아는 코드가 26곳(운영)에 복사돼 있었다. 자리를 한 모듈이 알면
-# **코드 교체와 상태 이사가 갈린다**(B78 1a · 칸 0.4).
-#
-# 경계 예외 셋은 **이름으로** 허용한다 — 늘어나면 붉는다:
-#   · `parser/`  2곳 — 파서는 외부 전달물이라 core를 import하지 않는다(문서 6 §6.7)
-#   · `kit/`     1곳 — 킷도 같다(관문 G54가 `core.llm` 미적재를 상시로 잰다).
-#                 2c에서 표가 갈리며 그 한 곳이 `kit/gate_tables.py`(공용 블록의 자리)다.
-import re as _re                                  # noqa: E402
-_STATE = "|".join(("data", "review", "parsed", "extract", "export",
-                   "golden", "adapters", "schemas"))
-_SPAT = _re.compile(r'(ROOT|parent\.parent)\s*/\s*"(?:' + _STATE + r')"')
-_ALLOW = {"core/paths.py", "parser/struct_map.py", "parser/tagger.py",
-          "kit/gate_tables.py"}
-_state_hits = [f"{p.relative_to(ROOT)}:{i}"
-               for d in ("core", "cli", "parser", "kit")
-               for p in sorted((ROOT / d).rglob("*.py"))
-               if "__pycache__" not in p.parts
-               and str(p.relative_to(ROOT)) not in _ALLOW
-               for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-               if _SPAT.search(line) and not line.lstrip().startswith("#")]
-for _f in ("run.py", "doctor.py"):
-    _state_hits += [f"{_f}:{i}" for i, line in enumerate(
-        (ROOT / _f).read_text(encoding="utf-8").splitlines(), 1)
-        if _SPAT.search(line) and not line.lstrip().startswith("#")]
-show("상태 경로를 조립하는 코드가 core/paths.py 밖에 없다 (경계 예외 3곳 제외)",
-     not _state_hits, str(_state_hits))
-
-# **폴더를 만드는 자리도 하나다**(B77 ④의 연장) — 자리를 옮길 때 한 곳이 남으면
-# 그것이 옛 자리를 되살린다. doctor의 시험 보조 폴더는 상태가 아니다.
-_MPAT = _re.compile(r"\.mkdir\(")
-_MKALLOW = {"core/paths.py", "parser/struct_map.py"}
-_mk_hits = [f"{p.relative_to(ROOT)}:{i}"
-            for d in ("core", "cli", "parser", "kit")
-            for p in sorted((ROOT / d).rglob("*.py"))
-            if "__pycache__" not in p.parts
-            and str(p.relative_to(ROOT)) not in _MKALLOW
-            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-            if _MPAT.search(line) and not line.lstrip().startswith("#")]
-show("폴더를 만드는 코드가 core/paths.py 밖에 없다 (파서 경계 1곳 제외)",
-     not _mk_hits, str(_mk_hits))
-
-# ── B78 1b — **자리가 가른다**(모드가 아니라) ────────────────────────────
-# ①mock 자산은 픽스처 폴더에만 ②등록은 `registry/`에만 ③mock 실행은 mock 루트에만.
-# 구판은 같은 폴더에 두고 모드로 갈랐고, 그래서 「mock이 이름만 다르게 숨어 있다」였다.
-_repo_schema_dt = sorted(
-    p.name for p in (ROOT / "schemas").glob("*.json")
-    if "doc_type" in json.loads(p.read_text(encoding="utf-8")))
-show("레포 schemas/에 doc_type 키를 가진 파일 0 (공용 블록만 남는다)",
-     not _repo_schema_dt, str(_repo_schema_dt))
-
-show("등록부는 등록 단에 있다 — 진실과 함께 지워지지 않는다",
-     store.path(store.DOC_TYPES).is_relative_to(_P.registry())
-     and not store.path(store.DOC_TYPES).is_relative_to(_P.data()))
-
-_keep_owners = [m for m in (init, store)
-                if any("KEEP_IN" + "_DATA" == n for n in dir(m))]
-show("이름으로 지켜 내는 예외가 코드에 없다 — 자리가 갈리면 규칙이 준다",
-     not _keep_owners, str(_keep_owners))
-
-# **파서는 core를 import하지 않는다**(문서 6 §6.7) — 그래서 자리를 **주입으로** 받는다.
-# 값이 아니라 함수를 받아야 상태 루트가 갈릴 때 파서도 같이 움직인다.
-from parser import struct_map as _SM2, tagger as _TG2            # noqa: E402
-_psrc = "".join((ROOT / "parser" / f).read_text(encoding="utf-8")
-                for f in ("struct_map.py", "tagger.py"))
-show("파서의 상태 자리 둘이 주입으로 상태 루트를 따른다 (파서는 core를 모른다)",
-     _SM2.keep_dir().is_relative_to(_P.work())
-     and _TG2.snapshot_path() == store.path(store.SKELETON_LIST)
-     and "import core" not in _psrc and "from core" not in _psrc,
-     f"{_SM2.keep_dir()} · {_TG2.snapshot_path()}")
-
-# **변이 — 운영 루트에 감시 파일을 두고 mock으로 돌린다.** 한 바이트도 닿지 않아야 한다.
-_watch = Path(tempfile.mkdtemp(prefix="b78watch_"))
-(_watch / "감시.txt").write_text("touched?", encoding="utf-8")
-_before = sorted(str(p.relative_to(_watch)) for p in _watch.rglob("*"))
-_mockrun = subprocess.run(
-    [sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
-    capture_output=True, text=True, cwd=str(ROOT),
-    env=dict(os.environ, USE_MOCK="1", ONTO_HOME=str(_watch)),
-    stdin=subprocess.DEVNULL)
-_after = sorted(str(p.relative_to(_watch)) for p in _watch.rglob("*"))
-show("USE_MOCK=1 실행이 ONTO_HOME(운영 루트)에 쓰지 않는다 — 자리로 끊는다",
-     _mockrun.returncode == 0 and _before == _after and _P.is_mock_home(),
-     f"{_after} · rc={_mockrun.returncode}")
-_shutil2.rmtree(_watch, ignore_errors=True)
-
-# ── B78 2b — **모듈은 자기 자리를 한 줄로 말한다** ────────────────────────
-# 단계 3의 코드 지도 생성기가 이 첫 줄을 읽는다. 없으면 그 자리는 지도에서 이름만
-# 남고, 「어느 칸의 코드인가」를 사람이 파일을 열어 추측하게 된다.
-import ast as _ast78                                                # noqa: E402
-_mods78 = [p for d in ("core", "cli", "parser", "kit")
-           for p in sorted((ROOT / d).rglob("*.py")) if "__pycache__" not in p.parts]
-_mods78 += [ROOT / "run.py", ROOT / "doctor.py", ROOT / "router.py"]
-_nodoc78 = [str(p.relative_to(ROOT)) for p in _mods78
-            if not _ast78.get_docstring(_ast78.parse(p.read_text(encoding="utf-8")))]
-show("운영 모듈 중 머리말 없는 파일 0 (자리를 한 줄로 말한다)", not _nodoc78, str(_nodoc78))
-_nokan78 = [str(p.relative_to(ROOT)) for p in _mods78
-            if not (_ast78.get_docstring(_ast78.parse(p.read_text(encoding="utf-8")))
-                    or "").startswith("칸 ")]
-show("머리말 첫 줄이 칸 번호로 시작한다 (칸 대장과 코드가 같은 번호를 쓴다)",
-     not _nokan78, str(_nokan78[:5]))
-
-# **cli/에 sys.path 조작이 없는가** (문서 7 §7.1 패키지화).
-# 조작으로 붙이면 CLI가 실행 위치에 의존해 "subprocess로 호출 가능한 CLI+파일"이
-# 호출부의 작업 디렉터리에 따라 깨진다. 실행 규약은 `python -m cli.{진입점}`이다.
-PATH_HACK = "sys" + r"\.path\.insert"
-import re as _re
-_pat = _re.compile(PATH_HACK)
-cli_hits = [f"{p.relative_to(ROOT)}:{i}"
-            for p in sorted((ROOT / "cli").glob("*.py"))
-            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-            if _pat.search(line) and not line.lstrip().startswith("#")]
-show("cli/ 8종에 sys.path 조작 0지점 — 실행은 python -m cli.{진입점}",
-     not cli_hits, str(cli_hits))
-
-# **원자적 쓰기가 배선돼 있는가** (문서 7 §7.1 저장 계층).
-# 직접 덮어쓰면 build가 쓰기 도중 죽었을 때 진실이 반쯤 쓰인 채 남는다 —
-# data/는 백업 대상이지 재생성 대상이 아니라 복구가 불가능하다.
-_src = (ROOT / "core" / "state" / "store.py").read_text(encoding="utf-8")
-_gsrc = (ROOT / "core" / "graph.py").read_text(encoding="utf-8")
-show("저장 쓰기가 tmp+os.replace·flock 경유다 (직접 덮어쓰기 0)",
-     "os.replace" in _src and "flock" in _src
-     and "atomic_write_bytes" in _gsrc
-     and "write_bytes(_dumps(" not in _gsrc)
-
-# **빈 상태의 형태가 §7.2 말미와 같은가** — 클린의 정의가 하나여야
-# 회귀 규약(§7.5-7)과 완료판정 4번이 같은 바닥 위에 선다.
-from core.state import init as _init                                # noqa: E402
-_init.init(fresh_=True)
-_want = {store.CHUNKS: {"chunks": {}, "describes": []},
-         store.DICTIONARY: {}, store.QUEUE: []}
-_got = {n: store.read(n, "없음") for n in _want}
-show("run.py init --fresh 의 빈 상태 형태가 명세와 일치 (§7.2)",
-     _got == _want, str(_got))
-
-# **클린이 승인 기록을 지우지 않는가** (§7.8 — 사람 판단 기록은 재생성되지 않는다).
-# `review/{doc_type}/approval.json`이 승인의 물리 정본이라, 클린이 그것을 지우면
-# 사내에서 `init --fresh` 한 번에 승인 이력이 사라진다(실증된 결함).
-from core.state import init as _init2                                 # noqa: E402
-_probe = _P.review() / "_clean_probe"
-_probe.mkdir(parents=True, exist_ok=True)
-(_probe / "approval.json").write_text('{"approved_by": "시험자"}', encoding="utf-8")
-_init2.init(fresh_=True)
-_kept = (_probe / "approval.json").exists()
-show("run.py init --fresh 가 review/의 승인 기록을 지우지 않는다 (§7.8)",
-     _kept and "registry" not in _init2.WIPE_TIERS, str(_init2.WIPE_TIERS))
-import shutil as _sh
-_sh.rmtree(_probe, ignore_errors=True)
-
-# **core 접근 경계 3종이 관문으로 서 있는가** (문서 7 §7.1).
-# 자산에 파일과 의미론만 있고 관문이 없으면 호출부마다 제 규칙으로 붙는다 —
-# 실제로 사전 접근이 5곳으로 흩어져 있었고 provenance 필수는 한 곳만 지켰다.
-_DICT_KEY = "store" + r"\.(?:read|write)\(store\.DICTIONARY"
-import re as _re2
-_dp = _re2.compile(_DICT_KEY)
-_bypass = [f"{p.relative_to(ROOT)}:{i}"
-           for p in sorted(list((ROOT / "core").rglob("*.py")) + list((ROOT / "cli").glob("*.py")))
-           if p.name != "dictionary.py"
-           for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-           if _dp.search(line) and not line.lstrip().startswith("#")]
-show("core/dictionary.py 밖에서 사전을 직접 여는 코드 0지점", not _bypass, str(_bypass))
-
-from core.dictionary import Dictionary                          # noqa: E402
-_d = Dictionary()
-try:
-    _d.register("표기", "N1", provenance=None)
-    _prov_forced = False
-except ValueError:
-    _prov_forced = True
-show("사전 등재의 provenance 필수가 관문에서 강제된다 (문서 1 G2)", _prov_forced)
-
-from core import matcher as _M                                  # noqa: E402
-show("matcher가 match(surface, candidates, category) 계약을 갖는다 (§7.1)",
-     all(hasattr(_M, f) for f in ("match", "candidates", "resolve"))
-     and list(_M.match.__code__.co_varnames[:3]) == ["surface", "candidates", "category"])
-_v = _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
-                      "category": "Unit", "exact": False}], "Unit")
-# **계약 세 키는 그대로이고, 생성 경로 한 키가 더 붙는다**(B74 ② — 명세가 허용한
-# 유일한 추가다). 「정확히 3키」로 잠그면 대장이 판정의 사실을 옮길 통로가 없어
-# 호출부가 경로를 **다시 계산하게** 된다 — 그 복제가 예고와 판정을 갈라 놓았다.
-show("판정 반환이 {type, matched_id, confidence} 세 키를 지킨다 + path (문서 4 §4.3-6)",
-     set(_v) == {"type", "matched_id", "confidence", "path"}
-     and _v["matched_id"] == "N9" and _v["path"] in _M.PATHS, str(_v))
-show("카테고리 불일치는 후보에서 제외된다 — 판정이 재확인한다 (규약 3)",
-     _M.match("가", [{"id": "N9", "canonical": "가", "aliases": [],
-                      "category": "Property", "exact": False}], "Unit")["type"] == _M.NEW)
-
-import core.state.skeleton as _SK                                     # noqa: E402
-show("골격 심기가 core/state/skeleton.py에 산다 (§7.1 — 파생이 loader에 섞이지 않는다)",
-     all(hasattr(_SK, f) for f in ("plant", "_plant_tree", "_link_seed_mirrors"))
-     and "_TreeParser" in dir(_SK))
-_bsrc = (ROOT / "core" / "state" / "bootstrap.py").read_text(encoding="utf-8")
-show("bootstrap에 트리 파싱·모양 분기가 남아 있지 않다",
-     "_TreeParser" not in _bsrc and "TYPE_FLAT" not in _bsrc)
-
-from core.state import ops as _OPS                                    # noqa: E402
-show("I2 병합 후보가 판정 경유로 제안된다 (문서 4 §4.3 재사용 3지점 중 하나)",
-     hasattr(_OPS, "merge_targets"))
 
 # ============================================================ 저장 레코드 스키마
 print("\n■ 저장 레코드 스키마 — 문서 7 §7.2 전문 대조")
@@ -665,7 +451,7 @@ print("\n■ B61 ② — 골격 확정 거부가 위반 전건을 줄 번호와 
 import shutil as _sh61                                           # noqa: E402
 from cli import skeleton as _SK61                                # noqa: E402
 
-_seed61 = ROOT / "layers" / "process" / "skeleton.json"
+_seed61 = _P.layers("process", "skeleton.json")     # 층 자산은 상태 루트다(B79 ①)
 _keep61 = _seed61.read_text(encoding="utf-8")
 # **위반 둘을 심는다** — 극성 마커 오타 하나, main·sub 이름 중복 하나.
 _bad61 = (_keep61.replace('{ "탭용접": ["::cathode", "::anode",',
@@ -695,25 +481,6 @@ finally:
 show("② 되돌리면 위반 0건이다 (시험 자체가 늘 붉는 것이 아니다)",
      _SK61.check("process") == [])
 
-# ── B78 3 — **코드 지도는 생성물이다** ────────────────────────────────
-# 손으로 쓴 구조 설명은 코드가 움직이면 낡고, 낡은 지도는 사람을 없는 자리로 보낸다.
-# 그래서 다시 만들어 레포의 것과 **대조한다** — 다르면 지도가 낡았다는 뜻이고,
-# 고치는 방법은 문장을 손보는 것이 아니라 생성기를 다시 돌리는 것이다.
-_map78 = ROOT / "docs" / "구조도" / "10_코드_지도.md"
-with tempfile.TemporaryDirectory() as _td78:
-    _gen78 = subprocess.run(
-        [sys.executable, str(ROOT / "docs" / "회귀스위트" / "추출_구조.py")],
-        capture_output=True, text=True, cwd=str(ROOT),
-        env={**os.environ, "STRUCT_DIR": _td78, "REFINED_DIR": "docs/spec"})
-    _fresh78 = Path(_td78) / "10_코드_지도.md"
-    _same78 = (_fresh78.exists() and _map78.exists()
-               and _fresh78.read_text(encoding="utf-8") == _map78.read_text(encoding="utf-8"))
-    # 자리 설명은 **임시 폴더가 살아 있는 동안** 잰다(밖에서 재면 늘 「없음」이 뜬다).
-    _det78 = f"rc={_gen78.returncode} · 생성 {_fresh78.exists()} · 줄 {len(_fresh78.read_text(encoding='utf-8').splitlines()) if _fresh78.exists() else 0}"
-show("코드 지도를 다시 만들면 레포의 것과 같다 (지도가 코드보다 낡지 않는다)",
-     _same78, _det78)
 
 # ============================================================
-print("\n" + "=" * 62)
-print("전체 결과:", "PASS — G1+G2 완료판정 충족" if allok else "FAIL")
-sys.exit(0 if allok else 1)
+done("G1+G2 완료판정 충족")

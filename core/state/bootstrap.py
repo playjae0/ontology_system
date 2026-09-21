@@ -38,7 +38,8 @@ from core.state.skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
                        SEED_STATUS, SeedError, _pad, _register_aliases, plant)
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
-LAYERS = ROOT / "layers"
+# **층 자산의 자리는 상수가 아니라 질문이다**(B79 ①) — 상태 루트 아래이고
+# `paths.reset()`을 따라 움직여야 한다. `paths.layers()`가 유일한 자리 소유자다.
 
 
 # ---- seed 문법: 코드가 아는 전부 -------------------------------------------
@@ -57,7 +58,7 @@ LAYERS = ROOT / "layers"
 
 
 def load_config(layer):
-    return json.loads((LAYERS / layer / "config.json").read_text(encoding="utf-8"))
+    return json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
 
 
 def layer_of_category(category):
@@ -89,7 +90,7 @@ def load_seed(layer, skel):
     src = skel.get("source")
     if not src:
         return skel
-    return json.loads((LAYERS / layer / src).read_text(encoding="utf-8"))
+    return json.loads(paths.layers(layer, src).read_text(encoding="utf-8"))
 
 
 def _stale_skeleton(g, category, planted):

@@ -2,6 +2,8 @@
 """G6 ③ 일괄 투입 — ingest-file·ingest-dir 조건 셋 · 상태 거부 문면의 계약(B61 ①)."""
 from __future__ import annotations
 
+import os
+import subprocess as _sp
 import sys
 from pathlib import Path
 
@@ -75,6 +77,49 @@ show("ingest-dir — 4건 순회 · 성공 2 · 실패 1(C14 파싱 실패) · �
 show("한 건의 실패가 나머지를 멈추지 않는다 — 실패 뒤의 문서도 인입됐다",
      [r["doc_id"] for r in _rows].index("CP03_bad") < [r["doc_id"] for r in _rows].index("CP04_unlabeled")
      and _st["CP04_unlabeled"] == "성공")
+# ── B79 ② — **원본 자리(⓪)와 기록 표기** ──────────────────────────────
+# 사내 물음: 「원본 문서도 ONTO_HOME에 있어야 하는 것 아닌가」. 그렇다 — 그리고
+# 대장의 표기가 절대 경로면 루트를 옮긴 다음 전건이 「다른 경로」로 뜬다.
+_dz = _P.docs("사내" , "가지")
+_dz.mkdir(parents=True, exist_ok=True)
+shutil.copy(_RAW / "CP01.xlsx", _dz / "CP01.xlsx")
+_buf79 = _io.StringIO()
+with _ctx.redirect_stdout(_buf79):
+    _rows79 = IG.main(["--allow-mock"])          # 인자 없이 = 원본 자리 전체
+_out79 = _buf79.getvalue()
+_reg79 = store.read(store.DOC_REGISTRY, {}).get("CP01") or {}
+show("② 인자 없는 ingest-dir가 원본 자리를 **재귀로** 돈다 (하위 폴더에 넣는다)",
+     str(_P.docs()) in _out79 and "CP01" in _out79,
+     str(_reg79.get("source_path")))
+show("② 상태 루트 아래 문서의 기록은 루트 기준 상대다 (절대 경로 0 — 옮겨도 낡지 않는다)",
+     not Path(_reg79.get("source_path", "/x")).is_absolute()
+     and _reg79["source_path"].startswith("docs/"),
+     str(_reg79.get("source_path")))
+# 밖의 문서는 절대 경로다 — 옮길 수 있는 자리가 아니다.
+_out_reg = store.read(store.DOC_REGISTRY, {}).get("CP04_unlabeled") or {}
+show("② 상태 루트 밖의 문서는 절대 경로로 남는다 (되돌릴 기준이 없다)",
+     Path(_out_reg.get("source_path", "x")).is_absolute(), str(_out_reg.get("source_path")))
+# **루트를 옮겨도 같은 문서다** — 기록이 상대라 비교가 새 루트에서 맞는다.
+# (mock 루트는 자리가 고정이므로 루트 갈아 끼우기는 `USE_MOCK=0`으로 잰다 —
+#  재는 것은 경로 비교 하나이고 게이트웨이는 필요 없다.)
+_moved = Path(_tf.mkdtemp(prefix="b79move_"))
+(_moved / "docs" / "사내" / "가지").mkdir(parents=True)
+shutil.copy(_RAW / "CP01.xlsx", _moved / "docs" / "사내" / "가지" / "CP01.xlsx")
+_keepenv = {k: os.environ.get(k) for k in ("ONTO_HOME", "USE_MOCK")}
+try:
+    os.environ.update(ONTO_HOME=str(_moved), USE_MOCK="0")
+    _P.reset()
+    _same79 = (IG._norm_path(_reg79["source_path"])
+               == IG._norm_path(_moved / "docs" / "사내" / "가지" / "CP01.xlsx"))
+finally:
+    for _k, _v in _keepenv.items():
+        os.environ.pop(_k, None) if _v is None else os.environ.__setitem__(_k, _v)
+    _P.reset()
+show("② 루트를 옮겨도 기록이 같은 문서를 가리킨다 (「다른 경로」 경고가 뜨지 않는다)",
+     _same79, f"{_reg79['source_path']} ↔ {_moved}")
+shutil.rmtree(_moved, ignore_errors=True)
+shutil.rmtree(_P.docs(), ignore_errors=True)
+
 show("③ 실패 문서의 화면에 블록이 떴다 (태그·다음 줄 — B61)",
      "[FAIL] P31" in _out6 and "▶ 다음 줄" in _out6
      and "python -m cli.register" in _out6)

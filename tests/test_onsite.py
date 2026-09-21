@@ -68,6 +68,9 @@ class Site:
         os.environ["ONTO_HOME"] = str(self.home)
         os.environ["USE_MOCK"] = "0"
         _P.reset()
+        # **층 자산도 상태 루트에 산다**(B79 ①) — 사내가 고쳐 승인 1회 하는 ②등록
+        # 단이고, 코드 폴더에 두면 코드 교체가 사내 골격을 seed 판으로 되돌린다.
+        shutil.copytree(_P.seed_layers(), _P.layers())
         self.ad = _P.adapters() / f"{DT}.py"
         self.sc = _P.schemas() / f"{DT}.json"
         self.rv = _P.review() / DT
@@ -291,6 +294,20 @@ _dict = json.dumps({"노칭": "n1"}, ensure_ascii=False)
     '{"doc_type": "x", "approved_by": "사내검수자"}', encoding="utf-8")
 (_old / "parsed" / "X1.json").write_text("{}", encoding="utf-8")
 (_old / "extract" / "X1.json").write_text("{}", encoding="utf-8")
+# **층 자산**(B79 ①) — 사내가 고친 골격이 옛 코드 폴더에 있다. 이관이 이것을
+# 두고 가면 코드 교체가 사내 골격을 레포 seed 판으로 되돌린다.
+(_old / "layers" / "process").mkdir(parents=True)
+(_old / "layers" / "process" / "config.json").write_text(
+    '{"layer": "process", "skeleton_version": "사내-1"}', encoding="utf-8")
+(_old / "layers" / "process" / "skeleton.json").write_text(
+    '{"seed_format": "3.2", "TREE": {"사내공정": []}}', encoding="utf-8")
+
+# ⓪원본(B79 ②) — 옛 코드 폴더의 `docs/`에는 **실물 문서와 명세가 섞여 있다**.
+# 이 레포의 `docs/`가 곧 명세 폴더이기 때문이다.
+(_old / "docs" / "사내").mkdir(parents=True)
+(_old / "docs" / "사내" / "CP.xlsx").write_bytes(b"PK\x03\x04fake")
+(_old / "docs" / "spec").mkdir()
+(_old / "docs" / "spec" / "7_구현규격과검증.md").write_text("# 명세", encoding="utf-8")
 
 _sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 _res = _MG.run(_old, _new)
@@ -319,6 +336,15 @@ show("③ 락 파일은 이관 대상이 아니다 (원자 쓰기의 부산물 �
 show("③ 옛 폴더는 그대로 둔다 — 복사다(되돌릴 자리를 없애지 않는다)",
      (_old / "data" / "doc_types.json").is_file()
      and (_old / "review" / "x" / "approval.json").is_file())
+show("③ 층 자산이 상태 루트로 따라온다 — 해시가 같다 (B79 ①)",
+     all(_sha(_new / "layers" / "process" / f) == _sha(_old / "layers" / "process" / f)
+         for f in ("config.json", "skeleton.json")),
+     str(sorted(p.name for p in (_new / "layers").rglob("*") if p.is_file())))
+show("② 원본은 문서 포맷만 따라온다 — 명세 문서는 원본 자리로 가지 않는다 (B79 ②)",
+     (_new / "docs" / "사내" / "CP.xlsx").is_file()
+     and not (_new / "docs" / "spec").exists(),
+     str(sorted(p.relative_to(_new / "docs").as_posix()
+                for p in (_new / "docs").rglob("*") if p.is_file())))
 show("③ 이관 로그가 무엇을 어디로 옮겼는지 남긴다 (해시 병기)",
      _res["log"].is_file()
      and str(_old) in _res["log"].read_text(encoding="utf-8")
@@ -349,7 +375,40 @@ try:
     show("③ 이관 명령 자신은 그 거부에 걸리지 않는다",
          _r2.returncode == 0 and "이관 예정" in _r2.stdout,
          (_r2.stdout + _r2.stderr).strip().splitlines()[:1])
+    # ── B79 ① 층 자산 관문 — 이관은 끝났는데 **층만 없는** 자리 ─────────
+    _nol = Path(tempfile.mkdtemp(prefix="b79nolayer_"))
+    (_nol / "registry").mkdir(parents=True)
+    (_nol / "registry" / "doc_types.json").write_text("{}", encoding="utf-8")
+    _e2 = dict(os.environ, USE_MOCK="0", ONTO_HOME=str(_nol))
+    _e2.pop("ONTO_CONFIG", None)
+    _r3 = subprocess.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
+                         capture_output=True, text=True, cwd=str(ROOT), env=_e2,
+                         stdin=subprocess.DEVNULL)
+    _t3 = _r3.stdout + _r3.stderr
+    show("① 층 자산이 없으면 상태 거부다 — 조용히 레포 seed로 떨어지지 않는다",
+         _r3.returncode != 0 and str(_nol / "layers") in _t3
+         and "지금 잰 것" in _t3 and "근거" in _t3 and "migrate --assets" in _t3,
+         _t3.strip().splitlines()[:1])
+    # **--assets는 층 한 칸만 옮긴다** — 이미 이관한 사람의 길이다.
+    _as = _MG.assets(_old, _nol)
+    show("① migrate --assets가 층 자산만 옮긴다 — 해시가 같다",
+         _as.get("ok") and all(
+             _sha(_nol / "layers" / "process" / f) == _sha(_old / "layers" / "process" / f)
+             for f in ("config.json", "skeleton.json"))
+         and not (_nol / "data").exists(), str(_as.get("files")))
+    # **다르면 덮지 않는다** — 어느 것이 사내 판인가는 기계가 정할 일이 아니다.
+    (_nol / "layers" / "process" / "config.json").write_text("{}", encoding="utf-8")
+    _as2 = _MG.assets(_old, _nol)
+    show("① 상태 루트의 층이 다르면 덮지 않고 멈춘다 (사람이 정한다)",
+         not _as2.get("ok") and _as2.get("conflict"),
+         str([str(d.name) for _s, d in _as2.get("conflict", [])]))
+    _r4 = subprocess.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
+                         capture_output=True, text=True, cwd=str(ROOT), env=_e2,
+                         stdin=subprocess.DEVNULL)
+    show("① 층이 서면 관문은 열린다 (거부가 상시가 아니다)",
+         _r4.returncode == 0, (_r4.stdout + _r4.stderr).strip().splitlines()[-1:])
 finally:
+    shutil.rmtree(_nol, ignore_errors=True)
     if _made_mark:
         _mark.unlink(missing_ok=True)
     shutil.rmtree(_lg, ignore_errors=True)

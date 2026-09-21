@@ -218,6 +218,12 @@ if __name__ == "__main__":
     if not (cmd == "llm-check" or (cmd == "platform" and "migrate" in sys.argv[2:3])):
         from cli._gate import require_migrated
         require_migrated(cmd)
+    # **층 자산 관문**(B79 ①) — 상태 루트에 층이 없으면 운영 명령은 멈춘다.
+    # 관문 밖: 푸는 명령(`platform`)·연결 확인·상태를 만드는 `init`(층은 사람이
+    # 넣는다)·`doctor`(진단이 막히면 무엇이 빠졌는지도 못 본다 — 제 파일이다).
+    if cmd not in ("llm-check", "platform", "init"):
+        from cli._gate import require_layers
+        require_layers(cmd)
     # **mock 관문**(B48) — 여기서 도는 것은 제 모듈 main이 없는 운영 명령뿐이다.
     # register·parse·ingest-file/dir은 그쪽 main이 관문을 지나므로 두 번 걸지 않는다.
     if cmd in ("build", "ingest", "query"):

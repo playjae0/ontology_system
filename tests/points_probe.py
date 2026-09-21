@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,15 +66,21 @@ def cases():
     }
 
 
-def probe_env(base=None):
+def probe_env(base=None, home=None):
     """설정이 **확실히 없는** 실호출 모드 환경.
 
     환경변수를 지우는 것만으로는 성립하지 않는다 — 설정 파일 갈래(B42)가 있어
     운영자 기계에 `~/.onto/llm.json`이 있으면 탐침이 «설정된 상태»로 돈다(실측).
     없는 경로를 명시해 그 갈래를 끈다.
+
+    `home`은 **탐침 전용 상태 루트**다(B79 ①) — 층 자산이 상태 루트에 살게 됐고,
+    탐침은 `USE_MOCK=0`으로 도니까 그 자리가 필요하다. 사람의 운영 루트를 쓰면
+    탐침 결과가 그 사람 상태에 딸려 움직인다.
     """
     env = dict(base or os.environ, USE_MOCK="0",
                ONTO_CONFIG=str(ROOT / "tests" / "fixtures" / "_no_such_llm_config.json"))
+    if home:
+        env["ONTO_HOME"] = str(home)
     for e in ENV_KEYS:
         env.pop(e, None)
     return env
@@ -84,8 +92,13 @@ def run():
     서브프로세스인 이유: 이 프로세스는 이미 설정을 읽었을 수 있고, 모드는 진입 시점에
     정해진다. 결과값은 `NotConfigured` 같은 **예외 이름** 또는 `"통과"`(= 조용한 통과)다.
     """
-    r = subprocess.run([sys.executable, str(Path(__file__).resolve())],
-                       capture_output=True, text=True, cwd=str(ROOT), env=probe_env())
+    with tempfile.TemporaryDirectory(prefix="probe_home_") as home:
+        # 층 자산만 심는다 — 탐침이 읽는 것은 층 config(어휘)뿐이고, 나머지 단은
+        # 비어 있어도 된다(빈 그래프로 돈다).
+        shutil.copytree(ROOT / "layers", Path(home) / "layers")
+        r = subprocess.run([sys.executable, str(Path(__file__).resolve())],
+                           capture_output=True, text=True, cwd=str(ROOT),
+                           env=probe_env(home=home))
     line = next((x for x in r.stdout.splitlines() if x.startswith("RESULT ")), None)
     return (json.loads(line[len("RESULT "):]) if line else {}), r
 

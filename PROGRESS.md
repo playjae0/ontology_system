@@ -312,3 +312,57 @@ B61 계약에 ④근거(「무엇을 보고 그렇게 판정했나」)를 더했
 - 반입 뒤 실행: 검사 5종(경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13) · 회귀
   **1,362/1,362** · doctor EXIT=0 · 클린 2회 동일 그래프 · 구조 추출·부품카드·코드 지도
   재생성 **diff 0**.
+
+## B79 — 사내 첫 반입이 드러낸 넷 (2026-09-21)
+
+**출처는 사내 실측이다**(2026-09-21): ⓐ`points.py`의 `import json` 누락으로 `ingest-file`이
+파싱에서 죽었다(**회귀 1,362 초록인 채로**) ⓑ가이드 예시 루트를 그대로 쳐서 공용 디스크에
+상태가 생기고 새 터미널이 다른 루트를 봤다 ⓒ층 자산이 코드 폴더에 살아서 **코드 교체가
+사내 골격을 mock seed 판으로 되돌릴 수 있었다.**
+
+### ① 층 자산은 상태 루트에 산다 — `$ONTO_HOME/layers/` (②등록 단)
+
+- `paths.layers()`가 자리 소유자다. 옛 상수 **6곳**이 그것을 부른다:
+  `core/state/bootstrap.py`(2 읽기) · `cli/skeleton.py`(6 자리) · `cli/register/generate.py` ·
+  `doctor.py` · `router.py`(`LAYERS` 상수 삭제) · `kit/gate_checks.py`(**`--layers` 플래그** —
+  킷은 `core`를 import하지 않는다 · D-160 ①).
+- `init --fresh`는 **mock 루트에만** 레포 seed를 심는다(운영 ②등록은 클린 밖 · §7.6-4).
+- `USE_MOCK=0`에서 층이 비면 **상태 거부**(원인·지금 잰 것·근거·다음 줄). `platform migrate`가
+  `layers/`를 옮기고, 이미 이관한 사람은 `platform migrate --assets --from <옛 코드 폴더>` —
+  **다르면 덮지 않고 멈춘다.**
+- `platform`의 반환값을 `main`이 삼켜 실패가 exit 0으로 나가던 것을 같이 고쳤다.
+
+### ② 원본 문서의 자리 — `$ONTO_HOME/docs/` (⓪)
+
+- `paths.docs()` 신설 · 인자 없는 `ingest-dir`가 그 자리를 **재귀로** 돈다(경로를 직접 준
+  경우는 D-110 그대로) · 비면 상태 거부.
+- `doc_registry.source_path`는 **상태 루트 기준 상대**로 기록한다(밖이면 절대) — 비교하는
+  곳은 `paths.from_home()`으로 되돌린다. 루트를 옮겨도 「다른 경로」 경고가 0이다.
+- 이관은 **파서가 읽는 확장자만** 옮긴다 — 옛 코드 폴더의 `docs/`는 이 레포에서 **명세
+  폴더**라 통째로 옮기면 정제본이 원본 자리에 앉는다(D-160 ④).
+
+### ③ 실호출 갈래를 정적 검사와 스모크가 잠근다
+
+- ⓐ `core/llm/points.py`에 `import json`(사내 임시 패치와 같은 줄).
+- ⓑ `tests/names_scan.py` — **미정의 이름 0**(표준 라이브러리 AST · 외부 의존 0 · 운영 93모듈).
+  변이 확인: 그 한 줄을 빼면 `core/llm/points.py:79 json`으로 붉어진다.
+- ⓒ `tests/points_smoke.py` — **9지점 본문 스모크**. 전송 한 곳(`gateway._post`)만 스텁으로
+  갈고 본문을 실제로 돌려 반환 계약을 잰다. 9/9 OK · 변이 확인: `import json`을 빼면
+  `coord_tag: NameError`.
+
+### ④ 루트 미설정은 화면이 말한다 · 자산은 레포 판인가
+
+- `paths.home_note()` — `USE_MOCK=0` + `ONTO_HOME` 없음이면 모드 줄·doctor 첫 줄에
+  「(ONTO_HOME 미설정 — 기본 루트 …)」. 거부가 아니라 표시다.
+- `tests/asset_hashes.py` + `docs/회귀스위트/자산/자산_해시.json`(29파일) — doctor가
+  `prompts/`·`kit/`·`schemas/blocks.json`·(레포)`layers/`를 대조해 다르면 ⚠.
+
+### 실행으로 확인한 것
+
+- 회귀 **1,362 → 1,392/1,392** · FAIL 0 · 클린 2회 동일 그래프 OK · doctor EXIT=0.
+  순증 30 · 삭제 0 (①8 · ②5 · ③13 · ④4).
+- 동작 등가 네 벌 **diff 0**(vs `046c05d`) · 화면 12종 diff **4곳(전부 의도)** ·
+  코드 표면 **사라진 이름 0**(743 → 755) · 명령 표면 `+--assets` `+--layers`.
+- 검사 5종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13.
+- **§7 상한**: `tests/test_g1_g2.py`가 834행이 되어 같은 회차에서 나눴다 —
+  `g1_common`(56) + `test_g1_g2`(486) + `test_places`(362). 위반 0.

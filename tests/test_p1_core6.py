@@ -23,7 +23,7 @@ show("스냅샷이 골격 전 노드를 담는다 (개념+인스턴스 — A11-6
      proc["count"] == 46, f"{proc['count']}노드")
 show("skeleton_version 정합 (config ↔ 스냅샷)",
      proc["skeleton_version"] == json.loads(
-         (ROOT / "layers/process/config.json").read_text(encoding="utf-8")
+         _P.layers("process", "config.json").read_text(encoding="utf-8")
      )["skeleton_version"], proc["skeleton_version"])
 show("canonical·alias·tier·polarity·parent를 함께 싣는다 (태거가 파생할 재료)",
      all({"canonical", "aliases", "tier", "polarity", "parent"} <= set(n)

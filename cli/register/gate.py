@@ -9,6 +9,7 @@ from cli.interview import (  # noqa: F401
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
+from core import paths
 from core.state import fixtures, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from pathlib import Path
@@ -37,6 +38,8 @@ def harness(adapter, schema, samples, package=None, doc_type=None):
     led = ledger.ledger_path(doc_type) if doc_type else None
     if led and Path(led).exists():
         pkg += ["--ledger", str(led)]
+    # **층 어휘는 상태 루트에서 본다**(B79 ①) — 킷은 core를 모르므로 자리를 건넨다.
+    pkg += ["--layers", str(paths.layers())]
     r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                         str(adapter), str(schema)] + pkg + [str(s) for s in samples],
                        capture_output=True, text=True, cwd=str(ROOT))

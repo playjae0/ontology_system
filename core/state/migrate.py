@@ -31,6 +31,10 @@ from core.state import log, store
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 _LOG = log.get(__name__)
 
+#: 원본 문서의 확장자 — **파서가 읽는 포맷**(`parser/reader.SUPPORTED`)과 같다.
+#: 킷·파서를 import하지 않는다(core의 의존 방향) — 목록이 갈리면 회귀가 잡는다.
+DOC_EXT = (".xlsx", ".xlsm", ".pptx", ".pdf", ".csv", ".tsv")
+
 #: 옛 배치의 표식 — 등록부가 진실 옆에 있던 자리다.
 LEGACY_MARK = ("data", "doc_types.json")
 
@@ -134,6 +138,19 @@ def plan(old, home):
     for name in store.WORK_FILES:
         add(old / "data" / name, work_dir / name, "작업")
 
+    # ⓪원본 — **파서가 읽는 포맷만**(B79 ②). 옛 코드 폴더의 `docs/`는 이 레포에서
+    # **명세 폴더**이기도 하다: 통째로 옮기면 정제본·가이드가 원본 자리에 앉고
+    # 인자 없는 `ingest-dir`가 그것을 문서로 집는다. 그래서 확장자로 가른다 —
+    # 옮기는 것은 「사람이 넣은 실물 문서」뿐이다(D-160 ②).
+    if (old / "docs").is_dir():
+        for s in sorted((old / "docs").rglob("*")):
+            if s.is_file() and s.suffix.lower() in DOC_EXT:
+                add(s, home / "docs" / s.relative_to(old / "docs"), "원본")
+
+    # ②등록 — **층 자산**(B79 ①). 사내가 공정 체계로 고쳐 승인 1회 한 것이라
+    # 코드 폴더에 두면 코드 교체가 사내 골격을 레포 seed 판으로 되돌린다.
+    add_tree(old / "layers", home / "layers", "층")
+
     # ⑤골든셋 — 사람이 쓴 문항이다(재생성되지 않는다).
     add_tree(old / "golden", home / "golden", "골든")
 
@@ -141,6 +158,53 @@ def plan(old, home):
     if not (home / "llm.json").exists():
         add(old / "llm.local.json", home / "llm.json", "설정")
     return out
+
+
+def assets(src=None, dst=None, *, dry_run=False):
+    """**층 자산만** 옮긴다 — 이미 이관한 사람용 (B79 ① · `migrate --assets`).
+
+    B78 이관은 `layers/`를 옮기지 않았다(①자산으로 봤다). 그래서 먼저 이관한
+    사람의 상태 루트에는 층 자산이 없고, 코드 폴더의 것이 정본인 채로 남아 있다.
+    이 함수가 그 한 칸을 메운다.
+
+    **다르면 덮지 않는다.** 같은 이름의 파일이 상태 루트에 이미 있고 내용이 다르면
+    「어느 것이 사내 판인가」는 기계가 정할 일이 아니다 — 목록을 돌려주고 멈춘다.
+    """
+    old = Path(src).expanduser().resolve() if src else legacy_root()
+    if old is None:
+        return {"ok": False, "reason": "옛 코드 폴더를 못 찾았다 — "
+                                       "--from <옛 코드 폴더>를 적는다"}
+    home = Path(dst).expanduser().resolve() if dst else paths.home()
+    src_dir = old / "layers"
+    if not src_dir.is_dir():
+        return {"ok": False, "reason": f"{src_dir}가 없다 — 옮길 층 자산이 없다"}
+    rows, conflict = [], []
+    for s in sorted(src_dir.rglob("*")):
+        if not s.is_file() or "__pycache__" in s.parts or s.name.endswith(".lock"):
+            continue
+        d = home / "layers" / s.relative_to(src_dir)
+        if d.is_file():
+            if _sha(d) != _sha(s):
+                conflict.append((s, d))
+            continue                       # 같으면 할 일이 없다
+        rows.append((s, d, "층"))
+    if conflict:
+        return {"ok": False, "conflict": conflict, "src": old, "home": home,
+                "reason": "상태 루트의 층 자산이 옛 폴더의 것과 **다르다** — "
+                          "사람이 정한다(덮지 않았다)"}
+    if dry_run:
+        return {"ok": True, "dry_run": True, "rows": rows, "home": home, "src": old}
+    lines = []
+    for s, d, _tier in rows:
+        paths.ensure(d)
+        shutil.copy2(s, d)
+        lines.append(f"층\t{s}\t→\t{d}\t{_sha(d)[:12]}\t{d.stat().st_size}B")
+    logp = paths.ensure(home / "work" / "migrate.log")
+    with open(logp, "a", encoding="utf-8") as f:
+        f.write(f"# migrate --assets {store._now()} — {src_dir} → {home / 'layers'}\n")
+        f.write(("\n".join(lines) + "\n") if lines else "# 옮길 것 없음\n")
+    _LOG.info("migrate --assets: %s → %s · 파일 %d", src_dir, home / "layers", len(rows))
+    return {"ok": True, "src": old, "home": home, "files": len(rows), "log": logp}
 
 
 def _rewrite_registry(home, moved):

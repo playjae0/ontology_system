@@ -96,6 +96,33 @@ for key, label in llm.POINTS.items():
     # 호출자가 타는 길(팩토리)이 **미설정 실패에 닿는가**를 잰다.
     show(f"{label} → 실 호출 경로가 NotConfigured에 닿는다", got == "NotConfigured", got)
 
+# ============================================================ 본문 스모크
+# **도달과 실행은 다르다**(B79 ③ⓒ). 위의 탐침은 `require`의 `NotConfigured`까지
+# 재고 본문은 한 줄도 돌지 않는다 — 사내 실측(2026-09-21)에서 `pick_coord` 본문의
+# `json` 미import가 **회귀 1,362 초록인 채로** 사내 파싱을 죽였다. 여기서는 전송
+# 한 곳(`gateway._post`)만 스텁으로 갈고 **9지점 본문을 실제로 돌린다.**
+print("\n■ 9지점 **본문** 스모크 — 전송만 스텁 · 반환 계약을 잰다 (B79 ③ⓒ)")
+from points_smoke import run as _smoke                           # noqa: E402
+
+_sres, _sr = _smoke()
+show("9지점 본문이 전부 실행됐다 (스모크가 완주)",
+     len(_sres) == len(llm.POINTS) and set(_sres) == set(llm.POINTS),
+     _sr.stderr.strip().splitlines()[-1:] and _sr.stderr.strip().splitlines()[-1] or "")
+for _key, _label in llm.POINTS.items():
+    show(f"{_label} → 본문이 반환 계약대로 값을 돌려준다",
+         _sres.get(_key) == "OK", _sres.get(_key, "(미실행)"))
+
+# **⑨는 닫힌 목록에서 고른 값을 돌려준다** — 스텁 응답이 `canonical`로 나온다.
+import points_smoke as _PS                                       # noqa: E402
+import json as _json79                                           # noqa: E402
+_coord_stub = _PS.stub_post("http://stub/v1/chat/completions",
+                            {"response_format": {"json_schema": {"schema": {
+                                "type": "object",
+                                "properties": {"canonical": {"type": ["string", "null"]}},
+                                "required": ["canonical"]}}}}, None, 1)
+show("⑨ 스텁 응답이 canonical 한 키다 (지점의 반환 계약과 같은 모양)",
+     set(_json79.loads(_coord_stub["choices"][0]["message"]["content"])) == {"canonical"})
+
 # ============================================================ 지점 ⑦ 변환
 print("\n■ ⑦구조 지도 — 변환은 코어가 한다 (파서는 LLM 스키마를 모른다 · B48 ②)")
 _lines = [(2, "1. 개요"), (3, "본문 한 줄"), (4, "1.1 절"), (5, "또 본문")]

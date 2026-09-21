@@ -15,6 +15,8 @@ subprocess로 부르고, 표시는 data/의 JSON(진실)을 읽어서 한다 —
   doctypes           doc_type 등록부 조회 (내장 + n6 등록분)
   migrate [--from R] [--to H] [--dry-run]
                      옛 배치 → 5단 배치 이관 (복사 · 등록부 경로 재작성 · 이관 로그)
+  migrate --assets --from R [--to H] [--dry-run]
+                     **층 자산만** 옮긴다 — 이미 이관한 사람용 (B79 ①)
   ops                I축 연산 이력(ops_log) 열람 + 툼스톤 계수
   gauges             계기판 8종 (CH5 5.5 — 별도 호출로 계산, build·query 무오염)
 
@@ -210,12 +212,15 @@ def orphan_next_lines(item, layer=None):
     cand = pl.get("llm_candidate")
     # **그대로 칠 수 있어야 계약이다**(B61) — 인입 기록에서 실제 경로·doc_type을 딴다.
     reg = store.read(store.DOC_REGISTRY, {}).get(item.get("doc_id") or "") or {}
-    doc = reg.get("source_path") or f"<{item.get('doc_id') or '문서'}>"
+    # 대장 표기는 상태 루트 기준일 수 있다(B79 ②) — 칠 수 있는 실경로로 되돌린다.
+    doc = (paths.from_home(reg["source_path"]) if reg.get("source_path")
+           else f"<{item.get('doc_id') or '문서'}>")
     dt = reg.get("doc_type") or "<dt>"
     return ("\n".join([
         f"     ▶ 다음 줄 — 골격 표기를 잇는다"
         + (f" (LLM 후보: {cand} — 사람이 판단한다)" if cand else "") + ":",
-        f"        layers/{lay}/skeleton.json  ALIASES[\"<골격 canonical>\"]에 "
+        f"        {paths.layers(lay, 'skeleton.json')}  "
+        f"ALIASES[\"<골격 canonical>\"]에 "
         f"\"{surface}\" 추가",
         "        python run.py bootstrap                 "
         "← 그래프·사전을 지우지 않는다 · alias만 붙는다",
@@ -291,7 +296,10 @@ def cmd_migrate(args):
     from core.state import migrate
     src = _opt(args, "--from")
     dst = _opt(args, "--to")
-    res = migrate.run(src, dst, dry_run="--dry-run" in args)
+    dry = "--dry-run" in args
+    if "--assets" in args:                          # 층 자산만 (B79 ①)
+        return _migrate_assets(migrate, src, dst, dry)
+    res = migrate.run(src, dst, dry_run=dry)
     if not res.get("ok"):
         print(f"[이관] {res['reason']}")
         return 1
@@ -308,6 +316,28 @@ def cmd_migrate(args):
     print(f"   이관 로그 {res['log']}  (옛 폴더는 그대로 둔다 — 복사다)")
     print(f"   다음: python run.py platform doctypes   "
           f"(등록 n종 · 역방향 누락 0건을 확인한다)")
+    return 0
+
+
+def _migrate_assets(migrate, src, dst, dry):
+    """`migrate --assets` 화면 — 층 자산 한 칸. 충돌은 **목록으로 내고 멈춘다.**"""
+    res = migrate.assets(src, dst, dry_run=dry)
+    if not res.get("ok"):
+        print(f"[층 자산] {res['reason']}")
+        for s_, d_ in res.get("conflict", []):
+            print(f"  다름 — {s_}\n        {d_}")
+        if res.get("conflict"):
+            print("  ▶ 다음 줄 — 둘을 열어 보고 사내 판을 상태 루트에 둔다:\n"
+                  f"     diff {res['conflict'][0][1]} {res['conflict'][0][0]}")
+        return 1
+    if res.get("dry_run"):
+        print(f"[층 자산 예정] {res['src']} → {res['home']} · 파일 {len(res['rows'])}")
+        for s_, d_, tier in res["rows"]:
+            print(f"  {tier}\t{s_} → {d_}")
+        return 0
+    print(f"[층 자산] {res['src']} → {res['home']} · 파일 {res['files']}")
+    print(f"   이관 로그 {res['log']}  (옛 폴더는 그대로 둔다 — 복사다)")
+    print("   다음: python run.py bootstrap   (상태 루트의 층으로 골격을 심는다)")
     return 0
 
 
@@ -694,7 +724,9 @@ def main(argv):
     if not argv:
         raise SystemExit(__doc__)                                         # [사용법]
     cmd, args = argv[0], argv[1:]
-    {"build": lambda: cmd_build(),
+    # **반환값을 돌려준다**(B79 ①) — 삼키면 「멈췄다」가 스크립트에 exit 0으로 간다.
+    # `run.py`가 같은 규율을 이미 갖고 있다(반환값 → 종료 코드).
+    return {"build": lambda: cmd_build(),
      "query": lambda: cmd_query(args),
      "graph": lambda: cmd_graph(),
      "queue": lambda: cmd_queue(args[0] if args else None),

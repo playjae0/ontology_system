@@ -74,6 +74,28 @@ def fresh():
         shutil.rmtree(getattr(paths, tier)(), ignore_errors=True)
 
 
+def seed_layers(force=False):
+    """**층 자산의 seed 심기** — mock 루트에만 한다 (B79 ①).
+
+    층 자산(`layers/<층>/{config,skeleton}.json`)은 ②등록 단이다 — 사내가 고쳐
+    승인 1회 하는 것이라 **운영 루트에서는 클린이 건드리지 않는다**(문서 7 §7.6-4).
+    mock 루트는 반대다: 회귀의 바닥이므로 **언제나 레포 seed 판**이어야 한다.
+    그래서 자리로 가른다 — 모드 분기가 아니라 「어느 루트인가」로.
+
+    `force`면 지우고 다시 심는다(`--fresh`). 아니면 없을 때만 심는다.
+    """
+    if not paths.is_mock_home():
+        return None                      # 운영 ②등록 — 사람이 넣고 migrate가 옮긴다
+    dst = paths.layers()
+    if force:
+        shutil.rmtree(dst, ignore_errors=True)
+    if dst.exists():
+        return None
+    shutil.copytree(paths.seed_layers(), dst,
+                    ignore=shutil.ignore_patterns("__pycache__", ".*"))
+    return dst
+
+
 def ensure():
     """빈 상태를 만든다 — 이미 있는 파일은 건드리지 않는다.
 
@@ -98,7 +120,12 @@ def ensure():
 def init(fresh_=False):
     if fresh_:
         fresh()
+    # **층 자산이 먼저다** — `ensure()`가 층마다 빈 그래프를 만들고, 층 목록은
+    # 상태 루트의 `layers/`가 정한다(B79 ①).
+    seeded = seed_layers(force=fresh_)
     made = ensure()
+    if seeded:
+        made.append(f"층 seed {seeded.name}/")
     _LOG.info("init%s — 빈 상태 %d개 생성 (%s)",
               " --fresh" if fresh_ else "", len(made), ", ".join(made) or "없음")
     return made

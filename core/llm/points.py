@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import json
+
 from core.llm import gateway
 
 

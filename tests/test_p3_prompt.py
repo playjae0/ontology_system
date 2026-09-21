@@ -60,7 +60,7 @@ show("③ 비대화형은 확정하지 않는다 (뷰 대조 우회 불가)",
      _rc != 0 and "비대화형" in _o and "§3.7" in _o)
 show("③ 그래도 파생 흐름 뷰는 보여 준다 (대조 재료는 낸다)", "[n10]" in _o)
 show("확정 거부 시 기록 파일이 생기지 않는다",
-     not (ROOT / "layers/process/confirmations.json").exists())
+     not _P.layers("process", "confirmations.json").exists())
 show("골격을 인라인 선언한 층은 대상이 아님을 말한다",
      "인라인" in _sc(["quality", "--by", "회귀"])[1])
 show("문법 깨진 seed 는 loader 실패 문면으로 멈춘다", _SK.seed_path("process").name
