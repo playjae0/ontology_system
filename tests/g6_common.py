@@ -11,6 +11,7 @@ import contextlib as _ctx
 import hashlib
 import io as _io
 import json
+import os
 import shutil
 import sys
 from pathlib import Path

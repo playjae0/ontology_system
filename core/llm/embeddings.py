@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import time
 from pathlib import Path
 
 from core.llm import gateway
@@ -29,6 +30,11 @@ BACKENDS = ("gateway", "local")
 #: 로컬 모델은 **프로세스당 한 번** 로드한다 — `(경로, 모델)`.
 #: 매 호출 로드하면 판정 하나에 수 초가 붙는다(`paths.home()`과 같은 규율).
 _LOCAL = (None, None)
+
+#: 마지막 실행의 계측 — **화면이 비용을 숫자로 보이게** (B80 ③ 개정).
+#: GPU를 요구하지 않는다(CPU 자동) — 대신 「CPU로 돌고 있고 얼마 걸린다」를 말한다.
+STATS = {"backend": None, "device": None, "load_s": None, "encode_ms": None,
+         "dim": None}
 
 
 def _mock_vector(text, dim=DIM):
@@ -78,9 +84,15 @@ def _local_model(raw):
                   "또는 EMBED_BACKEND=gateway")
         gateway.log.explicit_fail(_LOG, "core.llm[embed]", reason)
         raise gateway.NotConfigured(reason) from e
-    _LOCAL = (path, SentenceTransformer(str(path)))
-    _LOG.info("로컬 임베딩 모델 로드 — %s (프로세스당 1회)", path)
-    return _LOCAL[1]
+    t0 = time.perf_counter()
+    model = SentenceTransformer(str(path))
+    STATS["load_s"] = round(time.perf_counter() - t0, 2)
+    # **장치는 모델이 정한다** — 스텁·구판이 이 속성을 안 가질 수 있어 물어만 본다.
+    STATS["device"] = str(getattr(model, "device", "?"))
+    _LOCAL = (path, model)
+    _LOG.info("로컬 임베딩 모델 로드 — %s · %s · %.2fs (프로세스당 1회)",
+              path, STATS["device"], STATS["load_s"])
+    return model
 
 
 def embed(text):
@@ -102,15 +114,36 @@ def embed(text):
         raise gateway.NotConfigured(reason)
     if backend == "local":
         cfg = gateway.require("embed", need=("embed_model",))
-        vec = _local_model(cfg["embed_model"]).encode(text,
-                                                      normalize_embeddings=True)
-        return [float(x) for x in vec]
+        model = _local_model(cfg["embed_model"])
+        t0 = time.perf_counter()
+        vec = model.encode(text, normalize_embeddings=True)
+        out = [float(x) for x in vec]
+        STATS.update(backend="local", encode_ms=round((time.perf_counter() - t0) * 1000),
+                     dim=len(out))
+        return out
 
     cfg = gateway.require("embed", need=("embed_url", "embed_model"))
+    t0 = time.perf_counter()
     raw = gateway._post(f"{cfg['embed_url']}/embeddings",
                     {"model": cfg["embed_model"], "input": text},
                     cfg["key"], cfg["timeout"])
-    return list(raw["data"][0]["embedding"])
+    out = list(raw["data"][0]["embedding"])
+    STATS.update(backend="gateway", device=None, load_s=None,
+                 encode_ms=round((time.perf_counter() - t0) * 1000), dim=len(out))
+    return out
+
+
+def cost_line():
+    """마지막 임베딩 1회의 **비용 한 조각** — `llm-check` ⑥이 낸다 (B80 ③ 개정).
+
+    로컬 갈래는 GPU가 없어도 CPU로 돈다 — 그 사실과 값이 화면에 있어야 사람이
+    「느린가 · 이대로 쓸 수 있나」를 판단한다(요구하는 것이 아니라 보이는 것이다).
+    """
+    s = STATS
+    if s.get("backend") != "local":
+        return f"{s.get('dim')}차 벡터" if s.get("dim") else ""
+    return (f"{s.get('dim')}차 · {s.get('device')} · 로드 {s.get('load_s')}s · "
+            f"인코딩 {s.get('encode_ms')}ms")
 
 
 def cosine(a, b):

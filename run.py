@@ -211,8 +211,13 @@ def cmd_llm_check(args):
 
 
 if __name__ == "__main__":
-    log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
+    # **전역 화면 플래그를 먼저 뗀다**(B81 ②③) — `-v`는 콘솔 로그를 INFO로 올리고
+    # `--no-color`는 색을 끈다. 남기면 표본 경로·질문 문장으로 흘러 들어간다.
+    from cli._screen import take_flags
+    sys.argv[1:], _flags = take_flags(sys.argv[1:])
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
+    # 로깅 설정은 **진입점만** 한다(문서 7 §7.8) · 콘솔 WARNING · 파일 INFO(B81 ②)
+    log.setup(command=cmd, console="INFO" if _flags["verbose"] else None)
     # **이관 관문**(B78 1b) — 옛 배치를 조용히 읽지 않는다. 푸는 명령 자신
     # (`platform migrate`)과 연결 점검은 관문 밖이다: 걸리면 칠 다음 줄이 없다.
     if not (cmd == "llm-check" or (cmd == "platform" and "migrate" in sys.argv[2:3])):

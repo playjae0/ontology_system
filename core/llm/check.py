@@ -109,8 +109,9 @@ def _probe_embed(cfg, add):
             # 막힌다(①과 같은 병). `embed()`가 갈래를 아는 유일한 자리다.
             from core.llm import embeddings as _EM
             v = _EM.embed(PING)
+            # **비용을 숫자로 보인다**(B80 ③ 개정) — local이면 장치·로드·인코딩까지.
             add("⑥", "임베딩", True,
-                f"{cfg['embed_backend']} · {cfg['embed_model']} — {len(v)}차 벡터")
+                f"{cfg['embed_backend']} · {cfg['embed_model']} — {_EM.cost_line()}")
         except Exception as e:
             add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
 
@@ -155,8 +156,8 @@ def _probe_points(cfg, points, add):
                     add("·", label, None, "EMBED_MODEL 미설정 — 이연 항목(⑥ 참조)")
                     continue
                 from core.llm import embeddings as _EM     # 갈래는 한 자리다(B80 ③)
-                add("·", label, True,
-                    f"{cfg['embed_backend']} · {len(_EM.embed(PING))}차 벡터")
+                _EM.embed(PING)
+                add("·", label, True, f"{cfg['embed_backend']} · {_EM.cost_line()}")
                 continue
             msgs = ([{"role": "system", "content": gateway.prompt(pt)}]
                     if gateway.has_prompt(pt) else [])

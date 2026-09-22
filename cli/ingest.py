@@ -3,8 +3,10 @@
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--step] [--step-every N] [--narrow embed|overlap]
-  python run.py ingest-dir  <경로> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
-                                  [--narrow embed|overlap]
+                                  [--progress-every N] [-v] [--no-color]
+  python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+                                  [--narrow embed|overlap] [--progress-every N]
+                                  (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
 (`cli.parse.run_parse` · `core.pipeline.run_document`).
@@ -31,9 +33,11 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
+from cli import _screen
 from core import paths
 from core.llm import gateway, narrow
 from core.state import log, registry, store
+from core.build import ledger as _ledger
 from core.build.entry import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -316,8 +320,73 @@ def _step_gate(i, detail=""):
     return True
 
 
-def judge_progress(total, stage=None, every=0):
-    """판정 진행 줄 — 보폭마다 **새 줄로** 남긴다 (B73 ① · B75 ③ⓑ).
+# ── 값 줄 (B81 ①) ────────────────────────────────────────────────────────
+#: verdict → 기호. **닫힌 표**이고 색은 특이점에만 붙는다(B81 ③ · `_screen.KINDS`).
+MARKS = {"match": "✓", "attached": "✓", "new": "+", "uncertain": "?", "lowres": "?",
+         "orphan": "✗", "gate_reject": "✗", "anchor": "·", "pending": "·"}
+
+#: 경로 → 짧은 이름. 화면이 경로를 다시 해석하지 않는다(대장의 값 그대로).
+PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "scope+judge": "스코프",
+              "embedding+judge": "임베딩", "overlap+judge": "겹침", "none": "—"}
+
+#: 줄을 찍는 자리 — **판단이 갈린 값**이다(사용자 확정 2026-09-22).
+LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject")
+
+#: 이번 문서의 집계 — 진행 줄이 이것을 함께 낸다(대장에서 센다 · 새 계산 0).
+TALLY = {"값": 0, "사전": 0, "NEW": 0, "불확실": 0, "큐": 0, "orphan": 0}
+
+
+def _loud(row):
+    """이 행을 화면에 한 줄로 낼 것인가 — LLM이 든 경로거나 특이 verdict."""
+    return (row.get("verdict") in LOUD_VERDICTS
+            or (row.get("llm") or {}).get("calls", 0) > 0
+            or "judge" in str(row.get("path") or ""))
+
+
+def value_line(row):
+    """대장 행 하나 → 화면 한 줄. **새 정보 0** — 행의 값을 그대로 옮긴다(B81 ①)."""
+    v = row.get("verdict") or "pending"
+    calls = (row.get("llm") or {}).get("calls", 0)
+    n = row.get("candidates_n") or 0
+    if calls:
+        how = f"LLM · 후보 {n} · 확신 {row.get('confidence', 0):.2f}"
+    else:
+        how = f"후보 {n} ({PATH_SHORT.get(row.get('path'), row.get('path'))})"
+    name = row.get("canonical") or row.get("surface") or "—"
+    q = f"   → 큐 {row['queue_kind']}" if row.get("queue_kind") else ""
+    text = f"    {MARKS.get(v, '·')} {name:<28} {v:<10} {how}{q}"
+    return _screen.paint(text, v if v in _screen.KINDS else None)
+
+
+def row_printer():
+    """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부)."""
+    for k in TALLY:
+        TALLY[k] = 0
+
+    def on_row(row):
+        TALLY["값"] += 1
+        if row.get("path") == "dictionary":
+            TALLY["사전"] += 1
+        if row.get("verdict") == "new":
+            TALLY["NEW"] += 1
+        if row.get("verdict") in ("uncertain", "lowres"):
+            TALLY["불확실"] += 1
+        if row.get("verdict") == "orphan":
+            TALLY["orphan"] += 1
+        if row.get("queue_kind"):
+            TALLY["큐"] += 1
+        if _screen.VERBOSE or _loud(row):
+            print(value_line(row), flush=True)
+    return on_row
+
+
+def judge_progress(total, stage=None, every=0, stride=None):
+    """판정 진행 줄 — 보폭마다 **새 줄로** 남긴다 (B73 ① · B75 ③ⓑ · 보폭 B81 ④).
+
+    보폭은 **값 N개마다**다(`--progress-every` · 설정 키 `PROGRESS_EVERY` · 기본 25).
+    구판은 `total // 10`이라 문서가 크면 텀이 길고 작으면 매 값이었다 — 사람이
+    기다리는 시간은 값 수에 비례하지 않는다(사내 실측 2026-09-22).
+
 
     2만 토큰을 쓰고 나서야 비용을 알았다는 것이 이 줄이 생긴 이유다. 좌표 태깅
     진행 줄(B69 ②)과 같은 자리·같은 결이다.
@@ -331,18 +400,24 @@ def judge_progress(total, stage=None, every=0):
     그래프·사전·큐 쓰기 0이다(되돌림은 `pipeline.run_document`가 한다).
     """
     def line(n, u):
-        return (f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
-                f"{u.get('total_tokens', 0):,}"
-                f"(입력 {u.get('prompt_tokens', 0):,} · 출력 "
-                f"{u.get('completion_tokens', 0):,})")
+        # **누적에 대장 집계를 더한다**(B81 ④) — 사람이 알고 싶은 것은 토큰만이
+        # 아니라 「몇이 붙고 몇이 새로 생겼나」다. 수는 대장에서 센 것 그대로다.
+        return _screen.banner(
+            f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
+            f"{u.get('total_tokens', 0):,}"
+            f"(입력 {u.get('prompt_tokens', 0):,} · 출력 "
+            f"{u.get('completion_tokens', 0):,})"
+            f" · 사전 {TALLY['사전']:,} · NEW {TALLY['NEW']:,}"
+            f" · 불확실 {TALLY['불확실']:,} · 큐 {TALLY['큐']:,}")
+
+    step_n = max(1, int(stride or gateway.config().get("progress_every") or 25))
 
     def progress(stats):
         n = stats.get("판정", 0)
         if stage is not None:
             stage["값"] = n
         u = gateway.usage_total()
-        stride = max(1, (total or 1) // 10)
-        if n == 1 or n % stride == 0:
+        if n == 1 or n % step_n == 0 or n == total:
             print(line(n, u), flush=True)
             _LOG.info("판정 진행 — 값 %d/%d · 호출 %d · 누적 토큰 %d",
                       n, total or 0, n, u.get("total_tokens", 0))
@@ -481,7 +556,7 @@ def _ingest_file_select(doc, sel, row, dry_run, step):
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
-                step_every=0):
+                step_every=0, progress_every=None):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     sel = select(doc, doc_type, adapter_paths)
@@ -538,12 +613,16 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         from core import matcher as _mt
         _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
         stage["이름"], stage["총"] = "판정", _plan_n
-        _mt.PROGRESS = judge_progress(_plan_n, stage=stage, every=step_every)
+        _mt.PROGRESS = judge_progress(_plan_n, stage=stage, every=step_every,
+                                      stride=progress_every)
+        # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
+        _ledger.ON_ROW = row_printer()
         try:
             r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
                                             notice=build_screen(step=step))
         finally:
             _mt.PROGRESS = None
+            _ledger.ON_ROW = None
         if r.status == "held":
             # **단계를 올리지 않는다** — 판정에서 멈춘 것을 「부착까지 갔다」고
             # 적으면 비용 줄이 거짓말을 한다.
@@ -593,7 +672,7 @@ def spend_line(stage):
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
-               coord_cap=COORD_CAP, recurse=False):
+               coord_cap=COORD_CAP, recurse=False, progress_every=None):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -616,7 +695,8 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
     u0 = gateway.usage_total()
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
-                                finalize_after=False, coord_cap=coord_cap))
+                                finalize_after=False, coord_cap=coord_cap,
+                                progress_every=progress_every))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -624,9 +704,12 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         # **총계 한 줄**(B73 ①) — 문서마다의 요약은 위에 있고, 배치의 비용은
         # 여기서만 보인다. 사람이 「이 폴더를 넣으면 얼마」를 알 자리다.
         u = gateway.usage_total()
-        print(f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
-              f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
-              f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})")
+        print(_screen.banner(
+            f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
+            f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
+            f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})"))
+        if log.LOG_PATH:
+            print(f"  로그 {log.LOG_PATH}  (INFO 전량 · 화면은 판단이 갈린 값만)")
     return rows
 
 
@@ -693,6 +776,9 @@ def _raw_target():
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         raise SystemExit(__doc__)                                         # [사용법]
+    # 전역 화면 플래그 — `python -m cli.ingest`로 직접 부를 때의 자리(B81 ②③).
+    # `run.py`가 이미 뗐으면 여기서는 아무것도 없다(같은 함수라 두 번 불러도 같다).
+    argv, _ = _screen.take_flags(list(argv))
     args = require_live_or_allow(argv, command="ingest")   # mock 관문 (B48)
     dry = "--dry-run" in args
     if dry:
@@ -708,6 +794,16 @@ def main(argv):
         if not str(raw).isdigit() or int(raw) < 1:
             raise SystemExit("[투입] --step-every 뒤에 1 이상의 수가 필요하다")   # [사용법]
         step_every = int(raw)
+        del args[i:i + 2]
+    # **진행 보폭 손잡이**(B81 ④) — 값 N개마다 진행 줄. 플래그가 설정을 이긴다.
+    prog_every = None
+    if "--progress-every" in args:
+        i = args.index("--progress-every")
+        raw = args[i + 1] if i + 1 < len(args) else ""
+        if not str(raw).isdigit() or int(raw) < 1:
+            raise SystemExit("[투입] --progress-every 뒤에 1 이상의 수가 "   # [사용법]
+                             "필요하다 (기본 25 · 설정 키 PROGRESS_EVERY)")
+        prog_every = int(raw)
         del args[i:i + 2]
     # **후보 좁히기 손잡이**(B75 ①) — 플래그가 설정을 이긴다(한 문서만 바꿔 비교).
     if "--narrow" in args:
@@ -747,10 +843,10 @@ def main(argv):
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
-                          recurse=_from_raw)
+                          recurse=_from_raw, progress_every=prog_every)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
-                            step_every=step_every)]
+                            step_every=step_every, progress_every=prog_every)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

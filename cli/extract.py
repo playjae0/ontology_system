@@ -91,5 +91,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    log.setup()
+    log.setup(command="extract")
     sys.exit(main(sys.argv[1:]) or 0)

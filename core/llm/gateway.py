@@ -278,6 +278,9 @@ def config():
                        or "auto"),
             # **요청 파라미터의 손잡이**(B80 ①) — 비우면 payload에 키가 없다.
             "temperature": _temperature(get("CHAT_TEMPERATURE", None)),
+            # **화면 보폭**(B81 ④) — LLM 설정은 아니지만 설정 파일을 여는 자리는
+            # 여기 하나다(§7.6-B-1 수렴). 값 N개마다 진행 줄 · 기본 25.
+            "progress_every": max(1, int(get("PROGRESS_EVERY", 25) or 25)),
             "timeout": float(get("LLM_TIMEOUT", 60)),
             "retry": int(get("LLM_RETRY", 2))}
 

@@ -46,6 +46,7 @@ gateway._post = _post
 STUB = {"init": 0, "encode": 0}
 if %(stub_local)r:
     class _ST:
+        device = "cpu"          # 실제 모델이 갖는 속성 — 화면 조각이 이것을 읽는다
         def __init__(self, path):
             STUB["init"] += 1
             self.path = path

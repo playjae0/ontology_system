@@ -470,8 +470,9 @@ show("③ 실패 줄이 비용을 말하고 그 수가 `llm.usage_total()`과 �
      and "판정 값 7/60" in _line75, _line75[:80])
 _pb75 = _io.StringIO()
 with _ctx.redirect_stdout(_pb75):
-    _IG75.judge_progress(20)({"판정": 1})
-    _IG75.judge_progress(20)({"판정": 2})
+    # 보폭은 손잡이다(B81 ④) — 재는 성질은 「덮어쓰지 않는다」이므로 보폭 1로 준다.
+    _IG75.judge_progress(20, stride=1)({"판정": 1})
+    _IG75.judge_progress(20, stride=1)({"판정": 2})
 show("③ 진행 줄은 덮어쓰지 않는다 (스크롤·로그에 남는다)",
      "\r" not in _pb75.getvalue() and _pb75.getvalue().count("[판정]") == 2,
      repr(_pb75.getvalue()[:40]))

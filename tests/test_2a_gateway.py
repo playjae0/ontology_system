@@ -170,6 +170,14 @@ _bad, _ = _RP.run(_RP.EMBED_BODY, {"EMBED_BACKEND": "wat", "EMBED_MODEL": "x"})
 show("EMBED_BACKEND는 닫힌 2종이다 (모르는 값은 명시적 실패)",
      "NotConfigured" in (_bad["error"] or "") and "gateway | local" in (_bad["error"] or ""),
      (_bad["error"] or "")[:60])
+# **비용을 숫자로 보인다**(B80 ③ 개정) — GPU를 요구하지 않는 대신 장치와 시간을 낸다.
+_c6, _ = _RP.run(
+    'from core.llm import check\n'
+    '    out["value"] = [s["detail"] for s in check.probe() if s["id"] == "⑥"]',
+    {"EMBED_BACKEND": "local", "EMBED_MODEL": str(_dir80)}, stub_local=True)
+_c6d = (_c6["value"] or [""])[0]
+show("local ⑥ 문면이 장치·로드·인코딩을 숫자로 낸다 (CPU로 돈다는 것과 그 비용)",
+     all(x in _c6d for x in ("local", "cpu", "로드", "인코딩", "차")), _c6d)
 _shutil.rmtree(_dir80, ignore_errors=True)
 show("임베딩 요청을 조립하는 자리가 한 곳이다 (탐침이 따로 짜지 않는다)",
      [f"{p.relative_to(ROOT)}"
