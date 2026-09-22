@@ -181,7 +181,7 @@ show("①ⓒ 분류 없는 SystemExit이 0건이다 (새 거부는 표시해야 
      not _EX.unmarked(_rows61),
      f"{len(_rows61)}곳 전수 · 미분류 {_at61(_EX.unmarked(_rows61))}")
 # ⓓ **변이** — 표시 없는 거부를 하나 넣으면 붉어진다(그리고 되돌린다).
-_p61 = ROOT / "cli" / "viewer.py"
+_p61 = ROOT / "cli" / "viewer" / "server.py"
 _src61 = _p61.read_text(encoding="utf-8")
 _p61.write_text(_src61 + '\n\ndef _b61_probe():\n'
                          '    raise SystemExit("표시 없는 거부")\n', encoding="utf-8")

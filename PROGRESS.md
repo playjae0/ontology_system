@@ -447,3 +447,44 @@ B61 계약에 ④근거(「무엇을 보고 그렇게 판정했나」)를 더했
   순증 20 · 삭제 0 (B80 개정 1 · B81 19).
 - 파이프 출력에 **ESC 0바이트** · tty 스텁에서는 new 노랑·불확실 빨강 · `NO_COLOR=1`이면 0.
 - 검사 5종 초록 · §7 상한 위반 0.
+
+## B82 — 뷰어를 세미 플랫폼으로 · 질의 trace (2026-09-22)
+
+순서 ③ → ① → ② → ④ → ⑤ 그대로.
+
+### ③ 질의 trace — `answer()` 계측 (판단 0 · 새 순회 0)
+
+- `graph.neighbors(…, trace=)`가 **한 바퀴마다** 규칙·도달 노드·쓴 엣지를 적는다 ·
+  `expand`·`collect_chunks`가 그것을 받아 넘기고 `link`는 방법(dict|llm_fallback)을 단다.
+- `--json`에 `trace{intent, linking, hops, collection, facts, answer, miss}` — 기존 키 불변.
+  `used`는 ⑧이 되돌려 준 번호에서(mock은 전부 true).
+
+### ① 서버 — 데이터는 서버가 준다
+
+- `cli/viewer/` 패키지: `server.py`(179) · `data.py`(122) · `static/`. 라우트 여덟, 전부 GET.
+  `/api/graph`·`/api/doc/<id>`·`/api/funnel`·`/raw/<경로>` 신설. **쓰기 0**(해시 불변 실측) ·
+  127.0.0.1 바인드 · `/raw/`는 `_safe_under()` 하나가 잠근다.
+
+### ② 그래프 — 벤더링 WebGL
+
+- `static/vendor/`에 sigma 3.0.1 · graphology 0.25.4(**npm 레지스트리 tarball** · MIT ·
+  LICENSE·출처·sha256 동봉). 외부 URL 0. 렌더러는 `render({nodes, edges, …})` 하나 뒤.
+- 색 축 6(기본 category) · 범례(값·수·견본) · 엣지 rel 토글 · 걸침은 **곡선+별색**
+  (점선 프로그램이 없다 — D-163 ②) · 필터 5축 · 검색 · obsolete 토글 · 결정적 계층 좌표.
+
+### ④ 질의 콘솔 · ⑤ 연결 현황
+
+- 링킹 칩(사전/폴백) · 경로 배지 · 두 채널 카드 · `kept=false` 회색 · 미스 패널 ·
+  답변(mock 표시) · 노드→provenance→`/api/doc`→`/raw/` 원본 열기.
+- `/api/funnel`: 문서마다 값→사전·스코프·LLM붙음·NEW·불확실·orphan·큐 + orphan 행 표.
+
+### 실행으로 확인한 것
+
+- 회귀 **1,430 → 1,460/1,460** · FAIL 0 · 클린 2회 동일 그래프 · doctor EXIT=0.
+  순증 30 · 삭제 0 (`test_viewer` 29 · test_g4 +1).
+- 브라우저 실측(Playwright·Chromium): 콘솔 오류 0 · 그래프 99노드/149엣지 렌더 ·
+  질의 3종(단일·극성 3노드·미스) 오버레이 · 연결 현황 표.
+- 네 벌 diff 0 · 화면 12종 diff 0 · 코드 표면 사라진 이름 13(전부 이동: `cli/viewer.py`→
+  패키지 · 화면 함수 9 → `ingest_screen`) · 신설 21.
+- **§7 상한**: `cli/ingest.py` 855 → 631 + `ingest_screen.py` 245 · `answer()` 144 → 79
+  (+`_answer_expand` 47 · `_answer_collect` 25). 위반 0.

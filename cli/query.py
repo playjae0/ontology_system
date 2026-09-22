@@ -45,6 +45,10 @@ def answer(question):
 
     res = {"question": question, "linked": [], "facts": [], "chunks": [],
            "path": Q.PATH_GENERAL, "note": None, "truncated": 0, "transit": []}
+    # **trace는 계측이다**(B82 ③) — 이미 계산된 값을 적을 뿐, 판단도 순회도 더하지
+    # 않는다. 기존 키는 그대로이고 화면·골든셋이 같은 데이터를 본다(trace 계약 ㉠).
+    tr = res["trace"] = {"intent": None, "linking": [], "hops": [], "collection": [],
+                         "facts": [], "answer": None, "miss": []}
     # 전이 — 옛 id에 닿은 링킹은 현재 노드로 옮긴다. 직접 지명한 폐기 노드는
     # 결과에서 빼되 상태를 밝힌다(R3-⑶ — 조용히 사라지지 않는다).
     kept, notes = [], []
@@ -68,6 +72,11 @@ def answer(question):
         {"layer": h["layer"], "node_id": h["node_id"],
          "canonical": graphs[h["layer"]].get(h["node_id"])["canonical"]}
         for h in kept]
+    tr["linking"] = [
+        {"surface": h["surface"], "node_id": h["node_id"], "layer": h["layer"],
+         "canonical": graphs[h["layer"]].get(h["node_id"])["canonical"],
+         "method": h.get("method") or "dict"}
+        for h in kept]
     if notes and not hits:
         res["note"] = " · ".join(notes)
         res["path"] = Q.PATH_GENERAL
@@ -77,10 +86,12 @@ def answer(question):
     layers_hit = {h["layer"] for h in hits}
     intent = next((i for lay in sorted(layers_hit)
                    if (i := Q.intent_of(question, configs[lay]))), None)
+    tr["intent"] = intent
 
     if not hits or intent == "general":
         if not hits:
             Q.log_miss(question)                        # 하이브리드 판정 데이터(5.4)
+        tr["miss"] = [question] if not hits else []
         res["note"] = ("사내 문서에서 근거를 찾지 못했다. " + GENERAL if not hits
                        else "그래프 밖 지식이다. " + GENERAL)
         res["path"] = Q.PATH_GENERAL
@@ -98,19 +109,32 @@ def answer(question):
     direct_by_layer = {}
     for h in hits:
         direct_by_layer.setdefault(h["layer"], set()).add(h["node_id"])
+    collected = _answer_expand(res, tr, intent, direct_by_layer, graphs, configs)
+    _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent)
+    return res
 
+
+def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
+    """② 확장 — 층내 전파 + cross 브리지 1홉. **홉은 계산된 것을 적을 뿐이다**(B82 ③)."""
     collected = {}
     for lay, direct in direct_by_layer.items():
         g, cfg = graphs[lay], configs[lay]
         if intent == "flow":                            # flow 특례 — 골격 통째(5.2 규약 4)
             res["facts"] += Q.flow_chain(g, cfg)
             collected.setdefault(lay, set()).update(direct)
+            tr["hops"].append({"label": "flow_chain", "kind": "flow",
+                               "nodes": sorted(direct), "edges": []})
             continue
         if intent == "order":                           # 순서 파생(5.1 규약 8)
             res["facts"] += _order_facts(g, cfg, direct)
             collected.setdefault(lay, set()).update(direct)
+            tr["hops"].append({"label": "order", "kind": "flow",
+                               "nodes": sorted(direct), "edges": []})
             continue
-        collected[lay] = Q.expand(g, direct, cfg)
+        rounds = []
+        collected[lay] = Q.expand(g, direct, cfg, trace=rounds)
+        for hops in rounds:                 # 한 바퀴 = 한 홉 · 규칙마다 한 줄
+            tr["hops"] += hops
 
     # cross-layer 브리지 1홉 — 걸침 엣지는 출발 층 그래프에 있으므로 그쪽을 훑는다.
     #
@@ -126,14 +150,35 @@ def answer(question):
         for other, more in found.items():
             collected.setdefault(other, set()).update(more)
             direct_by_layer.setdefault(other, set())
+    if crossed:
+        tr["hops"].append(
+            {"label": "cross_layer_traverse", "kind": "cross",
+             "nodes": sorted({e["dst"] if e["src"] in
+                              {i for s in collected.values() for i in s} else e["src"]
+                              for _lay, e in crossed}),
+             "edges": [{"src": e["src"], "rel": e["rel"], "dst": e["dst"],
+                        "layer": lay, "bridge": True} for lay, e in crossed]})
     res["facts"] += Q.cross_facts(crossed, graphs, configs)
 
+    return collected
+
+
+def _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent):
+    """③④ 수집·문장화 — 채널 둘을 채우고 경로를 정한다."""
     for lay, ids in collected.items():
         res["facts"] += Q.facts(graphs[lay], ids, configs[lay])
 
     all_ids = {i for ids in collected.values() for i in ids}
     direct_ids = {i for s in direct_by_layer.values() for i in s}
-    res["chunks"], res["truncated"] = Q.collect_chunks(all_ids, direct_ids)
+    coll = []
+    res["chunks"], res["truncated"] = Q.collect_chunks(all_ids, direct_ids, trace=coll)
+    # `via_node`는 그 청크를 데려온 노드다 — 화면이 「어느 노드의 근거인가」를 그린다.
+    _by_chunk = {}
+    for d in (store.read(store.CHUNKS, {"describes": []}).get("describes") or []):
+        _by_chunk.setdefault(d["chunk_id"], d["node_id"])
+    tr["collection"] = [dict(c, via_node=_by_chunk.get(c["chunk_id"])) for c in coll]
+    tr["facts"] = [{"key": i, "text": f, "used": True}
+                   for i, f in enumerate(res["facts"])]
 
     # 답의 소재는 **질문 유형**이 정한다(5.3). 유형이 없으면 있는 채널로 판정한다.
     res["path"] = Q.INTENT_PATH.get(intent) or (
@@ -199,9 +244,15 @@ def generate(res):
     **그래프는 답변 LLM이 직접 읽지 않는다**(문서 0) — 넘기는 것은 문장화된
     사실과 청크 원문뿐이다.
     """
+    tr = res.get("trace") or {}
     if gateway.use_mock():
         gateway.mock("answer", "두 채널 정형 나열 (문장 생성 없음)")
-        return render(res)
+        out = render(res)
+        # mock은 고르지 않는다 — **전부 썼다**가 그 갈래의 사실이다(B82 ③).
+        if tr:
+            tr["answer"] = {"text": out, "sources": [c["doc_id"] for c in res["chunks"]],
+                            "mode": "mock"}
+        return out
 
     out = gateway.chat(
         [{"role": "system", "content": gateway.prompt("answer")},
@@ -220,6 +271,13 @@ def generate(res):
     # 인덱스만 남겨 호출부·계기판이 before/after를 셀 수 있게 한다 — 주체가
     # 답변 LLM이라는 것이 문면으로만 있으면 그것이 도는지 아무도 모른다.
     used = [i for i in (out.get("used_facts") or []) if 0 <= i < len(res["facts"])]
+    if tr:
+        # **번호가 곧 기록이다** — 되돌려 받은 것만 `used=True`로 남긴다.
+        for row in tr.get("facts") or []:
+            row["used"] = (not used) or (row["key"] in used)
+        tr["answer"] = {"text": out["answer"],
+                        "sources": [c["doc_id"] for c in res["chunks"]],
+                        "mode": "live"}
     if used:
         res["facts_before_filter"] = len(res["facts"])
         res["facts"] = [res["facts"][i] for i in used]

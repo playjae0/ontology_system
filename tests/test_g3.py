@@ -514,6 +514,7 @@ show("ⓓ 재인입이 새 스코프 id로 멱등이다 (중복 노드 0)",
 print("\n■ B61 ③ — 문서 단위 실패가 화면에 뜨고 큐와 같은 재료다")
 
 from cli import ingest as _IG61                                  # noqa: E402
+from cli import ingest_screen as _SCR61                          # noqa: E402
 from core.state import store as _ST61                                  # noqa: E402
 
 _before61 = [q for q in _ST61.read(_ST61.QUEUE, []) if q["kind"] == "parse_failure"]
@@ -527,8 +528,8 @@ _q61 = [q for q in _ST61.read(_ST61.QUEUE, [])
         if q["kind"] == "parse_failure" and q["doc_id"] == "CP03_bad"]
 # ⓑ **같은 재료다** — 화면에 찍는 것과 큐에 싣는 것이 한 재료의 두 표시다.
 # 두 자리에 두 사실을 두면 하나가 낡고, 그때 사람은 화면을 믿는다.
-_screen61 = _IG61.fail_block("x.xlsx", "CP03_bad",
-                             _IG61.fail_rows([{"kind": "parse_failure",
+_screen61 = _SCR61.fail_block("x.xlsx", "CP03_bad",
+                             _SCR61.fail_rows([{"kind": "parse_failure",
                                                "reason": (_q61[0]["reason"] if _q61 else ""),
                                                "detail": {}}]), queued=1)
 show("③ⓑ 화면의 FAIL 줄과 큐 payload가 같은 재료다",
@@ -541,7 +542,7 @@ show("③ 화면 블록이 태그·doc_id·다음 줄 셋을 낸다",
      and "[FAIL] P31" in _screen61)
 # **결함 전건을 편다** — 한 줄로 합쳐 자르면 둘째 결함이 화면에서 사라진다.
 show("③ validator 결함 여러 건이 각각 한 줄이 된다 (합쳐 자르지 않는다)",
-     len(_IG61.fail_rows([{"kind": "parse_failure", "reason": "r",
+     len(_SCR61.fail_rows([{"kind": "parse_failure", "reason": "r",
                            "detail": {"defects": ["A", "B", "C"]}}])) == 3)
 (_P.parsed() / "CP03_bad.json").unlink(missing_ok=True)
 

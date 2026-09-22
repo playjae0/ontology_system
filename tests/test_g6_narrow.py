@@ -460,6 +460,7 @@ show("② 스코프 없는 카테고리는 이전과 같다 (하드 필터는 �
 
 print("\n── B75 ③ 비용은 실패해도 보인다 ──")
 from cli import ingest as _IG75                                   # noqa: E402
+from cli import ingest_screen as _SCR75                           # noqa: E402
 
 _stage75 = {"이름": "판정", "값": 7, "총": 60}
 _line75 = _IG75.spend_line(_stage75)
@@ -471,14 +472,14 @@ show("③ 실패 줄이 비용을 말하고 그 수가 `llm.usage_total()`과 �
 _pb75 = _io.StringIO()
 with _ctx.redirect_stdout(_pb75):
     # 보폭은 손잡이다(B81 ④) — 재는 성질은 「덮어쓰지 않는다」이므로 보폭 1로 준다.
-    _IG75.judge_progress(20, stride=1)({"판정": 1})
-    _IG75.judge_progress(20, stride=1)({"판정": 2})
+    _SCR75.judge_progress(20, stride=1)({"판정": 1})
+    _SCR75.judge_progress(20, stride=1)({"판정": 2})
 show("③ 진행 줄은 덮어쓰지 않는다 (스크롤·로그에 남는다)",
      "\r" not in _pb75.getvalue() and _pb75.getvalue().count("[판정]") == 2,
      repr(_pb75.getvalue()[:40]))
 _ni75 = _io.StringIO()
 with _ctx.redirect_stdout(_ni75):
-    _IG75.judge_progress(20, every=1)({"판정": 5})
+    _SCR75.judge_progress(20, every=1)({"판정": 5})
 show("③ 비대화형에서는 묻지 않는다 (일괄이 첫 값에서 서지 않는다)",
      "[계속 c / 멈춤 q]" not in _ni75.getvalue())
 

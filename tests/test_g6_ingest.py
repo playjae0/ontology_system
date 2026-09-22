@@ -137,9 +137,10 @@ finally:
 
 # ④ --step — 단계 7 · 비대화형 무시 · q에서 그래프 쓰기 0
 from cli import ingest as _IG72                                    # noqa: E402
+from cli import ingest_screen as _SCR72                            # noqa: E402
 show("④ 단계는 7이고 문면의 자리는 진입점 옆 상수 하나다",
-     len(_IG72.STEPS) == 7 and all(len(x) == 2 and x[1] for x in _IG72.STEPS),
-     str([n for n, _w in _IG72.STEPS]))
+     len(_SCR72.STEPS) == 7 and all(len(x) == 2 and x[1] for x in _SCR72.STEPS),
+     str([n for n, _w in _SCR72.STEPS]))
 _r72 = _sp72.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
                   str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp",
                   "--step", "--allow-mock"], capture_output=True, text=True,
@@ -200,6 +201,7 @@ show("④ 끝까지 가면 7단계가 다 뜨고 인입이 끝난다",
 print("\n■ B81 — 값 줄 · 로그 파일 · 색 · 보폭 (인입 화면)")
 from cli import _screen as SC                                         # noqa: E402
 from cli import ingest as IG81                                        # noqa: E402
+from cli import ingest_screen as SCR81                                # noqa: E402
 from core.build import ledger as LG81                                 # noqa: E402
 
 # ③ 색은 **특이점에만** · 비-tty면 ESC 0. (여기 stdout은 파이프다 — 회귀가 그 조건이다.)
@@ -210,7 +212,7 @@ _row_dict = {"canonical": "노칭", "verdict": "match", "candidates_n": 1,
 _row_unc = {"canonical": "패키징::실링 온도", "verdict": "uncertain", "candidates_n": 3,
             "path": "scope+judge", "llm": {"calls": 1}, "confidence": 0.41,
             "queue_kind": "uncertain_match"}
-_line_new = IG81.value_line(_row_new)
+_line_new = SCR81.value_line(_row_new)
 show("③ 파이프로 나가는 화면에 ESC가 0바이트다 (색이 문면을 바꾸지 않는다)",
      "\033" not in _line_new and SC.strip_ansi(_line_new) == _line_new, repr(_line_new[:20]))
 show("③ 색을 벗긴 문자열이 원본과 같다 (어서션·스캐너가 같은 것을 읽는다)",
@@ -242,20 +244,20 @@ show("① 값 줄이 대장 행의 값을 그대로 낸다 (새 정보 0 · 화�
      and "후보 0" in _line_new and "→ 큐 auto_node" in _line_new
      and "?" not in _line_new, _line_new.strip())
 show("① LLM이 든 값은 후보 수와 확신을 낸다",
-     all(x in IG81.value_line(_row_unc) for x in ("uncertain", "LLM", "후보 3", "0.41")),
-     IG81.value_line(_row_unc).strip())
+     all(x in SCR81.value_line(_row_unc) for x in ("uncertain", "LLM", "후보 3", "0.41")),
+     SCR81.value_line(_row_unc).strip())
 show("① 사전으로 끝난 값은 줄을 찍지 않는다 (판단이 갈린 자리만 — 수로만 센다)",
-     not IG81._loud(_row_dict) and IG81._loud(_row_new) and IG81._loud(_row_unc))
+     not SCR81._loud(_row_dict) and SCR81._loud(_row_new) and SCR81._loud(_row_unc))
 # ① 집계는 대장 행에서 — 콜백을 직접 돌려 잰다(화면과 같은 함수).
-_on = IG81.row_printer()
+_on = SCR81.row_printer()
 _buf81 = _io.StringIO()
 with _ctx.redirect_stdout(_buf81):
     for _r in (_row_dict, _row_new, _row_unc):
         _on(_r)
 _out81 = _buf81.getvalue()
 show("① 집계가 대장 행에서 나온다 (사전 1 · NEW 1 · 불확실 1 · 큐 2)",
-     IG81.TALLY == {"값": 3, "사전": 1, "NEW": 1, "불확실": 1, "큐": 2, "orphan": 0},
-     str(IG81.TALLY))
+     SCR81.TALLY == {"값": 3, "사전": 1, "NEW": 1, "불확실": 1, "큐": 2, "orphan": 0},
+     str(SCR81.TALLY))
 show("① 찍힌 줄은 판단이 갈린 둘뿐이다 (사전 히트는 화면에 없다)",
      len([l for l in _out81.splitlines() if l.strip()]) == 2
      and "노칭::버 높이" in _out81 and "dictionary" not in _out81)
@@ -286,8 +288,8 @@ _led81 = (LG81.read("CP01") or {}).get("rows") or []
 _vals81 = [l for l in _scr81.splitlines()
            if l.strip()[:1] in ("✓", "+", "?", "✗", "·")]
 show("① 값 줄 수 == 대장 행 중 판단이 갈린 수 (두 벌이 갈리지 않는다)",
-     len(_vals81) == sum(1 for r in _led81 if IG81._loud(r)),
-     f"화면 {len(_vals81)} · 대장 LOUD {sum(1 for r in _led81 if IG81._loud(r))}"
+     len(_vals81) == sum(1 for r in _led81 if SCR81._loud(r)),
+     f"화면 {len(_vals81)} · 대장 LOUD {sum(1 for r in _led81 if SCR81._loud(r))}"
      f" / 전체 {len(_led81)}")
 show("② 기본 화면에 INFO 로그 줄이 0이다 (화면은 판단이 갈린 값만)",
      not [l for l in _scr81.splitlines() if l.startswith("INFO")],

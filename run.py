@@ -136,7 +136,7 @@ def cmd_golden(args):
 
 def cmd_viewer(args):
     """검증 뷰어 — 그래프 위에서 질의가 도는지 본다(B52). 위임만 한다."""
-    from cli.viewer import main
+    from cli.viewer.server import main
     return main(args)
 
 
