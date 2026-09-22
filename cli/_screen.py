@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import unicodedata
 
 #: ANSI 조각 — 이름으로만 쓰고 숫자는 여기 한 자리에 둔다.
 _C = {"reset": "\033[0m", "bold": "\033[1m", "reverse": "\033[7m",
@@ -91,3 +92,23 @@ def take_flags(argv):
     _OFF = _OFF or opts["no_color"]
     VERBOSE = VERBOSE or opts["verbose"]
     return out, opts
+
+
+# ── 표의 폭 — 한글은 두 칸이다 (자리 하나 · B83 ②) ──────────────────────────
+def w(text):
+    """동아시아 폭 — 한글은 두 칸이다. 표가 어긋나면 눈 검수가 느려진다."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1
+               for c in str(text))
+
+
+def pad(text, n):
+    return str(text) + " " * max(1, n - w(text))
+
+
+def cut(text, n):
+    out = ""
+    for c in str(text):
+        if w(out) + w(c) > n:
+            return out + "…"
+        out += c
+    return out

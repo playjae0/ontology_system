@@ -3,7 +3,8 @@
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--step] [--step-every N] [--narrow embed|overlap]
-                                  [--progress-every N] [-v] [--no-color]
+                                  [--progress-every N] [--sheets "2-3:prose 4:ref *:skip"]
+                                  [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--narrow embed|overlap] [--progress-every N]
                                   (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
@@ -18,6 +19,11 @@
 `--coord-llm`은 좌표 태깅에서 **묻는 표기 종수의 상한**이다(기본 100 · `off`면 0회).
 행 수가 아니다 — 같은 표기를 여러 행이 써도 묻는 것은 한 번이다(B69 ①). 상한을 넘는
 표기는 묻지 않고 목록 밖 그대로 둔다(인입의 `orphan_anchor`) — 배치는 멈추지 않는다.
+**시트 역할 관문**(B83): 시트 둘 이상인 엑셀을 prose로 넣을 때 **문서마다 한 번** 역할을
+정한다(`prose`·`ref`·`skip`) — 답은 `registry/sheet_roles/<doc_id>.json`에 남고 같은 문서는
+다시 묻지 않는다. 비대화형(파이프 · `ingest-dir` · EOF)에서는 **묻지 않고 거부**한다 —
+조용한 기본값이 없다. `--sheets "<선택>:<역할> …"`로 미리 줄 수 있다(관문 건너뜀).
+
 `--doc-type`을 주면 스캔하지 않고 그것으로 본다(사람 지정 — 기본 경로). 비정형(pptx)은
 헤더 지문이 없어 스캔 대상이 아니다 — 지정 없이 오면 미선택으로 남는다.
 
@@ -286,7 +292,7 @@ def narrow_notice():
         print(f"   후보 좁히기 — {mode} (플래그가 설정을 이긴다)")
 
 
-def _ingest_file_select(doc, sel, row, dry_run, step):
+def _ingest_file_select(doc, sel, row, step):
     """선택 판정과 그 앞 검사 — 형태 대조 · 경로 경고 · `--dry-run`.
 
     `ingest_file`에서 단계로 떼어냈다(B78 2c). 돌려주는 값이 `None`이 아니면
@@ -324,29 +330,141 @@ def _ingest_file_select(doc, sel, row, dry_run, step):
     if prev and prev.get("source_path") and _norm_path(prev["source_path"]) != _norm_path(doc):
         print(f"   ⚠ 같은 doc_id가 다른 경로에서 인입된 적 있다({prev['source_path']}) — "
               f"개정(재인입)으로 취급된다(D-110)")
-    if dry_run:
-        row["status"] = "선택만"
-        print("   (dry-run — 파싱·인입 안 함)")
-        return row, None, step
     return None, stage, step
+
+
+# ── 시트 역할 관문 (B83 ③ · 칸 3.1) ──────────────────────────────────────────
+def _sheet_rows(doc):
+    """시트 표의 재료 — **읽기 실패는 조용하다**(같은 이유로 파싱이 곧 실패한다).
+
+    표는 `reader`가 이미 내는 값의 투영이다(요청문 ② — 새 판독 0). 통합문서를 여는
+    일은 형태 판정과 겹치지만 **판정의 산출에 시트별 통계가 없다** — 값을 기록에
+    실어 나르면 근거와 화면이 갈린다(신호 다섯과 같은 병).
+    """
+    if Path(doc).suffix.lower() not in GRID_EXT:
+        return []
+    try:
+        return form_mod.sheet_table(reader_mod.read(str(doc)))
+    except Exception as e:                       # noqa: BLE001
+        _LOG.info("시트 표를 만들지 못했다 — %s (%s: %s)", doc, type(e).__name__, e)
+        return []
+
+
+def sheets_flag(args):
+    """`--sheets "<문법>"`를 args에서 떼어 `(남은 args, 문자열 또는 None)`.
+
+    `--coord-llm`과 같은 결이다 — 떼어내지 않으면 문자열이 경로 자리로 흘러간다.
+    """
+    args = list(args)
+    if "--sheets" not in args:
+        return args, None
+    i = args.index("--sheets")
+    spec = args[i + 1] if i + 1 < len(args) else None
+    del args[i:i + 2]
+    if not spec or spec.startswith("--"):
+        raise SystemExit('[투입] --sheets 뒤에 역할 문자열이 필요하다 — '        # [사용법]
+                         '예: --sheets "2-3:prose 4:ref *:skip"')
+    return args, spec
+
+
+def sheets_by_flag(doc, doc_id, spec, *, names=None, dry_run=False):
+    """`--sheets`로 받은 역할 — 관문을 건너뛰고 **같은 기록**을 쓴다(`decided_by: flag`).
+
+    문법의 자리는 `form.parse_sheet_spec` 하나이고 기록의 자리는
+    `core/state/sheets.py` 하나다 — `ingest-file`과 `parse run`이 여기로 모인다.
+    미정 시트가 남으면 `[사용법]`이다(조용한 기본값 0).
+    """
+    from core.state import sheets as SH
+    names = list(names or [r["name"] for r in _sheet_rows(doc)])
+    got, err = form_mod.parse_sheet_spec(spec, names)
+    if err:
+        raise SystemExit(f"[투입] --sheets {err}\n"                           # [사용법]
+                         f'  예: --sheets "2-3:prose 4:ref *:skip"')
+    left = SH.pending(got, names)
+    if left:
+        raise SystemExit(f"[투입] --sheets에 역할이 없는 시트가 남았다 — "       # [사용법]
+                         f"{' · '.join(left)}\n"
+                         f'  나머지를 한 번에: --sheets "{spec} *:skip"')
+    if not dry_run:
+        SH.write(doc_id, Path(doc).name, got, "flag")
+        print(SCR.sheet_roles_line(got, doc_id))
+    return got
+
+
+def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
+    """역할을 정해 돌려준다 — `(roles 또는 None, 거부 행 또는 None)`.
+
+    조건 넷(요청문 ③): 격자 포맷 · **prose로 읽히는 갈래** · 시트 ≥ 2 · 기록 없음
+    (또는 미결 시트 있음). 하나라도 아니면 `(None, None)`으로 지나간다 — 시트 하나면
+    표도 질문도 없다.
+
+    **갈래의 기준은 어댑터의 `payload_kind`다**(D-164) — 「형태 prose」와 뜻이 같은
+    자리이면서, 형태 판정이 기권(`verdict: None`)해도 **실제로 시트 전부를 도는 갈래**를
+    가린다. 시트 전부를 청크로 자르는 것은 prose 어댑터이지 형태 판정이 아니다.
+    """
+    from core.state import sheets as SH
+    kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
+    if kind != "prose":
+        return None, None
+    rows = _sheet_rows(doc)
+    if len(rows) < 2:
+        return None, None
+    names = [r["name"] for r in rows]
+    doc_id = sel["doc_id"]
+    rec = SH.read(doc_id)
+    roles = dict((rec or {}).get("sheets") or {})
+    for n in SH.stale(roles, names):
+        _LOG.info("시트 역할 기록에 있으나 문서에 없다 — %s · %s (무시)", doc_id, n)
+    if spec:
+        return sheets_by_flag(doc, doc_id, spec, names=names, dry_run=dry_run), None
+    pend = SH.pending(roles, names)
+    if rec and not pend:
+        print(f"   시트 역할 — 기록대로 진행({SH.summary(roles)} · "
+              f"{rec.get('decided_by')})")
+        return roles, None
+    if dry_run:                          # 보여만 준다 — 묻지 않고 기록도 쓰지 않는다
+        print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=pend))
+        return None, None
+    if not (ask and sys.stdin.isatty()):
+        # **상태 거부**다 — 조용한 기본값 없이 멈추고, 문면이 다음 줄을 싣는다.
+        print(SCR.sheets_refusal(doc, rows, pend=pend if rec else None, rec=rec))
+        return None, {"status": FAIL,
+                      "reason": f"시트 역할 미정 — 시트 {len(rows)}장 "
+                                f"(--sheets 또는 터미널에서 관문)"}
+    got = SCR.sheet_gate(rows, file=doc, doc_id=doc_id, rec=rec)
+    if got is None:
+        return None, {"status": SKIP, "reason": "사람이 멈췄다 — 시트 역할 관문"}
+    SH.write(doc_id, Path(doc).name, got, "gate")
+    print(SCR.sheet_roles_line(got, doc_id))
+    return got, None
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
-                step_every=0, progress_every=None):
+                step_every=0, progress_every=None, sheets=None, ask=True):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     sel = select(doc, doc_type, adapter_paths)
     row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
            "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
     # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
-    _r, stage, step = _ingest_file_select(doc, sel, row, dry_run, step)
+    _r, stage, step = _ingest_file_select(doc, sel, row, step)
     if _r is not None:
         return _r
+    # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
+    # 기록을 읽어 넘기는 쪽이 여기다. 정해지지 않으면 **읽지 않는다**(상태 거부).
+    _roles, _stop = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask)
+    if _stop is not None:
+        row.update(**_stop)
+        return row
+    if dry_run:
+        row["status"] = "선택만"
+        print("   (dry-run — 파싱·인입 안 함)")
+        return row
     try:
         stage["이름"] = "파싱"
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
-                             coord_cap=coord_cap)
+                             coord_cap=coord_cap, sheet_roles=_roles)
         if not res.ok:
             rows = SCR.fail_rows(res.failures)
             # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
@@ -473,7 +591,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap,
-                                progress_every=progress_every))
+                                progress_every=progress_every, ask=False))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -591,6 +709,8 @@ def main(argv):
                              f"{mode!r}")
         narrow.set_narrow(mode)
         del args[i:i + 2]
+    # **시트 역할 손잡이**(B83 ③) — 관문을 건너뛰고 같은 기록을 쓴다(`decided_by: flag`).
+    args, sheets_spec = sheets_flag(args)
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")
@@ -619,11 +739,17 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
+        if sheets_spec:
+            # 역할은 **문서 하나의 결정**이다 — 폴더 전체에 같은 번호를 적용하면
+            # 시트 자리가 다른 문서에서 가격 시트가 prose가 된다.
+            raise SystemExit("[투입] --sheets는 ingest-file 하나에만 준다 — "   # [사용법]
+                             "문서마다 시트 자리가 다르다")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
                           recurse=_from_raw, progress_every=prog_every)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
-                            step_every=step_every, progress_every=prog_every)]
+                            step_every=step_every, progress_every=prog_every,
+                            sheets=sheets_spec)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

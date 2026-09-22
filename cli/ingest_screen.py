@@ -244,3 +244,119 @@ def _judge_gate(n, total, u):
                       f"체크포인트는 남는다)")
 
 
+
+
+# ── 시트 역할 관문 (B83 ②③ · 칸 2.2 · 3.1) ──────────────────────────────────
+# **묻는 자리는 하나다** — 시트가 여러 장인 엑셀을 prose로 넣을 때, 문서마다 사람이
+# 한 번 정한다. 표의 재료는 `parser/form.sheet_table()`이고 **여기서 새로 판독하지
+# 않는다**(reader가 이미 낸 값의 투영 — 화면이 제 계산을 하지 않는다는 B81 ①과 같다).
+#
+# 제안은 **규칙**이다(요청문 ② — LLM 지점을 늘리지 않는다). 규칙이 못 미치면 사람이
+# 표를 보고 고치고, 그 답이 기록이 된다(`core/state/sheets.py`).
+SHEET_HEAD = "   " + (_screen.pad("#", 4) + _screen.pad("시트", 20)
+                      + _screen.pad("행", 6) + _screen.pad("열", 5)
+                      + _screen.pad("글자셀", 8) + _screen.pad("앞부분", 34) + "제안")
+
+
+def sheet_note(rec, pend):
+    """머리의 괄호 — **기록의 상태를 말한다**(처음인가 · 미결이 있나)."""
+    if not rec:
+        return "기록 없음 — 이 문서는 처음이다"
+    return (f"기록 있음({rec.get('decided_by')} · {rec.get('at')})"
+            + (f" · **미결 {len(pend)}장** — 새 시트가 생겼다" if pend
+               else " — 다시 묻지 않는다"))
+
+
+def sheet_row(r, known=None):
+    """표 한 줄 — 값은 `form.sheet_table()`이 낸 것 그대로."""
+    role = (known or {}).get(r["name"])
+    last = f"기록 {role}" if role else r["suggest"]
+    return "   " + (_screen.pad(r["no"], 4)
+                    + _screen.pad(_screen.cut(r["name"], 18), 20)
+                    + _screen.pad(f"{r['rows']:,}", 6) + _screen.pad(r["cols"], 5)
+                    + _screen.pad(f"{int(round(r['text_ratio'] * 100))}%", 8)
+                    + _screen.pad(_screen.cut("「" + (r["head"] or "—") + "」", 32), 34)
+                    + last)
+
+
+def sheet_table_block(rows, *, file, rec=None, pend=None):
+    """시트 **전부**의 표 — 이름을 다 보여 주고 묻는다(사용자 확정).
+
+    `--dry-run`도 이것만 찍는다(묻지 않는다 · 기록 0).
+    """
+    out = [f"■ 시트 역할 — {Path(file).name} · {len(rows)}장 "
+           f"({sheet_note(rec, pend or [])})", SHEET_HEAD]
+    known = (rec or {}).get("sheets") or {}
+    out += [sheet_row(r, known) for r in rows]
+    return "\n".join(out)
+
+
+def sheet_roles_line(roles, doc_id):
+    """답이 기록이 된 뒤의 한 줄 — 무엇이 몇이고 어디에 남았나."""
+    from core.state import sheets as SH
+    return (f"   시트 역할 — {SH.summary(roles)} → "
+            f"{paths.rel_to_home(SH.path(doc_id))}")
+
+
+def sheet_gate(rows, *, file, doc_id, rec=None):
+    """관문 — 표를 보이고 한 줄을 받는다. 돌려주는 것은 `{시트: 역할}` 또는 `None`(중단).
+
+    **조용한 기본값이 없다**(요청문 ③): Enter는 「제안 그대로」라고 화면이 말한 뒤에만
+    제안이 되고, 역할이 안 정해진 시트가 남으면 다시 묻는다. `q`는 그 문서 중단이고
+    그래프·기록 쓰기가 0이다.
+    """
+    from parser.form import parse_sheet_spec
+    from core.state import sheets as SH
+    names = [r["name"] for r in rows]
+    roles = dict((rec or {}).get("sheets") or {})
+    pend = SH.pending(roles, names)
+    print(sheet_table_block(rows, file=file, rec=rec, pend=pend))
+    while True:
+        try:
+            ans = input("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:skip · "
+                        "Enter=제안대로 · q=중단): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None                       # 비대화형과 같은 처분 — 조용히 넘기지 않는다
+        if ans.lower() in ("q", "quit"):
+            print(f"   중단 — {Path(file).name}은 읽지 않았다(그래프·기록 쓰기 0).")
+            return None
+        if not ans:                           # Enter = 제안 그대로 (미결 시트만)
+            got = {r["name"]: r["suggest"] for r in rows if r["name"] in pend}
+        else:
+            got, err = parse_sheet_spec(ans, names)
+            if err:
+                print(f"   [사용법] {err}")
+                continue
+        merged = {**roles, **got}
+        left = SH.pending(merged, names)
+        if left:
+            print(f"   역할이 안 정해진 시트가 남았다 — {' · '.join(left)} "
+                  f"(`*:skip`처럼 나머지를 한 번에 줄 수 있다)")
+            roles, pend = merged, left
+            continue
+        return merged
+
+
+def sheets_refusal(doc, rows, *, pend=None, rec=None):
+    """**비대화형이면 묻지 않고 상태 거부**다 — 문면에 시트 이름 **전부**와 다음 줄을 싣는다.
+
+    묻고 EOF를 받아 조용히 제안대로 넣으면, 가격 시트가 그래프에 들어간 사실이
+    어디에도 남지 않는다(요청문의 출처). 배치에서는 **그 문서만** 실패한다.
+    """
+    from parser.form import SHEET_ROLES
+    names = [r["name"] for r in rows]
+    what = (f"기록에 없는 시트 {len(pend)}장 — {' · '.join(pend)}" if pend
+            else f"시트 {len(names)}장의 역할이 정해지지 않았다")
+    sug = " ".join(f"{r['no']}:{r['suggest']}" for r in rows
+                   if not pend or r["name"] in pend)
+    return "\n".join([
+        f"■ 시트 역할 미정 — {Path(doc).name} ({what})",
+        "   시트: " + " · ".join(f"{r['no']} {r['name']}" for r in rows),
+        "   비대화형이라 묻지 않는다 — 조용한 기본값은 없다(역할 없이 읽으면 "
+        "가격·일정 시트까지 그래프 후보가 된다).",
+        "   ▶ 다음 줄:",
+        f'     터미널에서:          python run.py ingest-file {doc}',
+        f'     역할을 바로 주려면:   python run.py ingest-file {doc} --sheets "{sug}"',
+        f"     (제안대로 넣으려면 위 문자열 그대로 · 역할은 "
+        f"{'|'.join(SHEET_ROLES)})",
+    ])

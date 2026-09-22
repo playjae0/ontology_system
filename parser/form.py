@@ -136,3 +136,104 @@ def judge(raw):
             "why": (f"자동 조건(찬성 ≥{AUTO_MIN_FOR} · 반대 {AUTO_MAX_AGAINST}) 미충족 — "
                     f"table {len(tally[TABLE])} · prose {len(tally[PROSE])} · "
                     f"기권 {len(tally[ABSTAIN])}. **사람이 정한다**")}
+
+
+# ================================================================ 시트 역할 (B83 ②)
+# **다른 판정이다** — 위가 「이 문서를 table로 읽을까 prose로 읽을까」라면 여기는
+# 「이 **시트**를 지식으로 읽을까, 참조로 둘까, 읽지 말까」다. 문서마다 시트 이름과
+# 자리가 달라 어댑터(doc_type)에 적을 수 없고, 결정 단위가 **문서 하나**다.
+#
+# **제안은 규칙이다 — LLM 지점을 늘리지 않는다**(B83 ②): 사람이 어차피 고치는 제안에
+# 지점 하나(지시문·mock·실호출·도달성 어서션)를 열 이유가 없다. 규칙이 못 미치면
+# 사람이 고치고, 그 답이 기록이 된다.
+SHEET_ROLES = ("prose", "ref", "skip")
+
+#: 문턱 — **표본 관찰로 정했다**(B83 · 보고에 근거를 적는다).
+#: 산문 시트는 「문장이 여러 줄」이고 참조 시트는 「짧은 항목이 줄줄이」다.
+#: 실측(tests/fixtures/raw/RFQ01.xlsx · TOC01 · CP01):
+#:   사양_기계 23행·글자비 1.00·평균 21.3 / 사양_전장 9·1.00·22.3 / 요구사항 8·1.00·20.6
+#:   도면목록 30·1.00·**7.0** / 가격 13·**0.31**·2.9 / 일정 6·0.62·2.0 / 표지 4·1.00·11.2
+#:   (대조군) TOC01 보고서 33·1.00·21.2 = 산문 · CP01 관리계획서 33·1.00·**6.4** = 표
+#: 산문 최소 20.6 vs 참조 최대 11.2 사이에서 **15**를, 행은 표지(4) 위 **8**을 잡았다.
+#: 세 문턱을 **AND로** 본다 — 도면목록은 글자비 1.00·행 30이지만 평균 7.0에서 갈린다.
+SHEET_THRESHOLDS = {"text_ratio": 0.8, "rows": 8, "avg_len": 15}
+
+
+def sheet_stats(sheet):
+    """시트 하나의 **이미 읽은 사실**만 — 새 판독 0 (reader가 낸 것에서 센다)."""
+    cells = (sheet or {}).get("cells") or {}
+    vals = [v for v in cells.values() if v is not None and str(v).strip() != ""]
+    txt = [v for v in vals if not isinstance(v, (int, float))]
+    head = [str(v).strip() for v in list(cells.values())[:3]
+            if v is not None and str(v).strip()]
+    return {"name": sheet.get("name"), "rows": sheet.get("max_row") or 0,
+            "cols": sheet.get("max_col") or 0, "values": len(vals),
+            "text_ratio": round(len(txt) / len(vals), 2) if vals else 0.0,
+            "avg_len": round(sum(len(str(v)) for v in txt) / len(txt), 1) if txt else 0.0,
+            "head": " / ".join(h[:28] for h in head)}
+
+
+def suggest_role(stat, thresholds=None):
+    """제안 하나 — `prose` · `ref` · `skip`. **제안은 제안이다**(기록은 사람의 답)."""
+    th = thresholds or SHEET_THRESHOLDS
+    if not stat.get("values"):
+        return "skip"                      # 빈 시트는 읽을 것이 없다
+    if (stat["text_ratio"] >= th["text_ratio"] and stat["rows"] >= th["rows"]
+            and stat["avg_len"] >= th["avg_len"]):
+        return "prose"
+    return "ref"
+
+
+def sheet_table(raw, thresholds=None):
+    """통합문서의 **시트 전부**를 표로 — 번호·이름·크기·글자비·앞부분·제안."""
+    rows = []
+    for i, sh in enumerate((raw or {}).get("sheets") or [], start=1):
+        st = sheet_stats(sh)
+        st["no"] = i
+        st["suggest"] = suggest_role(st, thresholds)
+        rows.append(st)
+    return rows
+
+
+def parse_sheet_spec(spec, names):
+    """`2-3:prose 4:ref *:skip` → `({시트: 역할}, 오류 문면 또는 None)`.
+
+    문법의 자리는 여기 하나다 — 관문의 한 줄 입력과 `--sheets` 플래그가 **같은 문법**을
+    쓴다(③). 선택은 표의 번호(`2` · `2-3` · `2,3,7`) 또는 시트 이름이고 `*`는 「나머지」다.
+    **조용히 떨어지지 않는다**: 모르는 번호·이름·역할은 오류 문면으로 돌려주고 호출부가
+    `[사용법]`으로 낸다.
+    """
+    names = list(names)
+    roles, rest = {}, None
+    for tok in (spec or "").split():
+        if ":" not in tok:
+            return None, f"토큰 {tok!r}에 ':'이 없다 — 문법은 <선택>:<역할>이다"
+        sel, role = tok.rsplit(":", 1)
+        if role not in SHEET_ROLES:
+            return None, f"역할 {role!r}는 닫힌 셋 밖이다 — {'|'.join(SHEET_ROLES)}"
+        if sel == "*":
+            rest = role                       # 「나머지」는 토큰 전부를 본 뒤에 적용한다
+            continue
+        for part in [x.strip() for x in sel.split(",") if x.strip()]:
+            m = re.fullmatch(r"(\d+)-(\d+)", part)
+            if m:
+                a, b = int(m.group(1)), int(m.group(2))
+                if not (1 <= a <= b <= len(names)):
+                    return None, f"범위 {part!r}가 시트 번호 1~{len(names)} 밖이다"
+                picked = names[a - 1:b]
+            elif part.isdigit():
+                i = int(part)
+                if not 1 <= i <= len(names):
+                    return None, f"번호 {part!r}가 시트 번호 1~{len(names)} 밖이다"
+                picked = [names[i - 1]]
+            elif part in names:
+                picked = [part]
+            else:
+                return None, (f"{part!r}는 이 문서의 시트 번호도 이름도 아니다 — "
+                              f"시트: {' · '.join(names)}")
+            for n in picked:
+                roles[n] = role
+    if rest:
+        for n in names:
+            roles.setdefault(n, rest)
+    return roles, None

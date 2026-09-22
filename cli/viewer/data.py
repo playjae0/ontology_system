@@ -13,7 +13,7 @@ from __future__ import annotations
 from core import paths
 from core.build import ledger
 from core.llm import gateway
-from core.state import store
+from core.state import sheets, store
 from core.state.bootstrap import open_graph
 from router import discover
 
@@ -56,8 +56,10 @@ def doc(doc_id):
              if any(str(p).split("#")[0].split(":")[0] == doc_id
                     for p in (n.get("provenance") or []))]
     ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    # **역할은 청크가 지고 다니는 사실이다**(B83 ④) — 뷰어가 다시 판정하지 않는다.
     chunks = [{"chunk_id": cid, "source_locator": c.get("source_locator"),
-               "section": c.get("section"), "text": c.get("text")}
+               "section": c.get("section"), "text": c.get("text"),
+               "sheet_role": (c.get("meta") or {}).get("sheet_role")}
               for cid, c in ch.items() if c.get("doc_id") == doc_id]
     # 원본은 `<상태>/raw/` 아래면 상대 표기다(B79 ② · B80 ②) — 링크로 풀 수 있다.
     src = reg.get("source_path")
@@ -70,6 +72,8 @@ def doc(doc_id):
             rel = None
     return {"doc_id": doc_id, "registry": reg, "raw_rel": rel,
             "rows": len(rows), "tally": tally,
+            # 기록 그대로 — 뷰어는 읽기만이다(쓰기 0).
+            "sheet_roles": (sheets.read(doc_id) or {}).get("sheets") or {},
             "nodes": sorted(nodes, key=lambda n: n["canonical"]),
             "chunks": sorted(chunks, key=lambda c: c["chunk_id"])}
 

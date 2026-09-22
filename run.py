@@ -39,6 +39,8 @@
   python run.py ingest-file <문서> [--doc-type X] [--dry-run]
                                    일괄 투입 1건 — 선택(지문 스캔 유일 일치 또는 지정)
                                    → 파싱 → 인입 (B46 · cli/ingest.py로 위임)
+                                   시트 둘 이상인 prose 엑셀은 **시트 역할 관문**을 지난다
+                                   (`--sheets "2-3:prose 4:ref *:skip"` · B83)
   python run.py ingest-dir <경로> [--doc-type X] [--dry-run]
                                    경로의 문서 전부를 문서 단위 독립으로 투입
   python run.py skeleton-status <층>

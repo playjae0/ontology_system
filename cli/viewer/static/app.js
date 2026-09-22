@@ -202,9 +202,16 @@ async function openDoc(docId) {
   box.append(el("h3", "", `판정 대장 ${d.rows}행`), t);
   box.append(el("h3", "", `노드 ${d.nodes.length}`));
   d.nodes.slice(0, 50).forEach((n) => box.append(el("div", "row", `${n.canonical} [${n.layer}]`)));
-  box.append(el("h3", "", `청크 ${d.chunks.length}`));
+  /* 시트 역할 — 사람이 한 번 정한 기록 그대로(B83 ④). 없으면 줄도 없다. */
+  const roles = Object.entries(d.sheet_roles || {});
+  if (roles.length) {
+    box.append(el("h3", "", `시트 역할 ${roles.length}장`));
+    roles.forEach(([n, r]) => box.append(el("div", "row", `${n} — ${r}`)));
+  }
+  const nref = d.chunks.filter((c) => c.sheet_role === "ref").length;
+  box.append(el("h3", "", `청크 ${d.chunks.length}` + (nref ? ` · 참조 ${nref}` : "")));
   d.chunks.slice(0, 20).forEach((c) =>
-    box.append(el("div", "card", `${c.source_locator || ""} ${String(c.text).slice(0, 120)}`)));
+    box.append(el("div", "card", `${c.source_locator || ""}${c.sheet_role ? ` [${c.sheet_role}]` : ""} ${String(c.text).slice(0, 120)}`)));
 }
 
 /* ── 질의 콘솔 — 경로 오버레이 · 두 채널 · 미스 (설계_03 §3) ──────────── */
