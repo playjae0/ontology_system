@@ -39,8 +39,24 @@ def snapshot_path():
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 
 
-def closed_list(layer="process", path=None):
+def _need_layer(layer, where):
+    """**층 이름의 기본값은 없다**(B85 ②) — 파서는 어느 층이 좌표 층인지 모른다.
+
+    구판은 층 이름에 기본값이 있었다: 골격을 다른 이름의 층에 두면 빈 목록을 읽어
+    문서의 좌표가 **전부 목록 밖**이 됐다(사내 실측 2026-09-22 · 조용한 오답).
+    빠뜨리면 TypeError가 아니라 **무엇을 넘겨야 하는지 말하는 실패**다.
+    """
+    if not layer:
+        raise ValueError(
+            f"[파서] {where}에 층 이름이 없다 — 좌표 층은 호출자가 넘긴다. "
+            f"시스템 쪽 호출자는 `core.state.bootstrap.coord_layer()`의 값을 준다"
+            f"(파서는 core를 import하지 않는다)")
+    return layer
+
+
+def closed_list(layer=None, path=None):
     """골격 닫힌 목록 스냅샷을 읽는다 — 없으면 빈 목록(조용히 그래프로 가지 않는다)."""
+    layer = _need_layer(layer, "closed_list")
     p = Path(path or snapshot_path())
     if not p.exists():
         return []
@@ -78,7 +94,7 @@ def group_of(node, nodes):
     return None
 
 
-def coord_from_section(pieces, *, layer="process", nodes=None,
+def coord_from_section(pieces, *, layer=None, nodes=None,
                        ref_field="process_ref", sep=" > "):
     """산문 조각의 `section`(헤딩 경로)에서 좌표를 세운다 (B43 ④).
 
@@ -108,7 +124,7 @@ def coord_from_section(pieces, *, layer="process", nodes=None,
     return out
 
 
-def tag(pieces, *, layer="present", nodes=None, ref_field="process_ref",
+def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         pick=None, doc_type=None, progress=None, notice=None, cap=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 

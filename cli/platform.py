@@ -35,7 +35,7 @@ from core import paths
 from core.state import fixtures, store
 from core import graph as graph_mod
 from core.build import entry as pipeline_mod
-from core.state.bootstrap import load_config, open_graph
+from core.state.bootstrap import coord_layer, load_config, open_graph
 from core.build.extract import EXTRACT_DIR
 from core.state.status import is_live
 from router import discover
@@ -664,11 +664,13 @@ def cmd_dashboard():
         print(f"          엣지 {sum(rels.values())} — "
               + " · ".join(f"{k} {v}" for k, v in rels.most_common()))
 
-    # 공정별 관리항목 수 — Q7의 대표 형태
+    # 공정별 관리항목 수 — Q7의 대표 형태. **층은 카테고리로 찾는다**(B85 ②) —
+    # 폴더 이름을 박으면 골격 층을 다른 이름으로 세운 순간 이 표가 빈다.
+    _coord = coord_layer()
     print("\n  공정별 관리항목 수 (상위 8)")
-    g = graphs.get("process")
+    g = graphs.get(_coord)
     if g:
-        pair = (load_config("process").get("category_pair_map") or {})
+        pair = (load_config(_coord).get("category_pair_map") or {})
         rel = pair.get("Process,Property") or "has_property"
         cnt = Counter()
         names = {i: n["canonical"] for i, n in g.nodes.items()}
@@ -677,7 +679,7 @@ def cmd_dashboard():
                 continue
             cnt[names.get(e["src"], e["src"])] += 1
         # 설비를 통한 간접 보유도 센다 — 사람이 묻는 것은 "그 공정에 걸린 것"이다
-        child = ((load_config("process").get("skeleton") or {})
+        child = ((load_config(_coord).get("skeleton") or {})
                  .get("relations") or {}).get("child")
         under = {}
         for e in g.edges:

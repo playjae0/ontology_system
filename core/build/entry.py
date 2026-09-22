@@ -18,7 +18,7 @@ from core.build.ingest import IngestResult, ingest, load_schema
 from core.build.ledger import Ledger
 from core.build.retry import retry_orphans
 from core.state import log, store
-from core.state.bootstrap import load_config, open_graph
+from core.state.bootstrap import COORD_CATEGORY, load_config, open_graph
 from core.state.status import is_live
 
 _LOG = log.get(__name__)
@@ -122,7 +122,7 @@ def _plan_hit(b, m, layer):
     lay = m.get("target_layer") or layer
     et = m.get("electrode_type")
     sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
-    ref_id, ref_g = (b.resolve_anchor(m.get("ref"), loop.COORD_CATEGORY, "(예고)",
+    ref_id, ref_g = (b.resolve_anchor(m.get("ref"), COORD_CATEGORY, "(예고)",
                                       defer=sink)
                      if m.get("ref") else (None, None))
     if ref_id:

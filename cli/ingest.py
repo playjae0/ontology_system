@@ -44,6 +44,7 @@ from cli import ingest_screen as SCR
 from core import paths
 from core.llm import gateway, narrow
 from core.state import log, registry, store
+from core.state.bootstrap import coord_layer
 from core.build import ledger as _ledger
 from core.build.entry import finalize, run_document
 
@@ -497,7 +498,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             _pl = decision_plan(
                 _entity_surfaces(res.envelope, _sc),
                 [x.get("process_ref") for x in (res.envelope.get("records") or [])
-                 if x.get("process_ref")], _sc.get("layer") or "process")
+                 if x.get("process_ref")], _sc.get("layer") or coord_layer())
             if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
                               f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
                               f"{_pl['예상_호출']}회"):

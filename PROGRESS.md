@@ -26,6 +26,7 @@
 - B79 — 층 자산은 상태 루트에 · 원본의 자리 · 정적 검사와 스모크 · 2026-09-21 · **완료**
 - B80 — 요청의 손잡이 · 임베딩 백엔드 둘 · 원본 자리 이름 · 2026-09-22 · **완료** (본문 `docs/archive/장부/PROGRESS_B80.md`)
 - B81 — 인입 화면(값 줄·로그 파일·색·보폭) + B80 후속 · 2026-09-22 · **완료** (본문 `docs/archive/장부/PROGRESS_B80.md`)
+- B82 — 뷰어를 세미 플랫폼으로 · 질의 trace · 2026-09-22 · **완료** (본문 `docs/archive/장부/PROGRESS_B80.md`)
   (본문은 `docs/archive/장부/PROGRESS_B77~B79.md`)
 - 요약
 - 전제 대조표 (§1 9행)
@@ -113,53 +114,6 @@
 - B76 — 모양을 관문이 잠근다 · 대장은 필드 전부를 덮는다 · 예외는 문면으로 죽는다 · 2026-09-16 · **완료**
 
 ---
-
-## B82 — 뷰어를 세미 플랫폼으로 · 질의 trace (2026-09-22)
-
-순서 ③ → ① → ② → ④ → ⑤ 그대로.
-
-### ③ 질의 trace — `answer()` 계측 (판단 0 · 새 순회 0)
-
-- `graph.neighbors(…, trace=)`가 **한 바퀴마다** 규칙·도달 노드·쓴 엣지를 적는다 ·
-  `expand`·`collect_chunks`가 그것을 받아 넘기고 `link`는 방법(dict|llm_fallback)을 단다.
-- `--json`에 `trace{intent, linking, hops, collection, facts, answer, miss}` — 기존 키 불변.
-  `used`는 ⑧이 되돌려 준 번호에서(mock은 전부 true).
-
-### ① 서버 — 데이터는 서버가 준다
-
-- `cli/viewer/` 패키지: `server.py`(179) · `data.py`(122) · `static/`. 라우트 여덟, 전부 GET.
-  `/api/graph`·`/api/doc/<id>`·`/api/funnel`·`/raw/<경로>` 신설. **쓰기 0**(해시 불변 실측) ·
-  127.0.0.1 바인드 · `/raw/`는 `_safe_under()` 하나가 잠근다.
-
-### ② 그래프 — 벤더링 WebGL
-
-- `static/vendor/`에 sigma 3.0.1 · graphology 0.25.4(**npm 레지스트리 tarball** · MIT ·
-  LICENSE·출처·sha256 동봉). 외부 URL 0. 렌더러는 `render({nodes, edges, …})` 하나 뒤.
-- 색 축 6(기본 category) · 범례(값·수·견본) · 엣지 rel 토글 · 걸침은 **곡선+별색**
-  (점선 프로그램이 없다 — D-163 ②) · 필터 5축 · 검색 · obsolete 토글 · 결정적 계층 좌표.
-
-### ④ 질의 콘솔 · ⑤ 연결 현황
-
-- 링킹 칩(사전/폴백) · 경로 배지 · 두 채널 카드 · `kept=false` 회색 · 미스 패널 ·
-  답변(mock 표시) · 노드→provenance→`/api/doc`→`/raw/` 원본 열기.
-- `/api/funnel`: 문서마다 값→사전·스코프·LLM붙음·NEW·불확실·orphan·큐 + orphan 행 표.
-
-### 실행으로 확인한 것
-
-- 회귀 **1,430 → 1,460/1,460** · FAIL 0 · 클린 2회 동일 그래프 · doctor EXIT=0.
-  순증 30 · 삭제 0 (`test_viewer` 29 · test_g4 +1).
-- 브라우저 실측(Playwright·Chromium): 콘솔 오류 0 · 그래프 99노드/149엣지 렌더 ·
-  질의 3종(단일·극성 3노드·미스) 오버레이 · 연결 현황 표.
-- 네 벌 diff 0 · 화면 12종 diff 0 · 코드 표면 사라진 이름 13(전부 이동: `cli/viewer.py`→
-  패키지 · 화면 함수 9 → `ingest_screen`) · 신설 21.
-- **§7 상한**: `cli/ingest.py` 855 → 631 + `ingest_screen.py` 245 · `answer()` 144 → 79
-  (+`_answer_expand` 47 · `_answer_collect` 25). 위반 0.
-
-### 허브 마감 판정 · 문서 몫 (hub_43 · 2026-09-22)
-
-- **가결정 확정**: D-161 ③(`_payload`가 ⑤ 탐침까지) · ⑥(`find_spec`) · D-162 ②(`ONTO_LOG_LEVEL` = 콘솔 레벨) · ③(`PROGRESS_EVERY`는 `gateway.config()` — 설정 파일을 여는 자리는 하나) · D-163 ②(걸침은 곡선+별색 — 규격은 「한눈에 다른 선」이라는 성질) · ③(벤더 출처 npm 레지스트리 tarball — CDN 0은 실행 시 외부 내려받기 금지). 개정대장 §BQ.
-- **문서 개정(허브)**: 문서 7 §7.1(`raw/` · `work/logs/` · `cli/viewer/`·`_screen`·`ingest_screen` · 대체 표 임베딩 행 · 자리 규칙 `raw()`)·§7.6-B-1(설정 키 넷 · `_payload` · 오류 URL)·§7.6-B-6(선택 의존 · 벤더링)·§7.8(표 · 시각화 세미 플랫폼 · 로그 규격) · 문서 5 §5.2-6(`trace`) · CLAUDE.md §7 · 칸 대장(파트 5 신설 · 0.3 · 3.1) · 06 · 구조도 03·04 · 가이드 §0·§1·§5·§6·§7 · 상태_폴더 §1~§5 · 인입_이해 §3 · 구조 추출 재생성.
-- **B83 발주** — 시트 역할 관문(`docs/안건/B83_요청문.md` · 전제 11행 실행 확인). B84 = 큐 처리 화면.
 
 ## B83 — 시트 역할 관문: 문서마다 한 번 정하고 기록으로 남긴다 (2026-09-22)
 
@@ -296,3 +250,50 @@ sigma는 **한 번** 만들고 그래프 내용만 갈아 끼운다. 검색은 1
 
 - **B84 닫음.** D-165 ①②③ 확정(④~⑦ 실측 근거로 확정) — 개정대장 §BS. 문서 7 §7.8·§7.6-B-6(번들러는 들이지 않는다) · 06 5.1 · 구조도 04 · 가이드 §6 · 칸 대장 5.2·5.3. 별칭 검색은 B86에.
 - **B85 ① 보강**: `skeleton.source` 파일 부재는 문면 있는 거부(사내 실측 — 지금은 `FileNotFoundError`).
+
+## B85 — 좌표 층의 이름 해방: 골격 층은 `Process`를 선언한 층이지 폴더 `process`가 아니다 (2026-09-22)
+
+사내가 골격 층을 **설비층**(`equipment`)으로 세우자 문서의 좌표가 **전부 목록 밖**이
+됐다 — 명세는 좌표 층을 「카테고리를 선언한 층」으로 정했는데 코드가 폴더 이름을
+일곱 자리에 박고 있었다. 판정·저장 형식 변경 0.
+
+### ① 묻는 자리 하나 — `coord_layer()`
+
+- `core/state/bootstrap.coord_layer()` = `layer_of_category(COORD_CATEGORY)` ·
+  없으면 `NoCoordLayer`로 **시끄럽게 실패**(문면에 다음 줄). 캐시 키는
+  **(상태 루트, 층 목록)**이라 스스로 낡는다.
+- `COORD_CATEGORY`의 자리를 `core/build/loop.py` → `bootstrap.py`로 옮겼다(D-166 ①) —
+  `blocks.json`에서 좌표 카테고리를 꺼내는 자리는 **하나**다(회귀가 잰다).
+- **골격 파일 부재는 문면 있는 거부**: `load_seed`가 `SeedError(seed_missing_note(…))`를
+  던지고 `bootstrap`·`skeleton-status`(K01)·`skeleton-confirm` 셋이 같은 말을 한다 —
+  경로 · config 키 · 끄는 법 · 「이 층은 좌표 층이라 골격을 끌 수 없다」. Traceback 0.
+
+### ② 이름을 박은 자리를 푼다
+
+`parser/tagger.closed_list`·`coord_from_section`·`tag` · `parser/pipeline.parse`는
+**기본값 없음**(문면 있는 실패 — D-166 ③) · 호출자(`cli/parse` 둘 · `register/view` ·
+킷 `--coord-layer`)가 `coord_layer()`를 넘긴다. `doctor`(골격 절 + 첫 줄
+`좌표 층 <이름>`) · `cli/platform`(계기판) · `bootstrap(layer)` · `cli/extract`·`show`·
+`export`의 기본값 · `cli/ingest`의 판정 예고 · `core/build/extract.attach_candidates`.
+**운영 코드의 `"process"`는 `generate.py:28`(낱말 후보) 하나만 남았다** — 회귀가 센다.
+
+### ③ 이름이 다른 좌표 층에서 전 구간이 돈다
+
+레포를 임시 자리에 복사해 `layers/process` → `layers/equipment`(config·doc_type 스키마의
+층 키까지) → 클린 → 골격 → 인입 셋(공정층 표 · 품질층 표 · CSV) → 질의 →
+`doctor --quick`. **canonical 142 · 엣지 225(걸침 19) · 큐 5종이 `process`일 때와 같다.**
+
+### 실행으로 확인한 것
+
+- 회귀 **1,503 → 1,517/1,517** · FAIL 0 · 클린 2회 동일 · doctor EXIT=0.
+  순증 14(신설 `test_g6_coord_layer`) · 삭제 0.
+- 동작 등가 **네 벌 diff 0**(vs `046c05d` · 이름 `process` 루트 — 사전 306 · 대장 399 ·
+  엣지 133/92 · 노드 95/47 · 큐 107).
+- 화면 diff는 **doctor 첫 줄 한 조각**뿐(`· 좌표 층 process`).
+- 검사 5종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13 · 자산 해시 갱신(킷 2파일) ·
+  코드 지도 재생성 diff 0 · §7 상한 위반 0.
+- `git diff core/`: `bootstrap.py`(+coord_layer·상수 이사·골격 문면) ·
+  `build/{loop,table,prose,entry}.py`(import 자리) · `build/extract.py`(좌표 층).
+- **같은 병의 나머지 둘을 고쳤다**(D-166 ④): 리허설과 추출 프롬프트가 좌표 스냅샷을
+  **문서의 층**으로 읽고 있었다 — 품질층 doc_type에서 후보가 비던 자리다.
+- 소요: 반나절 1회차.

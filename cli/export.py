@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from core import paths
 from core.build import ledger
 from core.state import store
-from core.state.bootstrap import open_graph
+from core.state.bootstrap import coord_layer, open_graph
 from core.state.status import is_live
 from router import discover
 
@@ -199,7 +199,7 @@ def cmd_mermaid(args):
     """
     if args and args[0] == "cross":
         return _mermaid_cross()
-    lay = args[0] if args else "process"
+    lay = args[0] if args else coord_layer()   # 기본은 **좌표 층**이다(B85 ②)
     g = open_graph(lay)
     from core.state.bootstrap import load_config
     cfg = load_config(lay)

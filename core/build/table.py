@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from core.state.bootstrap import COORD_CATEGORY
 from core import matcher
 from core.build import gate, loop
 from core.build.build import Builder
@@ -92,13 +93,13 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
     """
     rec = r.rec
     _ref_s, _grp_s = rec.get("process_ref"), rec.get("process_group")
-    r.ref, r.ref_g = b.resolve_anchor(_ref_s, loop.COORD_CATEGORY, r.prov,
+    r.ref, r.ref_g = b.resolve_anchor(_ref_s, COORD_CATEGORY, r.prov,
                                       defer=r.defer)
     if not _ref_s:
         if _grp_s:
             # **저해상도 부착** — 그룹은 조상 대조용이지만, 좌표가 아예 없으면
             # 그것이 이 행이 가진 유일한 좌표다. 붙이되 큐는 달지 않는다.
-            r.ref, r.ref_g = b.resolve_anchor(_grp_s, loop.COORD_CATEGORY, r.prov,
+            r.ref, r.ref_g = b.resolve_anchor(_grp_s, COORD_CATEGORY, r.prov,
                                               defer=r.defer)
             r.coord_case = "low_res" if r.ref else "missing"
         else:

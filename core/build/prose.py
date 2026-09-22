@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from core.state.bootstrap import COORD_CATEGORY
 from core import matcher
 from core.build import loop
 from core.build.build import Builder
@@ -32,7 +33,7 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
         # 문서를 갖고 있다(§7.2). 있으면 locator에 접두를 붙인다.
         _loc = src.get("source_locator")
         prov = f"{env['doc_id']}#{_loc}" if _loc else cid
-        ref, ref_g = b.resolve_anchor(src.get("process_ref"), loop.COORD_CATEGORY, prov)
+        ref, ref_g = b.resolve_anchor(src.get("process_ref"), COORD_CATEGORY, prov)
         ref = b.descend_anchor(ref, src.get("electrode_type"), ref_g)   # ⓪ 비정형도 동일
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일

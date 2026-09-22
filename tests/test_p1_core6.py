@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from p1_common import *          # noqa: F401,F403 — 바닥은 하나다
 from p1_common import _P, _MAPS, _fixed_map, done   # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 
 print("\n■ 골격 닫힌 목록 스냅샷 — 파서·에이전트 공유 자산 (D-11 확정)")
@@ -87,7 +89,7 @@ show("tagger — 이미지 요약은 코어가 완성한다 (어댑터 아님 �
 
 # ============================================================ S7 · S8
 print("\n■ S7 preflight 불일치 / S8 계약 위반 행")
-res = pipeline.parse(CP, "CP02", str(RAW / "CP02_drift.xlsx"))
+res = pipeline.parse(CP, "CP02", str(RAW / "CP02_drift.xlsx"), layer=coord_layer())
 show("S7 양식 표류 → 문서 중단 + adapter_mismatch (extract 미실행)",
      not res.ok and [f["kind"] for f in res.failures] == ["adapter_mismatch"]
      and res.envelope is None)
@@ -99,7 +101,7 @@ show("S7 정상 양식은 통과한다 (표류 감지가 과민하지 않다)",
      preflight.check(CP, read(str(RAW / "CP01.xlsx")))[0]
      and preflight.check(CP, read(str(RAW / "CP04_unlabeled.xlsx")))[0])
 
-res = pipeline.parse(CP, "CP03", str(RAW / "CP03_bad.xlsx"))
+res = pipeline.parse(CP, "CP03", str(RAW / "CP03_bad.xlsx"), layer=coord_layer())
 show("S8 자기완결 위반 1행 → **문서 통째** 미인입 + parse_failure (C14)",
      not res.ok and [f["kind"] for f in res.failures] == ["parse_failure"]
      and res.envelope is None)
@@ -153,7 +155,8 @@ show("어댑터는 스스로 LLM을 부르지 않는다 — 지도 훅이 없으
 # ============================================================ S14
 print("\n■ S14 역산 정합 — 실물 파서 산출 = parsed JSON prefix (D-18)")
 for doc, adapter, n_prefix in (("CP01", CP, 12), ("PFMEA01", PFMEA, 13)):
-    res = pipeline.parse(adapter, doc, str(RAW / f"{doc}.xlsx"))
+    res = pipeline.parse(adapter, doc, str(RAW / f"{doc}.xlsx"),
+                         layer=coord_layer())
     got = (res.envelope or {}).get("records", [])
     want = json.loads((ROOT / "tests/fixtures/parsed" / f"{doc}.json").read_text(
         encoding="utf-8"))["records"]
@@ -168,7 +171,8 @@ for doc, adapter, n_prefix in (("CP01", CP, 12), ("PFMEA01", PFMEA, 13)):
          res.ok and len(got) >= n_prefix and not bad,
          f"파서 {len(got)}건 · 차이 {bad[:2]}")
 
-res = pipeline.parse(PFMEA, "PFMEA01", str(RAW / "PFMEA01.xlsx"))
+res = pipeline.parse(PFMEA, "PFMEA01", str(RAW / "PFMEA01.xlsx"),
+                      layer=coord_layer())
 show("좌표가 닫힌 목록 밖이어도 문서를 죽이지 않는다 (판정은 인입 소관 — orphan_anchor)",
      res.ok and res.report["coords"]["outside_closed_list"] == ["레이저노칭"],
      str(res.report["coords"]))

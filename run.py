@@ -56,6 +56,7 @@ from pathlib import Path
 
 from core.state import log, store
 from core.state.bootstrap import bootstrap, open_graph
+from core.state.skeleton import SeedError
 from core.build.entry import run_document
 from router import discover
 
@@ -74,14 +75,21 @@ def cmd_init(args):
 
 
 def cmd_bootstrap():
+    rc = 0
     for layer in discover():
-        g, m, ids, _flow = bootstrap(layer)          # 파생 흐름은 loader가 출력한다
+        try:
+            g, m, ids, _flow = bootstrap(layer)      # 파생 흐름은 loader가 출력한다
+        except SeedError as e:                       # 골격 파일 부재·문법 — 문면으로 (B85 ①)
+            print(f"[bootstrap] {layer}: [상태] {e}")
+            rc = 1
+            continue
         if g is None:
             print(f"[bootstrap] {layer}: 골격 선언 없음 — 내장 층이 아니다 (J10)")
             continue
         print(f"[bootstrap] {layer}: 노드 {m['nodes']} · 엣지 {m['edges']}")
         print(f"            계기판 7 graph {m['gauge7_graph_mb']}MB "
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
+    return rc
 
 
 def cmd_ingest(paths, finalize=True, allow_duplicate=False):

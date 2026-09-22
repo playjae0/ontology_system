@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from p1_common import *          # noqa: F401,F403 — 바닥은 하나다
 from p1_common import _P, done    # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 
 # 이 스위트의 바닥 — 골격 스냅샷이 서 있어야 ⑨좌표 태깅을 잰다(B78 2c)
@@ -52,7 +54,7 @@ def _map_run(doc_id, reply, limit):
     _LLM.chat = lambda *a, **k: reply
     check.context_limit = lambda: limit
     try:
-        return pipeline.parse(basic_ppt, doc_id, _PPTDOC,
+        return pipeline.parse(basic_ppt, doc_id, _PPTDOC, layer=coord_layer(),
                               map_structure=struct_map_pass.map_structure)
     finally:
         _LLM.chat, check.context_limit = _oc, _ol
@@ -129,7 +131,9 @@ print("\n■ 조각 공통 층 — 모든 record/chunk가 달고 들어온다 (�
 import importlib.util as _iu                                    # noqa: E402
 _s = _iu.spec_from_file_location("_bp", ROOT / "parser/adapters/basic_ppt.py")
 _bp = _iu.module_from_spec(_s); _s.loader.exec_module(_bp)
-_r = pipeline.parse(_bp, "PPTXCOMMON", str(ROOT / "tests/fixtures/raw/PPT_basic.pptx"))
+_r = pipeline.parse(_bp, "PPTXCOMMON",
+                     str(ROOT / "tests/fixtures/raw/PPT_basic.pptx"),
+                     layer=coord_layer())
 _COMMON = {"source_locator", "doc_type", "process_group", "process_ref",
            "electrode_type"}
 show("기본 어댑터 산출도 조각 공통 5키를 전부 갖는다 (값 null 허용·키 부재 금지)",

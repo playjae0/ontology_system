@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from p3_common import *                       # noqa: F401,F403 — 바닥은 하나다
 from p3_common import _P, _reg_src            # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 setup()
 
@@ -94,7 +96,7 @@ show("③ **승인자 없이는 등재하지 않는다** — 무수정 자동 �
 # S1 말단 — 등록 후 파싱 실행
 # 등록 산출의 자리는 **등록부가 답한다** — 경로 조립은 경계 안이다(B78 1b).
 mod = R._load(dict(registry.adapter_paths())["toc_report"], "s1_toc")
-res = pipeline.parse(mod, "TOCX", str(RAW / "TOC02.xlsx"))
+res = pipeline.parse(mod, "TOCX", str(RAW / "TOC02.xlsx"), layer=coord_layer())
 show("S1 말단 — 등록된 어댑터로 운영 파싱이 돈다", res.ok and res.report["pieces"] == 9,
      f"조각 {res.report.get('pieces')}")
 
@@ -315,8 +317,8 @@ show("⑤ validator의 상동 집합이 normalizer.DITTO 하나에서 온다",
 
 # ⑥ 부분 리허설 · 진행 · 미스 계수
 _big = _make_big_sample()
-_r200 = _pl.parse(_cpmod, "B1", _big, max_rows=200)
-_rall = _pl.parse(_cpmod, "B2", _big)
+_r200 = _pl.parse(_cpmod, "B1", _big, max_rows=200, layer=coord_layer())
+_rall = _pl.parse(_cpmod, "B2", _big, layer=coord_layer())
 show("⑥ --rows N 이 리허설을 앞 N행으로 자른다",
      (_r200.report["rehearsal"]["truncated"] is True
       and _rall.report["rehearsal"]["truncated"] is False
@@ -328,13 +330,13 @@ show("⑥ 자른 사실이 봉투 리포트에 남는다 (승인 근거라 숨�
 # 물었다. 이제 도는 루프가 곧 LLM 호출이라 **부르지 않으면 진행도 없다**.
 _seen = []
 _pl.parse(_cpmod, "B3", _big, max_rows=100,
-          progress=lambda i, n, c: _seen.append((i, n, c)))
+          progress=lambda i, n, c: _seen.append((i, n, c)), layer=coord_layer())
 show("⑥ 정확 일치만이면 진행이 흐르지 않는다 (진행은 호출을 따라간다)", not _seen,
      str(_seen[:1]))
 _seen2 = []
 _pl.parse(_cpmod, "B3b", _big, max_rows=100,
           pick_coord=lambda ref, choices: None,
-          progress=lambda i, n, c: _seen2.append((i, n, c)))
+          progress=lambda i, n, c: _seen2.append((i, n, c)), layer=coord_layer())
 show("⑥ 진행 콜백이 **표기 단위**로 흐르고 끝에서 총수와 같다",
      len(_seen2) > 0 and _seen2[-1][0] == _seen2[-1][1],
      str(_seen2[-1]) if _seen2 else "없음")

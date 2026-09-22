@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from p3_common import *                       # noqa: F401,F403 — 바닥은 하나다
 from p3_common import _P, _reg_src            # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 from cli import interview as _IV
 import contextlib as _ctx
@@ -273,7 +274,8 @@ def _b55_ask(doc_id, lines):
 
 def _b55_parse():
     _b55_calls.clear()
-    pipeline.parse(_BP, "B55MAP", str(_b55_src), map_structure=_b55_ask)
+    pipeline.parse(_BP, "B55MAP", str(_b55_src), map_structure=_b55_ask,
+        layer=coord_layer())
     return len(_b55_calls)
 
 
@@ -310,17 +312,21 @@ show("⑤ 리허설 파싱이 doc_id_of(표본)를 쓴다 ({DOC_TYPE}NN이 아�
 _b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
 _b55_calls.clear()
-pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
+pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask,
+        layer=coord_layer())
 _b55_rehearsal = len(_b55_calls)
 _b55_calls.clear()
-pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
+pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask,
+        layer=coord_layer())
 show("⑤ⓐ 리허설이 남긴 지도를 운영 인입이 찾는다 (재사용 — LLM 0회)",
      _b55_rehearsal == 1 and len(_b55_calls) == 0)
 _b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_calls.clear()
-pipeline.parse(_BP, "B55OLD01", str(_b55_src), map_structure=_b55_ask)   # 구판 이름
+pipeline.parse(_BP, "B55OLD01", str(_b55_src), map_structure=_b55_ask,
+        layer=coord_layer())   # 구판 이름
 _b55_calls.clear()
-pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask)
+pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_ask,
+        layer=coord_layer())
 show("⑤ [대조] 이름이 다르면 못 찾는다 — 고친 것이 이것이다",
      len(_b55_calls) == 1)
 _b55_src.unlink(missing_ok=True)
@@ -336,7 +342,8 @@ def _b55_sum(ref, *, image=None, mime=None, context="", page=None):
 
 
 _b55_pdf = pipeline.parse(_BPDF, "B55PDF", str(RAW / "PDF_basic.pdf"),
-                          summarize=_b55_sum)
+                          summarize=_b55_sum,
+        layer=coord_layer())
 _b55_pic = [c for c in _b55_pdf.envelope["chunks"]
             if (c.get("meta") or {}).get("shape_kind") == "picture"][0]
 # 구판은 `meta["slide"]`만 봐서 PDF는 늘 `pages.get(None)` → 항상 none이었다.

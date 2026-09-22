@@ -61,6 +61,47 @@ def load_config(layer):
     return json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
 
 
+#: 공정좌표 anchor의 목표 카테고리 — 공용 블록(`schemas/blocks.json`)이 소유한다.
+#: **자리는 여기 하나**다(B85 ① — 옛 자리 `core/build/loop.py`): 좌표 **층**을 찾는
+#: 함수가 바로 아래에 있고, 그 층을 묻는 곳이 build·cli·doctor로 흩어져 있다.
+#: `blocks.json`을 읽는 코드도 이 한 줄뿐이다.
+COORD_CATEGORY = json.loads(
+    paths.blocks().read_text(encoding="utf-8"))["process_coord"]["process_ref"]["target_category"]
+
+#: 좌표 층 캐시 — `paths.reset()`이 상태 루트를 옮기면 함께 비운다(B85 ①).
+_COORD_LAYER = {}
+
+
+class NoCoordLayer(RuntimeError):
+    """**좌표 층이 없다** — 조용히 폴더 이름으로 떨어지지 않는다(B85 ①)."""
+
+
+def coord_layer():
+    """좌표 층의 이름을 **묻는 자리 하나** (B85 ① · 칸 0.1).
+
+    좌표 층은 **`Process` 카테고리를 선언한 층**이지 폴더 이름 `process`가 아니다.
+    사내가 골격 층을 `equipment`로 세우자 코드에 박힌 이름 일곱이 빈 목록을 읽어
+    **좌표가 전부 orphan**이 됐다(실측 2026-09-22) — 이름을 아는 자리를 하나로
+    모으고, 없으면 **시끄럽게 실패한다**.
+
+    층 config를 매번 읽지 않도록 기억하되 **키가 스스로 낡는다** — 상태 루트와 층
+    목록이 키다. 루트를 옮기거나(`paths.reset()`) 층이 늘면 다른 키가 되어 다시 읽는다.
+    """
+    from router import discover
+    key = (str(paths.home()), tuple(discover()))
+    if key not in _COORD_LAYER:
+        lay = layer_of_category(COORD_CATEGORY)
+        if lay is None:
+            raise NoCoordLayer(
+                f"[상태] {COORD_CATEGORY} 카테고리를 선언한 층이 없다 — 좌표를 붙일 자리가 "
+                f"없다.\n"
+                f"  ▶ 다음 줄: {paths.layers('<층>', 'config.json')}의 categories에 "
+                f"\"{COORD_CATEGORY}\"를 선언하고 `python run.py bootstrap`\n"
+                f"  (층 폴더 이름은 자유다 — 코드는 카테고리로 찾는다)")
+        _COORD_LAYER[key] = lay
+    return _COORD_LAYER[key]
+
+
 def layer_of_category(category):
     """그 카테고리를 **선언한 층**을 찾는다.
 
@@ -90,7 +131,30 @@ def load_seed(layer, skel):
     src = skel.get("source")
     if not src:
         return skel
-    return json.loads(paths.layers(layer, src).read_text(encoding="utf-8"))
+    path = paths.layers(layer, src)
+    if not path.exists():
+        # **없는 파일은 traceback이 아니라 문면이다**(B85 ① — 사내 실측 2026-09-22:
+        # `FileNotFoundError`가 그대로 올라와 사람이 무엇을 두어야 하는지 몰랐다).
+        raise SeedError(f"골격 파일이 없다 — {seed_missing_note(layer, path)}\n"
+                        f"  ▶ 다음 줄:  python run.py skeleton-status {layer}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def seed_missing_note(layer, path):
+    """골격 파일 부재의 **문면 한 자리** — 세 명령(`bootstrap`·`skeleton-status`·
+    `skeleton-confirm`)이 같은 말을 한다(B85 ①). 근거와 다음 줄을 함께 싣는다."""
+    note = (f"{path}\n"
+            f"  config `skeleton.source`가 그 파일을 가리킨다 "
+            f"({paths.layers(layer, 'config.json')})\n"
+            f"  파일을 그 자리에 두거나, 골격을 두지 않으려면 config에서 `skeleton` 키를 "
+            f"뺀다 — 그 층은 골격 없이 돈다")
+    try:
+        if coord_layer() == layer:
+            note += (f"\n  **이 층은 좌표 층이다**({COORD_CATEGORY} 선언) — "
+                     f"골격을 끄면 문서의 좌표가 전부 목록 밖(orphan)이 된다")
+    except NoCoordLayer:
+        pass
+    return note
 
 
 def _stale_skeleton(g, category, planted):
@@ -152,7 +216,7 @@ def write_closed_list(layer, g, cfg, seed=None):
     return snap[layer]
 
 
-def bootstrap(layer="process", echo=True):
+def bootstrap(layer, echo=True):
     """골격을 심고 사전에 등재한 뒤 registry에 층을 올린다.
 
     골격의 **모양**(tree-v3.2 | flat)도 **등록 지위**(builtin | registered)도

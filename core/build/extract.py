@@ -162,7 +162,7 @@ EXTRACT_SCHEMA = {
 }
 
 
-def attach_candidates(process_ref, layer="process"):
+def attach_candidates(process_ref, layer=None):
     """프롬프트에 삽입할 **부착 후보 목록** (문서 4 §4.10).
 
     무엇을 넣나 — 그 청크의 `process_ref`가 가리키는 **골격 노드와 그 하위
@@ -178,8 +178,11 @@ def attach_candidates(process_ref, layer="process"):
     그래프도 읽지 않는다.** 그것을 읽으면 그 시점까지의 인입 상태에 의존해 문서
     순서가 바뀔 때 추출 경계가 달라지고 체크포인트가 그 우연을 고정한다(실측:
     정순 66 · 역순 65 노드로 갈렸다). 멱등성(§4.8-6)의 전제다.
+    **층은 좌표 층이다**(B85 ② — 문서의 층이 아니다): `process_ref`가 가리키는 것은
+    좌표 층의 골격이라, 품질층 doc_type이 제 층의 스냅샷을 읽으면 후보가 빈다.
     """
-    snap = (store.read(store.SKELETON_LIST, {}).get(layer) or {})
+    from core.state.bootstrap import coord_layer     # 좌표 층을 묻는 자리는 하나다
+    snap = (store.read(store.SKELETON_LIST, {}).get(layer or coord_layer()) or {})
     nodes = snap.get("nodes") or []
     if not process_ref:
         # 좌표 null — **세부공정 목록만**. tier는 스냅샷이 이미 싣고 있다.
@@ -219,8 +222,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
          {"role": "user", "content": json.dumps(
              {"categories": cfg.get("categories"),
               "relations": cfg.get("relations"),
-              "attach_candidates": attach_candidates(chunk.get("process_ref"),
-                                                     cfg["layer"]),
+              # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
+              "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "chunk": _with_path(chunk)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
     return {"chunk_id": chunk_id,

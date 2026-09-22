@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from core.state.bootstrap import coord_layer
 from cli.interview import (  # noqa: F401
     INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
     finalize as iv_finalize)
@@ -40,6 +41,8 @@ def harness(adapter, schema, samples, package=None, doc_type=None):
         pkg += ["--ledger", str(led)]
     # **층 어휘는 상태 루트에서 본다**(B79 ①) — 킷은 core를 모르므로 자리를 건넨다.
     pkg += ["--layers", str(paths.layers())]
+    # 좌표 층의 이름도 같은 방식으로 건넨다(B85 ②) — 킷은 카테고리 판정을 못 한다.
+    pkg += ["--coord-layer", coord_layer()]
     r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                         str(adapter), str(schema)] + pkg + [str(s) for s in samples],
                        capture_output=True, text=True, cwd=str(ROOT))
