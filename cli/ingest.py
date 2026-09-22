@@ -3,8 +3,11 @@
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--step] [--step-every N] [--narrow embed|overlap]
-  python run.py ingest-dir  <경로> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
-                                  [--narrow embed|overlap]
+                                  [--progress-every N] [--sheets "2-3:prose 4:ref *:skip"]
+                                  [-v] [--no-color]
+  python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+                                  [--narrow embed|overlap] [--progress-every N]
+                                  (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
 (`cli.parse.run_parse` · `core.pipeline.run_document`).
@@ -16,6 +19,11 @@
 `--coord-llm`은 좌표 태깅에서 **묻는 표기 종수의 상한**이다(기본 100 · `off`면 0회).
 행 수가 아니다 — 같은 표기를 여러 행이 써도 묻는 것은 한 번이다(B69 ①). 상한을 넘는
 표기는 묻지 않고 목록 밖 그대로 둔다(인입의 `orphan_anchor`) — 배치는 멈추지 않는다.
+**시트 역할 관문**(B83): 시트 둘 이상인 엑셀을 prose로 넣을 때 **문서마다 한 번** 역할을
+정한다(`prose`·`ref`·`skip`) — 답은 `registry/sheet_roles/<doc_id>.json`에 남고 같은 문서는
+다시 묻지 않는다. 비대화형(파이프 · `ingest-dir` · EOF)에서는 **묻지 않고 거부**한다 —
+조용한 기본값이 없다. `--sheets "<선택>:<역할> …"`로 미리 줄 수 있다(관문 건너뜀).
+
 `--doc-type`을 주면 스캔하지 않고 그것으로 본다(사람 지정 — 기본 경로). 비정형(pptx)은
 헤더 지문이 없어 스캔 대상이 아니다 — 지정 없이 오면 미선택으로 남는다.
 
@@ -31,9 +39,12 @@ from pathlib import Path
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
+from cli import _screen
+from cli import ingest_screen as SCR
 from core import paths
 from core.llm import gateway, narrow
 from core.state import log, registry, store
+from core.build import ledger as _ledger
 from core.build.entry import finalize, run_document
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -215,159 +226,6 @@ def _form_line(f):
 # 여기 한 자리**다 — 앞자리가 단이다: 2 어댑터/지문 · 3 계약(validator) · 4 구조 ·
 # 5 인입 보류.
 
-FAIL_TAGS = {"adapter_mismatch": "P21",        # 지문이 어긋났다 (양식 표류)
-             "parse_failure": "P31",           # 계약 self-check — validator 결함
-             "hierarchy_unresolved": "P41"}    # 구조 미확정 (평면 폴백)
-HELD_TAG = "P51"                               # 인입 보류 — 중복·미등록·payload_kind
-
-
-def fail_rows(failures):
-    """`ParseResult.failures` → 화면 줄의 재료 `[{tag, kind, reason}]`.
-
-    **결함 전건을 편다** — validator는 `detail.defects`에 여러 건을 담는다. 한 줄로
-    합쳐 300자에서 자르면 두 번째 결함이 화면에서 사라지고, 사람은 하나를 고친 뒤
-    같은 명령을 다시 쳐서 다음 것을 만난다(골격 ②와 같은 병).
-    """
-    rows = []
-    for f in failures or []:
-        tag = FAIL_TAGS.get(f.get("kind"), "P01")
-        defects = ((f.get("detail") or {}).get("defects")) or []
-        if defects:
-            rows += [{"tag": tag, "kind": f["kind"], "reason": d} for d in defects]
-        else:
-            rows.append({"tag": tag, "kind": f.get("kind", "?"),
-                         "reason": f.get("reason", "")})
-    return rows
-
-
-def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
-    """인입 실패 블록 — 화면 문면 한 자리."""
-    out = [f"■ 인입 실패 — {Path(doc).name} (doc_id {doc_id})"]
-    for r in rows:
-        out.append(f"  [FAIL] {r['tag']}  {r['kind']} — {r['reason']}")
-    if queued:
-        out.append(f"  큐: parse_failure {queued}건 (같은 내용)")
-    out.append("  ▶ 다음 줄:")
-    out.append(f"     (문서를 고친 뒤)      python run.py ingest-file {doc}")
-    out.append(f"     양식이 바뀐 거면:     python -m cli.register generate "
-               f"{doc_type or '<doc_type>'} --revise")
-    return "\n".join(out)
-
-
-def _orphan_next(doc_id):
-    """`orphan_anchor`가 있으면 **다음 줄**을 큐 줄 옆에 붙인다 (B72 ③).
-
-    화면은 한 벌이다 — 문면의 자리는 `cli/platform.py::orphan_next_lines` 하나이고
-    `platform queue orphan_anchor`가 같은 것을 낸다.
-    """
-    from cli.platform import orphan_next_lines
-    items = [x for x in store.read(store.QUEUE, [])
-             if x.get("kind") == "orphan_anchor"
-             and (doc_id is None or x.get("doc_id") == doc_id)]
-    for x in items[:1]:                  # 표기가 여럿이어도 처방은 하나다
-        pl = x.get("payload") or {}
-        print(f"   보류 {len(items)}표기 — 골격 밖 좌표는 드랍이 아니다"
-              f"(alias가 생기면 다음 인입이 붙인다): "
-              f"{[ (y.get('payload') or {}).get('key') for y in items[:3] ]}")
-        print(orphan_next_lines(x))
-
-
-# **단계 문면의 자리는 여기 하나다**(B72 ④ — `kit/`이 아니라 진입점 옆). 사람이
-# 「무엇을 했고 다음이 무엇인지」를 읽고 멈출 수 있어야 한다: 지금은 자동화보다
-# 이해가 먼저다(사용자). 순서는 실제 파이프라인의 순서와 같다.
-STEPS = [
-    ("선택", "어느 어댑터로 읽을지 정했다. 지문 스캔이 골랐으면 근거가, 사람이 "
-             "지정했으면 그 사실이 위에 있다. 다음은 그 어댑터로 문서를 읽는다."),
-    ("파싱", "어댑터가 문서를 조각(행·청크)으로 만들었다. 아직 그래프에 아무것도 "
-             "쓰지 않았다 — 계약 JSON(parsed/)까지다. 다음은 좌표를 맞춘다."),
-    ("좌표", "조각의 공정좌표를 골격 닫힌 목록과 맞췄다. 목록 밖 표기는 고치지 않고 "
-             "그대로 둔다 — 인입에서 보류(orphan_anchor)로 간다. 다음은 판정 예고다."),
-    ("판정 예고", "개체 판정에 몇 번 부를지를 **부르기 전에** 센다. 사전이 이미 아는 "
-                  "표기는 부르지 않는다. 여기서 멈추면 그래프에 쓴 것이 0이다."),
-    ("판정", "표기마다 기존 노드와 같은 것인지 판정했다. 확신되면 잇고, 아니면 새 "
-             "노드(auto)를 세운다. 다음은 값과 관계를 붙인다."),
-    ("부착·엣지", "속성 값을 노드에 붙이고 관계 엣지를 세웠다. 좌표가 보류면 값도 "
-                  "보류다(버리지 않는다). 카테고리쌍이 없는 관계는 게이트가 막는다."),
-    ("큐·요약", "사람이 판정할 것을 큐에 남기고 한 줄로 요약했다. 큐는 문서 × "
-                "표기/필드 단위 1건이다 — 행 수는 그 안에 있다."),
-]
-
-
-def _step_gate(i, detail=""):
-    """한 단계를 찍고 `[계속 c / 멈춤 q]`를 묻는다 — 돌려주는 것은 계속 여부다.
-
-    **비대화형이면 묻지 않는다**(`--step` 무시 · 한 줄로 그 사실을 말한다) —
-    묻고 EOF를 받아 멈추면 일괄 실행이 전부 중단된다.
-    """
-    name, why = STEPS[i]
-    print(f"\n── [{i + 1}/{len(STEPS)}] {name}" + (f" — {detail}" if detail else ""))
-    print(f"   {why}")
-    try:
-        ans = input("   [계속 c / 멈춤 q] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return True
-    if ans in ("q", "quit", "n"):
-        print(f"   멈춤 — {name}까지의 산출은 남았다(parsed/ · extract/ 체크포인트).")
-        print(f"   ▶ 다음 줄 — 이어서 넣는다: python run.py ingest-file <문서> "
-              f"--doc-type <dt>")
-        print(f"      고치고 넣는다: {paths.layers('<층>', 'skeleton.json')} alias · "
-              f"schemas/<dt>.json 수정 뒤 같은 명령")
-        return False
-    return True
-
-
-def judge_progress(total, stage=None, every=0):
-    """판정 진행 줄 — 보폭마다 **새 줄로** 남긴다 (B73 ① · B75 ③ⓑ).
-
-    2만 토큰을 쓰고 나서야 비용을 알았다는 것이 이 줄이 생긴 이유다. 좌표 태깅
-    진행 줄(B69 ②)과 같은 자리·같은 결이다.
-
-    **`\r` 덮어쓰기를 버렸다**(B75 ③ⓑ): 같은 줄을 덮으면 터미널 스크롤에도, 로그
-    파일에도 남지 않는다 — 중단된 실행에서 「어디까지 얼마를 썼나」를 사후에 볼 수
-    없었다(사내 실측 열넷째). 로그로도 같은 줄을 남긴다.
-
-    `every`가 있으면 값 N개마다 **묻는다**(`--step-every`) — 비용이 쌓이는 단계는
-    판정 하나뿐이라 멈춤 자리도 여기 하나다. `q`면 `Stopped`를 던지고, 그 문서는
-    그래프·사전·큐 쓰기 0이다(되돌림은 `pipeline.run_document`가 한다).
-    """
-    def line(n, u):
-        return (f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
-                f"{u.get('total_tokens', 0):,}"
-                f"(입력 {u.get('prompt_tokens', 0):,} · 출력 "
-                f"{u.get('completion_tokens', 0):,})")
-
-    def progress(stats):
-        n = stats.get("판정", 0)
-        if stage is not None:
-            stage["값"] = n
-        u = gateway.usage_total()
-        stride = max(1, (total or 1) // 10)
-        if n == 1 or n % stride == 0:
-            print(line(n, u), flush=True)
-            _LOG.info("판정 진행 — 값 %d/%d · 호출 %d · 누적 토큰 %d",
-                      n, total or 0, n, u.get("total_tokens", 0))
-        if every and n % every == 0 and n < (total or 0):
-            _judge_gate(n, total, u)
-    return progress
-
-
-def _judge_gate(n, total, u):
-    """판정 **안**의 멈춤 자리 (B75 ③ⓒ). 비대화형이면 묻지 않는다."""
-    if not sys.stdin.isatty():
-        return
-    left = max(0, (total or 0) - n)
-    print(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
-          f"{u.get('total_tokens', 0):,} · 남은 값 {left:,}", flush=True)
-    try:
-        ans = input("   [계속 c / 멈춤 q] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return
-    if ans in ("q", "quit", "n"):
-        from core.build.entry import Stopped
-        raise Stopped(f"사람이 멈췄다 — 판정 값 {n}/{total} (그래프 쓰기 0 · "
-                      f"체크포인트는 남는다)")
-
-
 def build_screen(step=False):
     """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
 
@@ -404,12 +262,12 @@ def build_screen(step=False):
                   f"(상한 {CANDIDATE_TOP_N})")
         if step:
             u2 = gateway.usage_total()
-            _step_gate(4, f"새 노드(auto) {info.get('auto', 0)} · "
+            SCR._step_gate(4, f"새 노드(auto) {info.get('auto', 0)} · "
                           f"LLM 호출 {u2['calls']:,}")
-            _step_gate(5, f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
+            SCR._step_gate(5, f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
                           f"{info.get('저해상도', 0)}행")
-            _step_gate(6, head or "큐 0")
-        _orphan_next(info.get("doc_id"))
+            SCR._step_gate(6, head or "큐 0")
+        SCR._orphan_next(info.get("doc_id"))
         u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
@@ -434,7 +292,7 @@ def narrow_notice():
         print(f"   후보 좁히기 — {mode} (플래그가 설정을 이긴다)")
 
 
-def _ingest_file_select(doc, sel, row, dry_run, step):
+def _ingest_file_select(doc, sel, row, step):
     """선택 판정과 그 앞 검사 — 형태 대조 · 경로 경고 · `--dry-run`.
 
     `ingest_file`에서 단계로 떼어냈다(B78 2c). 돌려주는 값이 `None`이 아니면
@@ -453,7 +311,7 @@ def _ingest_file_select(doc, sel, row, dry_run, step):
     if step and not sys.stdin.isatty():
         print("   (--step 무시 — 비대화형이다. 단계별로 보려면 터미널에서 돌린다)")
         step = False
-    if step and not _step_gate(0, row["basis"]):
+    if step and not SCR._step_gate(0, row["basis"]):
         row.update(status=SKIP, reason="사람이 멈췄다 — 선택까지")
         return row, None, step
     # **판정과 어댑터가 어긋나면 말한다** — 조용히 넘기면 관리계획서가 산문으로,
@@ -472,31 +330,143 @@ def _ingest_file_select(doc, sel, row, dry_run, step):
     if prev and prev.get("source_path") and _norm_path(prev["source_path"]) != _norm_path(doc):
         print(f"   ⚠ 같은 doc_id가 다른 경로에서 인입된 적 있다({prev['source_path']}) — "
               f"개정(재인입)으로 취급된다(D-110)")
-    if dry_run:
-        row["status"] = "선택만"
-        print("   (dry-run — 파싱·인입 안 함)")
-        return row, None, step
     return None, stage, step
+
+
+# ── 시트 역할 관문 (B83 ③ · 칸 3.1) ──────────────────────────────────────────
+def _sheet_rows(doc):
+    """시트 표의 재료 — **읽기 실패는 조용하다**(같은 이유로 파싱이 곧 실패한다).
+
+    표는 `reader`가 이미 내는 값의 투영이다(요청문 ② — 새 판독 0). 통합문서를 여는
+    일은 형태 판정과 겹치지만 **판정의 산출에 시트별 통계가 없다** — 값을 기록에
+    실어 나르면 근거와 화면이 갈린다(신호 다섯과 같은 병).
+    """
+    if Path(doc).suffix.lower() not in GRID_EXT:
+        return []
+    try:
+        return form_mod.sheet_table(reader_mod.read(str(doc)))
+    except Exception as e:                       # noqa: BLE001
+        _LOG.info("시트 표를 만들지 못했다 — %s (%s: %s)", doc, type(e).__name__, e)
+        return []
+
+
+def sheets_flag(args):
+    """`--sheets "<문법>"`를 args에서 떼어 `(남은 args, 문자열 또는 None)`.
+
+    `--coord-llm`과 같은 결이다 — 떼어내지 않으면 문자열이 경로 자리로 흘러간다.
+    """
+    args = list(args)
+    if "--sheets" not in args:
+        return args, None
+    i = args.index("--sheets")
+    spec = args[i + 1] if i + 1 < len(args) else None
+    del args[i:i + 2]
+    if not spec or spec.startswith("--"):
+        raise SystemExit('[투입] --sheets 뒤에 역할 문자열이 필요하다 — '        # [사용법]
+                         '예: --sheets "2-3:prose 4:ref *:skip"')
+    return args, spec
+
+
+def sheets_by_flag(doc, doc_id, spec, *, names=None, dry_run=False):
+    """`--sheets`로 받은 역할 — 관문을 건너뛰고 **같은 기록**을 쓴다(`decided_by: flag`).
+
+    문법의 자리는 `form.parse_sheet_spec` 하나이고 기록의 자리는
+    `core/state/sheets.py` 하나다 — `ingest-file`과 `parse run`이 여기로 모인다.
+    미정 시트가 남으면 `[사용법]`이다(조용한 기본값 0).
+    """
+    from core.state import sheets as SH
+    names = list(names or [r["name"] for r in _sheet_rows(doc)])
+    got, err = form_mod.parse_sheet_spec(spec, names)
+    if err:
+        raise SystemExit(f"[투입] --sheets {err}\n"                           # [사용법]
+                         f'  예: --sheets "2-3:prose 4:ref *:skip"')
+    left = SH.pending(got, names)
+    if left:
+        raise SystemExit(f"[투입] --sheets에 역할이 없는 시트가 남았다 — "       # [사용법]
+                         f"{' · '.join(left)}\n"
+                         f'  나머지를 한 번에: --sheets "{spec} *:skip"')
+    if not dry_run:
+        SH.write(doc_id, Path(doc).name, got, "flag")
+        print(SCR.sheet_roles_line(got, doc_id))
+    return got
+
+
+def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
+    """역할을 정해 돌려준다 — `(roles 또는 None, 거부 행 또는 None)`.
+
+    조건 넷(요청문 ③): 격자 포맷 · **prose로 읽히는 갈래** · 시트 ≥ 2 · 기록 없음
+    (또는 미결 시트 있음). 하나라도 아니면 `(None, None)`으로 지나간다 — 시트 하나면
+    표도 질문도 없다.
+
+    **갈래의 기준은 어댑터의 `payload_kind`다**(D-164) — 「형태 prose」와 뜻이 같은
+    자리이면서, 형태 판정이 기권(`verdict: None`)해도 **실제로 시트 전부를 도는 갈래**를
+    가린다. 시트 전부를 청크로 자르는 것은 prose 어댑터이지 형태 판정이 아니다.
+    """
+    from core.state import sheets as SH
+    kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
+    if kind != "prose":
+        return None, None
+    rows = _sheet_rows(doc)
+    if len(rows) < 2:
+        return None, None
+    names = [r["name"] for r in rows]
+    doc_id = sel["doc_id"]
+    rec = SH.read(doc_id)
+    roles = dict((rec or {}).get("sheets") or {})
+    for n in SH.stale(roles, names):
+        _LOG.info("시트 역할 기록에 있으나 문서에 없다 — %s · %s (무시)", doc_id, n)
+    if spec:
+        return sheets_by_flag(doc, doc_id, spec, names=names, dry_run=dry_run), None
+    pend = SH.pending(roles, names)
+    if rec and not pend:
+        print(f"   시트 역할 — 기록대로 진행({SH.summary(roles)} · "
+              f"{rec.get('decided_by')})")
+        return roles, None
+    if dry_run:                          # 보여만 준다 — 묻지 않고 기록도 쓰지 않는다
+        print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=pend))
+        return None, None
+    if not (ask and sys.stdin.isatty()):
+        # **상태 거부**다 — 조용한 기본값 없이 멈추고, 문면이 다음 줄을 싣는다.
+        print(SCR.sheets_refusal(doc, rows, pend=pend if rec else None, rec=rec))
+        return None, {"status": FAIL,
+                      "reason": f"시트 역할 미정 — 시트 {len(rows)}장 "
+                                f"(--sheets 또는 터미널에서 관문)"}
+    got = SCR.sheet_gate(rows, file=doc, doc_id=doc_id, rec=rec)
+    if got is None:
+        return None, {"status": SKIP, "reason": "사람이 멈췄다 — 시트 역할 관문"}
+    SH.write(doc_id, Path(doc).name, got, "gate")
+    print(SCR.sheet_roles_line(got, doc_id))
+    return got, None
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
-                step_every=0):
+                step_every=0, progress_every=None, sheets=None, ask=True):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     sel = select(doc, doc_type, adapter_paths)
     row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
            "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
     # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
-    _r, stage, step = _ingest_file_select(doc, sel, row, dry_run, step)
+    _r, stage, step = _ingest_file_select(doc, sel, row, step)
     if _r is not None:
         return _r
+    # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
+    # 기록을 읽어 넘기는 쪽이 여기다. 정해지지 않으면 **읽지 않는다**(상태 거부).
+    _roles, _stop = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask)
+    if _stop is not None:
+        row.update(**_stop)
+        return row
+    if dry_run:
+        row["status"] = "선택만"
+        print("   (dry-run — 파싱·인입 안 함)")
+        return row
     try:
         stage["이름"] = "파싱"
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
-                             coord_cap=coord_cap)
+                             coord_cap=coord_cap, sheet_roles=_roles)
         if not res.ok:
-            rows = fail_rows(res.failures)
+            rows = SCR.fail_rows(res.failures)
             # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
             # 경로에서 화면에만 한 줄 찍고 큐가 비어 있었다: 「화면을 놓치면 기록이
             # 없다」가 되어, 일괄 투입에서 실패가 조용히 지나갔다.
@@ -506,17 +476,17 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                                           "defects": [r["reason"] for r in rows]})
             row.update(status=FAIL, reason="파싱 실패 — " + "; ".join(
                 f"[{r['kind']}] {r['reason']}" for r in rows)[:300])
-            print(fail_block(doc, sel["doc_id"], rows,
+            print(SCR.fail_block(doc, sel["doc_id"], rows,
                              doc_type=sel.get("doc_type"), queued=1))
             return row
         if step:
             _rep = res.report or {}
-            if not _step_gate(1, f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
+            if not SCR._step_gate(1, f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
                               f"{res.envelope.get('payload_kind')}"):
                 row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
                 return row
             _ct = _rep.get("coord_tag") or {}
-            if not _step_gate(2, f"정확 일치 {_ct.get('정확_일치', 0)} · "
+            if not SCR._step_gate(2, f"정확 일치 {_ct.get('정확_일치', 0)} · "
                               f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
                               f"LLM 호출 {_ct.get('호출', 0)}"):
                 row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
@@ -528,7 +498,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 _entity_surfaces(res.envelope, _sc),
                 [x.get("process_ref") for x in (res.envelope.get("records") or [])
                  if x.get("process_ref")], _sc.get("layer") or "process")
-            if not _step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
+            if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
                               f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
                               f"{_pl['예상_호출']}회"):
                 row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
@@ -538,19 +508,23 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         from core import matcher as _mt
         _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
         stage["이름"], stage["총"] = "판정", _plan_n
-        _mt.PROGRESS = judge_progress(_plan_n, stage=stage, every=step_every)
+        _mt.PROGRESS = SCR.judge_progress(_plan_n, stage=stage, every=step_every,
+                                      stride=progress_every)
+        # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
+        _ledger.ON_ROW = SCR.row_printer()
         try:
             r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
                                             notice=build_screen(step=step))
         finally:
             _mt.PROGRESS = None
+            _ledger.ON_ROW = None
         if r.status == "held":
             # **단계를 올리지 않는다** — 판정에서 멈춘 것을 「부착까지 갔다」고
             # 적으면 비용 줄이 거짓말을 한다.
             row.update(status=FAIL, reason=f"보류 — {r.reason}")
             print("   " + spend_line(stage))
-            print(fail_block(doc, sel["doc_id"],
-                             [{"tag": HELD_TAG, "kind": "인입 보류", "reason": r.reason}],
+            print(SCR.fail_block(doc, sel["doc_id"],
+                             [{"tag": SCR.HELD_TAG, "kind": "인입 보류", "reason": r.reason}],
                              doc_type=sel.get("doc_type"), queued=1))
             return row
         stage["이름"] = "부착"
@@ -593,7 +567,7 @@ def spend_line(stage):
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
-               coord_cap=COORD_CAP, recurse=False):
+               coord_cap=COORD_CAP, recurse=False, progress_every=None):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -616,7 +590,8 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
     u0 = gateway.usage_total()
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
-                                finalize_after=False, coord_cap=coord_cap))
+                                finalize_after=False, coord_cap=coord_cap,
+                                progress_every=progress_every, ask=False))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -624,9 +599,12 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         # **총계 한 줄**(B73 ①) — 문서마다의 요약은 위에 있고, 배치의 비용은
         # 여기서만 보인다. 사람이 「이 폴더를 넣으면 얼마」를 알 자리다.
         u = gateway.usage_total()
-        print(f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
-              f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
-              f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})")
+        print(_screen.banner(
+            f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
+            f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
+            f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})"))
+        if log.LOG_PATH:
+            print(f"  로그 {log.LOG_PATH}  (INFO 전량 · 화면은 판단이 갈린 값만)")
     return rows
 
 
@@ -645,9 +623,57 @@ def summary(rows):
     return "\n".join(lines)
 
 
+def _is_doc(p):
+    """파서가 읽는 포맷의 파일인가 — **기준은 `reader.SUPPORTED` 하나다**(B80 ②).
+
+    ⓪원본 자리에는 사람이 자기 분류로 아무것이나 넣는다(메모·이미지·엑셀 임시파일).
+    선별 기준을 여기서 새로 쓰면 파서가 여는 목록과 갈린다 — 그래서 그 목록을 묻는다.
+    """
+    return (p.is_file() and p.suffix.lower() in SUPPORTED
+            and not p.name.startswith(("~", ".")))
+
+
+def _raw_target():
+    """인자 없는 `ingest-dir`의 대상 — ⓪원본 자리 (B80 ②).
+
+    두 가지를 말한다. ①자리가 비면 **빈 배치로 조용히 끝내지 않는다** ②옛 이름
+    (`docs/`)에 문서가 있으면 **상태 거부**다 — 이름이 `raw/`로 바뀐 것을 모르는
+    사람에게 「0건」만 보여 주면 자기 문서가 왜 안 들어가는지 알 길이 없다.
+    """
+    raw = paths.raw()
+    old = paths.legacy_raw()          # 옛 이름도 자리 소유자가 안다(B80 ②)
+    if not raw.is_dir() or not any(_is_doc(p) for p in raw.rglob("*")):
+        if old.is_dir() and any(_is_doc(p) for p in old.rglob("*")):
+            raise SystemExit(                                             # [상태]
+                f"[투입] 원본 자리가 `raw/`로 바뀌었다 — 옛 이름에 문서가 있다"
+                f"(B80 ②)\n"
+                f"  지금 잰 것 — {old} 문서 "
+                f"{sum(1 for p in old.rglob('*') if _is_doc(p))}건 · "
+                f"{raw} {'비어 있다' if raw.is_dir() else '없다'}\n"
+                f"  근거 — 인자 없는 ingest-dir는 `<상태>/raw/`를 돈다"
+                f"(`core/paths.raw()`) · 레포의 `docs/`는 명세 폴더라 이름이 갈렸다\n"
+                f"  ▶ 다음 줄 — 옮기고 다시 돌린다:\n"
+                f"     mv {old} {raw}\n"
+                f"     python run.py ingest-dir")
+        raise SystemExit(                                                 # [상태]
+            f"[투입] 넣을 문서가 없다 — {raw}가 "
+            f"{'비어 있다' if raw.is_dir() else '없다'}\n"
+            f"  지금 잰 것 — 원본 자리(⓪) {raw} · 파서가 읽는 포맷 "
+            f"{' '.join(SUPPORTED)}\n"
+            f"  근거 — 인자 없는 ingest-dir는 원본 자리 전체를 돈다"
+            f"(`core/paths.raw()`)\n"
+            f"  ▶ 다음 줄 — 원본을 넣고 다시 돌린다:\n"
+            f"     mkdir -p {raw} && cp <문서...> {raw}\n"
+            f"     python run.py ingest-dir            (또는 경로를 직접 적는다)")
+    return raw
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         raise SystemExit(__doc__)                                         # [사용법]
+    # 전역 화면 플래그 — `python -m cli.ingest`로 직접 부를 때의 자리(B81 ②③).
+    # `run.py`가 이미 뗐으면 여기서는 아무것도 없다(같은 함수라 두 번 불러도 같다).
+    argv, _ = _screen.take_flags(list(argv))
     args = require_live_or_allow(argv, command="ingest")   # mock 관문 (B48)
     dry = "--dry-run" in args
     if dry:
@@ -664,6 +690,16 @@ def main(argv):
             raise SystemExit("[투입] --step-every 뒤에 1 이상의 수가 필요하다")   # [사용법]
         step_every = int(raw)
         del args[i:i + 2]
+    # **진행 보폭 손잡이**(B81 ④) — 값 N개마다 진행 줄. 플래그가 설정을 이긴다.
+    prog_every = None
+    if "--progress-every" in args:
+        i = args.index("--progress-every")
+        raw = args[i + 1] if i + 1 < len(args) else ""
+        if not str(raw).isdigit() or int(raw) < 1:
+            raise SystemExit("[투입] --progress-every 뒤에 1 이상의 수가 "   # [사용법]
+                             "필요하다 (기본 25 · 설정 키 PROGRESS_EVERY)")
+        prog_every = int(raw)
+        del args[i:i + 2]
     # **후보 좁히기 손잡이**(B75 ①) — 플래그가 설정을 이긴다(한 문서만 바꿔 비교).
     if "--narrow" in args:
         i = args.index("--narrow")
@@ -673,6 +709,8 @@ def main(argv):
                              f"{mode!r}")
         narrow.set_narrow(mode)
         del args[i:i + 2]
+    # **시트 역할 손잡이**(B83 ③) — 관문을 건너뛰고 같은 기록을 쓴다(`decided_by: flag`).
+    args, sheets_spec = sheets_flag(args)
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")
@@ -686,23 +724,12 @@ def main(argv):
         del args[i:i + 2]
     # **상한 손잡이는 인입에도 있다**(B69 ③) — 배치라 동의 프롬프트를 두지 않는다.
     args, cap = coord_cap_of(args)
-    # **인자가 없으면 ⓪원본 폴더 전체다**(B79 ②) — 사람이 `<상태>/docs/`에 넣고
-    # 명령은 그 자리를 안다. 자리가 비어 있으면 그 사실을 말한다(빈 배치가 아니다).
+    # **인자가 없으면 ⓪원본 폴더 전체다**(B79 ② · 자리 이름은 B80 ②) — 사람이
+    # `<상태>/raw/`에 넣고 명령은 그 자리를 안다. 비어 있으면 그 사실을 말한다.
     if not args:
-        _docs = paths.docs()
-        if not _docs.is_dir() or not any(p.is_file() for p in _docs.rglob("*")):
-            raise SystemExit(                                             # [상태]
-                f"[투입] 넣을 문서가 없다 — {_docs}가 "
-                f"{'비어 있다' if _docs.is_dir() else '없다'}\n"
-                f"  지금 잰 것 — 원본 자리(⓪) {_docs}\n"
-                f"  근거 — 인자 없는 ingest-dir는 원본 자리 전체를 돈다"
-                f"(`core/paths.docs()`)\n"
-                f"  ▶ 다음 줄 — 원본을 넣고 다시 돌린다:\n"
-                f"     mkdir -p {_docs} && cp <문서...> {_docs}\n"
-                f"     python run.py ingest-dir            (또는 경로를 직접 적는다)")
-        args, _from_docs = [str(_docs)], True
+        args, _from_raw = [str(_raw_target())], True
     else:
-        _from_docs = False
+        _from_raw = False
     target = Path(args[0])
     if target.is_dir():
         if step:
@@ -712,11 +739,17 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
+        if sheets_spec:
+            # 역할은 **문서 하나의 결정**이다 — 폴더 전체에 같은 번호를 적용하면
+            # 시트 자리가 다른 문서에서 가격 시트가 prose가 된다.
+            raise SystemExit("[투입] --sheets는 ingest-file 하나에만 준다 — "   # [사용법]
+                             "문서마다 시트 자리가 다르다")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
-                          recurse=_from_docs)
+                          recurse=_from_raw, progress_every=prog_every)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
-                            step_every=step_every)]
+                            step_every=step_every, progress_every=prog_every,
+                            sheets=sheets_spec)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

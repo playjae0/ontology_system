@@ -199,10 +199,43 @@ def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
     return pieces
 
 
+def drop_skipped(raw, sheet_roles):
+    """`skip` 시트를 **어댑터가 보기 전에** 뺀다 (B83 ①).
+
+    자르는 자리가 어댑터 안이면 어댑터마다 규칙이 생긴다 — 여기서 한 번 빼면
+    어댑터는 「받은 시트 전부」를 지금처럼 돌면 된다(어댑터 코드 변경 0).
+    """
+    if not sheet_roles or not (raw or {}).get("sheets"):
+        return raw
+    keep = [s for s in raw["sheets"] if sheet_roles.get(s.get("name")) != "skip"]
+    if len(keep) == len(raw["sheets"]):
+        return raw
+    return {**raw, "sheets": keep}
+
+
+def mark_roles(pieces, sheet_roles):
+    """`ref` 시트에서 온 조각에 `meta.sheet_role`을 단다 (B83 ①·④).
+
+    표시는 **조각이 지고 다니는 사실**이다 — 추출이 부를지, 구축이 결함으로 볼지,
+    열람이 보일지를 하류가 이 한 값으로 가른다. `prose` 시트에는 키를 달지 않는다:
+    없는 것이 기본이고 있는 것이 예외다(옛 산출과 바이트가 갈리지 않는다).
+    """
+    if not sheet_roles:
+        return pieces
+    refs = {n for n, r in sheet_roles.items() if r == "ref"}
+    if not refs:
+        return pieces
+    for p in pieces:
+        if (p.get("meta") or {}).get("frame") in refs:
+            p["meta"]["sheet_role"] = "ref"
+    return pieces
+
+
 def parse(adapter, doc_id, path, *, layer="process", revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
-          max_rows=None, progress=None, coord_notice=None, coord_cap=None):
+          max_rows=None, progress=None, coord_notice=None, coord_cap=None,
+          sheet_roles=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -215,12 +248,18 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
 
     만드는 것은 CLI 진입점이다(`cli.parse.injections()`) — 모드는 거기서 한 번 정해
     아래로 내려온다. 「함수 없이 실호출 모드」는 그 조립 지점이 막는다.
+
+    **`sheet_roles`도 같은 결이다**(B83 ①): `{시트 이름: "prose"|"ref"|"skip"}`을 **데이터로**
+    받아 `skip`은 어댑터에 넘기지 않고 `ref` 시트의 조각에 `meta.sheet_role`을 단다.
+    파서는 그 값이 어디서 왔는지(사람의 답인지 플래그인지) 모르고 기록도 읽지 않는다 —
+    묻는 자리는 CLI의 관문 하나다(「파싱에 대화 없음」 그대로).
     """
     res = ParseResult(doc_id)
     a = adapter.ADAPTER
     exp = a.get("expects") or {}
 
     raw = read(path)
+    raw = drop_skipped(raw, sheet_roles)        # `skip` 시트는 어댑터가 보지 않는다
     # **부분 리허설** — 등록 검수의 리허설 파싱을 앞 N행으로 제한한다(2B ⑥-2).
     # 전량 파싱은 좌표 미스 행마다 LLM을 부르므로 수천 행이면 몇 시간이다.
     # `reader.head`가 이미 「앞 N행」의 정의를 갖고 있어 그것을 그대로 쓴다 —
@@ -271,6 +310,7 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
         seps=exp.get("multi_value_seps") or (
             [exp["multi_value_sep"]] if exp.get("multi_value_sep") else None))
     res.report["normalizer"] = rep
+    pieces = mark_roles(pieces, sheet_roles)    # `ref` 시트의 조각에 표시를 단다
 
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로

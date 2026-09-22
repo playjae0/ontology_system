@@ -39,6 +39,8 @@
   python run.py ingest-file <문서> [--doc-type X] [--dry-run]
                                    일괄 투입 1건 — 선택(지문 스캔 유일 일치 또는 지정)
                                    → 파싱 → 인입 (B46 · cli/ingest.py로 위임)
+                                   시트 둘 이상인 prose 엑셀은 **시트 역할 관문**을 지난다
+                                   (`--sheets "2-3:prose 4:ref *:skip"` · B83)
   python run.py ingest-dir <경로> [--doc-type X] [--dry-run]
                                    경로의 문서 전부를 문서 단위 독립으로 투입
   python run.py skeleton-status <층>
@@ -136,7 +138,7 @@ def cmd_golden(args):
 
 def cmd_viewer(args):
     """검증 뷰어 — 그래프 위에서 질의가 도는지 본다(B52). 위임만 한다."""
-    from cli.viewer import main
+    from cli.viewer.server import main
     return main(args)
 
 
@@ -211,8 +213,13 @@ def cmd_llm_check(args):
 
 
 if __name__ == "__main__":
-    log.setup()          # 로깅 설정은 **진입점만** 한다 (문서 7 §7.8)
+    # **전역 화면 플래그를 먼저 뗀다**(B81 ②③) — `-v`는 콘솔 로그를 INFO로 올리고
+    # `--no-color`는 색을 끈다. 남기면 표본 경로·질문 문장으로 흘러 들어간다.
+    from cli._screen import take_flags
+    sys.argv[1:], _flags = take_flags(sys.argv[1:])
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
+    # 로깅 설정은 **진입점만** 한다(문서 7 §7.8) · 콘솔 WARNING · 파일 INFO(B81 ②)
+    log.setup(command=cmd, console="INFO" if _flags["verbose"] else None)
     # **이관 관문**(B78 1b) — 옛 배치를 조용히 읽지 않는다. 푸는 명령 자신
     # (`platform migrate`)과 연결 점검은 관문 밖이다: 걸리면 칠 다음 줄이 없다.
     if not (cmd == "llm-check" or (cmd == "platform" and "migrate" in sys.argv[2:3])):

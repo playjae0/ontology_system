@@ -6,6 +6,7 @@
 
   python cli/parse.py run   <어댑터.py> <문서> [출력.json] [--doc-id X]  운영 파싱 1회
        └ `--coord-llm off|<종수>` — 좌표 태깅에서 **묻는 표기 종수**의 상한(기본 100)
+       └ `--sheets "2-3:prose 4:ref *:skip"` — 시트 역할(B83 ③ · 기록은 `ingest-file`과 같다)
        └ doc_id는 생략하면 **파일명에서 파생**한다 — `ingest-file`과 같은 함수(D-110)
          구형 `<어댑터.py> <doc_id> <문서> [출력.json]`도 그대로 받는다
   python cli/parse.py head  <문서> [N]                                관찰 재료(등록 세션 공급)
@@ -141,7 +142,8 @@ def coord_screen():
     return notice, progress
 
 
-def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP):
+def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
+              sheet_roles=None):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
     있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
@@ -156,7 +158,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP):
     _notice, _progress = coord_screen()
     res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(),
                          coord_notice=_notice, coord_cap=coord_cap,
-                         progress=_progress)
+                         progress=_progress, sheet_roles=sheet_roles)
     written = None
     if res.ok and out:
         paths.ensure(Path(out))
@@ -192,8 +194,13 @@ def cmd_run(args):
         how = "지정" if given else "인자"
     print(f"[parse] doc_id = {doc_id} ({how})")
     rest, cap = coord_cap_of(rest)
+    # **시트 역할은 같은 문법·같은 기록이다**(B83 ③) — `ingest-file`과 두 벌이면
+    # 같은 문서가 명령에 따라 다른 시트를 읽는다.
+    from cli.ingest import sheets_by_flag, sheets_flag
+    rest, _spec = sheets_flag(rest)
+    _roles = sheets_by_flag(doc, doc_id, _spec) if _spec else None
     res, out = run_parse(adapter_path, doc_id, doc, rest[0] if rest else None,
-                         coord_cap=cap)
+                         coord_cap=cap, sheet_roles=_roles)
     print(f"[parse] {res}")
     for f in res.failures:
         print(f"   [{f['kind']}] {f['reason']}")

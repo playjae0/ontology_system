@@ -80,7 +80,7 @@ show("한 건의 실패가 나머지를 멈추지 않는다 — 실패 뒤의 �
 # ── B79 ② — **원본 자리(⓪)와 기록 표기** ──────────────────────────────
 # 사내 물음: 「원본 문서도 ONTO_HOME에 있어야 하는 것 아닌가」. 그렇다 — 그리고
 # 대장의 표기가 절대 경로면 루트를 옮긴 다음 전건이 「다른 경로」로 뜬다.
-_dz = _P.docs("사내" , "가지")
+_dz = _P.raw("사내", "가지")
 _dz.mkdir(parents=True, exist_ok=True)
 shutil.copy(_RAW / "CP01.xlsx", _dz / "CP01.xlsx")
 _buf79 = _io.StringIO()
@@ -89,11 +89,11 @@ with _ctx.redirect_stdout(_buf79):
 _out79 = _buf79.getvalue()
 _reg79 = store.read(store.DOC_REGISTRY, {}).get("CP01") or {}
 show("② 인자 없는 ingest-dir가 원본 자리를 **재귀로** 돈다 (하위 폴더에 넣는다)",
-     str(_P.docs()) in _out79 and "CP01" in _out79,
+     str(_P.raw()) in _out79 and "CP01" in _out79,
      str(_reg79.get("source_path")))
 show("② 상태 루트 아래 문서의 기록은 루트 기준 상대다 (절대 경로 0 — 옮겨도 낡지 않는다)",
      not Path(_reg79.get("source_path", "/x")).is_absolute()
-     and _reg79["source_path"].startswith("docs/"),
+     and _reg79["source_path"].startswith("raw/"),
      str(_reg79.get("source_path")))
 # 밖의 문서는 절대 경로다 — 옮길 수 있는 자리가 아니다.
 _out_reg = store.read(store.DOC_REGISTRY, {}).get("CP04_unlabeled") or {}
@@ -103,14 +103,14 @@ show("② 상태 루트 밖의 문서는 절대 경로로 남는다 (되돌릴 �
 # (mock 루트는 자리가 고정이므로 루트 갈아 끼우기는 `USE_MOCK=0`으로 잰다 —
 #  재는 것은 경로 비교 하나이고 게이트웨이는 필요 없다.)
 _moved = Path(_tf.mkdtemp(prefix="b79move_"))
-(_moved / "docs" / "사내" / "가지").mkdir(parents=True)
-shutil.copy(_RAW / "CP01.xlsx", _moved / "docs" / "사내" / "가지" / "CP01.xlsx")
+(_moved / "raw" / "사내" / "가지").mkdir(parents=True)
+shutil.copy(_RAW / "CP01.xlsx", _moved / "raw" / "사내" / "가지" / "CP01.xlsx")
 _keepenv = {k: os.environ.get(k) for k in ("ONTO_HOME", "USE_MOCK")}
 try:
     os.environ.update(ONTO_HOME=str(_moved), USE_MOCK="0")
     _P.reset()
     _same79 = (IG._norm_path(_reg79["source_path"])
-               == IG._norm_path(_moved / "docs" / "사내" / "가지" / "CP01.xlsx"))
+               == IG._norm_path(_moved / "raw" / "사내" / "가지" / "CP01.xlsx"))
 finally:
     for _k, _v in _keepenv.items():
         os.environ.pop(_k, None) if _v is None else os.environ.__setitem__(_k, _v)
@@ -118,7 +118,33 @@ finally:
 show("② 루트를 옮겨도 기록이 같은 문서를 가리킨다 (「다른 경로」 경고가 뜨지 않는다)",
      _same79, f"{_reg79['source_path']} ↔ {_moved}")
 shutil.rmtree(_moved, ignore_errors=True)
-shutil.rmtree(_P.docs(), ignore_errors=True)
+shutil.rmtree(_P.raw(), ignore_errors=True)
+
+# **옛 이름(`docs/`)에 넣은 사람은 0건이 아니라 문면을 본다**(B80 ②).
+_old_raw = _P.home() / "docs"
+(_old_raw / "사내").mkdir(parents=True, exist_ok=True)
+shutil.copy(_RAW / "CP01.xlsx", _old_raw / "사내" / "CP01.xlsx")
+try:
+    IG._raw_target()
+    _msg80 = ""
+except SystemExit as e:
+    _msg80 = str(e)
+show("② 옛 이름에 문서가 있으면 상태 거부다 — 문면이 `mv`를 준다 (0건으로 끝내지 않는다)",
+     "raw/`로 바뀌었다" in _msg80 and f"mv {_old_raw}" in _msg80
+     and str(_P.raw()) in _msg80, _msg80.splitlines()[:1])
+shutil.rmtree(_old_raw, ignore_errors=True)
+# 파서가 읽지 않는 포맷만 있으면 「문서가 없다」다 — 기준은 reader.SUPPORTED 하나다.
+_P.raw().mkdir(parents=True, exist_ok=True)
+(_P.raw() / "메모.txt").write_text("사람의 메모", encoding="utf-8")
+try:
+    IG._raw_target()
+    _msg81 = ""
+except SystemExit as e:
+    _msg81 = str(e)
+show("② 선별 기준은 파서가 읽는 포맷 하나다 (메모·임시파일은 배치가 아니다)",
+     "넣을 문서가 없다" in _msg81
+     and all(x in _msg81 for x in IG.SUPPORTED), _msg81.splitlines()[:1])
+shutil.rmtree(_P.raw(), ignore_errors=True)
 
 show("③ 실패 문서의 화면에 블록이 떴다 (태그·다음 줄 — B61)",
      "[FAIL] P31" in _out6 and "▶ 다음 줄" in _out6
@@ -155,7 +181,7 @@ show("①ⓒ 분류 없는 SystemExit이 0건이다 (새 거부는 표시해야 
      not _EX.unmarked(_rows61),
      f"{len(_rows61)}곳 전수 · 미분류 {_at61(_EX.unmarked(_rows61))}")
 # ⓓ **변이** — 표시 없는 거부를 하나 넣으면 붉어진다(그리고 되돌린다).
-_p61 = ROOT / "cli" / "viewer.py"
+_p61 = ROOT / "cli" / "viewer" / "server.py"
 _src61 = _p61.read_text(encoding="utf-8")
 _p61.write_text(_src61 + '\n\ndef _b61_probe():\n'
                          '    raise SystemExit("표시 없는 거부")\n', encoding="utf-8")

@@ -318,9 +318,16 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
     hints = _load_hints(doc_id)
     candidates = []
     failed = 0
+    ref_skipped = 0
     for c in env.get("chunks", []):
         cid = chunk_ids_by_locator.get(c.get("source_locator"))
         if cid is None:
+            continue
+        # **참조 시트의 청크는 부르지 않는다**(B83 ④) — 도면목록·가격표를 추출에
+        # 넣으면 LLM 비용이 거기서 나가고 그래프 후보까지 생긴다. 청크 자체는
+        # 남아 있다(`chunks.json` · `linked=false` · 열람·bm25에는 보인다).
+        if (c.get("meta") or {}).get("sheet_role") == "ref":
+            ref_skipped += 1
             continue
         try:
             if hints and c.get("source_locator") in hints:
@@ -360,6 +367,9 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
         "extracted_at": env.get("parsed_at"),
         "candidates": candidates,
     }
+    if ref_skipped:
+        # 키는 **있을 때만** 단다 — 역할 없는 문서의 체크포인트가 바이트로 갈리지 않는다.
+        out["ref_skipped"] = ref_skipped
     paths.ensure(EXTRACT_DIR)          # 폴더를 만드는 자리는 하나다 (B78 1a)
     checkpoint_path(doc_id).write_text(
         json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

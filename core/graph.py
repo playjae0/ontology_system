@@ -163,13 +163,17 @@ class GraphStore:
         return self.nodes.get(nid)
 
 
-    def neighbors(self, ids, traverse_spec):
+    def neighbors(self, ids, traverse_spec, trace=None):
         """프론티어 큐(BFS) 전파 — 명세 §5.6.2 v1.17.
 
         `recursive: false`는 "같은 관계를 연달아 재추적하지 않음"일 뿐이다.
         다른 관계로 도달한 노드에 그 관계를 적용하는 것은 막지 않는다 —
         공정→(part_of 하향)→설비→(has_property)→인자 2홉이 성립하는 근거다.
         traverse_spec의 내용은 config가 소유하고 여기서는 인자로 받는다(B).
+
+        `trace`에 리스트를 주면 **한 바퀴(홉)마다 계산된 것을 적는다** — 규칙 이름·
+        도달 노드·쓴 엣지(B82 ③). 순회를 새로 돌지 않고, 판단도 바꾸지 않는다:
+        화면이 「어느 규칙으로 어디까지 갔나」를 그리려면 그 사실이 남아야 한다.
         """
         seen = set(ids)
         # **새로 발견된 노드에도 관계 규칙이 적용된다**(문서 5 §5.1-5).
@@ -190,12 +194,13 @@ class GraphStore:
         # 기준이 규칙 이름이 아니라 **방향**인 것은 규칙 이름이 임의 라벨이기
         # 때문이다(§5.1-4 — core는 값만 순회한다).
         frontier = [(i, None, None) for i in ids]
+        hop = {}
         while frontier:
             nxt = []
             for e in self.edges:
                 if e.get("status") == STATUS_DELETED:
                     continue
-                for spec in (traverse_spec.get(e["rel"]) or {}).values():
+                for rule, spec in (traverse_spec.get(e["rel"]) or {}).items():
                     d, rec = spec.get("direction", "both"), spec.get("recursive", False)
                     for nid, via, via_dir in frontier:
                         h = None
@@ -217,6 +222,16 @@ class GraphStore:
                             continue
                         seen.add(h)                 # 방문 집합으로 순환을 막는다
                         nxt.append((h, e["rel"], step))
+                        if trace is not None:
+                            hop.setdefault(rule, {"label": rule, "kind": "expand",
+                                                  "nodes": [], "edges": []})
+                            hop[rule]["nodes"].append(h)
+                            hop[rule]["edges"].append(
+                                {"src": e["src"], "rel": e["rel"], "dst": e["dst"],
+                                 "layer": self.layer, "bridge": False})
+            if trace is not None and hop:
+                trace.append(sorted(hop.values(), key=lambda x: x["label"]))
+                hop = {}
             frontier = nxt
         return seen
 

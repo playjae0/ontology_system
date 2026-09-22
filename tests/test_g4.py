@@ -320,9 +320,6 @@ import threading as _th                                          # noqa: E402
 import urllib.error as _ue                                       # noqa: E402
 import urllib.parse as _up                                       # noqa: E402
 import urllib.request as _ur                                     # noqa: E402
-from http.server import ThreadingHTTPServer                      # noqa: E402
-
-from cli import viewer as V                                      # noqa: E402
 
 _pg_on = build_html(_w, query_panel=True)
 _pg_off = build_html(_w, query_panel=False)
@@ -337,30 +334,33 @@ show("뷰어 HTML에 질문 패널·highlight 코드가 있다",
 show("export html 산출에는 **없다** (파일 하나로 여는 산출은 물어볼 서버가 없다)",
      not [m for m in _MARKS if m in _pg_off])
 
-# ⓔ 외부 자원 0 — 사내망에서 화면이 비어 뜨지 않는다.
-_src = "".join((ROOT / "cli" / f).read_text(encoding="utf-8")
-               for f in ("viewer.py", "export.py"))
+# ⓔ 외부 자원 0 — 사내망에서 화면이 비어 뜨지 않는다(벤더링 · B82 ②).
+_vsrc = [ROOT / "cli" / "export.py", ROOT / "cli" / "viewer" / "server.py",
+         ROOT / "cli" / "viewer" / "data.py",
+         ROOT / "cli" / "viewer" / "static" / "index.html",
+         ROOT / "cli" / "viewer" / "static" / "app.js"]
+_src = "".join(p.read_text(encoding="utf-8") for p in _vsrc if p.exists())
 # **재는 것은 이름이 아니라 바깥을 부르는 행위다** — 위 `_EXTERNAL` 주석이 말한
-# 그대로다. 이 두 파일에는 「CDN을 쓰지 않는다」는 **문면**이 있고, 문자열 "cdn"을
+# 그대로다. 이 파일들에는 「CDN을 쓰지 않는다」는 **문면**이 있고, 문자열 "cdn"을
 # 세면 그 문면이 위반으로 잡힌다. `http://127.0.0.1`도 뷰어 제 주소이지 바깥이
 # 아니다. 그래서 자원을 실제로 불러오는 구문과 절대 URL만 센다.
 _out = [ln.strip()[:70] for ln in _src.split("\n")
-        if any(m in ln.lower() for m in ("https://", "@import", "<script src", "<link "))
+        if any(m in ln.lower() for m in ("https://", "@import", "<script src=\"h",
+                                         "<link href=\"h"))
         or ("http://" in ln and "127.0.0.1" not in ln and "{HOST}" not in ln)
         or ('fetch("' in ln and 'fetch("/' not in ln)]
-show("cli/viewer.py · cli/export.py — 바깥 자원을 부르는 자리 0", not _out, str(_out[:2]))
+show("뷰어·export·정적 화면에 바깥 자원을 부르는 자리 0 (벤더링 · CDN 0)",
+     not _out, str(_out[:2]))
 
 # ⓑ 서버를 빈 포트에 띄워 `/api/query`가 `--json`과 같은 묶음을 내는지 대조한다.
-_port = V._free_port(8790)
-_health = {"mode": "mock" if llm_mod.use_mock() else "실호출",
-           "nodes": len(graph_data(_w)[0]), "edges": len(graph_data(_w)[1]),
-           "layers": len(_w)}
-_srv = ThreadingHTTPServer((V.HOST, _port), V._handler(_pg_on.encode("utf-8"), _health))
+from cli.viewer import server as VS                               # noqa: E402
+_srv, _url = VS.serve(8790)
+_port = int(_url.rsplit(":", 1)[1].rstrip("/"))
 _th.Thread(target=_srv.serve_forever, daemon=True).start()
 
 
 def _get(path, data=None, method="GET"):
-    req = _ur.Request(f"http://{V.HOST}:{_port}{path}", data=data, method=method)
+    req = _ur.Request(f"http://{VS.HOST}:{_port}{path}", data=data, method=method)
     try:
         with _ur.urlopen(req, timeout=60) as r:
             return r.status, r.read().decode("utf-8")
@@ -379,16 +379,24 @@ try:
                             for k in ("path", "facts", "chunks", "linked_nodes")))
     _sc_h, _body_h = _get("/api/health")
     _h = json.loads(_body_h) if _sc_h == 200 else {}
-    show("/api/health — mode·nodes·edges·layers",
-         _sc_h == 200 and set(_h) == {"mode", "nodes", "edges", "layers"}
-         and _h["nodes"] == _health["nodes"] and _h["mode"] in ("mock", "실호출"))
+    show("/api/health — doctor 첫 줄과 같은 사실(상태 루트·모드·층·문서)",
+         _sc_h == 200 and {"home", "mode", "layers", "docs"} <= set(_h)
+         and _h["mode"] in ("mock", "실호출"), str(sorted(_h))[:60])
+    # **그래프는 서버가 준다**(B82 ①) — HTML 안에 박힌 데이터가 아니다.
+    _sc_g, _body_g = _get("/api/graph")
+    _g = json.loads(_body_g) if _sc_g == 200 else {}
+    _nodes_x, _edges_x = graph_data(_w)
+    show("/api/graph — 노드·엣지 수가 GraphStore 층별 합과 같다",
+         _sc_g == 200 and len(_g["nodes"]) == len(_nodes_x)
+         and len(_g["edges"]) == len(_edges_x) and _g["layers"] == sorted(_w),
+         f"{len(_g.get('nodes', []))}/{len(_nodes_x)} · {len(_g.get('edges', []))}/{len(_edges_x)}")
     show("/ — 뷰어 HTML을 낸다", _get("/")[0] == 200)
     show("q가 비면 400 (조용히 빈 답을 내지 않는다)", _get("/api/query?q=")[0] == 400)
     show("그 밖의 경로는 404", _get("/nope")[0] == 404)
     # **쓰기 라우트가 없다** — 파생물에서 그래프를 고치는 경로는 없다(문서 1 P5).
     show("쓰기 라우트 없음 — POST는 501로 거절된다",
          _get("/", data=b"{}", method="POST")[0] == 501
-         and not hasattr(V._handler(b"", {}), "do_POST"))
+         and not hasattr(VS.Handler, "do_POST"))
 finally:
     _srv.shutdown()
     _srv.server_close()

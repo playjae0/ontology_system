@@ -21,16 +21,17 @@ from __future__ import annotations
 
 import json
 import sys
-import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
 from collections import Counter
 
+from cli import _screen
 from core import paths
 from core.build import ledger
 from core.state import registry, store
+from core.state import sheets as _sheets
 from core.state.bootstrap import load_config, open_graph
 from core.state.ids import norm
 from core.state.status import is_live
@@ -212,7 +213,18 @@ def cmd_doc(args):
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     mine = {cid: c for cid, c in ch["chunks"].items() if c.get("doc_id") == doc}
     linked = sum(1 for c in mine.values() if c.get("linked"))
-    print(f"\n  청크 {len(mine)}건 (그래프에 연결 {linked})")
+    ref = sum(1 for c in mine.values()
+              if (c.get("meta") or {}).get("sheet_role") == "ref")
+    print(f"\n  청크 {len(mine)}건 (그래프에 연결 {linked}"
+          + (f" · 참조 {ref}" if ref else "") + ")")
+    # **시트 역할은 사람이 한 번 정한 것이다**(B83 ④) — 무엇을 읽지 않았는지가
+    # 문서 열람에 보여야 한다. 기록이 없으면 줄도 없다(시트 하나짜리 문서).
+    _sr = _sheets.read(doc)
+    if _sr:
+        print(f"  시트 역할   {_sheets.summary(_sr.get('sheets') or {})} "
+              f"({_sr.get('decided_by')} · {_sr.get('at')})")
+        for _n, _r in (_sr.get("sheets") or {}).items():
+            print(f"    · {_screen.pad(_n, 20)}{_r}")
 
     for lay, g in _graphs().items():
         nodes = [n for n in g.nodes.values() if is_live(n)
@@ -269,38 +281,19 @@ def cmd_report(args):
           f"임베딩→판정 {su['임베딩']} · 겹침→판정 {su['겹침']} · 신규 {su['신규']} · "
           f"불확실 {su['불확실']} · 보류 {su['보류']} · LLM 호출 {su['호출']} · "
           f"토큰 {su['토큰']}")
-    print("\n  " + _pad("locator", 18) + _pad("필드", 12)
-          + _pad("표기 → canonical", 46) + _pad("경로", 15)
-          + _pad("판정", 11) + "큐")
+    print("\n  " + _screen.pad("locator", 18) + _screen.pad("필드", 12)
+          + _screen.pad("표기 → canonical", 46) + _screen.pad("경로", 15)
+          + _screen.pad("판정", 11) + "큐")
     for r in rows:
         left = (r.get("surface") or "—")
         right = r.get("canonical") or "—"
         nid = (r.get("node_id") or "")[:6]
         arrow = f"{left} → {right}" + (f" ({nid})" if nid else "")
-        print("  " + _pad(r.get("locator") or "—", 18)
-              + _pad(r.get("field") or "—", 12) + _pad(_cut(arrow, 44), 46)
-              + _pad(r.get("path"), 15) + _pad(r.get("verdict"), 11)
+        print("  " + _screen.pad(r.get("locator") or "—", 18)
+              + _screen.pad(r.get("field") or "—", 12) + _screen.pad(_screen.cut(arrow, 44), 46)
+              + _screen.pad(r.get("path"), 15) + _screen.pad(r.get("verdict"), 11)
               + (r.get("queue_kind") or ""))
     return 0
-
-
-def _w(text):
-    """동아시아 폭 — 한글은 두 칸이다. 표가 어긋나면 눈 검수가 느려진다."""
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1
-               for c in str(text))
-
-
-def _pad(text, n):
-    return str(text) + " " * max(1, n - _w(text))
-
-
-def _cut(text, n):
-    out = ""
-    for c in str(text):
-        if _w(out) + _w(c) > n:
-            return out + "…"
-        out += c
-    return out
 
 
 def _report_diff(args):
@@ -338,12 +331,12 @@ def _report_diff(args):
     if not diff:
         print("\n  다른 행 없음 — 두 설정이 같은 답을 냈다(비용만 다르다).")
         return 0
-    print("\n  " + _pad("locator", 16) + _pad("필드", 11) + _pad("표기", 22)
-          + _pad("A 경로 · 판정 · node · 후보", 50) + "B 경로 · 판정 · node · 후보")
+    print("\n  " + _screen.pad("locator", 16) + _screen.pad("필드", 11) + _screen.pad("표기", 22)
+          + _screen.pad("A 경로 · 판정 · node · 후보", 50) + "B 경로 · 판정 · node · 후보")
     for k in diff:
-        print("  " + _pad(k[0] or "—", 16) + _pad(k[1] or "—", 11)
-              + _pad(_cut(k[2] or "—", 20), 22)
-              + _pad(_side(ai.get(k)), 50) + _side(bi.get(k)))
+        print("  " + _screen.pad(k[0] or "—", 16) + _screen.pad(k[1] or "—", 11)
+              + _screen.pad(_screen.cut(k[2] or "—", 20), 22)
+              + _screen.pad(_side(ai.get(k)), 50) + _side(bi.get(k)))
     return 0
 
 
@@ -358,7 +351,7 @@ def _side(r):
     if not r:
         return "(없음)"
     return (f"{r.get('path')} · {r.get('verdict')} · "
-            f"{_cut(_node_of(r) or '—', 18)} · 후보 {r.get('candidates_n', 0)}")
+            f"{_screen.cut(_node_of(r) or '—', 18)} · 후보 {r.get('candidates_n', 0)}")
 
 
 def _tok(r):

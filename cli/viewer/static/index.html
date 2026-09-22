@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<title>온톨로지 뷰어</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/style.css">
+<body>
+<header id="head">
+  <strong>온톨로지 뷰어</strong>
+  <span id="badge-mode" class="badge">…</span>
+  <span id="head-stat" class="muted">읽는 중…</span>
+  <nav id="tabs">
+    <button data-tab="graph" class="on">그래프</button>
+    <button data-tab="query">질의</button>
+    <button data-tab="funnel">연결 현황</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ── 왼쪽: 조절 ──────────────────────────────────────────── -->
+  <aside id="side">
+    <section id="pane-graph">
+      <h3>색 축</h3>
+      <div id="color-axes" class="radios"></div>
+      <h3>범례 <span id="legend-n" class="muted"></span></h3>
+      <div id="legend"></div>
+      <p class="note" id="tier-note">main/sub/detail = seed 중첩 깊이 · 사람이 적지 않는다(문서 3 §3.9-⑺)</p>
+      <h3>엣지 유형</h3>
+      <label class="chk"><input type="checkbox" id="always-cross" checked> 층간 연결 항상 표시</label>
+      <div id="rel-toggles"></div>
+      <h3>필터</h3>
+      <div id="filters"></div>
+      <label class="chk"><input type="checkbox" id="show-obsolete"> obsolete 보이기</label>
+      <h3>검색</h3>
+      <input id="search" type="search" placeholder="canonical · alias · id">
+      <h3>레이아웃</h3>
+      <label class="chk"><input type="checkbox" id="force-layout"> force (기본: 계층 좌표 — 같은 입력이면 같은 그림)</label>
+    </section>
+
+    <section id="pane-query" hidden>
+      <h3>질문</h3>
+      <form id="qform"><input id="q" type="search" placeholder="예: 노칭 다음 공정은?"><button>묻는다</button></form>
+      <div id="examples" class="muted"></div>
+      <div id="qpath"></div>
+      <div id="qlinked"></div>
+      <div id="qanswer"></div>
+      <h3>[그래프 사실]</h3><div id="qfacts"></div>
+      <h3>[문서 근거]</h3><div id="qchunks"></div>
+      <div id="qmiss"></div>
+    </section>
+
+    <section id="pane-funnel" hidden>
+      <h3>연결 현황</h3>
+      <p class="note" id="funnel-def"></p>
+      <div id="funnel"></div>
+      <h3>orphan 행</h3>
+      <div id="orphans"></div>
+    </section>
+  </aside>
+
+  <!-- ── 가운데: 그래프 ───────────────────────────────────────── -->
+  <div id="canvas-wrap"><div id="canvas"></div><div id="webgl-warn" hidden>
+    이 브라우저는 WebGL을 켜지 못했다 — 그래프를 그릴 수 없다(폴백을 두지 않는다).
+  </div></div>
+
+  <!-- ── 오른쪽: 노드 상세 ────────────────────────────────────── -->
+  <aside id="detail"><p class="muted">점을 고르면 상세가 뜬다.</p></aside>
+</main>
+
+<script src="/static/vendor/graphology-0.25.4.umd.min.js"></script>
+<script src="/static/vendor/sigma-3.0.1.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

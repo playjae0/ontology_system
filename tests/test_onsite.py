@@ -302,8 +302,9 @@ _dict = json.dumps({"노칭": "n1"}, ensure_ascii=False)
 (_old / "layers" / "process" / "skeleton.json").write_text(
     '{"seed_format": "3.2", "TREE": {"사내공정": []}}', encoding="utf-8")
 
-# ⓪원본(B79 ②) — 옛 코드 폴더의 `docs/`에는 **실물 문서와 명세가 섞여 있다**.
-# 이 레포의 `docs/`가 곧 명세 폴더이기 때문이다.
+# ⓪원본은 **이관 대상이 아니다**(B80 ②) — 자리 이름이 `raw/`로 갈렸고, 원본은
+# 사람이 넣는 것이다. 옛 코드 폴더의 `docs/`는 이 레포에서 **명세 폴더**다:
+# 감시 파일을 두고 이관이 그것을 읽지 않는지 본다.
 (_old / "docs" / "사내").mkdir(parents=True)
 (_old / "docs" / "사내" / "CP.xlsx").write_bytes(b"PK\x03\x04fake")
 (_old / "docs" / "spec").mkdir()
@@ -340,11 +341,12 @@ show("③ 층 자산이 상태 루트로 따라온다 — 해시가 같다 (B79 
      all(_sha(_new / "layers" / "process" / f) == _sha(_old / "layers" / "process" / f)
          for f in ("config.json", "skeleton.json")),
      str(sorted(p.name for p in (_new / "layers").rglob("*") if p.is_file())))
-show("② 원본은 문서 포맷만 따라온다 — 명세 문서는 원본 자리로 가지 않는다 (B79 ②)",
-     (_new / "docs" / "사내" / "CP.xlsx").is_file()
-     and not (_new / "docs" / "spec").exists(),
-     str(sorted(p.relative_to(_new / "docs").as_posix()
-                for p in (_new / "docs").rglob("*") if p.is_file())))
+show("② 이관은 옛 코드 폴더의 `docs/`를 읽지 않는다 — 원본은 사람이 넣는다 (B80 ②)",
+     not (_new / "docs").exists() and not (_new / "raw").exists()
+     and not [d for _s, d, _t in _MG.plan(_old, _new)
+              if "docs" in d.parts or "raw" in d.parts],
+     str(sorted(p.relative_to(_new).as_posix()
+                for p in _new.iterdir())))
 show("③ 이관 로그가 무엇을 어디로 옮겼는지 남긴다 (해시 병기)",
      _res["log"].is_file()
      and str(_old) in _res["log"].read_text(encoding="utf-8")

@@ -36,15 +36,16 @@ SUITES = [
     ("test_g1_g2", 86, "저장 계층 · 근거 축 id · 부트스트랩 · 런타임 경계 · core 경계 3종 · GraphStore 전용 · 저장 레코드 스키마 · 진입점 계약"),
     # **자리는 따로 돈다**(B79 — `test_g1_g2` 834행 분할): 저장·주소 규격과 자리
     # 배치는 바뀌는 이유가 다르다.
-    ("test_places", 31, "자리 소유자·자리가 가른다·모듈 머리말·코드 지도 재생성 · B79 층 자산 상태 루트·미정의 이름 0·루트 출처·레포 정본 자산 해시"),
+    ("test_places", 32, "자리 소유자·자리가 가른다·모듈 머리말·코드 지도 재생성 · B79 층 자산 상태 루트·미정의 이름 0·루트 출처·레포 정본 자산 해시 · B80 ⓪원본 `raw/`"),
     ("test_g3", 82, "인입 계약 v2 · 추출 분리 · 커밋 게이트 · 하강 부착"),
-    ("test_g4", 96, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer · 골든셋 채점 · BM-25"),
+    ("test_g4", 97, "질의 4단 · 품질층 등록 · 재인입 회귀 · query --json · viewer 서버(B82 ①) · 골든셋 채점 · BM-25"),
     ("test_g5", 64, "I축 4연산 + 이관 · 운영 도구 · B73 ops confirm(큐 종결) · B74 ops alias"),
     ("test_g6_platform", 20, "플랫폼 창구 · 2층+cross 표시 · 큐 열람 · 계기판 8종"),
     ("test_g6_scan", 16, "지문 스캔(S11) · mock 격리"),
-    ("test_g6_batch", 25, "일괄 투입 조건 셋 · 상태 거부 문면의 계약 · B79 원본 자리(⓪)·기록 표기"),
+    ("test_g6_batch", 27, "일괄 투입 조건 셋 · 상태 거부 문면의 계약 · B79 원본 자리(⓪)·기록 표기 · B80 `raw/` 개명·옛 이름 거부"),
     ("test_g6_registry", 10, "내장은 mock일 때만 · 등록부 결손은 상태 거부"),
-    ("test_g6_ingest", 19, "인입 화면 — 예고·큐 집계·다음 줄·--step"),
+    ("test_g6_ingest", 38, "인입 화면 — 예고·큐 집계·다음 줄·--step · B81 값 줄(대장의 투영)·로그는 파일·색은 특이점·보폭 손잡이"),
+    ("test_g6_sheets", 27, "시트 역할 관문(B83) — 기록·파서 인자 · 표와 규칙 제안 · 관문/거부/플래그 · 참조 청크의 처지"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
     ("test_g65_contract", 28, "재인입·인입 검증 계약 · 닫힌 계약 배선 · 병합 무손실"),
     ("test_g65_cross", 10, "걸침층 배선 · mock 비계 최소 · 인입 순서 무관 결정성"),
@@ -66,7 +67,9 @@ SUITES = [
     ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
     ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
     ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
-    ("test_2a_gateway", 50, "게이트웨이 골조 — 9지점 도달 가능성 · **9지점 본문 스모크**(B79 ③ⓒ) · ⑦ 배선 · 변이 시험 · B63 대장 잠금"),
+    ("test_2a_gateway", 66, "게이트웨이 골조 — 9지점 도달 가능성 · **9지점 본문 스모크**(B79 ③ⓒ) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
+    # **뷰어는 세미 플랫폼이다**(B82) — headless로 잰다(브라우저 의존 0).
+    ("test_viewer", 29, "뷰어 서버(쓰기 0 · 자리 탈출 거부) · 벤더링 렌더러 · 질의 trace 계측 · 연결 현황"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
     # **사내 조건을 상시로 돈다**(B71 ②) — 나머지 전부가 `USE_MOCK=1`이라,
     # 사내에서 처음 밟는 자리를 사용자가 찾아 왔다(B70 · 실측 열째).
@@ -80,7 +83,11 @@ SUITES = [
 REQUIRED = []
 OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으로 돈다"),
             ("openpyxl", "xlsx 읽기 — 파서 전용·지연 import"),
-            ("pptx", "pptx 읽기 — 파서 전용·지연 import (패키지명 python-pptx)")]
+            ("pptx", "pptx 읽기 — 파서 전용·지연 import (패키지명 python-pptx)"),
+            # **로컬 임베딩**(B80 ③) — `EMBED_BACKEND=local`일 때만 부른다.
+            ("sentence_transformers",
+             "로컬 임베딩 — EMBED_BACKEND=local일 때만 · 지연 import "
+             "(패키지명 sentence-transformers)")]
 
 OK, WARN, NG = "  OK ", " 주의 ", " 필요 "
 # **[다음]은 결함이 아니다.** §④는 「사내에서 남은 작업」을 적는 자리인데 §①②③과
@@ -141,12 +148,17 @@ def check_env():
         except ImportError:
             line(NG, f"{mod} 없음", f"{why} — 없으면 파서(parser/)가 돌지 않는다. "
                                     f"코어·질의는 이것 없이도 돈다")
+    # **있는지만 본다 — 부르지 않는다**(B80 ③): 선택 의존은 지연 import가 규율이고
+    # (문서 7 §7.1), 점검기가 그것을 통째로 import하면 「USE_MOCK=1 경로에서
+    # import 0」을 재는 자리가 스스로 그 규율을 어긴다. 로컬 임베딩 모델 패키지는
+    # 무겁기도 하다 — 없는지 있는지는 `find_spec`으로 답이 난다.
+    import importlib.util as _ilu                                   # noqa: E402
     for mod, why in OPTIONAL:
         try:
-            __import__(mod)
-            line(OK, f"{mod} (선택)", why)
-        except ImportError:
-            line(OK, f"{mod} 없음 (선택 — 문제 아님)", why)
+            found = _ilu.find_spec(mod) is not None
+        except (ImportError, ValueError):
+            found = False
+        line(OK, f"{mod} (선택)" if found else f"{mod} 없음 (선택 — 문제 아님)", why)
     # **CSV는 의존이 없다** — 표준 `csv` 모듈이라 선택 의존 목록에 오르지 않는다.
     line(OK, "csv/tsv 읽기 (표준 라이브러리)",
          "reader가 받는 포맷: .xlsx · .xlsm · .pptx · .csv · .tsv — "

@@ -185,8 +185,8 @@ def _cmd_generate_resume(doc_type, layer, samples, no_fewshot):
     # **이어하기는 코드가 아니라 판단을 이어받는다**(B67 ①).
     #
     # 구판은 `draft_mod.draft(doc_type)`를 지시·이력 **없이** 불렀다. 생성은
-    # `temperature=0`이라 같은 입력이면 같은 코드가 나오고, 그래서 사내에서
-    # G31(`AttributeError`)로 끝난 등록을 이어가자 **같은 G31**이 났다 —
+    # `CHAT_TEMPERATURE=0`이면 같은 입력이 같은 코드를 낸다(기본은 모델 몫 — B80 ①).
+    # 그래서 사내에서 G31(`AttributeError`)로 끝난 등록을 이어가자 **같은 G31**이 났다 —
     # 이어하기가 재생성이 아니라 **재현**이었다. 초안이 이미 있으면:
     #   ① 관문을 먼저 돌린다(B60 ① — 저장 판정을 믿지 않는다 · LLM 0)
     #   ② FAIL이면 그 판정 문면과 지시 이력을 재생성 지시로 **싣는다**

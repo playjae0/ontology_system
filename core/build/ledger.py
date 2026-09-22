@@ -26,6 +26,12 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind")
 
 
+# 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
+# 값 줄의 재료를 화면이 따로 계산하면 두 벌이 갈리고, 그때 「화면은 붙었다는데
+# 대장은 아니다」가 된다. core는 화면을 갖지 않으므로(D-149 ③) 찍는 것은 CLI다.
+ON_ROW = None
+
+
 def name_of(doc_id):
     return f"{DIR}/{doc_id}.json"
 
@@ -54,6 +60,8 @@ class Ledger:
             "confidence": round(float(confidence or 0.0), 4),
             "llm": dict(llm or {"calls": 0, "in_tokens": 0, "out_tokens": 0}),
             "queue_kind": queue_kind})
+        if ON_ROW is not None:
+            ON_ROW(self.rows[-1])
         return self.rows[-1]
 
     def save(self):

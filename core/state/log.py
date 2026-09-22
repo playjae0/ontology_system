@@ -15,36 +15,74 @@
 호스트(플랫폼·테스트)의 로깅 설정을 덮어쓴다 — 그래서 `setup()`은 `run.py`·`doctor.py`
 같은 진입점만 부르고, 모듈은 `get(__name__)`으로 로거만 얻는다.
 
-레벨은 `ONTO_LOG_LEVEL`로 올린다(기본 INFO). `ONTO_LOG_FILE`을 주면 파일에도 남긴다.
+**화면과 파일을 가른다**(B81 ② · 사내 실측 2026-09-22): 콘솔은 기본 **WARNING**이고
+파일은 **언제나 INFO**다(`work/logs/<명령>_<날짜>.log`). 「남긴다」는 로그 규격의 요구는
+파일에서 그대로 성립한다 — 화면에 값마다 두 줄씩 흐르면 사람이 알고 싶은 것
+(붙었나·새로 생겼나·불확실한가)이 그 사이에 묻힌다.
+
+손잡이 둘은 그대로다: `ONTO_LOG_LEVEL`(콘솔 레벨) · `ONTO_LOG_FILE`(파일 자리를
+직접 지정). `-v`는 진입점이 `setup(console="INFO")`로 옮긴다.
 """
 from __future__ import annotations
 
 import logging
 import os
+import time
+from pathlib import Path
 
 ROOT_NAME = "onto"
 _configured = False
 
 
-def setup(level=None, *, force=False):
-    """진입점에서 1회. 두 번 불러도 핸들러가 겹쳐 쌓이지 않는다."""
-    global _configured
+#: 마지막 `setup()`이 만든 로그 파일 — 화면 끝 요약이 「로그 <경로>」로 낸다.
+LOG_PATH = None
+
+
+def log_path(command=None):
+    """이번 실행의 로그 파일 자리 — `work/logs/<명령>_<YYYYMMDD>.log` (B81 ②).
+
+    **자리는 자리 소유자가 안다**(`core/paths.py`) — mock 실행은 mock 루트 아래로
+    가고 운영 로그와 섞이지 않는다. `ONTO_LOG_FILE`을 주면 그 파일이 이긴다.
+    """
+    direct = os.environ.get("ONTO_LOG_FILE")
+    if direct:
+        return Path(direct)
+    from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
+    name = (command or "onto").replace("/", "_")
+    return paths.work("logs", f"{name}_{time.strftime('%Y%m%d')}.log")
+
+
+def setup(level=None, *, force=False, console=None, command=None):
+    """진입점에서 1회. 두 번 불러도 핸들러가 겹쳐 쌓이지 않는다.
+
+    **콘솔은 WARNING · 파일은 INFO**가 기본이다(B81 ②). `console`을 주면 그 레벨로
+    (진입점의 `-v`가 `"INFO"`를 준다), `ONTO_LOG_LEVEL`이 있으면 그것이 이긴다.
+    파일 핸들러는 **언제나** 붙는다 — 자리를 못 만들면 조용히 콘솔만 남긴다
+    (읽기 전용 배포에서 로깅 때문에 명령이 죽는 쪽이 더 나쁘다).
+    """
+    global _configured, LOG_PATH
     if _configured and not force:
         return logging.getLogger(ROOT_NAME)
     lg = logging.getLogger(ROOT_NAME)
-    lg.setLevel(level or os.environ.get("ONTO_LOG_LEVEL", "INFO").upper())
+    lg.setLevel(level or "INFO")           # 로거는 INFO를 통과시키고, 갈래는 핸들러가 정한다
     for h in list(lg.handlers):
         lg.removeHandler(h)
-    fmt = logging.Formatter("%(levelname)-7s %(name)s  %(message)s")
     con = logging.StreamHandler()
-    con.setFormatter(fmt)
+    con.setFormatter(logging.Formatter("%(levelname)-7s %(name)s  %(message)s"))
+    con.setLevel(os.environ.get("ONTO_LOG_LEVEL", console or "WARNING").upper())
     lg.addHandler(con)
-    path = os.environ.get("ONTO_LOG_FILE")
-    if path:
+    try:
+        path = log_path(command)
+        from core import paths                # 폴더를 만드는 자리는 하나다(B77 ④)
+        paths.ensure(path)
         fh = logging.FileHandler(path, encoding="utf-8")
         fh.setFormatter(logging.Formatter(
             "%(asctime)s %(levelname)-7s %(name)s  %(message)s"))
+        fh.setLevel("INFO")
         lg.addHandler(fh)
+        LOG_PATH = path
+    except OSError:
+        LOG_PATH = None
     lg.propagate = False
     _configured = True
     return lg

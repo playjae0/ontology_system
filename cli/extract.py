@@ -75,8 +75,10 @@ def run(paths, *, force=False, layer=None):
         from core.build.entry import _vocab
         out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])
-        print(f"[추출] {doc_id}: 청크 {len(out['candidates'])} · 개체 후보 {n} "
-              f"→ {EX.checkpoint_path(doc_id)}")
+        _ref = out.get("ref_skipped") or 0
+        print(f"[추출] {doc_id}: 청크 {len(out['candidates'])} · 개체 후보 {n}"
+              + (f" · 참조 {_ref} 건너뜀" if _ref else "")
+              + f" → {EX.checkpoint_path(doc_id)}")
     return rc
 
 
@@ -91,5 +93,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    log.setup()
+    log.setup(command="extract")
     sys.exit(main(sys.argv[1:]) or 0)

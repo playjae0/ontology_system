@@ -230,7 +230,10 @@ show("I2 병합 후보가 판정 경유로 제안된다 (문서 4 §4.3 재사�
 # 코드 폴더에 살았다 — 코드를 갈아 끼우면 사내 골격이 레포 seed 판으로 되돌아간다.
 # **AST로 잰다**(문면을 세지 않는다): 경로 조립 = `… / "layers"` 또는 통째로
 # 경로인 문자열(`layers/process/config.json`). 화면 문면·docstring은 경로가 아니다.
-def _lay_joins79(path):
+# `raw`는 **이름이 흔하다**(픽스처 `tests/fixtures/raw/`도 그 이름이다) — 이름만으로는
+# 상태 자리인지 가를 수 없어 이 검사에 넣지 않는다. ⓪원본 자리는 아래 어서션이
+# `paths.raw()`로 직접 잰다.
+def _state_joins(path, names=("layers", "docs")):
     _tree = _ast78.parse(path.read_text(encoding="utf-8"))
     _docs = {id(n.value) for n in _ast78.walk(_tree)
              if isinstance(n, _ast78.Expr) and isinstance(n.value, _ast78.Constant)
@@ -238,25 +241,32 @@ def _lay_joins79(path):
     _out = []
     for _n in _ast78.walk(_tree):
         if isinstance(_n, _ast78.BinOp) and isinstance(_n.op, _ast78.Div) and any(
-                isinstance(s, _ast78.Constant) and s.value == "layers"
+                isinstance(s, _ast78.Constant) and s.value in names
                 for s in (_n.left, _n.right)):
             _out.append(_n.lineno)
         if (isinstance(_n, _ast78.Constant) and isinstance(_n.value, str)
                 and id(_n) not in _docs
                 # 낱말 `"layers"` 하나는 화면 데이터의 **키**다 — 경로가 아니다.
-                and _re.fullmatch(r'layers/[\w<>{}.*-]+(/[\w<>{}.*-]+)*', _n.value)):
+                and _re.fullmatch(r'(?:%s)/[\w<>{}.*-]+(/[\w<>{}.*-]+)*'
+                                  % "|".join(names), _n.value)):
             _out.append(_n.lineno)
     return _out
 
 _lay_hits = sorted({p.relative_to(ROOT).as_posix()
                     for d in ("core", "cli", "parser", "kit")
                     for p in sorted((ROOT / d).rglob("*.py"))
-                    if "__pycache__" not in p.parts and _lay_joins79(p)})
+                    if "__pycache__" not in p.parts and _state_joins(p)})
 # 셋만 조립한다 — 자리 소유자 · 이관(옛 폴더와 새 루트 **양쪽**을 다룬다) ·
 # 킷(단독 실행 기준은 레포다 — 킷은 `core`를 import하지 않는다).
-show("층 경로를 조립하는 파일이 셋뿐이다 (자리 소유자 · 이관 · 킷 단독 기준)",
+# **`raw/`(⓪원본)와 그 옛 이름 `docs/`도 같은 규율이다**(B80 ②) — 이름이 바뀐 자리를
+# 아는 것도 자리 소유자의 일이다(`paths.legacy_raw()`).
+show("상태 폴더 이름을 조립하는 파일이 셋뿐이다 (자리 소유자 · 이관 · 킷 단독 기준)",
      _lay_hits == ["core/paths.py", "core/state/migrate.py", "kit/gate_tables.py"],
      str(_lay_hits))
+show("⓪원본 자리는 `raw/`이고 옛 이름을 아는 곳은 자리 소유자 하나다 (B80 ②)",
+     _P.raw().name == "raw" and _P.legacy_raw().name == "docs"
+     and _P.raw().parent == _P.home() == _P.legacy_raw().parent,
+     f"{_P.raw()} · 옛 {_P.legacy_raw()}")
 from router import discover as _disc79                            # noqa: E402
 show("층 발견은 상태 루트를 본다 (레포 고정 상수가 아니다)",
      _P.layers().is_relative_to(_P.home()) and _disc79()

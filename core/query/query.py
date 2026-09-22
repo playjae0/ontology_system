@@ -163,10 +163,12 @@ def link(question, dictionary, graphs):
             for layer, g in graphs.items():
                 n = g.get(nid)
                 if n is not None:
-                    hits.append({"surface": surface, "node_id": nid, "layer": layer})
+                    hits.append({"surface": surface, "node_id": nid, "layer": layer,
+                                 "method": "dict"})
     if hits:
         return hits                      # **1단이 찾았으면 2·3단은 돌지 않는다**
-    return _link_llm(question, graphs)   # 2단 — USE_MOCK에서는 빈 목록(미스는 로그로)
+    # 2단 — USE_MOCK에서는 빈 목록(미스는 로그로). **어느 단이 찾았는지 적는다**(B82 ③).
+    return [dict(h, method="llm_fallback") for h in _link_llm(question, graphs)]
 
 
 def transit(graph, nid, cfg):
@@ -204,7 +206,7 @@ def log_miss(question):
 
 
 # ---------------------------------------------------------------- ② 확장
-def expand(graph, ids, cfg):
+def expand(graph, ids, cfg, trace=None):
     """config의 `query_traverse` 스펙대로만 뻗는다.
 
     `precedes`는 확장에 넣지 않는다(순서는 그래프 사실 채널과 flow 특례가 담당) —
@@ -212,7 +214,7 @@ def expand(graph, ids, cfg):
     관계 이름을 모른다. 전파는 프론티어 방식이라 다른 관계로 도달한 노드에도 규칙이
     적용된다 — 공정→(part_of 하향)→설비→(has_property)→인자 2홉이 성립하는 근거다.
     """
-    return graph.neighbors(ids, cfg.get("query_traverse") or {})
+    return graph.neighbors(ids, cfg.get("query_traverse") or {}, trace=trace)
 
 
 def bridge(src_ids, home_layer, graphs, configs):
@@ -295,7 +297,7 @@ class _desc:
         return self.v == other.v
 
 
-def collect_chunks(node_ids, direct):
+def collect_chunks(node_ids, direct, trace=None):
     """2-tier(직접 링킹 > 확장) · 상한 8 · 최신순. **잘림은 로그로 남긴다**(계기판 재료)."""
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     by_node = {}
@@ -330,6 +332,14 @@ def collect_chunks(node_ids, direct):
     dropped = max(0, len(ordered) - COLLECT_LIMIT)
     if dropped:
         store.append_line(store.CHUNK_TRUNCATED, f"{dropped}건 잘림")
+    if trace is not None:
+        # **잘린 것까지 적는다**(B82 ③) — 화면이 「무엇이 상한에서 떨어졌나」를
+        # 보이려면 그 목록이 있어야 한다. 자르는 판단은 여기 그대로다.
+        for rank, c in enumerate(ordered, 1):
+            trace.append({"chunk_id": c["chunk_id"], "doc_id": c["doc_id"],
+                          "source_locator": c.get("source_locator"),
+                          "tier": c["tier"], "rank": rank,
+                          "kept": rank <= COLLECT_LIMIT})
     return ordered[:COLLECT_LIMIT], dropped
 
 
