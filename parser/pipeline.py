@@ -231,7 +231,7 @@ def mark_roles(pieces, sheet_roles):
     return pieces
 
 
-def parse(adapter, doc_id, path, *, layer="process", revision="R1",
+def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
@@ -312,6 +312,7 @@ def parse(adapter, doc_id, path, *, layer="process", revision="R1",
     res.report["normalizer"] = rep
     pieces = mark_roles(pieces, sheet_roles)    # `ref` 시트의 조각에 표시를 단다
 
+    # **층은 호출자가 준다**(B85 ②) — 닫힌 목록을 직접 받은 경우만 층 없이 돈다.
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,

@@ -46,6 +46,7 @@ SUITES = [
     ("test_g6_registry", 10, "내장은 mock일 때만 · 등록부 결손은 상태 거부"),
     ("test_g6_ingest", 38, "인입 화면 — 예고·큐 집계·다음 줄·--step · B81 값 줄(대장의 투영)·로그는 파일·색은 특이점·보폭 손잡이"),
     ("test_g6_sheets", 27, "시트 역할 관문(B83) — 기록·파서 인자 · 표와 규칙 제안 · 관문/거부/플래그 · 참조 청크의 처지"),
+    ("test_g6_coord_layer", 14, "좌표 층의 이름 해방(B85) — 카테고리로 찾는다 · 골격 파일 부재 거부 · 이름 박은 자리 0 · 이름 바꾼 루트에서 전 구간 등가"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
     ("test_g65_contract", 28, "재인입·인입 검증 계약 · 닫힌 계약 배선 · 병합 무손실"),
     ("test_g65_cross", 10, "걸침층 배선 · mock 비계 최소 · 인입 순서 무관 결정성"),
@@ -69,7 +70,7 @@ SUITES = [
     ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
     ("test_2a_gateway", 66, "게이트웨이 골조 — 9지점 도달 가능성 · **9지점 본문 스모크**(B79 ③ⓒ) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
     # **뷰어는 세미 플랫폼이다**(B82) — headless로 잰다(브라우저 의존 0).
-    ("test_viewer", 29, "뷰어 서버(쓰기 0 · 자리 탈출 거부) · 벤더링 렌더러 · 질의 trace 계측 · 연결 현황"),
+    ("test_viewer", 45, "뷰어 서버(쓰기 0 · 자리 탈출 거부) · 벤더링 렌더러 · 질의 trace 계측 · 연결 현황 · B84 테마 대비·다시 칠하기·배치 둘·상호작용·오류 문면"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
     # **사내 조건을 상시로 돈다**(B71 ②) — 나머지 전부가 `USE_MOCK=1`이라,
     # 사내에서 처음 밟는 자리를 사용자가 찾아 왔다(B70 · 실측 열째).
@@ -492,13 +493,23 @@ def transition():
     from core.state import registry, store                              # noqa: E402
 
     # ── 1. 골격 seed ──────────────────────────────────────────────
-    seed = json.loads(paths.layers("process", "skeleton.json")
-                      .read_text(encoding="utf-8"))
-    snap = (store.read(store.SKELETON_LIST, {}).get("process") or {})
+    # **좌표 층은 이름이 아니라 카테고리로 찾는다**(B85 ②) — 폴더가 `equipment`여도
+    # 여기가 그 층을 본다. 좌표 층이 없으면 그 사실을 한 줄로 말하고 지나간다.
+    from core.state.bootstrap import NoCoordLayer, coord_layer, load_config  # noqa: E402
+    try:
+        _coord = coord_layer()
+    except NoCoordLayer:
+        _coord = None
+    _src = ((load_config(_coord).get("skeleton") or {}).get("source")
+            if _coord else None)
+    _seed_p = paths.layers(_coord, _src) if (_coord and _src) else None
+    seed = (json.loads(_seed_p.read_text(encoding="utf-8"))
+            if _seed_p and _seed_p.exists() else {})
+    snap = (store.read(store.SKELETON_LIST, {}).get(_coord) or {}) if _coord else {}
     line(NEXT, f"[1] 골격 seed가 아직 창작 mock이다 — 노드 {snap.get('count', '?')} · "
                f"seed 문법 v{seed.get('seed_format')}",
          "**사내 첫 작업이 이것이다.** 층 자산은 상태 루트에 산다(B79 ①) —\n"
-         f"         {paths.layers('process', 'skeleton.json')}\n"
+         f"         {_seed_p or paths.layers('<좌표 층>', '<skeleton.source>')}\n"
          "         을 사내 공정 체계로 바꾸고 `python run.py bootstrap`.\n"
          "         코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
          "         형식은 docs/skeleton_seed.md · 마커 4종(:: · @split · @unordered · @noflow)")
@@ -579,10 +590,18 @@ def state_line():
     from router import discover                                     # noqa: E402
     dts = registry.all_doc_types()
     builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")
+    # **좌표 층의 이름을 첫 줄에 싣는다**(B85 ②) — 폴더 이름을 바꾼 사람이
+    # 「지금 어느 층이 좌표 층인가」를 여기서 확인한다. 없으면 없다고 말한다.
+    from core.state.bootstrap import NoCoordLayer, coord_layer       # noqa: E402
+    try:
+        _coord = coord_layer()
+    except NoCoordLayer:
+        _coord = "**없다**"
     print(f"  상태 폴더 {paths.home()}{paths.home_note()} · 모드 "
           f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
           + (f"(내장 {builtin})" if builtin else "")
           + f" · 층 {len(discover())}(상태 루트)"
+          + f" · 좌표 층 {_coord}"
           + f" · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
     if migrate.needs_migration():
         print("  ⚠ 이관 전이다 — python run.py platform migrate "

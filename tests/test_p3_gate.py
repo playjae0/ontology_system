@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from p3_common import *                       # noqa: F401,F403 — 바닥은 하나다
 from p3_common import _P, _reg_src            # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 from core.llm import gateway
 
@@ -220,20 +222,21 @@ show("ⓒ `section` 경로는 상수와 무관하게 전 헤딩을 반영한다 
      f"최대 깊이 {max(len(x['section'].split(' > ')) for x in _b01)}단")
 show("④ 어댑터 경로도 레벨별 분포를 낸다 (지도 경로와 같은 형태)",
      (lambda r: bool((r.report.get("split") or {}).get("레벨_선택")))(
-         pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"))))
+         pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"),
+                        layer=coord_layer())))
 # **화면이 「규칙이 고른 레벨」을 밝힌다**(§6.6-1) — 구판은 여기서
 # `expects.split_level=1`이라는 **폐지된 상수**를 찍었다. 사유가 상수를 가리키면
 # 승인자는 규칙이 무엇을 골랐는지 끝내 못 본다.
-_pk45 = pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx")
-                       ).report["split"]["레벨_선택"][0]
+_pk45 = pipeline.parse(_new45, "T45", str(RAW / "TOC01.xlsx"),
+                       layer=coord_layer()).report["split"]["레벨_선택"][0]
 show("④ 화면이 규칙이 고른 레벨과 그 사유를 밝힌다 (폐지된 상수를 읽지 않는다)",
      _pk45["분할_레벨"] == 1 and "구간" in _pk45["분할_레벨_사유"]
      and _pk45["분할_레벨_구간밖"] is False
      and "split_level=" not in str(_pk45),
      _pk45["분할_레벨_사유"][:44])
 # **같은 doc_type의 다른 판본이 갈린다** — 상수를 버린 근거가 바로 이것이다.
-_pk46 = pipeline.parse(_new45, "T46", str(RAW / "TOC02.xlsx")
-                       ).report["split"]["레벨_선택"][0]
+_pk46 = pipeline.parse(_new45, "T46", str(RAW / "TOC02.xlsx"),
+                       layer=coord_layer()).report["split"]["레벨_선택"][0]
 show("④ 같은 어댑터의 다른 판본이 갈린다 (상수를 버린 근거 — [정정] 46)",
      _pk46["분할_레벨_구간밖"] is True and _pk45["분할_레벨_구간밖"] is False,
      f"TOC01 구간내 · TOC02 {_pk46['분할_레벨_사유'][:30]}")

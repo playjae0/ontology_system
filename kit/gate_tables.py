@@ -156,6 +156,13 @@ def layers_dir():
     return Path(LAYERS_DIR) if LAYERS_DIR else (ROOT / "layers")
 
 
+# 좌표 층의 **이름도 건네받는다**(B85 ② — `--layers`와 같은 결). 좌표 층은
+# 「`Process` 카테고리를 선언한 층」이고 그 판정은 `core`가 한다 — 킷은 core를
+# 모르므로 CLI가 답을 넘긴다. 단독 실행이면 스키마의 층으로 떨어진다.
+COORD_FLAG = "--coord-layer"
+COORD_LAYER = None
+
+
 # 열 판정 대장의 자리 — **관문은 그것을 계산하지 않고 읽는다**(B76 ②).
 # 없으면 커버리지 검사를 돌리지 않는다: 킷은 등록 흐름 밖에서도 단독으로 돈다.
 LEDGER_FLAG = "--ledger"

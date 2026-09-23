@@ -1,12 +1,26 @@
-/* 뷰어 화면 — 색은 데이터가 정한다(축마다 결정적 색). 장식은 최소로. */
-:root { --bg:#0f1115; --fg:#e6e6e6; --dim:#8a8f98; --line:#232733; --hi:#ffd166; }
+/* 뷰어 화면 — 색은 데이터가 정한다(축마다 결정적 색). 장식은 최소로.
+ *
+ * **색의 정본은 이 변수들이다**(B84 ①): 화면도 sigma도 여기서 읽는다(`cssVar()`).
+ * 기본은 **밝은 테마**다 — 사내 첫 실측이 「배경이 어두워 글씨가 안 보인다」였고,
+ * 어두운 라벨을 어두운 배경에 얹은 것이 원인이었다. 어두운 테마는 토글이다.
+ */
+:root {
+  --bg:#ffffff; --fg:#14171c; --dim:#5b6472; --faint:#c9ced6;
+  --line:#c3c9d2; --hi:#b26a00; --hi2:#1d6fb8; --cross:#7b3fa8;
+  --panel:#f4f6f9; --panel2:#e7ebf1; --link:#1a5fb4;
+}
+:root[data-theme="dark"] {
+  --bg:#0f1115; --fg:#e6e6e6; --dim:#9aa1ac; --faint:#3a4152;
+  --line:#3b4252; --hi:#ffd166; --hi2:#9ad1ff; --cross:#c792ea;
+  --panel:#1a1e27; --panel2:#2b3242; --link:#8ab4f8;
+}
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.5 system-ui, sans-serif; }
 #head { display:flex; gap:12px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); }
 #tabs { margin-left:auto; display:flex; gap:6px; }
-#tabs button { background:#1a1e27; color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:4px 10px; cursor:pointer; }
-#tabs button.on { background:#2b3242; }
-.badge { background:#2b3242; border-radius:4px; padding:2px 8px; }
+#tabs button, #theme-toggle, #relayout { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:4px 10px; cursor:pointer; }
+#tabs button.on { background:var(--panel2); }
+.badge { background:var(--panel2); border-radius:4px; padding:2px 8px; }
 .muted, .note { color:var(--dim); }
 .note { font-size:12px; margin:4px 0 10px; }
 main { display:grid; grid-template-columns: 320px 1fr 320px; height: calc(100vh - 41px); }
@@ -19,16 +33,19 @@ h3 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(-
 /* `hidden` 속성이 display를 이긴다 — 아니면 그린 뒤에도 경고가 남는다(실측). */
 #webgl-warn[hidden] { display:none; }
 .radios label, .chk { display:block; margin:2px 0; cursor:pointer; }
-input[type=search] { width:100%; background:#141821; color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:5px 8px; }
+input[type=search] { width:100%; background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:4px; padding:5px 8px; }
 button { cursor:pointer; }
+button[disabled] { opacity:.6; cursor:progress; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
 .row { display:flex; gap:6px; align-items:center; padding:1px 0; }
 .card { border:1px solid var(--line); border-radius:5px; padding:6px 8px; margin:4px 0; cursor:pointer; }
 .card.used { border-color:var(--hi); }
 .card.dropped { opacity:.45; }
+/* 질의 오류 — **조용히 비지 않는다**(B84 ⑤). 서버 문면 그대로 싣는다. */
+.card.err { border-color:#c0392b; color:#c0392b; white-space:pre-wrap; cursor:text; }
 .chip { display:inline-block; border:1px solid var(--line); border-radius:12px; padding:1px 8px; margin:2px 4px 2px 0; cursor:pointer; }
 .chip.fallback { border-style:dashed; }
 table { border-collapse:collapse; width:100%; font-size:12px; }
 th, td { border-bottom:1px solid var(--line); padding:3px 4px; text-align:right; }
 th:first-child, td:first-child { text-align:left; }
-a { color:#8ab4f8; }
+a { color:var(--link); }

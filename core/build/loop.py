@@ -8,16 +8,15 @@
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from core.build import extract as extract_mod
-from core import matcher, paths
+from core import matcher
 from core.build import gate
 from core.state import log, store
 from core.build.build import Builder
 from core.build.ledger import Ledger
-from core.state.bootstrap import load_config, open_graph
+from core.state.bootstrap import COORD_CATEGORY, load_config, open_graph
 from core.build.ingest import IngestResult, ingest, load_schema
 from core.state.status import is_live
 from core.build.retry import retry_orphans
@@ -32,12 +31,6 @@ STRUCTURAL = {"doc_type", "process_group", "process_ref", "process_no",
 PAYLOAD_KINDS = ("table", "prose")
 
 _LOG = log.get(__name__)
-
-# 공정좌표 anchor의 목표 카테고리 — 공용 블록(schemas/blocks.json)이 소유한다.
-COORD_CATEGORY = json.loads(
-    paths.blocks()
-    .read_text(encoding="utf-8"))["process_coord"]["process_ref"]["target_category"]
-
 
 def _prov(rec, doc_id=None):
     """provenance 한 항목 — **문서 이름이 함께 실린다**(`{doc_id}#{locator}` · [정정] 43).

@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from p1_common import *          # noqa: F401,F403 — 바닥은 하나다
 from p1_common import _P, _reg_src, done    # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 
 print("\n■ CSV reader — xlsx와 같은 구조 · 인코딩·구분자 판정")
@@ -155,7 +157,8 @@ def _spy(ref, *, image=None, mime=None, context="", page=None):
     return "요약(시험)"
 
 
-_res = pipeline.parse(basic_ppt, "B53PPT", str(_PPTX), summarize=_spy)
+_res = pipeline.parse(basic_ppt, "B53PPT", str(_PPTX), summarize=_spy,
+                      layer=coord_layer())
 _pic = [c for c in _res.envelope["chunks"]
         if (c.get("meta") or {}).get("shape_kind") == "picture"][0]
 show("④가 **바이트**를 받는다 (구판은 참조 문자열이었다 — 개정대장 §AJ)",
@@ -166,7 +169,7 @@ show("④가 **맥락**을 받는다 — 같은 슬라이드의 텍스트",
 show("④가 쪽 전체 그림을 함께 받는다 (있을 때)",
      isinstance(_seen.get("page"), bytes) and _seen["page"][:4] == b"\x89PNG")
 # b-ⓐ **mock에서도** 바이트 도달을 잰다 — 실호출 없이 재는 유일한 자리다.
-_mres = pipeline.parse(basic_ppt, "B53PPTM", str(_PPTX))
+_mres = pipeline.parse(basic_ppt, "B53PPTM", str(_PPTX), layer=coord_layer())
 _mpic = [c for c in _mres.envelope["chunks"]
          if (c.get("meta") or {}).get("shape_kind") == "picture"][0]
 show("mock 갈래도 image_bytes_len을 남긴다 (바이트가 tagger까지 왔다)",
@@ -224,7 +227,8 @@ finally:
 _realwhich = _sh.which
 try:
     _sh.which = lambda n, *a, **k: None if "office" in n else _realwhich(n, *a, **k)
-    _nres = pipeline.parse(basic_ppt, "B53NOSO", str(_PPTX), summarize=_spy)
+    _nres = pipeline.parse(basic_ppt, "B53NOSO", str(_PPTX), summarize=_spy,
+                           layer=coord_layer())
     _npic = [c for c in _nres.envelope["chunks"]
              if (c.get("meta") or {}).get("shape_kind") == "picture"][0]
     show("soffice 없으면 slide_render=none이고 **문서는 완주한다**",

@@ -433,8 +433,10 @@ def run_pipeline(mod, schema, doc, label):
     print(f"\n⑤ 파서 전 구간(pipeline.parse) — {label}")
     doc_id = "_gate_" + re.sub(r"[^0-9A-Za-z_]+", "_", f'{schema.get("doc_type")}_{Path(doc).stem}')
     try:
+        # 좌표 층은 **건네받은 이름**이 먼저다(B85 ②) — 스키마의 층은 문서의 층이고,
+        # 좌표는 골격 층의 닫힌 목록을 본다. 둘이 다른 층일 수 있다.
         res = parser_pipeline.parse(mod, doc_id, doc,
-                                    layer=schema.get("layer") or "process")
+                                    layer=tables.COORD_LAYER or schema.get("layer"))
     except Exception as e:
         show("G51  파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)",
              False, f"{type(e).__name__}: {e}")
@@ -505,6 +507,10 @@ if __name__ == "__main__":
     if tables.LAYERS_FLAG in _argv:
         _i = _argv.index(tables.LAYERS_FLAG)
         tables.LAYERS_DIR = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+    if tables.COORD_FLAG in _argv:                 # 좌표 층의 이름 (B85 ②)
+        _i = _argv.index(tables.COORD_FLAG)
+        tables.COORD_LAYER = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
     adapter_path, schema_path, *docs = _argv
     print(_where())

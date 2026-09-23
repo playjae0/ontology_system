@@ -32,7 +32,7 @@ from core import paths
 from core.build import ledger
 from core.state import registry, store
 from core.state import sheets as _sheets
-from core.state.bootstrap import load_config, open_graph
+from core.state.bootstrap import coord_layer, load_config, open_graph
 from core.state.ids import norm
 from core.state.status import is_live
 from router import discover
@@ -68,7 +68,7 @@ def cmd_tree(args):
     골격만 그린다(문서가 만든 auto 노드는 뺀다) — 여기서 봐야 할 것은 "우리 공정
     체계가 맞게 섰나"이고, 그 판정에 문서 유래 노드는 잡음이다.
     """
-    lay = args[0] if args else "process"
+    lay = args[0] if args else coord_layer()   # 기본은 **좌표 층**이다(B85 ②)
     g, cfg = open_graph(lay), load_config(lay)
     child = ((cfg.get("skeleton") or {}).get("relations") or {}).get("child")
     sib = ((cfg.get("skeleton") or {}).get("relations") or {}).get("sibling")
@@ -423,7 +423,7 @@ def cmd_chunk(args):
 
 # ---------------------------------------------------------------- edges
 def cmd_edges(args):
-    lay = args[0] if args else "process"
+    lay = args[0] if args else coord_layer()   # 기본은 **좌표 층**이다(B85 ②)
     want = args[1] if len(args) > 1 else None
     g = open_graph(lay)
     gs = _graphs()

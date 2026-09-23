@@ -39,10 +39,11 @@ def cases():
     from core import matcher
     from core.llm import embeddings, points, struct_map_pass
     from core.query import query as Q
-    from core.state.bootstrap import load_config, open_graph
+    from core.state.bootstrap import coord_layer, load_config, open_graph
     from core.dictionary import Dictionary
 
-    g = open_graph("process")
+    _coord = coord_layer()          # 좌표 층은 **이름이 아니라 카테고리**다 (B85 ②)
+    g = open_graph(_coord)
     # **표면형과 다른 canonical이어야 한다** — 같으면 정확 일치 규칙이 먼저 답해
     # 모델을 부르지 않고, 그 「통과」가 미설정 실패로 잘못 세어진다.
     n = {"id": "N1", "canonical": "나", "aliases": [], "category": "Unit", "exact": False}
@@ -51,11 +52,11 @@ def cases():
         # **실물 config를 쓴다** — 축약 dict를 넘기면 프롬프트 조립이 `cfg["layer"]`에서
         # 먼저 깨져 KeyError가 나고, 그것이 「명시적 실패」로 잘못 세어진다(실측).
         "extract": lambda: __import__("core.build.extract", fromlist=["x"])._candidates_for(
-            "C1", {"text": "가", "process_ref": "노칭"}, load_config("process"), {}),
+            "C1", {"text": "가", "process_ref": "노칭"}, load_config(_coord), {}),
         "judge": lambda: matcher.match("가", [n], "Unit"),
         "embed": lambda: embeddings.embed("가"),
         "generate": lambda: __import__("cli.register.draft", fromlist=["x"])._draft_live("cp", 0),
-        "link": lambda: Q.link("노칭", Dictionary({}), {"process": g}),
+        "link": lambda: Q.link("노칭", Dictionary({}), {_coord: g}),
         "answer": lambda: __import__("cli.query", fromlist=["x"]).generate(
             {"question": "가", "facts": [], "chunks": [], "path": "graph_fact",
              "linked": [], "note": None, "truncated": 0, "transit": []}),

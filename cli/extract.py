@@ -21,7 +21,7 @@ from pathlib import Path
 
 from core.build import extract as EX
 from core.state import log, store
-from core.state.bootstrap import load_config
+from core.state.bootstrap import coord_layer, load_config
 from core.build.ingest import ingest, load_schema
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -71,7 +71,8 @@ def run(paths, *, force=False, layer=None):
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == doc_id}
-        cfg = load_config(layer or (schema or {}).get("layer") or "process")
+        # 층이 없으면 **좌표 층**이다(B85 ② — 폴더 이름을 박지 않는다).
+        cfg = load_config(layer or (schema or {}).get("layer") or coord_layer())
         from core.build.entry import _vocab
         out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])

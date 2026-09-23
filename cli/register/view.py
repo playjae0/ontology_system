@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from core.state.bootstrap import coord_layer
 from cli.parse import injections
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
@@ -498,14 +499,17 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
             # 대신 그 이름으로 남아 **운영 인입이 못 찾았다** — 체크포인트 키가
             # 같아야 재사용이 성립한다. `_extract_rehearsal`만 고쳐져 있었다.
             out.append(pipeline.parse(
-                mod, doc_id_of(s), s, layer=st["layer"],
+                # **좌표 층이다**(B85 ② — doc_type의 층이 아니다): `process_ref`가
+                # 가리키는 것은 좌표 층의 골격이라, 품질층 doc_type의 리허설이
+                # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
+                mod, doc_id_of(s), s, layer=coord_layer(),
                 **{**injections(), "pick_coord": pick},
                 max_rows=rows,
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
 
     results = _run(None)
-    misses = _coord_misses(results, st["layer"])
+    misses = _coord_misses(results, coord_layer())
     if _ask_llm_coord(misses, llm_coord):
         results = _run(points.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
 

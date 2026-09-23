@@ -122,8 +122,14 @@ def check(layer):
     처음 보이면, 고치는 왕복이 위반 수만큼 는다.
     """
     src = seed_path(layer)
-    if src is None or not src.exists():
-        return []                      # 확정 대상 파일이 없는 층 — 호출부가 따로 말한다
+    if src is None:
+        return []                      # 파일 seed가 아닌 층(인라인) — 호출부가 따로 말한다
+    if not src.exists():
+        # **가리키는 파일이 없으면 위반이다**(B85 ①) — 구판은 빈 목록을 돌려줘
+        # `skeleton-status`가 「위반 0건」이라고 말했다(실측).
+        from core.state.bootstrap import seed_missing_note
+        return [{"tag": K_READ, "label": "골격 파일이 없다",
+                 "detail": seed_missing_note(layer, src), "lines": []}]
     text = src.read_text(encoding="utf-8")
     try:
         data = json.loads(text)

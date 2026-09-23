@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
+from core.state.bootstrap import coord_layer
 from core import paths
 from core.llm import gateway, points, struct_map_pass
 from parser import pipeline, preflight, reader, validator
@@ -156,7 +157,11 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     # LLM 3지점(④·⑦·⑨)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
     # 않는다(A1). mock이면 None이 오고 파서가 §7.1 대체를 쓴다.
     _notice, _progress = coord_screen()
+    # **좌표 층도 주입이다**(B85 ②) — 파서는 어느 층이 좌표 층인지 모른다.
+    # 묻는 자리는 하나(`coord_layer()` = `Process`를 선언한 층)이고, 폴더 이름이
+    # 무엇이든 그 답을 쓴다.
     res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(),
+                         layer=coord_layer(),
                          coord_notice=_notice, coord_cap=coord_cap,
                          progress=_progress, sheet_roles=sheet_roles)
     written = None
@@ -262,7 +267,8 @@ def cmd_build(args):
     for i, s in enumerate(samples, 1):
         raw = reader.read(s)
         pf_ok, pf_detail = preflight.check(mod, raw)
-        res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s, **injections())
+        res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
+                             layer=coord_layer(), **injections())
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "
               f"파싱 {'OK' if res.ok else 'FAIL'} · 조각 {res.report.get('pieces', 0)}")

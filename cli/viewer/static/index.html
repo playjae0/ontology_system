@@ -9,6 +9,7 @@
   <strong>온톨로지 뷰어</strong>
   <span id="badge-mode" class="badge">…</span>
   <span id="head-stat" class="muted">읽는 중…</span>
+  <button id="theme-toggle" title="테마 — 브라우저가 기억한다">어둡게</button>
   <nav id="tabs">
     <button data-tab="graph" class="on">그래프</button>
     <button data-tab="query">질의</button>
@@ -32,9 +33,11 @@
       <div id="filters"></div>
       <label class="chk"><input type="checkbox" id="show-obsolete"> obsolete 보이기</label>
       <h3>검색</h3>
-      <input id="search" type="search" placeholder="canonical · alias · id">
-      <h3>레이아웃</h3>
-      <label class="chk"><input type="checkbox" id="force-layout"> force (기본: 계층 좌표 — 같은 입력이면 같은 그림)</label>
+      <input id="search" type="search" placeholder="canonical · id (강조만 — 숨기지 않는다)">
+      <h3>배치</h3>
+      <div id="layout-pick" class="radios"></div>
+      <p class="note">둘 다 결정적이다 — 같은 입력이면 같은 그림. 점을 끌면 그 자리에 남는다(「다시 배치」로 푼다).</p>
+      <button id="relayout">다시 배치</button>
     </section>
 
     <section id="pane-query" hidden>
@@ -69,6 +72,8 @@
 
 <script src="/static/vendor/graphology-0.25.4.umd.min.js"></script>
 <script src="/static/vendor/sigma-3.0.1.min.js"></script>
+<script src="/static/render.js"></script>
+<script src="/static/query.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
