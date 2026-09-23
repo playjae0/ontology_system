@@ -205,7 +205,7 @@ def _note_error(doc_type, e):
         json.dumps({**gateway.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"   [오류] 게이트웨이 응답을 남겼다 → "
-          f"{(d / 'last_error.json').relative_to(ROOT)}")
+          f"{paths.show(d / 'last_error.json')}")
 
 
 def _pretty_json(obj, indent=2):

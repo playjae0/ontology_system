@@ -6,12 +6,13 @@ from __future__ import annotations
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
+from core import paths
 from core.state import fixtures, log, registry, store
 import json
 from cli.register import draft as draft_mod
 from cli.register import gate
 from cli.register import view
-from cli.register import ROOT, _load, _state
+from cli.register import _load, _state
 
 
 # ================================================================ ③ 확정
@@ -91,7 +92,7 @@ def cmd_confirm(doc_type, approved_by):
         print(f"   이 doc_type으로 인입된 문서 {len(_ing)}건 — "
               f"**재인입은 사람이 정한다**(자동으로 다시 읽지 않는다)")
         print(f"     {', '.join(_ing[:8])}" + (f" 외 {len(_ing) - 8}건" if len(_ing) > 8 else ""))
-    print(f"   승인 기록 → {(_dir(doc_type) / 'approval.json').relative_to(ROOT)}")
+    print(f"   승인 기록 → {paths.show(_dir(doc_type) / 'approval.json')}")
     # **등록은 여기서 끝이고 인입은 자동으로 이어지지 않는다** — 그래프까지 간 줄 알고
     # 멈춘 실측이 있어 다음 두 줄을 그대로 낸다(등록개선 ③).
     # **가이드가 사람에게 시키는 흐름 그대로다**(B66 ③) — 구판은 `parse run`·`build`

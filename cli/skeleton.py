@@ -211,7 +211,7 @@ def cmd_status(argv):
     if not rows:
         src = seed_path(layer)
         print(f"■ 골격 판정 — {layer}: 문법 위반 0건"
-              + (f" · {src.relative_to(ROOT)}" if src else " (파일 seed 없음)"))
+              + (f" · {paths.show(src)}" if src else " (파일 seed 없음)"))
         print(f"  ▶ 다음 줄:\n"
               f"     python run.py skeleton-confirm {layer} --by <이름>")
         return 0
@@ -278,7 +278,7 @@ def cmd_confirm(argv):
             f"     (문법 판정만 본다)  python run.py skeleton-status {layer}")
 
     print("=" * 66)
-    print(f"  골격 확정 — {layer} · {src.relative_to(ROOT)}")
+    print(f"  골격 확정 — {layer} · {paths.show(src)}")
     print("=" * 66)
     print(f"  seed_format {seed.get('seed_format')} · {src.stat().st_size:,}B")
 
@@ -327,7 +327,7 @@ def cmd_confirm(argv):
     prior.append(entry)
     rec_path.write_text(json.dumps(prior, ensure_ascii=False, indent=2) + "\n",
                         encoding="utf-8")
-    print(f"\n  확정 기록 → {rec_path.relative_to(ROOT)} "
+    print(f"\n  확정 기록 → {paths.show(rec_path)} "
           f"({len(prior)}번째 · {by} · {sha[:12]}…)")
     print(f"  확정본 사본 → {paths.layers(layer, PREV)} "
           f"(다음 판을 놓은 뒤 «확정된 것은 무엇이었나»를 답한다)")

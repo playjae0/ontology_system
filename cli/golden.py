@@ -74,7 +74,7 @@ def cmd_init(args):
         got = json.loads(path.read_text(encoding="utf-8")).get("queries") or []
         c = Counter(q.get("type") for q in got)
         filled = sum(1 for q in got if (q.get("q") or "").strip())
-        print(f"■ 골든셋이 이미 있다 — {_rel(path)} (덮지 않는다)")
+        print(f"■ 골든셋이 이미 있다 — {paths.show(path)} (덮지 않는다)")
         print(f"  {len(got)}건 · q가 채워진 것 {filled}건 "
               f"({len(got) - filled}건 남음)")
         _dist(c, len(got))
@@ -84,7 +84,7 @@ def cmd_init(args):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n",
                     encoding="utf-8")
     qs = data["queries"]
-    print(f"■ 골든셋 틀 — {_rel(path)}  ({len(qs)}건 · 기준 구성 §5.5-2)")
+    print(f"■ 골든셋 틀 — {paths.show(path)}  ({len(qs)}건 · 기준 구성 §5.5-2)")
     _dist(Counter(q["type"] for q in qs), len(qs))
     print("\n  다음 — 사내에서 채운다:")
     print("    ① q를 쓴다 (유형 정의는 문서 5 §5.3 질문 유형표)")
@@ -98,13 +98,6 @@ def _dist(c, total):
     print(f"  유형 분포 — " + " · ".join(f"{t} {c.get(t, 0)}" for t, _ in PLAN))
     print(f"  기대 경로 — " + " · ".join(
         f"{p} {sum(c.get(t, 0) for t in TYPES if TYPE_PATH[t] == p)}" for p in PATHS))
-
-
-def _rel(p):
-    try:
-        return str(Path(p).resolve().relative_to(ROOT))
-    except ValueError:
-        return str(p)
 
 
 # ───────────────────────────────────────────────────────────── 형식 검사
@@ -297,14 +290,14 @@ def cmd_score(args):
 
     queries, skipped = load(path)
     if not queries:
-        raise SystemExit(f"[golden] 채점할 문항이 0건이다 — {_rel(path)} "         # [상태]
+        raise SystemExit(f"[golden] 채점할 문항이 0건이다 — {paths.show(path)} "         # [상태]
                          f"(건너뜀 {len(skipped)}건: q가 비었거나 형식 밖)\n"
                          f"  ▶ 다음 줄 — 문항의 q를 채운 뒤:\n"
-                         f"     python run.py golden score --set {_rel(path)}")
+                         f"     python run.py golden score --set {paths.show(path)}")
     rows = score_set(queries, k)
     agg = aggregate(rows, k)
 
-    entry = {"at": store._now(), "set": _rel(path), "n": agg["n"], "k": k,
+    entry = {"at": store._now(), "set": paths.show(path), "n": agg["n"], "k": k,
              "path_rate": agg["path_rate"], "linking_recall": agg["linking_recall"],
              "evidence_at_k": agg["evidence_at_k"], "bm25_at_k": agg["bm25_at_k"],
              "mock": is_mock,
@@ -322,7 +315,7 @@ def cmd_score(args):
                           "skipped": [{"id": a, "why": b} for a, b in skipped]},
                          ensure_ascii=False))
     else:
-        print(render(agg, rows, src=_rel(path), is_mock=is_mock,
+        print(render(agg, rows, src=paths.show(path), is_mock=is_mock,
                      skipped=skipped, k=k))
         print(f"\n  → {store.path(LOG)} (최근 50)")
     return 0

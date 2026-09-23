@@ -52,6 +52,9 @@ MOVED = {
     "schemas/ppt_quality.json": "tests/fixtures/schemas/ppt_quality.json",
     "data/doc_types.json": "<상태>/registry/doc_types.json",
     "extract/struct_maps/": "<상태>/work/struct_maps/",
+    # B78 1b에 ④단으로 옮겼다 — 문면과 **대장 수를 세는 자리**가 옛 이름으로 남아
+    # 늘 0건이었다(B86 ③ 실측 · `cli/show.py`).
+    "data/ingest_log": "<상태>/work/ingest_log/",
 }
 
 #: 보지 않는 자리 — 이력·자동 생성물·등록 자산·상태·스냅샷.
@@ -65,6 +68,11 @@ SKIP_FILES = ("docs/spec/개정대장.md", "DECISIONS.md", "PROGRESS.md",     # 
               "docs/구조도/부품카드.json", "docs/구조도/구조_지도.md",
               "docs/회귀스위트/점검_경로.py")                # 표가 여기 있다
 EXT = (".py", ".md", ".json")
+
+#: **옛 배치를 일부러 세우는 줄**의 표지 — 이관 시험(`tests/test_onsite.py`)은 옛
+#: 코드 폴더의 모양을 만들어야 이관을 잴 수 있다. 줄에 이 표지가 있으면 비킨다 —
+#: 폴더 통째로 빼면 새로 박힌 옛 자리까지 같이 빠진다(B86 ③).
+LEGACY_MARK = "# 옛 배치"
 
 
 def targets():
@@ -80,9 +88,24 @@ def targets():
     return out
 
 
+def _split_form(old):
+    """**토큰이 갈린 형태** — `ROOT / 'data' / 'ingest_log'`처럼 조각을 `/`로 잇는 코드.
+
+    B78 뒤에도 그 형태 하나가 살아남았다(B86 ③): 경로 **문자열**만 보면 조각 셋이
+    각각 흔한 낱말이라 한 번도 걸리지 않는다. 따옴표 조각이 옛 이름의 순서대로
+    `/`로 이어져 있으면 같은 옛 자리다.
+    """
+    parts = [x for x in old.rstrip("/").split("/") if x]
+    if len(parts) < 2:
+        return None
+    q = r"""['"]"""
+    return re.compile(r"\s*/\s*".join(q + re.escape(x) + q for x in parts))
+
+
 def scan():
     """`[(파일, 줄, 옛 이름, 지금 자리, 원문)]` — 파일 순·줄 순."""
     pats = {old: re.compile(r'(?<![\w/])' + re.escape(old)) for old in MOVED}
+    split = {old: rx for old in MOVED if (rx := _split_form(old))}
     hits = []
     for p in targets():
         try:
@@ -90,8 +113,10 @@ def scan():
         except (UnicodeDecodeError, OSError):
             continue
         for i, ln in enumerate(lines, 1):
-            for old, rx in pats.items():
-                if rx.search(ln):
+            if LEGACY_MARK in ln:
+                continue
+            for old in MOVED:
+                if pats[old].search(ln) or (old in split and split[old].search(ln)):
                     hits.append((p.relative_to(ROOT).as_posix(), i, old, MOVED[old],
                                  ln.strip()[:90]))
     return hits

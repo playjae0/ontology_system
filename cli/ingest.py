@@ -41,6 +41,7 @@ from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.parse import COORD_CAP, coord_cap_of, run_parse
 from cli import _screen
 from cli import ingest_screen as SCR
+from cli import sheet_gate as SG
 from core import paths
 from core.llm import gateway, narrow
 from core.state import log, registry, store
@@ -57,6 +58,7 @@ _LOG = log.get("cli.ingest")
 # **목록은 리더가 소유한다**(B53) — 여기에 복제하면 리더에 포맷을 더해도 투입이 막는다.
 from parser.reader import GRID_EXT, PROSE_EXT, SUPPORTED   # noqa: E402,F401
 from parser import form as form_mod, reader as reader_mod  # noqa: E402
+from parser.reader import MissingDependency              # noqa: E402
 
 OK, FAIL, SKIP = "성공", "실패", "미선택"
 
@@ -194,11 +196,7 @@ def _basis_line(sel):
     # 보고 없으면 내장 doc_type의 소재지를 본다. 화면이 그것을 말하지 않으면 사람은
     # 「mock 소재지가 뭐냐」를 묻게 된다(사내 실측) — 경로 한 조각이 답이다.
     if sel.get("adapter"):
-        try:
-            _p = Path(sel["adapter"]).resolve().relative_to(ROOT)
-        except ValueError:
-            _p = Path(sel["adapter"])
-        out += f"  ← {_p}"
+        out += f"  ← {paths.show(sel['adapter'])}"      # 표기는 한 자리 (B86 ①)
     return out + _form_line(b.get("form"))
 
 
@@ -334,110 +332,51 @@ def _ingest_file_select(doc, sel, row, step):
     return None, stage, step
 
 
-# ── 시트 역할 관문 (B83 ③ · 칸 3.1) ──────────────────────────────────────────
-def _sheet_rows(doc):
-    """시트 표의 재료 — **읽기 실패는 조용하다**(같은 이유로 파싱이 곧 실패한다).
-
-    표는 `reader`가 이미 내는 값의 투영이다(요청문 ② — 새 판독 0). 통합문서를 여는
-    일은 형태 판정과 겹치지만 **판정의 산출에 시트별 통계가 없다** — 값을 기록에
-    실어 나르면 근거와 화면이 갈린다(신호 다섯과 같은 병).
-    """
-    if Path(doc).suffix.lower() not in GRID_EXT:
-        return []
-    try:
-        return form_mod.sheet_table(reader_mod.read(str(doc)))
-    except Exception as e:                       # noqa: BLE001
-        _LOG.info("시트 표를 만들지 못했다 — %s (%s: %s)", doc, type(e).__name__, e)
-        return []
-
-
-def sheets_flag(args):
-    """`--sheets "<문법>"`를 args에서 떼어 `(남은 args, 문자열 또는 None)`.
-
-    `--coord-llm`과 같은 결이다 — 떼어내지 않으면 문자열이 경로 자리로 흘러간다.
-    """
-    args = list(args)
-    if "--sheets" not in args:
-        return args, None
-    i = args.index("--sheets")
-    spec = args[i + 1] if i + 1 < len(args) else None
-    del args[i:i + 2]
-    if not spec or spec.startswith("--"):
-        raise SystemExit('[투입] --sheets 뒤에 역할 문자열이 필요하다 — '        # [사용법]
-                         '예: --sheets "2-3:prose 4:ref *:skip"')
-    return args, spec
-
-
-def sheets_by_flag(doc, doc_id, spec, *, names=None, dry_run=False):
-    """`--sheets`로 받은 역할 — 관문을 건너뛰고 **같은 기록**을 쓴다(`decided_by: flag`).
-
-    문법의 자리는 `form.parse_sheet_spec` 하나이고 기록의 자리는
-    `core/state/sheets.py` 하나다 — `ingest-file`과 `parse run`이 여기로 모인다.
-    미정 시트가 남으면 `[사용법]`이다(조용한 기본값 0).
-    """
-    from core.state import sheets as SH
-    names = list(names or [r["name"] for r in _sheet_rows(doc)])
-    got, err = form_mod.parse_sheet_spec(spec, names)
-    if err:
-        raise SystemExit(f"[투입] --sheets {err}\n"                           # [사용법]
-                         f'  예: --sheets "2-3:prose 4:ref *:skip"')
-    left = SH.pending(got, names)
-    if left:
-        raise SystemExit(f"[투입] --sheets에 역할이 없는 시트가 남았다 — "       # [사용법]
-                         f"{' · '.join(left)}\n"
-                         f'  나머지를 한 번에: --sheets "{spec} *:skip"')
-    if not dry_run:
-        SH.write(doc_id, Path(doc).name, got, "flag")
-        print(SCR.sheet_roles_line(got, doc_id))
-    return got
-
-
+# ── 시트 역할 관문 — 한 벌은 `cli/sheet_gate.py`다 (B83 ③ · B86 ⑤) ──────────────
 def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
-    """역할을 정해 돌려준다 — `(roles 또는 None, 거부 행 또는 None)`.
+    """인입의 관문 자리 — **갈래는 등록부의 `payload_kind`로 안다**(D-164 ①).
 
-    조건 넷(요청문 ③): 격자 포맷 · **prose로 읽히는 갈래** · 시트 ≥ 2 · 기록 없음
-    (또는 미결 시트 있음). 하나라도 아니면 `(None, None)`으로 지나간다 — 시트 하나면
-    표도 질문도 없다.
-
-    **갈래의 기준은 어댑터의 `payload_kind`다**(D-164) — 「형태 prose」와 뜻이 같은
-    자리이면서, 형태 판정이 기권(`verdict: None`)해도 **실제로 시트 전부를 도는 갈래**를
-    가린다. 시트 전부를 청크로 자르는 것은 prose 어댑터이지 형태 판정이 아니다.
+    형태 판정이 기권해도 **실제로 시트 전부를 도는 갈래**를 가린다. 묻는 말·기록·
+    거부 문면은 `sheet_gate.gate()` 한 벌이다(등록 표본과 같은 함수 · B86 ⑤).
     """
-    from core.state import sheets as SH
     kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
-    if kind != "prose":
-        return None, None
-    rows = _sheet_rows(doc)
-    if len(rows) < 2:
-        return None, None
-    names = [r["name"] for r in rows]
-    doc_id = sel["doc_id"]
-    rec = SH.read(doc_id)
-    roles = dict((rec or {}).get("sheets") or {})
-    for n in SH.stale(roles, names):
-        _LOG.info("시트 역할 기록에 있으나 문서에 없다 — %s · %s (무시)", doc_id, n)
-    if spec:
-        return sheets_by_flag(doc, doc_id, spec, names=names, dry_run=dry_run), None
-    pend = SH.pending(roles, names)
-    if rec and not pend:
-        print(f"   시트 역할 — 기록대로 진행({SH.summary(roles)} · "
-              f"{rec.get('decided_by')})")
+    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask)
+    if stop is None:
         return roles, None
-    if dry_run:                          # 보여만 준다 — 묻지 않고 기록도 쓰지 않는다
-        print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=pend))
-        return None, None
-    if not (ask and sys.stdin.isatty()):
-        # **상태 거부**다 — 조용한 기본값 없이 멈추고, 문면이 다음 줄을 싣는다.
-        print(SCR.sheets_refusal(doc, rows, pend=pend if rec else None, rec=rec))
-        return None, {"status": FAIL,
-                      "reason": f"시트 역할 미정 — 시트 {len(rows)}장 "
-                                f"(--sheets 또는 터미널에서 관문)"}
-    got = SCR.sheet_gate(rows, file=doc, doc_id=doc_id, rec=rec)
-    if got is None:
-        return None, {"status": SKIP, "reason": "사람이 멈췄다 — 시트 역할 관문"}
-    SH.write(doc_id, Path(doc).name, got, "gate")
-    print(SCR.sheet_roles_line(got, doc_id))
-    return got, None
+    return None, {"status": FAIL if stop["kind"] == SG.REFUSED else SKIP,
+                  "reason": stop["reason"]}
+
+
+def _step_stops(res, sel, row):
+    """`--step`의 세 관문(파싱·좌표·판정 예고) — 사람이 멈추면 `row`를 적고 True.
+
+    `ingest_file`에서 떼어냈다(B86 ④ — 선택 의존 거부를 싣다가 함수 상한 120행을 넘었다).
+    """
+    _rep = res.report or {}
+    if not SCR._step_gate(1, f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
+                      f"{res.envelope.get('payload_kind')}"):
+        row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
+        return True
+    _ct = _rep.get("coord_tag") or {}
+    if not SCR._step_gate(2, f"정확 일치 {_ct.get('정확_일치', 0)} · "
+                      f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
+                      f"LLM 호출 {_ct.get('호출', 0)}"):
+        row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
+        return True
+    # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
+    from core.build.entry import _entity_surfaces, decision_plan
+    _sc = registry.schema_of(sel["doc_type"]) or {}
+    _pl = decision_plan(
+        _entity_surfaces(res.envelope, _sc),
+        [x.get("process_ref") for x in (res.envelope.get("records") or [])
+         if x.get("process_ref")], _sc.get("layer") or coord_layer())
+    if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
+                      f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
+                      f"{_pl['예상_호출']}회"):
+        row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
+                                       "(그래프 쓰기 0)")
+        return True
+    return False
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
@@ -445,7 +384,14 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 step_every=0, progress_every=None, sheets=None, ask=True):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
-    sel = select(doc, doc_type, adapter_paths)
+    try:
+        sel = select(doc, doc_type, adapter_paths)
+    except MissingDependency as e:
+        # 지문 스캔도 문서를 연다 — 여기서 멈춰도 **그 문서만**이다(문서 단위 독립 · B86 ④).
+        print(f"[투입] {Path(doc).name} → [상태] {e}")
+        return {"doc": str(doc), "doc_id": doc_id_of(doc), "doc_type": doc_type,
+                "basis": "-", "status": FAIL, "reason": f"[상태] {e}",
+                "missing_dep": str(e)}
     row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
            "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
     # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
@@ -480,31 +426,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             print(SCR.fail_block(doc, sel["doc_id"], rows,
                              doc_type=sel.get("doc_type"), queued=1))
             return row
-        if step:
-            _rep = res.report or {}
-            if not SCR._step_gate(1, f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
-                              f"{res.envelope.get('payload_kind')}"):
-                row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
-                return row
-            _ct = _rep.get("coord_tag") or {}
-            if not SCR._step_gate(2, f"정확 일치 {_ct.get('정확_일치', 0)} · "
-                              f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
-                              f"LLM 호출 {_ct.get('호출', 0)}"):
-                row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
-                return row
-            # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
-            from core.build.entry import _entity_surfaces, decision_plan
-            _sc = registry.schema_of(sel["doc_type"]) or {}
-            _pl = decision_plan(
-                _entity_surfaces(res.envelope, _sc),
-                [x.get("process_ref") for x in (res.envelope.get("records") or [])
-                 if x.get("process_ref")], _sc.get("layer") or coord_layer())
-            if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
-                              f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
-                              f"{_pl['예상_호출']}회"):
-                row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
-                                               "(그래프 쓰기 0)")
-                return row
+        if step and _step_stops(res, sel, row):
+            return row
         _u0 = gateway.usage_total()["calls"]
         from core import matcher as _mt
         _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
@@ -538,6 +461,12 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         print(f"   인입 — {row['reason']} → {out}")
         if finalize_after:
             finalize()
+        return row
+    except MissingDependency as e:               # 선택 의존 부재 — 결함이 아니라 상태다 (B86 ④)
+        row.update(status=FAIL, reason=f"[상태] {e}", missing_dep=str(e))
+        print(f"   [상태] {e}")
+        print("   ▶ 다음 줄 — 설치한 뒤 같은 명령을 다시 친다 "
+              "(새 코드 폴더 = 새 파이썬 환경이면 선택 의존도 다시다)")
         return row
     except Exception as e:                       # 문서 단위 독립 — 나머지를 멈추지 않는다
         # **같은 경계다**(B76 ③) — 한 줄에 **파일:줄**이 있고 traceback은
@@ -621,6 +550,13 @@ def summary(rows):
             lines.append(f"  [{k}] {Path(r['doc']).name:<24} doc_id {r['doc_id']:<18} "
                          f"{('doc_type ' + r['doc_type']) if r.get('doc_type') else '':<20} "
                          f"{r.get('reason') or ''}")
+    # **선택 의존 부재는 끝에 한 번 모은다**(B86 ④) — 문서마다 같은 설치 줄이 흘러가면
+    # 무엇을 치면 되는지가 목록 속에 묻힌다.
+    need = sorted({r["missing_dep"] for r in rows if r.get("missing_dep")})
+    if need:
+        lines.append(f"  ▶ 선택 의존이 없다 — 문서 "
+                     f"{sum(1 for r in rows if r.get('missing_dep'))}건이 그 때문에 멈췄다:")
+        lines += [f"     {m}" for m in need]
     return "\n".join(lines)
 
 
@@ -711,7 +647,7 @@ def main(argv):
         narrow.set_narrow(mode)
         del args[i:i + 2]
     # **시트 역할 손잡이**(B83 ③) — 관문을 건너뛰고 같은 기록을 쓴다(`decided_by: flag`).
-    args, sheets_spec = sheets_flag(args)
+    args, sheets_spec = SG.flag(args)
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")

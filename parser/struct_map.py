@@ -24,8 +24,9 @@ import json
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-KEEP_DIR = ROOT / "extract" / "struct_maps"       # **주입 전 기본값** (문서 6 §6.3)
+# 구조 지도 보존 자리(문서 6 §6.3). **주입 전 기본값은 없다**(B86 ②) — 구판은
+# `<코드>/extract/struct_maps/`에 썼고, 주입이 안 걸리는 킷 관문이 **코드 폴더에
+# 파일을 만들었다**(공용 서버에서 코드 폴더가 읽기 전용이면 죽는다).
 # **파서는 `core`를 import하지 않는다**(문서 6 §6.7 외부 전달물 경계) — 그래서
 # 자리를 **받는다**(B78 1b). 값이 아니라 **함수**를 받는 이유: 상태 루트는 실행
 # 도중에도 갈릴 수 있고(시험의 `paths.reset()` · 이관 직후), 값으로 받으면 파서만
@@ -40,8 +41,12 @@ def use_dir(fn):
 
 
 def keep_dir():
-    """지금의 보존 자리 — 주입이 없으면 옛 기본값이다."""
-    return Path(_keep_dir_fn()) if _keep_dir_fn else KEEP_DIR
+    """지금의 보존 자리 — **주입이 없으면 문면 있는 실패**다(B86 ②)."""
+    if not _keep_dir_fn:
+        raise RuntimeError(
+            "[파서] 구조 지도 보존 자리가 주입되지 않았다 — 시스템 쪽은 `core.paths`를 "
+            "import하면 걸리고(`bind_parser`), 킷은 관문 임시 폴더를 `use_dir`로 건다")
+    return Path(_keep_dir_fn())
 
 
 def keep_path(doc_id):

@@ -26,7 +26,7 @@ from cli.register import KIT, REVIEW, ROOT, _load, _save_state, _state
 
 
 # ================================================================ ② 검수
-def harness(adapter, schema, samples, package=None, doc_type=None):
+def harness(adapter, schema, samples, package=None, doc_type=None, roles_map=None):
     """기계 관문 — **kit/run_adapter.py를 그대로 부른다**(재작성 아님).
 
     `package`는 입력 패키지 경로다(B64 ②) — 관문이 FAIL 줄에 **열 프로파일**을 실을
@@ -43,10 +43,26 @@ def harness(adapter, schema, samples, package=None, doc_type=None):
     pkg += ["--layers", str(paths.layers())]
     # 좌표 층의 이름도 같은 방식으로 건넨다(B85 ②) — 킷은 카테고리 판정을 못 한다.
     pkg += ["--coord-layer", coord_layer()]
-    r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
-                        str(adapter), str(schema)] + pkg + [str(s) for s in samples],
-                       capture_output=True, text=True, cwd=str(ROOT))
+    # 닫힌 목록 **파일**도 건넨다(B86 ②) — 킷은 상태 루트를 모르고 파서의 자리 주입은
+    # subprocess에 닿지 않는다. 자리는 여기서 짓는다(store가 이름 → 자리를 안다).
+    pkg += ["--closed-list", str(store.path(store.SKELETON_LIST))]
+    # 표본의 **시트 역할 표**도 건넨다(B86 ⑤) — 관문 임시 파일이고 끝나면 지운다.
+    from cli.register import samples as samples_mod
+    _rf = samples_mod.roles_file(roles_map)
+    if _rf:
+        pkg += ["--sheet-roles", _rf]
+    try:
+        r = _run_kit(adapter, schema, pkg, samples)
+    finally:
+        if _rf:
+            Path(_rf).unlink(missing_ok=True)
     return r.returncode == 0, r.stdout
+
+
+def _run_kit(adapter, schema, pkg, samples):
+    return subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
+                           str(adapter), str(schema)] + pkg + [str(s) for s in samples],
+                          capture_output=True, text=True, cwd=str(ROOT))
 
 
 # **실패 분류표**(B50 · 문서 6 §6.5) — 「문면이 고칠 방법을 담는가」로 가른다.
@@ -409,13 +425,13 @@ def _finish_generate(doc_type, st, samples, pkg=None):
         # 켜는 것이다. 켜려면 `review`로 들어간다 — 그것이 그 명령이 남는 이유다.
         rc = view.cmd_review(doc_type, llm_coord=False, extract=False)
         print(f"\n   ▶ 다음 두 줄이면 끝난다 — 뷰를 보고 승인한다:")
-        print(f"       (뷰 확인) {(REVIEW / doc_type / 'view.html').relative_to(ROOT)}")
+        print(f"       (뷰 확인) {paths.show(REVIEW / doc_type / 'view.html')}")
         print(f"       python -m cli.register confirm {doc_type} --by <승인자>")
         print(f"   고칠 것이 있을 때만: python -m cli.register review {doc_type} "
               f"--instruct \"…\"  (좌표 LLM 보조·추출 리허설도 그쪽이다)")
         return rc
     print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
-          f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
+          f"{paths.show(REVIEW / doc_type)}에 남겼다\n")
     gate_block(doc_type, st)
     print(f"     python -m cli.register generate {doc_type} --resume"
           f"   (같은 표본으로 초안만 다시 받는다)")
@@ -544,6 +560,33 @@ def _gate_done(doc_type, verdict):
     return verdict
 
 
+def _instruction_of(doc_type, pkg, samples, auto, ask):
+    """재생성 지시와 그 출처 — 문면이 답을 담지 않으면 **문답**, 담으면 문면 그대로.
+
+    `machine_gate`에서 떼어냈다(B86 ⑤ — 표본 시트 역할을 싣다가 함수 상한 120행을 넘었다).
+    """
+    if ask:
+        print(f"   → 문면이 답을 담지 않는 실패 {len(ask)}건 — 문답을 연다")
+        # **여기도 라운드마다 즉시 저장한다**(B55 ②-3) — 구판은 `st`에 한 줄
+        # 요약만 남기고 전문이 사라졌으며, 라운드 저장이 없어 중간에 죽으면
+        # 전량 유실이었다. B43 ⑤가 생성 전 문답에서 막은 것과 같은 유실이다.
+        _fp = _failure_persist(doc_type, pkg, samples, ask)
+        rounds = _interview(pkg or {}, context=ask, on_round=_fp)
+        _dec = iv_finalize(pkg or {}, rounds, context=ask)
+        _fp(rounds, decisions=_dec)
+        ledger.apply_decisions_to_ledger(doc_type, _dec)
+        answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
+        # **원문은 답이 있어도 함께 보낸다**(B59 ②). 구판은 사람이 답하면
+        # `"사람 문답: …"`만 보내 **예외 원문·validator 결함 목록이 지시에서
+        # 사라졌다** — 사람의 답은 「무엇을 고치고 싶다」이고, 모델이 그것을
+        # 코드 수정으로 옮기려면 「무엇이 어떻게 깨졌나」가 함께 있어야 한다.
+        # 둘은 대체재가 아니라 짝이다.
+        instruction = ("사람 문답: " + answered + "\n\n[관문 판정 원문]\n"
+                       + "\n".join(ask)) if answered else "\n".join(ask)
+        return instruction, ("사람(문답)" if answered else "자동(하네스 문면 — 문답 무응답)")
+    return "\n".join(auto), "자동(하네스)"
+
+
 def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     """**생성 안의 기계 관문** — 통과분만 검수로 넘긴다 (문서 1 M9 개정 · B50).
 
@@ -558,6 +601,9 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     판단이 필요하다.
     """
     tries, prev_codes = 0, None
+    # **표본의 시트 역할**(B86 ⑤) — 생성 입구에서 이미 정했으면 기록을 읽을 뿐이다.
+    from cli.register import samples as samples_mod
+    _roles = samples_mod.sample_roles(doc_type, st, samples)
     while True:
         # **관문 입구다**(B62 ①-c) — `fix` 양쪽에서 돈다. 하네스가 읽기 전에 채운다.
         _info = stamp_system_fields(st, samples)
@@ -568,7 +614,8 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         ledger.sync_ledger(doc_type, st, samples)
         ok, out = harness(draft_mod._at(st["adapter"]), draft_mod._at(st["schema"]), samples,
                           package=REVIEW / doc_type / "input_package.json",
-                          doc_type=doc_type)          # G4G 대장 커버리지 (B76 ②)
+                          doc_type=doc_type,          # G4G 대장 커버리지 (B76 ②)
+                          roles_map=_roles)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
         # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.
@@ -621,27 +668,7 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
             return _gate_done(doc_type, "FAIL")
         prev_codes = _codes
         tries += 1
-        if ask:
-            print(f"   → 문면이 답을 담지 않는 실패 {len(ask)}건 — 문답을 연다")
-            # **여기도 라운드마다 즉시 저장한다**(B55 ②-3) — 구판은 `st`에 한 줄
-            # 요약만 남기고 전문이 사라졌으며, 라운드 저장이 없어 중간에 죽으면
-            # 전량 유실이었다. B43 ⑤가 생성 전 문답에서 막은 것과 같은 유실이다.
-            _fp = _failure_persist(doc_type, pkg, samples, ask)
-            rounds = _interview(pkg or {}, context=ask, on_round=_fp)
-            _dec = iv_finalize(pkg or {}, rounds, context=ask)
-            _fp(rounds, decisions=_dec)
-            ledger.apply_decisions_to_ledger(doc_type, _dec)
-            answered = "; ".join(h["answer"] for h in rounds if h.get("answer"))
-            # **원문은 답이 있어도 함께 보낸다**(B59 ②). 구판은 사람이 답하면
-            # `"사람 문답: …"`만 보내 **예외 원문·validator 결함 목록이 지시에서
-            # 사라졌다** — 사람의 답은 「무엇을 고치고 싶다」이고, 모델이 그것을
-            # 코드 수정으로 옮기려면 「무엇이 어떻게 깨졌나」가 함께 있어야 한다.
-            # 둘은 대체재가 아니라 짝이다.
-            instruction = ("사람 문답: " + answered + "\n\n[관문 판정 원문]\n"
-                           + "\n".join(ask)) if answered else "\n".join(ask)
-            by = "사람(문답)" if answered else "자동(하네스 문면 — 문답 무응답)"
-        else:
-            instruction, by = "\n".join(auto), "자동(하네스)"
+        instruction, by = _instruction_of(doc_type, pkg, samples, auto, ask)
         print(f"   → 재생성 지시 ({by}) — 보낸 문면 그대로:")
         for ln in instruction.splitlines():
             print(f"     {ln}")

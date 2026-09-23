@@ -231,6 +231,33 @@ def mark_roles(pieces, sheet_roles):
     return pieces
 
 
+def _read_doc(res, path, sheet_roles, max_rows):
+    """① 판독 — 읽고, 버린 그림을 싣고, `skip` 시트를 빼고, 리허설이면 앞 N행으로 자른다.
+
+    `parse`에서 떼어냈다(B86 ④ — 읽기 경고를 싣다가 함수 상한 120행을 넘었다).
+    """
+    raw = read(path)
+    if raw.get("read_warnings"):
+        # **읽다가 버린 그림을 리포트에 싣는다**(B86 ④) — 이미지 요약에서 빠지는 것을
+        # 사람이 알아야 한다. 화면 한 줄은 호출자가 이 값으로 낸다.
+        res.report["read_warnings"] = raw["read_warnings"]
+    raw = drop_skipped(raw, sheet_roles)        # `skip` 시트는 어댑터가 보지 않는다
+    # **부분 리허설** — 등록 검수의 리허설 파싱을 앞 N행으로 제한한다(2B ⑥-2).
+    # 전량 파싱은 좌표 미스 행마다 LLM을 부르므로 수천 행이면 몇 시간이다.
+    # `reader.head`가 이미 「앞 N행」의 정의를 갖고 있어 그것을 그대로 쓴다 —
+    # 자르는 규칙이 둘이면 「앞 200행」이 자리마다 다른 뜻이 된다.
+    # **봉투에 잘랐다는 사실을 싣는다**: 검수 뷰가 그것을 승인 근거로 표시한다.
+    full_rows = max((s.get("max_row") or 0) for s in raw["sheets"]) if raw.get("sheets") \
+        else len(raw.get("slides") or [])
+    truncated = False
+    if max_rows and full_rows > max_rows:
+        raw = head(raw, max_rows)
+        truncated = True
+    res.report["rehearsal"] = {"max_rows": max_rows, "full_rows": full_rows,
+                               "truncated": truncated}
+    return raw
+
+
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
@@ -258,21 +285,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     a = adapter.ADAPTER
     exp = a.get("expects") or {}
 
-    raw = read(path)
-    raw = drop_skipped(raw, sheet_roles)        # `skip` 시트는 어댑터가 보지 않는다
-    # **부분 리허설** — 등록 검수의 리허설 파싱을 앞 N행으로 제한한다(2B ⑥-2).
-    # 전량 파싱은 좌표 미스 행마다 LLM을 부르므로 수천 행이면 몇 시간이다.
-    # `reader.head`가 이미 「앞 N행」의 정의를 갖고 있어 그것을 그대로 쓴다 —
-    # 자르는 규칙이 둘이면 「앞 200행」이 자리마다 다른 뜻이 된다.
-    # **봉투에 잘랐다는 사실을 싣는다**: 검수 뷰가 그것을 승인 근거로 표시한다.
-    full_rows = max((s.get("max_row") or 0) for s in raw["sheets"]) if raw.get("sheets") \
-        else len(raw.get("slides") or [])
-    truncated = False
-    if max_rows and full_rows > max_rows:
-        raw = head(raw, max_rows)
-        truncated = True
-    res.report["rehearsal"] = {"max_rows": max_rows, "full_rows": full_rows,
-                               "truncated": truncated}
+    raw = _read_doc(res, path, sheet_roles, max_rows)
 
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.

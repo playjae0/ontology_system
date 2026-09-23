@@ -31,8 +31,10 @@ _envread = [f"{p.relative_to(ROOT)}:{i}"
 show("mock 여부를 환경변수로 정하는 줄 0건 — 판독이 두 곳이면 갈린다(B42 실측)",
      not _envread, str(_envread[:3]))
 _smsrc = (ROOT / "parser" / "struct_map.py").read_text(encoding="utf-8")
-show("⑤ 운영 코드가 fixture 지도를 찾지 않는다 (MAPS_DIR 삭제 · KEEP_DIR 보존은 별개)",
-     "MAPS_DIR" not in _smsrc and "struct_maps" in _smsrc and "KEEP_DIR" in _smsrc)
+# 보존 자리는 **주입으로만** 온다(B86 ② — 주입 전 기본값 `KEEP_DIR`은 지웠다).
+show("⑤ 운영 코드가 fixture 지도를 찾지 않는다 (MAPS_DIR 삭제 · 보존 자리는 주입으로 별개)",
+     "MAPS_DIR" not in _smsrc and "struct_maps" in _smsrc
+     and "def keep_dir" in _smsrc and "def use_dir" in _smsrc)
 show("④·⑦·⑨가 parse()의 인자로 서 있다 — 함수가 오는 통로가 있다",
      {"summarize", "map_structure", "pick_coord"}
      <= set(pipeline.parse.__code__.co_varnames))

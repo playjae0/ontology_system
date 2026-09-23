@@ -32,8 +32,6 @@ import re
 import sys
 from pathlib import Path
 
-from openpyxl.utils import range_boundaries, get_column_letter
-
 # 레포 루트를 import 경로에 넣는다 — 이 파일은 kit/ 에 있으므로 부모가 루트다.
 # (구판의 절대경로 sys.path 하드코딩을 대체 — 08-07 13회차 판정)
 ROOT = Path(__file__).resolve().parent.parent
@@ -427,22 +425,38 @@ def run_pipeline(mod, schema, doc, label):
     문서의 구조 지도 보존(`<상태>/work/struct_maps/`)을 덮어써, 아직 등록도 안 된
     어댑터의 산출이 운영 인입의 chunk_id를 흔든다. 관문이 남긴 자리는 관문이 치운다.
     """
+    import tempfile
     from parser import pipeline as parser_pipeline      # 지연 import — ①~④는 필요 없다
-    from parser import struct_map
+    from parser import struct_map, tagger
 
     print(f"\n⑤ 파서 전 구간(pipeline.parse) — {label}")
     doc_id = "_gate_" + re.sub(r"[^0-9A-Za-z_]+", "_", f'{schema.get("doc_type")}_{Path(doc).stem}')
+    # 좌표 층은 **건네받은 이름**이 먼저다(B85 ②) — 스키마의 층은 문서의 층이고,
+    # 좌표는 골격 층의 닫힌 목록을 본다. 둘이 다른 층일 수 있다.
+    layer = tables.COORD_LAYER or schema.get("layer")
+    # **닫힌 목록은 건네받은 파일에서 읽는다**(B86 ②) — 킷은 subprocess라 파서의
+    # 자리 주입이 안 걸린다. 받지 못하면 좌표 대조를 생략하고 **그렇게 말한다**.
+    if tables.CLOSED_LIST:
+        nodes = tagger.closed_list(layer, path=tables.CLOSED_LIST) if layer else []
+    else:
+        nodes = []
+        print("   골격 닫힌 목록 없음 — 좌표 대조 생략 (등록 흐름은 --closed-list로 건넨다)")
     try:
-        # 좌표 층은 **건네받은 이름**이 먼저다(B85 ②) — 스키마의 층은 문서의 층이고,
-        # 좌표는 골격 층의 닫힌 목록을 본다. 둘이 다른 층일 수 있다.
-        res = parser_pipeline.parse(mod, doc_id, doc,
-                                    layer=tables.COORD_LAYER or schema.get("layer"))
+        # **구조 지도 보존은 관문 임시 폴더다**(B86 ②) — 관문 산출은 관문이 치운다.
+        # 코드 폴더에도 운영 보존 자리(`<상태>/work/struct_maps/`)에도 쓰지 않는다.
+        with tempfile.TemporaryDirectory(prefix="gate_struct_") as _td:
+            struct_map.use_dir(lambda: _td)
+            try:
+                res = parser_pipeline.parse(
+                    mod, doc_id, doc, layer=layer, closed_list=nodes,
+                    # 표본의 시트 역할 — 건네받은 표에서 **절대 경로**로 찾는다 (B86 ⑤)
+                    sheet_roles=(tables.SHEET_ROLES or {}).get(str(Path(doc).resolve())))
+            finally:
+                struct_map.use_dir(None)
     except Exception as e:
         show("G51  파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)",
              False, f"{type(e).__name__}: {e}")
         return None
-    finally:
-        struct_map.keep_path(doc_id).unlink(missing_ok=True)
 
     show("G51  파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)", True)
     fails = {f["kind"] for f in res.failures}
@@ -511,6 +525,15 @@ if __name__ == "__main__":
     if tables.COORD_FLAG in _argv:                 # 좌표 층의 이름 (B85 ②)
         _i = _argv.index(tables.COORD_FLAG)
         tables.COORD_LAYER = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+    if tables.CLOSED_FLAG in _argv:                # 골격 닫힌 목록 파일 (B86 ②)
+        _i = _argv.index(tables.CLOSED_FLAG)
+        tables.CLOSED_LIST = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+    if tables.SHEET_ROLES_FLAG in _argv:           # 표본의 시트 역할 표 (B86 ⑤)
+        _i = _argv.index(tables.SHEET_ROLES_FLAG)
+        _f = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        tables.SHEET_ROLES = json.loads(Path(_f).read_text(encoding="utf-8")) if _f else None
         del _argv[_i:_i + 2]
     adapter_path, schema_path, *docs = _argv
     print(_where())

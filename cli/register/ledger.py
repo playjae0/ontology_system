@@ -6,6 +6,7 @@ from __future__ import annotations
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
+from core import paths
 from core.state import fixtures, log, registry, store
 from kit.gate_tables import load_blocks
 from parser import pipeline, preflight, profile, reader, tagger
@@ -14,7 +15,7 @@ from pathlib import Path
 import json
 import re
 from cli.register import draft as draft_mod
-from cli.register import REVIEW, ROOT, _load
+from cli.register import REVIEW, _load
 
 
 def _profiles(doc_type):
@@ -408,7 +409,7 @@ def ledger_block(doc_type, rows=None):
         return ""
     out = [f"  열 판정 대장 — {len(rows)}열 "
            f"({sum(1 for r in rows if str(r.get('status')).startswith('open')) or 0}건 미해결)"
-           f"  {ledger_path(doc_type).relative_to(ROOT)}"]
+           f"  {paths.show(ledger_path(doc_type))}"]
     for r in rows:
         out.append(f"     {r.get('col'):<3} {str(r.get('label') or '(헤더 없음)')[:16]:<18}"
                    f" role {str(r.get('role') or '—'):<11}"

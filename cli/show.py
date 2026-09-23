@@ -23,7 +23,6 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
 
 from collections import Counter
 
@@ -255,7 +254,7 @@ def cmd_report(args):
 
     평가의 단위가 행이다: 「몇 개가 로직이고 몇 개가 LLM인가」도, 「이 칸의 값이
     어디에 붙었나」도 합계로는 답해지지 않는다. 재료는 인입이 남긴 대장
-    (`data/ingest_log/<doc_id>.json`)이고 **여기서 새로 세지 않는다.**
+    (`<상태>/work/ingest_log/<doc_id>.json` · ④단)이고 **여기서 새로 세지 않는다.**
     """
     if "--diff" in args:
         return _report_diff([a for a in args if a != "--diff"])
@@ -378,10 +377,13 @@ def _refuse_no_ledger(doc):
     meta = store.read(store.DOC_REGISTRY, {}).get(doc)
     src = (meta or {}).get("source_path")
     dt = (meta or {}).get("doc_type")
+    # **대장의 자리는 store가 안다**(B86 ③) — 구판은 레포의 옛 ③단 자리를 문면에 적고
+    # **대장 수도 거기서 셌다**(B78 1b에 ④단 `work/`로 옮겼다 — 늘 0건이었다).
+    _dir = store.path(ledger.DIR)
+    _n = len(list(_dir.glob("*.json"))) if _dir.exists() else 0
     raise SystemExit(                                                    # [상태] 문면=_refuse_no_ledger
-        f"[대장] '{doc}'의 판정 대장이 없다 — data/ingest_log/{doc}.json "
-        f"(인입 기록은 {'있다' if meta else '없다'} · 대장 파일 "
-        f"{len(list((ROOT / 'data' / 'ingest_log').glob('*.json'))) if (ROOT / 'data' / 'ingest_log').exists() else 0}건)\n"
+        f"[대장] '{doc}'의 판정 대장이 없다 — {paths.show(store.path(ledger.name_of(doc)))} "
+        f"(인입 기록은 {'있다' if meta else '없다'} · 대장 파일 {_n}건)\n"
         + (f"  ▶ 다음 줄 — 그 문서를 다시 넣으면 대장이 생긴다: "
            f"python run.py ingest-file {src} --doc-type {dt}"
            if meta and src and dt else

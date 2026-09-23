@@ -28,10 +28,13 @@ def main(argv):
     · `defects.log`에는 traceback 전문이다. 사내 실측 열다섯째의 화면은 traceback
     이었고 사람이 프레임을 읽어야 했다 — 그것이 M9 위반이다.
     """
+    from parser.reader import MissingDependency
     try:
         return _run(argv)
     except SystemExit:
         raise                       # 관문 FAIL·상태 거부는 판정이다 — 그대로
+    except MissingDependency:
+        raise                       # 선택 의존 부재는 **상태**다 — `cli` 훅이 설치 줄로 낸다 (B86 ④)
     except Exception as e:
         print(log.defect(e, stage=f"단계 {argv[0] if argv else '?'}",
                          extra=(f"doc_type {argv[1]}" if len(argv) > 1 else "")))
@@ -82,6 +85,9 @@ def _run(argv):
         if revise:
             rest.remove("--revise")
         as_name = opt("--as", None)
+        # **표본의 시트 역할**(B86 ⑤) — 인입과 같은 문법 · 표본이 하나일 때만.
+        from cli import sheet_gate as SG
+        rest, sheets = SG.flag(rest)
         # **위치 인자가 모자라면 죽지 말고 사용법을 낸다.** `--resume`은 doc_type
         # 하나만 필요하다 — 층·표본은 패키지에 이미 있고 resume 갈래가 그것을
         # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
@@ -91,7 +97,7 @@ def _run(argv):
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
                             drop_interview=drop_iv, revise=revise, as_name=as_name,
-                            no_basic=no_basic)
+                            no_basic=no_basic, sheets=sheets)
     if cmd == "review":
         # **prose의 리허설 기본은 전량이다**(B51) — 부분 리허설의 근거(좌표 미스
         # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.
