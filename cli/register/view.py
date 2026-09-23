@@ -404,7 +404,7 @@ def _cmd_review_instruct(doc_type, st, instruct):
         _save_state(doc_type, st)
         if st["machine_gate"] != "PASS":
             print(f"   기계 관문 FAIL — **뷰를 만들지 않았다.** 산출은 "
-                  f"{(REVIEW / doc_type).relative_to(ROOT)}에 남겼다\n")
+                  f"{paths.show(REVIEW / doc_type)}에 남겼다\n")
             gate.gate_block(doc_type, st)
             return 1
 
@@ -488,6 +488,10 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     #     1차는 무LLM(정확 일치 대조만) — 빠르고, 그 결과가 미스 계수의 재료다.
     # 이미지 요약(LLM 지점 ④)의 실호출 경로는 **주입**한다 — 파서는 core를
     # import하지 않는다(P1). 등록 리허설도 운영 파싱과 같은 배선을 탄다.
+    # **표본의 시트 역할**(B86 ⑤) — 기록이 있으면 묻지 않는다(생성 입구에서 정했다).
+    from cli.register import samples as samples_mod
+    _roles = samples_mod.sample_roles(doc_type, st, samples)
+
     def _run(pick):
         out = []
         for i, s in enumerate(samples, 1):
@@ -504,7 +508,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
                 mod, doc_id_of(s), s, layer=coord_layer(),
                 **{**injections(), "pick_coord": pick},
-                max_rows=rows,
+                max_rows=rows, sheet_roles=_roles.get(str(Path(s).resolve())),
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
 
@@ -540,9 +544,9 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     _save_state(doc_type, st)
 
     an = view["sections"]["parse_result"]["anomalies"]
-    print(f"   뷰 데이터 → {(d / 'view.json').relative_to(ROOT)}  "
+    print(f"   뷰 데이터 → {paths.show(d / 'view.json')}  "
           f"(이상 신호 {len(an)}건 — 전량 표시)")
-    print(f"   HTML     → {(d / 'view.html').relative_to(ROOT)}  (kit 렌더러)")
+    print(f"   HTML     → {paths.show(d / 'view.html')}  (kit 렌더러)")
     for a in an:
         print(f"     [{a['kind']}] {a['message'][:70]}")
     if st.get("instructions"):
@@ -601,7 +605,7 @@ def cmd_status(doc_type):
     print("")
     print("  ▶ 다음 줄:")
     if _vw.exists():
-        print(f"     (뷰 확인) {_vw.relative_to(ROOT)}")
+        print(f"     (뷰 확인) {paths.show(_vw)}")
     print(f"     python -m cli.register confirm {doc_type} --by <승인자>")
     print(f"     python -m cli.register review {doc_type} --instruct \"…\""
           f"   (고칠 것이 있을 때만)")

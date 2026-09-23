@@ -162,6 +162,16 @@ def layers_dir():
 COORD_FLAG = "--coord-layer"
 COORD_LAYER = None
 
+# 골격 닫힌 목록 **파일**도 건네받는다(B86 ② — `--layers`와 같은 결). 파서의
+# 주입 전 기본값이 없으므로 킷이 받지 못하면 좌표 대조를 **생략하고 그렇게 말한다**.
+CLOSED_FLAG = "--closed-list"
+CLOSED_LIST = None
+
+# 표본의 **시트 역할 표**(B86 ⑤) — `{표본 절대 경로: {시트: 역할}}`. 킷은 doc_id
+# 규칙을 모르므로 경로가 키다. 없으면 시트 전부를 돈다(단독 실행 · 시트 하나).
+SHEET_ROLES_FLAG = "--sheet-roles"
+SHEET_ROLES = None
+
 
 # 열 판정 대장의 자리 — **관문은 그것을 계산하지 않고 읽는다**(B76 ②).
 # 없으면 커버리지 검사를 돌리지 않는다: 킷은 등록 흐름 밖에서도 단독으로 돈다.

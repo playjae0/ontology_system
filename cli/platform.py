@@ -615,7 +615,7 @@ def cmd_accuracy():
         rows = G.score_set(queries, G.DEFAULT_K)
         agg = G.aggregate(rows, G.DEFAULT_K)
         rate = agg["path_rate"]
-        print(G.render(agg, rows, src=G._rel(gset), is_mock=not is_golden,
+        print(G.render(agg, rows, src=paths.show(gset), is_mock=not is_golden,
                        skipped=skipped, k=G.DEFAULT_K))
         print()
 

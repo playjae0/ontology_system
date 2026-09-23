@@ -337,11 +337,14 @@ def sheet_gate(rows, *, file, doc_id, rec=None):
         return merged
 
 
-def sheets_refusal(doc, rows, *, pend=None, rec=None):
+def sheets_refusal(doc, rows, *, pend=None, rec=None, retry=None, flag_cmd=None):
     """**비대화형이면 묻지 않고 상태 거부**다 — 문면에 시트 이름 **전부**와 다음 줄을 싣는다.
 
     묻고 EOF를 받아 조용히 제안대로 넣으면, 가격 시트가 그래프에 들어간 사실이
     어디에도 남지 않는다(요청문의 출처). 배치에서는 **그 문서만** 실패한다.
+
+    다음 줄은 **호출자가 안다**(B86 ⑤) — 인입이면 `ingest-file`, 등록이면
+    `register generate`다. 없으면 인입의 줄이다.
     """
     from parser.form import SHEET_ROLES
     names = [r["name"] for r in rows]
@@ -349,14 +352,17 @@ def sheets_refusal(doc, rows, *, pend=None, rec=None):
             else f"시트 {len(names)}장의 역할이 정해지지 않았다")
     sug = " ".join(f"{r['no']}:{r['suggest']}" for r in rows
                    if not pend or r["name"] in pend)
+    retry_line = retry or f"python run.py ingest-file {doc}"
+    flag_line = (flag_cmd or f'python run.py ingest-file {doc} --sheets "{{sheets}}"'
+                 ).replace("{sheets}", sug)
     return "\n".join([
         f"■ 시트 역할 미정 — {Path(doc).name} ({what})",
         "   시트: " + " · ".join(f"{r['no']} {r['name']}" for r in rows),
         "   비대화형이라 묻지 않는다 — 조용한 기본값은 없다(역할 없이 읽으면 "
         "가격·일정 시트까지 그래프 후보가 된다).",
         "   ▶ 다음 줄:",
-        f'     터미널에서:          python run.py ingest-file {doc}',
-        f'     역할을 바로 주려면:   python run.py ingest-file {doc} --sheets "{sug}"',
+        f"     터미널에서:          {retry_line}",
+        f"     역할을 바로 주려면:   {flag_line}",
         f"     (제안대로 넣으려면 위 문자열 그대로 · 역할은 "
         f"{'|'.join(SHEET_ROLES)})",
     ])

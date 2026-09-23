@@ -19,10 +19,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-SNAPSHOT = ROOT / "data" / "skeleton_closed_list.json"   # **주입 전 기본값**
-# 상동 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7) 자리를 **받는다**(B78 1b).
-# 값이 아니라 함수다: 상태 루트가 갈리면 파서도 같이 움직여야 한다.
+# 골격 닫힌 목록 스냅샷의 자리 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7)
+# 자리를 **받는다**(B78 1b). 값이 아니라 함수다: 상태 루트가 갈리면 파서도 같이
+# 움직여야 한다. **주입 전 기본값은 없다**(B86 ②) — 구판은 B78 이전 레포 자리
+# (`<코드>/data/…`)를 보았고, 주입이 안 걸리는 킷 관문이 사내에서 **빈 목록**으로
+# 좌표를 대조했다(그 자리엔 파일이 없다). 조용히 레포를 보지 않고 말한다.
 _snapshot_fn = None
 
 
@@ -33,8 +34,13 @@ def use_snapshot(fn):
 
 
 def snapshot_path():
-    """지금의 스냅샷 자리 — 주입이 없으면 옛 기본값이다."""
-    return Path(_snapshot_fn()) if _snapshot_fn else SNAPSHOT
+    """지금의 스냅샷 자리 — **주입이 없으면 문면 있는 실패**다(B86 ②)."""
+    if not _snapshot_fn:
+        raise RuntimeError(
+            "[파서] 골격 닫힌 목록의 자리가 주입되지 않았다 — 시스템 쪽은 "
+            "`core.paths`를 import하면 걸리고(`bind_parser`), 킷은 `--closed-list "
+            "<파일>`로 받는다. 목록을 직접 넘기려면 `closed_list=`")
+    return Path(_snapshot_fn())
 
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 

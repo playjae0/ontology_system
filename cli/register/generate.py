@@ -446,7 +446,7 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
 
     print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부)")
-    print(f"   입력 패키지: 사람 4 + 시스템 5 → {(d / 'input_package.json').relative_to(ROOT)}")
+    print(f"   입력 패키지: 사람 4 + 시스템 5 → {paths.show(d / 'input_package.json')}")
     return pkg, d
 
 
@@ -483,7 +483,7 @@ def _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview):
         _log = ivlog.read_log(doc_type)
         _old = sum(len(_log.get(b.get("at")) or [])
                    for b in ivlog._hint_batches(pkg["human"]["hint"]) if b is not _batch)
-        print(f"   문답 {len(rounds)}라운드 → {ivlog.log_path(doc_type).relative_to(ROOT)} · "
+        print(f"   문답 {len(rounds)}라운드 → {paths.show(ivlog.log_path(doc_type))} · "
               f"확정 사항 {len(_batch['decisions'])}항목 → human.hint"
               + (f" (이전 {_old}라운드 유지)" if _old else ""))
     elif (hint or "").strip():
@@ -532,7 +532,7 @@ def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                  no_fewshot=False, resume=False, use_basic=False,
                  drop_interview=False, revise=False, as_name=None,
-                 no_basic=False):
+                 no_basic=False, sheets=None):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -552,6 +552,10 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     if resume:
         return _cmd_generate_resume(doc_type, layer, samples, no_fewshot)
     _cmd_generate_guard(doc_type, layer, samples, revise)
+    # **표본의 시트 역할을 입구에서 정한다**(B86 ⑤) — 초안(LLM)을 받기 전이라야
+    # 거부·중단이 비용을 헛되게 하지 않는다. 답은 기록이 되고 리허설·킷이 그것을 읽는다.
+    from cli.register import samples as samples_mod
+    samples_mod.sample_roles(doc_type, None, samples, spec=sheets, layer=layer)
     _r = _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
     if _r is not None:
         return _r
@@ -611,7 +615,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부) — **기본 어댑터 경로**")
     print(f"   ▶ {proposal['reason']}")
     print(f"     {proposal['note']}")
-    print(f"   어댑터(위임 래퍼) · 스키마: {ad.relative_to(ROOT)} · {sc.relative_to(ROOT)}")
+    print(f"   어댑터(위임 래퍼) · 스키마: {paths.show(ad)} · {paths.show(sc)}")
     u = gateway.usage_total()
     print(f"   LLM 사용량 — 이 명령에서 호출 {u['calls'] - u0:,}회 "
           f"(기본 어댑터 — 생성 세션 없음 · 프로세스 누계 {u['calls']:,}회)")

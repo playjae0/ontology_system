@@ -41,6 +41,12 @@ DEFAULT_HOME = "state"
 # **루트가 다르다** — `USE_MOCK=1`은 `ONTO_HOME`을 무시하고 여기로 간다.
 # 회귀·doctor·`init --fresh`가 전부 이 아래서 돌아 운영 상태에 한 바이트도 쓰지 않는다.
 MOCK_HOME = "state_mock"
+# **시험 전용 훅**(B86 ⑥) — mock 루트를 **코드 밖**으로 옮긴다. 회귀의 바닥은 상태 루트가
+# 코드 폴더 **안**이고 사내는 **밖**이다 — 그 차이를 회귀가 밟으려면 mock 세계를 밖에
+# 세울 문이 하나 있어야 한다. `USE_MOCK=0`(운영)은 이 키를 **보지 않는다** — 운영 경로는
+# `ONTO_HOME` 하나 그대로다. 이름이 `state_mock`이 아니므로 `is_mock_home()`은 거짓이고,
+# 그래서 `init --fresh`가 층 자산을 레포 seed로 덮지 않는다(사내와 같다).
+MOCK_HOME_ENV = "ONTO_MOCK_HOME"
 
 _HOME = None            # 프로세스당 한 번 정한다 — 아래 `home()` 참조
 
@@ -63,7 +69,8 @@ def home():
     if _HOME is None:
         from core.llm import gateway            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
         if gateway.use_mock():
-            _HOME = ROOT / MOCK_HOME
+            v = os.environ.get(MOCK_HOME_ENV)          # 시험 전용 — 위 머리말
+            _HOME = (Path(v).expanduser().resolve() if v else ROOT / MOCK_HOME)
         else:
             v = os.environ.get(HOME_ENV)
             _HOME = (Path(v).expanduser().resolve() if v
@@ -84,6 +91,8 @@ def home_note():
     """
     if is_mock_home() or os.environ.get(HOME_ENV):
         return ""
+    if os.environ.get(MOCK_HOME_ENV):
+        return f" (시험 루트 — {MOCK_HOME_ENV})"
     return f" (ONTO_HOME 미설정 — 기본 루트 {ROOT / DEFAULT_HOME})"
 
 
@@ -150,6 +159,30 @@ def rel_to_home(p):
         return q.relative_to(home()).as_posix()
     except ValueError:
         return str(q)
+
+
+def show(p):
+    """**화면 표기** 한 자리 — 상태 루트 아래면 루트 기준 상대, 레포 아래면 레포 기준
+    상대, 둘 다 아니면 절대 경로. **예외를 내지 않는다**(B86 ①).
+
+    사내 실측(2026-09-23): 상태 루트를 가이드대로 코드 폴더 **밖**에 두자
+    `register generate`가 `… is not in the subpath of …`로 죽고 `adapter.py`가 놓이기
+    전에 끊겼다. 화면 줄 스물하나가 저마다 레포 기준 상대화를 불렀고, 회귀는 상태
+    루트가 레포 **안**(`state_mock/`)이라 한 번도 그 갈래를 밟지 않았다.
+
+    `rel_to_home`은 **기록**용이다(레포 기준 갈래가 없다) — 표시와 기록을 섞지 않는다.
+    """
+    q = Path(p)
+    try:
+        q = q.expanduser().resolve()
+    except OSError:
+        q = q.expanduser().absolute()
+    for base in (home(), ROOT):
+        try:
+            return q.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return str(q)
 
 
 def from_home(p):

@@ -96,6 +96,20 @@ def coord_cap_of(args):
                          f"  예: --coord-llm 200 · --coord-llm off")
 
 
+def print_read_warnings(report):
+    """**읽다가 버린 그림 한 줄**(B86 ④) — 원문 경고는 로그 파일로 갔다.
+
+    `그림 n개를 읽지 못해 건너뜀(WMF k)` — 그 그림이 이미지 요약에서 빠진다는 사실이
+    사람이 알 정보다. 경고가 없으면 줄도 없다.
+    """
+    rw = (report or {}).get("read_warnings") or {}
+    dropped = rw.get("images_dropped") or {}
+    if dropped:
+        n = sum(dropped.values())
+        kinds = " · ".join(f"{k} {v}" for k, v in sorted(dropped.items()))
+        print(f"   그림 {n}개를 읽지 못해 건너뜀({kinds}) — 이미지 요약에서 빠진다")
+
+
 def coord_screen():
     """좌표 태깅의 예고·진행·끝 줄 — `(notice, progress)` (B69 ② · B22의 정신).
 
@@ -164,6 +178,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
                          layer=coord_layer(),
                          coord_notice=_notice, coord_cap=coord_cap,
                          progress=_progress, sheet_roles=sheet_roles)
+    print_read_warnings(res.report)
     written = None
     if res.ok and out:
         paths.ensure(Path(out))
@@ -201,9 +216,9 @@ def cmd_run(args):
     rest, cap = coord_cap_of(rest)
     # **시트 역할은 같은 문법·같은 기록이다**(B83 ③) — `ingest-file`과 두 벌이면
     # 같은 문서가 명령에 따라 다른 시트를 읽는다.
-    from cli.ingest import sheets_by_flag, sheets_flag
-    rest, _spec = sheets_flag(rest)
-    _roles = sheets_by_flag(doc, doc_id, _spec) if _spec else None
+    from cli import sheet_gate as SG             # 관문 한 벌 (B86 ⑤)
+    rest, _spec = SG.flag(rest)
+    _roles = SG.by_flag(doc, doc_id, _spec) if _spec else None
     res, out = run_parse(adapter_path, doc_id, doc, rest[0] if rest else None,
                          coord_cap=cap, sheet_roles=_roles)
     print(f"[parse] {res}")

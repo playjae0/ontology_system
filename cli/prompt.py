@@ -111,7 +111,7 @@ def _dump_prompt(doc_type, text):
     d = _dir(doc_type)
     out = d / "prompt_rendered.md"
     out.write_text(text, encoding="utf-8")
-    print(f"   [덤프] 조립된 지시문 → {out.relative_to(ROOT)} ({len(text)}자)")
+    print(f"   [덤프] 조립된 지시문 → {paths.show(out)} ({len(text)}자)")
     return out
 
 

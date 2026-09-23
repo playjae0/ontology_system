@@ -65,6 +65,30 @@ from .normalizer import _col
 _LOG = logging.getLogger("onto.parser.reader")
 
 
+# ---------------------------------------------------------------- 선택 의존 (B86 ④)
+class MissingDependency(ImportError):
+    """**선택 의존이 없다** — 문면이 무엇을 설치하면 되는지 말한다 (B86 ④).
+
+    사내 실측(2026-09-23): 새 코드 폴더(= 새 파이썬 환경)에서 `openpyxl`이 없자 인입이
+    `ModuleNotFoundError`로 죽었다 — 원인은 적혀 있었지만 **무엇을 치면 되는지**가
+    없었다. ImportError의 하위라 잡던 자리는 그대로 잡는다.
+    """
+
+
+def _need(module, pip_name, ext):
+    """포맷별 선택 의존을 **한 자리에서** 부른다 — 없으면 설치 줄을 싣고 실패한다."""
+    import importlib
+    try:
+        return importlib.import_module(module)
+    except ImportError as e:
+        raise MissingDependency(
+            f"`{ext}`를 읽으려면 `{pip_name}`이 필요하다 — pip install {pip_name}") from e
+
+
+#: openpyxl 읽기 경고 중 **그림을 버렸다**는 것 — 형식 이름을 뽑는다(WMF 등).
+_IMG_DROPPED = re.compile(r"(\w+) image format is not supported", re.I)
+
+
 def read_xlsx(path):
     """**import는 함수 안이다** (문서 7 §7.1 선택 의존의 지연 import 격리).
 
@@ -74,10 +98,27 @@ def read_xlsx(path):
     "요구하지 않는다"까지만 두면 최상단 import가 위반이 아니게 되는 것이 그 구멍이다.
     같은 파일의 `read_pptx`가 이미 이 형태다.
     """
+    import warnings
+    _need("openpyxl", "openpyxl", ".xlsx")
     from openpyxl import load_workbook
     from openpyxl.utils import get_column_letter
 
-    wb = load_workbook(path, data_only=True)
+    # **읽기 경고는 잡아서 사실로 바꾼다**(B86 ④) — 날것의 경고(`WMF image format is
+    # not supported …`)가 화면에 흘렀고, 사람이 알 정보는 「그림이 빠졌다」 하나였다.
+    # 원문은 로그로 가고, 보고에는 수만 남는다.
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        wb = load_workbook(path, data_only=True)
+    read_warnings = [str(w.message) for w in _caught]
+    for _m in read_warnings:
+        _LOG.info("xlsx 읽기 경고 — %s · %s", path, _m)
+    dropped = {}
+    for _m in read_warnings:
+        _k = _IMG_DROPPED.search(_m)
+        if _k:
+            dropped[_k.group(1).upper()] = dropped.get(_k.group(1).upper(), 0) + 1
+        elif "image" in _m.lower():
+            dropped["기타"] = dropped.get("기타", 0) + 1
     sheets = []
     for ws in wb.worksheets:
         cells, indent, bold = {}, {}, []
@@ -111,7 +152,11 @@ def read_xlsx(path):
             "bold": bold,
             "images": images,
         })
-    return {"format": "xlsx", "path": path, "sheets": sheets}
+    out = {"format": "xlsx", "path": path, "sheets": sheets}
+    if read_warnings:
+        # 키는 **있을 때만** — 경고 없는 문서의 판독 결과가 한 바이트도 바뀌지 않는다.
+        out["read_warnings"] = {"images_dropped": dropped, "count": len(read_warnings)}
+    return out
 
 
 # ---------------------------------------------------------------- pptx
@@ -359,6 +404,7 @@ def read_pptx(path):
     그림 **바이트는 `raw["_images"]`에만** 있고 계약 JSON으로 나가지 않는다
     (문서 5 §5.2-2 — 원본 바이너리를 저장하지 않는다). 요약만 보존된다.
     """
+    _need("pptx", "python-pptx", ".pptx")
     from pptx import Presentation
     prs = Presentation(path)
     slides, images = [], {}
@@ -398,7 +444,7 @@ def read_pdf(path):
     목차(outline)가 있으면 함께 낸다 — 어댑터가 `section`을 거기서 만든다.
     없으면 「페이지 N」으로 떨어진다(조용히 비우지 않는다).
     """
-    import fitz                                             # PyMuPDF — 지연 import
+    fitz = _need("fitz", "pymupdf", ".pdf")                 # PyMuPDF — 지연 import
 
     doc = fitz.open(path)
     pages, images = [], {}

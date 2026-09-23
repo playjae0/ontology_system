@@ -270,7 +270,7 @@ _lg = Path(tempfile.mkdtemp(prefix="b78legacy_"))
 _old, _new = _lg / "code", _lg / "home"
 _G = "graph" + ".json"          # 조각 — 저장 계층 경계 검사의 대상이 아니다
 (_old / "data" / "process").mkdir(parents=True)
-(_old / "data" / "ingest_log").mkdir(parents=True)
+(_old / "data" / "ingest_log").mkdir(parents=True)   # 옛 배치
 (_old / "review" / "x").mkdir(parents=True)
 (_old / "adapters").mkdir()
 (_old / "schemas").mkdir()
@@ -283,8 +283,8 @@ _dict = json.dumps({"노칭": "n1"}, ensure_ascii=False)
 (_old / "data" / "dictionary.json").write_text(_dict, encoding="utf-8")
 (_old / "data" / "gate_rejects.json").write_text("[]", encoding="utf-8")
 (_old / "data" / ".dictionary.json.lock").write_text("", encoding="utf-8")   # 락 — 상태가 아니다
-(_old / "data" / "ingest_log" / "X1.json").write_text("{}", encoding="utf-8")
-(_old / "data" / "doc_types.json").write_text(json.dumps(
+(_old / "data" / "ingest_log" / "X1.json").write_text("{}", encoding="utf-8")   # 옛 배치
+(_old / "data" / "doc_types.json").write_text(json.dumps(   # 옛 배치
     {"x": {"doc_type": "x", "status": "registered", "layer": "process",
            "adapter": "adapters/x.py", "schema": "schemas/x.json",
            "approved_by": "사내검수자"}}, ensure_ascii=False), encoding="utf-8")
@@ -335,7 +335,7 @@ show("③ 락 파일은 이관 대상이 아니다 (원자 쓰기의 부산물 �
      and not [p for p in (_new / "data").rglob("*.lock")],
      str([p.name for p in (_new / "data").rglob("*.lock")]))
 show("③ 옛 폴더는 그대로 둔다 — 복사다(되돌릴 자리를 없애지 않는다)",
-     (_old / "data" / "doc_types.json").is_file()
+     (_old / "data" / "doc_types.json").is_file()   # 옛 배치
      and (_old / "review" / "x" / "approval.json").is_file())
 show("③ 층 자산이 상태 루트로 따라온다 — 해시가 같다 (B79 ①)",
      all(_sha(_new / "layers" / "process" / f) == _sha(_old / "layers" / "process" / f)
@@ -353,7 +353,7 @@ show("③ 이관 로그가 무엇을 어디로 옮겼는지 남긴다 (해시 �
      and _res["files"] >= 9, f"파일 {_res['files']} · 로그 {_res['log'].name}")
 
 # **이관 전 실행은 상태 거부다** — 조용히 옛 자리를 읽지 않는다.
-_mark = ROOT / "data" / "doc_types.json"
+_mark = ROOT / "data" / "doc_types.json"   # 옛 배치
 _made_mark = not _mark.exists()
 if _made_mark:
     _mark.parent.mkdir(parents=True, exist_ok=True)

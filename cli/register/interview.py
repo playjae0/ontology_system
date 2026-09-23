@@ -6,9 +6,10 @@ from __future__ import annotations
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
+from core import paths
 from pathlib import Path
 import json
-from cli.register import REVIEW, ROOT
+from cli.register import REVIEW
 
 
 INTERVIEW_LOG = "interview_log.json"     # `review/<doc_type>/` 안 — 라운드 전문의 자리
@@ -87,7 +88,7 @@ def migrate_rounds(doc_type, pkg):
         del b["rounds"]
     pkg.setdefault("human", {})["hint"] = _merge_hint(hint, batches)
     return (f"   문답 라운드 {n}건을 로그로 옮겼다 → "
-            f"{log_path(doc_type).relative_to(ROOT)}  "
+            f"{paths.show(log_path(doc_type))}  "
             f"(패키지에는 확정 사항만 남는다 — 생성이 읽는 것이 그것이다)")
 
 

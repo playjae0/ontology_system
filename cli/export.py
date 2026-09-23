@@ -19,7 +19,6 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
 
 from core import paths
 from core.build import ledger
@@ -40,18 +39,6 @@ def _world():
 
 
 # ---------------------------------------------------------------- cypher
-def _short(p):
-    """출력 경로 표기 — **레포 밖이면 절대 경로 그대로 낸다.**
-
-    `Path.relative_to`는 밖의 경로에 ValueError를 던진다. 산출은 이미 끝난 뒤라
-    **파일은 만들어졌는데 화면이 크래시하는** 모양이 된다(실측).
-    """
-    try:
-        return Path(p).resolve().relative_to(ROOT)
-    except ValueError:
-        return Path(p).resolve()
-
-
 def out_path(arg, default, *, as_dir=False):
     """파생물 산출 자리 — **`export/`를 만드는 자리는 여기 하나다**(B77 ④).
 
@@ -134,8 +121,8 @@ def cmd_cypher(args):
           "//   MATCH (f:Failure)-[:occurs_in]->(p:Process) RETURN f.name, p.name;"]
 
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
-    print(f"[export] 노드 {n_node} · 엣지 {n_edge} → {_short(out)}")
-    print("  적재: cypher-shell -f " + str(_short(out)))
+    print(f"[export] 노드 {n_node} · 엣지 {n_edge} → {paths.show(out)}")
+    print("  적재: cypher-shell -f " + str(paths.show(out)))
     print("  ※ 파생물이다 — 여기서 고친 것은 돌아오지 않는다. 고치려면 run.py ops")
     return 0
 
@@ -177,7 +164,7 @@ def cmd_csv(args):
                             e["dst"], names.get(e["dst"], ""), lay,
                             e.get("status"), " | ".join(e.get("provenance") or [])])
 
-    print(f"[export] {_short(d)}/nodes.csv · edges.csv  (엑셀용 BOM 포함)")
+    print(f"[export] {paths.show(d)}/nodes.csv · edges.csv  (엑셀용 BOM 포함)")
     return 0
 
 
@@ -462,7 +449,7 @@ def cmd_html(args):
     out.write_text(build_html(world, query_panel=False), encoding="utf-8")
     size = out.stat().st_size / 1024
     print(f"[export] 노드 {len(nodes)} · 엣지 {len(edges)} "
-          f"(걸침 {n_cross}) → {_short(out)}  [{size:.0f}KB]")
+          f"(걸침 {n_cross}) → {paths.show(out)}  [{size:.0f}KB]")
     print(f"  브라우저로 연다: file://{out}")
     print("  ※ 외부 CDN 없음 — 사내망·오프라인에서 그대로 열린다")
     print("  ※ 파생물이다 — 여기서 고친 것은 돌아오지 않는다(P5). 고치려면 run.py ops")

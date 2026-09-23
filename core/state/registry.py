@@ -41,6 +41,18 @@ def _registered():
     return store.read(store.DOC_TYPES, {})
 
 
+def _repo_rel(p):
+    """내장 스키마의 **기록** 표기 — 레포 아래면 레포 기준, 밖이면 절대 경로 (B86 ①).
+
+    `ONTO_FIXTURES`가 레포 밖을 가리키면 구판은 여기서 `relative_to`가 죽었다.
+    되읽는 `_abs()`는 `ROOT / rel`이라 절대 경로를 넣어도 그대로 돌아온다.
+    """
+    try:
+        return str(Path(p).resolve().relative_to(ROOT.resolve()))
+    except ValueError:
+        return str(Path(p).resolve())
+
+
 def _builtin():
     """레포가 싣고 나온 doc_type — 스키마 파일의 실재가 곧 등록이다.
 
@@ -64,7 +76,7 @@ def _builtin():
         if not dt:
             continue
         out[dt] = {"doc_type": dt, "status": BUILTIN, "layer": s.get("layer"),
-                   "schema": str(p.relative_to(ROOT)), "adapter": None,
+                   "schema": _repo_rel(p), "adapter": None,
                    # 내장은 **레포 기준** 경로다(등록분은 `registry/` 기준 — B78 1b).
                    "root": "repo",
                    "schema_version": s.get("schema_version")}

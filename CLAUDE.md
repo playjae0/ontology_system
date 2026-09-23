@@ -79,6 +79,8 @@
   상태 경로 조립·`mkdir`은 `core/paths.py`에만 — 다른 모듈은 이름으로 묻는다(예외 둘 — 이관은
   양쪽 뿌리를 인자로, 킷은 `--layers` 플래그로 · D-160). **층 자산 `layers/`도 상태 루트에
   산다**(B79 — 레포 `layers/`는 mock 기본 seed일 뿐 · `USE_MOCK=0`에서 없으면 상태 거부).
+  **좌표 층은 `Process` 카테고리를 선언한 층이지 폴더 `process`가 아니다**(B85) — 답하는 자리는
+  `core/state/bootstrap.coord_layer()` 하나 · 층 이름을 코드에 박지 않는다(회귀가 `"process"` grep으로 잰다).
   **레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지
   않는다** — `doctor`가 `자산_해시.json`과 대조해 다르면 ⚠ · 갱신은 구현 세션이 회차마다 `--write`.
 - **골격 심기의 자리는 `core/state/skeleton.py`다** — 파생이 loader에 섞이면 관계 이름을
