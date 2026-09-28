@@ -116,61 +116,9 @@
 - B80~B82 — 본문 `docs/archive/장부/PROGRESS_B80.md`
 - B83 — 시트 역할 관문: 문서마다 한 번 정하고 기록으로 남긴다 · 2026-09-22 · **완료** — 본문 `docs/archive/장부/PROGRESS_B83.md`
 - B84 — 뷰어 손보기: 대비 · 검색은 강조만 · 배치 둘 · 상호작용 · 오류 문면 · 2026-09-22 · **완료** — 본문 `docs/archive/장부/PROGRESS_B84.md`
+- B85 — 좌표 층의 이름 해방 · 2026-09-22 · **완료** — 본문 `docs/archive/장부/PROGRESS_B85.md`
 
 ---
-
-## B85 — 좌표 층의 이름 해방: 골격 층은 `Process`를 선언한 층이지 폴더 `process`가 아니다 (2026-09-22)
-
-사내가 골격 층을 **설비층**(`equipment`)으로 세우자 문서의 좌표가 **전부 목록 밖**이
-됐다 — 명세는 좌표 층을 「카테고리를 선언한 층」으로 정했는데 코드가 폴더 이름을
-일곱 자리에 박고 있었다. 판정·저장 형식 변경 0.
-
-### ① 묻는 자리 하나 — `coord_layer()`
-
-- `core/state/bootstrap.coord_layer()` = `layer_of_category(COORD_CATEGORY)` ·
-  없으면 `NoCoordLayer`로 **시끄럽게 실패**(문면에 다음 줄). 캐시 키는
-  **(상태 루트, 층 목록)**이라 스스로 낡는다.
-- `COORD_CATEGORY`의 자리를 `core/build/loop.py` → `bootstrap.py`로 옮겼다(D-166 ①) —
-  `blocks.json`에서 좌표 카테고리를 꺼내는 자리는 **하나**다(회귀가 잰다).
-- **골격 파일 부재는 문면 있는 거부**: `load_seed`가 `SeedError(seed_missing_note(…))`를
-  던지고 `bootstrap`·`skeleton-status`(K01)·`skeleton-confirm` 셋이 같은 말을 한다 —
-  경로 · config 키 · 끄는 법 · 「이 층은 좌표 층이라 골격을 끌 수 없다」. Traceback 0.
-
-### ② 이름을 박은 자리를 푼다
-
-`parser/tagger.closed_list`·`coord_from_section`·`tag` · `parser/pipeline.parse`는
-**기본값 없음**(문면 있는 실패 — D-166 ③) · 호출자(`cli/parse` 둘 · `register/view` ·
-킷 `--coord-layer`)가 `coord_layer()`를 넘긴다. `doctor`(골격 절 + 첫 줄
-`좌표 층 <이름>`) · `cli/platform`(계기판) · `bootstrap(layer)` · `cli/extract`·`show`·
-`export`의 기본값 · `cli/ingest`의 판정 예고 · `core/build/extract.attach_candidates`.
-**운영 코드의 `"process"`는 `generate.py:28`(낱말 후보) 하나만 남았다** — 회귀가 센다.
-
-### ③ 이름이 다른 좌표 층에서 전 구간이 돈다
-
-레포를 임시 자리에 복사해 `layers/process` → `layers/equipment`(config·doc_type 스키마의
-층 키까지) → 클린 → 골격 → 인입 셋(공정층 표 · 품질층 표 · CSV) → 질의 →
-`doctor --quick`. **canonical 142 · 엣지 225(걸침 19) · 큐 5종이 `process`일 때와 같다.**
-
-### 실행으로 확인한 것
-
-- 회귀 **1,503 → 1,517/1,517** · FAIL 0 · 클린 2회 동일 · doctor EXIT=0.
-  순증 14(신설 `test_g6_coord_layer`) · 삭제 0.
-- 동작 등가 **네 벌 diff 0**(vs `046c05d` · 이름 `process` 루트 — 사전 306 · 대장 399 ·
-  엣지 133/92 · 노드 95/47 · 큐 107).
-- 화면 diff는 **doctor 첫 줄 한 조각**뿐(`· 좌표 층 process`).
-- 검사 5종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13 · 자산 해시 갱신(킷 2파일) ·
-  코드 지도 재생성 diff 0 · §7 상한 위반 0.
-- `git diff core/`: `bootstrap.py`(+coord_layer·상수 이사·골격 문면) ·
-  `build/{loop,table,prose,entry}.py`(import 자리) · `build/extract.py`(좌표 층).
-- **같은 병의 나머지 둘을 고쳤다**(D-166 ④): 리허설과 추출 프롬프트가 좌표 스냅샷을
-  **문서의 층**으로 읽고 있었다 — 품질층 doc_type에서 후보가 비던 자리다.
-- 소요: 반나절 1회차.
-
-### 허브 마감 판정 · 문서 몫 · 회차 재정렬 (hub_51 · 2026-09-23)
-
-- **B85 닫음**(hub_47 판 그대로). D-166 ①~⑨ 확정 — 개정대장 §BT. 문서 7 §7.1(좌표 층 규칙) · 문서 6(파서 진입점 `layer` 필수) · CLAUDE.md §5 · 06 0.1 · 골격작성 §1 · 걸어가기 §0·§1-a(이름 바꾸기 절차 — 등록 스키마 층 키 포함 · D-166 ⑨) · 상태_폴더 · B85 요청문 사내 절차.
-- **회차 꼬임 정리**: hub_49·50의 넓힌 B85는 무효(③④는 B85가 했다). 남은 것 → **B86 「사내 모양」 잔여**(`paths.show` · 킷 `--closed-list` · `data/ingest_log` · 선택 의존 문면 · 등록 표본 시트 관문 · 레포 밖 상태 루트 회귀) → **B87 산문 엑셀 계층**(고정 규칙 확장 · 규칙 선언 LLM · 행 우선 청크) → **B88 큐 처리 화면 + 별칭 검색**. B86·B87은 등록·인입 구조가 바뀌어 **가이드·구조도를 구현 세션이 같은 커밋에서** 고친다(사용자 확정 2026-09-23).
-
 
 ## B86 — 「사내 모양」 잔여: 상태가 코드 밖이어도 등록부터 뷰어까지 돈다 (2026-09-23)
 
@@ -303,4 +251,54 @@
   재생성 · §7 위반 0(`basic_prose_xlsx.py` 335 · `struct_map.py` 660 · `pipeline.py` 434행) · 미정의 이름 0 ·
   상태 거부 근거 없음 0.
 - `git diff core/`: `llm/gateway.py`(호출 태그) · `llm/struct_map_pass.py`(+`infer_rules` · `rule_inferrer`).
+- 소요: 1회차.
+
+## B88 — 리더의 폭과 그림 이해: 엑셀 그림 → ④ · Word · 등록 재확인 · 가이드·문서 정리 (2026-09-28)
+
+순서 ① → ② → ③ → ④. 코드는 `dff1e60`(태그 **`pre-doc-cleanup`** — 문서 삭제 직전) · 문서는 그 다음 커밋. 가결정 D-169.
+
+### ① 엑셀 그림 → ④
+
+- `parser/ooxml.xlsx_images` — 시트 → drawing → media를 zip에서 직접(WMF·EMF 포함 · 선택 의존 0) · 바이트는
+  `raw["_images"]`에만 · ref는 문서 전체 번호.
+- 산문 엑셀 어댑터: 시트 그림마다 ④ placeholder(section·context = 앉은 행의 청크) · 파이프라인이 `ref` 시트
+  그림을 빼고 · 모델이 안 받는 형식은 `render.to_png`(`soffice`) · 못 바꾸면 건너뜀 줄에 사유 · 예고
+  `그림 요약 — 새 n장 → LLM ≤ n회(보존 재사용 m)` · `--no-images`(인입 기록·`show doc`) · 쪽 렌더는 PPT·PDF만.
+- 스텁 실호출 캡처: IMG01 첫 인입 `새 2장 → LLM ≤ 2회(보존 재사용 0)`(WMF는 PNG로 변환) → 재인입
+  `새 0장 … 재사용 2` → `soffice` 없음 `그림 1개를 읽지 못해 건너뜀(WMF 1 — 변환기 없음)`.
+- **실측 고침**: 그림 든 표본의 LLM 생성 입력 패키지가 바이트 직렬화로 죽었다 — `reader.head`가 `_` 키를 뗀다.
+
+### ② Word(docx)
+
+- `parser/ooxml.read_docx`(문단 · 표 행 · 그림 · 개요 수준은 스타일 상속 체인 · 머리글·삭제 글자 0) +
+  고정 어댑터 `basic_docx`(개요 수준 > 번호 군 > 굵게 · 목록·표 행은 제목 아님) · 분할은 B87 엔진 한 벌
+  (`struct_rule.frame_chunks` — 엑셀과 공유) · 등록 제안 · `.doc`·`.xls`·`.ppt` 거부 문면.
+- DOC01 section 트리: `개요`(1) > `적용 범위`(2) · `기계 사양`(1) > `프레스`(2) · `정리`(1 — 스타일 상속) ·
+  DOC02: `1. 개요`(1) > `1.1 적용 범위`(2) · `2. 사양`(1) — 번호 목록 줄은 제목 아님.
+
+### ③ 등록 doc_type 재확인
+
+- 등록된 doc_type의 `register status`는 운영 어댑터(`registry/adapters/<dt>.py`)로 **하네스만** 돈다(쓰기 0 ·
+  `confirm` 줄 0) · `register list`에 「코드 반입 뒤」 한 줄.
+
+### ④ 가이드·문서 정리
+
+- 가이드 **8 → 7**(층정의 프롬프트 → `config작성_가이드.md` §9) · 2B 첫 절 **시작하기** · §7 **증상표**(증상 → 원인 →
+  칠 명령 · 상태_폴더 §5·걸어가기 §4를 옮기고 링크) · 2B **577 → 605행 · 회차 번호 73 → 0 · 옛 판 서술 2 → 0**.
+- 지움(태그 `pre-doc-cleanup`에 보관): `docs/안건/` 40개(B84~B88만 남김) · `docs/실측_대장.md` · `구현현황.md` ·
+  `docs/국면2_명세공백_인계.md` · `docs/성능모듈/`. 가리킴 고침: doctor 「더 볼 것」 · 점검_경로 목록 · CLAUDE.md §2·§6 ·
+  README · 이연대장 §3 #2.
+- **검사 여섯째** `docs/회귀스위트/점검_가이드.py` — 명령 줄 실재 · 링크·파일 이름 실재 · 2B 시작하기·증상표 번호 0 ·
+  옛 판 서술 0. 변이 다섯(없는 명령 · 없는 하위 명령 · 지운 파일 · 회차 번호 · 구판) 전부 붉었다.
+- 시작하기 따라 치기(사내 모양 루트 — 코드 사본 + 코드 밖 mock 상태): 막힌 곳 0 — `llm-check`는 mock에 설정이 없어
+  ① 설정에서 멈춤(사내는 `llm.json`) · `skeleton-confirm`은 터미널에서만(뷰 대조) → 시작하기에 둘 다 적었다.
+
+### 실행으로 확인한 것
+
+- 회귀 **1,568 → 1,587/1,587** · FAIL 0 · 클린 2회 동일 · doctor EXIT=0. 순증 19(신설 `test_p1_media`) · 삭제 0 ·
+  기대값을 넓힌 곳 넷(`test_p1_form` 글 조각만 세기·IMG01 판정 · `test_p1_hier` 그림 조각의 text · B86 WMF 줄은 변환기 없는 갈래).
+- 동작 등가 **네 벌 diff 0**(vs `046c05d`). **바뀐 청크**: TOC01 +2 · TOC02 +1 — 그림 조각(PNG — 전에는 위치만 적고
+  요약에 한 장도 가지 않았다). 그림 없는 엑셀 표본의 판독·분할은 그대로.
+- 검사 6종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13 · 가이드 0 · 코드 지도 재생성 · §7 위반 0 · 미정의 이름 0.
+- `git diff core/`: `build/ingest.py`(`images_skipped` 기록) · `llm/points.py`(④ 실패 문면에 `--no-images`).
 - 소요: 1회차.
