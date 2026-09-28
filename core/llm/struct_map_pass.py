@@ -3,6 +3,10 @@
 
 자르지 않는다 — 지도는 **데이터**이고 분할은 파서의 코드다. 크기 예산을 넘으면
 보내지 않고 그 사실을 말한다(평면 인입 + `hierarchy_unresolved` 큐).
+
+**같은 지점 안의 호출 둘**(B87 ②): `map_structure`(행마다 제목인가 — 태그 `struct_map`)와
+`infer_rules`(시트의 제목 **규칙**을 선언 — 태그 `struct_rule`). 둘 다 데이터를 내고
+자르는 것은 파서다. 닫힌 9지점은 그대로다(문서 7 §7.6-B-2 — 태그는 지점 안에 여럿).
 """
 from __future__ import annotations
 
@@ -123,3 +127,61 @@ def struct_mapper():
         return None
     gateway.require("struct_map")        # 미설정이면 파싱 전에 명시적으로 실패한다
     return map_structure
+
+
+# ---------------------------------------------------------------- 계층 규칙 선언 (B87 ②)
+STRUCT_RULE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "heading_patterns": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"match": {"type": "string"},
+                               "level": {"type": "integer"}},
+                "required": ["match", "level"],
+                "additionalProperties": False,
+            },
+        },
+        "bold_is_heading": {"type": "boolean"},
+        "merge_is_heading": {"type": "boolean"},
+        "heading_column": {"type": ["string", "null"]},
+        "reason": {"type": "string"},
+    },
+    "required": ["heading_patterns", "bold_is_heading", "merge_is_heading",
+                 "heading_column", "reason"],
+    "additionalProperties": False,
+}
+
+
+def _rule_lines(sample):
+    """`행번호<TAB>표시<TAB>글` — 표시는 `굵게`·`들여쓰기n`·`병합` 중 있는 것(없으면 `-`)."""
+    out = []
+    for s in sample:
+        marks = [m for m, on in (("굵게", s.get("bold")),
+                                 (f"들여쓰기{s.get('indent')}", s.get("indent")),
+                                 ("병합", s.get("merge"))) if on]
+        out.append(f"{s.get('row')}\t{','.join(marks) or '-'}\t{s.get('text', '')}")
+    return "\n".join(out)
+
+
+def infer_rules(frame, sample):
+    """⑦ 안의 **계층 규칙 선언** 실호출 — 시트 하나의 앞 N행을 보고 규칙(데이터)을 받는다.
+
+    검사는 파서가 한다(`parser.struct_rule.check` — 결정적). 여기는 보내고 받을 뿐이고,
+    받은 것에 지시문 판본을 붙인다(재현 조건 — 보존 파일에 함께 남는다).
+    """
+    out = gateway.chat([{"role": "system", "content": gateway.prompt("struct_rule")},
+                        {"role": "user", "content": f"시트: {frame}\n" + _rule_lines(sample)}],
+                       json_schema=STRUCT_RULE_SCHEMA, point="struct_rule")
+    if isinstance(out, dict):
+        out["prompt_version"] = gateway.prompt_version("struct_rule")
+    return out
+
+
+def rule_inferrer():
+    """mock이면 None(구판과 같은 동작 — 통째 + 큐), 아니면 실호출 함수 — `struct_mapper()`와 같은 모양."""
+    if gateway.use_mock():
+        return None
+    gateway.require("struct_rule")
+    return infer_rules

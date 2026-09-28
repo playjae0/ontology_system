@@ -158,7 +158,10 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
                             # 두 경로(지도·어댑터) 모두 같은 자리에 실리고, 지도
                             # 경로면 고른 레벨과 분포가 `레벨_선택`에 함께 온다.
                             "split": [{"doc_id": r.doc_id,
-                                       **(r.report.get("split") or {})}
+                                       **(r.report.get("split") or {}),
+                                       # B87 ② — 인입 때 선언이 필요한 시트(리허설은 파악만)
+                                       "계층_선언_필요": (r.report.get("struct_rule")
+                                                         or {}).get("대상_시트")}
                                       for r in results if r.report.get("split")],
                             # **형태 판정**(B58 ⑤) — `split`과 같은 자리다. 구획 1은
                             # `summary·anomalies·normal` 3층으로 닫혀 있어(D-79)
@@ -507,7 +510,9 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 # 가리키는 것은 좌표 층의 골격이라, 품질층 doc_type의 리허설이
                 # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
                 mod, doc_id_of(s), s, layer=coord_layer(),
-                **{**injections(), "pick_coord": pick},
+                # **계층 규칙 선언은 주입하지 않는다**(B87 ② — generate는 파악만):
+                # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
+                **{**injections(), "pick_coord": pick, "infer_rules": None},
                 max_rows=rows, sheet_roles=_roles.get(str(Path(s).resolve())),
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
@@ -523,6 +528,12 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 if reh.get("truncated") else "")
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
               f"조각 {r.report.get('pieces', 0)}{part}")
+        _sr = r.report.get("struct_rule") or {}
+        if _sr.get("대상"):
+            # 대상 시트만 적는다 — 나머지는 고정 규칙으로 섰다(B87 ②)
+            print(f"   계층 — 고정 규칙으로 안 선 시트 {_sr['대상']}장: 인입 때 선언 필요 "
+                  f"({' · '.join(_sr.get('대상_시트') or [])})"
+                  f" — 나머지는 고정 규칙으로 선다")
 
     # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
     rehearsal = _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract)

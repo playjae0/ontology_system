@@ -290,7 +290,7 @@ def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revi
     if use_basic:
         # **제안이 서지 않는 표본에는 거부한다** — 조용히 LLM 생성으로 떨어지면 사람은
         # «기본 어댑터로 등록됐다»고 믿는다. 거부는 사유를 들고 멈춘다.
-        proposal = draft_mod.basic_adapter_proposal(samples)
+        proposal = draft_mod.basic_adapter_proposal(samples, said_prose=True)
         if proposal is None:
             draft_mod._refuse_basic(doc_type, layer, samples)
         return _use_basic(doc_type, layer, samples, hint, proposal, revise)
@@ -316,7 +316,7 @@ def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revi
             # **답이 곧 `--use-basic`이다** — 제안이 서지 않으면 그 플래그와 **같은
             # 거부**를 낸다(문면 한 자리). 조용히 LLM 생성으로 흘리지 않는다: 사람은
             # 「산문이라고 답했다」고 믿는데 LLM이 도는 것이 이 항목이 없애려는 상태다.
-            _prop = draft_mod.basic_adapter_proposal(samples)
+            _prop = draft_mod.basic_adapter_proposal(samples, said_prose=True)
             draft_mod.save_form(doc_type, _judged, _by)
             if not _prop:
                 draft_mod._refuse_basic(doc_type, layer, samples)

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-from parser import struct_map
+from parser import struct_map, struct_rule
 
 ADAPTER = {
     "doc_type": "prose_xlsx_basic",
@@ -41,8 +41,8 @@ ADAPTER = {
 
 PATH_HEADING = "heading"        # 계층 분할 — 정상 경로
 PATH_FLAT = "flat"              # 헤딩 0건 — 시트 통째 (조용한 오파싱을 만들지 않는다)
+PATH_RULE = "rule"              # 규칙 선언을 적용해 계층이 섰다 (B87 ②)
 
-_NUM = re.compile(ADAPTER["expects"]["heading_pattern"])
 _CELL = re.compile(r"^([A-Z]+)(\d+)$")
 
 # **가로 병합만 구획 제목의 신호다.** 세로 병합(`A4:A31`)은 표의 상동 셀이지
@@ -90,6 +90,7 @@ def _wide_merges(sheet):
 
 # 헤딩 신호의 이름 — 화면·기록이 같은 말을 쓴다 (B68 ①)
 SIG_NUM, SIG_MERGE, SIG_BOLD = "번호", "가로병합", "굵게+들여쓰기"
+SIG_RULE = "규칙 선언"          # B87 ② — 선언의 패턴으로 잡은 제목
 MAP_SOURCE = "adapter:basic_prose_xlsx"
 
 
@@ -98,28 +99,32 @@ def _rows_of(sheet, col):
 
     | 신호 | 레벨 | 왜 이 순서인가 |
     |---|---|---|
-    | 번호 패턴 `1.2.3` | 점의 개수 | 사람이 **직접 적은** 깊이다 — 가장 강한 근거 |
+    | 번호 패턴 군(B87 ①) | 점 번호는 점의 개수 · 다른 군은 시트 안 첫 등장 순서 | 사람이 **직접 적은** 깊이다 — 가장 강한 근거 |
     | 가로 병합 | 1 | 구획 제목의 관용 서식. 깊이 정보는 없다 |
     | 굵게 | 들여쓰기 + 1 | 서식은 깊이를 말하지 않으므로 들여쓰기가 보탠다 |
     | 들여쓰기만 | — | **헤딩이 아니다.** 본문 인용도 들여쓴다 |
 
     들여쓰기 단독을 헤딩으로 치지 않는 것이 핵심이다 — 치면 인용문 한 줄이 구획을
-    열어 그 아래 본문이 통째로 엉뚱한 `section`을 얻는다.
+    열어 그 아래 본문이 통째로 엉뚱한 `section`을 얻는다. 번호 군과 짧은 행 조건
+    (`struct_map.HEADING_MAX_CHARS`)은 `parser.struct_map`이 소유한다 — 패턴이 두 벌이면
+    어댑터와 지도 경로의 제목이 갈린다.
     """
     cells = sheet.get("cells") or {}
     bold = set(sheet.get("bold") or [])
     indent = sheet.get("indent") or {}
     wide = _wide_merges(sheet)
-    lines, rows = [], []
+    lines = []
     for r in range(1, int(sheet.get("max_row") or 0) + 1):
+        text = str(cells.get(f"{col}{r}", "")).strip()
+        if text:
+            lines.append((r, text))
+    nums = struct_map.number_levels(lines)
+    rows = []
+    for r, _text in lines:
         a = f"{col}{r}"
-        text = str(cells.get(a, "")).strip()
-        if not text:
-            continue
-        lines.append((r, text))
-        m = _NUM.match(text)
-        if m:
-            lv, sig = len(m.group(1).split(".")), SIG_NUM
+        if r in nums:
+            lv, fam = nums[r]
+            sig = _num_signal(fam)
         elif r in wide:
             lv, sig = 1, SIG_MERGE
         elif a in bold:
@@ -133,6 +138,13 @@ def _rows_of(sheet, col):
     return lines, rows
 
 
+def _num_signal(fam):
+    """신호 이름에 **군**을 싣는다(B87 ①) — 점 번호는 구판 이름 그대로(`번호`)."""
+    if fam == struct_map.DOTTED:
+        return SIG_NUM
+    return f"{SIG_NUM}({struct_map.FAMILY_LABEL.get(fam, fam)})"
+
+
 def split_basis(rows):
     """`분할_기준` 문면 — 헤딩을 **어느 신호로** 잡았나를 신호별 수로.
 
@@ -142,16 +154,110 @@ def split_basis(rows):
     for r in rows:
         if r.get("heading") and r.get("signal"):
             cnt[r["signal"]] = cnt.get(r["signal"], 0) + 1
-    inner = " · ".join(f"{k} {cnt[k]}" for k in (SIG_NUM, SIG_MERGE, SIG_BOLD)
-                       if cnt.get(k))
+    # 순서: 점 번호 → 다른 번호 군(처음 나온 순) → 가로병합 → 굵게 (B87 ①)
+    keys = ([SIG_NUM] + [k for k in cnt if k.startswith(SIG_NUM + "(")]
+            + [SIG_RULE, SIG_MERGE, SIG_BOLD])
+    inner = " · ".join(f"{k} {cnt[k]}" for k in keys if cnt.get(k))
     return f"어댑터 신호: {inner or '없음'}"
 
 
-def extract(raw, struct_map_fn=None) -> list[dict]:
+def _fixed_ok(rows):
+    """고정 규칙으로 계층이 섰나 — 제목이 있고 레벨이 단조다(⑦ 타당성 검사와 같은 규칙)."""
+    return any(r["heading"] for r in rows) and not struct_map.monotonic_reasons(rows)
+
+
+def rule_frames(raw):
+    """**고정 규칙으로 안 선 시트** — 규칙 선언의 대상이다(B87 ②). 예고와 검수가 읽는다.
+
+    `size_out_of_band`(계층은 섰는데 크기가 구간 밖)는 대상이 아니다 — 큐만 뜬다.
+    """
+    out = []
+    for sh in raw.get("sheets") or []:
+        col = _content_column(sh)
+        if not col:
+            continue
+        lines, rows = _rows_of(sh, col)
+        if lines and not _fixed_ok(rows):
+            out.append(sh.get("name") or "Sheet1")
+    return out
+
+
+def rule_sample(sheet, col):
+    """모델이 보는 재료 — 본문 열 **앞 N행**의 글과 표시(굵게 · 들여쓰기 · 가로병합 시작).
+
+    글자 크기는 리더가 내지 않는다(D-168 ⑤) — 여기 없는 표시는 모델도 보지 않는다.
+    """
+    cells = sheet.get("cells") or {}
+    bold = set(sheet.get("bold") or [])
+    indent = sheet.get("indent") or {}
+    wide = _wide_merges(sheet)
+    out = []
+    for r in range(1, int(sheet.get("max_row") or 0) + 1):
+        a = f"{col}{r}"
+        text = str(cells.get(a, "")).strip()
+        if not text:
+            continue
+        out.append({"row": r, "text": text[:struct_rule.RULE_SAMPLE_CHARS],
+                    "bold": a in bold, "indent": int(indent.get(a, 0) or 0),
+                    "merge": r in wide})
+        if len(out) >= struct_rule.RULE_SAMPLE_ROWS:
+            break
+    return out
+
+
+def _rows_by_rule(sheet, col, decl):
+    """선언을 **데이터로** 적용한다 — `(줄 목록, 헤딩 판정 rows)` · 판정 순서는 고정 규칙과 같다
+    (패턴 > 가로병합 > 굵게). 제목 후보는 짧은 행만(`struct_map.HEADING_MAX_CHARS`).
+    """
+    cells = sheet.get("cells") or {}
+    bold = set(sheet.get("bold") or [])
+    indent = sheet.get("indent") or {}
+    wide = _wide_merges(sheet) if decl.get("merge_is_heading") else set()
+    hcol = decl.get("heading_column") or col
+    pats = [(re.compile(p["match"]), p["level"]) for p in decl.get("heading_patterns") or []]
+    lines, rows = [], []
+    for r in range(1, int(sheet.get("max_row") or 0) + 1):
+        body = str(cells.get(f"{col}{r}", "")).strip()
+        head = str(cells.get(f"{hcol}{r}", "")).strip() if hcol != col else body
+        text = body or head
+        if not text:
+            continue
+        lines.append((r, text))
+        lv, sig = 0, None
+        if head and len(head) <= struct_map.HEADING_MAX_CHARS:
+            lv = next((l for rx, l in pats if rx.match(head)), 0)
+            sig = SIG_RULE if lv else None
+        if not lv and r in wide:
+            lv, sig = 1, SIG_MERGE
+        if not lv and decl.get("bold_is_heading") and f"{hcol}{r}" in bold:
+            lv, sig = int(indent.get(f"{hcol}{r}", 0)) + 1, SIG_BOLD
+        rows.append({"row": r, "heading": bool(lv), "level": lv, "signal": sig})
+    return lines, rows
+
+
+def _by_rule(sh, name, col, fn):
+    """선언을 묻고 적용한다 — `(lines, rows, 선언 또는 None, 못 선 사유 또는 None)`."""
+    decl = fn(name, rule_sample(sh, col))
+    if not decl:
+        return None, None, None, None                   # 부르지 않았다(ref 시트 등)
+    if decl.get("_rejected"):
+        return None, None, None, "규칙 선언을 버렸다 — " + "; ".join(decl["_rejected"])[:200]
+    lines, rows = _rows_by_rule(sh, col, decl)
+    if _fixed_ok(rows):
+        return lines, rows, decl, None
+    return None, None, None, "규칙 선언을 적용해도 계층이 서지 않는다"
+
+
+def extract(raw, struct_map_fn=None, struct_rule_fn=None) -> list[dict]:
     """reader 원시 추출물 → 청크 리스트. **시트가 프레임이다.**
 
     `struct_map_fn`은 받되 **부르지 않는다** — 계약(§6.4-2)의 서명을 맞추기 위한
     것이고, 이 계열은 규칙이 레벨을 정하므로 지도 패스가 필요 없다([개정] B58-1).
+
+    `struct_rule_fn(frame, sample)`은 **고정 규칙으로 안 선 시트에서만** 부른다(B87 ②) —
+    코어가 주입하는 훅이고(⑦ 호출 태그 `struct_rule`), 돌아온 선언을 **데이터로** 적용한다.
+    없으면(mock · 등록 리허설 · 킷 관문) **구판과 같은 동작**이다. 선언이 안 서면 구판의
+    길로 떨어진다 — 제목 0건이면 통째 + 큐, 비단조면 고정 규칙 분할.
     """
     exp = ADAPTER["expects"]
     sep = exp["section_sep"]
@@ -164,6 +270,11 @@ def extract(raw, struct_map_fn=None) -> list[dict]:
         lines, rows = _rows_of(sh, col)
         if not lines:
             continue
+        path, decl, why = PATH_HEADING, None, None
+        if struct_rule_fn is not None and not _fixed_ok(rows):
+            l2, r2, decl, why = _by_rule(sh, name, col, struct_rule_fn)
+            if decl:
+                lines, rows, path = l2, r2, PATH_RULE
 
         def locator(a, b, _n=name, _c=col):
             base = exp["frame_format"].format(sheet=_n, a=a)
@@ -178,19 +289,22 @@ def extract(raw, struct_map_fn=None) -> list[dict]:
                 "meta": {"split_path": PATH_FLAT, "frame": name,
                          "section_path": name, "content_column": col,
                          "hierarchy_unresolved": True,
-                         "unresolved_reason": "계층 신호 0건 — 시트를 통째로 실었다"},
+                         "unresolved_reason": "계층 신호 0건 — 시트를 통째로 실었다"
+                         + (f" · {why}" if why else "")},
             })
             continue
 
         smap = {"rows": rows}
         stats = struct_map.level_stats(smap, lines)
-        pick, why, oor = struct_map.choose_level(stats)
+        pick, reason, oor = struct_map.choose_level(stats)
         smap.update({"레벨_분포": stats, "분할_레벨": pick,
-                     "분할_레벨_사유": why, "분할_레벨_구간밖": oor})
+                     "분할_레벨_사유": reason, "분할_레벨_구간밖": oor})
         for c in struct_map.split(smap, lines, locator, sep):
-            meta = {**(c.get("meta") or {}), "split_path": PATH_HEADING,
+            meta = {**(c.get("meta") or {}), "split_path": path,
                     "frame": name, "content_column": col,
                     "split_level": pick, "section_path": c.get("section") or name}
+            if decl:
+                meta["rule_patterns"] = struct_rule.patterns_of(decl)
             out.append({**c, "section": c.get("section") or name, "meta": meta})
     return out
 

@@ -487,7 +487,7 @@ def save_form(doc_type, judged, by):
     _save_state(doc_type, {**st, "doc_type": doc_type})
 
 
-def basic_adapter_proposal(samples):
+def basic_adapter_proposal(samples, *, said_prose=False):
     """분할이 **자명한 계열**이면 기본 어댑터를 제안한다 (파서_명세 §5 규약 5 · C13).
 
     자명한 것을 매번 생성시키면 검수 비용만 늘고 산출은 같다. 다만 임계를 넘는
@@ -502,7 +502,7 @@ def basic_adapter_proposal(samples):
     # 여기엔 포맷이 주는 경계가 없어, 신호 넷으로 계층이 잡히지 않으면 「분할
     # 자명」이 성립하지 않는다. 그 판정은 어댑터가 실제로 돌려 본 결과로 한다.
     if kinds and kinds <= set(reader.GRID_EXT):
-        return _basic_prose_xlsx_proposal(samples)
+        return _basic_prose_xlsx_proposal(samples, said_prose=said_prose)
     if kinds != {".pptx"}:
         return None
     # **임계는 어댑터가 소유한다**(문서 6 §6.4-5) — 판단 상수는 `ADAPTER.expects`에
@@ -529,7 +529,7 @@ def basic_adapter_proposal(samples):
                      "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
 
 
-def _basic_prose_xlsx_proposal(samples):
+def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
     """격자 포맷(xlsx·csv)의 위임 제안 — **계층이 서면 산문으로 읽는다** (B58 ③).
 
     `.pptx`(슬라이드)·`.pdf`(쪽)는 포맷이 경계를 주지만 스프레드시트는 주지 않는다.
@@ -555,8 +555,15 @@ def _basic_prose_xlsx_proposal(samples):
         chunks += len(basic_prose_xlsx.extract(raw))
     if any(f["verdict"] == form.TABLE for f in forms):
         return None                     # 표로 자동 판정된 표본이 섞였다
+    # **고정 규칙으로 안 선 시트는 인입 때 규칙 선언으로 간다**(B87 ② — generate는
+    # 파악만). 그래서 「시트당 1청크」가 곧 거부가 아니다 — 다만 그 표본이 **산문이라는
+    # 근거**가 있어야 한다: 형태 판정이 prose로 섰거나 사람이 prose라고 답했다(`--use-basic`
+    # · 형태 문의의 답). 근거가 없으면 구판대로 거부한다 — 관리계획서 같은 표가 통청크로
+    # 들어오는 것을 막던 자리다(D-168 ⑥).
+    need = sum(len(basic_prose_xlsx.rule_frames(reader.read(str(s)))) for s in samples)
     if not frames or chunks <= len(samples):
-        return None                     # 시트당 1청크 = 분할이 서지 않았다
+        if not (said_prose or all(f["verdict"] == form.PROSE for f in forms)):
+            return None                 # 시트당 1청크 = 분할이 서지 않았다 · 산문 근거 없음
     _human = [f for f in forms if not f["auto"]]
     return {"adapter": "parser/adapters/basic_prose_xlsx.py",
             "form": [{"signals": f["signals"], "votes": f["votes"],
@@ -571,7 +578,10 @@ def _basic_prose_xlsx_proposal(samples):
                      + (f" · **목표 구간 밖 {oor}프레임** — 최근접 레벨로 떨어졌다"
                         f"(검수 화면과 큐에 남는다)" if oor else "")
                      + (f" · **형태 판정이 사람에게 올라온 표본 {len(_human)}부** — "
-                        f"신호값을 보고 정한다" if _human else ""))}
+                        f"신호값을 보고 정한다" if _human else "")
+                     + (f" · **고정 규칙으로 안 선 시트 {need}장 — 인입 때 선언 필요**"
+                        f"(규칙 선언 · B87)" if need else "")),
+            "rule_frames": need}
 
 
 def _basic_pdf_proposal(samples):

@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import logging
 
-from . import normalizer, preflight, struct_map, tagger, validator
+import inspect
+import sys
+
+from . import normalizer, preflight, struct_map, struct_rule, tagger, validator
 from .reader import head, read
 
 _LOG = logging.getLogger("onto.parser.pipeline")
@@ -137,7 +140,7 @@ def _page_map(path, raw):
 
 
 def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps,
-                  made_maps, map_picks, src_hash):
+                  made_maps, map_picks, src_hash, made_rules=None):
     """④ 이미지 요약 — 보존분 재사용과 새로 받은 것의 저장. 돌려주는 것은 조각이다.
 
     `parse`에서 단계로 떼어냈다(B78 2c) — 지도·요약의 보존 규칙이 한 자리에 모인다.
@@ -160,6 +163,9 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
     fresh = {}
     if made_maps:
         fresh["maps"] = {**kept_maps, **made_maps}
+    if made_rules:
+        # **계층 규칙 선언도 같은 파일·같은 원본 해시**(B87 ②) — 같은 파일이면 같은 경계다.
+        fresh["rules"] = {**(kept_map.get("rules") or {}), **made_rules}
     if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
         fresh["image_summaries"] = kept_img
     if fresh:
@@ -258,11 +264,76 @@ def _read_doc(res, path, sheet_roles, max_rows):
     return raw
 
 
+def _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks, map_structure,
+             src_hash, rule_fn):
+    """③ extract — prose면 지도 훅(⑦)과 **받는 어댑터에만** 규칙 선언 훅(B87 ②)을 건넨다.
+
+    `struct_rule_fn`을 모든 어댑터에 넘기지 않는 이유: 생성 어댑터·다른 기본 어댑터의
+    서명은 `extract(raw, struct_map_fn=None)`이고, 모르는 인자를 넘기면 `TypeError`가
+    **어댑터 결함처럼** 보인다. 서명을 보고 건넨다.
+    """
+    if adapter.ADAPTER.get("payload_kind") != "prose":
+        return adapter.extract(raw)
+    kw = {"struct_map_fn": _map_hook(doc_id, kept_maps, made_maps, map_picks,
+                                     ask=map_structure, src_hash=src_hash)}
+    if rule_fn is not None and "struct_rule_fn" in _params(adapter.extract):
+        kw["struct_rule_fn"] = rule_fn
+    try:
+        return adapter.extract(raw, **kw)
+    except TypeError:
+        return adapter.extract(raw)                              # 지도 훅 없는 어댑터
+
+
+def _params(fn):
+    try:
+        return inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return {}
+
+
+def _adapter_attr(adapter, name):
+    """어댑터의 이름 — **위임 래퍼면 `extract`의 주인 모듈에서** 찾는다.
+
+    이미 등록된 산문 엑셀 doc_type은 `extract`·`level_report`만 다시 내보내는 래퍼다
+    (`registry/review/<dt>/adapter.py` — 사내 등록부에 이미 있다). 래퍼를 다시 만들게 하지
+    않고 기본 어댑터의 새 함수(B87 `rule_frames`)가 닿게 한다.
+    """
+    got = getattr(adapter, name, None)
+    if got is None:
+        owner = sys.modules.get(getattr(getattr(adapter, "extract", None), "__module__", ""))
+        got = getattr(owner, name, None)
+    return got
+
+
+def _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules, sheet_roles,
+               rule_notice):
+    """규칙 선언 훅과 **예고** — 대상 = 고정 규칙으로 안 선 시트(`ref` 시트는 빼고 — LLM 0).
+
+    예고는 **부르기 전에** 낸다: `계층 규칙 — 안 선 시트 n장 → LLM ≤ k회(재사용 m)`.
+    돌려주는 것은 `(훅 또는 None, 대상 시트 목록)`이다.
+    """
+    frames = _adapter_attr(adapter, "rule_frames")
+    if not callable(frames):
+        return None, []
+    skip = {n for n, r in (sheet_roles or {}).items() if r == "ref"}
+    targets = [f for f in frames(raw) if f not in skip]
+    if infer_rules is None:
+        # **대상은 세되 부르지 않는다** — mock · 등록 리허설 · 킷 관문. 검수 화면이
+        # 「인입 때 선언 필요」를 이 목록으로 말한다(generate는 파악만 — B87 ②).
+        return None, targets
+    kept = {f: d for f, d in (kept_map.get("rules") or {}).items() if f in targets}
+    if rule_notice and targets:
+        rule_notice({"단계": "예고", "대상": len(targets), "재사용": len(kept),
+                     "호출_상한": len(targets) - len(kept)})
+    return struct_rule.hook(infer_rules, kept=kept, made=made_rules, skip=skip,
+                            tally=tally), targets
+
+
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
-          sheet_roles=None):
+          sheet_roles=None, infer_rules=None, rule_notice=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -272,6 +343,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     | `summarize(ref, image=, mime=, context=, page=)` | ④이미지 요약 | 실호출 | 고정 문자열 |
     | `map_structure(doc_id, lines)` | ⑦구조 지도 | 실호출 | 번호 패턴 휴리스틱 |
     | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
+    | `infer_rules(frame, sample)` | ⑦ 안의 계층 규칙 선언(B87 ②) | 안 선 시트만 실호출 | 구판과 같다(통째 + 큐) |
 
     만드는 것은 CLI 진입점이다(`cli.parse.injections()`) — 모드는 거기서 한 번 정해
     아래로 내려온다. 「함수 없이 실호출 모드」는 그 조립 지점이 막는다.
@@ -302,19 +374,17 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
                         f"양식 표류 — 어댑터 '{a['doc_type']}' v{a.get('adapter_version')}",
                         detail)
 
+    made_rules, tally = {}, {}
+    rule_fn, targets = _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules,
+                                  sheet_roles, rule_notice)
     try:                                                             # ③ extract
-        if a.get("payload_kind") == "prose":
-            try:
-                pieces = adapter.extract(
-                    raw, struct_map_fn=_map_hook(doc_id, kept_maps, made_maps,
-                                                 map_picks, ask=map_structure,
-                                                 src_hash=src_hash))
-            except TypeError:
-                pieces = adapter.extract(raw)                        # 지도 훅 없는 어댑터
-        else:
-            pieces = adapter.extract(raw)
+        pieces = _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks,
+                          map_structure, src_hash, rule_fn)
     except Exception as e:                                           # C14 — 통째 실패
         return res.fail("parse_failure", f"{type(e).__name__}: {e}")
+    if targets:
+        res.report["struct_rule"] = {**struct_rule.summary(pieces, tally, targets),
+                                     "주입": rule_fn is not None}
 
     pieces, rep = normalizer.normalize(                               # ④ normalizer
         pieces,
@@ -329,7 +399,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
-                           kept_maps, made_maps, map_picks, src_hash)
+                           kept_maps, made_maps, map_picks, src_hash, made_rules)
     pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes)
     # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
     pieces = _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
