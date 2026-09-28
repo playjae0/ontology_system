@@ -158,7 +158,10 @@ def build_view(st, results, harness_ok, harness_out, rehearsal=None):
                             # 두 경로(지도·어댑터) 모두 같은 자리에 실리고, 지도
                             # 경로면 고른 레벨과 분포가 `레벨_선택`에 함께 온다.
                             "split": [{"doc_id": r.doc_id,
-                                       **(r.report.get("split") or {})}
+                                       **(r.report.get("split") or {}),
+                                       # B87 ② — 인입 때 선언이 필요한 시트(리허설은 파악만)
+                                       "계층_선언_필요": (r.report.get("struct_rule")
+                                                         or {}).get("대상_시트")}
                                       for r in results if r.report.get("split")],
                             # **형태 판정**(B58 ⑤) — `split`과 같은 자리다. 구획 1은
                             # `summary·anomalies·normal` 3층으로 닫혀 있어(D-79)
@@ -507,7 +510,9 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 # 가리키는 것은 좌표 층의 골격이라, 품질층 doc_type의 리허설이
                 # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
                 mod, doc_id_of(s), s, layer=coord_layer(),
-                **{**injections(), "pick_coord": pick},
+                # **계층 규칙 선언은 주입하지 않는다**(B87 ② — generate는 파악만):
+                # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
+                **{**injections(), "pick_coord": pick, "infer_rules": None},
                 max_rows=rows, sheet_roles=_roles.get(str(Path(s).resolve())),
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
@@ -523,6 +528,12 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 if reh.get("truncated") else "")
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
               f"조각 {r.report.get('pieces', 0)}{part}")
+        _sr = r.report.get("struct_rule") or {}
+        if _sr.get("대상"):
+            # 대상 시트만 적는다 — 나머지는 고정 규칙으로 섰다(B87 ②)
+            print(f"   계층 — 고정 규칙으로 안 선 시트 {_sr['대상']}장: 인입 때 선언 필요 "
+                  f"({' · '.join(_sr.get('대상_시트') or [])})"
+                  f" — 나머지는 고정 규칙으로 선다")
 
     # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
     rehearsal = _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract)
@@ -584,6 +595,35 @@ def _promote(doc_type, st):
     return (a_rel, s_rel)
 
 
+def _status_registered(doc_type, st, reg):
+    """**등록된 doc_type의 재확인**(B88 ③) — 코드 반입 뒤 한 줄: 「지금 코드로 관문 PASS/FAIL」.
+
+    관문은 **운영 어댑터**(등록부가 가리키는 `adapters/<dt>.py`·`schemas/<dt>.json`)로 돈다 —
+    검수 사본은 확정 뒤 손댈 수 있어 운영과 다를 수 있다. 등록부의 파일은 **건드리지
+    않는다**: 하네스(킷 — 별도 프로세스)만 부르고 시스템 필드 기입·대장 동기화·상태 저장은
+    하지 않는다(그 셋은 등록 흐름의 일이다). 다음 줄에 `confirm`은 없다 — 이미 등록됐다.
+    """
+    from cli.register import samples as samples_mod
+    ad, sc = registry.at(reg["adapter"]), registry.at(reg["schema"])
+    samples = st.get("samples") or []
+    roles = samples_mod.sample_roles(doc_type, st, samples) if samples else {}
+    ok, out = gate.harness(ad, sc, samples, package=_dir(doc_type) / "input_package.json",
+                           doc_type=doc_type, roles_map=roles)
+    print(f"■ 등록됨 — {doc_type} · 지금 코드로 관문 {'PASS' if ok else 'FAIL'} "
+          f"(운영 어댑터 {paths.show(ad)} · 표본 {len(samples)}부)")
+    if ok:
+        return 0
+    for code, label, detail in gate.fail_lines(out):
+        print(f"  [FAIL] {code or ''}  {label}" + (f" — {detail}" if detail else ""))
+    print("  ▶ 다음 줄:")
+    if st.get("use_basic"):
+        # 고정 어댑터는 재생성 대상이 아니다(B65 ④) — 코드와 표본 사이의 결함이다.
+        print("     고정 어댑터다 — 이 FAIL은 코드 반입의 결함이다: 위 태그와 함께 허브로")
+    else:
+        print(f"     python -m cli.register review {doc_type} --instruct \"…\"")
+    return 1
+
+
 def cmd_status(doc_type):
     """관문 상태 한 화면 (B59 ①) — **화면이 흘러간 뒤 다시 볼 자리.**
 
@@ -597,6 +637,9 @@ def cmd_status(doc_type):
                          f"  ▶ 다음 줄:\n"
                          f"     python -m cli.register generate {doc_type} "
                          f"<층> <표본...>")
+    _reg = store.read(store.DOC_TYPES, {}).get(doc_type) or {}
+    if _reg.get("status") == "registered" and _reg.get("adapter"):
+        return _status_registered(doc_type, st, _reg)
     if gate.regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate.gate_block(doc_type, st)
         return 1

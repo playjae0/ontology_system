@@ -272,6 +272,13 @@ def _split(rows):
                    '(자동으로 지도 패스로 넘기지 않는다): '
                    + e(" · ".join(f"{d}/{p.get('프레임')} 레벨 {p.get('분할_레벨')}"
                                   for d, p in _oor)) + '</p>')
+    # **고정 규칙으로 안 선 시트**(B87 ②) — 등록은 파악만 하고 인입이 시트마다 선언을 받는다.
+    _need = [(r.get("doc_id"), s) for r in rows for s in (r.get("계층_선언_필요") or [])]
+    if _need:
+        out.append('<p class="warn-note"><b>고정 규칙으로 계층이 안 선 시트</b> — 이 등록은 '
+                   '그대로 쓰고 <b>인입 때 시트마다 규칙 선언</b>(LLM · 기록 · 같은 파일 재사용)을 '
+                   '받는다. 지금 리허설은 통째로 실었다: '
+                   + e(" · ".join(f"{d}/{s}" for d, s in _need)) + '</p>')
     out += ['<h3 style="font-size:15px;margin:16px 0 4px">분할 크기 분포</h3>',
             '<p style="font-size:12px;color:#666;margin:0 0 6px">'
             '목표 구간 밖은 <b>짧은 쪽·긴 쪽을 갈라</b> 센다 — 처방이 다르다: '

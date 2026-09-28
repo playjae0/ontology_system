@@ -63,7 +63,6 @@ SKIP_DIRS = ("docs/archive/", "docs/안건/", "docs/회귀스위트/자산/", ".
              "adapters/", "review/", "export/", "golden/", "data/", "work/",
              "prompts/")
 SKIP_FILES = ("docs/spec/개정대장.md", "DECISIONS.md", "PROGRESS.md",     # 이력이다
-              "docs/실측_대장.md",
               "docs/구조도/구조_추출.json", "docs/구조도/부품카드.md",
               "docs/구조도/부품카드.json", "docs/구조도/구조_지도.md",
               "docs/회귀스위트/점검_경로.py")                # 표가 여기 있다

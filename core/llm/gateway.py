@@ -82,7 +82,8 @@ POINTS = {
 # (문서 7 §7.6-B-2) — 한 지점 안에 호출이 여럿일 수 있고, 칸 대장이 칸마다 태그를
 # 준다(1.3 문답 · 1.4 생성). 화면·로그는 태그를 받아도 **어느 지점인가**를 답해야
 # 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
-CALL_TAGS = {"interview": "generate"}
+CALL_TAGS = {"interview": "generate",
+             "struct_rule": "struct_map"}      # B87 ② — 계층 규칙 선언은 ⑦ 안의 호출이다
 
 
 def point_label(point):

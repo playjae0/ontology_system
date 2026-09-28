@@ -204,6 +204,11 @@ def register_doc(env, dh, routing=None):
         entry["duplicate_ok"] = prev["duplicate_ok"]
     if routing:
         entry["routing"] = routing
+    # **그림을 요약하지 않았다는 사실**(B88 ① `--no-images`) — 사람이 명시적으로 뺀 것이
+    # 인입 기록에 남아야 「그 문서의 그림은 근거에 없다」를 나중에 안다.
+    _skip = (env.get("context") or {}).get("images_skipped")
+    if _skip:
+        entry["images_skipped"] = _skip
     reg[doc_id] = entry
     store.write(store.DOC_REGISTRY, reg)
 

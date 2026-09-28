@@ -130,6 +130,83 @@ FLAT = "flat"                 # 평면 폴백 — 헤딩 없이 통으로
 MAPPED = "mapped"
 
 
+# ---------------------------------------------------------------- 제목 번호 패턴 군 (B87 ①)
+# 같은 doc_type이라도 파일마다 계층 표기가 다르다(`1.` `1.1` / `가.` `(1)` / `Ⅰ.`).
+# 점 찍은 숫자만 알던 구판은 `가.` `(1)`을 쓴 시트의 제목을 하나도 못 알아보고 시트를
+# 통째 한 청크로 냈다. 군은 **구문 마커**이지 층 어휘가 아니다(B1).
+#
+# `(이름, 화면 표기, 패턴)` — **순서가 판정 순서다**: 괄호 숫자 `1)`은 점 찍은 숫자보다
+# 먼저 본다(구판은 `1)`을 깊이 1의 점 번호로 읽었다 — 기존 표본에 그 표기는 0건).
+# 로마 숫자는 대문자보다 먼저다 — `I.` `V.` `X.`는 로마로 읽는다(가결정 · D-168 ①).
+# 글머리표(`-` `•` `·`)는 **제목이 아니다** — 목록이다(군에 없다).
+DOTTED = "점번호"
+HEADING_FAMILIES = (
+    ("괄호숫자", "(1)", re.compile(r"^(?:\(\d{1,3}\)\s*|\d{1,3}\)\s+)\S")),
+    (DOTTED, "1.", re.compile(r"^(\d+(?:\.\d+)*)[.)]?\s+")),
+    ("장절", "제1장", re.compile(r"^제\s*\d+\s*[장절조편관]")),
+    ("로마", "Ⅰ.", re.compile(r"^(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVX]{1,4})\.\s*\S")),
+    ("대문자", "A.", re.compile(r"^[A-Z]\.\s+\S")),
+    ("한글", "가.", re.compile(r"^[가나다라마바사아자차카타파하]\.\s*\S")),
+    ("원숫자", "①", re.compile(r"^[①-⑳]\s*\S")),
+)
+FAMILY_LABEL = {name: label for name, label, _rx in HEADING_FAMILIES}
+
+# **제목 후보는 짧은 행만**(B87 ① — 러프하게 60자). 번호가 붙은 긴 행은 목록 항목이나
+# 본문이다: 「1) 설비는 …하여야 하며 …」를 제목으로 세우면 그 자리에서 청크가 끊긴다.
+HEADING_MAX_CHARS = 60
+
+
+def heading_family(text):
+    """제목 번호 패턴 — `(군, 깊이)` 또는 `None`. 깊이는 점 찍은 숫자만 1보다 크다."""
+    t = (text or "").strip()
+    if not t or len(t) > HEADING_MAX_CHARS:
+        return None
+    for name, _label, rx in HEADING_FAMILIES:
+        m = rx.match(t)
+        if m:
+            return name, (len(m.group(1).split(".")) if name == DOTTED else 1)
+    return None
+
+
+def number_levels(lines):
+    """`[(행, 글)]` → `{행: (레벨, 군)}` — **군 사이의 레벨은 시트 안에서 처음 나온 순서**다.
+
+    처음 본 군이 1단계, 다음에 처음 본 군이 그다음 … (한국 문서의 `Ⅰ. → 1. → 가. →
+    (1)` 관행이 문서마다 섞여 쓰이는 것을 따라간다). 점 찍은 숫자는 **제 깊이를 그대로**
+    쓰되 그 군이 시트에서 쓴 최대 깊이만큼 칸을 차지한다 — 점 번호만 쓰는 시트에서는
+    레벨 = 깊이이고(구판과 같다), `Ⅰ.` 아래의 `1.1`은 3단계다.
+    """
+    hits = [(r, *hf) for r, t in lines if (hf := heading_family(t))]
+    order, span = [], {}
+    for _r, fam, depth in hits:
+        if fam not in span:
+            order.append(fam)
+            span[fam] = 0
+        span[fam] = max(span[fam], depth)
+    base, acc = {}, 1
+    for fam in order:
+        base[fam] = acc
+        acc += span[fam]
+    return {r: (base[fam] + depth - 1, fam) for r, fam, depth in hits}
+
+
+def monotonic_reasons(rows):
+    """레벨이 **비단조**인 곳 — 첫 제목이 1이 아니거나 한 번에 두 단계 이상 내려간다.
+
+    `validate`의 레벨 검사와 같은 규칙이다(한 벌) — 규칙 선언을 부를지 정하는 조건이
+    그 검사와 갈리면 「고정 규칙이 섰다」의 뜻이 두 개가 된다.
+    """
+    out, prev = [], 0
+    for r in rows:
+        if not r.get("heading"):
+            continue
+        lv = r.get("level") or 0
+        if lv > prev + 1:
+            out.append(f"레벨 비단조 — {prev} → {lv} (row {r.get('row')})")
+        prev = lv if lv >= 1 else prev
+    return out
+
+
 # ---------------------------------------------------------------- ① 지도 산출
 def propose(doc_id, lines, ask=None, src_hash=None, *, frame=None):
     """지도 산출 — **함수가 오면 그것으로, 안 오면 번호 패턴 휴리스틱**(B48).
@@ -206,14 +283,10 @@ def validate(smap, lines):
         reasons.append(f"헤딩 0건 — 모델: {_note}" if _note
                        else "헤딩 0건 — 지도가 구조를 못 찾았다")
 
-    prev = 0
     for r in heads:
-        lv = r.get("level") or 0
-        if lv < 1:
+        if (r.get("level") or 0) < 1:
             reasons.append(f"헤딩인데 레벨이 없다 (row {r.get('row')})")
-        elif lv > prev + 1:
-            reasons.append(f"레벨 비단조 — {prev} → {lv} (row {r.get('row')})")
-        prev = max(lv, 0) if lv >= 1 else prev
+    reasons += monotonic_reasons(heads)
 
     want = {n for n, _ in lines}
     got = {r.get("row") for r in rows}
@@ -227,6 +300,10 @@ def validate(smap, lines):
 # 분할 레벨 선택의 목표 구간 — **가결정**(D-106 · 실측 후 조정 대상).
 # 명세는 값을 정하지 않는다(허브 참고치 5~40행).
 CHUNK_MIN, CHUNK_MAX = 5, 40
+# **글자 상한**(B87 ③ — 사용자 확정 「러프하게」 3,000자). 레벨 선택은 행으로 한다(위
+# 구간 그대로) — 22행이 300자일 수도 5,000자일 수도 있어서 **자른 뒤** 청크마다 글자를
+# 한 번 더 본다. 하한은 없다: 작은 청크를 합치면 구조가 바뀐다. 값의 근거는 D-168 ③.
+CHUNK_MAX_CHARS = 3000
 
 
 def level_stats(smap, lines):
@@ -351,7 +428,8 @@ def split(smap, lines, locator, sep=" > "):
         out.append({"source_locator": locator(buf[0], buf[-1]),
                     "section": sep.join(h for _, h in stack),
                     "text": "\n".join(text_of[n] for n in buf),
-                    "meta": dict(band_meta)})
+                    "meta": dict(band_meta),
+                    "_lines": [(n, text_of[n]) for n in buf]})   # 글자 상한이 쓴다 — 나가기 전에 뗀다
         buf.clear()
 
     for n, text in lines:
@@ -370,6 +448,65 @@ def split(smap, lines, locator, sep=" > "):
         deeper = {n: l for n, l in all_head.items() if l == pick + 1}
         if deeper:
             out = _resplit(out, deeper, lines, locator, sep)
+    deeper = {n for n, l in all_head.items() if pick and l == pick + 1}
+    return cap_chars(out, deeper, locator)
+
+
+def cap_chars(chunks, deeper, locator):
+    """**글자 상한**(B87 ③) — 넘는 청크만: 더 깊은 제목에서 한 단계 → 그래도 넘으면 행 경계.
+
+    셀 중간은 자르지 않는다 — 한 행이 혼자 상한을 넘으면 통째로 두고
+    `meta.over_char_cap`. 조각마다 `meta.char_cap_from`(원래 청크의 자리)을 싣는다 —
+    화면의 「글자 상한 초과 n청크 → m조각」이 그것을 센다. 상한 이하 청크는 **손대지
+    않는다**(바이트 동일 — 추출 체크포인트 재사용의 조건이다).
+    """
+    out = []
+    for c in chunks:
+        lines = c.pop("_lines", None)
+        if len(c.get("text") or "") <= CHUNK_MAX_CHARS or not lines:
+            out.append(c)
+            continue
+        parts, seg = [], []
+        for n, x in lines:                     # ① 더 깊은 제목에서 한 단계(지금 규칙)
+            if n in deeper and seg:
+                parts.append(seg)
+                seg = []
+            seg.append((n, x))
+        if seg:
+            parts.append(seg)
+        pieces = []
+        for part in parts:                     # ② 그래도 넘으면 행 경계
+            pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
+                       else [(part, False)])
+        for part, over in pieces:
+            rows = [n for n, _x in part if n is not None]
+            meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"]}
+            if over:
+                meta["over_char_cap"] = True
+            out.append({**c, "source_locator": locator(rows[0], rows[-1]) if rows
+                        else c["source_locator"],
+                        "text": "\n".join(x for _n, x in part), "meta": meta})
+    return out
+
+
+def _pack(part):
+    """행 경계에서 상한 이하로 묶는다 — `[(행 목록, 혼자_넘음)]`. 순서·내용 무손실."""
+    out, cur, size = [], [], 0
+    for n, x in part:
+        if len(x) > CHUNK_MAX_CHARS:           # 혼자 넘는 행 — 통째로 둔다
+            if cur:
+                out.append((cur, False))
+            out.append(([(n, x)], True))
+            cur, size = [], 0
+            continue
+        add = len(x) + (1 if cur else 0)
+        if cur and size + add > CHUNK_MAX_CHARS:
+            out.append((cur, False))
+            cur, size, add = [], 0, len(x)
+        cur.append((n, x))
+        size += add
+    if cur:
+        out.append((cur, False))
     return out
 
 
@@ -399,7 +536,8 @@ def _resplit(chunks, deeper, lines, locator, sep):
             out.append({**c,
                         "source_locator": locator(rs[0], rs[-1]) if rs
                         else c["source_locator"],
-                        "text": "\n".join(x for _r, x in part)})
+                        "text": "\n".join(x for _r, x in part),
+                        "_lines": part})
     return out
 
 
@@ -465,6 +603,14 @@ def split_stats(pieces, map_picks):
                     "목표구간": [lo, hi],
                     "너무_짧은_청크": sum(1 for s in sizes if s < lo),
                     "너무_긴_청크": sum(1 for s in sizes if s > hi)})
+    # **글자 상한으로 가른 것**(B87 ③) — 있을 때만 싣는다(없는 문서의 보고는 그대로).
+    _from = [(p.get("meta") or {}).get("char_cap_from") for p in pieces]
+    if any(_from):
+        out["글자_상한"] = {"상한": CHUNK_MAX_CHARS,
+                          "초과_청크": len({f for f in _from if f}),
+                          "조각": sum(1 for f in _from if f),
+                          "혼자_넘는_행": sum(1 for p in pieces
+                                          if (p.get("meta") or {}).get("over_char_cap"))}
     return out
 
 

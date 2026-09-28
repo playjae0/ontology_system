@@ -109,7 +109,11 @@ def cmd_confirm(doc_type, approved_by):
 
 def cmd_list():
     from cli.platform import cmd_doctypes
-    return cmd_doctypes()
+    rc = cmd_doctypes()
+    # **코드 반입 뒤 할 일**(B88 ③) — 등록은 옛 코드의 관문을 지났다. 지금 코드로 다시 본다.
+    print("  코드 반입 뒤: 등록된 doc_type마다 python -m cli.register status <doc_type>"
+          "  (지금 코드로 관문 PASS/FAIL · 운영 어댑터를 읽는다 · LLM 0)")
+    return rc
 
 
 #: mock 관문 대상 — 사람이 치는 운영 명령(§7.6-B-1 · B48). `roles`·`list`는 열람이다.

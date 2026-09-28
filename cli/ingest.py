@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """칸 3.1 — 일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
-  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
+  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images]
                                   [--step] [--step-every N] [--narrow embed|overlap]
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:skip"]
                                   [-v] [--no-color]
@@ -57,6 +57,7 @@ _LOG = log.get("cli.ingest")
 # reader가 여는 포맷 — 그 밖은 「지원 밖」으로 목록에만 남긴다.
 # **목록은 리더가 소유한다**(B53) — 여기에 복제하면 리더에 포맷을 더해도 투입이 막는다.
 from parser.reader import GRID_EXT, PROSE_EXT, SUPPORTED   # noqa: E402,F401
+from parser.reader import LEGACY_BINARY, legacy_note         # noqa: E402
 from parser import form as form_mod, reader as reader_mod  # noqa: E402
 from parser.reader import MissingDependency              # noqa: E402
 
@@ -115,6 +116,8 @@ def select(doc, doc_type=None, adapter_paths=None):
     p = Path(doc)
     out = {"doc": str(p), "doc_id": doc_id_of(p), "doc_type": None, "adapter": None,
            "basis": None, "candidates": [], "reason": None}
+    if p.suffix.lower() in LEGACY_BINARY:        # `.doc` 등 — 무엇으로 저장하면 되나를 말한다 (B88 ②)
+        return {**out, "status": "unsupported", "reason": legacy_note(p)}
     if p.suffix.lower() not in SUPPORTED:
         return {**out, "status": "unsupported",
                 "reason": f"지원하지 않는 포맷 {p.suffix!r} — reader가 여는 것은 {SUPPORTED}"}
@@ -381,7 +384,8 @@ def _step_stops(res, sel, row):
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
-                step_every=0, progress_every=None, sheets=None, ask=True):
+                step_every=0, progress_every=None, sheets=None, ask=True,
+                no_images=False):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     try:
@@ -411,7 +415,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     try:
         stage["이름"] = "파싱"
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
-                             coord_cap=coord_cap, sheet_roles=_roles)
+                             coord_cap=coord_cap, sheet_roles=_roles,
+                             no_images=no_images)
         if not res.ok:
             rows = SCR.fail_rows(res.failures)
             # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
@@ -497,7 +502,7 @@ def spend_line(stage):
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
-               coord_cap=COORD_CAP, recurse=False, progress_every=None):
+               coord_cap=COORD_CAP, recurse=False, progress_every=None, no_images=False):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -521,7 +526,8 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap,
-                                progress_every=progress_every, ask=False))
+                                progress_every=progress_every, ask=False,
+                                no_images=no_images))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -566,7 +572,9 @@ def _is_doc(p):
     ⓪원본 자리에는 사람이 자기 분류로 아무것이나 넣는다(메모·이미지·엑셀 임시파일).
     선별 기준을 여기서 새로 쓰면 파서가 여는 목록과 갈린다 — 그래서 그 목록을 묻는다.
     """
-    return (p.is_file() and p.suffix.lower() in SUPPORTED
+    # 옛 이진 형식(`.doc` 등)도 **집는다** — 조용히 건너뛰면 사람은 넣은 줄 안다.
+    # 선택이 그것을 거부 행으로 내고 문면이 「`.docx`로 저장해 다시」를 말한다(B88 ②).
+    return (p.is_file() and p.suffix.lower() in (*SUPPORTED, *LEGACY_BINARY)
             and not p.name.startswith(("~", ".")))
 
 
@@ -648,6 +656,10 @@ def main(argv):
         del args[i:i + 2]
     # **시트 역할 손잡이**(B83 ③) — 관문을 건너뛰고 같은 기록을 쓴다(`decided_by: flag`).
     args, sheets_spec = SG.flag(args)
+    # **그림 없이 넣기는 명시적으로만**(B88 ①) — 게이트웨이가 그림을 못 받을 때의 출구다.
+    # 그 사실은 인입 기록과 `show doc`에 남는다(조용한 건너뜀 0).
+    no_img = "--no-images" in args
+    args = [a for a in args if a != "--no-images"]
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")
@@ -682,11 +694,12 @@ def main(argv):
             raise SystemExit("[투입] --sheets는 ingest-file 하나에만 준다 — "   # [사용법]
                              "문서마다 시트 자리가 다르다")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
-                          recurse=_from_raw, progress_every=prog_every)
+                          recurse=_from_raw, progress_every=prog_every,
+                          no_images=no_img)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,
-                            sheets=sheets_spec)]
+                            sheets=sheets_spec, no_images=no_img)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

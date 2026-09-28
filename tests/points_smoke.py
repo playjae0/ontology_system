@@ -30,6 +30,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#: 지점 9종 밖에 **본문을 따로 돌리는 호출 태그**(`gateway.CALL_TAGS`의 일부) — B87 ②.
+TAGS = ("struct_rule",)
+
 #: 스텁 게이트웨이의 설정 — 값은 가짜다(전송이 스텁이라 닿지 않는다).
 STUB_ENV = {"USE_MOCK": "0", "LLM_GATEWAY_URL": "http://stub.invalid/v1",
             "CHAT_MODEL": "stub-chat", "EMBED_MODEL": "stub-embed",
@@ -141,6 +144,14 @@ def cases():
             lambda: struct_map_pass.map_structure("D1", [(1, "1. 개요"), (2, "본문")]),
             lambda r: isinstance(r, dict) and r.get("source") == "live"
             and isinstance(r.get("rows"), list) and r["rows"]),
+        # **⑦ 안의 호출 태그 `struct_rule`**(B87 ②) — 지점은 9종 그대로이고 본문은 따로 돈다.
+        "struct_rule": (
+            lambda: struct_map_pass.infer_rules(
+                "S1", [{"row": 1, "text": "개요", "bold": False, "indent": 0, "merge": False},
+                       {"row": 2, "text": "본문 문장이다.", "bold": False, "indent": 1,
+                        "merge": False}]),
+            lambda r: isinstance(r, dict) and isinstance(r.get("heading_patterns"), list)
+            and isinstance(r.get("reason"), str) and r.get("prompt_version")),
         "answer": (
             lambda: __import__("cli.query", fromlist=["x"]).generate(
                 {"question": "탭용접 다음은?", "facts": ["탭용접 → 노칭"],

@@ -202,13 +202,17 @@ show("mock 갈래는 sentence_transformers를 import하지 않는다 (선택 의
 print("\n■ 9지점 **본문** 스모크 — 전송만 스텁 · 반환 계약을 잰다 (B79 ③ⓒ)")
 from points_smoke import run as _smoke                           # noqa: E402
 
+import points_smoke as _PS9                                      # noqa: E402
 _sres, _sr = _smoke()
 show("9지점 본문이 전부 실행됐다 (스모크가 완주)",
-     len(_sres) == len(llm.POINTS) and set(_sres) == set(llm.POINTS),
+     set(_sres) == set(llm.POINTS) | set(_PS9.TAGS),
      _sr.stderr.strip().splitlines()[-1:] and _sr.stderr.strip().splitlines()[-1] or "")
 for _key, _label in llm.POINTS.items():
     show(f"{_label} → 본문이 반환 계약대로 값을 돌려준다",
          _sres.get(_key) == "OK", _sres.get(_key, "(미실행)"))
+for _tag in _PS9.TAGS:                     # ⑦ 안의 계층 규칙 선언(B87 ②) — 태그도 본문이 돈다
+    show(f"{llm.point_label(_tag)} · 태그 `{_tag}` → 본문이 반환 계약대로 값을 돌려준다",
+         _sres.get(_tag) == "OK", _sres.get(_tag, "(미실행)"))
 
 # **⑨는 닫힌 목록에서 고른 값을 돌려준다** — 스텁 응답이 `canonical`로 나온다.
 import points_smoke as _PS                                       # noqa: E402
@@ -287,10 +291,11 @@ for key, factory, kw in (("image_summary", "image_summarizer", "summarize"),
 # 없다」를 알 수 있는 것은 만드는 쪽뿐이다. 이 어서션이 곧 「진입점이 한 번 정해
 # 전부 내려보낸다」의 기계 판정이다.
 _orig = (llm.use_mock, points.image_summarizer, points.coord_picker,
-         struct_map_pass.struct_mapper)
+         struct_map_pass.struct_mapper, struct_map_pass.rule_inferrer)
 llm.use_mock = lambda: False
 points.image_summarizer = lambda: (lambda ref: "요약")
 points.coord_picker = lambda: (lambda s, c: None)
+struct_map_pass.rule_inferrer = lambda: (lambda f, s: None)   # ⑦ 안의 규칙 선언(B87 ②)은 살려 둔다
 struct_map_pass.struct_mapper = lambda: None    # ← ⑦ 배선을 뺀다
 try:
     _inj()
@@ -300,7 +305,7 @@ except llm.NotConfigured as e:
 struct_map_pass.struct_mapper = lambda: (lambda d, l: {"rows": []})   # ← 되돌린다
 _back = "통과" if _inj().get("map_structure") else "여전히 None"
 (llm.use_mock, points.image_summarizer, points.coord_picker,
- struct_map_pass.struct_mapper) = _orig
+ struct_map_pass.struct_mapper, struct_map_pass.rule_inferrer) = _orig
 show("변이 — ⑦ 주입을 빼면 실호출 모드에서 붉는다 (조용한 휴리스틱 폴백 0)",
      _mut.startswith("NotConfigured"), _mut)
 show("변이 — 되돌리면 초록이다 (시험 자체가 늘 붉는 것이 아니다)", _back == "통과", _back)

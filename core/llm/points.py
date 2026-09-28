@@ -46,7 +46,8 @@ def summarize_image(image_ref, *, image=None, mime=None, context="", page=None):
         if e.status == 400 and image:
             raise gateway.NotConfigured(
                 "image_summary: 게이트웨이가 이미지 입력을 받지 않는다 — "
-                "HTTP 400. `python run.py llm-check`의 ⑦ 단계로 확인한다") from e
+                "HTTP 400. `python run.py llm-check`의 ⑦ 단계로 확인한다 · 그림 없이 넣으려면 "
+                "`--no-images`(인입 기록에 남는다)") from e
         raise
     return out["text"]
 
