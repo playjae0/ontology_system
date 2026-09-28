@@ -498,6 +498,8 @@ def basic_adapter_proposal(samples, *, said_prose=False):
     kinds = {Path(str(x)).suffix.lower() for x in samples}
     if kinds == {".pdf"}:
         return _basic_pdf_proposal(samples)
+    if kinds == {".docx"}:
+        return _basic_docx_proposal(samples)
     # **격자 포맷은 계층이 서야 제안이 선다**(B58 ③) — `.pptx`·`.pdf`와 달리
     # 여기엔 포맷이 주는 경계가 없어, 신호 넷으로 계층이 잡히지 않으면 「분할
     # 자명」이 성립하지 않는다. 그 판정은 어댑터가 실제로 돌려 본 결과로 한다.
@@ -582,6 +584,29 @@ def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
                      + (f" · **고정 규칙으로 안 선 시트 {need}장 — 인입 때 선언 필요**"
                         f"(규칙 선언 · B87)" if need else "")),
             "rule_frames": need}
+
+
+def _basic_docx_proposal(samples):
+    """Word의 위임 제안 — **문단이 행이고 분할은 B87 엔진**이다(B88 ② · D-111과 같은 래퍼 방식).
+
+    PPT·PDF처럼 포맷이 산문을 함의한다(표 판정이 없다). 사람이 알아야 할 것을 센다 —
+    개요 수준으로 선 제목 수(없으면 번호 패턴 → 굵게 → 인입 때 규칙 선언)와 그림 수(④).
+    """
+    from parser.adapters import basic_docx
+    heads = pics = need = 0
+    for s in samples:
+        raw = reader.read(str(s))
+        heads += sum(1 for p in raw.get("paragraphs") or [] if p.get("outline") is not None)
+        pics += sum(1 for p in raw.get("paragraphs") or [] if p.get("kind") == "image")
+        need += len(basic_docx.rule_frames(raw))
+    return {"adapter": "parser/adapters/basic_docx.py",
+            "reason": "Word는 문단이 행이다 — 개요 수준·번호·굵게로 계층을 읽고 B87 분할 "
+                      "엔진이 자른다. 생성 세션이 필요 없다",
+            "outline_headings": heads, "images": pics, "rule_frames": need,
+            "note": (f"개요 수준 제목 {heads}개" if heads
+                     else "개요 수준이 없다 — 번호 패턴·굵게로 제목을 찾는다")
+                    + (f" · 그림 {pics}장(④ 이미지 요약)" if pics else "")
+                    + (" · **고정 규칙으로 안 선다 — 인입 때 선언 필요**" if need else "")}
 
 
 def _basic_pdf_proposal(samples):

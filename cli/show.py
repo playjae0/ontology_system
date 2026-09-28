@@ -209,6 +209,9 @@ def cmd_doc(args):
           if meta.get("source_path") else "  원본       —")
     print(f"  doc_hash   {meta.get('doc_hash', '')[:16]}…")
     print(f"  최초 인입   {meta.get('first_ingested_at')}")
+    if meta.get("images_skipped"):
+        _sk = meta["images_skipped"]
+        print(f"  그림        {_sk.get('n')}장 요약 안 함({_sk.get('why')})")
 
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     mine = {cid: c for cid, c in ch["chunks"].items() if c.get("doc_id") == doc}

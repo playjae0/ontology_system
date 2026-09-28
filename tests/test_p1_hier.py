@@ -84,7 +84,7 @@ def _extract(path, cap):
 
 
 _under = [f for f in ("TOC01.xlsx", "TOC02.xlsx", "RFQ01.xlsx")
-          if all(len(p["text"]) <= _cap for p in _extract(RAW / f, 10 ** 9))]
+          if all(len(p.get("text") or "") <= _cap for p in _extract(RAW / f, 10 ** 9))]
 show("③ 상한 이하 청크만 있는 문서는 분할이 그대로다 (상한을 없앤 것과 같다)",
      _under and all(_extract(RAW / f, _cap) == _extract(RAW / f, 10 ** 9) for f in _under),
      str(_under))

@@ -17,9 +17,12 @@ xlsx →
       "merged":  ["A4:A31", "B4:B5", ...],  # 병합 범위 원본
       "indent":  {"A5": 3, ...},            # 들여쓰기 수준 (0이 아닌 셀만)
       "bold":    ["A1", "A3", ...],         # 굵은 셀
-      "images":  [{"cell": "A17", "ref": "img_001"}, ...],
-  }]
+      "images":  [{"cell": "A17", "ref": "img_001", "mime": "image/png"}, ...],
+  }],
+  "_images": {"img_001": (b"…", "image/png")},  # 그림이 있을 때만 (B88 ① — zip에서 직접)
 }
+
+docx → `parser.ooxml.read_docx` (B88 ② — 본문 순서의 문단·표 행·그림)
 
 pptx →
 {
@@ -85,8 +88,6 @@ def _need(module, pip_name, ext):
             f"`{ext}`를 읽으려면 `{pip_name}`이 필요하다 — pip install {pip_name}") from e
 
 
-#: openpyxl 읽기 경고 중 **그림을 버렸다**는 것 — 형식 이름을 뽑는다(WMF 등).
-_IMG_DROPPED = re.compile(r"(\w+) image format is not supported", re.I)
 
 
 def read_xlsx(path):
@@ -112,13 +113,12 @@ def read_xlsx(path):
     read_warnings = [str(w.message) for w in _caught]
     for _m in read_warnings:
         _LOG.info("xlsx 읽기 경고 — %s · %s", path, _m)
-    dropped = {}
-    for _m in read_warnings:
-        _k = _IMG_DROPPED.search(_m)
-        if _k:
-            dropped[_k.group(1).upper()] = dropped.get(_k.group(1).upper(), 0) + 1
-        elif "image" in _m.lower():
-            dropped["기타"] = dropped.get("기타", 0) + 1
+    # **그림은 zip에서 직접 뜬다**(B88 ①) — openpyxl은 위치만 주고 WMF·EMF는 버린다.
+    # 그래서 openpyxl의 「그림을 버렸다」 경고는 더 이상 버림이 아니다(로그에만 남는다).
+    # 모델이 받지 못하는 형식의 변환과 「건너뜀」은 파이프라인이 정한다.
+    from . import ooxml
+    zimgs = ooxml.xlsx_images(path)
+    all_images, n_img = {}, 0
     sheets = []
     for ws in wb.worksheets:
         cells, indent, bold = {}, {}, []
@@ -134,15 +134,11 @@ def read_xlsx(path):
                 if c.font and c.font.bold:
                     bold.append(addr)
         images = []
-        for i, im in enumerate(getattr(ws, "_images", []), start=1):
-            anch = getattr(im, "anchor", None)
-            try:
-                r = anch._from.row + 1
-                col = anch._from.col + 1
-                cell = f"{get_column_letter(col)}{r}"
-            except Exception:
-                cell = None
-            images.append({"cell": cell, "ref": f"img_{i:03d}"})
+        for cell, blob, mime in zimgs.get(ws.title, []):
+            n_img += 1
+            ref = f"img_{n_img:03d}"              # 문서 전체에서 하나 — 시트를 넘어 겹치지 않는다
+            all_images[ref] = (blob, mime)
+            images.append({"cell": cell, "ref": ref, "mime": mime})
         sheets.append({
             "name": ws.title,
             "max_row": ws.max_row, "max_col": ws.max_column,
@@ -153,9 +149,9 @@ def read_xlsx(path):
             "images": images,
         })
     out = {"format": "xlsx", "path": path, "sheets": sheets}
-    if read_warnings:
-        # 키는 **있을 때만** — 경고 없는 문서의 판독 결과가 한 바이트도 바뀌지 않는다.
-        out["read_warnings"] = {"images_dropped": dropped, "count": len(read_warnings)}
+    if all_images:
+        # 키는 **있을 때만** — 그림 없는 문서의 판독 결과가 한 바이트도 바뀌지 않는다.
+        out["_images"] = all_images
     return out
 
 
@@ -622,9 +618,11 @@ def sheet_of(raw, expects=None):
     return None, {"reason": f"sheet 선언이 필요하다 — 시트: {names}", "sheets": names}
 
 
-SUPPORTED = (".xlsx", ".xlsm", ".pptx", ".pdf", ".csv", ".tsv")
+SUPPORTED = (".xlsx", ".xlsm", ".pptx", ".pdf", ".docx", ".csv", ".tsv")
 # 헤더 지문이 없는 포맷 — doc_type 지정이 필수다(§5 지문 스캔 대상 아님).
-PROSE_EXT = (".pptx", ".pdf")
+PROSE_EXT = (".pptx", ".pdf", ".docx")
+#: 받지 않는 옛 이진 형식 — **거부 문면이 다음 줄을 준다**(B88 ②).
+LEGACY_BINARY = {".doc": ".docx", ".xls": ".xlsx", ".ppt": ".pptx"}
 # **격자 포맷** — 시트/행열로 오는 것들. 이쪽은 `table`일 수도 `prose`일 수도 있어
 # **형태 판정의 대상**이다(문서 1 C37 · 문서 6 §6.4). `PROSE_EXT`가 「지문이 없으니
 # 무조건 prose」인 것과 대비되는 자리라, 목록을 한 곳에 둔다.
@@ -640,8 +638,21 @@ def read(path):
         return read_pdf(path)
     if path.lower().endswith((".csv", ".tsv")):
         return read_csv(path)
+    if path.lower().endswith(".docx"):
+        from . import ooxml
+        return ooxml.read_docx(path)
+    _old = os.path.splitext(path)[1].lower()
+    if _old in LEGACY_BINARY:
+        raise ValueError(legacy_note(path))
     raise ValueError(f"지원하지 않는 포맷: {path} — "
                      f"받는 것은 {' · '.join(SUPPORTED)} 다")
+
+
+def legacy_note(path):
+    """옛 이진 형식 거부 문면 — **무엇으로 저장해 다시 넣으면 되나**를 말한다."""
+    ext = os.path.splitext(str(path))[1].lower()
+    return (f"`{ext}`(옛 이진 형식)는 받지 않는다 — {os.path.basename(str(path))}을 "
+            f"`{LEGACY_BINARY.get(ext, '.docx')}`로 저장해 다시 넣는다")
 
 
 # 관찰 범위 — **다단 헤더 문서에서 12줄은 얕다**(B34): 헤더 3행 + 데이터 9행이면
@@ -658,6 +669,9 @@ def head(raw, n=OBSERVE_ROWS):
     csv가 xlsx와 같은 구조를 내는 이유가 바로 «어댑터가 포맷을 몰라도 되게»인데,
     이 함수만 이름으로 갈라 그 취지를 깨고 있었다.
     """
+    # **바이트는 관찰 재료가 아니다**(B88 ①) — `_images` 같은 `_` 키는 ④에 보내는 파이프라인
+    # 몫이고, 등록 입력 패키지(JSON)에 실리면 직렬화가 죽는다(실측 — 그림 든 TOC 표본).
+    raw = {k: v for k, v in raw.items() if not k.startswith("_")}
     if "sheets" not in raw:
         return {**raw, "slides": raw.get("slides", [])[:n]}
     out = []

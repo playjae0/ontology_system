@@ -205,8 +205,10 @@ def _wmf_xlsx(dst):
 
 _wx = _tmp / "WMF01.xlsx"
 _wmf_xlsx(_wx)
+# 변환기(`soffice`)가 없는 사내를 흉내 낸다 — 있으면 WMF는 PNG로 바뀌어 요약된다(B88 ①).
 _rc, _o, _e = _sp("-m", "cli.parse", "run", "parser/adapters/basic_prose_xlsx.py",
-                  str(_wx), str(_tmp / "wmf.json"), "--allow-mock")
+                  str(_wx), str(_tmp / "wmf.json"), "--allow-mock",
+                  env={**ENV, "PATH": os.path.dirname(sys.executable)})
 _lines = [l.strip() for l in _o.splitlines() if "읽지 못해 건너뜀" in l]
 show("④ 버린 그림은 **한 줄**이고 종류가 붙는다 · 원문 경고는 stderr에 0",
      len(_lines) == 1 and "WMF 1" in _lines[0]

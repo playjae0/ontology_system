@@ -46,7 +46,9 @@ _called = []
 _raw01 = read(str(RAW / "TOC01.xlsx"))
 _pieces = _BPX.extract(_raw01, struct_map_fn=lambda *a, **k: _called.append(a) or ([], {}, []))
 show("③ⓐ 고정 어댑터가 구조 지도(⑦)를 부르지 않는다 — 인입마다 비용이 붙지 않는다",
-     not _called and len(_pieces) == 3, f"호출 {len(_called)}회 · 조각 {len(_pieces)}건")
+     # 글 조각 3 — 그림 조각(B88 ① · ④ placeholder)은 따로 센다
+     not _called and len([p for p in _pieces if not p.get("image_ref")]) == 3,
+     f"호출 {len(_called)}회 · 조각 {len(_pieces)}건")
 show("③ⓑ 신호 넷이 계층을 만든다 (번호·굵게·들여쓰기·가로병합)",
      _BPX.ADAPTER["expects"]["heading_signals"]
      == ["번호", "굵게", "들여쓰기", "가로병합"]
@@ -61,7 +63,7 @@ _rep02 = _BPX.level_report(read(str(RAW / "TOC02.xlsx")))
 show("③ⓓ 구간을 못 맞춘 표본은 그 사실을 산출에 싣는다 (TOC02 — 평균 4.3행)",
      _rep02[0]["분할_레벨_구간밖"] is True
      and all(p["meta"].get("split_level_out_of_range")
-             for p in _BPX.extract(read(str(RAW / "TOC02.xlsx")))))
+             for p in _BPX.extract(read(str(RAW / "TOC02.xlsx"))) if not p.get("image_ref")))
 
 # **화면의 출처가 규칙이다** — 폐지된 상수(`expects.split_level`)를 읽지 않는다.
 _apick = struct_map.adapter_level_picks(
@@ -127,8 +129,11 @@ try:
     _ingest_once("g2")
     _snap2 = json.dumps(store.read(store.CHUNKS, {"chunks": {}})["chunks"],
                         ensure_ascii=False, sort_keys=True)
+    # 글 청크 6 + 표본이 품은 그림 수(B88 ① — 그림도 ④ 조각이 된다)
+    _nimg = sum(len(s.get("images") or []) for d in ("TOC01", "TOC02")
+                for s in read(str(RAW / f"{d}.xlsx"))["sheets"])
     show("③ⓒ 같은 문서 2회 인입 → 청크 바이트 동일 (멱등성 · §4.8-6)",
-         _snap1 == _snap2 and len(json.loads(_snap1)) == 6,
+         _snap1 == _snap2 and len(json.loads(_snap1)) == 6 + _nimg,
          f"{len(json.loads(_snap1))}청크")
 finally:
     _W.unlink(missing_ok=True)
@@ -152,7 +157,7 @@ _EXPECT = {"CP01.xlsx": "table", "CP02_drift.xlsx": "table", "CP03_bad.xlsx": "t
            "CP04_unlabeled.xlsx": "table", "IPQC01.xlsx": "table",
            "IPQC02.xlsx": "table", "PFMEA01.xlsx": "table",
            "RFQ01.xlsx": "prose", "TOC01.xlsx": "prose", "TOC02.xlsx": "prose",
-           "HIER01.xlsx": "prose", "FONT01.xlsx": None}
+           "HIER01.xlsx": "prose", "FONT01.xlsx": None, "IMG01.xlsx": "prose"}
 show("④ⓐ 판정이 정해지는 xlsx 픽스처는 전부 자동이다 · 정해지지 않는 것만 사람에게 간다",
      set(_J) == set(_EXPECT)
      and all(j["auto"] == (_EXPECT[n] is not None) for n, j in _J.items()),

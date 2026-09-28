@@ -113,3 +113,39 @@ def available():
     if not (shutil.which("soffice") or shutil.which("libreoffice")):
         return False, "soffice 없음 (PDF는 변환 없이 열린다)"
     return True, "soffice + PyMuPDF"
+
+
+# ---------------------------------------------------------------- 그림 형식 변환 (B88 ①)
+#: 모델이 받는 형식 — 나머지(WMF·EMF·BMP·TIFF …)는 PNG로 바꿔 보낸다.
+MODEL_MIMES = ("image/png", "image/jpeg")
+_EXT_OF = {"image/x-wmf": ".wmf", "image/x-emf": ".emf", "image/bmp": ".bmp",
+           "image/tiff": ".tif", "image/gif": ".gif", "image/svg+xml": ".svg"}
+NO_CONVERTER, CONVERT_FAILED = "변환기 없음", "변환 실패"
+
+
+def to_png(data, mime):
+    """그림 바이트 → `(PNG 바이트, None)` 또는 `(None, 사유)` — `soffice`가 있으면 쓴다.
+
+    쪽 렌더와 같은 규칙이다: `soffice`는 **있으면 쓰는 외부 프로그램**이고, 없으면 조용히
+    다르게 돌지 않고 **사유를 돌려준다**(호출부가 「건너뜀 — 변환기 없음」으로 화면·보고에 싣는다).
+    바이트는 저장하지 않는다 — ④에 보내고 버린다(문서 5 §5.2-2).
+    """
+    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    if not exe:
+        return None, NO_CONVERTER
+    ext = _EXT_OF.get(mime, ".bin")
+    with tempfile.TemporaryDirectory(prefix="img_conv_") as td:
+        src = Path(td) / f"image{ext}"
+        src.write_bytes(data)
+        out = Path(td) / "out"
+        try:
+            subprocess.run([exe, "--headless", "--convert-to", "png",
+                            "--outdir", str(out), str(src)],
+                           check=True, capture_output=True, timeout=SOFFICE_TIMEOUT)
+        except Exception as e:                              # noqa: BLE001
+            _LOG.warning("그림 변환 실패 — %s: %s", type(e).__name__, e)
+            return None, CONVERT_FAILED
+        png = out / "image.png"
+        if not png.exists() or not png.stat().st_size:
+            return None, CONVERT_FAILED
+        return png.read_bytes(), None

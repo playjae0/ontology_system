@@ -595,6 +595,35 @@ def _promote(doc_type, st):
     return (a_rel, s_rel)
 
 
+def _status_registered(doc_type, st, reg):
+    """**등록된 doc_type의 재확인**(B88 ③) — 코드 반입 뒤 한 줄: 「지금 코드로 관문 PASS/FAIL」.
+
+    관문은 **운영 어댑터**(등록부가 가리키는 `adapters/<dt>.py`·`schemas/<dt>.json`)로 돈다 —
+    검수 사본은 확정 뒤 손댈 수 있어 운영과 다를 수 있다. 등록부의 파일은 **건드리지
+    않는다**: 하네스(킷 — 별도 프로세스)만 부르고 시스템 필드 기입·대장 동기화·상태 저장은
+    하지 않는다(그 셋은 등록 흐름의 일이다). 다음 줄에 `confirm`은 없다 — 이미 등록됐다.
+    """
+    from cli.register import samples as samples_mod
+    ad, sc = registry.at(reg["adapter"]), registry.at(reg["schema"])
+    samples = st.get("samples") or []
+    roles = samples_mod.sample_roles(doc_type, st, samples) if samples else {}
+    ok, out = gate.harness(ad, sc, samples, package=_dir(doc_type) / "input_package.json",
+                           doc_type=doc_type, roles_map=roles)
+    print(f"■ 등록됨 — {doc_type} · 지금 코드로 관문 {'PASS' if ok else 'FAIL'} "
+          f"(운영 어댑터 {paths.show(ad)} · 표본 {len(samples)}부)")
+    if ok:
+        return 0
+    for code, label, detail in gate.fail_lines(out):
+        print(f"  [FAIL] {code or ''}  {label}" + (f" — {detail}" if detail else ""))
+    print("  ▶ 다음 줄:")
+    if st.get("use_basic"):
+        # 고정 어댑터는 재생성 대상이 아니다(B65 ④) — 코드와 표본 사이의 결함이다.
+        print("     고정 어댑터다 — 이 FAIL은 코드 반입의 결함이다: 위 태그와 함께 허브로")
+    else:
+        print(f"     python -m cli.register review {doc_type} --instruct \"…\"")
+    return 1
+
+
 def cmd_status(doc_type):
     """관문 상태 한 화면 (B59 ①) — **화면이 흘러간 뒤 다시 볼 자리.**
 
@@ -608,6 +637,9 @@ def cmd_status(doc_type):
                          f"  ▶ 다음 줄:\n"
                          f"     python -m cli.register generate {doc_type} "
                          f"<층> <표본...>")
+    _reg = store.read(store.DOC_TYPES, {}).get(doc_type) or {}
+    if _reg.get("status") == "registered" and _reg.get("adapter"):
+        return _status_registered(doc_type, st, _reg)
     if gate.regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate.gate_block(doc_type, st)
         return 1

@@ -7,6 +7,7 @@
   python cli/parse.py run   <어댑터.py> <문서> [출력.json] [--doc-id X]  운영 파싱 1회
        └ `--coord-llm off|<종수>` — 좌표 태깅에서 **묻는 표기 종수**의 상한(기본 100)
        └ `--sheets "2-3:prose 4:ref *:skip"` — 시트 역할(B83 ③ · 기록은 `ingest-file`과 같다)
+       └ `--no-images` — 그림을 요약하지 않는다(B88 ① · 게이트웨이가 그림을 못 받을 때 — 기록에 남는다)
        └ doc_id는 생략하면 **파일명에서 파생**한다 — `ingest-file`과 같은 함수(D-110)
          구형 `<어댑터.py> <doc_id> <문서> [출력.json]`도 그대로 받는다
   python cli/parse.py head  <문서> [N]                                관찰 재료(등록 세션 공급)
@@ -109,7 +110,17 @@ def print_read_warnings(report):
     if dropped:
         n = sum(dropped.values())
         kinds = " · ".join(f"{k} {v}" for k, v in sorted(dropped.items()))
-        print(f"   그림 {n}개를 읽지 못해 건너뜀({kinds}) — 이미지 요약에서 빠진다")
+        why = " · ".join(rw.get("why") or [])
+        print(f"   그림 {n}개를 읽지 못해 건너뜀({kinds}" + (f" — {why}" if why else "")
+              + ") — 이미지 요약에서 빠진다")
+
+
+def image_screen():
+    """그림 요약의 **예고** 줄 — 부르기 전에(B88 ①). 보존된 요약은 호출 0이다."""
+    def notice(info):
+        print(f"   그림 요약 — 새 {info['새']}장 → LLM ≤ {info['새']}회"
+              f"(보존 재사용 {info['재사용']})")
+    return notice
 
 
 def rule_screen():
@@ -184,7 +195,7 @@ def coord_screen():
 
 
 def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
-              sheet_roles=None):
+              sheet_roles=None, no_images=False):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
     있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
@@ -205,9 +216,17 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
                          layer=coord_layer(),
                          coord_notice=_notice, coord_cap=coord_cap,
                          progress=_progress, sheet_roles=sheet_roles,
-                         rule_notice=_rule_notice)
+                         rule_notice=_rule_notice, no_images=no_images,
+                         image_notice=image_screen())
     print_read_warnings(res.report)
     print_split_notes(res.report)
+    _skip = res.report.get("images")
+    if _skip and res.ok:
+        # **명시적으로 뺀 그림은 기록에 남는다**(B88 ①) — 계약 JSON의 context(임의 dict)에
+        # 실어 인입 기록(doc_registry)과 `show doc`이 읽는다. 조용한 건너뜀은 없다.
+        res.envelope.setdefault("context", {})["images_skipped"] = {
+            "n": _skip["요약_안_함"], "why": _skip["사유"]}
+        print(f"   그림 {_skip['요약_안_함']}장 요약 안 함({_skip['사유']})")
     written = None
     if res.ok and out:
         paths.ensure(Path(out))
@@ -243,13 +262,15 @@ def cmd_run(args):
         how = "지정" if given else "인자"
     print(f"[parse] doc_id = {doc_id} ({how})")
     rest, cap = coord_cap_of(rest)
+    no_img = "--no-images" in rest                # 그림 없이 — 명시적으로만 (B88 ①)
+    rest = [a for a in rest if a != "--no-images"]
     # **시트 역할은 같은 문법·같은 기록이다**(B83 ③) — `ingest-file`과 두 벌이면
     # 같은 문서가 명령에 따라 다른 시트를 읽는다.
     from cli import sheet_gate as SG             # 관문 한 벌 (B86 ⑤)
     rest, _spec = SG.flag(rest)
     _roles = SG.by_flag(doc, doc_id, _spec) if _spec else None
     res, out = run_parse(adapter_path, doc_id, doc, rest[0] if rest else None,
-                         coord_cap=cap, sheet_roles=_roles)
+                         coord_cap=cap, sheet_roles=_roles, no_images=no_img)
     print(f"[parse] {res}")
     for f in res.failures:
         print(f"   [{f['kind']}] {f['reason']}")

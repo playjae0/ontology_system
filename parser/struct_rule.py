@@ -18,6 +18,8 @@ from __future__ import annotations
 import logging
 import re
 
+from . import struct_map
+
 _LOG = logging.getLogger("onto.parser.struct_rule")
 
 # 모델이 보는 것 — 그 시트 본문 열 **앞 N행**(비어 있지 않은 행)이다. 문서 전체가 아니다:
@@ -129,3 +131,86 @@ def summary(pieces, tally, targets):
             "호출": tally.get("호출", 0), "버림": tally.get("버림") or [],
             "적용": applied, "통째": sum(1 for f in targets if sheets.get(f) == "통째"),
             "시트": sheets}
+
+
+# ---------------------------------------------------------------- 프레임 한 벌 (B88 ② — 엑셀·Word가 같이 쓴다)
+def fixed_ok(rows):
+    """고정 규칙으로 계층이 섰나 — 제목이 있고 레벨이 단조다(⑦ 타당성 검사와 같은 규칙)."""
+    return any(r["heading"] for r in rows) and not struct_map.monotonic_reasons(rows)
+
+
+def apply(lines, marks, decl, *, max_chars=None):
+    """선언을 **데이터로** 적용한다 — `rows`. 판정 순서는 고정 규칙과 같다(패턴 > 가로병합 > 굵게).
+
+    `marks[행] = {"head": 패턴을 댈 글, "bold", "indent", "merge"}` — 포맷마다 어댑터가 채운다.
+    제목 후보는 짧은 행만(`struct_map.HEADING_MAX_CHARS`).
+    """
+    cap = max_chars or struct_map.HEADING_MAX_CHARS
+    pats = [(re.compile(p["match"]), p["level"]) for p in decl.get("heading_patterns") or []]
+    rows = []
+    for r, _text in lines:
+        mk = marks.get(r) or {}
+        head = mk.get("head") or ""
+        lv, sig = 0, None
+        if head and len(head) <= cap:
+            lv = next((l for rx, l in pats if rx.match(head)), 0)
+            sig = SIG_RULE if lv else None
+        if not lv and decl.get("merge_is_heading") and mk.get("merge"):
+            lv, sig = 1, "가로병합"
+        if not lv and decl.get("bold_is_heading") and mk.get("bold"):
+            lv, sig = int(mk.get("indent") or 0) + 1, "굵게+들여쓰기"
+        rows.append({"row": r, "heading": bool(lv), "level": lv, "signal": sig})
+    return rows
+
+
+SIG_RULE = "규칙 선언"
+
+
+def _ask(fn, name, sample, by_rule):
+    decl = fn(name, sample)
+    if not decl:
+        return None, None, None, None                   # 부르지 않았다(ref 시트 등)
+    if decl.get("_rejected"):
+        return None, None, None, "규칙 선언을 버렸다 — " + "; ".join(decl["_rejected"])[:200]
+    lines, rows = by_rule(decl)
+    if fixed_ok(rows):
+        return lines, rows, decl, None
+    return None, None, None, "규칙 선언을 적용해도 계층이 서지 않는다"
+
+
+def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
+                 sample_fn=None, by_rule=None, flat_reason="계층 신호 0건 — 통째로 실었다"):
+    """프레임(시트·문서 본문) 하나의 글 조각 — 고정 규칙 → (안 서면) 규칙 선언 → 통째 또는 분할.
+
+    **포맷이 달라도 한 벌이다**(B88 ② — 분할 규칙 두 벌 금지): 어댑터는 줄 목록·판정
+    rows·선언 적용 함수만 댄다. 자르는 것은 `struct_map.split`, 레벨은 `choose_level`.
+    `base_meta`는 포맷의 표시(엑셀의 `content_column` 등)다.
+    """
+    path, decl, why = "heading", None, None
+    if rule_fn is not None and not fixed_ok(rows):
+        l2, r2, decl, why = _ask(rule_fn, name, sample_fn(), by_rule)
+        if decl:
+            lines, rows, path = l2, r2, "rule"
+    if not any(r["heading"] for r in rows):
+        # **헤딩 0건 — 통째로 낸다.** 빈 산출도, 지어낸 분할도 만들지 않는다.
+        return [{
+            "source_locator": locator(lines[0][0], lines[-1][0]),
+            "section": name,
+            "text": "\n".join(t for _r, t in lines),
+            "meta": {"split_path": "flat", "frame": name, "section_path": name,
+                     **base_meta, "hierarchy_unresolved": True,
+                     "unresolved_reason": flat_reason + (f" · {why}" if why else "")},
+        }]
+    smap = {"rows": rows}
+    stats = struct_map.level_stats(smap, lines)
+    pick, reason, oor = struct_map.choose_level(stats)
+    smap.update({"레벨_분포": stats, "분할_레벨": pick,
+                 "분할_레벨_사유": reason, "분할_레벨_구간밖": oor})
+    out = []
+    for c in struct_map.split(smap, lines, locator, sep):
+        meta = {**(c.get("meta") or {}), "split_path": path, "frame": name, **base_meta,
+                "split_level": pick, "section_path": c.get("section") or name}
+        if decl:
+            meta["rule_patterns"] = patterns_of(decl)
+        out.append({**c, "section": c.get("section") or name, "meta": meta})
+    return out

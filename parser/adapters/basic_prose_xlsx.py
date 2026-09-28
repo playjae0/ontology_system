@@ -42,6 +42,8 @@ ADAPTER = {
 PATH_HEADING = "heading"        # 계층 분할 — 정상 경로
 PATH_FLAT = "flat"              # 헤딩 0건 — 시트 통째 (조용한 오파싱을 만들지 않는다)
 PATH_RULE = "rule"              # 규칙 선언을 적용해 계층이 섰다 (B87 ②)
+PATH_IMAGE = "image"            # 시트 그림 — ④ 이미지 요약 placeholder (B88 ①)
+CONTEXT_CHARS = 1500            # 그림에 딸려 보내는 맥락 — 같은 청크 본문 앞부분 (PDF 쪽 맥락과 같은 폭)
 
 _CELL = re.compile(r"^([A-Z]+)(\d+)$")
 
@@ -90,7 +92,7 @@ def _wide_merges(sheet):
 
 # 헤딩 신호의 이름 — 화면·기록이 같은 말을 쓴다 (B68 ①)
 SIG_NUM, SIG_MERGE, SIG_BOLD = "번호", "가로병합", "굵게+들여쓰기"
-SIG_RULE = "규칙 선언"          # B87 ② — 선언의 패턴으로 잡은 제목
+SIG_RULE = struct_rule.SIG_RULE  # B87 ② — 선언의 패턴으로 잡은 제목
 MAP_SOURCE = "adapter:basic_prose_xlsx"
 
 
@@ -161,11 +163,6 @@ def split_basis(rows):
     return f"어댑터 신호: {inner or '없음'}"
 
 
-def _fixed_ok(rows):
-    """고정 규칙으로 계층이 섰나 — 제목이 있고 레벨이 단조다(⑦ 타당성 검사와 같은 규칙)."""
-    return any(r["heading"] for r in rows) and not struct_map.monotonic_reasons(rows)
-
-
 def rule_frames(raw):
     """**고정 규칙으로 안 선 시트** — 규칙 선언의 대상이다(B87 ②). 예고와 검수가 읽는다.
 
@@ -177,7 +174,7 @@ def rule_frames(raw):
         if not col:
             continue
         lines, rows = _rows_of(sh, col)
-        if lines and not _fixed_ok(rows):
+        if lines and not struct_rule.fixed_ok(rows):
             out.append(sh.get("name") or "Sheet1")
     return out
 
@@ -206,16 +203,14 @@ def rule_sample(sheet, col):
 
 
 def _rows_by_rule(sheet, col, decl):
-    """선언을 **데이터로** 적용한다 — `(줄 목록, 헤딩 판정 rows)` · 판정 순서는 고정 규칙과 같다
-    (패턴 > 가로병합 > 굵게). 제목 후보는 짧은 행만(`struct_map.HEADING_MAX_CHARS`).
-    """
+    """선언 적용의 엑셀 몫 — 줄 목록과 표시(제목 열 · 굵게 · 들여쓰기 · 가로병합)를 대고
+    판정은 `struct_rule.apply`가 한다(엑셀·Word 한 벌 · B88 ②)."""
     cells = sheet.get("cells") or {}
     bold = set(sheet.get("bold") or [])
     indent = sheet.get("indent") or {}
-    wide = _wide_merges(sheet) if decl.get("merge_is_heading") else set()
+    wide = _wide_merges(sheet)
     hcol = decl.get("heading_column") or col
-    pats = [(re.compile(p["match"]), p["level"]) for p in decl.get("heading_patterns") or []]
-    lines, rows = [], []
+    lines, marks = [], {}
     for r in range(1, int(sheet.get("max_row") or 0) + 1):
         body = str(cells.get(f"{col}{r}", "")).strip()
         head = str(cells.get(f"{hcol}{r}", "")).strip() if hcol != col else body
@@ -223,29 +218,9 @@ def _rows_by_rule(sheet, col, decl):
         if not text:
             continue
         lines.append((r, text))
-        lv, sig = 0, None
-        if head and len(head) <= struct_map.HEADING_MAX_CHARS:
-            lv = next((l for rx, l in pats if rx.match(head)), 0)
-            sig = SIG_RULE if lv else None
-        if not lv and r in wide:
-            lv, sig = 1, SIG_MERGE
-        if not lv and decl.get("bold_is_heading") and f"{hcol}{r}" in bold:
-            lv, sig = int(indent.get(f"{hcol}{r}", 0)) + 1, SIG_BOLD
-        rows.append({"row": r, "heading": bool(lv), "level": lv, "signal": sig})
-    return lines, rows
-
-
-def _by_rule(sh, name, col, fn):
-    """선언을 묻고 적용한다 — `(lines, rows, 선언 또는 None, 못 선 사유 또는 None)`."""
-    decl = fn(name, rule_sample(sh, col))
-    if not decl:
-        return None, None, None, None                   # 부르지 않았다(ref 시트 등)
-    if decl.get("_rejected"):
-        return None, None, None, "규칙 선언을 버렸다 — " + "; ".join(decl["_rejected"])[:200]
-    lines, rows = _rows_by_rule(sh, col, decl)
-    if _fixed_ok(rows):
-        return lines, rows, decl, None
-    return None, None, None, "규칙 선언을 적용해도 계층이 서지 않는다"
+        marks[r] = {"head": head, "bold": f"{hcol}{r}" in bold,
+                    "indent": int(indent.get(f"{hcol}{r}", 0) or 0), "merge": r in wide}
+    return lines, struct_rule.apply(lines, marks, decl)
 
 
 def extract(raw, struct_map_fn=None, struct_rule_fn=None) -> list[dict]:
@@ -259,54 +234,67 @@ def extract(raw, struct_map_fn=None, struct_rule_fn=None) -> list[dict]:
     없으면(mock · 등록 리허설 · 킷 관문) **구판과 같은 동작**이다. 선언이 안 서면 구판의
     길로 떨어진다 — 제목 0건이면 통째 + 큐, 비단조면 고정 규칙 분할.
     """
-    exp = ADAPTER["expects"]
-    sep = exp["section_sep"]
     out = []
     for sh in raw.get("sheets") or []:
-        name = sh.get("name") or "Sheet1"
-        col = _content_column(sh)
-        if not col:
-            continue
-        lines, rows = _rows_of(sh, col)
-        if not lines:
-            continue
-        path, decl, why = PATH_HEADING, None, None
-        if struct_rule_fn is not None and not _fixed_ok(rows):
-            l2, r2, decl, why = _by_rule(sh, name, col, struct_rule_fn)
-            if decl:
-                lines, rows, path = l2, r2, PATH_RULE
-
-        def locator(a, b, _n=name, _c=col):
-            base = exp["frame_format"].format(sheet=_n, a=a)
-            return base if a == b else f"{base}-R{b}"
-
-        if not any(r["heading"] for r in rows):
-            # **헤딩 0건 — 통째로 낸다.** 빈 산출도, 지어낸 분할도 만들지 않는다.
-            out.append({
-                "source_locator": locator(lines[0][0], lines[-1][0]),
-                "section": name,
-                "text": "\n".join(t for _r, t in lines),
-                "meta": {"split_path": PATH_FLAT, "frame": name,
-                         "section_path": name, "content_column": col,
-                         "hierarchy_unresolved": True,
-                         "unresolved_reason": "계층 신호 0건 — 시트를 통째로 실었다"
-                         + (f" · {why}" if why else "")},
-            })
-            continue
-
-        smap = {"rows": rows}
-        stats = struct_map.level_stats(smap, lines)
-        pick, reason, oor = struct_map.choose_level(stats)
-        smap.update({"레벨_분포": stats, "분할_레벨": pick,
-                     "분할_레벨_사유": reason, "분할_레벨_구간밖": oor})
-        for c in struct_map.split(smap, lines, locator, sep):
-            meta = {**(c.get("meta") or {}), "split_path": path,
-                    "frame": name, "content_column": col,
-                    "split_level": pick, "section_path": c.get("section") or name}
-            if decl:
-                meta["rule_patterns"] = struct_rule.patterns_of(decl)
-            out.append({**c, "section": c.get("section") or name, "meta": meta})
+        mine = _sheet_chunks(sh, struct_rule_fn)
+        out += mine + _image_pieces(sh, mine)
     return out
+
+
+_ROWS = re.compile(r"!R(\d+)(?:-R(\d+))?$")
+
+
+def _image_pieces(sheet, chunks):
+    """시트 그림 = **placeholder 조각**(B88 ①) — 요약은 코어(tagger)가 ④로 한다(규약 3).
+
+    `section`은 그림이 앉은 행이 속한 청크의 것이고 `context`는 그 청크 본문 앞부분이다 —
+    PPT의 「같은 슬라이드 텍스트」와 같은 뜻. 그림 앞 청크가 없으면 첫 청크를 쓴다.
+    `ref` 시트의 그림을 빼는 것은 파이프라인이다(시트 역할은 어댑터가 모른다).
+    """
+    name = sheet.get("name") or "Sheet1"
+    spans = []
+    for c in chunks:
+        m = _ROWS.search(c.get("source_locator") or "")
+        if m:
+            spans.append((int(m.group(1)), int(m.group(2) or m.group(1)), c))
+    out = []
+    for im in sheet.get("images") or []:
+        row = int("".join(ch for ch in str(im.get("cell") or "1") if ch.isdigit()) or 1)
+        host = next((c for a, b, c in spans if a <= row <= b), None) \
+            or next((c for a, _b, c in reversed(spans) if a <= row), None) \
+            or (spans[0][2] if spans else None)
+        section = (host or {}).get("section") or name
+        meta = {"split_path": PATH_IMAGE, "frame": name, "shape_kind": "picture",
+                "shape_id": im["ref"], "cell": im.get("cell"), "section_path": section}
+        if im.get("mime"):
+            meta["image_mime"] = im["mime"]
+        out.append({"source_locator": f"{name}!{im.get('cell')}#{im['ref']}",
+                    "section": section, "image_ref": im["ref"],
+                    "context": ((host or {}).get("text") or "")[:CONTEXT_CHARS],
+                    "meta": meta})
+    return out
+
+
+def _sheet_chunks(sh, struct_rule_fn):
+    """시트 하나의 글 조각 — 순서는 `struct_rule.frame_chunks` 한 벌이다(엑셀·Word 같이)."""
+    exp = ADAPTER["expects"]
+    name = sh.get("name") or "Sheet1"
+    col = _content_column(sh)
+    if not col:
+        return []
+    lines, rows = _rows_of(sh, col)
+    if not lines:
+        return []
+
+    def locator(a, b, _n=name):
+        base = exp["frame_format"].format(sheet=_n, a=a)
+        return base if a == b else f"{base}-R{b}"
+
+    return struct_rule.frame_chunks(
+        name, lines, rows, locator, exp["section_sep"], {"content_column": col},
+        rule_fn=struct_rule_fn, sample_fn=lambda: rule_sample(sh, col),
+        by_rule=lambda decl: _rows_by_rule(sh, col, decl),
+        flat_reason="계층 신호 0건 — 시트를 통째로 실었다")
 
 
 def level_report(raw):

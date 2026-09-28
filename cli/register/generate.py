@@ -590,7 +590,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
     # **위임 대상은 제안이 정한다** — PPT면 `basic_ppt`, PDF면 `basic_pdf`(B53).
     # 여기에 이름을 박으면 PDF 등록분이 PPT 어댑터를 물어 조각 0건이 된다.
     mod = Path(proposal["adapter"]).stem
-    kind = {"basic_pdf": "PDF", "basic_ppt": "PPT",
+    kind = {"basic_pdf": "PDF", "basic_ppt": "PPT", "basic_docx": "Word",
             "basic_prose_xlsx": "스프레드시트 산문"}.get(mod, mod)
     ad.write_text(
         "# -*- coding: utf-8 -*-\n"

@@ -139,8 +139,48 @@ def _page_map(path, raw):
     return {idx: got[n] for n, idx in enumerate(visible, start=1)}
 
 
+def _convert_images(res, pieces, imgs, kept_img):
+    """모델이 받지 않는 형식(WMF·EMF …)을 PNG로 — 못 바꾸면 **그 그림만** 건너뛰고 사유를 싣는다.
+
+    보존된 요약이 있는 그림은 바꾸지 않는다(부를 일이 없다). 건너뛴 수는
+    `report["read_warnings"]`에 형식별로 남고 화면이 한 줄로 낸다(B86 ④의 그 줄 · B88 ①).
+    """
+    from . import render
+    out, dropped, why = [], {}, set()
+    for p in pieces:
+        ref = p.get("image_ref")
+        blob, mime = imgs.get(ref, (None, None)) if ref else (None, None)
+        if not ref or blob is None or mime in render.MODEL_MIMES or ref in kept_img:
+            out.append(p)
+            continue
+        png, reason = render.to_png(blob, mime)
+        if png is None:
+            kind = (mime or "?").rsplit("/", 1)[-1].replace("x-", "").upper()
+            dropped[kind] = dropped.get(kind, 0) + 1
+            why.add(reason)
+            continue
+        imgs[ref] = (png, "image/png")
+        out.append({**p, "meta": {**(p.get("meta") or {}), "image_converted_from": mime}})
+    if dropped:
+        res.report["read_warnings"] = {**res.report.get("read_warnings", {}),
+                                       "images_dropped": dropped, "why": sorted(why)}
+    return out
+
+
+def _drop_images(res, pieces, no_images):
+    """`ref` 시트의 그림은 조각 0(참조 = LLM 0 · B83) · `--no-images`면 그림 전부 — **기록한다**."""
+    out = [p for p in pieces if not (p.get("image_ref")
+                                     and (p.get("meta") or {}).get("sheet_role") == "ref")]
+    if no_images:
+        n = sum(1 for p in out if p.get("image_ref"))
+        out = [p for p in out if not p.get("image_ref")]
+        if n:
+            res.report["images"] = {"요약_안_함": n, "사유": "--no-images"}
+    return out
+
+
 def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps,
-                  made_maps, map_picks, src_hash, made_rules=None):
+                  made_maps, map_picks, src_hash, made_rules=None, image_notice=None):
     """④ 이미지 요약 — 보존분 재사용과 새로 받은 것의 저장. 돌려주는 것은 조각이다.
 
     `parse`에서 단계로 떼어냈다(B78 2c) — 지도·요약의 보존 규칙이 한 자리에 모인다.
@@ -154,8 +194,16 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
                   "고정 문자열 + meta.image_summary_source=mock")
     # **바이트와 쪽 그림은 여기서 붙인다**(B53) — 리더 raw가 이 함수의 손에 있고,
     # 어댑터는 순수 함수라 원본 파일을 다시 열 수 없다(§6.4-2).
-    imgs = raw.get("_images") or {}
-    pages = _page_map(path, raw) if (imgs and summarize is not None) else {}
+    imgs = dict(raw.get("_images") or {})
+    pieces = _convert_images(res, pieces, imgs, kept_img)
+    _refs = [p["image_ref"] for p in pieces if p.get("image_ref") and not p.get("text")]
+    if image_notice and summarize is not None and _refs:
+        # **부르기 전에** 몇 장인지 말한다(B88 ① · B69 ②의 결) — 보존분은 호출 0이다.
+        image_notice({"새": sum(1 for r in _refs if r not in kept_img),
+                      "재사용": sum(1 for r in _refs if r in kept_img)})
+    # **쪽 전체 렌더는 쪽이 있는 포맷만**(PPT·PDF) — 엑셀·Word에는 쪽이 없다(B88 ①).
+    has_pages = raw.get("slides") is not None or raw.get("pages") is not None
+    pages = _page_map(path, raw) if (imgs and summarize is not None and has_pages) else {}
     pieces = tagger.complete_images(pieces, summarize, kept=kept_img,
                                     images=imgs, pages=pages)          # ⑤ tagger
     # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
@@ -257,7 +305,8 @@ def _read_doc(res, path, sheet_roles, max_rows):
         else len(raw.get("slides") or [])
     truncated = False
     if max_rows and full_rows > max_rows:
-        raw = head(raw, max_rows)
+        # 바이트(`_images`)는 관찰 재료가 아니라 `head`가 떼어낸다 — ④에는 필요하다
+        raw = {**head(raw, max_rows), **{k: v for k, v in raw.items() if k.startswith("_")}}
         truncated = True
     res.report["rehearsal"] = {"max_rows": max_rows, "full_rows": full_rows,
                                "truncated": truncated}
@@ -333,7 +382,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
-          sheet_roles=None, infer_rules=None, rule_notice=None):
+          sheet_roles=None, infer_rules=None, rule_notice=None, no_images=False,
+          image_notice=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -394,12 +444,14 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
             [exp["multi_value_sep"]] if exp.get("multi_value_sep") else None))
     res.report["normalizer"] = rep
     pieces = mark_roles(pieces, sheet_roles)    # `ref` 시트의 조각에 표시를 단다
+    pieces = _drop_images(res, pieces, no_images)
 
     # **층은 호출자가 준다**(B85 ②) — 닫힌 목록을 직접 받은 경우만 층 없이 돈다.
     nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
-                           kept_maps, made_maps, map_picks, src_hash, made_rules)
+                           kept_maps, made_maps, map_picks, src_hash, made_rules,
+                           image_notice)
     pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes)
     # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
     pieces = _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
