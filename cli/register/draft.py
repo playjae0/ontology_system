@@ -146,6 +146,37 @@ def generate_schema(payload_kind):
                          if k not in ROLE_KEYS]}
 
 
+def sample_roles_of(sample):
+    """표본의 시트 역할 기록 — `{시트: 역할}` 또는 `None` (B89 ③).
+
+    자리는 `registry/sheet_roles/<doc_id>.json` 하나다(입구 관문이 쓰고 인입이 다시 읽는
+    그 기록). 등록 쪽 판정들이 인자로 받아 넘기면 호출부마다 빠뜨리는 날이 온다 — 그래서
+    읽는 자리를 여기 한 곳에 둔다.
+    """
+    from cli.ingest import doc_id_of              # 리허설도 운영 doc_id다 (B55 ⑤)
+    from core.state import sheets as SH
+    return ((SH.read(doc_id_of(str(sample))) or {}).get("sheets")) or None
+
+
+def read_sample(sample, *, judge=False):
+    """표본 원시 — **기록된 시트 역할을 운영과 같게** 적용한다 (B89 ③).
+
+    `judge=False`: `skip` 시트를 뺀다 — 운영·관문이 어댑터에 건네는 시트와 같다
+    (`parser.pipeline.drop_skipped` — 재구현하지 않는다). `judge=True`: **`prose` 역할
+    시트만** — 형태 판정용이다(참조·가격 표가 판정을 기울이지 않게). 역할 기록이 없으면
+    통합문서 전체다(지금과 같다). 돌려주는 raw의 `_judged_sheets`가 판정에 쓴 시트다.
+    """
+    raw = reader.read(str(sample))
+    roles = sample_roles_of(sample) if raw.get("sheets") else None
+    if not roles:
+        return raw
+    if judge:
+        raw = {**raw, "sheets": [sh for sh in raw["sheets"] if roles.get(sh.get("name")) == "prose"]}
+        return {**raw, "_judged_sheets": [sh.get("name") for sh in raw["sheets"]]}
+    from parser import pipeline as parser_pipeline
+    return parser_pipeline.drop_skipped(raw, roles)
+
+
 def payload_kind_of_samples(samples):
     """표본의 계열 — `table` · `prose` · `None`(판정이 안 섰다).
 
@@ -167,7 +198,7 @@ def payload_kind_of_samples(samples):
             kinds.add(None)
             continue
         try:
-            kinds.add(form.judge(reader.read(str(smp)))["verdict"])
+            kinds.add(form.judge(read_sample(smp, judge=True))["verdict"])
         except Exception:
             kinds.add(None)
     return kinds.pop() if len(kinds) == 1 else None
@@ -429,12 +460,20 @@ def form_block(samples):
         if Path(str(smp)).suffix.lower() not in reader.GRID_EXT:
             continue
         try:
-            res = form.judge(reader.read(str(smp)))
+            raw = read_sample(smp, judge=True)
+            res = {**form.judge(raw), "sheets": [sh.get("name") for sh in raw.get("sheets") or []]}
+            _by_role = "_judged_sheets" in raw
         except Exception as e:
             res = {"verdict": None, "auto": False, "signals": {}, "votes": {},
                    "why": f"형태 판정 불가 — {type(e).__name__}: {e}"}
+            _by_role = False
         judged.append(res)
         lines.append(f"■ 형태 판정 — {Path(str(smp)).name}")
+        if res.get("sheets") is not None:
+            # **무엇을 보고 판정했나**(B89 ③) — 역할이 정해졌으면 `prose` 시트만 본다
+            lines.append(f"  판정 시트 {len(res['sheets'])}장"
+                         + ("(역할 prose)" if _by_role else "(통합문서 전체)")
+                         + (f": {' · '.join(res['sheets'])}" if res["sheets"] else ""))
         if res.get("signals"):
             lines.append("  신호: " + " · ".join(
                 f"{k}={res['signals'][k]}[{(res.get('votes') or {}).get(k, '?')[0]}]"
@@ -484,6 +523,8 @@ def save_form(doc_type, judged, by):
     st["form"] = {"verdict": judged[-1].get("verdict"), "by": by,
                   "why": judged[-1].get("why"),
                   "signals": judged[-1].get("signals")}
+    if judged[-1].get("sheets") is not None:
+        st["form"]["sheets"] = judged[-1]["sheets"]     # 판정에 쓴 시트 (B89 ③)
     _save_state(doc_type, {**st, "doc_type": doc_type})
 
 
@@ -543,18 +584,22 @@ def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
     않았다」는 실행 결과가 거부의 근거다. 형태 판정(table이냐 prose냐)의 정본은
     문서 6 §6.4이고 여기는 그중 **분할 신호 하나**를 볼 뿐이다.
     """
-    frames, picks, oor, chunks, forms = 0, [], 0, 0, []
+    frames, picks, oor, chunks, forms, need = 0, [], 0, 0, [], 0
     for s in samples:
-        raw = reader.read(str(s))
+        # **운영과 같은 시트로 계산한다**(B89 ③) — 판정은 `prose` 역할 시트만,
+        # 레벨·청크·규칙 시트는 `skip`을 뺀 시트로. 구판은 통합문서 전체를 봐서
+        # 가격·일정 시트가 판정을 table로 기울이면 제안이 서지 않았다.
+        raw = read_sample(s)
         # **형태 판정이 먼저다**(문서 1 C37) — 「어느 갈래로 읽는가」를 정하고
         # 나서야 「어느 산문 어댑터인가」가 성립한다. table으로 자동 판정된
         # 표본에 산문 어댑터를 얹으면 관리계획서가 통청크로 들어온다.
-        forms.append(form.judge(raw))
+        forms.append(form.judge(read_sample(s, judge=True)))
         rep = basic_prose_xlsx.level_report(raw)
         frames += len(rep)
         picks += [r["분할_레벨"] for r in rep]
         oor += sum(1 for r in rep if r["분할_레벨_구간밖"])
         chunks += len(basic_prose_xlsx.extract(raw))
+        need += len(basic_prose_xlsx.rule_frames(raw))
     if any(f["verdict"] == form.TABLE for f in forms):
         return None                     # 표로 자동 판정된 표본이 섞였다
     # **고정 규칙으로 안 선 시트는 인입 때 규칙 선언으로 간다**(B87 ② — generate는
@@ -562,7 +607,6 @@ def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
     # 근거**가 있어야 한다: 형태 판정이 prose로 섰거나 사람이 prose라고 답했다(`--use-basic`
     # · 형태 문의의 답). 근거가 없으면 구판대로 거부한다 — 관리계획서 같은 표가 통청크로
     # 들어오는 것을 막던 자리다(D-168 ⑥).
-    need = sum(len(basic_prose_xlsx.rule_frames(reader.read(str(s)))) for s in samples)
     if not frames or chunks <= len(samples):
         if not (said_prose or all(f["verdict"] == form.PROSE for f in forms)):
             return None                 # 시트당 1청크 = 분할이 서지 않았다 · 산문 근거 없음

@@ -408,6 +408,27 @@ def run_extract(mod, raw, label, schema=None):
     return pieces
 
 
+def roles_of(doc):
+    """표본의 시트 역할 — 건네받은 표에서 **절대 경로**로 찾는다 (B86 ⑤). 없으면 None."""
+    return (tables.SHEET_ROLES or {}).get(str(Path(doc).resolve()))
+
+
+def apply_roles(raw, doc, label):
+    """③④도 ⑤와 **같은 시트**를 본다 (B89 ②) — `skip` 시트는 어댑터에 건네지 않는다.
+
+    구판은 역할을 ⑤에만 건넸다 — 운영이 읽지 않는 시트가 ③④를 FAIL시켜 등록을 막았다.
+    빼는 규칙은 `parser.pipeline`의 것이다(재구현하지 않는다 — 두 벌이면 관문과 운영이 갈린다).
+    """
+    roles = roles_of(doc)
+    if not roles:
+        return raw, None
+    from parser import pipeline as parser_pipeline      # 지연 import — 역할 표가 있을 때만
+    kept = parser_pipeline.drop_skipped(raw, roles)
+    gone = len(raw.get("sheets") or []) - len(kept.get("sheets") or [])
+    print(f"\n   시트 역할 적용 — {label}: skip {gone}장 뺐다 (⑤와 같은 표)")
+    return kept, roles
+
+
 # ------------------------------------------------- ⑤ 파서 전 구간 (B58 ②)
 # **LLM 지점 3종은 주입하지 않는다** — 이름을 여기 적어 두는 이유는, 나중에 누가
 # 「관문에서도 실호출로 봐야 정확하다」며 하나를 꽂으면 관문이 청구서가 되기
@@ -449,8 +470,7 @@ def run_pipeline(mod, schema, doc, label):
             try:
                 res = parser_pipeline.parse(
                     mod, doc_id, doc, layer=layer, closed_list=nodes,
-                    # 표본의 시트 역할 — 건네받은 표에서 **절대 경로**로 찾는다 (B86 ⑤)
-                    sheet_roles=(tables.SHEET_ROLES or {}).get(str(Path(doc).resolve())))
+                    sheet_roles=roles_of(doc))
             finally:
                 struct_map.use_dir(None)
     except Exception as e:
@@ -551,10 +571,13 @@ if __name__ == "__main__":
     check_shapes(schema, mod)
     check_ledger_coverage(schema, mod)                   # G4G (B76 ②)
     for d in docs:
-        raw = read(d)
         label = d.split("/")[-1]
+        raw, roles = apply_roles(read(d), d, label)
         preflight(mod, raw, label)
         pieces = run_extract(mod, raw, label, schema)
+        if roles:
+            from parser import pipeline as parser_pipeline
+            parser_pipeline.mark_roles(pieces or [], roles)      # `ref` 표시 — ⑤와 같은 조각
         check_schema(schema, pieces, label, payload_kind_of(schema, mod))
         if pieces:
             print(f"\n      [조각 1 표본] {json.dumps(pieces[0], ensure_ascii=False)[:300]}")

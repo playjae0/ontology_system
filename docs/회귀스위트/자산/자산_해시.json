@@ -11,7 +11,7 @@
   "kit/gate_screen.py": "6296dba10d2ad374cb03f8a606321c377f7b4da7dafcc7e5192b9c23b0b2d6e9",
   "kit/gate_tables.py": "2cac171d88ad5ac2b619ffe33d1975c8ba89a87b56a45980681d905edba01a9b",
   "kit/render_review.py": "3041f8ff9a93f58d5cc6c0e81e655ce5a557f0eb16a8ba7c0dcf42308e9271fa",
-  "kit/run_adapter.py": "85958575574b74a0727f314c67e58e7ce9cef0094783f35dc3dc26cd51d3e4b0",
+  "kit/run_adapter.py": "4994364f27739a873ed563cd7c19bab86321e8cf8e73a08ab7ebe7514538d90e",
   "kit/검수뷰_데이터스키마.json": "5f8b794fc40dbba29bf5b35774b804a0015442f7df233cc68c8af310c0df745d",
   "kit/어댑터_스켈레톤.py": "a010ba25d05319d2933a5c5f843917c5382601345fc705ac773509342a80a2e3",
   "kit/참조어댑터/README.md": "12c433b69793a4112c675a8774faffe49c575b288b7b97c68c350607638bfd06",

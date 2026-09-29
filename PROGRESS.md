@@ -117,90 +117,9 @@
 - B83 — 시트 역할 관문: 문서마다 한 번 정하고 기록으로 남긴다 · 2026-09-22 · **완료** — 본문 `docs/archive/장부/PROGRESS_B83.md`
 - B84 — 뷰어 손보기: 대비 · 검색은 강조만 · 배치 둘 · 상호작용 · 오류 문면 · 2026-09-22 · **완료** — 본문 `docs/archive/장부/PROGRESS_B84.md`
 - B85 — 좌표 층의 이름 해방 · 2026-09-22 · **완료** — 본문 `docs/archive/장부/PROGRESS_B85.md`
+- B86 — 「사내 모양」 잔여: 상태가 코드 밖이어도 등록부터 뷰어까지 돈다 · 2026-09-23 · **완료** — 본문 `docs/archive/장부/PROGRESS_B86.md`
 
 ---
-
-## B86 — 「사내 모양」 잔여: 상태가 코드 밖이어도 등록부터 뷰어까지 돈다 (2026-09-23)
-
-출처는 사내 실측 셋 — ⓐ상태 루트를 가이드대로 코드 밖에 두자 산문 `register generate`가
-`… is not in the subpath of …`로 죽었다 ⓑ새 코드 폴더(새 파이썬 환경)에서 `openpyxl` 부재가
-원인 문면 없이 죽고 WMF 그림 경고가 날것으로 흘렀다 ⓒ시트 수십 장 산문 엑셀을 등록하면
-검수·킷 관문이 시트 전부를 돌았다(B83 누락). 판정·저장 형식 변경 0 · 가결정 D-167.
-
-### ① 화면 경로는 한 함수 — `paths.show`
-
-- `core/paths.show(p)`: 상태 안 → 상태 기준 · 레포 안 → 레포 기준 · 밖 → 절대 경로 · 예외 0.
-  기록용 `rel_to_home`과 따로 둔다(D-167 ①).
-- `relative_to(ROOT)` **21 → 0**(`cli/register/*` 일곱 · `cli/prompt` · `cli/skeleton` ·
-  `cli/export._short`·`cli/golden._rel` 삭제 · `cli/ingest` 선택 근거 줄 · 내장 스키마 기록
-  `core/state/registry._repo_rel`). `draft._rel`은 기록이라 그대로 — 기준 순서(상태 → 레포)는 같다.
-
-### ② 파서는 레포 자리를 모른다 — 킷은 플래그로
-
-- `parser/tagger.SNAPSHOT`·`struct_map.KEEP_DIR`(레포 기본값) 삭제 — 주입 없으면 `[파서] …`
-  문면 있는 실패. 킷: `--closed-list <파일>`(등록 관문이 상태의 골격 목록을 건넨다 · 없으면
-  좌표 대조 생략 한 줄) · 구조 지도 보존은 킷 실행마다 임시 폴더 · 킷 최상단 `openpyxl` import 제거.
-
-### ③ 대장의 자리
-
-- `show report`의 대장 없음 문면이 `store.path(ledger.DIR)`에서 경로·수를 낸다(구판은 옛 자리를
-  적고 거기서 세어 늘 0건) · `core/build/ledger.py` 머리말.
-- `점검_경로`: `data/ingest_log` 추가(35종) + **토큰이 갈린 형태**(`ROOT / 'data' / 'ingest_log'`)도
-  잡는다 · 의도적 옛 배치 픽스처는 `# 옛 배치` 표시(D-167 ⑧).
-
-### ④ 선택 의존 부재 · 읽기 경고
-
-- `parser/reader.MissingDependency(ImportError)` + `_need()` 한 자리 → CLI 훅이 `` [상태] `.xlsx`를
-  읽으려면 `openpyxl`이 필요하다 — pip install openpyxl `` + 다음 줄(인입 · `parse run` · `scan` ·
-  등록 · Traceback 0) · 인입은 문서 단위 FAIL 행 + 끝 요약.
-- xlsx 읽기 경고를 잡아 `read_warnings`(있을 때만) → 화면 한 줄 `그림 n개를 읽지 못해
-  건너뜀(WMF k)` · 원문은 로그 파일 · stderr 0.
-
-### ⑤ 등록 표본의 시트 관문
-
-- 관문 한 벌을 `cli/sheet_gate.py`로 뗐다(호출자 셋: 인입 · `parse run` · 등록) ·
-  `cli/register/samples.py` — `generate` 입구에서 표본마다 관문, 기록은 인입과 같은 자리,
-  `--sheets`(표본 하나일 때) · 관문·리허설·킷이 기록을 읽는다(`--sheet-roles <임시 표>`).
-- 같은 파일을 나중에 인입하면 「시트 역할 — 기록대로 진행」(관문 0).
-
-### ⑥ 사내 모양 회귀 루트 — `tests/test_g6_shanae_root.py`
-
-- 코드 사본 둘(기본 · 사내 모양) — 사내 모양은 **상태 루트가 코드 밖**(`ONTO_MOCK_HOME` 시험 훅 ·
-  D-167 ⑨) + 좌표 층 `equipment`. 등록(산문 RFQ01 생성→상태→확정 · 표 ipqc) → 인입 → 질의 12 →
-  반출 → 골든 → 뷰어 API → `doctor --quick`.
-- 대조: **canonical 99 = 99 · 엣지 149 = 149(걸침 11) · 큐 kind별 같음 · 질의 12 같은 경로 ·
-  뷰어 노드 90 = 90 · doctor --quick 0 · 0 · 코드 폴더 새 파일 0 · 예외 0**.
-
-### 실행으로 확인한 것
-
-- 회귀 **1,517 → 1,546/1,546** · FAIL 0 · 클린 2회 동일 · doctor EXIT=0.
-  순증 29(신설 `test_g6_shanae_parts` 16 · `test_g6_shanae_root` 13) · 삭제 0 ·
-  `test_p1_wiring` 1건은 잠그는 성질을 새 자리로 옮겼다(`KEEP_DIR` → `keep_dir`·`use_dir`).
-- 동작 등가 **네 벌 diff 0**(vs `046c05d` — 사전 306 · 대장 399 · 엣지 133/92 · 노드 95/47 · 큐 107).
-- 검사 5종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13 · 자산 해시 갱신(킷) · 코드 지도 재생성 ·
-  §7 상한 위반 0(함수 셋 분할 — D-167 ⑪) · 미정의 이름 0 · 상태 거부 근거 없음 0.
-- `git diff core/`: `paths.py`(+`show` · 시험 훅) · `state/registry.py`(`_repo_rel`) ·
-  `build/ledger.py`(머리말).
-- **표 밖에서 같이 고친 자리**: `cli/platform.cmd_accuracy`의 `G._rel`(지운 도우미의 속성 접근 —
-  회귀가 잡았다 · D-167 ⑫) · 함수 상한 셋 · `test_onsite` 옛 배치 표시.
-- 가이드·구조도(같은 커밋 · 사용자 확정): `2B_작업가이드` §0·§4·§4.1·§7 · `걸어가기_설비문서` §2 ·
-  `상태_폴더_가이드` §5 · 구조도 `00`(1.1·1.6·2.1·3.1·0.3 Code) · `01`(0″ · 관문 a) · `02` · `06`(0.3 둘 ·
-  1.5 · 2.1 · 2.2) · `10`(생성물).
-- 소요: 1회차.
-
-### 허브 마감 판정 · 문서 몫 (hub_52 · 2026-09-23)
-- B86 닫음. D-167 ①~⑫ 확정 — 개정대장 §BU. 문서 7 §7.1·§7.5·§7.6-B-6·§7.8 · 문서 6 §6.4·§6.7 · CLAUDE.md §5.
-- B87 전제 11행 d409440 재확인(4행 229 · 8행 80). 범위 불변.
-
-### 허브 발주 — B88 · 주간 논의 마감 (hub_53 · 2026-09-23)
-- B88 = 리더의 폭과 그림 이해: 엑셀 그림 → ④ · docx · register status 재확인 · 가이드 정리(시작하기 · 증상표 · 점검_가이드). B87 뒤.
-- 결정(개정대장 §BV): 큐 처리 화면은 플랫폼으로 · OCR 엔진 보류 · D-164 ② 확정 · 혼재 보류.
-
-### 허브 — 문서 구조 정리 · B88 ④ 개정 (hub_54 · 2026-09-28)
-- 문서는 다섯 갈래 · 새 파일은 사용자 확정 때만 · 안건은 살아 있는 것 + 최근 마감 3 (CLAUDE.md §7 · 개정대장 §BW).
-- 00_칸_대장 Role 열(옛 07_칸_해설 흡수 · Card 열 폐기) · 09_부품_해설 534 → 101행.
-- B88 ④ = 가이드·문서 정리(새 파일 0 · 안건 40개와 멈춘 장부 넷 삭제 · 태그 pre-doc-cleanup · 점검_가이드). B88은 착수 전이다.
-- 순서: B87 → B88.
 
 ## B87 — 산문 엑셀의 계층은 시트마다: 번호 군 · 글자 상한 · 규칙 선언 (2026-09-28)
 
@@ -307,3 +226,97 @@
 - B87·B88 닫음. D-168 · D-169 확정 — 개정대장 §BX·§BY. 정제본: 문서 6 §6.3·§6.4·§6.5 · 문서 7 §7.1·§7.5·§7.6-B-2·§7.6-B-6.
 - [정정] 50: 창작 표본 분포를 크기 판단 근거로 쓴 것을 고쳤다 — 레벨 0 후보 철회 · CLAUDE.md §3 규칙(수치에 출처).
 - 층 설계(이연대장 §2-a): Property는 공정층(사용자 확정). B89는 허브 검토 뒤 발주.
+
+---
+
+## B89 — 사내 산문 엑셀 등록 결함: 셀 안 줄바꿈의 locator · 관문 ③④의 시트 역할 · 형태 판정의 시트 역할 (2026-09-29)
+
+순서 ① → ② → ③ → ⑥ → ⑦. 가결정 D-170. 수치의 출처는 전부 **창작 표본**(mock · `tests/fixtures/make_b89.py`)이다 — 메커니즘 확인일 뿐 상수 근거가 아니다([정정] 50).
+
+### 전제 대조표 15행 (origin `3e365e1` 위 `a353b15`)
+
+1~14행 기대값과 전부 일치(516 · 487·538 · 447 · 432 · 0칸 · 100 · 554·453 · 558·559 · 432·552·558 · 38·100 · 611 · 1(141행) · 294 · 256·270). 15행은 **4** — B89 요청문을 커밋한 뒤에 쟀기 때문(커밋 전 3).
+
+### ① 셀 안 줄바꿈 — locator를 행에서 (칸 2.5 · `parser/struct_map.py`)
+
+- `_resplit`: 청크의 `_lines`(행 번호 · 셀 글)로 자른다 — 역매핑 `row_of` 삭제 · 쪼개기 판정은 **행 수**(`len(c["_lines"])`) ·
+  `cap_chars`의 두 갈래(487·538 「행 없으면 원래 locator」) 삭제 → 행 목록 없는 청크는 `ValueError`(D-170 ①).
+- 표본 `NL01.xlsx`(시트 「사양」 · 짧은 1레벨 절 셋 + 2레벨 제목을 품은 긴 1레벨 절 · 셀 안 줄바꿈 → 청크 R29-R49 = 행 21 · 글 줄 87 · 「1. 기계」 부분 3,365자 · 「해당 없음」 3행).
+- **전** (`register generate nl01 process NL01.xlsx --use-basic`): 관문 36 PASS / **2 FAIL** — `[FAIL] G35 중복 1건` ·
+  `[FAIL] G52 … source_locator가 문서 내 유일하지 않다 — ['사양!R30']`. 조각 locator: `R2-R9 · R11-R18 · R20-R27 · R29-R49(173자) ·
+  R30(2,945자) · R30(419자) · R39(1,205자) · R45-R49` — 중복 `R30` 둘 · 틀린 범위 셋(`R29-R49`는 한 셀, `R39`는 여섯 행).
+- **후**: 관문 **39 PASS / 0 FAIL** · `G35 중복 0건` · `G52` PASS. 조각 `R2-R9 · R11-R18 · R20-R27 · R29 · R30-R37 · R38 · R39-R44 · R45-R49`.
+- 기존 표본 diff: xlsx·docx 15벌의 산문 어댑터 산출(49조각) **바이트 동일**(vs `a353b15`) · 동작 등가 네 벌 diff 0(아래).
+
+### ② 관문 ③④가 ⑤와 같은 시트 역할로 (칸 1.5 · `kit/run_adapter.py`)
+
+- `raw = read(d)` 뒤 `apply_roles` — 역할 표의 그 표본 몫으로 `parser.pipeline.drop_skipped` · 추출 뒤 `mark_roles`. 역할 표가 없으면 지금과 같다.
+- 표본 `SKIP01.xlsx`(「사양」 산문 + 「메모」 한 칸 「상동」 — skip이면 안 봐야 할 시트). `--sheets "1:prose 2:skip"`:
+  **전** ③ `G33 조각 4건` · `[FAIL] G38 1건 잔존` · ⑤ 조각 3건 → 관문 FAIL / **후** 「시트 역할 적용 — skip 1장 뺐다」 · ③ `G33 조각 3건` · G38 PASS · ⑤ 3건 → **39 PASS / 0 FAIL**.
+  킷 단독(역할 표 없음)은 전과 같이 4건 · G38 FAIL · rc 1.
+
+### ③ 형태 판정이 시트 역할을 따른다 (칸 2.3 · 등록 입구)
+
+- `form.judge_sheets`(시트마다 · 빈 시트 제외) → `samples._kind_of`는 시트 ≥2면 **전부 table일 때만** table.
+  `draft.read_sample` 한 자리가 역할 기록을 읽는다 — 형태 판정(`form_block`·`payload_kind_of_samples`)은 prose 시트만, 제안 계산은 skip을 뺀 시트.
+  `state.json` `form.sheets` · 화면 「판정 시트 n장(역할 prose)」.
+- 표본 `MIX01.xlsx` 시트별 판정: 가격 table · 일정 table · 도면목록 table · 사양 prose → **통합문서 전체 table**(찬성 3 · 반대 0).
+- **전**: 플래그 없이 → 형태 판정 table · 시트 관문 없음 → LLM 생성(mock `초안을 얻지 못했다`) · `--sheets "4:prose *:ref" --use-basic` →
+  `--sheets` 무시 · `고정 어댑터 거부 — 분할 자명 계열이 아니다`.
+- **후**: ⓐ 플래그 없이 → `■ 시트 역할 미정 — MIX01.xlsx (시트 4장…)` + `--sheets "1:ref 2:ref 3:ref 4:prose"` 줄(비대화형 상태 거부)
+  ⓑ `--sheets "4:prose *:ref"` → `판정 시트 1장(역할 prose): 사양` · prose 찬성 4 → 「고정 어댑터로 갈까?」(비대화형 → 고정)
+  ⓒ 스키마 `use_blocks ['common_core', 'process_coord']` · 관문 **39 PASS / 0 FAIL** · G49 PASS · `form.sheets ['사양']`.
+  전 시트가 표인 표본: CP01 등 단일 시트 표본 전부 그대로 table · MIX01에서 사양을 뺀 3시트 사본도 table(관문 없음).
+
+### ⑥ registry 점검 — 조사만 (바꾼 것 0)
+
+루트: 코드 사본 + `ONTO_MOCK_HOME`(코드 밖) + 층 자산 복사. 돌린 것: rfq(prose · RFQ01 · `--use-basic --sheets`) generate→status→confirm ·
+ipqc(table · mock 초안 G13·G14 FAIL — 확정 거부가 계약) generate→status→confirm(거부)→`--revise`(거부 — 미등록) ·
+toc_report(table · `--no-basic` LLM 초안) generate→review `--instruct`→status→confirm→`--revise`→status. 생긴 것 전부:
+
+| 자리 | 쓰는 곳 | 읽는 곳 (이름 · `.이름(`) | 다시 만드나 | 단 | 의견 |
+|---|---|---|---|---|---|
+| `doc_types.json` | `core/state/store.py` 원자 쓰기 ← `registry.py:233·273·309` | `store.read(store.DOC_TYPES` 7 · `.lookup(` 4 · `.schema_of(` 7 · `all_doc_types(` 8 — 운영/구축 모드를 가름 | 아니오 | ② | 둔다 |
+| `.doc_types.json.lock` · `sheet_roles/.<id>.json.lock` | `store.py:122-125`(flock) | 코드 0 · 이관 제외(`migrate.py:97·174`) | 예(빈 부산물) | 상태 아님 | 둔다(지우는 코드 0) |
+| `adapters/<dt>.py` · `schemas/<dt>.json` | 확정 `view._promote`(`view.py:573-595` — 바이트 복사) | 운영 인입(`scan.py:95`) · 등록분 `status`(`view.py:607`) | 아니오 | ② 정본 | 둔다 |
+| `review/<dt>/adapter.py` | 고정 `generate.py:589` · 실호출 `draft.py:371` · mock 스탬프 `gate.py:524-528` | `st["adapter"]` 경유 7곳(`gate.py:612` 관문 · `view.py:191` · `confirm.py:40` · `generate.py:197` resume …) | 아니오 | ② 작업 중 | **확정 직후는 정본과 바이트 같다**(rfq 실측) · `--revise` 뒤엔 다음 판 초안이라 다르다(toc_report 실측) — 확정 때 걷을지는 「새 판 초안의 자리」와 함께(B90) |
+| `review/<dt>/schema.json` | 고정 `generate.py:609` · 실호출 `draft.py:368` | `st["schema"]` 경유(`ledger.py:298` · 관문 · 확정) | 아니오 | ② 작업 중 | 위와 같다 · **mock LLM 경로엔 없다** — state가 fixture 경로를 가리킨다(toc_report 실측) |
+| `review/<dt>/state.json` | `__init__.py:102-104`(`write_text` — 원자 아님) · 10곳 | `_state(` 11 — confirm 전제·status·resume·`--revise` 차단 | 일부(samples·form.by·instructions는 사람) | ② | 둔다 · **원자 쓰기 아님**(CLAUDE.md §5와 대조 과제) |
+| `review/<dt>/input_package.json` | `generate.py:444` 등 7 · `gate.py:401` · `interview.py:191` | 10 — 관문 `--package`(`gate.py:616`) · `--revise`/resume의 `.prior_interview(`(`generate.py:416·426`) | system 5키는 예 · `human.hint` 결정은 아니오 | ② | 둔다 |
+| `review/<dt>/columns.json` | `ledger.py:230-234` ← `gate.py:614·633` · `view.py:388` · `generate.py:481` | `read_ledger(` 6 · `ledger_path` → 킷 `--ledger`(G4G) | 사람 행은 아니오 | ② | 둔다 · `--revise` 진입은 안 읽고 뒤이은 관문이 이어 쓴다 |
+| `review/<dt>/view.json` | `view.py:543` | `confirm.py:63-70`(추출 리허설 요약을 approval로) · 그 외 사람 | 예(`review` — prose는 리허설 비용) | 파생 성격 | 둔다(승인 근거가 approval에 요약된다) |
+| `review/<dt>/view.html` | `view.py:545` | 코드 0(경로 표시만) | 예(view.json에서) | ⑤ | 옮긴다 후보(`export/`) — 사람 창구라 둘 수도 |
+| `review/<dt>/approval.json` | `confirm.py:80`(`write_text` · 이력 누적) | `confirm.py:72-76` · `registry.orphan_reviews`(`registry.py:197`) | **아니오** | ② 정본 | 둔다 · 옛 `cli.parse build`(`parse.py:366`)도 형식이 다른 것을 쓴다 — orphan 판정이 그것을 승인으로 센다 |
+| `review/<dt>/__pycache__/` | 어댑터 import 부산물(`__init__.py:90-94` · 킷) | 코드 0 · 이관 제외(`migrate.py:104`) | 예 | 상태 아님 | 지운다 후보(적재 때 바이트코드 끄기) |
+| `sheet_roles/<doc_id>.json` | `sheets.py:50-63`(원자) ← `sheet_gate.py:83·130` | `SH.read(` 2(관문 · `draft.sample_roles_of`) + 표시 2 | **아니오**(사람 답) | ②(명세 명시) | 둔다 — doc_id 키라 **인입 문서 수만큼** 는다 · 등록 표본도 운영 doc_id로 한 건 |
+| (이번엔 안 생김) `interview_log.json` | `interview.py:48-68` | `read_log(` 5 — 다음 문답에 이전 라운드(동작) | 아니오 | ② | 둔다 |
+| (안 생김) `last_error.json` | `draft.py:225-239`(실호출 예외만) | 코드 0 | 아니오(진단) | ④ | 옮긴다 후보 → `work/logs/` |
+| (안 생김) `prompt_rendered.md` | `cli/prompt.py:100-114`(`ONTO_DUMP_PROMPT=1`) | 코드 0 | 예 | ④ | 옮긴다 후보 → `work/` |
+
+### ⑦ 2B 증상표 G4C 행 (`docs/가이드/2B_작업가이드.md` 294행)
+
+- 전: 「스키마의 카테고리·관계·삼항이 층 config 목록 밖이다. 자동 재생성. 그 값이 정말 필요하면 … config.json에 더한다」
+- 후: 갈래로 가른다 — **table**: 자동 재생성(지금 문면) · **prose**: 스키마가 고정 틀이라 재생성이 없다 — 고칠 곳은 등록한 층의 config.
+  `process_coord` 블록이 `Process`를 부르므로 등록 층이 `Process`를 `categories`에 선언하거나 `relation_patterns`에서 불러야 한다
+  (고친 뒤 `python run.py bootstrap` → `register status <dt>`).
+
+### 실행으로 확인한 것
+
+- 어서션 **+9 · 삭제 0** — `test_p1_hier` +3(① 글자 상한 갈래: 조각 글 = locator 행 범위의 온전한 셀 · locator 유일 · validator 0 /
+  한 단계 더 쪼개기 갈래: 같은 성질(합성 줄 목록 — 행 86) / 행 목록 없는 청크는 예외) · `test_p1_form` +6(② 역할 표 있으면 ③ 조각 = ⑤ 조각 ·
+  없으면 지금과 같다 / ③ 입구 시트마다 판정 / 역할 뒤 prose 시트 판정 + 제안 / 제안 계산은 skip 뺀 시트 / 혼합 표본이 `--sheets` 뒤
+  고정 어댑터·관문 PASS·판정 시트 기록). 기대값 넓힌 곳 하나: `test_p1_form` ④ⓐⓑ 표본 이름표에 새 표본 셋.
+  ① 두 어서션은 **고치기 전 코드에서 붉었다**(NL01 어긋남 6 · 합성 5 → 후 0).
+- 회귀 **1,587 → 1,596/1,596** · FAIL 0 · 클린 2회 동일 · doctor EXIT=0.
+- 동작 등가 **네 벌 diff 0**(vs `a353b15` — 그래프 process 95/133 · quality 47/92 · 사전 306 · 큐 107 · 판정대장 399, 창작 표본).
+- 검사 6종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13 · 가이드 0 · 코드 지도 재생성 · §7 위반 0 · 자산 해시 갱신(킷).
+- `git diff core/`: 없음.
+- 구조도: `01_등록_흐름`(입구 시트별 판정 · 역할 뒤 prose 시트 · 킷 ③④) · `02_파싱과_추출`(행이 단위) · `00_칸_대장` 2.3 Code 열.
+- 안건: `B86_요청문.md` 지움(살아 있는 B89 + 최근 마감 B87·B88 · B86은 PROGRESS 본문과 함께 archive).
+- 소요: 1회차.
+
+### 정제본 개정이 필요한 곳 (허브 몫 — 보고만)
+
+1. **문서 6 §6.4 141행** 「표로 판정된 표본만 건너뛰고」 → 「시트가 둘 이상이면 시트마다 판정해 비어 있지 않은 시트 전부가 table일 때만 건너뛴다 ·
+   역할이 정해진 뒤의 형태 판정은 prose 역할 시트만 · 고정 어댑터 제안 계산은 skip을 뺀 시트」(D-170 ④~⑧).
+2. **문서 6 §6.3 쪼개기 단위** — 「한 단계 더 쪼개기」의 판정과 글자 상한의 단위는 **행(셀 하나)**이고, 조각의 locator는 조각의 첫 행~끝 행이다(셀 안 줄바꿈은 행을 늘리지 않는다) · 행 없는 청크는 결함(D-170 ①).

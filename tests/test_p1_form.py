@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""P1 ④ 형태 — 스프레드시트 산문의 레벨 규칙 · table/prose 판정 · 큐 case 두 값."""
+"""P1 ④ 형태 — 스프레드시트 산문의 레벨 규칙 · table/prose 판정 · 큐 case 두 값.
+
+B89 ②③ — 시트 역할이 관문 ③④와 형태 판정에 닿는다(표본 `SKIP01`·`MIX01` —
+`tests/fixtures/make_b89.py`): 관문 ③④는 ⑤와 같은 시트를 센다 · 시트 여럿인 표본은 시트마다
+판정해 하나라도 table이 아니면 관문을 띄운다 · 역할이 정해지면 prose 시트로 판정하고 고정
+어댑터 제안은 skip을 뺀 시트로 계산한다.
+"""
 from __future__ import annotations
 
 import sys
@@ -149,7 +155,8 @@ from cli import ingest as _IN                                 # noqa: E402
 
 # ⓐ **픽스처의 판정** — 명세가 문턱을 뽑은 표본 아홉 + 시트 여러 장짜리 RFQ01(B83) +
 # 계층 표본 둘(B87 — HIER01 산문 · FONT01은 **사람**이 정한다: 번호 행 0이 table 쪽으로
-# 투표해 자동 조건 「반대 0」이 서지 않는다. 글자 크기만으로 제목을 쓴 문서의 실제 처지다).
+# 투표해 자동 조건 「반대 0」이 서지 않는다. 글자 크기만으로 제목을 쓴 문서의 실제 처지다) +
+# B89 셋(MIX01은 **통합문서 한 벌로는 table**이다 — 입구가 시트마다 보는 이유가 그것이다).
 # 문턱은 그대로고 표본만 늘었다.
 _XL = sorted(RAW.glob("*.xlsx"))
 _J = {p.name: _FM.judge(read(str(p))) for p in _XL}
@@ -157,7 +164,8 @@ _EXPECT = {"CP01.xlsx": "table", "CP02_drift.xlsx": "table", "CP03_bad.xlsx": "t
            "CP04_unlabeled.xlsx": "table", "IPQC01.xlsx": "table",
            "IPQC02.xlsx": "table", "PFMEA01.xlsx": "table",
            "RFQ01.xlsx": "prose", "TOC01.xlsx": "prose", "TOC02.xlsx": "prose",
-           "HIER01.xlsx": "prose", "FONT01.xlsx": None, "IMG01.xlsx": "prose"}
+           "HIER01.xlsx": "prose", "FONT01.xlsx": None, "IMG01.xlsx": "prose",
+           "NL01.xlsx": "prose", "SKIP01.xlsx": "prose", "MIX01.xlsx": "table"}
 show("④ⓐ 판정이 정해지는 xlsx 픽스처는 전부 자동이다 · 정해지지 않는 것만 사람에게 간다",
      set(_J) == set(_EXPECT)
      and all(j["auto"] == (_EXPECT[n] is not None) for n, j in _J.items()),
@@ -281,5 +289,111 @@ show("④-후속 계층 신호 0건 → flat_fallback 쪽 표시 (size 표시가
 
 
 # ── B62 ① 헤더 위치 — 선언 하나, 리더 하나, 대조는 시스템이 ────────────────
+
+
+# ── B89 ②③ 시트 역할 — 관문 ③④ · 형태 판정 ────────────────
+print("\n■ B89 ② 관문 ③④가 ⑤와 같은 시트 역할로 본다")
+import os as _os                                              # noqa: E402
+import subprocess as _sub                                     # noqa: E402
+import tempfile as _tmp                                       # noqa: E402
+from cli.ingest import doc_id_of as _doc_id                    # noqa: E402
+from cli.register import samples as _samples                   # noqa: E402
+from core.state import sheets as _SH                           # noqa: E402
+from parser import form as _form                               # noqa: E402
+
+_SKIP, _MIX = RAW / "SKIP01.xlsx", RAW / "MIX01.xlsx"
+
+
+def _kit(doc, roles):
+    """킷 단독 실행 — `(rc, ③의 조각 수, ⑤의 조각 수, G38 통과)`."""
+    with _tmp.TemporaryDirectory(prefix="b89kit_") as td:
+        sc = Path(td) / "schema.json"
+        sc.write_text(json.dumps({"doc_type": _BPX.ADAPTER["doc_type"], "schema_version": 1,
+                                  "layer": "process", "payload_kind": "prose",
+                                  "use_blocks": ["common_core", "process_coord"],
+                                  "fields": {}, "edges": []}), encoding="utf-8")
+        argv = [sys.executable, str(ROOT / "kit" / "run_adapter.py"),
+                str(ROOT / "parser" / "adapters" / "basic_prose_xlsx.py"), str(sc), str(doc)]
+        if roles:
+            rf = Path(td) / "roles.json"
+            rf.write_text(json.dumps({str(Path(doc).resolve()): roles}, ensure_ascii=False),
+                          encoding="utf-8")
+            argv += ["--sheet-roles", str(rf)]
+        r = _sub.run(argv, capture_output=True, text=True, cwd=str(ROOT), stdin=_sub.DEVNULL,
+                     env={**_os.environ, "USE_MOCK": "1"})
+    n3 = [int(x) for x in _re.findall(r"G33  조각 (\d+)건", r.stdout)]
+    n5 = [int(x) for x in _re.findall(r"조각 (\d+)건 · 좌표 보고", r.stdout)]
+    return r.returncode, n3[:1], n5[:1], "[PASS] G38" in r.stdout
+
+
+_with = _kit(_SKIP, {"사양": "prose", "메모": "skip"})
+_without = _kit(_SKIP, None)
+show("B89 ② 역할 표를 건네면 ③④는 운영이 읽는 시트만 센다 (③ 조각 수 = ⑤ 조각 수 · skip 시트의 결함 0)",
+     _with[0] == 0 and _with[1] == _with[2] and _with[3], str(_with))
+show("B89 ② 역할 표가 없으면 지금과 같다 (skip 시트까지 본다 — 그 시트의 G38 FAIL이 보인다)",
+     _without[0] != 0 and _without[1] > _with[1] and not _without[3], str(_without))
+
+print("\n■ B89 ③ 형태 판정이 시트 역할을 따른다")
+_whole = _form.judge(read(str(_MIX)))["verdict"]
+with _tmp.TemporaryDirectory(prefix="b89tab_") as _td:
+    from openpyxl import load_workbook as _lw                  # noqa: E402
+    _wb = _lw(str(_MIX))
+    _wb.remove(_wb["사양"])
+    _alltab = Path(_td) / "B89TAB.xlsx"
+    _wb.save(str(_alltab))
+    _k_all = _samples._kind_of(None, _alltab)
+show("B89 ③ 입구 — 시트마다 판정: 하나라도 table이 아니면 관문 갈래(prose) · 전 시트 table이면 table",
+     _whole == "table" and _samples._kind_of(None, _MIX) == "prose"
+     and _k_all == "table" and _samples._kind_of(None, RAW / "CP01.xlsx") == "table",
+     f"통합문서 전체 {_whole} · 시트 전부 표 {_k_all}")
+
+
+def _roled(path, roles):
+    _SH.write(_doc_id(path), Path(path).name, roles, "flag")
+
+
+def _unroled(path):
+    _SH.path(_doc_id(path)).unlink(missing_ok=True)
+
+
+_unroled(_MIX)
+_p0 = Rdraft.basic_adapter_proposal([str(_MIX)])
+_roled(_MIX, {"가격": "ref", "일정": "ref", "도면목록": "ref", "사양": "prose"})
+try:
+    _fl, _fj = Rdraft.form_block([str(_MIX)])
+    _p1 = Rdraft.basic_adapter_proposal([str(_MIX)])
+finally:
+    _unroled(_MIX)
+show("B89 ③ 역할이 정해지면 prose 시트만 판정한다 · 고정 어댑터 제안이 선다 (역할 없으면 table — 제안 없음)",
+     _p0 is None and _fj[0]["verdict"] == "prose" and _fj[0]["sheets"] == ["사양"]
+     and (_p1 or {}).get("adapter", "").endswith("basic_prose_xlsx.py"),
+     f"판정 {_fj[0]['verdict']} · 시트 {_fj[0].get('sheets')}")
+_q0 = Rdraft.basic_adapter_proposal([str(_SKIP)], said_prose=True)
+_roled(_SKIP, {"사양": "prose", "메모": "skip"})
+try:
+    _q1 = Rdraft.basic_adapter_proposal([str(_SKIP)], said_prose=True)
+finally:
+    _unroled(_SKIP)
+show("B89 ③ 제안 계산(청크·규칙 선언 시트)은 skip을 뺀 시트로 한다 — 운영과 같은 시트",
+     _q0 and _q1 and _q1["chunks"] < _q0["chunks"] and _q1["rule_frames"] < _q0["rule_frames"],
+     f"청크 {_q0 and _q0['chunks']}→{_q1 and _q1['chunks']} · "
+     f"규칙 시트 {_q0 and _q0['rule_frames']}→{_q1 and _q1['rule_frames']}")
+from cli.register import generate as _gen                       # noqa: E402
+import io as _io                                                  # noqa: E402
+_stdin, sys.stdin = sys.stdin, _io.StringIO("")                  # 비대화형 — 권유는 고정 어댑터로
+try:
+    _gen.cmd_generate("b89mix", "process", [str(_MIX)], sheets="4:prose *:ref")
+    _st = json.loads(_P.review("b89mix", "state.json").read_text(encoding="utf-8"))
+    _sc = json.loads(_P.review("b89mix", "schema.json").read_text(encoding="utf-8"))
+except SystemExit as _e:
+    _st, _sc = {"_exit": str(_e)}, {}
+finally:
+    sys.stdin = _stdin
+    shutil.rmtree(_P.review("b89mix"), ignore_errors=True)       # 등록 단은 클린이 안 지운다
+    _unroled(_MIX)
+show("B89 ③ 표·산문 혼합 표본이 `--sheets` 뒤 고정 어댑터로 등록된다 (common_core · 관문 PASS · 판정 시트 기록)",
+     "common_core" in (_sc.get("use_blocks") or []) and _st.get("machine_gate") == "PASS"
+     and (_st.get("form") or {}).get("sheets") == ["사양"],
+     f"관문 {_st.get('machine_gate')} · form {(_st.get('form') or {}).get('sheets')} · {_st.get('_exit', '')[:80]}")
 
 done()

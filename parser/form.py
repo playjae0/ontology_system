@@ -138,6 +138,20 @@ def judge(raw):
                     f"기권 {len(tally[ABSTAIN])}. **사람이 정한다**")}
 
 
+def judge_sheets(raw):
+    """**시트마다** 판정한다 — `{시트 이름: verdict}` · 빈 시트는 빠진다 (B89 ③).
+
+    `judge`는 통합문서를 한 벌로 본다 — 그 답은 「어댑터를 무엇으로 쓰나」에 맞다. 그러나
+    **시트 관문을 띄울지**는 그 답으로 정할 수 없다: 표 시트 셋이 산문 시트 하나를 덮어
+    전체가 table로 기울면 관문이 건너뛰어지고, 사람이 산문 시트를 가를 자리가 사라진다.
+    """
+    out = {}
+    for sh in raw.get("sheets") or []:
+        if any(v is not None and str(v).strip() for v in (sh.get("cells") or {}).values()):
+            out[sh.get("name")] = judge({**raw, "sheets": [sh]})["verdict"]
+    return out
+
+
 # ================================================================ 시트 역할 (B83 ②)
 # **다른 판정이다** — 위가 「이 문서를 table로 읽을까 prose로 읽을까」라면 여기는
 # 「이 **시트**를 지식으로 읽을까, 참조로 둘까, 읽지 말까」다. 문서마다 시트 이름과
