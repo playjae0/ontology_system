@@ -179,9 +179,15 @@ def _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent
     direct_ids = {i for s in direct_by_layer.values() for i in s}
     coll = []
     res["chunks"], res["truncated"] = Q.collect_chunks(all_ids, direct_ids, trace=coll)
+    # **ref 노드 근처**(B91 ④) — 직접 링킹 노드의 표기가 든 참조 시트 청크 · 근거 순위 맨 뒤 ·
+    # 답변 입력에서는 [관련 원문]으로 가른다. 없으면 키도 없다(묶음 모양이 지금과 같다).
+    _rel = Q.ref_near(direct_ids, graphs, trace=coll)
+    if _rel:
+        res["related"] = _rel
     # `via_node`는 그 청크를 데려온 노드다 — 화면이 「어느 노드의 근거인가」를 그린다.
     _by_chunk = {}
-    for d in (store.read(store.CHUNKS, {"describes": []}).get("describes") or []):
+    _ch = store.read(store.CHUNKS, {"describes": []})
+    for d in (_ch.get("describes") or []) + (_ch.get("about") or []):
         _by_chunk.setdefault(d["chunk_id"], d["node_id"])
     tr["collection"] = [dict(c, via_node=_by_chunk.get(c["chunk_id"])) for c in coll]
     tr["facts"] = [{"key": i, "text": f, "used": True}
@@ -270,7 +276,10 @@ def generate(res):
               "그래프_사실": [{"i": i, "문장": f}
                           for i, f in enumerate(res["facts"])],
               "문서_근거": [{"출처": f"{c['doc_id']} {c['source_locator']}",
-                          "원문": c["text"]} for c in res["chunks"]]},
+                          "원문": c["text"]} for c in res["chunks"]],
+              **({"관련_원문": [{"출처": f"{c['doc_id']} {c['source_locator']}",
+                              "원문": c["text"]} for c in res["related"]]}
+                 if res.get("related") else {})},
              ensure_ascii=False)}],
         json_schema=ANSWER_SCHEMA, point="answer")
 
@@ -304,6 +313,8 @@ def render(res):
         lines.append(f"   [그래프 사실] {f}")
     for c in res["chunks"]:
         lines.append(f"   [문서 근거] ({c['doc_id']} {c['source_locator']}) {c['text']}")
+    for c in res.get("related") or []:
+        lines.append(f"   [관련 원문] ({c['doc_id']} {c['source_locator']}) {c['text']}")
     if res["truncated"]:
         lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {knobs.get('collect_limit')})")
     return "\n".join(lines)

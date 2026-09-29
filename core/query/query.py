@@ -24,6 +24,10 @@ from core.state.ids import norm
 from core.state.status import STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain
 
 COLLECT_LIMIT = 8               # ③ 수집 상한 (CH5 5.1 규약 6). 초과분은 tier2부터 자른다.
+#: ref 노드 근처 상한(B91 ④ — [관련 원문]) — 창작 기본값이다(사내 실측으로 `knobs.json`에서 정한다).
+REF_LIMIT = 3
+#: 수집 tier의 채널 — trace가 「어느 매달림으로 왔나」를 적는다(B91 ③④).
+CHANNEL = {1: "describes", 2: "describes", 3: "about", 4: "about", 5: "ref"}
 
 PATH_GRAPH = "graph_fact"
 PATH_CHUNK = "chunk"
@@ -315,15 +319,27 @@ class _desc:
         return self.v == other.v
 
 
-def collect_chunks(node_ids, direct, trace=None):
-    """2-tier(직접 링킹 > 확장) · 상한 8 · 최신순. **잘림은 로그로 남긴다**(계기판 재료)."""
-    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+def _tiers(links, node_ids, direct, first):
+    """매달림 하나(`describes` 또는 `about`)의 두 tier — 직접 링킹 `first` · 확장 `first + 1`."""
     by_node = {}
-    for d in ch["describes"]:
+    for d in links:
         by_node.setdefault(d["node_id"], []).append(d["chunk_id"])
-    tier1 = [(1, cid) for nid in direct for cid in by_node.get(nid, [])]
-    tier2 = [(2, cid) for nid in node_ids if nid not in direct
-             for cid in by_node.get(nid, [])]
+    return ([(first, cid) for nid in direct for cid in by_node.get(nid, [])]
+            + [(first + 1, cid) for nid in node_ids if nid not in direct
+               for cid in by_node.get(nid, [])])
+
+
+def collect_chunks(node_ids, direct, trace=None):
+    """tier(describes 직접 1 > 확장 2 > 관련 링크 직접 3 > 확장 4) · 상한(손잡이) · 최신순.
+    **잘림은 로그로 남긴다**(계기판 재료).
+
+    관련 링크(`about` — 청크의 두 번째 매달림 · B91 ③)는 **describes 뒤**다: 그 노드를
+    서술하는 청크가 먼저이고, 「관한 글」(주간 이슈 등)은 자리가 남을 때 온다. 한 청크가 둘 다
+    있으면 앞 tier로 한 번만 센다.
+    """
+    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    tiers = (_tiers(ch["describes"], node_ids, direct, 1)
+             + _tiers(ch.get("about") or [], node_ids, direct, 3))
 
     # **정렬 키는 셋이다**(문서 5 §5.1-6): ①tier(1이 항상 앞) ②청크의 `parsed_at`
     # **내림차순** ③동률은 `chunk_id` 사전순.
@@ -338,7 +354,7 @@ def collect_chunks(node_ids, direct, trace=None):
         return (tier, _desc(c.get("parsed_at") or ""), cid)
 
     ordered, seen = [], set()
-    for tier, cid in sorted(tier1 + tier2, key=_key):
+    for tier, cid in sorted(tiers, key=_key):
         if cid in seen:
             continue
         seen.add(cid)
@@ -359,8 +375,53 @@ def collect_chunks(node_ids, direct, trace=None):
             trace.append({"chunk_id": c["chunk_id"], "doc_id": c["doc_id"],
                           "source_locator": c.get("source_locator"),
                           "tier": c["tier"], "rank": rank,
-                          "kept": rank <= limit})
+                          "kept": rank <= limit, "channel": CHANNEL[c["tier"]]})
     return ordered[:limit], dropped
+
+
+def _surfaces(n):
+    """노드의 표기 — 정식 이름 · 이름 규칙의 끝 조각(`X::y`의 `y`) · 별칭(정규화)."""
+    names = [n["canonical"], n["canonical"].split("::")[-1],
+             *[(a.get("surface") if isinstance(a, dict) else a) for a in n.get("aliases") or []]]
+    return {norm(x) for x in names if x and len(norm(x)) >= 2}
+
+
+def ref_near(direct, graphs, trace=None):
+    """**ref 노드 근처**(B91 ④) — 직접 링킹 노드의 표기가 든 **참조 시트 청크**를 읽을 때 찾는다.
+
+    저장 0이다(노드에 매달지 않는다 — ref 청크는 추출 0 · `linked=false`). 확장 노드는 보지
+    않는다(허브 노드에서 무관한 목록이 딸려 온다). 순위: 링킹 노드 표기를 **여럿** 담은 청크
+    먼저 → `parsed_at` 최신 → `chunk_id`. 상한은 손잡이 `ref_limit`. 근거 순위 **맨 뒤**다
+    (tier 5 — describes → 관련 링크 → ref). 전문 검색(BM25)을 쓰지 않는다(문서 5 §5.5-3).
+    """
+    names = set()
+    for nid in direct:
+        n = _find(graphs, nid)
+        if n:
+            names |= _surfaces(n)
+    if not names:
+        return []
+    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    rows = []
+    for cid, c in ch["chunks"].items():
+        if (c.get("meta") or {}).get("sheet_role") != "ref":
+            continue
+        t = norm(c.get("text") or "")
+        k = sum(1 for x in names if x in t)
+        if k:
+            rows.append((-k, _desc(c.get("parsed_at") or ""), cid, c))
+    rows.sort(key=lambda r: r[:3])
+    from core.state import knobs
+    limit = knobs.get("ref_limit")
+    out = [{"chunk_id": cid, "doc_id": c["doc_id"], "text": c["text"], "tier": 5,
+            "section": c.get("section"), "source_locator": c.get("source_locator"),
+            "hits": -k} for k, _p, cid, c in rows]
+    if trace is not None:
+        for rank, c in enumerate(out, 1):
+            trace.append({"chunk_id": c["chunk_id"], "doc_id": c["doc_id"],
+                          "source_locator": c.get("source_locator"), "tier": 5,
+                          "rank": rank, "kept": rank <= limit, "channel": "ref"})
+    return out[:limit]
 
 
 # ---------------------------------------------------------------- ④ 답변 — 채널 1

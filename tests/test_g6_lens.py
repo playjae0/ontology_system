@@ -12,6 +12,9 @@ mock 동작 불변(네 벌 diff 0)은 회귀가 잰다 — 여기는 **새 성�
      청크는 그 렌즈 LLM 0 · 예고 · 상한을 넘으면 멈춘다(보류) · 렌즈는 등록부의 항목이다
   ② 시트 관문 표에 로직·LLM 두 제안 · 기록 네 필드 · 자동 모드는 합의만 자동이고 어긋나면
      ref + 승격 후보 · LLM 제안은 플래그로 끈다(자동 모드는 LLM 없이 성립하지 않는다)
+  ③ 개체별 부모가 이름 부모다(후보 밖은 null) · 관련 링크는 조회 전용(노드 0)이고 근거
+     순위는 describes 뒤다
+  ④ ref 근처는 직접 링킹 노드의 표기로 읽을 때 찾는다([관련 원문] · 확장 노드 0 · 상한 손잡이)
 """
 from __future__ import annotations
 
@@ -210,6 +213,98 @@ show("② LLM 제안은 끌 수 있다(플래그) — 표의 LLM 열이 「끔�
      _o_n.splitlines()[0][:70])
 for _d in ("XB91H", "XB91A", "XB91B"):
     SH.path(_d).unlink(missing_ok=True)
+
+# ────────────────────────────────────────────────────────────── ③
+print("\n■ B91 ③ prose 좌표 셋 — 주 좌표 · 개체별 부모 · 관련 링크")
+from core.state import store as _ST                # noqa: E402
+from cli import query as QR                        # noqa: E402
+
+fresh()
+run_document(load("CP01"))                         # 「노칭::노칭 프레스」 — ④의 직접 링킹 노드
+_HINT = {   # 추출 힌트(창작) — 두 새 필드를 준다
+    "X3-C001": {"entities": [{"surface": "버", "category": "Property", "parent": "노칭"}]},
+    "X3-C002": {"entities": [{"surface": "속도", "category": "Property", "parent": "탭용접"}]},
+    "X3-C003": {"entities": [], "about": [{"surface": "노칭", "category": "Process"},
+                                          {"surface": "스태킹", "category": "Process"},
+                                          {"surface": "없는공정", "category": "Process"}]},
+}
+
+
+def _stub3(cid, chunk, cfg, vocab):
+    h = _HINT.get(chunk.get("source_locator"), {})
+    return {"chunk_id": cid, "entities": h.get("entities", []), "relations": [],
+            "attach": [], **({"about": h["about"]} if h.get("about") else {})}
+
+
+_real = EX._candidates_for
+EX._candidates_for = _stub3
+try:
+    _d0 = _ST.path(_ST.DEFECTS).read_text(encoding="utf-8") if _ST.path(_ST.DEFECTS).exists() else ""
+    _pg0 = len(open_graph("process").nodes)
+    run_document(dict(PROSE, doc_type="ppt_process", doc_id="X3", chunks=[
+        dict(C1, source_locator="X3-C001", process_ref="스태킹", section="3. 스태킹",
+             text="전 공정(노칭)의 버가 스태킹 정렬 불량을 만든다."),
+        dict(C1, source_locator="X3-C002", process_ref="스태킹", section="3. 스태킹",
+             text="적층 속도가 떨어졌다."),
+        dict(C1, source_locator="X3-C003", process_ref=None, section="주간 이슈",
+             text="주간 이슈 — 노칭 버 증가 · 스태킹 정렬 불량 재발."),
+        dict(C1, source_locator="X3-R001", process_ref=None, section="도면목록",
+             text="도면목록: 노칭 프레스 조립도 D-001 · 노칭 프레스 금형도 D-002",
+             meta={"sheet_role": "ref"}),
+        dict(C1, source_locator="X3-R002", process_ref=None, section="도면목록",
+             text="도면목록: 노칭 공정 배치도 D-010", meta={"sheet_role": "ref"})]))
+finally:
+    EX._candidates_for = _real
+_pg = open_graph("process")
+_canon = {n["canonical"] for n in _pg.nodes.values()}
+_defx = (_ST.path(_ST.DEFECTS).read_text(encoding="utf-8") if _ST.path(_ST.DEFECTS).exists()
+         else "")[len(_d0):]
+show("③ⓐ 「3. 스태킹」 아래 「전 공정(노칭)의 버」 → 이름 부모가 개체별 부모다 (`노칭::버`)",
+     "노칭::버" in _canon and "스태킹::버" not in _canon, sorted(c for c in _canon if c.endswith("::버")))
+show("③ⓒ 부모 후보 밖 이름은 null — 주 좌표가 부모다(`스태킹::속도`) · 결함 로그",
+     "스태킹::속도" in _canon and "탭용접::속도" not in _canon and "부모 후보 밖" in _defx,
+     [l for l in _defx.splitlines() if "부모 후보 밖" in l][:1])
+_ch3 = _ST.read(_ST.CHUNKS, {})
+_ab = [a for a in _ch3.get("about") or [] if a["chunk_id"].startswith("X3")]
+_abn = sorted(_pg.get(a["node_id"])["canonical"] for a in _ab)
+show("③ⓓ 없는 노드를 가리키는 관련 링크는 노드 0 · 버리고 기록 (조회 전용)",
+     _abn == ["노칭", "스태킹"] and "없는공정" not in _canon and "관련 링크 미해소" in _defx
+     and len(_pg.nodes) == _pg0 + 2, f"매달림 {_abn} · 노드 +{len(_pg.nodes) - _pg0}")
+_knobs_file({"collect_limit": 60})     # 순위를 보려면 자르지 않는다(상한은 손잡이 — ⑤)
+_rn, _rs = QR.answer("노칭"), QR.answer("스태킹")
+_knobs_file(None)
+_c3 = next(iter(a["chunk_id"] for a in _ab))
+
+
+def _rank(res, cid):
+    return next((i for i, c in enumerate(res["chunks"]) if c["chunk_id"] == cid), None)
+
+
+show("③ⓑ 「주간 이슈」 청크가 노칭·스태킹 양쪽 질의의 근거다 — 관련 링크 · 순위는 describes 뒤",
+     all(_rank(r, _c3) is not None and r["chunks"][_rank(r, _c3)]["tier"] == 3
+         and all(c["tier"] <= 2 for c in r["chunks"][:_rank(r, _c3)]) for r in (_rn, _rs)),
+     f"노칭 #{_rank(_rn, _c3)} · 스태킹 #{_rank(_rs, _c3)} of {len(_rs['chunks'])} · "
+     f"tier {[c['tier'] for c in _rs['chunks']]}")
+
+# ────────────────────────────────────────────────────────────── ④
+print("\n■ B91 ④ ref 노드 근처 — 읽을 때 계산 · [관련 원문]")
+_ra = QR.answer("노칭 프레스")
+_rel = [c["source_locator"] for c in _ra.get("related") or []]
+_txt = QR.render(_ra)
+show("④ 「노칭 프레스」 질의에 [관련 원문] — 직접 링킹 노드 표기가 든 ref 청크만(확장 노드 「노칭」만 든 청크는 안 딸려 온다)",
+     _rel == ["X3-R001"] and "[관련 원문]" in _txt
+     and not ({"X3-R001", "X3-R002"} & {c["source_locator"] for c in _ra["chunks"]})
+     and any(r.get("channel") == "ref" for r in _ra["trace"]["collection"]),
+     [l.strip()[:60] for l in _txt.splitlines() if "[관련 원문]" in l])
+_knobs_file({"ref_limit": 0})
+_r0 = QR.answer("노칭 프레스")
+_knobs_file(None)
+_chn = _ST.read(_ST.CHUNKS, {})
+_refc = {cid for cid, c in _chn["chunks"].items() if (c.get("meta") or {}).get("sheet_role") == "ref"}
+show("④ 상한은 손잡이 — ref_limit 0이면 [관련 원문] 0 · 묶음에 키도 없다 · ref 청크 매달림 0(저장 0)",
+     "related" not in _r0 and _refc
+     and not ({d["chunk_id"] for d in _chn["describes"] + (_chn.get("about") or [])} & _refc),
+     f"ref 청크 {len(_refc)}")
 init.init(fresh_=True)
 
 done()

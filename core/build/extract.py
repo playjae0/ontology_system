@@ -135,11 +135,15 @@ def _patterns(cfg):
 EXTRACT_SCHEMA = {
     "type": "object",
     "properties": {
+        # **개체별 부모**(B91 ③) — 골격 canonical을 부모 후보(`parent_candidates`) **안에서만**
+        # 고른다 · 못 고르면 null(주 좌표가 부모다). 계약상 선택 필드다 — 옛 체크포인트·mock은
+        # 키가 없고 「없음」으로 읽는다(strict 스키마라 모델에게는 null 허용 필수 키다).
         "entities": {"type": "array", "items": {
             "type": "object",
             "properties": {"surface": {"type": "string"},
-                           "category": {"type": "string"}},
-            "required": ["surface", "category"], "additionalProperties": False}},
+                           "category": {"type": "string"},
+                           "parent": {"type": ["string", "null"]}},
+            "required": ["surface", "category", "parent"], "additionalProperties": False}},
         "relations": {"type": "array", "items": {
             "type": "object",
             "properties": {"src": {"type": "string"}, "rel": {"type": "string"},
@@ -162,8 +166,15 @@ EXTRACT_SCHEMA = {
                     "required": ["name", "category"], "additionalProperties": False},
             },
             "required": ["surface", "attach_to"], "additionalProperties": False}},
+        # **관련 링크**(B91 ③) — 이 청크가 「무엇에 관한 글인가」(표면형 + 카테고리 · 0~N ·
+        # 층 카테고리 안). 조회 전용이다 — 구축이 사전·이 문서의 해소 결과로 찾고 노드를
+        # 만들지 않는다(못 찾으면 버리고 기록). 선택 필드 — 없으면 「없음」.
+        "about": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"surface": {"type": "string"}, "category": {"type": "string"}},
+            "required": ["surface", "category"], "additionalProperties": False}},
     },
-    "required": ["entities", "relations", "attach"], "additionalProperties": False,
+    "required": ["entities", "relations", "attach", "about"], "additionalProperties": False,
 }
 
 
@@ -209,6 +220,32 @@ def attach_candidates(process_ref, layer=None):
     return sorted(out)
 
 
+def parent_candidates(chunk, layer=None):
+    """**부모 후보** — 좌표 서브트리(`attach_candidates`) + **청크 본문에 나오는 골격 이름**
+    (canonical·별칭의 사전 스캔 — 결정적 · 전 골격을 넣지 않는다 · B91 ③).
+
+    읽기 원천은 부착 후보와 같은 골격 스냅샷이다(멱등 — 인입 순서에 흔들리지 않는다).
+    구축(`prose`)이 같은 함수로 다시 계산해 추출이 고른 부모가 이 안인지 본다.
+    """
+    from core.state.bootstrap import coord_layer
+    out = set(attach_candidates(chunk.get("process_ref"), layer))
+    snap = (store.read(store.SKELETON_LIST, {}).get(layer or coord_layer()) or {})
+    text = norm(chunk.get("text", ""))
+    for n in snap.get("nodes") or []:
+        names = [n["canonical"], *(n.get("aliases") or [])]
+        if any(len(norm(x)) >= 2 and norm(x) in text for x in names if x):
+            out.add(n["canonical"])
+    return sorted(out)
+
+
+def _optional(out):
+    """새 선택 필드(`parent`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
+    ents = [{k: v for k, v in e.items() if not (k == "parent" and v is None)}
+            for e in out.get("entities", [])]
+    extra = {"about": out["about"]} if out.get("about") else {}
+    return ents, extra
+
+
 def _candidates_for(chunk_id, chunk, cfg, vocab):
     """추출 후보 1청크 — mock/실호출 분기의 **단일 지점**이다.
 
@@ -229,12 +266,14 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               "relations": cfg.get("relations"),
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
+              "parent_candidates": parent_candidates(chunk),
               "chunk": _with_path(chunk)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
+    ents, extra = _optional(out)
     return {"chunk_id": chunk_id,
-            "entities": out.get("entities", []),
+            "entities": ents,
             "relations": out.get("relations", []),
-            "attach": out.get("attach", [])}
+            "attach": out.get("attach", []), **extra}
 
 
 def categories_with_also(cfg):
@@ -365,10 +404,11 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=()):
         try:
             if hints and c.get("source_locator") in hints:
                 h = hints[c["source_locator"]]
+                ents, extra = _optional(h)
                 candidates.append({"chunk_id": cid,
-                                   "entities": h.get("entities", []),
+                                   "entities": ents,
                                    "relations": h.get("relations", []),
-                                   "attach": h.get("attach", [])})
+                                   "attach": h.get("attach", []), **extra})
             else:
                 candidates.append(_candidates_for(cid, c, cfg, vocab))
         except Exception as e:                              # noqa: BLE001

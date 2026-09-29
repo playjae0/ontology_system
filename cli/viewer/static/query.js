@@ -68,6 +68,7 @@ async function ask(q) {
   (tr.collection || []).forEach((c) => {
     const card = el("div", "card" + (c.kept ? "" : " dropped"));
     const head = `${c.doc_id} ${c.source_locator || ""} · tier ${c.tier}`
+                 + (c.channel && c.channel !== "describes" ? ` · ${c.channel === "ref" ? "관련 원문" : "관련 링크"}` : "")
                  + (c.kept ? "" : " · 상한에서 잘림");
     card.append(el("div", "", head));
     const a = el("a", "", "원본"); a.href = "#";

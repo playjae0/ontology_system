@@ -14,6 +14,7 @@ from core.build import gate
 from core.build.ledger import Ledger
 from core.state.status import is_live
 from core.state import log, store
+from core.state.ids import norm
 
 _LOG = log.get(__name__)
 
@@ -46,14 +47,18 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                      verdict="anchor" if ref else "orphan", node_id=ref,
                      queue_kind=None if ref else "orphan_anchor")
 
+        pcs = {}
         for e in cand.get("entities", []):
+            # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
+            e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs,
+                                                         (ref, ref_g, parent, anchor_pol))
             # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다. 문서 층 빌더에서
             # 만들면 층이 겹칠 때 같은 뜻이 두 노드가 된다.
             nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
-                                        coord=(ref, ref_g),
+                                        coord=(e_ref, e_g),
                                         electrode_type=src.get("electrode_type"),
-                                        parent_canonical=parent,
-                                        anchor_polarity=anchor_pol)
+                                        parent_canonical=e_parent,
+                                        anchor_polarity=e_pol)
             last = eb.last
             b.ledger.add(locator=_loc or cid, field=e.get("category"),
                          role="entity", surface=e["surface"],
@@ -68,6 +73,67 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                          llm=(last or {}).get("llm"),
                          queue_kind=(last or {}).get("queue_kind"))
     return coords
+
+
+def _entity_parent(b, e, src, prov, cid, pcs, main):
+    """개체 하나의 **이름 부모** — `(좌표 id, 그래프, 부모 canonical, 극성)` (B91 ③).
+
+    추출이 `parent`를 냈고 그것이 **부모 후보**(`extract.parent_candidates` — 좌표 서브트리 +
+    본문에 나오는 골격 이름 · 같은 함수로 다시 센다) 안이며 골격 노드로 해소되면 그것이다.
+    후보 밖이면 null로 읽고 결함 로그에 남긴다(지어낸 부모로 이름을 만들지 않는다).
+    `parent`가 없으면 주 좌표 그대로다(지금과 같다). `pcs`는 청크 안 캐시다.
+    """
+    want = e.get("parent")
+    if not want:
+        return main
+    if "set" not in pcs:
+        from core.build.extract import parent_candidates
+        pcs["set"] = {norm(x): x for x in parent_candidates(src)}
+    hit = pcs["set"].get(norm(want))
+    pid, pg = b.resolve_anchor(hit, COORD_CATEGORY, prov) if hit else (None, None)
+    if not pid:
+        store.append_defect(f"{b.doc_id}: 개체 부모 후보 밖 — '{want}' (개체 '{e['surface']}' "
+                            f"@ {cid}) → null · 주 좌표를 쓴다")
+        return main
+    pid = b.descend_anchor(pid, src.get("electrode_type"), pg)
+    return pid, pg, pg.get(pid)["canonical"], b.anchor_polarity(pid, pg)
+
+
+def _about_hit(b, cfg, a):
+    """관련 링크 하나의 노드 — **조회 전용**(B91 ③): 이 문서의 해소 버퍼 → 사전(카테고리 안 ·
+    살아 있는 노드 · 유일할 때만). 노드를 만들지 않고 판정(LLM)도 부르지 않는다 — 못 찾거나
+    여럿이면 `None`(호출부가 버리고 기록한다). 카테고리는 층 카테고리(겸 포함) 안이어야 한다.
+    """
+    surface, cat = (a or {}).get("surface"), (a or {}).get("category")
+    if not surface or cat not in (cfg.get("categories") or {}):
+        return None
+    hosts = matcher._hosts(cat)
+    nid = b.buffer.get(loop._n(surface))
+    if nid:
+        n = (b.graph_of(nid) or b.g).get(nid)
+        if n and matcher._is(n, cat, hosts):
+            return nid
+    g = b.for_category(cat).g
+    hits = {x for x in b.dict.lookup(surface)
+            if g.get(x) and is_live(g.get(x)) and matcher._is(g.get(x), cat, hosts)}
+    return next(iter(hits)) if len(hits) == 1 else None
+
+
+def _link_about(b, cfg, cand, ch, doc_id):
+    """청크의 **두 번째 매달림**(`chunks.json`의 `about` · B91 ③) — 관련 링크를 노드에 건다.
+
+    키는 링크가 **있을 때만** 생긴다(새 필드가 비면 저장이 지금과 같다).
+    """
+    cid = cand["chunk_id"]
+    for a in cand.get("about") or []:
+        nid = _about_hit(b, cfg, a)
+        if nid is None:
+            store.append_defect(f"{doc_id}: 관련 링크 미해소 — '{(a or {}).get('surface')}'"
+                                f"({(a or {}).get('category')}) @ {cid} → 버렸다(노드 0)")
+            continue
+        about = ch.setdefault("about", [])
+        if {"chunk_id": cid, "node_id": nid} not in about:
+            about.append({"chunk_id": cid, "node_id": nid})
 
 
 def build_prose(env, cfg, graph, candidates, builder=None):
@@ -112,6 +178,8 @@ def build_prose(env, cfg, graph, candidates, builder=None):
             if {"chunk_id": cid, "node_id": nid} not in ch["describes"]:
                 ch["describes"].append({"chunk_id": cid, "node_id": nid})
             ch["chunks"][cid]["linked"] = True          # 상동 — 재인입이 거짓으로 되돌리지 않는다
+
+        _link_about(b, cfg, cand, ch, env["doc_id"])   # 관련 링크 — 조회 전용 (B91 ③)
 
         # ③ 경로 — 추출 후보. 게이트의 실질 관문이다.
         for r in cand.get("relations", []):

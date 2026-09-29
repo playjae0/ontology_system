@@ -258,9 +258,11 @@ show("닫힌 목록 밖 shape_kind를 잡는다 (검사하는 자리가 있어�
 
 # **경로를 박지 않는다**(B63 ① — 지시문 파일에 칸 ID가 붙었다). 잠글 성질은 그대로다:
 # 두 지시문의 판이 그때 올랐고 **판은 파일이 말한다**(§7.6-B-5).
-show("지시문 판이 올랐다 — image_summary i-2.0 · extract e-1.2",
+# extract는 그 뒤에도 오른다(B91 ③ e-1.3) — 잠그는 성질은 「그때 판 이상」이다(기대 변경 · B91).
+_ev = next(l for l in gateway.prompt("extract").splitlines() if l.startswith("version:"))
+show("지시문 판이 올랐다 — image_summary i-2.0 · extract e-1.2 이상",
      "version: i-2.0" in gateway.prompt("image_summary")
-     and "version: e-1.2" in gateway.prompt("extract"))
+     and tuple(int(x) for x in _ev.split("e-")[1].split(".")) >= (1, 2), _ev)
 
 # ── B53 c. 기본 PDF 어댑터 ────────────────────────────────────────────────
 print("\n[B53 c] 기본 PDF 어댑터 — 쪽이 청크다")

@@ -139,7 +139,20 @@ def dist_lens():
     return 0
 
 
-DIST = {"lens": dist_lens, "chunks": dist_chunks, "headings": dist_headings, "forms": dist_forms,
+def dist_ref():
+    """참조 시트 청크 — 문서별 수 · 글자 분포(ref 노드 근처 [관련 원문]의 재료 · 읽기 전용)."""
+    refs = [c for c in _chunks() if (c.get("meta") or {}).get("sheet_role") == "ref"]
+    by_doc = {}
+    for c in refs:
+        by_doc[c.get("doc_id")] = by_doc.get(c.get("doc_id"), 0) + 1
+    print(f"■ ref 근처 — ref_limit {knobs.get('ref_limit')} · 참조 청크 {len(refs)} · 문서 {len(by_doc)}")
+    print(_dist_line("글자", [len(c.get("text") or "") for c in refs]))
+    for d, n in sorted(by_doc.items(), key=lambda x: -x[1])[:20]:
+        print(f"  {d:<20} 참조 청크 {n}")
+    return 0
+
+
+DIST = {"lens": dist_lens, "ref": dist_ref, "chunks": dist_chunks, "headings": dist_headings, "forms": dist_forms,
         "sheets": dist_sheets, "evidence": dist_evidence}
 
 
