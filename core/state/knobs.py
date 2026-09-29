@@ -45,6 +45,10 @@ KNOBS = {
     "form_auto": ("parser.form", ("AUTO_MIN_FOR", "AUTO_MAX_AGAINST"), "pair0",
                   "형태 판정 자동 조건 [찬성 최소, 반대 최대]",
                   "python run.py show dist forms"),
+    "sheet_min_hits": ("parser.form", ("SHEET_MIN_HITS",), "int0",
+                       "시트 로직 제안의 사전 적중 문턱 — 모양이 산문이어도 렌즈 층 어휘가 이만큼(종) "
+                       "안 나오면 ref · 자동 모드는 로직과 LLM이 합의해야 자동",
+                       "python run.py show dist sheets"),
     "collect_limit": ("core.query.query", ("COLLECT_LIMIT",), "int",
                       "근거 수집 상한(청크)", "python run.py show dist evidence"),
     "lens_min_score": ("core.build.lens", ("LENS_MIN_SCORE",), "int0",
@@ -196,4 +200,4 @@ def rows():
 
 #: 인입 기록에 싣는 손잡이 — 청크를 가르는 셋 · 형태·시트 판정
 PARSE_RECORD = ("heading_max_chars", "chunk_rows", "chunk_max_chars", "form_auto",
-                "sheet_thresholds")
+                "sheet_thresholds", "sheet_min_hits")

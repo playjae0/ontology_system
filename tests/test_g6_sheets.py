@@ -196,9 +196,14 @@ show("③ tty에서 `q`는 그 문서 중단 — 쓰기 0 (표와 질문은 떴�
      and not SH.path("RFQ01").exists() and not _chunks())
 _ent = _ingest(answers="\n")
 _rec_e = SH.read("RFQ01")
+# 관문의 제안은 B91 ②부터 **로직(모양 + 렌즈 층 어휘 적중)과 LLM**이다 — 표의 재료가 같은
+# 함수(`sheet_gate.rows_of` + `lens_info`)여야 Enter와 제안이 같은지를 잰다(기대 변경 · B91).
+from cli import sheet_gate as _SG                                     # noqa: E402
+from core.state import registry as _REG                               # noqa: E402
+_rows_g = _SG.rows_of(RFQ, _SG.lens_info(_REG.lenses_of(DT) or None)[0])
 show("③ tty에서 Enter는 **제안과 같은 기록**이다 (`decided_by: gate`)",
      _rec_e and _rec_e["decided_by"] == "gate"
-     and _rec_e["sheets"] == {r["name"]: r["suggest"] for r in _rows},
+     and _rec_e["sheets"] == {r["name"]: r["suggest"] for r in _rows_g},
      SH.summary((_rec_e or {}).get("sheets") or {}))
 _again = _ingest()
 show("③ 같은 문서 재인입은 관문 0이다 — 기록이 있으면 표도 질문도 없다(비tty에서도 간다)",

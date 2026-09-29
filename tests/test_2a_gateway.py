@@ -39,8 +39,9 @@ show("core/llm/gateway.py — chat(messages, *, model, json_schema)",
      hasattr(llm, "chat")
      and {"model", "json_schema"} <= set(llm.chat.__code__.co_varnames))
 show("core/llm/embeddings.py — embed(text) -> vector", hasattr(embeddings, "embed"))
-show("LLM 지점 목록이 닫힌 **9종**이다 (§7.6-B-2 — ⑨좌표 태깅 포함)",
-     len(llm.POINTS) == 9 and {"answer", "coord_tag"} <= set(llm.POINTS), ", ".join(llm.POINTS))
+show("LLM 지점 목록이 닫힌 **10종**이다 (§7.6-B-2 — ⑨좌표 태깅 · ⑩시트 역할 판정 B91 ② 포함)",
+     len(llm.POINTS) == 10 and {"answer", "coord_tag", "sheet_role"} <= set(llm.POINTS),
+     ", ".join(llm.POINTS))
 
 # 설정 접근이 이 파일 하나로 수렴하는가 — 호출부가 환경변수를 직접 읽지 않는다.
 _ENV = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL")

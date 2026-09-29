@@ -10,6 +10,8 @@ mock 동작 불변(네 벌 diff 0)은 회귀가 잰다 — 여기는 **새 성�
      값·출처가 남는다 · 모르는 키·형 밖은 문면으로 멈춘다 · `show knobs`가 값·출처·분포 자리를 말한다
   ① 렌즈 둘이면 청크마다 렌즈마다 그 층 어휘로 부르고 개체는 같은 노드로 모인다 · 관련성 0인
      청크는 그 렌즈 LLM 0 · 예고 · 상한을 넘으면 멈춘다(보류) · 렌즈는 등록부의 항목이다
+  ② 시트 관문 표에 로직·LLM 두 제안 · 기록 네 필드 · 자동 모드는 합의만 자동이고 어긋나면
+     ref + 승격 후보 · LLM 제안은 플래그로 끈다(자동 모드는 LLM 없이 성립하지 않는다)
 """
 from __future__ import annotations
 
@@ -139,6 +141,75 @@ show("① 렌즈는 등록부의 항목 — 없는 층은 거부 · 기본(등�
      _rcl != 0 and "없는 층" in _ol and _rcm == 0
      and "lenses" not in (registry.lookup("b91lens") or {}), _om.strip().splitlines()[0])
 registry.unregister("b91lens")
+
+# ────────────────────────────────────────────────────────────── ②
+print("\n■ B91 ② 시트 두 모드 — 사람 지정(기본) · 자동(합의만)")
+import builtins                                    # noqa: E402
+import contextlib                                  # noqa: E402
+import io                                          # noqa: E402
+from cli import _screen, sheet_gate as SG          # noqa: E402
+from core.llm import points as PT                  # noqa: E402
+from core.state import sheets as SH                # noqa: E402
+
+_RFQ = str(ROOT / "tests/fixtures/raw/RFQ01.xlsx")
+
+
+def _gate(doc_id, **kw):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        out = SG.gate(_RFQ, doc_id, "prose", lenses=["process"], **kw)
+    return out, _screen.strip_ansi(buf.getvalue())
+
+
+_isatty, _input = sys.stdin.isatty, builtins.input
+sys.stdin.isatty, builtins.input = (lambda: True), (lambda *_a: "")      # 터미널 · Enter
+try:
+    SH.path("XB91H").unlink(missing_ok=True)
+    (_hr, _hs), _ho = _gate("XB91H")
+    _rh = SH.read("XB91H") or {}
+finally:
+    sys.stdin.isatty, builtins.input = _isatty, _input
+_head = next((l for l in _ho.splitlines() if "로직" in l and "LLM" in l), "")
+show("② 사람 지정 — 표에 로직·LLM 두 열 · 기록 네 필드(로직·LLM·최종·결정 주체) · mock LLM = 로직(호출 0)",
+     _head and _rh.get("decided_by") == "gate" and _rh.get("llm_by") == "mock"
+     and _rh.get("logic") == _rh.get("llm") and _rh.get("sheets") == _hr
+     and set(_rh["logic"]) == set(_rh["sheets"]), f"{SH.summary(_rh.get('sheets'))} · {_head.split()[-3:]}")
+
+SH.path("XB91A").unlink(missing_ok=True)
+_ra, _ao = _gate("XB91A", spec=SG.AUTO)
+_rec_a = SH.read("XB91A") or {}
+_real_j = PT.sheet_judge
+PT.sheet_judge = lambda: (lambda name, sample, info: {"role": "prose", "reason": "시험 — 전부 prose"})
+try:
+    SH.path("XB91B").unlink(missing_ok=True)
+    _rb, _bo = _gate("XB91B", spec=SG.AUTO)
+    _rec_b = SH.read("XB91B") or {}
+finally:
+    PT.sheet_judge = _real_j
+_dis = sorted(n for n, r in (_rec_b.get("logic") or {}).items() if r == "ref")
+show("② 자동 — 합의 시트는 자동 · 어긋난 시트는 ref + 승격 후보(화면·기록) · 기록 네 필드",
+     _ra[0] == _rec_a.get("sheets") and _rec_a.get("decided_by") == "auto"
+     and not _rec_a.get("promote")
+     and sorted(_rec_b.get("promote") or []) == _dis and _dis
+     and all(_rec_b["sheets"][n] == "ref" for n in _dis)
+     and all(_rec_b["sheets"][n] == "prose" for n, r in _rec_b["logic"].items() if r == "prose")
+     and "승격 후보" in _bo and _rec_b.get("llm_by") == "live",
+     f"합의 {len(_rec_b['sheets']) - len(_dis)} · 승격 후보 {_dis}")
+SG._OPTS["llm"] = False
+try:
+    _rc_n, _o_n = 0, ""
+    try:
+        _gate("XB91C", spec=SG.AUTO)
+    except SystemExit as e:
+        _rc_n, _o_n = 1, str(e)
+    (_rd, _sd), _do = _gate("XB91D", dry_run=True)
+finally:
+    SG._OPTS["llm"] = True
+show("② LLM 제안은 끌 수 있다(플래그) — 표의 LLM 열이 「끔」 · 자동 모드는 합의라 LLM 없이 거부",
+     _rc_n == 1 and "합의" in _o_n and "끔" in _do and not SH.path("XB91D").exists(),
+     _o_n.splitlines()[0][:70])
+for _d in ("XB91H", "XB91A", "XB91B"):
+    SH.path(_d).unlink(missing_ok=True)
 init.init(fresh_=True)
 
 done()

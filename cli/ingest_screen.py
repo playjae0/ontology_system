@@ -252,11 +252,14 @@ def _judge_gate(n, total, u):
 # 한 번 정한다. 표의 재료는 `parser/form.sheet_table()`이고 **여기서 새로 판독하지
 # 않는다**(reader가 이미 낸 값의 투영 — 화면이 제 계산을 하지 않는다는 B81 ①과 같다).
 #
-# 제안은 **규칙**이다(요청문 ② — LLM 지점을 늘리지 않는다). 규칙이 못 미치면 사람이
-# 표를 보고 고치고, 그 답이 기록이 된다(`core/state/sheets.py`).
+# 제안은 **두 벌**이다(B91 ②): 로직(모양 + 렌즈 층 어휘 적중 · LLM 0)과 LLM(렌즈 층 정의문 ·
+# 지점 ⑩). 마지막 열 「제안」은 둘이 같으면 그것, 어긋나면 `ref`다(모르면 ref) — 사람이 표를
+# 보고 고치고, 그 답이 기록이 된다(`core/state/sheets.py`).
 SHEET_HEAD = "   " + (_screen.pad("#", 4) + _screen.pad("시트", 20)
                       + _screen.pad("행", 6) + _screen.pad("열", 5)
-                      + _screen.pad("글자셀", 8) + _screen.pad("앞부분", 34) + "제안")
+                      + _screen.pad("글자셀", 8) + _screen.pad("적중", 6)
+                      + _screen.pad("앞부분", 34) + _screen.pad("로직", 7)
+                      + _screen.pad("LLM", 7) + "제안")
 
 
 def sheet_note(rec, pend):
@@ -276,7 +279,10 @@ def sheet_row(r, known=None):
                     + _screen.pad(_screen.cut(r["name"], 18), 20)
                     + _screen.pad(f"{r['rows']:,}", 6) + _screen.pad(r["cols"], 5)
                     + _screen.pad(f"{int(round(r['text_ratio'] * 100))}%", 8)
+                    + _screen.pad("—" if r.get("hits") is None else r["hits"], 6)
                     + _screen.pad(_screen.cut("「" + (r["head"] or "—") + "」", 32), 34)
+                    + _screen.pad(r.get("logic") or r["suggest"], 7)
+                    + _screen.pad(r.get("llm") or "끔", 7)
                     + last)
 
 
@@ -289,7 +295,18 @@ def sheet_table_block(rows, *, file, rec=None, pend=None):
            f"({sheet_note(rec, pend or [])})", SHEET_HEAD]
     known = (rec or {}).get("sheets") or {}
     out += [sheet_row(r, known) for r in rows]
-    return "\n".join(out)
+    why = [f"      {r['no']} {r['name']} — LLM: {r['llm_reason']}" for r in rows
+           if r.get("llm_reason") and r.get("llm") != r.get("logic")]
+    return "\n".join(out + why)
+
+
+def sheet_auto_line(roles, promote, by):
+    """자동 모드의 한 줄 — 합의로 정한 수 · **승격 후보**(어긋나 `ref`로 둔 시트)."""
+    from core.state import sheets as SH
+    return (f"   자동 모드 — {SH.summary(roles)} (LLM {by})"
+            + (f" · **승격 후보 {len(promote)}장**: {' · '.join(promote)} "
+               f"(로직과 LLM이 어긋나 ref로 두었다 — 올리려면 --sheets \"<번호>:prose\")"
+               if promote else " · 승격 후보 0"))
 
 
 def sheet_roles_line(roles, doc_id):
@@ -314,7 +331,7 @@ def sheet_gate(rows, *, file, doc_id, rec=None):
     print(sheet_table_block(rows, file=file, rec=rec, pend=pend))
     while True:
         try:
-            ans = input("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:skip · "
+            ans = input("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:ref · "
                         "Enter=제안대로 · q=중단): ").strip()
         except (EOFError, KeyboardInterrupt):
             return None                       # 비대화형과 같은 처분 — 조용히 넘기지 않는다
@@ -332,7 +349,7 @@ def sheet_gate(rows, *, file, doc_id, rec=None):
         left = SH.pending(merged, names)
         if left:
             print(f"   역할이 안 정해진 시트가 남았다 — {' · '.join(left)} "
-                  f"(`*:skip`처럼 나머지를 한 번에 줄 수 있다)")
+                  f"(`*:ref`처럼 나머지를 한 번에 줄 수 있다)")
             roles, pend = merged, left
             continue
         return merged
@@ -364,6 +381,8 @@ def sheets_refusal(doc, rows, *, pend=None, rec=None, retry=None, flag_cmd=None)
         "   ▶ 다음 줄:",
         f"     터미널에서:          {retry_line}",
         f"     역할을 바로 주려면:   {flag_line}",
+        f"     자동 모드(로직·LLM 합의만 자동 · 어긋나면 ref): "
+        f"{flag_line.split(' --sheets ')[0]} --sheets auto",
         f"     (제안대로 넣으려면 위 문자열 그대로 · 역할은 "
         f"{'|'.join(SHEET_ROLES)})",
     ])

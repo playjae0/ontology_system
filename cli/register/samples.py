@@ -66,6 +66,7 @@ def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
     for s in samples:
         roles, stop = SG.gate(
             s, doc_id_of(s), _kind_of(st, s), spec=spec, ask=True,
+            lenses=[layer or (st or {}).get("layer")] if (layer or (st or {}).get("layer")) else None,
             retry=f"python -m cli.register generate {doc_type} {lay} {s}",
             flag_cmd=(f"python -m cli.register generate {doc_type} {lay} {s} "
                       f'--sheets "{{sheets}}"'))

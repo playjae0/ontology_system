@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 3.1 · 1.6 — **시트 역할 관문 한 벌**: 인입 · `parse run` · 등록 표본이 같은 함수를 부른다 (B83 ③ · B86 ⑤).
+"""칸 3.1 · 3.8 · 1.6 — **시트 역할 관문 한 벌**: 인입 · `parse run` · 등록 표본이 같은 함수를 부른다 (B83 ③ · B86 ⑤).
 
 시트 여럿인 prose 엑셀은 문서마다 시트의 역할이 다르다 — 사람이 **문서마다 한 번**
 정하고(`prose`·`ref`·`skip`), 답은 `registry/sheet_roles/<doc_id>.json`에 남는다.
@@ -9,6 +9,11 @@
 **관문 함수는 `gate()` 하나다** — 호출자가 셋이어도 묻는 말·기록·거부 문면이 갈리지
 않는다. 호출자가 다른 것은 두 가지뿐이다: 갈래(`kind`)를 어디서 아는가(인입은 등록부,
 등록은 초안 스키마)와 거부 문면의 다음 줄(무엇을 다시 치면 되나).
+
+**두 모드**(B91 ② · 칸 3.8): **사람 지정 = 기본**(표에 로직 제안과 LLM 제안을 나란히 —
+어긋나면 기본 제안은 `ref` · 사람이 정한다 · `--no-sheet-llm`이면 로직만) · **자동**
+(`--sheets auto` — 합의하면 자동, 어긋나면 `ref` + 승격 후보). 판정 기준은 **렌즈 층의
+정의**다(로직은 그 층 어휘의 사전 적중 · LLM은 정의문 주입). 기록은 로직 · LLM · 최종 · 결정 주체.
 """
 from __future__ import annotations
 
@@ -24,9 +29,72 @@ _LOG = log.get("cli.sheet_gate")
 
 #: 관문이 멈춘 두 모양 — 호출자가 제 화면의 상태로 옮긴다.
 REFUSED, STOPPED = "refused", "stopped"
+#: 자동 모드의 `--sheets` 값(B91 ②) — 역할 문법에는 `:`가 있어야 하므로 겹치지 않는다.
+AUTO = "auto"
+#: 명령줄 선택 — LLM 제안 끄기(`--no-sheet-llm` · 손잡이가 아니라 플래그 · B91 ②).
+_OPTS = {"llm": True}
 
 
-def rows_of(doc):
+def lens_info(lenses=None):
+    """렌즈 층의 **어휘**(로직의 사전 적중 — 정규화 표기)와 **정의문**(LLM 주입) — `(vocab, info)`.
+
+    `lenses`가 없으면(갈래를 모르는 `parse run`) 층 전부다. 어휘의 자리는 렌즈 거름과
+    같은 `lens.layer_vocab` 하나다(두 벌이면 시트 판정과 렌즈 거름이 다른 말을 센다).
+    """
+    from core.build import lens as L
+    from core.dictionary import Dictionary
+    from core.state.bootstrap import load_config, open_graph
+    from router import discover
+    lays = list(lenses or discover())
+    cfgs = {lay: load_config(lay) for lay in lays}
+    graphs = {lay: open_graph(lay) for lay in discover()}
+    d = Dictionary.open()
+    vocab = set()
+    for lay in lays:
+        vocab |= L.layer_vocab(lay, cfgs[lay], graphs, d)
+    info = [{"layer": lay, "categories": dict(cfgs[lay].get("categories") or {}),
+             "relevance_terms": list(cfgs[lay].get("relevance_terms") or [])} for lay in lays]
+    return vocab, info
+
+
+def judge(rows, info, llm=True):
+    """두 제안을 행에 단다 — `logic`(모양 + 사전 적중) · `llm`(+ `llm_reason`) — 그리고 기본
+    제안 `suggest`: 둘이 같으면 그것 · LLM이 없으면 로직 · **어긋나면 `ref`**(모르면 ref).
+
+    돌려주는 것은 LLM 갈래 — `live` · `mock`(로직과 같은 답 · 호출 0 · 결정적) · `off`.
+    빈 시트(`skip`)는 부르지 않는다.
+    """
+    fn, by = None, "off"
+    if llm:
+        from core.llm import points
+        fn = points.sheet_judge()
+        by = "live" if fn else "mock"
+    for r in rows:
+        r["logic"] = r.get("logic") or r["suggest"]
+        r["llm"], r["llm_reason"] = None, None
+        if by == "off":
+            pass
+        elif r["logic"] == "skip":
+            r["llm"], r["llm_reason"] = "skip", "빈 시트 — 부르지 않았다"
+        elif fn is None:
+            r["llm"], r["llm_reason"] = r["logic"], "mock — 로직과 같은 답(호출 0)"
+        else:
+            out = fn(r["name"], r.get("sample") or [], info)
+            r["llm"], r["llm_reason"] = out["role"], out["reason"]
+        r["suggest"] = r["logic"] if r["llm"] in (None, r["logic"]) else "ref"
+    return by
+
+
+def judged(rows, by, promote=None):
+    """기록에 싣는 두 제안(`sheets.write(judged=)`) — 로직 · LLM · 이유 · LLM 갈래 · 승격 후보."""
+    return {"logic": {r["name"]: r["logic"] for r in rows},
+            "llm": ({r["name"]: r["llm"] for r in rows} if by != "off" else None),
+            "llm_reason": ({r["name"]: r["llm_reason"] for r in rows if r.get("llm_reason")}
+                           if by == "live" else None),
+            "llm_by": by, "promote": promote}
+
+
+def rows_of(doc, vocab=None):
     """시트 표의 재료 — **읽기 실패는 조용하다**(같은 이유로 파싱이 곧 실패한다).
 
     표는 `reader`가 이미 내는 값의 투영이다(새 판독 0). 통합문서를 여는 일은 형태
@@ -37,7 +105,7 @@ def rows_of(doc):
     if Path(doc).suffix.lower() not in GRID_EXT:
         return []
     try:
-        return form_mod.sheet_table(reader_mod.read(str(doc)))
+        return form_mod.sheet_table(reader_mod.read(str(doc)), vocab=vocab)
     except reader_mod.MissingDependency:
         raise
     except Exception as e:                       # noqa: BLE001
@@ -51,34 +119,68 @@ def flag(args):
     `--coord-llm`과 같은 결이다 — 떼어내지 않으면 문자열이 경로 자리로 흘러간다.
     """
     args = list(args)
+    if "--no-sheet-llm" in args:                 # LLM 제안 끄기 — 로직 제안만 본다
+        args.remove("--no-sheet-llm")
+        _OPTS["llm"] = False
     if "--sheets" not in args:
         return args, None
     i = args.index("--sheets")
     spec = args[i + 1] if i + 1 < len(args) else None
     del args[i:i + 2]
     if not spec or spec.startswith("--"):
-        raise SystemExit('[투입] --sheets 뒤에 역할 문자열이 필요하다 — '        # [사용법]
-                         '예: --sheets "2-3:prose 4:ref *:skip"')
+        raise SystemExit('[투입] --sheets 뒤에 역할 문자열 또는 auto가 필요하다 — '  # [사용법]
+                         '예: --sheets "2-3:prose 4:ref *:ref" · --sheets auto')
     return args, spec
 
 
-def by_flag(doc, doc_id, spec, *, names=None, dry_run=False):
+def auto(doc, doc_id, *, lenses=None, dry_run=False):
+    """**자동 모드**(`--sheets auto` · B91 ②) — 로직과 LLM이 **합의하면 그 역할**, 어긋나면
+    `ref` + 「승격 후보」(화면과 기록). 기록이 있고 미결이 없으면 기록대로다(다시 부르지 않는다).
+
+    합의가 조건이라 LLM을 끄면(`--no-sheet-llm`) 자동 모드가 성립하지 않는다 — `[사용법]`.
+    """
+    from core.state import sheets as SH
+    if not _OPTS["llm"]:
+        raise SystemExit("[투입] --sheets auto는 로직과 LLM의 **합의**다 — "          # [사용법]
+                         "--no-sheet-llm과 함께 줄 수 없다(사람 지정 모드는 --sheets 없이)")
+    rec = SH.read(doc_id)
+    vocab, info = lens_info(lenses)
+    rows = rows_of(doc, vocab)
+    names = [r["name"] for r in rows]
+    if rec and not SH.pending(rec.get("sheets") or {}, names):
+        print(f"   시트 역할 — 기록대로 진행({SH.summary(rec['sheets'])} · {rec.get('decided_by')})")
+        return dict(rec["sheets"])
+    by = judge(rows, info, True)
+    roles = {r["name"]: (r["logic"] if r["llm"] == r["logic"] else "ref") for r in rows}
+    promote = [r["name"] for r in rows if r["llm"] != r["logic"]]
+    print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=None))
+    print(SCR.sheet_auto_line(roles, promote, by))
+    if not dry_run:
+        SH.write(doc_id, Path(doc).name, roles, "auto", judged=judged(rows, by, promote))
+        print(SCR.sheet_roles_line(roles, doc_id))
+    return roles
+
+
+def by_flag(doc, doc_id, spec, *, names=None, dry_run=False, lenses=None):
     """`--sheets`로 받은 역할 — 관문을 건너뛰고 **같은 기록**을 쓴다(`decided_by: flag`).
 
     문법의 자리는 `form.parse_sheet_spec` 하나이고 기록의 자리는
     `core/state/sheets.py` 하나다. 미정 시트가 남으면 `[사용법]`이다(조용한 기본값 0).
+    `auto`면 자동 모드다(`auto()`).
     """
     from core.state import sheets as SH
+    if spec == AUTO:
+        return auto(doc, doc_id, lenses=lenses, dry_run=dry_run)
     names = list(names or [r["name"] for r in rows_of(doc)])
     got, err = form_mod.parse_sheet_spec(spec, names)
     if err:
         raise SystemExit(f"[투입] --sheets {err}\n"                           # [사용법]
-                         f'  예: --sheets "2-3:prose 4:ref *:skip"')
+                         f'  예: --sheets "2-3:prose 4:ref *:ref" · --sheets auto')
     left = SH.pending(got, names)
     if left:
         raise SystemExit(f"[투입] --sheets에 역할이 없는 시트가 남았다 — "       # [사용법]
                          f"{' · '.join(left)}\n"
-                         f'  나머지를 한 번에: --sheets "{spec} *:skip"')
+                         f'  나머지를 한 번에: --sheets "{spec} *:ref"')
     if not dry_run:
         SH.write(doc_id, Path(doc).name, got, "flag")
         print(SCR.sheet_roles_line(got, doc_id))
@@ -86,7 +188,7 @@ def by_flag(doc, doc_id, spec, *, names=None, dry_run=False):
 
 
 def gate(doc, doc_id, kind, *, spec=None, dry_run=False, ask=True, retry=None,
-         flag_cmd=None):
+         flag_cmd=None, lenses=None):
     """역할을 정해 돌려준다 — `(roles 또는 None, 멈춤 또는 None)`.
 
     조건 넷(B83 ③): 격자 포맷 · **prose로 읽히는 갈래**(`kind`) · 시트 ≥ 2 · 기록 없음
@@ -108,16 +210,23 @@ def gate(doc, doc_id, kind, *, spec=None, dry_run=False, ask=True, retry=None,
     for n in SH.stale(roles, names):
         _LOG.info("시트 역할 기록에 있으나 문서에 없다 — %s · %s (무시)", doc_id, n)
     if spec:
-        return by_flag(doc, doc_id, spec, names=names, dry_run=dry_run), None
+        return by_flag(doc, doc_id, spec, names=names, dry_run=dry_run, lenses=lenses), None
     pend = SH.pending(roles, names)
     if rec and not pend:
         print(f"   시트 역할 — 기록대로 진행({SH.summary(roles)} · "
               f"{rec.get('decided_by')})")
         return roles, None
+    # 두 제안(B91 ②) — 로직(사전 적중 포함)은 늘 · LLM은 **물을 때만** 부른다(보여만 주는
+    # dry-run과 거부 문면은 실호출 0 — mock 갈래는 호출이 없어 그대로 보인다).
+    vocab, info = lens_info(lenses)
+    rows = rows_of(doc, vocab)
+    asking = not dry_run and ask and sys.stdin.isatty()
+    from core.llm import gateway
+    by = judge(rows, info, _OPTS["llm"] and (asking or gateway.use_mock()))
     if dry_run:                          # 보여만 준다 — 묻지 않고 기록도 쓰지 않는다
         print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=pend))
         return None, None
-    if not (ask and sys.stdin.isatty()):
+    if not asking:
         # **상태 거부**다 — 조용한 기본값 없이 멈추고, 문면이 다음 줄을 싣는다.
         print(SCR.sheets_refusal(doc, rows, pend=pend if rec else None, rec=rec,
                                  retry=retry, flag_cmd=flag_cmd))
@@ -127,6 +236,6 @@ def gate(doc, doc_id, kind, *, spec=None, dry_run=False, ask=True, retry=None,
     got = SCR.sheet_gate(rows, file=doc, doc_id=doc_id, rec=rec)
     if got is None:
         return None, {"kind": STOPPED, "reason": "사람이 멈췄다 — 시트 역할 관문"}
-    SH.write(doc_id, Path(doc).name, got, "gate")
+    SH.write(doc_id, Path(doc).name, got, "gate", judged=judged(rows, by))
     print(SCR.sheet_roles_line(got, doc_id))
     return got, None

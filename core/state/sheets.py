@@ -47,15 +47,22 @@ def roles_of(doc_id):
     return dict((read(doc_id) or {}).get("sheets") or {})
 
 
-def write(doc_id, file, roles, decided_by):
+def write(doc_id, file, roles, decided_by, *, judged=None):
     """기록 1건 — 원자적 쓰기는 `store`가 한다(tmp+replace+락 · 한 자리).
 
-    `decided_by`는 `gate`(관문에서 사람이 답했다) 또는 `flag`(`--sheets`로 받았다)다.
-    **덮어쓴다** — 사람이 다시 준 것이 최신이다(③).
+    `decided_by`는 `gate`(관문에서 사람이 답했다) · `flag`(`--sheets`로 받았다) ·
+    `auto`(자동 모드 — 로직과 LLM이 합의했다 · B91 ②)다. **덮어쓴다** — 다시 준 것이 최신이다(③).
+
+    `judged`(B91 ②)는 두 제안 — `{"logic": {시트: 역할}, "llm": {시트: 역할}, "llm_reason":
+    {시트: 한 줄}, "llm_by": "live|mock|off", "promote": [시트…]}`. 최종은 `sheets`다
+    (네 필드 = 로직 · LLM · 최종 · 결정 주체). 제안을 보지 않은 `--sheets` 역할 문자열은
+    `judged`가 없다 — 기록 모양이 지금과 같다.
     """
     rec = {"doc_id": doc_id, "file": str(file), "decided_by": decided_by,
            "at": store._now(),               # 시각의 자리는 store 하나다
            "sheets": dict(roles)}
+    if judged:
+        rec.update({k: v for k, v in judged.items() if v is not None})
     store.atomic_write_bytes(
         path(doc_id),
         (json.dumps(rec, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))

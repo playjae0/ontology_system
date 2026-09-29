@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LLM 지점 9종 **본문 스모크** — 실호출 갈래의 함수 본문을 한 번씩 돌린다 (B79 ③ⓒ).
+"""LLM 지점 10종 **본문 스모크** — 실호출 갈래의 함수 본문을 한 번씩 돌린다 (B79 ③ⓒ).
 
 도달성 탐침(`tests/points_probe.py`)과 **다른 성질**이다. 탐침은 「호출자가 타는 길이
 미설정 실패(`NotConfigured`)에 닿는가」까지 잰다 — 그 뒤의 본문은 한 줄도 돌지 않는다.
@@ -161,6 +161,11 @@ def cases():
         "coord_tag": (
             lambda: points.pick_coord("탭 용접", ["탭용접", "노칭"]),
             lambda r: r is None or isinstance(r, str)),
+        "sheet_role": (
+            lambda: points.judge_sheet("가격", ["품목 | 단가", "A | 100"],
+                                       [{"layer": "L", "categories": {"C": "정의"},
+                                         "relevance_terms": []}]),
+            lambda r: r.get("role") in ("prose", "ref") and isinstance(r.get("reason"), str)),
     }
 
 

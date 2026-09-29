@@ -21,6 +21,7 @@ TARGETS = {
     "chunk_max_chars": (struct_map, ("CHUNK_MAX_CHARS",)),
     "sheet_thresholds": (form, ("SHEET_THRESHOLDS",)),
     "form_auto": (form, ("AUTO_MIN_FOR", "AUTO_MAX_AGAINST")),
+    "sheet_min_hits": (form, ("SHEET_MIN_HITS",)),
 }
 
 
