@@ -550,6 +550,15 @@ if __name__ == "__main__":
         _i = _argv.index(tables.CLOSED_FLAG)
         tables.CLOSED_LIST = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
+    if tables.KNOBS_FLAG in _argv:                 # 사내 손잡이 파일 (B91 ⑤)
+        _i = _argv.index(tables.KNOBS_FLAG)
+        tables.KNOBS_PATH = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+        if tables.KNOBS_PATH:
+            # 검증은 운영 쪽(core/state/knobs.py)이 이미 했다 — 여기는 파서 몫만 넣는다
+            from parser import tuning as _tuning
+            _kv = json.loads(Path(tables.KNOBS_PATH).read_text(encoding="utf-8"))
+            _tuning.apply({k: v for k, v in _kv.items() if k in _tuning.TARGETS})
     if tables.SHEET_ROLES_FLAG in _argv:           # 표본의 시트 역할 표 (B86 ⑤)
         _i = _argv.index(tables.SHEET_ROLES_FLAG)
         _f = _argv[_i + 1] if _i + 1 < len(_argv) else None

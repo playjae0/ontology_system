@@ -48,7 +48,7 @@ def cmd_confirm(doc_type, approved_by):
     # 근거가 사라지면 안 된다).
     _revising = bool(st.get("revise_of")) and bool(registry.lookup(doc_type))
     _fn = registry.revise if _revising else registry.register
-    _kw = {} if _revising else {"layer": st["layer"]}
+    _kw = {} if _revising else {"layer": st["layer"], "lenses": st.get("lenses")}
     entry = _fn(
         doc_type, adapter=adapter_path, schema=schema_path,
         adapter_version=mod.ADAPTER.get("adapter_version"),

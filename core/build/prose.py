@@ -70,13 +70,16 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
     return coords
 
 
-def build_prose(env, cfg, graph, candidates):
+def build_prose(env, cfg, graph, candidates, builder=None):
     # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
     # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
     # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
     candidates = [c for c in candidates if not c.get("failed")]
-    b = Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
-    b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 비정형도 같은 표다 (B74 ②)
+    # **렌즈가 여럿이면 뿌리 빌더를 나눠 쓴다**(B91 ①) — 렌즈마다 새 빌더를 열면 같은 층
+    # 그래프가 두 인스턴스로 열려 저장이 서로 덮는다. 그래프·사전·버퍼·대장을 공유한다.
+    b = builder or Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
+    if b.ledger is None:
+        b.ledger = Ledger(env["doc_id"])      # 판정 대장 — 비정형도 같은 표다 (B74 ②)
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     by_locator = {c["source_locator"]: c for c in env.get("chunks", [])}
     loc_of = {cid: c.get("source_locator") for cid, c in ch["chunks"].items()

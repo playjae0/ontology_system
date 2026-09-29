@@ -75,6 +75,12 @@ def home():
             v = os.environ.get(HOME_ENV)
             _HOME = (Path(v).expanduser().resolve() if v
                      else ROOT / DEFAULT_HOME)
+        # **사내 손잡이를 주입한다**(B91 ⑤) — 값의 파일이 상태 루트에 있으므로 루트가 정해지는
+        # 자리가 주입의 자리다(`bind_parser`와 같은 결). 루트는 import 시점에도 정해지므로
+        # (store의 모듈 상수) 여기서는 올리지 않는다 — 파일이 어긋나면 **오류를 기억하고**
+        # 진입 관문(`cli/_gate.require_knobs`)과 값을 읽는 자리가 그 문면으로 멈춘다.
+        from core.state import knobs
+        knobs.apply_safe()
     return _HOME
 
 
@@ -100,6 +106,8 @@ def reset():
     """루트 판정을 다시 하게 한다 — **시험과 `migrate`의 문**이다."""
     global _HOME
     _HOME = None
+    from core.state import knobs
+    knobs.reset()                                # 옛 루트의 손잡이를 남기지 않는다
     return home()
 
 
@@ -258,6 +266,11 @@ def fixture_schemas(*parts):
     """
     from core.state import fixtures
     return fixtures.ROOT_DIR.joinpath("schemas", *parts)
+
+
+def knobs():
+    """사내 손잡이 파일 — `$ONTO_HOME/knobs.json` (B91 ⑤ · 상태 루트 · 없으면 전부 기본값)."""
+    return home() / "knobs.json"
 
 
 def config_file(name="llm.json"):

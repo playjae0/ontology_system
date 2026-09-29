@@ -260,7 +260,6 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
 def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                     notice, _n0, _e0, _a0):
     """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다."""
-    from core import matcher as _mt
     extracted = False
     builder = None
     if kind == "table":
@@ -275,6 +274,14 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
         loc2id = {c["source_locator"]: cid for cid, c in ch.items()
                   if c.get("doc_id") == env["doc_id"]}
+        # **렌즈**(B91 ①) — 기본(등록 층 하나)이면 지금 길 그대로 · 아니면 렌즈마다 그 층 어휘로
+        from core.state import registry as _registry
+        _lz = _registry.lenses_of(env["doc_type"]) or [layer]
+        if _lz != [layer]:
+            from core.build import lens as lens_mod
+            builder, extracted = lens_mod.build_with_lenses(env, _lz, layer, graph, loc2id,
+                                                            notice)
+            return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
         vocab = _vocab(cfg)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab)
         if notice is not None:
@@ -292,7 +299,12 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                 [c.get("process_ref") for c in env.get("chunks") or []
                  if c.get("process_ref")], layer))
         builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"])
+    return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
 
+
+def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
+    """구축 말미 — 걸침 층 저장 · 계측 · 끝 요약(표·산문·렌즈 세 길이 같이 쓴다)."""
+    from core import matcher as _mt
     for other in builder.graphs():          # 걸침 층에 쓴 것도 저장된다 (D3)
         if other is not graph:
             other.save()

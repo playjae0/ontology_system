@@ -347,7 +347,9 @@ def collect_chunks(node_ids, direct, trace=None):
             ordered.append({"chunk_id": cid, "doc_id": c["doc_id"], "text": c["text"],
                             "tier": tier, "section": c.get("section"),
                             "source_locator": c.get("source_locator")})
-    dropped = max(0, len(ordered) - COLLECT_LIMIT)
+    from core.state import knobs
+    limit = knobs.get("collect_limit")        # 사내 손잡이(B91 ⑤) — 기본은 위 상수
+    dropped = max(0, len(ordered) - limit)
     if dropped:
         store.append_line(store.CHUNK_TRUNCATED, f"{dropped}건 잘림")
     if trace is not None:
@@ -357,8 +359,8 @@ def collect_chunks(node_ids, direct, trace=None):
             trace.append({"chunk_id": c["chunk_id"], "doc_id": c["doc_id"],
                           "source_locator": c.get("source_locator"),
                           "tier": c["tier"], "rank": rank,
-                          "kept": rank <= COLLECT_LIMIT})
-    return ordered[:COLLECT_LIMIT], dropped
+                          "kept": rank <= limit})
+    return ordered[:limit], dropped
 
 
 # ---------------------------------------------------------------- ④ 답변 — 채널 1

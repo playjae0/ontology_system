@@ -19,7 +19,7 @@ import sys
 from core.llm import gateway
 from core.dictionary import Dictionary
 from core.query import query as Q
-from core.state import store
+from core.state import knobs, store
 from core.state.ids import norm
 from core.state.bootstrap import load_config, open_graph
 from router import discover
@@ -305,7 +305,7 @@ def render(res):
     for c in res["chunks"]:
         lines.append(f"   [문서 근거] ({c['doc_id']} {c['source_locator']}) {c['text']}")
     if res["truncated"]:
-        lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {Q.COLLECT_LIMIT})")
+        lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {knobs.get('collect_limit')})")
     return "\n".join(lines)
 
 

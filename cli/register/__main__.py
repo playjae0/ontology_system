@@ -17,7 +17,7 @@ from cli.register import confirm
 from cli.register import draft as draft_mod
 from cli.register import generate
 from cli.register import view
-from cli.register import _state
+from cli.register import _save_state, _state
 
 
 def main(argv):
@@ -29,6 +29,8 @@ def main(argv):
     이었고 사람이 프레임을 읽어야 했다 — 그것이 M9 위반이다.
     """
     from parser.reader import MissingDependency
+    from cli._gate import require_knobs
+    require_knobs()                 # 손잡이 파일이 어긋나면 먼저 문면으로 (B91 ⑤)
     try:
         return _run(argv)
     except SystemExit:
@@ -39,6 +41,30 @@ def main(argv):
         print(log.defect(e, stage=f"단계 {argv[0] if argv else '?'}",
                          extra=(f"doc_type {argv[1]}" if len(argv) > 1 else "")))
         return 1                    # 상태 거부와 같은 종료 코드 (B61 계약)
+
+
+def _lens_arg(v):
+    return "all" if v.strip() == "all" else [x.strip() for x in v.split(",") if x.strip()]
+
+
+def _cmd_lenses(rest):
+    """`register lenses <dt> [<층,층>|all]` — 렌즈를 보거나 바꾼다 (B91 ① · 등록부 원자 쓰기)."""
+    from core.state import registry
+    if not rest:
+        raise SystemExit("[사용법] python -m cli.register lenses <doc_type> [<층,층> | all]")
+    dt = rest[0]
+    if not registry.lookup(dt):
+        raise SystemExit(f"[상태] '{dt}'은 등록돼 있지 않다 — python -m cli.register list")
+    if len(rest) > 1:
+        try:
+            registry.set_lenses(dt, _lens_arg(rest[1]))
+        except ValueError as e:
+            raise SystemExit(f"[사용법] {e}")                                  # [사용법]
+    e = registry.lookup(dt)
+    print(f"■ 렌즈 — {dt}: {registry.lenses_of(dt)}"
+          + (" (all — 층 전부 · 비용 장치가 붙는다)" if e.get("lenses") == "all" else "")
+          + ("" if e.get("lenses") else " (기본 — 등록 층 하나)"))
+    return 0
 
 
 def _run(argv):
@@ -85,6 +111,8 @@ def _run(argv):
         if revise:
             rest.remove("--revise")
         as_name = opt("--as", None)
+        # **렌즈**(B91 ①) — prose 추출이 보는 층 목록(`a,b` 또는 `all`) · 없으면 등록 층 하나
+        lenses = opt("--lenses", None)
         # **표본의 시트 역할**(B86 ⑤) — 인입과 같은 문법 · 표본이 하나일 때만.
         from cli import sheet_gate as SG
         rest, sheets = SG.flag(rest)
@@ -93,11 +121,21 @@ def _run(argv):
         # 읽는다(실사고: `generate <doc_type> --resume`이 IndexError로 죽었다).
         if not rest or (not resume and len(rest) < 2):
             raise SystemExit(_pkg.__doc__)                                # [사용법]
-        return generate.cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
+        _rv = generate.cmd_generate(rest[0], rest[1] if len(rest) > 1 else None, rest[2:],
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
                             drop_interview=drop_iv, revise=revise, as_name=as_name,
                             no_basic=no_basic, sheets=sheets)
+        if lenses:
+            _dt = as_name or rest[0]
+            _st = _state(_dt)
+            if _st:                          # 확정이 등록부로 옮긴다 (confirm)
+                _st["lenses"] = _lens_arg(lenses)
+                _save_state(_dt, _st)
+                print(f"   렌즈 — {_st['lenses']} (확정 때 등록부에 실린다)")
+        return _rv
+    if cmd == "lenses":
+        return _cmd_lenses(rest)
     if cmd == "review":
         # **prose의 리허설 기본은 전량이다**(B51) — 부분 리허설의 근거(좌표 미스
         # 비용)는 table의 것이고 prose엔 해당 없다. table 기본 200행은 그대로다.

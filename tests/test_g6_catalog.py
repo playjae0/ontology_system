@@ -26,44 +26,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
-from g65_common import _P, done    # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
+from g65_common import _P, _rw, done    # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
 from core.state import catalog     # noqa: E402
 from core.build.table import build_table   # noqa: E402
-
-OV = json.loads((ROOT / "tests/fixtures/layers_b90/overlay.json").read_text(encoding="utf-8"))
-
-
-def _rw(path, fn):
-    c = json.loads(Path(path).read_text(encoding="utf-8"))
-    fn(c)
-    Path(path).write_text(json.dumps(c, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def overlay(*, component=False, also=False):
-    """클린 → 상태 루트의 층 config·카탈로그에 덧칠 → 골격. 레포 seed는 건드리지 않는다."""
-    init.init(fresh_=True)
-    lays = ("quality", "process") if component else ("quality",)
-    for lay in lays:
-        def _f(c, lay=lay):
-            c["categories"].update(OV[lay]["categories"])
-            c["relation_patterns"] += OV[lay]["relation_patterns"]
-            c.setdefault("query_traverse", {}).update(OV[lay].get("query_traverse") or {})
-        _rw(_P.layers(lay, "config.json"), _f)
-    if component:
-        _rw(_P.layers("process", "skeleton.json"),
-            lambda c: [c["ALIASES"].setdefault(k, []).extend(v)
-                       for k, v in OV["process"]["aliases"].items()])
-
-    def _c(c):
-        c["categories"].update({k: v for k, v in OV["common"]["categories"].items()
-                                if component or k != "Component"})
-        if also:
-            for k, v in OV["also"].items():
-                c["categories"][k]["also"] = v
-    _rw(_P.common(), _c)
-    for lay in ("process", "quality"):
-        bootstrap(lay, echo=False)
-
 
 def snapshot(doc_prefix):
     """그래프별 성질 — 품질층 Unit · 문서가 만든 공정층 Unit · 품질층에 저장된 Unit 끝점 엣지 · 큐."""

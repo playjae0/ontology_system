@@ -46,6 +46,9 @@ def harness(adapter, schema, samples, package=None, doc_type=None, roles_map=Non
     # 닫힌 목록 **파일**도 건넨다(B86 ②) — 킷은 상태 루트를 모르고 파서의 자리 주입은
     # subprocess에 닿지 않는다. 자리는 여기서 짓는다(store가 이름 → 자리를 안다).
     pkg += ["--closed-list", str(store.path(store.SKELETON_LIST))]
+    # 사내 손잡이 파일도 건넨다(B91 ⑤) — 킷은 core를 모르므로 파서 값은 파일에서 직접 넣는다
+    if paths.knobs().exists():
+        pkg += ["--knobs", str(paths.knobs())]
     # 표본의 **시트 역할 표**도 건넨다(B86 ⑤) — 관문 임시 파일이고 끝나면 지운다.
     from cli.register import samples as samples_mod
     _rf = samples_mod.roles_file(roles_map)

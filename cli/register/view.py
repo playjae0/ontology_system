@@ -610,6 +610,8 @@ def _status_registered(doc_type, st, reg):
                            doc_type=doc_type, roles_map=roles)
     print(f"■ 등록됨 — {doc_type} · 지금 코드로 관문 {'PASS' if ok else 'FAIL'} "
           f"(운영 어댑터 {paths.show(ad)} · 표본 {len(samples)}부)")
+    print(f"   렌즈 — {registry.lenses_of(doc_type)}"            # prose 추출이 보는 층 (B91 ①)
+          + ("" if (reg or {}).get("lenses") else " (기본 — 등록 층 하나)"))
     if ok:
         return 0
     for code, label, detail in gate.fail_lines(out):

@@ -10,6 +10,8 @@
     python -m cli.show edges  [층] [관계]      엣지 목록
     python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표
     python -m cli.show meta                   메타데이터 계약 3층을 실물로
+    python -m cli.show knobs                  사내 손잡이 — 값 · 출처 · 분포를 보는 명령
+    python -m cli.show dist   <무엇>           손잡이 값을 정할 분포 (chunks·headings·forms·sheets·evidence)
 
 **진실은 `data/`의 JSON이다.** Cypher·Mermaid·임베딩은 전부 거기서 파생되는
 재생성 가능물이고(P5), 이 파일은 그 JSON을 **사람이 읽는 모양으로** 옮길 뿐이다.
@@ -479,8 +481,9 @@ def cmd_schema(args):
     if not s:
         print(f"'{dt}' 미등록 — 등록은 python -m cli.register")
         return 1
+    from core.state import registry as _reg
     print(f"■ {dt}   [층 {s.get('layer')} · schema v{s.get('schema_version')}"
-          f" · 블록 {s.get('use_blocks')}]\n")
+          f" · 블록 {s.get('use_blocks')} · 렌즈 {_reg.lenses_of(dt)}]\n")
     print(f"  {'필드':<22} {'role':<11} {'대상/부착':<18} 비고")
     print(f"  {'─' * 70}")
     for f, spec in (s.get("fields") or {}).items():
@@ -728,13 +731,16 @@ def cmd_bm25(args):
 
 
 def main(argv):
+    from cli import show_knobs as _knobs            # 손잡이 화면은 제 파일에 산다 (B91 ⑤)
+    from cli._gate import require_knobs
+    require_knobs()
     if not argv:
         raise SystemExit(__doc__)                                         # [사용법]
     cmd, rest = argv[0], argv[1:]
     table = {"tree": cmd_tree, "node": cmd_node, "doc": cmd_doc, "chunk": cmd_chunk,
              "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
              "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25,
-             "report": cmd_report}
+             "report": cmd_report, "knobs": _knobs.cmd_knobs, "dist": _knobs.cmd_dist}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)

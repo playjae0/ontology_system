@@ -537,6 +537,18 @@ def transition():
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
          if not reg else f"등록됨: {reg}")
 
+    # ── 1″. 사내 손잡이 (B91 ⑤) ──────────────────────────────────
+    # 사내 실측으로 정할 값의 파일 — 있으면 기본과 다른 값이 몇인지. 분포는 `show knobs`가 가리킨다.
+    from core.state import knobs as _kn                                  # noqa: E402
+    if _kn.error() is not None:
+        line(NG, "[1″] 사내 손잡이 파일이 어긋났다 — 운영 명령이 멈춘다", str(_kn.error()))
+    else:
+        _kr = _kn.rows()
+        _kd = [r["name"] for r in _kr if r["value"] != r["default"]]
+        line(OK, f"[1″] 사내 손잡이 — 파일 {'있음' if paths.knobs().exists() else '없음(전부 기본값)'}"
+                 f" · 기본과 다른 값 {len(_kd)}", (", ".join(_kd) + " — python run.py show knobs")
+             if _kd else "값과 분포: python run.py show knobs")
+
     # ── 2′. 등록 스키마 재대조 (B90 ⑤) ───────────────────────────
     # **config를 바꾸면 이미 등록된 스키마가 어휘 밖으로 떨어질 수 있다** — 관문과 같은
     # 함수(G4C·G4D·G4E)로 등록 전부를 다시 대조한다. 어긋난 것은 doc_type을 고칠 일이다.

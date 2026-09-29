@@ -71,15 +71,17 @@ def prompt_version(name="extract"):
     raise ValueError(f"{p}: 머리말 version: 줄이 없다")
 
 
-def checkpoint_path(doc_id):
-    return EXTRACT_DIR / f"{doc_id}.json"
+def checkpoint_path(doc_id, lens=None):
+    """체크포인트 자리 — **렌즈가 키에 든다**(B91 ① — 같은 청크 · 다른 렌즈 = 다른 체크포인트).
+    렌즈를 주지 않으면(한 층 — 기본) 지금 자리 그대로다."""
+    return EXTRACT_DIR / (f"{doc_id}@{lens}.json" if lens else f"{doc_id}.json")
 
 
-def has_checkpoint(doc_id):
-    return checkpoint_path(doc_id).exists()
+def has_checkpoint(doc_id, lens=None):
+    return checkpoint_path(doc_id, lens).exists()
 
 
-def reuse_check(env):
+def reuse_check(env, lens=None):
     """이 체크포인트를 **재사용해도 되는가** — 돌려주는 둘째 값이 「왜 못 쓰는가」다.
 
     조건은 **`doc_hash`와 `adapter_version`이 둘 다 같을 때**다(B78 1b). 구판의
@@ -87,7 +89,7 @@ def reuse_check(env):
     뒤에도 옛 추출이 그대로 재사용됐다 — **바뀐 분할로 만든 청크에 옛 판의 후보가
     붙는다.** 규약 7이 재인입에서 막던 것과 같은 축인데 어댑터 축이 비어 있었다.
     """
-    p = checkpoint_path(env["doc_id"])
+    p = checkpoint_path(env["doc_id"], lens)
     if not p.exists():
         return False, "체크포인트 없음"
     try:
@@ -102,11 +104,14 @@ def reuse_check(env):
     return True, ""
 
 
-def invalidate(doc_id):
-    """재인입 — 청크가 바뀌었으므로 체크포인트를 버린다 (규약 7)."""
-    p = checkpoint_path(doc_id)
+def invalidate(doc_id, lens=None):
+    """재인입 — 청크가 바뀌었으므로 체크포인트를 버린다 (규약 7). 렌즈를 안 주면 렌즈 판도 전부."""
+    p = checkpoint_path(doc_id, lens)
     if p.exists():
         p.unlink()
+    if lens is None and EXTRACT_DIR.exists():
+        for q in EXTRACT_DIR.glob(f"{doc_id}@*.json"):
+            q.unlink()
 
 
 # ---------------------------------------------------------------- USE_MOCK
@@ -313,7 +318,7 @@ def _load_hints(doc_id):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
-def extract(env, cfg, chunk_ids_by_locator, vocab):
+def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=()):
     """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
 
     **실패의 처분은 청크 단위다**(문서 4 §4.10 규약 9). 한 청크의 예외가 문서
@@ -328,21 +333,28 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
     계약이므로(P-1), 아무것도 못 뽑은 상태를 완료로 남기면 재시도가 영영 막힌다.
     """
     doc_id = env["doc_id"]
-    ok, why = reuse_check(env)                   # doc_hash + adapter_version (B78 1b)
+    ok, why = reuse_check(env, lens)             # doc_hash + adapter_version (B78 1b)
     if ok:
-        return json.loads(checkpoint_path(doc_id).read_text(encoding="utf-8")), False
-    if has_checkpoint(doc_id):
+        return json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8")), False
+    if has_checkpoint(doc_id, lens):
         # **조용히 옛 판을 쓰지 않는다** — 조건이 깨졌으면 버리고 다시 뽑는다.
         _LOG.info("extract: %s 체크포인트 폐기 — %s", doc_id, why)
-        invalidate(doc_id)
+        checkpoint_path(doc_id, lens).unlink()
 
     hints = _load_hints(doc_id)
     candidates = []
     failed = 0
-    ref_skipped = 0
+    ref_skipped = lens_skipped = 0
     for c in env.get("chunks", []):
         cid = chunk_ids_by_locator.get(c.get("source_locator"))
         if cid is None:
+            continue
+        # **관련성 거름으로 건너뛴 청크**(B91 ① — 렌즈가 둘 이상일 때만 · LLM 0) — 이 렌즈에서
+        # 무후보다. 건너뛴 수는 체크포인트에 남는다(렌즈별 호출 분포의 재료).
+        if cid in skip:
+            lens_skipped += 1
+            candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [],
+                               "lens_skipped": True})
             continue
         # **참조 시트의 청크는 부르지 않는다**(B83 ④) — 도면목록·가격표를 추출에
         # 넣으면 LLM 비용이 거기서 나가고 그래프 후보까지 생긴다. 청크 자체는
@@ -391,7 +403,10 @@ def extract(env, cfg, chunk_ids_by_locator, vocab):
     if ref_skipped:
         # 키는 **있을 때만** 단다 — 역할 없는 문서의 체크포인트가 바이트로 갈리지 않는다.
         out["ref_skipped"] = ref_skipped
+    if lens:
+        out["lens"] = lens                                   # 렌즈 판 (B91 ①)
+        out["lens_skipped"] = lens_skipped
     paths.ensure(EXTRACT_DIR)          # 폴더를 만드는 자리는 하나다 (B78 1a)
-    checkpoint_path(doc_id).write_text(
+    checkpoint_path(doc_id, lens).write_text(
         json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return out, True

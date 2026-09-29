@@ -34,6 +34,8 @@
        --revise     **등록분의 새 판.** 이름은 그대로이고 확정이 정본을 교체하며
                     revision이 오른다. 승인 기록은 누적한다 (H27)
        --as <이름>  **변형 등록.** 기존 doc_type은 그대로 두고 새 이름으로 간다
+       --lenses <층,층>|all  prose 추출이 보는 **층 목록(렌즈)** — 없으면 등록 층 하나.
+                    둘 이상이면 청크마다 렌즈마다 그 층 어휘로 뽑는다(관련성 거름 · 예고 · 상한)
   python -m cli.register review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -41,6 +43,7 @@
   python -m cli.register confirm  <doc_type> --by <승인자>
   python -m cli.register status   <doc_type>   ← 관문이 막는 이유와 **다음 줄**
   python -m cli.register list
+  python -m cli.register lenses   <doc_type> [<층,층> | all]   ← 렌즈를 보거나 바꾼다
 """
 from __future__ import annotations
 import importlib.util

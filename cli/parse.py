@@ -227,6 +227,12 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
         res.envelope.setdefault("context", {})["images_skipped"] = {
             "n": _skip["요약_안_함"], "why": _skip["사유"]}
         print(f"   그림 {_skip['요약_안_함']}장 요약 안 함({_skip['사유']})")
+    # **그때 쓴 손잡이 값과 출처**(B91 ⑤) — 손잡이 파일이 있을 때만 싣는다(없으면 기록 모양
+    # 불변). 같은 문서가 전과 다르게 잘린 이유를 사내가 인입 기록에서 추적한다.
+    from core.state import knobs as _knobs
+    _kr = _knobs.record(_knobs.PARSE_RECORD)
+    if _kr and res.ok:
+        res.envelope.setdefault("context", {})["knobs"] = _kr
     written = None
     if res.ok and out:
         paths.ensure(Path(out))

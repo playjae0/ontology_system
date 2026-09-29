@@ -239,6 +239,23 @@ def build_screen(step=False):
     한 건이면 사람이 판정할 하나가 118건 밑에 묻힌다.
     """
     def notice(info):
+        if info.get("단계") == "렌즈예고":
+            # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0
+            print(f"   렌즈 예고 — 렌즈 {len(info['렌즈'])}({' · '.join(info['렌즈'])}) × 청크 "
+                  f"{info['청크']:,} → 거름 뒤 LLM ≤ {info['호출']:,}회 "
+                  f"(관련성 문턱 {info['문턱']} · 건너뜀 {info['거름']:,})")
+            return None
+        if info.get("단계") == "렌즈상한":
+            # **넘으면 묻는다** — 비대화형이면 멈춘다(조용한 절단 0 · 문서는 보류로 남는다)
+            print(f"   렌즈 호출 상한 {info['상한']:,} 초과 — 예상 {info['호출']:,}회")
+            if not sys.stdin.isatty():
+                print("     비대화형이라 멈춘다 — 손잡이 lens_call_cap을 올리거나 렌즈를 줄인다 "
+                      "(python run.py show knobs · python -m cli.register lenses <dt>)")
+                return False
+            try:
+                return input("     그래도 부를까? [y/N] ").strip().lower() in ("y", "yes")
+            except (EOFError, KeyboardInterrupt):
+                return False
         if info.get("단계") == "판정예고":
             if step:
                 return          # 단계 모드에서는 4단계가 이미 같은 수를 찍었다
