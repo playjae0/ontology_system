@@ -83,8 +83,9 @@
   양쪽 뿌리를 인자로, 킷은 플래그로 `--layers`·`--coord-layer`·`--closed-list`·`--sheet-roles` · D-160 · B86).
   **화면 경로 표기는 `paths.show()` 하나, 기록 표기는 `rel_to_home()`** — 섞지 않는다(B86 · `relative_to(ROOT)` 직접 사용 0을 회귀가 잰다). **층 자산 `layers/`도 상태 루트에
   산다**(B79 — 레포 `layers/`는 mock 기본 seed일 뿐 · `USE_MOCK=0`에서 없으면 상태 거부).
-  **좌표 층은 `Process` 카테고리를 선언한 층이지 폴더 `process`가 아니다**(B85) — 답하는 자리는
+  **좌표 층은 층 공통 config(`layers/common.json`)에서 `Process`의 집이지 폴더 `process`가 아니다**(B85 · B90) — 답하는 자리는
   `core/state/bootstrap.coord_layer()` 하나 · 층 이름을 코드에 박지 않는다(회귀가 `"process"` grep으로 잰다).
+  **카테고리의 집·겸·이름 규칙은 공통 config 한 곳이다**(B90 — 층 config의 `categories`는 렌즈 · 겹쳐 선언해도 노드는 집 하나 · table·prose 한 길로 집에서 해소).
   **레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지
   않는다** — `doctor`가 `자산_해시.json`과 대조해 다르면 ⚠ · 갱신은 구현 세션이 회차마다 `--write`.
 - **골격 심기의 자리는 `core/state/skeleton.py`다** — 파생이 loader에 섞이면 관계 이름을
@@ -119,7 +120,7 @@
   `10_코드_지도.md` ⓔ가 매 회귀에서 센다 — 예외는 없다.
 - **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ⓪원본(`raw/` — 사람이 넣는 문서 · 재구축 입력 · B80 ②)
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
-  승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/` · 층 config·seed)
+  승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/` · 층 공통 config·층 config·seed)
   ③진실(`data/` 8종 — 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
   재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`logs/<명령>_<날짜>.log`) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
