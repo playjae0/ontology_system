@@ -61,6 +61,19 @@ def _vocab(layer):
             "relation_patterns": c.get("relation_patterns")}
 
 
+def _homes():
+    """공통 config의 집 표 — `{카테고리: 층}` (B90 ② · 없으면 빈 표 — 대조하지 않는다).
+
+    킷은 core를 모르므로 파일을 직접 읽는다 — 자리는 건네받은 층 폴더(`--layers`) 옆이다.
+    """
+    p = tables.layers_dir() / "common.json"
+    try:
+        cats = json.load(open(p, encoding="utf-8")).get("categories") or {}
+    except Exception:
+        return {}
+    return {c: (v or {}).get("home") for c, v in cats.items() if (v or {}).get("home")}
+
+
 def _cat_of(fields, name):
     """필드 이름(또는 `@좌표필드`) → 카테고리. 모르면 `None`."""
     f = fields.get(str(name).lstrip("@")) or {}
@@ -195,6 +208,7 @@ def check_vocab(schema, fields, label):
     # 걸리므로 오타(`Proces`)는 그대로 잡힌다. 걸침 필드(`target_layer`)는 그 층의
     # 목록으로 본다 — 사람이 층을 지정했으면 그 층이 정본이다.
     spoken = set(cats) | {p.get(k) for p in pats for k in ("src", "dst") if p.get(k)}
+    homes = _homes()
     bad_c = []
     for name, f in fields.items():
         for key in ("category", "target_category"):
@@ -202,6 +216,12 @@ def check_vocab(schema, fields, label):
             if not v:
                 continue
             tl = f.get("target_layer")
+            # **`target_layer`는 집과 같아야 한다**(B90 ②) — 해소는 집에서 한다. 다르면
+            # 스키마가 말하는 층과 노드가 사는 층이 갈린다(새 태그 없이 G4C 상세로).
+            if tl and homes.get(v) and tl != homes[v]:
+                bad_c.append(f"{name}.target_layer={tl!r}는 {v}의 집 {homes[v]!r}와 다르다 · "
+                             f"target_layer를 빼거나 {homes[v]!r}로")
+                continue
             own = set(_vocab(tl).get("categories") or {}) if tl else spoken
             if v not in own:
                 bad_c.append(f"{name}.{key}={v!r}는 {tl or layer} 카테고리에 없다 · "

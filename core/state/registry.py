@@ -134,13 +134,18 @@ def at(rel):
     return under if under.exists() else ROOT / p
 
 
-def schema_of(doc_type):
-    """그 doc_type의 매칭 스키마. 등록부가 가리키는 실물을 읽는다."""
+def schema_path(doc_type):
+    """그 doc_type의 매칭 스키마 **자리**(없으면 `None`) — 킷에 건넬 때 쓴다(B90 ⑤)."""
     e = lookup(doc_type)
     if not e or not e.get("schema"):
         return None
-    p = _abs(e, e["schema"])
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    return _abs(e, e["schema"])
+
+
+def schema_of(doc_type):
+    """그 doc_type의 매칭 스키마. 등록부가 가리키는 실물을 읽는다."""
+    p = schema_path(doc_type)
+    return json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
 
 
 def adapter_paths():
@@ -208,7 +213,7 @@ def orphan_reviews():
 
 
 def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
-             approved_at, instructions=None):
+             approved_at, instructions=None, lenses=None):
     """확정 — 등록부 등재. **승인 1회의 물리적 착지점**이다(틀 §2).
 
     이름 중복은 거부한다 — 같은 이름의 doc_type이 둘이면 조회가 어느 쪽을 답할지
@@ -230,8 +235,55 @@ def register(doc_type, *, layer, adapter, schema, adapter_version, approved_by,
         "approved_by": approved_by, "approved_at": approved_at,
         "instructions": list(instructions or []),
     }
+    # **렌즈는 기본(등록 층 하나)과 다를 때만 싣는다**(B91 ①) — 기본이면 항목 모양이 지금과 같다
+    if lenses and _norm_lenses(lenses) != [layer]:
+        reg[doc_type]["lenses"] = _norm_lenses(lenses)
     store.write(store.DOC_TYPES, reg)
     return reg[doc_type]
+
+
+ALL_LENSES = "all"
+
+
+def _norm_lenses(lenses):
+    if lenses == ALL_LENSES or lenses == [ALL_LENSES]:
+        return ALL_LENSES
+    return [x for x in dict.fromkeys(lenses or [])]
+
+
+def lenses_of(doc_type):
+    """**렌즈** — 이 문서 종류가 prose 추출 때 보는 층 목록 (B91 ①).
+
+    없으면 등록 층 하나(지금과 같다). `"all"`이면 층 전부(층을 모르는 문서 — 비용 장치가 붙는다).
+    table은 대상이 아니다 — 스키마의 카테고리가 이미 집으로 층을 가른다(B90).
+    """
+    from router import discover
+    e = lookup(doc_type) or {}
+    lz = e.get("lenses")
+    if lz == ALL_LENSES:
+        return list(discover())
+    return list(lz) if lz else ([e["layer"]] if e.get("layer") else [])
+
+
+def set_lenses(doc_type, lenses):
+    """등록된 doc_type의 렌즈를 바꾼다 — 층은 실재해야 한다 · 기본(등록 층 하나)이면 키를 지운다."""
+    from router import discover
+    reg = _registered()
+    if doc_type not in reg:
+        raise ValueError(f"'{doc_type}'은 등록돼 있지 않다 — 렌즈는 등록분에만 준다"
+                         + (" (내장 doc_type은 등록부에 쓰지 않는다)" if doc_type in _builtin() else ""))
+    lz = _norm_lenses(lenses)
+    if lz != ALL_LENSES:
+        bad = [x for x in lz if x not in discover()]
+        if bad or not lz:
+            raise ValueError(f"없는 층 {bad or '(빈 목록)'} — 층: {' · '.join(discover())} 또는 all")
+    e = reg[doc_type]
+    if lz == [e.get("layer")]:
+        e.pop("lenses", None)
+    else:
+        e["lenses"] = lz
+    store.write(store.DOC_TYPES, reg)
+    return lenses_of(doc_type)
 
 
 def revise(doc_type, *, adapter, schema, adapter_version, approved_by,

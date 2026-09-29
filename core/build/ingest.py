@@ -209,6 +209,10 @@ def register_doc(env, dh, routing=None):
     _skip = (env.get("context") or {}).get("images_skipped")
     if _skip:
         entry["images_skipped"] = _skip
+    # **그때 쓴 손잡이 값과 출처**(B91 ⑤) — 파싱이 계약 JSON의 context에 실었다(있을 때만)
+    _kn = (env.get("context") or {}).get("knobs")
+    if _kn:
+        entry["knobs"] = _kn
     reg[doc_id] = entry
     store.write(store.DOC_REGISTRY, reg)
 

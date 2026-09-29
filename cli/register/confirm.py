@@ -12,7 +12,7 @@ import json
 from cli.register import draft as draft_mod
 from cli.register import gate
 from cli.register import view
-from cli.register import _load, _state
+from cli.register import _load, _state, write_file
 
 
 # ================================================================ ③ 확정
@@ -48,7 +48,7 @@ def cmd_confirm(doc_type, approved_by):
     # 근거가 사라지면 안 된다).
     _revising = bool(st.get("revise_of")) and bool(registry.lookup(doc_type))
     _fn = registry.revise if _revising else registry.register
-    _kw = {} if _revising else {"layer": st["layer"]}
+    _kw = {} if _revising else {"layer": st["layer"], "lenses": st.get("lenses")}
     entry = _fn(
         doc_type, adapter=adapter_path, schema=schema_path,
         adapter_version=mod.ADAPTER.get("adapter_version"),
@@ -77,8 +77,7 @@ def cmd_confirm(doc_type, approved_by):
         except json.JSONDecodeError:
             pass
     approval["revision"] = entry.get("revision", 0)
-    _ap.write_text(json.dumps(approval, ensure_ascii=False, indent=2) + "\n",
-                   encoding="utf-8")
+    write_file(_ap, json.dumps(approval, ensure_ascii=False, indent=2) + "\n")
     if _revising:
         print(f"■ ③ 확정 — {doc_type} **새 판 등재** "
               f"(revision {entry.get('revision')} · 승인 {approved_by} @ {at})")

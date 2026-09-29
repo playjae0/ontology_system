@@ -46,6 +46,22 @@ def _migrate_message(command="", pair=None):
             f"(무엇이 어디로 가는지만 본다)")
 
 
+def require_knobs():
+    """**사내 손잡이 파일이 닫힌 목록·형 밖이면 멈춘다** (B91 ⑤) — traceback이 아니라 문면으로.
+
+    판정은 `core/state/knobs.py`가 하고(상태 루트가 정해질 때 주입과 함께), 여기서는 그
+    문면(원인 · 근거 · 다음 줄)을 `[상태]`로 올린다. 조용히 기본값으로 떨어지지 않는다.
+    """
+    from core import paths
+    from core.state import knobs
+    paths.home()                                      # 루트 결정이 주입·판정을 한다
+    if knobs.error() is not None:
+        # 문면은 KnobError의 것(원인 · 근거 · 다음 줄) — 다음 줄이 빠진 문면은 없지만 계약을 문 안에 둔다
+        _t = str(knobs.error())
+        raise SystemExit(_t if "python run.py show knobs" in _t else  # [상태]
+                         f"{_t}\n  근거 — knobs.json\n  ▶ 다음 줄: python run.py show knobs")
+
+
 def require_migrated(command=""):
     """**옛 배치 그대로면 읽기 전에 멈춘다** (B78 1b · 문서 7 §7.8).
 
@@ -53,6 +69,7 @@ def require_migrated(command=""):
     갈라진 채 며칠이 간다 — B77 ③이 신고한 「옮기다 빠짐」의 상류다. 판정과 문면은
     `core/state/migrate.py`가 갖고(D-149 ③ — core는 화면을 갖지 않는다) 여기서는 멈춘다.
     """
+    require_knobs()                               # 손잡이 파일이 어긋나면 먼저 멈춘다 (B91 ⑤)
     from core.state import migrate
     pair = migrate.needs_migration()
     if pair:

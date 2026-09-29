@@ -1,0 +1,62 @@
+{
+  "_읽는 법": "B90 테스트 전용 층 덧칠 — 레포 layers/(mock seed)에는 겹침·겸을 넣지 않는다. 시험이 상태 루트의 층 config에 얹는다(창작 · 메커니즘 확인)",
+  "quality": {
+    "categories": {
+      "Unit": "(품질층의 렌즈) 불량이 일어나는 설비 — 검사·조치의 대상이 되는 장비의 기종 명칭"
+    },
+    "relation_patterns": [
+      {
+        "src": "Failure",
+        "rel": "occurs_in",
+        "dst": "Unit",
+        "symmetric": false,
+        "정의문": "불량이 그 설비에서 일어난다"
+      }
+    ],
+    "query_traverse": {
+      "occurs_in": {
+        "both": {
+          "direction": "both",
+          "recursive": false
+        }
+      }
+    }
+  },
+  "process": {
+    "categories": {
+      "Component": "설비를 이루는 구성 기계·부품 — 스테이션 아래 기계"
+    },
+    "relation_patterns": [
+      {
+        "src": "Component",
+        "rel": "part_of",
+        "dst": "Unit",
+        "symmetric": false,
+        "정의문": "구성 기계가 그 설비에 속한다"
+      }
+    ],
+    "aliases": {
+      "노칭": [
+        "노칭 unit"
+      ]
+    }
+  },
+  "common": {
+    "categories": {
+      "Unit": {
+        "home": "process"
+      },
+      "Component": {
+        "home": "process"
+      }
+    }
+  },
+  "also": {
+    "Process": {
+      "Unit": [
+        "sub",
+        "detail"
+      ]
+    }
+  }
+}

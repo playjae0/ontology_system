@@ -19,7 +19,7 @@ import sys
 from core.llm import gateway
 from core.dictionary import Dictionary
 from core.query import query as Q
-from core.state import store
+from core.state import knobs, store
 from core.state.ids import norm
 from core.state.bootstrap import load_config, open_graph
 from router import discover
@@ -144,6 +144,10 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
     # 않는다. 적용하면 한 홉짜리 브리지가 도착층 전체로 번져 확장 범위가 층 수만큼
     # 곱해지고, 홉 수 상한이 층마다 다르게 소진된다.
     crossed = []
+    # **층 안 확장으로 이미 닿은 걸침 엣지**(B90 ④) — 브리지는 이것을 건너뛰고(출발 집합)
+    # `facts`도 건너뛴다(이 층에 없는 끝점). 저장한 층의 템플릿으로 한 번 문장화한다.
+    stranded = [(lay, e) for lay, ids in collected.items()
+                for e in Q.stranded(graphs[lay], ids)]
     for lay, ids in list(collected.items()):
         found, edges = Q.bridge(ids, lay, graphs, configs)
         crossed += edges
@@ -158,7 +162,10 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
                               for _lay, e in crossed}),
              "edges": [{"src": e["src"], "rel": e["rel"], "dst": e["dst"],
                         "layer": lay, "bridge": True} for lay, e in crossed]})
-    res["facts"] += Q.cross_facts(crossed, graphs, configs)
+    _seen = {(lay, e["src"], e["rel"], e["dst"]) for lay, e in crossed}
+    res["facts"] += Q.cross_facts(
+        crossed + [(lay, e) for lay, e in stranded
+                   if (lay, e["src"], e["rel"], e["dst"]) not in _seen], graphs, configs)
 
     return collected
 
@@ -172,9 +179,15 @@ def _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent
     direct_ids = {i for s in direct_by_layer.values() for i in s}
     coll = []
     res["chunks"], res["truncated"] = Q.collect_chunks(all_ids, direct_ids, trace=coll)
+    # **ref 노드 근처**(B91 ④) — 직접 링킹 노드의 표기가 든 참조 시트 청크 · 근거 순위 맨 뒤 ·
+    # 답변 입력에서는 [관련 원문]으로 가른다. 없으면 키도 없다(묶음 모양이 지금과 같다).
+    _rel = Q.ref_near(direct_ids, graphs, trace=coll)
+    if _rel:
+        res["related"] = _rel
     # `via_node`는 그 청크를 데려온 노드다 — 화면이 「어느 노드의 근거인가」를 그린다.
     _by_chunk = {}
-    for d in (store.read(store.CHUNKS, {"describes": []}).get("describes") or []):
+    _ch = store.read(store.CHUNKS, {"describes": []})
+    for d in (_ch.get("describes") or []) + (_ch.get("about") or []):
         _by_chunk.setdefault(d["chunk_id"], d["node_id"])
     tr["collection"] = [dict(c, via_node=_by_chunk.get(c["chunk_id"])) for c in coll]
     tr["facts"] = [{"key": i, "text": f, "used": True}
@@ -263,7 +276,10 @@ def generate(res):
               "그래프_사실": [{"i": i, "문장": f}
                           for i, f in enumerate(res["facts"])],
               "문서_근거": [{"출처": f"{c['doc_id']} {c['source_locator']}",
-                          "원문": c["text"]} for c in res["chunks"]]},
+                          "원문": c["text"]} for c in res["chunks"]],
+              **({"관련_원문": [{"출처": f"{c['doc_id']} {c['source_locator']}",
+                              "원문": c["text"]} for c in res["related"]]}
+                 if res.get("related") else {})},
              ensure_ascii=False)}],
         json_schema=ANSWER_SCHEMA, point="answer")
 
@@ -297,8 +313,10 @@ def render(res):
         lines.append(f"   [그래프 사실] {f}")
     for c in res["chunks"]:
         lines.append(f"   [문서 근거] ({c['doc_id']} {c['source_locator']}) {c['text']}")
+    for c in res.get("related") or []:
+        lines.append(f"   [관련 원문] ({c['doc_id']} {c['source_locator']}) {c['text']}")
     if res["truncated"]:
-        lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {Q.COLLECT_LIMIT})")
+        lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {knobs.get('collect_limit')})")
     return "\n".join(lines)
 
 

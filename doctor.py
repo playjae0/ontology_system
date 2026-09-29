@@ -50,6 +50,8 @@ SUITES = [
     # **사내 모양을 상시로 돈다**(B86) — 상태가 코드 밖 · 좌표 층 이름이 다르다.
     ("test_g6_shanae_parts", 16, "사내 모양 잔여(B86) — 화면 경로 한 자리 · 파서 자리 주입 · 대장 자리 · 선택 의존 거부·버린 그림 한 줄 · 등록 표본 시트 관문"),
     ("test_g6_shanae_root", 13, "사내 모양 루트(B86 ⑥) — 레포 밖 상태 루트에서 등록부터 뷰어·doctor --quick까지 · 기본 루트와 canonical·엣지·큐·질의 등가"),
+    ("test_g6_catalog", 21, "층 공통 config(B90) — 카탈로그 거부 다섯·초안 흐름 · 전역 해소(table·prose 한 길) · 주·겸·자기 좌표 · 걸침 엣지 문장화 · 등록 스키마 재대조 · registry 원자 쓰기"),
+    ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
     ("test_g65_contract", 28, "재인입·인입 검증 계약 · 닫힌 계약 배선 · 병합 무손실"),
     ("test_g65_cross", 10, "걸침층 배선 · mock 비계 최소 · 인입 순서 무관 결정성"),
@@ -59,9 +61,9 @@ SUITES = [
     ("test_p1_core6", 43, "골격 스냅샷 · 코어 6종 계약 · preflight/계약 위반 · 기본 어댑터 · 역산 정합 · 지도 경로"),
     ("test_p1_wiring", 21, "파서 무판독 · ⑦ 예산 초과 폴백 · 생성 하네스 3단 · 조각 공통 층"),
     ("test_p1_csv", 54, "CSV reader 구조 등가 · 인코딩·구분자 판정 · PPT/PDF 임계 경로"),
-    ("test_p1_form", 29, "스프레드시트 산문 레벨 규칙 · 형태 판정 · 큐 case 두 값"),
+    ("test_p1_form", 35, "스프레드시트 산문 레벨 규칙 · 형태 판정(시트 역할 — 입구는 시트마다 · 역할 뒤 prose 시트) · 관문 ③④의 시트 역할 · 큐 case 두 값"),
     ("test_p1_coord", 26, "시스템이 아는 값은 LLM이 쓰지 않는다 · 분할 기준 · 좌표 태깅 상한"),
-    ("test_p1_hier", 21, "산문 엑셀 계층(B87) — 번호 군·첫 등장 레벨 · 글자 상한(행 경계·무손실) · 규칙 선언(안 선 시트만·기록·재사용·ref/mock/리허설 호출 0)"),
+    ("test_p1_hier", 24, "산문 엑셀 계층(B87) — 번호 군·첫 등장 레벨 · 글자 상한(행 경계·무손실) · 규칙 선언(안 선 시트만·기록·재사용·ref/mock/리허설 호출 0) · 셀 안 줄바꿈의 locator(B89 — 행이 단위)"),
     ("test_p1_media", 19, "리더의 폭(B88) — 엑셀 그림 → ④(ref·skip 0 · 변환·건너뜀 사유 · --no-images 기록 · 재사용) · docx(개요 수준·번호·표·그림·삭제 0·.doc 거부) · 등록 doc_type status(운영 어댑터)"),
     ("test_p2", 68, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋 · B76 스켈레톤 최소 어댑터·형 검사 G4F · B77 전시물 실행 관문"),
     # **P3는 파일 여덟이다**(B78 2b) — 등록 파이프라인의 칸별로 갈랐고 합은 그대로다.
@@ -73,7 +75,7 @@ SUITES = [
     ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
     ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
     ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
-    ("test_2a_gateway", 67, "게이트웨이 골조 — 9지점 도달 가능성 · **9지점 본문 스모크**(B79 ③ⓒ) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
+    ("test_2a_gateway", 69, "게이트웨이 골조 — 10지점 도달 가능성 · **10지점 본문 스모크**(B79 ③ⓒ · ⑩시트 역할 B91) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
     # **뷰어는 세미 플랫폼이다**(B82) — headless로 잰다(브라우저 의존 0).
     ("test_viewer", 45, "뷰어 서버(쓰기 0 · 자리 탈출 거부) · 벤더링 렌더러 · 질의 trace 계측 · 연결 현황 · B84 테마 대비·다시 칠하기·배치 둘·상호작용·오류 문면"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
@@ -536,7 +538,29 @@ def transition():
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
          if not reg else f"등록됨: {reg}")
 
-    # ── 3. LLM 지점 9종의 **도달 가능성** ─────────────────────────
+    # ── 1″. 사내 손잡이 (B91 ⑤) ──────────────────────────────────
+    # 사내 실측으로 정할 값의 파일 — 있으면 기본과 다른 값이 몇인지. 분포는 `show knobs`가 가리킨다.
+    from core.state import knobs as _kn                                  # noqa: E402
+    if _kn.error() is not None:
+        line(NG, "[1″] 사내 손잡이 파일이 어긋났다 — 운영 명령이 멈춘다", str(_kn.error()))
+    else:
+        _kr = _kn.rows()
+        _kd = [r["name"] for r in _kr if r["value"] != r["default"]]
+        line(OK, f"[1″] 사내 손잡이 — 파일 {'있음' if paths.knobs().exists() else '없음(전부 기본값)'}"
+                 f" · 기본과 다른 값 {len(_kd)}", (", ".join(_kd) + " — python run.py show knobs")
+             if _kd else "값과 분포: python run.py show knobs")
+
+    # ── 2′. 등록 스키마 재대조 (B90 ⑤) ───────────────────────────
+    # **config를 바꾸면 이미 등록된 스키마가 어휘 밖으로 떨어질 수 있다** — 관문과 같은
+    # 함수(G4C·G4D·G4E)로 등록 전부를 다시 대조한다. 어긋난 것은 doc_type을 고칠 일이다.
+    from cli.register import recheck                                     # noqa: E402
+    _rc = recheck.run()
+    _bad = [l for _dt, ok, l in _rc if not ok]
+    line(OK if not _bad else NEXT,
+         f"[2′] 등록 스키마 재대조 — {len({dt for dt, _o, _l in _rc})}종 · 어긋남 {len(_bad)}",
+         "\n         ".join(_bad) if _bad else "")
+
+    # ── 3. LLM 지점 10종의 **도달 가능성** ─────────────────────────
     # **문자열을 세지 않는다.** 여태 이 자리가 소스에 `use_mock`·`allow_mock` 같은
     # 낱말이 있는지를 보고 「분기가 서 있다」로 보고했다 — 그래서 ⑦구조 지도가
     # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
@@ -602,12 +626,24 @@ def state_line():
         _coord = coord_layer()
     except NoCoordLayer:
         _coord = "**없다**"
+    # **층 공통 config의 판을 같은 줄에**(B90 ①) — 집·겸·이름 규칙이 어느 판으로 도는가.
+    from core.state import catalog as _catalog                      # noqa: E402
+    _cv = _catalog.version()
+    _common = (f"v{_cv}" if _cv is not None
+               else "없다 — bootstrap이 초안을 만든다" if not gateway.use_mock()
+               else "없다(mock — 층 선언에서 세운다)")
     print(f"  상태 폴더 {paths.home()}{paths.home_note()} · 모드 "
           f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
           + (f"(내장 {builtin})" if builtin else "")
           + f" · 층 {len(discover())}(상태 루트)"
           + f" · 좌표 층 {_coord}"
+          + f" · 공통 config {_common}"
           + f" · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
+    try:
+        for _w in _catalog.warnings():               # 겸 집 불일치 — 경고 (B91 ⑥)
+            print(f"  ⚠ 공통 config 겸 {_w}")
+    except _catalog.CatalogError:
+        pass                                         # 카탈로그 거부는 bootstrap이 말한다
     if migrate.needs_migration():
         print("  ⚠ 이관 전이다 — python run.py platform migrate "
               "--from <옛 코드 폴더>  (그 전까지 운영 명령은 멈춘다)")

@@ -45,7 +45,7 @@
   해당 코드·config의 전문을 연다.** 절단된 출력·요약·타 문서의 보고로 대체하지 않는다.
 - **창작 표본의 수치는 근거가 아니다**([정정] 50 — 2026-09-28 사용자 지적): mock·`tests/fixtures`의 분포·수치(청크 크기·적중률·호출 수 등)는
   메커니즘이 도는지의 확인일 뿐이다 — **상수·문턱·크기 조정의 근거로 쓰지 않는다**(문서 7 §7.5-1). 보고·요청문에 수치를 적을 때는
-  **출처(창작 표본 / 사내 실측)**를 붙이고, 조정은 사내 실측이 온 뒤에 한다.
+  **출처(창작 표본 / 사내 실측)**를 붙이고, 조정은 사내 실측이 온 뒤에 한다 — **조정 자리는 사내의 `$ONTO_HOME/knobs.json`이다**(B91 · 사내 실측은 이 레포로 오지 않는다 — 사내에서 바꿀 수 있고 분포가 사내 화면(`show knobs` · `show dist`)에 보여야 한다).
 - **등록 산출물(스키마·어댑터)의 판정은 문면이 아니라 실행 결과로 한다.** 검수 뷰(사람)
   앞단에 실행 하네스(기계 관문)가 선다.
 
@@ -83,8 +83,10 @@
   양쪽 뿌리를 인자로, 킷은 플래그로 `--layers`·`--coord-layer`·`--closed-list`·`--sheet-roles` · D-160 · B86).
   **화면 경로 표기는 `paths.show()` 하나, 기록 표기는 `rel_to_home()`** — 섞지 않는다(B86 · `relative_to(ROOT)` 직접 사용 0을 회귀가 잰다). **층 자산 `layers/`도 상태 루트에
   산다**(B79 — 레포 `layers/`는 mock 기본 seed일 뿐 · `USE_MOCK=0`에서 없으면 상태 거부).
-  **좌표 층은 `Process` 카테고리를 선언한 층이지 폴더 `process`가 아니다**(B85) — 답하는 자리는
+  **좌표 층은 층 공통 config(`layers/common.json`)에서 `Process`의 집이지 폴더 `process`가 아니다**(B85 · B90) — 답하는 자리는
   `core/state/bootstrap.coord_layer()` 하나 · 층 이름을 코드에 박지 않는다(회귀가 `"process"` grep으로 잰다).
+  **카테고리의 집·겸·이름 규칙은 공통 config 한 곳이다**(B90 — 층 config의 `categories`는 렌즈 · 겹쳐 선언해도 노드는 집 하나 · table·prose 한 길로 집에서 해소).
+  **사내가 조정하는 값은 상태 루트 `knobs.json`(닫힌 목록 · 기본값 = 코드 상수 · 기록에 값과 출처)** — 코드 상수를 사내에서 고치지 않는다(B91).
   **레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지
   않는다** — `doctor`가 `자산_해시.json`과 대조해 다르면 ⚠ · 갱신은 구현 세션이 회차마다 `--write`.
 - **골격 심기의 자리는 `core/state/skeleton.py`다** — 파생이 loader에 섞이면 관계 이름을
@@ -119,7 +121,7 @@
   `10_코드_지도.md` ⓔ가 매 회귀에서 센다 — 예외는 없다.
 - **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ⓪원본(`raw/` — 사람이 넣는 문서 · 재구축 입력 · B80 ②)
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
-  승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/` · 층 config·seed)
+  승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/` · 층 공통 config·층 config·seed)
   ③진실(`data/` 8종 — 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
   재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`logs/<명령>_<날짜>.log`) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의

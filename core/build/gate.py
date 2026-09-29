@@ -91,6 +91,32 @@ def judge(src_cat, rel, dst_cat, cfg, path):
     return INVALID_PATTERN, None
 
 
+def _categories(n):
+    """끝점의 카테고리 집합 = 주 ∪ 겸 (B90 ③). 카탈로그를 못 읽으면 주 하나."""
+    from core.state import catalog
+    try:
+        return catalog.categories_of(n)
+    except catalog.CatalogError:
+        return {n["category"]}
+
+
+def _judge_also(s, rel, d, cfg, path, verdict):
+    """**겸을 인정한다**(B90 ③) — 주 카테고리 쌍이 통과하지 못했을 때만 겸 조합을 본다.
+
+    끝점의 카테고리 집합 = 주 ∪ 겸이고, 어느 조합이든 패턴에 있으면 통과다(스테이션
+    노드에 `구성품 part_of 설비`가 바로 붙는다). 겸이 없으면 주 판정 그대로다 — 한 조합뿐이다.
+    """
+    sc, dc = _categories(s), _categories(d)
+    if len(sc) == 1 and len(dc) == 1:
+        return verdict
+    for a in sorted(sc):
+        for b in sorted(dc):
+            if (a, b) != (s["category"], d["category"]) and \
+                    judge(a, rel, b, cfg, path)[0] == COMMIT:
+                return COMMIT
+    return verdict
+
+
 def log_reject(rel, src_cat, dst_cat, verdict, path, doc_id):
     """거부 기록 — 사유별 건수. 큐가 아니라 로그다(D-7)."""
     log = store.read(store.GATE_REJECTS, {"rejects": [], "counts": {}})
@@ -118,6 +144,8 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
                    UNRESOLVED_ENDPOINT, path, doc_id)
         return UNRESOLVED_ENDPOINT
     verdict, _ = judge(s["category"], rel, d["category"], cfg, path)
+    if verdict != COMMIT:
+        verdict = _judge_also(s, rel, d, cfg, path, verdict)
 
     if verdict == COMMIT:
         # 이 관문을 지난 엣지는 전부 문서·규칙 유래다 — status는 `auto` 하나다.

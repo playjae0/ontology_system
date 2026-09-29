@@ -28,6 +28,16 @@ from core.state.status import is_live
 from router import discover
 
 
+def _also_of(n):
+    """겸 — 있을 때만 키 `also`(B90 ③). 없으면 빈 dict — 겸 없는 노드의 모양은 그대로다."""
+    from core.state import catalog
+    try:
+        extra = sorted(catalog.categories_of(n) - {n["category"]})
+    except catalog.CatalogError:
+        return {}
+    return {"also": extra} if extra else {}
+
+
 def _q(v):
     """Cypher 문자열 리터럴 — 작은따옴표·역슬래시·개행을 이스케이프한다."""
     s = "" if v is None else str(v)
@@ -359,7 +369,7 @@ def graph_data(world):
             prov = n.get("provenance") or []
             nodes.append({
                 "id": n["id"], "name": n["canonical"], "layer": lay,
-                "category": n["category"], "status": n.get("status"),
+                "category": n["category"], **_also_of(n), "status": n.get("status"),
                 "tier": n.get("tier"), "polarity": n.get("polarity"),
                 "prov": ", ".join(prov[:4]),
                 # 대장이 모르는 노드는 골격(seed)이거나 대장 이전의 것이다 —

@@ -3,10 +3,10 @@
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images]
                                   [--step] [--step-every N] [--narrow embed|overlap]
-                                  [--progress-every N] [--sheets "2-3:prose 4:ref *:skip"]
-                                  [-v] [--no-color]
+                                  [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
+                                  [--no-sheet-llm] [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
-                                  [--narrow embed|overlap] [--progress-every N]
+                                  [--narrow embed|overlap] [--progress-every N] [--sheets auto]
                                   (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
@@ -23,6 +23,9 @@
 정한다(`prose`·`ref`·`skip`) — 답은 `registry/sheet_roles/<doc_id>.json`에 남고 같은 문서는
 다시 묻지 않는다. 비대화형(파이프 · `ingest-dir` · EOF)에서는 **묻지 않고 거부**한다 —
 조용한 기본값이 없다. `--sheets "<선택>:<역할> …"`로 미리 줄 수 있다(관문 건너뜀).
+관문 표는 **로직 제안과 LLM 제안**을 나란히 보이고 어긋나면 기본 제안이 `ref`다(모르면 ref ·
+`--no-sheet-llm`이면 로직만). 대량은 **자동 모드** `--sheets auto` — 합의한 시트만 자동이고
+어긋난 시트는 `ref` + 승격 후보(기록과 화면 · B91 ②).
 
 `--doc-type`을 주면 스캔하지 않고 그것으로 본다(사람 지정 — 기본 경로). 비정형(pptx)은
 헤더 지문이 없어 스캔 대상이 아니다 — 지정 없이 오면 미선택으로 남는다.
@@ -239,6 +242,23 @@ def build_screen(step=False):
     한 건이면 사람이 판정할 하나가 118건 밑에 묻힌다.
     """
     def notice(info):
+        if info.get("단계") == "렌즈예고":
+            # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0
+            print(f"   렌즈 예고 — 렌즈 {len(info['렌즈'])}({' · '.join(info['렌즈'])}) × 청크 "
+                  f"{info['청크']:,} → 거름 뒤 LLM ≤ {info['호출']:,}회 "
+                  f"(관련성 문턱 {info['문턱']} · 건너뜀 {info['거름']:,})")
+            return None
+        if info.get("단계") == "렌즈상한":
+            # **넘으면 묻는다** — 비대화형이면 멈춘다(조용한 절단 0 · 문서는 보류로 남는다)
+            print(f"   렌즈 호출 상한 {info['상한']:,} 초과 — 예상 {info['호출']:,}회")
+            if not sys.stdin.isatty():
+                print("     비대화형이라 멈춘다 — 손잡이 lens_call_cap을 올리거나 렌즈를 줄인다 "
+                      "(python run.py show knobs · python -m cli.register lenses <dt>)")
+                return False
+            try:
+                return input("     그래도 부를까? [y/N] ").strip().lower() in ("y", "yes")
+            except (EOFError, KeyboardInterrupt):
+                return False
         if info.get("단계") == "판정예고":
             if step:
                 return          # 단계 모드에서는 4단계가 이미 같은 수를 찍었다
@@ -343,7 +363,8 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
     거부 문면은 `sheet_gate.gate()` 한 벌이다(등록 표본과 같은 함수 · B86 ⑤).
     """
     kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
-    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask)
+    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask,
+                          lenses=registry.lenses_of(sel.get("doc_type")) or None)
     if stop is None:
         return roles, None
     return None, {"status": FAIL if stop["kind"] == SG.REFUSED else SKIP,
@@ -502,7 +523,8 @@ def spend_line(stage):
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
-               coord_cap=COORD_CAP, recurse=False, progress_every=None, no_images=False):
+               coord_cap=COORD_CAP, recurse=False, progress_every=None, no_images=False,
+               sheets=None):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -527,7 +549,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap,
                                 progress_every=progress_every, ask=False,
-                                no_images=no_images))
+                                no_images=no_images, sheets=sheets))
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -688,14 +710,15 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
-        if sheets_spec:
+        if sheets_spec and sheets_spec != SG.AUTO:
             # 역할은 **문서 하나의 결정**이다 — 폴더 전체에 같은 번호를 적용하면
-            # 시트 자리가 다른 문서에서 가격 시트가 prose가 된다.
-            raise SystemExit("[투입] --sheets는 ingest-file 하나에만 준다 — "   # [사용법]
-                             "문서마다 시트 자리가 다르다")
+            # 시트 자리가 다른 문서에서 가격 시트가 prose가 된다. 자동 모드(`auto`)는
+            # 문서마다 판정하므로 폴더에 준다(대량 — B91 ②).
+            raise SystemExit("[투입] --sheets 역할 문자열은 ingest-file 하나에만 준다 — "  # [사용법]
+                             "문서마다 시트 자리가 다르다 (폴더에는 --sheets auto)")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
                           recurse=_from_raw, progress_every=prog_every,
-                          no_images=no_img)
+                          no_images=no_img, sheets=sheets_spec)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,

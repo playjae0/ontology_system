@@ -159,17 +159,18 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
         return False
     LOWRES["n"] += 1                     # 요약 한 줄의 재료 (B72 ②)
     tg = ref_g if ref_g is not None else graph
+    cg = b.graph_of(child) or graph        # 자식은 집 그래프에 산다(B90 ②)
     rel = gate.pair_relation(cfg, (tg.get(ref) or {}).get("category"),
-                         (graph.get(child) or {}).get("category"))
+                         (cg.get(child) or {}).get("category"))
     if not rel:
         store.append_defect(
             f"{doc_id}: 규칙 B 폴백 — 카테고리쌍 매핑 없음 "
             f"({(tg.get(ref) or {}).get('category')} → "
-            f"{(graph.get(child) or {}).get('category')})")
+            f"{(cg.get(child) or {}).get('category')})")
         return False
     gate.commit_edge(graph, ref, rel, child, cfg, gate.PATH_SCHEMA,
                      [prov], doc_id, evidence_chunk=evidence_chunk,
-                     src_graph=tg, dst_graph=graph)
+                     src_graph=tg, dst_graph=cg)
     return True
 
 
@@ -301,14 +302,17 @@ def h_anchor(value, spec, ctx):
 def h_entity(value, spec, ctx):
     """**entity — 개체.** 노드가 될 자격이 있는 것. 3분기(매칭/신규/불확실).
 
-    **스키마가 층을 선언하면 그 층에 해소한다**(`target_layer`). 선언을 안 읽으면
-    걸침 개체가 자기 층에 복제되어 문서 간 병합이 조용히 깨진다.
+    **카테고리의 집에서 해소한다**(B90 ② — 공통 config `home`). 자기 층에서 해소하면
+    걸침 개체가 자기 층에 복제되어 문서 간 병합이 조용히 깨진다. 스키마의 `target_layer`는
+    집과 같아야 한다(다르면 등록 관문 G4C가 FAIL로 막는다).
 
     해소 결과는 **문서 해소 버퍼에도 싣는다** — attach_to의 해소 범위가 청크·행
     경계를 넘기 때문이다(문서 4 §4.10-6). 층 간 동명은 **마지막 해소가 이긴다**(§4.2).
     """
     st = ctx.state
-    lay = spec.get("target_layer") or st["cfg"]["layer"]
+    # **집에서 해소한다**(B90 ②) — `target_layer`는 있으면 집과 같아야 하고(다르면 등록
+    # 관문 G4C가 막는다), 없으면 집이다. prose와 **같은 함수**(`resolve_at_home`)를 부른다.
+    lay = st["b"].home_of(spec["category"])
 
     # **좌표 없는 노드를 미리 만들어 두지 않는다**(문서 4 §4.4 — B14).
     #
@@ -330,11 +334,11 @@ def h_entity(value, spec, ctx):
         _ledger_entity(st, value, lay, None)
         return None
 
-    eb = st["b"].for_layer(lay)
-    nid = eb.resolve_entity(value, spec["category"], st["prov"],
-                            electrode_type=st["et"],
-                            parent_canonical=st["parent"],
-                            anchor_polarity=st["anchor_pol"])
+    nid, eb = st["b"].resolve_at_home(value, spec["category"], st["prov"],
+                                      coord=(st["ref"], st.get("ref_g")),
+                                      electrode_type=st["et"],
+                                      parent_canonical=st["parent"],
+                                      anchor_polarity=st["anchor_pol"])
     _ledger_entity(st, value, lay, eb.last)
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g

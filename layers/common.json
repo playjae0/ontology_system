@@ -1,0 +1,27 @@
+{
+  "common_version": 1,
+  "categories": {
+    "Process": {
+      "home": "process"
+    },
+    "Unit": {
+      "home": "process"
+    },
+    "Property": {
+      "home": "process"
+    },
+    "Failure": {
+      "home": "quality"
+    },
+    "FailureEffect": {
+      "home": "quality"
+    }
+  },
+  "canonical_scope": {
+    "bind_categories": [
+      "Property",
+      "Unit"
+    ],
+    "sep": "::"
+  }
+}

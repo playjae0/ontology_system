@@ -444,10 +444,12 @@ def split(smap, lines, locator, sep=" > "):
     flush()
 
     # **상한을 크게 넘는 청크만 한 단계 더 쪼갠다** — 재귀하지 않는다.
-    if pick and any(len(c["text"].split("\n")) > CHUNK_MAX * 2 for c in out):
+    # 단위는 **행**이다(B89 ①) — `level_stats`가 행으로 세므로 같은 단위여야 하고,
+    # 글 줄로 세면 셀 안 줄바꿈이 행 수를 부풀린다.
+    if pick and any(len(c["_lines"]) > CHUNK_MAX * 2 for c in out):
         deeper = {n: l for n, l in all_head.items() if l == pick + 1}
         if deeper:
-            out = _resplit(out, deeper, lines, locator, sep)
+            out = _resplit(out, deeper, locator)
     deeper = {n for n, l in all_head.items() if pick and l == pick + 1}
     return cap_chars(out, deeper, locator)
 
@@ -463,7 +465,11 @@ def cap_chars(chunks, deeper, locator):
     out = []
     for c in chunks:
         lines = c.pop("_lines", None)
-        if len(c.get("text") or "") <= CHUNK_MAX_CHARS or not lines:
+        if not lines:
+            # **행 없는 청크는 결함이다**(B89 ①) — 구판은 원래 locator를 그대로 붙여
+            # 넘겼고, 그 조각들이 같은 locator를 나눠 가져 validator에서야 드러났다.
+            raise ValueError(f"청크에 행 목록(_lines)이 없다 — {c.get('source_locator')}")
+        if len(c.get("text") or "") <= CHUNK_MAX_CHARS:
             out.append(c)
             continue
         parts, seg = [], []
@@ -479,12 +485,10 @@ def cap_chars(chunks, deeper, locator):
             pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
                        else [(part, False)])
         for part, over in pieces:
-            rows = [n for n, _x in part if n is not None]
             meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"]}
             if over:
                 meta["over_char_cap"] = True
-            out.append({**c, "source_locator": locator(rows[0], rows[-1]) if rows
-                        else c["source_locator"],
+            out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
                         "text": "\n".join(x for _n, x in part), "meta": meta})
     return out
 
@@ -510,34 +514,32 @@ def _pack(part):
     return out
 
 
-def _resplit(chunks, deeper, lines, locator, sep):
-    """상한 초과 청크를 **바로 아래 레벨의 헤딩에서만** 한 번 더 가른다."""
-    text_of = dict(lines)
-    row_of = {v: k for k, v in text_of.items()}
+def _resplit(chunks, deeper, locator):
+    """상한 초과 청크를 **바로 아래 레벨의 헤딩에서만** 한 번 더 가른다.
+
+    자르는 재료는 청크가 들고 있는 `_lines`(행 번호 · 셀 글)다(B89 ①) — 구판은 본문을
+    `\\n`으로 잘라 **글로 행을 되찾았고**, 셀 안 줄바꿈 조각·반복 글(「해당 없음」)은
+    행을 못 찾거나 틀리게 찾아 조각들이 한 locator를 나눠 가졌다.
+    """
     out = []
     for c in chunks:
-        body = c["text"].split("\n")
-        if len(body) <= CHUNK_MAX * 2:
+        if len(c["_lines"]) <= CHUNK_MAX * 2:
             out.append(c)
             continue
-        rows = [row_of.get(x) for x in body]
         cur, seg = [], []
-        for r, x in zip(rows, body):
-            if r in deeper and seg:
-                cur.append(seg); seg = []
-            seg.append((r, x))
+        for n, x in c["_lines"]:
+            if n in deeper and seg:
+                cur.append(seg)
+                seg = []
+            seg.append((n, x))
         if seg:
             cur.append(seg)
         if len(cur) <= 1:
             out.append(c)
             continue
         for part in cur:
-            rs = [r for r, _x in part if r is not None]
-            out.append({**c,
-                        "source_locator": locator(rs[0], rs[-1]) if rs
-                        else c["source_locator"],
-                        "text": "\n".join(x for _r, x in part),
-                        "_lines": part})
+            out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
+                        "text": "\n".join(x for _n, x in part), "_lines": part})
     return out
 
 

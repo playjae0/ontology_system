@@ -84,3 +84,38 @@ def done():
     print("전체 결과:", "PASS — G6.5 완료판정 충족" if allok else "FAIL")
     sys.exit(0 if allok else 1)
 
+
+# ── 테스트 전용 층 덧칠 (B90 · B91 — 두 스위트가 같은 바닥에서 돈다) ─────────────
+OV = json.loads((ROOT / "tests/fixtures/layers_b90/overlay.json").read_text(encoding="utf-8"))
+
+
+def _rw(path, fn):
+    c = json.loads(Path(path).read_text(encoding="utf-8"))
+    fn(c)
+    Path(path).write_text(json.dumps(c, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def overlay(*, component=False, also=False):
+    """클린 → 상태 루트의 층 config·카탈로그에 덧칠 → 골격. 레포 seed는 건드리지 않는다."""
+    init.init(fresh_=True)
+    lays = ("quality", "process") if component else ("quality",)
+    for lay in lays:
+        def _f(c, lay=lay):
+            c["categories"].update(OV[lay]["categories"])
+            c["relation_patterns"] += OV[lay]["relation_patterns"]
+            c.setdefault("query_traverse", {}).update(OV[lay].get("query_traverse") or {})
+        _rw(_P.layers(lay, "config.json"), _f)
+    if component:
+        _rw(_P.layers("process", "skeleton.json"),
+            lambda c: [c["ALIASES"].setdefault(k, []).extend(v)
+                       for k, v in OV["process"]["aliases"].items()])
+
+    def _c(c):
+        c["categories"].update({k: v for k, v in OV["common"]["categories"].items()
+                                if component or k != "Component"})
+        if also:
+            for k, v in OV["also"].items():
+                c["categories"][k]["also"] = v
+    _rw(_P.common(), _c)
+    for lay in ("process", "quality"):
+        bootstrap(lay, echo=False)

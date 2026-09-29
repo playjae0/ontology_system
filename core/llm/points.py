@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 2.8·④⑨ — **지점별 얇은 배선**: 이미지 요약 · 좌표 태깅 (문서 6 §6.1·§6.4).
+"""칸 2.8·3.8·④⑨⑩ — **지점별 얇은 배선**: 이미지 요약 · 좌표 태깅 · 시트 역할 판정 (문서 6 §6.1·§6.4).
 
 여기 있는 것은 «무엇을 보내고 무엇을 받는가»뿐이다 — 설정·재시도·전송은
 `gateway`가 안다. 파서는 이 모듈을 import하지 않는다: 팩토리가 함수를 주입한다
@@ -94,3 +94,43 @@ def coord_picker():
         return None
     gateway.require("coord_tag")
     return pick_coord
+
+
+SHEET_ROLE_SCHEMA = {
+    "type": "object",
+    "properties": {"role": {"type": "string", "enum": ["prose", "ref"]},
+                   "reason": {"type": "string"}},
+    "required": ["role", "reason"], "additionalProperties": False,
+}
+
+
+def judge_sheet(name, sample, lenses):
+    """지점 ⑩ 시트 역할 판정의 **실호출 갈래** — `{"role": prose|ref, "reason": …}` (B91 ②).
+
+    `lenses`는 `[{"layer", "categories": {이름: 정의문}, "relevance_terms": [...]}]`이다 —
+    **판정 기준은 층 정의다**(사용자 확정 2026-09-29): 템플릿에 층 어휘가 0이고, 무엇이 그
+    층의 글인지는 주입된 정의문이 말한다. 빈 시트는 부르지 않는다(호출부가 `skip`).
+    답이 닫힌 둘 밖이면 `ref`로 읽는다(모르면 ref — 호출부가 그 사실을 이유에 남긴다).
+    """
+    out = gateway.chat([{"role": "system", "content": gateway.prompt("sheet_role")},
+                        {"role": "user", "content": json.dumps(
+                            {"sheet": name, "head_rows": sample, "lenses": lenses},
+                            ensure_ascii=False)}],
+                       json_schema=SHEET_ROLE_SCHEMA, point="sheet_role")
+    role = out.get("role")
+    reason = str(out.get("reason") or "")[:200]
+    if role not in ("prose", "ref"):
+        return {"role": "ref", "reason": f"답이 닫힌 둘 밖({role!r}) — ref로 읽었다"}
+    return {"role": role, "reason": reason}
+
+
+def sheet_judge():
+    """USE_MOCK이면 None(**로직과 같은 답 · 호출 0** — 결정적), 아니면 실호출 함수.
+
+    `coord_picker()`와 같은 형태다 — None이 mock 갈래의 표현이고, 관문
+    (`cli/sheet_gate.py`)이 그 분기를 갖는다.
+    """
+    if gateway.use_mock():
+        return None
+    gateway.require("sheet_role")
+    return judge_sheet

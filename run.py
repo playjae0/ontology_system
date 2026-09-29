@@ -40,7 +40,7 @@
                                    일괄 투입 1건 — 선택(지문 스캔 유일 일치 또는 지정)
                                    → 파싱 → 인입 (B46 · cli/ingest.py로 위임)
                                    시트 둘 이상인 prose 엑셀은 **시트 역할 관문**을 지난다
-                                   (`--sheets "2-3:prose 4:ref *:skip"` · B83)
+                                   (`--sheets "2-3:prose 4:ref *:ref"` · 자동 `--sheets auto`)
   python run.py ingest-dir <경로> [--doc-type X] [--dry-run]
                                    경로의 문서 전부를 문서 단위 독립으로 투입
   python run.py skeleton-status <층>
@@ -74,8 +74,50 @@ def cmd_init(args):
     print(f"[init] 빈 상태 {len(made)}개 — {', '.join(made) or '이미 있음'}")
 
 
+def _catalog_gate():
+    """**층 공통 config 먼저** (B90 ①) — 없거나 어긋나면 층을 심기 전에 멈춘다. 멈추면 1.
+
+    없으면(운영) 초안을 만들어 **보이고** 멈춘다 — 자동 채택 0: 여러 층이 선언한
+    카테고리의 집은 사람이 정한다. 어긋남(ⓑ~ⓔ)은 갈래마다 한 줄 + 고칠 자리.
+    """
+    from core import paths
+    from core.state import catalog
+    if not paths.common().exists() and not paths.is_mock_home():
+        from core.llm import gateway
+        if not gateway.use_mock():
+            p, fresh = catalog.write_draft()
+            d = catalog.draft()
+            print(f"[bootstrap] [상태] 층 공통 config가 없다 — {paths.show(paths.common())}\n"
+                  f"  초안을 {'만들었다' if fresh else '이미 있다(덮지 않았다)'} → {paths.show(p)}")
+            for c, v in d["categories"].items():
+                print(f"     {c:<16} home {v['home'] or '(빈칸 — ' + d['_빈칸'][c] + ')'}")
+            if d.get("canonical_scope"):
+                print(f"     canonical_scope ← 층 config에서 옮김 "
+                      f"(층 config에서는 지운다 — 두 곳 0)")
+            print(f"  ▶ 다음 줄: 빈칸을 채워 {paths.common().name}으로 저장 → "
+                  f"python run.py bootstrap")
+            return 1
+    try:
+        bad = catalog.problems()
+    except catalog.CatalogError as e:
+        print(f"[bootstrap] {e}")
+        return 1
+    for tag, msg in bad:
+        print(f"[bootstrap] [상태] 공통 config {tag} {msg}")
+    if bad:
+        print(f"  근거 — {paths.show(paths.common())}\n"
+              f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap")
+        return 1
+    for msg in catalog.warnings():                 # 겸 집 불일치 — 경고만 (B91 ⑥)
+        print(f"[bootstrap] ⚠ 공통 config 겸 {msg}\n"
+              f"  ▶ 의도가 아니면: 두 카테고리의 home을 같은 층으로 맞춘다 — {paths.show(paths.common())}")
+    return 0
+
+
 def cmd_bootstrap():
-    rc = 0
+    rc = _catalog_gate()
+    if rc:
+        return rc
     for layer in discover():
         try:
             g, m, ids, _flow = bootstrap(layer)      # 파생 흐름은 loader가 출력한다
@@ -89,6 +131,10 @@ def cmd_bootstrap():
         print(f"[bootstrap] {layer}: 노드 {m['nodes']} · 엣지 {m['edges']}")
         print(f"            계기판 7 graph {m['gauge7_graph_mb']}MB "
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
+    # **config를 바꾸면 등록 스키마를 다시 대조한다**(B90 ⑤) — 층은 섰다(rc는 층의 것).
+    # FAIL은 doc_type을 고칠 일이지 층 적재의 실패가 아니다 — 줄과 다음 줄로 말한다.
+    from cli.register import recheck
+    recheck.screen()
     return rc
 
 

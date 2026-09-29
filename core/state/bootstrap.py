@@ -58,7 +58,19 @@ ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다
 
 
 def load_config(layer):
-    return json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
+    """층 config — **이름 규칙(`canonical_scope`)은 공통 config의 것을 얹어** 돌려준다 (B90 ①).
+
+    이름 규칙은 층 사이의 사실이라 카탈로그 한 곳에 산다. 읽는 자리(키 조립·매칭·
+    이관 연쇄)는 전부 층 config로 묻고 있으므로 여기서 한 번 얹는다 — 읽는 자리마다
+    카탈로그를 따로 열면 하나가 빠지는 날이 온다. 카탈로그를 못 읽으면(운영 · 초안 전)
+    층 config에 남은 것을 그대로 쓴다 — 거부는 `bootstrap`이 한다.
+    """
+    cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
+    from core.state import catalog
+    sc = catalog.canonical_scope()
+    if sc is not None:
+        cfg["canonical_scope"] = sc
+    return cfg
 
 
 #: 공정좌표 anchor의 목표 카테고리 — 공용 블록(`schemas/blocks.json`)이 소유한다.
@@ -88,9 +100,14 @@ def coord_layer():
     목록이 키다. 루트를 옮기거나(`paths.reset()`) 층이 늘면 다른 키가 되어 다시 읽는다.
     """
     from router import discover
-    key = (str(paths.home()), tuple(discover()))
+    _c = paths.common()
+    key = (str(paths.home()), tuple(discover()), _c.stat().st_mtime_ns if _c.exists() else None)
     if key not in _COORD_LAYER:
-        lay = layer_of_category(COORD_CATEGORY)
+        from core.state import catalog
+        try:
+            lay = layer_of_category(COORD_CATEGORY)
+        except catalog.CatalogError as e:
+            raise NoCoordLayer(str(e)) from e
         if lay is None:
             raise NoCoordLayer(
                 f"[상태] {COORD_CATEGORY} 카테고리를 선언한 층이 없다 — 좌표를 붙일 자리가 "
@@ -103,17 +120,15 @@ def coord_layer():
 
 
 def layer_of_category(category):
-    """그 카테고리를 **선언한 층**을 찾는다.
+    """그 카테고리의 **집**(노드가 사는 층) — 공통 config의 `home` (B90 ①).
 
     품질층 문서의 `process_ref`가 공정층 골격을 가리키는 것이 대표 사례다 —
-    걸침 필드는 다른 층 그래프에 기록된다(명세 §15.7 규칙 A).
-    어느 층이 무엇을 선언했는지는 config가 알고 있으므로 코드는 층 이름을 모른다(B1).
+    걸침 필드는 다른 층 그래프에 기록된다(명세 §15.7 규칙 A). 여러 층이 같은
+    카테고리를 선언할 수 있으므로 「선언한 첫 층」(이름순 추측)이 아니라 카탈로그가
+    답한다. 카탈로그 밖이면 `None`.
     """
-    from router import discover
-    for lay in discover():
-        if category in load_config(lay).get("categories", {}):
-            return lay
-    return None
+    from core.state import catalog
+    return catalog.home(category)
 
 
 def open_graph(layer):

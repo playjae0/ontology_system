@@ -6,7 +6,7 @@
 
   python cli/parse.py run   <어댑터.py> <문서> [출력.json] [--doc-id X]  운영 파싱 1회
        └ `--coord-llm off|<종수>` — 좌표 태깅에서 **묻는 표기 종수**의 상한(기본 100)
-       └ `--sheets "2-3:prose 4:ref *:skip"` — 시트 역할(B83 ③ · 기록은 `ingest-file`과 같다)
+       └ `--sheets "2-3:prose 4:ref *:ref"` — 시트 역할(B83 ③ · 기록은 `ingest-file`과 같다 · `auto`면 자동 모드)
        └ `--no-images` — 그림을 요약하지 않는다(B88 ① · 게이트웨이가 그림을 못 받을 때 — 기록에 남는다)
        └ doc_id는 생략하면 **파일명에서 파생**한다 — `ingest-file`과 같은 함수(D-110)
          구형 `<어댑터.py> <doc_id> <문서> [출력.json]`도 그대로 받는다
@@ -227,6 +227,12 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
         res.envelope.setdefault("context", {})["images_skipped"] = {
             "n": _skip["요약_안_함"], "why": _skip["사유"]}
         print(f"   그림 {_skip['요약_안_함']}장 요약 안 함({_skip['사유']})")
+    # **그때 쓴 손잡이 값과 출처**(B91 ⑤) — 손잡이 파일이 있을 때만 싣는다(없으면 기록 모양
+    # 불변). 같은 문서가 전과 다르게 잘린 이유를 사내가 인입 기록에서 추적한다.
+    from core.state import knobs as _knobs
+    _kr = _knobs.record(_knobs.PARSE_RECORD)
+    if _kr and res.ok:
+        res.envelope.setdefault("context", {})["knobs"] = _kr
     written = None
     if res.ok and out:
         paths.ensure(Path(out))

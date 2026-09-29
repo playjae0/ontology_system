@@ -167,7 +167,7 @@ def _narrow(surface, pool, top_n, *, scoped=False):
 # **생성 경로의 닫힌 값**(B74 ②) — 대장이 적는 `path`가 여기 밖이면 FAIL이다.
 # 코드가 아는 사실만 적는다(LLM 산출이 아니다 — C38의 결).
 PATHS = ("skeleton", "dictionary", "scope+judge", "embedding+judge",
-         "overlap+judge", "none")
+         "overlap+judge", "self_coord", "none")      # self_coord — 자기 좌표 규칙(B90 ③)
 
 # 좁힌 방법 → 경로 이름. `그대로`(좁힐 것도 없었다)는 **그 실행이 고른 방법**의
 # 이름으로 적는다 — 후보를 무엇으로 고르는 세계였는지가 그 자리의 사실이다(B75 ①).
@@ -184,8 +184,38 @@ def _path_of(pool):
             else "overlap+judge")
 
 
-def _cand(nid, n, exact=False):
-    """후보 하나의 형태 — 명세가 정한다(문서 4 §4.3-6). 조립 두 갈래가 이것을 쓴다."""
+def _hosts(category):
+    """`category`를 **겸하는** 주 카테고리 → 단 목록 (B90 ③ — 공통 config `also`).
+
+    한 번 부를 때 한 번 읽는다 — 노드마다 카탈로그를 열지 않는다. 카탈로그를 못 읽으면
+    겸은 없다(주 카테고리만 본다 — 지금 동작).
+    """
+    from core.state import catalog
+    try:
+        return catalog.hosts(category)
+    except catalog.CatalogError:
+        return {}
+
+
+def _is(n, category, hosts):
+    """노드가 그 카테고리인가 — **주 ∪ 겸**(겸은 주 카테고리 + `tier`로 계산 · 저장 0)."""
+    c = n.get("category")
+    return c == category or n.get("tier") in (hosts.get(c) or ())
+
+
+def _cand(nid, n, exact=False, also=None):
+    """후보 하나의 형태 — 명세가 정한다(문서 4 §4.3-6). 조립 두 갈래가 이것을 쓴다.
+
+    `also`는 **겸으로 후보가 된 경우에만** 싣는다(B90 ③) — 주 카테고리로 선 후보의
+    모양은 그대로다(판정 입력이 겸 없는 층에서 한 바이트도 바뀌지 않는다).
+    """
+    out = _cand_base(nid, n, exact)
+    if also:
+        out["also"] = [also]
+    return out
+
+
+def _cand_base(nid, n, exact=False):
     return {"id": nid, "canonical": n["canonical"],
             "aliases": [a["surface"] for a in n.get("aliases") or []],
             "category": n["category"], "layer": n.get("layer"),
@@ -215,17 +245,19 @@ def dict_hits(surface, category, layer, graph, dictionary, *, polarity=None,
     """
     want = _pol(polarity)
     scoped_cat = category in (scope_cats or ())
+    hosts = _hosts(category)
     out = []
     for nid in dictionary.lookup(surface):
         n = graph.get(nid)
-        if not n or n["category"] != category or n["layer"] != layer:
+        if not n or not _is(n, category, hosts) or n["layer"] != layer:
             continue
         if _pol(n.get("polarity")) != want:
             continue
         if scoped_cat and parent is not None \
                 and (n.get("parent") or n.get("mirror_scope")) != parent:
             continue
-        out.append(_cand(nid, n, exact=True))
+        out.append(_cand(nid, n, exact=True,
+                         also=category if n["category"] != category else None))
     return out
 
 
@@ -262,16 +294,17 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
 
     # ② 후보 검색 — 위 안전망 넷으로 걸러 담고, **상한 안으로 좁힌다**(B73 ①).
     pool = []
+    hosts = _hosts(category)
     for nid, n in graph.nodes.items():
         if nid in seen or not is_live(n):
             continue
-        if n["category"] != category or n["layer"] != layer:
+        if not _is(n, category, hosts) or n["layer"] != layer:
             continue
         if not scoped and n.get("_scoped"):
             continue
         if _pol(n.get("polarity")) != want:
             continue
-        pool.append(_cand(nid, n))
+        pool.append(_cand(nid, n, also=category if n["category"] != category else None))
     # **스코프 하드 필터가 먼저다**(B75 ②) — 상한 이하 여부와 무관하다.
     pool, scoped_hard = scope_filter(pool, parent, scope_cats, category)
     if scoped_hard and not pool and not out:
@@ -305,7 +338,8 @@ def match(surface, candidates, category, cfg=None):
     분리는 어렵다. 잘못 합치면 사람이 배분표를 써야 하지만, 잘못 나누면 병합
     도구가 자동으로 되돌린다.
     """
-    pool = [c for c in candidates if c.get("category") == category]
+    pool = [c for c in candidates
+            if c.get("category") == category or category in (c.get("also") or ())]
     for c in pool:
         if c.get("exact"):                           # 사전 히트 — 결정적·무LLM 경로
             STATS["사전"] += 1

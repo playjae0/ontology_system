@@ -34,6 +34,8 @@
        --revise     **등록분의 새 판.** 이름은 그대로이고 확정이 정본을 교체하며
                     revision이 오른다. 승인 기록은 누적한다 (H27)
        --as <이름>  **변형 등록.** 기존 doc_type은 그대로 두고 새 이름으로 간다
+       --lenses <층,층>|all  prose 추출이 보는 **층 목록(렌즈)** — 없으면 등록 층 하나.
+                    둘 이상이면 청크마다 렌즈마다 그 층 어휘로 뽑는다(관련성 거름 · 예고 · 상한)
   python -m cli.register review   <doc_type> [--instruct "수정 지시"] [--rows N|all]
        --rows       리허설 파싱을 앞 N행으로 제한 (기본 200 · 전량은 all)
        --llm-coord / --no-llm-coord   좌표 LLM 보조를 미리 정한다 (기본: 물어본다)
@@ -41,6 +43,7 @@
   python -m cli.register confirm  <doc_type> --by <승인자>
   python -m cli.register status   <doc_type>   ← 관문이 막는 이유와 **다음 줄**
   python -m cli.register list
+  python -m cli.register lenses   <doc_type> [<층,층> | all]   ← 렌즈를 보거나 바꾼다
 """
 from __future__ import annotations
 import importlib.util
@@ -94,11 +97,20 @@ def _load(path, name):
     return mod
 
 
+def write_file(path, text):
+    """**registry 아래 쓰기는 원자적이다**(B90 ⑥ · CLAUDE.md §5) — tmp + `os.replace` + 락.
+
+    등록 단은 재생성되지 않는다(승인 기록 · 문답 · 열 판정) — 쓰는 도중 죽으면 반쯤 쓰인
+    파일이 남는다. 쓰는 자리는 `store.atomic_write_bytes` 하나다(`data/`와 같은 장치).
+    """
+    store.atomic_write_bytes(Path(path), text if isinstance(text, bytes)
+                             else str(text).encode("utf-8"))
+
+
 def _state(doc_type):
     p = _dir(doc_type) / "state.json"
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
 
 
 def _save_state(doc_type, st):
-    (_dir(doc_type) / "state.json").write_text(
-        json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_file(_dir(doc_type) / "state.json", json.dumps(st, ensure_ascii=False, indent=2) + "\n")

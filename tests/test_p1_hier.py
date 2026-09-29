@@ -9,6 +9,9 @@
      조각 경계는 행 경계 · 이으면 원문
   ② 안 선 시트만 선언을 묻고 데이터로 적용 · 보존되어 재인입 호출 0 · 원본이 바뀌면 다시 ·
      잘못된 선언은 버리고 통째 + 큐 · ref 시트·mock·등록 리허설은 호출 0 · 예고가 먼저
+  B89 ① 셀 안 줄바꿈 — 조각의 locator는 그 조각의 첫 행~끝 행 · 조각 글은 온전한 셀의 이어붙임
+     (한 단계 더 쪼개기·글자 상한 두 갈래 모두) · 행 없는 청크는 조용히 넘기지 않는다
+     (표본 `NL01.xlsx` — `tests/fixtures/make_b89.py`)
 """
 from __future__ import annotations
 
@@ -204,6 +207,48 @@ show("② 안 선 시트만 있는 표본도 **산문 근거가 있으면** 고�
      (_dr.basic_adapter_proposal([str(FONT)], said_prose=True) or {}).get("rule_frames") == 1
      and _dr.basic_adapter_proposal([str(FONT)]) is None
      and _dr.basic_adapter_proposal([str(RAW / "CP01.xlsx")], said_prose=True) is None)
+
+# ────────────────────────────────────────────────────────────── B89 ①
+print("\n■ B89 ① 셀 안 줄바꿈 — locator를 행에서 만든다")
+
+
+def _whole_cells(pieces, cells):
+    """조각마다 글 = locator 범위 행들의 셀 글 이어붙임 · locator 유일 — 어긋난 조각 목록."""
+    locs = [p["source_locator"] for p in pieces]
+    bad = [loc for loc in locs if locs.count(loc) > 1]
+    for p in pieces:
+        a, b = _rows_of_loc(p["source_locator"])
+        if p["text"] != "\n".join(t for r, t in sorted(cells.items()) if a <= r <= b):
+            bad.append(p["source_locator"])
+    return bad
+
+
+_nl = _sheet(RAW / "NL01.xlsx", "사양")
+_nlc = dict(BX._rows_of(_nl, BX._content_column(_nl))[0])
+_nlp = BX.extract(read(str(RAW / "NL01.xlsx")))
+_rep = _parse(RAW / "NL01.xlsx", "B89NL")
+show("B89 ① 글자 상한 갈래 — 조각 글 = 그 locator 행 범위의 온전한 셀들 · locator 유일 · validator 결함 0",
+     any("\n" in t for t in _nlc.values()) and len(_nlp) > 1
+     and not _whole_cells(_nlp, _nlc) and _rep.ok,
+     f"조각 {len(_nlp)} · 어긋남 {_whole_cells(_nlp, _nlc)}")
+# 한 단계 더 쪼개기(`_resplit`)는 **행 수**가 상한의 두 배를 넘어야 탄다 — 표본으로는 안 닿아
+# 합성 줄 목록으로 잰다: 셀 안 줄바꿈 · 같은 글 반복(「해당 없음」) · 2레벨 제목
+_n2 = struct_map.CHUNK_MAX * 2 + 6
+_syn = [(1, "1. 상세")] + [
+    (r, "2. 하위" if r % 20 == 2 else ("해당 없음" if r % 3 else f"항목 {r}\n둘째 줄\n셋째 줄"))
+    for r in range(2, _n2 + 2)]
+_sm = {"분할_레벨": 1, "rows": [{"row": r, "heading": t[:2] in ("1.", "2."),
+                                  "level": 1 if t.startswith("1.") else 2} for r, t in _syn]}
+_sp = struct_map.split(_sm, _syn, lambda a, b: f"S!R{a}" if a == b else f"S!R{a}-R{b}")
+show("B89 ① 한 단계 더 쪼개기 갈래 — 같은 성질 (행 수로 판정 · 행 번호로 자른다)",
+     len(_sp) > 1 and not _whole_cells(_sp, dict(_syn[1:])),
+     f"조각 {len(_sp)} · 어긋남 {_whole_cells(_sp, dict(_syn[1:]))[:3]}")
+try:
+    struct_map.cap_chars([{"source_locator": "S!R1", "text": "x"}], set(), lambda a, b: "")
+    _raised = False
+except ValueError:
+    _raised = True
+show("B89 ① 행 목록 없는 청크는 결함으로 드러난다 (원래 locator를 붙여 넘기지 않는다)", _raised)
 _kit = (ROOT / "kit" / "run_adapter.py").read_text(encoding="utf-8")
 show("② 킷 관문은 규칙 선언 훅을 넘기지 않는다 (완주 검사 — 주입 0)",
      "infer_rules" not in _kit and "struct_rule_fn" not in _kit)

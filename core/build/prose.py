@@ -14,6 +14,7 @@ from core.build import gate
 from core.build.ledger import Ledger
 from core.state.status import is_live
 from core.state import log, store
+from core.state.ids import norm
 
 _LOG = log.get(__name__)
 
@@ -46,13 +47,19 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                      verdict="anchor" if ref else "orphan", node_id=ref,
                      queue_kind=None if ref else "orphan_anchor")
 
+        pcs = {}
         for e in cand.get("entities", []):
-            eb = b.for_layer(cfg["layer"])
-            nid = b.resolve_entity(e["surface"], e["category"], prov,
-                                   electrode_type=src.get("electrode_type"),
-                                   parent_canonical=parent,
-                                   anchor_polarity=anchor_pol)
-            last = b.last
+            # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
+            e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs,
+                                                         (ref, ref_g, parent, anchor_pol))
+            # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다. 문서 층 빌더에서
+            # 만들면 층이 겹칠 때 같은 뜻이 두 노드가 된다.
+            nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
+                                        coord=(e_ref, e_g),
+                                        electrode_type=src.get("electrode_type"),
+                                        parent_canonical=e_parent,
+                                        anchor_polarity=e_pol)
+            last = eb.last
             b.ledger.add(locator=_loc or cid, field=e.get("category"),
                          role="entity", surface=e["surface"],
                          canonical=(last or {}).get("canonical"),
@@ -68,13 +75,77 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
     return coords
 
 
-def build_prose(env, cfg, graph, candidates):
+def _entity_parent(b, e, src, prov, cid, pcs, main):
+    """개체 하나의 **이름 부모** — `(좌표 id, 그래프, 부모 canonical, 극성)` (B91 ③).
+
+    추출이 `parent`를 냈고 그것이 **부모 후보**(`extract.parent_candidates` — 좌표 서브트리 +
+    본문에 나오는 골격 이름 · 같은 함수로 다시 센다) 안이며 골격 노드로 해소되면 그것이다.
+    후보 밖이면 null로 읽고 결함 로그에 남긴다(지어낸 부모로 이름을 만들지 않는다).
+    `parent`가 없으면 주 좌표 그대로다(지금과 같다). `pcs`는 청크 안 캐시다.
+    """
+    want = e.get("parent")
+    if not want:
+        return main
+    if "set" not in pcs:
+        from core.build.extract import parent_candidates
+        pcs["set"] = {norm(x): x for x in parent_candidates(src)}
+    hit = pcs["set"].get(norm(want))
+    pid, pg = b.resolve_anchor(hit, COORD_CATEGORY, prov) if hit else (None, None)
+    if not pid:
+        store.append_defect(f"{b.doc_id}: 개체 부모 후보 밖 — '{want}' (개체 '{e['surface']}' "
+                            f"@ {cid}) → null · 주 좌표를 쓴다")
+        return main
+    pid = b.descend_anchor(pid, src.get("electrode_type"), pg)
+    return pid, pg, pg.get(pid)["canonical"], b.anchor_polarity(pid, pg)
+
+
+def _about_hit(b, cfg, a):
+    """관련 링크 하나의 노드 — **조회 전용**(B91 ③): 이 문서의 해소 버퍼 → 사전(카테고리 안 ·
+    살아 있는 노드 · 유일할 때만). 노드를 만들지 않고 판정(LLM)도 부르지 않는다 — 못 찾거나
+    여럿이면 `None`(호출부가 버리고 기록한다). 카테고리는 층 카테고리(겸 포함) 안이어야 한다.
+    """
+    surface, cat = (a or {}).get("surface"), (a or {}).get("category")
+    if not surface or cat not in (cfg.get("categories") or {}):
+        return None
+    hosts = matcher._hosts(cat)
+    nid = b.buffer.get(loop._n(surface))
+    if nid:
+        n = (b.graph_of(nid) or b.g).get(nid)
+        if n and matcher._is(n, cat, hosts):
+            return nid
+    g = b.for_category(cat).g
+    hits = {x for x in b.dict.lookup(surface)
+            if g.get(x) and is_live(g.get(x)) and matcher._is(g.get(x), cat, hosts)}
+    return next(iter(hits)) if len(hits) == 1 else None
+
+
+def _link_about(b, cfg, cand, ch, doc_id):
+    """청크의 **두 번째 매달림**(`chunks.json`의 `about` · B91 ③) — 관련 링크를 노드에 건다.
+
+    키는 링크가 **있을 때만** 생긴다(새 필드가 비면 저장이 지금과 같다).
+    """
+    cid = cand["chunk_id"]
+    for a in cand.get("about") or []:
+        nid = _about_hit(b, cfg, a)
+        if nid is None:
+            store.append_defect(f"{doc_id}: 관련 링크 미해소 — '{(a or {}).get('surface')}'"
+                                f"({(a or {}).get('category')}) @ {cid} → 버렸다(노드 0)")
+            continue
+        about = ch.setdefault("about", [])
+        if {"chunk_id": cid, "node_id": nid} not in about:
+            about.append({"chunk_id": cid, "node_id": nid})
+
+
+def build_prose(env, cfg, graph, candidates, builder=None):
     # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
     # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
     # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
     candidates = [c for c in candidates if not c.get("failed")]
-    b = Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
-    b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 비정형도 같은 표다 (B74 ②)
+    # **렌즈가 여럿이면 뿌리 빌더를 나눠 쓴다**(B91 ①) — 렌즈마다 새 빌더를 열면 같은 층
+    # 그래프가 두 인스턴스로 열려 저장이 서로 덮는다. 그래프·사전·버퍼·대장을 공유한다.
+    b = builder or Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
+    if b.ledger is None:
+        b.ledger = Ledger(env["doc_id"])      # 판정 대장 — 비정형도 같은 표다 (B74 ②)
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     by_locator = {c["source_locator"]: c for c in env.get("chunks", [])}
     loc_of = {cid: c.get("source_locator") for cid, c in ch["chunks"].items()
@@ -108,13 +179,17 @@ def build_prose(env, cfg, graph, candidates):
                 ch["describes"].append({"chunk_id": cid, "node_id": nid})
             ch["chunks"][cid]["linked"] = True          # 상동 — 재인입이 거짓으로 되돌리지 않는다
 
+        _link_about(b, cfg, cand, ch, env["doc_id"])   # 관련 링크 — 조회 전용 (B91 ③)
+
         # ③ 경로 — 추출 후보. 게이트의 실질 관문이다.
         for r in cand.get("relations", []):
             s = b.buffer.get(loop._n(r["src"]))
             d = b.buffer.get(loop._n(r["dst"]))
             if s and d:
+                # **엣지는 뽑은 층에**, 끝점은 제 집 그래프에서 읽는다(걸침 엣지 — B90 ②)
                 gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
-                                 [prov], env["doc_id"], evidence_chunk=cid)
+                                 [prov], env["doc_id"], evidence_chunk=cid,
+                                 src_graph=b.graph_of(s), dst_graph=b.graph_of(d))
             else:                               # 게이트에 닿기도 전의 소멸 — 기록한다
                 store.append_defect(
                     f"{env['doc_id']}: 관계 후보 끝점 미해소 — "
@@ -134,7 +209,7 @@ def build_prose(env, cfg, graph, candidates):
             if target is None and name and cat:
                 # **카테고리가 있으니 판정기가 그것 하나로 판정한다** — 전 카테고리를
                 # 훑지 않으므로 선언 순서가 답을 정하는 일이 없다.
-                target = _dict_hit(b, name, graph, category=cat)
+                target = _dict_hit(b, name, b.for_category(cat).g, category=cat)
             if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
                 store.append_defect(
                     f"{env['doc_id']}: attach 자식 미해소 — "
@@ -160,13 +235,15 @@ def build_prose(env, cfg, graph, candidates):
                          "provenance": prov, "chunk_id": cid},
                         locator=(prov or "").split("#")[-1] or None)
                 continue
-            rel = gate.pair_relation(cfg, graph.get(target)["category"],
-                                 graph.get(child)["category"])
+            tg, cg = b.graph_of(target) or graph, b.graph_of(child) or graph
+            rel = gate.pair_relation(cfg, tg.get(target)["category"],
+                                 cg.get(child)["category"])
             if rel:
                 gate.commit_edge(graph, target, rel, child, cfg, gate.PATH_EXTRACT,
-                                 [prov], env["doc_id"], evidence_chunk=cid)
+                                 [prov], env["doc_id"], evidence_chunk=cid,
+                                 src_graph=tg, dst_graph=cg)
             _al.update(verdict="attached", node_id=child,
-                       canonical=(graph.get(target) or {}).get("canonical"))
+                       canonical=(tg.get(target) or {}).get("canonical"))
 
     store.write(store.CHUNKS, ch)
     b.flush()
@@ -187,14 +264,16 @@ def _dict_hit(b, surface, graph, *, category):
     안전망·극성 후보 제외·생존 판정이 적용되지 않은 선택이 엣지 끝점이 된다.
     """
     cands = []
+    hosts = matcher._hosts(category)            # 겸도 부착 대상이다 (B90 ③ — 매칭 후보의 한 자리)
     for nid in b.dict.lookup(surface):
         n = graph.get(nid)
-        if not n or not is_live(n) or n["category"] != category:
+        if not n or not is_live(n) or not matcher._is(n, category, hosts):
             continue
         cands.append({"id": nid, "canonical": n["canonical"],
                       "aliases": [a["surface"] for a in n.get("aliases") or []],
                       "category": n["category"], "layer": n.get("layer"),
-                      "polarity": n.get("polarity"), "exact": True})
+                      "polarity": n.get("polarity"), "exact": True,
+                      **({"also": [category]} if n["category"] != category else {})})
     if not cands:
         return None
     v = matcher.match(surface, cands, category)

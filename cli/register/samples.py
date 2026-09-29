@@ -29,13 +29,21 @@ def _kind_of(st, sample):
     생성 입구에서 묻는 이유: 초안(LLM)을 받기 **전에** 정해야 비용이 헛되지 않는다.
     그 자리에는 스키마가 아직 없어 형태 판정으로 가른다 — 표로 판정된 표본만 관문을
     건너뛴다(기권은 산문 쪽으로 — 시트 전부를 도는 갈래일 수 있다 · D-164 ①의 결).
+
+    **시트가 둘 이상이면 시트마다 판정한다**(B89 ③) — 비어 있지 않은 시트 **전부가**
+    table일 때만 table이다. 통합문서 한 벌 판정은 표 시트가 산문 시트를 덮어 table로
+    기울고, 그러면 관문도 `--sheets`도 건너뛰어 산문 시트를 가를 자리가 없었다.
     """
     sc = (st or {}).get("schema")
     if sc and draft_mod._at(sc).exists():
         return json.loads(draft_mod._at(sc).read_text(encoding="utf-8")).get("payload_kind")
     from parser import form as form_mod, reader as reader_mod
     try:
-        verdict = form_mod.judge(reader_mod.read(str(sample)))["verdict"]
+        raw = reader_mod.read(str(sample))
+        per = form_mod.judge_sheets(raw)
+        if len(per) >= 2:
+            return "table" if all(v == form_mod.TABLE for v in per.values()) else "prose"
+        verdict = form_mod.judge(raw)["verdict"]
     except reader_mod.MissingDependency:
         raise
     except Exception:                                   # noqa: BLE001 — 판정 불가는 산문 쪽
@@ -58,6 +66,7 @@ def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
     for s in samples:
         roles, stop = SG.gate(
             s, doc_id_of(s), _kind_of(st, s), spec=spec, ask=True,
+            lenses=[layer or (st or {}).get("layer")] if (layer or (st or {}).get("layer")) else None,
             retry=f"python -m cli.register generate {doc_type} {lay} {s}",
             flag_cmd=(f"python -m cli.register generate {doc_type} {lay} {s} "
                       f'--sheets "{{sheets}}"'))

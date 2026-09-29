@@ -228,6 +228,12 @@ try:
         cfg["layer"] = new
         (dst / "config.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n",
                                          encoding="utf-8")
+    # 공통 config도 사람이 둔다 — 집은 층 **이름**을 가리키므로 따라간다(B90 ①)
+    _cat = json.loads((sh.code / "layers" / "common.json").read_text(encoding="utf-8"))
+    for _v in _cat["categories"].values():
+        _v["home"] = "equipment" if _v.get("home") == "process" else _v.get("home")
+    (sh.state / "layers" / "common.json").write_text(
+        json.dumps(_cat, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # doc_type이 가리키는 층 이름도 따라간다(층은 데이터로 선언된다 — B1 · D-166 ⑨)
     for s in sorted((sh.code / "tests/fixtures/schemas").glob("*.json")):
         s.write_text(json.dumps(_relayer(json.loads(s.read_text(encoding="utf-8")),

@@ -75,6 +75,12 @@ def home():
             v = os.environ.get(HOME_ENV)
             _HOME = (Path(v).expanduser().resolve() if v
                      else ROOT / DEFAULT_HOME)
+        # **사내 손잡이를 주입한다**(B91 ⑤) — 값의 파일이 상태 루트에 있으므로 루트가 정해지는
+        # 자리가 주입의 자리다(`bind_parser`와 같은 결). 루트는 import 시점에도 정해지므로
+        # (store의 모듈 상수) 여기서는 올리지 않는다 — 파일이 어긋나면 **오류를 기억하고**
+        # 진입 관문(`cli/_gate.require_knobs`)과 값을 읽는 자리가 그 문면으로 멈춘다.
+        from core.state import knobs
+        knobs.apply_safe()
     return _HOME
 
 
@@ -100,6 +106,8 @@ def reset():
     """루트 판정을 다시 하게 한다 — **시험과 `migrate`의 문**이다."""
     global _HOME
     _HOME = None
+    from core.state import knobs
+    knobs.reset()                                # 옛 루트의 손잡이를 남기지 않는다
     return home()
 
 
@@ -217,6 +225,15 @@ def layers(*parts):
     return _under("layers", *parts)
 
 
+def common(draft=False):
+    """층 공통 config(카테고리 카탈로그) — `$ONTO_HOME/layers/common.json` (B90 ①).
+
+    ②등록 단 · 층 목록에는 안 잡힌다(`router.discover`는 `config.json`이 든 **폴더**만 센다).
+    `draft=True`는 `bootstrap`이 없을 때 만들어 보이는 초안 `common.draft.json`이다.
+    """
+    return layers("common.draft.json" if draft else "common.json")
+
+
 def seed_layers():
     """레포의 기본 seed 자리 — **복사의 출발점**이지 읽는 자리가 아니다."""
     return ROOT / "layers"
@@ -251,6 +268,11 @@ def fixture_schemas(*parts):
     return fixtures.ROOT_DIR.joinpath("schemas", *parts)
 
 
+def knobs():
+    """사내 손잡이 파일 — `$ONTO_HOME/knobs.json` (B91 ⑤ · 상태 루트 · 없으면 전부 기본값)."""
+    return home() / "knobs.json"
+
+
 def config_file(name="llm.json"):
     """설정 파일의 **상태 루트 자리** — `core/llm/gateway.py`가 찾는 넷째 자리다(B78 1b).
 
@@ -276,6 +298,15 @@ def data(*parts):
 
 
 # ---------------------------------------------------------------- ④작업·장부
+def register_debug(doc_type, name):
+    """등록의 **디버그 산출** — `work/register/<doc_type>/<이름>` (B90 ⑥).
+
+    게이트웨이 오류 원문(`last_error.json`)·조립된 지시문(`prompt_rendered.md`)은 다시
+    만들 수 있는 관측물이다 — 사람 승인 1회의 단(`registry/`)에 두지 않는다.
+    """
+    return work("register", doc_type, name)
+
+
 def work(*parts):
     """작업 단 — **재생성 가능한** 단계 산출·장부·로그.
 

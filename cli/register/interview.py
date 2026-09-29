@@ -9,7 +9,7 @@ from cli.prompt import (  # noqa: F401
 from core import paths
 from pathlib import Path
 import json
-from cli.register import REVIEW
+from cli.register import REVIEW, write_file
 
 
 INTERVIEW_LOG = "interview_log.json"     # `review/<doc_type>/` 안 — 라운드 전문의 자리
@@ -60,11 +60,10 @@ def write_rounds(doc_type, at, samples, rounds):
         obj = {}
     batches = [b for b in (obj.get("batches") or []) if b.get("at") != at]
     batches.append({"at": at, "samples": sorted(samples or []), "rounds": rounds})
-    log_path(doc_type).write_text(
-        json.dumps({"_읽는 법": "문답 라운드 전문 — **이력이다.** 판단은 입력 패키지의 "
-                              "human.hint.interview[].decisions에 있고 생성은 그것만 읽는다",
-                    "batches": batches}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8")
+    write_file(log_path(doc_type), json.dumps({
+        "_읽는 법": "문답 라운드 전문 — **이력이다.** 판단은 입력 패키지의 "
+                    "human.hint.interview[].decisions에 있고 생성은 그것만 읽는다",
+        "batches": batches}, ensure_ascii=False, indent=2) + "\n")
 
 
 def migrate_rounds(doc_type, pkg):
@@ -188,7 +187,7 @@ def apply_instruction_to_decisions(doc_type, instruction, rev):
             {"topic": f"지시 (rev {rev})", "decision": instruction.strip(),
              "reason": f"사람 지시 (rev {rev})", "round": None})
     obj.setdefault("human", {})["hint"] = _merge_hint(hint, batches)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_file(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
     return hit
 
 

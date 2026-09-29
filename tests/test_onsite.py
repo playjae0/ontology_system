@@ -407,8 +407,12 @@ try:
     _r4 = subprocess.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
                          capture_output=True, text=True, cwd=str(ROOT), env=_e2,
                          stdin=subprocess.DEVNULL)
+    # 층이 서면 **층 자산 관문**은 열린다 — 다음 멈춤은 공통 config 초안(B90 ①)이지 층 거부가 아니다.
+    _t4 = _r4.stdout + _r4.stderr
     show("① 층이 서면 관문은 열린다 (거부가 상시가 아니다)",
-         _r4.returncode == 0, (_r4.stdout + _r4.stderr).strip().splitlines()[-1:])
+         "층 자산 먼저" not in _t4
+         and (_r4.returncode == 0 or "층 공통 config가 없다" in _t4),
+         _t4.strip().splitlines()[-1:])
 finally:
     shutil.rmtree(_nol, ignore_errors=True)
     if _made_mark:

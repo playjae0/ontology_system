@@ -15,7 +15,7 @@ from pathlib import Path
 import json
 import re
 from cli.register import draft as draft_mod
-from cli.register import REVIEW, _load
+from cli.register import REVIEW, _load, write_file
 
 
 def _profiles(doc_type):
@@ -228,9 +228,9 @@ def read_ledger(doc_type):
 
 
 def _save_ledger(doc_type, rows):
-    ledger_path(doc_type).write_text(
-        json.dumps({"doc_type": doc_type, "at": store._now(), "columns": rows},
-                   ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_file(ledger_path(doc_type),
+               json.dumps({"doc_type": doc_type, "at": store._now(), "columns": rows},
+                   ensure_ascii=False, indent=2) + "\n")
     return rows
 
 

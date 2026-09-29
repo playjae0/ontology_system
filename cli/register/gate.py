@@ -22,7 +22,7 @@ from cli.register import draft as draft_mod
 from cli.register import interview as ivlog
 from cli.register import ledger
 from cli.register import view
-from cli.register import KIT, REVIEW, ROOT, _load, _save_state, _state
+from cli.register import KIT, REVIEW, ROOT, _load, _save_state, _state, write_file
 
 
 # ================================================================ ② 검수
@@ -46,6 +46,9 @@ def harness(adapter, schema, samples, package=None, doc_type=None, roles_map=Non
     # 닫힌 목록 **파일**도 건넨다(B86 ②) — 킷은 상태 루트를 모르고 파서의 자리 주입은
     # subprocess에 닿지 않는다. 자리는 여기서 짓는다(store가 이름 → 자리를 안다).
     pkg += ["--closed-list", str(store.path(store.SKELETON_LIST))]
+    # 사내 손잡이 파일도 건넨다(B91 ⑤) — 킷은 core를 모르므로 파서 값은 파일에서 직접 넣는다
+    if paths.knobs().exists():
+        pkg += ["--knobs", str(paths.knobs())]
     # 표본의 **시트 역할 표**도 건넨다(B86 ⑤) — 관문 임시 파일이고 끝나면 지운다.
     from cli.register import samples as samples_mod
     _rf = samples_mod.roles_file(roles_map)
@@ -398,8 +401,7 @@ def _failure_persist(doc_type, pkg, samples, ask):
         hint = (obj.get("human") or {}).get("hint")
         keep = [b for b in ivlog._hint_batches(hint) if b.get("at") != batch["at"]]
         obj.setdefault("human", {})["hint"] = ivlog._merge_hint(hint, keep + [batch])
-        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n",
-                        encoding="utf-8")
+        write_file(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
         if isinstance(pkg, dict):               # 메모리 사본도 같이 맞춘다
             pkg.setdefault("human", {})["hint"] = obj["human"]["hint"]
 
@@ -540,7 +542,7 @@ def _write_stamp(st, path, header, want_ver, had_ver, cols=None):
     lines.append(f"ADAPTER[\"adapter_version\"] = {want_ver!r}"
                  f"   # state.revision = {st.get('revision', 0)}")
     head = src.split(_FILLED_MARK)[0].rstrip("\n")
-    path.write_text(head + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    write_file(path, head + "\n\n" + "\n".join(lines) + "\n")
     if had_ver and str(had_ver) != want_ver:
         return (f"   판 번호는 시스템이 찍는다 — LLM 선언 {had_ver!r} → "
                 f"{want_ver!r} (state.revision {st.get('revision', 0)})")

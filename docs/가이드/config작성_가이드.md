@@ -1,6 +1,6 @@
 # config 작성 가이드 — 새 층을 세울 때 사람이 실제로 쓰는 것
 
-> **결론 먼저**: config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **18종** · 품질층 **16종**) — 그중 **사람이 실제로 쓰는 것은 11종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `canonical_scope`·`polarity`·`skeleton_version` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다.
+> **결론 먼저**: 층 config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **17종** · 품질층 **16종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다) — 그중 **사람이 실제로 쓰는 것은 11종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다. 이름 규칙 `canonical_scope`는 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
 > **골격 가이드와 짝이다** — 골격을 먼저 심으면 3종이 따라오고, 이 가이드는 그다음이다.
 > 실물 예시는 전부 `layers/process/config.json`에서 그대로 가져왔다 — **자산이 정본이다.**
 
@@ -33,9 +33,44 @@
 | **베낀다 (2)** | `match_threshold` `query_intents` | 두 층이 완전 동일 — 기존 층 것을 복사 |
 | **한 줄 (3)** | `layer` `config_version` `registration` | 이름표 — `"quality"` · `"quality-1"` · `"registered"` |
 | **골격에서 따라옴 (3)** | `skeleton` `skeleton_version` `polarity` | 골격 가이드의 산출. 극성 없는 층은 뒤 둘 생략 |
-| **사람이 쓴다 (11)** | 아래 §1~§6 | **이 가이드의 본문** |
+| **사람이 쓴다 (11)** | 아래 §1~§6 — `categories` `relations` `relation_patterns` `category_pair_map` `query_traverse` `cross_layer_traverse` `mirrors` `fact_templates` `extract_patterns` `prompts` `relevance_terms`(선택 · §6-a) | **이 가이드의 본문** |
 
-> **19종은 합집합이다.** 실물은 공정층 18종·품질층 16종이고, **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다.
+> **19종은 합집합이다.** 실물은 공정층 17종·품질층 16종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. `canonical_scope`는 층 config에 두면 `bootstrap`이 거부한다(공통 config로).
+
+## 0-a. 층 공통 config — `layers/common.json` (카테고리 카탈로그)
+
+층 config는 **렌즈**다 — 그 층이 쓰는 카테고리를 **자기 정의문으로** 선언한다. 같은 카테고리를 여러 층이 선언해도 된다(공정층도 `Unit`을 말할 수 있다 — 관리계획서가 설비 교체 주기를 말하므로). 그러면 층 하나가 답할 수 없는 것이 셋 생긴다 — 그 셋을 **공통 config 한 파일**에 둔다(`$ONTO_HOME/layers/common.json` · 층 목록에는 안 잡힌다):
+
+```json
+{"common_version": 1,
+ "categories": {
+   "Process":  {"home": "equipment", "also": {"Unit": ["sub", "detail"]}},
+   "Unit":     {"home": "equipment"},
+   "Property": {"home": "process"}},
+ "canonical_scope": {"bind_categories": ["Property", "Unit"], "sep": "::"}}
+```
+
+| 키 | 뜻 | 쓰는 자리 |
+|---|---|---|
+| `home` | **집** — 그 카테고리의 노드가 사는 층. 어느 층 문서가 말하든 table·prose 모두 집 그래프에서 매칭·생성한다(같은 뜻이면 노드 하나). 좌표 층 = `Process`의 집 | 해소 · 좌표 층 · `doctor` 첫 줄 |
+| `also` | **겸** — 「그 단(`main`·`sub`·`detail`)의 이 카테고리 노드는 저 카테고리이기도 하다」. 노드에 저장하지 않고 계산한다(고치면 바로 따라온다) | 매칭 후보 · 삼항 게이트 · 자기 좌표 규칙 · 추출 어휘 한 줄 · `show node`의 「겸 Unit」 |
+| `canonical_scope` | 이름 규칙(좌표 스코프) — **여기 한 곳**. 층 config에 남아 있으면 `bootstrap`이 거부한다 | 키 조립 · 매칭 · 이관 연쇄 |
+
+정의문은 여기 두지 않는다 — 정의문은 층의 렌즈(층 config `categories`의 값)다. 스키마의 `target_layer`는 있으면 그 카테고리의 집과 같아야 한다(다르면 등록 관문 G4C FAIL).
+
+**처음 만들 때(초안 흐름)**: `python run.py bootstrap` → 공통 config가 없으면 층 config들에서 초안(`layers/common.draft.json`)을 만들어 보이고 **멈춘다** — 한 층만 선언한 카테고리는 그 층이 집, **여러 층이 선언한 카테고리는 집이 빈칸**, `canonical_scope`는 층 config에서 옮겨 온다. 빈칸을 채워 `common.json`으로 저장하고, 층 config에서 `canonical_scope`를 지운 뒤 다시 `bootstrap`. 초안은 덮어쓰지 않는다(채우는 중일 수 있다).
+
+**`bootstrap`이 멈추는 자리**(문면이 갈래와 고칠 자리를 말한다):
+
+| 갈래 | 무엇 | 고칠 자리 |
+|---|---|---|
+| ⓐ | 공통 config가 없다 | 초안의 빈칸을 채워 `common.json`으로 저장 |
+| ⓑ | 층 config의 카테고리가 카탈로그에 없다 | 카탈로그에 `"<카테고리>": {"home": "<층>"}` |
+| ⓒ | `home`이 빈칸이거나 그 카테고리를 선언하지 않은 층이다 | 선언한 층 중 하나로 |
+| ⓓ | 층 config에 `canonical_scope`가 남아 있다 | 층 config에서 지운다(두 곳 0) |
+| ⓔ | `also`가 카탈로그에 없는 카테고리나 없는 단을 가리킨다 | 카테고리 이름 · 단(`main`·`sub`·`detail`) |
+
+`bootstrap`은 끝에 **등록된 doc_type 전부를 새 어휘와 다시 대조한다**(관문 G4C·G4D·G4E와 같은 판정) — doc_type마다 `PASS` 또는 `FAIL — 무엇이 · 다음 줄 무엇을 고치나`. prose doc_type의 층이 `Process`를 말하지 않으면(categories에도 relation_patterns에도 없다) 「좌표를 못 단다」 경고가 붙는다. `doctor`의 `[2′]` 줄이 같은 대조다.
 
 ## 1. 카테고리 — 층의 첫 작업 (§3.1 규약 2)
 
@@ -61,7 +96,7 @@
 | Key | Add | Why |
 |---|---|---|
 | `categories` | `Component` — 「유닛을 이루는 교체·정비 단위(예: 상부 금형 · 서보 모터). 유닛 자체·소모품 규격값은 제외」 | 정의문이 추출·판정 프롬프트에 그대로 들어간다 — 헷갈리는 이웃(Unit·Property)을 적는다 |
-| `canonical_scope.bind_categories` | `+ Component` | 키가 `노칭::상부 금형`이 돼 공정 간 같은 이름이 충돌하지 않는다. 스코프는 공정 좌표 한 단이다 — 유닛 아래로 중첩되지 않는다(계층은 `part_of` 관계로) |
+| 공통 config `canonical_scope.bind_categories` · `categories` | `+ Component` · `"Component": {"home": "<층>"}` | 키가 `노칭::상부 금형`이 돼 공정 간 같은 이름이 충돌하지 않는다. 스코프는 공정 좌표 한 단이다 — 유닛 아래로 중첩되지 않는다(계층은 `part_of` 관계로). 이름 규칙과 집은 공통 config(§0-a)에 산다 |
 | `relations` · `relation_patterns` | `Component part_of Unit` · `Unit part_of Process` · `Property of Unit/Component` 같은 삼항 | 패턴에 없는 삼항은 게이트가 **조용히 버린다**(`show log gate`에만 남는다) — 여기가 가장 자주 빠지는 자리 |
 | `query_traverse` | `Unit → Component`는 `recursive: false` | 설비를 물으면 유닛까지, 유닛을 물어야 부품 — 깊이는 골격이 아니라 여기서 조절한다 |
 | `fact_templates` · `prompts` 정의문 | 새 관계의 문장 틀 · 추출 정의문 | 없으면 답이 관계를 문장으로 못 만든다 |
@@ -117,8 +152,9 @@
 
 ## 5. 이름·문장화 — `canonical_scope` · `mirrors` · `fact_templates`
 
+`canonical_scope`는 **공통 config**(§0-a)에 한 번 쓴다 — 층 config에는 두지 않는다. 나머지 둘은 층 config다.
+
 ```json
-"canonical_scope": {"bind_categories": ["Property"], "sep": "::"},
 "mirrors":         {"enabled": true, "relation": "mirrors"},
 "fact_templates": {
   "part_of":       "{src}는 {dst}의 하위 요소이다",
@@ -137,6 +173,19 @@
 ```
 
 `prompts`의 실물은 **파일이 정본**이다(§7.6-B-5 — P-D에서 파일화 완료). config에는 지시 요지만 남는다. `extract_patterns`는 USE_MOCK 문형 규칙 — 실 연결 후에는 프롬프트가 대신한다.
+
+## 6-a. 관련어 — `relevance_terms` (선택) · 렌즈
+
+```json
+"relevance_terms": ["사양서", "도면", "설비 교체"]
+```
+
+**그 층의 글임을 알리는 말**이다 — 사전에 아직 없는 말로도 그 층의 청크·시트를 알아보게 한다. 쓰는 자리는 둘이다(둘 다 결정적 · LLM 0):
+
+- **렌즈 거름** — doc_type이 층 여럿을 볼 때(렌즈 — `python -m cli.register lenses <doc_type> <층,층>`), 청크마다 렌즈마다 「그 층 어휘(사전 표기 중 그 층 카테고리 노드 + 관련어)가 몇 종 나오나」를 세어 문턱(손잡이 `lens_min_score`) 미만이면 그 렌즈의 LLM을 부르지 않는다.
+- **시트 판정** — 여러 시트 엑셀의 시트마다 같은 어휘의 적중 수를 로직 제안에 쓴다(모양이 산문이어도 적중이 문턱 `sheet_min_hits` 미만이면 `ref`). LLM 판정(지점 ⑩)에는 렌즈 층의 카테고리 정의문과 함께 **주입**된다.
+
+비우면 사전 어휘만 본다. 층 이름·카테고리 이름을 넣지 않는다 — 문서에 **실제로 나오는 말**을 넣는다. 렌즈 자체는 층 config가 아니라 **doc_type 등록부의 항목**이다(`register status`·`show schema`에 보인다).
 
 ## 7. LLM 초안 절차 — 층 등록 세션의 축소판
 
@@ -161,8 +210,8 @@
 
 | # | 파일 | 왜 |
 |---|---|---|
-| 1 | `layers/process/config.json` (5.9KB) | **양식 그 자체** — 문법 키 18종 + 주석 키 4종의 실제 형태 |
-| 2 | `layers/quality/config.json` (4.6KB · 문법 키 16종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(canonical_scope·polarity·skeleton_version 없음)를 실물로 보여준다 |
+| 1 | `layers/process/config.json` | **양식 그 자체** — 문법 키 17종 + 주석 키 4종의 실제 형태 |
+| 2 | `layers/quality/config.json` (문법 키 16종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(polarity·skeleton_version 없음)를 실물로 보여준다 |
 | 3 | 새 층의 **골격 seed** (이미 만든 것) | 카테고리·관계가 골격과 맞아야 한다 |
 | 4 | 새 층의 **대표 문서 1~2부** | 무엇을 담는 층인지의 실체 |
 
@@ -191,12 +240,12 @@ relations · relation_patterns · category_pair_map을 **한 묶음으로** 만�
   단 Unit part_of Process는 넣는다 — 이름 단위로 빼면 설비 부착이 죽는다.
 
 [나머지]
-query_traverse · fact_templates · canonical_scope 등은 첨부 ①②를 베이스로
+query_traverse · fact_templates 등은 첨부 ①②를 베이스로
 이 층의 카테고리·관계 이름으로만 바꾼다. **구조는 바꾸지 않는다.**
 query_traverse는 관계→규칙이름→{direction,recursive}의 **3단 중첩**이다.
 
 [규율]
-- 첨부에 없는 키를 만들지 않는다. 19종이 전부다.
+- 첨부에 없는 키를 만들지 않는다(선택 키 relevance_terms만 예외 — 그 층의 글에 실제로 나오는 말). 19종이 전부다.
 - 판단이 갈린 자리는 JSON 뒤 "확인 필요:"에 적는다. 추측으로 채우지 않는다.
 ```
 
@@ -246,7 +295,7 @@ query_traverse는 관계→규칙이름→{direction,recursive}의 **3단 중첩
 ### 작성 예시 — 이 수준으로 쓰라 (공정층 Process의 완성본)
 
 ```
-제품을 만들기 위해 수행하는 **작업 단계**. 기능으로 정의되며 설비 기종이 바뀌어도 존재한다 — '하는 일'의 이름이지 '그것을 하는 장비'의 이름이 아니다. 그래프에서 이 카테고리는 **좌표의 뼈대**다: 사람이 골격으로 미리 고정하며 다른 모든 노드가 여기 매달린다. ▸**값의 모양(열의 값 20개를 보고 판정하라)** — 짧은 동작성 명사구가 **반복**되며(같은 공정이 여러 행에 걸린다) 값의 종류가 행 수보다 훨씬 적다. 그 이름들이 **제조 공정의 이름으로 읽히는지**를 네 도메인 지식으로 판단하라 — '노칭·스태킹·실링'이 공정 이름임을 아는 것이 이 판정이다. **골격 목록과 겹치면 확정이다.** ▸경계 — 설비(Unit)와 갈릴 때: 그 이름이 **없어져도 작업은 남는가**. 노칭 프레스를 다른 기종으로 바꿔도 '노칭'은 남는다 → 노칭=Process, 노칭 프레스=Unit. 값에 기종어(프레스·기·장치·머신·로봇·설비)가 섞이면 Unit 쪽이다. ▸경계 — 관리항목(Property)과 갈릴 때: 작업이면 Process, 그 작업에서 **관리·측정하는 대상의 이름**이면 Property. '비전검사'는 수행하는 작업이므로 Process, '외관 판정 기준'은 관리 대상이므로 Property. ▸계층: 대공정 아래 세부공정이 있고 둘 다 Process다(조립 ⊃ 노칭 ⊃ 노칭 타발). 해상도가 달라도 카테고리는 같다. ▸골격 실물: 조립·노칭·스태킹·탭용접·패키징·노칭 타발·전극 언와인딩·적층·스택 테이핑·사이드 실링·전해액 주액·프리 실링·비전검사. **골격에 없는 이름을 새로 만들지 않는다** — 조회 실패는 orphan으로 두고 사람에게 올린다. ▸아닌 것: 설비·기종 이름 · 라인/호기/공장 표기(맥락) · 관리항목 이름 · 자재·부품 이름 · 문서 서식 항목.
+제품을 만들기 위해 수행하는 **작업 단계**. 기능으로 정의되며 설비 기종이 바뀌어도 존재한다 — '하는 일'의 이름이지 '그것을 하는 장비'의 이름이 아니다. 그래프에서 이 카테고리는 **좌표의 뼈대**다: 사람이 골격으로 미리 고정하며 다른 모든 노드가 여기 매달린다. ▸**값의 모양(열의 값 20개를 보고 판정하라)** — 짧은 동작성 명사구가 **반복**되며(같은 공정이 여러 행에 걸린다) 값의 종류가 행 수보다 훨씬 적다. 그 이름들이 **제조 공정의 이름으로 읽히는지**를 네 도메인 지식으로 판단하라 — '노칭·스태킹·실링'이 공정 이름임을 아는 것이 이 판정이다. **골격 목록과 겹치면 확정이다.** ▸경계 — 설비(Unit)와 갈릴 때: 그 이름이 **없어져도 작업은 남는가**. 노칭 프레스를 다른 기종으로 바꿔도 '노칭'은 남는다 → 노칭=Process, 노칭 프레스=Unit. 스테이션 이름 + 설비어(「노칭 unit」·「노칭 설비」)는 **스테이션 자신**이다(공통 config의 겸 — 좌표 자신으로 해소된다) · 스테이션 아래 구성 기계(프레스·커터·로봇)는 Unit이다. ▸경계 — 관리항목(Property)과 갈릴 때: 작업이면 Process, 그 작업에서 **관리·측정하는 대상의 이름**이면 Property. '비전검사'는 수행하는 작업이므로 Process, '외관 판정 기준'은 관리 대상이므로 Property. ▸계층: 대공정 아래 세부공정이 있고 둘 다 Process다(조립 ⊃ 노칭 ⊃ 노칭 타발). 해상도가 달라도 카테고리는 같다. ▸골격 실물: 조립·노칭·스태킹·탭용접·패키징·노칭 타발·전극 언와인딩·적층·스택 테이핑·사이드 실링·전해액 주액·프리 실링·비전검사. **골격에 없는 이름을 새로 만들지 않는다** — 조회 실패는 orphan으로 두고 사람에게 올린다. ▸아닌 것: 설비·기종 이름 · 라인/호기/공장 표기(맥락) · 관리항목 이름 · 자재·부품 이름 · 문서 서식 항목.
 ```
 
 ### 지켜야 할 것
