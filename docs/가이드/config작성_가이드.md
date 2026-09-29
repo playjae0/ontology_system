@@ -1,6 +1,6 @@
 # config 작성 가이드 — 새 층을 세울 때 사람이 실제로 쓰는 것
 
-> **결론 먼저**: config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **18종** · 품질층 **16종**) — 그중 **사람이 실제로 쓰는 것은 11종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `canonical_scope`·`polarity`·`skeleton_version` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다.
+> **결론 먼저**: 층 config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **17종** · 품질층 **16종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다) — 그중 **사람이 실제로 쓰는 것은 11종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다. 이름 규칙 `canonical_scope`는 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
 > **골격 가이드와 짝이다** — 골격을 먼저 심으면 3종이 따라오고, 이 가이드는 그다음이다.
 > 실물 예시는 전부 `layers/process/config.json`에서 그대로 가져왔다 — **자산이 정본이다.**
 
@@ -33,9 +33,9 @@
 | **베낀다 (2)** | `match_threshold` `query_intents` | 두 층이 완전 동일 — 기존 층 것을 복사 |
 | **한 줄 (3)** | `layer` `config_version` `registration` | 이름표 — `"quality"` · `"quality-1"` · `"registered"` |
 | **골격에서 따라옴 (3)** | `skeleton` `skeleton_version` `polarity` | 골격 가이드의 산출. 극성 없는 층은 뒤 둘 생략 |
-| **사람이 쓴다 (11)** | 아래 §1~§6 | **이 가이드의 본문** |
+| **사람이 쓴다 (11)** | 아래 §1~§6 — `categories` `relations` `relation_patterns` `category_pair_map` `query_traverse` `cross_layer_traverse` `mirrors` `fact_templates` `extract_patterns` `prompts` `relevance_terms`(선택 · §6-a) | **이 가이드의 본문** |
 
-> **19종은 합집합이다.** 실물은 공정층 18종·품질층 16종이고, **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다.
+> **19종은 합집합이다.** 실물은 공정층 17종·품질층 16종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. `canonical_scope`는 층 config에 두면 `bootstrap`이 거부한다(공통 config로).
 
 ## 0-a. 층 공통 config — `layers/common.json` (카테고리 카탈로그)
 
@@ -174,6 +174,19 @@
 
 `prompts`의 실물은 **파일이 정본**이다(§7.6-B-5 — P-D에서 파일화 완료). config에는 지시 요지만 남는다. `extract_patterns`는 USE_MOCK 문형 규칙 — 실 연결 후에는 프롬프트가 대신한다.
 
+## 6-a. 관련어 — `relevance_terms` (선택) · 렌즈
+
+```json
+"relevance_terms": ["사양서", "도면", "설비 교체"]
+```
+
+**그 층의 글임을 알리는 말**이다 — 사전에 아직 없는 말로도 그 층의 청크·시트를 알아보게 한다. 쓰는 자리는 둘이다(둘 다 결정적 · LLM 0):
+
+- **렌즈 거름** — doc_type이 층 여럿을 볼 때(렌즈 — `python -m cli.register lenses <doc_type> <층,층>`), 청크마다 렌즈마다 「그 층 어휘(사전 표기 중 그 층 카테고리 노드 + 관련어)가 몇 종 나오나」를 세어 문턱(손잡이 `lens_min_score`) 미만이면 그 렌즈의 LLM을 부르지 않는다.
+- **시트 판정** — 여러 시트 엑셀의 시트마다 같은 어휘의 적중 수를 로직 제안에 쓴다(모양이 산문이어도 적중이 문턱 `sheet_min_hits` 미만이면 `ref`). LLM 판정(지점 ⑩)에는 렌즈 층의 카테고리 정의문과 함께 **주입**된다.
+
+비우면 사전 어휘만 본다. 층 이름·카테고리 이름을 넣지 않는다 — 문서에 **실제로 나오는 말**을 넣는다. 렌즈 자체는 층 config가 아니라 **doc_type 등록부의 항목**이다(`register status`·`show schema`에 보인다).
+
 ## 7. LLM 초안 절차 — 층 등록 세션의 축소판
 
 골격과 같은 원리다: **초안은 LLM, 확정은 사람** (§3.7). 순서가 중요하다 —
@@ -197,8 +210,8 @@
 
 | # | 파일 | 왜 |
 |---|---|---|
-| 1 | `layers/process/config.json` (5.9KB) | **양식 그 자체** — 문법 키 18종 + 주석 키 4종의 실제 형태 |
-| 2 | `layers/quality/config.json` (4.6KB · 문법 키 16종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(canonical_scope·polarity·skeleton_version 없음)를 실물로 보여준다 |
+| 1 | `layers/process/config.json` | **양식 그 자체** — 문법 키 17종 + 주석 키 4종의 실제 형태 |
+| 2 | `layers/quality/config.json` (문법 키 16종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(polarity·skeleton_version 없음)를 실물로 보여준다 |
 | 3 | 새 층의 **골격 seed** (이미 만든 것) | 카테고리·관계가 골격과 맞아야 한다 |
 | 4 | 새 층의 **대표 문서 1~2부** | 무엇을 담는 층인지의 실체 |
 
@@ -227,12 +240,12 @@ relations · relation_patterns · category_pair_map을 **한 묶음으로** 만�
   단 Unit part_of Process는 넣는다 — 이름 단위로 빼면 설비 부착이 죽는다.
 
 [나머지]
-query_traverse · fact_templates · canonical_scope 등은 첨부 ①②를 베이스로
+query_traverse · fact_templates 등은 첨부 ①②를 베이스로
 이 층의 카테고리·관계 이름으로만 바꾼다. **구조는 바꾸지 않는다.**
 query_traverse는 관계→규칙이름→{direction,recursive}의 **3단 중첩**이다.
 
 [규율]
-- 첨부에 없는 키를 만들지 않는다. 19종이 전부다.
+- 첨부에 없는 키를 만들지 않는다(선택 키 relevance_terms만 예외 — 그 층의 글에 실제로 나오는 말). 19종이 전부다.
 - 판단이 갈린 자리는 JSON 뒤 "확인 필요:"에 적는다. 추측으로 채우지 않는다.
 ```
 

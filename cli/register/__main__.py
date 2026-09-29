@@ -51,10 +51,11 @@ def _cmd_lenses(rest):
     """`register lenses <dt> [<층,층>|all]` — 렌즈를 보거나 바꾼다 (B91 ① · 등록부 원자 쓰기)."""
     from core.state import registry
     if not rest:
-        raise SystemExit("[사용법] python -m cli.register lenses <doc_type> [<층,층> | all]")
+        raise SystemExit("[사용법] python -m cli.register lenses <doc_type> [<층,층> | all]")  # [사용법]
     dt = rest[0]
     if not registry.lookup(dt):
-        raise SystemExit(f"[상태] '{dt}'은 등록돼 있지 않다 — python -m cli.register list")
+        raise SystemExit(f"[상태] '{dt}'은 등록돼 있지 않다 — 근거 registry/doc_types.json\n"  # [상태]
+                         f"  ▶ 다음 줄: python -m cli.register list")
     if len(rest) > 1:
         try:
             registry.set_lenses(dt, _lens_arg(rest[1]))

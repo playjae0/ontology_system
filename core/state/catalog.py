@@ -203,6 +203,24 @@ def problems(configs=None):
     return out
 
 
+def warnings():
+    """경고(거부 아님) — `[문면]`. **겸의 집 불일치**(B91 ⑥ · D-171 ⑦): 주 카테고리 C가 X를
+    겸하는데 X의 집이 C의 집과 다르면, 겸 후보는 판정이 보는 **집 그래프 안만** 보므로 그
+    구성에서는 겸 매칭이 조용히 빠진다 — 막지 않고 말한다(사람이 의도했을 수 있다).
+    """
+    cats = load().get("categories") or {}
+    out = []
+    for c, v in sorted(cats.items()):
+        hc = (v or {}).get("home")
+        for other in sorted(((v or {}).get("also") or {})):
+            ho = (cats.get(other) or {}).get("home")
+            if hc and ho and hc != ho:
+                out.append(f"'{c}'(집 {hc})가 '{other}'(집 {ho})를 겸한다 — 겸 후보는 판정이 보는 "
+                           f"집 그래프 안만 본다: '{other}' 판정({ho})에서 '{c}' 노드({hc})는 겸 후보가 "
+                           f"되지 않는다(이 구성에서는 겸 매칭이 조용히 빠진다)")
+    return out
+
+
 def write_draft():
     """초안을 쓴다 — **이미 있으면 덮지 않는다**(사람이 채우는 중일 수 있다). `(경로, 새로 썼나)`."""
     p = paths.common(draft=True)

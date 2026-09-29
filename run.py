@@ -108,6 +108,9 @@ def _catalog_gate():
         print(f"  근거 — {paths.show(paths.common())}\n"
               f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap")
         return 1
+    for msg in catalog.warnings():                 # 겸 집 불일치 — 경고만 (B91 ⑥)
+        print(f"[bootstrap] ⚠ 공통 config 겸 {msg}\n"
+              f"  ▶ 의도가 아니면: 두 카테고리의 home을 같은 층으로 맞춘다 — {paths.show(paths.common())}")
     return 0
 
 

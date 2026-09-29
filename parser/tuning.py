@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 0.x — **파서가 받는 사내 손잡이 값** (B91 ⑤) — 파서는 `core`를 import하지 않는다.
+"""칸 0.5 — **파서가 받는 사내 손잡이 값** (B91 ⑤) — 파서는 `core`를 import하지 않는다.
 
 값의 자리는 코드 한 곳이다 — 각 모듈의 상수(`struct_map.CHUNK_MAX_CHARS` 등)가 **기본값**이고,
 사내가 `$ONTO_HOME/knobs.json`으로 바꾼 값은 경계 밖(`core/state/knobs.py` — 운영 · 킷은

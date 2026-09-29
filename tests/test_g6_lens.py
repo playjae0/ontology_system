@@ -15,6 +15,7 @@ mock 동작 불변(네 벌 diff 0)은 회귀가 잰다 — 여기는 **새 성�
   ③ 개체별 부모가 이름 부모다(후보 밖은 null) · 관련 링크는 조회 전용(노드 0)이고 근거
      순위는 describes 뒤다
   ④ ref 근처는 직접 링킹 노드의 표기로 읽을 때 찾는다([관련 원문] · 확장 노드 0 · 상한 손잡이)
+  ⑥ 겸의 집이 주 카테고리의 집과 다르면 경고한다(거부하지 않는다)
 """
 from __future__ import annotations
 
@@ -305,6 +306,19 @@ show("④ 상한은 손잡이 — ref_limit 0이면 [관련 원문] 0 · 묶음�
      "related" not in _r0 and _refc
      and not ({d["chunk_id"] for d in _chn["describes"] + (_chn.get("about") or [])} & _refc),
      f"ref 청크 {len(_refc)}")
+
+# ────────────────────────────────────────────────────────────── ⑥
+print("\n■ B91 ⑥ 겸 집 불일치 경고 — 막지 않고 말한다")
+from core.state import catalog as _CAT             # noqa: E402
+overlay(also=True)                                 # Process가 Unit을 겸한다 · 둘 다 집 process
+_w0 = _CAT.warnings()
+_rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))   # 품질층도 Unit 선언
+_w1, _p1 = _CAT.warnings(), _CAT.problems()
+_rcb, _ob = _run("bootstrap")
+show("⑥ 겸 카테고리의 집이 주 카테고리의 집과 다르면 bootstrap이 경고한다(거부 아님 · 같으면 0)",
+     not _w0 and len(_w1) == 1 and not _p1 and _rcb == 0
+     and "⚠ 공통 config 겸" in _ob and "조용히 빠진다" in _ob,
+     (_w1 or [""])[0][:70])
 init.init(fresh_=True)
 
 done()

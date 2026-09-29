@@ -56,7 +56,10 @@ def require_knobs():
     from core.state import knobs
     paths.home()                                      # 루트 결정이 주입·판정을 한다
     if knobs.error() is not None:
-        raise SystemExit(str(knobs.error()))          # [상태] 문면=KnobError
+        # 문면은 KnobError의 것(원인 · 근거 · 다음 줄) — 다음 줄이 빠진 문면은 없지만 계약을 문 안에 둔다
+        _t = str(knobs.error())
+        raise SystemExit(_t if "python run.py show knobs" in _t else  # [상태]
+                         f"{_t}\n  근거 — knobs.json\n  ▶ 다음 줄: python run.py show knobs")
 
 
 def require_migrated(command=""):
