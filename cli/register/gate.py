@@ -22,7 +22,7 @@ from cli.register import draft as draft_mod
 from cli.register import interview as ivlog
 from cli.register import ledger
 from cli.register import view
-from cli.register import KIT, REVIEW, ROOT, _load, _save_state, _state
+from cli.register import KIT, REVIEW, ROOT, _load, _save_state, _state, write_file
 
 
 # ================================================================ ② 검수
@@ -398,8 +398,7 @@ def _failure_persist(doc_type, pkg, samples, ask):
         hint = (obj.get("human") or {}).get("hint")
         keep = [b for b in ivlog._hint_batches(hint) if b.get("at") != batch["at"]]
         obj.setdefault("human", {})["hint"] = ivlog._merge_hint(hint, keep + [batch])
-        path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n",
-                        encoding="utf-8")
+        write_file(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
         if isinstance(pkg, dict):               # 메모리 사본도 같이 맞춘다
             pkg.setdefault("human", {})["hint"] = obj["human"]["hint"]
 
@@ -540,7 +539,7 @@ def _write_stamp(st, path, header, want_ver, had_ver, cols=None):
     lines.append(f"ADAPTER[\"adapter_version\"] = {want_ver!r}"
                  f"   # state.revision = {st.get('revision', 0)}")
     head = src.split(_FILLED_MARK)[0].rstrip("\n")
-    path.write_text(head + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    write_file(path, head + "\n\n" + "\n".join(lines) + "\n")
     if had_ver and str(had_ver) != want_ver:
         return (f"   판 번호는 시스템이 찍는다 — LLM 선언 {had_ver!r} → "
                 f"{want_ver!r} (state.revision {st.get('revision', 0)})")

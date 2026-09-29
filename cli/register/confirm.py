@@ -12,7 +12,7 @@ import json
 from cli.register import draft as draft_mod
 from cli.register import gate
 from cli.register import view
-from cli.register import _load, _state
+from cli.register import _load, _state, write_file
 
 
 # ================================================================ ③ 확정
@@ -77,8 +77,7 @@ def cmd_confirm(doc_type, approved_by):
         except json.JSONDecodeError:
             pass
     approval["revision"] = entry.get("revision", 0)
-    _ap.write_text(json.dumps(approval, ensure_ascii=False, indent=2) + "\n",
-                   encoding="utf-8")
+    write_file(_ap, json.dumps(approval, ensure_ascii=False, indent=2) + "\n")
     if _revising:
         print(f"■ ③ 확정 — {doc_type} **새 판 등재** "
               f"(revision {entry.get('revision')} · 승인 {approved_by} @ {at})")

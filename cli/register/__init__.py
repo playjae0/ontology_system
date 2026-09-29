@@ -94,11 +94,20 @@ def _load(path, name):
     return mod
 
 
+def write_file(path, text):
+    """**registry 아래 쓰기는 원자적이다**(B90 ⑥ · CLAUDE.md §5) — tmp + `os.replace` + 락.
+
+    등록 단은 재생성되지 않는다(승인 기록 · 문답 · 열 판정) — 쓰는 도중 죽으면 반쯤 쓰인
+    파일이 남는다. 쓰는 자리는 `store.atomic_write_bytes` 하나다(`data/`와 같은 장치).
+    """
+    store.atomic_write_bytes(Path(path), text if isinstance(text, bytes)
+                             else str(text).encode("utf-8"))
+
+
 def _state(doc_type):
     p = _dir(doc_type) / "state.json"
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
 
 
 def _save_state(doc_type, st):
-    (_dir(doc_type) / "state.json").write_text(
-        json.dumps(st, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_file(_dir(doc_type) / "state.json", json.dumps(st, ensure_ascii=False, indent=2) + "\n")

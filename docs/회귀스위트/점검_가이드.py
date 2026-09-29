@@ -95,7 +95,7 @@ _MDNAME = re.compile(r"`([^`\s]+\.md)`")
 
 
 #: **상태 산출물**의 이름 — 레포 파일이 아니라 실행이 `$ONTO_HOME` 아래에 만든다.
-STATE_MD = {"prompt_rendered.md"}          # registry/review/<dt>/ — 생성 프롬프트의 렌더 사본
+STATE_MD = {"prompt_rendered.md"}          # work/register/<dt>/ — 생성 프롬프트의 렌더 사본
 
 
 def _repo_files():

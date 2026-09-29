@@ -28,13 +28,6 @@
       "anode"
     ]
   },
-  "canonical_scope": {
-    "bind_categories": [
-      "Property",
-      "Unit"
-    ],
-    "sep": "::"
-  },
   "relations": [
     "part_of",
     "precedes",

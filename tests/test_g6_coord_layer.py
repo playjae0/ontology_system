@@ -186,6 +186,12 @@ try:
             return [_relayer(x) for x in obj]
         return obj
 
+    # **집은 공통 config가 말한다**(B90 ①) — 층 폴더를 바꾸면 카탈로그의 `home`도 그 이름이다.
+    _cm = _clone / "layers" / "common.json"
+    _cat = json.loads(_cm.read_text(encoding="utf-8"))
+    for _v in _cat["categories"].values():
+        _v["home"] = "equipment" if _v.get("home") == "process" else _v.get("home")
+    _cm.write_text(json.dumps(_cat, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     for _s in sorted((_clone / "tests/fixtures/schemas").glob("*.json")):
         _s.write_text(json.dumps(_relayer(json.loads(_s.read_text(encoding="utf-8"))),
                                  ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

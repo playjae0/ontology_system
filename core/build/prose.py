@@ -47,12 +47,14 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                      queue_kind=None if ref else "orphan_anchor")
 
         for e in cand.get("entities", []):
-            eb = b.for_layer(cfg["layer"])
-            nid = b.resolve_entity(e["surface"], e["category"], prov,
-                                   electrode_type=src.get("electrode_type"),
-                                   parent_canonical=parent,
-                                   anchor_polarity=anchor_pol)
-            last = b.last
+            # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다. 문서 층 빌더에서
+            # 만들면 층이 겹칠 때 같은 뜻이 두 노드가 된다.
+            nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
+                                        coord=(ref, ref_g),
+                                        electrode_type=src.get("electrode_type"),
+                                        parent_canonical=parent,
+                                        anchor_polarity=anchor_pol)
+            last = eb.last
             b.ledger.add(locator=_loc or cid, field=e.get("category"),
                          role="entity", surface=e["surface"],
                          canonical=(last or {}).get("canonical"),
@@ -113,8 +115,10 @@ def build_prose(env, cfg, graph, candidates):
             s = b.buffer.get(loop._n(r["src"]))
             d = b.buffer.get(loop._n(r["dst"]))
             if s and d:
+                # **엣지는 뽑은 층에**, 끝점은 제 집 그래프에서 읽는다(걸침 엣지 — B90 ②)
                 gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
-                                 [prov], env["doc_id"], evidence_chunk=cid)
+                                 [prov], env["doc_id"], evidence_chunk=cid,
+                                 src_graph=b.graph_of(s), dst_graph=b.graph_of(d))
             else:                               # 게이트에 닿기도 전의 소멸 — 기록한다
                 store.append_defect(
                     f"{env['doc_id']}: 관계 후보 끝점 미해소 — "
@@ -134,7 +138,7 @@ def build_prose(env, cfg, graph, candidates):
             if target is None and name and cat:
                 # **카테고리가 있으니 판정기가 그것 하나로 판정한다** — 전 카테고리를
                 # 훑지 않으므로 선언 순서가 답을 정하는 일이 없다.
-                target = _dict_hit(b, name, graph, category=cat)
+                target = _dict_hit(b, name, b.for_category(cat).g, category=cat)
             if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
                 store.append_defect(
                     f"{env['doc_id']}: attach 자식 미해소 — "
@@ -160,13 +164,15 @@ def build_prose(env, cfg, graph, candidates):
                          "provenance": prov, "chunk_id": cid},
                         locator=(prov or "").split("#")[-1] or None)
                 continue
-            rel = gate.pair_relation(cfg, graph.get(target)["category"],
-                                 graph.get(child)["category"])
+            tg, cg = b.graph_of(target) or graph, b.graph_of(child) or graph
+            rel = gate.pair_relation(cfg, tg.get(target)["category"],
+                                 cg.get(child)["category"])
             if rel:
                 gate.commit_edge(graph, target, rel, child, cfg, gate.PATH_EXTRACT,
-                                 [prov], env["doc_id"], evidence_chunk=cid)
+                                 [prov], env["doc_id"], evidence_chunk=cid,
+                                 src_graph=tg, dst_graph=cg)
             _al.update(verdict="attached", node_id=child,
-                       canonical=(graph.get(target) or {}).get("canonical"))
+                       canonical=(tg.get(target) or {}).get("canonical"))
 
     store.write(store.CHUNKS, ch)
     b.flush()
@@ -187,14 +193,16 @@ def _dict_hit(b, surface, graph, *, category):
     안전망·극성 후보 제외·생존 판정이 적용되지 않은 선택이 엣지 끝점이 된다.
     """
     cands = []
+    hosts = matcher._hosts(category)            # 겸도 부착 대상이다 (B90 ③ — 매칭 후보의 한 자리)
     for nid in b.dict.lookup(surface):
         n = graph.get(nid)
-        if not n or not is_live(n) or n["category"] != category:
+        if not n or not is_live(n) or not matcher._is(n, category, hosts):
             continue
         cands.append({"id": nid, "canonical": n["canonical"],
                       "aliases": [a["surface"] for a in n.get("aliases") or []],
                       "category": n["category"], "layer": n.get("layer"),
-                      "polarity": n.get("polarity"), "exact": True})
+                      "polarity": n.get("polarity"), "exact": True,
+                      **({"also": [category]} if n["category"] != category else {})})
     if not cands:
         return None
     v = matcher.match(surface, cands, category)

@@ -20,7 +20,7 @@ from cli.register import draft as draft_mod
 from cli.register import gate
 from cli.register import interview as ivlog
 from cli.register import ledger
-from cli.register import KIT, REVIEW, ROOT, _save_state, _state
+from cli.register import KIT, REVIEW, ROOT, _save_state, _state, write_file
 
 
 # ================================================================ ⓪ role 실험
@@ -159,8 +159,7 @@ def _cmd_generate_resume(doc_type, layer, samples, no_fewshot):
     _mv = ivlog.migrate_rounds(doc_type, pkg)
     if _mv:
         print(_mv)
-        pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
-                            encoding="utf-8")
+        write_file(pkg_path, json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
     _wn = ivlog.warn_no_decisions(doc_type, pkg)
     if _wn:
         print(_wn)
@@ -350,7 +349,8 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
                           interview, drop_interview):
     """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`."""
     snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
-    cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
+    from core.state.bootstrap import load_config          # 이름 규칙은 공통 config에서 얹는다
+    cfg = load_config(layer)
     pkg = {
         # **첫 키가 읽는 법이다** — 이 파일을 처음 여는 사람이 어디를 볼지 모른다.
         "_읽는 법": "사람이 볼 것은 human.hint(사람이 준 것)와 "
@@ -420,9 +420,8 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
         _mv = ivlog.migrate_rounds(doc_type, _old_pkg)
         if _mv:
             print(_mv)
-            (d / "input_package.json").write_text(
-                json.dumps(_old_pkg, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8")
+            write_file(d / "input_package.json",
+                       json.dumps(_old_pkg, ensure_ascii=False, indent=2) + "\n")
             prior = ivlog.prior_interview(d / "input_package.json")
     if prior and drop_interview:
         _lg = ivlog.read_log(doc_type)
@@ -441,8 +440,7 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
         _wn = ivlog.warn_no_decisions(doc_type, pkg)
         if _wn:
             print(_wn)
-    (d / "input_package.json").write_text(
-        json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_file(d / "input_package.json", json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
 
     print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
     print(f"■ ① 생성 — {doc_type} (층 {layer} · 표본 {len(samples)}부)")
@@ -467,9 +465,8 @@ def _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview):
                 pkg["human"]["hint"],
                 [b for b in ivlog._hint_batches(pkg["human"]["hint"])
                  if b is not _batch] + [_batch])
-            (d / "input_package.json").write_text(
-                json.dumps(pkg, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8")
+            write_file(d / "input_package.json",
+                       json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
 
         # **이전 라운드를 문답에 실어 보낸다**(②-2) — 저장만 이어 붙이고 모델이
         # 처음부터 물으면 사람이 두 번 답한다.
@@ -493,8 +490,7 @@ def _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview):
         _hb["decisions"] = ivlog.hint_only_decisions(hint)
         pkg["human"]["hint"] = ivlog._merge_hint(
             pkg["human"]["hint"], ivlog._hint_batches(pkg["human"]["hint"]) + [_hb])
-        (d / "input_package.json").write_text(
-            json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_file(d / "input_package.json", json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
 
 
 def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
@@ -584,16 +580,14 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
            "system": {"reader_head": [], "skeleton_closed_list": {},
                       "layer_vocabulary": {"layer": layer}, "blocks": {},
                       "adapter_skeleton": ""}}
-    (d / "input_package.json").write_text(
-        json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_file(d / "input_package.json", json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
     ad, sc = d / "adapter.py", d / "schema.json"
     # **위임 대상은 제안이 정한다** — PPT면 `basic_ppt`, PDF면 `basic_pdf`(B53).
     # 여기에 이름을 박으면 PDF 등록분이 PPT 어댑터를 물어 조각 0건이 된다.
     mod = Path(proposal["adapter"]).stem
     kind = {"basic_pdf": "PDF", "basic_ppt": "PPT", "basic_docx": "Word",
             "basic_prose_xlsx": "스프레드시트 산문"}.get(mod, mod)
-    ad.write_text(
-        "# -*- coding: utf-8 -*-\n"
+    write_file(ad, "# -*- coding: utf-8 -*-\n"
         f"\"\"\"{doc_type} — 코어 기본 어댑터({kind})를 **그대로** 쓴다 (문서 6 §6.4-5 · D-111).\n\n"
         f"임계·분할 규칙은 `{proposal['adapter']}` 한 곳에 산다 — 여기는 doc_type 이름만\n"
         "이 등록의 것으로 바꾼 위임 래퍼다. 상수를 여기 복제하지 않는다.\n\"\"\"\n"
@@ -605,7 +599,7 @@ def _use_basic(doc_type, layer, samples, hint, proposal, revise=False):
         # 떨어지고, **화면의 레벨·기준이 실제로 자른 것과 갈린다**(pipeline의
         # 「어댑터가 제 계산을 내놓으면 그것이 정본이다」 — B58 ③).
         + (f"level_report = {mod}.level_report\n"
-           if hasattr(draft_mod._ad_mod(mod), "level_report") else ""), encoding="utf-8")
+           if hasattr(draft_mod._ad_mod(mod), "level_report") else ""))
     draft_mod._write_schema(sc, json.dumps(
         {"doc_type": doc_type, "schema_version": 1, "layer": layer,
          "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],

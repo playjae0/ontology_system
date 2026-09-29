@@ -108,9 +108,9 @@ def _dump_prompt(doc_type, text):
     """
     if os.environ.get("ONTO_DUMP_PROMPT") != "1":
         return None
-    d = _dir(doc_type)
-    out = d / "prompt_rendered.md"
-    out.write_text(text, encoding="utf-8")
+    out = paths.register_debug(doc_type, "prompt_rendered.md")   # 작업 단 (B90 ⑥)
+    from core.state import store
+    store.atomic_write_bytes(out, text.encode("utf-8"))
     print(f"   [덤프] 조립된 지시문 → {paths.show(out)} ({len(text)}자)")
     return out
 

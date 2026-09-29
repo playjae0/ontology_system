@@ -119,7 +119,7 @@ def _plan_hit(b, m, layer):
     surface, category = m.get("surface"), m.get("category")
     if not surface or not category:
         return False
-    lay = m.get("target_layer") or layer
+    lay = b.home_of(category)       # 판정과 같은 자리 — 집 (B90 ②)
     et = m.get("electrode_type")
     sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
     ref_id, ref_g = (b.resolve_anchor(m.get("ref"), COORD_CATEGORY, "(예고)",

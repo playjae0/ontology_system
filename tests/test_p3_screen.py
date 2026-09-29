@@ -422,7 +422,7 @@ _g62 = _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--intervie
               feed="1\n\n헤더 행은 2행이다 — 1행은 제목\n진행\nY\n")
 _pk62 = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
 _b62 = Rivlog._hint_batches(_pk62["human"]["hint"])[-1]
-_pr62 = (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8")
+_pr62 = _P.register_debug("cp62", "prompt_rendered.md").read_text(encoding="utf-8")
 _rd62 = Rivlog.read_log("cp62").get(_b62["at"]) or []
 
 # ②ⓑ **프롬프트에는 확정 사항만** — 전문은 싣지 않는다.
@@ -477,7 +477,7 @@ _pk62h = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding=
 _dh = [d for b in Rivlog._hint_batches(_pk62h["human"]["hint"]) for d in b["decisions"]]
 show("② 문답 없이 --hint만 주면 힌트 문장이 확정 사항 한 항목이다 (자리는 항상 있다)",
      len(_dh) == 1 and _dh[0]["decision"] == "3~7행 병합은 위 값 채움"
-     and "[확정 사항" in (REVIEW / "cp62" / "prompt_rendered.md").read_text(encoding="utf-8"))
+     and "[확정 사항" in _P.register_debug("cp62", "prompt_rendered.md").read_text(encoding="utf-8"))
 # **LLM 지점이 늘지 않는다** — 요약은 문답 라운드와 같은 자리다. B63 ②가 호출 태그를
 # `interview`로 갈랐지만 **지점은 그대로 ⑤** 하나다(문서 7 §7.6-B-2의 닫힌 9종).
 _IVSRC = (ROOT / "cli" / "interview.py").read_text(encoding="utf-8")

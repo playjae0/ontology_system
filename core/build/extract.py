@@ -220,7 +220,7 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
     out = gateway.chat(
         [{"role": "system", "content": tmpl},
          {"role": "user", "content": json.dumps(
-             {"categories": cfg.get("categories"),
+             {"categories": categories_with_also(cfg),
               "relations": cfg.get("relations"),
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
@@ -230,6 +230,24 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
             "entities": out.get("entities", []),
             "relations": out.get("relations", []),
             "attach": out.get("attach", [])}
+
+
+def categories_with_also(cfg):
+    """층 카테고리 어휘 + **겸 한 줄**(B90 ③) — 문안은 공통 config `also`에서 렌더한다.
+
+    템플릿에는 층 어휘를 적지 않는다(B9) — 겸도 층 사이의 데이터라 여기서 정의문 끝에
+    붙인다. 겸이 없으면 층 config 값 그대로다.
+    """
+    from core.state import catalog
+    cats = dict(cfg.get("categories") or {})
+    try:
+        lines = catalog.also_lines()
+    except catalog.CatalogError:
+        return cats
+    for c, line in lines.items():
+        if c in cats:
+            cats[c] = f"{cats[c]} {line}"
+    return cats
 
 
 def _with_path(chunk):

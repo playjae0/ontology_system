@@ -111,6 +111,16 @@ def cmd_tree(args):
 
 
 # ---------------------------------------------------------------- node
+def _also_tag(n):
+    """겸 표시 — 「 · 겸 Unit」 (B90 ③ · 주 카테고리 + tier와 공통 config에서 계산)."""
+    from core.state import catalog
+    try:
+        extra = sorted(catalog.categories_of(n) - {n["category"]})
+    except catalog.CatalogError:
+        return ""
+    return f" · 겸 {'·'.join(extra)}" if extra else ""
+
+
 def cmd_node(args):
     """노드 하나 전부 — **값·별칭·출처·연결**. 질의 답의 뒷면이 여기다."""
     if not args:
@@ -126,7 +136,7 @@ def cmd_node(args):
         return 1
 
     for lay, g, n in hits:
-        print(f"\n■ {n['canonical']}   [{lay} · {n['category']} · {n['status']}]")
+        print(f"\n■ {n['canonical']}   [{lay} · {n['category']}{_also_tag(n)} · {n['status']}]")
         print(f"  id        {n['id']}")
         if n.get("polarity") and n["polarity"] != "none":
             print(f"  극성       {n['polarity']}")

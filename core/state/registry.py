@@ -134,13 +134,18 @@ def at(rel):
     return under if under.exists() else ROOT / p
 
 
-def schema_of(doc_type):
-    """그 doc_type의 매칭 스키마. 등록부가 가리키는 실물을 읽는다."""
+def schema_path(doc_type):
+    """그 doc_type의 매칭 스키마 **자리**(없으면 `None`) — 킷에 건넬 때 쓴다(B90 ⑤)."""
     e = lookup(doc_type)
     if not e or not e.get("schema"):
         return None
-    p = _abs(e, e["schema"])
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    return _abs(e, e["schema"])
+
+
+def schema_of(doc_type):
+    """그 doc_type의 매칭 스키마. 등록부가 가리키는 실물을 읽는다."""
+    p = schema_path(doc_type)
+    return json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
 
 
 def adapter_paths():

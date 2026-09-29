@@ -21,7 +21,7 @@ from cli.register import draft as draft_mod
 from cli.register import gate
 from cli.register import interview as ivlog
 from cli.register import ledger
-from cli.register import EXCERPT, REVIEW, ROOT, SOLO_WARNING, _load, _save_state, _state
+from cli.register import EXCERPT, REVIEW, ROOT, SOLO_WARNING, _load, _save_state, _state, write_file
 
 
 def _form_of_sample(sample):
@@ -320,7 +320,7 @@ def _extract_rehearsal(st, results, samples, want, truncated):
         env["doc_id"] = doc_id_of(s)          # **운영의 doc_id** — 재사용의 조건이다
         ids.append(env["doc_id"])
         p = _dir(st["doc_type"]) / f"_rehearsal_{env['doc_id']}.json"
-        p.write_text(json.dumps(env, ensure_ascii=False), encoding="utf-8")
+        write_file(p, json.dumps(env, ensure_ascii=False))
         made.append(p)
     extract_run([str(p) for p in made], layer=st["layer"])
     for p in made:
@@ -540,9 +540,8 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
 
     view = build_view(st, results, ok, out, rehearsal)
     d = _dir(doc_type)
-    (d / "view.json").write_text(json.dumps(view, ensure_ascii=False, indent=2) + "\n",
-                                 encoding="utf-8")
-    (d / "view.html").write_text(render(view), encoding="utf-8")   # kit 렌더러 호출
+    write_file(d / "view.json", json.dumps(view, ensure_ascii=False, indent=2) + "\n")
+    write_file(d / "view.html", render(view))   # kit 렌더러 호출
     # **판정되지 않은 열이 있는 채로 확정되면 그 열은 영영 안 보인다**(B49) —
     # orphan은 기계 관문을 막는다. 「사람이 판정할 것」이 아니라 「대장이 어긋났다」다.
     # **생성이 세운 값과 파싱 결과의 AND**(B50 ⑧) — 리허설이 깨지면 여전히 FAIL이다.
@@ -589,9 +588,9 @@ def _promote(doc_type, st):
     paths.ensure(dst_a)
     paths.ensure(dst_s)
     if src_a.resolve() != dst_a.resolve():
-        dst_a.write_bytes(src_a.read_bytes())
+        write_file(dst_a, src_a.read_bytes())
     if src_s.resolve() != dst_s.resolve():
-        dst_s.write_bytes(src_s.read_bytes())
+        write_file(dst_s, src_s.read_bytes())
     return (a_rel, s_rel)
 
 

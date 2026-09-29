@@ -50,6 +50,7 @@ SUITES = [
     # **사내 모양을 상시로 돈다**(B86) — 상태가 코드 밖 · 좌표 층 이름이 다르다.
     ("test_g6_shanae_parts", 16, "사내 모양 잔여(B86) — 화면 경로 한 자리 · 파서 자리 주입 · 대장 자리 · 선택 의존 거부·버린 그림 한 줄 · 등록 표본 시트 관문"),
     ("test_g6_shanae_root", 13, "사내 모양 루트(B86 ⑥) — 레포 밖 상태 루트에서 등록부터 뷰어·doctor --quick까지 · 기본 루트와 canonical·엣지·큐·질의 등가"),
+    ("test_g6_catalog", 21, "층 공통 config(B90) — 카탈로그 거부 다섯·초안 흐름 · 전역 해소(table·prose 한 길) · 주·겸·자기 좌표 · 걸침 엣지 문장화 · 등록 스키마 재대조 · registry 원자 쓰기"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
     ("test_g65_contract", 28, "재인입·인입 검증 계약 · 닫힌 계약 배선 · 병합 무손실"),
     ("test_g65_cross", 10, "걸침층 배선 · mock 비계 최소 · 인입 순서 무관 결정성"),
@@ -536,6 +537,16 @@ def transition():
          "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
          if not reg else f"등록됨: {reg}")
 
+    # ── 2′. 등록 스키마 재대조 (B90 ⑤) ───────────────────────────
+    # **config를 바꾸면 이미 등록된 스키마가 어휘 밖으로 떨어질 수 있다** — 관문과 같은
+    # 함수(G4C·G4D·G4E)로 등록 전부를 다시 대조한다. 어긋난 것은 doc_type을 고칠 일이다.
+    from cli.register import recheck                                     # noqa: E402
+    _rc = recheck.run()
+    _bad = [l for _dt, ok, l in _rc if not ok]
+    line(OK if not _bad else NEXT,
+         f"[2′] 등록 스키마 재대조 — {len({dt for dt, _o, _l in _rc})}종 · 어긋남 {len(_bad)}",
+         "\n         ".join(_bad) if _bad else "")
+
     # ── 3. LLM 지점 9종의 **도달 가능성** ─────────────────────────
     # **문자열을 세지 않는다.** 여태 이 자리가 소스에 `use_mock`·`allow_mock` 같은
     # 낱말이 있는지를 보고 「분기가 서 있다」로 보고했다 — 그래서 ⑦구조 지도가
@@ -602,11 +613,18 @@ def state_line():
         _coord = coord_layer()
     except NoCoordLayer:
         _coord = "**없다**"
+    # **층 공통 config의 판을 같은 줄에**(B90 ①) — 집·겸·이름 규칙이 어느 판으로 도는가.
+    from core.state import catalog as _catalog                      # noqa: E402
+    _cv = _catalog.version()
+    _common = (f"v{_cv}" if _cv is not None
+               else "없다 — bootstrap이 초안을 만든다" if not gateway.use_mock()
+               else "없다(mock — 층 선언에서 세운다)")
     print(f"  상태 폴더 {paths.home()}{paths.home_note()} · 모드 "
           f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
           + (f"(내장 {builtin})" if builtin else "")
           + f" · 층 {len(discover())}(상태 루트)"
           + f" · 좌표 층 {_coord}"
+          + f" · 공통 config {_common}"
           + f" · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
     if migrate.needs_migration():
         print("  ⚠ 이관 전이다 — python run.py platform migrate "

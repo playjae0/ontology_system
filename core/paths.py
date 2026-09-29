@@ -217,6 +217,15 @@ def layers(*parts):
     return _under("layers", *parts)
 
 
+def common(draft=False):
+    """층 공통 config(카테고리 카탈로그) — `$ONTO_HOME/layers/common.json` (B90 ①).
+
+    ②등록 단 · 층 목록에는 안 잡힌다(`router.discover`는 `config.json`이 든 **폴더**만 센다).
+    `draft=True`는 `bootstrap`이 없을 때 만들어 보이는 초안 `common.draft.json`이다.
+    """
+    return layers("common.draft.json" if draft else "common.json")
+
+
 def seed_layers():
     """레포의 기본 seed 자리 — **복사의 출발점**이지 읽는 자리가 아니다."""
     return ROOT / "layers"
@@ -276,6 +285,15 @@ def data(*parts):
 
 
 # ---------------------------------------------------------------- ④작업·장부
+def register_debug(doc_type, name):
+    """등록의 **디버그 산출** — `work/register/<doc_type>/<이름>` (B90 ⑥).
+
+    게이트웨이 오류 원문(`last_error.json`)·조립된 지시문(`prompt_rendered.md`)은 다시
+    만들 수 있는 관측물이다 — 사람 승인 1회의 단(`registry/`)에 두지 않는다.
+    """
+    return work("register", doc_type, name)
+
+
 def work(*parts):
     """작업 단 — **재생성 가능한** 단계 산출·장부·로그.
 

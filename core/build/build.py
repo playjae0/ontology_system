@@ -90,6 +90,68 @@ class Builder:
         """이 빌드가 만진 그래프 전부 — 자기 층 + 걸침 층. 저장 대상이다."""
         return [self.g] + [s.g for s in self.subs.values()]
 
+    # ---------------------------------------------------------------- 집 (B90 ②)
+    def home_of(self, category):
+        """카테고리의 **집** 층 — 공통 config의 `home`. 카탈로그 밖이면 자기 층."""
+        from core.state.bootstrap import layer_of_category
+        return layer_of_category(category) or self.layer
+
+    def for_category(self, category):
+        """카테고리의 집 빌더 — **해소의 라우팅 한 자리**다(table·prose가 같이 부른다).
+
+        노드는 집 그래프에 산다: 여러 층이 같은 카테고리를 선언해도 매칭·생성은
+        집 하나에서 한다 — 같은 뜻이면 노드 하나(두 벌로 만든 뒤 합치지 않는다).
+        """
+        return self.for_layer(self.home_of(category))
+
+    def resolve_at_home(self, surface, category, prov, *, coord=None, **kw):
+        """개체 하나를 **집 빌더에서** 해소한다 — `(node_id, 그 빌더)`.
+
+        판정의 사실(`last` — 경로·층·큐)은 돌려준 빌더에 실린다. 대장·큐의 `layer`가
+        집이 되는 것은 그래서다(종결 명령이 그 층을 가리켜야 한다).
+
+        `coord`(`(좌표 노드 id, 그 그래프)`)가 있으면 **자기 좌표 규칙을 먼저 본다**
+        (B90 ③) — 이름 규칙(`X::…`)으로 키를 만들기 **전**이어야 한다.
+        """
+        hit = self._self_coord(surface, category, coord)
+        if hit:
+            return hit
+        eb = self.for_category(category)
+        return eb.resolve_entity(surface, category, prov, **kw), eb
+
+    def _self_coord(self, surface, category, coord):
+        """**자기 좌표 규칙**(B90 ③) — 좌표 X 아래에서 뽑힌 C 표기가 사전에서 **X 자신**으로
+        해소되고(별칭 포함) X가 C를 겸하면 → X다. 자식 노드 0 · 대장 `path=self_coord`.
+
+        스테이션 이름 + 설비어(「… unit」)는 스테이션 자신이다 — 그 아래 새 Unit을 세우면
+        같은 실물이 두 노드가 된다. 겸이 없으면(카탈로그 `also` 없음) 지금처럼 일반 해소다.
+        """
+        ref, ref_g = coord or (None, None)
+        n = ref_g.get(ref) if (ref and ref_g is not None) else None
+        if not n or n.get("category") == category:
+            return None
+        from core.state import catalog
+        try:
+            if category not in catalog.categories_of(n):
+                return None
+        except catalog.CatalogError:
+            return None
+        if ref not in self.dict.lookup(surface):
+            return None
+        eb = self.for_layer(n.get("layer") or self.layer)
+        self.buffer[norm(surface)] = ref
+        eb.last = {"canonical": n["canonical"], "verdict": "match", "path": "self_coord",
+                   "confidence": 1.0, "layer": eb.layer, "queue_kind": None,
+                   "candidates_n": 0, "node_id": ref}
+        return ref, eb
+
+    def graph_of(self, nid):
+        """그 노드가 사는 그래프 — 이 빌드가 연 그래프 중에서. 없으면 `None`."""
+        for g in self.graphs():
+            if nid and g.get(nid):
+                return g
+        return None
+
     # ---------------------------------------------------------------- 사전
     def _register(self, surface, nid, prov, key=None):
         """사전 등재는 관문이 한다 — **provenance 필수 강제가 그쪽에 있다**(§7.1).
@@ -123,14 +185,13 @@ class Builder:
 
     # ---------------------------------------------------------------- anchor
     def _graph_for(self, category):
-        """카테고리를 선언한 층의 그래프. 같은 층이면 self.g를 그대로 쓴다."""
-        if category in self.cfg.get("categories", {}):
-            return self.g, self.layer
-        from core.state.bootstrap import layer_of_category
-        lay = layer_of_category(category)
-        if lay is None or lay == self.layer:
-            return self.g, self.layer
-        return self.for_layer(lay).g, lay
+        """카테고리의 **집** 그래프 (B90 ② — 자기 층 선언을 먼저 보지 않는다).
+
+        여러 층이 같은 카테고리를 선언하면 「내 층도 선언했다」는 답이 되지 못한다 —
+        노드는 집 하나에 산다. 같은 층이면 self.g를 그대로 쓴다.
+        """
+        eb = self.for_category(category)
+        return eb.g, eb.layer
 
     def resolve_anchor(self, surface, category, prov, *, defer=None):
         """골격 조회 전용 — anchor는 새로 만들지 않는다.

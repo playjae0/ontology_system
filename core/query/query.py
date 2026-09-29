@@ -252,6 +252,24 @@ def bridge(src_ids, home_layer, graphs, configs):
     return found, crossed
 
 
+def stranded(graph, ids):
+    """**층 안 확장으로 닿은 걸침 엣지** — 저장된 층 L의 그래프에 있고 양끝이 L의 수집에
+    들었지만 한쪽 끝점이 다른 그래프에 사는 엣지 (B90 ④).
+
+    `facts`는 이 층에 없는 끝점을 건너뛰고, `bridge`는 출발 집합으로 되돌아오는 끝점을
+    건너뛴다 — 층 안 확장이 반대 끝점까지 데려오면 **두 자리가 서로 미뤄** 문장이
+    사라진다. 돌려준 엣지는 `cross_facts`가 저장한 층의 템플릿으로 문장화한다.
+    """
+    out = []
+    for e in graph.edges:
+        if e.get("status") == "deleted_by_user":
+            continue
+        if e["src"] in ids and e["dst"] in ids and \
+                (graph.get(e["src"]) is None or graph.get(e["dst"]) is None):
+            out.append(e)
+    return out
+
+
 def cross_facts(crossed, graphs, configs):
     """걸침 엣지의 문장화 — **출발 층의 템플릿을 쓴다**(§8-R4).
 

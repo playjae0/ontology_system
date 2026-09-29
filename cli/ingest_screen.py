@@ -128,7 +128,8 @@ MARKS = {"match": "✓", "attached": "✓", "new": "+", "uncertain": "?", "lowre
 
 #: 경로 → 짧은 이름. 화면이 경로를 다시 해석하지 않는다(대장의 값 그대로).
 PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "scope+judge": "스코프",
-              "embedding+judge": "임베딩", "overlap+judge": "겹침", "none": "—"}
+              "embedding+judge": "임베딩", "overlap+judge": "겹침", "self_coord": "자기 좌표",
+              "none": "—"}
 
 #: 줄을 찍는 자리 — **판단이 갈린 값**이다(사용자 확정 2026-09-22).
 LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject")

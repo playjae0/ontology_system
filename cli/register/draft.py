@@ -15,7 +15,7 @@ from parser.adapters import basic_ppt, basic_prose_xlsx
 from pathlib import Path
 import json
 import os
-from cli.register import FIXTURES, REVIEW, ROOT, _save_state, _state
+from cli.register import FIXTURES, REVIEW, ROOT, _save_state, _state, write_file
 
 
 # ================================================================ ① 생성
@@ -223,7 +223,7 @@ _at = registry.at      # 되읽는 규칙의 자리는 등록부 소유자다(�
 
 
 def _note_error(doc_type, e):
-    """실패하면 **원인이 적힌 유일한 자리**를 남긴다 — `review/{}/last_error.json`.
+    """실패하면 **원인이 적힌 유일한 자리**를 남긴다 — `work/register/<dt>/last_error.json`.
 
     게이트웨이의 400 본문은 화면을 스쳐 지나가고 로그는 다음 실행에 묻힌다.
     검수 디렉터리에 남겨야 사람이 그 문서를 다시 볼 때 함께 본다.
@@ -231,12 +231,11 @@ def _note_error(doc_type, e):
     """
     if not gateway.LAST_ERROR:
         return
-    d = _dir(doc_type)
-    (d / "last_error.json").write_text(
-        json.dumps({**gateway.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
-                   ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"   [오류] 게이트웨이 응답을 남겼다 → "
-          f"{paths.show(d / 'last_error.json')}")
+    # **디버그 산출은 작업 단이다**(B90 ⑥) — 다시 만들 수 있는 관측물이라 registry에 두지 않는다
+    out = paths.register_debug(doc_type, "last_error.json")
+    write_file(out, json.dumps({**gateway.LAST_ERROR, "예외": f"{type(e).__name__}: {e}"},
+                               ensure_ascii=False, indent=2) + "\n")
+    print(f"   [오류] 게이트웨이 응답을 남겼다 → {paths.show(out)}")
 
 
 def _pretty_json(obj, indent=2):
@@ -292,9 +291,9 @@ def _write_schema(path, text):
     try:
         obj = json.loads(text)
     except (json.JSONDecodeError, TypeError):
-        path.write_text(text, encoding="utf-8")
+        write_file(path, text)
         return False
-    path.write_text(_pretty_json(obj), encoding="utf-8")
+    write_file(path, _pretty_json(obj))
     return True
 
 
@@ -368,7 +367,7 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     suffix = f"_rev{revision}" if revision else ""
     ad = d / f"adapter{suffix}.py"
     sc = d / f"schema{suffix}.json"
-    ad.write_text(out["adapter_py"], encoding="utf-8")
+    write_file(ad, out["adapter_py"])
     # **`unmappable`은 코드가 스키마에 병합한다**(B49). 모델에게 `schema_json`
     # 문자열 **안에** 직접 넣게 하면 두 자리(최상위 키와 문자열 속)가 어긋날 때
     # 어느 쪽이 정본인지 정해지지 않는다 — 산출은 최상위 키 하나로 받고 병합은

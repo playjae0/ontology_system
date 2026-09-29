@@ -144,6 +144,10 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
     # 않는다. 적용하면 한 홉짜리 브리지가 도착층 전체로 번져 확장 범위가 층 수만큼
     # 곱해지고, 홉 수 상한이 층마다 다르게 소진된다.
     crossed = []
+    # **층 안 확장으로 이미 닿은 걸침 엣지**(B90 ④) — 브리지는 이것을 건너뛰고(출발 집합)
+    # `facts`도 건너뛴다(이 층에 없는 끝점). 저장한 층의 템플릿으로 한 번 문장화한다.
+    stranded = [(lay, e) for lay, ids in collected.items()
+                for e in Q.stranded(graphs[lay], ids)]
     for lay, ids in list(collected.items()):
         found, edges = Q.bridge(ids, lay, graphs, configs)
         crossed += edges
@@ -158,7 +162,10 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
                               for _lay, e in crossed}),
              "edges": [{"src": e["src"], "rel": e["rel"], "dst": e["dst"],
                         "layer": lay, "bridge": True} for lay, e in crossed]})
-    res["facts"] += Q.cross_facts(crossed, graphs, configs)
+    _seen = {(lay, e["src"], e["rel"], e["dst"]) for lay, e in crossed}
+    res["facts"] += Q.cross_facts(
+        crossed + [(lay, e) for lay, e in stranded
+                   if (lay, e["src"], e["rel"], e["dst"]) not in _seen], graphs, configs)
 
     return collected
 
