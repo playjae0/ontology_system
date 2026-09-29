@@ -393,3 +393,20 @@ toc_report(table · `--no-basic` LLM 초안) generate→review `--instruct`→st
 - 가이드: `2B`(시작하기 손잡이 행 · §5.1 시트 두 모드 · 자동 모드 · 플래그 둘 · 증상표 넷) · `인입_이해`(화면 줄 셋 · 산문 좌표 셋 문단 · 정본 넷에 `about`) · `config작성`(19종 = 공정 17 · 품질 16 · 선택 `relevance_terms` · `canonical_scope`는 공통 config · §6-a 관련어·렌즈) · `골격작성`(층 config 문법 키 19종) · `상태_폴더`(`knobs.json` · 백업 줄) · `걸어가기`(표 새 열 · ref [관련 원문] · 자동 모드 · 렌즈 · 시트 문턱은 손잡이).
 - 구조도: `00_칸_대장`(3.8 · 0.5 신설) · `02`(시트 두 모드 절) · `03`(about · 개체별 부모 · 렌즈) · `04`(수집 tier + ref 근처 · [관련 원문] 채널) · `05`(⚙ 시트 판정 · 렌즈 · knobs) · `06`(「사내 조정 가능」 열 전 행 · 새 행 8 · 2.2 행 갱신) · `00_전체_지도`(갱신 대장 B91 행) · `부품카드.json` · `10`(생성).
 
+### 실행으로 확인한 것
+
+- **클린 회귀 2회 동일**(`init --fresh` → `doctor.py`): **1637/1637 PASS** ×2 · 스위트별 수 동일. 도중 1건 발견·수리: `test_p3_view` ①ⓑ(리허설 체크포인트 재사용) — 등록 층(quality)과 구축 층이 다른 doc_type이 렌즈 키 없이도 렌즈 경로(`@quality` 체크포인트)를 탔다 → 렌즈 경로는 등록부에 `lenses`가 명시됐을 때만(D-172 ④).
+- **네 벌 diff 0**: process canonical 95 · 엣지 133 · quality canonical 47 · 엣지 92 · 사전 306 · 큐 107 · 판정대장 399 — 기준선(`b89/four_base.json`)과 바이트 같다(창작 표본).
+- 검사 6종: 경로 0 · 문면 0 · 문서간 0 · 미러 0 · 자산 13(반입 커밋 `e49999a`에서도 13 — 순증 0) · 가이드 0. §7 상한 위반 0(코드 지도 ⓔ). 자산 해시 `--write`(33).
+- 어서션: **+20 · 삭제 0** — `test_g6_lens` 18(성질: 손잡이 기본=상수·파일이 청크를 바꾸고 기록에 값·출처·거부 문면·show knobs / 렌즈 수렴·거름·예고·상한 보류·등록부 항목 / 시트 두 열·기록 네 필드·자동 합의·승격 후보·LLM 끔 / 개체별 부모·후보 밖 null·관련 링크 노드 0·근거 순위 / ref 근처 직접 노드만·상한 / 겸 집 경고) · `test_2a_gateway` +2(⑩ 도달성·본문 스모크). **기대 변경 3**: `test_2a_gateway` 지점 수 9→10 · `test_p1_csv` 추출 판 `e-1.2` → `e-1.2 이상` · `test_g6_sheets` Enter=제안의 비교 재료를 관문과 같은 함수(`rows_of`+`lens_info`)로.
+- `git diff core/`(e49999a 대비): 13파일 +699/−47 — 새 `core/build/lens.py`·`core/state/knobs.py` · 기존 `paths`·`entry`·`extract`·`prose`·`ingest`·`query`·`registry`·`sheets`·`catalog`·`gateway`·`points`.
+
+### 정제본 개정이 필요한 곳 (허브 몫 — 보고만)
+
+- 문서 7 §7.6-B-2 「LLM 지점 9종」 → 10종(⑩시트 역할 판정 · 태그 `sheet_role` · `prompts/3.8_sheet_role.md`) · §7.1 mock 대체 표에 ⑩(로직과 같은 답 · 호출 0).
+- 문서 7 §7.8 상태 루트 파일 `knobs.json`(닫힌 목록 · 파싱·인입 기록 `context.knobs`) · `sheet_roles/<doc_id>.json` 필드(logic·llm·llm_reason·llm_by·promote · decided_by `auto`) · 체크포인트 `extract/<doc>@<렌즈>.json`.
+- 문서 6 §6.4-5 판단 상수의 자리(`ADAPTER.expects` + `knobs.json` · 파서 주입 · 킷 `--knobs`) · 문서 6 시트 관문 문단(두 모드 · 제안 = 합의 또는 ref · `--sheets auto` · `--no-sheet-llm` · LLM은 물을 때만) · 「제안은 규칙 — LLM 지점을 늘리지 않는다」(B83 문장) 폐기.
+- 문서 3 §3.1 층 config 키 일람에 `relevance_terms`(선택) · doc_type 등록부 `lenses`.
+- 문서 4 §4.2·§4.10 추출 출력 entity `parent` · 청크 `about` · 부모 후보 정의 · 이름 전 부모 결정 · 관련 링크 조회 전용 · 렌즈 추출.
+- 문서 2 청크 저장 `about`(두 번째 매달림).
+- 문서 5 §5.1-6 근거 tier(describes 1·2 → about 3·4 → ref 근처 5) · §5.2 채널 [관련 원문](묶음 `related`).

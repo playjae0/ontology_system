@@ -276,7 +276,10 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                   if c.get("doc_id") == env["doc_id"]}
         # **렌즈**(B91 ①) — 기본(등록 층 하나)이면 지금 길 그대로 · 아니면 렌즈마다 그 층 어휘로
         from core.state import registry as _registry
-        _lz = _registry.lenses_of(env["doc_type"]) or [layer]
+        # 렌즈 경로는 등록부에 `lenses`가 **명시됐을 때만**이다 — 없으면 등록 층과 구축 층이
+        # 달라도(스키마 층으로 구축) 지금 길 그대로다(체크포인트 이름·재사용 불변).
+        _lz = (_registry.lenses_of(env["doc_type"])
+               if (_registry.lookup(env["doc_type"]) or {}).get("lenses") else [layer])
         if _lz != [layer]:
             from core.build import lens as lens_mod
             builder, extracted = lens_mod.build_with_lenses(env, _lz, layer, graph, loc2id,
