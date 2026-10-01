@@ -10,7 +10,7 @@
   계속하려면 `--allow-mock`을 적는다 (문서 7 §7.6-B-1 · B48).
 
   python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
-  python run.py bootstrap          층 골격 심기 (n10)
+  python run.py bootstrap [--dry-run]  층 공통 config 맞추기 + 층 골격 심기 (n10 · --dry-run은 계획만)
   python run.py build <parsed.json...> [--allow-duplicate]
                                    계약 JSON 인입 — **플랫폼 계약 이름**(§7.1).
                                    --allow-duplicate는 duplicate_doc_hold 보류의
@@ -74,29 +74,59 @@ def cmd_init(args):
     print(f"[init] 빈 상태 {len(made)}개 — {', '.join(made) or '이미 있음'}")
 
 
-def _catalog_gate():
-    """**층 공통 config 먼저** (B90 ①) — 없거나 어긋나면 층을 심기 전에 멈춘다. 멈추면 1.
+def _sync_screen(p):
+    """맞추기 계획을 한 줄씩 — 무엇을 더하고 지우고 무엇을 사람에게 묻나."""
+    from core import paths
+    head = "[bootstrap] 공통 config"
+    if p["new"]:
+        print(f"{head} 없음 — 층 config에서 만든다 → {paths.show(paths.common())}")
+    for c, lay in p["add"]:
+        print(f"{head} + '{c}' (home {lay} — {lay}만 선언)")
+    for c in p["drop"]:
+        print(f"{head} − '{c}' (어느 층도 선언하지 않고 노드 0)")
+    for c, lays in p["ask"]:
+        print(f"{head} [상태] '{c}' home 빈칸 — 여러 층이 선언했다 {lays} — 그중 하나로 채운다")
+    for c, home, n in p["stuck"]:
+        print(f"{head} [상태] '{c}'를 어느 층도 선언하지 않는데 {home} 그래프에 노드 {n}개가 "
+              f"남아 있다 — 층 config에 되살리거나 재빌드(init --fresh → bootstrap → 재인입)")
+    for c, home, old, n in p["moved"]:
+        print(f"{head} [상태] '{c}'의 home을 {old} → {home}로 바꿨지만 {old} 그래프에 {c} 노드 "
+              f"{n}개가 있다 — 재빌드(init --fresh → bootstrap → 재인입) 또는 home을 되돌린다")
+    if p["new"] and p["catalog"].get("canonical_scope"):
+        print(f"{head} canonical_scope ← 층 config에서 옮김 (층 config에서는 지운다 — 두 곳 0)")
 
-    없으면(운영) 초안을 만들어 **보이고** 멈춘다 — 자동 채택 0: 여러 층이 선언한
-    카테고리의 집은 사람이 정한다. 어긋남(ⓑ~ⓔ)은 갈래마다 한 줄 + 고칠 자리.
+
+def _catalog_gate(dry_run=False):
+    """**층 공통 config 먼저** (B90 ① · B92) — 층 config와 맞추고, 어긋나면 층을 심기 전에 멈춘다.
+
+    한 층만 선언한 카테고리는 자동으로 더하고 · 선언도 노드도 없는 카테고리는 지운다 ·
+    새 결정(여러 층이 선언한 카테고리의 집 · 노드가 남은 제거 · 집 변경)은 사람에게 묻고
+    멈춘다(`core/state/catalog_sync.py`). 이미 있는 항목의 `home`·`also`는 건드리지 않는다.
+    `dry_run`이면 계획만 보이고 아무것도 쓰지 않는다. 멈추면 1.
     """
     from core import paths
-    from core.state import catalog
-    if not paths.common().exists() and not paths.is_mock_home():
-        from core.llm import gateway
-        if not gateway.use_mock():
-            p, fresh = catalog.write_draft()
-            d = catalog.draft()
-            print(f"[bootstrap] [상태] 층 공통 config가 없다 — {paths.show(paths.common())}\n"
-                  f"  초안을 {'만들었다' if fresh else '이미 있다(덮지 않았다)'} → {paths.show(p)}")
-            for c, v in d["categories"].items():
-                print(f"     {c:<16} home {v['home'] or '(빈칸 — ' + d['_빈칸'][c] + ')'}")
-            if d.get("canonical_scope"):
-                print(f"     canonical_scope ← 층 config에서 옮김 "
-                      f"(층 config에서는 지운다 — 두 곳 0)")
-            print(f"  ▶ 다음 줄: 빈칸을 채워 {paths.common().name}으로 저장 → "
-                  f"python run.py bootstrap")
+    from core.state import catalog, catalog_sync
+    if paths.common(draft=True).exists():
+        print(f"[bootstrap] {paths.show(paths.common(draft=True))}는 쓰지 않는 파일이다(지워도 된다)")
+    exists = paths.common().exists()
+    if exists or not paths.is_mock_home():            # mock 루트에 파일이 없으면 층 선언에서 세운다
+        cur = json.loads(paths.common().read_text(encoding="utf-8")) if exists else None
+        p = catalog_sync.plan(current=cur)
+        _sync_screen(p)
+        if dry_run:
+            print(f"[bootstrap] --dry-run — 계획만 보였다(공통 config·그래프 쓰기 0) · "
+                  f"{'바뀔 것 있음' if catalog_sync.changed(p) else '바뀔 것 없음'}"
+                  f"{' · 멈출 것 있음' if catalog_sync.blocked(p) else ''}")
+            return 1 if catalog_sync.blocked(p) else 0
+        if catalog_sync.changed(p):
+            catalog_sync.apply(p)
+        if catalog_sync.blocked(p):
+            print(f"  근거 — {paths.show(paths.common())}\n"
+                  f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap   (미리 보기: --dry-run)")
             return 1
+    elif dry_run:
+        print("[bootstrap] --dry-run — mock 루트 · 공통 config 없음(층 선언에서 세운다) · 쓰기 0")
+        return 0
     try:
         bad = catalog.problems()
     except catalog.CatalogError as e:
@@ -114,9 +144,10 @@ def _catalog_gate():
     return 0
 
 
-def cmd_bootstrap():
-    rc = _catalog_gate()
-    if rc:
+def cmd_bootstrap(args=()):
+    dry = "--dry-run" in args
+    rc = _catalog_gate(dry_run=dry)
+    if rc or dry:
         return rc
     for layer in discover():
         try:
@@ -291,7 +322,7 @@ if __name__ == "__main__":
         from cli._gate import require_live_or_allow
         sys.argv = [sys.argv[0], cmd] + require_live_or_allow(sys.argv[2:], command=cmd)
     _rc = {"init": lambda: cmd_init(sys.argv[2:]),
-     "bootstrap": lambda: cmd_bootstrap(),
+     "bootstrap": lambda: cmd_bootstrap(sys.argv[2:]),
      # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
      # 부르는 이름은 계약의 일부다. `ingest`는 같은 함수의 옛 이름이다.
      # `--allow-duplicate`는 duplicate_doc_hold 보류의 **㉡ 해제**다(문서 2 §2.7-①).

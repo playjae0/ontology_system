@@ -58,14 +58,25 @@
 
 정의문은 여기 두지 않는다 — 정의문은 층의 렌즈(층 config `categories`의 값)다. 스키마의 `target_layer`는 있으면 그 카테고리의 집과 같아야 한다(다르면 등록 관문 G4C FAIL).
 
-**처음 만들 때(초안 흐름)**: `python run.py bootstrap` → 공통 config가 없으면 층 config들에서 초안(`layers/common.draft.json`)을 만들어 보이고 **멈춘다** — 한 층만 선언한 카테고리는 그 층이 집, **여러 층이 선언한 카테고리는 집이 빈칸**, `canonical_scope`는 층 config에서 옮겨 온다. 빈칸을 채워 `common.json`으로 저장하고, 층 config에서 `canonical_scope`를 지운 뒤 다시 `bootstrap`. 초안은 덮어쓰지 않는다(채우는 중일 수 있다).
+**맞추기는 `bootstrap`이 한다** — 층 config를 고치고 `python run.py bootstrap`을 치면, 층을 심기 전에 공통 config를 층 config들(`categories`)과 맞춘다. 층 config에서 **결정적으로 따라 나오는 줄은 자동**이고, **새 결정은 사람**이다:
+
+| 경우 | `bootstrap`이 하는 것 | 사람이 하는 것 |
+|---|---|---|
+| 카탈로그에 없는 카테고리를 **한 층만** 선언 | 자동 추가(`home` = 그 층) · 화면 `공통 config + 'X' (home 층A — 층A만 선언)` | 없음 |
+| 카탈로그에 없는 카테고리를 **여러 층이** 선언 | `home` 빈칸으로 추가하고 **멈춘다** | 선언한 층 중 하나로 `home`을 채우고 다시 `bootstrap` |
+| 카탈로그에 있는데 **어느 층도 선언 안 함** | 그 집 그래프에 노드가 0이면 자동 제거 · 있으면 **멈춘다** | 층 config에 되살리거나 재빌드(`init --fresh` → `bootstrap` → 재인입) |
+| 카탈로그에 있고 선언도 있다 | **건드리지 않는다** — `home`·`also`는 사람 값 | 겸(`also`)은 사람이 쓴다 |
+| 노드가 있는 카테고리의 `home`을 바꿨다 | **멈춘다** — 옛 집 그래프에 그 카테고리 노드가 남아 있다 | 재빌드 또는 `home`을 되돌린다 |
+| **처음**(파일 없음) | 같은 규칙으로 `common.json`을 바로 만든다 · `canonical_scope`는 층 config에서 옮긴다 · 빈칸이 있으면 멈춘다 | 빈칸을 채우고 층 config에서 `canonical_scope`를 지운 뒤 다시 `bootstrap` |
+
+바꾼 것은 화면에 한 줄씩, 근거는 `work/logs/bootstrap_<날짜>.log`에 남고 바뀌면 `common_version`이 오른다. **미리 보기**: `python run.py bootstrap --dry-run` — 더할 것·지울 것·물을 것만 보이고 아무것도 쓰지 않는다(층 심기도 0). 옛 초안 파일 `common.draft.json`은 더 쓰지 않는다(남아 있으면 한 줄 — 지워도 된다).
 
 **`bootstrap`이 멈추는 자리**(문면이 갈래와 고칠 자리를 말한다):
 
 | 갈래 | 무엇 | 고칠 자리 |
 |---|---|---|
-| ⓐ | 공통 config가 없다 | 초안의 빈칸을 채워 `common.json`으로 저장 |
-| ⓑ | 층 config의 카테고리가 카탈로그에 없다 | 카탈로그에 `"<카테고리>": {"home": "<층>"}` |
+| ⓐ | 공통 config가 없다 | `bootstrap`이 위 규칙으로 만든다 — 빈칸만 채운다 |
+| ⓑ | 층 config의 카테고리가 카탈로그에 없다 | `bootstrap`이 맞춘다(한 층이면 자동 · 여럿이면 빈칸으로 묻는다) |
 | ⓒ | `home`이 빈칸이거나 그 카테고리를 선언하지 않은 층이다 | 선언한 층 중 하나로 |
 | ⓓ | 층 config에 `canonical_scope`가 남아 있다 | 층 config에서 지운다(두 곳 0) |
 | ⓔ | `also`가 카탈로그에 없는 카테고리나 없는 단을 가리킨다 | 카테고리 이름 · 단(`main`·`sub`·`detail`) |
@@ -96,7 +107,7 @@
 | Key | Add | Why |
 |---|---|---|
 | `categories` | `Component` — 「유닛을 이루는 교체·정비 단위(예: 상부 금형 · 서보 모터). 유닛 자체·소모품 규격값은 제외」 | 정의문이 추출·판정 프롬프트에 그대로 들어간다 — 헷갈리는 이웃(Unit·Property)을 적는다 |
-| 공통 config `canonical_scope.bind_categories` · `categories` | `+ Component` · `"Component": {"home": "<층>"}` | 키가 `노칭::상부 금형`이 돼 공정 간 같은 이름이 충돌하지 않는다. 스코프는 공정 좌표 한 단이다 — 유닛 아래로 중첩되지 않는다(계층은 `part_of` 관계로). 이름 규칙과 집은 공통 config(§0-a)에 산다 |
+| 공통 config `canonical_scope.bind_categories` | `+ Component` (`categories`의 `"Component": {"home": "<층>"}`는 한 층만 선언하면 `bootstrap`이 더한다) | 키가 `노칭::상부 금형`이 돼 공정 간 같은 이름이 충돌하지 않는다. 스코프는 공정 좌표 한 단이다 — 유닛 아래로 중첩되지 않는다(계층은 `part_of` 관계로). 이름 규칙과 집은 공통 config(§0-a)에 산다 |
 | `relations` · `relation_patterns` | `Component part_of Unit` · `Unit part_of Process` · `Property of Unit/Component` 같은 삼항 | 패턴에 없는 삼항은 게이트가 **조용히 버린다**(`show log gate`에만 남는다) — 여기가 가장 자주 빠지는 자리 |
 | `query_traverse` | `Unit → Component`는 `recursive: false` | 설비를 물으면 유닛까지, 유닛을 물어야 부품 — 깊이는 골격이 아니라 여기서 조절한다 |
 | `fact_templates` · `prompts` 정의문 | 새 관계의 문장 틀 · 추출 정의문 | 없으면 답이 관계를 문장으로 못 만든다 |

@@ -7,8 +7,8 @@
 
 잠그는 성질:
   ① mock 카탈로그는 층 선언의 복사다(집 = 선언한 층 하나 · 이름 규칙은 카탈로그 한 곳) ·
-     `bootstrap` 거부 다섯 갈래가 갈래 표시와 고칠 자리를 말한다 · 운영에서 없으면 초안을
-     만들고(겹친 카테고리의 집은 빈칸) 멈추며 초안을 덮지 않는다 · doctor 첫 줄이 판을 말한다
+     `bootstrap` 거부 다섯 갈래가 갈래 표시와 고칠 자리를 말한다 · 운영에서 없으면 층 config에서
+     만들고(겹친 카테고리의 집은 빈칸) 멈춘다(B92) · doctor 첫 줄이 판을 말한다
   ② 층이 겹쳐도 노드는 집 하나 — prose·table 같은 결과(매칭 · 새 노드는 집에 · 큐 layer=집 ·
      엣지는 뽑은 층에 · 끝점은 집 노드) · `target_layer`가 집과 다르면 G4C FAIL
   ③ 겸 — 좌표 자신을 가리키는 설비 표기는 좌표다(새 노드 0 · 대장 self_coord) · 겸으로
@@ -103,22 +103,18 @@ with tempfile.TemporaryDirectory(prefix="b90_") as _td:
                            env=_env, capture_output=True, text=True, stdin=subprocess.DEVNULL)
         return r.returncode, r.stdout + r.stderr
     _rc1, _o1 = _boot()
-    _draft = _r / "layers" / "common.draft.json"
-    _d = json.loads(_draft.read_text(encoding="utf-8")) if _draft.exists() else {}
-    _draft.write_text(_draft.read_text(encoding="utf-8").replace('"Failure"', '"Failure" '),
-                      encoding="utf-8")                                  # 사람이 채우는 중
-    _mark = _draft.read_text(encoding="utf-8")
-    _rc2, _o2 = _boot()
-    show("① ⓐ 운영에서 없으면 초안을 만들어 보이고 멈춘다 — 겹친 카테고리의 집은 빈칸 · 이름 규칙은 옮긴다 · 초안을 덮지 않는다",
-         _rc1 != 0 and not (_r / "layers" / "common.json").exists()
-         and _d.get("categories", {}).get("Unit", {}).get("home") == ""
+    # **B92부터 초안 파일을 쓰지 않는다** — 같은 규칙으로 common.json을 바로 만들고 빈칸이면
+    # 멈춘다(기대 변경 · B92 ① — 잠그는 성질은 그대로: 겹친 집은 사람 · 이름 규칙은 옮긴다).
+    _cj = _r / "layers" / "common.json"
+    _d = json.loads(_cj.read_text(encoding="utf-8")) if _cj.exists() else {}
+    show("① ⓐ 운영에서 없으면 층 config에서 만들고 멈춘다 — 겹친 카테고리의 집은 빈칸 · 이름 규칙은 옮긴다 · 초안 파일 0",
+         _rc1 != 0 and _d.get("categories", {}).get("Unit", {}).get("home") == ""
          and _d["categories"]["Process"]["home"] == "process"
          and "canonical_scope" in _d and "빈칸" in _o1
-         and _rc2 != 0 and _draft.read_text(encoding="utf-8") == _mark and "덮지 않았다" in _o2,
+         and not (_r / "layers" / "common.draft.json").exists(),
          _o1.strip().splitlines()[0][:100] if _o1.strip() else "")
     _d["categories"]["Unit"]["home"] = "process"
-    _d.pop("_빈칸", None)
-    (_r / "layers" / "common.json").write_text(json.dumps(_d, ensure_ascii=False), encoding="utf-8")
+    _cj.write_text(json.dumps(_d, ensure_ascii=False), encoding="utf-8")
     _rw(_r / "layers" / "process" / "config.json", lambda c: c.pop("canonical_scope", None))
     _rc3, _o3 = _boot()
     show("① ⓐ 빈칸을 채워 저장하면 bootstrap이 선다", _rc3 == 0, _o3.strip()[-120:])

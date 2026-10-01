@@ -229,7 +229,7 @@ def common(draft=False):
     """층 공통 config(카테고리 카탈로그) — `$ONTO_HOME/layers/common.json` (B90 ①).
 
     ②등록 단 · 층 목록에는 안 잡힌다(`router.discover`는 `config.json`이 든 **폴더**만 센다).
-    `draft=True`는 `bootstrap`이 없을 때 만들어 보이는 초안 `common.draft.json`이다.
+    `draft=True`는 옛 초안 `common.draft.json`의 자리다 — 더 쓰지 않는다(남아 있으면 `bootstrap`이 한 줄 · B92).
     """
     return layers("common.draft.json" if draft else "common.json")
 
