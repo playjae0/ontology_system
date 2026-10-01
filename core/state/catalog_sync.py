@@ -40,49 +40,82 @@ def count_nodes(layer, category):
     return sum(1 for n in g.nodes.values() if n.get("category") == category)
 
 
+def skeleton_layers(configs=None):
+    """골격 카테고리 → 그 골격을 가진 층 목록(B93 ①) — 층 config `skeleton.category`.
+
+    `bootstrap`은 골격 노드를 **그 골격을 가진 층의 그래프에** 심는다 — 그래서 골격 카테고리의
+    집은 골격이 이미 정했다(사람에게 물을 것이 아니다).
+    """
+    out = {}
+    for lay, cfg in sorted((configs or catalog._layer_configs()).items()):
+        c = (cfg.get("skeleton") or {}).get("category")
+        if c:
+            out.setdefault(c, []).append(lay)
+    return out
+
+
 def plan(configs=None, current=None, counter=count_nodes):
     """맞추기 계획 — 쓰지 않는다. `current`가 `None`이면 파일이 없다(처음).
 
-    돌려주는 dict: `new`(파일이 없었다) · `add`[(카테고리, 층)] · `ask`[(카테고리, 층들)] ·
-    `drop`[카테고리] · `stuck`[(카테고리, 집, 노드 수)] · `moved`[(카테고리, 새 집, 옛 그래프, 노드 수)] ·
-    `catalog`(맞춘 뒤의 카탈로그 — 변경이 없으면 `current`와 같다).
+    돌려주는 dict: `new`(파일이 없었다) · `add`[(카테고리, 층, 골격인가)] · `fill`[(카테고리, 층)]
+    (빈칸을 골격 층으로) · `ask`[(카테고리, 층들)] · `drop`[카테고리] · `stuck`[(카테고리, 집, 노드 수)] ·
+    `moved`[(카테고리, 새 집, 옛 그래프, 노드 수)] · `sk_dup`[(카테고리, 골격 층들)] ·
+    `sk_home`[(카테고리, 채운 집, 골격 층)] · `catalog`(맞춘 뒤의 카탈로그).
+
+    **골격 카테고리가 먼저다**(B93): 골격이 한 층에 있으면 집은 그 층 — 여러 층이 선언해도
+    자동 추가 · 빈칸이면 채운다 · 채운 집이 다르면 멈춘다(ⓖ — 집 변경 검사보다 먼저) · 두 층의
+    골격이 같은 카테고리면 멈춘다(ⓕ). 나머지 카테고리는 B92 규칙 그대로다.
     """
     from router import discover
     configs = configs or catalog._layer_configs()
     decl = catalog.declared_by(configs)
-    out = {"new": current is None, "add": [], "ask": [], "drop": [], "stuck": [], "moved": []}
-    if current is None:
-        cat = catalog.draft(configs)
-        cat.pop("_빈칸", None)
-        out["ask"] = [(c, lays) for c, lays in sorted(decl.items()) if len(lays) > 1]
-        out["add"] = [(c, lays[0]) for c, lays in sorted(decl.items()) if len(lays) == 1]
-        out["catalog"] = cat
-        return out
+    sk = skeleton_layers(configs)
+    out = {"new": current is None, "add": [], "fill": [], "ask": [], "drop": [], "stuck": [],
+           "moved": [], "sk_dup": [], "sk_home": []}
+    if current is None:                                 # 처음 — 층 선언에서 같은 규칙으로 세운다
+        current = catalog.draft(configs)
+        current.pop("_빈칸", None)
+        current["categories"] = {}
     cat = json.loads(json.dumps(current))              # 깊은 사본 — 원본은 비교용
     cats = cat.setdefault("categories", {})
+    for c, lays in sorted(sk.items()):
+        if len(lays) > 1:
+            out["sk_dup"].append((c, lays))
+            continue
+        home = (cats.get(c) or {}).get("home")
+        if c not in cats:
+            cats[c] = {"home": lays[0]}
+            out["add"].append((c, lays[0], True))
+        elif not home:
+            cats[c]["home"] = lays[0]
+            out["fill"].append((c, lays[0]))
+        elif home != lays[0]:
+            out["sk_home"].append((c, home, lays[0]))
     for c, lays in sorted(decl.items()):
-        if c in cats:
+        if c in cats or c in sk:
             continue
         if len(lays) == 1:
             cats[c] = {"home": lays[0]}
-            out["add"].append((c, lays[0]))
+            out["add"].append((c, lays[0], False))
         else:
             cats[c] = {"home": ""}
             out["ask"].append((c, lays))
     for c in sorted(list(cats)):
-        if c in decl:
+        if c in decl or c in sk:
             continue
         home = (cats[c] or {}).get("home")
-        n = counter(home, c) if home else 0
+        n = counter(home, c) if home and not out["new"] else 0
         if n:
             out["stuck"].append((c, home, n))
         else:
             del cats[c]
             out["drop"].append(c)
     # ② 집 변경 — 집 밖 그래프에 그 카테고리 노드가 남아 있으면 옛 집이다
+    #    (골격 모순이 있는 카테고리는 그 문면이 원인을 말한다 — 여기서 겹쳐 말하지 않는다)
+    _sk_bad = {c for c, *_ in out["sk_dup"] + out["sk_home"]}
     for c, v in sorted(cats.items()):
         home = (v or {}).get("home")
-        if not home or c not in decl:
+        if not home or c not in decl or c in _sk_bad or out["new"]:
             continue
         for lay in discover():
             if lay != home:
@@ -94,13 +127,13 @@ def plan(configs=None, current=None, counter=count_nodes):
 
 
 def changed(p):
-    """파일에 쓸 변경이 있나 — 처음이거나 더함·빈칸·제거가 있으면."""
-    return p["new"] or bool(p["add"] or p["ask"] or p["drop"])
+    """파일에 쓸 변경이 있나 — 처음이거나 더함·채움·빈칸·제거가 있으면."""
+    return p["new"] or bool(p["add"] or p["fill"] or p["ask"] or p["drop"])
 
 
 def blocked(p):
-    """멈춰야 하나 — 사람이 정할 것(빈칸·노드가 남은 제거·집 변경)이 있으면."""
-    return bool(p["ask"] or p["stuck"] or p["moved"])
+    """멈춰야 하나 — 사람이 정할 것(빈칸·노드가 남은 제거·집 변경·골격 모순)이 있으면."""
+    return bool(p["ask"] or p["stuck"] or p["moved"] or p["sk_dup"] or p["sk_home"])
 
 
 def apply(p):
@@ -112,11 +145,46 @@ def apply(p):
     paths.ensure(target)
     store.atomic_write_bytes(target, (json.dumps(cat, ensure_ascii=False, indent=2)
                                       + "\n").encode("utf-8"))
-    for c, lay in p["add"]:
-        _LOG.info("공통 config + %s (home %s — %s만 선언)", c, lay, lay)
+    for c, lay, skel in p["add"]:
+        _LOG.info("공통 config + %s (home %s — %s)", c, lay,
+                  f"골격이 {lay}에 있다" if skel else f"{lay}만 선언")
+    for c, lay in p["fill"]:
+        _LOG.info("공통 config %s home 빈칸 → %s (골격이 %s에 있다)", c, lay, lay)
     for c, lays in p["ask"]:
         _LOG.info("공통 config + %s (home 빈칸 — 여러 층이 선언 %s)", c, lays)
     for c in p["drop"]:
         _LOG.info("공통 config − %s (어느 층도 선언하지 않고 노드 0)", c)
     _LOG.info("공통 config 저장 — v%s · %s", cat.get("common_version"), target)
     return cat
+
+
+def coord_status(configs=None):
+    """골격 카테고리마다 **자기 좌표 규칙이 켜졌나** — `[(경고인가, 문면)]` (B93 ③ · 표시일 뿐 거부 아님).
+
+    규칙이 돌려면 둘이 다 있어야 한다: 공통 config의 겸(`also`) · 겸 단 골격 노드의 별칭(골격
+    스냅샷 — 심은 뒤의 것). 켜짐 · 꺼짐(겸 없음) · 반쪽(겸은 있는데 겸 단 별칭 0) 셋.
+    """
+    snap = store.read(store.SKELETON_LIST, {})
+    try:
+        cats = catalog.load().get("categories") or {}
+    except catalog.CatalogError:
+        return []
+    out = []
+    for c, lays in sorted(skeleton_layers(configs).items()):
+        lay = lays[0]
+        also = (cats.get(c) or {}).get("also") or {}
+        head = f"골격 '{c}'({lay})"
+        if not also:
+            out.append((False, f"{head}: 겸 없음 — 골격 노드 이름 + 다른 카테고리 표기는 새 노드가 "
+                               f"된다(자기 좌표 규칙 꺼짐)"))
+            continue
+        tiers = {t for ts in also.values() for t in (ts or [])}
+        nodes = (snap.get(lay) or {}).get("nodes") or []
+        n = sum(len(x.get("aliases") or []) for x in nodes if x.get("tier") in tiers)
+        what = " · ".join(f"겸 {o}({'·'.join(ts)})" for o, ts in sorted(also.items()))
+        if n:
+            out.append((False, f"{head}: {what} · 겸 단 별칭 {n}개"))
+        else:
+            out.append((True, f"{head}: {what}인데 겸 단 별칭 0 — 별칭이 없으면 자기 좌표 규칙이 "
+                              f"돌지 않는다" + ("" if nodes else " (골격을 아직 심지 않았다)")))
+    return out

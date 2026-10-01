@@ -12,6 +12,9 @@
   ⓔ 노드가 있는 카테고리의 home을 바꾸면 멈춘다(옛 집 = 노드가 있는 그래프)
   ⓕ `--dry-run`은 공통 config·그래프 쓰기 0
   ⓖ 운영 처음(파일 없음) — common.json을 바로 만든다 · 빈칸이면 멈춘다 · 초안 파일 0
+  B93 골격 카테고리의 집은 골격 층(겹쳐 선언해도 자동 · 빈칸은 채움 · --dry-run 쓰기 0) ·
+      두 층 골격이 같은 카테고리 / 채운 집 ≠ 골격 층은 첫 실행에서 멈춤(그래프 쓰기 0) ·
+      겸 상태 세 갈래 표시(종료 코드 0 · doctor 같은 상태)
 """
 from __future__ import annotations
 
@@ -141,5 +144,62 @@ with tempfile.TemporaryDirectory(prefix="b92_") as _td:
          and _d["categories"]["Process"] == {"home": "process"}
          and not (_r / "layers" / "common.draft.json").exists() and _rc2 == 0,
          _o1.strip().splitlines()[0][:90] if _o1.strip() else "")
+
+# ────────────────────────────────────────────────────────────── B93
+print("\n■ B93 ① 골격 카테고리의 집은 골격 층 — 자동")
+init.init(fresh_=True)
+_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Process="공정(렌즈)"))
+_rw(_P.common(), lambda c: c["categories"].pop("Process"))
+_rc, _o = _boot()
+show("ⓐ 두 층이 골격 카테고리를 함께 선언해도 집 = 골격 층 자동(빈칸·멈춤 0)",
+     _rc == 0 and _common()["categories"].get("Process") == {"home": "process"}
+     and "골격이 process에 있다" in _o and "빈칸" not in _o,
+     [l for l in _o.splitlines() if "'Process'" in l][:1])
+_rw(_P.common(), lambda c: c["categories"]["Process"].update(home=""))
+_cb, _v0 = _P.common().read_bytes(), _common()["common_version"]
+_rcd, _od = _boot("--dry-run")
+_same = _P.common().read_bytes() == _cb
+_l0 = len(_logs())
+_rc, _o = _boot()
+show("ⓑ 기존 빈칸은 골격 층으로 채운다 · 판 +1 · 로그 (ⓖ --dry-run은 같은 계획 · 쓰기 0)",
+     _rc == 0 and _common()["categories"]["Process"]["home"] == "process"
+     and _common()["common_version"] == _v0 + 1 and "빈칸 → process" in _logs()[_l0:]
+     and _rcd == 0 and _same and "빈칸 → process" in _od,
+     [l for l in _o.splitlines() if "빈칸" in l][:1])
+
+print("\n■ B93 ② 골격 모순 거부 — 심기 전에")
+init.init(fresh_=True)
+_rw(_P.layers("quality", "config.json"), lambda c: c["skeleton"].update(category="Process")
+    or c["categories"].update(Process="공정(렌즈)"))
+_rc, _o = _boot()
+show("ⓒ 두 층의 골격이 같은 카테고리면 멈춘다",
+     _rc != 0 and "함께 가진다" in _o and "두 벌" in _o,
+     [l for l in _o.splitlines() if "함께 가진다" in l][:1])
+init.init(fresh_=True)
+_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Process="공정(렌즈)"))
+_rw(_P.common(), lambda c: c["categories"]["Process"].update(home="quality"))
+_rc, _o = _boot()
+_pn = sum(1 for n in open_graph("process").nodes.values() if n.get("category") == "Process") \
+    + sum(1 for n in open_graph("quality").nodes.values() if n.get("category") == "Process")
+show("ⓓ 채운 home ≠ 골격 층이면 **첫 실행에서** 멈춘다 — 그래프 쓰기 0 · 문면이 원인(골격 층)을 말한다",
+     _rc != 0 and "골격은 process에 있다" in _o and "바꿨지만" not in _o and _pn == 0,
+     [l for l in _o.splitlines() if "골격은" in l][:1])
+init.init(fresh_=True)
+
+print("\n■ B93 ③ 겸 상태 — 표시일 뿐(종료 코드 0)")
+_rc_off, _o_off = _boot()
+_rw(_P.common(), lambda c: c["categories"]["Process"].update(also={"Unit": ["sub", "detail"]})
+    or c["categories"]["FailureEffect"].update(also={"Failure": ["main"]}))
+_rc_on, _o_on = _boot()
+_dq = subprocess.run([sys.executable, str(ROOT / "doctor.py"), "--quick"], cwd=str(ROOT),
+                     capture_output=True, text=True, env={**os.environ, "USE_MOCK": "1"},
+                     stdin=subprocess.DEVNULL).stdout
+show("ⓕ 겸 상태 세 갈래 — 꺼짐(겸 없음) · 켜짐(겸 + 겸 단 별칭) · 반쪽(⚠ 별칭 0) · 종료 코드 0 · doctor 같은 상태",
+     _rc_off == 0 and "골격 'Process'(process): 겸 없음" in _o_off
+     and _rc_on == 0 and "골격 'Process'(process): 겸 Unit(sub·detail) · 겸 단 별칭" in _o_on
+     and "⚠ 골격 'FailureEffect'(quality)" in _o_on and "별칭 0" in _o_on
+     and "겸 Unit(sub·detail) · 겸 단 별칭" in _dq and "별칭 0" in _dq,
+     [l for l in _o_on.splitlines() if "골격 '" in l][:2])
+init.init(fresh_=True)
 
 done()

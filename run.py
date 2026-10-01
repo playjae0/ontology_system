@@ -80,10 +80,18 @@ def _sync_screen(p):
     head = "[bootstrap] 공통 config"
     if p["new"]:
         print(f"{head} 없음 — 층 config에서 만든다 → {paths.show(paths.common())}")
-    for c, lay in p["add"]:
-        print(f"{head} + '{c}' (home {lay} — {lay}만 선언)")
+    for c, lay, skel in p["add"]:
+        print(f"{head} + '{c}' (home {lay} — " + (f"골격이 {lay}에 있다)" if skel else f"{lay}만 선언)"))
+    for c, lay in p["fill"]:
+        print(f"{head} '{c}' home 빈칸 → {lay} (골격이 {lay}에 있다)")
     for c in p["drop"]:
         print(f"{head} − '{c}' (어느 층도 선언하지 않고 노드 0)")
+    for c, lays in p["sk_dup"]:
+        print(f"{head} [상태] 골격 카테고리 '{c}'를 층 {lays}의 골격이 함께 가진다 — 같은 뜻 노드가 "
+              f"두 그래프에 두 벌 생긴다 · 골격은 한 층만 갖는다")
+    for c, home, lay in p["sk_home"]:
+        print(f"{head} [상태] '{c}'의 home은 {home}인데 골격은 {lay}에 있다 — 골격 노드는 {lay} "
+              f"그래프에 심긴다 · home을 {lay}로 고친다")
     for c, lays in p["ask"]:
         print(f"{head} [상태] '{c}' home 빈칸 — 여러 층이 선언했다 {lays} — 그중 하나로 채운다")
     for c, home, n in p["stuck"]:
@@ -166,6 +174,10 @@ def cmd_bootstrap(args=()):
     # FAIL은 doc_type을 고칠 일이지 층 적재의 실패가 아니다 — 줄과 다음 줄로 말한다.
     from cli.register import recheck
     recheck.screen()
+    # **겸 상태**(B93 ③) — 골격 카테고리마다 자기 좌표 규칙이 켜졌나 · 표시일 뿐(rc 불변)
+    from core.state import catalog_sync
+    for warn, msg in catalog_sync.coord_status():
+        print(f"[bootstrap] {'⚠ ' if warn else ''}{msg}")
     return rc
 
 
