@@ -39,14 +39,17 @@
 
 ## 0-a. 층 공통 config — `layers/common.json` (카테고리 카탈로그)
 
-층 config는 **렌즈**다 — 그 층이 쓰는 카테고리를 **자기 정의문으로** 선언한다. 같은 카테고리를 여러 층이 선언해도 된다(공정층도 `Unit`을 말할 수 있다 — 관리계획서가 설비 교체 주기를 말하므로). 그러면 층 하나가 답할 수 없는 것이 셋 생긴다 — 그 셋을 **공통 config 한 파일**에 둔다(`$ONTO_HOME/layers/common.json` · 층 목록에는 안 잡힌다):
+층 config는 **렌즈**다 — 그 층이 쓰는 카테고리를 **자기 정의문으로** 선언한다. 같은 카테고리를 여러 층이 선언해도 된다(불량층과 이슈이력층이 둘 다 `Failure`를 말한다 — **같은 이름이면 층이 달라도 노드 하나**다). 단 골격 카테고리(`Process`·`Unit`)는 골격 층만 선언한다 — 다른 층에는 선언 없이 골격 이름이 붙는다(`골격작성_가이드.md` §3-a 5).
+
+**재사용 규칙 — 새 층의 categories를 쓸 때**: 같은 뜻이면 **기존 이름**을 쓴다(`common.json`의 카테고리 목록이 재사용 목록이다) · 새 이름은 뜻이 다를 때만. 같은 뜻을 다른 이름(`Failure` 대신 `DefectHistory`)으로 선언하면 두 종류로 갈려 층 사이 호환이 끊긴다. 그래서 `bootstrap`은 **없던 카테고리를 더할 때** 그 아래에 기존 카탈로그(카테고리마다 `home` · `used_by` · 선언한 층의 정의문 앞부분)를 보인다 — 표시일 뿐 막지 않는다(같은 뜻인지는 사람이 본다). 그러면 층 하나가 답할 수 없는 것이 셋 생긴다 — 그 셋을 **공통 config 한 파일**에 둔다(`$ONTO_HOME/layers/common.json` · 층 목록에는 안 잡힌다):
 
 ```json
 {"common_version": 1,
  "categories": {
-   "Process":  {"home": "equipment", "also": {"Unit": ["sub", "detail"]}},
-   "Unit":     {"home": "equipment"},
-   "Property": {"home": "process"}},
+   "Process":  {"home": "equipment", "also": {"Unit": ["sub", "detail"]}, "used_by": ["equipment"]},
+   "Unit":     {"home": "equipment", "used_by": ["equipment"]},
+   "Property": {"home": "process", "used_by": ["process"]},
+   "Failure":  {"home": "defect", "used_by": ["defect", "issue"]}},
  "canonical_scope": {"bind_categories": ["Property", "Unit"], "sep": "::"}}
 ```
 
@@ -54,6 +57,7 @@
 |---|---|---|
 | `home` | **집** — 그 카테고리의 노드가 사는 층. 어느 층 문서가 말하든 table·prose 모두 집 그래프에서 매칭·생성한다(같은 뜻이면 노드 하나). 좌표 층 = `Process`의 집 | 해소 · 좌표 층 · `doctor` 첫 줄 |
 | `also` | **겸** — 「그 단(`main`·`sub`·`detail`)의 이 카테고리 노드는 저 카테고리이기도 하다」. 노드에 저장하지 않고 계산한다(고치면 바로 따라온다) | 매칭 후보 · 삼항 게이트 · 자기 좌표 규칙 · 추출 어휘 한 줄 · `show node`의 「겸 Unit」 |
+| `used_by` | **쓰는 층** — 그 카테고리를 `categories`에 선언한 층 전부. `bootstrap`이 층 config에서 적는다(사람이 관리하지 않는다 · 손으로 고쳐도 되돌린다). 결과 기록이라 판정(집·제거·겹침)은 이것을 읽지 않는다 | 공통 config 하나로 「누가 무엇을 쓰나」를 본다 · 새 카테고리 경고 |
 | `canonical_scope` | 이름 규칙(좌표 스코프) — **여기 한 곳**. 층 config에 남아 있으면 `bootstrap`이 거부한다 | 키 조립 · 매칭 · 이관 연쇄 |
 
 정의문은 여기 두지 않는다 — 정의문은 층의 렌즈(층 config `categories`의 값)다. 스키마의 `target_layer`는 있으면 그 카테고리의 집과 같아야 한다(다르면 등록 관문 G4C FAIL).
@@ -222,7 +226,7 @@
 
 **양식을 프롬프트에 베껴 쓰지 않는다.** 자산이 정본이므로(README 「복제 금지」), 기존 층의 **실물 파일을 그대로 첨부**하고 그 구조를 따르게 한다. 프롬프트에 양식을 적으면 자산과 어긋나는 순간 프롬프트가 자산을 이기게 되고, 그것이 이미 세 번 실측된 실패다.
 
-**붙일 것 넷** (전부 레포에 있다):
+**붙일 것 다섯** (전부 레포·상태 루트에 있다):
 
 | # | 파일 | 왜 |
 |---|---|---|
@@ -230,6 +234,7 @@
 | 2 | `layers/quality/config.json` (문법 키 16종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(polarity·skeleton_version 없음)를 실물로 보여준다 |
 | 3 | 새 층의 **골격 seed** (이미 만든 것) | 카테고리·관계가 골격과 맞아야 한다 |
 | 4 | 새 층의 **대표 문서 1~2부** | 무엇을 담는 층인지의 실체 |
+| 5 | `$ONTO_HOME/layers/common.json` | **재사용 목록** — 이미 있는 카테고리(`used_by`로 누가 쓰는지까지). 같은 뜻이면 그 이름을 쓰게 한다 |
 
 ```
 당신은 지식 그래프 층의 config.json을 만든다. 출력은 JSON 하나뿐이다.
