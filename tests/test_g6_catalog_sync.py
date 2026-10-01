@@ -15,6 +15,8 @@
   B93 골격 카테고리의 집은 골격 층(겹쳐 선언해도 자동 · 빈칸은 채움 · --dry-run 쓰기 0) ·
       두 층 골격이 같은 카테고리 / 채운 집 ≠ 골격 층은 첫 실행에서 멈춤(그래프 쓰기 0) ·
       겸 상태 세 갈래 표시(종료 코드 0 · doctor 같은 상태)
+  B95 골격 카테고리의 어긋난 집은 옛 집 그래프에 노드 0이면 자동 교정(있으면 노드 수 문면으로 멈춤) ·
+      새 카테고리 경고에 이름 규칙 줄(적용·미적용)
 """
 from __future__ import annotations
 
@@ -175,15 +177,43 @@ _rc, _o = _boot()
 show("ⓒ 두 층의 골격이 같은 카테고리면 멈춘다",
      _rc != 0 and "함께 가진다" in _o and "두 벌" in _o,
      [l for l in _o.splitlines() if "함께 가진다" in l][:1])
+# **채운 집 ≠ 골격 층**(B93 ⓓ → B95 ①) — 사내 첫 적용 모양: 골격을 다른 층 폴더로 옮겼는데 공통
+# config는 옛 집을 가리킨다. 옛 집 그래프에 노드가 0이면 자동 교정 · 있으면 멈춘다(기대 변경 · B95).
+EQ = "b95eq"
+
+
+def _move_skeleton():
+    """골격을 새 층 `b95eq`로 옮긴다(창작) — 공정층 config는 골격 선언을 잃는다."""
+    shutil.copytree(_P.layers("process"), _P.layers(EQ))
+    _rw(_P.layers(EQ, "config.json"), lambda c: c.update(layer=EQ))
+    _rw(_P.layers("process", "config.json"), lambda c: c.pop("skeleton")
+        or c["categories"].pop("Process"))
+
+
+print("\n■ B95 ① 골격 카테고리의 어긋난 집 — 노드 0이면 자동 교정")
 init.init(fresh_=True)
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Process="공정(렌즈)"))
-_rw(_P.common(), lambda c: c["categories"]["Process"].update(home="quality"))
+_move_skeleton()
+_v0, _l0 = _common()["common_version"], len(_logs())
+_rcd, _od = _boot("--dry-run")
+_dry_same = _common()["common_version"] == _v0
 _rc, _o = _boot()
-_pn = sum(1 for n in open_graph("process").nodes.values() if n.get("category") == "Process") \
-    + sum(1 for n in open_graph("quality").nodes.values() if n.get("category") == "Process")
-show("ⓓ 채운 home ≠ 골격 층이면 **첫 실행에서** 멈춘다 — 그래프 쓰기 0 · 문면이 원인(골격 층)을 말한다",
-     _rc != 0 and "골격은 process에 있다" in _o and "바꿨지만" not in _o and _pn == 0,
+show("ⓐ 채운 집 ≠ 골격 층 · 옛 집 그래프에 노드 0 → 자동 교정 · 판 +1 · 로그 · 종료 코드 0 (ⓒ --dry-run은 계획만)",
+     _rc == 0 and _common()["categories"]["Process"]["home"] == EQ
+     and _common()["common_version"] == _v0 + 1 and f"home process → {EQ}" in _o
+     and f"Process home process → {EQ}" in _logs()[_l0:]
+     and _rcd == 0 and _dry_same and f"home process → {EQ}" in _od,
+     [l for l in _o.splitlines() if "→" in l and "home" in l][:1])
+shutil.rmtree(_P.layers(EQ), ignore_errors=True)
+init.init(fresh_=True)
+_boot()                                            # 골격 노드가 process 그래프에 심긴다
+_move_skeleton()
+_rc, _o = _boot()
+_eq_nodes = len(open_graph(EQ).nodes)
+show("ⓑ 옛 집 그래프에 그 카테고리 노드가 있으면 멈춘다 — 노드 수 문면 · 그래프 쓰기 0",
+     _rc != 0 and "골격은 b95eq에 있다" in _o and "노드" in _o and "재빌드" in _o
+     and _common()["categories"]["Process"]["home"] == "process" and _eq_nodes == 0,
      [l for l in _o.splitlines() if "골격은" in l][:1])
+shutil.rmtree(_P.layers(EQ), ignore_errors=True)
 init.init(fresh_=True)
 
 print("\n■ B93 ③ 겸 상태 — 표시일 뿐(종료 코드 0)")
@@ -250,6 +280,22 @@ show("ⓓ 새 카테고리를 더할 때 기존 카탈로그(home · used_by · 
      _rc == 0 and _rcd == 0 and "새 카테고리 'DefectHistory'" in _o and "같은 뜻의 기존 카테고리" in _o
      and "'Failure' home quality · used_by ['quality']" in _o and "새 카테고리 'DefectHistory'" in _od,
      [l.strip()[:70] for l in _o.splitlines() if "'Failure' home" in l][:1])
+_drop_layer()
+init.init(fresh_=True)
+
+print("\n■ B95 ② 새 카테고리 경고에 이름 규칙 한 줄 — 표시")
+init.init(fresh_=True)
+_boot()
+_rw(_P.common(), lambda c: c["canonical_scope"]["bind_categories"].append("Component"))
+_new_layer({"Component": "구성 부품(창작)", "DefectHistory": "이슈 이력의 결함(창작)"})
+_rcd, _od = _boot("--dry-run")
+_rc, _o = _boot()
+show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 적용(bind_categories 안) · 미적용(기준과 「노드가 생기기 전에」) · 종료 코드 불변 · dry-run 같다",
+     _rc == 0 and _rcd == 0
+     and "이름 규칙: 'Component'는 공정 스코프 적용" in _o
+     and "이름 규칙: 'DefectHistory'는 미적용" in _o and "노드가 생기기 전에 정한다" in _o
+     and "이름 규칙: 'DefectHistory'는 미적용" in _od,
+     [l.strip()[:60] for l in _o.splitlines() if "이름 규칙" in l][:2])
 _drop_layer()
 init.init(fresh_=True)
 

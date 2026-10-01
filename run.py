@@ -84,6 +84,8 @@ def _sync_screen(p):
         print(f"{head} + '{c}' (home {lay} — " + (f"골격이 {lay}에 있다)" if skel else f"{lay}만 선언)"))
     for c, lay in p["fill"]:
         print(f"{head} '{c}' home 빈칸 → {lay} (골격이 {lay}에 있다)")
+    for c, old, lay in p["fix"]:
+        print(f"{head} '{c}' home {old} → {lay} (골격이 {lay}에 있다 · {old} 그래프에 {c} 노드 0)")
     _fresh = [c for c, have, _w in p["used"] if have is None and not p["new"]
               and c not in {x for x, *_ in p["add"] + p["ask"]}]
     if _fresh:
@@ -101,9 +103,9 @@ def _sync_screen(p):
     for c, lays in p["sk_dup"]:
         print(f"{head} [상태] 골격 카테고리 '{c}'를 층 {lays}의 골격이 함께 가진다 — 같은 뜻 노드가 "
               f"두 그래프에 두 벌 생긴다 · 골격은 한 층만 갖는다")
-    for c, home, lay in p["sk_home"]:
-        print(f"{head} [상태] '{c}'의 home은 {home}인데 골격은 {lay}에 있다 — 골격 노드는 {lay} "
-              f"그래프에 심긴다 · home을 {lay}로 고친다")
+    for c, home, lay, n in p["sk_home"]:
+        print(f"{head} [상태] '{c}'의 home은 {home}인데 골격은 {lay}에 있다 — {home} 그래프에 {c} 노드 "
+              f"{n}개가 있다 · 재빌드(init --fresh → bootstrap → 재인입) 또는 골격을 되돌린다")
     for c, lays in p["ask"]:
         print(f"{head} [상태] '{c}' home 빈칸 — 여러 층이 선언했다 {lays} — 그중 하나로 채운다")
     for c, home, n in p["stuck"]:
@@ -135,6 +137,9 @@ def _new_category_warning(p):
         for ln in lines:
             print(f"     {ln}")
             _lg.info("  기존 %s", ln)
+        rule = catalog_sync.scope_line(p, c)               # 이름 규칙 상태 — 표시만 (B95 ②)
+        print(f"     {rule}")
+        _lg.info("  %s", rule)
 
 
 def _catalog_gate(dry_run=False):
