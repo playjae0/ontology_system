@@ -69,6 +69,23 @@ def closed_list(layer=None, path=None):
     return (json.loads(p.read_text(encoding="utf-8")).get(layer) or {}).get("nodes", [])
 
 
+def _fold(s):
+    """라틴 문자만 소문자로 — `core.state.ids.fold_latin`과 같은 규칙(파서는 core를 모른다)."""
+    import unicodedata
+    return "".join(ch.lower() if "LATIN" in unicodedata.name(ch, "") else ch
+                   for ch in " ".join(str(s).split()))
+
+
+def fold_hit(ref, idx):
+    """**2차 대조**(B96 ④) — 정확 일치가 빗나간 표기를 라틴 대소문자 무시로 다시 본다 ·
+    가리키는 노드가 **하나일 때만** 그 노드(둘 이상이면 None — 지금처럼 목록 밖)."""
+    if not ref:
+        return None
+    f = _fold(ref)
+    hit = {id(n): n for k, n in idx.items() if _fold(k) == f}
+    return next(iter(hit.values())) if len(hit) == 1 else None
+
+
 def surfaces(nodes):
     """닫힌 목록의 선택지 — canonical + alias 전량. LLM은 여기서 **고르기만** 한다."""
     out = {}
@@ -122,7 +139,7 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
         r = dict(p)
         if not r.get(ref_field) and r.get("section"):
             hit = [seg.strip() for seg in str(r["section"]).split(sep)
-                   if seg.strip() in idx]
+                   if seg.strip() in idx or fold_hit(seg.strip(), idx) is not None]
             if hit:
                 r[ref_field] = hit[-1]          # 가장 깊은 일치
                 r.setdefault("meta", {})["coord_from_section"] = True
@@ -175,10 +192,11 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
     refs = [(p.get(ref_field) or None) for p in pieces]
-    exact = sum(1 for r in refs if r and r in idx)
+    folded = {r: fold_hit(r, idx) for r in set(refs) if r and r not in idx}   # 2차 (B96 ④)
+    exact = sum(1 for r in refs if r and (r in idx or folded.get(r) is not None))
     misses, miss_rows = [], 0
     for r in refs:
-        if r and r not in idx:
+        if r and r not in idx and folded.get(r) is None:
             miss_rows += 1
             if r not in misses:
                 misses.append(r)
@@ -213,7 +231,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         # 잃고, 조각 공통 층이 계약이 아니라 어댑터별 재량이 된다.
         for k in ("doc_type", "process_group", "process_ref", "electrode_type"):
             r.setdefault(k, doc_type if k == "doc_type" else None)
-        node = idx.get(ref) if ref else None
+        node = (idx.get(ref) or folded.get(ref)) if ref else None
         if ref and node is None and memo.get(ref):
             r[ref_field] = memo[ref]
             node = idx[memo[ref]]

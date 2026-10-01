@@ -349,12 +349,16 @@ def main(args):
     while JSON_FLAG in args:
         args.remove(JSON_FLAG)          # 남으면 질문 문장으로 흘러 들어간다
     question = " ".join(args)
+    from cli import _screen
+    _u0 = gateway.usage_total()
     if want_json:
         print(f"  {gateway.mode_line()}", file=sys.stderr)
         print(json.dumps(as_json(answer(question)), ensure_ascii=False))
+        print(f"  {_screen.usage_line(_u0)}", file=sys.stderr)   # stdout은 묶음 하나뿐
     else:
         print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
         print(generate(answer(question)))
+        print(f"  {_screen.usage_line(_u0)}")      # B96 ③
     return 0
 
 

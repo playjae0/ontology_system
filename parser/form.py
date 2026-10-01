@@ -231,7 +231,14 @@ def _hits(sheet, vocab):
     if not vocab:
         return None
     text = re.sub(r"\s+", " ", " ".join(sheet_lines(sheet)))     # 렌즈 점수와 같은 정규화
-    return sum(1 for w in vocab if w and w in text)
+    low = _fold(text)                         # 2차 — 라틴 대소문자 무시(B96 ④)
+    return sum(1 for w in vocab if w and (w in text or _fold(w) in low))
+
+
+def _fold(s):
+    """라틴 문자만 소문자로 — `core.state.ids.fold_latin`과 같은 규칙(파서는 core를 모른다)."""
+    import unicodedata
+    return "".join(ch.lower() if "LATIN" in unicodedata.name(ch, "") else ch for ch in s)
 
 
 def sheet_table(raw, thresholds=None, vocab=None):

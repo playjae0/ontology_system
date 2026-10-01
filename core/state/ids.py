@@ -60,6 +60,17 @@ def norm(text) -> str:
     return _WS.sub(" ", str(text)).strip()
 
 
+def fold_latin(text) -> str:
+    """**라틴 문자만 소문자로**(B96 ④) — 정확 일치(`norm`)가 빗나갔을 때의 **2차 대조 키**다.
+
+    `norm`은 바꾸지 않는다(문서 id 해시에도 쓰인다 — 소문자화하면 다른 문서가 같은 id를
+    갖는다). 이 키는 저장하지 않고 대조에만 쓴다 · 한글 등 다른 문자는 그대로다.
+    """
+    import unicodedata
+    return "".join(ch.lower() if "LATIN" in unicodedata.name(ch, "") else ch
+                   for ch in norm(text))
+
+
 def _h12(s: str) -> str:
     """절단 12자(48비트). 충돌 공간이 doc_id 하나라 유일성에 충분하다."""
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:12]

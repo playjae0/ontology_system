@@ -112,3 +112,20 @@ def cut(text, n):
             return out + "…"
         out += c
     return out
+
+
+def usage_line(since=None):
+    """**LLM 사용량 한 줄** — LLM을 부를 수 있는 사용자 명령의 끝 줄 문구는 이 함수 하나다(B96 ③).
+
+    `since`는 명령 시작점의 `gateway.usage_total()` — 그 차이를 센다(없으면 프로세스 누계).
+    mock이면 0이다. 수는 게이트웨이 누계 그대로(화면이 제 계산을 하지 않는다).
+    """
+    from core.llm import gateway
+    u = gateway.usage_total()
+    b = since or {}
+
+    def d(k):
+        return int(u.get(k, 0)) - int(b.get(k, 0))
+    return (f"LLM 사용량 — 호출 {d('calls'):,}회 · 토큰 {d('total_tokens'):,}"
+            f"(입력 {d('prompt_tokens'):,} · 출력 {d('completion_tokens'):,})"
+            + (f" · **응답 잘림 {d('truncated')}회**" if d("truncated") else ""))

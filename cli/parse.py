@@ -286,6 +286,8 @@ def cmd_run(args):
         print(f"   report: {json.dumps(res.report, ensure_ascii=False)}")
     if out:
         print(f"   → {out}")
+    from cli import _screen
+    print(f"   {_screen.usage_line()}")                     # 파싱 안 LLM(좌표·그림·규칙) (B96 ③)
     return 0 if res.ok else 1
 
 

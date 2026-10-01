@@ -90,7 +90,10 @@ def main(argv):
     paths = [a for a in argv if not a.startswith("--")]
     if not paths:
         raise SystemExit("계약 JSON 경로를 달라\n" + __doc__)                    # [사용법]
-    return run(paths, force=force)
+    rc = run(paths, force=force)
+    from cli import _screen
+    print(f"   {_screen.usage_line()}")                     # 추출 LLM (B96 ③)
+    return rc
 
 
 if __name__ == "__main__":

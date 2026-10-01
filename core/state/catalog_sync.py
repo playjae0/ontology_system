@@ -190,6 +190,11 @@ def changed(p):
     return p["new"] or bool(p["add"] or p["fill"] or p["fix"] or p["ask"] or p["drop"] or p["used"])
 
 
+def stop_count(p):
+    """멈출 것의 건수 — `--dry-run` 끝 줄이 센다(B96 ①)."""
+    return sum(len(p[k]) for k in ("ask", "stuck", "moved", "sk_dup", "sk_home"))
+
+
 def blocked(p):
     """멈춰야 하나 — 사람이 정할 것(빈칸·노드가 남은 제거·집 변경·골격 모순)이 있으면."""
     return bool(p["ask"] or p["stuck"] or p["moved"] or p["sk_dup"] or p["sk_home"])

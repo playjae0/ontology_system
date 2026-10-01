@@ -18,7 +18,7 @@ doc_type은 「이 문서 종류는 어떤 정보층을 본다」는 층 목록(
 """
 from __future__ import annotations
 
-from core.state.ids import norm
+from core.state.ids import fold_latin, norm
 
 #: 관련성 문턱 — 청크에 그 층 어휘가 **몇 종** 나와야 그 렌즈를 부르나. 창작 기본값이다
 #: (사내 실측으로 `knobs.json`에서 정한다 — [정정] 50). 0이면 거르지 않는다.
@@ -48,7 +48,8 @@ def layer_vocab(layer, cfg, graphs, dictionary):
 def score(text, vocab):
     """관련성 점수 — 청크 본문에 나오는 그 층 어휘의 **종 수**(결정적 · LLM 0)."""
     t = norm(text or "")
-    return sum(1 for s in vocab if s in t)
+    low = fold_latin(t)                      # 2차 — 라틴 대소문자 무시(B96 ④)
+    return sum(1 for s in vocab if s in t or fold_latin(s) in low)
 
 
 def plan(env, lenses, loc2id, cfgs, graphs, dictionary, min_score):

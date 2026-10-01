@@ -29,7 +29,7 @@ from pathlib import Path
 from core import paths
 from core.llm import gateway
 from core.state import log, store
-from core.state.ids import doc_hash, norm
+from core.state.ids import doc_hash, fold_latin, norm
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 EXTRACT_DIR = paths.extract()   # 자리는 core/paths.py가 안다 (B78 1a)
@@ -208,6 +208,12 @@ def attach_candidates(process_ref, layer=None):
                 if norm(n["canonical"]) == key or key in
                 {norm(a) for a in (n.get("aliases") or [])}), None)
     if ref is None:
+        # 2차 — 라틴 대소문자 무시 · 대상이 하나일 때만 (B96 ④)
+        fk = fold_latin(process_ref)
+        hits = [n for n in nodes
+                if fk in {fold_latin(x) for x in [n["canonical"], *(n.get("aliases") or [])]}]
+        ref = hits[0] if len(hits) == 1 else None
+    if ref is None:
         return sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
     out = {ref["canonical"]}
     # 하위 part_of 골격 노드 — 스냅샷의 `parent` 링크로 훑는다(그래프를 읽지 않는다).
@@ -231,9 +237,11 @@ def parent_candidates(chunk, layer=None):
     out = set(attach_candidates(chunk.get("process_ref"), layer))
     snap = (store.read(store.SKELETON_LIST, {}).get(layer or coord_layer()) or {})
     text = norm(chunk.get("text", ""))
+    low = fold_latin(text)                           # 2차 — 라틴 대소문자 무시 (B96 ④)
     for n in snap.get("nodes") or []:
         names = [n["canonical"], *(n.get("aliases") or [])]
-        if any(len(norm(x)) >= 2 and norm(x) in text for x in names if x):
+        if any(len(norm(x)) >= 2 and (norm(x) in text or fold_latin(x) in low)
+               for x in names if x):
             out.add(n["canonical"])
     return sorted(out)
 
