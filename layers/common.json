@@ -2,19 +2,34 @@
   "common_version": 1,
   "categories": {
     "Process": {
-      "home": "process"
+      "home": "process",
+      "used_by": [
+        "process"
+      ]
     },
     "Unit": {
-      "home": "process"
+      "home": "process",
+      "used_by": [
+        "process"
+      ]
     },
     "Property": {
-      "home": "process"
+      "home": "process",
+      "used_by": [
+        "process"
+      ]
     },
     "Failure": {
-      "home": "quality"
+      "home": "quality",
+      "used_by": [
+        "quality"
+      ]
     },
     "FailureEffect": {
-      "home": "quality"
+      "home": "quality",
+      "used_by": [
+        "quality"
+      ]
     }
   },
   "canonical_scope": {

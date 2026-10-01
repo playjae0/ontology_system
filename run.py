@@ -84,8 +84,20 @@ def _sync_screen(p):
         print(f"{head} + '{c}' (home {lay} — " + (f"골격이 {lay}에 있다)" if skel else f"{lay}만 선언)"))
     for c, lay in p["fill"]:
         print(f"{head} '{c}' home 빈칸 → {lay} (골격이 {lay}에 있다)")
+    _fresh = [c for c, have, _w in p["used"] if have is None and not p["new"]
+              and c not in {x for x, *_ in p["add"] + p["ask"]}]
+    if _fresh:
+        print(f"{head} used_by 채움 — {len(_fresh)}개 카테고리에 쓰는 층을 적었다(층 config에서 · "
+              f"사람이 관리하지 않는다)")
+    for c, have, want in p["used"]:
+        if p["new"] or have is None:
+            continue                                   # 새 항목은 + 줄이 말한다
+        plus, minus = sorted(set(want) - set(have or [])), sorted(set(have or []) - set(want))
+        print(f"{head} used_by '{c}'" + "".join(f" + {x}" for x in plus)
+              + "".join(f" − {x}" for x in minus) + " (used_by는 층 config에서 온다)")
     for c in p["drop"]:
         print(f"{head} − '{c}' (어느 층도 선언하지 않고 노드 0)")
+    _new_category_warning(p)
     for c, lays in p["sk_dup"]:
         print(f"{head} [상태] 골격 카테고리 '{c}'를 층 {lays}의 골격이 함께 가진다 — 같은 뜻 노드가 "
               f"두 그래프에 두 벌 생긴다 · 골격은 한 층만 갖는다")
@@ -102,6 +114,27 @@ def _sync_screen(p):
               f"{n}개가 있다 — 재빌드(init --fresh → bootstrap → 재인입) 또는 home을 되돌린다")
     if p["new"] and p["catalog"].get("canonical_scope"):
         print(f"{head} canonical_scope ← 층 config에서 옮김 (층 config에서는 지운다 — 두 곳 0)")
+
+
+def _new_category_warning(p):
+    """**새 카테고리 경고**(B94 ②) — 없던 카테고리를 더할 때 기존 카탈로그를 보인다(표시 · rc 불변).
+
+    같은 뜻을 다른 이름으로 선언하면 두 종류로 갈려 층 사이 호환이 끊긴다 — 사람이 알아챌
+    자리가 여기다. 같은 뜻인지는 사람이 본다(유사도·LLM 판정 0).
+    """
+    from core.state import catalog_sync, log as _log
+    lines = catalog_sync.existing_lines(p)
+    if not lines:
+        return
+    _lg = _log.get("run.bootstrap")
+    for c, lays in catalog_sync.new_categories(p):
+        msg = (f"새 카테고리 '{c}'({', '.join(lays)}) — 같은 뜻의 기존 카테고리가 있으면 그 이름을 "
+               f"쓴다(같은 이름이어야 노드 하나로 모인다):")
+        print(f"[bootstrap] {msg}")
+        _lg.info(msg)
+        for ln in lines:
+            print(f"     {ln}")
+            _lg.info("  기존 %s", ln)
 
 
 def _catalog_gate(dry_run=False):

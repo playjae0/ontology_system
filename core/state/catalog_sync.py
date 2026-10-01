@@ -71,7 +71,7 @@ def plan(configs=None, current=None, counter=count_nodes):
     decl = catalog.declared_by(configs)
     sk = skeleton_layers(configs)
     out = {"new": current is None, "add": [], "fill": [], "ask": [], "drop": [], "stuck": [],
-           "moved": [], "sk_dup": [], "sk_home": []}
+           "moved": [], "sk_dup": [], "sk_home": [], "used": [], "before": current}
     if current is None:                                 # 처음 — 층 선언에서 같은 규칙으로 세운다
         current = catalog.draft(configs)
         current.pop("_빈칸", None)
@@ -122,13 +122,51 @@ def plan(configs=None, current=None, counter=count_nodes):
                 n = counter(lay, c)
                 if n:
                     out["moved"].append((c, home, lay, n))
+    # **쓰는 층(`used_by`)은 결과 기록이다**(B94 ①) — 위 판정은 이것을 읽지 않는다(낡은 값이
+    # 판정을 이기지 않게). 층 config의 선언에서 다시 적는다 · 손으로 고친 값도 되돌린다.
+    for c in sorted(cats):
+        want = list(decl.get(c, []))
+        have = (cats[c] or {}).get("used_by")
+        if have != want:
+            cats[c]["used_by"] = want
+            out["used"].append((c, have, want))
     out["catalog"] = cat
     return out
 
 
+def existing_lines(p, configs=None):
+    """새 카테고리 경고의 재료(B94 ②) — **기존 카탈로그**를 카테고리마다 한 줄:
+    `home` · `used_by` · 선언한 층들의 정의문 앞부분. 처음(기존 없음)이면 빈 목록이다.
+
+    표시일 뿐이다 — 유사도·LLM 판정은 하지 않는다(같은 뜻인지는 사람이 본다).
+    """
+    before = (p.get("before") or {}).get("categories") or {}
+    if p["new"] or not before:
+        return []
+    configs = configs or catalog._layer_configs()
+    decl = catalog.declared_by(configs)
+    out = []
+    for c, v in sorted(before.items()):
+        defs = []
+        for lay in decl.get(c, []):
+            d = ((configs.get(lay) or {}).get("categories") or {}).get(c)
+            if d:
+                defs.append(f"{lay}: {' '.join(str(d).split())[:40]}")
+        out.append(f"'{c}' home {(v or {}).get('home') or '(빈칸)'} · used_by {decl.get(c, [])}"
+                   + (f" — {' / '.join(defs)}" if defs else ""))
+    return out
+
+
+def new_categories(p):
+    """카탈로그에 **없던** 카테고리 — `[(카테고리, 선언한 층들)]`(더함 · 빈칸 더함 · 골격 모두)."""
+    decl = catalog.declared_by()
+    added = [c for c, *_ in p["add"]] + [c for c, _l in p["ask"]]
+    return [(c, decl.get(c, [])) for c in added]
+
+
 def changed(p):
-    """파일에 쓸 변경이 있나 — 처음이거나 더함·채움·빈칸·제거가 있으면."""
-    return p["new"] or bool(p["add"] or p["fill"] or p["ask"] or p["drop"])
+    """파일에 쓸 변경이 있나 — 처음이거나 더함·채움·빈칸·제거·쓰는 층 변경이 있으면."""
+    return p["new"] or bool(p["add"] or p["fill"] or p["ask"] or p["drop"] or p["used"])
 
 
 def blocked(p):
@@ -152,6 +190,12 @@ def apply(p):
         _LOG.info("공통 config %s home 빈칸 → %s (골격이 %s에 있다)", c, lay, lay)
     for c, lays in p["ask"]:
         _LOG.info("공통 config + %s (home 빈칸 — 여러 층이 선언 %s)", c, lays)
+    for c, have, want in p["used"]:
+        if p["new"] or have is None:
+            continue                                   # 새 항목은 위의 + 줄이 말한다
+        plus, minus = sorted(set(want) - set(have or [])), sorted(set(have or []) - set(want))
+        _LOG.info("used_by '%s'%s%s (used_by는 층 config에서 온다)", c,
+                  "".join(f" + {x}" for x in plus), "".join(f" − {x}" for x in minus))
     for c in p["drop"]:
         _LOG.info("공통 config − %s (어느 층도 선언하지 않고 노드 0)", c)
     _LOG.info("공통 config 저장 — v%s · %s", cat.get("common_version"), target)

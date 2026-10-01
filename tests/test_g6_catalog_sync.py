@@ -68,7 +68,7 @@ _l0 = len(_logs())
 _rc, _o = _boot()
 _c1 = _common()
 show("ⓐ 한 층만 선언한 새 카테고리는 자동 추가 — 집 = 그 층 · 판 +1 · 로그에 근거",
-     _rc == 0 and _c1["categories"].get("Gear") == {"home": NEW}
+     _rc == 0 and _c1["categories"].get("Gear", {}).get("home") == NEW
      and _c1["common_version"] == _c0["common_version"] + 1
      and "Gear" in _logs()[_l0:] and f"+ 'Gear' (home {NEW}" in _o,
      [l for l in _o.splitlines() if "공통 config +" in l][:1])
@@ -80,7 +80,7 @@ _new_layer({"Gear": "기어", "Tool": "공구(창작)"})
 _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Tool="공구"))
 _rc, _o = _boot()
 show("ⓑ 여러 층이 함께 선언한 새 카테고리는 집 빈칸 + 멈춤(사람이 고른다)",
-     _rc != 0 and _common()["categories"].get("Tool") == {"home": ""}
+     _rc != 0 and _common()["categories"].get("Tool", {}).get("home") == ""
      and "여러 층이 선언" in _o and "[상태]" in _o,
      [l for l in _o.splitlines() if "Tool" in l][:1])
 
@@ -140,8 +140,8 @@ with tempfile.TemporaryDirectory(prefix="b92_") as _td:
     _rw(_cj, lambda c: c["categories"]["Unit"].update(home="process"))
     _rc2, _o2 = _boot(env=_env)
     show("ⓖ 운영 처음 — common.json을 바로 만든다(한 층 → 그 층 · 겹침 → 빈칸 + 멈춤) · 초안 파일 0 · 채우면 선다",
-         _rc1 != 0 and _d.get("categories", {}).get("Unit") == {"home": ""}
-         and _d["categories"]["Process"] == {"home": "process"}
+         _rc1 != 0 and _d.get("categories", {}).get("Unit", {}).get("home") == ""
+         and _d["categories"]["Process"]["home"] == "process"
          and not (_r / "layers" / "common.draft.json").exists() and _rc2 == 0,
          _o1.strip().splitlines()[0][:90] if _o1.strip() else "")
 
@@ -152,7 +152,7 @@ _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Proces
 _rw(_P.common(), lambda c: c["categories"].pop("Process"))
 _rc, _o = _boot()
 show("ⓐ 두 층이 골격 카테고리를 함께 선언해도 집 = 골격 층 자동(빈칸·멈춤 0)",
-     _rc == 0 and _common()["categories"].get("Process") == {"home": "process"}
+     _rc == 0 and _common()["categories"].get("Process", {}).get("home") == "process"
      and "골격이 process에 있다" in _o and "빈칸" not in _o,
      [l for l in _o.splitlines() if "'Process'" in l][:1])
 _rw(_P.common(), lambda c: c["categories"]["Process"].update(home=""))
@@ -200,6 +200,91 @@ show("ⓕ 겸 상태 세 갈래 — 꺼짐(겸 없음) · 켜짐(겸 + 겸 단 �
      and "⚠ 골격 'FailureEffect'(quality)" in _o_on and "별칭 0" in _o_on
      and "겸 Unit(sub·detail) · 겸 단 별칭" in _dq and "별칭 0" in _dq,
      [l for l in _o_on.splitlines() if "골격 '" in l][:2])
+init.init(fresh_=True)
+
+# ────────────────────────────────────────────────────────────── B94
+print("\n■ B94 ① 쓰는 층(used_by) — 결과 기록 · 사람이 관리하지 않는다")
+from core.build import ledger as _LG       # noqa: E402
+from core.build import extract as _EX      # noqa: E402
+init.init(fresh_=True)
+_decl0 = catalog.declared_by()
+_ub0 = {c: v.get("used_by") for c, v in _common()["categories"].items()}
+_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Property="품질 인자(창작)"))
+_v0, _l0 = _common()["common_version"], len(_logs())
+_rc, _o = _boot()
+_ub1 = _common()["categories"]["Property"].get("used_by")
+_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].pop("Property"))
+_rc2, _o2 = _boot()
+show("ⓐ used_by = 층 config의 선언(처음 · 선언 추가/삭제마다) · 판 +1 · 로그",
+     all(_ub0[c] == _decl0[c] for c in _decl0)
+     and _rc == 0 and _ub1 == ["process", "quality"] and _common()["common_version"] >= _v0 + 2
+     and _common()["categories"]["Property"]["used_by"] == ["process"]
+     and "used_by 'Property' + quality" in _o and "used_by 'Property' − quality" in _o2
+     and "used_by 'Property'" in _logs()[_l0:],
+     [l for l in _o.splitlines() if "used_by" in l][:1])
+_rw(_P.common(), lambda c: c["categories"]["Failure"].update(used_by=["process", "엉뚱한층"])
+    or c["categories"]["Unit"].update(used_by=[]))
+_rc, _o = _boot()
+show("ⓑ 손으로 고친 used_by는 다음 bootstrap이 층 config 값으로 되돌린다(로그)",
+     _rc == 0 and _common()["categories"]["Failure"]["used_by"] == ["quality"]
+     and _common()["categories"]["Unit"]["used_by"] == ["process"] and "층 config에서 온다" in _o,
+     [l for l in _o.splitlines() if "used_by" in l][:2])
+_cur = _common()
+_cur["categories"]["Failure"]["used_by"] = ["process"]          # 틀린 기록
+_cur["categories"]["Tool"] = {"home": "quality", "used_by": ["quality", "process"]}  # 선언 0 · 노드 0
+from core.state import catalog_sync as _CS    # noqa: E402
+_pl = _CS.plan(current=_cur)
+_pl_ok = _CS.plan(current={**_cur, "categories": {k: dict(v, used_by=_decl0.get(k, []))
+                                                  for k, v in _cur["categories"].items()}})
+show("ⓒ 판정은 used_by를 읽지 않는다 — 틀린 used_by여도 집·제거·멈춤 결과가 같다",
+     _pl["drop"] == _pl_ok["drop"] == ["Tool"] and _pl["ask"] == _pl_ok["ask"] == []
+     and {c: v["home"] for c, v in _pl["catalog"]["categories"].items()}
+     == {c: v["home"] for c, v in _pl_ok["catalog"]["categories"].items()},
+     str(_pl["drop"]))
+
+print("\n■ B94 ② 새 카테고리 경고 — 기존 카탈로그를 보인다(표시)")
+_new_layer({"DefectHistory": "이슈 이력의 결함(창작)"})
+_rcd, _od = _boot("--dry-run")
+_rc, _o = _boot()
+show("ⓓ 새 카테고리를 더할 때 기존 카탈로그(home · used_by · 정의문 앞부분)가 나온다 · 종료 코드 불변",
+     _rc == 0 and _rcd == 0 and "새 카테고리 'DefectHistory'" in _o and "같은 뜻의 기존 카테고리" in _o
+     and "'Failure' home quality · used_by ['quality']" in _o and "새 카테고리 'DefectHistory'" in _od,
+     [l.strip()[:70] for l in _o.splitlines() if "'Failure' home" in l][:1])
+_drop_layer()
+init.init(fresh_=True)
+
+print("\n■ B94 ③ 골격 카테고리 개체는 조회 전용")
+_boot()
+_real = _EX._candidates_for
+
+
+def _stub94(cid, chunk, cfg, vocab):
+    return {"chunk_id": cid, "relations": [], "attach": [], "entities": [
+        {"surface": "골격에없는공정", "category": "Process"},
+        {"surface": "NC", "category": "Process"},                 # 골격 별칭(노칭)
+        {"surface": "새 관리 인자", "category": "Property"}]}
+
+
+_EX._candidates_for = _stub94
+try:
+    _pg0 = {n["canonical"] for n in open_graph("process").nodes.values()}
+    run_document(dict(PROSE, doc_type="ppt_process", doc_id="X94", chunks=[
+        dict(C1, source_locator="X94-C001", text="골격에없는공정과 NC와 새 관리 인자.")]))
+finally:
+    _EX._candidates_for = _real
+_pg = open_graph("process")
+_new = {n["canonical"] for n in _pg.nodes.values()} - _pg0
+_q94 = [x for x in store.read(store.QUEUE, []) if x["doc_id"] == "X94" and x["kind"] == "orphan_anchor"]
+_rows = (_LG.read("X94") or {}).get("rows") or []
+show("ⓔ 골격 카테고리로 뽑힌 골격 밖 이름 → 노드 0 · 큐 orphan_anchor +1 · 대장 행(orphan)",
+     not any("골격에없는공정" in c for c in _new) and len(_q94) == 1
+     and any(r.get("surface") == "골격에없는공정" and r.get("verdict") == "orphan" for r in _rows),
+     f"새 노드 {sorted(_new)} · 큐 {[x['payload'].get('key') for x in _q94]}")
+_nc = [r for r in _rows if r.get("surface") == "NC"]
+show("ⓕ 골격 별칭이면 매칭(노드 0) · 골격이 아닌 카테고리의 신규는 그대로",
+     _nc and _nc[0].get("verdict") == "match" and (_pg.get(_nc[0]["node_id"]) or {}).get("canonical") == "노칭"
+     and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 1,
+     f"NC → {(_pg.get((_nc or [{}])[0].get('node_id')) or {}).get('canonical')} · 새 {sorted(_new)}")
 init.init(fresh_=True)
 
 done()

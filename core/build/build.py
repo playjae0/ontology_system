@@ -448,6 +448,8 @@ class Builder:
             self.buffer[norm(surface)] = nid
             self.last["node_id"] = nid
             return nid
+        if self._skeleton_category(category):
+            return self._skeleton_miss(surface, category, canonical, prov, verdict)
 
         extra = {"_scoped": True} if scoped and self.cfg.get("canonical_scope", {}) \
             .get("bind_categories", []).count(category) else {}
@@ -471,6 +473,30 @@ class Builder:
         self.buffer[norm(surface)] = nid
         self.last["node_id"] = nid
         return nid
+
+    def _skeleton_category(self, category):
+        """골격 카테고리인가(B94 ③) — 층 config `skeleton.category`(tree·flat). 빌더당 한 번 센다."""
+        if not hasattr(self, "_sk_cats"):
+            from core.state.catalog_sync import skeleton_layers
+            self._sk_cats = set(skeleton_layers())
+        return category in self._sk_cats
+
+    def _skeleton_miss(self, surface, category, canonical, prov, verdict):
+        """**골격 카테고리 개체는 조회 전용**(B94 ③) — 매칭이 아니면 노드를 만들지 않는다.
+
+        골격은 사람이 만든다 — 골격 카테고리로 뽑힌 이름이 골격(사전·별칭)에 없으면 신규·불확실
+        갈래로 골격 밖 노드를 세우지 않고 `orphan_anchor`(골격 닫힌 목록 밖 표기 — 좌표 미해소와
+        같은 사건)로 큐에 둔다. 골격 `ALIASES`가 생기면 재시도·재인입이 붙인다.
+        """
+        reason = (f"골격 카테고리 '{category}'로 뽑힌 '{surface}'가 골격에 없다 — 노드를 만들지 "
+                  f"않는다(골격은 사람이 만든다 · 같은 것이면 골격 ALIASES에)")
+        store.enqueue_rows("orphan_anchor", reason, self.doc_id, norm(surface),
+                           {"surface": surface, "category": category, "provenance": prov,
+                            "role": "entity", "verdict": verdict},
+                           locator=(prov or "").split("#")[-1] or None)
+        self.last.update(verdict="orphan", queue_kind="orphan_anchor", node_id=None,
+                         canonical=canonical)
+        return None
 
     # ---------------------------------------------------------------- attribute
     def put_attribute(self, node_id, name, value, context, prov, contextual):
