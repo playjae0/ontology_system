@@ -348,7 +348,7 @@ def h_entity(value, spec, ctx):
 
 
 _VERDICT = {"match": "match", "new": "new", "uncertain": "uncertain",
-            "gate_reject": "gate_reject"}
+            "gate_reject": "gate_reject", "orphan": "orphan"}   # orphan — 골격 밖 골격 카테고리 (B94 ③)
 
 
 def _ledger_entity(st, surface, layer, last):
