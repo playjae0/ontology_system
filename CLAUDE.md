@@ -85,7 +85,8 @@
   산다**(B79 — 레포 `layers/`는 mock 기본 seed일 뿐 · `USE_MOCK=0`에서 없으면 상태 거부).
   **좌표 층은 층 공통 config(`layers/common.json`)에서 `Process`의 집이지 폴더 `process`가 아니다**(B85 · B90) — 답하는 자리는
   `core/state/bootstrap.coord_layer()` 하나 · 층 이름을 코드에 박지 않는다(회귀가 `"process"` grep으로 잰다).
-  **카테고리의 집·겸·이름 규칙은 공통 config 한 곳이다**(B90 — 층 config의 `categories`는 렌즈 · 겹쳐 선언해도 노드는 집 하나 · table·prose 한 길로 집에서 해소).
+  **카테고리의 집·겸·이름 규칙은 공통 config 한 곳이다**(B90 — 층 config의 `categories`는 렌즈 · 겹쳐 선언해도 노드는 집 하나 · table·prose 한 길로 집에서 해소)
+  — 카탈로그는 `bootstrap`이 층 config에서 맞춘다: 한 층만 선언한 것은 자동 · 겹친 카테고리의 집 · 겸 · 이미 정한 값의 변경은 사람(B92 · `--dry-run`).
   **사내가 조정하는 값은 상태 루트 `knobs.json`(닫힌 목록 · 기본값 = 코드 상수 · 기록에 값과 출처)** — 코드 상수를 사내에서 고치지 않는다(B91).
   **레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지
   않는다** — `doctor`가 `자산_해시.json`과 대조해 다르면 ⚠ · 갱신은 구현 세션이 회차마다 `--write`.
