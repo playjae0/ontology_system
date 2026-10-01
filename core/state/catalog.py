@@ -18,8 +18,10 @@
 **코드에 층 어휘 0** — 어느 카테고리가 어느 층 집인지, 무엇이 무엇의 겸인지는 전부 이
 파일의 값이다. 정의문은 여기 두지 않는다(정의문은 층의 렌즈 — 층 config `categories`).
 
-**없으면**: 운영(`USE_MOCK=0`)은 `bootstrap`이 **초안을 만들어 보이고 멈춘다**
-(`common.draft.json` — 자동 채택 0). mock은 층 선언에서 그 자리에서 세운다 — 한 층만
+**맞추기는 `bootstrap`이 한다**(B92 · `core/state/catalog_sync.py`): 층 config에서 결정적으로
+따라 나오는 줄(한 층만 선언한 카테고리의 집 · 선언도 노드도 없는 카테고리의 제거)은 자동이고,
+파일이 없으면(운영) 같은 규칙으로 바로 만든다 — 여러 층이 선언한 카테고리의 집은 빈칸으로
+두고 멈춘다(사람이 고른다). mock 루트에 파일이 없으면 층 선언에서 그 자리에서 세운다 — 한 층만
 선언한 카테고리만 있을 때만(겹치면 멈춘다 — 집을 추측하지 않는다).
 """
 from __future__ import annotations
@@ -58,7 +60,7 @@ def declared_by(configs=None):
 
 
 def draft(configs=None):
-    """초안 — 한 층만 선언한 카테고리는 그 층이 집 · 여럿이면 **빈칸**(사람이 채운다).
+    """층 선언에서 세운 카탈로그 — 한 층만 선언한 카테고리는 그 층이 집 · 여럿이면 **빈칸**(사람이 채운다).
 
     `canonical_scope`는 층 config에서 옮긴다(여러 층이 서로 다르게 갖고 있으면 첫 것 +
     `_canonical_scope_note`에 사실을 적는다 — 고르지 않는다).
@@ -83,7 +85,7 @@ def draft(configs=None):
 
 
 def load():
-    """카탈로그(dict). 운영에서 파일이 없으면 `CatalogError` — `bootstrap`이 초안을 낸다."""
+    """카탈로그(dict). 운영에서 파일이 없으면 `CatalogError` — `bootstrap`이 만든다."""
     from router import discover
     p = paths.common()
     key = (str(p), p.stat().st_mtime_ns if p.exists() else None, tuple(discover()))
@@ -100,8 +102,8 @@ def load():
     else:
         raise CatalogError(
             f"[상태] 층 공통 config가 없다 — {p}\n"
-            f"  ▶ 다음 줄: python run.py bootstrap   (초안 {paths.common(draft=True).name}을 "
-            f"만들어 보이고 멈춘다)")
+            f"  ▶ 다음 줄: python run.py bootstrap   (층 config에서 만든다 — 여러 층이 "
+            f"선언한 카테고리의 집은 사람이 채운다)")
     _CACHE.clear()
     _CACHE[key] = cat
     return cat
@@ -181,7 +183,7 @@ def problems(configs=None):
     for c, lays in sorted(decl.items()):
         if c not in cats:
             out.append(("ⓑ", f"층 {lays}의 카테고리 '{c}'가 공통 config에 없다 — "
-                             f"\"{c}\": {{\"home\": \"<층>\"}}를 더한다"))
+                             f"python run.py bootstrap이 맞춘다(한 층이면 자동 · 여럿이면 집을 묻는다)"))
     for c, v in sorted(cats.items()):
         h = (v or {}).get("home")
         if not h:
@@ -219,15 +221,3 @@ def warnings():
                            f"집 그래프 안만 본다: '{other}' 판정({ho})에서 '{c}' 노드({hc})는 겸 후보가 "
                            f"되지 않는다(이 구성에서는 겸 매칭이 조용히 빠진다)")
     return out
-
-
-def write_draft():
-    """초안을 쓴다 — **이미 있으면 덮지 않는다**(사람이 채우는 중일 수 있다). `(경로, 새로 썼나)`."""
-    p = paths.common(draft=True)
-    if p.exists():
-        return p, False
-    from core.state import store
-    paths.ensure(p)
-    store.atomic_write_bytes(p, (json.dumps(draft(), ensure_ascii=False, indent=2)
-                                 + "\n").encode("utf-8"))
-    return p, True
