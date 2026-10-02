@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g6_common import *          # noqa: F401,F403 — 바닥은 하나다
 from g6_common import (_P, _ingest, _register, _run, _unregister, done, json,   # noqa: F401
-                       store)
+                       open_graph, store)
 from cli import _screen                     # noqa: E402
 from cli.ingest_screen import extract_screen  # noqa: E402
 from core.build import extract as EX        # noqa: E402
@@ -143,15 +143,21 @@ show("ⓔ 재사용 조건(어댑터 판)이 다르면 부분 파일을 버리�
 EX._candidates_for = _orig
 
 print("\n■ B97 ④ --step 산문 관문")
+
+
+def _graph():
+    """그래프 스냅샷 — 경계(GraphStore)를 지나 읽는다."""
+    g = open_graph("process")
+    return json.dumps([g.nodes, g.edges], sort_keys=True, default=str)
+
+
 EX.invalidate("RFQ01")
 _o1 = _ingest("--sheets", "auto", "--step", answers="c\nc\nc\nq\n")
 _ck1 = EX.has_checkpoint("RFQ01")
 _q0 = json.dumps(store.read(store.QUEUE, []), sort_keys=True)
-_g0 = _P.data("process", "graph.json").read_bytes() if _P.data("process", "graph.json").exists() else b""
+_g0 = _graph()
 _o2 = _ingest("--sheets", "auto", "--step", answers="c\nc\nc\nc\nq\n")
-_same = (json.dumps(store.read(store.QUEUE, []), sort_keys=True) == _q0
-         and (_P.data("process", "graph.json").read_bytes()
-              if _P.data("process", "graph.json").exists() else b"") == _g0)
+_same = (json.dumps(store.read(store.QUEUE, []), sort_keys=True) == _q0 and _graph() == _g0)
 _o3 = _ingest("--sheets", "auto")
 _o4 = _run("ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp",
            "--allow-mock", "--step", answers="c\nc\nc\nq\n")
