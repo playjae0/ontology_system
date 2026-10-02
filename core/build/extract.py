@@ -29,7 +29,7 @@ from pathlib import Path
 from core import paths
 from core.llm import gateway
 from core.state import log, store
-from core.state.ids import doc_hash, norm
+from core.state.ids import doc_hash, fold_latin, norm
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 EXTRACT_DIR = paths.extract()   # 자리는 core/paths.py가 안다 (B78 1a)
@@ -105,13 +105,70 @@ def reuse_check(env, lens=None):
 
 
 def invalidate(doc_id, lens=None):
-    """재인입 — 청크가 바뀌었으므로 체크포인트를 버린다 (규약 7). 렌즈를 안 주면 렌즈 판도 전부."""
-    p = checkpoint_path(doc_id, lens)
-    if p.exists():
-        p.unlink()
+    """재인입 — 청크가 바뀌었으므로 체크포인트를 버린다 (규약 7). 렌즈를 안 주면 렌즈 판도 전부.
+    부분 파일(B97 ③)도 같이 버린다 — 바뀐 청크에 옛 청크의 후보를 이어 붙이지 않는다."""
+    for p in (checkpoint_path(doc_id, lens), partial_path(doc_id, lens)):
+        if p.exists():
+            p.unlink()
     if lens is None and EXTRACT_DIR.exists():
-        for q in EXTRACT_DIR.glob(f"{doc_id}@*.json"):
-            q.unlink()
+        for pat in (f"{doc_id}@*.json", f"{doc_id}@*.partial.jsonl"):
+            for q in EXTRACT_DIR.glob(pat):
+                q.unlink()
+
+
+# ---------------------------------------------------------------- 이어 쓰기 (B97 ③)
+def partial_path(doc_id, lens=None):
+    """이어 쓰기 **부분 파일** — 최종 체크포인트와 **다른 이름**이다(「파일 존재 = 추출 완료」 불변).
+
+    확장자가 `.jsonl`이라 체크포인트를 찾는 glob(`*@*.json` · `<doc>@*.json`)에 걸리지 않는다.
+    첫 줄은 재사용 조건(문서 해시 · 어댑터 판 · 렌즈), 다음 줄부터 끝난 청크 하나씩이다.
+    """
+    return EXTRACT_DIR / (f"{doc_id}@{lens}.partial.jsonl" if lens
+                          else f"{doc_id}.partial.jsonl")
+
+
+def _partial_key(env, lens):
+    return {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
+            "lens": lens}
+
+
+def _partial_load(env, lens):
+    """끝난 청크 `{chunk_id: 후보}` — 조건이 다르면 **버리고** 로그 한 줄(빈 dict).
+
+    줄 단위 덧붙임이라 쓰다 끊긴 마지막 줄은 읽지 못한다 — 그 청크는 다시 부른다
+    (반쯤 쓰인 후보를 쓰지 않는다 · 원자 단위가 줄이다).
+    """
+    p = partial_path(env["doc_id"], lens)
+    if not p.exists():
+        return {}
+    lines = p.read_text(encoding="utf-8").splitlines()
+    try:
+        head = json.loads(lines[0]) if lines else None
+    except ValueError:
+        head = None
+    if head != _partial_key(env, lens):
+        _LOG.info("extract: %s 부분 파일 폐기 — 재사용 조건(문서 해시·어댑터 판·렌즈) 불일치",
+                  env["doc_id"])
+        p.unlink()
+        return {}
+    done = {}
+    for ln in lines[1:]:
+        try:
+            e = json.loads(ln)
+        except ValueError:
+            break
+        done[e["chunk_id"]] = e
+    return done
+
+
+def _partial_append(env, lens, entry):
+    """끝난 청크 하나를 줄로 덧붙인다 — flush + fsync(끊겨도 앞 줄은 남는다)."""
+    p = paths.ensure(partial_path(env["doc_id"], lens))
+    head = "" if p.exists() else json.dumps(_partial_key(env, lens), ensure_ascii=False) + "\n"
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(head + json.dumps(entry, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 # ---------------------------------------------------------------- USE_MOCK
@@ -208,6 +265,12 @@ def attach_candidates(process_ref, layer=None):
                 if norm(n["canonical"]) == key or key in
                 {norm(a) for a in (n.get("aliases") or [])}), None)
     if ref is None:
+        # 2차 — 라틴 대소문자 무시 · 대상이 하나일 때만 (B96 ④)
+        fk = fold_latin(process_ref)
+        hits = [n for n in nodes
+                if fk in {fold_latin(x) for x in [n["canonical"], *(n.get("aliases") or [])]}]
+        ref = hits[0] if len(hits) == 1 else None
+    if ref is None:
         return sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
     out = {ref["canonical"]}
     # 하위 part_of 골격 노드 — 스냅샷의 `parent` 링크로 훑는다(그래프를 읽지 않는다).
@@ -231,9 +294,11 @@ def parent_candidates(chunk, layer=None):
     out = set(attach_candidates(chunk.get("process_ref"), layer))
     snap = (store.read(store.SKELETON_LIST, {}).get(layer or coord_layer()) or {})
     text = norm(chunk.get("text", ""))
+    low = fold_latin(text)                           # 2차 — 라틴 대소문자 무시 (B96 ④)
     for n in snap.get("nodes") or []:
         names = [n["canonical"], *(n.get("aliases") or [])]
-        if any(len(norm(x)) >= 2 and norm(x) in text for x in names if x):
+        if any(len(norm(x)) >= 2 and (norm(x) in text or fold_latin(x) in low)
+               for x in names if x):
             out.add(n["canonical"])
     return sorted(out)
 
@@ -357,33 +422,37 @@ def _load_hints(doc_id):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
-def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=()):
-    """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
+def _chunk_info(entry, i, m, locator, tokens, lens):
+    """청크 하나의 화면 재료 — 개체는 **전부**(표기·카테고리) · 관계·부착·부모는 수 (B97 ②)."""
+    ents = entry.get("entities") or []
+    return {"단계": "추출청크", "렌즈": lens, "i": i, "m": m, "locator": locator,
+            "개체": [(e.get("surface"), e.get("category")) for e in ents],
+            "관계": len(entry.get("relations") or []), "부착": len(entry.get("attach") or []),
+            "부모": sum(1 for e in ents if e.get("parent")), "토큰": tokens,
+            "실패": entry.get("failed")}
 
-    **실패의 처분은 청크 단위다**(문서 4 §4.10 규약 9). 한 청크의 예외가 문서
-    전체를 중단시키면, 3천 청크짜리 문서가 한 줄 때문에 통째로 안 들어간다.
-    실패한 청크는 `{"chunk_id":…, "failed":"사유"}`로 **체크포인트에 남겨**
-    무후보(`entities: []`)와 구분하고, 구축은 그 청크만 건너뛴다.
 
-    처분 급은 **큐가 아니라 결함 로그**다 — 사람이 처리할 항목이 아니라 관측
-    신호이고, 새 큐 kind를 만들지 않는다(닫힌 20종).
+def _call_chunk(doc_id, cid, c, cfg, vocab, hints):
+    """청크 1개의 후보 — 실패는 청크 단위로 남긴다(문서 4 §4.10 규약 9)."""
+    try:
+        if hints and c.get("source_locator") in hints:
+            h = hints[c["source_locator"]]
+            ents, extra = _optional(h)
+            return {"chunk_id": cid, "entities": ents, "relations": h.get("relations", []),
+                    "attach": h.get("attach", []), **extra}
+        return _candidates_for(cid, c, cfg, vocab)
+    except Exception as e:                              # noqa: BLE001
+        # **무후보와 구분한다** — `entities: []`는 「봤는데 없었다」이고 `failed`는
+        # 「보지 못했다」다. 둘을 같은 모양으로 두면 구축이 「후보 0건인 청크」로 세어
+        # 결함이 통계에 녹는다.
+        why = f"{type(e).__name__}: {e}"
+        store.append_defect(f"{doc_id}: 추출 실패 {cid} — {why}")
+        return {"chunk_id": cid, "failed": why, "entities": [], "relations": [], "attach": []}
 
-    **전 청크가 실패하면 체크포인트를 쓰지 않는다** — 「파일 존재 = 추출 완료」가
-    계약이므로(P-1), 아무것도 못 뽑은 상태를 완료로 남기면 재시도가 영영 막힌다.
-    """
-    doc_id = env["doc_id"]
-    ok, why = reuse_check(env, lens)             # doc_hash + adapter_version (B78 1b)
-    if ok:
-        return json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8")), False
-    if has_checkpoint(doc_id, lens):
-        # **조용히 옛 판을 쓰지 않는다** — 조건이 깨졌으면 버리고 다시 뽑는다.
-        _LOG.info("extract: %s 체크포인트 폐기 — %s", doc_id, why)
-        checkpoint_path(doc_id, lens).unlink()
 
-    hints = _load_hints(doc_id)
-    candidates = []
-    failed = 0
-    ref_skipped = lens_skipped = 0
+def _todo(env, chunk_ids_by_locator, skip, done):
+    """부를 청크와 건너뛸 청크를 **부르기 전에** 가른다 — 예고와 루프가 같은 표를 쓴다."""
+    rows, ref, lens_sk, resumed = [], 0, 0, 0
     for c in env.get("chunks", []):
         cid = chunk_ids_by_locator.get(c.get("source_locator"))
         if cid is None:
@@ -391,45 +460,105 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=()):
         # **관련성 거름으로 건너뛴 청크**(B91 ① — 렌즈가 둘 이상일 때만 · LLM 0) — 이 렌즈에서
         # 무후보다. 건너뛴 수는 체크포인트에 남는다(렌즈별 호출 분포의 재료).
         if cid in skip:
-            lens_skipped += 1
+            lens_sk += 1
+            rows.append(("skip", cid, c))
+        # **참조 시트의 청크는 부르지 않는다**(B83 ④) — 청크 자체는 남아 있다
+        # (`chunks.json` · `linked=false` · 열람·bm25에는 보인다).
+        elif (c.get("meta") or {}).get("sheet_role") == "ref":
+            ref += 1
+        elif cid in done:
+            resumed += 1
+            rows.append(("done", cid, c))
+        else:
+            rows.append(("call", cid, c))
+    return rows, ref, lens_sk, resumed
+
+
+_STOP_NAME = {"추출예고": "추출 예고", "추출이어서": "추출 이어서"}
+
+
+def _say(notice, info):
+    """화면 콜백 — **`False`를 돌려받으면 사람이 멈춘 것**이다(`--step` · 그래프 쓰기 0)."""
+    if notice is not None and notice(info) is False:
+        from core.build.entry import StepStop
+        raise StepStop(f"사람이 멈췄다 — {_STOP_NAME.get(info['단계'], info['단계'])}까지 "
+                       f"(LLM 0 · 그래프 쓰기 0)")
+
+
+def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice=None):
+    """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
+
+    **실패의 처분은 청크 단위다**(문서 4 §4.10 규약 9) — 실패한 청크는 `failed`로 체크포인트에
+    남기고 처분 급은 결함 로그다(새 큐 kind 0). **전 청크가 실패하면 체크포인트를 쓰지
+    않는다** — 「파일 존재 = 추출 완료」(P-1)라 아무것도 못 뽑은 상태를 완료로 남기면
+    재시도가 영영 막힌다.
+
+    **보이게 한다**(B97): 부르기 전에 예고(`추출예고` — 청크 · ref · 이어서 제외 → LLM ≤ m) ·
+    청크마다 메타(`추출청크`) · 끝(`추출끝`)을 `notice`로 낸다 — 화면은 진입점이 그린다.
+    **청크 단위 이어 쓰기**(B97 ③): 끝난 청크는 부분 파일에 줄로 덧붙이고, 다시 돌면 조건이
+    같을 때 끝난 청크를 부르지 않는다 · 다 끝나면 체크포인트로 올리고 부분 파일을 지운다.
+    """
+    doc_id = env["doc_id"]
+    ok, why = reuse_check(env, lens)             # doc_hash + adapter_version (B78 1b)
+    if ok:
+        _say(notice, {"단계": "추출재사용", "렌즈": lens})
+        return json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8")), False
+    if has_checkpoint(doc_id, lens):
+        # **조용히 옛 판을 쓰지 않는다** — 조건이 깨졌으면 버리고 다시 뽑는다.
+        _LOG.info("extract: %s 체크포인트 폐기 — %s", doc_id, why)
+        checkpoint_path(doc_id, lens).unlink()
+
+    hints = _load_hints(doc_id)
+    done = _partial_load(env, lens)
+    rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
+    m = sum(1 for r in rows if r[0] == "call")
+    if resumed:
+        _say(notice, {"단계": "추출이어서", "렌즈": lens, "끝난": resumed, "남은": m})
+    _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows) + ref_skipped,
+                  "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m})
+    u0 = gateway.usage_total()
+    candidates, i = [], 0
+    for kind, cid, c in rows:
+        if kind == "skip":
             candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [],
                                "lens_skipped": True})
             continue
-        # **참조 시트의 청크는 부르지 않는다**(B83 ④) — 도면목록·가격표를 추출에
-        # 넣으면 LLM 비용이 거기서 나가고 그래프 후보까지 생긴다. 청크 자체는
-        # 남아 있다(`chunks.json` · `linked=false` · 열람·bm25에는 보인다).
-        if (c.get("meta") or {}).get("sheet_role") == "ref":
-            ref_skipped += 1
+        if kind == "done":
+            candidates.append(done[cid])
             continue
-        try:
-            if hints and c.get("source_locator") in hints:
-                h = hints[c["source_locator"]]
-                ents, extra = _optional(h)
-                candidates.append({"chunk_id": cid,
-                                   "entities": ents,
-                                   "relations": h.get("relations", []),
-                                   "attach": h.get("attach", []), **extra})
-            else:
-                candidates.append(_candidates_for(cid, c, cfg, vocab))
-        except Exception as e:                              # noqa: BLE001
-            # **무후보와 구분한다** — `entities: []`는 「봤는데 없었다」이고
-            # `failed`는 「보지 못했다」다. 둘을 같은 모양으로 두면 구축이
-            # 「후보 0건인 청크」로 세어 결함이 통계에 녹는다.
-            why = f"{type(e).__name__}: {e}"
-            candidates.append({"chunk_id": cid, "failed": why,
-                               "entities": [], "relations": [], "attach": []})
-            failed += 1
-            store.append_defect(f"{doc_id}: 추출 실패 {cid} — {why}")
+        i += 1
+        t0 = gateway.usage_total().get("total_tokens", 0)
+        entry = _call_chunk(doc_id, cid, c, cfg, vocab, hints)
+        candidates.append(entry)
+        _partial_append(env, lens, entry)
+        # 관계 쌍은 화면이 아니라 명령 로그로 간다(수만 화면에)
+        _LOG.info("추출 %s %s · 관계 %s", doc_id, c.get("source_locator"),
+                  [(r.get("src"), r.get("rel"), r.get("dst")) for r in entry.get("relations") or []])
+        _say(notice, _chunk_info(entry, i, m, c.get("source_locator"),
+                                 gateway.usage_total().get("total_tokens", 0) - t0, lens))
+    called = [x for x in candidates if not x.get("lens_skipped")]
+    failed = sum(1 for x in called if x.get("failed"))
+    _say(notice, {"단계": "추출끝", "렌즈": lens, "청크": len(called), "실패": failed,
+                  "개체": sum(len(x.get("entities") or []) for x in called),
+                  "관계": sum(len(x.get("relations") or []) for x in called), "since": u0})
 
-    # **전건 실패면 체크포인트를 남기지 않는다** — 「파일 존재 = 추출 완료」(P-1).
+    # **전건 실패면 체크포인트도 부분 파일도 남기지 않는다** — 「파일 존재 = 추출 완료」(P-1)
+    # · 실패만 든 부분 파일을 이어 쓰면 재시도가 영영 막힌다.
     if candidates and failed == len(candidates):
         store.append_defect(
             f"{doc_id}: 전 청크 추출 실패 {failed}건 — 체크포인트를 쓰지 않는다")
+        partial_path(doc_id, lens).unlink(missing_ok=True)
         return {"doc_id": doc_id, "stage": "extract", "candidates": candidates,
                 "all_failed": True}, False
+    out = _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped)
+    partial_path(doc_id, lens).unlink(missing_ok=True)       # 올린 뒤에 지운다 — 순서가 계약이다
+    return out, True
 
+
+def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped):
+    """최종 체크포인트 — 이 파일이 생기면 추출 완료다(부분 파일은 그 뒤에 지운다)."""
     out = {
-        "doc_id": doc_id,
+        "doc_id": env["doc_id"],
         "stage": "extract",
         "adapter_version": env.get("adapter_version"),
         # **재사용 조건의 둘째 축**(B78 1b) — 봉투가 바뀌면 청크가 바뀐다.
@@ -447,6 +576,6 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=()):
         out["lens"] = lens                                   # 렌즈 판 (B91 ①)
         out["lens_skipped"] = lens_skipped
     paths.ensure(EXTRACT_DIR)          # 폴더를 만드는 자리는 하나다 (B78 1a)
-    checkpoint_path(doc_id, lens).write_text(
+    checkpoint_path(env["doc_id"], lens).write_text(
         json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return out, True
+    return out

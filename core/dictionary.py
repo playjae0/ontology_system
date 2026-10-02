@@ -28,7 +28,7 @@
 from __future__ import annotations
 
 from core.state import log, store
-from core.state.ids import norm
+from core.state.ids import fold_latin, norm
 
 _LOG = log.get(__name__)
 
@@ -38,6 +38,7 @@ class Dictionary:
 
     def __init__(self, entries=None):
         self._d = entries if entries is not None else {}
+        self._fold = None              # 2차 대조 색인(메모리 파생 · 저장하지 않는다 — B96 ④)
 
     # ------------------------------------------------------------ 열기·저장
     @classmethod
@@ -74,6 +75,7 @@ class Dictionary:
         ids = self._d.setdefault(key, [])
         if node_id not in ids:
             ids.append(node_id)
+        self._fold = None
         return key
 
     # ------------------------------------------------------------ 조회
@@ -84,7 +86,33 @@ class Dictionary:
         조용히 고르면 카테고리 불일치 안전망·극성 후보 제외·생존 판정이 판정 전
         필터가 아니라 사후 필터로 밀려난다.
         """
-        return list(self._d.get(norm(surface), []))
+        hit = self._d.get(norm(surface))
+        if hit:
+            return list(hit)
+        return self.fold_lookup(surface)
+
+    def fold_groups(self):
+        """`fold_latin(표기) → {node_id}` — 라틴 대소문자만 다른 표기를 한 키로 모은 색인(메모리)."""
+        if self._fold is None:
+            idx = {}
+            for k, ids in self._d.items():
+                idx.setdefault(fold_latin(k), set()).update(ids)
+            self._fold = idx
+        return self._fold
+
+    def fold_lookup(self, surface):
+        """**2차 대조**(B96 ④) — 정확 일치가 빗나갔을 때만 · 라틴 대소문자를 무시하고 다시 본다.
+
+        대상 노드가 **하나일 때만** 채택한다. 둘 이상(대소문자만 다른 표기가 다른 노드를
+        가리킨다)이면 지금처럼 미스이고 로그 한 줄이다 — 고르는 것은 사람이다.
+        """
+        ids = self.fold_groups().get(fold_latin(surface)) or set()
+        if len(ids) == 1:
+            return list(ids)
+        if len(ids) > 1:
+            _LOG.info("대소문자 무시 대조가 둘 이상을 가리킨다 — '%s' → %d개 · 미스로 둔다",
+                      surface, len(ids))
+        return []
 
     def surfaces(self):
         """등재된 표면형 전부 — **사전 스캔**(질의 링킹 1단)의 정식 입구다.
@@ -113,6 +141,7 @@ class Dictionary:
             if not ids:
                 del self._d[key]
             moved += 1
+        self._fold = None
         return moved
 
     def drop(self, node_id):

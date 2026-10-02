@@ -208,6 +208,14 @@ class Stopped(Exception):
     """
 
 
+class StepStop(Stopped):
+    """**`--step` 관문에서 멈췄다** (B97 ④ — 산문의 추출 예고 · 추출 뒤 관문).
+
+    `Stopped`와 같은 되돌림이고, 결과에 `step_stop`이 붙는다 — 화면은 실패가 아니라
+    「사람이 멈췄다」로 적는다(표 문서의 관문 1~3과 같은 처분).
+    """
+
+
 def run_document(path_or_env, layer=None, *, allow_duplicate=False,
                  routing=None, notice=None):
     env = path_or_env
@@ -254,6 +262,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         store.write(store.QUEUE, _q0)
         store.write(store.CHUNKS, _c0)
         res.status, res.reason = "held", str(stop)
+        res.step_stop = isinstance(stop, StepStop)
         return res, None, False
 
 
@@ -286,23 +295,33 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                                                             notice)
             return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
         vocab = _vocab(cfg)
-        ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab)
-        if notice is not None:
-            # prose의 표기는 **추출이 끝나야** 안다 — 그래서 자리가 여기다.
-            _by_loc = {c["source_locator"]: c for c in env.get("chunks") or []}
-            _loc_of = {cid: loc for loc, cid in loc2id.items()}
-            notice(decision_plan(
-                [{"surface": e.get("surface"), "category": e.get("category"),
-                  "ref": (_by_loc.get(_loc_of.get(c["chunk_id"])) or {})
-                  .get("process_ref"),
-                  "electrode_type": (_by_loc.get(_loc_of.get(c["chunk_id"])) or {})
-                  .get("electrode_type")}
-                 for c in ck["candidates"]
-                 for e in (c.get("entities") or []) if e.get("surface")],
-                [c.get("process_ref") for c in env.get("chunks") or []
-                 if c.get("process_ref")], layer))
+        ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice)
+        prose_gate(env, ck, loc2id, layer, notice)
         builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"])
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
+
+
+def prose_gate(env, ck, loc2id, layer, notice, lens=None):
+    """산문의 **판정 예고 = 추출 뒤 관문** (B97 ④) — 표기는 추출이 끝나야 안다.
+
+    `--step`이면 화면이 여기서 묻고 `False`면 멈춘다(그래프 쓰기 0 · 체크포인트는 완료로
+    남아 재실행은 추출 재사용으로 구축만 간다). 렌즈 길도 렌즈마다 같은 함수를 지난다.
+    """
+    if notice is None:
+        return
+    _by_loc = {c["source_locator"]: c for c in env.get("chunks") or []}
+    _loc_of = {cid: loc for loc, cid in loc2id.items()}
+    plan = decision_plan(
+        [{"surface": e.get("surface"), "category": e.get("category"),
+          "ref": (_by_loc.get(_loc_of.get(c["chunk_id"])) or {}).get("process_ref"),
+          "electrode_type": (_by_loc.get(_loc_of.get(c["chunk_id"])) or {})
+          .get("electrode_type")}
+         for c in ck["candidates"]
+         for e in (c.get("entities") or []) if e.get("surface")],
+        [c.get("process_ref") for c in env.get("chunks") or [] if c.get("process_ref")], layer)
+    if notice({**plan, "추출뒤": True, "렌즈": lens}) is False:
+        raise StepStop("사람이 멈췄다 — 추출 뒤 판정 예고까지 (그래프 쓰기 0 · 추출 체크포인트는 "
+                       "완료로 남는다 — 다시 치면 추출 재사용으로 구축만 간다)")
 
 
 def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):

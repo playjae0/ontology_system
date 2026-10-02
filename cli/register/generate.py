@@ -508,11 +508,9 @@ def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
                          f"     USE_MOCK=0 python -m cli.register generate "
                          f"{doc_type} --resume")
     print(f"   초안 수령: {draft_mod._rel(ad)} · {draft_mod._rel(sc)}")
-    u = gateway.usage_total()
-    if u["calls"]:
-        print(f"   LLM 사용량 — 호출 {u['calls']:,}회 · 토큰 {u['total_tokens']:,}"
-              f"(입력 {u['prompt_tokens']:,} · 출력 {u['completion_tokens']:,})"
-              + (f" · **응답 잘림 {u['truncated']}회**" if u["truncated"] else ""))
+    if gateway.usage_total()["calls"]:
+        from cli import _screen
+        print(f"   {_screen.usage_line()}")          # 문구는 한 함수 (B96 ③)
     st = {"doc_type": doc_type, "layer": layer,
           "samples": [str(s) for s in samples],
           "hint": pkg["human"]["hint"],

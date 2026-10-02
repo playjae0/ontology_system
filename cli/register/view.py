@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from core.state.bootstrap import coord_layer
+from cli import _screen
 from cli.parse import injections
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
@@ -467,6 +468,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
             return _rc
         st = _state(doc_type)
 
+    _u0 = gateway.usage_total()                         # 이 명령의 시작점 (B96 ③)
     samples = st["samples"]
     print(f"  {gateway.mode_line()}")          # B42 ⑤
     if st.get("machine_gate") != "PASS":
@@ -561,6 +563,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
         print(f"     [{a['kind']}] {a['message'][:70]}")
     if st.get("instructions"):
         print(f"   재생성 {len(st['instructions'])}회 — 상한 없음(중단은 사람 판단)")
+    print(f"   {_screen.usage_line(_u0)}")                 # 뷰 확인의 LLM 사용량 (B96 ③)
     return 0 if st["machine_gate"] == "PASS" else 1
 
 

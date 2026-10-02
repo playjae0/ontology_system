@@ -86,7 +86,7 @@ STEPS = [
     ("파싱", "어댑터가 문서를 조각(행·청크)으로 만들었다. 아직 그래프에 아무것도 "
              "쓰지 않았다 — 계약 JSON(parsed/)까지다. 다음은 좌표를 맞춘다."),
     ("좌표", "조각의 공정좌표를 골격 닫힌 목록과 맞췄다. 목록 밖 표기는 고치지 않고 "
-             "그대로 둔다 — 인입에서 보류(orphan_anchor)로 간다. 다음은 판정 예고다."),
+             "그대로 둔다 — 인입에서 보류(orphan_anchor)로 간다. 다음은 판정 예고다(산문은 추출 예고)."),
     ("판정 예고", "개체 판정에 몇 번 부를지를 **부르기 전에** 센다. 사전이 이미 아는 "
                   "표기는 부르지 않는다. 여기서 멈추면 그래프에 쓴 것이 0이다."),
     ("판정", "표기마다 기존 노드와 같은 것인지 판정했다. 확신되면 잇고, 아니면 새 "
@@ -95,24 +95,36 @@ STEPS = [
                   "보류다(버리지 않는다). 카테고리쌍이 없는 관계는 게이트가 막는다."),
     ("큐·요약", "사람이 판정할 것을 큐에 남기고 한 줄로 요약했다. 큐는 문서 × "
                 "표기/필드 단위 1건이다 — 행 수는 그 안에 있다."),
+    # 산문만 지나는 두 관문(B97 ④) — 표 문서의 「판정 예고」(3) 자리를 산문은 이 둘이 맡는다
+    ("추출 예고", "청크마다 LLM이 개체·관계를 뽑는다 — 몇 청크를 부를지를 **부르기 전에** "
+                  "센다(참조 시트·이미 끝난 청크는 부르지 않는다). 여기서 멈추면 LLM 0 · 그래프 쓰기 0이다."),
+    ("추출 결과·판정 예고", "뽑힌 개체를 보고 판정에 몇 번 부를지를 센다. 여기서 멈추면 그래프 쓰기 "
+                           "0이고 추출 체크포인트는 완료로 남는다 — 같은 명령을 다시 치면 추출 재사용(LLM 0)으로 구축만 간다."),
 ]
+#: 관문의 순서 — 표는 판정 예고(3), 산문은 추출 예고(7) → 추출 결과·판정 예고(8)
+TABLE_SEQ = (0, 1, 2, 3, 4, 5, 6)
+PROSE_SEQ = (0, 1, 2, 7, 8, 4, 5, 6)
 
 
-def _step_gate(i, detail=""):
+def _step_gate(i, detail="", prose=False):
     """한 단계를 찍고 `[계속 c / 멈춤 q]`를 묻는다 — 돌려주는 것은 계속 여부다.
 
     **비대화형이면 묻지 않는다**(`--step` 무시 · 한 줄로 그 사실을 말한다) —
-    묻고 EOF를 받아 멈추면 일괄 실행이 전부 중단된다.
+    묻고 EOF를 받아 멈추면 일괄 실행이 전부 중단된다. 번호는 표·산문 순서표(`TABLE_SEQ`·
+    `PROSE_SEQ`)의 자리다.
     """
     name, why = STEPS[i]
-    print(f"\n── [{i + 1}/{len(STEPS)}] {name}" + (f" — {detail}" if detail else ""))
+    seq = PROSE_SEQ if prose else TABLE_SEQ
+    print(f"\n── [{seq.index(i) + 1}/{len(seq)}] {name}" + (f" — {detail}" if detail else ""))
     print(f"   {why}")
     try:
-        ans = input("   [계속 c / 멈춤 q] ").strip().lower()
+        ans = _screen.ask("   [계속 c / 멈춤 q] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return True
     if ans in ("q", "quit", "n"):
         print(f"   멈춤 — {name}까지의 산출은 남았다(parsed/ · extract/ 체크포인트).")
+        if i == 8:
+            print("   ▶ 추출은 완료로 남았다 — 같은 명령을 다시 치면 추출 재사용(LLM 0)으로 구축만 간다")
         print(f"   ▶ 다음 줄 — 이어서 넣는다: python run.py ingest-file <문서> "
               f"--doc-type <dt>")
         print(f"      고치고 넣는다: {paths.layers('<층>', 'skeleton.json')} alias · "
@@ -182,6 +194,56 @@ def row_printer():
     return on_row
 
 
+def extract_screen(step=False, stage=None):
+    """**산문 추출 화면** (B97 ①②) — 세 진입(한 렌즈 · 렌즈마다 · `cli.extract`)이 같은 함수다.
+
+    core는 사실만 낸다(`core/build/extract.extract`의 `notice`) — 예고 · 청크마다 메타 ·
+    끝. 화면은 그것을 줄로 그리고, `--step`이면 추출 예고에서 묻는다(`False` = 멈춤).
+    `stage`를 주면 누적 줄(`_screen.ticker`)이 읽는 「어디」를 갱신한다.
+    """
+    def notice(info):
+        k = info.get("단계")
+        lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
+        if k == "추출재사용":
+            print(f"   추출 {lz}— 체크포인트 재사용(LLM 0)")
+        elif k == "추출이어서":
+            print(f"   추출 이어서 {lz}— 끝난 청크 {info['끝난']:,} · 남은 {info['남은']:,}")
+        elif k == "추출예고":
+            if stage is not None:
+                stage.update({"이름": "추출", "값": 0, "총": info["호출"]})
+            if info.get("렌즈여럿"):
+                return None                       # 렌즈 예고가 같은 자리를 맡았다(두 줄 0)
+            head = (f"추출 예고 {lz}— 청크 {info['청크']:,}(ref 시트 {info['ref']:,} · "
+                    f"체크포인트 재사용 {info['재사용']:,} 제외) → LLM ≤ {info['호출']:,}회")
+            if step:
+                return _step_gate(7, head.split("— ", 1)[1], prose=True)
+            print(f"   {head}")
+        elif k == "추출청크":
+            if stage is not None:
+                stage["값"] = info["i"]
+            if info.get("실패"):
+                body = f"✗ 실패 — {info['실패']}"
+            else:
+                ents = " · ".join(f"{s}[{c}]" for s, c in info["개체"]) or "—"
+                body = (f"개체 {len(info['개체'])}: {ents} · 관계 {info['관계']} · "
+                        f"부착 {info['부착']} · 부모 {info['부모']} · 토큰 {info['토큰']:,}")
+            print(f"   [추출 {lz}{info['i']}/{info['m']}] {info['locator']} · {body}", flush=True)
+        elif k == "추출끝":
+            print(f"   추출 끝 {lz}— 청크 {info['청크']:,} · 개체 {info['개체']:,} · "
+                  f"관계 {info['관계']:,} · 실패 {info['실패']:,} · "
+                  f"{_screen.usage_line(info.get('since'))}")
+        return None
+    return notice
+
+
+def ticker_where(stage):
+    """누적 줄의 「어디」 — `stage`(이름 · 값/총)를 그대로 읽는다."""
+    def where():
+        n, t = stage.get("값"), stage.get("총")
+        return f"{stage.get('이름', '?')}" + (f" {n:,}/{t:,}" if t else "")
+    return where
+
+
 def judge_progress(total, stage=None, every=0, stride=None):
     """판정 진행 줄 — 보폭마다 **새 줄로** 남긴다 (B73 ① · B75 ③ⓑ · 보폭 B81 ④).
 
@@ -236,7 +298,7 @@ def _judge_gate(n, total, u):
     print(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 토큰 "
           f"{u.get('total_tokens', 0):,} · 남은 값 {left:,}", flush=True)
     try:
-        ans = input("   [계속 c / 멈춤 q] ").strip().lower()
+        ans = _screen.ask("   [계속 c / 멈춤 q] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return
     if ans in ("q", "quit", "n"):

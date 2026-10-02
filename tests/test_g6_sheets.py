@@ -14,77 +14,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g6_common import *          # noqa: F401,F403 — 바닥은 하나다
 from g6_common import (_P, _sp72, done, json, os, store)   # noqa: F401
+from g6_common import DT, RFQ, _ingest, _register, _run, _unregister   # noqa: F401 — 산문 표본 (B97로 옮김)
 
 from cli import _screen                                              # noqa: E402
 from cli import ingest_screen as SCR                                 # noqa: E402
 from core.state import sheets as SH                                  # noqa: E402
 from parser import form as FORM, reader as READER                    # noqa: E402
 from parser import pipeline as PIPE                                  # noqa: E402
-
-RFQ = ROOT / "tests" / "fixtures" / "raw" / "RFQ01.xlsx"
-DT = "prose_xlsx_basic"          # 레포의 기본 prose 엑셀 어댑터 — 표본용으로 등록한다
-SCHEMA = {"doc_type": DT, "schema_version": 1, "layer": "process",
-          "payload_kind": "prose", "use_blocks": ["common_core", "process_coord"],
-          "_note": "B83 회귀 — 시트 역할 관문의 표본은 prose 엑셀이다",
-          "fields": {}, "edges": []}
-
-
-def _register():
-    """표본 doc_type을 **등록 단에 세운다** — 인입은 미등록을 거부한다(B3).
-
-    내장(`tests/fixtures/schemas/`)에 넣지 않는 이유: 내장 목록은 `doctor`·
-    `platform doctypes` 화면에 그대로 뜬다 — 회귀용 이름을 거기 얹지 않는다.
-    """
-    p = _P.schemas(f"{DT}.json")
-    _P.ensure(p)
-    p.write_text(json.dumps(SCHEMA, ensure_ascii=False, indent=2) + "\n",
-                 encoding="utf-8")
-    dts = store.read(store.DOC_TYPES, {})
-    dts[DT] = {"doc_type": DT, "status": "registered", "layer": "process",
-               "schema": f"schemas/{DT}.json",
-               "adapter": str(ROOT / "parser" / "adapters" / "basic_prose_xlsx.py"),
-               "schema_version": 1}
-    store.write(store.DOC_TYPES, dts)
-
-
-def _unregister():
-    dts = store.read(store.DOC_TYPES, {})
-    dts.pop(DT, None)
-    store.write(store.DOC_TYPES, dts)
-    _P.schemas(f"{DT}.json").unlink(missing_ok=True)
-
-
-def _run(*argv, answers=None):
-    """`run.py`를 돌린다 — `answers`가 있으면 **pty**로(관문은 tty에서만 산다)."""
-    if answers is None:
-        r = _sp72.run([sys.executable, str(ROOT / "run.py"), *argv],
-                      capture_output=True, text=True, cwd=str(ROOT),
-                      env={**os.environ, "USE_MOCK": "1"}, stdin=_sp72.DEVNULL)
-        return r.stdout + r.stderr
-    import pty
-    pid, fd = pty.fork()
-    if pid == 0:                                             # pragma: no cover
-        os.environ["USE_MOCK"] = "1"
-        os.chdir(str(ROOT))
-        os.execv(sys.executable, [sys.executable, str(ROOT / "run.py"), *argv])
-    os.write(fd, answers.encode())
-    out = b""
-    try:
-        while True:
-            d = os.read(fd, 4096)
-            if not d:
-                break
-            out += d
-    except OSError:
-        pass
-    os.waitpid(pid, 0)
-    return _screen.strip_ansi(out.decode("utf-8", "replace"))
-
-
-def _ingest(*extra, answers=None):
-    return _run("ingest-file", str(RFQ), "--doc-type", DT, "--allow-mock",
-                *extra, answers=answers)
-
 
 def _chunks():
     ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]

@@ -231,7 +231,7 @@ def _form_line(f):
 # 여기 한 자리**다 — 앞자리가 단이다: 2 어댑터/지문 · 3 계약(validator) · 4 구조 ·
 # 5 인입 보류.
 
-def build_screen(step=False):
+def build_screen(step=False, stage=None, prose=False):
     """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
 
     예고는 판정 **전에** 무LLM으로 센 수다(B22·B69와 같은 규율): 「표기 k종 중
@@ -241,12 +241,25 @@ def build_screen(step=False):
     큐는 **집계 단위**로 말한다(B72 ②): `unknown_field 1종(meta 118행)`. 행마다
     한 건이면 사람이 판정할 하나가 118건 밑에 묻힌다.
     """
+    _ex = SCR.extract_screen(step=step, stage=stage)
+    _judge = dict(stage or {})
+
     def notice(info):
+        if str(info.get("단계", "")).startswith("추출"):
+            # 산문 추출 화면은 세 진입이 같은 함수다 (B97 ①②)
+            out = _ex(info)
+            if info["단계"] == "추출끝" and stage is not None:
+                stage.update(_judge)              # 누적 줄·비용 줄이 다시 판정을 가리킨다
+            return out
         if info.get("단계") == "렌즈예고":
-            # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0
-            print(f"   렌즈 예고 — 렌즈 {len(info['렌즈'])}({' · '.join(info['렌즈'])}) × 청크 "
-                  f"{info['청크']:,} → 거름 뒤 LLM ≤ {info['호출']:,}회 "
-                  f"(관련성 문턱 {info['문턱']} · 건너뜀 {info['거름']:,})")
+            # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0 ·
+            # 이 줄이 추출 예고의 자리다(B97 ① — 두 줄 0) · `--step`이면 여기서 묻는다
+            head = (f"렌즈 {len(info['렌즈'])}({' · '.join(info['렌즈'])}) × 청크 "
+                    f"{info['청크']:,} → 거름 뒤 LLM ≤ {info['호출']:,}회 "
+                    f"(관련성 문턱 {info['문턱']} · 건너뜀 {info['거름']:,})")
+            if step:
+                return SCR._step_gate(7, head, prose=True)
+            print(f"   렌즈 예고 — {head}")
             return None
         if info.get("단계") == "렌즈상한":
             # **넘으면 묻는다** — 비대화형이면 멈춘다(조용한 절단 0 · 문서는 보류로 남는다)
@@ -256,16 +269,21 @@ def build_screen(step=False):
                       "(python run.py show knobs · python -m cli.register lenses <dt>)")
                 return False
             try:
-                return input("     그래도 부를까? [y/N] ").strip().lower() in ("y", "yes")
+                return _screen.ask("     그래도 부를까? [y/N] ").strip().lower() in ("y", "yes")
             except (EOFError, KeyboardInterrupt):
                 return False
         if info.get("단계") == "판정예고":
+            lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
+            body = (f"entity 값 {info['값_수']:,}건"
+                    f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
+                    f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
+                    f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
+            if step and info.get("추출뒤"):
+                # 산문은 **추출 뒤 관문**이 이 줄이다(B97 ④ — 표의 관문 3은 레코드로 센다)
+                return SCR._step_gate(8, lz + body, prose=True)
             if step:
-                return          # 단계 모드에서는 4단계가 이미 같은 수를 찍었다
-            print(f"   판정 예고 — entity 값 {info['값_수']:,}건"
-                  f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
-                  f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
-                  f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
+                return          # 표 문서 — 관문 3(판정 예고)이 이미 같은 수를 찍었다
+            print(f"   판정 예고 {lz}— {body}")
             return
         q = info.get("큐") or {}
         head = " · ".join(f"{k} {n}종({rows}행)" for k, (n, rows) in sorted(q.items()))
@@ -284,11 +302,11 @@ def build_screen(step=False):
                   f"(상한 {CANDIDATE_TOP_N})")
         if step:
             u2 = gateway.usage_total()
-            SCR._step_gate(4, f"새 노드(auto) {info.get('auto', 0)} · "
+            SCR._step_gate(4, prose=prose, detail=f"새 노드(auto) {info.get('auto', 0)} · "
                           f"LLM 호출 {u2['calls']:,}")
-            SCR._step_gate(5, f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
+            SCR._step_gate(5, prose=prose, detail=f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
                           f"{info.get('저해상도', 0)}행")
-            SCR._step_gate(6, head or "큐 0")
+            SCR._step_gate(6, head or "큐 0", prose=prose)
         SCR._orphan_next(info.get("doc_id"))
         u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
@@ -333,7 +351,8 @@ def _ingest_file_select(doc, sel, row, step):
     if step and not sys.stdin.isatty():
         print("   (--step 무시 — 비대화형이다. 단계별로 보려면 터미널에서 돌린다)")
         step = False
-    if step and not SCR._step_gate(0, row["basis"]):
+    if step and not SCR._step_gate(0, row["basis"], prose=(registry.schema_of(
+            sel.get("doc_type")) or {}).get("payload_kind") == "prose"):
         row.update(status=SKIP, reason="사람이 멈췄다 — 선택까지")
         return row, None, step
     # **판정과 어댑터가 어긋나면 말한다** — 조용히 넘기면 관리계획서가 산문으로,
@@ -377,16 +396,21 @@ def _step_stops(res, sel, row):
     `ingest_file`에서 떼어냈다(B86 ④ — 선택 의존 거부를 싣다가 함수 상한 120행을 넘었다).
     """
     _rep = res.report or {}
-    if not SCR._step_gate(1, f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
+    prose = res.envelope.get("payload_kind") == "prose"
+    if not SCR._step_gate(1, prose=prose, detail=f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
                       f"{res.envelope.get('payload_kind')}"):
         row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
         return True
     _ct = _rep.get("coord_tag") or {}
-    if not SCR._step_gate(2, f"정확 일치 {_ct.get('정확_일치', 0)} · "
+    if not SCR._step_gate(2, prose=prose, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
                       f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
                       f"LLM 호출 {_ct.get('호출', 0)}"):
         row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
         return True
+    if prose:
+        # 산문의 판정 예고는 **추출 뒤**에 선다(B97 ④) — 표기는 추출이 끝나야 안다.
+        # 관문은 추출 예고 · 추출 결과·판정 예고 둘이고 구축 안에서 묻는다(`build_screen`).
+        return False
     # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
     from core.build.entry import _entity_surfaces, decision_plan
     _sc = registry.schema_of(sel["doc_type"]) or {}
@@ -463,11 +487,18 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
         _ledger.ON_ROW = SCR.row_printer()
         try:
-            r, m, _extracted = run_document(res.envelope, routing=sel["basis"],
-                                            notice=build_screen(step=step))
+            # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
+            with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
+                r, m, _extracted = run_document(
+                    res.envelope, routing=sel["basis"],
+                    notice=build_screen(step=step, stage=stage,
+                                        prose=res.envelope.get("payload_kind") == "prose"))
         finally:
             _mt.PROGRESS = None
             _ledger.ON_ROW = None
+        if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
+            row.update(status=SKIP, reason=r.reason)
+            return row
         if r.status == "held":
             # **단계를 올리지 않는다** — 판정에서 멈춘 것을 「부착까지 갔다」고
             # 적으면 비용 줄이 거짓말을 한다.

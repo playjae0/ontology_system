@@ -138,8 +138,11 @@ finally:
 # ④ --step — 단계 7 · 비대화형 무시 · q에서 그래프 쓰기 0
 from cli import ingest as _IG72                                    # noqa: E402
 from cli import ingest_screen as _SCR72                            # noqa: E402
-show("④ 단계는 7이고 문면의 자리는 진입점 옆 상수 하나다",
-     len(_SCR72.STEPS) == 7 and all(len(x) == 2 and x[1] for x in _SCR72.STEPS),
+# B97 ④ — 산문은 판정 예고 대신 추출 예고 · 추출 결과 두 관문(8단) · 표는 7단 그대로 (기대 변경)
+show("④ 단계는 표 7 · 산문 8이고 문면의 자리는 진입점 옆 상수 하나다",
+     len(_SCR72.TABLE_SEQ) == 7 and len(_SCR72.PROSE_SEQ) == 8
+     and set(_SCR72.TABLE_SEQ) | set(_SCR72.PROSE_SEQ) == set(range(len(_SCR72.STEPS)))
+     and all(len(x) == 2 and x[1] for x in _SCR72.STEPS),
      str([n for n, _w in _SCR72.STEPS]))
 _r72 = _sp72.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
                   str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp",

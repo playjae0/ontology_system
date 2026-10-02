@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import json
 
-from core.state import store
+from core.state import log, store
 from core.llm import gateway
-from core.state.ids import norm
+from core.state.ids import fold_latin, norm
 from core.state.status import STATUS_MERGED, STATUS_OBSOLETE, is_live, resolve_chain
+
+_LOG = log.get(__name__)
 
 COLLECT_LIMIT = 8               # ③ 수집 상한 (CH5 5.1 규약 6). 초과분은 tier2부터 자른다.
 #: ref 노드 근처 상한(B91 ④ — [관련 원문]) — 창작 기본값이다(사내 실측으로 `knobs.json`에서 정한다).
@@ -140,6 +142,28 @@ def nearby(question, dictionary, graphs, limit=5):
     return out
 
 
+def _link_fold(q, dictionary, graphs):
+    """사전 스캔의 **2차 대조** — 정확 스캔이 0일 때만 · 라틴 대소문자를 무시하고 긴 표기부터.
+
+    대소문자만 다른 표기가 **둘 이상의 노드**를 가리키면 채택하지 않는다(미스 + 로그 · B96 ④).
+    """
+    low, hits, taken = fold_latin(q), [], []
+    groups = dictionary.fold_groups()
+    for f in sorted(groups, key=len, reverse=True):
+        if not f or f not in low or any(f in t for t in taken):
+            continue
+        taken.append(f)
+        ids = groups[f]
+        if len(ids) != 1:
+            _LOG.info("질의 링킹 대소문자 무시 — '%s'가 %d개를 가리킨다 · 미스로 둔다", f, len(ids))
+            continue
+        nid = next(iter(ids))
+        for layer, g in graphs.items():
+            if g.get(nid) is not None:
+                hits.append({"surface": f, "node_id": nid, "layer": layer, "method": "dict"})
+    return hits
+
+
 def link(question, dictionary, graphs):
     """표기 → 노드. **사전 스캔 우선**(무LLM)이며 **긴 표면형이 이긴다**.
 
@@ -169,6 +193,8 @@ def link(question, dictionary, graphs):
                 if n is not None:
                     hits.append({"surface": surface, "node_id": nid, "layer": layer,
                                  "method": "dict"})
+    if not hits:
+        hits = _link_fold(q, dictionary, graphs)    # 1단의 2차 — 라틴 대소문자 무시 (B96 ④)
     if hits:
         return hits                      # **1단이 찾았으면 2·3단은 돌지 않는다**
     # 2단 — USE_MOCK에서는 빈 목록(미스는 로그로). **어느 단이 찾았는지 적는다**(B82 ③).
@@ -407,7 +433,8 @@ def ref_near(direct, graphs, trace=None):
         if (c.get("meta") or {}).get("sheet_role") != "ref":
             continue
         t = norm(c.get("text") or "")
-        k = sum(1 for x in names if x in t)
+        low = fold_latin(t)                          # 2차 — 라틴 대소문자 무시 (B96 ④)
+        k = sum(1 for x in names if x in t or fold_latin(x) in low)
         if k:
             rows.append((-k, _desc(c.get("parsed_at") or ""), cid, c))
     rows.sort(key=lambda r: r[:3])

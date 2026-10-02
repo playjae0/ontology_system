@@ -133,6 +133,17 @@ def flag(args):
     return args, spec
 
 
+def _usage0():
+    from core.llm import gateway
+    return gateway.usage_total()
+
+
+def _usage_end(u0):
+    """시트 역할 관문 끝의 사용량 한 줄(B96 ③ — 문구는 `_screen.usage_line` 하나)."""
+    from cli import _screen
+    print(f"   {_screen.usage_line(u0)}")
+
+
 def auto(doc, doc_id, *, lenses=None, dry_run=False):
     """**자동 모드**(`--sheets auto` · B91 ②) — 로직과 LLM이 **합의하면 그 역할**, 어긋나면
     `ref` + 「승격 후보」(화면과 기록). 기록이 있고 미결이 없으면 기록대로다(다시 부르지 않는다).
@@ -150,6 +161,7 @@ def auto(doc, doc_id, *, lenses=None, dry_run=False):
     if rec and not SH.pending(rec.get("sheets") or {}, names):
         print(f"   시트 역할 — 기록대로 진행({SH.summary(rec['sheets'])} · {rec.get('decided_by')})")
         return dict(rec["sheets"])
+    _u0 = _usage0()
     by = judge(rows, info, True)
     roles = {r["name"]: (r["logic"] if r["llm"] == r["logic"] else "ref") for r in rows}
     promote = [r["name"] for r in rows if r["llm"] != r["logic"]]
@@ -158,6 +170,7 @@ def auto(doc, doc_id, *, lenses=None, dry_run=False):
     if not dry_run:
         SH.write(doc_id, Path(doc).name, roles, "auto", judged=judged(rows, by, promote))
         print(SCR.sheet_roles_line(roles, doc_id))
+    _usage_end(_u0)
     return roles
 
 
@@ -222,18 +235,22 @@ def gate(doc, doc_id, kind, *, spec=None, dry_run=False, ask=True, retry=None,
     rows = rows_of(doc, vocab)
     asking = not dry_run and ask and sys.stdin.isatty()
     from core.llm import gateway
+    _u0 = _usage0()
     by = judge(rows, info, _OPTS["llm"] and (asking or gateway.use_mock()))
     if dry_run:                          # 보여만 준다 — 묻지 않고 기록도 쓰지 않는다
         print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=pend))
+        _usage_end(_u0)
         return None, None
     if not asking:
         # **상태 거부**다 — 조용한 기본값 없이 멈추고, 문면이 다음 줄을 싣는다.
         print(SCR.sheets_refusal(doc, rows, pend=pend if rec else None, rec=rec,
                                  retry=retry, flag_cmd=flag_cmd))
+        _usage_end(_u0)
         return None, {"kind": REFUSED,
                       "reason": f"시트 역할 미정 — 시트 {len(rows)}장 "
                                 f"(--sheets 또는 터미널에서 관문)"}
     got = SCR.sheet_gate(rows, file=doc, doc_id=doc_id, rec=rec)
+    _usage_end(_u0)
     if got is None:
         return None, {"kind": STOPPED, "reason": "사람이 멈췄다 — 시트 역할 관문"}
     SH.write(doc_id, Path(doc).name, got, "gate", judged=judged(rows, by))

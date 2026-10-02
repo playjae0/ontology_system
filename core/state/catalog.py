@@ -173,10 +173,14 @@ def also_lines():
     return {c: "(" + " · ".join(v) + ")" for c, v in out.items()}
 
 
-def problems(configs=None):
-    """거부 갈래 ⓑ~ⓔ — `[(갈래, 문면)]`. 비어 있으면 통과다(ⓐ 파일 없음은 호출부가 본다)."""
+def problems(configs=None, cat=None):
+    """거부 갈래 ⓑ~ⓔ — `[(갈래, 문면)]`. 비어 있으면 통과다(ⓐ 파일 없음은 호출부가 본다).
+
+    `cat`을 주면 그 카탈로그를 검사한다 — `bootstrap --dry-run`이 **맞춘 뒤의 계획**을 쓰지 않고
+    실제 실행과 같은 판정을 받는 통로다(B96 ①). 없으면 파일의 카탈로그.
+    """
     configs = configs or _layer_configs()
-    cat = load()
+    cat = cat if cat is not None else load()
     cats = cat.get("categories") or {}
     decl = declared_by(configs)
     out = []

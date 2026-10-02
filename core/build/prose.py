@@ -14,7 +14,7 @@ from core.build import gate
 from core.build.ledger import Ledger
 from core.state.status import is_live
 from core.state import log, store
-from core.state.ids import norm
+from core.state.ids import fold_latin, norm
 
 _LOG = log.get(__name__)
 
@@ -89,7 +89,14 @@ def _entity_parent(b, e, src, prov, cid, pcs, main):
     if "set" not in pcs:
         from core.build.extract import parent_candidates
         pcs["set"] = {norm(x): x for x in parent_candidates(src)}
+        _f = {}
+        for x in pcs["set"].values():
+            _f.setdefault(fold_latin(x), set()).add(x)
+        pcs["fold"] = _f
     hit = pcs["set"].get(norm(want))
+    if hit is None:                                  # 2차 — 라틴 대소문자 · 하나일 때만 (B96 ④)
+        _c = pcs["fold"].get(fold_latin(want)) or set()
+        hit = next(iter(_c)) if len(_c) == 1 else None
     pid, pg = b.resolve_anchor(hit, COORD_CATEGORY, prov) if hit else (None, None)
     if not pid:
         store.append_defect(f"{b.doc_id}: 개체 부모 후보 밖 — '{want}' (개체 '{e['surface']}' "

@@ -86,7 +86,9 @@ def cmd_tree(args):
         kids.setdefault(p, []).append(c)
     nxt = {e["src"]: e["dst"] for e in g.edges if e["rel"] == sib}
 
-    print(f"■ {lay} 골격 — 노드 {len(seed)} (문서 유래 {len(g.nodes) - len(seed)}는 제외)\n")
+    order = {i: k for k, i in enumerate(seed)}         # 심은 순서 = 골격 선언 순서
+    print(f"■ {lay} 골격 — 노드 {len(seed)} (문서 유래 {len(g.nodes) - len(seed)}는 제외)")
+    print("  순서 = 흐름(precedes) · 흐름 밖은 뒤에 이름순\n")
 
     def draw(nid, pre="", mark="", child_pre=""):
         n = seed[nid]
@@ -99,17 +101,36 @@ def cmd_tree(args):
               + (f"   ({', '.join(alias[:3])})" if alias else "")
               + (f"   → {seed[nxt[nid]]['canonical'].split('::')[-1]}"
                  if nid in nxt and nxt[nid] in seed else ""))
-        ch = sorted(kids.get(nid, []), key=lambda i: seed[i]["canonical"])
+        ch = _flow_order(kids.get(nid, []), nxt, seed, order)
         for i, c in enumerate(ch):
             last = (i == len(ch) - 1)
             draw(c, child_pre, "└─ " if last else "├─ ",
                  child_pre + ("   " if last else "│  "))
 
     roots = [i for i in seed if i not in parent]
-    for r in sorted(roots, key=lambda i: seed[i]["canonical"]):
+    for r in _flow_order(roots, nxt, seed, order):
         draw(r)
     print(f"\n  → 는 대표 흐름(`{sib}`) · [tier·극성] · (별칭)")
     return 0
+
+
+def _flow_order(ids, nxt, seed, order):
+    """형제를 **흐름(`precedes`) 순서**로 — 사슬 머리(형제 안에서 들어오는 흐름이 없는 것)부터
+    사슬을 따라가고, 사슬이 여럿이면 머리의 골격 선언 순서(`order` — 심은 순서)로, 사슬에 안 든
+    형제(`@unordered` · 무주장)는 그 뒤에 이름순 (B96 ②)."""
+    group = set(ids)
+    has_prev = {nxt[i] for i in group if nxt.get(i) in group}
+    heads = sorted((i for i in group if i not in has_prev and nxt.get(i) in group),
+                   key=lambda i: (order.get(i, len(order)), seed[i]["canonical"]))
+    out, seen = [], set()
+    for h in heads:
+        cur = h
+        while cur in group and cur not in seen:
+            out.append(cur)
+            seen.add(cur)
+            cur = nxt.get(cur)
+    rest = sorted((i for i in group if i not in seen), key=lambda i: seed[i]["canonical"])
+    return out + rest
 
 
 # ---------------------------------------------------------------- node

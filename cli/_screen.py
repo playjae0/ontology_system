@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import threading as _threading
 import unicodedata
 
 #: ANSI 조각 — 이름으로만 쓰고 숫자는 여기 한 자리에 둔다.
@@ -112,3 +113,93 @@ def cut(text, n):
             return out + "…"
         out += c
     return out
+
+
+def usage_line(since=None):
+    """**LLM 사용량 한 줄** — LLM을 부를 수 있는 사용자 명령의 끝 줄 문구는 이 함수 하나다(B96 ③).
+
+    `since`는 명령 시작점의 `gateway.usage_total()` — 그 차이를 센다(없으면 프로세스 누계).
+    mock이면 0이다. 수는 게이트웨이 누계 그대로(화면이 제 계산을 하지 않는다).
+    """
+    from core.llm import gateway
+    u = gateway.usage_total()
+    b = since or {}
+
+    def d(k):
+        return int(u.get(k, 0)) - int(b.get(k, 0))
+    return (f"LLM 사용량 — 호출 {d('calls'):,}회 · 토큰 {d('total_tokens'):,}"
+            f"(입력 {d('prompt_tokens'):,} · 출력 {d('completion_tokens'):,})"
+            + (f" · **응답 잘림 {d('truncated')}회**" if d("truncated") else ""))
+
+
+# ── 시간 기준 누적 줄 (B97 ②) ───────────────────────────────────────────────
+#: 누적 줄 간격(초). 시험은 줄여서 잰다 — 사내 조정 손잡이가 아니다(화면 박자).
+TICK_SECONDS = 30.0
+#: 사람에게 묻는 동안은 누적 줄을 내지 않는다(입력 줄이 밀리지 않게).
+HOLD = _threading.Event()
+
+
+def ask(prompt):
+    """사람에게 묻는다 — 묻는 동안 누적 줄을 멈춘다. EOF·중단은 호출부가 받는다."""
+    HOLD.set()
+    try:
+        return input(prompt)
+    finally:
+        HOLD.clear()
+
+
+class ticker:
+    """**LLM을 오래 부르는 단계의 누적 줄** — 한 자리(B97 ②).
+
+        with _screen.ticker("파싱", where=lambda: "추출 3/40"):
+            ...
+
+    - 호출이 처음 늘면 한 번: `── LLM 사용 시작 — <단계>`
+    - `TICK_SECONDS`마다(한 호출이 오래 걸려도 — 시간 기준):
+      `── 30초 · <어디> · 호출 n · 토큰 n · 경과 m분 s초`
+    - 수는 게이트웨이 누계 그대로다(화면이 제 계산을 하지 않는다). mock이고 호출이 늘지
+      않으면 아무것도 내지 않는다 — mock 화면은 그대로다.
+    """
+
+    def __init__(self, label, where=None):
+        self.label, self.where = label, where or (lambda: label)
+        self._stop = _threading.Event()
+        self._t = None
+
+    def __enter__(self):
+        from core.llm import gateway
+        import time
+        self._gw, self._time = gateway, time
+        self._c0 = gateway.usage_total()["calls"]
+        self._t0 = time.monotonic()
+        self._t = _threading.Thread(target=self._run, daemon=True)
+        self._t.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        if self._t is not None:
+            self._t.join(timeout=2)
+        return False
+
+    def _run(self):
+        from core.state import log
+        _log = log.get(__name__)
+        started, last = False, self._time.monotonic()
+        while not self._stop.wait(min(0.5, TICK_SECONDS / 4)):
+            u = self._gw.usage_total()
+            moved = u["calls"] > self._c0
+            if moved and not started:
+                started = True
+                print(f"   ── LLM 사용 시작 — {self.label}", flush=True)
+            now = self._time.monotonic()
+            if now - last < TICK_SECONDS or HOLD.is_set():
+                continue
+            last = now
+            if not (moved or not self._gw.use_mock()):
+                continue
+            s = int(now - self._t0)
+            line = (f"   ── {int(TICK_SECONDS)}초 · {self.where()} · 호출 {u['calls']:,} · "
+                    f"토큰 {u.get('total_tokens', 0):,} · 경과 {s // 60}분 {s % 60}초")
+            print(line, flush=True)
+            _log.info(line.strip())

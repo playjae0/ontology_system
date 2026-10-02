@@ -84,6 +84,8 @@ def _sync_screen(p):
         print(f"{head} + '{c}' (home {lay} — " + (f"골격이 {lay}에 있다)" if skel else f"{lay}만 선언)"))
     for c, lay in p["fill"]:
         print(f"{head} '{c}' home 빈칸 → {lay} (골격이 {lay}에 있다)")
+    for c, old, lay in p["fix"]:
+        print(f"{head} '{c}' home {old} → {lay} (골격이 {lay}에 있다 · {old} 그래프에 {c} 노드 0)")
     _fresh = [c for c, have, _w in p["used"] if have is None and not p["new"]
               and c not in {x for x, *_ in p["add"] + p["ask"]}]
     if _fresh:
@@ -101,9 +103,9 @@ def _sync_screen(p):
     for c, lays in p["sk_dup"]:
         print(f"{head} [상태] 골격 카테고리 '{c}'를 층 {lays}의 골격이 함께 가진다 — 같은 뜻 노드가 "
               f"두 그래프에 두 벌 생긴다 · 골격은 한 층만 갖는다")
-    for c, home, lay in p["sk_home"]:
-        print(f"{head} [상태] '{c}'의 home은 {home}인데 골격은 {lay}에 있다 — 골격 노드는 {lay} "
-              f"그래프에 심긴다 · home을 {lay}로 고친다")
+    for c, home, lay, n in p["sk_home"]:
+        print(f"{head} [상태] '{c}'의 home은 {home}인데 골격은 {lay}에 있다 — {home} 그래프에 {c} 노드 "
+              f"{n}개가 있다 · 재빌드(init --fresh → bootstrap → 재인입) 또는 골격을 되돌린다")
     for c, lays in p["ask"]:
         print(f"{head} [상태] '{c}' home 빈칸 — 여러 층이 선언했다 {lays} — 그중 하나로 채운다")
     for c, home, n in p["stuck"]:
@@ -135,6 +137,38 @@ def _new_category_warning(p):
         for ln in lines:
             print(f"     {ln}")
             _lg.info("  기존 %s", ln)
+        rule = catalog_sync.scope_line(p, c)               # 이름 규칙 상태 — 표시만 (B95 ②)
+        print(f"     {rule}")
+        _lg.info("  %s", rule)
+
+
+def _problems_screen(bad):
+    """공통 config 거부 ⓑ~ⓔ의 문면 — 실제 실행과 `--dry-run`이 같은 함수다(두 벌 금지 · B96 ①)."""
+    for tag, msg in bad:
+        print(f"[bootstrap] [상태] 공통 config {tag} {msg}")
+
+
+def _skeleton_stops():
+    """골격 문법 위반 — 골격 seed를 가진 층마다 `cli/skeleton.check`(skeleton-status·confirm과 같은 판정).
+
+    `[(층, 위반 목록)]`. `--dry-run`이 실제 심기의 멈춤(SeedError)을 미리 본다(B96 ①).
+    """
+    from cli import skeleton as _sk
+    out = []
+    for layer in discover():
+        rows = _sk.check(layer)
+        if rows:
+            out.append((layer, rows))
+    return out
+
+
+def _dry_run_end(p, bad, skel):
+    """`--dry-run` 끝 줄 하나 — 쓰기 0 · 바뀔 것 · 멈출 것 n건(실제 실행이 멈출 자리 전부)."""
+    from core.state import catalog_sync
+    n = (catalog_sync.stop_count(p) if p else 0) + len(bad) + sum(len(r) for _l, r in skel)
+    print(f"[bootstrap] --dry-run — 쓰기 0 · "
+          f"{'바뀔 것 있음' if p and catalog_sync.changed(p) else '바뀔 것 없음'} · 멈출 것 {n}건")
+    return 1 if n else 0
 
 
 def _catalog_gate(dry_run=False):
@@ -143,38 +177,52 @@ def _catalog_gate(dry_run=False):
     한 층만 선언한 카테고리는 자동으로 더하고 · 선언도 노드도 없는 카테고리는 지운다 ·
     새 결정(여러 층이 선언한 카테고리의 집 · 노드가 남은 제거 · 집 변경)은 사람에게 묻고
     멈춘다(`core/state/catalog_sync.py`). 이미 있는 항목의 `home`·`also`는 건드리지 않는다.
-    `dry_run`이면 계획만 보이고 아무것도 쓰지 않는다. 멈추면 1.
+    **`dry_run`은 쓰기만 0이고 검사는 실제와 같다**(B96 ①) — 맞추기 계획 + 맞춘 뒤 카탈로그의
+    ⓒⓓⓔ + 골격 문법. 멈출 것이 있으면 1.
     """
     from core import paths
     from core.state import catalog, catalog_sync
     if paths.common(draft=True).exists():
         print(f"[bootstrap] {paths.show(paths.common(draft=True))}는 쓰지 않는 파일이다(지워도 된다)")
     exists = paths.common().exists()
-    if exists or not paths.is_mock_home():            # mock 루트에 파일이 없으면 층 선언에서 세운다
-        cur = json.loads(paths.common().read_text(encoding="utf-8")) if exists else None
-        p = catalog_sync.plan(current=cur)
+    p = None
+    try:
+        if exists or not paths.is_mock_home():        # mock 루트에 파일이 없으면 층 선언에서 세운다
+            cur = json.loads(paths.common().read_text(encoding="utf-8")) if exists else None
+            p = catalog_sync.plan(current=cur)
+    except ValueError as e:                           # 층 config·공통 config JSON을 못 읽었다
+        print(f"[bootstrap] [상태] config를 읽지 못했다 — {e}\n"
+              f"  근거 — {paths.show(paths.layers())}\n"
+              f"  ▶ 다음 줄: 그 파일의 JSON을 고치고 python run.py bootstrap --dry-run")
+        return 1
+    if p is not None:
         _sync_screen(p)
-        if dry_run:
-            print(f"[bootstrap] --dry-run — 계획만 보였다(공통 config·그래프 쓰기 0) · "
-                  f"{'바뀔 것 있음' if catalog_sync.changed(p) else '바뀔 것 없음'}"
-                  f"{' · 멈출 것 있음' if catalog_sync.blocked(p) else ''}")
-            return 1 if catalog_sync.blocked(p) else 0
+    if dry_run:
+        try:
+            bad = catalog.problems(cat=p["catalog"] if p else None)
+        except catalog.CatalogError as e:
+            print(f"[bootstrap] {e}")
+            bad = [("ⓐ", str(e))]
+        _problems_screen(bad)
+        skel = _skeleton_stops()
+        if skel:
+            from cli import skeleton as _sk
+            for layer, rows in skel:
+                print(_sk.block(layer, rows, f"골격 판정 · 위반 {len(rows)}건"))
+        return _dry_run_end(p, bad, skel)
+    if p is not None:
         if catalog_sync.changed(p):
             catalog_sync.apply(p)
         if catalog_sync.blocked(p):
             print(f"  근거 — {paths.show(paths.common())}\n"
                   f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap   (미리 보기: --dry-run)")
             return 1
-    elif dry_run:
-        print("[bootstrap] --dry-run — mock 루트 · 공통 config 없음(층 선언에서 세운다) · 쓰기 0")
-        return 0
     try:
         bad = catalog.problems()
     except catalog.CatalogError as e:
         print(f"[bootstrap] {e}")
         return 1
-    for tag, msg in bad:
-        print(f"[bootstrap] [상태] 공통 config {tag} {msg}")
+    _problems_screen(bad)
     if bad:
         print(f"  근거 — {paths.show(paths.common())}\n"
               f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap")

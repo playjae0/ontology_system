@@ -60,7 +60,8 @@ def plan(configs=None, current=None, counter=count_nodes):
     돌려주는 dict: `new`(파일이 없었다) · `add`[(카테고리, 층, 골격인가)] · `fill`[(카테고리, 층)]
     (빈칸을 골격 층으로) · `ask`[(카테고리, 층들)] · `drop`[카테고리] · `stuck`[(카테고리, 집, 노드 수)] ·
     `moved`[(카테고리, 새 집, 옛 그래프, 노드 수)] · `sk_dup`[(카테고리, 골격 층들)] ·
-    `sk_home`[(카테고리, 채운 집, 골격 층)] · `catalog`(맞춘 뒤의 카탈로그).
+    `sk_home`[(카테고리, 채운 집, 골격 층, 그 집의 노드 수)] · `fix`[(카테고리, 옛 집, 골격 층)]
+    (어긋난 집 — 노드 0이라 고쳤다 · B95) · `catalog`(맞춘 뒤의 카탈로그).
 
     **골격 카테고리가 먼저다**(B93): 골격이 한 층에 있으면 집은 그 층 — 여러 층이 선언해도
     자동 추가 · 빈칸이면 채운다 · 채운 집이 다르면 멈춘다(ⓖ — 집 변경 검사보다 먼저) · 두 층의
@@ -71,7 +72,7 @@ def plan(configs=None, current=None, counter=count_nodes):
     decl = catalog.declared_by(configs)
     sk = skeleton_layers(configs)
     out = {"new": current is None, "add": [], "fill": [], "ask": [], "drop": [], "stuck": [],
-           "moved": [], "sk_dup": [], "sk_home": [], "used": [], "before": current}
+           "moved": [], "sk_dup": [], "sk_home": [], "fix": [], "used": [], "before": current}
     if current is None:                                 # 처음 — 층 선언에서 같은 규칙으로 세운다
         current = catalog.draft(configs)
         current.pop("_빈칸", None)
@@ -90,7 +91,14 @@ def plan(configs=None, current=None, counter=count_nodes):
             cats[c]["home"] = lays[0]
             out["fill"].append((c, lays[0]))
         elif home != lays[0]:
-            out["sk_home"].append((c, home, lays[0]))
+            # **어긋난 집 그래프에 그 카테고리 노드가 0이면 고친다**(B95 ①) — 골격 노드는 늘 골격
+            # 층 그래프에 심기므로 옛 집 값일 뿐이다. 노드가 있으면 멈춘다(ⓖ — 노드 수를 말한다).
+            n = counter(home, c)
+            if n:
+                out["sk_home"].append((c, home, lays[0], n))
+            else:
+                cats[c]["home"] = lays[0]
+                out["fix"].append((c, home, lays[0]))
     for c, lays in sorted(decl.items()):
         if c in cats or c in sk:
             continue
@@ -157,6 +165,19 @@ def existing_lines(p, configs=None):
     return out
 
 
+def scope_line(p, category):
+    """새 카테고리의 **이름 규칙 상태** 한 줄(B95 ②) — 표시일 뿐(자동 추정 0).
+
+    `canonical_scope.bind_categories` 안이면 이름에 공정 접두가 붙는다(공정이 다르면 다른 노드 ·
+    좌표 미해소면 노드를 만들지 않는다). 판정 기준은 질문 하나 — 공정을 모르면 뜻이 없는가.
+    """
+    bind = ((p["catalog"].get("canonical_scope") or {}).get("bind_categories") or [])
+    if category in bind:
+        return f"이름 규칙: '{category}'는 공정 스코프 적용(bind_categories 안)"
+    return (f"이름 규칙: '{category}'는 미적용 — 공정을 모르면 뜻이 없는 것(공정마다 다른 실물·값)이면 "
+            f"공통 config canonical_scope.bind_categories에 넣는다 · 노드가 생기기 전에 정한다")
+
+
 def new_categories(p):
     """카탈로그에 **없던** 카테고리 — `[(카테고리, 선언한 층들)]`(더함 · 빈칸 더함 · 골격 모두)."""
     decl = catalog.declared_by()
@@ -166,7 +187,12 @@ def new_categories(p):
 
 def changed(p):
     """파일에 쓸 변경이 있나 — 처음이거나 더함·채움·빈칸·제거·쓰는 층 변경이 있으면."""
-    return p["new"] or bool(p["add"] or p["fill"] or p["ask"] or p["drop"] or p["used"])
+    return p["new"] or bool(p["add"] or p["fill"] or p["fix"] or p["ask"] or p["drop"] or p["used"])
+
+
+def stop_count(p):
+    """멈출 것의 건수 — `--dry-run` 끝 줄이 센다(B96 ①)."""
+    return sum(len(p[k]) for k in ("ask", "stuck", "moved", "sk_dup", "sk_home"))
 
 
 def blocked(p):
@@ -186,6 +212,9 @@ def apply(p):
     for c, lay, skel in p["add"]:
         _LOG.info("공통 config + %s (home %s — %s)", c, lay,
                   f"골격이 {lay}에 있다" if skel else f"{lay}만 선언")
+    for c, old, lay in p["fix"]:
+        _LOG.info("공통 config %s home %s → %s (골격이 %s에 있다 · %s 그래프에 %s 노드 0)",
+                  c, old, lay, lay, old, c)
     for c, lay in p["fill"]:
         _LOG.info("공통 config %s home 빈칸 → %s (골격이 %s에 있다)", c, lay, lay)
     for c, lays in p["ask"]:

@@ -65,6 +65,8 @@ def main(argv):
               f"그 지점의 정밀도가 떨어진다")
     else:
         print("결과: **붙었다.** 위 ④의 응답 텍스트가 그 증거다")
+    from cli import _screen
+    print(f"  {_screen.usage_line()}")                     # 점검 왕복의 사용량 (B96 ③)
     print("=" * 66)
     return 1 if fatal else 0
 
