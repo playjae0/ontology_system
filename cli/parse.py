@@ -26,6 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+from cli import _screen
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
 from core.state.bootstrap import coord_layer
@@ -212,12 +213,14 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     # **좌표 층도 주입이다**(B85 ②) — 파서는 어느 층이 좌표 층인지 모른다.
     # 묻는 자리는 하나(`coord_layer()` = `Process`를 선언한 층)이고, 폴더 이름이
     # 무엇이든 그 답을 쓴다.
-    res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(),
-                         layer=coord_layer(),
-                         coord_notice=_notice, coord_cap=coord_cap,
-                         progress=_progress, sheet_roles=sheet_roles,
-                         rule_notice=_rule_notice, no_images=no_images,
-                         image_notice=image_screen())
+    # **누적 줄**(B97 ②) — 계층 규칙 · 그림 요약 · 좌표 태깅이 이 안에서 LLM을 부른다
+    with _screen.ticker("파싱(계층 규칙·그림 요약·좌표)"):
+        res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(),
+                             layer=coord_layer(),
+                             coord_notice=_notice, coord_cap=coord_cap,
+                             progress=_progress, sheet_roles=sheet_roles,
+                             rule_notice=_rule_notice, no_images=no_images,
+                             image_notice=image_screen())
     print_read_warnings(res.report)
     print_split_notes(res.report)
     _skip = res.report.get("images")

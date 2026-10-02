@@ -74,7 +74,13 @@ def run(paths, *, force=False, layer=None):
         # 층이 없으면 **좌표 층**이다(B85 ② — 폴더 이름을 박지 않는다).
         cfg = load_config(layer or (schema or {}).get("layer") or coord_layer())
         from core.build.entry import _vocab
-        out, made = EX.extract(env, cfg, loc2id, _vocab(cfg))
+        from cli import _screen
+        from cli.ingest_screen import extract_screen, ticker_where
+        # **인입과 같은 화면**(B97 ①②) — 예고 · 청크마다 메타 · 누적 줄 · 끝 줄
+        stage = {"이름": "추출"}
+        with _screen.ticker("추출", where=ticker_where(stage)):
+            out, made = EX.extract(env, cfg, loc2id, _vocab(cfg),
+                                   notice=extract_screen(stage=stage))
         n = sum(len(c.get("entities", [])) for c in out["candidates"])
         _ref = out.get("ref_skipped") or 0
         print(f"[추출] {doc_id}: 청크 {len(out['candidates'])} · 개체 후보 {n}"

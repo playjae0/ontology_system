@@ -81,7 +81,7 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
     """
     from core.build import extract as extract_mod, prose as prose_mod
     from core.build.build import Builder
-    from core.build.entry import Stopped, _vocab
+    from core.build.entry import StepStop, Stopped, _vocab, prose_gate
     from core.build.ledger import Ledger
     from core.state import knobs
     from core.state.bootstrap import load_config, open_graph
@@ -98,8 +98,10 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
         skip, n, calls = plan(env, lenses, loc2id, cfgs, graphs, root.dict, min_score)
         info = {"단계": "렌즈예고", "렌즈": list(lenses), "청크": n, "호출": calls,
                 "거름": sum(len(v) for v in skip.values()), "문턱": min_score}
-        if notice is not None:
-            notice(info)
+        # 렌즈가 둘 이상이면 **렌즈 예고가 추출 예고의 자리**다(B97 ① — 두 줄 중복 0) ·
+        # `--step`이면 여기서 묻는다
+        if notice is not None and notice(info) is False:
+            raise StepStop("사람이 멈췄다 — 렌즈 예고까지 (그래프 쓰기 0)")
         cap = knobs.get("lens_call_cap")
         if calls > cap:
             go = notice({**info, "단계": "렌즈상한", "상한": cap}) if notice else None
@@ -108,9 +110,14 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
                               f"거름 뒤 {calls}회 · 손잡이 lens_call_cap 또는 렌즈를 줄인다")
     extracted = False
     for lay in lenses:
+        _nt = notice
+        if many and notice is not None:
+            def _nt(info, _n=notice):            # 추출 예고 줄은 렌즈 예고가 맡았다
+                return _n({**info, "렌즈여럿": True})
         ck, did = extract_mod.extract(env, cfgs[lay], loc2id, _vocab(cfgs[lay]),
-                                      lens=lay, skip=skip[lay])
+                                      lens=lay, skip=skip[lay], notice=_nt)
         extracted = extracted or did
+        prose_gate(env, ck, loc2id, lay, notice, lens=lay)
         lb = root.for_layer(lay)
         prose_mod.build_prose(env, cfgs[lay], lb.g, ck["candidates"], builder=lb)
     return root, extracted
