@@ -265,7 +265,7 @@ def _ask_llm_coord(misses, assume=None):
     return on
 
 
-def _progress(done, total, adopted, *, label="", **_row):
+def _progress(done, total, adopted, *, label=""):
     """진행 한 줄 — **주기 갱신**. 매 번 찍으면 그것이 잡음이 된다.
 
     **단위는 표기다**(B69 ① — 행이 아니다): 리허설에서 도는 것은 좌표 태깅의
@@ -506,7 +506,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
                 **{**injections(), "pick_coord": pick, "infer_rules": None},
                 max_rows=rows, sheet_roles=_roles.get(str(Path(s).resolve())),
-                progress=lambda a, b, c, _l=lbl, **_k: _progress(a, b, c, label=_l)))
+                progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
 
     results = _run(None)

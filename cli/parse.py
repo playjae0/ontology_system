@@ -156,6 +156,8 @@ def coord_screen():
     진행은 **표기 단위**이고, 끝 줄은 채택·목록 밖을 센다.
     """
     def notice(info):
+        if info.get("단계") == "행":
+            return row(info)
         if info.get("단계") == "예고":
             head = (f"   좌표 태깅 — 조각 {info['조각']:,} · "
                     f"정확 일치 {info['정확_일치']:,} · "
@@ -188,14 +190,22 @@ def coord_screen():
 
     box = {"t": None}
 
-    def progress(done, total, adopted, *, ref=None, rows=0, chosen=None):
+    def row(info):
         # **표기마다 한 행 — 이어지는 표**(B98 ⑥) · 표기 하나가 LLM 호출 하나다
         if box["t"] is None:
             box["t"] = _screen.Table([("번호", 9, True), ("표기", 40, False),
                                       ("행 수", 5, True), ("결과", 24, False)], flex=1)
-        box["t"].row([f"{done}/{total}", ref, rows, chosen or "목록 밖(orphan_anchor 후보)"],
-                     ["prog", None, "aux", "match" if chosen else "aux"])
-        if done == total:
+        box["t"].row([f"{info['i']}/{info['총']}", info["표기"], info["행_수"],
+                      info["결과"] or "목록 밖(orphan_anchor 후보)"],
+                     ["prog", None, "aux", "match" if info["결과"] else "aux"])
+
+    def progress(done, total, adopted):
+        # 보폭 진행 줄 — 표가 이어지는 중이면 그 표의 구분 행이다(B69 ② · B98 ⑥)
+        stride = max(1, total // 10)
+        if done == 1 or done == total or done % stride == 0:
+            _screen.inline(f"[좌표 태깅] 표기 {done:,}/{total:,} · 채택 {adopted:,} · "
+                           f"목록 밖 {done - adopted:,}", "prog")
+        if done == total and box["t"] is not None:
             box["t"].end()
             box["t"] = None
 
