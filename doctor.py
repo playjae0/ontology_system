@@ -224,6 +224,15 @@ def check_env():
          "1 = LLM 없이 전 경로가 로컬로 돈다(네트워크 0). 사내 첫 실행은 이 상태여야 한다"
          if mock == "1" else "0 = 실LLM 경로. 아직 훅이 비어 있어 추출에서 명시 실패한다")
 
+    # **어느 설정 파일을 읽었나**(B98 ④) — 처음 찾은 파일 하나만 읽는다 · 무시된 파일을 말한다
+    sys.path.insert(0, str(ROOT))
+    from core.llm import gateway as _gw                                   # noqa: E402
+    try:
+        _src = _gw.config_sources()
+        line(WARN if _src["ignored"] else OK, "LLM 설정 파일", _gw.sources_line())
+    except _gw.NotConfigured as e:
+        line(WARN, "LLM 설정 파일", str(e))
+
     # **레포 정본 자산이 레포 판인가**(B79 ④ · 사용자 확정 2026-09-21) —
     # `prompts/`·`kit/`·`schemas/blocks.json`·(레포)`layers/`는 사내에서 고치지 않는다.
     # 고치면 「어느 판으로 잰 결과인가」가 사라진다 — 고칠 것은 허브로 요청한다.

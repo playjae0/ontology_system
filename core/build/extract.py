@@ -423,7 +423,9 @@ def _load_hints(doc_id):
 
 
 def _chunk_info(entry, i, m, locator, tokens, lens):
-    """청크 하나의 화면 재료 — 개체는 **전부**(표기·카테고리) · 관계·부착·부모는 수 (B97 ②)."""
+    """청크 하나의 화면 재료 — 개체는 **전부**(표기·카테고리) · 관계·부착·부모는 수 (B97 ②).
+
+    `tokens`는 이 청크의 사용량 차이(`prompt_tokens`·`completion_tokens`·`total_tokens` — B98 ③)."""
     ents = entry.get("entities") or []
     return {"단계": "추출청크", "렌즈": lens, "i": i, "m": m, "locator": locator,
             "개체": [(e.get("surface"), e.get("category")) for e in ents],
@@ -527,15 +529,18 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
             candidates.append(done[cid])
             continue
         i += 1
-        t0 = gateway.usage_total().get("total_tokens", 0)
+        t0 = gateway.usage_total()
         entry = _call_chunk(doc_id, cid, c, cfg, vocab, hints)
         candidates.append(entry)
         _partial_append(env, lens, entry)
         # 관계 쌍은 화면이 아니라 명령 로그로 간다(수만 화면에)
         _LOG.info("추출 %s %s · 관계 %s", doc_id, c.get("source_locator"),
                   [(r.get("src"), r.get("rel"), r.get("dst")) for r in entry.get("relations") or []])
+        t1 = gateway.usage_total()
         _say(notice, _chunk_info(entry, i, m, c.get("source_locator"),
-                                 gateway.usage_total().get("total_tokens", 0) - t0, lens))
+                                 {k: t1.get(k, 0) - t0.get(k, 0) for k in
+                                  ("prompt_tokens", "completion_tokens", "total_tokens")},
+                                 lens))
     called = [x for x in candidates if not x.get("lens_skipped")]
     failed = sum(1 for x in called if x.get("failed"))
     _say(notice, {"단계": "추출끝", "렌즈": lens, "청크": len(called), "실패": failed,

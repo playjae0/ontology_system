@@ -218,7 +218,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         if memo[ref]:
             adopted += 1
         if progress is not None:
-            progress(n, len(ask), adopted)
+            # 표기 · 그 표기의 행 수 · 결과를 함께 준다(B98 ⑥ — 좌표 태깅 표의 한 행)
+            progress(n, len(ask), adopted, ref=ref, rows=refs.count(ref), chosen=memo[ref])
 
     out = []
     for p, ref in zip(pieces, refs):

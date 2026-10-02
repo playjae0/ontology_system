@@ -96,6 +96,10 @@ def main(argv):
     paths = [a for a in argv if not a.startswith("--")]
     if not paths:
         raise SystemExit("계약 JSON 경로를 달라\n" + __doc__)                    # [사용법]
+    # **사전 점검**(B98 ①) — 추출 LLM을 부르기 전에 채팅 왕복 1회
+    from cli import preflight as _pf
+    if not _pf.gate(chat=True, catalog=False):
+        return 1
     rc = run(paths, force=force)
     from cli import _screen
     print(f"   {_screen.usage_line()}")                     # 추출 LLM (B96 ③)

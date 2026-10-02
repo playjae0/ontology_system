@@ -23,7 +23,7 @@ import unicodedata
 #: ANSI 조각 — 이름으로만 쓰고 숫자는 여기 한 자리에 둔다.
 _C = {"reset": "\033[0m", "bold": "\033[1m", "reverse": "\033[7m",
       "red": "\033[31m", "yellow": "\033[33m", "green": "\033[32m",
-      "dim": "\033[2m"}
+      "cyan": "\033[36m", "magenta": "\033[35m", "dim": "\033[2m"}
 
 #: **특이점 표** — verdict·사건 이름 → 색. 목록에 없는 것은 **칠하지 않는다**.
 KINDS = {
@@ -36,6 +36,11 @@ KINDS = {
     "match": ("green",),                     # LLM이 붙인 값
     "banner": ("reverse",),                  # 중간·끝 요약 한 줄
     "dim": ("dim",),
+    # ── 세 층(B98 ⑤ · 사용자 확정 2026-10-02) — **빨강·노랑은 위의 특이점 전용**이다
+    "head": ("cyan", "bold"),                # 구조 — 단계 머리·예고 줄·관문 머리·표 머리글
+    "prog": ("cyan",),                       # 구조 — 진행 머리말([추출 i/m] · [좌표 태깅] · [판정])
+    "beat": ("magenta",),                    # 박자 — LLM 사용 시작 · 30초 누적
+    "aux": ("dim",),                         # 보조 — 위치 · 토큰 수 · 개체 0 청크
 }
 
 _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
@@ -115,6 +120,22 @@ def cut(text, n):
     return out
 
 
+def tokens(u, since=None):
+    """**토큰 표기 한 함수**(B98 ③) — `토큰 T(입력 I · 출력 O)`.
+
+    `u`·`since`는 `gateway.usage_total()` 모양(또는 같은 키의 차이). 게이트웨이가 입력·출력을
+    주지 않으면(둘 다 0 · 합 > 0) 그 사실을 말한다 — 0을 「없었다」로 읽지 않게.
+    """
+    b = since or {}
+
+    def d(k):
+        return int((u or {}).get(k, 0) or 0) - int(b.get(k, 0) or 0)
+    t, i, o = d("total_tokens"), d("prompt_tokens"), d("completion_tokens")
+    if t and not (i or o):
+        return f"토큰 {t:,}(입출력 구분 없음 — 게이트웨이 미제공)"
+    return f"토큰 {t:,}(입력 {i:,} · 출력 {o:,})"
+
+
 def usage_line(since=None):
     """**LLM 사용량 한 줄** — LLM을 부를 수 있는 사용자 명령의 끝 줄 문구는 이 함수 하나다(B96 ③).
 
@@ -127,8 +148,7 @@ def usage_line(since=None):
 
     def d(k):
         return int(u.get(k, 0)) - int(b.get(k, 0))
-    return (f"LLM 사용량 — 호출 {d('calls'):,}회 · 토큰 {d('total_tokens'):,}"
-            f"(입력 {d('prompt_tokens'):,} · 출력 {d('completion_tokens'):,})"
+    return (f"LLM 사용량 — 호출 {d('calls'):,}회 · {tokens(u, b)}"
             + (f" · **응답 잘림 {d('truncated')}회**" if d("truncated") else ""))
 
 
@@ -191,7 +211,7 @@ class ticker:
             moved = u["calls"] > self._c0
             if moved and not started:
                 started = True
-                print(f"   ── LLM 사용 시작 — {self.label}", flush=True)
+                beat(f"── LLM 사용 시작 — {self.label}")
             now = self._time.monotonic()
             if now - last < TICK_SECONDS or HOLD.is_set():
                 continue
@@ -199,7 +219,136 @@ class ticker:
             if not (moved or not self._gw.use_mock()):
                 continue
             s = int(now - self._t0)
-            line = (f"   ── {int(TICK_SECONDS)}초 · {self.where()} · 호출 {u['calls']:,} · "
-                    f"토큰 {u.get('total_tokens', 0):,} · 경과 {s // 60}분 {s % 60}초")
-            print(line, flush=True)
-            _log.info(line.strip())
+            line = (f"── {int(TICK_SECONDS)}초 · {self.where()} · 호출 {u['calls']:,} · "
+                    f"{tokens(u)} · 경과 {s // 60}분 {s % 60}초")
+            beat(line)
+            _log.info(line)
+
+
+# ── 출력 잠금 · 박자 줄 · 이어지는 표 (B98 ⑥) ─────────────────────────────────
+#: **출력은 잠금 하나로 직렬화한다** — 30초 스레드가 표의 행 중간에 끼지 않게.
+OUT = _threading.RLock()
+#: 지금 이어지고 있는 표 — 박자 줄은 그 표의 **구분 행**으로 들어간다.
+ACTIVE = None
+#: 머리글을 다시 내는 행 수 — 화면 박자(손잡이 아님).
+HEAD_EVERY = 30
+_CTRL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def say(text, kind=None):
+    """한 줄 — 잠금 안에서 찍는다(표 행과 섞이지 않게)."""
+    with OUT:
+        print(paint(text, kind), flush=True)
+
+
+def beat(text):
+    """박자 줄(`LLM 사용 시작` · 30초 누적) — 표가 이어지는 중이면 그 표의 구분 행이다."""
+    inline(text, "beat")
+
+
+def inline(text, kind):
+    """표 사이에 끼는 한 줄(박자 · 진행) — 표가 이어지는 중이면 구분 행, 아니면 줄."""
+    with OUT:
+        if ACTIVE is not None:
+            ACTIVE.note(text.strip().removeprefix("── "), kind)
+        else:
+            print(paint(f"   {text.strip()}", kind), flush=True)
+
+
+def close():
+    """이어지던 표를 닫는다 — 끝 요약·실패 줄 앞에서 부른다."""
+    global ACTIVE
+    with OUT:
+        ACTIVE = None
+
+
+def clean(text):
+    """칸에 넣기 전에 — LLM이 낸 줄바꿈·탭·제어문자를 공백으로(표가 깨지지 않게)."""
+    return _CTRL.sub(" ", strip_ansi(str(text if text is not None else "")))
+
+
+def fit(text, n, right=False):
+    """동아시아 폭으로 `n`칸에 맞춘다 — 넘치면 `…`로 자른다."""
+    t = clean(text)
+    if w(t) > n:
+        t = cut(t, max(1, n - 1))
+    gap = " " * max(0, n - w(t))
+    return gap + t if right else t + gap
+
+
+def term_width():
+    """터미널 폭 — 파이프면 `COLUMNS` 또는 120."""
+    import shutil
+    return shutil.get_terminal_size((120, 24)).columns
+
+
+class Table:
+    """**이어지는 표**(B98 ⑥) — 머리글 한 번 · 행이 이어 붙는다 · `HEAD_EVERY`행마다 머리글 다시.
+
+    - 테두리는 ASCII만(` | ` · `-`) — 한글 환경 터미널에서 괘선 문자가 두 칸으로 그려져 칸이 밀린다.
+    - 칸 폭은 동아시아 폭(`w`)으로 재고, **가변 칸 하나**(`flex`)만 터미널 폭에 맞춰 줄인다(`…`).
+    - 색은 칸을 맞춘 **뒤에** 칠한다 — 폭 계산에 ESC가 섞이지 않는다 · 파이프·로그는 ESC 0.
+    - 표가 이어지는 동안 박자 줄은 구분 행(`+-- …`)으로 들어간다.
+
+    `cols`는 `[(이름, 폭, 오른쪽 맞춤?)]`.
+    """
+    SEP = " | "
+
+    def __init__(self, cols, flex, indent="   ", min_flex=8):
+        self.cols, self.flex, self.indent = list(cols), flex, indent
+        avail = term_width() - len(indent) - len(self.SEP) * (len(self.cols) - 1) - 1
+        # 좁은 터미널 — 고정 칸을 넓은 것부터 머리글 폭까지 줄여 가변 칸 최소를 지킨다
+        while True:
+            fixed = sum(c[1] for i, c in enumerate(self.cols) if i != flex)
+            if avail - fixed >= min_flex:
+                break
+            cand = [(c[1] - max(3, w(c[0])), i) for i, c in enumerate(self.cols)
+                    if i != flex and c[1] > max(3, w(c[0]))]
+            if not cand:
+                break
+            _slack, i = max(cand)
+            n, wd, r = self.cols[i]
+            self.cols[i] = (n, wd - 1, r)
+        name, width, right = self.cols[flex]
+        self.cols[flex] = (name, max(min_flex, min(width, avail - fixed)), right)
+        self.n = 0
+
+    def width(self, i):
+        return self.cols[i][1]
+
+    def _line(self, cells):
+        return self.indent + self.SEP.join(cells).rstrip()
+
+    def _rule(self):
+        return self.indent + "-+-".join("-" * c[1] for c in self.cols)
+
+    def _head(self):
+        print(paint(self._line([fit(c[0], c[1], c[2]) for c in self.cols]), "head"))
+        print(paint(self._rule(), "aux"))
+
+    def row(self, values, kinds=None, extra=None):
+        """행 하나 — `kinds`는 칸마다 색 층(없으면 칠하지 않음) · `extra`는 행 아래 한 줄(`-v`)."""
+        global ACTIVE
+        with OUT:
+            ACTIVE = self
+            if self.n % HEAD_EVERY == 0:
+                self._head()
+            self.n += 1
+            kinds = kinds or [None] * len(values)
+            cells = [paint(fit(v, c[1], c[2]), k)
+                     for v, c, k in zip(values, self.cols, kinds)]
+            print(self._line(cells), flush=True)
+            if extra:
+                print(paint(self.indent + "    " + clean(extra), "aux"), flush=True)
+
+    def note(self, text, kind="beat"):
+        """표 안의 구분 행 — 박자 줄·진행 줄이 들어가는 자리."""
+        with OUT:
+            print(paint(f"{self.indent}+-- {clean(text)}", kind), flush=True)
+
+    def end(self):
+        """표가 끝났다 — 이후 박자 줄은 다시 줄로 나간다."""
+        global ACTIVE
+        with OUT:
+            if ACTIVE is self:
+                ACTIVE = None

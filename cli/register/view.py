@@ -10,7 +10,7 @@ from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from core import paths
-from core.llm import check, gateway, points
+from core.llm import gateway, points
 from core.state import fixtures, log, registry, store
 from kit.render_review import render
 from parser import form
@@ -205,22 +205,12 @@ def _gateway_ready():
     이것이 없으면 사내에서 무슨 일이 나나: 리허설 파싱은 좌표 미스 행마다 실호출을
     한다 — 게이트웨이가 안 닿으면 **타임아웃 60초 × 재시도 × 미스 행 수**를 말없이
     기다린다. 사용자는 «멈췄다»고 읽고, 실제로 몇 시간을 기다렸다(실측).
-    **판정은 `core/llm/gateway.py::probe()`가 한다** — llm-check가 쓰는 그 함수다.
+    **판정은 `core/llm/preflight.run`이 한다** — llm-check와 같은 단계 함수다.
     """
-    if gateway.use_mock():
+    # **사전 점검으로 바뀌었다**(B98 ①) — 같은 판정 함수(채팅 왕복 · 설정 파일)를 인입과 함께 쓴다.
+    from cli import preflight as _pf
+    if _pf.gate(chat=True, catalog=False):
         return True
-    print("   게이트웨이 확인 중… (리허설 전 왕복 1회)")
-    stages = check.probe()
-    bad = [s for s in stages if s["ok"] is False and s["fatal"]]
-    if not bad:
-        ok = [s for s in stages if s["ok"]]
-        print(f"   게이트웨이 OK — {len(ok)}단계 통과")
-        return True
-    s = bad[0]
-    print(f"   ✗ 게이트웨이 {s['id']} {s['label']} 실패")
-    for ln in str(s["detail"]).split("\n"):
-        if ln.strip():
-            print(f"     {ln}")
     raise SystemExit("[뷰 확인] 게이트웨이가 준비되지 않았다 — "                          # [상태]
                      "`python run.py llm-check`로 단계별 원인을 본다. "
                      "USE_MOCK=1로 돌리면 LLM 없이 리허설만 볼 수 있다")
@@ -275,7 +265,7 @@ def _ask_llm_coord(misses, assume=None):
     return on
 
 
-def _progress(done, total, adopted, *, label=""):
+def _progress(done, total, adopted, *, label="", **_row):
     """진행 한 줄 — **주기 갱신**. 매 번 찍으면 그것이 잡음이 된다.
 
     **단위는 표기다**(B69 ① — 행이 아니다): 리허설에서 도는 것은 좌표 태깅의
@@ -516,7 +506,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
                 **{**injections(), "pick_coord": pick, "infer_rules": None},
                 max_rows=rows, sheet_roles=_roles.get(str(Path(s).resolve())),
-                progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
+                progress=lambda a, b, c, _l=lbl, **_k: _progress(a, b, c, label=_l)))
         return out
 
     results = _run(None)

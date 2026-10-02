@@ -261,8 +261,14 @@ _out81 = _buf81.getvalue()
 show("① 집계가 대장 행에서 나온다 (사전 1 · NEW 1 · 불확실 1 · 큐 2)",
      SCR81.TALLY == {"값": 3, "사전": 1, "NEW": 1, "불확실": 1, "큐": 2, "orphan": 0},
      str(SCR81.TALLY))
+# B98 ⑥ — 값은 이어지는 표의 **데이터 행**이다(머리글·괘선·`+--` 구분 행은 세지 않는다 · 기대 변경)
+def _data_rows(text):
+    return [l for l in text.splitlines()
+            if l.strip()[:1] in ("✓", "+", "?", "✗", "·") and not l.strip().startswith("+--")]
+
+
 show("① 찍힌 줄은 판단이 갈린 둘뿐이다 (사전 히트는 화면에 없다)",
-     len([l for l in _out81.splitlines() if l.strip()]) == 2
+     len(_data_rows(_out81)) == 2
      and "노칭::버 높이" in _out81 and "dictionary" not in _out81)
 
 # ②④ 실행 화면 — 기본과 `-v`, 보폭 둘
@@ -288,8 +294,7 @@ def _ing81(*extra):
 
 _scr81 = _ing81("--progress-every", "10")
 _led81 = (LG81.read("CP01") or {}).get("rows") or []
-_vals81 = [l for l in _scr81.splitlines()
-           if l.strip()[:1] in ("✓", "+", "?", "✗", "·")]
+_vals81 = _data_rows(_scr81)
 show("① 값 줄 수 == 대장 행 중 판단이 갈린 수 (두 벌이 갈리지 않는다)",
      len(_vals81) == sum(1 for r in _led81 if SCR81._loud(r)),
      f"화면 {len(_vals81)} · 대장 LOUD {sum(1 for r in _led81 if SCR81._loud(r))}"
@@ -311,8 +316,7 @@ show("② 끝 요약이 로그 자리를 말한다",
      "로그 " in _scr81 and "logs" in _scr81,
      [l.strip() for l in _scr81.splitlines() if l.strip().startswith("로그")][:1])
 _scrv81 = _ing81("-v")
-_valsv81 = [l for l in _scrv81.splitlines()
-            if l.strip()[:1] in ("✓", "+", "?", "✗", "·")]
+_valsv81 = _data_rows(_scrv81)
 show("② -v면 콘솔에도 INFO가 돌아온다 (지금까지의 화면)",
      bool([l for l in _scrv81.splitlines() if l.startswith("INFO")]))
 show("① -v면 값 줄이 대장 행 전부다",

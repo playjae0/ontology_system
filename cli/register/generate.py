@@ -550,6 +550,10 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     # 거부·중단이 비용을 헛되게 하지 않는다. 답은 기록이 되고 리허설·킷이 그것을 읽는다.
     from cli.register import samples as samples_mod
     samples_mod.sample_roles(doc_type, None, samples, spec=sheets, layer=layer)
+    # **사전 점검**(B98 ①) — 초안 LLM을 부르기 전에 채팅 왕복 1회(llm-check와 같은 함수)
+    from cli import preflight as _pf
+    if not _pf.gate(chat=True, catalog=False):
+        raise SystemExit("[생성] 사전 점검에서 멈췄다 — 위 원인과 다음 줄을 본다")     # [상태]
     _r = _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
     if _r is not None:
         return _r
