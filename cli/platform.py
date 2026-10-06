@@ -186,11 +186,14 @@ def auto_next_lines(item, layer=None):
     pl = item.get("payload") or {}
     nid = pl.get("node_id") or "<node_id>"
     lay = layer or pl.get("layer") or "<층>"
+    near = (pl.get("nearest") or {})          # 불확실의 가장 가까운 후보(B99 ⑨) — 있으면 그 id를 채운다
+    other = near.get("id") or "<기존 node_id>"
     return "\n".join([
-        "     ▶ 다음 줄 — 사람이 끝낸다(셋 중 하나):",
+        "     ▶ 다음 줄 — 사람이 끝낸다(셋 중 하나):"
+        + (f"  [가장 가까운 후보 — {near.get('by')}: {near.get('canonical')}]" if near.get("id") else ""),
         f"        python run.py ops confirm  {lay} {nid} --actor <이름>"
         "          ← 맞다(status auto → confirmed)",
-        f"        python run.py ops merge    {lay} {nid} <기존 node_id> "
+        f"        python run.py ops merge    {lay} {nid} {other} "
         "--actor <이름> --yes   ← 이미 있는 것",
         f"        python run.py ops obsolete {lay} {nid} --actor <이름>"
         "          ← 아니다"])
@@ -747,4 +750,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.main_module("cli.platform", main))

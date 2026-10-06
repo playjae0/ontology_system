@@ -66,6 +66,10 @@ def load_config(layer):
     층 config에 남은 것을 그대로 쓴다 — 거부는 `bootstrap`이 한다.
     """
     cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
+    # **층 이름의 정본은 폴더 이름이다**(B99 ①) — 파일 안 `"layer"`가 달라도 읽는 쪽은 폴더 이름을
+    # 받는다(다르면 `layer_name_problems`가 거부한다 · 사내: 폴더 `equip` · config `"equipment"`
+    # → 같은 그래프를 두 번 열어 새 노드가 덮였다). 고치기 전 상태에서도 소실 0이 되게 하는 자리다.
+    cfg["layer"] = layer
     from core.state import catalog
     sc = catalog.canonical_scope()
     if sc is not None:

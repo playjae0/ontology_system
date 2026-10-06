@@ -173,17 +173,33 @@ def also_lines():
     return {c: "(" + " · ".join(v) + ")" for c, v in out.items()}
 
 
+def layer_name_problems(configs=None):
+    """**층 이름 = 폴더 이름**(B99 ①) — config 안 `"layer"`가 폴더 이름과 다르면 그 문면. 층 전부를 이 함수 하나로 잰다.
+
+    읽는 쪽(`bootstrap.load_config`)은 이미 폴더 이름을 쓰지만, 다른 값이 적혀 있으면 사람이
+    다른 층을 가리켰다고 믿는다 — `bootstrap`·사전 점검·`doctor`가 같은 문면으로 거부한다.
+    """
+    out = []
+    for lay, cfg in sorted((configs or _layer_configs()).items()):
+        v = cfg.get("layer")
+        if v is not None and v != lay:
+            out.append(f"layers/{lay}/config.json의 \"layer\"가 '{v}'이다 — 폴더 이름 '{lay}'로 "
+                       f"고친다({paths.show(paths.layers(lay, 'config.json'))}) · "
+                       f"▶ 다음 줄 — 고친 뒤 python run.py bootstrap --dry-run")
+    return out
+
+
 def problems(configs=None, cat=None):
-    """거부 갈래 ⓑ~ⓔ — `[(갈래, 문면)]`. 비어 있으면 통과다(ⓐ 파일 없음은 호출부가 본다).
+    """거부 갈래 ⓑ~ⓕ — `[(갈래, 문면)]`(ⓕ 층 이름 ≠ 폴더 이름 · B99 ①). 비어 있으면 통과다(ⓐ 파일 없음은 호출부가 본다).
 
     `cat`을 주면 그 카탈로그를 검사한다 — `bootstrap --dry-run`이 **맞춘 뒤의 계획**을 쓰지 않고
     실제 실행과 같은 판정을 받는 통로다(B96 ①). 없으면 파일의 카탈로그.
     """
     configs = configs or _layer_configs()
+    out = [("ⓕ", m) for m in layer_name_problems(configs)]     # 층 이름 = 폴더 이름 (B99 ①)
     cat = cat if cat is not None else load()
     cats = cat.get("categories") or {}
     decl = declared_by(configs)
-    out = []
     for c, lays in sorted(decl.items()):
         if c not in cats:
             out.append(("ⓑ", f"층 {lays}의 카테고리 '{c}'가 공통 config에 없다 — "

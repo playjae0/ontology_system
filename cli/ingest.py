@@ -264,8 +264,8 @@ def _ingest_file_select(doc, sel, row, step):
     if step and not sys.stdin.isatty():
         print("   (--step 무시 — 비대화형이다. 단계별로 보려면 터미널에서 돌린다)")
         step = False
-    if step and not SCR._step_gate(0, row["basis"], prose=(registry.schema_of(
-            sel.get("doc_type")) or {}).get("payload_kind") == "prose"):
+    if not SCR._step_gate(0, row["basis"] if step else row["basis"].split("\n")[0], prose=(registry.schema_of(
+            sel.get("doc_type")) or {}).get("payload_kind") == "prose", ask=step):
         row.update(status=SKIP, reason="사람이 멈췄다 — 선택까지")
         return row, None, step
     # **판정과 어댑터가 어긋나면 말한다** — 조용히 넘기면 관리계획서가 산문으로,
@@ -303,19 +303,21 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
                   "reason": stop["reason"]}
 
 
-def _step_stops(res, sel, row):
-    """`--step`의 세 관문(파싱·좌표·판정 예고) — 사람이 멈추면 `row`를 적고 True.
+def _step_stops(res, sel, row, ask=True):
+    """세 단계 머리(파싱·좌표·판정 예고) — `ask`(`--step`)면 묻고, 사람이 멈추면 `row`를 적고 True.
+
+    머리와 단계 끝 줄은 `--step`이 아니어도 낸다(B99 ④).
 
     `ingest_file`에서 떼어냈다(B86 ④ — 선택 의존 거부를 싣다가 함수 상한 120행을 넘었다).
     """
     _rep = res.report or {}
     prose = res.envelope.get("payload_kind") == "prose"
-    if not SCR._step_gate(1, prose=prose, detail=f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
+    if not SCR._step_gate(1, prose=prose, ask=ask, detail=f"조각 {_rep.get('pieces', len(res.envelope.get('records') or res.envelope.get('chunks') or []))}건 · "
                       f"{res.envelope.get('payload_kind')}"):
         row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
         return True
     _ct = _rep.get("coord_tag") or {}
-    if not SCR._step_gate(2, prose=prose, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
+    if not SCR._step_gate(2, prose=prose, ask=ask, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
                       f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
                       f"LLM 호출 {_ct.get('호출', 0)}"):
         row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
@@ -333,7 +335,7 @@ def _step_stops(res, sel, row):
          if x.get("process_ref")], _sc.get("layer") or coord_layer())
     if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
                       f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
-                      f"{_pl['예상_호출']}회"):
+                      f"{_pl['예상_호출']}회", ask=ask):
         row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
                                        "(그래프 쓰기 0)")
         return True
@@ -357,6 +359,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     row = {"doc": str(doc), "doc_id": sel["doc_id"], "doc_type": sel.get("doc_type"),
            "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
     # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
+    _doc_header(sel)                            # 문서 머리줄 — 단계 머리보다 먼저 (B99 ③④)
     _r, stage, step = _ingest_file_select(doc, sel, row, step)
     if _r is not None:
         return _r
@@ -370,7 +373,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         row["status"] = "선택만"
         print("   (dry-run — 파싱·인입 안 함)")
         return row
-    if not _preflight_once(doc, preflight, no_images):
+    if not _preflight_once(doc, preflight, no_images, sel.get("doc_type")):
         row.update(status=FAIL, preflight_fail=True,
                    reason="사전 점검 실패 — 파싱 전에 멈췄다(LLM 추가 0 · 쓰기 0)")
         return row
@@ -393,7 +396,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             print(SCR.fail_block(doc, sel["doc_id"], rows,
                              doc_type=sel.get("doc_type"), queued=1))
             return row
-        if step and _step_stops(res, sel, row):
+        if _step_stops(res, sel, row, ask=step):
             return row
         _u0 = gateway.usage_total()["calls"]
         from core import matcher as _mt
@@ -434,8 +437,9 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                    + (f" · 그래프 노드 {m['nodes']}" if m else "")
                    + ("  [추출 실행]" if _extracted else "  [추출 체크포인트 재사용]"))
         print(f"   인입 — {row['reason']} → {out}")
+        row["result"], SCR.LAST_RESULT["res"] = SCR.LAST_RESULT["res"], None
         if finalize_after:
-            finalize()
+            _finalize_screen()
         return row
     except MissingDependency as e:               # 선택 의존 부재 — 결함이 아니라 상태다 (B86 ④)
         row.update(status=FAIL, reason=f"[상태] {e}", missing_dep=str(e))
@@ -457,6 +461,26 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         print("   " + spend_line(stage))
         _kept_lines(doc, sel, stage)
         return row
+
+
+def _finalize_screen():
+    """**마무리 — 미러 · 재시도**(B99 ⑥): 결과를 버리지 않고 한 줄씩 낸다(일괄이면 전 문서 뒤 1회)."""
+    gateway.set_doc("(마무리)")                  # 재시도 판정의 사용량은 마무리로 센다 (B99 ③)
+    fin = finalize()
+    SCR.stage_head("마무리", "미러 · 재시도")
+    print(f"   {fin['retry_line']}")
+    print(f"   미러 — 새 짝 엣지 {fin['mirror_new']:,} · 비대칭(mirror_asymmetry) {fin['mirror_asym']:,}")
+    return fin
+
+
+def _doc_header(sel):
+    """문서 머리줄(B99 ③) — 형태·렌즈는 등록부의 값 그대로 · 게이트웨이 문서 문맥도 여기서 채운다."""
+    from cli import _entry
+    dt = sel.get("doc_type")
+    ent = registry.lookup(dt) or {}
+    _entry.doc_header(sel["doc_id"], dt, (registry.schema_of(dt) or {}).get("payload_kind"),
+                      registry.lenses_of(dt) if ent.get("lenses") else None)
+    SCR.stage_reset()                           # 단계 끝 줄의 시계는 문서마다 (B99 ④)
 
 
 def _kept_lines(doc, sel, stage):
@@ -484,7 +508,7 @@ def _kept_lines(doc, sel, stage):
     print(f"   ▶ 다음 줄 — 위 원인을 고친 뒤 같은 명령: python run.py ingest-file {doc}{dt}")
 
 
-def _preflight_once(doc, pf, no_images):
+def _preflight_once(doc, pf, no_images, doc_type=None):
     """**사전 점검 — 실행당 1회**(B98 ①): `pf`는 실행이 공유하는 칸(`ingest-dir`이 하나를 넘긴다).
 
     채팅은 실호출이면 늘 · 임베딩은 이 실행의 좁히기가 `embed`일 때 · 그림은 문서(폴더면
@@ -496,7 +520,12 @@ def _preflight_once(doc, pf, no_images):
     if pf.get("ok") is None:
         imgs = pf["images"] if "images" in pf else (not no_images and PF.has_images(doc))
         pf["ok"] = PF.gate(chat=True, embed=narrow_choice()[0] == "embed", images=imgs)
-    return pf["ok"]
+        SCR.stage_head("사전 점검", "통과" if pf["ok"] else "멈춤")
+    # **등록 스키마 재대조**(B99 ⑩) — doc_type마다 한 번(일괄이면 처음 만난 doc_type마다)
+    done = pf.setdefault("schemas", {})
+    if pf["ok"] and doc_type and doc_type not in done:
+        done[doc_type] = PF.schema_gate(doc_type)
+    return pf["ok"] and done.get(doc_type, True)
 
 
 def spend_line(stage):
@@ -546,8 +575,10 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         if rows[-1].get("preflight_fail"):
             break                                  # 같은 실행의 나머지도 같은 자리에서 막힌다
     if not dry_run and any(r["status"] == OK for r in rows):
-        finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
+        _finalize_screen()                      # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
+    from cli import result_screen
+    result_screen.batch(rows)                   # 문서별 한 줄 + 전체 합 (B99 ⑤)
     if not dry_run:
         # **총계 한 줄**(B73 ①) — 문서마다의 요약은 위에 있고, 배치의 비용은
         # 여기서만 보인다. 사람이 「이 폴더를 넣으면 얼마」를 알 자리다.
@@ -722,4 +753,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]) or 0)
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.main_module("cli.ingest", main))

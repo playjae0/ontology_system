@@ -205,7 +205,10 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         ask = ask[:max(0, int(cap))]
     plan = {"단계": "예고", "조각": len(pieces), "정확_일치": exact,
             "표기_종수": len(misses), "미스_행": miss_rows,
-            "묻는_종수": len(ask), "상한": cap, "LLM": pick is not None}
+            "묻는_종수": len(ask), "상한": cap, "LLM": pick is not None,
+            # **좌표 진단**(B99 ⑧) — 목록 밖 표기 상위(표기 · 행 수) · LLM 전에 안다
+            "목록밖_상위": sorted(((r, refs.count(r)) for r in misses),
+                                key=lambda x: (-x[1], x[0]))[:10]}
     if notice is not None:
         notice(dict(plan))
 

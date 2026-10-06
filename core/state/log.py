@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import time
 from pathlib import Path
@@ -36,6 +37,28 @@ _configured = False
 
 #: 마지막 `setup()`이 만든 로그 파일 — 화면 끝 요약이 「로그 <경로>」로 낸다.
 LOG_PATH = None
+#: 이번 실행의 머리줄(`cli/_entry`) — 클린이 로그 파일을 지워 다시 열 때 다시 쓴다(B99 ③).
+HEADER = None
+
+
+class _Reopening(logging.handlers.WatchedFileHandler):
+    """**지워져도 다시 연다**(B99 ③) — `doctor`·`init --fresh`가 `work/`를 지우면 열린 파일이 사라진다.
+
+    표준 `WatchedFileHandler`가 다시 열고, 다시 열었을 때 이번 실행의 머리줄을 한 번 더 쓴다 —
+    새 파일만 보는 사람도 그 줄부터 어느 실행인지 안다.
+    """
+
+    def reopenIfNeeded(self):
+        gone = self.stream is not None and not os.path.exists(self.baseFilename)
+        if gone:
+            try:
+                from core import paths          # 폴더를 만드는 자리는 하나다(B77 ④)
+                paths.ensure(Path(self.baseFilename))
+            except OSError:
+                return
+        super().reopenIfNeeded()
+        if gone and HEADER and self.stream is not None:
+            self.stream.write(f"{HEADER} (클린이 로그를 지워 다시 열었다)\n")
 
 
 def log_path(command=None):
@@ -52,7 +75,7 @@ def log_path(command=None):
     return paths.work("logs", f"{name}_{time.strftime('%Y%m%d')}.log")
 
 
-def setup(level=None, *, force=False, console=None, command=None):
+def setup(level=None, *, force=False, console=None, command=None, console_stream=None):
     """진입점에서 1회. 두 번 불러도 핸들러가 겹쳐 쌓이지 않는다.
 
     **콘솔은 WARNING · 파일은 INFO**가 기본이다(B81 ②). `console`을 주면 그 레벨로
@@ -67,7 +90,10 @@ def setup(level=None, *, force=False, console=None, command=None):
     lg.setLevel(level or "INFO")           # 로거는 INFO를 통과시키고, 갈래는 핸들러가 정한다
     for h in list(lg.handlers):
         lg.removeHandler(h)
-    con = logging.StreamHandler()
+    # `console_stream` — 공통 진입(`cli/_entry`)이 **원래 stderr**를 준다: 화면 복사(`onto.screen`)가
+    # 그 stderr를 다시 로그로 옮기면 같은 줄이 두 번 남는다(B99 ③).
+    con = logging.StreamHandler(console_stream)
+    con.addFilter(lambda r: not r.name.endswith(".screen"))   # 화면 복사 줄은 화면에 다시 안 낸다
     con.setFormatter(logging.Formatter("%(levelname)-7s %(name)s  %(message)s"))
     con.setLevel(os.environ.get("ONTO_LOG_LEVEL", console or "WARNING").upper())
     lg.addHandler(con)
@@ -75,7 +101,7 @@ def setup(level=None, *, force=False, console=None, command=None):
         path = log_path(command)
         from core import paths                # 폴더를 만드는 자리는 하나다(B77 ④)
         paths.ensure(path)
-        fh = logging.FileHandler(path, encoding="utf-8")
+        fh = _Reopening(path, encoding="utf-8")
         fh.setFormatter(logging.Formatter(
             "%(asctime)s %(levelname)-7s %(name)s  %(message)s"))
         fh.setLevel("INFO")
@@ -106,7 +132,7 @@ def queue_put(logger, kind, reason, doc_id=None):
     logger.info("큐 %s%s — %s", kind, f" [{doc_id}]" if doc_id else "", reason)
 
 
-def llm_usage(logger, point, usage, finish=None):
+def llm_usage(logger, point, usage, finish=None, where=""):
     """LLM 1회 호출의 토큰 사용량 — **지점 이름과 함께** 남긴다(§7.8 로그).
 
     `usage`가 없는 게이트웨이도 있다 — **없으면 조용히 넘어간다**(치명 아님).
@@ -114,7 +140,8 @@ def llm_usage(logger, point, usage, finish=None):
     산출물이 불완전한 채로 하류에 흘러간다 — 조용하면 아무도 그것을 모른다.
     """
     if usage:
-        logger.info("LLM 사용량 %s — 입력 %s · 출력 %s · 합계 %s", point,
+        # **지금 다루는 문서**를 단다(B99 ③) — 하루 로그를 문서별로 가를 수 있게
+        logger.info("LLM 사용량 %s · %s — 입력 %s · 출력 %s · 합계 %s", point, where or "문서 없음",
                     usage.get("prompt_tokens", "?"), usage.get("completion_tokens", "?"),
                     usage.get("total_tokens", "?"))
     if finish == "length":

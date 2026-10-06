@@ -45,10 +45,11 @@ class _Row:
         self.dropped_ents = []
 
 
-def build_table(env, cfg, schema, graph):
+def build_table(env, cfg, schema, graph, defer_save=False):
     """정형 인입 — 레코드마다 ⓪좌표 → ①role 분기 → attribute → content → ②edges →
     규칙 B 폴백 → 말미 적재. 단계의 순서가 계약이다(문서 2 §2.4 · 문서 4 §4.4)."""
-    b = Builder(graph, cfg, schema, env["doc_id"], cfg["layer"])
+    # **층 이름은 연 그래프의 폴더 이름**(B99 ①) — config 안 `"layer"`는 검사 대상이지 이름이 아니다
+    b = Builder(graph, cfg, schema, env["doc_id"], graph.layer)
     b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 행마다 적는다 (B74 ②)
     fields = schema["fields"]
     doc_id = env["doc_id"]
@@ -67,7 +68,8 @@ def build_table(env, cfg, schema, graph):
                        dropped_entities=r.dropped_ents,
                        coord_missing=(r.coord_case == "missing"), prov=r.prov)
 
-    b.flush()
+    if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
+        b.flush()
     b.ledger.save()
     return b
 

@@ -51,10 +51,29 @@ def _small(pv):
             and not pv.get("canonical_chain"))
 
 
+def _tidy(a):
+    """**정리**(B99 ⑩) — 사라진 노드를 가리키는 큐·사전·엣지. 기본 계획만 · `--apply`에서만 지운다.
+
+        python run.py ops tidy all --actor <이름>            # 계획
+        python run.py ops tidy all --actor <이름> --apply    # 지운다
+    """
+    from core.state import integrity
+    r = integrity.tidy(apply=a.apply)
+    head = "정리했다" if r["applied"] else "정리 계획(쓰기 0)"
+    print(f"■ {head} — 사라진 노드를 가리키는 큐 {r['큐']:,}(사람 판단이 있어 남김 {r['큐_남김']:,}) · "
+          f"사전 표기 {len(r['사전']):,} · 끝점 없는 엣지 "
+          + (" · ".join(f"{k} {v:,}" for k, v in sorted(r["엣지"].items())) or "0"))
+    for s, ids in r["사전"][:10]:
+        print(f"    사전 '{s}' → 없는 노드 {', '.join(i[:8] for i in ids)}")
+    if not r["applied"] and (r["큐"] or r["사전"] or r["엣지"]):
+        print(f"  ▶ 다음 줄 — 지운다: python run.py ops tidy all --actor {a.actor} --apply")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
-                                  "transfer", "delete-edge", "confirm", "alias"])
+                                  "transfer", "delete-edge", "confirm", "alias", "tidy"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -64,7 +83,10 @@ def main(argv=None):
     p.add_argument("--replaced-by", dest="replaced_by", help="I4 — 대체 노드 id")
     p.add_argument("--parent", help="이관 — 새 부모 노드 id (소속 변경)")
     p.add_argument("--yes", action="store_true", help="미리보기 확인 후 실행")
+    p.add_argument("--apply", action="store_true", help="tidy — 계획이 아니라 실제로 지운다")
     a = p.parse_args(argv)
+    if a.op == "tidy":
+        return _tidy(a)
 
     try:
         if a.op == "rename":
@@ -144,4 +166,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.main_module("cli.ops", main))

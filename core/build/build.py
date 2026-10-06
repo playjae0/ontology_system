@@ -57,7 +57,9 @@ class Builder:
         self.layer = layer
         self.dict = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
         self.buffer: dict[str, str] = {}     # 문서 해소 버퍼 (2-pass Pass 1)
-        self.subs: dict[str, "Builder"] = {}  # 걸침 층별 하위 빌더 — 아래 for_layer
+        # 걸침 층별 하위 빌더 — 아래 for_layer. **뿌리도 제 층 이름으로 든다**(B99 ①): 하위 빌더가
+        # 뿌리 층을 물으면 새로 열지 않고 뿌리를 돌려준다(같은 그래프 사본 둘 = 덮어쓰기 소실).
+        self.subs: dict[str, "Builder"] = {layer: self}
         # 마지막 entity 해소의 사실 — **대장이 읽는 자리**다(B74 ②). 판정이 아는
         # 것(경로·점수·큐)을 호출부가 다시 계산하지 않게 여기 실어 올린다.
         self.last: dict = {}
@@ -77,6 +79,10 @@ class Builder:
             return self
         if layer not in self.subs:
             from core.state.bootstrap import load_config, open_graph
+            # **같은 층 그래프는 한 빌드에서 한 번만 연다**(B99 ①) — 이미 연 그래프가 그 층이면 결함
+            if any(s.g.layer == layer for s in self.subs.values()):
+                raise RuntimeError(f"[결함] 한 빌드에서 층 '{layer}' 그래프를 두 번 열려 한다 — "
+                                   f"하위 빌더 키가 폴더 이름과 어긋났다(core/build/build.py::for_layer)")
             sub = Builder(open_graph(layer), load_config(layer), self.schema,
                           self.doc_id, layer)
             sub.dict = self.dict
@@ -88,7 +94,7 @@ class Builder:
 
     def graphs(self):
         """이 빌드가 만진 그래프 전부 — 자기 층 + 걸침 층. 저장 대상이다."""
-        return [self.g] + [s.g for s in self.subs.values()]
+        return [self.g] + [s.g for s in self.subs.values() if s is not self]
 
     # ---------------------------------------------------------------- 집 (B90 ②)
     def home_of(self, category):
@@ -435,6 +441,9 @@ class Builder:
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
         self.last = {"canonical": canonical, "verdict": verdict,
                      "path": v.get("path"), "confidence": conf,
+                     # 판정 근거(B99 ⑨) — 좁힘 · 임베딩 최고 점수 · 불확실의 가장 가까운 후보
+                     "narrow": v.get("narrow"), "emb_top": v.get("emb_top"),
+                     "nearest": v.get("nearest"),
                      "layer": self.layer, "queue_kind": None,
                      "candidates_n": v.get("candidates_n", 0),
                      "llm": {"calls": _u1["calls"] - _u0["calls"],
@@ -467,6 +476,8 @@ class Builder:
                       f": {canonical} ({category})",
                       self.doc_id, {"node_id": nid, "canonical": canonical,
                                     "surface": surface, "provenance": prov,
+                                    **({"nearest": self.last["nearest"]}
+                                       if self.last.get("nearest") else {}),
                                     # 종결 명령이 층을 요구한다(B73 ④) — 자리표시자를
                                     # 남기면 사람이 그 줄을 그대로 칠 수 없다.
                                     "layer": self.layer})

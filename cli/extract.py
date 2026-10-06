@@ -40,6 +40,8 @@ def run(paths, *, force=False, layer=None):
     for p in paths:
         env = json.loads(Path(p).read_text(encoding="utf-8"))
         doc_id = env["doc_id"]
+        from cli import _entry
+        _entry.doc_header(doc_id, env.get("doc_type"), env.get("payload_kind"))   # B99 ③
         if env.get("payload_kind") != "prose":
             print(f"[건너뜀] {doc_id}: payload_kind={env.get('payload_kind')} "
                   f"— 추출은 비정형만이다 (문서 4 §4.1)")
@@ -107,5 +109,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    log.setup(command="extract")
-    sys.exit(main(sys.argv[1:]) or 0)
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.main_module("cli.extract", main))

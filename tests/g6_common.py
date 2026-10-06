@@ -69,29 +69,44 @@ SCHEMA = {"doc_type": DT, "schema_version": 1, "layer": "process",
           "fields": {}, "edges": []}
 
 
-def _register():
+def _register(layer="process", dt=DT):
+    """표본 doc_type을 **등록 단에 세운다** — 인입은 미등록을 거부한다(B3). `layer`·`dt`로 다른 층에도 (B99)."""
+    _register_one(layer, dt)
+
+
+def _register_one(layer, dt):
     """표본 doc_type을 **등록 단에 세운다** — 인입은 미등록을 거부한다(B3).
 
     내장(`tests/fixtures/schemas/`)에 넣지 않는 이유: 내장 목록은 `doctor`·
     `platform doctypes` 화면에 그대로 뜬다 — 회귀용 이름을 거기 얹지 않는다.
     """
-    p = _P.schemas(f"{DT}.json")
+    p = _P.schemas(f"{dt}.json")
     _P.ensure(p)
-    p.write_text(json.dumps(SCHEMA, ensure_ascii=False, indent=2) + "\n",
-                 encoding="utf-8")
+    p.write_text(json.dumps({**SCHEMA, "doc_type": dt, "layer": layer}, ensure_ascii=False,
+                            indent=2) + "\n", encoding="utf-8")
+    ad = ROOT / "parser" / "adapters" / "basic_prose_xlsx.py"
+    if dt != DT:
+        # 이름이 다르면 **위임 래퍼**를 둔다(등록의 기본 어댑터 경로와 같은 모양 — 어댑터는 이름으로 찾는다)
+        ad = _P.adapters(f"{dt}.py")
+        _P.ensure(ad)
+        ad.write_text("from parser.adapters import basic_prose_xlsx\n"
+                      f"ADAPTER = {{**basic_prose_xlsx.ADAPTER, \"doc_type\": {dt!r}}}\n"
+                      "extract = basic_prose_xlsx.extract\n", encoding="utf-8")
     dts = store.read(store.DOC_TYPES, {})
-    dts[DT] = {"doc_type": DT, "status": "registered", "layer": "process",
-               "schema": f"schemas/{DT}.json",
-               "adapter": str(ROOT / "parser" / "adapters" / "basic_prose_xlsx.py"),
+    dts[dt] = {"doc_type": dt, "status": "registered", "layer": layer,
+               "schema": f"schemas/{dt}.json",
+               "adapter": str(ad),
                "schema_version": 1}
     store.write(store.DOC_TYPES, dts)
 
 
-def _unregister():
+def _unregister(dt=DT):
     dts = store.read(store.DOC_TYPES, {})
-    dts.pop(DT, None)
+    dts.pop(dt, None)
     store.write(store.DOC_TYPES, dts)
-    _P.schemas(f"{DT}.json").unlink(missing_ok=True)
+    _P.schemas(f"{dt}.json").unlink(missing_ok=True)
+    if dt != DT:
+        _P.adapters(f"{dt}.py").unlink(missing_ok=True)
 
 
 def _run(*argv, answers=None):

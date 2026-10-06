@@ -134,6 +134,23 @@ def scope_filter(pool, parent, scope_cats, category):
     return [c for c in pool if c.get("parent") == parent], True
 
 
+#: **후보 임베딩은 실행 중 메모리에 한 번**(B99 ⑨ · 문서 4 §4.3 ② 「로드 시 1회」) — 파일 저장 0.
+#: 같은 글이면 같은 벡터라 결과는 그대로다. `ENCODES`는 실제로 인코딩한 횟수(시험·진단).
+_VEC = {}
+ENCODES = {"n": 0, "후보": 0}
+#: 마지막 좁힘의 사실 — `resolve`가 판정 근거(좁힘 방법 · 상위 점수)로 싣는다(B99 ⑨).
+LAST_NARROW = {}
+
+
+def _vec(text, cand=False):
+    from core.llm import embeddings
+    if text not in _VEC:
+        _VEC[text] = embeddings.embed(text)
+        ENCODES["n"] += 1
+        ENCODES["후보"] += int(cand)
+    return _VEC[text]
+
+
 def _narrow(surface, pool, top_n, *, scoped=False):
     """후보를 **상한 안으로 좁힌다** — 임베딩 또는 겹침 (B73 ① · B75 ①).
 
@@ -152,15 +169,19 @@ def _narrow(surface, pool, top_n, *, scoped=False):
     mode, _why = narrow.narrow_choice()
     if mode == "overlap":
         scored = sorted(pool, key=lambda c: -_overlap(surface, c["canonical"]))
+        LAST_NARROW.update(how="겹침", top=[(c["id"], c["canonical"], _overlap(surface, c["canonical"]))
+                                           for c in scored[:3]])
         return scored[:top_n], "겹침"
     # **임베딩 대상은 canonical과 정의문이다**(문서 4 §4.2 ② — 정의문이 빠지면
-    # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5).
+    # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5) — 메모리에 한 번(B99 ⑨).
     from core.llm import embeddings
-    qv = embeddings.embed(surface)
-    scored = sorted(
-        pool, key=lambda c: -embeddings.cosine(
-            qv, embeddings.embed(" ".join(
-                [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip())))
+    qv = _vec(surface)
+    score = {c["id"]: embeddings.cosine(qv, _vec(" ".join(
+        [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip(), cand=True))
+             for c in pool}
+    scored = sorted(pool, key=lambda c: -score[c["id"]])
+    LAST_NARROW.update(how="임베딩", top=[(c["id"], c["canonical"], score[c["id"]])
+                                         for c in scored[:3]])
     return scored[:top_n], "임베딩"
 
 
@@ -375,7 +396,7 @@ def match(surface, candidates, category, cfg=None):
     if score > 0.0:
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
         return {"type": UNCERTAIN, "matched_id": None, "confidence": score,
-                "path": path}
+                "path": path, "nearest_id": best}
     return {"type": NEW, "matched_id": None, "confidence": 0.0, "path": path}
 
 
@@ -392,7 +413,8 @@ def _guard_auto(verdict, pool):
     if c and c.get("status") == "auto" and float(verdict.get("confidence") or 0) < 1.0:
         return {"type": UNCERTAIN, "matched_id": None,
                 "confidence": verdict.get("confidence", 0.0),
-                "path": verdict.get("path")}
+                "path": verdict.get("path"),
+                "nearest_id": c["id"], "guarded": True}       # 가드로 내려갔다 (B99 ⑨)
     return verdict
 
 
@@ -429,7 +451,7 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None):
                 "path": path}
     if vtype == MATCH and conf < threshold(cfg):
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
-                "path": path}
+                "path": path, "nearest_id": mid}
     if vtype == MATCH:
         return _guard_auto({"type": MATCH, "matched_id": mid,
                             "confidence": conf, "path": path}, pool)
@@ -439,7 +461,28 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None):
                 "path": path}
     return {"type": vtype,
             "matched_id": mid if vtype == MATCH else None,
-            "confidence": conf, "path": path}
+            "confidence": conf, "path": path,
+            "nearest_id": mid if (vtype == UNCERTAIN and mid in ids) else None}
+
+
+def _evidence(v, cands):
+    """**판정 근거**(B99 ⑨) — 좁힘 방법 · 임베딩 최고 점수 · 불확실이면 가장 가까운 후보.
+
+    판정은 바꾸지 않는다 — 판정이 이미 아는 것(LLM이 고른 후보 · 가드가 내린 후보 · 좁힘 점수)을
+    대장·큐·화면이 읽을 자리에 싣는다. 불확실은 신규로 만들어지므로 **가까운 후보**가 사람의 재료다.
+    """
+    top = LAST_NARROW.get("top") or []
+    v["narrow"] = LAST_NARROW.get("how")
+    if LAST_NARROW.get("how") == "임베딩" and top:
+        v["emb_top"] = round(float(top[0][2]), 4)
+    if v.get("type") == UNCERTAIN:
+        nid = v.get("nearest_id")
+        name = next((c.get("canonical") for c in cands if c.get("id") == nid), None)
+        v["nearest"] = {"by": "가드" if v.get("guarded") else
+                        ("LLM" if not gateway.use_mock() else "mock 판정"),
+                        "id": nid, "canonical": name,
+                        "top": [{"id": i, "canonical": cn, "score": round(float(s), 4)}
+                                for i, cn, s in top]}
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
@@ -453,9 +496,11 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     """
     from core.state.bootstrap import load_config
     cfg = load_config(layer)
+    LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
     v = match(surface, cands, category, cfg)
+    _evidence(v, cands)
     # **후보 수는 판정의 반환이 아니라 조립의 사실이다** — 계약(문서 4 §4.3-6)의
     # 세 키에 `path` 하나만 더한다(B74 ②). 대장이 적을 나머지는 여기서 싣는다.
     v["candidates_n"] = len(cands)

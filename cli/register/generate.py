@@ -546,6 +546,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     if resume:
         return _cmd_generate_resume(doc_type, layer, samples, no_fewshot)
     _cmd_generate_guard(doc_type, layer, samples, revise)
+    from cli import _entry                 # 문서 머리줄 — 등록은 doc_type과 표본 수 (B99 ③)
+    _entry.doc_header(f"{doc_type}(표본 {len(samples)}부)", f"{doc_type} · 층 {layer}")
     # **표본의 시트 역할을 입구에서 정한다**(B86 ⑤) — 초안(LLM)을 받기 전이라야
     # 거부·중단이 비용을 헛되게 하지 않는다. 답은 기록이 되고 리허설·킷이 그것을 읽는다.
     from cli.register import samples as samples_mod
