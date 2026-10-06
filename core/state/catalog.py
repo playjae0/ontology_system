@@ -289,7 +289,8 @@ def mirror_warnings(configs=None):
             if lay == h or c in ((configs[lay].get("polarity") or {}).get("bind_categories") or []):
                 continue                                   # 묶은 층은 위에서 본다
             lv = list(((configs[lay].get("polarity") or {}).get("values")) or [])
-            if hv != lv and c not in ((configs[h].get("polarity") or {}).get("bind_categories") or []):
+            # 집에 축이 있고 C를 묶지 않을 때만 갈린다(축이 없는 집은 극성 none — 갈리지 않는다)
+            if hv and hv != lv and c not in ((configs[h].get("polarity") or {}).get("bind_categories") or []):
                 out.append((f"'{c}'의 집 {h}의 극성 축 values {hv or '없음'}가 선언한 층 {lay}의 "
                             f"{lv or '없음'}와 다르다 — 극성 표기가 있는 행의 '{c}' 노드는 집 {h}의 축으로 "
                             f"판정된다(묶지 않은 축이면 unbound — 극성별로 둘이 된다)",

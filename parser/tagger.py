@@ -81,6 +81,28 @@ def _learned_hits(misses, idx, rec):
             out[r] = x["canonical"]
     return out
 
+def _learn_update(book, learn, memo, refs, idx, layer, doc_id):
+    """학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · 적중 횟수 · null은 새 공정 후보로만."""
+    at = _now()
+    for r in learn:
+        x = book["채택"][r]
+        x["hits"] = int(x.get("hits") or 0) + refs.count(r)
+        x["last_hit"] = at
+    for r, v in memo.items():
+        if v:
+            node = idx[v]
+            book["채택"][r] = {"canonical": node["canonical"], "id": node.get("id"),
+                              "layer": layer, "doc_id": doc_id, "at": at, "hits": 0,
+                              "skeleton_version": _snap_version(layer), "출처": LEARN_SOURCE}
+            book["목록밖"].pop(r, None)
+        else:
+            c = book["목록밖"].setdefault(r, {"rows": 0, "docs": [], "first_seen": at})
+            c["rows"] = int(c.get("rows") or 0) + refs.count(r)
+            if doc_id and doc_id not in c["docs"]:
+                c["docs"].append(doc_id)
+            c["last_seen"] = at
+    _learn_write(book)
+
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 
 
@@ -340,28 +362,19 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         if progress is not None:
             progress(n, len(ask), adopted)
 
-    # 학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · null은 새 공정 후보로만 남긴다
     if layer and (learn or memo):
-        at = _now()
-        for r in learn:
-            x = book["채택"][r]
-            x["hits"] = int(x.get("hits") or 0) + refs.count(r)
-            x["last_hit"] = at
-        for r, v in memo.items():
-            if v:
-                node = idx[v]
-                book["채택"][r] = {"canonical": node["canonical"], "id": node.get("id"),
-                                  "layer": layer, "doc_id": doc_id, "at": at, "hits": 0,
-                                  "skeleton_version": _snap_version(layer), "출처": LEARN_SOURCE}
-                book["목록밖"].pop(r, None)
-            else:
-                c = book["목록밖"].setdefault(r, {"rows": 0, "docs": [], "first_seen": at})
-                c["rows"] = int(c.get("rows") or 0) + refs.count(r)
-                if doc_id and doc_id not in c["docs"]:
-                    c["docs"].append(doc_id)
-                c["last_seen"] = at
-        _learn_write(book)
+        _learn_update(book, learn, memo, refs, idx, layer, doc_id)
 
+    out = _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type)
+    if notice is not None:
+        notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
+                "목록밖": len(misses) - adopted,
+                "학습_새로": sum(1 for v in memo.values() if v)})
+    return out
+
+
+def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type):
+    """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생."""
     out = []
     for p, ref in zip(pieces, refs):
         r = dict(p)
@@ -389,10 +402,6 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
             if g:
                 r["process_group"] = g
         out.append(r)
-    if notice is not None:
-        notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
-                "목록밖": len(misses) - adopted,
-                "학습_새로": sum(1 for v in memo.values() if v)})
     return out
 
 
