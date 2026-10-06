@@ -69,6 +69,61 @@ def closed_list(layer=None, path=None):
     return (json.loads(p.read_text(encoding="utf-8")).get(layer) or {}).get("nodes", [])
 
 
+#: **골격 값 열 문턱**(B100 ③ · 사내 손잡이 `skeleton_column_pct`) — entity로 매핑된 열의 비지 않은
+#: 값 중 이 백분율 이상이 골격 목록에 있으면 등록 관문 FAIL(G4H). 기본값은 가결정(D-181) —
+#: 창작 표본 수치가 근거가 아니다([정정] 50). 사내 실측(관문 G4H 줄의 k/n)으로 조정한다.
+SKELETON_COLUMN_PCT = 50
+
+#: 등록 골격 목록의 몫 표시 — 좌표 층 몫(공정 좌표) · 등록 층 자기 골격.
+SHARE_COORD, SHARE_OWN = "좌표", "자기"
+
+
+def registration_list(layer, coord, path=None):
+    """**등록 층 L이 보는 골격 목록**(B100 ②) — 좌표 층 몫 + L 자기 골격 · 노드마다 `몫` 표시.
+
+    생성 입력 · 검수 뷰 · 실행 하네스 · 등록 관문이 이 함수 하나를 쓴다. L이 좌표 층이면 한 벌
+    (`몫` = 좌표). 좌표 태깅은 이 중 좌표 몫만 쓴다(`coord_share`) — 자기 골격은 좌표가 아니다.
+    파서 자리라 core를 모른다 — 좌표 층 이름은 호출자가 넘긴다.
+    """
+    coord = _need_layer(coord, "registration_list")
+    out = [dict(n, 몫=SHARE_COORD) for n in closed_list(coord, path)]
+    if layer and layer != coord:
+        out += [dict(n, 몫=SHARE_OWN) for n in closed_list(layer, path)]
+    return out
+
+
+def skeleton_hits(values, nodes):
+    """값 목록 중 골격 목록(이름·별칭 · 영문 대소문자 2차)에 맞는 것 — `(맞은 값들, 몫별 수)`.
+
+    등록 관문(G4H)과 시험이 같은 함수를 쓴다. 비지 않은 값만 센다.
+    """
+    idx = surfaces(nodes)
+    hit, by = [], {}
+    for v in values:
+        s = " ".join(str(v).split()) if v is not None else ""
+        if not s:
+            continue
+        n = idx.get(s) or fold_hit(s, idx)
+        if n is not None:
+            hit.append(s)
+            by[n.get("몫", SHARE_COORD)] = by.get(n.get("몫", SHARE_COORD), 0) + 1
+    return hit, by
+
+
+def coord_share(nodes):
+    """`registration_list`에서 좌표 몫만 — 좌표 태깅·좌표 미스 셈의 대상."""
+    return [n for n in nodes if n.get("몫", SHARE_COORD) == SHARE_COORD]
+
+
+def snapshot_meta(layer, coord, path=None):
+    """몫마다 `{층, skeleton_version, count}` — 생성 입력 패키지의 몫 표시."""
+    p = Path(path or snapshot_path())
+    snap = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    lays = [(SHARE_COORD, coord)] + ([(SHARE_OWN, layer)] if layer and layer != coord else [])
+    return {sh: {"층": lay, "skeleton_version": (snap.get(lay) or {}).get("skeleton_version"),
+                 "count": (snap.get(lay) or {}).get("count") or 0} for sh, lay in lays}
+
+
 def _fold(s):
     """라틴 문자만 소문자로 — `core.state.ids.fold_latin`과 같은 규칙(파서는 core를 모른다)."""
     import unicodedata

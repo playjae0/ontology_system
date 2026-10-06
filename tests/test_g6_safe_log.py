@@ -261,6 +261,7 @@ run_document(load("CP01"))
 _qa = store.read(store.QUEUE, [])
 _oa = [x for x in _qa if x["kind"] == "orphan_anchor"]
 _oa[0]["attempts"] = 5               # 상한 도달 주입
+_oa[1]["payload"]["surface"] = "없는공정ZZ"   # 골격에 없는 표기 — 그래프가 자라도 붙지 않는다(건너뜀 재료)
 store.write(store.QUEUE, _qa)
 bootstrap("process", echo=False)     # 그래프가 자랐다 — 재시도가 의미를 갖는다
 from core.build import retry as RT    # noqa: E402
@@ -269,8 +270,10 @@ _l1 = dict(RT.LAST)
 finalize()                           # 연결이 그래프를 바꿨다 — 한 번 더 돈다
 _f2 = finalize()                     # 그래프 그대로 — 건너뛴다
 _l2 = dict(RT.LAST)
-show("ⓗ 재시도 줄 — 이번에 연결 · 상한 도달 · 그래프 그대로라 건너뜀 · 결과를 버리지 않는다",
+# B100 ① — 연결한 만큼 남음이 준다(되살아남 0 · 기대 변경: 구판은 「건너뜀 > 0」을 되살아난 항목으로 채웠다)
+show("ⓗ 재시도 줄 — 이번에 연결 · 상한 도달 · 그래프 그대로라 건너뜀 · 남음 = 대상 − 연결",
      sum(_l1["healed"].values()) > 0 and _l1["capped"] == 1 and _l2["same"] > 0
+     and _l1["left"] == sum(_l1["target"].values()) - sum(_l1["healed"].values())
      and "이번에 연결" in _f1["retry_line"] and "건너뜀" in _f2["retry_line"],
      f"{_f1['retry_line']} / {_f2['retry_line']}")
 _unregister()

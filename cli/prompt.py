@@ -244,10 +244,17 @@ def _render_template(text, pkg, *, regeneration=None):
 
     surf = (sysd.get("skeleton_closed_list") or {}).get("surfaces") or []
     sk = []
-    for n in surf:
-        al = n.get("aliases") or []
-        sk.append(f"- `{n.get('canonical')}`"
-                  + (f"  (별칭: {', '.join(al)})" if al else ""))
+    # 몫마다 머리 한 줄(B100 ② — 좌표 층 몫 · 이 층 자기 골격) · 몫 표시가 없는 옛 패키지는 머리 없이
+    meta = (sysd.get("skeleton_closed_list") or {}).get("몫") or {}
+    for share in dict.fromkeys(n.get("몫") for n in surf):
+        if share and share in meta:
+            m = meta[share]
+            sk.append(f"**{share} 몫** — 층 `{m.get('층')}` · {m.get('count')}개"
+                      + (f" · 카테고리 {', '.join(sorted({str(n.get('category')) for n in surf if n.get('몫') == share}))}"))
+        for n in (x for x in surf if x.get("몫") == share):
+            al = n.get("aliases") or []
+            sk.append(f"- `{n.get('canonical')}`"
+                      + (f"  (별칭: {', '.join(al)})" if al else ""))
     sk_md = "\n".join(sk) or "- (골격 닫힌 목록이 비었다)"
 
     # **힌트 자리도 채운다.** 요청 표에는 6개가 적혔지만 템플릿에는 자리가 일곱이고,

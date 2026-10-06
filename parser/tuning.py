@@ -12,7 +12,7 @@
 """
 from __future__ import annotations
 
-from parser import form, struct_map
+from parser import form, struct_map, tagger
 
 #: 손잡이 이름 → (모듈, 속성). 속성이 둘이면 값은 두 칸짜리 목록이다.
 TARGETS = {
@@ -22,6 +22,7 @@ TARGETS = {
     "sheet_thresholds": (form, ("SHEET_THRESHOLDS",)),
     "form_auto": (form, ("AUTO_MIN_FOR", "AUTO_MAX_AGAINST")),
     "sheet_min_hits": (form, ("SHEET_MIN_HITS",)),
+    "skeleton_column_pct": (tagger, ("SKELETON_COLUMN_PCT",)),
 }
 
 

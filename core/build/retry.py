@@ -37,6 +37,31 @@ def _fingerprint(graphs):
                     for lay, g in sorted(graphs.items()))
 
 
+def _qid(item):
+    """큐 항목의 동일성 — kind · 문서 · payload(이력 필드는 payload 밖이라 들지 않는다)."""
+    import json as _json
+    return (item.get("kind"), item.get("doc_id"),
+            _json.dumps(item.get("payload") or {}, sort_keys=True, ensure_ascii=False, default=str))
+
+
+def _write_back(seen):
+    """**큐를 되살리지 않는다**(B100 ①) — 시작에 읽은 목록을 통째로 다시 쓰지 않는다.
+
+    재시도 중에 연결된 항목은 self-heal(`store.drop`)이 이미 걷어냈고, 착지가 새 항목을
+    적재했을 수도 있다. 그래서 **지금의 큐를 다시 읽어** 남은 항목에만 시도 이력(`attempts`·
+    `first_seen`·`last_tried`·`last_fp`)을 옮겨 쓴다 — 걷힌 것은 그대로 없고, 새로 들어온 것은 그대로 있다.
+    """
+    hist = {_qid(x): x for x in seen}
+    cur = store.read(store.QUEUE, [])
+    for x in cur:
+        h = hist.get(_qid(x))
+        if h is not None:
+            for k in ("attempts", "first_seen", "last_tried", "last_fp"):
+                if k in h:
+                    x[k] = h[k]
+    store.write(store.QUEUE, cur)
+
+
 def retry_orphans(layers=None):
     """**orphan 재시도 배치** — 문서 4 §4.7-5 · §4.8-5.
 
@@ -102,7 +127,7 @@ def retry_orphans(layers=None):
             if _retry_anchor(pl, item, graphs, cfgs, dic):
                 healed[kind] += 1
     if touched:
-        store.write(store.QUEUE, queue)
+        _write_back(queue)
         # orphan_chunk_link의 생산자가 아직 없다 — 항목이 생기면 같은 자리에서 돈다.
 
     for lay, g in graphs.items():
