@@ -71,7 +71,9 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                          candidates_n=(last or {}).get("candidates_n", 0),
                          confidence=(last or {}).get("confidence", 0.0),
                          llm=(last or {}).get("llm"),
-                         queue_kind=(last or {}).get("queue_kind"))
+                         queue_kind=(last or {}).get("queue_kind"),
+                         nearest=(last or {}).get("nearest"),
+                         same_doc=(last or {}).get("same_doc"))
     return coords
 
 

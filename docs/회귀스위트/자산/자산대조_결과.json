@@ -17,7 +17,7 @@
  {
   "구분": "형태",
   "대상": "`query_traverse`",
-  "실태": "process: dict · 깊이 3 · 최상위 2 | quality: dict · 깊이 3 · 최상위 2   ▸ 명세: [3_구조] | ⑥ 읽기 절차 | 질의 때 어느 관계로 얼마나 뻗는가 | config.query_traverse·fact_templates |"
+  "실태": "process: dict · 깊이 3 · 최상위 2 | quality: dict · 깊이 3 · 최상위 2   ▸ 명세: [5_읽기절차] 4-1. **확장은 엣지가 사는 층의 규칙으로도 뻗는다**([개정] B100 ④ · D-181 — 노드는 집 층 · 엣지는 문서 층): 노드의 집이 다른 층이어도 그 노드에 닿은 엣지의 층 규칙(`query_traverse`)으로 확장한다 · 브리지의 출발은 **브리지 전 수집**으로 고정(1홉 1회 — ‖ [3_구조] | ⑥ 읽기 절차 | 질의 때 어느 관계로 얼마나 뻗는가 | config.query_traverse·fact_templates |"
  },
  {
   "구분": "형태",

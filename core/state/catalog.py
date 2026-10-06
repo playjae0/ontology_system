@@ -267,12 +267,35 @@ def mirror_warnings(configs=None):
                 missing.append("polarity.bind_categories")
             if (cfg.get("mirrors") or {}).get("enabled") and not (hc.get("mirrors") or {}).get("enabled"):
                 missing.append("mirrors")
+            if c in (hp.get("bind_categories") or []) and \
+                    list(hp.get("values") or []) != list(pol.get("values") or []):
+                missing.append(f"같은 polarity.values({pol.get('values')} ≠ {hp.get('values')})")
             if missing:
                 out.append((f"층 {lay}이 '{c}'를 극성 짝(polarity.bind_categories)에 묶었는데 '{c}'의 집 "
                             f"{h}의 config에는 {' · '.join(missing)}가 없다 — 노드는 집 층 빌더가 만들므로 "
                             f"이 구성에서는 '{c}'의 극성·미러 짝이 빠진다",
                             f"규칙을 집 층 config로 — {paths.show(paths.layers(h, 'config.json'))}의 "
                             f"polarity(bind_categories에 '{c}' · values) · mirrors를 {lay}와 같게 → "
+                            f"python run.py bootstrap"))
+    # **극성 축 values의 어긋남**(B101 ⑥) — C를 선언한 층 L과 C의 집 H의 축 값이 다르면, 극성 표기가 있는
+    # 행의 C 노드는 집 H의 축으로 판정된다(H에 축이 있고 C를 묶지 않으면 `unbound` — 극성별로 둘이 된다)
+    decl = declared_by(configs)
+    for c, lays in sorted(decl.items()):
+        h = (cats.get(c) or {}).get("home")
+        if not h or h not in configs:
+            continue
+        hv = list(((configs[h].get("polarity") or {}).get("values")) or [])
+        for lay in lays:
+            if lay == h or c in ((configs[lay].get("polarity") or {}).get("bind_categories") or []):
+                continue                                   # 묶은 층은 위에서 본다
+            lv = list(((configs[lay].get("polarity") or {}).get("values")) or [])
+            # 집에 축이 있고 C를 묶지 않을 때만 갈린다(축이 없는 집은 극성 none — 갈리지 않는다)
+            if hv and hv != lv and c not in ((configs[h].get("polarity") or {}).get("bind_categories") or []):
+                out.append((f"'{c}'의 집 {h}의 극성 축 values {hv or '없음'}가 선언한 층 {lay}의 "
+                            f"{lv or '없음'}와 다르다 — 극성 표기가 있는 행의 '{c}' 노드는 집 {h}의 축으로 "
+                            f"판정된다(묶지 않은 축이면 unbound — 극성별로 둘이 된다)",
+                            f"의도가 아니면 '{c}'의 집을 축이 같은 층으로({paths.show(paths.common())}) 또는 "
+                            f"{paths.show(paths.layers(h, 'config.json'))}의 polarity를 맞춘다 → "
                             f"python run.py bootstrap"))
     return out
 

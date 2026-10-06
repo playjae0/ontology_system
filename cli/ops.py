@@ -70,10 +70,29 @@ def _tidy(a):
     return 0
 
 
+def _learn(a):
+    """좌표 학습 기록의 승격·거부(B101 ②) — `<층>`은 좌표 층 자리표시(기록은 좌표 층 하나다)."""
+    from core.state import coord_learn
+    surface = " ".join(a.args).strip()
+    try:
+        if a.op == "learn-promote":
+            r = coord_learn.promote(surface, a.actor)
+            print(f"[승격] '{surface}' → {r['canonical']} — 골격 ALIASES에 더했다 ({r['file']})")
+            print("  ▶ 다음 줄 — python run.py bootstrap   (사람 보증 별칭으로 맞는다)")
+        else:
+            r = coord_learn.reject(surface, a.actor)
+            print(f"[거부] '{surface}' → {r['canonical']} 학습 기록을 지웠다 — 다음 인입에서 다시 묻는다")
+    except coord_learn.LearnRefused as e:
+        print(f"[거부] {e}")
+        return 1
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
-                                  "transfer", "delete-edge", "confirm", "alias", "tidy"])
+                                  "transfer", "delete-edge", "confirm", "alias", "tidy",
+                                  "learn-promote", "learn-reject", "review"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -87,6 +106,11 @@ def main(argv=None):
     a = p.parse_args(argv)
     if a.op == "tidy":
         return _tidy(a)
+    if a.op in ("learn-promote", "learn-reject"):
+        return _learn(a)
+    if a.op == "review":
+        from cli import ops_review                  # 불확실 일괄 검토 (B101 ⑤)
+        return ops_review.run(a)
 
     try:
         if a.op == "rename":

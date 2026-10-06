@@ -353,6 +353,8 @@ def bind_parser():
     from parser import struct_map, tagger
     struct_map.use_dir(lambda: work("struct_maps"))
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))
+    tagger.use_learned(lambda: store.read(store.COORD_LEARNED, {}),     # 좌표 학습 (B101 ②)
+                       lambda d: store.write(store.COORD_LEARNED, d))
 
 
 def ensure(path):

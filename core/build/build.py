@@ -24,6 +24,9 @@ from core.matcher import MATCH, NEW, UNCERTAIN, resolve
 
 #: 골격 밖 반복 판정 기억(B100 ⑤) — 한 실행(프로세스) 안 · 열쇠에 골격·사전의 판이 들어 있다.
 _MEMO = {}
+#: 이번 문서 실행이 사전·노드에 더한 **LLM 매칭** 별칭(B101 ④ — 결과표의 수) · 문서 시작에 비운다.
+ADDED = []
+from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표지
 from core.state.status import is_live
 from core.build.naming import (POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
@@ -162,7 +165,7 @@ class Builder:
         return None
 
     # ---------------------------------------------------------------- 사전
-    def _register(self, surface, nid, prov, key=None):
+    def _register(self, surface, nid, prov, key=None, by=None):
         """사전 등재는 관문이 한다 — **provenance 필수 강제가 그쪽에 있다**(§7.1).
 
         alias 항목(`{surface, provenance}`)은 노드 레코드에 살므로(§7.2) 그
@@ -187,7 +190,9 @@ class Builder:
             self.dict.register(key, nid, provenance=prov)
         if norm(surface) != norm(n["canonical"]) and \
                 not any(a["surface"] == surface for a in n["aliases"]):
-            n["aliases"].append({"surface": surface, "provenance": [prov]})
+            n["aliases"].append({"surface": surface, "provenance": [prov], **(by or {})})
+            if by:
+                ADDED.append({"surface": surface, "node_id": nid, **by})
 
     def flush(self):
         self.dict.save()
@@ -459,7 +464,13 @@ class Builder:
                              "out_tokens": (_u1["completion_tokens"]
                                             - _u0["completion_tokens"])}}
         if verdict == MATCH:
-            self._register(surface, nid, prov, key=canonical)
+            if v.get("same_doc"):
+                self.last["same_doc"] = True
+            # 판정으로 붙은 표기는 **출처 LLM 매칭**으로 남는다(B101 ④) — 사전 히트·기억은 아니다
+            _by = (None if v.get("path") in ("dictionary", "memo", "self_coord", "none")
+                   else {"by": "LLM 매칭", "confidence": round(float(conf or 0), 4),
+                         "doc": self.doc_id})
+            self._register(surface, nid, prov, key=canonical, by=_by)
             if prov not in self.g.get(nid)["provenance"]:
                 self.g.get(nid)["provenance"].append(prov)
             self.buffer[norm(surface)] = nid
@@ -478,6 +489,7 @@ class Builder:
         extra["mirror_scope"] = parent_canonical if scoped_category else None
         extra["mirror_name"] = norm(surface)
         nid = self.g.add_node(canonical, category, "auto", provenance=[prov], **extra)
+        _matcher.SAME_DOC.add(nid)                       # 같은 문서 예외의 표지 (B101 ①)
         self._register(surface, nid, prov, key=canonical)
         self.last["queue_kind"] = "auto_node" if verdict == NEW else "uncertain_match"
         store.enqueue("auto_node" if verdict == NEW else "uncertain_match",

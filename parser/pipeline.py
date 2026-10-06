@@ -240,7 +240,7 @@ def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
 
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
                         doc_type=a["doc_type"], progress=progress,
-                        notice=_note, cap=coord_cap)
+                        notice=_note, cap=coord_cap, doc_id=res.doc_id)
     res.report["coord_tag"] = dict(_coord)
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
