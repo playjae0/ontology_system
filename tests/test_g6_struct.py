@@ -189,7 +189,7 @@ with tempfile.TemporaryDirectory(prefix="b100_") as td:
     from core.state import knobs as KB             # noqa: E402
     KB.reset()
     bad = _variant("pfmea", '"cause": "F",', '"cause": "G",')
-    ok100, out100 = GT.harness(bad, FX / "schemas" / "pfmea.json", [RAW / "PFMEA01.xlsx"])
+    ok100, out100 = GT.harness(bad, FX / "schemas" / f"{'pfmea'}.json", [RAW / "PFMEA01.xlsx"])
     l100 = next((l for l in out100.splitlines() if "G4H" in l), "")
     (_P.home() / "knobs.json").unlink()
     KB.reset()
