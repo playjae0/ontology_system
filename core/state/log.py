@@ -52,7 +52,8 @@ class _Reopening(logging.handlers.WatchedFileHandler):
         gone = self.stream is not None and not os.path.exists(self.baseFilename)
         if gone:
             try:
-                Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+                from core import paths          # 폴더를 만드는 자리는 하나다(B77 ④)
+                paths.ensure(Path(self.baseFilename))
             except OSError:
                 return
         super().reopenIfNeeded()
