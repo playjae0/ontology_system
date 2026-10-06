@@ -132,9 +132,18 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
                                "nodes": sorted(direct), "edges": []})
             continue
         rounds = []
-        collected[lay] = Q.expand(g, direct, cfg, trace=rounds)
+        collected.setdefault(lay, set()).update(Q.expand(g, direct, cfg, trace=rounds))
         for hops in rounds:                 # 한 바퀴 = 한 홉 · 규칙마다 한 줄
             tr["hops"] += hops
+    # **엣지는 문서 층에 산다**(B100 ④) — 직접 노드의 집이 아닌 층 그래프가 그 노드에 닿은
+    # 확장 관계 엣지를 가지면 그 층에서도(그 층 규칙으로) 뻗는다. 집과 문서 층이 같으면 0건이다.
+    if intent not in ("flow", "order"):
+        for lay, more in Q.expand_elsewhere(direct_by_layer, graphs, configs).items():
+            rounds = []
+            collected.setdefault(lay, set()).update(
+                Q.expand(graphs[lay], more, configs[lay], trace=rounds))
+            for hops in rounds:
+                tr["hops"] += hops
 
     # cross-layer 브리지 1홉 — 걸침 엣지는 출발 층 그래프에 있으므로 그쪽을 훑는다.
     #
@@ -143,14 +152,20 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
     # `query_traverse`가 적용되지 않는다** — 건너간 노드는 프론티어에 들어가지
     # 않는다. 적용하면 한 홉짜리 브리지가 도착층 전체로 번져 확장 범위가 층 수만큼
     # 곱해지고, 홉 수 상한이 층마다 다르게 소진된다.
-    crossed = []
+    crossed, _cseen = [], set()
     # **층 안 확장으로 이미 닿은 걸침 엣지**(B90 ④) — 브리지는 이것을 건너뛰고(출발 집합)
     # `facts`도 건너뛴다(이 층에 없는 끝점). 저장한 층의 템플릿으로 한 번 문장화한다.
     stranded = [(lay, e) for lay, ids in collected.items()
                 for e in Q.stranded(graphs[lay], ids)]
-    for lay, ids in list(collected.items()):
+    # 출발 집합은 **브리지 전의 수집으로 고정한다**(B100 ④) — 앞 층의 브리지 결과가 다음 층의
+    # 출발점에 섞이면 1홉이 2홉이 된다(한 노드가 두 층 수집에 들 때 드러났다).
+    for lay, ids in [(l, set(i)) for l, i in collected.items()]:
         found, edges = Q.bridge(ids, lay, graphs, configs)
-        crossed += edges
+        for _l, _e in edges:                # 한 노드가 두 층 수집에 들면 같은 걸침을 두 번 본다
+            _k = (_l, _e["src"], _e["rel"], _e["dst"])
+            if _k not in _cseen:
+                _cseen.add(_k)
+                crossed.append((_l, _e))
         for other, more in found.items():
             collected.setdefault(other, set()).update(more)
             direct_by_layer.setdefault(other, set())

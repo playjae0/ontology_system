@@ -348,8 +348,10 @@ def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revi
 def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
                           interview, drop_interview):
     """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`."""
-    snap = store.read(store.SKELETON_LIST, {}).get(layer) or {}
-    from core.state.bootstrap import load_config          # 이름 규칙은 공통 config에서 얹는다
+    from core.state.bootstrap import coord_layer, load_config   # 이름 규칙은 공통 config에서 얹는다
+    # **골격 목록은 등록 층 몫 함수 하나에서**(B100 ②) — 좌표 층 몫 + 이 층 자기 골격 · 노드마다 몫 표시
+    _sk_nodes = tagger.registration_list(layer, coord_layer())
+    _sk_meta = tagger.snapshot_meta(layer, coord_layer())
     cfg = load_config(layer)
     pkg = {
         # **첫 키가 읽는 법이다** — 이 파일을 처음 여는 사람이 어디를 볼지 모른다.
@@ -382,13 +384,18 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
             # 인라인) 층 자산을 읽는 구현은 그 층의 등록에서 렌더가 죽는다.
             # **canonical과 alias를 함께** 싣는다 — 표기 변형이 빠지면 생성 세션이
             # 문서의 표기를 목록 밖으로 판정해 anchor를 세우지 못한다.
-            "skeleton_closed_list": {"skeleton_version": snap.get("skeleton_version"),
-                                     "count": snap.get("count"),
+            # 몫 표시는 이 한 키 안에서 한다(B100 ② — 시스템 5키를 늘리지 않는다).
+            "skeleton_closed_list": {"skeleton_version":
+                                         _sk_meta[tagger.SHARE_COORD]["skeleton_version"],
+                                     "count": len(_sk_nodes),
+                                     "몫": _sk_meta,
                                      "surfaces": [
                                          {"canonical": n["canonical"],
                                           "aliases": n.get("aliases") or [],
-                                          "tier": n.get("tier")}
-                                         for n in (snap.get("nodes") or [])]},
+                                          "tier": n.get("tier"),
+                                          "category": n.get("category"),
+                                          "몫": n["몫"]}
+                                         for n in _sk_nodes]},
             # **존재하는 층 목록은 「층 어휘」 안에 든다**(문서 6 §6.5) — 지정 층의
             # 어휘만 보내면 생성 세션이 걸침(`target_layer`)을 선언할 때 어느 층
             # 이름이 유효한지 모른 채 지어낸다. **시스템 5키를 6키로 늘리지

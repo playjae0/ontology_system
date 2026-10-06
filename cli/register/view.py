@@ -224,7 +224,8 @@ def _coord_misses(results, layer):
     묻는다). 목록을 그대로 돌려주는 것은 행 수와 종수를 **둘 다** 화면이 말해야
     하기 때문이다: 「3,000행이 12종이다」가 사람이 켤지 정하는 재료다.
     """
-    idx = tagger.surfaces(tagger.closed_list(layer))
+    # 등록 골격 목록 함수 하나(B100 ②) — 좌표 대조는 그 중 좌표 몫만(`layer`는 좌표 층)
+    idx = tagger.surfaces(tagger.coord_share(tagger.registration_list(layer, layer)))
     miss = []
     for r in results:
         env = r.envelope or {}

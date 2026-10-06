@@ -230,6 +230,8 @@ def _catalog_gate(dry_run=False):
     for msg in catalog.warnings():                 # 겸 집 불일치 — 경고만 (B91 ⑥)
         print(f"[bootstrap] ⚠ 공통 config 겸 {msg}\n"
               f"  ▶ 의도가 아니면: 두 카테고리의 home을 같은 층으로 맞춘다 — {paths.show(paths.common())}")
+    for msg, nxt in catalog.mirror_warnings():     # 미러 규칙 ≠ 집 — 경고만 (B100 ④)
+        print(f"[bootstrap] ⚠ 미러 규칙 {msg}\n  ▶ 다음 줄 — {nxt}")
     return 0
 
 
@@ -259,6 +261,18 @@ def cmd_bootstrap(args=()):
     from core.state import catalog_sync
     for warn, msg in catalog_sync.coord_status():
         print(f"[bootstrap] {'⚠ ' if warn else ''}{msg}")
+    # **보류분은 다음 인입 마무리에서 다시 붙는다**(B100 ⑥) — 재시도 지문에 골격·사전의 판이 들어
+    # 있다. bootstrap이 재시도를 돌리지는 않는다(엔티티 판정 LLM을 부를 수 있고 사전 점검은 인입이 지난다).
+    from core.build.retry import RETRY_KINDS
+    from core.state import store as _store
+    _q = [x for x in _store.read(_store.QUEUE, []) if x.get("kind") in RETRY_KINDS]
+    if _q:
+        _k = {}
+        for x in _q:
+            _k[x["kind"]] = _k.get(x["kind"], 0) + 1
+        print(f"[bootstrap] 보류 {len(_q):,}건("
+              + " · ".join(f"{k} {v:,}" for k, v in sorted(_k.items()))
+              + ") — 다음 인입 마무리에서 다시 붙는다")
     return rc
 
 

@@ -252,6 +252,47 @@ def check_vocab(schema, fields, label):
     return not (bad_c or bad_r or bad_t)
 
 
+def check_skeleton_columns(schema, fields, pieces):
+    """**골격 값 열 방어**(B100 ③ · G4H) — entity로 매핑한 열의 값이 골격 목록에 있으면 FAIL.
+
+    골격 목록은 등록 층 몫 함수 하나(`tagger.registration_list` — 좌표 층 몫 + 이 층 자기 골격)다.
+    **열 이름이 아니라 값으로** 잰다 — 층이 그 카테고리를 선언하지 않아도 같다(문서 3 §3.6 원칙 4).
+    문턱은 사내 손잡이 `skeleton_column_pct`(킷은 `--knobs`로 받는다). 목록 파일을 받지 못하면
+    대조를 생략하고 그렇게 말한다(판정 줄 없음 — 하네스 단독 실행).
+    """
+    from parser import tagger
+    if not (tables.CLOSED_LIST and tables.COORD_LAYER):
+        print("      골격 목록 없음 — G4H 대조 생략 (등록 흐름은 --closed-list · --coord-layer로 건넨다)")
+        return True
+    nodes = tagger.registration_list(schema.get("layer"), tables.COORD_LAYER,
+                                     path=tables.CLOSED_LIST)
+    pct = tagger.SKELETON_COLUMN_PCT
+    bad, seen = [], []
+    for name, spec in fields.items():
+        if spec.get("role") != "entity":
+            continue
+        vals = [p.get(name) for p in pieces if p.get(name) not in (None, "")]
+        hit, by = tagger.skeleton_hits(vals, nodes)
+        if not vals or not hit:
+            continue
+        seen.append(f"{name} {len(hit)}/{len(vals)}")
+        if len(hit) * 100 >= pct * len(vals):
+            coord = by.get(tagger.SHARE_COORD, 0) >= by.get(tagger.SHARE_OWN, 0)
+            bad.append((name, len(hit), len(vals), coord))
+    detail = []
+    for name, k, n, coord in bad:
+        detail.append(f"열 '{name}'의 값 {k}/{n}이 골격 목록에 있다 — "
+                      + ("좌표(`process_group`·`process_ref`)로 매핑해야 한다(문서 3 §3.6 원칙 4)"
+                         if coord else "anchor로 매핑해야 한다(골격 카테고리 개체는 조회 전용)"))
+    ok = show(f"G4H  entity 열의 값이 골격 목록 밖 (문턱 {pct}%)", not bad,
+              " ‖ ".join(detail) if bad else (" · ".join(seen) or ""))
+    for name, _k, _n, coord in bad:
+        to = "상위 공정이면 process_group · 하위 공정이면 process_ref" if coord else "anchor"
+        print(f"      ▶ 다음 줄 — python run.py register generate {schema.get('doc_type')} "
+              f"{schema.get('layer')} <표본> --revise --hint \"열 '{name}'은 골격 값이다 — {to}로 매핑\"")
+    return ok
+
+
 def check_schema(schema, pieces, label, payload_kind=None):
     print(f"\n④ 매칭 스키마 정합 — {label}")
     show("G41  헤더 4키 (doc_type·schema_version·layer·use_blocks)",
@@ -311,6 +352,7 @@ def check_schema(schema, pieces, label, payload_kind=None):
                          and not any(p.get(k) not in (None, "") for p in pieces))
         show("G4A  필수 필드가 조각에 실제로 채워짐 (missing_field 큐 예상분)",
              not missing, str(missing))
+        check_skeleton_columns(schema, fields, pieces)        # G4H (B100 ③)
     # role 루프 드라이런 — 핸들러 분기가 전부 도는가
     HANDLED = {r: 0 for r in ROLES}
     unmapped_in_fields = [k for k, v in fields.items() if v.get("role") == "UNMAPPABLE"]

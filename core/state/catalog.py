@@ -241,3 +241,38 @@ def warnings():
                            f"집 그래프 안만 본다: '{other}' 판정({ho})에서 '{c}' 노드({hc})는 겸 후보가 "
                            f"되지 않는다(이 구성에서는 겸 매칭이 조용히 빠진다)")
     return out
+
+
+def mirror_warnings(configs=None):
+    """**미러 규칙과 집의 어긋남**(B100 ④) — `[(문면, 다음 줄)]` · 경고만(막지 않는다 — 사람 판단).
+
+    극성 결합·미러 짝 키(`mirror_scope`·`mirror_name`)는 노드를 만드는 **집 층의 빌더**가 그 층
+    config로 적는다. 어떤 층 L이 카테고리 C를 `polarity.bind_categories`에 묶었는데 C의 집 H(≠L)의
+    config에 그 규칙이 없으면, 이 구성에서는 C 노드의 극성·미러 짝이 조용히 빠진다(B99 ⑪ 재현 —
+    집을 옮기면 mirrors 26 → 20). 규칙을 층 사이로 옮겨 읽는 코드는 넣지 않는다 — 말하고 사람이 옮긴다.
+    """
+    configs = configs or _layer_configs()
+    cats = load().get("categories") or {}
+    out = []
+    for lay, cfg in sorted(configs.items()):
+        pol = cfg.get("polarity") or {}
+        for c in pol.get("bind_categories") or []:
+            h = (cats.get(c) or {}).get("home")
+            if not h or h == lay or h not in configs:
+                continue
+            hc = configs[h]
+            hp = hc.get("polarity") or {}
+            missing = []
+            if c not in (hp.get("bind_categories") or []):
+                missing.append("polarity.bind_categories")
+            if (cfg.get("mirrors") or {}).get("enabled") and not (hc.get("mirrors") or {}).get("enabled"):
+                missing.append("mirrors")
+            if missing:
+                out.append((f"층 {lay}이 '{c}'를 극성 짝(polarity.bind_categories)에 묶었는데 '{c}'의 집 "
+                            f"{h}의 config에는 {' · '.join(missing)}가 없다 — 노드는 집 층 빌더가 만들므로 "
+                            f"이 구성에서는 '{c}'의 극성·미러 짝이 빠진다",
+                            f"규칙을 집 층 config로 — {paths.show(paths.layers(h, 'config.json'))}의 "
+                            f"polarity(bind_categories에 '{c}' · values) · mirrors를 {lay}와 같게 → "
+                            f"python run.py bootstrap"))
+    return out
+

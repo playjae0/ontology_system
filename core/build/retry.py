@@ -33,8 +33,45 @@ def _fingerprint(graphs):
     시각이 아니라 **수**를 쓰는 이유: mtime은 같은 초 안의 변화를 못 보고, 시험이
     그것에 기대면 빠른 실행에서 조용히 통과한다. 수는 결정적이다.
     """
-    return "|".join(f"{lay}:{len(g.nodes)}:{len(g.edges)}"
-                    for lay, g in sorted(graphs.items()))
+    return "|".join([f"{lay}:{len(g.nodes)}:{len(g.edges)}"
+                     for lay, g in sorted(graphs.items())] + [_material_print()])
+
+
+def _material_print():
+    """**골격 판 · 사전 판**(B100 ⑥) — 그래프 수가 그대로여도 별칭·골격 노드를 더하고 `bootstrap`
+    하면 보류분이 다시 시도된다(재인입 불요). 내용의 해시다 — 시각이 아니다(같은 초 문제)."""
+    import hashlib
+    import json as _json
+    h = hashlib.sha1()
+    for name in (store.SKELETON_LIST, store.DICTIONARY):
+        h.update(_json.dumps(store.read(name, {}), sort_keys=True, ensure_ascii=False,
+                             default=str).encode("utf-8"))
+    return "판:" + h.hexdigest()[:12]
+
+
+def _qid(item):
+    """큐 항목의 동일성 — kind · 문서 · payload(이력 필드는 payload 밖이라 들지 않는다)."""
+    import json as _json
+    return (item.get("kind"), item.get("doc_id"),
+            _json.dumps(item.get("payload") or {}, sort_keys=True, ensure_ascii=False, default=str))
+
+
+def _write_back(seen):
+    """**큐를 되살리지 않는다**(B100 ①) — 시작에 읽은 목록을 통째로 다시 쓰지 않는다.
+
+    재시도 중에 연결된 항목은 self-heal(`store.drop`)이 이미 걷어냈고, 착지가 새 항목을
+    적재했을 수도 있다. 그래서 **지금의 큐를 다시 읽어** 남은 항목에만 시도 이력(`attempts`·
+    `first_seen`·`last_tried`·`last_fp`)을 옮겨 쓴다 — 걷힌 것은 그대로 없고, 새로 들어온 것은 그대로 있다.
+    """
+    hist = {_qid(x): x for x in seen}
+    cur = store.read(store.QUEUE, [])
+    for x in cur:
+        h = hist.get(_qid(x))
+        if h is not None:
+            for k in ("attempts", "first_seen", "last_tried", "last_fp"):
+                if k in h:
+                    x[k] = h[k]
+    store.write(store.QUEUE, cur)
 
 
 def retry_orphans(layers=None):
@@ -65,7 +102,7 @@ def retry_orphans(layers=None):
     cfgs = {lay: load_config(lay) for lay in lays}
     dic = Dictionary.open()
     healed = {k: 0 for k in RETRY_KINDS}
-    # **결과를 버리지 않는다**(B99 ⑥) — 대상 · 그래프 그대로라 건너뜀 · 상한 도달 · 연결 · 남음
+    # **결과를 버리지 않는다**(B99 ⑥) — 대상 · 그래프·골격·사전 그대로라 건너뜀 · 상한 도달 · 연결 · 남음
     LAST.clear()
     LAST.update(target={}, same=0, capped=0, healed=healed, left=0)
 
@@ -102,7 +139,7 @@ def retry_orphans(layers=None):
             if _retry_anchor(pl, item, graphs, cfgs, dic):
                 healed[kind] += 1
     if touched:
-        store.write(store.QUEUE, queue)
+        _write_back(queue)
         # orphan_chunk_link의 생산자가 아직 없다 — 항목이 생기면 같은 자리에서 돈다.
 
     for lay, g in graphs.items():
@@ -118,13 +155,13 @@ LAST = {}
 
 
 def line():
-    """`재시도 — 대상 n(kind별) · 그래프 그대로라 건너뜀 s · 상한 도달 c → 이번에 연결 h · 남음 r`."""
+    """`재시도 — 대상 n(kind별) · 그래프·골격·사전 그대로라 건너뜀 s · 상한 도달 c → 이번에 연결 h · 남음 r`."""
     if not LAST:
         return "재시도 — 돌지 않았다"
     t = LAST["target"]
     kinds = " · ".join(f"{k} {v}" for k, v in sorted(t.items()))
     return (f"재시도 — 대상 {sum(t.values()):,}" + (f"({kinds})" if kinds else "")
-            + f" · 그래프 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
+            + f" · 그래프·골격·사전 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
             + f" → 이번에 연결 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}")
 
 

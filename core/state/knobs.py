@@ -28,7 +28,7 @@ from core import paths
 
 #: 손잡이 — 이름: (주인 모듈, 속성들, 형, 무엇, 분포를 보는 자리)
 #: 형: `int`(≥1) · `int0`(≥0) · `range`([작은, 큰] 정수 · 1 ≤ 작은 < 큰) ·
-#:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수)
+#:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수) · `pct`(1~100 정수)
 KNOBS = {
     "heading_max_chars": ("parser.struct_map", ("HEADING_MAX_CHARS",), "int",
                           "제목 후보의 최대 글자 — 넘는 번호 행은 제목이 아니다",
@@ -49,6 +49,10 @@ KNOBS = {
                        "시트 로직 제안의 사전 적중 문턱 — 모양이 산문이어도 렌즈 층 어휘가 이만큼(종) "
                        "안 나오면 ref · 자동 모드는 로직과 LLM이 합의해야 자동",
                        "python run.py show dist sheets"),
+    "skeleton_column_pct": ("parser.tagger", ("SKELETON_COLUMN_PCT",), "pct",
+                            "등록 관문 골격 값 열 문턱(%) — entity 열의 값이 이 비율 이상 골격 목록에 있으면 "
+                            "FAIL(좌표·anchor로 매핑해야 한다)",
+                            "등록 관문 화면 G4H 줄 — 열마다 골격 값 k/n"),
     "collect_limit": ("core.query.query", ("COLLECT_LIMIT",), "int",
                       "근거 수집 상한(청크)", "python run.py show dist evidence"),
     "ref_limit": ("core.query.query", ("REF_LIMIT",), "int0",
@@ -86,6 +90,7 @@ def _check(name, v, dflt):
     def _int(x, lo):
         return isinstance(x, int) and not isinstance(x, bool) and x >= lo
     ok = {"int": lambda: _int(v, 1), "int0": lambda: _int(v, 0),
+          "pct": lambda: _int(v, 1) and v <= 100,
           "range": lambda: isinstance(v, list) and len(v) == 2 and all(_int(x, 1) for x in v)
           and v[0] < v[1],
           "pair0": lambda: isinstance(v, list) and len(v) == 2 and _int(v[0], 1) and _int(v[1], 0),

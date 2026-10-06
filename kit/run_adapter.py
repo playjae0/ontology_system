@@ -458,7 +458,9 @@ def run_pipeline(mod, schema, doc, label):
     # **닫힌 목록은 건네받은 파일에서 읽는다**(B86 ②) — 킷은 subprocess라 파서의
     # 자리 주입이 안 걸린다. 받지 못하면 좌표 대조를 생략하고 **그렇게 말한다**.
     if tables.CLOSED_LIST:
-        nodes = tagger.closed_list(layer, path=tables.CLOSED_LIST) if layer else []
+        # 등록 골격 목록 함수 하나(B100 ②) — 좌표 태깅은 그 중 좌표 몫만
+        nodes = (tagger.coord_share(tagger.registration_list(
+            schema.get("layer"), layer, path=tables.CLOSED_LIST)) if layer else [])
     else:
         nodes = []
         print("   골격 닫힌 목록 없음 — 좌표 대조 생략 (등록 흐름은 --closed-list로 건넨다)")
