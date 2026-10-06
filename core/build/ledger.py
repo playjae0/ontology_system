@@ -71,6 +71,13 @@ class Ledger:
         return len(self.rows)
 
 
+def attach_result(doc_id, result):
+    """문서 끝 결과(B99 ⑤ — `core/build/result.collect`)를 대장 파일에 붙인다 · `show report`가 읽는다."""
+    data = read(doc_id) or {"doc_id": doc_id, "rows": []}
+    data["result"] = result
+    store.write(name_of(doc_id), data)
+
+
 def read(doc_id):
     """그 문서의 대장. 없으면 None — 「인입 기록은 있는데 대장이 없다」를 가른다."""
     p = store.path(name_of(doc_id))

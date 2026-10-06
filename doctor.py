@@ -55,6 +55,7 @@ SUITES = [
     ("test_g6_dryrun_fold", 7, "B96 — dry-run은 실제와 같은 검사(ⓓ·골격 문법) · show tree 흐름 순서 · 사용량 줄(관문·뷰 확인) · 라틴 대소문자 2차 대조(하나일 때만) · norm 불변"),
     ("test_g6_extract_view", 6, "B97 — 산문 추출을 보이게: 추출 예고 · 청크별 메타 줄 · 시간 기준 누적 줄 · 청크 단위 이어 쓰기(중단·조건 불일치) · --step 산문 두 관문"),
     ("test_g6_preflight_view", 9, "B98 — 비용 전 사전 점검(임베딩·그림·공통 config · 실행당 1회) · 설정 파일 읽음/무시됨 · 토큰 입력/출력 한 함수 · 구축 실패 줄 · 이어지는 표(80칸·줄바꿈·박자 행) · 색 세 층(ESC 0)"),
+    ("test_g6_safe_log", 8, "B99 ①~⑥ — 층 이름 = 폴더 이름(소실 0 · 거부 셋) · 같은 층 둘째 열기 결함 · 어떤 예외든 되돌림(유령 큐 0) · 화면 전체를 명령 로그로(진입점 15) · 사용량 줄의 문서 · 단계 머리·끝 줄 · 결과표(층별 합·이번/이전 큐) · 재시도 줄 — 표·산문 × 층 둘"),
     ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
     ("test_g65_contract", 28, "재인입·인입 검증 계약 · 닫힌 계약 배선 · 병합 무손실"),
@@ -224,15 +225,6 @@ def check_env():
     line(OK if mock == "1" else WARN, f"USE_MOCK={mock}",
          "1 = LLM 없이 전 경로가 로컬로 돈다(네트워크 0). 사내 첫 실행은 이 상태여야 한다"
          if mock == "1" else "0 = 실LLM 경로. 아직 훅이 비어 있어 추출에서 명시 실패한다")
-
-    # **층 이름 = 폴더 이름**(B99 ①) — `bootstrap`·사전 점검과 같은 함수
-    from core.state import catalog as _cat99                              # noqa: E402
-    try:
-        _ln = _cat99.layer_name_problems()
-        line(NG if _ln else OK, "층 config \"layer\" = 폴더 이름",
-             "\n         ".join(_ln) if _ln else "층 전부 일치")
-    except (OSError, ValueError) as e:
-        line(WARN, "층 config \"layer\" = 폴더 이름", f"층 config를 읽지 못했다 — {e}")
 
     # **어느 설정 파일을 읽었나**(B98 ④) — 처음 찾은 파일 하나만 읽는다 · 무시된 파일을 말한다
     sys.path.insert(0, str(ROOT))
@@ -627,6 +619,18 @@ def transition():
 
 
 # ================================================================ 진입점
+def layer_name_line():
+    """**층 이름 = 폴더 이름**(B99 ①) — `bootstrap`·사전 점검과 같은 함수(`catalog.layer_name_problems`)."""
+    sys.path.insert(0, str(ROOT))
+    from core.state import catalog as _cat99                              # noqa: E402
+    try:
+        _ln = _cat99.layer_name_problems()
+        line(NG if _ln else OK, "층 config \"layer\" = 폴더 이름",
+             "\n         ".join(_ln) if _ln else "층 전부 일치")
+    except (OSError, ValueError) as e:
+        line(WARN, "층 config \"layer\" = 폴더 이름", f"층 config를 읽지 못했다 — {e}")
+
+
 def state_line():
     """머리 한 줄 — **지금 어느 상태를 보고 있나**(B78 1b · 요청문 ②).
 
@@ -682,6 +686,7 @@ def main(argv):
     print("  온톨로지 시스템 — 사내 이식 점검  (국면 1 완료본)")
     print("=" * 66)
     state_line()
+    layer_name_line()          # 환경 점검(클린을 만든다) **전에** — 지금 상태를 잰다 (B99 ①)
 
     env_ok = check_env()
     if only_env:

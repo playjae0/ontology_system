@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import time
 from pathlib import Path
@@ -36,6 +37,27 @@ _configured = False
 
 #: 마지막 `setup()`이 만든 로그 파일 — 화면 끝 요약이 「로그 <경로>」로 낸다.
 LOG_PATH = None
+#: 이번 실행의 머리줄(`cli/_entry`) — 클린이 로그 파일을 지워 다시 열 때 다시 쓴다(B99 ③).
+HEADER = None
+
+
+class _Reopening(logging.handlers.WatchedFileHandler):
+    """**지워져도 다시 연다**(B99 ③) — `doctor`·`init --fresh`가 `work/`를 지우면 열린 파일이 사라진다.
+
+    표준 `WatchedFileHandler`가 다시 열고, 다시 열었을 때 이번 실행의 머리줄을 한 번 더 쓴다 —
+    새 파일만 보는 사람도 그 줄부터 어느 실행인지 안다.
+    """
+
+    def reopenIfNeeded(self):
+        gone = self.stream is not None and not os.path.exists(self.baseFilename)
+        if gone:
+            try:
+                Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return
+        super().reopenIfNeeded()
+        if gone and HEADER and self.stream is not None:
+            self.stream.write(f"{HEADER} (클린이 로그를 지워 다시 열었다)\n")
 
 
 def log_path(command=None):
@@ -78,7 +100,7 @@ def setup(level=None, *, force=False, console=None, command=None, console_stream
         path = log_path(command)
         from core import paths                # 폴더를 만드는 자리는 하나다(B77 ④)
         paths.ensure(path)
-        fh = logging.FileHandler(path, encoding="utf-8")
+        fh = _Reopening(path, encoding="utf-8")
         fh.setFormatter(logging.Formatter(
             "%(asctime)s %(levelname)-7s %(name)s  %(message)s"))
         fh.setLevel("INFO")

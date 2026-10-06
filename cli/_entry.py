@@ -137,21 +137,18 @@ def run(command, main, argv=None):
     def _input(prompt=""):
         out.write(str(prompt))
         out.flush()
-        try:
-            ans = orig_input("")
-        except (EOFError, KeyboardInterrupt):
-            out.answer("<입력 없음>")
-            raise
+        # 답이 없으면(EOF · Ctrl-C) 묻는 줄은 버퍼에 남는다 — 화면처럼 다음 출력이 같은 줄에 붙는다
+        ans = orig_input("")
         out.answer(ans)
         return ans
 
     from core import paths
     from core.llm import gateway
     t0 = time.monotonic()
-    _SCREEN.info("===== 실행 시작 %s · %s · 상태 폴더 %s · 모드 %s · 코드 판 %s =====",
-                 time.strftime("%Y-%m-%d %H:%M:%S"),
-                 " ".join([command] + argv), paths.show(paths.home()),
-                 "mock" if gateway.use_mock() else "실호출", _code_rev())
+    log.HEADER = (f"===== 실행 시작 {time.strftime('%Y-%m-%d %H:%M:%S')} · {' '.join([command] + argv)}"
+                  f" · 상태 폴더 {paths.show(paths.home())} · 모드 "
+                  f"{'mock' if gateway.use_mock() else '실호출'} · 코드 판 {_code_rev()} =====")
+    _SCREEN.info("%s", log.HEADER)
     sys.stdout, sys.stderr, builtins.input = out, err, _input
     rc = 0
     try:

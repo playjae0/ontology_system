@@ -65,6 +65,9 @@ def retry_orphans(layers=None):
     cfgs = {lay: load_config(lay) for lay in lays}
     dic = Dictionary.open()
     healed = {k: 0 for k in RETRY_KINDS}
+    # **결과를 버리지 않는다**(B99 ⑥) — 대상 · 그래프 그대로라 건너뜀 · 상한 도달 · 연결 · 남음
+    LAST.clear()
+    LAST.update(target={}, same=0, capped=0, healed=healed, left=0)
 
     fp = _fingerprint(graphs)
     queue = store.read(store.QUEUE, [])
@@ -74,13 +77,16 @@ def retry_orphans(layers=None):
         if kind not in RETRY_KINDS:
             continue
         pl = item.get("payload") or {}
+        LAST["target"][kind] = LAST["target"].get(kind, 0) + 1
         # **후보 집합이 그대로면 다시 돌지 않는다**(B73 ②) — 구판은 인입마다 큐
         # 전량을 다시 돌았고, `orphan_attach`는 그때마다 판정 LLM을 다시 불렀다
         # (같은 입력 · 같은 답). 재시도가 의미를 갖는 것은 **그래프가 자랐을
         # 때**뿐이다(§4.7-5) — 그 사실을 지문 하나로 잰다. LLM 0 조건이다.
         if item.get("last_fp") == fp:
+            LAST["same"] += 1
             continue
         if int(item.get("attempts", 0)) >= ATTEMPT_MAX:
+            LAST["capped"] += 1
             continue                      # 사람 판정 대기 — 더 돌지 않는다
         # **이력은 항목에 달고 payload에는 넣지 않는다** — payload는 「같은 항목인가」의
         # 동일성 키이고(`enqueue` 중복 제거 · 멱등 판정의 대조 단위), 거기에 시각이
@@ -102,10 +108,24 @@ def retry_orphans(layers=None):
     for lay, g in graphs.items():
         g.save()
     dic.save()
-    if any(healed.values()):
-        _LOG.info("orphan 재시도 — %s",
-                  ", ".join(f"{k} {v}" for k, v in healed.items() if v))
+    LAST["left"] = sum(1 for x in store.read(store.QUEUE, []) if x.get("kind") in RETRY_KINDS)
+    _LOG.info("orphan 재시도 — %s", line())
     return healed
+
+
+#: 마지막 재시도의 결과 — 화면·로그가 읽는다(B99 ⑥ · `line()`).
+LAST = {}
+
+
+def line():
+    """`재시도 — 대상 n(kind별) · 그래프 그대로라 건너뜀 s · 상한 도달 c → 이번에 연결 h · 남음 r`."""
+    if not LAST:
+        return "재시도 — 돌지 않았다"
+    t = LAST["target"]
+    kinds = " · ".join(f"{k} {v}" for k, v in sorted(t.items()))
+    return (f"재시도 — 대상 {sum(t.values()):,}" + (f"({kinds})" if kinds else "")
+            + f" · 그래프 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
+            + f" → 이번에 연결 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}")
 
 
 def _pick_cat(surface, category, graphs, dic):
