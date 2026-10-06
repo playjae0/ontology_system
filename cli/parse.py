@@ -177,7 +177,10 @@ def coord_screen():
         if info.get("단계") == "예고":
             head = (f"   좌표 태깅 — 조각 {info['조각']:,} · "
                     f"정확 일치 {info['정확_일치']:,} · "
-                    f"목록 밖 표기 {info['표기_종수']:,}종(행 {info['미스_행']:,})")
+                    f"목록 밖 표기 {info['표기_종수']:,}종(행 {info['미스_행']:,})"
+                    # 좌표 학습 적중(B101 ②) — 사람 보증 다음 · LLM 앞 · LLM 0
+                    + (f" · 학습 적중 {info['학습_적중']:,}종(행 {info.get('학습_적중_행', 0):,} · LLM 0)"
+                       if info.get("학습_적중") else ""))
             if not info.get("LLM"):
                 _screen.say(f"{head} → LLM 0회 — 정확 일치만", "head")
                 return
@@ -202,7 +205,8 @@ def coord_screen():
         if info.get("호출"):
             _screen.close()
             print(f"   좌표 태깅 끝 — 호출 {info['호출']:,} · 채택 {info['채택']:,} · "
-                  f"목록 밖 {info['목록밖']:,}(orphan_anchor 후보)")
+                  f"목록 밖 {info['목록밖']:,}(orphan_anchor 후보 · `show learned`의 새 공정 후보)"
+                  + (f" · 학습 새로 {info['학습_새로']:,}" if info.get("학습_새로") else ""))
 
     box = {"t": None}
 

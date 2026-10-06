@@ -42,6 +42,45 @@ def snapshot_path():
             "<파일>`로 받는다. 목록을 직접 넘기려면 `closed_list=`")
     return Path(_snapshot_fn())
 
+# **좌표 학습 기록**(B101 ②) — 태깅이 목록 밖 표기를 골격 노드로 채택한 답을 실행 사이에 남긴다.
+# 자리는 ③진실 단이고 파서는 상태를 모르므로 **읽기·쓰기 함수를 주입받는다**(`core/paths.bind_parser`).
+# 주입이 없으면(킷 관문) 학습은 꺼진다 — 대조는 닫힌 목록만.
+_learned_io = None
+LEARN_SOURCE = "LLM 좌표 학습"
+
+
+def use_learned(read, write):
+    """학습 기록 읽기·쓰기 주입 — `read() -> dict` · `write(dict)`. `None, None`이면 끈다."""
+    global _learned_io
+    _learned_io = (read, write) if read and write else None
+
+
+def learned():
+    """지금의 학습 기록 — `{"채택": {표기: 기록}, "목록밖": {표기: 기록}}` (없으면 빈 그릇)."""
+    d = (_learned_io[0]() if _learned_io else None) or {}
+    return {"채택": dict(d.get("채택") or {}), "목록밖": dict(d.get("목록밖") or {})}
+
+
+def _learn_write(d):
+    if _learned_io:
+        _learned_io[1](d)
+
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _learned_hits(misses, idx, rec):
+    """학습 기록 적중 — **표기 정확 대조**(유사도 0) · 가리키는 골격 노드가 지금 목록에 있을 때만."""
+    out = {}
+    by_canon = {n["canonical"]: n for n in idx.values()}
+    for r in misses:
+        x = rec.get(r)
+        if x and x.get("canonical") in by_canon:
+            out[r] = x["canonical"]
+    return out
+
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 
 
@@ -58,6 +97,16 @@ def _need_layer(layer, where):
             f"시스템 쪽 호출자는 `core.state.bootstrap.coord_layer()`의 값을 준다"
             f"(파서는 core를 import하지 않는다)")
     return layer
+
+
+def _snap_version(layer):
+    """스냅샷의 그 층 골격 판(없으면 None) — 학습 기록에 남긴다."""
+    try:
+        p = snapshot_path()
+        return (json.loads(p.read_text(encoding="utf-8")).get(layer) or {}).get("skeleton_version") \
+            if layer and p.exists() else None
+    except (RuntimeError, ValueError):
+        return None
 
 
 def closed_list(layer=None, path=None):
@@ -203,7 +252,7 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
 
 
 def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
-        pick=None, doc_type=None, progress=None, notice=None, cap=None):
+        pick=None, doc_type=None, progress=None, notice=None, cap=None, doc_id=None):
     """좌표 태깅 — 조각이 든 좌표를 닫힌 목록과 대조하고 `process_group`을 파생한다.
 
     **LLM 지점 ⑨다**(문서 7 §7.6-B-2). 목록에 있다는 것과 mock에서 모델을 부른다는
@@ -255,12 +304,21 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
             miss_rows += 1
             if r not in misses:
                 misses.append(r)
+    # **학습 기록**(B101 ②) — 사람 보증(이름·별칭) 다음, LLM 앞. 적중은 LLM 0.
+    # 기록은 **좌표 층 이름이 있을 때만** 읽고 쓴다 — 층 없이 목록만 넘긴 호출은 학습과 무관하다.
+    book = learned() if layer else {"채택": {}, "목록밖": {}}
+    learn = _learned_hits(misses, idx, {k: v for k, v in book["채택"].items()
+                                        if v.get("layer") in (None, layer)})
+    misses = [r for r in misses if r not in learn]
+    learn_rows = sum(1 for r in refs if r in learn)
+    miss_rows -= learn_rows
     ask = misses if pick is not None else []
     if cap is not None:
         ask = ask[:max(0, int(cap))]
     plan = {"단계": "예고", "조각": len(pieces), "정확_일치": exact,
             "표기_종수": len(misses), "미스_행": miss_rows,
             "묻는_종수": len(ask), "상한": cap, "LLM": pick is not None,
+            "학습_적중": len(learn), "학습_적중_행": learn_rows,
             # **좌표 진단**(B99 ⑧) — 목록 밖 표기 상위(표기 · 행 수) · LLM 전에 안다
             "목록밖_상위": sorted(((r, refs.count(r)) for r in misses),
                                 key=lambda x: (-x[1], x[0]))[:10]}
@@ -282,6 +340,28 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         if progress is not None:
             progress(n, len(ask), adopted)
 
+    # 학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · null은 새 공정 후보로만 남긴다
+    if layer and (learn or memo):
+        at = _now()
+        for r in learn:
+            x = book["채택"][r]
+            x["hits"] = int(x.get("hits") or 0) + refs.count(r)
+            x["last_hit"] = at
+        for r, v in memo.items():
+            if v:
+                node = idx[v]
+                book["채택"][r] = {"canonical": node["canonical"], "id": node.get("id"),
+                                  "layer": layer, "doc_id": doc_id, "at": at, "hits": 0,
+                                  "skeleton_version": _snap_version(layer), "출처": LEARN_SOURCE}
+                book["목록밖"].pop(r, None)
+            else:
+                c = book["목록밖"].setdefault(r, {"rows": 0, "docs": [], "first_seen": at})
+                c["rows"] = int(c.get("rows") or 0) + refs.count(r)
+                if doc_id and doc_id not in c["docs"]:
+                    c["docs"].append(doc_id)
+                c["last_seen"] = at
+        _learn_write(book)
+
     out = []
     for p, ref in zip(pieces, refs):
         r = dict(p)
@@ -294,10 +374,14 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         for k in ("doc_type", "process_group", "process_ref", "electrode_type"):
             r.setdefault(k, doc_type if k == "doc_type" else None)
         node = (idx.get(ref) or folded.get(ref)) if ref else None
+        if ref and node is None and learn.get(ref):
+            r[ref_field] = learn[ref]
+            node = idx[learn[ref]]
+            r.setdefault("meta", {}).update(coord_tag_source="learned", coord_tag_from=ref)
         if ref and node is None and memo.get(ref):
             r[ref_field] = memo[ref]
             node = idx[memo[ref]]
-            r.setdefault("meta", {})["coord_tag_source"] = "live"
+            r.setdefault("meta", {}).update(coord_tag_source="live", coord_tag_from=ref)
         if ref and node is None:
             r[ref_field] = ref                      # 그대로 둔다 — orphan_anchor는 인입 몫
         if node is not None and not r.get("process_group"):
@@ -307,7 +391,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         out.append(r)
     if notice is not None:
         notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
-                "목록밖": len(misses) - adopted})
+                "목록밖": len(misses) - adopted,
+                "학습_새로": sum(1 for v in memo.values() if v)})
     return out
 
 

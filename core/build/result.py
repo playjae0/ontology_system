@@ -34,7 +34,15 @@ def hold_reason(row):
     return None
 
 
-def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage):
+def coord_learn(env):
+    """봉투의 좌표 학습 사실(B101 ②④) — `{"새로": 표기 종수, "적중": 행 수}` (태깅이 meta에 남긴다)."""
+    pcs = (env or {}).get("records") or (env or {}).get("chunks") or []
+    src = [(p.get("meta") or {}) for p in pcs]
+    return {"새로": len({m.get("coord_tag_from") for m in src if m.get("coord_tag_source") == "live"}),
+            "적중": sum(1 for m in src if m.get("coord_tag_source") == "learned")}
+
+
+def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage, extra=None):
     """결과 한 묶음(dict). `before`·`after`는 `layer_counts`, `q_new`·`q_old`는 그 문서의 큐 항목,
     `rejects`는 이번 실행의 관문 거부, `usage`는 `gateway.usage_by(doc_id)`."""
     ent = [r for r in rows if r.get("role") == "entity"]
@@ -60,6 +68,10 @@ def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage):
               if any(d)},
         "큐 이번": dict(Counter(x["kind"] for x in q_new)),
         "큐 이전": dict(Counter(x["kind"] for x in q_old)),
+        # 동의어 학습(B101 ①④) — 같은 문서 auto 매칭 · 가드로 내려간 것(다른 문서 auto) · 더한 별칭
+        "같은 문서 auto 매칭": sum(1 for r in ent if r.get("same_doc")),
+        "가드(다른 문서 auto)": sum(1 for r in ent if (r.get("nearest") or {}).get("by") == "가드"),
+        **(extra or {}),
     }
 
 

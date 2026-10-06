@@ -27,6 +27,13 @@ def lines(res):
         out.append(f"     층 {lay} — 노드 {d['노드']:+,}(auto {d['auto']:+,}) · 엣지 {d['엣지']:+,}")
     out.append(f"     큐 — 이번 실행 {_kinds(res.get('큐 이번'))} · 이전 실행이 남긴 것 "
                f"{_kinds(res.get('큐 이전'))}")
+    # 동의어 학습(B101 ①②④) — 판정이 사전을 키운 만큼 · 가드 · 좌표 학습 (옛 대장엔 키가 없다 — 그때는 줄도 없다)
+    if "같은 문서 auto 매칭" in res:
+        cl = res.get("좌표 학습") or {}
+        out.append(f"     동의어 — 같은 문서 auto에 매칭 {res['같은 문서 auto 매칭']:,} · "
+                   f"가드로 내려간 것 {res.get('가드(다른 문서 auto)', 0):,}(다른 문서 auto) · "
+                   f"이번 실행이 사전에 더한 별칭 {res.get('LLM 별칭', 0):,}(LLM 매칭) · "
+                   f"좌표 학습 새로 {cl.get('새로', 0):,} · 적중 {cl.get('적중', 0):,}")
     for pt, u in sorted((res.get("LLM") or {}).items()):
         out.append(f"     LLM {pt} — 호출 {u['calls']:,} · 입력 {u['prompt']:,} · 출력 {u['completion']:,} · "
                    f"1회 평균 {u['avg']:,} · 1회 최대 {u['max']:,}")

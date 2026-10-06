@@ -400,6 +400,11 @@ def match(surface, candidates, category, cfg=None):
     return {"type": NEW, "matched_id": None, "confidence": 0.0, "path": path}
 
 
+#: **이번 문서 실행이 만든 auto 노드**(B101 ① — 같은 문서 예외). 빌더가 노드를 만들 때 넣고
+#: 문서 실행 시작에 비운다(`entry.run_document`). 다른 문서가 만든 auto 노드는 여기 없다 — 가드 그대로.
+SAME_DOC = set()
+
+
 def _guard_auto(verdict, pool):
     """**auto 노드에 붙는 매칭은 표기가 같을 때만**이다 (B73 ③).
 
@@ -410,6 +415,10 @@ def _guard_auto(verdict, pool):
     비대칭), 큐 kind도 `uncertain_match` 그대로다.
     """
     c = next((x for x in pool if x["id"] == verdict.get("matched_id")), None)
+    if c and c.get("status") == "auto" and c["id"] in SAME_DOC \
+            and float(verdict.get("confidence") or 0) < 1.0:
+        # 같은 문서 안의 표기 변형 — 판정이 임계 이상이면 붙는다(B101 ① · 연쇄는 문서를 넘지 않는다)
+        return dict(verdict, same_doc=True)
     if c and c.get("status") == "auto" and float(verdict.get("confidence") or 0) < 1.0:
         return {"type": UNCERTAIN, "matched_id": None,
                 "confidence": verdict.get("confidence", 0.0),

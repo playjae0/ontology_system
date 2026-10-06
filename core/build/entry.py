@@ -254,12 +254,17 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     # **되돌릴 자리를 먼저 잡는다**(B75 ③) — 그래프는 말미에 한 번 저장되지만
     # 큐·청크는 도중에 쓰인다. 사람이 판정 중간에 멈추면 그 둘도 되돌려야
     # 「그래프 쓰기 0」이 참이 된다.
+    # 같은 문서 예외의 표지 · 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ①④)
+    from core import matcher as _mt
+    from core.build import build as _bld
+    _mt.SAME_DOC.clear()
+    del _bld.ADDED[:]
     _q0 = store.read(store.QUEUE, [])
     _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     from core.dictionary import Dictionary as _D
     from core.build import result as _res
     from router import discover as _disc
-    _RUN.update(q0=_q0, d0={k: list(v) for k, v in _D.open().entries().items()},
+    _RUN.update(coord_learn=result_mod.coord_learn(env), q0=_q0, d0={k: list(v) for k, v in _D.open().entries().items()},
                 layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
                 rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []))
     loop.LOWRES["n"] = 0
@@ -386,9 +391,16 @@ def _result(builder, doc_id):
                              [x for x in q if _qkey(x) not in seen],
                              [x for x in q if _qkey(x) in seen],
                              [x for x in rej if x.get("doc_id") == doc_id],
-                             gateway.usage_by(doc_id))
+                             gateway.usage_by(doc_id),
+                             extra={"LLM 별칭": len(_build_added()),
+                                    "좌표 학습": _RUN.get("coord_learn") or {}})
     ledger_mod.attach_result(doc_id, res)
     return res
+
+
+def _build_added():
+    from core.build import build as _bld
+    return _bld.ADDED
 
 
 #: 구축 시작의 스냅샷 — 정합 검사가 「이번 실행이 남긴 것」만 가린다(`run_document`가 채운다).

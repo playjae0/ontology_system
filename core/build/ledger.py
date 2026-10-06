@@ -24,7 +24,7 @@ VERDICTS = ("match", "new", "uncertain", "anchor", "lowres", "orphan",
 
 _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind",
-         "narrow", "emb_top", "nearest")
+         "narrow", "emb_top", "nearest", "same_doc")
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -47,7 +47,7 @@ class Ledger:
     def add(self, *, locator=None, field=None, role=None, surface=None,
             canonical=None, layer=None, path="none", verdict="pending",
             node_id=None, candidates_n=0, confidence=0.0, llm=None,
-            queue_kind=None, narrow=None, emb_top=None, nearest=None):
+            queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None):
         """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다)."""
         if path not in PATHS:
             raise ValueError(f"대장 path가 닫힌 값 밖이다: {path!r}")
@@ -62,7 +62,9 @@ class Ledger:
             "llm": dict(llm or {"calls": 0, "in_tokens": 0, "out_tokens": 0}),
             "queue_kind": queue_kind})
         # 판정 근거(B99 ⑨) — **있을 때만** 단다(근거 없는 행의 대장 바이트는 그대로)
-        for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest)):
+        # 같은 문서 auto에 붙은 매칭(B101 ①) — 그때만 `same_doc: true`
+        for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest),
+                     ("same_doc", same_doc or None)):
             if v is not None:
                 self.rows[-1][k] = v
         if ON_ROW is not None:

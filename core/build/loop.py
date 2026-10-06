@@ -376,7 +376,7 @@ def _ledger_entity(st, surface, layer, last):
                  confidence=last.get("confidence", 0.0),
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"),
                  narrow=last.get("narrow"), emb_top=last.get("emb_top"),
-                 nearest=last.get("nearest"))
+                 nearest=last.get("nearest"), same_doc=last.get("same_doc"))
 
 
 def _scoped_category(category, layer, builder):

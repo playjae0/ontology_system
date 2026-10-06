@@ -482,8 +482,9 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         if p not in keep["provenance"]:
             keep["provenance"].append(p)
     seen = {al["surface"] for al in keep["aliases"]}
+    # 흡수된 이름은 **사람이 친 merge**가 보증한다(B101 ④ — 별칭 출처 사람)
     for al in gone["aliases"] + [{"surface": gone["canonical"],
-                                  "provenance": list(gone["provenance"])}]:
+                                  "provenance": list(gone["provenance"]) + [f"op:merge:{actor}"]}]:
         if al["surface"] not in seen and al["surface"] != keep["canonical"]:
             keep["aliases"].append(al)                       # 선택 안 된 표기도 남는다
             seen.add(al["surface"])
