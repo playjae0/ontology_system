@@ -232,9 +232,10 @@ def row_printer():
 
 def value_table():
     """판정 값 표(B98 ⑥) — 기호 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 노드/큐."""
-    return _screen.Table([("", 1, False), ("표기", 40, False), ("카테고리/열", 11, False),
+    return _screen.Table([("", 1, False), ("위치", 14, False), ("표기", 40, False),
+                          ("카테고리/열", 11, False),
                           ("판정", 9, False), ("경로", 15, False), ("확신", 4, True),
-                          ("노드/큐", 20, False)], flex=1)
+                          ("임베딩", 6, True), ("노드/큐", 20, False)], flex=2)
 
 
 def value_cells(row):
@@ -248,9 +249,14 @@ def value_cells(row):
     name = row.get("canonical") or row.get("surface") or "—"
     where = (f"→ 큐 {row['queue_kind']}" if row.get("queue_kind")
              else ("노드" if row.get("node_id") else ""))
+    near = row.get("nearest") or {}
+    if near.get("canonical"):                      # 불확실의 가장 가까운 후보 (B99 ⑨)
+        where += f" · 가까움({near.get('by')}) {near['canonical']}"
+    emb = f"{row['emb_top']:.2f}" if row.get("emb_top") is not None else ""
     k = v if v in _screen.KINDS else None
-    return ([MARKS.get(v, "·"), name, row.get("field") or "", v, how, conf, where],
-            [k, k, "aux", k, "aux", "aux", "aux"])
+    # 위치 = 대장 행의 locator(산문이면 지금 청크 · 표면 행 — B99 ⑦)
+    return ([MARKS.get(v, "·"), row.get("locator") or "", name, row.get("field") or "", v, how,
+             conf, emb, where], [k, "aux", k, "aux", k, "aux", "aux", "aux", "aux"])
 
 
 def build_screen(step=False, stage=None, prose=False):
@@ -298,6 +304,10 @@ def build_screen(step=False, stage=None, prose=False):
                     f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
                     f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
                     f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
+            if info.get("추출뒤") and stage is not None:
+                # 산문 판정의 총수 = 추출이 낸 개체 수(B99 ⑦ — 레코드 수가 아니다)
+                stage.update({"이름": "판정", "값": 0, "총": info["값_수"], "t0": None})
+                _judge.update(stage)
             if info.get("추출뒤"):
                 # 산문은 **추출 뒤 단계 머리**가 이 줄이다(B97 ④ · 늘 — B99 ④) — `--step`이면 묻는다
                 return _step_gate(8, lz + body, prose=True, ask=step)
@@ -373,7 +383,8 @@ def extract_screen(step=False, stage=None):
         elif k == "추출예고":
             box["t"], box["u0"] = extract_table(), gateway.usage_total()
             if stage is not None:
-                stage.update({"이름": "추출", "값": 0, "총": info["호출"]})
+                import time
+                stage.update({"이름": "추출", "값": 0, "총": info["호출"], "t0": time.monotonic()})
             if info.get("렌즈여럿"):
                 return None                       # 렌즈 예고가 같은 자리를 맡았다(두 줄 0)
             head = (f"추출 예고 {lz}— 청크 {info['청크']:,}(ref 시트 {info['ref']:,} · "
@@ -417,8 +428,12 @@ def _chunk_row(box, info, lz):
 def ticker_where(stage):
     """누적 줄의 「어디」 — `stage`(이름 · 값/총)를 그대로 읽는다."""
     def where():
-        n, t = stage.get("값"), stage.get("총")
-        return f"{stage.get('이름', '?')}" + (f" {n:,}/{t:,}" if t else "")
+        import time
+        n, t, t0 = stage.get("값") or 0, stage.get("총"), stage.get("t0")
+        out = f"{stage.get('이름', '?')}" + (f" {n:,}/{t:,} · 남은 {max(0, t - n):,}" if t else "")
+        if t and n and t0:                            # 예상 — 지금까지의 속도 그대로 (B99 ⑦)
+            out += f" · 예상 {(time.monotonic() - t0) / n * max(0, t - n) / 60:.1f}분"
+        return out
     return where
 
 
@@ -441,10 +456,14 @@ def judge_progress(total, stage=None, every=0, stride=None):
     판정 하나뿐이라 멈춤 자리도 여기 하나다. `q`면 `Stopped`를 던지고, 그 문서는
     그래프·사전·큐 쓰기 0이다(되돌림은 `pipeline.run_document`가 한다).
     """
+    def total_now():
+        # **총수는 단계가 정한다**(B99 ⑦ — 산문은 추출이 끝나야 개체 수를 안다)
+        return (stage or {}).get("총") or total
+
     def line(n, u):
         # **누적에 대장 집계를 더한다**(B81 ④) — 사람이 알고 싶은 것은 토큰만이
         # 아니라 「몇이 붙고 몇이 새로 생겼나」다. 수는 대장에서 센 것 그대로다.
-        return (f"[판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 {_screen.tokens(u)}"
+        return (f"[판정] 값 {n:,}/{total_now():,} · 호출 {n:,} · 누적 {_screen.tokens(u)}"
                 f" · 사전 {TALLY['사전']:,} · NEW {TALLY['NEW']:,}"
                 f" · 불확실 {TALLY['불확실']:,} · 큐 {TALLY['큐']:,}")
 
@@ -454,13 +473,16 @@ def judge_progress(total, stage=None, every=0, stride=None):
         n = stats.get("판정", 0)
         if stage is not None:
             stage["값"] = n
+            if n == 1 or not stage.get("t0"):
+                import time
+                stage.setdefault("t0", time.monotonic())
         u = gateway.usage_total()
-        if n == 1 or n % step_n == 0 or n == total:
+        if n == 1 or n % step_n == 0 or n == total_now():
             _screen.inline(line(n, u), "prog")      # 값 표가 이어지는 중이면 구분 행
             _LOG.info("판정 진행 — 값 %d/%d · 호출 %d · 누적 %s",
-                      n, total or 0, n, _screen.tokens(u))
-        if every and n % every == 0 and n < (total or 0):
-            _judge_gate(n, total, u)
+                      n, total_now() or 0, n, _screen.tokens(u))
+        if every and n % every == 0 and n < (total_now() or 0):
+            _judge_gate(n, total_now(), u)
     return progress
 
 

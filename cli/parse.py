@@ -148,6 +148,20 @@ def print_split_notes(report):
               + ")")
 
 
+def _coord_diag(info):
+    """**좌표 진단**(B99 ⑧) — 목록 밖 표기 상위 표 + 다음 줄(골격 파일 · `ALIASES` · `bootstrap`). LLM 전."""
+    from core import paths
+    t = _screen.Table([("목록 밖 표기", 40, False), ("행 수", 6, True)], flex=0)
+    for ref, n in info["목록밖_상위"]:
+        t.row([ref, n], [None, "aux"])
+    t.end()
+    lay = coord_layer()
+    print(f"   ▶ 다음 줄 — 같은 공정이면 {paths.show(paths.layers(lay, 'skeleton.json'))}의 "
+          f"`ALIASES`에 표기를 더하고 python run.py bootstrap (fresh 없이) → 같은 인입"
+          + (f" · 목록 밖 {info['표기_종수']:,}종 중 상위 {len(info['목록밖_상위'])}" if
+             info["표기_종수"] > len(info["목록밖_상위"]) else ""))
+
+
 def coord_screen():
     """좌표 태깅의 예고·진행·끝 줄 — `(notice, progress)` (B69 ② · B22의 정신).
 
@@ -158,6 +172,8 @@ def coord_screen():
     def notice(info):
         if info.get("단계") == "행":
             return row(info)
+        if info.get("단계") == "예고" and info.get("목록밖_상위"):
+            _coord_diag(info)
         if info.get("단계") == "예고":
             head = (f"   좌표 태깅 — 조각 {info['조각']:,} · "
                     f"정확 일치 {info['정확_일치']:,} · "
