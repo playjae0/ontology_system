@@ -230,6 +230,8 @@ def _catalog_gate(dry_run=False):
     for msg in catalog.warnings():                 # 겸 집 불일치 — 경고만 (B91 ⑥)
         print(f"[bootstrap] ⚠ 공통 config 겸 {msg}\n"
               f"  ▶ 의도가 아니면: 두 카테고리의 home을 같은 층으로 맞춘다 — {paths.show(paths.common())}")
+    for msg, nxt in catalog.mirror_warnings():     # 미러 규칙 ≠ 집 — 경고만 (B100 ④)
+        print(f"[bootstrap] ⚠ 미러 규칙 {msg}\n  ▶ 다음 줄 — {nxt}")
     return 0
 
 

@@ -13,6 +13,10 @@
   ⓒ 관문: 골격 값 열을 entity로 매핑 → G4H FAIL 문면 + 다음 줄 · 좌표·anchor로 매핑 → PASS ·
      문턱은 손잡이(`skeleton_column_pct`) — 표 × 층 둘(산문 스키마는 fields가 비어 대상 없음)
   ⓓ 지시문 문장(층 이름 0) · 자산 해시가 지시문 현재판과 같다
+  ⓔ 「집 이동 동치」 — 카테고리의 집을 다른 층으로 옮긴 픽스처(창작)와 옮기지 않은 픽스처에서 merge(끝점 없는
+     엣지 0) · rename · obsolete · split · transfer · alias · delete_edge · merge_targets · 질의 확장 · show tree·edges ·
+     내보내기가 층 표시만 빼고 같다 (사람은 문서 층을 쳐도 된다 — 노드는 집에서 찾는다)
+  ⓕ 미러 규칙(극성 묶음)과 집이 어긋나면 경고 + 다음 줄 · 규칙을 집 층으로 옮기면 경고 0 · 막지 않는다
 """
 from __future__ import annotations
 
@@ -23,6 +27,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
 from g65_common import _P, done    # noqa: F401
 
+import contextlib                              # noqa: E402
+import io                                      # noqa: E402
+import tempfile                                # noqa: E402
 from core.build import retry as RT            # noqa: E402
 from core.build.retry import RETRY_KINDS, _qid  # noqa: E402
 
@@ -159,7 +166,6 @@ show("ⓑ 골격이 다른 층 — 생성 입력(좌표 몫 + 자기 골격 · �
      all(o for _f, _l, o, _d in _ok_b), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_b))
 
 print("\n■ B100 ③ 공정 이름 열 방어 — 관문 G4H (표 × 층)")
-import tempfile                                    # noqa: E402
 _fresh()
 _ok_c = []
 with tempfile.TemporaryDirectory(prefix="b100_") as td:
@@ -212,6 +218,159 @@ _h = subprocess.run([sys.executable, str(ROOT / "tests" / "asset_hashes.py")], c
 show("ⓓ 지시문 1.4(anchor 값 기준 · 좌표 블록 상위/하위 · 킷 조립 두 몫) · 1.3(모르면 묻는다) · 층 이름 0 · 자산 해시 일치",
      len(_new) >= 4 and not _lay_words and _h.returncode == 0,
      f"새 문장 {len(_new)} · 층 이름 {_lay_words} · 해시 rc {_h.returncode}")
+print("\n■ B100 ④ 집 이동 동치 (표·산문 × 층 둘 — 노드는 집 층 · 엣지는 문서 층)")
+import csv as _csv                                # noqa: E402
+import re as _re                                  # noqa: E402
+from core.state.world import World               # noqa: E402
+from cli import show as SH, export as EX, query as QY   # noqa: E402
+MOVE_CAT = "Failure"                               # 옮기는 카테고리(창작 — 집을 다른 층으로)
+
+
+def _rw_json(path, fn):
+    c = json.loads(Path(path).read_text(encoding="utf-8"))
+    fn(c)
+    Path(path).write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _world(move):
+    """같은 문서 · 집만 다르다. 문서의 극성 표기는 both(창작) — 극성 규칙도 집 층에서 읽으므로
+    축이 있는 층과 없는 층 사이의 이동은 극성 표기가 있으면 판정이 갈린다(규칙 차이 · 보고)."""
+    init.init(fresh_=True)
+    if move:
+        _rw_json(_P.layers("process", "config.json"),
+                 lambda c: c["categories"].update({MOVE_CAT: "(시험 렌즈) 집 이동 동치 — 창작"}))
+        _rw_json(_P.common(), lambda c: c["categories"][MOVE_CAT].update(home="process"))
+    for lay in ("process", "quality"):
+        bootstrap(lay, echo=False)
+    for doc in ("CP01", "PFMEA01"):
+        env = load(doc)
+        for r in env.get("records") or []:
+            r["electrode_type"] = "both"
+        run_document(env)
+    run_document(_prose_attach_env("B100MV", "ppt_quality", "노칭"))   # 산문 × 품질층
+    finalize()
+
+
+def _strip(text):
+    return _re.sub(r"\[(process|quality)\]", "", text)
+
+
+def _sig():
+    w = World()
+    nm = {n["id"]: n["canonical"] for _l, n in w.nodes()}
+    return {"노드": sorted(f"{n['canonical']}|{n['category']}|{n['status']}" for _l, n in w.nodes()),
+            "엣지": sorted(f"{e['rel']}|{nm.get(e['src'])}|{nm.get(e['dst'])}|{e.get('status')}"
+                         for _l, g in w.graphs.items() for e in g.edges),
+            "끝점없음": w.dangling()}
+
+
+def _cat_names(cat):
+    return sorted({n["canonical"] for _l, n in World().nodes()
+                   if n["category"] == cat and ops.is_live(n)})
+
+
+def _nid(name):
+    return next(n["id"] for _l, n in World().nodes() if n["canonical"] == name and ops.is_live(n))
+
+
+def _screens(name):
+    out = {}
+    for key, fn, args in (("tree", SH.cmd_tree, []), ("edges", SH.cmd_edges, ["quality"])):
+        b = io.StringIO()
+        with contextlib.redirect_stdout(b):
+            fn(args)
+        out[key] = sorted(_strip(b.getvalue()).splitlines())
+    r = QY.answer(name)
+    hop_nodes = {n for h in r["trace"]["hops"] for n in h["nodes"]}
+    nm = {n["id"]: n["canonical"] for _l, n in World().nodes()}
+    out["질의"] = (sorted(nm.get(i, i) for i in hop_nodes), sorted(r["facts"]))
+    with tempfile.TemporaryDirectory() as td:
+        with contextlib.redirect_stdout(io.StringIO()):
+            EX.cmd_csv([td])
+        rows = []
+        for f in ("nodes.csv", "edges.csv"):
+            with open(Path(td) / f, encoding="utf-8-sig") as fh:
+                rd = list(_csv.reader(fh))
+            head = rd[0]
+            keep = [i for i, h in enumerate(head) if h not in ("id", "src_id", "dst_id", "layer")]
+            rows += sorted("|".join(r[i] for i in keep) for r in rd[1:])
+        out["내보내기"] = rows
+    return out
+
+
+def _ops_chain():
+    """사람이 **문서 층**을 쳐서 연산한다 — 집이 어디든 같은 결과여야 한다."""
+    import contextlib as _cl
+    A = "B100시험"
+    f = _cat_names(MOVE_CAT)
+    log = {}
+    ops.merge("quality", _nid(f[0]), _nid(f[1]), A, reason="동치")
+    log["merge 끝점없음"] = World().dangling()
+    ops.rename("quality", _nid(f[2]), f[2] + " 개명", A)
+    ops.obsolete("quality", _nid(f[3]), A, reason="동치")
+    n4 = _nid(f[4])
+    keys = [k for k, *_r in ops.edge_keys("quality", n4)]
+    node4 = World().get(n4)
+    ops.split("quality", n4, {"targets": [
+        {"canonical": f[4] + " 갑", "aliases": [a["surface"] for a in node4["aliases"]],
+         "provenance": list(node4["provenance"]), "edges": keys},
+        {"canonical": f[4] + " 을", "aliases": [], "provenance": [], "edges": []}]}, A)
+    log["split 끝점없음"] = World().dangling()
+    ops.alias("quality", f[5], f[5] + " 별칭", A)
+    log["merge_targets"] = sorted(c["canonical"] for c in ops.merge_targets("quality", _nid(f[6])))
+    w = World()
+    e = next(e for e in w.graphs["quality"].edges if e["rel"] == "causes" and e.get("status") != "deleted_by_user")
+    ops.delete_edge("process", e["src"], e["rel"], e["dst"], A)   # 친 층에 없는 엣지 — 층 전부에서 찾는다
+    u = next(n for _l, n in w.nodes() if n["category"] == "Unit" and n.get("status") == "auto"
+             and "::" in n["canonical"])
+    old_p = u["canonical"].split("::")[0]
+    np_ = next(n for _l, n in w.nodes() if n["category"] == "Process" and n.get("status") == "seed"
+               and n["canonical"] != old_p and n.get("tier") == "sub")
+    log["transfer"] = ops.transfer("quality", u["id"], np_["id"], A)["canonical"]
+    return log
+
+
+_eq = {}
+for move in (False, True):
+    _world(move)
+    s0 = _sig()
+    log = _ops_chain()
+    _eq[move] = (s0, log, _sig(), _screens(_cat_names(MOVE_CAT)[1]))
+_a, _b = _eq[False], _eq[True]
+_diff = [k for k in ("노드", "엣지") if _a[0][k] != _b[0][k] or _a[2][k] != _b[2][k]]
+_diff += [k for k in _a[1] if _a[1][k] != _b[1][k]]
+_diff += [k for k in _a[3] if _a[3][k] != _b[3][k]]
+_homes = {mv: sorted({l for l, n in World().nodes() if n["category"] == MOVE_CAT}) for mv in (True,)}
+show("ⓔ 집 이동 동치 — merge·split 뒤 끝점 없는 엣지 0 · rename·obsolete·split·transfer·alias·delete_edge·"
+     "merge_targets · 질의 확장 · show tree·edges · 내보내기가 층 표시만 빼고 같다(표·산문 × 층 둘)",
+     not _diff and not _a[1]["merge 끝점없음"] and not _b[1]["merge 끝점없음"]
+     and not _b[1]["split 끝점없음"] and not _b[2]["끝점없음"] and _homes[True] == ["process"],
+     f"다름 {_diff} · 옮긴 쪽 {MOVE_CAT} 집 {_homes[True]} · 노드 {len(_b[2]['노드'])} · 엣지 {len(_b[2]['엣지'])} · "
+     f"질의 노드 {len(_b[3]['질의'][0])} · 사실 {len(_b[3]['질의'][1])}")
+(HINTS / "B100MV.json").unlink(missing_ok=True)
+
+print("\n■ B100 ④ 미러 규칙 ≠ 집 — 경고 (층 둘)")
+from core.state import catalog as CT              # noqa: E402
+_ok_f = []
+for cat, frm, to in (("Property", "process", "quality"), ("Unit", "process", "quality")):
+    init.init(fresh_=True)
+    _rw_json(_P.layers(to, "config.json"), lambda c, cat=cat: c["categories"].update({cat: "(시험 렌즈)"}))
+    _rw_json(_P.common(), lambda c, cat=cat, to=to: c["categories"][cat].update(home=to))
+    w1 = CT.mirror_warnings()
+    import subprocess as _sp                       # noqa: E402
+    _r = _sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"], capture_output=True, text=True,
+                 cwd=str(ROOT), stdin=_sp.DEVNULL)
+    b2 = io.StringIO(_r.stdout + _r.stderr)
+    src_cfg = json.loads(_P.layers(frm, "config.json").read_text(encoding="utf-8"))
+    _rw_json(_P.layers(to, "config.json"), lambda c, s=src_cfg, cat=cat: c.update(
+        polarity={**s["polarity"], "bind_categories": [cat]}, mirrors=s["mirrors"]))
+    w2 = CT.mirror_warnings()
+    _ok_f.append((cat, len(w1) == 1 and cat in w1[0][0] and "config.json" in w1[0][1]
+                  and "미러 규칙" in b2.getvalue() and "▶ 다음 줄" in b2.getvalue() and _r.returncode == 0
+                  and not w2,
+                  f"{cat} 집 {to}: 경고 {len(w1)} → 규칙 옮김 {len(w2)}"))
+show("ⓕ 미러 규칙(극성 묶음)이 집 층 config에 없으면 bootstrap·doctor 경고 + 다음 줄 · 옮기면 0 · 막지 않는다",
+     all(o for _c, o, _d in _ok_f), " · ".join(d for _c, _o, d in _ok_f))
 init.init(fresh_=True)
 
 done()

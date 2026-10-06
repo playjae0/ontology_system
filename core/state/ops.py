@@ -23,11 +23,12 @@ from datetime import datetime, timezone
 
 from core.state import store
 from core import matcher
-from core.state.bootstrap import load_config, open_graph
+from core.state.bootstrap import load_config
 from core.build.build import Builder
 from core.dictionary import Dictionary
-from core.graph import STATUS_DELETED, GraphStore
+from core.graph import STATUS_DELETED
 from core.state.ids import norm
+from core.state.world import World
 from core.build.naming import scope_canonical
 # 생존 판정·툼스톤 체인은 core/status.py가 소유한다 — 이름은 여기서도 그대로 보인다
 # (`ops.is_live`·`ops.STATUS_MERGED`·`ops.resolve_chain`·`ops.MAX_CHAIN` — 호출 계약 유지).
@@ -64,6 +65,17 @@ def _target(g, nid):
     return n
 
 
+def _open(layer, nid):
+    """**층 그래프 전부를 한 번 열고**(B100 ④) 대상 노드의 집 그래프를 집는다 — `(world, 집 그래프, 집 층)`.
+
+    노드는 집 층에 산다 — 사람이 친 층에 없으면 집을 찾아 거기서 다룬다(층 표시만 다르다).
+    엣지는 문서 층에 산다 — 엣지를 고치는 손은 `world`가 층마다 갖는다.
+    """
+    w = World()
+    home = w.home(nid, layer) or layer
+    return w, w.graph_of(nid, home), home
+
+
 # ---------------------------------------------------------------- 공통
 def _cfg(layer):
     return load_config(layer)
@@ -94,68 +106,72 @@ def preview(layer, op, nid, **kw):
     개명이 무서운 이유는 자기 이름이 아니라 자식들의 이름이 함께 바뀌기 때문이고,
     그 목록을 못 보면 사람이 승인할 근거가 없다.
     """
-    g = GraphStore.for_layer(layer).load()
-    cfg = _cfg(layer)
+    w, g, home = _open(layer, nid)
+    cfg = _cfg(home)
     node = g.get(nid)
     if node is None:
         raise OpRefused(f"대상 노드가 없다: {nid}")
-    edges = [e for e in g.edges if e["src"] == nid or e["dst"] == nid]
+    # 엣지는 **층 전부에서** 센다(B100 ④ — 엣지는 문서 층에 산다)
+    edges = [e for _l, e in w.edges_of(nid, live=False)]
     # **이관도 미리보기 대상이다**(문서 4 §4.7) — 소속 변경은 canonical 연쇄를
     # 일으키므로 개명과 같은 이유로 규모를 먼저 봐야 한다.
-    chained = (_scope_children(g, node["canonical"], cfg)
+    chained = (_scope_children(w, node["canonical"], cfg)
                if op in ("rename", "transfer") else [])
     if op == "merge":
-        other = g.get(kw.get("into"))
-        edges += [e for e in g.edges
-                  if other and (e["src"] == other["id"] or e["dst"] == other["id"])]
+        other = w.get(kw.get("into"))
+        edges += [e for _l, e in (w.edges_of(other["id"], live=False) if other else [])]
     return {"op": op, "target": node["canonical"], "nodes": 1 + len(chained),
             "edges": len(edges),
             "canonical_chain": [c["canonical"] for c in chained]}
 
 
-def _scope_children(g, parent_canonical, cfg):
+def _scope_children(w, parent_canonical, cfg):
     """스코프 접두로 그 노드에 매달린 자식들 — canonical 연쇄의 대상.
 
     스코프가 걸린 카테고리만 본다(config `canonical_scope.bind_categories`).
     부모 개명이 자식 이름을 끌고 가는 것은 **스코프가 주소이기 때문**이며,
-    주소가 아닌 카테고리는 연쇄 대상이 아니다.
+    주소가 아닌 카테고리는 연쇄 대상이 아니다. 자식의 집은 부모의 집과 다를 수 있다 —
+    **층 전부**에서 찾는다(B100 ④).
     """
     sc = cfg.get("canonical_scope") or {}
     binds, sep = sc.get("bind_categories", []), _sep(cfg)
     pre = parent_canonical + sep
-    return [n for n in g.nodes.values()
+    return [n for _l, n in w.nodes()
             if is_live(n) and n["category"] in binds
             and n["canonical"].startswith(pre)]
 
 
 # ---------------------------------------------------------------- I1 개명
-def _transfer_edges(g, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair):
+def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair):
     """이관의 **엣지 재배선** — 옛 부모에서 떼고 새 부모에 단다. 돌려주는 것은 옮긴 수.
 
-    `transfer`에서 단계로 떼어냈다(B78 2c).
+    `transfer`에서 단계로 떼어냈다(B78 2c). 엣지는 **층 전부**에서 보고, 새 엣지는 옛 엣지가
+    살던 그래프에 단다(B100 ④ — 엣지는 문서 층).
     """
+    all_edges = [(lay, e) for lay, g in w.graphs.items() for e in g.edges]
     moved = 0
     child_rel = ((cfg.get("skeleton") or {}).get("relations") or {}).get("child")
     # **옛 부모는 canonical 스코프 접두가 말한다** — 이 노드의 엣지에서 찾으면
     # 좌표 직접 부착이 없는 경우(정상 경로: 설비를 통해 붙는다)를 놓친다.
     old_parent_name = old.rsplit(sep, 1)[0] if scoped and sep in old else None
-    old_parent = next((n for n in g.nodes.values()
+    old_parent = next((n for _l, n in w.nodes()
                        if is_live(n) and n["canonical"] == old_parent_name), None)
     under_old = set()
     if old_parent is not None:
         frontier = {old_parent["id"]}
         while frontier:
-            nxt = {e["src"] for e in g.edges
+            nxt = {e["src"] for _l, e in all_edges
                    if e["rel"] == child_rel and e["dst"] in frontier
                    and e.get("status") != STATUS_DELETED}
             nxt -= under_old
             under_old |= nxt
             frontier = nxt
         # 그 하위 골격에 매달린 설비(Unit 등)도 소속 주장의 경유지다.
-        under_old |= {e["src"] for e in g.edges
+        under_old |= {e["src"] for _l, e in all_edges
                       if e["rel"] in skel_rels and e["dst"] in under_old | {old_parent["id"]}
                       and e.get("status") != STATUS_DELETED}
-    for e in list(g.edges):
+    for lay, e in all_edges:
+        g = w.graphs[lay]
         if e.get("status") == STATUS_DELETED:
             continue
         other = e["dst"] if e["src"] == nid else (e["src"] if e["dst"] == nid else None)
@@ -163,7 +179,7 @@ def _transfer_edges(g, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair
             continue
         if e["rel"] not in skel_rels and e["rel"] not in set(pair.values()):
             continue
-        on = g.get(other)
+        on = w.get(other)
         if not on:
             continue
         if on["category"] == parent["category"]:
@@ -210,10 +226,10 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
     **파급 미리보기의 대상이다**(§4.7) — `preview(layer, "transfer", nid,
     new_parent=…)`가 규모를 먼저 보여준다.
     """
-    g = GraphStore.for_layer(layer).load()
-    cfg = _cfg(layer)
+    w, g, home = _open(layer, nid)
+    cfg = _cfg(home)
     node = _target(g, nid)
-    parent = _target(g, new_parent) if new_parent else None
+    parent = (_target(w.graph_of(new_parent, home), new_parent) if new_parent else None)
     if parent is None:
         raise OpRefused(f"새 부모 노드가 없다: {new_parent}")
     if node["id"] == parent["id"]:
@@ -238,13 +254,13 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
     # ① 엣지 재배선 — 골격에 매단 관계를 새 부모로.
     skel_rels = set((cfg.get("skeleton") or {}).get("relations", {}).values())
     pair = (cfg.get("category_pair_map") or {})
-    moved = _transfer_edges(g, cfg, node, parent, scoped, sep, old,
+    moved = _transfer_edges(w, cfg, node, parent, scoped, sep, old,
                             nid, skel_rels, pair)
 
     # ② canonical 연쇄 — 개명과 같은 기구를 재사용한다.
     dictionary = Dictionary.open()
     prov = f"op:transfer:{actor}"
-    chained = _scope_children(g, old, cfg) if scoped else []
+    chained = _scope_children(w, old, cfg) if scoped else []
 
     def _rename_one(n, name):
         prev = n["canonical"]
@@ -261,7 +277,7 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
         _rename_one(c, new_canonical + c["canonical"][len(old):])
     node["parent"] = parent["id"]
     dictionary.save()
-    g.save()
+    w.save()
     log_op("I5:transfer", actor, [nid, parent["id"]], reason,
            {"from": old, "to": new_canonical, "new_parent": parent["canonical"],
             "edges_moved": moved, "chained": pv["canonical_chain"]})
@@ -278,8 +294,8 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
     """
     if not actor:
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
-    g = GraphStore.for_layer(layer).load()
-    cfg = _cfg(layer)
+    w, g, home = _open(layer, nid)
+    cfg = _cfg(home)
     node = _target(g, nid)
     old = node["canonical"]
     if any(n["canonical"] == new_canonical and n["category"] == node["category"]
@@ -289,8 +305,7 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
     if dry_run:
         return pv
 
-    children = _scope_children(g, old, cfg)
-    sep = _sep(cfg)
+    children = _scope_children(w, old, cfg)
     dictionary = Dictionary.open()       # 사전 접근은 관문 경유로만 (문서 7 §7.1)
 
     def _rename_one(n, new_name):
@@ -307,11 +322,11 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
         _rename_one(c, new_canonical + c["canonical"][len(old):])
     if node.get("mirror_scope") == old:
         node["mirror_scope"] = new_canonical
-    for c in g.nodes.values():
+    for _l, c in w.nodes():                                  # 짝 키도 층 전부(B100 ④)
         if c.get("mirror_scope") == old:
             c["mirror_scope"] = new_canonical
     dictionary.save()
-    g.save()
+    w.save()
     log_op("I1:rename", actor, [nid], reason,
            {"from": old, "to": new_canonical, "chained": pv["canonical_chain"]})
     return pv
@@ -352,7 +367,7 @@ def merge_targets(layer, nid, limit=5):
     사람이 골라 넣는다. 그래서 `uncertain`도 함께 낸다 — 확신되지 않은 후보를
     감추면 사람이 볼 것이 줄어들고, 판정을 감춘 자리에서 오병합이 난다.
     """
-    g = open_graph(layer)
+    _w, g, layer = _open(layer, nid)                         # 집 그래프 — 같은 카테고리는 같은 집
     node = g.get(nid)
     if node is None or not is_live(node):
         return []
@@ -408,7 +423,7 @@ def _merge_attrs(g, layer, keep, gone):
                                 it.get("context") or {}, prov, True)
 
 
-def _move_edges(g, gone_id, keep_id):
+def _move_edges(w, gone_id, keep_id):
     """엣지 이설 — **`add_edge` 경유**다. 치환만 하면 계약 둘이 동시에 깨진다.
 
     ①`(src, rel, dst)` 유일성 — 같은 대상으로 각각 엣지를 갖던 두 노드를 합치면 물리
@@ -416,17 +431,19 @@ def _move_edges(g, gone_id, keep_id):
     가리키던 두 노드가 합쳐지면 자기 루프가 되는데, 그것은 참 관계가 아니라 병합의
     부산물이다(실측: 질의가 "X는 X의 원인"을 사실로 출력). 이설하지 않고 기록만 남긴다.
     """
-    moved = [e for e in g.edges if gone_id in (e["src"], e["dst"])]
-    for e in moved:
-        g.edges.remove(e)
-    for e in moved:
-        src = keep_id if e["src"] == gone_id else e["src"]
-        dst = keep_id if e["dst"] == gone_id else e["dst"]
-        if src == dst:
-            store.append_defect(
-                f"merge: 자기참조가 되는 엣지는 이설하지 않는다 — {e['rel']} @ {keep_id}")
-            continue
-        g.add_edge(src, e["rel"], dst, e["status"], e["provenance"])
+    # **층 전부**(B100 ④) — 엣지는 문서 층에 산다. 그 엣지가 살던 그래프에 다시 단다.
+    for g in w.graphs.values():
+        moved = [e for e in g.edges if gone_id in (e["src"], e["dst"])]
+        for e in moved:
+            g.edges.remove(e)
+        for e in moved:
+            src = keep_id if e["src"] == gone_id else e["src"]
+            dst = keep_id if e["dst"] == gone_id else e["dst"]
+            if src == dst:
+                store.append_defect(
+                    f"merge: 자기참조가 되는 엣지는 이설하지 않는다 — {e['rel']} @ {keep_id}")
+                continue
+            g.add_edge(src, e["rel"], dst, e["status"], e["provenance"])
 
 
 def merge(layer, nid, into, actor, canonical=None, override=None,
@@ -439,7 +456,10 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
     """
     if not actor:
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
-    g = GraphStore.for_layer(layer).load()
+    w, g, layer = _open(layer, nid)
+    if w.home(into, layer) not in (None, layer):
+        raise OpRefused(f"두 노드의 집이 다르다 — {nid}({layer}) · {into}({w.home(into)}) · "
+                        f"병합은 같은 카테고리(같은 집)끼리다")
     a, b = _target(g, nid), _target(g, into)
     if a["id"] == b["id"]:
         raise OpRefused("자기 자신과 병합할 수 없다")
@@ -468,7 +488,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
             keep["aliases"].append(al)                       # 선택 안 된 표기도 남는다
             seen.add(al["surface"])
     _merge_attrs(g, layer, keep, gone)
-    _move_edges(g, gone["id"], keep["id"])                   # 엣지 이설
+    _move_edges(w, gone["id"], keep["id"])                   # 엣지 이설 — 층 전부
     if canonical and canonical != keep["canonical"]:         # 사람 확정
         if not any(a2["surface"] == keep["canonical"] for a2 in keep["aliases"]):
             keep["aliases"].append({"surface": keep["canonical"],
@@ -492,13 +512,28 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         dictionary.register(al["surface"], keep["id"],
                             provenance=(al.get("provenance") or [f"op:merge:{actor}"])[0])
     dictionary.save()
-    g.save()
+    w.save()
     log_op("I2:merge", actor, [gone["id"], keep["id"]], reason,
            {"survivor": keep["id"], "canonical": keep["canonical"]})
     return pv
 
 
 # ---------------------------------------------------------------- I3 분리
+def edge_keys(layer, nid):
+    """배분표에 쓰는 **엣지 번호** — `[(번호, 관계, 상대 canonical, 층)]` (B100 ④).
+
+    집 그래프 엣지는 그 그래프의 번호(지금과 같다) · 다른 층에 사는 엣지는 `"<층>:<번호>"`.
+    """
+    w, _g, home = _open(layer, nid)
+    out = []
+    for lay, og in w.graphs.items():
+        for i, e in enumerate(og.edges):
+            if nid in (e["src"], e["dst"]):
+                other = w.get(e["dst"] if e["src"] == nid else e["src"]) or {}
+                out.append((i if lay == home else f"{lay}:{i}", e["rel"], other.get("canonical"), lay))
+    return out
+
+
 def split(layer, nid, plan, actor, reason="", dry_run=False):
     """I3 — **자동 불가**(L5). 배분표 없이는 거부한다.
 
@@ -513,11 +548,17 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
     if not plan or not plan.get("targets"):
         raise OpRefused("배분표가 없다 — 자동 분리 경로는 없다 (L5)")
-    g = GraphStore.for_layer(layer).load()
+    w, g, layer = _open(layer, nid)
     node = _target(g, nid)
 
-    own_edges = [i for i, e in enumerate(g.edges)
-                 if e["src"] == nid or e["dst"] == nid]
+    # 배분표의 엣지 번호 — 집 그래프 엣지는 그 그래프의 번호(지금과 같다) · 다른 층에 사는 엣지는
+    # `"<층>:<번호>"`(B100 ④ — 엣지는 문서 층). 닿은 엣지 전부가 배분 대상이다.
+    touch = {}
+    for lay, og in w.graphs.items():
+        for i, e in enumerate(og.edges):
+            if nid in (e["src"], e["dst"]):
+                touch[i if lay == layer else f"{lay}:{i}"] = (lay, e)
+    own_edges = list(touch)
     left = {"aliases": {al["surface"] for al in node["aliases"]},
             "provenance": set(node["provenance"]), "edges": set(own_edges)}
     for t in plan["targets"]:
@@ -526,7 +567,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
         left["aliases"] -= set(t.get("aliases") or []) | {t["canonical"]}
         left["provenance"] -= set(t.get("provenance") or [])
         left["edges"] -= set(t.get("edges") or [])
-    residual = {k: sorted(v) for k, v in left.items() if v}
+    residual = {k: sorted(v, key=str) for k, v in left.items() if v}
     if residual:
         raise OpRefused(f"배분표에 지정되지 않은 잔여가 있다 — 실행 거부: {residual}")
 
@@ -549,8 +590,10 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
                          mirror_name=node.get("mirror_name"))
         new_ids.append(new)
         for i in (t.get("edges") or []):
-            e = g.edges[i]
-            g.add_edge(new if e["src"] == nid else e["src"], e["rel"],
+            if i not in touch:
+                raise OpRefused(f"배분표의 엣지 {i!r}는 이 노드에 닿은 엣지가 아니다 — 있는 것: {own_edges}")
+            lay, e = touch[i]
+            w.graphs[lay].add_edge(new if e["src"] == nid else e["src"], e["rel"],
                        new if e["dst"] == nid else e["dst"],
                        e["status"], e["provenance"])
         prov = f"op:split:{actor}"                  # 배분은 사람 판단이 근거다
@@ -559,8 +602,8 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
             dictionary.register(s, new, provenance=prov)
 
     # 원본은 첫 산출물로 리다이렉트한다 — 삭제하지 않는다(옛 id 참조 보존)
-    for i in own_edges:
-        g.edges[i]["status"] = STATUS_DELETED
+    for _lay, e in touch.values():
+        e["status"] = STATUS_DELETED
     g.nodes[nid] = {"id": nid, STATUS_MERGED: new_ids[0], "status": STATUS_MERGED,
                     "at": store._now(), "canonical": node["canonical"],
                     "category": node["category"], "layer": node["layer"],
@@ -570,7 +613,9 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     # 한 표기가 두 노드를 동시에 가리킨다(사전 오염 — 조용한 유실 금지의 반대편).
     dictionary.redirect(nid, None)      # new_id=None → 걷어만 낸다
     dictionary.save()
-    g.save()
+    for _g in w.graphs.values():
+        _g._reindex_tombstones()
+    w.save()
     log_op("I3:split", actor, [nid] + new_ids, reason, {"targets": new_ids})
     return pv
 
@@ -584,10 +629,10 @@ def obsolete(layer, nid, actor, replaced_by=None, reason="", dry_run=False):
     """
     if not actor:
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
-    g = GraphStore.for_layer(layer).load()
+    w, g, layer = _open(layer, nid)
     node = _target(g, nid)
     if replaced_by:
-        if g.get(replaced_by) is None:
+        if w.get(replaced_by) is None:
             raise OpRefused(f"replaced_by 대상이 없다: {replaced_by}")
         if resolve_chain(g, replaced_by, "replaced_by") == nid:
             raise OpRefused("replaced_by 체인에 순환이 생긴다 — 거부 (L8)")
@@ -619,8 +664,8 @@ def confirm(layer, nid, actor, reason="", dry_run=False):
     """
     if not actor:
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
-    g = GraphStore.for_layer(layer).load()
-    node = _target(g, nid)                       # 툼스톤·타층 id는 여기서 거부된다
+    _w, g, layer = _open(layer, nid)
+    node = _target(g, nid)                       # 툼스톤·없는 id는 여기서 거부된다
     if node.get("status") in ("seed", "confirmed"):
         raise OpRefused(f"이미 확정된 노드다 — status={node.get('status')}")
     pv = {"op": "confirm", "layer": layer, "target": nid,
@@ -664,15 +709,23 @@ def alias(layer, target, surface, actor, reason="", dry_run=False):
     surface = (surface or "").strip()
     if not surface:
         raise OpRefused("등재할 표기를 달라")
-    g = GraphStore.for_layer(layer).load()
-    nid = target if g.get(target) else _by_canonical(g, target)
-    node = _target(g, nid)                      # 툼스톤·타층 id는 여기서 거부된다
+    w = World()
+    if w.get(target):
+        nid = target
+    else:                                       # 친 층 먼저 · 없으면 층 전부(노드는 집 층)
+        here = list((w.graphs[layer].nodes.values()) if layer in w.graphs else [])
+        try:
+            nid = _by_canonical(here, target)
+        except OpRefused:
+            nid = _by_canonical([n for _l, n in w.nodes()], target)
+    w, g, layer = _open(layer, nid)
+    node = _target(g, nid)                      # 툼스톤·없는 id는 여기서 거부된다
     cfg = _cfg(layer)
     parent = node.get("parent") or node.get("mirror_scope")
     dic = Dictionary.open()
     key, _scoped = scope_canonical(surface, node["category"], parent, cfg)
     for other in set(dic.lookup(surface)) | set(dic.lookup(key)):
-        o = g.get(other)
+        o = w.get(other)
         if other == nid or not o or not is_live(o):
             continue
         if o["category"] != node["category"]:
@@ -700,9 +753,9 @@ def alias(layer, target, surface, actor, reason="", dry_run=False):
     return pv
 
 
-def _by_canonical(g, name):
+def _by_canonical(nodes, name):
     """canonical로도 집는다 — 사람이 화면에서 보는 것은 id가 아니라 이름이다."""
-    hit = [n["id"] for n in g.nodes.values()
+    hit = [n["id"] for n in nodes
            if is_live(n) and (n["canonical"] == name or norm(n["canonical"]) == norm(name))]
     if not hit:
         raise OpRefused(f"대상 노드가 없다: {name}")
@@ -720,8 +773,15 @@ def delete_edge(layer, src, rel, dst, actor, reason=""):
     """
     if not actor:
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
-    g = GraphStore.for_layer(layer).load()
-    hit = [e for e in g.edges if (e["src"], e["rel"], e["dst"]) == (src, rel, dst)]
+    # 엣지는 문서 층에 산다(B100 ④) — 친 층에 없으면 층 전부에서 찾는다
+    w = World()
+    lays = ([layer] if layer in w.graphs else []) + [l for l in w.graphs if l != layer]
+    hit, g = [], None
+    for lay in lays:
+        g = w.graphs[lay]
+        hit = [e for e in g.edges if (e["src"], e["rel"], e["dst"]) == (src, rel, dst)]
+        if hit:
+            break
     if not hit:
         raise OpRefused("그런 엣지가 없다")
     for e in hit:
