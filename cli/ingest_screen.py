@@ -232,10 +232,11 @@ def row_printer():
 
 def value_table():
     """판정 값 표(B98 ⑥) — 기호 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 노드/큐."""
-    return _screen.Table([("", 1, False), ("위치", 14, False), ("표기", 40, False),
-                          ("카테고리/열", 11, False),
-                          ("판정", 9, False), ("경로", 15, False), ("확신", 4, True),
-                          ("임베딩", 6, True), ("노드/큐", 20, False)], flex=2)
+    # 고정 칸은 좁게(위치 · 경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨)
+    return _screen.Table([("", 1, False), ("위치", 10, False), ("표기", 40, False),
+                          ("카테고리/열", 10, False),
+                          ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
+                          ("임베딩", 5, True), ("노드/큐", 16, False)], flex=2)
 
 
 def value_cells(row):
