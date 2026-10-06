@@ -171,6 +171,55 @@ def config_file():
     return None
 
 
+def config_sources():
+    """**어느 설정 파일을 읽었고 무엇을 무시했나** (B98 ④) — 값은 내지 않는다.
+
+    설정은 **처음 찾은 파일 하나만** 읽는다(병합 없음 · 순서는 `config_file()` 그대로). 앞
+    자리에 옛 파일이 있으면 그것이 이기고 뒤 파일은 말없이 무시된다 — 그 사실을 화면이
+    말하게 하는 자리다. `env_over`는 **환경변수가 파일 값을 덮은 키 이름**(값 없음).
+    """
+    from core import paths
+    read = config_file()
+    cand = [os.path.expanduser(CONFIG_PATHS[0]),
+            os.path.join(str(paths.ROOT), CONFIG_PATHS[1]), str(paths.config_file())]
+    explicit = os.environ.get(CONFIG_ENV)
+    if explicit:
+        cand = [explicit] + cand
+    seen, ignored = set(), []
+    for c in cand:
+        k = os.path.realpath(c)
+        if k in seen:
+            continue
+        seen.add(k)
+        if os.path.isfile(c) and (not read or k != os.path.realpath(read)):
+            ignored.append(c)
+    env_over = []
+    if read:
+        try:
+            data = _from_file()[0]
+        except NotConfigured:
+            data = {}
+        env_over = sorted(k for k, v in data.items()
+                          if os.environ.get(k) not in (None, "") and v not in (None, ""))
+    return {"read": read, "ignored": ignored, "env_over": env_over,
+            "explicit": bool(explicit)}
+
+
+def sources_line():
+    """설정 파일 한 줄 — `llm-check` ①·`doctor`·사전 점검이 같은 문면을 쓴다."""
+    s = config_sources()
+    out = (f"설정 파일 {s['read']}" if s["read"]
+           else "설정 파일 없음 (환경변수만)")
+    if s["explicit"]:
+        out += f" ({CONFIG_ENV} 지정)"
+    if s["ignored"]:
+        out += (" · **무시됨** " + " · ".join(s["ignored"])
+                + " (설정은 처음 찾은 파일 하나만 읽는다)")
+    if s["env_over"]:
+        out += " · 환경변수가 덮은 키 " + ", ".join(s["env_over"])
+    return out
+
+
 def _from_file():
     """설정 파일의 내용. **키 이름은 환경변수와 같다** — 둘을 외우게 하지 않는다.
 

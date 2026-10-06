@@ -128,8 +128,8 @@ def rule_screen():
     """계층 규칙 선언의 **예고** 줄 — 부르기 전에 낸다(B87 ② · B69 ②의 결)."""
     def notice(info):
         if info.get("단계") == "예고":
-            print(f"   계층 규칙 — 고정 규칙으로 안 선 시트 {info['대상']}장 → "
-                  f"LLM ≤ {info['호출_상한']}회(재사용 {info['재사용']})")
+            _screen.say(f"   계층 규칙 — 고정 규칙으로 안 선 시트 {info['대상']}장 → "
+                        f"LLM ≤ {info['호출_상한']}회(재사용 {info['재사용']})", "head")
     return notice
 
 
@@ -138,8 +138,8 @@ def print_split_notes(report):
     sr = (report or {}).get("struct_rule") or {}
     if sr.get("주입") and sr.get("대상"):
         tail = f" · 선언 버림 {len(sr['버림'])}" if sr.get("버림") else ""
-        print(f"   계층 규칙 — 선언 적용 {sr['적용']}시트 · 여전히 통째 {sr['통째']}시트"
-              f" (호출 {sr['호출']} · 재사용 {sr['재사용']}{tail})")
+        _screen.say(f"   계층 규칙 — 선언 적용 {sr['적용']}시트 · 여전히 통째 {sr['통째']}시트"
+                    f" (호출 {sr['호출']} · 재사용 {sr['재사용']}{tail})", "head")
     cap = ((report or {}).get("split") or {}).get("글자_상한") or {}
     if cap:
         print(f"   글자 상한 초과 {cap['초과_청크']}청크 → 행 경계로 {cap['조각']}조각"
@@ -156,15 +156,18 @@ def coord_screen():
     진행은 **표기 단위**이고, 끝 줄은 채택·목록 밖을 센다.
     """
     def notice(info):
+        if info.get("단계") == "행":
+            return row(info)
         if info.get("단계") == "예고":
             head = (f"   좌표 태깅 — 조각 {info['조각']:,} · "
                     f"정확 일치 {info['정확_일치']:,} · "
                     f"목록 밖 표기 {info['표기_종수']:,}종(행 {info['미스_행']:,})")
             if not info.get("LLM"):
-                print(f"{head} → LLM 0회 — 정확 일치만")
+                _screen.say(f"{head} → LLM 0회 — 정확 일치만", "head")
                 return
-            print(f"{head} → LLM 최대 {info['묻는_종수']:,}회"
-                  + (f" (상한 {info['상한']:,})" if info.get("상한") is not None else ""))
+            _screen.say(f"{head} → LLM 최대 {info['묻는_종수']:,}회"
+                        + (f" (상한 {info['상한']:,})" if info.get("상한") is not None else ""),
+                        "head")
             if info.get("상한") == 0:
                 # **사람이 끈 것과 상한에 걸린 것은 다른 일이다** — 끈 자리에
                 # 「초과」를 찍으면 자기가 준 값이 사고처럼 읽힌다.
@@ -181,16 +184,30 @@ def coord_screen():
                       f"또는 사전 alias 등록")
             return
         if info.get("호출"):
+            _screen.close()
             print(f"   좌표 태깅 끝 — 호출 {info['호출']:,} · 채택 {info['채택']:,} · "
                   f"목록 밖 {info['목록밖']:,}(orphan_anchor 후보)")
 
+    box = {"t": None}
+
+    def row(info):
+        # **표기마다 한 행 — 이어지는 표**(B98 ⑥) · 표기 하나가 LLM 호출 하나다
+        if box["t"] is None:
+            box["t"] = _screen.Table([("번호", 9, True), ("표기", 40, False),
+                                      ("행 수", 5, True), ("결과", 24, False)], flex=1)
+        box["t"].row([f"{info['i']}/{info['총']}", info["표기"], info["행_수"],
+                      info["결과"] or "목록 밖(orphan_anchor 후보)"],
+                     ["prog", None, "aux", "match" if info["결과"] else "aux"])
+
     def progress(done, total, adopted):
+        # 보폭 진행 줄 — 표가 이어지는 중이면 그 표의 구분 행이다(B69 ② · B98 ⑥)
         stride = max(1, total // 10)
         if done == 1 or done == total or done % stride == 0:
-            tty = sys.stdout.isatty()
-            print(f"   [좌표 태깅] 표기 {done:,}/{total:,} · 채택 {adopted:,} · "
-                  f"목록 밖 {done - adopted:,}",
-                  end="\r" if (tty and done < total) else "\n", flush=True)
+            _screen.inline(f"[좌표 태깅] 표기 {done:,}/{total:,} · 채택 {adopted:,} · "
+                           f"목록 밖 {done - adopted:,}", "prog")
+        if done == total and box["t"] is not None:
+            box["t"].end()
+            box["t"] = None
 
     return notice, progress
 

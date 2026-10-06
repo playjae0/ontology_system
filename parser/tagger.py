@@ -217,6 +217,10 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         memo[ref] = chosen if (chosen and chosen in idx) else None
         if memo[ref]:
             adopted += 1
+        if notice is not None:
+            # 표기 하나 = 표의 한 행(B98 ⑥) — 진행 콜백(3인자 계약)은 그대로 두고 예고와 같은 통로로
+            notice({"단계": "행", "i": n, "총": len(ask), "표기": ref,
+                    "행_수": refs.count(ref), "결과": memo[ref]})
         if progress is not None:
             progress(n, len(ask), adopted)
 

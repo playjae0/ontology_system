@@ -54,6 +54,7 @@ SUITES = [
     ("test_g6_catalog_sync", 21, "공통 config 맞추기(B92~B95) — 골격 카테고리의 어긋난 집 노드 0이면 자동 교정·이름 규칙 줄 · used_by 결과 기록·새 카테고리 경고·골격 카테고리 개체 조회 전용 · 골격 카테고리 집 = 골격 층 자동·골격 모순 거부·겸 상태 표시 · 한 층 선언은 자동 추가 · 겹침은 빈칸+멈춤 · 선언·노드 없으면 제거 · 노드 남으면 멈춤 · 사람 값 불변 · 집 변경 막기 · --dry-run 쓰기 0 · 운영 처음 바로 생성"),
     ("test_g6_dryrun_fold", 7, "B96 — dry-run은 실제와 같은 검사(ⓓ·골격 문법) · show tree 흐름 순서 · 사용량 줄(관문·뷰 확인) · 라틴 대소문자 2차 대조(하나일 때만) · norm 불변"),
     ("test_g6_extract_view", 6, "B97 — 산문 추출을 보이게: 추출 예고 · 청크별 메타 줄 · 시간 기준 누적 줄 · 청크 단위 이어 쓰기(중단·조건 불일치) · --step 산문 두 관문"),
+    ("test_g6_preflight_view", 9, "B98 — 비용 전 사전 점검(임베딩·그림·공통 config · 실행당 1회) · 설정 파일 읽음/무시됨 · 토큰 입력/출력 한 함수 · 구축 실패 줄 · 이어지는 표(80칸·줄바꿈·박자 행) · 색 세 층(ESC 0)"),
     ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
     ("test_g65_contract", 28, "재인입·인입 검증 계약 · 닫힌 계약 배선 · 병합 무손실"),
@@ -223,6 +224,15 @@ def check_env():
     line(OK if mock == "1" else WARN, f"USE_MOCK={mock}",
          "1 = LLM 없이 전 경로가 로컬로 돈다(네트워크 0). 사내 첫 실행은 이 상태여야 한다"
          if mock == "1" else "0 = 실LLM 경로. 아직 훅이 비어 있어 추출에서 명시 실패한다")
+
+    # **어느 설정 파일을 읽었나**(B98 ④) — 처음 찾은 파일 하나만 읽는다 · 무시된 파일을 말한다
+    sys.path.insert(0, str(ROOT))
+    from core.llm import gateway as _gw                                   # noqa: E402
+    try:
+        _src = _gw.config_sources()
+        line(WARN if _src["ignored"] else OK, "LLM 설정 파일", _gw.sources_line())
+    except _gw.NotConfigured as e:
+        line(WARN, "LLM 설정 파일", str(e))
 
     # **레포 정본 자산이 레포 판인가**(B79 ④ · 사용자 확정 2026-09-21) —
     # `prompts/`·`kit/`·`schemas/blocks.json`·(레포)`layers/`는 사내에서 고치지 않는다.

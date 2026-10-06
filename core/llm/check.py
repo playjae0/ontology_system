@@ -93,8 +93,14 @@ def _probe_embed(cfg, add):
     """⑥⑦ — 임베딩과 이미지 입력. **미설정이 정상**이고, 막히면 그 사실만 말한다.
 
     `probe`에서 단계로 떼어냈다(B78 2c) — 단계마다 함수가 있으면 「어디서 끊겼나」가
-    호출 순서로도 보인다.
+    호출 순서로도 보인다. 두 단계는 사전 점검(B98 ①)도 그대로 부른다(두 벌 금지).
     """
+    embed_stage(cfg, add)
+    image_stage(cfg, add)
+
+
+def embed_stage(cfg, add):
+    """⑥ 임베딩 — 미설정이면 `None`(겹침 폴백) · 막히면 `False`. 실물 `embed()`를 부른다."""
     # ⑥ 임베딩 — **미설정이 정상이다**. 후보 좁히기는 겹침으로 떨어지고 인입은 선다.
     if not cfg["embed_model"]:
         add("⑥", "임베딩", None,
@@ -115,6 +121,10 @@ def _probe_embed(cfg, add):
         except Exception as e:
             add("⑥", "임베딩", False, f"{type(e).__name__}: {e}")
 
+
+
+def image_stage(cfg, add):
+    """⑦ 이미지 입력 — 1×1 PNG 한 장 왕복. 막히면 `False`(치명 여부는 부르는 쪽이 정한다)."""
     # ⑦ 이미지 입력 — **④가 실제로 쓰는 형태**를 1×1 PNG 한 장으로 왕복시킨다.
     #
     # ④는 바이트를 보낸다(B53). 게이트웨이가 멀티모달 content를 안 받으면 그
@@ -170,6 +180,64 @@ def _probe_points(cfg, points, add):
             add("·", label, False, f"{type(e).__name__}: {e}")
 
 
+def chat_roundtrip(cfg, add):
+    """②③④ 채팅 왕복 1회 — 통과면 응답(raw), 막히면 `None`(치명 단계를 `add`로 남긴다).
+
+    `llm-check`와 사전 점검(B98 ①)이 **같은 함수**를 부른다 — 문면도 같다.
+    """
+    # ②③④ 한 번의 왕복이 셋을 가른다 — 어디서 끊겼는지가 곧 원인이다.
+    url = f"{cfg['url']}/chat/completions"
+    # **조립은 `gateway._payload` 하나다**(B80 ①) — 탐침이 따로 짜면 손잡이를 더해도
+    # 점검은 옛 모양을 보내고 인입만 400이 난다.
+    payload = gateway._payload(cfg, [{"role": "user", "content": PING}])
+    raw = None
+    try:
+        raw = gateway._post(url, payload, cfg["key"], cfg["timeout"])
+        add("②", "도달", True, f"{cfg['url']} — 응답 받음")
+        add("③", "인증", True, f"LLM_API_KEY {key_state()}")
+    except gateway.GatewayError as e:
+        # **`gateway._post`가 `HTTPError`를 `GatewayError`로 바꿔 던진다**(:352) — 구판은
+        # `except urllib.error.HTTPError`라 **도달하지 않았고**, 401/403이 아래
+        # `except Exception`으로 떨어져 「②도달 실패」로 보고됐다. 키가 틀렸는데
+        # 화면은 「주소에 못 닿았다」고 말했다 — B19의 「어디까지 갔는지가 곧
+        # 원인이다」가 이 자리에서 거짓말했다(B55 ⑦).
+        add("②", "도달", True, f"{cfg['url']} — HTTP {e.status}")
+        if e.status in (401, 403):
+            add("③", "인증", False,
+                f"HTTP {e.status} — LLM_API_KEY {key_state()}. "
+                f"키가 맞는지·게이트웨이가 다른 헤더를 쓰는지 확인한다 "
+                f"(헤더는 core/llm/gateway.py::_post)", fatal=True)
+        else:
+            add("③", "인증", False,
+                f"HTTP {e.status} — 인증 문제는 아니다. 응답 본문: {str(e.body)[:120]} · "
+                f"모델명({cfg['model']})·경로(/chat/completions)를 확인한다",
+                fatal=True)
+        return None
+    except Exception as e:                       # URLError·timeout·그 밖
+        px = _proxy_env()
+        add("②", "도달", False,
+            f"{cfg['url']} — {type(e).__name__}: {e} · "
+            f"프록시 환경변수 {', '.join(px) if px else '없음'} · "
+            f"타임아웃 {cfg['timeout']}초", fatal=True)
+        return None
+
+    # ④ 응답 형태 — OpenAI 호환인가. **값이 아니라 키 목록만** 낸다.
+    try:
+        text = raw["choices"][0]["message"]["content"]
+        add("④", "응답 형태", True,
+            f"choices[0].message.content 실재 — 앞 40자: {str(text)[:40]!r}")
+    except (KeyError, IndexError, TypeError):
+        add("④", "응답 형태", False,
+            f"choices[0].message.content 경로가 없다. "
+            f"응답 최상위 키: {sorted(raw) if isinstance(raw, dict) else type(raw).__name__} — "
+            f"사내 게이트웨이가 OpenAI 호환이 아니다. "
+            f"고칠 곳은 core/llm/gateway.py 한 파일(_post와 chat의 응답 파싱)이다",
+            fatal=True)
+        return None
+
+    return raw
+
+
 def probe(points=None, *, timeout=None):
     """게이트웨이 왕복을 **단계별로 끊어** 확인한다. 돌려주는 것은 단계 기록이다.
 
@@ -198,7 +266,7 @@ def probe(points=None, *, timeout=None):
 
     # ① 설정 — 실패 문장은 gateway.require()가 이미 만든다. 여기서 새로 짓지 않는다.
     src, warn = gateway.file_state()
-    where = f"설정 파일 {src}" if src else "설정 파일 없음 (환경변수만)"
+    where = gateway.sources_line()                   # 읽은 파일 · 무시된 파일 (B98 ④)
     try:
         gateway.require("chat")
         add("①", "설정", True, f"CHAT_MODEL={cfg['model']} · "
@@ -217,55 +285,10 @@ def probe(points=None, *, timeout=None):
             fatal=True)
         return S
 
-    # ②③④ 한 번의 왕복이 셋을 가른다 — 어디서 끊겼는지가 곧 원인이다.
+    raw = chat_roundtrip(cfg, add)
+    if raw is None:
+        return S
     url = f"{cfg['url']}/chat/completions"
-    # **조립은 `gateway._payload` 하나다**(B80 ①) — 탐침이 따로 짜면 손잡이를 더해도
-    # 점검은 옛 모양을 보내고 인입만 400이 난다.
-    payload = gateway._payload(cfg, [{"role": "user", "content": PING}])
-    raw = None
-    try:
-        raw = gateway._post(url, payload, cfg["key"], cfg["timeout"])
-        add("②", "도달", True, f"{cfg['url']} — 응답 받음")
-        add("③", "인증", True, f"LLM_API_KEY {key_state()}")
-    except gateway.GatewayError as e:
-        # **`gateway._post`가 `HTTPError`를 `GatewayError`로 바꿔 던진다**(:352) — 구판은
-        # `except urllib.error.HTTPError`라 **도달하지 않았고**, 401/403이 아래
-        # `except Exception`으로 떨어져 「②도달 실패」로 보고됐다. 키가 틀렸는데
-        # 화면은 「주소에 못 닿았다」고 말했다 — B19의 「어디까지 갔는지가 곧
-        # 원인이다」가 이 자리에서 거짓말했다(B55 ⑦).
-        add("②", "도달", True, f"{cfg['url']} — HTTP {e.status}")
-        if e.status in (401, 403):
-            add("③", "인증", False,
-                f"HTTP {e.status} — LLM_API_KEY {key_state()}. "
-                f"키가 맞는지·게이트웨이가 다른 헤더를 쓰는지 확인한다 "
-                f"(헤더는 core/llm/gateway.py::_post)", fatal=True)
-        else:
-            add("③", "인증", False,
-                f"HTTP {e.status} — 인증 문제는 아니다. 응답 본문: {str(e.body)[:120]} · "
-                f"모델명({cfg['model']})·경로(/chat/completions)를 확인한다",
-                fatal=True)
-        return S
-    except Exception as e:                       # URLError·timeout·그 밖
-        px = _proxy_env()
-        add("②", "도달", False,
-            f"{cfg['url']} — {type(e).__name__}: {e} · "
-            f"프록시 환경변수 {', '.join(px) if px else '없음'} · "
-            f"타임아웃 {cfg['timeout']}초", fatal=True)
-        return S
-
-    # ④ 응답 형태 — OpenAI 호환인가. **값이 아니라 키 목록만** 낸다.
-    try:
-        text = raw["choices"][0]["message"]["content"]
-        add("④", "응답 형태", True,
-            f"choices[0].message.content 실재 — 앞 40자: {str(text)[:40]!r}")
-    except (KeyError, IndexError, TypeError):
-        add("④", "응답 형태", False,
-            f"choices[0].message.content 경로가 없다. "
-            f"응답 최상위 키: {sorted(raw) if isinstance(raw, dict) else type(raw).__name__} — "
-            f"사내 게이트웨이가 OpenAI 호환이 아니다. "
-            f"고칠 곳은 core/llm/gateway.py 한 파일(_post와 chat의 응답 파싱)이다",
-            fatal=True)
-        return S
 
     # ⑤ 구조화 출력 — 안 먹어도 치명은 아니다(대안이 있다).
     sch = {"type": "object", "properties": {"ok": {"type": "boolean"}},

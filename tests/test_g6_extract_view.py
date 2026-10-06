@@ -39,7 +39,12 @@ _register()
 print("\n■ B97 ① 추출 예고 · ② 청크별 줄")
 _out = _ingest("--sheets", "auto")
 _pre = [l for l in _out.splitlines() if "추출 예고 —" in l]
-_rows = [l for l in _out.splitlines() if l.strip().startswith("[추출 ")]
+def _chunk_rows(text):
+    """추출 표의 데이터 행(`i/m | 위치 | …` — B98 ⑥ 표로 바뀌었다 · 기대 변경)."""
+    return [l for l in text.splitlines() if re.match(r"\s*\d+/\d+ \| ", l)]
+
+
+_rows = _chunk_rows(_out)
 _m = re.search(r"청크 (\d+)\(ref 시트 (\d+) · 체크포인트 재사용 (\d+) 제외\) → LLM ≤ (\d+)회",
                _pre[0] if _pre else "")
 show("ⓐ 한 렌즈 산문 인입에 추출 예고 줄 — 부를 청크 = 청크 − ref − 재사용 = 청크 줄 수",
@@ -74,10 +79,10 @@ def _extract(note=None):
 EX._candidates_for = _fake
 EX.invalidate("RFQ01")
 _ref, _, _txt = _extract()
-_ln = [l for l in _txt.splitlines() if l.strip().startswith("[추출 ")]
+_ln = _chunk_rows(_txt)
 show("ⓑ 청크마다 메타 줄(개체 표기·카테고리 전부 · 관계 수) · 끝 줄에 사용량",
-     len(_ln) == len(_rows) and all("부품" in l and "[Component]" in l and "치수[Property]" in l
-                                    and "관계 1" in l for l in _ln)
+     len(_ln) == len(_rows) > 0 and all("부품" in l and "[Component]" in l and "치수[Property]" in l
+                                    and l.split(" | ")[4].strip() == "1" for l in _ln)
      and any("추출 끝 —" in l and "LLM 사용량 — 호출" in l for l in _txt.splitlines()),
      _ln[0].strip()[:90] if _ln else "")
 

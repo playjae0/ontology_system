@@ -265,7 +265,7 @@ def cmd_bootstrap(args=()):
 def cmd_ingest(paths, finalize=True, allow_duplicate=False):
     """`finalize`는 전 문서 인입 뒤 도는 빌드 말미 패스다 — 낱개 인입에서도 기본 수행한다."""
     for p in paths:
-        from cli.ingest import build_screen        # 화면은 한 벌이다 (B72 ②)
+        from cli.ingest_screen import build_screen  # 화면은 한 벌이다 (B72 ②)
         r, m, extracted = run_document(_load(p), allow_duplicate=allow_duplicate,
                                        notice=build_screen())
         mark = "보류" if r.status == "held" else "인입"

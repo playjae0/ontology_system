@@ -231,93 +231,6 @@ def _form_line(f):
 # 여기 한 자리**다 — 앞자리가 단이다: 2 어댑터/지문 · 3 계약(validator) · 4 구조 ·
 # 5 인입 보류.
 
-def build_screen(step=False, stage=None, prose=False):
-    """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
-
-    예고는 판정 **전에** 무LLM으로 센 수다(B22·B69와 같은 규율): 「표기 k종 중
-    사전이 h종을 이미 안다 → 최대 k−h회」. 요약은 그래프·큐의 **실물 수**다 —
-    화면이 제 계산을 하지 않는다.
-
-    큐는 **집계 단위**로 말한다(B72 ②): `unknown_field 1종(meta 118행)`. 행마다
-    한 건이면 사람이 판정할 하나가 118건 밑에 묻힌다.
-    """
-    _ex = SCR.extract_screen(step=step, stage=stage)
-    _judge = dict(stage or {})
-
-    def notice(info):
-        if str(info.get("단계", "")).startswith("추출"):
-            # 산문 추출 화면은 세 진입이 같은 함수다 (B97 ①②)
-            out = _ex(info)
-            if info["단계"] == "추출끝" and stage is not None:
-                stage.update(_judge)              # 누적 줄·비용 줄이 다시 판정을 가리킨다
-            return out
-        if info.get("단계") == "렌즈예고":
-            # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0 ·
-            # 이 줄이 추출 예고의 자리다(B97 ① — 두 줄 0) · `--step`이면 여기서 묻는다
-            head = (f"렌즈 {len(info['렌즈'])}({' · '.join(info['렌즈'])}) × 청크 "
-                    f"{info['청크']:,} → 거름 뒤 LLM ≤ {info['호출']:,}회 "
-                    f"(관련성 문턱 {info['문턱']} · 건너뜀 {info['거름']:,})")
-            if step:
-                return SCR._step_gate(7, head, prose=True)
-            print(f"   렌즈 예고 — {head}")
-            return None
-        if info.get("단계") == "렌즈상한":
-            # **넘으면 묻는다** — 비대화형이면 멈춘다(조용한 절단 0 · 문서는 보류로 남는다)
-            print(f"   렌즈 호출 상한 {info['상한']:,} 초과 — 예상 {info['호출']:,}회")
-            if not sys.stdin.isatty():
-                print("     비대화형이라 멈춘다 — 손잡이 lens_call_cap을 올리거나 렌즈를 줄인다 "
-                      "(python run.py show knobs · python -m cli.register lenses <dt>)")
-                return False
-            try:
-                return _screen.ask("     그래도 부를까? [y/N] ").strip().lower() in ("y", "yes")
-            except (EOFError, KeyboardInterrupt):
-                return False
-        if info.get("단계") == "판정예고":
-            lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
-            body = (f"entity 값 {info['값_수']:,}건"
-                    f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
-                    f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
-                    f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
-            if step and info.get("추출뒤"):
-                # 산문은 **추출 뒤 관문**이 이 줄이다(B97 ④ — 표의 관문 3은 레코드로 센다)
-                return SCR._step_gate(8, lz + body, prose=True)
-            if step:
-                return          # 표 문서 — 관문 3(판정 예고)이 이미 같은 수를 찍었다
-            print(f"   판정 예고 {lz}— {body}")
-            return
-        q = info.get("큐") or {}
-        head = " · ".join(f"{k} {n}종({rows}행)" for k, (n, rows) in sorted(q.items()))
-        j = info.get("판정") or {}
-        if j.get("조립"):
-            # **어떻게 좁혔나를 화면이 말한다**(B73 ①) — 후보가 전량이던 시절의
-            # 비용은 화면 어디에도 없었다.
-            from core.matcher import CANDIDATE_TOP_N
-            # **좁힘을 갈라 적는다**(B75 ①) — 임베딩으로 골랐는지 겹침으로 골랐는지가
-            # 같은 문서를 두 설정으로 넣어 견줄 때의 유일한 표지다.
-            # `스코프로 끝`은 **판정 없이** 끝난 수다(B75 ② — 같은 부모 아래 0개).
-            print(f"   판정 — 호출 {j.get('판정', 0):,} · 사전 {j.get('사전', 0):,} · "
-                  f"스코프로 끝 {j.get('스코프끝', 0):,} · "
-                  f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
-                  f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
-                  f"(상한 {CANDIDATE_TOP_N})")
-        if step:
-            u2 = gateway.usage_total()
-            SCR._step_gate(4, prose=prose, detail=f"새 노드(auto) {info.get('auto', 0)} · "
-                          f"LLM 호출 {u2['calls']:,}")
-            SCR._step_gate(5, prose=prose, detail=f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
-                          f"{info.get('저해상도', 0)}행")
-            SCR._step_gate(6, head or "큐 0", prose=prose)
-        SCR._orphan_next(info.get("doc_id"))
-        u = gateway.usage_total()
-        print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
-              f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
-              f"저해상도 부착 {info.get('저해상도', 0):,}행"
-              + (f" · 큐: {head}" if head else " · 큐 0")
-              + f" · LLM 호출 {u['calls']:,} · 토큰 "
-              f"{u.get('total_tokens', 0):,}")
-    return notice
-
-
 def narrow_notice():
     """후보 좁히기가 **무엇으로** 도는지 — 임베딩이 없어도 인입은 선다(B75 ①).
 
@@ -409,7 +322,7 @@ def _step_stops(res, sel, row):
         return True
     if prose:
         # 산문의 판정 예고는 **추출 뒤**에 선다(B97 ④) — 표기는 추출이 끝나야 안다.
-        # 관문은 추출 예고 · 추출 결과·판정 예고 둘이고 구축 안에서 묻는다(`build_screen`).
+        # 관문은 추출 예고 · 추출 결과·판정 예고 둘이고 구축 안에서 묻는다(`ingest_screen.build_screen`).
         return False
     # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
     from core.build.entry import _entity_surfaces, decision_plan
@@ -430,7 +343,7 @@ def _step_stops(res, sel, row):
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
-                no_images=False):
+                no_images=False, preflight=None):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     try:
@@ -456,6 +369,10 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     if dry_run:
         row["status"] = "선택만"
         print("   (dry-run — 파싱·인입 안 함)")
+        return row
+    if not _preflight_once(doc, preflight, no_images):
+        row.update(status=FAIL, preflight_fail=True,
+                   reason="사전 점검 실패 — 파싱 전에 멈췄다(LLM 추가 0 · 쓰기 0)")
         return row
     try:
         stage["이름"] = "파싱"
@@ -491,11 +408,12 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
                 r, m, _extracted = run_document(
                     res.envelope, routing=sel["basis"],
-                    notice=build_screen(step=step, stage=stage,
+                    notice=SCR.build_screen(step=step, stage=stage,
                                         prose=res.envelope.get("payload_kind") == "prose"))
         finally:
             _mt.PROGRESS = None
             _ledger.ON_ROW = None
+            _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
         if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
             row.update(status=SKIP, reason=r.reason)
             return row
@@ -531,12 +449,54 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         _line = log.defect(e, stage=f"단계 {stage.get('이름', '?')}",
                            extra=f"doc_id {sel['doc_id']}")
         row.update(status=FAIL, reason=f"{type(e).__name__}: {e}"[:300])
+        _screen.close()
         print("   " + _line)
         # **비용은 실패해도 보인다**(B75 ③ⓐ) — 사내 실측 열넷째는 첫 판정 호출
         # 전에 서서 진행 줄도 토큰 줄도 없이 끝났다. 무엇을 썼는지 모르면
         # 「다시 돌려도 되나」를 판단할 재료가 없다.
         print("   " + spend_line(stage))
+        _kept_lines(doc, sel, stage)
         return row
+
+
+def _kept_lines(doc, sel, stage):
+    """**구축에서 실패했을 때 남은 것**(B98 ②) — 추출 체크포인트가 있으면 다시 쳐도 LLM 0이다.
+
+    파싱 전·파싱에서 실패했으면 말하지 않는다(추출이 없었다). 표 문서는 추출이 없다.
+    """
+    if stage.get("이름") in (None, "선택", "파싱"):
+        return
+    from core.build import extract as EX
+    did = sel["doc_id"]
+    if not EX.EXTRACT_DIR.exists():
+        return
+    done = sorted(EX.EXTRACT_DIR.glob(f"{did}.json")) + sorted(EX.EXTRACT_DIR.glob(f"{did}@*.json"))
+    part = sorted(EX.EXTRACT_DIR.glob(f"{did}*.partial.jsonl"))
+    if done:
+        print("   추출 체크포인트는 남았다 — 같은 명령이면 재사용(LLM 0) · 구축만 다시 간다")
+    elif part:
+        print("   추출 부분 파일이 남았다 — 같은 명령이면 끝난 청크는 부르지 않고 이어서 한다")
+    elif (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind") == "prose":
+        print("   추출 체크포인트 없음 — 같은 명령은 추출부터 다시 한다")
+    else:
+        return
+    dt = f" --doc-type {sel['doc_type']}" if sel.get("doc_type") else ""
+    print(f"   ▶ 다음 줄 — 위 원인을 고친 뒤 같은 명령: python run.py ingest-file {doc}{dt}")
+
+
+def _preflight_once(doc, pf, no_images):
+    """**사전 점검 — 실행당 1회**(B98 ①): `pf`는 실행이 공유하는 칸(`ingest-dir`이 하나를 넘긴다).
+
+    채팅은 실호출이면 늘 · 임베딩은 이 실행의 좁히기가 `embed`일 때 · 그림은 문서(폴더면
+    그 안 어느 문서)에 그림이 있고 `--no-images`가 아닐 때 · 공통 config는 늘(구축이 쓴다).
+    """
+    from cli import preflight as PF
+    from core.llm.narrow import narrow_choice
+    pf = pf if pf is not None else {}
+    if pf.get("ok") is None:
+        imgs = pf["images"] if "images" in pf else (not no_images and PF.has_images(doc))
+        pf["ok"] = PF.gate(chat=True, embed=narrow_choice()[0] == "embed", images=imgs)
+    return pf["ok"]
 
 
 def spend_line(stage):
@@ -548,9 +508,8 @@ def spend_line(stage):
     where = stage.get("이름", "선택")
     if where == "판정" and stage.get("총"):
         where = f"판정 값 {stage.get('값', 0)}/{stage['총']}"
-    return (f"이 문서까지 — LLM 호출 {u['calls']:,} · 토큰 "
-            f"{u.get('total_tokens', 0):,}(입력 {u.get('prompt_tokens', 0):,} · "
-            f"출력 {u.get('completion_tokens', 0):,}) · 멈춘 단계 {where}")
+    return (f"이 문서까지 — LLM 호출 {u['calls']:,} · {_screen.tokens(u)} · "
+            f"멈춘 단계 {where}")
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
@@ -576,11 +535,16 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
                    and "__pycache__" not in x.parts)
     rows = []
     u0 = gateway.usage_total()
+    # **사전 점검은 실행당 1회**(B98 ①) — 그림은 폴더 안 어느 문서에라도 있으면 본다
+    from cli.preflight import has_images
+    pf = {"ok": None, "images": not no_images and any(has_images(f) for f in files)}
     for f in files:
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap,
                                 progress_every=progress_every, ask=False,
-                                no_images=no_images, sheets=sheets))
+                                no_images=no_images, sheets=sheets, preflight=pf))
+        if rows[-1].get("preflight_fail"):
+            break                                  # 같은 실행의 나머지도 같은 자리에서 막힌다
     if not dry_run and any(r["status"] == OK for r in rows):
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
@@ -590,8 +554,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         u = gateway.usage_total()
         print(_screen.banner(
             f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
-            f"토큰 {u.get('total_tokens', 0) - u0.get('total_tokens', 0):,}"
-            f"(입력 {u.get('prompt_tokens', 0) - u0.get('prompt_tokens', 0):,})"))
+            f"{_screen.tokens(u, u0)}"))
         if log.LOG_PATH:
             print(f"  로그 {log.LOG_PATH}  (INFO 전량 · 화면은 판단이 갈린 값만)")
     return rows

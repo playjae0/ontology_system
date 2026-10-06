@@ -389,7 +389,8 @@ show("⑦ⓒ URLError → ②도달 FAIL 그대로 (③은 아예 나오지 않�
 # `probe`는 연결 확인의 자리다 — 분할 뒤 `core/llm/check.py`가 소유한다(B78 2b).
 _b55_chksrc = (ROOT / "core" / "llm" / "check.py").read_text(encoding="utf-8")
 _b55_llmsrc = (ROOT / "core" / "llm" / "gateway.py").read_text(encoding="utf-8")
-_b55_probe_src = _b55_chksrc[_b55_chksrc.index("def probe("):]
+# 채팅 왕복은 `chat_roundtrip`으로 떼어 사전 점검과 함께 쓴다(B98 ①) — 잴 자리는 그 함수부터 probe까지
+_b55_probe_src = _b55_chksrc[_b55_chksrc.index("def chat_roundtrip("):]
 _b55_end = _b55_probe_src.find("\ndef ", 1)          # 파일 끝이면 그대로 (분할 뒤 마지막 함수다)
 _b55_probe_src = _b55_probe_src[:_b55_end] if _b55_end > 0 else _b55_probe_src
 # **주석은 코드가 아니다** — 무엇이 왜 죽어 있었는지 적은 문장이 그 자리에 있고,
