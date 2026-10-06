@@ -21,6 +21,9 @@ from core.state import store
 from core.dictionary import Dictionary
 from core.state.ids import norm
 from core.matcher import MATCH, NEW, UNCERTAIN, resolve
+
+#: 골격 밖 반복 판정 기억(B100 ⑤) — 한 실행(프로세스) 안 · 열쇠에 골격·사전의 판이 들어 있다.
+_MEMO = {}
 from core.state.status import is_live
 from core.build.naming import (POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
@@ -430,6 +433,11 @@ class Builder:
             parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
         # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
         # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
+        # **골격 밖 반복 판정 기억**(B100 ⑤) — 노드를 만들지 않고 끝난 판정은 한 실행 안에서
+        # 같은 열쇠면 다시 묻지 않는다(후보·LLM 0) · 대장 행은 매 행 남는다(경로 `memo`).
+        mkey = self._memo_key(surface, canonical, category, parent_canonical, polarity)
+        if mkey in _MEMO:
+            return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey])
         from core.llm import gateway as _llm
         _u0 = _llm.usage_total()
         verdict, nid, conf, v = resolve(canonical, category, self.layer,
@@ -458,6 +466,7 @@ class Builder:
             self.last["node_id"] = nid
             return nid
         if self._skeleton_category(category):
+            _MEMO[mkey] = verdict
             return self._skeleton_miss(surface, category, canonical, prov, verdict)
 
         extra = {"_scoped": True} if scoped and self.cfg.get("canonical_scope", {}) \
@@ -491,6 +500,22 @@ class Builder:
             from core.state.catalog_sync import skeleton_layers
             self._sk_cats = set(skeleton_layers())
         return category in self._sk_cats
+
+    def _memo_key(self, surface, canonical, category, parent, polarity):
+        """기억의 열쇠 — (표기 · 카테고리 · 부모 스코프 · 극성) + **판정 재료의 판**(골격 스냅샷 ·
+        이 표기의 사전 항목). 골격·사전이 바뀌면 열쇠가 달라져 기억을 쓰지 않는다(B100 ⑤)."""
+        from core.state import store as _st
+        sk = _st.path(_st.SKELETON_LIST)
+        return (norm(canonical), category, parent, polarity, self.layer,
+                sk.stat().st_mtime_ns if sk.exists() else None,
+                tuple(sorted(set(self.dict.lookup(surface)) | set(self.dict.lookup(canonical)))))
+
+    def _memo_replay(self, surface, category, canonical, prov, verdict):
+        """기억한 판정을 그대로 낸다 — 큐는 지금처럼 문서 × 표기 1건(행만 붙는다) · 대장 경로 `memo`."""
+        self.last = {"canonical": canonical, "verdict": verdict, "path": "memo",
+                     "confidence": 0.0, "layer": self.layer, "queue_kind": None,
+                     "candidates_n": 0, "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
+        return self._skeleton_miss(surface, category, canonical, prov, verdict)
 
     def _skeleton_miss(self, surface, category, canonical, prov, verdict):
         """**골격 카테고리 개체는 조회 전용**(B94 ③) — 매칭이 아니면 노드를 만들지 않는다.

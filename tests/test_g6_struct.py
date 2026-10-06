@@ -17,6 +17,10 @@
      엣지 0) · rename · obsolete · split · transfer · alias · delete_edge · merge_targets · 질의 확장 · show tree·edges ·
      내보내기가 층 표시만 빼고 같다 (사람은 문서 층을 쳐도 된다 — 노드는 집에서 찾는다)
   ⓕ 미러 규칙(극성 묶음)과 집이 어긋나면 경고 + 다음 줄 · 규칙을 집 층으로 옮기면 경고 0 · 막지 않는다
+  ⓖ 골격 밖 같은 표기 n행 → 판정 1회(후보·LLM 1회) · 대장 n행(둘째부터 경로 memo) · 큐 문서 × 표기 1건 —
+     표·산문 × 층 둘
+  ⓗ 골격 별칭 추가 + `bootstrap`(끝 줄 「보류 n건 … 다음 인입 마무리에서 다시 붙는다」) → 다음 마무리에서
+     보류분 연결 — 그래프 수가 그대로여도(재시도 지문에 골격·사전의 판) · 표·산문 × 층 둘
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ from g65_common import _P, done    # noqa: F401
 import contextlib                              # noqa: E402
 import io                                      # noqa: E402
 import tempfile                                # noqa: E402
+from core.build import ledger as LG           # noqa: E402
 from core.build import retry as RT            # noqa: E402
 from core.build.retry import RETRY_KINDS, _qid  # noqa: E402
 
@@ -371,6 +376,128 @@ for cat, frm, to in (("Property", "process", "quality"), ("Unit", "process", "qu
                   f"{cat} 집 {to}: 경고 {len(w1)} → 규칙 옮김 {len(w2)}"))
 show("ⓕ 미러 규칙(극성 묶음)이 집 층 config에 없으면 bootstrap·doctor 경고 + 다음 줄 · 옮기면 0 · 막지 않는다",
      all(o for _c, o, _d in _ok_f), " · ".join(d for _c, _o, d in _ok_f))
+print("\n■ B100 ⑤ 골격 밖 반복 판정 기억 (표·산문 × 층 둘)")
+from core.build import build as BLD             # noqa: E402
+_calls = {"n": 0}
+_real_resolve = BLD.resolve
+
+
+def _counting(*a, **k):
+    _calls["n"] += 1
+    return _real_resolve(*a, **k)
+
+
+def _table_env(doc_id, dt, n, surface):
+    env = load("CP01")
+    recs = []
+    for i in range(n):
+        r = dict(env["records"][0], source_locator=f"B{i + 1}", doc_type=dt)
+        r = {k: v for k, v in r.items() if k not in ("설비", "관리항목", "규격", "측정방법", "대응계획")}
+        r["골격열"] = surface
+        recs.append(r)
+    return {**env, "doc_id": doc_id, "doc_type": dt, "records": recs}
+
+
+def _reg_table(dt, layer, cat):
+    p = _P.schemas(f"{dt}.json")
+    _P.ensure(p)
+    p.write_text(json.dumps({"doc_type": dt, "schema_version": 1, "layer": layer,
+                             "use_blocks": ["common_core", "process_coord"],
+                             "fields": {"골격열": {"role": "entity", "category": cat}}, "edges": []},
+                            ensure_ascii=False), encoding="utf-8")
+    dts = store.read(store.DOC_TYPES, {})
+    dts[dt] = {"doc_type": dt, "status": "registered", "layer": layer, "schema": f"schemas/{dt}.json",
+               "adapter": "-", "schema_version": 1}
+    store.write(store.DOC_TYPES, dts)
+
+
+def _prose_env(doc_id, dt, n, surface, cat):
+    env = _prose_attach_env(doc_id, dt, "노칭")      # 봉투 모양만 빌린다 — 힌트는 아래가 덮는다
+    (HINTS / f"{doc_id}.json").write_text(json.dumps({
+        f"{doc_id}-C{i:03d}": {"entities": [{"surface": surface, "category": cat}], "relations": [], "attach": []}
+        for i in range(1, n + 1)}, ensure_ascii=False), encoding="utf-8")
+    c0 = env["chunks"][0]
+    env["chunks"] = [dict(c0, source_locator=f"{doc_id}-C{i:03d}", text=f"{surface} 이야기 {i}")
+                     for i in range(1, n + 1)]
+    return env
+
+
+N = 3
+_ok_g = []
+BLD.resolve = _counting
+try:
+    for form, lay, cat in (("표", "process", "Process"), ("표", "quality", "FailureEffect"),
+                           ("산문", "process", "Process"), ("산문", "quality", "FailureEffect")):
+        _fresh()
+        surf = f"골격밖 B100 {lay}"
+        if form == "표":
+            did = f"B100T{lay[0].upper()}"
+            _reg_table(f"b100t{lay[0]}", lay, cat)
+            env = _table_env(did, f"b100t{lay[0]}", N, surf)
+        else:
+            did = f"B100P{lay[0].upper()}"
+            env = _prose_env(did, "ppt_process" if lay == "process" else "ppt_quality", N, surf, cat)
+        _calls["n"] = 0
+        run_document(env)
+        rows = [r for r in (LG.read(did) or {}).get("rows") or [] if r.get("surface") == surf]
+        q = [x for x in store.read(store.QUEUE, []) if x["kind"] == "orphan_anchor" and x.get("doc_id") == did
+             and (x.get("payload") or {}).get("surface") == surf]
+        paths_ = [r.get("path") for r in rows]
+        _ok_g.append((form, lay, _calls["n"] == 1 and len(rows) == N and paths_.count("memo") == N - 1
+                      and all(r.get("verdict") == "orphan" for r in rows) and len(q) == 1,
+                      f"판정 {_calls['n']} · 대장 {len(rows)}행 {paths_} · 큐 {len(q)}"))
+        (HINTS / f"{did}.json").unlink(missing_ok=True)
+finally:
+    BLD.resolve = _real_resolve
+show("ⓖ 골격 밖 같은 표기 n행 → 판정 1회 · 대장 n행(둘째부터 memo) · 큐 문서×표기 1건 (표·산문 × 층 둘)",
+     all(o for _f, _l, o, _d in _ok_g), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_g))
+print("\n■ B100 ⑥ 골격·사전이 바뀌면 재시도가 돈다 (표·산문 × 층 둘)")
+import subprocess as _sp6                         # noqa: E402
+NEW = "B100별칭표기"
+_ok_h = []
+for form, lay in (("표", "process"), ("표", "quality"), ("산문", "process"), ("산문", "quality")):
+    _fresh()
+    if form == "표":
+        env = load("CP01" if lay == "process" else "PFMEA01")
+        env["records"][0]["process_ref"] = NEW         # 목록 밖 좌표 → orphan_anchor
+        kind = "orphan_anchor"
+    else:
+        env = _prose_attach_env("B100H" + lay[0].upper(), "ppt_" + lay, "노칭")
+        (HINTS / f"{env['doc_id']}.json").write_text(json.dumps({f"{env['doc_id']}-C001": {
+            "entities": [{"surface": "B100 세척 압력", "category": "Property"}], "relations": [],
+            "attach": [{"surface": "B100 세척 압력", "attach_to": NEW}]}}, ensure_ascii=False), encoding="utf-8")
+        kind = "orphan_attach"
+    run_document(env)
+    finalize()
+    finalize()
+    same0 = RT.LAST["same"]                          # 그래프·골격·사전 그대로 — 건너뜀
+    q0 = [x for x in store.read(store.QUEUE, []) if x["kind"] == kind and x.get("doc_id") == env["doc_id"]
+          and NEW in json.dumps(x.get("payload"), ensure_ascii=False)]
+    _rw_json(_P.layers("process", "skeleton.json"),
+             lambda c: c["ALIASES"].setdefault("노칭", []).append(NEW))
+    n0 = {l: len(g.nodes) for l, g in World().graphs.items()}
+    r = _sp6.run([sys.executable, str(ROOT / "run.py"), "bootstrap"], capture_output=True, text=True,
+                 cwd=str(ROOT), stdin=_sp6.DEVNULL)
+    line = next((l for l in r.stdout.splitlines() if "보류" in l and "다음 인입 마무리" in l), "")
+    n1 = {l: len(g.nodes) for l, g in World().graphs.items()}
+    finalize()
+    q1 = [x for x in store.read(store.QUEUE, []) if x["kind"] == kind and x.get("doc_id") == env["doc_id"]
+          and NEW in json.dumps(x.get("payload"), ensure_ascii=False)]
+    _ok_h.append((form, lay, same0 > 0 and q0 and n0 == n1 and line and not q1
+                  and sum(RT.LAST["healed"].values()) >= len(q0),
+                  f"건너뜀 {same0} · 보류 {len(q0)} → {len(q1)} · 그래프 수 {'그대로' if n0 == n1 else '바뀜'} · "
+                  f"「{line.strip()[:60]}」"))
+    (HINTS / f"{env['doc_id']}.json").unlink(missing_ok=True)
+show("ⓗ 골격 별칭 + bootstrap(보류 줄) → 다음 마무리에서 보류분 연결 · 그래프 수 그대로여도 (표·산문 × 층 둘)",
+     all(o for _f, _l, o, _d in _ok_h), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_h))
+# 등록 단(②)은 `init --fresh`가 지우지 않는다 — 이 시험이 세운 doc_type·패키지는 이 시험이 치운다
+import shutil as _sh                              # noqa: E402
+_dts = store.read(store.DOC_TYPES, {})
+for _dt in ("b100cp", "b100pf", "b100pp", "b100pq", "b100tp", "b100tq"):
+    _dts.pop(_dt, None)
+    _P.schemas(f"{_dt}.json").unlink(missing_ok=True)
+    _sh.rmtree(_P.review(_dt), ignore_errors=True)
+store.write(store.DOC_TYPES, _dts)
 init.init(fresh_=True)
 
 done()
