@@ -71,3 +71,38 @@ def state_scan():
                          dict_entries=Dictionary.open().entries(),
                          edges_by_layer={lay: g.edges for lay, g in graphs.items()})
     return found, graphs
+
+
+def tidy(apply=False):
+    """**정리**(B99 ⑩ · `ops tidy`) — 사라진 노드를 가리키는 큐 항목 · 사전 표기 · 끝점 없는 엣지.
+
+    기본은 **계획만**이다(쓰기 0). `apply`일 때만 지운다. **사람 판단 기록(`resolution`)이 있는 큐
+    항목은 지우지 않는다**(재인입 회수와 같은 규율 — 사람이 한 일은 남는다). 지운 것은 로그로 남긴다.
+    돌려주는 것: `{"큐": n, "큐_남김": k, "사전": [(표기, ids)], "엣지": {층: n}, "applied": bool}`.
+    """
+    import json as _json
+    from core.dictionary import Dictionary
+    from core.state import log, store
+    _log = log.get(__name__)
+    found, graphs = state_scan()
+    drop_q = [it for it, _m in found["queue"] if not it.get("resolution")]
+    out = {"큐": len(drop_q), "큐_남김": len(found["queue"]) - len(drop_q),
+           "사전": [(s, ids) for s, ids in found["dict"]],
+           "엣지": {lay: len(v) for lay, v in found["edges"].items()}, "applied": bool(apply)}
+    if not apply:
+        return out
+    keys = {_json.dumps(it, sort_keys=True, ensure_ascii=False, default=str) for it in drop_q}
+    q = [x for x in store.read(store.QUEUE, [])
+         if _json.dumps(x, sort_keys=True, ensure_ascii=False, default=str) not in keys]
+    store.write(store.QUEUE, q)
+    dic = Dictionary.open()
+    for nid in sorted({i for _s, ids in found["dict"] for i in ids}):
+        dic.drop(nid)
+    dic.save()
+    for lay, bad in found["edges"].items():
+        g = graphs[lay]
+        g.edges = [e for e in g.edges if e not in bad]
+        g.save()
+    _log.info("정리(ops tidy --apply) — 큐 %d(사람 판단 남김 %d) · 사전 표기 %d · 엣지 %s",
+              out["큐"], out["큐_남김"], len(out["사전"]), out["엣지"])
+    return out

@@ -137,16 +137,17 @@ def scope_filter(pool, parent, scope_cats, category):
 #: **후보 임베딩은 실행 중 메모리에 한 번**(B99 ⑨ · 문서 4 §4.3 ② 「로드 시 1회」) — 파일 저장 0.
 #: 같은 글이면 같은 벡터라 결과는 그대로다. `ENCODES`는 실제로 인코딩한 횟수(시험·진단).
 _VEC = {}
-ENCODES = {"n": 0}
+ENCODES = {"n": 0, "후보": 0}
 #: 마지막 좁힘의 사실 — `resolve`가 판정 근거(좁힘 방법 · 상위 점수)로 싣는다(B99 ⑨).
 LAST_NARROW = {}
 
 
-def _vec(text):
+def _vec(text, cand=False):
     from core.llm import embeddings
     if text not in _VEC:
         _VEC[text] = embeddings.embed(text)
         ENCODES["n"] += 1
+        ENCODES["후보"] += int(cand)
     return _VEC[text]
 
 
@@ -176,7 +177,8 @@ def _narrow(surface, pool, top_n, *, scoped=False):
     from core.llm import embeddings
     qv = _vec(surface)
     score = {c["id"]: embeddings.cosine(qv, _vec(" ".join(
-        [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip())) for c in pool}
+        [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip(), cand=True))
+             for c in pool}
     scored = sorted(pool, key=lambda c: -score[c["id"]])
     LAST_NARROW.update(how="임베딩", top=[(c["id"], c["canonical"], score[c["id"]])
                                          for c in scored[:3]])

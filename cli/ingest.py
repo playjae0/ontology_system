@@ -373,7 +373,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         row["status"] = "선택만"
         print("   (dry-run — 파싱·인입 안 함)")
         return row
-    if not _preflight_once(doc, preflight, no_images):
+    if not _preflight_once(doc, preflight, no_images, sel.get("doc_type")):
         row.update(status=FAIL, preflight_fail=True,
                    reason="사전 점검 실패 — 파싱 전에 멈췄다(LLM 추가 0 · 쓰기 0)")
         return row
@@ -508,7 +508,7 @@ def _kept_lines(doc, sel, stage):
     print(f"   ▶ 다음 줄 — 위 원인을 고친 뒤 같은 명령: python run.py ingest-file {doc}{dt}")
 
 
-def _preflight_once(doc, pf, no_images):
+def _preflight_once(doc, pf, no_images, doc_type=None):
     """**사전 점검 — 실행당 1회**(B98 ①): `pf`는 실행이 공유하는 칸(`ingest-dir`이 하나를 넘긴다).
 
     채팅은 실호출이면 늘 · 임베딩은 이 실행의 좁히기가 `embed`일 때 · 그림은 문서(폴더면
@@ -521,7 +521,11 @@ def _preflight_once(doc, pf, no_images):
         imgs = pf["images"] if "images" in pf else (not no_images and PF.has_images(doc))
         pf["ok"] = PF.gate(chat=True, embed=narrow_choice()[0] == "embed", images=imgs)
         SCR.stage_head("사전 점검", "통과" if pf["ok"] else "멈춤")
-    return pf["ok"]
+    # **등록 스키마 재대조**(B99 ⑩) — doc_type마다 한 번(일괄이면 처음 만난 doc_type마다)
+    done = pf.setdefault("schemas", {})
+    if pf["ok"] and doc_type and doc_type not in done:
+        done[doc_type] = PF.schema_gate(doc_type)
+    return pf["ok"] and done.get(doc_type, True)
 
 
 def spend_line(stage):
