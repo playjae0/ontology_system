@@ -225,6 +225,15 @@ def check_env():
          "1 = LLM 없이 전 경로가 로컬로 돈다(네트워크 0). 사내 첫 실행은 이 상태여야 한다"
          if mock == "1" else "0 = 실LLM 경로. 아직 훅이 비어 있어 추출에서 명시 실패한다")
 
+    # **층 이름 = 폴더 이름**(B99 ①) — `bootstrap`·사전 점검과 같은 함수
+    from core.state import catalog as _cat99                              # noqa: E402
+    try:
+        _ln = _cat99.layer_name_problems()
+        line(NG if _ln else OK, "층 config \"layer\" = 폴더 이름",
+             "\n         ".join(_ln) if _ln else "층 전부 일치")
+    except (OSError, ValueError) as e:
+        line(WARN, "층 config \"layer\" = 폴더 이름", f"층 config를 읽지 못했다 — {e}")
+
     # **어느 설정 파일을 읽었나**(B98 ④) — 처음 찾은 파일 하나만 읽는다 · 무시된 파일을 말한다
     sys.path.insert(0, str(ROOT))
     from core.llm import gateway as _gw                                   # noqa: E402
@@ -695,4 +704,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.run("doctor", main))

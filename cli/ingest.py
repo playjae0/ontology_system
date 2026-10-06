@@ -360,6 +360,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     _r, stage, step = _ingest_file_select(doc, sel, row, step)
     if _r is not None:
         return _r
+    _doc_header(sel)
     # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
     # 기록을 읽어 넘기는 쪽이 여기다. 정해지지 않으면 **읽지 않는다**(상태 거부).
     _roles, _stop = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask)
@@ -435,6 +436,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                    + ("  [추출 실행]" if _extracted else "  [추출 체크포인트 재사용]"))
         print(f"   인입 — {row['reason']} → {out}")
         if finalize_after:
+            gateway.set_doc("(마무리)")
             finalize()
         return row
     except MissingDependency as e:               # 선택 의존 부재 — 결함이 아니라 상태다 (B86 ④)
@@ -457,6 +459,15 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         print("   " + spend_line(stage))
         _kept_lines(doc, sel, stage)
         return row
+
+
+def _doc_header(sel):
+    """문서 머리줄(B99 ③) — 형태·렌즈는 등록부의 값 그대로 · 게이트웨이 문서 문맥도 여기서 채운다."""
+    from cli import _entry
+    dt = sel.get("doc_type")
+    ent = registry.lookup(dt) or {}
+    _entry.doc_header(sel["doc_id"], dt, (registry.schema_of(dt) or {}).get("payload_kind"),
+                      registry.lenses_of(dt) if ent.get("lenses") else None)
 
 
 def _kept_lines(doc, sel, stage):
@@ -546,6 +557,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         if rows[-1].get("preflight_fail"):
             break                                  # 같은 실행의 나머지도 같은 자리에서 막힌다
     if not dry_run and any(r["status"] == OK for r in rows):
+        gateway.set_doc("(마무리)")              # 재시도 판정의 사용량은 마무리로 센다 (B99 ③)
         finalize()                              # 빌드 말미 패스는 전 문서 뒤 1회
     print(summary(rows))
     if not dry_run:
@@ -722,4 +734,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]) or 0)
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.main_module("cli.ingest", main))

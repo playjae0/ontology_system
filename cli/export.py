@@ -470,4 +470,6 @@ def cmd_html(args):
 # 디스패치 표를 만들 때 아직 없어 NameError로 죽는다 — import 경로는 파일을 끝까지
 # 읽으므로 회귀가 이것을 못 잡았다(실측: `python -m cli.export html` → NameError).
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]) or 0)
+    # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
+    from cli import _entry
+    sys.exit(_entry.main_module("cli.export", main))

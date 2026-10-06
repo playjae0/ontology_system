@@ -390,14 +390,10 @@ def cmd_llm_check(args):
     return main(args)
 
 
-if __name__ == "__main__":
-    # **전역 화면 플래그를 먼저 뗀다**(B81 ②③) — `-v`는 콘솔 로그를 INFO로 올리고
-    # `--no-color`는 색을 끈다. 남기면 표본 경로·질문 문장으로 흘러 들어간다.
-    from cli._screen import take_flags
-    sys.argv[1:], _flags = take_flags(sys.argv[1:])
+def _dispatch(argv):
+    """명령 하나 — 관문 셋을 지나 명령 함수로. 전역 화면 플래그·로그는 공통 진입(`cli/_entry.run`)이 했다."""
+    sys.argv = [sys.argv[0]] + list(argv)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
-    # 로깅 설정은 **진입점만** 한다(문서 7 §7.8) · 콘솔 WARNING · 파일 INFO(B81 ②)
-    log.setup(command=cmd, console="INFO" if _flags["verbose"] else None)
     # **이관 관문**(B78 1b) — 옛 배치를 조용히 읽지 않는다. 푸는 명령 자신
     # (`platform migrate`)과 연결 점검은 관문 밖이다: 걸리면 칠 다음 줄이 없다.
     if not (cmd == "llm-check" or (cmd == "platform" and "migrate" in sys.argv[2:3])):
@@ -445,4 +441,13 @@ if __name__ == "__main__":
     # **반환값을 종료 코드로 쓴다.** 안 그러면 실패한 명령이 exit 0으로 끝나
     # 플랫폼·스크립트가 "성공"으로 읽는다 — 실측: `export mermaid quality`가
     # 빈 다이어그램을 내고 0으로 끝났고, 그 뒤 실패 판정을 붙여도 여전히 0이었다.
-    sys.exit(_rc or 0)
+    return _rc or 0
+
+
+if __name__ == "__main__":
+    # **공통 진입 함수 하나**(B99 ③) — 전역 화면 플래그(-v · --no-color)를 떼고, 로그를 설정하고,
+    # 화면 전체를 명령 로그로 복사하고, 실행 머리/끝 줄을 남긴다. `python -m cli.<x>`도 같은 함수다.
+    from cli import _entry
+    from cli._screen import take_flags
+    _argv, _ = take_flags(sys.argv[1:])
+    sys.exit(_entry.run(_argv[0] if _argv else "all", _dispatch, sys.argv[1:]))

@@ -244,6 +244,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     # 「그래프 쓰기 0」이 참이 된다.
     _q0 = store.read(store.QUEUE, [])
     _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    from core.dictionary import Dictionary as _D
+    _RUN.update(q0=_q0, d0={k: list(v) for k, v in _D.open().entries().items()})
     loop.LOWRES["n"] = 0
     from core import matcher as _mt
     _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
@@ -255,12 +257,15 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         _, metrics, extracted = _build_document(
             env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
         return res, metrics, extracted
-    except Stopped as stop:
-        # 쓴 것을 되돌린다 — 그래프는 저장 전이라 **디스크가 이미 옛 판**이고,
-        # 큐·청크는 스냅샷으로 돌린다. 메모리의 그래프는 버린다(다음 호출이
-        # 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다).
+    except BaseException as stop:
+        # **어떤 이유로 멈춰도 되돌린다**(B99 ② — 일반 예외 · Ctrl-C 포함 · 표·산문·렌즈가 이 경계
+        # 하나를 지난다). 그래프·사전은 저장 전이라 **디스크가 이미 옛 판**이고(저장은 말미 한 자리 —
+        # `_finish_build`), 큐·청크는 스냅샷으로 돌린다. 메모리의 그래프는 버린다(다음 호출이
+        # 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다). 추출 체크포인트·부분 파일은 남는다.
         store.write(store.QUEUE, _q0)
         store.write(store.CHUNKS, _c0)
+        if not isinstance(stop, Stopped):
+            raise                                   # 실패 줄은 호출부가 낸다(B98 ②)
         res.status, res.reason = "held", str(stop)
         res.step_stop = isinstance(stop, StepStop)
         return res, None, False
@@ -277,7 +282,7 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
             notice(decision_plan(_entity_surfaces(env, schema),
                                  [r.get("process_ref") for r in env.get("records") or []
                                   if r.get("process_ref")], layer))
-        builder = table_mod.build_table(env, cfg, schema, graph)
+        builder = table_mod.build_table(env, cfg, schema, graph, defer_save=True)
     else:
         _land_hierarchy(env)
         ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
@@ -297,7 +302,7 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
         vocab = _vocab(cfg)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice)
         prose_gate(env, ck, loc2id, layer, notice)
-        builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"])
+        builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"], defer_save=True)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
 
 
@@ -325,12 +330,19 @@ def prose_gate(env, ck, loc2id, layer, notice, lens=None):
 
 
 def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
-    """구축 말미 — 걸침 층 저장 · 계측 · 끝 요약(표·산문·렌즈 세 길이 같이 쓴다)."""
+    """구축 말미 — 정합 · 걸침 층 저장 · 사전 저장 · 계측 · 끝 요약(표·산문·렌즈 세 길이 같이 쓴다).
+
+    **순서가 계약이다**(B99 ①): ①이번 실행이 남긴 엣지·큐·사전이 가리키는 노드가 있는가(없으면
+    `[결함]` — 아무것도 저장하지 않고 되돌림) ②그래프 저장(걸침 층 → 문서 층) ③사전 저장.
+    사전을 먼저 쓰면 그래프 저장이 실패했을 때 사전이 없는 노드를 가리킨다.
+    """
     from core import matcher as _mt
+    _check_integrity(builder, doc_id)
     for other in builder.graphs():          # 걸침 층에 쓴 것도 저장된다 (D3)
         if other is not graph:
             other.save()
     metrics = graph.build_end()
+    builder.flush()                          # 사전은 그래프 **뒤**에 (B99 ①)
     _record_build(doc_id, metrics)
     if notice is not None:
         notice({"단계": "끝", "doc_id": doc_id,
@@ -340,6 +352,46 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
                 "저해상도": loop.LOWRES["n"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id)})
     return None, metrics, extracted
+
+
+#: 구축 시작의 스냅샷 — 정합 검사가 「이번 실행이 남긴 것」만 가린다(`run_document`가 채운다).
+_RUN = {"q0": [], "d0": {}}
+
+
+def _check_integrity(builder, doc_id):
+    """**이번 실행이 남긴** 엣지·큐·사전이 가리키는 노드가 그래프(이 빌드 + 디스크의 다른 층)에 있나.
+
+    어긋나면 `[결함]`을 던진다 — `run_document`의 경계가 큐·청크를 되돌리고 그래프·사전은 저장되지
+    않는다. 지난 실행이 남긴 어긋남은 여기서 보지 않는다(`doctor` 정합 줄 · `ops tidy`의 몫).
+    """
+    from core.state import integrity
+    from router import discover
+    mine = {g.layer: g for g in builder.graphs()}
+    disk = {lay: open_graph(lay) for lay in set(discover()) | set(mine)}
+    known = set()
+    for lay, g in disk.items():
+        known |= set((mine.get(lay) or g).nodes)
+    old_e = {lay: {(e.get("src"), e.get("rel"), e.get("dst")) for e in g.edges}
+             for lay, g in disk.items()}
+    new_e = {lay: [e for e in g.edges if (e.get("src"), e.get("rel"), e.get("dst"))
+                   not in old_e.get(lay, set())] for lay, g in mine.items()}
+    seen = {_qkey(x) for x in _RUN["q0"]}
+    new_q = [x for x in store.read(store.QUEUE, []) if _qkey(x) not in seen]
+    d0 = _RUN["d0"]
+    new_d = {k: [i for i in v if i not in (d0.get(k) or ())]
+             for k, v in builder.dict.entries().items()}
+    found = integrity.missing_refs(known, queue=new_q, dict_entries=new_d, edges_by_layer=new_e)
+    nq, nd, ne = integrity.count(found)
+    if nq or nd or ne:
+        raise RuntimeError(
+            f"[결함] 정합 — {doc_id}: 그래프에 없는 노드를 가리키는 큐 {nq} · 사전 표기 {nd} · "
+            f"끝점 없는 엣지 {ne} — 아무것도 저장하지 않고 되돌린다 "
+            f"(층 이름·한 번만 열기 — core/build/entry.py::_check_integrity)")
+
+
+def _qkey(item):
+    import json as _json
+    return _json.dumps(item, sort_keys=True, ensure_ascii=False, default=str)
 
 
 def _land_hierarchy(env):

@@ -63,7 +63,7 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
             b.ledger.add(locator=_loc or cid, field=e.get("category"),
                          role="entity", surface=e["surface"],
                          canonical=(last or {}).get("canonical"),
-                         layer=(last or {}).get("layer") or cfg["layer"],
+                         layer=(last or {}).get("layer") or b.layer,
                          path=(last or {}).get("path") or "none",
                          verdict=loop._VERDICT.get((last or {}).get("verdict"),
                                               "pending"),
@@ -143,14 +143,15 @@ def _link_about(b, cfg, cand, ch, doc_id):
             about.append({"chunk_id": cid, "node_id": nid})
 
 
-def build_prose(env, cfg, graph, candidates, builder=None):
+def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
     # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
     # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
     # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
     candidates = [c for c in candidates if not c.get("failed")]
     # **렌즈가 여럿이면 뿌리 빌더를 나눠 쓴다**(B91 ①) — 렌즈마다 새 빌더를 열면 같은 층
     # 그래프가 두 인스턴스로 열려 저장이 서로 덮는다. 그래프·사전·버퍼·대장을 공유한다.
-    b = builder or Builder(graph, cfg, None, env["doc_id"], cfg["layer"])
+    # **층 이름은 연 그래프의 폴더 이름**(B99 ①) — config 안 `"layer"`는 검사 대상이지 이름이 아니다
+    b = builder or Builder(graph, cfg, None, env["doc_id"], graph.layer)
     if b.ledger is None:
         b.ledger = Ledger(env["doc_id"])      # 판정 대장 — 비정형도 같은 표다 (B74 ②)
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
@@ -211,7 +212,7 @@ def build_prose(env, cfg, graph, candidates, builder=None):
             # 것과 자식이 미해소라 못 간 것을 종류 열이 가른다.
             _al = b.ledger.add(locator=(prov or "").split("#")[-1] or cid,
                                field=name or "(attach_to null)", role="attach",
-                               surface=a.get("surface"), layer=cfg["layer"],
+                               surface=a.get("surface"), layer=b.layer,
                                path="none", verdict="pending")
             if target is None and name and cat:
                 # **카테고리가 있으니 판정기가 그것 하나로 판정한다** — 전 카테고리를
@@ -253,7 +254,8 @@ def build_prose(env, cfg, graph, candidates, builder=None):
                        canonical=(tg.get(target) or {}).get("canonical"))
 
     store.write(store.CHUNKS, ch)
-    b.flush()
+    if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
+        b.flush()
     b.ledger.save()
     return b
 

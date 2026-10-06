@@ -447,6 +447,34 @@ def usage_total():
     return dict(USAGE)
 
 
+#: **지금 다루는 문서**(B99 ③) — 사용량 줄이 읽는 한 자리다. 호출부마다 넘기지 않는다 —
+#: 문서 머리줄을 내는 자리(`cli/_entry.doc_header`)가 채우고, 렌즈는 추출이 채운다.
+DOC = {"doc_id": None, "lens": None}
+#: 지점 × 문서별 누계 — `{(지점, doc_id): {calls, prompt, completion, max}}`(실행 끝 줄 · 결과표).
+USAGE_BY = {}
+
+
+def set_doc(doc_id=None, lens=None):
+    DOC.update(doc_id=doc_id, lens=lens)
+
+
+def set_lens(lens):
+    DOC["lens"] = lens
+
+
+def usage_by(doc_id=None):
+    """지점별 합계 — `{지점: {calls, prompt, completion, max}}`. `doc_id`를 주면 그 문서만."""
+    out = {}
+    for (pt, did), v in USAGE_BY.items():
+        if doc_id is not None and did != doc_id:
+            continue
+        o = out.setdefault(pt, {"calls": 0, "prompt": 0, "completion": 0, "max": 0})
+        for k in ("calls", "prompt", "completion"):
+            o[k] += v[k]
+        o["max"] = max(o["max"], v["max"])
+    return out
+
+
 def _account(point, raw):
     """응답 1건의 사용량을 누계에 더하고 로그로 남긴다.
 
@@ -468,7 +496,17 @@ def _account(point, raw):
                 USAGE[k] += int(v)
     if fin == "length":
         USAGE["truncated"] += 1
-    log.llm_usage(_LOG, point_label(point), u if isinstance(u, dict) else None, fin)
+    pl = point_label(point)
+    b = USAGE_BY.setdefault((pl, DOC["doc_id"]), {"calls": 0, "prompt": 0, "completion": 0,
+                                                  "max": 0})
+    b["calls"] += 1
+    if isinstance(u, dict):
+        b["prompt"] += int(u.get("prompt_tokens") or 0)
+        b["completion"] += int(u.get("completion_tokens") or 0)
+        b["max"] = max(b["max"], int(u.get("total_tokens") or 0))
+    where = (f"문서 {DOC['doc_id']}" + (f" · 렌즈 {DOC['lens']}" if DOC["lens"] else "")
+             if DOC["doc_id"] else "문서 없음")
+    log.llm_usage(_LOG, pl, u if isinstance(u, dict) else None, fin, where=where)
 
 
 ERR_BODY_MAX = 1200          # 오류 본문 보존 상한 — 로그가 본문으로 덮이지 않게
