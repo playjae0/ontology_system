@@ -8,6 +8,8 @@
     /api/health           상태 루트·모드·등록·층·문서 (doctor 첫 줄과 같은 사실)
     /api/graph            전 층 통합 그래프 (GraphStore 경유 · 변환은 export와 한 자리)
     /api/query?q=…        질의 결과 + trace (CLI `--json`과 같은 묶음)
+    /api/node/<id>        노드 상세의 근거 — 원문 · 닻까지의 길 · 문서마다 붙은 자리 (B103 ④)
+    /api/neighbors/<id>   1홉 이웃 — 탐색 모드 (B103 ③)
     /api/doc/<doc_id>     문서 대장 행 + 판정 집계 + 그 문서가 만든 노드·청크
     /api/funnel           문서 깔때기 · orphan 행
     /raw/<상대경로>       원본 파일 그대로 — `<상태>/raw/` 아래만 · 탈출 거부
@@ -111,6 +113,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, D.graph())
         if u.path == "/api/funnel":
             return self._json(200, D.funnel())
+        if u.path.startswith(("/api/node/", "/api/neighbors/")):
+            # 노드 상세의 근거 · 1홉 이웃(탐색 모드) — 모으기만 한다(B103 ③④ · 쓰기 0)
+            kind, nid = u.path[len("/api/"):].split("/", 1)
+            got = (D.node if kind == "node" else D.neighbors)(unquote(nid))
+            return self._json(200, got) if got else self._json(
+                404, {"error": "그 id는 지금 그래프에 없다"})
         if u.path.startswith("/api/doc/"):
             got = D.doc(unquote(u.path[len("/api/doc/"):]))
             return self._json(200, got) if got else self._json(
@@ -161,7 +169,7 @@ def main(args):
     print(f"[viewer] {url}")
     print(f"  모드 {h['mode']} · 노드 {len(g['nodes'])} · 엣지 {len(g['edges'])} · "
           f"층 {len(h['layers'])} · 문서 {h['docs']} · 상태 {h['home']}")
-    print("  라우트: / · /api/graph · /api/query?q=… · /api/doc/<id> · "
+    print("  라우트: / · /api/graph · /api/query?q=… · /api/node/<id> · /api/neighbors/<id> · /api/doc/<id> · "
           "/api/funnel · /raw/<경로> · /api/health   (쓰기 없음 — 읽기 전용)")
     print("  Ctrl+C로 멈춘다")
     if not no_browser:

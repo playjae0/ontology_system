@@ -1,4 +1,4 @@
-/* 칸 5.2 — 뷰어 **렌더러**: 색·좌표 배치 둘 · 리듀서 · 상호작용 (B82 ② · B84 ①②③④).
+/* 칸 5.2 — 뷰어 **렌더러**: 색 · 리듀서 · 상호작용 (B82 ② · B84 ①②③④ · 배치는 `layout.js` — B103).
  *
  * `app.js` 351행을 셋으로 가른 것 중 하나다(B84 — §7 상한). 가르는 선은
  * **「그림」과 「상태·배선」과 「질의」**다: 여기는 받은 데이터를 어떻게 그리는가만 안다.
@@ -38,9 +38,6 @@ function colorOf(v) {
 const AXES = ["layer", "category", "status", "tier", "polarity", "made_by"];
 const axisValue = (n, ax) => (n[ax] == null || n[ax] === "" ? "—" : String(n[ax]));
 
-/* 배치 두 종 — 이름이 곧 선택 값이다(`localStorage`에 이 문자열이 남는다). */
-const LAYOUTS = ["계층", "힘"];
-
 /* 테마 색은 **CSS 변수 하나가 정본**이다 — sigma에 넘길 때도 거기서 읽는다(B84 ①).
  * 라벨 색을 코드에 박으면 테마를 바꿀 때 라벨만 남는다(사내 실측: 어두운 배경 + 검정
  * 라벨 = 글씨가 안 보인다). */
@@ -50,113 +47,19 @@ const cssVar = (name) =>
 /* 계측 — 시험이 센다(B84 ② 완료판정). */
 const RSTAT = { layout: 0, sigma: 0, rebuild: 0, restyle: 0 };
 
-/* ── 배치 ⓐ 계층 좌표 — `part_of` 트리·층·tier·부모 순 (결정적) ─────────── */
-function layoutHier(nodes, edges) {
-  const parent = {};
-  edges.forEach((e) => { if (e.rel === "part_of") parent[e.src] = e.dst; });
-  const depth = (id, seen = new Set()) => {
-    let d = 0, cur = id;
-    while (parent[cur] && !seen.has(cur)) { seen.add(cur); cur = parent[cur]; d++; }
-    return d;
-  };
-  const rows = {};
-  nodes.forEach((n) => {
-    const d = depth(n.id);
-    (rows[d] = rows[d] || []).push(n);
-  });
-  // 한 층(깊이)이 길면 **접어서** 둔다 — 한 줄로 늘어놓으면 화면이 가로 띠가 된다.
-  const pos = {};
-  let y = 0;
-  Object.keys(rows).sort((a, b) => a - b).forEach((d) => {
-    const list = rows[d].sort((a, b) =>
-      (a.layer + a.category + a.name).localeCompare(b.layer + b.category + b.name));
-    const per = Math.max(6, Math.ceil(Math.sqrt(list.length) * 2));
-    list.forEach((n, i) => {
-      const col = i % per, line = Math.floor(i / per);
-      pos[n.id] = { x: (col - per / 2) * 1.6, y: -(y + line) * 1.6 };
-    });
-    y += Math.ceil(list.length / per) + 1.4;          // 깊이 사이에 한 줄 띄운다
-  });
-  return pos;
-}
-
-/* ── 배치 ⓑ 힘 배치 — **난수 0 · 고정 반복** (B84 ③) ───────────────────────
- *
- * 직접 짰다(D-165 ①): `graphology-layout-forceatlas2`는 npm 배포에 브라우저 번들이
- * 없고(CommonJS `index.js` + `graphology-utils` 요구) 번들러를 들이지 않고는
- * `<script>`로 못 싣는다 — 요청문이 준 대안이다.
- *
- * 결정적이어야 하는 이유는 계층 좌표와 같다: 사람이 **위치로 기억**하고, 회귀가
- * 좌표를 비교한다. 그래서 난수를 한 번도 쓰지 않는다 — 겹친 점은 **지표(index)로**
- * 가른다. 초기값은 계층 좌표다(같은 그림에서 출발한다).
- */
-function layoutForce(nodes, edges, seed) {
-  const N = nodes.length;
-  if (!N) return {};
-  const at = new Map(nodes.map((n, i) => [n.id, i]));
-  const x = new Float64Array(N), y = new Float64Array(N);
-  // 초기값(계층 좌표)을 **같은 크기로 줄여** 넣는다 — 그래프가 크면 계층 좌표가 이미
-  // 넓어서, 그 위에서 밀어내면 점들이 가장자리 띠로만 몰린다(실측).
-  let rmax = 0;
-  nodes.forEach((n) => {
-    const p = seed[n.id] || { x: 0, y: 0 };
-    rmax = Math.max(rmax, Math.hypot(p.x, p.y));
-  });
-  const k = rmax > 0 ? 20 / rmax : 1;
-  nodes.forEach((n, i) => {
-    const p = seed[n.id] || { x: 0, y: 0 };
-    x[i] = p.x * k; y[i] = p.y * k;
-  });
-  const deg = new Float64Array(N);
-  const E = [];
-  edges.forEach((e) => {
-    const a = at.get(e.src), b = at.get(e.dst);
-    if (a === undefined || b === undefined || a === b) return;
-    E.push([a, b]); deg[a] += 1; deg[b] += 1;
-  });
-  // 반발이 O(N²)라 큰 그래프에서는 **반복을 줄인다**(끝나지 않는 화면을 만들지 않는다).
-  const ITER = N <= 300 ? 300 : N <= 900 ? 120 : 40;
-  // 상수는 **표본에서 골랐다**(B84 ③ — 99노드·149엣지 mock 그래프): 반경 25%/50%/최대
-  // 67/103/179 · 엣지 길이 평균 42 · 점 사이 최소 간격 6.7(겹침 0).
-  const REP = 1.2, SPRING = 0.06, GRAV = 0.06, MAXSTEP = 1.2;
-  const fx = new Float64Array(N), fy = new Float64Array(N);
-  for (let it = 0; it < ITER; it++) {
-    fx.fill(0); fy.fill(0);
-    for (let i = 0; i < N; i++) {
-      for (let j = i + 1; j < N; j++) {
-        let dx = x[i] - x[j], dy = y[i] - y[j];
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 1e-6) {                 // 겹친 점 — **난수 대신 지표로** 가른다
-          dx = (i - j) * 1e-3; dy = (i + j) * 1e-3; d2 = dx * dx + dy * dy;
-        }
-        const f = REP * (deg[i] + 1) * (deg[j] + 1) / d2;
-        fx[i] += dx * f; fy[i] += dy * f;
-        fx[j] -= dx * f; fy[j] -= dy * f;
-      }
-    }
-    for (const [a, b] of E) {
-      const dx = x[b] - x[a], dy = y[b] - y[a];
-      fx[a] += dx * SPRING; fy[a] += dy * SPRING;
-      fx[b] -= dx * SPRING; fy[b] -= dy * SPRING;
-    }
-    const cool = 1 - it / (ITER + 1);              // 식힌다 — 끝에서 흔들리지 않게
-    for (let i = 0; i < N; i++) {
-      fx[i] -= x[i] * GRAV; fy[i] -= y[i] * GRAV;
-      const len = Math.hypot(fx[i], fy[i]) || 1;
-      const step = Math.min(len, MAXSTEP) * cool;
-      x[i] += (fx[i] / len) * step;
-      y[i] += (fy[i] / len) * step;
-    }
-  }
-  const pos = {};
-  nodes.forEach((n, i) => { pos[n.id] = { x: x[i], y: y[i] }; });
-  return pos;
-}
+/* 배치 셋(골격+위성 · 계층 · 힘)은 `layout.js`다(B103 — 이 파일은 그림·리듀서·상호작용). */
 
 function positions(nodes, edges, kind) {
   RSTAT.layout += 1;
-  const hier = layoutHier(nodes, edges);
-  const pos = kind === "힘" ? layoutForce(nodes, edges, hier) : hier;
+  const anc = S.graph.anchor || {};
+  // 닻 없는 노드(연결 없는 노드)는 토글이 켜졌을 때만 — 골격+위성·힘은 아래 띠, 계층은 제 줄에
+  const on = nodes.filter((n) => anc[n.id]), off = nodes.filter((n) => !anc[n.id]);
+  let pos;
+  if (kind === "계층") pos = layoutHier(nodes, edges);
+  else if (kind === "힘") pos = bandBelow(layoutForce(on, edges, layoutSkel(on, edges, anc)), off);
+  else pos = bandBelow(layoutSkel(on, edges, anc), off);
+  const loose = nodes.filter((n) => !pos[n.id]);          // 탐색 모드에서 닻이 안 보이는 위성
+  if (loose.length) bandBelow(pos, loose);
   // **사람이 옮긴 점은 그 자리에 남는다**(B84 ③④ — 그 세션 동안).
   Object.entries(S.pinned || {}).forEach(([id, p]) => { if (pos[id]) pos[id] = p; });
   return pos;
@@ -232,7 +135,8 @@ function rebuild() {
   // 노드에 달면 sigma가 그리다 죽는다(B82의 「dashed」와 같은 사고).
   const hasBorder = !!(R0.createNodeBorderProgram && R0.NodeCircleProgram);
   const G = window.graphology.MultiDirectedGraph || window.graphology.Graph;
-  const nodes = S.graph.nodes, edges = S.graph.edges;
+  const nodes = shownNodes(), ids = new Set(nodes.map((n) => n.id));
+  const edges = S.graph.edges.filter((e) => ids.has(e.src) && ids.has(e.dst));
   const pos = positions(nodes, edges, S.layout);
   S.pos = pos;
   const g = S.gr && S.sigma ? S.gr : new G();
@@ -324,7 +228,10 @@ function neighborsOf(id) {
 
 function interactions() {
   const sg = S.sigma, g = S.gr;
-  sg.on("clickNode", ({ node }) => detail(g.getNodeAttribute(node, "_node")));
+  sg.on("clickNode", ({ node }) => {
+    if (S.explore) exploreFrom(node);          // 탐색 모드 — 누르면 더 펼친다(B103 ③)
+    detail(g.getNodeAttribute(node, "_node"));
+  });
   sg.on("enterNode", ({ node }) => {
     S.hover = node; S.neighbors = neighborsOf(node); restyle();
   });

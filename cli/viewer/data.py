@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 5.1 — 뷰어 API의 **데이터 묶음** — 그래프 · 문서 · 깔때기 (B82 ①⑤).
+"""칸 5.1 — 뷰어 API의 **데이터 묶음** — 그래프(닻 · 연결 없는 노드) · 이웃 · 노드 상세 · 문서 · 깔때기 (B82 ①⑤ · B103).
 
 여기 있는 것은 **시스템이 이미 아는 것을 모으는 일**뿐이다: 그래프는 GraphStore가,
 판정은 대장이, 큐는 store가 답한다. 화면이 제 계산을 하지 않는다는 규율(PF11)의
@@ -32,13 +32,52 @@ def health():
             "docs": len(store.read(store.DOC_REGISTRY, {}))}
 
 
-def graph():
-    """전 층 통합 그래프 — `merged_into`는 빠지고 `obsolete`는 필드로 남는다."""
+#: 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 탐색 모드로 연다(B103 ③ · 사내 손잡이
+#: `viewer_explore_threshold` — 가결정 D-184 · 창작 표본 수치는 근거가 아니다)
+EXPLORE_THRESHOLD = 1500
+
+
+def _graph_world():
     from cli.export import graph_data
     w = world()
     nodes, edges = graph_data(w)
+    return w, nodes, edges
+
+
+def graph():
+    """전 층 통합 그래프 — `merged_into`는 빠지고 `obsolete`는 필드로 남는다.
+
+    **닻**(B103 ① — 골격 밖 노드가 붙은 골격 노드 · `anchor.anchors`)과 **연결 없는 노드**(엣지 없음 ·
+    골격에 안 닿는 덩어리)를 함께 싣는다 — 배치와 노드 상세가 같은 사실을 읽는다(화면이 다시 찾지 않는다)."""
+    from cli.viewer import anchor as A
+    from core.state import knobs
+    w, nodes, edges = _graph_world()
+    anc = A.anchors(nodes, edges)
     return {"nodes": nodes, "edges": edges, "layers": sorted(w),
-            "rels": sorted({e["rel"] for e in edges})}
+            "rels": sorted({e["rel"] for e in edges}),
+            "anchor": {k: {"anchor": v["anchor"], "host": v["host"], "hops": v["hops"]}
+                       for k, v in anc.items()},
+            "detached": A.detached(nodes, edges, anc), "roots": A.roots(nodes, edges),
+            "explore_threshold": knobs.get("viewer_explore_threshold")}
+
+
+def neighbors(nid):
+    """1홉 이웃 — 화면에 그리는 엣지(`graph_data`) 그대로 · 없는 id면 None."""
+    _w, nodes, edges = _graph_world()
+    if nid not in {n["id"] for n in nodes}:
+        return None
+    out = sorted({e["dst"] if e["src"] == nid else e["src"] for e in edges if nid in (e["src"], e["dst"])})
+    return {"id": nid, "neighbors": out}
+
+
+def node(nid):
+    """노드 상세의 근거(B103 ④) — `cli/viewer/node.detail`이 모은다."""
+    from cli.viewer import anchor as A, node as N
+    w, nodes, edges = _graph_world()
+    raw = next((g.nodes[nid] for g in w.values() if nid in g.nodes), None)
+    if raw is None:
+        return None
+    return N.detail(nid, nodes, edges, A.anchors(nodes, edges), raw)
 
 
 def doc(doc_id):

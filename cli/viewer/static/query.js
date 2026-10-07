@@ -1,4 +1,4 @@
-/* 칸 5.3 — 뷰어 **질의 콘솔**: 경로 오버레이 · 두 채널 · 미스 · 오류 문면 (B82 ④ · B84 ⑤).
+/* 칸 5.3 — 뷰어 **질의 콘솔**: 경로 오버레이 · 두 채널 · 미스 · 오류 문면 · LLM 배지 (B82 ④ · B84 ⑤ · B103 ⑤).
  *
  * `app.js`에서 떼어냈다(B84 — §7 상한). 여기가 아는 것은 **받은 답을 어떻게 보이나**다 —
  * 질의의 계산은 서버가 시스템 함수로 한다(PF11).
@@ -47,6 +47,7 @@ async function ask(q) {
   $("#qpath").innerHTML = "";
   $("#qpath").append(el("span", "badge", `경로 ${res.path}`),
                      el("span", "muted", ` · 의도 ${tr.intent || "—"}`));
+  llmBadges(tr);
   const lk = $("#qlinked"); lk.innerHTML = "";
   (tr.linking || []).forEach((l) => {
     const c = el("span", "chip" + (l.method === "llm_fallback" ? " fallback" : ""),
@@ -84,6 +85,20 @@ async function ask(q) {
   (tr.linking || []).forEach((l) => { hi.nodes[l.node_id] = "link"; });
   (tr.hops || []).forEach((h) => (h.nodes || []).forEach((n) => { hi.nodes[n] = hi.nodes[n] || "reach"; }));
   paint(hi, tr.hops || []);
+}
+
+/** **무엇이 LLM이었나**(B103 ⑤) — 모드 · 링킹(사전 / LLM 폴백) · 답변(LLM / 정형 나열).
+ * trace에 있는 것만 싣는다(새 계산 0 — 셈은 trace 행의 `method`를 센 것). 질의의 LLM 자리는
+ * 명세대로 링킹 폴백과 답변 두 곳이다(문서 5 머리 — 근거 고르기는 코드). */
+function llmBadges(tr) {
+  const box = $("#qllm"); if (!box) return;
+  box.innerHTML = "";
+  const mode = (tr.answer && tr.answer.mode) || $("#badge-mode").textContent || "—";
+  const lk = tr.linking || [];
+  const fb = lk.filter((l) => l.method === "llm_fallback").length;
+  box.append(el("span", "badge mode-" + mode, mode),
+             el("span", "", ` 링킹 — 사전 ${lk.length - fb} · LLM 폴백 ${fb}`),
+             el("span", "", ` · 답변 — ${!tr.answer ? "—" : tr.answer.mode === "live" ? "LLM(live)" : "정형 나열(mock)"}`));
 }
 
 /** 오버레이는 **리듀서만** 바꾼다(B84 ② — 좌표를 다시 계산하지 않는다). */
