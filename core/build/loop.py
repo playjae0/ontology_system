@@ -160,17 +160,19 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     LOWRES["n"] += 1                     # 요약 한 줄의 재료 (B72 ②)
     tg = ref_g if ref_g is not None else graph
     cg = b.graph_of(child) or graph        # 자식은 집 그래프에 산다(B90 ②)
-    rel = gate.pair_relation(cfg, (tg.get(ref) or {}).get("category"),
-                         (cg.get(child) or {}).get("category"))
+    # 매핑 키는 엣지 방향이다 — 두 방향을 본다(B102 ④ — 소속 엣지와 같은 함수 `belongs.edge_of`)
+    from core.build.belongs import edge_of
+    rel, fwd = edge_of(cfg, (tg.get(ref) or {}).get("category"), (cg.get(child) or {}).get("category"))
     if not rel:
         store.append_defect(
             f"{doc_id}: 규칙 B 폴백 — 카테고리쌍 매핑 없음 "
             f"({(tg.get(ref) or {}).get('category')} → "
             f"{(cg.get(child) or {}).get('category')})")
         return False
-    gate.commit_edge(graph, ref, rel, child, cfg, gate.PATH_SCHEMA,
+    src, dst, sg, dg = (ref, child, tg, cg) if fwd else (child, ref, cg, tg)
+    gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_SCHEMA,
                      [prov], doc_id, evidence_chunk=evidence_chunk,
-                     src_graph=tg, dst_graph=cg)
+                     src_graph=sg, dst_graph=dg)
     return rel                                   # 참 값 — 붙인 관계 이름(B102 ⑦ 대장 attached)
 
 

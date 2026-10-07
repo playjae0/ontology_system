@@ -12,7 +12,9 @@
    사전(그 카테고리 · 유일할 때) → 없으면 지금의 개체 해소(`resolve_at_home` — 표·산문 같은 함수).
 4. **같은 청크 안 순서** — 소속 대상이 같은 청크의 개체면 그것을 먼저(`order`) · 순환이면 소속을 버린다.
 
-엣지 관계는 **카테고리쌍 매핑**(`category_pair_map`)이 정한다 — 코드가 관계 이름을 모른다.
+엣지 관계는 **카테고리쌍 매핑**(`category_pair_map`)이 정한다 — 코드가 관계 이름을 모른다. 매핑 키는
+엣지 방향(`"src,dst"`)이라 소속은 두 방향을 본다(`edge_of` — `Unit,Property: has_property`는 대상 → 개체 ·
+`Component,Unit: part_of`는 개체 → 대상).
 """
 from __future__ import annotations
 
@@ -123,6 +125,17 @@ def resolve_target(b, bel, prov, chunk_kw):
         b.buffer[norm(name)] = nid
         return NODE, nid, eb.g
     return None
+
+
+def edge_of(cfg, tgt_cat, child_cat):
+    """소속 엣지의 `(관계, 대상이 src인가)` — 매핑에 `대상,개체`가 있으면 대상 → 개체 · `개체,대상`이 있으면
+    개체 → 대상 · 둘 다 없으면 `(None, None)`. 둘 다 있으면 앞의 것(매핑 표의 선언이 정한다)."""
+    from core.build import gate
+    rel = gate.pair_relation(cfg, tgt_cat, child_cat)
+    if rel:
+        return rel, True
+    rel = gate.pair_relation(cfg, child_cat, tgt_cat)
+    return (rel, False) if rel else (None, None)
 
 
 def drop_invented(doc_id, surface, bel, cid):

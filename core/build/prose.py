@@ -206,14 +206,15 @@ def _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid):
             continue
         _kind, tid, tg = tgt
         cg = b.graph_of(nid) or graph
-        rel = gate.pair_relation(cfg, (tg.get(tid) or {}).get("category"), (cg.get(nid) or {}).get("category"))
+        rel, fwd = belongs.edge_of(cfg, (tg.get(tid) or {}).get("category"), (cg.get(nid) or {}).get("category"))
         if not rel:
             store.append_defect(f"{env['doc_id']}: 소속 엣지 — 카테고리쌍 매핑 없음 "
                                 f"({(tg.get(tid) or {}).get('category')} → {(cg.get(nid) or {}).get('category')})"
                                 f" @ {cid} → 좌표 폴백")
             continue
-        br = gate.commit_edge(graph, tid, rel, nid, cfg, gate.PATH_EXTRACT, [prov], env["doc_id"],
-                              evidence_chunk=cid, src_graph=tg, dst_graph=cg)
+        src, dst, sg, dg = (tid, nid, tg, cg) if fwd else (nid, tid, cg, tg)
+        br = gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_EXTRACT, [prov], env["doc_id"],
+                              evidence_chunk=cid, src_graph=sg, dst_graph=dg)
         if br == gate.COMMIT:
             touched.add(nid)
             _attached(p["row"], rel, (tg.get(tid) or {}).get("canonical"),
@@ -330,7 +331,9 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
         _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid)     # 소속 엣지 (B102 ④)
         _legacy_attach(b, cfg, graph, env, cand, touched, ref, ref_g, prov, cid)   # 옛 체크포인트
         # **폴백 한 함수**(B102 ⑤ — 표와 같은 함수) — 어느 엣지에도 서지 못한 개체만 좌표에
-        loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans], touched,
+        # 소속 대상으로 새로 앉은 골격 밖 노드(경로·시트의 유닛)도 그 좌표에 닿아야 한다 — 같은 함수
+        tnodes = [(p["tgt"][1], graph) for p in plans if p["tgt"] and p["tgt"][0] == belongs.NODE]
+        loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans] + tnodes, touched,
                                 ref, ref_g, prov, env["doc_id"], evidence_chunk=cid)
 
     store.write(store.CHUNKS, ch)
