@@ -305,6 +305,17 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True, coord=None):
                   "reason": stop["reason"]}, None
 
 
+def _value_count(env, sel):
+    """판정 예고의 값 수 — `decision_plan`과 같은 함수(표 · 산문은 0 — 추출 뒤에 안다)."""
+    if env.get("payload_kind") != "table":
+        return 0
+    from core.build.entry import _entity_surfaces, decision_plan
+    _sc = registry.schema_of(sel["doc_type"]) or {}
+    return decision_plan(_entity_surfaces(env, _sc),
+                         [x.get("process_ref") for x in (env.get("records") or []) if x.get("process_ref")],
+                         _sc.get("layer") or coord_layer())["값_수"]
+
+
 def _step_stops(res, sel, row, ask=True):
     """세 단계 머리(파싱·좌표·판정 예고) — `ask`(`--step`)면 묻고, 사람이 멈추면 `row`를 적고 True.
 
@@ -402,7 +413,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             return row
         _u0 = gateway.usage_total()["calls"]
         from core import matcher as _mt
-        _plan_n = len((res.envelope.get("records") or [])) * 2 or 1
+        _plan_n = _value_count(res.envelope, sel) or 1     # 분모 = 판정 예고의 값 수 (B102 ⑦)
         stage["이름"], stage["총"] = "판정", _plan_n
         _mt.PROGRESS = SCR.judge_progress(_plan_n, stage=stage, every=step_every,
                                       stride=progress_every)
@@ -417,7 +428,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                                         prose=res.envelope.get("payload_kind") == "prose"))
         finally:
             _mt.PROGRESS = None
-            _ledger.ON_ROW = None
+            _ledger.ON_ROW = _ledger.ON_EDGE = None
             _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
         if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
             row.update(status=SKIP, reason=r.reason)

@@ -200,7 +200,10 @@ def value_line(row):
         how = f"LLM · 후보 {n} · 확신 {row.get('confidence', 0):.2f}"
     else:
         how = f"후보 {n} ({PATH_SHORT.get(row.get('path'), row.get('path'))})"
-    name = row.get("canonical") or row.get("surface") or "—"
+    # 표기 → **붙은 노드**(B102 ⑦ — 조회 키가 아니라 실제 노드 · 없으면 조회 이름)
+    name = (f"{row.get('surface')} → {row['target']}"
+            if row.get("target") and row.get("surface") and row["target"] != row["surface"]
+            else (row.get("target") or row.get("canonical") or row.get("surface") or "—"))
     q = f"   → 큐 {row['queue_kind']}" if row.get("queue_kind") else ""
     text = f"    {MARKS.get(v, '·')} {name:<28} {v:<10} {how}{q}"
     return _screen.paint(text, v if v in _screen.KINDS else None)
@@ -210,6 +213,17 @@ def row_printer():
     """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부)."""
     for k in TALLY:
         TALLY[k] = 0
+
+    def on_edge(row, info):
+        # 붙은 자리 한 줄(B102 ⑦) — 그 값이 찍힌 줄 아래 · 로그에는 자르지 않은 줄
+        if _screen.VERBOSE or _loud(row) or info["path"] != "관계":
+            ln = (f"     └ {row.get('surface') or row.get('canonical')} · {info['rel']} {info['dir']} "
+                  f"{info['other']} ({info['path']})")
+            _LOG.info("붙은 자리 %s", ln.strip())
+            if _screen.VERBOSE or _loud(row):
+                print(ln)
+    from core.build import ledger as _lg
+    _lg.ON_EDGE = on_edge
 
     def on_row(row):
         TALLY["값"] += 1
@@ -247,7 +261,10 @@ def value_cells(row):
     how = (f"LLM · 후보 {n}" if calls
            else f"후보 {n} ({PATH_SHORT.get(row.get('path'), row.get('path'))})")
     conf = f"{row.get('confidence', 0):.2f}" if calls else ""
-    name = row.get("canonical") or row.get("surface") or "—"
+    # 표기 → **붙은 노드**(B102 ⑦ — 조회 키가 아니라 실제 노드 · 없으면 조회 이름)
+    name = (f"{row.get('surface')} → {row['target']}"
+            if row.get("target") and row.get("surface") and row["target"] != row["surface"]
+            else (row.get("target") or row.get("canonical") or row.get("surface") or "—"))
     where = (f"→ 큐 {row['queue_kind']}" if row.get("queue_kind")
              else ("노드" if row.get("node_id") else ""))
     near = row.get("nearest") or {}
@@ -350,8 +367,21 @@ def build_screen(step=False, stage=None, prose=False):
         from cli import result_screen
         LAST_RESULT["res"] = info.get("결과")
         result_screen.show(info.get("결과"))
+        # **인입 끝 목록**(B102 ⑦) — 불확실 · 보류 · `show report`와 같은 함수 · 줄 상한
+        _doc = (info.get("결과") or {}).get("doc_id")
+        if _doc:
+            from cli.show_report import hold_unc_lines
+            from core.build import ledger as _lg
+            _ln = hold_unc_lines((_lg.read(_doc) or {}).get("rows") or [], limit=LIST_LIMIT)
+            for ln in _ln:
+                print(ln)
+            if _ln:
+                print(f"    전체는 python run.py show report {_doc}")
     return notice
 
+
+#: 인입 끝 목록의 줄 상한(목록마다) — 전체는 `show report`.
+LIST_LIMIT = 8
 
 #: 마지막 문서의 결과 묶음 — 일괄 투입 끝 줄이 문서별로 모은다(`cli/ingest.ingest_file`).
 LAST_RESULT = {"res": None}
@@ -390,6 +420,8 @@ def extract_screen(step=False, stage=None):
                 return None                       # 렌즈 예고가 같은 자리를 맡았다(두 줄 0)
             head = (f"추출 예고 {lz}— 청크 {info['청크']:,}(ref 시트 {info['ref']:,} · "
                     f"체크포인트 재사용 {info['재사용']:,} 제외) → LLM ≤ {info['호출']:,}회")
+            if info.get("다시"):                    # 옛 추출을 다시 뽑는 이유(B102 ⑥)
+                head += f" · 다시 뽑는다 — {info['다시']}"
             # 머리는 늘(B99 ④) — `--step`이면 묻는다
             return _step_gate(7, head.split("— ", 1)[1], prose=True, ask=step)
         elif k == "추출청크":
@@ -464,7 +496,8 @@ def judge_progress(total, stage=None, every=0, stride=None):
     def line(n, u):
         # **누적에 대장 집계를 더한다**(B81 ④) — 사람이 알고 싶은 것은 토큰만이
         # 아니라 「몇이 붙고 몇이 새로 생겼나」다. 수는 대장에서 센 것 그대로다.
-        return (f"[판정] 값 {n:,}/{total_now():,} · 호출 {n:,} · 누적 {_screen.tokens(u)}"
+        # 값 = **처리한 값**(대장 행 — 사전 히트 포함) / 판정 예고의 값 수 · 호출 = 판정 호출 수(B102 ⑦)
+        return (f"[판정] 값 {max(TALLY['값'], 1):,}/{total_now():,} · 호출 {n:,} · 누적 {_screen.tokens(u)}"
                 f" · 사전 {TALLY['사전']:,} · NEW {TALLY['NEW']:,}"
                 f" · 불확실 {TALLY['불확실']:,} · 큐 {TALLY['큐']:,}")
 

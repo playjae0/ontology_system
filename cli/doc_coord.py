@@ -97,3 +97,31 @@ def decide(doc, doc_id, spec=None, ask=True):
             src = "사람"
     print(f"   문서 좌표 — {coord or '없음'} (출처: {src})")
     return coord, src
+
+
+def coord_counts(env):
+    """조각 좌표의 출처별 수(B102 ⑦ — 표·산문 같은 함수) — 봉투의 `meta` 표시에서(새 계산 0)."""
+    pcs = (env or {}).get("records") or (env or {}).get("chunks") or []
+    out = {"조각": len(pcs), "자기": 0, "문서 좌표": 0, "태깅": 0, "없음": 0,
+           "무시(문서 좌표 밖)": 0, "공유 별칭 건너뜀": 0}
+    for p in pcs:
+        m = p.get("meta") or {}
+        if not p.get("process_ref"):
+            out["없음"] += 1
+        elif m.get("coord_from_doc"):
+            out["문서 좌표"] += 1
+        elif m.get("coord_tag_source"):
+            out["태깅"] += 1
+        else:
+            out["자기"] += 1
+        if m.get("coord_ignored"):
+            out["무시(문서 좌표 밖)"] += 1
+        if m.get("coord_shared_skip"):
+            out["공유 별칭 건너뜀"] += 1
+    return out
+
+
+def coord_line(env):
+    c = coord_counts(env)
+    return ("   좌표 — " + f"조각 {c['조각']:,} · "
+            + " · ".join(f"{k} {v:,}" for k, v in c.items() if k != "조각"))

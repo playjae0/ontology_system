@@ -80,3 +80,54 @@ def totals(res):
     ly = (res or {}).get("층") or {}
     return (sum(d["노드"] for d in ly.values()), sum(d["엣지"] for d in ly.values()),
             sum(d["auto"] for d in ly.values()))
+
+
+def _k(s):
+    from core.state.ids import fold_latin, norm
+    return fold_latin(norm(s or "")).replace(" ", "")
+
+
+def landing(rows, env, graphs, doc_id, top=5):
+    """**붙은 곳 끝 요약**(B102 ⑦) — 엣지 없는 노드 · 부착 경로별 · 소속 없음 비율(시트·구획) ·
+    청크 본문에 글자 그대로 없는 개체(그림 요약에서). 판정이 아니라 대조다(공백·라틴 대소문자 무시)."""
+    ent = [r for r in rows if r.get("role") == "entity"]
+    pre = f"{doc_id}#"
+    edges = set()
+    for g in graphs.values():
+        for e in g.edges:
+            edges |= {e["src"], e["dst"]}
+    mine = {nid for g in graphs.values() for nid, n in g.nodes.items()
+            if any(str(p) == doc_id or str(p).startswith(pre) for p in n.get("provenance") or [])}
+    att = Counter()
+    for r in ent:
+        paths = [a.get("path") or "" for a in r.get("attached") or []]
+        for p in paths:
+            if p.startswith("소속"):
+                att["소속 " + (p[3:-1] if p.endswith(")") else "-")] += 1
+            else:
+                att[p] += 1
+        if not paths and r.get("verdict") in ("pending", "orphan"):
+            att["보류"] += 1
+    by_loc = {c.get("source_locator"): c for c in (env.get("chunks") or [])}
+    miss = Counter()
+    gone, img = 0, 0
+    for r in ent:
+        c = by_loc.get(r.get("locator"))
+        if c is None:
+            continue
+        m = c.get("meta") or {}
+        where = m.get("sheet") or c.get("section") or "-"
+        miss[(where, "전체")] += 1
+        if not r.get("from"):
+            miss[(where, "없음")] += 1
+        if r.get("surface") and _k(r["surface"]) not in _k(c.get("text") or c.get("context") or ""):
+            gone += 1
+            if m.get("shape_kind") == "picture" or c.get("image_ref"):
+                img += 1
+    ratio = sorted(((w, miss[(w, "없음")], n) for (w, k), n in miss.items() if k == "전체"),
+                   key=lambda t: (-(t[1] / t[2] if t[2] else 0), -t[2], t[0]))[:top]
+    return {"엣지 없는 노드": len(mine - edges),
+            "부착": dict(att),
+            "소속 없음 비율": [[w, a, n] for w, a, n in ratio if a],
+            "본문에 없는 개체": {"n": gone, "그림": img}}
+

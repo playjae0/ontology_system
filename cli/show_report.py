@@ -34,6 +34,8 @@ def cmd_report(args):
     if data is None:
         _refuse_no_ledger(doc)
     rows = data.get("rows") or []
+    if "--trace" in args:
+        return _trace(doc, rows)
     if as_json:
         print(json.dumps({"doc_id": doc, "rows": rows,
                           "summary": ledger.summary(rows)},
@@ -166,19 +168,83 @@ def _report_extra(data, rows):
     if data.get("result"):
         print("")
         result_screen.show(data["result"])
+    for ln in hold_unc_lines(rows):
+        print(ln)
+
+
+def hold_unc_lines(rows, limit=None):
+    """보류 목록(사유 · 표기 · 행 수) · 불확실 목록(가장 가까운 후보) — `show report`와 인입 끝이 같은 함수(B102 ⑦).
+    `limit`이면 목록마다 그 줄까지 · 넘으면 「… 외 n — 전체는 show report」."""
+    from core.build.result import hold_reason
+    out = []
     held = Counter((hold_reason(r), r.get("surface") or r.get("canonical") or "—")
                    for r in rows if hold_reason(r))
     if held:
-        print("\n  보류 목록 — 사유 · 표기 · 행 수")
-        for (why, s), n in sorted(held.items(), key=lambda x: (x[0][0], -x[1], x[0][1])):
-            print(f"    {_screen.pad(why, 34)}{_screen.pad(_screen.cut(s, 40), 42)}{n:,}")
+        out.append("")
+        out.append("  보류 목록 — 사유 · 표기 · 행 수")
+        items = sorted(held.items(), key=lambda x: (x[0][0], -x[1], x[0][1]))
+        for (why, s_), n in items[:limit]:
+            out.append(f"    {_screen.pad(why, 34)}{_screen.pad(_screen.cut(s_, 40), 42)}{n:,}")
+        if limit is not None and len(items) > limit:
+            out.append(f"    … 외 {len(items) - limit:,}")
     unc = [r for r in rows if r.get("verdict") in ("uncertain", "lowres")]
     if unc:
-        print("\n  불확실 목록 — 표기 · 가장 가까운 후보(판정 · 임베딩 상위)")
-        for r in unc:
+        out.append("")
+        out.append("  불확실 목록 — 표기 · 가장 가까운 후보(판정 · 임베딩 상위)")
+        for r in unc[:limit]:
             near = r.get("nearest") or {}
             tops = " · ".join(f"{c.get('canonical')} {c.get('score', 0):.2f}"
                               for c in near.get("top") or [])
-            print(f"    {_screen.pad(_screen.cut(r.get('surface') or '—', 30), 32)}"
-                  f"{near.get('by') or '—'}: {near.get('canonical') or '—'}"
-                  + (f" · 상위 {tops}" if tops else ""))
+            out.append(f"    {_screen.pad(_screen.cut(r.get('surface') or '—', 30), 32)}"
+                       f"{near.get('by') or '—'}: {near.get('canonical') or '—'}"
+                       + (f" · 상위 {tops}" if tops else ""))
+        if limit is not None and len(unc) > limit:
+            out.append(f"    … 외 {len(unc) - limit:,}")
+    return out
+
+
+def _coord_src(meta):
+    """조각 좌표의 출처 — 문서 좌표 · 제목·시트 · 학습 · 태깅 · 자기."""
+    m = meta or {}
+    if m.get("coord_from_doc"):
+        return "문서 좌표"
+    if m.get("coord_from_section"):
+        return "제목·시트"
+    if m.get("coord_tag_source") == "learned":
+        return "학습"
+    if m.get("coord_tag_source"):
+        return "태깅"
+    return "자기"
+
+
+def _trace(doc, rows, span=40):
+    """**값마다 추적**(B102 ⑦ · `show report <doc_id> --trace`) — 위치 · 표기 → 붙은 노드 · 붙은 자리(관계 ·
+    상대) · 좌표(출처) · 근거 문장(표기 앞뒤 ±40자 · 그림 요약이면 표시). 재료는 대장과 청크 저장소(새 계산 0)."""
+    from core.state import store
+    from core.state.ids import fold_latin
+    ch = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}
+    by_loc = {c.get("source_locator"): c for c in ch.values() if c.get("doc_id") == doc}
+    print(f"■ {doc} 값 추적 — entity {sum(1 for r in rows if r.get('role') == 'entity'):,}행")
+    for r in rows:
+        if r.get("role") != "entity":
+            continue
+        c = by_loc.get(r.get("locator")) or {}
+        m = c.get("meta") or {}
+        tgt = r.get("target") or r.get("canonical") or "—"
+        print(f"\n  {r.get('locator') or '—'} · {r.get('surface')} → {tgt}  [{r.get('verdict')} · {r.get('path')}"
+              + (f" · 소속 출처 {r['from']}" if r.get("from") else "") + "]")
+        for a in r.get("attached") or []:
+            print(f"     붙은 자리  {a.get('rel')} {a.get('dir')} {a.get('other')} ({a.get('path')})")
+        if not r.get("attached"):
+            print(f"     붙은 자리  없음" + (f" — 큐 {r['queue_kind']}" if r.get("queue_kind") else ""))
+        print(f"     좌표       {c.get('process_ref') or '없음'} ({_coord_src(m)})")
+        text = c.get("text") or ""
+        if text and r.get("surface"):
+            low = fold_latin(text)
+            i = low.find(fold_latin(r["surface"]))
+            frag = (text[max(0, i - span): i + len(r["surface"]) + span].replace("\n", " ")
+                    if i >= 0 else "(본문에 글자 그대로 없음)")
+            pic = " · 그림 요약" if (m.get("shape_kind") == "picture" or c.get("image_ref")) else ""
+            print(f"     근거       …{frag}…{pic}")
+    return 0
+

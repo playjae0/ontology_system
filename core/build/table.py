@@ -62,7 +62,7 @@ def build_table(env, cfg, schema, graph, defer_save=False):
         _row_roles(b, r, fields, schema, graph, cfg, doc_id)
         _row_attributes(b, r, graph)
         _row_contents(b, r, doc_id)
-        _row_edges(r, schema, fields, graph, cfg, doc_id)
+        _row_edges(r, schema, fields, graph, cfg, doc_id, b)
         _row_fallback(b, r, schema, fields, graph, cfg, doc_id)
         loop._land_deferred(r.defer, r.dropped, r.pending, doc_id,
                        dropped_entities=r.dropped_ents,
@@ -232,9 +232,13 @@ def _ledger_attach(b, r, field, role, target, verdict, layer=None):
                  path="none", verdict=verdict, node_id=target)
 
 
-def _row_edges(r, schema, fields, graph, cfg, doc_id):
-    """② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다."""
+def _row_edges(r, schema, fields, graph, cfg, doc_id, b=None):
+    """② 경로 — 스키마 edges 선언. 게이트는 여기에 무비용이다 · 붙은 자리는 그 행의 대장 행에(B102 ⑦)."""
+    from core.build import ledger as _lg
     rec = r.rec
+    rows = {x.get("node_id"): x for x in ((b.ledger.rows if b is not None and b.ledger else []))
+            if x.get("locator") == rec.get("source_locator") and x.get("role") == "entity"
+            and x.get("node_id")}
     for e in schema.get("edges", []):
         src, sg = _endpoint(e["from"], r.resolved, r.ref, r.ref_g, r.external, graph,
                             doc_id)
@@ -252,9 +256,12 @@ def _row_edges(r, schema, fields, graph, cfg, doc_id):
                               "src_surface": loop._field_surface(e["from"], rec),
                               "dst_surface": loop._field_surface(e["to"], rec)})
         # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
-        gate.commit_edge(graph, src, e["relation"], dst, cfg,
-                         gate.PATH_SCHEMA, [r.prov], doc_id,
-                         src_graph=sg, dst_graph=dg)
+        br = gate.commit_edge(graph, src, e["relation"], dst, cfg,
+                              gate.PATH_SCHEMA, [r.prov], doc_id,
+                              src_graph=sg, dst_graph=dg)
+        if br == gate.COMMIT and b is not None:
+            _lg.attach(rows.get(src), e["relation"], b.canonical_of(dst), "관계", "→")
+            _lg.attach(rows.get(dst), e["relation"], b.canonical_of(src), "관계", "←")
 
 
 def _row_fallback(b, r, schema, fields, graph, cfg, doc_id):

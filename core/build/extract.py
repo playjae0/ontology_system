@@ -82,13 +82,26 @@ def has_checkpoint(doc_id, lens=None):
     return checkpoint_path(doc_id, lens).exists()
 
 
-def reuse_check(env, lens=None):
+def _now_key(env, cfg=None):
+    """재사용 조건의 지금 값 — **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판**(B102 ⑥).
+    `cfg`가 없으면(층을 모르는 호출) 층 config 판은 대조하지 않는다."""
+    now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
+           "prompt_version": prompt_version()}
+    if cfg is not None:
+        now["config_version"] = cfg.get("config_version") or cfg.get("skeleton_version")
+    return now
+
+
+_LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
+          "config_version": "층 config"}
+
+
+def reuse_check(env, lens=None, cfg=None):
     """이 체크포인트를 **재사용해도 되는가** — 돌려주는 둘째 값이 「왜 못 쓰는가」다.
 
-    조건은 **`doc_hash`와 `adapter_version`이 둘 다 같을 때**다(B78 1b). 구판의
-    조건은 「파일이 있다」 하나였고, 그래서 어댑터 새 판(`register generate --revise`)
-    뒤에도 옛 추출이 그대로 재사용됐다 — **바뀐 분할로 만든 청크에 옛 판의 후보가
-    붙는다.** 규약 7이 재인입에서 막던 것과 같은 축인데 어댑터 축이 비어 있었다.
+    조건은 **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판이 모두 같을 때**다(B78 1b · B102 ⑥). 구판은
+    앞의 둘만 대조하고 나머지는 기록만 했다 — 지시문이 바뀌어도 옛 추출을 썼다. 이유는 「지시문 e-1.3 →
+    e-1.4」처럼 바뀐 축과 두 값을 말한다(예고 줄이 그대로 싣는다).
     """
     p = checkpoint_path(env["doc_id"], lens)
     if not p.exists():
@@ -97,11 +110,9 @@ def reuse_check(env, lens=None):
         cp = json.loads(p.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         return False, f"체크포인트를 읽지 못했다 — {type(e).__name__}"
-    now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version")}
-    for k, v in now.items():
+    for k, v in _now_key(env, cfg).items():
         if (cp.get(k) or None) != (v or None):
-            return False, (f"{k} 불일치 — 체크포인트 {str(cp.get(k))[:12] or '없음'} "
-                           f"≠ 지금 문서 {str(v)[:12] or '없음'}")
+            return False, (f"{_LABEL[k]} {str(cp.get(k))[:12] or '없음'} → {str(v)[:12] or '없음'}")
     return True, ""
 
 
@@ -128,12 +139,12 @@ def partial_path(doc_id, lens=None):
                           else f"{doc_id}.partial.jsonl")
 
 
-def _partial_key(env, lens):
-    return {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
-            "lens": lens}
+def _partial_key(env, lens, cfg=None):
+    """부분 파일 머리 — 체크포인트와 **같은 조건**(B102 ⑥) + 렌즈."""
+    return {**_now_key(env, cfg), "lens": lens}
 
 
-def _partial_load(env, lens):
+def _partial_load(env, lens, cfg=None):
     """끝난 청크 `{chunk_id: 후보}` — 조건이 다르면 **버리고** 로그 한 줄(빈 dict).
 
     줄 단위 덧붙임이라 쓰다 끊긴 마지막 줄은 읽지 못한다 — 그 청크는 다시 부른다
@@ -147,8 +158,8 @@ def _partial_load(env, lens):
         head = json.loads(lines[0]) if lines else None
     except ValueError:
         head = None
-    if head != _partial_key(env, lens):
-        _LOG.info("extract: %s 부분 파일 폐기 — 재사용 조건(문서 해시·어댑터 판·렌즈) 불일치",
+    if head != _partial_key(env, lens, cfg):
+        _LOG.info("extract: %s 부분 파일 폐기 — 재사용 조건(문서·어댑터·지시문·층 config·렌즈) 불일치",
                   env["doc_id"])
         p.unlink()
         return {}
@@ -162,10 +173,10 @@ def _partial_load(env, lens):
     return done
 
 
-def _partial_append(env, lens, entry):
+def _partial_append(env, lens, entry, cfg=None):
     """끝난 청크 하나를 줄로 덧붙인다 — flush + fsync(끊겨도 앞 줄은 남는다)."""
     p = paths.ensure(partial_path(env["doc_id"], lens))
-    head = "" if p.exists() else json.dumps(_partial_key(env, lens), ensure_ascii=False) + "\n"
+    head = "" if p.exists() else json.dumps(_partial_key(env, lens, cfg), ensure_ascii=False) + "\n"
     with open(p, "a", encoding="utf-8") as f:
         f.write(head + json.dumps(entry, ensure_ascii=False) + "\n")
         f.flush()
@@ -491,7 +502,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     같을 때 끝난 청크를 부르지 않는다 · 다 끝나면 체크포인트로 올리고 부분 파일을 지운다.
     """
     doc_id = env["doc_id"]
-    ok, why = reuse_check(env, lens)             # doc_hash + adapter_version (B78 1b)
+    ok, why = reuse_check(env, lens, cfg)        # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥)
     if ok:
         _say(notice, {"단계": "추출재사용", "렌즈": lens})
         return json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8")), False
@@ -503,12 +514,13 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     hints = _load_hints(doc_id)
     _DOC.clear()
     _DOC.update(extract_ctx.doc_info(env))         # 맥락 줄의 문서·문서 좌표 칸 (B102 ①)
-    done = _partial_load(env, lens)
+    done = _partial_load(env, lens, cfg)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
     m = sum(1 for r in rows if r[0] == "call")
     if resumed:
         _say(notice, {"단계": "추출이어서", "렌즈": lens, "끝난": resumed, "남은": m})
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows) + ref_skipped,
+                  "다시": (why if why and why != "체크포인트 없음" else None),
                   "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m})
     u0 = gateway.usage_total()
     candidates, i = [], 0
@@ -524,7 +536,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         t0 = gateway.usage_total()
         entry = _call_chunk(doc_id, cid, c, cfg, vocab, hints)
         candidates.append(entry)
-        _partial_append(env, lens, entry)
+        _partial_append(env, lens, entry, cfg)
         # 관계 쌍은 화면이 아니라 명령 로그로 간다(수만 화면에)
         _LOG.info("추출 %s %s · 관계 %s", doc_id, c.get("source_locator"),
                   [(r.get("src"), r.get("rel"), r.get("dst")) for r in entry.get("relations") or []])

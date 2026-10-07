@@ -260,6 +260,9 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
                              image_notice=image_screen(), doc_coord=doc_coord)
     print_read_warnings(res.report)
     print_split_notes(res.report)
+    if res.ok:
+        from cli import doc_coord as _dc                 # 좌표 줄 (B102 ⑦)
+        print(_dc.coord_line(res.envelope))
     _skip = res.report.get("images")
     if _skip and res.ok:
         # **명시적으로 뺀 그림은 기록에 남는다**(B88 ①) — 계약 JSON의 context(임의 dict)에

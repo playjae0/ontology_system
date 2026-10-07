@@ -33,6 +33,20 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
 ON_ROW = None
 
 
+#: 붙은 자리 콜백(B102 ⑦) — 엣지가 생겨 행에 `attached`가 붙을 때 · 화면이 행 아래 한 줄을 낸다.
+ON_EDGE = None
+
+
+def attach(row, rel, other, how, arrow):
+    """대장 행에 **이 값이 만든 엣지**를 단다 — `{rel, other, path(소속|관계|폴백), dir}` · 표·산문·폴백 한 손."""
+    if row is None or not rel:
+        return
+    info = {"rel": rel, "other": other, "path": how, "dir": arrow}
+    row.setdefault("attached", []).append(info)
+    if ON_EDGE is not None:
+        ON_EDGE(row, info)
+
+
 def name_of(doc_id):
     return f"{DIR}/{doc_id}.json"
 

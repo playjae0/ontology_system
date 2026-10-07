@@ -145,7 +145,14 @@ def retry_orphans(layers=None):
     for lay, g in graphs.items():
         g.save()
     dic.save()
-    LAST["left"] = sum(1 for x in store.read(store.QUEUE, []) if x.get("kind") in RETRY_KINDS)
+    _left = [x for x in store.read(store.QUEUE, []) if x.get("kind") in RETRY_KINDS]
+    LAST["left"] = len(_left)
+    # 남은 항목의 시도 횟수 분포(B102 ⑦) — 상한에 닿은 것은 「상한」으로 센다
+    _d = {}
+    for x in _left:
+        k = "상한" if int(x.get("attempts") or 0) >= ATTEMPT_MAX else f"{int(x.get('attempts') or 0)}회"
+        _d[k] = _d.get(k, 0) + 1
+    LAST["dist"] = _d
     _LOG.info("orphan 재시도 — %s", line())
     return healed
 
@@ -162,7 +169,16 @@ def line():
     kinds = " · ".join(f"{k} {v}" for k, v in sorted(t.items()))
     return (f"재시도 — 대상 {sum(t.values()):,}" + (f"({kinds})" if kinds else "")
             + f" · 그래프·골격·사전 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
-            + f" → 이번에 연결 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}")
+            + f" → 이번에 연결 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}"
+            + _dist_text(LAST.get("dist")))
+
+
+def _dist_text(d):
+    """「 · 시도 1회 a · 2회 b · … · 상한 c」 — 남은 것이 없으면 빈 문자열."""
+    if not d:
+        return ""
+    keys = sorted((k for k in d if k != "상한"), key=lambda k: int(k[:-1]))
+    return " · 시도 " + " · ".join(f"{k} {d[k]:,}" for k in keys + (["상한"] if "상한" in d else []))
 
 
 def _pick_cat(surface, category, graphs, dic):

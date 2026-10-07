@@ -183,9 +183,9 @@ def _link_about(b, cfg, cand, ch, doc_id):
 
 
 def _attached(row, rel, other, how, arrow):
-    """대장 행에 **이 값이 만든 엣지**를 단다(B102 ⑦ — `attached`: 관계 · 상대 · 경로 소속|관계|폴백)."""
-    if row is not None and rel:
-        row.setdefault("attached", []).append({"rel": rel, "other": other, "path": how, "dir": arrow})
+    """대장 행에 **이 값이 만든 엣지**를 단다(B102 ⑦ — 대장 한 손 `ledger.attach`)."""
+    from core.build import ledger as _lg
+    _lg.attach(row, rel, other, how, arrow)
 
 
 def _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid):
@@ -330,11 +330,8 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
         _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid)     # 소속 엣지 (B102 ④)
         _legacy_attach(b, cfg, graph, env, cand, touched, ref, ref_g, prov, cid)   # 옛 체크포인트
         # **폴백 한 함수**(B102 ⑤ — 표와 같은 함수) — 어느 엣지에도 서지 못한 개체만 좌표에
-        for nid in loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans], touched,
-                                           ref, ref_g, prov, env["doc_id"], evidence_chunk=cid):
-            rel = gate.pair_relation(cfg, (ref_g.get(ref) or {}).get("category"),
-                                     ((b.graph_of(nid) or graph).get(nid) or {}).get("category"))
-            _attached(rows.get(nid), rel, (ref_g.get(ref) or {}).get("canonical"), "폴백", "←")
+        loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans], touched,
+                                ref, ref_g, prov, env["doc_id"], evidence_chunk=cid)
 
     store.write(store.CHUNKS, ch)
     if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
