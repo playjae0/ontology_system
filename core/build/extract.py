@@ -196,34 +196,31 @@ EXTRACT_SCHEMA = {
         # **개체별 부모**(B91 ③) — 골격 canonical을 부모 후보(`parent_candidates`) **안에서만**
         # 고른다 · 못 고르면 null(주 좌표가 부모다). 계약상 선택 필드다 — 옛 체크포인트·mock은
         # 키가 없고 「없음」으로 읽는다(strict 스키마라 모델에게는 null 허용 필수 키다).
+        # **개체별 소속**(B102 ③) — 그 개체가 「무엇의 일부 · 무엇의 특성인가」. 이름은 부착 후보 ·
+        # 청크 본문 · 맥락 줄(경로·시트·공정)에서만 고른다 · `from`이 그 출처 · 어디에도 없으면 null
+        # (지어내지 않는다 — 구축이 출처를 다시 대조해 밖이면 버린다). 카테고리는 층 닫힌 목록(못 고르면
+        # null). 옛 `attach`(관계를 못 고를 때의 부착 이름)는 이것으로 흡수됐다 — 옛 체크포인트의 `attach`는
+        # 같은 뜻으로 읽는다(`core/build/belongs.belongs_of`).
         "entities": {"type": "array", "items": {
             "type": "object",
             "properties": {"surface": {"type": "string"},
                            "category": {"type": "string"},
-                           "parent": {"type": ["string", "null"]}},
-            "required": ["surface", "category", "parent"], "additionalProperties": False}},
+                           "parent": {"type": ["string", "null"]},
+                           "belongs_to": {
+                               "type": ["object", "null"],
+                               "properties": {"name": {"type": "string"},
+                                              "category": {"type": ["string", "null"]},
+                                              "from": {"type": "string",
+                                                       "enum": ["본문", "경로", "시트", "공정"]}},
+                               "required": ["name", "category", "from"],
+                               "additionalProperties": False}},
+            "required": ["surface", "category", "parent", "belongs_to"],
+            "additionalProperties": False}},
         "relations": {"type": "array", "items": {
             "type": "object",
             "properties": {"src": {"type": "string"}, "rel": {"type": "string"},
                            "dst": {"type": "string"}},
             "required": ["src", "rel", "dst"], "additionalProperties": False}},
-        # **`attach_to`는 이름과 카테고리를 함께 낸다**(문서 4 §4.10 규약 8 — B11).
-        # 판정기 계약(§4.3)이 `category`를 필수로 받는데 비정형에서 뽑은 이름에는
-        # 카테고리가 없어, 없이 두면 **후보 검색이 전 카테고리를 훑고 선언 순서가
-        # 답을 정한다**(2A P-B 실측: `정밀 노칭 프레스`가 Process·Unit 양쪽에 0.95).
-        # 카테고리는 층 어휘의 닫힌 목록에서만 고르고, **고르지 못하면 null**로 내어
-        # 규칙 B 폴백으로 보낸다 — 추측해서 채우지 않는다.
-        "attach": {"type": "array", "items": {
-            "type": "object",
-            "properties": {
-                "surface": {"type": "string"},
-                "attach_to": {
-                    "type": ["object", "null"],
-                    "properties": {"name": {"type": "string"},
-                                   "category": {"type": ["string", "null"]}},
-                    "required": ["name", "category"], "additionalProperties": False},
-            },
-            "required": ["surface", "attach_to"], "additionalProperties": False}},
         # **관련 링크**(B91 ③) — 이 청크가 「무엇에 관한 글인가」(표면형 + 카테고리 · 0~N ·
         # 층 카테고리 안). 조회 전용이다 — 구축이 사전·이 문서의 해소 결과로 찾고 노드를
         # 만들지 않는다(못 찾으면 버리고 기록). 선택 필드 — 없으면 「없음」.
@@ -232,7 +229,7 @@ EXTRACT_SCHEMA = {
             "properties": {"surface": {"type": "string"}, "category": {"type": "string"}},
             "required": ["surface", "category"], "additionalProperties": False}},
     },
-    "required": ["entities", "relations", "attach", "about"], "additionalProperties": False,
+    "required": ["entities", "relations", "about"], "additionalProperties": False,
 }
 
 
@@ -305,8 +302,8 @@ def parent_candidates(chunk, layer=None):
 
 
 def _optional(out):
-    """새 선택 필드(`parent`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
-    ents = [{k: v for k, v in e.items() if not (k == "parent" and v is None)}
+    """새 선택 필드(`parent`·`belongs_to`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
+    ents = [{k: v for k, v in e.items() if not (k in ("parent", "belongs_to") and v is None)}
             for e in out.get("entities", [])]
     extra = {"about": out["about"]} if out.get("about") else {}
     return ents, extra
@@ -344,7 +341,7 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
     return {"chunk_id": chunk_id,
             "entities": ents,
             "relations": out.get("relations", []),
-            "attach": out.get("attach", []), **extra}
+            "attach": [], **extra}                  # 소속은 개체의 `belongs_to`가 말한다(B102 ③)
 
 
 def categories_with_also(cfg):

@@ -73,6 +73,18 @@ def is_bound(polarity, cfg):
     return polarity in (cfg.get("polarity") or {}).get("values", [])
 
 
+def scope_categories(cfg):
+    """**이름에 부모가 붙는 카테고리** — 공통 config `canonical_scope`의 `bind_categories` ∪ `nest_categories`
+    (B102 ⑤ — 데이터 · 코드가 카테고리 이름을 모른다). 한 자리에서 읽는다(판정 · 막이 · 연쇄)."""
+    sc = (cfg or {}).get("canonical_scope") or {}
+    return list(dict.fromkeys(list(sc.get("bind_categories") or []) + list(sc.get("nest_categories") or [])))
+
+
+def nest_categories(cfg):
+    """소속이 골격 밖 노드로 해소되면 **그 노드의 canonical을 이름 부모로** 쓰는 카테고리(B102 ⑤)."""
+    return list(((cfg or {}).get("canonical_scope") or {}).get("nest_categories") or [])
+
+
 def scope_canonical(surface, category, parent_canonical, cfg):
     """canonical 스코프 — `{부모}::{표면형}` (CH3B 3.5 규약 4).
 
@@ -84,7 +96,7 @@ def scope_canonical(surface, category, parent_canonical, cfg):
     스코프 붙은 노드와 합치면 오병합이므로, 후보에서도 제외된다(규약 5).
     """
     sc = cfg.get("canonical_scope")
-    if not sc or category not in sc.get("bind_categories", []):
+    if not sc or category not in scope_categories(cfg):
         return surface, True
     if not parent_canonical:
         return surface, False                            # 미해소 — 병합 금지 표시

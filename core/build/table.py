@@ -271,11 +271,9 @@ def _row_fallback(b, r, schema, fields, graph, cfg, doc_id):
             nid = r.resolved.get(e.get(side))
             if nid:
                 touched.add(nid)
+    items = []
     for f, spec in fields.items():
         if spec.get("role") != "entity":
-            continue
-        nid = r.resolved.get(f)
-        if nid is None or nid in touched:
             continue
         # **B12 — 빈 셀은 폴백 대상이 아니다.** 이 entity가 `attach_to_field`를
         # 선언했는데 그 필드가 이 행에서 비어 있으면, 붙을 대상이 그 행에
@@ -283,8 +281,9 @@ def _row_fallback(b, r, schema, fields, graph, cfg, doc_id):
         af3 = spec.get("attach_to_field")
         if af3 and rec.get(af3) in (None, ""):
             continue
-        tg = r.external.get(f, graph)
-        loop._fallback_attach(b, cfg, tg, nid, r.ref, r.ref_g, r.prov, doc_id)
+        items.append((r.resolved.get(f), r.external.get(f, graph)))
+    # 산문과 **한 함수**(B102 ⑤)
+    return loop.fallback_untouched(b, cfg, items, touched, r.ref, r.ref_g, r.prov, doc_id)
 
 
 def _endpoint(name, resolved, ref, ref_g, external, graph, doc_id):

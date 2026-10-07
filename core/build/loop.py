@@ -174,6 +174,21 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     return True
 
 
+def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidence_chunk=None):
+    """**폴백 한 함수**(B102 ⑤) — 행·청크가 만든 개체 중 **어느 엣지(소속·관계·스키마)에도 끝점으로 서지
+    못한 것**을 그 좌표에 규칙 B로 붙인다. 표(`table._row_fallback`)와 산문이 이 함수를 부른다.
+
+    `items`는 `[(node_id, 엣지를 쓸 그래프)]` · 돌려주는 것은 붙인 node_id 목록."""
+    done = []
+    for nid, graph in items:
+        if nid is None or nid in touched or nid in done:
+            continue
+        if _fallback_attach(b, cfg, graph, nid, ref, ref_g, prov, doc_id,
+                            evidence_chunk=evidence_chunk):
+            done.append(nid)
+    return done
+
+
 def _field_surface(name, rec):
     """엣지 끝점이 가리키는 **원 표면형** — 재시도 배치가 다시 해소할 재료다."""
     if str(name).startswith("@"):
@@ -376,7 +391,8 @@ def _ledger_entity(st, surface, layer, last):
                  confidence=last.get("confidence", 0.0),
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"),
                  narrow=last.get("narrow"), emb_top=last.get("emb_top"),
-                 nearest=last.get("nearest"), same_doc=last.get("same_doc"))
+                 nearest=last.get("nearest"), same_doc=last.get("same_doc"),
+                 target=b.canonical_of(last.get("node_id")))
 
 
 def _scoped_category(category, layer, builder):
@@ -391,8 +407,8 @@ def _scoped_category(category, layer, builder):
         cfg = load_config(layer)
     except Exception:
         return False
-    sc = cfg.get("canonical_scope") or {}
-    return category in (sc.get("bind_categories") or [])
+    from core.build.naming import scope_categories
+    return category in scope_categories(cfg)
 
 
 def h_attribute(value, spec, ctx):

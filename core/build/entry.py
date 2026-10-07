@@ -144,7 +144,8 @@ def _plan_hit(b, m, layer):
     key, pol, _scoped, _sc = entity_key(surface, category, eb.cfg,
                                         electrode_type=et, parent_canonical=parent,
                                         anchor_polarity=apol)
-    scope_cats = (eb.cfg.get("canonical_scope") or {}).get("bind_categories", [])
+    from core.build.naming import scope_categories
+    scope_cats = scope_categories(eb.cfg)
     return bool(matcher.dict_hits(key, category, lay, eb.g, b.dict,
                                   polarity=pol, parent=parent,
                                   scope_cats=scope_cats))
