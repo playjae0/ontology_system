@@ -314,7 +314,11 @@ def _extract_rehearsal(st, results, samples, want, truncated):
         p = _dir(st["doc_type"]) / f"_rehearsal_{env['doc_id']}.json"
         write_file(p, json.dumps(env, ensure_ascii=False))
         made.append(p)
-    extract_run([str(p) for p in made], layer=st["layer"])
+    # **운영 인입과 같은 층으로 뽑는다**(B102 ⑥) — 인입은 스키마의 `layer`로 추출한다(`entry.run_document`).
+    # 구판은 등록의 층으로 뽑았고, 재사용 조건이 층 config 판을 대조하지 않아 다른 어휘의 추출이 재사용됐다.
+    _sc = draft_mod._at(st["schema"]) if st.get("schema") else None
+    _lay = (json.loads(_sc.read_text(encoding="utf-8")).get("layer") if _sc and _sc.exists() else None) or st["layer"]
+    extract_run([str(p) for p in made], layer=_lay)
     for p in made:
         p.unlink(missing_ok=True)
     cps = [json.loads(EX.checkpoint_path(i).read_text(encoding="utf-8"))

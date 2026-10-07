@@ -75,13 +75,14 @@ def _resolve(name, nodes):
     return n["canonical"]
 
 
-def decide(doc, doc_id, spec=None, ask=True):
-    """문서 좌표를 정한다 — `(canonical 또는 None, 출처)` · 한 줄을 낸다."""
+def decide(doc, doc_id, spec=None, ask=True, write=True):
+    """문서 좌표를 정한다 — `(canonical 또는 None, 출처)` · 한 줄을 낸다. `write=False`(`--dry-run`)면 기록하지 않는다."""
     from parser import tagger
     nodes = _nodes()
     if spec is not None:
         coord = None if spec.strip().lower() in NONE else _resolve(spec.strip(), nodes)
-        record(doc_id, coord, "사람")
+        if write:
+            record(doc_id, coord, "사람")
         src = "사람"
     elif recorded(doc_id) is not None:
         coord, src = recorded(doc_id).get("coord"), "기록"
@@ -93,7 +94,8 @@ def decide(doc, doc_id, spec=None, ask=True):
             ans = input(f"   문서 좌표 — 제안 '{sug}'(파일명 조각 '{part}') · Enter=수락 · 이름 · -=없음 > ").strip()
             if ans:
                 coord = None if ans.lower() in NONE else _resolve(ans, nodes)
-            record(doc_id, coord, "사람")
+            if write:
+                record(doc_id, coord, "사람")
             src = "사람"
     print(f"   문서 좌표 — {coord or '없음'} (출처: {src})")
     return coord, src

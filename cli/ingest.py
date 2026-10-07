@@ -6,7 +6,7 @@
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
                                   [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
-                                  [--narrow embed|overlap] [--progress-every N] [--sheets auto]
+                                  [--narrow embed|overlap] [--progress-every N] [--sheets auto] [--revise]
                                   (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
@@ -28,7 +28,7 @@
 어긋난 시트는 `ref` + 승격 후보(기록과 화면 · B91 ②).
 
 **같은 doc_id가 다른 원본 경로에서 오면 멈춘다**(B102 ⑧) — 다른 문서면 파일 이름을 바꾸고,
-같은 문서의 개정이면 `--revise`(ingest-file 하나에만).
+같은 문서의 개정이면 `--revise`(폴더에 주면 그 폴더 전부 — 폴더를 옮긴 경우).
 `--coord <골격 이름|none>`은 문서 좌표(문서가 어느 공정의 것인가)다 — 답은 `registry/doc_coords.json`.
 
 `--doc-type`을 주면 스캔하지 않고 그것으로 본다(사람 지정 — 기본 경로). 비정형(pptx)은
@@ -249,7 +249,7 @@ def narrow_notice():
         print(f"   후보 좁히기 — {mode} (플래그가 설정을 이긴다)")
 
 
-def _ingest_file_select(doc, sel, row, step, revise=False):
+def _ingest_file_select(doc, sel, row, step, revise=False, dry_run=False):
     """선택 판정과 그 앞 검사 — 형태 대조 · 경로 경고 · `--dry-run`.
 
     `ingest_file`에서 단계로 떼어냈다(B78 2c). 돌려주는 값이 `None`이 아니면
@@ -287,9 +287,12 @@ def _ingest_file_select(doc, sel, row, step, revise=False):
     # 수 없어, 「다른 폴더의 같은 이름」이라는 D-110의 **대가**가 화면에 뜬 적이 없다.
     # **다른 원본 경로의 같은 doc_id는 상태 거부다**(B102 ⑧) — 구판은 경고만 하고 개정으로
     # 돌아, 다른 폴더의 같은 이름 문서가 앞 문서의 그래프·대장을 조용히 덮었다. 개정이면
-    # 사람이 `--revise`로 말한다(문서 하나의 결정 — 폴더 일괄에는 주지 않는다).
+    # 사람이 `--revise`로 말한다(폴더에 주면 그 폴더 전부 — 폴더를 옮긴 경우 · `--dry-run`은 말만 한다).
     if prev and prev.get("source_path") and _norm_path(prev["source_path"]) != _norm_path(doc):
-        if not revise:
+        if dry_run and not revise:                # 선택만 보는 자리 — 쓰기 0이라 멈추지 않고 말만 한다
+            print(f"   ⚠ 같은 doc_id가 다른 원본 경로에서 인입된 적 있다({prev['source_path']}) — "
+                  f"실제 인입이면 멈춘다(개정이면 --revise)")
+        elif not revise:
             print(f"   [상태] 같은 doc_id({sel['doc_id']})가 다른 원본 경로에서 인입된 적 있다"
                   f"({prev['source_path']}) — 멈춘다\n"
                   f"  ▶ 다음 줄 — 다른 문서면 파일 이름을 바꾼다 · 같은 문서의 개정이면:\n"
@@ -313,7 +316,8 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True, coord=None):
     if stop is None:
         # **문서 좌표**도 이 관문 자리에서 정한다(B102 ② — 한 번 묻는다 · 한 줄)
         from cli import doc_coord as DC
-        return roles, None, DC.decide(doc, sel["doc_id"], spec=coord, ask=ask and not dry_run)[0]
+        return roles, None, DC.decide(doc, sel["doc_id"], spec=coord, ask=ask and not dry_run,
+                                        write=not dry_run)[0]
     return None, {"status": FAIL if stop["kind"] == SG.REFUSED else SKIP,
                   "reason": stop["reason"]}, None
 
@@ -386,7 +390,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
            "basis": _basis_line(sel), "status": SKIP, "reason": sel.get("reason")}
     # **어디까지 갔는지**를 들고 다닌다(B75 ③ⓐ) — 실패 줄이 그것을 말한다.
     _doc_header(sel)                            # 문서 머리줄 — 단계 머리보다 먼저 (B99 ③④)
-    _r, stage, step = _ingest_file_select(doc, sel, row, step, revise)
+    _r, stage, step = _ingest_file_select(doc, sel, row, step, revise, dry_run)
     if _r is not None:
         return _r
     # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
@@ -569,7 +573,7 @@ def spend_line(stage):
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
                coord_cap=COORD_CAP, recurse=False, progress_every=None, no_images=False,
-               sheets=None):
+               sheets=None, revise=False):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -597,7 +601,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
         rows.append(ingest_file(f, doc_type, dry_run, adapter_paths,
                                 finalize_after=False, coord_cap=coord_cap,
                                 progress_every=progress_every, ask=False,
-                                no_images=no_images, sheets=sheets, preflight=pf))
+                                no_images=no_images, sheets=sheets, preflight=pf, revise=revise))
         if rows[-1].get("preflight_fail"):
             break                                  # 같은 실행의 나머지도 같은 자리에서 막힌다
     if not dry_run and any(r["status"] == OK for r in rows):
@@ -731,7 +735,7 @@ def main(argv):
     args, sheets_spec = SG.flag(args)
     from cli import doc_coord as DC              # 문서 좌표 손잡이 (B102 ②)
     args, coord_spec = DC.flag(args)
-    revise = "--revise" in args                  # 동명 다른 경로 = 개정이라는 사람의 명시 (B102 ⑧)
+    revise = "--revise" in args                  # 동명 다른 경로 = 개정이라는 사람의 명시 (B102 ⑧ · 폴더면 전부)
     args = [a for a in args if a != "--revise"]
     # **그림 없이 넣기는 명시적으로만**(B88 ①) — 게이트웨이가 그림을 못 받을 때의 출구다.
     # 그 사실은 인입 기록과 `show doc`에 남는다(조용한 건너뜀 0).
@@ -765,8 +769,6 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
-        if revise:
-            raise SystemExit("[투입] --revise는 ingest-file 하나에만 준다 — 개정은 문서 하나의 결정이다")  # [사용법]
         if coord_spec is not None:
             raise SystemExit("[투입] --coord는 ingest-file 하나에만 준다 — 문서마다 공정이 다르다 "  # [사용법]
                              "(폴더는 기록 · 파일명 제안으로 정한다)")
@@ -778,7 +780,7 @@ def main(argv):
                              "문서마다 시트 자리가 다르다 (폴더에는 --sheets auto)")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
                           recurse=_from_raw, progress_every=prog_every,
-                          no_images=no_img, sheets=sheets_spec)
+                          no_images=no_img, sheets=sheets_spec, revise=revise)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,

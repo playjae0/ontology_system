@@ -69,7 +69,8 @@ for _f in ("CP01.xlsx", "CP03_bad.xlsx", "CP04_unlabeled.xlsx", "TOC01.xlsx"):
 # 그것을 스위트의 실패로 센다(계수는 줄머리로 한다). 받아서 검사만 한다.
 _buf6 = _io.StringIO()
 with _ctx.redirect_stdout(_buf6):
-    _rows = IG.ingest_dir(_bd)
+    # 같은 이름이 앞에서 다른 경로(`fixtures/raw`)로 들어왔다 — 개정이라는 명시가 없으면 멈춘다(B102 ⑧ · 기대 변경)
+    _rows = IG.ingest_dir(_bd, revise=True)
 _out6 = _buf6.getvalue()
 _st = {r["doc_id"]: r["status"] for r in _rows}
 show("ingest-dir — 4건 순회 · 성공 2 · 실패 1(C14 파싱 실패) · 미선택 1(지문 0건)",
@@ -85,7 +86,7 @@ _dz.mkdir(parents=True, exist_ok=True)
 shutil.copy(_RAW / "CP01.xlsx", _dz / "CP01.xlsx")
 _buf79 = _io.StringIO()
 with _ctx.redirect_stdout(_buf79):
-    _rows79 = IG.main(["--allow-mock"])          # 인자 없이 = 원본 자리 전체
+    _rows79 = IG.main(["--allow-mock", "--revise"])   # 인자 없이 = 원본 자리 전체 · 옮겨 넣은 문서는 개정 명시(B102 ⑧)
 _out79 = _buf79.getvalue()
 _reg79 = store.read(store.DOC_REGISTRY, {}).get("CP01") or {}
 show("② 인자 없는 ingest-dir가 원본 자리를 **재귀로** 돈다 (하위 폴더에 넣는다)",
