@@ -24,13 +24,27 @@ VERDICTS = ("match", "new", "uncertain", "anchor", "lowres", "orphan",
 
 _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind",
-         "narrow", "emb_top", "nearest", "same_doc")
+         "narrow", "emb_top", "nearest", "same_doc", "target", "from", "attached")
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
 # 값 줄의 재료를 화면이 따로 계산하면 두 벌이 갈리고, 그때 「화면은 붙었다는데
 # 대장은 아니다」가 된다. core는 화면을 갖지 않으므로(D-149 ③) 찍는 것은 CLI다.
 ON_ROW = None
+
+
+#: 붙은 자리 콜백(B102 ⑦) — 엣지가 생겨 행에 `attached`가 붙을 때 · 화면이 행 아래 한 줄을 낸다.
+ON_EDGE = None
+
+
+def attach(row, rel, other, how, arrow):
+    """대장 행에 **이 값이 만든 엣지**를 단다 — `{rel, other, path(소속|관계|폴백), dir}` · 표·산문·폴백 한 손."""
+    if row is None or not rel:
+        return
+    info = {"rel": rel, "other": other, "path": how, "dir": arrow}
+    row.setdefault("attached", []).append(info)
+    if ON_EDGE is not None:
+        ON_EDGE(row, info)
 
 
 def name_of(doc_id):
@@ -47,7 +61,8 @@ class Ledger:
     def add(self, *, locator=None, field=None, role=None, surface=None,
             canonical=None, layer=None, path="none", verdict="pending",
             node_id=None, candidates_n=0, confidence=0.0, llm=None,
-            queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None):
+            queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
+            target=None, belongs_from=None):
         """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다)."""
         if path not in PATHS:
             raise ValueError(f"대장 path가 닫힌 값 밖이다: {path!r}")
@@ -64,7 +79,9 @@ class Ledger:
         # 판정 근거(B99 ⑨) — **있을 때만** 단다(근거 없는 행의 대장 바이트는 그대로)
         # 같은 문서 auto에 붙은 매칭(B101 ①) — 그때만 `same_doc: true`
         for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest),
-                     ("same_doc", same_doc or None)):
+                     ("same_doc", same_doc or None),
+                     # 붙은 노드 · 소속 출처(B102 ⑦) — 붙은 자리(`attached`)는 엣지를 단 뒤 호출부가 단다
+                     ("target", target), ("from", belongs_from)):
             if v is not None:
                 self.rows[-1][k] = v
         if ON_ROW is not None:

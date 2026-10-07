@@ -34,6 +34,17 @@ def lines(res):
                    f"가드로 내려간 것 {res.get('가드(다른 문서 auto)', 0):,}(다른 문서 auto) · "
                    f"이번 실행이 사전에 더한 별칭 {res.get('LLM 별칭', 0):,}(LLM 매칭) · "
                    f"좌표 학습 새로 {cl.get('새로', 0):,} · 적중 {cl.get('적중', 0):,}")
+    if "엣지 없는 노드" in res:                      # 붙은 곳 끝 요약 (B102 ⑦)
+        at = res.get("부착") or {}
+        so = " · ".join(f"{k[3:]} {v:,}" for k, v in sorted(at.items()) if k.startswith("소속 "))
+        out.append(f"     부착 — 소속({so or '0'}) · 관계 {at.get('관계', 0):,} · 좌표 폴백 {at.get('폴백', 0):,} · "
+                   f"보류 {at.get('보류', 0):,} · 엣지 없는 노드 {res['엣지 없는 노드']:,}")
+        if res.get("소속 없음 비율"):
+            out.append("     소속 없음 비율 — " + " · ".join(
+                f"{w} {a:,}/{n:,}" for w, a, n in res["소속 없음 비율"]))
+        bo = res.get("본문에 없는 개체") or {}
+        if bo.get("n"):
+            out.append(f"     청크 본문에 글자 그대로 없는 개체 {bo['n']:,} · 그림 요약에서 {bo.get('그림', 0):,}")
     for pt, u in sorted((res.get("LLM") or {}).items()):
         out.append(f"     LLM {pt} — 호출 {u['calls']:,} · 입력 {u['prompt']:,} · 출력 {u['completion']:,} · "
                    f"1회 평균 {u['avg']:,} · 1회 최대 {u['max']:,}")

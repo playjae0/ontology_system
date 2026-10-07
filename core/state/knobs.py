@@ -64,6 +64,10 @@ KNOBS = {
     "lens_call_cap": ("core.build.lens", ("LENS_CALL_CAP",), "int",
                       "문서당 렌즈 호출 상한 — 넘으면 묻는다(비대화형은 멈춘다)",
                       "python run.py show dist lens"),
+    "viewer_explore_threshold": ("cli.viewer.data", ("EXPLORE_THRESHOLD",), "int",
+                                 "뷰어 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 "
+                                 "탐색 모드로 연다(이웃 펼쳐 보기 · B103 ③)",
+                                 "python run.py viewer — 머리 줄 노드 수"),
 }
 PARSER_KNOBS = tuple(k for k, v in KNOBS.items() if v[0].startswith("parser."))
 

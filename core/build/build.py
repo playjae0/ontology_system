@@ -28,7 +28,7 @@ _MEMO = {}
 ADDED = []
 from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표지
 from core.state.status import is_live
-from core.build.naming import (POLARITY_NONE, bind_polarity, derive_polarity,
+from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
 
 def entity_key(surface, category, cfg, *, electrode_type=None,
@@ -39,8 +39,7 @@ def entity_key(surface, category, cfg, *, electrode_type=None,
     두 곳에 복제되면 예고가 판정과 **다른 키로 사전을 보게 되고**, 그 순간 예고는
     비용을 잘못 말한다(허브 실측 열셋째: 예고 「사전 히트 31종」 · 판정 「사전 0」).
     """
-    scoped_category = category in (cfg.get("canonical_scope") or {}) \
-        .get("bind_categories", [])
+    scoped_category = category in scope_categories(cfg)
     anchor_polarity = anchor_polarity if scoped_category else None
     inherited = anchor_polarity is not None
     bound = surface if inherited else \
@@ -115,6 +114,12 @@ class Builder:
         집 하나에서 한다 — 같은 뜻이면 노드 하나(두 벌로 만든 뒤 합치지 않는다).
         """
         return self.for_layer(self.home_of(category))
+
+    def canonical_of(self, nid):
+        """그 노드의 canonical — 집 그래프에서(B102 ⑦ 대장 `target` · 없으면 None)."""
+        if not nid:
+            return None
+        return ((self.graph_of(nid) or self.g).get(nid) or {}).get("canonical")
 
     def resolve_at_home(self, surface, category, prov, *, coord=None, **kw):
         """개체 하나를 **집 빌더에서** 해소한다 — `(node_id, 그 빌더)`.
@@ -401,7 +406,8 @@ class Builder:
 
     # ---------------------------------------------------------------- entity
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
-                       parent_canonical=None, anchor_polarity=None):
+                       parent_canonical=None, anchor_polarity=None, coord_surface=None,
+                       belongs=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시).
 
         `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
@@ -433,6 +439,10 @@ class Builder:
                          "path": "none", "confidence": 0.0, "layer": self.layer,
                          "queue_kind": "invalid_category", "node_id": None}
             return None
+        # **좌표 없는 스코프 개체 0**(B102 ⑤ · 문서 4 §4.4) — 이름 규칙 카테고리인데 부모 좌표가 없으면
+        # 노드를 만들지 않고 판정도 부르지 않는다(LLM 0). 재료는 큐가 든다. 표·산문·렌즈가 이 자리를 지난다.
+        if category in scope_categories(self.cfg) and not parent_canonical:
+            return self._no_coord(surface, category, prov, coord_surface, belongs)
         canonical, polarity, scoped, scoped_category = entity_key(
             surface, category, self.cfg, electrode_type=electrode_type,
             parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
@@ -480,8 +490,7 @@ class Builder:
             _MEMO[mkey] = verdict
             return self._skeleton_miss(surface, category, canonical, prov, verdict)
 
-        extra = {"_scoped": True} if scoped and self.cfg.get("canonical_scope", {}) \
-            .get("bind_categories", []).count(category) else {}
+        extra = {"_scoped": True} if scoped and category in scope_categories(self.cfg) else {}
         extra["polarity"] = polarity                     # 닫힌 4값을 항상 기록한다
         # mirrors 짝 키의 두 요소 — **부모**와 **주소 접두를 제외한 자기 이름부**다
         # (F3). canonical을 되 파싱하지 않기 위해(A11-8) 조립 시점에 적어 둔다.
@@ -505,6 +514,33 @@ class Builder:
         self.buffer[norm(surface)] = nid
         self.last["node_id"] = nid
         return nid
+
+    def _no_coord(self, surface, category, prov, coord_surface, belongs):
+        """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 `missing_field`(키 `process_ref`) ·
+        목록 밖 좌표 이름이면 그 표기의 `orphan_anchor` 항목에 행으로(새 kind 0 · B56)."""
+        from core.state.bootstrap import COORD_CATEGORY
+        # 재료의 모양은 표의 연쇄 드롭과 같다(재시도 `_land_anchor_entry`가 같은 손으로 되살린다)
+        item = {"surface": surface, "category": category, "target_layer": self.layer,
+                **({"belongs_to": belongs} if belongs else {})}
+        loc = (prov or "").split("#")[-1] or None
+        if coord_surface:
+            kind = "orphan_anchor"
+            store.enqueue_rows(kind, f"좌표 '{coord_surface}'가 골격 목록 밖이라 '{surface}'를 만들지 않았다",
+                               self.doc_id, norm(coord_surface),
+                               {"surface": coord_surface, "category": COORD_CATEGORY,
+                                "provenance": prov, "layer": self.layer,
+                                "dropped_entities": [item]}, locator=loc)
+        else:
+            kind = "missing_field"
+            store.enqueue_rows(kind, f"좌표(process_ref)가 비어 '{surface}'({category})를 만들지 않았다 — "
+                                     f"문서 좌표(--coord) 또는 시트·제목의 공정 이름",
+                               self.doc_id, "process_ref",
+                               {"field": "process_ref", "provenance": prov,
+                                "dropped_entities": [item]}, locator=loc)
+        self.last = {"canonical": surface, "verdict": "pending", "path": "none", "confidence": 0.0,
+                     "layer": self.layer, "queue_kind": kind, "candidates_n": 0, "node_id": None,
+                     "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
+        return None
 
     def _skeleton_category(self, category):
         """골격 카테고리인가(B94 ③) — 층 config `skeleton.category`(tree·flat). 빌더당 한 번 센다."""

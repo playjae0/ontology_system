@@ -265,7 +265,7 @@ def _image_pieces(sheet, chunks):
             or (spans[0][2] if spans else None)
         section = (host or {}).get("section") or name
         meta = {"split_path": PATH_IMAGE, "frame": name, "shape_kind": "picture",
-                "shape_id": im["ref"], "cell": im.get("cell"), "section_path": section}
+                "shape_id": im["ref"], "cell": im.get("cell"), "section_path": section, "sheet": name}
         if im.get("mime"):
             meta["image_mime"] = im["mime"]
         out.append({"source_locator": f"{name}!{im.get('cell')}#{im['ref']}",
@@ -291,7 +291,8 @@ def _sheet_chunks(sh, struct_rule_fn):
         return base if a == b else f"{base}-R{b}"
 
     return struct_rule.frame_chunks(
-        name, lines, rows, locator, exp["section_sep"], {"content_column": col},
+        # 시트명은 늘 싣는다(B102 ① — 맥락 줄의 시트 칸 · 제목이 있으면 구획 경로에 시트가 없다)
+        name, lines, rows, locator, exp["section_sep"], {"content_column": col, "sheet": name},
         rule_fn=struct_rule_fn, sample_fn=lambda: rule_sample(sh, col),
         by_rule=lambda decl: _rows_by_rule(sh, col, decl),
         flat_reason="계층 신호 0건 — 시트를 통째로 실었다")

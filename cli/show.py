@@ -6,6 +6,7 @@
     python -m cli.show doc    <doc_id>        그 문서가 만든 것 전부 (역추적)
     python -m cli.show report <doc_id> [--json]  그 문서의 **행별 판정 대장** (눈 검수)
     python -m cli.show report --diff <a.json> <b.json>   두 대장의 **다른 행만** (설정 비교)
+    python -m cli.show report <doc_id> --trace   값마다 위치 · 표기 → 붙은 노드 · 붙은 자리 · 좌표(출처) · 근거 문장
     python -m cli.show chunk  <doc_id|id>     청크 원문 (답의 근거로 실린 그 문장)
     python -m cli.show edges  [층] [관계]      엣지 목록
     python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표
@@ -534,7 +535,7 @@ def cmd_extract(args):
     """추출 체크포인트 — **존재 여부가 아니라 내용**을 본다.
 
         run.py show extract              문서별 상태 (파일 존재 = 추출 완료)
-        run.py show extract <doc_id>     그 문서의 후보 전량
+        run.py show extract <doc_id> [--full]   그 문서의 후보 전량 · 맥락 줄 · 개체별 부모·소속(--full이면 원문 전부)
 
     `extract/{doc_id}.json`이 추출↔구축의 **계약 B**다(문서 4 §4.10) — 구축이
     무엇을 받았는지가 여기 있고, 그래프에 뜻대로 안 실렸을 때 **파서가 잘못
@@ -575,12 +576,25 @@ def cmd_extract(args):
           f"prompt {d.get('prompt_version')} · config {d.get('config_version')}")
     print(f"  추출 시점      {d.get('extracted_at')}")
     ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    full = "--full" in args
+    from core.build import extract_ctx
+    _src = (store.read(store.DOC_REGISTRY, {}).get(doc_id) or {}).get("source_path")
+    _doc = extract_ctx.doc_info({"source_path": _src})
     for c in d.get("candidates") or []:
         cid = c.get("chunk_id")
-        text = (ch.get(cid, {}).get("text") or "")[:60]
+        _c = ch.get(cid, {})
+        text = (_c.get("text") or "") if full else (_c.get("text") or "")[:60]
         print(f"\n  ── {cid} ──  {text}")
+        # 맥락 줄(B102 ① — 추출이 받은 머리와 같은 함수)
+        _line = extract_ctx.context_line(_c, _doc)
+        if _line:
+            print(f"     맥락  {_line}")
         for e in c.get("entities") or []:
-            print(f"     개체  {e.get('surface')}  ({e.get('category')})")
+            b = e.get("belongs_to") or {}
+            print(f"     개체  {e.get('surface')}  ({e.get('category')})"
+                  + (f" · 부모 {e['parent']}" if e.get("parent") else "")
+                  + (f" · 소속 {b.get('name')}({b.get('category') or '카테고리 미정'} · {b.get('from')})"
+                     if b else " · 소속 없음"))
         for r in c.get("relations") or []:
             print(f"     관계  {r.get('src')} ─{r.get('rel')}→ {r.get('dst')}")
         for a in c.get("attach") or []:

@@ -12,6 +12,8 @@ from core.build import loop
 from core.build.build import Builder
 from core.build import gate
 from core.build.ledger import Ledger
+from core.build import belongs, extract_ctx
+from core.build.naming import nest_categories
 from core.state.status import is_live
 from core.state import log, store
 from core.state.ids import fold_latin, norm
@@ -21,12 +23,14 @@ _LOG = log.get(__name__)
 
 # ---------------------------------------------------------------- 비정형 (1d′)
 def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
-    """Pass 1 — 청크마다 **좌표부터** 세운다. 돌려주는 것은 `{chunk_id: 좌표 묶음}`.
+    """Pass 1 — 청크마다 **좌표부터** 세운다 · 소속 대상을 먼저 해소한다(B102 ④). 돌려주는 것은
+    `{chunk_id: 좌표 묶음 + 소속 계획}`.
 
     `build_prose`에서 단계로 떼어냈다(B78 2c) — 두 패스가 한 함수에 있으면
     「어느 패스가 만든 상태인가」를 사람이 줄 번호로 가르게 된다.
     """
     coords = {}
+    doc = extract_ctx.doc_info(env)
     for cand in candidates:
         cid = cand["chunk_id"]
         src = by_locator.get(loc_of.get(cid), {})
@@ -39,42 +43,75 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         b.check_polarity(ref, src.get("electrode_type"), prov, ref_g)
-        coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol)
+        # **정직한 anchor 행**(B102 ⑦) — 빈 좌표는 「좌표 없음」(큐 없음) · 목록 밖 이름만 orphan_anchor
         b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
                      surface=src.get("process_ref"), canonical=parent,
                      layer=ref_g.layer if ref_g else None,
                      path="skeleton" if ref else "none",
-                     verdict="anchor" if ref else "orphan", node_id=ref,
-                     queue_kind=None if ref else "orphan_anchor")
-
-        pcs = {}
-        for e in cand.get("entities", []):
-            # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
-            e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs,
-                                                         (ref, ref_g, parent, anchor_pol))
-            # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다. 문서 층 빌더에서
-            # 만들면 층이 겹칠 때 같은 뜻이 두 노드가 된다.
-            nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
-                                        coord=(e_ref, e_g),
-                                        electrode_type=src.get("electrode_type"),
-                                        parent_canonical=e_parent,
-                                        anchor_polarity=e_pol)
-            last = eb.last
-            b.ledger.add(locator=_loc or cid, field=e.get("category"),
-                         role="entity", surface=e["surface"],
-                         canonical=(last or {}).get("canonical"),
-                         layer=(last or {}).get("layer") or b.layer,
-                         path=(last or {}).get("path") or "none",
-                         verdict=loop._VERDICT.get((last or {}).get("verdict"),
-                                              "pending"),
-                         node_id=nid,
-                         candidates_n=(last or {}).get("candidates_n", 0),
-                         confidence=(last or {}).get("confidence", 0.0),
-                         llm=(last or {}).get("llm"),
-                         queue_kind=(last or {}).get("queue_kind"),
-                         nearest=(last or {}).get("nearest"),
-                         same_doc=(last or {}).get("same_doc"))
+                     verdict="anchor" if ref else ("orphan" if src.get("process_ref") else "pending"),
+                     node_id=ref,
+                     queue_kind=None if (ref or not src.get("process_ref")) else "orphan_anchor")
+        plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
+                                (ref, ref_g, parent, anchor_pol), _loc)
+        coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol, plans)
     return coords
+
+
+def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
+    """청크 하나의 개체 — 소속 대상 먼저(같은 청크 안 순서) → 이름 부모(골격 소속 · `nest_categories`) →
+    해소(`resolve_at_home` — 표와 같은 함수) · 대장 행. 돌려주는 것은 소속 계획 `[{nid, tgt, bel, row}]`."""
+    ref, ref_g, parent, anchor_pol = main
+    bmap = belongs.belongs_of(cand)
+    ents, cyc = belongs.order(cand.get("entities", []), bmap)
+    for k in sorted(cyc):
+        store.append_defect(f"{b.doc_id}: 소속 순환 — '{k}' @ {cid} → 소속을 버렸다")
+    chunk_kw = dict(coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
+                    parent_canonical=parent, anchor_polarity=anchor_pol,
+                    coord_surface=src.get("process_ref"))
+    nests = nest_categories(b.cfg)
+    pcs, plans = {}, []
+    for e in ents:
+        k = norm(e["surface"])
+        bel = None if k in cyc else bmap.get(k)
+        if bel and not bel.get("legacy"):
+            where = belongs.source_of(bel["name"], src, doc)
+            if where is None:                      # 지어낸 소속 — 버린다(지어내지 않는다)
+                belongs.drop_invented(b.doc_id, e["surface"], bel, cid)
+                bel = None
+        tgt = belongs.resolve_target(b, bel, prov, chunk_kw) if bel and not bel.get("legacy") else None
+        # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
+        e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs, main)
+        if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
+            e_ref, e_g = tgt[1], tgt[2]            # 골격 소속 = 그 개체의 좌표
+            e_parent, e_pol = e_g.get(e_ref)["canonical"], b.anchor_polarity(e_ref, e_g)
+        elif tgt and tgt[0] == belongs.NODE and e["category"] in nests:
+            e_parent = tgt[2].get(tgt[1])["canonical"]   # 이름에 소속 (B102 ⑤)
+        # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다.
+        nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
+                                    coord=(e_ref, e_g),
+                                    electrode_type=src.get("electrode_type"),
+                                    parent_canonical=e_parent,
+                                    anchor_polarity=e_pol,
+                                    coord_surface=src.get("process_ref"), belongs=bel)
+        last = eb.last or {}
+        row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
+                           role="entity", surface=e["surface"],
+                           canonical=last.get("canonical"),
+                           layer=last.get("layer") or b.layer,
+                           path=last.get("path") or "none",
+                           verdict=loop._VERDICT.get(last.get("verdict"), "pending"),
+                           node_id=nid,
+                           candidates_n=last.get("candidates_n", 0),
+                           confidence=last.get("confidence", 0.0),
+                           llm=last.get("llm"),
+                           queue_kind=last.get("queue_kind"),
+                           nearest=last.get("nearest"),
+                           same_doc=last.get("same_doc"),
+                           target=b.canonical_of(nid),
+                           belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None))
+        if nid:
+            plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
+    return plans
 
 
 def _entity_parent(b, e, src, prov, cid, pcs, main):
@@ -145,6 +182,86 @@ def _link_about(b, cfg, cand, ch, doc_id):
             about.append({"chunk_id": cid, "node_id": nid})
 
 
+def _attached(row, rel, other, how, arrow):
+    """대장 행에 **이 값이 만든 엣지**를 단다(B102 ⑦ — 대장 한 손 `ledger.attach`)."""
+    from core.build import ledger as _lg
+    _lg.attach(row, rel, other, how, arrow)
+
+
+def _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid):
+    """소속 엣지 — 대상 → 관계(카테고리쌍 매핑) → 개체 · 매핑에 없으면 결함 로그 + 폴백에 남긴다 ·
+    소속 이름을 못 찾았으면 `orphan_attach`(재시도의 손잡이 — 지금 kind)."""
+    for p in plans:
+        bel, tgt, nid = p["bel"], p["tgt"], p["nid"]
+        if not bel or bel.get("legacy"):
+            continue
+        if tgt is None:
+            store.enqueue_rows(
+                "orphan_attach", f"소속 대상 미해소 — '{bel['name']}'", env["doc_id"],
+                loop._n(bel["name"]),
+                {"node_id": nid, "surface": p["row"].get("surface"), "attach_to": loop._n(bel["name"]),
+                 "attach_category": bel.get("category"), "belongs_from": bel.get("from"),
+                 "provenance": prov, "chunk_id": cid},
+                locator=(prov or "").split("#")[-1] or None)
+            continue
+        _kind, tid, tg = tgt
+        cg = b.graph_of(nid) or graph
+        rel, fwd = belongs.edge_of(cfg, (tg.get(tid) or {}).get("category"), (cg.get(nid) or {}).get("category"))
+        if not rel:
+            store.append_defect(f"{env['doc_id']}: 소속 엣지 — 카테고리쌍 매핑 없음 "
+                                f"({(tg.get(tid) or {}).get('category')} → {(cg.get(nid) or {}).get('category')})"
+                                f" @ {cid} → 좌표 폴백")
+            continue
+        src, dst, sg, dg = (tid, nid, tg, cg) if fwd else (nid, tid, cg, tg)
+        br = gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_EXTRACT, [prov], env["doc_id"],
+                              evidence_chunk=cid, src_graph=sg, dst_graph=dg)
+        if br == gate.COMMIT:
+            touched.add(nid)
+            _attached(p["row"], rel, (tg.get(tid) or {}).get("canonical"),
+                      f"소속({bel.get('from') or '-'})", "←")
+
+
+def _legacy_attach(b, cfg, graph, env, cand, touched, ref, ref_g, prov, cid):
+    """**옛 체크포인트의 `attach`**(e-1.3 이전) — 지금과 같은 뜻으로 읽는다(호환 · B102 ③).
+    해소 범위는 **문서 버퍼 전체 + 사전**이며 청크 경계가 없다 · 대상이 없으면 규칙 B."""
+    for a in cand.get("attach", []):
+        child = b.buffer.get(loop._n(a["surface"]))
+        name, cat = loop._attach_target(a)       # {name, category} (§4.10 규약 8 — B11)
+        target = b.buffer.get(loop._n(name)) if name else None
+        _al = b.ledger.add(locator=(prov or "").split("#")[-1] or cid,
+                           field=name or "(attach_to null)", role="attach",
+                           surface=a.get("surface"), layer=b.layer,
+                           path="none", verdict="pending")
+        if target is None and name and cat:
+            target = _dict_hit(b, name, b.for_category(cat).g, category=cat)
+        if child is None:
+            store.append_defect(
+                f"{env['doc_id']}: attach 자식 미해소 — '{a['surface']}' → '{name}' @ {cid}")
+            continue
+        if target is None:
+            loop._fallback_attach(b, cfg, graph, child, ref, ref_g, prov,
+                                  env["doc_id"], evidence_chunk=cid)
+            touched.add(child)
+            _al.update(verdict="lowres" if ref else "pending", node_id=child)
+            if name:
+                store.enqueue_rows(
+                    "orphan_attach", f"부착 대상 미해소 — '{name}'",
+                    env["doc_id"], loop._n(name),
+                    {"node_id": child, "surface": a["surface"], "attach_to": loop._n(name),
+                     "attach_category": cat, "provenance": prov, "chunk_id": cid},
+                    locator=(prov or "").split("#")[-1] or None)
+            continue
+        tg, cg = b.graph_of(target) or graph, b.graph_of(child) or graph
+        rel = gate.pair_relation(cfg, tg.get(target)["category"], cg.get(child)["category"])
+        if rel:
+            gate.commit_edge(graph, target, rel, child, cfg, gate.PATH_EXTRACT,
+                             [prov], env["doc_id"], evidence_chunk=cid,
+                             src_graph=tg, dst_graph=cg)
+        touched.add(child)
+        _al.update(verdict="attached", node_id=child,
+                   canonical=(tg.get(target) or {}).get("canonical"))
+
+
 def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
     # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
     # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
@@ -179,7 +296,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
     # 성립 여부와 무관하다. 청크의 `linked`는 그 결과의 재계산이다(§4.8-2①).
     for cand in candidates:
         cid = cand["chunk_id"]
-        src, prov, ref, ref_g, parent, anchor_pol = coords[cid]
+        src, prov, ref, ref_g, parent, anchor_pol, plans = coords[cid]
 
         for e in cand.get("entities", []):
             nid = b.buffer.get(loop._n(e["surface"]))
@@ -190,6 +307,8 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
             ch["chunks"][cid]["linked"] = True          # 상동 — 재인입이 거짓으로 되돌리지 않는다
 
         _link_about(b, cfg, cand, ch, env["doc_id"])   # 관련 링크 — 조회 전용 (B91 ③)
+        rows = {p["nid"]: p["row"] for p in plans}
+        touched = set()
 
         # ③ 경로 — 추출 후보. 게이트의 실질 관문이다.
         for r in cand.get("relations", []):
@@ -197,63 +316,25 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
             d = b.buffer.get(loop._n(r["dst"]))
             if s and d:
                 # **엣지는 뽑은 층에**, 끝점은 제 집 그래프에서 읽는다(걸침 엣지 — B90 ②)
-                gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
-                                 [prov], env["doc_id"], evidence_chunk=cid,
-                                 src_graph=b.graph_of(s), dst_graph=b.graph_of(d))
+                br = gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
+                                      [prov], env["doc_id"], evidence_chunk=cid,
+                                      src_graph=b.graph_of(s), dst_graph=b.graph_of(d))
+                if br == gate.COMMIT:
+                    touched |= {s, d}
+                    _attached(rows.get(s), r["rel"], b.canonical_of(d), "관계", "→")
+                    _attached(rows.get(d), r["rel"], b.canonical_of(s), "관계", "←")
             else:                               # 게이트에 닿기도 전의 소멸 — 기록한다
                 store.append_defect(
                     f"{env['doc_id']}: 관계 후보 끝점 미해소 — "
                     f"'{r['src']}' -{r['rel']}-> '{r['dst']}' @ {cid}")
 
-        # attach — ③의 폴백. 해소 범위는 **문서 버퍼 전체 + 사전**이며 청크 경계가 없다.
-        for a in cand.get("attach", []):
-            child = b.buffer.get(loop._n(a["surface"]))
-            name, cat = loop._attach_target(a)       # {name, category} (§4.10 규약 8 — B11)
-            target = b.buffer.get(loop._n(name)) if name else None
-            # **부착 시도도 같은 표에 남는다**(B74 ②) — 대상이 없어 폴백으로 간
-            # 것과 자식이 미해소라 못 간 것을 종류 열이 가른다.
-            _al = b.ledger.add(locator=(prov or "").split("#")[-1] or cid,
-                               field=name or "(attach_to null)", role="attach",
-                               surface=a.get("surface"), layer=b.layer,
-                               path="none", verdict="pending")
-            if target is None and name and cat:
-                # **카테고리가 있으니 판정기가 그것 하나로 판정한다** — 전 카테고리를
-                # 훑지 않으므로 선언 순서가 답을 정하는 일이 없다.
-                target = _dict_hit(b, name, b.for_category(cat).g, category=cat)
-            if child is None:                   # 자식 미해소도 대상 쪽과 대칭으로 기록
-                store.append_defect(
-                    f"{env['doc_id']}: attach 자식 미해소 — "
-                    f"'{a['surface']}' → '{name}' @ {cid}")
-                continue
-            if target is None:
-                # **규칙 B 폴백** — 좌표에 저해상도로 붙인다(문서 4 §4.4-4).
-                # 비정형의 「미해소」는 `attach_to`가 null이거나 **카테고리를 못 고른**
-                # 경우까지다(§4.4-4 — B11).
-                loop._fallback_attach(b, cfg, graph, child, ref, ref_g, prov,
-                                 env["doc_id"], evidence_chunk=cid)
-                _al.update(verdict="lowres" if ref else "pending", node_id=child)
-                # **`attach_to`가 null이면 폴백만 하고 큐를 달지 않는다**(§4.7-5) —
-                # null은 추출이 애초에 부착 대상을 말하지 않은 정상 케이스라,
-                # 큐로 보내면 처리 불가능한 노이즈가 큐를 채운다.
-                if name:
-                    store.enqueue_rows(
-                        "orphan_attach", f"부착 대상 미해소 — '{name}'",
-                        env["doc_id"], loop._n(name),           # 집계 키 = 부착 대상 표기
-                        {"node_id": child, "surface": a["surface"],
-                         "attach_to": loop._n(name),            # dedup 키 (§4.7-5)
-                         "attach_category": cat,
-                         "provenance": prov, "chunk_id": cid},
-                        locator=(prov or "").split("#")[-1] or None)
-                continue
-            tg, cg = b.graph_of(target) or graph, b.graph_of(child) or graph
-            rel = gate.pair_relation(cfg, tg.get(target)["category"],
-                                 cg.get(child)["category"])
-            if rel:
-                gate.commit_edge(graph, target, rel, child, cfg, gate.PATH_EXTRACT,
-                                 [prov], env["doc_id"], evidence_chunk=cid,
-                                 src_graph=tg, dst_graph=cg)
-            _al.update(verdict="attached", node_id=child,
-                       canonical=(tg.get(target) or {}).get("canonical"))
+        _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid)     # 소속 엣지 (B102 ④)
+        _legacy_attach(b, cfg, graph, env, cand, touched, ref, ref_g, prov, cid)   # 옛 체크포인트
+        # **폴백 한 함수**(B102 ⑤ — 표와 같은 함수) — 어느 엣지에도 서지 못한 개체만 좌표에
+        # 소속 대상으로 새로 앉은 골격 밖 노드(경로·시트의 유닛)도 그 좌표에 닿아야 한다 — 같은 함수
+        tnodes = [(p["tgt"][1], graph) for p in plans if p["tgt"] and p["tgt"][0] == belongs.NODE]
+        loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans] + tnodes, touched,
+                                ref, ref_g, prov, env["doc_id"], evidence_chunk=cid)
 
     store.write(store.CHUNKS, ch)
     if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)

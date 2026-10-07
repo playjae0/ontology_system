@@ -326,10 +326,15 @@ show("S13 부정 — 미해소 부착 대상의 임시 노드를 만들지 않�
      not any("존재하지않는설비ZZZ" in nm for nm in _names))
 show("S13 부정 — 규칙 B 폴백으로 좌표에 저해상도 부착 1건 (문서 4 §4.4-4)",
      _e2 - _e1 == 1, f"엣지 {_e1} → {_e2}")
-show("S13 부정 — 좌표 미해소 자식은 부모 미해소로 남는다 (§4.5-6 병합 배제 대상)",
-     any(n.get("_scoped") is False or "::" not in n["canonical"]
-         for l in ("process",) for n in open_graph(l).nodes.values()
-         if "세척 노즐 압력" in n["canonical"]))
+# 기대 변경 [B102 ⑤]: 산문도 표처럼 **좌표 없는 스코프 개체를 만들지 않는다**(문서 4 §4.4) —
+# 구판은 부모 미해소 노드로 남겼다. 재료는 그 좌표 표기의 orphan_anchor 항목이 든다.
+_oa2 = [x for x in q("orphan_anchor") if x.get("doc_id") == "S13NEG2"]
+show("S13 부정 — 좌표 미해소 자식은 노드로 만들지 않는다 · 재료는 orphan_anchor가 든다 (B102 ⑤)",
+     not any(n["canonical"] == "세척 노즐 압력" for n in open_graph("process").nodes.values())
+     and any(d.get("surface") == "세척 노즐 압력"
+             for x in _oa2 for it in (x["payload"].get("items") or [x["payload"]])
+             for d in it.get("dropped_entities") or []),
+     f"orphan_anchor {len(_oa2)}건")
 for _f in ("S13NEG", "S13NEG2"):
     (ROOT / "tests" / "fixtures" / "extract_hints" / f"{_f}.json").unlink(missing_ok=True)
 

@@ -134,7 +134,8 @@ def _scope_children(w, parent_canonical, cfg):
     **층 전부**에서 찾는다(B100 ④).
     """
     sc = cfg.get("canonical_scope") or {}
-    binds, sep = sc.get("bind_categories", []), _sep(cfg)
+    from core.build.naming import scope_categories
+    binds, sep = scope_categories(cfg), _sep(cfg)
     pre = parent_canonical + sep
     return [n for _l, n in w.nodes()
             if is_live(n) and n["category"] in binds
@@ -243,7 +244,8 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
     sep = _sep(cfg)
     old = node["canonical"]
     # 옛 스코프 접두 — 스코프가 걸린 카테고리만 이름이 주소를 담는다.
-    scoped = node["category"] in (sc.get("bind_categories") or [])
+    from core.build.naming import scope_categories
+    scoped = node["category"] in scope_categories(cfg)
     tail = old.split(sep)[-1] if scoped and sep in old else old
     new_canonical = f"{parent['canonical']}{sep}{tail}" if scoped else old
 

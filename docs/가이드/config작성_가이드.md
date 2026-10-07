@@ -50,7 +50,7 @@
    "Unit":     {"home": "equipment", "used_by": ["equipment"]},
    "Property": {"home": "process", "used_by": ["process"]},
    "Failure":  {"home": "defect", "used_by": ["defect", "issue"]}},
- "canonical_scope": {"bind_categories": ["Property", "Unit"], "sep": "::"}}
+ "canonical_scope": {"bind_categories": ["Property", "Unit"], "nest_categories": [], "sep": "::"}}
 ```
 
 | 키 | 뜻 | 쓰는 자리 |
@@ -118,7 +118,7 @@
 | Key | Add | Why |
 |---|---|---|
 | `categories` | `Component` — 「유닛을 이루는 교체·정비 단위(예: 상부 금형 · 서보 모터). 유닛 자체·소모품 규격값은 제외」 | 정의문이 추출·판정 프롬프트에 그대로 들어간다 — 헷갈리는 이웃(Unit·Property)을 적는다 |
-| 공통 config `canonical_scope.bind_categories` | `+ Component` (`categories`의 `"Component": {"home": "<층>"}`는 한 층만 선언하면 `bootstrap`이 더한다) | 키가 `노칭::상부 금형`이 돼 공정 간 같은 이름이 충돌하지 않는다. 스코프는 공정 좌표 한 단이다 — 유닛 아래로 중첩되지 않는다(계층은 `part_of` 관계로). 이름 규칙과 집은 공통 config(§0-a)에 산다 |
+| 공통 config `canonical_scope.nest_categories` | `["Component"]` (`categories`의 `"Component": {"home": "<층>"}`는 한 층만 선언하면 `bootstrap`이 더한다) | 부품 이름이 **소속 유닛 아래로** 중첩된다 — `노칭::이송 유닛::상부 금형`(다른 유닛의 같은 이름은 다른 노드). 소속이 없거나 골격이면 `노칭::상부 금형`. `nest_categories`에 든 카테고리는 이름 규칙 카테고리이기도 하다(`bind_categories`에 겹쳐 적지 않아도 된다) · §5 |
 | `relations` · `relation_patterns` | `Component part_of Unit` · `Unit part_of Process` · `Property of Unit/Component` 같은 삼항 | 패턴에 없는 삼항은 게이트가 **조용히 버린다**(`show log gate`에만 남는다) — 여기가 가장 자주 빠지는 자리 |
 | `query_traverse` | `Unit → Component`는 `recursive: false` | 설비를 물으면 유닛까지, 유닛을 물어야 부품 — 깊이는 골격이 아니라 여기서 조절한다 |
 | `fact_templates` · `prompts` 정의문 | 새 관계의 문장 틀 · 추출 정의문 | 없으면 답이 관계를 문장으로 못 만든다 |
@@ -147,7 +147,7 @@
 |---|---|
 | `relations` | **이름 배열일 뿐** — 대칭 표시를 여기 심지 않는다(게이트가 못 읽는다 · §3.1 규약 4) |
 | `relation_patterns` | 게이트가 대조하는 **삼항 표.** 정의문 없는 관계를 올리지 않는다. **골격 삼항(`Process part_of Process` 등)은 넣지 않되 `Unit part_of Process`는 넣는다** — 이름 단위로 빼면 설비 부착이 죽는다(실측) |
-| `category_pair_map` | 이종 쌍의 방향 함의. **동종 쌍은 여기로 방향을 못 정한다** — seed·edges 선언만 |
+| `category_pair_map` | 이종 쌍의 방향 함의. **동종 쌍은 여기로 방향을 못 정한다** — seed·edges 선언만. 키는 엣지 방향(`"src,dst"`)이고 **소속 엣지·좌표 폴백은 두 방향을 다 본다** — `Unit,Process: part_of`(개체 → 대상)든 `Unit,Property: has_property`(대상 → 개체)든 한 줄이면 된다. 소속을 쓰는 쌍(`Component,Unit` · `Unit,Process` · `Unit,Property`)과 좌표 폴백 쌍(`Component,Process` 등 — 소속이 없을 때 좌표에 붙는 길)이 **문서 층** config에 있어야 붙는다 — 없으면 결함 로그 「카테고리쌍 매핑 없음」이고 그 노드는 「엣지 없는 노드」로 센다(인입 끝 요약 `부착 —` 줄) |
 
 ## 3. 질의 확장 — `query_traverse` (형태 주의: 3단 중첩)
 
@@ -192,6 +192,12 @@
 | 넣으면 생기는 것 | 넣는 예 | 넣지 않는 예 |
 |---|---|---|
 | ①이름에 공정 접두가 붙는다 — **공정이 다르면 다른 노드**(같은 「상부 금형」도 노칭의 것과 스태킹의 것이 따로) ②좌표가 미해소면 그 노드를 **만들지 않는다** | 구성 부품 · 공정 파라미터·관리 특성 — 공정을 빼면 어느 실물·어느 값인지 모른다 | 공정 자체(골격) · 불량 유형 · 불량 영향 — 넣으면 **같은 유형이 공정마다 갈린다**(공정 사이 비교가 끊긴다) |
+
+`canonical_scope.nest_categories`(기본 빈 목록) — 여기 든 카테고리는 **소속**(추출의 `belongs_to`)이 골격 밖 노드로
+풀리면 그 노드의 canonical을 이름 부모로 쓴다: `노칭::이송 유닛::모터`. 소속이 골격 노드거나 없으면 `bind_categories`와
+같다(좌표 접두). 이름 규칙 카테고리 = `bind_categories` ∪ `nest_categories`(좌표 미해소면 둘 다 노드를 만들지 않는다).
+설비 문서는 `Component`를 적는다. **`Property`는 적지 않는다** — 공정 스코프 키(`노칭::가압력`)에서 CP·PFMEA·RFQ가 같은
+노드로 만난다 · 어느 부품의 특성인지는 소속 엣지와 `show report --trace`가 말한다. 비우면 지금과 같다.
 
 - **노드가 생기기 전에 정한다** — 바꾸면 이름(키)이 바뀌어 재빌드(`init --fresh` → `bootstrap` → 재인입)다.
 - 접두는 **찾기 위한 키**이고 뜻은 관계(`part_of` 등)가 담는다 — 접두를 뜻으로 읽지 않는다. 문서의 원래 표기는 별칭으로 남는다(`show node`). `fact_templates` — 질의 답변의 문장 틀. **템플릿 없는 관계는 답변에 문장으로 나오지 못한다.**

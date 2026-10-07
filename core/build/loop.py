@@ -160,18 +160,42 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     LOWRES["n"] += 1                     # 요약 한 줄의 재료 (B72 ②)
     tg = ref_g if ref_g is not None else graph
     cg = b.graph_of(child) or graph        # 자식은 집 그래프에 산다(B90 ②)
-    rel = gate.pair_relation(cfg, (tg.get(ref) or {}).get("category"),
-                         (cg.get(child) or {}).get("category"))
+    # 매핑 키는 엣지 방향이다 — 두 방향을 본다(B102 ④ — 소속 엣지와 같은 함수 `belongs.edge_of`)
+    from core.build.belongs import edge_of
+    rel, fwd = edge_of(cfg, (tg.get(ref) or {}).get("category"), (cg.get(child) or {}).get("category"))
     if not rel:
         store.append_defect(
             f"{doc_id}: 규칙 B 폴백 — 카테고리쌍 매핑 없음 "
             f"({(tg.get(ref) or {}).get('category')} → "
             f"{(cg.get(child) or {}).get('category')})")
         return False
-    gate.commit_edge(graph, ref, rel, child, cfg, gate.PATH_SCHEMA,
+    src, dst, sg, dg = (ref, child, tg, cg) if fwd else (child, ref, cg, tg)
+    gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_SCHEMA,
                      [prov], doc_id, evidence_chunk=evidence_chunk,
-                     src_graph=tg, dst_graph=cg)
-    return True
+                     src_graph=sg, dst_graph=dg)
+    return rel                                   # 참 값 — 붙인 관계 이름(B102 ⑦ 대장 attached)
+
+
+def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidence_chunk=None):
+    """**폴백 한 함수**(B102 ⑤) — 행·청크가 만든 개체 중 **어느 엣지(소속·관계·스키마)에도 끝점으로 서지
+    못한 것**을 그 좌표에 규칙 B로 붙인다. 표(`table._row_fallback`)와 산문이 이 함수를 부른다.
+
+    `items`는 `[(node_id, 엣지를 쓸 그래프)]` · 돌려주는 것은 붙인 `[(node_id, 관계)]`. 대장 행이 있으면
+    붙은 자리(`attached` — 폴백 · 좌표)를 단다(B102 ⑦)."""
+    from core.build import ledger as _lg
+    done = []
+    rows = {r.get("node_id"): r for r in (b.ledger.rows if b.ledger else [])
+            if r.get("role") == "entity" and r.get("node_id")}
+    coord = ((ref_g.get(ref) if ref_g is not None else None) or {}).get("canonical")
+    for nid, graph in items:
+        if nid is None or nid in touched or nid in [d for d, _r in done]:
+            continue
+        rel = _fallback_attach(b, cfg, graph, nid, ref, ref_g, prov, doc_id,
+                               evidence_chunk=evidence_chunk)
+        if rel:
+            done.append((nid, rel))
+            _lg.attach(rows.get(nid), rel, coord, "폴백", "←")
+    return done
 
 
 def _field_surface(name, rec):
@@ -376,7 +400,8 @@ def _ledger_entity(st, surface, layer, last):
                  confidence=last.get("confidence", 0.0),
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"),
                  narrow=last.get("narrow"), emb_top=last.get("emb_top"),
-                 nearest=last.get("nearest"), same_doc=last.get("same_doc"))
+                 nearest=last.get("nearest"), same_doc=last.get("same_doc"),
+                 target=b.canonical_of(last.get("node_id")))
 
 
 def _scoped_category(category, layer, builder):
@@ -391,8 +416,8 @@ def _scoped_category(category, layer, builder):
         cfg = load_config(layer)
     except Exception:
         return False
-    sc = cfg.get("canonical_scope") or {}
-    return category in (sc.get("bind_categories") or [])
+    from core.build.naming import scope_categories
+    return category in scope_categories(cfg)
 
 
 def h_attribute(value, spec, ctx):

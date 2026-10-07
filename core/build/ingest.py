@@ -263,7 +263,7 @@ def ingest(env, *, allow_duplicate=False, routing=None):
 
     written = set()
 
-    def put_chunk(cid, text, section, src_loc, meta):
+    def put_chunk(cid, text, section, src_loc, meta, coord=None):
         """**계산된 id가 이미 존재하면 조용히 덮어쓰지 않고 결함으로 로그한다**(§7.2).
 
         **판정은 「이번 인입에서 이미 쓴 cid인가」다.** 구판은
@@ -296,6 +296,8 @@ def ingest(env, *, allow_duplicate=False, routing=None):
             "meta": meta or {},
             "linked": False,                            # 링킹 0건도 보존 (카드 C6)
         }
+        if coord:                                       # 조각 좌표(B102 ⑦ — 추적·맥락 줄) · 있을 때만
+            chunks["chunks"][cid]["process_ref"] = coord
         res.chunk_ids.append(cid)
 
     if env.get("payload_kind") == "table":
@@ -315,12 +317,12 @@ def ingest(env, *, allow_duplicate=False, routing=None):
             for f in content_fields:
                 if rec.get(f):
                     put_chunk(f"{rid}-{f}", rec[f], rec.get("source_locator", ""),
-                              rec.get("source_locator"), {"field": f})
+                              rec.get("source_locator"), {"field": f}, rec.get("process_ref"))
     else:
         for c in env.get("chunks", []):
             text, section = c.get("text", ""), c.get("section", "")
             put_chunk(chunk_id(doc_id, text, section, occ.next(section, text)),
-                      text, section, c.get("source_locator"), c.get("meta"))
+                      text, section, c.get("source_locator"), c.get("meta"), c.get("process_ref"))
 
     store.write(store.CHUNKS, chunks)
     register_doc(env, dh, routing)

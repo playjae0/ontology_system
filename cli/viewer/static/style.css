@@ -49,3 +49,11 @@ table { border-collapse:collapse; width:100%; font-size:12px; }
 th, td { border-bottom:1px solid var(--line); padding:3px 4px; text-align:right; }
 th:first-child, td:first-child { text-align:left; }
 a { color:var(--link); }
+/* B103 — 탐색 빵부스러기 · 근거 원문 · 질의 배지 */
+#crumbs { position:absolute; top:6px; left:8px; right:8px; z-index:2; background:var(--panel2);
+          border-radius:4px; padding:4px 8px; }
+#crumbs a.crumb { margin-right:2px; }
+#crumbs button { margin-left:6px; }
+pre.src { white-space:pre-wrap; word-break:break-word; margin:4px 0 0; font-size:12px; }
+.card.path div { font-size:12px; }
+#qllm { margin:6px 0; }

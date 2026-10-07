@@ -189,10 +189,10 @@ finally:
 print("\n■ B82 ② — 벤더링 · 색 축 · 렌더러 인터페이스")
 _ST = ROOT / "cli" / "viewer" / "static"
 _V = _ST / "vendor"
-#: 화면 코드는 **세 파일**이다(B84 — `app.js` 351행을 갈랐다). 문면을 재는 어서션은
-#: 셋을 합쳐 본다 — 이름이 옮겨 간 것은 사라진 것이 아니다.
+#: 화면 코드는 **다섯 파일**이다(B84 — `app.js` 351행을 갈랐다 · B103 — 배치 `layout.js` · 탐색·상세 근거
+#: `explore.js`). 문면을 재는 어서션은 합쳐 본다 — 이름이 옮겨 간 것은 사라진 것이 아니다.
 _SRC = {n: (_ST / n).read_text(encoding="utf-8")
-        for n in ("app.js", "render.js", "query.js")}
+        for n in ("app.js", "render.js", "query.js", "layout.js", "explore.js")}
 _app = "\n".join(_SRC.values())
 _idx = (_ST / "index.html").read_text(encoding="utf-8")
 _css = (_ST / "style.css").read_text(encoding="utf-8")
@@ -273,11 +273,11 @@ show("② 검색·필터·축·강조는 다시 칠하기로 간다 (배치를 �
 show("② sigma는 한 번만 만든다 (구판은 그릴 때마다 kill + new였다)",
      _SRC["render.js"].count("new (window.Sigma") == 1
      and "if (!S.sigma)" in _rebuild and ".kill()" not in _app)
-show("③ 배치는 **닫힌 둘**이고 둘 다 난수를 쓰지 않는다 (같은 입력이면 같은 그림)",
-     'LAYOUTS = ["계층", "힘"]' in _SRC["render.js"]
+show("③ 배치는 **닫힌 셋**이고 셋 다 난수를 쓰지 않는다 (같은 입력이면 같은 그림 · B103 ① 골격+위성이 기본)",
+     'LAYOUTS = ["골격+위성", "계층", "힘"]' in _SRC["layout.js"]
      and "Math.random" not in _app
-     and _SRC["render.js"].count("function layoutHier") == 1
-     and _SRC["render.js"].count("function layoutForce") == 1)
+     and all(_SRC["layout.js"].count(f"function {f}") == 1 for f in ("layoutSkel", "layoutHier", "layoutForce"))
+     and all(f"/static/{f}" in _idx for f in ("layout.js", "explore.js")))
 show("③ 배치 선택과 테마는 브라우저가 기억한다 (키 둘 · 실패해도 화면은 산다)",
      'remember("onto.layout"' in _SRC["app.js"] and 'recall("onto.layout"' in _SRC["app.js"]
      and "try {" in _SRC["app.js"].split("const remember", 1)[1][:200])
@@ -293,7 +293,7 @@ show("⑤ 화면이 서버의 오류 키를 본다 — 답 자리에 문면 그�
      and "function errorCard" in _SRC["query.js"] and "card err" in _SRC["query.js"])
 show("⑤ 질의 중에는 버튼이 잠긴다 — 같은 버튼을 또 눌러도 요청은 한 건",
      "S.asking" in _SRC["query.js"] and "묻는 중" in _SRC["query.js"])
-show("§7 — 화면 코드 세 파일이 각각 상한(800행) 밑이다 (`app.js` 351 → 셋)",
+show("§7 — 화면 코드 다섯 파일이 각각 상한(800행) 밑이다 (`app.js` 351 → 셋 → 다섯)",
      all(len(v.splitlines()) <= 800 for v in _SRC.values()),
      " · ".join(f"{k} {len(v.splitlines())}" for k, v in _SRC.items()))
 
@@ -315,6 +315,84 @@ show("orphan 표의 행 수가 열린 orphan 큐 항목 수와 같다",
      f"{len(_fn['orphans'])} vs {len(_open_orphan)}")
 show("화면에 「연결」의 정의가 한 줄 있다 (붙음·auto·orphan)",
      all(w in _fn["정의"] for w in ("붙음", "auto", "orphan")))
+
+print("\n■ B103 ①③④ — 닻 · 연결 없는 노드 · 이웃 · 노드 상세의 근거 (브라우저 없이 재는 성질)")
+from cli.viewer import anchor as VA                                  # noqa: E402
+from core.state import knobs as VK                                   # noqa: E402
+# 창작 그래프 — 골격 R·A·B(A·B는 R의 part_of) · A에 위성 a1 → 위성의 위성 a2 · B에 b1 · 두 골격에 같은 거리 t ·
+# 7홉 사슬 c1..c7(A에서) · 섬 i1–i2 · 엣지 없는 e1
+_N = [{"id": i, "name": nm, "status": st} for i, nm, st in (
+    ("R", "조립", "seed"), ("A", "가 공정", "seed"), ("B", "나 공정", "seed"), ("a1", "a1", "auto"),
+    ("a2", "a2", "auto"), ("b1", "b1", "auto"), ("t", "t", "auto"), ("i1", "i1", "auto"), ("i2", "i2", "auto"),
+    ("e1", "e1", "auto"))] + [{"id": f"c{k}", "name": f"c{k}", "status": "auto"} for k in range(1, 8)]
+_E = [{"src": "A", "rel": "part_of", "dst": "R"}, {"src": "B", "rel": "part_of", "dst": "R"},
+      {"src": "a1", "rel": "part_of", "dst": "A"}, {"src": "a2", "rel": "has_property", "dst": "a1"},
+      {"src": "b1", "rel": "part_of", "dst": "B"}, {"src": "t", "rel": "x", "dst": "B"},
+      {"src": "t", "rel": "x", "dst": "A"}, {"src": "i1", "rel": "causes", "dst": "i2"},
+      {"src": "c1", "rel": "y", "dst": "A"}] + [{"src": f"c{k + 1}", "rel": "y", "dst": f"c{k}"} for k in range(1, 7)]
+_an = VA.anchors(_N, _E)
+show("① 닻 — 위성은 가장 가까운 골격 · 위성의 위성은 그 위성이 host · 길은 엣지 관계 이름 그대로",
+     _an["a1"]["anchor"] == "A" and _an["a2"]["anchor"] == "A" and _an["a2"]["host"] == "a1"
+     and _an["a2"]["hops"] == 2 and [s_["rel"] for s_ in _an["a2"]["path"]] == ["has_property", "part_of"]
+     and _an["b1"]["anchor"] == "B" and all(_an[k]["hops"] == 0 for k in ("R", "A", "B")),
+     f"a2 → {_an['a2']['anchor']}({_an['a2']['hops']}홉 · host {_an['a2']['host']})")
+show("① 닻 — 거리가 같으면 골격 이름 순(결정적) · 홉 상한(6)을 넘으면 닻 없음 · 두 번 계산이 같다",
+     _an["t"]["anchor"] == "A" and _an["c6"]["hops"] == 6 and "c7" not in _an
+     and VA.anchors(_N, _E) == _an, f"t → {_an['t']['anchor']} · c6 {_an['c6']['hops']}홉 · c7 없음 · 상한 {VA.ANCHOR_HOPS}")
+_dt = VA.detached(_N, _E, _an)
+show("① 연결 없는 노드 — 엣지 없음과 골격에 안 닿는 덩어리를 가른다 · 닻 + 연결 없음 = 전체",
+     _dt == {"edgeless": ["e1"], "island": ["c7", "i1", "i2"]} and len(_an) + 4 == len(_N)
+     and VA.roots(_N, _E) == ["R"], json.dumps(_dt))
+_h0 = _state_hash()
+_g = VD.graph()
+_ids = {n["id"] for n in _g["nodes"]}
+show("① /api/graph — 닻과 연결 없는 노드가 노드 전체를 나눈다 · 뿌리는 골격 · 문턱은 손잡이 값",
+     set(_g["anchor"]) | set(_g["detached"]["edgeless"]) | set(_g["detached"]["island"]) == _ids
+     and not set(_g["anchor"]) & set(_g["detached"]["edgeless"] + _g["detached"]["island"])
+     and all(next(n for n in _g["nodes"] if n["id"] == r)["status"] == "seed" for r in _g["roots"])
+     and _g["explore_threshold"] == VK.get("viewer_explore_threshold") == VK.default("viewer_explore_threshold"),
+     f"노드 {len(_ids)} · 닻 {len(_g['anchor'])} · 엣지 없음 {len(_g['detached']['edgeless'])} · "
+     f"섬 {len(_g['detached']['island'])} · 뿌리 {len(_g['roots'])} · 문턱 {_g['explore_threshold']}")
+# 엣지 없는 노드 수 = B102 끝 요약 — 좌표 없는 청크의 불량(품질층 산문 · 창작 · 추출 힌트)
+_HD = ROOT / "tests" / "fixtures" / "extract_hints" / "B103VW.json"
+_HD.write_text(json.dumps({"B103VW-C1": {"entities": [{"surface": "B103 뷰어 고립 불량", "category": "Failure"}],
+                                         "relations": [], "attach": []}}, ensure_ascii=False), encoding="utf-8")
+_e0 = len(VD.graph()["detached"]["edgeless"])
+run_document({"doc_id": "B103VW", "doc_type": "ppt_quality", "payload_kind": "prose", "source_path": "B103VW.pptx",
+              "revision": "R1", "parsed_at": "2026-10-07T00:00:00", "parser_version": "m", "adapter_version": "m",
+              "context": {}, "chunks": [{"source_locator": "B103VW-C1", "process_group": None, "process_ref": None,
+                                         "electrode_type": "both", "text": "B103 뷰어 고립 불량 이야기",
+                                         "section": "본문", "meta": {}}]})
+_HD.unlink(missing_ok=True)
+_e1 = len(VD.graph()["detached"]["edgeless"])
+_land = ((ledger.read("B103VW") or {}).get("result") or {}).get("엣지 없는 노드")
+show("① 연결 없는 노드의 「엣지 없음」 수가 B102 끝 요약 「엣지 없는 노드」와 같다(그 문서가 더한 만큼)",
+     _e1 - _e0 == _land == 1, f"{_e0} → {_e1} · 끝 요약 {_land}")
+_h0 = _state_hash()
+_nid = next(n["id"] for n in _g["nodes"] if (_g["anchor"].get(n["id"]) or {}).get("hops", 0) >= 1)
+_nb = VD.neighbors(_nid)
+_want = sorted({e["dst"] if e["src"] == _nid else e["src"] for e in _g["edges"] if _nid in (e["src"], e["dst"])})
+show("③ /api/neighbors — 그리는 엣지의 1홉 이웃 그대로 · 없는 id는 None(404)",
+     _nb["neighbors"] == _want and VD.neighbors("없는-id") is None, f"{len(_want)}개")
+_nd = VD.node(_nid)
+_ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+_desc = {d["chunk_id"] for d in _ch.get("describes") or [] if d.get("node_id") == _nid}
+_raw = next(g_.get(_nid) for g_ in (open_graph(l_) for l_ in discover()) if g_.get(_nid))
+_rows = [r for d_ in {str(p_).split("#")[0] for p_ in _raw.get("provenance") or []}
+         for r in (ledger.read(d_) or {}).get("rows") or [] if r.get("node_id") == _nid and r.get("role") == "entity"]
+show("④ /api/node — 근거 원문 = describes 청크 전부(글자 그대로) · 닻까지의 길 · 붙은 자리 = 그 노드의 값 행",
+     _nd["evidence_total"] == len(_desc)
+     and all(e["text"] == (_ch["chunks"].get(e["chunk_id"]) or {}).get("text") for e in _nd["evidence"])
+     and _nd["anchor_path"]["hops"] == _g["anchor"][_nid]["hops"] and len(_nd["landed"]) == len(_rows)
+     and all(set(x) >= {"surface", "target", "attached", "from"} for x in _nd["landed"])
+     and VD.node("없는-id") is None,
+     f"{_nd['name']} · 근거 {_nd['evidence_total']} · 길 {[s_['rel'] for s_ in _nd['anchor_path']['steps']]} · "
+     f"붙은 자리 {len(_nd['landed'])}")
+show("⑥ 상세·이웃·그래프 조회는 쓰기 0 (③진실·②등록 해시 불변)", _state_hash() == _h0)
+show("⑥ 서버에 노드·이웃 라우트가 있고 쓰기 라우트는 여전히 없다",
+     "/api/node/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")
+     and "/api/neighbors/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")
+     and not hasattr(VS.Handler, "do_POST"))
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — 뷰어·trace 충족" if allok else "FAIL")

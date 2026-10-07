@@ -1,4 +1,4 @@
-/* 칸 5.2~5.4 — 뷰어 **상태·배선**: 탭 · 조절 UI · 상세 · 문서 · 연결 현황 (B82 · B84).
+/* 칸 5.2~5.4 — 뷰어 **상태·배선**: 탭 · 조절 UI · 상세 · 문서 · 연결 현황 (B82 · B84 · 탐색·상세 근거는 `explore.js` — B103).
  *
  * **화면은 엔진을 갖지 않는다**(PF11): 질의·판정·집계는 서버가 시스템 함수로 하고
  * 여기서는 받은 것을 그린다. 계산이라고 부를 만한 것은 좌표 배치 둘이고(`render.js`)
@@ -15,7 +15,9 @@ const S = {                      // 상태 — 화면이 아는 전부
   axis: "category",              // 색 축 기본값(B82 ②)
   rels: new Set(), docs: new Set(), filters: {},
   obsolete: false, alwaysCross: true, search: "",
-  layout: "계층",                 // 배치 선택 — `localStorage`가 기억한다(B84 ③)
+  layout: "골격+위성",            // 배치 선택 — `localStorage`가 기억한다(B84 ③ · 기본 B103 ①)
+  showDetached: false,           // 연결 없는 노드(닻 없음) — 기본 숨김(B103 ①)
+  explore: null,                 // 탐색 모드 — {shown: Set, trail: [{id, added}]} (B103 ③)
   theme: "light",                // 밝은 테마가 기본이다(B84 ① — 사내 실측)
   pinned: {},                    // 사람이 끌어다 둔 점 — 그 세션 동안 그 자리
   highlight: { nodes: {} }, pathKeys: new Set(),
@@ -57,9 +59,13 @@ function stats() {
   const n = S.graph.nodes.filter(passes).length;
   const e = S.graph.edges.filter(
     (x) => edgeShown(x) && x._src && x._dst && passes(x._src) && passes(x._dst)).length;
+  const shown = shownNodes().filter(passes).length;
   $("#head-stat").textContent =
-    `노드 ${n}/${S.graph.nodes.length} · 엣지 ${e}/${S.graph.edges.length}`
-    + ` · 배치 ${S.layout}`;
+    `노드 ${shown}/${S.graph.nodes.length} · 엣지 ${e}/${S.graph.edges.length}`
+    + ` · 배치 ${S.layout}` + (S.explore ? ` · 탐색 ${S.explore.trail.length}단` : "")
+    + (S.layout === "힘" && LSTAT.forceCut
+      ? ` · 힘 — 시간 예산 ${FORCE_BUDGET_MS}ms에서 반복 ${LSTAT.forceIter}/${FORCE_ITER}에서 멈춤(같은 입력이라도 그림이 다를 수 있다)` : "");
+  void n;
 }
 
 function legend() {
@@ -87,6 +93,9 @@ async function detail(n) {
   const box = $("#detail"); box.innerHTML = "";
   if (!n) { box.append(el("p", "muted", "점을 고르면 상세가 뜬다.")); return; }
   box.append(el("h3", "", n.name));
+  const ex = el("a", "", "여기서 펼치기");          // 탐색 모드 — 이 노드 + 1홉 이웃 (B103 ③)
+  ex.href = "#"; ex.onclick = (ev) => { ev.preventDefault(); exploreFrom(n.id); };
+  box.append(ex, document.createTextNode(" · "));
   // 「이 노드로 질문」 — 질의 탭으로 옮기고 canonical을 칸에 넣는다(전송은 사람이).
   const askLink = el("a", "", "이 노드로 질문");
   askLink.href = "#";
@@ -116,6 +125,7 @@ async function detail(n) {
     a.href = "#"; a.onclick = (ev) => { ev.preventDefault(); detail(o); };
     b.append(a); box.append(b);
   });
+  evidence(n, box);                                 // 근거 · 닻까지의 길 · 붙은 자리 (B103 ④)
 }
 
 /* ── 문서 패널 — 대장 집계 · 청크 · 원본 링크 ─────────────────────────── */
@@ -181,7 +191,7 @@ function controls() {
     l.append(r, document.createTextNode(" " + a)); ax.append(l);
   });
   // 배치 선택 — 계층 | 힘. **기억한다**(B84 ③).
-  const lb = $("#layout-pick"); lb.innerHTML = "";
+  const lb = $("#layout-pick"); lb.innerHTML = "";   // 골격+위성 | 계층 | 힘
   LAYOUTS.forEach((k) => {
     const l = el("label"); const r = el("input");
     r.type = "radio"; r.name = "layoutkind"; r.value = k; r.checked = k === S.layout;
@@ -216,6 +226,7 @@ function controls() {
     });
   });
   $("#show-obsolete").onchange = (e) => { S.obsolete = e.target.checked; refresh(); };
+  detachedToggle();
   $("#always-cross").onchange = (e) => { S.alwaysCross = e.target.checked; refresh(); };
   // 검색 — **강조/흐림만**이고 150ms 디바운스다(B84 ②).
   let timer = null;
@@ -223,6 +234,13 @@ function controls() {
     const v = e.target.value;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => { S.search = v; refresh(); }, 150);
+  };
+  // Enter — 첫 결과에서 펼치기(탐색 모드 · B103 ③)
+  $("#search").onkeydown = (e) => {
+    if (e.key !== "Enter") return;
+    const q = e.target.value.trim().toLowerCase();
+    const hit = S.graph.nodes.find((n) => searchHit(n, q));
+    if (hit) { exploreFrom(hit.id); detail(hit); }
   };
   $("#theme-toggle").onclick = () => applyTheme(S.theme === "dark" ? "light" : "dark");
   $("#qform").onsubmit = (e) => { e.preventDefault(); ask($("#q").value.trim()); };
@@ -246,7 +264,7 @@ function controls() {
 /* ── 기동 ─────────────────────────────────────────────────────────────── */
 (async function boot() {
   S.theme = recall("onto.theme", "light");
-  S.layout = LAYOUTS.includes(recall("onto.layout", "계층")) ? recall("onto.layout", "계층") : "계층";
+  S.layout = LAYOUTS.includes(recall("onto.layout", LAYOUTS[0])) ? recall("onto.layout", LAYOUTS[0]) : LAYOUTS[0];
   document.documentElement.dataset.theme = S.theme;
   const h = await get("/api/health");
   $("#badge-mode").textContent = h.mode;
@@ -256,6 +274,8 @@ function controls() {
   S.graph.edges.forEach((e) => { e._src = byId[e.src]; e._dst = byId[e.dst]; });
   controls();
   applyTheme(S.theme);
+  // 노드가 문턱(사내 손잡이 `viewer_explore_threshold`)을 넘으면 골격 뿌리부터 탐색 모드로 연다
+  if (S.graph.nodes.length > (S.graph.explore_threshold || Infinity)) await exploreRoots();
   rebuild();
   stats();
   legend();

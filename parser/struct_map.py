@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -94,7 +95,12 @@ def load_kept(doc_id, src_hash=None, *, frame=None):
     if not p.exists():
         return None
     m = json.loads(p.read_text(encoding="utf-8"))
-    if src_hash is not None and m.get("source_hash") not in (None, src_hash):
+    # **원본 해시가 없는 보존물은 다른 파일로 본다**(B102 ⑧) — 구판은 `None`을 통과시켜
+    # 대조 없이 재사용했다: 해시를 기록하기 전의 보존물이 원본이 바뀐 뒤에도 살아난다.
+    if src_hash is not None and m.get("source_hash") != src_hash:
+        if m.get("source_hash") is None:
+            logging.getLogger("onto.parser.struct_map").info(
+                "보존물 재사용 안 함 [%s] — 원본 해시가 기록돼 있지 않다(다른 파일로 본다)", doc_id)
         return None
     if frame is not None:
         return (m.get("maps") or {}).get(frame)

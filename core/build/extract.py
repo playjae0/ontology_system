@@ -30,6 +30,7 @@ from core import paths
 from core.llm import gateway
 from core.state import log, store
 from core.state.ids import doc_hash, fold_latin, norm
+from core.build import extract_ctx
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 EXTRACT_DIR = paths.extract()   # 자리는 core/paths.py가 안다 (B78 1a)
@@ -81,13 +82,26 @@ def has_checkpoint(doc_id, lens=None):
     return checkpoint_path(doc_id, lens).exists()
 
 
-def reuse_check(env, lens=None):
+def _now_key(env, cfg=None):
+    """재사용 조건의 지금 값 — **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판**(B102 ⑥).
+    `cfg`가 없으면(층을 모르는 호출) 층 config 판은 대조하지 않는다."""
+    now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
+           "prompt_version": prompt_version()}
+    if cfg is not None:
+        now["config_version"] = cfg.get("config_version") or cfg.get("skeleton_version")
+    return now
+
+
+_LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
+          "config_version": "층 config"}
+
+
+def reuse_check(env, lens=None, cfg=None):
     """이 체크포인트를 **재사용해도 되는가** — 돌려주는 둘째 값이 「왜 못 쓰는가」다.
 
-    조건은 **`doc_hash`와 `adapter_version`이 둘 다 같을 때**다(B78 1b). 구판의
-    조건은 「파일이 있다」 하나였고, 그래서 어댑터 새 판(`register generate --revise`)
-    뒤에도 옛 추출이 그대로 재사용됐다 — **바뀐 분할로 만든 청크에 옛 판의 후보가
-    붙는다.** 규약 7이 재인입에서 막던 것과 같은 축인데 어댑터 축이 비어 있었다.
+    조건은 **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판이 모두 같을 때**다(B78 1b · B102 ⑥). 구판은
+    앞의 둘만 대조하고 나머지는 기록만 했다 — 지시문이 바뀌어도 옛 추출을 썼다. 이유는 「지시문 e-1.3 →
+    e-1.4」처럼 바뀐 축과 두 값을 말한다(예고 줄이 그대로 싣는다).
     """
     p = checkpoint_path(env["doc_id"], lens)
     if not p.exists():
@@ -96,11 +110,9 @@ def reuse_check(env, lens=None):
         cp = json.loads(p.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         return False, f"체크포인트를 읽지 못했다 — {type(e).__name__}"
-    now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version")}
-    for k, v in now.items():
+    for k, v in _now_key(env, cfg).items():
         if (cp.get(k) or None) != (v or None):
-            return False, (f"{k} 불일치 — 체크포인트 {str(cp.get(k))[:12] or '없음'} "
-                           f"≠ 지금 문서 {str(v)[:12] or '없음'}")
+            return False, (f"{_LABEL[k]} {str(cp.get(k))[:12] or '없음'} → {str(v)[:12] or '없음'}")
     return True, ""
 
 
@@ -127,12 +139,12 @@ def partial_path(doc_id, lens=None):
                           else f"{doc_id}.partial.jsonl")
 
 
-def _partial_key(env, lens):
-    return {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
-            "lens": lens}
+def _partial_key(env, lens, cfg=None):
+    """부분 파일 머리 — 체크포인트와 **같은 조건**(B102 ⑥) + 렌즈."""
+    return {**_now_key(env, cfg), "lens": lens}
 
 
-def _partial_load(env, lens):
+def _partial_load(env, lens, cfg=None):
     """끝난 청크 `{chunk_id: 후보}` — 조건이 다르면 **버리고** 로그 한 줄(빈 dict).
 
     줄 단위 덧붙임이라 쓰다 끊긴 마지막 줄은 읽지 못한다 — 그 청크는 다시 부른다
@@ -146,8 +158,8 @@ def _partial_load(env, lens):
         head = json.loads(lines[0]) if lines else None
     except ValueError:
         head = None
-    if head != _partial_key(env, lens):
-        _LOG.info("extract: %s 부분 파일 폐기 — 재사용 조건(문서 해시·어댑터 판·렌즈) 불일치",
+    if head != _partial_key(env, lens, cfg):
+        _LOG.info("extract: %s 부분 파일 폐기 — 재사용 조건(문서·어댑터·지시문·층 config·렌즈) 불일치",
                   env["doc_id"])
         p.unlink()
         return {}
@@ -161,10 +173,10 @@ def _partial_load(env, lens):
     return done
 
 
-def _partial_append(env, lens, entry):
+def _partial_append(env, lens, entry, cfg=None):
     """끝난 청크 하나를 줄로 덧붙인다 — flush + fsync(끊겨도 앞 줄은 남는다)."""
     p = paths.ensure(partial_path(env["doc_id"], lens))
-    head = "" if p.exists() else json.dumps(_partial_key(env, lens), ensure_ascii=False) + "\n"
+    head = "" if p.exists() else json.dumps(_partial_key(env, lens, cfg), ensure_ascii=False) + "\n"
     with open(p, "a", encoding="utf-8") as f:
         f.write(head + json.dumps(entry, ensure_ascii=False) + "\n")
         f.flush()
@@ -195,34 +207,31 @@ EXTRACT_SCHEMA = {
         # **개체별 부모**(B91 ③) — 골격 canonical을 부모 후보(`parent_candidates`) **안에서만**
         # 고른다 · 못 고르면 null(주 좌표가 부모다). 계약상 선택 필드다 — 옛 체크포인트·mock은
         # 키가 없고 「없음」으로 읽는다(strict 스키마라 모델에게는 null 허용 필수 키다).
+        # **개체별 소속**(B102 ③) — 그 개체가 「무엇의 일부 · 무엇의 특성인가」. 이름은 부착 후보 ·
+        # 청크 본문 · 맥락 줄(경로·시트·공정)에서만 고른다 · `from`이 그 출처 · 어디에도 없으면 null
+        # (지어내지 않는다 — 구축이 출처를 다시 대조해 밖이면 버린다). 카테고리는 층 닫힌 목록(못 고르면
+        # null). 옛 `attach`(관계를 못 고를 때의 부착 이름)는 이것으로 흡수됐다 — 옛 체크포인트의 `attach`는
+        # 같은 뜻으로 읽는다(`core/build/belongs.belongs_of`).
         "entities": {"type": "array", "items": {
             "type": "object",
             "properties": {"surface": {"type": "string"},
                            "category": {"type": "string"},
-                           "parent": {"type": ["string", "null"]}},
-            "required": ["surface", "category", "parent"], "additionalProperties": False}},
+                           "parent": {"type": ["string", "null"]},
+                           "belongs_to": {
+                               "type": ["object", "null"],
+                               "properties": {"name": {"type": "string"},
+                                              "category": {"type": ["string", "null"]},
+                                              "from": {"type": "string",
+                                                       "enum": ["본문", "경로", "시트", "공정"]}},
+                               "required": ["name", "category", "from"],
+                               "additionalProperties": False}},
+            "required": ["surface", "category", "parent", "belongs_to"],
+            "additionalProperties": False}},
         "relations": {"type": "array", "items": {
             "type": "object",
             "properties": {"src": {"type": "string"}, "rel": {"type": "string"},
                            "dst": {"type": "string"}},
             "required": ["src", "rel", "dst"], "additionalProperties": False}},
-        # **`attach_to`는 이름과 카테고리를 함께 낸다**(문서 4 §4.10 규약 8 — B11).
-        # 판정기 계약(§4.3)이 `category`를 필수로 받는데 비정형에서 뽑은 이름에는
-        # 카테고리가 없어, 없이 두면 **후보 검색이 전 카테고리를 훑고 선언 순서가
-        # 답을 정한다**(2A P-B 실측: `정밀 노칭 프레스`가 Process·Unit 양쪽에 0.95).
-        # 카테고리는 층 어휘의 닫힌 목록에서만 고르고, **고르지 못하면 null**로 내어
-        # 규칙 B 폴백으로 보낸다 — 추측해서 채우지 않는다.
-        "attach": {"type": "array", "items": {
-            "type": "object",
-            "properties": {
-                "surface": {"type": "string"},
-                "attach_to": {
-                    "type": ["object", "null"],
-                    "properties": {"name": {"type": "string"},
-                                   "category": {"type": ["string", "null"]}},
-                    "required": ["name", "category"], "additionalProperties": False},
-            },
-            "required": ["surface", "attach_to"], "additionalProperties": False}},
         # **관련 링크**(B91 ③) — 이 청크가 「무엇에 관한 글인가」(표면형 + 카테고리 · 0~N ·
         # 층 카테고리 안). 조회 전용이다 — 구축이 사전·이 문서의 해소 결과로 찾고 노드를
         # 만들지 않는다(못 찾으면 버리고 기록). 선택 필드 — 없으면 「없음」.
@@ -231,7 +240,7 @@ EXTRACT_SCHEMA = {
             "properties": {"surface": {"type": "string"}, "category": {"type": "string"}},
             "required": ["surface", "category"], "additionalProperties": False}},
     },
-    "required": ["entities", "relations", "attach", "about"], "additionalProperties": False,
+    "required": ["entities", "relations", "about"], "additionalProperties": False,
 }
 
 
@@ -304,11 +313,15 @@ def parent_candidates(chunk, layer=None):
 
 
 def _optional(out):
-    """새 선택 필드(`parent`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
-    ents = [{k: v for k, v in e.items() if not (k == "parent" and v is None)}
+    """새 선택 필드(`parent`·`belongs_to`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
+    ents = [{k: v for k, v in e.items() if not (k in ("parent", "belongs_to") and v is None)}
             for e in out.get("entities", [])]
     extra = {"about": out["about"]} if out.get("about") else {}
     return ents, extra
+
+
+#: 지금 추출하는 문서의 맥락 칸 재료(B102 ① — `extract()`가 문서마다 채운다 · 서명은 그대로)
+_DOC = {}
 
 
 def _candidates_for(chunk_id, chunk, cfg, vocab):
@@ -332,13 +345,14 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "parent_candidates": parent_candidates(chunk),
-              "chunk": _with_path(chunk)}, ensure_ascii=False)}],
+              # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
+              "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
     ents, extra = _optional(out)
     return {"chunk_id": chunk_id,
             "entities": ents,
             "relations": out.get("relations", []),
-            "attach": out.get("attach", []), **extra}
+            "attach": [], **extra}                  # 소속은 개체의 `belongs_to`가 말한다(B102 ③)
 
 
 def categories_with_also(cfg):
@@ -357,19 +371,6 @@ def categories_with_also(cfg):
         if c in cats:
             cats[c] = f"{cats[c]} {line}"
     return cats
-
-
-def _with_path(chunk):
-    """청크 텍스트 앞에 `section_path` 한 줄 — **문서 안 어디인가**를 준다(B53).
-
-    prose 청크는 슬라이드 한 장 분량이라 그 자체로는 「무엇에 대한 글인가」가
-    자주 빠진다(「20±2㎛로 관리한다」가 어느 공정인지 본문에 없다). 경로는
-    **앞뒤 슬라이드 본문을 넣지 않고** 그 자리를 메우는 값싼 맥락이다 —
-    본문을 넣으면 비용이 3배가 되고 잡음이 함께 들어온다(문서 6 §6.4-5).
-    """
-    text = chunk.get("text", "")
-    path = (chunk.get("meta") or {}).get("section_path")
-    return f"[{path}]\n{text}" if path else text
 
 
 def _mock_candidates(chunk_id, text, cfg, vocab):
@@ -501,7 +502,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     같을 때 끝난 청크를 부르지 않는다 · 다 끝나면 체크포인트로 올리고 부분 파일을 지운다.
     """
     doc_id = env["doc_id"]
-    ok, why = reuse_check(env, lens)             # doc_hash + adapter_version (B78 1b)
+    ok, why = reuse_check(env, lens, cfg)        # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥)
     if ok:
         _say(notice, {"단계": "추출재사용", "렌즈": lens})
         return json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8")), False
@@ -511,12 +512,15 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         checkpoint_path(doc_id, lens).unlink()
 
     hints = _load_hints(doc_id)
-    done = _partial_load(env, lens)
+    _DOC.clear()
+    _DOC.update(extract_ctx.doc_info(env))         # 맥락 줄의 문서·문서 좌표 칸 (B102 ①)
+    done = _partial_load(env, lens, cfg)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
     m = sum(1 for r in rows if r[0] == "call")
     if resumed:
         _say(notice, {"단계": "추출이어서", "렌즈": lens, "끝난": resumed, "남은": m})
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows) + ref_skipped,
+                  "다시": (why if why and why != "체크포인트 없음" else None),
                   "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m})
     u0 = gateway.usage_total()
     candidates, i = [], 0
@@ -532,7 +536,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         t0 = gateway.usage_total()
         entry = _call_chunk(doc_id, cid, c, cfg, vocab, hints)
         candidates.append(entry)
-        _partial_append(env, lens, entry)
+        _partial_append(env, lens, entry, cfg)
         # 관계 쌍은 화면이 아니라 명령 로그로 간다(수만 화면에)
         _LOG.info("추출 %s %s · 관계 %s", doc_id, c.get("source_locator"),
                   [(r.get("src"), r.get("rel"), r.get("dst")) for r in entry.get("relations") or []])

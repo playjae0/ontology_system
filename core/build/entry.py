@@ -144,7 +144,8 @@ def _plan_hit(b, m, layer):
     key, pol, _scoped, _sc = entity_key(surface, category, eb.cfg,
                                         electrode_type=et, parent_canonical=parent,
                                         anchor_polarity=apol)
-    scope_cats = (eb.cfg.get("canonical_scope") or {}).get("bind_categories", [])
+    from core.build.naming import scope_categories
+    scope_cats = scope_categories(eb.cfg)
     return bool(matcher.dict_hits(key, category, lay, eb.g, b.dict,
                                   polarity=pol, parent=parent,
                                   scope_cats=scope_cats))
@@ -264,7 +265,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     from core.dictionary import Dictionary as _D
     from core.build import result as _res
     from router import discover as _disc
-    _RUN.update(coord_learn=result_mod.coord_learn(env), q0=_q0, d0={k: list(v) for k, v in _D.open().entries().items()},
+    _RUN.update(env=env, coord_learn=result_mod.coord_learn(env), q0=_q0, d0={k: list(v) for k, v in _D.open().entries().items()},
                 layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
                 rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []))
     loop.LOWRES["n"] = 0
@@ -381,8 +382,8 @@ def _result(builder, doc_id):
     from core.llm import gateway
     from router import discover
     mine = {g.layer: g for g in builder.graphs()}
-    after = result_mod.layer_counts({lay: mine.get(lay) or open_graph(lay)
-                                     for lay in set(discover()) | set(mine)})
+    world = {lay: mine.get(lay) or open_graph(lay) for lay in set(discover()) | set(mine)}
+    after = result_mod.layer_counts(world)
     seen = {_qkey(x) for x in _RUN["q0"]}
     q = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == doc_id]
     rej = (store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or [])[_RUN.get("rej0", 0):]
@@ -393,7 +394,10 @@ def _result(builder, doc_id):
                              [x for x in rej if x.get("doc_id") == doc_id],
                              gateway.usage_by(doc_id),
                              extra={"LLM 별칭": len(_build_added()),
-                                    "좌표 학습": _RUN.get("coord_learn") or {}})
+                                    "좌표 학습": _RUN.get("coord_learn") or {},
+                                    # 붙은 곳 끝 요약(B102 ⑦) — 대장 · 봉투 · 그래프에서(새 판정 0)
+                                    **result_mod.landing(builder.ledger.rows if builder.ledger else [],
+                                                         _RUN.get("env") or {}, world, doc_id)})
     ledger_mod.attach_result(doc_id, res)
     return res
 

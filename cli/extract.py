@@ -54,7 +54,8 @@ def run(paths, *, force=False, layer=None):
             continue
         if force:
             EX.invalidate(doc_id)
-        _ok, _why = EX.reuse_check(env)          # doc_hash + adapter_version (B78 1b)
+        _ok, _why = EX.reuse_check(               # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥)
+            env, cfg=load_config(layer or (schema or {}).get("layer") or coord_layer()))
         if _ok:
             print(f"[재사용] {doc_id}: 체크포인트가 이미 있다 "
                   f"({EX.checkpoint_path(doc_id)}) — --force로 재생성")

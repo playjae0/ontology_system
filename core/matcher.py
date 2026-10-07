@@ -306,7 +306,8 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
     그것을 1.0으로 인정할 근거가 후보에 남아야 한다.
     """
     want = _pol(polarity)
-    scope_cats = ((cfg or {}).get("canonical_scope") or {}).get("bind_categories", [])
+    from core.build.naming import scope_categories
+    scope_cats = scope_categories(cfg)
 
     # ① 사전 조회 — 결정적·무LLM. **예고와 판정이 같은 함수를 쓴다**(B74 ①).
     out = dict_hits(surface, category, layer, graph, dictionary,

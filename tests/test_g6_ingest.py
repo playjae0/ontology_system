@@ -326,8 +326,9 @@ show("① -v면 값 줄이 대장 행 전부다",
 # ④ 보폭 — 작게 주면 진행 줄이 늘고, 줄의 값 n이 보폭 규칙을 지킨다.
 _prog = lambda s: [l for l in s.splitlines() if "[판정] 값" in l]
 _scr5 = _ing81("--progress-every", "5")
-_ns5 = [int(l.split("값")[1].split("/")[0].strip().replace(",", "")) for l in _prog(_scr5)]
-show("④ 보폭이 작으면 진행 줄이 늘고, 값 번호가 보폭 규칙을 지킨다",
+# 기대 변경 [B102 ⑦]: 값 칸은 처리한 값(사전 히트 포함)이고 보폭은 판정 **호출** 수에 걸린다
+_ns5 = [int(l.split("호출")[1].split("·")[0].strip().replace(",", "")) for l in _prog(_scr5)]
+show("④ 보폭이 작으면 진행 줄이 늘고, 호출 번호가 보폭 규칙을 지킨다",
      len(_prog(_scr5)) > len(_prog(_scr81))
      and all(n == 1 or n % 5 == 0 for n in _ns5), f"보폭5 {_ns5} · 보폭10 {len(_prog(_scr81))}줄")
 show("④ 진행 줄이 누적과 대장 집계를 함께 낸다",
