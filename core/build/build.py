@@ -519,7 +519,8 @@ class Builder:
         """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 `missing_field`(키 `process_ref`) ·
         목록 밖 좌표 이름이면 그 표기의 `orphan_anchor` 항목에 행으로(새 kind 0 · B56)."""
         from core.state.bootstrap import COORD_CATEGORY
-        item = {"surface": surface, "category": category, "provenance": prov,
+        # 재료의 모양은 표의 연쇄 드롭과 같다(재시도 `_land_anchor_entry`가 같은 손으로 되살린다)
+        item = {"surface": surface, "category": category, "target_layer": self.layer,
                 **({"belongs_to": belongs} if belongs else {})}
         loc = (prov or "").split("#")[-1] or None
         if coord_surface:
@@ -527,13 +528,15 @@ class Builder:
             store.enqueue_rows(kind, f"좌표 '{coord_surface}'가 골격 목록 밖이라 '{surface}'를 만들지 않았다",
                                self.doc_id, norm(coord_surface),
                                {"surface": coord_surface, "category": COORD_CATEGORY,
-                                "layer": self.layer, "dropped_entities": [item]}, locator=loc)
+                                "provenance": prov, "layer": self.layer,
+                                "dropped_entities": [item]}, locator=loc)
         else:
             kind = "missing_field"
             store.enqueue_rows(kind, f"좌표(process_ref)가 비어 '{surface}'({category})를 만들지 않았다 — "
                                      f"문서 좌표(--coord) 또는 시트·제목의 공정 이름",
                                self.doc_id, "process_ref",
-                               {"field": "process_ref", "dropped_entities": [item]}, locator=loc)
+                               {"field": "process_ref", "provenance": prov,
+                                "dropped_entities": [item]}, locator=loc)
         self.last = {"canonical": surface, "verdict": "pending", "path": "none", "confidence": 0.0,
                      "layer": self.layer, "queue_kind": kind, "candidates_n": 0, "node_id": None,
                      "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
