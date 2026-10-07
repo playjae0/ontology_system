@@ -221,8 +221,9 @@ try:
              and foc["detail"] == foc["node"],
              f"카메라({foc['cx']:.4f},{foc['cy']:.4f}) · 점({foc['dx']:.4f},{foc['dy']:.4f})"
              f" · ratio {foc['ratio']}")
-        show("④ 상호작용 중 서버 요청 0 (그래프는 한 번 받는다)",
-             not [u for u in reqs if "/api/" in u], str([u for u in reqs][:2]))
+        # 기대 변경(B103 ④): 상세 패널이 근거를 `/api/node/<id>`로 받는다 — 그래프는 다시 받지 않는다
+        show("④ 상호작용 중 그래프 재요청 0 (상세 근거 `/api/node/`만 · 그래프는 한 번 받는다)",
+             not [u for u in reqs if "/api/" in u and "/api/node/" not in u], str([u for u in reqs][:2]))
         pg.screenshot(path=str(SHOTS / "04_상호작용.png"))
 
         # ⑤ 질의 오류 — 서버 문면 그대로
