@@ -30,6 +30,7 @@ from core import paths
 from core.llm import gateway
 from core.state import log, store
 from core.state.ids import doc_hash, fold_latin, norm
+from core.build import extract_ctx
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 EXTRACT_DIR = paths.extract()   # 자리는 core/paths.py가 안다 (B78 1a)
@@ -311,6 +312,10 @@ def _optional(out):
     return ents, extra
 
 
+#: 지금 추출하는 문서의 맥락 칸 재료(B102 ① — `extract()`가 문서마다 채운다 · 서명은 그대로)
+_DOC = {}
+
+
 def _candidates_for(chunk_id, chunk, cfg, vocab):
     """추출 후보 1청크 — mock/실호출 분기의 **단일 지점**이다.
 
@@ -332,7 +337,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "parent_candidates": parent_candidates(chunk),
-              "chunk": _with_path(chunk)}, ensure_ascii=False)}],
+              # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
+              "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
     ents, extra = _optional(out)
     return {"chunk_id": chunk_id,
@@ -357,19 +363,6 @@ def categories_with_also(cfg):
         if c in cats:
             cats[c] = f"{cats[c]} {line}"
     return cats
-
-
-def _with_path(chunk):
-    """청크 텍스트 앞에 `section_path` 한 줄 — **문서 안 어디인가**를 준다(B53).
-
-    prose 청크는 슬라이드 한 장 분량이라 그 자체로는 「무엇에 대한 글인가」가
-    자주 빠진다(「20±2㎛로 관리한다」가 어느 공정인지 본문에 없다). 경로는
-    **앞뒤 슬라이드 본문을 넣지 않고** 그 자리를 메우는 값싼 맥락이다 —
-    본문을 넣으면 비용이 3배가 되고 잡음이 함께 들어온다(문서 6 §6.4-5).
-    """
-    text = chunk.get("text", "")
-    path = (chunk.get("meta") or {}).get("section_path")
-    return f"[{path}]\n{text}" if path else text
 
 
 def _mock_candidates(chunk_id, text, cfg, vocab):
@@ -511,6 +504,8 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         checkpoint_path(doc_id, lens).unlink()
 
     hints = _load_hints(doc_id)
+    _DOC.clear()
+    _DOC.update(extract_ctx.doc_info(env))         # 맥락 줄의 문서·문서 좌표 칸 (B102 ①)
     done = _partial_load(env, lens)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
     m = sum(1 for r in rows if r[0] == "call")

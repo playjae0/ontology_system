@@ -4,7 +4,7 @@
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images]
                                   [--step] [--step-every N] [--narrow embed|overlap]
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
-                                  [--no-sheet-llm] [-v] [--no-color]
+                                  [--no-sheet-llm] [--coord <골격 이름|none>] [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--narrow embed|overlap] [--progress-every N] [--sheets auto]
                                   (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
@@ -288,7 +288,7 @@ def _ingest_file_select(doc, sel, row, step):
 
 
 # ── 시트 역할 관문 — 한 벌은 `cli/sheet_gate.py`다 (B83 ③ · B86 ⑤) ──────────────
-def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
+def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True, coord=None):
     """인입의 관문 자리 — **갈래는 등록부의 `payload_kind`로 안다**(D-164 ①).
 
     형태 판정이 기권해도 **실제로 시트 전부를 도는 갈래**를 가린다. 묻는 말·기록·
@@ -298,9 +298,11 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True):
     roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask,
                           lenses=registry.lenses_of(sel.get("doc_type")) or None)
     if stop is None:
-        return roles, None
+        # **문서 좌표**도 이 관문 자리에서 정한다(B102 ② — 한 번 묻는다 · 한 줄)
+        from cli import doc_coord as DC
+        return roles, None, DC.decide(doc, sel["doc_id"], spec=coord, ask=ask and not dry_run)[0]
     return None, {"status": FAIL if stop["kind"] == SG.REFUSED else SKIP,
-                  "reason": stop["reason"]}
+                  "reason": stop["reason"]}, None
 
 
 def _step_stops(res, sel, row, ask=True):
@@ -345,7 +347,7 @@ def _step_stops(res, sel, row, ask=True):
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
-                no_images=False, preflight=None):
+                no_images=False, preflight=None, coord=None):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
     try:
@@ -365,7 +367,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         return _r
     # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
     # 기록을 읽어 넘기는 쪽이 여기다. 정해지지 않으면 **읽지 않는다**(상태 거부).
-    _roles, _stop = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask)
+    _roles, _stop, _dc = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask, coord=coord)
     if _stop is not None:
         row.update(**_stop)
         return row
@@ -381,7 +383,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         stage["이름"] = "파싱"
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
                              coord_cap=coord_cap, sheet_roles=_roles,
-                             no_images=no_images)
+                             no_images=no_images, doc_coord=_dc)
         if not res.ok:
             rows = SCR.fail_rows(res.failures)
             # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
@@ -703,6 +705,8 @@ def main(argv):
         del args[i:i + 2]
     # **시트 역할 손잡이**(B83 ③) — 관문을 건너뛰고 같은 기록을 쓴다(`decided_by: flag`).
     args, sheets_spec = SG.flag(args)
+    from cli import doc_coord as DC              # 문서 좌표 손잡이 (B102 ②)
+    args, coord_spec = DC.flag(args)
     # **그림 없이 넣기는 명시적으로만**(B88 ①) — 게이트웨이가 그림을 못 받을 때의 출구다.
     # 그 사실은 인입 기록과 `show doc`에 남는다(조용한 건너뜀 0).
     no_img = "--no-images" in args
@@ -735,6 +739,9 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
+        if coord_spec is not None:
+            raise SystemExit("[투입] --coord는 ingest-file 하나에만 준다 — 문서마다 공정이 다르다 "  # [사용법]
+                             "(폴더는 기록 · 파일명 제안으로 정한다)")
         if sheets_spec and sheets_spec != SG.AUTO:
             # 역할은 **문서 하나의 결정**이다 — 폴더 전체에 같은 번호를 적용하면
             # 시트 자리가 다른 문서에서 가격 시트가 prose가 된다. 자동 모드(`auto`)는
@@ -747,7 +754,7 @@ def main(argv):
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,
-                            sheets=sheets_spec, no_images=no_img)]
+                            sheets=sheets_spec, no_images=no_img, coord=coord_spec)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
 

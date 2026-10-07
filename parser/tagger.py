@@ -243,32 +243,105 @@ def group_of(node, nodes):
     return None
 
 
+def subtree(nodes, canonical):
+    """골격 노드 하나와 그 아래 노드들의 canonical 집합 — 스냅샷의 `parent` 링크로(문자열 파싱 0)."""
+    kids = {}
+    for n in nodes:
+        kids.setdefault(n.get("parent"), []).append(n["canonical"])
+    out, todo = set(), [canonical]
+    while todo:
+        c = todo.pop()
+        if c in out:
+            continue
+        out.add(c)
+        todo += kids.get(c, [])
+    return out
+
+
+def scoped_index(nodes, doc_coord=None):
+    """대조 색인 — `(idx, 공유 표기 집합, 허용 노드)` (B102 ②).
+
+    문서 좌표가 있으면 **그 노드와 그 아래만** 받는다. 표기 하나를 노드 여럿이 나눠 가지면(공유 별칭)
+    허용 범위 안에서 하나일 때만 그 노드 · 아니면 **쓰지 않는다**(첫 노드를 고르지 않는다).
+    """
+    allowed = [n for n in nodes if not doc_coord or n["canonical"] in subtree(nodes, doc_coord)]
+    owners = {}
+    for n in allowed:
+        for k in [n["canonical"]] + list(n.get("aliases") or []):
+            owners.setdefault(k, {})[n["canonical"]] = n
+    idx = {k: next(iter(v.values())) for k, v in owners.items() if len(v) == 1}
+    return idx, {k for k, v in owners.items() if len(v) > 1}, allowed
+
+
+def suggest_doc_coord(filename, nodes, seps="_-. ()[]"):
+    """**파일명 제안**(B102 ② · LLM 0) — 구분자로 나눈 조각이 골격 이름·별칭에 정확(또는 라틴 대소문자
+    무시)으로 맞고 **가리키는 노드가 하나일 때만** 그 canonical · 아니면 None. 돌려주는 것은 `(canonical, 조각)`."""
+    import re
+    stem = Path(str(filename)).stem
+    parts = [p for p in re.split("[" + re.escape(seps) + "]+", stem) if p] + [stem]
+    idx, shared, _a = scoped_index(nodes)
+    hits = {}
+    for part in parts:
+        if part in shared:
+            continue
+        n = idx.get(part) or fold_hit(part, idx)
+        if n is not None:
+            hits.setdefault(n["canonical"], part)
+    return (next(iter(hits.items())) if len(hits) == 1 else (None, None))
+
+
 def coord_from_section(pieces, *, layer=None, nodes=None,
-                       ref_field="process_ref", sep=" > "):
-    """산문 조각의 `section`(헤딩 경로)에서 좌표를 세운다 (B43 ④).
+                       ref_field="process_ref", sep=" > ", doc_coord=None):
+    """산문 조각의 `section`(헤딩 경로)에서 좌표를 세운다 (B43 ④ · B102 ②).
 
-    **대조는 `surfaces()` 하나를 재사용한다** — 좌표 태깅과 같은 연산이다.
-    새로 짜면 「무엇이 일치인가」가 두 곳에 살고 하나가 낡는다.
+    **대조는 `scoped_index()` 하나를 재사용한다** — 좌표 태깅과 같은 연산이다.
 
-    규칙 셋:
-      ①**정확 일치만** — 추론도 문자열 파싱도 하지 않는다. 일치가 없으면 비운다.
-      ②경로에 일치가 여럿이면 **가장 깊은 것**(뒤쪽) — 좁은 좌표가 더 많은 것을
-        말한다.
+    규칙:
+      ①**정확 일치만**(라틴 대소문자 2차 포함) — 추론도 문자열 파싱도 하지 않는다. 일치가 없으면 비운다.
+      ②경로에 일치가 여럿이면 **가장 깊은 것**(뒤쪽).
       ③**이미 값이 있으면 덮지 않는다** — 어댑터가 낸 좌표가 우선이다.
-
-    일치 없음은 실패가 아니다: 인입이 `orphan_anchor`로 받아 사람에게 올린다.
+      ④**문서 좌표가 있으면 그 서브트리 안에서만** 받는다 — 밖에 맞은 것은 쓰지 않고 `meta.coord_ignored`
+        (다른 공정 인터페이스 서술이 그 공정으로 옮겨 가지 않게) · 공유 별칭은 `meta.coord_shared_skip`.
+      ⑤그래도 비면 **문서 좌표를 물려받는다**(`meta.coord_from_doc`) — 표·산문 같은 함수(`inherit_doc_coord`).
     """
     nodes = nodes if nodes is not None else closed_list(layer)
-    idx = surfaces(nodes)
+    idx, shared, _a = scoped_index(nodes, doc_coord)
+    full, _s, _f = scoped_index(nodes)
     out = []
     for p in pieces:
         r = dict(p)
         if not r.get(ref_field) and r.get("section"):
-            hit = [seg.strip() for seg in str(r["section"]).split(sep)
-                   if seg.strip() in idx or fold_hit(seg.strip(), idx) is not None]
+            hit, ignored, skipped = [], [], []
+            for seg in (x.strip() for x in str(r["section"]).split(sep)):
+                if not seg:
+                    continue
+                if seg in shared:
+                    skipped.append(seg)
+                elif seg in idx or fold_hit(seg, idx) is not None:
+                    hit.append(seg)
+                elif doc_coord and (seg in full or fold_hit(seg, full) is not None):
+                    ignored.append(seg)
             if hit:
                 r[ref_field] = hit[-1]          # 가장 깊은 일치
                 r.setdefault("meta", {})["coord_from_section"] = True
+            if ignored:
+                r.setdefault("meta", {})["coord_ignored"] = ignored
+            if skipped:
+                r.setdefault("meta", {})["coord_shared_skip"] = skipped
+        out.append(r)
+    return inherit_doc_coord(out, doc_coord, ref_field)
+
+
+def inherit_doc_coord(pieces, doc_coord, ref_field="process_ref"):
+    """조각 자기 좌표가 비었으면 **문서 좌표를 물려받는다**(B102 ② · 표·산문 같은 함수)."""
+    if not doc_coord:
+        return pieces
+    out = []
+    for p in pieces:
+        r = dict(p)
+        if not r.get(ref_field):
+            r[ref_field] = doc_coord
+            r.setdefault("meta", {})["coord_from_doc"] = True
         out.append(r)
     return out
 
@@ -314,7 +387,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     **표기 단위**로 흐른다 — 부르지 않으면 진행도 없다.
     """
     nodes = nodes if nodes is not None else closed_list(layer)
-    idx = surfaces(nodes)
+    # 공유 별칭은 대조에 쓰지 않는다(B102 ② — 첫 노드를 고르지 않는다 · 목록 밖으로 간다)
+    idx, _shared, _a = scoped_index(nodes)
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
     refs = [(p.get(ref_field) or None) for p in pieces]

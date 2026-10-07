@@ -383,7 +383,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
           sheet_roles=None, infer_rules=None, rule_notice=None, no_images=False,
-          image_notice=None):
+          image_notice=None, doc_coord=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -452,7 +452,9 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
                            kept_maps, made_maps, map_picks, src_hash, made_rules,
                            image_notice)
-    pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes)
+    # **문서 좌표**(B102 ② — 사람·기록·파일명 · 인입이 정해 데이터로 준다): 시트명·제목 대조는 그 서브트리
+    # 안에서만 받고, 그래도 빈 조각(표·산문 공통)은 문서 좌표를 물려받는다
+    pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes, doc_coord=doc_coord)
     # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
     pieces = _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
                           coord_notice, progress)
@@ -460,6 +462,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     env = tagger.envelope(adapter, doc_id, path, pieces, revision=revision,
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,
                           context=context)
+    if doc_coord:
+        env["doc_coord"] = doc_coord               # 맥락 줄의 공정 칸 · 화면의 좌표 줄 (B102 ②)
     ok, defects = validator.check(env)                               # ⑥ validator
     if not ok:
         return res.fail("parse_failure", "계약 self-check 실패 (문서 단위 — C14)",
