@@ -24,7 +24,7 @@ VERDICTS = ("match", "new", "uncertain", "anchor", "lowres", "orphan",
 
 _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind",
-         "narrow", "emb_top", "nearest", "same_doc", "target", "from", "attached")
+         "narrow", "emb_top", "nearest", "same_doc", "target", "from", "attached", "hold")
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -62,7 +62,7 @@ class Ledger:
             canonical=None, layer=None, path="none", verdict="pending",
             node_id=None, candidates_n=0, confidence=0.0, llm=None,
             queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
-            target=None, belongs_from=None):
+            target=None, belongs_from=None, hold=None):
         """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다)."""
         if path not in PATHS:
             raise ValueError(f"대장 path가 닫힌 값 밖이다: {path!r}")
@@ -81,7 +81,9 @@ class Ledger:
         for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest),
                      ("same_doc", same_doc or None),
                      # 붙은 노드 · 소속 출처(B102 ⑦) — 붙은 자리(`attached`)는 엣지를 단 뒤 호출부가 단다
-                     ("target", target), ("from", belongs_from)):
+                     ("target", target), ("from", belongs_from),
+                     # 보류 사유가 목록 밖이 아닐 때(B104 ① — 「표기 모호」) — 그때만 단다
+                     ("hold", hold)):
             if v is not None:
                 self.rows[-1][k] = v
         if ON_ROW is not None:

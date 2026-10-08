@@ -50,7 +50,8 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                      path="skeleton" if ref else "none",
                      verdict="anchor" if ref else ("orphan" if src.get("process_ref") else "pending"),
                      node_id=ref,
-                     queue_kind=None if (ref or not src.get("process_ref")) else "orphan_anchor")
+                     queue_kind=None if (ref or not src.get("process_ref")) else "orphan_anchor",
+                     hold=None if ref else b.anchor_hold)
         plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
                                 (ref, ref_g, parent, anchor_pol), _loc)
         coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol, plans)

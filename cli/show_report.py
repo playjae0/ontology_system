@@ -208,6 +208,8 @@ def _coord_src(meta):
     m = meta or {}
     if m.get("coord_from_doc"):
         return "문서 좌표"
+    if m.get("coord_tag_source") == "scope":            # 원 표기가 공유 별칭이었다 (B104 ①)
+        return ("제목·시트 · " if m.get("coord_from_section") else "") + f"공유 별칭 범위 안({m.get('coord_tag_from')})"
     if m.get("coord_from_section"):
         return "제목·시트"
     if m.get("coord_tag_source") == "learned":

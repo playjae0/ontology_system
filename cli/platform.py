@@ -219,6 +219,13 @@ def orphan_next_lines(item, layer=None):
     doc = (paths.from_home(reg["source_path"]) if reg.get("source_path")
            else f"<{item.get('doc_id') or '문서'}>")
     dt = reg.get("doc_type") or "<dt>"
+    if pl.get("candidates"):
+        # **표기 모호**(B104 ①) — 별칭을 더해도 풀리지 않는다: 범위를 주면 그 안에서 하나로 풀린다
+        return ("\n".join([
+            f"     ▶ 다음 줄 — 표기 모호: '{surface}'를 골격 노드 여럿({' · '.join(pl['candidates'])})이 "
+            "나눠 갖는다 · 문서 좌표를 주면 그 범위 안에서 하나로 풀린다:",
+            f"        python run.py ingest-file {doc} --doc-type {dt} --coord <그 공정>",
+            "        (또는 문서의 표기를 골격 canonical로 — 별칭을 더해도 풀리지 않는다)"]))
     return ("\n".join([
         f"     ▶ 다음 줄 — 골격 표기를 잇는다"
         + (f" (LLM 후보: {cand} — 사람이 판단한다)" if cand else "") + ":",
