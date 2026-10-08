@@ -97,7 +97,8 @@
   **공정은 한 벌이다**(문서 3 §3.6 공정 운영 원칙 — 사용자 확정 2026-10-06): 골격은 골격 층에만 · 다른 층은 `Process`·`Unit`을 선언하지 않고 **좌표로 활용** · 공정 이름 열은 열 이름과 무관하게 좌표(상위 `process_group` · 하위 `process_ref`) · 골격 닫힌 목록은 **좌표 층의 것**을 읽는다(등록은 두 몫 `parser.tagger.registration_list` · 골격 값 열을 entity로 매핑하면 관문 G4H FAIL — B100) · 「○○ unit」= 공정 노드는 데이터(겸 · `ALIASES`)로만 — 코드에 표기 처리를 넣지 않는다.
   **동의어는 두 겹**(B101 — 사전 → LLM 의미 연결 → 사전 갱신): 같은 문서 실행이 만든 auto 노드에는 LLM 매칭(다른 문서 auto는 가드) · 좌표 태깅은 골격 → 학습 기록 → LLM(학습은 바로 쓰고 사람이 `ops learn-promote`·`learn-reject`) · null은 새 공정 후보 화면(`show learned`)으로만 · 별칭 출처 넷(사람·골격·LLM 매칭·좌표 학습) · 불확실 일괄 검토 `ops review`(비대화형은 계획만).
   **산문도 어디에 붙었는지를 남긴다**(B102 — 사용자 원칙 2026-10-07): 추출 입력은 맥락 줄 `[문서 · 공정 · 시트 · 경로]`(`core/build/extract_ctx` 한 함수) · 개체마다 소속 `belongs_to`(본문·경로·시트·공정에서만 · 없으면 null) · 문서 좌표(`--coord` · 기록 `registry/doc_coords.json` · 파일명 — 시트명·제목 대조는 그 서브트리 안) · 이름 규칙 = `bind_categories` ∪ `nest_categories`(소속이 골격 밖 노드면 그 이름 아래 · `Property`는 공정 스코프) · 좌표 없는 스코프 개체는 공통 자리(`Builder.resolve_entity`)에서 0 · 폴백 한 함수(카테고리쌍 매핑 두 방향) · 대장 `target`·`attached`·`from` · 추출 재사용 = 문서 해시·어댑터·지시문·config 판 · 같은 doc_id가 다른 경로에서 오면 거부(`--revise`).
-  **뷰어 배치는 골격+위성이 기본**(B103 — 닻은 서버 `cli/viewer/anchor.py` 한 자리 · 연결 없는 노드 숨김 · 탐색 모드 문턱 `viewer_explore_threshold`).
+  **뷰어 배치는 골격+위성이 기본**(B103 — 닻은 `core/query/anchor.py` 한 자리(B104에서 core로) · 연결 없는 노드 숨김 · 탐색 모드 문턱 `viewer_explore_threshold`).
+  **질의는 그래프 RAG**(B104 — 사용자 결정 2026-10-07): 링킹 = 사전 → 임베딩 후보 + LLM 선별(후보 안에서만 · 보충|폴백 · 미스율은 사전 단) · 근거 확장은 코드 · 문서 검색 채널(임베딩 문턱 + BM25) · 짧은 답 + 쓴 근거(`used_facts`·`used_chunks`) · CLI·뷰어가 링크 결과와 답을 나란히(ⓐ~ⓕ) · 질의 벡터 캐시 `work/vectors/`(재생성).
   **노드는 집 층 · 엣지는 문서 층**(B100): I축 연산·질의 확장·`show`·내보내기는 층 전부를 연다 · 규칙(미러·극성)은 집 층 config에서 읽고 어긋나면 경고(`catalog.mirror_warnings`) · 노드 0으로 끝난 판정은 한 실행 안에서 기억(경로 `memo`) · 재시도 지문 = 그래프 수 + 골격 판 + 사전 판 · 큐는 한 번 읽고 한 번 쓴다.
   **LLM을 오래 부르는 단계는 예고 → 진행 → 30초 누적 → 끝 사용량을 화면에 낸다**(B96·B97 — `_screen.usage_line` · `_screen.ticker` 한 자리) · 산문 추출은 청크 단위 부분 파일로 이어 쓴다(B97 — 체크포인트만 완료).
   **표기 대조의 2차는 영문 대소문자 무시**(B96 — `ids.fold_latin` · 정확 미스일 때만 · 대상이 하나일 때만 · `norm`·문서 id는 그대로 — `norm`을 바꾸지 않는다).
@@ -138,7 +139,7 @@
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
   승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`·`doc_coords.json`(B102) · 층 공통 config·층 config·seed)
   ③진실(`data/` 9종 — 좌표 학습 `coord_learned.json` 포함(B101) · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
-  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`logs/<명령>_<날짜>.log`) ⑤파생(`export/` · `golden/`은 예외 —
+  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`logs/<명령>_<날짜>.log`) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
   자리에 둔다. 폴더를 만드는 코드는 `core/paths.py::ensure` 하나다.
 - **어서션은 성질만**(화면 문면·수를 세지 않는다). 회차당 순증은 완료판정에 필요한 만큼만 —
