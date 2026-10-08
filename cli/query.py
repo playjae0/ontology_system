@@ -41,14 +41,18 @@ def answer(question):
     """
     graphs, configs = _world()
     dictionary = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
-    hits = Q.link(question, dictionary, graphs)
+    stage = {}
+    hits = Q.link(question, dictionary, graphs, configs, stage=stage)
 
     res = {"question": question, "linked": [], "facts": [], "chunks": [],
            "path": Q.PATH_GENERAL, "note": None, "truncated": 0, "transit": []}
     # **trace는 계측이다**(B82 ③) — 이미 계산된 값을 적을 뿐, 판단도 순회도 더하지
     # 않는다. 기존 키는 그대로이고 화면·골든셋이 같은 데이터를 본다(trace 계약 ㉠).
     tr = res["trace"] = {"intent": None, "linking": [], "hops": [], "collection": [],
-                         "facts": [], "answer": None, "miss": []}
+                         "facts": [], "answer": None, "miss": [], "link_stage": stage,
+                         "doc_search": []}
+    # **문서 검색 채널**(B104 ③) — 링킹이 빗나가도 돈다 · 그래프 채널과 따로 답변에 간다
+    _doc_channel(res, tr, question)
     # 전이 — 옛 id에 닿은 링킹은 현재 노드로 옮긴다. 직접 지명한 폐기 노드는
     # 결과에서 빼되 상태를 밝힌다(R3-⑶ — 조용히 사라지지 않는다).
     kept, notes = [], []
@@ -75,7 +79,9 @@ def answer(question):
     tr["linking"] = [
         {"surface": h["surface"], "node_id": h["node_id"], "layer": h["layer"],
          "canonical": graphs[h["layer"]].get(h["node_id"])["canonical"],
-         "method": h.get("method") or "dict"}
+         "method": h.get("method") or "dict",
+         # 임베딩 후보 + LLM 선별(B104 ②) — 점수 · 선별 이유 · 어디의 무엇
+         **({k: h[k] for k in ("score", "why", "where") if k in h})}
         for h in kept]
     if notes and not hits:
         res["note"] = " · ".join(notes)
@@ -88,10 +94,15 @@ def answer(question):
                    if (i := Q.intent_of(question, configs[lay]))), None)
     tr["intent"] = intent
 
+    # **링킹 미스율(계기판 5)은 사전 단 기준이다**(B104 ② — 정의 불변) — 임베딩·LLM이 찾았어도 사전이 못 찾았으면 미스
+    if not any(h.get("method", "dict") == "dict" for h in kept):
+        Q.log_miss(question)                            # 하이브리드 판정 데이터(5.4)
+        tr["miss"] = [question]
+    if not hits and res.get("doc_search") and intent != "general":
+        # 링킹은 비었지만 **문서 검색이 찾았다** — 「근거 없음」이 아니다(두 채널이 다 비었을 때만 · B104 ③)
+        res["path"] = Q.PATH_CHUNK
+        return res
     if not hits or intent == "general":
-        if not hits:
-            Q.log_miss(question)                        # 하이브리드 판정 데이터(5.4)
-        tr["miss"] = [question] if not hits else []
         res["note"] = ("사내 문서에서 근거를 찾지 못했다. " + GENERAL if not hits
                        else "그래프 밖 지식이다. " + GENERAL)
         res["path"] = Q.PATH_GENERAL
@@ -111,7 +122,35 @@ def answer(question):
         direct_by_layer.setdefault(h["layer"], set()).add(h["node_id"])
     collected = _answer_expand(res, tr, intent, direct_by_layer, graphs, configs)
     _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent)
+    _hop_names(tr, graphs)
+    _mark_in_graph(res, tr)
     return res
+
+
+def _doc_channel(res, tr, question):
+    """**[문서 검색]**(B104 ③) — 질문 벡터 ↔ 청크 벡터 · BM25 상위 k를 합친 묶음. 재료는 `hybrid.doc_search` 한 자리."""
+    from core.query import hybrid as H
+    found = H.doc_search(question, knobs.get("query_doc_top_k"), knobs.get("query_doc_min_sim"))
+    res["doc_search"] = found
+    tr["doc_search"] = [{k: c[k] for k in ("chunk_id", "doc_id", "source_locator", "by", "embed",
+                                          "bm25", "rank", "ref")} for c in found]
+
+
+def _mark_in_graph(res, tr):
+    """그래프 채널(노드 근거)에 이미 든 청크는 문서 검색에서 **표시만** 한다 — 답변 입력에는 한 번만 간다."""
+    have = {c["chunk_id"] for c in res.get("chunks") or []}
+    for row in (res.get("doc_search") or []) + (tr.get("doc_search") or []):
+        row["in_graph"] = row["chunk_id"] in have
+
+
+def _hop_names(tr, graphs):
+    """홉 엣지에 양끝 이름을 단다 — 화면·CLI가 id를 다시 찾지 않게(새 계산 0 · 이름표뿐)."""
+    for h in tr.get("hops") or []:
+        for e in h.get("edges") or []:
+            for end in ("src", "dst"):
+                if f"{end}_name" not in e:
+                    n = Q._find(graphs, e[end])
+                    e[f"{end}_name"] = n["canonical"] if n else e[end]
 
 
 def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
@@ -254,9 +293,22 @@ ANSWER_SCHEMA = {
         # 넘어가 수집 상한에서 잘리거나(오답), 코드 필터를 임의 구현해 config 밖
         # 층 어휘가 코드에 들어간다.
         "used_facts": {"type": "array", "items": {"type": "integer"}},
+        # 쓴 청크 — [노드 근거]·[문서 검색]·[관련 원문]에 붙인 번호 하나의 목록(B104 ④)
+        "used_chunks": {"type": "array", "items": {"type": "integer"}},
     },
-    "required": ["answer", "used_facts"], "additionalProperties": False,
+    "required": ["answer", "used_facts", "used_chunks"], "additionalProperties": False,
 }
+#: 답의 길이(줄) — 지시문 `4.4_answer`가 요구하는 기본(B104 ④ · 화면이 넘김을 표시한다 · 자르지 않는다)
+ANSWER_LINES = 5
+
+
+def _numbered(res):
+    """답변 입력의 청크 — **번호 하나의 줄**: 노드 근거 → 문서 검색(그래프 채널에 이미 든 것은 뺀다) → 관련 원문.
+    돌려주는 것은 `[(번호, 채널, 청크)]` — `used_chunks`를 되돌려 받아 표시하는 열쇠다."""
+    rows = [("노드 근거", c) for c in res.get("chunks") or []]
+    rows += [("문서 검색", c) for c in res.get("doc_search") or [] if not c.get("in_graph")]
+    rows += [("관련 원문", c) for c in res.get("related") or []]
+    return [(i, ch, c) for i, (ch, c) in enumerate(rows)]
 
 
 def generate(res):
@@ -265,9 +317,11 @@ def generate(res):
     **mock 갈래는 문장을 만들지 않는다**(§7.1 대체 표: "두 채널을 정형 텍스트로
     나열, 문장 생성 없음"). 그것이 `render()`이고 스모크 12문항의 출력 형태다.
 
-    실호출 갈래는 두 채널을 **구분해** 넘긴다(문서 5 §5.4-5) — 한 덩어리로 붙이면
+    실호출 갈래는 채널을 **구분해** 넘긴다(문서 5 §5.4-5) — 한 덩어리로 붙이면
     답변 LLM이 둘을 동급으로 섞어, 구조·값 질문에서 청크의 옛 서술이 그래프 사실을
-    덮어쓴 답이 나오고 출처 등급이 뭉개진다.
+    덮어쓴 답이 나오고 출처 등급이 뭉개진다. 청크는 [노드 근거](링킹·확장 노드의 근거) ·
+    [문서 검색](B104 ③ — 질문으로 찾은 청크) · [관련 원문]이고 **번호 하나의 줄**이다 —
+    답은 짧게(기본 5줄 · 지시문 a-1.2) · 쓴 사실(`used_facts`)과 쓴 청크(`used_chunks`)를 돌려준다.
 
     **그래프는 답변 LLM이 직접 읽지 않는다**(문서 0) — 넘기는 것은 문장화된
     사실과 청크 원문뿐이다.
@@ -282,19 +336,17 @@ def generate(res):
                             "mode": "mock"}
         return out
 
+    nums = _numbered(res)
     out = gateway.chat(
         [{"role": "system", "content": gateway.prompt("answer")},
-         # 사실에 **인덱스를 붙여** 넘긴다 — 무엇을 썼는지 되돌려 받으려면
-         # 양쪽이 같은 번호를 봐야 한다.
+         # 사실·청크에 **번호를 붙여** 넘긴다 — 무엇을 썼는지 되돌려 받으려면 양쪽이 같은 번호를 봐야 한다.
          {"role": "user", "content": json.dumps(
              {"question": res["question"],
-              "그래프_사실": [{"i": i, "문장": f}
-                          for i, f in enumerate(res["facts"])],
-              "문서_근거": [{"출처": f"{c['doc_id']} {c['source_locator']}",
-                          "원문": c["text"]} for c in res["chunks"]],
-              **({"관련_원문": [{"출처": f"{c['doc_id']} {c['source_locator']}",
-                              "원문": c["text"]} for c in res["related"]]}
-                 if res.get("related") else {})},
+              "그래프_사실": [{"i": i, "문장": f} for i, f in enumerate(res["facts"])],
+              **{ch.replace(" ", "_"): [{"i": i, "출처": f"{c['doc_id']} {c.get('source_locator') or ''}",
+                                         "원문": c["text"]} for i, cch, c in nums if cch == ch]
+                 for ch in ("노드 근거", "문서 검색", "관련 원문")
+                 if any(cch == ch for _i, cch, _c in nums)}},
              ensure_ascii=False)}],
         json_schema=ANSWER_SCHEMA, point="answer")
 
@@ -302,37 +354,92 @@ def generate(res):
     # 인덱스만 남겨 호출부·계기판이 before/after를 셀 수 있게 한다 — 주체가
     # 답변 LLM이라는 것이 문면으로만 있으면 그것이 도는지 아무도 모른다.
     used = [i for i in (out.get("used_facts") or []) if 0 <= i < len(res["facts"])]
+    used_c = {i for i in (out.get("used_chunks") or []) if 0 <= i < len(nums)}
     if tr:
         # **번호가 곧 기록이다** — 되돌려 받은 것만 `used=True`로 남긴다.
         for row in tr.get("facts") or []:
             row["used"] = (not used) or (row["key"] in used)
+        _mark_used(res, tr, nums, used_c)
         tr["answer"] = {"text": out["answer"],
                         "sources": [c["doc_id"] for c in res["chunks"]],
-                        "mode": "live"}
+                        "mode": "live", "lines": len(out["answer"].strip().splitlines()),
+                        "used_chunks": sorted(used_c)}
     if used:
         res["facts_before_filter"] = len(res["facts"])
         res["facts"] = [res["facts"][i] for i in used]
     return out["answer"]
 
 
+def _mark_used(res, tr, nums, used_c):
+    """쓴 청크 표시(B104 ④) — 노드 근거는 trace `collection`, 문서 검색은 `doc_search`(trace와 묶음 둘 다)."""
+    got = {c["chunk_id"] for i, _ch, c in nums if i in used_c}
+    for row in tr.get("collection") or []:
+        row["used"] = row["chunk_id"] in got
+    for row in (tr.get("doc_search") or []) + (res.get("doc_search") or []):
+        row["used"] = row["chunk_id"] in got
+
+
 def render(res):
-    """두 채널의 정형 나열 — **mock 갈래의 고정 형태**이자 사람이 뒷면을 보는 창구다."""
+    """**링크 결과**(ⓐ~ⓔ)의 정형 나열 — mock 갈래의 답(ⓕ = 이 나열)이자 사람이 뒷면을 보는 창구다(B104 ④).
+
+    줄머리 `[경로]`·`[링킹]`·`[그래프 사실]`·`[문서 근거]`·`[관련 원문]`은 `--json`의 수와 1:1이다(회귀가 센다) —
+    더한 줄은 `[링킹 추가]`(임베딩 후보 + LLM 선별) · `[확장]`(홉 엣지) · `[문서 검색]`이다."""
+    tr = res.get("trace") or {}
+    st = tr.get("link_stage") or {}
     lines = [f"Q. {res['question']}", f"   [경로] {res['path']}"]
+    lk = tr.get("linking") or []
+    picked = [x for x in lk if x.get("method") == "embed+llm"]
+    lines.append(f"   ⓐ 링킹 — 사전 {sum(1 for x in lk if x.get('method') == 'dict')} · "
+                 + (f"임베딩 후보 {len(st.get('candidates') or [])} → LLM 선별 {len(picked)}"
+                    if st.get("ran") else "임베딩·LLM 단계 안 돎")
+                 + f" (모드 {st.get('mode') or '—'})")
     if res["linked"]:
         lines.append(f"   [링킹] {', '.join(res['linked'])}")
+    for x in picked:
+        lines.append(f"   [링킹 추가] {x['canonical']} — {x.get('where') or '—'} · 점수 {x.get('score')}"
+                     + (f" · {x['why']}" if x.get("why") else ""))
     if res["note"]:
         lines.append(f"   {res['note']}")
     for t in res.get("transit", []):
         lines.append(f"   [전이] {t}")
+    edges = [e for h in tr.get("hops") or [] for e in h.get("edges") or []]
+    if edges:
+        lines.append(f"   ⓑ 확장 — 홉 {len(tr.get('hops') or [])} · 엣지 {len(edges)}")
+        for e in edges[:10]:
+            lines.append(f"   [확장] {e.get('src_name', e['src'])} —{e['rel']}→ {e.get('dst_name', e['dst'])}")
+        if len(edges) > 10:
+            lines.append(f"     … 엣지 {len(edges) - 10}개 더(--json의 trace.hops)")
     for f in res["facts"]:
         lines.append(f"   [그래프 사실] {f}")
     for c in res["chunks"]:
         lines.append(f"   [문서 근거] ({c['doc_id']} {c['source_locator']}) {c['text']}")
     for c in res.get("related") or []:
         lines.append(f"   [관련 원문] ({c['doc_id']} {c['source_locator']}) {c['text']}")
+    ds = [c for c in res.get("doc_search") or [] if not c.get("in_graph")]
+    if res.get("doc_search"):
+        lines.append(f"   ⓔ 문서 검색 {len(res['doc_search'])} (노드 근거와 겹침 "
+                     f"{sum(1 for c in res['doc_search'] if c.get('in_graph'))} 뺌)")
+    for c in ds:
+        sc = " · ".join(x for x in (f"임베딩 {c['embed']}" if c.get("embed") is not None else "",
+                                    f"BM25 {c['bm25']}" if c.get("bm25") is not None else "",
+                                    "찾아볼 시트" if c.get("ref") else "") if x)
+        lines.append(f"   [문서 검색] ({c['doc_id']} {c.get('source_locator') or ''} · {sc}) {c['text']}")
     if res["truncated"]:
         lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {knobs.get('collect_limit')})")
     return "\n".join(lines)
+
+
+def answer_block(res, text):
+    """ⓕ **LLM 답** — 링크 결과(ⓐ~ⓔ) 아래에 나란히(B104 ④). mock이면 답이 곧 정형 나열이라 이 줄만."""
+    tr = res.get("trace") or {}
+    a = tr.get("answer") or {}
+    if a.get("mode") != "live":
+        return "   ⓕ 답 — 정형 나열(mock · 문장 생성 없음) — 위 ⓐ~ⓔ가 답이다"
+    n = a.get("lines") or 0
+    head = (f"   ⓕ 답 — LLM(live) · {n}줄" + (f" (기본 {ANSWER_LINES}줄을 넘었다)" if n > ANSWER_LINES else "")
+            + f" · 쓴 사실 {sum(1 for f in tr.get('facts') or [] if f.get('used'))}"
+            + f" · 쓴 청크 {len(a.get('used_chunks') or [])}")
+    return "\n".join([head] + [f"     {x}" for x in (text or "").splitlines()])
 
 
 JSON_FLAG = "--json"
@@ -366,13 +473,22 @@ def main(args):
     question = " ".join(args)
     from cli import _screen
     _u0 = gateway.usage_total()
+    from core.query import vectors as _V
     if want_json:
         print(f"  {gateway.mode_line()}", file=sys.stderr)
         print(json.dumps(as_json(answer(question)), ensure_ascii=False))
+        if _V.cost_line():
+            print(f"  {_V.cost_line()}", file=sys.stderr)
         print(f"  {_screen.usage_line(_u0)}", file=sys.stderr)   # stdout은 묶음 하나뿐
     else:
         print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
-        print(generate(answer(question)))
+        res = answer(question)
+        text = generate(res)
+        # **링크 결과와 답을 나란히**(B104 ④) — mock은 답이 곧 나열이고, live는 나열(ⓐ~ⓔ) 아래 LLM 답(ⓕ)
+        print(text if gateway.use_mock() else render(res))
+        print(answer_block(res, text))
+        if _V.cost_line():
+            print(f"  {_V.cost_line()}")           # 벡터 캐시 — 만든 수 · 재사용 · 판 · 시간 (B104 ③)
         print(f"  {_screen.usage_line(_u0)}")      # B96 ③
     return 0
 

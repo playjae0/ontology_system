@@ -36,8 +36,8 @@
   "prompts/3.3_extract.md": "d5654f8fc4d1b3ff41a4a51eb63ea9d0f020bd798c9d23f679cba7fe609d1222",
   "prompts/3.4_judge.md": "14f3a516e17c8cbd5dfd8466c86616501573255cfe1c4600b73b4f555ecdf025",
   "prompts/3.8_sheet_role.md": "7896e8d0a11b5c56198679c99a5b5d5bad21db5494c28e8bdc72696d981023ee",
-  "prompts/4.1_link.md": "2e4744f069bc275de72e881528c3dd961ba5569dad58b80fca774db56270d7e8",
-  "prompts/4.4_answer.md": "d6942df44829ca08fb8f0246aba15c63a729575980a220e30fac7f8bd7986e0f",
+  "prompts/4.1_link.md": "28c7dcf63a5ac935ee6ca6c01544c2963c0df44f51ba59dd086fbfb17ac2833a",
+  "prompts/4.4_answer.md": "2845922e4c3c77b2be7159cfcc881c2397336d913ff749e1764cb51c87b06cc6",
   "schemas/blocks.json": "dcb2aec7a7e5d35bf15f6c116bcfaab1ef182244f4cc55228ae5d12b950ecfe4"
  }
 }

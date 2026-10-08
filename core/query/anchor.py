@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""칸 5.3 — 뷰어 **닻** — 골격 밖 노드가 골격의 어디에 붙었나 (B103 ①④).
+"""칸 4.2 — **닻** — 골격 밖 노드가 골격의 어디에 붙었나 (B103 ①④ · B104 ②).
 
-「골격 + 위성」 배치와 노드 상세의 「닻까지의 길」이 **같은 사실**을 읽는다 — 그래서 계산은
-서버 한 자리다(화면이 다시 찾지 않는다 · PF11). 그래프의 사실만 쓴다: 골격 여부는 노드의
-`status`(`seed`) · 길은 엣지의 관계 이름 그대로.
+뷰어의 「골격 + 위성」 배치 · 노드 상세의 「닻까지의 길」 · 질의 링킹 후보의 「어디의 무엇」(노드 벡터의
+재료 — B104 ②)이 **같은 사실**을 읽는다 — 그래서 계산은 한 자리다(B104에서 `cli/viewer/`에서 옮겼다 —
+core는 cli를 읽지 않는다). 그래프의 사실만 쓴다: 골격 여부는 노드의 `status`(`seed`) · 길은 엣지의
+관계 이름 그대로.
 
 규칙(결정적 — 같은 입력 같은 답 · D-184):
   ①골격 노드에서 동시에 넓이 우선으로 퍼진다(다중 출발 BFS) — 출발 순서는 골격 canonical 순.
@@ -69,3 +70,28 @@ def roots(nodes, edges):
     child = {e["src"] for e in edges if e.get("rel") == "part_of" and e["src"] in sk and e["dst"] in sk}
     return [i for i, _n in sorted(((i, n) for i, n in sk.items() if i not in child),
                                   key=lambda t: (t[1]["name"], t[0]))]
+
+
+def lists(graphs):
+    """GraphStore 묶음 → 닻 계산의 재료 `(nodes, edges)` — 뷰어의 `export.graph_data`와 같은 거름
+    (살아 있는 노드 · 사람이 지운 엣지 제외 · 양끝이 살아 있는 엣지)."""
+    from core.state.status import is_live
+    nodes = [{"id": n["id"], "name": n["canonical"], "status": n.get("status"),
+              "category": n.get("category"), "layer": lay}
+             for lay, g in graphs.items() for n in g.nodes.values() if is_live(n)]
+    live = {n["id"] for n in nodes}
+    edges = [{"src": e["src"], "rel": e["rel"], "dst": e["dst"]}
+             for g in graphs.values() for e in g.edges
+             if e.get("status") != "deleted_by_user" and e["src"] in live and e["dst"] in live]
+    return nodes, edges
+
+
+def path_text(nid, anc, names):
+    """닻까지의 길을 한 줄로 — `노칭 프레스 —part_of→ 노칭`(엣지 방향 그대로) · 골격이면 이름 · 없으면 빈 문자열."""
+    a = anc.get(nid)
+    if a is None:
+        return ""
+    if not a["path"]:
+        return names.get(nid, nid)
+    return " · ".join(f"{names.get(s['src'], s['src'])} —{s['rel']}→ {names.get(s['dst'], s['dst'])}"
+                      for s in a["path"])

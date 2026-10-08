@@ -46,54 +46,66 @@ INTENT_PATH = {"flow": PATH_GRAPH, "order": PATH_GRAPH, "value": PATH_GRAPH,
 
 
 # ---------------------------------------------------------------- ① 링킹
+#: 선별의 반환 — 노드마다 이유 한 줄(B104 ② · 지시문 `4.1_link` l-1.1). 후보 밖 id는 버린다.
 LINK_SCHEMA = {
     "type": "object",
-    "properties": {"node_ids": {"type": "array", "items": {"type": "string"}}},
-    "required": ["node_ids"], "additionalProperties": False,
+    "properties": {"picks": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"id": {"type": "string"}, "why": {"type": "string"}},
+        "required": ["id", "why"], "additionalProperties": False}}},
+    "required": ["picks"], "additionalProperties": False,
 }
 
 
-def _link_llm(question, graphs):
-    """**링킹 2단 — LLM 폴백** (LLM 지점 ⑥ · 문서 5 §5.1-1).
+def _link_llm(question, graphs, configs=None, exclude=(), stage=None):
+    """**링킹 2단 — 임베딩 후보 + LLM 선별** (LLM 지점 ⑥ · 문서 5 §5.1-1 · B104 ②).
 
-    **1단(사전 스캔)이 미스했을 때만 돈다.** "앞 단이 히트하면 뒤 단을 돌지
-    않는다" — 조건절로만 적힌 것을 항상 도는 구현으로 읽으면 사전이 답한 질의에도
-    호출이 고정 비용으로 붙고, 하이브리드 도입 판정(§5.5)의 근거인 **링킹 미스율이
-    실제 미스가 아닌 값으로 오염된다.**
+    구판은 **살아 있는 노드 전부**를 후보로 보냈다 — 사내 그래프가 수천 노드면 입력이 터진다. 지금은 질문
+    벡터 ↔ 노드 벡터 상위 k(`query_link_top_k`)만 보내고(`hybrid.link_candidates` — 「어디의 무엇」이 벡터 재료),
+    LLM은 **그 안에서만** 고른다 — 노드마다 이유 한 줄 · 없으면 빈 목록 · **후보 밖 id는 버린다**(모델이 지어낸
+    id로 질의가 답하면 그래프에 없는 근거를 제시하게 된다). `exclude`는 이미 사전이 잡은 노드다(보충 — 추가만).
 
-    **3단(임베딩 검색)은 이연이다 — 지금 구현하지 않는다**(P7: 측정 없는 선반영
-    금지). 미스율이 쌓인 뒤에 판정한다.
-
-    **USE_MOCK에서는 폴백을 두지 않는다**(문서 7 §7.1 대체 표) — 사전 스캔 미스는
-    그대로 링킹 미스로 `link_miss`에 적재한다. 문자열 포함·유사도 같은 임의 대체를
-    만들지 않는다: 임의 대체는 미스가 아닌 값을 계기판에 실어 P7 판정이 자기
-    구현에 의존하게 만들고, 12문항 스모크의 `expected_path` 채점을 구현마다 다르게
-    만든다.
-
-    실호출 갈래도 **후보 밖 id는 버린다** — 모델이 지어낸 id로 질의가 답하면
-    그래프에 없는 근거를 제시하게 된다.
+    mock: 임베딩은 해시 벡터 · 선별은 결정적 규칙의 **주입**(`hybrid.SELECT` — 비면 고르지 않는다). 실호출은
+    설정 확인(`require`)이 맨 앞이다 — 그래프가 비어도 미설정이면 명시적 실패다(지점 ⑥ 도달성).
+    `stage`(dict)에 후보 수 · 고른 수 · 후보 목록(점수)을 적는다 — trace가 싣는다.
     """
+    from core.query import hybrid as H
+    from core.state import knobs
+    if not gateway.use_mock():
+        gateway.require("link")
+    if configs is None:
+        from core.state.bootstrap import load_config
+        configs = {lay: load_config(lay) for lay in graphs}
+    k = knobs.get("query_link_top_k")
+    cands = H.link_candidates(question, graphs, configs, k, exclude=set(exclude))
+    if stage is not None:
+        stage.update(top_k=k, candidates=[{x: c[x] for x in ("id", "canonical", "where", "score")}
+                                          for c in cands])
+    if not cands:
+        return []
     if gateway.use_mock():
-        return []
-    gateway.require("link")
-    live = {nid: (lay, n) for lay, g in graphs.items()
-            for nid, n in g.nodes.items() if is_live(n)}
-    if not live:
-        return []
-    pool = [{"id": nid, "canonical": n["canonical"], "category": n["category"]}
-            for nid, (_lay, n) in live.items()]
-    out = gateway.chat(
-        [{"role": "system", "content": gateway.prompt("link")},
-         {"role": "user", "content": json.dumps(
-             {"question": question, "candidates": pool}, ensure_ascii=False)}],
-        json_schema=LINK_SCHEMA, point="link")
-    ids = {p["id"] for p in pool}
-    hits = []
-    for nid in out.get("node_ids", []):
-        if nid not in ids:
+        picks = H.SELECT(question, cands) if H.SELECT else []
+    else:
+        out = gateway.chat(
+            [{"role": "system", "content": gateway.prompt("link")},
+             {"role": "user", "content": json.dumps(
+                 {"question": question,
+                  "candidates": [{"id": c["id"], "canonical": c["canonical"], "category": c["category"],
+                                  "where": c["where"], "score": c["score"]} for c in cands]},
+                 ensure_ascii=False)}],
+            json_schema=LINK_SCHEMA, point="link")
+        picks = out.get("picks") or []
+    by = {c["id"]: c for c in cands}
+    hits, seen = [], set()
+    for p in picks:
+        c = by.get(p.get("id"))
+        if c is None or c["id"] in seen:
             continue                     # 후보 밖 id는 버린다
-        lay, n = live[nid]
-        hits.append({"surface": n["canonical"], "node_id": nid, "layer": lay})
+        seen.add(c["id"])
+        hits.append({"surface": c["canonical"], "node_id": c["id"], "layer": c["layer"],
+                     "score": c["score"], "why": (p.get("why") or "").strip(), "where": c["where"]})
+    if stage is not None:
+        stage["picked"] = len(hits)
     return hits
 
 
@@ -164,20 +176,22 @@ def _link_fold(q, dictionary, graphs):
     return hits
 
 
-def link(question, dictionary, graphs):
-    """표기 → 노드. **사전 스캔 우선**(무LLM)이며 **긴 표면형이 이긴다**.
+def link(question, dictionary, graphs, configs=None, stage=None):
+    """표기 → 노드. **사전 스캔 우선**(무LLM)이며 **긴 표면형이 이긴다** — 그 뒤 **임베딩 후보 + LLM 선별**(B104 ②).
 
     긴 것부터 보는 이유: "노칭 정밀도"가 있는데 "노칭"이 먼저 맞으면 질문이 가리킨
     것보다 넓은 노드에 붙는다.
 
-    **3단 구조와 그 게이팅**(문서 5 §5.1-1): ①사전 스캔(무LLM) → ②LLM 폴백 →
-    ③임베딩 검색(**이연 — 구현하지 않는다**). **앞 단이 히트하면 뒤 단을 돌지
-    않는다.**
+    **단계**(문서 5 §5.1-1 · B104 ②): ①사전 스캔(무LLM · 라틴 대소문자 2차) → ②임베딩 후보 + LLM 선별. 손잡이
+    `query_link_mode` — `보충`(기본 · 사전이 잡은 노드는 그대로 두고 질문이 가리키는 노드를 **더** 찾는다) |
+    `폴백`(사전 미스일 때만 — 구판의 게이팅). 행마다 `method`(`dict` · `embed+llm`)가 어느 단이 찾았는지 적는다.
+    **링킹 미스율(계기판 5)은 사전 단 기준**이다 — 호출부가 `method == "dict"`로 센다(정의 불변).
 
     극성 링킹은 **넓게** 한다(CH5 5.1 규약 3 — 쓰기는 좁게와 대칭): 사전이 한 표기에
     여러 노드를 달고 있으면 전부 링킹한다. 극성 무관 표기는 개념 노드에 붙고,
     인스턴스는 part_of 하향이 데려온다.
     """
+    from core.state import knobs
     q = norm(question)
     hits, taken = [], []
     # 사전 스캔은 관문 경유다 (문서 7 §7.1) — 긴 표기 우선으로 훑는다.
@@ -195,10 +209,13 @@ def link(question, dictionary, graphs):
                                  "method": "dict"})
     if not hits:
         hits = _link_fold(q, dictionary, graphs)    # 1단의 2차 — 라틴 대소문자 무시 (B96 ④)
-    if hits:
-        return hits                      # **1단이 찾았으면 2·3단은 돌지 않는다**
-    # 2단 — USE_MOCK에서는 빈 목록(미스는 로그로). **어느 단이 찾았는지 적는다**(B82 ③).
-    return [dict(h, method="llm_fallback") for h in _link_llm(question, graphs)]
+    mode = knobs.get("query_link_mode")
+    if stage is not None:
+        stage.update(mode=mode, dict=len(hits), ran=not hits or mode == "보충")
+    if hits and mode != "보충":
+        return hits                      # 폴백 — **1단이 찾았으면 2단은 돌지 않는다**
+    more = _link_llm(question, graphs, configs, exclude={h["node_id"] for h in hits}, stage=stage)
+    return hits + [dict(h, method="embed+llm") for h in more]
 
 
 def transit(graph, nid, cfg):

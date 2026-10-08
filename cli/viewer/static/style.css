@@ -6,12 +6,12 @@
  */
 :root {
   --bg:#ffffff; --fg:#14171c; --dim:#5b6472; --faint:#c9ced6;
-  --line:#c3c9d2; --hi:#b26a00; --hi2:#1d6fb8; --cross:#7b3fa8;
+  --line:#c3c9d2; --hi:#b26a00; --hi2:#1d6fb8; --hi3:#c2185b; --cross:#7b3fa8;
   --panel:#f4f6f9; --panel2:#e7ebf1; --link:#1a5fb4;
 }
 :root[data-theme="dark"] {
   --bg:#0f1115; --fg:#e6e6e6; --dim:#9aa1ac; --faint:#3a4152;
-  --line:#3b4252; --hi:#ffd166; --hi2:#9ad1ff; --cross:#c792ea;
+  --line:#3b4252; --hi:#ffd166; --hi2:#9ad1ff; --hi3:#ff8fb1; --cross:#c792ea;
   --panel:#1a1e27; --panel2:#2b3242; --link:#8ab4f8;
 }
 * { box-sizing: border-box; }
@@ -57,3 +57,8 @@ a { color:var(--link); }
 pre.src { white-space:pre-wrap; word-break:break-word; margin:4px 0 0; font-size:12px; }
 .card.path div { font-size:12px; }
 #qllm { margin:6px 0; }
+/* B104 — 질의 링크 결과 ⓐ~ⓕ: LLM이 고른 노드 · 쓴 근거 */
+.chip.pick { border:1px dashed var(--hi3); }
+.card.used { border-left:3px solid var(--hi); }
+.card.dropped { opacity:.6; }
+#qhops div, #qdocs .meta { font-size:12px; }

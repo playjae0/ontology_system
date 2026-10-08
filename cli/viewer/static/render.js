@@ -92,6 +92,7 @@ function nodeColor(n) {
   const hi = (S.highlight.nodes || {})[n.id];
   if (hi === "link") return cssVar("--hi");
   if (hi === "reach") return cssVar("--hi2");
+  if (hi === "pick") return cssVar("--hi3");          // 임베딩 후보 + LLM 선별이 고른 노드 (B104 ④)
   return colorOf(axisValue(n, S.axis));
 }
 

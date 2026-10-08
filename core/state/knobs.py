@@ -28,7 +28,8 @@ from core import paths
 
 #: 손잡이 — 이름: (주인 모듈, 속성들, 형, 무엇, 분포를 보는 자리)
 #: 형: `int`(≥1) · `int0`(≥0) · `range`([작은, 큰] 정수 · 1 ≤ 작은 < 큰) ·
-#:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수) · `pct`(1~100 정수)
+#:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수) · `pct`(1~100 정수) ·
+#:     `choice:<값|값…>`(닫힌 문자열 — B104 ②)
 KNOBS = {
     "heading_max_chars": ("parser.struct_map", ("HEADING_MAX_CHARS",), "int",
                           "제목 후보의 최대 글자 — 넘는 번호 행은 제목이 아니다",
@@ -64,6 +65,20 @@ KNOBS = {
     "lens_call_cap": ("core.build.lens", ("LENS_CALL_CAP",), "int",
                       "문서당 렌즈 호출 상한 — 넘으면 묻는다(비대화형은 멈춘다)",
                       "python run.py show dist lens"),
+    # ── 질의 하이브리드(B104 ②③) — 기본값은 창작 기본값이다(사내 질문으로 `golden score` 전후를 보고 정한다)
+    "query_link_top_k": ("core.query.hybrid", ("LINK_TOP_K",), "int",
+                         "질의 링킹 후보 수 — 질문 벡터에 가까운 노드 k개만 LLM 선별에 보낸다(노드 전부를 보내지 않는다)",
+                         "python run.py golden score — 링킹(사전만 · 보충)"),
+    "query_link_mode": ("core.query.hybrid", ("LINK_MODE",), "choice:보충|폴백",
+                        "질의 링킹 단계 — 보충(사전이 잡아도 임베딩 후보 + LLM 선별로 더 찾는다) · 폴백(사전 미스일 때만)",
+                        "python run.py golden score — 링킹(사전만 · 보충)"),
+    "query_doc_top_k": ("core.query.hybrid", ("DOC_TOP_K",), "int",
+                        "문서 검색 채널 — 임베딩 상위 k + BM25 상위 k(합쳐 중복 제거)",
+                        "python run.py golden score — doc@k (BM25 대조군 옆)"),
+    "query_doc_min_sim": ("core.query.hybrid", ("DOC_MIN_SIM",), "pct",
+                          "문서 검색 채널의 임베딩 유사도 문턱(%) — 넘는 청크만 · BM25는 공유 토큰이 있을 때만 · "
+                          "둘 다 비면 「근거 없음」(모델마다 점수 분포가 다르다)",
+                          "python run.py query \"<질문>\" — [문서 검색] 줄의 점수"),
     "viewer_explore_threshold": ("cli.viewer.data", ("EXPLORE_THRESHOLD",), "int",
                                  "뷰어 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 "
                                  "탐색 모드로 연다(이웃 펼쳐 보기 · B103 ③)",
@@ -100,7 +115,7 @@ def _check(name, v, dflt):
           "pair0": lambda: isinstance(v, list) and len(v) == 2 and _int(v[0], 1) and _int(v[1], 0),
           "dict": lambda: isinstance(v, dict) and set(v) == set(dflt)
           and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v.values()),
-          }[kind]()
+          }[kind]() if not kind.startswith("choice:") else v in kind[len("choice:"):].split("|")
     if not ok:
         raise KnobError(
             f"[상태] 손잡이 '{name}'의 값 {json.dumps(v, ensure_ascii=False)}가 형 밖이다 — "
