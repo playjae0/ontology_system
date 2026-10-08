@@ -287,6 +287,35 @@ def scope_pick(ref, scoped_idx, shared):
     return scoped_idx.get(key) if key is not None else None
 
 
+def scope_rows(pieces, refs, nodes, *, idx, shared, doc_coord=None, group_field="process_group"):
+    """행마다 **공유 별칭의 범위 안 해소** — `[(노드, 범위 canonical) 또는 None]` (B104 ① · B105 ①).
+
+    범위는 둘이고 순서가 있다: ①**문서 좌표**(B104 — 있으면 먼저) ②**행의 상위**(`process_group`)가 골격
+    노드 하나로 맞으면 그 서브트리(B105 — 표 문서는 문서 좌표가 대개 없다). 해소는 `scope_pick` 하나 —
+    공유 별칭이 범위 안에서 **하나일 때만**(범위 안에서도 여럿이거나 없으면 None — 지금처럼 보류).
+    전역에서 한 노드에만 맞는 표기는 대상이 아니다(바꾸지 않는다 — 상위 범위 밖이면 쌍 대조가 어긋남으로
+    보인다 · 좌표를 지어내지 않는다)."""
+    sub = {doc_coord: scoped_index(nodes, doc_coord)[0]} if doc_coord else {}
+    out = []
+    for p, r in zip(pieces, refs):
+        hit = None
+        if r and r not in idx:
+            n = scope_pick(r, sub[doc_coord], shared) if doc_coord else None
+            if n is not None:
+                hit = (n, doc_coord)
+            else:
+                g = p.get(group_field)
+                gn = (idx.get(g) or fold_hit(g, idx)) if g else None
+                if gn is not None:
+                    c = gn["canonical"]
+                    if c not in sub:
+                        sub[c] = scoped_index(nodes, c)[0]
+                    n = scope_pick(r, sub[c], shared)
+                    hit = (n, c) if n is not None else None
+        out.append(hit)
+    return out
+
+
 def suggest_doc_coord(filename, nodes, seps="_-. ()[]"):
     """**파일명 제안**(B102 ② · LLM 0) — 구분자로 나눈 조각이 골격 이름·별칭에 정확(또는 라틴 대소문자
     무시)으로 맞고 **가리키는 노드가 하나일 때만** 그 canonical · 아니면 None. 돌려주는 것은 `(canonical, 조각)`."""
@@ -341,7 +370,8 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
                 r[ref_field] = one["canonical"] if one else hit[-1]   # 가장 깊은 일치
                 r.setdefault("meta", {})["coord_from_section"] = True
                 if one:
-                    r["meta"].update(coord_tag_source="scope", coord_tag_from=hit[-1])
+                    r["meta"].update(coord_tag_source="scope", coord_tag_from=hit[-1],
+                                     coord_tag_scope=doc_coord)
             if ignored:
                 r.setdefault("meta", {})["coord_ignored"] = ignored
             if skipped:
@@ -407,19 +437,19 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     """
     nodes = nodes if nodes is not None else closed_list(layer)
     # 공유 별칭은 대조에 쓰지 않는다(B102 ② — 첫 노드를 고르지 않는다 · 목록 밖으로 간다) —
-    # 단 **문서 좌표 범위 안에서 하나면 그 노드**다(B104 ① · `scope_pick` — 시트명·제목 대조와 같은 함수)
+    # 단 **범위 안에서 하나면 그 노드**다: 문서 좌표(B104 ①) 먼저, 다음은 행의 상위(B105 ①) ·
+    # 행마다 `scope_rows` → `scope_pick`(시트명·제목 대조와 같은 함수)
     idx, _shared, _a = scoped_index(nodes)
-    sidx = scoped_index(nodes, doc_coord)[0] if doc_coord else {}
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
     refs = [(p.get(ref_field) or None) for p in pieces]
-    scoped = {r: scope_pick(r, sidx, _shared) for r in set(refs) if r and r not in idx}
-    scoped = {r: n for r, n in scoped.items() if n is not None}
-    folded = {r: fold_hit(r, idx) for r in set(refs) if r and r not in idx and r not in scoped}   # 2차 (B96 ④)
-    exact = sum(1 for r in refs if r and (r in idx or folded.get(r) is not None))
+    scope_at = scope_rows(pieces, refs, nodes, idx=idx, shared=_shared, doc_coord=doc_coord)
+    folded = {r: fold_hit(r, idx) for r in set(refs) if r and r not in idx}   # 2차 (B96 ④)
+    exact = sum(1 for r, sc in zip(refs, scope_at)
+                if r and sc is None and (r in idx or folded.get(r) is not None))
     misses, miss_rows = [], 0
-    for r in refs:
-        if r and r not in idx and folded.get(r) is None and r not in scoped:
+    for r, sc in zip(refs, scope_at):
+        if r and sc is None and r not in idx and folded.get(r) is None:
             miss_rows += 1
             if r not in misses:
                 misses.append(r)
@@ -438,8 +468,9 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
             "표기_종수": len(misses), "미스_행": miss_rows,
             "묻는_종수": len(ask), "상한": cap, "LLM": pick is not None,
             "학습_적중": len(learn), "학습_적중_행": learn_rows,
-            # 공유 별칭의 범위 안 해소(B104 ①) — 문서 좌표 안에서 하나인 표기 · LLM 0
-            "범위_안_해소": len(scoped), "범위_안_해소_행": sum(1 for r in refs if r in scoped),
+            # 공유 별칭의 범위 안 해소(B104 ① 문서 좌표 · B105 ① 행의 상위) — (표기, 범위) 종수 · 행 · LLM 0
+            "범위_안_해소": len({(r, sc[1]) for r, sc in zip(refs, scope_at) if sc}),
+            "범위_안_해소_행": sum(1 for sc in scope_at if sc),
             # **좌표 진단**(B99 ⑧) — 목록 밖 표기 상위(표기 · 행 수) · LLM 전에 안다
             "목록밖_상위": sorted(((r, refs.count(r)) for r in misses),
                                 key=lambda x: (-x[1], x[0]))[:10]}
@@ -464,8 +495,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     if layer and (learn or memo):
         _learn_update(book, learn, memo, refs, idx, layer, doc_id)
 
-    out = _apply(pieces, refs, idx, {**folded, **scoped}, learn, memo, nodes, ref_field, doc_type,
-                 scoped=scoped)
+    out = _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
+                 scope_at=scope_at)
     if notice is not None:
         notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
                 "목록밖": len(misses) - adopted,
@@ -473,11 +504,11 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     return out
 
 
-def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scoped=None):
+def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None):
     """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생.
-    `scoped`(범위 안에서 하나인 공유 별칭 — B104 ①)는 canonical로 쓰고 원 표기를 남긴다."""
+    `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다."""
     out = []
-    for p, ref in zip(pieces, refs):
+    for i, (p, ref) in enumerate(zip(pieces, refs)):
         r = dict(p)
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
@@ -487,10 +518,12 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
         # 잃고, 조각 공통 층이 계약이 아니라 어댑터별 재량이 된다.
         for k in ("doc_type", "process_group", "process_ref", "electrode_type"):
             r.setdefault(k, doc_type if k == "doc_type" else None)
-        node = (idx.get(ref) or folded.get(ref)) if ref else None
-        if ref and (scoped or {}).get(ref) is not None:
-            r[ref_field] = scoped[ref]["canonical"]
-            r.setdefault("meta", {}).update(coord_tag_source="scope", coord_tag_from=ref)
+        sc = (scope_at or [None] * len(refs))[i]
+        node = sc[0] if sc else ((idx.get(ref) or folded.get(ref)) if ref else None)
+        if sc:
+            r[ref_field] = sc[0]["canonical"]
+            r.setdefault("meta", {}).update(coord_tag_source="scope", coord_tag_from=ref,
+                                            coord_tag_scope=sc[1])
         if ref and node is None and learn.get(ref):
             r[ref_field] = learn[ref]
             node = idx[learn[ref]]
