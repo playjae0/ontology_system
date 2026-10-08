@@ -27,7 +27,7 @@
  {
   "구분": "형태",
   "대상": "`category_pair_map`",
-  "실태": "process: dict · 깊이 1 · 최상위 3 | quality: dict · 깊이 0 · 최상위 0   ▸ 명세: [3_구조] - **카테고리쌍→관계 매핑은 빈 표다**(`category_pair_map: {}`) — 이 층은 카테고리쌍으로 관계를 정하지 않는다. 근거: 빈 표라는 것이 안 보이면 구현자가 품질층에도 매핑을 발명하고(예: Failure,Process→occurs_in), 그러면 비정형 추출의 attach_to 폴 ‖ [3_구조] | ⑤ 쓰기 절차 | 무엇을 먼저 뽑아 무엇에 어떤 순서로 잇는가 | config(polarity·canonical_scope·category_pair_map 등) + 코어 공통 절차 |"
+  "실태": "process: dict · 깊이 1 · 최상위 3 | quality: dict · 깊이 0 · 최상위 0   ▸ 명세: [3_구조] - **카테고리쌍→관계 매핑은 빈 표다**(`category_pair_map: {}`) — 이 층은 카테고리쌍으로 관계를 정하지 않는다. 근거: 빈 표라는 것이 안 보이면 구현자가 품질층에도 매핑을 발명하고(예: Failure,Process→occurs_in), 그러면 비정형 추출의 attach_to 폴 ‖ [4_쓰기절차] 4. **부착 폴백(규칙 B)**: 부착 대상이 **미해소면** 행/청크의 공정좌표에 부착. **정형에서 「미해소」와 「값 없음」을 가른다** — `attach_to_field`가 가리키는 필드가 그 행에서 **빈 셀이면 폴백하지 않는다**(붙일 값 자체가 없으므로 attribute가 성립하지 않는다. "
  },
  {
   "구분": "형태",
