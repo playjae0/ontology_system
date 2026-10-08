@@ -190,7 +190,8 @@ L1 = r1["trace"]["linking"]
 show("ⓑ 사전에 없는 동의 표현(「틈새」)이 임베딩 후보 + 선별로 노드에 닿는다 — method embed+llm · 점수 · 이유 · 어디의 무엇",
      [x["canonical"] for x in L1] == ["노칭::금형 클리어런스"] and L1[0]["method"] == "embed+llm"
      and L1[0].get("why") and L1[0].get("score") is not None and L1[0].get("where"),
-     json.dumps(L1, ensure_ascii=False)[:260])
+     " ‖ ".join(f"{x['canonical']} [{x['method']} · 점수 {x.get('score')} · 이유 「{x.get('why')}」 · "
+                f"위치 {x.get('where')}]" for x in L1))
 show("ⓑ 후보 밖 id 0 · LLM이 받은 후보 수 ≤ k(5) < 노드 전부 — 노드 전부를 보내지 않는다",
      not any("NOPE" in x["node_id"] for x in L1) and c1 and len(c1[0]["candidates"]) == 5 < _nall
      and len(r1["trace"]["link_stage"]["candidates"]) == 5,
