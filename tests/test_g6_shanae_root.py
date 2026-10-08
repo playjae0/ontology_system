@@ -182,7 +182,7 @@ srv.shutdown()
 def pipeline(r):
     """두 루트에 **같은 명령**을 돈다 — 다른 것은 상태의 자리와 좌표 층 이름뿐이다."""
     raw = r.code / "tests" / "fixtures" / "raw"
-    r.run("init", "--fresh")
+    r.run("init", "--fresh", "--all")
     r.run("bootstrap")
     r.run("skeleton-status", r.coord)
     r.run("skeleton-confirm", r.coord, "--by", "시험", answers="y\n")

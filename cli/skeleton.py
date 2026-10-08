@@ -331,7 +331,7 @@ def cmd_confirm(argv):
           f"({len(prior)}번째 · {by} · {sha[:12]}…)")
     print(f"  확정본 사본 → {paths.layers(layer, PREV)} "
           f"(다음 판을 놓은 뒤 «확정된 것은 무엇이었나»를 답한다)")
-    print(f"  다음: python run.py init --fresh && python run.py bootstrap")
+    print("  다음: python run.py bootstrap   (문서가 이미 들어 있으면 python run.py rebuild — 골격의 이름·부모가 바뀌면 재구축 · 사람 판단은 이름으로 되살린다)")
     return 0
 
 

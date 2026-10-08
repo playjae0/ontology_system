@@ -93,7 +93,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                                     electrode_type=src.get("electrode_type"),
                                     parent_canonical=e_parent,
                                     anchor_polarity=e_pol,
-                                    coord_surface=src.get("process_ref"), belongs=bel)
+                                    coord_surface=src.get("process_ref"), belongs=bel,
+                                    at=(_loc or cid, e.get("category")))       # 판정 재생의 자리 (B106 ②)
         last = eb.last or {}
         row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
                            role="entity", surface=e["surface"],
@@ -109,7 +110,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                            nearest=last.get("nearest"),
                            same_doc=last.get("same_doc"),
                            target=b.canonical_of(nid),
-                           belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None))
+                           belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
+                           category=last.get("category"), scope=last.get("scope"))
         if nid:
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
     return plans

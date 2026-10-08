@@ -51,7 +51,7 @@ def _state_hash():
 
 
 # ── 바닥: 클린 + 골격 + mock 문서 인입 ────────────────────────────────────
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in discover():
     bootstrap(_lay, echo=False)
 from cli.parse import run_parse                                      # noqa: E402

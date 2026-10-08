@@ -42,7 +42,7 @@ HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
 
 
 def _fresh(boot=True):
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     if boot:
         for lay in ("process", "quality"):
             bootstrap(lay, echo=False)
@@ -107,7 +107,7 @@ for form, lay, first, linked, second, after in _res:
                 f"대상 {t} · 연결 {h} · 남음 {first['left']} → 다음 대상 {sum(second['target'].values())}"))
 show("ⓐ 재시도가 연결한 h건만큼 남음이 준다 · 다음 대상에 연결 항목 0 — orphan_anchor(표)·orphan_attach(산문) × 층 둘",
      all(o for _f, _l, o, _d in _ok), " · ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 print("\n■ B100 ② 등록이 좌표 층 몫 + 자기 골격을 본다 (형태 × 층)")
 from core.state import bootstrap as BS          # noqa: E402
@@ -240,7 +240,7 @@ def _rw_json(path, fn):
 def _world(move):
     """같은 문서 · 집만 다르다. 문서의 극성 표기는 both(창작) — 극성 규칙도 집 층에서 읽으므로
     축이 있는 층과 없는 층 사이의 이동은 극성 표기가 있으면 판정이 갈린다(규칙 차이 · 보고)."""
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     if move:
         _rw_json(_P.layers("process", "config.json"),
                  lambda c: c["categories"].update({MOVE_CAT: "(시험 렌즈) 집 이동 동치 — 창작"}))
@@ -358,7 +358,7 @@ print("\n■ B100 ④ 미러 규칙 ≠ 집 — 경고 (층 둘)")
 from core.state import catalog as CT              # noqa: E402
 _ok_f = []
 for cat, frm, to in (("Property", "process", "quality"), ("Unit", "process", "quality")):
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     _rw_json(_P.layers(to, "config.json"), lambda c, cat=cat: c["categories"].update({cat: "(시험 렌즈)"}))
     _rw_json(_P.common(), lambda c, cat=cat, to=to: c["categories"][cat].update(home=to))
     w1 = CT.mirror_warnings()
@@ -498,6 +498,6 @@ for _dt in ("b100cp", "b100pf", "b100pp", "b100pq", "b100tp", "b100tq"):
     _P.schemas(f"{_dt}.json").unlink(missing_ok=True)
     _sh.rmtree(_P.review(_dt), ignore_errors=True)
 store.write(store.DOC_TYPES, _dts)
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

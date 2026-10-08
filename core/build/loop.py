@@ -362,7 +362,8 @@ def h_entity(value, spec, ctx):
                                       coord=(st["ref"], st.get("ref_g")),
                                       electrode_type=st["et"],
                                       parent_canonical=st["parent"],
-                                      anchor_polarity=st["anchor_pol"])
+                                      anchor_polarity=st["anchor_pol"],
+                                      at=(st.get("locator"), st.get("field")))   # 판정 재생의 자리 (B106 ②)
     _ledger_entity(st, value, lay, eb.last)
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g
@@ -402,7 +403,8 @@ def _ledger_entity(st, surface, layer, last):
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"),
                  narrow=last.get("narrow"), emb_top=last.get("emb_top"),
                  nearest=last.get("nearest"), same_doc=last.get("same_doc"),
-                 target=b.canonical_of(last.get("node_id")))
+                 target=b.canonical_of(last.get("node_id")),
+                 category=last.get("category"), scope=last.get("scope"))
 
 
 def _scoped_category(category, layer, builder):

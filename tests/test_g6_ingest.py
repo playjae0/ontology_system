@@ -15,7 +15,7 @@ print("\n■ B72 ②③④ — 인입 화면(예고 · 큐 집계 · 다음 줄 
 
 from core.build import entry as _PL72                                 # noqa: E402
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 
@@ -174,7 +174,7 @@ def _step_run72(answers):
     return out.decode("utf-8", "replace")
 
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 _n72q = len(open_graph("process").nodes)
@@ -286,7 +286,7 @@ def _run81(*argv):
 def _ing81(*extra):
     """**같은 바닥에서 잰다** — 클린 + 골격 뒤 인입. 두 실행을 비교하려면 시작이 같아야
     하고(사전이 차면 판정이 0회가 된다), 클린은 진입점이 만든다(§7.6-4)."""
-    _run81("init", "--fresh")
+    _run81("init", "--fresh", "--all")
     _run81("bootstrap")
     r = _run81("ingest-dir", "--allow-mock", *extra)
     return r.stdout + r.stderr

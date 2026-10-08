@@ -71,7 +71,7 @@ print("\n■ 저장 레코드 스키마 — 문서 7 §7.2 전문 대조")
 # mirrors 페어링·순서 파생·process_group 파생이 전부 canonical 문자열 파싱으로
 # 되돌아가고, 그것은 문서 4 §4.5와 문서 1 C10이 정면으로 금지한 것이다.
 import subprocess as _sp                                       # noqa: E402
-_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
         capture_output=True, cwd=str(ROOT))
 _sp.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT))
 
@@ -127,7 +127,7 @@ def _rc(*argv):
     return _sp.run([sys.executable, *argv], capture_output=True, text=True,
                    cwd=str(ROOT))
 
-_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+_sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
         capture_output=True, cwd=str(ROOT))
 _sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
         capture_output=True, cwd=str(ROOT))
@@ -166,7 +166,7 @@ show("클린이 등록 단을 건드리지 않는다 (승인 1회의 등재 — 
 _dt = _P.registry("doc_types.json")
 _dt.parent.mkdir(parents=True, exist_ok=True)
 _dt.write_text('{"_probe": {"doc_type": "_probe"}}', encoding="utf-8")
-_init3.init(fresh_=True)
+_init3.init(fresh_=True, all_=True)
 show("실측 — init --fresh 후에도 등록부가 남는다",
      _dt.exists() and "_probe" in _dt.read_text(encoding="utf-8"))
 show("빈 상태에 층 등록부·문서 대장도 든다 (§7.2 빈 상태 불릿)",
@@ -174,7 +174,7 @@ show("빈 상태에 층 등록부·문서 대장도 든다 (§7.2 빈 상태 불
 # **탐침을 걷는다** — `doc_types.json`은 이제 클린이 보존하므로, 남기면 뒤의
 # 등록부 조회가 필드 없는 항목을 만나 깨진다(실측).
 _dt.unlink(missing_ok=True)
-_init3.init(fresh_=True)
+_init3.init(fresh_=True, all_=True)
 
 # ============================================================ 2B 감사 반영
 print("\n■ 감사 확인 항목 — 명세 실물로 재확인한 것 (2B 감사 37건 중)")

@@ -37,8 +37,8 @@ LEGACY_MARK = ("data", "doc_types.json")
 #: ③진실에 남는 파일 **8종**(허브 확정 2026-09-17 · B101 ② 좌표 학습 기록 추가 — 층 등록부 `registry.json`을 포함해
 #: `<층>/graph.json`까지 세면 9종이다). 층 폴더는 아래에서 따로 훑는다.
 TRUTH_FILES = (store.DICTIONARY, store.CHUNKS, store.QUEUE,
-               store.DOC_REGISTRY, store.OPS_LOG, store.SKELETON_LIST, store.COORD_LEARNED,
-               store.REGISTRY)
+               store.DOC_REGISTRY, store.SKELETON_LIST, store.COORD_LEARNED,
+               store.REGISTRY)            # 사람 판단 기록 `ops_log.json`은 ②등록으로 갔다(B106 ③ — 아래 등록 줄)
 
 
 def _sha(p):
@@ -108,6 +108,7 @@ def plan(old, home):
 
     # ②등록 — 사람 승인 1회. 재생성되지 않는다.
     add(old / LEGACY_MARK[0] / LEGACY_MARK[1], reg_dir / store.DOC_TYPES, "등록")
+    add(old / "data" / store.OPS_LOG, reg_dir / store.OPS_LOG, "등록")      # 사람 판단 기록 (B106 ③)
     add_tree(old / "review", reg_dir / "review", "등록")
     for p in sorted((old / "adapters").glob("*.py")) if (old / "adapters").is_dir() else []:
         add(p, reg_dir / "adapters" / p.name, "등록")

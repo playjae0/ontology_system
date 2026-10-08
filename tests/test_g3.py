@@ -45,7 +45,7 @@ DOCS = ["CP01", "PFMEA01", "PPT01", "PPT02", "PPT03", "QPPT01"]
 
 
 def full_run():
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+    init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)      # 파생 흐름 출력은 사람 대조용 — 판정은 test_g1_g2
     flags = {}

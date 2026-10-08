@@ -47,7 +47,7 @@ QUERIES = json.loads((ROOT / "tests" / "fixtures" / "queries.json").read_text(en
 
 
 def full_run():
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+    init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in DOCS:

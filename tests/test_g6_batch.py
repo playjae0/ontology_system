@@ -89,8 +89,11 @@ with _ctx.redirect_stdout(_buf79):
     _rows79 = IG.main(["--allow-mock", "--revise"])   # 인자 없이 = 원본 자리 전체 · 옮겨 넣은 문서는 개정 명시(B102 ⑧)
 _out79 = _buf79.getvalue()
 _reg79 = store.read(store.DOC_REGISTRY, {}).get("CP01") or {}
+# 기대 변경(B106) — 구판은 화면에 원본 자리 경로가 있는지를 쟀다: 다른 시험(`test_viewer`)이 원본 자리에 남긴
+# 파일의 실패 블록이 그 경로를 찍을 때만 초록이던 **회차 간 순서 의존**이었다(단독 실행은 B105 코드로도 붉다).
+# 성질로 잰다 — 하위 폴더의 문서가 인입됐고 기록이 그 자리를 가리킨다.
 show("② 인자 없는 ingest-dir가 원본 자리를 **재귀로** 돈다 (하위 폴더에 넣는다)",
-     str(_P.raw()) in _out79 and "CP01" in _out79,
+     str(_reg79.get("source_path") or "").startswith("raw/사내/가지/") and "CP01" in _out79,
      str(_reg79.get("source_path")))
 show("② 상태 루트 아래 문서의 기록은 루트 기준 상대다 (절대 경로 0 — 옮겨도 낡지 않는다)",
      not Path(_reg79.get("source_path", "/x")).is_absolute()

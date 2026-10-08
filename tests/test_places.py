@@ -101,7 +101,7 @@ _watch = Path(tempfile.mkdtemp(prefix="b78watch_"))
 (_watch / "감시.txt").write_text("touched?", encoding="utf-8")
 _before = sorted(str(p.relative_to(_watch)) for p in _watch.rglob("*"))
 _mockrun = subprocess.run(
-    [sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+    [sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
     capture_output=True, text=True, cwd=str(ROOT),
     env=dict(os.environ, USE_MOCK="1", ONTO_HOME=str(_watch)),
     stdin=subprocess.DEVNULL)
@@ -153,7 +153,7 @@ show("저장 쓰기가 tmp+os.replace·flock 경유다 (직접 덮어쓰기 0)",
 # **빈 상태의 형태가 §7.2 말미와 같은가** — 클린의 정의가 하나여야
 # 회귀 규약(§7.5-7)과 완료판정 4번이 같은 바닥 위에 선다.
 from core.state import init as _init                                # noqa: E402
-_init.init(fresh_=True)
+_init.init(fresh_=True, all_=True)
 _want = {store.CHUNKS: {"chunks": {}, "describes": []},
          store.DICTIONARY: {}, store.QUEUE: []}
 _got = {n: store.read(n, "없음") for n in _want}
@@ -167,7 +167,7 @@ from core.state import init as _init2                                 # noqa: E4
 _probe = _P.review() / "_clean_probe"
 _probe.mkdir(parents=True, exist_ok=True)
 (_probe / "approval.json").write_text('{"approved_by": "시험자"}', encoding="utf-8")
-_init2.init(fresh_=True)
+_init2.init(fresh_=True, all_=True)
 _kept = (_probe / "approval.json").exists()
 show("run.py init --fresh 가 review/의 승인 기록을 지우지 않는다 (§7.8)",
      _kept and "registry" not in _init2.WIPE_TIERS, str(_init2.WIPE_TIERS))
@@ -282,7 +282,7 @@ _wl79 = Path(tempfile.mkdtemp(prefix="b79watch_"))
 _before79 = sorted((p.relative_to(_wl79).as_posix(), p.read_bytes() if p.is_file() else b"")
                    for p in _wl79.rglob("*"))
 _fresh79 = subprocess.run(
-    [sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+    [sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
     capture_output=True, text=True, cwd=str(ROOT),
     env={**os.environ, "USE_MOCK": "1", "ONTO_HOME": str(_wl79)})
 _after79 = sorted((p.relative_to(_wl79).as_posix(), p.read_bytes() if p.is_file() else b"")

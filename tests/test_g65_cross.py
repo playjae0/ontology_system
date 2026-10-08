@@ -80,7 +80,7 @@ print("\n■ ⑤ E2 — 인입 순서 무관 결정성 (mock 폴백 어휘 한�
 
 
 def build_in(order):
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+    init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in order:

@@ -41,7 +41,7 @@ def load(name):
 
 
 def fresh():
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+    init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in DOCS:
@@ -97,7 +97,7 @@ def _rw(path, fn):
 
 def overlay(*, component=False, also=False):
     """클린 → 상태 루트의 층 config·카탈로그에 덧칠 → 골격. 레포 seed는 건드리지 않는다."""
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     lays = ("quality", "process") if component else ("quality",)
     for lay in lays:
         def _f(c, lay=lay):

@@ -45,7 +45,7 @@ OTHERS = ["B101 유량 측정기", "B101 유량 센서", "B101 유량 검출기"
 
 
 def _fresh():
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
 
@@ -280,7 +280,7 @@ def _rw_json(path, fn):
 
 _ok_f = []
 # 갈래 1 — 선언 층(축 없음)과 집(축 있음)이 다르다: quality의 Failure 집을 process로
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _rw_json(_P.layers("process", "config.json"), lambda c: c["categories"].update({"Failure": "(시험 렌즈)"}))
 _rw_json(_P.common(), lambda c: c["categories"]["Failure"].update(home="process"))
 w1 = [m for m, _n in CT.mirror_warnings() if "values" in m]
@@ -288,7 +288,7 @@ _rw_json(_P.common(), lambda c: c["categories"]["Failure"].update(home="quality"
 w1b = [m for m, _n in CT.mirror_warnings() if "values" in m]
 _ok_f.append(("선언≠집 축", len(w1) == 1 and "unbound" in w1[0] and not w1b, f"경고 {len(w1)} → 집 되돌림 {len(w1b)}"))
 # 갈래 2 — 묶은 층과 집 모두 묶었지만 values가 다르다: Property 집을 quality로
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _pc = json.loads(_P.layers("process", "config.json").read_text(encoding="utf-8"))
 _rw_json(_P.layers("quality", "config.json"), lambda c: c.update(
     categories={**c["categories"], "Property": "(시험 렌즈)"}, mirrors=_pc["mirrors"],
@@ -301,6 +301,6 @@ _ok_f.append(("묶음 values", len(w2) == 1 and "같은 polarity.values" in w2[0
               and not w2b, f"경고 {len(w2)} → values 맞춤 {len(w2b)}"))
 show("ⓕ 극성 values 경고 — 선언 층과 집의 축이 다르다 · 묶은 층과 집의 values가 다르다 · 경고 + 다음 줄 · 맞추면 0",
      all(o for _c, o, _d in _ok_f), " · ".join(f"{c}: {d}" for c, _o, d in _ok_f))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

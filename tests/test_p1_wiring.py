@@ -13,7 +13,7 @@ from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85
 
 
 # 이 스위트의 바닥 — 골격 스냅샷이 서 있어야 ⑨좌표 태깅을 잰다(B78 2c)
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 bootstrap("process", echo=False)
 
 print("\n■ 파서 무판독 — 모드는 진입점이 정하고 파서는 함수 유무만 본다 (문서 7 §7.6-B-1)")

@@ -50,6 +50,11 @@ def decide(r, ans, actor):
         ops.merge(r["layer"], r["node_id"], r["near_id"], actor, reason="ops review — 합침")
         store.resolve_item("uncertain_match", lambda p, _n=r["node_id"]: p.get("node_id") == _n,
                            actor=actor, decision="merged", at=store._now(), note="ops review")
+        # **사람이 닫은 큐도 이름으로 남긴다**(B106 ③) — 재구축 뒤 `ops replay`가 같은 결정으로 닫는다
+        from core.state import oplog
+        oplog.append("queue:resolve", actor, [r["node_id"]], "ops review — 합침",
+                     {"kind": "uncertain_match", "decision": "merged"},
+                     {"node": {"layer": r["layer"], "canonical": r["canonical"], "category": None}})
         return "합침"
     if ans == "c":
         ops.confirm(r["layer"], r["node_id"], actor, reason="ops review — 별개")

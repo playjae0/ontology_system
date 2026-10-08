@@ -13,7 +13,7 @@ from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85
 
 
 print("\n■ 골격 닫힌 목록 스냅샷 — 파서·에이전트 공유 자산 (D-11 확정)")
-init.init(fresh_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+init.init(fresh_=True, all_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
 for lay in ("process", "quality"):
     bootstrap(lay, echo=False)
 snap_path = store.path(store.SKELETON_LIST)

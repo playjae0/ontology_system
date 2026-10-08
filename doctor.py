@@ -136,7 +136,7 @@ def _clean():
     각자 달라진다. subprocess로 부르는 이유는 doctor가 core를 import하기 전에도
     돌아야 하기 때문이다 — 반입 직후 첫 확인이 이 파일의 일이다.
     """
-    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+    r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
                        capture_output=True, text=True, cwd=str(ROOT))
     # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
     # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아

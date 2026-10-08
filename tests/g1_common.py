@@ -45,7 +45,7 @@ def show(label, ok, detail=""):
 
 def reset():
     """**깨끗한 그래프에서 전체 재빌드** — 클린의 정의는 진입점이 갖는다(§7.6-4)."""
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     return bootstrap("process", echo=False)
 
 

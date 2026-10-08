@@ -41,7 +41,7 @@ def load(name):
 
 
 def full_run():
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+    init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for d in DOCS:
@@ -376,7 +376,8 @@ show("④ 거부 셋 — 행위자 없음 · 없는 대상 · 이미 확정",
      all("OpRefused" in x or "KeyError" in x or "ValueError" in x for x in _ref74),
      str(_ref74))
 show("④ `resolve_item` 호출부가 생겼다 (감사 H12 — 호출 0이던 자리)",
-     "resolve_item(" in (ROOT / "core" / "state" / "ops.py").read_text(encoding="utf-8"))
+     # 기대 변경(B106 ④) — 확정의 손은 `ops_mark.py`로 갔다(§7 파일 상한 · `ops.confirm` 그대로 보인다)
+     "resolve_item(" in (ROOT / "core" / "state" / "ops_mark.py").read_text(encoding="utf-8"))
 # 화면 — 큐가 종결분을 빼고 세고, 항목마다 끝내는 세 줄을 준다
 from cli import platform as _PF74                                  # noqa: E402
 import io as _io74, contextlib as _ctx74                           # noqa: E402

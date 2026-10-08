@@ -188,7 +188,7 @@ def _narrow(surface, pool, top_n, *, scoped=False):
 # **생성 경로의 닫힌 값**(B74 ②) — 대장이 적는 `path`가 여기 밖이면 FAIL이다.
 # 코드가 아는 사실만 적는다(LLM 산출이 아니다 — C38의 결).
 PATHS = ("skeleton", "dictionary", "scope+judge", "embedding+judge",
-         "overlap+judge", "self_coord", "memo", "none")  # self_coord — 자기 좌표(B90 ③) · memo — 반복 판정 기억(B100 ⑤)
+         "overlap+judge", "self_coord", "memo", "replay", "none")  # self_coord — 자기 좌표(B90 ③) · memo — 반복 판정 기억(B100 ⑤) · replay — 판정 재생(B106 ②)
 
 # 좁힌 방법 → 경로 이름. `그대로`(좁힐 것도 없었다)는 **그 실행이 고른 방법**의
 # 이름으로 적는다 — 후보를 무엇으로 고르는 세계였는지가 그 자리의 사실이다(B75 ①).
