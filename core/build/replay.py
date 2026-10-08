@@ -21,7 +21,8 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
 해소한 판정 · 열 `소속`)이다. 재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 —
 재시도가 붙인 값도 여기: 대장 행은 그때의 `orphan`이다) · 대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) ·
 끔(`--no-replay` — 문서 하나 또는 재구축 전부). 수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` —
-재구축 보고)가 센다.
+재구축 보고)가 센다. **처음 인입**(그 문서의 지난 대장이 없다)은 재생 대상이 아니라 세지도 행에 적지도 않는다 —
+재구축 · `--no-replay` 실행은 대장 없는 문서의 판정도 「키 없음」으로 센다(그 수가 재구축의 판정 비용이다 · `COUNT_ALL`).
 """
 from __future__ import annotations
 
@@ -30,6 +31,11 @@ from core.state.status import is_live
 
 #: 재생을 끈 사유(`--no-replay` → "끔") — None이면 켜져 있다
 OFF = None
+#: 이 실행이 재생을 **센다** — 재구축 · `--no-replay`가 켠다(`reset`). 꺼져 있으면 지난 대장이 없는 문서(처음 인입)는
+#: 재생도 재판정도 세지 않는다(재생이 해당 없다 — 판정 끝 줄도 없다). 켜져 있으면 대장 없는 문서의 판정도 「키 없음」이다
+COUNT_ALL = False
+#: 지금 문서가 재생 대상인가 — `begin`이 정한다(지난 대장이 있거나 `COUNT_ALL`)
+LIVE = False
 
 _ZERO = {"재생": 0, "재판정": 0, "키 없음": 0, "대상 없음": 0, "끔": 0}
 #: 실행 누계 — 재구축 보고 · 문서마다는 `DOC`
@@ -44,9 +50,9 @@ ROLES = ("entity", "belongs")
 
 
 def reset(off=None):
-    """실행 누계를 비우고 켜고 끈다 — 재구축 · 시험이 부른다."""
-    global OFF
-    OFF = off
+    """실행 누계를 비우고 켜고 끈다 — 재구축 · `--no-replay` · 시험이 부른다(이 실행은 대장 없는 문서도 센다)."""
+    global OFF, COUNT_ALL
+    OFF, COUNT_ALL = off, True
     STATS.update(_ZERO)
     DOC.update(_ZERO)
 
@@ -59,11 +65,13 @@ def key(locator, field, surface, layer):
 def begin(doc_id):
     """문서 실행 시작 — 그 문서의 지난 대장을 재료로 읽는다(새 대장이 덮기 전). 돌려주는 것은 재료 수."""
     from core.build import ledger
+    global LIVE
     DOC.update(_ZERO)
     TABLE.clear()
-    data = ledger.read(doc_id) or {}
+    data = ledger.read(doc_id)
+    LIVE = data is not None or COUNT_ALL
     n = 0
-    for r in data.get("rows") or []:
+    for r in (data or {}).get("rows") or []:
         if r.get("role") not in ROLES or r.get("verdict") not in REPLAYABLE:
             continue
         TABLE.setdefault(key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")), []).append(r)
@@ -106,7 +114,10 @@ def pick(b, at, surface, category, canonical):
 
     `at`은 `(위치, 열)` · `canonical`은 지금 조립한 조회 키(부모 좌표가 들어 있다). 같은 자리 · 같은 표기의 행이
     있는데 부모 좌표가 달라졌으면(골격 이름·부모가 바뀌었다) **대상 없음**이다 — 옛 이름에서 새 이름으로 옮겨
-    재생하지 않는다(재판정 — 수가 보인다). 사전이 이미 답한 값에는 부르지 않는다(호출부가 사전 히트를 먼저 본다)."""
+    재생하지 않는다(재판정 — 수가 보인다). 사전이 이미 답한 값에는 부르지 않는다(호출부가 사전 히트를 먼저 본다).
+    재생 대상이 아닌 문서(처음 인입 — `LIVE` 거짓)는 `(None, None)` — 세지도 적지도 않는다."""
+    if not LIVE:
+        return None, None
     if OFF:
         return _miss("끔")
     rows = [x for x in TABLE.get(key(at[0], at[1], surface, b.layer)) or ()
