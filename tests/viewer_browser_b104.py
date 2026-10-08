@@ -148,7 +148,7 @@ try:
              dom["factsUsed"] == want["factsUsed"] and dom["chunksUsed"] + dom["docsUsed"] == len(a["used_chunks"])
              and f"{a['lines']}줄" in dom["answer"] and f"쓴 청크 {len(a['used_chunks'])}" in dom["answer"]
              and "가짜 답 첫 줄" in dom["answer"],
-             dom["answer"][:90])
+             dom["answer"].replace("\n", " ⏎ "))
         pg.screenshot(path=str(SHOTS / "b104_01_질의_live.png"), full_page=True)
 
         # ── 원문 펼치기 — 문서 검색 칸의 첫 청크
@@ -176,7 +176,7 @@ try:
              jm["path"] == "chunk" and not jm["trace"]["linking"] and dm["chips"] == 0
              and dm["docs"] == len(jm["trace"]["doc_search"]) >= 1 and "경로 chunk" in dm["path"]
              and "근거를 찾지 못했다" not in dm["answer"],
-             f"{dm['path'][:40]} · 문서 검색 {dm['docs']}={len(jm['trace']['doc_search'])} · {dm['llm'][:60]}")
+             f"{dm['path']} · 문서 검색 {dm['docs']}={len(jm['trace']['doc_search'])} · {dm['llm'].strip()}")
         pg.screenshot(path=str(SHOTS / "b104_02_질의_문서검색.png"), full_page=True)
 
         # ── ⓕ
