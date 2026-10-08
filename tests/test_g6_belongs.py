@@ -231,7 +231,9 @@ _none = {p["source_locator"]: p for p in TG.coord_from_section(pcs, nodes=nodes)
 _sub_idx = TG.scoped_index(nodes, "노칭")[0]            # 노칭 서브트리 안에서 하나로 풀리는 표기
 _ok_b1 = (all(p["process_ref"] in _sub_idx for p in _with.values())
           and _with["S1"]["meta"].get("coord_ignored") == ["적층"] and _with["S1"]["meta"].get("coord_from_doc")
-          and _with["S2"]["process_ref"] == "비전 검사" and _with["S3"]["process_ref"] == "노칭 타발")
+          # 기대 변경(B104 ①) — 범위 안에서 하나인 공유 별칭은 그 노드 canonical로 쓰고 원 표기는 meta에
+          and _with["S2"]["process_ref"] == _sub_idx["비전 검사"]["canonical"]
+          and _with["S2"]["meta"].get("coord_tag_from") == "비전 검사" and _with["S3"]["process_ref"] == "노칭 타발")
 _ok_b2 = (_none["S2"].get("process_ref") is None and _none["S2"]["meta"].get("coord_shared_skip") == ["비전 검사"]
           and _none["S1"]["process_ref"] == "적층")
 show("ⓑ 문서 좌표면 서브트리 밖 좌표 0(밖 이름은 무시 표시 · 문서 좌표 물려받음) · 없으면 공유 별칭 좌표 0",

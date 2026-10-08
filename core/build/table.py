@@ -27,12 +27,13 @@ class _Row:
     """
     __slots__ = ("rec", "prov", "ref", "ref_g", "et", "ctx", "parent", "anchor_pol",
                  "resolved", "external", "attrs", "contents",
-                 "defer", "dropped", "pending", "dropped_ents", "coord_case")
+                 "defer", "dropped", "pending", "dropped_ents", "coord_case", "hold")
 
     def __init__(self, rec, doc_id=None):
         self.rec, self.prov = rec, loop._prov(rec, doc_id)
         self.ref = self.ref_g = self.et = self.parent = self.anchor_pol = None
         self.coord_case = "present"     # present · low_res · missing ([개정] B56-2)
+        self.hold = None                # 좌표 보류 사유(표기 모호일 때만 — B104 ①)
         self.ctx = {}
         self.resolved, self.external = {}, {}
         self.attrs, self.contents = [], []
@@ -127,7 +128,9 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
                      verdict=("lowres" if r.coord_case == "low_res"
                               else "anchor" if r.ref else "orphan"),
                      node_id=r.ref,
-                     queue_kind=None if r.ref else "orphan_anchor")
+                     queue_kind=None if r.ref else "orphan_anchor",
+                     hold=None if r.ref else b.anchor_hold)
+    r.hold = None if r.ref else b.anchor_hold        # 이 행의 좌표 보류 사유 — 드롭된 값 행도 같은 사유(B104 ①)
 
 
 def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
@@ -138,6 +141,7 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
              "dropped_entities": r.dropped_ents,
              "ref_g": r.ref_g, "parent": r.parent, "et": r.et,
              "anchor_pol": r.anchor_pol, "external": r.external,
+             "anchor_hold": r.hold,
              "defer": r.defer, "field": None}
     hctx = loop.Ctx(graphs=b.graphs(), dic=b.dict, buffer=b.buffer, queue=store,
                record=rec, schema=schema, state=state)

@@ -133,6 +133,14 @@ def embed(text):
     return out
 
 
+def backend_id():
+    """벡터의 **판** — 갈래 · 모델이 바뀌면 다른 공간이다(차원도 다르다). 질의 벡터 캐시가 이것으로 통째 무효를 가른다(B104 ③)."""
+    if gateway.use_mock():
+        return f"mock-sha256-{DIM}"
+    cfg = gateway.config()
+    return f"{cfg.get('embed_backend') or 'gateway'}:{cfg.get('embed_model')}"
+
+
 def cost_line():
     """마지막 임베딩 1회의 **비용 한 조각** — `llm-check` ⑥이 낸다 (B80 ③ 개정).
 

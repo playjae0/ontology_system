@@ -225,7 +225,7 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
 
 
 def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
-                 coord_notice, progress):
+                 coord_notice, progress, doc_coord=None):
     """⑨ 좌표 태깅 — 닫힌 목록에서 고르고, 못 고른 것은 그 사실을 보고에 남긴다.
 
     `parse`에서 단계로 떼어냈다(B78 2c).
@@ -240,7 +240,8 @@ def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
 
     pieces = tagger.tag(pieces, layer=layer, nodes=nodes, pick=pick_coord,
                         doc_type=a["doc_type"], progress=progress,
-                        notice=_note, cap=coord_cap, doc_id=res.doc_id)
+                        notice=_note, cap=coord_cap, doc_id=res.doc_id,
+                        doc_coord=doc_coord)        # 공유 별칭의 범위 안 해소 (B104 ①)
     res.report["coord_tag"] = dict(_coord)
 
     # 지도 폴백은 실패가 아니라 **표시**다(D-5) — 문서는 들어가고 큐가 뜬다.
@@ -457,7 +458,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes, doc_coord=doc_coord)
     # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
     pieces = _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
-                          coord_notice, progress)
+                          coord_notice, progress, doc_coord=doc_coord)
 
     env = tagger.envelope(adapter, doc_id, path, pieces, revision=revision,
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,

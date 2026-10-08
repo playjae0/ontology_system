@@ -393,12 +393,12 @@ def _paths_table():
     # 단 이름은 표로 두고, **함수 목록은 모듈에서 읽는다**(B79) — 새 자리가 생기면
     # 지도에 자동으로 뜬다. 표에만 있으면 `docs()`·`layers()`처럼 새로 난 자리를
     # 지도가 조용히 빠뜨린다.
-    stage = {"home": "—", "docs": "⓪원본", "layers": "②등록", "registry": "②등록",
+    stage = {"home": "—", "raw": "⓪원본", "legacy_raw": "⓪원본", "layers": "②등록", "registry": "②등록",
              "review": "②등록", "adapters": "②등록", "schemas": "②등록",
              "fixture_schemas": "①자산", "blocks": "①자산", "seed_layers": "①자산",
              "config_file": "①자산", "data": "③진실", "work": "④작업·장부",
-             "parsed": "④작업·장부", "extract": "④작업·장부", "export": "⑤파생",
-             "golden": "⑤파생"}
+             "parsed": "④작업·장부", "extract": "④작업·장부", "vectors": "④작업·장부",
+             "export": "⑤파생", "golden": "⑤파생"}
     # 자리를 **묻는** 함수만 싣는다 — 행동(`reset`·`bind_parser`·`ensure`)과
     # 판정(`is_mock_home`)은 자리가 아니다.
     ACTIONS = {"reset", "bind_parser", "ensure", "is_mock_home", "home_note",

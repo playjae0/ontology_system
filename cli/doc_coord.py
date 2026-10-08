@@ -105,17 +105,19 @@ def coord_counts(env):
     """조각 좌표의 출처별 수(B102 ⑦ — 표·산문 같은 함수) — 봉투의 `meta` 표시에서(새 계산 0)."""
     pcs = (env or {}).get("records") or (env or {}).get("chunks") or []
     out = {"조각": len(pcs), "자기": 0, "문서 좌표": 0, "태깅": 0, "없음": 0,
-           "무시(문서 좌표 밖)": 0, "공유 별칭 건너뜀": 0}
+           "무시(문서 좌표 밖)": 0, "공유 별칭 건너뜀": 0, "공유 별칭 범위 안 해소": 0}
     for p in pcs:
         m = p.get("meta") or {}
         if not p.get("process_ref"):
             out["없음"] += 1
         elif m.get("coord_from_doc"):
             out["문서 좌표"] += 1
-        elif m.get("coord_tag_source"):
+        elif m.get("coord_tag_source") in ("learned", "live"):
             out["태깅"] += 1
         else:
-            out["자기"] += 1
+            out["자기"] += 1                       # 범위 안 해소(scope)도 자기 표기에서 온 좌표다
+        if m.get("coord_tag_source") == "scope":
+            out["공유 별칭 범위 안 해소"] += 1          # 원 표기는 meta.coord_tag_from (B104 ①)
         if m.get("coord_ignored"):
             out["무시(문서 좌표 밖)"] += 1
         if m.get("coord_shared_skip"):

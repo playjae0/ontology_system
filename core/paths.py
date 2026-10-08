@@ -321,6 +321,11 @@ def parsed(*parts):
     return work("parsed", *parts)
 
 
+def vectors(*parts):
+    """④작업 **질의 벡터 캐시** — `work/vectors/<chunks|nodes>.json` (B104 ③ · 재생성 가능 · fresh가 지운다)."""
+    return work("vectors", *parts)
+
+
 def extract(*parts):
     """추출 체크포인트(파일 존재 = 추출 완료) · 구조 지도 보존."""
     return work("extract", *parts)

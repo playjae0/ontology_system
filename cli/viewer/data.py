@@ -49,7 +49,7 @@ def graph():
 
     **닻**(B103 ① — 골격 밖 노드가 붙은 골격 노드 · `anchor.anchors`)과 **연결 없는 노드**(엣지 없음 ·
     골격에 안 닿는 덩어리)를 함께 싣는다 — 배치와 노드 상세가 같은 사실을 읽는다(화면이 다시 찾지 않는다)."""
-    from cli.viewer import anchor as A
+    from core.query import anchor as A
     from core.state import knobs
     w, nodes, edges = _graph_world()
     anc = A.anchors(nodes, edges)
@@ -72,7 +72,8 @@ def neighbors(nid):
 
 def node(nid):
     """노드 상세의 근거(B103 ④) — `cli/viewer/node.detail`이 모은다."""
-    from cli.viewer import anchor as A, node as N
+    from cli.viewer import node as N
+    from core.query import anchor as A
     w, nodes, edges = _graph_world()
     raw = next((g.nodes[nid] for g in w.values() if nid in g.nodes), None)
     if raw is None:

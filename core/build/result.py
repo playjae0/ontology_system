@@ -28,6 +28,11 @@ def layer_counts(graphs):
 
 
 def hold_reason(row):
+    if row.get("hold"):                    # 행이 사유를 든다(B104 ① — 「표기 모호」는 목록 밖과 처방이 다르다)
+        return row["hold"]
+    # 표의 좌표 미해소 드롭 행(`loop._ledger_entity` — 판정 전 · canonical 없음)은 골격 밖(B94)이 아니다(B104 ①)
+    if row.get("role") == "entity" and row.get("verdict") == "orphan" and not row.get("canonical"):
+        return HOLD_REASONS[2][2]
     for role, verdict, why in HOLD_REASONS:
         if row.get("verdict") == verdict and (role is None or row.get("role") == role):
             return why

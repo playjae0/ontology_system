@@ -317,7 +317,7 @@ show("화면에 「연결」의 정의가 한 줄 있다 (붙음·auto·orphan)"
      all(w in _fn["정의"] for w in ("붙음", "auto", "orphan")))
 
 print("\n■ B103 ①③④ — 닻 · 연결 없는 노드 · 이웃 · 노드 상세의 근거 (브라우저 없이 재는 성질)")
-from cli.viewer import anchor as VA                                  # noqa: E402
+from core.query import anchor as VA                                  # noqa: E402 — 닻은 core 한 자리(B104)
 from core.state import knobs as VK                                   # noqa: E402
 # 창작 그래프 — 골격 R·A·B(A·B는 R의 part_of) · A에 위성 a1 → 위성의 위성 a2 · B에 b1 · 두 골격에 같은 거리 t ·
 # 7홉 사슬 c1..c7(A에서) · 섬 i1–i2 · 엣지 없는 e1

@@ -26,6 +26,8 @@ from core.matcher import MATCH, NEW, UNCERTAIN, resolve
 _MEMO = {}
 #: 이번 문서 실행이 사전·노드에 더한 **LLM 매칭** 별칭(B101 ④ — 결과표의 수) · 문서 시작에 비운다.
 ADDED = []
+#: 좌표 보류 사유 — 표기가 골격 노드 여럿을 가리킨다(B104 ①). 목록 밖과 처방이 다르다(대장 `hold` · 큐 문면).
+HOLD_AMBIGUOUS = "표기 모호(골격 노드 여럿)"
 from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표지
 from core.state.status import is_live
 from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
@@ -55,6 +57,7 @@ ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
 class Builder:
     def __init__(self, graph, cfg, schema, doc_id, layer):
+        self.anchor_hold = None                   # 마지막 좌표 해소의 보류 사유(B104 ①)
         self.g = graph
         self.cfg = cfg
         self.schema = schema
@@ -242,6 +245,7 @@ class Builder:
         `defer`가 None이면 종전대로 즉시 싣는다 — 레코드 맥락 없이 부르는 자리
         (골격 대조 등)를 위한 갈래다.
         """
+        self.anchor_hold = None                   # 이 호출의 보류 사유(대장 anchor 행이 싣는다 · B104 ①)
         if not surface:
             return None, None
         g, _ = self._graph_for(category)          # 걸침 anchor는 다른 층에서 찾는다
@@ -280,6 +284,7 @@ class Builder:
             self.buffer[norm(surface)] = tier1[0]
             return tier1[0], g
         if len(tier1) > 1:
+            self.anchor_hold = HOLD_AMBIGUOUS
             return _hold(f"표기 모호 — '{surface}'가 골격 노드 여럿을 가리킨다",
                          {"candidates": [g.get(h)["canonical"] for h in tier1]})
         if autos:
@@ -515,6 +520,17 @@ class Builder:
         self.last["node_id"] = nid
         return nid
 
+    def anchor_hold_of(self, surface, category=None):
+        """좌표 표기가 왜 안 풀렸나(B104 ①) — 골격 노드 여럿을 가리키면 `(HOLD_AMBIGUOUS, [canonical…])` ·
+        아니면 `(None, [])`(목록 밖). 사전 조회 한 번 — `resolve_anchor`와 같은 Tier1 기준이다."""
+        from core.state.bootstrap import COORD_CATEGORY
+        category = category or COORD_CATEGORY
+        g, _ = self._graph_for(category)
+        t1 = sorted(g.get(n)["canonical"] for n in set(self.dict.lookup(surface or ""))
+                    if is_live(g.get(n) or {}) and (g.get(n) or {}).get("category") == category
+                    and g.get(n).get("status") in ("seed", "confirmed"))
+        return (HOLD_AMBIGUOUS, t1) if len(t1) > 1 else (None, [])
+
     def _no_coord(self, surface, category, prov, coord_surface, belongs):
         """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 `missing_field`(키 `process_ref`) ·
         목록 밖 좌표 이름이면 그 표기의 `orphan_anchor` 항목에 행으로(새 kind 0 · B56)."""
@@ -525,10 +541,14 @@ class Builder:
         loc = (prov or "").split("#")[-1] or None
         if coord_surface:
             kind = "orphan_anchor"
-            store.enqueue_rows(kind, f"좌표 '{coord_surface}'가 골격 목록 밖이라 '{surface}'를 만들지 않았다",
+            # **실제 사유를 말한다**(B104 ①) — 표기 모호(골격 노드 여럿)와 목록 밖은 처방이 다르다
+            why, cands = self.anchor_hold_of(coord_surface)
+            store.enqueue_rows(kind, (f"좌표 '{coord_surface}'가 {why}(— {' · '.join(cands)})라 '{surface}'를 만들지 않았다"
+                                      if why else f"좌표 '{coord_surface}'가 골격 목록 밖이라 '{surface}'를 만들지 않았다"),
                                self.doc_id, norm(coord_surface),
                                {"surface": coord_surface, "category": COORD_CATEGORY,
                                 "provenance": prov, "layer": self.layer,
+                                **({"candidates": cands} if why else {}),
                                 "dropped_entities": [item]}, locator=loc)
         else:
             kind = "missing_field"

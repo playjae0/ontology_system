@@ -388,7 +388,8 @@ def _ledger_entity(st, surface, layer, last):
     if not last:
         b.ledger.add(locator=st.get("locator"), field=st.get("field"),
                      role="entity", surface=surface, layer=layer,
-                     path="none", verdict="orphan", queue_kind="orphan_anchor")
+                     path="none", verdict="orphan", queue_kind="orphan_anchor",
+                     hold=st.get("anchor_hold"))      # 이 행의 좌표가 표기 모호였으면 그 사유(B104 ①)
         return
     b.ledger.add(locator=st.get("locator"), field=st.get("field"), role="entity",
                  surface=surface, canonical=last.get("canonical"),
