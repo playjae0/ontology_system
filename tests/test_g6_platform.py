@@ -11,7 +11,7 @@ from g6_common import _P, _ctx, _io, done    # noqa: F401 — `*`는 밑줄 이�
 
 
 print("\n■ 4′ — 기존 단위 4: subprocess build/query · 2층+cross 표시 · 큐 열람")
-init.init(fresh_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+init.init(fresh_=True, all_=True)              # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
 
 r = PF.call(["all"])                        # 플랫폼→파이프라인 결합은 subprocess뿐(§16.1)
 show("플랫폼이 build를 subprocess로 호출 (파일 계약 — 코드 의존 0)",

@@ -34,7 +34,7 @@ MATRIX = [("표", "process", "CP01"), ("표", "quality", "PFMEA01"),
 
 
 def _fresh():
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
 
@@ -162,6 +162,6 @@ show("ⓛ 정합이 주입한 어긋남을 센다(층 둘) · 정리는 계획�
      and _done["applied"] and _c1 == (1, 0, 0) and len(_kept) == 1
      and _gate is False and "스키마 재대조" in _bs.getvalue(),
      f"전 {_c0} · 후 {_c1}")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

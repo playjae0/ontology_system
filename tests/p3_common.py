@@ -98,7 +98,7 @@ def _call_names(node):
 
 def setup():
     """깨끗한 상태에서 시작한다 — 등록부는 실행 산출물이다."""
-    init.init(fresh_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
+    init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
     for dt in ("ipqc", "toc_report"):

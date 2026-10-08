@@ -62,7 +62,7 @@ def _fail_stage(i, label, detail):
     return stage
 
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 bootstrap("process", echo=False)
 
 print("\n■ B98 ① 사전 점검 — LLM을 쓰기 전에")
@@ -229,6 +229,6 @@ show("ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · tty면 새 층이 칠해진다
      "\033" not in _od and "\033" not in _oc and "\033" in _on and _off == "x"
      and all(not ({"red", "yellow"} & set(_screen.KINDS[k]))
              for k in ("head", "prog", "beat", "aux")))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

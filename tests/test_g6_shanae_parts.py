@@ -78,7 +78,7 @@ def _clean_dt():
     SH.path("TOC01").unlink(missing_ok=True)
 
 
-_sp("run.py", "init", "--fresh")
+_sp("run.py", "init", "--fresh", "--all")
 _sp("run.py", "bootstrap")
 _clean_dt()
 

@@ -61,7 +61,7 @@ def _logs():
 
 
 print("\n■ B92 ① 카탈로그 맞추기 — bootstrap 입구")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _c0 = _common()
 _rw(_P.common(), lambda c: c["categories"]["Process"].update(also={"Unit": ["sub"]}))   # 사람 값
 _c0 = _common()
@@ -98,14 +98,15 @@ show("ⓒ 층에서 지운 카테고리는 노드 0이면 자동 제거(층째 �
      and _rc_t == 0 and "Tool" not in _common()["categories"],
      [l for l in _o.splitlines() if "공통 config" in l][:2])
 
+# 기대 변경(B106 ①): 멈춤의 다음 줄 「재빌드」 → 「재구축(python run.py rebuild)」 — 아래 셋이 같은 줄을 본다
 run_document(load("CP01"))                         # process 그래프에 Property·Unit 노드
 _rw(_P.layers("process", "config.json"), lambda c: c["categories"].pop("Property"))
 _before = _P.common().read_bytes()
 _rc, _o = _boot()
 show("ⓒ 노드가 남은 카테고리를 층에서 지우면 멈춘다 — 지우지 않는다",
-     _rc != 0 and "Property" in _common()["categories"] and "노드" in _o and "재빌드" in _o,
+     _rc != 0 and "Property" in _common()["categories"] and "노드" in _o and "재구축" in _o and "rebuild" in _o,
      [l for l in _o.splitlines() if "Property" in l][:1])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 print("\n■ B92 ② 노드가 있는 카테고리의 집 변경을 막는다")
 _boot()                                            # 골격이 서야 문서가 노드를 만든다
@@ -114,9 +115,9 @@ _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Unit="
 _rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))
 _rc, _o = _boot()
 show("ⓔ 노드가 있는 카테고리의 home을 바꾸면 멈춘다 — 옛 집은 노드가 있는 그래프",
-     _rc != 0 and "process → quality" in _o and "재빌드" in _o,
+     _rc != 0 and "process → quality" in _o and "재구축" in _o and "rebuild" in _o,
      [l for l in _o.splitlines() if "home을" in l][:1])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 _new_layer({"Gear": "기어"})
 _cb, _files = _P.common().read_bytes(), sorted(p.name for p in _P.data().rglob("*") if p.is_file())
@@ -126,7 +127,7 @@ show("ⓕ --dry-run은 계획만 보인다 — 공통 config·그래프 쓰기 0
      and sorted(p.name for p in _P.data().rglob("*") if p.is_file()) == _files,
      _o.strip().splitlines()[-1][:80])
 _drop_layer()
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 with tempfile.TemporaryDirectory(prefix="b92_") as _td:
     _r = Path(_td)
@@ -149,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix="b92_") as _td:
 
 # ────────────────────────────────────────────────────────────── B93
 print("\n■ B93 ① 골격 카테고리의 집은 골격 층 — 자동")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Process="공정(렌즈)"))
 _rw(_P.common(), lambda c: c["categories"].pop("Process"))
 _rc, _o = _boot()
@@ -170,7 +171,7 @@ show("ⓑ 기존 빈칸은 골격 층으로 채운다 · 판 +1 · 로그 (ⓖ -
      [l for l in _o.splitlines() if "빈칸" in l][:1])
 
 print("\n■ B93 ② 골격 모순 거부 — 심기 전에")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _rw(_P.layers("quality", "config.json"), lambda c: c["skeleton"].update(category="Process")
     or c["categories"].update(Process="공정(렌즈)"))
 _rc, _o = _boot()
@@ -191,7 +192,7 @@ def _move_skeleton():
 
 
 print("\n■ B95 ① 골격 카테고리의 어긋난 집 — 노드 0이면 자동 교정")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _move_skeleton()
 _v0, _l0 = _common()["common_version"], len(_logs())
 _rcd, _od = _boot("--dry-run")
@@ -204,17 +205,17 @@ show("ⓐ 채운 집 ≠ 골격 층 · 옛 집 그래프에 노드 0 → 자동 
      and _rcd == 0 and _dry_same and f"home process → {EQ}" in _od,
      [l for l in _o.splitlines() if "→" in l and "home" in l][:1])
 shutil.rmtree(_P.layers(EQ), ignore_errors=True)
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _boot()                                            # 골격 노드가 process 그래프에 심긴다
 _move_skeleton()
 _rc, _o = _boot()
 _eq_nodes = len(open_graph(EQ).nodes)
 show("ⓑ 옛 집 그래프에 그 카테고리 노드가 있으면 멈춘다 — 노드 수 문면 · 그래프 쓰기 0",
-     _rc != 0 and "골격은 b95eq에 있다" in _o and "노드" in _o and "재빌드" in _o
+     _rc != 0 and "골격은 b95eq에 있다" in _o and "노드" in _o and "재구축" in _o and "rebuild" in _o
      and _common()["categories"]["Process"]["home"] == "process" and _eq_nodes == 0,
      [l for l in _o.splitlines() if "골격은" in l][:1])
 shutil.rmtree(_P.layers(EQ), ignore_errors=True)
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 print("\n■ B93 ③ 겸 상태 — 표시일 뿐(종료 코드 0)")
 _rc_off, _o_off = _boot()
@@ -230,13 +231,13 @@ show("ⓕ 겸 상태 세 갈래 — 꺼짐(겸 없음) · 켜짐(겸 + 겸 단 �
      and "⚠ 골격 'FailureEffect'(quality)" in _o_on and "별칭 0" in _o_on
      and "겸 Unit(sub·detail) · 겸 단 별칭" in _dq and "별칭 0" in _dq,
      [l for l in _o_on.splitlines() if "골격 '" in l][:2])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── B94
 print("\n■ B94 ① 쓰는 층(used_by) — 결과 기록 · 사람이 관리하지 않는다")
 from core.build import ledger as _LG       # noqa: E402
 from core.build import extract as _EX      # noqa: E402
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _decl0 = catalog.declared_by()
 _ub0 = {c: v.get("used_by") for c, v in _common()["categories"].items()}
 _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Property="품질 인자(창작)"))
@@ -281,10 +282,10 @@ show("ⓓ 새 카테고리를 더할 때 기존 카탈로그(home · used_by · 
      and "'Failure' home quality · used_by ['quality']" in _o and "새 카테고리 'DefectHistory'" in _od,
      [l.strip()[:70] for l in _o.splitlines() if "'Failure' home" in l][:1])
 _drop_layer()
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 print("\n■ B95 ② 새 카테고리 경고에 이름 규칙 한 줄 — 표시")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _boot()
 _rw(_P.common(), lambda c: c["canonical_scope"]["bind_categories"].append("Component"))
 _new_layer({"Component": "구성 부품(창작)", "DefectHistory": "이슈 이력의 결함(창작)"})
@@ -297,7 +298,7 @@ show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 적용(bind_categorie
      and "이름 규칙: 'DefectHistory'는 미적용" in _od,
      [l.strip()[:60] for l in _o.splitlines() if "이름 규칙" in l][:2])
 _drop_layer()
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 print("\n■ B94 ③ 골격 카테고리 개체는 조회 전용")
 _boot()
@@ -331,6 +332,6 @@ show("ⓕ 골격 별칭이면 매칭(노드 0) · 골격이 아닌 카테고리�
      _nc and _nc[0].get("verdict") == "match" and (_pg.get(_nc[0]["node_id"]) or {}).get("canonical") == "노칭"
      and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 1,
      f"NC → {(_pg.get((_nc or [{}])[0].get('node_id')) or {}).get('canonical')} · 새 {sorted(_new)}")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

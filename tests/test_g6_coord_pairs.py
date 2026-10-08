@@ -158,7 +158,7 @@ for _lay in ("process", "quality"):                # 시험이 세운 등록은 
 # ⓒ `--step` 좌표 관문에서 멈추면 — LLM 0 · 그래프·큐 쓰기 0 · 그 관문 머리가 쌍 수를 말한다
 print("\n■ B105 ③ --step 좌표 관문 (판정 비용 전)")
 with contextlib.redirect_stdout(io.StringIO()):
-    init.init(fresh_=True)                         # 빈 그래프 — 같은 doc_id의 옛 원본 경로가 없다
+    init.init(fresh_=True, all_=True)                         # 빈 그래프 — 같은 doc_id의 옛 원본 경로가 없다
     for _l in ("process", "quality"):
         bootstrap(_l, echo=False)
 
@@ -286,7 +286,7 @@ _g2r = _grp()
 run_document(_e2)                                          # 다른 문서(산문 · 품질층)의 같은 쌍
 _g3 = _grp()
 with contextlib.redirect_stdout(io.StringIO()):
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     for _l in ("process", "quality"):
         bootstrap(_l, echo=False)
 _alive = CA.path().exists() and CA.key(*PAIR) in CA.acked()

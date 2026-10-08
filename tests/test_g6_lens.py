@@ -47,7 +47,7 @@ def _knobs_file(obj):
 
 # ────────────────────────────────────────────────────────────── ⑤
 print("\n■ B91 ⑤ 사내 손잡이 — 값은 사내에서 · 분포는 사내 화면에")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _knobs_file(None)
 _rows = {r["name"]: r for r in knobs.rows()}
 show("⑤ 손잡이 파일이 없으면 전부 기본값이고 기본값은 코드 상수다",
@@ -319,6 +319,6 @@ show("⑥ 겸 카테고리의 집이 주 카테고리의 집과 다르면 bootst
      not _w0 and len(_w1) == 1 and not _p1 and _rcb == 0
      and "⚠ 공통 config 겸" in _ob and "조용히 빠진다" in _ob,
      (_w1 or [""])[0][:70])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

@@ -69,7 +69,7 @@ def run(root, *argv, script=None):
 
 def pipeline(root):
     """클린 → 골격 → 인입 셋 → 질의. 돌려주는 것은 성질 묶음이다."""
-    run(root, "init", "--fresh")
+    run(root, "init", "--fresh", "--all")
     boot = run(root, "bootstrap")
     for doc, dt in DOCS:
         run(root, "ingest-file", str(Path(root) / "tests/fixtures/raw" / doc),
@@ -88,7 +88,7 @@ print("\n■ B85 ① — 좌표 층을 묻는 자리 하나 · 골격 파일 부
 
 from core.state import bootstrap as BS                                # noqa: E402
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 

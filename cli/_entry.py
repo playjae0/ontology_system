@@ -124,6 +124,21 @@ def doc_header(doc_id, doc_type=None, kind=None, lenses=None):
     _screen.say("   " + " · ".join(bits), "head")
 
 
+def _adopt_ops_log():
+    """**사람 판단 기록의 옛 자리**(③ `data/ops_log.json`)를 ②등록으로 — 첫 실행에서 한 번(B106 ③ · 두 벌 금지)."""
+    try:
+        from core.state import oplog
+        n = oplog.adopt_legacy()
+    except Exception as e:                          # noqa: BLE001 — 옮기지 못해도 명령은 돈다(문면으로 말한다)
+        print(f"[사람 판단 기록] 옛 자리에서 옮기지 못했다 — {e}")
+        return
+    if n:
+        from core import paths
+        from core.state import store
+        print(f"[사람 판단 기록] 옛 자리 data/ops_log.json의 {n:,}건을 ②등록 "
+              f"{paths.show(store.path(store.OPS_LOG))}로 옮겼다(재구축 · fresh가 지우지 않는다 — B106 ③)")
+
+
 def run(command, main, argv=None):
     """진입점 하나 — 로그 설정 · 화면 복사 · 실행 머리/끝 줄 · 종료 코드. 돌려주는 것은 종료 코드."""
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -150,6 +165,7 @@ def run(command, main, argv=None):
                   f"{'mock' if gateway.use_mock() else '실호출'} · 코드 판 {_code_rev()} =====")
     _SCREEN.info("%s", log.HEADER)
     sys.stdout, sys.stderr, builtins.input = out, err, _input
+    _adopt_ops_log()
     rc = 0
     try:
         rc = main(argv) or 0

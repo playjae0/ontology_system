@@ -129,7 +129,7 @@ def main(argv):
         mutate()
     buf = io.StringIO()                  # 인입 화면은 스냅샷이 아니다
     with contextlib.redirect_stdout(buf):
-        init.init(fresh_=True)
+        init.init(fresh_=True, all_=True)
         for layer in discover():
             bootstrap(layer, echo=False)
         row = I.ingest_file(doc, doc_type="cp")

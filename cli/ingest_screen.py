@@ -175,7 +175,7 @@ MARKS = {"match": "✓", "attached": "✓", "new": "+", "uncertain": "?", "lowre
 #: 경로 → 짧은 이름. 화면이 경로를 다시 해석하지 않는다(대장의 값 그대로).
 PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "scope+judge": "스코프",
               "embedding+judge": "임베딩", "overlap+judge": "겹침", "self_coord": "자기 좌표",
-              "memo": "기억", "none": "—"}
+              "memo": "기억", "replay": "재생", "none": "—"}
 
 #: 줄을 찍는 자리 — **판단이 갈린 값**이다(사용자 확정 2026-09-22).
 LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject")
@@ -349,6 +349,11 @@ def build_screen(step=False, stage=None, prose=False):
                   f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
                   f"(상한 {CANDIDATE_TOP_N})")
+        rp = info.get("재생") or {}
+        if any(rp.values()):
+            # **판정 재생**(B106 ②) — 지난 대장으로 붙인 값과 다시 판정한 값(사유별)
+            print(f"   판정 재생 — 재생 {rp.get('재생', 0):,} · 재판정 {rp.get('재판정', 0):,}(키 없음 "
+                  f"{rp.get('키 없음', 0):,} · 대상 없음 {rp.get('대상 없음', 0):,} · 끔 {rp.get('끔', 0):,})")
         # 결과만 보이는 세 머리(판정 · 부착·엣지 · 큐) — 늘 낸다(B99 ④) · `--step`이면 묻는다
         u2 = gateway.usage_total()
         _step_gate(4, prose=prose, ask=step, detail=f"새 노드(auto) {info.get('auto', 0)} · "

@@ -33,7 +33,7 @@ from core.build.entry import _vocab          # noqa: E402
 from core.llm import gateway                 # noqa: E402
 from core.state.bootstrap import load_config  # noqa: E402
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _register()
 
 print("\n■ B97 ① 추출 예고 · ② 청크별 줄")
@@ -174,6 +174,6 @@ show("ⓕ --step 산문: 추출 예고 멈춤 = 체크포인트 0 · 추출 뒤 
      and "] 추출 예고 —" not in _o4,
      [l.strip()[:60] for l in _o2.splitlines() if "[5/8]" in l])
 _unregister()
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

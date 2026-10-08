@@ -46,7 +46,8 @@ def _save(d):
 
 
 def key(kind, pair):
-    return f"{kind}|{pair[0]}|{pair[1]}"
+    from parser import coord_pairs as CP
+    return f"{CP.ack_kind(kind)}|{pair[0]}|{pair[1]}"           # 문서 좌표 상위도 상위 쌍이다 (B106 ⑤)
 
 
 def key_of(pl):

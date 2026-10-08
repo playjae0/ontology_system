@@ -11,8 +11,8 @@
 | 단 | 무엇 | 자리 | 성질 |
 |---|---|---|---|
 | ①자산 | 레포 — 코드·킷·공용 블록·seed | git | 교체 대상 |
-| ②등록 | `doc_types.json` · 어댑터 · 스키마 · `review/` | `registry()` | 사람 승인 1회 · 재생성 불가 |
-| ③진실 | 그래프·사전·청크·큐·문서 대장·ops_log | `data()` | 누적 |
+| ②등록 | `doc_types.json` · 어댑터 · 스키마 · `review/` · 사람 판단 기록 `ops_log.json`(B106 ③) | `registry()` | 사람 승인 1회 · 재생성 불가 |
+| ③진실 | 그래프·사전·청크·큐·문서 대장 | `data()` | 누적 |
 | ④작업·장부 | `parsed/` · `extract/` · `ingest_log/` · 로그 | `work()` | 재생성 가능 |
 | ⑤파생 | Cypher·CSV·html | `export()` | 되돌려 읽지 않는다 |
 

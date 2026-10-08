@@ -48,7 +48,7 @@ def snapshot(doc_prefix):
 
 # ────────────────────────────────────────────────────────────── ①
 print("\n■ B90 ① 층 공통 config — 카테고리 카탈로그")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _decl = catalog.declared_by()
 show("① mock 카탈로그는 층 선언의 복사다 — 집 = 선언한 층 하나 · 거부 0 · 이름 규칙은 카탈로그에만",
      all(len(v) == 1 and catalog.home(c) == v[0] for c, v in _decl.items())
@@ -60,7 +60,7 @@ show("① mock 카탈로그는 층 선언의 복사다 — 집 = 선언한 층 �
 
 
 def _problem(mutate_layer=None, mutate_common=None):
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     if mutate_layer:
         _rw(_P.layers(mutate_layer[0], "config.json"), mutate_layer[1])
     if mutate_common:
@@ -82,7 +82,7 @@ show("① 거부 네 갈래(ⓑ 카탈로그 밖 · ⓒ 선언 안 한 집 · �
      and any("에서 지운다" in m for _t, m in _cases["ⓓ"])
      and sum(1 for t, _m in _cases["ⓔ"] if t == "ⓔ") == 2,
      str({k: [t for t, _m in v] for k, v in _cases.items()}))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 # ⓐ 운영 — 없으면 초안을 만들고 멈춘다(자동 채택 0) · 초안을 덮지 않는다
 with tempfile.TemporaryDirectory(prefix="b90_") as _td:
@@ -179,7 +179,7 @@ _k = subprocess.run(
 show("② table의 target_layer가 집과 다르면 등록 관문 G4C가 FAIL로 말한다",
      "[FAIL] G4C" in _k and "집 'process'" in _k,
      next((l for l in _k.splitlines() if "G4C" in l), "")[:160])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── ③
 print("\n■ B90 ③ 주·겸 카테고리 · 자기 좌표 규칙")
@@ -225,7 +225,7 @@ show("③ ⓒ also를 지우면 지금처럼 새 Unit이 되고 엣지는 그 �
 show("③ 추출 어휘의 Unit 정의문 끝에 겸 한 줄 · show node가 「겸 Unit」을 보인다",
      "sub·detail 단 Process도 Unit이다" in _line and "겸 Unit" in _sn,
      _line[-60:])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── ④
 print("\n■ B90 ④ 걸침 엣지 문장화 — 층 안 확장으로 닿은 것도")
@@ -259,19 +259,19 @@ _f2 = _facts("칼날 마모와 노칭 프레스")
 show("④ 품질층에 저장된 걸침 엣지가 품질층 확장으로 닿으면 문장이 된다 (저장한 층의 템플릿)",
      _want in _f1, str(_f1))
 show("④ 다리로도 닿은 같은 엣지는 한 번만 (중복 0)", _f2.count(_want) == 1, str(_f2))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── ⑤
 print("\n■ B90 ⑤ config를 바꾸면 등록 스키마를 다시 대조한다")
 from cli.register import recheck                                    # noqa: E402
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _r0 = recheck.run()
 _rw(_P.layers("process", "config.json"),              # 카테고리를 지운다 — 선언과 삼항 둘 다
     lambda c: (c["categories"].pop("Property"),
                c.update(relation_patterns=[p for p in c["relation_patterns"]
                                            if "Property" not in (p["src"], p["dst"])])))
 _r1 = recheck.run()
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _r2 = recheck.run()
 _rw(_P.layers("quality", "config.json"),
     lambda c: c.update(relation_patterns=[p for p in c["relation_patterns"]
@@ -289,7 +289,7 @@ show("⑤ 되돌리면 전부 PASS", _r2 and all(ok for _dt, ok, _l in _r2),
 show("⑤ prose doc_type의 층이 좌표 카테고리를 말하지 않으면 경고 (좌표를 못 단다)",
      any(dt == "ppt_quality" and "⚠" in l and "좌표를 못 단다" in l for dt, _o, l in _r3),
      str([l[:80] for dt, _o, l in _r3 if dt == "ppt_quality"]))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── ⑥
 print("\n■ B90 ⑥ registry — 원자적 쓰기 · 디버그 파일은 작업 단")
@@ -312,6 +312,6 @@ show("⑥ 게이트웨이 오류 원문은 작업 단에 남고 registry(review/
      _P.register_debug("b90dbg", "last_error.json").exists()
      and not _P.review("b90dbg", "last_error.json").exists(),
      _P.show(_P.register_debug("b90dbg", "last_error.json")))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

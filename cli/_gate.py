@@ -130,3 +130,15 @@ def require_live_or_allow(argv, *, command=""):
     # 넘기므로, stderr로 내면 사람 화면에 모드 줄만 뜨고 사유가 사라진다.
     print(f"[{command or 'mock 관문'}] {MESSAGE}")
     raise SystemExit(2)                          # [상태] 문면=MESSAGE
+
+
+def approved(yes, next_line):
+    """**실행 승인** — `--yes`면 실행 · 터미널이면 묻는다 · 비대화형은 계획만(쓰기 0 · B106 — 재구축 · 문서 단위
+    확인이 같은 규칙 · `ops review`의 결). 돌려주는 것은 실행할지."""
+    import sys
+    if yes:
+        return True
+    if not sys.stdin.isatty():
+        print(f"  (비대화형 — 계획만 · 쓰기 0) ▶ 다음 줄 — 실행: {next_line}")
+        return False
+    return input("  실행할까? [y/N] ").strip().lower() in ("y", "yes")

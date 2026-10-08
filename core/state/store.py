@@ -92,8 +92,14 @@ def path(name) -> Path:
         # 안 된다(`init --fresh`의 범위가 폴더다). 구판이 `data/` 안에서 이름 하나를
         # 예외로 지켜 내던 것(`KEEP_IN_DATA`)이 이 한 줄로 대체됐다.
         return paths.registry(n)
-    if n in WORK_FILES or n.startswith("ingest_log/"):
+    # 판정 대장 폴더 자체(`ingest_log`)도 ④다 — 구판은 `ingest_log/…`만 보아 폴더를 묻는 자리
+    # (`ledger.made_by` · fresh 보존)가 없는 `data/ingest_log`를 봤다(B106 ① 자체 검출)
+    if n in WORK_FILES or n == "ingest_log" or n.startswith("ingest_log/"):
         return paths.work(n)
+    if n == OPS_LOG:
+        # **사람 판단 기록은 ②등록이다**(B106 ③) — `--actor` 필수 · 재생성 불가 · fresh가 지우지 않는다.
+        # 재구축 뒤 `ops replay`가 이 기록을 이름으로 되살린다(`core/state/oplog.py`).
+        return paths.registry(n)
     return paths.data(n)
 
 

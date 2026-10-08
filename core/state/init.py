@@ -11,8 +11,15 @@
 읽기 코드가 `read(name, default)`로 기본값을 갖고 있어 둘이 대체로 같게 동작하지만,
 **대체로 같은 것은 판정의 바닥이 될 수 없다.**
 
-    python run.py init            빈 상태를 만든다 (있으면 그대로 둔다)
-    python run.py init --fresh    지우고 다시 만든다
+    python run.py init                  빈 상태를 만든다 (있으면 그대로 둔다)
+    python run.py init --fresh          지우고 다시 만든다 — **비용이 든 산출 넷은 남긴다**(B106 ①)
+    python run.py init --fresh --all    전부 지운다 — **클린**(회귀 바닥 · doctor · 시험)
+
+**fresh 기본은 재구축의 바닥이다**(B106 ① · 사용자 결정 2026-10-08): 산문 추출(`work/extract/`) ·
+구조 지도(`work/struct_maps/`) · 판정 대장(`work/ingest_log/` — 판정 재생의 재료) · 좌표 학습
+(`data/coord_learned.json`)을 남기고 나머지 ③④⑤를 지운다 — 다시 넣을 때 LLM을 처음부터 부르지 않게.
+남긴 것의 재사용 판정은 각자의 것 그대로다(추출 = 문서 해시·어댑터·지시문·config 판 · 해시 없는 지도는
+재사용 안 함 · 좌표 학습은 대상이 골격에 있을 때만). **클린은 `--all`**이고 정의는 B78 그대로다.
 """
 from __future__ import annotations
 
@@ -64,14 +71,84 @@ EMPTY = {
 }
 
 
-def fresh():
-    """클린 상태를 만든다 — **`data/`·`work/`·`export/` 셋을 폴더째** 지운다.
+def kept():
+    """**fresh 기본이 남기는 것** 넷(B106 ①) — `[(표기, 경로)]`. 자리는 소유자에게 묻는다(경로 조립 0)."""
+    return [("산문 추출", paths.extract()), ("구조 지도", paths.work("struct_maps")),
+            ("판정 대장", store.path("ingest_log")), ("좌표 학습", store.path(store.COORD_LEARNED))]
 
-    등록(`registry/`)과 설정은 남는다: 사람 승인 1회의 산출이라 재생성되지 않는다
-    (구판의 `KEEP_IN_DATA` 예외가 그 사실을 파일 단위로 흉내 내던 것이다).
+
+def _size(p):
+    """`(파일 수, 바이트)` — 락 파일은 세지 않는다(상태가 아니다)."""
+    p = Path(p)
+    if p.is_file():
+        return (0, 0) if p.name.endswith(".lock") else (1, p.stat().st_size)
+    n = b = 0
+    for f in p.rglob("*") if p.is_dir() else ():
+        if f.is_file() and not f.name.endswith(".lock"):
+            n, b = n + 1, b + f.stat().st_size
+    return n, b
+
+
+def fresh(all_=False, keep=(), report=None):
+    """지운다 — **기본은 비용이 든 산출 넷(`kept()`)과 `keep`을 남기고**, `all_`이면 `data/`·`work/`·`export/`를
+    폴더째(클린 — 회귀 바닥).
+
+    등록(`registry/`)과 설정은 어느 쪽이든 남는다: 사람 승인 1회의 산출이라 재생성되지 않는다
+    (구판의 `KEEP_IN_DATA` 예외가 그 사실을 파일 단위로 흉내 내던 것이다). `report`(dict)를 주면
+    `kept`·`wiped`에 `[(표기, 파일 수, 바이트)]`를 채운다 — 화면이 「남긴 것 · 지운 것 · 크기」를 말한다.
+
+    **mock 루트의 클린은 사람 판단 기록도 비운다**(B106 ③) — `ops_log.json`이 ②등록으로 옮겨 클린이
+    지우지 않게 됐는데, 회귀 바닥은 기록 0에서 시작해야 한다(옮기기 전 정의 그대로 · `seed_layers`와 같은 결 —
+    운영 루트의 ②등록은 클린도 건드리지 않는다).
     """
+    rep = report if report is not None else {}
+    rep["kept"], rep["wiped"] = [], []
+    hold = [] if all_ else [p for _l, p in kept()] + [Path(k) for k in keep]
+    for label, p in ([] if all_ else kept()):
+        n, b = _size(p)
+        if n:
+            rep["kept"].append((label, n, b))
     for tier in WIPE_TIERS:
-        shutil.rmtree(getattr(paths, tier)(), ignore_errors=True)
+        root = getattr(paths, tier)()
+        n, b = _size(root)
+        if all_:
+            shutil.rmtree(root, ignore_errors=True)
+        else:
+            k_n = sum(_size(h)[0] for h in hold if _under(h, root))
+            k_b = sum(_size(h)[1] for h in hold if _under(h, root))
+            n, b = n - k_n, b - k_b
+            _wipe_except(root, hold)
+        rep["wiped"].append((f"{tier}/", n, b))
+    if all_ and paths.is_mock_home():
+        store.path(store.OPS_LOG).unlink(missing_ok=True)
+    return rep
+
+
+def _under(p, root):
+    try:
+        Path(p).resolve().relative_to(Path(root).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _wipe_except(root, hold):
+    """`root` 아래를 지우되 `hold`(남길 경로)와 그 조상 폴더는 남긴다."""
+    root = Path(root)
+    if not root.is_dir():
+        return
+    hold = [Path(h).resolve() for h in hold]
+    for child in sorted(root.iterdir()):
+        c = child.resolve()
+        if any(c == h for h in hold):
+            continue                                        # 남길 것 자체
+        if child.is_dir() and any(_under(h, c) for h in hold):
+            _wipe_except(child, hold)                       # 남길 것의 조상 — 안으로
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
 
 
 def seed_layers(force=False):
@@ -117,15 +194,19 @@ def ensure():
     return made
 
 
-def init(fresh_=False):
+def init(fresh_=False, all_=False, keep=(), report=None):
+    """`fresh_` — 지우고 다시 만든다(기본은 보존 넷을 남긴다 · `all_`이면 클린 · `keep`은 더 남길 경로 —
+    재구축 계획 파일). 돌려주는 것은 새로 만든 빈 상태 목록이다."""
     if fresh_:
-        fresh()
+        fresh(all_=all_, keep=keep, report=report)
     # **층 자산이 먼저다** — `ensure()`가 층마다 빈 그래프를 만들고, 층 목록은
-    # 상태 루트의 `layers/`가 정한다(B79 ①).
-    seeded = seed_layers(force=fresh_)
+    # 상태 루트의 `layers/`가 정한다(B79 ①). mock 루트의 seed 되심기는 **클린의 몫**이다(B106 ① —
+    # 기본 fresh는 재구축의 바닥이라 ②등록을 건드리지 않는다: 사람이 고친 seed로 재구축한다).
+    seeded = seed_layers(force=fresh_ and all_)
     made = ensure()
     if seeded:
         made.append(f"층 seed {seeded.name}/")
     _LOG.info("init%s — 빈 상태 %d개 생성 (%s)",
-              " --fresh" if fresh_ else "", len(made), ", ".join(made) or "없음")
+              (" --fresh --all" if all_ else " --fresh") if fresh_ else "", len(made),
+              ", ".join(made) or "없음")
     return made

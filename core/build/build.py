@@ -20,7 +20,7 @@ from core.build import gate
 from core.state import store
 from core.dictionary import Dictionary
 from core.state.ids import norm
-from core.matcher import MATCH, NEW, UNCERTAIN, resolve
+from core.matcher import MATCH, NEW, UNCERTAIN, dict_hits, resolve
 
 #: 골격 밖 반복 판정 기억(B100 ⑤) — 한 실행(프로세스) 안 · 열쇠에 골격·사전의 판이 들어 있다.
 _MEMO = {}
@@ -387,7 +387,7 @@ class Builder:
     # ---------------------------------------------------------------- entity
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
-                       belongs=None):
+                       belongs=None, at=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시).
 
         `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
@@ -435,10 +435,17 @@ class Builder:
             return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey])
         from core.llm import gateway as _llm
         _u0 = _llm.usage_total()
-        verdict, nid, conf, v = resolve(canonical, category, self.layer,
-                                        self.g, self.dict, scoped=scoped,
-                                        polarity=polarity,
-                                        parent=parent_canonical)
+        # **판정 재생**(B106 ②) — 사전이 답하지 않은 값만 · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를
+        # 바꿔 끼우고 좁히기 + LLM을 건너뛴다. 그 뒤(노드 · 사전 · 큐 · 대장)는 아래 그대로다.
+        rp = why = None
+        if not dict_hits(canonical, category, self.layer, self.g, self.dict, polarity=polarity,
+                         parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
+            from core.build import replay as _rp
+            rp, why = _rp.pick(self, at, surface, category, canonical)
+        verdict, nid, conf, v = rp or resolve(canonical, category, self.layer,
+                                              self.g, self.dict, scoped=scoped,
+                                              polarity=polarity,
+                                              parent=parent_canonical)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
@@ -449,6 +456,9 @@ class Builder:
                      "nearest": v.get("nearest"),
                      "layer": self.layer, "queue_kind": None,
                      "candidates_n": v.get("candidates_n", 0),
+                     # 판정 재생의 키 몫(B106 ②) — 대장 행이 옮긴다
+                     "category": category, "scope": parent_canonical if scoped_category else None,
+                     "replay": why,                       # 재생하지 못한 사유 — 재판정 행의 표지(B106 ②)
                      "llm": {"calls": _u1["calls"] - _u0["calls"],
                              "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
                              "out_tokens": (_u1["completion_tokens"]
@@ -457,7 +467,7 @@ class Builder:
             if v.get("same_doc"):
                 self.last["same_doc"] = True
             # 판정으로 붙은 표기는 **출처 LLM 매칭**으로 남는다(B101 ④) — 사전 히트·기억은 아니다
-            _by = (None if v.get("path") in ("dictionary", "memo", "self_coord", "none")
+            _by = (None if (v.get("replayed_path") or v.get("path")) in ("dictionary", "memo", "self_coord", "none")
                    else {"by": "LLM 매칭", "confidence": round(float(conf or 0), 4),
                          "doc": self.doc_id})
             self._register(surface, nid, prov, key=canonical, by=_by)

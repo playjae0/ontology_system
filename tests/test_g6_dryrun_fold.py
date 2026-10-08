@@ -30,7 +30,7 @@ def _run(*args):
 
 
 print("\n■ B96 ① dry-run = 실제 실행과 같은 검사 · 쓰기만 0")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _rw(_P.layers("process", "config.json"),
     lambda c: c.update(canonical_scope={"bind_categories": ["Property"], "sep": "::"}))
 _rcd, _od = _run("bootstrap", "--dry-run")
@@ -39,7 +39,7 @@ _line = [l for l in _od.splitlines() if "canonical_scope가 남아 있다" in l]
 show("ⓐ 층 config에 canonical_scope가 남으면 --dry-run도 rc 1 · 실제 실행과 같은 ⓓ 문면",
      _rcd != 0 and _rcr != 0 and _line and _line[0] in _or and "멈출 것 1건" in _od,
      (_line or [""])[0][:90])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _seed = _P.layers("process", "skeleton.json")
 _seed.write_text(_seed.read_text(encoding="utf-8").replace('"노칭"', '"@노칭오타"', 1),
                  encoding="utf-8")
@@ -47,7 +47,7 @@ _rcd, _od = _run("bootstrap", "--dry-run")
 show("ⓑ 골격 문법 위반이면 --dry-run rc 1 · 태그·줄",
      _rcd != 0 and "K05" in _od and "멈출 것" in _od,
      [l.strip()[:70] for l in _od.splitlines() if "K05" in l][:1])
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 _rcd, _od = _run("bootstrap", "--dry-run")
 _rcr, _or = _run("bootstrap")
 show("ⓒ --dry-run을 통과한 같은 상태에서 실제 bootstrap rc 0",
@@ -107,6 +107,6 @@ show("ⓖ norm·문서 id는 그대로다(대소문자를 접지 않는다)",
      norm("Notching") == "Notching"
      and _dh({"doc_type": "t", "chunks": [{"text": "Notching"}]})
      != _dh({"doc_type": "t", "chunks": [{"text": "notching"}]}))
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

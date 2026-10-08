@@ -29,7 +29,7 @@ def _chunks():
 
 def _fresh():
     """클린 + 골격 + 표본 등록 — 두 실행을 비교하려면 시작이 같아야 한다."""
-    _run("init", "--fresh")
+    _run("init", "--fresh", "--all")
     _run("bootstrap")
     _register()
     SH.path("RFQ01").unlink(missing_ok=True)

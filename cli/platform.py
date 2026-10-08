@@ -376,7 +376,8 @@ def ops_view():
 
 def cmd_ops():
     v = ops_view()
-    print(f"I축 연산 이력 — {len(v['log'])}건 (data/ops_log.json — 큐가 아니라 로그다)")
+    print(f"I축 연산 이력 — {len(v['log'])}건 ({paths.show(store.path(store.OPS_LOG))} — 큐가 아니라 로그다 · "
+          f"②등록 — 재구축 뒤 ops replay가 이름으로 되살린다)")
     for x in v["log"]:
         print(f"  · {x.get('op')} by {x.get('actor')} @ {x.get('at')} — "
               f"대상 {len(x.get('targets') or [])} · {x.get('reason') or '(사유 없음)'}")

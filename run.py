@@ -9,7 +9,10 @@
   build · ingest-file/ingest-dir · query)은 mock 모드에서 실행 전에 멈춘다 —
   계속하려면 `--allow-mock`을 적는다 (문서 7 §7.6-B-1 · B48).
 
-  python run.py init [--fresh]     클린 상태 — data/ 하위를 빈 상태로 생성·재생성
+  python run.py init [--fresh [--all]]  빈 상태 — --fresh는 비용이 든 산출 넷(추출·지도·판정 대장·
+                                   좌표 학습)을 남기고 지운다 · --all이 클린(회귀 바닥 · B106 ①)
+  python run.py rebuild [--yes] [--no-replay]  재구축 한 명령 — 계획(비대화형은 계획만) → 보존 fresh →
+                                   bootstrap → 처음 인입 순서로 재인입 → ops replay → 보고 (B106 ①)
   python run.py bootstrap [--dry-run]  층 공통 config 맞추기 + 층 골격 심기 (n10 · --dry-run은 계획만)
   python run.py build <parsed.json...> [--allow-duplicate]
                                    계약 JSON 인입 — **플랫폼 계약 이름**(§7.1).
@@ -67,11 +70,41 @@ def _load(p):
     return json.loads(Path(p).read_text(encoding="utf-8"))
 
 
+def _bytes(b):
+    return f"{b / 1e6:.1f}MB" if b >= 1e6 else (f"{b / 1e3:.0f}KB" if b >= 1e3 else f"{b}B")
+
+
+def fresh_screen(rep, all_, head="[init --fresh]"):
+    """「남긴 것 · 지운 것 · 크기」 한 줄씩(B106 ①) — `init`과 재구축이 같은 줄을 낸다."""
+    if not all_:
+        kept = " · ".join(f"{l} {n:,}파일 {_bytes(b)}" for l, n, b in rep.get("kept") or [])
+        print(f"{head} 남긴 것 — {kept or '없음(보존할 산출이 아직 없다)'}")
+    print(f"{head} 지운 것{'(전부 — 클린)' if all_ else ''} — "
+          + " · ".join(f"{l} {n:,}파일 {_bytes(b)}" for l, n, b in rep.get("wiped") or []))
+    if not all_:
+        print(f"{head} 전부 지우려면 --all (클린 — 회귀 바닥 · 추출·판정을 처음부터 다시)")
+
+
 def cmd_init(args):
-    """클린 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다."""
+    """빈 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다.
+
+    `--fresh`는 비용이 든 산출 넷을 남기고(재구축의 바닥 — B106 ①) `--fresh --all`이 클린이다."""
     from core.state.init import init
-    made = init("--fresh" in args)
+    fresh_, all_ = "--fresh" in args, "--all" in args
+    if all_ and not fresh_:
+        raise SystemExit("[init] --all은 --fresh와 함께 준다 — python run.py init --fresh --all")  # [사용법]
+    rep = {}
+    made = init(fresh_, all_=all_, report=rep)
+    if fresh_:
+        fresh_screen(rep, all_, "[init --fresh --all]" if all_ else "[init --fresh]")
     print(f"[init] 빈 상태 {len(made)}개 — {', '.join(made) or '이미 있음'}")
+
+
+def cmd_rebuild(args):
+    """**재구축 한 명령**(B106 ①) — 계획 · 보존 fresh · bootstrap · 같은 순서 인입 · 사람 판단 재생 · 보고.
+    bootstrap은 이 파일의 것을 넘긴다(같은 명령 · 두 벌 0)."""
+    from cli import rebuild
+    return rebuild.main(args, bootstrap=cmd_bootstrap, screen=fresh_screen)
 
 
 def _sync_screen(p):
@@ -105,15 +138,15 @@ def _sync_screen(p):
               f"두 그래프에 두 벌 생긴다 · 골격은 한 층만 갖는다")
     for c, home, lay, n in p["sk_home"]:
         print(f"{head} [상태] '{c}'의 home은 {home}인데 골격은 {lay}에 있다 — {home} 그래프에 {c} 노드 "
-              f"{n}개가 있다 · 재빌드(init --fresh → bootstrap → 재인입) 또는 골격을 되돌린다")
+              f"{n}개가 있다 · 재구축(python run.py rebuild — B106) 또는 골격을 되돌린다")
     for c, lays in p["ask"]:
         print(f"{head} [상태] '{c}' home 빈칸 — 여러 층이 선언했다 {lays} — 그중 하나로 채운다")
     for c, home, n in p["stuck"]:
         print(f"{head} [상태] '{c}'를 어느 층도 선언하지 않는데 {home} 그래프에 노드 {n}개가 "
-              f"남아 있다 — 층 config에 되살리거나 재빌드(init --fresh → bootstrap → 재인입)")
+              f"남아 있다 — 층 config에 되살리거나 재구축(python run.py rebuild — B106)")
     for c, home, old, n in p["moved"]:
         print(f"{head} [상태] '{c}'의 home을 {old} → {home}로 바꿨지만 {old} 그래프에 {c} 노드 "
-              f"{n}개가 있다 — 재빌드(init --fresh → bootstrap → 재인입) 또는 home을 되돌린다")
+              f"{n}개가 있다 — 재구축(python run.py rebuild — B106) 또는 home을 되돌린다")
     if p["new"] and p["catalog"].get("canonical_scope"):
         print(f"{head} canonical_scope ← 층 config에서 옮김 (층 config에서는 지운다 — 두 곳 0)")
 
@@ -426,6 +459,7 @@ def _dispatch(argv):
         sys.argv = [sys.argv[0], cmd] + require_live_or_allow(sys.argv[2:], command=cmd)
     _rc = {"init": lambda: cmd_init(sys.argv[2:]),
      "bootstrap": lambda: cmd_bootstrap(sys.argv[2:]),
+     "rebuild": lambda: cmd_rebuild(sys.argv[2:]),
      # **`build`가 계약 이름이다**(문서 7 §7.1 진입점 계약) — 플랫폼이 subprocess로
      # 부르는 이름은 계약의 일부다. `ingest`는 같은 함수의 옛 이름이다.
      # `--allow-duplicate`는 duplicate_doc_hold 보류의 **㉡ 해제**다(문서 2 §2.7-①).

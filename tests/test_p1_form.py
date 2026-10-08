@@ -86,7 +86,7 @@ show("③ 격자 포맷이라고 무조건 제안하지 않는다 (표는 거부
      == "parser/adapters/basic_prose_xlsx.py")
 
 # ⓐⓒⓓ — 인입 2회로 실증한다. **클린에서 시작한다**(찌꺼기가 판정에 섞이지 않게).
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 bootstrap("process", echo=False)
 _W = ROOT / "_b58_toc_wrapper.py"
 _W.write_text("# -*- coding: utf-8 -*-\n"

@@ -25,7 +25,7 @@ print("\n■ B73 ①②③ — 후보 상한 · 조건부 retry · auto 표시")
 from core import matcher as _MT73                                  # noqa: E402
 from core.dictionary import Dictionary as _DIC73                   # noqa: E402
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 _g73 = open_graph("process")
@@ -111,7 +111,7 @@ show("③ 지시문이 그 규칙을 말하고 판이 올랐다",
 
 # ② retry는 조건부다 — 후보 집합이 그대로면 LLM 0
 from core.build import retry as _RT73                                    # noqa: E402
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 _e73 = json.loads((ROOT / "tests/fixtures/parsed/CP01.json").read_text(encoding="utf-8"))
@@ -182,7 +182,7 @@ from core.llm import gateway as _LL74, narrow                                   
 from core.build.build import entity_key as _KEY74                        # noqa: E402
 from core.dictionary import Dictionary as _DIC74                   # noqa: E402
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 
@@ -333,7 +333,7 @@ show("④ show doc 끝이 행별 명령을 가리킨다 (진입점을 늘리지 
 print("\n── B75 ① 임베딩은 선택이다 ──")
 from core.llm import embeddings as _EM75                              # noqa: E402
 
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 

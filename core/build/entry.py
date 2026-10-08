@@ -260,6 +260,9 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     from core.build import build as _bld
     _mt.SAME_DOC.clear()
     del _bld.ADDED[:]
+    # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
+    from core.build import replay as _rp
+    _rp.begin(doc_id)
     _q0 = store.read(store.QUEUE, [])
     _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
     from core.dictionary import Dictionary as _D
@@ -359,7 +362,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
     사전을 먼저 쓰면 그래프 저장이 실패했을 때 사전이 없는 노드를 가리킨다.
     """
     from core import matcher as _mt
-    from core.build import coord_scan
+    from core.build import coord_scan, replay as _rp
     # **좌표 쌍 대조**(B105 ③④) — 표·산문·렌즈 세 길이 여기 한 자리 · 좌표 단계 화면과 같은 함수 · 같은 입력
     coord_scan.enqueue(_RUN.get("env") or {}, builder)
     _check_integrity(builder, doc_id)
@@ -376,7 +379,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
                 "저해상도": loop.LOWRES["n"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
-                "결과": res})
+                "재생": dict(_rp.DOC), "결과": res})
     return None, metrics, extracted
 
 

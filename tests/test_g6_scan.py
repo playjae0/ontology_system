@@ -94,7 +94,7 @@ try:
     def _r(*a):
         return _sp3.run([sys.executable, str(ROOT / "run.py"), *a],
                         capture_output=True, text=True, cwd=str(ROOT))
-    _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+    _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
              capture_output=True, cwd=str(ROOT))
     _b = _r("bootstrap")
     show("픽스처 없이 bootstrap 정상", _b.returncode == 0)
@@ -111,7 +111,7 @@ try:
          _s.returncode == 0)
 finally:
     _sh2.move(str(_away), str(_FX.ROOT_DIR))
-    _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh"],
+    _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
              capture_output=True, cwd=str(ROOT))
     _sp3.run([sys.executable, str(ROOT / "run.py"), "all"],
              capture_output=True, cwd=str(ROOT))

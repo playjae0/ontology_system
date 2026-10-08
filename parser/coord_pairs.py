@@ -17,6 +17,14 @@ from __future__ import annotations
 from parser import tagger
 
 GROUP, OUTSIDE, POLARITY = "상위", "상위 골격 밖", "극성"
+#: **문서 좌표를 상위로 삼은 대조**(B106 ⑤) — 행에 상위가 없고 문서 좌표가 있을 때. 판정은 `verdict` 그대로이고
+#: 화면·큐가 출처를 가르는 표지다 — 쌍의 열쇠는 상위와 같다(`ack_kind` — `ops coord-ack`가 같은 쌍을 닫는다).
+DOC_GROUP = "문서 좌표"
+
+
+def ack_kind(kind):
+    """확인 기록의 종류 — 문서 좌표 상위도 상위 쌍이다(같은 열쇠)."""
+    return GROUP if kind == DOC_GROUP else kind
 
 #: **좌표 쌍 관문 문턱**(B105 ② · 사내 손잡이 `coord_pair_pct`) — 상위·하위가 둘 다 골격에 맞은 행 중 상위
 #: 어긋남이 이 백분율 이상이면 등록 관문 FAIL(G4I — 열이 뒤바뀌었거나 매핑이 틀렸다). 기본값은 가결정
@@ -62,14 +70,18 @@ def reason(kind, pair, node_pol=None):
     """큐 문면 — 구축이 싣는 그 말(쌍 하나 = 문면 하나 · 화면이 쌍으로 묶는 열쇠는 payload다)."""
     if kind == GROUP:
         return f"'{pair[0]}'는 골격에 실존하나 '{pair[1]}'의 조상이 아니다"
+    if kind == DOC_GROUP:
+        return f"문서 좌표 '{pair[0]}'가 '{pair[1]}'의 조상이 아니다(행에 상위가 없어 문서 좌표로 대조했다)"
     return f"record의 극성 '{pair[0]}'과 좌표 '{pair[1]}'의 극성 '{node_pol}'이 다르다"
 
 
 def payload(kind, pair, prov, node_pol=None):
     """큐 payload — 구판과 같은 모양(상위: `process_group`·`process_ref` · 극성: `process_ref`·`node_polarity`·
     `electrode_type`) + `provenance`. 쌍의 열쇠는 이 모양에서 다시 읽는다(`pair_of`)."""
-    if kind == GROUP:
-        return {"process_group": pair[0], "process_ref": pair[1], "provenance": prov}
+    if kind in (GROUP, DOC_GROUP):
+        # 문서 좌표 상위는 출처를 payload에 적는다(B106 ⑤) — 쌍의 열쇠(`pair_of`)는 상위와 같다
+        return {"process_group": pair[0], "process_ref": pair[1], "provenance": prov,
+                **({"upper": DOC_GROUP} if kind == DOC_GROUP else {})}
     return {"process_ref": pair[1], "node_polarity": node_pol, "electrode_type": pair[0],
             "provenance": prov}
 
@@ -171,7 +183,7 @@ def tally(rows):
             if kind == OUTSIDE:
                 outside[pair[0]] = outside.get(pair[0], 0) + 1
                 continue
-            group_rows += 1 if kind == GROUP else 0
+            group_rows += 1 if kind in (GROUP, DOC_GROUP) else 0
             e = pairs.setdefault((kind, pair), {"rows": 0, "locs": []})
             e["rows"] += 1
             if loc and len(e["locs"]) < LOCS:
@@ -193,12 +205,21 @@ def head_line(t, acked=()):
             + (f" · 확인된 쌍 {len(done):,}({sum(e['rows'] for _k, e in done):,}행)" if done else ""))
 
 
+def describe(kind, pair):
+    """쌍 하나의 말 — 상위 · 문서 좌표 상위(B106 ⑤) · 극성."""
+    a, b = pair
+    if kind == GROUP:
+        return f"상위 '{a}' ↛ 하위 '{b}'"
+    if kind == DOC_GROUP:
+        return f"문서 좌표 '{a}' ↛ 하위 '{b}'"
+    return f"극성 '{a}' ↛ 노드 '{b}'(극성 다름)"
+
+
 def pair_lines(t, acked=(), top=TOP):
     """쌍 표의 줄들 — `(상위 · 하위 · 행 수 · 예시 위치)` 또는 `(극성 · 노드 …)` · 확인된 쌍은 표시."""
     out = []
     for (kind, pair), e in ordered(t)[:top]:
-        a, b = pair
-        what = f"상위 '{a}' ↛ 하위 '{b}'" if kind == GROUP else f"극성 '{a}' ↛ 노드 '{b}'(극성 다름)"
+        what = describe(kind, pair)
         out.append(f"{what} · {e['rows']:,}행 · 예 {', '.join(e['locs'])}"
                    + ("  [확인됨]" if (kind, pair) in acked else ""))
     if len(t["pairs"]) > top:

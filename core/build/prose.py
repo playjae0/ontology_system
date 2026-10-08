@@ -79,7 +79,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
             if where is None:                      # 지어낸 소속 — 버린다(지어내지 않는다)
                 belongs.drop_invented(b.doc_id, e["surface"], bel, cid)
                 bel = None
-        tgt = belongs.resolve_target(b, bel, prov, chunk_kw) if bel and not bel.get("legacy") else None
+        tgt = (belongs.resolve_target(b, bel, prov, chunk_kw, at=(_loc or cid, belongs.FIELD))
+               if bel and not bel.get("legacy") else None)
         # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
         e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs, main)
         if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
@@ -93,7 +94,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                                     electrode_type=src.get("electrode_type"),
                                     parent_canonical=e_parent,
                                     anchor_polarity=e_pol,
-                                    coord_surface=src.get("process_ref"), belongs=bel)
+                                    coord_surface=src.get("process_ref"), belongs=bel,
+                                    at=(_loc or cid, e.get("category")))       # 판정 재생의 자리 (B106 ②)
         last = eb.last or {}
         row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
                            role="entity", surface=e["surface"],
@@ -109,7 +111,9 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                            nearest=last.get("nearest"),
                            same_doc=last.get("same_doc"),
                            target=b.canonical_of(nid),
-                           belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None))
+                           belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
+                           category=last.get("category"), scope=last.get("scope"),
+                           replay=last.get("replay"))
         if nid:
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
     return plans

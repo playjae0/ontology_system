@@ -48,7 +48,7 @@ def _run(*a, mod=None, stdin=sp.DEVNULL, env=None):
 
 
 def _fresh():
-    init.init(fresh_=True)
+    init.init(fresh_=True, all_=True)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)
 
@@ -256,7 +256,7 @@ show("ⓖ 결과표 — 끝 줄 노드 = 층별 합 · 집이 다른 층인 노�
      " · ".join(f"{f}×{l} 층 {v[3]}" for (f, l), v in _res.items()))
 
 print("\n■ B99 ⑥ 재시도 줄")
-init.init(fresh_=True)               # 골격 없이 넣는다 — 좌표가 전부 orphan_anchor
+init.init(fresh_=True, all_=True)               # 골격 없이 넣는다 — 좌표가 전부 orphan_anchor
 run_document(load("CP01"))
 _qa = store.read(store.QUEUE, [])
 _oa = [x for x in _qa if x["kind"] == "orphan_anchor"]
@@ -278,6 +278,6 @@ show("ⓗ 재시도 줄 — 이번에 연결 · 상한 도달 · 그래프 그�
      f"{_f1['retry_line']} / {_f2['retry_line']}")
 _unregister()
 _unregister("prose_q")
-init.init(fresh_=True)
+init.init(fresh_=True, all_=True)
 
 done()

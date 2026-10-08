@@ -8,6 +8,8 @@
     python cli/ops.py delete-edge <층> <src> <rel> <dst> --actor …
     python cli/ops.py alias  <층> <node_id|canonical> <표기> --actor <사람>
     python cli/ops.py coord-ack|coord-unack all "<상위>" "<하위>" [--polarity] --actor <사람> [--reason <메모>]
+    python cli/ops.py confirm all --doc <doc_id> --actor <사람> [--yes]     문서 단위 일괄 확인 (B106 ④)
+    python cli/ops.py replay  all --actor <사람> [--dry-run]               사람 판단 재생 — 이름으로 (B106 ③)
 
 **파급이 1건을 넘는 작업은 실행 전에 미리보기를 찍는다**(카드 G6). `--yes` 없이는
 미리보기만 내고 멈춘다 — 승인 없는 파급은 이 도구의 설계상 존재하지 않는다.
@@ -89,12 +91,56 @@ def _learn(a):
     return 0
 
 
+def replay_lines(r):
+    """사람 판단 재생의 줄들(B106 ③) — 한 일 · 이미 그 상태 · 대상 없음(목록 · 기록은 남는다) · 이름 없음 ·
+    재생 안 함 · 거부. 재구축 보고와 `ops replay`가 같은 줄을 낸다."""
+    out = [f"사람 판단 재생 — 한 일 {len(r['done']):,} · 이미 그 상태 {len(r['already']):,} · "
+           f"대상 없음 {len(r['missing']):,} · 기록에 이름 없음 {len(r['no_names']):,} · "
+           f"재생 안 함 {len(r['skipped']):,} · 거부 {len(r['refused']):,}"]
+    for k, head in (("missing", "대상 없음"), ("refused", "거부"), ("skipped", "재생 안 함")):
+        for x in r[k]:
+            out.append(f"  {head} — {x['op']} · {x['what']} · {x['actor']} · {x['at']}"
+                       + (f" · {x['reason']}" if x.get("reason") else ""))
+    if r["missing"]:
+        out.append("  ▶ 기록은 남았다 — 이름을 되살리면(seed를 되돌리고 python run.py rebuild) 다음 재생이 다시 한다")
+    return out
+
+
+def _replay(a):
+    """`ops replay` — 기록 순서대로 이름으로 되살린다(`--dry-run`은 계획 · 쓰기 0)."""
+    from core.state import oplog
+    for ln in replay_lines(oplog.replay(dry_run=a.dry_run)):
+        print(ln)
+    if a.dry_run:
+        print(f"  (계획만 — 쓰기 0) ▶ 다음 줄 — 실행: python run.py ops replay all --actor {a.actor}")
+    return 0
+
+
+def _confirm_doc(a):
+    """`ops confirm all --doc <doc_id>` — 그 문서 실행이 만든 auto 노드를 한 번에 확정(B106 ④)."""
+    from cli._gate import approved
+    pv = ops.confirm_doc(a.doc, a.actor, a.reason, dry_run=True)
+    print(f"■ 문서 단위 확인 계획 — {pv['doc']}: auto 노드 {pv['nodes']:,}("
+          + " · ".join(f"{c} {n:,}" for c, n in pv["by_category"].items()) + ")")
+    for lay, nid, canon, cat in pv["top"]:
+        print(f"    · {canon}  ({cat} · {lay} · {nid[:8]})")
+    if pv["nodes"] > len(pv["top"]):
+        print(f"    … {pv['nodes'] - len(pv['top']):,}개 더")
+    if pv["uncertain"]:
+        print(f"    불확실 {pv['uncertain']:,}건은 넣지 않는다(고르는 일) ▶ python run.py ops review all --actor {a.actor}")
+    if not pv["nodes"] or not approved(a.yes, f"python run.py ops confirm all --doc {a.doc} --actor {a.actor} --yes"):
+        return 0
+    ops.confirm_doc(a.doc, a.actor, a.reason)
+    print(f"[확정] {pv['doc']} — auto 노드 {pv['nodes']:,}개 → confirmed (by {a.actor}) · 큐 종결 auto_node")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
                                   "transfer", "delete-edge", "confirm", "alias", "tidy",
                                   "learn-promote", "learn-reject", "review",
-                                  "coord-ack", "coord-unack"])
+                                  "coord-ack", "coord-unack", "replay"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -106,7 +152,17 @@ def main(argv=None):
     p.add_argument("--yes", action="store_true", help="미리보기 확인 후 실행")
     p.add_argument("--apply", action="store_true", help="tidy — 계획이 아니라 실제로 지운다")
     p.add_argument("--polarity", action="store_true", help="coord-ack — 쌍이 (극성, 노드)다")
+    p.add_argument("--doc", help="confirm — 그 문서 실행이 만든 auto 노드 전부(문서 단위 확인 · B106 ④)")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true", help="replay — 계획만(쓰기 0)")
     a = p.parse_args(argv)
+    if a.op == "replay":
+        return _replay(a)
+    if a.op == "confirm" and a.doc:
+        try:
+            return _confirm_doc(a)
+        except ops.OpRefused as e:
+            print(f"■ 거부 — {e}")
+            return 2
     if a.op in ("coord-ack", "coord-unack"):
         from cli import coord_queue                 # 좌표 쌍 확인 · 취소 (B105 ④ — 메모는 --reason)
         return coord_queue.run_ops(a)
