@@ -1,10 +1,11 @@
-/* 칸 5.3 — 뷰어 **질의 콘솔**: 링크 결과(ⓐ~ⓔ)와 LLM 답(ⓕ)을 나란히 · 경로 오버레이 · 오류 문면 · LLM 배지
- * (B82 ④ · B84 ⑤ · B103 ⑤ · B104 ④).
+/* 칸 5.3 — 뷰어 **질의 콘솔**: 링크 결과(ⓐ~ⓔ)와 LLM 답(ⓕ)을 나란히 · 노드 원 레코드(ⓖ) · 경로 오버레이 ·
+ * 오류 문면 · LLM 배지 (B82 ④ · B84 ⑤ · B103 ⑤ · B104 ④ · B105 ⑤).
  *
  * `app.js`에서 떼어냈다(B84 — §7 상한). 여기가 아는 것은 **받은 답을 어떻게 보이나**다 —
  * 질의의 계산은 서버가 시스템 함수로 한다(PF11). 칸마다 **trace·묶음에 있는 것만** 싣는다(새 계산 0):
  *   ⓐ 링킹(노드 · 어디의 무엇 · 단계 · 점수 · 선별 이유) ⓑ 확장 경로(홉 엣지) ⓒ 그래프 사실(쓴 것 표시)
- *   ⓓ 노드 근거 청크 ⓔ 문서 검색 청크(점수 · 쓴 것 표시) ⓕ LLM 답 — CLI `query`와 같은 묶음이다.
+ *   ⓓ 노드 근거 청크 ⓔ 문서 검색 청크(점수 · 쓴 것 표시) ⓕ LLM 답 ⓖ 노드 원 레코드(가공 없이 — 칩을 누르면
+ *   그 노드의 레코드가 펼쳐진다) — CLI `query`와 같은 묶음이다.
  *
  * **조용히 비지 않는다**(B84 ⑤): 사내 첫 실측에서 게이트웨이가 `temperature` 때문에
  * HTTP 400으로 죽었는데 브라우저에는 아무것도 안 떴다 — 서버는 이미
@@ -13,7 +14,7 @@
  */
 "use strict";
 
-const Q_BOXES = ["#qfacts", "#qchunks", "#qlinked", "#qmiss", "#qpath", "#qhops", "#qdocs", "#qllm"];
+const Q_BOXES = ["#qfacts", "#qchunks", "#qlinked", "#qmiss", "#qpath", "#qhops", "#qdocs", "#qllm", "#qrecords"];
 
 function errorCard(text) {
   const ans = $("#qanswer"); ans.innerHTML = "";
@@ -69,7 +70,7 @@ async function ask(q) {
     const c = el("span", "chip" + (pick ? " pick" : ""),
                  `${l.canonical} [${l.layer}·${l.method}${pick ? ` · ${l.score}` : ""}]`);
     if (pick) c.title = `${l.where || ""}${l.why ? " — " + l.why : ""}`;
-    c.onclick = () => detail(S.graph.nodes.find((n) => n.id === l.node_id));
+    c.onclick = () => { detail(S.graph.nodes.find((n) => n.id === l.node_id)); openRecord(l.node_id); };
     lk.append(c);
     if (pick && l.why) lk.append(el("div", "muted", `└ ${l.canonical}: ${l.why}`));
   });
@@ -119,6 +120,7 @@ async function ask(q) {
     ans.append(el("div", "muted", `LLM(live) · ${A.lines || 0}줄 · 쓴 사실 ${(tr.facts || []).filter((f) => f.used).length}`
                                     + ` · 쓴 청크 ${(A.used_chunks || []).length}`));
   else ans.append(el("div", "muted", "(mock — 답은 정형 나열 · 문장 생성 없음)"));
+  records(res);
   const ms = $("#qmiss"); ms.innerHTML = "";
   if ((tr.miss || []).length) ms.append(el("p", "note", `미스(사전 단): ${tr.miss.join(" · ")}`));
   if (res.truncated) ms.append(el("p", "note", `근거 ${res.truncated}건이 상한에서 잘렸다`));
@@ -126,6 +128,29 @@ async function ask(q) {
   (tr.linking || []).forEach((l) => { hi.nodes[l.node_id] = l.method === "embed+llm" ? "pick" : "link"; });
   (tr.hops || []).forEach((h) => (h.nodes || []).forEach((n) => { hi.nodes[n] = hi.nodes[n] || "reach"; }));
   paint(hi, tr.hops || []);
+}
+
+/** ⓖ **노드 원 레코드**(B105 ⑤) — 묶음 `records` 그대로(가공 0 · 문장 틀 0) · 레코드마다 카드 하나(수 = `--json`). */
+function records(res) {
+  const box = $("#qrecords"); box.innerHTML = "";
+  const recs = res.records || [];
+  box.append(el("div", "muted", `${recs.length}건 · 닿은 노드 ${res.records_total || 0}`
+                                + " (상한은 손잡이 query_record_limit)"));
+  recs.forEach((r) => {
+    const also = (r.also || []).length ? `(겸 ${r.also.join("·")})` : "";
+    const card = el("details", "card rec");
+    card.dataset.node = r.node_id;
+    card.append(el("summary", "", `[${r.role}] ${r.canonical} — ${r.layer} · ${r.category}${also} · ${r.status}`),
+                el("pre", "src", JSON.stringify({polarity: r.polarity, tier: r.tier, aliases: r.aliases,
+                                                 attrs: r.attrs, provenance: r.provenance, where: r.where},
+                                                null, 1)));
+    box.append(card);
+  });
+}
+
+function openRecord(nid) {
+  const card = [...document.querySelectorAll("#qrecords details.rec")].find((c) => c.dataset.node === nid);
+  if (card) { card.open = true; card.scrollIntoView({block: "nearest"}); }
 }
 
 /** **무엇이 LLM이었나**(B103 ⑤ · B104 ②) — 모드 · 링킹(사전 / 임베딩 후보 + LLM 선별) · 답변(LLM / 정형 나열).

@@ -83,6 +83,9 @@ KNOBS = {
                           "문서 검색 채널의 임베딩 유사도 문턱(%) — 넘는 청크만 · BM25는 공유 토큰이 있을 때만 · "
                           "둘 다 비면 「근거 없음」(모델마다 점수 분포가 다르다)",
                           "python run.py query \"<질문>\" — [문서 검색] 줄의 점수"),
+    "query_record_limit": ("core.query.records", ("RECORD_LIMIT",), "int0",
+                           "질의 ⓖ 노드 원 레코드 상한 — 링킹·확장 노드 몇 개의 레코드를 그대로 싣나(0 = 끔)",
+                           "python run.py query \"<질문>\" — ⓖ 줄의 닿은 노드 수"),
     "viewer_explore_threshold": ("cli.viewer.data", ("EXPLORE_THRESHOLD",), "int",
                                  "뷰어 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 "
                                  "탐색 모드로 연다(이웃 펼쳐 보기 · B103 ③)",
