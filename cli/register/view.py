@@ -461,6 +461,28 @@ def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract):
     return rehearsal
 
 
+def _parse_lines(results):
+    """리허설 파싱마다 한 줄 + 좌표 쌍 표 + 계층 줄 — `cmd_review`에서 단계로 떼어냈다(B105 · §7 함수 상한)."""
+    for r in results:
+        reh = r.report.get("rehearsal") or {}
+        part = (f" · **부분 리허설** 전 {reh['full_rows']:,}행 중 앞 {reh['max_rows']:,}행"
+                if reh.get("truncated") else "")
+        print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
+              f"조각 {r.report.get('pieces', 0)}{part}")
+        _pt = pair_table(r)                       # 좌표 쌍 표 — 관문 G4I와 같은 표 (B105 ②)
+        if _pt is not None:
+            from parser import coord_pairs as _CP
+            print(f"   {_CP.head_line(_pt)} · 상위·하위가 둘 다 골격에 맞은 {_pt['checked']:,}행")
+            for _ln in _CP.pair_lines(_pt):
+                print(f"     {_ln}")
+        _sr = r.report.get("struct_rule") or {}
+        if _sr.get("대상"):
+            # 대상 시트만 적는다 — 나머지는 고정 규칙으로 섰다(B87 ②)
+            print(f"   계층 — 고정 규칙으로 안 선 시트 {_sr['대상']}장: 인입 때 선언 필요 "
+                  f"({' · '.join(_sr.get('대상_시트') or [])})"
+                  f" — 나머지는 고정 규칙으로 선다")
+
+
 def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                extract=None):
     """② 검수 — 기계 관문 → 뷰 데이터 → HTML. 지시가 오면 **재생성 루프**를 돈다.
@@ -540,24 +562,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     if _ask_llm_coord(misses, llm_coord):
         results = _run(points.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
 
-    for r in results:
-        reh = r.report.get("rehearsal") or {}
-        part = (f" · **부분 리허설** 전 {reh['full_rows']:,}행 중 앞 {reh['max_rows']:,}행"
-                if reh.get("truncated") else "")
-        print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
-              f"조각 {r.report.get('pieces', 0)}{part}")
-        _pt = pair_table(r)                       # 좌표 쌍 표 — 관문 G4I와 같은 표 (B105 ②)
-        if _pt is not None:
-            from parser import coord_pairs as _CP
-            print(f"   {_CP.head_line(_pt)} · 상위·하위가 둘 다 골격에 맞은 {_pt['checked']:,}행")
-            for _ln in _CP.pair_lines(_pt):
-                print(f"     {_ln}")
-        _sr = r.report.get("struct_rule") or {}
-        if _sr.get("대상"):
-            # 대상 시트만 적는다 — 나머지는 고정 규칙으로 섰다(B87 ②)
-            print(f"   계층 — 고정 규칙으로 안 선 시트 {_sr['대상']}장: 인입 때 선언 필요 "
-                  f"({' · '.join(_sr.get('대상_시트') or [])})"
-                  f" — 나머지는 고정 규칙으로 선다")
+    _parse_lines(results)
 
     # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
     rehearsal = _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract)

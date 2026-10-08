@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+from core import paths
 from core.state import coord_acks as CA, store
 from parser import coord_pairs as CP
 
@@ -89,7 +90,7 @@ def run_ops(a):
         if a.op == "coord-ack":
             rec, n = CA.ack(kind, pair, a.actor, a.reason)
             print(f"[확인] {kind} '{pair[0]}' · '{pair[1]}' — 큐 {n:,}행을 「{CA.DECISION}」으로 닫았다 · "
-                  f"문서 {', '.join(rec['docs'])} · 기록 {CA.path().name}(재인입 · 다른 문서의 같은 쌍도 확인됨)")
+                  f"문서 {', '.join(rec['docs'])} · 기록 {paths.show(CA.path())}(재인입 · 다른 문서의 같은 쌍도 확인됨)")
             print(f"  ▶ 되돌리려면: {_cmd('coord-unack', kind, pair)}")
         else:
             rec, n = CA.unack(kind, pair, a.actor)
