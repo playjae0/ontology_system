@@ -404,7 +404,7 @@ def _ledger_entity(st, surface, layer, last):
                  narrow=last.get("narrow"), emb_top=last.get("emb_top"),
                  nearest=last.get("nearest"), same_doc=last.get("same_doc"),
                  target=b.canonical_of(last.get("node_id")),
-                 category=last.get("category"), scope=last.get("scope"))
+                 category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"))
 
 
 def _scoped_category(category, layer, builder):

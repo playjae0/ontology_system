@@ -97,31 +97,37 @@ def _near(b, near, category):
 
 
 def pick(b, at, surface, category, canonical):
-    """재생 판정 — `(분기, node_id, 점수, 판정 dict)`(`matcher.resolve`와 같은 모양) 또는 None(지금처럼 판정).
+    """재생 판정 — `(결과, 사유)`. 결과는 `(분기, node_id, 점수, 판정 dict)`(`matcher.resolve`와 같은 모양) 또는 None
+    (지금처럼 판정) · 사유는 재생하지 못한 까닭(`키 없음` · `대상 없음` · `끔` — 대장 행 `replay`에 남는다).
 
-    `at`은 `(위치, 열)` · `canonical`은 지금 조립한 조회 키(부모 좌표가 들어 있다). 사전이 이미 답한 값에는
-    부르지 않는다(호출부가 사전 히트를 먼저 본다). None이면 재판정 사유를 센다."""
+    `at`은 `(위치, 열)` · `canonical`은 지금 조립한 조회 키(부모 좌표가 들어 있다). 같은 자리 · 같은 표기의 행이
+    있는데 부모 좌표가 달라졌으면(골격 이름·부모가 바뀌었다) **대상 없음**이다 — 옛 이름에서 새 이름으로 옮겨
+    재생하지 않는다(재판정 — 수가 보인다). 사전이 이미 답한 값에는 부르지 않는다(호출부가 사전 히트를 먼저 본다)."""
     if OFF:
-        _count("끔")
-        return None
-    rows = TABLE.get(key(at[0], at[1], surface, b.layer)) if at else None
-    r = next((x for x in rows or () if x.get("category") in (None, category)
-              and norm(x.get("canonical") or "") == norm(canonical or "")), None)
+        return _miss("끔")
+    rows = [x for x in TABLE.get(key(at[0], at[1], surface, b.layer)) or ()
+            if x.get("category") in (None, category)] if at else []
+    if not rows:
+        return _miss("키 없음")
+    r = next((x for x in rows if norm(x.get("canonical") or "") == norm(canonical or "")), None)
     if r is None:
-        _count("키 없음")
-        return None
+        return _miss("대상 없음")
     v = {"path": "replay", "replayed_path": r.get("path"), "candidates_n": 0,
          "confidence": r.get("confidence") or 0.0}
     if r["verdict"] == "match":
         nid = _find(b, r.get("target") or r.get("canonical"), category)
         if nid is None:
-            _count("대상 없음")
-            return None
+            return _miss("대상 없음")
         if r.get("same_doc"):
             v["same_doc"] = True
         _count("재생")
-        return "match", nid, v["confidence"], v
+        return ("match", nid, v["confidence"], v), None
     if r["verdict"] == "uncertain":
         v["nearest"] = _near(b, r.get("nearest"), category)
     _count("재생")
-    return r["verdict"], None, v["confidence"], v
+    return (r["verdict"], None, v["confidence"], v), None
+
+
+def _miss(why):
+    _count(why)
+    return None, why

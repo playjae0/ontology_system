@@ -437,11 +437,11 @@ class Builder:
         _u0 = _llm.usage_total()
         # **판정 재생**(B106 ②) — 사전이 답하지 않은 값만 · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를
         # 바꿔 끼우고 좁히기 + LLM을 건너뛴다. 그 뒤(노드 · 사전 · 큐 · 대장)는 아래 그대로다.
-        rp = None
+        rp = why = None
         if not dict_hits(canonical, category, self.layer, self.g, self.dict, polarity=polarity,
                          parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
             from core.build import replay as _rp
-            rp = _rp.pick(self, at, surface, category, canonical)
+            rp, why = _rp.pick(self, at, surface, category, canonical)
         verdict, nid, conf, v = rp or resolve(canonical, category, self.layer,
                                               self.g, self.dict, scoped=scoped,
                                               polarity=polarity,
@@ -458,6 +458,7 @@ class Builder:
                      "candidates_n": v.get("candidates_n", 0),
                      # 판정 재생의 키 몫(B106 ②) — 대장 행이 옮긴다
                      "category": category, "scope": parent_canonical if scoped_category else None,
+                     "replay": why,                       # 재생하지 못한 사유 — 재판정 행의 표지(B106 ②)
                      "llm": {"calls": _u1["calls"] - _u0["calls"],
                              "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
                              "out_tokens": (_u1["completion_tokens"]

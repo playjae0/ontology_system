@@ -111,7 +111,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                            same_doc=last.get("same_doc"),
                            target=b.canonical_of(nid),
                            belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
-                           category=last.get("category"), scope=last.get("scope"))
+                           category=last.get("category"), scope=last.get("scope"),
+                           replay=last.get("replay"))
         if nid:
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
     return plans

@@ -32,8 +32,9 @@ def groups():
             continue
         k = CP.pair_of(x.get("payload"))
         e = out.setdefault(k, {"rows": 0, "docs": [], "locs": [], "open": 0, "done": 0, "other": 0,
-                               "rec": acks.get(CA.key(*k))})
+                               "doc_upper": 0, "rec": acks.get(CA.key(*k))})
         e["rows"] += 1
+        e["doc_upper"] += 1 if (x.get("payload") or {}).get("upper") == CP.DOC_GROUP else 0
         if x.get("doc_id") and x["doc_id"] not in e["docs"]:
             e["docs"].append(x["doc_id"])
         loc = str((x.get("payload") or {}).get("provenance") or "").split("#", 1)[-1]
@@ -58,8 +59,10 @@ def show():
     print(f"\n[{CA.KIND}] 쌍 묶음 — 어긋남 {len(live):,}쌍({sum(e['open'] for _k, e in live):,}행) · "
           f"확인된 쌍 {len(done):,}({sum(e['done'] for _k, e in done):,}행) · 큐 항목 {sum(e['rows'] for _k, e in gs):,}")
     for (kind, pair), e in gs:
-        what = (f"상위 '{pair[0]}' ↛ 하위 '{pair[1]}'" if kind == CP.GROUP
-                else f"극성 '{pair[0]}' ↛ 노드 '{pair[1]}'(극성 다름)")
+        # 문서 좌표를 상위로 삼은 행(B106 ⑤)은 그 말로 — 섞였으면 둘 다
+        what = (CP.describe(CP.DOC_GROUP, pair) if kind == CP.GROUP and e["doc_upper"] == e["rows"]
+                else (f"상위·문서 좌표 '{pair[0]}' ↛ 하위 '{pair[1]}'" if kind == CP.GROUP and e["doc_upper"]
+                      else CP.describe(kind, pair)))
         if e["rec"]:
             r = e["rec"]
             state = f"확인됨({r['actor']} · {r['at']}" + (f" · {r['note']}" if r.get("note") else "") + ")"
