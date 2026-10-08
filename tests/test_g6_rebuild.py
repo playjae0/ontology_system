@@ -15,7 +15,8 @@ mock에서 비어 있다).
   ⓑ 재구축 동치: 인입(표·산문 × 층 둘) → 사람 연산(confirm · merge · alias · obsolete · edge 삭제 · 큐 종결 · 쌍 확인 ·
      문서 단위 확인) → `rebuild --yes` ⇒ canonical 기준 노드(카테고리 · status · 값) · 별칭(출처) · 엣지(status) · 큐
      항목(쌍 키 — payload의 id는 이름으로) · resolution이 같다 · 재인입 LLM 호출(판정 · 추출 · 태깅) 0 · 사람 판단 기록
-     수 불변 · 끝 줄의 수 = 실행 누계 = 대장 행 수 · 산문 판정과 소속 대상 판정도 재생
+     수 불변 · 끝 줄의 수 = 실행 누계 = 대장 행 수 · 산문 판정과 소속 대상 판정도 재생 / CLI `rebuild` — 비대화형은
+     계획만(쓰기 0) · `--yes`면 계획 줄부터 끝 보고까지 그 실행의 명령 로그에 남는다
   ⓒ 대상 없음: 골격 노드 하나(「스태킹」)의 이름을 바꾼 seed로 재구축 ⇒ 재판정 행이 전부 그 노드 아래 · 화면 수 =
      대장의 재판정 행 수 · 그 이름을 쓰던 사람 연산은 「대상 없음」 · 기록은 남는다 / seed를 되돌려 재구축하면 그
      연산이 재생된다
@@ -48,7 +49,7 @@ from cli import rebuild as RB                                                   
 from core.build import ledger as LG, replay as RP                                    # noqa: E402
 from core.graph import GraphStore                                                    # noqa: E402
 from core.llm import gateway                                                         # noqa: E402
-from core.state import coord_acks as CA, oplog                                       # noqa: E402
+from core.state import coord_acks as CA, log as LOG, oplog                           # noqa: E402
 from core.state.ids import norm as _norm                                             # noqa: E402
 from core.state.status import is_live                                                # noqa: E402
 from core.state.world import World                                                   # noqa: E402
@@ -446,7 +447,10 @@ show("ⓑ 산문 판정도 재생(층 둘) · 소속 대상 판정(대장 역할
      {r["_doc"] for r in _pr} == {"RFQ01", "B106Q"} and any(r.get("role") == "belongs" for r in _pr),
      f"산문 재생 {len(_pr)}행 — " + " · ".join(f"{r['_doc']} {r['surface']}({r.get('role')} · {r.get('verdict')})"
                                              for r in _pr[:8]))
-_fresh, _why = _fresh_ok(_T0, _PROBE.get("tree") or {}, _PROBE.get("empty"), extra=[_rel(RB.plan_path())])
+_own_log = [_rel(LOG.LOG_PATH)] if LOG.LOG_PATH and _under(str(Path(LOG.LOG_PATH).resolve()),
+                                                          [str(_P.home().resolve())]) else []
+_fresh, _why = _fresh_ok(_T0, _PROBE.get("tree") or {}, _PROBE.get("empty"),
+                         extra=[_rel(RB.plan_path())] + _own_log)      # 재구축은 계획과 제 명령 로그도 남긴다
 show("ⓐ 재구축 안의 기본 fresh — 넷(추출 · 지도 · 판정 대장 · 좌표 학습)과 ②등록 · ⓪원본은 바이트 그대로 · 그 밖 ③④⑤는 빈 상태",
      _fresh, _why)
 _st2 = {n["canonical"]: n["status"] for _l, n in World().nodes() if is_live(n)}
@@ -527,6 +531,21 @@ _again = oplog.replay()
 show("ⓓ `ops replay` 두 번 = 한 번(재구축이 한 번 돌린 뒤 · 할 것 0 · 상태 · 기록 수 그대로)",
      not _again["done"] and not _diff(S4, _snap()) and len(oplog.read()) == _n4,
      " · ".join(f"{k} {len(v)}" for k, v in _again.items()))
+
+# ── ① CLI 재구축 — 비대화형은 계획만(쓰기 0) · `--yes`면 계획 줄부터 끝 보고까지 그 실행의 명령 로그에
+_h2 = _state_hash()
+_p0 = _run("rebuild", "--allow-mock")
+_h3 = _state_hash()
+_y0 = _run("rebuild", "--allow-mock", "--yes")
+_logf = next(iter(sorted(_P.work("logs").glob("rebuild_*.log"))), None)
+_logt = _logf.read_text(encoding="utf-8") if _logf else ""
+show("ⓑ 재구축 명령(CLI) — 비대화형은 계획만(③·② 쓰기 0 · 다음 줄 `--yes`) · `--yes`면 계획 줄부터 끝 보고까지 명령 로그에 "
+     "남는다(보존 fresh가 그 실행의 로그를 지우지 않는다) · 상태는 재구축 전과 같다",
+     _h2 == _h3 and "(비대화형 — 계획만 · 쓰기 0)" in _p0 and "rebuild --yes" in _p0 and "■ 재구축 끝" in _y0
+     and "■ 재구축 계획" in _logt and "■ 재구축 끝" in _logt and not _diff(S4, _snap()),
+     f"계획만 — 쓰기 {'0' if _h2 == _h3 else '있음'} · 로그 {_logf.name if _logf else '없음'}(계획 줄 "
+     f"{'있음' if '■ 재구축 계획' in _logt else '없음'} · 끝 줄 {'있음' if '■ 재구축 끝' in _logt else '없음'}) · "
+     f"다른 것 {_diff(S4, _snap()) or '없음'}")
 
 # ── ⓐ CLI — 기본 fresh(보존) · --all(클린) · 기본 호출 0
 _T1 = _tree()

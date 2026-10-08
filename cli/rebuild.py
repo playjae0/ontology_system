@@ -95,12 +95,13 @@ def execute(plan, *, bootstrap, screen, replay=True):
     from cli import ingest_batch
     from core.build import replay as RP
     from core.llm import gateway
-    from core.state import init as I, oplog
+    from core.state import init as I, log, oplog
     store.atomic_write_bytes(plan_path(), (json.dumps({"docs": plan["docs"]}, ensure_ascii=False, indent=2)
                                            + "\n").encode("utf-8"))
     u0 = gateway.usage_by()
     rep = {}
-    I.init(fresh_=True, keep=[plan_path()], report=rep)
+    # 남길 것 + 계획 + **이 실행의 명령 로그**(지우면 다시 열리지만 계획 줄이 로그에서 사라진다 — 화면에 나온 것은 로그에도)
+    I.init(fresh_=True, keep=[plan_path()] + ([log.LOG_PATH] if log.LOG_PATH else []), report=rep)
     screen(rep, False, "[재구축 fresh]")
     rc = bootstrap([])
     if rc:
