@@ -8,8 +8,9 @@
 대장에서 재생하고(`core/build/replay` — B106 ②) 산문 추출 · 구조 지도 · 좌표 학습은 보존 fresh가 남긴
 것을 재사용 판정 그대로 쓴다. 사람 판단은 ②등록의 기록을 이름으로 되살린다(`ops replay` — B106 ③).
 
-  ① 문서 대장(③ `doc_registry.json`)에서 문서 · **처음 인입 순서**(`first_ingested_at` · 같으면 대장 순서) ·
-     원본 경로 · doc_type · 사람 판단(`duplicate_ok` · 그림 뺌) · 개정 번호를 읽어 ④ `work/rebuild/plan.json`에
+  ① 문서 대장(③ `doc_registry.json`)에서 문서 · **처음 인입 순서**(대장의 저장 순서 — 처음 들어온 자리에 서고
+     재인입은 자리를 지킨다 · `first_ingested_at`은 봉투의 `parsed_at`이라 시각이 아니다: 운영 파싱은 파서 기본값을
+     싣는다) · 원본 경로 · doc_type · 사람 판단(`duplicate_ok` · 그림 뺌) · 개정 번호를 읽어 ④ `work/rebuild/plan.json`에
      남긴다 — 지우는 동안에도 남겨(보존 fresh의 `keep`) 도중에 끊기면 다음 실행이 그 계획에서 이어 간다
      (문서 대장이 비었을 때만)
   ② `init --fresh`(보존) ③ `bootstrap` ④ 문서마다 같은 순서로 인입(문서 좌표 · 시트 역할은 ②등록이 갖는다)
@@ -34,18 +35,16 @@ def plan_path():
 
 
 def from_registry():
-    """문서 대장 → 다시 넣을 문서 — **처음 인입 순서**(시각이 같으면 대장에 들어온 순서)."""
+    """문서 대장 → 다시 넣을 문서 — **처음 인입 순서 = 대장의 저장 순서**(인입은 새 문서를 끝에 더하고 재인입은
+    그 자리를 덮는다 — `core/build/ingest.register_doc`). 시각 열로 다시 줄 세우지 않는다(위 머리말)."""
     rows = []
-    for i, (doc_id, e) in enumerate(store.read(store.DOC_REGISTRY, {}).items()):
+    for doc_id, e in store.read(store.DOC_REGISTRY, {}).items():
         src = e.get("source_path")
         rows.append({"doc_id": doc_id, "doc_type": e.get("doc_type"), "source_path": src,
                      "path": str(paths.from_home(src)) if src else None,
                      "revision": e.get("revision"), "first_ingested_at": e.get("first_ingested_at"),
                      "duplicate_ok": bool(e.get("duplicate_ok")),
-                     "images_skipped": bool(e.get("images_skipped")), "_i": i})
-    rows.sort(key=lambda r: (r["first_ingested_at"] is None, r["first_ingested_at"] or "", r["_i"]))
-    for r in rows:
-        r.pop("_i")
+                     "images_skipped": bool(e.get("images_skipped"))})
     return rows
 
 

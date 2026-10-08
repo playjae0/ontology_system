@@ -22,8 +22,9 @@ def scan(env, b):
     같은 뜻). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 집에서 — `_graph_for`).
 
     **행에 상위가 없고 문서 좌표가 있으면 문서 좌표를 상위로** 같은 판정에 넣는다(B106 ⑤) — 하위가 문서 좌표
-    노드 자신이거나 그 아래면 맞음 · 밖이면 어긋남(종류 `DOC_GROUP` — 쌍의 열쇠는 상위와 같다). 행에 상위가
-    있으면 그 상위로만 대조하고, 하위는 바꾸지 않는다(붙는 자리는 그대로 — 보이기만)."""
+    노드 자신이거나 그 아래면 맞음 · 밖이면 어긋남(종류 `DOC_GROUP` — 쌍의 열쇠는 상위와 같다). 「행에 상위가
+    없다」에는 **태깅이 하위에서 딴 상위**(`meta.group_from_ref` — 하위의 main 조상이라 하위와 늘 맞는다)도 든다.
+    행이 가져온 상위가 있으면 그 상위로만 대조하고, 하위는 바꾸지 않는다(붙는 자리는 그대로 — 보이기만)."""
     doc_id = env.get("doc_id")
     dc = env.get("doc_coord")
     out = []
@@ -34,9 +35,11 @@ def scan(env, b):
         sink = []                                   # 보류는 구축의 몫이다 — 여기서는 버리는 자루
         ref, ref_g = b.resolve_anchor(ref_s or grp_s, COORD_CATEGORY, prov, defer=sink)
         ref = b.descend_anchor(ref, et, ref_g)
-        up = grp_s or dc                            # 상위 — 행의 것 먼저 · 없으면 문서 좌표(B106 ⑤)
+        own = None if (p.get("meta") or {}).get("group_from_ref") else grp_s   # 행이 가져온 상위만
+        by_doc = bool(dc) and not own               # 상위 — 행의 것 먼저 · 없으면 문서 좌표(B106 ⑤)
+        up = dc if by_doc else grp_s
         vs, gcs = b.coord_verdicts(up, ref, et, ref_g)
-        if up and not grp_s:
+        if by_doc:
             vs = [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in vs]
         out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": bool(ref and up and gcs),
                     "node_pol": (ref_g.get(ref) or {}).get("polarity") if ref else None})

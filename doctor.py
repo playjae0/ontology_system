@@ -61,6 +61,7 @@ SUITES = [
     ("test_g6_synonym", 6, "B101 — 같은 문서 auto 매칭(가드 예외) · 좌표 학습 보존(바로 사용 · 거부 · 승격) · 새 공정 후보 · 별칭 출처 · 불확실 일괄 검토 · 극성 values 경고 — 표·산문 × 층 둘"),
     ("test_g6_belongs", 17, "B102 — 맥락 줄(한 함수) · 문서 좌표(서브트리 · 공유 별칭 · 파일명 · 기록) · 소속(belongs_to · 옛 attach) · 이름에 소속 · 좌표 없는 스코프 개체 0 · 재사용 조건 · 붙은 곳 화면 · 보존물·동명 — 엑셀·Word·표 × 층 둘"),
     ("test_g6_coord_pairs", 9, "B105 — 상위를 범위로 하위 해소(보류·어긋남은 그대로) · 등록 관문 G4I(맞바꿈 FAIL · 일부 경고 · 골격 밖 · 문턱 손잡이 · 검수 같은 표) · 판정 전 쌍 표 = 구축 큐 · --step 좌표 관문 쓰기 0 · 쌍 묶음·확인함·재인입·다른 문서·fresh·취소 · 질의 ⓖ 원 레코드·상한 — 표·산문 × 층 둘"),
+    ("test_g6_rebuild", 17, "B106 — fresh 보존 넷(추출·지도·판정 대장·좌표 학습) · --all 클린 · 재구축 한 명령(동치 · LLM 0 · 기록 불변 · 처음 인입 순서) · 판정 재생(표·산문·소속 대상) · 대상 없음(골격 이름 변경 · 되돌리면 재생) · --no-replay · ops replay 멱등 · 문서 단위 확인 · 문서 좌표 상위 — 표·산문 × 층 둘"),
     ("test_g6_hybrid", 15, "B104 — 공유 별칭의 범위 안 해소(보류 문면 표기 모호) · 링킹 임베딩 후보 + LLM 선별(후보 밖 0 · 보충/폴백 · 미스율 사전 단) · 문서 검색 채널(근거 없음은 둘 다 빌 때 · 벡터 캐시 재사용·몫만·판) · 짧은 답·쓴 근거·CLI ⓐ~ⓕ = --json · 채점 두 축 · 쓰기 0 — 표·산문 × 층 둘"),
     ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
     ("test_g6_narrow", 54, "후보 상한·조건부 retry·auto · 사전 키=조회 키·판정 대장·뷰어 · 임베딩 선택·스코프 필터·실패 비용"),
@@ -128,7 +129,7 @@ def head(title):
 
 
 def _clean():
-    """클린 상태 — **`run.py init --fresh`가 정의한다**(문서 7 §7.6-4).
+    """클린 상태 — **`run.py init --fresh --all`이 정의한다**(문서 7 §7.6-4 · B106 ① — 기본 fresh는 보존이다).
 
     반환은 `(returncode, 잔재 경로 목록)`이다.
 
@@ -309,7 +310,7 @@ def _idempotent():
     rc, residue = _clean()
     if rc or residue:
         line(NG, "클린 2회 동일 그래프 (완료판정 4)",
-             f"클린을 못 만들어 재지 않았다 — init --fresh rc={rc} · 잔재 {residue}")
+             f"클린을 못 만들어 재지 않았다 — init --fresh --all rc={rc} · 잔재 {residue}")
         return
 
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
@@ -404,7 +405,7 @@ def _env_diff(clean_rc, residue):
                  "없음" if not residue else ", ".join(residue),
                  "클린이 조용히 실패했다(권한?) — 순서 의존이 살아 있어 "
                  "단독 실행 판정이 성립하지 않는다"
-                 if (clean_rc or residue) else "run.py init --fresh가 실제로 비웠다"))
+                 if (clean_rc or residue) else "run.py init --fresh --all이 실제로 비웠다"))
 
     # 한글은 터미널에서 **두 칸**을 먹는다 — `len()`으로 맞추면 열이 어긋난다.
     def _w(s):

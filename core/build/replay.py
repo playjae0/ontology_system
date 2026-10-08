@@ -17,9 +17,11 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
   · `uncertain` → 지금처럼 불확실(새 노드 + 큐 — LLM 0 · 가장 가까운 후보는 이름으로 다시 찾는다)
   · 그 밖(골격 밖 · 보류)은 재생하지 않는다 — 코드가 다시 판정한다
 
-재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 — 소속 대상 · 재시도도 여기) ·
-대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) · 끔(`--no-replay` — 문서 하나 또는 재구축 전부).
-수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` — 재구축 보고)가 센다.
+재료는 개체 행(`entity`)과 **소속 대상 행**(`belongs` — 산문 개체의 `belongs_to`가 골격 · 버퍼 · 사전에 없어 새로
+해소한 판정 · 열 `소속`)이다. 재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 —
+재시도가 붙인 값도 여기: 대장 행은 그때의 `orphan`이다) · 대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) ·
+끔(`--no-replay` — 문서 하나 또는 재구축 전부). 수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` —
+재구축 보고)가 센다.
 """
 from __future__ import annotations
 
@@ -37,6 +39,8 @@ DOC = dict(_ZERO)
 TABLE = {}
 
 REPLAYABLE = ("match", "new", "uncertain")
+#: 재료가 되는 대장 행의 역할 — 개체 값 · 소속 대상(`core/build/belongs.FIELD` 열)
+ROLES = ("entity", "belongs")
 
 
 def reset(off=None):
@@ -60,7 +64,7 @@ def begin(doc_id):
     data = ledger.read(doc_id) or {}
     n = 0
     for r in data.get("rows") or []:
-        if r.get("role") != "entity" or r.get("verdict") not in REPLAYABLE:
+        if r.get("role") not in ROLES or r.get("verdict") not in REPLAYABLE:
             continue
         TABLE.setdefault(key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")), []).append(r)
         n += 1

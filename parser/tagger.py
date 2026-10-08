@@ -538,6 +538,10 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
             g = group_of(node, nodes)
             if g:
                 r["process_group"] = g
+                # 상위를 **하위에서 땄다** — 행이 가져온 상위가 아니다(좌표 쌍 대조는 이 행을 「상위 없음」으로
+                # 읽고 문서 좌표가 있으면 그것으로 잰다 · B106 ⑤ — 딴 상위는 하위와 늘 맞아 대조가 비었다).
+                # meta는 복사해서 단다 — 조각끼리 같은 dict를 나눠 쓰면 이 행의 표시가 다른 행으로 번진다
+                r["meta"] = {**(r.get("meta") or {}), "group_from_ref": True}
         out.append(r)
     return out
 

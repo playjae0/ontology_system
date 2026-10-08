@@ -93,11 +93,17 @@ def order(entities, bmap):
     return out, cyc
 
 
-def resolve_target(b, bel, prov, chunk_kw):
+#: 소속 대상 판정의 대장 열(B106 ②) — 같은 청크의 개체 행(열 = 카테고리)과 열쇠가 갈린다
+FIELD = "소속"
+
+
+def resolve_target(b, bel, prov, chunk_kw, at=None):
     """소속 대상 — `(종류, node_id, 그래프)` 또는 None. 종류는 `골격` | `노드`.
 
     `chunk_kw`는 청크의 해소 재료(`coord` · `electrode_type` · `parent_canonical` · `anchor_polarity` ·
-    `coord_surface`) — 골격 밖 대상을 새로 해소할 때 그 청크의 개체와 같은 규칙으로 이름을 짓는다."""
+    `coord_surface`) — 골격 밖 대상을 새로 해소할 때 그 청크의 개체와 같은 규칙으로 이름을 짓는다.
+    `at`은 그 청크의 자리 `(위치, 열)` — 새로 해소한 판정은 **대장에 한 행**(역할 `belongs`)으로 남아 다음
+    재구축이 그 판정을 재생한다(B106 ② — 대장 행이 없던 판정은 재구축마다 LLM을 다시 불렀다)."""
     from core.state.bootstrap import COORD_CATEGORY
     name, cat = bel.get("name"), bel.get("category")
     if not name:
@@ -120,11 +126,28 @@ def resolve_target(b, bel, prov, chunk_kw):
     if len(hits) == 1:
         nid = next(iter(hits))
         return NODE, nid, g
-    nid, eb = b.resolve_at_home(name, cat, prov, **chunk_kw)
+    nid, eb = b.resolve_at_home(name, cat, prov, at=at, **chunk_kw)
+    _ledger_row(b, eb, nid, at, name, bel)
     if nid:
         b.buffer[norm(name)] = nid
         return NODE, nid, eb.g
     return None
+
+
+def _ledger_row(b, eb, nid, at, name, bel):
+    """소속 대상 판정 한 행 — 판정이 아는 것을 그대로(산문 개체 행과 같은 열 · 역할만 `belongs`)."""
+    from core.build import loop
+    last = eb.last or {}
+    if b.ledger is None or not at:
+        return
+    b.ledger.add(locator=at[0], field=at[1], role="belongs", surface=name,
+                 canonical=last.get("canonical"), layer=last.get("layer") or b.layer,
+                 path=last.get("path") or "none",
+                 verdict=loop._VERDICT.get(last.get("verdict"), "pending"), node_id=nid,
+                 candidates_n=last.get("candidates_n", 0), confidence=last.get("confidence", 0.0),
+                 llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
+                 same_doc=last.get("same_doc"), target=b.canonical_of(nid), belongs_from=bel.get("from"),
+                 category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"))
 
 
 def edge_of(cfg, tgt_cat, child_cat):

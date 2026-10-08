@@ -79,7 +79,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
             if where is None:                      # 지어낸 소속 — 버린다(지어내지 않는다)
                 belongs.drop_invented(b.doc_id, e["surface"], bel, cid)
                 bel = None
-        tgt = belongs.resolve_target(b, bel, prov, chunk_kw) if bel and not bel.get("legacy") else None
+        tgt = (belongs.resolve_target(b, bel, prov, chunk_kw, at=(_loc or cid, belongs.FIELD))
+               if bel and not bel.get("legacy") else None)
         # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
         e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs, main)
         if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
