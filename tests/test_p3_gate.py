@@ -363,8 +363,9 @@ _gcalls = [f"{f.relative_to(ROOT)}:{i}"
            for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1)
            if "require_live_or_allow(" in ln and "def " not in ln
            and not ln.lstrip().startswith(("#", "from", "import"))]
-show("③ 관문 호출은 CLI 진입점 4곳뿐이다 — core·parser에는 없다",
-     len(_gcalls) == 4 and not any(g.startswith(("core/", "parser/")) for g in _gcalls),
+# 기대 변경(B106 ①): 넷 → 다섯 — 재구축 한 명령(`cli/rebuild.main`)이 제 관문을 지난다(run.py는 build·ingest·query만)
+show("③ 관문 호출은 CLI 진입점 5곳뿐이다 — core·parser에는 없다",
+     len(_gcalls) == 5 and not any(g.startswith(("core/", "parser/")) for g in _gcalls),
      str(_gcalls))
 
 # ============================================================ --resume 인자 (후속 ①)

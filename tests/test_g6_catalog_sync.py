@@ -98,12 +98,13 @@ show("ⓒ 층에서 지운 카테고리는 노드 0이면 자동 제거(층째 �
      and _rc_t == 0 and "Tool" not in _common()["categories"],
      [l for l in _o.splitlines() if "공통 config" in l][:2])
 
+# 기대 변경(B106 ①): 멈춤의 다음 줄 「재빌드」 → 「재구축(python run.py rebuild)」 — 아래 셋이 같은 줄을 본다
 run_document(load("CP01"))                         # process 그래프에 Property·Unit 노드
 _rw(_P.layers("process", "config.json"), lambda c: c["categories"].pop("Property"))
 _before = _P.common().read_bytes()
 _rc, _o = _boot()
 show("ⓒ 노드가 남은 카테고리를 층에서 지우면 멈춘다 — 지우지 않는다",
-     _rc != 0 and "Property" in _common()["categories"] and "노드" in _o and "재빌드" in _o,
+     _rc != 0 and "Property" in _common()["categories"] and "노드" in _o and "재구축" in _o and "rebuild" in _o,
      [l for l in _o.splitlines() if "Property" in l][:1])
 init.init(fresh_=True, all_=True)
 
@@ -114,7 +115,7 @@ _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Unit="
 _rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))
 _rc, _o = _boot()
 show("ⓔ 노드가 있는 카테고리의 home을 바꾸면 멈춘다 — 옛 집은 노드가 있는 그래프",
-     _rc != 0 and "process → quality" in _o and "재빌드" in _o,
+     _rc != 0 and "process → quality" in _o and "재구축" in _o and "rebuild" in _o,
      [l for l in _o.splitlines() if "home을" in l][:1])
 init.init(fresh_=True, all_=True)
 
@@ -210,7 +211,7 @@ _move_skeleton()
 _rc, _o = _boot()
 _eq_nodes = len(open_graph(EQ).nodes)
 show("ⓑ 옛 집 그래프에 그 카테고리 노드가 있으면 멈춘다 — 노드 수 문면 · 그래프 쓰기 0",
-     _rc != 0 and "골격은 b95eq에 있다" in _o and "노드" in _o and "재빌드" in _o
+     _rc != 0 and "골격은 b95eq에 있다" in _o and "노드" in _o and "재구축" in _o and "rebuild" in _o
      and _common()["categories"]["Process"]["home"] == "process" and _eq_nodes == 0,
      [l for l in _o.splitlines() if "골격은" in l][:1])
 shutil.rmtree(_P.layers(EQ), ignore_errors=True)

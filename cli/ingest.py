@@ -6,7 +6,7 @@
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
                                   [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
-                                  [--narrow embed|overlap] [--progress-every N] [--sheets auto] [--revise]
+                                  [--narrow embed|overlap] [--progress-every N] [--sheets auto] [--revise] [--no-replay]
                                   (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
 
 기존 `parse run`·`build`는 그대로다 — 이것은 그 **위**의 편의 명령이고 같은 코드를 부른다
