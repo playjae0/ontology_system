@@ -146,6 +146,10 @@ def cmd_queue(kind=None):
         print(f"  {k:<24} {v['kinds'][k]:>3}건")
     for k, n in v["alien"].items():
         print(f"  ⚠ 목록 밖 kind '{k}' {n}건 — 닫힌 20종 위반, 그 자체가 결함이다")
+    if kind == "coord_mismatch":
+        from cli import coord_queue                  # 쌍 단위로 묶고 쌍 단위로 확인한다 (B105 ④)
+        coord_queue.show()
+        return
     if kind:
         print(f"\n[{kind}] 항목:")
         for x in v["items"]:

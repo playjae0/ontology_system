@@ -42,7 +42,7 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
         ref = b.descend_anchor(ref, src.get("electrode_type"), ref_g)   # ⓪ 비정형도 동일
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
-        b.check_polarity(ref, src.get("electrode_type"), prov, ref_g)
+        # 상위·극성 대조는 구축 말미 한 자리(`coord_scan.enqueue` — 표와 같은 함수 · B105 ③④)
         # **정직한 anchor 행**(B102 ⑦) — 빈 좌표는 「좌표 없음」(큐 없음) · 목록 밖 이름만 orphan_anchor
         b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
                      surface=src.get("process_ref"), canonical=parent,

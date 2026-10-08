@@ -45,7 +45,8 @@ def answer(question):
     hits = Q.link(question, dictionary, graphs, configs, stage=stage)
 
     res = {"question": question, "linked": [], "facts": [], "chunks": [],
-           "path": Q.PATH_GENERAL, "note": None, "truncated": 0, "transit": []}
+           "path": Q.PATH_GENERAL, "note": None, "truncated": 0, "transit": [],
+           "records": [], "records_total": 0}          # ⓖ 노드 원 레코드 (B105 ⑤)
     # **trace는 계측이다**(B82 ③) — 이미 계산된 값을 적을 뿐, 판단도 순회도 더하지
     # 않는다. 기존 키는 그대로이고 화면·골든셋이 같은 데이터를 본다(trace 계약 ㉠).
     tr = res["trace"] = {"intent": None, "linking": [], "hops": [], "collection": [],
@@ -122,6 +123,10 @@ def answer(question):
         direct_by_layer.setdefault(h["layer"], set()).add(h["node_id"])
     collected = _answer_expand(res, tr, intent, direct_by_layer, graphs, configs)
     _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent)
+    # **ⓖ 노드 원 레코드**(B105 ⑤) — 링킹·확장 노드를 가공 없이(문장 틀 0) · 상한은 손잡이
+    from core.query import records as R
+    res["records"], res["records_total"] = R.collect(direct_by_layer, collected, graphs,
+                                                     knobs.get("query_record_limit"))
     _hop_names(tr, graphs)
     _mark_in_graph(res, tr)
     return res
@@ -451,6 +456,31 @@ def answer_block(res, text):
     return "\n".join([head] + [f"     {x}" for x in (text or "").splitlines()])
 
 
+def records_block(res):
+    """ⓖ **노드 원 레코드** — 링크 결과(ⓐ~ⓕ) 뒤에(B105 ⑤). 레코드마다 머리 줄 `[원 레코드]` 하나(`--json`의
+    `records` 수와 1:1) · 별칭은 출처를 붙이고(`show node`와 같은 함수) · 값은 저장된 그대로."""
+    from cli.show_learn import alias_source
+    recs = res.get("records") or []
+    lines = [f"   ⓖ 노드 원 레코드 — {len(recs):,}건(닿은 노드 {res.get('records_total', 0):,} · "
+             f"상한 {knobs.get('query_record_limit')} — 손잡이 query_record_limit)"]
+    for r in recs:
+        tag = " · ".join(x for x in (r["layer"], r["category"] + (f"(겸 {'·'.join(r['also'])})" if r["also"] else ""),
+                                     r["status"], f"극성 {r['polarity']}" if r.get("polarity") not in (None, "none") else "",
+                                     f"단 {r['tier']}" if r.get("tier") else "") if x)
+        lines.append(f"   [원 레코드] {r['role']} · {r['canonical']} — {tag}")
+        lines.append("       별칭  " + (" · ".join(f"{a.get('surface')} ← {alias_source(a)}" for a in r["aliases"])
+                                       or "(없음)"))
+        vals = [f"{k} = " + (str(it.get("value")) if isinstance(it, dict) else f"{it!r}  ← 값 항목 형태 아님")
+                + (f" [{', '.join(f'{a}={b}' for a, b in (it.get('context') or {}).items())}]"
+                   if isinstance(it, dict) and it.get("context") else "")
+                + (f"  ({', '.join(map(str, it.get('provenance') or []))})" if isinstance(it, dict) else "")
+                for k, v in r["attrs"].items() for it in (v if isinstance(v, list) else [v])]
+        lines.append("       값    " + ("\n             ".join(vals) if vals else "(없음)"))
+        lines.append(f"       출처  {', '.join(map(str, r['provenance'])) or '(없음)'}")
+        lines.append(f"       위치  {r['where'] or '(닻 없음)'}")
+    return "\n".join(lines)
+
+
 JSON_FLAG = "--json"
 
 
@@ -496,6 +526,7 @@ def main(args):
         # **링크 결과와 답을 나란히**(B104 ④) — mock은 답이 곧 나열이고, live는 나열(ⓐ~ⓔ) 아래 LLM 답(ⓕ)
         print(text if gateway.use_mock() else render(res))
         print(answer_block(res, text))
+        print(records_block(res))                    # ⓖ 노드 원 레코드 (B105 ⑤)
         if _V.cost_line():
             print(f"  {_V.cost_line()}")           # 벡터 캐시 — 만든 수 · 재사용 · 판 · 시간 (B104 ③)
         print(f"  {_screen.usage_line(_u0)}")      # B96 ③

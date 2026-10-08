@@ -132,7 +132,9 @@ try:
         want = _counts(j)
         got = {k: dom[k] for k in want}
         show("ⓐ 칸 여섯이 한 화면에 나란히(ⓐ 링킹 · ⓑ 확장 · ⓒ 사실 · ⓓ 노드 근거 · ⓔ 문서 검색 · ⓕ 답)",
-             [h[:1] for h in dom["heads"][-6:]] == ["ⓐ", "ⓑ", "ⓒ", "ⓓ", "ⓔ", "ⓕ"], " / ".join(dom["heads"][-6:]))
+             # 기대 변경(B105 ⑤) — ⓕ 뒤에 ⓖ 노드 원 레코드가 붙었다: 여섯 칸이 그 순서로 있는지만 본다
+             [h[:1] for h in dom["heads"] if h[:1] in "ⓐⓑⓒⓓⓔⓕ"] == ["ⓐ", "ⓑ", "ⓒ", "ⓓ", "ⓔ", "ⓕ"],
+             " / ".join(h for h in dom["heads"] if h[:1] in "ⓐⓑⓒⓓⓔⓕⓖ"))
         show("ⓐ 칸마다 수가 CLI `--json`과 같다 — 링킹 · 선별 · 홉 엣지 · 사실(쓴 것) · 노드 근거(쓴 것) · 문서 검색(쓴 것)",
              got == want and want["picks"] >= 1 and want["docs"] >= 1,
              " · ".join(f"{k} {got[k]}={want[k]}" for k in want))

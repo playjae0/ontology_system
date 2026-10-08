@@ -45,7 +45,7 @@ import gate_tables as tables
 from gate_tables import (BANNED_IMPORTS, BLOCKS_PATH, G26, G39, NORMALIZER_API,
                          ROLES, SELFMADE, STRUCT_ONLY, load_blocks,
                          structural_fields)
-from gate_checks import (check_ledger_coverage, check_schema, check_shapes,
+from gate_checks import (check_coord_pairs, check_ledger_coverage, check_schema, check_shapes,
                          check_vocab, payload_kind_of)
 
 # ---------------------------------------------------------------- ① 로드
@@ -503,6 +503,8 @@ def run_pipeline(mod, schema, doc, label):
         env = res.envelope or {}
         show("G53  봉투 3층이 섰다 (header·payload·evidence 또는 그 계약 자리)",
              isinstance(env, dict) and bool(env), f'키 {sorted(env)[:6]}')
+        # **좌표 쌍**(B105 ② · G4I) — 태깅이 끝난 조각으로(운영 좌표 단계 · 구축과 같은 판정)
+        check_coord_pairs(schema, env.get("records") or env.get("chunks") or [], nodes)
         rep = res.report or {}
         co = rep.get("coords") or {}
         # 좌표 목록 밖 이름은 **인입 소관**(orphan_anchor)이라 관문의 실패가 아니다 —

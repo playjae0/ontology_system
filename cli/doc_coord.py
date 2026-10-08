@@ -9,6 +9,9 @@
 
 문서 좌표가 있으면 파서는 시트명·제목 대조를 그 서브트리 안에서만 받고, 빈 조각은 그것을 물려받는다
 (표·산문 같은 함수 — `tagger.coord_from_section`).
+
+파싱 끝 좌표 줄 아래에 **판정 전 좌표 쌍 표**(B105 ③ — `pair_screen`)가 선다: 구축과 같은 함수·같은 해소
+(`core.build.coord_scan.scan`)라 그 쌍·행 수가 구축 큐(`coord_mismatch`)의 쌍·행 수다 · 큐 0 · LLM 0.
 """
 from __future__ import annotations
 
@@ -123,6 +126,39 @@ def coord_counts(env):
         if m.get("coord_shared_skip"):
             out["공유 별칭 건너뜀"] += 1
     return out
+
+
+def pair_report(env):
+    """**판정 전 좌표 쌍 표**(B105 ③) — `(쌍 표, 확인된 쌍 열쇠들)`. 구축과 같은 함수·같은 해소(좌표 층 빌더 ·
+    `core.build.coord_scan.scan` — 사전 · 저해상도 사다리 · 극성 하강 · `Builder.coord_verdicts`) · 큐 0 · LLM 0."""
+    from core.build import coord_scan
+    from core.build.build import Builder
+    from core.state import coord_acks
+    from core.state.bootstrap import coord_layer, load_config, open_graph
+    lay = coord_layer()
+    b = Builder(open_graph(lay), load_config(lay), None, "(좌표 쌍)", lay)
+    t = coord_scan.table(coord_scan.scan(env, b))
+    done = coord_acks.acked()
+    return t, {k for k in t["pairs"] if coord_acks.key(*k) in done}
+
+
+def pair_screen(env):
+    """좌표 쌍 줄 + 쌍 표 + 다음 줄 — 돌려주는 것은 관문 머리가 싣는 수(`쌍`·`행`·`상위_밖`·`확인됨`·`대조`)."""
+    from parser import coord_pairs as CP
+    t, acked = pair_report(env)
+    live = {k: e for k, e in t["pairs"].items() if k not in acked}
+    print(f"   {CP.head_line(t, acked)} · 대조 {t['checked']:,}행(상위·하위가 둘 다 골격에 맞은 행)")
+    for ln in CP.pair_lines(t, acked):
+        print(f"     {ln}")
+    if live or t["outside"]:
+        print("     ▶ 다음 줄 — 열이 뒤바뀌었으면 재등록(python -m cli.register generate "
+              f"{env.get('doc_type') or '<dt>'} <층> <표본> --revise --hint "
+              "\"상위(process_group)·하위(process_ref) 열 매핑을 바로잡는다\" — 가이드 §4 재등록 순서) · "
+              "골격이 틀렸으면 seed(부모·이름 변경은 재구축 — 가이드 §7) · "
+              "별칭이면 ALIASES + python run.py bootstrap · 이대로 두려면 쌍 확인"
+              "(python run.py platform queue coord_mismatch)")
+    return {"쌍": len(live), "행": sum(e["rows"] for e in live.values()), "상위_밖": len(t["outside"]),
+            "확인됨": len(acked), "대조": t["checked"]}
 
 
 def coord_line(env):

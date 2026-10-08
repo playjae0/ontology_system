@@ -293,6 +293,46 @@ def check_skeleton_columns(schema, fields, pieces):
     return ok
 
 
+def _axis(layer):
+    """좌표 층의 극성 축값 — 층 config `polarity.values`(킷은 core를 모른다 — 건네받은 층 폴더에서 읽는다)."""
+    p = tables.layers_dir() / str(layer) / "config.json"
+    try:
+        return tuple(((json.load(open(p, encoding="utf-8")).get("polarity") or {}).get("values")) or ())
+    except Exception:
+        return ()
+
+
+def check_coord_pairs(schema, pieces, nodes):
+    """**좌표 쌍 관문**(B105 ② · G4I) — 표본 행의 (상위, 하위)·극성을 골격과 대조한다.
+
+    판정은 구축과 같은 함수(`parser.coord_pairs.verdict`)이고 해소는 닫힌 목록(`SnapView` — 킷은 core를 모른다).
+    상위·하위가 **둘 다 골격에 맞은 행** 중 상위 어긋남이 문턱(손잡이 `coord_pair_pct`) 이상이면 FAIL — 열이
+    뒤바뀌었거나 매핑이 틀렸다(맞바꿔 대조해 대부분 맞으면 그 수를 함께). 문턱 아래 어긋남은 경고 + 쌍 표.
+    목록을 받지 못하면 대조를 생략하고 그렇게 말한다(G4H와 같은 결)."""
+    from parser import coord_pairs as CP
+    if not nodes:
+        print("      골격 목록 없음 — G4I 대조 생략 (등록 흐름은 --closed-list · --coord-layer로 건넨다)")
+        return True
+    view = CP.SnapView(nodes, _axis(tables.COORD_LAYER or schema.get("layer")))
+    t = CP.tally(CP.judge_all(pieces, view))
+    pct, m, k = CP.COORD_PAIR_PCT, t["checked"], t["group_rows"]
+    sw, sn = CP.swapped(pieces, view)
+    fail = bool(m) and k * 100 >= pct * m
+    why = (f"상위·하위가 둘 다 골격에 맞은 {m}행 중 어긋남 {k}행 — 상위·하위 열이 뒤바뀌었거나 매핑이 틀렸다"
+           + (f" · 열을 바꾸면 {sw}/{sn} 맞는다" if sn and sw * 2 > sn else "")) if fail else \
+        (f"둘 다 골격에 맞은 {m}행 · 어긋남 {k}행 · " + CP.head_line(t))
+    ok = show(f"G4I  좌표 쌍 — 상위가 하위의 조상 (문턱 {pct}%)", not fail, why)
+    for line in CP.pair_lines(t):
+        print("      " + line)
+    if fail:
+        print(f"      ▶ 다음 줄 — python run.py register generate {schema.get('doc_type')} "
+              f"{schema.get('layer')} <표본> --revise --hint \"상위(process_group)·하위(process_ref) 열 매핑을 "
+              f"바로잡는다\"")
+    elif t["pairs"] or t["outside"]:
+        print("      ⚠ 경고 — 어긋남이 문턱 아래다(관문은 막지 않는다) · 인입하면 쌍 표와 큐(coord_mismatch)로 보인다")
+    return ok
+
+
 def check_schema(schema, pieces, label, payload_kind=None):
     print(f"\n④ 매칭 스키마 정합 — {label}")
     show("G41  헤더 4키 (doc_type·schema_version·layer·use_blocks)",

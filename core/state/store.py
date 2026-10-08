@@ -236,6 +236,23 @@ def resolve_item(kind, match, *, actor, decision, at, note=""):
     return n
 
 
+def clear_resolution(kind, match, *, decision):
+    """`resolve_item`의 되돌림 — 그 kind의 항목 중 `match(payload)`이고 **그 판단(`decision`)으로 닫힌 것**만
+    `resolution`을 걷는다(B105 ④ — 확인 취소). 다른 판단으로 닫힌 항목은 그대로다. 돌려주는 것은 연 수."""
+    q = read(QUEUE, [])
+    n = 0
+    for x in q:
+        if x.get("kind") != kind or not match(x.get("payload") or {}):
+            continue
+        if (x.get("resolution") or {}).get("decision") == decision:
+            del x["resolution"]
+            n += 1
+    if n:
+        write(QUEUE, q)
+        _LOG.info("큐 판정 되돌림 %s — '%s' %d건", kind, decision, n)
+    return n
+
+
 # **행 단위 사실을 모으는 큐 kind**(B72 ② · 사내 실측 열한째). 같은 필드가 118행이면
 # 사람이 판정할 것은 **하나**다 — 「meta 열이 스키마에 없다」. 118건으로 쌓이면 화면이
 # 그 하나를 말하지 못하고, 다른 kind가 그 아래 묻힌다. 큐 kind는 닫힌 20종 그대로다 —

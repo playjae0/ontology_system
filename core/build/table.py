@@ -109,14 +109,13 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
             r.coord_case = "missing"
     r.et = rec.get("electrode_type")                # ④ 구조 필드 — 직접 읽는다
     r.ref = b.descend_anchor(r.ref, r.et, r.ref_g)  # ⓪ 하강 부착 (A11-9 ⓪)
-    b.check_coord(rec.get("process_group"), r.ref, r.prov, r.ref_g)
+    # 상위·극성 대조(C3 · A11-9 ②)는 구축 말미 한 자리다 — `coord_scan.enqueue`(같은 해소 · B105 ③④)
     r.ctx = dict(envelope_ctx)
     r.ctx.update(loop._context(rec, r.prov, doc_id))     # 봉투 → 레코드 상속·덮어쓰기
     r.parent = r.ref_g.get(r.ref)["canonical"] if r.ref else None
     # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
-    # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch
+    # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch(구축 말미 — `coord_scan`)
     r.anchor_pol = b.anchor_polarity(r.ref, r.ref_g)
-    b.check_polarity(r.ref, r.et, r.prov, r.ref_g)
     # **대장의 anchor 행** — 이 행이 어느 좌표에 섰는지가 뒤의 전부를 가른다(B74 ②).
     if b.ledger is not None:
         b.ledger.add(locator=rec.get("source_locator"),

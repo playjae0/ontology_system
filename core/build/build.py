@@ -73,6 +73,7 @@ class Builder:
         self.last: dict = {}
         # 판정 대장 — 문서 하나에 하나이고 걸침 하위 빌더와 **공유한다**(B74 ②).
         self.ledger = None
+        self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
 
     # ---------------------------------------------------------------- 걸침
     def for_layer(self, layer):
@@ -291,44 +292,44 @@ class Builder:
             return _hold(f"골격 밖 — '{surface}'는 auto 노드로만 있다 (Tier1 한정)", {})
         return _hold(f"골격에 없는 좌표 — '{surface}'", {})
 
-    def check_coord(self, group_surface, ref_id, prov, g=None):
-        """③ process_group은 **부착하지 않고 골격 조상 대조만** 한다.
+    def coord_verdicts(self, group_surface, ref_id, et, g=None):
+        """**좌표 쌍 판정**(B105) — `(판정 목록, 상위가 가리키는 골격 노드들)`.
 
-        둘 다 골격에 실존하되 조상 관계가 아니면 `coord_mismatch`(C3).
-        골격 **밖** 값이면 coord_mismatch가 아니라 anchor 미해소 → orphan_anchor다(D3·A5).
+        판정은 `parser.coord_pairs.verdict` **하나**다 — 등록 리허설 · 인입 좌표 단계 · 구축이 같은 함수(두 벌 금지).
+        여기는 구축의 해소만 한다: 상위 표기 → 사전 조회 중 하위와 같은 카테고리 노드 **전부**(공유 별칭이면 여럿 —
+        첫 노드를 고르지 않는다 · 그중 하나라도 조상이면 맞음) · 부모 사슬은 그 카테고리를 선언한 층의 골격 관계 ·
+        극성 축값은 하위 노드를 선언한 층 config. 상위가 골격 밖이면 어긋남이 아니다(D3·A5 — 큐 없음 · 화면이 센다).
+        큐에 싣는 자리는 `core/build/coord_scan.enqueue` 하나다(구축 말미 — 표·산문·렌즈 같이).
         """
-        if not group_surface or not ref_id:
-            return True
+        from parser import coord_pairs as CP
+        if not ref_id:
+            return [], []
         g = g or self.g
-        skel_cat = (g.nodes.get(ref_id) or {}).get("category")
-        gid = None
-        for nid in self.dict.lookup(group_surface):
-            if (g.get(nid) or {}).get("category") == skel_cat:
-                gid = nid
-                break
-        if gid is None:
-            return True                       # 골격 밖 → orphan_anchor 경로가 이미 처리
-        from core.state.bootstrap import layer_of_category, load_config
-        owner = load_config(layer_of_category(skel_cat) or self.layer)
-        child_rel = owner["skeleton"]["relations"]["child"]
-        ancestors, cur = set(), ref_id
-        while True:
-            nxt = [e["dst"] for e in g.edges
-                   if e["src"] == cur and e["rel"] == child_rel]
-            if not nxt or nxt[0] in ancestors:
-                break
-            ancestors.add(nxt[0])
-            cur = nxt[0]
-        if gid in ancestors or gid == ref_id:
-            return True
-        store.enqueue("coord_mismatch",
-                      f"'{group_surface}'는 골격에 실존하나 "
-                      f"'{g.get(ref_id)['canonical']}'의 조상이 아니다",
-                      self.doc_id,
-                      {"process_group": group_surface,
-                       "process_ref": g.get(ref_id)["canonical"],
-                       "provenance": prov})
-        return False
+        node = g.get(ref_id) or {}
+        cat, rc = node.get("category"), node.get("canonical")
+        gcs = sorted({g.get(nid)["canonical"] for nid in self.dict.lookup(group_surface)
+                      if (g.get(nid) or {}).get("category") == cat}) if group_surface else []
+        axis = tuple((self._owner_cfg(node).get("polarity") or {}).get("values") or [])
+        return CP.verdict(group_surface, gcs, rc, et, parent_of=self._parent_map(g, cat).get,
+                          polarity_of=lambda c: node.get("polarity") if c == rc else None,
+                          axis=axis), gcs
+
+    def _parent_map(self, g, cat):
+        """그 그래프 골격의 부모 표 `{canonical: 부모 canonical}` — 그 카테고리를 선언한 층의 골격 자식 관계 ·
+        한 빌더에서 한 번(골격은 구축 중에 바뀌지 않는다). 같은 노드의 부모 엣지가 여럿이면 앞의 것(구판 그대로)."""
+        key = (id(g), cat)
+        if key not in self._pmaps:
+            from core.state.bootstrap import layer_of_category, load_config
+            owner = load_config(layer_of_category(cat) or self.layer)
+            child_rel = ((owner.get("skeleton") or {}).get("relations") or {}).get("child")
+            pm = {}
+            for e in g.edges:
+                if e["rel"] == child_rel:
+                    s_, d_ = g.get(e["src"]), g.get(e["dst"])
+                    if s_ and d_ and s_["canonical"] not in pm:
+                        pm[s_["canonical"]] = d_["canonical"]
+            self._pmaps[key] = pm
+        return self._pmaps[key]
 
     def descend_anchor(self, ref_id, electrode_type, g=None):
         """⓪ **하강 부착** (틀 §4B-A11-9 ⓪ · 카드 F1 v18 · CH3B 3.5 규약 3-⓪).
@@ -382,32 +383,6 @@ class Builder:
             return self.cfg
         from core.state.bootstrap import load_config
         return load_config(node["layer"])
-
-    def check_polarity(self, ref_id, electrode_type, prov, g=None):
-        """② record의 극성과 부착 골격 노드의 polarity 대조 (A11-9 ②).
-
-        **둘 다 확정인데 서로 다르면** 조용히 한쪽을 택하지 않고 `coord_mismatch`
-        큐로 표면화한다 — C3의 좌표 대조와 같은 계열의 공짜 검증이다. 한쪽이라도
-        미확정(none·unbound·both·무표기)이면 대조 대상이 아니다.
-        """
-        if not ref_id:
-            return True
-        g = g or self.g
-        node = g.get(ref_id) or {}
-        owner = self._owner_cfg(node)
-        node_pol = node.get("polarity")
-        if not is_bound(node_pol, owner) or not is_bound(electrode_type, owner):
-            return True
-        if node_pol == electrode_type:
-            return True
-        store.enqueue("coord_mismatch",
-                      f"record의 극성 '{electrode_type}'과 좌표 "
-                      f"'{node['canonical']}'의 극성 '{node_pol}'이 다르다",
-                      self.doc_id,
-                      {"process_ref": node["canonical"],
-                       "node_polarity": node_pol, "electrode_type": electrode_type,
-                       "provenance": prov})
-        return False
 
     # ---------------------------------------------------------------- entity
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,

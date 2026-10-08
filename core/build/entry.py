@@ -359,6 +359,9 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
     사전을 먼저 쓰면 그래프 저장이 실패했을 때 사전이 없는 노드를 가리킨다.
     """
     from core import matcher as _mt
+    from core.build import coord_scan
+    # **좌표 쌍 대조**(B105 ③④) — 표·산문·렌즈 세 길이 여기 한 자리 · 좌표 단계 화면과 같은 함수 · 같은 입력
+    coord_scan.enqueue(_RUN.get("env") or {}, builder)
     _check_integrity(builder, doc_id)
     for other in builder.graphs():          # 걸침 층에 쓴 것도 저장된다 (D3)
         if other is not graph:
