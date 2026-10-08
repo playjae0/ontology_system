@@ -73,8 +73,9 @@ def show():
         elif e["rec"]:
             print(f"     ▶ 확인 취소: {_cmd('coord-unack', kind, pair)}")
     if live:
-        print("  ▶ 다음 줄 — 고치는 길: 상위·하위 열이 뒤바뀌었으면 재등록(python -m cli.register review <dt> "
-              "--instruct \"상위·하위 열 매핑을 바로잡는다\") · 골격 트리가 틀렸으면 seed를 고치고 python run.py bootstrap "
+        print("  ▶ 다음 줄 — 고치는 길: 상위·하위 열이 뒤바뀌었으면 재등록(python -m cli.register generate <dt> <층> "
+              "<표본> --revise --hint \"상위(process_group)·하위(process_ref) 열 매핑을 바로잡는다\" — 가이드 §4 재등록 "
+              "순서) · 골격 트리가 틀렸으면 seed를 고치고 python run.py bootstrap "
               "(부모·이름 변경은 재구축 — 가이드 §7) · 표기가 다른 이름이면 ALIASES + python run.py bootstrap → 재인입")
 
 

@@ -151,8 +151,10 @@ def pair_screen(env):
     for ln in CP.pair_lines(t, acked):
         print(f"     {ln}")
     if live or t["outside"]:
-        print("     ▶ 다음 줄 — 열이 뒤바뀌었으면 재등록(python -m cli.register review <dt> --instruct "
-              "\"상위·하위 열 매핑을 바로잡는다\") · 골격이 틀렸으면 seed(부모·이름 변경은 재구축 — 가이드 §7) · "
+        print("     ▶ 다음 줄 — 열이 뒤바뀌었으면 재등록(python -m cli.register generate "
+              f"{env.get('doc_type') or '<dt>'} <층> <표본> --revise --hint "
+              "\"상위(process_group)·하위(process_ref) 열 매핑을 바로잡는다\" — 가이드 §4 재등록 순서) · "
+              "골격이 틀렸으면 seed(부모·이름 변경은 재구축 — 가이드 §7) · "
               "별칭이면 ALIASES + python run.py bootstrap · 이대로 두려면 쌍 확인"
               "(python run.py platform queue coord_mismatch)")
     return {"쌍": len(live), "행": sum(e["rows"] for e in live.values()), "상위_밖": len(t["outside"]),
