@@ -261,12 +261,16 @@ show("ⓓ CLI가 링크 결과(ⓐ~ⓔ)와 LLM 답(ⓕ)을 나란히 낸다",
      all(k in _txt for k in _need), " / ".join(l.strip()[:50] for l in _txt.splitlines()
                                                 if any(l.strip().startswith(k) for k in ("ⓐ", "ⓑ", "ⓔ", "ⓕ"))))
 _ds = [c for c in _j["doc_search"] if not c.get("in_graph")]
-show("ⓓ `--json`과 CLI가 같은 수 — 사실 · 노드 근거 · 문서 검색 · 링킹 추가",
-     _cnt(_txt, "[그래프 사실]") == len(_j["facts"]) and _cnt(_txt, "[문서 근거]") == len(_j["chunks"])
-     and _cnt(_txt, "[문서 검색]") == len(_ds)
-     and _cnt(_txt, "[링킹 추가]") == sum(1 for x in _jt["linking"] if x["method"] == "embed+llm"),
-     f"사실 {_cnt(_txt, '[그래프 사실]')}={len(_j['facts'])} · 노드 근거 {_cnt(_txt, '[문서 근거]')}={len(_j['chunks'])} · "
-     f"문서 검색 {_cnt(_txt, '[문서 검색]')}={len(_ds)}")
+_tick = lambda k: _cnt(_txt, k + " ✓")                                          # noqa: E731
+show("ⓓ `--json`과 CLI가 같은 수 — 사실(trace 전부 · ✓ = 답이 쓴 묶음 facts) · 노드 근거 · 문서 검색 · 링킹 추가 · "
+     "쓴 청크 ✓ = used",
+     _cnt(_txt, "[그래프 사실]") == len(_jt["facts"]) and _tick("[그래프 사실]") == len(_j["facts"])
+     and _cnt(_txt, "[문서 근거]") == len(_j["chunks"]) and _cnt(_txt, "[문서 검색]") == len(_ds)
+     and _cnt(_txt, "[링킹 추가]") == sum(1 for x in _jt["linking"] if x["method"] == "embed+llm")
+     and _tick("[문서 근거]") + _tick("[관련 원문]") + _tick("[문서 검색]") == len(_jt["answer"]["used_chunks"]),
+     f"사실 {_cnt(_txt, '[그래프 사실]')}={len(_jt['facts'])}(✓ {_tick('[그래프 사실]')}={len(_j['facts'])}) · "
+     f"노드 근거 {_cnt(_txt, '[문서 근거]')}={len(_j['chunks'])} · 문서 검색 {_cnt(_txt, '[문서 검색]')}={len(_ds)} · "
+     f"쓴 청크 ✓ {_tick('[문서 근거]') + _tick('[관련 원문]') + _tick('[문서 검색]')}")
 _a = _jt["answer"]
 _used_c = [c for c in _jt["collection"] if c.get("used")] + [c for c in _jt["doc_search"] if c.get("used")]
 show("ⓓ 답 — 5줄 이내(줄 수 표시) · used_facts·used_chunks가 사실·청크에 표시된다 · 지시문 a-1.2 · l-1.1",

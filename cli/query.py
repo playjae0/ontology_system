@@ -36,8 +36,8 @@ def _world():
 def answer(question):
     """질문 하나에 대한 답 묶음을 돌려준다 — 렌더는 호출부가 한다.
 
-    **답변 3단**(5.2 규약 3): 근거 있음 → 근거 기반 답 + 출처 / 근거 없음 →
-    "사내 근거를 찾지 못했다"를 먼저 밝히고 일반지식 표시 / 링킹 미스 → 로그 축적.
+    **답변 3단**(5.2 규약 3): 근거 있음 → 근거 기반 답 + 출처 / 근거 없음(그래프 채널과 **문서 검색 채널이
+    다 비었을 때만** — B104 ③) → "사내 근거를 찾지 못했다"를 먼저 밝히고 일반지식 표시 / 링킹 미스(사전 단) → 로그 축적.
     """
     graphs, configs = _world()
     dictionary = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
@@ -385,8 +385,14 @@ def render(res):
     """**링크 결과**(ⓐ~ⓔ)의 정형 나열 — mock 갈래의 답(ⓕ = 이 나열)이자 사람이 뒷면을 보는 창구다(B104 ④).
 
     줄머리 `[경로]`·`[링킹]`·`[그래프 사실]`·`[문서 근거]`·`[관련 원문]`은 `--json`의 수와 1:1이다(회귀가 센다) —
-    더한 줄은 `[링킹 추가]`(임베딩 후보 + LLM 선별) · `[확장]`(홉 엣지) · `[문서 검색]`이다."""
+    더한 줄은 `[링킹 추가]`(임베딩 후보 + LLM 선별) · `[확장]`(홉 엣지) · `[문서 검색]`이다.
+
+    live 답 뒤에 부르면 **쓴 것 표시**(✓)가 붙는다 — 사실은 trace 전부(`trace.facts` — 묶음 `facts`는 답이 쓴
+    것으로 좁혀져 있다)를 싣고 쓴 것에 ✓, 청크는 `used`인 행에 ✓. mock은 고르지 않으니 표시가 없다."""
     tr = res.get("trace") or {}
+    live = (tr.get("answer") or {}).get("mode") == "live"
+    mark = (lambda used: "✓ " if used else "  ") if live else (lambda used: "")
+    used_ev = {r["chunk_id"] for r in tr.get("collection") or [] if r.get("used")}
     st = tr.get("link_stage") or {}
     lines = [f"Q. {res['question']}", f"   [경로] {res['path']}"]
     lk = tr.get("linking") or []
@@ -411,12 +417,13 @@ def render(res):
             lines.append(f"   [확장] {e.get('src_name', e['src'])} —{e['rel']}→ {e.get('dst_name', e['dst'])}")
         if len(edges) > 10:
             lines.append(f"     … 엣지 {len(edges) - 10}개 더(--json의 trace.hops)")
-    for f in res["facts"]:
-        lines.append(f"   [그래프 사실] {f}")
+    facts = tr["facts"] if live and tr.get("facts") is not None else [{"text": f} for f in res["facts"]]
+    for f in facts:
+        lines.append(f"   [그래프 사실] {mark(f.get('used'))}{f['text']}")
     for c in res["chunks"]:
-        lines.append(f"   [문서 근거] ({c['doc_id']} {c['source_locator']}) {c['text']}")
+        lines.append(f"   [문서 근거] {mark(c['chunk_id'] in used_ev)}({c['doc_id']} {c['source_locator']}) {c['text']}")
     for c in res.get("related") or []:
-        lines.append(f"   [관련 원문] ({c['doc_id']} {c['source_locator']}) {c['text']}")
+        lines.append(f"   [관련 원문] {mark(c['chunk_id'] in used_ev)}({c['doc_id']} {c['source_locator']}) {c['text']}")
     ds = [c for c in res.get("doc_search") or [] if not c.get("in_graph")]
     if res.get("doc_search"):
         lines.append(f"   ⓔ 문서 검색 {len(res['doc_search'])} (노드 근거와 겹침 "
@@ -425,7 +432,7 @@ def render(res):
         sc = " · ".join(x for x in (f"임베딩 {c['embed']}" if c.get("embed") is not None else "",
                                     f"BM25 {c['bm25']}" if c.get("bm25") is not None else "",
                                     "찾아볼 시트" if c.get("ref") else "") if x)
-        lines.append(f"   [문서 검색] ({c['doc_id']} {c.get('source_locator') or ''} · {sc}) {c['text']}")
+        lines.append(f"   [문서 검색] {mark(c.get('used'))}({c['doc_id']} {c.get('source_locator') or ''} · {sc}) {c['text']}")
     if res["truncated"]:
         lines.append(f"   [잘림] 근거 {res['truncated']}건 (상한 {knobs.get('collect_limit')})")
     return "\n".join(lines)

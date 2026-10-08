@@ -248,7 +248,7 @@ def transit(graph, nid, cfg):
 
 
 def log_miss(question):
-    """링킹 미스는 버리지 않고 쌓는다 — 하이브리드 서치 도입 판정의 데이터다(5.4)."""
+    """링킹 미스(**사전 단** — B104 ②)는 버리지 않고 쌓는다 — 계기판 5의 재료이고 별칭으로 넣을 표기의 후보다(5.4)."""
     store.append_line(store.LINK_MISS, question)
 
 
