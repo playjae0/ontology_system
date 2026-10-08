@@ -371,12 +371,14 @@ def generate(res):
 
 
 def _mark_used(res, tr, nums, used_c):
-    """쓴 청크 표시(B104 ④) — 노드 근거는 trace `collection`, 문서 검색은 `doc_search`(trace와 묶음 둘 다)."""
-    got = {c["chunk_id"] for i, _ch, c in nums if i in used_c}
+    """쓴 청크 표시(B104 ④) — **번호를 받은 채널의 행에만** 단다: 노드 근거·관련 원문은 trace `collection`,
+    문서 검색은 `doc_search`(trace와 묶음 둘 다). 노드 근거와 겹친 문서 검색 행(`in_graph`)은 번호가 없다 —
+    같은 청크가 두 칸에서 「썼다」로 두 번 세어지지 않는다."""
+    got = {(ch == "문서 검색", c["chunk_id"]) for i, ch, c in nums if i in used_c}
     for row in tr.get("collection") or []:
-        row["used"] = row["chunk_id"] in got
+        row["used"] = (False, row["chunk_id"]) in got
     for row in (tr.get("doc_search") or []) + (res.get("doc_search") or []):
-        row["used"] = row["chunk_id"] in got
+        row["used"] = (True, row["chunk_id"]) in got
 
 
 def render(res):

@@ -7,7 +7,8 @@
 두 명령뿐이다:
 
     golden init    §5.5-2 기준 구성대로 **빈 문항 틀**을 만든다 (사내 제작의 출발점)
-    golden score   문항마다 `answer()` 1회 — 4축을 재고 BM-25를 나란히 낸다
+    golden score   문항마다 `answer()` 1회 — 축을 재고 BM-25를 나란히 낸다
+                   (B104 ⑤ — 링킹은 「사전만 · 보충」 두 칸 · 문서 검색 채널 recall@k가 근거@k·BM25@k 옆에)
 
 **채점은 `answer()`까지만 부른다** — 답변 생성(⑧)은 부르지 않는다(§5.5-4). 재는 것은
 **근거 선택**이지 문장이 아니다. 그래서 채점에 LLM 비용이 들지 않고, mock에서도
@@ -152,17 +153,23 @@ def _grade(q, res, idx, k):
     r = {"id": q.get("id"), "type": q["type"], "q": q["q"],
          "path": {"want": q["expected_path"], "got": res["path"],
                   "ok": q["expected_path"] == res["path"]},
-         "linking": None, "evidence": None, "bm25": None}
+         "linking": None, "linking_dict": None, "evidence": None, "doc": None, "bm25": None}
     if want_linked:
         got = res.get("linked") or []
-        hit = [x for x in want_linked if x in got]
-        r["linking"] = {"want": want_linked, "got": got,
-                        "hit": len(hit), "n": len(want_linked),
-                        "ok": len(hit) == len(want_linked)}
+        # **사전만**(B104 ⑤) — trace의 단계가 `dict`인 링킹만(같은 묶음 · 다시 묻지 않는다)
+        got_dict = [f"{x['layer']}:{x['canonical']}" for x in (res.get("trace") or {}).get("linking") or []
+                    if x.get("method", "dict") == "dict"]
+        for key, g in (("linking", got), ("linking_dict", got_dict)):
+            hit = [x for x in want_linked if x in g]
+            r[key] = {"want": want_linked, "got": g, "hit": len(hit), "n": len(want_linked),
+                      "ok": len(hit) == len(want_linked)}
     if want_docs:
         # **적중 = 기대 문서 중 하나라도 상위 k 안에** (§5.5-4 ③).
+        doc_docs = [c["doc_id"] for c in (res.get("doc_search") or [])[:k]]
         r["evidence"] = {"want": want_docs, "got": got_docs,
                          "ok": any(d in got_docs for d in want_docs)}
+        # 문서 검색 채널(B104 ③) — 링킹과 무관하게 질문으로 찾은 청크의 상위 k
+        r["doc"] = {"want": want_docs, "got": doc_docs, "ok": any(d in doc_docs for d in want_docs)}
         r["bm25"] = {"want": want_docs, "got": bm_docs,
                      "ok": any(d in bm_docs for d in want_docs)}
     return r
@@ -174,8 +181,8 @@ def aggregate(rows, k=DEFAULT_K):
         return (round(sum(1 for x in xs if x["ok"]) / len(xs), 3), len(xs)) if xs \
             else (None, 0)
 
-    def recall(sel):
-        xs = [r["linking"] for r in sel if r["linking"] is not None]
+    def recall(sel, axis="linking"):
+        xs = [r.get(axis) for r in sel if r.get(axis) is not None]
         n = sum(x["n"] for x in xs)
         return (round(sum(x["hit"] for x in xs) / n, 3), n) if n else (None, 0)
 
@@ -191,11 +198,14 @@ def aggregate(rows, k=DEFAULT_K):
 def _row(sel, rate, recall):
     p, pn = rate(sel, "path")
     lr, ln = recall(sel)
+    ld, _ldn = recall(sel, "linking_dict")
     e, en = rate(sel, "evidence")
+    dd, dn = rate(sel, "doc")
     b, bn = rate(sel, "bm25")
     return {"n": len(sel), "path_rate": p, "path_n": pn,
-            "linking_recall": lr, "linking_n": ln,
-            "evidence_at_k": e, "evidence_n": en, "bm25_at_k": b, "bm25_n": bn}
+            "linking_recall": lr, "linking_n": ln, "linking_dict_recall": ld,
+            "evidence_at_k": e, "evidence_n": en, "doc_at_k": dd, "doc_n": dn,
+            "bm25_at_k": b, "bm25_n": bn}
 
 
 def _fmt(v, n):
@@ -217,22 +227,25 @@ def render(agg, rows, *, src, is_mock, skipped, k):
             L.append(f"    · … 외 {len(skipped) - 8}건")
 
     L.append("")
-    L.append(f"  {'유형':<10}{'수':>4}  {'path':>7}{'linking':>9}"
-             f"{'evid@k':>8}{'bm25@k':>8}   ← 대조군")
-    L.append("  " + "─" * 52)
-    for t, a in agg["by_type"].items():
+    # 링킹 두 칸(B104 ⑤ — 사전만 · 보충) · 근거 두 칸(노드 근거 evid · 문서 검색 doc)이 대조군 옆에
+    L.append(f"  {'유형':<10}{'수':>4}  {'path':>7}{'link사전':>9}{'link보충':>9}"
+             f"{'evid@k':>8}{'doc@k':>8}{'bm25@k':>8}   ← 대조군")
+    L.append("  " + "─" * 70)
+    for t, a in list(agg["by_type"].items()) + [("전체", agg)]:
+        if t == "전체":
+            L.append("  " + "─" * 70)
         L.append(f"  {t:<10}{a['n']:>4}  {_fmt(a['path_rate'], 0):>7}"
-                 f"{_fmt(a['linking_recall'], 0):>9}"
-                 f"{_fmt(a['evidence_at_k'], 0):>8}{_fmt(a['bm25_at_k'], 0):>8}")
-    L.append("  " + "─" * 52)
-    L.append(f"  {'전체':<10}{agg['n']:>4}  {_fmt(agg['path_rate'], 0):>7}"
-             f"{_fmt(agg['linking_recall'], 0):>9}"
-             f"{_fmt(agg['evidence_at_k'], 0):>8}{_fmt(agg['bm25_at_k'], 0):>8}")
+                 f"{_fmt(a['linking_dict_recall'], 0):>9}{_fmt(a['linking_recall'], 0):>9}"
+                 f"{_fmt(a['evidence_at_k'], 0):>8}{_fmt(a['doc_at_k'], 0):>8}{_fmt(a['bm25_at_k'], 0):>8}")
     L.append(f"    채점된 문항 — path {agg['path_n']} · linking {agg['linking_n']}(기대 링킹 수)"
-             f" · evidence {agg['evidence_n']} · bm25 {agg['bm25_n']}")
+             f" · evidence {agg['evidence_n']} · doc {agg['doc_n']} · bm25 {agg['bm25_n']}")
     if agg["evidence_n"]:
         d = (agg["evidence_at_k"] or 0) - (agg["bm25_at_k"] or 0)
-        L.append(f"    **대조군 대비 {d:+.3f}** — 이 값이 「무엇 대비」의 답이다(§5.5-3)")
+        dd = (agg["doc_at_k"] or 0) - (agg["bm25_at_k"] or 0)
+        L.append(f"    **대조군 대비 {d:+.3f}** (노드 근거) · **{dd:+.3f}** (문서 검색) — 이 값이 「무엇 대비」의 답이다(§5.5-3)")
+    if agg["linking_n"]:
+        L.append(f"    링킹 — 사전만 {_fmt(agg['linking_dict_recall'], 0).strip()} → 보충 "
+                 f"{_fmt(agg['linking_recall'], 0).strip()} (임베딩 후보 + LLM 선별이 더한 몫)")
 
     bad = [r for r in rows if not r["path"]["ok"]
            or (r["linking"] and not r["linking"]["ok"])
@@ -299,11 +312,13 @@ def cmd_score(args):
 
     entry = {"at": store._now(), "set": paths.show(path), "n": agg["n"], "k": k,
              "path_rate": agg["path_rate"], "linking_recall": agg["linking_recall"],
-             "evidence_at_k": agg["evidence_at_k"], "bm25_at_k": agg["bm25_at_k"],
+             "linking_dict_recall": agg["linking_dict_recall"],
+             "evidence_at_k": agg["evidence_at_k"], "doc_at_k": agg["doc_at_k"],
+             "bm25_at_k": agg["bm25_at_k"],
              "mock": is_mock,
              "by_type": {t: {kk: a[kk] for kk in
-                             ("n", "path_rate", "linking_recall",
-                              "evidence_at_k", "bm25_at_k")}
+                             ("n", "path_rate", "linking_recall", "linking_dict_recall",
+                              "evidence_at_k", "doc_at_k", "bm25_at_k")}
                          for t, a in agg["by_type"].items()}}
     # **로그이지 큐가 아니다**(§5.5 규율 5) — 아무도 처리하지 않는다, 추이만 본다.
     hist = store.read(LOG, [])
