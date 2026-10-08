@@ -3,8 +3,8 @@
 링크 결과 · 채점 축 (B104).
 
 창작 표본(mock 그래프 + 시험이 만든 엑셀 · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50).
-실호출 갈래는 **가짜 게이트웨이**로 잰다: 임베딩은 동의어 표를 아는 결정적 벡터(전송 `_post` 대역) · 선별·답변은
-결정적 규칙(`chat` 대역). 형태(표·산문) × 층(process · quality)에서 같은 성질을 잰다(CLAUDE.md §4).
+실호출 갈래는 **가짜 게이트웨이**(`tests/fake_gateway.py`)로 잰다: 임베딩은 동의어 표를 아는 결정적 벡터(전송
+`_post` 대역) · 선별·답변은 결정적 규칙(`chat` 대역). 형태(표·산문) × 층(process · quality)에서 같은 성질을 잰다(CLAUDE.md §4).
 
 잠그는 성질:
   ⓐ 공유 별칭: 문서 좌표 범위 안에서 하나인 공유 별칭 시트·행의 조각 좌표 = 그 노드 canonical(원 표기 meta) ·
@@ -23,7 +23,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
-import math
 import re
 import tempfile
 from pathlib import Path
@@ -39,11 +38,11 @@ from cli import golden as GD, query as CQ               # noqa: E402
 from cli.platform import orphan_next_lines              # noqa: E402
 from core.build import ledger as LG                     # noqa: E402
 from core.build.result import hold_reason               # noqa: E402
-from core.llm import gateway                            # noqa: E402
-from core.query import hybrid as H, vectors as V        # noqa: E402
+from core.query import vectors as V                     # noqa: E402
 from core.state import knobs as KB                      # noqa: E402
 from parser import pipeline, struct_map, tagger as TG   # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
+from fake_gateway import CALLS, Live                    # noqa: E402 — 실호출 갈래의 대역(전송·채팅·설정만)
 
 HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
 TMP = Path(tempfile.mkdtemp(prefix="b104_"))
@@ -66,62 +65,6 @@ def _knobs(d):
     else:
         _P.knobs().unlink(missing_ok=True)
     KB.apply()
-
-
-# ── 가짜 게이트웨이 — 전송(`_post`)과 채팅(`chat`)만 대역 · 나머지는 실물 그대로 ───────────────
-#: 동의어 표(창작) — 임베딩 대역이 「같은 개념」으로 보는 말들
-SYN = {"틈새": "클리어런스", "간극": "클리어런스", "클리어런스": "클리어런스", "펀칭": "타발", "타발": "타발"}
-CFG = {"url": "http://fake.gw/v1", "key": "", "model": "fake-chat", "embed_model": "fake-embed",
-       "embed_backend": "gateway", "embed_url": "http://fake.gw/v1", "timeout": 5}
-CALLS = []
-
-
-def _fake_vec(text):
-    """개념(동의어 표) 셋은 강하게 · 글자 2-gram은 약하게 — 결정적 64차 벡터."""
-    v = [0.0] * 64
-    for k, c in SYN.items():
-        if k in text:
-            v[int(hashlib.sha256(c.encode()).hexdigest(), 16) % 64] += 5.0
-    t = re.sub(r"\s+", "", text)
-    for i in range(len(t) - 1):
-        v[int(hashlib.sha256(t[i:i + 2].encode()).hexdigest(), 16) % 64] += 0.2
-    n = math.sqrt(sum(x * x for x in v)) or 1.0
-    return [x / n for x in v]
-
-
-def _fake_post(url, payload, key, timeout):
-    assert str(url).endswith("/embeddings"), url
-    return {"data": [{"embedding": _fake_vec(payload["input"])}]}
-
-
-def _fake_chat(messages, json_schema=None, point=None, **kw):
-    body = json.loads(messages[1]["content"])
-    CALLS.append((point, body))
-    if point == "link":                      # 「클리어런스」가 든 후보를 고른다 + 후보 밖 id 하나(버려져야 한다)
-        picks = [{"id": c["id"], "why": "질문의 「틈새」가 이 노드의 이름(클리어런스)과 같은 뜻"}
-                 for c in body["candidates"] if "클리어런스" in c["canonical"]][:1]
-        return {"picks": picks + [{"id": "NOPE-밖", "why": "지어낸 id"}]}
-    if point == "answer":
-        return {"answer": "가짜 답 첫 줄 [사실 0]\n둘째 줄 [청크 0]\n셋째 줄",
-                "used_facts": [0] if body.get("그래프_사실") else [], "used_chunks": [0]}
-    return {}
-
-
-class Live:
-    """`with Live():` 안에서는 실호출 갈래가 가짜 게이트웨이로 돈다."""
-
-    def __enter__(self):
-        self.keep = (gateway.use_mock, gateway.require, gateway.config, gateway._post, gateway.chat)
-        gateway.use_mock = lambda: False
-        gateway.require = lambda *a, **k: dict(CFG)
-        gateway.config = lambda: dict(CFG)
-        gateway._post = _fake_post
-        gateway.chat = _fake_chat
-        del CALLS[:]
-        return self
-
-    def __exit__(self, *a):
-        (gateway.use_mock, gateway.require, gateway.config, gateway._post, gateway.chat) = self.keep
 
 
 # ────────────────────────────────────────────────────────────── ⓐ

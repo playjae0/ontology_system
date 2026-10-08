@@ -14,7 +14,7 @@
   ⓑ 힘 — 같은 입력 같은 좌표 · 덩어리 경계 상자 겹침 0 · 닻 없는 노드 제외
   ⓒ 탐색 — 펼치기(이웃 = 서버) · 더 펼치기 · 접기 · 빵부스러기 · 전체 복귀 · 문턱 손잡이로 첫 화면이 탐색
   ⓓ 노드 상세 — 원문 전부 · 닻까지의 길 · 붙은 자리(target · attached · from)
-  ⓔ 질의 배지 — mock과 live(가짜 게이트웨이) · 링킹 LLM 폴백 문항에서 b ≥ 1
+  ⓔ 질의 배지 — mock과 live(가짜 게이트웨이) · 링킹 LLM 선별 문항에서 b ≥ 1(B104 ② 기대 변경 — 옛 「LLM 폴백」)
   ⓕ 쓰기 0 · 외부 URL 0
 
 사용: python tests/viewer_browser_b103.py   (스크린샷은 `$ONTO_HOME/export/viewer_shots/`)
@@ -42,7 +42,7 @@ except ImportError:                                       # pragma: no cover
 from g65_common import *                                  # noqa: E402,F401,F403 — 바닥은 하나다
 from g65_common import _P                                 # noqa: E402
 from core.build import ledger as LG                       # noqa: E402
-from core.llm import gateway                              # noqa: E402
+from fake_gateway import CALLS, Live                      # noqa: E402 — 실호출 갈래의 대역(B104)
 from cli.viewer import server as VS                       # noqa: E402
 
 allok = True
@@ -259,30 +259,17 @@ try:
         pg.click('#tabs button[data-tab="query"]')
         pg.fill("#q", "노칭 다음 공정은?"); pg.press("#q", "Enter"); pg.wait_for_timeout(1500)
         qm = pg.evaluate("() => document.querySelector('#qllm').textContent")
-        show("ⓔ 질의 배지(mock) — 모드 · 링킹 사전 a · LLM 폴백 0 · 답변 정형 나열",
-             qm.startswith("mock") and "LLM 폴백 0" in qm and "정형 나열(mock)" in qm, qm)
+        # 기대 변경(B104 ②) — 링킹의 LLM 자리가 「사전 미스 폴백」에서 「임베딩 후보 + LLM 선별」로 바뀌었다
+        show("ⓔ 질의 배지(mock) — 모드 · 링킹 사전 a · 임베딩 후보 → LLM 선별 0 · 답변 정형 나열",
+             qm.startswith("mock") and "LLM 선별 0" in qm and "임베딩 후보" in qm and "정형 나열(mock)" in qm, qm)
         pg.screenshot(path=str(SHOTS / "b103_06_질의_mock.png"))
-        # live — 가짜 게이트웨이(같은 프로세스의 서버가 이 함수들을 부른다)
-        live_node = pg.evaluate("() => S.graph.nodes.find((n) => n.name === '노칭').id")
-        keep = (gateway.use_mock, gateway.chat, gateway.require, gateway.prompt)
-        calls = []
-
-        def _chat(msgs, json_schema=None, point=None, **k):
-            calls.append(point)
-            if point == "link":
-                return {"node_ids": [live_node]}
-            if point == "answer":
-                return {"answer": "가짜 게이트웨이의 답", "used_facts": []}
-            return {}
-        gateway.use_mock, gateway.chat = (lambda: False), _chat
-        gateway.require, gateway.prompt = (lambda *x, **k: None), (lambda name: f"지시문 {name}")
-        try:
+        # live — 가짜 게이트웨이(같은 프로세스의 서버가 이 함수들을 부른다 · 선별은 첫 후보)
+        with Live(pick=None):
             pg.fill("#q", "B103 사전에 없는 말로 묻는다"); pg.press("#q", "Enter"); pg.wait_for_timeout(2500)
             ql = pg.evaluate("() => document.querySelector('#qllm').textContent")
-        finally:
-            gateway.use_mock, gateway.chat, gateway.require, gateway.prompt = keep
-        show("ⓔ 질의 배지(live · 가짜 게이트웨이) — 링킹 LLM 폴백 b ≥ 1 · 답변 LLM(live)",
-             ql.startswith("live") and "LLM 폴백 1" in ql and "LLM(live)" in ql and "link" in calls,
+            calls = [c for c, _b in CALLS]
+        show("ⓔ 질의 배지(live · 가짜 게이트웨이) — 링킹 LLM 선별 b ≥ 1 · 답변 LLM(live)",
+             ql.startswith("live") and "LLM 선별 1" in ql and "LLM(live)" in ql and "link" in calls,
              f"{ql} · 호출 {calls}")
         pg.screenshot(path=str(SHOTS / "b103_07_질의_live.png"))
 
