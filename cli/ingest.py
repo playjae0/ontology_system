@@ -347,9 +347,11 @@ def _step_stops(res, sel, row, ask=True):
         row.update(status=SKIP, reason="사람이 멈췄다 — 파싱까지")
         return True
     _ct = _rep.get("coord_tag") or {}
+    _cp = _rep.get("coord_pairs") or {}             # 판정 전 좌표 쌍 (B105 ③ — 이 관문에서 멈추면 LLM 0)
     if not SCR._step_gate(2, prose=prose, ask=ask, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
                       f"목록 밖 표기 {_ct.get('표기_종수', 0)}종 · "
-                      f"LLM 호출 {_ct.get('호출', 0)}"):
+                      f"LLM 호출 {_ct.get('호출', 0)} · "
+                      f"좌표 쌍 어긋남 {_cp.get('쌍', 0)}쌍({_cp.get('행', 0)}행)"):
         row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
         return True
     if prose:

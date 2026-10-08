@@ -7,6 +7,7 @@
     python cli/ops.py obsolete <층> <id> --actor … [--replaced-by <id>]
     python cli/ops.py delete-edge <층> <src> <rel> <dst> --actor …
     python cli/ops.py alias  <층> <node_id|canonical> <표기> --actor <사람>
+    python cli/ops.py coord-ack|coord-unack all "<상위>" "<하위>" [--polarity] --actor <사람> [--reason <메모>]
 
 **파급이 1건을 넘는 작업은 실행 전에 미리보기를 찍는다**(카드 G6). `--yes` 없이는
 미리보기만 내고 멈춘다 — 승인 없는 파급은 이 도구의 설계상 존재하지 않는다.
@@ -92,7 +93,8 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
                                   "transfer", "delete-edge", "confirm", "alias", "tidy",
-                                  "learn-promote", "learn-reject", "review"])
+                                  "learn-promote", "learn-reject", "review",
+                                  "coord-ack", "coord-unack"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -103,7 +105,11 @@ def main(argv=None):
     p.add_argument("--parent", help="이관 — 새 부모 노드 id (소속 변경)")
     p.add_argument("--yes", action="store_true", help="미리보기 확인 후 실행")
     p.add_argument("--apply", action="store_true", help="tidy — 계획이 아니라 실제로 지운다")
+    p.add_argument("--polarity", action="store_true", help="coord-ack — 쌍이 (극성, 노드)다")
     a = p.parse_args(argv)
+    if a.op in ("coord-ack", "coord-unack"):
+        from cli import coord_queue                 # 좌표 쌍 확인 · 취소 (B105 ④ — 메모는 --reason)
+        return coord_queue.run_ops(a)
     if a.op == "tidy":
         return _tidy(a)
     if a.op in ("learn-promote", "learn-reject"):

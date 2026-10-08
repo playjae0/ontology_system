@@ -84,13 +84,15 @@ def pair_of(pl):
 class SnapView:
     """**닫힌 목록 스냅샷 위의 해소** — 등록 리허설(킷 · core를 모른다)이 쓴다.
 
-    하위는 이름·별칭 정확(라틴 대소문자 2차) · **노드 하나일 때만**(공유 별칭은 태깅의 범위 안 해소가 이미
-    풀었거나 못 푼 것 — 대조하지 않는다) · 극성 하강은 구축과 같은 규칙(부모가 그 노드이고 극성이 행의 극성인
-    자식 · 노드 극성이 확정이면 하강하지 않는다). 상위는 그 표기를 가진 노드 전부(공유 별칭 포함)."""
+    하위는 이름·별칭 정확(라틴 대소문자 2차) · **노드 하나일 때만** · 공유 별칭이면 행의 상위 범위 안에서 하나일
+    때만(태깅의 범위 안 해소와 같은 함수 `tagger.scope_rows` — 맞바꿔 보기도 같은 길) · 극성 하강은 구축과 같은
+    규칙(부모가 그 노드이고 극성이 행의 극성인 자식 · 노드 극성이 확정이면 하강하지 않는다). 상위는 그 표기를
+    가진 노드 전부(공유 별칭 포함)."""
 
     def __init__(self, nodes, axis=()):
+        self.nodes = list(nodes)
         self.by = {n["canonical"]: n for n in nodes}
-        self.idx, _shared, _a = tagger.scoped_index(nodes)
+        self.idx, self.shared, _a = tagger.scoped_index(nodes)
         self.owners = {}
         for n in nodes:
             for k in [n["canonical"]] + list(n.get("aliases") or []):
@@ -103,8 +105,12 @@ class SnapView:
     def polarity_of(self, c):
         return (self.by.get(c) or {}).get("polarity")
 
-    def ref(self, surface, et=None):
+    def ref(self, surface, et=None, group=None):
         n = (self.idx.get(surface) or tagger.fold_hit(surface, self.idx)) if surface else None
+        if n is None and surface and group:
+            sc = tagger.scope_rows([{"process_group": group}], [surface], self.nodes,
+                                   idx=self.idx, shared=self.shared)[0]
+            n = sc[0] if sc else None
         if n is None:
             return None
         c = n["canonical"]
@@ -126,9 +132,33 @@ class SnapView:
     def judge(self, piece):
         g, et = piece.get("process_group"), piece.get("electrode_type")
         r = piece.get("process_ref")
-        rc = self.ref(r, et) if r else (self.ref(g, et) if g else None)   # 하위가 비면 상위로(저해상도 — 구축과 같다)
+        rc = self.ref(r, et, g) if r else (self.ref(g, et) if g else None)   # 하위가 비면 상위로(저해상도 — 구축과 같다)
         return verdict(g, self.groups(g), rc, et, parent_of=self.parent_of,
                        polarity_of=self.polarity_of, axis=self.axis), rc
+
+
+def swapped(pieces, view):
+    """**맞바꿔 보기** — 상위·하위를 바꿔 대조하면 맞는 행 `(맞음, 대조됨)`(둘 다 골격에 맞은 행만 센다)."""
+    ok = n = 0
+    for p in pieces:
+        g, r = p.get("process_group"), p.get("process_ref")
+        if not (g and r):
+            continue
+        vs, rc = view.judge(dict(p, process_group=r, process_ref=g))
+        if rc and view.groups(r):
+            n += 1
+            ok += 0 if any(k == GROUP for k, _p in vs) else 1
+    return ok, n
+
+
+def judge_all(pieces, view):
+    """조각마다 `(위치, 판정, 대조됨)` — 등록 관문의 표 재료(`tally`)."""
+    out = []
+    for p in pieces:
+        vs, rc = view.judge(p)
+        out.append((p.get("source_locator"), vs,
+                    bool(rc and p.get("process_group") and view.groups(p.get("process_group")))))
+    return out
 
 
 def tally(rows):

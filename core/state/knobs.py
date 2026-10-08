@@ -54,6 +54,10 @@ KNOBS = {
                             "등록 관문 골격 값 열 문턱(%) — entity 열의 값이 이 비율 이상 골격 목록에 있으면 "
                             "FAIL(좌표·anchor로 매핑해야 한다)",
                             "등록 관문 화면 G4H 줄 — 열마다 골격 값 k/n"),
+    "coord_pair_pct": ("parser.coord_pairs", ("COORD_PAIR_PCT",), "pct",
+                       "등록 관문 좌표 쌍 문턱(%) — 상위·하위가 둘 다 골격에 맞은 표본 행 중 상위 어긋남이 이 비율 "
+                       "이상이면 FAIL(열이 뒤바뀌었거나 매핑이 틀렸다)",
+                       "등록 관문 화면 G4I 줄 — 둘 다 골격에 맞은 m행 중 어긋남 k행 · 인입 좌표 쌍 표"),
     "collect_limit": ("core.query.query", ("COLLECT_LIMIT",), "int",
                       "근거 수집 상한(청크)", "python run.py show dist evidence"),
     "ref_limit": ("core.query.query", ("REF_LIMIT",), "int0",

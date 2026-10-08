@@ -94,9 +94,30 @@ def _build_view_anomalies(st, results, harness_ok, harness_out, schema, mod):
                                      f"생성이 빠뜨렸거나 문서 양식이 바뀌었다",
                           "where": st["doc_type"]})
 
+    # **좌표 쌍**(B105 ②) — 등록 관문 G4I와 같은 판정·같은 해소(닫힌 목록) · 어긋남이 있으면 이상 신호로도
+    for r in results:
+        t = pair_table(r)
+        if t and (t["pairs"] or t["outside"]):
+            from parser import coord_pairs as CP
+            anomalies.append({"kind": "warning", "message": CP.head_line(t), "where": r.doc_id,
+                              "detail": {"pairs": CP.pair_lines(t), "checked": t["checked"],
+                                         "note": "상위·하위 열이 뒤바뀌었거나 골격이 틀렸거나 별칭이 없다"}})
     # **형태 판정을 화면에 싣는다**(B58 ⑤ · 문서 1 C37) — 격자 포맷 표본만.
     # 사람에게 올라온 문서는 **이상 신호로도** 뜬다: 「이상 신호는 전량 필수
     return anomalies, reh, excluded
+
+
+def pair_table(r):
+    """리허설 파싱 하나의 **좌표 쌍 표**(B105 ②) — 관문 G4I와 같은 판정(`parser.coord_pairs.verdict`) · 같은 해소
+    (좌표 층 닫힌 목록 `SnapView`) · 극성 축값은 좌표 층 config. 파싱이 실패했으면 None."""
+    if not r.ok:
+        return None
+    from parser import coord_pairs as CP
+    from core.state.bootstrap import load_config
+    lay = coord_layer()
+    view = CP.SnapView(tagger.closed_list(lay),
+                       ((load_config(lay).get("polarity") or {}).get("values")) or ())
+    return CP.tally(CP.judge_all(r.envelope.get("records") or r.envelope.get("chunks") or [], view))
 
 
 def build_view(st, results, harness_ok, harness_out, rehearsal=None):
@@ -525,6 +546,12 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                 if reh.get("truncated") else "")
         print(f"   파싱 {r.doc_id}: {'OK' if r.ok else 'FAIL'} · "
               f"조각 {r.report.get('pieces', 0)}{part}")
+        _pt = pair_table(r)                       # 좌표 쌍 표 — 관문 G4I와 같은 표 (B105 ②)
+        if _pt is not None:
+            from parser import coord_pairs as _CP
+            print(f"   {_CP.head_line(_pt)} · 상위·하위가 둘 다 골격에 맞은 {_pt['checked']:,}행")
+            for _ln in _CP.pair_lines(_pt):
+                print(f"     {_ln}")
         _sr = r.report.get("struct_rule") or {}
         if _sr.get("대상"):
             # 대상 시트만 적는다 — 나머지는 고정 규칙으로 섰다(B87 ②)
