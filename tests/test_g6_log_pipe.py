@@ -34,6 +34,7 @@ from g6_common import DT, RFQ, _register, _run, _unregister   # noqa: E402 — �
 
 import run as RUN                                                  # noqa: E402
 from cli import _entry, ingest as IG                               # noqa: E402
+from core.graph import GraphStore                                  # noqa: E402 — 그래프 파일 이름은 그 모듈이 안다
 from core.state import log as LG                                   # noqa: E402
 from core.state.world import World                                 # noqa: E402
 
@@ -176,7 +177,7 @@ _oc = _run("init", "--fresh", "--all")
 _left = sorted(_P.rel_to_home(x) for t in ("data", "work", "export") for x in getattr(_P, t)().rglob("*") if x.is_file()
                and not x.name.endswith(".lock"))
 _empty = {_P.rel_to_home(store.path(n)) for n in init.EMPTY}
-_res = [f for f in _left if f not in _empty and not f.endswith("/graph.json")
+_res = [f for f in _left if f not in _empty and not f.endswith("/" + GraphStore.FILENAME)
         and not (f.startswith("work/logs/init_") and f.endswith(".log"))]
 show("ⓐ init --fresh --all ⇒ 지금의 클린 — 잔재 0(명령 로그도 지운다 · 그 실행의 로그만 다시 열린다) · 그래프는 빈 그래프",
      not _res and all(not g.nodes and not g.edges for g in World().graphs.values())
