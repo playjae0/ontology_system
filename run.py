@@ -9,8 +9,8 @@
   build · ingest-file/ingest-dir · query)은 mock 모드에서 실행 전에 멈춘다 —
   계속하려면 `--allow-mock`을 적는다 (문서 7 §7.6-B-1 · B48).
 
-  python run.py init [--fresh [--all]]  빈 상태 — --fresh는 비용이 든 산출 넷(추출·지도·판정 대장·
-                                   좌표 학습)을 남기고 지운다 · --all이 클린(회귀 바닥 · B106 ①)
+  python run.py init [--fresh [--all]]  빈 상태 — --fresh는 보존 다섯(추출·지도·판정 대장·좌표 학습·
+                                   별칭 대장)을 남기고 지운다 · --all이 클린(회귀 바닥 · B106 ① · B108 ①)
   python run.py rebuild [--yes] [--no-replay]  재구축 한 명령 — 계획(비대화형은 계획만) → 보존 fresh →
                                    bootstrap → 처음 인입 순서로 재인입 → ops replay → 보고 (B106 ①)
   python run.py bootstrap [--dry-run]  층 공통 config 맞추기 + 층 골격 심기 (n10 · --dry-run은 계획만)
@@ -88,7 +88,7 @@ def fresh_screen(rep, all_, head="[init --fresh]"):
 def cmd_init(args):
     """빈 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다.
 
-    `--fresh`는 비용이 든 산출 넷을 남기고(재구축의 바닥 — B106 ①) `--fresh --all`이 클린이다."""
+    `--fresh`는 보존 다섯을 남기고(재구축의 바닥 — B106 ① · 별칭 대장 B108 ①) `--fresh --all`이 클린이다."""
     from core.state.init import init
     fresh_, all_ = "--fresh" in args, "--all" in args
     if all_ and not fresh_:

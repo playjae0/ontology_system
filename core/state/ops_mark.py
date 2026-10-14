@@ -8,7 +8,7 @@ I축 4연산(그래프의 **모양**을 바꾸는 것)과 갈래가 다르다 �
 """
 from __future__ import annotations
 
-from core.state import oplog, store
+from core.state import alias_book, oplog, store
 from core.build.build import Builder
 from core.dictionary import Dictionary
 from core.state.ids import norm
@@ -139,15 +139,7 @@ def alias(layer, target, surface, actor, reason="", dry_run=False):
     surface = (surface or "").strip()
     if not surface:
         raise ops.OpRefused("등재할 표기를 달라")
-    w = World()
-    if w.get(target):
-        nid = target
-    else:                                       # 친 층 먼저 · 없으면 층 전부(노드는 집 층)
-        here = list((w.graphs[layer].nodes.values()) if layer in w.graphs else [])
-        try:
-            nid = _by_canonical(here, target)
-        except ops.OpRefused:
-            nid = _by_canonical([n for _l, n in w.nodes()], target)
+    nid = _pick(World(), layer, target)
     w, g, layer = ops._open(layer, nid)
     node = ops._target(g, nid)                  # 툼스톤·없는 id는 여기서 거부된다
     cfg = ops._cfg(layer)
@@ -175,11 +167,79 @@ def alias(layer, target, surface, actor, reason="", dry_run=False):
     prov = f"op:alias:{actor}"
     b = Builder(g, cfg, None, None, layer)
     b.dict = dic
+    pv["revived"] = b.book.revive(node, surface)   # 사람이 다시 잇는다 — 거둔 별칭이면 거부를 푼다 (B108 ①)
     b._register(surface, nid, prov, key=key)    # ①의 등재 함수 그대로
     b.flush()
     g.save()
     ops.log_op("I6:alias", actor, [nid], reason,
                {"surface": surface, "key": key, "canonical": node["canonical"]},
+               {"node": oplog.name(node)})
+    return pv
+
+
+def _pick(w, layer, target):
+    """대상 — node_id 또는 canonical(친 층 먼저 · 없으면 층 전부 — 노드는 집 층)."""
+    if w.get(target):
+        return target
+    here = list((w.graphs[layer].nodes.values()) if layer in w.graphs else [])
+    try:
+        return _by_canonical(here, target)
+    except _ops().OpRefused:
+        return _by_canonical([n for _l, n in w.nodes()], target)
+
+
+def alias_reject(layer, target, surface, actor, reason="", dry_run=False):
+    """**별칭 거두기**(B108 ①) — 노드 · 사전에서 그 표기를 빼고 별칭 대장에 「거부」로 남긴다 — 쓰는 손이 다시
+    붙이지 않고 bootstrap도 싣지 않는다. 사람 판단 기록에 이름으로(재구축 뒤 `ops replay`가 다시 거둔다).
+
+    거부 셋: 행위자 없음 · seed 별칭(골격 `ALIASES` — 골격 파일에서 지우고 `bootstrap`) · 노드 자신의 이름.
+    사전은 그 표기와 조회 키만 걷는다 — 노드의 다른 이름이 같은 키를 쓰면 남긴다. 돌려주는 것은 계획
+    (`already` — 이미 거부 상태 · `dry_run`이면 쓰기 0)."""
+    ops = _ops()
+    if not actor:
+        raise ops.OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
+    surface = (surface or "").strip()
+    if not surface:
+        raise ops.OpRefused("거둘 표기를 달라")
+    nid = _pick(World(), layer, target)
+    w, g, layer = ops._open(layer, nid)
+    node = ops._target(g, nid)
+    if norm(surface) == norm(node["canonical"]):
+        raise ops.OpRefused(f"'{surface}'는 '{node['canonical']}'의 이름이다 — 별칭이 아니다 "
+                            f"(이름을 바꾸려면: python run.py ops rename {layer} {nid} <새 이름> --actor {actor})")
+    al = next((a for a in node["aliases"] if a["surface"] == surface), None)
+    if al is not None and alias_book.is_seed(al):
+        raise ops.OpRefused(f"'{surface}'는 골격 seed 별칭이다 — 골격 파일 `ALIASES`에서 지우고 "
+                            f"python run.py bootstrap (원천이 사람의 파일이다)")
+    cfg = ops._cfg(layer)
+    parent = node.get("parent") or node.get("mirror_scope")
+    key, _s = scope_canonical(surface, node["category"], parent, cfg)
+    book = alias_book.AliasBook.open()
+    r = book.get(surface, alias_book.name(node))
+    dic = Dictionary.open()
+    keep = {norm(node["canonical"])}                       # 노드의 다른 이름이 쓰는 키는 남긴다
+    for a in node["aliases"]:
+        if a["surface"] != surface:
+            keep |= {norm(a["surface"]), norm(scope_canonical(a["surface"], node["category"], parent, cfg)[0])}
+    keys = list({norm(k): k for k in reversed([surface, key, (r or {}).get("key")])
+                 if k and norm(k) not in keep and nid in (dic.entries().get(norm(k)) or [])}.values())[::-1]
+    pv = {"op": "alias-reject", "layer": layer, "target": nid, "canonical": node["canonical"],
+          "category": node["category"], "surface": surface, "on_node": al is not None, "dict_keys": keys,
+          "entry": r, "skeleton": node.get("status") == "seed", "nodes": 1, "edges": 0,
+          "already": al is None and not keys and bool(r) and r.get("status") == alias_book.REJECTED}
+    if dry_run or pv["already"]:
+        return pv
+    if al is not None:
+        node["aliases"].remove(al)
+    for k in keys:
+        dic.unregister(k, nid)
+    book.reject(node, surface, actor=actor, reason=reason, alias=al, key=key)
+    dic.save()
+    book.save()
+    w.save()
+    ops.log_op("alias:reject", actor, [nid], reason,
+               {"surface": surface, "key": key, "canonical": node["canonical"],
+                "source": (book.get(surface, alias_book.name(node)) or {}).get("source")},
                {"node": oplog.name(node)})
     return pv
 

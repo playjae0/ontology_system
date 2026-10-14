@@ -19,6 +19,7 @@ from __future__ import annotations
 from core.build import gate
 from core.state import store
 from core.dictionary import Dictionary
+from core.state import alias_book
 from core.state.ids import norm
 from core.matcher import MATCH, NEW, UNCERTAIN, dict_hits, resolve
 
@@ -64,6 +65,7 @@ class Builder:
         self.doc_id = doc_id
         self.layer = layer
         self.dict = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
+        self.book = alias_book.AliasBook.open()   # 별칭 대장 — 사전과 같이 열고 같이 쓴다 (B108 ①)
         self.buffer: dict[str, str] = {}     # 문서 해소 버퍼 (2-pass Pass 1)
         # 걸침 층별 하위 빌더 — 아래 for_layer. **뿌리도 제 층 이름으로 든다**(B99 ①): 하위 빌더가
         # 뿌리 층을 물으면 새로 열지 않고 뿌리를 돌려준다(같은 그래프 사본 둘 = 덮어쓰기 소실).
@@ -95,6 +97,7 @@ class Builder:
             sub = Builder(open_graph(layer), load_config(layer), self.schema,
                           self.doc_id, layer)
             sub.dict = self.dict
+            sub.book = self.book
             sub.buffer = self.buffer
             sub.ledger = self.ledger
             sub.subs = self.subs
@@ -191,20 +194,29 @@ class Builder:
           (`key`를 안 주면 그 노드의 canonical을 쓴다 — 조회 키를 모르는 호출용.)
 
         스코프 없는 카테고리는 표기와 키가 같으므로 등재는 1건이다.
+
+        **별칭은 쓰는 손 하나를 지난다**(B108 ① · `alias_book.attach`) — 대장에 이름으로 남는다(출처: 판정 표지가
+        있으면 LLM 매칭 · `ops alias`면 사람 · 그 밖은 문서). 사람이 거둔(거부) 표기는 다시 붙이지 않는다 —
+        사전에도 싣지 않는다(노드 자신의 이름 키만). 판정은 그대로다(값은 판정대로 이 노드에 이어진다).
         """
-        self.dict.register(surface, nid, provenance=prov)
         n = self.g.get(nid)
         key = key or n["canonical"]
+        if self.book.rejected(surface, n):
+            if norm(key) == norm(n["canonical"]):
+                self.dict.register(key, nid, provenance=prov)
+            return
+        self.dict.register(surface, nid, provenance=prov)
         if norm(key) != norm(surface):
             self.dict.register(key, nid, provenance=prov)
-        if norm(surface) != norm(n["canonical"]) and \
-                not any(a["surface"] == surface for a in n["aliases"]):
-            n["aliases"].append({"surface": surface, "provenance": [prov], **(by or {})})
-            if by:
+        if norm(surface) != norm(n["canonical"]):
+            src = "LLM 매칭" if by else ("사람" if str(prov).startswith("op:alias:") else "문서")
+            if alias_book.attach(self.book, n, {"surface": surface, "provenance": [prov], **(by or {})},
+                                 source=src, doc=self.doc_id, key=key) and by:
                 ADDED.append({"surface": surface, "node_id": nid, **by})
 
     def flush(self):
         self.dict.save()
+        self.book.save()                     # 별칭 대장은 사전과 같은 때 — 되돌림 경계도 같다 (B108 ①)
 
     # ---------------------------------------------------------------- anchor
     def _graph_for(self, category):

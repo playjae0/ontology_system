@@ -15,7 +15,10 @@
      (문서 대장이 비었을 때만)
   ② `init --fresh`(보존) ③ `bootstrap` ④ 문서마다 같은 순서로 인입(문서 좌표 · 시트 역할은 ②등록이 갖는다)
   ⑤ `ops replay` ⑥ 보고 — 문서 수 · 판정 재생 · 재판정(사유별) · LLM 호출(추출 · 판정 · 태깅) · 사람 판단 재생 ·
-     대상 없음 목록 · 원본 없음 목록
+     대상 없음 목록 · 원본 없음 목록 · 별칭 대장(그래프에 있음 · 없음 — 목록)
+
+**쌓인 별칭은 지우기 전에 이름으로 남긴다**(B108 ① · ③ `data/alias_book.json` — 보존 fresh가 남긴다): 계획이 지금
+그래프의 seed 밖 별칭 중 대장에 없는 것을 채우고, 재구축의 bootstrap이 골격 대상 별칭을 스냅샷 전에 싣는다.
 
 **비대화형은 계획만**(`ops review`와 같은 규칙 — 실행은 `--yes`) · 터미널이면 묻는다. 계획은 「지울 것 ·
 남길 것 · 다시 넣을 문서 순서」다. 원본이 없는 문서는 건너뛰고 목록에 남긴다(지어내지 않는다).
@@ -49,17 +52,18 @@ def from_registry():
 
 
 def make_plan():
-    """계획 — `{docs, resumed, backfill}`. 문서 대장이 비었고 지난 계획이 있으면 그 계획에서 이어 간다.
+    """계획 — `{docs, resumed, backfill, alias_book}`. 문서 대장이 비었고 지난 계획이 있으면 그 계획에서 이어 간다.
 
     **사람 판단 기록의 이름을 여기서 채운다**(B107 ① — fresh 앞 · 대상 id가 그래프에 살아 있는 마지막 순간 ·
-    비대화형 계획만이어도 채운다 — 채움은 기록에 남고 그래프는 건드리지 않는다)."""
-    from core.state import oplog
+    비대화형 계획만이어도 채운다 — 채움은 기록에 남고 그래프는 건드리지 않는다). **별칭 대장도 같은 자리에서
+    채운다**(B108 ① — 지금 그래프의 seed 밖 별칭 중 대장에 없는 것 · 이름으로)."""
+    from core.state import alias_book, oplog
     docs, resumed = from_registry(), False
     if not docs and plan_path().exists():
         docs, resumed = json.loads(plan_path().read_text(encoding="utf-8")).get("docs") or [], True
     for d in docs:
         d["exists"] = bool(d.get("path")) and Path(d["path"]).is_file()
-    return {"docs": docs, "resumed": resumed, "backfill": oplog.backfill()}
+    return {"docs": docs, "resumed": resumed, "backfill": oplog.backfill(), "alias_book": alias_book.backfill()}
 
 
 def show_plan(plan):
@@ -74,6 +78,10 @@ def show_plan(plan):
     from cli.ops import backfill_lines
     for ln in backfill_lines(plan["backfill"]):
         print("  " + ln)
+    ab = plan["alias_book"]
+    print(f"  별칭 대장 {ab['total']:,}(이번에 채움 {ab['filled']:,}) · 골격 대상 {ab['skeleton']:,}"
+          + (f" · 거부 {ab['rejected']:,}" if ab["rejected"] else "")
+          + " — 재구축의 bootstrap이 골격 대상 별칭을 스냅샷 전에 싣는다")
     # 좌표 태깅의 null 답은 닫힌 목록 판과 함께 기억된다(B107 ②) — 판을 적기 전의 기록은 이번에 한 번 다시 묻는다
     from core.state import coord_learn
     _old = sum(1 for r in coord_learn.book()["목록밖"].values() if not r.get("list_version"))
@@ -144,6 +152,13 @@ def report(r):
         print("  " + ln)
     for d in r["missing"]:
         print(f"  원본 없음 — {d['doc_id']} · {d['source_path']} (원본을 그 자리에 두고 다시 재구축)")
+    from core.state import alias_book
+    ab = alias_book.presence()
+    print(f"  별칭 대장 {ab['total']:,} · 그래프에 있음 {ab['present']:,} · 없음 {len(ab['missing']):,}")
+    for x in ab["missing"]:
+        t = x["target"]
+        print(f"    없음 — '{x['surface']}' → {t['canonical']} ({t['category']} · {t['layer']}) · {x['source']}"
+              " (대장에는 남는다 — 그 문서 · 이름이 돌아오면 다시 붙는다)")
 
 
 def main(argv, *, bootstrap, screen):

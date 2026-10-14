@@ -143,6 +143,24 @@ def _adopt_ops_log():
             print("[사람 판단 기록] " + ln)
 
 
+def _fill_alias_book():
+    """**별칭 대장 처음 채움**(B108 ①) — 대장 파일이 아직 없으면(B108 전 상태의 첫 실행) 지금 그래프의 seed 밖
+    별칭을 이름으로 채운다 — 지우기 전에. 채울 것이 없으면 파일을 만들지 않는다(bootstrap이 만든다)."""
+    try:
+        from core.state import alias_book
+        if alias_book.AliasBook.exists():
+            return
+        r = alias_book.backfill()
+    except Exception as e:                          # noqa: BLE001 — 채우지 못해도 명령은 돈다(문면으로 말한다)
+        print(f"[별칭 대장] 처음 채움에서 멈췄다 — {e} · 재구축 계획이 다시 채운다(python run.py rebuild)")
+        return
+    if r["filled"]:
+        from core import paths
+        from core.state import store
+        print(f"[별칭 대장] 지금 그래프의 seed 밖 별칭 {r['filled']:,}건을 이름으로 채웠다 — "
+              f"{paths.show(store.path(store.ALIAS_BOOK))}(골격 대상 {r['skeleton']:,} · 기본 fresh가 남긴다 — B108 ①)")
+
+
 def run(command, main, argv=None):
     """진입점 하나 — 로그 설정 · 화면 복사 · 실행 머리/끝 줄 · 종료 코드. 돌려주는 것은 종료 코드."""
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -170,6 +188,7 @@ def run(command, main, argv=None):
     _SCREEN.info("%s", log.HEADER)
     sys.stdout, sys.stderr, builtins.input = out, err, _input
     _adopt_ops_log()
+    _fill_alias_book()
     rc = 0
     try:
         rc = main(argv) or 0
