@@ -318,7 +318,7 @@ def bootstrap(layer, echo=True):
                       f"{parsed.ambiguous})")
         if stale:
             print(f"  ⚠ 옛 골격 노드 {len(stale)}건 잔존: {stale}")
-    if echo and (loaded["loaded"] or loaded["already"] or loaded["missing"]):
+    if echo and (loaded["loaded"] or loaded["already"] or loaded["missing"] or loaded["rejected"]):
         print(f"[bootstrap] {layer}: 별칭 대장 — 골격 대상 실음 {loaded['loaded']:,} · 이미 있음 {loaded['already']:,}"
               f" · 대상 없음 {len(loaded['missing']):,}" + (f" · 거부 {loaded['rejected']:,}" if loaded["rejected"] else ""))
         for r in loaded["missing"]:
