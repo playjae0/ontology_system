@@ -571,8 +571,9 @@ for _p in sorted((ROOT / "tests").rglob("*.py")) + [ROOT / "doctor.py"]:
     _src = _p.read_text(encoding="utf-8")
     if re.search(r'fresh_=True|"--fresh"|init\.fresh\(', _src):
         _files.append(_p.name)
+    # 주석의 언급은 호출이 아니다 · 표지 「# 시험 대상: 기본 fresh」가 붙은 줄은 기본 fresh 자체를 재는 시험이다(B109 ①)
     _left += [f"{_p.name}:{i}" for i, ln in enumerate(_src.splitlines(), 1)
-              if _pat.search(ln) and not ln.lstrip().startswith("#")]          # 주석의 언급은 호출이 아니다
+              if _pat.search(ln) and not ln.lstrip().startswith("#") and "# 시험 대상: 기본 fresh" not in ln]
 show("ⓐ 회귀 · doctor · 시험의 클린 호출은 전부 --all — 기본 fresh 호출 0(소스 대조)",
      not _left and _files, f"클린을 부르는 파일 {len(_files)} · 기본 호출 {_left or 0}")
 

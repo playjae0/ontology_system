@@ -66,7 +66,8 @@
 - **명시적 실패**(config로 표현되지 않아 core가 시끄럽게 실패하는 지점)는 raise로
   드러내는 데 그치지 않고 **장부에도 병기**한다.
 - **회귀 판정 기준은 클린 상태 단독 실행이다** — 연속 실행의 순서 의존 flake는 판정에
-  넣지 않는다. 클린은 `run.py init --fresh --all`이 만든다(B106 — 기본 `--fresh`는 LLM이 든 산출 넷을 남기는 재구축의 바닥이라 클린이 아니다).
+  넣지 않는다. 클린은 `run.py init --fresh --all`이 만든다(B106 — 기본 `--fresh`는 비용·지식이 든 산출을 남기는 재구축의 바닥이라 클린이 아니다).
+- **회차 마감 doctor는 1회다**(D-190 확정) — 완료판정 4 「클린 2회 동일 그래프」는 doctor 한 번 안에서 잰다(클린 → 전체 빌드 2회 → 그래프·큐 대조). 바닥(클린 · fresh · 재생 · 스냅샷)을 건드린 회차이거나 첫 실행에 FAIL이 있으면 2회. **mock 네 벌 대조는 `python tools/four_way.py --base <반입 커밋>`** 한 줄(같으면 rc 0 · 다르면 1 · 못 돌면 2).
 - `PROGRESS.md` 내용: 단위 완료·테스트 결과·`git diff core/` 상태·소요.
 
 ## 5. 구현 불변 규칙 (문서 1 · 문서 7 §7.1)
@@ -101,6 +102,7 @@
   **질의는 그래프 RAG**(B104 — 사용자 결정 2026-10-07): 링킹 = 사전 → 임베딩 후보 + LLM 선별(후보 안에서만 · 보충|폴백 · 미스율은 사전 단) · 근거 확장은 코드 · 문서 검색 채널(임베딩 문턱 + BM25) · 짧은 답 + 쓴 근거(`used_facts`·`used_chunks`) · CLI·뷰어가 링크 결과와 답을 나란히(ⓐ~ⓕ) · 질의 벡터 캐시 `work/vectors/`(재생성).
   **좌표 쌍 판정은 한 함수**(B105 — `parser.coord_pairs.verdict`): 검출 자리 셋 — 등록 관문 G4I(표본 · 문턱 `coord_pair_pct` · 「열을 바꾸면 n/m」) · 인입 좌표 단계의 판정 전 쌍 표(LLM 0 · `--step`으로 멈춤) · 구축 말미 큐(`core/build/coord_scan` — 표·산문·렌즈 한 자리) · 같은 입력이면 같은 수 · 상위 골격 밖은 어긋남이 아니다(종수만) · 큐는 쌍 단위로 보이고 `ops coord-ack`로 쌍 단위 확인 · 공유 별칭 하위는 문서 좌표 → 행의 상위 범위 안에서 하나면 canonical · 질의 ⓖ 노드 원 레코드(가공 0 · `query_record_limit`).
   **재구축은 한 명령**(B106 — `python run.py rebuild [--yes] [--no-replay]` · 처음 인입 순서 · 비대화형은 계획만): 기본 `init --fresh`는 LLM이 든 산출 넷(추출 · 구조 지도 · 판정 대장 · 좌표 학습)을 남기고 클린은 `--all` · 재인입의 값 판정은 지난 대장에서 재생(골격 · 사전 → 재생 → LLM · 재생은 판정 결과만 바꿔 끼운다 · 재판정 사유 키 없음 · 대상 없음 · 끔) · 사람 판단은 ②등록 `ops_log.json`에 이름으로 남고 `ops replay`가 되살린다(멱등 · 대상 없음은 목록 · 기록은 남는다 · split 제외) · 문서 단위 확인 `ops confirm all --doc` · 행에 상위가 없으면(파생 포함 `meta.group_from_ref`) 문서 좌표가 상위(「문서 좌표 'X' ↛ 하위 'Y'」). 이름 없는 옛 기록은 지우기 전에 지금 그래프에서 그때 이름으로 채운다(B107 · `oplog.backfill` — 옮길 때 · `ops replay` · 재구축 계획) · 재시도도 판정이라 같은 대장의 같은 키 행을 갈아 끼운다(B107 · `by: retry`).
+  **별칭은 쌓이는 자산이다**(B108 — 사용자 결정 2026-10-14): 별칭 대장 `data/alias_book.json`(③ · 기본 fresh가 남긴다 · 이름으로 — 출처 닫힌 7) · 노드에 seed 밖 별칭을 붙이는 손은 `alias_book.attach` 하나 · **bootstrap이 대장의 골격 대상 별칭을 스냅샷 전에 싣는다**(스냅샷 = seed + 대장 — bootstrap 시점·재구축 무관) · 대장이 없으면 첫 실행·재구축 계획이 지금 그래프에서 채운다 · 거두기 `ops alias-reject`(다시 붙지 않는다) · 화면 `show aliases` · 대장은 판정을 대신하지 않는다.
   **노드는 집 층 · 엣지는 문서 층**(B100): I축 연산·질의 확장·`show`·내보내기는 층 전부를 연다 · 규칙(미러·극성)은 집 층 config에서 읽고 어긋나면 경고(`catalog.mirror_warnings`) · 노드 0으로 끝난 판정은 한 실행 안에서 기억(경로 `memo`) · 재시도 지문 = 그래프 수 + 골격 판 + 사전 판 · 큐는 한 번 읽고 한 번 쓴다.
   **LLM을 오래 부르는 단계는 예고 → 진행 → 30초 누적 → 끝 사용량을 화면에 낸다**(B96·B97 — `_screen.usage_line` · `_screen.ticker` 한 자리) · 산문 추출은 청크 단위 부분 파일로 이어 쓴다(B97 — 체크포인트만 완료).
   **표기 대조의 2차는 영문 대소문자 무시**(B96 — `ids.fold_latin` · 정확 미스일 때만 · 대상이 하나일 때만 · `norm`·문서 id는 그대로 — `norm`을 바꾸지 않는다).
@@ -140,8 +142,8 @@
 - **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ⓪원본(`raw/` — 사람이 넣는 문서 · 재구축 입력 · B80 ②)
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
   승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`·`doc_coords.json`(B102)·`coord_acks.json`(B105)·`ops_log.json`(B106 — 사람 판단 기록 · 대상 이름) · 층 공통 config·층 config·seed)
-  ③진실(`data/` 8종 — 좌표 학습 `coord_learned.json` 포함(B101) · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
-  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`logs/<명령>_<날짜>.log` — `extract/`·`struct_maps/`·`ingest_log/`는 LLM이 든 산출이라 기본 fresh가 남긴다) ⑤파생(`export/` · `golden/`은 예외 —
+  ③진실(`data/` 9종 — 좌표 학습 `coord_learned.json`(B101) · 별칭 대장 `alias_book.json`(B108) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
+  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 다섯: `extract/`·`struct_maps/`·`ingest_log/`(④) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
   자리에 둔다. 폴더를 만드는 코드는 `core/paths.py::ensure` 하나다.
 - **어서션은 성질만**(화면 문면·수를 세지 않는다). 회차당 순증은 완료판정에 필요한 만큼만 —
