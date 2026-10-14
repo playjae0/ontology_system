@@ -457,7 +457,7 @@ B data 파일: 빠짐 [] · 더함 []
 
 고치기 전(반입 커밋 사본에 같은 시험): ⓐ FAIL(미지정 50) · ⓑ FAIL(`flush 멈춤 신호 · close 멈춤 신호`) · ⓒ 관문 q · `--step-every` q FAIL(산문 둘 「흔적 시작 전 False」 — 청크가 남았다) · ⓒ 다시 치기 PASS.
 
-ⓐ 실행 — 마감 doctor를 **표준입력이 열린 채로**(`python doctor.py < <(sleep 1800)`) 돌렸다: DOCTOR_STDIN_LINE
+ⓐ 실행 — 마감 doctor를 **표준입력이 열린 채로**(`python doctor.py < <(sleep 1800)`) 돌렸다: `[  OK ] test_p3_register   73 PASS / 0 FAIL   (12s)` — 표준입력을 닫았을 때(단독 11~12초)와 같다 · 멈춤 0 · 합계 1811/1811.
 
 ⓑ 판마다 — `tests/test_g6_log_pipe.py`의 ⓑ 다섯(출력 그대로):
 
@@ -538,8 +538,8 @@ B data 파일: 빠짐 [] · 더함 []
 
 ### 실행으로 확인한 것
 
-- doctor 직전 사전 점검(B109 교훈): PRECHECK_LINE
-- **마감 doctor 1회**: DOCTOR_LINE
+- doctor 직전 사전 점검(B109 교훈): `test_g1_g2` 86/86 · `test_places` 32/32 · 검사 6종 0 · 0 · 0 · 0 · **12** · 0(자산 12는 지난 회차와 같은 판정 대상 · 자산 해시 0건) — 12초.
+- **마감 doctor 1회**: `[  OK ] 합계 1811/1811 PASS` · `DOCTOR_DONE rc=0`(324초 · 표준입력 열린 채로) · 「클린 2회 동일 그래프 (완료판정 4)」 · 「레포 정본 자산이 레포 판이다」 · B109 마감 1806 + `test_g6_stop_chunks` 5 · 첫 실행에 FAIL 0이라 1회로 끝났다.
 - 어서션 **+5 · 삭제 0 · 기대 변경 0**(`test_g6_stop_chunks` 5 — ⓐ 시험 · doctor의 하위 프로세스 표준입력 미지정 0 / ⓑ 닫힌 화면 — 쓰기는 멈춤 신호 · flush · close는 조용 / ⓒ `--step` q · `--step-every` q(표 · 산문 × 층 둘) — 흔적 시작 전 · 남는 것(문서 대장 · `parsed/` · `extract/`) · 다시 치면 끝까지 · 추출 재사용 · 결과 = 멈추지 않고 넣은 것). 표준입력 50곳 · 사람 멈춤의 큐 · 청크 판은 기존 시험의 기대를 바꾸지 않았다(관련 스위트 단독 — ingest 38 · batch 27 · p3_recover 38 · rebuild 18 · extract_view 6 · log_pipe 8 · p3_register 73 전부 PASS).
 - §7: 코드 지도 ⓔ 「운영 모듈 **140** · 합 **36,682행**」 · 「**파일 상한 위반 0** · **함수 상한 위반 0**」 — `run_document` 71행.
 - `git diff 4ecabaf -- cli/ core/ parser/ prompts/ kit/`: 2 files changed, 31 insertions(+), 28 deletions(-) — `core/`만 1 file, 27(+), 27(-)(`core/build/entry.py`) · `cli/_entry.py` · 시험 · doctor: 23 files, 243(+), 50(-).
