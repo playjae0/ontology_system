@@ -180,7 +180,10 @@ def coord_screen():
                     f"목록 밖 표기 {info['표기_종수']:,}종(행 {info['미스_행']:,})"
                     # 좌표 학습 적중(B101 ②) — 사람 보증 다음 · LLM 앞 · LLM 0
                     + (f" · 학습 적중 {info['학습_적중']:,}종(행 {info.get('학습_적중_행', 0):,} · LLM 0)"
-                       if info.get("학습_적중") else ""))
+                       if info.get("학습_적중") else "")
+                    # 목록 밖 기억(B107 ②) — 같은 표기 · 같은 닫힌 목록 판의 null 답 · 묻는 종수에서 빠진다
+                    + (f" · 목록 밖(기억) {info['기억_종수']:,}종 — LLM 0(행 {info.get('기억_행', 0):,})"
+                       if info.get("기억_종수") else ""))
             if not info.get("LLM"):
                 _screen.say(f"{head} → LLM 0회 — 정확 일치만", "head")
                 return
@@ -193,13 +196,14 @@ def coord_screen():
                 print(f"   좌표 보조 끔(--coord-llm off) — 목록 밖 "
                       f"{info['표기_종수']:,}종은 그대로(orphan_anchor)")
                 return
-            if info["묻는_종수"] < info["표기_종수"]:
+            want = info["표기_종수"] - info.get("기억_종수", 0)        # 기억된 null은 묻지 않는다(상한과 무관)
+            if info["묻는_종수"] < want:
                 # **막지 않는다 — 말한다**(B61 계약: 원인 + 그대로 칠 수 있는 다음 줄).
-                print(f"   상한 초과 — {info['표기_종수']:,}종 중 "
+                print(f"   상한 초과 — {want:,}종 중 "
                       f"{info['묻는_종수']:,}종만 묻는다 · 나머지 "
-                      f"{info['표기_종수'] - info['묻는_종수']:,}종은 목록 밖 "
+                      f"{want - info['묻는_종수']:,}종은 목록 밖 "
                       f"그대로(orphan_anchor)")
-                print(f"     다음: --coord-llm {max(info['표기_종수'], 1)} "
+                print(f"     다음: --coord-llm {max(want, 1)} "
                       f"또는 사전 alias 등록")
             return
         if info.get("호출"):

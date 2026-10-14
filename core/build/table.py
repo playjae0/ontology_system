@@ -67,7 +67,8 @@ def build_table(env, cfg, schema, graph, defer_save=False):
         _row_fallback(b, r, schema, fields, graph, cfg, doc_id)
         loop._land_deferred(r.defer, r.dropped, r.pending, doc_id,
                        dropped_entities=r.dropped_ents,
-                       coord_missing=(r.coord_case == "missing"), prov=r.prov)
+                       coord_missing=(r.coord_case == "missing"), prov=r.prov,
+                       electrode_type=r.et)
 
     if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
         b.flush()

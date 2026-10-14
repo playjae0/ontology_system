@@ -128,15 +128,19 @@ def _adopt_ops_log():
     """**사람 판단 기록의 옛 자리**(③ `data/ops_log.json`)를 ②등록으로 — 첫 실행에서 한 번(B106 ③ · 두 벌 금지)."""
     try:
         from core.state import oplog
-        n = oplog.adopt_legacy()
+        r = oplog.adopt_legacy()
     except Exception as e:                          # noqa: BLE001 — 옮기지 못해도 명령은 돈다(문면으로 말한다)
-        print(f"[사람 판단 기록] 옛 자리에서 옮기지 못했다 — {e}")
+        print(f"[사람 판단 기록] 옛 자리 옮김(이름 채움 포함)에서 멈췄다 — {e} · 다음 실행 · "
+              "python run.py ops replay all --actor <사람> --dry-run · 재구축 계획이 다시 한다")
         return
-    if n:
+    if r:
+        from cli.ops import backfill_lines
         from core import paths
         from core.state import store
-        print(f"[사람 판단 기록] 옛 자리 data/ops_log.json의 {n:,}건을 ②등록 "
+        print(f"[사람 판단 기록] 옛 자리 data/ops_log.json의 {r['moved']:,}건을 ②등록 "
               f"{paths.show(store.path(store.OPS_LOG))}로 옮겼다(재구축 · fresh가 지우지 않는다 — B106 ③)")
+        for ln in backfill_lines(r):                # 옮길 때 이름을 채운다(B107 ① — 그래프가 아직 그 id를 안다)
+            print("[사람 판단 기록] " + ln)
 
 
 def run(command, main, argv=None):

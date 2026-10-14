@@ -5,7 +5,8 @@
 `data/coord_learned.json`)에 남기고 **다음부터 바로 쓴다**(LLM 0). 사람 보증은 아니다 —
 여기서 사람이 보고 **승격**(골격 `ALIASES`로 — 다음 줄 `bootstrap`)하거나 **거부**(기록을 지운다 —
 다음엔 다시 묻는다)한다. 「목록에 없음」(null) 답은 해소에 쓰지 않고 **새 공정 후보**로만 보인다 —
-골격을 넓힐지는 사람이 정한다(문서 3 §3.6 원칙 9).
+골격을 넓힐지는 사람이 정한다(문서 3 §3.6 원칙 9). null 답은 그때의 닫힌 목록 판과 함께 기억되어 같은 판이면
+다시 묻지 않는다(B107 ②) — 거부가 그 기억 하나를 지운다(후보는 남는다).
 
 코드에 층 어휘 0 — 좌표 층은 `bootstrap.coord_layer()`가 답한다.
 """
@@ -80,15 +81,24 @@ def promote(surface, actor):
 
 
 def reject(surface, actor):
-    """**거부** — 학습 기록을 지운다(다음엔 다시 묻는다) · 로그에 남긴다."""
+    """**거부** — 학습 기록을 지운다(다음엔 다시 묻는다) · 로그에 남긴다.
+
+    채택이 없고 **목록 밖 기억**(B107 ② — 같은 닫힌 목록 판의 null 답)이 있으면 그 **기억만** 지운다 — 새 공정
+    후보(행 수 · 문서 · 처음 본 때)는 남고, 다음 인입이 그 표기 하나를 다시 묻는다. 돌려주는 `canonical`은 None."""
     if not actor:
         raise LearnRefused("행위자 미지정 — 거부는 로그에 행위자를 남긴다")
     b = book()
     rec = b["채택"].pop(surface, None)
-    if rec is None:
-        raise LearnRefused(f"학습 기록에 '{surface}'가 없다 — python run.py show learned")
-    store.write(store.COORD_LEARNED, b)
     from core.state.ops import log_op
+    if rec is None:
+        miss = b["목록밖"].get(surface) or {}
+        if not miss.get("list_version"):
+            raise LearnRefused(f"학습 기록에 '{surface}'가 없다(채택 · 목록 밖 기억 둘 다) — python run.py show learned")
+        miss.pop("list_version")
+        store.write(store.COORD_LEARNED, b)
+        log_op("learn:reject", actor, [surface], "", {"surface": surface, "canonical": None, "kind": "목록밖"})
+        return {"surface": surface, "canonical": None}
+    store.write(store.COORD_LEARNED, b)
     log_op("learn:reject", actor, [rec.get("id") or rec["canonical"]], "",
            {"surface": surface, "canonical": rec["canonical"]})
     return {"surface": surface, "canonical": rec["canonical"]}

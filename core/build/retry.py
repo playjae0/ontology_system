@@ -353,15 +353,38 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     # 재시도의 재료(provenance · dropped_edges · pending_attrs)는 행의 것이다.
     # 하나의 provenance로 전부 착지시키면 **다른 행의 근거가 뒤섞인다.**
     # 옛 항목(집계 전 판)은 `items`가 없다 — 그때는 자기 자신이 한 행이다.
+    b0 = Builder(rg, cfg, None, did, rlay)              # 좌표 하강 · 극성(행마다 — 인입과 같은 함수)
     for _ent in (pl.get("items") or [pl]):
-        n += _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did)
+        n += _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did, b0)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
     return True
 
 
-def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did):
-    """좌표가 해소된 **한 행**의 보유분을 착지시킨다 — 돌려주는 것은 건수다."""
+def _ledger(did, prov, d, lay, b):
+    """재시도의 판정을 **그 문서 대장**에 — 같은 키(B106 재생 키) 행을 갈아 끼운다 · 없으면 더한다 · 표시
+    `by: "retry"`(B107 ③ · 대장 손 `ledger.put_row`). 다음 재구축은 그 값을 재생한다(「키 없음」 0).
+
+    키의 위치는 행의 provenance(`{doc}#{위치}` — 대장 행의 위치는 접두 없는 `source_locator`)에서 · 열은 재료의
+    `field`(표의 연쇄 드롭) — 없으면 카테고리(좌표 없는 스코프 개체 `_no_coord` — 산문 대장 행의 열이 카테고리다)."""
+    from core.build import ledger
+    if not did or not b.last:
+        return
+    loc = prov[len(did) + 1:] if prov and str(prov).startswith(f"{did}#") else prov
+    kw = ledger.judged(b.last, locator=loc, field=d.get("field") or d["category"], surface=d["surface"],
+                       layer=lay, target=b.canonical_of(b.last.get("node_id")))
+    ledger.put_row(did, ledger.row(**kw, by="retry"))
+
+
+def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
+    """좌표가 해소된 **한 행**의 보유분을 착지시킨다 — 돌려주는 것은 건수다.
+
+    좌표는 **인입과 같이 그 행의 극성으로 하강**하고(⓪ 하강 부착 — 행 재료의 `electrode_type`) 개체는 인입과 같은
+    함수(`resolve_at_home` — 자기 좌표 규칙 · 극성 상속)로 해소한다(B107 ③): 재시도가 인입과 다른 이름을 세우면
+    다음 재구축의 판정 재생이 그 값을 「대상 없음」으로 다시 판정하고 그래프도 갈린다."""
     prov = pl.get("provenance")
+    et = pl.get("electrode_type")
+    ref = b0.descend_anchor(ref, et, rg)
+    pol = b0.anchor_polarity(ref, rg)
     n = 0
 
     # ① **연쇄 드롭된 entity를 새로 세운다**(문서 4 §4.4 — B14).
@@ -375,9 +398,10 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did):
         if g2 is None:
             continue
         b2 = Builder(g2, cfgs[lay2], None, did, lay2)
-        nid2 = b2.resolve_entity(d["surface"], d["category"], prov,
-                                 parent_canonical=parent)
+        nid2, eb2 = b2.resolve_at_home(d["surface"], d["category"], prov, coord=(ref, rg),
+                                       electrode_type=et, parent_canonical=parent, anchor_polarity=pol)
         b2.flush()
+        _ledger(did, prov, d, lay2, eb2)         # 재시도도 판정이다 — 그 문서 대장의 같은 키 행에 (B107 ③)
         if nid2:
             revived[d.get("field") or d["surface"]] = nid2
             revived[d["surface"]] = nid2

@@ -19,7 +19,7 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
 
 재료는 개체 행(`entity`)과 **소속 대상 행**(`belongs` — 산문 개체의 `belongs_to`가 골격 · 버퍼 · 사전에 없어 새로
 해소한 판정 · 열 `소속`)이다. 재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 —
-재시도가 붙인 값도 여기: 대장 행은 그때의 `orphan`이다) · 대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) ·
+재시도가 붙인 값은 B107 ③부터 재시도가 그 행을 갈아 끼운다 · `by: "retry"`) · 대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) ·
 끔(`--no-replay` — 문서 하나 또는 재구축 전부). 수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` —
 재구축 보고)가 센다. **처음 인입**(그 문서의 지난 대장이 없다)은 재생 대상이 아니라 세지도 행에 적지도 않는다 —
 재구축 · `--no-replay` 실행은 대장 없는 문서의 판정도 「키 없음」으로 센다(그 수가 재구축의 판정 비용이다 · `COUNT_ALL`).
@@ -115,13 +115,14 @@ def pick(b, at, surface, category, canonical):
     `at`은 `(위치, 열)` · `canonical`은 지금 조립한 조회 키(부모 좌표가 들어 있다). 같은 자리 · 같은 표기의 행이
     있는데 부모 좌표가 달라졌으면(골격 이름·부모가 바뀌었다) **대상 없음**이다 — 옛 이름에서 새 이름으로 옮겨
     재생하지 않는다(재판정 — 수가 보인다). 사전이 이미 답한 값에는 부르지 않는다(호출부가 사전 히트를 먼저 본다).
-    재생 대상이 아닌 문서(처음 인입 — `LIVE` 거짓)는 `(None, None)` — 세지도 적지도 않는다."""
-    if not LIVE:
-        return None, None
+    재생 대상이 아닌 문서(처음 인입 — `LIVE` 거짓)와 자리(`at`) 없는 판정(orphan 재시도 — 그 문서의 표가 아니다)은
+    `(None, None)` — 세지도 적지도 않는다."""
+    if not LIVE or not at:
+        return None, None              # 자리 없는 판정(재시도 — B107 ③은 그 판정을 대장에 적는다)은 재생 대상이 아니다
     if OFF:
         return _miss("끔")
     rows = [x for x in TABLE.get(key(at[0], at[1], surface, b.layer)) or ()
-            if x.get("category") in (None, category)] if at else []
+            if x.get("category") in (None, category)]
     if not rows:
         return _miss("키 없음")
     r = next((x for x in rows if norm(x.get("canonical") or "") == norm(canonical or "")), None)
