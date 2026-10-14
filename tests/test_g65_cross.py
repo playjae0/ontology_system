@@ -58,7 +58,7 @@ r = subprocess.run([sys.executable, "-c",
                     "from core.build.extract import _mock_candidates;"
                     "_mock_candidates('c', '노칭으로 인해 불량이 발생', {}, {})"],
                    cwd=str(ROOT), capture_output=True, text=True,
-                   env=dict(os.environ, USE_MOCK="0"))
+                   env=dict(os.environ, USE_MOCK="0"), stdin=subprocess.DEVNULL)
 show("E3 USE_MOCK=0에서 문형 폴백은 명시적으로 실패한다 (예외 3호의 경계)",
      r.returncode != 0 and "USE_MOCK" in (r.stderr or ""),
      (r.stderr or "").strip().splitlines()[-1:][0] if r.stderr else "무예외")

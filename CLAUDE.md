@@ -94,7 +94,7 @@
   **카테고리의 집·겸·이름 규칙은 공통 config 한 곳이다**(B90 — 층 config의 `categories`는 렌즈 · 겹쳐 선언해도 노드는 집 하나 · table·prose 한 길로 집에서 해소)
   — 카탈로그는 `bootstrap`이 층 config에서 맞춘다: 한 층만 선언한 것은 자동 · **골격 카테고리의 집은 골격 층**(B93 — 골격 모순은 첫 실행에서 거부 · 겸 상태 표시) · 겹친 카테고리의 집 · 겸 · 이미 정한 값의 변경은 사람(B92 · `--dry-run`) · 쓰는 층 `used_by`는 결과 기록(B94 — 판정이 읽지 않는다) · **골격 카테고리 개체는 조회 전용**(B94 — 골격 밖 표기는 노드 0 · `orphan_anchor`) · 어긋난 골격 집은 노드 0이면 자동 교정(B95) · `--dry-run`은 실제와 같은 검사(B96).
   **LLM 비용을 쓰는 명령은 파싱 전에 사전 점검을 지난다**(B98 — `core/llm/preflight` · `llm-check`와 같은 판정 함수 · 첫 실패에서 멈춤 · 설정 파일은 처음 찾은 하나만 — 무시된 후보를 화면이 말한다).
-  **층 이름의 정본은 폴더 이름**(B99 — config `"layer"`가 다르면 거부 · 한 빌드 한 번 열기) · **구축은 어떤 예외로 끝나도 되돌린다**(되돌림 경계 `run_document` 하나 · 정합 검사 → 그래프 → 사전) · **화면에 나온 것은 로그에도 있다**(진입점은 전부 `cli/_entry.py`를 지난다 · 실행 머리·끝 줄 · 사용량 줄의 문서).
+  **층 이름의 정본은 폴더 이름**(B99 — config `"layer"`가 다르면 거부 · 한 빌드 한 번 열기) · **구축은 어떤 예외로 끝나도 되돌린다**(되돌림 경계 `run_document` 하나 · 정합 검사 → 그래프 → 사전 · B109 — **문서 시작 전 판**(인입 검사의 청크 · 문서 대장 · 재인입 회수 그래프 포함) · 저장 표지 뒤 멈춤은 끝난 문서) · **화면에 나온 것은 로그에도 있다**(진입점은 전부 `cli/_entry.py`를 지난다 · 실행 머리·끝 줄 · 사용량 줄의 문서) · **화면이 닫혀도 공통 진입 한 자리가 받는다**(B109 — 트레이스백 0 · 종료 코드 141 · 로그에 먼저 쓰고 멈춤 줄).
   **공정은 한 벌이다**(문서 3 §3.6 공정 운영 원칙 — 사용자 확정 2026-10-06): 골격은 골격 층에만 · 다른 층은 `Process`·`Unit`을 선언하지 않고 **좌표로 활용** · 공정 이름 열은 열 이름과 무관하게 좌표(상위 `process_group` · 하위 `process_ref`) · 골격 닫힌 목록은 **좌표 층의 것**을 읽는다(등록은 두 몫 `parser.tagger.registration_list` · 골격 값 열을 entity로 매핑하면 관문 G4H FAIL — B100) · 「○○ unit」= 공정 노드는 데이터(겸 · `ALIASES`)로만 — 코드에 표기 처리를 넣지 않는다.
   **동의어는 두 겹**(B101 — 사전 → LLM 의미 연결 → 사전 갱신): 같은 문서 실행이 만든 auto 노드에는 LLM 매칭(다른 문서 auto는 가드) · 좌표 태깅은 골격 → 학습 기록 → LLM(학습은 바로 쓰고 사람이 `ops learn-promote`·`learn-reject`) · null은 새 공정 후보 화면(`show learned`)으로만 — **같은 표기 · 같은 닫힌 목록 판(내용 해시 `tagger.list_version`)이면 다시 묻지 않는다**(B107 · 지우기 `ops learn-reject`) · 별칭 출처 넷(사람·골격·LLM 매칭·좌표 학습) · 불확실 일괄 검토 `ops review`(비대화형은 계획만).
   **산문도 어디에 붙었는지를 남긴다**(B102 — 사용자 원칙 2026-10-07): 추출 입력은 맥락 줄 `[문서 · 공정 · 시트 · 경로]`(`core/build/extract_ctx` 한 함수) · 개체마다 소속 `belongs_to`(본문·경로·시트·공정에서만 · 없으면 null) · 문서 좌표(`--coord` · 기록 `registry/doc_coords.json` · 파일명 — 시트명·제목 대조는 그 서브트리 안) · 이름 규칙 = `bind_categories` ∪ `nest_categories`(소속이 골격 밖 노드면 그 이름 아래 · `Property`는 공정 스코프) · 좌표 없는 스코프 개체는 공통 자리(`Builder.resolve_entity`)에서 0 · 폴백 한 함수(카테고리쌍 매핑 두 방향) · 대장 `target`·`attached`·`from` · 추출 재사용 = 문서 해시·어댑터·지시문·config 판 · 같은 doc_id가 다른 경로에서 오면 거부(`--revise`).
@@ -130,7 +130,7 @@
 1. 작업 단위는 허브가 내는 **회차 요청문** `docs/안건/B##_요청문.md`(전제 대조표·완료판정·보고 양식)다.
    **요청문 없이 임의 착수하지 않는다.** 마감 보고는 `PROGRESS.md`(최근 3회차)에 쓴다.
 2. 착수 전 **전제 대조** — 요청문의 사실 전제를 실물로 확인하고 어긋나면 멈추고 보고한다.
-3. 산출물이 어디에 떨어지고 어떻게 보는지는 문서 7 §7.8 + `docs/가이드/2B_작업가이드.md` §0·§5.4,
+3. 사내 운영 순서는 `docs/가이드/운영_런북.md`(처음부터 한 줄기 — 사람이 실제로 보는 문서 · B108) · 산출물이 어디에 떨어지고 어떻게 보는지는 문서 7 §7.8 + `docs/가이드/2B_작업가이드.md` §0·§5.4,
    사내 반영 수준과 클론의 지금 상태는 `python doctor.py` + `docs/이연대장.md` §2.
 
 ## 7. 크기·자리·삭제 규칙 [B77 신설 — 회차마다 파일 끝에 얹어 온 결과가 `register.py` 3,258행이었다]
@@ -143,7 +143,7 @@
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
   승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`·`doc_coords.json`(B102)·`coord_acks.json`(B105)·`ops_log.json`(B106 — 사람 판단 기록 · 대상 이름) · 층 공통 config·층 config·seed)
   ③진실(`data/` 9종 — 좌표 학습 `coord_learned.json`(B101) · 별칭 대장 `alias_book.json`(B108) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
-  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 다섯: `extract/`·`struct_maps/`·`ingest_log/`(④) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
+  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`(④ — B109 로그는 다시 만들 수 없는 기록) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
   자리에 둔다. 폴더를 만드는 코드는 `core/paths.py::ensure` 하나다.
 - **어서션은 성질만**(화면 문면·수를 세지 않는다). 회차당 순증은 완료판정에 필요한 만큼만 —

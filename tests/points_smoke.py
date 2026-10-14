@@ -180,7 +180,7 @@ def run():
         env = {**os.environ, **STUB_ENV, "ONTO_HOME": str(home),
                "ONTO_CONFIG": str(ROOT / "tests" / "fixtures" / "_no_such_llm_config.json")}
         r = subprocess.run([sys.executable, str(Path(__file__).resolve())],
-                           capture_output=True, text=True, cwd=str(ROOT), env=env)
+                           capture_output=True, text=True, cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
     line = next((x for x in r.stdout.splitlines() if x.startswith("RESULT ")), None)
     return (json.loads(line[len("RESULT "):]) if line else {}), r
 

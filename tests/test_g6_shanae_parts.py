@@ -67,7 +67,7 @@ def _pty(*argv, answers=""):
 def _untracked():
     """코드 폴더의 변경 — 상태 루트(`state_mock/`)는 git이 무시한다."""
     r = _sp72.run(["git", "status", "--porcelain", "-uall"], capture_output=True,
-                  text=True, cwd=str(ROOT))
+                  text=True, cwd=str(ROOT), stdin=_sp72.DEVNULL)
     return set(r.stdout.splitlines())
 
 

@@ -233,7 +233,7 @@ show("① 원 표기 키는 그대로 남는다 (질의 링킹의 표면형 스�
          for _n74 in _dic74.surfaces()),
      f"사전 표기 {len(list(_dic74.surfaces()))}종")
 _dup74 = _sp72.run([sys.executable, str(ROOT / "tests/dup_scan.py")],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=_sp72.DEVNULL)
 show("① 같은 층·같은 canonical·live 노드는 하나뿐이다 (상시 어서션)",
      _dup74.returncode == 0, (_dup74.stdout or "").strip().splitlines()[-1][:70])
 

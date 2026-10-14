@@ -49,7 +49,7 @@ show("ⓔ 확정 명령 자신도 seed 를 쓰지 않는다",
 # 조건 ① 확정자 · ③ 뷰 대조 우회 불가 — 거부 갈래를 실행으로 잠근다
 def _sc(args, stdin_tty=False):
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "skeleton-confirm"]
-                       + args, capture_output=True, text=True, cwd=str(ROOT))
+                       + args, capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     return r.returncode, r.stdout + r.stderr
 
 _rc, _o = _sc(["process"])

@@ -219,7 +219,7 @@ _lay_words = [w for w in discover()                # 층 이름 낱말(`process_
               if any(re.search(rf"(?<![A-Za-z_]){re.escape(w)}(?![A-Za-z_])", l) for l in _new)]
 import subprocess                                 # noqa: E402
 _h = subprocess.run([sys.executable, str(ROOT / "tests" / "asset_hashes.py")], capture_output=True, text=True,
-                    cwd=str(ROOT))
+                    cwd=str(ROOT), stdin=subprocess.DEVNULL)
 show("ⓓ 지시문 1.4(anchor 값 기준 · 좌표 블록 상위/하위 · 킷 조립 두 몫) · 1.3(모르면 묻는다) · 층 이름 0 · 자산 해시 일치",
      len(_new) >= 4 and not _lay_words and _h.returncode == 0,
      f"새 문장 {len(_new)} · 층 이름 {_lay_words} · 해시 rc {_h.returncode}")

@@ -115,7 +115,7 @@ show("① 선언한 층이 없으면 **시끄럽게 실패한다** — 문면에
 # 꺼내는 자리는 하나**여야 한다 — 둘이면 하나가 낡는다.
 _blocks = [l for l in subprocess.run(
     ["grep", "-rn", "paths.blocks()", "--include=*.py", "core", "cli", "parser"],
-    capture_output=True, text=True, cwd=str(ROOT)).stdout.splitlines()
+    capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout.splitlines()
     if "target_category" in l]
 show("① 좌표 카테고리를 `blocks.json`에서 꺼내는 자리가 **하나**다 (상수의 정본)",
      len(_blocks) == 1 and _blocks[0].startswith("core/state/bootstrap.py"),
@@ -147,7 +147,7 @@ show("① 그 문면이 **경로와 근거**를 싣는다 — config 키 · 끄�
 print("\n■ B85 ② — 층 이름을 박은 자리 0 (새로 박히면 여기서 붉다)")
 _grep = subprocess.run(["grep", "-rn", '"process"', "--include=*.py",
                         "core", "cli", "parser", "router.py", "run.py", "doctor.py"],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 _hits = [l for l in _grep.stdout.strip().splitlines() if l]
 show("② 운영 코드에 층 이름 `process`를 박은 자리가 **낱말 후보 하나**뿐이다",
      len(_hits) == 1 and _hits[0].startswith("cli/register/generate.py")

@@ -46,7 +46,7 @@ def _tracked():
     try:
         out = subprocess.run(["git", "ls-files", "-z", "--cached", "--others",
                               "--exclude-standard"], cwd=str(ROOT), capture_output=True,
-                             check=True).stdout.decode("utf-8").split("\0")
+                             check=True, stdin=subprocess.DEVNULL).stdout.decode("utf-8").split("\0")
         return [f for f in out if f and (ROOT / f).is_file()]
     except (OSError, subprocess.CalledProcessError):
         skip = ("state", "state_mock", "data", "review", "extract", "parsed", ".git")

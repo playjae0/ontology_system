@@ -64,6 +64,7 @@ SUITES = [
     ("test_g6_rebuild", 18, "B106 — fresh 보존 넷(추출·지도·판정 대장·좌표 학습) · --all 클린 · 재구축 한 명령(동치 · LLM 0 · 기록 불변 · 처음 인입 순서) · 판정 재생(표·산문·소속 대상) · 대상 없음(골격 이름 변경 · 되돌리면 재생) · --no-replay · ops replay 멱등 · 문서 단위 확인 · 문서 좌표 상위 — 표·산문 × 층 둘"),
     ("test_g6_alias_book", 13, "B108 — 별칭 대장(쓰는 손 하나 · 이름으로 · 같은 별칭 한 항목 · LLM 매칭 · 사람 · 개명 · 병합) · 재구축 동치(스냅샷 = seed + 대장 · 판 같음 · 태깅 0 · bootstrap 앞뒤 같음) · 처음 채움(공통 진입 · 재구축 계획) · 거두기(alias-reject · 비대화형 계획만 · 다시 싣지 않는다) · show aliases · 재구축 끝 줄 · 골격 개명 대상 없음 — 표·산문 × 층 둘"),
     ("test_g6_log_pipe", 8, "B109 — 명령 로그 보존(재구축 · 기본 fresh가 남기고 클린만 지운다) · 화면이 닫혀도 트레이스백 0(읽기 — run.py · python -m cli.* · doctor.py · 화면 스레드 · 쓰기 — 141 · 멈춤 줄 · ③은 시작 전 · 문서 끝 · 마무리까지 중 하나 · 줄 위치 표본 · 재인입은 회수 그래프까지 되돌림) — 표·산문 × 층 둘"),
+    ("test_g6_stop_chunks", 5, "B110 — 시험·doctor의 하위 프로세스는 표준입력을 물려받지 않는다(소스 대조 0) · 닫힌 화면의 flush·close는 조용히 · 사람이 멈춘 문서(--step q · --step-every q)는 청크·그래프·사전·큐가 시작 전 · 문서 대장·체크포인트는 남고 다시 치면 추출 재사용으로 같은 결과 — 표·산문 × 층 둘"),
     ("test_g6_rebuild_memory", 11, "B107 — 옛 사람 판단 기록에 이름 채우기(옮길 때 · ops replay 계획 · 재구축 계획 · 그때의 이름 · 그래프에 없는 id는 목록) · 좌표 태깅 null 답 기억(닫힌 목록 내용 해시 · 지우는 손잡이 · 별칭이 판을 바꾼다 · 실호출 모양 재구축 태깅 0) · 재시도가 판정 대장을 갱신(같은 키 · by retry · 인입과 같은 하강 · 재구축 재생) — 표·산문 × 층 둘"),
     ("test_g6_hybrid", 15, "B104 — 공유 별칭의 범위 안 해소(보류 문면 표기 모호) · 링킹 임베딩 후보 + LLM 선별(후보 밖 0 · 보충/폴백 · 미스율 사전 단) · 문서 검색 채널(근거 없음은 둘 다 빌 때 · 벡터 캐시 재사용·몫만·판) · 짧은 답·쓴 근거·CLI ⓐ~ⓕ = --json · 채점 두 축 · 쓰기 0 — 표·산문 × 층 둘"),
     ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
@@ -141,7 +142,7 @@ def _clean():
     돌아야 하기 때문이다 — 반입 직후 첫 확인이 이 파일의 일이다.
     """
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
     # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아
     # 「클린 단독 실행」이라는 판정의 바닥이 무너진다(회귀 규약 §7.5-7).
@@ -205,10 +206,10 @@ def check_env():
     env = dict(os.environ, PYTHONPATH=str(guard), USE_MOCK="1")
     _clean()
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                       capture_output=True, text=True, cwd=str(ROOT), env=env)
+                       capture_output=True, text=True, cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
     q = subprocess.run([sys.executable, str(ROOT / "run.py"), "query",
                         "노칭 다음 공정은?", "--allow-mock"],   # 진단은 관문 비대상
-                       capture_output=True, text=True, cwd=str(ROOT), env=env)
+                       capture_output=True, text=True, cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
     shutil.rmtree(guard, ignore_errors=True)
     ok_np = r.returncode == 0 and q.returncode == 0 and "[그래프 사실]" in q.stdout
     line(OK if ok_np else NG,
@@ -317,10 +318,10 @@ def _idempotent():
         return
 
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     g1, q1, r1 = snap()
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     g2, q2, r2 = snap()
 
     same_g, same_q = g1 == g2, q1 == q2
@@ -436,7 +437,7 @@ def run_suites(quick=False):
         residue = residue or res              # 한 번이라도 남았으면 그것이 신호다
         t0 = time.time()
         r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")],
-                           capture_output=True, text=True, cwd=str(ROOT))
+                           capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
         dt = time.time() - t0
         # **판정 줄만 센다** — 어서션의 **세부 문면**에 `[FAIL]`이 들어갈 수 있다
         # (하네스 실패 문면을 그대로 싣는 자리가 그렇다 — B50). 부분 문자열을 세면
@@ -454,7 +455,7 @@ def run_suites(quick=False):
             _why(name, r, p, expect)
         # **상시 어서션**(B74 ①) — 스위트가 무엇을 돌렸든 끝에 한 번 본다.
         d = subprocess.run([sys.executable, str(ROOT / "tests" / "dup_scan.py")],
-                           capture_output=True, text=True, cwd=str(ROOT))
+                           capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
         if d.returncode != 0:
             dup.append(name)
             total_ok = False
@@ -489,7 +490,7 @@ def show_state():
 
     _clean()
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 
     layers = discover()
     print(f"  층 {len(layers)}개 — {', '.join(layers)}")

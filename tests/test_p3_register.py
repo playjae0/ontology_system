@@ -239,7 +239,7 @@ show("② preflight(n9 지문 스캔) — 등록부의 어댑터가 대조 대�
 # 실행은 `python -m cli.{진입점}`이다 (문서 7 §7.1 패키지화) — 파일 직접 실행은
 # sys.path 조작에 의존했고, 그 조작을 없앴으므로 이 형태가 정본이다.
 out = subprocess.run([sys.executable, "-m", "cli.platform", "doctypes"],
-                     capture_output=True, text=True, cwd=str(ROOT)).stdout
+                     capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout
 show("③ 플랫폼 노출 — 같은 등록부를 열람한다 (D-67 계보)",
      "toc_report" in out and "status=registered" in out
      and "승인=검수자 한지우" in out)

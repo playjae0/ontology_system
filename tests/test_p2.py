@@ -84,7 +84,7 @@ show("판은 하나다 — kit에 템플릿 0 · 지시문 1개 · 판 번호는
 r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                     str(KIT / "어댑터_스켈레톤.py"), str(ROOT / "tests/fixtures/schemas/cp.json"),
                     str(ROOT / "tests/fixtures/raw/CP01.xlsx")],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 fail_labels = {label_of(ln) for ln in r.stdout.splitlines()
                if ln.strip().startswith("[FAIL]")}
 EXPECT_FAIL = {
@@ -181,7 +181,7 @@ SEALED = {
 }
 for name, (sealed, args) in SEALED.items():
     out = subprocess.run([sys.executable, str(KIT / "run_adapter.py")] + args,
-                         capture_output=True, text=True, cwd=str(ROOT)).stdout
+                         capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout
     old, new = verdicts(sealed.read_text(encoding="utf-8")), verdicts(out)
     lost = [k for k in old if new[k] < old[k]]
     added = [k for k in new if new[k] > old.get(k, 0)]
@@ -335,7 +335,7 @@ def gate76(adapter, schema, sample=SAMPLE76):
     """관문을 그대로 돌린다 — 재구현하지 않는다(P2의 규율)."""
     r = subprocess.run([sys.executable, str(KIT / "run_adapter.py"),
                         str(adapter), str(schema), str(sample)],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     return r.returncode == 0, r.stdout
 
 
@@ -390,7 +390,7 @@ show("④ⓔ 참조 어댑터·스켈레톤 어댑터는 셀 None 변이를 지�
          [sys.executable, str(KIT / "run_adapter.py"),
           "tests/fixtures/adapters/cp.py", "tests/fixtures/schemas/cp.json",
           "tests/fixtures/raw/CP01.xlsx"],
-         capture_output=True, text=True, cwd=str(ROOT)).stdout)
+         capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout)
 show("④ 템플릿 판이 올랐고 셀 접근 규약이 실렸다",
      re.search(r"^version: 1\.7$",
                (ROOT / "prompts/1.4_generate.md").read_text(encoding="utf-8"), re.M)
@@ -401,7 +401,7 @@ print("\n── B76 ① 형 검사 관문 G4F ──")
 show("① 내장 참조 자산이 전부 G4F를 지난다 (형 표가 실물과 어긋나지 않는다)",
      all("[PASS] G4F" in subprocess.run(
          [sys.executable, str(KIT / "run_adapter.py"), a, sc, doc],
-         capture_output=True, text=True, cwd=str(ROOT)).stdout
+         capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout
          for a, sc, doc in (
              ("tests/fixtures/adapters/cp.py", "tests/fixtures/schemas/cp.json",
               "tests/fixtures/raw/CP01.xlsx"),
@@ -466,7 +466,7 @@ for _n77, _doc77 in (("cp", "CP01.xlsx"), ("ipqc", "IPQC01.xlsx"),
         [sys.executable, str(KIT / "run_adapter.py"),
          str(KIT / "참조어댑터" / f"{_n77}.py"), str(KIT / "참조어댑터" / f"{_n77}.json"),
          str(ROOT / "tests/fixtures/raw" / _doc77)],
-        capture_output=True, text=True, cwd=str(ROOT))
+        capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     if _r77.returncode != 0 or "[FAIL]" in _r77.stdout:
         _bad77 += [f"{_n77}: {l.strip()}" for l in _r77.stdout.splitlines()
                    if "[FAIL]" in l][:1] or [f"{_n77}: rc={_r77.returncode}"]

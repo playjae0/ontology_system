@@ -291,9 +291,9 @@ show("파급 계수로 판정한다 (노드·엣지 둘 다 1 이하 + 연쇄 �
 print("\n■ 플랫폼 창구 신설 2종 (갭 spec-s7-11-85 · spec-s7-11-14)")
 def _pf(*a):
     return _sp5.run([sys.executable, "-m", "cli.platform", *a],
-                    capture_output=True, text=True, cwd=str(ROOT))
+                    capture_output=True, text=True, cwd=str(ROOT), stdin=_sp5.DEVNULL)
 full_run()
-_sp5.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT))
+_sp5.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT), stdin=_sp5.DEVNULL)
 _d = _pf("dashboard")
 show("platform dashboard — Q7류 집계 + 수정 도구 세트 + 등록 워크플로우 등재",
      _d.returncode == 0 and "Q7 집계" in _d.stdout
@@ -306,7 +306,7 @@ show("platform accuracy — 판정 정확도를 **계기판 8종과 별도로** 
 print("\n■ role 배정 실험 · 자재 열 (갭 spec-A-201 · spec-A-103)")
 _r = _sp5.run([sys.executable, str(ROOT / "run.py"), "register", "roles",
                str(ROOT / "tests/fixtures/raw/IPQC01.xlsx")],
-              capture_output=True, text=True, cwd=str(ROOT))
+              capture_output=True, text=True, cwd=str(ROOT), stdin=_sp5.DEVNULL)
 show("register roles — 등록 **전에** 돌고 UNMAPPABLE을 먼저 뽑는다",
      _r.returncode == 0 and "UNMAPPABLE" in _r.stdout and "질문할 열" in _r.stdout)
 show("실행만 하고 등록부를 건드리지 않는다",

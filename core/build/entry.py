@@ -216,8 +216,9 @@ class Stopped(Exception):
     """**사람이 판정 도중 멈췄다** (B75 ③ — `--step-every`).
 
     진행 콜백이 던지고 `run_document`가 받는다. 계약은 `--step`의 `q`와 같다:
-    **그 문서는 그래프·사전·큐 쓰기 0**이고 체크포인트(parsed/·extract/·청크)는
-    남는다. 부분 쓰기를 남기면 다음 인입이 「반쯤 들어간 문서」 위에 쌓인다.
+    **그 문서는 그래프·사전·큐·청크 쓰기 0**(문서 시작 전 판 — 그 밖의 예외와 같은 손 · B110 ③)이고
+    **인입 기록(문서 대장)과 체크포인트(`parsed/`·`extract/`)는 남는다** — 다시 치면 추출 재사용(LLM 0)으로
+    구축만 가고 청크는 그때 다시 선다. 부분 쓰기를 남기면 다음 인입이 「반쯤 들어간 문서」 위에 쌓인다.
     """
 
 
@@ -265,9 +266,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
         from core.build import replay as _rp
         _rp.begin(doc_id)
-        # 인입 검사 뒤의 판 — 사람·관문의 멈춤(`Stopped`)이 돌아갈 자리 · 화면의 「이번 실행」 큐 대조(B75 ③)
+        # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)
         _q0 = store.read(store.QUEUE, [])
-        _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
         from core.dictionary import Dictionary as _D
         from core.build import result as _res
         from router import discover as _disc
@@ -280,29 +280,27 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         _n0 = len(graph.nodes)
         _e0 = len(graph.edges)
         _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
-        try:
-            _, metrics, extracted = _build_document(
-                env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
-            return res, metrics, extracted
-        except Stopped as stop:
-            # **사람·관문이 세운 멈춤**(판정 보류 · `--step`) — 구축분만 되돌리고 인입 검사의 산출은 남긴다
-            # (B75 ③ 그대로). 그래프·사전은 저장 전이라 디스크가 이미 옛 판이다(저장은 말미 한 자리).
-            store.write(store.QUEUE, _q0)
-            store.write(store.CHUNKS, _c0)
-            _LOG.info("되돌림 — %s: 구축분을 되돌렸다(%s — 인입 검사의 산출은 남는다)", doc_id, type(stop).__name__)
-            res.status, res.reason = "held", str(stop)
-            res.step_stop = isinstance(stop, StepStop)
-            return res, None, False
+        _, metrics, extracted = _build_document(
+            env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
+        return res, metrics, extracted
     except BaseException as stop:
-        # **어떤 이유로 멈춰도**(B99 ② — 일반 예외 · Ctrl-C · 화면 닫힘 B109 ② · 표·산문·렌즈가 이 경계 하나를
-        # 지난다) 저장 전이면 시작 전 판으로 · 저장 뒤면 끝난 문서다. 메모리의 그래프는 버린다(다음 호출이
-        # 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다). 추출 체크포인트·부분 파일은 남는다(④).
+        # **어떤 이유로 멈춰도 한 손이다**(B99 ② — 일반 예외 · Ctrl-C · 화면 닫힘 B109 ② · 사람·관문의 멈춤 B110 ③
+        # · 표·산문·렌즈가 이 경계 하나를 지난다) 저장 전이면 시작 전 판으로 · 저장 뒤면 끝난 문서다. 차이는 하나 —
+        # **사람·관문의 멈춤(`Stopped` — 판정 보류 · `--step`)은 인입 기록(문서 대장)을 남긴다**(다시 치면 추출 재사용).
+        # 메모리의 그래프는 버린다(다음 호출이 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다).
+        # 체크포인트(`parsed/` · `extract/` · 추출 부분 파일)는 남는다(④).
         if _RUN.get("committed"):
             _LOG.info("저장 뒤 멈춤 — %s: 이 문서는 끝까지 썼다(%s · 되돌리지 않는다)", doc_id, type(stop).__name__)
-        else:
-            _undo(t0)
-            _LOG.info("되돌림 — %s: 이 문서의 쓰기를 시작 전으로 되돌렸다(%s)", doc_id, type(stop).__name__)
-        raise                                       # 실패 줄은 호출부가 낸다(B98 ②)
+            raise
+        human = isinstance(stop, Stopped)
+        _undo(t0, keep_registry=human)
+        _LOG.info("되돌림 — %s: 이 문서의 쓰기를 시작 전으로 되돌렸다(%s%s)", doc_id, type(stop).__name__,
+                  " — 사람·관문의 멈춤: 인입 기록 · 체크포인트는 남는다" if human else "")
+        if not human:
+            raise                                   # 실패 줄은 호출부가 낸다(B98 ②)
+        res.status, res.reason = "held", str(stop)
+        res.step_stop = isinstance(stop, StepStop)
+        return res, None, False
 
 
 def _start(doc_id):
@@ -313,11 +311,13 @@ def _start(doc_id):
             "registry": reg, "graphs": [open_graph(lay) for lay in _disc()] if doc_id in reg else []}
 
 
-def _undo(t0):
-    """시작 전 판으로 — 층 그래프(재인입의 회수분) → 문서 대장 → 큐 → 청크. 사전은 저장 전이라 손대지 않는다."""
+def _undo(t0, keep_registry=False):
+    """시작 전 판으로 — 층 그래프(재인입의 회수분) → 문서 대장 → 큐 → 청크. 사전은 저장 전이라 손대지 않는다.
+    `keep_registry` — 사람·관문의 멈춤은 인입 기록(문서 대장)을 남긴다(B110 ③ — 다시 치면 추출 재사용 · 판이 같다)."""
     for g in t0["graphs"]:
         g.save()
-    store.write(store.DOC_REGISTRY, t0["registry"])
+    if not keep_registry:
+        store.write(store.DOC_REGISTRY, t0["registry"])
     store.write(store.QUEUE, t0["queue"])
     store.write(store.CHUNKS, t0["chunks"])
 

@@ -335,7 +335,7 @@ show("⑤ «진행»은 어느 자리에서든 종료다 — 라운드 2에서 �
 print("\n■ mock 관문 — 운영 명령은 mock에서 실행 전에 멈춘다 (문서 7 §7.6-B-1)")
 from cli import _gate as _G                                         # noqa: E402
 _bare = subprocess.run([sys.executable, "-m", "cli.register", "generate", "gate_t", "process"],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 show("③ 설정 없이 register generate → 종료 코드 ≠ 0", _bare.returncode != 0, str(_bare.returncode))
 show("③ 문면이 --allow-mock과 켜는 법을 함께 말한다",
      "--allow-mock" in _bare.stdout and "실산출이 아닙니다" in _bare.stdout
@@ -350,7 +350,7 @@ show("③ --allow-mock을 붙이면 종전대로 진행한다",
 shutil.rmtree(_P.review() / "gate_t", ignore_errors=True)
 for _c in ("init", "bootstrap"):
     _r = subprocess.run([sys.executable, str(ROOT / "run.py"), _c],
-                        capture_output=True, text=True, cwd=str(ROOT))
+                        capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     show(f"③ {_c}은 관문 비대상 — 플래그 없이 종전대로", _r.returncode == 0, str(_r.returncode))
 show("③ 관문 대상 목록이 코드에 있다 — register는 생성·검수·확정만(열람은 아니다)",
      Rconfirm.GATED == ("generate", "review", "confirm"))
