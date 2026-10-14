@@ -72,8 +72,8 @@ print("\n■ 저장 레코드 스키마 — 문서 7 §7.2 전문 대조")
 # 되돌아가고, 그것은 문서 4 §4.5와 문서 1 C10이 정면으로 금지한 것이다.
 import subprocess as _sp                                       # noqa: E402
 _sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-        capture_output=True, cwd=str(ROOT))
-_sp.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT))
+        capture_output=True, cwd=str(ROOT), stdin=_sp.DEVNULL)
+_sp.run([sys.executable, str(ROOT / "run.py"), "all"], capture_output=True, cwd=str(ROOT), stdin=_sp.DEVNULL)
 
 _g = open_graph("process")
 _NODE_MIN = {"id", "canonical", "category", "layer", "status",
@@ -125,12 +125,12 @@ print("\n■ 진입점 계약 — 문서 7 §7.1 「플랫폼이 subprocess로 �
 # 호환되지 않는다.
 def _rc(*argv):
     return _sp.run([sys.executable, *argv], capture_output=True, text=True,
-                   cwd=str(ROOT))
+                   cwd=str(ROOT), stdin=_sp.DEVNULL)
 
 _sp.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-        capture_output=True, cwd=str(ROOT))
+        capture_output=True, cwd=str(ROOT), stdin=_sp.DEVNULL)
 _sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"],
-        capture_output=True, cwd=str(ROOT))
+        capture_output=True, cwd=str(ROOT), stdin=_sp.DEVNULL)
 
 show("구축 `python run.py build <parsed.json …>` (§7.1)",
      _rc(str(ROOT / "run.py"), "build", "--allow-mock",     # 회귀는 관문 비대상(B48)
@@ -210,7 +210,7 @@ show("판정 임계를 층 config에서 읽는다 (코드 상수는 폴백)",
 # 위 클린이 그래프를 비웠으므로 다시 세운다. **2홉의 도착점(Property)은 골격이
 # 아니라 문서가 만든다** — 골격만 심으면 확장할 인자가 0이다.
 _sp.run([sys.executable, str(ROOT / "run.py"), "all"],
-        capture_output=True, cwd=str(ROOT))
+        capture_output=True, cwd=str(ROOT), stdin=_sp.DEVNULL)
 _g5 = open_graph("process")
 _cfg5 = load_config("process")
 _proc = next(i for i, n in _g5.nodes.items() if n["canonical"] == "노칭")

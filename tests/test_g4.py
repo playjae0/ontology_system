@@ -213,7 +213,7 @@ print("\n■ 관측 창구 — 문서가 「직접 열람」이라 적은 자리
 import subprocess as _sp2                                       # noqa: E402
 def _run(*a):
     return _sp2.run([sys.executable, str(ROOT / "run.py"), *a],
-                    capture_output=True, text=True, cwd=str(ROOT))
+                    capture_output=True, text=True, cwd=str(ROOT), stdin=_sp2.DEVNULL)
 
 _ls = _run("show", "log")
 show("show log — 로그 4종 요약이 돈다", _ls.returncode == 0

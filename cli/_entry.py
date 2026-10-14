@@ -66,7 +66,10 @@ class _Tee(io.TextIOBase):
         self.buf = ""
 
     def flush(self):
-        self._screen(self.inner.flush)
+        # 한 번 닫혔으면 그 뒤의 flush · 정리는 조용히 — 멈춤 신호는 쓰기만 낸다(B110 ② · Python 3.13은 끝에
+        # 이 객체를 정리하며 flush를 한 번 더 부른다 — 거기서 던지면 「Exception ignored」 트레이스백이 남는다)
+        if not self.gone:
+            self._screen(self.inner.flush)
 
     def drain(self):
         if self.buf:

@@ -67,7 +67,7 @@ def run(*args):
         flag.append("--no-basic")
     return subprocess.run([sys.executable, str(ROOT / "run.py"), "register",
                            *args, *flag],
-                          capture_output=True, text=True, cwd=str(ROOT))
+                          capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 
 
 def view_of(doc_type):

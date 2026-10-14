@@ -101,7 +101,7 @@ def run():
         shutil.copytree(ROOT / "layers", Path(home) / "layers")
         r = subprocess.run([sys.executable, str(Path(__file__).resolve())],
                            capture_output=True, text=True, cwd=str(ROOT),
-                           env=probe_env(home=home))
+                           env=probe_env(home=home), stdin=subprocess.DEVNULL)
     line = next((x for x in r.stdout.splitlines() if x.startswith("RESULT ")), None)
     return (json.loads(line[len("RESULT "):]) if line else {}), r
 

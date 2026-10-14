@@ -201,7 +201,7 @@ def main(argv):
     print({d: sum(u["prompt"] for u in gateway.usage_by(d).values()) for d in ("B99A", "B99B")})
     return 0
 sys.exit(_entry.run("b99usage", main, []))
-"""], cwd=str(ROOT), env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True)
+"""], cwd=str(ROOT), env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True, stdin=sp.DEVNULL)
 _ulog = Path(sorted(glob.glob(str(_logs / "b99usage_*.log")))[-1]).read_text(encoding="utf-8")
 _bydoc = {}
 for m in re.finditer(r"LLM 사용량 .* · 문서 (\S+) — 입력 (\d+)", _ulog):

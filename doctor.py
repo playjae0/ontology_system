@@ -141,7 +141,7 @@ def _clean():
     돌아야 하기 때문이다 — 반입 직후 첫 확인이 이 파일의 일이다.
     """
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     # **지운 결과를 실제로 확인한다.** `core/init.fresh()`는 `ignore_errors=True`로
     # 지우므로 권한 문제로 실패해도 조용하다 — 그러면 체크포인트가 살아남아
     # 「클린 단독 실행」이라는 판정의 바닥이 무너진다(회귀 규약 §7.5-7).
@@ -205,10 +205,10 @@ def check_env():
     env = dict(os.environ, PYTHONPATH=str(guard), USE_MOCK="1")
     _clean()
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                       capture_output=True, text=True, cwd=str(ROOT), env=env)
+                       capture_output=True, text=True, cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
     q = subprocess.run([sys.executable, str(ROOT / "run.py"), "query",
                         "노칭 다음 공정은?", "--allow-mock"],   # 진단은 관문 비대상
-                       capture_output=True, text=True, cwd=str(ROOT), env=env)
+                       capture_output=True, text=True, cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
     shutil.rmtree(guard, ignore_errors=True)
     ok_np = r.returncode == 0 and q.returncode == 0 and "[그래프 사실]" in q.stdout
     line(OK if ok_np else NG,
@@ -317,10 +317,10 @@ def _idempotent():
         return
 
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     g1, q1, r1 = snap()
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
     g2, q2, r2 = snap()
 
     same_g, same_q = g1 == g2, q1 == q2
@@ -436,7 +436,7 @@ def run_suites(quick=False):
         residue = residue or res              # 한 번이라도 남았으면 그것이 신호다
         t0 = time.time()
         r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")],
-                           capture_output=True, text=True, cwd=str(ROOT))
+                           capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
         dt = time.time() - t0
         # **판정 줄만 센다** — 어서션의 **세부 문면**에 `[FAIL]`이 들어갈 수 있다
         # (하네스 실패 문면을 그대로 싣는 자리가 그렇다 — B50). 부분 문자열을 세면
@@ -454,7 +454,7 @@ def run_suites(quick=False):
             _why(name, r, p, expect)
         # **상시 어서션**(B74 ①) — 스위트가 무엇을 돌렸든 끝에 한 번 본다.
         d = subprocess.run([sys.executable, str(ROOT / "tests" / "dup_scan.py")],
-                           capture_output=True, text=True, cwd=str(ROOT))
+                           capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
         if d.returncode != 0:
             dup.append(name)
             total_ok = False
@@ -489,7 +489,7 @@ def show_state():
 
     _clean()
     subprocess.run([sys.executable, str(ROOT / "run.py"), "all"],
-                   capture_output=True, text=True, cwd=str(ROOT))
+                   capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 
     layers = discover()
     print(f"  층 {len(layers)}개 — {', '.join(layers)}")

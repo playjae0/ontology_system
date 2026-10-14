@@ -93,9 +93,9 @@ _sh2.move(str(_FX.ROOT_DIR), str(_away))
 try:
     def _r(*a):
         return _sp3.run([sys.executable, str(ROOT / "run.py"), *a],
-                        capture_output=True, text=True, cwd=str(ROOT))
+                        capture_output=True, text=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
     _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-             capture_output=True, cwd=str(ROOT))
+             capture_output=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
     _b = _r("bootstrap")
     show("픽스처 없이 bootstrap 정상", _b.returncode == 0)
     _a = _r("all")
@@ -112,9 +112,9 @@ try:
 finally:
     _sh2.move(str(_away), str(_FX.ROOT_DIR))
     _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-             capture_output=True, cwd=str(ROOT))
+             capture_output=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
     _sp3.run([sys.executable, str(ROOT / "run.py"), "all"],
-             capture_output=True, cwd=str(ROOT))
+             capture_output=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
 
 # ============================================================ B46 일괄 투입
 

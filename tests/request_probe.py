@@ -81,7 +81,7 @@ def run(body, env_extra=None, *, stub_local=False):
     env.update(env_extra or {})
     code = _RUNNER % {"root": str(ROOT), "body": body, "stub_local": stub_local}
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                       cwd=str(ROOT), env=env)
+                       cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
     line = next((x for x in r.stdout.splitlines() if x.startswith("RESULT ")), None)
     if not line:
         return {"cap": [], "stub": {}, "error": f"(탐침 실패) {r.stderr[-300:]}",

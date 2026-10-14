@@ -284,7 +284,7 @@ _before79 = sorted((p.relative_to(_wl79).as_posix(), p.read_bytes() if p.is_file
 _fresh79 = subprocess.run(
     [sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
     capture_output=True, text=True, cwd=str(ROOT),
-    env={**os.environ, "USE_MOCK": "1", "ONTO_HOME": str(_wl79)})
+    env={**os.environ, "USE_MOCK": "1", "ONTO_HOME": str(_wl79)}, stdin=subprocess.DEVNULL)
 _after79 = sorted((p.relative_to(_wl79).as_posix(), p.read_bytes() if p.is_file() else b"")
                   for p in _wl79.rglob("*"))
 show("init --fresh는 mock 루트에만 seed를 심는다 (운영 층 자산에 한 바이트도 닿지 않는다)",
@@ -323,7 +323,7 @@ def _mode79(env):
          "import sys; sys.path.insert(0, '.');"
          "from core.llm import gateway; print(gateway.mode_line())"],
         capture_output=True, text=True, cwd=str(ROOT),
-        env={k: v for k, v in env.items() if v is not None}).stdout
+        env={k: v for k, v in env.items() if v is not None}, stdin=subprocess.DEVNULL).stdout
 _env_no = {**os.environ, "USE_MOCK": "0"}
 _env_no.pop("ONTO_HOME", None)
 _line_no = _mode79(_env_no)
@@ -359,7 +359,7 @@ with tempfile.TemporaryDirectory() as _td78:
     _gen78 = subprocess.run(
         [sys.executable, str(ROOT / "docs" / "회귀스위트" / "추출_구조.py")],
         capture_output=True, text=True, cwd=str(ROOT),
-        env={**os.environ, "STRUCT_DIR": _td78, "REFINED_DIR": "docs/spec"})
+        env={**os.environ, "STRUCT_DIR": _td78, "REFINED_DIR": "docs/spec"}, stdin=subprocess.DEVNULL)
     _fresh78 = Path(_td78) / "10_코드_지도.md"
     _same78 = (_fresh78.exists() and _map78.exists()
                and _fresh78.read_text(encoding="utf-8") == _map78.read_text(encoding="utf-8"))

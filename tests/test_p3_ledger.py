@@ -521,10 +521,10 @@ print("\n■ B65 ④ — 고정 어댑터 doc_type은 재생성 대상이 아니
 
 _rv66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "review",
                         "b65f", "--instruct", "레벨을 2로", "--allow-mock"],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 _rr66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
                         "b65f", "process", str(_amb66), "--revise", "--allow-mock"],
-                       capture_output=True, text=True, cwd=str(ROOT))
+                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 _both66 = _rv66.stdout + _rv66.stderr + _rr66.stdout + _rr66.stderr
 show("④ⓑ instruct·revise 둘 다 거부이고 다음 줄 셋을 준다",
      "재생성 대상이 아니다" in _rv66.stdout + _rv66.stderr
@@ -536,7 +536,7 @@ show("④ⓑ 거부 경로에 LLM 호출이 없다 (draft를 부르지 않는다
 # **status·confirm·플래그 없는 review는 그대로다** — 막는 것은 재생성뿐이다.
 _sv66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "status",
                         "b65f", "--allow-mock"], capture_output=True, text=True,
-                       cwd=str(ROOT))
+                       cwd=str(ROOT), stdin=subprocess.DEVNULL)
 show("④ⓑ status는 그대로 돈다 (막는 것은 재생성뿐)",
      "재생성 대상이 아니다" not in _sv66.stdout + _sv66.stderr
      and _sv66.returncode == 0, f"rc={_sv66.returncode}")
