@@ -25,7 +25,8 @@ VERDICTS = ("match", "new", "uncertain", "anchor", "lowres", "orphan",
 _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind",
          "narrow", "emb_top", "nearest", "same_doc", "target", "from", "attached", "hold",
-         "category", "scope", "replay")   # 판정 재생의 키 몫 · 재판정 사유(B106 ② · 있을 때만)
+         "category", "scope", "replay",   # 판정 재생의 키 몫 · 재판정 사유(B106 ② · 있을 때만)
+         "by")                            # 그 행을 적은 손이 인입 루프가 아닐 때(B107 ③ — "retry")
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -52,6 +53,76 @@ def name_of(doc_id):
     return f"{DIR}/{doc_id}.json"
 
 
+def row(*, locator=None, field=None, role=None, surface=None,
+        canonical=None, layer=None, path="none", verdict="pending",
+        node_id=None, candidates_n=0, confidence=0.0, llm=None,
+        queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
+        target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None):
+    """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
+    (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
+    if path not in PATHS:
+        raise ValueError(f"대장 path가 닫힌 값 밖이다: {path!r}")
+    if verdict not in VERDICTS:
+        raise ValueError(f"대장 verdict가 닫힌 값 밖이다: {verdict!r}")
+    r = {"locator": locator, "field": field, "role": role,
+         "surface": surface, "canonical": canonical, "layer": layer,
+         "path": path, "verdict": verdict, "node_id": node_id,
+         "candidates_n": int(candidates_n or 0),
+         "confidence": round(float(confidence or 0.0), 4),
+         "llm": dict(llm or {"calls": 0, "in_tokens": 0, "out_tokens": 0}),
+         "queue_kind": queue_kind}
+    # 판정 근거(B99 ⑨) — **있을 때만** 단다(근거 없는 행의 대장 바이트는 그대로)
+    # 같은 문서 auto에 붙은 매칭(B101 ①) — 그때만 `same_doc: true`
+    for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest),
+                 ("same_doc", same_doc or None),
+                 # 붙은 노드 · 소속 출처(B102 ⑦) — 붙은 자리(`attached`)는 엣지를 단 뒤 호출부가 단다
+                 ("target", target), ("from", belongs_from),
+                 # 보류 사유가 목록 밖이 아닐 때(B104 ① — 「표기 모호」) — 그때만 단다
+                 ("hold", hold),
+                 # 판정 재생의 키 몫(B106 ②) — 카테고리 · 이름 규칙의 부모(스코프 카테고리일 때만)
+                 ("category", category), ("scope", scope),
+                 # 재생하지 못한 사유(B106 ② — 키 없음 · 대상 없음 · 끔) — 재판정 행만
+                 ("replay", replay),
+                 # 인입 루프가 아닌 손(B107 ③ — 재시도가 판정해 갈아 끼운 행)
+                 ("by", by)):
+        if v is not None:
+            r[k] = v
+    return r
+
+
+def judged(last, *, locator, field, surface, layer, target):
+    """판정 하나(`Builder.last`) → 개체 행 인자 — 표의 행 루프(`loop._ledger_entity`)와 재시도가 같은 손으로 옮긴다."""
+    from core.build.loop import _VERDICT
+    return dict(locator=locator, field=field, role="entity", surface=surface,
+                canonical=last.get("canonical"), layer=last.get("layer") or layer,
+                path=last.get("path") or "none", verdict=_VERDICT.get(last.get("verdict"), "pending"),
+                node_id=last.get("node_id"), candidates_n=last.get("candidates_n", 0),
+                confidence=last.get("confidence", 0.0), llm=last.get("llm"),
+                queue_kind=last.get("queue_kind"), narrow=last.get("narrow"),
+                emb_top=last.get("emb_top"), nearest=last.get("nearest"), same_doc=last.get("same_doc"),
+                target=target, category=last.get("category"), scope=last.get("scope"),
+                replay=last.get("replay"))
+
+
+def put_row(doc_id, new):
+    """**재시도도 판정이다**(B107 ③) — 그 문서 대장에서 같은 키(위치 · 열 · 표기 · 층 · 역할 — 카테고리는 같거나 비었을
+    때 · B106 재생 키)의 행을 그 판정으로 갈아 끼운다 · 없으면 더한다. 쓰기는 문서 하나 원자 쓰기(지금 대장 손 —
+    재시도가 따로 파일을 쓰지 않는다) · 돌려주는 것은 「갱신」 또는 「더함」."""
+    from core.build.replay import key
+    data = read(doc_id) or {"doc_id": doc_id, "rows": []}
+    rows = data.setdefault("rows", [])
+    k = key(new["locator"], new["field"], new["surface"], new["layer"])
+    i = next((i for i, r in enumerate(rows) if r.get("role") == new["role"]
+              and key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")) == k
+              and r.get("category") in (None, new.get("category"))), None)
+    if i is None:
+        rows.append(new)
+    else:
+        rows[i] = new
+    store.write(name_of(doc_id), data)
+    return "더함" if i is None else "갱신"
+
+
 class Ledger:
     """문서 하나의 대장. **행을 모으고 한 번에 쓴다** — 쓰기는 원자적이다(§7.1)."""
 
@@ -59,38 +130,9 @@ class Ledger:
         self.doc_id = doc_id
         self.rows: list[dict] = []
 
-    def add(self, *, locator=None, field=None, role=None, surface=None,
-            canonical=None, layer=None, path="none", verdict="pending",
-            node_id=None, candidates_n=0, confidence=0.0, llm=None,
-            queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
-            target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None):
-        """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다)."""
-        if path not in PATHS:
-            raise ValueError(f"대장 path가 닫힌 값 밖이다: {path!r}")
-        if verdict not in VERDICTS:
-            raise ValueError(f"대장 verdict가 닫힌 값 밖이다: {verdict!r}")
-        self.rows.append({
-            "locator": locator, "field": field, "role": role,
-            "surface": surface, "canonical": canonical, "layer": layer,
-            "path": path, "verdict": verdict, "node_id": node_id,
-            "candidates_n": int(candidates_n or 0),
-            "confidence": round(float(confidence or 0.0), 4),
-            "llm": dict(llm or {"calls": 0, "in_tokens": 0, "out_tokens": 0}),
-            "queue_kind": queue_kind})
-        # 판정 근거(B99 ⑨) — **있을 때만** 단다(근거 없는 행의 대장 바이트는 그대로)
-        # 같은 문서 auto에 붙은 매칭(B101 ①) — 그때만 `same_doc: true`
-        for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest),
-                     ("same_doc", same_doc or None),
-                     # 붙은 노드 · 소속 출처(B102 ⑦) — 붙은 자리(`attached`)는 엣지를 단 뒤 호출부가 단다
-                     ("target", target), ("from", belongs_from),
-                     # 보류 사유가 목록 밖이 아닐 때(B104 ① — 「표기 모호」) — 그때만 단다
-                     ("hold", hold),
-                     # 판정 재생의 키 몫(B106 ②) — 카테고리 · 이름 규칙의 부모(스코프 카테고리일 때만)
-                     ("category", category), ("scope", scope),
-                     # 재생하지 못한 사유(B106 ② — 키 없음 · 대상 없음 · 끔) — 재판정 행만
-                     ("replay", replay)):
-            if v is not None:
-                self.rows[-1][k] = v
+    def add(self, **kw):
+        """행 하나를 모은다(모양은 `row`) — 화면 콜백(`ON_ROW`)이 그 행을 받는다."""
+        self.rows.append(row(**kw))
         if ON_ROW is not None:
             ON_ROW(self.rows[-1])
         return self.rows[-1]

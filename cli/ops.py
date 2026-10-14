@@ -84,11 +84,25 @@ def _learn(a):
             print("  ▶ 다음 줄 — python run.py bootstrap   (사람 보증 별칭으로 맞는다)")
         else:
             r = coord_learn.reject(surface, a.actor)
-            print(f"[거부] '{surface}' → {r['canonical']} 학습 기록을 지웠다 — 다음 인입에서 다시 묻는다")
+            print(f"[거부] '{surface}' → {r['canonical']} 학습 기록을 지웠다 — 다음 인입에서 다시 묻는다" if r["canonical"]
+                  else f"[거부] '{surface}' 목록 밖 기억(null 답)을 지웠다 — 다음 인입에서 그 표기만 다시 묻는다 "
+                       "(새 공정 후보 화면에는 남는다)")
     except coord_learn.LearnRefused as e:
         print(f"[거부] {e}")
         return 1
     return 0
+
+
+def backfill_lines(bf):
+    """이름 채움의 줄들(B107 ①) — 재구축 계획 · `ops replay` · 옛 자리 옮김이 같은 줄을 낸다. 이름 없음은
+    목록(연산 · 그래프에서 못 찾은 id · 행위자 · 시각) — 재구축하면 그 연산은 돌아오지 않는다."""
+    k = len(bf["nameless"])
+    out = [f"사람 판단 기록 {bf['total']:,}건 · 이름 채움 {bf['backfilled']:,}"
+           + (f"(이번에 {bf['filled']:,})" if bf["filled"] else "")
+           + f" · 이름 없음 {k:,}(재구축하면 돌아오지 않는다)"]
+    for x in bf["nameless"]:
+        out.append(f"  이름 없음 — {x['op']} · {', '.join(map(str, x['ids']))} · {x['actor']} · {x['at']}")
+    return out
 
 
 def replay_lines(r):
@@ -97,7 +111,8 @@ def replay_lines(r):
     out = [f"사람 판단 재생 — 한 일 {len(r['done']):,} · 이미 그 상태 {len(r['already']):,} · "
            f"대상 없음 {len(r['missing']):,} · 기록에 이름 없음 {len(r['no_names']):,} · "
            f"재생 안 함 {len(r['skipped']):,} · 거부 {len(r['refused']):,}"]
-    for k, head in (("missing", "대상 없음"), ("refused", "거부"), ("skipped", "재생 안 함")):
+    for k, head in (("missing", "대상 없음"), ("no_names", "이름 없음"), ("refused", "거부"),
+                    ("skipped", "재생 안 함")):
         for x in r[k]:
             out.append(f"  {head} — {x['op']} · {x['what']} · {x['actor']} · {x['at']}"
                        + (f" · {x['reason']}" if x.get("reason") else ""))
@@ -109,10 +124,12 @@ def replay_lines(r):
 def _replay(a):
     """`ops replay` — 기록 순서대로 이름으로 되살린다(`--dry-run`은 계획 · 쓰기 0)."""
     from core.state import oplog
-    for ln in replay_lines(oplog.replay(dry_run=a.dry_run)):
+    r = oplog.replay(dry_run=a.dry_run)
+    for ln in backfill_lines(r["backfill"]) + replay_lines(r):
         print(ln)
     if a.dry_run:
-        print(f"  (계획만 — 쓰기 0) ▶ 다음 줄 — 실행: python run.py ops replay all --actor {a.actor}")
+        print("  (계획만 — 그래프 쓰기 0" + (" · 채운 이름은 기록에 남았다" if r["backfill"]["filled"] else "")
+              + f") ▶ 다음 줄 — 실행: python run.py ops replay all --actor {a.actor}")
     return 0
 
 

@@ -15,7 +15,7 @@ from core import matcher
 from core.build import gate
 from core.state import log, store
 from core.build.build import Builder
-from core.build.ledger import Ledger
+from core.build.ledger import Ledger, judged
 from core.state.bootstrap import COORD_CATEGORY, load_config, open_graph
 from core.build.ingest import IngestResult, ingest, load_schema
 from core.state.status import is_live
@@ -226,7 +226,7 @@ def _blank_endpoint(edge, rec, fields):
 
 
 def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None,
-                   coord_missing=False, prov=None):
+                   coord_missing=False, prov=None, electrode_type=None):
     """미뤄 둔 큐 적재를 **레코드 말미에** 착지시킨다 (문서 2 §2.4-①·③).
 
     큐 항목이 **재시도 배치의 유일한 손잡이**다(문서 4 §4.7-5). 그래서 항목이
@@ -249,6 +249,9 @@ def _land_deferred(defer, dropped, pending, doc_id, *, dropped_entities=None,
             # **연쇄 드롭된 entity의 표면형·target_layer·category**(§4.4) —
             # 재시도가 좌표를 해소하면 이것으로 노드를 **새로 세운다.**
             pl["dropped_entities"] = dropped_entities
+        if electrode_type and (dropped or pending or dropped_entities):
+            # 그 행의 극성 — 재시도가 인입과 같이 좌표를 하강해 **같은 이름 · 같은 끝점**을 쓴다(B107 ③)
+            pl["electrode_type"] = electrode_type
         # **표기 단위 1건**(B72 ②) — 같은 골격 밖 표기가 41행이면 사람이 할 일은
         # 하나다(그 표기를 골격에 잇는다). 행마다 다른 재시도 재료(provenance ·
         # dropped_edges · pending_attrs)는 `items[]`에 쌓여 그대로 남는다.
@@ -392,19 +395,8 @@ def _ledger_entity(st, surface, layer, last):
                      path="none", verdict="orphan", queue_kind="orphan_anchor",
                      hold=st.get("anchor_hold"))      # 이 행의 좌표가 표기 모호였으면 그 사유(B104 ①)
         return
-    b.ledger.add(locator=st.get("locator"), field=st.get("field"), role="entity",
-                 surface=surface, canonical=last.get("canonical"),
-                 layer=last.get("layer") or layer,
-                 path=last.get("path") or "none",
-                 verdict=_VERDICT.get(last.get("verdict"), "pending"),
-                 node_id=last.get("node_id"),
-                 candidates_n=last.get("candidates_n", 0),
-                 confidence=last.get("confidence", 0.0),
-                 llm=last.get("llm"), queue_kind=last.get("queue_kind"),
-                 narrow=last.get("narrow"), emb_top=last.get("emb_top"),
-                 nearest=last.get("nearest"), same_doc=last.get("same_doc"),
-                 target=b.canonical_of(last.get("node_id")),
-                 category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"))
+    b.ledger.add(**judged(last, locator=st.get("locator"), field=st.get("field"), surface=surface,
+                          layer=layer, target=b.canonical_of(last.get("node_id"))))
 
 
 def _scoped_category(category, layer, builder):

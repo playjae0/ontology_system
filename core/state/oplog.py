@@ -19,6 +19,10 @@
 
 옛 자리(③ `data/ops_log.json`)는 첫 실행에서 옮긴다(`adopt_legacy` — 공통 진입 `cli/_entry.run`이 부른다 ·
 두 벌 금지 — 둘 다 있으면 합치고 옛 파일을 지운다).
+
+**이름 없는 옛 기록은 지우기 전에 채운다**(B107 ① · `backfill` 한 함수) — 대상 id가 지금 그래프(툼스톤 포함)에
+살아 있는 마지막 순간을 놓치지 않는다: 옮길 때 · `ops replay`(계획 포함)의 시작 · 재구축 계획(fresh 앞).
+채운 기록은 `names_from: "backfill"` · 그래프에서도 못 찾은 id는 채우지 않는다(목록으로 — 재구축하면 돌아오지 않는다).
 """
 from __future__ import annotations
 
@@ -46,10 +50,11 @@ def read():
 
 
 def adopt_legacy():
-    """옛 자리 ③ `data/ops_log.json`을 ②등록으로 옮긴다 — 돌려주는 것은 옮긴 기록 수(없으면 0)."""
+    """옛 자리 ③ `data/ops_log.json`을 ②등록으로 옮기고 **이름을 채운다**(B107 ①) — 옛 자리가 없으면 None ·
+    있으면 `{moved, **backfill()}`."""
     old = paths.data(store.OPS_LOG)
     if not old.is_file():
-        return 0
+        return None
     olds = json.loads(old.read_text(encoding="utf-8") or "[]") or []
     cur = read()
     merged = olds + [x for x in cur if x not in olds]       # 옛 기록이 먼저다(그 뒤에 쌓였다)
@@ -58,7 +63,7 @@ def adopt_legacy():
     (old.parent / f".{old.name}.lock").unlink(missing_ok=True)
     _LOG.info("사람 판단 기록을 ②등록으로 옮겼다 — %d건 (%s → %s)", len(olds),
               paths.show(old), paths.show(store.path(store.OPS_LOG)))
-    return len(olds)
+    return {"moved": len(olds), **backfill()}
 
 
 def name(n):
@@ -90,6 +95,112 @@ def muted():
         yield
     finally:
         MUTED = prev
+
+
+# ---------------------------------------------------------------- 이름 채움 (B107 ①)
+#: 채운 기록의 출처 표시 — 사람이 연산할 때 적은 이름이 아니라 **나중에 그래프에서 찾은 이름**이다
+NAMES_FROM = "backfill"
+
+
+def _needs_names(rec):
+    return not rec.get("names") and rec.get("op") in _HANDS
+
+
+def backfill():
+    """이름 없는 기록(B106 전)에 이름을 채운다 — **지우기 전에** 부른다 · `{total, filled, backfilled, nameless}`.
+
+    대상 id를 **지금 그래프**(층 전부 · 툼스톤 포함 — merge된 쪽 · 폐기된 노드도 canonical을 갖는다)에서 찾되,
+    기록을 **뒤에서부터** 걸으며 기록이 남긴 이름 변화(개명·이관 `from`→`to` · 연쇄 · 병합의 최종 canonical)를
+    되돌려 **그 연산 때의 이름**을 채운다 — B106 기록이 연산 직전 이름을 적는 것과 같은 모양이고, 뒤에 개명된
+    노드의 앞 연산도 맞게 재생된다. 찾지 못한 id는 그대로 둔다(지어내지 않는다 · `nameless` 목록 — 연산 · id ·
+    행위자 · 시각). `filled`는 이번에 채운 수 · `backfilled`는 채움 표시가 있는 기록 전부."""
+    recs = read()
+    out = {"total": len(recs), "filled": 0, "backfilled": 0, "nameless": []}
+    if any(_needs_names(r) for r in recs):
+        from core.state.world import World
+        w = World()
+        cur = {n["id"]: name(n) for _l, n in w.nodes()}
+        for rec in reversed(recs):
+            if _needs_names(rec):
+                nm, missing = _fill(rec, cur, w, recs)
+                if nm:
+                    rec["names"], rec["names_from"] = nm, NAMES_FROM
+                    out["filled"] += 1
+                else:
+                    out["nameless"].append({"op": rec.get("op"), "ids": missing,
+                                            "actor": rec.get("actor"), "at": rec.get("at")})
+            _undo(rec, cur, w, recs)
+        out["nameless"].reverse()                                   # 기록 순서로
+        if out["filled"]:
+            store.write(store.OPS_LOG, recs)
+            _LOG.info("사람 판단 기록 이름 채움 — %d건 · 이름 없음 %d건", out["filled"], len(out["nameless"]))
+    out["backfilled"] = sum(1 for r in recs if r.get("names_from") == NAMES_FROM)
+    return out
+
+
+def _fill(rec, cur, w, recs):
+    """한 기록의 이름 — `(names, 못 찾은 id들)` · 하나라도 못 찾으면 names는 None(반쪽 이름은 채우지 않는다)."""
+    op, t, d = rec.get("op"), list(rec.get("targets") or []), rec.get("detail") or {}
+    want = t[:2] if op in ("I5:transfer", "I2:merge", "edge:delete") else t[:1]
+    if op == "I4:obsolete" and d.get("replaced_by"):
+        want = want + [d["replaced_by"]]
+    missing = [i for i in want if not cur.get(i)] or ([] if want else ["(대상 없음)"])
+    if missing:
+        return None, missing
+    at = [dict(cur[i]) for i in want]
+    if op in ("I1:rename", "I5:transfer"):
+        nm = {"node": dict(at[0], canonical=d.get("from") or at[0]["canonical"])}
+        if op == "I5:transfer":
+            nm["parent"] = dict(at[1], canonical=d.get("new_parent") or at[1]["canonical"])
+    elif op == "I2:merge":
+        pre = _pre_merge(rec, at[1]["canonical"], w, recs)
+        if pre is None:
+            return None, [t[1]]
+        nm = {"gone": at[0], "keep": dict(at[1], canonical=pre)}
+    elif op == "edge:delete":
+        nm = {"src": at[0], "dst": at[1]}
+    elif op == "I6:alias":
+        nm = {"node": dict(at[0], canonical=d.get("canonical") or at[0]["canonical"])}
+    else:                                                           # confirm · obsolete · queue:resolve
+        nm = {"node": at[0], **({"replaced_by": at[1]} if len(at) > 1 else {})}
+    return nm, []
+
+
+def _pre_merge(rec, final, w, recs):
+    """옛 병합 기록의 **남는 쪽 병합 전 이름** — 옛 기록은 병합 뒤 canonical만 남겼다.
+
+    사람이 canonical을 정했으면(`--canonical`) 남는 쪽 옛 이름은 provenance가 **정확히** `op:merge:<행위자>` 하나인
+    별칭으로 남는다(`ops.merge`) — 그런 별칭이 없으면 이름은 그대로였다. 같은 행위자가 같은 노드에 친 옛 병합이
+    여럿이고 그런 별칭이 있으면 어느 병합의 것인지 모른다 → None(채우지 않는다)."""
+    from core.state.ids import norm
+    kid, by = rec["targets"][1], f"op:merge:{rec.get('actor')}"
+    same = [r for r in recs if r.get("op") == "I2:merge" and r.get("actor") == rec.get("actor")
+            and (r.get("targets") or [None, None])[1:2] == [kid]]
+    known = {norm(r["names"]["keep"]["canonical"]) for r in same if r.get("names") and r is not rec}
+    cands = {a["surface"] for a in (w.get(kid) or {}).get("aliases") or []
+             if list(a.get("provenance") or []) == [by] and norm(a["surface"]) not in known | {norm(final)}}
+    if not cands:
+        return final
+    olds = [r for r in same if not r.get("names") or r is rec]
+    return cands.pop() if len(cands) == 1 and len(olds) == 1 else None
+
+
+def _undo(rec, cur, w, recs):
+    """뒤에서 걷는 상태를 이 기록 **앞**으로 — 이름을 바꾼 연산만 되돌린다(개명 · 이관 · 연쇄 · 병합)."""
+    op, t, d, nm = rec.get("op"), rec.get("targets") or [], rec.get("detail") or {}, rec.get("names") or {}
+    if op in ("I1:rename", "I5:transfer") and t:
+        frm, to = (nm.get("node") or {}).get("canonical") or d.get("from"), d.get("to")
+        if cur.get(t[0]) and frm:
+            cur[t[0]] = dict(cur[t[0]], canonical=frm)
+        if frm and to and frm != to:
+            for old in d.get("chained") or []:                      # 연쇄 — 자식 옛 이름 = 그때의 이름
+                new = to + old[len(frm):]
+                for i, v in cur.items():
+                    if v and v["canonical"] == new:
+                        cur[i] = dict(v, canonical=old)
+    elif op == "I2:merge" and len(t) > 1 and cur.get(t[1]):
+        pre = (nm.get("keep") or {}).get("canonical") or _pre_merge(rec, cur[t[1]]["canonical"], w, recs)
+        cur[t[1]] = dict(cur[t[1]], canonical=pre) if pre else None  # 병합 전 이름을 모르면 앞 기록도 채우지 않는다
 
 
 # ---------------------------------------------------------------- 재생
@@ -245,10 +356,12 @@ _HANDS = {"I1:rename": _rename, "I5:transfer": _transfer, "I2:merge": _merge, "I
 def replay(dry_run=False):
     """기록 순서대로 이름으로 되살린다 — `{종류: [{op, actor, at, reason, what}]}`(종류는 `KINDS`).
 
-    `dry_run`은 계획이다(쓰기 0 — 앞 연산이 바꿀 상태를 반영하지 못하니 「할 것」의 상한이다)."""
+    `dry_run`은 계획이다(그래프 쓰기 0 — 앞 연산이 바꿀 상태를 반영하지 못하니 「할 것」의 상한이다). 시작에서
+    **이름을 채운다**(B107 ① — 계획도 · 채움은 기록에 남는다 · 결과는 `backfill` 열쇠)."""
     from core.state import ops
     from core.state.world import World
     out = {k: [] for k in KINDS}
+    out["backfill"] = backfill()
     with muted():
         for rec in read():
             op, nm = rec.get("op"), rec.get("names")
@@ -256,7 +369,8 @@ def replay(dry_run=False):
             if op in SKIP:
                 kind, what = "skipped", SKIP[op]
             elif not nm:
-                kind, what = "no_names", "기록에 이름 없음(B106 전 기록)"
+                kind, what = "no_names", ("기록에 이름 없음(B106 전 기록 · 그래프에서도 대상을 못 찾았다) — "
+                                          + ", ".join(map(str, rec.get("targets") or [])))
             elif op not in _HANDS:
                 kind, what = "skipped", f"재생하지 않는 연산 {op}"
             else:

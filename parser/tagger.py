@@ -81,8 +81,9 @@ def _learned_hits(misses, idx, rec):
             out[r] = x["canonical"]
     return out
 
-def _learn_update(book, learn, memo, refs, idx, layer, doc_id):
-    """학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · 적중 횟수 · null은 새 공정 후보로만."""
+def _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver=None):
+    """학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · 적중 횟수 · null은 새 공정 후보로 ·
+    **null도 그때의 닫힌 목록 판과 함께 기억한다**(B107 ② `list_version` — 같은 판이면 다시 묻지 않는다)."""
     at = _now()
     for r in learn:
         x = book["채택"][r]
@@ -93,7 +94,8 @@ def _learn_update(book, learn, memo, refs, idx, layer, doc_id):
             node = idx[v]
             book["채택"][r] = {"canonical": node["canonical"], "id": node.get("id"),
                               "layer": layer, "doc_id": doc_id, "at": at, "hits": 0,
-                              "skeleton_version": _snap_version(layer), "출처": LEARN_SOURCE}
+                              "skeleton_version": _snap_version(layer), "list_version": ver,
+                              "출처": LEARN_SOURCE}
             book["목록밖"].pop(r, None)
         else:
             c = book["목록밖"].setdefault(r, {"rows": 0, "docs": [], "first_seen": at})
@@ -101,7 +103,24 @@ def _learn_update(book, learn, memo, refs, idx, layer, doc_id):
             if doc_id and doc_id not in c["docs"]:
                 c["docs"].append(doc_id)
             c["last_seen"] = at
+            c["list_version"] = ver
     _learn_write(book)
+
+
+def list_version(nodes):
+    """닫힌 목록의 **판** — 노드 canonical · 별칭 **내용**의 해시(B107 ② · 사용자 결정 2026-10-14).
+
+    사람이 적는 `skeleton_version` 문자열이 아니다 — 판을 안 올리고 `ALIASES`만 더해도 바뀌어야 새 별칭이 옛
+    null을 덮는다. id · 시각은 넣지 않는다(재구축이 다시 심어도 같은 목록이면 같은 판)."""
+    import hashlib
+    body = sorted([str(n.get("canonical") or ""), sorted(str(a) for a in n.get("aliases") or [])]
+                  for n in nodes or [])
+    return hashlib.sha256(json.dumps(body, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def _remembered(misses, book, ver):
+    """목록 밖 기억 — 같은 표기 · **같은 판**의 null 답(B107 ②) · 판이 없거나 다르면 기억이 아니다(다시 묻는다)."""
+    return [r for r in misses if ver and (book["목록밖"].get(r) or {}).get("list_version") == ver]
 
 MOCK_IMAGE_SUMMARY = "MOCK 요약: {image_ref}"      # 대체 갈래의 고정 문자열 (증분0 §5-3)
 
@@ -417,7 +436,9 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     온도 0이라 **답은 200번 같다.** 사람은 그 로그를 「무한」으로 읽고 껐다.
     미스 표기를 먼저 모아 표기마다 한 번 묻고 답(채택 노드 또는 null)을 전 행에
     배분한다 — null도 기억한다: 같은 표기를 다시 묻지 않는다. **결과는 같고 호출만
-    준다**(결정적 dedupe).
+    준다**(결정적 dedupe). **실행 사이에도 같다**(B107 ②): null 답은 학습 기록 「목록밖」에
+    그때의 닫힌 목록 판(`list_version` — 내용 해시)과 남고, 같은 판이면 다음 파싱도 묻지 않는다
+    (인입 · 재구축 · 등록 리허설이 이 함수 하나 · 사람이 다시 묻게 하려면 `ops learn-reject`).
 
     `cap`은 **묻는 표기 종수의 상한**이다(B69 ③). 넘는 표기는 묻지 않고 그대로
     둔다 — 목록 밖은 인입의 `orphan_anchor`로 가는 설계대로다. 배치(인입)는
@@ -461,13 +482,18 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     misses = [r for r in misses if r not in learn]
     learn_rows = sum(1 for r in refs if r in learn)
     miss_rows -= learn_rows
-    ask = misses if pick is not None else []
+    # **목록 밖 기억**(B107 ②) — 같은 표기 · 같은 닫힌 목록 판의 null 답은 다시 묻지 않는다(LLM 0 · 행은 목록 밖
+    # 그대로 → orphan_anchor). 판은 목록 **내용**이다(`list_version`) — 별칭 하나가 더해져도 다시 묻는다.
+    ver = list_version(nodes) if layer else None
+    kept = _remembered(misses, book, ver) if pick is not None else []
+    ask = [r for r in misses if r not in kept] if pick is not None else []
     if cap is not None:
         ask = ask[:max(0, int(cap))]
     plan = {"단계": "예고", "조각": len(pieces), "정확_일치": exact,
             "표기_종수": len(misses), "미스_행": miss_rows,
             "묻는_종수": len(ask), "상한": cap, "LLM": pick is not None,
             "학습_적중": len(learn), "학습_적중_행": learn_rows,
+            "기억_종수": len(kept), "기억_행": sum(1 for r in refs if r in kept),
             # 공유 별칭의 범위 안 해소(B104 ① 문서 좌표 · B105 ① 행의 상위) — (표기, 범위) 종수 · 행 · LLM 0
             "범위_안_해소": len({(r, sc[1]) for r, sc in zip(refs, scope_at) if sc}),
             "범위_안_해소_행": sum(1 for sc in scope_at if sc),
@@ -493,7 +519,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
             progress(n, len(ask), adopted)
 
     if layer and (learn or memo):
-        _learn_update(book, learn, memo, refs, idx, layer, doc_id)
+        _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver)
 
     out = _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
                  scope_at=scope_at)

@@ -49,13 +49,17 @@ def from_registry():
 
 
 def make_plan():
-    """계획 — `{docs, resumed}`. 문서 대장이 비었고 지난 계획이 있으면 그 계획에서 이어 간다."""
+    """계획 — `{docs, resumed, backfill}`. 문서 대장이 비었고 지난 계획이 있으면 그 계획에서 이어 간다.
+
+    **사람 판단 기록의 이름을 여기서 채운다**(B107 ① — fresh 앞 · 대상 id가 그래프에 살아 있는 마지막 순간 ·
+    비대화형 계획만이어도 채운다 — 채움은 기록에 남고 그래프는 건드리지 않는다)."""
+    from core.state import oplog
     docs, resumed = from_registry(), False
     if not docs and plan_path().exists():
         docs, resumed = json.loads(plan_path().read_text(encoding="utf-8")).get("docs") or [], True
     for d in docs:
         d["exists"] = bool(d.get("path")) and Path(d["path"]).is_file()
-    return {"docs": docs, "resumed": resumed}
+    return {"docs": docs, "resumed": resumed, "backfill": oplog.backfill()}
 
 
 def show_plan(plan):
@@ -65,9 +69,17 @@ def show_plan(plan):
     print(f"■ 재구축 계획 — 문서 {len(docs):,}(다시 넣을 것 {len(go):,} · 원본 없음 {len(docs) - len(go):,})"
           + (" · 지난 계획에서 이어 간다(문서 대장이 비었다)" if plan["resumed"] else ""))
     print("  지울 것 — ③진실 data/ · ④작업 work/ · ⑤파생 export/ (아래 남길 것 빼고)")
-    from core.state import oplog
     print("  남길 것 — " + " · ".join(f"{l} {paths.show(p)}" for l, p in I.kept())
-          + f" · ②등록 registry/(사람 판단 기록 {len(oplog.read()):,}건) · layers/ · ⓪원본 raw/ · golden/")
+          + " · ②등록 registry/(사람 판단 기록 — 아래 줄) · layers/ · ⓪원본 raw/ · golden/")
+    from cli.ops import backfill_lines
+    for ln in backfill_lines(plan["backfill"]):
+        print("  " + ln)
+    # 좌표 태깅의 null 답은 닫힌 목록 판과 함께 기억된다(B107 ②) — 판을 적기 전의 기록은 이번에 한 번 다시 묻는다
+    from core.state import coord_learn
+    _old = sum(1 for r in coord_learn.book()["목록밖"].values() if not r.get("list_version"))
+    if _old:
+        print(f"  좌표 학습 — 목록 밖 기억 판 없음 {_old:,}종(판을 적기 전의 null 답 — 이번 재구축이 한 번 다시 "
+              f"묻는다 · 태깅 ≤ {_old:,} · 그 뒤는 판과 함께 기억)")
     print("  다시 넣을 순서(처음 인입 순서):")
     for i, d in enumerate(go, 1):
         flags = [f for f, on in (("중복 허용", d["duplicate_ok"]), ("그림 뺌", d["images_skipped"])) if on]
