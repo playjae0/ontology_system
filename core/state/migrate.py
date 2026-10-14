@@ -34,11 +34,11 @@ _LOG = log.get(__name__)
 #: 옛 배치의 표식 — 등록부가 진실 옆에 있던 자리다.
 LEGACY_MARK = ("data", "doc_types.json")
 
-#: ③진실에 남는 파일 **8종**(허브 확정 2026-09-17 · B101 ② 좌표 학습 기록 추가 — 층 등록부 `registry.json`을 포함해
-#: `<층>/graph.json`까지 세면 9종이다). 층 폴더는 아래에서 따로 훑는다.
+#: ③진실에 남는 파일(허브 확정 2026-09-17 · B101 ② 좌표 학습 기록 · B108 ① 별칭 대장 추가 — 층 등록부
+#: `registry.json` 포함 · `<층>/graph.json`은 층 폴더라 아래에서 따로 훑는다).
 TRUTH_FILES = (store.DICTIONARY, store.CHUNKS, store.QUEUE,
                store.DOC_REGISTRY, store.SKELETON_LIST, store.COORD_LEARNED,
-               store.REGISTRY)            # 사람 판단 기록 `ops_log.json`은 ②등록으로 갔다(B106 ③ — 아래 등록 줄)
+               store.ALIAS_BOOK, store.REGISTRY)            # 사람 판단 기록 `ops_log.json`은 ②등록으로 갔다(B106 ③ — 아래 등록 줄)
 
 
 def _sha(p):

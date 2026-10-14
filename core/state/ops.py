@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from core.state import oplog, store
+from core.state import alias_book, oplog, store
 from core import matcher
 from core.state.bootstrap import load_config
 from core.build.build import Builder
@@ -257,6 +257,7 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
 
     # ② canonical 연쇄 — 개명과 같은 기구를 재사용한다.
     dictionary = Dictionary.open()
+    book = alias_book.AliasBook.open()      # 옛 이름도 별칭 — 쓰는 손 하나로 대장에 (B108 ①)
     prov = f"op:transfer:{actor}"
     chained = _scope_children(w, old, cfg) if scoped else []
 
@@ -264,9 +265,10 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
         prev = n["canonical"]
         if prev == name:
             return
+        before = alias_book.name(n)
         n["canonical"] = name
-        if not any(a["surface"] == prev for a in n["aliases"]):
-            n["aliases"].append({"surface": prev, "provenance": [prov]})
+        book.retarget(before, alias_book.name(n))           # 같은 노드 — 대장의 대상 이름도 같이 간다
+        alias_book.attach(book, n, {"surface": prev, "provenance": [prov]}, source="이관")
         dictionary.register(prev, n["id"], provenance=prov)   # 옛 이름으로도 찾힌다
         dictionary.register(name, n["id"], provenance=prov)
 
@@ -275,6 +277,7 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
         _rename_one(c, new_canonical + c["canonical"][len(old):])
     node["parent"] = parent["id"]
     dictionary.save()
+    book.save()
     w.save()
     log_op("I5:transfer", actor, [nid, parent["id"]], reason,
            {"from": old, "to": new_canonical, "new_parent": parent["canonical"],
@@ -306,12 +309,14 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
 
     children = _scope_children(w, old, cfg)
     dictionary = Dictionary.open()       # 사전 접근은 관문 경유로만 (문서 7 §7.1)
+    book = alias_book.AliasBook.open()   # 옛 이름도 별칭 — 쓰는 손 하나로 대장에 (B108 ①)
 
     def _rename_one(n, new_name):
         prev = n["canonical"]
+        before = alias_book.name(n)
         n["canonical"] = new_name
-        if not any(a["surface"] == prev for a in n["aliases"]):
-            n["aliases"].append({"surface": prev, "provenance": [f"op:rename:{actor}"]})
+        book.retarget(before, alias_book.name(n))           # 같은 노드 — 대장의 대상 이름도 같이 간다
+        alias_book.attach(book, n, {"surface": prev, "provenance": [f"op:rename:{actor}"]}, source="개명")
         prov = f"op:rename:{actor}"
         dictionary.register(prev, n["id"], provenance=prov)      # 옛 이름으로도 찾힌다
         dictionary.register(new_name, n["id"], provenance=prov)
@@ -325,6 +330,7 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
         if c.get("mirror_scope") == old:
             c["mirror_scope"] = new_canonical
     dictionary.save()
+    book.save()
     w.save()
     log_op("I1:rename", actor, [nid], reason,
            {"from": old, "to": new_canonical, "chained": pv["canonical_chain"]}, names)
@@ -484,18 +490,21 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
     seen = {al["surface"] for al in keep["aliases"]}
     # 흡수된 이름은 **사람이 친 merge**가 보증한다(B101 ④ — 별칭 출처 사람)
     _by = f"op:merge:{actor}"
+    # 별칭 대장 — 없어질 쪽을 가리키던 항목은 남는 쪽으로 · 옮긴 별칭은 쓰는 손 하나로(출처 병합 · B108 ①)
+    book = alias_book.AliasBook.open()
+    book.retarget(alias_book.name(gone), alias_book.name(keep), source="병합")
     for al in [dict(x, provenance=list(x.get("provenance") or []) + [_by]) for x in gone["aliases"]] + \
             [{"surface": gone["canonical"], "provenance": list(gone["provenance"]) + [_by]}]:
         if al["surface"] not in seen and al["surface"] != keep["canonical"]:
-            keep["aliases"].append(al)                       # 선택 안 된 표기도 남는다
+            alias_book.attach(book, keep, al, source="병합", bump=False)   # 선택 안 된 표기도 남는다
             seen.add(al["surface"])
     _merge_attrs(g, layer, keep, gone)
     _move_edges(w, gone["id"], keep["id"])                   # 엣지 이설 — 층 전부
     if canonical and canonical != keep["canonical"]:         # 사람 확정
-        if not any(a2["surface"] == keep["canonical"] for a2 in keep["aliases"]):
-            keep["aliases"].append({"surface": keep["canonical"],
-                                    "provenance": [f"op:merge:{actor}"]})
+        prev, before = keep["canonical"], alias_book.name(keep)
         keep["canonical"] = canonical
+        book.retarget(before, alias_book.name(keep))
+        alias_book.attach(book, keep, {"surface": prev, "provenance": [f"op:merge:{actor}"]}, source="병합")
     keep["status"] = keep["status"] if STATUS_RANK.get(keep["status"], 0) >= \
         STATUS_RANK.get(gone["status"], 0) else gone["status"]
 
@@ -514,6 +523,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         dictionary.register(al["surface"], keep["id"],
                             provenance=(al.get("provenance") or [f"op:merge:{actor}"])[0])
     dictionary.save()
+    book.save()
     w.save()
     log_op("I2:merge", actor, [gone["id"], keep["id"]], reason,
            {"survivor": keep["id"], "canonical": keep["canonical"]}, names)
@@ -580,16 +590,21 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
         return pv
 
     dictionary = Dictionary.open()
+    book = alias_book.AliasBook.open()      # 배분된 별칭은 쓰는 손 하나로 — 대장 항목도 그 타깃으로 (B108 ①)
     new_ids = []
     for t in plan["targets"]:
         new = g.add_node(t["canonical"], node["category"], node["status"],
                          attrs=dict(node.get("attrs") or {}),
                          provenance=list(t.get("provenance") or []),
-                         aliases=[{"surface": s, "provenance": [f"op:split:{actor}"]}
-                                  for s in (t.get("aliases") or [])],
+                         aliases=[],
                          polarity=node.get("polarity", "none"),
                          mirror_scope=node.get("mirror_scope"),
                          mirror_name=node.get("mirror_name"))
+        book.retarget(alias_book.name(node), alias_book.name(g.get(new)),
+                      surfaces=set(t.get("aliases") or []), source="분리")
+        for s in (t.get("aliases") or []):
+            alias_book.attach(book, g.get(new), {"surface": s, "provenance": [f"op:split:{actor}"]},
+                              source="분리", bump=False)
         new_ids.append(new)
         for i in (t.get("edges") or []):
             if i not in touch:
@@ -615,6 +630,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     # 한 표기가 두 노드를 동시에 가리킨다(사전 오염 — 조용한 유실 금지의 반대편).
     dictionary.redirect(nid, None)      # new_id=None → 걷어만 낸다
     dictionary.save()
+    book.save()
     for _g in w.graphs.values():
         _g._reindex_tombstones()
     w.save()
@@ -658,4 +674,4 @@ def obsolete(layer, nid, actor, replaced_by=None, reason="", dry_run=False):
 # `core/state/ops_mark.py`로 갔다(B106 ④ — §7 파일 상한 · 이름 기록) — 이름은 여기서도 그대로 보인다
 # (`ops.confirm`·`ops.alias`·`ops.delete_edge` — 호출 계약 유지). 모듈 끝에서 읽는다(그쪽이 이 모듈의 손을 쓴다).
 from core.state.ops_mark import (  # noqa: E402,F401
-    _by_canonical, alias, confirm, confirm_doc, delete_edge)
+    _by_canonical, alias, alias_reject, confirm, confirm_doc, delete_edge)

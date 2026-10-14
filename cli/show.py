@@ -14,6 +14,7 @@
     python -m cli.show knobs                  사내 손잡이 — 값 · 출처 · 분포를 보는 명령
     python -m cli.show dist   <무엇>           손잡이 값을 정할 분포 (chunks·headings·forms·sheets·evidence)
     python -m cli.show learned                좌표 학습 기록 · 새 공정 후보 (B101)
+    python -m cli.show aliases [층] [--source …] [--node …]   별칭 대장 — seed 것과 대장 것 · 출처 · 문서 · 횟수 (B108)
 
 **진실은 `data/`의 JSON이다.** Cypher·Mermaid·임베딩은 전부 거기서 파생되는
 재생성 가능물이고(P5), 이 파일은 그 JSON을 **사람이 읽는 모양으로** 옮길 뿐이다.
@@ -636,6 +637,11 @@ def _learn_cmd(args):
     return show_learn.cmd_learned(args)
 
 
+def _aliases_cmd(args):
+    from cli import show_learn                      # 별칭 대장 화면도 동의어 화면 파일에 산다 (B108 ①)
+    return show_learn.cmd_aliases(args)
+
+
 def main(argv):
     from cli import show_knobs as _knobs            # 손잡이 화면은 제 파일에 산다 (B91 ⑤)
     from cli._gate import require_knobs
@@ -647,7 +653,7 @@ def main(argv):
              "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
              "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25,
              "report": cmd_report, "knobs": _knobs.cmd_knobs, "dist": _knobs.cmd_dist,
-             "learned": _learn_cmd}
+             "learned": _learn_cmd, "aliases": _aliases_cmd}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)

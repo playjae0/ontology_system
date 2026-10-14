@@ -42,8 +42,8 @@ except ImportError:                     # pragma: no cover - 폴백 경로
 DATA = paths.data()             # 자리는 core/paths.py가 안다 (B78 1a)
 
 # **③진실과 ④장부를 자리로 가른다**(B78 1b · 허브 확정 2026-09-17).
-# `data/`에 남는 것은 사람 판단이 실렸거나 재생성이 곧 재판정인 8종이고
-# (사전·청크·큐·문서 대장·골격 스냅샷·층 등록부·`<층>/graph.json` — 허브 확정),
+# `data/`에 남는 것은 사람 판단이 실렸거나 재생성이 곧 재판정인 것이고
+# (사전·청크·큐·문서 대장·골격 스냅샷·층 등록부·`<층>/graph.json` — 허브 확정 · 좌표 학습 B101 · 별칭 대장 B108),
 # 로그·체크포인트·장부는 `work/`다 — 그래서 백업 순위와 `init --fresh`의 범위가
 # 파일 이름이 아니라 **폴더**로 갈린다.
 WORK_FILES = ("gate_rejects.json", "build_metrics.json", "golden_log.json",
@@ -60,6 +60,7 @@ OPS_LOG = "ops_log.json"              # I축 연산 로그 (D-8)
 GATE_REJECTS = "gate_rejects.json"    # 게이트 거부 로그 — 큐가 아니다 (D-7)
 SKELETON_LIST = "skeleton_closed_list.json"   # 골격 닫힌 목록 스냅샷 (D-11 확정)
 COORD_LEARNED = "coord_learned.json"         # 좌표 학습 기록 — LLM이 채택한 표기 · 목록 밖 답 (B101 ②)
+ALIAS_BOOK = "alias_book.json"               # 별칭 대장 — seed 밖 별칭을 이름으로 (B108 ① · core/state/alias_book.py)
 DEFECTS = "defects.log"               # 결함 로그 (n1 id 충돌 등)
 LINK_MISS = "link_miss.log"           # 질의 링킹 미스 — **계기판 5의 재료** (문서 5 §5.5)
 # **두 계기판 로그는 별도 파일로 둔다**(문서 7 §7.1·§7.8) — 한 파일에 섞으면

@@ -40,9 +40,9 @@ def candidates():
     for x in store.read(store.QUEUE, []):
         if x.get("kind") == "orphan_anchor" and not x.get("resolution"):
             pl = x.get("payload") or {}
-            s = pl.get("surface")
-            if s:
-                q[s] = q.get(s, 0) + len(pl.get("rows") or [1])
+            s, n = pl.get("surface"), pl.get("rows")
+            if s:                                   # 행 수는 수다(`store.enqueue_rows`) — 옛 모양(목록)도 센다
+                q[s] = q.get(s, 0) + (n if isinstance(n, int) else len(n or [1]))
     out = [(s, r, q.get(s, 0)) for s, r in book()["목록밖"].items()]
     return sorted(out, key=lambda t: (-int(t[1].get("rows") or 0), t[0]))
 

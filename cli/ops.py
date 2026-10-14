@@ -7,6 +7,7 @@
     python cli/ops.py obsolete <층> <id> --actor … [--replaced-by <id>]
     python cli/ops.py delete-edge <층> <src> <rel> <dst> --actor …
     python cli/ops.py alias  <층> <node_id|canonical> <표기> --actor <사람>
+    python cli/ops.py alias-reject <층> <node_id|canonical> <표기> --actor <사람> [--yes]   별칭 거두기 (B108 ①)
     python cli/ops.py coord-ack|coord-unack all "<상위>" "<하위>" [--polarity] --actor <사람> [--reason <메모>]
     python cli/ops.py confirm all --doc <doc_id> --actor <사람> [--yes]     문서 단위 일괄 확인 (B106 ④)
     python cli/ops.py replay  all --actor <사람> [--dry-run]               사람 판단 재생 — 이름으로 (B106 ③)
@@ -133,6 +134,33 @@ def _replay(a):
     return 0
 
 
+def _alias_reject(a):
+    """`ops alias-reject <층> <대상> <표기>` — 별칭 거두기(B108 ①). 계획 먼저 · 비대화형은 계획만(실행은 `--yes`)."""
+    from cli._gate import approved
+    if len(a.args) < 2:
+        print("■ 거부 — 대상과 표기를 달라: python run.py ops alias-reject <층> <node_id|canonical> <표기> --actor <이름>")
+        return 2
+    target, surface = a.args[0], " ".join(a.args[1:]).strip()
+    pv = ops.alias_reject(a.layer, target, surface, a.actor, a.reason, dry_run=True)
+    r = pv["entry"]
+    print(f"■ 별칭 거두기 계획 — '{pv['surface']}' ↛ {pv['canonical']} ({pv['category']} · {pv['layer']}"
+          + (" · 골격" if pv["skeleton"] else "") + ")")
+    print(f"    노드 별칭 {'있음 → 뺀다' if pv['on_node'] else '없음'} · 사전 키 {len(pv['dict_keys']):,}"
+          + (f"({' · '.join(pv['dict_keys'])}) → 걷는다" if pv["dict_keys"] else "")
+          + " · 대장 " + (f"{r['source']} · {r['count']:,}회 · {r['status']}" if r else "없음") + " → 거부")
+    if pv["already"]:
+        print("    이미 거둔 별칭이다 — 할 것 없음")
+        return 0
+    if not approved(a.yes, f'python run.py ops alias-reject {a.layer} {target} "{surface}" --actor {a.actor} --yes'):
+        return 0
+    ops.alias_reject(a.layer, target, surface, a.actor, a.reason)
+    print(f"[거둠] '{surface}' ↛ {pv['canonical']} — 노드 · 사전에서 뺐다 · 별칭 대장 「거부」"
+          f"(다시 붙이지 않는다 · 재구축 뒤 ops replay가 다시 거둔다 · by {a.actor})")
+    if pv["skeleton"]:
+        print("  ▶ 다음 줄 — python run.py bootstrap   (골격 닫힌 목록에서 뺀다 — 판이 바뀐다)")
+    return 0
+
+
 def _confirm_doc(a):
     """`ops confirm all --doc <doc_id>` — 그 문서 실행이 만든 auto 노드를 한 번에 확정(B106 ④)."""
     from cli._gate import approved
@@ -155,7 +183,7 @@ def _confirm_doc(a):
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
-                                  "transfer", "delete-edge", "confirm", "alias", "tidy",
+                                  "transfer", "delete-edge", "confirm", "alias", "alias-reject", "tidy",
                                   "learn-promote", "learn-reject", "review",
                                   "coord-ack", "coord-unack", "replay"])
     p.add_argument("layer")
@@ -174,9 +202,9 @@ def main(argv=None):
     a = p.parse_args(argv)
     if a.op == "replay":
         return _replay(a)
-    if a.op == "confirm" and a.doc:
+    if (a.op == "confirm" and a.doc) or a.op == "alias-reject":
         try:
-            return _confirm_doc(a)
+            return _confirm_doc(a) if a.op == "confirm" else _alias_reject(a)
         except ops.OpRefused as e:
             print(f"■ 거부 — {e}")
             return 2
@@ -213,7 +241,8 @@ def main(argv=None):
             nid, surface = a.args
             pv = ops.alias(a.layer, nid, surface, a.actor, a.reason)
             print(f"[등재] '{pv['surface']}' → {pv['canonical']} ({pv['target'][:6]}) "
-                  f"· 조회 키 '{pv['key']}' · by {a.actor}")
+                  f"· 조회 키 '{pv['key']}' · by {a.actor}" + (" · 거둔 별칭을 다시 이었다(거부 풂)"
+                                                               if pv.get("revived") else ""))
         elif a.op == "merge":
             nid, into = a.args
             pv = ops.merge(a.layer, nid, into, a.actor, a.canonical, a.survivor,

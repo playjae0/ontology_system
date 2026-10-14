@@ -148,6 +148,20 @@ class Dictionary:
         """이 노드를 가리키는 표기를 전부 걷는다."""
         return self.redirect(node_id, None)
 
+    def unregister(self, surface, node_id):
+        """표기 하나에서 노드 하나만 걷는다(B108 ① 별칭 거두기) — 걷었으면 True.
+
+        같은 표기가 가리키는 다른 노드는 그대로 둔다(층 간 충돌은 사전이 허용한다)."""
+        key = norm(surface)
+        ids = self._d.get(key) or []
+        if node_id not in ids:
+            return False
+        ids.remove(node_id)
+        if not ids:
+            del self._d[key]
+        self._fold = None
+        return True
+
 
 # ---------------------------------------------------------------- 편의
 def lookup(surface):

@@ -29,7 +29,7 @@ import json
 from pathlib import Path
 
 from core import paths
-from core.state import store
+from core.state import alias_book, store
 from core.dictionary import Dictionary
 from core.graph import GraphStore
 from core.state.ids import norm
@@ -38,6 +38,8 @@ from core.state.skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
                        SEED_STATUS, SeedError, _pad, _register_aliases, plant)
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
+#: 층별 마지막 별칭 대장 싣기 — `{층: {loaded, already, missing, rejected}}`(B108 ① · 화면 · 시험)
+ALIAS_LOAD = {}
 # **층 자산의 자리는 상수가 아니라 질문이다**(B79 ①) — 상태 루트 아래이고
 # `paths.reset()`을 따라 움직여야 한다. `paths.layers()`가 유일한 자리 소유자다.
 
@@ -190,7 +192,7 @@ def _stale_skeleton(g, category, planted):
 
 
 # ---------------------------------------------------------------- 진입점
-def write_closed_list(layer, g, cfg, seed=None):
+def write_closed_list(layer, g, cfg, seed=None, book=None):
     """골격 닫힌 목록 스냅샷 — **파서·에이전트의 공유 자산**이다 (D-11 확정).
 
     파서는 이 레포의 그래프를 읽지 않는다(별도 프로그램 · 결합은 JSON뿐 — D-9).
@@ -204,12 +206,16 @@ def write_closed_list(layer, g, cfg, seed=None):
     어느 문법으로 읽어야 하나"다.
 
     **파생물이다**(P5) — 골격을 재빌드하면 loader가 다시 만든다. 손으로 고치지 않는다.
+
+    **별칭 = seed + 별칭 대장**(B108 ① · `alias_book.snapshot_aliases`) — 그래프에 붙은 다른 별칭은 싣지 않는다:
+    그래야 스냅샷(과 그 판 `tagger.list_version`)이 bootstrap을 인입 앞에 돌렸는지 뒤에 돌렸는지와 무관하다.
     """
     # 구조 부모를 함께 싣는다 — 태거가 `process_group`(tier:main 조상 — A11-7)을
     # 파생하려면 부모 링크가 필요하고, 파서는 그래프를 읽지 않는다(D-9).
     child_rel = ((cfg.get("skeleton") or {}).get("relations") or {}).get("child")
     parent_of = {e["src"]: e["dst"] for e in g.edges
                  if e["rel"] == child_rel and e.get("status") == "seed"}
+    book = book or alias_book.AliasBook.open()
     entries = []
     for n in g.nodes.values():
         if n.get("status") != "seed":
@@ -220,7 +226,7 @@ def write_closed_list(layer, g, cfg, seed=None):
             "tier": n.get("tier"),
             "polarity": n.get("polarity"),
             "parent": up["canonical"] if up else None,
-            "aliases": sorted(a["surface"] for a in n["aliases"]),
+            "aliases": alias_book.snapshot_aliases(book, n),
         })
     entries.sort(key=lambda e: e["canonical"])
     snap = store.read(store.SKELETON_LIST, {})
@@ -278,9 +284,14 @@ def bootstrap(layer, echo=True):
                f"— 깨끗한 재빌드가 필요하다 {stale}")
         store.append_defect(msg)
 
+    # **별칭 대장의 골격 대상 별칭을 먼저 싣는다**(B108 ①) — 심은 뒤 · 스냅샷 전에. 스냅샷 = seed + 대장
+    book = alias_book.AliasBook.open()
+    ALIAS_LOAD[layer] = loaded = alias_book.load_skeleton(book, layer, g, dictionary)
+
     metrics = g.build_end()
     dictionary.save()
-    write_closed_list(layer, g, cfg, seed)
+    book.save(force=True)                   # 비었어도 파일을 남긴다 — 처음 채움(공통 진입)이 끝났다는 표지
+    write_closed_list(layer, g, cfg, seed, book)
 
     reg = store.read(store.REGISTRY, {})
     reg[layer] = {
@@ -307,4 +318,11 @@ def bootstrap(layer, echo=True):
                       f"{parsed.ambiguous})")
         if stale:
             print(f"  ⚠ 옛 골격 노드 {len(stale)}건 잔존: {stale}")
+    if echo and (loaded["loaded"] or loaded["already"] or loaded["missing"] or loaded["rejected"]):
+        print(f"[bootstrap] {layer}: 별칭 대장 — 골격 대상 실음 {loaded['loaded']:,} · 이미 있음 {loaded['already']:,}"
+              f" · 대상 없음 {len(loaded['missing']):,}" + (f" · 거부 {loaded['rejected']:,}" if loaded["rejected"] else ""))
+        for r in loaded["missing"]:
+            t = r["target"]
+            print(f"  대상 없음 — '{r['surface']}' → {t['canonical']} ({t['category']}) · {r['source']}"
+                  " · 골격에 그 이름이 없다(대장은 남는다 — 이름을 되살리면 다음 bootstrap이 싣는다)")
     return g, metrics, ids, flow_lines

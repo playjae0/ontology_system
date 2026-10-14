@@ -12,12 +12,13 @@
 **대체로 같은 것은 판정의 바닥이 될 수 없다.**
 
     python run.py init                  빈 상태를 만든다 (있으면 그대로 둔다)
-    python run.py init --fresh          지우고 다시 만든다 — **비용이 든 산출 넷은 남긴다**(B106 ①)
+    python run.py init --fresh          지우고 다시 만든다 — **비용이 든 산출 · 쌓인 별칭 다섯은 남긴다**(B106 ① · B108 ①)
     python run.py init --fresh --all    전부 지운다 — **클린**(회귀 바닥 · doctor · 시험)
 
 **fresh 기본은 재구축의 바닥이다**(B106 ① · 사용자 결정 2026-10-08): 산문 추출(`work/extract/`) ·
 구조 지도(`work/struct_maps/`) · 판정 대장(`work/ingest_log/` — 판정 재생의 재료) · 좌표 학습
-(`data/coord_learned.json`)을 남기고 나머지 ③④⑤를 지운다 — 다시 넣을 때 LLM을 처음부터 부르지 않게.
+(`data/coord_learned.json`) · 별칭 대장(`data/alias_book.json` — seed 밖 별칭의 이름 · B108 ①)을 남기고 나머지
+③④⑤를 지운다 — 다시 넣을 때 LLM을 처음부터 부르지 않고, 쌓인 별칭이 처음부터 쓰이게.
 남긴 것의 재사용 판정은 각자의 것 그대로다(추출 = 문서 해시·어댑터·지시문·config 판 · 해시 없는 지도는
 재사용 안 함 · 좌표 학습은 대상이 골격에 있을 때만). **클린은 `--all`**이고 정의는 B78 그대로다.
 """
@@ -72,9 +73,10 @@ EMPTY = {
 
 
 def kept():
-    """**fresh 기본이 남기는 것** 넷(B106 ①) — `[(표기, 경로)]`. 자리는 소유자에게 묻는다(경로 조립 0)."""
+    """**fresh 기본이 남기는 것** 다섯(B106 ① · 별칭 대장 B108 ①) — `[(표기, 경로)]`. 자리는 소유자에게 묻는다(경로 조립 0)."""
     return [("산문 추출", paths.extract()), ("구조 지도", paths.work("struct_maps")),
-            ("판정 대장", store.path("ingest_log")), ("좌표 학습", store.path(store.COORD_LEARNED))]
+            ("판정 대장", store.path("ingest_log")), ("좌표 학습", store.path(store.COORD_LEARNED)),
+            ("별칭 대장", store.path(store.ALIAS_BOOK))]
 
 
 def _size(p):
@@ -90,7 +92,7 @@ def _size(p):
 
 
 def fresh(all_=False, keep=(), report=None):
-    """지운다 — **기본은 비용이 든 산출 넷(`kept()`)과 `keep`을 남기고**, `all_`이면 `data/`·`work/`·`export/`를
+    """지운다 — **기본은 보존 다섯(`kept()`)과 `keep`을 남기고**, `all_`이면 `data/`·`work/`·`export/`를
     폴더째(클린 — 회귀 바닥).
 
     등록(`registry/`)과 설정은 어느 쪽이든 남는다: 사람 승인 1회의 산출이라 재생성되지 않는다
@@ -195,7 +197,7 @@ def ensure():
 
 
 def init(fresh_=False, all_=False, keep=(), report=None):
-    """`fresh_` — 지우고 다시 만든다(기본은 보존 넷을 남긴다 · `all_`이면 클린 · `keep`은 더 남길 경로 —
+    """`fresh_` — 지우고 다시 만든다(기본은 보존 다섯을 남긴다 · `all_`이면 클린 · `keep`은 더 남길 경로 —
     재구축 계획 파일). 돌려주는 것은 새로 만든 빈 상태 목록이다."""
     if fresh_:
         fresh(all_=all_, keep=keep, report=report)

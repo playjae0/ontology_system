@@ -320,6 +320,20 @@ def _alias(w, nm, d, a, dry):
     return "done", f"'{surface}' → '{node['canonical']}'"
 
 
+def _alias_reject(w, nm, d, a, dry):
+    """별칭 거두기(B108 ①) — 재인입이 다시 붙였어도 다시 거둔다 · 이미 거부 상태면 건너뛴다(멱등)."""
+    from core.state import ops
+    node, surface = nm["node"], d.get("surface")
+    cur = _one(w, node)
+    if cur is None:
+        return "missing", f"'{node['canonical']}' 없음"
+    if ops.alias_reject(node["layer"], cur, surface, a["actor"], a["reason"], dry_run=True)["already"]:
+        return "already", f"'{surface}'는 이미 거둔 별칭"
+    if not dry:
+        ops.alias_reject(node["layer"], cur, surface, a["actor"], a["reason"])
+    return "done", f"'{surface}' ↛ '{node['canonical']}' 거둠"
+
+
 def _edge(w, nm, d, a, dry):
     from core.graph import STATUS_DELETED
     from core.state import ops
@@ -350,24 +364,42 @@ def _queue(w, nm, d, a, dry):
 
 
 _HANDS = {"I1:rename": _rename, "I5:transfer": _transfer, "I2:merge": _merge, "I4:obsolete": _obsolete,
-          "I5:confirm": _confirm, "I6:alias": _alias, "edge:delete": _edge, "queue:resolve": _queue}
+          "I5:confirm": _confirm, "I6:alias": _alias, "alias:reject": _alias_reject, "edge:delete": _edge,
+          "queue:resolve": _queue}
+
+
+#: 같은 표기 · 같은 대상의 별칭 판단(잇기 · 거두기) — **마지막 것만** 재생한다(B108 ① — 살렸다 다시 거두는 왕복 0)
+ALIAS_OPS = ("I6:alias", "alias:reject")
+
+
+def _alias_key(rec):
+    from core.state.ids import norm
+    node = (rec.get("names") or {}).get("node") or {}
+    return (node.get("layer"), node.get("category"), norm(node.get("canonical") or ""),
+            (rec.get("detail") or {}).get("surface"))
 
 
 def replay(dry_run=False):
     """기록 순서대로 이름으로 되살린다 — `{종류: [{op, actor, at, reason, what}]}`(종류는 `KINDS`).
 
     `dry_run`은 계획이다(그래프 쓰기 0 — 앞 연산이 바꿀 상태를 반영하지 못하니 「할 것」의 상한이다). 시작에서
-    **이름을 채운다**(B107 ① — 계획도 · 채움은 기록에 남는다 · 결과는 `backfill` 열쇠)."""
+    **이름을 채운다**(B107 ① — 계획도 · 채움은 기록에 남는다 · 결과는 `backfill` 열쇠). 같은 표기 · 같은 대상의
+    별칭 판단은 마지막 것만 한다 — 앞의 것은 「이미 그 상태」(뒤 판단이 덮었다)."""
     from core.state import ops
     from core.state.world import World
     out = {k: [] for k in KINDS}
     out["backfill"] = backfill()
+    recs = read()
+    last = {_alias_key(r): i for i, r in enumerate(recs) if r.get("op") in ALIAS_OPS and r.get("names")}
     with muted():
-        for rec in read():
+        for i, rec in enumerate(recs):
             op, nm = rec.get("op"), rec.get("names")
             a = {"actor": rec.get("actor"), "reason": rec.get("reason") or ""}
             if op in SKIP:
                 kind, what = "skipped", SKIP[op]
+            elif op in ALIAS_OPS and nm and last.get(_alias_key(rec)) != i:
+                kind, what = "already", (f"'{(rec.get('detail') or {}).get('surface')}' — 뒤의 사람 판단이 덮었다"
+                                         "(같은 표기 · 같은 대상)")
             elif not nm:
                 kind, what = "no_names", ("기록에 이름 없음(B106 전 기록 · 그래프에서도 대상을 못 찾았다) — "
                                           + ", ".join(map(str, rec.get("targets") or [])))
