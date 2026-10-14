@@ -245,55 +245,81 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     layer = layer or schema["layer"]
     cfg = load_config(layer)
 
-    res = ingest(env, allow_duplicate=allow_duplicate,   # ①doc_hash ①′회수 ②id ③필드
-                 routing=routing)
-    if res.status == "held":
-        return res, None, False
-
-    graph = open_graph(layer)
-    graph.build_begin()
-    # **되돌릴 자리를 먼저 잡는다**(B75 ③) — 그래프는 말미에 한 번 저장되지만
-    # 큐·청크는 도중에 쓰인다. 사람이 판정 중간에 멈추면 그 둘도 되돌려야
-    # 「그래프 쓰기 0」이 참이 된다.
-    # 같은 문서 예외의 표지 · 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ①④)
-    from core import matcher as _mt
-    from core.build import build as _bld
-    _mt.SAME_DOC.clear()
-    del _bld.ADDED[:]
-    # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
-    from core.build import replay as _rp
-    _rp.begin(doc_id)
-    _q0 = store.read(store.QUEUE, [])
-    _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
-    from core.dictionary import Dictionary as _D
-    from core.build import result as _res
-    from router import discover as _disc
-    _RUN.update(env=env, coord_learn=result_mod.coord_learn(env), q0=_q0, d0={k: list(v) for k, v in _D.open().entries().items()},
-                layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
-                rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []))
-    loop.LOWRES["n"] = 0
-    from core import matcher as _mt
-    _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
-    _n0 = len(graph.nodes)
-    _e0 = len(graph.edges)
-    _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
-
+    # **문서 하나가 되돌림의 단위다**(B109 ② — 실측: 인입 검사의 쓰기(청크 · 문서 대장 · 재인입의 회수 저장)가
+    # 경계 밖이었고, 저장 뒤 끝 요약에서 멈추면 큐 · 청크만 옛 판으로 돌았다). 시작 전 판을 잡고, 저장이
+    # 끝나면 표지를 세운다 — 그 앞의 멈춤은 시작 전으로 · 그 뒤는 끝난 문서다.
+    t0 = _start(doc_id)
+    _RUN["committed"] = False
     try:
-        _, metrics, extracted = _build_document(
-            env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
-        return res, metrics, extracted
+        res = ingest(env, allow_duplicate=allow_duplicate,   # ①doc_hash ①′회수 ②id ③필드
+                     routing=routing)
+        if res.status == "held":
+            return res, None, False
+        graph = open_graph(layer)
+        graph.build_begin()
+        # 같은 문서 예외의 표지 · 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ①④)
+        from core import matcher as _mt
+        from core.build import build as _bld
+        _mt.SAME_DOC.clear()
+        del _bld.ADDED[:]
+        # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
+        from core.build import replay as _rp
+        _rp.begin(doc_id)
+        # 인입 검사 뒤의 판 — 사람·관문의 멈춤(`Stopped`)이 돌아갈 자리 · 화면의 「이번 실행」 큐 대조(B75 ③)
+        _q0 = store.read(store.QUEUE, [])
+        _c0 = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+        from core.dictionary import Dictionary as _D
+        from core.build import result as _res
+        from router import discover as _disc
+        _RUN.update(env=env, coord_learn=result_mod.coord_learn(env), q0=_q0,
+                    d0={k: list(v) for k, v in _D.open().entries().items()},
+                    layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
+                    rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []))
+        loop.LOWRES["n"] = 0
+        _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
+        _n0 = len(graph.nodes)
+        _e0 = len(graph.edges)
+        _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
+        try:
+            _, metrics, extracted = _build_document(
+                env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
+            return res, metrics, extracted
+        except Stopped as stop:
+            # **사람·관문이 세운 멈춤**(판정 보류 · `--step`) — 구축분만 되돌리고 인입 검사의 산출은 남긴다
+            # (B75 ③ 그대로). 그래프·사전은 저장 전이라 디스크가 이미 옛 판이다(저장은 말미 한 자리).
+            store.write(store.QUEUE, _q0)
+            store.write(store.CHUNKS, _c0)
+            _LOG.info("되돌림 — %s: 구축분을 되돌렸다(%s — 인입 검사의 산출은 남는다)", doc_id, type(stop).__name__)
+            res.status, res.reason = "held", str(stop)
+            res.step_stop = isinstance(stop, StepStop)
+            return res, None, False
     except BaseException as stop:
-        # **어떤 이유로 멈춰도 되돌린다**(B99 ② — 일반 예외 · Ctrl-C 포함 · 표·산문·렌즈가 이 경계
-        # 하나를 지난다). 그래프·사전은 저장 전이라 **디스크가 이미 옛 판**이고(저장은 말미 한 자리 —
-        # `_finish_build`), 큐·청크는 스냅샷으로 돌린다. 메모리의 그래프는 버린다(다음 호출이
-        # 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다). 추출 체크포인트·부분 파일은 남는다.
-        store.write(store.QUEUE, _q0)
-        store.write(store.CHUNKS, _c0)
-        if not isinstance(stop, Stopped):
-            raise                                   # 실패 줄은 호출부가 낸다(B98 ②)
-        res.status, res.reason = "held", str(stop)
-        res.step_stop = isinstance(stop, StepStop)
-        return res, None, False
+        # **어떤 이유로 멈춰도**(B99 ② — 일반 예외 · Ctrl-C · 화면 닫힘 B109 ② · 표·산문·렌즈가 이 경계 하나를
+        # 지난다) 저장 전이면 시작 전 판으로 · 저장 뒤면 끝난 문서다. 메모리의 그래프는 버린다(다음 호출이
+        # 디스크에서 새로 연다 — `open_graph`는 캐시하지 않는다). 추출 체크포인트·부분 파일은 남는다(④).
+        if _RUN.get("committed"):
+            _LOG.info("저장 뒤 멈춤 — %s: 이 문서는 끝까지 썼다(%s · 되돌리지 않는다)", doc_id, type(stop).__name__)
+        else:
+            _undo(t0)
+            _LOG.info("되돌림 — %s: 이 문서의 쓰기를 시작 전으로 되돌렸다(%s)", doc_id, type(stop).__name__)
+        raise                                       # 실패 줄은 호출부가 낸다(B98 ②)
+
+
+def _start(doc_id):
+    """문서 시작 전 판 — 되돌림이 돌아갈 자리(B109 ②). 재인입이면 회수(`withdraw`)가 층 그래프를 저장하므로 그것도."""
+    from router import discover as _disc
+    reg = store.read(store.DOC_REGISTRY, {})
+    return {"queue": store.read(store.QUEUE, []), "chunks": store.read(store.CHUNKS, {"chunks": {}, "describes": []}),
+            "registry": reg, "graphs": [open_graph(lay) for lay in _disc()] if doc_id in reg else []}
+
+
+def _undo(t0):
+    """시작 전 판으로 — 층 그래프(재인입의 회수분) → 문서 대장 → 큐 → 청크. 사전은 저장 전이라 손대지 않는다."""
+    for g in t0["graphs"]:
+        g.save()
+    store.write(store.DOC_REGISTRY, t0["registry"])
+    store.write(store.QUEUE, t0["queue"])
+    store.write(store.CHUNKS, t0["chunks"])
 
 
 def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
@@ -371,6 +397,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
             other.save()
     metrics = graph.build_end()
     builder.flush()                          # 사전은 그래프 **뒤**에 (B99 ①)
+    _RUN["committed"] = True                 # 저장이 끝났다 — 이 뒤의 멈춤은 끝난 문서다(B109 ②)
     _record_build(doc_id, metrics)
     res = _result(builder, doc_id)
     if notice is not None:

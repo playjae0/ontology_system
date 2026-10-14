@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import builtins
 import io
+import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -32,15 +34,26 @@ class _Tee(io.TextIOBase):
     """화면 스트림 + 로그 — 줄이 끝날 때마다 색을 벗겨 로거로 보낸다(화면은 그대로)."""
 
     def __init__(self, inner):
-        self.inner, self.buf = inner, ""
+        self.inner, self.buf, self.gone = inner, "", False
 
     def write(self, s):
-        self.inner.write(s)
+        # 로그가 먼저다 — 화면이 닫혀 못 나간 줄도 기록에는 남는다(B109 ②)
         self.buf += s
         while "\n" in self.buf:
             line, self.buf = self.buf.split("\n", 1)
             self._emit(line)
+        self._screen(self.inner.write, s)
         return len(s)
+
+    def _screen(self, fn, *a):
+        """화면 쓰기 — 닫혔으면(`BrokenPipeError`) 표시를 남기고 `log.ScreenClosed`로 올린다."""
+        if self.gone:
+            raise log.ScreenClosed("화면 출력이 닫혔다")
+        try:
+            fn(*a)
+        except BrokenPipeError:
+            self.gone = True
+            raise log.ScreenClosed("화면 출력이 닫혔다") from None
 
     def _emit(self, line):
         for part in line.split("\r"):            # 덮어쓰기 진행 줄도 한 줄씩 남긴다
@@ -53,7 +66,7 @@ class _Tee(io.TextIOBase):
         self.buf = ""
 
     def flush(self):
-        self.inner.flush()
+        self._screen(self.inner.flush)
 
     def drain(self):
         if self.buf:
@@ -161,6 +174,21 @@ def _fill_alias_book():
               f"{paths.show(store.path(store.ALIAS_BOOK))}(골격 대상 {r['skeleton']:,} · 기본 fresh가 남긴다 — B108 ①)")
 
 
+def _closed(command, streams, finished):
+    """**화면이 닫혔다**(B109 ②) — 트레이스백 0 · 로그에 한 줄 · 닫힌 스트림은 `os.devnull`로 돌려 끝의
+    flush가 다시 죽지 않게 한다. 돌려주는 것은 종료 코드(`log.SCREEN_CLOSED`)."""
+    for t in streams:
+        if t.gone:
+            try:
+                os.dup2(os.open(os.devnull, os.O_WRONLY), t.inner.fileno())
+            except (OSError, ValueError, AttributeError, io.UnsupportedOperation):
+                pass
+    # 쓰던 문서가 있었으면 되돌림 경계가 바로 위에 「되돌림」 · 「저장 뒤 멈춤」 줄을 남겼다(B109 ②)
+    _SCREEN.warning("%s — %s · 종료 코드 %s", "화면이 닫혔다(명령은 끝까지 돌았다 — 끝 화면만 못 나갔다)"
+                    if finished else "화면이 닫혀 멈췄다", command, log.SCREEN_CLOSED)
+    return log.SCREEN_CLOSED
+
+
 def run(command, main, argv=None):
     """진입점 하나 — 로그 설정 · 화면 복사 · 실행 머리/끝 줄 · 종료 코드. 돌려주는 것은 종료 코드."""
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -187,25 +215,40 @@ def run(command, main, argv=None):
                   f"{'mock' if gateway.use_mock() else '실호출'} · 코드 판 {_code_rev()} =====")
     _SCREEN.info("%s", log.HEADER)
     sys.stdout, sys.stderr, builtins.input = out, err, _input
-    _adopt_ops_log()
-    _fill_alias_book()
-    rc = 0
+    rc, closed = 0, False
+    hook0 = threading.excepthook
+    # 화면에 쓰는 스레드(`_screen.ticker`의 30초 줄)도 닫힌 화면에서 트레이스백 없이 끝난다 — 본 흐름은 다음 줄에서 멈춘다
+    threading.excepthook = lambda a: None if issubclass(a.exc_type, log.ScreenClosed) else hook0(a)
     try:
-        rc = main(argv) or 0
-    except SystemExit as e:
-        code = e.code
-        if isinstance(code, str):
-            print(code, file=sys.stderr)        # 거부 문면도 로그에 남는다
-            rc = 1
-        else:
-            rc = code or 0
-    except KeyboardInterrupt:
-        print("\n[중단] 사람이 멈췄다(Ctrl-C)", file=sys.stderr)
-        rc = 130
+        try:
+            _adopt_ops_log()
+            _fill_alias_book()
+            rc = main(argv) or 0
+        except SystemExit as e:
+            code = e.code
+            if isinstance(code, str):
+                print(code, file=sys.stderr)    # 거부 문면도 로그에 남는다
+                rc = 1
+            else:
+                rc = code or 0
+        except KeyboardInterrupt:
+            print("\n[중단] 사람이 멈췄다(Ctrl-C)", file=sys.stderr)
+            rc = 130
+    except log.ScreenClosed:                    # 화면이 닫혔다 — `| head` 따위(B109 ② · 진입점 전부 이 자리)
+        closed = True
+        rc = _closed(command, (out, err), finished=False)
     finally:
         out.drain()
         err.drain()
+        if not closed:                          # 파이프의 화면은 블록 버퍼다 — 닫힘이 끝의 flush에서야 드러난다
+            try:
+                out.flush()
+                err.flush()
+            except log.ScreenClosed:
+                code = _closed(command, (out, err), finished=True)
+                rc = rc or code                 # 명령 자신의 실패 코드가 먼저다
         sys.stdout, sys.stderr, builtins.input = out.inner, err.inner, orig_input
+        threading.excepthook = hook0
         _SCREEN.info("===== 실행 끝 %s · 종료 코드 %s · 경과 %.1f초 · %s =====",
                      time.strftime("%Y-%m-%d %H:%M:%S"), rc, time.monotonic() - t0,
                      _usage_tail())

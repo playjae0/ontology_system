@@ -61,6 +61,12 @@ class _Reopening(logging.handlers.WatchedFileHandler):
             self.stream.write(f"{HEADER} (클린이 로그를 지워 다시 열었다)\n")
 
 
+def log_dir():
+    """명령 로그 폴더 — `work/logs/` (B81 ②). 기본 fresh·재구축이 남기고 클린(`--all`)만 지운다(B109 ①)."""
+    from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
+    return paths.work("logs")
+
+
 def log_path(command=None):
     """이번 실행의 로그 파일 자리 — `work/logs/<명령>_<YYYYMMDD>.log` (B81 ②).
 
@@ -70,9 +76,8 @@ def log_path(command=None):
     direct = os.environ.get("ONTO_LOG_FILE")
     if direct:
         return Path(direct)
-    from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
     name = (command or "onto").replace("/", "_")
-    return paths.work("logs", f"{name}_{time.strftime('%Y%m%d')}.log")
+    return log_dir() / f"{name}_{time.strftime('%Y%m%d')}.log"
 
 
 def setup(level=None, *, force=False, console=None, command=None, console_stream=None):
@@ -112,6 +117,19 @@ def setup(level=None, *, force=False, console=None, command=None, console_stream
     lg.propagate = False
     _configured = True
     return lg
+
+
+class ScreenClosed(BrokenPipeError):
+    """**화면 출력이 닫혔다**(B109 ② — `| head` 따위) — 공통 진입(`cli/_entry`)의 화면 복사가 올린다.
+
+    결함이 아니다: `defect()`는 장부에 적지 않고 다시 올린다 · 공통 진입이 받아 트레이스백 없이 멈춘다
+    (로그에 한 줄 · 종료 코드 `SCREEN_CLOSED`). 게이트웨이 소켓 같은 **다른** `BrokenPipeError`와 가르려고
+    따로 둔다 — 그쪽은 여느 결함이다.
+    """
+
+
+#: 화면이 닫혀 멈춘 실행의 종료 코드 — 유닉스 관례(128 + SIGPIPE 13 · Ctrl-C의 130 = 128 + 2와 같은 결).
+SCREEN_CLOSED = 141
 
 
 def get(name=None):
@@ -173,6 +191,8 @@ def defect(e, *, stage="", extra=""):
     import os
     import traceback
     from pathlib import Path
+    if isinstance(e, ScreenClosed):
+        raise e                              # 화면이 닫힌 것은 결함이 아니다 — 공통 진입이 받는다(B109 ②)
     tb = traceback.extract_tb(e.__traceback__)
     where = ""
     if tb:
