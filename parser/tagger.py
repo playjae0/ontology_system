@@ -81,10 +81,17 @@ def _learned_hits(misses, idx, rec):
             out[r] = x["canonical"]
     return out
 
-def _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver=None):
+def _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver=None, kept=()):
     """학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · 적중 횟수 · null은 새 공정 후보로 ·
-    **null도 그때의 닫힌 목록 판과 함께 기억한다**(B107 ② `list_version` — 같은 판이면 다시 묻지 않는다)."""
+    **null도 그때의 닫힌 목록 판과 함께 기억한다**(B107 ② `list_version` — 같은 판이면 다시 묻지 않는다) ·
+    기억으로 답한 표기(`kept`)도 이 문서의 「목록에 없음」이다 — 후보의 행 수 · 문서 · 마지막 본 때를 센다."""
     at = _now()
+    for r in kept:
+        c = book["목록밖"][r]
+        c["rows"] = int(c.get("rows") or 0) + refs.count(r)
+        if doc_id and doc_id not in c.setdefault("docs", []):
+            c["docs"].append(doc_id)
+        c["last_seen"] = at
     for r in learn:
         x = book["채택"][r]
         x["hits"] = int(x.get("hits") or 0) + refs.count(r)
@@ -518,8 +525,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         if progress is not None:
             progress(n, len(ask), adopted)
 
-    if layer and (learn or memo):
-        _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver)
+    if layer and (learn or memo or kept):
+        _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver, kept)
 
     out = _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
                  scope_at=scope_at)

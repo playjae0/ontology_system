@@ -9,8 +9,9 @@
 잠그는 성질:
   ⓐ 같은 문서: 앞 행·청크가 만든 auto 노드에 뒤의 변형 표기가 판정(임계 이상)으로 매칭 · 별칭(출처 LLM 매칭)
      · 대장 `same_doc` / 다른 문서의 auto 노드에는 가드 그대로(uncertain + 가장 가까운 후보) · 결과표의 수
-  ⓑ 좌표 학습: 문서 A에서 채택한 표기가 문서 B에서 LLM 0으로 맞는다 · 예고 「학습 적중」 · null은 B에서 다시
-     묻는다 · 거부 뒤 다시 묻는다 · 승격 + bootstrap 뒤 사람 보증 별칭(정확 일치)으로 맞는다
+  ⓑ 좌표 학습: 문서 A에서 채택한 표기가 문서 B에서 LLM 0으로 맞는다 · 예고 「학습 적중」 · null은 같은 닫힌 목록
+     판이면 B에서 다시 묻지 않는다(B107 ② 기억) · 거부 뒤 다시 묻는다 · 승격 + bootstrap 뒤 사람 보증 별칭(정확
+     일치)으로 맞는다 · 판이 바뀌어 null은 다시 묻는다
   ⓒ 새 공정 후보: null 표기가 행·문서와 함께 보이고(`show learned`) · 다음 줄대로 골격에 더하면 다음 인입
      마무리에서 붙는다
   ⓓ 별칭 출처: `show node`가 LLM 매칭 · 사람(merge) · 골격 · 좌표 학습을 가른다
@@ -207,13 +208,13 @@ for form, lay, _cat in MATRIX:
     r = subprocess.run([sys.executable, str(ROOT / "run.py"), "bootstrap"], capture_output=True, text=True,
                        cwd=str(ROOT), stdin=subprocess.DEVNULL)
     od, pd, cd = run_tag("DD")
-    _ok_b.append((form, lay, ca == [LEARN, NULLX] and cb == [NULLX] and pb["학습_적중"] == 1
+    _ok_b.append((form, lay, ca == [LEARN, NULLX] and cb == [] and pb.get("기억_종수") == 1 and pb["학습_적중"] == 1
                   and pb["학습_적중_행"] == 2 and ob[0]["process_ref"] == "노칭"
                   and ob[0]["meta"]["coord_tag_source"] == "learned" and rec.get("출처") == TG.LEARN_SOURCE
-                  and rec.get("doc_id") == "DA" and cc == [LEARN, NULLX] and r.returncode == 0
+                  and rec.get("doc_id") == "DA" and cc == [LEARN] and r.returncode == 0
                   and cd == [NULLX] and pd["학습_적중"] == 0 and od[0]["process_ref"] == LEARN
                   and LEARN not in CL.book()["채택"],
-                  f"A 호출 {ca} · B 호출 {cb} 학습 적중 {pb['학습_적중']}종(행 {pb['학습_적중_행']}) · "
+                  f"A 호출 {ca} · B 호출 {cb} 학습 적중 {pb['학습_적중']}종(행 {pb['학습_적중_행']}) · 목록 밖(기억) {pb.get('기억_종수')}종 · "
                   f"거부 뒤 C 호출 {cc} · 승격+bootstrap 뒤 D 호출 {cd}(정확 일치 {pd['정확_일치']})"))
     # ③ 새 공정 후보 — 표기 · 행 · 문서
     cands = {s: (r_, q) for s, r_, q in CL.candidates()}
@@ -250,8 +251,8 @@ for form, lay, cat in MATRIX:
     _ok_c2.append((form, lay, bool(q0) and not q1, f"보류 {len(q0)} → {len(q1)} ({sorted({x['kind'] for x in q0})})"))
     (HINTS / f"{did}.json").unlink(missing_ok=True)
     _unreg([f"b101t{lay[0]}"])
-show("ⓑ 좌표 학습 — A 채택 → B LLM 0(예고 학습 적중) · null은 다시 묻는다 · 거부 뒤 다시 묻는다 · 승격+bootstrap "
-     "뒤 사람 보증 정확 일치 (표·산문 × 층 둘)",
+show("ⓑ 좌표 학습 — A 채택 → B LLM 0(예고 학습 적중) · null은 같은 판이면 기억(B107 ②) · 거부 뒤 다시 묻는다 · "
+     "승격+bootstrap 뒤 사람 보증 정확 일치 · 판이 바뀌어 null은 다시 묻는다 (표·산문 × 층 둘)",
      all(o for _f, _l, o, _d in _ok_b), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_b))
 show("ⓒ 새 공정 후보 — null 표기 · 행 · 문서가 show learned에 · 다음 줄대로 골격에 더하면 다음 인입 마무리에서 붙는다 "
      "(표·산문 × 층 둘)",
