@@ -540,3 +540,9 @@ hub_87 반입(`c751670` — origin `1263c6d`(PR #85 병합) 위 · 코드 0) 위
 ### 제안 (이번 범위 밖 — 사유)
 
 - `python doctor.py | head`처럼 화면을 파이프로 자르면 `BrokenPipeError` 트레이스백이 남는다(`cli/_entry._Tee.write` — 모든 진입점 공통) — 런북 · 가이드는 파이프 없는 형태로 고쳤다. 코드로 막으려면 공통 진입에서 `BrokenPipeError`를 잡아 조용히 끝내는 몇 줄이다(회차 지정이 필요 — 이번 완료판정 밖).
+
+### 마감 뒤 — 시간 줄이기 3건 (사용자 승인 2026-10-14 · D-190)
+
+- **클라우드 세션 시작 훅** `.claude/settings.json` → `.claude/hooks/session-start.sh` — 원격 세션에서만 선택 의존 셋(openpyxl · python-pptx · pymupdf 1.25.5)을 `python3 -m pip`로 깐다(이 이미지의 `pip`는 Python 3.13에 깐다). 실행: 셋을 지운 뒤 rc 0 · 5.3초(설치 뒤 `/usr/local/lib/python3.11/dist-packages`) · 이미 있으면 rc 0 · 0.4~0.5초 · 로컬(변수 없음) rc 0 · 0.01초 · `doctor --env` rc 0(openpyxl · pptx OK).
+- **네 벌 대조 `tools/four_way.py --base <커밋> [--keep <폴더>]`** — 기준 커밋 사본과 작업 트리 사본에서 mock 첫 인입 두 바닥을 동시에 돌려 비교(레포 `state_mock/` 0). 실행: `--base c751670` rc 1 — 「A data 파일: 빠짐 [] · 더함 ['data/alias_book.json']」 · 「B data 파일: 빠짐 [] · 더함 ['data/alias_book.json']」 그 밖 전부 0(위 ⓖ와 같은 줄) · 덤프 둘이 B108 스크래치 덤프와 내용 동일 · 소요 3초 / `--base HEAD` 「전부 같다」 rc 0 / 없는 커밋 rc 2 / 옛 커밋(코드 모양이 다름) rc 2 + 로그 끝. 244행 · 최장 함수 43행.
+- **마감 doctor 1회** — 요청문의 「클린(`--all`) 2회 동일」은 doctor 완료판정 4 「클린 2회 동일 그래프」가 한 실행 안에서 잰다(B106 요청문 32행이 그 판정 이름). 허브가 2회를 유지하면 되돌린다.
