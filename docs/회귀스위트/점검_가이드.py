@@ -9,9 +9,9 @@
   ① 가이드의 명령 줄(`python run.py …` · `python -m cli.…`)이 **실제 CLI에 있다** —
      명령은 `run.py`의 명령 표(키) · 모듈은 `cli/` 파일 · 하위 명령은 그 모듈 소스의 문자열 키
   ② 가이드·구조도 사이 **링크와 파일 이름이 실재한다** — `[…](경로)`와 `` `…md` ``
-  ③ `2B_작업가이드.md`의 **시작하기·증상표 절에 회차·결정 번호 0**(`B\\d\\d` · `D-\\d+`) ·
-     2B 전체에 **옛 판 서술 0**(구판 · 옛 판 · 이전에는) — 가이드는 지금 동작만 말한다
-     (무엇이 언제 바뀌었나는 개정대장 몫)
+  ③ **운영 런북 전체**와 `2B_작업가이드.md` **증상표 절에 회차·결정 번호 0**(`B\\d\\d` · `D-\\d+`) ·
+     둘 다 **옛 판 서술 0**(구판 · 옛 판 · 이전에는) — 가이드는 지금 동작만 말한다
+     (무엇이 언제 바뀌었나는 개정대장 몫 · 2B의 「시작하기」는 런북이 됐다 — B108 ②)
 
 사용: python docs/회귀스위트/점검_가이드.py     (위반이 있으면 exit 1)
 """
@@ -26,8 +26,9 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 GUIDES = ROOT / "docs" / "가이드"
 STRUCT = ROOT / "docs" / "구조도"
 GUIDE_2B = GUIDES / "2B_작업가이드.md"
-#: 회차·결정 번호를 두지 않는 절 — 제목의 앞머리로 찾는다
-CLEAN_SECTIONS = ("## 시작하기", "## §7 증상표")
+RUNBOOK = GUIDES / "운영_런북.md"
+#: 2B에서 회차·결정 번호를 두지 않는 절 — 제목의 앞머리로 찾는다(런북은 전체가 그렇다)
+CLEAN_SECTIONS = ("## §7 증상표",)
 OLD_VERSION = re.compile(r"구판|옛 판|이전에는")
 ROUND_NO = re.compile(r"\bB\d\d\b|\bD-\d+\b")
 
@@ -145,16 +146,23 @@ def _sections(text, heads):
 
 
 def check_2b():
-    """③ 2B — 시작하기·증상표에 회차·결정 번호 0 · 전체에 옛 판 서술 0."""
+    """③ 운영 런북 전체 · 2B 증상표에 회차·결정 번호 0 · 둘 다 옛 판 서술 0."""
     text = GUIDE_2B.read_text(encoding="utf-8")
     hits = []
     for _start, body in _sections(text, CLEAN_SECTIONS):
         for i, ln in body:
             for m in ROUND_NO.findall(ln):
-                hits.append((GUIDE_2B, i, m, "시작하기·증상표에 회차·결정 번호"))
-    for i, ln in enumerate(text.splitlines(), 1):
-        for m in OLD_VERSION.findall(ln):
-            hits.append((GUIDE_2B, i, m, "옛 판 서술"))
+                hits.append((GUIDE_2B, i, m, "증상표에 회차·결정 번호"))
+    if not RUNBOOK.exists():
+        hits.append((RUNBOOK, 0, RUNBOOK.name, "런북이 없다"))
+    book = RUNBOOK.read_text(encoding="utf-8") if RUNBOOK.exists() else ""
+    for i, ln in enumerate(book.splitlines(), 1):
+        for m in ROUND_NO.findall(ln):
+            hits.append((RUNBOOK, i, m, "런북에 회차·결정 번호"))
+    for f, t in ((GUIDE_2B, text), (RUNBOOK, book)):
+        for i, ln in enumerate(t.splitlines(), 1):
+            for m in OLD_VERSION.findall(ln):
+                hits.append((f, i, m, "옛 판 서술"))
     found = [h for h in CLEAN_SECTIONS if any(l.startswith(h) for l in text.splitlines())]
     for h in set(CLEAN_SECTIONS) - set(found):
         hits.append((GUIDE_2B, 0, h, "절이 없다"))

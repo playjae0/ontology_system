@@ -41,6 +41,7 @@ from core import matcher as MT                                     # noqa: E402
 from core.dictionary import Dictionary                             # noqa: E402
 from core.llm import gateway, points                               # noqa: E402
 from core.state import alias_book as AB, bootstrap as BS, oplog    # noqa: E402
+from core.state import fixtures as FXA                             # noqa: E402 — 표본 어댑터 자리
 from core.state.bootstrap import coord_layer                       # noqa: E402
 from core.state.status import is_live                              # noqa: E402
 from core.state.world import World                                 # noqa: E402
@@ -100,7 +101,7 @@ def _hint(doc_id, by_loc):
 
 def _reg_table(dt, layer, cat, cat2):
     """cp 어댑터 그대로 · 스키마는 설비 열을 골격 카테고리로(엣지 없음) — 등록 단에 세운다."""
-    sch = json.loads((FX / "schemas" / "cp.json").read_text(encoding="utf-8"))
+    sch = json.loads(_P.fixture_schemas("cp.json").read_text(encoding="utf-8"))
     sch.update(doc_type=dt, layer=layer, edges=[])
     sch["fields"]["설비"] = {"role": "entity", "category": cat}
     sch["fields"]["관리항목"] = {"role": "entity", "category": cat2}
@@ -110,7 +111,7 @@ def _reg_table(dt, layer, cat, cat2):
     ad = _P.adapters(f"{dt}.py")
     _P.ensure(ad)
     ad.write_text("import importlib.util as _u\n"
-                  f"_s = _u.spec_from_file_location('ad_cp_{dt}', {str(FX / 'adapters' / 'cp.py')!r})\n"
+                  f"_s = _u.spec_from_file_location('ad_cp_{dt}', {str(FXA.ADAPTERS / 'cp.py')!r})\n"
                   "_m = _u.module_from_spec(_s)\n_s.loader.exec_module(_m)\n"
                   f"ADAPTER = {{**_m.ADAPTER, 'doc_type': {dt!r}}}\nextract = _m.extract\n", encoding="utf-8")
     dts = store.read(store.DOC_TYPES, {})
