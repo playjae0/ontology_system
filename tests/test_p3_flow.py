@@ -150,7 +150,7 @@ _pcols67 = {c for pp in Rledger._profiles("ipqc") for c in (pp.get("열") or {})
 # **대장은 프로파일 ∪ 어댑터가 쓰는 열이다**(B76 ② — 구판은 프로파일뿐이라
 # 어댑터가 프로파일 밖 열을 쓰면 그 필드의 행이 없었다).
 _acols67 = Rledger.col_values((getattr(
-    R._load(ROOT / R._state("ipqc")["adapter"], "p3_led67"), "ADAPTER", {})
+    R._load(Rdraft._at(R._state("ipqc")["adapter"]), "p3_led67"), "ADAPTER", {})   # 상태의 경로는 자리 기준(등록부·레포) — 되읽기는 `_at` 하나
     .get("expects") or {}).get("columns"))
 show("② 대장의 행 집합 == 프로파일 열 ∪ 어댑터가 쓰는 열 (한 열에 한 행)",
      _led67 and {r["col"] for r in _led67} == (_pcols67 | _acols67),
