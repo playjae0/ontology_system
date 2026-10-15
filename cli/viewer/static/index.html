@@ -26,6 +26,8 @@
       <h3>범례 <span id="legend-n" class="muted"></span></h3>
       <div id="legend"></div>
       <p class="note" id="tier-note">main/sub/detail = seed 중첩 깊이 · 사람이 적지 않는다(문서 3 §3.9-⑺)</p>
+      <h3>크기</h3>
+      <div id="size-legend"></div>
       <h3>엣지 유형</h3>
       <label class="chk"><input type="checkbox" id="always-cross" checked> 층간 연결 항상 표시</label>
       <div id="rel-toggles"></div>
@@ -35,15 +37,17 @@
       <label class="chk"><input type="checkbox" id="show-detached"><span id="detached-label"> 연결 없는 노드</span></label>
       <h3>검색</h3>
       <input id="search" type="search" placeholder="canonical · id (강조만 · Enter = 첫 결과에서 펼치기)">
+      <label class="chk"><input type="checkbox" id="full-labels"> 전체 이름 (끄면 이름 사슬의 끝 조각 · 올린 점 · 검색 · 상세는 늘 전체)</label>
       <h3>배치</h3>
       <div id="layout-pick" class="radios"></div>
-      <p class="note">셋 다 결정적이다 — 같은 입력이면 같은 그림. 골격+위성: 골격은 나무 · 골격 밖 노드는 닻(엣지로 가장 가까운 골격) 둘레. 점을 끌면 그 자리에 남는다(「다시 배치」로 푼다).</p>
-      <button id="relayout">다시 배치</button>
+      <p class="note">셋 다 결정적이다 — 같은 입력이면 같은 그림. 골격+위성: 골격은 나무 · 골격 밖 노드는 닻(엣지로 가장 가까운 골격) 둘레. 힘: 그 자리를 시드로 ForceAtlas2 계열 힘이 이어서 퍼뜨린다(화면 밖 워커 · 같은 반복 수면 같은 그림). 점을 끌면 그 자리에 남는다(「다시 배치」로 푼다).</p>
+      <button id="relayout">다시 배치</button> <button id="force-pause" hidden>멈춤</button>
     </section>
 
     <section id="pane-query" hidden>
       <h3>질문</h3>
-      <form id="qform"><input id="q" type="search" placeholder="예: 노칭 다음 공정은?"><button>묻는다</button></form>
+      <form id="qform"><input id="q" type="search" placeholder="예: 노칭 다음 공정은? (Enter로 묻는다)"><button>묻는다</button></form>
+      <div id="qstatus" class="note" hidden></div>
       <div id="examples" class="muted"></div>
       <div id="qllm" class="muted"></div>
       <div id="qpath"></div>

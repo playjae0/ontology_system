@@ -89,6 +89,10 @@ KNOBS = {
     "relink_rounds": ("core.build.retry", ("RELINK_ROUNDS",), "int",
                       "재연결 바퀴 상한 — 한 바퀴에 붙은 것이 있으면 다시 훑는다(0이면 멈춘다 · 넘으면 그 사실을 줄로)",
                       "인입 끝 「재연결 — 바퀴 k …」 줄 · python run.py ops relink all --actor <이름> --apply"),
+    "viewer_force": ("cli.viewer.data", ("FORCE",), "dict",
+                     "뷰어 힘 배치(ForceAtlas2 계열) — scaling(반발) · gravity(떨어진 덩어리를 붙잡는 중력) · "
+                     "iterations(반복 수 — 같은 반복 수면 같은 그림)",
+                     "python run.py viewer — 배치 「힘」 · 머리 줄 「힘 — 반복 i/n」"),
     "viewer_explore_threshold": ("cli.viewer.data", ("EXPLORE_THRESHOLD",), "int",
                                  "뷰어 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 "
                                  "탐색 모드로 연다(이웃 펼쳐 보기 · B103 ③)",

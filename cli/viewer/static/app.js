@@ -16,6 +16,7 @@ const S = {                      // 상태 — 화면이 아는 전부
   rels: new Set(), docs: new Set(), filters: {},
   obsolete: false, alwaysCross: true, search: "",
   layout: "골격+위성",            // 배치 선택 — `localStorage`가 기억한다(B84 ③ · 기본 B103 ①)
+  fullLabels: false,             // 라벨 — 끝 조각(기본) | 전체 이름 (B114 ③ · 브라우저가 기억한다)
   showDetached: false,           // 연결 없는 노드(닻 없음) — 기본 숨김(B103 ①)
   explore: null,                 // 탐색 모드 — {shown: Set, trail: [{id, added}]} (B103 ③)
   theme: "light",                // 밝은 테마가 기본이다(B84 ① — 사내 실측)
@@ -63,9 +64,15 @@ function stats() {
   $("#head-stat").textContent =
     `노드 ${shown}/${S.graph.nodes.length} · 엣지 ${e}/${S.graph.edges.length}`
     + ` · 배치 ${S.layout}` + (S.explore ? ` · 탐색 ${S.explore.trail.length}단` : "")
-    + (S.layout === "힘" && LSTAT.forceCut
-      ? ` · 힘 — 시간 예산 ${FORCE_BUDGET_MS}ms에서 반복 ${LSTAT.forceIter}/${FORCE_ITER}에서 멈춤(같은 입력이라도 그림이 다를 수 있다)` : "");
+    + (S.layout === "힘" && LSTAT.forceMax
+      ? ` · 힘 — 반복 ${LSTAT.forceIter}/${LSTAT.forceMax} · ${LSTAT.forceState}` : "");
   void n;
+  const fp = $("#force-pause");
+  if (fp) {
+    fp.hidden = S.layout !== "힘";
+    fp.disabled = LSTAT.forceState === "끝";
+    fp.textContent = LSTAT.forceState === "멈춤" ? "이어서" : "멈춤";
+  }
 }
 
 function legend() {
@@ -83,6 +90,20 @@ function legend() {
     box.append(r);
   });
   $("#tier-note").hidden = S.axis !== "tier";
+  sizeLegend();
+}
+
+/** 크기의 뜻(B114 ②) — tier마다 원 하나(그리는 크기 그대로) · 골격 밖은 가장 작다. */
+function sizeLegend() {
+  const box = $("#size-legend"); if (!box) return;
+  box.innerHTML = "";
+  [["main", "골격 상위", TIER_SIZE.main], ["sub", "골격 중간", TIER_SIZE.sub],
+   ["detail", "골격 잎", TIER_SIZE.detail], ["그 밖", "골격 밖 노드", SIZE_OTHER]].forEach(([k, what, px]) => {
+    const r = el("div", "row");
+    const dot = el("span", "dot"); dot.style.width = dot.style.height = `${px}px`;
+    r.append(dot, el("span", "", `${k} — ${what}`), el("span", "muted", ` ${px}`));
+    box.append(r);
+  });
 }
 
 /** 검색·필터·강조 — **그림은 리듀서만** 다시 돈다(B84 ②). */
@@ -199,6 +220,10 @@ function controls() {
     l.append(r, document.createTextNode(" " + k)); lb.append(l);
   });
   $("#relayout").onclick = () => { S.pinned = {}; rebuild(); stats(); };
+  $("#force-pause").onclick = () => { forcePause(LSTAT.forceState !== "멈춤"); stats(); };   // 멈춤 ↔ 이어서
+  const fl = $("#full-labels");
+  fl.checked = S.fullLabels;
+  fl.onchange = () => { S.fullLabels = fl.checked; remember("onto.labels", S.fullLabels ? "full" : "short"); refresh(); };
   const rt = $("#rel-toggles"); rt.innerHTML = "";
   S.graph.rels.forEach((rel) => {
     const l = el("label", "chk"); const c = el("input");
@@ -264,6 +289,7 @@ function controls() {
 /* ── 기동 ─────────────────────────────────────────────────────────────── */
 (async function boot() {
   S.theme = recall("onto.theme", "light");
+  S.fullLabels = recall("onto.labels", "short") === "full";
   S.layout = LAYOUTS.includes(recall("onto.layout", LAYOUTS[0])) ? recall("onto.layout", LAYOUTS[0]) : LAYOUTS[0];
   document.documentElement.dataset.theme = S.theme;
   const h = await get("/api/health");

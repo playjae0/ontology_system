@@ -86,6 +86,25 @@ def _chunk_text(c):
     return f"[{head}] {c.get('text') or ''}" if head else (c.get("text") or "")
 
 
+def warm(graphs=None, configs=None):
+    """**벡터 준비** — 질의가 견줄 노드 · 청크 벡터를 미리(B114 ④ — 질의의 첫 단계 · 뷰어 시작의 미리 만들기가 이
+    함수 하나). 재료는 `link_candidates` · `doc_search`와 같은 함수(`node_texts` · `_chunk_text`)라 뒤의 두 자리는
+    캐시를 재사용한다. 계획(두 종류의 분모)을 먼저 세우고 종류마다 만든다 — 돌려주는 것은 `{종류: (있던 수, 전체)}`."""
+    if graphs is None:
+        from core.state.bootstrap import load_config, open_graph
+        from router import discover
+        graphs = {lay: open_graph(lay) for lay in discover()}
+        configs = {lay: load_config(lay) for lay in graphs}
+    ch = (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {})
+    jobs = [("nodes", node_texts(graphs, configs or {})[0]),
+            ("chunks", {cid: _chunk_text(c) for cid, c in ch.items()})]
+    jobs = [(k, t) for k, t in jobs if t]
+    got = V.plan(jobs)
+    for kind, texts in jobs:
+        V.vectors(kind, texts)
+    return got
+
+
 def doc_search(question, k, min_sim, trace=None):
     """**문서 검색 채널** — `[{chunk_id, doc_id, source_locator, section, text, ref, by, embed, bm25, rank}]`.
 

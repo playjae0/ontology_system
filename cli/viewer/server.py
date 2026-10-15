@@ -8,6 +8,7 @@
     /api/health           상태 루트·모드·등록·층·문서 (doctor 첫 줄과 같은 사실)
     /api/graph            전 층 통합 그래프 (GraphStore 경유 · 변환은 export와 한 자리)
     /api/query?q=…        질의 결과 + trace (CLI `--json`과 같은 묶음)
+    /api/status           질의 진행 — 단계 · 경과 · 벡터 준비(노드 · 청크 n/m · 남은 예상) — 화면이 폴링한다 (B114 ④)
     /api/node/<id>        노드 상세의 근거 — 원문 · 닻까지의 길 · 문서마다 붙은 자리 (B103 ④)
     /api/neighbors/<id>   1홉 이웃 — 탐색 모드 (B103 ③)
     /api/doc/<doc_id>     문서 대장 행 + 판정 집계 + 그 문서가 만든 노드·청크
@@ -16,6 +17,10 @@
 
 **새로고침이면 최신 상태를 읽는다** — 구판은 뜬 시점의 HTML 한 장을 물고 있어
 인입·재구축 뒤에 다시 띄워야 했다. 화면이 증거인 도구에서 그것은 증거가 낡는 것이다.
+
+**뷰어를 띄우면 질의 벡터를 미리 만든다**(B114 ④) — 주소를 먼저 띄우고 배경 스레드가 `hybrid.warm`(질의의 첫
+단계와 같은 함수)을 돌린다 · 콘솔에 `벡터 — 노드 n/m · 청크 n/m · 경과 · 남은 예상` · 화면은 `/api/status`로 본다.
+그 사이 온 질의는 벡터 잠금을 기다린다(같은 몫을 두 번 만들지 않는다).
 """
 from __future__ import annotations
 
@@ -123,6 +128,9 @@ class Handler(BaseHTTPRequestHandler):
             got = D.doc(unquote(u.path[len("/api/doc/"):]))
             return self._json(200, got) if got else self._json(
                 404, {"error": "그 doc_id는 문서 대장에 없다"})
+        if u.path == "/api/status":
+            from core.query import status as QS              # 질의 진행 — 폴링(쓰기 0 · B114 ④)
+            return self._json(200, QS.get())
         if u.path == "/api/query":
             q = (parse_qs(u.query).get("q") or [""])[0].strip()
             if not q:
@@ -130,8 +138,13 @@ class Handler(BaseHTTPRequestHandler):
             # **CLI `--json`과 같은 묶음이다** — 화면이 보는 것과 CLI가 내는 것이
             # 다르면 둘 중 무엇이 맞는지 대조할 자리가 없어진다.
             from cli.query import answer, as_json
+            from core.query import status as QS
             # `as_json`이 ⑧까지 부른다 — CLI `--json`과 **같은 함수**다.
-            return self._json(200, as_json(answer(q)))
+            try:
+                body = as_json(answer(q))
+            finally:
+                QS.end()                                      # 실패해도 상태 줄이 「진행 중」에 남지 않는다(보내기 전에)
+            return self._json(200, body)
         if u.path.startswith("/raw/"):
             p = _safe_under(paths.raw(), u.path[len("/raw/"):])
             return self._file(p) if p else self._send(
@@ -147,6 +160,21 @@ def serve(port=8765):
     port = _free_port(port)
     srv = ThreadingHTTPServer((HOST, port), Handler)
     return srv, f"http://{HOST}:{port}/"
+
+
+def _warm():
+    """질의 벡터를 미리 — 콘솔에 진행 줄 · 끝 줄(만든 것이 없으면 「이미 있다」 한 줄) · 실패는 줄로(뷰어는 산다)."""
+    from core.query import hybrid as H, status as QS, vectors as V
+    V.ON_PROGRESS = lambda ln: print(f"  [viewer] {ln}", flush=True)
+    try:
+        got = H.warm()
+    except Exception as e:                                  # noqa: BLE001 — 질의가 같은 사유로 화면에 말한다
+        print(f"  [viewer] 벡터 준비 실패 — {type(e).__name__}: {e} (질의가 같은 사유를 화면에 낸다)", flush=True)
+        return
+    made = sum(t - d for d, t in got.values())
+    print(f"  [viewer] 벡터 준비 끝 — {QS.vec_line()}" if made else
+          "  [viewer] 벡터 준비 — 이미 있다(" + " · ".join(f"{QS.KIND_NAME.get(k, k)} {t:,}"
+                                                     for k, (_d, t) in got.items()) + ")", flush=True)
 
 
 def main(args):
@@ -169,9 +197,10 @@ def main(args):
     print(f"[viewer] {url}")
     print(f"  모드 {h['mode']} · 노드 {len(g['nodes'])} · 엣지 {len(g['edges'])} · "
           f"층 {len(h['layers'])} · 문서 {h['docs']} · 상태 {h['home']}")
-    print("  라우트: / · /api/graph · /api/query?q=… · /api/node/<id> · /api/neighbors/<id> · /api/doc/<id> · "
-          "/api/funnel · /raw/<경로> · /api/health   (쓰기 없음 — 읽기 전용)")
+    print("  라우트: / · /api/graph · /api/query?q=… · /api/status · /api/node/<id> · /api/neighbors/<id> · "
+          "/api/doc/<id> · /api/funnel · /raw/<경로> · /api/health   (쓰기 없음 — 읽기 전용)")
     print("  Ctrl+C로 멈춘다")
+    threading.Thread(target=_warm, daemon=True).start()     # 질의 벡터 미리 만들기 — 주소 뒤 배경으로 (B114 ④)
     if not no_browser:
         threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:

@@ -1,4 +1,4 @@
-/* 칸 5.3 — 뷰어 **배치** — 골격 + 위성 · 계층 · 힘 (B103 ①② · B84 ③).
+/* 칸 5.3 — 뷰어 **배치** — 골격 + 위성 · 계층 · 힘 (B103 ①② · B84 ③ · 힘은 웹 워커 — B114 ①).
  *
  * `render.js`에서 떼어냈다(B103 — 배치 셋이 한 파일이면 §7 상한을 넘는다). 셋 다 **결정적**이다 —
  * 난수 0 · 같은 입력이면 같은 그림(사람이 위치로 기억하고, 회귀가 좌표를 비교한다).
@@ -10,7 +10,7 @@
 
 /* 배치 셋 — 이름이 곧 선택 값이다(`localStorage`에 이 문자열이 남는다). */
 const LAYOUTS = ["골격+위성", "계층", "힘"];
-const LSTAT = { forceIter: 0, forceCut: false, forceMs: 0 };
+const LSTAT = { forceIter: 0, forceMax: 0, forceState: "", forceMs: 0, frames: 0 };
 
 /* ── ⓐ 골격 + 위성 ──────────────────────────────────────────────────────────
  * 골격(seed)은 `part_of` 나무로 층층이 — 잎 순서가 가로 자리, 깊이가 세로 자리. 위성은 그
@@ -157,139 +157,67 @@ function layoutHier(nodes, edges) {
   return pos;
 }
 
-/* ── ⓒ 힘 — 연결 덩어리마다 따로 · Barnes–Hut · 겹치지 않게 붙인다 (B103 ②) ──────
+/* ── ⓒ 힘 — 웹 워커(`force_worker.js` — ForceAtlas2 계열 · Barnes–Hut) · 위치를 이어서 받는다 (B114 ①) ──
  *
- * 구판(B84 ③)은 전체를 한 판에 놓고 O(N²) 반발 + 중심 중력이라 엣지 없는 점·작은 덩어리가 원판·고리로
- * 몰렸고, 반복을 노드 수로 줄였다(900 초과면 40회). 지금: ①덩어리(연결 성분)마다 따로 돌린다(중력은
- * 덩어리 중심으로) ②반발은 Barnes–Hut 사분 나무(θ 0.9 · O(N log N)) ③반복은 **고정 ITER**이고 **시간 예산**은
- * 안전 상한이다 — 예산 안이면 같은 입력 같은 좌표 · 예산에 걸리면 그 사실을 머리 줄이 말한다(결정성을
- * 잃는 유일한 경우를 숨기지 않는다) ④덩어리를 크기 순으로 줄에 붙인다(경계 상자 겹침 0). */
-const FORCE_ITER = 300, FORCE_BUDGET_MS = 4000, THETA = 0.9;
-const REP = 1.2, SPRING = 0.06, GRAV = 0.02, MAXSTEP = 1.2, PACK_GAP = 4;
+ * 구판(B103 ②)은 화면 스레드에서 덩어리마다 돌리고 **시간 예산(4초)에서 끊었다** — 큰 그래프는 초기 배치(원)에
+ * 가까운 채 굳었다. 지금: 시드(골격+위성 자리 · 닻 없는 노드는 그 아래 띠 — 결정적)를 워커에 넘기고, 워커가 반복
+ * `FORCE_ITER`까지 돌며 `frameEvery` 반복마다 좌표를 보낸다 → 렌더러가 그 자리로 옮긴다(화면이 멈추지 않는다 ·
+ * 시간으로 끊지 않는다). 같은 시드 · 같은 반복 수면 같은 좌표다(난수 0 · 걸음은 반복 수로 센다). 「멈춤」은 워커를
+ * 세우고 「이어서」는 그 자리에서 잇고 「다시 배치」는 시드부터 다시. 떨어진 덩어리는 중력이 붙잡는다(한 판에). */
+const FORCE_ITER = 1500;                       // 기본 — 서버가 손잡이 `viewer_force`를 주면 그것(`/api/graph`의 `force`)
+const FORCE_CFG = { scaling: 2, gravity: 1, theta: 1.2, jitter: 1, frameEvery: 10 };
+const FORCE = { worker: null, ids: [], at: new Map(), paused: false };
 
-function _components(nodes, edges) {
-  const at = new Map(nodes.map((n, i) => [n.id, i]));
-  const up = nodes.map((_, i) => i);
-  const find = (i) => { while (up[i] !== i) { up[i] = up[up[i]]; i = up[i]; } return i; };
-  edges.forEach((e) => {
-    const a = at.get(e.src), b = at.get(e.dst);
-    if (a === undefined || b === undefined) return;
-    const ra = find(a), rb = find(b);
-    if (ra !== rb) up[Math.max(ra, rb)] = Math.min(ra, rb);
-  });
-  const groups = {};
-  nodes.forEach((n, i) => { const r = find(i); (groups[r] = groups[r] || []).push(n); });
-  return Object.values(groups).sort((a, b) => b.length - a.length || a[0].id.localeCompare(b[0].id));
+/** 힘 배치의 **시드** — 닻이 있는 노드는 골격+위성 자리 · 없는 노드는 그 아래 띠(같은 입력 같은 시드). */
+function layoutForce(nodes, edges, anchor) {
+  const on = nodes.filter((n) => anchor[n.id]), off = nodes.filter((n) => !anchor[n.id]);
+  return bandBelow(layoutSkel(on, edges, anchor), off);
 }
 
-/** 사분 나무 반발 — 각 점에 대해 멀리 있는 칸은 질량 중심 하나로 본다(θ). 난수 0. */
-function _repulse(x, y, w, fx, fy) {
-  const N = x.length;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (let i = 0; i < N; i++) {
-    x0 = Math.min(x0, x[i]); y0 = Math.min(y0, y[i]); x1 = Math.max(x1, x[i]); y1 = Math.max(y1, y[i]);
-  }
-  const cell = (cx0, cy0, s) => ({ x0: cx0, y0: cy0, s, m: 0, cx: 0, cy: 0, body: -1, kids: null });
-  const root = cell(x0, y0, Math.max(x1 - x0, y1 - y0, 1e-3));
-  const add = (c, i) => {
-    const m = c.m + w[i];
-    c.cx = (c.cx * c.m + x[i] * w[i]) / m; c.cy = (c.cy * c.m + y[i] * w[i]) / m; c.m = m;
-  };
-  const child = (c, i) => c.kids[(x[i] >= c.x0 + c.s / 2 ? 1 : 0) + (y[i] >= c.y0 + c.s / 2 ? 2 : 0)];
-  const insert = (c, i, d) => {
-    if (c.kids === null) {
-      if (c.m === 0) { c.body = i; add(c, i); return; }
-      if (d > 40) { add(c, i); c.body = -2; return; }        // 같은 자리에 쌓인 점 — 한 칸에 모은다
-      const h = c.s / 2;
-      c.kids = [0, 1, 2, 3].map((q) => cell(c.x0 + (q & 1) * h, c.y0 + (q >> 1) * h, h));
-      const j = c.body; c.body = -1;
-      if (j >= 0) insert(child(c, j), j, d + 1);              // 질량은 이미 c에 있다
-    }
-    add(c, i);
-    insert(child(c, i), i, d + 1);
-  };
-  for (let i = 0; i < N; i++) insert(root, i, 0);
-  const walk = (c, i) => {
-    if (c.m === 0 || (c.kids === null && c.body === i)) return;
-    let dx = x[i] - c.cx, dy = y[i] - c.cy;
-    let d2 = dx * dx + dy * dy;
-    if (c.kids !== null && (c.s * c.s) >= THETA * THETA * d2) { c.kids.forEach((k) => walk(k, i)); return; }
-    if (d2 < 1e-6) { dx = ((i % 7) - 3) * 1e-3 + 1e-4; dy = ((i % 5) - 2) * 1e-3 + 1e-4; d2 = dx * dx + dy * dy; }
-    const f = REP * w[i] * c.m / d2;
-    fx[i] += dx * f; fy[i] += dy * f;
-  };
-  for (let i = 0; i < N; i++) walk(root, i);
-}
-
-function _forceOne(nodes, edges, seed, deadline) {
-  const N = nodes.length;
-  const at = new Map(nodes.map((n, i) => [n.id, i]));
-  const x = new Float64Array(N), y = new Float64Array(N), w = new Float64Array(N);
-  let mx = 0, my = 0;
-  nodes.forEach((n, i) => { const p = seed[n.id] || { x: i, y: 0 }; x[i] = p.x; y[i] = p.y; mx += p.x / N; my += p.y / N; });
-  let rmax = 0;
-  for (let i = 0; i < N; i++) { x[i] -= mx; y[i] -= my; rmax = Math.max(rmax, Math.hypot(x[i], y[i])); }
-  const k = rmax > 0 ? (2 + Math.sqrt(N) * 2) / rmax : 1;   // 초기 크기는 덩어리 크기에 맞춘다
-  for (let i = 0; i < N; i++) { x[i] *= k; y[i] *= k; }
-  const E = [];
+/** 워커를 띄운다 — `onFrame(frame, ids)`가 프레임마다 불린다(`frame.x[i]`·`frame.y[i]`는 `ids[i]`의 자리).
+ * `opts` — `fixed`(고정할 점 `{id: …}`) · `scaling` · `gravity` · `iterations`(없으면 기본값). */
+function forceStart(nodes, edges, seed, onFrame, opts = {}) {
+  const fixed = opts.fixed || {}, maxIter = opts.iterations || FORCE_ITER;
+  forceStop();
+  const ids = nodes.map((n) => n.id);
+  const at = new Map(ids.map((id, i) => [id, i]));
+  const mass = ids.map(() => 1), E = [];
   edges.forEach((e) => {
     const a = at.get(e.src), b = at.get(e.dst);
     if (a === undefined || b === undefined || a === b) return;
-    E.push([a, b]); w[a] += 1; w[b] += 1;
+    E.push([a, b]); mass[a] += 1; mass[b] += 1;                 // 질량 = 연결 수 + 1 (ForceAtlas2)
   });
-  for (let i = 0; i < N; i++) w[i] += 1;
-  const fx = new Float64Array(N), fy = new Float64Array(N);
-  let it = 0;
-  for (; it < FORCE_ITER && N > 1; it++) {
-    if (performance.now() > deadline) { LSTAT.forceCut = true; break; }
-    fx.fill(0); fy.fill(0);
-    _repulse(x, y, w, fx, fy);
-    for (const [a, b] of E) {
-      const dx = x[b] - x[a], dy = y[b] - y[a];
-      fx[a] += dx * SPRING; fy[a] += dy * SPRING;
-      fx[b] -= dx * SPRING; fy[b] -= dy * SPRING;
-    }
-    const cool = 1 - it / (FORCE_ITER + 1);
-    for (let i = 0; i < N; i++) {
-      fx[i] -= x[i] * GRAV; fy[i] -= y[i] * GRAV;
-      const len = Math.hypot(fx[i], fy[i]) || 1;
-      const step = Math.min(len, MAXSTEP) * cool;
-      x[i] += (fx[i] / len) * step; y[i] += (fy[i] / len) * step;
-    }
-  }
-  LSTAT.forceIter = Math.max(LSTAT.forceIter, it);
-  const pos = {};
-  nodes.forEach((n, i) => { pos[n.id] = { x: x[i], y: y[i] }; });
-  return pos;
+  const w = new Worker("/static/force_worker.js");
+  Object.assign(FORCE, { worker: w, ids, at, paused: false });
+  Object.assign(LSTAT, { forceIter: 0, forceMax: maxIter, forceState: "진행", forceMs: 0, frames: 0 });
+  w.onmessage = (ev) => {
+    const m = ev.data || {};
+    if (m.type !== "frame" || FORCE.worker !== w) return;
+    Object.assign(LSTAT, { forceIter: m.iter, forceMax: m.max, forceMs: m.ms, frames: LSTAT.frames + 1,
+                           forceState: m.done ? "끝" : (FORCE.paused ? "멈춤" : "진행") });
+    onFrame(m, ids);
+  };
+  w.postMessage({ type: "start", x: ids.map((id) => (seed[id] || { x: 0 }).x), y: ids.map((id) => (seed[id] || { y: 0 }).y),
+                  m: mass, edges: E, fixed: ids.map((id) => (fixed[id] ? 1 : 0)),
+                  cfg: { ...FORCE_CFG, scaling: opts.scaling ?? FORCE_CFG.scaling,
+                         gravity: opts.gravity ?? FORCE_CFG.gravity, maxIter } });
 }
 
-function layoutForce(nodes, edges, seed) {
-  const t0 = performance.now();
-  LSTAT.forceIter = 0; LSTAT.forceCut = false;
-  const deadline = t0 + FORCE_BUDGET_MS;
-  const comps = _components(nodes, edges);
-  const ids = new Set(nodes.map((n) => n.id));
-  const es = edges.filter((e) => ids.has(e.src) && ids.has(e.dst));
-  const placed = comps.map((c) => {
-    const cs = new Set(c.map((n) => n.id));
-    const p = _forceOne(c, es.filter((e) => cs.has(e.src)), seed, deadline);
-    const v = Object.values(p);
-    const b = { x0: Math.min(...v.map((q) => q.x)), y0: Math.min(...v.map((q) => q.y)),
-                x1: Math.max(...v.map((q) => q.x)), y1: Math.max(...v.map((q) => q.y)) };
-    return { p, b, w: b.x1 - b.x0 + 2 * NODE_R, h: b.y1 - b.y0 + 2 * NODE_R };
-  });
-  // 줄 붙이기 — 큰 덩어리부터 왼쪽 → 오른쪽 · 줄 폭은 넓이 합의 제곱근 배
-  const area = placed.reduce((s, c) => s + (c.w + PACK_GAP) * (c.h + PACK_GAP), 0);
-  const rowW = Math.max(Math.sqrt(area) * 1.4, placed.length ? placed[0].w : 0);
-  const pos = {};
-  let cx = 0, cy = 0, rowH = 0;
-  placed.forEach((c) => {
-    if (cx > 0 && cx + c.w > rowW) { cx = 0; cy -= rowH + PACK_GAP; rowH = 0; }
-    Object.entries(c.p).forEach(([id, q]) => {
-      pos[id] = { x: cx + (q.x - c.b.x0) + NODE_R, y: cy - (c.b.y1 - q.y) - NODE_R };
-    });
-    cx += c.w + PACK_GAP; rowH = Math.max(rowH, c.h);
-  });
-  LSTAT.forceMs = Math.round(performance.now() - t0);
-  return pos;
+function forceStop() {
+  if (FORCE.worker) FORCE.worker.terminate();
+  FORCE.worker = null;
+}
+
+/** 멈춤 ↔ 이어서 — 워커는 그 자리에서 선다(좌표는 반복 수로만 정해진다). */
+function forcePause(on) {
+  if (!FORCE.worker) return;
+  FORCE.paused = on;
+  LSTAT.forceState = on ? "멈춤" : "진행";
+  FORCE.worker.postMessage({ type: on ? "stop" : "resume" });
+}
+
+/** 사람이 끈 점 — 워커가 그 자리에 고정한다(B84 ④ — 그 세션 동안). */
+function forcePin(id, x, y) {
+  const i = FORCE.at.get(id);
+  if (FORCE.worker && i !== undefined) FORCE.worker.postMessage({ type: "pin", i, x, y });
 }
