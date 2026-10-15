@@ -54,3 +54,14 @@ def with_context(chunk, doc=None):
     text = chunk.get("text", "")
     line = context_line(chunk, doc)
     return f"{line}\n{text}" if line else text
+
+
+def chunk_label(chunk):
+    """**청크의 라벨** — 화면의 청크 목차 · 추출 표의 위치 칸(B112 ③). 맥락 칸에서 문서 · 공정을 뺀 것 —
+    엑셀 `시트 › 목차 경로` · Word/PDF `제목 경로` · 시트도 경로도 없으면 조각의 구획(PPT `슬라이드 n`) ·
+    그것도 없으면 위치. 포맷 전부 이 함수 하나다(셀 범위 위치는 로그가 든다)."""
+    f = dict(context_fields(chunk))
+    parts = [v for k, v in (("시트", f.get("시트")), ("경로", f.get("경로"))) if v]
+    return (PATH_SEP.join(str(x) for x in parts) or str(chunk.get("section") or "")
+            or str(chunk.get("source_locator") or ""))
+

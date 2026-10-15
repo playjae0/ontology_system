@@ -157,7 +157,6 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     """
     if child is None or ref is None:
         return False
-    LOWRES["n"] += 1                     # 요약 한 줄의 재료 (B72 ②)
     tg = ref_g if ref_g is not None else graph
     cg = b.graph_of(child) or graph        # 자식은 집 그래프에 산다(B90 ②)
     # 매핑 키는 엣지 방향이다 — 두 방향을 본다(B102 ④ — 소속 엣지와 같은 함수 `belongs.edge_of`)
@@ -173,6 +172,9 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_SCHEMA,
                      [prov], doc_id, evidence_chunk=evidence_chunk,
                      src_graph=sg, dst_graph=dg)
+    # 요약 한 줄의 재료(B72 ②) — **붙인 것만** 센다(B112 ① — 매핑이 없어 못 붙인 시도까지 세면 대장의
+    # 「좌표 폴백」과 화면의 「저해상도 부착 n행」이 갈린다)
+    LOWRES["n"] += 1
     return rel                                   # 참 값 — 붙인 관계 이름(B102 ⑦ 대장 attached)
 
 

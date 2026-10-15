@@ -319,18 +319,28 @@ def _extract_rehearsal(st, results, samples, want, truncated):
 
     **부분 리허설이면 체크포인트를 남기지 않는다** — 앞 N행만 본 추출을 운영이
     재사용하면 뒷 구간이 영영 안 뽑힌다.
+
+    **이미 인입된 문서면 화면이 먼저 말한다**(B112 ⑦ — 재현 · 동작은 그대로 · `BLOCKERS.md`): 리허설은 인입(청크
+    적재)을 앞세우므로 그 문서가 문서 대장에 있으면 재인입이 된다 — 그 문서의 그래프 몫을 회수하고 · 문서 대장
+    항목을 초안 doc_type으로 덮고 · 운영 추출 체크포인트(렌즈판까지)를 버린다.
     """
     from cli.extract import run as extract_run
     from cli.ingest import doc_id_of
     from core.build import extract as EX
+    from core.state import store
     if not want:
         return {"source": "none", "note": "추출 리허설 없음 — 끄고 진행했다"}
-    made, ids = [], []
+    made, ids, ingested = [], [], store.read(store.DOC_REGISTRY, {})
     for r, s in zip(results, samples):
         if not r.ok:
             continue
         env = dict(r.envelope)
         env["doc_id"] = doc_id_of(s)          # **운영의 doc_id** — 재사용의 조건이다
+        if env["doc_id"] in ingested:
+            _dt = ingested[env["doc_id"]].get("doc_type")
+            print(f"   ⚠ 추출 리허설 — {env['doc_id']}는 이미 인입된 문서다(doc_type {_dt}) · 리허설이 재인입이 되어 "
+                  f"그 문서의 그래프 몫 · 문서 대장 · 추출 체크포인트(렌즈판 포함)를 바꾼다 · 되돌리려면 "
+                  f"python run.py ingest-file {s} --doc-type {_dt}")
         ids.append(env["doc_id"])
         p = _dir(st["doc_type"]) / f"_rehearsal_{env['doc_id']}.json"
         write_file(p, json.dumps(env, ensure_ascii=False))

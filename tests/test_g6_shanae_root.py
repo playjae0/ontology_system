@@ -289,8 +289,10 @@ try:
          s["viewer"].get("doc") == 200 and s["viewer"] == b["viewer"], str(s["viewer"]))
     show("⑥ `doctor --quick` EXIT=0 양쪽", b["doctor_rc"] == 0 and s["doctor_rc"] == 0,
          f"{b['doctor_rc']} · {s['doctor_rc']}")
-    show("⑤ 등록 때 답한 시트 역할로 인입이 간다 — **관문 0**(기록대로)",
-         "기록대로 진행" in s["rfq_ingest"][1] and "■ 시트 역할" not in s["rfq_ingest"][1],
+    # 기대 변경(B112 ②) — 기록이 있어도 표는 보인다 · **묻지 않는다**(관문 0 = 질문 0)
+    show("⑤ 등록 때 답한 시트 역할로 인입이 간다 — **관문 0**(묻지 않고 기록대로 · 표와 다시 고르는 줄은 보인다)",
+         "기록대로 진행" in s["rfq_ingest"][1] and "Enter=" not in s["rfq_ingest"][1]
+         and "다시 고르려면" in s["rfq_ingest"][1],
          [l.strip() for l in s["rfq_ingest"][1].splitlines() if "시트 역할" in l][:1])
 finally:
     shutil.rmtree(_tmp, ignore_errors=True)

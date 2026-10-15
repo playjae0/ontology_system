@@ -243,9 +243,10 @@ _rc, _o = _pty(*_gen, str(RFQ), "--allow-mock", answers="\n\n")
 _rec = SH.read("RFQ01") or {}
 _rc2, _o2, _e2 = _sp("-m", "cli.register", "generate", DT2, "process", str(RFQ),
                      "--allow-mock")
-show("⑤ tty에서는 **한 번 묻고** 기록한다 · 다시 치면 **기록대로**(관문 0)",
-     _rc == 0 and "■ 시트 역할" in _o and _rec.get("decided_by") == "gate"
-     and "기록대로 진행" in _o2 and "■ 시트 역할" not in _o2,
+# 기대 변경(B112 ②) — 다시 치면 표는 보이고 **묻지 않는다**(관문 0 = 질문 0)
+show("⑤ tty에서는 **한 번 묻고** 기록한다 · 다시 치면 **기록대로**(관문 0 — 묻지 않는다 · 표는 보인다)",
+     _rc == 0 and "■ 시트 역할" in _o and "Enter=" in _o and _rec.get("decided_by") == "gate"
+     and "기록대로 진행" in _o2 and "Enter=" not in _o2,
      [l.strip() for l in _o2.splitlines() if "기록대로" in l][:1])
 _rc, _o, _e = _sp(*_gen, str(RFQ), str(TOC), "--allow-mock", "--sheets", "*:prose")
 show("⑤ 표본이 여럿이면 `--sheets`는 **사용법 거부**다 (문서마다 시트 자리가 다르다)",

@@ -135,7 +135,7 @@ def stage_head(label, detail=""):
     _screen.say(_stage_end(), "aux")
 
 
-def _step_gate(i, detail="", prose=False, ask=True):
+def _step_gate(i, detail="", prose=False, ask=True, body=None):
     """**단계 머리**를 찍고(`--step`이 아니어도 — B99 ④) `ask`면 `[계속 c / 멈춤 q]`를 묻는다.
 
     머리 아래 **단계 끝 줄**(걸린 시간 · LLM 호출 · 입력/출력)이 붙는다 — `--step`은 같은 머리에
@@ -148,6 +148,8 @@ def _step_gate(i, detail="", prose=False, ask=True):
     _screen.say(("\n" if ask else "") + f"── [{seq.index(i) + 1}/{len(seq)}] {name}"
                 + (f" — {detail}" if detail else ""), "head")
     _screen.say(_stage_end(), "aux")
+    for ln in body or []:                     # 머리 아래 표(청크 목차 — B112 ③) — 묻기 전에
+        print(ln)
     if not ask:
         return True
     print(f"   {why}")
@@ -372,12 +374,13 @@ def build_screen(step=False, stage=None, prose=False):
         from cli import result_screen
         LAST_RESULT["res"] = info.get("결과")
         result_screen.show(info.get("결과"))
+        result_screen.show_reconcile(info.get("맞춤"), limit=LIST_LIMIT)     # 맞춤표 (B112 ①④⑤)
         # **인입 끝 목록**(B102 ⑦) — 불확실 · 보류 · `show report`와 같은 함수 · 줄 상한
         _doc = (info.get("결과") or {}).get("doc_id")
         if _doc:
             from cli.show_report import hold_unc_lines
             from core.build import ledger as _lg
-            _ln = hold_unc_lines((_lg.read(_doc) or {}).get("rows") or [], limit=LIST_LIMIT)
+            _ln = hold_unc_lines((_lg.read(_doc) or {}).get("rows") or [], limit=LIST_LIMIT, doc=_doc)
             for ln in _ln:
                 print(ln)
             if _ln:
@@ -390,6 +393,35 @@ LIST_LIMIT = 8
 
 #: 마지막 문서의 결과 묶음 — 일괄 투입 끝 줄이 문서별로 모은다(`cli/ingest.ingest_file`).
 LAST_RESULT = {"res": None}
+
+
+def toc_lines(info):
+    """**청크 목차**(B112 ③) — 청크 전부 · `# · 라벨 · 좌표 · 상태 · 글자 수` + 표 아래 청크 맞춤 줄."""
+    toc = info.get("목차") or []
+    if not toc:
+        return []
+    out = ["   " + _screen.pad("#", 5) + _screen.pad("라벨", 44) + _screen.pad("좌표", 18)
+           + _screen.pad("상태", 8) + "글자"]
+    for n, lab, co, st, ch in toc:
+        out.append("   " + _screen.pad(n, 5) + _screen.pad(_screen.cut(lab, 42), 44)
+                   + _screen.pad(_screen.cut(str(co), 16), 18) + _screen.pad(st, 8) + f"{ch:,}")
+    from collections import Counter
+    c = Counter(st for *_x, st, _ch in toc)
+    out.append(f"   청크(산문) {len(toc):,} = 부름 {c.get('부름', 0):,} + ref {c.get('ref', 0):,} + "
+               f"거름 {c.get('거름', 0):,} + 재사용 {c.get('재사용', 0):,}")
+    return out
+
+
+def end_lists(info):
+    """추출 끝의 **개체 0 청크 · 실패 청크 목록**(라벨 + 앞부분 40자 · B112 ③)."""
+    out = []
+    if info.get("개체0"):
+        out.append(f"   개체 0 청크 {len(info['개체0']):,} — 라벨 · 앞부분")
+        out += [f"     {_screen.pad(_screen.cut(lab, 40), 42)}「{head}」" for lab, head in info["개체0"]]
+    if info.get("실패목록"):
+        out.append(f"   실패 청크 {len(info['실패목록']):,} — 라벨 · 사유")
+        out += [f"     {_screen.pad(_screen.cut(lab, 40), 42)}{why}" for lab, why in info["실패목록"]]
+    return out
 
 
 def extract_table():
@@ -412,7 +444,17 @@ def extract_screen(step=False, stage=None):
         k = info.get("단계")
         lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
         if k == "추출재사용":
-            _screen.say(f"   추출 {lz}— 체크포인트 재사용(LLM 0)", "head")
+            _screen.say(f"   추출 {lz}— 체크포인트 재사용(LLM 0) · {paths.show(info['자리'])}", "head")
+        elif k == "추출저장":                        # 끝난 뒤 그 자리에 있나 (B112 ⑦)
+            where = paths.show(info["자리"])
+            if info.get("전실패"):
+                _screen.say(f"   추출 체크포인트 {lz}— 쓰지 않았다(전 청크 실패 — 다시 치면 처음부터) · 자리 {where}",
+                            "fail")
+            elif info["있음"]:
+                _screen.say(f"   추출 체크포인트 {lz}— {where} (있음)", "head")
+            else:
+                _screen.say(f"   [결함] 추출이 끝났는데 체크포인트가 없다 {lz}— {where} (로그 · 결함 장부에도)",
+                            "fail")
         elif k == "추출이어서":
             _screen.say(f"   추출 이어서 {lz}— 끝난 청크 {info['끝난']:,} · "
                         f"남은 {info['남은']:,}", "head")
@@ -427,8 +469,8 @@ def extract_screen(step=False, stage=None):
                     f"체크포인트 재사용 {info['재사용']:,} 제외) → LLM ≤ {info['호출']:,}회")
             if info.get("다시"):                    # 옛 추출을 다시 뽑는 이유(B102 ⑥)
                 head += f" · 다시 뽑는다 — {info['다시']}"
-            # 머리는 늘(B99 ④) — `--step`이면 묻는다
-            return _step_gate(7, head.split("— ", 1)[1], prose=True, ask=step)
+            # 머리는 늘(B99 ④) — `--step`이면 묻는다 · 머리 아래 청크 목차 + 청크 맞춤 줄(B112 ③)
+            return _step_gate(7, head.split("— ", 1)[1], prose=True, ask=step, body=toc_lines(info))
         elif k == "추출청크":
             if stage is not None:
                 stage["값"] = info["i"]
@@ -439,6 +481,8 @@ def extract_screen(step=False, stage=None):
             _screen.say(f"   추출 끝 {lz}— 청크 {info['청크']:,} · 개체 {info['개체']:,} · "
                         f"관계 {info['관계']:,} · 실패 {info['실패']:,} · "
                         f"{_screen.usage_line(info.get('since'))}", "head")
+            for ln in end_lists(info):                    # 개체 0 · 실패 청크 목록 (B112 ③)
+                _screen.say(ln, "fail" if ln.startswith("   실패 청크") else None)
         return None
     return notice
 
@@ -454,7 +498,7 @@ def _chunk_row(box, info, lz):
         cell, kind = f"✗ 실패 — {info['실패']}", "fail"
     else:
         cell, kind = ents or "— (개체 0)", (None if ents else "aux")
-    t.row([f"{info['i']}/{info['m']}", lz + str(info["locator"]), len(info["개체"]), cell,
+    t.row([f"{info['i']}/{info['m']}", lz + str(info.get("라벨") or info["locator"]), len(info["개체"]), cell,
            info["관계"], f"{tok.get('prompt_tokens', 0):,}", f"{tok.get('completion_tokens', 0):,}",
            cum],
           ["prog", "aux", "aux" if not info["개체"] else None, kind, None, "aux", "aux", "aux"],
@@ -540,146 +584,3 @@ def _judge_gate(n, total, u):
         from core.build.entry import Stopped
         raise Stopped(f"사람이 멈췄다 — 판정 값 {n}/{total} (그래프 쓰기 0 · "
                       f"체크포인트는 남는다)")
-
-
-
-
-# ── 시트 역할 관문 (B83 ②③ · 칸 2.2 · 3.1) ──────────────────────────────────
-# **묻는 자리는 하나다** — 시트가 여러 장인 엑셀을 prose로 넣을 때, 문서마다 사람이
-# 한 번 정한다. 표의 재료는 `parser/form.sheet_table()`이고 **여기서 새로 판독하지
-# 않는다**(reader가 이미 낸 값의 투영 — 화면이 제 계산을 하지 않는다는 B81 ①과 같다).
-#
-# 제안은 **두 벌**이다(B91 ②): 로직(모양 + 렌즈 층 어휘 적중 · LLM 0)과 LLM(렌즈 층 정의문 ·
-# 지점 ⑩). 마지막 열 「제안」은 둘이 같으면 그것, 어긋나면 `ref`다(모르면 ref) — 사람이 표를
-# 보고 고치고, 그 답이 기록이 된다(`core/state/sheets.py`).
-SHEET_HEAD = "   " + (_screen.pad("#", 4) + _screen.pad("시트", 20)
-                      + _screen.pad("행", 6) + _screen.pad("열", 5)
-                      + _screen.pad("글자셀", 8) + _screen.pad("적중", 6)
-                      + _screen.pad("앞부분", 34) + _screen.pad("로직", 7)
-                      + _screen.pad("LLM", 7) + "제안")
-
-
-def sheet_note(rec, pend):
-    """머리의 괄호 — **기록의 상태를 말한다**(처음인가 · 미결이 있나)."""
-    if not rec:
-        return "기록 없음 — 이 문서는 처음이다"
-    return (f"기록 있음({rec.get('decided_by')} · {rec.get('at')})"
-            + (f" · **미결 {len(pend)}장** — 새 시트가 생겼다" if pend
-               else " — 다시 묻지 않는다"))
-
-
-def sheet_row(r, known=None):
-    """표 한 줄 — 값은 `form.sheet_table()`이 낸 것 그대로."""
-    role = (known or {}).get(r["name"])
-    last = f"기록 {role}" if role else r["suggest"]
-    return "   " + (_screen.pad(r["no"], 4)
-                    + _screen.pad(_screen.cut(r["name"], 18), 20)
-                    + _screen.pad(f"{r['rows']:,}", 6) + _screen.pad(r["cols"], 5)
-                    + _screen.pad(f"{int(round(r['text_ratio'] * 100))}%", 8)
-                    + _screen.pad("—" if r.get("hits") is None else r["hits"], 6)
-                    + _screen.pad(_screen.cut("「" + (r["head"] or "—") + "」", 32), 34)
-                    + _screen.pad(r.get("logic") or r["suggest"], 7)
-                    + _screen.pad(r.get("llm") or "끔", 7)
-                    + last)
-
-
-def sheet_table_block(rows, *, file, rec=None, pend=None):
-    """시트 **전부**의 표 — 이름을 다 보여 주고 묻는다(사용자 확정).
-
-    `--dry-run`도 이것만 찍는다(묻지 않는다 · 기록 0).
-    """
-    out = [f"■ 시트 역할 — {Path(file).name} · {len(rows)}장 "
-           f"({sheet_note(rec, pend or [])})", SHEET_HEAD]
-    known = (rec or {}).get("sheets") or {}
-    out += [sheet_row(r, known) for r in rows]
-    why = [f"      {r['no']} {r['name']} — LLM: {r['llm_reason']}" for r in rows
-           if r.get("llm_reason") and r.get("llm") != r.get("logic")]
-    return "\n".join(out + why)
-
-
-def sheet_auto_line(roles, promote, by):
-    """자동 모드의 한 줄 — 합의로 정한 수 · **승격 후보**(어긋나 `ref`로 둔 시트)."""
-    from core.state import sheets as SH
-    return (f"   자동 모드 — {SH.summary(roles)} (LLM {by})"
-            + (f" · **승격 후보 {len(promote)}장**: {' · '.join(promote)} "
-               f"(로직과 LLM이 어긋나 ref로 두었다 — 올리려면 --sheets \"<번호>:prose\")"
-               if promote else " · 승격 후보 0"))
-
-
-def sheet_roles_line(roles, doc_id):
-    """답이 기록이 된 뒤의 한 줄 — 무엇이 몇이고 어디에 남았나."""
-    from core.state import sheets as SH
-    return (f"   시트 역할 — {SH.summary(roles)} → "
-            f"{paths.rel_to_home(SH.path(doc_id))}")
-
-
-def sheet_gate(rows, *, file, doc_id, rec=None):
-    """관문 — 표를 보이고 한 줄을 받는다. 돌려주는 것은 `{시트: 역할}` 또는 `None`(중단).
-
-    **조용한 기본값이 없다**(요청문 ③): Enter는 「제안 그대로」라고 화면이 말한 뒤에만
-    제안이 되고, 역할이 안 정해진 시트가 남으면 다시 묻는다. `q`는 그 문서 중단이고
-    그래프·기록 쓰기가 0이다.
-    """
-    from parser.form import parse_sheet_spec
-    from core.state import sheets as SH
-    names = [r["name"] for r in rows]
-    roles = dict((rec or {}).get("sheets") or {})
-    pend = SH.pending(roles, names)
-    print(sheet_table_block(rows, file=file, rec=rec, pend=pend))
-    while True:
-        try:
-            ans = input("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:ref · "
-                        "Enter=제안대로 · q=중단): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return None                       # 비대화형과 같은 처분 — 조용히 넘기지 않는다
-        if ans.lower() in ("q", "quit"):
-            print(f"   중단 — {Path(file).name}은 읽지 않았다(그래프·기록 쓰기 0).")
-            return None
-        if not ans:                           # Enter = 제안 그대로 (미결 시트만)
-            got = {r["name"]: r["suggest"] for r in rows if r["name"] in pend}
-        else:
-            got, err = parse_sheet_spec(ans, names)
-            if err:
-                print(f"   [사용법] {err}")
-                continue
-        merged = {**roles, **got}
-        left = SH.pending(merged, names)
-        if left:
-            print(f"   역할이 안 정해진 시트가 남았다 — {' · '.join(left)} "
-                  f"(`*:ref`처럼 나머지를 한 번에 줄 수 있다)")
-            roles, pend = merged, left
-            continue
-        return merged
-
-
-def sheets_refusal(doc, rows, *, pend=None, rec=None, retry=None, flag_cmd=None):
-    """**비대화형이면 묻지 않고 상태 거부**다 — 문면에 시트 이름 **전부**와 다음 줄을 싣는다.
-
-    묻고 EOF를 받아 조용히 제안대로 넣으면, 가격 시트가 그래프에 들어간 사실이
-    어디에도 남지 않는다(요청문의 출처). 배치에서는 **그 문서만** 실패한다.
-
-    다음 줄은 **호출자가 안다**(B86 ⑤) — 인입이면 `ingest-file`, 등록이면
-    `register generate`다. 없으면 인입의 줄이다.
-    """
-    from parser.form import SHEET_ROLES
-    names = [r["name"] for r in rows]
-    what = (f"기록에 없는 시트 {len(pend)}장 — {' · '.join(pend)}" if pend
-            else f"시트 {len(names)}장의 역할이 정해지지 않았다")
-    sug = " ".join(f"{r['no']}:{r['suggest']}" for r in rows
-                   if not pend or r["name"] in pend)
-    retry_line = retry or f"python run.py ingest-file {doc}"
-    flag_line = (flag_cmd or f'python run.py ingest-file {doc} --sheets "{{sheets}}"'
-                 ).replace("{sheets}", sug)
-    return "\n".join([
-        f"■ 시트 역할 미정 — {Path(doc).name} ({what})",
-        "   시트: " + " · ".join(f"{r['no']} {r['name']}" for r in rows),
-        "   비대화형이라 묻지 않는다 — 조용한 기본값은 없다(역할 없이 읽으면 "
-        "가격·일정 시트까지 그래프 후보가 된다).",
-        "   ▶ 다음 줄:",
-        f"     터미널에서:          {retry_line}",
-        f"     역할을 바로 주려면:   {flag_line}",
-        f"     자동 모드(로직·LLM 합의만 자동 · 어긋나면 ref): "
-        f"{flag_line.split(' --sheets ')[0]} --sheets auto",
-        f"     (제안대로 넣으려면 위 문자열 그대로 · 역할은 "
-        f"{'|'.join(SHEET_ROLES)})",
-    ])
