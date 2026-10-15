@@ -12,7 +12,8 @@
      재인입은 자리를 지킨다 · `first_ingested_at`은 봉투의 `parsed_at`이라 시각이 아니다: 운영 파싱은 파서 기본값을
      싣는다) · 원본 경로 · doc_type · 사람 판단(`duplicate_ok` · 그림 뺌) · 개정 번호를 읽어 ④ `work/rebuild/plan.json`에
      남긴다 — 지우는 동안에도 남겨(보존 fresh의 `keep`) 도중에 끊기면 다음 실행이 그 계획에서 이어 간다
-     (문서 대장이 비었을 때만)
+  ①′ **지우기 전에 사전 점검**(B111 ② — 인입 일괄과 같은 판정 함수 · 실행당 1회 묶음 · 그림은 계획의 문서
+     목록) — 실패면 그래프 그대로 멈춘다(쓰기 0) · 통과한 묶음을 인입에 넘겨 다시 묻지 않는다
   ② `init --fresh`(보존) ③ `bootstrap` ④ 문서마다 같은 순서로 인입(문서 좌표 · 시트 역할은 ②등록이 갖는다)
   ⑤ `ops replay` ⑥ 보고 — 문서 수 · 판정 재생 · 재판정(사유별) · LLM 호출(추출 · 판정 · 태깅) · 사람 판단 재생 ·
      대상 없음 목록 · 원본 없음 목록 · 별칭 대장(그래프에 있음 · 없음 — 목록)
@@ -22,6 +23,11 @@
 
 **비대화형은 계획만**(`ops review`와 같은 규칙 — 실행은 `--yes`) · 터미널이면 묻는다. 계획은 「지울 것 ·
 남길 것 · 다시 넣을 문서 순서」다. 원본이 없는 문서는 건너뛰고 목록에 남긴다(지어내지 않는다).
+
+**끝나지 않은 재구축의 정본은 계획 파일이다**(B111 ② · 사내 실측 2026-10-15 — 둘째 문서 도중에 끊긴 재구축의
+다음 계획이 문서 대장 둘로 줄었다): 계획 파일에 진행 표시 — 실행 시작에 「진행 중」, **계획의 문서가 전부 성공해야**
+「끝」(원본 없음도 끝이 아니다 — 원본을 두면 다음 재구축이 넣는다). 「진행 중」이면 문서 대장이 비었든 아니든 그
+목록에서 이어 간다 — 끊긴 방식과 무관하다(사전 점검 실패 · 문서 실패 · 중단 · 되돌림 손이 돌지 못한 종료).
 """
 from __future__ import annotations
 
@@ -32,9 +38,23 @@ from core import paths
 from core.state import store
 
 
+#: 계획 파일의 진행 표시(B111 ②) — 「끝」이거나 없으면 문서 대장이 정본 · 「진행 중」이면 계획 파일이 정본
+IN_PROGRESS, DONE = "진행 중", "끝"
+
+
 def plan_path():
-    """④ 재구축 계획 — 다시 만들 수 있는 장부다(문서 대장이 있으면 그것이 정본)."""
+    """④ 재구축 계획 — 다시 만들 수 있는 장부다(끝난 재구축 뒤에는 문서 대장이 정본)."""
     return paths.work("rebuild", "plan.json")
+
+
+def last_plan():
+    """지난 계획 파일 — `{docs, status}` 또는 None. 진행 표시 없는 옛 파일은 `status` None이다."""
+    return json.loads(plan_path().read_text(encoding="utf-8")) if plan_path().exists() else None
+
+
+def _write_plan(docs, status):
+    store.atomic_write_bytes(plan_path(), (json.dumps({"docs": docs, "status": status}, ensure_ascii=False,
+                                                      indent=2) + "\n").encode("utf-8"))
 
 
 def from_registry():
@@ -52,26 +72,31 @@ def from_registry():
 
 
 def make_plan():
-    """계획 — `{docs, resumed, backfill, alias_book}`. 문서 대장이 비었고 지난 계획이 있으면 그 계획에서 이어 간다.
+    """계획 — `{docs, resumed, registry_n, backfill, alias_book}`. 지난 계획이 「진행 중」이면 문서 대장과 무관하게
+    그 계획에서 이어 간다(B111 ② — 대장 `registry_n`건은 그 도중의 것) · 진행 표시 없는 옛 파일은 대장이 비었을 때만.
 
     **사람 판단 기록의 이름을 여기서 채운다**(B107 ① — fresh 앞 · 대상 id가 그래프에 살아 있는 마지막 순간 ·
     비대화형 계획만이어도 채운다 — 채움은 기록에 남고 그래프는 건드리지 않는다). **별칭 대장도 같은 자리에서
     채운다**(B108 ① — 지금 그래프의 seed 밖 별칭 중 대장에 없는 것 · 이름으로)."""
     from core.state import alias_book, oplog
-    docs, resumed = from_registry(), False
-    if not docs and plan_path().exists():
-        docs, resumed = json.loads(plan_path().read_text(encoding="utf-8")).get("docs") or [], True
+    docs, resumed, last = from_registry(), False, last_plan()
+    n_reg = len(docs)
+    if last and (last.get("status") == IN_PROGRESS or (not docs and last.get("status") is None)):
+        docs, resumed = last.get("docs") or [], True
     for d in docs:
         d["exists"] = bool(d.get("path")) and Path(d["path"]).is_file()
-    return {"docs": docs, "resumed": resumed, "backfill": oplog.backfill(), "alias_book": alias_book.backfill()}
+    return {"docs": docs, "resumed": resumed, "registry_n": n_reg,
+            "backfill": oplog.backfill(), "alias_book": alias_book.backfill()}
 
 
 def show_plan(plan):
     from core.state import init as I
     docs = plan["docs"]
     go = [d for d in docs if d["exists"]]
-    print(f"■ 재구축 계획 — 문서 {len(docs):,}(다시 넣을 것 {len(go):,} · 원본 없음 {len(docs) - len(go):,})"
-          + (" · 지난 계획에서 이어 간다(문서 대장이 비었다)" if plan["resumed"] else ""))
+    print(f"■ 재구축 계획 — 문서 {len(docs):,}(다시 넣을 것 {len(go):,} · 원본 없음 {len(docs) - len(go):,})")
+    if plan["resumed"]:
+        print(f"  지난 재구축이 끝나지 않았다 — 계획 파일에서 이어 간다 · 문서 대장 {plan['registry_n']:,}건은 "
+              f"그 도중의 것 ({paths.show(plan_path())})")
     print("  지울 것 — ③진실 data/ · ④작업 work/ · ⑤파생 export/ (아래 남길 것 빼고)")
     print("  남길 것 — " + " · ".join(f"{l} {paths.show(p)}" for l, p in I.kept())
           + " · ②등록 registry/(사람 판단 기록 — 아래 줄) · layers/ · ⓪원본 raw/ · golden/")
@@ -116,8 +141,16 @@ def execute(plan, *, bootstrap, screen, replay=True):
     from core.build import replay as RP
     from core.llm import gateway
     from core.state import init as I, oplog
-    store.atomic_write_bytes(plan_path(), (json.dumps({"docs": plan["docs"]}, ensure_ascii=False, indent=2)
-                                           + "\n").encode("utf-8"))
+    items = [(Path(d["path"]), {"doc_type": d["doc_type"], "no_images": d["images_skipped"],
+                                "allow_duplicate": d["duplicate_ok"]})
+             for d in plan["docs"] if d["exists"]]
+    # **지우기 전에 끝까지 갈 수 있는지 잰다**(B111 ②) — 실패면 그래프 · 계획 파일 그대로(쓰기 0)
+    ok, pf = ingest_batch.preflight_list(items)
+    if not ok:
+        print("■ 재구축 멈춤 — 지우기 전에 멈췄다 — 그래프 그대로 (계획 파일 · 상태 폴더 쓰기 0)")
+        print("  ▶ 다음 줄 — 위 원인을 고친 뒤(연결이면 python run.py llm-check) 같은 명령: python run.py rebuild --yes")
+        return {"rc": 1}
+    _write_plan(plan["docs"], IN_PROGRESS)
     u0 = gateway.usage_by()
     rep = {}
     # 남길 것(명령 로그 포함 — 재구축 전 로그도 · B109 ①) + 계획
@@ -128,12 +161,13 @@ def execute(plan, *, bootstrap, screen, replay=True):
         print("■ 재구축 멈춤 — bootstrap이 멈췄다(위 문면) · 계획은 남았다: 고친 뒤 python run.py rebuild --yes")
         return {"rc": rc}
     RP.reset(off=None if replay else "끔")
-    items = [(Path(d["path"]), {"doc_type": d["doc_type"], "no_images": d["images_skipped"],
-                                "allow_duplicate": d["duplicate_ok"]})
-             for d in plan["docs"] if d["exists"]]
-    rows = ingest_batch.ingest_list(items)
+    rows = ingest_batch.ingest_list(items, preflight=pf)
     ops = oplog.replay()
-    return {"rc": 0, "rows": rows, "judge": dict(RP.STATS), "ops": ops,
+    from cli.ingest import OK
+    done = len(rows) == len(plan["docs"]) and all(x["status"] == OK for x in rows)
+    if done:
+        _write_plan(plan["docs"], DONE)          # 다음 재구축은 문서 대장에서 (B111 ②)
+    return {"rc": 0, "rows": rows, "judge": dict(RP.STATS), "ops": ops, "done": done,
             "calls": _calls(u0, gateway.usage_by()),
             "missing": [d for d in plan["docs"] if not d["exists"]]}
 
@@ -159,6 +193,9 @@ def report(r):
         t = x["target"]
         print(f"    없음 — '{x['surface']}' → {t['canonical']} ({t['category']} · {t['layer']}) · {x['source']}"
               " (대장에는 남는다 — 그 문서 · 이름이 돌아오면 다시 붙는다)")
+    print(f"  계획 파일 — {DONE if r['done'] else IN_PROGRESS}"
+          + (" (다음 재구축은 문서 대장에서)" if r["done"] else
+             " (계획의 문서가 전부 성공하지 않았다 — 고친 뒤 같은 명령이 이 계획에서 이어 간다)"))
 
 
 def main(argv, *, bootstrap, screen):

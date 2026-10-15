@@ -52,6 +52,7 @@ import base64
 import json
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -109,6 +110,48 @@ def use_mock():
         except NotConfigured:
             v = None        # 설정 파일이 깨진 것은 config()가 시끄럽게 말한다
     return "1" if v is None else str(v) == "1"
+
+
+#: mock 세계의 시험 문 — 격리 환경이 남기는 `ONTO_*` 둘(mock 루트를 코드 밖에 · mock 자산 자리).
+#: 이름은 `core/paths.MOCK_HOME_ENV` · `core/state/fixtures`와 같다 — 여기서 그 모듈을 import하면
+#: 상태 루트가 정해진다(`isolate` 머리말). 운영 경로는 둘 다 보지 않는다.
+MOCK_WORLD_ENV = ("ONTO_MOCK_HOME", "ONTO_FIXTURES")
+
+
+def isolated_env(base=None):
+    """점검 · 시험 · 도구의 **하위 실행 환경** — 셸 환경과 무관하게 mock · 기본 mock 루트(B111 ①).
+
+    사내 실측(2026-10-15): 셸 설정에 `ONTO_HOME`을 넣고 `$ONTO_HOME/llm.json`을 실호출로 둔 채
+    `python doctor.py`를 치자 **doctor의 클린이 운영 상태 폴더에서 돌았다** — 하위 실행이 셸
+    환경을 그대로 물려받았고, 모드는 환경변수 > 설정 파일 > mock이라 셸이 실호출이면 클린도
+    실호출 루트에서 돈다. 그래서 하위 실행의 환경은 **이 함수 하나가 정한다**(두 벌 금지):
+    `USE_MOCK=1` · `ONTO_*` 손잡이를 뺀다(상태 루트 · 로그 자리 · 디버그 — **mock 세계의 시험 문
+    `MOCK_WORLD_ENV`만 남는다**: 운영은 그것을 보지 않는다) · 설정 파일 판독을 끈다(`ONTO_CONFIG`를
+    파일이 아닌 자리로 — 명시하면 그것만 본다) · 게이트웨이 설정 키를 뺀다(`CONFIG_KEYS` — mock에서도
+    후보 좁히기 · 보폭이 그 값을 읽는다).
+    """
+    env = {k: v for k, v in (os.environ if base is None else base).items()
+           if not (k.startswith("ONTO_") and k not in MOCK_WORLD_ENV) and k not in CONFIG_KEYS}
+    env["USE_MOCK"] = "1"
+    env[CONFIG_ENV] = os.devnull           # 파일이 아니다 → `config_file()`이 None (다른 자리로 넘어가지 않는다)
+    return env
+
+
+def isolate():
+    """**이 프로세스를** 격리 환경으로 — 상태 루트가 정해지기 전(core의 다른 모듈 import 전)에 부른다.
+
+    루트는 프로세스당 한 번 정해지고(`core.paths.home`) 모듈 상수가 그 자리를 잡는다 — 정해진
+    뒤에 환경을 바꾸면 앞에서 잡은 자리와 뒤의 자리가 갈린다. 그 순서 어긋남은 시끄럽게 멈춘다.
+    """
+    env = isolated_env()
+    if dict(os.environ) == env:
+        return                              # 이미 격리 환경이다 — 도우미 둘을 import한 시험 · doctor 아래의 시험
+    _p = sys.modules.get("core.paths")
+    if _p is not None and getattr(_p, "_HOME", None) is not None:
+        raise RuntimeError("상태 루트가 이미 정해졌다 — 격리(gateway.isolate)는 "
+                           "core의 다른 모듈을 import하기 전에 부른다")
+    os.environ.clear()
+    os.environ.update(env)
 
 
 def mode_line():
@@ -295,6 +338,13 @@ def _temperature(raw):
         raise NotConfigured(reason)
 
 
+#: 게이트웨이 설정의 키 — 환경변수와 설정 파일이 같은 이름을 쓴다(`config()` · 문맥 상한은
+#: `core/llm/check.py`). 격리 환경(`isolated_env`)이 이 목록을 뺀다 — 키를 더하면 여기에도.
+CONFIG_KEYS = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL", "EMBED_BACKEND",
+               "EMBED_GATEWAY_URL", "CANDIDATE_NARROW", "CHAT_TEMPERATURE", "PROGRESS_EVERY",
+               "LLM_TIMEOUT", "LLM_RETRY", "LLM_CONTEXT_TOKENS")
+
+
 def config():
     """게이트웨이 설정. **비어 있으면 그 사실을 그대로 돌려준다** — 여기서 채우지 않는다.
 
@@ -362,7 +412,10 @@ def _paths_root():
     return paths.ROOT
 
 
-PROMPTS_DIR = os.path.join(str(_paths_root()), "prompts")
+def prompts_dir():
+    """지시문 자리 — **부를 때 묻는다**(B111 ① — 모듈 상수로 두면 이 모듈을 import하는 순간 자리 소유자가
+    올라와 상태 루트가 정해진다: 격리(`isolate`)가 그보다 먼저여야 한다)."""
+    return os.path.join(str(_paths_root()), "prompts")
 
 
 _PROMPT_RE = re.compile(r"^\d+\.\d+_(?P<name>.+)\.md$")
@@ -380,7 +433,7 @@ def prompt_path(name):
     모델에 갔는지 화면이 답하지 못하고, 고친 파일이 안 쓰이는 상태가 보이지 않는다.
     """
     try:
-        names = sorted(os.listdir(PROMPTS_DIR))
+        names = sorted(os.listdir(prompts_dir()))
     except OSError:
         names = []
     hits = [f for f in names
@@ -389,7 +442,7 @@ def prompt_path(name):
         reason = f"지시문 이름이 겹친다: {name} → {hits} — 이름은 하나여야 한다(B63 ①)"
         log.explicit_fail(_LOG, f"core.llm.prompt[{name}]", reason)
         raise FileNotFoundError(reason)
-    return os.path.join(PROMPTS_DIR, hits[0]) if hits else None
+    return os.path.join(prompts_dir(), hits[0]) if hits else None
 
 
 def prompt(name):
@@ -405,7 +458,7 @@ def prompt(name):
     p = prompt_path(name)
     if not p:
         log.explicit_fail(_LOG, f"core.llm.prompt[{name}]",
-                          f"지시문 템플릿이 없다: {PROMPTS_DIR}/<칸ID>_{name}.md "
+                          f"지시문 템플릿이 없다: {prompts_dir()}/<칸ID>_{name}.md "
                           f"— 파일이 정본이다(§7.6-B-5)")
         raise FileNotFoundError(f"지시문 템플릿 없음: <칸ID>_{name}.md")
     with open(p, encoding="utf-8") as f:

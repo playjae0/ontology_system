@@ -136,9 +136,11 @@ def _copy_now(dest):
 
 
 def _run(work, trees):
-    """사본마다 덤프를 동시에 돌린다 — 환경의 `ONTO_*`는 빼고(사본마다 기본 mock 루트) · 출력은 로그 파일로."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("ONTO_")}
-    env["USE_MOCK"] = "1"
+    """사본마다 덤프를 동시에 돌린다 — 격리 환경(`gateway.isolated_env` — doctor · 시험과 같은 함수 · B111 ①)에서
+    mock 세계의 시험 문까지 빼고(사본마다 기본 mock 루트) · 출력은 로그 파일로."""
+    sys.path.insert(0, str(ROOT))
+    from core.llm import gateway
+    env = {k: v for k, v in gateway.isolated_env().items() if k not in gateway.MOCK_WORLD_ENV}
     procs = {}
     for side, tree in trees.items():
         me = tree / "tools" / Path(__file__).name

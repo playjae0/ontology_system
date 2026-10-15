@@ -21,15 +21,32 @@ from core.state import log
 from parser.reader import LEGACY_BINARY, SUPPORTED   # noqa: E402
 
 
-def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP,
-                progress_every=None, sheets=None, revise=False):
-    """문서 여럿 — `items`는 `[(경로, {doc_type, no_images, allow_duplicate})]`. 돌려주는 것은 결과 행들."""
-    from cli import ingest as IN
+def preflight_box(items):
+    """**사전 점검의 묶음 — 실행당 1회**(B98 ①) · 그림은 묶음 안 어느 문서에라도 있으면 본다. 판정은 아직 0."""
     from cli.preflight import has_images
+    return {"ok": None, "images": any(not o.get("no_images") and has_images(f) for f, o in items)}
+
+
+def preflight_list(items):
+    """묶음 전체의 사전 점검을 **지금** 돈다(B111 ② — 재구축은 지우기 전에) — 인입과 같은 판정 함수
+    (`cli.ingest._preflight_once` — 채팅 · 임베딩 · 그림 · 공통 config + doc_type마다 등록 스키마)를 문서 차례로,
+    첫 실패에서 멈춘다. 돌려주는 것은 `(통과, 묶음)` — 묶음을 `ingest_list(preflight=)`에 넘기면 다시 묻지 않는다."""
+    from cli import ingest as IN
+    pf = preflight_box(items)
+    for f, o in items:
+        if not IN._preflight_once(f, pf, bool(o.get("no_images")), o.get("doc_type")):
+            return False, pf
+    return True, pf
+
+
+def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP,
+                progress_every=None, sheets=None, revise=False, preflight=None):
+    """문서 여럿 — `items`는 `[(경로, {doc_type, no_images, allow_duplicate})]`. 돌려주는 것은 결과 행들.
+    `preflight`는 이미 돈 사전 점검의 묶음(`preflight_list` — 재구축)이다 · 없으면 첫 문서에서 돈다."""
+    from cli import ingest as IN
     rows = []
     u0 = gateway.usage_total()
-    # **사전 점검은 실행당 1회**(B98 ①) — 그림은 묶음 안 어느 문서에라도 있으면 본다
-    pf = {"ok": None, "images": any(not o.get("no_images") and has_images(f) for f, o in items)}
+    pf = preflight if preflight is not None else preflight_box(items)
     for f, o in items:
         rows.append(IN.ingest_file(f, o.get("doc_type"), dry_run, adapter_paths,
                                    finalize_after=False, coord_cap=coord_cap,
