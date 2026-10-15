@@ -17,7 +17,7 @@ quality): 표 CP01(cp · process) · PFMEA01(pfmea · quality) · 산문 RFQ01(p
      않는다 / 기본 `init --fresh`는 묻지 않고 보존 여섯을 남긴다 / 확인 없이 부른 클린(코드)은 `CleanRefused` · 쓰기 0
   ⓒ 재구축 사전 점검: 실호출 + 설정 없음으로 `rebuild --yes` ⇒ 지우기 전에 멈춤(사전 점검 문면 + 「지우기 전에 멈췄다 —
      그래프 그대로」 + 다음 줄 llm-check · rc 1) · 지문 불변 · 계획 파일 0
-  ⓓ 이어 가기: 끊기지 않은 재구축이 기준(mock은 끝까지 · 계획 파일 「끝」) / 둘째 문서 도중 `kill -9` · 중단(SIGINT) ·
+  ⓓ 이어 가기: 끊기지 않은 재구축이 기준(mock은 끝까지 · 계획 파일 「끝」) / 둘째 문서 도중 `kill -9` · 중단(KeyboardInterrupt) ·
      문서 하나 실패 · 끊긴 뒤의 사전 점검 실패(지문 불변) 각각 ⇒ 다음 계획이 셋 전부 + 「지난 재구축이 끝나지 않았다 —
      계획 파일에서 이어 간다 · 문서 대장 k건은 그 도중의 것」 · `--yes` 뒤 그래프 · 사전 · 큐가 기준과 같다 · 「끝」 →
      다음 계획은 문서 대장에서(이어 간다는 줄 0)
@@ -349,7 +349,7 @@ show("ⓓ 기준 — 끊기지 않은 재구축(mock은 끝까지) · 계획 파
 
 
 def _mid(sig):
-    """재구축을 띄우고 **둘째 문서가 문서 대장에 들어온 뒤** 신호를 보낸다 — 되돌림 손이 돌지 못하는(kill -9) · 도는(중단)."""
+    """재구축을 띄우고 **둘째 문서가 문서 대장에 들어온 뒤** 신호를 보낸다 — 되돌림 손이 돌지 못하는 끊김(kill -9)."""
     p = subprocess.Popen([sys.executable, str(ROOT / "run.py"), "rebuild", "--allow-mock", "--yes"], cwd=str(ROOT),
                          env=ISO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
     seen, t0 = None, time.time()
@@ -372,9 +372,26 @@ def _kill9():
     return f"둘째 문서 도중 kill -9(대장 {seen} · rc {rc})"
 
 
-def _sigint():
-    seen, rc = _mid(signal.SIGINT)
-    return f"둘째 문서 도중 중단 SIGINT(대장 {seen} · rc {rc})"
+def _interrupt():
+    """중단(Ctrl-C)은 **둘째 문서 구축 안에서 `KeyboardInterrupt`** — 되돌림 손이 도는 끊김. 진짜 신호는 정리(`__del__`) 중에
+    닿으면 CPython이 삼켜 재구축이 끝까지 가는 수가 있어(실측 1회) 자리를 정해 일으킨다 — 손이 돌지 못하는 끊김은 kill -9."""
+    from core.build import entry as EN
+    bd0, seen = EN._build_document, []
+
+    def bd(env, *a, **k):
+        if env["doc_id"] == "PFMEA01":
+            seen.append(list(json.loads(REG.read_text(encoding="utf-8"))))
+            raise KeyboardInterrupt
+        return bd0(env, *a, **k)
+    EN._build_document = bd
+    try:
+        _quiet(RB.main, ["--allow-mock", "--yes"], bootstrap=RUN.cmd_bootstrap, screen=RUN.fresh_screen)
+        how = "끝까지 갔다"
+    except KeyboardInterrupt:
+        how = "KeyboardInterrupt"
+    finally:
+        EN._build_document = bd0
+    return f"둘째 문서 구축 도중 중단({how} · 그때 대장 {seen[0] if seen else None})"
 
 
 def _docfail():
@@ -410,7 +427,7 @@ def _preflight_after():
     return f"문서 하나 실패 뒤 사전 점검 실패(rc {rc})"
 
 
-for _how in (_kill9, _sigint, _docfail, _preflight_after):
+for _how in (_kill9, _interrupt, _docfail, _preflight_after):
     _restore()
     _what = _how()
     _k = len(json.loads(REG.read_text(encoding="utf-8")))
