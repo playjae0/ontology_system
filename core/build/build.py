@@ -136,12 +136,66 @@ class Builder:
 
         `coord`(`(좌표 노드 id, 그 그래프)`)가 있으면 **자기 좌표 규칙을 먼저 본다**
         (B90 ③) — 이름 규칙(`X::…`)으로 키를 만들기 **전**이어야 한다.
+
+        그보다 앞에 **다른 공정 이름 가드**(B113 ①) — 표기가 좌표 계보 밖 골격 노드의 이름이면 노드를 만들지
+        않고 그 공정으로 관련 링크(`mentions` — 구축 끝에 청크의 `about`)만 남긴다(`(None, self)`).
         """
+        other = self.other_process(surface, coord)
+        if other is not None:
+            return self._mention(surface, category, prov, other), self
         hit = self._self_coord(surface, category, coord)
         if hit:
             return hit
         eb = self.for_category(category)
         return eb.resolve_entity(surface, category, prov, **kw), eb
+
+    # ---------------------------------------------------------------- 다른 공정 이름 (B113 ①)
+    def other_process(self, surface, coord):
+        """**다른 공정의 골격 이름**(B113 ①) — 표기가 사전(정확 · 라틴 대소문자 2차)에서 골격 노드(Tier1)에 맞고
+        그 노드가 **좌표의 계보 밖**(좌표 자신 · 조상 · 서브트리 어디도 아니다)이면 `(노드 id 또는 None, 맞은
+        canonical들)` · 아니면 None. 노드가 여럿이면(공유 별칭) 하나라도 계보 안이면 None · 다 밖이면 id 없이.
+        좌표가 없으면 계보를 모르니 None(지금 규칙 — 좌표 없는 스코프 개체 0 등). 골격 이름은 데이터다."""
+        ref, ref_g = coord or (None, None)
+        if not surface or not ref or ref_g is None or not ref_g.get(ref):
+            return None
+        from core.state.bootstrap import COORD_CATEGORY
+        g, _ = self._graph_for(COORD_CATEGORY)
+        hits = sorted(nid for nid in set(self.dict.lookup(surface))
+                      if (g.get(nid) or {}).get("category") == COORD_CATEGORY and is_live(g.get(nid))
+                      and g.get(nid).get("status") in ("seed", "confirmed"))
+        if not hits:
+            return None
+        pm = self._parent_map(g, COORD_CATEGORY)
+
+        def chain(c):
+            out = []
+            while c and c not in out and len(out) < 64:
+                out.append(c)
+                c = pm.get(c)
+            return out
+        rc = ref_g.get(ref)["canonical"]
+        up = set(chain(rc))
+        cans = [g.get(n)["canonical"] for n in hits]
+        if any(c in up or rc in chain(c) for c in cans):
+            return None
+        return (hits[0] if len(hits) == 1 else None), cans
+
+    def _mention(self, surface, category, prov, other):
+        """다른 공정 언급 — 노드 0 · 관련 링크 재료(`mentions`) · 대장 행(경로 `skeleton` · 판정 `mention` ·
+        canonical = 그 공정). 공유 별칭이 계보 밖 여럿이면 링크 없이(결함 로그)."""
+        nid, cans = other
+        if not hasattr(self, "mentions"):
+            self.mentions = []
+        loc = (prov or "").split("#", 1)[-1] if "#" in str(prov or "") else prov
+        if nid:
+            self.mentions.append({"locator": loc, "node_id": nid, "surface": surface})
+        else:
+            store.append_defect(f"{self.doc_id}: 다른 공정 이름 '{surface}'가 골격 노드 여럿({' · '.join(cans)})이라 "
+                                f"관련 링크를 달지 않았다 @ {loc} (노드 0)")
+        self.last = {"canonical": " · ".join(cans), "verdict": "mention", "path": "skeleton",
+                     "confidence": 1.0, "layer": self.layer, "queue_kind": None, "candidates_n": 0,
+                     "node_id": None, "category": category, "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
+        return None
 
     def _self_coord(self, surface, category, coord):
         """**자기 좌표 규칙**(B90 ③) — 좌표 X 아래에서 뽑힌 C 표기가 사전에서 **X 자신**으로

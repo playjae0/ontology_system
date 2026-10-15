@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LLM 지점 10종 **본문 스모크** — 실호출 갈래의 함수 본문을 한 번씩 돌린다 (B79 ③ⓒ).
+"""LLM 지점 12종 **본문 스모크** — 실호출 갈래의 함수 본문을 한 번씩 돌린다 (B79 ③ⓒ · ⑪⑫ B115).
 
 도달성 탐침(`tests/points_probe.py`)과 **다른 성질**이다. 탐침은 「호출자가 타는 길이
 미설정 실패(`NotConfigured`)에 닿는가」까지 잰다 — 그 뒤의 본문은 한 줄도 돌지 않는다.
@@ -166,6 +166,16 @@ def cases():
                                        [{"layer": "L", "categories": {"C": "정의"},
                                          "relevance_terms": []}]),
             lambda r: r.get("role") in ("prose", "ref") and isinstance(r.get("reason"), str)),
+        # ⑪문서 개요(B115 ①) — `{제목 id: 대상 또는 None}` · ⑫연결 보강(B115 ④) — 고른 것 dict 또는 None
+        "outline": (
+            lambda: __import__("core.build.outline", fromlist=["x"])._ask(
+                [{"id": 1, "text": "2) NG unit", "parent": None, "depth": 1}], cfg),
+            lambda r: isinstance(r, dict) and all(v is None or {"name", "category"} <= set(v) for v in r.values())),
+        "reinforce": (
+            lambda: __import__("core.build.reinforce", fromlist=["x"])._ask(
+                {"entity": {"name": "모터", "category": "Component"}, "chunk": "모터를 쓴다", "headings": [],
+                 "candidates": [{"id": "c1", "name": "NG unit", "category": "Unit"}], "relations": ["part_of"]}),
+            lambda r: r is None or (isinstance(r, dict) and {"id", "rel", "evidence"} <= set(r))),
     }
 
 

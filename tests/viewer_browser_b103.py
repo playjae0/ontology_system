@@ -150,36 +150,12 @@ try:
         pg.screenshot(path=str(SHOTS / "b103_02_연결없는노드.png"))
         pg.uncheck("#show-detached"); pg.wait_for_timeout(500)
 
-        # ── ⓑ 힘
-        b = pg.evaluate("""(K) => { const k = eval(K);
-            const on = S.graph.nodes.filter((n) => S.graph.anchor[n.id]);
-            const seed = layoutSkel(on, S.graph.edges, S.graph.anchor);
-            const f1 = layoutForce(on, S.graph.edges, seed), f2 = layoutForce(on, S.graph.edges, seed);
-            const comps = _components(on, S.graph.edges.filter((e) => f1[e.src] && f1[e.dst]));
-            const bb = comps.map((c) => { const v = c.map((n) => f1[n.id]);
-              return [Math.min(...v.map((q) => q.x)), Math.min(...v.map((q) => q.y)),
-                      Math.max(...v.map((q) => q.x)), Math.max(...v.map((q) => q.y))]; });
-            let ov = 0; for (let i = 0; i < bb.length; i++) for (let j = i + 1; j < bb.length; j++) {
-              const A = bb[i], B = bb[j]; if (A[0] <= B[2] && B[0] <= A[2] && A[1] <= B[3] && B[1] <= A[3]) ov++; }
-            const det = S.graph.detached;
-            return {same: k(f1) === k(f2), comps: comps.length, ov, cut: LSTAT.forceCut, it: LSTAT.forceIter,
-                    ms: LSTAT.forceMs, excl: [...det.edgeless, ...det.island].every((i) => !f1[i])}; }""", _JS_K)
-        show("ⓑ 힘 — 같은 입력 같은 좌표(시간 예산 안) · 덩어리 경계 상자 겹침 0 · 닻 없는 노드 제외",
-             b["same"] and not b["cut"] and b["ov"] == 0 and b["excl"],
-             f"덩어리 {b['comps']} · 겹침 {b['ov']} · 반복 {b['it']} · {b['ms']}ms · 예산에 걸림 {b['cut']}")
-        # 덩어리 여럿 — 연결 없는 노드까지 넣으면(토글 켬과 같은 입력) 섬·엣지 없는 점이 따로 덩어리다
-        b2 = pg.evaluate("""() => { const all = S.graph.nodes;
-            const f = layoutForce(all, S.graph.edges, layoutHier(all, S.graph.edges));
-            const comps = _components(all, S.graph.edges);
-            const bb = comps.map((c) => { const v = c.map((n) => f[n.id]);
-              return [Math.min(...v.map((q) => q.x)), Math.min(...v.map((q) => q.y)),
-                      Math.max(...v.map((q) => q.x)), Math.max(...v.map((q) => q.y))]; });
-            let ov = 0; for (let i = 0; i < bb.length; i++) for (let j = i + 1; j < bb.length; j++) {
-              const A = bb[i], B = bb[j]; if (A[0] <= B[2] && B[0] <= A[2] && A[1] <= B[3] && B[1] <= A[3]) ov++; }
-            return {comps: comps.length, ov}; }""")
-        show("ⓑ 힘 — 덩어리 여럿(연결 없는 노드 포함)도 경계 상자 겹침 0", b2["comps"] >= 3 and b2["ov"] == 0,
-             f"덩어리 {b2['comps']} · 겹침 {b2['ov']}")
-        pg.click("#layout-pick input[value='힘']"); pg.wait_for_timeout(1500)
+        # ── ⓑ 힘 — B114 ①이 화면 밖 워커(ForceAtlas2 계열 · 한 판에 · 덩어리 붙이기 없음)로 바꿨다 — 결정성 · 퍼짐 ·
+        #    화면 멈춤은 `tests/viewer_browser_b114.py` ⓐ가 잰다. 여기서는 그 배치가 끝까지 돈다는 것만 본다.
+        pg.click("#layout-pick input[value='힘']")
+        pg.wait_for_function("() => LSTAT.forceState === '끝'", timeout=120000)
+        show("ⓑ 힘 — 워커가 반복을 끝까지 돈다(B114 ① · 자세한 것은 viewer_browser_b114.py)",
+             pg.evaluate("() => LSTAT.forceIter === LSTAT.forceMax && LSTAT.forceMax > 0"))
         pg.screenshot(path=str(SHOTS / "b103_03_힘.png"))
         pg.click("#layout-pick input[value='골격+위성']"); pg.wait_for_timeout(800)
 

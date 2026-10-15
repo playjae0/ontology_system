@@ -26,6 +26,34 @@ function asking(on) {
   S.asking = on;
   const b = $("#qform button");
   if (b) { b.disabled = on; b.textContent = on ? "묻는 중…" : "묻는다"; }
+  // **질의 상태 줄**(B114 ④) — 묻는 동안 서버의 진행을 GET으로 읽는다(쓰기 0) · 끝나면 마지막 상태를 한 번 더
+  if (S.qpoll) { clearInterval(S.qpoll); S.qpoll = null; }
+  if (on) { S.qpoll = setInterval(pollStatus, QPOLL_MS); pollStatus(); }
+  else pollStatus();
+}
+
+const QPOLL_MS = 400;
+
+/** 상태 줄 — 단계 다섯(지난 것 ✓ · 지금 것 굵게) · 벡터 준비의 진행(노드 · 청크 n/m · 남은 예상) · 경과 초. */
+async function pollStatus() {
+  let st;
+  try { st = await get("/api/status"); } catch (err) { return; }
+  const box = $("#qstatus"); if (!box || !st || !st.query) return;
+  const q = st.query;
+  if (S.asking && !q.active) {                       // 보냈는데 서버가 아직 받지 않았다 — 지난 질의의 「끝」을 싣지 않는다
+    box.hidden = false; box.textContent = "질의 보냄 — 서버가 받기를 기다린다"; return;
+  }
+  box.hidden = !q.question;
+  box.innerHTML = "";
+  box.append(el("span", "", q.active ? "질의 중 — " : "질의 끝 — "));
+  (st.stages || []).forEach((name, i) => {
+    const seen = (q.seen || []).includes(name), cur = q.active && q.stage === name;
+    if (i) box.append(document.createTextNode(" › "));
+    box.append(el("span", cur ? "on" : seen ? "" : "muted", (seen && !cur ? "✓ " : "") + name));
+  });
+  box.append(el("span", "muted", ` · 경과 ${q.elapsed}초`));
+  if (st.line && st.vectors && (st.vectors.made || st.vectors.active)) box.append(el("div", "muted", st.line));
+  box.dataset.stage = q.active ? q.stage || "" : "끝";
 }
 
 /** 원문 카드 — 머리 한 줄 + 접어 둔 원문 전부(누르면 펼친다) · 「원본」은 문서 패널을 연다. */

@@ -18,7 +18,7 @@ import sys
 
 from core.llm import gateway
 from core.dictionary import Dictionary
-from core.query import query as Q
+from core.query import query as Q, status as QS
 from core.state import knobs, store
 from core.state.ids import norm
 from core.state.bootstrap import load_config, open_graph
@@ -41,6 +41,13 @@ def answer(question):
     """
     graphs, configs = _world()
     dictionary = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
+    # **진행 상태**(B114 ④) — 단계마다 한 줄(뷰어 상태 줄 · 폴링) · 첫 단계는 벡터 준비(뒤 두 자리는 캐시를 쓴다)
+    QS.begin(question)
+    QS.stage("벡터 준비")
+    from core.query import hybrid as H, vectors as V
+    V.begin()
+    H.warm(graphs, configs)
+    QS.stage("링킹")
     stage = {}
     hits = Q.link(question, dictionary, graphs, configs, stage=stage)
 
@@ -121,7 +128,9 @@ def answer(question):
     direct_by_layer = {}
     for h in hits:
         direct_by_layer.setdefault(h["layer"], set()).add(h["node_id"])
+    QS.stage("확장")
     collected = _answer_expand(res, tr, intent, direct_by_layer, graphs, configs)
+    QS.stage("수집")
     _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent)
     # **ⓖ 노드 원 레코드**(B105 ⑤) — 링킹·확장 노드를 가공 없이(문장 틀 0) · 상한은 손잡이
     from core.query import records as R
@@ -332,6 +341,7 @@ def generate(res):
     사실과 청크 원문뿐이다.
     """
     tr = res.get("trace") or {}
+    QS.stage("답변")
     if gateway.use_mock():
         gateway.mock("answer", "두 채널 정형 나열 (문장 생성 없음)")
         out = render(res)
@@ -495,7 +505,10 @@ def as_json(res):
     `res["facts"]`를 좁히기 때문이다(§5.3 Q5) — 답보다 넓은 근거 목록을 함께 내면
     묶음이 「이 답의 근거」라고 거짓말을 한다. mock이면 `render(res)`라 변화가 없다.
     """
-    text = generate(res)
+    try:
+        text = generate(res)
+    finally:
+        QS.end()
     return dict(res, answer=text)
 
 
@@ -513,6 +526,8 @@ def main(args):
     from cli import _screen
     _u0 = gateway.usage_total()
     from core.query import vectors as _V
+    # 벡터를 만드는 동안 진행 줄(B114 ④ — 저장마다 · 사람용 줄은 --json이면 stderr)
+    _V.ON_PROGRESS = lambda ln: print(f"  {ln}", file=sys.stderr if want_json else sys.stdout, flush=True)
     if want_json:
         print(f"  {gateway.mode_line()}", file=sys.stderr)
         print(json.dumps(as_json(answer(question)), ensure_ascii=False))
@@ -522,7 +537,10 @@ def main(args):
     else:
         print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
         res = answer(question)
-        text = generate(res)
+        try:
+            text = generate(res)
+        finally:
+            QS.end()
         # **링크 결과와 답을 나란히**(B104 ④) — mock은 답이 곧 나열이고, live는 나열(ⓐ~ⓔ) 아래 LLM 답(ⓕ)
         print(text if gateway.use_mock() else render(res))
         print(answer_block(res, text))

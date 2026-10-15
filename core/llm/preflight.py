@@ -24,6 +24,9 @@ from core.llm import check, gateway
 
 #: 단계 순서 — 화면의 한 줄이 이 순서다.
 ORDER = ("설정", "채팅", "임베딩", "그림", "공통 config", "쓰기")
+#: 채팅을 쓰는 실행이 부를 수 있는 지시문 — 파일이 있는지 「설정」 단계가 본다(B115 ① — ⑪개요 · ⑫연결 보강이
+#: 구축 중에 처음 불려 그때 없다고 죽지 않게 · 추출 · 판정과 같이)
+CHAT_PROMPTS = ("extract", "outline", "judge", "reinforce")
 
 
 def run(*, chat=True, embed=False, images=False, catalog=True):
@@ -72,6 +75,10 @@ def _config(live, chat, embed):
         names = {"url": "LLM_GATEWAY_URL", "model": "CHAT_MODEL", "embed_model": "EMBED_MODEL"}
         return (False, f"필요한 키 없음 — {', '.join(names[k] for k in miss)} · {src}",
                 "읽힌 설정 파일에 대문자 키로 적는다 — python run.py llm-check ①", "")
+    gone = [n for n in (CHAT_PROMPTS if chat else ()) if not gateway.has_prompt(n)]
+    if gone:
+        return (False, f"지시문 파일 없음 — {', '.join(f'<칸ID>_{n}.md' for n in gone)} · {gateway.prompts_dir()}",
+                "레포 정본 자산이다 — git checkout -- prompts/ · python doctor.py 자산 대조", "")
     return True, src, "", ""
 
 

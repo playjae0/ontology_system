@@ -191,10 +191,11 @@ finally:
 print("\n■ B82 ② — 벤더링 · 색 축 · 렌더러 인터페이스")
 _ST = ROOT / "cli" / "viewer" / "static"
 _V = _ST / "vendor"
-#: 화면 코드는 **다섯 파일**이다(B84 — `app.js` 351행을 갈랐다 · B103 — 배치 `layout.js` · 탐색·상세 근거
-#: `explore.js`). 문면을 재는 어서션은 합쳐 본다 — 이름이 옮겨 간 것은 사라진 것이 아니다.
+#: 화면 코드는 **여섯 파일**이다(B84 — `app.js` 351행을 갈랐다 · B103 — 배치 `layout.js` · 탐색·상세 근거
+#: `explore.js` · B114 — 힘 배치 워커 `force_worker.js`). 문면을 재는 어서션은 합쳐 본다 — 이름이 옮겨 간 것은
+#: 사라진 것이 아니다.
 _SRC = {n: (_ST / n).read_text(encoding="utf-8")
-        for n in ("app.js", "render.js", "query.js", "layout.js", "explore.js")}
+        for n in ("app.js", "render.js", "query.js", "layout.js", "explore.js", "force_worker.js")}
 _app = "\n".join(_SRC.values())
 _idx = (_ST / "index.html").read_text(encoding="utf-8")
 _css = (_ST / "style.css").read_text(encoding="utf-8")
@@ -295,7 +296,7 @@ show("⑤ 화면이 서버의 오류 키를 본다 — 답 자리에 문면 그�
      and "function errorCard" in _SRC["query.js"] and "card err" in _SRC["query.js"])
 show("⑤ 질의 중에는 버튼이 잠긴다 — 같은 버튼을 또 눌러도 요청은 한 건",
      "S.asking" in _SRC["query.js"] and "묻는 중" in _SRC["query.js"])
-show("§7 — 화면 코드 다섯 파일이 각각 상한(800행) 밑이다 (`app.js` 351 → 셋 → 다섯)",
+show("§7 — 화면 코드 여섯 파일이 각각 상한(800행) 밑이다 (`app.js` 351 → 셋 → 다섯 → 여섯)",
      all(len(v.splitlines()) <= 800 for v in _SRC.values()),
      " · ".join(f"{k} {len(v.splitlines())}" for k, v in _SRC.items()))
 
@@ -395,6 +396,85 @@ show("⑥ 서버에 노드·이웃 라우트가 있고 쓰기 라우트는 여�
      "/api/node/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")
      and "/api/neighbors/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")
      and not hasattr(VS.Handler, "do_POST"))
+
+print("\n■ B114 — 힘 배치 워커 · 크기 · 벡터 이어 만들기 · 질의 단계 (브라우저 없이 재는 성질 · 브라우저 몫은 "
+      "tests/viewer_browser_b114.py)")
+import re as _re2                                                    # noqa: E402
+import shutil as _sh                                                 # noqa: E402
+from core.llm import embeddings as _E                                # noqa: E402
+from core.query import hybrid as _H, status as _QS, vectors as _V    # noqa: E402
+_lay = _SRC["layout.js"]
+show("① 힘 배치는 화면 밖 워커가 돌고 시간으로 끊지 않는다 — 워커를 띄우는 자리 하나 · 시간 예산 끊기 0 · 난수 0",
+     _lay.count('new Worker("/static/force_worker.js")') == 1
+     and "deadline" not in _lay + _SRC["force_worker.js"] and "Math.random" not in _SRC["force_worker.js"]
+     and "postMessage" in _SRC["force_worker.js"])
+_ts = {k: int(v) for k, v in _re2.findall(r"(main|sub|detail): (\d+)",
+                                          _SRC["render.js"].split("const TIER_SIZE", 1)[1][:80])}
+_other = int(_re2.search(r"const SIZE_OTHER = (\d+)", _SRC["render.js"]).group(1))
+show("② 크기 — tier 순서 그대로 계단(main > sub > detail > 골격 밖) · 라벨 글자도 같은 계단",
+     _ts["main"] > _ts["sub"] > _ts["detail"] > _other and "labelScale" in _SRC["render.js"]
+     and "defaultDrawNodeLabel: drawLabel" in _SRC["render.js"], f"{_ts} · 그 밖 {_other}")
+_g = VD.graph()
+show("① 힘 상수는 사내 손잡이 `viewer_force`가 화면까지 간다(`/api/graph`의 `force`)",
+     _g.get("force") == VD.FORCE and "S.graph.force" in _SRC["render.js"], str(_g.get("force")))
+# ④ 벡터 — 끊겨도 저장된 몫은 남고 다음 호출이 나머지만 만든다(처음부터 만든 파일과 같다)
+_sh.rmtree(_P.vectors(), ignore_errors=True)
+_lines, _calls, _many, _save_every = [], [0], _E.embed_many, _V.SAVE_EVERY
+_V.ON_PROGRESS, _V.SAVE_EVERY = _lines.append, 8
+
+
+def _cut(texts, batch=32):
+    _calls[0] += 1
+    if _calls[0] > 2:
+        raise KeyboardInterrupt("끊음(시험)")
+    return _many(texts, batch)
+
+
+_E.embed_many = _cut
+try:
+    _V.begin()
+    _H.warm()
+except KeyboardInterrupt:
+    pass
+_E.embed_many = _many
+_kept = len(json.loads(_P.vectors("nodes.json").read_text(encoding="utf-8"))["items"])
+_V.begin()
+_H.warm()
+_st, _resumed = dict(_V.STATS["nodes"]), _P.vectors("nodes.json").read_bytes()
+_sh.rmtree(_P.vectors(), ignore_errors=True)
+_V.SAVE_EVERY = _save_every
+_V.begin()
+_H.warm()
+show("④ 벡터 이어 만들기 — 끊기 전 저장분은 재사용 · 나머지만 만든다 · 이어 만든 파일 = 처음부터 만든 파일",
+     _kept and _st["reused"] == _kept and _st["made"] + _st["reused"] == len(_g["nodes"])
+     and _resumed == _P.vectors("nodes.json").read_bytes(), f"저장 {_kept} · 다시 {_st}")
+show("④ 진행 줄 — 저장마다 「벡터 — 노드 n/m · 청크 n/m · 경과 · 남은 예상」",
+     _lines and all(_re2.match(r"^벡터 — 노드 [\d,]+/[\d,]+ · 청크 [\d,]+/[\d,]+ · 경과 [\d.]+초 · 남은 예상 ", x)
+                    for x in _lines), _lines[0] if _lines else "")
+_V.ON_PROGRESS = None
+# ④ 질의 단계 — 링킹이 서는 질의는 다섯 단계를 그 순서로 지난다 · 상태 라우트는 GET만(쓰기 0)
+_h0 = _state_hash()
+as_json(answer("노칭 다음 공정은?"))
+_qs = _QS.get()
+_srv2, _url2 = VS.serve(8832)
+threading.Thread(target=_srv2.serve_forever, daemon=True).start()
+try:
+    _sc, _raw = 0, b""
+    with _ur.urlopen(_url2 + "api/status") as _r:
+        _sc, _raw = _r.status, _r.read()
+    try:
+        _ur.urlopen(_ur.Request(_url2 + "api/status", data=b"{}", method="POST"))
+        _post = 200
+    except _ue.HTTPError as _e:
+        _post = _e.code
+finally:
+    _srv2.shutdown()
+    _srv2.server_close()
+show("④ 질의 상태 — 벡터 준비 → 링킹 → 확장 → 수집 → 답변(닫힌 다섯 · 그 순서) · 끝나면 진행 중 아님 · `/api/status` "
+     "GET만(POST 501) · 쓰기 0",
+     _qs["query"]["seen"] == list(_QS.STAGES) and not _qs["query"]["active"] and _sc == 200
+     and json.loads(_raw.decode("utf-8"))["stages"] == list(_QS.STAGES) and _post == 501
+     and _state_hash() == _h0, f"{_qs['query']['seen']} · GET {_sc} · POST {_post}")
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — 뷰어·trace 충족" if allok else "FAIL")

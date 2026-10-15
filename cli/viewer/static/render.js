@@ -1,4 +1,4 @@
-/* 칸 5.2 — 뷰어 **렌더러**: 색 · 리듀서 · 상호작용 (B82 ② · B84 ①②③④ · 배치는 `layout.js` — B103).
+/* 칸 5.2 — 뷰어 **렌더러**: 색 · 리듀서 · 상호작용 · 크기 · 라벨 (B82 ② · B84 ①②③④ · 배치는 `layout.js` — B103 · B114 ②③).
  *
  * `app.js` 351행을 셋으로 가른 것 중 하나다(B84 — §7 상한). 가르는 선은
  * **「그림」과 「상태·배선」과 「질의」**다: 여기는 받은 데이터를 어떻게 그리는가만 안다.
@@ -56,7 +56,7 @@ function positions(nodes, edges, kind) {
   const on = nodes.filter((n) => anc[n.id]), off = nodes.filter((n) => !anc[n.id]);
   let pos;
   if (kind === "계층") pos = layoutHier(nodes, edges);
-  else if (kind === "힘") pos = bandBelow(layoutForce(on, edges, layoutSkel(on, edges, anc)), off);
+  else if (kind === "힘") pos = layoutForce(nodes, edges, anc);     // 시드 — 워커가 이어서 옮긴다 (B114 ①)
   else pos = bandBelow(layoutSkel(on, edges, anc), off);
   const loose = nodes.filter((n) => !pos[n.id]);          // 탐색 모드에서 닻이 안 보이는 위성
   if (loose.length) bandBelow(pos, loose);
@@ -84,9 +84,31 @@ function edgeShown(e) {
   return (e.cross && S.alwaysCross) || S.rels.has(e.rel);
 }
 
-/* ── 크기·색 — tier가 크기를 정한다(B84 ①) ───────────────────────────────── */
-const TIER_SIZE = { main: 8, sub: 6, detail: 4 };
-const sizeOf = (n) => TIER_SIZE[n.tier] || 5;
+/* ── 크기·색 — tier가 크기를 정한다(B84 ①) · 대비를 키운다(B114 ② — 기준은 그대로) ─────────────────
+ * 구판 `main 8 · sub 6 · detail 4 · 그 밖 5`는 골격 밖 노드(그 밖)가 detail보다 커 대비가 작았다. 지금은 골격 깊이
+ * 순서 그대로 한 계단씩 벌리고 골격 밖은 가장 작다(main/그 밖 = 4배). 라벨 글자도 같은 계단(`TIER_LABEL`). */
+const TIER_SIZE = { main: 16, sub: 10, detail: 6 };
+const SIZE_OTHER = 4;
+const TIER_LABEL = { main: 1.45, sub: 1.15, detail: 1.0 };
+const LABEL_OTHER = 0.9;
+const sizeOf = (n) => TIER_SIZE[n.tier] || SIZE_OTHER;
+
+/* ── 라벨 — 이름 사슬의 끝 조각(B114 ③) · 마우스를 올린 점 · 검색에 걸린 점 · 「전체 이름」이면 전체 ─────── */
+function shortName(name) {
+  const s = String(name == null ? "" : name), i = s.lastIndexOf("::");
+  return i >= 0 ? s.slice(i + 2) : s;
+}
+const labelOf = (n) => (S.fullLabels ? String(n.name) : shortName(n.name));
+
+/** 라벨 그리기 — sigma 기본과 같고 글자 크기만 tier 계단을 따른다(`labelScale`는 리듀서가 단다). */
+function drawLabel(ctx, data, settings) {
+  if (!data.label) return;
+  const size = Math.round(settings.labelSize * (data.labelScale || 1));
+  const c = settings.labelColor;
+  ctx.fillStyle = (c.attribute ? data[c.attribute] || c.color : c.color) || "#000";
+  ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
+  ctx.fillText(data.label, data.x + data.size + 3, data.y + size / 3);
+}
 
 function nodeColor(n) {
   const hi = (S.highlight.nodes || {})[n.id];
@@ -99,15 +121,16 @@ function nodeColor(n) {
 /* ── 리듀서 — 검색·강조·hover·필터는 **여기서만** 갈린다 (B84 ②④) ───────── */
 function nodeReducer(id, attrs) {
   const n = attrs._node;
-  const res = { ...attrs, size: sizeOf(n), color: nodeColor(n), zIndex: 1 };
+  const res = { ...attrs, size: sizeOf(n), color: nodeColor(n), zIndex: 1, label: labelOf(n),
+                labelScale: TIER_LABEL[n.tier] || LABEL_OTHER };
   if (!passes(n)) { res.hidden = true; return res; }
   const q = (S.search || "").trim().toLowerCase();
   if (q) {
-    if (searchHit(n, q)) { res.size = sizeOf(n) + 4; res.zIndex = 3; res.highlighted = true; }
+    if (searchHit(n, q)) { res.size = sizeOf(n) + 4; res.zIndex = 3; res.highlighted = true; res.label = n.name; }
     else { res.color = cssVar("--faint"); res.label = ""; }
   }
   if (S.hover) {
-    if (id === S.hover) { res.zIndex = 4; res.highlighted = true; }
+    if (id === S.hover) { res.zIndex = 4; res.highlighted = true; res.label = n.name; }   // 올린 점은 전체 이름
     else if (!(S.neighbors || new Set()).has(id)) { res.color = cssVar("--faint"); res.label = ""; }
   }
   if ((S.highlight.nodes || {})[n.id]) { res.size = Math.max(res.size, 9); res.zIndex = 3; }
@@ -165,6 +188,9 @@ function rebuild() {
     });
   });
   S.gr = g;
+  // 힘 — 시드로 그려 두고 워커가 이어서 옮긴다(B114 ①) · 다른 배치면 워커를 세운다
+  if (S.layout === "힘") forceStart(nodes, edges, pos, applyFrame, { ...(S.graph.force || {}), fixed: S.pinned });
+  else forceStop();
   if (!S.sigma) {
     // **sigma는 한 번만 만든다**(B84 ②) — 구판은 그릴 때마다 kill+new였다.
     try {
@@ -172,7 +198,7 @@ function rebuild() {
       RSTAT.sigma += 1;
       S.sigma = new (window.Sigma.Sigma || window.Sigma)(g, wrap, {
         renderEdgeLabels: true, defaultEdgeType: "line", labelDensity: 0.6,
-        nodeReducer, edgeReducer,
+        nodeReducer, edgeReducer, defaultDrawNodeLabel: drawLabel,
         nodeProgramClasses: nodePrograms(R),
         edgeProgramClasses: R.EdgeCurveProgram ? { curve: R.EdgeCurveProgram } : undefined,
       });
@@ -187,6 +213,21 @@ function rebuild() {
   }
   theme_apply_sigma();
   restyle();
+}
+
+/** 워커의 한 프레임 — 그 자리로 옮긴다(좌표만 · 리듀서 결과는 그대로) · 머리 줄의 반복 수를 고친다. */
+function applyFrame(m) {
+  const g = S.gr;
+  if (!g) return;
+  const at = FORCE.at;
+  g.updateEachNodeAttributes((id, a) => {
+    const i = at.get(id);
+    if (i === undefined || S.drag === id) return a;
+    a.x = m.x[i]; a.y = m.y[i];
+    S.pos[id] = { x: a.x, y: a.y };
+    return a;
+  }, { attributes: ["x", "y"] });
+  if (typeof stats === "function") stats();
 }
 
 /** seed 테두리 프로그램 — **있는 것만 쓴다**(없으면 기본 원으로 떨어진다). */
@@ -260,6 +301,7 @@ function interactions() {
     g.setNodeAttribute(S.drag, "x", p.x);
     g.setNodeAttribute(S.drag, "y", p.y);
     S.pinned[S.drag] = { x: p.x, y: p.y };     // 그 세션 동안 그 자리
+    forcePin(S.drag, p.x, p.y);                // 힘 배치가 돌고 있으면 워커도 그 자리에 고정 (B114 ①)
     e.preventSigmaDefault();
     e.original.preventDefault();
     e.original.stopPropagation();

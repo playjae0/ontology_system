@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LLM 지점 10종 **도달 가능성** 탐침 (문서 7 §7.6-B-2 · B48).
+"""LLM 지점 12종 **도달 가능성** 탐침 (문서 7 §7.6-B-2 · B48 · ⑪⑫ B115).
 
 재는 것은 *"분기가 있는가"*가 아니라 **"실 호출 경로를 타서 미설정 실패
 (`NotConfigured`)에 닿는가"**다. 파라미터만 있고 값이 올 통로가 없으면 배선이
@@ -66,6 +66,12 @@ def cases():
         "coord_tag": points.coord_picker,
         # ── ⑩시트 역할 판정(B91 ②) — 관문(`cli/sheet_gate.py`)이 타는 팩토리
         "sheet_role": points.sheet_judge,
+        # ── ⑪문서 개요 · ⑫연결 보강(B115 ①④) — 구축이 타는 실호출 본문(인라인 분기 — `outline.run` · `reinforce._one`)
+        "outline": lambda: __import__("core.build.outline", fromlist=["x"])._ask(
+            [{"id": 1, "text": "1. 개요", "parent": None, "depth": 1}], load_config(_coord)),
+        "reinforce": lambda: __import__("core.build.reinforce", fromlist=["x"])._ask(
+            {"entity": {"name": "가", "category": "Unit"}, "chunk": "가", "headings": [], "candidates": [],
+             "relations": []}),
     }
 
 

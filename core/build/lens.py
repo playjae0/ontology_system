@@ -114,15 +114,19 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
         if many and notice is not None:
             def _nt(info, _n=notice):            # 추출 예고 줄은 렌즈 예고가 맡았다
                 return _n({**info, "렌즈여럿": True})
+        from core.build import outline as outline_mod
         from core.llm import gateway as _gw
         _gw.set_lens(lay)                       # 사용량 줄의 렌즈 (B99 ③ — 게이트웨이 한 자리)
         try:
+            # 문서 개요 — 렌즈마다 그 층 어휘로 한 번 (B115 ① — 렌즈가 키에 든다)
+            ol = outline_mod.run(env, cfgs[lay], lens=lay, notice=notice)
             ck, did = extract_mod.extract(env, cfgs[lay], loc2id, _vocab(cfgs[lay]),
-                                          lens=lay, skip=skip[lay], notice=_nt)
+                                          lens=lay, skip=skip[lay], notice=_nt, outline=ol)
         finally:
             _gw.set_lens(None)
         extracted = extracted or did
         prose_gate(env, ck, loc2id, lay, notice, lens=lay)
         lb = root.for_layer(lay)
-        prose_mod.build_prose(env, cfgs[lay], lb.g, ck["candidates"], builder=lb, defer_save=True)
+        prose_mod.build_prose(env, cfgs[lay], lb.g, ck["candidates"], builder=lb, defer_save=True,
+                              outline=ol)
     return root, extracted

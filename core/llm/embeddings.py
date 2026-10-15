@@ -133,6 +133,27 @@ def embed(text):
     return out
 
 
+def embed_many(texts, batch=32):
+    """텍스트 여럿 → 벡터 여럿(순서 그대로 · 반환 계약은 `embed`와 같다 — `list[list[float]]`) (B114 ④).
+
+    **로컬 모델만 묶음으로** 부른다(`encode(목록, batch_size)` — 한 번에 여러 개를 넣으면 호출마다 드는 몫이 준다) ·
+    mock · 게이트웨이는 한 건씩(`embed`)이다 — 게이트웨이가 목록 입력을 받는지는 모른다(받지 않으면 실패가 조용하지
+    않게 지금 길 그대로)."""
+    texts = list(texts)
+    if not texts:
+        return []
+    if gateway.use_mock() or (gateway.config().get("embed_backend") or "gateway") != "local":
+        return [embed(t) for t in texts]
+    cfg = gateway.require("embed", need=("embed_model",))
+    model = _local_model(cfg["embed_model"])
+    t0 = time.perf_counter()
+    vecs = model.encode(texts, batch_size=max(1, int(batch)), normalize_embeddings=True)
+    out = [[float(x) for x in v] for v in vecs]
+    STATS.update(backend="local", encode_ms=round((time.perf_counter() - t0) * 1000 / len(out)),
+                 dim=len(out[0]) if out else None)
+    return out
+
+
 def backend_id():
     """벡터의 **판** — 갈래 · 모델이 바뀌면 다른 공간이다(차원도 다르다). 질의 벡터 캐시가 이것으로 통째 무효를 가른다(B104 ③)."""
     if gateway.use_mock():

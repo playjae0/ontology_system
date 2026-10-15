@@ -12,22 +12,36 @@
   · 벡터는 float32로 접어 둔다 — 새로 만든 벡터도 **같은 접기를 거친 값**으로 쓴다(처음과 재사용의 점수가
     같아야 같은 입력 같은 순위다).
 
-계측(`STATS[종류]`)은 마지막 호출의 만든 수 · 재사용 수 · 시간 · 판 — 화면 한 줄(`cost_line`)의 재료다.
+계측(`STATS[종류]`)은 질의 한 건(`begin`부터)의 만든 수 · 재사용 수 · 시간 · 판 — 화면 한 줄(`cost_line`)의 재료다.
+
+**묶음 · 이어 저장 · 진행**(B114 ④): 만들 몫은 `BATCH`개씩 묶어 임베딩하고(로컬 모델이면 한 번에 — `embed_many`)
+`SAVE_EVERY`개마다 그때까지 만든 것을 저장한다 — 끊겨도 다음 호출은 저장된 몫을 재사용하고 나머지만 만든다(재료 해시
+규칙 그대로). 저장마다 진행(`core/query/status`)을 고치고 화면 손잡이 `ON_PROGRESS`(줄 하나를 받는다)를 부른다.
+한 프로세스 안에서는 한 번에 하나만 만든다(잠금 — 뷰어 시작의 미리 만들기와 첫 질의가 겹쳐도 같은 몫을 두 번 만들지
+않는다).
 """
 from __future__ import annotations
 
 import base64
 import hashlib
 import json
+import threading
 import time
 from array import array
 
 from core import paths
 from core.llm import embeddings as E
+from core.query import status
 from core.state import store
 
 #: 마지막 호출의 계측 — `{종류: {made, reused, secs, backend}}`
 STATS = {}
+#: 묶음 크기 · 이어 저장 간격(창작 값 — 사내 실측 전 · B114 ④)
+BATCH = 32
+SAVE_EVERY = 256
+#: 진행 줄 손잡이 — `fn(line)` · 화면(CLI · 서버 콘솔)이 단다(core는 화면을 갖지 않는다)
+ON_PROGRESS = None
+_LOCK = threading.Lock()
 
 
 def _ver(text):
@@ -55,29 +69,73 @@ def _load(kind, bid):
     return (d.get("items") or {}) if d.get("backend") == bid else {}
 
 
-def vectors(kind, texts):
-    """`{id: 재료 텍스트}` → `{id: 벡터}` — 재료 해시가 같으면 캐시 · 바뀐 몫만 임베딩 · 바뀐 것이 있을 때만 쓴다."""
-    bid = E.backend_id()
+def _save(kind, bid, items):
+    """원자 쓰기 · 키 순서 고정(처음 만든 판과 이어 만든 판의 파일이 같다)."""
+    p = paths.vectors(f"{kind}.json")
+    paths.ensure(p)
+    store.atomic_write_bytes(p, json.dumps({"backend": bid, "kind": kind,
+                                            "items": {k: items[k] for k in sorted(items)}},
+                                           ensure_ascii=False).encode("utf-8"))
+
+
+def _split(kind, texts, bid):
+    """재사용할 것과 만들 것 — `(items, todo[(id, ver)], old)`."""
     old = _load(kind, bid)
-    out, items, made = {}, {}, 0
-    t0 = time.perf_counter()
+    items, todo = {}, []
     for i in sorted(texts):
         ver = _ver(texts[i])
         hit = old.get(i)
         if hit and hit.get("ver") == ver:
             items[i] = hit
         else:
-            items[i] = {"ver": ver, "v": _enc(E.embed(texts[i]))}
-            made += 1
-        out[i] = _dec(items[i]["v"])
-    if made or set(old) != set(items):
-        p = paths.vectors(f"{kind}.json")
-        paths.ensure(p)
-        store.atomic_write_bytes(p, json.dumps({"backend": bid, "kind": kind, "items": items},
-                                               ensure_ascii=False).encode("utf-8"))
-    STATS[kind] = {"made": made, "reused": len(items) - made,
-                   "secs": round(time.perf_counter() - t0, 2), "backend": bid}
+            todo.append((i, ver))
+    return items, todo, old
+
+
+def plan(jobs):
+    """`[(종류, {id: 재료})]`의 진행 계획을 먼저 세운다 — 줄이 처음부터 두 종류의 분모를 말한다(쓰기 0 · 임베딩 0)."""
+    bid = E.backend_id()
+    out = {}
+    for kind, texts in jobs:
+        items, _todo, _old = _split(kind, texts, bid)
+        out[kind] = (len(items), len(texts))
+    status.vec_plan(out)
     return out
+
+
+def vectors(kind, texts):
+    """`{id: 재료 텍스트}` → `{id: 벡터}` — 재료 해시가 같으면 캐시 · 바뀐 몫만 임베딩(묶음 · 이어 저장) · 바뀐 것이
+    있을 때만 쓴다."""
+    with _LOCK:
+        return _vectors(kind, texts)
+
+
+def _vectors(kind, texts):
+    bid = E.backend_id()
+    items, todo, old = _split(kind, texts, bid)
+    t0 = time.perf_counter()
+    for s in range(0, len(todo), SAVE_EVERY):
+        part = todo[s:s + SAVE_EVERY]
+        for (i, ver), v in zip(part, E.embed_many([texts[i] for i, _ in part], BATCH)):
+            items[i] = {"ver": ver, "v": _enc(v)}
+        _save(kind, bid, items)            # 이어 저장 — 끊겨도 여기까지는 다음 호출이 재사용한다
+        status.vec_step(kind, len(items), len(texts), len(part))
+        if ON_PROGRESS is not None:
+            ON_PROGRESS(status.vec_line())
+    if not todo and set(old) != set(items):
+        _save(kind, bid, items)            # 사라진 id만 버린다
+    out = {i: _dec(items[i]["v"]) for i in sorted(texts)}
+    # 한 질의 안의 합(B114 ④ — 벡터 준비가 만들고 링킹 · 문서 검색은 재사용한다 · 질의 머리에서 `begin`이 비운다)
+    prev = STATS.get(kind) if STATS.get(kind, {}).get("backend") == bid else None
+    made = len(todo) + (prev["made"] if prev else 0)
+    STATS[kind] = {"made": made, "reused": max(0, len(texts) - made),
+                   "secs": round(time.perf_counter() - t0 + (prev["secs"] if prev else 0), 2), "backend": bid}
+    return out
+
+
+def begin():
+    """질의 한 건의 계측을 비운다 — `cost_line`은 그 질의의 만든 수 · 재사용 수다."""
+    STATS.clear()
 
 
 def question(text):

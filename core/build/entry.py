@@ -23,8 +23,12 @@ from core.state.status import is_live
 
 _LOG = log.get(__name__)
 
+#: 이 프로세스가 구축한 문서 — `{doc_id: 문서 층}` · 마무리의 연결 보강이 이 문서들만 본다(B115 ④ — 다 보면 지난 실행이
+#: 「못 고름」으로 둔 것을 인입마다 다시 묻는다) · 마무리가 비운다
+BUILT = {}
 
-def finalize(layers=None):
+
+def finalize(layers=None, notice=None):
     """빌드 말미 패스 — **전역 재평가가 필요한 자동 규칙**은 문서 빌드가 아니라 여기서 돈다.
 
     문서 빌드 안에서 돌리면 **뒤에 인입되는 문서가 만드는 노드를 보지 못한다** — mirrors
@@ -47,12 +51,18 @@ def finalize(layers=None):
         g.build_end()
         e1 += len(g.edges)
     retry_orphans(layers)
-    # **마무리의 사실을 돌려준다**(B99 ⑥) — 미러(새 짝 엣지 · 비대칭 큐) · 재시도(`retry.LAST`)
+    # **연결 보강**(B115 ④ · 지점 ⑫) — 재연결 바퀴가 멈춘 **뒤** · 이 실행이 구축한 문서만
+    from core.build import reinforce as _rf
+    docs = dict(BUILT)
+    BUILT.clear()
+    _rf.run(docs, notice=notice)
+    # **마무리의 사실을 돌려준다**(B99 ⑥) — 미러(새 짝 엣지 · 비대칭 큐) · 재시도(`retry.LAST`) · 연결 보강
     from core.build import retry as _rt
     return {"mirror_new": e1 - e0,
             "mirror_asym": sum(1 for x in store.read(store.QUEUE, [])
                                if x.get("kind") == "mirror_asymmetry"),
-            "retry": dict(_rt.LAST), "retry_line": _rt.line()}
+            "retry": dict(_rt.LAST), "retry_line": _rt.line(),
+            "reinforce": dict(_rf.LAST), "reinforce_line": _rf.line()}
 
 
 def _evidence_lost(g):
@@ -275,13 +285,14 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
                     d0={k: list(v) for k, v in _D.open().entries().items()},
                     layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
                     rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []))
-        loop.LOWRES["n"] = 0
+        loop.LOWRES.update(n=0, heading=0)
         _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
         _n0 = len(graph.nodes)
         _e0 = len(graph.edges)
         _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
         _, metrics, extracted = _build_document(
             env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
+        BUILT[doc_id] = layer                    # 마무리의 연결 보강 대상 (B115 ④)
         return res, metrics, extracted
     except BaseException as stop:
         # **어떤 이유로 멈춰도 한 손이다**(B99 ② — 일반 예외 · Ctrl-C · 화면 닫힘 B109 ② · 사람·관문의 멈춤 B110 ③
@@ -351,9 +362,11 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                                                             notice)
             return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
         vocab = _vocab(cfg)
-        ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice)
+        from core.build import outline as outline_mod
+        ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
+        ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
         prose_gate(env, ck, loc2id, layer, notice)
-        builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"], defer_save=True)
+        builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"], defer_save=True, outline=ol)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
 
 
@@ -404,7 +417,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
         # **층별 합**(B99 ⑤ — 노드는 카테고리의 집에 산다) · 큐는 **이번 실행이 만든 것**
         dn, de, da = result_mod.totals(res)
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
-                "저해상도": loop.LOWRES["n"], "총_노드": metrics.get("nodes"),
+                "저해상도": loop.LOWRES["n"], "제목폴백": loop.LOWRES["heading"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
                 "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res)})
     return None, metrics, extracted

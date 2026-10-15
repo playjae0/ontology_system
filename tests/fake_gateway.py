@@ -47,14 +47,22 @@ def _post(url, payload, key, timeout):
 
 
 class Live:
-    """`with Live(pick=…):` 안에서는 실호출 갈래가 가짜 게이트웨이로 돈다(나오면 원래대로)."""
+    """`with Live(pick=…):` 안에서는 실호출 갈래가 가짜 게이트웨이로 돈다(나오면 원래대로).
 
-    def __init__(self, pick="클리어런스"):
+    `by`는 지점별 응답 `{지점: 함수(받은 user 본문) -> dict}`(B115 — 개요 · 추출 · 연결 보강을 시험이 정한다) ·
+    판정(지점 judge)은 주지 않으면 「새 것」이다."""
+
+    def __init__(self, pick="클리어런스", by=None):
         self.pick = pick
+        self.by = dict(by or {})
 
     def chat(self, messages, json_schema=None, point=None, **kw):
         body = json.loads(messages[1]["content"])
         CALLS.append((point, body))
+        if point in self.by:
+            return self.by[point](body)
+        if point == "judge":
+            return {"type": "new", "matched_id": None, "confidence": 0.9}
         if point == "link":
             cands = [c for c in body["candidates"] if self.pick is None or self.pick in c["canonical"]]
             picks = [{"id": c["id"], "why": f"질문의 표현이 이 노드({c['canonical']})와 같은 뜻"} for c in cands[:1]]

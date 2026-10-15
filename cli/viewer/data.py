@@ -35,6 +35,9 @@ def health():
 #: 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 탐색 모드로 연다(B103 ③ · 사내 손잡이
 #: `viewer_explore_threshold` — 가결정 D-184 · 창작 표본 수치는 근거가 아니다)
 EXPLORE_THRESHOLD = 1500
+#: 힘 배치 상수(B114 ① — 사내 손잡이 `viewer_force` · 기본은 ForceAtlas2 표준값 · 창작 표본으로 고르지 않았다) —
+#: 화면(`layout.js` 워커)이 `/api/graph`의 `force`로 받는다
+FORCE = {"scaling": 2, "gravity": 1, "iterations": 1500}
 
 
 def _graph_world():
@@ -58,7 +61,7 @@ def graph():
             "anchor": {k: {"anchor": v["anchor"], "host": v["host"], "hops": v["hops"]}
                        for k, v in anc.items()},
             "detached": A.detached(nodes, edges, anc), "roots": A.roots(nodes, edges),
-            "explore_threshold": knobs.get("viewer_explore_threshold")}
+            "explore_threshold": knobs.get("viewer_explore_threshold"), "force": knobs.get("viewer_force")}
 
 
 def neighbors(nid):

@@ -126,10 +126,11 @@ def show_plan(plan):
 
 
 def _calls(u0, u1):
-    """지점별 LLM 호출 수 차이 — `{추출, 판정, 태깅, 그 밖}`."""
+    """지점별 LLM 호출 수 차이 — `{추출, 판정, 태깅, 개요, 보강, 그 밖}`(개요 ⑪ · 연결 보강 ⑫ — B115 · 재구축은 재생이라 0이어야 한다)."""
     from core.llm.gateway import POINTS
-    names = {POINTS["extract"]: "추출", POINTS["judge"]: "판정", POINTS["coord_tag"]: "태깅"}
-    out = {"추출": 0, "판정": 0, "태깅": 0, "그 밖": 0}
+    names = {POINTS["extract"]: "추출", POINTS["judge"]: "판정", POINTS["coord_tag"]: "태깅",
+             POINTS["outline"]: "개요", POINTS["reinforce"]: "보강"}
+    out = {"추출": 0, "판정": 0, "태깅": 0, "개요": 0, "보강": 0, "그 밖": 0}
     for pt, v in u1.items():
         out[names.get(pt, "그 밖")] += v["calls"] - (u0.get(pt) or {}).get("calls", 0)
     return out
@@ -180,7 +181,8 @@ def report(r):
           f"원본 없음 {len(r['missing']):,})")
     print(f"  판정 — 재생 {j['재생']:,} · 재판정 {j['재판정']:,}(키 없음 {j['키 없음']:,} · 대상 없음 {j['대상 없음']:,} · "
           f"끔 {j['끔']:,})")
-    print(f"  LLM 호출 — 추출 {c['추출']:,} · 판정 {c['판정']:,} · 태깅 {c['태깅']:,} · 그 밖 {c['그 밖']:,}")
+    print(f"  LLM 호출 — 추출 {c['추출']:,} · 판정 {c['판정']:,} · 태깅 {c['태깅']:,} · 개요 {c['개요']:,} · "
+          f"보강 {c['보강']:,} · 그 밖 {c['그 밖']:,}")
     from cli.ops import replay_lines
     for ln in replay_lines(ops):
         print("  " + ln)

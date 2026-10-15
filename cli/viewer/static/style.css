@@ -59,3 +59,7 @@ pre.src { white-space:pre-wrap; word-break:break-word; margin:4px 0 0; font-size
 #qllm { margin:6px 0; }
 /* B104 — 질의 링크 결과 ⓐ~ⓕ */
 #qhops div { font-size:12px; }
+/* B114 — 크기 범례(원 = 그리는 크기) · 질의 상태 줄 */
+.dot { display:inline-block; border-radius:50%; background:var(--dim); margin-right:6px; vertical-align:middle; }
+#qstatus { margin:6px 0; }
+#qstatus .on { color:var(--fg); font-weight:600; }
