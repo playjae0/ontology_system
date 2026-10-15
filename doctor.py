@@ -13,6 +13,13 @@
 에서 그대로 돌아간다는 것이 이 점검의 첫 결론이다.
 
 **아무것도 고치지 않는다.** 읽고 재고 보고할 뿐이다. 상태 폴더는 회귀가 쓰고 지운다.
+
+**운영 상태 폴더는 읽기만 한다**(B111 ① · 사내 실측 2026-10-15 — 실호출 셸에서 친 doctor의 클린이
+`$ONTO_HOME`에서 돌았다). 진입점이 이 프로세스를 **격리 환경**으로 바꾼다(`gateway.isolate` — mock ·
+기본 mock 루트 · `ONTO_*`·설정 파일·게이트웨이 키를 빼고) → 클린 · 시험 · 미설치 모사 · `run.py all` ·
+질의 · 이 실행의 로그가 전부 그 환경을 물려받는다. 운영 루트에 대해 하는 일(머리 상태 줄 · 층 이름 ·
+정합 · 설정 파일 줄 · 사내 전환 판정)은 **셸 환경 그대로의 하위 실행 하나**(`python -m cli.doctor_view <화면>` —
+공통 진입을 지나지 않는다: 로그도 운영 루트에 쓰지 않는다)가 읽어 화면에 싣는다.
 """
 from __future__ import annotations
 
@@ -65,6 +72,8 @@ SUITES = [
     ("test_g6_alias_book", 13, "B108 — 별칭 대장(쓰는 손 하나 · 이름으로 · 같은 별칭 한 항목 · LLM 매칭 · 사람 · 개명 · 병합) · 재구축 동치(스냅샷 = seed + 대장 · 판 같음 · 태깅 0 · bootstrap 앞뒤 같음) · 처음 채움(공통 진입 · 재구축 계획) · 거두기(alias-reject · 비대화형 계획만 · 다시 싣지 않는다) · show aliases · 재구축 끝 줄 · 골격 개명 대상 없음 — 표·산문 × 층 둘"),
     ("test_g6_log_pipe", 8, "B109 — 명령 로그 보존(재구축 · 기본 fresh가 남기고 클린만 지운다) · 화면이 닫혀도 트레이스백 0(읽기 — run.py · python -m cli.* · doctor.py · 화면 스레드 · 쓰기 — 141 · 멈춤 줄 · ③은 시작 전 · 문서 끝 · 마무리까지 중 하나 · 줄 위치 표본 · 재인입은 회수 그래프까지 되돌림) — 표·산문 × 층 둘"),
     ("test_g6_stop_chunks", 5, "B110 — 시험·doctor의 하위 프로세스는 표준입력을 물려받지 않는다(소스 대조 0) · 닫힌 화면의 flush·close는 조용히 · 사람이 멈춘 문서(--step q · --step-every q)는 청크·그래프·사전·큐가 시작 전 · 문서 대장·체크포인트는 남고 다시 치면 추출 재사용으로 같은 결과 — 표·산문 × 층 둘"),
+    ("test_g6_ops_root", 16, "B111 — 운영 상태 폴더는 점검이 읽기만 한다(doctor --quick 두 갈래 · 설정 파일/환경변수 · 폴더 지문 전후 같다 · 격리는 한 함수) · 운영 루트의 클린은 묻는다(비대화형 거부 · 터미널 n · --yes · mock 루트와 기본 fresh는 그대로 · 코드 거부) · 재구축은 지우기 전에 사전 점검(실호출 설정 없음 · 지문 불변) · 끝나지 않은 재구축은 계획 파일에서 이어 간다(kill -9 · 중단 · 문서 실패 · 사전 점검 실패 → 같은 그래프 · 끝) — 표·산문 × 층 둘"),
+    ("test_g6_reconcile", 17, "B112 — 맞춤표(식마다 칸 합 = 전체 · 값 = 대장 개체 행 · 보류 = 결과 묶음 · 인입 · show report · 재구축 재생 · 명령 로그 · 깨뜨린 묶음 [결함]) · 시트 숨김(표 · 기본 skip · LLM 0 · --sheets로 살림 · 기록이 있어도 표) · 청크 목차(행 = 청크 · 상태 합 · 라벨 엑셀·PPT · 개체 0 목록) · 소속 대상 합 · 엣지 없는 노드 = 그래프 · 대장 dir = 엣지 방향 · 문서 좌표 경고·후보 · 체크포인트 자리·없으면 [결함] — 표·산문 × 층 둘"),
     ("test_g6_rebuild_memory", 11, "B107 — 옛 사람 판단 기록에 이름 채우기(옮길 때 · ops replay 계획 · 재구축 계획 · 그때의 이름 · 그래프에 없는 id는 목록) · 좌표 태깅 null 답 기억(닫힌 목록 내용 해시 · 지우는 손잡이 · 별칭이 판을 바꾼다 · 실호출 모양 재구축 태깅 0) · 재시도가 판정 대장을 갱신(같은 키 · by retry · 인입과 같은 하강 · 재구축 재생) — 표·산문 × 층 둘"),
     ("test_g6_hybrid", 15, "B104 — 공유 별칭의 범위 안 해소(보류 문면 표기 모호) · 링킹 임베딩 후보 + LLM 선별(후보 밖 0 · 보충/폴백 · 미스율 사전 단) · 문서 검색 채널(근거 없음은 둘 다 빌 때 · 벡터 캐시 재사용·몫만·판) · 짧은 답·쓴 근거·CLI ⓐ~ⓕ = --json · 채점 두 축 · 쓰기 0 — 표·산문 × 층 둘"),
     ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
@@ -113,23 +122,38 @@ OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으�
              "로컬 임베딩 — EMBED_BACKEND=local일 때만 · 지연 import "
              "(패키지명 sentence-transformers)")]
 
-OK, WARN, NG = "  OK ", " 주의 ", " 필요 "
-# **[다음]은 결함이 아니다.** §④는 「사내에서 남은 작업」을 적는 자리인데 §①②③과
-# 같은 [주의]를 쓰고 있었고, 실제로 사용자가 그것을 고장으로 읽었다(2B 실사고).
-# 마크를 갈라 「할 일」과 「고장」이 화면에서 구분되게 한다. `_fail`은 [필요]만 센다.
-NEXT = " 다음 "
-_fail = 0
+# 화면 원자 — 마크 · `line` · `head` · [필요] 수는 운영 화면과 같은 것을 쓴다 (`cli/doctor_view` · B111 ①)
+from cli import doctor_view as V                                     # noqa: E402 — core를 import하지 않는다
+from cli.doctor_view import NEXT, NG, OK, WARN, head, line           # noqa: E402,F401
+
+# 격리 전의 셸 환경 — 진입점이 남긴다. `None`이면 이 프로세스가 곧 셸 환경이다(`main`을 바로 부른 시험).
+_SHELL_ENV = None
 
 
-def line(mark, label, detail=""):
-    global _fail
-    if mark == NG:
-        _fail += 1
-    print(f"  [{mark}] {label}" + (f"\n         {detail}" if detail else ""))
+def operating(part):
+    """**운영 상태 폴더를 읽는 화면 하나**(B111 ①) — 셸 환경 그대로의 하위 실행에서 그리고 여기 싣는다.
 
-
-def head(title):
-    print(f"\n{'─' * 66}\n■ {title}\n{'─' * 66}")
+    이 프로세스는 격리 환경이라(머리말) 운영 루트를 모른다 — 루트는 프로세스당 한 번 정해지고 모듈 상수가
+    그 자리를 잡으므로, 같은 프로세스에서 두 루트를 오가지 않고 셸 환경의 프로세스 하나가 읽는다. 그 하위
+    실행은 공통 진입을 지나지 않는다(로그 · 대장 채움을 운영 루트에 쓰지 않는다). [필요] 수는 끝 줄로 받는다.
+    """
+    if _SHELL_ENV is None:
+        V.VIEWS[part]()
+        return
+    r = subprocess.run([sys.executable, "-m", "cli.doctor_view", part],
+                       capture_output=True, text=True, cwd=str(ROOT), env=_SHELL_ENV,
+                       stdin=subprocess.DEVNULL)
+    out = r.stdout.splitlines()
+    if r.returncode == 0 and out and out[-1].startswith(V.NG_TAIL):
+        if out[:-1]:
+            print("\n".join(out[:-1]))
+        V.add(int(out[-1][len(V.NG_TAIL):]))
+        return
+    if out:
+        print("\n".join(out))
+    err = (r.stderr or "").strip().splitlines()
+    line(NG, f"운영 상태 폴더 읽기({part})가 끝나지 않았다 — rc={r.returncode}",
+         err[-1] if err else "(stderr 없음)")
 
 
 def _clean():
@@ -232,19 +256,7 @@ def check_env():
          + (f" (선택 의존 {sorted(optional)}는 폴백 있음)" if optional else "")
          if not hard else f"예상 밖: {sorted(hard)}")
 
-    mock = os.environ.get("USE_MOCK", "1")
-    line(OK if mock == "1" else WARN, f"USE_MOCK={mock}",
-         "1 = LLM 없이 전 경로가 로컬로 돈다(네트워크 0). 사내 첫 실행은 이 상태여야 한다"
-         if mock == "1" else "0 = 실LLM 경로. 아직 훅이 비어 있어 추출에서 명시 실패한다")
-
-    # **어느 설정 파일을 읽었나**(B98 ④) — 처음 찾은 파일 하나만 읽는다 · 무시된 파일을 말한다
-    sys.path.insert(0, str(ROOT))
-    from core.llm import gateway as _gw                                   # noqa: E402
-    try:
-        _src = _gw.config_sources()
-        line(WARN if _src["ignored"] else OK, "LLM 설정 파일", _gw.sources_line())
-    except _gw.NotConfigured as e:
-        line(WARN, "LLM 설정 파일", str(e))
+    operating("config")         # 운영 셸의 모드 · 설정 파일 — 읽기만 (B111 ①)
 
     # **레포 정본 자산이 레포 판인가**(B79 ④ · 사용자 확정 2026-09-21) —
     # `prompts/`·`kit/`·`schemas/blocks.json`·(레포)`layers/`는 사내에서 고치지 않는다.
@@ -268,7 +280,7 @@ def check_env():
     except OSError as e:
         line(NG, "레포 쓰기 권한 없음", f"{e} — 실행 산출물을 만들 수 없다")
 
-    return _fail == 0
+    return V.fails() == 0
 
 
 def _idempotent():
@@ -516,198 +528,7 @@ def show_state():
     print("  ⚠ 전부 mock이다(mock/parsed·mock/raw). 사내 문서로 교체하는 것이 국면 2다")
 
 
-# ================================================================ ④ 사내 전환
-def transition():
-    head("④ 사내 전환 — 다음에 무엇을 해야 하나 (실측 판정)")
-    print("  아래는 결함이 아니라 사내에서 남은 작업이다. `[필요]`가 뜨면 그때가 고장이다.\n")
-    sys.path.insert(0, str(ROOT))
-    from core import paths                                              # noqa: E402
-    from core.state import registry, store                              # noqa: E402
-
-    # ── 1. 골격 seed ──────────────────────────────────────────────
-    # **좌표 층은 이름이 아니라 카테고리로 찾는다**(B85 ②) — 폴더가 `equipment`여도
-    # 여기가 그 층을 본다. 좌표 층이 없으면 그 사실을 한 줄로 말하고 지나간다.
-    from core.state.bootstrap import NoCoordLayer, coord_layer, load_config  # noqa: E402
-    try:
-        _coord = coord_layer()
-    except NoCoordLayer:
-        _coord = None
-    _src = ((load_config(_coord).get("skeleton") or {}).get("source")
-            if _coord else None)
-    _seed_p = paths.layers(_coord, _src) if (_coord and _src) else None
-    seed = (json.loads(_seed_p.read_text(encoding="utf-8"))
-            if _seed_p and _seed_p.exists() else {})
-    snap = (store.read(store.SKELETON_LIST, {}).get(_coord) or {}) if _coord else {}
-    line(NEXT, f"[1] 골격 seed가 아직 창작 mock이다 — 노드 {snap.get('count', '?')} · "
-               f"seed 문법 v{seed.get('seed_format')}",
-         "**사내 첫 작업이 이것이다.** 층 자산은 상태 루트에 산다(B79 ①) —\n"
-         f"         {_seed_p or paths.layers('<좌표 층>', '<skeleton.source>')}\n"
-         "         을 사내 공정 체계로 바꾸고 `python run.py bootstrap`.\n"
-         "         코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
-         "         형식은 docs/skeleton_seed.md · 마커 4종(:: · @split · @unordered · @noflow)")
-
-    # ── 1′. role 배정 실험 ────────────────────────────────────────
-    # **등록 세션 진입 전에 이것이 먼저다**(갭 spec-A-201 · role-136).
-    # 실험 없이 register generate로 가면 생성 세션이 무엇을 물어볼지 모른 채
-    # 시작한다 — 6지선다의 여섯째 경로(UNMAPPABLE)가 무엇인지를 먼저 본다.
-    line(NEXT, "[1′] 사내 문서로 **role 배정 실험**을 먼저 돌린다",
-         "`python run.py register roles <문서.xlsx> [헤더행]`\n"
-         "         실행만 하고 등록부는 건드리지 않는다 — 어느 열이 UNMAPPABLE로\n"
-         "         떨어지는지가 **생성 세션의 첫 안건**이다. 답을 준비하고 [2]로 간다")
-
-    # ── 2. doc_type 등록 ──────────────────────────────────────────
-    reg = [k for k, v in registry.all_doc_types().items() if v["status"] == "registered"]
-    line(NEXT if not reg else OK,
-         f"[2] 사내 doc_type 등록 {len(reg)}종",
-         "표본 2부를 골라 `python run.py register generate <이름> <층> <표본...>` →\n"
-         "         `review` → `confirm --by <승인자>`. 검수 뷰 HTML을 브라우저로 연다"
-         if not reg else f"등록됨: {reg}")
-
-    # ── 1″. 사내 손잡이 (B91 ⑤) ──────────────────────────────────
-    # 사내 실측으로 정할 값의 파일 — 있으면 기본과 다른 값이 몇인지. 분포는 `show knobs`가 가리킨다.
-    from core.state import knobs as _kn                                  # noqa: E402
-    if _kn.error() is not None:
-        line(NG, "[1″] 사내 손잡이 파일이 어긋났다 — 운영 명령이 멈춘다", str(_kn.error()))
-    else:
-        _kr = _kn.rows()
-        _kd = [r["name"] for r in _kr if r["value"] != r["default"]]
-        line(OK, f"[1″] 사내 손잡이 — 파일 {'있음' if paths.knobs().exists() else '없음(전부 기본값)'}"
-                 f" · 기본과 다른 값 {len(_kd)}", (", ".join(_kd) + " — python run.py show knobs")
-             if _kd else "값과 분포: python run.py show knobs")
-
-    # ── 2′. 등록 스키마 재대조 (B90 ⑤) ───────────────────────────
-    # **config를 바꾸면 이미 등록된 스키마가 어휘 밖으로 떨어질 수 있다** — 관문과 같은
-    # 함수(G4C·G4D·G4E)로 등록 전부를 다시 대조한다. 어긋난 것은 doc_type을 고칠 일이다.
-    from cli.register import recheck                                     # noqa: E402
-    _rc = recheck.run()
-    _bad = [l for _dt, ok, l in _rc if not ok]
-    line(OK if not _bad else NEXT,
-         f"[2′] 등록 스키마 재대조 — {len({dt for dt, _o, _l in _rc})}종 · 어긋남 {len(_bad)}",
-         "\n         ".join(_bad) if _bad else "")
-
-    # ── 3. LLM 지점 10종의 **도달 가능성** ─────────────────────────
-    # **문자열을 세지 않는다.** 여태 이 자리가 소스에 `use_mock`·`allow_mock` 같은
-    # 낱말이 있는지를 보고 「분기가 서 있다」로 보고했다 — 그래서 ⑦구조 지도가
-    # **어느 설정에서도 모델을 부를 수 없는 상태로 9/9 초록**이었다(B48).
-    # 이제 재는 것은 「실 호출 경로를 타서 미설정 실패에 닿는가」이고, 판정은
-    # 회귀와 **같은 탐침 파일**(tests/points_probe.py)을 실행해서 한다.
-    from core.llm.gateway import POINTS                                   # noqa: E402
-    import importlib.util as _ilu                                 # noqa: E402
-    _spec = _ilu.spec_from_file_location("points_probe",
-                                         ROOT / "tests" / "points_probe.py")
-    _pp = _ilu.module_from_spec(_spec)
-    _spec.loader.exec_module(_pp)
-    res, _r = _pp.run()
-    reached = [POINTS[k] for k in POINTS if res.get(k) == "NotConfigured"]
-    missing = [f"{POINTS[k]} — {res.get(k, '(미실행)')}"
-               for k in POINTS if res.get(k) != "NotConfigured"]
-    line(OK if not missing else NG,
-         f"[3] LLM 지점 {len(reached)}/{len(POINTS)}종의 실호출 갈래가 호출자로부터 "
-         f"도달 가능하다",
-         ("게이트웨이 골조는 섰고 **설정만 비어 있다** — LLM_GATEWAY_URL·CHAT_MODEL을\n"
-          "         주면 USE_MOCK=0으로 돈다. 미설정 상태의 USE_MOCK=0은 조용히 mock으로\n"
-          "         떨어지지 않고 명시적으로 실패한다(문서 7 §7.6-B-4).\n"
-          "         **모델 없이도 전 파이프라인이 돈다** — 정밀도만 규칙 수준이다\n"
-          "         연결 확인: python run.py llm-check"
-          ) if not missing else
-         ("실 경로가 미설정 실패에 닿지 않는 지점 — 「통과」는 대체 갈래가 돌았다는\n"
-          "         뜻이고, 그것은 배선이 있다는 뜻이 아니다(문서 7 §7.6-B-2):\n"
-          + "\n".join(f"         · {m}" for m in missing)))
-
-    # ── 4. 계기판 첫 측정 ─────────────────────────────────────────
-    line(NEXT, "[4] 계기판은 mock 수치다 — 품질 측정이 아니다",
-         "실데이터 인입 후 `python run.py gauges`가 첫 진짜 측정이다.\n"
-         "         그 수치가 P7 판정(하이브리드·랭킹·저장 전환)의 근거가 된다")
-
-    # ── 5. 반출입 경계 ────────────────────────────────────────────
-    line(OK, "[5] 반출입 경계 — 코드는 들어가고, 실물 문서는 나오지 않는다",
-         "이 레포에 사내 유래 정보가 0이다(mock은 전량 창작). 반입은 자유롭고,\n"
-         "         사내에서 만든 어댑터·seed·문서는 **밖으로 내보내지 않는다**")
-
-    print(f"\n  {'권장 순서':<10} ① seed 교체 → bootstrap  ② doc_type 1종 등록  "
-          f"③ 실문서 인입  ④ 질의  ⑤ 계기판")
-    print(f"  {'더 볼 것':<10} docs/이연대장.md §2 — 사내 반영 수준 · 사내에서 확인할 것 · 남은 일")
-
-
 # ================================================================ 진입점
-def layer_name_line():
-    """**층 이름 = 폴더 이름**(B99 ①) — `bootstrap`·사전 점검과 같은 함수(`catalog.layer_name_problems`)."""
-    sys.path.insert(0, str(ROOT))
-    from core.state import catalog as _cat99                              # noqa: E402
-    try:
-        _ln = _cat99.layer_name_problems()
-        line(NG if _ln else OK, "층 config \"layer\" = 폴더 이름",
-             "\n         ".join(_ln) if _ln else "층 전부 일치")
-    except (OSError, ValueError) as e:
-        line(WARN, "층 config \"layer\" = 폴더 이름", f"층 config를 읽지 못했다 — {e}")
-
-
-def integrity_line():
-    """**정합**(B99 ⑩) — 사라진 노드를 가리키는 큐 항목 · 사전 표기 · 끝점 없는 엣지(층별). 정리는 `ops tidy`."""
-    sys.path.insert(0, str(ROOT))
-    from core.state import integrity                                      # noqa: E402
-    try:
-        found, _g = integrity.state_scan()
-    except Exception as e:                                                # noqa: BLE001
-        line(WARN, "정합 — 사라진 노드를 가리키는 것", f"재지 못했다 — {type(e).__name__}: {e}")
-        return
-    nq, nd, ne = integrity.count(found)
-    per = " · ".join(f"{k} {len(v)}" for k, v in sorted(found["edges"].items()))
-    line(NG if (nq or nd or ne) else OK, "정합 — 사라진 노드를 가리키는 것",
-         f"큐 {nq} · 사전 표기 {nd} · 끝점 없는 엣지 {ne}" + (f"({per})" if per else "")
-         + ("\n         ▶ 다음 줄 — 계획: python run.py ops tidy all --actor <이름> · 지운다: … --apply"
-            if (nq or nd or ne) else ""))
-
-
-def state_line():
-    """머리 한 줄 — **지금 어느 상태를 보고 있나**(B78 1b · 요청문 ②).
-
-    화면 맨 앞이 자리를 말해야 「어느 폴더의 수를 본 것인가」가 갈리지 않는다.
-    이관 전이면 그 사실도 여기서 말한다 — 수가 0인 이유가 「비었다」가 아니라
-    「아직 옮기지 않았다」일 수 있다.
-    """
-    sys.path.insert(0, str(ROOT))
-    from core import paths           # noqa: E402
-    from core.llm import gateway
-    from core.state import migrate, registry, store
-    from router import discover                                     # noqa: E402
-    dts = registry.all_doc_types()
-    builtin = sum(1 for v in dts.values() if v.get("status") == "builtin")
-    # **좌표 층의 이름을 첫 줄에 싣는다**(B85 ②) — 폴더 이름을 바꾼 사람이
-    # 「지금 어느 층이 좌표 층인가」를 여기서 확인한다. 없으면 없다고 말한다.
-    from core.state.bootstrap import NoCoordLayer, coord_layer       # noqa: E402
-    try:
-        _coord = coord_layer()
-    except NoCoordLayer:
-        _coord = "**없다**"
-    # **층 공통 config의 판을 같은 줄에**(B90 ①) — 집·겸·이름 규칙이 어느 판으로 도는가.
-    from core.state import catalog as _catalog                      # noqa: E402
-    _cv = _catalog.version()
-    _common = (f"v{_cv}" if _cv is not None
-               else "없다 — bootstrap이 초안을 만든다" if not gateway.use_mock()
-               else "없다(mock — 층 선언에서 세운다)")
-    print(f"  상태 폴더 {paths.home()}{paths.home_note()} · 모드 "
-          f"{'mock' if gateway.use_mock() else '실호출'} · 등록 {len(dts)}종"
-          + (f"(내장 {builtin})" if builtin else "")
-          + f" · 층 {len(discover())}(상태 루트)"
-          + f" · 좌표 층 {_coord}"
-          + f" · 공통 config {_common}"
-          + f" · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
-    try:
-        for _w in _catalog.warnings():               # 겸 집 불일치 — 경고 (B91 ⑥)
-            print(f"  ⚠ 공통 config 겸 {_w}")
-        for _w, _nx in _catalog.mirror_warnings():   # 미러 규칙 ≠ 집 — 경고 (B100 ④)
-            print(f"  ⚠ 미러 규칙 {_w}\n    ▶ 다음 줄 — {_nx}")
-        from core.state import catalog_sync as _cs   # 겸 상태 — 골격 카테고리마다 (B93 ③)
-        for _warn, _m in _cs.coord_status():
-            print(f"  {'⚠' if _warn else '·'} {_m}")
-    except _catalog.CatalogError:
-        pass                                         # 카탈로그 거부는 bootstrap이 말한다
-    if migrate.needs_migration():
-        print("  ⚠ 이관 전이다 — python run.py platform migrate "
-              "--from <옛 코드 폴더>  (그 전까지 운영 명령은 멈춘다)")
-
-
 def main(argv):
     only_env = "--env" in argv
     quick = "--quick" in argv or only_env
@@ -715,9 +536,8 @@ def main(argv):
     print("=" * 66)
     print("  온톨로지 시스템 — 사내 이식 점검  (국면 1 완료본)")
     print("=" * 66)
-    state_line()
-    layer_name_line()          # 환경 점검(클린을 만든다) **전에** — 지금 상태를 잰다 (B99 ①)
-    integrity_line()           # 정합 — 사라진 노드를 가리키는 큐·사전·엣지 (B99 ⑩)
+    # 상태 줄 · 층 이름(B99 ①) · 정합(B99 ⑩) — 운영 루트를 읽기만 (B111 ①)
+    operating("head")
 
     env_ok = check_env()
     if only_env:
@@ -727,19 +547,24 @@ def main(argv):
 
     suites_ok = run_suites(quick)
     show_state()
-    transition()
+    operating("transition")    # 사내 전환 판정 — 운영 루트를 읽기만 (B111 ①)
 
     print(f"\n{'=' * 66}")
-    if _fail:
-        print(f"결과: **{_fail}건이 조치 필요**다 — 위 [{NG.strip()}] 항목을 먼저 해결한다")
+    if V.fails():
+        print(f"결과: **{V.fails()}건이 조치 필요**다 — 위 [{NG.strip()}] 항목을 먼저 해결한다")
     else:
         verdict = "온전하다" if suites_ok else ("회귀 미수행" if quick else "회귀 실패")
         print(f"결과: 반입물은 {verdict}. 다음은 ④의 권장 순서다")
     print("=" * 66)
-    return 1 if _fail else 0
+    return 1 if V.fails() else 0
 
 
 if __name__ == "__main__":
+    # **하위 실행의 환경은 한 자리가 정한다**(B111 ①) — 셸 환경은 운영 화면(`cli/doctor_view`)에만 넘기고, 이 프로세스와
+    # 그 아래는 격리
+    _SHELL_ENV = dict(os.environ)
+    from core.llm import gateway
+    gateway.isolate()
     # **공통 진입 함수 하나**(B99 ③) — 로그 설정 · 화면 전체를 명령 로그로 · 실행 머리/끝 줄
     from cli import _entry
     sys.exit(_entry.run("doctor", main))

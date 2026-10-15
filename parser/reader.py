@@ -139,7 +139,7 @@ def read_xlsx(path):
             ref = f"img_{n_img:03d}"              # 문서 전체에서 하나 — 시트를 넘어 겹치지 않는다
             all_images[ref] = (blob, mime)
             images.append({"cell": cell, "ref": ref, "mime": mime})
-        sheets.append({
+        sheet = {
             "name": ws.title,
             "max_row": ws.max_row, "max_col": ws.max_column,
             "cells": cells,
@@ -147,7 +147,12 @@ def read_xlsx(path):
             "indent": indent,
             "bold": bold,
             "images": images,
-        })
+        }
+        # **숨김 시트**(B112 ② — 사내: 숨김 시트의 다른 공정 내용이 prose로 들어갔다) · 키는 **숨김일 때만** —
+        # 보이는 시트만인 문서의 판독 결과는 한 바이트도 바뀌지 않는다. 값은 openpyxl 그대로(hidden · veryHidden).
+        if (ws.sheet_state or "visible") != "visible":
+            sheet["state"] = ws.sheet_state
+        sheets.append(sheet)
     out = {"format": "xlsx", "path": path, "sheets": sheets}
     if all_images:
         # 키는 **있을 때만** — 그림 없는 문서의 판독 결과가 한 바이트도 바뀌지 않는다.

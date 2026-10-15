@@ -222,8 +222,9 @@ def _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid):
                               evidence_chunk=cid, src_graph=sg, dst_graph=dg)
         if br == gate.COMMIT:
             touched.add(nid)
+            # 화살표 = 실제 엣지 방향(B112 ⑥) — 대상 → 개체면 이 행 쪽으로 들어온다(←) · 개체 → 대상이면 나간다(→)
             _attached(p["row"], rel, (tg.get(tid) or {}).get("canonical"),
-                      f"소속({bel.get('from') or '-'})", "←")
+                      f"소속({bel.get('from') or '-'})", "←" if fwd else "→")
 
 
 def _legacy_attach(b, cfg, graph, env, cand, touched, ref, ref_g, prov, cid):

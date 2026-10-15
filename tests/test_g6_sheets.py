@@ -89,7 +89,8 @@ show("② 제안은 닫힌 셋 안이고 문턱은 상수 셋이다 (LLM 지점 
      {r["suggest"] for r in _rows} <= set(FORM.SHEET_ROLES)
      and set(FORM.SHEET_THRESHOLDS) == {"text_ratio", "rows", "avg_len"},
      f"{FORM.SHEET_THRESHOLDS} · 제안 {sorted({r['suggest'] for r in _rows})}")
-_blk = _screen.strip_ansi(SCR.sheet_table_block(_rows, file=str(RFQ)))
+from cli import sheet_screen as _SS                                 # noqa: E402 — 시트 화면은 따로 산다(B112 ②)
+_blk = _screen.strip_ansi(_SS.sheet_table_block(_rows, file=str(RFQ)))
 _parsed = [l.split() for l in _blk.splitlines()[2:]]
 show("② 표는 **색을 벗긴 문자열에서 파싱된다** (어서션·문면 검사가 읽는다)",
      len(_parsed) == len(_rows)
@@ -142,8 +143,10 @@ show("③ tty에서 Enter는 **제안과 같은 기록**이다 (`decided_by: gat
      and _rec_e["sheets"] == {r["name"]: r["suggest"] for r in _rows_g},
      SH.summary((_rec_e or {}).get("sheets") or {}))
 _again = _ingest()
-show("③ 같은 문서 재인입은 관문 0이다 — 기록이 있으면 표도 질문도 없다(비tty에서도 간다)",
-     "■ 시트 역할" not in _again and "기록대로 진행" in _again and "성공" in _again,
+# 기대 변경(B112 ②) — 기록이 있어도 **표는 보이고 묻지 않는다**(기록대로 진행 · 다시 고르는 명령줄 한 줄).
+show("③ 같은 문서 재인입은 묻지 않는다 — 기록이 있으면 표 + 기록대로 진행 + 다시 고르는 명령줄(비tty에서도 간다)",
+     "■ 시트 역할" in _again and "Enter=제안대로" not in _again and "기록대로 진행" in _again
+     and "다시 고르려면" in _again and "성공" in _again,
      [l.strip() for l in _again.splitlines() if "기록대로" in l][:1])
 _h1 = {c["source_locator"] for c in _chunks().values()}
 _again2 = _ingest()

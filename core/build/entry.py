@@ -406,7 +406,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
                 "저해상도": loop.LOWRES["n"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
-                "재생": dict(_rp.DOC), "결과": res})
+                "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res)})
     return None, metrics, extracted
 
 
@@ -433,6 +433,22 @@ def _result(builder, doc_id):
                                                          _RUN.get("env") or {}, world, doc_id)})
     ledger_mod.attach_result(doc_id, res)
     return res
+
+
+def _reconcile(builder, doc_id, res):
+    """문서 끝 맞춤표(B112 ①) — 화면에만 간다(저장 0 · 장부의 투영). 그 실행의 사실: 추출 부름/재사용 ·
+    층 전 수 · 이번/이전 큐."""
+    from core.build import extract as _ex, reconcile
+    from router import discover
+    mine = {g.layer: g for g in builder.graphs()}
+    world = {lay: mine.get(lay) or open_graph(lay) for lay in set(discover()) | set(mine)}
+    seen = {_qkey(x) for x in _RUN["q0"]}
+    q = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == doc_id]
+    run = {"청크": {k[1]: v for k, v in _ex.RUN.items() if k[0] == doc_id},
+           "층 전": _RUN.get("layers0") or {},
+           "큐 이번": [x for x in q if _qkey(x) not in seen], "큐 이전": [x for x in q if _qkey(x) in seen]}
+    return reconcile.for_build(doc_id, builder.ledger.rows if builder.ledger else [], res,
+                               _RUN.get("env") or {}, world, run)
 
 
 def _build_added():

@@ -168,23 +168,46 @@ def _report_extra(data, rows):
     if data.get("result"):
         print("")
         result_screen.show(data["result"])
-    for ln in hold_unc_lines(rows):
+        from core.build import reconcile
+        result_screen.show_reconcile(reconcile.for_report(data.get("doc_id") or (rows[0].get("doc_id") if rows else ""),
+                                                          data))    # 맞춤표 — 인입 끝과 같은 함수 (B112 ①)
+    for ln in hold_unc_lines(rows, doc=data.get("doc_id")):
         print(ln)
 
 
-def hold_unc_lines(rows, limit=None):
-    """보류 목록(사유 · 표기 · 행 수) · 불확실 목록(가장 가까운 후보) — `show report`와 인입 끝이 같은 함수(B102 ⑦).
+def _hold_coord(r, by_loc):
+    """보류 행의 좌표 — 좌표 행이면 그 표기 자체 · 아니면 그 조각의 좌표(없으면 「좌표 없음」) (B112 ④ ·
+    `reconcile.row_coord` 하나 — 문서 좌표 경고와 같은 함수)."""
+    from core.build.reconcile import row_coord
+    co = row_coord(r, by_loc)
+    if r.get("role") == "anchor" and co:
+        return f"{co}(이 표기가 좌표)"
+    return co or "좌표 없음"
+
+
+def hold_unc_lines(rows, limit=None, doc=None):
+    """보류 목록(**사유 → 좌표 → 표기 · 행 수** — B112 ④: 좌표가 없어서 멈춘 것임을 줄이 말한다) · 불확실 목록(가장
+    가까운 후보) — `show report`와 인입 끝이 같은 함수(B102 ⑦). 좌표는 파싱 봉투의 조각에서(`doc` — 없으면 「좌표 없음」).
     `limit`이면 목록마다 그 줄까지 · 넘으면 「… 외 n — 전체는 show report」."""
     from core.build.result import hold_reason
     out = []
-    held = Counter((hold_reason(r), r.get("surface") or r.get("canonical") or "—")
+    by_loc = {}
+    _pp = paths.parsed(f"{doc}.json") if doc else None
+    if _pp is not None and _pp.exists():
+        from core.build.reconcile import by_locator
+        by_loc = by_locator(json.loads(_pp.read_text(encoding="utf-8")))
+    held = Counter((hold_reason(r), _hold_coord(r, by_loc), r.get("surface") or r.get("canonical") or "(표기 없음)")
                    for r in rows if hold_reason(r))
     if held:
         out.append("")
-        out.append("  보류 목록 — 사유 · 표기 · 행 수")
-        items = sorted(held.items(), key=lambda x: (x[0][0], -x[1], x[0][1]))
-        for (why, s_), n in items[:limit]:
-            out.append(f"    {_screen.pad(why, 34)}{_screen.pad(_screen.cut(s_, 40), 42)}{n:,}")
+        out.append("  보류 목록 — 사유 → 좌표 → 표기 · 행 수")
+        items = sorted(held.items(), key=lambda x: (x[0][0], x[0][1], -x[1], x[0][2]))
+        why0 = None
+        for (why, co, s_), n in items[:limit]:
+            if why != why0:
+                out.append(f"    {why} — {sum(v for k, v in held.items() if k[0] == why):,}행")
+                why0 = why
+            out.append(f"      {_screen.pad(_screen.cut(co, 30), 32)}{_screen.pad(_screen.cut(s_, 40), 42)}{n:,}")
         if limit is not None and len(items) > limit:
             out.append(f"    … 외 {len(items) - limit:,}")
     unc = [r for r in rows if r.get("verdict") in ("uncertain", "lowres")]
@@ -226,6 +249,10 @@ def _trace(doc, rows, span=40):
     from core.state.ids import fold_latin
     ch = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}
     by_loc = {c.get("source_locator"): c for c in ch.values() if c.get("doc_id") == doc}
+    # 소속 — 이름 → 대상(종류) → 결과 (B112 ④ · 맞춤표와 같은 재료 · 같은 함수)
+    from core.build import reconcile
+    _mt = reconcile.for_report(doc, {"rows": rows, "result": {}})
+    _sk = reconcile.skeleton_names()
     print(f"■ {doc} 값 추적 — entity {sum(1 for r in rows if r.get('role') == 'entity'):,}행")
     for r in rows:
         if r.get("role") != "entity":
@@ -239,6 +266,9 @@ def _trace(doc, rows, span=40):
             print(f"     붙은 자리  {a.get('rel')} {a.get('dir')} {a.get('other')} ({a.get('path')})")
         if not r.get("attached"):
             print(f"     붙은 자리  없음" + (f" — 큐 {r['queue_kind']}" if r.get("queue_kind") else ""))
+        _bt = reconcile.belongs_trace(r, _mt["소속 이름"], _sk, _mt["고아"])
+        if _bt:
+            print(f"     소속       {_bt}")
         print(f"     좌표       {c.get('process_ref') or '없음'} ({_coord_src(m)})")
         text = c.get("text") or ""
         if text and r.get("surface"):

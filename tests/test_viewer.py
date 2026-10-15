@@ -20,6 +20,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from core.llm import gateway as _iso                              # noqa: E402
+_iso.isolate()   # 시험은 셸 환경과 무관하게 격리 환경에서 돈다 (B111 ① · doctor와 같은 함수 · core의 다른 모듈보다 먼저)
 
 from cli.query import answer, as_json                                # noqa: E402
 from cli.viewer import data as VD, server as VS                      # noqa: E402

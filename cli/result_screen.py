@@ -77,3 +77,42 @@ def batch(rows):
               f"엣지 {e:+,} · LLM 호출 {c:,}")
     print(f"     전체 — 문서 {len(got):,} · 노드 {tn:+,} · 엣지 {te:+,} · LLM 호출 "
           + (" · ".join(f"{pt} {n:,}" for pt, n in sorted(calls.items())) or "0"))
+
+
+# ---------------------------------------------------------------- 맞춤표 (B112 ①④⑤)
+def _formula(ln):
+    cells = " + ".join(f"{k} {n:,}" + (f"({d})" if d else "") for k, n, d in ln["칸"])
+    return f"{ln['줄']} {ln['전체']:,} = {cells}" + (f"  ({ln['덧']})" if ln.get("덧") else "")
+
+
+def reconcile_lines(mt, limit=None):
+    """맞춤표 묶음(`core/build/reconcile.table`) → 줄들. 같은 단위의 칸 합이 전체와 다르면 그 줄 아래 `[결함]`.
+    `limit`이면 엣지 없는 노드 목록을 그 줄까지(전체는 `show report`)."""
+    if not mt:
+        return []
+    out = ["   맞춤 — 줄마다 단위 · 같은 단위는 합 = 전체"]
+    for ln in mt["줄"]:
+        out.append("     " + _formula(ln))
+        if not ln["맞음"]:
+            out.append(f"     [결함] {ln['줄'].strip()} 합 {ln['합']:,} ≠ 전체 {ln['전체']:,}")
+    for g in mt.get("그래프") or []:
+        out.append("     " + g)
+    out.append("     큐 — " + " · ".join(f"{k} {v}" for k, v in (mt.get("큐") or {}).items()))
+    el = mt.get("엣지 없는 노드") or []
+    out.append(f"     엣지 없는 노드 {len(el):,}(이 문서가 만든 노드)" + (" — 사유" if el else ""))
+    for lay, canon, cat, why in el[:limit]:
+        out.append(f"       {lay}:{canon}({cat}) — {why}")
+    if limit is not None and len(el) > limit:
+        out.append(f"       … 외 {len(el) - limit:,} — 전체는 python run.py show report {mt['doc_id']}")
+    dc = mt.get("문서 좌표")
+    if dc:
+        out.append(f"     문서 좌표 없음 — 좌표 미해소 보류 {dc['행']:,}행 · ▶ python run.py ingest-file <문서> "
+                   f"--coord <골격 이름>")
+        out.append("       가까운 골격 이름(띄어쓰기 · 대소문자 무시 — 보여만 준다): "
+                   + (" · ".join(dc["후보"]) if dc["후보"] else "없음"))
+    return out
+
+
+def show_reconcile(mt, limit=None):
+    for ln in reconcile_lines(mt, limit):
+        _screen.say(ln, "fail" if "[결함]" in ln else ("head" if ln.startswith("   맞춤") else None))

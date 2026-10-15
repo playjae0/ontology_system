@@ -14,6 +14,7 @@
     python run.py init                  빈 상태를 만든다 (있으면 그대로 둔다)
     python run.py init --fresh          지우고 다시 만든다 — **비용·지식이 든 산출 · 명령 로그 여섯은 남긴다**(B106 ① · B108 ① · B109 ①)
     python run.py init --fresh --all    전부 지운다 — **클린**(회귀 바닥 · doctor · 시험)
+                                        운영(실호출) 루트면 묻는다 · 비대화형은 거부 · `--yes`(B111 ①)
 
 **fresh 기본은 재구축의 바닥이다**(B106 ① · 사용자 결정 2026-10-08): 산문 추출(`work/extract/`) ·
 구조 지도(`work/struct_maps/`) · 판정 대장(`work/ingest_log/` — 판정 재생의 재료) · 좌표 학습
@@ -93,9 +94,34 @@ def _size(p):
     return n, b
 
 
-def fresh(all_=False, keep=(), report=None):
+class CleanRefused(RuntimeError):
+    """**운영 상태 폴더의 클린을 확인 없이 불렀다**(B111 ①) — 아무것도 지우지 않고 멈춘다.
+
+    사내 실측(2026-10-15): 점검(doctor)의 클린이 셸 환경을 물려받아 운영 상태 폴더에서 돌았다 — 판정
+    대장 · 추출 · 좌표 학습 · 별칭 대장이 사라졌다. **지우는 손이 루트를 확인한다**(부르는 자리마다 넣지
+    않는다): mock 세계(mock 루트 · 시험 루트)의 클린은 묻지 않고, 운영(실호출) 루트의 클린은 사람이 확인한
+    것만 지운다 — 확인은 `run.py init --fresh --all`이 받는다(터미널이면 묻고 · 비대화형은 거부 · `--yes`).
+    기본 fresh(보존)는 묻지 않는다 — 재구축의 바닥이다.
+    """
+
+
+def guarded():
+    """이 루트의 클린이 확인을 받아야 하나 — **운영(실호출) 루트**면 참(mock 모드는 `ONTO_HOME`을 보지 않는다)."""
+    from core.llm import gateway             # 함수 안 import — 모드 판독은 게이트웨이 하나 (B42)
+    return not gateway.use_mock()
+
+
+def preview():
+    """클린이 지울 것 — `{kept, wiped}` `[(표기, 파일 수, 바이트)]`. 보존 여섯(기본 fresh가 남기는 것 —
+    지우면 LLM을 다시 부른다)은 따로 센다 · 화면이 묻기 전에 크기를 말한다. 쓰기 0."""
+    return {"kept": [(label, *_size(p)) for label, p in kept()],
+            "wiped": [(f"{tier}/", *_size(getattr(paths, tier)())) for tier in WIPE_TIERS]}
+
+
+def fresh(all_=False, keep=(), report=None, confirmed=False):
     """지운다 — **기본은 보존 여섯(`kept()`)과 이번 실행의 로그 · `keep`을 남기고**, `all_`이면
     `data/`·`work/`·`export/`를 폴더째(클린 — 회귀 바닥 · 열린 로그는 다시 열린다 — `log._Reopening`).
+    운영 루트의 클린은 `confirmed`일 때만(B111 ① — 아니면 `CleanRefused` · 쓰기 0).
 
     등록(`registry/`)과 설정은 어느 쪽이든 남는다: 사람 승인 1회의 산출이라 재생성되지 않는다
     (구판의 `KEEP_IN_DATA` 예외가 그 사실을 파일 단위로 흉내 내던 것이다). `report`(dict)를 주면
@@ -105,6 +131,9 @@ def fresh(all_=False, keep=(), report=None):
     지우지 않게 됐는데, 회귀 바닥은 기록 0에서 시작해야 한다(옮기기 전 정의 그대로 · `seed_layers`와 같은 결 —
     운영 루트의 ②등록은 클린도 건드리지 않는다).
     """
+    if all_ and not confirmed and guarded():
+        raise CleanRefused(f"운영 상태 폴더의 클린은 확인을 받는다 — {paths.home()} "
+                           f"(python run.py init --fresh --all — 터미널이면 묻고 · 비대화형은 --yes)")
     rep = report if report is not None else {}
     rep["kept"], rep["wiped"] = [], []
     # 이번 실행의 로그는 자리가 어디든(`ONTO_LOG_FILE`) 남긴다 — 재구축이 따로 챙기던 것을 이 한 자리로(B109 ①)
@@ -200,11 +229,11 @@ def ensure():
     return made
 
 
-def init(fresh_=False, all_=False, keep=(), report=None):
+def init(fresh_=False, all_=False, keep=(), report=None, confirmed=False):
     """`fresh_` — 지우고 다시 만든다(기본은 보존 여섯을 남긴다 · `all_`이면 클린 · `keep`은 더 남길 경로 —
-    재구축 계획 파일). 돌려주는 것은 새로 만든 빈 상태 목록이다."""
+    재구축 계획 파일 · `confirmed`는 운영 루트 클린의 사람 확인). 돌려주는 것은 새로 만든 빈 상태 목록이다."""
     if fresh_:
-        fresh(all_=all_, keep=keep, report=report)
+        fresh(all_=all_, keep=keep, report=report, confirmed=confirmed)
     # **층 자산이 먼저다** — `ensure()`가 층마다 빈 그래프를 만들고, 층 목록은
     # 상태 루트의 `layers/`가 정한다(B79 ①). mock 루트의 seed 되심기는 **클린의 몫**이다(B106 ① —
     # 기본 fresh는 재구축의 바닥이라 ②등록을 건드리지 않는다: 사람이 고친 seed로 재구축한다).

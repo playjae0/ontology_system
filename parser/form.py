@@ -252,7 +252,8 @@ def sheet_table(raw, thresholds=None, vocab=None):
         st = sheet_stats(sh)
         st["no"] = i
         st["hits"] = _hits(sh, vocab)
-        st["suggest"] = suggest_role(st, thresholds)
+        st["state"] = sh.get("state") or "visible"            # 숨김(B112 ②) — 기본 제안은 skip
+        st["suggest"] = "skip" if st["state"] != "visible" else suggest_role(st, thresholds)
         st["sample"] = sheet_lines(sh, RULE_SAMPLE_ROWS, RULE_SAMPLE_CHARS)
         rows.append(st)
     return rows

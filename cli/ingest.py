@@ -430,6 +430,9 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             print(SCR.fail_block(doc, sel["doc_id"], rows,
                              doc_type=sel.get("doc_type"), queued=1))
             return row
+        if _roles:
+            from cli import sheet_screen as _SS
+            print(_SS.sheet_pieces_line(res.envelope, _roles))       # 파싱 끝 — 시트별 조각 (B112 ②)
         if _step_stops(res, sel, row, ask=step):
             return row
         _u0 = gateway.usage_total()["calls"]
@@ -464,14 +467,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                              doc_type=sel.get("doc_type"), queued=1))
             return row
         stage["이름"] = "부착"
-        # **추출을 다시 돌렸나**를 말한다 — 등록 검수의 리허설이 남긴 체크포인트를
-        # 운영이 재사용하면 LLM 호출이 0회다(B51). 그 사실이 화면에 없으면 「리허설과
-        # 운영이 같은 함수」가 지켜졌는지 사람이 볼 수 없다.
-        row.update(status=OK, reason=f"record {len(r.record_ids)} · chunk {len(r.chunk_ids)}"
-                   + (f" · 그래프 노드 {m['nodes']}" if m else "")
-                   + ("  [추출 실행]" if _extracted else "  [추출 체크포인트 재사용]"))
-        print(f"   인입 — {row['reason']} → {out}")
-        row["result"], SCR.LAST_RESULT["res"] = SCR.LAST_RESULT["res"], None
+        _success(sel, row, r, m, _extracted, out)
         if finalize_after:
             _finalize_screen()
         return row
@@ -495,6 +491,24 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         print("   " + spend_line(stage))
         _kept_lines(doc, sel, stage)
         return row
+
+
+def _success(sel, row, r, m, extracted, out):
+    """성공 줄 — record · chunk · 그래프 노드(이 문서 몫 · 그 층 전체) · 추출 실행/재사용 · 체크포인트 자리.
+
+    **추출을 다시 돌렸나**를 말한다 — 등록 검수의 리허설이 남긴 체크포인트를 운영이 재사용하면 LLM 호출이
+    0회다(B51). 그 사실이 화면에 없으면 「리허설과 운영이 같은 함수」가 지켜졌는지 사람이 볼 수 없다.
+    그래프 노드는 **이 문서 몫과 그 층 전체**를 함께(B112 ① — 총수만 두면 이 문서가 무엇을 더했는지 모른다) ·
+    추출 체크포인트는 **자리**를 함께(B112 ⑦ — 추출했는데 없으면 그 줄이 말한다)."""
+    from core.build import extract as _EX
+    _dn = (((SCR.LAST_RESULT.get("res") or {}).get("층") or {}).get((m or {}).get("layer")) or {}).get("노드", 0)
+    row.update(status=OK, reason=f"record {len(r.record_ids)} · chunk {len(r.chunk_ids)}"
+               + (f" · 그래프 노드 이 문서 {_dn:+,}(그 층 {m['layer']} 전체 {m['nodes']:,})" if m else "")
+               + ("  [추출 실행]" if extracted else "  [추출 체크포인트 재사용]"))
+    _cps = " · ".join(paths.show(c) for c in _EX.checkpoint_files(sel["doc_id"]))
+    print(f"   인입 — {row['reason']} → {out}" + (f" · 추출 {_cps}" if _cps else
+                                                 " · 추출 체크포인트 없음([결함] — 추출 끝 줄)" if extracted else ""))
+    row["result"], SCR.LAST_RESULT["res"] = SCR.LAST_RESULT["res"], None
 
 
 def _finalize_screen():
@@ -528,7 +542,7 @@ def _kept_lines(doc, sel, stage):
     did = sel["doc_id"]
     if not EX.EXTRACT_DIR.exists():
         return
-    done = sorted(EX.EXTRACT_DIR.glob(f"{did}.json")) + sorted(EX.EXTRACT_DIR.glob(f"{did}@*.json"))
+    done = EX.checkpoint_files(did)
     part = sorted(EX.EXTRACT_DIR.glob(f"{did}*.partial.jsonl"))
     if done:
         print("   추출 체크포인트는 남았다 — 같은 명령이면 재사용(LLM 0) · 구축만 다시 간다")

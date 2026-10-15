@@ -88,13 +88,30 @@ def fresh_screen(rep, all_, head="[init --fresh]"):
 def cmd_init(args):
     """빈 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다.
 
-    `--fresh`는 보존 다섯을 남기고(재구축의 바닥 — B106 ① · 별칭 대장 B108 ①) `--fresh --all`이 클린이다."""
-    from core.state.init import init
+    `--fresh`는 보존 여섯을 남기고(재구축의 바닥 — B106 ① · 별칭 대장 B108 ① · 명령 로그 B109 ①) `--fresh --all`이
+    클린이다. **운영(실호출) 루트의 클린은 묻는다**(B111 ① — 지울 것과 크기 · 터미널이면 y/N · 비대화형은 거부 ·
+    `--yes`). 묻는 규칙은 재구축과 같은 함수(`_gate.approved`)다."""
+    from core.state import init as I
     fresh_, all_ = "--fresh" in args, "--all" in args
     if all_ and not fresh_:
         raise SystemExit("[init] --all은 --fresh와 함께 준다 — python run.py init --fresh --all")  # [사용법]
+    confirmed = False
+    if fresh_ and all_ and I.guarded():
+        from core import paths
+        from cli._gate import approved
+        head, pv = "[init --fresh --all]", I.preview()
+        print(f"{head} 운영 상태 폴더의 클린이다 — {paths.home()}{paths.home_note()} · 모드 실호출")
+        print(f"{head} 지울 것 — " + " · ".join(f"{l} {n:,}파일 {_bytes(b)}" for l, n, b in pv["kept"])
+              + " (기본 fresh가 남기는 여섯 — 다시 만들려면 LLM을 다시 부른다)")
+        print(f"{head} 지울 것(단 전체) — " + " · ".join(f"{l} {n:,}파일 {_bytes(b)}" for l, n, b in pv["wiped"])
+              + " · 남는 것 — registry/ · layers/ · raw/")
+        print(f"{head} 재구축의 바닥은 기본 fresh다 — python run.py init --fresh (보존 여섯을 남긴다)")
+        if not approved("--yes" in args, "python run.py init --fresh --all --yes"):
+            print(f"{head} 지우지 않았다 — 운영 상태 폴더 그대로")
+            return 1
+        confirmed = True
     rep = {}
-    made = init(fresh_, all_=all_, report=rep)
+    made = I.init(fresh_, all_=all_, report=rep, confirmed=confirmed)
     if fresh_:
         fresh_screen(rep, all_, "[init --fresh --all]" if all_ else "[init --fresh]")
     print(f"[init] 빈 상태 {len(made)}개 — {', '.join(made) or '이미 있음'}")

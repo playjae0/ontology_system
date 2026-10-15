@@ -20,7 +20,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from cli import ingest_screen as SCR
+from cli import sheet_screen as SCR
 from core.state import log
 from parser import form as form_mod, reader as reader_mod
 from parser.reader import GRID_EXT
@@ -74,6 +74,8 @@ def judge(rows, info, llm=True):
         r["llm"], r["llm_reason"] = None, None
         if by == "off":
             pass
+        elif r.get("state", "visible") != "visible":
+            r["llm"], r["llm_reason"] = "skip", "숨김 시트 — 부르지 않았다(살리려면 --sheets <번호>:prose)"
         elif r["logic"] == "skip":
             r["llm"], r["llm_reason"] = "skip", "빈 시트 — 부르지 않았다"
         elif fn is None:
@@ -159,7 +161,10 @@ def auto(doc, doc_id, *, lenses=None, dry_run=False):
     rows = rows_of(doc, vocab)
     names = [r["name"] for r in rows]
     if rec and not SH.pending(rec.get("sheets") or {}, names):
+        judge(rows, info, False)                 # 기록대로 — 표는 보이고 묻지 않는다(LLM 0 · B112 ②)
+        print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=[]))
         print(f"   시트 역할 — 기록대로 진행({SH.summary(rec['sheets'])} · {rec.get('decided_by')})")
+        print(SCR.sheet_again_line(doc, rows))
         return dict(rec["sheets"])
     _u0 = _usage0()
     by = judge(rows, info, True)
@@ -226,8 +231,11 @@ def gate(doc, doc_id, kind, *, spec=None, dry_run=False, ask=True, retry=None,
         return by_flag(doc, doc_id, spec, names=names, dry_run=dry_run, lenses=lenses), None
     pend = SH.pending(roles, names)
     if rec and not pend:
+        judge(rows, None, False)                 # 기록대로 — 표는 보이고 묻지 않는다(LLM 0 · B112 ②)
+        print(SCR.sheet_table_block(rows, file=doc, rec=rec, pend=[]))
         print(f"   시트 역할 — 기록대로 진행({SH.summary(roles)} · "
               f"{rec.get('decided_by')})")
+        print(SCR.sheet_again_line(doc, rows, flag_cmd))
         return roles, None
     # 두 제안(B91 ②) — 로직(사전 적중 포함)은 늘 · LLM은 **물을 때만** 부른다(보여만 주는
     # dry-run과 거부 문면은 실호출 0 — mock 갈래는 호출이 없어 그대로 보인다).
