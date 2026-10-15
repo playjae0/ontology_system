@@ -21,8 +21,9 @@ from core.build.result import hold_reason
 JUDGE_PATHS = ("scope+judge", "embedding+judge", "overlap+judge")
 #: 판정 → 결말 칸(닫힌 표 · 밖이면 `그 밖`)
 OUTCOME = {"match": "일치", "new": "새", "uncertain": "불확실", "lowres": "불확실"}
-#: 판정 → 결말 줄의 칸(개체 행 하나 → 칸 하나 — 보류가 먼저)
-END = {"match": "일치", "new": "새 노드", "uncertain": "불확실", "lowres": "불확실"}
+#: 판정 → 결말 줄의 칸(개체 행 하나 → 칸 하나 — 보류가 먼저 · `mention` 다른 공정 언급 · `blank` 빈칸 표시 — B113)
+END = {"match": "일치", "new": "새 노드", "uncertain": "불확실", "lowres": "불확실",
+       "mention": "다른 공정 언급", "blank": "빈칸 표시"}
 #: 행 역할 → 보류 줄의 행 종류
 ROW_KIND = {"anchor": "좌표 행", "entity": "개체 행", "belongs": "소속 행",
             "attribute": "속성·내용 행", "content": "속성·내용 행"}
@@ -84,6 +85,8 @@ def coord_cells(env):
             side["무시(문서 좌표 밖)"] += 1
         if m.get("coord_shared_skip"):
             side["공유 별칭 건너뜀"] += 1
+        if m.get("null_marked"):                  # 좌표 칸의 빈칸 표시를 비웠다(B113 ② — 문서 좌표를 물려받는다)
+            side["빈칸 표시로 비움"] += 1
     return len(pcs), cell, side
 
 
@@ -103,6 +106,8 @@ def value_cell(r):
     if why:
         return "보류", why
     path, verdict = r.get("path") or "none", r.get("verdict")
+    if verdict in ("mention", "blank"):           # 다른 공정 이름 — 관련 링크 · 빈칸 표시 — 개체 0 (B113 ①②)
+        return END[verdict], ""
     out = OUTCOME.get(verdict)
     if path == "dictionary":
         return "사전", out or verdict
@@ -119,7 +124,8 @@ def value_cell(r):
     return "그 밖", f"{path}:{verdict}"
 
 
-VALUE_ORDER = ("사전", "골격", "재생", "기억", "LLM 일치", "새 노드", "불확실", "보류", "그 밖")
+VALUE_ORDER = ("사전", "골격", "재생", "기억", "LLM 일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
+               "보류", "그 밖")
 
 
 def value_lines(rows):
@@ -134,7 +140,8 @@ def value_lines(rows):
     ends = Counter("보류" if hold_reason(r) else END.get(r.get("verdict"), "그 밖") for r in ent)
     return [line("값(개체 행)", len(ent), [(k, cells.get(k, 0), det.get(k, "")) for k in VALUE_ORDER]),
             line("결말(개체 행)", len(ent),
-                 [(k, ends.get(k, 0), "") for k in ("일치", "새 노드", "불확실", "보류", "그 밖")])]
+                 [(k, ends.get(k, 0), "") for k in ("일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
+                                                     "보류", "그 밖")])]
 
 
 # ---------------------------------------------------------------- 보류(행 종류별)
@@ -154,7 +161,7 @@ def _is_belongs(a):
 
 
 def attach_line(rows, skeleton):
-    """`부착(개체 행) N = 소속 엣지(공정 · 유닛·부품) + 관계만 + 좌표 폴백 + 엣지 없음 + 노드 없음` —
+    """`부착(개체 행) N = 소속 엣지(공정 · 유닛·부품) + 관계만 + 좌표 폴백 + 관련 링크 + 빈칸 표시 + 엣지 없음 + 노드 없음` —
     대상 종류는 상대 이름이 골격 이름인가로 가른다(`skeleton` — 좌표 층 골격 canonical)."""
     ent = [r for r in rows if r.get("role") == "entity"]
     c, kind = Counter(), Counter()
@@ -168,11 +175,15 @@ def attach_line(rows, skeleton):
             c["관계만"] += 1
         elif any(a.get("path") == "폴백" for a in att):
             c["좌표 폴백"] += 1
+        elif r.get("verdict") == "mention":       # 다른 공정 언급 — 노드 대신 관련 링크(B113 ①)
+            c["관련 링크"] += 1
+        elif r.get("verdict") == "blank":         # 빈칸 표시 — 개체 0(B113 ②)
+            c["빈칸 표시"] += 1
         elif r.get("node_id"):
             c["엣지 없음"] += 1
         else:
             c["노드 없음"] += 1
-    order = ("소속 엣지", "관계만", "좌표 폴백", "엣지 없음", "노드 없음")
+    order = ("소속 엣지", "관계만", "좌표 폴백", "관련 링크", "빈칸 표시", "엣지 없음", "노드 없음")
     return line("부착(개체 행)", len(ent), [(k, c.get(k, 0), _sub(kind) if k == "소속 엣지" else "")
                                           for k in order])
 
@@ -311,8 +322,9 @@ def doc_coord_warning(rows, env, nodes):
     """문서 좌표가 없고 **좌표가 없어서** 「좌표 미해소」로 보류된 행(표기 없는 좌표 행 · 좌표 없는 조각의 행)이 있으면
     `{행, 후보}` · 아니면 None (B112 ⑤ — 동작 불변 · 제 좌표를 든 보류는 문서 좌표로 풀리지 않는다 — 세지 않는다)."""
     from core.build.result import HOLD_REASONS
-    if (env or {}).get("doc_coord"):
-        return None
+    from core.build.retry import _doc_coords
+    if (env or {}).get("doc_coord") or (_doc_coords().get((env or {}).get("doc_id")) or {}).get("coord"):
+        return None                                # 문서 좌표가 있다 — 인입 때 · 그 뒤 기록(ops relink --coord)
     loc = by_locator(env)
     n = sum(1 for r in rows if hold_reason(r) == HOLD_REASONS[2][2] and not row_coord(r, loc))
     if not n:

@@ -109,6 +109,26 @@ def load():
     return cat
 
 
+def null_markers():
+    """**빈칸 표시 목록**(B113 ②) — 공통 config `null_markers`(사내가 고친다) · 없거나 목록이 아니면 None
+    (파서 기본값 `parser.normalizer.NULL_MARKERS`). 파일의 시각이 키다 — 고치면 그다음 값부터 따른다."""
+    p = paths.common()
+    if not p.exists():
+        return None
+    key = ("null_markers", str(p), p.stat().st_mtime_ns)
+    if key not in _MARKERS:
+        try:
+            v = json.loads(p.read_text(encoding="utf-8")).get("null_markers")
+        except ValueError:
+            v = None
+        _MARKERS.clear()
+        _MARKERS[key] = v if isinstance(v, list) else None
+    return _MARKERS[key]
+
+
+_MARKERS = {}
+
+
 def version():
     """`common_version` 또는 `None`(파일이 없다)."""
     p = paths.common()

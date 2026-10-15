@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 
-from core.state import ops
+from core.state import ops, store
 
 
 def show_preview(pv):
@@ -180,12 +180,59 @@ def _confirm_doc(a):
     return 0
 
 
+def _relink(a):
+    """`ops relink all` — 재연결 훑기를 손으로(B113 ③ — 골격 `ALIASES` · `bootstrap` · `--coord` 기록 뒤 재인입 없이).
+    계획(쓰기 0) → `--apply`면 인입 끝 마무리와 **같은 함수**(`entry.finalize` — 미러 · 재연결 바퀴)."""
+    from core.build import retry as RT
+    canon = None
+    if a.coord:                                   # 문서 좌표를 기록하고 잇는다(재인입 없이 — `--doc` 필수)
+        from cli import doc_coord as DC
+        if not a.doc:
+            print("■ 거부 — --coord는 문서와 같이: python run.py ops relink all --doc <doc_id> --coord <골격 이름> "
+                  f"--actor {a.actor}")
+            return 2
+        try:
+            canon = DC._resolve(a.coord.strip(), DC._nodes())
+        except SystemExit as e:
+            print(f"■ 거부 — {e}")
+            return 2
+        holds = sum(1 for x in store.read(store.QUEUE, []) if x.get("doc_id") == a.doc and RT.is_target(x)
+                    and x.get("kind") == RT.COORD_HOLD)
+        print(f"■ 문서 좌표 기록 — {a.doc} → {canon} (출처: 사람 · 그 문서의 좌표 미해소 보류 {holds:,}항목이 이 좌표로 다시 선다 · "
+              f"아래 계획은 기록한 뒤의 판으로 센다)")
+    pv = RT.plan(doc_coord=(a.doc, canon) if canon else None)
+    t = pv["target"]
+    print(f"■ 재연결 계획 — 대상 {sum(t.values()):,}" + (f"({' · '.join(f'{k} {v:,}' for k, v in sorted(t.items()))})"
+                                                    if t else "")
+          + f" · 이번에 볼 것 {pv['try']:,} · 판이 그대로라 건너뜀 {pv['same']:,} · 상한 도달 {pv['capped']:,}")
+    if not a.apply:
+        more = f" --doc {a.doc} --coord \"{a.coord}\"" if canon else ""
+        print(f"  (계획만 — 쓰기 0) ▶ 다음 줄 — 실행: python run.py ops relink all{more} --actor {a.actor} --apply")
+        return 0
+    # 재연결은 판정 LLM을 부를 수 있다 — 쓰기 전에 인입과 같은 사전 점검(B98 ① · 실패면 기록 · 그래프 쓰기 0)
+    from cli import preflight as PF
+    from core.llm.narrow import narrow_choice
+    if not PF.gate(chat=True, embed=narrow_choice()[0] == "embed", catalog=True):
+        print("■ 재연결 멈춤 — 사전 점검에서 멈췄다 (문서 좌표 기록 · 그래프 쓰기 0) ▶ 위 다음 줄대로 고친 뒤 같은 명령")
+        return 2
+    if canon:
+        from cli import doc_coord as DC
+        DC.record(a.doc, canon, "사람")
+    from core.build.entry import finalize
+    fin = finalize()
+    for ln in RT.rounds_text():
+        print(f"    {ln}")
+    print(f"  {fin['retry_line']}")
+    print(f"  미러 — 새 짝 엣지 {fin['mirror_new']:,} · 비대칭(mirror_asymmetry) {fin['mirror_asym']:,} · by {a.actor}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
                                   "transfer", "delete-edge", "confirm", "alias", "alias-reject", "tidy",
                                   "learn-promote", "learn-reject", "review",
-                                  "coord-ack", "coord-unack", "replay"])
+                                  "coord-ack", "coord-unack", "replay", "relink"])
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -195,13 +242,17 @@ def main(argv=None):
     p.add_argument("--replaced-by", dest="replaced_by", help="I4 — 대체 노드 id")
     p.add_argument("--parent", help="이관 — 새 부모 노드 id (소속 변경)")
     p.add_argument("--yes", action="store_true", help="미리보기 확인 후 실행")
-    p.add_argument("--apply", action="store_true", help="tidy — 계획이 아니라 실제로 지운다")
+    p.add_argument("--apply", action="store_true", help="tidy · relink — 계획이 아니라 실제로 한다")
     p.add_argument("--polarity", action="store_true", help="coord-ack — 쌍이 (극성, 노드)다")
-    p.add_argument("--doc", help="confirm — 그 문서 실행이 만든 auto 노드 전부(문서 단위 확인 · B106 ④)")
+    p.add_argument("--doc", help="confirm — 그 문서 실행이 만든 auto 노드 전부(문서 단위 확인 · B106 ④) · "
+                                 "relink — 문서 좌표를 기록할 문서")
+    p.add_argument("--coord", help="relink — 그 문서(--doc)의 문서 좌표(골격 이름)를 기록하고 잇는다(재인입 없이 · B113 ③)")
     p.add_argument("--dry-run", dest="dry_run", action="store_true", help="replay — 계획만(쓰기 0)")
     a = p.parse_args(argv)
     if a.op == "replay":
         return _replay(a)
+    if a.op == "relink":
+        return _relink(a)
     if (a.op == "confirm" and a.doc) or a.op == "alias-reject":
         try:
             return _confirm_doc(a) if a.op == "confirm" else _alias_reject(a)

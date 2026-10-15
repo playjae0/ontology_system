@@ -136,6 +136,28 @@ def _attach_target(a):
     return (v.get("name") or None), v.get("category")
 
 
+def link_mentions(b, ch):
+    """**다른 공정 언급의 관련 링크**(B113 ①) — 그 위치의 청크 → 그 공정 노드(`chunks.json`의 `about` · 조회 전용 ·
+    키는 링크가 있을 때만). 표(행의 청크) · 산문(그 청크) · 렌즈가 이 함수 하나 · 돌려주는 것은 새로 단 수."""
+    ms = getattr(b, "mentions", None) or []
+    if not ms:
+        return 0
+    by_loc = {}
+    for cid, c in (ch.get("chunks") or {}).items():
+        if c.get("doc_id") == b.doc_id:
+            by_loc.setdefault(c.get("source_locator"), []).append(cid)
+    n = 0
+    for m in ms:
+        cids = by_loc.get(m["locator"]) or ([m["locator"]] if m["locator"] in (ch.get("chunks") or {}) else [])
+        for cid in cids:
+            about = ch.setdefault("about", [])
+            e = {"chunk_id": cid, "node_id": m["node_id"]}
+            if e not in about:
+                about.append(e)
+                n += 1
+    return n
+
+
 # **저해상도 부착 계수** — 문서마다 0으로 시작한다(`run_document`가 리셋).
 # 화면이 제 계산을 하지 않게 **세는 자리는 붙이는 자리**다.
 LOWRES = {"n": 0}
@@ -378,7 +400,9 @@ def h_entity(value, spec, ctx):
 
 
 _VERDICT = {"match": "match", "new": "new", "uncertain": "uncertain",
-            "gate_reject": "gate_reject", "orphan": "orphan"}   # orphan — 골격 밖 골격 카테고리 (B94 ③)
+            "gate_reject": "gate_reject", "orphan": "orphan",   # orphan — 골격 밖 골격 카테고리 (B94 ③)
+            "mention": "mention",                              # 다른 공정 언급 — 관련 링크 (B113 ①)
+            "blank": "blank"}                                  # 빈칸 표시 — 개체 0 (B113 ②)
 
 
 def _ledger_entity(st, surface, layer, last):

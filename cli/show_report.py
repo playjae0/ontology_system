@@ -168,6 +168,9 @@ def _report_extra(data, rows):
     if data.get("result"):
         print("")
         result_screen.show(data["result"])
+        _by = sum(1 for r in rows if r.get("by") == "retry")
+        if _by:                                     # 결과표는 인입 끝의 것 · 맞춤표는 지금 대장 (B113 ③)
+            print(f"     (인입 뒤 재연결이 고친 행 {_by:,} — 위 「결과」는 인입 끝의 것 · 아래 맞춤 묶음은 지금 대장)")
         from core.build import reconcile
         result_screen.show_reconcile(reconcile.for_report(data.get("doc_id") or (rows[0].get("doc_id") if rows else ""),
                                                           data))    # 맞춤표 — 인입 끝과 같은 함수 (B112 ①)

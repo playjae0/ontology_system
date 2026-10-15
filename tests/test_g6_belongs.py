@@ -317,8 +317,9 @@ _mk = EX._mock_candidates("x", _c0["text"], load_config("process"), {"가압 유
 show("ⓒ 소속 — 「모터」가 시트·경로의 유닛 이름을 소속으로(from) · 소속 엣지 · 유닛은 좌표에 · 근거 없으면 null"
      "(지어낸 이름은 버리고 결함 로그) · 옛 attach 호환 (엑셀·Word × 층 둘)",
      all(o for _f, _l, o, _d in _oc), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _oc))
-show("ⓒ 경로·시트 이름은 개체 후보가 아니다 — 본문에 없는 시트명은 후보 0 · 지시문 규칙 판 e-1.4",
-     [x["surface"] for x in _mk["entities"]] == ["모터"] and EX.prompt_version() == "e-1.4",
+# 기대 변경(B113 ① — 지시문 3.3 규약 10 · e-1.5)
+show("ⓒ 경로·시트 이름은 개체 후보가 아니다 — 본문에 없는 시트명은 후보 0 · 지시문 규칙 판 e-1.5",
+     [x["surface"] for x in _mk["entities"]] == ["모터"] and EX.prompt_version() == "e-1.5",
      f"후보 {[x['surface'] for x in _mk['entities']]} · 지시문 {EX.prompt_version()}")
 
 # 이름에 소속 — CP 표본과 같은 키 · nest가 비면 지금과 같다
@@ -406,8 +407,9 @@ for lay in ("process", "quality"):
     cfg2 = dict(cfg, config_version=f"{cfg.get('config_version')}-b102")
     r3 = EX.reuse_check(env, cfg=cfg2)
     why = [n.get("다시") for n in notes if n.get("단계") == "추출예고"]
-    _of.append((lay, r1 == (False, "지시문 e-1.3 → e-1.4") and r2[0] and not r3[0] and r3[1].startswith("층 config ")
-                and why and why[0] == "지시문 e-1.3 → e-1.4", f"{r1} · 다시 뽑은 뒤 {r2} · config 판 바뀜 {r3} · 예고 {why[:1]}"))
+    _now = EX.prompt_version()                     # 지금 판(B113 — e-1.5) — 판 문자열이 아니라 「바뀌면 다시」를 잰다
+    _of.append((lay, r1 == (False, f"지시문 e-1.3 → {_now}") and r2[0] and not r3[0] and r3[1].startswith("층 config ")
+                and why and why[0] == f"지시문 e-1.3 → {_now}", f"{r1} · 다시 뽑은 뒤 {r2} · config 판 바뀜 {r3} · 예고 {why[:1]}"))
 show("ⓕ 지시문 판이 바뀌면 다시 뽑는다(예고 줄에 이유) · 다시 뽑은 뒤 재사용 · 층 config 판이 바뀌어도 다시 (층 둘 · "
      "표는 추출이 없다)", all(o for _l, o, _d in _of), " ‖ ".join(f"{l} {d}" for l, _o, d in _of))
 

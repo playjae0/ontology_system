@@ -13,6 +13,7 @@ from core.build.build import Builder
 from core.build import gate
 from core.build.ledger import Ledger
 from core.build import belongs, extract_ctx
+from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
 from core.build.naming import nest_categories
 from core.state.status import is_live
 from core.state import log, store
@@ -72,8 +73,15 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
     nests = nest_categories(b.cfg)
     pcs, plans = {}, []
     for e in ents:
+        if null_marker(e.get("surface")):
+            # **빈칸 표시는 개체가 아니다**(B113 ② — 표와 같은 함수) — 노드 0 · 행은 남긴다
+            b.ledger.add(locator=_loc or cid, field=e.get("category"), role="entity", surface=e.get("surface"),
+                         layer=b.layer, path="none", verdict="blank")
+            continue
         k = norm(e["surface"])
         bel = None if k in cyc else bmap.get(k)
+        if bel and null_marker(bel.get("name")):
+            bel = None                             # 소속 이름이 빈칸 표시 — 소속 없음(B113 ②)
         if bel and not bel.get("legacy"):
             where = belongs.source_of(bel["name"], src, doc)
             if where is None:                      # 지어낸 소속 — 버린다(지어내지 않는다)
@@ -342,6 +350,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
         loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans] + tnodes, touched,
                                 ref, ref_g, prov, env["doc_id"], evidence_chunk=cid)
 
+    loop.link_mentions(b, ch)                     # 다른 공정 언급 → 관련 링크 (B113 ①)
     store.write(store.CHUNKS, ch)
     if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
         b.flush()

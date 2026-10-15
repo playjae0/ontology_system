@@ -20,13 +20,16 @@ DIR = "ingest_log"
 
 # 닫힌 값 — 밖이면 FAIL이다(완료판정 ②). 종류 열이 anchor·부착까지 같은 표에 담는다.
 VERDICTS = ("match", "new", "uncertain", "anchor", "lowres", "orphan",
-            "attached", "pending", "gate_reject")
+            "attached", "pending", "gate_reject",
+            "mention",      # 다른 공정의 골격 이름 — 노드 0 · 관련 링크 (B113 ①)
+            "blank")        # 빈칸 표시(`-` · `N/A` …) — 개체 0 (B113 ②)
 
 _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind",
          "narrow", "emb_top", "nearest", "same_doc", "target", "from", "attached", "hold",
          "category", "scope", "replay",   # 판정 재생의 키 몫 · 재판정 사유(B106 ② · 있을 때만)
-         "by")                            # 그 행을 적은 손이 인입 루프가 아닐 때(B107 ③ — "retry")
+         "by",                            # 그 행을 적은 손이 인입 루프가 아닐 때(B107 ③ — "retry")
+         "blank")                         # 값 칸이 빈칸 표시였다 — 원문은 그대로 · 표지만(B113 ②)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -57,7 +60,8 @@ def row(*, locator=None, field=None, role=None, surface=None,
         canonical=None, layer=None, path="none", verdict="pending",
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
-        target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None):
+        target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
+        blank=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -84,7 +88,9 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 재생하지 못한 사유(B106 ② — 키 없음 · 대상 없음 · 끔) — 재판정 행만
                  ("replay", replay),
                  # 인입 루프가 아닌 손(B107 ③ — 재시도가 판정해 갈아 끼운 행)
-                 ("by", by)):
+                 ("by", by),
+                 # 값 칸의 빈칸 표시(B113 ② — 값은 그대로 · 그 표시를 함께)
+                 ("blank", blank)):
         if v is not None:
             r[k] = v
     return r
@@ -104,17 +110,19 @@ def judged(last, *, locator, field, surface, layer, target):
                 replay=last.get("replay"))
 
 
-def put_row(doc_id, new):
+def put_row(doc_id, new, old=None):
     """**재시도도 판정이다**(B107 ③) — 그 문서 대장에서 같은 키(위치 · 열 · 표기 · 층 · 역할 — 카테고리는 같거나 비었을
     때 · B106 재생 키)의 행을 그 판정으로 갈아 끼운다 · 없으면 더한다. 쓰기는 문서 하나 원자 쓰기(지금 대장 손 —
-    재시도가 따로 파일을 쓰지 않는다) · 돌려주는 것은 「갱신」 또는 「더함」."""
+    재시도가 따로 파일을 쓰지 않는다) · 돌려주는 것은 「갱신」 또는 「더함」. `old`(행 → 참)를 주면 그 행을 갈아 끼운다
+    (좌표 행 — 못 풀린 행은 층이 비어 키가 다르다 · B113 ③)."""
     from core.build.replay import key
     data = read(doc_id) or {"doc_id": doc_id, "rows": []}
     rows = data.setdefault("rows", [])
     k = key(new["locator"], new["field"], new["surface"], new["layer"])
-    i = next((i for i, r in enumerate(rows) if r.get("role") == new["role"]
+    i = next((i for i, r in enumerate(rows) if (old(r) if old is not None else (
+              r.get("role") == new["role"]
               and key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")) == k
-              and r.get("category") in (None, new.get("category"))), None)
+              and r.get("category") in (None, new.get("category"))))), None)
     if i is None:
         rows.append(new)
     else:

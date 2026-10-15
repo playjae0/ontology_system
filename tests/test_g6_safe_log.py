@@ -271,10 +271,11 @@ finalize()                           # 연결이 그래프를 바꿨다 — 한 
 _f2 = finalize()                     # 그래프 그대로 — 건너뛴다
 _l2 = dict(RT.LAST)
 # B100 ① — 연결한 만큼 남음이 준다(되살아남 0 · 기대 변경: 구판은 「건너뜀 > 0」을 되살아난 항목으로 채웠다)
-show("ⓗ 재시도 줄 — 이번에 연결 · 상한 도달 · 그래프 그대로라 건너뜀 · 남음 = 대상 − 연결",
+# 기대 변경(B113 ③) — 줄 이름 「재연결 — 바퀴 k · 대상 · 붙음 · 남음」(옛 「이번에 연결」)
+show("ⓗ 재연결 줄 — 붙음 · 상한 도달 · 그래프 그대로라 건너뜀 · 남음 = 대상 − 붙음",
      sum(_l1["healed"].values()) > 0 and _l1["capped"] == 1 and _l2["same"] > 0
      and _l1["left"] == sum(_l1["target"].values()) - sum(_l1["healed"].values())
-     and "이번에 연결" in _f1["retry_line"] and "건너뜀" in _f2["retry_line"],
+     and "붙음" in _f1["retry_line"] and "건너뜀" in _f2["retry_line"],
      f"{_f1['retry_line']} / {_f2['retry_line']}")
 _unregister()
 _unregister("prose_q")

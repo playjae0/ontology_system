@@ -13,6 +13,7 @@ from core.build.build import Builder
 from core.build.ledger import Ledger
 from core.state import log, store
 from core.state.status import is_live
+from parser.normalizer import null_marker            # 빈칸 표시 — 산문과 같은 함수 (B113 ②)
 
 _LOG = log.get(__name__)
 
@@ -70,6 +71,10 @@ def build_table(env, cfg, schema, graph, defer_save=False):
                        coord_missing=(r.coord_case == "missing"), prov=r.prov,
                        electrode_type=r.et)
 
+    if getattr(b, "mentions", None):                 # 다른 공정 언급 → 관련 링크 (B113 ① — 산문과 같은 함수)
+        ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+        if loop.link_mentions(b, ch):
+            store.write(store.CHUNKS, ch)
     if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
         b.flush()
     b.ledger.save()
@@ -155,6 +160,11 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
         # 흡수되는 **사전 오염**인데, attribute 값은 사전을 타지 않는다.
         if role in ("entity", "anchor") and not loop._scalar(rec[f], f, r.prov, doc_id):
             continue
+        if role == "entity" and null_marker(rec[f]):
+            # **빈칸 표시는 개체가 아니다**(B113 ② — `-` · `N/A` … · 목록은 공통 config) — 빈 칸처럼 지나가되 행은 남긴다
+            b.ledger.add(locator=rec.get("source_locator"), field=f, role="entity", surface=rec[f],
+                         layer=b.layer, path="none", verdict="blank")
+            continue
         if role not in loop.HANDLERS:
             # D-30 — 알 수 없는 role에 KeyError로 죽지 않는다.
             store.append_defect(                    # 큐가 아니라 로그다 (D-30)
@@ -183,8 +193,8 @@ def _row_attributes(b, r, graph):
         af = spec.get("attach_to_field")
         tgt = r.resolved.get(af)
         if tgt is None:
-            if af and rec.get(af) in (None, ""):
-                continue                    # 값 없음 — 폴백도 보류도 하지 않는다
+            if af and (rec.get(af) in (None, "") or null_marker(rec.get(af))):
+                continue                    # 값 없음(빈칸 표시 포함 — B113 ②) — 폴백도 보류도 하지 않는다
             r.pending.append({"attr_name": spec.get("attr_name", f),
                               "value": rec[f],
                               "context": r.ctx or None,
@@ -197,7 +207,8 @@ def _row_attributes(b, r, graph):
         ab = b if tg is graph else next(s for s in b.subs.values() if s.g is tg)
         ab.put_attribute(tgt, spec.get("attr_name", f), rec[f], r.ctx, r.prov,
                          bool(spec.get("contextual")))
-        _ledger_attach(b, r, f, "attribute", tgt, "attached", layer=ab.layer)
+        _ledger_attach(b, r, f, "attribute", tgt, "attached", layer=ab.layer,
+                       blank=null_marker(rec[f]))    # 값은 그대로 · 빈칸 표시면 그 표시를 함께(B113 ②)
 
 
 def _row_contents(b, r, doc_id):
@@ -208,8 +219,8 @@ def _row_contents(b, r, doc_id):
         tgt = r.resolved.get(af2)
         if tgt is not None:
             _describe(doc_id, rec, f, tgt)
-            _ledger_attach(b, r, f, "content", tgt, "attached")
-        elif af2 and rec.get(af2) not in (None, ""):
+            _ledger_attach(b, r, f, "content", tgt, "attached", blank=null_marker(rec[f]))
+        elif af2 and rec.get(af2) not in (None, "") and not null_marker(rec.get(af2)):
             _ledger_attach(b, r, f, "content", None, "pending")
             # 값은 있는데 대상이 미해소다 — 청크는 이미 보존돼 있고(링킹 0건
             # 청크도 남긴다) 연결만 못 한 것이므로 결함 로그로 드러낸다.
@@ -219,7 +230,7 @@ def _row_contents(b, r, doc_id):
                 f"'{f}' → '{af2}'={rec.get(af2)!r} @ {r.prov}")
 
 
-def _ledger_attach(b, r, field, role, target, verdict, layer=None):
+def _ledger_attach(b, r, field, role, target, verdict, layer=None, blank=None):
     """부착 시도 한 건의 대장 행 — **붙었나 보류인가**가 이 표의 종류 열이다(B74 ②).
 
     부착에는 판정이 없다(대상은 같은 행이 이미 해소한 노드다) — 그래서 `path`는
@@ -233,7 +244,7 @@ def _ledger_attach(b, r, field, role, target, verdict, layer=None):
     b.ledger.add(locator=r.rec.get("source_locator"), field=field, role=role,
                  surface=None, canonical=n.get("canonical"),
                  layer=layer or (n.get("layer") if n else None),
-                 path="none", verdict=verdict, node_id=target)
+                 path="none", verdict=verdict, node_id=target, blank=blank)
 
 
 def _row_edges(r, schema, fields, graph, cfg, doc_id, b=None):

@@ -180,7 +180,7 @@ PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "scope+judge": "�
               "memo": "기억", "replay": "재생", "none": "—"}
 
 #: 줄을 찍는 자리 — **판단이 갈린 값**이다(사용자 확정 2026-09-22).
-LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject")
+LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject", "mention")   # mention — 다른 공정 언급(B113 ①)
 
 #: 이번 문서의 집계 — 진행 줄이 이것을 함께 낸다(대장에서 센다 · 새 계산 0).
 TALLY = {"값": 0, "사전": 0, "NEW": 0, "불확실": 0, "큐": 0, "orphan": 0}
@@ -207,6 +207,9 @@ def value_line(row):
             if row.get("target") and row.get("surface") and row["target"] != row["surface"]
             else (row.get("target") or row.get("canonical") or row.get("surface") or "—"))
     q = f"   → 큐 {row['queue_kind']}" if row.get("queue_kind") else ""
+    if v == "mention":                                       # 다른 공정 이름 — 노드 0 · 관련 링크(B113 ①)
+        return _screen.paint(f"    ↗ {row.get('surface')} → 관련 링크 {row.get('canonical')} "
+                             f"(다른 공정 언급 — 노드 0)", None)
     text = f"    {MARKS.get(v, '·')} {name:<28} {v:<10} {how}{q}"
     return _screen.paint(text, v if v in _screen.KINDS else None)
 
@@ -274,6 +277,9 @@ def value_cells(row):
         where += f" · 가까움({near.get('by')}) {near['canonical']}"
     emb = f"{row['emb_top']:.2f}" if row.get("emb_top") is not None else ""
     k = v if v in _screen.KINDS else None
+    if v in ("mention", "blank"):                  # 노드 0 — 표기 그대로 · 관련 링크 대상(B113 ①②)
+        name, how = row.get("surface") or "—", ("다른 공정" if v == "mention" else "빈칸 표시")
+        where = f"관련 링크 {row.get('canonical')}" if v == "mention" else "개체 0"
     # 위치 = 대장 행의 locator(산문이면 지금 청크 · 표면 행 — B99 ⑦)
     return ([MARKS.get(v, "·"), row.get("locator") or "", name, row.get("field") or "", v, how,
              conf, emb, where], [k, "aux", k, "aux", k, "aux", "aux", "aux", "aux"])

@@ -18,6 +18,61 @@ from __future__ import annotations
 DITTO = {"〃", "〝", "상동", "same as above"}
 DEFAULT_SEPS = [",", "/", "\n"]                 # D-12 기본 닫힌 목록
 
+#: **빈칸 표시**의 기본 닫힌 목록(B113 ②) — 사내는 공통 config `null_markers`로 고친다(목록이 데이터다).
+#: 비교는 공백을 무시한다(「해당 없음」 = 「해당없음」). 파서는 core를 import하지 않으므로 목록은 함수로
+#: 주입된다(`core.paths.bind_parser`) — 주입이 없으면(킷 · 시험) 이 기본값.
+NULL_MARKERS = ("-", "—", "–", "N/A", "n/a", "해당 없음", "해당없음", "없음")
+_MARKERS = None
+#: 좌표 칸 — 빈칸 표시면 비워 문서 좌표를 물려받는다(계약 B `process_coord` 블록의 두 칸)
+COORD_FIELDS = ("process_ref", "process_group")
+
+
+def use_null_markers(fn):
+    """목록을 돌려주는 함수를 주입한다(상태 루트의 공통 config)."""
+    global _MARKERS
+    _MARKERS = fn
+
+
+def null_markers():
+    if _MARKERS is None:
+        return NULL_MARKERS
+    try:
+        got = _MARKERS()
+    except Exception:                               # noqa: BLE001 — 읽지 못하면 기본값(파싱을 막지 않는다)
+        return NULL_MARKERS
+    return tuple(got) if got is not None else NULL_MARKERS
+
+
+def null_marker(value, markers=None):
+    """**빈칸 표시인가**(B113 ②) — 그렇다면 원문(앞뒤 공백 뺀 것) · 아니면 None. 문자열만 · 공백 무시 비교.
+    표(좌표 칸 · 개체 칸)와 산문(추출 개체 표기 · 소속 이름)이 이 함수 하나를 쓴다."""
+    if not isinstance(value, str):
+        return None
+    k = "".join(value.split())
+    if not k:
+        return None
+    for m in (null_markers() if markers is None else markers):
+        if k == "".join(str(m).split()):
+            return value.strip()
+    return None
+
+
+def blank_coords(pieces, fields=COORD_FIELDS):
+    """좌표 칸의 빈칸 표시 → 빈 값 — 다음 단계(`tagger.coord_from_section`)가 문서 좌표를 물려준다(지금 규칙) ·
+    비운 칸은 `meta.null_marked`(있을 때만 — 표시 없는 조각은 그대로)."""
+    out = []
+    for p in pieces:
+        hit = [f for f in fields if null_marker(p.get(f))]
+        if hit:
+            p = dict(p)
+            m = dict(p.get("meta") or {})
+            for f in hit:
+                p[f] = None
+            m["null_marked"] = sorted(set(m.get("null_marked") or []) | set(hit))
+            p["meta"] = m
+        out.append(p)
+    return out
+
 
 def _col(n):
     s = ""

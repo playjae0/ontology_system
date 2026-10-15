@@ -343,6 +343,11 @@ def golden(*parts):
 
 
 # ---------------------------------------------------------------- 만들기
+def _catalog():
+    from core.state import catalog            # 늦게 — catalog가 이 모듈을 import한다
+    return catalog
+
+
 def bind_parser():
     """**파서에 자리를 주입한다** — 방향을 뒤집는 자리(B78 1b · 허브 확정 2026-09-17).
 
@@ -355,8 +360,9 @@ def bind_parser():
     하는 규율은 언젠가 한 진입점에서 빠진다.
     """
     from core.state import store
-    from parser import struct_map, tagger
+    from parser import normalizer, struct_map, tagger
     struct_map.use_dir(lambda: work("struct_maps"))
+    normalizer.use_null_markers(lambda: _catalog().null_markers())     # 빈칸 표시 목록 (B113 ② — 공통 config)
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))
     tagger.use_learned(lambda: store.read(store.COORD_LEARNED, {}),     # 좌표 학습 (B101 ②)
                        lambda d: store.write(store.COORD_LEARNED, d))

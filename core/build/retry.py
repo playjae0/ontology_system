@@ -6,6 +6,11 @@
 진입점은 `retry_orphans(layers)` 하나이고 `pipeline.finalize`가 부른다.
 
 **바꾸지 않은 것**: 큐 kind 3종(`RETRY_KINDS`) · 저해상 철회 · 게이트 통과 후에만 커밋.
+
+**더 붙는 것이 없을 때까지**(B113 ③ — 사용자 결정 2026-10-15 「전체가 돌면서 연결될 수 있다」): 한 바퀴에 붙은 것이
+있으면 다시 훑는다 · 0이면 멈춘다(같은 판에서 같은 답 — 결정적이라 끝난다) · 바퀴 상한은 사내 손잡이
+`relink_rounds`. 대상은 셋 + **좌표 미해소 보류**(`missing_field` 키 `process_ref` — 그 문서의 문서 좌표 기록이 생기면
+그 행의 재료로 다시 세운다 · 추출 LLM 0). 손 명령 `python run.py ops relink`가 같은 훑기를 부른다.
 """
 from __future__ import annotations
 
@@ -26,6 +31,22 @@ RETRY_KINDS = ("orphan_anchor", "orphan_attach", "orphan_chunk_link")
 # 상태에서 같은 답이 반복되는 것을 비용으로 바꾸지 않는다. 큐 kind는 그대로다.
 ATTEMPT_MAX = 5
 
+#: 재연결 바퀴 상한(B113 ③ — 창작 기본값 · 사내 손잡이 `relink_rounds`) — 넘으면 그 사실을 줄로 낸다
+RELINK_ROUNDS = 5
+#: **좌표 미해소 보류**(B113 ③) — 좌표 칸이 비어 세우지 못한 행의 큐(`missing_field` · 필드 `process_ref`) ·
+#: 새 kind가 아니다 · 재료(드롭된 개체 · 엣지 · 값)가 든 항목만 대상
+COORD_HOLD = "missing_field"
+
+
+def is_target(item):
+    """재연결 대상인가 — 셋(`RETRY_KINDS`) · 재료가 든 좌표 미해소 보류."""
+    if item.get("kind") in RETRY_KINDS:
+        return True
+    pl = item.get("payload") or {}
+    return (item.get("kind") == COORD_HOLD and pl.get("field") == "process_ref"
+            and any(e.get("dropped_entities") or e.get("dropped_edges") or e.get("pending_attrs")
+                    for e in (pl.get("items") or [pl])))
+
 
 def _fingerprint(graphs):
     """후보 집합의 **지문** — 층마다 (노드 수 · 엣지 수). 바뀌면 다시 돌 이유가 있다.
@@ -43,10 +64,30 @@ def _material_print():
     import hashlib
     import json as _json
     h = hashlib.sha1()
-    for name in (store.SKELETON_LIST, store.DICTIONARY):
+    for name in (store.SKELETON_LIST, store.DICTIONARY, store.COORD_LEARNED):
         h.update(_json.dumps(store.read(name, {}), sort_keys=True, ensure_ascii=False,
                              default=str).encode("utf-8"))
     return "판:" + h.hexdigest()[:12]
+
+
+def _item_fp(fp, item, dc):
+    """항목의 지문 — 공통 지문 + **좌표 미해소 보류는 그 문서의 문서 좌표 기록**(B113 ③ — 기록이 생기면 그 문서의
+    보류만 다시 본다 · 다른 문서 항목의 시도 횟수는 그대로)."""
+    if item.get("kind") != COORD_HOLD:
+        return fp
+    return f"{fp}|문서:{(dc.get(item.get('doc_id')) or {}).get('coord')}"
+
+
+def _doc_coords():
+    """문서 좌표 기록(`registry/doc_coords.json` — B102 ②) `{doc_id: {coord, by, at}}` · 없으면 빈 그릇.
+    좌표 미해소 보류의 재료이자 그 항목 지문의 몫이다(`_item_fp` — 기록이 생기면 그 문서의 보류를 다시 본다 · B113 ③)."""
+    import json as _json
+    from core import paths
+    p = paths.registry("doc_coords.json")
+    try:
+        return _json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except ValueError:
+        return {}
 
 
 def _qid(item):
@@ -77,9 +118,10 @@ def _write_back(seen):
 def retry_orphans(layers=None):
     """**orphan 재시도 배치** — 문서 4 §4.7-5 · §4.8-5.
 
-    **주기의 정본은 빌드 말미 sweep 1회다.** 별도 스케줄러도 전용 서브커맨드도 두지
-    않는다 — 그래프가 자라는 시점이 곧 재시도가 의미를 갖는 유일한 시점이고, 주기와
-    호출자가 비어 있으면 큐 항목이 **아무도 부르지 않는 배치를 기다린다.**
+    **주기의 정본은 빌드 말미 sweep이다** — 한 sweep은 바퀴의 반복이고 붙은 것이 0인 바퀴에서
+    멈춘다(B113 ③ · 상한 `RELINK_ROUNDS`). 별도 스케줄러는 두지 않는다 — 그래프가 자라는 시점이
+    곧 재시도가 의미를 갖는 시점이고, 주기와 호출자가 비어 있으면 큐 항목이 **아무도 부르지 않는
+    배치를 기다린다.** 손 명령 `ops relink --apply`는 같은 마무리 함수를 부른다(재인입 없이).
 
     각 항목의 보존 표면형을 **판정 파이프라인(§4.3)에 다시 태운다** — 재사용 지점이
     `matcher.match` 하나라는 것이 §7.1의 요구다. 확신되면 자동 해소하고, 불확실이면
@@ -101,52 +143,27 @@ def retry_orphans(layers=None):
     graphs = {lay: open_graph(lay) for lay in lays}
     cfgs = {lay: load_config(lay) for lay in lays}
     dic = Dictionary.open()
-    healed = {k: 0 for k in RETRY_KINDS}
-    # **결과를 버리지 않는다**(B99 ⑥) — 대상 · 그래프·골격·사전 그대로라 건너뜀 · 상한 도달 · 연결 · 남음
+    healed = {k: 0 for k in RETRY_KINDS + (COORD_HOLD,)}
+    # **결과를 버리지 않는다**(B99 ⑥) — 대상 · 그래프·골격·사전 그대로라 건너뜀 · 상한 도달 · 연결 · 남음 · 바퀴(B113 ③)
     LAST.clear()
-    LAST.update(target={}, same=0, capped=0, healed=healed, left=0)
-
-    fp = _fingerprint(graphs)
-    queue = store.read(store.QUEUE, [])
-    touched = False
-    for item in list(queue):
-        kind = item.get("kind")
-        if kind not in RETRY_KINDS:
-            continue
-        pl = item.get("payload") or {}
-        LAST["target"][kind] = LAST["target"].get(kind, 0) + 1
-        # **후보 집합이 그대로면 다시 돌지 않는다**(B73 ②) — 구판은 인입마다 큐
-        # 전량을 다시 돌았고, `orphan_attach`는 그때마다 판정 LLM을 다시 불렀다
-        # (같은 입력 · 같은 답). 재시도가 의미를 갖는 것은 **그래프가 자랐을
-        # 때**뿐이다(§4.7-5) — 그 사실을 지문 하나로 잰다. LLM 0 조건이다.
-        if item.get("last_fp") == fp:
-            LAST["same"] += 1
-            continue
-        if int(item.get("attempts", 0)) >= ATTEMPT_MAX:
-            LAST["capped"] += 1
-            continue                      # 사람 판정 대기 — 더 돌지 않는다
-        # **이력은 항목에 달고 payload에는 넣지 않는다** — payload는 「같은 항목인가」의
-        # 동일성 키이고(`enqueue` 중복 제거 · 멱등 판정의 대조 단위), 거기에 시각이
-        # 들어가면 **클린 2회 동일 그래프**가 깨진다(실측 — 이 회차에서 한 번 깼다).
-        item["attempts"] = int(item.get("attempts", 0)) + 1
-        item.setdefault("first_seen", item.get("created"))
-        item["last_tried"], item["last_fp"] = store._now(), fp
-        touched = True
-        if kind == "orphan_attach":
-            if _retry_attach(pl, item, graphs, cfgs, dic):
-                healed[kind] += 1
-        elif kind == "orphan_anchor":
-            if _retry_anchor(pl, item, graphs, cfgs, dic):
-                healed[kind] += 1
-    if touched:
-        _write_back(queue)
-        # orphan_chunk_link의 생산자가 아직 없다 — 항목이 생기면 같은 자리에서 돈다.
+    LAST.update(target={}, same=0, capped=0, healed=healed, left=0, rounds=[], cut=False)
+    tried = set()
+    for k in range(max(1, int(RELINK_ROUNDS))):
+        got = _sweep(graphs, cfgs, dic, healed, tried, first=(k == 0))
+        LAST["rounds"].append(got)
+        if not got["붙음"]:
+            break
+    else:
+        LAST["cut"] = True                    # 마지막 바퀴에도 붙었다 — 상한에서 멈췄다(다음 인입 · relink가 잇는다)
 
     for lay, g in graphs.items():
         g.save()
     dic.save()
-    _left = [x for x in store.read(store.QUEUE, []) if x.get("kind") in RETRY_KINDS]
+    _left = [x for x in store.read(store.QUEUE, []) if is_target(x)]
     LAST["left"] = len(_left)
+    LAST["left_by"] = {}
+    for x in _left:
+        LAST["left_by"][x["kind"]] = LAST["left_by"].get(x["kind"], 0) + 1
     # 남은 항목의 시도 횟수 분포(B102 ⑦) — 상한에 닿은 것은 「상한」으로 센다
     _d = {}
     for x in _left:
@@ -157,20 +174,108 @@ def retry_orphans(layers=None):
     return healed
 
 
+def _sweep(graphs, cfgs, dic, healed, tried, first):
+    """한 바퀴 — 지금의 큐에서 대상마다 한 번(지문이 지난 시도와 같으면 건너뜀 · 상한이면 건너뜀) ·
+    돌려주는 것은 `{대상, 붙음, 건너뜀, 상한}`. 시도 횟수는 **한 번의 훑기(바퀴 전부)에 한 번** 센다."""
+    fp0, dc = _fingerprint(graphs), _doc_coords()
+    queue = store.read(store.QUEUE, [])
+    got = {"대상": 0, "붙음": 0, "건너뜀": 0, "상한": 0}
+    touched = False
+    for item in list(queue):
+        if not is_target(item):
+            continue
+        kind = item.get("kind")
+        pl = item.get("payload") or {}
+        got["대상"] += 1
+        if first:
+            LAST["target"][kind] = LAST["target"].get(kind, 0) + 1
+        # **후보 집합이 그대로면 다시 돌지 않는다**(B73 ②) — 구판은 인입마다 큐
+        # 전량을 다시 돌았고, `orphan_attach`는 그때마다 판정 LLM을 다시 불렀다
+        # (같은 입력 · 같은 답). 재시도가 의미를 갖는 것은 **그래프가 자랐을
+        # 때**뿐이다(§4.7-5) — 그 사실을 지문 하나로 잰다. LLM 0 조건이다.
+        fp = _item_fp(fp0, item, dc)
+        if item.get("last_fp") == fp:
+            got["건너뜀"] += 1
+            LAST["same"] += 1 if first else 0
+            continue
+        if int(item.get("attempts", 0)) >= ATTEMPT_MAX:
+            got["상한"] += 1
+            LAST["capped"] += 1 if first else 0
+            continue                      # 사람 판정 대기 — 더 돌지 않는다
+        # **이력은 항목에 달고 payload에는 넣지 않는다** — payload는 「같은 항목인가」의
+        # 동일성 키이고(`enqueue` 중복 제거 · 멱등 판정의 대조 단위), 거기에 시각이
+        # 들어가면 **클린 2회 동일 그래프**가 깨진다(실측 — 이 회차에서 한 번 깼다).
+        qid = _qid(item)
+        if qid not in tried:
+            tried.add(qid)
+            item["attempts"] = int(item.get("attempts", 0)) + 1
+        item.setdefault("first_seen", item.get("created"))
+        item["last_tried"], item["last_fp"] = store._now(), fp
+        touched = True
+        ok = False
+        if kind == "orphan_attach":
+            ok = _retry_attach(pl, item, graphs, cfgs, dic)
+        elif kind == "orphan_anchor":
+            ok = _retry_anchor(pl, item, graphs, cfgs, dic)
+        elif kind == COORD_HOLD:
+            ok = _retry_coord_hold(pl, item, graphs, cfgs, dic)
+        if ok:
+            healed[kind] += 1
+            got["붙음"] += 1
+    if touched:
+        _write_back(queue)
+        # orphan_chunk_link의 생산자가 아직 없다 — 항목이 생기면 같은 자리에서 돈다.
+    return got
+
+
 #: 마지막 재시도의 결과 — 화면·로그가 읽는다(B99 ⑥ · `line()`).
 LAST = {}
 
 
 def line():
-    """`재시도 — 대상 n(kind별) · 그래프·골격·사전 그대로라 건너뜀 s · 상한 도달 c → 이번에 연결 h · 남음 r`."""
+    """`재연결 — 바퀴 k · 대상 n(kind별) · 붙음 m · 남음 r(kind별) · 그래프·골격·사전 그대로라 건너뜀 s · 상한 도달 c`
+    (B113 ③ — 바퀴마다는 `rounds_text`)."""
     if not LAST:
-        return "재시도 — 돌지 않았다"
+        return "재연결 — 돌지 않았다"
     t = LAST["target"]
     kinds = " · ".join(f"{k} {v}" for k, v in sorted(t.items()))
-    return (f"재시도 — 대상 {sum(t.values()):,}" + (f"({kinds})" if kinds else "")
+    lb = LAST.get("left_by") or {}
+    left = " · ".join(f"{k} {v}" for k, v in sorted(lb.items()))
+    return (f"재연결 — 바퀴 {len(LAST.get('rounds') or []):,} · 대상 {sum(t.values()):,}"
+            + (f"({kinds})" if kinds else "")
+            + f" · 붙음 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}" + (f"({left})" if left else "")
             + f" · 그래프·골격·사전 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
-            + f" → 이번에 연결 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}"
+            + (" · 바퀴 상한에서 멈춤(더 붙을 수 있다 — 다음 인입 또는 python run.py ops relink)"
+               if LAST.get("cut") else "")
             + _dist_text(LAST.get("dist")))
+
+
+def plan(layers=None, doc_coord=None):
+    """손 명령의 **계획**(B113 ③ — 쓰기 0) — 대상 kind별 · 이번에 돌 것(지문이 지난 시도와 다르다) · 건너뜀 · 상한.
+    `doc_coord=(doc_id, 좌표)`면 그 기록이 있는 것으로 센다(계획은 기록하기 전이다)."""
+    from router import discover
+    graphs = {lay: open_graph(lay) for lay in (layers or discover())}
+    fp, dc = _fingerprint(graphs), _doc_coords()
+    if doc_coord:
+        dc[doc_coord[0]] = {"coord": doc_coord[1]}
+    out = {"target": {}, "try": 0, "same": 0, "capped": 0}
+    for x in store.read(store.QUEUE, []):
+        if not is_target(x):
+            continue
+        out["target"][x["kind"]] = out["target"].get(x["kind"], 0) + 1
+        if x.get("last_fp") == _item_fp(fp, x, dc):
+            out["same"] += 1
+        elif int(x.get("attempts", 0)) >= ATTEMPT_MAX:
+            out["capped"] += 1
+        else:
+            out["try"] += 1
+    return out
+
+
+def rounds_text():
+    """바퀴마다 `바퀴 i — 대상 n · 붙음 m · 건너뜀 s` (손 명령 `ops relink`의 끝 줄들)."""
+    return [f"바퀴 {i} — 대상 {r['대상']:,} · 붙음 {r['붙음']:,} · 건너뜀 {r['건너뜀']:,} · 상한 {r['상한']:,}"
+            for i, r in enumerate(LAST.get("rounds") or [], 1)]
 
 
 def _dist_text(d):
@@ -275,19 +380,44 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
         return False                                    # 불확실 — 항목을 큐에 남긴다
 
     cfg = cfgs[tlay]
-    rel = gate.pair_relation(cfg, tg.get(target)["category"], child["category"])
+    # 소속 항목(`belongs_from` 키 — B102)은 인입과 같은 함수로 두 방향을 본다(`belongs.edge_of` — B113 ③: 한 방향만
+    # 보면 「개체 → 대상」 매핑(`Component,Unit`)이 재시도에서만 「매핑 없음」이 된다) · 옛 부착은 지금 그대로 한 방향
+    if "belongs_from" in pl:
+        from core.build.belongs import edge_of
+        rel, fwd = edge_of(cfg, tg.get(target)["category"], child["category"])
+    else:
+        rel, fwd = gate.pair_relation(cfg, tg.get(target)["category"], child["category"]), True
     if not rel:
         store.append_defect(
             f"orphan 재시도: 카테고리쌍 매핑 없음 "
             f"({tg.get(target)['category']} → {child['category']})")
         return False
     prov = pl.get("provenance")
-    gate.commit_edge(cg, target, rel, child_id, cfg, gate.PATH_EXTRACT,
+    src, dst, sg, dg = (target, child_id, tg, cg) if fwd else (child_id, target, cg, tg)
+    gate.commit_edge(cg, src, rel, dst, cfg, gate.PATH_EXTRACT,
                      [prov] if prov else [], item.get("doc_id"),
-                     src_graph=tg, dst_graph=cg)
-    _withdraw_lowres(cg, child_id, target, prov)
+                     src_graph=sg, dst_graph=dg)
+    _withdraw_lowres(graphs, child_id, target, prov)
+    if "belongs_from" in pl:
+        _ledger_belongs(item.get("doc_id"), prov, pl, rel, tg.get(target)["canonical"], fwd)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
     return True
+
+
+def _ledger_belongs(did, prov, pl, rel, other, fwd):
+    """붙은 소속을 **그 개체 행**에 — 좌표 폴백 자리를 소속 자리로 갈아 끼운다(B113 ③ · 대장 손 `ledger.put_row`) ·
+    표시 `by: "retry"`. 행이 없으면(옛 대장) 그대로 둔다 — 엣지는 이미 섰고 대장은 판정을 대신하지 않는다."""
+    from core.build import ledger
+    loc = prov[len(did) + 1:] if did and prov and str(prov).startswith(f"{did}#") else None
+    data = ledger.read(did) if loc else None
+    r = next((dict(r) for r in (data or {}).get("rows") or [] if r.get("role") == "entity"
+              and r.get("locator") == loc and r.get("node_id") == pl.get("node_id")), None)
+    if r is None:
+        return
+    r["attached"] = [a for a in r.get("attached") or [] if a.get("path") != "폴백"]
+    ledger.attach(r, rel, other, f"소속({pl.get('belongs_from') or '-'})", "←" if fwd else "→")
+    r["by"] = "retry"
+    ledger.put_row(did, r)
 
 
 def _attach_one(pl, surface, graphs, cfgs, dic, doc_id):
@@ -297,22 +427,29 @@ def _attach_one(pl, surface, graphs, cfgs, dic, doc_id):
                           "payload": None}, graphs, cfgs, dic)
 
 
-def _withdraw_lowres(g, child_id, new_target, prov):
+def _withdraw_lowres(graphs, child_id, new_target, prov):
     """저해상도 부착의 **그 provenance만** 회수한다 (§4.4-8 (a) 갈아끼움).
 
     엣지를 지우지 않고 발자국만 뺀다 — 다른 문서가 같은 저해상도 부착을 주장하고
     있으면 그 근거는 살아 있어야 한다. 근거가 0이 되면 다음 sweep의
     `_evidence_lost`가 그것을 표시한다(삭제가 아니라 표시 — 카드 L9).
+
+    폴백은 두 방향이다(B102 ④ — `belongs.edge_of`): 좌표 → 개체(지금 그대로) · **개체 → 좌표**(상대가 좌표
+    카테고리일 때만 — B113 ③: 이 방향을 보지 않아 붙은 뒤에도 공정 폴백이 같은 근거로 남았다). 엣지는 문서 층에
+    산다(B100) — 층 전부를 본다.
     """
     if not prov:
         return
-    for e in g.edges:
-        if e["dst"] != child_id or e["src"] == new_target:
-            continue
-        if e.get("status") == "deleted_by_user":
-            continue
-        if prov in (e.get("provenance") or []):
-            e["provenance"] = [x for x in e["provenance"] if x != prov]
+    from core.state.bootstrap import COORD_CATEGORY
+    cat = {nid: n.get("category") for g in graphs.values() for nid, n in g.nodes.items()}
+    for g in graphs.values():
+        for e in g.edges:
+            if new_target in (e["src"], e["dst"]) or e.get("status") == "deleted_by_user":
+                continue
+            if not (e["dst"] == child_id or (e["src"] == child_id and cat.get(e["dst"]) == COORD_CATEGORY)):
+                continue
+            if prov in (e.get("provenance") or []):
+                e["provenance"] = [x for x in e["provenance"] if x != prov]
 
 
 def _retry_anchor(pl, item, graphs, cfgs, dic):
@@ -335,15 +472,12 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     #
     # 재시도가 존재하는 이유는 **그래프가 자랐기 때문**이지 매칭이 느슨해졌기
     # 때문이 아니다(§4.7-5). anchor는 Tier1(seed·confirmed) 한정이다.
-    ref, rlay, rg = None, None, None
-    for lay, g in graphs.items():
-        hits = [nid for nid in dic.lookup(surface)
-                if nid in g.nodes and is_live(g.get(nid))
-                and g.get(nid)["category"] == category
-                and g.get(nid).get("status") in ("seed", "confirmed")]
-        if len(hits) == 1:
-            ref, rlay, rg = hits[0], lay, g
-            break
+    ref, rlay, rg = _tier1(surface, category, graphs, dic)
+    if ref is None:
+        # **좌표 학습 기록**(B101 ② · B113 ③) — LLM이 채택한 표기는 인입이 바로 쓴다 · 재연결도 같은 기록을 본다
+        x = (store.read(store.COORD_LEARNED, {}).get("채택") or {}).get(surface) or {}
+        if x.get("canonical"):
+            ref, rlay, rg = _tier1(x["canonical"], category, graphs, dic)
     if ref is None:
         return False                                    # 아직 골격에 없다 — 남긴다
     cfg = cfgs[rlay]
@@ -353,14 +487,89 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     # 재시도의 재료(provenance · dropped_edges · pending_attrs)는 행의 것이다.
     # 하나의 provenance로 전부 착지시키면 **다른 행의 근거가 뒤섞인다.**
     # 옛 항목(집계 전 판)은 `items`가 없다 — 그때는 자기 자신이 한 행이다.
-    b0 = Builder(rg, cfg, None, did, rlay)              # 좌표 하강 · 극성(행마다 — 인입과 같은 함수)
+    b0 = _builder(rg, cfg, did, rlay, dic)              # 좌표 하강 · 극성(행마다 — 인입과 같은 함수)
     for _ent in (pl.get("items") or [pl]):
         n += _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did, b0)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
     return True
 
 
-def _ledger(did, prov, d, lay, b):
+def _tier1(surface, category, graphs, dic):
+    """골격(Tier1 — seed · confirmed) 조회 — 사전(정확 · 별칭)까지 · 하나일 때만 `(id, 층, 그래프)`."""
+    for lay, g in graphs.items():
+        hits = [nid for nid in dic.lookup(surface)
+                if nid in g.nodes and is_live(g.get(nid))
+                and g.get(nid)["category"] == category
+                and g.get(nid).get("status") in ("seed", "confirmed")]
+        if len(hits) == 1:
+            return hits[0], lay, g
+    return None, None, None
+
+
+def _retry_coord_hold(pl, item, graphs, cfgs, dic):
+    """**좌표 미해소 보류**(B113 ③) — 좌표 칸이 비어 세우지 못한 행. 그 문서의 문서 좌표 기록(`--coord`)이 지금
+    있으면 그 공정을 좌표로 **그 행의 재료**(큐 항목이 든 드롭된 개체 · 엣지 · 값 — 추출 체크포인트의 것)를 착지시킨다
+    (추출 LLM 0 · 판정은 인입과 같은 함수 — LLM 판정은 지금처럼). 좌표 학습 · 별칭은 좌표 표기가 있을 때의 일이다
+    (`orphan_anchor`)."""
+    from core.state.bootstrap import COORD_CATEGORY
+    did = item.get("doc_id")
+    coord = (_doc_coords().get(did) or {}).get("coord")
+    if not coord:
+        return False                                    # 문서 좌표 기록이 없다 — 남긴다
+    ref, rlay, rg = _tier1(coord, COORD_CATEGORY, graphs, dic)
+    if ref is None:
+        return False
+    cfg = cfgs[rlay]
+    b0 = _builder(rg, cfg, did, rlay, dic)
+    for _ent in (pl.get("items") or [pl]):
+        _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did, b0)
+    store.drop(item["kind"], lambda p: p == pl)         # self-heal
+    return True
+
+
+def _land_revived(revived, ends, ref, rg, graphs, cfgs, pl, prov, did, b0):
+    """되살린 개체를 **인입과 같이** 잇는다(B113 ③) — 엣지(드롭된 엣지)에 서지 못한 것은 좌표에 폴백(규칙 B —
+    `loop.fallback_untouched` 한 함수) · 청크 개체(열 없는 재료 — 산문)는 그 청크의 `describes`(청크 → 노드)."""
+    from core.build import loop
+    fields = {d.get("surface"): d for d in pl.get("dropped_entities") or []}
+    att = {}
+    coord = (rg.get(ref) or {}).get("canonical")
+    for surface, nid in sorted({k: v for k, v in revived.items() if k in fields}.items()):
+        g = next((g for g in graphs.values() if nid in g.nodes), rg)
+        lay = next((lay for lay, gg in graphs.items() if gg is g), None)
+        if nid not in ends:
+            for _n, rel in loop.fallback_untouched(b0, cfgs.get(lay) or b0.cfg, [(nid, g)], set(), ref, rg,
+                                                   prov, did):
+                att.setdefault(nid, []).append({"rel": rel, "other": coord, "path": "폴백", "dir": "←"})
+        if not fields[surface].get("field") and prov and str(prov).startswith(f"{did}#"):
+            _describe_revived(did, str(prov)[len(did) + 1:], nid)
+    return att
+
+
+def _describe_revived(did, loc, nid):
+    ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
+    put = False
+    for cid, c in (ch.get("chunks") or {}).items():
+        if c.get("doc_id") == did and c.get("source_locator") == loc:
+            e = {"chunk_id": cid, "node_id": nid}
+            if e not in ch.setdefault("describes", []):
+                ch["describes"].append(e)
+                c["linked"] = True
+                put = True
+    if put:
+        store.write(store.CHUNKS, ch)
+
+
+def _builder(g, cfg, did, lay, dic):
+    """재시도의 빌더 — **사전은 재시도의 것 하나를 같이 쓴다**(B113 ③). 빌더가 제 사전을 따로 열면 되살린 노드의
+    등재를 빌더가 쓴 뒤 재시도 끝의 저장(`dic.save` — 시작에 연 사본)이 덮어 등재가 사라지고, 지문(사전 판)도
+    다음 실행에서 어긋나 같은 항목을 다시 돈다."""
+    b = Builder(g, cfg, None, did, lay)
+    b.dict = dic
+    return b
+
+
+def _ledger(did, prov, d, lay, b, attached=None):
     """재시도의 판정을 **그 문서 대장**에 — 같은 키(B106 재생 키) 행을 갈아 끼운다 · 없으면 더한다 · 표시
     `by: "retry"`(B107 ③ · 대장 손 `ledger.put_row`). 다음 재구축은 그 값을 재생한다(「키 없음」 0).
 
@@ -372,7 +581,10 @@ def _ledger(did, prov, d, lay, b):
     loc = prov[len(did) + 1:] if prov and str(prov).startswith(f"{did}#") else prov
     kw = ledger.judged(b.last, locator=loc, field=d.get("field") or d["category"], surface=d["surface"],
                        layer=lay, target=b.canonical_of(b.last.get("node_id")))
-    ledger.put_row(did, ledger.row(**kw, by="retry"))
+    r = ledger.row(**kw, by="retry")
+    if attached:
+        r["attached"] = list(attached)
+    ledger.put_row(did, r)
 
 
 def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
@@ -390,23 +602,24 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
     # ① **연쇄 드롭된 entity를 새로 세운다**(문서 4 §4.4 — B14).
     # 좌표가 해소됐으므로 이제 스코프를 붙일 수 있다 — 미리 만들어 둔 것이
     # 없으니 중복도 없다. 세운 노드의 id를 dropped_edges 해소에 쓴다.
-    revived = {}
+    revived, rows = {}, []
     parent = (rg.get(ref) or {}).get("canonical")
     for d in pl.get("dropped_entities") or []:
         lay2 = d.get("target_layer") or rlay
         g2 = graphs.get(lay2)
         if g2 is None:
             continue
-        b2 = Builder(g2, cfgs[lay2], None, did, lay2)
+        b2 = _builder(g2, cfgs[lay2], did, lay2, b0.dict)
         nid2, eb2 = b2.resolve_at_home(d["surface"], d["category"], prov, coord=(ref, rg),
                                        electrode_type=et, parent_canonical=parent, anchor_polarity=pol)
         b2.flush()
-        _ledger(did, prov, d, lay2, eb2)         # 재시도도 판정이다 — 그 문서 대장의 같은 키 행에 (B107 ③)
+        rows.append((d, lay2, eb2, nid2))         # 대장 행은 잇고 난 뒤에 — 붙은 자리까지 (B107 ③ · B113 ③)
         if nid2:
             revived[d.get("field") or d["surface"]] = nid2
             revived[d["surface"]] = nid2
             n += 1
 
+    ends = set()
     for d in pl.get("dropped_edges") or []:
         src, dst = d.get("src"), d.get("dst")
         if d.get("from") == "@process_ref":
@@ -421,13 +634,35 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
             continue
         sg = next((g for g in graphs.values() if src in g.nodes), rg)
         dg = next((g for g in graphs.values() if dst in g.nodes), rg)
-        gate.commit_edge(sg, src, d["relation"], dst, cfg, gate.PATH_SCHEMA,
-                         [prov] if prov else [], did, src_graph=sg, dst_graph=dg)
+        if gate.commit_edge(sg, src, d["relation"], dst, cfg, gate.PATH_SCHEMA,
+                            [prov] if prov else [], did, src_graph=sg, dst_graph=dg) == gate.COMMIT:
+            ends |= {src, dst}
         n += 1
+    att = _land_revived(revived, ends, ref, rg, graphs, cfgs, pl, prov, did, b0)
+    for d, lay2, eb2, nid2 in rows:               # 재시도도 판정이다 — 그 문서 대장의 같은 키 행에 (B107 ③)
+        _ledger(did, prov, d, lay2, eb2, attached=att.get(nid2))
     for a in pl.get("pending_attrs") or []:
-        b = Builder(rg, cfg, None, did, rlay)
+        b = _builder(rg, cfg, did, rlay, b0.dict)
         b.put_attribute(ref, a["attr_name"], a["value"], a.get("context") or {},
                         a.get("provenance"), bool(a.get("context")))
         b.flush()
         n += 1
+    _ledger_anchor(did, prov, ref, rlay, rg)
     return n
+
+
+def _ledger_anchor(did, prov, ref, rlay, rg):
+    """좌표가 선 행의 **좌표 행**을 그 판정으로(B113 ③ — 못 풀린 좌표 행이 대장에 보류로 남아 맞춤표의 `보류(행)`이
+    재연결 뒤에도 그대로였다). 표기는 그 행의 것(없으면 — 좌표 칸이 비었던 행 — 선 좌표의 이름) · 표시 `by: retry`."""
+    from core.build import ledger
+    loc = prov[len(did) + 1:] if did and prov and str(prov).startswith(f"{did}#") else None
+    rows = ((ledger.read(did) or {}).get("rows") or []) if loc else []
+    hit = next((r for r in rows if r.get("role") == "anchor" and r.get("locator") == loc
+                and r.get("verdict") != "anchor"), None)
+    if hit is None:
+        return
+    canon = (rg.get(ref) or {}).get("canonical")
+    new = ledger.row(locator=loc, field=hit.get("field"), role="anchor", surface=hit.get("surface") or canon,
+                     canonical=canon, layer=rlay, path="skeleton", verdict="anchor", node_id=ref, by="retry")
+    ledger.put_row(did, new, old=lambda r: r is hit or (r.get("role") == "anchor" and r.get("locator") == loc
+                                                       and r.get("verdict") != "anchor"))
