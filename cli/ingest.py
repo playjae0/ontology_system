@@ -514,10 +514,14 @@ def _success(sel, row, r, m, extracted, out):
 def _finalize_screen():
     """**마무리 — 미러 · 재시도**(B99 ⑥): 결과를 버리지 않고 한 줄씩 낸다(일괄이면 전 문서 뒤 1회)."""
     gateway.set_doc("(마무리)")                  # 재시도 판정의 사용량은 마무리로 센다 (B99 ③)
-    fin = finalize()
-    SCR.stage_head("마무리", "미러 · 재시도")
+    from cli import _screen
+    stage = {"이름": "연결 보강"}
+    with _screen.ticker("연결 보강", where=SCR.ticker_where(stage)):
+        fin = finalize(notice=SCR.reinforce_screen(stage))
+    SCR.stage_head("마무리", "미러 · 재시도 · 연결 보강")
     print(f"   {fin['retry_line']}")
     print(f"   미러 — 새 짝 엣지 {fin['mirror_new']:,} · 비대칭(mirror_asymmetry) {fin['mirror_asym']:,}")
+    print(f"   {fin['reinforce_line']}")
     return fin
 
 

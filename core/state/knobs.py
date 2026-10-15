@@ -89,6 +89,10 @@ KNOBS = {
     "relink_rounds": ("core.build.retry", ("RELINK_ROUNDS",), "int",
                       "재연결 바퀴 상한 — 한 바퀴에 붙은 것이 있으면 다시 훑는다(0이면 멈춘다 · 넘으면 그 사실을 줄로)",
                       "인입 끝 「재연결 — 바퀴 k …」 줄 · python run.py ops relink all --actor <이름> --apply"),
+    "reinforce_call_cap": ("core.build.reinforce", ("CALL_CAP",), "int0",
+                           "연결 보강(LLM 지점 ⑫) 실행당 호출 상한 — 재연결 뒤에도 엣지 없는 · 공정에만 붙은 개체를 닫힌 "
+                           "후보 안에서 잇는 판정(0이면 끔 · 넘는 대상은 「상한 밖 n」 줄 — 다음 인입 · 재구축이 잇는다)",
+                           "인입 마무리 「연결 보강 — 대상 n → 붙음 …」 줄 · python run.py show report <doc_id>"),
     "viewer_force": ("cli.viewer.data", ("FORCE",), "dict",
                      "뷰어 힘 배치(ForceAtlas2 계열) — scaling(반발) · gravity(떨어진 덩어리를 붙잡는 중력) · "
                      "iterations(반복 수 — 같은 반복 수면 같은 그림)",

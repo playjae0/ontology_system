@@ -299,7 +299,7 @@ def build_screen(step=False, stage=None, prose=False):
     _judge = dict(stage or {})
 
     def notice(info):
-        if str(info.get("단계", "")).startswith("추출"):
+        if str(info.get("단계", "")).startswith(("추출", "개요")):
             # 산문 추출 화면은 세 진입이 같은 함수다 (B97 ①②)
             out = _ex(info)
             if info["단계"] == "추출끝" and stage is not None:
@@ -366,14 +366,15 @@ def build_screen(step=False, stage=None, prose=False):
         u2 = gateway.usage_total()
         _step_gate(4, prose=prose, ask=step, detail=f"새 노드(auto) {info.get('auto', 0)} · "
                    f"LLM 호출 {u2['calls']:,}")
+        _hf = f" · 제목 개체 폴백 {info['제목폴백']:,}행" if info.get("제목폴백") else ""   # 상위 사슬 (B115 ③)
         _step_gate(5, prose=prose, ask=step, detail=f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
-                   f"{info.get('저해상도', 0)}행")
+                   f"{info.get('저해상도', 0)}행{_hf}")
         _step_gate(6, head or "큐 0", prose=prose, ask=step)
         _orphan_next(info.get("doc_id"))
         u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
-              f"저해상도 부착 {info.get('저해상도', 0):,}행"
+              f"저해상도 부착 {info.get('저해상도', 0):,}행{_hf}"
               + (f" · 큐: {head}" if head else " · 큐 0")
               + f" · LLM 호출 {u['calls']:,} · {_screen.tokens(u)}")
         # **문서 끝 결과표**(B99 ⑤) — 층별 증감 · 이번/이전 큐 · LLM 지점별
@@ -449,6 +450,8 @@ def extract_screen(step=False, stage=None):
     def notice(info):
         k = info.get("단계")
         lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
+        if k in ("개요예고", "개요끝", "개요재사용"):
+            return _outline_line(info, lz, stage, step)
         if k == "추출재사용":
             _screen.say(f"   추출 {lz}— 체크포인트 재사용(LLM 0) · {paths.show(info['자리'])}", "head")
         elif k == "추출저장":                        # 끝난 뒤 그 자리에 있나 (B112 ⑦)
@@ -493,6 +496,38 @@ def extract_screen(step=False, stage=None):
     return notice
 
 
+def _outline_line(info, lz, stage, step=False):
+    """**문서 개요 줄**(B115 ①) — 예고(제목 n → LLM ≤ 1회) · 끝(대상 · 주제 · 버림 + 대상 목록) · 재사용(LLM 0).
+    `--step`이면 실호출이 있을 때 예고에서 묻는다(비용 전에 멈춘다 — `False`면 그래프 쓰기 0 · LLM 0)."""
+    k = info["단계"]
+    if k == "개요예고":
+        if stage is not None:
+            import time
+            stage.update({"이름": "개요", "값": 0, "총": info["호출"], "t0": time.monotonic()})
+        head = f"개요 예고 {lz}— 제목 {info['제목']:,} → LLM ≤ {info['호출']:,}회(제목 계층만 · 본문 0)"
+        if info.get("다시"):
+            head += f" · 다시 묻는다 — {info['다시']}"
+        _screen.say(f"   {head}", "head")
+        if step and info["호출"] and sys.stdin.isatty():
+            try:
+                ans = _screen.ask("   [계속 c / 멈춤 q] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return None
+            if ans in ("q", "quit", "n"):
+                print("   멈춤 — 개요 예고까지(LLM 0 · 그래프 쓰기 0) ▶ 같은 명령을 다시 친다")
+                return False
+        return None
+    cnt = (f"제목 {info['제목']:,} = 대상 {info['대상']:,} + 주제 {info['주제']:,} + 버림 {info['버림']:,}")
+    if k == "개요재사용":
+        _screen.say(f"   개요 {lz}— 체크포인트 재사용(LLM 0) · {cnt} · {paths.show(info['자리'])}", "head")
+    else:
+        where = f" · {paths.show(info['자리'])}" if info.get("자리") else " · 판정 없음(mock · 힌트 없음 — 전부 주제)"
+        _screen.say(f"   개요 끝 {lz}— {cnt} · {_screen.usage_line(info.get('since'))}{where}", "head")
+    for path, name, cat in info.get("대상목록") or []:
+        _screen.say(f"     제목 개체 {name}[{cat}] ← {path}", "aux")
+    return None
+
+
 def _chunk_row(box, info, lz):
     """청크 한 행 — 개체는 전부(칸이 좁으면 `…` · `-v`면 행 아래 전체 · 전체는 늘 로그와 체크포인트)."""
     t = box["t"] or extract_table()
@@ -511,6 +546,31 @@ def _chunk_row(box, info, lz):
           extra=(ents if _screen.VERBOSE and ents else None))
     _LOG.info("추출 %s %s · 개체 %s · %s", info["i"], info["locator"], ents,
               _screen.tokens(tok))
+
+
+def reinforce_screen(stage=None):
+    """**연결 보강 화면**(B115 ④ · 지점 ⑫) — 예고(대상 n · 재생 r → LLM ≤ k회 · 상한) · 진행(대상마다 결과 — 판정이 있었던
+    것만 · `-v`면 전부) · 끝(붙음 · 재생 · 못 고름 · 버림 · 사용량). 끝 줄 전문은 마무리 줄(`reinforce.line`)이 낸다."""
+    def notice(info):
+        k = info.get("단계")
+        if k == "보강예고":
+            if stage is not None:
+                import time
+                stage.update({"이름": "연결 보강", "값": 0, "총": info["대상"], "t0": time.monotonic()})
+            why = " · mock — 선별 규칙 없음(호출 0)" if info.get("mock") else ""
+            _screen.say(f"   연결 보강 예고 — 대상 {info['대상']:,}(엣지 없는 · 공정에만 붙은 개체 · 재생 {info['재생']:,}) "
+                        f"→ LLM ≤ {info['호출']:,}회(상한 reinforce_call_cap {info['상한']:,}){why}", "head")
+        elif k == "보강진행":
+            if stage is not None:
+                stage["값"] = info["i"]
+            if info.get("결과") and (_screen.VERBOSE or not str(info["결과"]).startswith("못 고름")):
+                _screen.say(f"     {info['i']}/{info['m']} {info.get('표기')} — {info['결과']}", "aux")
+            _LOG.info("연결 보강 %s/%s %s — %s", info["i"], info["m"], info.get("표기"), info.get("결과"))
+        elif k == "보강끝":
+            _screen.say(f"   연결 보강 끝 — 붙음 {info['붙음']:,} · 재생 {info['재생']:,} · 못 고름 {info['못 고름']:,} · "
+                        f"버림 {info['버림']:,} · {_screen.usage_line(info.get('since'))}", "head")
+        return None
+    return notice
 
 
 def ticker_where(stage):

@@ -160,19 +160,37 @@ def _is_belongs(a):
     return str(a.get("path") or "").startswith("소속")
 
 
+def heading_names(rows):
+    """이 문서의 **제목 개체** canonical(B115 ② — 대장의 `heading` 행이 붙은 노드)."""
+    return {r.get("target") for r in rows if r.get("role") == "heading" and r.get("node_id") and r.get("target")}
+
+
+def _kind(other, skeleton, heads):
+    """소속 대상의 종류 — 제목 개체가 먼저(B115 — 골격이기도 한 제목도 제목 개체로 센다) · 골격 · 그 밖 노드."""
+    return "제목 개체" if other in heads else ("공정" if other in skeleton else "유닛·부품")
+
+
 def attach_line(rows, skeleton):
-    """`부착(개체 행) N = 소속 엣지(공정 · 유닛·부품) + 관계만 + 좌표 폴백 + 관련 링크 + 빈칸 표시 + 엣지 없음 + 노드 없음` —
-    대상 종류는 상대 이름이 골격 이름인가로 가른다(`skeleton` — 좌표 층 골격 canonical)."""
+    """`부착(개체 행) N = 소속 엣지(제목 개체 · 공정 · 유닛·부품) + 관계만 + 제목 폴백 + 좌표 폴백 + 관련 링크 + 빈칸 표시 +
+    엣지 없음 + 노드 없음` — 대상 종류는 상대 이름이 제목 개체인가 · 골격 이름인가로 가른다(`skeleton` — 좌표 층 골격
+    canonical). 제목 폴백은 상위로 올라가는 사슬이 제목 개체에 붙인 것(B115 ③ — 세부는 단)."""
     ent = [r for r in rows if r.get("role") == "entity"]
-    c, kind = Counter(), Counter()
+    heads = heading_names(rows)
+    c, kind, depth = Counter(), Counter(), Counter()
     for r in ent:
         att = r.get("attached") or []
         bel = [a for a in att if _is_belongs(a)]
+        hf = [a for a in att if str(a.get("path") or "").startswith("폴백(")]
         if bel:
             c["소속 엣지"] += 1
-            kind["공정" if bel[0].get("other") in skeleton else "유닛·부품"] += 1
+            kind[_kind(bel[0].get("other"), skeleton, heads)] += 1
         elif any(a.get("path") == "관계" for a in att):
             c["관계만"] += 1
+        elif any(a.get("path") == "보강" for a in att):
+            c["연결 보강"] += 1                   # 마무리의 연결 보강이 이었다(B115 ④ — 지점 ⑫)
+        elif hf:
+            c["제목 폴백"] += 1
+            depth[str(hf[0]["path"])[len("폴백("):-1].replace("제목 ", "")] += 1
         elif any(a.get("path") == "폴백" for a in att):
             c["좌표 폴백"] += 1
         elif r.get("verdict") == "mention":       # 다른 공정 언급 — 노드 대신 관련 링크(B113 ①)
@@ -183,9 +201,10 @@ def attach_line(rows, skeleton):
             c["엣지 없음"] += 1
         else:
             c["노드 없음"] += 1
-    order = ("소속 엣지", "관계만", "좌표 폴백", "관련 링크", "빈칸 표시", "엣지 없음", "노드 없음")
-    return line("부착(개체 행)", len(ent), [(k, c.get(k, 0), _sub(kind) if k == "소속 엣지" else "")
-                                          for k in order])
+    order = ("소속 엣지", "관계만", "연결 보강", "제목 폴백", "좌표 폴백", "관련 링크", "빈칸 표시", "엣지 없음",
+             "노드 없음")
+    sub = {"소속 엣지": _sub(kind), "제목 폴백": _sub(Counter(dict(sorted(depth.items()))))}
+    return line("부착(개체 행)", len(ent), [(k, c.get(k, 0), sub.get(k, "")) for k in order])
 
 
 def declared_belongs(cks, chunk_loc):
@@ -212,6 +231,8 @@ def belongs_line(rows, cks, chunk_loc, skeleton, orphans):
     decl, _names = declared_belongs(cks, chunk_loc)
     left = Counter(decl)
     c = Counter()
+    heads = heading_names(rows)
+    cell = {"제목 개체": "제목 개체", "공정": "공정(골격)", "유닛·부품": "유닛·부품(노드)"}
     for r in rows:
         if r.get("role") != "entity":
             continue
@@ -224,7 +245,7 @@ def belongs_line(rows, cks, chunk_loc, skeleton, orphans):
             continue
         bel = [a for a in r.get("attached") or [] if _is_belongs(a)]
         if bel:
-            c["공정(골격)" if bel[0].get("other") in skeleton else "유닛·부품(노드)"] += 1
+            c[cell[_kind(bel[0].get("other"), skeleton, heads)]] += 1
         elif not r.get("node_id"):
             c["노드 없음"] += 1
         elif k[1] in orphans:
@@ -232,12 +253,45 @@ def belongs_line(rows, cks, chunk_loc, skeleton, orphans):
         else:
             c["매핑 없음"] += 1
     c["그 밖(대장 행 없음)"] += sum(left.values())
-    order = ("공정(골격)", "유닛·부품(노드)", "버림(출처 없음)", "미해소(orphan_attach)", "매핑 없음", "노드 없음",
-             "그 밖(대장 행 없음)")
+    order = ("공정(골격)", "제목 개체", "유닛·부품(노드)", "버림(출처 없음)", "미해소(orphan_attach)", "매핑 없음",
+             "노드 없음", "그 밖(대장 행 없음)")
     return line("소속 대상(소속을 낸 개체)", sum(decl.values()), [(k, c.get(k, 0), "") for k in order])
 
 
-def belongs_trace(r, names, skeleton, orphans):
+def outline_lines(doc_id, cks, rows):
+    """`개요(제목) N = 대상 + 주제 + 버림`(렌즈마다 — 개요 체크포인트) · `제목 개체(행) n = 값 칸`(대장의 `heading` 행 —
+    값 줄과 같은 닫힌 표) (B115 ①②). 개요가 없으면(표 · 제목 없는 산문 · mock 힌트 없음) 줄 0."""
+    from core.build import outline as OL
+    out = []
+    for lens, _ck in cks:
+        ol = OL.load(doc_id, lens)
+        if not ol:
+            continue
+        hs = ol.get("headings") or []
+        tg = sum(1 for h in hs if h.get("target"))
+        dr = sum(1 for h in hs if h.get("dropped"))
+        out.append(line("개요(제목" + (f" · 렌즈 {lens}" if lens else "") + ")", len(hs),
+                        [("대상", tg, ""), ("주제", len(hs) - tg - dr, ""), ("버림", dr, "")]))
+    hr = [r for r in rows if r.get("role") == "heading"]
+    if hr:
+        cells = Counter(value_cell(r)[0] for r in hr)
+        out.append(line("  제목 개체(행)", len(hr), [(k, cells.get(k, 0), "") for k in VALUE_ORDER]))
+    return out
+
+
+def reinforce_line(rows):
+    """`연결 보강(대상 개체) N = 붙음 + 재생 + 못 고름 + 버림` — 대장의 `link` 행(B115 ④ · 마무리가 적는다 — 인입 끝의
+    묶음에는 아직 없고 `show report`에 보인다). 행이 없으면 줄 0."""
+    lk = [r for r in rows if r.get("role") == "link"]
+    if not lk:
+        return []
+    c = Counter("재생" if r.get("path") == "replay" else
+                {"attached": "붙음", "pending": "못 고름", "gate_reject": "버림"}.get(r.get("verdict"), "그 밖")
+                for r in lk)
+    return [line("연결 보강(대상 개체)", len(lk), [(k, c.get(k, 0), "") for k in ("붙음", "재생", "못 고름", "버림", "그 밖")])]
+
+
+def belongs_trace(r, names, skeleton, orphans, heads=None):
     """`show report --trace`의 한 행 — `소속 '<이름>' → <대상>(종류) → <결과>` (소속을 낸 개체만 · 아니면 None)."""
     from core.state.ids import norm
     k = (r.get("locator"), norm(r.get("surface") or ""))
@@ -250,6 +304,8 @@ def belongs_trace(r, names, skeleton, orphans):
     if bel:
         a = bel[0]
         kind = "공정 · 골격" if a.get("other") in skeleton else "유닛·부품 · 노드"
+        if a.get("other") in (heads or ()):
+            kind = "제목 개체"
         return f"소속 '{name}'({r['from']}) → {a.get('other')}({kind}) → 엣지 {a.get('rel')} {a.get('dir')}"
     if not r.get("node_id"):
         return f"소속 '{name}'({r['from']}) → 노드 없음(이 개체가 보류 — 엣지를 걸 노드가 없다)"
@@ -278,7 +334,7 @@ def edgeless(rows, graphs, doc_id, names, skeleton, orphans):
                 continue
             why = []
             for r in by_node.get(nid) or [{}]:
-                t = belongs_trace(r, names, skeleton, orphans) if r else None
+                t = belongs_trace(r, names, skeleton, orphans, heading_names(rows)) if r else None
                 why.append(t.split(" → ", 1)[1] if t else "소속 없음")
             why = sorted(set(why)) + ["관계 없음", "좌표 폴백 없음"]
             out.append((lay, n.get("canonical"), n.get("category"), " · ".join(why)))
@@ -389,10 +445,12 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     for lens, ck in cks:
         lines += chunk_line(ck, ((run or {}).get("청크") or {}).get(lens or ""), lens)
     lines.append(coord_line(env))
+    lines += outline_lines(doc_id, cks, rows)
     lines += value_lines(rows)
     lines.append(hold_line(rows))
     lines.append(attach_line(rows, skeleton))
     lines.append(belongs_line(rows, [ck for _l, ck in cks], chunk_loc, skeleton, orphans))
+    lines += reinforce_line(rows)
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
     return {"doc_id": doc_id, "줄": lines,
             "그래프": graph_lines(res, layer_counts(graphs), (run or {}).get("층 전")),
@@ -400,7 +458,7 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
                   else {"지금 이 문서의 것": queue_text(queue)}),
             "엣지 없는 노드": edgeless(rows, graphs, doc_id, names, skeleton, orphans),
             "문서 좌표": doc_coord_warning(rows, env, nodes),
-            "소속 이름": names, "고아": orphans}
+            "소속 이름": names, "고아": orphans, "제목 개체": heading_names(rows)}
 
 
 # ---------------------------------------------------------------- 재료 모으기 (인입 끝 · show report)

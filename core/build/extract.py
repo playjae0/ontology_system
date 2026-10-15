@@ -82,21 +82,24 @@ def has_checkpoint(doc_id, lens=None):
     return checkpoint_path(doc_id, lens).exists()
 
 
-def _now_key(env, cfg=None):
-    """재사용 조건의 지금 값 — **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판**(B102 ⑥).
+def _now_key(env, cfg=None, outline=None):
+    """재사용 조건의 지금 값 — **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판**(B102 ⑥) + **개요의 대상
+    제목**(B115 ③ — 추출 입력의 넷째 소속 출처라 바뀌면 다시 뽑는다 · 대상이 없으면 None이라 옛 체크포인트와 같다).
     `cfg`가 없으면(층을 모르는 호출) 층 config 판은 대조하지 않는다."""
+    from core.build import outline as OL
     now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
            "prompt_version": prompt_version()}
     if cfg is not None:
         now["config_version"] = cfg.get("config_version") or cfg.get("skeleton_version")
+    now["outline"] = OL.targets_key(outline)
     return now
 
 
 _LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
-          "config_version": "층 config"}
+          "config_version": "층 config", "outline": "개요"}
 
 
-def reuse_check(env, lens=None, cfg=None):
+def reuse_check(env, lens=None, cfg=None, outline=None):
     """이 체크포인트를 **재사용해도 되는가** — 돌려주는 둘째 값이 「왜 못 쓰는가」다.
 
     조건은 **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판이 모두 같을 때**다(B78 1b · B102 ⑥). 구판은
@@ -110,7 +113,7 @@ def reuse_check(env, lens=None, cfg=None):
         cp = json.loads(p.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         return False, f"체크포인트를 읽지 못했다 — {type(e).__name__}"
-    for k, v in _now_key(env, cfg).items():
+    for k, v in _now_key(env, cfg, outline).items():
         if (cp.get(k) or None) != (v or None):
             return False, (f"{_LABEL[k]} {str(cp.get(k))[:12] or '없음'} → {str(v)[:12] or '없음'}")
     return True, ""
@@ -140,8 +143,8 @@ def partial_path(doc_id, lens=None):
 
 
 def _partial_key(env, lens, cfg=None):
-    """부분 파일 머리 — 체크포인트와 **같은 조건**(B102 ⑥) + 렌즈."""
-    return {**_now_key(env, cfg), "lens": lens}
+    """부분 파일 머리 — 체크포인트와 **같은 조건**(B102 ⑥ · 개요 B115 ③) + 렌즈."""
+    return {**_now_key(env, cfg, _OUTLINE.get("ol")), "lens": lens}
 
 
 def _partial_load(env, lens, cfg=None):
@@ -222,7 +225,7 @@ EXTRACT_SCHEMA = {
                                "properties": {"name": {"type": "string"},
                                               "category": {"type": ["string", "null"]},
                                               "from": {"type": "string",
-                                                       "enum": ["본문", "경로", "시트", "공정"]}},
+                                                       "enum": ["본문", "경로", "시트", "공정", "제목"]}},
                                "required": ["name", "category", "from"],
                                "additionalProperties": False}},
             "required": ["surface", "category", "parent", "belongs_to"],
@@ -322,6 +325,10 @@ def _optional(out):
 
 #: 지금 추출하는 문서의 맥락 칸 재료(B102 ① — `extract()`가 문서마다 채운다 · 서명은 그대로)
 _DOC = {}
+#: 지금 추출하는 문서의 조각별 제목 개체(B115 ③ — `{위치: [{name, category}]}` · `extract()`가 개요에서 채운다)
+_HEADS = {}
+#: 지금 추출하는 문서의 개요(부분 파일 머리의 재사용 조건 — `extract()`가 채운다)
+_OUTLINE = {}
 
 
 def _candidates_for(chunk_id, chunk, cfg, vocab):
@@ -345,6 +352,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "parent_candidates": parent_candidates(chunk),
+              # **넷째 소속 출처**(B115 ③) — 이 청크 위의 제목 개체(개요가 대상으로 정한 제목 · 가까운 것부터)
+              "heading_candidates": _HEADS.get(chunk.get("source_locator")) or [],
               # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
               "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
@@ -488,7 +497,7 @@ def _todo(env, chunk_ids_by_locator, skip, done):
     return rows, ref, lens_sk, resumed
 
 
-_STOP_NAME = {"추출예고": "추출 예고", "추출이어서": "추출 이어서"}
+_STOP_NAME = {"추출예고": "추출 예고", "추출이어서": "추출 이어서", "개요예고": "개요 예고"}
 
 
 #: 이 프로세스가 돈 추출의 사실 — `{(doc_id, 렌즈 또는 ""): {부름, 재사용}}` (B112 ① — 문서 끝 맞춤표의 청크 줄 ·
@@ -504,7 +513,7 @@ def _say(notice, info):
                        f"(LLM 0 · 그래프 쓰기 0)")
 
 
-def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice=None):
+def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice=None, outline=None):
     """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
 
     **실패의 처분은 청크 단위다**(문서 4 §4.10 규약 9) — 실패한 청크는 `failed`로 체크포인트에
@@ -518,7 +527,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     같을 때 끝난 청크를 부르지 않는다 · 다 끝나면 체크포인트로 올리고 부분 파일을 지운다.
     """
     doc_id = env["doc_id"]
-    ok, why = reuse_check(env, lens, cfg)        # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥)
+    ok, why = reuse_check(env, lens, cfg, outline)   # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥) · 개요 (B115 ③)
     if ok:
         _say(notice, {"단계": "추출재사용", "렌즈": lens, "자리": checkpoint_path(doc_id, lens)})
         ck = json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8"))
@@ -533,6 +542,11 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     hints = _load_hints(doc_id)
     _DOC.clear()
     _DOC.update(extract_ctx.doc_info(env))         # 맥락 줄의 문서·문서 좌표 칸 (B102 ①)
+    from core.build import outline as OL
+    _OUTLINE["ol"] = outline
+    _HEADS.clear()
+    _HEADS.update({c.get("source_locator"): OL.heading_candidates(outline, c.get("source_locator"))
+                   for c in env.get("chunks", [])})
     done = _partial_load(env, lens, cfg)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
     m = sum(1 for r in rows if r[0] == "call")
@@ -591,7 +605,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
                       "전실패": True})
         return {"doc_id": doc_id, "stage": "extract", "candidates": candidates,
                 "all_failed": True}, False
-    out = _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped)
+    out = _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, outline)
     partial_path(doc_id, lens).unlink(missing_ok=True)       # 올린 뒤에 지운다 — 순서가 계약이다
     _say(notice, {"단계": "추출저장", "렌즈": lens, "자리": checkpoint_path(doc_id, lens),
                   "있음": saved(doc_id, lens)})
@@ -620,8 +634,9 @@ def checkpoint_files(doc_id):
     return sorted(EXTRACT_DIR.glob(f"{doc_id}.json")) + sorted(EXTRACT_DIR.glob(f"{doc_id}@*.json"))
 
 
-def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped):
+def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, outline=None):
     """최종 체크포인트 — 이 파일이 생기면 추출 완료다(부분 파일은 그 뒤에 지운다)."""
+    from core.build import outline as OL
     out = {
         "doc_id": env["doc_id"],
         "stage": "extract",
@@ -637,6 +652,8 @@ def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped):
     if ref_skipped:
         # 키는 **있을 때만** 단다 — 역할 없는 문서의 체크포인트가 바이트로 갈리지 않는다.
         out["ref_skipped"] = ref_skipped
+    if OL.targets_key(outline):
+        out["outline"] = OL.targets_key(outline)             # 재사용 조건의 개요 몫(B115 ③ — 대상이 있을 때만)
     if lens:
         out["lens"] = lens                                   # 렌즈 판 (B91 ①)
         out["lens_skipped"] = lens_skipped

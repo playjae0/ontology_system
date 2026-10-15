@@ -45,8 +45,8 @@ DOC = dict(_ZERO)
 TABLE = {}
 
 REPLAYABLE = ("match", "new", "uncertain")
-#: 재료가 되는 대장 행의 역할 — 개체 값 · 소속 대상(`core/build/belongs.FIELD` 열)
-ROLES = ("entity", "belongs")
+#: 재료가 되는 대장 행의 역할 — 개체 값 · 소속 대상(`core/build/belongs.FIELD` 열) · 제목 개체(B115 ② — 위치 = 제목 경로)
+ROLES = ("entity", "belongs", "heading")
 
 
 def reset(off=None):
@@ -70,6 +70,9 @@ def begin(doc_id):
     TABLE.clear()
     data = ledger.read(doc_id)
     LIVE = data is not None or COUNT_ALL
+    # **연결 보강의 지난 행**(B115 ④) — 보강은 빌드 말미(`finalize`)에 돌아 그때는 새 대장이 이미 덮었다 · 여기서 잡아 둔다
+    from core.build import reinforce
+    reinforce.PRIOR[doc_id] = [r for r in (data or {}).get("rows") or [] if r.get("role") == reinforce.ROLE]
     n = 0
     for r in (data or {}).get("rows") or []:
         if r.get("role") not in ROLES or r.get("verdict") not in REPLAYABLE:

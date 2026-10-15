@@ -160,7 +160,7 @@ def link_mentions(b, ch):
 
 # **저해상도 부착 계수** — 문서마다 0으로 시작한다(`run_document`가 리셋).
 # 화면이 제 계산을 하지 않게 **세는 자리는 붙이는 자리**다.
-LOWRES = {"n": 0}
+LOWRES = {"n": 0, "heading": 0}         # n — 좌표 폴백 · heading — 제목 개체 폴백(B115 ③)
 
 
 def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_chunk=None):
@@ -200,19 +200,33 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     return rel                                   # 참 값 — 붙인 관계 이름(B102 ⑦ 대장 attached)
 
 
-def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidence_chunk=None):
+def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidence_chunk=None, chain=(),
+                       rows=None):
     """**폴백 한 함수**(B102 ⑤) — 행·청크가 만든 개체 중 **어느 엣지(소속·관계·스키마)에도 끝점으로 서지
-    못한 것**을 그 좌표에 규칙 B로 붙인다. 표(`table._row_fallback`)와 산문이 이 함수를 부른다.
+    못한 것**을 붙인다. 표(`table._row_fallback`) · 산문 · 제목 개체(`heading.land`)가 이 함수를 부른다.
+
+    **상위로 올라가는 사슬**(B115 ③): `chain`은 그 조각 위의 제목 개체 `[(node_id, 그래프, 깊이)]`(가까운 것부터 —
+    `heading.chain_for`)이고 **좌표보다 먼저** 탄다 — 카테고리쌍 매핑(두 방향)이 있는 첫 제목 개체에 붙고(대장
+    `폴백(제목 n단)`) · 끝까지 없으면 좌표에 규칙 B(`폴백`). 사슬에 든 노드 자신(제목 개체)은 건너뛴다(트리 엣지가 맡는다).
 
     `items`는 `[(node_id, 엣지를 쓸 그래프)]` · 돌려주는 것은 붙인 `[(node_id, 관계)]`. 대장 행이 있으면
-    붙은 자리(`attached` — 폴백 · 좌표)를 단다(B102 ⑦)."""
+    붙은 자리(`attached` — 폴백 · 좌표)를 단다(B102 ⑦ · `rows`를 안 주면 대장의 개체 행)."""
     from core.build import ledger as _lg
     done = []
-    rows = {r.get("node_id"): r for r in (b.ledger.rows if b.ledger else [])
-            if r.get("role") == "entity" and r.get("node_id")}
+    if rows is None:
+        rows = {r.get("node_id"): r for r in (b.ledger.rows if b.ledger else [])
+                if r.get("role") == "entity" and r.get("node_id")}
     coord = ((ref_g.get(ref) if ref_g is not None else None) or {}).get("canonical")
+    heads = {c[0] for c in chain or ()}
     for nid, graph in items:
-        if nid is None or nid in touched or nid in [d for d, _r in done]:
+        if nid is None or nid in touched or nid in heads or nid in [d for d, _r in done]:
+            continue
+        hit = _chain_attach(b, cfg, graph, nid, chain, prov, doc_id, evidence_chunk)
+        if hit:
+            rel, other, depth, fwd = hit
+            done.append((nid, rel))
+            from core.build.heading import fallback_path
+            _lg.attach(rows.get(nid), rel, other, fallback_path(depth), "←" if fwd else "→")
             continue
         rel = _fallback_attach(b, cfg, graph, nid, ref, ref_g, prov, doc_id,
                                evidence_chunk=evidence_chunk)
@@ -220,6 +234,24 @@ def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidenc
             done.append((nid, rel))
             _lg.attach(rows.get(nid), rel, coord, "폴백", "←")
     return done
+
+
+def _chain_attach(b, cfg, graph, child, chain, prov, doc_id, evidence_chunk):
+    """사슬의 첫 칸 — 가까운 제목 개체부터 카테고리쌍 매핑이 있는 것에 붙인다 · `(관계, 상대, 깊이, 정방향)` 또는 None."""
+    from core.build.belongs import edge_of
+    cg = b.graph_of(child) or graph
+    me = cg.get(child) or {}
+    for hid, hg, depth in chain or ():
+        up = hg.get(hid) or {}
+        rel, fwd = edge_of(cfg, up.get("category"), me.get("category"))
+        if not rel:
+            continue
+        src, dst, sg, dg = (hid, child, hg, cg) if fwd else (child, hid, cg, hg)
+        if gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_SCHEMA, [prov], doc_id,
+                            evidence_chunk=evidence_chunk, src_graph=sg, dst_graph=dg) == gate.COMMIT:
+            LOWRES["heading"] += 1
+            return rel, up.get("canonical"), depth, fwd
+    return None
 
 
 def _field_surface(name, rec):

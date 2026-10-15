@@ -269,7 +269,7 @@ def _trace(doc, rows, span=40):
             print(f"     붙은 자리  {a.get('rel')} {a.get('dir')} {a.get('other')} ({a.get('path')})")
         if not r.get("attached"):
             print(f"     붙은 자리  없음" + (f" — 큐 {r['queue_kind']}" if r.get("queue_kind") else ""))
-        _bt = reconcile.belongs_trace(r, _mt["소속 이름"], _sk, _mt["고아"])
+        _bt = reconcile.belongs_trace(r, _mt["소속 이름"], _sk, _mt["고아"], _mt.get("제목 개체"))
         if _bt:
             print(f"     소속       {_bt}")
         print(f"     좌표       {c.get('process_ref') or '없음'} ({_coord_src(m)})")

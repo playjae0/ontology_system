@@ -397,7 +397,7 @@ def _retry_attach(pl, item, graphs, cfgs, dic):
     gate.commit_edge(cg, src, rel, dst, cfg, gate.PATH_EXTRACT,
                      [prov] if prov else [], item.get("doc_id"),
                      src_graph=sg, dst_graph=dg)
-    _withdraw_lowres(graphs, child_id, target, prov)
+    _withdraw_lowres(graphs, child_id, target, prov, _heading_fallbacks(item.get("doc_id"), prov, pl, graphs))
     if "belongs_from" in pl:
         _ledger_belongs(item.get("doc_id"), prov, pl, rel, tg.get(target)["canonical"], fwd)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
@@ -414,7 +414,8 @@ def _ledger_belongs(did, prov, pl, rel, other, fwd):
               and r.get("locator") == loc and r.get("node_id") == pl.get("node_id")), None)
     if r is None:
         return
-    r["attached"] = [a for a in r.get("attached") or [] if a.get("path") != "폴백"]
+    # 폴백 자리 전부(좌표 `폴백` · 제목 개체 `폴백(제목 n단)` — B115 ③)를 소속 자리로 갈아 끼운다
+    r["attached"] = [a for a in r.get("attached") or [] if not str(a.get("path") or "").startswith("폴백")]
     ledger.attach(r, rel, other, f"소속({pl.get('belongs_from') or '-'})", "←" if fwd else "→")
     r["by"] = "retry"
     ledger.put_row(did, r)
@@ -427,7 +428,18 @@ def _attach_one(pl, surface, graphs, cfgs, dic, doc_id):
                           "payload": None}, graphs, cfgs, dic)
 
 
-def _withdraw_lowres(graphs, child_id, new_target, prov):
+def _heading_fallbacks(did, prov, pl, graphs):
+    """그 개체 행이 폴백 사슬로 붙었던 **제목 개체** 노드 id(B115 ③ — 대장 `폴백(제목 n단)`의 상대 이름) — 개체 → 제목
+    개체 방향의 폴백도 회수 대상이다(좌표 카테고리가 아니라 위 방향 조건에 안 걸린다)."""
+    from core.build import ledger
+    loc = prov[len(did) + 1:] if did and prov and str(prov).startswith(f"{did}#") else None
+    r = next((r for r in (ledger.read(did) or {}).get("rows") or [] if loc and r.get("role") == "entity"
+              and r.get("locator") == loc and r.get("node_id") == pl.get("node_id")), None)
+    names = {a.get("other") for a in (r or {}).get("attached") or [] if str(a.get("path") or "").startswith("폴백(")}
+    return {nid for g in graphs.values() for nid, n in g.nodes.items() if names and n.get("canonical") in names}
+
+
+def _withdraw_lowres(graphs, child_id, new_target, prov, heads=()):
     """저해상도 부착의 **그 provenance만** 회수한다 (§4.4-8 (a) 갈아끼움).
 
     엣지를 지우지 않고 발자국만 뺀다 — 다른 문서가 같은 저해상도 부착을 주장하고
@@ -446,7 +458,8 @@ def _withdraw_lowres(graphs, child_id, new_target, prov):
         for e in g.edges:
             if new_target in (e["src"], e["dst"]) or e.get("status") == "deleted_by_user":
                 continue
-            if not (e["dst"] == child_id or (e["src"] == child_id and cat.get(e["dst"]) == COORD_CATEGORY)):
+            if not (e["dst"] == child_id or (e["src"] == child_id and (cat.get(e["dst"]) == COORD_CATEGORY
+                                                                     or e["dst"] in heads))):
                 continue
             if prov in (e.get("provenance") or []):
                 e["provenance"] = [x for x in e["provenance"] if x != prov]

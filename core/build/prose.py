@@ -12,7 +12,7 @@ from core.build import loop
 from core.build.build import Builder
 from core.build import gate
 from core.build.ledger import Ledger
-from core.build import belongs, extract_ctx
+from core.build import belongs, extract_ctx, heading
 from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
 from core.build.naming import nest_categories
 from core.state.status import is_live
@@ -223,7 +223,7 @@ def _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid):
         if not rel:
             store.append_defect(f"{env['doc_id']}: 소속 엣지 — 카테고리쌍 매핑 없음 "
                                 f"({(tg.get(tid) or {}).get('category')} → {(cg.get(nid) or {}).get('category')})"
-                                f" @ {cid} → 좌표 폴백")
+                                f" @ {cid} → 폴백 사슬(제목 개체 → 좌표)")
             continue
         src, dst, sg, dg = (tid, nid, tg, cg) if fwd else (nid, tid, cg, tg)
         br = gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_EXTRACT, [prov], env["doc_id"],
@@ -276,7 +276,7 @@ def _legacy_attach(b, cfg, graph, env, cand, touched, ref, ref_g, prov, cid):
                    canonical=(tg.get(target) or {}).get("canonical"))
 
 
-def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
+def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, outline=None):
     # **실패한 청크는 건너뛴다**(문서 4 §4.10 규약 9 · B55 ③). `failed`는 「보지
     # 못했다」이고 `entities: []`는 「봤는데 없었다」다 — 섞으면 결함이 「후보 0건」
     # 통계에 녹아 사라진다. 건너뛰는 사실은 이미 `defects.log`에 남아 있다(추출 시점).
@@ -302,6 +302,9 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
     # 않는다**(걸침 하위 빌더가 같은 버퍼를 공유한다 — §4.2). 층 간 동명 표면형은
     # **마지막 해소가 이긴다** — 버퍼는 사전과 달리 후보 목록을 두지 않으므로,
     # 카테고리로 선별해야 하는 소비처는 사전을 함께 조회한다.
+    # **제목 개체 먼저**(B115 ② — 문서 개요가 대상으로 정한 제목 · 트리 순서) — 같은 문서의 소속 이름이 버퍼에서
+    # 찾고 · 상위로 올라가는 폴백 사슬의 칸이 된다. 개요가 없거나 대상이 없으면 0(지금 길 그대로).
+    landed = heading.land(b, cfg, graph, env, outline, {loc: cid for cid, loc in loc_of.items()})
     coords = _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of)
 
     # ════════════════ Pass 2 (부착) ════════════════
@@ -347,8 +350,10 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False):
         # **폴백 한 함수**(B102 ⑤ — 표와 같은 함수) — 어느 엣지에도 서지 못한 개체만 좌표에
         # 소속 대상으로 새로 앉은 골격 밖 노드(경로·시트의 유닛)도 그 좌표에 닿아야 한다 — 같은 함수
         tnodes = [(p["tgt"][1], graph) for p in plans if p["tgt"] and p["tgt"][0] == belongs.NODE]
+        # 사슬 = 이 청크 위의 제목 개체(가까운 것부터) → 그다음 좌표 (B115 ③)
         loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans] + tnodes, touched,
-                                ref, ref_g, prov, env["doc_id"], evidence_chunk=cid)
+                                ref, ref_g, prov, env["doc_id"], evidence_chunk=cid,
+                                chain=heading.chain_for(landed, outline, src.get("source_locator")))
 
     loop.link_mentions(b, ch)                     # 다른 공정 언급 → 관련 링크 (B113 ①)
     store.write(store.CHUNKS, ch)

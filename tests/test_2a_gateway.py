@@ -41,8 +41,9 @@ show("core/llm/gateway.py — chat(messages, *, model, json_schema)",
      hasattr(llm, "chat")
      and {"model", "json_schema"} <= set(llm.chat.__code__.co_varnames))
 show("core/llm/embeddings.py — embed(text) -> vector", hasattr(embeddings, "embed"))
-show("LLM 지점 목록이 닫힌 **10종**이다 (§7.6-B-2 — ⑨좌표 태깅 · ⑩시트 역할 판정 B91 ② 포함)",
-     len(llm.POINTS) == 10 and {"answer", "coord_tag", "sheet_role"} <= set(llm.POINTS),
+# 기대 변경(B115 ①④ — 10종 → 12종: ⑪문서 개요 · ⑫연결 보강 · 명세 개정 대상)
+show("LLM 지점 목록이 닫힌 **12종**이다 (§7.6-B-2 — ⑨좌표 태깅 · ⑩시트 역할 판정 B91 ② · ⑪문서 개요 · ⑫연결 보강 B115 포함)",
+     len(llm.POINTS) == 12 and {"answer", "coord_tag", "sheet_role", "outline", "reinforce"} <= set(llm.POINTS),
      ", ".join(llm.POINTS))
 
 # 설정 접근이 이 파일 하나로 수렴하는가 — 호출부가 환경변수를 직접 읽지 않는다.
@@ -268,7 +269,9 @@ WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
          "embed": ("core/llm/embeddings.py", "gateway.require"),
          "generate": ("cli/register/draft.py", "_draft_live"),
          "link": ("core/query/query.py", "_link_llm"),
-         "answer": ("cli/query.py", "def generate")}
+         "answer": ("cli/query.py", "def generate"),
+         "outline": ("core/build/outline.py", "_ask(heads, cfg) if live"),        # ⑪ (B115 ①)
+         "reinforce": ("core/build/reinforce.py", "_ask(payload) if live")}       # ⑫ (B115 ④)
 for key, (where, needle) in WIRED.items():
     src = (ROOT / where).read_text(encoding="utf-8")
     show(f"{llm.POINTS[key]} — 실호출 갈래가 {where}에 있다", needle in src)
