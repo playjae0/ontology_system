@@ -446,7 +446,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         _mt.PROGRESS = SCR.judge_progress(_plan_n, stage=stage, every=step_every,
                                       stride=progress_every)
         # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
-        _ledger.ON_ROW = SCR.row_printer()
+        _ledger.ON_ROW = SCR.row_printer(res.envelope)
         try:
             # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):

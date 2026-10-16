@@ -141,4 +141,5 @@ def approved(yes, next_line):
     if not sys.stdin.isatty():
         print(f"  (비대화형 — 계획만 · 쓰기 0) ▶ 다음 줄 — 실행: {next_line}")
         return False
-    return input("  실행할까? [y/N] ").strip().lower() in ("y", "yes")
+    from cli import _screen
+    return _screen.answer("  실행할까? [y/N] ", "yes", eof=False)

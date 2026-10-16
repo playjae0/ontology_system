@@ -7,6 +7,7 @@ from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from core import paths
+from cli import _screen
 from core.llm import check, gateway, points
 from core.state import fixtures, log, registry, store
 from parser import form
@@ -495,10 +496,7 @@ def ask_form(doc_type, layer, samples, judged):
     """
     print("  이 문서는 표(table)인가 산문(prose)인가?  "
           "table = LLM 생성 · prose = 고정 어댑터(LLM 0)")
-    try:
-        ans = input("  [table/prose] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = ""
+    ans = (_screen.answer("  [table/prose] ", "text", eof="") or "").lower()
     if ans.startswith("p"):
         return "prose"
     if ans.startswith("t"):

@@ -56,6 +56,20 @@ def with_context(chunk, doc=None):
     return f"{line}\n{text}" if line else text
 
 
+def place(chunk):
+    """**위치 두 칸**(B118 ③) — `(시트, 청크)`: 시트 이름(없으면 빈칸) · 청크 = **경로 끝 제목**(경로가 없으면 조각의 구획
+    · 그것도 없으면 위치). 가운데 경로는 생략한다 — 전체는 라벨(`chunk_label`)이 들고 명령 로그에 그대로다.
+    화면의 판정 예고 값 표 · 추출 청크 표가 이 함수 하나를 쓴다(포맷 전부)."""
+    f = dict(context_fields(chunk))
+    path = f.get("경로")
+    loc = str(chunk.get("source_locator") or "")
+    sheet = str(f.get("시트") or "")
+    if not sheet and not path and "!" in loc:      # 표의 행 — 시트가 위치 안에 있다(`시트!R12`)
+        sheet, _sep, loc = loc.rpartition("!")
+    end = (str(path).split(PATH_SEP)[-1] if path else "") or str(chunk.get("section") or "") or loc
+    return sheet, end
+
+
 def chunk_label(chunk):
     """**청크의 라벨** — 화면의 청크 목차 · 추출 표의 위치 칸(B112 ③). 맥락 칸에서 문서 · 공정을 뺀 것 —
     엑셀 `시트 › 목차 경로` · Word/PDF `제목 경로` · 시트도 경로도 없으면 조각의 구획(PPT `슬라이드 n`) ·

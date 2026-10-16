@@ -277,12 +277,8 @@ def _ask_llm_coord(misses, assume=None):
         return assume
     if gateway.use_mock():
         return False
-    try:
-        ans = input(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). "
-                    f"켤까? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = ""                       # 대화형이 아니면 **끄고 진행**한다
-    on = ans in ("y", "yes")
+    # 대화형이 아니면 **끄고 진행**한다
+    on = _screen.answer(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). 켤까? [y/N] ", "yes", eof=False)
     print(f"   → LLM 보조 {'켬' if on else '끔 (미스는 인입에서 orphan_anchor로 간다)'}")
     return on
 
@@ -454,9 +450,8 @@ def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract, rs):
         want = extract
         if want is None:
             print(f"   추출 리허설 {n:,}청크 → LLM {n:,}회.")
-            try:
-                want = input("   켤까? [Y/n] ").strip().lower() not in ("n", "no")
-            except (EOFError, KeyboardInterrupt):
+            want = _screen.answer("   켤까? [Y/n] ", "Yes", eof=None)
+            if want is None:
                 # **비대화형이면 끄고 그 사실을 뷰에 남긴다** — 조용히 도는 구간을
                 # 두지 않는다: 승인자는 「추출을 보고 승인했다」고 믿으면 안 된다.
                 want = False

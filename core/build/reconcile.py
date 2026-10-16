@@ -422,6 +422,48 @@ def queue_text(entries):
             + (" — " + " · ".join(f"{k} {c[k]:,}({r[k]:,}행)" for k in sorted(c)) if c else ""))
 
 
+# ---------------------------------------------------------------- 문서 한 줄 요약 (B118 ①)
+#: 유닛 이하 — 소속 대상 줄에서 공정보다 아래에 붙은 칸(제목 개체 · 유닛·부품 노드)
+UNDER_UNIT = ("유닛·부품(노드)", "제목 개체")
+
+
+def _cells(lines, label):
+    ln = next((x for x in lines if x["줄"].strip() == label), None)
+    return (ln["전체"], {k: n for k, n, _d in ln["칸"]}, {k: d for k, _n, d in ln["칸"]}) if ln else (0, {}, {})
+
+
+def summary(lines, res, after, before=None):
+    """**문서 한 줄 요약의 재료** — 맞춤표의 같은 줄에서(새 계산 0): 결말(개체 행) · 값 줄의 보류 사유 · 소속 대상 줄 ·
+    이 문서의 엣지 · 노드 수(층 합). `유닛 이하 비율` = 소속 대상 중 (유닛·부품(노드) + 제목 개체) / 소속을 낸 개체."""
+    n, end, _d = _cells(lines, "결말(개체 행)")
+    _n, _v, vdet = _cells(lines, "값(개체 행)")
+    bn, bel, _bd = _cells(lines, "소속 대상(소속을 낸 개체)")
+    mine = (res or {}).get("층") or {}
+    under = sum(bel.get(k, 0) for k in UNDER_UNIT)
+    return {"개체": n, "새 노드": end.get("새 노드", 0), "기존 연결": end.get("일치", 0), "불확실": end.get("불확실", 0),
+            "보류": end.get("보류", 0), "보류 사유": vdet.get("보류", ""), "다른 공정": end.get("다른 공정 언급", 0),
+            "빈칸": end.get("빈칸 표시", 0), "그 밖": end.get("그 밖", 0),
+            "엣지": sum(int(d.get("엣지", 0)) for d in mine.values()),
+            "노드 전": (sum(v[0] for v in before.values()) if before is not None else None),
+            "노드 후": sum(v[0] for v in (after or {}).values()), "이 문서 노드": sum(int(d.get("노드", 0)) for d in mine.values()),
+            "소속": bn, "유닛 이하": under, "유닛 이하 비율": (round(100.0 * under / bn, 1) if bn else None)}
+
+
+def summary_text(doc_id, s):
+    """`<doc_id> — 개체 n → 새 노드 a · 기존 연결 b · 보류 c(사유별) · 다른 공정 d · 빈칸 e | 엣지 +k | 그래프 노드 N → N′ |
+    유닛 이하 비율 r%` — 칸이 0이면 그 칸을 뺀다(불확실 · 그 밖은 0이 아닐 때만 — 합 = 개체)."""
+    cells = [("새 노드", s["새 노드"]), ("기존 연결", s["기존 연결"]), ("불확실", s["불확실"]), ("보류", s["보류"]),
+             ("다른 공정", s["다른 공정"]), ("빈칸", s["빈칸"]), ("그 밖", s["그 밖"])]
+    body = " · ".join(f"{k} {v:,}" + (f"({s['보류 사유']})" if k == "보류" and s["보류 사유"] else "")
+                      for k, v in cells if v or k in ("새 노드", "기존 연결", "보류"))
+    nodes = (f"{s['노드 전']:,} → {s['노드 후']:,}" if s["노드 전"] is not None
+             else f"{s['노드 후']:,}(이 문서 {s['이 문서 노드']:+,})")
+    ratio = (f"{s['유닛 이하 비율']}%({s['유닛 이하']:,}/{s['소속']:,})" if s["유닛 이하 비율"] is not None
+             else "—(소속을 낸 개체 0)")
+    return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
+            f"유닛 이하 비율 {ratio}")
+
+
 # ---------------------------------------------------------------- 한 묶음
 def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     """맞춤표 한 묶음 — 화면(`cli/result_screen.reconcile_lines`)이 줄로 옮긴다.
@@ -452,8 +494,9 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     lines.append(belongs_line(rows, [ck for _l, ck in cks], chunk_loc, skeleton, orphans))
     lines += reinforce_line(rows)
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
-    return {"doc_id": doc_id, "줄": lines,
-            "그래프": graph_lines(res, layer_counts(graphs), (run or {}).get("층 전")),
+    after = layer_counts(graphs)
+    return {"doc_id": doc_id, "줄": lines, "요약": summary(lines, res, after, (run or {}).get("층 전")),
+            "그래프": graph_lines(res, after, (run or {}).get("층 전")),
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),
             "엣지 없는 노드": edgeless(rows, graphs, doc_id, names, skeleton, orphans),

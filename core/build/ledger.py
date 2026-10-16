@@ -30,7 +30,8 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "category", "scope", "replay",   # 판정 재생의 키 몫 · 재판정 사유(B106 ② · 있을 때만)
          "by",                            # 그 행을 적은 손이 인입 루프가 아닐 때(B107 ③ — "retry")
          "blank",                         # 값 칸이 빈칸 표시였다 — 원문은 그대로 · 표지만(B113 ②)
-         "evidence")                      # 연결 보강의 근거 문장 — 청크 원문 그대로(B115 ④ · 역할 link)
+         "evidence",                      # 연결 보강의 근거 문장 — 청크 원문 그대로(B115 ④ · 역할 link)
+         "proposal")                      # 연결 보강 버림의 제안 `{target, rel}` — 재생이 지금 config로 게이트를 다시 돈다(B118 ⑤)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -62,7 +63,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
-        blank=None, evidence=None):
+        blank=None, evidence=None, proposal=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -93,7 +94,9 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 값 칸의 빈칸 표시(B113 ② — 값은 그대로 · 그 표시를 함께)
                  ("blank", blank),
                  # 연결 보강의 근거 문장(B115 ④ — 청크 원문 그대로 · 재구축 재생이 같은 근거로 다시 붙인다)
-                 ("evidence", evidence)):
+                 ("evidence", evidence),
+                 # 연결 보강 버림의 제안(B118 ⑤ — 대상 이름 · 관계) · 재생이 LLM 0으로 게이트를 다시 돈다
+                 ("proposal", proposal)):
         if v is not None:
             r[k] = v
     return r

@@ -15,6 +15,9 @@
     python -m cli.show dist   <무엇>           손잡이 값을 정할 분포 (chunks·headings·forms·sheets·evidence)
     python -m cli.show learned                좌표 학습 기록 · 새 공정 후보 (B101)
     python -m cli.show aliases [층] [--source …] [--node …]   별칭 대장 — seed 것과 대장 것 · 출처 · 문서 · 횟수 (B108)
+    python -m cli.show summary [--save <이름> | --diff <이름1> <이름2>]   전체 판 — 층 · 문서 · 큐 · 보류 · 재연결 · 불확실 · 값 (B118)
+    python -m cli.show score  <doc_id> [--template] | --all   점수표 — 사람이 채운 정답표로 맞음 · 틀림 · 정답률 (B118)
+    python -m cli.show log gate --by-pattern       게이트 거부를 삼항별로 · 넣을 config 줄 (B118)
 
 **진실은 `data/`의 JSON이다.** Cypher·Mermaid·임베딩은 전부 거기서 파생되는
 재생성 가능물이고(P5), 이 파일은 그 JSON을 **사람이 읽는 모양으로** 옮길 뿐이다.
@@ -474,6 +477,7 @@ def cmd_log(args):
 
         run.py show log                 4종 요약
         run.py show log <이름> [N]      그 로그 마지막 N줄 (기본 40)
+        run.py show log gate --by-pattern   거부를 (출발, 관계, 도착)별로 묶고 넣을 config 줄 (B118 ⑥ — `cli/show_gate.py`)
 
     이름: `defects` · `gate` · `link_miss` · `truncated`.
 
@@ -499,6 +503,9 @@ def cmd_log(args):
         return 0
 
     key = args[0]
+    if key == "gate" and "--by-pattern" in args:     # 거부 묶음 · 넣을 config 줄(B118 ⑥ — 제 파일)
+        from cli import show_gate
+        return show_gate.main(args[1:])
     if key not in LOGS:
         print(f"알 수 없는 로그: {key} — {', '.join(LOGS)}")
         return 1
@@ -637,6 +644,16 @@ def _learn_cmd(args):
     return show_learn.cmd_learned(args)
 
 
+def _summary_cmd(args):
+    from cli import show_summary                    # 전체 판은 제 파일에 산다 (B118 ①)
+    return show_summary.main(args)
+
+
+def _score_cmd(args):
+    from cli import show_score                      # 점수표는 제 파일에 산다 (B118 ②)
+    return show_score.main(args)
+
+
 def _aliases_cmd(args):
     from cli import show_learn                      # 별칭 대장 화면도 동의어 화면 파일에 산다 (B108 ①)
     return show_learn.cmd_aliases(args)
@@ -653,7 +670,7 @@ def main(argv):
              "edges": cmd_edges, "schema": cmd_schema, "meta": cmd_meta,
              "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25,
              "report": cmd_report, "knobs": _knobs.cmd_knobs, "dist": _knobs.cmd_dist,
-             "learned": _learn_cmd, "aliases": _aliases_cmd}
+             "learned": _learn_cmd, "aliases": _aliases_cmd, "summary": _summary_cmd, "score": _score_cmd}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)

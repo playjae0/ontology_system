@@ -160,12 +160,61 @@ HOLD = _threading.Event()
 
 
 def ask(prompt):
-    """사람에게 묻는다 — 묻는 동안 누적 줄을 멈춘다. EOF·중단은 호출부가 받는다."""
+    """입력 한 줄 — 묻는 동안 누적 줄을 멈춘다. EOF·중단은 부르는 쪽(`answer`)이 받는다."""
     HOLD.set()
     try:
         return input(prompt)
     finally:
         HOLD.clear()
+
+
+#: 답의 낱말 — 영문 자판과 **한글 자판 그대로**(같은 자리의 글쇠 · B118 ④ — 사내는 한글 자판으로 친다)
+GO = ("c", "ㅊ", "continue")
+STOP = ("q", "ㅂ", "quit", "n", "ㅜ", "no", "ㅜㅐ")
+YES = ("y", "ㅛ", "yes", "ㅛㄷㄴ")
+NO = ("n", "ㅜ", "no", "ㅜㅐ")
+
+
+def answer(prompt, kind="text", eof=None):
+    """**사람에게 묻는 한 자리**(B118 ④) — `cli/`의 묻는 자리는 전부 이 함수를 지난다(입력은 `ask` 한 줄).
+
+    갈래(`kind`):
+      `go`   계속/멈춤 — **계속은 c(ㅊ)만** · 멈춤은 q · quit · n(ㅂ · ㅜ) · **Ctrl-C도 멈춤**(그 자리의 되돌림 그대로) ·
+             그 밖의 답(빈 Enter 포함)은 **다시 묻는다**. 돌려주는 것 True = 계속 · False = 멈춤
+      `yes`  [y/N] — y(ㅛ)만 예 · 그 밖(빈 Enter 포함)은 아니오 · Ctrl-C도 아니오
+      `Yes`  [Y/n] — 빈 Enter · y(ㅛ)는 예 · n(ㅜ)은 아니오 · 그 밖은 다시 묻는다 · **Ctrl-C는 명령 멈춤**(`KeyboardInterrupt`를
+             올린다 — n이 버림 · 비용인 자리가 있어 아니오로 읽지 않는다)
+      `text` 글 그대로(앞뒤 공백 뺌 · 번호 고르기 · 이름) · Ctrl-C는 None
+    **EOF는 `eof`를 돌려준다** — 비대화형(Ctrl-D 포함)은 그 자리의 지금 규칙 그대로다(묻는 자리가 기본값을 준다).
+    """
+    while True:
+        try:
+            raw = ask(prompt)
+        except EOFError:
+            return eof
+        except KeyboardInterrupt:
+            print()
+            if kind == "Yes":
+                raise
+            return None if kind == "text" else False
+        a = raw.strip()
+        low = a.lower()
+        if kind == "text":
+            return a
+        if kind == "yes":
+            return low in YES
+        if kind == "go":
+            if low in GO:
+                return True
+            if low in STOP:
+                return False
+            print("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 — 다시 친다")
+            continue
+        if low == "" or low in YES:
+            return True
+        if low in NO:
+            return False
+        print("   Enter · y(ㅛ)는 예 · n(ㅜ)은 아니오 — 다시 친다")
 
 
 class ticker:
@@ -290,11 +339,11 @@ class Table:
     - 색은 칸을 맞춘 **뒤에** 칠한다 — 폭 계산에 ESC가 섞이지 않는다 · 파이프·로그는 ESC 0.
     - 표가 이어지는 동안 박자 줄은 구분 행(`+-- …`)으로 들어간다.
 
-    `cols`는 `[(이름, 폭, 오른쪽 맞춤?)]`.
+    `cols`는 `[(이름, 폭, 오른쪽 맞춤?)]` · `keep`은 좁은 터미널에서도 **나중에** 줄일 칸의 번호(잘리면 안 되는 칸).
     """
     SEP = " | "
 
-    def __init__(self, cols, flex, indent="   ", min_flex=8):
+    def __init__(self, cols, flex, indent="   ", min_flex=8, keep=()):
         self.cols, self.flex, self.indent = list(cols), flex, indent
         avail = term_width() - len(indent) - len(self.SEP) * (len(self.cols) - 1) - 1
         # 좁은 터미널 — 고정 칸을 넓은 것부터 머리글 폭까지 줄여 가변 칸 최소를 지킨다
@@ -304,6 +353,8 @@ class Table:
                 break
             cand = [(c[1] - max(3, w(c[0])), i) for i, c in enumerate(self.cols)
                     if i != flex and c[1] > max(3, w(c[0]))]
+            # **줄이지 않을 칸**(`keep` — 위치 두 칸 · B118 ③)은 다른 칸을 다 줄인 뒤에만
+            cand = [x for x in cand if x[1] not in keep] or cand
             if not cand:
                 break
             _slack, i = max(cand)

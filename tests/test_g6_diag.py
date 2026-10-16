@@ -61,10 +61,12 @@ for form, lay, doc in MATRIX:
     locs = {r.get("locator") for r in rows if r.get("locator")}
     vals = [l for l in out.splitlines() if re.match(r"\s+[✓+?✗·] \| ", l)]
     _ok_i.append((form, lay, (not totals or totals == {want}) and stage["총"] == want,
-                  all(l.split(" | ")[1].strip().rstrip("…") and
-                      any(x.startswith(l.split(" | ")[1].strip().rstrip("…")) for x in locs)
+                  # 값 표의 위치 두 칸(시트 · 청크 — B118 ③ · 기대 변경) = 대장 locator의 자리
+                  all(any(SCR.where_cells(x)[0].startswith(l.split(" | ")[1].strip().rstrip("…"))
+                          and SCR.where_cells(x)[1].startswith(l.split(" | ")[2].strip().rstrip("…"))
+                          and SCR.where_cells(x)[1] for x in locs)
                       for l in vals), sorted(totals), want))
-show("ⓘ 산문 판정 진행 총수 = 추출 개체 수(표는 레코드 기준) · 값 표의 위치 = 대장 locator (표·산문 × 층)",
+show("ⓘ 산문 판정 진행 총수 = 추출 개체 수(표는 레코드 기준) · 값 표의 위치 두 칸 = 대장 locator의 자리 (표·산문 × 층)",
      all(a and b for _f, _l, a, b, *_r in _ok_i),
      " · ".join(f"{f}×{l} 진행 {t} · 단계 총 → {w}" for f, l, _a, _b, t, w in _ok_i))
 

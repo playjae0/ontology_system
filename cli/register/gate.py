@@ -11,6 +11,7 @@ from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from core import paths
+from cli import _screen
 from core.state import fixtures, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from pathlib import Path
@@ -369,12 +370,11 @@ def _ask_more(doc_type, codes):
           f"[n] 여기서 끝 — 관문 FAIL이라 confirm은 막힌다.")
     print(f"       n 뒤에도 이어갈 수 있다:  "
           f"python -m cli.register review {doc_type} --instruct \"…\"")
-    try:
-        ans = input("   더 돌릴까? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
+    go = _screen.answer("   더 돌릴까? [Y/n] ", "Yes", eof=None)
+    if go is None:
         print("   (비대화형 — 기본 Y로 이어간다)")
-        ans = ""
-    return ans not in ("n", "no")
+        return True
+    return go
 
 
 def _failure_persist(doc_type, pkg, samples, ask):

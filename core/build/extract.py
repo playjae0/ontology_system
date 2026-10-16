@@ -432,12 +432,12 @@ def _load_hints(doc_id):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
-def _chunk_info(entry, i, m, locator, label, tokens, lens):
+def _chunk_info(entry, i, m, locator, label, tokens, lens, place=None):
     """청크 하나의 화면 재료 — 개체는 **전부**(표기·카테고리) · 관계·부착·부모는 수 (B97 ②).
 
     `tokens`는 이 청크의 사용량 차이(`prompt_tokens`·`completion_tokens`·`total_tokens` — B98 ③)."""
     ents = entry.get("entities") or []
-    return {"단계": "추출청크", "렌즈": lens, "i": i, "m": m, "locator": locator, "라벨": label,
+    return {"단계": "추출청크", "렌즈": lens, "i": i, "m": m, "locator": locator, "라벨": label, "자리": place,
             "개체": [(e.get("surface"), e.get("category")) for e in ents],
             "관계": len(entry.get("relations") or []), "부착": len(entry.get("attach") or []),
             "부모": sum(1 for e in ents if e.get("parent")), "토큰": tokens,
@@ -556,7 +556,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows),
                   "다시": (why if why and why != "체크포인트 없음" else None),
                   "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m,
-                  "목차": _toc(rows, env)})
+                  "목차": _toc(rows, env), "자리목록": [extract_ctx.place(c) for _k, _cid, c in rows]})
     u0 = gateway.usage_total()
     candidates, i = [], 0
     for kind, cid, c in rows:
@@ -581,7 +581,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         _say(notice, _chunk_info(entry, i, m, c.get("source_locator"), extract_ctx.chunk_label(c),
                                  {k: t1.get(k, 0) - t0.get(k, 0) for k in
                                   ("prompt_tokens", "completion_tokens", "total_tokens")},
-                                 lens))
+                                 lens, extract_ctx.place(c)))
     called = [x for x in candidates if not x.get("lens_skipped")]
     failed = sum(1 for x in called if x.get("failed"))
     RUN[(doc_id, lens or "")] = {"부름": i, "재사용": resumed}

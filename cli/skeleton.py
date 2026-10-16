@@ -297,11 +297,8 @@ def cmd_confirm(argv):
             f"뷰 대조는 건너뛸 수 없다(문서 3 §3.7 조건 ③).\n"
             f"  ▶ 다음 줄:\n"
             f"     (터미널에서)  python run.py skeleton-confirm {layer} --by <이름>")
-    try:
-        ans = input("\n  이 흐름이 근거 문서와 맞습니까? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = ""
-    if ans not in ("y", "yes"):
+    from cli import _screen
+    if not _screen.answer("\n  이 흐름이 근거 문서와 맞습니까? [y/N] ", "yes", eof=False):
         raise SystemExit(f"[골격 확정] 확정하지 않았다 — 사람이 뷰 대조에서 "    # [상태]
                          f"N을 골랐다 (문서 3 §3.7 조건 ③)\n"
                          f"  ▶ 다음 줄:\n"
