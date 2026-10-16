@@ -270,7 +270,7 @@ WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
          "generate": ("cli/register/draft.py", "_draft_live"),
          "link": ("core/query/query.py", "_link_llm"),
          "answer": ("cli/query.py", "def generate"),
-         "outline": ("core/build/outline.py", "_ask(heads, cfg) if live"),        # ⑪ (B115 ①)
+         "outline": ("core/build/outline.py", "_ask(rest, cfg) if live"),         # ⑪ (B115 ① · 구조 없는 제목만 — B119 ① 기대 변경)
          "reinforce": ("core/build/reinforce.py", "_ask(payload) if live")}       # ⑫ (B115 ④)
 for key, (where, needle) in WIRED.items():
     src = (ROOT / where).read_text(encoding="utf-8")

@@ -16,11 +16,14 @@ from collections import Counter
 from pathlib import PurePath
 
 from core.build.result import hold_reason
+from parser.struct_rule import ROLES
 
 #: 판정 경로(`core.matcher.PATHS`) 중 **판정을 부른 길** — 후보를 좁혀 판정(LLM · mock)에 맡긴 것
 JUDGE_PATHS = ("scope+judge", "embedding+judge", "overlap+judge")
 #: 판정 → 결말 칸(닫힌 표 · 밖이면 `그 밖`)
 OUTCOME = {"match": "일치", "new": "새", "uncertain": "불확실", "lowres": "불확실"}
+#: 구조 역할 줄의 칸 순서(B119 ① — 닫힌 다섯 + 역할 없음)
+ROLE_ORDER = ROLES + ("역할 없음",)
 #: 판정 → 결말 줄의 칸(개체 행 하나 → 칸 하나 — 보류가 먼저 · `mention` 다른 공정 언급 · `blank` 빈칸 표시 — B113)
 END = {"match": "일치", "new": "새 노드", "uncertain": "불확실", "lowres": "불확실",
        "mention": "다른 공정 언급", "blank": "빈칸 표시"}
@@ -272,11 +275,26 @@ def outline_lines(doc_id, cks, rows):
         dr = sum(1 for h in hs if h.get("dropped"))
         out.append(line("개요(제목" + (f" · 렌즈 {lens}" if lens else "") + ")", len(hs),
                         [("대상", tg, ""), ("주제", len(hs) - tg - dr, ""), ("버림", dr, "")]))
+        if any("struct" in h or h.get("role") for h in hs):   # 문서 구조의 역할(B119 ①) — 같은 제목의 다른 가름
+            rc = Counter(h.get("role") or "역할 없음" for h in hs)
+            out.append(line("  구조(역할)", len(hs), [(k, rc.get(k, 0), "") for k in ROLE_ORDER]))
+        cl = guard_clashes(ol, rows)
+        if cl:
+            out.append(line("  구조 · 다른 공정 가드", len(cl), [("부딪힘", len(cl), " · ".join(cl[:5]))]))
     hr = [r for r in rows if r.get("role") == "heading"]
     if hr:
         cells = Counter(value_cell(r)[0] for r in hr)
         out.append(line("  제목 개체(행)", len(hr), [(k, cells.get(k, 0), "") for k in VALUE_ORDER]))
     return out
+
+
+def guard_clashes(ol, rows):
+    """**구조 판정과 다른 공정 가드가 부딪힌 제목**(B119 ②) — 구조가 설비 · 유닛으로 세웠는데 그 이름이 다른 공정의 골격
+    이름 · 별칭이라 가드가 노드 대신 관련 링크로 보낸 것(대장의 `heading` 행 · 판정 `mention`) — `[경로 → 그 공정]`. 처분은 허브."""
+    from parser.struct_rule import UNIT_ROLES
+    role = {h["path"]: h.get("role") for h in (ol or {}).get("headings") or []}
+    return [f"{r.get('locator')} → {r.get('canonical')}" for r in rows
+            if r.get("role") == "heading" and r.get("verdict") == "mention" and role.get(r.get("locator")) in UNIT_ROLES]
 
 
 def reinforce_line(rows):
@@ -446,7 +464,8 @@ def summary(lines, res, after, before=None):
             "엣지": sum(int(d.get("엣지", 0)) for d in mine.values()),
             "노드 전": (sum(v[0] for v in before.values()) if before is not None else None),
             "노드 후": sum(v[0] for v in (after or {}).values()), "이 문서 노드": sum(int(d.get("노드", 0)) for d in mine.values()),
-            "소속": bn, "유닛 이하": under, "유닛 이하 비율": (round(100.0 * under / bn, 1) if bn else None)}
+            "소속": bn, "유닛 이하": under, "유닛 이하 비율": (round(100.0 * under / bn, 1) if bn else None),
+            "가드 부딪힘": _cells(lines, "구조 · 다른 공정 가드")[0]}
 
 
 def summary_text(doc_id, s):
@@ -461,7 +480,7 @@ def summary_text(doc_id, s):
     ratio = (f"{s['유닛 이하 비율']}%({s['유닛 이하']:,}/{s['소속']:,})" if s["유닛 이하 비율"] is not None
              else "—(소속을 낸 개체 0)")
     return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
-            f"유닛 이하 비율 {ratio}")
+            f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else ""))
 
 
 # ---------------------------------------------------------------- 한 묶음

@@ -327,6 +327,8 @@ def _optional(out):
 _DOC = {}
 #: 지금 추출하는 문서의 조각별 제목 개체(B115 ③ — `{위치: [{name, category}]}` · `extract()`가 개요에서 채운다)
 _HEADS = {}
+#: 위치 → 구조 사슬(B119 ② — 그 조각 위의 제목 줄 위에서 아래로 · 역할 · 대상)
+_CHAIN = {}
 #: 지금 추출하는 문서의 개요(부분 파일 머리의 재사용 조건 — `extract()`가 채운다)
 _OUTLINE = {}
 
@@ -354,6 +356,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               "parent_candidates": parent_candidates(chunk),
               # **넷째 소속 출처**(B115 ③) — 이 청크 위의 제목 개체(개요가 대상으로 정한 제목 · 가까운 것부터)
               "heading_candidates": _HEADS.get(chunk.get("source_locator")) or [],
+              # **구조 사슬**(B119 ②) — 이 청크 위의 제목 줄(역할 · 글자 · 대상) 위에서 아래로 · 가장 구체적인 주인을 고르는 재료
+              "structure_chain": _CHAIN.get(chunk.get("source_locator")) or [],
               # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
               "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
@@ -547,6 +551,9 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     _OUTLINE["ol"] = outline
     _HEADS.clear()
     _HEADS.update({c.get("source_locator"): OL.heading_candidates(outline, c.get("source_locator"))
+                   for c in env.get("chunks", [])})
+    _CHAIN.clear()
+    _CHAIN.update({c.get("source_locator"): OL.structure_chain(outline, c.get("source_locator"))
                    for c in env.get("chunks", [])})
     done = _partial_load(env, lens, cfg)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)

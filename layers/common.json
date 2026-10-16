@@ -37,6 +37,9 @@
       "Property",
       "Unit"
     ],
+    "nest_categories": [
+      "Property"
+    ],
     "sep": "::"
   }
 }

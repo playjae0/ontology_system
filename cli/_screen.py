@@ -175,7 +175,7 @@ YES = ("y", "ㅛ", "yes", "ㅛㄷㄴ")
 NO = ("n", "ㅜ", "no", "ㅜㅐ")
 
 
-def answer(prompt, kind="text", eof=None):
+def answer(prompt, kind="text", eof=None, other=None, hint=None):
     """**사람에게 묻는 한 자리**(B118 ④) — `cli/`의 묻는 자리는 전부 이 함수를 지난다(입력은 `ask` 한 줄).
 
     갈래(`kind`):
@@ -186,6 +186,8 @@ def answer(prompt, kind="text", eof=None):
              올린다 — n이 버림 · 비용인 자리가 있어 아니오로 읽지 않는다)
       `text` 글 그대로(앞뒤 공백 뺌 · 번호 고르기 · 이름) · Ctrl-C는 None
     **EOF는 `eof`를 돌려준다** — 비대화형(Ctrl-D 포함)은 그 자리의 지금 규칙 그대로다(묻는 자리가 기본값을 준다).
+    `other`(`go`만)는 계속 · 멈춤이 아닌 답을 읽는 자리(구조 표의 고침 — B119 ③) — 참인 값을 돌려주면 그것이 답이다 ·
+    거짓이면 `hint`(없으면 기본 안내)를 찍고 다시 묻는다.
     """
     while True:
         try:
@@ -208,7 +210,10 @@ def answer(prompt, kind="text", eof=None):
                 return True
             if low in STOP:
                 return False
-            print("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 — 다시 친다")
+            got = other(a) if (other is not None and a) else None
+            if got:
+                return got
+            print(hint or "   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 — 다시 친다")
             continue
         if low == "" or low in YES:
             return True

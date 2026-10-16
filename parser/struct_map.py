@@ -156,6 +156,15 @@ HEADING_FAMILIES = (
     ("원숫자", "①", re.compile(r"^[①-⑳]\s*\S")),
 )
 FAMILY_LABEL = {name: label for name, label, _rx in HEADING_FAMILIES}
+#: 번호 머리(군마다 표기 자리만) — 줄 글자에서 이름을 떼어 낼 때(사람이 구조 표에서 역할을 고친 줄 · B119 ③)
+NUMBER_PREFIX = re.compile(r"^(?:\(\d{1,3}\)|\d{1,3}\)|\d+(?:\.\d+)*[.)]?(?=\s)|제\s*\d+\s*[장절조편관]|"
+                           r"(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVX]{1,4})\.|[A-Z]\.|[가나다라마바사아자차카타파하]\.|[①-⑳])\s*")
+
+
+def strip_number(text):
+    """줄 글자에서 번호 머리를 뗀 이름 — 번호가 없으면 그대로(앞뒤 공백만)."""
+    t = (text or "").strip()
+    return NUMBER_PREFIX.sub("", t, count=1).strip() or t
 
 # **제목 후보는 짧은 행만**(B87 ① — 러프하게 60자). 번호가 붙은 긴 행은 목록 항목이나
 # 본문이다: 「1) 설비는 …하여야 하며 …」를 제목으로 세우면 그 자리에서 청크가 끊긴다.
@@ -389,7 +398,7 @@ def choose_level(stats):
                   f"사람이 정한다(자동으로 지도 패스로 넘기지 않는다)"), True
 
 
-def split(smap, lines, locator, sep=" > "):
+def split(smap, lines, locator, sep=" > ", heads=False):
     """지도를 적용해 자른다 — **여기에 LLM은 없다.** 같은 지도면 같은 분할이다.
 
     헤딩 행은 청크가 아니라 `section` 경로를 만들고, 그 아래 연속 본문이 청크다.
@@ -401,6 +410,9 @@ def split(smap, lines, locator, sep=" > "):
 
     **구간 밖으로 떨어진 사실은 조각마다 싣는다** — 레벨을 적용하는 자리가 여기
     하나뿐이라, 여기서 안 실으면 경로마다 따로 실어야 하고 하나가 빠지는 날이 온다.
+
+    `heads`면 조각마다 `_heads`(경로를 이룬 제목 줄의 행 — 위에서 아래로)를 싣는다 — 문서 구조(B119 ①)가
+    그 줄의 역할 · 대상을 조각에 단다. 받은 쪽이 떼어 낸다(`struct_rule.frame_chunks`).
     """
     stats = smap.get("레벨_분포") or level_stats(smap, lines)
     pick = smap.get("분할_레벨")
@@ -431,11 +443,14 @@ def split(smap, lines, locator, sep=" > "):
     def flush():
         if not buf:
             return
-        out.append({"source_locator": locator(buf[0], buf[-1]),
-                    "section": sep.join(h for _, h in stack),
-                    "text": "\n".join(text_of[n] for n in buf),
-                    "meta": dict(band_meta),
-                    "_lines": [(n, text_of[n]) for n in buf]})   # 글자 상한이 쓴다 — 나가기 전에 뗀다
+        c = {"source_locator": locator(buf[0], buf[-1]),
+             "section": sep.join(h for _d, h, _n in stack),
+             "text": "\n".join(text_of[n] for n in buf),
+             "meta": dict(band_meta),
+             "_lines": [(n, text_of[n]) for n in buf]}     # 글자 상한이 쓴다 — 나가기 전에 뗀다
+        if heads:
+            c["_heads"] = [n for _d, _h, n in stack]
+        out.append(c)
         buf.clear()
 
     for n, text in lines:
@@ -444,7 +459,7 @@ def split(smap, lines, locator, sep=" > "):
             depth = level_of[n]
             while stack and stack[-1][0] >= depth:
                 stack.pop()
-            stack.append((depth, text.strip()))
+            stack.append((depth, text.strip(), n))
         else:
             buf.append(n)
     flush()

@@ -294,6 +294,7 @@ def _one(doc_id, lay, cfg, graphs, nodes, ends, rows, chunk_of, r, nid, why, cap
     payload = {"entity": {"name": (nodes[nid][1] or {}).get("canonical"), "category": (nodes[nid][1] or {}).get("category")},
                "chunk": extract_ctx.with_context(chunk, extract_ctx.doc_info(_env(doc_id))),
                "headings": OL.heading_candidates(ol, r["locator"]),
+               "structure": OL.structure_chain(ol, r["locator"]),        # 구조 사슬 (B119 ② — 위에서 아래로)
                "candidates": [{"id": k, "name": c["name"], "category": c["category"]} for k, c in cmap.items()],
                "relations": cfg.get("relations") or []}
     LAST["호출"] += 1

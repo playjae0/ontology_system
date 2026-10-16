@@ -31,6 +31,7 @@ from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
 from core.state.bootstrap import coord_layer
 from core import paths
+from core.build import structure as structure_mod
 from core.llm import gateway, points, struct_map_pass
 from parser import pipeline, preflight, reader, validator
 
@@ -38,8 +39,11 @@ PARSED_DIR = paths.parsed()    # 운영 산출 자리 (문서 7 §7.8 — 파일
 REVIEW = paths.review()
 
 
-def injections():
+def injections(layers=None):
     """파서에 내려보낼 **LLM 함수 3종을 한 번에 만든다** (문서 7 §7.6-B-1 · B48).
+
+    **문서 구조**(B119 ① — ⑪ 안의 호출 `structure`)도 여기서 만든다 — `layers`는 그 문서의 층(렌즈)이고 닫힌 카테고리의
+    출처다(없으면 좌표 층). mock이면 힌트를 읽는 함수다(힌트가 없으면 판정 없음 — 고정 규칙 그대로).
 
     **모드는 여기서 한 번 정하고 아래로 내려간다.** 파서에는 「지금 mock인가」라는
     질문이 없으므로(파서 무판독), 「실호출 모드인데 함수가 안 왔다」를 잡을 수 있는
@@ -53,10 +57,12 @@ def injections():
     fns = {"summarize": points.image_summarizer(),
            "pick_coord": points.coord_picker(),
            "map_structure": struct_map_pass.struct_mapper(),
-           # ⑦ 안의 계층 규칙 선언(B87 ②) — 고정 규칙으로 안 선 시트에서만 파서가 부른다
-           "infer_rules": struct_map_pass.rule_inferrer()}
+           # ⑦ 안의 계층 규칙 선언(B87 ②)은 **운영 주입에서 빠졌다** — 문서 구조(아래)가 시트마다 무조건 그 일을 한다(B119 ①)
+           "infer_rules": None,
+           # ⑪ 안의 문서 구조(B119 ①) — 산문 시트마다 무조건(개요와 한 지시문 · 계층 규칙 선언을 대신한다)
+           "structure": structure_mod.structurer(layers)}
     if not gateway.use_mock():
-        missing = [k for k, v in fns.items() if v is None]
+        missing = [k for k, v in fns.items() if v is None and k != "infer_rules"]   # 규칙 선언은 일부러 빠졌다(B119 ①)
         if missing:
             raise gateway.NotConfigured(
                 f"실호출 모드인데 파서 주입 함수가 비어 있다: {missing} — "
@@ -134,7 +140,15 @@ def rule_screen():
 
 
 def print_split_notes(report):
-    """분할 끝 줄 둘(B87) — 규칙 선언의 결과 · 글자 상한. 해당이 없으면 줄도 없다."""
+    """분할 끝 줄(B87 · B119) — 문서 구조 · 규칙 선언의 결과 · 글자 상한. 해당이 없으면 줄도 없다."""
+    st = (report or {}).get("structure")
+    if st:
+        n = structure_mod.counts(st)
+        roles = " · ".join(f"{k} {v}" for k, v in n["역할"].items())
+        _screen.say(f"   구조 — 시트 {n['시트']} · 제목 {n['제목']}" + (f"({roles})" if roles else "")
+                    + f" · LLM 호출 {n['호출']} · 재사용 {n['재사용']}"
+                    + (f" · 버림 {n['버림']}" if n["버림"] else "") + (f" · 실패 {n['실패']}" if n["실패"] else "")
+                    + (f" · 사람 고침 {n['고침']}" if n["고침"] else ""), "head")
     sr = (report or {}).get("struct_rule") or {}
     if sr.get("주입") and sr.get("대상"):
         tail = f" · 선언 버림 {len(sr['버림'])}" if sr.get("버림") else ""
@@ -237,7 +251,7 @@ def coord_screen():
 
 
 def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
-              sheet_roles=None, no_images=False, doc_coord=None):
+              sheet_roles=None, no_images=False, doc_coord=None, layers=None):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
     있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
@@ -255,8 +269,9 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     # 묻는 자리는 하나(`coord_layer()` = `Process`를 선언한 층)이고, 폴더 이름이
     # 무엇이든 그 답을 쓴다.
     # **누적 줄**(B97 ②) — 계층 규칙 · 그림 요약 · 좌표 태깅이 이 안에서 LLM을 부른다
-    with _screen.ticker("파싱(계층 규칙·그림 요약·좌표)"):
-        res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(),
+    with _screen.ticker("파싱(구조·그림 요약·좌표)"):
+        res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(layers),
+                             structure_fixes=structure_mod.fixes_of(doc_id),     # 사람의 구조 고침 (B119 ③)
                              layer=coord_layer(),
                              coord_notice=_notice, coord_cap=coord_cap,
                              progress=_progress, sheet_roles=sheet_roles,
@@ -390,7 +405,7 @@ def cmd_build(args):
         pf_ok, pf_detail = preflight.check(mod, raw)
         res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
                              layer=coord_layer(),
-                             **{**injections(), "infer_rules": None})   # 구축은 파악만 (B87 ②)
+                             **{**injections(), "infer_rules": None, "structure": None})   # 구축은 파악만 (B87 ② · B119)
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "
               f"파싱 {'OK' if res.ok else 'FAIL'} · 조각 {res.report.get('pieces', 0)}")

@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""칸 2.4·3.3 — **문서 개요** — 제목 계층만 보고 제목마다 「대상인가 · 주제인가」 (B115 ① · LLM 지점 ⑪).
+"""칸 2.4·3.3 — **문서 개요** — 제목 트리의 제목마다 역할 · 대상 (B115 ① · B119 ① · LLM 지점 ⑪ 문서 구조).
+
+**B119 ①부터 산문 시트(엑셀 · Word)의 제목은 파서 단계의 문서 구조(`core/build/structure.py` — 시트마다 줄 이름표로
+한 호출)가 이미 정했다** — 조각이 `meta.structure`(경로의 제목 줄마다 역할 · 대상)를 지고 온다. 여기는 그것을 트리에
+옮기고(LLM 0), **구조가 없는 제목만**(슬라이드 · 쪽 제목 · mock 힌트 없는 시트) 아래의 제목 목록 호출로 묻는다(같은
+지시문 · 같은 검사 — 위아래는 고정).
 
 사내(2026-10-15): 청크 본문에 유닛 이름이 없으면 추출이 고를 소속 이름이 맥락 줄의 공정뿐이라 소속이 공정으로
 몰렸다(`공정 70 · 좌표 폴백 23`). 제목(`3. 추출부 › 2) NG unit`)에 적힌 유닛은 맥락 줄에 있지만 「맥락 줄의 말은
@@ -7,7 +12,7 @@
 
   · 입력 = **제목 계층만**(청크의 시트 이름 · `meta.section_path` — 엑셀 · Word · PDF · PPT 같은 함수 `parts`) + 층의
     닫힌 카테고리 · 정의문. 본문 0(다른 청크의 본문을 넣지 않는다 — 사용자 2026-10-15).
-  · 출력 = 제목마다 대상 `{name, category}` 또는 null(주제). **부모는 제목 트리가 정한다**(LLM이 바꾸지 않는다).
+  · 출력 = 제목마다 역할(닫힌 다섯) · 대상 `{name, category}` 또는 null. **부모는 제목 트리가 정한다**(LLM이 바꾸지 않는다).
   · 대조(`_check`) — 이름은 제목 글자 안에 있어야 한다(밖이면 버림 · 결함 로그) · 카테고리는 닫힌 목록 안(밖이면
     버림 · 결함 로그) · 빈칸 표시는 주제다. 버린 제목은 주제와 같이 읽는다(하류가 그 위로 올라간다).
   · 체크포인트 `work/extract/outline/<doc_id>.json`(렌즈 `<doc_id>@<렌즈>.json` — 추출 폴더 안이라 기본 fresh가
@@ -36,19 +41,6 @@ SUBDIR = "outline"
 #: 지시문 이름(`prompts/3.3_outline.md`) · LLM 지점 이름(`gateway.POINTS`)
 PROMPT = POINT = "outline"
 
-SCHEMA = {
-    "type": "object",
-    "properties": {"headings": {"type": "array", "items": {
-        "type": "object",
-        "properties": {"id": {"type": "integer"},
-                       "target": {"type": ["object", "null"],
-                                  "properties": {"name": {"type": "string"},
-                                                 "category": {"type": "string"}},
-                                  "required": ["name", "category"], "additionalProperties": False}},
-        "required": ["id", "target"], "additionalProperties": False}}},
-    "required": ["headings"], "additionalProperties": False,
-}
-
 
 # ---------------------------------------------------------------- 제목 트리 (포맷 전부 한 함수)
 def parts(chunk):
@@ -68,21 +60,48 @@ def parts(chunk):
     return out
 
 
-def tree(env):
-    """봉투 → 제목 트리 — `{"headings": [{id, text, parent, depth, path}], "of": {위치: 가장 깊은 제목 id}}`.
+def parts_info(chunk):
+    """`parts(chunk)`와 같은 길이의 **구조** — 제목마다 파서가 단 역할 · 대상(`{row, text, role, name?, category?}`) 또는 None.
 
-    id는 처음 나온 순서(1부터)라 부모가 자식보다 앞이다. 같은 사슬 = 같은 제목(경로가 열쇠)."""
+    시트 칸은 `meta.structure_frame`(시트 자신 — 0행) · 경로 칸은 `meta.structure`를 글자로 차례대로 맞춘다(접힌 중복에도
+    어긋나지 않게). 구조가 없는 조각(슬라이드 · 쪽 · mock 힌트 없음)은 전부 None."""
+    m = chunk.get("meta") or {}
+    ps = parts(chunk)
+    if "structure" not in m and "structure_frame" not in m:
+        return [None] * len(ps)
+    out, items, k = [], list(m.get("structure") or []), 0
+    for i, p in enumerate(ps):
+        if i == 0 and m.get("sheet") and p == str(m.get("sheet")):
+            out.append(m.get("structure_frame") or {"role": None, "text": p})
+            continue
+        j = next((t for t in range(k, len(items)) if str(items[t].get("text") or "").strip() == p), None)
+        if j is None:
+            out.append({"role": None, "text": p})
+            continue
+        out.append(items[j])
+        k = j + 1
+    return out
+
+
+def tree(env):
+    """봉투 → 제목 트리 — `{"headings": [{id, text, parent, depth, path, struct?}], "of": {위치: 가장 깊은 제목 id}}`.
+
+    id는 처음 나온 순서(1부터)라 부모가 자식보다 앞이다. 같은 사슬 = 같은 제목(경로가 열쇠). `struct`는 파서의 문서
+    구조가 그 제목에 단 것(B119 ①) — 있으면 묻지 않는다."""
     from core.build import extract_ctx
     heads, by_key, of = [], {}, {}
     for c in (env or {}).get("chunks") or []:
-        ps = parts(c)
+        ps, info = parts(c), parts_info(c)
         pid = None
         for i in range(len(ps)):
             key = tuple(ps[:i + 1])
             if key not in by_key:
                 by_key[key] = len(heads) + 1
-                heads.append({"id": by_key[key], "text": ps[i], "parent": pid, "depth": i + 1,
-                              "path": extract_ctx.PATH_SEP.join(key)})
+                h = {"id": by_key[key], "text": ps[i], "parent": pid, "depth": i + 1,
+                     "path": extract_ctx.PATH_SEP.join(key)}
+                if info[i] is not None:
+                    h["struct"] = info[i]
+                heads.append(h)
             pid = by_key[key]
         if pid is not None and c.get("source_locator"):
             of[c["source_locator"]] = pid
@@ -101,13 +120,24 @@ def checkpoint_path(doc_id, lens=None):
     return EX.EXTRACT_DIR / SUBDIR / (f"{doc_id}@{lens}.json" if lens else f"{doc_id}.json")
 
 
+def structure_hash(heads):
+    """파서의 문서 구조가 단 몫(경로 · 역할 · 대상 · 사람 고침)의 해시 — 구조가 없으면 None(옛 체크포인트와 같다)."""
+    got = [(h["path"], (h["struct"] or {}).get("role"), (h["struct"] or {}).get("name"),
+            (h["struct"] or {}).get("category"), (h["struct"] or {}).get("by")) for h in heads if "struct" in h]
+    if not got:
+        return None
+    return hashlib.sha256(json.dumps(got, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
 def _now_key(heads, cfg):
     from core.build import extract as EX
     return {"heading_hash": heading_hash(heads), "prompt_version": EX.prompt_version(PROMPT),
-            "config_version": cfg.get("config_version") or cfg.get("skeleton_version")}
+            "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),
+            "structure": structure_hash(heads)}
 
 
-_LABEL = {"heading_hash": "제목 계층", "prompt_version": "지시문", "config_version": "층 config"}
+_LABEL = {"heading_hash": "제목 계층", "prompt_version": "지시문", "config_version": "층 config",
+          "structure": "문서 구조"}
 
 
 def _reuse(doc_id, lens, now, p=None):
@@ -163,20 +193,24 @@ def _write(doc_id, lens, cfg, now, heads, of, source):
 
 # ---------------------------------------------------------------- 판정 · 대조
 def _ask(heads, cfg):
-    """지점 ⑪ 실호출 — `{id: target 또는 None}`."""
+    """지점 ⑪ 실호출(제목 목록 — 구조가 없는 제목만) — `{id: {row, parent, role, name, category}}`.
+
+    지시문 · 스키마는 문서 구조와 한 벌(`structure.SCHEMA`) — 줄 = 제목 · 초안 = 깊이 · `fixed_parent` = 트리의 부모(고정)."""
+    from core.build import structure as ST
     from core.build.extract import categories_with_also
     out = gateway.chat(
         [{"role": "system", "content": gateway.prompt(PROMPT)},
          {"role": "user", "content": json.dumps(
-             {"categories": categories_with_also(cfg),
-              "headings": [{k: h[k] for k in ("id", "text", "parent", "depth")} for h in heads]},
-             ensure_ascii=False)}],
-        json_schema=SCHEMA, point="outline")
-    return {x.get("id"): x.get("target") for x in out.get("headings") or [] if isinstance(x, dict)}
+             {"categories": categories_with_also(cfg), "frame": None, "open": [],
+              "lines": [{"row": h["id"], "draft": h["depth"], "marks": [], "text": h["text"][:ST.LABEL_CHARS],
+                         "fixed_parent": h["parent"]} for h in heads]}, ensure_ascii=False)}],
+        json_schema=ST.SCHEMA, point="outline")
+    return {x.get("row"): x for x in out.get("headings") or [] if isinstance(x, dict)}
 
 
 def _mock(doc_id, heads):
-    """mock — 힌트 파일만(경로 또는 제목 글자가 열쇠) · 없으면 None(판정 없음)."""
+    """mock — 힌트 파일만(경로 또는 제목 글자가 열쇠 · 값 = 대상 `{name, category}` 또는 `{role, name?, category?}`) ·
+    없으면 None(판정 없음)."""
     from core.state import fixtures as _fx
     p = _fx.EXTRACT_HINTS / f"{doc_id}@outline.json"
     if not p.exists():
@@ -214,17 +248,43 @@ def _check(doc_id, h, target, cats):
     return None, why
 
 
+def _role_target(doc_id, h, v):
+    """답 하나 → `(역할, 대상)` — 역할이 닫힌 다섯 밖이면 역할 없음(결함 로그) · 대상이 없는 역할이면 대상 0 · 옛 꼴
+    (`{name, category}` — 역할 없음)은 대상 그대로."""
+    from parser.struct_rule import ROLES, TARGET_ROLES
+    if not isinstance(v, dict):
+        return None, None
+    if "role" not in v:
+        return None, v
+    role = v.get("role")
+    if role is not None and role not in ROLES:
+        store.append_defect(f"{doc_id}: 개요 — 역할 밖 '{role}' (제목 '{h['path']}') → 역할 없음")
+        role = None
+    tgt = ({"name": v.get("name"), "category": v.get("category")}
+           if (role is None or role in TARGET_ROLES) and v.get("name") else None)
+    return role, tgt
+
+
 def judge(doc_id, heads, cfg, answers):
-    """답(`{id: target}`)을 제목마다 대조해 싣는다 — 목록 밖 id는 버린다(결함 로그)."""
+    """답(`{id: 답}`)을 제목마다 대조해 싣는다 — 목록 밖 id는 버린다(결함 로그)."""
     cats = set((cfg.get("categories") or {}).keys())
     ids = {h["id"] for h in heads}
     for k in sorted(set(answers) - ids, key=str):
         store.append_defect(f"{doc_id}: 개요 — 목록 밖 제목 id {k!r} → 버렸다")
     out = []
     for h in heads:
-        t, why = _check(doc_id, h, answers.get(h["id"]), cats)
-        out.append({**h, "target": t, **({"dropped": why} if why else {})})
+        role, tgt = _role_target(doc_id, h, answers.get(h["id"]))
+        t, why = _check(doc_id, h, tgt, cats)
+        out.append({**h, "role": role, "target": t, **({"dropped": why} if why else {})})
     return out
+
+
+def _from_struct(h, cats):
+    """파서의 문서 구조가 단 제목 — 역할 그대로 · 대상은 이 층(렌즈)의 카테고리일 때만(구조는 문서마다 한 번이다)."""
+    st = h.get("struct") or {}
+    tgt = ({"name": st["name"], "category": st["category"]}
+           if st.get("name") and st.get("category") in cats else None)
+    return {**h, "role": st.get("role"), "target": tgt}
 
 
 # ---------------------------------------------------------------- 한 문서 한 번
@@ -250,15 +310,20 @@ def run(env, cfg, *, lens=None, notice=None):
                       **_counts(ck["headings"])})
         return ck
     live = not gateway.use_mock()
-    _say(notice, {"단계": "개요예고", "렌즈": lens, "제목": len(heads), "호출": 1 if live else 0,
-                  "다시": why if why != "체크포인트 없음" else None})
+    rest = [h for h in heads if "struct" not in h]          # 문서 구조가 없는 제목만 묻는다 (B119 ①)
+    _say(notice, {"단계": "개요예고", "렌즈": lens, "제목": len(heads), "구조": len(heads) - len(rest),
+                  "호출": 1 if (live and rest) else 0, "다시": why if why != "체크포인트 없음" else None})
     u0, t0 = gateway.usage_total(), time.monotonic()
-    answers = _ask(heads, cfg) if live else _mock(doc_id, heads)
-    if answers is None:                         # mock · 힌트 없음 — 판정이 없었다(전부 주제 · 체크포인트 0)
-        out = {"headings": [{**h, "target": None} for h in heads], "of": t["of"], "source": "mock"}
+    answers = (_ask(rest, cfg) if live else _mock(doc_id, rest)) if rest else {}
+    if answers is None and len(rest) == len(heads):   # mock · 힌트 없음 · 구조 없음 — 판정이 없었다(체크포인트 0)
+        out = {"headings": [{**h, "role": None, "target": None} for h in heads], "of": t["of"], "source": "mock"}
     else:
-        out = _write(doc_id, lens, cfg, now, judge(doc_id, heads, cfg, answers), t["of"],
-                     "live" if live else "hint")
+        cats = set((cfg.get("categories") or {}).keys())
+        judged = {h["id"]: h for h in judge(doc_id, rest, cfg, answers or {})}
+        merged = [judged.get(h["id"]) or _from_struct(h, cats) for h in heads]
+        src = ("structure" if not rest else "live" if live else "hint") if len(rest) in (0, len(heads)) \
+            else ("structure+live" if live else "structure+hint")
+        out = _write(doc_id, lens, cfg, now, merged, t["of"], src)
     _LOG.info("개요 %s%s · 대상 %s", doc_id, f"@{lens}" if lens else "",
               [(h["path"], h["target"]) for h in out["headings"] if h.get("target")])
     _say(notice, {"단계": "개요끝", "렌즈": lens, "since": u0, "초": round(time.monotonic() - t0, 1),
@@ -282,8 +347,13 @@ def _carry(env, lens, now, notice):
 
 def _counts(heads):
     tg = [h for h in heads if h.get("target")]
+    roles = {}
+    for h in heads:
+        if h.get("role"):
+            roles[h["role"]] = roles.get(h["role"], 0) + 1
     return {"제목": len(heads), "대상": len(tg), "버림": sum(1 for h in heads if h.get("dropped")),
             "주제": sum(1 for h in heads if not h.get("target") and not h.get("dropped")),
+            "역할": roles, "구조": sum(1 for h in heads if "struct" in h),
             "대상목록": [(h["path"], h["target"]["name"], h["target"]["category"]) for h in tg]}
 
 
@@ -317,10 +387,21 @@ def heading_candidates(ol, locator):
     return [dict(h["target"]) for h in ancestors(ol, locator)]
 
 
+def structure_chain(ol, locator):
+    """추출 · 연결 보강 입력의 **구조 사슬**(B119 ②) — 그 조각 위의 제목 줄 위에서 아래로 `[{role, text, name?, category?}]`."""
+    out = []
+    for h in reversed(chain(ol, locator)):
+        x = {"role": h.get("role"), "text": h["text"]}
+        if h.get("target"):
+            x.update(name=h["target"]["name"], category=h["target"]["category"])
+        out.append(x)
+    return out
+
+
 def targets_key(ol):
-    """추출 재사용 조건의 개요 몫 — 대상 제목(경로 · 이름 · 카테고리)의 해시 · 대상이 없으면 None(옛 체크포인트와 같다)."""
-    tg = [(h["path"], h["target"]["name"], h["target"]["category"])
-          for h in (ol or {}).get("headings") or [] if h.get("target")]
+    """추출 재사용 조건의 개요 몫 — 역할 · 대상이 선 제목(경로 · 역할 · 이름 · 카테고리)의 해시 · 없으면 None(옛 체크포인트와 같다)."""
+    tg = [(h["path"], h.get("role"), (h.get("target") or {}).get("name"), (h.get("target") or {}).get("category"))
+          for h in (ol or {}).get("headings") or [] if h.get("target") or h.get("role")]
     if not tg:
         return None
     return hashlib.sha256(json.dumps(tg, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]

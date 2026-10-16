@@ -58,13 +58,24 @@ PROSE = {
                                   "2.2 스태킹 연계", "스태킹 공정과 맞물린다.", "3. 이송부", "벨트 장력은 2kN이다."],
                      "부록": ["1. 비고", "N/A"]}),
     "FWC2": (None, {"이송 사양": ["1. 이송부", "벨트 장력은 3kN이다.", "2. 점검", "센서 점검 주기는 1주다."]}),
+    # B119 ⑥ ⓑ — 번호 없는 유닛 줄 + 유닛마다 되풀이되는 번호 소제목(TW 꼴 · 창작) — 고정 규칙은 소제목만 세운다
+    "FWC3": ("노칭", {"TW 사양": ["언와인더 unit", "1) 기본사양", "속도는 100ppm이다.", "하중은 5kN이다.",
+                                 "2) 지정사양", "장력은 30N이다.", "리와인더 unit", "1) 기본사양", "속도는 80ppm이다.",
+                                 "2) 지정사양", "장력은 20N이다."]}),
 }
+#: 문서 구조 mock 힌트(B119 ① — 지금 사본만 읽는다 · 기준 사본에는 구조 단계가 없다) — `{doc_id: {시트: [{text, depth, role, …}]}}`
+PROSE_STRUCTURE = {"FWC3": {"TW 사양": [
+    {"text": "언와인더 unit", "depth": 1, "role": "유닛", "name": "언와인더 unit", "category": "Unit"},
+    {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"},
+    {"text": "리와인더 unit", "depth": 1, "role": "유닛", "name": "리와인더 unit", "category": "Unit"},
+    {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"}]}}
 #: 개요 mock 힌트 — 제목 글자 → 대상
 PROSE_OUTLINE = {"2. 추출부": {"name": "추출부", "category": "Unit"}, "2.1 NG unit": {"name": "NG unit", "category": "Unit"},
                  "3. 이송부": {"name": "이송부", "category": "Unit"}, "1. 이송부": {"name": "이송부", "category": "Unit"}}
 #: 추출 mock 힌트 — 조각 글에 든 말 → 개체(소속 없음 · 폴백 사슬 · 보강의 재료)
 PROSE_WORDS = (("모터 회전수", "Property"), ("실린더 행정", "Property"), ("벨트 장력", "Property"),
-               ("스태킹", "Process"), ("센서", "Unit"), ("N/A", "Property"))
+               ("스태킹", "Process"), ("센서", "Unit"), ("N/A", "Property"), ("속도", "Property"),
+               ("하중", "Property"), ("장력", "Property"))
 PROSE_DT = "fw_prose"
 SAMPLES = 3                          # 다른 것마다 보이는 견본 수
 CUT = 300                            # 견본 한 줄 길이
@@ -141,6 +152,16 @@ def _select(payload):
     return {"id": cands[0]["id"] if cands else None, "rel": None, "evidence": first}
 
 
+def _structure_kw():
+    """문서 구조 주입(B119 ① — 그 사본의 파서가 받을 때만 · 기준 사본에는 없다)."""
+    import inspect
+    from parser import pipeline
+    if "structure" not in inspect.signature(pipeline.parse).parameters:
+        return {}
+    from core.build import structure as ST
+    return {"structure": ST.structurer(["process"])}
+
+
 def _prose(quiet):
     """바닥 C — 클린 → bootstrap → 산문 종류 등록 → 표본 엑셀 · 힌트를 만들고 넣는다(마무리 포함)."""
     import run as RUN
@@ -169,13 +190,21 @@ def _prose(quiet):
         path = P.ensure(P.raw(f"{did}.xlsx"))
         wb.save(path)
         roles = {n: "prose" for n in sheets}
-        env = pipeline.parse(BX, did, str(path), sheet_roles=roles, closed_list=[]).envelope
+        fixtures.EXTRACT_HINTS.mkdir(parents=True, exist_ok=True)
+        if did in PROSE_STRUCTURE:
+            (fixtures.EXTRACT_HINTS / f"{did}@structure.json").write_text(
+                json.dumps(PROSE_STRUCTURE[did], ensure_ascii=False), encoding="utf-8")
+        env = pipeline.parse(BX, did, str(path), sheet_roles=roles, closed_list=[], **_structure_kw()).envelope
         hints = {}
         for c in env.get("chunks") or []:
-            ents = [{"surface": w, "category": cat} for w, cat in PROSE_WORDS if w in (c.get("text") or "")]
+            # 소속 = 그 조각의 구조 사슬에서 대상이 선 가장 깊은 줄(지시문 「가장 구체적인 주인」의 창작 대역 · 구조가 없으면 없음)
+            own = next((x for x in reversed((c.get("meta") or {}).get("structure") or []) if x.get("name")), None)
+            bel = {"name": own["name"], "category": own["category"], "from": "제목"} if own else None
+            words = [(w, cat) for w, cat in PROSE_WORDS if w in (c.get("text") or "")]
+            words = [(w, cat) for w, cat in words if not any(w != v and w in v for v, _c in words)]   # 긴 말이 이긴다
+            ents = [{"surface": w, "category": cat, **({"belongs_to": bel} if bel else {})} for w, cat in words]
             if ents:
                 hints[c["source_locator"]] = {"entities": ents, "relations": [], "attach": []}
-        fixtures.EXTRACT_HINTS.mkdir(parents=True, exist_ok=True)
         (fixtures.EXTRACT_HINTS / f"{did}.json").write_text(json.dumps(hints, ensure_ascii=False), encoding="utf-8")
         (fixtures.EXTRACT_HINTS / f"{did}@outline.json").write_text(json.dumps(PROSE_OUTLINE, ensure_ascii=False),
                                                                    encoding="utf-8")

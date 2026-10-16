@@ -417,9 +417,12 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         from parser import struct_map as _SM
         for _ln in _RH.take_parse(sel.get("doc_type"), sel["doc_id"], _SM.source_hash(str(doc))):
             print("   " + _ln)
-        res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
-                             coord_cap=coord_cap, sheet_roles=_roles,
-                             no_images=no_images, doc_coord=_dc)
+        _lz = registry.lenses_of(sel.get("doc_type")) or None     # 문서 구조의 닫힌 카테고리 출처 (B119 ①)
+
+        def _parse_now():
+            return run_parse(str(sel["adapter"]), sel["doc_id"], str(doc), coord_cap=coord_cap,
+                             sheet_roles=_roles, no_images=no_images, doc_coord=_dc, layers=_lz)
+        res, out = _parse_now()
         if not res.ok:
             rows = SCR.fail_rows(res.failures)
             # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
@@ -437,6 +440,11 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         if _roles:
             from cli import sheet_screen as _SS
             print(_SS.sheet_pieces_line(res.envelope, _roles))       # 파싱 끝 — 시트별 조각 (B112 ②)
+        from cli import structure_screen as _STS             # 구조 표 · 약한 구조 · 사람의 고침 (B119 ③)
+        res, _go = _STS.gate(res, sel["doc_id"], lambda: _parse_now()[0], ask=step, layers=_lz)
+        if not _go:
+            row.update(status=SKIP, reason="사람이 멈췄다 — 구조까지(그래프 쓰기 0)")
+            return row
         if _step_stops(res, sel, row, ask=step):
             return row
         _u0 = gateway.usage_total()["calls"]
@@ -456,7 +464,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                                         prose=res.envelope.get("payload_kind") == "prose"))
         finally:
             _mt.PROGRESS = None
-            _ledger.ON_ROW = _ledger.ON_EDGE = None
+            getattr(_ledger.ON_ROW, "flush", lambda: None)()      # 남은 산문 값 행 (B119 ⑤)
+            _ledger.ON_ROW = _ledger.ON_EDGE = _ledger.ON_CHUNK = None
             _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
         if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
             row.update(status=SKIP, reason=r.reason)

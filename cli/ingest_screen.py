@@ -216,9 +216,21 @@ def value_line(row):
 
 
 def row_printer(env=None):
-    """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부)."""
+    """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부).
+
+    산문(봉투에 청크가 있다)이면 값 행을 **조각의 부착이 끝날 때**(`ledger.ON_CHUNK`) 붙은 자리와 함께 낸다(B119 ⑤ —
+    한 줄에 구조 역할 · 소속(출처) · 붙은 자리) · 표는 지금처럼 행이 서는 대로(붙은 자리는 행 아래 `└` 줄)."""
     for k in TALLY:
         TALLY[k] = 0
+    prose = bool((env or {}).get("chunks"))
+    pending = {}
+
+    def show(row):
+        lab = labels.get(row.get("locator"))          # 자르지 않은 줄 · 전체 경로는 명령 로그에(B118 ③)
+        _LOG.info("값 %s%s", value_line(row).strip(), f" · 자리 {lab}" if lab else "")
+        table.row(*value_cells(row, places, roles))
+        for a in (row.get("attached") or []) if prose else ():   # 붙은 자리 전부 — 칸은 잘려도 이 줄은 자르지 않는다
+            print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
 
     def on_edge(row, info):
         # 붙은 자리 한 줄(B102 ⑦) — 그 값이 찍힌 줄 아래 · 로그에는 자르지 않은 줄
@@ -226,10 +238,15 @@ def row_printer(env=None):
             ln = (f"     └ {row.get('surface') or row.get('canonical')} · {info['rel']} {info['dir']} "
                   f"{info['other']} ({info['path']})")
             _LOG.info("붙은 자리 %s", ln.strip())
-            if _screen.VERBOSE or _loud(row):
+            if not prose and (_screen.VERBOSE or _loud(row)):
                 print(ln)
     from core.build import ledger as _lg
     _lg.ON_EDGE = on_edge
+
+    def on_chunk(loc=None):
+        for k in ([loc] if loc is not None else list(pending)):
+            for row in pending.pop(k, []):
+                show(row)
 
     def on_row(row):
         TALLY["값"] += 1
@@ -244,17 +261,36 @@ def row_printer(env=None):
         if row.get("queue_kind"):
             TALLY["큐"] += 1
         if _screen.VERBOSE or _loud(row):
-            lab = labels.get(row.get("locator"))          # 자르지 않은 줄 · 전체 경로는 명령 로그에(B118 ③)
-            _LOG.info("값 %s%s", value_line(row).strip(), f" · 자리 {lab}" if lab else "")
-            table.row(*value_cells(row, places))
+            if prose:
+                pending.setdefault(row.get("locator"), []).append(row)
+            else:
+                show(row)
     # 위치 두 칸의 재료(B118 ③) — 봉투의 조각마다 `(시트, 경로 끝)` · 대장 행의 위치로 찾는다(새 판정 0)
     from core.build import extract_ctx as _xc
     pieces = [c for c in ((env or {}).get("chunks") or []) + ((env or {}).get("records") or [])
               if c.get("source_locator")]
     places = {c["source_locator"]: _xc.place(c) for c in pieces}
     labels = {c["source_locator"]: _xc.chunk_label(c) for c in pieces}
+    roles = struct_roles(env) if prose else {}
     table = value_table(list(places.values()))
+    _lg.ON_CHUNK = on_chunk if prose else None
+    on_row.flush = on_chunk
     return on_row
+
+
+def struct_roles(env):
+    """구조 역할 칸의 재료(B119 ⑤) — 위치(조각 · 제목 경로) → 가장 가까운 제목 줄의 역할(봉투의 문서 구조 · 새 판정 0)."""
+    from core.build import outline as OL
+    out = {}
+    for h in OL.tree(env)["headings"]:
+        if (h.get("struct") or {}).get("role"):
+            out[h["path"]] = h["struct"]["role"]
+    for c in env.get("chunks") or []:
+        items = (c.get("meta") or {}).get("structure") or []
+        role = next((x.get("role") for x in reversed(items) if x.get("role")), None)
+        if role and c.get("source_locator"):
+            out[c["source_locator"]] = role
+    return out
 
 
 #: 위치 두 칸의 폭 상한(B118 ③ — 표가 시작될 때 봉투 · 목차의 가장 긴 것에 맞춘다 · 그보다 길면 이 폭에서 `…`)
@@ -268,13 +304,20 @@ def place_widths(places):
 
 
 def value_table(places=None):
-    """판정 값 표(B98 ⑥) — 기호 · 시트 · 청크 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 노드/큐."""
+    """판정 값 표(B98 ⑥) — 기호 · 시트 · 청크 · 구조 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 소속(출처) · 붙은 자리 · 노드/큐.
+
+    구조 · 소속(출처) · 붙은 자리(B119 ⑤)는 산문 몫(표 문서는 빈 칸) — 어느 단계에서 틀렸는지(구조 → 소속 → 붙음) 한 줄에서."""
     # 고정 칸은 좁게(경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨) · 위치 두 칸은 이 문서 폭
     ws, wc = place_widths(places)
-    return _screen.Table([("", 1, False), ("시트", ws, False), ("청크", wc, False), ("표기", 40, False),
-                          ("카테고리/열", 10, False),
+    return _screen.Table([("", 1, False), ("시트", ws, False), ("청크", wc, False), ("구조", 9, False),
+                          ("표기", 40, False), ("카테고리/열", 10, False),
                           ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
-                          ("임베딩", 5, True), ("노드/큐", 16, False)], flex=3, keep=(1, 2))
+                          ("소속(출처)", 18, False), ("붙은 자리", 22, False), ("노드/큐", 16, False)],
+                         flex=4, keep=(1, 2))
+
+
+#: 소속 출처 → 화면 말(B119 ⑤ — 사슬 · 본문 · 부착 후보 · 공정 · 대장의 `from` 값 그대로를 넷으로)
+FROM_SHOW = {"제목": "사슬", "경로": "사슬", "시트": "사슬", "본문": "본문", "후보": "부착 후보", "공정": "공정"}
 
 
 def where_cells(locator, places=None):
@@ -283,11 +326,15 @@ def where_cells(locator, places=None):
     loc = str(locator or "")
     if places and loc in places:
         return places[loc]
+    from core.build.extract_ctx import PATH_SEP
+    if PATH_SEP in loc:                            # 제목 개체 행의 위치 = 제목 경로(시트 › … › 제목 — B115 ②)
+        parts = loc.split(PATH_SEP)
+        return parts[0], parts[-1]
     sheet, _, rest = loc.rpartition("!")
     return (sheet, rest) if sheet else ("", loc)
 
 
-def value_cells(row, places=None):
+def value_cells(row, places=None, roles=None):
     """대장 행 하나 → 표의 칸(값 · 색 층). **새 정보 0** — 행의 값을 그대로 옮긴다(B81 ①)."""
     v = row.get("verdict") or "pending"
     calls = (row.get("llm") or {}).get("calls", 0)
@@ -304,15 +351,22 @@ def value_cells(row, places=None):
     near = row.get("nearest") or {}
     if near.get("canonical"):                      # 불확실의 가장 가까운 후보 (B99 ⑨)
         where += f" · 가까움({near.get('by')}) {near['canonical']}"
-    emb = f"{row['emb_top']:.2f}" if row.get("emb_top") is not None else ""
+    if not conf and row.get("emb_top") is not None:          # 임베딩 최고 유사도(B99 ⑨ — LLM 확신이 없을 때 그 칸에)
+        conf = f"e{row['emb_top']:.2f}"
     k = v if v in _screen.KINDS else None
     if v in ("mention", "blank"):                  # 노드 0 — 표기 그대로 · 관련 링크 대상(B113 ①②)
         name, how = row.get("surface") or "—", ("다른 공정" if v == "mention" else "빈칸 표시")
         where = f"관련 링크 {row.get('canonical')}" if v == "mention" else "개체 0"
     # 위치 = 대장 행의 locator(산문이면 지금 청크 · 표면 행 — B99 ⑦)
     sheet, end = where_cells(row.get("locator"), places)
-    return ([MARKS.get(v, "·"), sheet, end, name, row.get("field") or "", v, how,
-             conf, emb, where], [k, "aux", "aux", k, "aux", k, "aux", "aux", "aux", "aux"])
+    bel = (f"{row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})"
+           if row.get("belongs_to") else "")
+    att = row.get("attached") or []
+    stuck = (f"{att[0]['dir']} {att[0]['other']}({att[0]['path']})" + (f" +{len(att) - 1}" if len(att) > 1 else "")
+             if att else "")
+    return ([MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
+             row.get("field") or "", v, how, conf, bel, stuck, where],
+            [k, "aux", "aux", "aux", k, "aux", k, "aux", "aux", None, None, "aux"])
 
 
 def build_screen(step=False, stage=None, prose=False):

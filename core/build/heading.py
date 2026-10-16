@@ -60,13 +60,12 @@ def _kw(b, src, prov):
 def land(b, cfg, graph, env, ol, chunk_id_of):
     """제목 개체를 노드로 — `{제목 id: (node_id, 그래프, 깊이)}`. `chunk_id_of`는 위치 → 청크 id(증거)."""
     from core.build import loop
-    from core.build.naming import nest_categories
+    from core.build.naming import name_parent
     heads = [h for h in (ol or {}).get("headings") or [] if h.get("target")]
     if not heads:
         return {}
     first = _first_chunks(env, ol)
     by = {h["id"]: h for h in ol["headings"]}
-    nests = nest_categories(b.cfg)
     landed = {}
     for h in heads:
         src = first.get(h["id"]) or {}
@@ -80,8 +79,8 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
             un = ug.get(uid) or {}
             if _is_coord(un):                       # 위 제목 개체가 골격 — 그것이 좌표다(소속 골격과 같은 결)
                 ref, ref_g, parent, pol = uid, ug, un["canonical"], b.anchor_polarity(uid, ug)
-            elif cat in nests:
-                parent = un.get("canonical")        # 이름에 소속 — 부모 제목 개체 아래 (B102 ⑤)
+            else:                                   # 이름에 소속 — 부모 제목 개체 아래 (B102 ⑤ · 한 함수 B119 ④)
+                parent = name_parent(cat, un.get("canonical"), parent, b.cfg)
         nid, eb = b.resolve_at_home(name, cat, prov, coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
                                     parent_canonical=parent, anchor_polarity=pol,
                                     coord_surface=src.get("process_ref"), at=(h["path"], cat))

@@ -82,6 +82,13 @@ def collect(graphs=None):
         cl = sum(1 for x in q if x.get("kind") == k and x.get("resolution"))
         raw["큐"][k] = {"열림": op, "닫힘": cl}
         out.append((f"큐 {k}", f"열림 {op:,} · 닫힘 {cl:,}"))
+    # 약한 구조(B119 ③ — 인입 기록의 `structure.약한` · 비대화형이면 묻지 않고 넘어간 것이 여기 남는다)
+    weak = {d: (e.get("structure") or {}).get("약한") or {} for d, e in store.read(store.DOC_REGISTRY, {}).items()}
+    weak = {d: w for d, w in weak.items() if w}
+    raw["약한 구조"] = {d: sorted(w) for d, w in weak.items()}
+    out.append(("약한 구조", f"문서 {len(weak):,} · 시트 {sum(len(w) for w in weak.values()):,}"
+                + (" — " + " · ".join(f"{d}({', '.join(sorted(w))})" for d, w in sorted(weak.items()))[:300]
+                   if weak else "")))
     raw["보류"] = dict(holds)
     out.append(("보류", f"보류 {sum(holds.values()):,}(행)" + (" — " + " · ".join(
         f"{k} {v:,}" for k, v in holds.most_common()) if holds else "")))

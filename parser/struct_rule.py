@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 
@@ -179,38 +181,217 @@ def _ask(fn, name, sample, by_rule):
 
 
 def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
-                 sample_fn=None, by_rule=None, flat_reason="계층 신호 0건 — 통째로 실었다"):
-    """프레임(시트·문서 본문) 하나의 글 조각 — 고정 규칙 → (안 서면) 규칙 선언 → 통째 또는 분할.
+                 sample_fn=None, by_rule=None, structure_fn=None, marks_fn=None, sheet=True,
+                 flat_reason="계층 신호 0건 — 통째로 실었다"):
+    """프레임(시트·문서 본문) 하나의 글 조각 — **문서 구조**(B119 ① — 주입되면 무조건) → 고정 규칙 → (안 서면) 규칙
+    선언 → 통째 또는 분할.
 
     **포맷이 달라도 한 벌이다**(B88 ② — 분할 규칙 두 벌 금지): 어댑터는 줄 목록·판정
-    rows·선언 적용 함수만 댄다. 자르는 것은 `struct_map.split`, 레벨은 `choose_level`.
-    `base_meta`는 포맷의 표시(엑셀의 `content_column` 등)다.
+    rows·선언 적용 함수 · 줄 표시(`marks_fn`)만 댄다. 자르는 것은 `struct_map.split`, 레벨은 `choose_level` —
+    구조가 섰으면 **설비 · 유닛 · 사양 묶음 줄 아래에서는 반드시 자른다**(같은 유닛 아래 청크가 전부 경로에 그 유닛을 든다).
+    `base_meta`는 포맷의 표시(엑셀의 `content_column` 등)다. `sheet`면 이름표 0행이 시트 이름이다(Word는 없다).
     """
-    path, decl, why = "heading", None, None
-    if rule_fn is not None and not fixed_ok(rows):
+    path, decl, why, info = "heading", None, None, {}
+    if structure_fn is not None:
+        st = structure_fn(name, labels(name, lines, rows, marks_fn() if marks_fn else {}, sheet))
+        if st is not None:
+            rows, info = structure_rows(lines, st)
+            path = PATH_STRUCT
+            if st.get("failed"):
+                why = f"구조 호출 실패 — 초안 {st['failed'][:120]}"
+    if not info and rule_fn is not None and not fixed_ok(rows):
         l2, r2, decl, why = _ask(rule_fn, name, sample_fn(), by_rule)
         if decl:
             lines, rows, path = l2, r2, "rule"
+    frame_info = _chain_item(info[FRAME_ROW], name) if info.get(FRAME_ROW) else None
     if not any(r["heading"] for r in rows):
         # **헤딩 0건 — 통째로 낸다.** 빈 산출도, 지어낸 분할도 만들지 않는다.
+        meta = {"split_path": "flat", "frame": name, "section_path": name,
+                **base_meta, "hierarchy_unresolved": True,
+                "unresolved_reason": flat_reason + (f" · {why}" if why else "")}
+        if info:
+            meta["structure"] = []
+        if frame_info:
+            meta["structure_frame"] = frame_info
         return [{
             "source_locator": locator(lines[0][0], lines[-1][0]),
             "section": name,
             "text": "\n".join(t for _r, t in lines),
-            "meta": {"split_path": "flat", "frame": name, "section_path": name,
-                     **base_meta, "hierarchy_unresolved": True,
-                     "unresolved_reason": flat_reason + (f" · {why}" if why else "")},
+            "meta": meta,
         }]
     smap = {"rows": rows}
     stats = struct_map.level_stats(smap, lines)
     pick, reason, oor = struct_map.choose_level(stats)
+    if info:
+        pick, reason, oor = _cut_level(info, stats, pick, reason, oor)
     smap.update({"레벨_분포": stats, "분할_레벨": pick,
                  "분할_레벨_사유": reason, "분할_레벨_구간밖": oor})
+    text_of = dict(lines)
     out = []
-    for c in struct_map.split(smap, lines, locator, sep):
+    for c in struct_map.split(smap, lines, locator, sep, heads=bool(info)):
+        hs = c.pop("_heads", None)
         meta = {**(c.get("meta") or {}), "split_path": path, "frame": name, **base_meta,
                 "split_level": pick, "section_path": c.get("section") or name}
         if decl:
             meta["rule_patterns"] = patterns_of(decl)
+        if info:
+            meta["structure"] = [_chain_item(info.get(r) or {}, text_of[r].strip(), r) for r in hs or []]
+        if frame_info:
+            meta["structure_frame"] = frame_info
         out.append({**c, "section": c.get("section") or name, "meta": meta})
     return out
+
+
+# ---------------------------------------------------------------- 문서 구조 (B119 ① — 시트마다 LLM이 무조건)
+#: 구조 역할 — **닫힌 다섯**(LLM 계약의 열거 · 줄의 쓰임을 말하는 시스템 어휘 — 층 어휘가 아니다 · D-201)
+ROLES = ("설비", "유닛", "사양 묶음", "항목", "주제")
+#: 대상(이름 · 카테고리)을 갖는 역할 — 그 밖의 역할은 대상이 없다
+TARGET_ROLES = ("설비", "유닛", "항목")
+#: 청크를 **반드시 그 아래에서** 자르는 역할 — 같은 유닛 아래 청크가 전부 경로에 그 유닛을 든다
+CUT_ROLES = ("설비", "유닛", "사양 묶음")
+#: 주인 줄(설비 · 유닛) — 약한 구조 신호 「설비 · 유닛 0」이 센다
+UNIT_ROLES = ("설비", "유닛")
+SIG_STRUCT = "구조"
+PATH_STRUCT = "structure"
+#: 이름표의 0행 — 프레임(시트) 이름 그 자체(시트가 대상일 때의 역할 · 대상)
+FRAME_ROW = 0
+#: 사람이 고친 줄의 「제목 아님」
+BODY = "본문"
+
+
+def labels(name, lines, rows, marks, sheet=True):
+    """줄 이름표 — `[{row, text, marks, draft}]`(줄마다 · `sheet`면 0행 = 시트 이름). `draft`는 고정 규칙 초안의 단(0 = 제목 아님).
+
+    `marks[행]`은 어댑터가 채운 표시(굵게 · 들여쓰기n · 병합 · 다른 열 …) — 번호 꼴은 여기서 단다(포맷 전부 한 벌).
+    글 전체를 싣는다 — 보내는 쪽(core)이 앞 글자만 보내고 대상 이름은 전체 글자와 대조한다."""
+    draft = {r["row"]: (r.get("level") or 0) for r in rows if r.get("heading")}
+    out = [{"row": FRAME_ROW, "text": name, "marks": ["시트"], "draft": 0}] if sheet else []
+    for n, t in lines:
+        mk = list(marks.get(n) or [])
+        hf = struct_map.heading_family(t)
+        if hf:
+            mk.append(f"번호{struct_map.FAMILY_LABEL.get(hf[0], hf[0])}")
+        out.append({"row": n, "text": t, "marks": mk, "draft": draft.get(n, 0)})
+    return out
+
+
+def labels_hash(labs):
+    raw = json.dumps([(x["row"], x["text"], x["marks"], x["draft"]) for x in labs], ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def draft_structure(labs):
+    """고정 규칙 초안을 구조의 꼴로 — 역할 없음 · 부모 = 앞의 더 얕은 초안 제목(판정이 없을 때 · 고침의 바탕)."""
+    out, stack = [], []
+    for x in labs:
+        lv = x.get("draft") or 0
+        if x["row"] == FRAME_ROW or not lv:
+            continue
+        while stack and stack[-1][0] >= lv:
+            stack.pop()
+        out.append({"row": x["row"], "parent": stack[-1][1] if stack else None, "role": None,
+                    "name": None, "category": None})
+        stack.append((lv, x["row"]))
+    return out
+
+
+def apply_fixes(st, fixes, labs):
+    """사람의 고침(등록 단 · `{행: {role, name, category} | {role: "본문"}}`)을 구조 위에 — 결정적(재구축이 같은 고침을 쓴다).
+
+    고칠 수 있는 것은 **역할과 대상**이다(단은 그대로) — 제목이 아니던 줄을 고치면 그 앞 제목의 형제로 선다."""
+    if not fixes:
+        return st
+    st = dict(st or {"headings": draft_structure(labs), "source": "draft"})
+    heads = {h["row"]: dict(h) for h in st.get("headings") or []}
+    order = [x["row"] for x in labs]
+    for k, fx in fixes.items():
+        r = int(k)
+        if r not in order:
+            continue
+        if fx.get("role") == BODY:
+            heads.pop(r, None)
+            for h in heads.values():
+                if h.get("parent") == r:
+                    h["parent"] = None
+            continue
+        if r not in heads:
+            prev = [x for x in order[:order.index(r)] if x in heads and x != FRAME_ROW]
+            heads[r] = {"row": r, "parent": heads[prev[-1]].get("parent") if prev else None}
+        heads[r].update(role=fx.get("role"), name=fx.get("name"), category=fx.get("category"), by="사람")
+    st["headings"] = [heads[r] for r in order if r in heads]
+    st["fixed"] = len(fixes)
+    return st
+
+
+def structure_rows(lines, st):
+    """검사된 구조 → `(rows, info)` — rows는 고정 규칙과 같은 꼴(단 = 부모 사슬의 깊이 · 신호 `구조`) ·
+    info는 `{행: {row, parent, role, name, category, depth}}`(0행 = 시트 자신)."""
+    present = {n for n, _t in lines}
+    info, depth = {}, {}
+    for h in st.get("headings") or []:
+        r, p = h.get("row"), h.get("parent")
+        if r == FRAME_ROW:
+            info[r] = {**h, "depth": 0}
+            continue
+        if r not in present:
+            continue
+        depth[r] = depth.get(p, 0) + 1 if p not in (None, FRAME_ROW) else 1
+        info[r] = {**h, "depth": depth[r]}
+    rows = [{"row": n, "heading": n in depth, "level": depth.get(n, 0),
+             "signal": SIG_STRUCT if n in depth else None} for n, _t in lines]
+    return rows, info
+
+
+def _cut_level(info, stats, pick, reason, oor):
+    """구조가 선 프레임의 분할 레벨 — 크기로 고른 레벨과 **설비 · 유닛 · 사양 묶음 줄의 가장 깊은 단** 중 깊은 것."""
+    need = max((v["depth"] for r, v in info.items() if r != FRAME_ROW and v.get("role") in CUT_ROLES), default=0)
+    if pick is None or need <= pick:
+        return pick, reason, oor
+    st = (stats or {}).get(need) or {}
+    avg = st.get("행수_평균")
+    oor = avg is None or not (struct_map.CHUNK_MIN <= avg <= struct_map.CHUNK_MAX)
+    return need, (f"구조 — {' · '.join(CUT_ROLES)} 줄 아래에서 자른다(단 {need}"
+                  + (f" · 평균 {avg}행" if avg is not None else "") + f") · 크기로는 레벨 {pick}"), oor
+
+
+def _chain_item(h, text, row=None):
+    out = {"row": h.get("row", row), "text": text, "role": h.get("role")}
+    if h.get("name") and h.get("category"):
+        out.update(name=h["name"], category=h["category"])
+    if h.get("by"):
+        out["by"] = h["by"]
+    return out
+
+
+def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, skip=()):
+    """어댑터에 건넬 **구조 훅** — 보존분(같은 원본 · 같은 이름표 · 같은 판)이면 그것(호출 0) · 아니면 `ask` 한 번.
+
+    `ask(doc_id, frame, labels)` → 검사가 끝난 구조 `{headings: [{row, parent, role, name, category}], dropped, calls,
+    failed?}` 또는 None(판정 없음 — mock 힌트 없음). `ask.key()`가 판(지시문 · config)을 말한다 · `skip`(`ref` 시트)은
+    부르지 않는다. 사람의 고침(`fixes[frame]` — 등록 단)은 그 위에 덮는다. 실패한 판정은 보존하지 않는다(다음 인입이 다시 묻는다)."""
+    kept, fixes = kept or {}, fixes or {}
+    tally = tally if tally is not None else {}
+    key = ask.key() if callable(getattr(ask, "key", None)) else None
+
+    def fn(frame, labs):
+        if frame in skip:
+            return None
+        h = labels_hash(labs)
+        hit = kept.get(frame)
+        if hit and hit.get("labels") == h and hit.get("key") == key:
+            tally["재사용"] = tally.get("재사용", 0) + 1
+            st = hit
+        else:
+            st = ask(doc_id, frame, labs)
+            if st is not None:
+                tally["호출"] = tally.get("호출", 0) + int(st.get("calls") or 0)
+                st = {**st, "labels": h, "key": key}
+                if made is not None and not st.get("failed"):
+                    made[frame] = st
+        st = apply_fixes(st, fixes.get(frame), labs)
+        if st is not None:
+            tally.setdefault("프레임", {})[frame] = {
+                "labels": labs, "headings": st.get("headings") or [], "dropped": st.get("dropped") or [],
+                "failed": st.get("failed"), "source": st.get("source"), "fixed": st.get("fixed", 0)}
+        return st
+    return fn
