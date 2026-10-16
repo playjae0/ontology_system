@@ -170,6 +170,11 @@ def _extract_rehearsal(x, cats_known=None):
            + (f" · 지시문 {e(x.get('prompt_version'))}" if x.get("prompt_version") else "")
            + (f" · config {e(x.get('config_version'))}" if x.get("config_version") else "")
            + "</p>"]
+    c = x.get("conditions") or {}
+    if c:                                   # 임시 상태 폴더 · 운영과 같은 조건이었나 (B116 ①)
+        out.append(f"<p class='sub'>조건 — {e(c.get('home'))} · 모드 {e(c.get('mode'))} · 설정 파일 "
+                   f"{e(c.get('config_file') or '없음')}({'운영과 같다' if c.get('config_same') else '운영과 다르다'}) · "
+                   f"손잡이({'운영과 같다' if c.get('knobs_same') else '운영과 다르다'})</p>")
     if x.get("note"):
         out.append(f"<p class='warn-note'>{e(x['note'])}</p>")
     out.append("<div class='stat'>"

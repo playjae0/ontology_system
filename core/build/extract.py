@@ -99,14 +99,14 @@ _LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version"
           "config_version": "층 config", "outline": "개요"}
 
 
-def reuse_check(env, lens=None, cfg=None, outline=None):
+def reuse_check(env, lens=None, cfg=None, outline=None, p=None):
     """이 체크포인트를 **재사용해도 되는가** — 돌려주는 둘째 값이 「왜 못 쓰는가」다.
 
     조건은 **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판이 모두 같을 때**다(B78 1b · B102 ⑥). 구판은
     앞의 둘만 대조하고 나머지는 기록만 했다 — 지시문이 바뀌어도 옛 추출을 썼다. 이유는 「지시문 e-1.3 →
-    e-1.4」처럼 바뀐 축과 두 값을 말한다(예고 줄이 그대로 싣는다).
+    e-1.4」처럼 바뀐 축과 두 값을 말한다(예고 줄이 그대로 싣는다). `p`를 주면 그 파일(리허설 산출 · B116 ②)을 본다.
     """
-    p = checkpoint_path(env["doc_id"], lens)
+    p = p or checkpoint_path(env["doc_id"], lens)
     if not p.exists():
         return False, "체크포인트 없음"
     try:
@@ -527,6 +527,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     같을 때 끝난 청크를 부르지 않는다 · 다 끝나면 체크포인트로 올리고 부분 파일을 지운다.
     """
     doc_id = env["doc_id"]
+    _carry(env, lens, cfg, outline, notice)          # 그 종류 등록 검수의 리허설 산출 — 조건이 같으면 운영 자리로 (B116 ②)
     ok, why = reuse_check(env, lens, cfg, outline)   # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥) · 개요 (B115 ③)
     if ok:
         _say(notice, {"단계": "추출재사용", "렌즈": lens, "자리": checkpoint_path(doc_id, lens)})
@@ -610,6 +611,20 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     _say(notice, {"단계": "추출저장", "렌즈": lens, "자리": checkpoint_path(doc_id, lens),
                   "있음": saved(doc_id, lens)})
     return out, True
+
+
+def _carry(env, lens, cfg, outline, notice):
+    """리허설 산출의 추출 체크포인트(그 doc_type · 그 문서 · 그 렌즈)가 있으면 — **인입이 앞세운 회수 뒤**(재인입은
+    문서 해시가 바뀌면 운영 체크포인트를 버린다 · `ingest.py`) 여기서 지금 조건과 대조해 옮기고, 다르면 쓰지 않고 지운다."""
+    from core.state import rehearsal as RH
+    dst = checkpoint_path(env["doc_id"], lens)
+    src = RH.carried(env.get("doc_type"), env["doc_id"], RH.EXTRACT, dst.name)
+    if src is None:
+        return
+    ok, why = reuse_check(env, lens, cfg, outline, src)
+    RH.take(src, dst if ok else None)
+    _say(notice, {"단계": "추출리허설", "렌즈": lens, "쓴다": ok, "이유": why, "자리": dst,
+                  "종류": env.get("doc_type")})
 
 
 def saved(doc_id, lens=None):

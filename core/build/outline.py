@@ -110,9 +110,9 @@ def _now_key(heads, cfg):
 _LABEL = {"heading_hash": "제목 계층", "prompt_version": "지시문", "config_version": "층 config"}
 
 
-def _reuse(doc_id, lens, now):
-    """`(체크포인트 또는 None, 못 쓰는 이유)`."""
-    p = checkpoint_path(doc_id, lens)
+def _reuse(doc_id, lens, now, p=None):
+    """`(체크포인트 또는 None, 못 쓰는 이유)` — `p`를 주면 그 파일(리허설 산출 · B116 ②)을 같은 조건으로 본다."""
+    p = p or checkpoint_path(doc_id, lens)
     if not p.exists():
         return None, "체크포인트 없음"
     try:
@@ -243,6 +243,7 @@ def run(env, cfg, *, lens=None, notice=None):
     if not heads:
         return {"headings": [], "of": {}, "source": "none"}
     now = _now_key(heads, cfg)
+    _carry(env, lens, now, notice)                 # 그 종류 등록 검수의 리허설 산출 — 조건이 같으면 운영 자리로 (B116 ②)
     ck, why = _reuse(doc_id, lens, now)
     if ck is not None:
         _say(notice, {"단계": "개요재사용", "렌즈": lens, "자리": checkpoint_path(doc_id, lens),
@@ -264,6 +265,19 @@ def run(env, cfg, *, lens=None, notice=None):
                   "자리": checkpoint_path(doc_id, lens) if answers is not None else None,
                   **_counts(out["headings"])})
     return out
+
+
+def _carry(env, lens, now, notice):
+    """리허설 산출의 개요(그 doc_type · 그 문서 · 그 렌즈)가 있으면 — 지금 조건과 같을 때 옮기고, 다르면 쓰지 않고 지운다."""
+    from core.state import rehearsal as RH
+    dst = checkpoint_path(env["doc_id"], lens)
+    src = RH.carried(env.get("doc_type"), env["doc_id"], RH.OUTLINE, dst.name)
+    if src is None:
+        return
+    ck, why = _reuse(env["doc_id"], lens, now, src)
+    RH.take(src, dst if ck is not None else None)
+    _say(notice, {"단계": "개요리허설", "렌즈": lens, "쓴다": ck is not None, "이유": why, "자리": dst,
+                  "종류": env.get("doc_type")})
 
 
 def _counts(heads):

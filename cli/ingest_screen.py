@@ -450,6 +450,15 @@ def extract_screen(step=False, stage=None):
     def notice(info):
         k = info.get("단계")
         lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
+        if k in ("추출리허설", "개요리허설"):           # 등록 검수의 리허설 산출 (B116 ②)
+            what = "추출" if k == "추출리허설" else "개요"
+            if info["쓴다"]:
+                _screen.say(f"   {what} {lz}— 리허설 산출({info['종류']} 등록 검수)을 운영 자리로 옮겼다 · "
+                            f"{paths.show(info['자리'])}", "head")
+            else:
+                _screen.say(f"   {what} {lz}— 리허설 산출({info['종류']})을 쓰지 않는다: {info['이유']} "
+                            f"(그 자리에서 지웠다 · 지금 조건으로 다시 판정)", "aux")
+            return None
         if k in ("개요예고", "개요끝", "개요재사용"):
             return _outline_line(info, lz, stage, step)
         if k == "추출재사용":

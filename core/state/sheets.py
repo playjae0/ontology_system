@@ -24,15 +24,33 @@ DIRNAME = "sheet_roles"                 # `registry/sheet_roles/<doc_id>.json`
 _LOG = log.get(__name__)
 
 
-def path(doc_id):
-    """기록 파일의 자리 — 조립은 `paths.registry`가 한다(자리 소유자 하나)."""
+#: 등록 표본의 **겹침 자리** `{doc_id: 자리}` (B116 ① — 이미 인입된 문서를 표본으로 쓰면 등록은 그 문서의 운영 기록을
+#: 쓰지 않는다 · 이 실행 동안 그 등록의 검수 자리에서 읽고 쓴다 · 겹침이 비어 있으면 운영 기록을 읽기만)
+_HELD = {}
+
+
+def hold(mapping):
+    """겹침을 건다(등록 표본 관문이 부른다 — `cli/register/samples.sample_roles`) · 빈 dict면 푼다."""
+    _HELD.clear()
+    _HELD.update({k: v for k, v in (mapping or {}).items()})
+
+
+def operational(doc_id):
+    """운영 기록의 자리 — 겹침과 무관하게(조립은 `paths.registry`가 한다 · 자리 소유자 하나)."""
     return paths.registry(DIRNAME, f"{doc_id}.json")
+
+
+def path(doc_id):
+    """기록 파일의 자리 — 겹침이 걸린 doc_id면 그 자리, 아니면 운영 기록."""
+    return _HELD.get(doc_id) or operational(doc_id)
 
 
 def read(doc_id):
     """기록 전문(dict) 또는 `None`. **깨진 파일은 없는 것으로 보고 로그를 남긴다** —
-    관문이 다시 묻는다(조용히 기본값으로 떨어지지 않는다)."""
+    관문이 다시 묻는다(조용히 기본값으로 떨어지지 않는다). 겹침 자리가 비었으면 운영 기록을 읽는다(쓰지 않는다)."""
     p = path(doc_id)
+    if not p.exists() and doc_id in _HELD:
+        p = operational(doc_id)
     if not p.exists():
         return None
     try:

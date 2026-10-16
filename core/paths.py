@@ -331,6 +331,28 @@ def extract(*parts):
     return work("extract", *parts)
 
 
+def struct_maps(*parts):
+    """④작업 구조 지도 보존 — `work/struct_maps/<doc_id>.json` (파서에는 `bind_parser`가 이 함수를 주입한다)."""
+    return work("struct_maps", *parts)
+
+
+def rehearsal(*parts):
+    """④작업 **리허설 산출** — `work/extract/rehearsal/<doc_type>/<doc_id>/` (B116 ② · 추출 폴더 안 — 기본 fresh가 남긴다)."""
+    return extract("rehearsal", *parts)
+
+
+def temp_home(prefix):
+    """**임시 상태 루트** 하나를 만든다 — 시스템 임시 폴더(B116 ① · 운영 루트 밖 · 부른 쪽이 끝에 지운다).
+    자리를 묻는 함수가 아니라 **만드는** 함수라 인자를 받는다(코드 지도의 자리 표가 부르지 않는다)."""
+    import tempfile
+    return Path(tempfile.mkdtemp(prefix=prefix))
+
+
+def mirror(p, other):
+    """이 루트의 자리 `p` → 다른 상태 루트 `other`의 같은 자리(임시 루트 사본 · 이관 — 경로 조립은 여기 하나)."""
+    return Path(other) / Path(p).resolve().relative_to(home())
+
+
 # ---------------------------------------------------------------- ⑤파생·골든셋
 def export(*parts):
     """파생물 — 되돌려 읽지 않는다(문서 1)."""
@@ -361,7 +383,7 @@ def bind_parser():
     """
     from core.state import store
     from parser import normalizer, struct_map, tagger
-    struct_map.use_dir(lambda: work("struct_maps"))
+    struct_map.use_dir(lambda: struct_maps())
     normalizer.use_null_markers(lambda: _catalog().null_markers())     # 빈칸 표시 목록 (B113 ② — 공통 config)
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))
     tagger.use_learned(lambda: store.read(store.COORD_LEARNED, {}),     # 좌표 학습 (B101 ②)

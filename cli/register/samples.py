@@ -58,6 +58,7 @@ def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
     (D-164 ③과 같은 이유). 비대화형이면 인입과 같이 **상태 거부**다.
     """
     from cli.ingest import doc_id_of              # 리허설도 운영 doc_id다 (B55 ⑤)
+    hold(doc_type, samples)                       # 이미 인입된 표본은 운영 기록을 쓰지 않는다 (B116 ①)
     if spec and len(samples) > 1:
         raise SystemExit("[등록] --sheets는 표본이 하나일 때만 준다 — 표본이 여럿이면 "  # [사용법]
                          "표본마다 관문이 뜬다(문서마다 시트 자리가 다르다)")
@@ -79,6 +80,30 @@ def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
         if roles:
             out[str(Path(s).resolve())] = roles
     return out
+
+
+def hold(doc_type, samples):
+    """**이미 인입된 표본의 시트 역할은 그 등록의 검수 자리에서**(B116 ① — 등록은 운영 상태 중 등록 자리만 바꾼다):
+    `registry/review/<dt>/sheet_roles/<doc_id>.json` · 비어 있으면 운영 기록을 읽기만 한다. 아직 넣지 않은 표본은
+    지금 그대로 운영 기록에 쓴다 — 같은 파일을 나중에 인입하면 다시 묻지 않는다(B86 ⑤)."""
+    from cli.ingest import doc_id_of
+    from core.state import store
+    reg = store.read(store.DOC_REGISTRY, {})
+    SH.hold({doc_id_of(s): paths.review(doc_type, SH.DIRNAME, f"{doc_id_of(s)}.json")
+             for s in samples if doc_id_of(s) in reg})
+
+
+def held_spec(doc_id):
+    """겹침 자리의 역할이 운영 기록과 다르면 그 역할의 `--sheets` 문자열(시트 순서 번호) · 같거나 겹침이 없으면 None."""
+    p = SH.path(doc_id)
+    if p == SH.operational(doc_id) or not p.exists():
+        return None
+    held = (SH.read(doc_id) or {}).get("sheets") or {}
+    op = json.loads(SH.operational(doc_id).read_text(encoding="utf-8")).get("sheets") \
+        if SH.operational(doc_id).exists() else None
+    if held == op:
+        return None
+    return " ".join(f"{i}:{r}" for i, r in enumerate(held.values(), 1))
 
 
 def roles_file(roles_map):

@@ -273,8 +273,10 @@ show("① 청크별 후보와 카테고리 집계가 데이터에 있다 (렌더
 show("① 재현 조건이 실린다 — 출처·지시문 판본·config 판본",
      _xr.get("source") in ("mock", "live") and _xr.get("prompt_version")
      and _xr.get("config_version"), f"{_xr.get('source')} · {_xr.get('prompt_version')}")
-show("① ⓑ 리허설이 **운영의 doc_id**로 체크포인트를 남긴다 (재사용의 조건)",
-     _EX.has_checkpoint("TOC01"), str(_EX.checkpoint_path("TOC01")))
+from core.state import rehearsal as _RH                                    # noqa: E402
+show("① ⓑ 리허설이 **운영의 doc_id**로 체크포인트를 리허설 산출 자리에 남긴다 — 운영 자리는 그대로 (B116 · 기대 변경)",
+     _RH.place("toc_report", "TOC01", "extract", "TOC01.json").exists() and not _EX.has_checkpoint("TOC01"),
+     str(_RH.place("toc_report", "TOC01")))
 _html51 = (REVIEW / "toc_report" / "view.html").read_text(encoding="utf-8")
 show("① 화면 제목이 「추출 리허설 — 층 어휘가 이 문서에 적용된 결과」다",
      "구획 2 · 추출 리허설 — 층 어휘가 이 문서에 적용된 결과" in _html51
