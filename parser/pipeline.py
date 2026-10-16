@@ -384,6 +384,16 @@ def _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules, sheet_rol
                             tally=tally), targets
 
 
+def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles):
+    """문서 구조 훅(B119 ①) — `(훅 또는 None, 새로 받은 구조, 셈)`. `ref` 시트는 부르지 않는다(LLM 0)."""
+    made, tally = {}, {}
+    if structure is None:
+        return None, made, tally
+    return (struct_rule.structure_hook(structure, doc_id, kept=kept_map.get("structure"), made=made, tally=tally,
+                                       fixes=fixes, skip={n for n, r in (sheet_roles or {}).items() if r == "ref"}),
+            made, tally)
+
+
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
@@ -436,11 +446,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     made_rules, tally = {}, {}
     rule_fn, targets = _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules,
                                   sheet_roles, rule_notice)
-    made_struct, st_tally = {}, {}
-    st_fn = (struct_rule.structure_hook(structure, doc_id, kept=kept_map.get("structure"), made=made_struct,
-                                        tally=st_tally, fixes=structure_fixes,
-                                        skip={n for n, r in (sheet_roles or {}).items() if r == "ref"})
-             if structure is not None else None)
+    st_fn, made_struct, st_tally = _structure_hook(structure, doc_id, kept_map, structure_fixes, sheet_roles)
     try:                                                             # ③ extract
         pieces = _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks,
                           map_structure, src_hash, rule_fn, st_fn)

@@ -139,9 +139,11 @@ def _bottoms(text):
 
 
 rc11, out11 = _run(["tools/four_way.py", "--base", "HEAD"], cwd=BOX)
-show("ⓔ 같은 커밋끼리 — 바닥 A · B · C 전부 같다(rc 0) · C가 넣은 산문 둘이 성공",
+# 기대 변경(B119 ⑥ — 바닥 C에 표본 ⓑ(TW 꼴) FWC3가 더해져 산문 셋)
+show("ⓔ 같은 커밋끼리 — 바닥 A · B · C 전부 같다(rc 0) · C가 넣은 산문 셋이 성공",
      rc11 == 0 and "전부 같다" in out11 and not _bottoms(out11)
-     and re.search(r"지금 C 넣기 \{'FWC1': '성공', 'FWC2': '성공'\}", out11), (out11.strip().splitlines() or [""])[-1])
+     and re.search(r"지금 C 넣기 \{'FWC1': '성공', 'FWC2': '성공', 'FWC3': '성공'\}", out11),
+     (out11.strip().splitlines() or [""])[-1])
 _hd = BOX / "core" / "build" / "heading.py"
 _src = _hd.read_text(encoding="utf-8")
 _fn = next((n for n in ast.walk(ast.parse(_src)) if isinstance(n, ast.FunctionDef) and n.name == "chain_for"), None)

@@ -209,7 +209,8 @@ for lay in LAYERS:
         env, res, calls = _ingest_live(key, lay, did)
         ents = _rows(did)
         RES[(key, lay)] = {"env": env, "res": res, "calls": calls, "ents": ents, "heads": _rows(did, "heading"),
-                           "nodes": {n["canonical"]: n for _l, n in World().nodes()}, "mt": _mt(did)}
+                           "nodes": {n["canonical"]: n for _l, n in World().nodes()}, "mt": _mt(did),
+                           "clash": RC.guard_clashes(OL.load(did), _rows(did, "heading"))}
     # 같은 파일 다시 — 구조 LLM 0 (보존분 재사용)
     for key in "ABC":
         did = f"B119{key}{lay[0].upper()}"
@@ -318,8 +319,7 @@ for lay in LAYERS:
 show("ⓑ 추출 입력에 구조 사슬(그 청크 위의 제목 줄 — 역할 · 글자 · 대상 · 위에서 아래로) (층 둘)",
      all(o for _l, o, _d in _ob3), " ‖ ".join(d for _l, _o, d in _ob3))
 
-_clash = {lay: RC.guard_clashes(OL.load(f"B119A{lay[0].upper()}"), _rows(f"B119A{lay[0].upper()}", "heading"))
-          for lay in LAYERS}
+_clash = {lay: RES[("A", lay)]["clash"] for lay in LAYERS}       # 그 층의 실행 안에서 잰 것(다음 층의 클린 전)
 _line_a = RC.summary_text("B119AP", RES[("A", "process")]["mt"]["요약"])
 show("ⓑ 다른 공정 가드와 부딪힌 구조 유닛을 센다(「4. 스태킹」 — 노드 0 · 관련 링크) · 한 줄 요약에 「구조 · 가드 부딪힘」 (층 둘)",
      all(len(v) == 1 and "스태킹" in v[0] for v in _clash.values()) and "구조 · 가드 부딪힘 1" in _line_a,
@@ -427,6 +427,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     RUN.cmd_bootstrap([])
 _register("process", "b119_process")
 tuning.apply({"chunk_rows": [1, 2]})
+ST.fixes_path().unlink(missing_ok=True)                 # 등록 단(사람의 고침)은 클린이 남긴다 — 시험 몫을 치운다
 _gp = _mock_doc("B119GATE", GATE[0], GATE[1], GATE_ST, ("속도", "하중"), belongs=False)
 _argv = ["ingest-file", str(_gp), "--doc-type", "b119_process", "--allow-mock", "--coord", "노칭", "--sheets", "1:prose"]
 _before = _run(*_argv)
@@ -473,21 +474,23 @@ if _cols is None:
 else:
     os.environ["COLUMNS"] = _cols
 _vrows = [ln.split(" | ") for ln in _vout.splitlines() if re.match(r"\s+[✓+?✗·] \| ", ln)]
-_led = {e["surface"]: e for e in _rows("B119VIEW")}
+_led = {e.get("target"): e for e in _rows("B119VIEW")}       # 같은 표기가 유닛마다 — 붙은 노드로 맞춘다
 _ok5 = []
 for cells in _vrows:
-    nm = cells[4].strip().split(" → ")[0]
+    nm = cells[4].strip().split(" → ")[-1]
     e = _led.get(nm)
     if not e:
         continue
     full_b = f"{e['belongs_to']}(사슬)"
     full_a = f"{e['attached'][0]['dir']} {e['attached'][0]['other']}({e['attached'][0]['path']})"
-    _ok5.append(cells[3].strip() == "사양 묶음" and full_b.startswith(cells[9].strip().rstrip("…"))
-                and full_a.startswith(cells[10].strip().rstrip("…")) and len(cells[10].strip()) > 3)
+    _ok5.append((cells[3].strip() == "사양 묶음" and full_b.startswith(cells[9].strip().rstrip("…"))
+                 and full_a.startswith(cells[10].strip().rstrip("…")) and len(cells[10].strip()) > 3,
+                 [c.strip() for c in cells[3:11]], full_b, full_a))
 show("⑤ 값 표 — 구조 칸(가장 가까운 제목 줄의 역할) · 소속(출처) 칸 = 대장 belongs_to(사슬) · 붙은 자리 칸 = 대장 attached (산문 · -v)",
-     len(_ok5) >= 4 and all(_ok5), f"행 {len(_ok5)} · {_vrows[:1]}")
+     len(_ok5) >= 4 and all(o for o, *_r in _ok5), f"행 {len(_ok5)} · {[x for x in _ok5 if not x[0]][:2] or _ok5[:1]}")
 
 # ── 정리
+ST.fixes_path().unlink(missing_ok=True)
 for _d in _made:
     for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@structure.json"):
         _p.unlink(missing_ok=True)

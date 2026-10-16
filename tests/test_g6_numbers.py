@@ -414,7 +414,7 @@ _cfgp.write_bytes(_keep_cfg)
 
 RF.SELECT = None
 for _d in list(_HINTED) + list(FW.PROSE):
-    for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@outline.json"):
+    for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@outline.json", HINTS / f"{_d}@structure.json"):
         _p.unlink(missing_ok=True)
 for _dt in (DT, QDT, FW.PROSE_DT):
     _unregister(_dt)

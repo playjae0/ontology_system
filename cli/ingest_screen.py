@@ -228,7 +228,9 @@ def row_printer(env=None):
     def show(row):
         lab = labels.get(row.get("locator"))          # 자르지 않은 줄 · 전체 경로는 명령 로그에(B118 ③)
         _LOG.info("값 %s%s", value_line(row).strip(), f" · 자리 {lab}" if lab else "")
-        table.row(*value_cells(row, places, roles))
+        table.row(*value_cells(row, places, roles, prose, wide))
+        if prose and not wide and row.get("belongs_to"):           # 좁은 화면 — 소속(출처)는 행 아래 줄로
+            print(f"     └ 소속 {row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})")
         for a in (row.get("attached") or []) if prose else ():   # 붙은 자리 전부 — 칸은 잘려도 이 줄은 자르지 않는다
             print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
 
@@ -272,7 +274,8 @@ def row_printer(env=None):
     places = {c["source_locator"]: _xc.place(c) for c in pieces}
     labels = {c["source_locator"]: _xc.chunk_label(c) for c in pieces}
     roles = struct_roles(env) if prose else {}
-    table = value_table(list(places.values()))
+    wide = _screen.term_width() >= WIDE_MIN
+    table = value_table(list(places.values()), prose, wide)
     _lg.ON_CHUNK = on_chunk if prose else None
     on_row.flush = on_chunk
     return on_row
@@ -303,17 +306,30 @@ def place_widths(places):
     return tuple(min(wd, cap) for wd, cap in zip(ws, PLACE_MAX))
 
 
-def value_table(places=None):
+#: 산문 몫 칸(구조 · 소속(출처) · 붙은 자리 — B119 ⑤) — 표 문서는 늘 빈 칸이라 그 표에서는 뺀다(표기 칸이 남게)
+PROSE_COLS = (3, 9, 10)
+#: 소속(출처) · 붙은 자리를 칸으로 낼 터미널 폭 — 좁으면 행 아래 `└` 줄로(위치 두 칸이 잘리지 않게 · B118 ③)
+WIDE_COLS = (9, 10)
+WIDE_MIN = 150
+
+
+def _drop(prose, wide):
+    return set(PROSE_COLS) if not prose else (set() if wide else set(WIDE_COLS))
+
+
+def value_table(places=None, prose=True, wide=True):
     """판정 값 표(B98 ⑥) — 기호 · 시트 · 청크 · 구조 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 소속(출처) · 붙은 자리 · 노드/큐.
 
     구조 · 소속(출처) · 붙은 자리(B119 ⑤)는 산문 몫(표 문서는 빈 칸) — 어느 단계에서 틀렸는지(구조 → 소속 → 붙음) 한 줄에서."""
     # 고정 칸은 좁게(경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨) · 위치 두 칸은 이 문서 폭
     ws, wc = place_widths(places)
-    return _screen.Table([("", 1, False), ("시트", ws, False), ("청크", wc, False), ("구조", 9, False),
-                          ("표기", 40, False), ("카테고리/열", 10, False),
-                          ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
-                          ("소속(출처)", 18, False), ("붙은 자리", 22, False), ("노드/큐", 16, False)],
-                         flex=4, keep=(1, 2))
+    cols = [("", 1, False), ("시트", ws, False), ("청크", wc, False), ("구조", 9, False),
+            ("표기", 40, False), ("카테고리/열", 10, False),
+            ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
+            ("소속(출처)", 18, False), ("붙은 자리", 22, False), ("노드/큐", 16, False)]
+    cut = _drop(prose, wide)
+    cols = [c for i, c in enumerate(cols) if i not in cut]
+    return _screen.Table(cols, flex=4 if prose else 3, keep=(1, 2))
 
 
 #: 소속 출처 → 화면 말(B119 ⑤ — 사슬 · 본문 · 부착 후보 · 공정 · 대장의 `from` 값 그대로를 넷으로)
@@ -334,7 +350,7 @@ def where_cells(locator, places=None):
     return (sheet, rest) if sheet else ("", loc)
 
 
-def value_cells(row, places=None, roles=None):
+def value_cells(row, places=None, roles=None, prose=True, wide=True):
     """대장 행 하나 → 표의 칸(값 · 색 층). **새 정보 0** — 행의 값을 그대로 옮긴다(B81 ①)."""
     v = row.get("verdict") or "pending"
     calls = (row.get("llm") or {}).get("calls", 0)
@@ -364,9 +380,11 @@ def value_cells(row, places=None, roles=None):
     att = row.get("attached") or []
     stuck = (f"{att[0]['dir']} {att[0]['other']}({att[0]['path']})" + (f" +{len(att) - 1}" if len(att) > 1 else "")
              if att else "")
-    return ([MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
-             row.get("field") or "", v, how, conf, bel, stuck, where],
-            [k, "aux", "aux", "aux", k, "aux", k, "aux", "aux", None, None, "aux"])
+    cells = [MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
+             row.get("field") or "", v, how, conf, bel, stuck, where]
+    kinds = [k, "aux", "aux", "aux", k, "aux", k, "aux", "aux", None, None, "aux"]
+    cut = _drop(prose, wide)
+    return [c for i, c in enumerate(cells) if i not in cut], [c for i, c in enumerate(kinds) if i not in cut]
 
 
 def build_screen(step=False, stage=None, prose=False):

@@ -127,6 +127,19 @@
 
 적용: config 저장 → `python run.py bootstrap`(fresh 없이 — 골격 불변이면 아무것도 안 바뀐다) → 새 doc_type 등록 → 인입. **골격(skeleton.json)은 손대지 않는다** — 골격 노드가 공정이자 설비다(골격작성_가이드 §3).
 
+### 1-b. 유닛 아래의 사양 — 문서 구조 · 이름은 주인 아래 (사내가 바꿀 줄 · B119)
+
+산문은 시트마다 LLM이 제목 줄의 역할(설비 · 유닛 · 사양 묶음 · 항목 · 주제)과 대상을 세우고, 추출은 그 사슬을 보고 개체마다 가장
+구체적인 주인을 고른다. 사내 config에서 바꿀 줄은 셋이다(키 이름은 사내 층의 실제 이름으로 — 아래는 mock의 이름):
+
+| 자리 | 바꿀 줄(그대로) | 왜 |
+|---|---|---|
+| 그 층 config `categories`의 유닛 카테고리 정의문 | `"Unit": "설비를 이루는 유닛 · 부(部) · 모듈 이름(예: 언와인더 unit · 공급부 · NG unit). 공정 이름 · 설비 전체 이름 · 부품 · 규격값은 제외"` | 구조 호출과 추출이 이 정의문으로 「유닛 줄」을 알아본다 — 예에 사내 양식의 유닛 표기를 둘셋 적는다 |
+| 공통 config `canonical_scope.nest_categories` | `"nest_categories": ["Property"]`(사양 카테고리 · 이미 `["Component"]`가 있으면 `["Component", "Property"]`) | 유닛에 붙은 사양이 `노칭::언와인더 unit::속도`로 선다(유닛마다 다른 노드) · 공정에 붙은 사양은 `노칭::속도` 그대로 · 표(CP · PFMEA)는 소속이 공정이라 이름이 바뀌지 않는다 |
+| 그 층 config `config_version` | 올린다(예: `"process-1"` → `"process-2"`) | 정의문이 바뀐 것을 추출 체크포인트가 알게 — 올리지 않으면 옛 추출을 쓴다 |
+
+적용: 저장 → `python run.py bootstrap`(끝 줄 `[bootstrap] config 영향 — 추출 다시: 문서 n(바뀐 칸 …categories)`) → `python run.py rebuild`(구조는 같은 파일이면 LLM 0 · 추출은 다시).
+
 ## 2. 관계 — 이름·패턴·방향 (한 묶음으로 쓴다)
 
 ```json

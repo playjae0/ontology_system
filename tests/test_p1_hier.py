@@ -193,7 +193,7 @@ show("② mock은 주입이 없다 — 구판과 같은 동작(통째 + 큐 · �
 from cli.register import view as _view                               # noqa: E402
 _seen = []
 _orig_inj = _view.injections
-_view.injections = lambda: {**_orig_inj(), "infer_rules": lambda f, s: _seen.append(f)}
+_view.injections = lambda *a: {**_orig_inj(*a), "infer_rules": lambda f, s: _seen.append(f)}   # 층 인자(B119 ① — 기대 변경)
 try:
     from cli.register import generate as _gen                         # noqa: E402
     _gen.cmd_generate("b87font", "process", [str(FONT)], use_basic=True)

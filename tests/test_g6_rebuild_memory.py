@@ -209,7 +209,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B107 폐기(표)")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B107 엣지 삭제(표)")
-    _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 속도"))
+    _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 장치::이송 속도"))   # 기대 변경(B119 ④ — 사양은 주인 아래 `nest_categories`)
     ops.delete_edge("process", _e2["src"], _e2["rel"], _e2["dst"], A, "B107 엣지 삭제(산문 소속)")
     ops.confirm("quality", _id("quality", "가압력 부족"), A, "B107 확인(산문)")
     ops.obsolete("quality", _id("quality", "금형 클리어런스 과다"), A, _id("quality", "가압력 부족"), "B107 폐기(산문 · 대체)")

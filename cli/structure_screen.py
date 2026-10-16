@@ -33,8 +33,8 @@ def _target(r):
 
 
 def print_table(rows):
-    t = _screen.Table([("번호", 4, True), ("시트", 14, False), ("행", 5, True), ("단", 3, True), ("역할", 8, False),
-                       ("대상", 28, False), ("줄", 40, False), ("초안", 6, False)], flex=6, keep=(5,))
+    t = _screen.Table([("번호", 4, True), ("시트", 14, False), ("행", 5, True), ("단", 3, True), ("역할", 10, False),
+                       ("대상", 28, False), ("줄", 40, False), ("초안", 10, False)], flex=6, keep=(4, 5))
     for r in rows:
         diff = ("다름 " if r.get("다름") else "") + (f"초안{r['초안']}" if r.get("초안") else "")
         role = "(본문)" if r.get("본문") else (r.get("역할") or "—") + ("*" if r.get("by") else "")
