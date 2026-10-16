@@ -105,6 +105,10 @@
   **별칭은 쌓이는 자산이다**(B108 — 사용자 결정 2026-10-14): 별칭 대장 `data/alias_book.json`(③ · 기본 fresh가 남긴다 · 이름으로 — 출처 닫힌 7) · 노드에 seed 밖 별칭을 붙이는 손은 `alias_book.attach` 하나 · **bootstrap이 대장의 골격 대상 별칭을 스냅샷 전에 싣는다**(스냅샷 = seed + 대장 — bootstrap 시점·재구축 무관) · 대장이 없으면 첫 실행·재구축 계획이 지금 그래프에서 채운다 · 거두기 `ops alias-reject`(다시 붙지 않는다) · 화면 `show aliases` · 대장은 판정을 대신하지 않는다.
   **노드는 집 층 · 엣지는 문서 층**(B100): I축 연산·질의 확장·`show`·내보내기는 층 전부를 연다 · 규칙(미러·극성)은 집 층 config에서 읽고 어긋나면 경고(`catalog.mirror_warnings`) · 노드 0으로 끝난 판정은 한 실행 안에서 기억(경로 `memo`) · 재시도 지문 = 그래프 수 + 골격 판 + 사전 판 · 큐는 한 번 읽고 한 번 쓴다.
   **문서 끝 화면은 단위별 맞춤표다**(B112 — `core/build/reconcile` 한 함수 · 줄마다 단위 · 같은 단위는 합 = 전체 · 어긋나면 `[결함]` · 저장 0 · 성공 줄은 「이 문서 +n(그 층 전체 m)」) · **시트 표는 숨김을 보이고 숨김은 기본 skip**(B112 — 기록이 있어도 표) · 추출 예고는 청크 목차(라벨 = 시트 › 목차 경로 · 슬라이드 n) · 추출 끝 줄은 체크포인트 자리와 있음/없음.
+  **다른 공정의 골격 이름은 노드가 아니다**(B113 — 공통 해소 길 `Builder.resolve_at_home` 한 자리 · 좌표의 계보 밖이면 노드 0 · 대장 `mention` · 그 공정으로 관련 링크 `about`) · **빈칸 표시는 공통 config `null_markers`**(B113 — `parser/normalizer.null_marker` 한 함수 · 좌표 칸은 비워 문서 좌표 · 개체 칸은 개체 0(대장 `blank`) · 값 칸은 원문 + 표지) · **재연결은 붙음 0까지 바퀴**(B113 — 상한 knobs `relink_rounds` · 대상 = orphan 셋 + 좌표 미해소 보류(추출 LLM 0으로 다시 세운다) · 손 명령 `ops relink`).
+  **뷰어 힘 배치는 웹 워커의 ForceAtlas2 계열**(B114 — `cli/viewer/static/force_worker.js` · 우리 코드 · 번들 0 · 난수 0 · 시간으로 끊지 않는다 · 손잡이 `viewer_force`) · 크기 = tier 계단 · 라벨 = 이름 사슬 끝 조각 · **질의 벡터는 묶음 · 이어 저장 · 진행 줄**(B114 — `embed_many` · 질의는 닫힌 다섯 단계 · `GET /api/status`).
+  **상위 개념으로 잇는다**(B115 — 사용자 결정 2026-10-15): 추출 전 **문서 개요**(LLM 지점 ⑪ · `core/build/outline.py` · 제목 계층만 — 본문 0 · 대상/주제 · 체크포인트 `extract/outline/<doc_id>[@렌즈].json` · 추출 재사용 조건에 대상 제목) · 대상 제목은 **제목 개체 노드**(`core/build/heading.py` · 공통 해소 길 · 대장 `heading` · 트리 엣지는 카테고리쌍 매핑) · 소속 출처 넷째 `제목`(`heading_candidates` — 가까운 것부터) · 폴백 사슬(가장 가까운 제목 개체 → 그 위 → 공정 · 대장 「폴백(제목 n단)」) · 재연결 뒤 **연결 보강**(지점 ⑫ · `core/build/reinforce.py` · 닫힌 후보 · 근거 문장 · 대장 `link` 재생 · 상한 `reinforce_call_cap`) — LLM 지점은 닫힌 12.
+  **등록 리허설은 운영 상태를 바꾸지 않는다**(B116 — 임시 상태 폴더 · 하위 실행 `cli.register.rehearsal` · 같은 함수 · 같은 조건(모드 그대로 · 부모의 설정 파일 명시 · 손잡이 · 층 자산 · 골격 · 사전 · 별칭 대장) · 산출(추출 · 개요 · 구조 지도 · 좌표 학습)은 `work/extract/rehearsal/<dt>/<doc_id>/` · 그 종류로 인입할 때 조건이 같으면 옮겨 쓴다 · 확정은 옮기지 않는다).
   **LLM을 오래 부르는 단계는 예고 → 진행 → 30초 누적 → 끝 사용량을 화면에 낸다**(B96·B97 — `_screen.usage_line` · `_screen.ticker` 한 자리) · 산문 추출은 청크 단위 부분 파일로 이어 쓴다(B97 — 체크포인트만 완료).
   **표기 대조의 2차는 영문 대소문자 무시**(B96 — `ids.fold_latin` · 정확 미스일 때만 · 대상이 하나일 때만 · `norm`·문서 id는 그대로 — `norm`을 바꾸지 않는다).
   **사내가 조정하는 값은 상태 루트 `knobs.json`(닫힌 목록 · 기본값 = 코드 상수 · 기록에 값과 출처)** — 코드 상수를 사내에서 고치지 않는다(B91).
@@ -144,7 +148,7 @@
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
   승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`·`doc_coords.json`(B102)·`coord_acks.json`(B105)·`ops_log.json`(B106 — 사람 판단 기록 · 대상 이름) · 층 공통 config·층 config·seed)
   ③진실(`data/` 9종 — 좌표 학습 `coord_learned.json`(B101) · 별칭 대장 `alias_book.json`(B108) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
-  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`(④ — B109 로그는 다시 만들 수 없는 기록) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
+  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`extract/outline/`(B115)·`extract/rehearsal/`(B116 — 둘 다 `extract/` 안이라 보존 여섯 그대로)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`(④ — B109 로그는 다시 만들 수 없는 기록) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
   자리에 둔다. 폴더를 만드는 코드는 `core/paths.py::ensure` 하나다.
 - **어서션은 성질만**(화면 문면·수를 세지 않는다). 회차당 순증은 완료판정에 필요한 만큼만 —
