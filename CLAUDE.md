@@ -85,35 +85,24 @@
   `core/query/`·`core/state/` — 파트가 곧 폴더이고 파일 첫 줄 머리말이 칸 번호를 말한다.
   전수 지도는 `docs/구조도/10_코드_지도.md`(생성물 — 손으로 고치지 않는다).
 - **상태는 코드 밖 한 루트다**: `$ONTO_HOME/`(기본 `./state` · `USE_MOCK=1`은 `./state_mock`).
-  상태 경로 조립·`mkdir`은 `core/paths.py`에만 — 다른 모듈은 이름으로 묻는다(예외 둘 — 이관은
-  양쪽 뿌리를 인자로, 킷은 플래그로 `--layers`·`--coord-layer`·`--closed-list`·`--sheet-roles` · D-160 · B86).
-  **화면 경로 표기는 `paths.show()` 하나, 기록 표기는 `rel_to_home()`** — 섞지 않는다(B86 · `relative_to(ROOT)` 직접 사용 0을 회귀가 잰다). **층 자산 `layers/`도 상태 루트에
-  산다**(B79 — 레포 `layers/`는 mock 기본 seed일 뿐 · `USE_MOCK=0`에서 없으면 상태 거부). **점검 · 시험 · 도구의 하위 실행은 셸 환경과 무관하게 격리**(B111 — `gateway.isolated_env` 하나 · doctor의 운영 화면은 `cli/doctor_view` — 읽기만 · 로그 0) · **운영(실호출) 루트의 클린은 확인을 받는다**(B111 — 비대화형 거부 · `--yes` · 확인 없는 코드 호출은 `CleanRefused`).
-  **좌표 층은 층 공통 config(`layers/common.json`)에서 `Process`의 집이지 폴더 `process`가 아니다**(B85 · B90) — 답하는 자리는
-  `core/state/bootstrap.coord_layer()` 하나 · 층 이름을 코드에 박지 않는다(회귀가 `"process"` grep으로 잰다).
-  **카테고리의 집·겸·이름 규칙은 공통 config 한 곳이다**(B90 — 층 config의 `categories`는 렌즈 · 겹쳐 선언해도 노드는 집 하나 · table·prose 한 길로 집에서 해소)
-  — 카탈로그는 `bootstrap`이 층 config에서 맞춘다: 한 층만 선언한 것은 자동 · **골격 카테고리의 집은 골격 층**(B93 — 골격 모순은 첫 실행에서 거부 · 겸 상태 표시) · 겹친 카테고리의 집 · 겸 · 이미 정한 값의 변경은 사람(B92 · `--dry-run`) · 쓰는 층 `used_by`는 결과 기록(B94 — 판정이 읽지 않는다) · **골격 카테고리 개체는 조회 전용**(B94 — 골격 밖 표기는 노드 0 · `orphan_anchor`) · 어긋난 골격 집은 노드 0이면 자동 교정(B95) · `--dry-run`은 실제와 같은 검사(B96).
-  **LLM 비용을 쓰는 명령은 파싱 전에 사전 점검을 지난다**(B98 — `core/llm/preflight` · `llm-check`와 같은 판정 함수 · 첫 실패에서 멈춤 · 설정 파일은 처음 찾은 하나만 — 무시된 후보를 화면이 말한다).
-  **층 이름의 정본은 폴더 이름**(B99 — config `"layer"`가 다르면 거부 · 한 빌드 한 번 열기) · **구축은 어떤 예외로 끝나도 되돌린다**(되돌림 경계 `run_document` 하나 · 정합 검사 → 그래프 → 사전 · B109 — **문서 시작 전 판**(인입 검사의 청크 · 문서 대장 · 재인입 회수 그래프 포함) · 저장 표지 뒤 멈춤은 끝난 문서 · B110 — 사람 · 관문의 멈춤도 같은 판(청크 포함) · 인입 기록만 남긴다) · **화면에 나온 것은 로그에도 있다**(진입점은 전부 `cli/_entry.py`를 지난다 · 실행 머리·끝 줄 · 사용량 줄의 문서) · **화면이 닫혀도 공통 진입 한 자리가 받는다**(B109 — 트레이스백 0 · 종료 코드 141 · 로그에 먼저 쓰고 멈춤 줄 · B110 — 닫힌 뒤의 정리는 조용히, Python 판 무관).
-  **공정은 한 벌이다**(문서 3 §3.6 공정 운영 원칙 — 사용자 확정 2026-10-06): 골격은 골격 층에만 · 다른 층은 `Process`·`Unit`을 선언하지 않고 **좌표로 활용** · 공정 이름 열은 열 이름과 무관하게 좌표(상위 `process_group` · 하위 `process_ref`) · 골격 닫힌 목록은 **좌표 층의 것**을 읽는다(등록은 두 몫 `parser.tagger.registration_list` · 골격 값 열을 entity로 매핑하면 관문 G4H FAIL — B100) · 「○○ unit」= 공정 노드는 데이터(겸 · `ALIASES`)로만 — 코드에 표기 처리를 넣지 않는다.
-  **동의어는 두 겹**(B101 — 사전 → LLM 의미 연결 → 사전 갱신): 같은 문서 실행이 만든 auto 노드에는 LLM 매칭(다른 문서 auto는 가드) · 좌표 태깅은 골격 → 학습 기록 → LLM(학습은 바로 쓰고 사람이 `ops learn-promote`·`learn-reject`) · null은 새 공정 후보 화면(`show learned`)으로만 — **같은 표기 · 같은 닫힌 목록 판(내용 해시 `tagger.list_version`)이면 다시 묻지 않는다**(B107 · 지우기 `ops learn-reject`) · 별칭 출처 넷(사람·골격·LLM 매칭·좌표 학습) · 불확실 일괄 검토 `ops review`(비대화형은 계획만).
-  **산문도 어디에 붙었는지를 남긴다**(B102 — 사용자 원칙 2026-10-07): 추출 입력은 맥락 줄 `[문서 · 공정 · 시트 · 경로]`(`core/build/extract_ctx` 한 함수) · 개체마다 소속 `belongs_to`(본문·경로·시트·공정에서만 · 없으면 null) · 문서 좌표(`--coord` · 기록 `registry/doc_coords.json` · 파일명 — 시트명·제목 대조는 그 서브트리 안) · 이름 규칙 = `bind_categories` ∪ `nest_categories`(소속이 골격 밖 노드면 그 이름 아래 · `Property`는 공정 스코프) · 좌표 없는 스코프 개체는 공통 자리(`Builder.resolve_entity`)에서 0 · 폴백 한 함수(카테고리쌍 매핑 두 방향) · 대장 `target`·`attached`·`from` · 추출 재사용 = 문서 해시·어댑터·지시문·config 판 · 같은 doc_id가 다른 경로에서 오면 거부(`--revise`).
-  **뷰어 배치는 골격+위성이 기본**(B103 — 닻은 `core/query/anchor.py` 한 자리(B104에서 core로) · 연결 없는 노드 숨김 · 탐색 모드 문턱 `viewer_explore_threshold`).
-  **질의는 그래프 RAG**(B104 — 사용자 결정 2026-10-07): 링킹 = 사전 → 임베딩 후보 + LLM 선별(후보 안에서만 · 보충|폴백 · 미스율은 사전 단) · 근거 확장은 코드 · 문서 검색 채널(임베딩 문턱 + BM25) · 짧은 답 + 쓴 근거(`used_facts`·`used_chunks`) · CLI·뷰어가 링크 결과와 답을 나란히(ⓐ~ⓕ) · 질의 벡터 캐시 `work/vectors/`(재생성).
-  **좌표 쌍 판정은 한 함수**(B105 — `parser.coord_pairs.verdict`): 검출 자리 셋 — 등록 관문 G4I(표본 · 문턱 `coord_pair_pct` · 「열을 바꾸면 n/m」) · 인입 좌표 단계의 판정 전 쌍 표(LLM 0 · `--step`으로 멈춤) · 구축 말미 큐(`core/build/coord_scan` — 표·산문·렌즈 한 자리) · 같은 입력이면 같은 수 · 상위 골격 밖은 어긋남이 아니다(종수만) · 큐는 쌍 단위로 보이고 `ops coord-ack`로 쌍 단위 확인 · 공유 별칭 하위는 문서 좌표 → 행의 상위 범위 안에서 하나면 canonical · 질의 ⓖ 노드 원 레코드(가공 0 · `query_record_limit`).
-  **재구축은 한 명령**(B106 — `python run.py rebuild [--yes] [--no-replay]` · 처음 인입 순서 · 비대화형은 계획만 · B111 — 지우기 전에 사전 점검 · 계획 파일 「진행 중」이면 그 목록에서 이어 간다): 기본 `init --fresh`는 LLM이 든 산출 넷(추출 · 구조 지도 · 판정 대장 · 좌표 학습)을 남기고 클린은 `--all` · 재인입의 값 판정은 지난 대장에서 재생(골격 · 사전 → 재생 → LLM · 재생은 판정 결과만 바꿔 끼운다 · 재판정 사유 키 없음 · 대상 없음 · 끔) · 사람 판단은 ②등록 `ops_log.json`에 이름으로 남고 `ops replay`가 되살린다(멱등 · 대상 없음은 목록 · 기록은 남는다 · split 제외) · 문서 단위 확인 `ops confirm all --doc` · 행에 상위가 없으면(파생 포함 `meta.group_from_ref`) 문서 좌표가 상위(「문서 좌표 'X' ↛ 하위 'Y'」). 이름 없는 옛 기록은 지우기 전에 지금 그래프에서 그때 이름으로 채운다(B107 · `oplog.backfill` — 옮길 때 · `ops replay` · 재구축 계획) · 재시도도 판정이라 같은 대장의 같은 키 행을 갈아 끼운다(B107 · `by: retry`).
-  **별칭은 쌓이는 자산이다**(B108 — 사용자 결정 2026-10-14): 별칭 대장 `data/alias_book.json`(③ · 기본 fresh가 남긴다 · 이름으로 — 출처 닫힌 7) · 노드에 seed 밖 별칭을 붙이는 손은 `alias_book.attach` 하나 · **bootstrap이 대장의 골격 대상 별칭을 스냅샷 전에 싣는다**(스냅샷 = seed + 대장 — bootstrap 시점·재구축 무관) · 대장이 없으면 첫 실행·재구축 계획이 지금 그래프에서 채운다 · 거두기 `ops alias-reject`(다시 붙지 않는다) · 화면 `show aliases` · 대장은 판정을 대신하지 않는다.
-  **노드는 집 층 · 엣지는 문서 층**(B100): I축 연산·질의 확장·`show`·내보내기는 층 전부를 연다 · 규칙(미러·극성)은 집 층 config에서 읽고 어긋나면 경고(`catalog.mirror_warnings`) · 노드 0으로 끝난 판정은 한 실행 안에서 기억(경로 `memo`) · 재시도 지문 = 그래프 수 + 골격 판 + 사전 판 · 큐는 한 번 읽고 한 번 쓴다.
-  **문서 끝 화면은 단위별 맞춤표다**(B112 — `core/build/reconcile` 한 함수 · 줄마다 단위 · 같은 단위는 합 = 전체 · 어긋나면 `[결함]` · 저장 0 · 성공 줄은 「이 문서 +n(그 층 전체 m)」) · **시트 표는 숨김을 보이고 숨김은 기본 skip**(B112 — 기록이 있어도 표) · 추출 예고는 청크 목차(라벨 = 시트 › 목차 경로 · 슬라이드 n) · 추출 끝 줄은 체크포인트 자리와 있음/없음.
-  **다른 공정의 골격 이름은 노드가 아니다**(B113 — 공통 해소 길 `Builder.resolve_at_home` 한 자리 · 좌표의 계보 밖이면 노드 0 · 대장 `mention` · 그 공정으로 관련 링크 `about`) · **빈칸 표시는 공통 config `null_markers`**(B113 — `parser/normalizer.null_marker` 한 함수 · 좌표 칸은 비워 문서 좌표 · 개체 칸은 개체 0(대장 `blank`) · 값 칸은 원문 + 표지) · **재연결은 붙음 0까지 바퀴**(B113 — 상한 knobs `relink_rounds` · 대상 = orphan 셋 + 좌표 미해소 보류(추출 LLM 0으로 다시 세운다) · 손 명령 `ops relink`).
-  **뷰어 힘 배치는 웹 워커의 ForceAtlas2 계열**(B114 — `cli/viewer/static/force_worker.js` · 우리 코드 · 번들 0 · 난수 0 · 시간으로 끊지 않는다 · 손잡이 `viewer_force`) · 크기 = tier 계단 · 라벨 = 이름 사슬 끝 조각 · **질의 벡터는 묶음 · 이어 저장 · 진행 줄**(B114 — `embed_many` · 질의는 닫힌 다섯 단계 · `GET /api/status`).
-  **상위 개념으로 잇는다**(B115 — 사용자 결정 2026-10-15): 추출 전 **문서 개요**(LLM 지점 ⑪ · `core/build/outline.py` · 제목 계층만 — 본문 0 · 대상/주제 · 체크포인트 `extract/outline/<doc_id>[@렌즈].json` · 추출 재사용 조건에 대상 제목) · 대상 제목은 **제목 개체 노드**(`core/build/heading.py` · 공통 해소 길 · 대장 `heading` · 트리 엣지는 카테고리쌍 매핑) · 소속 출처 넷째 `제목`(`heading_candidates` — 가까운 것부터) · 폴백 사슬(가장 가까운 제목 개체 → 그 위 → 공정 · 대장 「폴백(제목 n단)」) · 재연결 뒤 **연결 보강**(지점 ⑫ · `core/build/reinforce.py` · 닫힌 후보 · 근거 문장 · 대장 `link` 재생 · 상한 `reinforce_call_cap`) — LLM 지점은 닫힌 12.
-  **등록 리허설은 운영 상태를 바꾸지 않는다**(B116 — 임시 상태 폴더 · 하위 실행 `cli.register.rehearsal` · 같은 함수 · 같은 조건(모드 그대로 · 부모의 설정 파일 명시 · 손잡이 · 층 자산 · 골격 · 사전 · 별칭 대장) · 산출(추출 · 개요 · 구조 지도 · 좌표 학습)은 `work/extract/rehearsal/<dt>/<doc_id>/` · 그 종류로 인입할 때 조건이 같으면 옮겨 쓴다 · 확정은 옮기지 않는다).
-  **LLM을 오래 부르는 단계는 예고 → 진행 → 30초 누적 → 끝 사용량을 화면에 낸다**(B96·B97 — `_screen.usage_line` · `_screen.ticker` 한 자리) · 산문 추출은 청크 단위 부분 파일로 이어 쓴다(B97 — 체크포인트만 완료).
-  **표기 대조의 2차는 영문 대소문자 무시**(B96 — `ids.fold_latin` · 정확 미스일 때만 · 대상이 하나일 때만 · `norm`·문서 id는 그대로 — `norm`을 바꾸지 않는다).
-  **사내가 조정하는 값은 상태 루트 `knobs.json`(닫힌 목록 · 기본값 = 코드 상수 · 기록에 값과 출처)** — 코드 상수를 사내에서 고치지 않는다(B91).
-  **레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지
-  않는다** — `doctor`가 `자산_해시.json`과 대조해 다르면 ⚠ · 갱신은 구현 세션이 회차마다 `--write`.
+  상태 경로 조립·`mkdir`은 `core/paths.py`에만 — 다른 모듈은 이름으로 묻는다(예외 둘 — 이관은 양쪽 뿌리를 인자로, 킷은 플래그로 · D-160 · B86).
+  화면 경로 표기는 `paths.show()`, 기록 표기는 `rel_to_home()` — 섞지 않는다. 층 자산 `layers/`도 상태 루트에 산다(B79).
+  **점검 · 시험 · 도구의 하위 실행은 셸 환경과 무관하게 격리**(B111 `gateway.isolated_env`) · **운영(실호출) 루트의 클린은 확인을 받는다**(B111).
+- **이름을 코드에 박지 않는다**: 좌표 층은 `core/state/bootstrap.coord_layer()` 하나가 답한다(회귀가 `"process"` grep으로 잰다) ·
+  카테고리의 집·겸·이름 규칙은 층 공통 config 한 곳(B90~B96 — 골격 카테고리 개체는 조회 전용) · 층 이름의 정본은 폴더 이름(B99) ·
+  **공정은 한 벌**(문서 3 §3.6 — 골격은 골격 층에만 · 다른 층은 좌표로 활용 · 「○○ unit」= 공정 노드는 데이터로만) ·
+  사내가 조정하는 값은 상태 루트 `knobs.json`(닫힌 목록 · 기본값 = 코드 상수 — 코드 상수를 사내에서 고치지 않는다 · B91) ·
+  레포 정본 자산(`prompts/`·`kit/`·`schemas/blocks.json`·레포 `layers/`)은 사내에서 고치지 않는다(`doctor`가 `자산_해시.json`과 대조).
+- **실행의 경계는 하나씩이다**: LLM 비용을 쓰는 명령은 파싱 전에 사전 점검(B98 `core/llm/preflight`) · 구축은 어떤 예외로 끝나도
+  되돌린다(되돌림 경계 `run_document` 하나 · 문서 시작 전 판 · B109 · B110) · 화면에 나온 것은 로그에도 있다(진입점은 전부 `cli/_entry.py`) ·
+  화면이 닫혀도 공통 진입 한 자리가 받는다(B109) · 노드는 집 층 · 엣지는 문서 층(B100 — 층 전부를 연다) · LLM 지점은 닫힌 12(문서 7 §7.6-B-2).
+- **한 자리 목록 — 같은 일을 하는 두 번째 자리를 만들지 않는다**(무엇 → 자리):
+  표기 2차 대조 → `ids.fold_latin` · 청크 맥락 줄 → `core/build/extract_ctx` · 개체 해소(다른 공정 가드 포함) → `Builder.resolve_at_home` ·
+  빈칸 표시 → `parser/normalizer.null_marker` · 좌표 쌍 판정 → `parser.coord_pairs.verdict` · 별칭 붙이기 → `alias_book.attach` ·
+  재연결 · 연결 보강 → `core/build/retry` · `core/build/reinforce` · 문서 개요 · 제목 개체 → `core/build/outline` · `core/build/heading` ·
+  문서 끝 맞춤표 → `core/build/reconcile` · 뷰어 닻 → `core/query/anchor.py` · 사용량 · 진행 화면 → `_screen.usage_line` · `_screen.ticker` ·
+  재구축 → `run.py rebuild` · 등록 리허설 → `cli.register.rehearsal`(임시 상태 폴더).
+  **회차가 더한 동작의 정본은 명세 각 절이다** — 이 파일에 회차 기능을 늘어놓지 않는다(찾는 법: `docs/spec/부록_용어.md` · `docs/spec/개정대장.md` · `docs/구조도/05_조절_지도.md`).
 - **골격 심기의 자리는 `core/state/skeleton.py`다** — 파생이 loader에 섞이면 관계 이름을
   config에서 받는 통로가 갈린다.
 - **게이트웨이는 패키지 `core/llm/`**: 설정 접근은 `gateway.py` 하나로 수렴 ·
@@ -170,3 +159,4 @@
 정제본이 답하지 않아 결정이 안 되는 지점은 **추측하지 말고 `BLOCKERS.md`에 기록**하고
 사용자에게 요청한다. 정제본 개정은 이 세션이 하지 않는다 — **무엇을 어떻게 고쳐야 하는지만
 보고하고, 개정은 허브가 한다.**
+**보고의 형식은 명세 패치 파일이다**(2026-10-16 사용자 확정 · B117): `docs/안건/B###_명세패치.md` — 항목마다 파일 · 절 · `지금`(명세에서 그대로 복사 — 그 파일에서 정확히 한 번) · `바뀔`(지금 규칙만 — 취소선 · 구판 서술 · 표 칸 밖 글 없이 · 출처는 끝 꼬리 `(B###)`) · `까닭`. 구현 세션은 `tools/spec_patch.py --check`만 치고 `--apply`는 허브가 친다.
