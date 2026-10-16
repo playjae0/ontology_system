@@ -305,63 +305,47 @@ def _progress(done, total, adopted, *, label=""):
           end="\r" if (tty and done < total) else "\n", flush=True)
 
 
-def _extract_rehearsal(st, results, samples, want, truncated):
+def _extract_rehearsal(st, results, samples, want, truncated, rs):
     """**prose ②구획 — 층 어휘가 이 문서에 적용된 결과** (문서 6 §6.6 · B51).
 
     table은 role 배정표(「이 열이 attribute가 된다」)를 보고 승인한다. prose는 청크
     분할만 보고 승인해 왔다 — **층 어휘가 이 문서에 어떻게 적용되는지를 한 번도 안
     본 채** 확정되고, 그 결과를 처음 보는 시점이 운영 인입 뒤 `show extract`였다.
 
-    **리허설은 운영과 같은 함수·같은 파일이다** — `cli.extract.run()`을 부르고 그
-    체크포인트를 그대로 싣는다. 그래서 `doc_id`도 **운영의 것**(파일명 파생)을 쓴다:
-    리허설 id를 따로 쓰면 확정 뒤 운영 인입이 그 체크포인트를 못 찾아 같은 문서를
-    다시 뽑는다 — LLM 호출이 두 배가 되고, 두 산출이 다를 수 있다.
+    **리허설은 운영과 같은 함수다** — `cli.extract.run()`을 **임시 상태 루트의 하위 프로세스**가 부른다(B116 ① ·
+    `cli/register/rehearsal.py` — 운영의 그래프 · 문서 대장 · 청크 · 큐 · 체크포인트는 읽기만). doc_id는 **운영의 것**
+    (파일명 파생)이다 — 그 실행이 쓴 LLM 산출(추출 · 개요 · 구조 지도)은 끝에 ④단 자리로 가고, 그 종류로 인입할 때
+    조건이 같으면 쓴다(B116 ② — 추출 LLM 0). 이미 다른 종류로 들어간 문서가 표본이어도 운영은 그대로다.
 
-    **부분 리허설이면 체크포인트를 남기지 않는다** — 앞 N행만 본 추출을 운영이
-    재사용하면 뒷 구간이 영영 안 뽑힌다.
-
-    **이미 인입된 문서면 화면이 먼저 말한다**(B112 ⑦ — 재현 · 동작은 그대로 · `BLOCKERS.md`): 리허설은 인입(청크
-    적재)을 앞세우므로 그 문서가 문서 대장에 있으면 재인입이 된다 — 그 문서의 그래프 몫을 회수하고 · 문서 대장
-    항목을 초안 doc_type으로 덮고 · 운영 추출 체크포인트(렌즈판까지)를 버린다.
+    **부분 리허설이면 산출을 남기지 않는다** — 앞 N행만 본 추출을 운영이 재사용하면 뒷 구간이 영영 안 뽑힌다.
     """
-    from cli.extract import run as extract_run
     from cli.ingest import doc_id_of
-    from core.build import extract as EX
-    from core.state import store
     if not want:
         return {"source": "none", "note": "추출 리허설 없음 — 끄고 진행했다"}
-    made, ids, ingested = [], [], store.read(store.DOC_REGISTRY, {})
+    envs, ids = [], []
     for r, s in zip(results, samples):
         if not r.ok:
             continue
         env = dict(r.envelope)
         env["doc_id"] = doc_id_of(s)          # **운영의 doc_id** — 재사용의 조건이다
-        if env["doc_id"] in ingested:
-            _dt = ingested[env["doc_id"]].get("doc_type")
-            print(f"   ⚠ 추출 리허설 — {env['doc_id']}는 이미 인입된 문서다(doc_type {_dt}) · 리허설이 재인입이 되어 "
-                  f"그 문서의 그래프 몫 · 문서 대장 · 추출 체크포인트(렌즈판 포함)를 바꾼다 · 되돌리려면 "
-                  f"python run.py ingest-file {s} --doc-type {_dt}")
         ids.append(env["doc_id"])
-        p = _dir(st["doc_type"]) / f"_rehearsal_{env['doc_id']}.json"
-        write_file(p, json.dumps(env, ensure_ascii=False))
-        made.append(p)
+        envs.append(env)
     # **운영 인입과 같은 층으로 뽑는다**(B102 ⑥) — 인입은 스키마의 `layer`로 추출한다(`entry.run_document`).
     # 구판은 등록의 층으로 뽑았고, 재사용 조건이 층 config 판을 대조하지 않아 다른 어휘의 추출이 재사용됐다.
     _sc = draft_mod._at(st["schema"]) if st.get("schema") else None
     _lay = (json.loads(_sc.read_text(encoding="utf-8")).get("layer") if _sc and _sc.exists() else None) or st["layer"]
-    extract_run([str(p) for p in made], layer=_lay)
-    for p in made:
-        p.unlink(missing_ok=True)
-    cps = [json.loads(EX.checkpoint_path(i).read_text(encoding="utf-8"))
-           for i in ids if EX.has_checkpoint(i)]
-    if truncated:
-        for i in ids:
-            EX.invalidate(i)                  # 부분 리허설분은 운영이 재사용하면 안 된다
+    res = rs.extract(envs, _lay) if envs else {"rc": 0, "docs": {}}
+    if res.get("rc") and "docs" not in res:
+        print(f"   ⚠ 추출 리허설 실패(종료 코드 {res['rc']}) — 운영 상태는 그대로 · 임시 폴더는 지운다 · "
+              f"리허설 산출 0")
+        return {"source": "none", "note": f"추출 리허설 실패(종료 코드 {res['rc']}) — 운영 상태는 그대로"}
+    docs = res.get("docs") or {}
+    cps = [docs[i]["checkpoint"] for i in ids if (docs.get(i) or {}).get("checkpoint")]
     if not cps:
         return {"source": "none", "note": "추출 산출이 없다 (표본 파싱 실패 또는 청크 0)"}
     # **본문은 산출자가 채운다** — 체크포인트는 후보만 담고(§4.2) 렌더러는 계산하지
-    # 않는다(D-79). 청크 저장소가 그 문서의 본문·구획을 갖고 있다.
-    _ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    # 않는다(D-79). 임시 루트의 청크 저장소가 그 문서의 본문·구획을 갖고 있다.
+    _ch = {cid: c for i in ids for cid, c in ((docs.get(i) or {}).get("chunks") or {}).items()}
     by_chunk, cats = [], {}
     for cp in cps:
         for c in cp.get("candidates") or []:
@@ -381,13 +365,31 @@ def _extract_rehearsal(st, results, samples, want, truncated):
                          if a.get("attach_to")),
            "unresolved": sum(1 for c in by_chunk for a in c["attach"]
                              if not a.get("attach_to"))}
-    return {"source": "mock" if gateway.use_mock() else "live",
+    return {"source": res.get("source") or "none",
             "prompt_version": cps[0].get("prompt_version"),
             "config_version": cps[0].get("config_version"),
             "kept": not truncated,
             "note": ("부분 리허설이라 체크포인트를 남기지 않았다 — 운영이 다시 뽑는다"
                      if truncated else None),
+            "conditions": _conditions(res),
             "totals": tot, "by_chunk": by_chunk, "category_counts": cats}
+
+
+def _conditions(res):
+    """리허설이 운영과 **같은 조건**이었나(B116 ①) — 임시 루트의 하위 프로세스가 읽은 설정 파일 · 손잡이를 부모와 대조."""
+    import os
+    from cli.register import rehearsal as RS
+    here = gateway.config_file()
+    cf = res.get("config_file")
+    same_cf = (os.path.realpath(cf) == os.path.realpath(here)) if (cf and here) else (cf is None and here is None)
+    kn = res.get("knobs") or {}
+    out = {"home": "임시 상태 폴더(끝나면 지운다)", "mode": res.get("source"),
+           "config_file": paths.show(cf) if cf else None, "config_same": same_cf,
+           "knobs": kn, "knobs_same": kn == RS.knobs_now()}
+    print(f"   리허설 조건 — 임시 상태 폴더 · 모드 {out['mode']} · 설정 파일 {out['config_file'] or '없음'}"
+          f"({'운영과 같다' if same_cf else '운영과 다르다'}) · 손잡이 파일 값 {len(kn):,}개"
+          f"({'운영과 같다' if out['knobs_same'] else '운영과 다르다'})")
+    return out
 
 
 def _cmd_review_instruct(doc_type, st, instruct):
@@ -439,7 +441,7 @@ def _cmd_review_instruct(doc_type, st, instruct):
             return 1
 
 
-def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract):
+def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract, rs):
     """② -b **추출 리허설** — prose일 때만, 사람이 켜면 돈다. 돌려주는 것은 리허설 요약.
 
     `cmd_review`에서 단계로 떼어냈다(B78 2c).
@@ -460,7 +462,7 @@ def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract):
                 want = False
                 print("   (비대화형 — 끄고 진행한다. 뷰에 「추출 리허설 없음」)")
         print(f"   → 추출 리허설 {'켬' if want else '끔'}")
-        rehearsal = _extract_rehearsal(st, results, samples, want, _trunc)
+        rehearsal = _extract_rehearsal(st, results, samples, want, _trunc, rs)
         if rehearsal.get("totals"):
             t = rehearsal["totals"]
             print(f"   추출 리허설({rehearsal['source']}) — 청크 {t['chunks']} · "
@@ -493,6 +495,57 @@ def _parse_lines(results):
                   f" — 나머지는 고정 규칙으로 선다")
 
 
+def _ingested_lines(doc_type, samples):
+    """**이미 인입된 표본이면 안내 한 줄**(B116 ① — B112의 경고를 바꿨다 · 동작: 운영은 그대로)."""
+    from cli.ingest import doc_id_of
+    from cli.register import samples as samples_mod
+    reg = store.read(store.DOC_REGISTRY, {})
+    for s in samples:
+        did = doc_id_of(s)
+        if did not in reg:
+            continue
+        spec = samples_mod.held_spec(did)
+        print(f"   이미 인입된 문서다(doc_type {reg[did].get('doc_type')}) — 리허설은 임시 폴더에서 돌아 운영은 그대로 · "
+              f"새 종류로 넣으려면 python run.py ingest-file {s} --doc-type {doc_type}"
+              + (f' --sheets "{spec}"' if spec else ""))
+
+
+def _review_parse(mod, samples, rows, roles, llm_coord):
+    """표본 파싱(리허설) — 무LLM 1차 → 좌표 미스를 세고 사람이 켜면 LLM 보조로 다시. `cmd_review`에서 떼어냈다(B116 · 함수 상한)."""
+    from cli import doc_coord as DC
+    from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
+    # **문서 좌표도 인입과 같게**(B116 ① — 같은 조건): 기록이 있으면 그것 · 없으면 파일명 제안(비대화형 인입과 같다 · 쓰기 0)
+    coords = {s: DC.decide(s, doc_id_of(s), ask=False, write=False)[0] for s in samples}
+
+    def _run(pick):
+        out = []
+        for i, s in enumerate(samples, 1):
+            lbl = f"{i}/{len(samples)} ({Path(s).name})"
+            # **주입 조립은 한 자리다**(B48) — 좌표 보조만 사람이 끌 수 있으므로
+            # 그 하나를 덮어쓴다. 나머지 둘은 진입점이 정한 그대로 내려간다.
+            # **리허설 파싱도 운영의 doc_id를 쓴다**(문서 6 §6.6 B51-2 · B55 ⑤).
+            # 구판은 `{DOC_TYPE}{i:02d}`라, 구조 지도·이미지 요약 보존분이 `CP01`
+            # 대신 그 이름으로 남아 **운영 인입이 못 찾았다** — 체크포인트 키가
+            # 같아야 재사용이 성립한다. `_extract_rehearsal`만 고쳐져 있었다.
+            out.append(pipeline.parse(
+                # **좌표 층이다**(B85 ② — doc_type의 층이 아니다): `process_ref`가
+                # 가리키는 것은 좌표 층의 골격이라, 품질층 doc_type의 리허설이
+                # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
+                mod, doc_id_of(s), s, layer=coord_layer(),
+                # **계층 규칙 선언은 주입하지 않는다**(B87 ② — generate는 파악만):
+                # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
+                **{**injections(), "pick_coord": pick, "infer_rules": None},
+                max_rows=rows, sheet_roles=roles.get(str(Path(s).resolve())), doc_coord=coords[s],
+                progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
+        return out
+
+    results = _run(None)
+    misses = _coord_misses(results, coord_layer())
+    if _ask_llm_coord(misses, llm_coord):
+        results = _run(points.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
+    return results
+
+
 def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                extract=None):
     """② 검수 — 기계 관문 → 뷰 데이터 → HTML. 지시가 오면 **재생성 루프**를 돈다.
@@ -507,8 +560,6 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
                          f"  ▶ 다음 줄:\n"
                          f"     python -m cli.register generate {doc_type} "
                          f"<층> <표본...>")
-
-    from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
 
     if instruct:                                   # 재생성 루프 1회
         _rc = _cmd_review_instruct(doc_type, st, instruct)
@@ -544,38 +595,15 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     # **표본의 시트 역할**(B86 ⑤) — 기록이 있으면 묻지 않는다(생성 입구에서 정했다).
     from cli.register import samples as samples_mod
     _roles = samples_mod.sample_roles(doc_type, st, samples)
-
-    def _run(pick):
-        out = []
-        for i, s in enumerate(samples, 1):
-            lbl = f"{i}/{len(samples)} ({Path(s).name})"
-            # **주입 조립은 한 자리다**(B48) — 좌표 보조만 사람이 끌 수 있으므로
-            # 그 하나를 덮어쓴다. 나머지 둘은 진입점이 정한 그대로 내려간다.
-            # **리허설 파싱도 운영의 doc_id를 쓴다**(문서 6 §6.6 B51-2 · B55 ⑤).
-            # 구판은 `{DOC_TYPE}{i:02d}`라, 구조 지도·이미지 요약 보존분이 `CP01`
-            # 대신 그 이름으로 남아 **운영 인입이 못 찾았다** — 체크포인트 키가
-            # 같아야 재사용이 성립한다. `_extract_rehearsal`만 고쳐져 있었다.
-            out.append(pipeline.parse(
-                # **좌표 층이다**(B85 ② — doc_type의 층이 아니다): `process_ref`가
-                # 가리키는 것은 좌표 층의 골격이라, 품질층 doc_type의 리허설이
-                # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
-                mod, doc_id_of(s), s, layer=coord_layer(),
-                # **계층 규칙 선언은 주입하지 않는다**(B87 ② — generate는 파악만):
-                # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
-                **{**injections(), "pick_coord": pick, "infer_rules": None},
-                max_rows=rows, sheet_roles=_roles.get(str(Path(s).resolve())),
-                progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
-        return out
-
-    results = _run(None)
-    misses = _coord_misses(results, coord_layer())
-    if _ask_llm_coord(misses, llm_coord):
-        results = _run(points.coord_picker())     # 사람이 켰을 때만 실호출이 돈다
-
-    _parse_lines(results)
-
-    # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
-    rehearsal = _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract)
+    # **리허설은 임시 상태 루트에서**(B116 ① — 운영은 읽기만 · 끝에 지운다 · 그 실행의 LLM 산출만 ④단 자리로)
+    from cli.register import rehearsal as rehearsal_mod
+    with rehearsal_mod.Session(doc_type, samples) as rs:
+        _ingested_lines(doc_type, samples)
+        results = _review_parse(mod, samples, rows, _roles, llm_coord)
+        rs.truncated = any((r.report.get("rehearsal") or {}).get("truncated") for r in results)
+        _parse_lines(results)
+        # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.
+        rehearsal = _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract, rs)
 
     view = build_view(st, results, ok, out, rehearsal)
     d = _dir(doc_type)

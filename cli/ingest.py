@@ -413,6 +413,10 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         return row
     try:
         stage["이름"] = "파싱"
+        from core.state import rehearsal as _RH          # 그 종류 등록 검수의 리허설 산출 — 파싱 앞 몫 (B116 ②)
+        from parser import struct_map as _SM
+        for _ln in _RH.take_parse(sel.get("doc_type"), sel["doc_id"], _SM.source_hash(str(doc))):
+            print("   " + _ln)
         res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
                              coord_cap=coord_cap, sheet_roles=_roles,
                              no_images=no_images, doc_coord=_dc)
