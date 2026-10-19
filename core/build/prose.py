@@ -40,27 +40,31 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
         # 문서를 갖고 있다(§7.2). 있으면 locator에 접두를 붙인다.
         _loc = src.get("source_locator")
         prov = f"{env['doc_id']}#{_loc}" if _loc else cid
-        ref, ref_g = b.resolve_anchor(src.get("process_ref"), COORD_CATEGORY, prov)
-        ref = b.descend_anchor(ref, src.get("electrode_type"), ref_g)   # ⓪ 비정형도 동일
+        # **공정은 목록이다**(B125 ④) — 공정마다 anchor 행 하나(하나면 지금 그대로) · 주 좌표는 하나일 때만
+        res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"))
+        for s, r_id, r_g, hold in res:
+            # 상위·극성 대조는 구축 말미 한 자리(`coord_scan.enqueue` — 표와 같은 함수 · B105 ③④)
+            # **정직한 anchor 행**(B102 ⑦) — 빈 좌표는 「좌표 없음」(큐 없음) · 목록 밖 이름만 orphan_anchor
+            b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
+                         surface=s, canonical=r_g.get(r_id)["canonical"] if r_id else None,
+                         layer=r_g.layer if r_g else None,
+                         path="skeleton" if r_id else "none",
+                         verdict="anchor" if r_id else ("orphan" if s else "pending"),
+                         node_id=r_id,
+                         queue_kind=None if (r_id or not s) else "orphan_anchor",
+                         hold=None if r_id else hold)
+        ref, ref_g = b.main_coord(res)
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
-        # 상위·극성 대조는 구축 말미 한 자리(`coord_scan.enqueue` — 표와 같은 함수 · B105 ③④)
-        # **정직한 anchor 행**(B102 ⑦) — 빈 좌표는 「좌표 없음」(큐 없음) · 목록 밖 이름만 orphan_anchor
-        b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
-                     surface=src.get("process_ref"), canonical=parent,
-                     layer=ref_g.layer if ref_g else None,
-                     path="skeleton" if ref else "none",
-                     verdict="anchor" if ref else ("orphan" if src.get("process_ref") else "pending"),
-                     node_id=ref,
-                     queue_kind=None if (ref or not src.get("process_ref")) else "orphan_anchor",
-                     hold=None if ref else b.anchor_hold)
+        b.mention_coords((src.get("meta") or {}).get("mentions"), COORD_CATEGORY, prov)   # 언급 공정 → 관련 링크 (B125 ④)
         plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
-                                (ref, ref_g, parent, anchor_pol), _loc)
+                                (ref, ref_g, parent, anchor_pol), _loc,
+                                coords=[(r_id, r_g) for _s, r_id, r_g, _h in res if r_id])
         coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol, plans)
     return coords
 
 
-def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
+def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
     """청크 하나의 개체 — 소속 대상 먼저(같은 청크 안 순서) → 이름 부모(골격 소속 · `nest_categories`) →
     해소(`resolve_at_home` — 표와 같은 함수) · 대장 행. 돌려주는 것은 소속 계획 `[{nid, tgt, bel, row}]`."""
     ref, ref_g, parent, anchor_pol = main
@@ -68,7 +72,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
     ents, cyc = belongs.order(cand.get("entities", []), bmap)
     for k in sorted(cyc):
         store.append_defect(f"{b.doc_id}: 소속 순환 — '{k}' @ {cid} → 소속을 버렸다")
-    chunk_kw = dict(coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
+    chunk_kw = dict(coord=(ref, ref_g), coords=coords, electrode_type=src.get("electrode_type"),
                     parent_canonical=parent, anchor_polarity=anchor_pol,
                     coord_surface=src.get("process_ref"))
     pcs, plans = {}, []
@@ -98,7 +102,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
             e_parent = name_parent(e["category"], tgt[2].get(tgt[1])["canonical"], e_parent, b.cfg)
         # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다.
         nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
-                                    coord=(e_ref, e_g),
+                                    coord=(e_ref, e_g), coords=coords,     # 다른 공정 가드 = 목록 전체의 계보 (B125 ④)
                                     electrode_type=src.get("electrode_type"),
                                     parent_canonical=e_parent,
                                     anchor_polarity=e_pol,

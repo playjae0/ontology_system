@@ -103,6 +103,10 @@ KNOBS = {
                              "구조가 낸 청크 구간이 크기 권장값(chunk_max_chars)의 몇 배까지 그대로인가 — 넘는 구간만 형제 줄 "
                              "앞에서 나눈다(조각의 주인 · 사슬은 그 구간의 것)",
                              "python run.py show dist chunks · show report <doc_id> --md 추출 청크 표"),
+    "ppt_slide_chars": ("parser.adapters.basic_ppt", ("SLIDE_MAX_CHARS",), "int",
+                        "PPT 슬라이드 본문의 글자 임계 — 넘는 슬라이드만 본문 근거 청크를 구조 지도로 나눈다(추출은 그래도 "
+                        "슬라이드 1회 · 상자 수는 보지 않는다)",
+                        "python run.py show dist chunks · show report <doc_id> --md 추출 청크 표"),
     "judge_context_chars": ("core.matcher", ("JUDGE_CONTEXT_CHARS",), "int0",
                             "2차 판정의 문장 — 1차가 불확실인 산문 개체에 그 표기 앞뒤 이 글자 수의 청크 원문을 붙여 같은 "
                             "후보로 한 번 더 묻는다(0이면 끔 · 비용은 불확실 수에 비례)",
@@ -259,4 +263,4 @@ def rows():
 
 #: 인입 기록에 싣는 손잡이 — 청크를 가르는 셋 · 형태·시트 판정
 PARSE_RECORD = ("heading_max_chars", "chunk_rows", "chunk_max_chars", "form_auto",
-                "sheet_thresholds", "sheet_min_hits")
+                "sheet_thresholds", "sheet_min_hits", "ppt_slide_chars")

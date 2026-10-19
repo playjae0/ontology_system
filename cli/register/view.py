@@ -251,9 +251,8 @@ def _coord_misses(results, layer):
     for r in results:
         env = r.envelope or {}
         for p in (env.get("records") or env.get("chunks") or []):
-            ref = p.get("process_ref")
-            if ref and ref not in idx:
-                miss.append(ref)
+            from parser.normalizer import coord_refs
+            miss += [ref for ref in coord_refs(p.get("process_ref")) if ref not in idx]   # 공정은 목록 (B125 ④)
     return miss
 
 

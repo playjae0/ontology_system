@@ -115,20 +115,18 @@ raw = read(str(RAW / "PPT_basic.pptx"))
 show("확대분 2장이 말미에 붙었다 (D-18 — 기존 슬라이드 번호 불변)",
      len(raw["slides"]) == 11 and raw["slides"][8]["index"] == 9)
 exp = basic_ppt.ADAPTER["expects"]
-show("임계는 config 값이다 (코드에 숫자를 박지 않는다 — P7)",
-     exp["max_chars"] == 600 and exp["max_shapes"] == 5)
-
+from parser import tuning
+show("임계는 본문 글자 수 하나 — 상자 수 조건 없음 · 값은 사내 손잡이(B125 ①)",
+     "max_shapes" not in exp and "max_chars" not in exp and "ppt_slide_chars" in tuning.TARGETS)
+tuning.apply({"ppt_slide_chars": 700})     # 창작 손잡이 값(근거 아님) — 슬라이드 11(단일 프레임)만 넘게
 pieces = basic_ppt.extract(raw, struct_map_fn=lambda k, l, loc: struct_map.apply(k, l, loc))
 paths = {}
 for p in pieces:
     paths.setdefault(p["meta"]["split_path"], []).append(p)
-show("① 임계 이하 = 슬라이드 1장 → 청크 1개 (원래의 자명함)",
-     len(paths.get("slide", [])) == 9,
+show("① 임계 이하 = 슬라이드 1장 → 본문 청크 1개 — 상자 6개 슬라이드도 하나(상자 분할 0 · B125 ①)",
+     len(paths.get("slide", [])) == 10 and not any(p["source_locator"].startswith("슬라이드 10#") for p in pieces)
+     and all(p["meta"].get("extract_unit") for p in pieces),
      f"{len(paths.get('slide', []))}청크")
-show("② 임계 초과 + 다프레임 → shape 단위 분할 (결정적)",
-     len(paths.get("shape", [])) == 6
-     and all(p["source_locator"].startswith("슬라이드 10#") for p in paths["shape"]),
-     str([p["source_locator"] for p in paths.get("shape", [])][:3]))
 # **청크 수를 못박지 않는다**([정정] 46) — 레벨 규칙이 바뀌면 개수도 바뀐다.
 # 구판은 「구간에 못 들면 전 헤딩 분할」이라 9청크였고 신판은 최근접 레벨이라
 # 3청크다. 잠글 것은 개수가 아니라 **통청크가 아니라는 것**과 좌표의 모양이다.
@@ -148,6 +146,7 @@ show("③ 지도 경로도 구간 밖을 조각에 싣는다 (산문 두 경로�
      all(p["meta"].get("split_level_out_of_range")
          for p in paths.get("struct_map", [])))
 noflat = basic_ppt.extract(raw)                       # 지도 훅 미주입
+tuning.apply({})
 show("어댑터는 스스로 LLM을 부르지 않는다 — 지도 훅이 없으면 ④ 폴백 + 표시",
      any(p["meta"].get("hierarchy_unresolved") for p in noflat)
      and not any(p["meta"]["split_path"] == "struct_map" for p in noflat))

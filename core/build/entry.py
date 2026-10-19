@@ -141,7 +141,9 @@ def _plan_hit(b, m, layer):
     lay = b.home_of(category)       # 판정과 같은 자리 — 집 (B90 ②)
     et = m.get("electrode_type")
     sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
-    ref_id, ref_g = (b.resolve_anchor(m.get("ref"), COORD_CATEGORY, "(예고)",
+    from parser.normalizer import coord_refs
+    _rs = coord_refs(m.get("ref"))                            # 주 좌표는 하나일 때만 (B125 ④)
+    ref_id, ref_g = (b.resolve_anchor(_rs[0] if len(_rs) == 1 else None, COORD_CATEGORY, "(예고)",
                                       defer=sink)
                      if m.get("ref") else (None, None))
     if ref_id:
@@ -194,8 +196,9 @@ def decision_plan(mentions, refs, layer):
             kinds.append(n)
         if _plan_hit(b, m, layer):
             hits += 1
+    from parser.normalizer import coord_refs
     out_of_list = []
-    for r in refs:
+    for r in [x for v in refs for x in coord_refs(v)]:        # 공정은 목록 (B125 ④)
         n = norm(r)
         if n in out_of_list:
             continue

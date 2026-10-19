@@ -545,11 +545,8 @@ def basic_adapter_proposal(samples, *, said_prose=False):
         return _basic_prose_xlsx_proposal(samples, said_prose=said_prose)
     if kinds != {".pptx"}:
         return None
-    # **임계는 어댑터가 소유한다**(문서 6 §6.4-5) — 판단 상수는 `ADAPTER.expects`에
-    # 산다(문서 7 §7.1 관리 자산의 원칙). 여기에 숫자를 복제하면 "조정은 어댑터
-    # 한 곳에서"가 깨지고, 어댑터를 고쳐도 이 화면의 판정은 옛 임계로 남는다.
-    exp = basic_ppt.ADAPTER["expects"]
-    max_chars, max_shapes = exp["max_chars"], exp["max_shapes"]
+    # **임계는 어댑터의 판정 함수 하나다**(B125 ① — 본문 글자 수 · 사내 손잡이 `ppt_slide_chars`) — 여기에 숫자를
+    # 복제하면 어댑터를 고쳐도 이 화면의 판정은 옛 임계로 남는다.
     over = 0
     for s in samples:
         for sl in reader.read(str(s)).get("slides", []):
@@ -560,13 +557,13 @@ def basic_adapter_proposal(samples, *, said_prose=False):
             body = [r.get("text", "") for r in sl.get("shapes", [])
                     if r.get("kind") not in ("table", "chart", "picture")
                     and r.get("text")]
-            if sum(len(x) for x in body) > max_chars or len(body) > max_shapes:
+            if basic_ppt._over(body):
                 over += 1
     return {"adapter": "parser/adapters/basic_ppt.py",
             "reason": "PPT는 분할이 자명하다 — 슬라이드가 청크다. 생성 세션이 필요 없다",
             "over_threshold_slides": over,
-            "note": ("임계 초과 슬라이드가 있어 자명함이 조건부다 — shape 분할·지도 폴백이 "
-                     "돈다(C13 v18)" if over else "전 슬라이드가 임계 이하다")}
+            "note": ("임계 초과 슬라이드가 있다 — 그 본문만 지도로 나뉜다(추출은 슬라이드 1회 · "
+                     "C13)" if over else "전 슬라이드가 임계 이하다")}
 
 
 def _basic_prose_xlsx_proposal(samples, *, said_prose=False):

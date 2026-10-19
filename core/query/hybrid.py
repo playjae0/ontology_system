@@ -82,7 +82,8 @@ def link_candidates(question, graphs, configs, k, exclude=()):
 
 def _chunk_text(c):
     """청크 벡터의 재료 — 구획 · 좌표 · 본문(맥락이 「어디의 글」을 말한다)."""
-    head = " · ".join(x for x in (c.get("section"), c.get("process_ref")) if x)
+    from parser.normalizer import coord_text
+    head = " · ".join(x for x in (c.get("section"), coord_text(c.get("process_ref"))) if x)
     return f"[{head}] {c.get('text') or ''}" if head else (c.get("text") or "")
 
 

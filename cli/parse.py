@@ -31,7 +31,7 @@ from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
 from core.state.bootstrap import coord_layer
 from core import paths
-from core.build import structure as structure_mod
+from core.build import deck as deck_mod, structure as structure_mod
 from core.llm import gateway, points, struct_map_pass
 from parser import pipeline, preflight, reader, validator
 
@@ -60,7 +60,11 @@ def injections(layers=None):
            # ⑦ 안의 계층 규칙 선언(B87 ②)은 **운영 주입에서 빠졌다** — 문서 구조(아래)가 시트마다 무조건 그 일을 한다(B119 ①)
            "infer_rules": None,
            # ⑪ 안의 문서 구조(B119 ①) — 산문 시트마다 무조건(개요와 한 지시문 · 계층 규칙 선언을 대신한다)
-           "structure": structure_mod.structurer(layers)}
+           "structure": structure_mod.structurer(layers),
+           # ⑪ 안의 덱 구조(B125 ③) — PPT 덱마다 1회(제목 · 이어짐 · 공정 목록 · 덱 개요 · mock은 힌트)
+           "deck": deck_mod.decker(layers),
+           # 슬라이드 · 쪽 캡처를 추출에(B125 ② — 실호출일 때 · `--no-images`면 파서가 끈다)
+           "capture": not gateway.use_mock()}
     if not gateway.use_mock():
         missing = [k for k, v in fns.items() if v is None and k != "infer_rules"]   # 규칙 선언은 일부러 빠졌다(B119 ①)
         if missing:
@@ -149,6 +153,13 @@ def print_split_notes(report):
                     + f" · LLM 호출 {n['호출']} · 재사용 {n['재사용']}"
                     + (f" · 버림 {n['버림']}" if n["버림"] else "") + (f" · 실패 {n['실패']}" if n["실패"] else "")
                     + (f" · 사람 고침 {n['고침']}" if n["고침"] else ""), "head")
+    dk = ((report or {}).get("deck") or {}).get("수")
+    if dk:                                          # 덱 구조 끝 줄 (B125 ③)
+        _screen.say(f"   덱 구조 — 슬라이드 {dk['슬라이드']} · 제목 초안과 다름 {dk['제목다름']} · 이어짐 {dk['이어짐']} · "
+                    f"공정 하나 {dk['공정하나']} · 둘 이상 {dk['공정둘이상']} · 없음 {dk['공정없음']} · "
+                    f"문서 좌표와 다름 {dk['좌표다름']} · 버림 {dk['버림']} · LLM 호출 {dk['호출']} · 재사용 {dk['재사용']}"
+                    + (f" · 사람 고침 {dk['고침']}" if dk.get("고침") else "")
+                    + (f" · 실패 {dk['실패']}" if dk.get("실패") else ""), "warn" if dk.get("실패") else "head")
     sr = (report or {}).get("struct_rule") or {}
     if sr.get("주입") and sr.get("대상"):
         tail = f" · 선언 버림 {len(sr['버림'])}" if sr.get("버림") else ""
@@ -405,7 +416,8 @@ def cmd_build(args):
         pf_ok, pf_detail = preflight.check(mod, raw)
         res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
                              layer=coord_layer(),
-                             **{**injections(), "infer_rules": None, "structure": None})   # 구축은 파악만 (B87 ② · B119)
+                             **{**injections(), "infer_rules": None, "structure": None,   # 구축은 파악만 (B87 ② · B119)
+                                "deck": None, "capture": False})
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "
               f"파싱 {'OK' if res.ok else 'FAIL'} · 조각 {res.report.get('pieces', 0)}")

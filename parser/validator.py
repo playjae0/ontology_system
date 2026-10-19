@@ -67,6 +67,11 @@ def check(envelope, closed_list=None):
             if ck not in piece:
                 d.append(f"{key}[{i}]: 조각 공통 키 부재 — {ck} "
                          f"(값 null은 허용, 키 부재는 계약 위반)")
+        # **표 레코드의 공정은 이름 하나다**(B125 ④ — 공정 목록은 덱 구조가 고른 산문 조각만 · 다공정 표는 이연) —
+        # 복수값 셀(「노칭, 코팅」)을 전개하지 않고 목록으로 담은 어댑터는 여기서 문서 단위로 멈춘다
+        if kind == "table" and isinstance(piece.get("process_ref"), (list, tuple)):
+            d.append(f"{key}[{i}]: 표 레코드의 process_ref가 목록이다 {piece['process_ref']!r} "
+                     f"— 이름 하나여야 한다(복수값 셀은 어댑터가 행으로 전개한다)")
         # 정본 id는 파서가 부여하지 않는다 (틀 A7-1 — 에이전트 계산)
         bad = {"chunk_id", "record_id", "doc_hash"} & set(piece)
         if bad:
@@ -117,7 +122,8 @@ def coord_report(envelope, closed_list):
         known.add(n["canonical"])
         known.update(n.get("aliases") or [])
     key = "records" if envelope.get("payload_kind") == "table" else "chunks"
-    outside = sorted({p.get("process_ref") for p in (envelope.get(key) or [])
-                      if p.get("process_ref") and p["process_ref"] not in known})
-    missing = sum(1 for p in (envelope.get(key) or []) if not p.get("process_ref"))
+    from parser.normalizer import coord_refs                  # 공정은 목록 (B125 ④)
+    outside = sorted({r for p in (envelope.get(key) or []) for r in coord_refs(p.get("process_ref"))
+                      if r not in known})
+    missing = sum(1 for p in (envelope.get(key) or []) if not coord_refs(p.get("process_ref")))
     return {"checked": True, "outside_closed_list": outside, "no_coord": missing}

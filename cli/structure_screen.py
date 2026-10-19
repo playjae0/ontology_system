@@ -9,6 +9,9 @@
             구조 보존분 위에 고침을 덮는다) → 표를 다시 보인다. 재구축도 같은 고침을 쓴다.
 
 명령은 짧게(사내는 복붙이 안 된다) — 이름은 줄 글자에서 번호를 뗀 것 · `<번호> 대상`이면 카테고리는 같은 역할의 다른 줄이 쓴 것.
+
+**덱 구조 표**(PPT — B125 ③): 번호 · 슬라이드 · 제목 · 초안(placeholder) · 이어짐 · 다루는 공정 · 언급 · 고침 `<번호> 공정 <a,b|없음>` ·
+`<번호> 제목 <글>` · `<번호> 이어짐 <슬라이드|없음>` · `개요 <글>` → 같은 기록 파일의 `@덱` 프레임 → 다시 파싱(LLM 0).
 """
 from __future__ import annotations
 
@@ -18,6 +21,9 @@ from parser import struct_map
 from parser.struct_rule import BODY, ROLES, TARGET_ROLES
 
 PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> <카테고리|묶음|주제|본문>] "
+DECK_PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 제목 <글> · <번호> 이어짐 <슬라이드|없음> · 개요 <글>] "
+DECK_HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 공정 노칭,스태킹」(골격 이름 · 없음) · 「<번호> 제목 <그 슬라이드 글>」 · "
+             "「<번호> 이어짐 <앞 슬라이드 번호|없음>」 · 「개요 <한 단락>」 — 다시 친다")
 HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> <카테고리>」(대상 + 그 카테고리 · 「<번호> 대상」이면 같은 역할의 "
         "다른 줄이 쓴 카테고리) · 「<번호> " + "」 · 「<번호> ".join([r for r in ROLES if r not in TARGET_ROLES] + [BODY])
         + "」 — 다시 친다")
@@ -79,6 +85,71 @@ def _likely_category(rows, role):
     return None
 
 
+def print_deck(rows):
+    """덱 구조 표(B125 ③) — 슬라이드마다 한 줄 · `*` = 사람이 고친 칸이 있다."""
+    t = _screen.Table([("번호", 4, True), ("슬라이드", 8, True), ("제목", 30, False), ("초안", 20, False), ("이어짐", 6, True),
+                       ("다루는 공정", 22, False), ("언급", 16, False)], flex=2, keep=(5,))
+    for r in rows:
+        ps = r.get("공정")
+        t.row([r["번호"], r["슬라이드"], (r.get("제목") or "—") + ("*" if r.get("by") else ""),
+               "" if r.get("제목") == r.get("초안") else (r.get("초안") or "(없음)"),
+               r.get("이어짐") or "", ("(개체 없음) " if r.get("개체없음") else "")
+               + ("—" if ps is None else (" · ".join(ps) or "없음")), " · ".join(r.get("언급") or [])],
+              [None, "aux", "warn" if r.get("by") else None, "aux", "aux", None, "aux"])
+    t.end()
+    print("   초안 = placeholder 제목(덱 구조와 같으면 비운다) · 다루는 공정 — = 판정 없음(지금 방식 — 경로 · 문서 좌표) · * = 사람이 고쳤다")
+
+
+def parse_deck_fix(answer, rows):
+    """덱 고침 → `(슬라이드 번호 · 0 = 덱 개요, 고침)` · 못 읽으면 None. 공정은 골격 닫힌 목록 안이어야 한다."""
+    toks = answer.split()
+    if len(toks) >= 2 and toks[0] == "개요":
+        return 0, {"overview": " ".join(toks[1:])}
+    if len(toks) < 3 or not toks[0].isdigit():
+        return None
+    row = next((r for r in rows if r["번호"] == int(toks[0])), None)
+    rest = " ".join(toks[2:])
+    if row is None:
+        return None
+    if toks[1] == "제목":
+        return row["슬라이드"], {"title": rest}
+    if toks[1] == "이어짐":
+        if rest == "없음":
+            return row["슬라이드"], {"continues": None}
+        return (row["슬라이드"], {"continues": int(rest)}) if rest.isdigit() and int(rest) < row["슬라이드"] else None
+    if toks[1] == "공정":
+        names = [] if rest == "없음" else [x.strip() for x in rest.replace("·", ",").split(",") if x.strip()]
+        from core.build import deck as DK
+        _nodes, idx = DK._closed()
+        canon = [DK._canon(x, idx) for x in names]
+        if any(c is None for c in canon):
+            print("   골격 밖 공정 — " + " · ".join(x for x, c in zip(names, canon) if c is None) + " (골격 이름을 친다)")
+            return None
+        return row["슬라이드"], {"processes": canon}
+    return None
+
+
+def _deck_gate(res, doc_id, dk, reparse):
+    """덱 구조 표를 보이고 묻는다 — `(res, 계속?)` · 고치면 기록하고 다시 파싱한다(LLM 0 — 보존분 위에 고침)."""
+    from core.build import deck as DK
+    while True:
+        print_deck(dk.get("표") or [])
+        got = _screen.answer(DECK_PROMPT, "go", eof=True, other=lambda a: parse_deck_fix(a, dk.get("표") or []),
+                             hint=DECK_HELP)
+        if got is True or got is False:
+            if got is False:
+                print("   멈춤 — 덱 구조까지(파싱 산출 parsed/ · 덱 구조 보존분은 남았다 · 그래프 쓰기 0)")
+            return res, got
+        slide, fix = got
+        DK.record_fix(doc_id, slide, fix)
+        print(f"   고침 — " + ("덱 개요" if slide == 0 else f"슬라이드 {slide}") + f" {', '.join(fix)} · "
+              f"기록 {ST.fixes_path().name} · 다시 파싱한다(LLM 0)")
+        res = reparse()
+        if not res.ok:
+            return res, False
+        dk = (res.report or {}).get("deck") or {}
+
+
 def gate(res, doc_id, reparse, *, ask=True, layers=None):
     """파싱 끝의 구조 관문 — `(res, 계속?)`. 고치면 기록하고 `reparse()`로 다시 파싱해 새 결과로 돈다."""
     from core.state.bootstrap import coord_layer
@@ -88,6 +159,9 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
             print("   다시 파싱 실패 — " + "; ".join(f["reason"] for f in res.failures)[:200])
             return res, False
         st = (res.report or {}).get("structure")
+        dk = (res.report or {}).get("deck")
+        if dk and not st:                    # PPT — 덱 구조 표 (B125 ③)
+            return _deck_gate(res, doc_id, dk, reparse) if ask else (res, True)
         if not st:
             return res, True
         weak = ST.weak(st, (res.envelope or {}).get("chunks") or [], coord_in)

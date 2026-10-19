@@ -380,7 +380,7 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
     out = []
     for p in pieces:
         r = dict(p)
-        if not r.get(ref_field) and r.get("section"):
+        if not r.get(ref_field) and r.get("section") and not (r.get("meta") or {}).get("deck_coord"):
             hit, ignored, skipped = [], [], []
             for seg in (x.strip() for x in str(r["section"]).split(sep)):
                 if not seg:
@@ -413,7 +413,8 @@ def inherit_doc_coord(pieces, doc_coord, ref_field="process_ref"):
     out = []
     for p in pieces:
         r = dict(p)
-        if not r.get(ref_field):
+        # 덱 구조가 그 슬라이드의 공정을 정했으면(없음 포함 — `meta.deck_coord`) 물려받지 않는다 — 문서 좌표는 덱 구조의 힌트다 (B125 ③)
+        if not r.get(ref_field) and not (r.get("meta") or {}).get("deck_coord"):
             r[ref_field] = doc_coord
             r.setdefault("meta", {})["coord_from_doc"] = True
         out.append(r)
@@ -470,7 +471,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     idx, _shared, _a = scoped_index(nodes)
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
-    refs = [(p.get(ref_field) or None) for p in pieces]
+    refs = [(None if isinstance(p.get(ref_field), list) else (p.get(ref_field) or None)) for p in pieces]   # 목록 = 덱 구조가 고른 것 (B125 ④)
     scope_at = scope_rows(pieces, refs, nodes, idx=idx, shared=_shared, doc_coord=doc_coord)
     folded = {r: fold_hit(r, idx) for r in set(refs) if r and r not in idx}   # 2차 (B96 ④)
     exact = sum(1 for r, sc in zip(refs, scope_at)
@@ -574,6 +575,12 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
                 # 상위를 **하위에서 땄다** — 행이 가져온 상위가 아니다(좌표 쌍 대조는 이 행을 「상위 없음」으로
                 # 읽고 문서 좌표가 있으면 그것으로 잰다 · B106 ⑤ — 딴 상위는 하위와 늘 맞아 대조가 비었다).
                 # meta는 복사해서 단다 — 조각끼리 같은 dict를 나눠 쓰면 이 행의 표시가 다른 행으로 번진다
+                r["meta"] = {**(r.get("meta") or {}), "group_from_ref": True}
+        if isinstance(r.get(ref_field), list) and not r.get("process_group"):
+            # 공정 목록(B125 ④) — 상위는 목록의 상위가 하나일 때만 파생(둘 이상이면 비운다 · 지어내지 않는다)
+            gs = {group_of(idx.get(x) or fold_hit(x, idx), nodes) for x in r[ref_field]}
+            if len(gs) == 1 and None not in gs:
+                r["process_group"] = gs.pop()
                 r["meta"] = {**(r.get("meta") or {}), "group_from_ref": True}
         out.append(r)
     return out

@@ -397,7 +397,8 @@ def row_coord(r, by_loc):
     """행의 좌표 — 좌표 행이면 그 표기 자체 · 아니면 그 조각의 좌표(없으면 None) (B112 ④⑤ — 보류 목록 · 경고 같은 함수)."""
     if r.get("role") == "anchor":
         return r.get("surface")
-    return (by_loc.get(r.get("locator")) or {}).get("process_ref")
+    from parser.normalizer import coord_text
+    return coord_text((by_loc.get(r.get("locator")) or {}).get("process_ref")) or None
 
 
 def doc_coord_warning(rows, env, nodes):

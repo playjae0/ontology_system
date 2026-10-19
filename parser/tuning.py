@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from parser import coord_pairs, form, struct_map, struct_rule, tagger
+from parser.adapters import basic_ppt
 
 #: 손잡이 이름 → (모듈, 속성). 속성이 둘이면 값은 두 칸짜리 목록이다.
 TARGETS = {
@@ -25,6 +26,7 @@ TARGETS = {
     "skeleton_column_pct": (tagger, ("SKELETON_COLUMN_PCT",)),
     "coord_pair_pct": (coord_pairs, ("COORD_PAIR_PCT",)),
     "structure_chunk_over": (struct_rule, ("CHUNK_OVER",)),
+    "ppt_slide_chars": (basic_ppt, ("SLIDE_MAX_CHARS",)),
 }
 
 

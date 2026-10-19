@@ -18,7 +18,7 @@ import logging
 import inspect
 import sys
 
-from . import normalizer, preflight, struct_map, struct_rule, tagger, validator
+from . import deck as deck_mod, normalizer, preflight, struct_map, struct_rule, tagger, validator
 from .reader import head, read
 
 _LOG = logging.getLogger("onto.parser.pipeline")
@@ -180,7 +180,8 @@ def _drop_images(res, pieces, no_images):
 
 
 def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps,
-                  made_maps, map_picks, src_hash, made_rules=None, image_notice=None, made_struct=None):
+                  made_maps, map_picks, src_hash, made_rules=None, image_notice=None, made_struct=None,
+                  made_deck=None, capture=False):
     """④ 이미지 요약 — 보존분 재사용과 새로 받은 것의 저장. 돌려주는 것은 조각이다.
 
     `parse`에서 단계로 떼어냈다(B78 2c) — 지도·요약의 보존 규칙이 한 자리에 모인다.
@@ -204,6 +205,9 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
     # **쪽 전체 렌더는 쪽이 있는 포맷만**(PPT·PDF) — 엑셀·Word에는 쪽이 없다(B88 ①).
     has_pages = raw.get("slides") is not None or raw.get("pages") is not None
     pages = _page_map(path, raw) if (imgs and summarize is not None and has_pages) else {}
+    if capture and has_pages:
+        # **캡처는 그림 유무와 무관하다**(B125 ② — 주입 `capture`가 켤 때 · 렌더는 추출이 원본에서 뜬다)
+        pieces, res.report["capture_pages"] = _capture(res, pieces, raw)
     pieces = tagger.complete_images(pieces, summarize, kept=kept_img,
                                     images=imgs, pages=pages)          # ⑤ tagger
     # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
@@ -217,6 +221,8 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
     if made_struct:
         # **문서 구조도 같은 파일 · 같은 원본 해시**(B119 ①) — 같은 파일 · 같은 판이면 LLM 0 · 같은 경계다.
         fresh["structure"] = {**(kept_map.get("structure") or {}), **made_struct}
+    if made_deck:
+        fresh["deck"] = made_deck                     # 덱 구조 — 같은 파일 · 같은 판이면 LLM 0 (B125 ③)
     if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
         fresh["image_summaries"] = kept_img
     if fresh:
@@ -225,6 +231,22 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
     # 그것이 좌표다. 태깅보다 앞에 두는 이유: 태깅은 좌표가 **있는** 조각을 다듬고,
     # 이것은 좌표가 **없는** 조각에 세운다. 순서가 바뀌면 pick이 헛돈다.
     return pieces
+
+
+def _capture(res, pieces, raw):
+    """**슬라이드 캡처의 자리**(B125 ②) — 그림 유무와 무관하게 PPT · PDF 조각에 쪽 번호(`meta.page_no` — 숨김 슬라이드를 뺀
+    보이는 순서 · PDF는 쪽 그대로)를 단다. **렌더 바이트는 저장하지 않는다**(문서 1 B16) — 추출이 원본(`source_path`)에서
+    다시 떠서 그 슬라이드 호출에 붙인다(`core/build/extract_unit.capture`). 돌려주는 것은 `(조각, 보이는 쪽 수)`."""
+    slides = raw.get("slides")
+    if slides is not None:
+        page_of = {s["index"]: n for n, s in enumerate((x for x in slides if not x.get("hidden")), start=1)}
+    else:
+        page_of = {p.get("index"): p.get("index") for p in raw.get("pages") or [] if p.get("index") is not None}
+    out = []
+    for p in pieces:
+        n = page_of.get(tagger._page_no(p))
+        out.append({**p, "meta": {**(p.get("meta") or {}), "page_no": n}} if n else p)
+    return out, len(page_of)
 
 
 def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
@@ -318,7 +340,7 @@ def _read_doc(res, path, sheet_roles, max_rows):
 
 
 def _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks, map_structure,
-             src_hash, rule_fn, structure_fn=None):
+             src_hash, rule_fn, structure_fn=None, deck_fn=None):
     """③ extract — prose면 지도 훅(⑦)과 **받는 어댑터에만** 규칙 선언 훅(B87 ②)을 건넨다.
 
     `struct_rule_fn`을 모든 어댑터에 넘기지 않는 이유: 생성 어댑터·다른 기본 어댑터의
@@ -333,6 +355,8 @@ def _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks, map_structur
         kw["struct_rule_fn"] = rule_fn
     if structure_fn is not None and "structure_fn" in _params(adapter.extract):
         kw["structure_fn"] = structure_fn                       # 문서 구조 — 받는 어댑터에만 (B119 ①)
+    if deck_fn is not None and "deck_fn" in _params(adapter.extract):
+        kw["deck_fn"] = deck_fn                                 # 덱 구조 — 받는 어댑터에만 (B125 ③)
     try:
         return adapter.extract(raw, **kw)
     except TypeError:
@@ -394,12 +418,32 @@ def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles):
             made, tally)
 
 
+def _env_extras(env, res, doc_coord, dk_tally):
+    """봉투의 문서 칸 — 문서 좌표(B102 ② — 맥락 줄 · 좌표 줄) · 덱 개요(B125 ③ — 맥락 줄의 개요 칸) · 캡처 쪽 수(B125 ② —
+    추출이 원본에서 쪽을 뜬다). 없는 칸은 키도 없다."""
+    if doc_coord:
+        env["doc_coord"] = doc_coord
+    if dk_tally.get("개요"):
+        env["doc_overview"] = dk_tally["개요"]
+    if res.report.get("capture_pages"):
+        env["capture"] = {"pages": res.report["capture_pages"]}
+
+
+def _deck_hook(deck, doc_id, kept_map, fixes, doc_coord):
+    """덱 구조 훅(B125 ③) — `(훅 또는 None, 새로 받은 판단, 셈)` · 고침은 `@덱` 프레임."""
+    made, tally = {}, {}
+    if deck is None:
+        return None, made, tally
+    return (deck_mod.hook(deck, doc_id, kept=kept_map.get("deck"), made=made, tally=tally,
+                          fixes=(fixes or {}).get(deck_mod.FRAME), doc_coord=doc_coord), made, tally)
+
+
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
           sheet_roles=None, infer_rules=None, rule_notice=None, no_images=False,
-          image_notice=None, doc_coord=None, structure=None, structure_fixes=None):
+          image_notice=None, doc_coord=None, structure=None, structure_fixes=None, deck=None, capture=False):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -411,6 +455,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
     | `infer_rules(frame, sample)` | ⑦ 안의 계층 규칙 선언(B87 ②) | 안 선 시트만 실호출 | 구판과 같다(통째 + 큐) |
     | `structure(doc_id, frame, labels)` | ⑪ 안의 문서 구조(B119 ①) | 산문 시트마다 실호출(mock은 힌트) | 고정 규칙 그대로 |
+    | `deck(doc_id, slides, doc_coord=)` | ⑪ 안의 덱 구조(B125 ③ · `capture` 참이면 쪽 번호를 달아 추출이 캡처를 붙인다 — B125 ②) | PPT 덱마다 1회(mock은 힌트) | 지금 방식 |
 
     `structure_fixes`(`{프레임: {행: 고침}}`)는 사람이 구조 표에서 고친 것(등록 단 — 데이터로 받는다 · B119 ③).
 
@@ -447,9 +492,10 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     rule_fn, targets = _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules,
                                   sheet_roles, rule_notice)
     st_fn, made_struct, st_tally = _structure_hook(structure, doc_id, kept_map, structure_fixes, sheet_roles)
+    dk_fn, made_deck, dk_tally = _deck_hook(deck, doc_id, kept_map, structure_fixes, doc_coord)
     try:                                                             # ③ extract
         pieces = _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks,
-                          map_structure, src_hash, rule_fn, st_fn)
+                          map_structure, src_hash, rule_fn, st_fn, dk_fn)
     except Exception as e:                                           # C14 — 통째 실패
         return res.fail("parse_failure", f"{type(e).__name__}: {e}")
     if targets:
@@ -457,6 +503,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
                                      "주입": rule_fn is not None}
     if st_tally.get("프레임"):
         res.report["structure"] = st_tally            # 구조 표 · 약한 구조 신호의 재료 (B119 ①③)
+    if dk_tally:
+        res.report["deck"] = dk_tally                 # 덱 구조 표 · 끝 줄의 재료 (B125 ③)
 
     pieces, rep = normalizer.normalize(                               # ④ normalizer
         pieces,
@@ -473,7 +521,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
                            kept_maps, made_maps, map_picks, src_hash, made_rules,
-                           image_notice, made_struct)
+                           image_notice, made_struct, made_deck, capture=capture and not no_images)
     # **문서 좌표**(B102 ② — 사람·기록·파일명 · 인입이 정해 데이터로 준다): 시트명·제목 대조는 그 서브트리
     # 안에서만 받고, 그래도 빈 조각(표·산문 공통)은 문서 좌표를 물려받는다
     pieces = normalizer.blank_coords(pieces)     # 좌표 칸의 빈칸 표시 → 빈 값(문서 좌표를 물려받는다 — B113 ②)
@@ -485,8 +533,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     env = tagger.envelope(adapter, doc_id, path, pieces, revision=revision,
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,
                           context=context)
-    if doc_coord:
-        env["doc_coord"] = doc_coord               # 맥락 줄의 공정 칸 · 화면의 좌표 줄 (B102 ②)
+    _env_extras(env, res, doc_coord, dk_tally)
     ok, defects = validator.check(env)                               # ⑥ validator
     if not ok:
         return res.fail("parse_failure", "계약 self-check 실패 (문서 단위 — C14)",
