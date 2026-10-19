@@ -1,6 +1,6 @@
 # config 작성 가이드 — 새 층을 세울 때 사람이 실제로 쓰는 것
 
-> **결론 먼저**: 층 config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **17종** · 품질층 **16종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다) — 그중 **사람이 실제로 쓰는 것은 11종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다. 이름 규칙 `canonical_scope`는 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
+> **결론 먼저**: 층 config 문법 키는 **20종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **18종** · 품질층 **16종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다 · 선택 키 `value_categories`는 공정층만) — 그중 **사람이 실제로 쓰는 것은 12종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다. 이름 규칙 `canonical_scope`는 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
 > **골격 가이드와 짝이다** — 골격을 먼저 심으면 3종이 따라오고, 이 가이드는 그다음이다.
 > 실물 예시는 전부 `layers/process/config.json`에서 그대로 가져왔다 — **자산이 정본이다.**
 
@@ -26,16 +26,16 @@
 
 **즉 사내에서 새 문서 종류를 붙일 때는 이 가이드가 아니라 ①번이다** — `python -m cli.register generate <doc_type> <층> <표본>` → 검수 뷰 → 승인. 이 가이드는 **새 층을 세울 때만** 쓴다.
 
-## 0. 19종의 실제 부담 분류
+## 0. 20종의 실제 부담 분류
 
 | 분류 | 키 | 작성법 |
 |---|---|---|
 | **베낀다 (2)** | `match_threshold` `query_intents` | 두 층이 완전 동일 — 기존 층 것을 복사 |
 | **한 줄 (3)** | `layer` `config_version` `registration` | 이름표 — `"quality"` · `"quality-1"` · `"registered"` |
 | **골격에서 따라옴 (3)** | `skeleton` `skeleton_version` `polarity` | 골격 가이드의 산출. 극성 없는 층은 뒤 둘 생략 |
-| **사람이 쓴다 (11)** | 아래 §1~§6 — `categories` `relations` `relation_patterns` `category_pair_map` `query_traverse` `cross_layer_traverse` `mirrors` `fact_templates` `extract_patterns` `prompts` `relevance_terms`(선택 · §6-a) | **이 가이드의 본문** |
+| **사람이 쓴다 (12)** | 아래 §1~§6 — `categories` `relations` `relation_patterns` `category_pair_map` `query_traverse` `cross_layer_traverse` `mirrors` `fact_templates` `extract_patterns` `prompts` `relevance_terms`(선택 · §6-a) `value_categories`(선택 · §1-b) | **이 가이드의 본문** |
 
-> **19종은 합집합이다.** 실물은 공정층 17종·품질층 16종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. `canonical_scope`는 층 config에 두면 `bootstrap`이 거부한다(공통 config로).
+> **20종은 합집합이다.** 실물은 공정층 18종·품질층 16종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다 · `value_categories`는 선택 — 없으면 산문 값 0), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. `canonical_scope`는 층 config에 두면 `bootstrap`이 거부한다(공통 config로).
 
 ## 0-a. 층 공통 config — `layers/common.json` (카테고리 카탈로그)
 
@@ -123,9 +123,27 @@
 | `relations` · `relation_patterns` | `Component part_of Unit` · `Unit part_of Process` · `Property of Unit/Component` 같은 삼항 | 패턴에 없는 삼항은 게이트가 **조용히 버린다**(`show log gate`에만 남는다) — 여기가 가장 자주 빠지는 자리 |
 | `query_traverse` | `Unit → Component`는 `recursive: false` | 설비를 물으면 유닛까지, 유닛을 물어야 부품 — 깊이는 골격이 아니라 여기서 조절한다 |
 | `fact_templates` · `prompts` 정의문 | 새 관계의 문장 틀 · 추출 정의문 | 없으면 답이 관계를 문장으로 못 만든다 |
-| `config_version` | 올린다 | 층 개정 절차 — 어느 판으로 넣었는지 대장에 남는다 |
+| `config_version` | 올린다(기록) | 층 개정 절차 — 어느 판으로 넣었는지 대장에 남는다 · 추출을 다시 뽑을지는 판정에 쓰지 않는다(추출 칸의 내용으로 자동 — §1-b) |
 
 적용: config 저장 → `python run.py bootstrap`(fresh 없이 — 골격 불변이면 아무것도 안 바뀐다) → 새 doc_type 등록 → 인입. **골격(skeleton.json)은 손대지 않는다** — 골격 노드가 공정이자 설비다(골격작성_가이드 §3).
+
+### 1-b. 유닛 아래의 사양과 그 값 — 문서 구조 · 이름은 주인 아래 · 값은 그 노드의 속성 (사내가 바꿀 줄 · B119 · B120)
+
+산문은 시트마다 LLM이 제목 줄의 역할(설비 · 유닛 · 사양 묶음 · 항목 · 주제)과 대상을 세우고, 추출은 그 사슬을 보고 개체마다 가장
+구체적인 주인을 고른다. 값을 받는 카테고리의 개체는 그 청크가 그 항목에 건 값(「장력 30N」의 `30N` — 원문 글자 그대로)을 함께 내고,
+구축이 그 노드의 속성으로 싣는다(표의 attribute와 같은 함수 — 원문에 없는 값은 버림 · 같은 맥락의 다른 값은 `spec_conflict`).
+사내 config에서 바꿀 줄은 넷이다(키 이름은 사내 층의 실제 이름으로 — 아래는 mock의 이름):
+
+| 자리 | 바꿀 줄(그대로) | 왜 |
+|---|---|---|
+| 그 층 config `categories`의 유닛 카테고리 정의문 | `"Unit": "설비를 이루는 유닛 · 부(部) · 모듈 이름(예: 언와인더 unit · 공급부 · NG unit). 공정 이름 · 설비 전체 이름 · 부품 · 규격값은 제외"` | 구조 호출과 추출이 이 정의문으로 「유닛 줄」을 알아본다 — 예에 사내 양식의 유닛 표기를 둘셋 적는다 |
+| 공통 config `canonical_scope.nest_categories` | `"nest_categories": ["Property"]`(사양 카테고리 · 이미 `["Component"]`가 있으면 `["Component", "Property"]`) | 유닛에 붙은 사양이 `노칭::언와인더 unit::속도`로 선다(유닛마다 다른 노드) · 공정에 붙은 사양은 `노칭::속도` 그대로 · 표(CP · PFMEA)는 소속이 공정이라 이름이 바뀌지 않는다 |
+| 그 층 config `value_categories` | `"value_categories": {"Property": "spec"}`(값을 받는 카테고리 → 값을 싣는 속성 이름 · 표 등록 스키마의 `attr_name`과 같은 이름이면 표 · 산문의 값이 한 칸에서 만나 충돌 판정을 같이 받는다) | 없으면 산문 값 0 — 사양 값이 청크 원문에만 남는다 |
+| 그 층 config `relation_patterns` | `{"src": "Unit", "rel": "has_property", "dst": "Property"}`가 있는지 본다 · 없으면 한 줄 더한다(`show log gate --by-pattern`의 `▶ … 넣을 줄`과 같은 줄) | 유닛 → 사양 소속 엣지가 게이트를 지난다 — 없으면 사양이 유닛에 닿지 못하고 거부 묶음에 쌓인다 |
+
+`config_version`은 올리지 않아도 된다 — 추출을 다시 뽑을지는 추출 칸(`categories` · `relations` · `relevance_terms` · `extract_patterns` · `value_categories` · 공통 `categories`)의 내용이 바뀌었는지로 자동으로 정해진다(`config_version`은 기록만 · `relation_patterns` 같은 구축 칸만 바꾸면 추출은 재사용 — LLM 0).
+
+적용: 저장 → `python run.py bootstrap`(끝 줄 `[bootstrap] config 영향 — 추출 다시: 문서 n(바뀐 칸 …categories · …value_categories)`) → `python run.py rebuild`(구조는 같은 파일이면 LLM 0 · 추출은 다시).
 
 ## 2. 관계 — 이름·패턴·방향 (한 묶음으로 쓴다)
 
@@ -284,7 +302,7 @@ query_traverse · fact_templates 등은 첨부 ①②를 베이스로
 query_traverse는 관계→규칙이름→{direction,recursive}의 **3단 중첩**이다.
 
 [규율]
-- 첨부에 없는 키를 만들지 않는다(선택 키 relevance_terms만 예외 — 그 층의 글에 실제로 나오는 말). 19종이 전부다.
+- 첨부에 없는 키를 만들지 않는다(선택 키 relevance_terms · value_categories만 예외 — 그 층의 글에 실제로 나오는 말 · 값을 받는 카테고리). 20종이 전부다.
 - 판단이 갈린 자리는 JSON 뒤 "확인 필요:"에 적는다. 추측으로 채우지 않는다.
 ```
 

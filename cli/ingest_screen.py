@@ -135,12 +135,14 @@ def stage_head(label, detail=""):
     _screen.say(_stage_end(), "aux")
 
 
-def _step_gate(i, detail="", prose=False, ask=True, body=None):
+def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False):
     """**단계 머리**를 찍고(`--step`이 아니어도 — B99 ④) `ask`면 `[계속 c / 멈춤 q]`를 묻는다.
 
     머리 아래 **단계 끝 줄**(걸린 시간 · LLM 호출 · 입력/출력)이 붙는다 — `--step`은 같은 머리에
     묻기만 더한다(한 함수). 돌려주는 것은 계속 여부다. **비대화형이면 묻지 않는다** — 묻고 EOF를
     받아 멈추면 일괄 실행이 전부 중단된다. 번호는 표·산문 순서표(`TABLE_SEQ`·`PROSE_SEQ`)의 자리다.
+    답은 묻는 한 자리(`_screen.answer` — 계속은 c(ㅊ)만 · 멈춤 q · ㅂ · Ctrl-C · 그 밖은 다시 묻는다 · B118 ④).
+    `saved`면 **저장 표지 뒤**의 머리(판정 · 부착·엣지 · 큐) — 멈춤은 남은 머리를 묻지 않는 것뿐이다(되돌림 0 · B109 ②).
     """
     name, why = STEPS[i]
     seq = PROSE_SEQ if prose else TABLE_SEQ
@@ -153,11 +155,10 @@ def _step_gate(i, detail="", prose=False, ask=True, body=None):
     if not ask:
         return True
     print(f"   {why}")
-    try:
-        ans = _screen.ask("   [계속 c / 멈춤 q] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return True
-    if ans in ("q", "quit", "n"):
+    if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
+        if saved:                              # 저장 표지 뒤 — 끝난 문서다(B109 ②) · 되돌리지 않는다
+            print(f"   멈춤 — 이 문서는 이미 저장됐다(되돌리지 않는다) · 남은 머리는 묻지 않는다")
+            return False
         print(f"   멈춤 — {name}까지의 산출은 남았다(parsed/ · extract/ 체크포인트).")
         if i == 8:
             print("   ▶ 추출은 완료로 남았다 — 같은 명령을 다시 치면 추출 재사용(LLM 0)으로 구축만 간다")
@@ -214,10 +215,24 @@ def value_line(row):
     return _screen.paint(text, v if v in _screen.KINDS else None)
 
 
-def row_printer():
-    """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부)."""
+def row_printer(env=None):
+    """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부).
+
+    산문(봉투에 청크가 있다)이면 값 행을 **조각의 부착이 끝날 때**(`ledger.ON_CHUNK`) 붙은 자리와 함께 낸다(B119 ⑤ —
+    한 줄에 구조 역할 · 소속(출처) · 붙은 자리) · 표는 지금처럼 행이 서는 대로(붙은 자리는 행 아래 `└` 줄)."""
     for k in TALLY:
         TALLY[k] = 0
+    prose = bool((env or {}).get("chunks"))
+    pending = {}
+
+    def show(row):
+        lab = labels.get(row.get("locator"))          # 자르지 않은 줄 · 전체 경로는 명령 로그에(B118 ③)
+        _LOG.info("값 %s%s", value_line(row).strip(), f" · 자리 {lab}" if lab else "")
+        table.row(*value_cells(row, places, roles, prose, wide))
+        if prose and not wide and row.get("belongs_to"):           # 좁은 화면 — 소속(출처)는 행 아래 줄로
+            print(f"     └ 소속 {row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})")
+        for a in (row.get("attached") or []) if prose else ():   # 붙은 자리 전부 — 칸은 잘려도 이 줄은 자르지 않는다
+            print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
 
     def on_edge(row, info):
         # 붙은 자리 한 줄(B102 ⑦) — 그 값이 찍힌 줄 아래 · 로그에는 자르지 않은 줄
@@ -225,10 +240,15 @@ def row_printer():
             ln = (f"     └ {row.get('surface') or row.get('canonical')} · {info['rel']} {info['dir']} "
                   f"{info['other']} ({info['path']})")
             _LOG.info("붙은 자리 %s", ln.strip())
-            if _screen.VERBOSE or _loud(row):
+            if not prose and (_screen.VERBOSE or _loud(row)):
                 print(ln)
     from core.build import ledger as _lg
     _lg.ON_EDGE = on_edge
+
+    def on_chunk(loc=None):
+        for k in ([loc] if loc is not None else list(pending)):
+            for row in pending.pop(k, []):
+                show(row)
 
     def on_row(row):
         TALLY["값"] += 1
@@ -243,22 +263,94 @@ def row_printer():
         if row.get("queue_kind"):
             TALLY["큐"] += 1
         if _screen.VERBOSE or _loud(row):
-            _LOG.info("값 %s", value_line(row).strip())     # 자르지 않은 줄은 명령 로그에
-            table.row(*value_cells(row))
-    table = value_table()
+            if prose:
+                pending.setdefault(row.get("locator"), []).append(row)
+            else:
+                show(row)
+    # 위치 두 칸의 재료(B118 ③) — 봉투의 조각마다 `(시트, 경로 끝)` · 대장 행의 위치로 찾는다(새 판정 0)
+    from core.build import extract_ctx as _xc
+    pieces = [c for c in ((env or {}).get("chunks") or []) + ((env or {}).get("records") or [])
+              if c.get("source_locator")]
+    places = {c["source_locator"]: _xc.place(c) for c in pieces}
+    labels = {c["source_locator"]: _xc.chunk_label(c) for c in pieces}
+    roles = struct_roles(env) if prose else {}
+    wide = _screen.term_width() >= WIDE_MIN
+    table = value_table(list(places.values()), prose, wide)
+    _lg.ON_CHUNK = on_chunk if prose else None
+    on_row.flush = on_chunk
     return on_row
 
 
-def value_table():
-    """판정 값 표(B98 ⑥) — 기호 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 노드/큐."""
-    # 고정 칸은 좁게(위치 · 경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨)
-    return _screen.Table([("", 1, False), ("위치", 10, False), ("표기", 40, False),
-                          ("카테고리/열", 10, False),
-                          ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
-                          ("임베딩", 5, True), ("노드/큐", 16, False)], flex=2)
+def struct_roles(env):
+    """구조 역할 칸의 재료(B119 ⑤) — 위치(조각 · 제목 경로) → 가장 가까운 제목 줄의 역할(봉투의 문서 구조 · 새 판정 0)."""
+    from core.build import outline as OL
+    out = {}
+    for h in OL.tree(env)["headings"]:
+        if (h.get("struct") or {}).get("role"):
+            out[h["path"]] = h["struct"]["role"]
+    for c in env.get("chunks") or []:
+        items = (c.get("meta") or {}).get("structure") or []
+        role = next((x.get("role") for x in reversed(items) if x.get("role")), None)
+        if role and c.get("source_locator"):
+            out[c["source_locator"]] = role
+    return out
 
 
-def value_cells(row):
+#: 위치 두 칸의 폭 상한(B118 ③ — 표가 시작될 때 봉투 · 목차의 가장 긴 것에 맞춘다 · 그보다 길면 이 폭에서 `…`)
+PLACE_MAX = (24, 32)
+
+
+def place_widths(places):
+    """위치 두 칸 `(시트, 청크)`의 폭 — 이 문서의 가장 긴 것(머리글 폭 이상 · `PLACE_MAX` 이하)."""
+    ws = [max([_screen.w(str(p[i])) for p in places or []] + [4]) for i in (0, 1)]
+    return tuple(min(wd, cap) for wd, cap in zip(ws, PLACE_MAX))
+
+
+#: 산문 몫 칸(구조 · 소속(출처) · 붙은 자리 — B119 ⑤) — 표 문서는 늘 빈 칸이라 그 표에서는 뺀다(표기 칸이 남게)
+PROSE_COLS = (3, 9, 10)
+#: 소속(출처) · 붙은 자리를 칸으로 낼 터미널 폭 — 좁으면 행 아래 `└` 줄로(위치 두 칸이 잘리지 않게 · B118 ③)
+WIDE_COLS = (9, 10)
+WIDE_MIN = 150
+
+
+def _drop(prose, wide):
+    return set(PROSE_COLS) if not prose else (set() if wide else set(WIDE_COLS))
+
+
+def value_table(places=None, prose=True, wide=True):
+    """판정 값 표(B98 ⑥) — 기호 · 시트 · 청크 · 구조 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 소속(출처) · 붙은 자리 · 노드/큐.
+
+    구조 · 소속(출처) · 붙은 자리(B119 ⑤)는 산문 몫(표 문서는 빈 칸) — 어느 단계에서 틀렸는지(구조 → 소속 → 붙음) 한 줄에서."""
+    # 고정 칸은 좁게(경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨) · 위치 두 칸은 이 문서 폭
+    ws, wc = place_widths(places)
+    cols = [("", 1, False), ("시트", ws, False), ("청크", wc, False), ("구조", 9, False),
+            ("표기", 40, False), ("카테고리/열", 10, False),
+            ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
+            ("소속(출처)", 18, False), ("붙은 자리", 22, False), ("노드/큐", 16, False)]
+    cut = _drop(prose, wide)
+    cols = [c for i, c in enumerate(cols) if i not in cut]
+    return _screen.Table(cols, flex=4 if prose else 3, keep=(1, 2))
+
+
+#: 소속 출처 → 화면 말(B119 ⑤ — 사슬 · 본문 · 부착 후보 · 공정 · 대장의 `from` 값 그대로를 넷으로)
+FROM_SHOW = {"제목": "사슬", "경로": "사슬", "시트": "사슬", "본문": "본문", "후보": "부착 후보", "공정": "공정"}
+
+
+def where_cells(locator, places=None):
+    """**위치 두 칸**(B118 ③) — `(시트, 청크 끝)`: 봉투의 그 조각이면 `extract_ctx.place` · 아니면 위치 `시트!행`을 가른다
+    (표 문서의 행 위치). 가운데 경로는 생략 — 전체 경로는 명령 로그의 값 줄에 그대로."""
+    loc = str(locator or "")
+    if places and loc in places:
+        return places[loc]
+    from core.build.extract_ctx import PATH_SEP
+    if PATH_SEP in loc:                            # 제목 개체 행의 위치 = 제목 경로(시트 › … › 제목 — B115 ②)
+        parts = loc.split(PATH_SEP)
+        return parts[0], parts[-1]
+    sheet, _, rest = loc.rpartition("!")
+    return (sheet, rest) if sheet else ("", loc)
+
+
+def value_cells(row, places=None, roles=None, prose=True, wide=True):
     """대장 행 하나 → 표의 칸(값 · 색 층). **새 정보 0** — 행의 값을 그대로 옮긴다(B81 ①)."""
     v = row.get("verdict") or "pending"
     calls = (row.get("llm") or {}).get("calls", 0)
@@ -275,14 +367,24 @@ def value_cells(row):
     near = row.get("nearest") or {}
     if near.get("canonical"):                      # 불확실의 가장 가까운 후보 (B99 ⑨)
         where += f" · 가까움({near.get('by')}) {near['canonical']}"
-    emb = f"{row['emb_top']:.2f}" if row.get("emb_top") is not None else ""
+    if not conf and row.get("emb_top") is not None:          # 임베딩 최고 유사도(B99 ⑨ — LLM 확신이 없을 때 그 칸에)
+        conf = f"e{row['emb_top']:.2f}"
     k = v if v in _screen.KINDS else None
     if v in ("mention", "blank"):                  # 노드 0 — 표기 그대로 · 관련 링크 대상(B113 ①②)
         name, how = row.get("surface") or "—", ("다른 공정" if v == "mention" else "빈칸 표시")
         where = f"관련 링크 {row.get('canonical')}" if v == "mention" else "개체 0"
     # 위치 = 대장 행의 locator(산문이면 지금 청크 · 표면 행 — B99 ⑦)
-    return ([MARKS.get(v, "·"), row.get("locator") or "", name, row.get("field") or "", v, how,
-             conf, emb, where], [k, "aux", k, "aux", k, "aux", "aux", "aux", "aux"])
+    sheet, end = where_cells(row.get("locator"), places)
+    bel = (f"{row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})"
+           if row.get("belongs_to") else "")
+    att = row.get("attached") or []
+    stuck = (f"{att[0]['dir']} {att[0]['other']}({att[0]['path']})" + (f" +{len(att) - 1}" if len(att) > 1 else "")
+             if att else "")
+    cells = [MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
+             row.get("field") or "", v, how, conf, bel, stuck, where]
+    kinds = [k, "aux", "aux", "aux", k, "aux", k, "aux", "aux", None, None, "aux"]
+    cut = _drop(prose, wide)
+    return [c for i, c in enumerate(cells) if i not in cut], [c for i, c in enumerate(kinds) if i not in cut]
 
 
 def build_screen(step=False, stage=None, prose=False):
@@ -320,10 +422,7 @@ def build_screen(step=False, stage=None, prose=False):
                 print("     비대화형이라 멈춘다 — 손잡이 lens_call_cap을 올리거나 렌즈를 줄인다 "
                       "(python run.py show knobs · python -m cli.register lenses <dt>)")
                 return False
-            try:
-                return _screen.ask("     그래도 부를까? [y/N] ").strip().lower() in ("y", "yes")
-            except (EOFError, KeyboardInterrupt):
-                return False
+            return _screen.answer("     그래도 부를까? [y/N] ", "yes", eof=False)
         if info.get("단계") == "판정예고":
             lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
             body = (f"entity 값 {info['값_수']:,}건"
@@ -364,12 +463,13 @@ def build_screen(step=False, stage=None, prose=False):
                   f"{rp.get('키 없음', 0):,} · 대상 없음 {rp.get('대상 없음', 0):,} · 끔 {rp.get('끔', 0):,})")
         # 결과만 보이는 세 머리(판정 · 부착·엣지 · 큐) — 늘 낸다(B99 ④) · `--step`이면 묻는다
         u2 = gateway.usage_total()
-        _step_gate(4, prose=prose, ask=step, detail=f"새 노드(auto) {info.get('auto', 0)} · "
-                   f"LLM 호출 {u2['calls']:,}")
+        # 이 셋은 **저장 뒤**다(B109 ② — 멈춰도 되돌리지 않는다): 멈추면 남은 머리는 묻지 않고 내기만 한다(B118 ④)
+        go = _step_gate(4, prose=prose, ask=step, saved=True, detail=f"새 노드(auto) {info.get('auto', 0)} · "
+                        f"LLM 호출 {u2['calls']:,}")
         _hf = f" · 제목 개체 폴백 {info['제목폴백']:,}행" if info.get("제목폴백") else ""   # 상위 사슬 (B115 ③)
-        _step_gate(5, prose=prose, ask=step, detail=f"엣지 +{info.get('엣지', 0)} · 저해상도 부착 "
-                   f"{info.get('저해상도', 0)}행{_hf}")
-        _step_gate(6, head or "큐 0", prose=prose, ask=step)
+        go = _step_gate(5, prose=prose, ask=step and go, saved=True, detail=f"엣지 +{info.get('엣지', 0)} · "
+                        f"저해상도 부착 {info.get('저해상도', 0)}행{_hf}") and go
+        _step_gate(6, head or "큐 0", prose=prose, ask=step and go, saved=True)
         _orphan_next(info.get("doc_id"))
         u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
@@ -431,11 +531,12 @@ def end_lists(info):
     return out
 
 
-def extract_table():
-    """추출 청크 표(B98 ⑥) — 번호 · 위치 · 개체 수 · 개체(카테고리) · 관계 · 입력 · 출력 · 누적."""
-    return _screen.Table([("번호", 7, True), ("위치", 16, False), ("개체", 4, True),
-                          ("개체(카테고리)", 60, False), ("관계", 4, True), ("입력", 7, True),
-                          ("출력", 7, True), ("누적", 9, True)], flex=3)
+def extract_table(places=None):
+    """추출 청크 표(B98 ⑥) — 번호 · 시트 · 청크(경로 끝) · 개체 수 · 개체(카테고리) · 관계 · 입력 · 출력 · 누적."""
+    ws, wc = place_widths(places)
+    return _screen.Table([("번호", 7, True), ("시트", ws, False), ("청크", wc, False), ("개체", 4, True),
+                          ("개체(카테고리)", 60, False), ("관계", 4, True), ("입력", 6, True),
+                          ("출력", 6, True), ("누적", 8, True)], flex=4, keep=(1, 2))
 
 
 def extract_screen(step=False, stage=None):
@@ -477,7 +578,7 @@ def extract_screen(step=False, stage=None):
             _screen.say(f"   추출 이어서 {lz}— 끝난 청크 {info['끝난']:,} · "
                         f"남은 {info['남은']:,}", "head")
         elif k == "추출예고":
-            box["t"], box["u0"] = extract_table(), gateway.usage_total()
+            box["t"], box["u0"] = extract_table(info.get("자리목록")), gateway.usage_total()
             if stage is not None:
                 import time
                 stage.update({"이름": "추출", "값": 0, "총": info["호출"], "t0": time.monotonic()})
@@ -518,11 +619,7 @@ def _outline_line(info, lz, stage, step=False):
             head += f" · 다시 묻는다 — {info['다시']}"
         _screen.say(f"   {head}", "head")
         if step and info["호출"] and sys.stdin.isatty():
-            try:
-                ans = _screen.ask("   [계속 c / 멈춤 q] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                return None
-            if ans in ("q", "quit", "n"):
+            if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
                 print("   멈춤 — 개요 예고까지(LLM 0 · 그래프 쓰기 0) ▶ 같은 명령을 다시 친다")
                 return False
         return None
@@ -548,12 +645,13 @@ def _chunk_row(box, info, lz):
         cell, kind = f"✗ 실패 — {info['실패']}", "fail"
     else:
         cell, kind = ents or "— (개체 0)", (None if ents else "aux")
-    t.row([f"{info['i']}/{info['m']}", lz + str(info.get("라벨") or info["locator"]), len(info["개체"]), cell,
+    sheet, end = info.get("자리") or where_cells(info["locator"])
+    t.row([f"{info['i']}/{info['m']}", lz + sheet, end, len(info["개체"]), cell,
            info["관계"], f"{tok.get('prompt_tokens', 0):,}", f"{tok.get('completion_tokens', 0):,}",
            cum],
-          ["prog", "aux", "aux" if not info["개체"] else None, kind, None, "aux", "aux", "aux"],
+          ["prog", "aux", "aux", "aux" if not info["개체"] else None, kind, None, "aux", "aux", "aux"],
           extra=(ents if _screen.VERBOSE and ents else None))
-    _LOG.info("추출 %s %s · 개체 %s · %s", info["i"], info["locator"], ents,
+    _LOG.info("추출 %s %s(%s) · 개체 %s · %s", info["i"], info["locator"], info.get("라벨") or "", ents,
               _screen.tokens(tok))
 
 
@@ -651,11 +749,7 @@ def _judge_gate(n, total, u):
     left = max(0, (total or 0) - n)
     _screen.say(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 {_screen.tokens(u)} · "
                 f"남은 값 {left:,}", "prog")
-    try:
-        ans = _screen.ask("   [계속 c / 멈춤 q] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return
-    if ans in ("q", "quit", "n"):
+    if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
         from core.build.entry import Stopped
         raise Stopped(f"사람이 멈췄다 — 판정 값 {n}/{total} (그래프 쓰기 0 · "
                       f"체크포인트는 남는다)")

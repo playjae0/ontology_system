@@ -85,6 +85,17 @@ def nest_categories(cfg):
     return list(((cfg or {}).get("canonical_scope") or {}).get("nest_categories") or [])
 
 
+def name_parent(category, owner_canonical, coord_parent, cfg):
+    """**이름 부모 한 함수**(B119 ④) — 소속이 **골격 밖 노드**(유닛 · 제목 개체)로 해소된 개체의 이름 부모.
+
+    `nest_categories`에 든 카테고리(사양 · 값)면 그 노드의 canonical(`노칭::언와인더 unit::속도`) · 아니면 좌표의 부모 그대로
+    (`노칭::속도`). 한 카테고리가 `bind_categories`와 `nest_categories` 둘 다에 있어도 같다 — 소속이 골격(공정)이면 이 함수를
+    부르지 않고 좌표가 부모다(표의 CP · PFMEA는 소속이 공정이라 병합 키가 바뀌지 않는다). 부모 노드가 없으면 좌표 그대로."""
+    if owner_canonical and category in nest_categories(cfg):
+        return owner_canonical
+    return coord_parent
+
+
 def scope_canonical(surface, category, parent_canonical, cfg):
     """canonical 스코프 — `{부모}::{표면형}` (CH3B 3.5 규약 4).
 

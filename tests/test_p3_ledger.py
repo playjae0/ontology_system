@@ -133,8 +133,28 @@ reset("csv63old")
 # ④ **재시도의 기본은 이어가기** — 구판은 기본값이 막다른 길이었다.
 _RSRC63 = _reg_src()
 _ask63 = _RSRC63.split("def _ask_more")[1].split("\ndef ")[0]
-show("④ⓑ 비대화형 기본이 Y다 (구판은 N — 기본값이 막다른 길이었다)",
-     'ans not in ("n", "no")' in _ask63 and "[Y/n]" in _ask63)
+# 답은 묻는 한 자리(`_screen.answer` — B118 ④ · 기대 변경: 문면 대조 → 행동 대조) — EOF(비대화형) = 예 · ㅜ = 아니오
+import builtins as _bi63                                              # noqa: E402
+import contextlib as _cl63                                            # noqa: E402
+import io as _io63                                                    # noqa: E402
+from cli.register import gate as _gate63                              # noqa: E402
+
+
+def _ans63(x):
+    def fake(_p=""):
+        if isinstance(x, BaseException):
+            raise x
+        return x
+    keep, _bi63.input = _bi63.input, fake
+    try:
+        with _cl63.redirect_stdout(_io63.StringIO()):
+            return _gate63._ask_more("csv63", ["P31"])
+    finally:
+        _bi63.input = keep
+
+
+show("④ⓑ 비대화형 기본이 Y다 (구판은 N — 기본값이 막다른 길이었다) · ㅜ는 아니오 · Enter는 예",
+     "[Y/n]" in _ask63 and _ans63(EOFError()) is True and _ans63("ㅜ") is False and _ans63("") is True)
 show("④ⓑ GATE_SELF만 남으면 _ask_more를 부르지 않는다",
      "all(c in GATE_SELF for c in _codes)" in _RSRC63
      and _RSRC63.index("all(c in GATE_SELF for c in _codes)")

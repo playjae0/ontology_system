@@ -213,6 +213,13 @@ def register_doc(env, dh, routing=None):
     _kn = (env.get("context") or {}).get("knobs")
     if _kn:
         entry["knobs"] = _kn
+    # **문서 구조의 수 · 약한 구조 신호**(B119 ③) — 비대화형이면 묻지 않고 넘어가므로 기록이 남는다(`show summary`)
+    _st = (env.get("context") or {}).get("structure")
+    if _st:
+        entry["structure"] = _st
+    # **그때 쓴 config의 칸 지문**(B118 ⑥) — bootstrap 끝 줄이 지금과 칸별로 대조한다(바꾸면 무엇이 다시 도나)
+    from core.state import config_scope
+    entry["config_parts"] = config_scope.snapshot()
     reg[doc_id] = entry
     store.write(store.DOC_REGISTRY, reg)
 

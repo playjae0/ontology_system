@@ -10,6 +10,7 @@ from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from core import paths
+from cli import _screen
 from core.llm import check, gateway, points
 from core.state import fixtures, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
@@ -333,13 +334,12 @@ def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revi
                   f"{' '.join(str(x) for x in samples)} --use-basic")
             print(f"       └ {_prop['reason']}")
             print(f"  그래도 LLM 생성으로 가려면 --no-basic 을 붙여라.")
-            try:
-                _go = input("  고정 어댑터로 갈까? [Y/n] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
+            _go = _screen.answer("  고정 어댑터로 갈까? [Y/n] ", "Yes", eof=None)
+            if _go is None:
                 # **비대화형이면 고정 어댑터로 간다** — 기본값이 「안전한 쪽」이다.
-                _go = ""
+                _go = True
                 print("  (비대화형 — 고정 어댑터로 간다)")
-            if _go not in ("n", "no"):
+            if _go:
                 return _use_basic(doc_type, layer, samples, hint, _prop, revise)
             print("  → LLM 생성으로 간다 (사람이 골랐다)")
     return None

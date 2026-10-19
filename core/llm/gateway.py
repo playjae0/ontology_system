@@ -78,7 +78,7 @@ POINTS = {
     "answer": "⑧답변 생성",
     "coord_tag": "⑨좌표 태깅 (닫힌 목록 선택 또는 null)",
     "sheet_role": "⑩시트 역할 판정 (prose/ref + 이유 — 렌즈 층 정의문 주입)",
-    "outline": "⑪문서 개요 (제목 계층만 — 제목마다 대상(카테고리)인가 주제인가)",
+    "outline": "⑪문서 구조 (시트마다 줄 이름표 · 제목 목록 — 제목 줄의 단 · 역할 · 대상)",
     "reinforce": "⑫연결 보강 (엣지 없는 개체 — 닫힌 후보 안에서 소속·관계 + 근거 문장)",
 }
 
@@ -88,7 +88,8 @@ POINTS = {
 # 준다(1.3 문답 · 1.4 생성). 화면·로그는 태그를 받아도 **어느 지점인가**를 답해야
 # 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
 CALL_TAGS = {"interview": "generate",
-             "struct_rule": "struct_map"}      # B87 ② — 계층 규칙 선언은 ⑦ 안의 호출이다
+             "struct_rule": "struct_map",      # B87 ② — 계층 규칙 선언은 ⑦ 안의 호출이다
+             "structure": "outline"}           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
 
 
 def point_label(point):

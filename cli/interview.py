@@ -11,10 +11,16 @@ import json
 import re
 
 from core.llm import gateway
+from cli import _screen
 from cli.prompt import _sent_size, _vocab_excerpt
 
-# 입력은 이 이름을 거친다 — 테스트가 갈아끼운다(대화형이라 파이프로는 못 잰다)
-_ask = input
+def _ask(prompt=""):
+    """문답 입력 한 줄 — 묻는 한 자리(`_screen.answer`)를 지난다(B118 ④) · 테스트가 이 이름을 갈아끼운다(대화형이라
+    파이프로는 못 잰다). 답이 없으면(EOF · Ctrl-C) `EOFError` — 묻는 자리마다의 처분(「진행」)으로 간다."""
+    got = _screen.answer(prompt, "text", eof=None)
+    if got is None:
+        raise EOFError
+    return got
 _RULE = "   " + "─" * 56
 
 
@@ -164,9 +170,9 @@ def finalize(pkg, history, context=None):
             print("   (입력 없음 — 요약 그대로 진행)")
             return decisions
         low = raw.lower()
-        if low in ("", "y", "yes", "예") or low in INTERVIEW_STOP:
+        if low in ("", "예") or low in _screen.YES or low in INTERVIEW_STOP:
             return decisions
-        if low in ("n", "no") and not retried:
+        if low in _screen.NO and not retried:
             retried = True
             print("   → 요약을 다시 낸다 (1회)")
             decisions = _summarize(pkg, history, context)

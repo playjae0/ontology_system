@@ -120,12 +120,10 @@ def sheet_gate(rows, *, file, doc_id, rec=None):
     pend = SH.pending(roles, names)
     print(sheet_table_block(rows, file=file, rec=rec, pend=pend))
     while True:
-        try:
-            ans = input("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:ref · "
-                        "Enter=제안대로 · q=중단): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return None                       # 비대화형과 같은 처분 — 조용히 넘기지 않는다
-        if ans.lower() in ("q", "quit"):
+        ans = _screen.answer("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:ref · Enter=제안대로 · q=중단): ", "text")
+        if ans is None:
+            return None                       # 비대화형 · Ctrl-C — 같은 처분(조용히 넘기지 않는다)
+        if ans.lower() in ("q", "ㅂ", "quit"):
             print(f"   중단 — {Path(file).name}은 읽지 않았다(그래프·기록 쓰기 0).")
             return None
         if not ans:                           # Enter = 제안 그대로 (미결 시트만)

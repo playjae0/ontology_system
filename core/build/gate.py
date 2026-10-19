@@ -117,17 +117,23 @@ def _judge_also(s, rel, d, cfg, path, verdict):
     return verdict
 
 
-def log_reject(rel, src_cat, dst_cat, verdict, path, doc_id):
-    """거부 기록 — 사유별 건수. 큐가 아니라 로그다(D-7)."""
+#: 거부의 출처 — 경로 → 이름(B118 ⑥ 거부 묶음의 칸 · 연결 보강은 `source`로 준다)
+SOURCE = {PATH_SCHEMA: "정형", PATH_EXTRACT: "추출", PATH_AUTO: "자동"}
+
+
+def log_reject(rel, src_cat, dst_cat, verdict, path, doc_id, source=None, layer=None):
+    """거부 기록 — 사유별 건수. 큐가 아니라 로그다(D-7). `source`는 경로보다 좁은 출처(연결 보강 — B118 ⑥) · `layer`는
+    판정한 config의 층(넣을 패턴 줄의 자리)."""
     log = store.read(store.GATE_REJECTS, {"rejects": [], "counts": {}})
     log["rejects"].append({"rel": rel, "src_cat": src_cat, "dst_cat": dst_cat,
-                           "verdict": verdict, "path": path, "doc_id": doc_id})
+                           "verdict": verdict, "path": path, "doc_id": doc_id,
+                           "source": source or SOURCE.get(path, path), "layer": layer})
     log["counts"][verdict] = log["counts"].get(verdict, 0) + 1
     store.write(store.GATE_REJECTS, log)
 
 
 def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
-                evidence_chunk=None, src_graph=None, dst_graph=None):
+                evidence_chunk=None, src_graph=None, dst_graph=None, source=None):
     """게이트를 통과시킨 뒤에만 엣지를 쓴다. 돌려주는 것은 분기 이름이다.
 
     `src_graph`·`dst_graph`는 **걸침 엣지**용이다 — 끝점이 다른 층에 살아도 엣지 자체는
@@ -141,7 +147,7 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
     d = (dst_graph or graph).get(dst) if dst else None
     if not s or not d:
         log_reject(rel, "?" if not s else s["category"], "?" if not d else d["category"],
-                   UNRESOLVED_ENDPOINT, path, doc_id)
+                   UNRESOLVED_ENDPOINT, path, doc_id, source, cfg.get("layer"))
         return UNRESOLVED_ENDPOINT
     verdict, _ = judge(s["category"], rel, d["category"], cfg, path)
     if verdict != COMMIT:
@@ -167,5 +173,5 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
                        "provenance": provenance})
         return verdict
 
-    log_reject(rel, s["category"], d["category"], verdict, path, doc_id)
+    log_reject(rel, s["category"], d["category"], verdict, path, doc_id, source, cfg.get("layer"))
     return verdict

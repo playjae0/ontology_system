@@ -277,12 +277,8 @@ def _ask_llm_coord(misses, assume=None):
         return assume
     if gateway.use_mock():
         return False
-    try:
-        ans = input(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). "
-                    f"켤까? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ans = ""                       # 대화형이 아니면 **끄고 진행**한다
-    on = ans in ("y", "yes")
+    # 대화형이 아니면 **끄고 진행**한다
+    on = _screen.answer(f"   LLM 보조를 켜면 최대 {len(kinds):,}회 호출한다(표기 종수). 켤까? [y/N] ", "yes", eof=False)
     print(f"   → LLM 보조 {'켬' if on else '끔 (미스는 인입에서 orphan_anchor로 간다)'}")
     return on
 
@@ -454,9 +450,8 @@ def _cmd_review_rehearsal(doc_type, st, results, samples, mod, extract, rs):
         want = extract
         if want is None:
             print(f"   추출 리허설 {n:,}청크 → LLM {n:,}회.")
-            try:
-                want = input("   켤까? [Y/n] ").strip().lower() not in ("n", "no")
-            except (EOFError, KeyboardInterrupt):
+            want = _screen.answer("   켤까? [Y/n] ", "Yes", eof=None)
+            if want is None:
                 # **비대화형이면 끄고 그 사실을 뷰에 남긴다** — 조용히 도는 구간을
                 # 두지 않는다: 승인자는 「추출을 보고 승인했다」고 믿으면 안 된다.
                 want = False
@@ -510,7 +505,7 @@ def _ingested_lines(doc_type, samples):
               + (f' --sheets "{spec}"' if spec else ""))
 
 
-def _review_parse(mod, samples, rows, roles, llm_coord):
+def _review_parse(mod, samples, rows, roles, llm_coord, layers=None):
     """표본 파싱(리허설) — 무LLM 1차 → 좌표 미스를 세고 사람이 켜면 LLM 보조로 다시. `cmd_review`에서 떼어냈다(B116 · 함수 상한)."""
     from cli import doc_coord as DC
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
@@ -534,7 +529,8 @@ def _review_parse(mod, samples, rows, roles, llm_coord):
                 mod, doc_id_of(s), s, layer=coord_layer(),
                 # **계층 규칙 선언은 주입하지 않는다**(B87 ② — generate는 파악만):
                 # 리허설은 「고정 규칙으로 선다 / 인입 때 선언 필요」만 보인다.
-                **{**injections(), "pick_coord": pick, "infer_rules": None},
+                # 문서 구조는 **운영 인입과 같은 층의 카테고리로**(B119 ① — 리허설 산출의 판이 같아야 운영이 재사용한다)
+                **{**injections(layers), "pick_coord": pick, "infer_rules": None},
                 max_rows=rows, sheet_roles=roles.get(str(Path(s).resolve())), doc_coord=coords[s],
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
@@ -599,7 +595,9 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     from cli.register import rehearsal as rehearsal_mod
     with rehearsal_mod.Session(doc_type, samples) as rs:
         _ingested_lines(doc_type, samples)
-        results = _review_parse(mod, samples, rows, _roles, llm_coord)
+        from core.state import registry as _reg
+        results = _review_parse(mod, samples, rows, _roles, llm_coord,
+                                layers=_reg.lenses_of(doc_type) or [st["layer"]])
         rs.truncated = any((r.report.get("rehearsal") or {}).get("truncated") for r in results)
         _parse_lines(results)
         # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.

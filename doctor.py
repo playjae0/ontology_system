@@ -4,6 +4,9 @@
     python doctor.py            전체 (환경 → 자체 검증 → 상태 → 사내 전환 판정)
     python doctor.py --quick    회귀 생략 (느린 기계용 — 전체도 보통 20초 안이다)
     python doctor.py --env      환경만 (반입 직후 첫 실행 — 30초)
+    python doctor.py --only <스위트…>          고른 스위트만 (개발 중 · **판정 아님** — B117 ①)
+    python doctor.py --changed [<기준 커밋>]   바뀐 파일을 읽는 스위트만 (개발 중 · **판정 아님** · 고를 수 없으면 전체)
+    … --list                                   고르기만 보고 돌리지 않는다
 
 **왜 이 파일이 있나.** 레포를 사내로 옮기면 받는 사람은 "무엇부터 돌려야 하나"를 모른다.
 문서를 다 읽게 하는 것은 답이 아니다 — **한 줄을 돌리면 현재 위치와 다음 한 걸음이
@@ -77,6 +80,10 @@ SUITES = [
     ("test_g6_relink", 11, "B113 — 다른 공정 골격 이름은 노드 0 · 관련 링크(about) · 대장 mention · 맞춤 칸(산문 × 층 둘 · 표) · 빈칸 표시(개체 칸 개체 0 · 좌표 칸은 문서 좌표 · 값 칸은 그대로 + 표지 · 목록은 공통 config) · 재연결(좌표 미해소 보류 행이 ops relink로 선다 · 추출 LLM 0 · 되살린 노드는 사전에 남는다 · 뒤 청크 유닛에 앞 개체가 다음 바퀴에 · 붙음 0에서 멈춤 · 클린 2회 같다)"),
     ("test_g6_outline", 5, "B115 — 문서 개요(대상 제목만 노드 · 주제 0 · 제목에 없는 이름 · 목록 밖 카테고리 버림 · 같은 제목이면 재사용 LLM 0 · 추출 입력에 조상 제목 개체) · 상위로 올라가는 폴백 사슬(NG unit → 추출부 → 공정 · 대장 폴백(제목 n단) · 맞춤 제목 폴백 · 소속 대상 제목 개체) · 연결 보강(엣지 없는 · 공정에만 붙은 개체 · 후보 안 · 근거 문장 · 버림 · 재구축 재생 LLM 0 · 상한 손잡이 · mock 판정 없음) · 엑셀 · Word · PPT 같은 함수 · 표는 개요 0 — 표·산문 × 층 둘"),
     ("test_g6_rehearsal", 22, "B116 — 추출 리허설은 임시 상태 루트(하위 실행 · 운영은 읽기만): 이미 인입된 문서(렌즈판이 있는 루트)를 표본으로 등록 세 단계 전후 운영 지문 같음(층 둘) · ②구획 채워짐 · 리허설 산출 자리(추출 · 개요) · 안내 줄 · 같은 조건(실호출 · 상태 루트 llm.json · 손잡이) · 새 종류 인입 추출 · 개요 LLM 0 · 원래 종류는 지금 규칙 · 부분 · 실패 · 중단(Ctrl-C) 흔적 0"),
+    ("test_g6_numbers", 18, "B118 — 숫자와 기준이 보이게: 문서 한 줄 요약 = 맞춤표 · show summary = 그래프 · 대장 · --diff 바뀐 줄만 · 점수표(--template 행 = 개체 행 · 맞음/틀림/빈칸 · 재구축 뒤 같은 수) · 위치 두 칸 · 묻는 자리(c·ㅊ만 계속 · ㅂ·Ctrl-C·q 멈춤 = 시작 전 · 다시 묻기 · 저장 뒤 관문 · y/N) · 보강 버림 재생(제안 · 패턴 더하면 LLM 0으로 붙음) · 거부 묶음 · 영향 범위 — 표·산문 × 층 둘"),
+    ("test_g6_structure", 14, "B119 — 문서 구조(시트마다 LLM · 번호 없는 유닛 줄이 트리 · 경로에 · 한 유닛 아래 청크 둘이 한 노드 · 번호 표본은 고정 규칙과 같은 트리 · 같은 파일 LLM 0 · 검사 · 실패 초안) · 소속(주인 있는 개체는 유닛에 · 주인 없는 것만 공정 · 지어낸 이름 버림 · 추출 입력에 사슬 · 가드 부딪힘 셈) · 구조 관문(고침 기록 · 다시 파싱 · 재구축 재생 · 약한 구조 신호) · 이름(공정::유닛::사양 · 표 불변) · 값 표 칸 — 표본 셋 × 층 둘"),
+    ("test_g6_values", 4, "B120 — 산문의 값(유닛마다 같은 이름 사양이 각자 원문 값 · 출처 청크 · 날짜 · 쪽수는 값이 아니다) · 버림(원문 밖 · 결함 로그 · 맞춤표 수) · 충돌(spec_conflict · 덮어쓰기 0) · 추출 판 = config 추출 칸 해시(relation_patterns · config_version만 → 재사용 · 정의문 → 다시) · 선언 없음 → 값 0 · 재구축 재생 LLM 0"),
+    ("test_g6_close", 19, "B117 — 마감 도구는 판정을 느슨하게 하지 않는다: 네 벌 C 같은 커밋 같다 · 폴백 사슬 끈 사본 C만 다르다 · doctor --only 하나만 · 머리 · 합계 · 로그에 「고른 실행 — 판정 아님」 · 모르는 이름 rc 2 · --changed ⊇ 실행 기록 표본(레포 사본 core 하나 · 자산 폴더 → 전체) · 마감 한 줄 일곱 단계 끝까지 · FAIL rc 1 · 명세 패치 --check 항목 이름 · --apply 어긋나면 쓰기 0 · 명세 모양 늘면 위반 · 줄면 내림"),
     ("test_g6_rebuild_memory", 11, "B107 — 옛 사람 판단 기록에 이름 채우기(옮길 때 · ops replay 계획 · 재구축 계획 · 그때의 이름 · 그래프에 없는 id는 목록) · 좌표 태깅 null 답 기억(닫힌 목록 내용 해시 · 지우는 손잡이 · 별칭이 판을 바꾼다 · 실호출 모양 재구축 태깅 0) · 재시도가 판정 대장을 갱신(같은 키 · by retry · 인입과 같은 하강 · 재구축 재생) — 표·산문 × 층 둘"),
     ("test_g6_hybrid", 15, "B104 — 공유 별칭의 범위 안 해소(보류 문면 표기 모호) · 링킹 임베딩 후보 + LLM 선별(후보 밖 0 · 보충/폴백 · 미스율 사전 단) · 문서 검색 채널(근거 없음은 둘 다 빌 때 · 벡터 캐시 재사용·몫만·판) · 짧은 답·쓴 근거·CLI ⓐ~ⓕ = --json · 채점 두 축 · 쓰기 0 — 표·산문 × 층 둘"),
     ("test_g6_lens", 18, "추출 입구(B91) — 사내 손잡이(값·출처·거부·분포) · 렌즈(층 목록·거름·예고·상한) · 시트 두 모드(로직·LLM·자동·승격 후보) · 개체별 부모·관련 링크·근거 순위 · ref 근처 [관련 원문] · 겸 집 경고"),
@@ -103,7 +110,7 @@ SUITES = [
     ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
     ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
     ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
-    ("test_2a_gateway", 75, "게이트웨이 골조 — 12지점 도달 가능성 · **12지점 본문 스모크**(B79 ③ⓒ · ⑩시트 역할 B91 · ⑪문서 개요 · ⑫연결 보강 B115) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
+    ("test_2a_gateway", 76, "게이트웨이 골조 — 12지점 도달 가능성 · **12지점 본문 스모크**(B79 ③ⓒ · ⑩시트 역할 B91 · ⑪문서 개요 · ⑫연결 보강 B115) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
     # **뷰어는 세미 플랫폼이다**(B82) — headless로 잰다(브라우저 의존 0).
     ("test_viewer", 60, "뷰어 서버(쓰기 0 · 자리 탈출 거부) · 벤더링 렌더러 · 질의 trace 계측 · 연결 현황 · B84 테마 대비·다시 칠하기·상호작용·오류 문면 · B103 배치 셋·닻·연결 없는 노드·이웃·노드 상세의 근거 · B114 힘 배치 워커(시간 끊기 0 · 난수 0) · 크기 계단 · 힘 손잡이 · 벡터 이어 만들기 · 진행 줄 · 질의 단계 · 상태 라우트 GET만"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
@@ -127,6 +134,7 @@ OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으�
 
 # 화면 원자 — 마크 · `line` · `head` · [필요] 수는 운영 화면과 같은 것을 쓴다 (`cli/doctor_view` · B111 ①)
 from cli import doctor_view as V                                     # noqa: E402 — core를 import하지 않는다
+from cli import doctor_select as sel                                 # noqa: E402 — 고르기(B117 ① · 판정 아님)
 from cli.doctor_view import NEXT, NG, OK, WARN, head, line           # noqa: E402,F401
 
 # 격리 전의 셸 환경 — 진입점이 남긴다. `None`이면 이 프로세스가 곧 셸 환경이다(`main`을 바로 부른 시험).
@@ -436,8 +444,10 @@ def _env_diff(clean_rc, residue):
         print(f"         {why}")
 
 
-def run_suites(quick=False):
-    head("② 자체 검증 — 가져온 것이 온전한가 (회귀 10종)")
+def run_suites(quick=False, names=None):
+    """회귀 — `names`를 주면 그 스위트만(고른 실행 — 판정 아님 · 완료판정 4 「클린 2회」는 재지 않는다)."""
+    head("② 자체 검증 — 가져온 것이 온전한가 (회귀 10종)" if names is None
+         else f"② 고른 스위트 {len(names)}종 — {sel.HEAD_LINE}")
     if quick:
         print("  (--quick: 건너뛴다. 반입 직후에는 반드시 한 번 돌려라)")
         return None
@@ -447,6 +457,8 @@ def run_suites(quick=False):
     total_ok, results = True, []
     clean_rc, residue, dup = 0, [], []
     for name, expect, what in SUITES:
+        if names is not None and name not in names:
+            continue
         rc, res = _clean()
         clean_rc = clean_rc or rc
         residue = residue or res              # 한 번이라도 남았으면 그것이 신호다
@@ -479,15 +491,16 @@ def run_suites(quick=False):
 
     got = sum(p for _n, p, _f, _e, _o in results)
     want = sum(e for _n, _p, _f, e, _o in results)
-    _idempotent()
+    if names is None:
+        _idempotent()
 
     print()
     line(OK if not dup else NG,
          f"상시 어서션 — 중복 canonical 0 (회귀 {len(results)}종 전부)",
          "" if not dup else f"위반: {', '.join(dup)} (B74 ①)")
-    line(OK if total_ok else NG, f"합계 {got}/{want} PASS",
-         "국면 1 완료판정의 회귀 기준선과 일치한다" if total_ok
-         else "기준선과 다르다 — 반입이 온전하지 않거나 환경이 다르다")
+    line(OK if total_ok else NG, f"합계 {got}/{want} PASS" + (f" — {sel.HEAD_LINE}" if names is not None else ""),
+         ("국면 1 완료판정의 회귀 기준선과 일치한다" if names is None else "고른 스위트의 기대 수와 같다 — 마감은 전체 doctor")
+         if total_ok else "기준선과 다르다 — 반입이 온전하지 않거나 환경이 다르다")
     if not total_ok:
         # **성공하면 화면을 늘리지 않는다** — 실패할 때만 원인 후보를 낸다.
         _env_diff(clean_rc, residue)
@@ -532,13 +545,56 @@ def show_state():
 
 
 # ================================================================ 진입점
+def _picked(argv):
+    """`--only` · `--changed` → `(스위트 이름 목록 또는 None(전체), 머리 줄 또는 None, 멈춤 rc 또는 None)`."""
+    only, changed = sel.parse_args(argv)
+    names = [n for n, _e, _w in SUITES]
+    if only is not None:
+        got, unknown = sel.pick_only(names, only)
+        if unknown or not got:
+            print(f"[사용법] --only — 모르는 스위트 {unknown or only} · 스위트: {' · '.join(names)}")
+            return None, None, 2
+        return got, f"{sel.HEAD_LINE} — --only {' '.join(only)} → {len(got)}종", None
+    if changed is not None:
+        files, why = sel.changed_files(changed)
+        if why:
+            return None, f"--changed {changed} — 고를 수 없어 전체를 돈다: {why}", None
+        got, lines = sel.pick_changed(names, files)
+        detail = "\n".join(f"     {ln}" for ln in lines) or "     (바뀐 파일 없음)"
+        if got is None:
+            if "--list" in argv:
+                print(f"--changed {changed} — 고를 수 없다 → 전체\n{detail}")
+                return None, None, 0
+            return None, f"--changed {changed} — 고를 수 없어 전체를 돈다\n{detail}", None
+        return got, f"{sel.HEAD_LINE} — --changed {changed} · 바뀐 파일 {len(files)} → {len(got)}종\n{detail}", None
+    return None, None, None
+
+
 def main(argv):
+    names, sel_head, stop = _picked(argv)
+    if stop is not None:
+        return stop
+    if names is not None:
+        print("=" * 66)
+        print(f"  온톨로지 시스템 — {sel_head}")
+        print("=" * 66)
+        if "--list" in argv:        # 고르기만 본다(돌리지 않는다)
+            print("  고른 스위트 — " + (" · ".join(names) or "없음"))
+            return 0
+        if not names:
+            print("  고른 스위트 0종 — 바뀐 파일을 읽는 스위트가 없다")
+            return 0
+        ok = run_suites(names=names)
+        print(f"\n{'=' * 66}\n결과: {sel.HEAD_LINE} — 고른 {len(names)}종 {'통과' if ok else '실패'} · 마감은 전체 doctor\n{'=' * 66}")
+        return 0 if ok else 1
     only_env = "--env" in argv
     quick = "--quick" in argv or only_env
 
     print("=" * 66)
     print("  온톨로지 시스템 — 사내 이식 점검  (국면 1 완료본)")
     print("=" * 66)
+    if sel_head:                # 고르려 했으나 고를 수 없었다 — 전체를 돈다(그 사실을 머리에)
+        print(f"  {sel_head}")
     # 상태 줄 · 층 이름(B99 ①) · 정합(B99 ⑩) — 운영 루트를 읽기만 (B111 ①)
     operating("head")
 

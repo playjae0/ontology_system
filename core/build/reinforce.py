@@ -12,9 +12,11 @@
   · **출력** — `{"pick": {id, rel|null, evidence} | null}`. 후보 밖 id · 원문에 없는 근거 문장 · 게이트를 못 지나는
     관계는 **버린다**(결함 로그) · 못 고르면 지금처럼 둔다(새 큐 kind 0).
   · **대장** — 역할 `link` 한 행(위치 = 청크 · 열 `연결` · 경로 `reinforce`(재생이면 `replay`) · 판정 `attached` |
-    `pending`(못 고름) | `gate_reject`(버림) · `target` · `evidence` · 붙은 자리 `보강`). **재구축이 재생한다**(LLM 0 —
-    같은 위치 · 같은 표기의 지난 행 `PRIOR`: 붙음이면 그 이름을 지금 후보에서 다시 찾아 같은 관계로 · 못 고름 · 버림이면
-    그대로 · 붙었던 후보를 지금 못 찾으면 다시 묻는다 · `--no-replay`면 끔).
+    `pending`(못 고름) | `gate_reject`(버림 — 제안 `proposal {target, rel}`을 남긴다 · B118 ⑤) · `target` · `evidence` ·
+    붙은 자리 `보강`). **재구축이 재생한다**(LLM 0 — 같은 위치 · 같은 표기의 지난 행 `PRIOR`: 붙음이면 그 이름을 지금
+    후보에서 다시 찾아 같은 관계로 · **버림은 제안을 지금 후보에서 찾아 지금 config로 게이트를 다시 돈다**(통과하면 붙고
+    `by: replay` · 그대로면 다시 버림) · 못 고름 · 제안 없는 버림은 그대로 · 붙었던 후보를 지금 못 찾으면 다시 묻는다 ·
+    `--no-replay`면 끔).
   · **상한** — 실행당 호출 `CALL_CAP`(사내 손잡이 `reinforce_call_cap` · 0이면 끔) — 넘는 대상은 그 수를 줄로 낸다.
   · **mock** — 선별은 결정적 규칙의 주입(`SELECT` — 시험이 넣는다) · 비면 판정 없음(호출 0 · 행 0).
 
@@ -158,6 +160,10 @@ def _check(pick, cmap, text, cfg):
     return cand, rel, ev, None
 
 
+#: 거부 로그의 출처(B118 ⑥ — 경로는 추출과 같다)
+SOURCE = "보강"
+
+
 def _connect(cfg, graph, nodes, nid, tid, rel, prov, doc_id, cid):
     """엣지 하나 — 관계를 냈으면 게이트가 받는 방향으로(판정만 먼저 · 큐 0) · 안 냈으면 카테고리쌍 매핑(두 방향) ·
     `(관계, 대상이 src인가)` 또는 `(None, 이유)`."""
@@ -168,6 +174,10 @@ def _connect(cfg, graph, nodes, nid, tid, rel, prov, doc_id, cid):
             if gate.judge(sg.get(s)["category"], rel, dg.get(d)["category"], cfg, gate.PATH_EXTRACT)[0] == gate.COMMIT:
                 break
         else:
+            # 판정만 먼저 했다 — 거부도 기록한다(B118 ⑥ 거부 묶음 · 제안 방향 = 대상 → 개체)
+            gate.log_reject(rel, tn["category"], en["category"],
+                            gate.judge(tn["category"], rel, en["category"], cfg, gate.PATH_EXTRACT)[0],
+                            gate.PATH_EXTRACT, doc_id, SOURCE, cfg.get("layer"))
             return None, f"관계 {rel}가 게이트를 못 지난다({tn['category']} · {en['category']})"
     else:
         rel, fwd = belongs.edge_of(cfg, tn["category"], en["category"])
@@ -175,7 +185,7 @@ def _connect(cfg, graph, nodes, nid, tid, rel, prov, doc_id, cid):
             return None, f"카테고리쌍 매핑 없음({tn['category']} → {en['category']})"
     s, d, sg, dg = (tid, nid, tg, eg) if fwd else (nid, tid, eg, tg)
     br = gate.commit_edge(graph, s, rel, d, cfg, gate.PATH_EXTRACT, [prov], doc_id, evidence_chunk=cid,
-                          src_graph=sg, dst_graph=dg)
+                          src_graph=sg, dst_graph=dg, source=SOURCE)
     return (rel, fwd) if br == gate.COMMIT else (None, f"게이트 {br}")
 
 
@@ -256,9 +266,16 @@ def _one(doc_id, lay, cfg, graphs, nodes, ends, rows, chunk_of, r, nid, why, cap
     if old is not None:
         LAST["재생"] += 1
         hit = next((k for k, c in cmap.items() if c["name"] == old.get("target")), None)
-        if old.get("verdict") in ("pending", "gate_reject"):        # 못 고름 · 버림도 판정 결과다 — 다시 묻지 않는다
+        prop = old.get("proposal") or {}
+        again = next((k for k, c in cmap.items() if c["name"] == prop.get("target")), None) if prop else None
+        if old.get("verdict") == "gate_reject" and again:
+            # 버림은 **지금 config로 게이트를 다시 돈다**(B118 ⑤ — LLM 0 · 패턴을 더했으면 붙고 그대로면 다시 버림)
+            pick = {"id": again, "rel": prop.get("rel"), "evidence": old.get("evidence") or ""}
+            return _apply(doc_id, lay, cfg, graphs, nodes, ends, r, nid, cid, chunk, cmap, pick, "replay", u0,
+                          by="replay")
+        if old.get("verdict") in ("pending", "gate_reject"):        # 못 고름 · 제안 없는 버림도 판정 결과다 — 다시 묻지 않는다
             return _row(doc_id, r, nid, old["verdict"], "replay", None, None, old.get("evidence"), u0,
-                        "못 고름(재생)" if old["verdict"] == "pending" else "버림(재생)")
+                        "못 고름(재생)" if old["verdict"] == "pending" else "버림(재생)", proposal=prop or None)
         if hit:
             rel = next((a.get("rel") for a in old.get("attached") or [] if a.get("path") == HOW), None)
             pick = {"id": hit, "rel": rel if rel in (cfg.get("relations") or []) else None,
@@ -277,6 +294,7 @@ def _one(doc_id, lay, cfg, graphs, nodes, ends, rows, chunk_of, r, nid, why, cap
     payload = {"entity": {"name": (nodes[nid][1] or {}).get("canonical"), "category": (nodes[nid][1] or {}).get("category")},
                "chunk": extract_ctx.with_context(chunk, extract_ctx.doc_info(_env(doc_id))),
                "headings": OL.heading_candidates(ol, r["locator"]),
+               "structure": OL.structure_chain(ol, r["locator"]),        # 구조 사슬 (B119 ② — 위에서 아래로)
                "candidates": [{"id": k, "name": c["name"], "category": c["category"]} for k, c in cmap.items()],
                "relations": cfg.get("relations") or []}
     LAST["호출"] += 1
@@ -294,11 +312,14 @@ def _count(path, what):
         LAST[what] += 1
 
 
-def _apply(doc_id, lay, cfg, graphs, nodes, ends, r, nid, cid, chunk, cmap, pick, path, u0):
+def _apply(doc_id, lay, cfg, graphs, nodes, ends, r, nid, cid, chunk, cmap, pick, path, u0, by=None):
     cand, rel, ev, why = _check(pick, cmap, chunk.get("text"), cfg)
     if cand is None and why is None:
         _count(path, "못 고름")
-        return _row(doc_id, r, nid, "pending", path, None, None, None, u0, "못 고름")
+        return _row(doc_id, r, nid, "pending", path, None, None, None, u0, "못 고름", by=by)
+    named = cmap.get(str((pick or {}).get("id")))
+    # 버림의 제안(B118 ⑤) — 후보 안의 대상과 낸 관계 · 재생이 지금 config로 게이트를 다시 돈다
+    prop = {"target": named["name"], "rel": (pick or {}).get("rel") or None} if named else None
     if why is None:
         rel, fwd = _connect(cfg, graphs[lay], nodes, nid, cand["node_id"], rel, f"{doc_id}#{r['locator']}",
                             doc_id, cid)
@@ -307,21 +328,23 @@ def _apply(doc_id, lay, cfg, graphs, nodes, ends, r, nid, cid, chunk, cmap, pick
     if why:
         store.append_defect(f"{doc_id}: 연결 보강 — 버림 '{r.get('surface')}' @ {r['locator']} — {why}")
         _count(path, "버림")
-        return _row(doc_id, r, nid, "gate_reject", path, None, None, ev, u0, f"버림 — {why}")
+        return _row(doc_id, r, nid, "gate_reject", path, None, None, ev, u0, f"버림 — {why}", proposal=prop, by=by)
     _count(path, "붙음")
+    if by == "replay":
+        LAST["버림→붙음"] = LAST.get("버림→붙음", 0) + 1
     ends.setdefault(nid, set()).add(cand["node_id"])
     ends.setdefault(cand["node_id"], set()).add(nid)
     return _row(doc_id, r, nid, "attached", path, cand["name"], (rel, fwd), ev, u0,
-                f"{rel} {'←' if fwd else '→'} {cand['name']}")
+                f"{rel} {'←' if fwd else '→'} {cand['name']}", by=by)
 
 
-def _row(doc_id, r, nid, verdict, path, target, edge, ev, u0, say):
+def _row(doc_id, r, nid, verdict, path, target, edge, ev, u0, say, proposal=None, by=None):
     """대장 한 행(역할 `link`) — 같은 열쇠의 지난 행은 갈아 끼운다(`ledger.put_row`)."""
     from core.build import ledger
     u1 = gateway.usage_total()
     row = ledger.row(locator=r["locator"], field=FIELD, role=ROLE, surface=r.get("surface"),
                      canonical=r.get("target") or r.get("canonical"), layer=r.get("layer"), path=path,
-                     verdict=verdict, node_id=nid, target=target, evidence=ev or None,
+                     verdict=verdict, node_id=nid, target=target, evidence=ev or None, proposal=proposal, by=by,
                      llm={"calls": u1["calls"] - u0["calls"], "in_tokens": u1["prompt_tokens"] - u0["prompt_tokens"],
                           "out_tokens": u1["completion_tokens"] - u0["completion_tokens"]})
     if edge:
@@ -354,6 +377,8 @@ def line():
         return "연결 보강 — 대상 0(엣지 없는 · 공정에만 붙은 개체가 없다)"
     s = (f"연결 보강 — 대상 {LAST['대상']:,} → 붙음 {LAST['붙음']:,} · 재생 {LAST['재생']:,} · "
          f"못 고름 {LAST['못 고름']:,} · 버림 {LAST['버림']:,} · 호출 {LAST['호출']:,}")
+    if LAST.get("버림→붙음"):
+        s += f" · 재생 중 버림→붙음 {LAST['버림→붙음']:,}(지금 config로 게이트를 다시 돌았다 — LLM 0)"
     if LAST.get("상한 밖"):
         s += f" · 상한 밖 {LAST['상한 밖']:,}(손잡이 reinforce_call_cap — 다음 인입 · 재구축이 잇는다)"
     if LAST.get("판정 없음"):

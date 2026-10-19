@@ -194,20 +194,24 @@ with Stub(by={"extract": ex}) as gw:
     # ── ⓓ 끝 정리 — 부분 리허설 · 실패 · 중단
     fP = fp()
     reg("generate", "rfqp", "quality", str(RFQ), "--use-basic")
+    # 기대 변경(B119 ① — 생성 관문의 표본 파싱도 문서 구조를 부르고 그 보존분이 리허설 산출에 남는다) — 잴 것은 「이 실행이 더한 것 0」
+    _c0 = carry("rfqp")
     _rc, _o = reg("review", "rfqp", "--no-llm-coord", "--extract", "--rows", "3")
     _ch = changed(fP, fp(), ("rfqp",))
     show("ⓓ 부분 리허설 — 산출을 남기지 않는다 · 임시 폴더 흔적 0 · 운영 지문 그대로",
-         view("rfqp").get("kept") is False and not carry("rfqp") and not tmp_left() and not _ch,
-         f"{view('rfqp').get('note')} · {_ch[:4]}")
+         view("rfqp").get("kept") is False and carry("rfqp") == _c0 and not tmp_left() and not _ch,
+         f"{view('rfqp').get('note')} · {_ch[:4]} · 산출 {carry('rfqp')} · 흔적 {tmp_left()}")
     reg("generate", "rfqf", "quality", str(RFQ), "--use-basic")
+    _c0 = carry("rfqf")
     gw.fail["outline"] = 500
     _rc, _o = reg("review", "rfqf", "--no-llm-coord", "--extract")
     gw.fail.clear()
     _ch = changed(fP, fp(), ("rfqp", "rfqf"))
     show("ⓓ 실패(게이트웨이 500) — 「추출 리허설 실패」 · 산출 0 · 임시 폴더 흔적 0 · 운영 지문 그대로",
-         "추출 리허설 실패" in _o and view("rfqf").get("source") == "none" and not carry("rfqf")
+         "추출 리허설 실패" in _o and view("rfqf").get("source") == "none" and carry("rfqf") == _c0
          and not tmp_left() and not _ch, f"{_ch[:4]} · {tmp_left()}")
     reg("generate", "rfqi", "quality", str(RFQ), "--use-basic")
+    _c0 = carry("rfqi")
     gw.delay["extract"] = 120
     _p = subprocess.Popen([sys.executable, "-m", "cli.register", "review", "rfqi", "--no-llm-coord", "--extract"],
                           cwd=str(ROOT), env=ENV, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -218,7 +222,7 @@ with Stub(by={"extract": ex}) as gw:
     gw.delay.clear()
     _ch = changed(fP, fp(), ("rfqp", "rfqf", "rfqi"))
     show("ⓓ 중단(Ctrl-C · 추출 도중) — 종료 코드 130 · 산출 0 · 임시 폴더 흔적 0 · 운영 지문 그대로",
-         _seen and _p.returncode == 130 and not carry("rfqi") and not tmp_left() and not _ch,
+         _seen and _p.returncode == 130 and carry("rfqi") == _c0 and not tmp_left() and not _ch,
          f"rc {_p.returncode} · {_ch[:4]} · {tmp_left()}")
     show("ⓓ 중단 화면에 트레이스백 0", "Traceback" not in _out, _out.strip().splitlines()[-2:])
 

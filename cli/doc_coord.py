@@ -94,7 +94,11 @@ def decide(doc, doc_id, spec=None, ask=True, write=True):
         coord, src = sug, ("파일명" if sug else "없음")
         # 터미널은 **제안이 있을 때만** 묻는다(수락 확인) — 제안이 없으면 없음(바꾸려면 --coord)
         if ask and sug and sys.stdin.isatty():
-            ans = input(f"   문서 좌표 — 제안 '{sug}'(파일명 조각 '{part}') · Enter=수락 · 이름 · -=없음 > ").strip()
+            from cli import _screen
+            ans = _screen.answer(f"   문서 좌표 — 제안 '{sug}'(파일명 조각 '{part}') · Enter=수락 · 이름 · -=없음 > ",
+                                 "text", eof="")
+            if ans is None:                  # Ctrl-C — 제안을 수락한 것으로 읽지 않는다(멈춤)
+                raise KeyboardInterrupt
             if ans:
                 coord = None if ans.lower() in NONE else _resolve(ans, nodes)
             if write:

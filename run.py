@@ -324,6 +324,10 @@ def cmd_bootstrap(args=()):
         print(f"[bootstrap] 보류 {len(_q):,}건("
               + " · ".join(f"{k} {v:,}" for k, v in sorted(_k.items()))
               + ") — 다음 인입 마무리에서 다시 붙는다 · 지금 붙이려면 python run.py ops relink all --actor <이름> --apply")
+    # **바꾸면 무엇이 다시 도나**(B118 ⑥) — 지난 인입이 쓴 config와 지금 config를 칸별로(추출 다시 · LLM 0 · 영향 없음)
+    from core.state import config_scope
+    for ln in config_scope.lines(config_scope.impact()):
+        print(ln)
     return rc
 
 

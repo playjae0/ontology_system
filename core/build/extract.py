@@ -85,18 +85,20 @@ def has_checkpoint(doc_id, lens=None):
 def _now_key(env, cfg=None, outline=None):
     """재사용 조건의 지금 값 — **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판**(B102 ⑥) + **개요의 대상
     제목**(B115 ③ — 추출 입력의 넷째 소속 출처라 바뀌면 다시 뽑는다 · 대상이 없으면 None이라 옛 체크포인트와 같다).
+    층 config 판은 **추출 갈래 칸의 해시**다(B120 ③ — `config_scope.extract_key` · 사람이 적는 `config_version`은 기록만).
     `cfg`가 없으면(층을 모르는 호출) 층 config 판은 대조하지 않는다."""
     from core.build import outline as OL
+    from core.state import config_scope
     now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
            "prompt_version": prompt_version()}
     if cfg is not None:
-        now["config_version"] = cfg.get("config_version") or cfg.get("skeleton_version")
+        now["config_extract"] = config_scope.extract_key(cfg)
     now["outline"] = OL.targets_key(outline)
     return now
 
 
 _LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
-          "config_version": "층 config", "outline": "개요"}
+          "config_extract": "층 config(추출 칸)", "outline": "개요"}
 
 
 def reuse_check(env, lens=None, cfg=None, outline=None, p=None):
@@ -220,6 +222,9 @@ EXTRACT_SCHEMA = {
             "properties": {"surface": {"type": "string"},
                            "category": {"type": "string"},
                            "parent": {"type": ["string", "null"]},
+                           # **값**(B120 ①) — 값을 받는 카테고리(`value_categories`)의 개체만 · 청크 원문 글자 그대로 ·
+                           # 없으면 null(선택 필드 — 옛 체크포인트 · mock은 키가 없고 「없음」으로 읽는다)
+                           "value": {"type": ["string", "null"]},
                            "belongs_to": {
                                "type": ["object", "null"],
                                "properties": {"name": {"type": "string"},
@@ -228,7 +233,7 @@ EXTRACT_SCHEMA = {
                                                        "enum": ["본문", "경로", "시트", "공정", "제목"]}},
                                "required": ["name", "category", "from"],
                                "additionalProperties": False}},
-            "required": ["surface", "category", "parent", "belongs_to"],
+            "required": ["surface", "category", "parent", "belongs_to", "value"],
             "additionalProperties": False}},
         "relations": {"type": "array", "items": {
             "type": "object",
@@ -316,8 +321,9 @@ def parent_candidates(chunk, layer=None):
 
 
 def _optional(out):
-    """새 선택 필드(`parent`·`belongs_to`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
-    ents = [{k: v for k, v in e.items() if not (k in ("parent", "belongs_to") and v is None)}
+    """새 선택 필드(`parent`·`belongs_to`·`value`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
+    ents = [{k: v for k, v in e.items()
+             if not ((k in ("parent", "belongs_to") and v is None) or (k == "value" and v in (None, "")))}
             for e in out.get("entities", [])]
     extra = {"about": out["about"]} if out.get("about") else {}
     return ents, extra
@@ -327,6 +333,8 @@ def _optional(out):
 _DOC = {}
 #: 지금 추출하는 문서의 조각별 제목 개체(B115 ③ — `{위치: [{name, category}]}` · `extract()`가 개요에서 채운다)
 _HEADS = {}
+#: 위치 → 구조 사슬(B119 ② — 그 조각 위의 제목 줄 위에서 아래로 · 역할 · 대상)
+_CHAIN = {}
 #: 지금 추출하는 문서의 개요(부분 파일 머리의 재사용 조건 — `extract()`가 채운다)
 _OUTLINE = {}
 
@@ -349,11 +357,16 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
          {"role": "user", "content": json.dumps(
              {"categories": categories_with_also(cfg),
               "relations": cfg.get("relations"),
+              # **값을 받는 카테고리**(B120 ② — 층 config 선언 · 없으면 빈 목록 = 값 0)
+              "value_categories": sorted((cfg.get("value_categories") or {}).keys())
+              if isinstance(cfg.get("value_categories"), dict) else [],
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "parent_candidates": parent_candidates(chunk),
               # **넷째 소속 출처**(B115 ③) — 이 청크 위의 제목 개체(개요가 대상으로 정한 제목 · 가까운 것부터)
               "heading_candidates": _HEADS.get(chunk.get("source_locator")) or [],
+              # **구조 사슬**(B119 ②) — 이 청크 위의 제목 줄(역할 · 글자 · 대상) 위에서 아래로 · 가장 구체적인 주인을 고르는 재료
+              "structure_chain": _CHAIN.get(chunk.get("source_locator")) or [],
               # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
               "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)}],
         json_schema=EXTRACT_SCHEMA, point="extract")
@@ -432,12 +445,12 @@ def _load_hints(doc_id):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
-def _chunk_info(entry, i, m, locator, label, tokens, lens):
+def _chunk_info(entry, i, m, locator, label, tokens, lens, place=None):
     """청크 하나의 화면 재료 — 개체는 **전부**(표기·카테고리) · 관계·부착·부모는 수 (B97 ②).
 
     `tokens`는 이 청크의 사용량 차이(`prompt_tokens`·`completion_tokens`·`total_tokens` — B98 ③)."""
     ents = entry.get("entities") or []
-    return {"단계": "추출청크", "렌즈": lens, "i": i, "m": m, "locator": locator, "라벨": label,
+    return {"단계": "추출청크", "렌즈": lens, "i": i, "m": m, "locator": locator, "라벨": label, "자리": place,
             "개체": [(e.get("surface"), e.get("category")) for e in ents],
             "관계": len(entry.get("relations") or []), "부착": len(entry.get("attach") or []),
             "부모": sum(1 for e in ents if e.get("parent")), "토큰": tokens,
@@ -548,6 +561,9 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     _HEADS.clear()
     _HEADS.update({c.get("source_locator"): OL.heading_candidates(outline, c.get("source_locator"))
                    for c in env.get("chunks", [])})
+    _CHAIN.clear()
+    _CHAIN.update({c.get("source_locator"): OL.structure_chain(outline, c.get("source_locator"))
+                   for c in env.get("chunks", [])})
     done = _partial_load(env, lens, cfg)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
     m = sum(1 for r in rows if r[0] == "call")
@@ -556,7 +572,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows),
                   "다시": (why if why and why != "체크포인트 없음" else None),
                   "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m,
-                  "목차": _toc(rows, env)})
+                  "목차": _toc(rows, env), "자리목록": [extract_ctx.place(c) for _k, _cid, c in rows]})
     u0 = gateway.usage_total()
     candidates, i = [], 0
     for kind, cid, c in rows:
@@ -581,7 +597,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         _say(notice, _chunk_info(entry, i, m, c.get("source_locator"), extract_ctx.chunk_label(c),
                                  {k: t1.get(k, 0) - t0.get(k, 0) for k in
                                   ("prompt_tokens", "completion_tokens", "total_tokens")},
-                                 lens))
+                                 lens, extract_ctx.place(c)))
     called = [x for x in candidates if not x.get("lens_skipped")]
     failed = sum(1 for x in called if x.get("failed"))
     RUN[(doc_id, lens or "")] = {"부름": i, "재사용": resumed}
@@ -652,6 +668,7 @@ def checkpoint_files(doc_id):
 def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, outline=None):
     """최종 체크포인트 — 이 파일이 생기면 추출 완료다(부분 파일은 그 뒤에 지운다)."""
     from core.build import outline as OL
+    from core.state import config_scope
     out = {
         "doc_id": env["doc_id"],
         "stage": "extract",
@@ -659,7 +676,8 @@ def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, out
         # **재사용 조건의 둘째 축**(B78 1b) — 봉투가 바뀌면 청크가 바뀐다.
         "doc_hash": doc_hash(env),
         "prompt_version": prompt_version(),
-        "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),
+        "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),   # 기록만(B120 ③)
+        "config_extract": config_scope.extract_key(cfg),     # 재사용의 층 config 판 — 추출 갈래 칸의 해시(B120 ③)
         "layer": cfg["layer"],
         "extracted_at": env.get("parsed_at"),
         "candidates": candidates,

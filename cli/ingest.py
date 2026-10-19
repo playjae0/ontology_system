@@ -375,6 +375,45 @@ def _step_stops(res, sel, row, ask=True):
     return False
 
 
+def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step):
+    """파싱 — 리허설 산출(파싱 앞 몫) → `run_parse` → 실패면 큐 · 행 → 시트별 조각 → **구조 관문**(B119 ③ — 고치면 다시 파싱).
+
+    돌려주는 것은 `(파싱 결과, 쓴 자리)` · 멈추거나 실패했으면 `(None, None)`(`row`에 사유). `ingest_file`에서 떼어냈다(B119 — 함수 상한 120행)."""
+    from core.state import rehearsal as _RH          # 그 종류 등록 검수의 리허설 산출 — 파싱 앞 몫 (B116 ②)
+    from parser import struct_map as _SM
+    for _ln in _RH.take_parse(sel.get("doc_type"), sel["doc_id"], _SM.source_hash(str(doc))):
+        print("   " + _ln)
+    lz = registry.lenses_of(sel.get("doc_type")) or None     # 문서 구조의 닫힌 카테고리 출처 (B119 ①)
+
+    def _parse_now():
+        return run_parse(str(sel["adapter"]), sel["doc_id"], str(doc), coord_cap=coord_cap,
+                         sheet_roles=roles, no_images=no_images, doc_coord=doc_coord, layers=lz)
+    res, out = _parse_now()
+    if not res.ok:
+        rows = SCR.fail_rows(res.failures)
+        # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
+        # 경로에서 화면에만 한 줄 찍고 큐가 비어 있었다: 「화면을 놓치면 기록이
+        # 없다」가 되어, 일괄 투입에서 실패가 조용히 지나갔다.
+        store.enqueue("parse_failure", "; ".join(r["reason"] for r in rows)[:300],
+                      sel["doc_id"], {"doc_type": sel.get("doc_type"),
+                                      "source_path": str(doc),
+                                      "defects": [r["reason"] for r in rows]})
+        row.update(status=FAIL, reason="파싱 실패 — " + "; ".join(
+            f"[{r['kind']}] {r['reason']}" for r in rows)[:300])
+        print(SCR.fail_block(doc, sel["doc_id"], rows,
+                         doc_type=sel.get("doc_type"), queued=1))
+        return None, None
+    if roles:
+        from cli import sheet_screen as _SS
+        print(_SS.sheet_pieces_line(res.envelope, roles))       # 파싱 끝 — 시트별 조각 (B112 ②)
+    from cli import structure_screen as _STS             # 구조 표 · 약한 구조 · 사람의 고침 (B119 ③)
+    res, go = _STS.gate(res, sel["doc_id"], lambda: _parse_now()[0], ask=step, layers=lz)
+    if not go:
+        row.update(status=SKIP, reason="사람이 멈췄다 — 구조까지(그래프 쓰기 0)")
+        return None, None
+    return res, out
+
+
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
@@ -413,30 +452,9 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         return row
     try:
         stage["이름"] = "파싱"
-        from core.state import rehearsal as _RH          # 그 종류 등록 검수의 리허설 산출 — 파싱 앞 몫 (B116 ②)
-        from parser import struct_map as _SM
-        for _ln in _RH.take_parse(sel.get("doc_type"), sel["doc_id"], _SM.source_hash(str(doc))):
-            print("   " + _ln)
-        res, out = run_parse(str(sel["adapter"]), sel["doc_id"], str(doc),
-                             coord_cap=coord_cap, sheet_roles=_roles,
-                             no_images=no_images, doc_coord=_dc)
-        if not res.ok:
-            rows = SCR.fail_rows(res.failures)
-            # **큐에도 싣는다**(C14 — 문서 단위 실패는 큐로 드러난다). 구판은 이
-            # 경로에서 화면에만 한 줄 찍고 큐가 비어 있었다: 「화면을 놓치면 기록이
-            # 없다」가 되어, 일괄 투입에서 실패가 조용히 지나갔다.
-            store.enqueue("parse_failure", "; ".join(r["reason"] for r in rows)[:300],
-                          sel["doc_id"], {"doc_type": sel.get("doc_type"),
-                                          "source_path": str(doc),
-                                          "defects": [r["reason"] for r in rows]})
-            row.update(status=FAIL, reason="파싱 실패 — " + "; ".join(
-                f"[{r['kind']}] {r['reason']}" for r in rows)[:300])
-            print(SCR.fail_block(doc, sel["doc_id"], rows,
-                             doc_type=sel.get("doc_type"), queued=1))
+        res, out = _parse_doc(doc, sel, row, coord_cap, _roles, no_images, _dc, step)
+        if res is None:
             return row
-        if _roles:
-            from cli import sheet_screen as _SS
-            print(_SS.sheet_pieces_line(res.envelope, _roles))       # 파싱 끝 — 시트별 조각 (B112 ②)
         if _step_stops(res, sel, row, ask=step):
             return row
         _u0 = gateway.usage_total()["calls"]
@@ -446,7 +464,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         _mt.PROGRESS = SCR.judge_progress(_plan_n, stage=stage, every=step_every,
                                       stride=progress_every)
         # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
-        _ledger.ON_ROW = SCR.row_printer()
+        _ledger.ON_ROW = SCR.row_printer(res.envelope)
         try:
             # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
@@ -456,7 +474,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                                         prose=res.envelope.get("payload_kind") == "prose"))
         finally:
             _mt.PROGRESS = None
-            _ledger.ON_ROW = _ledger.ON_EDGE = None
+            getattr(_ledger.ON_ROW, "flush", lambda: None)()      # 남은 산문 값 행 (B119 ⑤)
+            _ledger.ON_ROW = _ledger.ON_EDGE = _ledger.ON_CHUNK = None
             _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
         if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
             row.update(status=SKIP, reason=r.reason)

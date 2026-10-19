@@ -57,8 +57,15 @@ for (subj, unit), obs in sorted(counts.items()):
 # **개정 번호는 조항 번호가 아니다** — 둘이 같은 문자 공간(B##)을 쓴다. 문서 1의
 # 조항 `B12`와 개정 대장의 개정 `B46`은 다른 장부의 번호이므로, 대장이 발번한 것은
 # 조항 미존재로 잡지 않는다. 이 구분이 없으면 개정을 인용할 때마다 거짓 검출이 난다.
+# **보관 파일도 읽는다**(B117 ⑤) — 개정대장의 옛 절(§A~§CK)은 `docs/archive/장부/개정대장_~B99.md`로 옮겼다. 한 파일만 읽으면
+# 옮긴 절이 발번한 개정 번호(`B47` · `B90` …)가 「문서 1에 없는 조항」으로 거짓 검출된다(허브 모의 실측 15건). 보관 자리는
+# 명세 폴더 옆(`<명세>/../archive/장부/`)과 레포의 그 자리 둘 다 본다 — 명세를 임시 사본으로 잴 때(`spec_patch --check`)도 같다.
 _lg = os.path.join(SPEC, "개정대장.md")
-LEDGER = open(_lg, encoding="utf-8").read() if os.path.isfile(_lg) else ""
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_AR = sorted({os.path.realpath(p) for d in (os.path.join(SPEC, "..", "archive", "장부"),
+                                            os.path.join(_REPO, "docs", "archive", "장부"))
+              for p in glob.glob(os.path.join(d, "개정대장_*.md"))})
+LEDGER = "".join(open(p, encoding="utf-8").read() for p in [_lg] + _AR if os.path.isfile(p))
 REVISIONS = set(re.findall(r'\[(?:개정|복원|정정)\]\s*([A-P][0-9]{1,2})', LEDGER))
 # **화면 태그도 조항 번호가 아니다** — 개정 번호와 같은 이유로 뺀다(세 번째 장부다).
 # 관문 `G##` · 골격 `K##` · 인입 `P##`은 사람이 읽어 전달하는 **화면의 태그**이고,

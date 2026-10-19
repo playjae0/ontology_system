@@ -366,7 +366,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B106 폐기")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B106 엣지 삭제(표)")
-    _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 속도"))   # 산문 소속 엣지
+    _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 장치::이송 속도"))   # 산문 소속 엣지   # 기대 변경(B119 ④ — 사양은 주인 아래 `nest_categories`)
     ops.delete_edge("process", _e2["src"], _e2["rel"], _e2["dst"], A, "B106 엣지 삭제(산문 소속)")
     _ur = next(r for r in OR.items("all") if r["surface"] == "버 발생량 과다")
     _dec = OR.decide(_ur, "m", A)                         # 큐 종결 — ops review 합침(queue:resolve 기록)

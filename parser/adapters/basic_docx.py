@@ -95,8 +95,21 @@ def _locator(a, b):
     return base if a == b else f"{base}-P{b}"
 
 
-def extract(raw, struct_map_fn=None, struct_rule_fn=None) -> list[dict]:
-    """docx 원시 → 조각. `struct_map_fn`은 받되 부르지 않는다(규칙이 레벨을 정한다)."""
+def _marks(raw):
+    """줄 표시(이름표의 재료 · B119 ①) — `{문단: [굵게 · 개요n · 번호 목록 · 표 행]}`."""
+    out = {}
+    for p in raw.get("paragraphs") or []:
+        mk = [m for m, on in (("굵게", p.get("bold")),
+                              (f"개요{(p.get('outline') or 0) + 1}", p.get("outline") is not None),
+                              ("번호 목록", p.get("numbered")), ("표 행", p.get("kind") == "table_row")) if on]
+        if mk:
+            out[p["index"]] = mk
+    return out
+
+
+def extract(raw, struct_map_fn=None, struct_rule_fn=None, structure_fn=None) -> list[dict]:
+    """docx 원시 → 조각. `struct_map_fn`은 받되 부르지 않는다(규칙이 레벨을 정한다) · `structure_fn`은
+    문서 구조 훅(B119 ① — 엑셀과 같은 함수 · 이름표에 시트 줄이 없다)."""
     lines = _lines(raw)
     out = []
     if lines:
@@ -104,6 +117,7 @@ def extract(raw, struct_map_fn=None, struct_rule_fn=None) -> list[dict]:
             FRAME, lines, _rows(raw, lines), _locator, ADAPTER["expects"]["section_sep"],
             {}, rule_fn=struct_rule_fn, sample_fn=lambda: rule_sample(raw),
             by_rule=lambda decl: _by_rule(raw, decl),
+            structure_fn=structure_fn, marks_fn=lambda: _marks(raw), sheet=False,
             flat_reason="계층 신호 0건 — 본문을 통째로 실었다")
     return out + _image_pieces(raw, out)
 

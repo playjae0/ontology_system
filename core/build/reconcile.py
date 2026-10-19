@@ -16,11 +16,14 @@ from collections import Counter
 from pathlib import PurePath
 
 from core.build.result import hold_reason
+from parser.struct_rule import ROLES
 
 #: 판정 경로(`core.matcher.PATHS`) 중 **판정을 부른 길** — 후보를 좁혀 판정(LLM · mock)에 맡긴 것
 JUDGE_PATHS = ("scope+judge", "embedding+judge", "overlap+judge")
 #: 판정 → 결말 칸(닫힌 표 · 밖이면 `그 밖`)
 OUTCOME = {"match": "일치", "new": "새", "uncertain": "불확실", "lowres": "불확실"}
+#: 구조 역할 줄의 칸 순서(B119 ① — 닫힌 다섯 + 역할 없음)
+ROLE_ORDER = ROLES + ("역할 없음",)
 #: 판정 → 결말 줄의 칸(개체 행 하나 → 칸 하나 — 보류가 먼저 · `mention` 다른 공정 언급 · `blank` 빈칸 표시 — B113)
 END = {"match": "일치", "new": "새 노드", "uncertain": "불확실", "lowres": "불확실",
        "mention": "다른 공정 언급", "blank": "빈칸 표시"}
@@ -142,6 +145,14 @@ def value_lines(rows):
             line("결말(개체 행)", len(ent),
                  [(k, ends.get(k, 0), "") for k in ("일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
                                                      "보류", "그 밖")])]
+
+
+def prose_value_line(rows):
+    """`값(산문) n = 실림 + 버림 + 충돌` — 값을 낸 개체 행에서(B120 ① · `core/build/values.counts`) · 값이 없으면 줄 0."""
+    from core.build import values
+    c = values.counts(rows)
+    n = sum(c.values())
+    return [line("값(산문)", n, [(k, c[k], "") for k in values.VERDICTS])] if n else []
 
 
 # ---------------------------------------------------------------- 보류(행 종류별)
@@ -272,11 +283,26 @@ def outline_lines(doc_id, cks, rows):
         dr = sum(1 for h in hs if h.get("dropped"))
         out.append(line("개요(제목" + (f" · 렌즈 {lens}" if lens else "") + ")", len(hs),
                         [("대상", tg, ""), ("주제", len(hs) - tg - dr, ""), ("버림", dr, "")]))
+        if any("struct" in h or h.get("role") for h in hs):   # 문서 구조의 역할(B119 ①) — 같은 제목의 다른 가름
+            rc = Counter(h.get("role") or "역할 없음" for h in hs)
+            out.append(line("  구조(역할)", len(hs), [(k, rc.get(k, 0), "") for k in ROLE_ORDER]))
+        cl = guard_clashes(ol, rows)
+        if cl:
+            out.append(line("  구조 · 다른 공정 가드", len(cl), [("부딪힘", len(cl), " · ".join(cl[:5]))]))
     hr = [r for r in rows if r.get("role") == "heading"]
     if hr:
         cells = Counter(value_cell(r)[0] for r in hr)
         out.append(line("  제목 개체(행)", len(hr), [(k, cells.get(k, 0), "") for k in VALUE_ORDER]))
     return out
+
+
+def guard_clashes(ol, rows):
+    """**구조 판정과 다른 공정 가드가 부딪힌 제목**(B119 ②) — 구조가 설비 · 유닛으로 세웠는데 그 이름이 다른 공정의 골격
+    이름 · 별칭이라 가드가 노드 대신 관련 링크로 보낸 것(대장의 `heading` 행 · 판정 `mention`) — `[경로 → 그 공정]`. 처분은 허브."""
+    from parser.struct_rule import UNIT_ROLES
+    role = {h["path"]: h.get("role") for h in (ol or {}).get("headings") or []}
+    return [f"{r.get('locator')} → {r.get('canonical')}" for r in rows
+            if r.get("role") == "heading" and r.get("verdict") == "mention" and role.get(r.get("locator")) in UNIT_ROLES]
 
 
 def reinforce_line(rows):
@@ -422,6 +448,57 @@ def queue_text(entries):
             + (" — " + " · ".join(f"{k} {c[k]:,}({r[k]:,}행)" for k in sorted(c)) if c else ""))
 
 
+# ---------------------------------------------------------------- 문서 한 줄 요약 (B118 ①)
+#: 유닛 이하 — 소속 대상 줄에서 공정보다 아래에 붙은 칸(제목 개체 · 유닛·부품 노드)
+UNDER_UNIT = ("유닛·부품(노드)", "제목 개체")
+
+
+def _cells(lines, label):
+    ln = next((x for x in lines if x["줄"].strip() == label), None)
+    return (ln["전체"], {k: n for k, n, _d in ln["칸"]}, {k: d for k, _n, d in ln["칸"]}) if ln else (0, {}, {})
+
+
+def summary(lines, res, after, before=None):
+    """**문서 한 줄 요약의 재료** — 맞춤표의 같은 줄에서(새 계산 0): 결말(개체 행) · 값 줄의 보류 사유 · 소속 대상 줄 ·
+    이 문서의 엣지 · 노드 수(층 합). `유닛 이하 비율` = 소속 대상 중 (유닛·부품(노드) + 제목 개체) / 소속을 낸 개체."""
+    n, end, _d = _cells(lines, "결말(개체 행)")
+    _n, _v, vdet = _cells(lines, "값(개체 행)")
+    bn, bel, _bd = _cells(lines, "소속 대상(소속을 낸 개체)")
+    mine = (res or {}).get("층") or {}
+    under = sum(bel.get(k, 0) for k in UNDER_UNIT)
+    return {"개체": n, "새 노드": end.get("새 노드", 0), "기존 연결": end.get("일치", 0), "불확실": end.get("불확실", 0),
+            "보류": end.get("보류", 0), "보류 사유": vdet.get("보류", ""), "다른 공정": end.get("다른 공정 언급", 0),
+            "빈칸": end.get("빈칸 표시", 0), "그 밖": end.get("그 밖", 0),
+            "엣지": sum(int(d.get("엣지", 0)) for d in mine.values()),
+            "노드 전": (sum(v[0] for v in before.values()) if before is not None else None),
+            "노드 후": sum(v[0] for v in (after or {}).values()), "이 문서 노드": sum(int(d.get("노드", 0)) for d in mine.values()),
+            "소속": bn, "유닛 이하": under, "유닛 이하 비율": (round(100.0 * under / bn, 1) if bn else None),
+            "가드 부딪힘": _cells(lines, "구조 · 다른 공정 가드")[0], "값": _cells(lines, "값(산문)")[:2]}
+
+
+def summary_text(doc_id, s):
+    """`<doc_id> — 개체 n → 새 노드 a · 기존 연결 b · 보류 c(사유별) · 다른 공정 d · 빈칸 e | 엣지 +k | 그래프 노드 N → N′ |
+    유닛 이하 비율 r%` — 칸이 0이면 그 칸을 뺀다(불확실 · 그 밖은 0이 아닐 때만 — 합 = 개체)."""
+    cells = [("새 노드", s["새 노드"]), ("기존 연결", s["기존 연결"]), ("불확실", s["불확실"]), ("보류", s["보류"]),
+             ("다른 공정", s["다른 공정"]), ("빈칸", s["빈칸"]), ("그 밖", s["그 밖"])]
+    body = " · ".join(f"{k} {v:,}" + (f"({s['보류 사유']})" if k == "보류" and s["보류 사유"] else "")
+                      for k, v in cells if v or k in ("새 노드", "기존 연결", "보류"))
+    nodes = (f"{s['노드 전']:,} → {s['노드 후']:,}" if s["노드 전"] is not None
+             else f"{s['노드 후']:,}(이 문서 {s['이 문서 노드']:+,})")
+    ratio = (f"{s['유닛 이하 비율']}%({s['유닛 이하']:,}/{s['소속']:,})" if s["유닛 이하 비율"] is not None
+             else "—(소속을 낸 개체 0)")
+    return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
+            f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else "")
+            + _value_text(s.get("값")))
+
+
+def _value_text(v):
+    """` | 값 n = 실림 a · 버림 b · 충돌 c` — 값을 낸 개체가 없으면 빈 글(B120 ①)."""
+    n, c = v or (0, {})
+    return (f" | 값 {n:,} = 실림 {c.get('실림', 0):,} · 버림 {c.get('버림', 0):,} · 충돌 {c.get('충돌', 0):,}"
+            if n else "")
+
+
 # ---------------------------------------------------------------- 한 묶음
 def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     """맞춤표 한 묶음 — 화면(`cli/result_screen.reconcile_lines`)이 줄로 옮긴다.
@@ -447,13 +524,15 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     lines.append(coord_line(env))
     lines += outline_lines(doc_id, cks, rows)
     lines += value_lines(rows)
+    lines += prose_value_line(rows)
     lines.append(hold_line(rows))
     lines.append(attach_line(rows, skeleton))
     lines.append(belongs_line(rows, [ck for _l, ck in cks], chunk_loc, skeleton, orphans))
     lines += reinforce_line(rows)
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
-    return {"doc_id": doc_id, "줄": lines,
-            "그래프": graph_lines(res, layer_counts(graphs), (run or {}).get("층 전")),
+    after = layer_counts(graphs)
+    return {"doc_id": doc_id, "줄": lines, "요약": summary(lines, res, after, (run or {}).get("층 전")),
+            "그래프": graph_lines(res, after, (run or {}).get("층 전")),
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),
             "엣지 없는 노드": edgeless(rows, graphs, doc_id, names, skeleton, orphans),

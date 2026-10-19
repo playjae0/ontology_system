@@ -223,20 +223,20 @@ def _rows_by_rule(sheet, col, decl):
     return lines, struct_rule.apply(lines, marks, decl)
 
 
-def extract(raw, struct_map_fn=None, struct_rule_fn=None) -> list[dict]:
+def extract(raw, struct_map_fn=None, struct_rule_fn=None, structure_fn=None) -> list[dict]:
     """reader 원시 추출물 → 청크 리스트. **시트가 프레임이다.**
 
     `struct_map_fn`은 받되 **부르지 않는다** — 계약(§6.4-2)의 서명을 맞추기 위한
     것이고, 이 계열은 규칙이 레벨을 정하므로 지도 패스가 필요 없다([개정] B58-1).
 
-    `struct_rule_fn(frame, sample)`은 **고정 규칙으로 안 선 시트에서만** 부른다(B87 ②) —
-    코어가 주입하는 훅이고(⑦ 호출 태그 `struct_rule`), 돌아온 선언을 **데이터로** 적용한다.
-    없으면(mock · 등록 리허설 · 킷 관문) **구판과 같은 동작**이다. 선언이 안 서면 구판의
-    길로 떨어진다 — 제목 0건이면 통째 + 큐, 비단조면 고정 규칙 분할.
+    `structure_fn(frame, labels)`(B119 ① — 코어가 주입하는 **문서 구조** 훅 · ⑪ 호출 태그 `structure`)은 시트마다
+    **무조건** 부른다 — 고정 규칙의 판정은 초안으로 이름표에 실리고, 돌아온 구조(제목 줄의 단 · 역할 · 대상)를
+    **데이터로** 적용한다. 없거나 None이면(mock 힌트 없음) 고정 규칙 그대로다.
+    `struct_rule_fn(frame, sample)`(B87 ② — 고정 규칙으로 안 선 시트의 규칙 선언)은 구조가 서지 않은 시트에서만 본다.
     """
     out = []
     for sh in raw.get("sheets") or []:
-        mine = _sheet_chunks(sh, struct_rule_fn)
+        mine = _sheet_chunks(sh, struct_rule_fn, structure_fn)
         out += mine + _image_pieces(sh, mine)
     return out
 
@@ -275,7 +275,28 @@ def _image_pieces(sheet, chunks):
     return out
 
 
-def _sheet_chunks(sh, struct_rule_fn):
+def _marks(sheet, col):
+    """줄 표시(이름표의 재료 · B119 ①) — `{행: [굵게 · 들여쓰기n · 병합 · 다른 열]}`(본문 열 기준 · 번호 꼴은 공용 함수가 단다)."""
+    cells = sheet.get("cells") or {}
+    bold = set(sheet.get("bold") or [])
+    indent = sheet.get("indent") or {}
+    wide = _wide_merges(sheet)
+    other = set()
+    for a, v in cells.items():
+        c, r = _addr(a)
+        if c and c != col and str(v).strip():
+            other.add(r)
+    out = {}
+    for r in range(1, int(sheet.get("max_row") or 0) + 1):
+        a = f"{col}{r}"
+        mk = [m for m, on in (("굵게", a in bold), (f"들여쓰기{indent.get(a)}", indent.get(a)),
+                              ("병합", r in wide), ("다른 열", r in other)) if on]
+        if mk:
+            out[r] = mk
+    return out
+
+
+def _sheet_chunks(sh, struct_rule_fn, structure_fn=None):
     """시트 하나의 글 조각 — 순서는 `struct_rule.frame_chunks` 한 벌이다(엑셀·Word 같이)."""
     exp = ADAPTER["expects"]
     name = sh.get("name") or "Sheet1"
@@ -295,6 +316,7 @@ def _sheet_chunks(sh, struct_rule_fn):
         name, lines, rows, locator, exp["section_sep"], {"content_column": col, "sheet": name},
         rule_fn=struct_rule_fn, sample_fn=lambda: rule_sample(sh, col),
         by_rule=lambda decl: _rows_by_rule(sh, col, decl),
+        structure_fn=structure_fn, marks_fn=lambda: _marks(sh, col),
         flat_reason="계층 신호 0건 — 시트를 통째로 실었다")
 
 

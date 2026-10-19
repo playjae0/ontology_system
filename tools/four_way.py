@@ -10,10 +10,14 @@
 `data/`의 파일 목록(새 파일이 생기면 여기 뜬다). 시각·횟수 키는 빼고, 의미 축 id는 그 노드의
 `층:canonical`로 바꿔 대조한다(ULID는 실행마다 다르다).
 
-**두 바닥** — 같은 표본을 같은 순서로 넣는다:
+**세 바닥** — 같은 표본을 같은 순서로 넣는다:
   A: `init --fresh --all` → bootstrap → 표 표본 다섯(`TABLE`)을 하나씩 `ingest_file`(비대화형 —
      선택이 안 되는 표본은 「미선택」 그대로가 대조 대상이다)
   B: 회귀 바닥 `tests/g65_common.fresh()`(CP01 · PFMEA01 · PPT01~03 · QPPT01 + finalize)
+  C: **산문 엑셀**(B117 ④ — 창작 `PROSE` 둘: 시트 › 제목 사슬 · 제목에 유닛 이름 · 빈칸 표시 · 다른 공정 이름 · 문서 좌표 하나 ·
+     좌표가 서지 않는 문서 하나) — 이 스크립트가 사본 안에서 엑셀 · mock 힌트(개요 `<doc>@outline.json` · 추출)를 만들고 연결
+     보강 선별 규칙(`reinforce.SELECT` — 첫 후보)을 주입해 `ingest_file`(마무리 포함)로 넣는다. 기준 커밋에 표본이 없어도 된다
+     (재료가 이 파일에 있다). B113~B116 몫(다른 공정 가드 · 빈칸 · 재연결 · 개요 · 제목 개체 · 폴백 사슬 · 연결 보강)이 대조에 보인다.
 
 **자리를 가른다**: 기준은 `git archive`로, 지금은 작업 트리(커밋 안 한 변경 포함 · 무시 파일 제외)를
 임시 폴더에 복사하고, 사본마다 **자기 `state_mock/`**에서 돈다 — 레포의 `state_mock/`은 건드리지
@@ -31,6 +35,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -47,6 +52,32 @@ TS = ("created", "at", "first_seen", "last_seen", "last_tried", "last_fp", "atte
       "confirmed_at", "parsed_at", "first_ingested_at", "ingested_at", "updated_at", "last_hit")
 #: 바닥 A의 표 표본 — 넣는 순서 그대로.
 TABLE = ("CP01.xlsx", "CP02_drift.xlsx", "PFMEA01.xlsx", "IPQC01.xlsx", "CSV01.csv")
+#: 바닥 C의 산문 표본(창작 — 근거가 아니다) — `{doc_id: (문서 좌표, {시트: [행 …]})}`
+PROSE = {
+    "FWC1": ("노칭", {"추출 사양": ["1. 개요", "센서가 셀 위치를 본다.", "2. 추출부", "추출부는 셀을 꺼낸다.",
+                                  "2.1 NG unit", "모터 회전수는 3000rpm이다.", "실린더 행정은 50mm다.",
+                                  "2.2 스태킹 연계", "스태킹 공정과 맞물린다.", "3. 이송부", "벨트 장력은 2kN이다."],
+                     "부록": ["1. 비고", "N/A"]}),
+    "FWC2": (None, {"이송 사양": ["1. 이송부", "벨트 장력은 3kN이다.", "2. 점검", "센서 점검 주기는 1주다."]}),
+    # B119 ⑥ ⓑ — 번호 없는 유닛 줄 + 유닛마다 되풀이되는 번호 소제목(TW 꼴 · 창작) — 고정 규칙은 소제목만 세운다
+    "FWC3": ("노칭", {"TW 사양": ["언와인더 unit", "1) 기본사양", "속도는 100ppm이다.", "하중은 5kN이다.",
+                                 "2) 지정사양", "장력은 30N이다.", "리와인더 unit", "1) 기본사양", "속도는 80ppm이다.",
+                                 "2) 지정사양", "장력은 20N이다."]}),
+}
+#: 문서 구조 mock 힌트(B119 ① — 지금 사본만 읽는다 · 기준 사본에는 구조 단계가 없다) — `{doc_id: {시트: [{text, depth, role, …}]}}`
+PROSE_STRUCTURE = {"FWC3": {"TW 사양": [
+    {"text": "언와인더 unit", "depth": 1, "role": "유닛", "name": "언와인더 unit", "category": "Unit"},
+    {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"},
+    {"text": "리와인더 unit", "depth": 1, "role": "유닛", "name": "리와인더 unit", "category": "Unit"},
+    {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"}]}}
+#: 개요 mock 힌트 — 제목 글자 → 대상
+PROSE_OUTLINE = {"2. 추출부": {"name": "추출부", "category": "Unit"}, "2.1 NG unit": {"name": "NG unit", "category": "Unit"},
+                 "3. 이송부": {"name": "이송부", "category": "Unit"}, "1. 이송부": {"name": "이송부", "category": "Unit"}}
+#: 추출 mock 힌트 — 조각 글에 든 말 → 개체(소속 없음 · 폴백 사슬 · 보강의 재료)
+PROSE_WORDS = (("모터 회전수", "Property"), ("실린더 행정", "Property"), ("벨트 장력", "Property"),
+               ("스태킹", "Process"), ("센서", "Unit"), ("N/A", "Property"), ("속도", "Property"),
+               ("하중", "Property"), ("장력", "Property"))
+PROSE_DT = "fw_prose"
 SAMPLES = 3                          # 다른 것마다 보이는 견본 수
 CUT = 300                            # 견본 한 줄 길이
 
@@ -109,8 +140,88 @@ def dump(out):
     with quiet(io.StringIO()):
         G.fresh()
     res["B"] = _state()
+    res["C_status"], res["C"] = _prose(quiet)
     Path(out).write_text(json.dumps(res, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
     return 0
+
+
+def _select(payload):
+    """연결 보강 mock 선별 규칙 — 첫 후보 · 근거는 조각 첫 문장(결정적 · 창작)."""
+    cands = payload.get("candidates") or []
+    text = str(payload.get("chunk") or "").split("\n", 1)[-1]
+    first = text.split(".")[0].strip()
+    return {"id": cands[0]["id"] if cands else None, "rel": None, "evidence": first}
+
+
+def _structure_kw():
+    """문서 구조 주입(B119 ① — 그 사본의 파서가 받을 때만 · 기준 사본에는 없다)."""
+    import inspect
+    from parser import pipeline
+    if "structure" not in inspect.signature(pipeline.parse).parameters:
+        return {}
+    from core.build import structure as ST
+    return {"structure": ST.structurer(["process"])}
+
+
+def _value(word, cat, text):
+    """값(B120 ① — 지시문 「그 항목에 건 값 · 원문 글자 그대로」의 창작 대역): 사양 말 뒤의 「숫자+단위」 · 없으면 키 없음."""
+    m = re.search(re.escape(word) + r"\S*\s*(\d[\d.,]*\s*[A-Za-z%]+)", text or "") if cat == "Property" else None
+    return {"value": m.group(1)} if m else {}
+
+
+def _prose(quiet):
+    """바닥 C — 클린 → bootstrap → 산문 종류 등록 → 표본 엑셀 · 힌트를 만들고 넣는다(마무리 포함)."""
+    import run as RUN
+    from openpyxl import Workbook
+    from cli import ingest as IG
+    from core import paths as P
+    from core.build import reinforce
+    from core.state import fixtures, init
+    from parser import pipeline, tuning
+    from parser.adapters import basic_prose_xlsx as BX
+    import g6_common as G6
+    with quiet(io.StringIO()):
+        init.init(fresh_=True, all_=True)
+        RUN.cmd_bootstrap([])
+        G6._register("process", PROSE_DT)
+    tuning.apply({"chunk_rows": [1, 2]})               # 제목이 구획 경로에 서게(창작 표본의 손잡이 — 근거가 아니다)
+    reinforce.SELECT = _select
+    st = {}
+    for did, (coord, sheets) in PROSE.items():
+        wb = Workbook()
+        wb.remove(wb.active)
+        for name, rows in sheets.items():
+            ws = wb.create_sheet(title=name)
+            for r, v in enumerate(rows, 1):
+                ws.cell(row=r, column=1, value=v)
+        path = P.ensure(P.raw(f"{did}.xlsx"))
+        wb.save(path)
+        roles = {n: "prose" for n in sheets}
+        fixtures.EXTRACT_HINTS.mkdir(parents=True, exist_ok=True)
+        if did in PROSE_STRUCTURE:
+            (fixtures.EXTRACT_HINTS / f"{did}@structure.json").write_text(
+                json.dumps(PROSE_STRUCTURE[did], ensure_ascii=False), encoding="utf-8")
+        env = pipeline.parse(BX, did, str(path), sheet_roles=roles, closed_list=[], **_structure_kw()).envelope
+        hints = {}
+        for c in env.get("chunks") or []:
+            # 소속 = 그 조각의 구조 사슬에서 대상이 선 가장 깊은 줄(지시문 「가장 구체적인 주인」의 창작 대역 · 구조가 없으면 없음)
+            own = next((x for x in reversed((c.get("meta") or {}).get("structure") or []) if x.get("name")), None)
+            bel = {"name": own["name"], "category": own["category"], "from": "제목"} if own else None
+            words = [(w, cat) for w, cat in PROSE_WORDS if w in (c.get("text") or "")]
+            words = [(w, cat) for w, cat in words if not any(w != v and w in v for v, _c in words)]   # 긴 말이 이긴다
+            ents = [{"surface": w, "category": cat, **({"belongs_to": bel} if bel else {}), **_value(w, cat, c.get("text"))}
+                    for w, cat in words]
+            if ents:
+                hints[c["source_locator"]] = {"entities": ents, "relations": [], "attach": []}
+        (fixtures.EXTRACT_HINTS / f"{did}.json").write_text(json.dumps(hints, ensure_ascii=False), encoding="utf-8")
+        (fixtures.EXTRACT_HINTS / f"{did}@outline.json").write_text(json.dumps(PROSE_OUTLINE, ensure_ascii=False),
+                                                                   encoding="utf-8")
+        spec = " ".join(f"{i}:prose" for i in range(1, len(sheets) + 1))
+        with quiet(io.StringIO()):
+            r = IG.ingest_file(str(path), PROSE_DT, ask=False, sheets=spec, coord=coord or "none")
+        st[did] = (r or {}).get("status")
+    reinforce.SELECT = None
+    return st, _state()
 
 
 # ---------------------------------------------------------------- 사본 · 실행
@@ -156,9 +267,9 @@ def _run(work, trees):
 # ---------------------------------------------------------------- 대조
 def _summary(label, d):
     out = []
-    for side in ("A", "B"):
+    for side in [x for x in ("A", "B", "C") if x in d]:
         g = d[side]
-        out.append(f"{label} {side}" + (f" 넣기 {d['A_status']}" if side == "A" else "")
+        out.append(f"{label} {side}" + (f" 넣기 {d[side + '_status']}" if side + "_status" in d else "")
                    + f" · 노드 { {k: len(v['nodes']) for k, v in g['graph'].items()} }"
                    + f" · 엣지 { {k: len(v['edges']) for k, v in g['graph'].items()} }"
                    + f" · 큐 {len(g['queue'])} · 대장 행 {sum(len(v.get('rows') or []) for v in g['ledger'].values())}")
@@ -176,9 +287,13 @@ def _diff(label, p, q):
 
 def compare(a, b):
     """벌마다 다른 것 — `(줄들, 다른 것이 있는가)`."""
-    same = a["A_status"] == b["A_status"]
-    lines, differs = [f"A 넣기 결과 같음 {same}"], not same
-    for side in ("A", "B"):
+    same = a["A_status"] == b["A_status"] and a.get("C_status") == b.get("C_status")
+    lines, differs = [f"A · C 넣기 결과 같음 {same}"], not same
+    for side in [x for x in ("A", "B", "C") if x in a or x in b]:
+        if side not in a or side not in b:
+            lines.append(f"{side} 한쪽에만 있다 — 기준 {side in a} · 지금 {side in b}")
+            differs = True
+            continue
         x, y = a[side], b[side]
         for lay in sorted(set(x["graph"]) | set(y["graph"])):
             for part in ("nodes", "edges"):

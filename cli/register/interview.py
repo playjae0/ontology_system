@@ -7,6 +7,7 @@ from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
 from core import paths
+from cli import _screen
 from pathlib import Path
 import json
 from cli.register import REVIEW, write_file
@@ -125,13 +126,11 @@ def _keep_prior(prior, counts=None):
         print(f"     · {b.get('at', '?')[:19]} · 표본 "
               f"{[Path(x).name for x in (b.get('samples') or [])]} · "
               f"{_n(b)}라운드")
-    try:
-        ans = input("   이어갈까? [Y/n]  (n이면 버린다 · 사람의 답은 다시 못 만든다) "
-                    ).strip().lower()
-    except (EOFError, KeyboardInterrupt):
+    go = _screen.answer("   이어갈까? [Y/n]  (n이면 버린다 · 사람의 답은 다시 못 만든다) ", "Yes", eof=None)
+    if go is None:
         print("   (비대화형 — **이어간다.** 버리려면 --drop-interview)")
         return True
-    return ans not in ("n", "no")
+    return go
 
 
 def _new_batch(samples):

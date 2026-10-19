@@ -242,6 +242,12 @@ def problems(configs=None, cat=None):
         if "canonical_scope" in cfg:
             out.append(("ⓓ", f"층 {lay}의 config에 canonical_scope가 남아 있다 — 공통 config로 "
                              f"옮겼다(두 곳 0) · {paths.show(paths.layers(lay, 'config.json'))}에서 지운다"))
+        vc = cfg.get("value_categories")                         # 값을 받는 카테고리 (B120 ②)
+        if vc is not None and (not isinstance(vc, dict) or any(
+                c not in (cfg.get("categories") or {}) or not isinstance(n, str) or not n.strip()
+                for c, n in vc.items())):
+            out.append(("ⓖ", f"층 {lay}의 value_categories는 {{그 층 카테고리: 속성 이름}}이다 — 지금 "
+                             f"{json.dumps(vc, ensure_ascii=False)[:80]} · 예: {{\"Property\": \"spec\"}}"))
     return out
 
 

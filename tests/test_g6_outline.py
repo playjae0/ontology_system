@@ -142,7 +142,13 @@ WORDS = (("모터", "Component"), ("실린더", "Component"), ("벨트", "Compon
 
 
 def _outline(body):
-    return {"headings": [{"id": h["id"], "target": OUT.get(h["text"])} for h in body["headings"]]}
+    # 기대 변경(B119 ① — 제목 목록 호출도 문서 구조와 한 계약: `lines` → `headings[{row, parent, role, name, category}]`)
+    out = []
+    for ln in body["lines"]:
+        t = OUT.get(ln["text"])
+        out.append({"row": ln["row"], "parent": ln.get("fixed_parent"), "role": "유닛" if t else "주제",
+                    "name": (t or {}).get("name"), "category": (t or {}).get("category")})
+    return {"headings": out}
 
 
 def _extract(body):

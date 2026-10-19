@@ -29,6 +29,8 @@ _MEMO = {}
 ADDED = []
 #: 좌표 보류 사유 — 표기가 골격 노드 여럿을 가리킨다(B104 ①). 목록 밖과 처방이 다르다(대장 `hold` · 큐 문면).
 HOLD_AMBIGUOUS = "표기 모호(골격 노드 여럿)"
+#: 값 싣기의 결과(`put_attribute` — 표 · 산문 한 함수 · B120 ①): 새 항목 · 같은 값(출처만 더함) · 같은 맥락 다른 값(spec_conflict)
+ATTR_ADDED, ATTR_SAME, ATTR_CONFLICT = "added", "same", "conflict"
 from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표지
 from core.state.status import is_live
 from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
@@ -659,10 +661,11 @@ class Builder:
 
         충돌 판정은 **같은 context 그룹 안에서만** — deep-equal로 달라야 spec_conflict다.
         context가 다르면 충돌이 아니라 병렬 항목이고, 완전 동일이면 무시한다.
+        돌려주는 것은 결과 하나 — `ATTR_ADDED` · `ATTR_SAME` · `ATTR_CONFLICT` · None(노드 없음) — 산문 값이 센다(B120 ①).
         """
         n = self.g.get(node_id)
         if n is None:
-            return
+            return None
         attrs = n.setdefault("attrs", {})
         if not contextual:
             # **단순형은 빈 context 그룹 하나로 취급한다**(3.6 규약 5) — 분기가 아니라
@@ -677,7 +680,7 @@ class Builder:
                 if it.get("value") == value:
                     if prov not in it["provenance"]:
                         it["provenance"].append(prov)
-                    return
+                    return ATTR_SAME
                 # **대상 노드의 polarity를 동봉한다**(문서 4 §4.7). 무극성(`none`)
                 # 건은 **I3 분리 후보**로 표시한다 — 극성이 갈린 값이 한 노드에
                 # 쌓인 것일 수 있고, 그 경우 사람이 볼 것은 "값 충돌"이 아니라
@@ -692,8 +695,9 @@ class Builder:
                                "polarity": pol,
                                "split_candidate": pol == POLARITY_NONE,
                                "provenance": prov})
-                return
+                return ATTR_CONFLICT
         items.append({"context": context, "value": value, "provenance": [prov]})
+        return ATTR_ADDED
 
     # ---------------------------------------------------------------- mirrors
     def _mirror_scope(self, scope):

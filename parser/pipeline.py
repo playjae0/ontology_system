@@ -180,7 +180,7 @@ def _drop_images(res, pieces, no_images):
 
 
 def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps,
-                  made_maps, map_picks, src_hash, made_rules=None, image_notice=None):
+                  made_maps, map_picks, src_hash, made_rules=None, image_notice=None, made_struct=None):
     """④ 이미지 요약 — 보존분 재사용과 새로 받은 것의 저장. 돌려주는 것은 조각이다.
 
     `parse`에서 단계로 떼어냈다(B78 2c) — 지도·요약의 보존 규칙이 한 자리에 모인다.
@@ -214,6 +214,9 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
     if made_rules:
         # **계층 규칙 선언도 같은 파일·같은 원본 해시**(B87 ②) — 같은 파일이면 같은 경계다.
         fresh["rules"] = {**(kept_map.get("rules") or {}), **made_rules}
+    if made_struct:
+        # **문서 구조도 같은 파일 · 같은 원본 해시**(B119 ①) — 같은 파일 · 같은 판이면 LLM 0 · 같은 경계다.
+        fresh["structure"] = {**(kept_map.get("structure") or {}), **made_struct}
     if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
         fresh["image_summaries"] = kept_img
     if fresh:
@@ -315,7 +318,7 @@ def _read_doc(res, path, sheet_roles, max_rows):
 
 
 def _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks, map_structure,
-             src_hash, rule_fn):
+             src_hash, rule_fn, structure_fn=None):
     """③ extract — prose면 지도 훅(⑦)과 **받는 어댑터에만** 규칙 선언 훅(B87 ②)을 건넨다.
 
     `struct_rule_fn`을 모든 어댑터에 넘기지 않는 이유: 생성 어댑터·다른 기본 어댑터의
@@ -328,6 +331,8 @@ def _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks, map_structur
                                      ask=map_structure, src_hash=src_hash)}
     if rule_fn is not None and "struct_rule_fn" in _params(adapter.extract):
         kw["struct_rule_fn"] = rule_fn
+    if structure_fn is not None and "structure_fn" in _params(adapter.extract):
+        kw["structure_fn"] = structure_fn                       # 문서 구조 — 받는 어댑터에만 (B119 ①)
     try:
         return adapter.extract(raw, **kw)
     except TypeError:
@@ -379,12 +384,22 @@ def _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules, sheet_rol
                             tally=tally), targets
 
 
+def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles):
+    """문서 구조 훅(B119 ①) — `(훅 또는 None, 새로 받은 구조, 셈)`. `ref` 시트는 부르지 않는다(LLM 0)."""
+    made, tally = {}, {}
+    if structure is None:
+        return None, made, tally
+    return (struct_rule.structure_hook(structure, doc_id, kept=kept_map.get("structure"), made=made, tally=tally,
+                                       fixes=fixes, skip={n for n, r in (sheet_roles or {}).items() if r == "ref"}),
+            made, tally)
+
+
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
           sheet_roles=None, infer_rules=None, rule_notice=None, no_images=False,
-          image_notice=None, doc_coord=None):
+          image_notice=None, doc_coord=None, structure=None, structure_fixes=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -395,6 +410,9 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     | `map_structure(doc_id, lines)` | ⑦구조 지도 | 실호출 | 번호 패턴 휴리스틱 |
     | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
     | `infer_rules(frame, sample)` | ⑦ 안의 계층 규칙 선언(B87 ②) | 안 선 시트만 실호출 | 구판과 같다(통째 + 큐) |
+    | `structure(doc_id, frame, labels)` | ⑪ 안의 문서 구조(B119 ①) | 산문 시트마다 실호출(mock은 힌트) | 고정 규칙 그대로 |
+
+    `structure_fixes`(`{프레임: {행: 고침}}`)는 사람이 구조 표에서 고친 것(등록 단 — 데이터로 받는다 · B119 ③).
 
     만드는 것은 CLI 진입점이다(`cli.parse.injections()`) — 모드는 거기서 한 번 정해
     아래로 내려온다. 「함수 없이 실호출 모드」는 그 조립 지점이 막는다.
@@ -428,14 +446,17 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     made_rules, tally = {}, {}
     rule_fn, targets = _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules,
                                   sheet_roles, rule_notice)
+    st_fn, made_struct, st_tally = _structure_hook(structure, doc_id, kept_map, structure_fixes, sheet_roles)
     try:                                                             # ③ extract
         pieces = _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks,
-                          map_structure, src_hash, rule_fn)
+                          map_structure, src_hash, rule_fn, st_fn)
     except Exception as e:                                           # C14 — 통째 실패
         return res.fail("parse_failure", f"{type(e).__name__}: {e}")
     if targets:
         res.report["struct_rule"] = {**struct_rule.summary(pieces, tally, targets),
                                      "주입": rule_fn is not None}
+    if st_tally.get("프레임"):
+        res.report["structure"] = st_tally            # 구조 표 · 약한 구조 신호의 재료 (B119 ①③)
 
     pieces, rep = normalizer.normalize(                               # ④ normalizer
         pieces,
@@ -452,7 +473,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
                            kept_maps, made_maps, map_picks, src_hash, made_rules,
-                           image_notice)
+                           image_notice, made_struct)
     # **문서 좌표**(B102 ② — 사람·기록·파일명 · 인입이 정해 데이터로 준다): 시트명·제목 대조는 그 서브트리
     # 안에서만 받고, 그래도 빈 조각(표·산문 공통)은 문서 좌표를 물려받는다
     pieces = normalizer.blank_coords(pieces)     # 좌표 칸의 빈칸 표시 → 빈 값(문서 좌표를 물려받는다 — B113 ②)

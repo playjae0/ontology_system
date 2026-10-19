@@ -11,10 +11,11 @@ from core import matcher
 from core.build import loop
 from core.build.build import Builder
 from core.build import gate
+from core.build import ledger as _lg
 from core.build.ledger import Ledger
-from core.build import belongs, extract_ctx, heading
+from core.build import belongs, extract_ctx, heading, values
 from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
-from core.build.naming import nest_categories
+from core.build.naming import name_parent
 from core.state.status import is_live
 from core.state import log, store
 from core.state.ids import fold_latin, norm
@@ -70,7 +71,6 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
     chunk_kw = dict(coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
                     parent_canonical=parent, anchor_polarity=anchor_pol,
                     coord_surface=src.get("process_ref"))
-    nests = nest_categories(b.cfg)
     pcs, plans = {}, []
     for e in ents:
         if null_marker(e.get("surface")):
@@ -94,8 +94,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
         if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
             e_ref, e_g = tgt[1], tgt[2]            # 골격 소속 = 그 개체의 좌표
             e_parent, e_pol = e_g.get(e_ref)["canonical"], b.anchor_polarity(e_ref, e_g)
-        elif tgt and tgt[0] == belongs.NODE and e["category"] in nests:
-            e_parent = tgt[2].get(tgt[1])["canonical"]   # 이름에 소속 (B102 ⑤)
+        elif tgt and tgt[0] == belongs.NODE:      # 이름에 소속 — 골격 밖 노드 아래 (B102 ⑤ · 한 함수 B119 ④)
+            e_parent = name_parent(e["category"], tgt[2].get(tgt[1])["canonical"], e_parent, b.cfg)
         # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다.
         nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
                                     coord=(e_ref, e_g),
@@ -120,9 +120,11 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                            same_doc=last.get("same_doc"),
                            target=b.canonical_of(nid),
                            belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
+                           belongs_to=(bel or {}).get("name"),
                            category=last.get("category"), scope=last.get("scope"),
                            replay=last.get("replay"))
         if nid:
+            values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
     return plans
 
@@ -305,6 +307,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
     # **제목 개체 먼저**(B115 ② — 문서 개요가 대상으로 정한 제목 · 트리 순서) — 같은 문서의 소속 이름이 버퍼에서
     # 찾고 · 상위로 올라가는 폴백 사슬의 칸이 된다. 개요가 없거나 대상이 없으면 0(지금 길 그대로).
     landed = heading.land(b, cfg, graph, env, outline, {loc: cid for cid, loc in loc_of.items()})
+    _lg.chunk_done(None)                          # 제목 개체 행 — 붙은 자리와 함께 화면에 (B119 ⑤)
     coords = _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of)
 
     # ════════════════ Pass 2 (부착) ════════════════
@@ -354,8 +357,10 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
         loop.fallback_untouched(b, cfg, [(p["nid"], graph) for p in plans] + tnodes, touched,
                                 ref, ref_g, prov, env["doc_id"], evidence_chunk=cid,
                                 chain=heading.chain_for(landed, outline, src.get("source_locator")))
+        _lg.chunk_done(src.get("source_locator") or cid)   # 이 조각의 값 행 — 붙은 자리까지 끝났다 (B119 ⑤)
 
     loop.link_mentions(b, ch)                     # 다른 공정 언급 → 관련 링크 (B113 ①)
+    _lg.chunk_done(None)
     store.write(store.CHUNKS, ch)
     if not defer_save:          # 인입 경로는 그래프 저장 **뒤**에 사전을 쓴다(B99 ① — entry._finish_build)
         b.flush()

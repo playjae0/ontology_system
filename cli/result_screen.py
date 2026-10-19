@@ -90,7 +90,11 @@ def reconcile_lines(mt, limit=None):
     `limit`이면 엣지 없는 노드 목록을 그 줄까지(전체는 `show report`)."""
     if not mt:
         return []
-    out = ["   맞춤 — 줄마다 단위 · 같은 단위는 합 = 전체"]
+    from core.build import reconcile as RC
+    out = []
+    if mt.get("요약"):                     # 문서 한 줄 요약(B118 ① — 아래 맞춤표의 같은 수)
+        out.append("   요약 — " + RC.summary_text(mt["doc_id"], mt["요약"]))
+    out.append("   맞춤 — 줄마다 단위 · 같은 단위는 합 = 전체")
     for ln in mt["줄"]:
         out.append("     " + _formula(ln))
         if not ln["맞음"]:
@@ -115,4 +119,4 @@ def reconcile_lines(mt, limit=None):
 
 def show_reconcile(mt, limit=None):
     for ln in reconcile_lines(mt, limit):
-        _screen.say(ln, "fail" if "[결함]" in ln else ("head" if ln.startswith("   맞춤") else None))
+        _screen.say(ln, "fail" if "[결함]" in ln else ("head" if ln.startswith(("   맞춤", "   요약")) else None))

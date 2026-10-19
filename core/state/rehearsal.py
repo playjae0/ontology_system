@@ -138,7 +138,7 @@ def take_parse(doc_type, doc_id, src_hash):
         else:
             op = struct_map.load_kept(doc_id, src_hash) or {}
             merged = {**op, **m}
-            for k in ("maps", "rules", "image_summaries"):
+            for k in ("maps", "rules", "image_summaries", "structure"):     # 문서 구조도 프레임마다 (B119 ①)
                 if op.get(k) or m.get(k):
                     merged[k] = {**(op.get(k) or {}), **(m.get(k) or {})}
             merged.pop("source_hash", None)

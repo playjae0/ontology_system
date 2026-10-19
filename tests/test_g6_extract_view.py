@@ -27,6 +27,10 @@ from g6_common import *          # noqa: F401,F403 — 바닥은 하나다
 from g6_common import (_P, _ingest, _register, _run, _unregister, done, json,   # noqa: F401
                        open_graph, store)
 from cli import _screen                     # noqa: E402
+import os as _os                             # noqa: E402
+# 넓은 화면(160칸)에서 잰다 — 개체 칸은 가변 칸이라 좁으면 `…`(전체는 `-v` · 로그) · 위치 두 칸(B118 ③ — 잘리지 않는 칸)이
+# 폭을 더 써서 120칸에서는 개체 칸이 두 글자 모자란다(기대 변경)
+_os.environ["COLUMNS"] = "160"
 from cli.ingest_screen import extract_screen  # noqa: E402
 from core.build import extract as EX        # noqa: E402
 from core.build.entry import _vocab          # noqa: E402
@@ -40,7 +44,7 @@ print("\n■ B97 ① 추출 예고 · ② 청크별 줄")
 _out = _ingest("--sheets", "auto")
 _pre = [l for l in _out.splitlines() if "추출 예고 —" in l]
 def _chunk_rows(text):
-    """추출 표의 데이터 행(`i/m | 위치 | …` — B98 ⑥ 표로 바뀌었다 · 기대 변경)."""
+    """추출 표의 데이터 행(`i/m | 시트 | 청크 | …` — B98 ⑥ 표 · B118 ③ 위치 두 칸 · 기대 변경)."""
     return [l for l in text.splitlines() if re.match(r"\s*\d+/\d+ \| ", l)]
 
 
@@ -82,7 +86,7 @@ _ref, _, _txt = _extract()
 _ln = _chunk_rows(_txt)
 show("ⓑ 청크마다 메타 줄(개체 표기·카테고리 전부 · 관계 수) · 끝 줄에 사용량",
      len(_ln) == len(_rows) > 0 and all("부품" in l and "[Component]" in l and "치수[Property]" in l
-                                    and l.split(" | ")[4].strip() == "1" for l in _ln)
+                                    and l.split(" | ")[5].strip() == "1" for l in _ln)   # 위치 두 칸(B118 ③ · 기대 변경)
      and any("추출 끝 —" in l and "LLM 사용량 — 호출" in l for l in _txt.splitlines()),
      _ln[0].strip()[:90] if _ln else "")
 
