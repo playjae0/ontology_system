@@ -93,6 +93,10 @@ KNOBS = {
                            "연결 보강(LLM 지점 ⑫) 실행당 호출 상한 — 재연결 뒤에도 엣지 없는 · 공정에만 붙은 개체를 닫힌 "
                            "후보 안에서 잇는 판정(0이면 끔 · 넘는 대상은 「상한 밖 n」 줄 — 다음 인입 · 재구축이 잇는다)",
                            "인입 마무리 「연결 보강 — 대상 n → 붙음 …」 줄 · python run.py show report <doc_id>"),
+    "judge_context_chars": ("core.matcher", ("JUDGE_CONTEXT_CHARS",), "int0",
+                            "2차 판정의 문장 — 1차가 불확실인 산문 개체에 그 표기 앞뒤 이 글자 수의 청크 원문을 붙여 같은 "
+                            "후보로 한 번 더 묻는다(0이면 끔 · 비용은 불확실 수에 비례)",
+                            "인입 판정 끝 줄 「2차 n → 바뀜 m」 · 문서 한 줄 요약 · python run.py show report <doc_id> --md"),
     "viewer_force": ("cli.viewer.data", ("FORCE",), "dict",
                      "뷰어 힘 배치(ForceAtlas2 계열) — scaling(반발) · gravity(떨어진 덩어리를 붙잡는 중력) · "
                      "iterations(반복 수 — 같은 반복 수면 같은 그림)",

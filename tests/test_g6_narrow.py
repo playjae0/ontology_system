@@ -107,7 +107,7 @@ show("③ confirmed 후보는 지금과 같다 (사람이 확인한 노드에는
      _v73b["type"] == _MT73.MATCH, str(_v73b))
 show("③ 지시문이 그 규칙을 말하고 판이 올랐다",
      "status" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8")
-     and "version: j-1.1" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8"))
+     and "version: j-1.2" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8"))   # 기대 변경(B123 ③ — 2차 입력 칸 · j-1.2)
 
 # ② retry는 조건부다 — 후보 집합이 그대로면 LLM 0
 from core.build import retry as _RT73                                    # noqa: E402

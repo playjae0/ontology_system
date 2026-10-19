@@ -231,8 +231,11 @@ def row_printer(env=None):
         table.row(*value_cells(row, places, roles, prose, wide))
         if prose and not wide and row.get("belongs_to"):           # 좁은 화면 — 소속(출처)는 행 아래 줄로
             print(f"     └ 소속 {row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})")
-        for a in (row.get("attached") or []) if prose else ():   # 붙은 자리 전부 — 칸은 잘려도 이 줄은 자르지 않는다
-            print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
+        att = (row.get("attached") or []) if prose else []
+        # 연결이 둘 이상이거나 -v일 때만 — 하나면 칸이 다 말한다(B123 ② · 전부는 --md · 로그) · 좁은 화면은 칸이 빠지니 늘
+        if len(att) > 1 or _screen.VERBOSE or not wide:
+            for a in att:
+                print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
 
     def on_edge(row, info):
         # 붙은 자리 한 줄(B102 ⑦) — 그 값이 찍힌 줄 아래 · 로그에는 자르지 않은 줄
@@ -317,16 +320,18 @@ def _drop(prose, wide):
     return set(PROSE_COLS) if not prose else (set() if wide else set(WIDE_COLS))
 
 
+#: 판정 값 표의 칸 이름 — 화면 표와 md 보고서(`cli/report_md`)가 같은 칸을 같은 순서로 쓴다(`value_cells`의 순서)
+VALUE_HEADS = ("", "시트", "청크", "구조", "표기", "카테고리/열", "판정", "경로", "확신", "소속(출처)", "붙은 자리", "노드/큐")
+
+
 def value_table(places=None, prose=True, wide=True):
     """판정 값 표(B98 ⑥) — 기호 · 시트 · 청크 · 구조 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 소속(출처) · 붙은 자리 · 노드/큐.
 
     구조 · 소속(출처) · 붙은 자리(B119 ⑤)는 산문 몫(표 문서는 빈 칸) — 어느 단계에서 틀렸는지(구조 → 소속 → 붙음) 한 줄에서."""
     # 고정 칸은 좁게(경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨) · 위치 두 칸은 이 문서 폭
     ws, wc = place_widths(places)
-    cols = [("", 1, False), ("시트", ws, False), ("청크", wc, False), ("구조", 9, False),
-            ("표기", 40, False), ("카테고리/열", 10, False),
-            ("판정", 9, False), ("경로", 13, False), ("확신", 4, True),
-            ("소속(출처)", 18, False), ("붙은 자리", 22, False), ("노드/큐", 16, False)]
+    widths = (1, ws, wc, 9, 40, 10, 9, 13, 4, 18, 22, 16)
+    cols = [(h, wd, h == "확신") for h, wd in zip(VALUE_HEADS, widths)]
     cut = _drop(prose, wide)
     cols = [c for i, c in enumerate(cols) if i not in cut]
     return _screen.Table(cols, flex=4 if prose else 3, keep=(1, 2))
@@ -378,7 +383,8 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True):
     bel = (f"{row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})"
            if row.get("belongs_to") else "")
     att = row.get("attached") or []
-    stuck = (f"{att[0]['dir']} {att[0]['other']}({att[0]['path']})" + (f" +{len(att) - 1}" if len(att) > 1 else "")
+    # 붙은 자리 = 관계 상대(방식) — 첫 연결 · 둘 이상이면 +n(B123 ② — 칸만 봐도 관계가 보인다)
+    stuck = (f"{att[0]['rel']} {att[0]['other']}({att[0]['path']})" + (f" +{len(att) - 1}" if len(att) > 1 else "")
              if att else "")
     cells = [MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
              row.get("field") or "", v, how, conf, bel, stuck, where]
@@ -455,7 +461,8 @@ def build_screen(step=False, stage=None, prose=False):
                   f"스코프로 끝 {j.get('스코프끝', 0):,} · "
                   f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
-                  f"(상한 {CANDIDATE_TOP_N})")
+                  f"(상한 {CANDIDATE_TOP_N})"
+                  + (f" · 2차 {j['2차']:,} → 바뀜 {j.get('2차바뀜', 0):,}" if j.get("2차") else ""))
         rp = info.get("재생") or {}
         if any(rp.values()):
             # **판정 재생**(B106 ②) — 지난 대장으로 붙인 값과 다시 판정한 값(사유별)

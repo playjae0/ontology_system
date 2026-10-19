@@ -7,6 +7,7 @@
     python -m cli.show report <doc_id> [--json]  그 문서의 **행별 판정 대장** (눈 검수)
     python -m cli.show report --diff <a.json> <b.json>   두 대장의 **다른 행만** (설정 비교)
     python -m cli.show report <doc_id> --trace   값마다 위치 · 표기 → 붙은 노드 · 붙은 자리 · 좌표(출처) · 근거 문장
+    python -m cli.show report <doc_id> --md      잘리지 않는 보고서 export/report_<doc_id>.md(요약 · 맞춤 · 카테고리 쌍별 연결 · 청크 · 값)
     python -m cli.show chunk  <doc_id|id>     청크 원문 (답의 근거로 실린 그 문장)
     python -m cli.show edges  [층] [관계]      엣지 목록
     python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표

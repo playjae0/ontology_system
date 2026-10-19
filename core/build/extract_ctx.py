@@ -56,6 +56,21 @@ def with_context(chunk, doc=None):
     return f"{line}\n{text}" if line else text
 
 
+def around(text, surface, chars):
+    """**표기 앞뒤 글**(B123 ③ — 2차 판정의 문장) — `{"text", "span": [시작, 끝]}` · 청크 원문에서 그 표기가 처음 나온 자리의
+    앞뒤 `chars`자(표기 그대로 → 라틴 대소문자 무시 순) · 없거나 `chars`가 0이면 None(2차를 부르지 않는다)."""
+    text, surface = str(text or ""), str(surface or "").strip()
+    if not text or not surface or not chars:
+        return None
+    i = text.find(surface)
+    if i < 0:
+        i = text.lower().find(surface.lower())
+    if i < 0:
+        return None
+    a, b = max(0, i - chars), min(len(text), i + len(surface) + chars)
+    return {"text": text[a:b], "span": [a, b]}
+
+
 def place(chunk):
     """**위치 두 칸**(B118 ③) — `(시트, 청크)`: 시트 이름(없으면 빈칸) · 청크 = **경로 끝 제목**(경로가 없으면 조각의 구획
     · 그것도 없으면 위치). 가운데 경로는 생략한다 — 전체는 라벨(`chunk_label`)이 들고 명령 로그에 그대로다.

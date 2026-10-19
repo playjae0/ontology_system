@@ -482,7 +482,8 @@ for cells in _vrows:
     if not e:
         continue
     full_b = f"{e['belongs_to']}(사슬)"
-    full_a = f"{e['attached'][0]['dir']} {e['attached'][0]['other']}({e['attached'][0]['path']})"
+    # 기대 변경(B123 ② — 붙은 자리 칸 = 관계 상대(방식))
+    full_a = f"{e['attached'][0]['rel']} {e['attached'][0]['other']}({e['attached'][0]['path']})"
     _ok5.append((cells[3].strip() == "사양 묶음" and full_b.startswith(cells[9].strip().rstrip("…"))
                  and full_a.startswith(cells[10].strip().rstrip("…")) and len(cells[10].strip()) > 3,
                  [c.strip() for c in cells[3:11]], full_b, full_a))

@@ -85,7 +85,11 @@ CANDIDATE_TOP_N = 12
 # **판정의 계측** — 화면이 「어떻게 좁혔고 몇 번 불렀나」를 세는 재료다(B73 ①).
 # 세는 자리가 **그 일을 하는 자리**와 같아야 화면과 실물이 갈리지 않는다.
 STATS = {"판정": 0, "사전": 0, "스코프": 0, "스코프끝": 0, "임베딩": 0, "겹침": 0,
-         "그대로": 0, "후보합": 0, "조립": 0}
+         "그대로": 0, "후보합": 0, "조립": 0, "2차": 0, "2차바뀜": 0}
+
+#: **2차 판정**(B123 ③) — 1차가 불확실이면 그 표기가 나온 청크의 문장(표기 앞뒤 이 글자 수)을 붙여 같은 후보로 한 번 더
+#: 묻는다 · 0이면 끈다(사내 손잡이 `judge_context_chars` · 창작 기본값). 비용은 불확실 수에 비례한다.
+JUDGE_CONTEXT_CHARS = 80
 
 # 진행 콜백 — 호출부가 꽂는다(기본 없음). **판정 중에도 비용이 보인다**(사용자
 # 요청 2026-09-16): 좌표 태깅 진행 줄(B69 ②)과 같은 결이고, 자리는 부르는 자리다.
@@ -361,8 +365,7 @@ def match(surface, candidates, category, cfg=None):
     분리는 어렵다. 잘못 합치면 사람이 배분표를 써야 하지만, 잘못 나누면 병합
     도구가 자동으로 되돌린다.
     """
-    pool = [c for c in candidates
-            if c.get("category") == category or category in (c.get("also") or ())]
+    pool = _pool(candidates, category)
     for c in pool:
         if c.get("exact"):                           # 사전 히트 — 결정적·무LLM 경로
             STATS["사전"] += 1
@@ -402,6 +405,33 @@ def match(surface, candidates, category, cfg=None):
     return {"type": NEW, "matched_id": None, "confidence": 0.0, "path": path}
 
 
+def _pool(candidates, category):
+    """판정이 보는 후보 — 그 카테고리(겸 포함)만(1차 · 2차가 같은 후보를 본다)."""
+    return [c for c in candidates
+            if c.get("category") == category or category in (c.get("also") or ())]
+
+
+def second(surface, cands, category, cfg, v1, sentence):
+    """**2차 판정**(B123 ③) — 1차 `v1`이 불확실이고 문장이 있을 때만 · 같은 후보 · 같은 계약(후보 밖 id 버림 · 임계 ·
+    auto 가드)으로 그 표기가 나온 문장 `sentence = {"text", "span"}`을 붙여 한 번 더 묻는다.
+
+    **매칭만 바꾼다** — 2차가 매칭이면 그 노드 · 불확실이거나 새 것이면 1차 그대로(신규 + `uncertain_match` — 사람이
+    본다 · 비대칭 그대로). 돌려주는 판정에 `second {was, now, span}`이 실린다(대장의 단계 · 근거 문장 자리).
+    mock은 문장을 읽지 않는다 — 판정 없음(1차 그대로 · 표지 0 · 수에 들지 않는다)."""
+    pool = _pool(cands, category)
+    if v1.get("type") != UNCERTAIN or not sentence or not sentence.get("text") or not pool \
+            or not JUDGE_CONTEXT_CHARS or gateway.use_mock():
+        return v1
+    STATS["2차"] += 1
+    v2 = _judge_live(surface, pool, category, cfg, path=v1.get("path"), sentence=sentence["text"])
+    got = v2.get("type") == MATCH
+    if got:
+        STATS["2차바뀜"] += 1
+    out = dict(v2) if got else dict(v1)
+    out["second"] = {"was": v1.get("type"), "now": v2.get("type"), "span": list(sentence.get("span") or [])}
+    return out
+
+
 #: **이번 문서 실행이 만든 auto 노드**(B101 ① — 같은 문서 예외). 빌더가 노드를 만들 때 넣고
 #: 문서 실행 시작에 비운다(`entry.run_document`). 다른 문서가 만든 auto 노드는 여기 없다 — 가드 그대로.
 SAME_DOC = set()
@@ -429,7 +459,7 @@ def _guard_auto(verdict, pool):
     return verdict
 
 
-def _judge_live(surface, pool, category, cfg=None, *, path=None):
+def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None):
     """지점 ② 개체 동일성 판정의 실호출 갈래 — **반환 계약이 mock과 같다.**
 
     입력은 `mention` + 후보들이고 후보 하나는 `canonical`·`aliases`·부착 위치·
@@ -439,8 +469,13 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None):
 
     **판정기가 후보 밖의 id를 답하면 버린다.** 모델이 지어낸 id가 엣지 끝점이
     되면 그래프에 없는 노드를 가리키는 엣지가 선다.
+
+    `sentence`(2차 — B123 ③)가 있으면 입력에 `context`(그 표기가 나온 문장)가 더해진다 · 계약은 그대로다.
     """
     ids = {c["id"] for c in pool}
+    body = {"mention": surface, "category": category, "candidates": pool}
+    if sentence:
+        body["context"] = sentence
     out = gateway.chat(
         # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
         # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
@@ -448,9 +483,7 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None):
           "content": gateway.prompt("judge")
           + ("\n\n## 층 어휘\n" + (cfg or {}).get("prompts", {}).get("judge", "")
              if (cfg or {}).get("prompts", {}).get("judge") else "")},
-         {"role": "user", "content": json.dumps(
-             {"mention": surface, "category": category, "candidates": pool},
-             ensure_ascii=False)}],
+         {"role": "user", "content": json.dumps(body, ensure_ascii=False)}],
         json_schema=JUDGE_SCHEMA, point="judge")
     vtype = out.get("type")
     mid = out.get("matched_id")
@@ -497,7 +530,7 @@ def _evidence(v, cands):
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
-            polarity=None, parent=None):
+            polarity=None, parent=None, sentence=None):
     """후보 조립 + 판정의 2단을 한 번에 — Pass 1 entity 경로의 편의 형태다.
 
     돌려주는 것은 `(분기, node_id 또는 None, 점수, 판정 dict)` 튜플이다 — 네 번째는
@@ -510,7 +543,7 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
-    v = match(surface, cands, category, cfg)
+    v = second(surface, cands, category, cfg, match(surface, cands, category, cfg), sentence)   # 불확실만 2차 (B123 ③)
     _evidence(v, cands)
     # **후보 수는 판정의 반환이 아니라 조립의 사실이다** — 계약(문서 4 §4.3-6)의
     # 세 키에 `path` 하나만 더한다(B74 ②). 대장이 적을 나머지는 여기서 싣는다.
