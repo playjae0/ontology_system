@@ -4,7 +4,9 @@
 층 config · 층 공통 config의 최상위 키를 세 갈래로 가른다 — **분류는 이 표 하나다**(B120 ③ 추출 재사용의 판이 같은 표를 읽는다):
 
   · 추출 — 추출 입력에 실제로 들어가는 칸: 층 `categories`(이름 · 정의문) · `relations`(관계 이름) · `relevance_terms`(렌즈
-    거름) · `extract_patterns`(mock 문형) · 공통 `categories`(겸 한 줄이 정의문 끝에 붙는다) → **산문 추출을 다시 뽑는다**
+    거름) · `extract_patterns`(mock 문형) · `value_categories`(값을 받는 카테고리 — B120 ②) · 공통 `categories`(겸 한 줄이
+    정의문 끝에 붙는다) → **산문 추출을 다시 뽑는다** — 추출 · 개요 · 구조 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
+    B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다)
   · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `category_pair_map` · `mirrors` · `polarity` · `skeleton` · 공통
     `canonical_scope` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
   · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) · 표에 없는 키 → 영향 없음
@@ -18,7 +20,7 @@ import hashlib
 import json
 
 #: 층 config — 갈래마다 키(닫힌 표 · 밖은 「그 밖」)
-LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns"),
+LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories"),
          "구축": ("relation_patterns", "category_pair_map", "mirrors", "polarity", "skeleton")}
 #: 층 공통 config(`layers/common.json`)
 COMMON = {"추출": ("categories",), "구축": ("canonical_scope",)}
@@ -27,6 +29,26 @@ COMMON_KEY = "공통"
 
 def _h(v):
     return hashlib.sha256(json.dumps(v, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def _common():
+    """층 공통 config(없거나 못 읽으면 빈 칸)."""
+    from core import paths
+    p = paths.common()
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def extract_key(cfg):
+    """**추출 재사용의 층 config 판**(B120 ③) — 그 층 config와 공통 config의 **추출 갈래 칸** 내용 해시.
+
+    bootstrap의 「추출 다시」 알림(`impact`)과 같은 표(`LAYER` · `COMMON`)를 읽으므로 알림과 실제 재추출이 늘 같다 —
+    구축 갈래(`relation_patterns` · `category_pair_map` · `canonical_scope` …)와 그 밖(`config_version` …)은 판에 들지 않는다."""
+    com = _common()
+    return _h({"층": {k: (cfg or {}).get(k) for k in LAYER["추출"] if k in (cfg or {})},
+               COMMON_KEY: {k: com.get(k) for k in COMMON["추출"] if k in com}})
 
 
 def kind(key, common=False):
@@ -42,7 +64,6 @@ def parts(cfg):
 
 def snapshot(layers=None):
     """지금 config의 칸 지문 — `{층: {키: 해시}, "공통": {키: 해시}}` (층은 폴더 전부 · 공통 config가 없으면 빈 칸)."""
-    from core import paths
     from core.state.bootstrap import load_config
     from router import discover
     out = {}
@@ -51,11 +72,7 @@ def snapshot(layers=None):
             out[lay] = parts(load_config(lay))
         except Exception:                                   # noqa: BLE001 — 못 읽는 층은 지문 0(대조가 「바뀜」으로 본다)
             out[lay] = {}
-    p = paths.common()
-    try:
-        out[COMMON_KEY] = parts(json.loads(p.read_text(encoding="utf-8"))) if p.exists() else {}
-    except (OSError, ValueError):
-        out[COMMON_KEY] = {}
+    out[COMMON_KEY] = parts(_common())
     return out
 
 
@@ -129,7 +146,7 @@ def lines(imp):
     ex, bu = imp["추출"], imp["구축"]
     if ex["칸"]:
         out.append(f"{head} — 추출 다시: 문서 {len(ex['문서']):,}(바뀐 칸 {' · '.join(ex['칸'])}) · "
-                   f"config_version을 올린다(올리지 않으면 옛 추출을 쓴다)")
+                   f"다음 인입 · 재구축이 그 문서를 다시 뽑는다(LLM · 판은 자동)")
     if bu["칸"]:
         out.append(f"{head} — 재구축 때 LLM 0으로 다시 판정: 문서 {len(bu['문서']):,}(바뀐 칸 {' · '.join(bu['칸'])}) · "
                    f"python run.py rebuild")

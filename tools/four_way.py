@@ -35,6 +35,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -162,6 +163,12 @@ def _structure_kw():
     return {"structure": ST.structurer(["process"])}
 
 
+def _value(word, cat, text):
+    """값(B120 ① — 지시문 「그 항목에 건 값 · 원문 글자 그대로」의 창작 대역): 사양 말 뒤의 「숫자+단위」 · 없으면 키 없음."""
+    m = re.search(re.escape(word) + r"\S*\s*(\d[\d.,]*\s*[A-Za-z%]+)", text or "") if cat == "Property" else None
+    return {"value": m.group(1)} if m else {}
+
+
 def _prose(quiet):
     """바닥 C — 클린 → bootstrap → 산문 종류 등록 → 표본 엑셀 · 힌트를 만들고 넣는다(마무리 포함)."""
     import run as RUN
@@ -202,7 +209,8 @@ def _prose(quiet):
             bel = {"name": own["name"], "category": own["category"], "from": "제목"} if own else None
             words = [(w, cat) for w, cat in PROSE_WORDS if w in (c.get("text") or "")]
             words = [(w, cat) for w, cat in words if not any(w != v and w in v for v, _c in words)]   # 긴 말이 이긴다
-            ents = [{"surface": w, "category": cat, **({"belongs_to": bel} if bel else {})} for w, cat in words]
+            ents = [{"surface": w, "category": cat, **({"belongs_to": bel} if bel else {}), **_value(w, cat, c.get("text"))}
+                    for w, cat in words]
             if ents:
                 hints[c["source_locator"]] = {"entities": ents, "relations": [], "attach": []}
         (fixtures.EXTRACT_HINTS / f"{did}.json").write_text(json.dumps(hints, ensure_ascii=False), encoding="utf-8")

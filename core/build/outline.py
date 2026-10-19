@@ -130,13 +130,14 @@ def structure_hash(heads):
 
 
 def _now_key(heads, cfg):
+    """재사용 판 — 층 config 판은 추출 갈래 칸의 해시(B120 ③ — 추출과 같은 함수)."""
     from core.build import extract as EX
+    from core.state import config_scope
     return {"heading_hash": heading_hash(heads), "prompt_version": EX.prompt_version(PROMPT),
-            "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),
-            "structure": structure_hash(heads)}
+            "config_extract": config_scope.extract_key(cfg), "structure": structure_hash(heads)}
 
 
-_LABEL = {"heading_hash": "제목 계층", "prompt_version": "지시문", "config_version": "층 config",
+_LABEL = {"heading_hash": "제목 계층", "prompt_version": "지시문", "config_extract": "층 config(추출 칸)",
           "structure": "문서 구조"}
 
 

@@ -147,6 +147,14 @@ def value_lines(rows):
                                                      "보류", "그 밖")])]
 
 
+def prose_value_line(rows):
+    """`값(산문) n = 실림 + 버림 + 충돌` — 값을 낸 개체 행에서(B120 ① · `core/build/values.counts`) · 값이 없으면 줄 0."""
+    from core.build import values
+    c = values.counts(rows)
+    n = sum(c.values())
+    return [line("값(산문)", n, [(k, c[k], "") for k in values.VERDICTS])] if n else []
+
+
 # ---------------------------------------------------------------- 보류(행 종류별)
 def hold_line(rows):
     held = [r for r in rows if hold_reason(r)]
@@ -465,7 +473,7 @@ def summary(lines, res, after, before=None):
             "노드 전": (sum(v[0] for v in before.values()) if before is not None else None),
             "노드 후": sum(v[0] for v in (after or {}).values()), "이 문서 노드": sum(int(d.get("노드", 0)) for d in mine.values()),
             "소속": bn, "유닛 이하": under, "유닛 이하 비율": (round(100.0 * under / bn, 1) if bn else None),
-            "가드 부딪힘": _cells(lines, "구조 · 다른 공정 가드")[0]}
+            "가드 부딪힘": _cells(lines, "구조 · 다른 공정 가드")[0], "값": _cells(lines, "값(산문)")[:2]}
 
 
 def summary_text(doc_id, s):
@@ -480,7 +488,15 @@ def summary_text(doc_id, s):
     ratio = (f"{s['유닛 이하 비율']}%({s['유닛 이하']:,}/{s['소속']:,})" if s["유닛 이하 비율"] is not None
              else "—(소속을 낸 개체 0)")
     return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
-            f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else ""))
+            f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else "")
+            + _value_text(s.get("값")))
+
+
+def _value_text(v):
+    """` | 값 n = 실림 a · 버림 b · 충돌 c` — 값을 낸 개체가 없으면 빈 글(B120 ①)."""
+    n, c = v or (0, {})
+    return (f" | 값 {n:,} = 실림 {c.get('실림', 0):,} · 버림 {c.get('버림', 0):,} · 충돌 {c.get('충돌', 0):,}"
+            if n else "")
 
 
 # ---------------------------------------------------------------- 한 묶음
@@ -508,6 +524,7 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     lines.append(coord_line(env))
     lines += outline_lines(doc_id, cks, rows)
     lines += value_lines(rows)
+    lines += prose_value_line(rows)
     lines.append(hold_line(rows))
     lines.append(attach_line(rows, skeleton))
     lines.append(belongs_line(rows, [ck for _l, ck in cks], chunk_loc, skeleton, orphans))

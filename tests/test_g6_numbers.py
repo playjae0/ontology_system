@@ -408,7 +408,7 @@ _cat = next(iter(_c2["categories"]))
 _c2["categories"][_cat] = _c2["categories"][_cat] + " (B118 시험 — 정의문을 바꿨다)"
 _cfgp.write_text(json.dumps(_c2, ensure_ascii=False, indent=1), encoding="utf-8")
 _imp2 = CS.lines(CS.impact())
-show("ⓕ 정의문을 바꾸면 「추출 다시 — 문서 n · config_version을 올린다」(산문 문서만 센다)",
+show("ⓕ 정의문을 바꾸면 「추출 다시 — 문서 n · 판은 자동」(산문 문서만 센다)",
      any("추출 다시" in ln and "process.categories" in ln for ln in _imp2), " | ".join(_imp2))
 _cfgp.write_bytes(_keep_cfg)
 

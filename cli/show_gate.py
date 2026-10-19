@@ -63,6 +63,6 @@ def main(args):
             print(f"       ▶ 그 층 config의 relation_patterns에 넣을 줄: {line}")
         elif any(v == "unresolved_endpoint" for v in ver):
             print("       (끝점 미해소 — 패턴이 아니라 끝점 노드가 없다 · 재연결이 다시 찾는다)")
-    print("  이 줄은 게이트만 바꾼다 — config_version을 올리지 않는다 · 넣은 뒤 python run.py bootstrap(영향 범위 줄) → "
+    print("  이 줄은 게이트만 바꾼다 — 추출은 다시 뽑지 않는다(판은 자동) · 넣은 뒤 python run.py bootstrap(영향 범위 줄) → "
           "python run.py rebuild(LLM 0으로 다시 판정)")
     return 0

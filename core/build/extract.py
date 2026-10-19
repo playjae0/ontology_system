@@ -85,18 +85,20 @@ def has_checkpoint(doc_id, lens=None):
 def _now_key(env, cfg=None, outline=None):
     """재사용 조건의 지금 값 — **문서 해시 · 어댑터 판 · 지시문 판 · 층 config 판**(B102 ⑥) + **개요의 대상
     제목**(B115 ③ — 추출 입력의 넷째 소속 출처라 바뀌면 다시 뽑는다 · 대상이 없으면 None이라 옛 체크포인트와 같다).
+    층 config 판은 **추출 갈래 칸의 해시**다(B120 ③ — `config_scope.extract_key` · 사람이 적는 `config_version`은 기록만).
     `cfg`가 없으면(층을 모르는 호출) 층 config 판은 대조하지 않는다."""
     from core.build import outline as OL
+    from core.state import config_scope
     now = {"doc_hash": doc_hash(env), "adapter_version": env.get("adapter_version"),
            "prompt_version": prompt_version()}
     if cfg is not None:
-        now["config_version"] = cfg.get("config_version") or cfg.get("skeleton_version")
+        now["config_extract"] = config_scope.extract_key(cfg)
     now["outline"] = OL.targets_key(outline)
     return now
 
 
 _LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
-          "config_version": "층 config", "outline": "개요"}
+          "config_extract": "층 config(추출 칸)", "outline": "개요"}
 
 
 def reuse_check(env, lens=None, cfg=None, outline=None, p=None):
@@ -220,6 +222,9 @@ EXTRACT_SCHEMA = {
             "properties": {"surface": {"type": "string"},
                            "category": {"type": "string"},
                            "parent": {"type": ["string", "null"]},
+                           # **값**(B120 ①) — 값을 받는 카테고리(`value_categories`)의 개체만 · 청크 원문 글자 그대로 ·
+                           # 없으면 null(선택 필드 — 옛 체크포인트 · mock은 키가 없고 「없음」으로 읽는다)
+                           "value": {"type": ["string", "null"]},
                            "belongs_to": {
                                "type": ["object", "null"],
                                "properties": {"name": {"type": "string"},
@@ -228,7 +233,7 @@ EXTRACT_SCHEMA = {
                                                        "enum": ["본문", "경로", "시트", "공정", "제목"]}},
                                "required": ["name", "category", "from"],
                                "additionalProperties": False}},
-            "required": ["surface", "category", "parent", "belongs_to"],
+            "required": ["surface", "category", "parent", "belongs_to", "value"],
             "additionalProperties": False}},
         "relations": {"type": "array", "items": {
             "type": "object",
@@ -316,8 +321,9 @@ def parent_candidates(chunk, layer=None):
 
 
 def _optional(out):
-    """새 선택 필드(`parent`·`belongs_to`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
-    ents = [{k: v for k, v in e.items() if not (k in ("parent", "belongs_to") and v is None)}
+    """새 선택 필드(`parent`·`belongs_to`·`value`·`about`)는 **값이 있을 때만** 싣는다 — 비면 체크포인트가 지금과 같다."""
+    ents = [{k: v for k, v in e.items()
+             if not ((k in ("parent", "belongs_to") and v is None) or (k == "value" and v in (None, "")))}
             for e in out.get("entities", [])]
     extra = {"about": out["about"]} if out.get("about") else {}
     return ents, extra
@@ -351,6 +357,9 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
          {"role": "user", "content": json.dumps(
              {"categories": categories_with_also(cfg),
               "relations": cfg.get("relations"),
+              # **값을 받는 카테고리**(B120 ② — 층 config 선언 · 없으면 빈 목록 = 값 0)
+              "value_categories": sorted((cfg.get("value_categories") or {}).keys())
+              if isinstance(cfg.get("value_categories"), dict) else [],
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "parent_candidates": parent_candidates(chunk),
@@ -659,6 +668,7 @@ def checkpoint_files(doc_id):
 def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, outline=None):
     """최종 체크포인트 — 이 파일이 생기면 추출 완료다(부분 파일은 그 뒤에 지운다)."""
     from core.build import outline as OL
+    from core.state import config_scope
     out = {
         "doc_id": env["doc_id"],
         "stage": "extract",
@@ -666,7 +676,8 @@ def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, out
         # **재사용 조건의 둘째 축**(B78 1b) — 봉투가 바뀌면 청크가 바뀐다.
         "doc_hash": doc_hash(env),
         "prompt_version": prompt_version(),
-        "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),
+        "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),   # 기록만(B120 ③)
+        "config_extract": config_scope.extract_key(cfg),     # 재사용의 층 config 판 — 추출 갈래 칸의 해시(B120 ③)
         "layer": cfg["layer"],
         "extracted_at": env.get("parsed_at"),
         "candidates": candidates,

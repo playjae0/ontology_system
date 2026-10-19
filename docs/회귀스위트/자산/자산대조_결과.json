@@ -1,5 +1,10 @@
 [
  {
+  "구분": "자산에만",
+  "대상": "config 키 `value_categories`",
+  "실태": "층 process에 실재 · 명세 문면에 없음"
+ },
+ {
   "구분": "층별 차이",
   "대상": "config 키 `cross_layer_traverse`",
   "실태": "process 층에 없음 (다른 층에는 있음)"
@@ -12,6 +17,11 @@
  {
   "구분": "층별 차이",
   "대상": "config 키 `skeleton_version`",
+  "실태": "quality 층에 없음 (다른 층에는 있음)"
+ },
+ {
+  "구분": "층별 차이",
+  "대상": "config 키 `value_categories`",
   "실태": "quality 층에 없음 (다른 층에는 있음)"
  },
  {

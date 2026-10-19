@@ -32,7 +32,8 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "blank",                         # 값 칸이 빈칸 표시였다 — 원문은 그대로 · 표지만(B113 ②)
          "evidence",                      # 연결 보강의 근거 문장 — 청크 원문 그대로(B115 ④ · 역할 link)
          "proposal",                      # 연결 보강 버림의 제안 `{target, rel}` — 재생이 지금 config로 게이트를 다시 돈다(B118 ⑤)
-         "belongs_to")                    # 산문 개체가 낸 소속 이름(B119 ⑤ — 화면의 소속(출처) 칸 · 출처는 `from`)
+         "belongs_to",                    # 산문 개체가 낸 소속 이름(B119 ⑤ — 화면의 소속(출처) 칸 · 출처는 `from`)
+         "value")                         # 산문 개체의 값 `{attr, value, verdict}`(B120 ① — `core/build/values.land`가 단다)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):

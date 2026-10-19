@@ -74,11 +74,11 @@ def categories(cfgs):
 
 
 def key(cfgs):
-    """보존분 재사용의 판 — 지시문 판 · 층 config 판(층마다)."""
+    """보존분 재사용의 판 — 지시문 판 · 층 config 판(층마다 추출 갈래 칸의 해시 — B120 ③ · 추출과 같은 함수)."""
     from core.build.extract import prompt_version
+    from core.state import config_scope
     return {"prompt_version": prompt_version(PROMPT),
-            "config_version": " · ".join(f"{k}:{c.get('config_version') or c.get('skeleton_version')}"
-                                         for k, c in sorted(cfgs.items()))}
+            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items()))}
 
 
 # ---------------------------------------------------------------- 실호출

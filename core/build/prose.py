@@ -13,7 +13,7 @@ from core.build.build import Builder
 from core.build import gate
 from core.build import ledger as _lg
 from core.build.ledger import Ledger
-from core.build import belongs, extract_ctx, heading
+from core.build import belongs, extract_ctx, heading, values
 from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
 from core.build.naming import name_parent
 from core.state.status import is_live
@@ -124,6 +124,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                            category=last.get("category"), scope=last.get("scope"),
                            replay=last.get("replay"))
         if nid:
+            values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
     return plans
 
