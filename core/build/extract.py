@@ -351,7 +351,7 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
 
     # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
     # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
-    tmpl = gateway.prompt("extract")
+    tmpl = gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract")   # 층 힌트 한 함수 (B124 ③)
     out = gateway.chat(
         [{"role": "system", "content": tmpl},
          {"role": "user", "content": json.dumps(

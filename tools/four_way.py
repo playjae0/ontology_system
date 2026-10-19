@@ -66,10 +66,10 @@ PROSE = {
 }
 #: 문서 구조 mock 힌트(B119 ① — 지금 사본만 읽는다 · 기준 사본에는 구조 단계가 없다) — `{doc_id: {시트: [{text, depth, role, …}]}}`
 PROSE_STRUCTURE = {"FWC3": {"TW 사양": [
-    {"text": "언와인더 unit", "depth": 1, "role": "유닛", "name": "언와인더 unit", "category": "Unit"},
-    {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"},
-    {"text": "리와인더 unit", "depth": 1, "role": "유닛", "name": "리와인더 unit", "category": "Unit"},
-    {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"}]}}
+    {"text": "언와인더 unit", "depth": 1, "role": "대상", "name": "언와인더 unit", "category": "Unit"},
+    {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"},
+    {"text": "리와인더 unit", "depth": 1, "role": "대상", "name": "리와인더 unit", "category": "Unit"},
+    {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"}]}}
 #: 개요 mock 힌트 — 제목 글자 → 대상
 PROSE_OUTLINE = {"2. 추출부": {"name": "추출부", "category": "Unit"}, "2.1 NG unit": {"name": "NG unit", "category": "Unit"},
                  "3. 이송부": {"name": "이송부", "category": "Unit"}, "1. 이송부": {"name": "이송부", "category": "Unit"}}
@@ -163,6 +163,16 @@ def _structure_kw():
     return {"structure": ST.structurer(["process"])}
 
 
+def _roles_of_copy(hint):
+    """표본 힌트의 역할을 **그 사본의 말로** — 역할 셋(대상 · 묶음 · 주제 — B124 ③)을 모르는 옛 사본이면 옛 이름으로 바꿔 쓴다
+    (두 사본이 같은 구조를 보게 — 바뀐 몫만 다르게)."""
+    from parser import struct_rule
+    if "대상" in struct_rule.ROLES:
+        return hint
+    old = {"대상": "유닛", "묶음": "사양 묶음"}
+    return {fr: [{**x, "role": old.get(x.get("role"), x.get("role"))} for x in rows] for fr, rows in hint.items()}
+
+
 def _value(word, cat, text):
     """값(B120 ① — 지시문 「그 항목에 건 값 · 원문 글자 그대로」의 창작 대역): 사양 말 뒤의 「숫자+단위」 · 없으면 키 없음."""
     m = re.search(re.escape(word) + r"\S*\s*(\d[\d.,]*\s*[A-Za-z%]+)", text or "") if cat == "Property" else None
@@ -200,7 +210,7 @@ def _prose(quiet):
         fixtures.EXTRACT_HINTS.mkdir(parents=True, exist_ok=True)
         if did in PROSE_STRUCTURE:
             (fixtures.EXTRACT_HINTS / f"{did}@structure.json").write_text(
-                json.dumps(PROSE_STRUCTURE[did], ensure_ascii=False), encoding="utf-8")
+                json.dumps(_roles_of_copy(PROSE_STRUCTURE[did]), ensure_ascii=False), encoding="utf-8")
         env = pipeline.parse(BX, did, str(path), sheet_roles=roles, closed_list=[], **_structure_kw()).envelope
         hints = {}
         for c in env.get("chunks") or []:

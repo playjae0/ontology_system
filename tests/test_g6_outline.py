@@ -146,7 +146,7 @@ def _outline(body):
     out = []
     for ln in body["lines"]:
         t = OUT.get(ln["text"])
-        out.append({"row": ln["row"], "parent": ln.get("fixed_parent"), "role": "유닛" if t else "주제",
+        out.append({"row": ln["row"], "parent": ln.get("fixed_parent"), "role": "대상" if t else "주제",
                     "name": (t or {}).get("name"), "category": (t or {}).get("category")})
     return {"headings": out}
 

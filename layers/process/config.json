@@ -71,10 +71,7 @@
     "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
   },
   "_fact_note": "맥락형 attr(spec 등)은 context 그룹별 한 줄씩 렌더: '[model=M1] 규격: ...'. mirrors는 query_traverse 기본 미포함(비대칭 조회 시에만 명시적 확장 — HOOK).",
-  "prompts": {
-    "extract": "(명세 §5.4-1 규칙 — 정의문 3종 삽입, 주제만, 목록 밖 버림, 애매하면 제외)",
-    "judge": "(명세 §5.4-2 규칙 — 의미 판단, 표기 변형 안내, 비대칭: 확신 없으면 uncertain)"
-  },
+  "prompts": {"structure": "대상 줄의 예 — 설비(그 아래 글 전체가 장비 하나 전체를 말한다 · 카테고리 Unit) · 유닛(설비를 이루는 유닛 · 부(部) · 모듈 — 「언와인더 unit」 「공급부」 · 카테고리 Unit) · 항목(관리 항목 · 사양 하나의 이름 — 그 아래 줄이 그 값이다 · 카테고리 Property). 묶음의 예 — 기본사양 · 지정사양 · 요구사항처럼 한 유닛 아래의 사양을 묶는 소제목. 유닛마다 되풀이되는 소제목(「1) 기본사양 · 2) 지정사양」)은 그 유닛 줄의 자식이다 — 유닛 줄이 번호 없이 짧게 서 있어도 대상이다. 설비 전체를 부르는 「○○ unit」(설비 이름)과 설비의 한 부분인 유닛을 가른다."},
   "_relation_patterns_note": "추출 경로 전용 게이트 패턴. 골격 관계(Process part_of/precedes/mirrors Process)는 여기 넣지 않는다 — 넣으면 추출이 골격을 개정한다. 층이 어떤 관계를 갖는지의 선언은 위 relations 배열이 한다.",
   "relation_patterns": [
     {
@@ -163,5 +160,5 @@
   "_query_intents_note": "CH5 5.3 질문 유형 대응표의 표기 목록. **USE_MOCK의 결정적 분류기**이며 실물 경로에서는 LLM이 유형을 판정한다(core/query/query.py의 HOOK). 선언 순서가 우선순위다 — 좁은 유형을 먼저 둔다.",
   "_extract_patterns_note": "USE_MOCK 문형 폴백의 규칙 표 (증분0 §5-1). **관계 이름은 층 어휘이므로 코드가 아니라 여기 있다** — 카드 B1 예외 3호의 해소 경로가 이 이동이다. 정규식은 구문이고 `rel`이 층 어휘다. 실LLM 경로에는 해당 없다(USE_MOCK=0이면 폴백 자체가 명시 실패 — G6.5 E3).",
   "extract_patterns": [],
-  "value_categories": {"Property": "spec"}
+  "value_categories": {"Property": "설비사양"}
 }

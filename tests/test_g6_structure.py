@@ -17,7 +17,7 @@ quality는 시험 덧칠의 렌즈 `Unit`):
      버림 · 호출 실패 → 초안 그대로 · 보존 0)
   ⓑ 소속 — 세 표본 모두 주인이 있는 개체는 그 유닛에 붙는다(유닛 이하 = 주인 있는 개체 수) · 공정으로 가는 것은 주인 없는 개체뿐 ·
      지어낸 이름은 버림(후보 밖 0) · 추출 · 보강 입력에 구조 사슬 · 다른 공정 가드와 부딪힌 구조 유닛을 센다
-  ⓒ 관문 — `--step` 구조 표에서 「<번호> 유닛」 → 등록 단 기록 · 다시 파싱(LLM 0) · 그 아래 개체가 그 유닛에 · 재구축이 재생 ·
+  ⓒ 관문 — `--step` 구조 표에서 「<번호> <카테고리>」 → 등록 단 기록 · 다시 파싱(LLM 0) · 그 아래 개체가 그 유닛에 · 재구축이 재생 ·
      약한 구조 신호가 화면 · 인입 기록 · `show summary`에
   ⓓ 이름 — 유닛에 붙은 사양 `공정::유닛::사양`(같은 이름이 유닛마다 다른 노드) · 공정에 붙은 사양 `공정::사양` · 표(CP · PFMEA)는
      `nest_categories`가 있어도 이름이 같다
@@ -77,12 +77,12 @@ def _rows_of(key, lay):
 
 
 #: 문서 구조의 답(창작 — 가짜 LLM이 그대로 낸다) — `(줄 글자, 단, 역할, 대상 이름)`
-STRUCT = {"A": [("1. 개요", 1, "주제", None), ("2. 공급 unit", 1, "유닛", "공급 unit"), ("2.1 기본사양", 2, "사양 묶음", None),
-                ("2.2 지정사양", 2, "사양 묶음", None), ("3. 적층 unit", 1, "유닛", "적층 unit"),
-                ("3.1 기본사양", 2, "사양 묶음", None), ("4. 스태킹", 1, "유닛", "스태킹")],
-          "B": [("공통 사항", 1, "주제", None), ("언와인더 unit", 1, "유닛", "언와인더 unit"), ("1) 기본사양", 2, "사양 묶음", None),
-                ("2) 지정사양", 2, "사양 묶음", None), ("리와인더 unit", 1, "유닛", "리와인더 unit"),
-                ("1) 기본사양", 2, "사양 묶음", None), ("2) 지정사양", 2, "사양 묶음", None)],
+STRUCT = {"A": [("1. 개요", 1, "주제", None), ("2. 공급 unit", 1, "대상", "공급 unit"), ("2.1 기본사양", 2, "묶음", None),
+                ("2.2 지정사양", 2, "묶음", None), ("3. 적층 unit", 1, "대상", "적층 unit"),
+                ("3.1 기본사양", 2, "묶음", None), ("4. 스태킹", 1, "대상", "스태킹")],
+          "B": [("공통 사항", 1, "주제", None), ("언와인더 unit", 1, "대상", "언와인더 unit"), ("1) 기본사양", 2, "묶음", None),
+                ("2) 지정사양", 2, "묶음", None), ("리와인더 unit", 1, "대상", "리와인더 unit"),
+                ("1) 기본사양", 2, "묶음", None), ("2) 지정사양", 2, "묶음", None)],
           "C": [("포장 사양서", 1, "주제", None), ("기타", 1, "주제", None)]}
 
 
@@ -127,7 +127,7 @@ def _structure(body):
     out, stack, at = [], [], 0
     lines = body["lines"]
     for t, d, r, n in ANS.get(body["frame"]) or []:
-        i = next((j for j in range(at, len(lines)) if lines[j]["text"] == t[:ST.LABEL_CHARS]), None)
+        i = next((j for j in range(at, len(lines)) if lines[j]["text"] == t[:ST.LINE_CHARS]), None)
         if i is None:
             continue
         at = i + 1
@@ -261,18 +261,18 @@ _labs = [{"row": 0, "text": "S", "marks": ["시트"], "draft": 0}, {"row": 1, "t
          {"row": 2, "text": "언와인더 unit", "marks": [], "draft": 0}, {"row": 3, "text": "속도는 1이다.", "marks": [], "draft": 0},
          {"row": 4, "text": "2. 이송 unit", "marks": [], "draft": 1}]
 _ans = [{"row": 1, "parent": None, "role": "주제", "name": None, "category": None},
-        {"row": 2, "parent": 1, "role": "유닛", "name": "없는 unit", "category": "Unit"},
-        {"row": 4, "parent": 9, "role": "유닛", "name": "이송 unit", "category": "Unit"},
+        {"row": 2, "parent": 1, "role": "대상", "name": "없는 unit", "category": "Unit"},
+        {"row": 4, "parent": 9, "role": "대상", "name": "이송 unit", "category": "Unit"},
         {"row": 3, "parent": None, "role": "몰라", "name": None, "category": None},
         {"row": 77, "parent": None, "role": "주제", "name": None, "category": None},
-        {"row": 0, "parent": None, "role": "유닛", "name": "S", "category": "Mystery"}]
+        {"row": 0, "parent": None, "role": "대상", "name": "S", "category": "Mystery"}]
 _heads, _drop = ST.check("B119CHK", "S", _labs, _ans, {"Unit": "정의"})
 _by = {h["row"]: h for h in _heads}
 with Live(by={"structure": lambda b: (_ for _ in ()).throw(gateway.GatewayError(500, "가짜 실패", "fake"))}):
     _fail = ST.structurer(["process"])("B119FAIL", "S", _labs)
 show("ⓐ 검사 — 목록 밖 줄 · 역할 밖 · 앞에 없는 부모는 그 줄만 초안으로 · 글자 밖 이름 · 목록 밖 카테고리는 대상만 버림(역할 그대로) · "
      "호출 실패는 시트 전체 초안(보존 0)",
-     set(_by) == {0, 1, 2, 4} and _by[2]["role"] == "유닛" and _by[2]["name"] is None and _by[4].get("draft")
+     set(_by) == {0, 1, 2, 4} and _by[2]["role"] == "대상" and _by[2]["name"] is None and _by[4].get("draft")
      and _by[4]["role"] is None and _by[0]["name"] is None and 3 not in _by
      and sorted(d["row"] for d in _drop) == [0, 2, 3, 4, 77]
      and _fail.get("failed") and [h["row"] for h in _fail["headings"]] == [1, 4] and _fail["calls"] == 1,
@@ -314,7 +314,7 @@ for lay in LAYERS:
     bodies = [b for p, b in RES[("B", lay)]["calls"] if p == "extract"]
     ch = next((b.get("structure_chain") for b in bodies if WORDS[lay][2] + " 기준" in b["chunk"]), None)
     tail = [x for x in ch or [] if x.get("role")]                     # 맨 위는 시트(역할 없음 — 시트가 대상이 아닐 때)
-    _ob3.append((lay, ch and ch[0]["text"] == "TW 사양" and [x["role"] for x in tail] == ["유닛", "사양 묶음"]
+    _ob3.append((lay, ch and ch[0]["text"] == "TW 사양" and [x["role"] for x in tail] == ["대상", "묶음"]
                  and tail[0].get("name") == "언와인더 unit" and tail[1]["text"] == "2) 지정사양", f"{lay}: {ch}"))
 show("ⓑ 추출 입력에 구조 사슬(그 청크 위의 제목 줄 — 역할 · 글자 · 대상 · 위에서 아래로) (층 둘)",
      all(o for _l, o, _d in _ob3), " ‖ ".join(d for _l, _o, d in _ob3))
@@ -388,7 +388,7 @@ def _drive(argv, answers, wait=25):
 
 GATE = ("설비 사양", ["설비 사양", "공급부", "속도 기준은 50이다.", "적층부", "하중 기준은 3이다."])
 GATE_ST = [{"text": "설비 사양", "depth": 1, "role": "주제"}, {"text": "공급부", "depth": 2, "role": "주제"},
-           {"text": "적층부", "depth": 2, "role": "유닛", "name": "적층부", "category": "Unit"}]
+           {"text": "적층부", "depth": 2, "role": "대상", "name": "적층부", "category": "Unit"}]
 _made = []
 
 
@@ -435,12 +435,13 @@ _b_att = _att_of("B119GATE", "속도")
 with contextlib.redirect_stdout(io.StringIO()):
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
-_out, _sent = _drive(_argv + ["--step"], [b"c\n", "2 유닛\n".encode(), b"c\n"] + [b"c\n"] * 12)
+# 기대 변경(B124 ③ — 관문 명령 「<번호> <카테고리>」)
+_out, _sent = _drive(_argv + ["--step"], [b"c\n", "2 Unit\n".encode(), b"c\n"] + [b"c\n"] * 12)
 _fx = ST.fixes_of("B119GATE")
 _a_att = _att_of("B119GATE", "속도")
-show("ⓒ `--step` 구조 표에서 「2 유닛」 — 등록 단 기록(역할 · 줄 글자 이름 · 같은 역할의 카테고리) · 다시 파싱(LLM 0) · 그 아래 개체가 "
+show("ⓒ `--step` 구조 표에서 「2 Unit」 — 등록 단 기록(역할 · 줄 글자 이름 · 같은 역할의 카테고리) · 다시 파싱(LLM 0) · 그 아래 개체가 "
      "그 유닛에 붙는다(고치기 전에는 공정)",
-     "고침 — 설비 사양 2행 → 유닛 '공급부'(Unit)" in _out and _fx.get(GATE[0], {}).get(2, {}).get("role") == "유닛"
+     "고침 — 설비 사양 2행 → 대상 '공급부'(Unit)" in _out and _fx.get(GATE[0], {}).get(2, {}).get("role") == "대상"
      and "노칭::공급부" in _a_att and "노칭::공급부" not in _b_att and "노칭" in _b_att and "[성공]" in _out,
      f"고치기 전 {_b_att} · 고친 뒤 {_a_att} · 기록 {_fx}")
 _rb = _run("rebuild", "--yes", "--allow-mock")
@@ -455,8 +456,8 @@ _wp = _mock_doc("B119WEAK", *_rows_of("C", "process"), [{"text": t, "depth": d, 
 _wout = _run("ingest-file", str(_wp), "--doc-type", "b119_process", "--allow-mock", "--coord", "노칭", "--sheets", "1:prose")
 _reg = store.read(store.DOC_REGISTRY, {}).get("B119WEAK") or {}
 _sum = _run("show", "summary")
-show("ⓒ 약한 구조 신호(설비 · 유닛 0) — 화면에 크게 · 비대화형은 진행하고 인입 기록 · `show summary`에 남는다",
-     "[약한 구조] 시트 '포장 사양' — 설비 · 유닛 0(제목 2)" in _wout and "[성공]" in _wout
+show("ⓒ 약한 구조 신호(대상 0) — 화면에 크게 · 비대화형은 진행하고 인입 기록 · `show summary`에 남는다",
+     "[약한 구조] 시트 '포장 사양' — 대상 0(제목 2)" in _wout and "[성공]" in _wout
      and (_reg.get("structure") or {}).get("약한", {}).get("포장 사양")
      and re.search(r"약한 구조\s+문서 1 · 시트 1", _sum),
      " / ".join(ln.strip() for ln in (_wout + _sum).splitlines() if "약한 구조" in ln)[:300])
@@ -484,7 +485,7 @@ for cells in _vrows:
     full_b = f"{e['belongs_to']}(사슬)"
     # 기대 변경(B123 ② — 붙은 자리 칸 = 관계 상대(방식))
     full_a = f"{e['attached'][0]['rel']} {e['attached'][0]['other']}({e['attached'][0]['path']})"
-    _ok5.append((cells[3].strip() == "사양 묶음" and full_b.startswith(cells[9].strip().rstrip("…"))
+    _ok5.append((cells[3].strip() == "묶음" and full_b.startswith(cells[9].strip().rstrip("…"))
                  and full_a.startswith(cells[10].strip().rstrip("…")) and len(cells[10].strip()) > 3,
                  [c.strip() for c in cells[3:11]], full_b, full_a))
 show("⑤ 값 표 — 구조 칸(가장 가까운 제목 줄의 역할) · 소속(출처) 칸 = 대장 belongs_to(사슬) · 붙은 자리 칸 = 대장 attached (산문 · -v)",

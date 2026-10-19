@@ -271,7 +271,7 @@ WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
          "link": ("core/query/query.py", "_link_llm"),
          "answer": ("cli/query.py", "def generate"),
          "outline": ("core/build/outline.py", "_ask(rest, cfg) if live"),         # ⑪ (B115 ① · 구조 없는 제목만 — B119 ① 기대 변경)
-         "reinforce": ("core/build/reinforce.py", "_ask(payload) if live")}       # ⑫ (B115 ④)
+         "reinforce": ("core/build/reinforce.py", "_ask(payload, cfg) if live")}       # ⑫ (B115 ④ · 층 힌트 B124 ③)
 for key, (where, needle) in WIRED.items():
     src = (ROOT / where).read_text(encoding="utf-8")
     show(f"{llm.POINTS[key]} — 실호출 갈래가 {where}에 있다", needle in src)

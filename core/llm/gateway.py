@@ -469,6 +469,18 @@ def prompt(name):
         return f.read()
 
 
+def prompt_for(name, cfgs, key):
+    """지시문 + **층 힌트**(B124 ③) — 층 config `prompts.<key>`(구조 `structure` · 추출 `extract` · 보강 `reinforce` · 판정
+    `judge`)를 층마다 `## 층 어휘 — <층>` 절로 덧붙인다. **모든 LLM 자리가 이 함수 하나**다(지시문 파일에는 층 어휘 0 —
+    층의 말은 config가 소유한다 · 문서 1 B9). 힌트가 없는 층은 덧붙이지 않는다(지시문 그대로)."""
+    out = prompt(name)
+    for lay, cfg in sorted((cfgs or {}).items()):
+        hint = ((cfg or {}).get("prompts") or {}).get(key)
+        if isinstance(hint, str) and hint.strip():
+            out += f"\n\n## 층 어휘 — {lay}\n{hint.strip()}"
+    return out
+
+
 def has_prompt(name):
     """지시문 파일이 있는가 — **묻기만 하고 실패를 기록하지 않는다.**
 

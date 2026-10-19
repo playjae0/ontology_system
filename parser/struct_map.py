@@ -161,6 +161,21 @@ NUMBER_PREFIX = re.compile(r"^(?:\(\d{1,3}\)|\d{1,3}\)|\d+(?:\.\d+)*[.)]?(?=\s)|
                            r"(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVX]{1,4})\.|[A-Z]\.|[가나다라마바사아자차카타파하]\.|[①-⑳])\s*")
 
 
+#: **번호 꼴**(B124 ① — 문서 구조 입력의 형태 힌트 · 길이와 무관 · 판정 아님) — `(꼴 표기, 정규식)` · 앞의 것이 먼저(1.1 → 1.)
+NUMBER_SHAPES = (("(1)", re.compile(r"^\(\d{1,3}\)")), ("1)", re.compile(r"^\d{1,3}\)")),
+                 ("1.1", re.compile(r"^\d+\.\d+")), ("1.", re.compile(r"^\d{1,3}\.(?!\d)")),
+                 ("제1장", re.compile(r"^제\s*\d+\s*[장절조편관]")),
+                 ("Ⅰ.", re.compile(r"^(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVX]{1,4})\.")), ("A.", re.compile(r"^[A-Z]\.\s")),
+                 ("가.", re.compile(r"^[가나다라마바사아자차카타파하]\.")), ("가)", re.compile(r"^[가나다라마바사아자차카타파하]\)")),
+                 ("①", re.compile(r"^[①-⑳]")), ("-", re.compile(r"^[-•·▪※]\s")))
+
+
+def number_shape(text):
+    """줄 머리의 번호 꼴 표기(`1)` · `가.` · `①` …) 또는 None — 길이와 무관(긴 목록 항목도 같은 꼴의 형제다)."""
+    t = (text or "").strip()
+    return next((lab for lab, rx in NUMBER_SHAPES if rx.match(t)), None)
+
+
 def strip_number(text):
     """줄 글자에서 번호 머리를 뗀 이름 — 번호가 없으면 그대로(앞뒤 공백만)."""
     t = (text or "").strip()

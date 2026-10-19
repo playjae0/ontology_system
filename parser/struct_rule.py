@@ -191,7 +191,7 @@ def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
     구조가 섰으면 **설비 · 유닛 · 사양 묶음 줄 아래에서는 반드시 자른다**(같은 유닛 아래 청크가 전부 경로에 그 유닛을 든다).
     `base_meta`는 포맷의 표시(엑셀의 `content_column` 등)다. `sheet`면 이름표 0행이 시트 이름이다(Word는 없다).
     """
-    path, decl, why, info = "heading", None, None, {}
+    path, decl, why, info, st = "heading", None, None, {}, None
     if structure_fn is not None:
         st = structure_fn(name, labels(name, lines, rows, marks_fn() if marks_fn else {}, sheet))
         if st is not None:
@@ -199,6 +199,10 @@ def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
             path = PATH_STRUCT
             if st.get("failed"):
                 why = f"구조 호출 실패 — 초안 {st['failed'][:120]}"
+    if info and (st or {}).get("chunks"):
+        # **구조가 낸 청크 구간**(B124 ② — 검사를 지난 것만) — 크기 · 단 규칙을 쓰지 않는다(폴백으로만)
+        fi = _chain_item(info[FRAME_ROW], name) if info.get(FRAME_ROW) else None
+        return range_chunks(name, lines, rows, info, st["chunks"], locator, sep, base_meta, fi)
     if not info and rule_fn is not None and not fixed_ok(rows):
         l2, r2, decl, why = _ask(rule_fn, name, sample_fn(), by_rule)
         if decl:
@@ -243,16 +247,22 @@ def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
 
 
 # ---------------------------------------------------------------- 문서 구조 (B119 ① — 시트마다 LLM이 무조건)
-#: 구조 역할 — **닫힌 다섯**(LLM 계약의 열거 · 줄의 쓰임을 말하는 시스템 어휘 — 층 어휘가 아니다 · D-201)
-ROLES = ("설비", "유닛", "사양 묶음", "항목", "주제")
+#: 구조 역할 — **닫힌 셋 · 층 중립**(B124 ③ — 줄의 쓰임만 말한다 · 무엇의 대상인가는 카테고리(층 목록)가 · 층의 말은 층 config
+#: `prompts.structure`가 지시문에 덧붙인다): 대상(그 아래 글이 그것의 일부 · 특성을 말한다) · 묶음(한 주인 아래 항목을 묶는
+#: 소제목) · 주제(무엇에 대한 글인지 · 대상 없음)
+ROLES = ("대상", "묶음", "주제")
 #: 대상(이름 · 카테고리)을 갖는 역할 — 그 밖의 역할은 대상이 없다
-TARGET_ROLES = ("설비", "유닛", "항목")
-#: 청크를 **반드시 그 아래에서** 자르는 역할 — 같은 유닛 아래 청크가 전부 경로에 그 유닛을 든다
-CUT_ROLES = ("설비", "유닛", "사양 묶음")
-#: 주인 줄(설비 · 유닛) — 약한 구조 신호 「설비 · 유닛 0」이 센다
-UNIT_ROLES = ("설비", "유닛")
+TARGET_ROLES = ("대상",)
+#: 청크를 **반드시 그 아래에서** 자르는 역할(구조가 청크 구간을 내지 않은 시트의 폴백 — B124 ②) — 같은 주인 아래 청크가
+#: 전부 경로에 그 주인을 든다
+CUT_ROLES = ("대상", "묶음")
+#: 주인 줄 — 약한 구조 신호 「대상 0」이 센다
+UNIT_ROLES = ("대상",)
 SIG_STRUCT = "구조"
 PATH_STRUCT = "structure"
+#: 구조가 낸 청크 구간이 크기 권장값(`struct_map.CHUNK_MAX_CHARS`)의 몇 배까지 그대로인가 — 넘는 구간만 형제 줄 앞에서 나눈다
+#: (B124 ② — 사내 손잡이 `structure_chunk_over` · 창작 기본값 · 자르는 자리의 값이라 구조 보존분에 싣지 않는다)
+CHUNK_OVER = 3
 #: 이름표의 0행 — 프레임(시트) 이름 그 자체(시트가 대상일 때의 역할 · 대상)
 FRAME_ROW = 0
 #: 사람이 고친 줄의 「제목 아님」
@@ -262,15 +272,20 @@ BODY = "본문"
 def labels(name, lines, rows, marks, sheet=True):
     """줄 이름표 — `[{row, text, marks, draft}]`(줄마다 · `sheet`면 0행 = 시트 이름). `draft`는 고정 규칙 초안의 단(0 = 제목 아님).
 
-    `marks[행]`은 어댑터가 채운 표시(굵게 · 들여쓰기n · 병합 · 다른 열 …) — 번호 꼴은 여기서 단다(포맷 전부 한 벌).
-    글 전체를 싣는다 — 보내는 쪽(core)이 앞 글자만 보내고 대상 이름은 전체 글자와 대조한다."""
+    `marks[행]`은 어댑터가 채운 표시(굵게 · 들여쓰기n · 병합 · 다른 열 …) — 번호 꼴(`struct_map.number_shape` — 길이와 무관)과
+    **빈 줄 자리**(바로 위에 빈 줄이 있었다 — 어댑터가 뺀 빈 행은 행 번호의 틈으로 남는다 · B124 ①)는 여기서 단다(포맷 전부 한 벌).
+    글 전체를 싣는다 — 보내는 쪽(core)이 줄당 상한까지 보내고 대상 이름은 전체 글자와 대조한다."""
     draft = {r["row"]: (r.get("level") or 0) for r in rows if r.get("heading")}
     out = [{"row": FRAME_ROW, "text": name, "marks": ["시트"], "draft": 0}] if sheet else []
+    prev = None
     for n, t in lines:
         mk = list(marks.get(n) or [])
-        hf = struct_map.heading_family(t)
-        if hf:
-            mk.append(f"번호{struct_map.FAMILY_LABEL.get(hf[0], hf[0])}")
+        shape = struct_map.number_shape(t)
+        if shape:
+            mk.append(f"번호{shape}")
+        if prev is not None and isinstance(n, int) and isinstance(prev, int) and n - prev > 1:
+            mk.append("빈 줄")
+        prev = n
         out.append({"row": n, "text": t, "marks": mk, "draft": draft.get(n, 0)})
     return out
 
@@ -354,6 +369,63 @@ def _cut_level(info, stats, pick, reason, oor):
                   + (f" · 평균 {avg}행" if avg is not None else "") + f") · 크기로는 레벨 {pick}"), oor
 
 
+def _chain_of(info, owner):
+    """주인 줄의 사슬 — 위에서 아래로의 제목 행(시트 0행 제외 · 주인이 시트거나 없으면 빈 목록)."""
+    out, cur = [], owner
+    while cur not in (None, FRAME_ROW) and cur in info and len(out) < 64:
+        out.append(cur)
+        cur = info[cur].get("parent")
+    return list(reversed(out))
+
+
+def range_chunks(name, lines, rows, info, ranges, locator, sep, base_meta, frame_info=None):
+    """**구조가 낸 청크 구간**으로 자른다(B124 ②) — 구간 하나가 청크 하나 · 경로 · 사슬 = 주인 줄의 사슬(주인 줄 글은 본문에서
+    빼고 경로에 둔다 — 지금 분할과 같은 꼴) · 크기 권장값의 `CHUNK_OVER`배를 넘는 구간만 형제 줄 앞에서 나눈다(`_sibling_parts` — 조각의
+    주인 · 사슬은 그 구간의 것 그대로 · `meta.range_split`). 같은 구간이면 같은 청크다(LLM 0 — 재생)."""
+    text_of = dict(lines)
+    meta0 = {"split_path": PATH_STRUCT, "frame": name, **base_meta, "split_level": "구간"}
+    if frame_info:
+        meta0["structure_frame"] = frame_info
+    out = []
+    for g in ranges:
+        hs = _chain_of(info, g.get("owner_row"))
+        body = [(n, t) for n, t in lines if g["from_row"] <= n <= g["to_row"] and n not in hs]
+        if not body:
+            continue
+        section = sep.join(text_of[r].strip() for r in hs) or name
+        over = len("\n".join(t for _n, t in body)) > struct_map.CHUNK_MAX_CHARS * CHUNK_OVER
+        for part in (_sibling_parts(body, rows) if over else [body]):
+            meta = {**meta0, "section_path": section, "chunk_range": [g["from_row"], g["to_row"]],
+                    "structure": [_chain_item(info.get(r) or {}, text_of[r].strip(), r) for r in hs]}
+            if over:
+                meta["range_split"] = True
+            out.append({"source_locator": locator(part[0][0], part[-1][0]), "section": section,
+                        "text": "\n".join(t for _n, t in part), "meta": meta})
+    return out
+
+
+def _sibling_parts(body, rows):
+    """넘는 구간을 **형제 줄 앞에서만** 나눈다 — 그 구간의 가장 얕은 제목 단의 줄이 형제다 · 형제 덩어리를 권장값까지 이어 붙인다
+    (형제 하나의 중간에서는 끊지 않는다 · 글은 그대로 — 제목 줄도 본문에 남는다 · 주인은 그 구간의 주인 그대로)."""
+    level = {r["row"]: r["level"] for r in rows if r.get("heading")}
+    keep = {n for n, _t in body}
+    lv = min((level[n] for n in keep if n in level), default=None)
+    blocks, cur = [], []
+    for n, t in body:
+        if cur and lv is not None and level.get(n) == lv:
+            blocks.append(cur)
+            cur = []
+        cur.append((n, t))
+    blocks += [cur] if cur else []
+    out, acc = [], []
+    for b in blocks:
+        if acc and len("\n".join(t for _n, t in acc + b)) > struct_map.CHUNK_MAX_CHARS:
+            out.append(acc)
+            acc = []
+        acc = acc + b
+    return out + ([acc] if acc else [])
+
+
 def _chain_item(h, text, row=None):
     out = {"row": h.get("row", row), "text": text, "role": h.get("role")}
     if h.get("name") and h.get("category"):
@@ -392,6 +464,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
         if st is not None:
             tally.setdefault("프레임", {})[frame] = {
                 "labels": labs, "headings": st.get("headings") or [], "dropped": st.get("dropped") or [],
-                "failed": st.get("failed"), "source": st.get("source"), "fixed": st.get("fixed", 0)}
+                "failed": st.get("failed"), "source": st.get("source"), "fixed": st.get("fixed", 0),
+                "chunks": st.get("chunks") or [], "chunks_dropped": st.get("chunks_dropped")}
         return st
     return fn

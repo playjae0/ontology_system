@@ -479,10 +479,7 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None):
     out = gateway.chat(
         # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
         # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
-        [{"role": "system",
-          "content": gateway.prompt("judge")
-          + ("\n\n## 층 어휘\n" + (cfg or {}).get("prompts", {}).get("judge", "")
-             if (cfg or {}).get("prompts", {}).get("judge") else "")},
+        [{"role": "system", "content": gateway.prompt_for("judge", {(cfg or {}).get("layer") or "-": cfg}, "judge")},
          {"role": "user", "content": json.dumps(body, ensure_ascii=False)}],
         json_schema=JUDGE_SCHEMA, point="judge")
     vtype = out.get("type")
