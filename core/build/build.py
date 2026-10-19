@@ -453,10 +453,33 @@ class Builder:
         return load_config(node["layer"])
 
     # ---------------------------------------------------------------- entity
+    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, chunk_text):
+        """판정 한 번 — `((분기, node_id, 점수, 판정 dict), 재생하지 못한 사유)`.
+
+        **판정 재생**(B106 ②) — 사전이 답하지 않은 값만 · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
+        좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `chunk_text`(산문)가 있으면 그 표기 앞뒤 글이 2차 판정의
+        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다."""
+        rp = why = None
+        if not dict_hits(canonical, category, self.layer, self.g, self.dict, polarity=polarity,
+                         parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
+            from core.build import replay as _rp
+            rp, why = _rp.pick(self, at, surface, category, canonical)
+        if rp is not None:
+            return rp, why
+        sent = None
+        if chunk_text:
+            from core.build.extract_ctx import around
+            sent = around(chunk_text, surface, _matcher.JUDGE_CONTEXT_CHARS)
+        return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
+                       parent=parent_canonical, sentence=sent), why
+
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
-                       belongs=None, at=None):
+                       belongs=None, at=None, chunk_text=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시).
+
+        `chunk_text`(그 표기가 나온 청크의 원문 — 산문이 준다)가 있으면 1차가 불확실일 때 그 앞뒤 글로 2차를 묻는다
+        (B123 ③ — `matcher.second` · 표의 행은 청크가 아니라 주지 않는다).
 
         `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
         그 노드에서 **상속**한다(A11-9 ① — 이중 표기 방지). 그렇지 않을 때만
@@ -503,17 +526,8 @@ class Builder:
             return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey])
         from core.llm import gateway as _llm
         _u0 = _llm.usage_total()
-        # **판정 재생**(B106 ②) — 사전이 답하지 않은 값만 · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를
-        # 바꿔 끼우고 좁히기 + LLM을 건너뛴다. 그 뒤(노드 · 사전 · 큐 · 대장)는 아래 그대로다.
-        rp = why = None
-        if not dict_hits(canonical, category, self.layer, self.g, self.dict, polarity=polarity,
-                         parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
-            from core.build import replay as _rp
-            rp, why = _rp.pick(self, at, surface, category, canonical)
-        verdict, nid, conf, v = rp or resolve(canonical, category, self.layer,
-                                              self.g, self.dict, scoped=scoped,
-                                              polarity=polarity,
-                                              parent=parent_canonical)
+        (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped, polarity,
+                                                   parent_canonical, at, chunk_text)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
@@ -527,6 +541,7 @@ class Builder:
                      # 판정 재생의 키 몫(B106 ②) — 대장 행이 옮긴다
                      "category": category, "scope": parent_canonical if scoped_category else None,
                      "replay": why,                       # 재생하지 못한 사유 — 재판정 행의 표지(B106 ②)
+                     "judge2": v.get("second"),           # 2차 판정 — 단계 · 근거 문장 자리(B123 ③ · 불렀을 때만)
                      "llm": {"calls": _u1["calls"] - _u0["calls"],
                              "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
                              "out_tokens": (_u1["completion_tokens"]

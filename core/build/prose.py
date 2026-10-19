@@ -103,7 +103,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                                     parent_canonical=e_parent,
                                     anchor_polarity=e_pol,
                                     coord_surface=src.get("process_ref"), belongs=bel,
-                                    at=(_loc or cid, e.get("category")))       # 판정 재생의 자리 (B106 ②)
+                                    at=(_loc or cid, e.get("category")),       # 판정 재생의 자리 (B106 ②)
+                                    chunk_text=src.get("text"))                # 2차 판정의 문장 (B123 ③)
         last = eb.last or {}
         row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
                            role="entity", surface=e["surface"],
@@ -122,7 +123,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc):
                            belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
                            belongs_to=(bel or {}).get("name"),
                            category=last.get("category"), scope=last.get("scope"),
-                           replay=last.get("replay"))
+                           replay=last.get("replay"), judge2=last.get("judge2"))
         if nid:
             values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})

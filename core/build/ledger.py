@@ -33,7 +33,8 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "evidence",                      # 연결 보강의 근거 문장 — 청크 원문 그대로(B115 ④ · 역할 link)
          "proposal",                      # 연결 보강 버림의 제안 `{target, rel}` — 재생이 지금 config로 게이트를 다시 돈다(B118 ⑤)
          "belongs_to",                    # 산문 개체가 낸 소속 이름(B119 ⑤ — 화면의 소속(출처) 칸 · 출처는 `from`)
-         "value")                         # 산문 개체의 값 `{attr, value, verdict}`(B120 ① — `core/build/values.land`가 단다)
+         "value",                         # 산문 개체의 값 `{attr, value, verdict}`(B120 ① — `core/build/values.land`가 단다)
+         "judge2")                        # 2차 판정 `{was, now, span}`(B123 ③ — 1차 불확실 · 청크 원문의 근거 문장 자리)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -73,7 +74,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
-        blank=None, evidence=None, proposal=None, belongs_to=None):
+        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -108,7 +109,9 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 연결 보강 버림의 제안(B118 ⑤ — 대상 이름 · 관계) · 재생이 LLM 0으로 게이트를 다시 돈다
                  ("proposal", proposal),
                  # 산문 개체가 낸 소속 이름(B119 ⑤ — 소속(출처) 칸의 재료)
-                 ("belongs_to", belongs_to)):
+                 ("belongs_to", belongs_to),
+                 # 2차 판정(B123 ③ — 1차 불확실 · 단계 · 근거 문장 자리 · 불렀을 때만)
+                 ("judge2", judge2)):
         if v is not None:
             r[k] = v
     return r
@@ -125,7 +128,7 @@ def judged(last, *, locator, field, surface, layer, target):
                 queue_kind=last.get("queue_kind"), narrow=last.get("narrow"),
                 emb_top=last.get("emb_top"), nearest=last.get("nearest"), same_doc=last.get("same_doc"),
                 target=target, category=last.get("category"), scope=last.get("scope"),
-                replay=last.get("replay"))
+                replay=last.get("replay"), judge2=last.get("judge2"))
 
 
 def put_row(doc_id, new, old=None):

@@ -476,6 +476,12 @@ def summary(lines, res, after, before=None):
             "가드 부딪힘": _cells(lines, "구조 · 다른 공정 가드")[0], "값": _cells(lines, "값(산문)")[:2]}
 
 
+def second_counts(rows):
+    """2차 판정(B123 ③) — `(부른 개체 행 n, 매칭으로 바뀐 m)` · 대장 행의 `judge2`에서(새 계산 0)."""
+    got = [r.get("judge2") for r in rows or [] if r.get("role") == "entity" and r.get("judge2")]
+    return len(got), sum(1 for j in got if j.get("now") == "match")
+
+
 def summary_text(doc_id, s):
     """`<doc_id> — 개체 n → 새 노드 a · 기존 연결 b · 보류 c(사유별) · 다른 공정 d · 빈칸 e | 엣지 +k | 그래프 노드 N → N′ |
     유닛 이하 비율 r%` — 칸이 0이면 그 칸을 뺀다(불확실 · 그 밖은 0이 아닐 때만 — 합 = 개체)."""
@@ -489,7 +495,8 @@ def summary_text(doc_id, s):
              else "—(소속을 낸 개체 0)")
     return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
             f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else "")
-            + _value_text(s.get("값")))
+            + _value_text(s.get("값"))
+            + (f" | 2차 {s['2차'][0]:,} → 바뀜 {s['2차'][1]:,}" if (s.get("2차") or (0,))[0] else ""))
 
 
 def _value_text(v):
@@ -531,7 +538,8 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     lines += reinforce_line(rows)
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
     after = layer_counts(graphs)
-    return {"doc_id": doc_id, "줄": lines, "요약": summary(lines, res, after, (run or {}).get("층 전")),
+    return {"doc_id": doc_id, "줄": lines,
+            "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "2차": second_counts(rows)},
             "그래프": graph_lines(res, after, (run or {}).get("층 전")),
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),

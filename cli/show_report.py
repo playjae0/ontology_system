@@ -36,6 +36,11 @@ def cmd_report(args):
     rows = data.get("rows") or []
     if "--trace" in args:
         return _trace(doc, rows)
+    if "--md" in args:                           # 잘리지 않는 보고서 — ⑤파생 export/ (B123 ①)
+        from cli import report_md
+        print(f"■ {doc} 인입 보고서 — 칸 전부(잘림 0) · 요약 · 맞춤 · 카테고리 쌍별 연결 · 추출 청크 · 판정 값")
+        print(f"  보고서 {paths.show(report_md.write(doc, data))}")
+        return 0
     if as_json:
         print(json.dumps({"doc_id": doc, "rows": rows,
                           "summary": ledger.summary(rows)},
