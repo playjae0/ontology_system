@@ -93,6 +93,10 @@ KNOBS = {
                            "연결 보강(LLM 지점 ⑫) 실행당 호출 상한 — 재연결 뒤에도 엣지 없는 · 공정에만 붙은 개체를 닫힌 "
                            "후보 안에서 잇는 판정(0이면 끔 · 넘는 대상은 「상한 밖 n」 줄 — 다음 인입 · 재구축이 잇는다)",
                            "인입 마무리 「연결 보강 — 대상 n → 붙음 …」 줄 · python run.py show report <doc_id>"),
+    "structure_mode": ("core.build.structure", ("MODE",), "choice:rules|edit|llm",
+                       "문서 구조 방식 — rules(규칙 나무 + 크기 구간 · 구조 LLM 0) · edit(기본 — 규칙 나무를 주고 고칠 곳만 이유와 함께) · "
+                       "llm(LLM이 나무 · 구간을 새로) · 규칙 나무가 빈 시트는 edit여도 llm",
+                       "python run.py ingest-file <문서> --split-only --step — 방식을 바꿔 같은 문서를 싸게 비교"),
     "structure_line_chars": ("core.build.structure", ("LINE_CHARS",), "int",
                              "문서 구조(지점 ⑪) 입력의 줄당 글자 상한 — 줄 전체가 원칙이고 이것을 넘는 줄만 자른다",
                              "인입 구조 표 · python run.py show report <doc_id> --md"),

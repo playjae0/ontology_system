@@ -199,6 +199,10 @@ def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
             path = PATH_STRUCT
             if st.get("failed"):
                 why = f"구조 호출 실패 — 초안 {st['failed'][:120]}"
+    joins = (st or {}).get("joins") or []
+    rows0 = rows
+    if joins and info:
+        rows = _demote_joins(rows, joins)            # 붙임 구간 안쪽 제목은 자르는 자리가 아니다 (B126 ②)
     if info and (st or {}).get("chunks"):
         # **구조가 낸 청크 구간**(B124 ② — 검사를 지난 것만) — 크기 · 단 규칙을 쓰지 않는다(폴백으로만)
         fi = _chain_item(info[FRAME_ROW], name) if info.get(FRAME_ROW) else None
@@ -226,13 +230,16 @@ def frame_chunks(name, lines, rows, locator, sep, base_meta, *, rule_fn=None,
     smap = {"rows": rows}
     stats = struct_map.level_stats(smap, lines)
     pick, reason, oor = struct_map.choose_level(stats)
-    if info:
+    if info and (st or {}).get("mode") != "edit":       # edit은 고친 나무 위의 크기 구간 그대로(B118 — B126 ②)
         pick, reason, oor = _cut_level(info, stats, pick, reason, oor)
     smap.update({"레벨_분포": stats, "분할_레벨": pick,
                  "분할_레벨_사유": reason, "분할_레벨_구간밖": oor})
     text_of = dict(lines)
     out = []
-    for c in struct_map.split(smap, lines, locator, sep, heads=bool(info)):
+    keep = {n for j in joins for n, _t in lines if j["from_row"] <= n <= j["to_row"]} if joins else None
+    for c in struct_map.split(smap, lines, locator, sep, heads=bool(info), keep_rows=keep,
+                              keep_cap=struct_map.CHUNK_MAX_CHARS * CHUNK_OVER if keep else None,
+                              keep_split=lambda body: _sibling_parts(body, rows0)):
         hs = c.pop("_heads", None)
         meta = {**(c.get("meta") or {}), "split_path": path, "frame": name, **base_meta,
                 "split_level": pick, "section_path": c.get("section") or name}
@@ -357,6 +364,12 @@ def structure_rows(lines, st):
     return rows, info
 
 
+def _demote_joins(rows, joins):
+    """붙임(`[{from_row, to_row}]`) — 구간 첫 줄 뒤의 제목은 자르는 자리에서 뺀다(글은 그 청크 본문에 남는다)."""
+    inner = {r["row"] for r in rows for j in joins if j["from_row"] < r["row"] <= j["to_row"]}
+    return [{**r, "heading": False, "level": 0} if r["row"] in inner and r.get("heading") else r for r in rows]
+
+
 def _cut_level(info, stats, pick, reason, oor):
     """구조가 선 프레임의 분할 레벨 — 크기로 고른 레벨과 **설비 · 유닛 · 사양 묶음 줄의 가장 깊은 단** 중 깊은 것."""
     need = max((v["depth"] for r, v in info.items() if r != FRAME_ROW and v.get("role") in CUT_ROLES), default=0)
@@ -435,12 +448,14 @@ def _chain_item(h, text, row=None):
     return out
 
 
-def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, skip=()):
+def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, skip=(), confirmed=None, ctx=None):
     """어댑터에 건넬 **구조 훅** — 보존분(같은 원본 · 같은 이름표 · 같은 판)이면 그것(호출 0) · 아니면 `ask` 한 번.
 
     `ask(doc_id, frame, labels)` → 검사가 끝난 구조 `{headings: [{row, parent, role, name, category}], dropped, calls,
     failed?}` 또는 None(판정 없음 — mock 힌트 없음). `ask.key()`가 판(지시문 · config)을 말한다 · `skip`(`ref` 시트)은
-    부르지 않는다. 사람의 고침(`fixes[frame]` — 등록 단)은 그 위에 덮는다. 실패한 판정은 보존하지 않는다(다음 인입이 다시 묻는다)."""
+    부르지 않는다. 사람의 고침(`fixes[frame]` — 등록 단)은 그 위에 덮는다. 실패한 판정은 보존하지 않는다(다음 인입이 다시 묻는다).
+    **확정 시트**(`confirmed[frame]` — 구조 확인에서 사람이 확정 · B126 ③)는 같은 이름표면 그것이 이긴다(LLM 0) · `rules` 방식은
+    판정 없음(고정 규칙 그대로 — 셈에는 규칙 나무를 남겨 구조 확인이 같은 꼴로 보인다) · `ctx`(문서 종류 · 문서 좌표 · 다른 시트 이름)는 받는 판정에만."""
     kept, fixes = kept or {}, fixes or {}
     tally = tally if tally is not None else {}
     key = ask.key() if callable(getattr(ask, "key", None)) else None
@@ -450,21 +465,34 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
             return None
         h = labels_hash(labs)
         hit = kept.get(frame)
-        if hit and hit.get("labels") == h and hit.get("key") == key:
+        conf = (confirmed or {}).get(frame)
+        if conf and conf.get("labels") == h:
+            tally["확정"] = tally.get("확정", 0) + 1
+            st = {**conf, "source": "confirmed", "calls": 0, "confirmed": True}
+        elif hit and hit.get("labels") == h and hit.get("key") == key:
             tally["재사용"] = tally.get("재사용", 0) + 1
             st = hit
         else:
-            st = ask(doc_id, frame, labs)
-            if st is not None:
+            st = ask(doc_id, frame, labs, ctx=ctx) if getattr(ask, "takes_ctx", False) else ask(doc_id, frame, labs)
+            if st is not None and not st.get("skip"):
                 tally["호출"] = tally.get("호출", 0) + int(st.get("calls") or 0)
                 st = {**st, "labels": h, "key": key}
                 if made is not None and not st.get("failed"):
                     made[frame] = st
-        st = apply_fixes(st, fixes.get(frame), labs)
-        if st is not None:
+        rules = st is not None and (st.get("skip") or st.get("mode") == "rules")
+        shown = {"headings": draft_structure(labs), "mode": "rules", "confirmed": (st or {}).get("confirmed")} if rules else None
+        st = apply_fixes(None if rules else st, fixes.get(frame), labs)   # rules — 고정 규칙 그대로(사람의 고침만 덮는다)
+        if st is not None and rules:
+            st["mode"] = "rules"
+        if st is not None or shown:
+            v = st or shown
             tally.setdefault("프레임", {})[frame] = {
-                "labels": labs, "headings": st.get("headings") or [], "dropped": st.get("dropped") or [],
-                "failed": st.get("failed"), "source": st.get("source"), "fixed": st.get("fixed", 0),
-                "chunks": st.get("chunks") or [], "chunks_dropped": st.get("chunks_dropped")}
+                "labels": labs, "headings": v.get("headings") or [], "dropped": v.get("dropped") or [],
+                "failed": v.get("failed"), "source": v.get("source"), "fixed": v.get("fixed", 0),
+                "chunks": v.get("chunks") or [], "chunks_dropped": v.get("chunks_dropped"),
+                "mode": v.get("mode") or "llm", "edits": v.get("edits") or [], "edits_dropped": v.get("edits_dropped") or [],
+                "joins": v.get("joins") or [], "hints": v.get("hints") or [], "answer": v.get("answer"),
+                "confirmed": bool(v.get("confirmed")), "prompt_version": v.get("prompt_version")}
+            tally.setdefault("방식", {})[frame] = v.get("mode") or "llm"
         return st
     return fn

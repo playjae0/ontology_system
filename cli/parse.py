@@ -283,6 +283,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     with _screen.ticker("파싱(구조·그림 요약·좌표)"):
         res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(layers),
                              structure_fixes=structure_mod.fixes_of(doc_id),     # 사람의 구조 고침 (B119 ③)
+                             structure_confirmed=structure_mod.confirmed_of(doc_id),   # 구조 확인의 확정 시트 (B126 ③)
                              layer=coord_layer(),
                              coord_notice=_notice, coord_cap=coord_cap,
                              progress=_progress, sheet_roles=sheet_roles,

@@ -51,6 +51,8 @@ from core.state.world import World                      # noqa: E402
 from parser import pipeline, struct_map, tagger as TG, tuning   # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
 
+ST.MODE = "llm"          # 기대 변경(B126 ① — 이 시험은 llm 방식(B124)을 잰다 · 기본은 edit · edit는 test_g6_split)
+
 TMP = Path(tempfile.mkdtemp(prefix="b119_"))
 HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
 LAYERS = ("process", "quality")

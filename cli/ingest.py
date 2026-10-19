@@ -4,7 +4,8 @@
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images]
                                   [--step] [--step-every N] [--narrow embed|overlap]
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
-                                  [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [-v] [--no-color]
+                                  [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [--split-only]
+                                  [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--narrow embed|overlap] [--progress-every N] [--sheets auto] [--revise] [--no-replay]
                                   (경로를 생략하면 ⓪원본 자리 `<상태>/raw/` 전체)
@@ -414,13 +415,27 @@ def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step):
     return res, out
 
 
+SPLIT_ONLY = "구조까지"
+
+
+def _split_only(res, sel, row):
+    """**구조까지만**(B126 ④) — md를 쓰고 멈춘다(추출 0 · 그래프 쓰기 0 · 확정한 시트는 기록 — 다음 인입이 재생)."""
+    from cli import split_report as SR
+    from core import paths
+    md = SR.write_md(sel["doc_id"], res.report, res.envelope)
+    print(f"   구조까지 — 추출 0 · 그래프 쓰기 0 · md {paths.show(md) if md else '없음(구조 없음 — 고정 규칙 그대로)'}")
+    row.update(status=SPLIT_ONLY, reason="--split-only — 구조 확인까지", split_md=str(md) if md else None)
+    return row
+
+
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
                 no_images=False, preflight=None, coord=None, revise=False,
-                allow_duplicate=False):
+                allow_duplicate=False, split_only=False):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
-    던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다."""
+    던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다. `split_only`(B126 ④)면 파싱 · 좌표 · 구조 확인까지만
+    (추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`)."""
     try:
         sel = select(doc, doc_type, adapter_paths)
     except MissingDependency as e:
@@ -455,6 +470,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         res, out = _parse_doc(doc, sel, row, coord_cap, _roles, no_images, _dc, step)
         if res is None:
             return row
+        if split_only:
+            return _split_only(res, sel, row)
         if _step_stops(res, sel, row, ask=step):
             return row
         _u0 = gateway.usage_total()["calls"]
@@ -627,6 +644,8 @@ def main(argv):
     if dry:
         args.remove("--dry-run")
     step = "--step" in args
+    split_only = "--split-only" in args               # 구조까지만 (B126 ④)
+    args = [a for a in args if a != "--split-only"]
     if step:
         args.remove("--step")
     # **판정 안에서 멈추는 자리**(B75 ③ⓒ) — `--step`과 독립이고 같이 줄 수 있다.
@@ -699,6 +718,8 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
+        if split_only:
+            raise SystemExit("[투입] --split-only는 ingest-file 하나에만 준다 — 문서마다 구조를 보고 비교한다")  # [사용법]
         if coord_spec is not None:
             raise SystemExit("[투입] --coord는 ingest-file 하나에만 준다 — 문서마다 공정이 다르다 "  # [사용법]
                              "(폴더는 기록 · 파일명 제안으로 정한다)")
@@ -715,9 +736,9 @@ def main(argv):
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,
                             sheets=sheets_spec, no_images=no_img, coord=coord_spec,
-                            revise=revise)]
+                            revise=revise, split_only=split_only)]
         print(summary(rows))
-    return 0 if all(r["status"] in (OK, "선택만") for r in rows) else 1
+    return 0 if all(r["status"] in (OK, "선택만", SPLIT_ONLY) for r in rows) else 1
 
 
 # **일괄 투입은 `cli/ingest_batch.py`로 갔다**(B106 ① — §7 파일 상한 · 재구축이 같은 고리를 쓴다) —

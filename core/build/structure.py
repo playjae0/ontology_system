@@ -38,6 +38,10 @@ LINE_CHARS = 300
 #: 한 호출에 싣는 양(어림 토큰 — 줄 JSON 글자 수 / 2) — 넘으면 나눠 부르고 뒤 묶음에 열린 제목을 싣는다(사내 손잡이
 #: `structure_call_tokens` · 기본값은 RFQ 시트 한 장이 한 번에 드는 크기 · 창작 기본값)
 CALL_TOKENS = 40000
+#: **구조 방식**(B126 ① — 사내 손잡이 `structure_mode`): `rules` 규칙 나무 + 크기 구간(구조 LLM 0) · **`edit`(기본)** 규칙 나무를
+#: 주고 고칠 곳만 이유와 함께 · `llm` LLM이 나무 · 구간을 새로(B124 방식). 규칙 나무가 빈 시트는 `edit`여도 그 시트만 `llm`.
+MODE = "edit"
+MODES = ("rules", "edit", "llm")
 
 SCHEMA = {
     "type": "object",
@@ -86,7 +90,8 @@ def key(cfgs):
     from core.build.extract import prompt_version
     from core.state import config_scope
     return {"prompt_version": prompt_version(PROMPT),
-            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items()))}
+            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items())),
+            "mode": MODE}                                    # 방식을 바꾸면 다시 묻는다 (B126 ①)
 
 
 # ---------------------------------------------------------------- 실호출
@@ -116,14 +121,14 @@ def _size_hint():
     return struct_map.CHUNK_MAX_CHARS
 
 
-def ask_lines(frame, lines, cats, open_=(), form=None, cfgs=None):
+def ask_lines(frame, lines, cats, open_=(), form=None, cfgs=None, hints=None):
     """지점 ⑪(태그 `structure`) 한 호출 — `(제목 [{row, parent, role, name, category}], 청크 구간 [{from_row, to_row, owner_row}])`.
     지시문 + 층 힌트(`prompts.structure` — `gateway.prompt_for` 한 함수 · B124 ③)."""
     out = gateway.chat(
         [{"role": "system", "content": gateway.prompt_for(PROMPT, cfgs or {}, "structure")},
          {"role": "user", "content": json.dumps(
              {"categories": cats, "frame": frame, "open": list(open_), "form": form or {},
-              "size_hint": _size_hint(), "lines": lines},
+              "size_hint": _size_hint(), "lines": lines, **({"hints": list(hints)} if hints else {})},
              ensure_ascii=False)}],
         json_schema=SCHEMA, point="structure")
     return ([h for h in (out or {}).get("headings") or [] if isinstance(h, dict)],
@@ -153,7 +158,7 @@ def _batches(labs):
     return out + ([cur] if cur else [])
 
 
-def _live(doc_id, frame, labs, cats, cfgs=None):
+def _live(doc_id, frame, labs, cats, cfgs=None, hints=None):
     """묶음마다 한 호출 — `(답, 청크 구간, 호출 수, 실패 사유 또는 None)` · 형태 요약은 시트 전체로 한 번 센다."""
     by_row = {x["row"]: x for x in labs}
     form = form_summary(labs)
@@ -163,7 +168,7 @@ def _live(doc_id, frame, labs, cats, cfgs=None):
         calls += 1
         try:
             hs, cs = ask_lines(frame, [_line(x) for x in batch], cats,
-                               _open(acc, by_row, batch[0]["row"]) if done else (), form, cfgs)
+                               _open(acc, by_row, batch[0]["row"]) if done else (), form, cfgs, hints)
         except gateway.GatewayError as e:
             store.append_defect(f"{doc_id}: 문서 구조 호출 실패 — 시트 '{frame}' {done + 1}~{done + len(batch)}줄 — {e} → 초안")
             return answers, [], calls, f"{type(e).__name__}: {str(e)[:120]}"
@@ -308,11 +313,24 @@ def structurer(layers=None):
     cats = categories(cfgs)
     live = not gateway.use_mock()
 
-    def fn(doc_id, frame, labs):
+    def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None):
         from core.build.extract import prompt_version
+        from parser.struct_rule import draft_structure
+        m = mode or MODE
+        if m == "rules":                            # 규칙 나무 + 크기 구간(B118) — 구조 LLM 0 · 방식만 남긴다
+            return {"skip": True, "mode": "rules"}
+        draft = draft_structure(labs)
+        if m == "edit" and not draft:
+            m = "llm"                               # 규칙 나무가 빈 시트 — 그 시트만 llm (B126 ①)
+        if m == "edit" and not live:
+            from core.build import structure_edit as SE
+            if SE.hint_edit(doc_id, frame) is None:
+                m = "llm"                           # mock — 옛 꼴(나무 전체) 힌트는 llm 답으로 읽는다 · 힌트 없으면 판정 없음
+        if m == "edit":
+            return _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live)
         if live:
             gateway.require(TAG)                    # 부르기 직전의 관문(설정 없음 = 명시적 실패 · 조립은 막지 않는다)
-            answers, chunks, calls, failed = _live(doc_id, frame, labs, cats, cfgs)
+            answers, chunks, calls, failed = _live(doc_id, frame, labs, cats, cfgs, hints)
             source = "live"
         else:
             got = hint_answers(doc_id, frame, labs)
@@ -327,11 +345,89 @@ def structurer(layers=None):
         ranges, why = check_chunks(doc_id, frame, labs, heads, chunks)
         _LOG.info("문서 구조 %s · %s — 제목 %d · 버림 %d · 구간 %s · 호출 %d%s", doc_id, frame, len(heads), len(dropped),
                   len(ranges) if ranges else (f"버림({why})" if why else 0), calls, f" · 실패 {failed}" if failed else "")
-        return {"headings": heads, "dropped": dropped, "calls": calls, "source": source,
+        return {"headings": heads, "dropped": dropped, "calls": calls, "source": source, "mode": "llm",
                 "prompt_version": prompt_version(PROMPT), **({"chunks": ranges} if ranges else {}),
-                **({"chunks_dropped": why} if why else {}), **({"failed": failed} if failed else {})}
+                **({"chunks_dropped": why} if why else {}), **({"failed": failed} if failed else {}),
+                **({"hints": list(hints)} if hints else {})}
     fn.key = lambda: key(cfgs)
+    fn.takes_ctx = True
     return fn
+
+
+def _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live):
+    """`edit` 방식 한 시트(B126 ②) — 규칙 나무 + 고침(검사를 지난 것만) · mock은 힌트(`{"edits": …}` 꼴)만 · 실패면 규칙 나무 그대로."""
+    from core.build import structure_edit as SE
+    from core.build.extract import prompt_version
+    calls, failed, source = 0, None, "hint"
+    if live:
+        gateway.require(TAG)
+        calls, source = 1, "live"
+        try:
+            out = SE.ask_edit(frame, [_line(x) for x in labs], labs, draft, cats, ctx, cfgs, prev, hints, PROMPT)
+        except gateway.GatewayError as e:
+            store.append_defect(f"{doc_id}: 문서 구조(edit) 호출 실패 — 시트 '{frame}' — {e} → 규칙 나무 그대로")
+            out, failed = {"edits": [], "headings": []}, f"{type(e).__name__}: {str(e)[:120]}"
+    else:
+        out = SE.hint_edit(doc_id, frame)
+        if out is None:
+            return None
+    heads, joins, took, bad = SE.apply_edits(doc_id, frame, labs, draft, out, cats)
+    _LOG.info("문서 구조(edit) %s · %s — 고침 %d · 버림 %d · 붙임 %d · 호출 %d", doc_id, frame, len(took), len(bad),
+              len(joins), calls)
+    return {"headings": heads, "dropped": [], "joins": joins, "edits": took, "edits_dropped": bad, "mode": "edit",
+            "calls": calls, "source": source, "prompt_version": prompt_version(PROMPT), "answer": out,
+            **({"hints": list(hints)} if hints else {}), **({"failed": failed} if failed else {})}
+
+
+# ---------------------------------------------------------------- 확정 기록 (B126 ③ — 등록 단 · 사람 판단 · 재생성 불가)
+def confirmed_path():
+    from core import paths
+    return paths.registry("structure_confirmed.json")
+
+
+def _confirmed_all():
+    p = confirmed_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def confirmed_of(doc_id):
+    """그 문서의 확정 시트 `{시트: {labels, mode, headings, joins, hints, prompt_version, by, at}}` — 파서가 데이터로 받는다."""
+    return dict(_confirmed_all().get(doc_id) or {})
+
+
+def confirm(doc_id, frame, st, hints=None):
+    """시트 하나 확정 — 최종 나무 · 붙임 · 준 힌트 · 방식 · 판 · 이름표 해시(원자 쓰기) · 재구축 · 재인입이 그대로 재생(LLM 0)."""
+    from datetime import datetime, timezone
+    from core import paths
+    d = _confirmed_all()
+    d.setdefault(doc_id, {})[frame] = {
+        "labels": st.get("labels"), "mode": st.get("mode"), "headings": st.get("headings") or [],
+        "joins": st.get("joins") or [], "chunks": st.get("chunks") or [], "hints": list(hints or st.get("hints") or []),
+        "prompt_version": st.get("prompt_version"), "by": "사람",
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    p = confirmed_path()
+    paths.ensure(p)
+    store.atomic_write_bytes(p, (json.dumps(d, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
+def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, layers=None, ctx=None):
+    """구조 확인의 고리(B126 ③) — 그 시트를 같은 방식(또는 `mode`)으로 다시 부르고(앞 출력 + 힌트 전부) 구조 보존분의 그 시트
+    자리에 둔다 → 다시 파싱이 그것을 쓴다(LLM 0). 돌려주는 것은 새 구조 또는 None."""
+    from parser import struct_map
+    from parser.struct_rule import labels_hash
+    fn = structurer(layers)
+    st = fn(doc_id, frame, labs, ctx=ctx, hints=hints, prev=prev, mode=mode)
+    if not st or st.get("skip"):
+        return st
+    src = struct_map.source_hash(src_path)
+    kept = struct_map.load_kept(doc_id, src) or {}
+    s = dict(kept.get("structure") or {})
+    s[frame] = {**st, "labels": labels_hash(labs), "key": fn.key()}
+    struct_map.keep(doc_id, {**kept, "doc_id": doc_id, "structure": s}, src)
+    return st
 
 
 # ---------------------------------------------------------------- 사람의 고침 (B119 ③ — 등록 단 · 재생성 불가)

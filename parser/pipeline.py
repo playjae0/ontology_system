@@ -408,14 +408,19 @@ def _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules, sheet_rol
                             tally=tally), targets
 
 
-def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles):
-    """문서 구조 훅(B119 ①) — `(훅 또는 None, 새로 받은 구조, 셈)`. `ref` 시트는 부르지 않는다(LLM 0)."""
+def _doc_ctx(a, doc_coord, raw):
+    """구조 판정의 문서 맥락(B126 ②) — 문서 종류 · 문서 좌표 · 다른 시트 이름."""
+    return {"doc_type": a.get("doc_type"), "doc_coord": doc_coord, "frames": [s.get("name") for s in raw.get("sheets") or []]}
+
+
+def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles, confirmed=None, ctx=None):
+    """문서 구조 훅(B119 ①) — `(훅 또는 None, 새로 받은 구조, 셈)`. `ref` 시트는 부르지 않는다(LLM 0) · 확정 시트는 재생(B126 ③)."""
     made, tally = {}, {}
     if structure is None:
         return None, made, tally
     return (struct_rule.structure_hook(structure, doc_id, kept=kept_map.get("structure"), made=made, tally=tally,
-                                       fixes=fixes, skip={n for n, r in (sheet_roles or {}).items() if r == "ref"}),
-            made, tally)
+                                       fixes=fixes, skip={n for n, r in (sheet_roles or {}).items() if r == "ref"},
+                                       confirmed=confirmed, ctx=ctx), made, tally)
 
 
 def _env_extras(env, res, doc_coord, dk_tally):
@@ -443,7 +448,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
           sheet_roles=None, infer_rules=None, rule_notice=None, no_images=False,
-          image_notice=None, doc_coord=None, structure=None, structure_fixes=None, deck=None, capture=False):
+          image_notice=None, doc_coord=None, structure=None, structure_fixes=None, deck=None, capture=False, structure_confirmed=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -459,8 +464,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
 
     `structure_fixes`(`{프레임: {행: 고침}}`)는 사람이 구조 표에서 고친 것(등록 단 — 데이터로 받는다 · B119 ③).
 
-    만드는 것은 CLI 진입점이다(`cli.parse.injections()`) — 모드는 거기서 한 번 정해
-    아래로 내려온다. 「함수 없이 실호출 모드」는 그 조립 지점이 막는다.
+    만드는 것은 CLI 진입점이다(`cli.parse.injections()`) — 모드는 거기서 한 번 정해 아래로 내려온다(「함수 없이 실호출」은 거기서 막는다).
 
     **`sheet_roles`도 같은 결이다**(B83 ①): `{시트 이름: "prose"|"ref"|"skip"}`을 **데이터로**
     받아 `skip`은 어댑터에 넘기지 않고 `ref` 시트의 조각에 `meta.sheet_role`을 단다.
@@ -491,7 +495,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     made_rules, tally = {}, {}
     rule_fn, targets = _rule_hook(adapter, raw, kept_map, made_rules, tally, infer_rules,
                                   sheet_roles, rule_notice)
-    st_fn, made_struct, st_tally = _structure_hook(structure, doc_id, kept_map, structure_fixes, sheet_roles)
+    st_fn, made_struct, st_tally = _structure_hook(structure, doc_id, kept_map, structure_fixes, sheet_roles,
+                                                   structure_confirmed, _doc_ctx(a, doc_coord, raw))
     dk_fn, made_deck, dk_tally = _deck_hook(deck, doc_id, kept_map, structure_fixes, doc_coord)
     try:                                                             # ③ extract
         pieces = _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks,

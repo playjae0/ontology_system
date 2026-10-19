@@ -413,7 +413,7 @@ def choose_level(stats):
                   f"사람이 정한다(자동으로 지도 패스로 넘기지 않는다)"), True
 
 
-def split(smap, lines, locator, sep=" > ", heads=False):
+def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap=None, keep_split=None):
     """지도를 적용해 자른다 — **여기에 LLM은 없다.** 같은 지도면 같은 분할이다.
 
     헤딩 행은 청크가 아니라 `section` 경로를 만들고, 그 아래 연속 본문이 청크다.
@@ -487,10 +487,10 @@ def split(smap, lines, locator, sep=" > ", heads=False):
         if deeper:
             out = _resplit(out, deeper, locator)
     deeper = {n for n, l in all_head.items() if pick and l == pick + 1}
-    return cap_chars(out, deeper, locator)
+    return cap_chars(out, deeper, locator, keep_rows, keep_cap, keep_split)
 
 
-def cap_chars(chunks, deeper, locator):
+def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split=None):
     """**글자 상한**(B87 ③) — 넘는 청크만: 더 깊은 제목에서 한 단계 → 그래도 넘으면 행 경계.
 
     셀 중간은 자르지 않는다 — 한 행이 혼자 상한을 넘으면 통째로 두고
@@ -505,21 +505,27 @@ def cap_chars(chunks, deeper, locator):
             # **행 없는 청크는 결함이다**(B89 ①) — 구판은 원래 locator를 그대로 붙여
             # 넘겼고, 그 조각들이 같은 locator를 나눠 가져 validator에서야 드러났다.
             raise ValueError(f"청크에 행 목록(_lines)이 없다 — {c.get('source_locator')}")
-        if len(c.get("text") or "") <= CHUNK_MAX_CHARS:
+        # **붙임 구간**(B126 ② — 구조 고침이 한 청크로 붙인 줄들)은 권장값의 n배(`keep_cap`)까지 그대로 · 넘으면 형제 줄 앞에서만
+        # (`keep_split` — 문서 구조의 구간 나눔과 같은 함수)
+        join = bool(keep_rows and keep_cap and all(n in keep_rows for n, _x in lines))
+        if len(c.get("text") or "") <= (keep_cap if join else CHUNK_MAX_CHARS):
             out.append(c)
             continue
-        parts, seg = [], []
-        for n, x in lines:                     # ① 더 깊은 제목에서 한 단계(지금 규칙)
-            if n in deeper and seg:
+        if join and keep_split is not None:
+            pieces = [(part, False) for part in keep_split(lines)]
+        else:
+            parts, seg = [], []
+            for n, x in lines:                 # ① 더 깊은 제목에서 한 단계(지금 규칙)
+                if n in deeper and seg:
+                    parts.append(seg)
+                    seg = []
+                seg.append((n, x))
+            if seg:
                 parts.append(seg)
-                seg = []
-            seg.append((n, x))
-        if seg:
-            parts.append(seg)
-        pieces = []
-        for part in parts:                     # ② 그래도 넘으면 행 경계
-            pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
-                       else [(part, False)])
+            pieces = []
+            for part in parts:                 # ② 그래도 넘으면 행 경계
+                pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
+                           else [(part, False)])
         for part, over in pieces:
             meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"]}
             if over:
