@@ -15,6 +15,7 @@ import re
 
 from core.llm import gateway
 from core.state import log, store
+from parser.toc import number_value
 
 _LOG = log.get(__name__)
 
@@ -37,32 +38,18 @@ EDIT_SCHEMA = {
             "properties": {"row": {"type": "integer"}, "role": {"type": ["string", "null"]},
                            "name": {"type": ["string", "null"]}, "category": {"type": ["string", "null"]},
                            "why": {"type": "string"}},
-            "required": ["row", "role", "name", "category", "why"], "additionalProperties": False}}},
-    "required": ["edits", "headings"], "additionalProperties": False,
+            "required": ["row", "role", "name", "category", "why"], "additionalProperties": False}},
+        # **이해한 규칙**(B130 ④ — 힌트가 번호 꼴에 걸린 규칙이면 되말한다 · 코드가 그 문서의 같은 꼴 줄 전부에 적용 · 아니면 빈 목록)
+        "rules": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"shape": {"type": "string"}, "role": {"type": ["string", "null"]},
+                           "category": {"type": ["string", "null"]}, "parent_shape": {"type": ["string", "null"]},
+                           "said": {"type": "string"}},
+            "required": ["shape", "role", "category", "parent_shape", "said"], "additionalProperties": False}}},
+    "required": ["edits", "headings", "rules"], "additionalProperties": False,
 }
 
 # ---------------------------------------------------------------- 형태 단서 — 번호 이어짐 · 다시 시작 (코드가 센다)
-_HANGUL = "가나다라마바사아자차카타파하"
-_ROMAN = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ"
-
-
-def _num_value(text, shape):
-    """줄 머리 번호의 값(1부터) — 꼴마다 · 읽지 못하면 None(`1.1` · `-`는 이어짐을 세지 않는다)."""
-    t = str(text or "").strip()
-    if shape in ("(1)", "1)", "1.", "제1장"):
-        m = re.search(r"\d+", t)
-        return int(m.group()) if m else None
-    if shape in ("가.", "가)"):
-        return _HANGUL.index(t[0]) + 1 if t and t[0] in _HANGUL else None
-    if shape == "Ⅰ.":
-        return _ROMAN.index(t[0]) + 1 if t and t[0] in _ROMAN else None
-    if shape == "A.":
-        return ord(t[0].upper()) - 64 if t and t[0].isalpha() and t[0].isascii() else None
-    if shape == "①":
-        return ord(t[0]) - 0x245F if t and 0x2460 <= ord(t[0]) <= 0x2473 else None
-    return None
-
-
 def number_runs(labs):
     """**번호 이어짐 · 다시 시작**(B126 ② — 판정 아님) — 꼴마다 위에서 아래로 값이 1씩 이어지는 덩어리 ·
     `[{꼴, 시작, 끝, 수, 다시 시작, 아래}]`(`아래` = 다시 시작한 덩어리 바로 앞의 다른 꼴 번호 줄 `{꼴, 행}`)."""
@@ -70,7 +57,7 @@ def number_runs(labs):
     for x in labs:
         shape = next((m[2:] for m in x.get("marks") or [] if m.startswith("번호")), None)
         if shape:
-            seen.append((x["row"], shape, _num_value(x.get("text"), shape)))
+            seen.append((x["row"], shape, number_value(x.get("text"), shape)))
     runs, cur = [], {}
     for i, (r, s, v) in enumerate(seen):
         if v is None:
@@ -121,7 +108,8 @@ def ask_edit(frame, lines, labs, draft, cats, ctx=None, cfgs=None, prev=None, hi
               "previous": prev, "hints": list(hints or [])}, ensure_ascii=False)}],
         json_schema=EDIT_SCHEMA, point="structure")
     return {"edits": [e for e in (out or {}).get("edits") or [] if isinstance(e, dict)],
-            "headings": [h for h in (out or {}).get("headings") or [] if isinstance(h, dict)]}
+            "headings": [h for h in (out or {}).get("headings") or [] if isinstance(h, dict)],
+            "rules": [x for x in (out or {}).get("rules") or [] if isinstance(x, dict)]}
 
 
 # ---------------------------------------------------------------- 고침 적용 · 검사 (결정적)
@@ -211,6 +199,53 @@ def apply_edits(doc_id, frame, labs, draft, out, cats):
     return out_heads, joins, took, bad
 
 
+# ---------------------------------------------------------------- 문서 규칙 적용 (B130 ④ — 결정적 · 검사만)
+def apply_rules(doc_id, frame, labs, heads, rules, cats):
+    """이해한 규칙(`[{shape, role, category, parent_shape, said}]`)을 그 시트의 같은 꼴 줄 전부에 — `(제목, 규칙마다 셈)`.
+
+    그 꼴의 줄은 제목으로 서고(없던 줄은 더한다 — 부모는 `parent_shape`의 가장 가까운 앞 제목 · 없으면 같은 꼴 앞 제목의 부모) 역할 ·
+    대상(이름 = 줄 글자에서 번호를 뗀 것)을 받는다. 닫힌 목록 밖(꼴 · 역할 · 카테고리 · 부모 꼴)이면 **그 규칙만** 버린다(결함 로그)."""
+    from parser.struct_map import NUMBER_SHAPES, number_shape, strip_number
+    from parser.struct_rule import FRAME_ROW, ROLES, TARGET_ROLES
+    shapes = {lab for lab, _rx in NUMBER_SHAPES}
+    by = {h["row"]: dict(h) for h in heads}
+    order = [x["row"] for x in labs if x["row"] != FRAME_ROW]
+    text = {x["row"]: str(x.get("text") or "") for x in labs}
+    shape_of = {r: number_shape(text[r]) for r in order}
+    seen = []
+    for rule in rules or []:
+        sh, role, cat, psh = rule.get("shape"), rule.get("role"), rule.get("category"), rule.get("parent_shape")
+        why = ("꼴 밖" if sh not in shapes else "역할 밖" if role is not None and role not in ROLES
+               else "목록 밖 카테고리" if cat is not None and cat not in cats else "부모 꼴 밖" if psh is not None and psh not in shapes
+               else None)
+        rows = [r for r in order if shape_of[r] == sh]
+        if why:
+            store.append_defect(f"{doc_id}: 문서 규칙 버림 — {why} (시트 '{frame}' · {json.dumps(rule, ensure_ascii=False)[:120]})")
+            seen.append({**rule, "적용": 0, "전체": len(rows), "버림": why})
+            continue
+        n = 0
+        for r in rows:
+            prev = [q for q in order[:order.index(r)] if q in by]
+            par = next((q for q in reversed(prev) if psh and shape_of.get(q) == psh), None)
+            if r not in by:
+                same = next((q for q in reversed(prev) if shape_of.get(q) == sh), None)
+                by[r] = {"row": r, "parent": par if psh else (by[same].get("parent") if same else None),
+                         "role": None, "name": None, "category": None}
+            elif psh and par is not None:
+                by[r]["parent"] = par
+            if role is not None:
+                by[r]["role"] = role
+            if role in TARGET_ROLES and cat is not None:
+                by[r].update(name=strip_number(text[r]), category=cat)
+            elif role is not None and role not in TARGET_ROLES:
+                by[r].update(name=None, category=None)
+            by[r]["by_rule"] = sh
+            n += 1
+        seen.append({**rule, "적용": n, "전체": len(rows)})
+    out = [by[x["row"]] for x in labs if x["row"] in by]
+    return out, seen
+
+
 def hint_edit(doc_id, frame):
     """mock — 힌트 `<doc_id>@structure.json`의 그 시트가 `{"edits": …}` 꼴일 때만 `edit` 답 · 없으면 None(판정 없음)."""
     from core.state import fixtures as _fx
@@ -221,4 +256,5 @@ def hint_edit(doc_id, frame):
     if not isinstance(hint, dict) or "edits" not in hint:
         return None
     gateway.mock("structure", f"힌트(edit) {p.name} · {frame}")
-    return {"edits": list(hint.get("edits") or []), "headings": list(hint.get("headings") or [])}
+    return {"edits": list(hint.get("edits") or []), "headings": list(hint.get("headings") or []),
+            "rules": list(hint.get("rules") or [])}

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """칸 0.3 · 2.4 — **구조 확인의 시트 한 덩어리**(B126 ③) — 화면과 `export/split_<doc_id>.md`가 같은 함수로 같은 내용을 낸다.
 
-    ⓐ LLM에 준 것 — 규칙 나무(행 · 단 · 글) · 형태 단서(번호 꼴 · 번호 이어짐 · 다시 시작)
-    ⓑ LLM의 판단 — 고침 목록과 이유 · 버린 고침 · 제목마다 역할 · 대상 · 이유
-    ⓒ 고친 뒤의 나무 — 행 · 단 · 역할 · 대상
-    ⓓ 청크마다 첫 줄 · 끝 줄 · 사슬(라벨 잘림 없이 — 좁은 화면이면 줄이 접힌다)
+    ⓐ LLM에 준 것 — 규칙 나무(목차 — 들여쓰기 나무) · 형태 단서(번호 꼴 · 번호 이어짐 · 다시 시작)
+    ⓑ LLM의 판단 — 이해한 규칙(문서 규칙 · 적용 n줄 / 그 꼴 전체 m줄) · 고침 목록과 이유 · 버린 고침 · 제목마다 역할 · 대상 · 이유
+    ⓒ 고친 뒤의 나무 — 들여쓰기 · 역할 · 대상 · 규칙 나무와 달라진 줄은 `← 바뀜`
+    ⓓ 청크마다 첫 줄 · 끝 줄 · 전체 경로(시트 › … › 자기 제목 — 라벨 잘림 없이 · 좁은 화면이면 줄이 접힌다)
+md도 들여쓰기를 지킨다(B130 ③).
 
 판정 0 — 파싱의 구조 셈(`report["structure"]`)과 봉투 청크를 읽기만 한다.
 """
@@ -48,6 +49,10 @@ def sheet_block(frame, fr, chunks):
     runs = SE.run_lines(SE.number_runs(labs))
     out += ["  형태 단서 — " + (" · ".join(runs) if runs else "번호 이어짐 없음")]
     out.append("ⓑ LLM의 판단")
+    for x in fr.get("rules") or []:                                   # 이해한 규칙 — 문서 규칙 (B130 ④)
+        what = " · ".join(v for v in (x.get("role"), x.get("category"), f"부모 꼴 '{x['parent_shape']}'" if x.get("parent_shape") else None) if v)
+        out.append(f"  이해한 규칙 — 꼴 '{x.get('shape')}' {what} 「{x.get('said') or ''}」 → 적용 {x.get('적용', 0)}줄 / 그 꼴 전체 "
+                   f"{x.get('전체', 0)}줄" + (f" · 버림 {x['버림']}" if x.get("버림") else ""))
     out += [f"  고침 — {_edit_line(e)}" for e in fr.get("edits") or []] or ["  고침 — 없음(규칙 나무 그대로)"]
     out += [f"  버림 — {_edit_line(e)} · 사유 {e.get('버림')}" for e in fr.get("edits_dropped") or []]
     for h in fr.get("headings") or []:
@@ -55,17 +60,29 @@ def sheet_block(frame, fr, chunks):
             out.append(f"  제목 {h['row']}행 {h.get('role') or '—'}{_target(h)} — {h['why']}")
     out.append("ⓒ 고친 뒤의 나무")
     dep = _depths(fr.get("headings") or [])
+    was = {h["row"]: h.get("parent") for h in draft}
     for h in fr.get("headings") or []:
         label = frame if h["row"] == FRAME_ROW else text.get(h["row"], "")
+        moved = h["row"] != FRAME_ROW and (h["row"] not in was or was[h["row"]] != h.get("parent"))
         out.append(f"  {'  ' * max(0, dep.get(h['row'], 1) - 1)}{h['row']}행 {h.get('role') or '—'}{_target(h)} · {label}"
-                   + (" *" if h.get("by") else ""))
+                   + (" *" if h.get("by") else "") + (" ← 바뀜" if moved else ""))
+    gone = [r for r in was if r not in {h["row"] for h in fr.get("headings") or []}]
+    if gone:
+        out.append("  제목에서 뺀 줄 — " + " · ".join(f"{r}행 {text.get(r, '')}" for r in gone))
     out.append(f"ⓓ 청크 {len(chunks)}")
     for i, c in enumerate(chunks, start=1):
         body = [ln for ln in str(c.get("text") or "").splitlines() if ln.strip()] or [""]
-        chain = " › ".join(x.get("text") or "" for x in (c.get("meta") or {}).get("structure") or []) \
-            or str((c.get("meta") or {}).get("section_path") or c.get("section") or "")
-        out.append(f"  {i}. {c.get('source_locator')} · 첫 줄 '{body[0].strip()}' · 끝 줄 '{body[-1].strip()}' · 사슬 {chain}")
+        out.append(f"  {i}. {c.get('source_locator')} · 첫 줄 '{body[0].strip()}' · 끝 줄 '{body[-1].strip()}' · 경로 "
+                   + path_of(frame, c))
     return out
+
+
+def path_of(frame, c):
+    """청크의 전체 경로 — 시트 › … › 자기 제목(목차의 부모 사슬 — B130 ②)."""
+    m = c.get("meta") or {}
+    sec = str(m.get("section_path") or c.get("section") or "")
+    parts = [p.strip() for p in sec.replace(" › ", " > ").split(" > ") if p.strip() and p.strip() != frame]
+    return " › ".join([frame] + parts)
 
 
 def chunks_of(env, frame):
@@ -82,7 +99,8 @@ def write_md(doc_id, report, env):
     lines = [f"# 구조 확인 — {doc_id}", ""]
     for frame, fr in frames.items():
         blk = sheet_block(frame, fr, chunks_of(env, frame))
-        lines += [f"## {blk[0]}", ""] + [f"- {x}" if not x.startswith("  ") else f"  - {x.strip()}" for x in blk[1:]] + [""]
+        # 들여쓰기를 지킨다(나무 — B130 ③): 앞 공백 두 칸이 한 단
+        lines += [f"## {blk[0]}", ""] + [f"{'  ' * ((len(x) - len(x.lstrip())) // 2)}- {x.strip()}" for x in blk[1:]] + [""]
     p = paths.export(f"split_{doc_id}.md")
     paths.ensure(p)
     store.atomic_write_bytes(p, ("\n".join(lines) + "\n").encode("utf-8"))

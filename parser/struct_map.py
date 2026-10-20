@@ -198,28 +198,6 @@ def heading_family(text):
     return None
 
 
-def number_levels(lines):
-    """`[(행, 글)]` → `{행: (레벨, 군)}` — **군 사이의 레벨은 시트 안에서 처음 나온 순서**다.
-
-    처음 본 군이 1단계, 다음에 처음 본 군이 그다음 … (한국 문서의 `Ⅰ. → 1. → 가. →
-    (1)` 관행이 문서마다 섞여 쓰이는 것을 따라간다). 점 찍은 숫자는 **제 깊이를 그대로**
-    쓰되 그 군이 시트에서 쓴 최대 깊이만큼 칸을 차지한다 — 점 번호만 쓰는 시트에서는
-    레벨 = 깊이이고(구판과 같다), `Ⅰ.` 아래의 `1.1`은 3단계다.
-    """
-    hits = [(r, *hf) for r, t in lines if (hf := heading_family(t))]
-    order, span = [], {}
-    for _r, fam, depth in hits:
-        if fam not in span:
-            order.append(fam)
-            span[fam] = 0
-        span[fam] = max(span[fam], depth)
-    base, acc = {}, 1
-    for fam in order:
-        base[fam] = acc
-        acc += span[fam]
-    return {r: (base[fam] + depth - 1, fam) for r, fam, depth in hits}
-
-
 def monotonic_reasons(rows):
     """레벨이 **비단조**인 곳 — 첫 제목이 1이 아니거나 한 번에 두 단계 이상 내려간다.
 
@@ -427,6 +405,9 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
 
     `heads`면 조각마다 `_heads`(경로를 이룬 제목 줄의 행 — 위에서 아래로)를 싣는다 — 문서 구조(B119 ①)가
     그 줄의 역할 · 대상을 조각에 단다. 받은 쪽이 떼어 낸다(`struct_rule.frame_chunks`).
+
+    **경로는 목차의 부모 사슬 전체다**(B130 ②) — 주인 제목과 그 조상 전부(자른 단까지의 스택이 아니다): 자른 단의 청크는 그 청크를
+    연 제목 · 나눔 조각(한 단계 더 · 글자 상한 · 붙임 나눔)은 첫 줄의 주인 제목(첫 줄이 제목이면 그 줄 · 아니면 그 위의 가장 가까운 제목).
     """
     stats = smap.get("레벨_분포") or level_stats(smap, lines)
     pick = smap.get("분할_레벨")
@@ -462,8 +443,7 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
              "text": "\n".join(text_of[n] for n in buf),
              "meta": dict(band_meta),
              "_lines": [(n, text_of[n]) for n in buf]}     # 글자 상한이 쓴다 — 나가기 전에 뗀다
-        if heads:
-            c["_heads"] = [n for _d, _h, n in stack]
+        c["_owner"] = stack[-1][2] if stack else None
         out.append(c)
         buf.clear()
 
@@ -486,7 +466,16 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
         if deeper:
             out = _resplit(out, deeper, locator)
     deeper = {n for n, l in all_head.items() if pick and l == pick + 1}
-    return cap_chars(out, deeper, locator, keep_rows, keep_cap, keep_split)
+    out = cap_chars(out, deeper, locator, keep_rows, keep_cap, keep_split)
+    from parser.toc import toc_chains              # 목차(B130 ②) — toc가 이 모듈의 번호 꼴을 읽어 지연 import
+    owner_of, chain = toc_chains(lines, all_head)
+    for c in out:
+        r0, own = c.pop("_row0", None), c.pop("_owner", None)
+        hs = chain(owner_of.get(r0) if c.pop("_piece", False) else own)
+        c["section"] = sep.join(text_of[n].strip() for n in hs)
+        if heads:
+            c["_heads"] = hs
+    return out
 
 
 def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split=None):
@@ -508,7 +497,7 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
         # (`keep_split` — 문서 구조의 구간 나눔과 같은 함수)
         join = bool(keep_rows and keep_cap and all(n in keep_rows for n, _x in lines))
         if len(c.get("text") or "") <= (keep_cap if join else CHUNK_MAX_CHARS):
-            out.append(c)
+            out.append({**c, "_row0": lines[0][0]})
             continue
         if join and keep_split is not None:
             pieces = [(part, False) for part in keep_split(lines)]
@@ -530,7 +519,7 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
             if over:
                 meta["over_char_cap"] = True
             out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
-                        "text": "\n".join(x for _n, x in part), "meta": meta})
+                        "text": "\n".join(x for _n, x in part), "meta": meta, "_row0": part[0][0], "_piece": True})
     return out
 
 
@@ -580,7 +569,7 @@ def _resplit(chunks, deeper, locator):
             continue
         for part in cur:
             out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
-                        "text": "\n".join(x for _n, x in part), "_lines": part})
+                        "text": "\n".join(x for _n, x in part), "_lines": part, "_piece": True})
     return out
 
 

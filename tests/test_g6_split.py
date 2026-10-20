@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -30,7 +31,7 @@ from openpyxl import Workbook                            # noqa: E402
 import run as RUN                                        # noqa: E402
 from cli import _screen, split_report, structure_screen as SS   # noqa: E402
 from core.build import structure as ST                   # noqa: E402
-from parser import pipeline, struct_map                  # noqa: E402
+from parser import pipeline, struct_map, toc             # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX       # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="b126_"))
@@ -196,6 +197,89 @@ show("B127 ⓓ 확정한 시트에 힌트 → 다시 묻는 입력의 힌트 = �
 _c8, _b8 = _reopen(["하나 더 바꿔 본다", "q"])
 show("B127 ⓔ 확정한 시트에 힌트를 준 뒤 q → 확정 기록이 바이트까지 그대로",
      len(_c8) == 1 and _b8 == _b7 and not ST.SUSPENDED, f"호출 {len(_c8)} · 같음 {_b8 == _b7}")
+
+show("B130 ⓕ 확정한 시트를 다시 연 입력의 앞 출력 = 앞 판단 전체(앞 고침 목록 · 고친 나무 · 이해한 규칙)",
+     _c7 and [e.get("row") for e in (_c7[0].get("previous") or {}).get("edits") or []]
+     == [e.get("row") for e in (_old.get("answer") or {}).get("edits") or []] and (_old.get("answer") or {}).get("edits")
+     and "rules" in (_c7[0].get("previous") or {}), f"앞 고침 {[(e.get('row'), e.get('what')) for e in (_c7[0].get('previous') or {}).get('edits') or []] if _c7 else None}")
+
+# ────────────────────────────────────────────────────────────── B130 ③④⑤ 나무 · 문서 규칙 · 옛 확정
+print("\n■ B130 나무가 보이는 구조 확인 · 힌트는 문서 규칙 · 옛 확정은 다시")
+DID2, S1, S2 = "B130R", "설비 사양", "이송"
+RULE_HINT = "'가.'는 유닛 단이다"
+_p2 = TMP / f"{DID2}.xlsx"
+_wb = Workbook()
+_wb.remove(_wb.active)
+for _n, _rows in ((S1, ["가. 공급부", "1) 속도", "속도는 50이다.", "나. 적층부", "1) 장력", "장력은 30이다."]),
+                  (S2, ["가. 이송부", "벨트 장력은 2kN이다.", "나. 반전부", "반전 시간은 2초다."])):
+    _ws = _wb.create_sheet(title=_n)
+    for _i, _v in enumerate(_rows, 1):
+        _ws.cell(row=_i, column=1, value=_v)
+_wb.save(_p2)
+
+
+def _rule_llm(body):
+    """가짜 ⑪ — 힌트가 꼴 규칙이면 되말한다(이해한 규칙) · 고침은 없다(코드가 그 꼴 줄 전부에 적용한다)."""
+    said = [{"shape": "가.", "role": "대상", "category": "Unit", "parent_shape": None, "said": "'가.' 줄은 유닛(대상)의 단"}]
+    return {"edits": [], "headings": [], "rules": said if any(RULE_HINT in h for h in body.get("hints") or []) else []}
+
+
+def _parse2(confirmed=None):
+    return pipeline.parse(BX, DID2, str(_p2), closed_list=[], sheet_roles={S1: "prose", S2: "prose"},
+                          structure=ST.structurer(["process"]), structure_confirmed=confirmed)
+
+
+struct_map.invalidate(DID2)
+CALLS.clear()
+_prompts, _it = [], iter([RULE_HINT, "c", "c"])
+_screen.ask = lambda prompt: (_prompts.append(prompt), next(_it))[1]
+_buf = io.StringIO()
+with Live(by={"structure": _rule_llm}), contextlib.redirect_stdout(_buf):
+    _r9, _go = SS.gate(_parse2(), DID2, lambda: _parse2(), layers=["process"])
+_screen.ask = _ask0
+_scr = _buf.getvalue()
+_fr9 = _r9.report["structure"]["프레임"]
+_s2calls = [b for p_, b in CALLS if p_ == "structure" and b.get("frame") == S2]
+_tgt = {f: {h["row"]: (h.get("role"), h.get("name"), h.get("category")) for h in _fr9[f]["headings"]} for f in (S1, S2)}
+_md9 = split_report.write_md(DID2, _r9.report, _r9.envelope).read_text(encoding="utf-8")
+show("ⓓ 나무 — 화면 · md 모두 들여쓰기 나무(자식 줄이 한 단 깊다) · 청크마다 전체 경로(시트 › … › 자기 제목)",
+     re.search(r"^ {2}- 1행 .*가\. 공급부$", _md9, re.M) and re.search(r"^ {4}- 2행 .*1\) 속도", _md9, re.M)
+     and f"첫 줄 '1) 속도' · 끝 줄 '속도는 50이다.' · 경로 {S1} › 가. 공급부" in _md9 and f"경로 {S1} › 가. 공급부" in _scr,
+     " / ".join(ln.strip() for ln in _md9.splitlines() if "경로" in ln)[:200])
+show("ⓔ 문서 규칙 — 첫 시트 힌트 → 이해한 규칙(꼴 가. · 대상 · Unit) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
+     "화면에 적용 수 · 묻는 줄에 줄 고침 명령 0",
+     _go and _tgt[S1].get(1) == ("대상", "공급부", "Unit") and _tgt[S1].get(4) == ("대상", "적층부", "Unit")
+     and _tgt[S2].get(1) == ("대상", "이송부", "Unit") and _tgt[S2].get(3) == ("대상", "반전부", "Unit")
+     and _s2calls and RULE_HINT in (_s2calls[-1].get("hints") or [])          # 힌트 뒤 둘째 시트의 첫 호출부터(파싱 첫 판은 힌트 전)
+     and "적용 2줄 / 그 꼴 전체 2줄" in _scr and _prompts and not any("고침" in x for x in _prompts),
+     f"S1 {_tgt[S1]} · S2 {_tgt[S2]} · S2 호출 {len(_s2calls)} · 힌트 {[b.get('hints') for b in _s2calls]} · 적용 줄 "
+     f"{[ln.strip()[:60] for ln in _scr.splitlines() if '이해한 규칙' in ln][:2]} · 묻는 줄 {_prompts[:1]}")
+struct_map.invalidate(DID2)
+CALLS.clear()
+with Live(by={"structure": _rule_llm}):
+    _r10 = _parse2(confirmed=ST.confirmed_of(DID2))
+_rec = ST.confirmed_of(DID2)
+show("ⓔ 확정 → 재구축 재생 — 구조 LLM 0 · 같은 나무 · 기록에 목차 판 · 문서 힌트 · 문서 규칙",
+     not [1 for p_, _b in CALLS if p_ == "structure"]
+     and all(_r10.report["structure"]["프레임"][f]["headings"] == _fr9[f]["headings"] for f in (S1, S2))
+     and all(v.get("toc") == toc.TOC_VERSION and v.get("doc_hints") == [RULE_HINT] and v.get("doc_rules")
+             for v in _rec.values()), f"재생 호출 {len(CALLS)} · 기록 {sorted(_rec)}")
+_raw = json.loads(ST.confirmed_path().read_text(encoding="utf-8"))
+for _v in _raw[DID2].values():
+    _v.pop("toc", None)                                 # B130 전의 확정 — 판이 없다
+ST.confirmed_path().write_text(json.dumps(_raw, ensure_ascii=False), encoding="utf-8")
+ST.DOC.pop(DID2, None)
+struct_map.invalidate(DID2)
+CALLS.clear()
+with Live(by={"structure": _rule_llm}), contextlib.redirect_stdout(io.StringIO()):
+    _r11 = _parse2(confirmed=ST.confirmed_of(DID2))
+show("ⓕ 판이 없는 옛 확정은 재생하지 않고 다시 보인다(구조를 다시 묻는다 · 「옛 확정 n시트 — 다시 확인 필요」의 수)",
+     sorted(_r11.report["structure"].get("옛 확정") or []) == sorted([S1, S2])
+     and not any(f.get("confirmed") for f in _r11.report["structure"]["프레임"].values())
+     and [1 for p_, _b in CALLS if p_ == "structure"] and ST.counts(_r11.report["structure"])["옛 확정"] == 2,
+     f"옛 확정 {_r11.report['structure'].get('옛 확정')} · 다시 묻기 {len(CALLS)}")
+_raw.pop(DID2, None)
+ST.confirmed_path().write_text(json.dumps(_raw, ensure_ascii=False), encoding="utf-8")
 
 # ────────────────────────────────────────────────────────────── ⓔ 빈 규칙 나무 → llm · structure_mode=llm
 print("\n■ ⓔ 규칙 나무가 빈 시트만 llm · structure_mode=llm")

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-from parser import struct_map, struct_rule
+from parser import struct_map, struct_rule, toc
 
 ADAPTER = {
     "doc_type": "prose_xlsx_basic",
@@ -118,7 +118,7 @@ def _rows_of(sheet, col):
         text = str(cells.get(f"{col}{r}", "")).strip()
         if text:
             lines.append((r, text))
-    nums = struct_map.number_levels(lines)
+    nums = toc.number_levels(lines)
     rows = []
     for r, _text in lines:
         a = f"{col}{r}"
