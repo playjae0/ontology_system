@@ -1,47 +1,51 @@
 # -*- coding: utf-8 -*-
-"""칸 2.6 — 기본 어댑터 (PPT) — **임계 조건화** (B+C 단계형 · 08-19 판정 · 카드 C13 v18).
+"""칸 2.6 — 기본 어댑터 (PPT) — **슬라이드가 추출 단위**(B125 ① · 카드 C13).
 
-    임계 이하        → 슬라이드 1장 = 청크 1개                        (원래의 자명함)
-    임계 초과 + 다프레임 → ① shape 단위 분할 (결정적)
-    임계 초과 + 단일 프레임 → ② struct-map 폴백 (지도 기반 분할)
-    지도도 실패      → ③ 통청크 + `hierarchy_unresolved` 큐          (조용한 오파싱 0)
+    본문이 임계 이하        → 본문 근거 청크 1개(슬라이드 1장)
+    본문이 임계 초과        → ② struct-map 지도로 본문 근거 청크를 나눈다(지도 기반 분할)
+    지도도 실패            → ③ 통청크 + `hierarchy_unresolved` 큐          (조용한 오파싱 0)
 
-**왜 조건화인가.** "슬라이드 1장 = 청크 1개"는 슬라이드가 한 화면 분량일 때만 자명하다.
-텍스트가 임계를 넘으면 그 청크는 근거 단위로 너무 굵어져 수집 상한(8)을 통째로 먹는다.
-그렇다고 항상 쪼개면 대부분의 정상 슬라이드에서 문맥이 끊긴다 — 그래서 **임계로 가른다.**
+**임계는 글자 수 하나다**(B125 ① — 상자 수 조건 · 상자 단위 분할은 없다: 제목 + 작은 상자 여럿인 슬라이드가 상자마다
+주인 없는 청크로 흩어졌다). 값의 자리는 `SLIDE_MAX_CHARS`(사내 손잡이 `ppt_slide_chars`).
 
-**임계는 config 값이다**(P7 — 측정 후 조정). 코드에 숫자를 박으면 조정이 코드 변경이 된다.
+**추출 단위와 근거 단위를 가른다** — 표 · 차트 · 그림은 지금처럼 각자 근거 청크(위치 `S#-TB1` · `S#-CH1` · `S#-P1`)이고, 한
+슬라이드의 청크는 전부 `meta.extract_unit`(= 「슬라이드 N」)을 진다: 추출은 그 단위마다 한 번 묻는다(본문 · 표 · 차트 · 노트 ·
+그림 요약 + 캡처 — `core/build/extract_unit`).
 
-어댑터는 순수 함수 계약(C11)이라 LLM을 부르지 않는다. ②의 지도는 **코어**가 산출해
-넘겨준다 — `extract(raw, struct_map_fn=...)`의 훅이 그 자리다.
+**덱 구조**(B125 ③ — 지점 ⑪ · 코어가 `deck_fn`으로 주입)가 있으면 슬라이드마다 제목 · 구획 · 이어짐 · 다루는 공정 · 언급 공정 ·
+개체 없음을 그 결정으로 쓴다(placeholder 제목은 초안 · 이어진 슬라이드는 앞 슬라이드의 경로 · 공정). 없으면 지금 방식.
+
+어댑터는 순수 함수 계약(C11)이라 LLM을 부르지 않는다. ②의 지도와 덱 구조는 **코어**가 산출해 넘겨준다.
 """
 from __future__ import annotations
 
+from parser import deck as DK
+from parser.normalizer import coord_value
+
 ADAPTER = {
     "doc_type": "ppt_basic",
-    "adapter_version": "1.0",
+    "adapter_version": "1.1",
     "payload_kind": "prose",
     "expects": {
         # 분할 신호 상수 — preflight가 보는 지문(prose는 헤더 행이 없다)
         "split_on": "slide",
-        # 임계 (config 값 — 초기값. P7: 측정 후 조정)
-        "max_chars": 600,
-        "max_shapes": 5,
         "section_format": "슬라이드 {index}",
         "frame_format": "슬라이드 {index}#{frame}",
     },
 }
 
+#: 본문 글자 임계(창작 기본값 — 「보통 슬라이드는 통째」 · 사내 손잡이 `ppt_slide_chars` · 사내 실측으로 정한다)
+SLIDE_MAX_CHARS = 3000
+
 PATH_SLIDE = "slide"        # 임계 이하
-PATH_SHAPE = "shape"        # ① shape 분할
+PATH_SHAPE = "shape"        # 표 · 차트 · 그림 근거 청크
 PATH_MAP = "struct_map"     # ② 지도
 PATH_FLAT = "flat"          # ③ 폴백
 
 
-def _over(shapes, exp):
-    """임계 초과 판정 — 글자 수 **또는** 프레임 수. 둘 중 하나면 초과다."""
-    return (sum(len(s) for s in shapes) > exp["max_chars"]
-            or len(shapes) > exp["max_shapes"])
+def _over(body):
+    """임계 초과 판정 — **본문 글자 수 하나**(B125 ①)."""
+    return sum(len(s) for s in body) > SLIDE_MAX_CHARS
 
 
 _SECTION_LAYOUT = ("section", "구획")
@@ -112,31 +116,34 @@ def _context(s):
     return "\n".join(parts)[:CONTEXT_CHARS]
 
 
-def extract(raw, struct_map_fn=None) -> list[dict]:
+def extract(raw, struct_map_fn=None, deck_fn=None) -> list[dict]:
     """reader 원시 추출물 → 청크 리스트. 조각마다 `source_locator`.
 
-    `struct_map_fn(doc_key, lines) -> (chunks, smap, reasons)`는 **코어가 주입**한다.
-    없으면 ②를 시도하지 않고 ③으로 간다 — 어댑터가 스스로 LLM을 부르지 않는다.
+    `struct_map_fn(doc_key, lines) -> (chunks, smap, reasons)` · `deck_fn(slides) -> 결정`은 **코어가 주입**한다.
+    없으면 지도는 ③으로, 덱 구조는 지금 방식(placeholder 제목 · 구획 헤더)으로 간다 — 어댑터가 스스로 LLM을 부르지 않는다.
 
-    **표·차트는 각각 별도 청크다**(B53). 표 하나가 3천 자를 넘는 것이 흔하고,
-    슬라이드 본문에 섞이면 근거 좌표가 뭉개져 「어느 표의 어느 행인가」를 댈 수
-    없다. 그림은 placeholder 조각이고 요약은 코어(tagger)가 채운다.
+    **표·차트는 각각 별도 근거 청크다**(B53) — 근거 좌표 「어느 표의 어느 행인가」. 그림은 placeholder 조각이고 요약은
+    코어(tagger)가 채운다. 한 슬라이드의 청크는 전부 같은 추출 단위다(B125 ①).
     """
     exp = ADAPTER["expects"]
     slides = raw.get("slides", [])
     deck = raw.get("deck_title", "")
     sec_of = _sections(slides)
-    out = []
+    dec = (deck_fn(DK.deck_input(raw)) if deck_fn is not None else None) or {}
+    out, path_by = [], {}
     for s in slides:
         if s.get("hidden"):                                 # 숨김은 청크에 없다
             continue
         idx = s["index"]
         recs = s.get("shapes", [])
         loc = exp["section_format"].format(index=idx)
-        # **`section`은 제목이다** — 없으면 종전대로 「슬라이드 N」.
-        title = s.get("title") or ""
+        d = dec.get(idx) or {}
+        # **`section`은 제목이다** — 덱 구조가 정한 제목(그 슬라이드 글 그대로) · 없으면 placeholder · 그것도 없으면 「슬라이드 N」.
+        title = d.get("title") or s.get("title") or ""
         section = title or loc
-        spath = _path(deck, sec_of.get(idx), title)
+        spath = (path_by.get(d["path_of"]) if d.get("path_of") is not None else None) \
+            or _path(deck, d.get("section") or sec_of.get(idx), title)
+        path_by[idx] = spath
         base = {"slide": s, "loc": loc, "section": section, "path": spath}
 
         # ── 표·차트·그림은 본문에서 떼어 각각 낸다 ──────────────────────────
@@ -152,57 +159,45 @@ def extract(raw, struct_map_fn=None) -> list[dict]:
                 extras.append(_image_chunk(base, r, _context(s)))
             elif r.get("text"):
                 body.append(r["text"])
-
-        if not body:
-            out += extras
-            continue
-        # 본문을 먼저 내고 표·차트·그림을 뒤에 붙인다 — 사람이 읽는 순서이고,
-        # `_over` 판정도 **본문만** 본다(표가 임계를 밀어 올려 본문을 쪼개지 않는다).
-        _tail, extras = extras, []
-
-        # ── 본문(텍스트 shape)은 종전 규칙 그대로다 ─────────────────────────
-        # **여기 산출은 바이트 동일해야 한다**(완료판정 a-ⓕ) — 표·차트가 없는
-        # 슬라이드에서 텍스트·`source_locator`가 옛 판과 한 글자도 달라지지 않는다.
-        if not _over(body, exp):                            # 임계 이하 — 자명하다
-            out.append(_chunk(loc, section, "\n".join(body), PATH_SLIDE, s, section_path=spath))
-            out += _tail
-            continue
-
-        if len(body) > 1:                                   # ① shape 단위 분할
-            for i, text in enumerate(body, 1):
-                floc = exp["frame_format"].format(index=idx, frame=i)
-                out.append(_chunk(floc, section, text, PATH_SHAPE, s, section_path=spath))
-            out += _tail
-            continue
-
-        # 단일 거대 프레임 — shape 분할이 불성립한다
-        lines = [(n, ln.strip()) for n, ln in enumerate(body[0].splitlines(), 1)
-                 if ln.strip()]
-        if struct_map_fn is not None:                       # ② 지도 기반 분할
-            chunks, smap, reasons = struct_map_fn(
-                f"{loc}", lines,
-                lambda a, b: (exp["frame_format"].format(index=idx, frame=f"L{a}")
-                              if a == b else
-                              exp["frame_format"].format(index=idx, frame=f"L{a}-{b}")))
-            if not reasons:
-                for c in chunks:
-                    out.append(_chunk(c["source_locator"], section, c["text"], PATH_MAP,
-                                      s, section_override=c.get("section"),
-                                      section_path=spath,
-                                      band={k: v for k, v in (c.get("meta") or {}).items()
-                                            if k.startswith("split_level")}))
-                out += _tail
-                continue
-            out.append(_chunk(loc, section, "\n".join(body), PATH_FLAT, s,
-                              unresolved=reasons, section_path=spath))
-            out += _tail
-            continue
-
-        out.append(_chunk(loc, section, "\n".join(body), PATH_FLAT, s,   # ③ 폴백
-                          unresolved=["구조 지도 패스 미주입 — 분할 근거가 없다"],
-                          section_path=spath))
-        out += _tail
+        mine = _body_chunks(body, loc, section, s, spath, idx, exp, struct_map_fn) + extras
+        out += [_unit(c, loc, d) for c in mine]
     return out
+
+
+def _body_chunks(body, loc, section, s, spath, idx, exp, struct_map_fn):
+    """본문 근거 청크 — 임계 이하면 하나 · 넘으면 지도(②) · 지도도 없거나 실패면 통청크(③ + 큐)."""
+    if not body:
+        return []
+    if not _over(body):                                     # 임계 이하 — 자명하다
+        return [_chunk(loc, section, "\n".join(body), PATH_SLIDE, s, section_path=spath)]
+    lines = [(n, ln.strip()) for n, ln in enumerate("\n".join(body).splitlines(), 1) if ln.strip()]
+    if struct_map_fn is not None:                           # ② 지도 기반 분할
+        chunks, smap, reasons = struct_map_fn(
+            f"{loc}", lines,
+            lambda a, b: (exp["frame_format"].format(index=idx, frame=f"L{a}")
+                          if a == b else
+                          exp["frame_format"].format(index=idx, frame=f"L{a}-{b}")))
+        if not reasons:
+            return [_chunk(c["source_locator"], section, c["text"], PATH_MAP, s,
+                           section_override=c.get("section"), section_path=spath,
+                           band={k: v for k, v in (c.get("meta") or {}).items() if k.startswith("split_level")})
+                    for c in chunks]
+        return [_chunk(loc, section, "\n".join(body), PATH_FLAT, s, unresolved=reasons, section_path=spath)]
+    return [_chunk(loc, section, "\n".join(body), PATH_FLAT, s,   # ③ 폴백
+                   unresolved=["구조 지도 패스 미주입 — 분할 근거가 없다"], section_path=spath)]
+
+
+def _unit(c, loc, d):
+    """한 슬라이드의 청크 — 추출 단위 · 덱 구조의 공정(목록 — 판정이 섰을 때만) · 언급 공정 · 개체 없음."""
+    m = {**(c.get("meta") or {}), "extract_unit": loc}
+    if d.get("processes") is not None:
+        c = {**c, "process_ref": coord_value(d["processes"])}
+        m["deck_coord"] = True                             # 덱 구조가 정한 공정(없음 포함) — 문서 좌표 · 경로 대조는 힌트였다
+    if d.get("mentions"):
+        m["mentions"] = list(d["mentions"])
+    if d.get("no_entities"):
+        m["no_entities"] = True
+    return {**c, "meta": m}
 
 
 def _rows(r):

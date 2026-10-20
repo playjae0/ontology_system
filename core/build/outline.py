@@ -200,10 +200,10 @@ def _ask(heads, cfg):
     from core.build import structure as ST
     from core.build.extract import categories_with_also
     out = gateway.chat(
-        [{"role": "system", "content": gateway.prompt(PROMPT)},
+        [{"role": "system", "content": gateway.prompt_for(PROMPT, {cfg.get("layer") or "-": cfg}, "structure")},
          {"role": "user", "content": json.dumps(
              {"categories": categories_with_also(cfg), "frame": None, "open": [],
-              "lines": [{"row": h["id"], "draft": h["depth"], "marks": [], "text": h["text"][:ST.LABEL_CHARS],
+              "lines": [{"row": h["id"], "draft": h["depth"], "marks": [], "text": h["text"][:ST.LINE_CHARS],
                          "fixed_parent": h["parent"]} for h in heads]}, ensure_ascii=False)}],
         json_schema=ST.SCHEMA, point="outline")
     return {x.get("row"): x for x in out.get("headings") or [] if isinstance(x, dict)}

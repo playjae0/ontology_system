@@ -89,7 +89,8 @@ POINTS = {
 # 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
 CALL_TAGS = {"interview": "generate",
              "struct_rule": "struct_map",      # B87 ② — 계층 규칙 선언은 ⑦ 안의 호출이다
-             "structure": "outline"}           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
+             "structure": "outline",           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
+             "deck": "outline"}                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(같은 지시문)
 
 
 def point_label(point):
@@ -467,6 +468,18 @@ def prompt(name):
         raise FileNotFoundError(f"지시문 템플릿 없음: <칸ID>_{name}.md")
     with open(p, encoding="utf-8") as f:
         return f.read()
+
+
+def prompt_for(name, cfgs, key):
+    """지시문 + **층 힌트**(B124 ③) — 층 config `prompts.<key>`(구조 `structure` · 추출 `extract` · 보강 `reinforce` · 판정
+    `judge`)를 층마다 `## 층 어휘 — <층>` 절로 덧붙인다. **모든 LLM 자리가 이 함수 하나**다(지시문 파일에는 층 어휘 0 —
+    층의 말은 config가 소유한다 · 문서 1 B9). 힌트가 없는 층은 덧붙이지 않는다(지시문 그대로)."""
+    out = prompt(name)
+    for lay, cfg in sorted((cfgs or {}).items()):
+        hint = ((cfg or {}).get("prompts") or {}).get(key)
+        if isinstance(hint, str) and hint.strip():
+            out += f"\n\n## 층 어휘 — {lay}\n{hint.strip()}"
+    return out
 
 
 def has_prompt(name):

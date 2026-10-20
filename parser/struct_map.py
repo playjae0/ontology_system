@@ -161,6 +161,21 @@ NUMBER_PREFIX = re.compile(r"^(?:\(\d{1,3}\)|\d{1,3}\)|\d+(?:\.\d+)*[.)]?(?=\s)|
                            r"(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVX]{1,4})\.|[A-Z]\.|[가나다라마바사아자차카타파하]\.|[①-⑳])\s*")
 
 
+#: **번호 꼴**(B124 ① — 문서 구조 입력의 형태 힌트 · 길이와 무관 · 판정 아님) — `(꼴 표기, 정규식)` · 앞의 것이 먼저(1.1 → 1.)
+NUMBER_SHAPES = (("(1)", re.compile(r"^\(\d{1,3}\)")), ("1)", re.compile(r"^\d{1,3}\)")),
+                 ("1.1", re.compile(r"^\d+\.\d+")), ("1.", re.compile(r"^\d{1,3}\.(?!\d)")),
+                 ("제1장", re.compile(r"^제\s*\d+\s*[장절조편관]")),
+                 ("Ⅰ.", re.compile(r"^(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]+|[IVX]{1,4})\.")), ("A.", re.compile(r"^[A-Z]\.\s")),
+                 ("가.", re.compile(r"^[가나다라마바사아자차카타파하]\.")), ("가)", re.compile(r"^[가나다라마바사아자차카타파하]\)")),
+                 ("①", re.compile(r"^[①-⑳]")), ("-", re.compile(r"^[-•·▪※]\s")))
+
+
+def number_shape(text):
+    """줄 머리의 번호 꼴 표기(`1)` · `가.` · `①` …) 또는 None — 길이와 무관(긴 목록 항목도 같은 꼴의 형제다)."""
+    t = (text or "").strip()
+    return next((lab for lab, rx in NUMBER_SHAPES if rx.match(t)), None)
+
+
 def strip_number(text):
     """줄 글자에서 번호 머리를 뗀 이름 — 번호가 없으면 그대로(앞뒤 공백만)."""
     t = (text or "").strip()
@@ -398,7 +413,7 @@ def choose_level(stats):
                   f"사람이 정한다(자동으로 지도 패스로 넘기지 않는다)"), True
 
 
-def split(smap, lines, locator, sep=" > ", heads=False):
+def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap=None, keep_split=None):
     """지도를 적용해 자른다 — **여기에 LLM은 없다.** 같은 지도면 같은 분할이다.
 
     헤딩 행은 청크가 아니라 `section` 경로를 만들고, 그 아래 연속 본문이 청크다.
@@ -472,10 +487,10 @@ def split(smap, lines, locator, sep=" > ", heads=False):
         if deeper:
             out = _resplit(out, deeper, locator)
     deeper = {n for n, l in all_head.items() if pick and l == pick + 1}
-    return cap_chars(out, deeper, locator)
+    return cap_chars(out, deeper, locator, keep_rows, keep_cap, keep_split)
 
 
-def cap_chars(chunks, deeper, locator):
+def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split=None):
     """**글자 상한**(B87 ③) — 넘는 청크만: 더 깊은 제목에서 한 단계 → 그래도 넘으면 행 경계.
 
     셀 중간은 자르지 않는다 — 한 행이 혼자 상한을 넘으면 통째로 두고
@@ -490,21 +505,27 @@ def cap_chars(chunks, deeper, locator):
             # **행 없는 청크는 결함이다**(B89 ①) — 구판은 원래 locator를 그대로 붙여
             # 넘겼고, 그 조각들이 같은 locator를 나눠 가져 validator에서야 드러났다.
             raise ValueError(f"청크에 행 목록(_lines)이 없다 — {c.get('source_locator')}")
-        if len(c.get("text") or "") <= CHUNK_MAX_CHARS:
+        # **붙임 구간**(B126 ② — 구조 고침이 한 청크로 붙인 줄들)은 권장값의 n배(`keep_cap`)까지 그대로 · 넘으면 형제 줄 앞에서만
+        # (`keep_split` — 문서 구조의 구간 나눔과 같은 함수)
+        join = bool(keep_rows and keep_cap and all(n in keep_rows for n, _x in lines))
+        if len(c.get("text") or "") <= (keep_cap if join else CHUNK_MAX_CHARS):
             out.append(c)
             continue
-        parts, seg = [], []
-        for n, x in lines:                     # ① 더 깊은 제목에서 한 단계(지금 규칙)
-            if n in deeper and seg:
+        if join and keep_split is not None:
+            pieces = [(part, False) for part in keep_split(lines)]
+        else:
+            parts, seg = [], []
+            for n, x in lines:                 # ① 더 깊은 제목에서 한 단계(지금 규칙)
+                if n in deeper and seg:
+                    parts.append(seg)
+                    seg = []
+                seg.append((n, x))
+            if seg:
                 parts.append(seg)
-                seg = []
-            seg.append((n, x))
-        if seg:
-            parts.append(seg)
-        pieces = []
-        for part in parts:                     # ② 그래도 넘으면 행 경계
-            pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
-                       else [(part, False)])
+            pieces = []
+            for part in parts:                 # ② 그래도 넘으면 행 경계
+                pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
+                           else [(part, False)])
         for part, over in pieces:
             meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"]}
             if over:

@@ -57,6 +57,28 @@ def null_marker(value, markers=None):
     return None
 
 
+def coord_refs(value):
+    """**조각 · 청크의 공정은 목록이다**(B125 ④) — `process_ref` 값(문자열 하나 · 목록 · 없음)을 늘 목록으로 읽는 손 하나.
+    표 · 산문 · 렌즈 · 층 전부 이 함수로 읽는다(빈 값 · 빈칸 표시 · 겹침은 뺀다 · 순서는 그대로)."""
+    vals = value if isinstance(value, (list, tuple)) else [value]
+    out = []
+    for v in vals:
+        if isinstance(v, str) and v.strip() and not null_marker(v) and v not in out:
+            out.append(v)
+    return out
+
+
+def coord_value(refs):
+    """목록 → 저장 꼴(쓰는 손 하나) — 없으면 None · 하나면 그 이름(어댑터 · 저장된 산출과 같은 꼴) · 둘 이상이면 목록."""
+    refs = coord_refs(refs)
+    return None if not refs else (refs[0] if len(refs) == 1 else refs)
+
+
+def coord_text(value, sep=" · "):
+    """화면 · 맥락 줄의 공정 칸 — 목록을 한 줄로(없으면 빈 글)."""
+    return sep.join(coord_refs(value))
+
+
 def blank_coords(pieces, fields=COORD_FIELDS):
     """좌표 칸의 빈칸 표시 → 빈 값 — 다음 단계(`tagger.coord_from_section`)가 문서 좌표를 물려준다(지금 규칙) ·
     비운 칸은 `meta.null_marked`(있을 때만 — 표시 없는 조각은 그대로)."""

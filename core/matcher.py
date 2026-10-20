@@ -479,10 +479,7 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None):
     out = gateway.chat(
         # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
         # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
-        [{"role": "system",
-          "content": gateway.prompt("judge")
-          + ("\n\n## 층 어휘\n" + (cfg or {}).get("prompts", {}).get("judge", "")
-             if (cfg or {}).get("prompts", {}).get("judge") else "")},
+        [{"role": "system", "content": gateway.prompt_for("judge", {(cfg or {}).get("layer") or "-": cfg}, "judge")},
          {"role": "user", "content": json.dumps(body, ensure_ascii=False)}],
         json_schema=JUDGE_SCHEMA, point="judge")
     vtype = out.get("type")
@@ -527,6 +524,27 @@ def _evidence(v, cands):
                         "id": nid, "canonical": name,
                         "top": [{"id": i, "canonical": cn, "score": round(float(s), 4)}
                                 for i, cn, s in top]}
+
+
+def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, polarity=None, parent=None, sentence=None):
+    """**재생의 불확실에 2차만 한 번**(B127 ① — 지난 대장에 2차 기록이 없는 불확실 행) — 지금 후보 · 같은 계약(`second`) ·
+    돌려주는 것은 `resolve`와 같은 튜플(경로는 `replay` 그대로 · `second.replay`) 또는 None(부르지 않았다 — 재생 그대로)."""
+    if not sentence or not sentence.get("text") or not JUDGE_CONTEXT_CHARS or gateway.use_mock():
+        return None
+    from core.state.bootstrap import load_config
+    cfg = load_config(layer)
+    LAST_NARROW.clear()
+    cands = candidates(surface, category, layer, graph, dictionary,
+                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
+    v0 = {"type": UNCERTAIN, "matched_id": None, "confidence": v1.get("confidence") or 0.0,
+          "path": v1.get("replayed_path") or "replay"}
+    v = second(surface, cands, category, cfg, v0, sentence)
+    if "second" not in v:
+        return None
+    _evidence(v, cands)
+    v["second"]["replay"] = True
+    v.update(path="replay", replayed_path=v1.get("replayed_path"), candidates_n=len(cands))
+    return v["type"], v["matched_id"], v["confidence"], v
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,

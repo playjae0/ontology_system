@@ -4,7 +4,8 @@
 층 config · 층 공통 config의 최상위 키를 세 갈래로 가른다 — **분류는 이 표 하나다**(B120 ③ 추출 재사용의 판이 같은 표를 읽는다):
 
   · 추출 — 추출 입력에 실제로 들어가는 칸: 층 `categories`(이름 · 정의문) · `relations`(관계 이름) · `relevance_terms`(렌즈
-    거름) · `extract_patterns`(mock 문형) · `value_categories`(값을 받는 카테고리 — B120 ②) · 공통 `categories`(겸 한 줄이
+    거름) · `extract_patterns`(mock 문형) · `value_categories`(값을 받는 카테고리 — B120 ②) · `prompts`(층 힌트 — 구조 · 추출 ·
+    보강 · 판정 지시문에 덧붙는 층의 말 — B124 ③) · 공통 `categories`(겸 한 줄이
     정의문 끝에 붙는다) → **산문 추출을 다시 뽑는다** — 추출 · 개요 · 구조 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
     B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다)
   · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `category_pair_map` · `mirrors` · `polarity` · `skeleton` · 공통
@@ -20,7 +21,7 @@ import hashlib
 import json
 
 #: 층 config — 갈래마다 키(닫힌 표 · 밖은 「그 밖」)
-LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories"),
+LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories", "prompts"),
          "구축": ("relation_patterns", "category_pair_map", "mirrors", "polarity", "skeleton")}
 #: 층 공통 config(`layers/common.json`)
 COMMON = {"추출": ("categories",), "구축": ("canonical_scope",)}

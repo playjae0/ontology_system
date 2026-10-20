@@ -67,7 +67,7 @@ def from_registry():
                      "path": str(paths.from_home(src)) if src else None,
                      "revision": e.get("revision"), "first_ingested_at": e.get("first_ingested_at"),
                      "duplicate_ok": bool(e.get("duplicate_ok")),
-                     "images_skipped": bool(e.get("images_skipped"))})
+                     "images_skipped": bool(e.get("images_skipped")), "capture_off": bool(e.get("capture_off"))})
     return rows
 
 
@@ -115,7 +115,8 @@ def show_plan(plan):
               f"묻는다 · 태깅 ≤ {_old:,} · 그 뒤는 판과 함께 기억)")
     print("  다시 넣을 순서(처음 인입 순서):")
     for i, d in enumerate(go, 1):
-        flags = [f for f, on in (("중복 허용", d["duplicate_ok"]), ("그림 뺌", d["images_skipped"])) if on]
+        flags = [f for f, on in (("중복 허용", d["duplicate_ok"]), ("그림 뺌", d["images_skipped"]),
+                                 ("캡처 끔", d.get("capture_off"))) if on]
         print(f"    {i:>3}. {d['doc_id']:<20} {str(d['doc_type'] or '?'):<10} {d['source_path']}"
               + (f"  [{' · '.join(flags)}]" if flags else ""))
     miss = [d for d in docs if not d["exists"]]
@@ -143,6 +144,7 @@ def execute(plan, *, bootstrap, screen, replay=True):
     from core.llm import gateway
     from core.state import init as I, oplog
     items = [(Path(d["path"]), {"doc_type": d["doc_type"], "no_images": d["images_skipped"],
+                                "no_capture": bool(d.get("capture_off")),
                                 "allow_duplicate": d["duplicate_ok"]})
              for d in plan["docs"] if d["exists"]]
     # **지우기 전에 끝까지 갈 수 있는지 잰다**(B111 ②) — 실패면 그래프 · 계획 파일 그대로(쓰기 0)
@@ -180,7 +182,7 @@ def report(r):
     print(f"■ 재구축 끝 — 문서 {len(rows) + len(r['missing']):,}(성공 {ok:,} · 실패·보류 {len(rows) - ok:,} · "
           f"원본 없음 {len(r['missing']):,})")
     print(f"  판정 — 재생 {j['재생']:,} · 재판정 {j['재판정']:,}(키 없음 {j['키 없음']:,} · 대상 없음 {j['대상 없음']:,} · "
-          f"끔 {j['끔']:,})")
+          f"끔 {j['끔']:,}) · 재생 불확실 {j.get('불확실', 0):,} → 2차 {j.get('2차', 0):,} → 바뀜 {j.get('2차 바뀜', 0):,}")
     print(f"  LLM 호출 — 추출 {c['추출']:,} · 판정 {c['판정']:,} · 태깅 {c['태깅']:,} · 개요 {c['개요']:,} · "
           f"보강 {c['보강']:,} · 그 밖 {c['그 밖']:,}")
     from cli.ops import replay_lines

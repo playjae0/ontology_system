@@ -57,7 +57,14 @@ class Live:
         self.by = dict(by or {})
 
     def chat(self, messages, json_schema=None, point=None, **kw):
-        body = json.loads(messages[1]["content"])
+        c = messages[1]["content"]
+        imgs = 0
+        if isinstance(c, list):                  # 글 + 그림(캡처 — B125 ②)
+            imgs = sum(1 for p in c if p.get("type") == "image_url")
+            c = next(p["text"] for p in c if p.get("type") == "text")
+        body = json.loads(c)
+        if imgs:
+            body["_images"] = imgs
         CALLS.append((point, body))
         if point in self.by:
             return self.by[point](body)

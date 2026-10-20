@@ -445,7 +445,10 @@ def read_pdf(path):
     목차(outline)가 있으면 함께 낸다 — 어댑터가 `section`을 거기서 만든다.
     없으면 「페이지 N」으로 떨어진다(조용히 비우지 않는다).
     """
-    fitz = _need("fitz", "pymupdf", ".pdf")                 # PyMuPDF — 지연 import
+    from .render import pymupdf                             # PyMuPDF — 지연 import · `import pymupdf` 먼저(B128 ①)
+    fitz = pymupdf()
+    if fitz is None:
+        raise MissingDependency("`.pdf`를 읽으려면 `PyMuPDF`가 필요하다 — pip install PyMuPDF")
 
     doc = fitz.open(path)
     pages, images = [], {}

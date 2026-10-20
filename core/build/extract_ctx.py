@@ -2,7 +2,8 @@
 """칸 3.3 — **청크 맥락 줄** — 추출에 넘기는 청크 머리 한 줄 (B102 ①).
 
 「이 청크가 어디를 말하는가」를 판단할 재료를 한 줄로 준다:
-`[문서: <파일 이름> · 공정: <조각 좌표 또는 문서 좌표> · 시트: <엑셀 시트> · 경로: <상위 제목 › … › 구획>]`.
+`[문서: <파일 이름> · 개요: <문서 개요> · 공정: <조각 공정(목록) 또는 문서 좌표> · 시트: <엑셀 시트> · 경로: <상위 제목 › … › 구획>]`.
+개요 칸은 문서 구조가 문서에 낸 개요가 있을 때만(PPT 덱 개요 — B125 ③ · 다른 포맷은 없으면 칸 없음).
 없는 칸은 뺀다. **포맷 전부 한 함수**(엑셀·Word·PDF·PPT) — 포맷의 차이는 조각이 든 값(`meta.sheet` ·
 `meta.section_path` · `process_ref`)이 말한다. 엑셀은 **제목이 있어도 시트명을 늘 싣는다** — 시트가
 유닛·부품 단위인 문서에서 「어디의 것인가」의 첫 근거다. 앞뒤 청크 본문은 넣지 않는다(문서 6 §6.4-5).
@@ -20,7 +21,8 @@ def doc_info(env):
     """봉투에서 맥락 줄의 문서 칸 재료 — `{"name": 파일 이름, "coord": 문서 좌표}`."""
     src = (env or {}).get("source_path") or ""
     return {"name": PurePath(str(src)).name if src else None,
-            "coord": (env or {}).get("doc_coord")}
+            "coord": (env or {}).get("doc_coord"),
+            "overview": (env or {}).get("doc_overview")}           # 문서 개요(덱 구조 — B125 ③ · 없으면 칸 없음)
 
 
 def _path(p):
@@ -31,12 +33,13 @@ def _path(p):
 
 
 def context_fields(chunk, doc=None):
-    """맥락 칸 `[(이름, 값)]` — 값이 있는 칸만 · 순서 문서 → 공정 → 시트 → 경로."""
+    """맥락 칸 `[(이름, 값)]` — 값이 있는 칸만 · 순서 문서 → 개요 → 공정 → 시트 → 경로."""
     m = chunk.get("meta") or {}
     sheet = m.get("sheet")
     path = m.get("section_path")
-    coord = chunk.get("process_ref") or (doc or {}).get("coord")
-    out = [("문서", (doc or {}).get("name")), ("공정", coord), ("시트", sheet)]
+    from parser.normalizer import coord_text
+    coord = coord_text(chunk.get("process_ref")) or (doc or {}).get("coord")      # 공정은 목록 (B125 ④)
+    out = [("문서", (doc or {}).get("name")), ("개요", (doc or {}).get("overview")), ("공정", coord), ("시트", sheet)]
     # 경로가 시트 이름 그 자체면(제목 없는 시트) 두 번 싣지 않는다
     if path and str(path) != str(sheet or ""):
         out.append(("경로", _path(path)))

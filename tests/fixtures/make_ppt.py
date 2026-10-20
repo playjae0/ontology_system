@@ -130,6 +130,43 @@ def build(out=OUT):
     return out
 
 
+def build_report(out):
+    """**보고서 꼴 덱**(B125 — 창작 표본) — 표지 · 글 상자 제목 + 작은 상자 여섯 · (계속) · 본문 + 표 + 그림 + 노트 · 두 공정."""
+    import io
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation()
+    blank = prs.slide_layouts[6]
+
+    def box(s, text, top, left=0.5, w=4.0):
+        s.shapes.add_textbox(Inches(left), Inches(top), Inches(w), Inches(0.5)).text_frame.text = text
+
+    s = prs.slides.add_slide(prs.slide_layouts[0])                       # 1 — 표지
+    s.shapes.title.text, s.placeholders[1].text = "노칭 · 스태킹 점검 보고", "B125 창작"
+    s = prs.slides.add_slide(blank)                                       # 2 — 글 상자 제목 + 작은 상자 여섯
+    box(s, "노칭 금형 점검 결과", 0.3, w=8)
+    for i, t in enumerate(("마모 0.05mm", "→ 버 발생", "교체 2주", "클리어런스 0.02mm", "윤활 1회", "점검 완료")):
+        box(s, t, 1.5 + (i // 3) * 1.0, 0.5 + (i % 3) * 3.0, 2.5)
+    s = prs.slides.add_slide(blank)                                       # 3 — (계속)
+    box(s, "노칭 금형 점검 결과 (계속)", 0.3, w=8)
+    box(s, "다이 균열 없음", 1.5)
+    s = prs.slides.add_slide(prs.slide_layouts[5])                        # 4 — 본문 + 표 + 그림 + 노트
+    s.shapes.title.text = "커터 사양"
+    box(s, "아래 표는 커터 사양이다.", 1.4)
+    tb = s.shapes.add_table(2, 2, Inches(0.5), Inches(2.2), Inches(4), Inches(1)).table
+    for (r, c), v in {(0, 0): "항목", (0, 1): "값", (1, 0): "장력", (1, 1): "30N"}.items():
+        tb.cell(r, c).text = v
+    s.shapes.add_picture(io.BytesIO(_png()), Inches(5.5), Inches(2.2))
+    s.notes_slide.notes_text_frame.text = "점검 메모 — 압력 5bar"
+    s = prs.slides.add_slide(blank)                                       # 5 — 두 공정 · 언급 하나
+    box(s, "노칭 · 스태킹 연동 점검", 0.3, w=8)
+    box(s, "노칭 커터 마모와 스태킹 매거진 정렬을 함께 본다. 탭용접 설비와 연동한다.", 1.5, w=8)
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    prs.save(out)
+    return Path(out)
+
+
 if __name__ == "__main__":
     p = build(sys.argv[1] if len(sys.argv) > 1 else OUT)
     print(f"[fixture] {p}  [{p.stat().st_size / 1024:.0f}KB]")

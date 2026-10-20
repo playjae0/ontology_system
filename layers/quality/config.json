@@ -58,11 +58,7 @@
     "node:replaced": "(대체됨: {old} → {new})",
     "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
   },
-  "prompts": {
-    "extract": "(명세 §5.4-1 규칙 — 정의문 3종 삽입, 주제만, 목록 밖 버림, 애매하면 제외). 훅 활성 — QPPT01 품질층 추출 경로(증분0 §6-6).",
-    "judge": "(공정층과 동일 규칙)",
-    "extract_enabled": true
-  },
+  "prompts": {},
   "relation_patterns": [
     {
       "src": "Failure",

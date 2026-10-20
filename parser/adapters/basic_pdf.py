@@ -21,7 +21,7 @@ from __future__ import annotations
 
 ADAPTER = {
     "doc_type": "pdf_basic",
-    "adapter_version": "1.0",
+    "adapter_version": "1.1",
     "payload_kind": "prose",
     "expects": {
         # 분할 신호 상수 — preflight가 보는 지문(prose는 헤더 행이 없다)
@@ -76,13 +76,13 @@ def extract(raw, struct_map_fn=None) -> list[dict]:
                 "text": text,
                 "meta": {"split_path": PATH_PAGE, "page": idx,
                          "shape_kind": "page", "shape_id": loc,
-                         "section_path": section},
+                         "section_path": section, "extract_unit": loc},   # 쪽 하나 = 추출 1회 (B125 ①)
             })
 
         for im in p.get("images", []):
             meta = {"split_path": PATH_IMAGE, "page": idx,
                     "shape_kind": "picture", "shape_id": im["id"],
-                    "section_path": section}
+                    "section_path": section, "extract_unit": loc}
             if im.get("mime"):
                 meta["image_mime"] = im["mime"]
             if not text:

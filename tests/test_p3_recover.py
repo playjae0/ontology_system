@@ -273,9 +273,14 @@ def _b55_ask(doc_id, lines):
 
 
 def _b55_parse():
+    from parser import tuning
     _b55_calls.clear()
-    pipeline.parse(_BP, "B55MAP", str(_b55_src), map_structure=_b55_ask,
-        layer=coord_layer())
+    tuning.apply({"ppt_slide_chars": 700})       # 창작 손잡이 값(근거 아님) — 단일 프레임 슬라이드 11만 지도로 (B125 ①)
+    try:
+        pipeline.parse(_BP, "B55MAP", str(_b55_src), map_structure=_b55_ask,
+            layer=coord_layer())
+    finally:
+        tuning.apply({})
     return len(_b55_calls)
 
 
@@ -309,6 +314,8 @@ show("⑤ 리허설 파싱이 doc_id_of(표본)를 쓴다 ({DOC_TYPE}NN이 아�
      "mod, doc_id_of(s), s, layer=" in
      _reg_src())
 # **키가 같아야 재사용이 성립한다** — 구판은 리허설이 다른 이름으로 써서 못 만났다.
+from parser import tuning as _b55_tn                                # noqa: E402
+_b55_tn.apply({"ppt_slide_chars": 700})      # 창작 손잡이 값(근거 아님) — 단일 프레임 슬라이드 11만 지도로 (B125 ①)
 _b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 _b55_sh.copy(RAW / "PPT_basic.pptx", _b55_src)
 _b55_calls.clear()
@@ -329,6 +336,7 @@ pipeline.parse(_BP, _b55_did(str(_b55_src)), str(_b55_src), map_structure=_b55_a
         layer=coord_layer())
 show("⑤ [대조] 이름이 다르면 못 찾는다 — 고친 것이 이것이다",
      len(_b55_calls) == 1)
+_b55_tn.apply({})
 _b55_src.unlink(missing_ok=True)
 _b55_sh.rmtree(_SM.keep_dir(), ignore_errors=True)
 

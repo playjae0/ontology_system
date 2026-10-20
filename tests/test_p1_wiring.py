@@ -46,6 +46,7 @@ show("⑦의 통로가 apply()까지 이어진다 (파라미터만 있고 값이
 print("\n■ ⑦ 예산 초과·판정 불가는 문서를 죽이지 않는다 (문서 6 §6.2·§6.3 · D-113 조정)")
 from core.llm import check, gateway as _LLM, points, struct_map_pass                                        # noqa: E402
 _PPTDOC = str(RAW / "PPT_basic.pptx")
+from parser import tuning                                                                                     # noqa: E402
 
 
 def _map_run(doc_id, reply, limit):
@@ -55,11 +56,13 @@ def _map_run(doc_id, reply, limit):
     _oc, _ol = _LLM.chat, check.context_limit
     _LLM.chat = lambda *a, **k: reply
     check.context_limit = lambda: limit
+    tuning.apply({"ppt_slide_chars": 700})       # 창작 손잡이 값(근거 아님) — 단일 프레임 슬라이드 11만 지도로 (B125 ①)
     try:
         return pipeline.parse(basic_ppt, doc_id, _PPTDOC, layer=coord_layer(),
                               map_structure=struct_map_pass.map_structure)
     finally:
         _LLM.chat, check.context_limit = _oc, _ol
+        tuning.apply({})
 
 
 def _queue_reasons(res):

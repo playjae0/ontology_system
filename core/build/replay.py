@@ -14,7 +14,8 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
 
   · `match` → 그 행이 붙었던 노드(`target` canonical)가 지금 살아 있으면 그 노드(LLM 0 · 별칭 출처는 그때 경로대로)
   · `new` → 지금처럼 새 노드(LLM 0 — 같은 canonical이 이미 있으면 사전 단에서 이미 붙었다)
-  · `uncertain` → 지금처럼 불확실(새 노드 + 큐 — LLM 0 · 가장 가까운 후보는 이름으로 다시 찾는다)
+  · `uncertain` → 지금처럼 불확실(새 노드 + 큐 — LLM 0 · 가장 가까운 후보는 이름으로 다시 찾는다) · **2차 기록(`judge2`)이
+    없고 산문 문장이 있으면 2차를 한 번**(B127 ① — 불확실은 내린 판정이 아니다 · 매칭이면 그 노드 · 기록이 남아 다음은 LLM 0)
   · 그 밖(골격 밖 · 보류)은 재생하지 않는다 — 코드가 다시 판정한다
 
 재료는 개체 행(`entity`)과 **소속 대상 행**(`belongs` — 산문 개체의 `belongs_to`가 골격 · 버퍼 · 사전에 없어 새로
@@ -37,7 +38,7 @@ COUNT_ALL = False
 #: 지금 문서가 재생 대상인가 — `begin`이 정한다(지난 대장이 있거나 `COUNT_ALL`)
 LIVE = False
 
-_ZERO = {"재생": 0, "재판정": 0, "키 없음": 0, "대상 없음": 0, "끔": 0}
+_ZERO = {"재생": 0, "재판정": 0, "키 없음": 0, "대상 없음": 0, "끔": 0, "불확실": 0, "2차": 0, "2차 바뀜": 0}
 #: 실행 누계 — 재구축 보고 · 문서마다는 `DOC`
 STATS = dict(_ZERO)
 DOC = dict(_ZERO)
@@ -141,10 +142,22 @@ def pick(b, at, surface, category, canonical):
             v["same_doc"] = True
         _count("재생")
         return ("match", nid, v["confidence"], v), None
+    if r.get("judge2"):
+        v["second"] = {k: x for k, x in r["judge2"].items() if k != "replay"}   # 2차 기록은 행에 남는다(다음 재생도 LLM 0)
     if r["verdict"] == "uncertain":
         v["nearest"] = _near(b, r.get("nearest"), category)
+        v["second_due"] = not r.get("judge2")      # 2차를 안 거친 불확실 — 호출부가 문장이 있으면 2차를 한 번(B127 ①)
+        DOC["불확실"] += 1
+        STATS["불확실"] += 1
     _count("재생")
     return (r["verdict"], None, v["confidence"], v), None
+
+
+def note_second(changed):
+    """재생의 불확실에 2차를 불렀다(B127 ①) — 문서 · 실행 수(`재생 불확실 n → 2차 m → 바뀜 k`)."""
+    for d in (DOC, STATS):
+        d["2차"] += 1
+        d["2차 바뀜"] += int(bool(changed))
 
 
 def _miss(why):

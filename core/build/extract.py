@@ -26,6 +26,7 @@ import os
 import re
 from pathlib import Path
 
+from parser.normalizer import coord_text
 from core import paths
 from core.llm import gateway
 from core.state import log, store
@@ -272,11 +273,23 @@ def attach_candidates(process_ref, layer=None):
     좌표 층의 골격이라, 품질층 doc_type이 제 층의 스냅샷을 읽으면 후보가 빈다.
     """
     from core.state.bootstrap import coord_layer     # 좌표 층을 묻는 자리는 하나다
+    from parser.normalizer import coord_refs
     snap = (store.read(store.SKELETON_LIST, {}).get(layer or coord_layer()) or {})
     nodes = snap.get("nodes") or []
-    if not process_ref:
+    refs = coord_refs(process_ref)
+    if len(refs) > 1:
+        # **공정 목록**(B125 ④) — 목록 공정들의 하위 트리 합 · 하나도 안 서면 세부공정 목록(하나일 때와 같다)
+        got = [x for r in refs for x in _subtree(r, nodes)]
+        return sorted(set(got)) if got else sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
+    if not refs:
         # 좌표 null — **세부공정 목록만**. tier는 스냅샷이 이미 싣고 있다.
         return sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
+    got = _subtree(refs[0], nodes)
+    return got if got else sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
+
+
+def _subtree(process_ref, nodes):
+    """공정 하나 → 그 골격 노드와 하위 part_of 골격 노드의 canonical(정렬) · 목록에 없으면 빈 목록."""
     key = norm(process_ref)
     ref = next((n for n in nodes
                 if norm(n["canonical"]) == key or key in
@@ -288,7 +301,7 @@ def attach_candidates(process_ref, layer=None):
                 if fk in {fold_latin(x) for x in [n["canonical"], *(n.get("aliases") or [])]}]
         ref = hits[0] if len(hits) == 1 else None
     if ref is None:
-        return sorted({n["canonical"] for n in nodes if n.get("tier") == "sub"})
+        return []
     out = {ref["canonical"]}
     # 하위 part_of 골격 노드 — 스냅샷의 `parent` 링크로 훑는다(그래프를 읽지 않는다).
     frontier = {ref["canonical"]}
@@ -339,7 +352,7 @@ _CHAIN = {}
 _OUTLINE = {}
 
 
-def _candidates_for(chunk_id, chunk, cfg, vocab):
+def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
     """추출 후보 1청크 — mock/실호출 분기의 **단일 지점**이다.
 
     후보는 **표면형만** 낸다(문서 4 §4.10-1) — 노드 id가 들어가면 추출이 그래프
@@ -351,10 +364,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
 
     # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
     # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
-    tmpl = gateway.prompt("extract")
-    out = gateway.chat(
-        [{"role": "system", "content": tmpl},
-         {"role": "user", "content": json.dumps(
+    tmpl = gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract")   # 층 힌트 한 함수 (B124 ③)
+    user = json.dumps(
              {"categories": categories_with_also(cfg),
               "relations": cfg.get("relations"),
               # **값을 받는 카테고리**(B120 ② — 층 config 선언 · 없으면 빈 목록 = 값 0)
@@ -368,8 +379,17 @@ def _candidates_for(chunk_id, chunk, cfg, vocab):
               # **구조 사슬**(B119 ②) — 이 청크 위의 제목 줄(역할 · 글자 · 대상) 위에서 아래로 · 가장 구체적인 주인을 고르는 재료
               "structure_chain": _CHAIN.get(chunk.get("source_locator")) or [],
               # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
-              "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)}],
-        json_schema=EXTRACT_SCHEMA, point="extract")
+              "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)
+    # **캡처**(B125 ② — 그 슬라이드 · 쪽의 렌더 · 있을 때만): 배치 · 화살표 · 붙음을 보는 근거 — 이름과 값은 글자에서
+    content = [{"type": "text", "text": user}, gateway._image_part(image, "image/png")] if image else user
+    try:
+        out = gateway.chat([{"role": "system", "content": tmpl}, {"role": "user", "content": content}],
+                           json_schema=EXTRACT_SCHEMA, point="extract")
+    except gateway.GatewayError as e:
+        if image and getattr(e, "status", None) == 400:
+            raise RuntimeError("추출: 게이트웨이가 캡처(이미지 입력)를 받지 않는다 — 그림 없이 넣으려면 "
+                               "`--no-images`(캡처도 끈다 · 인입 기록에 남는다)") from e
+        raise
     ents, extra = _optional(out)
     return {"chunk_id": chunk_id,
             "entities": ents,
@@ -457,7 +477,22 @@ def _chunk_info(entry, i, m, locator, label, tokens, lens, place=None):
             "실패": entry.get("failed")}
 
 
-def _call_chunk(doc_id, cid, c, cfg, vocab, hints):
+def _call_unit(doc_id, unit, cfg, vocab, hints, pages):
+    """**추출 단위 하나**(B125 ① — 슬라이드 · 쪽 = 한 호출 · 그 밖은 청크 하나) — 근거 청크마다의 항목 목록.
+
+    mock · 힌트는 청크마다 지금 그대로(한 호출로 센다) · 실호출은 묶음을 합친 한 청크 + 캡처(있으면)로 한 번 묻고 답을 근거
+    청크로 나눈다(`extract_unit.split` — 개체는 그 글자가 든 청크 · 관계 · 관련 링크는 본문 청크)."""
+    from core.build import extract_unit as EU
+    img = (pages or {}).get(EU.page_of(unit))
+    if gateway.use_mock() or hints or (len(unit) == 1 and img is None):
+        return [_call_chunk(doc_id, cid, c, cfg, vocab, hints) for cid, c in unit]
+    chunk, bid = EU.merged(unit)
+    entry = _call_chunk(doc_id, bid, chunk, cfg, vocab, None, image=img)
+    entry["capture"] = "page" if img is not None else "none"      # 그 호출이 캡처를 봤나 (B125 ② — slide_render)
+    return EU.split(entry, unit, bid)
+
+
+def _call_chunk(doc_id, cid, c, cfg, vocab, hints, image=None):
     """청크 1개의 후보 — 실패는 청크 단위로 남긴다(문서 4 §4.10 규약 9)."""
     try:
         if hints and c.get("source_locator") in hints:
@@ -465,7 +500,8 @@ def _call_chunk(doc_id, cid, c, cfg, vocab, hints):
             ents, extra = _optional(h)
             return {"chunk_id": cid, "entities": ents, "relations": h.get("relations", []),
                     "attach": h.get("attach", []), **extra}
-        return _candidates_for(cid, c, cfg, vocab)
+        # 캡처가 있을 때만 그림을 넘긴다 — 없으면 지금 서명 그대로(바꿔 끼운 대역 · 확장이 같은 손을 쓴다)
+        return _candidates_for(cid, c, cfg, vocab, image=image) if image is not None else _candidates_for(cid, c, cfg, vocab)
     except Exception as e:                              # noqa: BLE001
         # **무후보와 구분한다** — `entities: []`는 「봤는데 없었다」이고 `failed`는
         # 「보지 못했다」다. 둘을 같은 모양으로 두면 구축이 「후보 0건인 청크」로 세어
@@ -475,13 +511,13 @@ def _call_chunk(doc_id, cid, c, cfg, vocab, hints):
         return {"chunk_id": cid, "failed": why, "entities": [], "relations": [], "attach": []}
 
 
-_TOC_STATE = {"call": "부름", "ref": "ref", "skip": "거름", "done": "재사용"}
+_TOC_STATE = {"call": "부름", "ref": "ref", "skip": "거름", "done": "재사용", "none": "개체 없음"}
 
 
 def _toc(rows, env):
     """**청크 목차**(B112 ③) — 청크 전부 `[(번호, 라벨, 좌표, 상태, 글자 수)]` · 부르기 전에 예고가 싣는다."""
     coord = (env or {}).get("doc_coord")
-    return [(n, extract_ctx.chunk_label(c), c.get("process_ref") or coord or "-", _TOC_STATE[k],
+    return [(n, extract_ctx.chunk_label(c), coord_text(c.get("process_ref")) or coord or "-", _TOC_STATE[k],
              len(c.get("text") or "")) for n, (k, _cid, c) in enumerate(rows, start=1)]
 
 
@@ -505,6 +541,8 @@ def _todo(env, chunk_ids_by_locator, skip, done):
         elif cid in done:
             resumed += 1
             rows.append(("done", cid, c))
+        elif (c.get("meta") or {}).get("no_entities"):
+            rows.append(("none", cid, c))        # 덱 구조가 「개체 없음」(표지 · 제목만)으로 표시 — 부르지 않는다 (B125 ①)
         else:
             rows.append(("call", cid, c))
     return rows, ref, lens_sk, resumed
@@ -566,12 +604,21 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
                    for c in env.get("chunks", [])})
     done = _partial_load(env, lens, cfg)
     rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
-    m = sum(1 for r in rows if r[0] == "call")
+    from core.build import extract_unit as EU
+    units = EU.group(rows)                              # 추출 단위 — 슬라이드 · 쪽은 한 호출 (B125 ①)
+    first = {u[0][0]: u for u in units}
+    m = len(units)
+    pages, cap_why = EU.capture(env) if (units and not gateway.use_mock()) else ({}, None)
+    cap = None
+    if env.get("capture") and units and not gateway.use_mock():
+        has = sum(1 for u in units if pages.get(EU.page_of(u)) is not None)
+        cap = {"있음": has, "없음": len(units) - has, **({"사유": cap_why} if cap_why else {})}
     if resumed:
         _say(notice, {"단계": "추출이어서", "렌즈": lens, "끝난": resumed, "남은": m})
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows),
                   "다시": (why if why and why != "체크포인트 없음" else None),
-                  "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m,
+                  "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m, "캡처": cap,
+                  "개체없음": sum(1 for r in rows if r[0] == "none"),
                   "목차": _toc(rows, env), "자리목록": [extract_ctx.place(c) for _k, _cid, c in rows]})
     u0 = gateway.usage_total()
     candidates, i = [], 0
@@ -585,11 +632,21 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         if kind == "done":
             candidates.append(done[cid])
             continue
+        if kind == "none":                              # 개체 없음(덱 구조) — 부르지 않는다 · 체크포인트에는 남는다
+            candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [], "no_entities": True})
+            continue
+        if cid not in first:
+            continue                                    # 단위의 나머지 청크 — 첫 청크의 호출이 함께 받았다
         i += 1
         t0 = gateway.usage_total()
-        entry = _call_chunk(doc_id, cid, c, cfg, vocab, hints)
-        candidates.append(entry)
-        _partial_append(env, lens, entry, cfg)
+        entries = _call_unit(doc_id, first[cid], cfg, vocab, hints, pages)
+        for en in entries:
+            candidates.append(en)
+            _partial_append(env, lens, en, cfg)
+        entry = {"entities": [e for en in entries for e in en.get("entities") or []],
+                 "relations": [r for en in entries for r in en.get("relations") or []],
+                 "attach": [a for en in entries for a in en.get("attach") or []],
+                 "failed": next((en["failed"] for en in entries if en.get("failed")), None)}
         # 관계 쌍은 화면이 아니라 명령 로그로 간다(수만 화면에)
         _LOG.info("추출 %s %s · 관계 %s", doc_id, c.get("source_locator"),
                   [(r.get("src"), r.get("rel"), r.get("dst")) for r in entry.get("relations") or []])

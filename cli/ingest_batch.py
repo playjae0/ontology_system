@@ -23,8 +23,9 @@ from parser.reader import LEGACY_BINARY, SUPPORTED   # noqa: E402
 
 def preflight_box(items):
     """**사전 점검의 묶음 — 실행당 1회**(B98 ①) · 그림은 묶음 안 어느 문서에라도 있으면 본다. 판정은 아직 0."""
-    from cli.preflight import has_images
-    return {"ok": None, "images": any(not o.get("no_images") and has_images(f) for f, o in items)}
+    from cli.preflight import capture_docs, has_images
+    return {"ok": None, "images": any(not o.get("no_images") and has_images(f) for f, o in items),
+            "capture": capture_docs(items)}
 
 
 def preflight_list(items):
@@ -34,7 +35,7 @@ def preflight_list(items):
     from cli import ingest as IN
     pf = preflight_box(items)
     for f, o in items:
-        if not IN._preflight_once(f, pf, bool(o.get("no_images")), o.get("doc_type")):
+        if not IN._preflight_once(f, pf, bool(o.get("no_images")), o.get("doc_type"), bool(o.get("no_capture"))):
             return False, pf
     return True, pf
 
@@ -51,7 +52,8 @@ def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP
         rows.append(IN.ingest_file(f, o.get("doc_type"), dry_run, adapter_paths,
                                    finalize_after=False, coord_cap=coord_cap,
                                    progress_every=progress_every, ask=False,
-                                   no_images=bool(o.get("no_images")), sheets=sheets, preflight=pf,
+                                   no_images=bool(o.get("no_images")), no_capture=bool(o.get("no_capture")),
+                                   sheets=sheets, preflight=pf,
                                    revise=revise, allow_duplicate=bool(o.get("allow_duplicate"))))
         if rows[-1].get("preflight_fail"):
             break                                  # 같은 실행의 나머지도 같은 자리에서 막힌다
@@ -74,7 +76,7 @@ def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
                coord_cap=COORD_CAP, recurse=False, progress_every=None, no_images=False,
-               sheets=None, revise=False):
+               sheets=None, revise=False, no_capture=False):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 
     `--doc-type`을 주면 그 경로 전부를 그것으로 본다(비정형 폴더 단위 지정 — B46).
@@ -93,7 +95,7 @@ def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
     files = sorted(x for x in _it if x.is_file()
                    and not x.name.startswith(("~", "."))
                    and "__pycache__" not in x.parts)
-    opts = {"doc_type": doc_type, "no_images": no_images}
+    opts = {"doc_type": doc_type, "no_images": no_images, "no_capture": no_capture}
     return ingest_list([(f, opts) for f in files], dry_run=dry_run, adapter_paths=adapter_paths,
                        coord_cap=coord_cap, progress_every=progress_every, sheets=sheets,
                        revise=revise)

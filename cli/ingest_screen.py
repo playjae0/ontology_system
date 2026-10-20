@@ -467,7 +467,9 @@ def build_screen(step=False, stage=None, prose=False):
         if any(rp.values()):
             # **판정 재생**(B106 ②) — 지난 대장으로 붙인 값과 다시 판정한 값(사유별)
             print(f"   판정 재생 — 재생 {rp.get('재생', 0):,} · 재판정 {rp.get('재판정', 0):,}(키 없음 "
-                  f"{rp.get('키 없음', 0):,} · 대상 없음 {rp.get('대상 없음', 0):,} · 끔 {rp.get('끔', 0):,})")
+                  f"{rp.get('키 없음', 0):,} · 대상 없음 {rp.get('대상 없음', 0):,} · 끔 {rp.get('끔', 0):,})"
+                  + (f" · 재생 불확실 {rp['불확실']:,} → 2차 {rp.get('2차', 0):,} → 바뀜 {rp.get('2차 바뀜', 0):,}"
+                     if rp.get("불확실") else ""))
         # 결과만 보이는 세 머리(판정 · 부착·엣지 · 큐) — 늘 낸다(B99 ④) · `--step`이면 묻는다
         u2 = gateway.usage_total()
         # 이 셋은 **저장 뒤**다(B109 ② — 멈춰도 되돌리지 않는다): 멈추면 남은 머리는 묻지 않고 내기만 한다(B118 ④)
@@ -595,6 +597,12 @@ def extract_screen(step=False, stage=None):
                     f"체크포인트 재사용 {info['재사용']:,} 제외) → LLM ≤ {info['호출']:,}회")
             if info.get("다시"):                    # 옛 추출을 다시 뽑는 이유(B102 ⑥)
                 head += f" · 다시 뽑는다 — {info['다시']}"
+            if info.get("개체없음"):                # 덱 구조의 「개체 없음」 슬라이드 — 부르지 않는다 (B125 ①)
+                head += f" · 개체 없음 {info['개체없음']:,}"
+            cp = info.get("캡처")                   # 슬라이드 · 쪽 캡처 (B125 ②)
+            if cp:
+                _screen.say(f"   캡처 — 있음 {cp['있음']:,} · 없음 {cp['없음']:,}"
+                            + (f"({cp['사유']})" if cp.get("사유") and cp["없음"] else ""), "warn" if cp["없음"] else "head")
             # 머리는 늘(B99 ④) — `--step`이면 묻는다 · 머리 아래 청크 목차 + 청크 맞춤 줄(B112 ③)
             return _step_gate(7, head.split("— ", 1)[1], prose=True, ask=step, body=toc_lines(info))
         elif k == "추출청크":

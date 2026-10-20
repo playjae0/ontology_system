@@ -136,9 +136,10 @@ def candidates(r, nid, rows, nodes, ol, path_of):
 
 
 # ---------------------------------------------------------------- 판정
-def _ask(payload):
-    """지점 ⑫ 실호출 — `{"id", "rel", "evidence"}` 또는 None."""
-    out = gateway.chat([{"role": "system", "content": gateway.prompt(PROMPT)},
+def _ask(payload, cfg=None):
+    """지점 ⑫ 실호출 — `{"id", "rel", "evidence"}` 또는 None · 층 힌트 `prompts.reinforce`(B124 ③)."""
+    out = gateway.chat([{"role": "system", "content": gateway.prompt_for(PROMPT, {(cfg or {}).get("layer") or "-": cfg},
+                                                                         "reinforce")},
                         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
                        json_schema=SCHEMA, point="reinforce")
     return out.get("pick") if isinstance(out.get("pick"), dict) else None
@@ -299,7 +300,7 @@ def _one(doc_id, lay, cfg, graphs, nodes, ends, rows, chunk_of, r, nid, why, cap
                "relations": cfg.get("relations") or []}
     LAST["호출"] += 1
     try:
-        pick = _ask(payload) if live else SELECT(payload)
+        pick = _ask(payload, cfg) if live else SELECT(payload)
     except gateway.GatewayError as e:
         store.append_defect(f"{doc_id}: 연결 보강 실패 — '{r.get('surface')}' @ {r['locator']} — {e}")
         return None

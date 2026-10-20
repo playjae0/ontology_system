@@ -7,11 +7,13 @@
 #   pip install -r requirements.txt          전부
 #   pip install openpyxl python-pptx PyMuPDF 문서 읽기만 (실문서 인입에 필요)
 #
-# **패키지가 아닌 의존 하나**: LibreOffice(`soffice`)는 PPTX→PDF 변환에 쓰는 **외부
-# 프로그램**이고 pip로 들어오지 않는다. 없어도 완주하며 부재는 데이터로 남는다
-# (`meta.slide_render=none` — 문서 7 §7.6-B-6). 있는지는 `python doctor.py --env`가 잰다.
-# 주의: `soffice`가 PATH에 있어도 **impress 필터가 없으면 변환은 실패한다**(실측:
-# libreoffice-core만 설치된 환경) — 그 경우도 같은 자리로 떨어진다.
+# **PPT · PDF 인입(실호출)에 필요한 것**(B128 — 사전 점검 · `doctor --env`가 그대로 잰다):
+#   ① python-pptx · PyMuPDF(아래 pip)
+#   ② 캡처 길 하나 — LibreOffice(`soffice` · **Impress 포함** — libreoffice-core만이면 PPTX 변환이 안 된다)
+#      또는 PowerPoint에서 PDF로 저장해 원본과 같은 폴더 · 같은 이름으로(원본보다 새것) · PDF 문서는 PyMuPDF만
+#   ③ 게이트웨이의 그림 입력 — `python run.py llm-check` ⑦ 통과(실제 크기 그림 한 장)
+# 셋 중 하나라도 없으면 실호출 PPT · PDF 인입은 파싱 전에 멈춘다(LLM 0). 캡처 없이 진행은 `--no-capture`(기록에 남는다).
+# LibreOffice는 pip로 들어오지 않는 **외부 프로그램**이다.
 #
 # 런타임: Python 3.10+ (문서 7 §7.1 런타임 전제)
 
@@ -20,8 +22,8 @@
 # mock/parsed/의 계약 JSON을 인입하므로 파일 읽기 단계를 타지 않는다.
 openpyxl>=3.1        ; python_version >= "3.10"
 python-pptx>=0.6.21  ; python_version >= "3.10"
-# 없으면: `.pdf` 읽기와 **쪽 전체 렌더**(④ 이미지 요약의 맥락)가 빠진다. PPTX·XLSX는
-# 그대로 돌고 그림 요약도 개별 그림만으로 돈다 — 데이터에 `slide_render=none`이 남는다.
+# 없으면: `.pdf` 읽기와 **쪽 렌더**(PPT · PDF 캡처 · 그림 요약의 맥락)가 빠진다 — 실호출 PPT · PDF 인입은 사전 점검에서
+# 멈춘다(`--no-capture`면 캡처 없이). XLSX는 그대로 돈다. 코드는 `import pymupdf`로 부른다(옛 판은 `fitz`).
 PyMuPDF>=1.23        ; python_version >= "3.10"
 
 # ── 직렬화 가속 (선택) ────────────────────────────────────────────────────

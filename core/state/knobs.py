@@ -93,6 +93,24 @@ KNOBS = {
                            "연결 보강(LLM 지점 ⑫) 실행당 호출 상한 — 재연결 뒤에도 엣지 없는 · 공정에만 붙은 개체를 닫힌 "
                            "후보 안에서 잇는 판정(0이면 끔 · 넘는 대상은 「상한 밖 n」 줄 — 다음 인입 · 재구축이 잇는다)",
                            "인입 마무리 「연결 보강 — 대상 n → 붙음 …」 줄 · python run.py show report <doc_id>"),
+    "structure_mode": ("core.build.structure", ("MODE",), "choice:rules|edit|llm",
+                       "문서 구조 방식 — rules(규칙 나무 + 크기 구간 · 구조 LLM 0) · edit(기본 — 규칙 나무를 주고 고칠 곳만 이유와 함께) · "
+                       "llm(LLM이 나무 · 구간을 새로) · 규칙 나무가 빈 시트는 edit여도 llm",
+                       "python run.py ingest-file <문서> --split-only --step — 방식을 바꿔 같은 문서를 싸게 비교"),
+    "structure_line_chars": ("core.build.structure", ("LINE_CHARS",), "int",
+                             "문서 구조(지점 ⑪) 입력의 줄당 글자 상한 — 줄 전체가 원칙이고 이것을 넘는 줄만 자른다",
+                             "인입 구조 표 · python run.py show report <doc_id> --md"),
+    "structure_call_tokens": ("core.build.structure", ("CALL_TOKENS",), "int",
+                              "문서 구조 한 호출에 싣는 양(어림 토큰 = 줄 글자 / 2) — 넘으면 나눠 부르고 열린 제목을 넘긴다",
+                              "인입 구조 끝 줄의 호출 수"),
+    "structure_chunk_over": ("parser.struct_rule", ("CHUNK_OVER",), "int",
+                             "구조가 낸 청크 구간이 크기 권장값(chunk_max_chars)의 몇 배까지 그대로인가 — 넘는 구간만 형제 줄 "
+                             "앞에서 나눈다(조각의 주인 · 사슬은 그 구간의 것)",
+                             "python run.py show dist chunks · show report <doc_id> --md 추출 청크 표"),
+    "ppt_slide_chars": ("parser.adapters.basic_ppt", ("SLIDE_MAX_CHARS",), "int",
+                        "PPT 슬라이드 본문의 글자 임계 — 넘는 슬라이드만 본문 근거 청크를 구조 지도로 나눈다(추출은 그래도 "
+                        "슬라이드 1회 · 상자 수는 보지 않는다)",
+                        "python run.py show dist chunks · show report <doc_id> --md 추출 청크 표"),
     "judge_context_chars": ("core.matcher", ("JUDGE_CONTEXT_CHARS",), "int0",
                             "2차 판정의 문장 — 1차가 불확실인 산문 개체에 그 표기 앞뒤 이 글자 수의 청크 원문을 붙여 같은 "
                             "후보로 한 번 더 묻는다(0이면 끔 · 비용은 불확실 수에 비례)",
@@ -249,4 +267,4 @@ def rows():
 
 #: 인입 기록에 싣는 손잡이 — 청크를 가르는 셋 · 형태·시트 판정
 PARSE_RECORD = ("heading_max_chars", "chunk_rows", "chunk_max_chars", "form_auto",
-                "sheet_thresholds", "sheet_min_hits")
+                "sheet_thresholds", "sheet_min_hits", "ppt_slide_chars")

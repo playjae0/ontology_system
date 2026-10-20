@@ -50,7 +50,9 @@ def land(cfg, eb, nid, e, chunk, prov, cid, row):
     if value in (None, "") or not name or not nid:
         return None
     value = str(value)
-    if not verbatim(value, (chunk or {}).get("text")):
+    from core.build.extract_unit import _is_image, text_of
+    # 원문 = 본문 · 표 · 차트 · 노트(그 청크가 진 것) — **그림 요약 글은 원문이 아니다**(B125 ① — 그림 · 캡처에서 온 값은 버린다)
+    if not verbatim(value, "" if _is_image(chunk or {}) else text_of(chunk or {})):
         store.append_defect(f"{eb.doc_id}: 값 버림 — 청크 원문에 없다 '{value[:60]}' "
                             f"(개체 '{e.get('surface')}' @ {cid})")
         verdict = DROPPED

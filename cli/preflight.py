@@ -45,9 +45,15 @@ def schema_gate(doc_type):
     return False
 
 
-def gate(*, chat=True, embed=False, images=False, catalog=True):
+def capture_docs(items):
+    """캡처를 붙일 문서(B128 ②) — `[(경로, {no_images, no_capture})]` 중 PPT · PDF이고 둘 다 끄지 않은 것."""
+    return [str(f) for f, o in items if Path(f).suffix.lower() in preflight.CAPTURE_SUFFIXES
+            and not o.get("no_images") and not o.get("no_capture")]
+
+
+def gate(*, chat=True, embed=False, images=False, catalog=True, capture=()):
     """사전 점검을 돌리고 그린다 — 돌려주는 것은 통과 여부."""
-    r = preflight.run(chat=chat, embed=embed, images=images, catalog=catalog)
+    r = preflight.run(chat=chat, embed=embed, images=images, catalog=catalog, capture=capture)
     names = []
     for s in r["stages"]:
         tag = s["tag"] if s["ok"] is None else s.get("tag")

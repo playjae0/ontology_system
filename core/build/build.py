@@ -33,6 +33,7 @@ HOLD_AMBIGUOUS = "표기 모호(골격 노드 여럿)"
 ATTR_ADDED, ATTR_SAME, ATTR_CONFLICT = "added", "same", "conflict"
 from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표지
 from core.state.status import is_live
+from core.build.build_coord import CoordMixin              # 좌표 계보 · 공정 목록 (B125 ④ — 800행 상한으로 나눴다)
 from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
                      is_bound, scope_canonical)
 
@@ -58,7 +59,7 @@ def entity_key(surface, category, cfg, *, electrode_type=None,
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
 
-class Builder:
+class Builder(CoordMixin):
     def __init__(self, graph, cfg, schema, doc_id, layer):
         self.anchor_hold = None                   # 마지막 좌표 해소의 보류 사유(B104 ①)
         self.g = graph
@@ -130,7 +131,7 @@ class Builder:
             return None
         return ((self.graph_of(nid) or self.g).get(nid) or {}).get("canonical")
 
-    def resolve_at_home(self, surface, category, prov, *, coord=None, **kw):
+    def resolve_at_home(self, surface, category, prov, *, coord=None, coords=None, **kw):
         """개체 하나를 **집 빌더에서** 해소한다 — `(node_id, 그 빌더)`.
 
         판정의 사실(`last` — 경로·층·큐)은 돌려준 빌더에 실린다. 대장·큐의 `layer`가
@@ -140,9 +141,10 @@ class Builder:
         (B90 ③) — 이름 규칙(`X::…`)으로 키를 만들기 **전**이어야 한다.
 
         그보다 앞에 **다른 공정 이름 가드**(B113 ①) — 표기가 좌표 계보 밖 골격 노드의 이름이면 노드를 만들지
-        않고 그 공정으로 관련 링크(`mentions` — 구축 끝에 청크의 `about`)만 남긴다(`(None, self)`).
+        않고 그 공정으로 관련 링크(`mentions` — 구축 끝에 청크의 `about`)만 남긴다(`(None, self)`). `coords`(청크 공정
+        목록의 해소 `[(id, 그래프)]` — B125 ④)가 오면 계보는 목록 **전체**다(없으면 `coord` 하나).
         """
-        other = self.other_process(surface, coord)
+        other = self.other_process(surface, coord, coords)
         if other is not None:
             return self._mention(surface, category, prov, other), self
         hit = self._self_coord(surface, category, coord)
@@ -150,80 +152,6 @@ class Builder:
             return hit
         eb = self.for_category(category)
         return eb.resolve_entity(surface, category, prov, **kw), eb
-
-    # ---------------------------------------------------------------- 다른 공정 이름 (B113 ①)
-    def other_process(self, surface, coord):
-        """**다른 공정의 골격 이름**(B113 ①) — 표기가 사전(정확 · 라틴 대소문자 2차)에서 골격 노드(Tier1)에 맞고
-        그 노드가 **좌표의 계보 밖**(좌표 자신 · 조상 · 서브트리 어디도 아니다)이면 `(노드 id 또는 None, 맞은
-        canonical들)` · 아니면 None. 노드가 여럿이면(공유 별칭) 하나라도 계보 안이면 None · 다 밖이면 id 없이.
-        좌표가 없으면 계보를 모르니 None(지금 규칙 — 좌표 없는 스코프 개체 0 등). 골격 이름은 데이터다."""
-        ref, ref_g = coord or (None, None)
-        if not surface or not ref or ref_g is None or not ref_g.get(ref):
-            return None
-        from core.state.bootstrap import COORD_CATEGORY
-        g, _ = self._graph_for(COORD_CATEGORY)
-        hits = sorted(nid for nid in set(self.dict.lookup(surface))
-                      if (g.get(nid) or {}).get("category") == COORD_CATEGORY and is_live(g.get(nid))
-                      and g.get(nid).get("status") in ("seed", "confirmed"))
-        if not hits:
-            return None
-        pm = self._parent_map(g, COORD_CATEGORY)
-
-        def chain(c):
-            out = []
-            while c and c not in out and len(out) < 64:
-                out.append(c)
-                c = pm.get(c)
-            return out
-        rc = ref_g.get(ref)["canonical"]
-        up = set(chain(rc))
-        cans = [g.get(n)["canonical"] for n in hits]
-        if any(c in up or rc in chain(c) for c in cans):
-            return None
-        return (hits[0] if len(hits) == 1 else None), cans
-
-    def _mention(self, surface, category, prov, other):
-        """다른 공정 언급 — 노드 0 · 관련 링크 재료(`mentions`) · 대장 행(경로 `skeleton` · 판정 `mention` ·
-        canonical = 그 공정). 공유 별칭이 계보 밖 여럿이면 링크 없이(결함 로그)."""
-        nid, cans = other
-        if not hasattr(self, "mentions"):
-            self.mentions = []
-        loc = (prov or "").split("#", 1)[-1] if "#" in str(prov or "") else prov
-        if nid:
-            self.mentions.append({"locator": loc, "node_id": nid, "surface": surface})
-        else:
-            store.append_defect(f"{self.doc_id}: 다른 공정 이름 '{surface}'가 골격 노드 여럿({' · '.join(cans)})이라 "
-                                f"관련 링크를 달지 않았다 @ {loc} (노드 0)")
-        self.last = {"canonical": " · ".join(cans), "verdict": "mention", "path": "skeleton",
-                     "confidence": 1.0, "layer": self.layer, "queue_kind": None, "candidates_n": 0,
-                     "node_id": None, "category": category, "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
-        return None
-
-    def _self_coord(self, surface, category, coord):
-        """**자기 좌표 규칙**(B90 ③) — 좌표 X 아래에서 뽑힌 C 표기가 사전에서 **X 자신**으로
-        해소되고(별칭 포함) X가 C를 겸하면 → X다. 자식 노드 0 · 대장 `path=self_coord`.
-
-        스테이션 이름 + 설비어(「… unit」)는 스테이션 자신이다 — 그 아래 새 Unit을 세우면
-        같은 실물이 두 노드가 된다. 겸이 없으면(카탈로그 `also` 없음) 지금처럼 일반 해소다.
-        """
-        ref, ref_g = coord or (None, None)
-        n = ref_g.get(ref) if (ref and ref_g is not None) else None
-        if not n or n.get("category") == category:
-            return None
-        from core.state import catalog
-        try:
-            if category not in catalog.categories_of(n):
-                return None
-        except catalog.CatalogError:
-            return None
-        if ref not in self.dict.lookup(surface):
-            return None
-        eb = self.for_layer(n.get("layer") or self.layer)
-        self.buffer[norm(surface)] = ref
-        eb.last = {"canonical": n["canonical"], "verdict": "match", "path": "self_coord",
-                   "confidence": 1.0, "layer": eb.layer, "queue_kind": None,
-                   "candidates_n": 0, "node_id": ref}
-        return ref, eb
 
     def graph_of(self, nid):
         """그 노드가 사는 그래프 — 이 빌드가 연 그래프 중에서. 없으면 `None`."""
@@ -464,12 +392,19 @@ class Builder:
                          parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
             from core.build import replay as _rp
             rp, why = _rp.pick(self, at, surface, category, canonical)
-        if rp is not None:
-            return rp, why
         sent = None
-        if chunk_text:
+        if chunk_text and (rp is None or rp[3].get("second_due")):
             from core.build.extract_ctx import around
             sent = around(chunk_text, surface, _matcher.JUDGE_CONTEXT_CHARS)
+        if rp is not None:
+            if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
+                got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
+                                         polarity=polarity, parent=parent_canonical, sentence=sent)
+                if got is not None:
+                    from core.build import replay as _rp
+                    _rp.note_second(got[0] == "match")
+                    return got, why
+            return rp, why
         return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
                        parent=parent_canonical, sentence=sent), why
 
@@ -607,7 +542,18 @@ class Builder:
         item = {"surface": surface, "category": category, "target_layer": self.layer,
                 **({"belongs_to": belongs} if belongs else {})}
         loc = (prov or "").split("#")[-1] or None
-        if coord_surface:
+        from parser.normalizer import coord_refs
+        many = coord_refs(coord_surface)
+        if len(many) > 1:
+            # 공정 목록(B125 ④) — 개체가 제 공정(`parent`)을 고르지 않았다 · 지어내지 않는다(같은 kind · 같은 재료 꼴)
+            kind = "missing_field"
+            store.enqueue_rows(kind, f"청크 공정이 둘 이상({' · '.join(many)})인데 '{surface}'({category})가 제 공정을 "
+                                     f"고르지 않아 만들지 않았다 — 구조 표의 공정 고침 또는 추출의 parent",
+                               self.doc_id, "process_ref",
+                               {"field": "process_ref", "provenance": prov, "processes": many,
+                                "dropped_entities": [item]}, locator=loc)
+        elif many:
+            coord_surface = many[0]
             kind = "orphan_anchor"
             # **실제 사유를 말한다**(B104 ①) — 표기 모호(골격 노드 여럿)와 목록 밖은 처방이 다르다
             why, cands = self.anchor_hold_of(coord_surface)

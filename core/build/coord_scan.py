@@ -32,6 +32,8 @@ def scan(env, b):
         loc = p.get("source_locator")
         prov = f"{doc_id}#{loc}" if loc else doc_id
         ref_s, grp_s, et = p.get("process_ref"), p.get("process_group"), p.get("electrode_type")
+        if isinstance(ref_s, list):
+            continue                                # 공정 목록(덱 구조가 골격 안에서 고른 것 — B125 ④)은 쌍 대조 밖
         sink = []                                   # 보류는 구축의 몫이다 — 여기서는 버리는 자루
         ref, ref_g = b.resolve_anchor(ref_s or grp_s, COORD_CATEGORY, prov, defer=sink)
         ref = b.descend_anchor(ref, et, ref_g)

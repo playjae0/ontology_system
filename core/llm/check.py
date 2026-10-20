@@ -123,29 +123,55 @@ def embed_stage(cfg, add):
 
 
 
+#: ⑦이 보내는 그림 — **캡처와 같은 크기**(B128 ② — 긴 변 `parser.render.MAX_EDGE` 1600px · 16:9)
+PING_W, PING_H = 1600, 900
+
+
+def capture_like_png(w=PING_W, h=PING_H):
+    """캡처 크기의 PNG(표준 라이브러리 — 흰 바탕 + 결정적 잡음 상자 400×300 · 수백 KB) — 게이트웨이의 크기 한도까지 잰다."""
+    import random
+    import struct
+    import zlib
+    rnd = random.Random(128)
+    box = (100, 100, 500, 400)                              # 잡음 상자 — 실제 캡처처럼 압축이 덜 되는 몫
+    rows = []
+    for y in range(h):
+        if box[1] <= y < box[3]:
+            mid = bytes(rnd.getrandbits(8) for _ in range((box[2] - box[0]) * 3))
+            rows.append(b"\x00" + b"\xff" * (box[0] * 3) + mid + b"\xff" * ((w - box[2]) * 3))
+        else:
+            rows.append(b"\x00" + b"\xff" * (w * 3))
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"".join(rows), 6)) + chunk(b"IEND", b""))
+
+
 def image_stage(cfg, add):
-    """⑦ 이미지 입력 — 1×1 PNG 한 장 왕복. 막히면 `False`(치명 여부는 부르는 쪽이 정한다)."""
-    # ⑦ 이미지 입력 — **④가 실제로 쓰는 형태**를 1×1 PNG 한 장으로 왕복시킨다.
+    """⑦ 이미지 입력 — **캡처 크기 PNG**(1600×900) 한 장 왕복. 막히면 `False`(치명 여부는 부르는 쪽이 정한다)."""
+    # ⑦ 이미지 입력 — **④ · 캡처가 실제로 쓰는 형태와 크기**를 한 장으로 왕복시킨다(B128 ② — 1×1이면 크기 한도를 못 잰다).
     #
-    # ④는 바이트를 보낸다(B53). 게이트웨이가 멀티모달 content를 안 받으면 그
-    # 사실이 **사내 첫 파싱에서** 드러나는데, 그때는 이미 문서를 돌린 뒤다.
-    # 여기서 1회에 판정한다 — 실패해도 치명은 아니다(그림 없는 문서는 돈다).
+    # ④ · 추출 캡처는 바이트를 보낸다(B53 · B125 ②). 게이트웨이가 멀티모달 content를 안 받으면 그
+    # 사실이 **사내 첫 파싱에서** 드러나는데, 그때는 이미 문서를 돌린 뒤다. 여기서 1회에 판정한다 —
+    # PPT · PDF 실호출 인입은 사전 점검이 같은 함수로 멈춘다(`--no-capture` 제외).
+    png = capture_like_png()
     try:
         gateway._post(
             f"{cfg['url']}/chat/completions",
             gateway._payload(cfg, [{"role": "user", "content": [
                 {"type": "text", "text": "이 그림에 무엇이 보이나?"},
                 {"type": "image_url",
-                 "image_url": {"url": gateway._data_uri(gateway._PING_PNG,
-                                                        "image/png")}}]}]),
+                 "image_url": {"url": gateway._data_uri(png, "image/png")}}]}]),
             cfg["key"], cfg["timeout"])
         add("⑦", "이미지 입력", True,
-            "멀티모달 content 통과 — ④이미지 요약이 바이트를 보낼 수 있다")
+            f"멀티모달 content 통과(캡처 크기 {PING_W}×{PING_H} · {len(png) // 1024:,}KB) — ④이미지 요약 · PPT · PDF 캡처가 "
+            f"바이트를 보낼 수 있다")
     except gateway.GatewayError as e:
         add("⑦", "이미지 입력", False,
-            f"HTTP {e.code} — 게이트웨이가 이미지 입력을 받지 않는다. "
+            f"HTTP {e.status} — 게이트웨이가 이미지 입력(캡처 크기 {PING_W}×{PING_H} · {len(png) // 1024:,}KB)을 받지 않는다. "
             f"④는 이 상태에서 NotConfigured로 멈춘다(요약을 지어내지 않는다). "
-            f"**치명 아님** — 그림 없는 문서는 그대로 돈다")
+            f"**PPT · PDF 인입은 이것이 통과해야 한다(`--no-capture` 제외)** — 그림 없는 엑셀 · Word는 그대로 돈다")
     except Exception as e:                                  # noqa: BLE001
         add("⑦", "이미지 입력", False, f"{type(e).__name__}: {e}")
 

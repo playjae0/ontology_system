@@ -52,8 +52,9 @@ def _is_coord(n):
 def _kw(b, src, prov):
     """그 조각의 좌표 해소 재료 — `(좌표 id, 그래프, 부모 canonical, 극성)` (산문 pass1과 같은 순서 · 큐 0)."""
     from core.state.bootstrap import COORD_CATEGORY
-    ref, ref_g = b.resolve_anchor(src.get("process_ref"), COORD_CATEGORY, prov, defer=[])
-    ref = b.descend_anchor(ref, src.get("electrode_type"), ref_g)
+    res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"),
+                           defer=[])                       # 공정 목록 — 주 좌표는 하나일 때만 (B125 ④)
+    ref, ref_g = b.main_coord(res)
     return ref, ref_g, (ref_g.get(ref)["canonical"] if ref else None), b.anchor_polarity(ref, ref_g)
 
 

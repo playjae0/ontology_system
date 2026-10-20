@@ -4,10 +4,11 @@
 사내(2026-10-16): 고정 규칙이 **일부만** 맞는 문서(가장 흔한 경우)가 LLM 없이 통과해 번호 없는 유닛 줄이 트리에
 없었다(`시트 › 지정사양` — 유닛이 경로에서 사라졌다). 고정 규칙은 **초안**이고 판정은 이 호출이 한다:
 
-  · 입력 = 시트 전체의 **줄 이름표**(행 · 앞 `LABEL_CHARS`자 · 표시 — 굵게 · 들여쓰기 · 병합 · 번호 꼴 · 다른 열) + **고정
-    규칙의 초안 단** + 층의 닫힌 카테고리 · 정의문. 본문 값은 넣지 않는다(이름표만). 긴 시트는 `LINES_PER_CALL`줄씩
-    나눠 부르고 뒤 묶음에는 앞에서 열린 제목(`open`)을 싣는다.
-  · 출력 = 제목 줄마다 `{row, parent, role, name, category}` — 역할은 닫힌 다섯(`parser.struct_rule.ROLES`).
+  · 입력 = 시트의 **줄 전체**(행 · 줄당 `LINE_CHARS`자까지 · 표시 — 굵게 · 들여쓰기 · 병합 · 번호 꼴 · 다른 열 · 빈 줄) + **고정
+    규칙의 초안 단** + **형태 요약**(번호 꼴 가족 · 들여쓰기 단 · 빈 줄 — 코드가 센다 · B124 ①) + 층의 닫힌 카테고리 · 정의문 +
+    층 힌트(`prompts.structure`). 긴 시트는 어림 `CALL_TOKENS`씩 나눠 부르고 뒤 묶음에는 앞에서 열린 제목(`open`)을 싣는다.
+  · 출력 = 제목 줄마다 `{row, parent, role, name, category}`(역할은 닫힌 셋 · 층 중립 — `parser.struct_rule.ROLES`) + **청크
+    구간** `[{from_row, to_row, owner_row}]`(B124 ② — 코드는 검사만 `check_chunks` · 어긋나면 그 시트만 지금 방식).
   · **문서 개요(⑪)와 구조 규칙(⑦ `struct_rule`)을 한 호출로 합쳤다** — 지시문은 개요의 것(`prompts/3.3_outline.md`
     o-2.0 — 제목 목록만 오는 문서도 같은 지시문 · 같은 검사) · 호출 태그 `structure`는 지점 ⑪이다(지점 수 불변).
   · 검사(`check` — 결정적): 목록 밖 줄 · 역할 밖 · 앞에 없는 부모는 그 줄을 버리고 **초안으로**(초안이 제목이면 초안의
@@ -32,10 +33,15 @@ _LOG = log.get(__name__)
 
 #: 지시문 이름(`prompts/3.3_outline.md` — 개요와 한 벌) · 호출 태그(지점 ⑪ — `gateway.CALL_TAGS`)
 PROMPT, TAG = "outline", "structure"
-#: 이름표 한 줄의 글자 수 — 제목 판정의 재료(본문 값은 보내지 않는다 · 창작 기본값)
-LABEL_CHARS = 40
-#: 한 호출의 줄 수 — 넘으면 나눠 부른다(창작 기본값 — 사내 실측으로 정한다 · [정정] 50)
-LINES_PER_CALL = 400
+#: 줄 하나에 싣는 글자 수 — **줄 전체**가 원칙이고 이것은 상한이다(B124 ① — 사내 손잡이 `structure_line_chars` · 창작 기본값)
+LINE_CHARS = 300
+#: 한 호출에 싣는 양(어림 토큰 — 줄 JSON 글자 수 / 2) — 넘으면 나눠 부르고 뒤 묶음에 열린 제목을 싣는다(사내 손잡이
+#: `structure_call_tokens` · 기본값은 RFQ 시트 한 장이 한 번에 드는 크기 · 창작 기본값)
+CALL_TOKENS = 40000
+#: **구조 방식**(B126 ① — 사내 손잡이 `structure_mode`): `rules` 규칙 나무 + 크기 구간(구조 LLM 0) · **`edit`(기본)** 규칙 나무를
+#: 주고 고칠 곳만 이유와 함께 · `llm` LLM이 나무 · 구간을 새로(B124 방식). 규칙 나무가 빈 시트는 `edit`여도 그 시트만 `llm`.
+MODE = "edit"
+MODES = ("rules", "edit", "llm")
 
 SCHEMA = {
     "type": "object",
@@ -46,8 +52,14 @@ SCHEMA = {
                        "role": {"type": "string", "enum": list(ROLES)},
                        "name": {"type": ["string", "null"]},
                        "category": {"type": ["string", "null"]}},
-        "required": ["row", "parent", "role", "name", "category"], "additionalProperties": False}}},
-    "required": ["headings"], "additionalProperties": False,
+        "required": ["row", "parent", "role", "name", "category"], "additionalProperties": False}},
+        # **청크 구간**(B124 ② — 나무와 함께 · 제목 목록만 오는 호출은 빈 목록) — 코드는 검사만 한다(`check_chunks`)
+        "chunks": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"from_row": {"type": "integer"}, "to_row": {"type": "integer"},
+                           "owner_row": {"type": ["integer", "null"]}},
+            "required": ["from_row", "to_row", "owner_row"], "additionalProperties": False}}},
+    "required": ["headings", "chunks"], "additionalProperties": False,
 }
 
 
@@ -78,23 +90,49 @@ def key(cfgs):
     from core.build.extract import prompt_version
     from core.state import config_scope
     return {"prompt_version": prompt_version(PROMPT),
-            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items()))}
+            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items())),
+            "mode": MODE}                                    # 방식을 바꾸면 다시 묻는다 (B126 ①)
 
 
 # ---------------------------------------------------------------- 실호출
 def _line(x):
     return {"row": x["row"], "draft": x.get("draft") or 0, "marks": x.get("marks") or [],
-            "text": str(x.get("text") or "")[:LABEL_CHARS]}
+            "text": str(x.get("text") or "")[:LINE_CHARS]}
 
 
-def ask_lines(frame, lines, cats, open_=()):
-    """지점 ⑪(태그 `structure`) 한 호출 — 답 `[{row, parent, role, name, category}]`."""
+def form_summary(labs):
+    """**형태 요약**(B124 ① — 코드가 센다 · 판정 아님): 번호 꼴 가족별 줄 목록과 개수 · 들여쓰기 단별 줄 · 빈 줄 자리."""
+    fam, ind, gap = {}, {}, []
+    for x in labs:
+        for m in x.get("marks") or []:
+            if m.startswith("번호"):
+                fam.setdefault(m[2:], []).append(x["row"])
+            elif m.startswith("들여쓰기"):
+                ind.setdefault(m[4:], []).append(x["row"])
+            elif m == "빈 줄":
+                gap.append(x["row"])
+    return {"번호 꼴": [{"꼴": k, "수": len(v), "줄": v} for k, v in sorted(fam.items(), key=lambda kv: kv[1][0])],
+            "들여쓰기": [{"단": k, "수": len(v), "줄": v} for k, v in sorted(ind.items())],
+            "빈 줄 아래": gap}
+
+
+def _size_hint():
+    from parser import struct_map
+    return struct_map.CHUNK_MAX_CHARS
+
+
+def ask_lines(frame, lines, cats, open_=(), form=None, cfgs=None, hints=None):
+    """지점 ⑪(태그 `structure`) 한 호출 — `(제목 [{row, parent, role, name, category}], 청크 구간 [{from_row, to_row, owner_row}])`.
+    지시문 + 층 힌트(`prompts.structure` — `gateway.prompt_for` 한 함수 · B124 ③)."""
     out = gateway.chat(
-        [{"role": "system", "content": gateway.prompt(PROMPT)},
+        [{"role": "system", "content": gateway.prompt_for(PROMPT, cfgs or {}, "structure")},
          {"role": "user", "content": json.dumps(
-             {"categories": cats, "frame": frame, "open": list(open_), "lines": lines}, ensure_ascii=False)}],
+             {"categories": cats, "frame": frame, "open": list(open_), "form": form or {},
+              "size_hint": _size_hint(), "lines": lines, **({"hints": list(hints)} if hints else {})},
+             ensure_ascii=False)}],
         json_schema=SCHEMA, point="structure")
-    return [h for h in (out or {}).get("headings") or [] if isinstance(h, dict)]
+    return ([h for h in (out or {}).get("headings") or [] if isinstance(h, dict)],
+            [c for c in (out or {}).get("chunks") or [] if isinstance(c, dict)])
 
 
 def _open(acc, labs_by_row, before):
@@ -102,31 +140,48 @@ def _open(acc, labs_by_row, before):
     last = [r for r in acc if r != FRAME_ROW and r < before]
     out, cur, n = [], (max(last) if last else None), 0
     while cur is not None and cur in acc and n < 64:
-        out.append({"row": cur, "text": str(labs_by_row[cur]["text"])[:LABEL_CHARS], "role": acc[cur].get("role")})
+        out.append({"row": cur, "text": str(labs_by_row[cur]["text"])[:LINE_CHARS], "role": acc[cur].get("role")})
         cur, n = acc[cur].get("parent"), n + 1
     return list(reversed(out))
 
 
-def _live(doc_id, frame, labs, cats):
-    """줄을 `LINES_PER_CALL`씩 — `(답, 호출 수, 실패 사유 또는 None)`."""
+def _batches(labs):
+    """한 호출에 실을 줄 묶음 — 어림 토큰(줄 JSON 글자 수 / 2)이 `CALL_TOKENS`를 넘기 전에 끊는다(시트 한 장이면 대개 한 묶음)."""
+    out, cur, size = [], [], 0
+    for x in labs:
+        t = len(json.dumps(_line(x), ensure_ascii=False)) // 2 + 1
+        if cur and size + t > CALL_TOKENS:
+            out.append(cur)
+            cur, size = [], 0
+        cur.append(x)
+        size += t
+    return out + ([cur] if cur else [])
+
+
+def _live(doc_id, frame, labs, cats, cfgs=None, hints=None):
+    """묶음마다 한 호출 — `(답, 청크 구간, 호출 수, 실패 사유 또는 None)` · 형태 요약은 시트 전체로 한 번 센다."""
     by_row = {x["row"]: x for x in labs}
-    answers, calls = [], 0
-    for i in range(0, len(labs), LINES_PER_CALL):
-        batch = labs[i:i + LINES_PER_CALL]
+    form = form_summary(labs)
+    answers, chunks, calls, done = [], [], 0, 0
+    for batch in _batches(labs):
         acc = {a["row"]: a for a in answers if isinstance(a.get("row"), int) and a.get("row") in by_row}
         calls += 1
         try:
-            answers += ask_lines(frame, [_line(x) for x in batch], cats,
-                                 _open(acc, by_row, batch[0]["row"]) if i else ())
+            hs, cs = ask_lines(frame, [_line(x) for x in batch], cats,
+                               _open(acc, by_row, batch[0]["row"]) if done else (), form, cfgs, hints)
         except gateway.GatewayError as e:
-            store.append_defect(f"{doc_id}: 문서 구조 호출 실패 — 시트 '{frame}' {i + 1}~{i + len(batch)}줄 — {e} → 초안")
-            return answers, calls, f"{type(e).__name__}: {str(e)[:120]}"
-    return answers, calls, None
+            store.append_defect(f"{doc_id}: 문서 구조 호출 실패 — 시트 '{frame}' {done + 1}~{done + len(batch)}줄 — {e} → 초안")
+            return answers, [], calls, f"{type(e).__name__}: {str(e)[:120]}"
+        answers += hs
+        chunks += cs
+        done += len(batch)
+    return answers, chunks, calls, None
 
 
 # ---------------------------------------------------------------- mock
 def hint_answers(doc_id, frame, labs):
-    """mock — 힌트(`{시트: [{text, depth, role, name?, category?}]}`)를 답의 꼴로 · 없으면 None(판정 없음)."""
+    """mock — 힌트를 답의 꼴로 · 없으면 None(판정 없음). 시트마다 `[{text, depth, role, name?, category?}]`(제목만) 또는
+    `{"headings": [...], "chunks": [{from_row, to_row, owner_row}]}`(청크 구간까지 — B124 ②) — 돌려주는 것은 `(제목, 구간)`."""
     from core.state import fixtures as _fx
     p = _fx.EXTRACT_HINTS / f"{doc_id}@structure.json"
     if not p.exists():
@@ -135,6 +190,8 @@ def hint_answers(doc_id, frame, labs):
     if hint is None:
         return None
     gateway.mock(TAG, f"힌트 {p.name} · {frame}")
+    chunks = list(hint.get("chunks") or []) if isinstance(hint, dict) else []
+    hint = hint.get("headings") or [] if isinstance(hint, dict) else hint
     rows = [x for x in labs if x["row"] != FRAME_ROW]
     out, stack, at = [], [], 0
     for e in hint:
@@ -154,7 +211,7 @@ def hint_answers(doc_id, frame, labs):
         out.append({"row": rows[i]["row"], "parent": stack[-1][1] if stack else None, "role": e.get("role"),
                     "name": e.get("name"), "category": e.get("category")})
         stack.append((d, rows[i]["row"]))
-    return out
+    return out, chunks
 
 
 # ---------------------------------------------------------------- 검사 (결정적)
@@ -200,6 +257,37 @@ def check(doc_id, frame, labs, answers, cats):
     return [acc[x["row"]] for x in labs if x["row"] in acc], dropped
 
 
+def check_chunks(doc_id, frame, labs, heads, chunks):
+    """청크 구간의 검사(B124 ② — 결정적 · 코드는 검사만) — `(구간 [{from_row, to_row, owner_row}] 또는 None, 버린 사유)`.
+
+    모든 줄이 한 구간에 · 겹침 0 · 주인(`owner_row`)은 그 구간 위쪽(또는 첫 줄)의 제목 줄이거나 시트(0 · null) · 어긋나면 그 시트만
+    지금 방식으로 자른다(결함 로그 · 구조 표의 수). 크기는 여기서 보지 않는다 — 넘는 구간은 자르는 자리(`parser.struct_rule.
+    range_chunks`)가 형제 줄 앞에서 나눈다. 구간을 내지 않았으면 `(None, None)`(지금 방식 · 버림 아님)."""
+    if not chunks:
+        return None, None
+    rows = [x["row"] for x in labs if x["row"] != FRAME_ROW]
+    heads_at = {h["row"] for h in heads}
+    got, why = [], None
+    for c in sorted(chunks, key=lambda c: (c.get("from_row") if isinstance(c.get("from_row"), int) else -1)):
+        a, b, o = c.get("from_row"), c.get("to_row"), c.get("owner_row")
+        if not isinstance(a, int) or not isinstance(b, int) or a > b:
+            why = f"구간 꼴이 아니다 {c}"
+            break
+        if o not in (None, FRAME_ROW) and (o not in heads_at or o > a):
+            why = f"{a}~{b}행의 주인 {o}행이 그 위쪽 제목 줄이 아니다"
+            break
+        got.append({"from_row": a, "to_row": b, "owner_row": o})
+    if why is None:
+        hit = {r: sum(1 for g in got if g["from_row"] <= r <= g["to_row"]) for r in rows}
+        miss, dup = [r for r, n in hit.items() if n == 0], [r for r, n in hit.items() if n > 1]
+        why = (f"구간 밖 줄 {len(miss)}(첫 {miss[0]}행)" if miss else
+               f"겹친 줄 {len(dup)}(첫 {dup[0]}행)" if dup else None)
+    if why:
+        store.append_defect(f"{doc_id}: 문서 구조 — 청크 구간을 버렸다({why}) · 시트 '{frame}' → 지금 방식으로 자른다")
+        return None, why
+    return got, None
+
+
 def _to_draft(labs, acc, rows):
     """버린 줄이 초안의 제목이면 초안의 단으로 — 부모 = 앞의 제목 중 단이 더 얕은 가장 가까운 것."""
     depth = {}
@@ -225,27 +313,127 @@ def structurer(layers=None):
     cats = categories(cfgs)
     live = not gateway.use_mock()
 
-    def fn(doc_id, frame, labs):
+    def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None):
         from core.build.extract import prompt_version
+        from parser.struct_rule import draft_structure
+        m = mode or MODE
+        if m == "rules":                            # 규칙 나무 + 크기 구간(B118) — 구조 LLM 0 · 방식만 남긴다
+            return {"skip": True, "mode": "rules"}
+        draft = draft_structure(labs)
+        if m == "edit" and not draft:
+            m = "llm"                               # 규칙 나무가 빈 시트 — 그 시트만 llm (B126 ①)
+        if m == "edit" and not live:
+            from core.build import structure_edit as SE
+            if SE.hint_edit(doc_id, frame) is None:
+                m = "llm"                           # mock — 옛 꼴(나무 전체) 힌트는 llm 답으로 읽는다 · 힌트 없으면 판정 없음
+        if m == "edit":
+            return _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live)
         if live:
             gateway.require(TAG)                    # 부르기 직전의 관문(설정 없음 = 명시적 실패 · 조립은 막지 않는다)
-            answers, calls, failed = _live(doc_id, frame, labs, cats)
+            answers, chunks, calls, failed = _live(doc_id, frame, labs, cats, cfgs, hints)
             source = "live"
         else:
-            answers, calls, failed = hint_answers(doc_id, frame, labs), 0, None
-            if answers is None:
+            got = hint_answers(doc_id, frame, labs)
+            if got is None:
                 return None
+            (answers, chunks), calls, failed = got, 0, None
             source = "hint"
         heads, dropped = check(doc_id, frame, labs, answers if not failed else [], cats)
         if failed:                                  # 호출 실패 — 그 시트는 초안 그대로(보존 0 · 다음 인입이 다시 묻는다)
             from parser.struct_rule import draft_structure
-            heads = draft_structure(labs)
-        _LOG.info("문서 구조 %s · %s — 제목 %d · 버림 %d · 호출 %d%s", doc_id, frame, len(heads), len(dropped),
-                  calls, f" · 실패 {failed}" if failed else "")
-        return {"headings": heads, "dropped": dropped, "calls": calls, "source": source,
-                "prompt_version": prompt_version(PROMPT), **({"failed": failed} if failed else {})}
+            heads, chunks = draft_structure(labs), []
+        ranges, why = check_chunks(doc_id, frame, labs, heads, chunks)
+        _LOG.info("문서 구조 %s · %s — 제목 %d · 버림 %d · 구간 %s · 호출 %d%s", doc_id, frame, len(heads), len(dropped),
+                  len(ranges) if ranges else (f"버림({why})" if why else 0), calls, f" · 실패 {failed}" if failed else "")
+        return {"headings": heads, "dropped": dropped, "calls": calls, "source": source, "mode": "llm",
+                "prompt_version": prompt_version(PROMPT), **({"chunks": ranges} if ranges else {}),
+                **({"chunks_dropped": why} if why else {}), **({"failed": failed} if failed else {}),
+                **({"hints": list(hints)} if hints else {})}
     fn.key = lambda: key(cfgs)
+    fn.takes_ctx = True
     return fn
+
+
+def _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live):
+    """`edit` 방식 한 시트(B126 ②) — 규칙 나무 + 고침(검사를 지난 것만) · mock은 힌트(`{"edits": …}` 꼴)만 · 실패면 규칙 나무 그대로."""
+    from core.build import structure_edit as SE
+    from core.build.extract import prompt_version
+    calls, failed, source = 0, None, "hint"
+    if live:
+        gateway.require(TAG)
+        calls, source = 1, "live"
+        try:
+            out = SE.ask_edit(frame, [_line(x) for x in labs], labs, draft, cats, ctx, cfgs, prev, hints, PROMPT)
+        except gateway.GatewayError as e:
+            store.append_defect(f"{doc_id}: 문서 구조(edit) 호출 실패 — 시트 '{frame}' — {e} → 규칙 나무 그대로")
+            out, failed = {"edits": [], "headings": []}, f"{type(e).__name__}: {str(e)[:120]}"
+    else:
+        out = SE.hint_edit(doc_id, frame)
+        if out is None:
+            return None
+    heads, joins, took, bad = SE.apply_edits(doc_id, frame, labs, draft, out, cats)
+    _LOG.info("문서 구조(edit) %s · %s — 고침 %d · 버림 %d · 붙임 %d · 호출 %d", doc_id, frame, len(took), len(bad),
+              len(joins), calls)
+    return {"headings": heads, "dropped": [], "joins": joins, "edits": took, "edits_dropped": bad, "mode": "edit",
+            "calls": calls, "source": source, "prompt_version": prompt_version(PROMPT), "answer": out,
+            **({"hints": list(hints)} if hints else {}), **({"failed": failed} if failed else {})}
+
+
+# ---------------------------------------------------------------- 확정 기록 (B126 ③ — 등록 단 · 사람 판단 · 재생성 불가)
+def confirmed_path():
+    from core import paths
+    return paths.registry("structure_confirmed.json")
+
+
+def _confirmed_all():
+    p = confirmed_path()
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+#: 구조 확인 고리에서 **비켜 둔 확정 시트** `{(doc_id, 시트)}`(B127 ③ — 확정한 시트에 사람이 다시 힌트를 줬다 · 그 고리 동안만 ·
+#: `c`면 새 확정이 기록을 덮고 `q`면 옛 기록 그대로)
+SUSPENDED = set()
+
+
+def confirmed_of(doc_id):
+    """그 문서의 확정 시트 `{시트: {labels, mode, headings, joins, hints, prompt_version, by, at}}` — 파서가 데이터로 받는다
+    (비켜 둔 시트는 뺀다)."""
+    return {f: v for f, v in (_confirmed_all().get(doc_id) or {}).items() if (doc_id, f) not in SUSPENDED}
+
+
+def confirm(doc_id, frame, st, hints=None):
+    """시트 하나 확정 — 최종 나무 · 붙임 · 준 힌트 · 방식 · 판 · 이름표 해시(원자 쓰기) · 재구축 · 재인입이 그대로 재생(LLM 0)."""
+    from datetime import datetime, timezone
+    from core import paths
+    d = _confirmed_all()
+    d.setdefault(doc_id, {})[frame] = {
+        "labels": st.get("labels"), "mode": st.get("mode"), "headings": st.get("headings") or [],
+        "joins": st.get("joins") or [], "chunks": st.get("chunks") or [], "hints": list(hints or st.get("hints") or []),
+        "prompt_version": st.get("prompt_version"), "by": "사람",
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    p = confirmed_path()
+    paths.ensure(p)
+    store.atomic_write_bytes(p, (json.dumps(d, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
+def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, layers=None, ctx=None):
+    """구조 확인의 고리(B126 ③) — 그 시트를 같은 방식(또는 `mode`)으로 다시 부르고(앞 출력 + 힌트 전부) 구조 보존분의 그 시트
+    자리에 둔다 → 다시 파싱이 그것을 쓴다(LLM 0). 돌려주는 것은 새 구조 또는 None."""
+    from parser import struct_map
+    from parser.struct_rule import labels_hash
+    fn = structurer(layers)
+    st = fn(doc_id, frame, labs, ctx=ctx, hints=hints, prev=prev, mode=mode)
+    if not st or st.get("skip"):
+        return st
+    src = struct_map.source_hash(src_path)
+    kept = struct_map.load_kept(doc_id, src) or {}
+    s = dict(kept.get("structure") or {})
+    s[frame] = {**st, "labels": labels_hash(labs), "key": fn.key()}
+    struct_map.keep(doc_id, {**kept, "doc_id": doc_id, "structure": s}, src)
+    return st
 
 
 # ---------------------------------------------------------------- 사람의 고침 (B119 ③ — 등록 단 · 재생성 불가)
@@ -262,9 +450,19 @@ def _fixes_all():
         return {}
 
 
+#: **옛 고침 기록의 역할 이름**(B119 판 — 다섯) → 지금 역할(B124 ③ — 셋 · 층 중립). 읽을 때 옮긴다(재구축 재생 그대로 · 이 표 밖에서
+#: 옛 이름을 읽는 곳은 없다).
+_LEGACY_ROLES = {"설비": "대상", "유닛": "대상", "항목": "대상", "사양 묶음": "묶음"}
+
+
+def _migrated(fx):
+    return {**fx, "role": _LEGACY_ROLES.get(fx.get("role"), fx.get("role"))} if isinstance(fx, dict) else fx
+
+
 def fixes_of(doc_id):
-    """그 문서의 고침 `{시트: {행: {role, name, category}}}` — 파서가 데이터로 받는다(구조 위에 덮는다)."""
-    return {fr: {int(r): fx for r, fx in rows.items()} for fr, rows in (_fixes_all().get(doc_id) or {}).items()}
+    """그 문서의 고침 `{시트: {행: {role, name, category}}}` — 파서가 데이터로 받는다(구조 위에 덮는다) · 옛 역할 이름은 옮겨 읽는다."""
+    return {fr: {int(r): _migrated(fx) for r, fx in rows.items()}
+            for fr, rows in (_fixes_all().get(doc_id) or {}).items()}
 
 
 def record_fix(doc_id, frame, row, fix):
@@ -280,10 +478,47 @@ def record_fix(doc_id, frame, row, fix):
 
 
 # ---------------------------------------------------------------- 구조 표 · 약한 구조 신호 (화면 · 기록의 재료)
-def table(report):
-    """구조 표의 행 — `[{번호, 시트, 행, 단, 역할, 이름, 카테고리, 초안, 다름, by}]`(제목 줄 · 시트 줄 포함 · 이름표 순)."""
+def sibling_clash(fr):
+    """**같은 번호 꼴 형제의 단 · 역할이 다르다**(B124 ② — 약한 구조 신호 · 자동으로 고치지 않는다) — `{꼴: [행 …]}`.
+    꼴(`번호<꼴>` 표시)이 같은 줄이 둘 이상인데 (단, 역할)이 갈린 꼴만 · 제목이 아닌 줄은 (0, 없음)."""
+    depth = {h["row"]: d for h, d in zip(fr.get("headings") or [], _depth_list(fr.get("headings") or []))}
+    role = {h["row"]: h.get("role") for h in fr.get("headings") or []}
+    fam = {}
+    for x in fr.get("labels") or []:
+        for m in x.get("marks") or []:
+            if m.startswith("번호"):
+                fam.setdefault(m[2:], []).append(x["row"])
+    return {k: v for k, v in fam.items()
+            if len(v) > 1 and len({(depth.get(r, 0), role.get(r)) for r in v}) > 1}
+
+
+def _depth_list(heads):
+    depth = {}
+    for h in heads:
+        p = h.get("parent")
+        depth[h["row"]] = 0 if h["row"] == FRAME_ROW else (depth.get(p, 0) + 1 if p not in (None, FRAME_ROW) else 1)
+    return [depth[h["row"]] for h in heads]
+
+
+def range_lines(report):
+    """구조 표 아래 줄 — 시트마다 청크 구간(`a~b행(주인 r행 '글')`) 또는 버린 사유(지금 방식으로 잘랐다)."""
     out = []
     for frame, fr in ((report or {}).get("프레임") or {}).items():
+        text = {x["row"]: str(x.get("text") or "") for x in fr.get("labels") or []}
+        if fr.get("chunks"):
+            parts = [f"{g['from_row']}~{g['to_row']}행(주인 " + (f"{g['owner_row']}행 '{text.get(g['owner_row'], '')[:20]}'"
+                     if g.get("owner_row") not in (None, FRAME_ROW) else "시트") + ")" for g in fr["chunks"]]
+            out.append(f"   청크 구간 — 시트 '{frame}' {len(parts)}: " + " · ".join(parts))
+        elif fr.get("chunks_dropped"):
+            out.append(f"   청크 구간 버림 — 시트 '{frame}' ({fr['chunks_dropped']}) → 지금 방식으로 잘랐다")
+    return out
+
+
+def table(report):
+    """구조 표의 행 — `[{번호, 시트, 행, 단, 역할, 이름, 카테고리, 초안, 다름, 형제, by}]`(제목 줄 · 시트 줄 포함 · 이름표 순)."""
+    out = []
+    for frame, fr in ((report or {}).get("프레임") or {}).items():
+        clash = {r: k for k, rows in sibling_clash(fr).items() for r in rows}
         labs = {x["row"]: x for x in fr.get("labels") or []}
         depth = {}
         for h in fr.get("headings") or []:
@@ -294,7 +529,7 @@ def table(report):
             dr = x.get("draft") or 0
             out.append({"번호": len(out) + 1, "시트": frame, "행": r, "단": d, "역할": h.get("role"),
                         "이름": h.get("name"), "카테고리": h.get("category"), "글": x.get("text") or "",
-                        "초안": dr, "다름": r != FRAME_ROW and dr != d, "by": h.get("by")})
+                        "초안": dr, "다름": r != FRAME_ROW and dr != d, "형제": clash.get(r), "by": h.get("by")})
         for x in fr.get("labels") or []:            # 초안은 제목인데 구조가 뺀 줄 — 다름으로 보인다
             if (x.get("draft") or 0) and x["row"] not in depth:
                 out.append({"번호": len(out) + 1, "시트": frame, "행": x["row"], "단": 0, "역할": None,
@@ -306,8 +541,9 @@ def table(report):
 def weak(report, pieces=(), coord_in=True):
     """**약한 구조 신호**(B119 ③ — 구현이 센다) — 시트마다 `{시트: [신호 문장]}`(없으면 빈 dict).
 
-    ①설비 · 유닛 0 — 제목이 둘 이상인데 설비 · 유닛 역할이 0(문서의 층에 좌표 층이 있을 때 — `coord_in`) ②초안과 다름 —
-    경계(제목 줄 집합)가 다른 줄 수 · 단 수 ③상한에서 잘린 청크 ④호출 실패 · 버린 줄."""
+    ①대상 0 — 제목이 둘 이상인데 대상 역할이 0(문서의 층에 좌표 층이 있을 때 — `coord_in`) ②초안과 다름 —
+    경계(제목 줄 집합)가 다른 줄 수 · 단 수 ③상한에서 잘린 청크 ④같은 번호 꼴 형제의 단 · 역할이 다름(B124 ②) ⑤청크 구간
+    버림(B124 ②) ⑥호출 실패 · 버린 줄."""
     out = {}
     cut = {}
     for c in pieces or []:
@@ -319,7 +555,7 @@ def weak(report, pieces=(), coord_in=True):
         labs = fr.get("labels") or []
         got = []
         if coord_in and len(heads) >= 2 and not any(h.get("role") in UNIT_ROLES for h in heads):
-            got.append(f"설비 · 유닛 0(제목 {len(heads)})")
+            got.append(f"대상 0(제목 {len(heads)})")
         draft = {x["row"] for x in labs if x.get("draft")}
         mine = {h["row"] for h in heads}
         diff = len(draft ^ mine)
@@ -329,6 +565,10 @@ def weak(report, pieces=(), coord_in=True):
             got.append(f"초안과 경계 다름 {diff}줄 · 단 수 {d_lv} → {s_lv}")
         if cut.get(frame):
             got.append(f"글자 상한에서 잘린 청크 {cut[frame]}")
+        for k, rows in sibling_clash(fr).items():
+            got.append(f"같은 번호 꼴 「{k}」 형제 {len(rows)}줄의 단 · 역할이 다르다")
+        if fr.get("chunks_dropped"):
+            got.append(f"청크 구간 버림({fr['chunks_dropped']}) — 지금 방식으로 잘랐다")
         if fr.get("failed"):
             got.append("구조 호출 실패 — 초안 그대로")
         elif fr.get("dropped"):

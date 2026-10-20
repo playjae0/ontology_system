@@ -277,7 +277,8 @@ def _trace(doc, rows, span=40):
         _bt = reconcile.belongs_trace(r, _mt["소속 이름"], _sk, _mt["고아"], _mt.get("제목 개체"))
         if _bt:
             print(f"     소속       {_bt}")
-        print(f"     좌표       {c.get('process_ref') or '없음'} ({_coord_src(m)})")
+        from parser.normalizer import coord_text
+        print(f"     좌표       {coord_text(c.get('process_ref')) or '없음'} ({_coord_src(m)})")
         text = c.get("text") or ""
         if text and r.get("surface"):
             low = fold_latin(text)

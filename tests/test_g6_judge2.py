@@ -116,10 +116,10 @@ print("\n■ ⓐ md 보고서 · ⓑ 붙은 자리 칸")
 DT, DID, SHEET = "b123_process", "B123TW", "TW 사양"
 ROWS = ["언와인더 unit", "1) 기본사양", "속도는 100ppm이다.", "2) 지정사양", "장력은 30N이다.",
         "리와인더 unit", "1) 기본사양", "속도는 80ppm이다."]
-STRUCT = [{"text": "언와인더 unit", "depth": 1, "role": "유닛", "name": "언와인더 unit", "category": "Unit"},
-          {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"},
-          {"text": "리와인더 unit", "depth": 1, "role": "유닛", "name": "리와인더 unit", "category": "Unit"},
-          {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}]
+STRUCT = [{"text": "언와인더 unit", "depth": 1, "role": "대상", "name": "언와인더 unit", "category": "Unit"},
+          {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"},
+          {"text": "리와인더 unit", "depth": 1, "role": "대상", "name": "리와인더 unit", "category": "Unit"},
+          {"text": "1) 기본사양", "depth": 2, "role": "묶음"}]
 with _quiet():
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])

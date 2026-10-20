@@ -130,11 +130,10 @@ show("본문 청크가 표·차트보다 앞에 온다 (읽는 순서)",
 
 # a-ⓕ **기존 산출과 바이트 동일** — 텍스트만 있는 슬라이드는 한 글자도 안 바뀐다.
 _b = basic_ppt.extract(reader.read(str(_RAW / "PPT_basic.pptx")))
-_want = {("슬라이드 1", "조립공정 설비 현황\n2026년 상반기 · 조립 1라인 · 조립기술팀"),
-         ("슬라이드 10#1", None)}
 _got = {(c["source_locator"], c.get("text")) for c in _b}
-show("기존 PPT 픽스처 — 조각 수·locator가 그대로다 (16조각)",
-     len(_b) == 16 and "슬라이드 10#6" in {c["source_locator"] for c in _b})
+show("기존 PPT 픽스처 — 상자 6개 슬라이드도 본문 청크 하나(상자 분할 0 · B125 ①)",
+     "슬라이드 10" in {c["source_locator"] for c in _b}
+     and not any(c["source_locator"].startswith("슬라이드 10#") for c in _b))
 show("기존 텍스트 청크가 **바이트 동일**하다 (회귀 유지)",
      ("슬라이드 1", "조립공정 설비 현황\n2026년 상반기 · 조립 1라인 · 조립기술팀") in _got)
 show("[의도된 변화] 제목 있는 슬라이드는 section이 제목이 된다 — chunk_id가 옮겨간다",
@@ -235,7 +234,7 @@ try:
          _nres.ok and _npic["meta"]["slide_render"] == "none"
          and len(_nres.envelope["chunks"]) == 12)
     show("렌더 부재는 진단으로 드러난다 (조용히 다르게 돌지 않는다)",
-         render.available()[0] is False and "soffice" in render.available()[1])
+         render.capture_path(_PPTX)[0] is False and "soffice" in render.capture_path(_PPTX)[2])   # 기대 변경(B128 ① — 판정 한 자리)
 finally:
     _sh.which = _realwhich
 

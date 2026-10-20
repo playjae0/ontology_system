@@ -37,10 +37,10 @@ TMP = Path(tempfile.mkdtemp(prefix="b120_"))
 HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
 DT = "b120_process"
 SHEET = "TW 사양"
-UNITS = [{"text": "언와인더 unit", "depth": 1, "role": "유닛", "name": "언와인더 unit", "category": "Unit"},
-         {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"},
-         {"text": "리와인더 unit", "depth": 1, "role": "유닛", "name": "리와인더 unit", "category": "Unit"},
-         {"text": "1) 기본사양", "depth": 2, "role": "사양 묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "사양 묶음"}]
+UNITS = [{"text": "언와인더 unit", "depth": 1, "role": "대상", "name": "언와인더 unit", "category": "Unit"},
+         {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"},
+         {"text": "리와인더 unit", "depth": 1, "role": "대상", "name": "리와인더 unit", "category": "Unit"},
+         {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"}]
 #: 창작 표본 — 둘째 문서는 언와인더 장력만 다른 값(충돌)
 DOCS = {"B120TW": ["언와인더 unit", "1) 기본사양", "속도는 100ppm이다.", "2) 지정사양", "장력은 30N이다. 작성일 2026-10-16 · 3쪽",
                    "리와인더 unit", "1) 기본사양", "속도는 80ppm이다.", "2) 지정사양", "장력은 20N이다."],
@@ -86,12 +86,12 @@ def _drop_hints():
 
 def _spec(canonical):
     n = next((n for _l, n in World().nodes() if n["canonical"] == canonical and n.get("status") != "obsolete"), None)
-    return [(it["value"], tuple(it["provenance"])) for it in ((n or {}).get("attrs") or {}).get("spec") or []], n
+    return [(it["value"], tuple(it["provenance"])) for it in ((n or {}).get("attrs") or {}).get("설비사양") or []], n
 
 
 def _prose_values():
     """산문 문서가 실은 값 전부 — `{(canonical, 값)}`(출처가 이 시험의 문서)."""
-    return {(n["canonical"], it["value"]) for _l, n in World().nodes() for it in (n.get("attrs") or {}).get("spec") or []
+    return {(n["canonical"], it["value"]) for _l, n in World().nodes() for it in (n.get("attrs") or {}).get("설비사양") or []
             if any(str(p).split("#")[0] in DOCS for p in it["provenance"])}
 
 
