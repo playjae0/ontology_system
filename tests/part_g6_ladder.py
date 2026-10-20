@@ -154,8 +154,8 @@ show("ⓓ 판단 필요 넷이 하나씩(ⓑ 8 · ⓐ 10 · ⓒ 17 · ⓓ 20) ·
      and not _f1["missing"] and not _f2["missing"],
      f"판단 필요 {_need} · 입력 {[(r, _t1.get(r, {}).get('kind')) for r in (8, 9, 10, 11, 17, 20)]} · 빠짐 {_f1['missing']}")
 _cin = json.dumps(_chk.get(S1) or {}, ensure_ascii=False)
-_prompt = (ROOT / "prompts" / "3.3_outline.md").read_text(encoding="utf-8")
-show("ⓔ 시트 확인 — 시트당 1 · 입력은 골격 보기(본문 접음 · 줄 전문 0 · 긴 제목은 앞 40자 + 「…총 n자」) · 지시문에 「대개 맞다」 0 · "
+_prompt = (ROOT / "prompts" / "2.4_ladder.md").read_text(encoding="utf-8")
+show("ⓔ 시트 확인 — 시트당 1 · 입력은 골격 보기(본문 접음 · 줄 전문 0 · 긴 제목은 앞 40자 + 「…총 n자」) · 시트 확인 지시문에 「대개 맞다」 0 · "
      "사다리 고침(9) → 묶음)이 둘째 시트에도",
      sorted(_chk) == sorted([S1, S2]) and sum(1 for p, b in CALLS if b.get("task") == "check") == 2
      and any(e.get("kind") == "본문" for e in _chk[S1]["toc"]) and FOLDED not in _cin and LONG not in _cin
@@ -226,5 +226,25 @@ show("ⓗ `structure_mode` 값 둘(rules · ladder) · 옛 값 edit는 명령이
      and not any(hasattr(SE, n) for n in ("number_runs", "run_lines", "rules_tree", "ask_edit"))
      and not any(hasattr(ST, n) for n in ("check", "table", "range_lines", "ask_edit")),
      " / ".join(ln.strip() for ln in _out.splitlines() if "폐기" in ln or "다음 줄" in ln)[:200])
+
+# ────────────────────────────────────────────────────────────── ⓚ 개요 · 덱의 판은 구조와 따로
+print("\n■ ⓚ 개요 · 덱 — 판이 구조와 따로 · 옛 보존분 재사용")
+from core.build import deck as DK                         # noqa: E402
+from core.build.extract import prompt_version             # noqa: E402
+from parser import deck as PD                             # noqa: E402
+_cf = ST._cfgs(["process"])
+_k1 = DK.key(_cf)
+ST.MODE = "rules"
+_k2 = DK.key(_cf)
+ST.MODE = "ladder"
+_slides = [{"slide": 1, "layout": "제목", "boxes": [{"kind": "text", "text": "노칭 점검"}]}]
+_asked = []
+_fake = lambda doc_id, slides, doc_coord=None: _asked.append(doc_id) or {"slides": {}, "overview": ""}
+_fake.key = lambda: _k1
+_old = {"labels": PD.labels_hash(_slides, None), "key": {**_k1, "mode": "edit"}, "answer": {"slides": {}, "overview": "옛 개요"}}
+_got = PD.hook(_fake, "B132K", kept=_old, made={}, tally={})(_slides)
+show("ⓚ 개요 · 덱은 `3.3_outline.md`의 판(구조 지시문과 따로) · 덱 열쇠는 구조 방식과 무관 · 옛 보존분(열쇠에 방식 칸)이 그대로 재사용(LLM 0)",
+     prompt_version("outline") != prompt_version(ST.PROMPT) and _k1 == _k2 and "mode" not in _k1 and not _asked and _got is not None,
+     f"개요 판 {prompt_version('outline')} · 구조 판 {prompt_version(ST.PROMPT)} · 덱 다시 물음 {len(_asked)}")
 
 done()

@@ -3,20 +3,18 @@
 
 창작 표본(시트 셋 · 수치는 근거가 아니다 [정정] 50) · 사다리 · 시트 확인 답은 가짜 게이트웨이(실호출 갈래 — 입력 조립 · 검사는 실물) ·
 `--split-only`는 mock 힌트(`{"edits": …}` 꼴). LLM 품질은 사내에서 잰다. 대표 사례 하나씩:
-  ⓐ 고침 없는 시트 확인(사다리 = 코드 사다리) = `rules` · `rules` = 구조 함수 없는 파싱(B118 청크)
   ⓑ 고침(제목 더함 · 부모 바꿈 · 대상) → 사슬에 유닛 · 이유가 md에 · 어긋난 고침만 버린다
   ⓒ 확인 고리 — 힌트 → 둘째 시트 확인 입력에 앞 출력 + 힌트 → 다시 찍기 → `c` → 확정 기록 → 보존분 없이 다시 파싱해도 구조 LLM 0 · 같은 나무
-  ⓓ 서명 통계가 사다리 입력에 — 「9.」가 「가.」 아래에서 다시 시작 · 「9)」 11줄 이어짐(공통사양)
   ⓕ `--split-only` — 추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`
   B127 ⓓ 확정한 시트에 힌트 → 확정을 비켜 두고 기록된 힌트 + 새 힌트로 다시 → `c`면 새 나무 · 쌓인 힌트 · ⓔ `q`면 기록 그대로
-  B130 나무 화면 · 힌트는 사다리 고침(문서 규칙 — 둘째 시트에도) · 옛 확정은 다시
-네 벌(ⓖ)은 마감 한 줄의 네 벌 단계가 잰다. (B126 ⓔ `llm` 방식은 B132 ⑧에서 폐기 — 그 어서션은 지웠다)
+  B130 힌트는 사다리 고침(문서 규칙 — 둘째 시트에도) · 확정 → 재생 · 옛 확정은 다시
+네 벌(ⓖ)은 마감 한 줄의 네 벌 단계가 잰다. (B132 — `edit` · `llm` 방식 · 형태 단서를 지워 그 어서션 ⓐ · ⓓ · ⓔ를 지웠고 나무 화면 문면(B130 ⓓ)은
+사다리 조각 ⓖ가 잰다)
 """
 from __future__ import annotations
 
 import contextlib
 import io
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -108,25 +106,6 @@ with contextlib.redirect_stdout(io.StringIO()):
 _x = _xlsx()
 ST.confirmed_path().unlink(missing_ok=True)
 
-# ────────────────────────────────────────────────────────────── ⓐ 바닥 — rules = 구조 함수 없음 · 고침 없는 시트 확인 = rules
-print("\n■ ⓐ 코드 사다리가 바닥")
-ST.MODE = "rules"
-_r0 = _parse(_x, structure=None)
-struct_map.invalidate(DID)
-_r1 = _parse(_x)
-ST.MODE = "ladder"
-struct_map.invalidate(DID)
-CALLS.clear()
-with Live(by={"structure": lambda b: _ladder(b) if b.get("task") == "ladder" else
-              {"answers": _body_answers(b), "edits": [], "rules": []}}):
-    _r2 = _parse(_x)
-_modes = {f: x.get("mode") for f, x in (_r2.report["structure"]["프레임"]).items()}
-show("ⓐ `rules` = 구조 함수 없는 파싱(B118 청크) · 고침 없는 시트 확인 = `rules`(코드 사다리 목차) · 구조 LLM 0(rules)",
-     all(_by(_r1, f) == _by(_r0, f) for f in (E, N)) and all(_by(_r2, f) == _by(_r1, f) for f in (E, N))
-     and _modes.get(E) == "ladder" and (_r1.report.get("structure") or {}).get("방식", {}).get(E) == "rules"
-     and _r1.report["structure"]["프레임"][E]["headings"],                 # rules도 구조 확인에 규칙 나무가 선다
-     f"청크 E {len(_by(_r0, E))}/{len(_by(_r1, E))}/{len(_by(_r2, E))} · 방식 {_modes}")
-
 # ────────────────────────────────────────────────────────────── ⓑ 고침 → 사슬 · 이유 · 버림
 print("\n■ ⓑ 고칠 곳만 이유와 함께")
 struct_map.invalidate(DID)
@@ -152,7 +131,6 @@ _screen.ask = lambda prompt: next(_answers)
 _buf = io.StringIO()
 with Live(by={"structure": _structure}):
     _r4 = _parse(_x)
-    _ladder_calls = [(p, b) for p, b in CALLS if b.get("task") == "ladder"]
     with contextlib.redirect_stdout(_buf):
         _r5, _go = SS.gate(_r4, DID, lambda: _parse(_x, confirmed=ST.confirmed_of(DID)), layers=["process"])
 _screen.ask = _ask0
@@ -171,15 +149,6 @@ show("ⓒ 힌트 → 둘째 호출 입력에 앞 출력 + 힌트 · 다시 찍�
      and not [p for p, _b in CALLS if p == "structure"] and _rows(_r6) == _rows(_r5)
      and _chain(_r6, E, "메모 본문")[-1:] == ["설비 메모"],
      f"호출 {len(_calls)} · 확정 {sorted(_cf)} · 재생 호출 {len([p for p, _b in CALLS if p == 'structure'])}")
-
-# ────────────────────────────────────────────────────────────── ⓓ 서명 통계(형태 단서) — 사다리 입력
-_lad = [b for p, b in _ladder_calls if p == "structure"]
-_stats = (_lad[0].get("stats") or {}) if _lad else {}
-_e9 = next((x for x in _stats.get(E) or [] if x["서명"] == "9."), {})
-_n9 = next((x for x in _stats.get(N) or [] if x["서명"] == "9)"), {})
-show("ⓓ 서명 통계가 사다리 입력에(문서당 1호출) — 「9.」가 「가.」 아래에서 다시 시작(3 · 8행) · 「9)」 11줄 · 이어짐 10(공통사양)",
-     len(_lad) == 1 and [x["행"] for x in _e9.get("다시 시작") or [] if x["아래"] == "가."] == [3, 8]
-     and _n9.get("수") == 11 and _n9.get("이어짐") == 10, f"사다리 호출 {len(_lad)} · 9. {_e9} · 9) {_n9}")
 
 # ────────────────────────────────────────────────────────────── B127 ③ 확정한 시트도 힌트로 다시 연다
 print("\n■ B127 ③ 확정한 시트에 힌트 — 확정을 비켜 두고 다시 · c면 덮고 q면 그대로")
@@ -211,13 +180,13 @@ _c8, _b8 = _reopen(["하나 더 바꿔 본다", "q"])
 show("B127 ⓔ 확정한 시트에 힌트를 준 뒤 q → 확정 기록이 바이트까지 그대로",
      len(_c8) == 1 and _b8 == _b7 and not ST.SUSPENDED, f"호출 {len(_c8)} · 같음 {_b8 == _b7}")
 
-show("B130 ⓕ 확정한 시트를 다시 연 입력의 앞 출력 = 앞 판단 전체(앞 고침 목록 · 고친 나무 · 이해한 규칙)",
+show("B130 ⓕ 확정한 시트를 다시 연 입력의 앞 출력 = 앞 판단 전체(앞 고침 목록 · 고친 나무 · 사다리 고침)",
      _c7 and [e.get("row") for e in (_c7[0].get("previous") or {}).get("edits") or []]
      == [e.get("row") for e in (_old.get("answer") or {}).get("edits") or []] and (_old.get("answer") or {}).get("edits")
      and "rules" in (_c7[0].get("previous") or {}), f"앞 고침 {[(e.get('row'), e.get('what')) for e in (_c7[0].get('previous') or {}).get('edits') or []] if _c7 else None}")
 
 # ────────────────────────────────────────────────────────────── B130 ③④⑤ 나무 · 문서 규칙 · 옛 확정
-print("\n■ B130 나무가 보이는 구조 확인 · 힌트는 문서 규칙 · 옛 확정은 다시")
+print("\n■ B130 힌트는 문서 규칙 · 옛 확정은 다시")
 DID2, S1, S2 = "B130R", "설비 사양", "이송"
 RULE_HINT = "'가.'는 유닛 단이다"
 _p2 = TMP / f"{DID2}.xlsx"
@@ -258,11 +227,6 @@ _scr = _buf.getvalue()
 _fr9 = _r9.report["structure"]["프레임"]
 _s2calls = [b for p_, b in CALLS if p_ == "structure" and b.get("frame") == S2]
 _tgt = {f: {h["row"]: (h.get("role"), h.get("name"), h.get("category")) for h in _fr9[f]["headings"]} for f in (S1, S2)}
-_md9 = split_report.write_md(DID2, _r9.report, _r9.envelope).read_text(encoding="utf-8")
-show("ⓓ 나무 — 화면 · md 모두 들여쓰기 나무(자식 줄이 한 단 깊다) · 청크마다 전체 경로(시트 › … › 자기 제목)",
-     re.search(r"^ {2}- 1행 .*가\. 공급부 — ", _md9, re.M) and re.search(r"^ {4}- 2행 .*1\) 속도", _md9, re.M)
-     and f"첫 줄 '1) 속도' · 끝 줄 '속도는 50이다.' · 경로 {S1} › 가. 공급부" in _md9 and f"경로 {S1} › 가. 공급부" in _scr,
-     " / ".join(ln.strip() for ln in _md9.splitlines() if "경로" in ln)[:200])
 show("ⓔ 문서 규칙 — 첫 시트 힌트 → 사다리 고침(서명 가. · 대상 · Unit) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
      "화면에 적용 수 · 묻는 줄에 줄 고침 명령 0",
      _go and _tgt[S1].get(1) == ("대상", "공급부", "Unit") and _tgt[S1].get(4) == ("대상", "적층부", "Unit")
@@ -313,7 +277,7 @@ _out = _run("ingest-file", str(_x), "--doc-type", "b126_process", "--allow-mock"
 (HINTS / f"{DID}@structure.json").unlink(missing_ok=True)
 _unregister("b126_process")                              # 등록 단은 클린이 남긴다 — 시험 몫을 치운다
 ST.confirmed_path().unlink(missing_ok=True)
-show("ⓕ `--split-only` — 구조까지(추출 0 · 그래프 쓰기 0) · md가 선다(edit 고침 · 이유)",
+show("ⓕ `--split-only` — 구조까지(추출 0 · 그래프 쓰기 0) · md가 선다(고침 · 이유)",
      data_hash() == _h0 and _md_p.exists() and WHY["대상"] in _md_p.read_text(encoding="utf-8")
      and "구조까지" in _out and "추출" not in "".join(ln for ln in _out.splitlines() if ln.strip().startswith("[단계]")),
      " / ".join(ln.strip() for ln in _out.splitlines() if "구조까지" in ln or "split_" in ln)[:300])

@@ -4,7 +4,7 @@
 **최종 판단은 LLM이고 사람이 그 위다 · 코드는 재료 · 적용 · 검사**(사용자 2026-10-20 — 「룰은 LLM에 정보를 주고 LLM이 판단」):
 
   · 재료(파서 — 판정 0): 줄 = 행 전체 · 시작 열 · 들여쓰기 깊이 · 꼴 서명 · 서수 · 빈 행 뒤 · 보조 표시(`parser.struct_rule.labels`)
-  · **계층 사다리**(지점 ⑪ · 태그 `structure` · 문서당 한 번 — `core/build/ladder.py`): 단마다 서명 · 역할 · 카테고리 + 번호 없는 제목의
+  · **계층 사다리**(지점 ⑪ · 태그 `structure` · 지시문 `prompts/2.4_ladder.md` · 문서당 한 번 — `core/build/ladder.py`): 단마다 서명 · 역할 · 카테고리 + 번호 없는 제목의
     규칙 · 입력은 앞부분의 골격 보기 · 서명 통계 · 코드 사다리 — **줄 전문 0** · 실패 · mock 힌트 없음이면 **코드 사다리**(`rules`와 같은 길)
   · **목차**(파서 — `parser/ladder.apply`): 사다리 + 이어짐 · 다시 시작 + 들여쓰기 깊이 → 제목 줄마다 부모 · 역할 · 대상 + **판단 필요**
     넷(코드가 정하지 않고 표시)
@@ -22,12 +22,13 @@ import json
 
 from core.llm import gateway
 from core.state import log, store
-from parser.struct_rule import FRAME_ROW, UNIT_ROLES
+from parser.struct_rule import FRAME_ROW, ROLES, UNIT_ROLES
 
 _LOG = log.get(__name__)
 
-#: 지시문 이름(`prompts/3.3_outline.md` — 개요와 한 벌) · 호출 태그(지점 ⑪ — `gateway.CALL_TAGS`)
-PROMPT, TAG = "outline", "structure"
+#: 지시문 이름(`prompts/2.4_ladder.md` — 사다리 · 시트 확인 · 판이 보존분의 판이다 · 개요 · 덱은 `3.3_outline.md`) · 호출 태그(지점 ⑪ —
+#: `gateway.CALL_TAGS`)
+PROMPT, TAG = "ladder", "structure"
 #: 제목 목록(개요 — 슬라이드 · 쪽 제목) 한 줄의 글자 상한(사내 손잡이 `structure_line_chars` · 구조 호출은 골격 보기라 쓰지 않는다)
 LINE_CHARS = 300
 #: 덱 구조 한 호출에 싣는 양(어림 토큰 — 사내 손잡이 `structure_call_tokens` · 덱이 쓴다)
@@ -37,16 +38,23 @@ MODE = "ladder"
 MODES = ("rules", "ladder")
 #: 보존분의 문서 사다리 자리(시트 이름과 겹치지 않는 열쇠)
 LADDER_KEY = "@사다리"
-#: 지시문 · 스키마는 개요(제목 목록)와 한 벌 — 제목 목록만 오는 호출(`outline._ask`)의 답 꼴
+#: **개요(제목 목록) 호출의 답 꼴**(`outline._ask` — B132 전 그대로 · 청크 구간은 제목 목록 호출이면 빈 목록 · 지시문 `3.3_outline.md`가 말한다)
 SCHEMA = {
     "type": "object",
     "properties": {"headings": {"type": "array", "items": {
         "type": "object",
-        "properties": {"row": {"type": "integer"}, "parent": {"type": ["integer", "null"]},
-                       "role": {"type": "string", "enum": ["대상", "묶음", "주제"]},
-                       "name": {"type": ["string", "null"]}, "category": {"type": ["string", "null"]}},
-        "required": ["row", "parent", "role", "name", "category"], "additionalProperties": False}}},
-    "required": ["headings"], "additionalProperties": False,
+        "properties": {"row": {"type": "integer"},
+                       "parent": {"type": ["integer", "null"]},
+                       "role": {"type": "string", "enum": list(ROLES)},
+                       "name": {"type": ["string", "null"]},
+                       "category": {"type": ["string", "null"]}},
+        "required": ["row", "parent", "role", "name", "category"], "additionalProperties": False}},
+        "chunks": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"from_row": {"type": "integer"}, "to_row": {"type": "integer"},
+                           "owner_row": {"type": ["integer", "null"]}},
+            "required": ["from_row", "to_row", "owner_row"], "additionalProperties": False}}},
+    "required": ["headings", "chunks"], "additionalProperties": False,
 }
 
 

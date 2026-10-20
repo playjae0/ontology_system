@@ -29,7 +29,7 @@ CAPTURE_SUFFIXES = (".pptx", ".pdf")
 NO_CAPTURE_NEXT = "캡처 없이 진행하려면 같은 명령에 --no-capture(기록에 남는다)"
 #: 채팅을 쓰는 실행이 부를 수 있는 지시문 — 파일이 있는지 「설정」 단계가 본다(B115 ① — ⑪개요 · ⑫연결 보강이
 #: 구축 중에 처음 불려 그때 없다고 죽지 않게 · 추출 · 판정과 같이)
-CHAT_PROMPTS = ("extract", "outline", "judge", "reinforce")
+CHAT_PROMPTS = ("extract", "outline", "ladder", "judge", "reinforce")
 
 
 def run(*, chat=True, embed=False, images=False, catalog=True, capture=()):
