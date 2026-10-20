@@ -93,12 +93,13 @@ show("① 예고가 부르기 전에 온다 · 새 그림 수만큼 부른다 (�
      and all(m == "image/png" and n > 0 for _r2, m, n in _first), str(_ord1))
 show("① 같은 파일 재인입은 호출 0 (보존된 요약 재사용)", not _calls, str(_calls))
 
-_saved = render.shutil.which
+_saved, _places = render.shutil.which, render.SOFFICE_PLACES
 render.shutil.which = lambda _n: None                   # 변환기 없는 사내
+render.SOFFICE_PLACES = ()                              # 기대 변경(B129 ① — 표준 설치 자리도 찾는다 · 그 자리도 비운다)
 try:
     _nr = _parse(IMG, BX, "B88NOCONV", sheet_roles=ROLES)
 finally:
-    render.shutil.which = _saved
+    render.shutil.which, render.SOFFICE_PLACES = _saved, _places
 _rw = _nr.report.get("read_warnings") or {}
 from cli import parse as _cp                                           # noqa: E402
 _buf = io.StringIO()

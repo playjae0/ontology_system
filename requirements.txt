@@ -9,7 +9,9 @@
 #
 # **PPT · PDF 인입(실호출)에 필요한 것**(B128 — 사전 점검 · `doctor --env`가 그대로 잰다):
 #   ① python-pptx · PyMuPDF(아래 pip)
-#   ② 캡처 길 하나 — LibreOffice(`soffice` · **Impress 포함** — libreoffice-core만이면 PPTX 변환이 안 된다)
+#   ② 캡처 길 하나 — LibreOffice(`soffice` · **Impress 포함** — libreoffice-core만이면 PPTX 변환이 안 된다 · 표준 자리에 깔면
+#      PATH에 없어도 찾는다(macOS /Applications/LibreOffice.app · Windows %ProgramFiles%\LibreOffice · Linux /usr/lib/libreoffice ·
+#      /opt/libreoffice*) · 다른 자리면 셸 설정 파일에 SOFFICE_PATH=<soffice 경로>)
 #      또는 PowerPoint에서 PDF로 저장해 원본과 같은 폴더 · 같은 이름으로(원본보다 새것) · PDF 문서는 PyMuPDF만
 #   ③ 게이트웨이의 그림 입력 — `python run.py llm-check` ⑦ 통과(실제 크기 그림 한 장)
 # 셋 중 하나라도 없으면 실호출 PPT · PDF 인입은 파싱 전에 멈춘다(LLM 0). 캡처 없이 진행은 `--no-capture`(기록에 남는다).

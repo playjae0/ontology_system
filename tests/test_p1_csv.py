@@ -223,9 +223,10 @@ finally:
     gateway._post, gateway.require = _real_post, _real_req
 
 # b-ⓓ soffice가 없어도 **문서는 완주한다**
-_realwhich = _sh.which
+_realwhich, _places = _sh.which, render.SOFFICE_PLACES
 try:
     _sh.which = lambda n, *a, **k: None if "office" in n else _realwhich(n, *a, **k)
+    render.SOFFICE_PLACES = ()       # 기대 변경(B129 ① — 표준 설치 자리도 찾는다 · 그 자리도 비운다)
     _nres = pipeline.parse(basic_ppt, "B53NOSO", str(_PPTX), summarize=_spy,
                            layer=coord_layer())
     _npic = [c for c in _nres.envelope["chunks"]
@@ -236,7 +237,7 @@ try:
     show("렌더 부재는 진단으로 드러난다 (조용히 다르게 돌지 않는다)",
          render.capture_path(_PPTX)[0] is False and "soffice" in render.capture_path(_PPTX)[2])   # 기대 변경(B128 ① — 판정 한 자리)
 finally:
-    _sh.which = _realwhich
+    _sh.which, render.SOFFICE_PLACES = _realwhich, _places
 
 # b-ⓒ **표시** — 실호출로만 검증되는 항목(§7.5). mock에서 재는 것은 배관까지다.
 show("[표시 · §7.5] ④ 실호출 요약 **품질**은 mock으로 판정하지 않는다 — "
