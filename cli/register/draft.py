@@ -578,7 +578,7 @@ def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
     않았다」는 실행 결과가 거부의 근거다. 형태 판정(table이냐 prose냐)의 정본은
     문서 6 §6.4이고 여기는 그중 **분할 신호 하나**를 볼 뿐이다.
     """
-    frames, picks, oor, chunks, forms, need = 0, [], 0, 0, [], 0
+    frames, picks, oor, chunks, forms = 0, [], 0, 0, []
     for s in samples:
         # **운영과 같은 시트로 계산한다**(B89 ③) — 판정은 `prose` 역할 시트만,
         # 레벨·청크·규칙 시트는 `skip`을 뺀 시트로. 구판은 통합문서 전체를 봐서
@@ -593,10 +593,9 @@ def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
         picks += [r["분할_레벨"] for r in rep]
         oor += sum(1 for r in rep if r["분할_레벨_구간밖"])
         chunks += len(basic_prose_xlsx.extract(raw))
-        need += len(basic_prose_xlsx.rule_frames(raw))
     if any(f["verdict"] == form.TABLE for f in forms):
         return None                     # 표로 자동 판정된 표본이 섞였다
-    # **고정 규칙으로 안 선 시트는 인입 때 규칙 선언으로 간다**(B87 ② — generate는
+    # **고정 규칙으로 안 선 시트는 인입 때 문서 구조(⑪)가 세운다**(B119 ① — generate는
     # 파악만). 그래서 「시트당 1청크」가 곧 거부가 아니다 — 다만 그 표본이 **산문이라는
     # 근거**가 있어야 한다: 형태 판정이 prose로 섰거나 사람이 prose라고 답했다(`--use-basic`
     # · 형태 문의의 답). 근거가 없으면 구판대로 거부한다 — 관리계획서 같은 표가 통청크로
@@ -618,33 +617,27 @@ def _basic_prose_xlsx_proposal(samples, *, said_prose=False):
                      + (f" · **목표 구간 밖 {oor}프레임** — 최근접 레벨로 떨어졌다"
                         f"(검수 화면과 큐에 남는다)" if oor else "")
                      + (f" · **형태 판정이 사람에게 올라온 표본 {len(_human)}부** — "
-                        f"신호값을 보고 정한다" if _human else "")
-                     + (f" · **고정 규칙으로 안 선 시트 {need}장 — 인입 때 선언 필요**"
-                        f"(규칙 선언 · B87)" if need else "")),
-            "rule_frames": need}
+                        f"신호값을 보고 정한다" if _human else ""))}
 
 
 def _basic_docx_proposal(samples):
     """Word의 위임 제안 — **문단이 행이고 분할은 B87 엔진**이다(B88 ② · D-111과 같은 래퍼 방식).
 
     PPT·PDF처럼 포맷이 산문을 함의한다(표 판정이 없다). 사람이 알아야 할 것을 센다 —
-    개요 수준으로 선 제목 수(없으면 번호 패턴 → 굵게 → 인입 때 규칙 선언)와 그림 수(④).
+    개요 수준으로 선 제목 수(없으면 번호 패턴 → 굵게 → 인입 때 문서 구조)와 그림 수(④).
     """
-    from parser.adapters import basic_docx
-    heads = pics = need = 0
+    heads = pics = 0
     for s in samples:
         raw = reader.read(str(s))
         heads += sum(1 for p in raw.get("paragraphs") or [] if p.get("outline") is not None)
         pics += sum(1 for p in raw.get("paragraphs") or [] if p.get("kind") == "image")
-        need += len(basic_docx.rule_frames(raw))
     return {"adapter": "parser/adapters/basic_docx.py",
             "reason": "Word는 문단이 행이다 — 개요 수준·번호·굵게로 계층을 읽고 B87 분할 "
                       "엔진이 자른다. 생성 세션이 필요 없다",
-            "outline_headings": heads, "images": pics, "rule_frames": need,
+            "outline_headings": heads, "images": pics,
             "note": (f"개요 수준 제목 {heads}개" if heads
                      else "개요 수준이 없다 — 번호 패턴·굵게로 제목을 찾는다")
-                    + (f" · 그림 {pics}장(④ 이미지 요약)" if pics else "")
-                    + (" · **고정 규칙으로 안 선다 — 인입 때 선언 필요**" if need else "")}
+                    + (f" · 그림 {pics}장(④ 이미지 요약)" if pics else "")}
 
 
 def _basic_pdf_proposal(samples):

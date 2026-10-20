@@ -16,7 +16,9 @@
 `--check`가 보는 것: ①항목마다 열쇠 넷(파일 · 지금 · 바뀔 · 까닭) ②`지금`이 그 파일에서 **정확히 한 번**(앞 항목을 적용한 판에서도) ③`바뀔`의
 새 몫이 **지금 규칙만** — 취소선 · 「구판」 서술 · `[개정]` 꼬리표 없이 · 출처 꼬리 `(B###)` 하나 이상 · 표 행이면 `|`로 시작하고 끝난다
 ④명세 사본에 전부 적용한 뒤 **문서 검사 일곱이 그대로**(위반이 늘지 않는다 — 명세 모양 점검 포함). 어긋난 항목은 이름(파일 · 절)으로 말한다.
-`--apply`는 같은 검사를 지나야만 쓴다 — 파일마다 임시 파일 + `os.replace`(원자적) · 하나라도 어긋나면 쓰기 0.
+**늘어난 것이 미러 봉인뿐이면**(미러 body · mirror 문면이 바뀌었고 앵커는 그대로) 실패가 아니라 「재봉인 대상 <쌍>」 알림이다(B121 ④) —
+허브가 양쪽을 대조한 뒤 `점검_미러.py --seal`. 다른 검사가 함께 늘면 지금처럼 어긋남이다.
+`--apply`는 같은 검사를 지나야만 쓴다 — 파일마다 임시 파일 + `os.replace`(원자적) · 하나라도 어긋나면 쓰기 0 · 재봉인 알림은 쓴 뒤에도 같은 줄.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -116,14 +119,29 @@ def plan(patch, spec=SPEC):
 
 
 def checks(spec_dir):
-    """문서 검사 일곱 — `{검사: (rc, 끝 줄)}` · 모양 점검은 기준을 내리지 않는다(사본)."""
-    out = {}
-    for k in CHECKS:
-        env = dict(os.environ, REFINED_DIR=str(spec_dir))
+    """문서 검사 일곱 — `{검사: (rc, 끝 줄, 전문)}` · 모양 점검은 기준을 내리지 않는다(사본) · 일곱은 서로 다른 결과 파일이라 함께 돈다."""
+    env = dict(os.environ, REFINED_DIR=str(spec_dir))
+
+    def one(k):
         r = subprocess.run([sys.executable, str(CHECK_DIR / f"점검_{k}.py")], cwd=str(ROOT), env=env,
                            capture_output=True, text=True, stdin=subprocess.DEVNULL)
-        out[k] = (r.returncode, ((r.stdout or "").strip().splitlines() or [""])[-1].strip())
-    return out
+        return k, (r.returncode, ((r.stdout or "").strip().splitlines() or [""])[-1].strip(), r.stdout or "")
+    with ThreadPoolExecutor(len(CHECKS)) as ex:
+        return dict(ex.map(one, CHECKS))
+
+
+def _mirror_ids(text):
+    """미러 검사 전문 → `(봉인과 다른 쌍, 앵커를 못 찾은 쌍)`."""
+    return ({m.group(1) for m in re.finditer(r"✗ (.+?) — (?:mirror|body) 쪽 문면이 봉인과 다르다", text)},
+            {m.group(1) for m in re.finditer(r"✗ (.+?) — \S+에서 앵커를 못 찾음", text)})
+
+
+def _reseal(after, now, worse):
+    """늘어난 것이 미러 봉인뿐인가 — 재봉인 대상 쌍 목록(아니면 빈 목록) (B121 ④)."""
+    if worse != ["미러"]:
+        return []
+    (a_seal, a_lost), (n_seal, n_lost) = _mirror_ids(after["미러"][2]), _mirror_ids(now["미러"][2])
+    return [] if a_lost - n_lost else sorted(a_seal - n_seal)
 
 
 def verify(patch, spec=SPEC):
@@ -147,12 +165,18 @@ def verify(patch, spec=SPEC):
         after = checks(copy)
         now = checks(spec)
         worse = [k for k in CHECKS if after[k][0] and not now[k][0]]
+        reseal = _reseal(after, now, worse)
+        if reseal:
+            worse = []
         ok = ok and not worse
         lines.append(f"[{'PASS' if not worse else 'FAIL'}] 사본 적용 뒤 문서 검사 일곱 — "
                      + " · ".join(f"{k} {'위반' if after[k][0] else '0'}" for k in CHECKS)
-                     + (f" — 늘었다: {' · '.join(worse)}" if worse else " (그대로)"))
+                     + (f" — 늘었다: {' · '.join(worse)}" if worse else " (미러는 재봉인 대상)" if reseal else " (그대로)"))
         for k in worse:
             lines.append(f"       {k}: {after[k][1][:200]}")
+        if reseal:
+            lines.append(f"[알림] 재봉인 대상 {' · '.join(reseal)} — 허브가 양쪽을 대조한 뒤 "
+                         f"python docs/회귀스위트/점검_미러.py --seal (실패 아님)")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         for f, b in kept.items():

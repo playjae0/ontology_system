@@ -67,8 +67,8 @@ def run(root, *argv, script=None):
                           stdin=subprocess.DEVNULL)
 
 
-def pipeline(root):
-    """클린 → 골격 → 인입 셋 → 질의. 돌려주는 것은 성질 묶음이다."""
+def pipeline(root, doctor=True):
+    """클린 → 골격 → 인입 셋 → 질의 (→ `doctor --quick`). 돌려주는 것은 성질 묶음이다."""
     run(root, "init", "--fresh", "--all")
     boot = run(root, "bootstrap")
     for doc, dt in DOCS:
@@ -78,10 +78,10 @@ def pipeline(root):
     dump = run(root, script=DUMP)
     quick = subprocess.run([sys.executable, str(Path(root) / "doctor.py"), "--quick"],
                            capture_output=True, text=True, cwd=str(root),
-                           env={**os.environ, "USE_MOCK": "1"}, stdin=subprocess.DEVNULL)
+                           env={**os.environ, "USE_MOCK": "1"}, stdin=subprocess.DEVNULL) if doctor else None
     return {"boot": boot.stdout, "ask": ask.stdout + ask.stderr,
             "dump": json.loads(dump.stdout or "{}"), "dump_err": dump.stderr[-300:],
-            "quick_rc": quick.returncode, "quick": quick.stdout}
+            "quick_rc": quick.returncode if quick else None, "quick": quick.stdout if quick else ""}
 
 
 print("\n■ B85 ① — 좌표 층을 묻는 자리 하나 · 골격 파일 부재는 문면 있는 거부")
@@ -200,8 +200,11 @@ try:
          and json.loads((_dst / "config.json").read_text(encoding="utf-8"))["layer"]
          == "equipment")
 
-    _base = pipeline(ROOT)             # 이름 `process` — 지금 레포
-    _eq = pipeline(_clone)             # 이름 `equipment` — 사본
+    # 두 루트는 상태 폴더가 따로라 함께 돈다 · doctor는 이름을 바꾼 사본에서만(지금 레포의 doctor는 마감 doctor가 잰다 — B121 ②ⓓ)
+    from concurrent.futures import ThreadPoolExecutor                 # noqa: E402
+    with ThreadPoolExecutor(2) as _ex:
+        _fb, _fe = _ex.submit(pipeline, ROOT, False), _ex.submit(pipeline, _clone)
+        _base, _eq = _fb.result(), _fe.result()
 
     show("③ 이름을 바꾼 루트에서 좌표 층을 **카테고리로** 찾는다",
          _eq["dump"].get("coord") == "equipment"
@@ -228,9 +231,8 @@ try:
          and [l for l in _eq["ask"].splitlines() if "[경로]" in l]
          == [l for l in _base["ask"].splitlines() if "[경로]" in l],
          [l.strip() for l in _eq["ask"].splitlines() if "[링킹]" in l][:1])
-    show("③ `doctor --quick`이 양쪽에서 EXIT=0이고 첫 줄이 좌표 층을 말한다",
-         _base["quick_rc"] == 0 and _eq["quick_rc"] == 0
-         and "좌표 층 equipment" in _eq["quick"] and "좌표 층 process" in _base["quick"],
+    show("③ 이름을 바꾼 사본에서 `doctor --quick`이 EXIT=0이고 첫 줄이 좌표 층(equipment)을 말한다",
+         _eq["quick_rc"] == 0 and "좌표 층 equipment" in _eq["quick"],
          [l.strip() for l in _eq["quick"].splitlines() if "좌표 층" in l][:1])
 finally:
     shutil.rmtree(_tmp, ignore_errors=True)

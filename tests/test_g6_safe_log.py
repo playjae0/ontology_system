@@ -82,7 +82,8 @@ for form, lay, doc in MATRIX:
 _probs = [t for t, _m in catalog.problems()]
 _rc_b, _o_b = _run("bootstrap")
 _rc_i, _o_i = _run("ingest-file", str(RAW / "CP01.xlsx"), "--doc-type", "cp", "--allow-mock")
-_dr = sp.run([sys.executable, str(ROOT / "doctor.py"), "--quick"], cwd=str(ROOT),
+# doctor 머리 줄 = doctor가 하위 실행으로 그리는 화면 그 함수(`cli.doctor_view head`) — doctor 전체를 돌리지 않는다(B121 ②ⓓ)
+_dr = sp.run([sys.executable, "-m", "cli.doctor_view", "head"], cwd=str(ROOT),
              env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True,
              stdin=sp.DEVNULL, timeout=900)
 show("ⓐ config \"layer\" ≠ 폴더 → bootstrap·사전 점검·doctor 거부 · 표·산문 × 층 넷 모두 소실 0(정상 config와 같다)",
@@ -174,7 +175,7 @@ for mod, argv, name in _ENTRY:
     t = Path(f[-1]).read_text(encoding="utf-8") if f else ""
     if "===== 실행 시작" not in t or "===== 실행 끝" not in t:
         _miss_e.append(mod or "run.py")
-sp.run([sys.executable, str(ROOT / "doctor.py"), "--env"], cwd=str(ROOT),          # 클린을 만들며 로그를 지운다
+sp.run([sys.executable, str(ROOT / "doctor.py"), "--only", "test_g6_registry"], cwd=str(ROOT),   # 진입점 doctor — 가장 짧은 고른 실행
        env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True,
        stdin=sp.DEVNULL, timeout=900)
 _dlog = sorted(glob.glob(str(_logs / "doctor_*.log")))

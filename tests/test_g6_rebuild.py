@@ -1,32 +1,33 @@
 # -*- coding: utf-8 -*-
 """G6 ㉓ 재구축 — fresh 보존 · 재구축 한 명령 · 판정 재생 · 사람 판단 재생 · 문서 단위 확인 · 문서 좌표 상위 (B106).
 
-창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표·산문) × 층(process ·
-quality): 표 CP01(cp · process) · PFMEA01(pfmea · quality) · 산문 RFQ01(prose 엑셀 · process · 문서 좌표 노칭) ·
-B106Q(같은 통합문서의 사본 · quality · 문서 좌표 노칭). 산문 개체는 mock 추출 힌트(문서 7 §7.5 대체 표 「추출」 행 —
-힌트가 없는 청크는 mock 추출을 부른다)이고 하나는 소속(`belongs_to`)이 골격 밖 새 노드다. LLM 호출 수는 가짜
-게이트웨이(`gateway.mock`)를 지난 수다 — mock 좌표 태깅은 정확 일치만이라 태깅 호출은 첫 인입에도 0이다(이 축은
-mock에서 비어 있다).
+창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 재구축 세계는 표 하나 · 산문
+둘이 층 둘에 걸친다: 표 CP01(cp · process) · 산문 RFQ01(prose 엑셀 · process · 문서 좌표 노칭 · 소속) · B106Q(같은
+통합문서의 사본 · quality · 문서 좌표 노칭 — 집이 process인 개체와 그 끝점으로 가는 품질 그래프 엣지 하나: 노드는 집 층 ·
+엣지는 문서 층 · B90 · B100). 층 · 형태 곱은 층 중립 자리라 대표 한 벌이다(B121 ②ⓒ — 층 호환은 층 어휘 정적 점검 ·
+네 벌이 잰다). 산문 개체는 mock 추출 힌트(문서 7 §7.5 대체 표 「추출」 행 — 힌트가 없는 청크는 mock 추출을 부른다)이고
+하나는 소속(`belongs_to`)이 골격 밖 새 노드다. LLM 호출 수는 가짜 게이트웨이(`gateway.mock`)를 지난 수다 — mock 좌표
+태깅은 정확 일치만이라 태깅 호출은 첫 인입에도 0이다(이 축은 mock에서 비어 있다).
 
 잠그는 성질:
   ⓐ fresh 보존: 기본 fresh 뒤 넷(추출 · 지도 · 판정 대장 · 좌표 학습)과 ②등록 · ⓪원본이 바이트 그대로 · 그 밖 ③④⑤는
      빈 상태(재구축 안의 fresh와 CLI `init --fresh` 둘 다) · 화면 「남긴 것 · 지운 것 · --all」 / `--all` 뒤는 클린
      (doctor 잔재 0 · 빈 상태) / 회귀·doctor·시험의 기본 fresh 호출 0(소스 대조 — 이 시험의 대상 호출은 뺀다)
-  ⓑ 재구축 동치: 인입(표·산문 × 층 둘) → 사람 연산(confirm · merge · alias · obsolete · edge 삭제 · 큐 종결 · 쌍 확인 ·
+  ⓑ 재구축 동치: 인입(표 · 산문 — 층 둘) → 사람 연산(confirm · merge · alias · obsolete · edge 삭제 · 큐 종결 · 쌍 확인 ·
      문서 단위 확인) → `rebuild --yes` ⇒ canonical 기준 노드(카테고리 · status · 값) · 별칭(출처) · 엣지(status) · 큐
      항목(쌍 키 — payload의 id는 이름으로) · resolution이 같다 · 재인입 LLM 호출(판정 · 추출 · 태깅) 0 · 사람 판단 기록
-     수 불변 · 끝 줄의 수 = 실행 누계 = 대장 행 수 · 산문 판정과 소속 대상 판정도 재생 / CLI `rebuild` — 비대화형은
-     계획만(쓰기 0) · `--yes`면 계획 줄부터 끝 보고까지 그 실행의 명령 로그에 남는다
+     수 불변 · 끝 줄의 수 = 실행 누계 = 대장 행 수 · 산문 판정(층 둘)과 소속 대상 판정도 재생 / CLI `rebuild` —
+     비대화형은 계획만(쓰기 0) · `--yes`면 계획 줄부터 끝 보고까지 그 실행의 명령 로그에 남는다
   ⓒ 대상 없음: 골격 노드 하나(「스태킹」)의 이름을 바꾼 seed로 재구축 ⇒ 재판정 행이 전부 그 노드 아래 · 화면 수 =
-     대장의 재판정 행 수 · 그 이름을 쓰던 사람 연산은 「대상 없음」 · 기록은 남는다 / seed를 되돌려 재구축하면 그
-     연산이 재생된다
+     대장의 재판정 행 수 · 그 이름을 쓰던 사람 연산은 「대상 없음」 · 기록은 남는다 / seed를 되돌려 재구축(CLI)하면 그
+     연산이 재생된다 · 상태가 첫 재구축 전과 같다
   ⓓ `--no-replay` ⇒ 판정 LLM 호출 > 0 · 대장 경로에 재생 0 / 재구축 순서 = 처음 인입 순서(문서 대장의 저장 순서를
      뒤집어도) / `ops replay` 두 번 = 한 번
   ⓔ 문서 단위 확인: 계획 수 = 그 문서 실행이 만든 auto 노드 수(노드 출처의 첫 문서 · 불확실 제외) · 비대화형은
      계획만(쓰기 0) · `--yes` 뒤 전부 confirmed · 다른 문서의 auto 그대로 · 재구축 뒤에도 confirmed
-  ⓕ 문서 좌표 상위(표·산문 × 층 둘 · 태깅을 지난 조각): 상위 없는 행 + 문서 좌표 X + 하위 Y가 X 밖 ⇒ 쌍 표·큐에
-     「문서 좌표 'X' ↛ 하위 'Y'」 · 좌표 단계 쌍·행 수 = 구축 큐 / Y가 X 안이면 0 / 행에 상위가 있으면 그 상위로만 ·
-     하위는 그대로 / `coord-ack` 같은 쌍
+  ⓕ 문서 좌표 상위(표 × process · 산문 × quality · 태깅을 지난 조각): 상위 없는 행 + 문서 좌표 X + 하위 Y가 X 밖 ⇒
+     쌍 표·큐에 「문서 좌표 'X' ↛ 하위 'Y'」 · 좌표 단계 쌍·행 수 = 구축 큐 / Y가 X 안이면 0 / 행에 상위가 있으면 그
+     상위로만 · 하위는 그대로 / `coord-ack` 같은 쌍
 """
 from __future__ import annotations
 
@@ -92,7 +93,7 @@ def _q(kind, did):
 
 
 # ────────────────────────────────────────────────────────────── ⓕ
-print("\n■ B106 ⑤ 문서 좌표를 상위로 — 상위 열이 없는 행 (표 · 산문 × 층 둘 · 태깅을 지난 조각)")
+print("\n■ B106 ⑤ 문서 좌표를 상위로 — 상위 열이 없는 행 (표 × process · 산문 × quality · 태깅을 지난 조각)")
 overlay()                                          # 품질층이 Unit을 렌즈로 쓴다(층 둘) · 클린 포함
 CA.path().unlink(missing_ok=True)
 #: A 상위 없음 · 하위가 X 밖 / B 상위 없음 · 하위가 X 안 / C 행에 상위(맞음) / D 행에 상위(어긋남)
@@ -143,28 +144,27 @@ def _fenv(form, lay, did):
 
 
 _ff, _envs, _lines = [], {}, []
-for form in ("표", "산문"):
-    for lay in ("process", "quality"):
-        did = f"B106F{'T' if form == '표' else 'P'}{lay[0].upper()}"
-        env = _envs[did] = _fenv(form, lay, did)
-        pcs = {p["source_locator"][-1]: p for p in env.get("records") or env.get("chunks")}
-        with contextlib.redirect_stdout(io.StringIO()):
-            t, _acked = DC.pair_report(env)          # 판정 전 — 구축과 같은 함수 · 큐 0
-            run_document(env)
-        tab = {(CP.ack_kind(k), pr): e["rows"] for (k, pr), e in t["pairs"].items()}
-        que = {}
-        for x in _q("coord_mismatch", did):
-            que[CP.pair_of(x["payload"])] = que.get(CP.pair_of(x["payload"]), 0) + 1
-        ups = {x["payload"]["provenance"][-1]: x["payload"].get("upper") for x in _q("coord_mismatch", did)}
-        led = {r.get("surface"): r.get("target") for r in (LG.read(did) or {}).get("rows") or []
-               if r.get("role") == "entity"}
-        _lines += [f"{form}×{lay} {ln}" for ln in CP.pair_lines(t)]
-        _ff.append((form, lay, tab, que, ups, led, pcs))
+for form, lay in (("표", "process"), ("산문", "quality")):     # 형태 × 층 한 벌씩 — 쌍 판정은 층 중립(B121 ②ⓒ)
+    did = f"B106F{'T' if form == '표' else 'P'}{lay[0].upper()}"
+    env = _envs[did] = _fenv(form, lay, did)
+    pcs = {p["source_locator"][-1]: p for p in env.get("records") or env.get("chunks")}
+    with contextlib.redirect_stdout(io.StringIO()):
+        t, _acked = DC.pair_report(env)          # 판정 전 — 구축과 같은 함수 · 큐 0
+        run_document(env)
+    tab = {(CP.ack_kind(k), pr): e["rows"] for (k, pr), e in t["pairs"].items()}
+    que = {}
+    for x in _q("coord_mismatch", did):
+        que[CP.pair_of(x["payload"])] = que.get(CP.pair_of(x["payload"]), 0) + 1
+    ups = {x["payload"]["provenance"][-1]: x["payload"].get("upper") for x in _q("coord_mismatch", did)}
+    led = {r.get("surface"): r.get("target") for r in (LG.read(did) or {}).get("rows") or []
+           if r.get("role") == "entity"}
+    _lines += [f"{form}×{lay} {ln}" for ln in CP.pair_lines(t)]
+    _ff.append((form, lay, tab, que, ups, led, pcs))
 show("ⓕ 상위 없는 행(태깅이 하위에서 딴 상위 · meta.group_from_ref) + 문서 좌표 X + 하위 Y가 X 밖 → 쌍 표·큐에 "
-     "「문서 좌표 'X' ↛ 하위 'Y'」(payload upper) · 좌표 단계 쌍·행 수 = 구축 큐 (표·산문 × 층 둘)",
+     "「문서 좌표 'X' ↛ 하위 'Y'」(payload upper) · 좌표 단계 쌍·행 수 = 구축 큐 (표 × process · 산문 × quality)",
      all(tab == que and tab.get((CP.GROUP, (X, Y))) == 1 and ups.get("A") == CP.DOC_GROUP
          and (pcs["A"].get("meta") or {}).get("group_from_ref") for _f, _l, tab, que, ups, _d, pcs in _ff)
-     and sum(f"문서 좌표 '{X}' ↛ 하위 '{Y}'" in ln for ln in _lines) == 4,
+     and sum(f"문서 좌표 '{X}' ↛ 하위 '{Y}'" in ln for ln in _lines) == len(_ff),
      " ‖ ".join(f"{f}×{l} 쌍 표 {sorted((k[1][0] + '>' + k[1][1], v) for k, v in tab.items())} = 큐 "
                 f"{sorted((k[1][0] + '>' + k[1][1], v) for k, v in que.items())}"
                 for f, l, tab, que, _u, _d, _p in _ff))
@@ -182,7 +182,7 @@ _after = [x for d in _envs for x in _q("coord_mismatch", d) if x["payload"].get(
 _t2, _acked2 = DC.pair_report(_envs["B106FTP"])
 show("ⓕ 큐 화면이 「문서 좌표 'X' ↛ 하위 'Y'」로 묶고 · `ops coord-ack all X Y`(상위 쌍과 같은 열쇠)가 그 쌍을 닫는다 · "
      "좌표 단계 쌍 표도 확인됨",
-     f"문서 좌표 '{X}' ↛ 하위 '{Y}'" in _qv and "큐 4행" in _ack and len(_after) == 4
+     f"문서 좌표 '{X}' ↛ 하위 '{Y}'" in _qv and f"큐 {len(_envs)}행" in _ack and len(_after) == len(_envs)
      and all((x.get("resolution") or {}).get("decision") == CA.DECISION for x in _after)
      and (CP.DOC_GROUP, (X, Y)) in _acked2,
      next((ln.strip() for ln in _ack.splitlines() if ln.startswith("[확인]")), _ack.strip()[:160]))
@@ -302,7 +302,7 @@ def _rebuild(*flags, screen=None):
     return rc, out, dict(CALLS)
 
 
-print("\n■ B106 재구축 — 표 · 산문 × 층 둘 (CP01 · RFQ01 · PFMEA01 · B106Q)")
+print("\n■ B106 재구축 — 표 · 산문 · 층 둘 (CP01 · RFQ01 · B106Q)")
 with contextlib.redirect_stdout(io.StringIO()):
     init.init(fresh_=True, all_=True)                 # 클린 — ⓕ의 덧칠도 걷힌다(mock 루트 seed 다시)
     RUN.cmd_bootstrap([])
@@ -323,15 +323,21 @@ _hint("RFQ01", {
     "사양_기계!R19-R23": {"entities": [{"surface": "노칭 정밀도", "category": "Property"},
                                        {"surface": "버 높이", "category": "Property"}], "relations": []},
     "요구사항!R2-R3": {"entities": [{"surface": "적층 정렬도", "category": "Property"}], "relations": []}})
+#: 품질 산문 — 집이 process인 개체 둘(「금형 간극」 새 노드 · 그 끝점으로 가는 품질 그래프 엣지 `controlled_by` · 「노칭
+#: 정밀도 편차」는 표의 auto 노드와 겹쳐 불확실 — 큐 종결 연산의 대상). PFMEA01(표 × quality)이 맡던 교차를 산문 하나가
+#: 맡는다(B121 ②ⓒ)
 _hint("B106Q", {
     "사양_기계!R8-R17": {"entities": [{"surface": "가압력 부족", "category": "Failure"},
-                                      {"surface": "금형 클리어런스 과다", "category": "Failure"}],
-                        "relations": [{"src": "금형 클리어런스 과다", "rel": "causes", "dst": "가압력 부족"}]},
-    "사양_기계!R19-R23": {"entities": [{"surface": "버 발생량 과다", "category": "Failure"}], "relations": []},
+                                      {"surface": "금형 클리어런스 과다", "category": "Failure"},
+                                      {"surface": "금형 간극", "category": "Property"}],
+                        "relations": [{"src": "금형 클리어런스 과다", "rel": "causes", "dst": "가압력 부족"},
+                                      {"src": "금형 클리어런스 과다", "rel": "controlled_by", "dst": "금형 간극"}]},
+    "사양_기계!R19-R23": {"entities": [{"surface": "버 발생량 과다", "category": "Failure"},
+                                       {"surface": "노칭 정밀도 편차", "category": "Property"}], "relations": []},
     "사양_전장!R5-R6": {"entities": [{"surface": "전원 차단 실패", "category": "Failure"}], "relations": []}})
 SHEETS = "2-4:prose 5:ref *:skip"
 DOCS = [("CP01", RAW / "CP01.xlsx", "cp", None, None), ("RFQ01", RFQ, DT, SHEETS, X),
-        ("PFMEA01", RAW / "PFMEA01.xlsx", "pfmea", None, None), ("B106Q", QX, QDT, SHEETS, X)]
+        ("B106Q", QX, QDT, SHEETS, X)]
 DIDS = [d[0] for d in DOCS]
 CALLS.clear()
 _first = {}
@@ -341,7 +347,7 @@ for did, f, dt, sh, co in DOCS:
 C_FIRST = dict(CALLS)
 print(f"  첫 인입 — {_first} · 가짜 게이트웨이 호출 {C_FIRST}")
 
-# ── 사람 연산 — 표·산문 × 층 둘에서 하나 이상씩
+# ── 사람 연산 — 종류마다 하나 이상(표 · 산문 · 층 둘에 걸쳐)
 _w = World()
 _by = {(lay, n["canonical"]): n["id"] for lay, n in _w.nodes() if is_live(n)}
 
@@ -357,8 +363,8 @@ def _live_edge(src, rel=None, dst=None):
 
 with contextlib.redirect_stdout(io.StringIO()):
     ops.confirm("process", _id("process", "노칭::노칭 프레스"), A, "B106 확인")
-    ops.merge("process", _id("process", "노칭::cathode::금형 클리어런스"), _id("process", "노칭::금형 클리어런스"), A,
-              reason="B106 합침(표)")
+    ops.merge("process", _id("process", "노칭::금형 간극"), _id("process", "노칭::금형 클리어런스"), A,
+              reason="B106 합침(품질 문서의 노드 → 표 · 품질 그래프의 엣지가 따라간다)")
     ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::버 높이"), A,
               reason="B106 합침(산문 → 표)")
     ops.alias("process", _id("process", "노칭::노칭 정밀도"), "노칭 정확도", A, "B106 표기(표)")
@@ -368,7 +374,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B106 엣지 삭제(표)")
     _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 장치::이송 속도"))   # 산문 소속 엣지   # 기대 변경(B119 ④ — 사양은 주인 아래 `nest_categories`)
     ops.delete_edge("process", _e2["src"], _e2["rel"], _e2["dst"], A, "B106 엣지 삭제(산문 소속)")
-    _ur = next(r for r in OR.items("all") if r["surface"] == "버 발생량 과다")
+    _ur = next(r for r in OR.items("all") if r["surface"] == "노칭 정밀도 편차")
     _dec = OR.decide(_ur, "m", A)                         # 큐 종결 — ops review 합침(queue:resolve 기록)
     CA.ack(CP.GROUP, ("스태킹", "노칭"), A, "B106 쌍 확인")
 _unc = next((r for r in OR.items("all") if r["doc_id"] == "RFQ01"), None)
@@ -427,12 +433,16 @@ def _probe(rep, all_, head):
     RUN.fresh_screen(rep, all_, head)
 
 
+_wb = World()
+_home = {n["id"]: lay for lay, n in _wb.nodes()}
+_cross = sorted(f"{lay}: {e['rel']}" for lay, g in _wb.graphs.items() for e in g.edges
+                if {_home.get(e["src"]), _home.get(e["dst"])} - {lay})       # 끝점의 집이 엣지 층과 다른 엣지(B100)
 _rc, OUT_B, C_B = _rebuild(screen=_probe)
 S2, _J = _snap(), dict(RP.STATS)
 _d = _diff(S1, S2)
 show("ⓑ 재구축 동치 — canonical 기준 노드(카테고리 · status · 값) · 별칭(출처) · 엣지(status) · 큐 항목(쌍 키)과 "
-     "resolution이 재구축 전과 같다 (표·산문 × 층 둘 · 사람 연산 10가지 뒤)",
-     _rc == 0 and not _d, f"{_sizes(S1)}" + (f" · 다른 것 {_d}" if _d else " · 같음"))
+     "resolution이 재구축 전과 같다 (표 · 산문 · 층 둘 — 끝점의 집이 다른 층인 엣지 포함 · 사람 연산 종류마다 뒤)",
+     _rc == 0 and not _d and _cross, f"{_sizes(S1)} · 층 건너는 엣지 {_cross}" + (f" · 다른 것 {_d}" if _d else " · 같음"))
 _rows_b = _ledger_rows(DIDS)
 _nb = _end_numbers(OUT_B)
 show("ⓑ 재인입 LLM 호출 0(판정 · 추출 · 태깅 — 첫 인입은 판정·추출 > 0) · 사람 판단 기록 수 불변 · 끝 줄의 수 = 실행 누계 = "
@@ -506,13 +516,27 @@ print("  ── ⓒ 재구축 끝 보고")
 for ln in OUT_C.splitlines()[next((i for i, ln in enumerate(OUT_C.splitlines()) if ln.startswith("■ 재구축 끝")), 0):]:
     print(f"      {ln}")
 SK.write_bytes(_SK0)
-_rc, OUT_C2, _c = _rebuild()
+
+# ── ⓒ 되돌림 + ① CLI 재구축 — seed를 되돌린 재구축 한 번을 둘이 같이 쓴다(B121 ②ⓓ): 비대화형은 계획만(쓰기 0) ·
+#    `--yes`면 계획 줄부터 끝 보고까지 그 실행의 명령 로그에 · 그 연산이 재생된다 · 상태는 첫 재구축 전과 같다
+_h2 = _state_hash()
+_p0 = _run("rebuild", "--allow-mock")
+_h3 = _state_hash()
+_y0 = _run("rebuild", "--allow-mock", "--yes")
+_logf = next(iter(sorted(_P.work("logs").glob("rebuild_*.log"))), None)
+_logt = _logf.read_text(encoding="utf-8") if _logf else ""
 _n3 = next((n for _l, n in World().nodes() if n["canonical"] == "스태킹::스태커"), {})
 S3 = _snap()
-show("ⓒ seed를 되돌려 다시 재구축하면 그 연산이 재생된다(폐기 · 「대상 없음」 0) · 상태가 첫 재구축 전과 같다",
-     _rc == 0 and _n3.get("status") == "obsolete" and not [ln for ln in OUT_C2.splitlines() if "대상 없음 —" in ln]
-     and not _diff(S1, S3),
+show("ⓒ seed를 되돌려 다시 재구축(CLI)하면 그 연산이 재생된다(폐기 · 「대상 없음」 0) · 상태가 첫 재구축 전과 같다",
+     "■ 재구축 끝" in _y0 and _n3.get("status") == "obsolete"
+     and not [ln for ln in _y0.splitlines() if "대상 없음 —" in ln] and not _diff(S1, S3),
      f"'스태킹::스태커' {_n3.get('status')} · 다른 것 {_diff(S1, S3) or '없음'}")
+show("ⓑ 재구축 명령(CLI) — 비대화형은 계획만(③·② 쓰기 0 · 다음 줄 `--yes`) · `--yes`면 계획 줄부터 끝 보고까지 명령 로그에 "
+     "남는다(보존 fresh가 그 실행의 로그를 지우지 않는다)",
+     _h2 == _h3 and "(비대화형 — 계획만 · 쓰기 0)" in _p0 and "rebuild --yes" in _p0 and "■ 재구축 끝" in _y0
+     and "■ 재구축 계획" in _logt and "■ 재구축 끝" in _logt,
+     f"계획만 — 쓰기 {'0' if _h2 == _h3 else '있음'} · 로그 {_logf.name if _logf else '없음'}(계획 줄 "
+     f"{'있음' if '■ 재구축 계획' in _logt else '없음'} · 끝 줄 {'있음' if '■ 재구축 끝' in _logt else '없음'})")
 
 # ── ⓓ --no-replay · 순서(가장 최근에 다시 넣은 문서도 처음 자리) · ops replay 멱등
 _r, _o = _quiet(IG.ingest_file, str(RFQ), DT, ask=False, sheets=SHEETS)      # 재인입 — 문서 좌표는 기록대로
@@ -531,21 +555,6 @@ _again = oplog.replay()
 show("ⓓ `ops replay` 두 번 = 한 번(재구축이 한 번 돌린 뒤 · 할 것 0 · 상태 · 기록 수 그대로)",
      not _again["done"] and not _diff(S4, _snap()) and len(oplog.read()) == _n4,
      " · ".join(f"{k} {len(v)}" for k, v in _again.items()))
-
-# ── ① CLI 재구축 — 비대화형은 계획만(쓰기 0) · `--yes`면 계획 줄부터 끝 보고까지 그 실행의 명령 로그에
-_h2 = _state_hash()
-_p0 = _run("rebuild", "--allow-mock")
-_h3 = _state_hash()
-_y0 = _run("rebuild", "--allow-mock", "--yes")
-_logf = next(iter(sorted(_P.work("logs").glob("rebuild_*.log"))), None)
-_logt = _logf.read_text(encoding="utf-8") if _logf else ""
-show("ⓑ 재구축 명령(CLI) — 비대화형은 계획만(③·② 쓰기 0 · 다음 줄 `--yes`) · `--yes`면 계획 줄부터 끝 보고까지 명령 로그에 "
-     "남는다(보존 fresh가 그 실행의 로그를 지우지 않는다) · 상태는 재구축 전과 같다",
-     _h2 == _h3 and "(비대화형 — 계획만 · 쓰기 0)" in _p0 and "rebuild --yes" in _p0 and "■ 재구축 끝" in _y0
-     and "■ 재구축 계획" in _logt and "■ 재구축 끝" in _logt and not _diff(S4, _snap()),
-     f"계획만 — 쓰기 {'0' if _h2 == _h3 else '있음'} · 로그 {_logf.name if _logf else '없음'}(계획 줄 "
-     f"{'있음' if '■ 재구축 계획' in _logt else '없음'} · 끝 줄 {'있음' if '■ 재구축 끝' in _logt else '없음'}) · "
-     f"다른 것 {_diff(S4, _snap()) or '없음'}")
 
 # ── ⓐ CLI — 기본 fresh(보존) · --all(클린) · 기본 호출 0
 _T1 = _tree()

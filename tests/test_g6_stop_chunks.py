@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """G6 ㉗ 사람이 멈춘 문서는 흔적이 없다 · 시험은 표준입력을 물려받지 않는다 · 닫힌 화면의 정리는 조용히 (B110 ① ② ③).
 
-창작 표본(mock)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표·산문) × 층(process · quality):
-표 CP01(cp · process) · PFMEA01(pfmea · quality) · 산문 B110SP(prose 엑셀 · process · 힌트 개체 Property) · B110SQ(같은
-통합문서 사본 · quality · 힌트 개체 Failure). 관문 답은 pty로 넣는다(관문은 tty에서만 묻는다).
+창작 표본(mock)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태마다 대표 하나(B121 ②ⓒ — 층 호환은 층 어휘
+정적 점검 + 네 벌): 표 CP01(cp · process) · 산문 B110SQ(prose 엑셀 사본 · quality · 힌트 개체 Failure). 관문 답은 pty로
+넣는다(관문은 tty에서만 묻는다).
 
 잠그는 성질:
   ⓐ 표준입력: 시험 · doctor의 하위 프로세스 호출 중 표준입력(`stdin` · `input`)을 정하지 않은 것 0(소스 대조 — pty 도우미는
      표준입력이 pty다)
   ⓑ 닫힌 화면: 공통 진입의 화면 스트림은 한 번 닫힌 뒤 `flush` · `close`(끝 정리)가 던지지 않는다 — 쓰기만 멈춤 신호
-  ⓒ 사람 멈춤: `--step` 관문의 `q`(표 · 산문 × 층 둘) ⇒ 그 문서의 청크 · 그래프 · 사전 · 큐 = 시작 전 · `parsed/` 체크포인트는
+  ⓒ 사람 멈춤: `--step` 관문의 `q`(표 · 산문) ⇒ 그 문서의 청크 · 그래프 · 사전 · 큐 = 시작 전 · `parsed/` 체크포인트는
      남는다 · 구축 안의 관문(산문 — 추출 결과)이면 문서 대장 · `extract/`도 남는다 · 구축 전의 관문(표)은 문서 대장에 쓰지 않는다 /
-     `--step-every`의 `q`(표 · 산문 × 층 둘) ⇒ 같은 판 + 문서 대장 항목 · 체크포인트 남음 / 다시 치면 멈추지 않고 끝까지 · 산문은
+     `--step-every`의 `q`(표 · 산문) ⇒ 같은 판 + 문서 대장 항목 · 체크포인트 남음 / 다시 치면 멈추지 않고 끝까지 · 산문은
      추출 재사용(LLM 0) · 결과 = 멈추지 않고 넣은 것
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ sys_path = __import__("sys").path
 sys_path.insert(0, str(Path(__file__).resolve().parent))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
 from g65_common import _P, done   # noqa: F401
-from g6_common import DT, RFQ, _register, _run, _unregister   # noqa: E402 — 산문 엑셀 표본 · 등록 · CLI(pty)
+from g6_common import RFQ, _register, _run, _unregister   # noqa: E402 — 산문 엑셀 표본 · 등록 · CLI(pty)
 
 import run as RUN                                                  # noqa: E402
 from cli import _entry                                             # noqa: E402
@@ -40,18 +40,15 @@ HINTS = FX / "extract_hints"
 QDT = "b110pq"
 SH = "2-4:prose 5:ref *:skip"
 TMP = Path(tempfile.mkdtemp(prefix="b110_"))
-shutil.copy(RFQ, TMP / "B110SP.xlsx")
 shutil.copy(RFQ, TMP / "B110SQ.xlsx")
 #: 힌트 개체 셋 — 판정 값이 둘 이상이어야 `--step-every`가 도중에 묻는다(남은 값이 있을 때만)
-_HINTED = {"B110SP": [{"surface": f"B110 산문 속성 {k}", "category": "Property"} for k in "가나다"],
-           "B110SQ": [{"surface": f"B110 산문 고장 {k}", "category": "Failure"} for k in "가나다"]}
+_HINTED = {"B110SQ": [{"surface": f"B110 산문 고장 {k}", "category": "Failure"} for k in "가나다"]}
 for _d, _e in _HINTED.items():
     (HINTS / f"{_d}.json").write_text(json.dumps({"사양_기계!R8-R17": {"entities": _e, "relations": []}},
                                                 ensure_ascii=False), encoding="utf-8")
-#: 형태 × 층 — (원본, doc_type, 추가 인자, 구축 안 관문까지의 답)
+#: 형태마다 대표 하나 — (원본, doc_type, 추가 인자, 구축 안 관문까지의 답). 멈춤 자리는 형태로 갈린다(표 = 구축 전 · 산문 =
+#: 구축 안) · 층에 무관한 자리라 층은 둘을 나눠 든다 — 층 호환은 층 어휘 정적 점검 + 네 벌이 잰다 (B121 ②ⓒ)
 CASES = {"표 · process": (FX / "raw" / "CP01.xlsx", None, [], None),
-         "표 · quality": (FX / "raw" / "PFMEA01.xlsx", None, [], None),
-         "산문 · process": (TMP / "B110SP.xlsx", DT, ["--sheets", SH, "--coord", "노칭"], "c\nc\nc\nc\nq\n"),
          "산문 · quality": (TMP / "B110SQ.xlsx", QDT, ["--sheets", SH, "--coord", "노칭"], "c\nc\nc\nc\nq\n")}
 TS = ("created", "at", "first_seen", "last_seen", "last_tried", "last_fp", "attempts", "obsoleted_at", "confirmed_at",
       "parsed_at", "first_ingested_at", "ingested_at", "updated_at", "last_hit")
@@ -67,7 +64,6 @@ def _base():
     with contextlib.redirect_stdout(io.StringIO()):
         init.init(fresh_=True, all_=True)
         RUN.cmd_bootstrap([])
-    _register("process", DT)
     _register("quality", QDT)
 
 
@@ -146,7 +142,7 @@ show("ⓑ 한 번 닫힌 화면 — 쓰기는 멈춤 신호(ScreenClosed) · 그
      [s for _n2, s in _steps] == ["멈춤 신호", "멈춤 신호", "조용", "조용"], " · ".join(f"{n} {s}" for n, s in _steps))
 
 # ────────────────────────────────────────────────────────────── ⓒ 사람 멈춤
-print("\n■ B110 ③ 사람이 멈춘 문서는 흔적이 없다 — --step q · --step-every q (표 · 산문 × 층 둘)")
+print("\n■ B110 ③ 사람이 멈춘 문서는 흔적이 없다 — --step q · --step-every q (표 · 산문)")
 REF = {}
 for case in CASES:
     _base()
@@ -169,12 +165,12 @@ for case in CASES:
         _r.append((case, mode, "[성공]" in again, "[추출 체크포인트 재사용]" in again, _state()[0] == sfull[0]
                    and _state()[2] == sfull[2]))
 
-show("ⓒ --step 관문의 q(표 · 산문 × 층 둘) — 청크 · 그래프 · 사전 · 큐 = 시작 전 · parsed/ 남음 · 산문(구축 안의 관문 — 추출 "
+show("ⓒ --step 관문의 q(표 · 산문) — 청크 · 그래프 · 사전 · 큐 = 시작 전 · parsed/ 남음 · 산문(구축 안의 관문 — 추출 "
      "결과)은 문서 대장 · extract/도 남음 · 표(관문 셋이 구축 전)는 문서 대장에 쓰지 않는다",
      all(stop and same and k[1] and (k[0] and k[2] if CASES[c][3] else not k[0]) for c, _m, stop, same, k in _g),
      " · ".join(f"{c} 멈춤 {stop} · 흔적 시작 전 {same} · 문서 대장 {k[0]} · parsed {k[1]} · extract {k[2]}"
                 for c, _m, stop, same, k in _g))
-show("ⓒ --step-every의 q(판정 도중 · 표 · 산문 × 층 둘) — 청크 · 그래프 · 사전 · 큐 = 시작 전 · 문서 대장 항목 · parsed/ 남음 · "
+show("ⓒ --step-every의 q(판정 도중 · 표 · 산문) — 청크 · 그래프 · 사전 · 큐 = 시작 전 · 문서 대장 항목 · parsed/ 남음 · "
      "산문은 extract/도", all(stop and same and k[0] and k[1] and (k[2] or not CASES[c][3]) for c, _m, stop, same, k in _e),
      " · ".join(f"{c} 멈춤 {stop} · 흔적 시작 전 {same} · 문서 대장 {k[0]} · parsed {k[1]} · extract {k[2]}"
                 for c, _m, stop, same, k in _e))
@@ -184,8 +180,7 @@ show("ⓒ 멈춘 뒤 다시 치면 멈추지 않고 끝까지 · 산문은 추�
 
 for _d in _HINTED:
     (HINTS / f"{_d}.json").unlink(missing_ok=True)
-for _dt in (DT, QDT):
-    _unregister(_dt)
+_unregister(QDT)
 shutil.rmtree(TMP, ignore_errors=True)
 with contextlib.redirect_stdout(io.StringIO()):
     init.init(fresh_=True, all_=True)

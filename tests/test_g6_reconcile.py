@@ -3,11 +3,12 @@
 
 창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 화면은 장부의 투영이라(새 판정 0 ·
 저장 0) 시험은 **화면의 식을 다시 더하고**, 같은 수를 장부(대장 · 결과 묶음 · 체크포인트 · 그래프)에서 따로 센다.
-형태(표 · 산문) × 층(process · quality)에서 같은 성질을 잰다(CLAUDE.md §4).
+맞춤표는 층 중립 자리라 형태마다 대표 하나(표 CP01 · 산문 RFQ01)이고 층 둘은 소속 진단(ⓓ)이 잰다(B121 ②ⓒ — 층 호환은 층
+어휘 정적 점검 · 네 벌이 잰다).
 
 잠그는 성질:
-  ⓐ 맞춤: 식마다 칸 합 = 전체 — CP01(표 · process) · PFMEA01(표 · quality) · RFQ01(산문) 인입 · `show report` ·
-     재구축(재생) · 값 전체 = 대장 개체 행 · 보류 전체 = 결과 묶음의 보류 · 명령 로그에도 · 실행 사실과 체크포인트가
+  ⓐ 맞춤: 식마다 칸 합 = 전체 — CP01(표) · RFQ01(산문) 인입 · `show report` · 재구축(재생) · 값 전체 = 대장 개체 행 ·
+     보류 전체 = 결과 묶음의 보류(보류가 있는 묶음 — ⓔ의 인입 화면) · 명령 로그에도 · 실행 사실과 체크포인트가
      어긋난 묶음은 `[결함]`
   ⓑ 시트: 숨김 · 아주 숨김이 표에 · 기본 제안 skip · 숨김 시트는 LLM을 부르지 않는다 · `--sheets`로 살림 · 파싱 끝
      시트별 조각 · 기록이 있어도 표(묻지 않는다 · 다시 고르는 명령줄) · 기록 prose인데 숨김이면 그 줄에 표시
@@ -117,23 +118,24 @@ def _hint(doc_id, by_loc):
 
 
 # ────────────────────────────────────────────────────────────── ⓐ
-print("\n■ B112 ① 맞춤표 — 식마다 칸 합 = 전체 (표 · 산문 × 층 둘 · 인입 · show report · 재구축)")
+print("\n■ B112 ① 맞춤표 — 식마다 칸 합 = 전체 (표 · 산문 · 인입 · show report · 재구축)")
 init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     bootstrap(_lay, echo=False)
 _register("process", DT)
 _KEEP_RFQ = SH.path("RFQ01").read_bytes() if SH.path("RFQ01").exists() else None
-RUNS = {"CP01": ("--allow-mock",), "PFMEA01": ("--allow-mock",),
+#: 형태마다 대표 하나 — 표 × quality(PFMEA01)는 같은 함수의 곱이라 뺀다(B121 ②ⓒ)
+RUNS = {"CP01": ("--allow-mock",),
         "RFQ01": ("--doc-type", DT, "--allow-mock", "--coord", "노칭", "--sheets", "1:skip 2-4:prose 5:ref *:skip")}
 for _d in RUNS:
     shutil.copy(RAWS / f"{_d}.xlsx", _P.ensure(_P.raw(f"{_d}.xlsx")))
 OUTS = {d: _run("ingest-file", str(_P.raw(f"{d}.xlsx")), *a) for d, a in RUNS.items()}
 _ck = [(d, *_sum_ok(OUTS[d], d, need_chunk=(d == "RFQ01"))) for d in RUNS]
-show("ⓐ 인입 — 식마다 칸 합 = 전체 · 값 = 대장 개체 행 · 보류 = 결과 묶음 · 그래프 층마다 (CP01 표·process · "
-     "PFMEA01 표·quality · RFQ01 산문)", all(o for _d, o, _x in _ck), " ‖ ".join(x for _d, _o, x in _ck))
+show("ⓐ 인입 — 식마다 칸 합 = 전체 · 값 = 대장 개체 행 · 보류 = 결과 묶음 · 그래프 층마다 (CP01 표 · RFQ01 산문)",
+     all(o for _d, o, _x in _ck), " ‖ ".join(x for _d, _o, x in _ck))
 _succ = [ln.strip() for d in RUNS for ln in OUTS[d].splitlines() if ln.strip().startswith("[성공]")]
 show("ⓐ 성공 줄 — 「그래프 노드 이 문서 +n(그 층 … 전체 m)」 (총수만 두지 않는다)",
-     len(_succ) == 3 and all(re.search(r"그래프 노드 이 문서 [+-]\d[\d,]*\(그 층 \S+ 전체 [\d,]+\)", s) for s in _succ),
+     len(_succ) == len(RUNS) and all(re.search(r"그래프 노드 이 문서 [+-]\d[\d,]*\(그 층 \S+ 전체 [\d,]+\)", s) for s in _succ),
      " / ".join(s[s.find("그래프"):][:60] for s in _succ))
 _rep = {d: _run("show", "report", d) for d in RUNS}
 _ckr = [(d, *_sum_ok(_rep[d], d, need_chunk=(d == "RFQ01"))) for d in RUNS]
@@ -146,7 +148,7 @@ _rb = _run("rebuild", "--yes", "--allow-mock")
 _fr = formulas(_rb)
 _replay = [int(m.group(1).replace(",", "")) for m in re.finditer(r"값\(개체 행\) [\d,]+ = .*?재생 ([\d,]+)", _rb)]
 show("ⓐ 재구축(재생) — 문서마다 맞춤 묶음 · 식마다 합 = 전체 · 재생 칸에 수가 든다",
-     _rb.count("   맞춤 —") >= 3 and _fr and all(t == s and p for _l, t, s, p in _fr) and "[결함]" not in _rb
+     _rb.count("   맞춤 —") >= len(RUNS) and _fr and all(t == s and p for _l, t, s, p in _fr) and "[결함]" not in _rb
      and any(n > 0 for n in _replay),
      f"묶음 {_rb.count('   맞춤 —')} · 식 {len(_fr)} · 어긋남 {[(l, t, s) for l, t, s, _p in _fr if t != s]} · 재생 칸 {_replay}")
 _mt = RC.for_report("RFQ01", LG.read("RFQ01"))
@@ -211,12 +213,6 @@ show("ⓑ 리더가 시트 상태를 싣는다 · 숨김 시트는 기본 skip �
      and _byn["다른공정"]["suggest"] == _byn["메모"]["suggest"] == "skip" and _called == ["사양"]
      and _byn["다른공정"]["llm_reason"].startswith("숨김 시트"),
      f"부름 {_called} · 제안 {[(n, r['suggest']) for n, r in _byn.items()]}")
-_dry = _run("ingest-file", str(HID), "--doc-type", DT, "--allow-mock", "--coord", "노칭", "--dry-run")
-_ln = {n: next((ln for ln in _dry.splitlines() if re.match(rf"^   \d+\s+{n}\s", ln)), "") for n in _byn}
-show("ⓑ 시트 표에 숨김 칸 — 「숨김」 · 「아주 숨김」 · 제안 skip (보이는 시트는 「-」)",
-     re.search(r"\s-\s", _ln["사양"]) and " 숨김 " in _ln["다른공정"] and " 아주 숨김 " in _ln["메모"]
-     and _ln["다른공정"].rstrip().endswith("skip") and _ln["메모"].rstrip().endswith("skip"),
-     " / ".join(re.sub(r"\s+", " ", x.strip()) for x in _ln.values()))
 _live = _run("ingest-file", str(HID), "--doc-type", DT, "--allow-mock", "--coord", "노칭",
              "--sheets", "1:prose 2:prose 3:skip")
 _pc = next((ln for ln in _live.splitlines() if ln.strip().startswith("시트별 조각 — ")), "")
@@ -224,7 +220,12 @@ show("ⓑ `--sheets`로 숨김 시트를 살린다 — 파싱 끝 시트별 조�
      re.search(r"다른공정\(prose\) [1-9]", _pc) and "메모(skip) 0" in _pc
      and any((c.get("meta") or {}).get("sheet") == "다른공정" for c in chunks_of(_did_h).values()), _pc.strip())
 _again = _run("ingest-file", str(HID), "--doc-type", DT, "--allow-mock")
-_hl = next((ln for ln in _again.splitlines() if re.match(r"^   2\s+다른공정\s", ln)), "")
+#: 숨김 칸은 기록이 있는 실행의 표에서 잰다 — 같은 표 함수 · dry-run을 한 번 더 돌리지 않는다(B121 ②ⓓ) · 제안 skip은 위 판정 줄
+_ln = {n: next((ln for ln in _again.splitlines() if re.match(rf"^   \d+\s+{n}\s", ln)), "") for n in _byn}
+show("ⓑ 시트 표에 숨김 칸 — 「숨김」 · 「아주 숨김」 (보이는 시트는 「-」)",
+     re.search(r"\s-\s", _ln["사양"]) and " 숨김 " in _ln["다른공정"] and " 아주 숨김 " in _ln["메모"],
+     " / ".join(re.sub(r"\s+", " ", x.strip()) for x in _ln.values()))
+_hl = _ln["다른공정"]
 show("ⓑ 기록이 있어도 표를 낸다 — 묻지 않고 기록대로 · 다시 고르는 명령줄 · 기록 prose인데 숨김이면 그 줄에 표시",
      "■ 시트 역할" in _again and "Enter=" not in _again and "기록대로 진행" in _again and "다시 고르려면" in _again
      and "⚠ 기록 prose · 숨김 시트" in _hl and "[성공]" in _again, re.sub(r"\s+", " ", _hl.strip()))
@@ -335,11 +336,14 @@ _res_e = (LG.read(_did_e) or {}).get("result") or {}
 _unres = (_res_e.get("보류") or {}).get("좌표 미해소로 스코프 노드 미생성", 0)
 _wl = next((ln for ln in _oe.splitlines() if ln.strip().startswith("문서 좌표 없음 — ")), "")
 _cand = next((ln for ln in _oe.splitlines() if "가까운 골격 이름" in ln), "")
+#: 보류가 0이 아닌 맞춤 묶음 — ⓐ의 대표 둘은 보류 0이라 이 인입 화면(이미 돈 실행)에서 잰다(B121 ②ⓒ — PFMEA01 몫)
+_oke, _whye = _sum_ok(_oe, _did_e)
 show("ⓔ 경고 줄 — 「문서 좌표 없음 — 좌표 미해소 보류 n행 · ▶ --coord」 · n = 결과 묶음의 보류 · 후보에 띄어쓰기 무시로 "
-     "맞는 골격 이름 · 자동 적용 0(문서 좌표 기록은 없음)",
+     "맞는 골격 이름 · 자동 적용 0(문서 좌표 기록은 없음) · 그 화면의 맞춤 묶음도 식마다 합 = 전체 · 보류(행) = 결과 묶음(ⓐ)",
      _unres > 0 and f"좌표 미해소 보류 {_unres}행" in _wl and "--coord <골격 이름>" in _wl
      and "노칭::전극 리와인딩" in _cand and "문서 좌표 — 없음 (출처: 없음)" in _oe
-     and (DC.recorded(_did_e) or {}).get("coord") is None, f"{_wl.strip()} / {_cand.strip()}")
+     and (DC.recorded(_did_e) or {}).get("coord") is None and _oke,
+     f"{_wl.strip()} / {_cand.strip()} / {_whye}")
 
 # ────────────────────────────────────────────────────────────── ⓕ
 print("\n■ B112 ⑦ 추출 체크포인트 — 끝 줄의 자리 · 있음 · 없으면 [결함]")

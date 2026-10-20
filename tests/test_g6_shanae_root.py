@@ -244,8 +244,11 @@ try:
                                 ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _code_before = _files(sh.code)
 
-    b = pipeline(base)
-    s = pipeline(sh)
+    # 두 루트는 코드 사본 · 상태 자리가 따로라 **함께 돈다**(B121 ②ⓓ — 같은 명령 · 같은 대조 · 시간만 반)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(2) as _ex:
+        _fb, _fs = _ex.submit(pipeline, base), _ex.submit(pipeline, sh)
+        b, s = _fb.result(), _fs.result()
 
     _bad = [(c, rc, o[-300:]) for c, rc, o in sh.outs if "Traceback" in o]
     show("⑥ 사내 모양 전 구간에 **예외 0** — 등록·인입·질의·반출·골든·뷰어·doctor",

@@ -130,7 +130,8 @@ _env.pop("ONTO_CONFIG", None)
 import subprocess as _sp        # noqa: E402
 _lc = _sp.run([sys.executable, str(ROOT / "run.py"), "llm-check"], cwd=str(ROOT), env=_env,
               capture_output=True, text=True, stdin=_sp.DEVNULL, timeout=120)
-_dr = _sp.run([sys.executable, str(ROOT / "doctor.py"), "--quick"], cwd=str(ROOT), env=_env,
+# doctor의 설정 줄 = doctor가 하위 실행으로 그리는 화면 그 함수(`cli.doctor_view config`) — doctor 전체를 돌리지 않는다(B121 ②ⓓ)
+_dr = _sp.run([sys.executable, "-m", "cli.doctor_view", "config"], cwd=str(ROOT), env=_env,
               capture_output=True, text=True, stdin=_sp.DEVNULL, timeout=600)
 if not _late_had:
     _late.unlink()

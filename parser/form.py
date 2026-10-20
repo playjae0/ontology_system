@@ -175,6 +175,9 @@ SHEET_THRESHOLDS = {"text_ratio": 0.8, "rows": 8, "avg_len": 15}
 #: `ref`로 제안한다(「모르면 ref」). 어휘가 비었으면(사전·관련어 0) 모양만 본다. 창작
 #: 기본값이다 — 사내 실측(`show dist sheets`의 로직=최종 일치율)으로 `knobs.json`에서 정한다.
 SHEET_MIN_HITS = 1
+#: 시트 역할 판정(⑩)이 보는 앞부분 — 비어 있지 않은 행 앞 N행 · 행마다 앞자리(B87 ② 표본 규칙 그대로 · B121 ③에서 여기로)
+SHEET_SAMPLE_ROWS = 60
+SHEET_SAMPLE_CHARS = 80
 
 
 def sheet_stats(sheet):
@@ -212,8 +215,8 @@ def suggest_role(stat, thresholds=None):
 def sheet_lines(sheet, n=None, width=None):
     """시트의 **비어 있지 않은 행**을 `행 텍스트` 목록으로 — 앞 `n`행 · 행마다 앞 `width`자.
 
-    LLM 판정(`sheet_role`)의 입력 앞부분이다 — 표본 규칙은 계층 규칙 선언과 같다
-    (`struct_rule.RULE_SAMPLE_ROWS`·`RULE_SAMPLE_CHARS` · 비용이 문서 크기와 무관하다).
+    LLM 판정(`sheet_role`)의 입력 앞부분이다 — 앞 `SHEET_SAMPLE_ROWS`행 · 행마다 `SHEET_SAMPLE_CHARS`자
+    (비용이 문서 크기와 무관하다).
     `n`이 `None`이면 전부(사전 적중을 셀 때)다.
     """
     by_row = {}
@@ -246,7 +249,6 @@ def sheet_table(raw, thresholds=None, vocab=None):
 
     `vocab`은 렌즈 층 어휘(정규화 표기 — 연속 공백 하나 · 주입된다: 파서는 사전을 모른다)다.
     """
-    from parser.struct_rule import RULE_SAMPLE_CHARS, RULE_SAMPLE_ROWS
     rows = []
     for i, sh in enumerate((raw or {}).get("sheets") or [], start=1):
         st = sheet_stats(sh)
@@ -254,7 +256,7 @@ def sheet_table(raw, thresholds=None, vocab=None):
         st["hits"] = _hits(sh, vocab)
         st["state"] = sh.get("state") or "visible"            # 숨김(B112 ②) — 기본 제안은 skip
         st["suggest"] = "skip" if st["state"] != "visible" else suggest_role(st, thresholds)
-        st["sample"] = sheet_lines(sh, RULE_SAMPLE_ROWS, RULE_SAMPLE_CHARS)
+        st["sample"] = sheet_lines(sh, SHEET_SAMPLE_ROWS, SHEET_SAMPLE_CHARS)
         rows.append(st)
     return rows
 

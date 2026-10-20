@@ -276,6 +276,7 @@ def main():
 # 낡는 길을 문장이 아니라 생성으로 막는다. 회귀가 이 산출을 다시 만들어 레포의 파일과
 # 대조하므로(diff 0), 코드가 움직이면 지도가 붉어진다.
 import ast
+import functools
 from pathlib import Path as _P
 
 CODE_ROOT = _P(__file__).resolve().parent.parent.parent
@@ -292,11 +293,32 @@ def _mods():
     return out
 
 
-def _facts(path):
-    """파일 하나의 사실 — 칸 번호 · 한 줄 · 행 수 · def 수 · 최장 함수."""
+@functools.lru_cache(maxsize=None)
+def _read(path):
+    """파일 하나를 한 번 파싱해 작은 사실만 남긴다 — 사실과 import가 같은 파싱을 쓴다(나무는 남기지 않는다)."""
     src = path.read_text(encoding="utf-8")
     tree = ast.parse(src)
-    head = (ast.get_docstring(tree) or "").splitlines()
+    funcs, classes, imports = [], 0, set()
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            funcs.append((n.end_lineno - n.lineno + 1, n.name))
+        elif isinstance(n, ast.ClassDef):
+            classes += 1
+        elif isinstance(n, ast.ImportFrom) and n.module:
+            imports.add(n.module)
+            for a in n.names:
+                imports.add(f"{n.module}.{a.name}")
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                imports.add(a.name)
+    return {"doc": ast.get_docstring(tree) or "", "lines": len(src.splitlines()), "funcs": funcs,
+            "classes": classes, "imports": frozenset(imports)}
+
+
+def _facts(path):
+    """파일 하나의 사실 — 칸 번호 · 한 줄 · 행 수 · def 수 · 최장 함수."""
+    r = _read(path)
+    head = r["doc"].splitlines()
     first = head[0] if head else ""
     m = re.match(r'칸\s+([\d.]+(?:\s*[~·]\s*[\d.]+)*)\s*(.*)', first)
     kan, rest = (m.group(1).replace(" ", ""), m.group(2)) if m else ("", first)
@@ -304,28 +326,16 @@ def _facts(path):
     what = (tail if dash else pre).strip()
     extra = pre.strip().strip("·~ ")
     kan = kan + ("·" + extra if extra else "")
-    funcs = [n for n in ast.walk(tree)
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-    longest = max(((n.end_lineno - n.lineno + 1, n.name) for n in funcs), default=(0, "—"))
+    longest = max(r["funcs"], default=(0, "—"))
     return {"rel": path.relative_to(CODE_ROOT).as_posix(), "칸": kan,
-            "한줄": what.replace("**", "").strip().rstrip("."), "행": len(src.splitlines()),
-            "def": len(funcs), "최장": longest[1], "최장행": longest[0],
-            "class": sum(1 for n in ast.walk(tree) if isinstance(n, ast.ClassDef))}
+            "한줄": what.replace("**", "").strip().rstrip("."), "행": r["lines"],
+            "def": len(r["funcs"]), "최장": longest[1], "최장행": longest[0],
+            "class": r["classes"]}
 
 
 def _imports(path):
     """이 파일이 import하는 모듈 이름 — `core.graph` 꼴로 편다."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    out = set()
-    for n in ast.walk(tree):
-        if isinstance(n, ast.ImportFrom) and n.module:
-            out.add(n.module)
-            for a in n.names:
-                out.add(f"{n.module}.{a.name}")
-        elif isinstance(n, ast.Import):
-            for a in n.names:
-                out.add(a.name)
-    return out
+    return set(_read(path)["imports"])
 
 
 def _run_table():

@@ -6,7 +6,7 @@
   `work/extract/rehearsal/<doc_type>/<doc_id>/` (④ — 추출 폴더 안이라 기본 fresh가 남긴다 · 클린 `--all`이 지운다)
     · `extract/<doc_id>[@렌즈].json` — 추출 체크포인트
     · `outline/<doc_id>[@렌즈].json` — 문서 개요 체크포인트(추출 재사용 조건이 그 대상 제목을 본다 — 함께 다닌다)
-    · `struct_map.json` — 구조 지도 · 계층 규칙 선언 · 이미지 요약 보존분(파서의 한 파일)
+    · `struct_map.json` — 구조 지도 · 문서 구조 · 이미지 요약 보존분(파서의 한 파일)
     · `coord_learned.json` — 리허설이 새로 배운 좌표 표기(운영 기록에 없던 것만 · 적중 횟수는 싣지 않는다)
     · `meta.json` — 어느 등록 · 언제 · 어느 원본
 
@@ -138,7 +138,7 @@ def take_parse(doc_type, doc_id, src_hash):
         else:
             op = struct_map.load_kept(doc_id, src_hash) or {}
             merged = {**op, **m}
-            for k in ("maps", "rules", "image_summaries", "structure"):     # 문서 구조도 프레임마다 (B119 ①)
+            for k in ("maps", "image_summaries", "structure"):     # 문서 구조도 프레임마다 (B119 ①)
                 if op.get(k) or m.get(k):
                     merged[k] = {**(op.get(k) or {}), **(m.get(k) or {})}
             merged.pop("source_hash", None)

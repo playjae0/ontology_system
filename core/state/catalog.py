@@ -247,7 +247,7 @@ def problems(configs=None, cat=None):
                 c not in (cfg.get("categories") or {}) or not isinstance(n, str) or not n.strip()
                 for c, n in vc.items())):
             out.append(("ⓖ", f"층 {lay}의 value_categories는 {{그 층 카테고리: 속성 이름}}이다 — 지금 "
-                             f"{json.dumps(vc, ensure_ascii=False)[:80]} · 예: {{\"Property\": \"spec\"}}"))
+                             f"{json.dumps(vc, ensure_ascii=False)[:80]} · 예: {{\"<카테고리>\": \"spec\"}}"))
     return out
 
 

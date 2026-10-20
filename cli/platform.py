@@ -35,7 +35,7 @@ from core import paths
 from core.state import fixtures, store
 from core import graph as graph_mod
 from core.build import entry as pipeline_mod
-from core.state.bootstrap import coord_layer, load_config, open_graph
+from core.state.bootstrap import COORD_CATEGORY, coord_layer, load_config, open_graph
 from core.build.extract import EXTRACT_DIR
 from core.state.status import is_live
 from router import discover
@@ -686,7 +686,8 @@ def cmd_dashboard():
     g = graphs.get(_coord)
     if g:
         pair = (load_config(_coord).get("category_pair_map") or {})
-        rel = pair.get("Process,Property") or "has_property"
+        # 좌표 카테고리에서 나가는 쌍의 관계 — 카테고리 이름을 코드에 적지 않는다(층 어휘 0 · B121 ①)
+        rel = next((v for k, v in pair.items() if k.split(",", 1)[0] == COORD_CATEGORY), None) or "has_property"
         cnt = Counter()
         names = {i: n["canonical"] for i, n in g.nodes.items()}
         for e in g.edges:

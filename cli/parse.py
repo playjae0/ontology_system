@@ -57,16 +57,14 @@ def injections(layers=None):
     fns = {"summarize": points.image_summarizer(),
            "pick_coord": points.coord_picker(),
            "map_structure": struct_map_pass.struct_mapper(),
-           # ⑦ 안의 계층 규칙 선언(B87 ②)은 **운영 주입에서 빠졌다** — 문서 구조(아래)가 시트마다 무조건 그 일을 한다(B119 ①)
-           "infer_rules": None,
-           # ⑪ 안의 문서 구조(B119 ①) — 산문 시트마다 무조건(개요와 한 지시문 · 계층 규칙 선언을 대신한다)
+           # ⑪ 안의 문서 구조(B119 ①) — 산문 시트마다 무조건(개요와 한 지시문)
            "structure": structure_mod.structurer(layers),
            # ⑪ 안의 덱 구조(B125 ③) — PPT 덱마다 1회(제목 · 이어짐 · 공정 목록 · 덱 개요 · mock은 힌트)
            "deck": deck_mod.decker(layers),
            # 슬라이드 · 쪽 캡처를 추출에(B125 ② — 실호출일 때 · `--no-images`면 파서가 끈다)
            "capture": not gateway.use_mock()}
     if not gateway.use_mock():
-        missing = [k for k, v in fns.items() if v is None and k != "infer_rules"]   # 규칙 선언은 일부러 빠졌다(B119 ①)
+        missing = [k for k, v in fns.items() if v is None]
         if missing:
             raise gateway.NotConfigured(
                 f"실호출 모드인데 파서 주입 함수가 비어 있다: {missing} — "
@@ -134,17 +132,8 @@ def image_screen():
     return notice
 
 
-def rule_screen():
-    """계층 규칙 선언의 **예고** 줄 — 부르기 전에 낸다(B87 ② · B69 ②의 결)."""
-    def notice(info):
-        if info.get("단계") == "예고":
-            _screen.say(f"   계층 규칙 — 고정 규칙으로 안 선 시트 {info['대상']}장 → "
-                        f"LLM ≤ {info['호출_상한']}회(재사용 {info['재사용']})", "head")
-    return notice
-
-
 def print_split_notes(report):
-    """분할 끝 줄(B87 · B119) — 문서 구조 · 규칙 선언의 결과 · 글자 상한. 해당이 없으면 줄도 없다."""
+    """분할 끝 줄(B87 · B119) — 문서 구조 · 덱 구조 · 글자 상한. 해당이 없으면 줄도 없다."""
     st = (report or {}).get("structure")
     if st:
         n = structure_mod.counts(st)
@@ -160,11 +149,6 @@ def print_split_notes(report):
                     f"문서 좌표와 다름 {dk['좌표다름']} · 버림 {dk['버림']} · LLM 호출 {dk['호출']} · 재사용 {dk['재사용']}"
                     + (f" · 사람 고침 {dk['고침']}" if dk.get("고침") else "")
                     + (f" · 실패 {dk['실패']}" if dk.get("실패") else ""), "warn" if dk.get("실패") else "head")
-    sr = (report or {}).get("struct_rule") or {}
-    if sr.get("주입") and sr.get("대상"):
-        tail = f" · 선언 버림 {len(sr['버림'])}" if sr.get("버림") else ""
-        _screen.say(f"   계층 규칙 — 선언 적용 {sr['적용']}시트 · 여전히 통째 {sr['통째']}시트"
-                    f" (호출 {sr['호출']} · 재사용 {sr['재사용']}{tail})", "head")
     cap = ((report or {}).get("split") or {}).get("글자_상한") or {}
     if cap:
         print(f"   글자 상한 초과 {cap['초과_청크']}청크 → 행 경계로 {cap['조각']}조각"
@@ -272,14 +256,13 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     돌려주는 것은 `(ParseResult, 쓴 경로 또는 None)`이다.
     """
     out = out or str(PARSED_DIR / f"{doc_id}.json")
-    # LLM 3지점(④·⑦·⑨)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
+    # LLM 지점(④·⑦·⑨·⑪)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
     # 않는다(A1). mock이면 None이 오고 파서가 §7.1 대체를 쓴다.
     _notice, _progress = coord_screen()
-    _rule_notice = rule_screen()
     # **좌표 층도 주입이다**(B85 ②) — 파서는 어느 층이 좌표 층인지 모른다.
     # 묻는 자리는 하나(`coord_layer()` = `Process`를 선언한 층)이고, 폴더 이름이
     # 무엇이든 그 답을 쓴다.
-    # **누적 줄**(B97 ②) — 계층 규칙 · 그림 요약 · 좌표 태깅이 이 안에서 LLM을 부른다
+    # **누적 줄**(B97 ②) — 문서 구조 · 그림 요약 · 좌표 태깅이 이 안에서 LLM을 부른다
     with _screen.ticker("파싱(구조·그림 요약·좌표)"):
         inj = injections(layers)
         inj["capture"] = inj["capture"] and not no_capture       # `--no-capture` — 캡처 없이(사람이 명시 · 기록) (B128 ②)
@@ -289,7 +272,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
                              layer=coord_layer(),
                              coord_notice=_notice, coord_cap=coord_cap,
                              progress=_progress, sheet_roles=sheet_roles,
-                             rule_notice=_rule_notice, no_images=no_images,
+                             no_images=no_images,
                              image_notice=image_screen(), doc_coord=doc_coord)
     print_read_warnings(res.report)
     print_split_notes(res.report)
@@ -423,7 +406,7 @@ def cmd_build(args):
         pf_ok, pf_detail = preflight.check(mod, raw)
         res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
                              layer=coord_layer(),
-                             **{**injections(), "infer_rules": None, "structure": None,   # 구축은 파악만 (B87 ② · B119)
+                             **{**injections(), "structure": None,   # 구축은 파악만 (B119)
                                 "deck": None, "capture": False})
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "

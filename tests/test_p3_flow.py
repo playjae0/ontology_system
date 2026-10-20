@@ -9,15 +9,77 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from p3_common import *                       # noqa: F401,F403 — 바닥은 하나다
 from p3_common import _P, _reg_src            # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
 
+import atexit as _ax
+from concurrent.futures import ThreadPoolExecutor as _Pool
 import contextlib as _ctx
 from cli import ingest as _i66
 import io as _io
 from core.llm import gateway as _llm
 import os as _os
 from cli import scan as _s66
+import tempfile as _tf
 from core.llm import gateway
 
 setup()
+
+
+# ── 곁 루트 — 서로 기대지 않는 흐름은 다른 상태 루트에서 미리 띄운다 (B121 ②ⓓ) ──────
+#
+# CSV 등가 스냅샷 셋(B66 ⑤) · 분할 줄 등록(B68 ②) · 인입 화면 셋(B69 ②)은 이 스위트의
+# 다른 구획이 남긴 상태를 읽지 않는다. 그래서 **루트마다 흐름 하나**로 동시에 돌리고 판정은
+# 제 구획에서 한다 — 같은 루트에 하위 실행 둘이 도는 일은 없다. 루트는 setup() 직후 바닥의
+# 사본이고 이름이 `state_mock`이라 mock 루트와 같게 돈다(`core/paths.py` `ONTO_MOCK_HOME` 머리말 —
+# 이름이 다르면 init이 층 자산을 seed로 덮지 않는다).
+_TMP = Path(_tf.mkdtemp(prefix="p3flow_"))
+_ax.register(shutil.rmtree, _TMP, True)
+reset("b68")                                   # 사본이 옛 판을 물려받지 않게 — 바닥에서 먼저 치운다
+
+
+def _side(name):
+    home = _TMP / name / "state_mock"
+    shutil.copytree(_P.home(), home)           # 사본은 띄우기 전에 뜬다 — 바닥이 움직이기 전이다
+    return home, {**_os.environ, "ONTO_MOCK_HOME": str(home)}
+
+
+def _sub(cmd, env):
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT), env=env,
+                          stdin=subprocess.DEVNULL)
+
+
+def _snap66(doc, *a, env):
+    """B66 ⑤ 스냅샷 하나 — `tests/csv_equiv.py`가 제 루트를 클린에서 세우고 인입한다."""
+    r = _sub([sys.executable, str(ROOT / "tests" / "csv_equiv.py"), str(doc), *a], env)
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"error": (r.stderr or r.stdout)[-300:]}
+
+
+def _flow68(env):
+    """B68 ② — 고정 어댑터 등록 → status (한 루트에서 차례로)."""
+    return (_sub([sys.executable, str(ROOT / "run.py"), "register", "generate", "b68", "quality",
+                  str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"), "--use-basic", "--allow-mock"], env),
+            _sub([sys.executable, str(ROOT / "run.py"), "register", "status", "b68",
+                  "--allow-mock"], env))
+
+
+def _flow69(env):
+    """B69 ② — 인입 갈래 셋: ingest-file · parse run · ingest-dir (한 루트에서 차례로)."""
+    return [_sub([sys.executable, str(ROOT / "run.py"), *a, "--allow-mock"], env) for a in (
+        ("ingest-file", str(RAW / "CP01.xlsx"), "--doc-type", "cp"),
+        ("parse", "run", str(ROOT / "tests/fixtures/adapters/cp.py"), str(RAW / "CP01.xlsx")),
+        ("ingest-dir", str(RAW), "--doc-type", "cp"))]
+
+
+# 먼저 쓰는 것부터 띄운다 — 판정 순서는 아래 구획 그대로다.
+_POOL = _Pool(max_workers=3)
+_fx66 = _POOL.submit(_snap66, RAW / "CP01.xlsx", env=_side("x66")[1])
+_fc66 = _POOL.submit(_snap66, RAW / "CP01.csv", env=_side("c66")[1])
+_fm66 = _POOL.submit(_snap66, RAW / "CP01.csv", "--mut", env=_side("m66")[1])
+_h69, _e69 = _side("b69")
+_f69 = _POOL.submit(_flow69, _e69)
+_h68, _e68 = _side("b68")
+_f68 = _POOL.submit(_flow68, _e68)
 
 
 print("\n■ B66 ① — 지문 대상은 `sheets` 구조다 (포맷 이름이 아니다)")
@@ -94,22 +156,12 @@ shutil.rmtree(_d66p, ignore_errors=True)
 # 없었다. 표본 쌍은 `CP01.xlsx`와 그 시트를 그대로 옮긴 `CP01.csv`다.
 #
 # **스냅샷은 별도 프로세스가 뜬다**(`tests/csv_equiv.py`) — 한 프로세스에서 두 번
-# 인입하면 앞 판의 그래프·사전이 살아 있어 둘째 판이 첫 판을 본다.
+# 인입하면 앞 판의 그래프·사전이 살아 있어 둘째 판이 첫 판을 본다. 셋은 **루트도 따로**라
+# 동시에 돈다(머리 「곁 루트」 · B121 ②ⓓ).
 print("\n■ B66 ⑤ — CSV 전 구간 등가 (인입 → 그래프 → 질의)")
 
-
-def _snap66(doc, *a):
-    r = subprocess.run([sys.executable, str(ROOT / "tests" / "csv_equiv.py"), str(doc), *a],
-                       capture_output=True, text=True, cwd=str(ROOT),
-                       stdin=subprocess.DEVNULL)
-    try:
-        return json.loads(r.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        return {"error": (r.stderr or r.stdout)[-300:]}
-
-
-_x66 = _snap66(RAW / "CP01.xlsx")
-_c66 = _snap66(RAW / "CP01.csv")
+_x66 = _fx66.result()
+_c66 = _fc66.result()
 show("⑤ 두 포맷 모두 인입 성공 (등가 판정의 전제)",
      _x66.get("ingest") == _c66.get("ingest") == "성공",
      f"xlsx {_x66.get('ingest')} · csv {_c66.get('ingest')} — {_c66.get('reason')}")
@@ -130,7 +182,7 @@ show("⑤ⓒ cp 출처를 지나는 스모크 질의의 답·근거가 같다 (�
      f"근거 있는 질의 {len(_cp66)}/{len(_x66.get('queries') or [])}")
 # **변이** — 어서션이 정말 두 판을 비교한다는 증거. `reader.read_csv`가 헤더 한
 # 셀을 바꾸면 ⓐ가 붉어야 한다. 초록으로 남으면 그 어서션은 아무것도 잠그지 않는다.
-_m66 = _snap66(RAW / "CP01.csv", "--mut")
+_m66 = _fm66.result()
 show("⑤ 변이 — read_csv가 헤더 한 셀을 바꾸면 ⓐ가 붉어진다",
      _m66.get("envelope") != _x66.get("envelope"),
      f"{_m66.get('ingest')} — {(_m66.get('reason') or _m66.get('error') or '')[:70]}")
@@ -145,6 +197,10 @@ print("\n■ B67 ② — 열 판정 대장 (columns.json)")
 
 reset("ipqc")
 run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
+# B76 ②가 **같은 명령의 산출**을 쓴다 — 다시 돌리지 않고 이 판을 떠 둔다(B121 ②ⓓ ·
+# 생성이 쓰는 자리는 `review/ipqc/` 하나다).
+_snap67 = _TMP / "ipqc_generate"
+shutil.copytree(REVIEW / "ipqc", _snap67)
 _led67 = Rledger.read_ledger("ipqc")
 _pcols67 = {c for pp in Rledger._profiles("ipqc") for c in (pp.get("열") or {})}
 # **대장은 프로파일 ∪ 어댑터가 쓰는 열이다**(B76 ② — 구판은 프로파일뿐이라
@@ -262,6 +318,9 @@ def _spy67(doc_type, revision=0, *, instruction=None, history=None):
 
 
 Rdraft.draft = _spy67
+# 재는 것은 **초안 호출**이다 — 그 뒤의 관문 루프는 위와 같이 끊는다(B121 ②ⓓ — 방금 돈
+# 관문을 한 번 더 돌리지 않는다 · 관문 루프 자체는 이 스위트의 generate 하위 실행마다 돈다).
+Rgate._finish_generate = lambda *a, **k: 0
 try:
     with _ctx.redirect_stdout(_io.StringIO()):
         Rgen.cmd_generate("toc_report", None, [], resume=True)   # 관문 PASS 상태
@@ -278,6 +337,7 @@ try:
     _none67 = list(_drafts67)
 finally:
     Rdraft.draft = _d67
+    Rgate._finish_generate = _fin67
 show("①ⓑ 관문 PASS 상태의 --resume은 **초안을 다시 받지 않는다** (LLM 호출 0)",
      _pass67 == [], f"draft {len(_pass67)}회")
 show("①ⓑ 초안이 없는 --resume은 **초회와 같은 입력**이다 (지시 0 · rev 0)",
@@ -295,38 +355,33 @@ print("\n■ B68 ② — 분할 줄: 기준 · 레벨 · 크기 분포")
 
 from parser.adapters import basic_prose_xlsx as _bx                 # noqa: E402
 
-reset("b68")
-_g68 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
-                       "b68", "quality", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"),
-                       "--use-basic", "--allow-mock"],
-                      capture_output=True, text=True, cwd=str(ROOT),
-                      stdin=subprocess.DEVNULL)
+# generate → status는 곁 루트에서 돌았다(머리 「곁 루트」 · B121 ②ⓓ) — 산출은 그 루트에서 읽는다.
+_g68, _st68 = _f68.result()
+_at68 = lambda *p: _P.mirror(REVIEW.joinpath(*p), _h68)                # noqa: E731
 _sl68 = [l for l in _g68.stdout.splitlines() if l.strip().startswith("분할 —")]
 # prose 프레임 수 = 표본마다 헤딩이 선 시트 수 — 어댑터의 계산을 그대로 센다.
 _frames68 = sum(len(_bx.level_report(reader.read(str(RAW / f))))
                 for f in ("TOC01.xlsx", "TOC02.xlsx"))
 show("② generate 화면의 분할 줄 수 == prose 프레임 수",
      _sl68 and len(_sl68) == _frames68, f"줄 {len(_sl68)} · 프레임 {_frames68}")
-_sp68 = view_of("b68")["sections"]["parse_result"]["summary"]["split"]
+_sp68 = json.loads(_at68("b68", "view.json").read_text(encoding="utf-8")
+                   )["sections"]["parse_result"]["summary"]["split"]
 show("② 줄의 청크 수 == split_stats의 청크수 (화면이 제 계산을 하지 않는다)",
      _sp68 and all(any(f"청크 {x['청크수']} ·" in l for l in _sl68) for x in _sp68),
      str([x.get("청크수") for x in _sp68]))
 show("② 줄이 기준과 레벨을 함께 말한다 (레벨만으로는 무엇을 보고 골랐는지 모른다)",
      all("기준 " in l and "레벨 " in l for l in _sl68), _sl68[:1])
 # **status도 같은 줄을 낸다** — 관문을 다시 도니 같은 재료가 있다.
-_st68 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "status",
-                        "b68", "--allow-mock"], capture_output=True, text=True,
-                       cwd=str(ROOT), stdin=subprocess.DEVNULL)
 show("② status도 같은 분할 줄을 낸다 (화면 한 벌)",
      [l for l in _st68.stdout.splitlines() if l.strip().startswith("분할 —")] == _sl68)
 # **table 어댑터에는 줄이 없다** — 없는 것을 빈 줄로 찍지 않는다.
 show("② table 등록에는 분할 줄이 없다",
      not Rgate.split_block((R._state("ipqc") or {}).get("harness_out") or ""))
 # 뷰: 레벨 선택 표에 기준 열 하나. **계약이 먼저다**(D-115) — 스키마가 키를 선언한다.
-_h68 = (REVIEW / "b68" / "view.html").read_text(encoding="utf-8")
+_html68 = _at68("b68", "view.html").read_text(encoding="utf-8")
 show("② 뷰의 레벨 선택 표에 분할 기준 열이 있고 값이 실린다",
-     "<th>분할 기준</th>" in _h68
-     and all(x.get("분할_기준") in _h68
+     "<th>분할 기준</th>" in _html68
+     and all(x.get("분할_기준") in _html68
              for x in (_sp68[0].get("레벨_선택") or [])), str(_sp68[0].get("레벨_선택"))[:80])
 show("② 계약이 먼저다 — 뷰 데이터 스키마가 분할_기준을 선언한다",
      "분할_기준" in (ROOT / "kit/검수뷰_데이터스키마.json").read_text(encoding="utf-8"))
@@ -334,8 +389,7 @@ show("② 계약이 먼저다 — 뷰 데이터 스키마가 분할_기준을 �
 # 것과 갈린다(파이프라인의 「어댑터가 제 계산을 내놓으면 그것이 정본이다」).
 show("② 고정 어댑터 래퍼가 level_report까지 위임한다",
      "level_report = basic_prose_xlsx.level_report"
-     in (REVIEW / "b68" / "adapter.py").read_text(encoding="utf-8"))
-reset("b68")
+     in _at68("b68", "adapter.py").read_text(encoding="utf-8"))
 
 # ── B69 ②③ — 인입 화면: 예고 · 진행 · 끝 · 상한 ─────────────────────────
 #
@@ -345,19 +399,9 @@ print("\n■ B69 ②③ — 좌표 태깅 예고·진행·상한 (ingest-file ·
 
 from cli import parse as _PS                                       # noqa: E402
 
-_ing69 = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
-                         str(RAW / "CP01.xlsx"), "--doc-type", "cp", "--allow-mock"],
-                        capture_output=True, text=True, cwd=str(ROOT),
-                        stdin=subprocess.DEVNULL)
-_pr69 = subprocess.run([sys.executable, str(ROOT / "run.py"), "parse", "run",
-                        str(ROOT / "tests/fixtures/adapters/cp.py"),
-                        str(RAW / "CP01.xlsx"), "--allow-mock"],
-                       capture_output=True, text=True, cwd=str(ROOT),
-                       stdin=subprocess.DEVNULL)
-_dir69 = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-dir",
-                         str(RAW), "--doc-type", "cp", "--allow-mock"],
-                        capture_output=True, text=True, cwd=str(ROOT),
-                        stdin=subprocess.DEVNULL)
+# 세 명령은 곁 루트에서 차례로 돌았다(머리 「곁 루트」 · B121 ②ⓓ) — 계약 JSON도 그 루트의 것이다.
+_ing69, _pr69, _dir69 = _f69.result()
+_rec69 = json.loads(_P.mirror(_P.parsed("CP01.json"), _h69).read_text(encoding="utf-8"))["records"]
 
 
 def _coord69(out):
@@ -370,8 +414,7 @@ show("② 세 명령 모두 좌표 태깅을 예고한다 (구판은 인입 갈�
 show("② mock이면 예고가 LLM 0회를 말한다 (부르지 않는다는 사실이 화면에 있다)",
      all("LLM 0회" in l for r in (_ing69, _pr69) for l in _coord69(r.stdout)))
 show("② 예고의 숫자가 계약 JSON의 조각 수와 맞는다 (화면이 제 계산을 하지 않는다)",
-     f"조각 {len(json.loads(_P.parsed('CP01.json').read_text(encoding='utf-8'))['records']):,}"
-     in _coord69(_ing69.stdout)[0], _coord69(_ing69.stdout)[0])
+     f"조각 {len(_rec69):,}" in _coord69(_ing69.stdout)[0], _coord69(_ing69.stdout)[0])
 # ③ 상한 손잡이 — 값의 정본은 `cli/parse.py` 상수 하나다.
 show("③ --coord-llm off|<종수>가 상한을 정한다 · 기본은 상수 하나",
      _PS.coord_cap_of(["x", "--coord-llm", "off"]) == (["x"], 0)
@@ -403,8 +446,7 @@ show("③ 상한 초과 화면이 원인과 **그대로 칠 수 있는 다음 �
 show("② 진행 줄은 표기 단위이고 끝 줄이 채택·목록 밖을 센다",
      "표기 10/100" in _scr69 and "좌표 태깅 끝" in _scr69
      and "채택 21" in _scr69)
-for _f69 in ("CP01", "CP02_drift", "CP03_bad", "CP04_unlabeled"):
-    (_P.parsed() / f"{_f69}.json").unlink(missing_ok=True)
+_POOL.shutdown()                               # 곁 흐름은 여기까지 전부 판정됐다 — 곁 루트는 끝에서 통째로 지운다
 
 # ── B72 ① — 어댑터가 내는 키는 등록에서 막는다 (G39) ─────────────────────
 #
@@ -484,7 +526,8 @@ show("① few-shot 쌍이 서로 맞는다 — 스키마의 meta 필드를 어�
 print("\n■ B76 ② 열 판정 대장 커버리지 (G4G)")
 
 reset("ipqc")
-run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"))
+# B67 ②와 **같은 명령**(같은 표본 · 같은 플래그)의 산출을 되놓는다 — 다시 돌리지 않는다(B121 ②ⓓ).
+shutil.copytree(_snap67, REVIEW / "ipqc")
 _st76 = R._state("ipqc")
 _sch76 = json.loads((Rdraft._at(_st76["schema"])).read_text(encoding="utf-8"))
 _fld76, _ = R.load_blocks(_sch76)
