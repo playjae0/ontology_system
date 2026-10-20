@@ -8,7 +8,8 @@
 본다. 종료 코드는 하나라도 FAIL이면 1이다. 각 단계의 전문은 시스템 임시 폴더에 남기고 요약 끝 줄이 그 자리를 말한다(레포 밖).
 
   0 코드 지도를 다시 만든다(생성물 — `docs/회귀스위트/추출_구조.py`) · 바뀌었으면 「갱신 — 커밋에 넣는다」(FAIL 아님)
-  1 사전 점검 — `test_g1_g2` · `test_places`(클린 단독 · doctor의 기대 수) · 문서 검사 일곱(`점검_*.py` — 모양 포함)
+  1 사전 점검 — `test_g1_g2` · `test_places`(클린 단독 · doctor의 기대 수) · 층 어휘 정적 점검(`tools/layer_words.py` — 코드 ·
+    지시문에 층 config의 카테고리 이름 · 층 폴더 이름 0 · B121 ①) · 문서 검사 일곱(`점검_*.py` — 모양 포함)
   2 마감 doctor 1회 — 전체 · 클린 단독 · 직렬 · 완료판정 4(클린 2회 동일 그래프) — 지금 doctor 그대로
   3 네 벌 — `tools/four_way.py --base <커밋>`(0 같다 · 1 다르다 · 2 못 돌았다)
   4 §7 상한 — 코드 지도 ⓔ의 파일 · 함수 상한 위반 수
@@ -97,6 +98,8 @@ def main(argv):
     rc, t = _run([sys.executable, "doctor.py", "--only", *PRE], logs / "1_pre.txt", env)
     got, want = _doctor_total(t)
     row(rc == 0, f"사전 점검 {' · '.join(PRE)}", f"{got}/{want} PASS" if got is not None else f"rc {rc}")
+    rc, t = _run([sys.executable, str(ROOT / "tools" / "layer_words.py")], logs / "1_layer_words.txt", env)
+    row(rc == 0, "층 어휘 정적 점검", (t.strip().splitlines() or [""])[-1].strip()[:120])
     parts, bad = [], []
     with ThreadPoolExecutor(len(CHECKS)) as ex:            # 일곱은 서로 다른 결과 파일 — 함께 돈다(순서는 그대로)
         got = list(ex.map(lambda k: _run([sys.executable, str(ROOT / SUITE_DIR / f"점검_{k}.py")],

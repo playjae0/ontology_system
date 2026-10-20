@@ -16,6 +16,8 @@
      항목 이름과 함께 FAIL · `--apply`는 하나라도 어긋나면 쓰기 0(명세 사본 지문 같음) · 다 맞으면 그 문장만 바뀐다 · 미러
      body만 바뀌면 「재봉인 대상 <쌍>」 알림(실패 아님 · `--apply`는 쓴다) · 다른 검사가 함께 늘면 쓰기 0(B121 ④) · 점검이
      레포의 검사 결과 파일을 바꾸지 않는다
+  ⓕ 층 어휘 정적 점검(B121 ①) — 지금 레포 위반 0 · 사본 core에 카테고리 이름 하나를 넣으면 rc 1과 그 자리 · 마감 한 줄의
+     사전 점검에 그 줄이 선다
   ⓓ 명세 모양 — 지금 명세는 기준 그대로 통과 · 사본에 취소선 하나 · 칸 밖 글 하나를 더하면 둘 다 위반이고 기준은 그대로 ·
      줄어든 수는 기준을 내린다(기준 사본에 수와 기록)
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
@@ -190,6 +192,17 @@ show("ⓐ 이름을 지어 읽는 자산 폴더(지시문) 파일이 바뀌면 �
      rc4 == 0 and "고를 수 없다 → 전체" in out4 and "고른 스위트 —" not in out4, f"rc {rc4} · {_pr.name}")
 _git(BOX, "checkout", "-q", "--", _pr.relative_to(BOX).as_posix())
 
+# 층 어휘 정적 점검(B121 ①) — 지금 레포 0 · 사본 core에 카테고리 이름 하나를 넣으면 붉고 그 자리를 말한다
+_lw0 = _run(["tools/layer_words.py"])
+_cat = sorted(json.loads((ROOT / "layers" / "common.json").read_text(encoding="utf-8"))["categories"])[0]
+_lwf = BOX / "core" / "build" / "heading.py"
+_lwf.write_text(_lwf.read_text(encoding="utf-8") + f'\n_B121_PROBE = "{_cat}"\n', encoding="utf-8")
+_lw1 = _run(["tools/layer_words.py"], cwd=BOX)
+_git(BOX, "checkout", "-q", "--", "core/build/heading.py")
+show("ⓕ 층 어휘 정적 점검 — 지금 레포 위반 0(rc 0) · 사본 core에 카테고리 이름 하나를 넣으면 rc 1 · 그 파일 · 낱말을 말한다 (B121 ①)",
+     _lw0[0] == 0 and "위반 0건" in _lw0[1] and _lw1[0] == 1 and f"core/build/heading.py" in _lw1[1] and f"'{_cat}'" in _lw1[1],
+     f"rc {_lw0[0]} · {_lw1[0]} · {_cat}")
+
 # ────────────────────────────────────────────────────────────── ⓑ
 # ────────────────────────────────────────────────────────────── ⓔ
 print("\n■ ⓔ 네 벌 바닥 C(산문) — 같은 커밋은 같다 · 폴백 사슬을 끈 사본은 C가 다르다")
@@ -230,8 +243,9 @@ _rows = re.findall(r"^\[(PASS|FAIL|갱신)\] ([^—\n]+)", _summ, re.M)
 _lab = {lab.strip(): v for v, lab in _rows}
 _doc = next((v for k, v in _lab.items() if k.startswith("마감 doctor")), None)
 _chk = next((ln for ln in _summ.splitlines() if "문서 검사 일곱" in ln), "")
-show("ⓑ 사전 점검 → doctor → 네 벌 → §7 상한 → 자산 해시 — 단계 일곱 줄이 전부 요약에 선다",
-     len(_rows) == 7 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab,
+show("ⓑ 사전 점검(층 어휘 포함) → doctor → 네 벌 → §7 상한 → 자산 해시 — 단계 여덟 줄이 전부 요약에 선다",
+     len(_rows) == 8 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
+     and "층 어휘 정적 점검" in _lab,
      f"줄 {len(_rows)} · {list(_lab)}")
 show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 뒤 네 벌도 돌았다 · rc 1",
      rc5 == 1 and _doc == "FAIL" and "[FAIL]" in _chk and "모양" in _chk and _lab.get("네 벌") == "PASS"

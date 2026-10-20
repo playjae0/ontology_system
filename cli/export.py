@@ -23,7 +23,7 @@ from pathlib import Path
 from core import paths
 from core.build import ledger
 from core.state import store
-from core.state.bootstrap import coord_layer, open_graph
+from core.state.bootstrap import COORD_CATEGORY, coord_layer, open_graph
 from core.state.status import is_live
 from router import discover
 
@@ -125,10 +125,11 @@ def cmd_cypher(args):
             n_edge += 1
         L.append("")
 
+    # 예시 질의의 라벨은 좌표 카테고리(공용 블록이 정한다) — 카테고리 이름을 코드에 적지 않는다(층 어휘 0 · B121 ①)
     L += ["// 볼 만한 질의 몇 개",
-          "//   MATCH (p:Process)-[:part_of]->(q:Process) RETURN p, q;",
+          f"//   MATCH (p:{COORD_CATEGORY})-[r]->(q:{COORD_CATEGORY}) RETURN p, type(r), q;",
           "//   MATCH (n)-[r]-(m) WHERE n.name CONTAINS '노칭' RETURN n, r, m;",
-          "//   MATCH (f:Failure)-[:occurs_in]->(p:Process) RETURN f.name, p.name;"]
+          f"//   MATCH (x)-[r]->(p:{COORD_CATEGORY}) WHERE NOT x:{COORD_CATEGORY} RETURN labels(x), type(r), p.name;"]
 
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
     print(f"[export] 노드 {n_node} · 엣지 {n_edge} → {paths.show(out)}")
