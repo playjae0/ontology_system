@@ -230,7 +230,7 @@ _helpers = {p.stem for p in (ROOT / "tests").glob("*_common.py")
 _proj = ("core", "cli", "parser", "router", "run", "doctor")
 _bad = []
 import doctor as _DR                                  # noqa: E402 — 스위트 목록 (import만 — 진입점은 돌지 않는다)
-for _name, _n, _w in _DR.SUITES:
+for _name, *_rest in _DR.SUITES:
     _src = (ROOT / "tests" / f"{_name}.py").read_text(encoding="utf-8")
     _imps, _iso = _first_import(_src)
     _pi = [(ln, m) for ln, m in _imps if m.split(".")[0] in _proj or m in _helpers]

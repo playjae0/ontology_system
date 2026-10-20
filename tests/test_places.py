@@ -326,6 +326,7 @@ def _mode79(env):
         env={k: v for k, v in env.items() if v is not None}, stdin=subprocess.DEVNULL).stdout
 _env_no = {**os.environ, "USE_MOCK": "0"}
 _env_no.pop("ONTO_HOME", None)
+_env_no.pop("ONTO_MOCK_HOME", None)                  # 병렬 회귀의 시험 루트 훅 — 운영 모드는 보지 않는다(B131 ①)
 _line_no = _mode79(_env_no)
 _line_yes = _mode79({**_env_no, "ONTO_HOME": str(Path(tempfile.gettempdir()) / "b79home")})
 show("ONTO_HOME 미설정은 모드 줄이 말한다 (설정하면 그 조각이 없다)",

@@ -32,8 +32,7 @@ RFQ = ROOT / "tests" / "fixtures" / "raw" / "RFQ01.xlsx"
 TOC = ROOT / "tests" / "fixtures" / "raw" / "TOC01.xlsx"
 DT = "b86_rfq_sample"            # 등록 표본 시험의 doc_type — 끝나면 치운다
 DT2 = "b86_rfq_again"            # 같은 파일을 다른 종류로 — 기록은 문서의 것이다
-ENV = {**os.environ, "USE_MOCK": "1", "NO_COLOR": "1"}
-ENV.pop("ONTO_MOCK_HOME", None)
+ENV = {**os.environ, "USE_MOCK": "1", "NO_COLOR": "1"}   # 하위 실행은 이 시험과 같은 루트(병렬 회귀의 임시 루트 그대로 — B131 ①)
 
 
 def _sp(*argv, env=None, cwd=None):

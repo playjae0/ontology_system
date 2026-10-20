@@ -88,14 +88,19 @@ show("본체(core·parser·cli)에 mock 경로 상수 0지점", not _hard, str(_
 show("픽스처 소재가 core/state/fixtures.py 한 곳으로 수렴한다",
      hasattr(_FX, "PARSED") and hasattr(_FX, "QUERIES") and hasattr(_FX, "dirs"))
 
-_away = ROOT / "_fixtures_away"
-_sh2.move(str(_FX.ROOT_DIR), str(_away))
+# **픽스처 없음은 뿌리를 옮겨 흉내 낸다**(`ONTO_FIXTURES` — 없는 자리) — 레포의 `tests/fixtures`를 옮기면 함께 도는
+# 스위트가 그 사이에 픽스처를 잃는다(B131 ① 병렬 실측 — 0.6초 동안 폴더 통째가 사라졌다).
+import os as _os3, tempfile as _tf3                                    # noqa: E402
+_tmp3 = Path(_tf3.mkdtemp(prefix="b_fx_away_"))
+_away = _tmp3 / "fixtures"                                             # 없는 자리
+_sh2.copy(str(_FX.ROOT_DIR / "raw" / "CP04_unlabeled.xlsx"), str(_tmp3 / "CP04_unlabeled.xlsx"))
+_env3 = dict(_os3.environ, ONTO_FIXTURES=str(_away))
 try:
     def _r(*a):
         return _sp3.run([sys.executable, str(ROOT / "run.py"), *a],
-                        capture_output=True, text=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
+                        capture_output=True, text=True, cwd=str(ROOT), env=_env3, stdin=_sp3.DEVNULL)
     _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
-             capture_output=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
+             capture_output=True, cwd=str(ROOT), env=_env3, stdin=_sp3.DEVNULL)
     _b = _r("bootstrap")
     show("픽스처 없이 bootstrap 정상", _b.returncode == 0)
     _a = _r("all")
@@ -106,11 +111,11 @@ try:
          _g.returncode == 0 and "저장 크기" in _g.stdout,
          (_g.stderr or "").strip().splitlines()[-1:] and
          (_g.stderr or "").strip().splitlines()[-1] or "")
-    _s = _r("scan", str(_away / "raw" / "CP04_unlabeled.xlsx"))
+    _s = _r("scan", str(_tmp3 / "CP04_unlabeled.xlsx"))
     show("픽스처 없이 scan 정상 (없는 디렉터리를 모듈 로드하다 죽던 자리)",
          _s.returncode == 0)
 finally:
-    _sh2.move(str(_away), str(_FX.ROOT_DIR))
+    _sh2.rmtree(_tmp3, ignore_errors=True)
     _sp3.run([sys.executable, str(ROOT / "run.py"), "init", "--fresh", "--all"],
              capture_output=True, cwd=str(ROOT), stdin=_sp3.DEVNULL)
     _sp3.run([sys.executable, str(ROOT / "run.py"), "all"],

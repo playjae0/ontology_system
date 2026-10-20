@@ -49,8 +49,9 @@ try:
     _RG.register("b70x", layer="process", adapter="adapters/b70x.py",
                  schema="schemas/b70x.json", adapter_version="1.0",
                  approved_by="홍길동", approved_at="2026-09-15T00:00:00+00:00")
-    _ad70.parent.mkdir(exist_ok=True)
+    _P.ensure(_ad70)
     _ad70.write_text("ADAPTER = {}\n", encoding="utf-8")
+    _P.ensure(_sc70)                                  # 클린한 루트에는 등록 단 폴더가 아직 없다(B131 ① — 제 임시 루트)
     _sc70.write_text(json.dumps({"doc_type": "b70x"}, ensure_ascii=False),
                      encoding="utf-8")
     show("② 실물이 있으면 결손 0이다 (시험의 전제)", not _RG.missing_assets())

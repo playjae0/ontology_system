@@ -18,7 +18,7 @@ for lay in ("process", "quality"):
     bootstrap(lay, echo=False)
 snap_path = store.path(store.SKELETON_LIST)
 show("골격 재빌드가 스냅샷 파일을 생성한다 (파생물 — P5)", snap_path.exists(),
-     str(snap_path.relative_to(ROOT)))
+     _P.rel_to_home(snap_path))
 snap = json.loads(snap_path.read_text(encoding="utf-8"))
 proc = snap["process"]
 show("스냅샷이 골격 전 노드를 담는다 (개념+인스턴스 — A11-6·D-45)",

@@ -1,0 +1,222 @@
+{
+ "_note": "생성물 — 마감 한 줄(tools/close.py)이 doctor 결과로 쓴다 · 손으로 고치지 않는다 · 줄어든 수는 --why <스위트>=<사유>와 함께만 기록된다(B131 ②)",
+ "suites": {
+  "test_g1_g2": {
+   "n": 86
+  },
+  "test_places": {
+   "n": 32
+  },
+  "test_g3": {
+   "n": 82
+  },
+  "test_g4": {
+   "n": 97
+  },
+  "test_g5": {
+   "n": 64
+  },
+  "test_g6_platform": {
+   "n": 20
+  },
+  "test_g6_scan": {
+   "n": 16
+  },
+  "test_g6_batch": {
+   "n": 27
+  },
+  "test_g6_registry": {
+   "n": 10
+  },
+  "test_g6_ingest": {
+   "n": 38
+  },
+  "test_g6_sheets": {
+   "n": 27
+  },
+  "test_g6_coord_layer": {
+   "n": 14
+  },
+  "test_g6_shanae_parts": {
+   "n": 16
+  },
+  "test_g6_shanae_root": {
+   "n": 13
+  },
+  "test_g6_catalog": {
+   "n": 21
+  },
+  "test_g6_catalog_sync": {
+   "n": 21
+  },
+  "test_g6_dryrun_fold": {
+   "n": 7
+  },
+  "test_g6_extract_view": {
+   "n": 6
+  },
+  "test_g6_preflight_view": {
+   "n": 9
+  },
+  "test_g6_safe_log": {
+   "n": 8
+  },
+  "test_g6_diag": {
+   "n": 4
+  },
+  "test_g6_struct": {
+   "n": 8
+  },
+  "test_g6_synonym": {
+   "n": 6
+  },
+  "test_g6_belongs": {
+   "n": 17
+  },
+  "test_g6_coord_pairs": {
+   "n": 9
+  },
+  "test_g6_rebuild": {
+   "n": 18
+  },
+  "test_g6_alias_book": {
+   "n": 13
+  },
+  "test_g6_log_pipe": {
+   "n": 8
+  },
+  "test_g6_stop_chunks": {
+   "n": 5
+  },
+  "test_g6_ops_root": {
+   "n": 14
+  },
+  "test_g6_reconcile": {
+   "n": 17
+  },
+  "test_g6_relink": {
+   "n": 11
+  },
+  "test_g6_outline": {
+   "n": 5
+  },
+  "test_g6_rehearsal": {
+   "n": 18
+  },
+  "test_g6_numbers": {
+   "n": 18
+  },
+  "test_g6_structure": {
+   "n": 14
+  },
+  "test_g6_values": {
+   "n": 4
+  },
+  "test_g6_judge2": {
+   "n": 4
+  },
+  "test_g6_structure2": {
+   "n": 5
+  },
+  "test_g6_deck": {
+   "n": 6
+  },
+  "test_g6_split": {
+   "n": 13
+  },
+  "test_g6_replay2": {
+   "n": 3
+  },
+  "test_g6_capture": {
+   "n": 9
+  },
+  "test_g6_close": {
+   "n": 22
+  },
+  "test_g6_rebuild_memory": {
+   "n": 11
+  },
+  "test_g6_hybrid": {
+   "n": 15
+  },
+  "test_g6_lens": {
+   "n": 18
+  },
+  "test_g6_narrow": {
+   "n": 54
+  },
+  "test_g65_contract": {
+   "n": 28
+  },
+  "test_g65_cross": {
+   "n": 10
+  },
+  "test_g65_prov": {
+   "n": 18
+  },
+  "test_g65_rules": {
+   "n": 20
+  },
+  "test_p1_core6": {
+   "n": 42
+  },
+  "test_p1_wiring": {
+   "n": 21
+  },
+  "test_p1_csv": {
+   "n": 54
+  },
+  "test_p1_form": {
+   "n": 35
+  },
+  "test_p1_coord": {
+   "n": 26
+  },
+  "test_p1_hier": {
+   "n": 16
+  },
+  "test_p1_media": {
+   "n": 19
+  },
+  "test_p2": {
+   "n": 68
+  },
+  "test_p3_register": {
+   "n": 73
+  },
+  "test_p3_prompt": {
+   "n": 60
+  },
+  "test_p3_gate": {
+   "n": 76
+  },
+  "test_p3_view": {
+   "n": 32
+  },
+  "test_p3_recover": {
+   "n": 38
+  },
+  "test_p3_screen": {
+   "n": 52
+  },
+  "test_p3_ledger": {
+   "n": 46
+  },
+  "test_p3_flow": {
+   "n": 65
+  },
+  "test_2a_gateway": {
+   "n": 75
+  },
+  "test_viewer": {
+   "n": 60
+  },
+  "verify_roundtrip": {
+   "n": 50
+  },
+  "test_onsite": {
+   "n": 27
+  }
+ },
+ "log": []
+}
