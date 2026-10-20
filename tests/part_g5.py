@@ -4,7 +4,7 @@
   I-1 병합 · I-2 개명 연쇄 · I-3 분리 배분표 · I-4 폐기 전이 · I-5 순환 거부 · I-6 로그
   + 단위 5: 파급 미리보기 · 엣지 삭제 enforcement · alias 이관 · 재인입 왕복
 
-사용: python tests/test_g5.py
+사용: python tests/test_ops.py g5   (합친 스위트 test_ops의 조각 — B131 ④)
 """
 from __future__ import annotations
 

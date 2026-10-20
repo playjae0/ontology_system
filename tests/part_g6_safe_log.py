@@ -175,7 +175,7 @@ for mod, argv, name in _ENTRY:
     t = Path(f[-1]).read_text(encoding="utf-8") if f else ""
     if "===== 실행 시작" not in t or "===== 실행 끝" not in t:
         _miss_e.append(mod or "run.py")
-sp.run([sys.executable, str(ROOT / "doctor.py"), "--only", "test_g6_registry"], cwd=str(ROOT),   # 진입점 doctor — 가장 짧은 고른 실행
+sp.run([sys.executable, str(ROOT / "doctor.py"), "--only", "test_p1_wiring"], cwd=str(ROOT),   # 진입점 doctor — 가장 짧은 고른 실행
        env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True,
        stdin=sp.DEVNULL, timeout=900)
 _dlog = sorted(glob.glob(str(_logs / "doctor_*.log")))

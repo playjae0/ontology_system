@@ -83,18 +83,18 @@ from core.state import log as _LOG                                  # noqa: E402
 from concurrent.futures import ThreadPoolExecutor                  # noqa: E402
 _bg = ThreadPoolExecutor(2)
 _facts_f = _bg.submit(DS.suite_facts, SUITES)                       # 정적 선택 그래프 — 아래 하위 실행을 기다리는 동안 짓는다
-rc, out = _run(["doctor.py", "--only", "g6_reg"])
+rc, out = _run(["doctor.py", "--only", "p1_wir"])
 _log = max(_LOG.log_dir().glob("doctor_*.log"), key=lambda p: p.stat().st_mtime, default=T / "없음")
 _ran = re.findall(r"^\s*\[[^\]]+\] (test_[a-z0-9_]+)\s+\d+ PASS / \d+ FAIL", out, re.M)
 _head = "\n".join(out.splitlines()[:4])
 _sum = next((ln for ln in out.splitlines() if "합계" in ln and "PASS" in ln), "")
 show("ⓐ --only 접두 하나 ⇒ 그 스위트만 돈다 · 머리와 합계 줄에 「고른 실행 — 판정 아님」",
-     rc == 0 and _ran == ["test_g6_registry"] and DS.HEAD_LINE in _head and DS.HEAD_LINE in _sum,
+     rc == 0 and _ran == ["test_p1_wiring"] and DS.HEAD_LINE in _head and DS.HEAD_LINE in _sum,
      f"rc {rc} · 돈 스위트 {_ran} · 합계 {_sum.strip()[:80]}")
 _lt = _log.read_text(encoding="utf-8") if _log.exists() else ""
 _tail = _lt[_lt.rfind("===== 실행 시작"):]                         # 이번 실행 몫(클린이 지우면 다시 연 머리부터)
 show("ⓐ 명령 로그에도 「고른 실행 — 판정 아님」(이번 실행의 결과 줄)",
-     f"결과: {DS.HEAD_LINE}" in _tail and "--only g6_reg" in _tail, f"{_log.name} · 이번 몫 {len(_tail)}자")
+     f"결과: {DS.HEAD_LINE}" in _tail and "--only p1_wir" in _tail, f"{_log.name} · 이번 몫 {len(_tail)}자")
 rc2, out2 = _run(["doctor.py", "--only", "없는_스위트"])
 show("ⓐ 모르는 이름 ⇒ 사용법 · rc 2(아무것도 돌지 않는다)", rc2 == 2 and "[사용법]" in out2 and "PASS /" not in out2,
      f"rc {rc2}")
@@ -227,10 +227,10 @@ show("ⓔ 폴백 사슬(제목 개체 → 그 위 → 공정)을 끈 사본 — 
 _git(BOX, "checkout", "-q", "--", "core/build/heading.py")
 
 print("\n■ ⓓ 기대 수는 생성물 — 늘면 「+n」 · 사유 없는 감소는 붉다 · 사유 있으면 기록 · PASS 0은 늘 붉다 (B131 ②)")
-_rp = BOX / "tests" / "test_g6_replay2.py"
+_rp = BOX / "tests" / "test_p1_wiring.py"
 _rp_src = _rp.read_text(encoding="utf-8")
 _rec = json.loads((ROOT / "docs" / "회귀스위트" / "기대_수.json").read_text(encoding="utf-8"))
-_n0 = _rec["suites"]["test_g6_replay2"]["n"]
+_n0 = _rec["suites"]["test_p1_wiring"]["n"]
 
 
 def _dr(src, *extra):
@@ -238,7 +238,7 @@ def _dr(src, *extra):
     _rp.write_text(src, encoding="utf-8")
     _rf = T / "dr_result.json"
     _rf.unlink(missing_ok=True)
-    rc, out = _run(["doctor.py", "--only", "test_g6_replay2", "--result", str(_rf), *extra], cwd=BOX)
+    rc, out = _run(["doctor.py", "--only", "test_p1_wiring", "--result", str(_rf), *extra], cwd=BOX)
     return rc, out, (json.loads(_rf.read_text(encoding="utf-8")) if _rf.exists() else {})
 
 
@@ -253,17 +253,17 @@ import doctor as _DOC                                                   # noqa: 
 rc7, out7, res7 = _dr(_plus)
 _rec7, _ch7 = _CL.expect_record(_rec, res7, _DOC.SUITES, "시험", "2026-10-20", whole=False)
 show("ⓓ 어서션 하나를 더한 사본 — doctor가 「+1」로 지나가고 마감 한 줄의 기록 함수가 그 수를 쓴다(바뀜 +1)",
-     rc7 == 0 and "+1(기록" in out7 and _rec7["suites"]["test_g6_replay2"]["n"] == _n0 + 1
-     and _CL.expect_line(_ch7) == "test_g6_replay2 +1",
+     rc7 == 0 and "+1(기록" in out7 and _rec7["suites"]["test_p1_wiring"]["n"] == _n0 + 1
+     and _CL.expect_line(_ch7) == "test_p1_wiring +1",
      f"rc {rc7} · {_CL.expect_line(_ch7)}")
 rc8, out8, _r8 = _dr(_minus)
-rc9, out9, res9 = _dr(_minus, "--why", "test_g6_replay2=시험 — 하나를 지웠다")
+rc9, out9, res9 = _dr(_minus, "--why", "test_p1_wiring=시험 — 하나를 지웠다")
 _rec9, _ch9 = _CL.expect_record(_rec, res9, _DOC.SUITES, "시험", "2026-10-20", whole=False)
 show("ⓓ 하나를 지운 사본 — 사유 없으면 붉다(rc 1) · 사유가 있으면 지나가고 기록에 −1과 사유가 남는다",
-     rc8 == 1 and "사유가 없다" in out8 and rc9 == 0 and _rec9["suites"]["test_g6_replay2"]["n"] == _n0 - 1
+     rc8 == 1 and "사유가 없다" in out8 and rc9 == 0 and _rec9["suites"]["test_p1_wiring"]["n"] == _n0 - 1
      and _rec9["log"][-1]["why"] == "시험 — 하나를 지웠다" and "−1" in _CL.expect_line(_ch9),
      f"rc {rc8} → 사유 {rc9} · {_CL.expect_line(_ch9)}")
-rc10, out10, _r10 = _dr(_zero, "--why", "test_g6_replay2=사유가 있어도")
+rc10, out10, _r10 = _dr(_zero, "--why", "test_p1_wiring=사유가 있어도")
 show("ⓓ 스위트가 돌지 않는 사본(PASS 0) — 사유가 있어도 붉다",
      rc10 == 1 and "늘 붉다" in out10, f"rc {rc10}")
 _rp.write_text(_rp_src, encoding="utf-8")

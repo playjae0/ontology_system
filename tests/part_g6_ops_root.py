@@ -406,7 +406,7 @@ def _preflight_after():
 
 
 # 끊김 둘(B121 ②ⓓ — 되돌림 손이 돌지 못하는 kill -9 · 문서 실패 뒤 사전 점검 실패 — 「이어 간다」는 끊긴 방식과 무관한 계획 파일
-# 한 자리라 넷을 곱하지 않는다 · 되돌림 손이 도는 중단(Ctrl-C)은 문서 단위 되돌림 시험(test_g6_stop_chunks · test_g6_safe_log)이 잰다)
+# 한 자리라 넷을 곱하지 않는다 · 되돌림 손이 도는 중단(Ctrl-C)은 문서 단위 되돌림 시험(test_safety의 조각 stop_chunks · safe_log)이 잰다)
 for _how in (_kill9, _preflight_after):
     _restore()
     _what = _how()

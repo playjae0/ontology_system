@@ -16,7 +16,7 @@
 **`doctor.py`는 `--env`만 돈다** — 전체를 돌리면 doctor가 이 스위트를 부르고
 그 스위트가 다시 doctor를 부른다(무한). 조건에서 죽지 않는가만 본다.
 
-사용: python tests/test_onsite.py
+사용: python tests/test_site.py onsite   (합친 스위트 test_site의 조각 — B131 ④)
 """
 from __future__ import annotations
 

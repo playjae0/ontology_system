@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""B86 ①~⑤ — 「사내 모양」 잔여 다섯의 잠금 (⑥ 전 구간은 `test_g6_shanae_root`).
+"""B86 ①~⑤ — 「사내 모양」 잔여 다섯의 잠금 (⑥ 전 구간은 `test_site`의 조각 shanae_root).
 
 잠그는 성질:
   ① 화면의 경로는 `paths.show` 하나가 적는다 — `relative_to(ROOT)` 0 · 세 갈래 무예외
@@ -42,7 +42,7 @@ def _sp(*argv, env=None, cwd=None):
 
 
 def _pty(*argv, answers=""):
-    """관문은 tty에서만 산다 — `test_g6_sheets`와 같은 방식."""
+    """관문은 tty에서만 산다 — `test_intake`의 조각 sheets와 같은 방식."""
     import pty
     pid, fd = pty.fork()
     if pid == 0:                                             # pragma: no cover
