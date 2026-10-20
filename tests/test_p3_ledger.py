@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
-"""P3 ⑦ 대장 — 관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의."""
+"""P3 ⑦ 대장 — 관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의.
+
+서로 기대지 않는 흐름(B62 ② 문답 로그 · B65 ⑤④ 형태 판정 문의)은 **setup 직후 루트의 사본**에서 돌고(`ONTO_MOCK_HOME` —
+사본의 이름도 mock 자리 그대로라 같은 갈래를 탄다) 나머지는 이 스위트의 루트에서 돈다 — 루트가 달라 동시에 돈다(같은 루트에
+두 실행을 겹치지 않는다 · B121 ②ⓓ). 관문(하네스) 일곱 벌은 상태 루트에 쓰지 않으므로(킷은 건넨 파일만 읽는다) 함께 돈다.
+판정 줄은 원래 차례로 낸다.
+"""
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -14,6 +21,101 @@ import os as _os
 import tempfile as _tf
 
 setup()
+
+# ============================================================ 흐름 — 사본 루트에서 동시에 (B121 ②ⓓ)
+_HOMES = Path(_tf.mkdtemp(prefix="p3ledger_"))
+
+
+def _home(name):
+    """setup 직후 클린 루트의 사본 — 폴더 이름이 지금 루트와 같다(mock 자리 판정 `paths.is_mock_home`이 같다)."""
+    d = _HOMES / name / _P.home().name
+    shutil.copytree(_P.home(), d)
+    return d
+
+
+def _at(home, *argv, fixtures=None, feed=None):
+    """하위 실행 — 상태 루트 `home`(사본)에서 `run.py <argv>`. 명령 · 입력은 원래 그대로다(`feed` 없음 = 표준입력 닫음)."""
+    env = {**_os.environ, _P.MOCK_HOME_ENV: str(home)}
+    if fixtures:
+        env["ONTO_FIXTURES"] = str(fixtures)
+    if feed is None:
+        return subprocess.run([sys.executable, str(ROOT / "run.py"), *argv], capture_output=True, text=True,
+                              cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), *argv], capture_output=True, text=True,
+                          cwd=str(ROOT), env=env, input=feed)
+
+
+# ── B62 ② 재료 — 문답 생성(b64) · B60 이전 꼴 패키지(b64old)
+_fx64 = Path(_tf.mkdtemp(prefix="fx64_", dir=str(ROOT)))
+(_fx64 / "fixtures/adapters").mkdir(parents=True)
+(_fx64 / "fixtures/schemas").mkdir(parents=True)
+for _dt in ("b64", "b64old"):
+    (_fx64 / f"fixtures/adapters/{_dt}.py").write_text(
+        (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+        .replace('"doc_type": "cp"', f'"doc_type": "{_dt}"', 1), encoding="utf-8")
+    (_fx64 / f"fixtures/schemas/{_dt}.json").write_text(json.dumps(
+        {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
+         "doc_type": _dt}, ensure_ascii=False), encoding="utf-8")
+_OLD64 = json.dumps(
+    {"human": {"doc_type": "b64old", "layer": "process",
+               "samples": [str(RAW / "CP01.xlsx")],
+               "hint": {"text": "", "interview": [
+                   {"samples": [str(RAW / "CP01.xlsx")], "at": "2026-09-01T00:00:00+00:00",
+                    "rounds": [{"round": i, "understanding": f"이해 {i}", "questions": [],
+                                "answers": [], "answer": f"답 {i}", "progress": {}}
+                               for i in (1, 2, 3)]}]}},
+     "system": {"reader_head": [], "skeleton_closed_list": {}, "layer_vocabulary": {},
+                "blocks": {}, "adapter_skeleton": ""}}, ensure_ascii=False)
+
+
+def _flow_b64(h):
+    """문답 생성(b64) → 옛 꼴 패키지 이어하기(b64old) — 사본 루트 `h`에서. 이어하기의 결과를 돌려준다."""
+    _at(h, "register", "generate", "b64", "process", str(RAW / "CP01.xlsx"), "--interview", "--no-basic",
+        "--allow-mock", fixtures=_fx64, feed="1\n\n헤더는 3행이다\n진행\nY\n")
+    d = _P.mirror(REVIEW, h) / "b64old"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "input_package.json").write_text(_OLD64, encoding="utf-8")
+    return _at(h, "register", "generate", "b64old", "--resume", "--allow-mock", fixtures=_fx64, feed="")
+
+
+# ── B65 ⑤④ 재료 — 형태 판정이 안 서는 표본
+_d66 = Path(_tf.mkdtemp(prefix="b65f_", dir=str(ROOT)))
+_amb66 = _d66 / "amb.csv"
+_rows66 = [["내용", "비고", "쪽"]]
+for _i in range(1, 5):
+    _rows66.append([f"{_i}. 장 제목 {_i}", "", ""])
+    for _j in range(1, 4):
+        _rows66.append([f"{_i}.{_j} 절 제목 {_j}", "", ""])
+        for _k in range(3):
+            _rows66.append([f"본문 문장 {_i}-{_j}-{_k} — 설명이 길게 이어지는 줄이다",
+                            "", ""])
+_amb66.write_text("\n".join(",".join(r) for r in _rows66) + "\n", encoding="utf-8")
+
+
+def _flow_b65f(h):
+    """형태 판정 문의 셋(prose 답 · 비대화형 · --use-basic) → 재생성 거부 둘 · status — 사본 루트 `h`에서."""
+    rv, out = _P.mirror(REVIEW, h) / "b65f", {}
+
+    def gen(*args, feed=""):
+        return _at(h, "register", "generate", "b65f", "process", str(_amb66), *args, "--allow-mock", feed=feed)
+
+    out["prose"] = gen(feed="prose\n")
+    out["st_prose"] = json.loads((rv / "state.json").read_text(encoding="utf-8"))
+    shutil.rmtree(rv, ignore_errors=True)            # reset — 확정 전이라 등록부 몫은 없다
+    out["noint"] = gen(feed="")
+    shutil.rmtree(rv, ignore_errors=True)
+    out["basic"] = gen("--use-basic")
+    out["st_basic"] = json.loads((rv / "state.json").read_text(encoding="utf-8"))
+    out["instruct"] = _at(h, "register", "review", "b65f", "--instruct", "레벨을 2로", "--allow-mock")
+    out["revise"] = _at(h, "register", "generate", "b65f", "process", str(_amb66), "--revise", "--allow-mock")
+    out["status"] = _at(h, "register", "status", "b65f", "--allow-mock")
+    return out
+
+
+# 사본을 전부 뜬 다음에 돈다 — 이 스위트의 루트는 아래 B62부터 쓴다
+_H = {n: _home(n) for n in ("b64", "b65f")}
+_pool = ThreadPoolExecutor(max_workers=2)
+_F = {"b64": _pool.submit(_flow_b64, _H["b64"]), "b65f": _pool.submit(_flow_b65f, _H["b65f"])}
 
 
 print("\n■ B62 — 관문이 채우고 찍는다 · 재시도의 기본은 이어가기")
@@ -166,29 +268,10 @@ reset("csv63")
 # ── B62 ② 라운드 전문은 패키지 밖으로 ────────────────────────────────────
 print("\n■ B62 ② — 대화는 이력(로그), 판단은 정본(패키지)")
 
-_fx64 = Path(_tf.mkdtemp(prefix="fx64_", dir=str(ROOT)))
-(_fx64 / "fixtures/adapters").mkdir(parents=True)
-(_fx64 / "fixtures/schemas").mkdir(parents=True)
-(_fx64 / "fixtures/adapters/b64.py").write_text(
-    (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-    .replace('"doc_type": "cp"', '"doc_type": "b64"', 1), encoding="utf-8")
-(_fx64 / "fixtures/schemas/b64.json").write_text(json.dumps(
-    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
-     "doc_type": "b64"}, ensure_ascii=False), encoding="utf-8")
-_e64 = {**_os.environ, "ONTO_FIXTURES": str(_fx64)}
-
-
-def _reg64(*a, feed=""):
-    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
-                           "--allow-mock"], capture_output=True, text=True,
-                          cwd=str(ROOT), env=_e64, input=feed)
-
-
-reset("b64")
-_reg64("generate", "b64", "process", str(RAW / "CP01.xlsx"), "--interview", "--no-basic",
-       feed="1\n\n헤더는 3행이다\n진행\nY\n")
-_pk64 = json.loads((REVIEW / "b64" / "input_package.json").read_text(encoding="utf-8"))
-_lg64 = json.loads((REVIEW / "b64" / "interview_log.json").read_text(encoding="utf-8"))
+_r64 = _F["b64"].result()                         # 문답 생성(b64) · 옛 꼴 이어하기(b64old) — 사본 루트
+_RV64 = _P.mirror(REVIEW, _H["b64"])
+_pk64 = json.loads((_RV64 / "b64" / "input_package.json").read_text(encoding="utf-8"))
+_lg64 = json.loads((_RV64 / "b64" / "interview_log.json").read_text(encoding="utf-8"))
 _b64 = Rivlog._hint_batches(_pk64["human"]["hint"])[-1]
 
 # ⓑ **패키지에 전문이 없다** — 생성 user 메시지가 패키지 원문 통째이므로
@@ -208,7 +291,7 @@ show("②ⓒ 렌더러가 rounds를 모른다 (cli/prompt.py에 그 문자열 0�
 
 # ⓐ **라운드가 30개 늘어도 보내는 크기가 같다** — 전문이 입력이 아니기 때문이다.
 def _sent64():
-    _raw = (REVIEW / "b64" / "input_package.json").read_text(encoding="utf-8")
+    _raw = (_RV64 / "b64" / "input_package.json").read_text(encoding="utf-8")
     _sys = _PR64._render_template(_PR64.generate_template(),
                                   json.loads(_raw), regeneration=[])
     return len(_sys.encode("utf-8")), len(_raw.encode("utf-8"))
@@ -219,35 +302,15 @@ _before64 = _sent64()
 _lg64["batches"][0]["rounds"] += [
     {"round": i, "understanding": "열별 판독 선언 " * 40, "questions": [],
      "answers": [], "answer": "답" * 60, "progress": {}} for i in range(50, 80)]
-(REVIEW / "b64" / "interview_log.json").write_text(
+(_RV64 / "b64" / "interview_log.json").write_text(
     json.dumps(_lg64, ensure_ascii=False), encoding="utf-8")
 _after64 = _sent64()
 show("②ⓐ 로그에 라운드 30개를 더해도 생성이 보내는 크기가 같다",
      _before64 == _after64 and _before64[1] > 0,
      f"user {_before64[1]:,}B → {_after64[1]:,}B")
 
-# ⓓ **B60 이전 패키지** — 이관 한 줄 + 확정 사항 없음 경고 + **진행은 된다**.
-reset("b64old")
-(_fx64 / "fixtures/adapters/b64old.py").write_text(
-    (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-    .replace('"doc_type": "cp"', '"doc_type": "b64old"', 1), encoding="utf-8")
-(_fx64 / "fixtures/schemas/b64old.json").write_text(json.dumps(
-    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
-     "doc_type": "b64old"}, ensure_ascii=False), encoding="utf-8")
-_d64 = REVIEW / "b64old"
-_d64.mkdir(parents=True, exist_ok=True)
-(_d64 / "input_package.json").write_text(json.dumps(
-    {"human": {"doc_type": "b64old", "layer": "process",
-               "samples": [str(RAW / "CP01.xlsx")],
-               "hint": {"text": "", "interview": [
-                   {"samples": [str(RAW / "CP01.xlsx")], "at": "2026-09-01T00:00:00+00:00",
-                    "rounds": [{"round": i, "understanding": f"이해 {i}", "questions": [],
-                                "answers": [], "answer": f"답 {i}", "progress": {}}
-                               for i in (1, 2, 3)]}]}},
-     "system": {"reader_head": [], "skeleton_closed_list": {}, "layer_vocabulary": {},
-                "blocks": {}, "adapter_skeleton": ""}}, ensure_ascii=False),
-    encoding="utf-8")
-_r64 = _reg64("generate", "b64old", "--resume")
+# ⓓ **B60 이전 패키지** — 이관 한 줄 + 확정 사항 없음 경고 + **진행은 된다**. (이어하기는 `_flow_b64`가 돌렸다)
+_d64 = _RV64 / "b64old"
 _pk64o = json.loads((_d64 / "input_package.json").read_text(encoding="utf-8"))
 _b64o = Rivlog._hint_batches(_pk64o["human"]["hint"])[0]
 _lg64o = json.loads((_d64 / "interview_log.json").read_text(encoding="utf-8"))
@@ -261,20 +324,17 @@ _nx64 = [l for l in _r64.stdout.splitlines() if "register review b64old" in l
 show("②ⓓ decisions 없는 옛 패키지 — 경고가 뜨고 **진행은 된다** (다음 줄 둘)",
      _r64.returncode == 0 and not _b64o.get("decisions") and len(_nx64) >= 2,
      f"rc={_r64.returncode} · 다음 줄 {len(_nx64)}개")
-# **이어하기 화면이 전문 건수를 안다** — 패키지에 없는 것을 패키지에서 세지 않는다.
+# **이어하기 화면이 전문 건수를 안다** — 패키지에 없는 것을 패키지에서 세지 않는다. (줄 수는 재지 않는다 · B121 ②ⓐ)
 _n64 = [l for l in _r64.stdout.splitlines() if "라운드 전문" in l]
 show("②ⓑ 이어하기 화면의 라운드 건수가 로그에서 온다 (패키지에는 전문이 없다)",
-     len(_n64) == 1
-     and str(sum(len(b["rounds"]) for b in _lg64o["batches"])) in _n64[0]
+     any(str(sum(len(b["rounds"]) for b in _lg64o["batches"])) in l for l in _n64)
      and "rounds" not in _b64o,
      _n64[0].strip() if _n64 else "(줄 없음)")
 # **힌트만 준 패키지는 해당 없음** — `hint_only_decisions`가 이미 한 항목을 세운다.
 show("②ⓓ 힌트만 준 패키지는 경고 대상이 아니다 (결정이 이미 있다)",
      Rivlog.warn_no_decisions("x", {"human": {"hint": {"text": "h", "interview": [
          {"samples": [], "at": "t", "decisions": Rivlog.hint_only_decisions("h")}]}}}) is None)
-reset("b64old")
-reset("b64")
-shutil.rmtree(_fx64, ignore_errors=True)
+shutil.rmtree(_fx64, ignore_errors=True)          # 이 루트에는 b64 · b64old가 없다(사본에서 돌았다)
 
 
 # ── B64 ①②③ columns는 시스템이 해석한다 ─────────────────────────────────
@@ -412,28 +472,7 @@ def _gate65(adapter_src, schema=_sc65, name="a"):
     return {c: (l, d) for c, l, d in Rgate.fail_lines(_out)}, _out
 
 
-# ①ⓑ **없는 이름은 로드 단계에서 잡힌다** — 실행(G31)까지 가지 않는다.
-_bad65, _out65 = _gate65(
-    _cp65.replace("    fragments = []",
-                  "    fragments = []\n    _x = normalizer.col_to_letter(3)", 1),
-    name="badcall")
-show("①ⓑ 없는 normalizer 이름이 로드 단계에서 FAIL이다 (실행 전에 걸린다)",
-     "G1B" in _bad65 and "G31" not in _bad65,
-     f"{sorted(_bad65)} · 상세 {_bad65.get('G1B', ('', ''))[1][:40]}")
-show("①ⓑ 상세가 있는 것의 목록을 담는다 (AUTO_FIX — 사람이 통역하지 않는다)",
-     all(k in _bad65["G1B"][1] for k in ("col_to_letter", "expand_merged", "split_multi"))
-     and not Rgate.classify_failures(_out65)[1])
-# **비공개 이름도 FAIL** — 오늘 도는 것이 다음 판에 사라져도 약속 위반이 아니다.
-_priv65, _ = _gate65(
-    _cp65.replace("    fragments = []",
-                  "    fragments = []\n    _x = normalizer._col(3)", 1), name="priv")
-show("①ⓑ 밑줄 이름(비공개) 참조도 FAIL이다", "G1B" in _priv65)
-# **있는 이름만 쓰면 PASS** — 시험 자체가 늘 붉는 것이 아니다.
-_good65, _ = _gate65(_cp65, name="good")
-show("①ⓑ 있는 이름만 쓴 어댑터는 G1B가 뜨지 않는다", "G1B" not in _good65,
-     str(sorted(_good65)))
-
-# ②ⓑ **어휘 셋** — 목록 밖 값은 FAIL이고 문면이 목록을 담는다.
+# ②ⓑ **어휘 셋** 재료 — 목록 밖 값은 FAIL이고 문면이 목록을 담는다.
 _pf65 = json.loads((ROOT / "tests/fixtures/schemas/pfmea.json").read_text(encoding="utf-8"))
 _pfa65 = ROOT / "tests/fixtures/adapters/pfmea.py"
 
@@ -459,9 +498,37 @@ def _set_tri(s):
     s["edges"][1]["to"] = "cause"
 
 
-_c65, _co65 = _vgate65(_set_cat, "cat")
-_r65, _ro65 = _vgate65(_set_rel, "rel")
-_t65, _to65 = _vgate65(_set_tri, "tri")
+# 관문 일곱 벌 — 서로 기대지 않고 상태 루트에 쓰지 않는다(킷은 건넨 파일만 읽는다 · 파일 이름은 벌마다 따로) ⇒ 함께 돈다(B121 ②ⓓ)
+with ThreadPoolExecutor(max_workers=7) as _p65:
+    _J65 = {"badcall": _p65.submit(_gate65, _cp65.replace(
+                "    fragments = []", "    fragments = []\n    _x = normalizer.col_to_letter(3)", 1), name="badcall"),
+            "priv": _p65.submit(_gate65, _cp65.replace(
+                "    fragments = []", "    fragments = []\n    _x = normalizer._col(3)", 1), name="priv"),
+            "good": _p65.submit(_gate65, _cp65, name="good"),
+            "cat": _p65.submit(_vgate65, _set_cat, "cat"), "rel": _p65.submit(_vgate65, _set_rel, "rel"),
+            "tri": _p65.submit(_vgate65, _set_tri, "tri"),
+            "pass": _p65.submit(Rgate.harness, _pfa65, ROOT / "tests/fixtures/schemas/pfmea.json",
+                                [RAW / "PFMEA01.xlsx"])}
+
+# ①ⓑ **없는 이름은 로드 단계에서 잡힌다** — 실행(G31)까지 가지 않는다.
+_bad65, _out65 = _J65["badcall"].result()
+show("①ⓑ 없는 normalizer 이름이 로드 단계에서 FAIL이다 (실행 전에 걸린다)",
+     "G1B" in _bad65 and "G31" not in _bad65,
+     f"{sorted(_bad65)} · 상세 {_bad65.get('G1B', ('', ''))[1][:40]}")
+show("①ⓑ 상세가 있는 것의 목록을 담는다 (AUTO_FIX — 사람이 통역하지 않는다)",
+     all(k in _bad65["G1B"][1] for k in ("col_to_letter", "expand_merged", "split_multi"))
+     and not Rgate.classify_failures(_out65)[1])
+# **비공개 이름도 FAIL** — 오늘 도는 것이 다음 판에 사라져도 약속 위반이 아니다.
+_priv65, _ = _J65["priv"].result()
+show("①ⓑ 밑줄 이름(비공개) 참조도 FAIL이다", "G1B" in _priv65)
+# **있는 이름만 쓰면 PASS** — 시험 자체가 늘 붉는 것이 아니다.
+_good65, _ = _J65["good"].result()
+show("①ⓑ 있는 이름만 쓴 어댑터는 G1B가 뜨지 않는다", "G1B" not in _good65,
+     str(sorted(_good65)))
+
+_c65, _co65 = _J65["cat"].result()
+_r65, _ro65 = _J65["rel"].result()
+_t65, _to65 = _J65["tri"].result()
 show("②ⓑ 층 목록 밖 category가 FAIL이고 있는 것이 문면에 있다 (G4C)",
      "G4C" in _c65 and "Cause" in _c65["G4C"][1] and "Failure" in _c65["G4C"][1],
      _c65.get("G4C", ("", ""))[1][:70])
@@ -475,8 +542,8 @@ show("②ⓑ 패턴표 밖 삼항이 FAIL이고 허용 삼항이 문면에 있�
 show("②ⓑ 셋 다 AUTO_FIX 갈래다 (문면이 목록을 담는다)",
      all(not Rgate.classify_failures(o)[1] for o in (_co65, _ro65, _to65)))
 # **걸침 필드는 대상 층의 목록으로 · `@좌표필드`는 블록의 target_category로 판정**
-_ok65, _ = Rgate.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"]), None
-_pass65, _pout65 = Rgate.harness(_pfa65, ROOT / "tests/fixtures/schemas/pfmea.json", [RAW / "PFMEA01.xlsx"])
+# (같은 관문을 한 번 더 돌려 버리던 줄을 뺐다 — 결과를 읽는 곳 0 · B121 ②ⓓ)
+_pass65, _pout65 = _J65["pass"].result()
 _codes65 = [c for c, _l, _d in Rgate.fail_lines(_pout65)]
 show("②ⓑ 걸침 필드(target_layer)·@좌표필드가 있는 스키마가 초록이다 "
      "(다른 층 카테고리를 오판하지 않는다)",
@@ -486,32 +553,13 @@ shutil.rmtree(_d65, ignore_errors=True)
 # ── B65 ④⑤ 형태 판정은 사람에게 · 고정 어댑터는 재생성 대상이 아니다 ────────
 print("\n■ B65 ⑤ — 형태 판정이 안 서면 사람에게 묻는다 (C37 「그 외는 사람」)")
 
-_d66 = Path(_tf.mkdtemp(prefix="b65f_", dir=str(ROOT)))
-_amb66 = _d66 / "amb.csv"
-_rows66 = [["내용", "비고", "쪽"]]
-for _i in range(1, 5):
-    _rows66.append([f"{_i}. 장 제목 {_i}", "", ""])
-    for _j in range(1, 4):
-        _rows66.append([f"{_i}.{_j} 절 제목 {_j}", "", ""])
-        for _k in range(3):
-            _rows66.append([f"본문 문장 {_i}-{_j}-{_k} — 설명이 길게 이어지는 줄이다",
-                            "", ""])
-_amb66.write_text("\n".join(",".join(r) for r in _rows66) + "\n", encoding="utf-8")
-
 _j66 = _FORM.judge(reader.read(str(_amb66)))
 show("⑤ 표본이 자동 판정되지 않는다 (시험의 전제 — 찬성≥2·반대0 미충족)",
      _j66["verdict"] is None and not _j66["auto"], _j66["why"][:50])
 
-
-def _gen66(*args, feed=""):
-    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
-                           "b65f", "process", str(_amb66), *args, "--allow-mock"],
-                          capture_output=True, text=True, cwd=str(ROOT), input=feed)
-
-
-reset("b65f")
-_r66 = _gen66(feed="prose\n")
-_st66 = json.loads((REVIEW / "b65f" / "state.json").read_text(encoding="utf-8"))
+_G66 = _F["b65f"].result()                        # 형태 판정 문의 셋 · 재생성 거부 둘 · status — 사본 루트
+_pool.shutdown()
+_r66, _st66 = _G66["prose"], _G66["st_prose"]
 # ⓑ **판정이 안 서면 draft 전에 사람 입력 또는 플래그가 있어야 한다.**
 show("⑤ⓑ 판정이 안 서면 화면이 신호·투표를 보이고 묻는다",
      "형태 판정" in _r66.stdout and "자동 판정 불가" in _r66.stdout
@@ -524,27 +572,19 @@ show("⑤ⓑ 판정과 **누가 정했나**가 상태에 남는다 (form.verdict
      and (_st66.get("form") or {}).get("by") == "human",
      str(_st66.get("form", {}).get("by")))
 # ⓑ **비대화형은 상태 거부**(B61 계약) — 조용히 LLM 생성으로 가지 않는다.
-reset("b65f")
-_r66n = _gen66(feed="")
+_r66n = _G66["noint"]
 show("⑤ⓑ 비대화형은 상태 거부이고 다음 줄 둘을 준다 (조용히 생성으로 가지 않는다)",
      _r66n.returncode != 0 and "--use-basic" in _r66n.stdout + _r66n.stderr
      and "--no-basic" in _r66n.stdout + _r66n.stderr,
      f"rc={_r66n.returncode}")
 # ⓑ **`--use-basic`은 verdict와 무관하게 prose다** — 사람이 플래그로 이긴다.
-reset("b65f")
-_r66b = _gen66("--use-basic")
-_st66b = json.loads((REVIEW / "b65f" / "state.json").read_text(encoding="utf-8"))
+_r66b, _st66b = _G66["basic"], _G66["st_basic"]
 show("⑤ⓑ --use-basic은 묻지 않고 고정 어댑터다 (판정과 무관)",
      _st66b.get("use_basic") is True and "[table/prose]" not in _r66b.stdout)
 
 print("\n■ B65 ④ — 고정 어댑터 doc_type은 재생성 대상이 아니다")
 
-_rv66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "review",
-                        "b65f", "--instruct", "레벨을 2로", "--allow-mock"],
-                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
-_rr66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
-                        "b65f", "process", str(_amb66), "--revise", "--allow-mock"],
-                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
+_rv66, _rr66 = _G66["instruct"], _G66["revise"]
 _both66 = _rv66.stdout + _rv66.stderr + _rr66.stdout + _rr66.stderr
 show("④ⓑ instruct·revise 둘 다 거부이고 다음 줄 셋을 준다",
      "재생성 대상이 아니다" in _rv66.stdout + _rv66.stderr
@@ -554,14 +594,12 @@ show("④ⓑ instruct·revise 둘 다 거부이고 다음 줄 셋을 준다",
 show("④ⓑ 거부 경로에 LLM 호출이 없다 (draft를 부르지 않는다)",
      "MOCK ⑤구축 모드 생성" not in _both66 and "초안 수령" not in _both66)
 # **status·confirm·플래그 없는 review는 그대로다** — 막는 것은 재생성뿐이다.
-_sv66 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "status",
-                        "b65f", "--allow-mock"], capture_output=True, text=True,
-                       cwd=str(ROOT), stdin=subprocess.DEVNULL)
+_sv66 = _G66["status"]
 show("④ⓑ status는 그대로 돈다 (막는 것은 재생성뿐)",
      "재생성 대상이 아니다" not in _sv66.stdout + _sv66.stderr
      and _sv66.returncode == 0, f"rc={_sv66.returncode}")
-reset("b65f")
 shutil.rmtree(_d66, ignore_errors=True)
+shutil.rmtree(_HOMES, ignore_errors=True)         # 사본 루트 — 이 루트에는 b65f가 없다
 
 
 # ── B66 ①② — 헤더 지문은 포맷을 보지 않는다 · 미선택은 네 갈래다 ──────────

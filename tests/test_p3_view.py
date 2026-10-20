@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
-"""P3 ④ 판정과 뷰 — 모든 열은 판정을 갖는다 · 하네스 자동 갈래 · 추출 리허설."""
+"""P3 ④ 판정과 뷰 — 모든 열은 판정을 갖는다 · 하네스 자동 갈래 · 추출 리허설.
+
+서로 기대지 않는 흐름(B50 자동 갈래 · ipqc 미통과 · [정정]40 두 벌 · parse run)은 **setup 직후 루트의 사본**에서 돌고
+(`ONTO_MOCK_HOME` — 사본의 이름도 mock 자리 그대로라 같은 갈래를 탄다) B51 추출 리허설은 이 스위트의 루트에서 돈다 —
+흐름마다 루트가 달라 동시에 돈다(같은 루트에 두 실행을 겹치지 않는다 · B121 ②ⓓ). 판정 줄은 원래 차례로 낸다.
+"""
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -10,14 +16,153 @@ from p3_common import *                       # noqa: F401,F403 — 바닥은 �
 from p3_common import _P, _reg_src, _call_names   # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
 
 import os as _os
+import tempfile as _tf
 from kit import render_review as _RR
+from core.build import extract as _EX                                     # noqa: E402
+from core.state import rehearsal as _RH                                    # noqa: E402
 
 setup()
+
+# ============================================================ 흐름 — 사본 루트에서 동시에 (B121 ②ⓓ)
+_HOMES = Path(_tf.mkdtemp(prefix="p3view_"))
+
+
+def _home(name):
+    """setup 직후 클린 루트의 사본 — 폴더 이름이 지금 루트와 같다(mock 자리 판정 `paths.is_mock_home`이 같다)."""
+    d = _HOMES / name / _P.home().name
+    shutil.copytree(_P.home(), d)
+    return d
+
+
+def _at(home, *argv, fixtures=None):
+    """하위 실행 — 상태 루트 `home`(사본)에서 `run.py <argv>`. 명령은 원래 그대로다."""
+    env = {**_os.environ, _P.MOCK_HOME_ENV: str(home)}
+    if fixtures:
+        env["ONTO_FIXTURES"] = str(fixtures)
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), *argv], capture_output=True, text=True,
+                          cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
+
+
+def _review_at(home, dt):
+    return _P.mirror(REVIEW, home) / dt
+
+
+# ── B50 ⓐ 자동 갈래 재료 — 규약 10을 어긴 판 → 자동 재생성 → PASS
+_fx = Path(_tf.mkdtemp(prefix="b50fx_", dir=str(ROOT)))
+(_fx / "fixtures/adapters").mkdir(parents=True)
+(_fx / "fixtures/schemas").mkdir(parents=True)
+_good = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8").replace(
+    '"doc_type": "cp"', '"doc_type": "b50t"', 1)
+_MUT = ("\n\ndef _expand_merged(sheet):\n"
+        "    # 병합 전개를 재구현했다 — 규약 10 위반(하네스가 잡는다)\n"
+        "    return dict(sheet.get('cells') or {})\n\n\n"
+        "def _col_to_idx(col):\n"
+        "    # 열 문자 변환도 재구현 — parser.normalizer._col의 몫이다\n"
+        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
+        "\n\nADAPTER = {")
+_bad = _good.replace("\nADAPTER = {", _MUT, 1)
+(_fx / "fixtures/adapters/b50t.py").write_text(_bad, encoding="utf-8")
+(_fx / "fixtures/adapters/b50t_rev1.py").write_text(_good, encoding="utf-8")
+_csch = {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
+         "doc_type": "b50t"}
+for _n in ("b50t", "b50t_rev1"):
+    (_fx / "fixtures/schemas" / f"{_n}.json").write_text(
+        json.dumps(_csch, ensure_ascii=False), encoding="utf-8")
+
+# ── [정정]40 재료 — 지시 재생성분이 붉은 판(f40ok는 자동 해소 · f40no는 해소 못 함)
+_f40 = Path(_tf.mkdtemp(prefix="fx40_", dir=str(ROOT)))
+(_f40 / "fixtures/adapters").mkdir(parents=True)
+(_f40 / "fixtures/schemas").mkdir(parents=True)
+_g40 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+_M40 = ("\n\ndef _expand_merged(sheet):\n"
+        "    # 병합 전개를 재구현했다 — 규약 10 위반\n"
+        "    return dict(sheet.get('cells') or {})\n\n\n"
+        "def _col_to_idx(col):\n"
+        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
+        "\n\nADAPTER = {")
+_b40 = _g40.replace("\nADAPTER = {", _M40, 1)
+_s40 = json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8"))
+for _dt, _pairs in (("f40ok", (("", _g40), ("_rev1", _b40), ("_rev2", _g40))),
+                    ("f40no", (("", _g40), ("_rev1", _b40), ("_rev2", _b40)))):
+    for _sfx, _src in _pairs:
+        (_f40 / "fixtures/adapters" / f"{_dt}{_sfx}.py").write_text(
+            _src.replace('"doc_type": "cp"', f'"doc_type": "{_dt}"', 1), encoding="utf-8")
+        (_f40 / "fixtures/schemas" / f"{_dt}{_sfx}.json").write_text(
+            json.dumps({**_s40, "doc_type": _dt}, ensure_ascii=False), encoding="utf-8")
+
+
+def _flow_b50(home):
+    r = _at(home, "register", "generate", "b50t", "process", str(RAW / "CP01.xlsx"), "--allow-mock", fixtures=_fx)
+    return r, json.loads((_review_at(home, "b50t") / "state.json").read_text(encoding="utf-8"))
+
+
+def _flow_ipqc(home):
+    # 이 스위트의 재료다 — 등록 스위트(S15)와 **같은 명령**을 제 손으로 돌린다(`p3_common.run`과 같은 플래그).
+    return _at(home, "register", "generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
+               "--hint", "16열 검사 성적서", "--allow-mock", "--no-basic")
+
+
+def _flow_f40(home, dt, instruct):
+    """생성 → 검수 지시 1회. 지시 전후 뷰 바이트 · 상태를 돌려준다."""
+    _at(home, "register", "generate", dt, "process", str(RAW / "CP01.xlsx"), "--allow-mock", fixtures=_f40)
+    v = _review_at(home, dt) / "view.json"
+    before = v.read_bytes() if v.exists() else None
+    r = _at(home, "register", "review", dt, "--instruct", instruct, "--no-llm-coord", "--allow-mock", fixtures=_f40)
+    st = json.loads((_review_at(home, dt) / "state.json").read_text(encoding="utf-8"))
+    return r, st, before, (v.read_bytes() if v.exists() else None)
+
+
+def _flow_parse(home):
+    """parse run 세 꼴 — 산출 자리 `parsed/<doc_id>.json`의 이름이 doc_id다."""
+    cp = str(ROOT / "tests/fixtures/adapters/cp.py")
+    rs = [_at(home, "parse", "run", "--allow-mock", *a) for a in
+          ((cp, str(RAW / "CP01.xlsx")), (cp, "CPOLD", str(RAW / "CP01.xlsx")),
+           (cp, str(RAW / "CP01.xlsx"), "--doc-id", "지정본"))]
+    return rs, {n: _P.mirror(_P.parsed(f"{n}.json"), home).exists() for n in ("CP01", "CPOLD", "지정본")}
+
+
+def _flow_toc():
+    """B51 — **이 스위트의 루트**에서 toc_report 생성 한 번 → 검수 셋(부분 · 비대화형 · 전량) → 확정 → 인입.
+
+    검수마다 생성을 다시 하지 않는다(B121 ②ⓓ) — 부분 · 비대화형 검수는 리허설 산출을 남기지 않으므로 뒤의 전량 검수는
+    생성 직후와 같은 바닥에서 돈다.
+    """
+    out = {}
+    reset("toc_report")
+    _EX.invalidate("TOC01")
+    run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
+    run("review", "toc_report", "--rows", "5", "--no-llm-coord", "--extract")
+    out["partial"] = (view_of("toc_report")["sections"].get("extract_rehearsal") or {}, _EX.has_checkpoint("TOC01"))
+    run("review", "toc_report", "--no-llm-coord")          # --extract 없음 = 물어본다
+    out["none"] = view_of("toc_report")
+    out["review"] = run("review", "toc_report", "--no-llm-coord", "--extract")
+    out["view"] = view_of("toc_report")
+    out["kept"] = (_RH.place("toc_report", "TOC01", "extract", "TOC01.json").exists(), _EX.has_checkpoint("TOC01"),
+                   str(_RH.place("toc_report", "TOC01")))
+    out["html"] = (REVIEW / "toc_report" / "view.html").read_text(encoding="utf-8")
+    run("confirm", "toc_report", "--by", "검수자")
+    out["ingest"] = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
+                                    str(RAW / "TOC01.xlsx"), "--doc-type", "toc_report",
+                                    "--allow-mock"], capture_output=True, text=True, cwd=str(ROOT),
+                                   stdin=subprocess.DEVNULL)
+    out["approval"] = json.loads((REVIEW / "toc_report" / "approval.json").read_text(encoding="utf-8"))
+    reset("toc_report")
+    _EX.invalidate("TOC01")
+    (_P.parsed() / "TOC01.json").unlink(missing_ok=True)
+    return out
+
+
+# 사본을 전부 뜬 다음에 돈다 — 이 스위트의 루트를 쓰는 흐름(`_flow_toc`)이 사본보다 먼저 시작하지 않는다
+_H = {n: _home(n) for n in ("b50", "ipqc", "f40ok", "f40no", "parse")}
+_pool = ThreadPoolExecutor(max_workers=6)
+_F = {"b50": _pool.submit(_flow_b50, _H["b50"]), "ipqc": _pool.submit(_flow_ipqc, _H["ipqc"]),
+      "f40ok": _pool.submit(_flow_f40, _H["f40ok"], "f40ok", "복수값 구분자를 더 받아라"),
+      "f40no": _pool.submit(_flow_f40, _H["f40no"], "f40no", "이렇게 고쳐라"),
+      "parse": _pool.submit(_flow_parse, _H["parse"]), "toc": _pool.submit(_flow_toc)}
 
 
 print("\n■ B50 — 하네스는 생성 안에서 돌고, 실패는 문면이 답을 담는지로 갈린다 (M9 개정)")
 import ast as _ast                                                  # noqa: E402
-import tempfile as _tf                                              # noqa: E402
 
 # ── 분류표 — 자동은 「문면이 답을 담는」 것뿐이고 **목록 밖은 문답**이다
 _auto_lines = [
@@ -72,49 +217,19 @@ show("② 하네스 호출은 machine_gate 한 곳이다 (생성이 부른다)",
      and _gen_calls.count("_finish_generate") >= 1)
 
 # ── ⓐ 자동 갈래 실물 — 규약 10을 어긴 판 → 자동 재생성 → PASS
-_fx = Path(_tf.mkdtemp(prefix="b50fx_", dir=str(ROOT)))
-(_fx / "fixtures/adapters").mkdir(parents=True)
-(_fx / "fixtures/schemas").mkdir(parents=True)
-_good = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8").replace(
-    '"doc_type": "cp"', '"doc_type": "b50t"', 1)
-_MUT = ("\n\ndef _expand_merged(sheet):\n"
-        "    # 병합 전개를 재구현했다 — 규약 10 위반(하네스가 잡는다)\n"
-        "    return dict(sheet.get('cells') or {})\n\n\n"
-        "def _col_to_idx(col):\n"
-        "    # 열 문자 변환도 재구현 — parser.normalizer._col의 몫이다\n"
-        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
-        "\n\nADAPTER = {")
-_bad = _good.replace("\nADAPTER = {", _MUT, 1)
-(_fx / "fixtures/adapters/b50t.py").write_text(_bad, encoding="utf-8")
-(_fx / "fixtures/adapters/b50t_rev1.py").write_text(_good, encoding="utf-8")
-_csch = {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
-         "doc_type": "b50t"}
-for _n in ("b50t", "b50t_rev1"):
-    (_fx / "fixtures/schemas" / f"{_n}.json").write_text(
-        json.dumps(_csch, ensure_ascii=False), encoding="utf-8")
-_env = {**_os.environ, "ONTO_FIXTURES": str(_fx)}
-_r50 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
-                       "b50t", "process", str(RAW / "CP01.xlsx"), "--allow-mock"],
-                      capture_output=True, text=True, cwd=str(ROOT), env=_env,
-                      stdin=subprocess.DEVNULL)
-show("② ⓐ 자동 갈래 — 하네스 FAIL → 자동 재생성 → PASS (사람의 통역 0)",
-     "기계 관문(하네스): FAIL" in _r50.stdout
-     and "재생성 지시 (자동(하네스))" in _r50.stdout
-     and "기계 관문 PASS" in _r50.stdout and _r50.returncode == 0,
-     (_r50.stdout.strip().splitlines() or ["(빈 출력)"])[-1])
-show("② ⓐ 보낸 지시는 실패 문면 그대로다 (통역하지 않는다)",
-     "규약 10" in _r50.stdout.split("재생성 지시")[1].split("재생성 1회째")[0])
-_st50 = json.loads((REVIEW / "b50t" / "state.json").read_text(encoding="utf-8"))
-show("② ⓐ 지시 이력에 주체가 남는다 — by: 자동(하네스)",
+# 화면 표지(「FAIL → 재생성 지시 → PASS」)는 재지 않는다 — 자동 지시는 하네스 FAIL에서만 생기므로 상태의 지시 이력이
+# 그 사슬이다(B121 ②ⓐ).
+_r50, _st50 = _F["b50"].result()
+_i50 = (_st50.get("instructions") or [{}])[0].get("instruction") or ""
+show("② ⓐ 보낸 지시는 실패 문면 그대로다 (통역하지 않는다) — 지시 기록이 하네스의 FAIL 줄이다",
+     "[FAIL]" in _i50 and "규약 10" in _i50, _i50.splitlines()[:1])
+show("② ⓐ 자동 갈래 — 하네스 FAIL → 자동 재생성 → PASS · 지시 이력에 주체가 남는다 (by: 자동(하네스) · 사람의 통역 0)",
      [i["by"] for i in _st50["instructions"]] == ["자동(하네스)"]
-     and _st50["machine_gate"] == "PASS", str(_st50.get("instructions"))[:90])
+     and _st50["machine_gate"] == "PASS" and _r50.returncode == 0, str(_st50.get("instructions"))[:90])
 shutil.rmtree(_fx, ignore_errors=True)
-shutil.rmtree(REVIEW / "b50t", ignore_errors=True)
 
 # ── ⓓ 미통과는 검수로 넘어가지 않는다 (ipqc — 규약 10 미준수 스냅샷)
-# 이 스위트의 재료다 — 등록 스위트(S15)와 **같은 명령**을 제 손으로 돌린다.
-_gi = run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
-          "--hint", "16열 검사 성적서")
+_gi = _F["ipqc"].result()
 # **막고, 그 자리에서 다음 줄을 준다**(B59 ①) — 구판은 「검수로 넘어가지 않았다」만
 # 말해 사내가 막다른 길에 섰다. 잠글 성질은 ①뷰로 넘어가지 않았다(rc) ②FAIL 줄이
 # 코드와 함께 화면에 있다 ③칠 수 있는 명령이 함께 있다.
@@ -136,60 +251,22 @@ show("② 하네스 수리 — 조각 0건이 이제 FAIL이다 (구판은 검�
 
 # ============================================================ [정정]40 검수 지시 관문
 print("\n■ [정정]40 — --instruct 재생성분도 기계 관문을 지난다 (M9)")
-_f40 = Path(_tf.mkdtemp(prefix="fx40_", dir=str(ROOT)))
-(_f40 / "fixtures/adapters").mkdir(parents=True)
-(_f40 / "fixtures/schemas").mkdir(parents=True)
-_g40 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-_M40 = ("\n\ndef _expand_merged(sheet):\n"
-        "    # 병합 전개를 재구현했다 — 규약 10 위반\n"
-        "    return dict(sheet.get('cells') or {})\n\n\n"
-        "def _col_to_idx(col):\n"
-        "    return sum((ord(c) - 64) * 26 ** i for i, c in enumerate(reversed(col)))\n"
-        "\n\nADAPTER = {")
-_b40 = _g40.replace("\nADAPTER = {", _M40, 1)
-_s40 = json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8"))
-for _dt, _pairs in (("f40ok", (("", _g40), ("_rev1", _b40), ("_rev2", _g40))),
-                    ("f40no", (("", _g40), ("_rev1", _b40), ("_rev2", _b40)))):
-    for _sfx, _src in _pairs:
-        (_f40 / "fixtures/adapters" / f"{_dt}{_sfx}.py").write_text(
-            _src.replace('"doc_type": "cp"', f'"doc_type": "{_dt}"', 1), encoding="utf-8")
-        (_f40 / "fixtures/schemas" / f"{_dt}{_sfx}.json").write_text(
-            json.dumps({**_s40, "doc_type": _dt}, ensure_ascii=False), encoding="utf-8")
-_e40 = {**_os.environ, "ONTO_FIXTURES": str(_f40)}
-
-
-def _reg40(*a):
-    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
-                           "--allow-mock"], capture_output=True, text=True,
-                          cwd=str(ROOT), env=_e40, stdin=subprocess.DEVNULL)
-
-
-_reg40("generate", "f40ok", "process", str(RAW / "CP01.xlsx"))
-_r40 = _reg40("review", "f40ok", "--instruct", "복수값 구분자를 더 받아라",
-              "--no-llm-coord")
-show("① --instruct 재생성분이 하네스를 지난다 — FAIL이면 자동 해소가 돈다",
-     "기계 관문(하네스): FAIL" in _r40.stdout
-     and "재생성 지시 (자동(하네스))" in _r40.stdout
-     and "기계 관문(하네스): PASS" in _r40.stdout, _r40.stdout[-90:])
-_st40 = json.loads((REVIEW / "f40ok" / "state.json").read_text(encoding="utf-8"))
-show("① 지시 이력이 한 사슬이다 — 사람(검수 지시) → 자동(하네스)",
+_r40, _st40, _b40v, _a40v = _F["f40ok"].result()
+# 화면 표지(「하네스 FAIL → 자동 재생성 지시 → PASS」)는 재지 않는다 — 자동(하네스) 지시는 지시 재생성분이 하네스에서
+# 붉을 때만 생기므로 아래 사슬 · 뷰가 그 성질이다(B121 ②ⓐ).
+show("① 지시 이력이 한 사슬이다 — 사람(검수 지시) → 자동(하네스) (지시 재생성분이 하네스를 지나 자동 해소가 돈다)",
      [(i["n"], i["by"]) for i in _st40["instructions"]]
      == [(1, "사람(검수 지시)"), (2, "자동(하네스)")], str(_st40["instructions"])[:60])
 show("① 통과하면 뷰가 선다", _st40["machine_gate"] == "PASS"
-     and (REVIEW / "f40ok" / "view.json").exists() and _r40.returncode == 0)
-_reg40("generate", "f40no", "process", str(RAW / "CP01.xlsx"))
+     and _a40v is not None and _r40.returncode == 0)
 # **생성이 이미 뷰를 만들었다**(B58 ⑤) — 초안은 관문을 지났기 때문이다. 잠글
 # 성질은 「뷰가 없다」가 아니라 **「관문을 못 지난 산출로 뷰를 갈아 치우지
 # 않는다」**로 바뀐다: 붉은 재생성분이 화면을 덮으면 사람이 그것을 보고 승인한다.
-_v41 = REVIEW / "f40no" / "view.json"
-_before41 = _v41.read_bytes() if _v41.exists() else None
-_r41 = _reg40("review", "f40no", "--instruct", "이렇게 고쳐라", "--no-llm-coord")
-_st41 = json.loads((REVIEW / "f40no" / "state.json").read_text(encoding="utf-8"))
+_r41, _st41, _before41, _after41 = _F["f40no"].result()
 # **이 검사가 변이 시험이다** — `cmd_review`에서 machine_gate 호출을 빼면 붉은
 # 산출이 뷰를 덮어써 붉는다.
 show("① 해소 못 하면 **뷰를 갈아 치우지 않는다** · machine_gate=FAIL (변이 검출 지점)",
-     _st41["machine_gate"] == "FAIL"
-     and (_v41.read_bytes() if _v41.exists() else None) == _before41
+     _st41["machine_gate"] == "FAIL" and _after41 == _before41
      and Rgate.fail_lines(_r41.stdout) and _r41.returncode != 0,
      f"FAIL {len(Rgate.fail_lines(_r41.stdout))}줄 · rc={_r41.returncode}")
 # 검수도 단계 함수로 갈렸다(B78 2c) — 성질은 「검수의 지시 갈래가 관문을 부른다」다.
@@ -197,8 +274,6 @@ _rev_calls = [c for f, v in _calls.items() if f.startswith("cmd_review") or
               f.startswith("_cmd_review") for c in v]
 show("① 관문 호출이 cmd_review의 지시 갈래에 있다 (생성과 같은 함수)",
      _rev_calls.count("machine_gate") == 1)
-for _d in ("f40ok", "f40no"):
-    shutil.rmtree(REVIEW / _d, ignore_errors=True)
 shutil.rmtree(_f40, ignore_errors=True)
 
 # ── ② D-79에 rehearsal · 렌더러가 낸다
@@ -216,9 +291,10 @@ _rh = _RR.render({"doc_type": "x", "adapter_version": "1", "payload_kind": "tabl
                       "anomalies": [], "normal": {"excerpt": [], "all": [],
                                                   "columns": [], "tree": []}},
                       "role_table": [], "adapter_summary": {}}})
+# 문구는 재지 않는다 — 부분 리허설 줄이 전 행 수와 파싱한 행 수를 함께 싣는가(B121 ②ⓐ)
+_rhl = [l for l in _rh.splitlines() if "부분 리허설" in l]
 show("② 렌더러가 「부분 리허설 — 전 M행 중 앞 N행」을 요약에 낸다 (승인 근거)",
-     "부분 리허설 — 전 5,231행 중 앞 200행만 파싱했다" in _rh,
-     [l for l in _rh.splitlines() if "부분 리허설" in l][:1])
+     any("5,231" in l and "200" in l for l in _rhl), _rhl[:1])
 show("② 전량 파싱이면 그 줄이 없다 (없는 사실을 만들지 않는다)",
      "부분 리허설" not in _RR.render(
          {"doc_type": "x", "adapter_version": "1", "payload_kind": "table",
@@ -230,38 +306,24 @@ show("② 전량 파싱이면 그 줄이 없다 (없는 사실을 만들지 않�
 
 # ============================================================ B51 추출 리허설 · doc_id
 print("\n■ B51 — prose ②구획은 추출 리허설 · parse run의 doc_id 파생")
-from core.build import extract as _EX                                     # noqa: E402
 
-# ── ② parse run — doc_id는 선택이다 (§7.1)
-def _prun(*a):
-    return subprocess.run([sys.executable, str(ROOT / "run.py"), "parse", "run",
-                           "--allow-mock", *a], capture_output=True, text=True,
-                          cwd=str(ROOT), stdin=subprocess.DEVNULL)
-
-
-_p1 = _prun(str(ROOT / "tests/fixtures/adapters/cp.py"), str(RAW / "CP01.xlsx"))
-show("② 새 형 — doc_id를 파일명에서 파생한다 (ingest-file과 같은 규칙)",
-     "doc_id = CP01 (파일명 파생)" in _p1.stdout and _p1.returncode == 0,
-     _p1.stdout.splitlines()[:1])
-_p2 = _prun(str(ROOT / "tests/fixtures/adapters/cp.py"), "CPOLD", str(RAW / "CP01.xlsx"))
-show("② 구형 4인자도 그대로 받는다 (둘째가 파일이 아니면 doc_id다)",
-     "doc_id = CPOLD (인자)" in _p2.stdout and _p2.returncode == 0)
-_p3 = _prun(str(ROOT / "tests/fixtures/adapters/cp.py"), str(RAW / "CP01.xlsx"),
-            "--doc-id", "지정본")
-show("② --doc-id가 파생을 이긴다", "doc_id = 지정본 (지정)" in _p3.stdout)
+# ── ② parse run — doc_id는 선택이다 (§7.1) · 산출 자리의 이름으로 잰다(화면 문구가 아니다 · B121 ②ⓐ)
+(_p1, _p2, _p3), _made = _F["parse"].result()
+show("② 새 형 — doc_id를 파일명에서 파생한다 (ingest-file과 같은 규칙) — parsed/CP01.json",
+     _made["CP01"] and _p1.returncode == 0, _p1.stdout.splitlines()[:1])
+show("② 구형 4인자도 그대로 받는다 (둘째가 파일이 아니면 doc_id다) — parsed/CPOLD.json",
+     _made["CPOLD"] and _p2.returncode == 0)
+show("② --doc-id가 파생을 이긴다 — parsed/지정본.json", _made["지정본"] and _p3.returncode == 0)
 show("② 파생 함수는 한 곳이다 — cli/ingest.doc_id_of를 부른다(복제 0)",
      "from cli.ingest import doc_id_of" in
      (ROOT / "cli/parse.py").read_text(encoding="utf-8")
      and "def doc_id_of" not in (ROOT / "cli/parse.py").read_text(encoding="utf-8"))
-for _n in ("CP01", "CPOLD", "지정본"):
-    (_P.parsed() / f"{_n}.json").unlink(missing_ok=True)
 
-# ── ① prose 검수 뷰 — 추출 리허설이 운영과 같은 함수·같은 파일이다
-reset("toc_report")
-_EX.invalidate("TOC01")
-run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
-_rv = run("review", "toc_report", "--no-llm-coord", "--extract")
-_v51 = view_of("toc_report")
+# ── ① prose 검수 뷰 — 추출 리허설이 운영과 같은 함수·같은 파일이다 (한 번 생성 · 검수 셋 — `_flow_toc`)
+_T = _F["toc"].result()
+_pool.shutdown()
+shutil.rmtree(_HOMES, ignore_errors=True)
+_v51 = _T["view"]
 _xr = _v51["sections"].get("extract_rehearsal") or {}
 show("① prose ②구획이 추출 리허설이다 (배정표가 아니다)",
      "extract_rehearsal" in _v51["sections"] and "role_table" not in _v51["sections"]
@@ -273,51 +335,33 @@ show("① 청크별 후보와 카테고리 집계가 데이터에 있다 (렌더
 show("① 재현 조건이 실린다 — 출처·지시문 판본·config 판본",
      _xr.get("source") in ("mock", "live") and _xr.get("prompt_version")
      and _xr.get("config_version"), f"{_xr.get('source')} · {_xr.get('prompt_version')}")
-from core.state import rehearsal as _RH                                    # noqa: E402
 show("① ⓑ 리허설이 **운영의 doc_id**로 체크포인트를 리허설 산출 자리에 남긴다 — 운영 자리는 그대로 (B116 · 기대 변경)",
-     _RH.place("toc_report", "TOC01", "extract", "TOC01.json").exists() and not _EX.has_checkpoint("TOC01"),
-     str(_RH.place("toc_report", "TOC01")))
-_html51 = (REVIEW / "toc_report" / "view.html").read_text(encoding="utf-8")
+     _T["kept"][0] and not _T["kept"][1], _T["kept"][2])
 show("① 화면 제목이 「추출 리허설 — 층 어휘가 이 문서에 적용된 결과」다",
-     "구획 2 · 추출 리허설 — 층 어휘가 이 문서에 적용된 결과" in _html51
-     and "청크별 후보" in _html51)
-run("confirm", "toc_report", "--by", "검수자")
-_ing = subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file",
-                       str(RAW / "TOC01.xlsx"), "--doc-type", "toc_report",
-                       "--allow-mock"], capture_output=True, text=True, cwd=str(ROOT),
-                      stdin=subprocess.DEVNULL)
+     "구획 2 · 추출 리허설 — 층 어휘가 이 문서에 적용된 결과" in _T["html"]
+     and "청크별 후보" in _T["html"])
 show("① ⓑ 확정 뒤 운영 인입이 그 체크포인트를 **재사용**한다 (LLM 호출 추가 0)",
-     "[추출 체크포인트 재사용]" in _ing.stdout,
-     [l.strip() for l in _ing.stdout.splitlines() if "성공" in l][:1])
-_appr51 = json.loads((REVIEW / "toc_report" / "approval.json").read_text(encoding="utf-8"))
+     "[추출 체크포인트 재사용]" in _T["ingest"].stdout,
+     [l.strip() for l in _T["ingest"].stdout.splitlines() if "성공" in l][:1])
+_appr51 = _T["approval"]
 show("① ⓔ 승인 기록에 요약이 실린다 — 무엇이 뽑히는 것을 보고 승인했나",
      (_appr51.get("추출 리허설") or {}).get("totals")
      and (_appr51["추출 리허설"]).get("category_counts") is not None)
 
 # ── ⓒ 부분 리허설이면 체크포인트를 남기지 않는다
-reset("toc_report")
-_EX.invalidate("TOC01")
-(_P.parsed() / "TOC01.json").unlink(missing_ok=True)
-run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
-run("review", "toc_report", "--rows", "5", "--no-llm-coord", "--extract")
-_xr2 = view_of("toc_report")["sections"].get("extract_rehearsal") or {}
+_xr2, _cp2 = _T["partial"]
 show("① ⓒ 부분 리허설이면 체크포인트가 **안 남는다** (운영이 앞 N행만 본 추출을 쓰면 안 된다)",
-     not _EX.has_checkpoint("TOC01") and _xr2.get("kept") is False
+     not _cp2 and _xr2.get("kept") is False
      and "체크포인트를 남기지 않았다" in (_xr2.get("note") or ""), str(_xr2.get("note")))
 
 # ── ⓓ 비대화형이면 끄고 그 사실을 뷰가 말한다
-reset("toc_report")
-run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"))
-run("review", "toc_report", "--no-llm-coord")          # --extract 없음 = 물어본다
-_xr3 = view_of("toc_report")["sections"].get("extract_rehearsal") or {}
+_xr3 = _T["none"]["sections"].get("extract_rehearsal") or {}
 show("① ⓓ 비대화형이면 끄고 뷰에 「추출 리허설 없음」을 남긴다 (조용한 구간 0)",
      _xr3.get("source") == "none" and "없음" in (_xr3.get("note") or ""),
      str(_xr3))
 show("① prose의 리허설 기본은 전량이다 (부분 리허설의 근거는 table의 것)",
-     not (view_of("toc_report")["sections"]["parse_result"]["summary"]
+     not (_T["none"]["sections"]["parse_result"]["summary"]
           .get("rehearsal") or {}).get("truncated"))
-reset("toc_report")
-_EX.invalidate("TOC01")
 
 
 # ── B55 ① 재생성 지시가 **모델에 닿는다** (문서 6 §6.5 · [정정] 40) ──────────

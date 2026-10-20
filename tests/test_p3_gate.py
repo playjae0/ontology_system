@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
-"""P3 ③ 관문 — 스키마 strict · 오류 본문 · 분할 레벨 · mock 관문 · --resume."""
+"""P3 ③ 관문 — 스키마 strict · 오류 본문 · 분할 레벨 · mock 관문 · --resume.
+
+`--resume` 두 꼴은 B45 생성 직후 루트의 **사본 둘**에서 돈다(`ONTO_MOCK_HOME` — 사본의 이름도 mock 자리 그대로라 같은 갈래를
+탄다) — 루트가 달라 서로 · 이 스위트의 나머지와 동시에 돈다(같은 루트에 두 실행을 겹치지 않는다 · B121 ②ⓓ).
+"""
 from __future__ import annotations
 
 import sys
+import tempfile as _tf
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -12,6 +18,7 @@ from p3_common import _P, _reg_src            # noqa: F401 — `*`는 밑줄 이
 from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
 from core.llm import gateway
+import os as _os
 
 setup()
 
@@ -153,9 +160,33 @@ show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hin
 
 # ============================================================ B45 분할 분포
 print("\n■ B45 — 분할 크기 분포를 검수 뷰에 (자르는 규칙은 안 건드린다)")
-run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"),
-    str(RAW / "TOC02.xlsx"), "--hint", "목차형")
+_g45 = run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"),
+           str(RAW / "TOC02.xlsx"), "--hint", "목차형")
+_g45_made = (_P.review() / "toc_report" / "input_package.json").exists()
 run("review", "toc_report")
+
+# ── --resume 두 꼴(아래 「--resume 인자」)은 이 바닥의 사본에서 지금 돈다 (B121 ②ⓓ)
+_HOMES = Path(_tf.mkdtemp(prefix="p3gate_"))
+
+
+def _home(name):
+    """B45 직후 루트의 사본 — 폴더 이름이 지금 루트와 같다(mock 자리 판정 `paths.is_mock_home`이 같다)."""
+    d = _HOMES / name / _P.home().name
+    shutil.copytree(_P.home(), d)
+    return d
+
+
+def _resume_at(home, *argv):
+    """사본 루트 `home`에서 `register generate <argv> --allow-mock --no-basic`(`p3_common.run`과 같은 플래그)."""
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate", *argv,
+                           "--allow-mock", "--no-basic"], capture_output=True, text=True, cwd=str(ROOT),
+                          env={**_os.environ, _P.MOCK_HOME_ENV: str(home)}, stdin=subprocess.DEVNULL)
+
+
+_H = [_home("r1"), _home("r2")]                 # 사본을 다 뜬 다음에 돈다 — 이 루트는 아래에서 계속 쓴다
+_pool = ThreadPoolExecutor(max_workers=2)
+_RS = [_pool.submit(_resume_at, _H[0], "toc_report", "--resume"),
+       _pool.submit(_resume_at, _H[1], "toc_report", "quality", str(RAW / "TOC01.xlsx"), "--resume")]
 _v45 = view_of("toc_report")
 _sp = (_v45["sections"]["parse_result"]["summary"] or {}).get("split") or []
 show("① 분포가 뷰 데이터에 실린다 (표본마다 1건)", len(_sp) == 2, str(len(_sp)))
@@ -174,11 +205,7 @@ show("② 렌더러는 **그리기만** 한다 (계산은 산출자 · §6.6-3)"
          'r.get("너무_짧은_청크")', ""))
 show("② 구획 1의 3층 계약을 지킨다 (split은 summary 안이다 — D-79)",
      set(_v45["sections"]["parse_result"]) == {"summary", "anomalies", "normal"})
-# ⓑ 어댑터 경로는 바뀌지 않는다 — 고를 레벨이 없기 때문이다(B45 판정)
-_ref45 = [x for x in _il.import_module("tests.fixtures.fixtures.adapters.toc_report")
-          .extract(reader.read(str(RAW / "TOC01.xlsx"))) if "text" in x]
-show("③ 어댑터 경로 산출은 바뀌지 않는다 (굵기 교정의 정본은 어댑터 개정)",
-     len(_ref45) == 9, f"TOC01 어댑터 청크 {len(_ref45)}")
+# 「③ 어댑터 경로 산출은 바뀌지 않는다」는 아래 B45 정정 ⓑ(같은 스냅샷 어댑터 · 같은 표본 · 같은 계산)가 잰다(B121 ②ⓔ)
 
 # ============================================================ B45 정정
 print("\n■ B45 정정 — 어댑터 경로에도 분할 레벨 상수 (판정이 뒤집혔다)")
@@ -337,17 +364,16 @@ from cli import _gate as _G                                         # noqa: E402
 _bare = subprocess.run([sys.executable, "-m", "cli.register", "generate", "gate_t", "process"],
                        capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
 show("③ 설정 없이 register generate → 종료 코드 ≠ 0", _bare.returncode != 0, str(_bare.returncode))
+# 문구는 재지 않는다 — 칠 수 있는 두 길(플래그 · 켜는 설정 키)이 화면에 있는가(B121 ②ⓐ)
 show("③ 문면이 --allow-mock과 켜는 법을 함께 말한다",
-     "--allow-mock" in _bare.stdout and "실산출이 아닙니다" in _bare.stdout
-     and "USE_MOCK" in _bare.stdout, _bare.stdout.strip().splitlines()[-1:][0][:70]
-     if _bare.stdout.strip() else "(빈 출력)")
+     "--allow-mock" in _bare.stdout and "USE_MOCK" in _bare.stdout,
+     _bare.stdout.strip().splitlines()[-1:][0][:70] if _bare.stdout.strip() else "(빈 출력)")
 show("③ 모드 표시 다음에 멈춘다 (B42 ⑤ → 관문)", "모드:" in _bare.stdout)
 show("③ 멈춘 명령은 아무것도 만들지 않았다 — LLM 지점 호출 0회",
      not (_P.review() / "gate_t").exists())
-_allowed = run("generate", "gate_t", "process", str(RAW / "CP01.xlsx"))
-show("③ --allow-mock을 붙이면 종전대로 진행한다",
-     (_P.review() / "gate_t" / "input_package.json").exists(), _allowed.stdout[-80:])
-shutil.rmtree(_P.review() / "gate_t", ignore_errors=True)
+# 같은 명령(`register generate … --allow-mock`)을 이 성질만 보려고 한 번 더 돌리지 않는다 — B45 생성의 결과다(B121 ②ⓓ)
+show("③ --allow-mock을 붙이면 종전대로 진행한다 (B45의 생성 — 같은 명령)",
+     _g45.returncode == 0 and _g45_made, _g45.stdout.strip().splitlines()[-1:])
 for _c in ("init", "bootstrap"):
     _r = subprocess.run([sys.executable, str(ROOT / "run.py"), _c],
                         capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
@@ -370,10 +396,11 @@ show("③ 관문 호출은 CLI 진입점 5곳뿐이다 — core·parser에는 �
 
 # ============================================================ --resume 인자 (후속 ①)
 print("\n■ --resume은 층·표본을 요구하지 않는다 (실사용 IndexError 수리)")
-_r1 = run("generate", "toc_report", "--resume")
+_r1, _r2 = (f.result() for f in _RS)          # B45 직후 사본 둘에서 돌았다
+_pool.shutdown()
+shutil.rmtree(_HOMES, ignore_errors=True)
 show("① doc_type 하나로 돈다 (IndexError 0)",
      _r1.returncode == 0 and "이어하기" in _r1.stdout, _r1.stderr.strip()[-70:])
-_r2 = run("generate", "toc_report", "quality", str(RAW / "TOC01.xlsx"), "--resume")
 show("① 층·표본을 줘도 돌고, 무시한다는 경고가 뜬다 (침묵으로 넘기지 않는다)",
      _r2.returncode == 0 and "층·표본 인자는 무시한다" in _r2.stdout
      and "layer=" in _r2.stdout,
