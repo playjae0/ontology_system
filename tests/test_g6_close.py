@@ -282,6 +282,9 @@ _rd = BOX / "docs" / "spec" / "README.md"
 _rd.write_text(_rd.read_text(encoding="utf-8") + "\n~~시험 취소선~~\n", encoding="utf-8")
 # 장부(B131 ③) — 살아 있는 요청문 하나를 둔다 → PROGRESS는 둘만 남기고(이번 회차가 셋째) 가장 오래된 절을 옮긴다
 (BOX / "docs" / "안건" / "B999_요청문.md").write_text("# B999 시험 요청문\n", encoding="utf-8")
+_pg = BOX / "PROGRESS.md"                                  # 사본에 시험 절 하나 — 레포 장부 상태와 무관하게 옮길 절이 늘 있다
+_pg.write_text(_pg.read_text(encoding="utf-8").rstrip() + "\n\n---\n\n## B998 — 시험 절\n\n- 장부가 옮길 것이 있게\n",
+               encoding="utf-8")
 _secs0 = re.findall(r"^## (B\d+) — ", (BOX / "PROGRESS.md").read_text(encoding="utf-8"), re.M)
 _live0 = [m.group(1) for f in (BOX / "docs" / "안건").glob("*_요청문.md")
           if (m := re.match(r"(B\d+)_요청문", f.name)) and m.group(1) not in _secs0]
