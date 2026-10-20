@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 """G6 ㉔ 연결 보강 — 다른 공정 이름은 노드가 아니다 · 빈칸 표시 정규화 · 재연결은 더 붙는 것이 없을 때까지 (B113).
 
-창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표 · 산문) × 층(process ·
-quality)에서 같은 성질을 잰다(CLAUDE.md §4). 골격 이름 · 빈칸 표시는 데이터다(코드 분기 0).
+창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태마다 대표 한 벌이 층 둘에
+걸친다 — 표는 process · 산문은 quality(집이 process인 개체 · 엣지는 문서 층 — B100). 층 · 형태 곱은 층 중립 자리라 대표
+한 벌이다(B121 ②ⓒ — 층 호환은 층 어휘 정적 점검 · 네 벌이 잰다). 골격 이름 · 빈칸 표시는 데이터다(코드 분기 0).
 
 잠그는 성질:
   ⓐ 다른 공정 이름: 좌표 계보 밖 골격 이름(산문 개체 · 표 개체 열) ⇒ 노드 0 · 그 공정 노드로 관련 링크(`about`) ·
-     대장 판정 `mention` · 맞춤표 「다른 공정 언급」 칸 · 자기 공정과 그 하위 · 조상 이름은 지금 그대로 (층 둘)
+     대장 판정 `mention` · 맞춤표 「다른 공정 언급」 칸 · 자기 공정과 그 하위 · 조상 이름은 지금 그대로
   ⓑ 빈칸 표시: 개체 칸(표 · 산문)의 `-` · `N/A` · `해당 없음` ⇒ 개체 0 · 대장 판정 `blank` · 맞춤표 칸 · 좌표 칸은 비워
      문서 좌표를 물려받는다 · 값 칸의 「없음」은 그래프에 그대로 · 대장에 표지 · 공통 config 목록을 바꾸면 따른다
   ⓒ 재연결: ①좌표 미해소 보류 행이 문서 좌표 기록 뒤 손 명령(`ops relink --doc --coord --apply`)으로 서고 붙는다(추출
      LLM 0 · 체크포인트 그대로) ②뒤 청크가 만든 유닛에 앞 청크의 개체가 다음 바퀴에 붙는다 ③바퀴가 「붙음 0」에서 멈춘다 ·
-     같은 입력이면 같은 그래프
+     같은 입력이면 같은 그래프(클린 2회 — 첫 회는 ②의 실행)
 """
 from __future__ import annotations
 
@@ -121,7 +122,7 @@ def _about(doc_id):
 
 
 # ────────────────────────────────────────────────────────────── ⓐ
-print("\n■ B113 ① 다른 공정의 골격 이름은 노드가 아니다 — 관련 링크로 (산문 × 층 둘 · 표)")
+print("\n■ B113 ① 다른 공정의 골격 이름은 노드가 아니다 — 관련 링크로 (산문 × quality · 표 × process)")
 TEXT = {"사양": ["1. 연동", "앞 공정 스태킹 설비와 연동한다. 탭용접의 cutting 단계는 빠르다.", "2. 구동",
                  "모터는 서보 모터를 쓴다."]}
 
@@ -138,7 +139,7 @@ def _ents(c):
 
 
 _oa = []
-for _lay in ("process", "quality"):
+for _lay in ("quality",):                       # 산문은 quality 한 벌 — 표(아래)가 process(B121 ②ⓒ)
     _setup()
     _did = f"B113A{_lay[0].upper()}"
     _env = _prose(_did, _lay, TEXT, _ents)
@@ -155,7 +156,7 @@ for _lay in ("process", "quality"):
                 f"{_rw_['탭용접']['verdict']} · 노드 탭용접::스태킹 {len(_live('탭용접::스태킹'))} · 관련 링크 {_ab} · "
                 f"맞춤 칸 {_n_other}"))
 show("ⓐ 산문 — 계보 밖 공정 이름(스태킹)은 노드 0 · 그 공정으로 관련 링크 · 대장 mention · 맞춤 「다른 공정 언급」 "
-     "· 자기 공정(탭용접)과 그 하위(cutting)는 지금 그대로 (층 둘)", all(o for _l, o, _d in _oa),
+     "· 자기 공정(탭용접)과 그 하위(cutting)는 지금 그대로", all(o for _l, o, _d in _oa),
      " ‖ ".join(d for _l, _o, d in _oa))
 
 _setup()
@@ -178,7 +179,7 @@ show("ⓐ 표 — 개체 열 값이 계보 밖 공정 이름이면 노드 0 · �
 # ────────────────────────────────────────────────────────────── ⓑ
 print("\n■ B113 ② 빈칸 표시 정규화 (개체 칸 · 좌표 칸 · 값 칸 · 목록은 공통 config)")
 _ob = []
-for _lay in ("process", "quality"):
+for _lay in ("quality",):                       # 산문은 quality 한 벌 — 표(아래 파일)가 process(B121 ②ⓒ)
     _setup()
     _did = f"B113B{_lay[0].upper()}"
     _env = _prose(_did, _lay, {"사양": ["모터는 서보 모터를 쓴다."]},
@@ -190,7 +191,7 @@ for _lay in ("process", "quality"):
     _bl = [r for r in _rows(_did) if r["verdict"] == "blank"]
     _ob.append((_lay, len(_bl) == 2 and not _live("탭용접::-") and _cell(_end(_nt), "값(개체 행)", "빈칸 표시") == (2, True),
                 f"{_lay}: blank {[r['surface'] for r in _bl]} · 맞춤 {_cell(_end(_nt), '값(개체 행)', '빈칸 표시')}"))
-show("ⓑ 산문 — 개체 표기가 빈칸 표시면 개체 0 · 대장 blank · 맞춤 「빈칸 표시」 (층 둘)", all(o for _l, o, _d in _ob),
+show("ⓑ 산문 — 개체 표기가 빈칸 표시면 개체 0 · 대장 blank · 맞춤 「빈칸 표시」", all(o for _l, o, _d in _ob),
      " ‖ ".join(d for _l, _o, d in _ob))
 
 # 표 — 실제 파일(파서 정규화)로: 개체 칸 「-」 · 좌표 칸 「N/A」 · 값 칸 「없음」
@@ -273,8 +274,6 @@ show("ⓒ① 되살린 노드는 사전에 남는다(재시도 끝 저장이 덮
      _prop and _prop[0]["id"] in Dictionary.open().lookup("노칭::장력") and "이번에 볼 것 0 " in _again,
      f"사전 {Dictionary.open().lookup('노칭::장력')} · " + " ".join(_again.split()[:12]))
 
-_setup()
-
 
 def _units(c):
     t = c.get("text") or ""
@@ -287,12 +286,22 @@ def _units(c):
     return out
 
 
-_oc2 = []
-for _lay in ("process", "quality"):
+def _snap():
+    out = {}
+    for lay in discover():
+        g = open_graph(lay)
+        out[lay] = (sorted(n["canonical"] for n in g.nodes.values()),
+                    sorted((g.get(e["src"])["canonical"], e["rel"], g.get(e["dst"])["canonical"]) for e in g.edges
+                           if g.get(e["src"]) and g.get(e["dst"])))
+    return out
+
+
+UNITS = {"앞": ["모터는 이송 유닛의 구동을 맡는다."], "뒤": ["이송 유닛은 전극을 옮긴다."]}
+_oc2, _s = [], []
+for _lay in ("quality",):                       # 층 하나 — 바퀴 · 붙음은 층 중립(B121 ②ⓒ) · 유닛의 집은 process
     _setup()
     _did = f"B113C{_lay[0].upper()}"
-    _env = _prose(_did, _lay, {"앞": ["모터는 이송 유닛의 구동을 맡는다."], "뒤": ["이송 유닛은 전극을 옮긴다."]}, _units,
-                  doc_coord="노칭")
+    _env = _prose(_did, _lay, UNITS, _units, doc_coord="노칭")
     run_document(_env)
     _q0 = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == _did and x["kind"] == "orphan_attach"]
     from core.build.entry import finalize      # noqa: E402
@@ -305,28 +314,14 @@ for _lay in ("process", "quality"):
     _q1 = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == _did and x["kind"] == "orphan_attach"]
     _oc2.append((_lay, _q0 and _pe and not _q1 and _rounds and _rounds[-1] == 0 and sum(_rounds) >= 1,
                  f"{_lay}: 앞 청크 소속 미해소 큐 {len(_q0)} → 바퀴 붙음 {_rounds} · part_of 엣지 {len(_pe)} · 남은 큐 {len(_q1)}"))
-show("ⓒ② 뒤 청크가 만든 유닛에 앞 청크의 개체가 다음 바퀴에 붙는다 · ③ 바퀴는 「붙음 0」에서 멈춘다 (층 둘)",
+    _s.append(_snap())                          # ⓒ③의 첫 회 — 같은 입력의 클린 실행을 다시 돌리지 않는다(B121 ②ⓓ)
+show("ⓒ② 뒤 청크가 만든 유닛에 앞 청크의 개체가 다음 바퀴에 붙는다 · ③ 바퀴는 「붙음 0」에서 멈춘다",
      all(o for _l, o, _d in _oc2), " ‖ ".join(d for _l, _o, d in _oc2))
 
-
-def _snap():
-    out = {}
-    for lay in discover():
-        g = open_graph(lay)
-        out[lay] = (sorted(n["canonical"] for n in g.nodes.values()),
-                    sorted((g.get(e["src"])["canonical"], e["rel"], g.get(e["dst"])["canonical"]) for e in g.edges
-                           if g.get(e["src"]) and g.get(e["dst"])))
-    return out
-
-
-_s = []
-for _ in range(2):
-    _setup()
-    _env = _prose("B113CD", "process", {"앞": ["모터는 이송 유닛의 구동을 맡는다."], "뒤": ["이송 유닛은 전극을 옮긴다."]},
-                  _units, doc_coord="노칭")
-    run_document(_env)
-    finalize()
-    _s.append(_snap())
+_setup()                                        # ⓒ③의 둘째 회 — 클린 · 같은 입력(문서 · 층 · 힌트)
+run_document(_prose(_did, _lay, UNITS, _units, doc_coord="노칭"))
+finalize()
+_s.append(_snap())
 show("ⓒ③ 같은 입력이면 같은 결과 — 클린 2회 그래프(노드 · 엣지 이름) 같다", _s[0] == _s[1],
      f"노드 {sum(len(v[0]) for v in _s[0].values())} · 엣지 {sum(len(v[1]) for v in _s[0].values())}")
 

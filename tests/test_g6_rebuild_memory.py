@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
 """G6 ㉔ 재구축 기억 — 옛 사람 판단 기록에 이름 채우기 · 좌표 태깅 null 답 기억(닫힌 목록 판) · 재시도가 판정 대장을 갱신 (B107).
 
-창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표·산문) × 층(process · quality):
-표 CP01(cp · process) · PFMEA01(pfmea · quality — 좌표 「레이저노칭」이 목록 밖) · B107CP(CP01 사본 — 공정명 둘을 목록 밖으로) ·
-산문 RFQ01(prose 엑셀 · process · 문서 좌표 노칭) · B107Q(같은 통합문서의 사본 · quality). 좌표 태깅 `pick`은 **가짜 실호출**이다
-(게이트웨이 사용량에 센다 · 답은 늘 null) — mock 태깅은 정확 일치만이라 이 축이 비어 있다. 산문 조각은 실제 파싱에서 좌표가
-정확 일치(제목)·문서 좌표로만 서서 목록 밖이 생기지 않는다 — 산문 몫은 같은 함수(`tagger.tag` · `run_document`)에 조각을 넣는다.
+창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 표 하나 · 산문 하나가 층 둘에 걸친다:
+표 B107CP(CP01 사본 · cp · process — 공정명 둘을 목록 밖으로: 극성 cathode 행 하나 · 극성 없는 행 하나) · 산문 B107Q(RFQ01
+통합문서의 사본 · quality · 문서 좌표 노칭 — 집이 process인 개체와 그 끝점으로 가는 품질 그래프 엣지: 노드는 집 층 · 엣지는 문서 층).
+층 · 형태 곱은 층 중립 자리라 대표 한 벌이다(B121 ②ⓒ — 층 호환은 층 어휘 정적 점검 · 네 벌이 잰다). 좌표 태깅 `pick`은 **가짜
+실호출**이다(게이트웨이 사용량에 센다 · 답은 늘 null) — mock 태깅은 정확 일치만이라 이 축이 비어 있다. 산문 조각은 실제 파싱에서
+좌표가 정확 일치(제목)·문서 좌표로만 서서 목록 밖이 생기지 않는다 — 산문 몫은 같은 함수(`tagger.tag` · `run_document`)에 조각을 넣는다.
 
 잠그는 성질:
   ⓐ 이름 채움: B106 전 모양의 기록(이름 없음 · id만 — merge(canonical 지정 포함) · confirm(뒤에 개명) · alias · obsolete(대체 포함) ·
-     edge 삭제 · 표·산문 × 층 둘)을 옛 자리에 → 첫 실행(옮김)이 채운 이름 = B106이 연산 때 적은 이름(출처 `backfill`) / ②에 옮겨진
+     edge 삭제 · 표 · 산문 · 층 둘)을 옛 자리에 → 첫 실행(옮김)이 채운 이름 = B106이 연산 때 적은 이름(출처 `backfill`) / ②에 옮겨진
      이름 없는 기록 → `ops replay --dry-run`(그래프 쓰기 0)과 `rebuild` 계획(쓰기 0)이 채운다 · 그래프에 없는 id는 채우지 않고
      「이름 없음」 목록 / 그 뒤 재구축 ⇒ 연산 전부 재생(「기록에 이름 없음」 0) · canonical 기준 상태 = 재구축 전
-  ⓑ null 기억: 목록 밖 표기 null → 같은 조각 다시 ⇒ 묻지 않는다(「목록 밖(기억)」 · 표·산문 × 층 둘) / 지우는 손잡이(`ops learn-reject`
+  ⓑ null 기억: 목록 밖 표기 null → 같은 조각 다시 ⇒ 묻지 않는다(「목록 밖(기억)」 · 표 · 산문 한 벌씩) / 지우는 손잡이(`ops learn-reject`
      · --actor · 기록) ⇒ 그 표기만 / 골격 별칭 하나(판 문자열 그대로) ⇒ 다시 묻는다 / 실호출 모양의 재구축 ⇒ 끝 보고 「태깅 0」
   ⓒ 재시도 대장: 좌표가 목록 밖이라 orphan이던 값 → 별칭 + bootstrap → 재시도가 붙임(판정 호출 > 0 · 인입과 같은 이름 — 극성 하강) →
-     대장 행이 그 판정으로(`by: retry` · 표 × 층 둘 · 산문 × 층 둘) → 재구축 ⇒ 그 값 재생(「키 없음」 0 · 「대상 없음」 0 · 판정 호출 0)
+     대장 행이 그 판정으로(`by: retry` · 표 · 산문 × 층 둘) → 재구축 ⇒ 그 값 재생(「키 없음」 0 · 「대상 없음」 0 · 판정 호출 0)
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ sys_path = __import__("sys").path
 sys_path.insert(0, str(Path(__file__).resolve().parent))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
 from g65_common import _P, done   # noqa: F401
-from g6_common import DT, RFQ, _register, _run, _unregister   # noqa: E402 — 산문 엑셀 표본 · 등록 · CLI
+from g6_common import RFQ, _register, _run, _unregister   # noqa: E402 — 산문 엑셀 표본 · 등록 · CLI
 
 import run as RUN                                                  # noqa: E402
 from cli import ingest as IG, parse as PA, rebuild as RB           # noqa: E402
@@ -139,13 +140,12 @@ def _end_lines(out):
     return ls[i:]
 
 
-# ────────────────────────────────────────────────────────────── 바닥 — 표 · 산문 × 층 둘
-print("\n■ B107 바닥 — 표 · 산문 × 층 둘 (CP01 · RFQ01 · PFMEA01 · B107Q · B107CP) · 좌표 태깅은 가짜 실호출(답 null)")
+# ────────────────────────────────────────────────────────────── 바닥 — 표 · 산문 · 층 둘
+print("\n■ B107 바닥 — 표 · 산문 · 층 둘 (B107CP · B107Q) · 좌표 태깅은 가짜 실호출(답 null)")
 with contextlib.redirect_stdout(io.StringIO()):
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
 QDT = "b107pq"
-_register("process", DT)
 _register("quality", QDT)
 TMP = Path(tempfile.mkdtemp(prefix="b107_"))          # 클린(init --fresh)이 지우지 않는 자리
 QX = TMP / "B107Q.xlsx"
@@ -154,29 +154,25 @@ CPX = TMP / "B107CP.xlsx"                             # CP01 사본 — 공정�
 MISS_CP = ("B107 미지 공정 가", "B107 미지 공정 나")
 _wb = load_workbook(RAW / "CP01.xlsx")
 _ws = _wb.worksheets[0]
-_ws["C8"], _ws["C9"] = MISS_CP                        # 탭용접 · 사이드 실링 행
+#: cathode 탭용접 첫 행(극성 cathode — 재시도의 극성 하강 · 병합 C23:C24를 풀어 그 한 행만) · 사이드 실링 행. 원본 CP01 ·
+#: PFMEA01은 넣지 않는다 — 사람 연산의 표 노드는 이 사본이 세운다(B121 ②ⓒ)
+_ws.unmerge_cells("C23:C24")
+_ws["C24"] = _ws["C23"].value
+_ws["C23"], _ws["C9"] = MISS_CP
 _wb.save(CPX)
-_hint("RFQ01", {
-    "사양_기계!R2-R6": {"entities": [{"surface": "이송 속도", "category": "Property",
-                                     "belongs_to": {"name": "이송 장치", "category": "Unit", "from": "본문"}}],
-                       "relations": []},
-    "사양_기계!R8-R17": {"entities": [{"surface": "노칭 프레스기", "category": "Unit"},
-                                      {"surface": "가압력", "category": "Property"},
-                                      {"surface": "금형 클리어런스", "category": "Property"}],
-                        "relations": [{"src": "노칭 프레스기", "rel": "has_property", "dst": "가압력"}]},
-    "사양_기계!R19-R23": {"entities": [{"surface": "노칭 정밀도", "category": "Property"},
-                                       {"surface": "버 높이", "category": "Property"}], "relations": []},
-    "요구사항!R2-R3": {"entities": [{"surface": "적층 정렬도", "category": "Property"}], "relations": []}})
+#: 품질 산문 — 집이 process인 개체(「가압력」 · 「금형 간극」 · 「버 높이」 — 새 노드)와 그 끝점으로 가는 품질 그래프 엣지(`controlled_by`)
 _hint("B107Q", {
     "사양_기계!R8-R17": {"entities": [{"surface": "가압력 부족", "category": "Failure"},
-                                      {"surface": "금형 클리어런스 과다", "category": "Failure"}],
-                        "relations": [{"src": "금형 클리어런스 과다", "rel": "causes", "dst": "가압력 부족"}]},
-    "사양_기계!R19-R23": {"entities": [{"surface": "버 발생량 과다", "category": "Failure"}], "relations": []},
+                                      {"surface": "금형 클리어런스 과다", "category": "Failure"},
+                                      {"surface": "가압력", "category": "Property"},
+                                      {"surface": "금형 간극", "category": "Property"}],
+                        "relations": [{"src": "금형 클리어런스 과다", "rel": "causes", "dst": "가압력 부족"},
+                                      {"src": "가압력 부족", "rel": "controlled_by", "dst": "가압력"}]},
+    "사양_기계!R19-R23": {"entities": [{"surface": "버 발생량 과다", "category": "Failure"},
+                                       {"surface": "버 높이", "category": "Property"}], "relations": []},
     "사양_전장!R5-R6": {"entities": [{"surface": "전원 차단 실패", "category": "Failure"}], "relations": []}})
 SHEETS = "2-4:prose 5:ref *:skip"
-DOCS = [("CP01", RAW / "CP01.xlsx", "cp", None, None), ("RFQ01", RFQ, DT, SHEETS, X),
-        ("PFMEA01", RAW / "PFMEA01.xlsx", "pfmea", None, None), ("B107Q", QX, QDT, SHEETS, X),
-        ("B107CP", CPX, "cp", None, None)]
+DOCS = [("B107CP", CPX, "cp", None, None), ("B107Q", QX, QDT, SHEETS, X)]
 _first = {}
 for did, f, dt, sh, co in DOCS:
     _r, _o = _quiet(IG.ingest_file, str(f), dt, ask=False, sheets=sh, coord=co)
@@ -184,7 +180,7 @@ for did, f, dt, sh, co in DOCS:
 P_FIRST = sorted(set(PICKED))
 print(f"  첫 인입 — {_first} · 좌표 태깅 가짜 실호출 {len(PICKED)}회 {P_FIRST} · mock 판정·추출 {dict(CALLS)}")
 
-# ── 사람 연산 — 표·산문 × 층 둘 · merge는 canonical 지정 하나 포함 · confirm 뒤 개명(그때의 이름)
+# ── 사람 연산 — 종류마다 하나 이상(표 · 산문 · 층 둘) · merge는 canonical 지정 하나 포함 · confirm 뒤 개명(그때의 이름)
 _by = {(lay, n["canonical"]): n["id"] for lay, n in World().nodes() if is_live(n)}
 
 
@@ -199,9 +195,9 @@ def _live_edge(src, rel=None, dst=None):
 
 with contextlib.redirect_stdout(io.StringIO()):
     ops.confirm("process", _id("process", "노칭::노칭 프레스"), A, "B107 확인(표)")
-    _k, _g = _id("process", "노칭::금형 클리어런스"), _id("process", "노칭::cathode::금형 클리어런스")
-    ops.merge("process", _g, _k, A, canonical="노칭::cathode::금형 클리어런스", override=_k,
-              reason="B107 합침(표 · 이름은 없어지는 쪽)")
+    _k, _g = _id("process", "노칭::금형 클리어런스"), _id("process", "노칭::금형 간극")
+    ops.merge("process", _g, _k, A, canonical="노칭::금형 간극", override=_k,
+              reason="B107 합침(품질 문서의 노드 → 표 · 이름은 없어지는 쪽)")
     ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::버 높이"), A,
               reason="B107 합침(산문 → 표)")
     ops.alias("process", _id("process", "노칭::노칭 정밀도"), "노칭 정확도", A, "B107 표기(표)")
@@ -209,8 +205,8 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B107 폐기(표)")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B107 엣지 삭제(표)")
-    _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 장치::이송 속도"))   # 기대 변경(B119 ④ — 사양은 주인 아래 `nest_categories`)
-    ops.delete_edge("process", _e2["src"], _e2["rel"], _e2["dst"], A, "B107 엣지 삭제(산문 소속)")
+    _e2 = _live_edge(_id("quality", "가압력 부족"), "controlled_by", _id("process", "노칭::가압력"))   # 품질 그래프 · 끝점은 process
+    ops.delete_edge("quality", _e2["src"], _e2["rel"], _e2["dst"], A, "B107 엣지 삭제(산문 · 층 건너는 엣지)")
     ops.confirm("quality", _id("quality", "가압력 부족"), A, "B107 확인(산문)")
     ops.obsolete("quality", _id("quality", "금형 클리어런스 과다"), A, _id("quality", "가압력 부족"), "B107 폐기(산문 · 대체)")
     ops.rename("process", _id("process", "노칭::노칭 프레스"), "노칭::노칭 프레스 장비", A, "B107 개명(확인 뒤)")
@@ -233,7 +229,7 @@ def _filled():
 
 
 # ────────────────────────────────────────────────────────────── ⓐ 이름 채움
-print("\n■ B107 ① 옛 사람 판단 기록에 이름 채우기 — 옮길 때 · ops replay(계획) · 재구축 계획 (표·산문 × 층 둘)")
+print("\n■ B107 ① 옛 사람 판단 기록에 이름 채우기 — 옮길 때 · ops replay(계획) · 재구축 계획 (표 · 산문 · 층 둘)")
 _old = _P.data(store.OPS_LOG)
 _old.write_text(json.dumps(OLD + [FAKE], ensure_ascii=False, indent=1), encoding="utf-8")
 store.path(store.OPS_LOG).unlink()
@@ -281,7 +277,7 @@ print("  ── 재구축 계획의 사람 판단 줄 · 끝 보고(잘리지 �
 for ln in [x for x in OUT_A.splitlines() if x.startswith("  사람 판단 기록")] + _end_lines(OUT_A):
     print(f"      {ln}")
 show("ⓑ 실호출 모양의 재구축 ⇒ 끝 보고 「태깅 0」(첫 인입은 목록 밖 표기마다 한 번 물었다 — 같은 판이라 기억) · 판정·추출 0",
-     _endA.get("태깅") == 0 and not PICKED and len(P_FIRST) >= 3 and _endA.get("판정") == 0
+     _endA.get("태깅") == 0 and not PICKED and set(MISS_CP) <= set(P_FIRST) and _endA.get("판정") == 0
      and CALLS.get("judge", 0) == CALLS.get("extract", 0) == 0,
      f"첫 인입 태깅 {len(P_FIRST)}종 {P_FIRST} → 재구축 태깅 {_endA.get('태깅')}(가짜 실호출 {len(PICKED)}) · 끝 줄 {_endA}")
 for ln in OUT_A.splitlines():
@@ -289,11 +285,11 @@ for ln in OUT_A.splitlines():
         print(f"      {ln.strip()}")
 
 # ────────────────────────────────────────────────────────────── ⓑ null 기억 — 같은 함수(tag) · 표·산문 × 층 둘
-print("\n■ B107 ② 좌표 태깅 null 답 기억 — 닫힌 목록 판(내용 해시) · 표·산문 × 층 둘")
+print("\n■ B107 ② 좌표 태깅 null 답 기억 — 닫힌 목록 판(내용 해시) · 표 × process · 산문 × quality")
 with contextlib.redirect_stdout(io.StringIO()):
     RUN.cmd_bootstrap([])                              # 지금 그래프로 스냅샷을 다시 쓴다(판의 출발점)
 LAY = coord_layer()
-COMBOS = [(f, l) for f in ("표", "산문") for l in ("process", "quality")]
+COMBOS = [("표", "process"), ("산문", "quality")]     # 형태 × 층 한 벌씩 — 태깅 기억은 층 중립(B121 ②ⓒ)
 
 
 def _pieces(form, lay):
@@ -327,7 +323,7 @@ _ver_a = TG.list_version(TG.closed_list(LAY))
 _book = TG.learned()["목록밖"]
 _again = {c: _tag(*c) for c in COMBOS}
 show("ⓑ 목록 밖 표기 2종이 null → 같은 조각 다시(같은 함수 `tag`) ⇒ 태깅 호출 0 · 「목록 밖(기억) 2종」 · 묻는 종수 0 "
-     "(표·산문 × 층 둘 · 기록의 판 = 닫힌 목록 내용 해시)",
+     "(표 · 산문 · 기록의 판 = 닫힌 목록 내용 해시)",
      all(_first_b[c][0] == 2 and _again[c][0] == 0 and _again[c][1].get("기억_종수") == 2
          and _again[c][1].get("묻는_종수") == 0 for c in COMBOS)
      and all(_book.get(s, {}).get("list_version") == _ver_a for c in COMBOS for s in _pieces(*c)[2]),
@@ -357,14 +353,14 @@ with contextlib.redirect_stdout(io.StringIO()):
 _sv1 = (store.read(store.SKELETON_LIST, {}).get(LAY) or {}).get("skeleton_version")
 _ver_b = TG.list_version(TG.closed_list(LAY))
 _alias = {c: _tag(*c) for c in COMBOS}
-show("ⓑ 골격에 별칭 하나 더함(판 문자열 `skeleton_version`은 그대로) ⇒ 판(내용 해시)이 바뀌어 다시 묻는다(호출 > 0 · 표·산문 × 층 둘)",
+show("ⓑ 골격에 별칭 하나 더함(판 문자열 `skeleton_version`은 그대로) ⇒ 판(내용 해시)이 바뀌어 다시 묻는다(호출 > 0 · 표 · 산문)",
      _sv0 == _sv1 and _ver_a != _ver_b and all(_alias[c][0] == 2 for c in COMBOS),
      f"판 문자열 {_sv0} → {_sv1} · 판 {_ver_a} → {_ver_b} · 다시 묻기 "
      + " · ".join(f"{f}×{l} {_alias[(f, l)][0]}" for f, l in COMBOS))
 SK.write_bytes(_SK0)
 
 # ────────────────────────────────────────────────────────────── ⓒ 재시도 대장
-print("\n■ B107 ③ 재시도가 판정 대장을 갱신 — 같은 키 · by retry · 인입과 같은 이름(표 × 층 둘 · 산문 × 층 둘)")
+print("\n■ B107 ③ 재시도가 판정 대장을 갱신 — 같은 키 · by retry · 인입과 같은 이름(표 · 산문 × 층 둘)")
 PMISS = "B107 산문 미지 공정"
 
 
@@ -389,7 +385,7 @@ def _rows(did, pred):
     return [r for r in (LG.read(did) or {}).get("rows") or [] if r.get("role") == "entity" and pred(r)]
 
 
-ALIASED = ("레이저노칭", MISS_CP[0], PMISS)            # 아래에서 별칭을 줄 좌표 표기 — 「B107 미지 공정 나」는 그대로 목록 밖
+ALIASED = (MISS_CP[0], PMISS)                        # 아래에서 별칭을 줄 좌표 표기 — 「B107 미지 공정 나」는 그대로 목록 밖
 
 
 def _held(did):
@@ -400,12 +396,11 @@ def _held(did):
             and r.get("verdict") in ("orphan", "pending")]
 
 
-_before = {d: _held(d) for d in ("PFMEA01", "B107CP", *[e["doc_id"] for e in PENVS.values()])}
+_before = {d: _held(d) for d in ("B107CP", *[e["doc_id"] for e in PENVS.values()])}
 _sk = json.loads(_SK0.decode("utf-8"))
 _al = _sk.setdefault("ALIASES", {})
-_al.setdefault("노칭", []).append(ALIASED[0])                  # 표 × quality(PFMEA01) — 극성 cathode 행
-_al.setdefault("스태킹", []).append(ALIASED[1])                # 표 × process(B107CP)
-_al.setdefault("탭용접", []).append(ALIASED[2])                # 산문 × 층 둘
+_al.setdefault("노칭", []).append(ALIASED[0])                  # 표 × process(B107CP) — 극성 cathode 행(그 이름 노드는 아직 없다)
+_al.setdefault("탭용접", []).append(ALIASED[1])                # 산문 × 층 둘
 SK.write_text(json.dumps(_sk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 with contextlib.redirect_stdout(io.StringIO()):
     RUN.cmd_bootstrap([])
@@ -415,9 +410,9 @@ _judge_retry = CALLS.get("judge", 0)
 _after_c = {d: _rows(d, lambda r: r.get("by") == "retry") for d in _before}
 _keyed = all({(r["locator"], r["field"], r["surface"]) for r in _before[d]}
              <= {(r["locator"], r["field"], r["surface"]) for r in _after_c[d]} for d in _before)
-_bf = _after_c["PFMEA01"]
+_bf = _after_c["B107CP"]
 show("ⓒ 좌표가 목록 밖이라 orphan이던 값 → 별칭 + bootstrap → 재시도가 붙인다(판정 호출 > 0) · 그 문서 대장의 같은 키 행이 그 판정으로 "
-     "갈린다(`by: retry` · 경로 · 결과 · 대상 canonical — 표 × 층 둘 · 산문 × 층 둘) · 인입과 같은 이름(극성 하강)",
+     "갈린다(`by: retry` · 경로 · 결과 · 대상 canonical — 표 · 산문 × 층 둘) · 인입과 같은 이름(극성 하강)",
      _judge_retry > 0 and _keyed and all(_before[d] for d in _before)
      and all(r["verdict"] in ("match", "new", "uncertain") and r.get("target") for d in _after_c for r in _after_c[d])
      and any(str(r.get("target")).startswith("노칭::cathode::") for r in _bf),
@@ -427,8 +422,8 @@ show("ⓒ 좌표가 목록 밖이라 orphan이던 값 → 별칭 + bootstrap →
 _rc, OUT_C = _rebuild()
 _endC = _end(OUT_C)
 _rp = {d: _rows(d, lambda r: (r["locator"], r["field"], r["surface"]) in
-                {(x["locator"], x["field"], x["surface"]) for x in _after_c[d]}) for d in ("PFMEA01", "B107CP")}
-show("ⓒ 재구축 ⇒ 재시도가 붙인 값이 재생된다(그 행 경로 replay · 끝 보고 「키 없음」 0 · 「대상 없음」 0 · 판정 호출 0) — 표 × 층 둘",
+                {(x["locator"], x["field"], x["surface"]) for x in _after_c[d]}) for d in ("B107CP",)}
+show("ⓒ 재구축 ⇒ 재시도가 붙인 값이 재생된다(그 행 경로 replay · 끝 보고 「키 없음」 0 · 「대상 없음」 0 · 판정 호출 0) — 표",
      _rc == 0 and _endC.get("키 없음") == 0 and _endC.get("대상 없음") == 0 and _endC.get("판정") == 0
      and CALLS.get("judge", 0) == 0 and all(_rp[d] and all(r.get("path") == "replay" for r in _rp[d]) for d in _rp),
      f"끝 줄 {_endC} · mock 판정 {CALLS.get('judge', 0)} · " + " · ".join(
@@ -450,7 +445,6 @@ show("ⓒ 산문(층 둘) — 같은 함수로 다시 넣으면 재시도가 적
 # ── 뒷정리 — 시험이 세운 것은 시험이 치운다
 for _d in _hinted:
     (HINTS / f"{_d}.json").unlink(missing_ok=True)
-_unregister(DT)
 _unregister(QDT)
 SK.write_bytes(_SK0)
 shutil.rmtree(TMP, ignore_errors=True)
