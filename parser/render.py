@@ -43,8 +43,72 @@ def _pdf_beside(path):
     return None
 
 
+#: **사내가 지정하는 한 자리**(B129 ①) — soffice 실행 파일(또는 그 폴더)의 경로 · 셸 설정 파일에 둔다(`ONTO_*`가 아니라 점검 ·
+#: 시험의 격리가 지우지 않는다 — 상태가 아니라 도구 자리다). 파서는 환경을 읽지 않는다 — 값은 `core/paths.bind_parser()`가 주입한다
+SOFFICE_ENV = "SOFFICE_PATH"
+_GIVEN = None
+
+
+def use_soffice_given(fn):
+    """지정 자리 주입 — 부르는 쪽은 `core/paths.bind_parser()` 하나다(주입이 없으면 지정 없음 — 킷 · 단독 실행)."""
+    global _GIVEN
+    _GIVEN = fn
+
+
+def _given():
+    try:
+        return str((_GIVEN() if _GIVEN else "") or "").strip()
+    except Exception:                                       # noqa: BLE001 — 읽지 못하면 지정 없음
+        return ""
+#: **표준 설치 자리**(B129 ①) — 후보 목록 하나(OS 갈래 0 · 있는 것만 쓴다): macOS · Linux 고정 자리 · `/opt/libreoffice*` ·
+#: Windows `%ProgramFiles%` · `%ProgramFiles(x86)%` 아래
+SOFFICE_PLACES = ("/Applications/LibreOffice.app/Contents/MacOS/soffice", "/usr/lib/libreoffice/program/soffice",
+                  "/usr/lib64/libreoffice/program/soffice", "/opt/libreoffice*/program/soffice",
+                  "%ProgramFiles%/LibreOffice/program/soffice.exe", "%ProgramFiles(x86)%/LibreOffice/program/soffice.exe")
+PATH_, PLACE, GIVEN = "PATH", "표준 자리", "지정"
+
+
+def _places():
+    import glob
+    out = []
+    for c in SOFFICE_PLACES:
+        c = os.path.expandvars(c)
+        if "%" in c:                                     # 그 환경변수가 없는 기계 — 그 후보는 없다
+            continue
+        out += sorted(glob.glob(c)) if "*" in c else [c]
+    return out
+
+
+def find_soffice():
+    """**soffice 찾기 한 함수**(B129 ①) — `(경로 또는 None, 어디서 — 지정 | PATH | 표준 자리, 찾아본 자리 글)`.
+
+    순서는 **지정(`SOFFICE_PATH`) → PATH(`soffice` · `libreoffice`) → 표준 설치 자리**다 — 사람이 지정했으면 그것이 이긴다
+    (여러 판이 깔린 기계). 캡처 판정 · 변환 · 그림 형식 변환 · 환경 점검이 이 함수 하나를 부른다."""
+    tried = []
+    given = _given()
+    if given:
+        g = Path(given)
+        cand = [g] if not g.is_dir() else [g / n for n in ("soffice", "soffice.exe", "soffice.bin")]
+        hit = next((str(c) for c in cand if c.is_file() and os.access(c, os.X_OK)), None)
+        if hit:
+            return hit, GIVEN, None
+        tried.append(f"지정 {SOFFICE_ENV}={given}(없음)")
+    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    if exe:
+        return exe, PATH_, None
+    tried.append("PATH(soffice · libreoffice)")
+    places = _places()
+    for c in places:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c, PLACE, None
+    tried.append("표준 자리 " + (" · ".join(places) if places else "0곳"))
+    if not given:
+        tried.append(f"지정 {SOFFICE_ENV} 없음")
+    return None, None, " · ".join(tried)
+
+
 def _soffice():
-    return shutil.which("soffice") or shutil.which("libreoffice")
+    return find_soffice()[0]
 
 
 def pymupdf():
@@ -88,9 +152,9 @@ def capture_path(path=None, probe=False):
             return True, PDF_DOC, None
         if _pdf_beside(p):
             return True, BESIDE, None
-    exe = _soffice()
+    exe, _where, tried = find_soffice()
     if not exe:
-        return False, NONE, NEED_ROUTE
+        return False, NONE, f"{NEED_ROUTE} — 찾아본 자리: {tried}"
     if not _impress(exe):
         return False, NONE, f"LibreOffice Impress — soffice({exe})는 있는데 PPTX 변환 구성 요소가 없다 · 또는 옆 PDF"
     if probe:
@@ -191,7 +255,7 @@ def to_png(data, mime):
     다르게 돌지 않고 **사유를 돌려준다**(호출부가 「건너뜀 — 변환기 없음」으로 화면·보고에 싣는다).
     바이트는 저장하지 않는다 — ④에 보내고 버린다(문서 5 §5.2-2).
     """
-    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    exe = _soffice()                                        # 찾기 한 함수 (B129 ①)
     if not exe:
         return None, NO_CONVERTER
     ext = _EXT_OF.get(mime, ".bin")

@@ -88,7 +88,7 @@ SUITES = [
     ("test_g6_deck", 6, "B125 — PPT: 슬라이드 = 추출 1회(상자 분할 0) · 같은 슬라이드(본문 · 표 · 노트 한 입력 · 그림 요약 값 버림) · 캡처(그림 무관 · 렌더 없으면 none + 수) · 덱 구조(글 상자 제목 · (계속) · 덱 개요 · 골격 밖 공정 버림) · 다공정(제 공정 아래 · 언급은 관련 링크 · --coord 없이 ingest-dir) · 고침 · 재생(LLM 0)"),
     ("test_g6_split", 8, "B126 · B127 — 구조 edit: 바닥(rules = B118 청크 · 고침 없는 edit = rules) · 고침(제목 더함 · 부모 바꿈 · 대상 → 사슬 · 이유 md · 어긋난 고침만 버림) · 시트마다 확인(힌트 → 앞 출력 + 힌트로 다시 · c 확정 → 재생 LLM 0) · 형태 단서(다시 시작 · 이어짐) · 빈 규칙 나무만 llm · --split-only(추출 0 · 쓰기 0 · md) · 확정한 시트도 힌트로 다시(기록된 힌트 + 새 힌트 · c 덮음 · q 그대로)"),
     ("test_g6_replay2", 3, "B127 — 재생의 불확실은 2차를 한 번(2차 기록 없는 불확실만 · 매칭이면 그 노드 · 큐 0 · 기록이 남는다) · 2차 기록이 있으면 재생 LLM 0 · 한 번 더 재구축 판정 LLM 0"),
-    ("test_g6_capture", 5, "B128 — PPT 캡처 실경로(렌더 · 판정 함수 대역 없음): 옆 PDF · PDF 문서(soffice 없는 PATH에서 호출마다 캡처 1장) · 캡처 길이 없으면 사전 점검에서 멈춤(파싱 0 · --no-capture면 진행 + 기록) · 그림 입력 거부면 그림 없는 PPT도 멈춤 · soffice면 PPTX만으로(숨김 슬라이드 쪽 맞음) · doctor --env 줄 · import pymupdf"),
+    ("test_g6_capture", 9, "B128 · B129 — PPT 캡처 실경로(렌더 · 판정 함수 대역 없음): 옆 PDF · PDF 문서(soffice 없는 PATH에서 호출마다 캡처 1장) · 캡처 길이 없으면 사전 점검에서 멈춤(파싱 0 · --no-capture면 진행 + 기록) · 그림 입력 거부면 그림 없는 PPT도 멈춤 · soffice면 PPTX만으로(숨김 슬라이드 쪽 맞음) · doctor --env 줄 · import pymupdf · soffice 찾기 한 함수(PATH 밖 표준 자리 · SOFFICE_PATH 지정 · 없으면 찾아본 자리 · 그림 형식 변환 · doctor 같은 답)"),
     ("test_g6_close", 19, "B117 — 마감 도구는 판정을 느슨하게 하지 않는다: 네 벌 C 같은 커밋 같다 · 폴백 사슬 끈 사본 C만 다르다 · doctor --only 하나만 · 머리 · 합계 · 로그에 「고른 실행 — 판정 아님」 · 모르는 이름 rc 2 · --changed ⊇ 실행 기록 표본(레포 사본 core 하나 · 자산 폴더 → 전체) · 마감 한 줄 일곱 단계 끝까지 · FAIL rc 1 · 명세 패치 --check 항목 이름 · --apply 어긋나면 쓰기 0 · 명세 모양 늘면 위반 · 줄면 내림"),
     ("test_g6_rebuild_memory", 11, "B107 — 옛 사람 판단 기록에 이름 채우기(옮길 때 · ops replay 계획 · 재구축 계획 · 그때의 이름 · 그래프에 없는 id는 목록) · 좌표 태깅 null 답 기억(닫힌 목록 내용 해시 · 지우는 손잡이 · 별칭이 판을 바꾼다 · 실호출 모양 재구축 태깅 0) · 재시도가 판정 대장을 갱신(같은 키 · by retry · 인입과 같은 하강 · 재구축 재생) — 표·산문 × 층 둘"),
     ("test_g6_hybrid", 15, "B104 — 공유 별칭의 범위 안 해소(보류 문면 표기 모호) · 링킹 임베딩 후보 + LLM 선별(후보 밖 0 · 보충/폴백 · 미스율 사전 단) · 문서 검색 채널(근거 없음은 둘 다 빌 때 · 벡터 캐시 재사용·몫만·판) · 짧은 답·쓴 근거·CLI ⓐ~ⓕ = --json · 채점 두 축 · 쓰기 0 — 표·산문 × 층 둘"),
@@ -200,13 +200,14 @@ def _clean():
 def _capture_lines():
     """**PPT · PDF 캡처**(B128 ③) — soffice(Impress · 실제 변환)와 판정 한 자리(`parser.render.capture_path`)의 답 한 줄.
     실호출 PPT · PDF 인입은 사전 점검이 같은 함수로 멈추므로 여기 답이 곧 그 답이다(문서마다 옆 PDF는 따로 잰다)."""
-    import shutil
+    from core import paths                                  # noqa: F401 — 파서 주입(soffice 지정 자리 — B129 ①)
     from parser import render
-    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    exe, where, tried = render.find_soffice()               # 찾기 한 함수 (B129 ①)
     ok, route, miss = render.capture_path(probe=True)
-    line(OK if exe else WARN, f"soffice {'있음 — ' + exe if exe else '없음'}",
+    line(OK if exe else WARN, f"soffice {'있음 — ' + exe + '(' + where + ')' if exe else '없음'}",
          "LibreOffice — PPTX → PDF 변환(캡처 길 하나 · Impress 포함 · 실제 변환으로 쟀다)" if exe
-         else "캡처 길이 없다 — LibreOffice(Impress 포함)를 깔거나 PowerPoint에서 PDF로 저장해 같은 폴더 · 같은 이름으로")
+         else f"찾아본 자리: {tried} — LibreOffice(Impress 포함)를 표준 자리에 깔거나 다른 자리면 셸 설정 파일에 "
+              f"{render.SOFFICE_ENV}=<soffice 경로> · 또는 PowerPoint에서 PDF로 저장해 같은 폴더 · 같은 이름으로")
     line(OK if ok else WARN, f"PPT 캡처 — {'가능(' + route + ')' if ok else '불가'}",
          "PPT · PDF 실호출 인입은 사전 점검에서 이 길과 그림 입력(llm-check ⑦)을 잰다" if ok
          else f"빠진 것: {miss} — 실호출 PPT 인입은 사전 점검에서 멈춘다(캡처 없이는 --no-capture)")

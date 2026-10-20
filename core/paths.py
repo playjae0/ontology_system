@@ -382,8 +382,9 @@ def bind_parser():
     하는 규율은 언젠가 한 진입점에서 빠진다.
     """
     from core.state import store
-    from parser import normalizer, struct_map, tagger
+    from parser import normalizer, render, struct_map, tagger
     struct_map.use_dir(lambda: struct_maps())
+    render.use_soffice_given(lambda: os.environ.get(render.SOFFICE_ENV))   # soffice 지정 자리 (B129 ① — 셸 설정)
     normalizer.use_null_markers(lambda: _catalog().null_markers())     # 빈칸 표시 목록 (B113 ② — 공통 config)
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))
     tagger.use_learned(lambda: store.read(store.COORD_LEARNED, {}),     # 좌표 학습 (B101 ②)

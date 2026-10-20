@@ -9,6 +9,8 @@ LLM 답(덱 구조 · 추출 · 채팅 왕복 · 그림 입력 거부)만 가짜
   ⓒ 그림 입력 — 게이트웨이가 그림을 거부하면 박힌 그림이 없는 PPT도 사전 점검에서 멈춘다
   ⓓ soffice — 있으면 PPTX만으로 호출마다 캡처 1장 · 숨김 슬라이드가 있어도 쪽이 맞는다(없는 기계면 그 사실을 적는다)
   ⓔ 환경 점검 — `doctor --env`에 PyMuPDF · soffice · 「PPT 캡처」 줄 · `import pymupdf`(폐기 경고 0)
+B129 — soffice 찾기 한 함수: ⓐ PATH 밖 표준 자리 ⓑ 지정(`SOFFICE_PATH`) ⓒ 셋 다 없으면 찾아본 자리 ⓓ 그림 형식 변환 · doctor --env가 같은 답
+(표준 자리는 하위 실행에서 후보 목록만 비워 가린다 — 찾기 · 변환 함수는 실물).
 네 벌(ⓕ)은 마감 한 줄의 네 벌 단계가 잰다(mock은 사전 점검 · 캡처를 타지 않는다).
 """
 from __future__ import annotations
@@ -40,8 +42,29 @@ from parser import pipeline, render, tagger as TG        # noqa: E402
 from parser.adapters import basic_pdf as PDF, basic_ppt as PX   # noqa: E402
 
 DT = "b128_ppt"
-NO_OFFICE = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep)
-                            if not any((Path(d) / n).exists() for n in ("soffice", "libreoffice")))
+OFFICE = ("soffice", "libreoffice")
+
+
+def _no_office_path():
+    """soffice만 뺀 PATH — soffice가 든 폴더는 **그 밖의 실행 파일을 링크한 그림자 폴더**로 바꾼다(그 폴더째 빼면 soffice 스크립트가
+    쓰는 dirname · sed 같은 도구도 사라져 실제 기계와 다르다 — 사내 macOS · Windows에서는 PATH에 soffice만 없다)."""
+    out = []
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if not any((Path(d) / n).exists() for n in OFFICE):
+            out.append(d)
+            continue
+        sh = Path(tempfile.mkdtemp(prefix="b129_path_"))
+        for f in Path(d).iterdir():
+            if f.name not in OFFICE:
+                try:
+                    (sh / f.name).symlink_to(f)
+                except OSError:
+                    pass
+        out.append(str(sh))
+    return os.pathsep.join(out)
+
+
+NO_OFFICE = _no_office_path()
 REJECT = []                                              # 그림 입력을 거부하는 게이트웨이(ⓒ)
 
 
@@ -89,10 +112,26 @@ def _images_per_call(path, adapter, did):
     return calls, EU._PAGES.get(did, ({}, None))[1], (env.get("capture") or {}).get("pages")
 
 
-if len(sys.argv) > 2 and sys.argv[1] == "--child":           # 하위 실행 — soffice 없는 PATH에서(ⓐ)
-    _path = Path(sys.argv[2])
-    _ad = PDF if _path.suffix == ".pdf" else PX
-    print(json.dumps(dict(zip(("calls", "why", "pages"), _images_per_call(_path, _ad, _path.stem))), ensure_ascii=False))
+def _bmp():
+    """2×2 BMP(표준 라이브러리) — 모델이 안 받는 그림 형식 변환(`to_png`)이 soffice를 찾는가를 잰다(B129 ⓓ)."""
+    import struct
+    px = b"".join(b"\xff\x00\x00" * 2 + b"\x00\x00" for _ in range(2))
+    return (b"BM" + struct.pack("<IHHI", 54 + len(px), 0, 0, 54)
+            + struct.pack("<IiiHHIIiiII", 40, 2, 2, 1, 24, 0, len(px), 2835, 2835, 0, 0) + px)
+
+
+if len(sys.argv) > 2 and sys.argv[1] == "--child":           # 하위 실행 — soffice 없는 PATH에서(ⓐ · B129)
+    _path, _flags = Path(sys.argv[2]), sys.argv[3:]
+    if "--mask" in _flags:
+        render.SOFFICE_PLACES = ()     # 표준 자리를 가린다(B129 — 후보 목록만 비운다 · 찾기 · 변환 함수는 실물)
+    _out = {"find": list(render.find_soffice()), "png": render.to_png(_bmp(), "image/bmp")[1]}
+    if "--stage" in _flags:                                  # 사전 점검의 캡처 단계(실물)
+        from core.llm import preflight as _PRE
+        _out["stage"] = list(_PRE._capture([str(_path)]))
+    else:
+        _ad = PDF if _path.suffix == ".pdf" else PX
+        _out.update(zip(("calls", "why", "pages"), _images_per_call(_path, _ad, _path.stem)))
+    print(json.dumps(_out, ensure_ascii=False))
     sys.exit(0)
 
 
@@ -129,10 +168,11 @@ def _deck(path):
     return p
 
 
-def _child(path):
-    r = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--child", str(path)], capture_output=True,
-                       text=True, cwd=str(ROOT), env={**os.environ, "PATH": NO_OFFICE, "USE_MOCK": "1"},
-                       stdin=subprocess.DEVNULL, timeout=300)
+def _child(path, *flags, given=None):
+    env = {k: v for k, v in os.environ.items() if k != render.SOFFICE_ENV}
+    env.update(PATH=NO_OFFICE, USE_MOCK="1", **({render.SOFFICE_ENV: str(given)} if given else {}))
+    r = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--child", str(path), *flags], capture_output=True,
+                       text=True, cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL, timeout=300)
     try:
         return json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -173,8 +213,10 @@ _path0, _narrow0, _chat0 = os.environ.get("PATH", ""), narrow.narrow_choice, CK.
 narrow.narrow_choice = lambda: ("overlap", "시험")
 CK.chat_roundtrip = lambda cfg, add: (add("②", "도달", True), {"choices": [{"message": {"content": "ok"}}],
                                                                "usage": {"prompt_tokens": 1, "completion_tokens": 1}})[1]
+_places0, _given0 = render.SOFFICE_PLACES, os.environ.pop(render.SOFFICE_ENV, None)
 try:
     os.environ["PATH"] = NO_OFFICE
+    render.SOFFICE_PLACES = ()        # 기대 변경(B129 ① — PATH 밖 표준 자리도 찾는다 · 여기서는 「셋 다 없음」을 잰다)
     with _live():
         _o1 = io.StringIO()
         with contextlib.redirect_stdout(_o1):
@@ -208,6 +250,9 @@ try:
          " / ".join(ln.strip() for ln in _o4.getvalue().splitlines() if "사전 점검" in ln or "다음 줄" in ln)[:300])
 finally:
     os.environ["PATH"] = _path0
+    render.SOFFICE_PLACES = _places0
+    if _given0:
+        os.environ[render.SOFFICE_ENV] = _given0
     narrow.narrow_choice, CK.chat_roundtrip = _narrow0, _chat0
     REJECT.clear()
 
@@ -238,6 +283,36 @@ show("ⓔ doctor --env에 PyMuPDF · soffice · 「PPT 캡처」 줄 · `import 
      "pymupdf" in _env and "soffice" in _env and "PPT 캡처 —" in _env and _mod is not None
      and _mod.__name__ == "pymupdf" and not [x for x in _w if issubclass(x.category, DeprecationWarning)],
      " / ".join(ln.strip() for ln in _env.splitlines() if "pymupdf" in ln or "soffice" in ln or "PPT 캡처" in ln)[:300])
+# ────────────────────────────────────────────────────────────── B129 soffice 찾기 한 함수 (PATH 밖 · 지정 · 없음)
+print("\n■ B129 soffice 찾기 — 표준 자리 · 지정 · 없음 · 한 함수")
+_std = [c for c in render._places() if os.path.isfile(c)]
+if _std:
+    _pe = _deck(TMP / "B129E.pptx")
+    _r9 = _child(_pe)
+    show("B129 ⓐ PATH에서 soffice를 뺀 하위 실행 — 표준 자리로 찾아 PPTX만으로 추출 호출마다 캡처 1장",
+         (_r9.get("find") or [None, None])[1] == render.PLACE and _r9.get("calls") and set(_r9["calls"]) == {1}
+         and _r9.get("why") is None, f"찾음 {_r9.get('find')} · 호출별 그림 {_r9.get('calls')} · 사유 {_r9.get('why')}")
+    _lk = Path(tempfile.mkdtemp(prefix="b129_given_")) / "soffice"
+    _lk.symlink_to(os.path.realpath(_std[0]))
+    _pg9 = _deck(TMP / "B129G.pptx")
+    _g9 = _child(_pg9, "--mask", given=_lk)
+    show("B129 ⓑ PATH · 표준 자리(가림)에 없고 지정한 임시 폴더의 링크 하나 → 그것으로 찾아 호출마다 캡처 1장",
+         _g9.get("find") and _g9["find"][:2] == [str(_lk), render.GIVEN] and _g9.get("calls") and set(_g9["calls"]) == {1},
+         f"찾음 {_g9.get('find')} · 호출별 그림 {_g9.get('calls')}")
+    _n9 = _child(_pe, "--mask", "--stage")
+    show("B129 ⓒ 셋 다 없으면 사전 점검 「캡처」가 멈추고 문구에 찾아본 자리(PATH · 표준 자리 · 지정)",
+         _n9.get("find", [1])[0] is None and _n9.get("stage") and _n9["stage"][0] is False
+         and all(k in _n9["stage"][1] for k in ("찾아본 자리", "PATH", "표준 자리", render.SOFFICE_ENV)),
+         (_n9.get("stage") or ["", ""])[1].replace("\n", " / ")[:300])
+    _env9 = subprocess.run([sys.executable, str(ROOT / "doctor.py"), "--env"], capture_output=True, text=True, cwd=str(ROOT),
+                           env={**{k: v for k, v in os.environ.items() if k != render.SOFFICE_ENV}, "PATH": NO_OFFICE},
+                           stdin=subprocess.DEVNULL, timeout=300).stdout
+    show("B129 ⓓ 한 함수 — 같은 하위 환경에서 그림 형식 변환이 찾고(가리면 변환기 없음) · doctor --env가 표준 자리 경로",
+         _r9.get("png") is None and _n9.get("png") == render.NO_CONVERTER
+         and f"soffice 있음 — {_r9['find'][0]}({render.PLACE})" in _env9 and "PPT 캡처 — 가능(soffice)" in _env9,
+         f"변환 {_r9.get('png')} / 가림 {_n9.get('png')} · " + " / ".join(ln.strip() for ln in _env9.splitlines() if "soffice" in ln)[:200])
+else:
+    show("B129 — 이 기계에는 표준 자리의 soffice가 없다(허브가 실경로를 돈다)", True, f"표준 자리 {render._places()}")
 _unregister()
 
 done()
