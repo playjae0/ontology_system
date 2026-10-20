@@ -142,6 +142,8 @@ def print_split_notes(report):
                     + f" · LLM 호출 {n['호출']} · 재사용 {n['재사용']}"
                     + (f" · 버림 {n['버림']}" if n["버림"] else "") + (f" · 실패 {n['실패']}" if n["실패"] else "")
                     + (f" · 사람 고침 {n['고침']}" if n["고침"] else ""), "head")
+        if n.get("옛 확정"):                        # 목차 판이 다른 옛 확정 — 재생하지 않았다 (B130 ⑤)
+            _screen.say(f"   옛 확정 {n['옛 확정']}시트 — 다시 확인 필요(목차 규칙이 바뀌었다 · --step으로 구조 확인)", "warn")
     dk = ((report or {}).get("deck") or {}).get("수")
     if dk:                                          # 덱 구조 끝 줄 (B125 ③)
         _screen.say(f"   덱 구조 — 슬라이드 {dk['슬라이드']} · 제목 초안과 다름 {dk['제목다름']} · 이어짐 {dk['이어짐']} · "

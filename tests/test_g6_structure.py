@@ -437,13 +437,13 @@ _b_att = _att_of("B119GATE", "속도")
 with contextlib.redirect_stdout(io.StringIO()):
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
-# 기대 변경(B124 ③ — 관문 명령 「<번호> <카테고리>」)
-_out, _sent = _drive(_argv + ["--step"], [b"c\n", "2 Unit\n".encode(), b"c\n"] + [b"c\n"] * 12)
+# 기대 변경(B130 ④ — 묻는 줄의 줄 고침 명령을 뺐다 · 옛 고침 기록은 그대로 재생 — 기록을 남기고 --step으로 확정만)
+ST.record_fix("B119GATE", GATE[0], 2, {"role": "대상", "name": "공급부", "category": "Unit"})
+_out, _sent = _drive(_argv + ["--step"], [b"c\n"] * 14)
 _fx = ST.fixes_of("B119GATE")
 _a_att = _att_of("B119GATE", "속도")
-show("ⓒ `--step` 구조 표에서 「2 Unit」 — 등록 단 기록(역할 · 줄 글자 이름 · 같은 역할의 카테고리) · 다시 파싱(LLM 0) · 그 아래 개체가 "
-     "그 유닛에 붙는다(고치기 전에는 공정)",
-     "고침 — 설비 사양 2행 → 대상 '공급부'(Unit)" in _out and _fx.get(GATE[0], {}).get(2, {}).get("role") == "대상"
+show("ⓒ 옛 줄 고침 기록(등록 단 — 대상 '공급부' · Unit) — 파싱이 재생해 그 아래 개체가 그 유닛에 붙는다(고치기 전에는 공정)",
+     _fx.get(GATE[0], {}).get(2, {}).get("role") == "대상"
      and "노칭::공급부" in _a_att and "노칭::공급부" not in _b_att and "노칭" in _b_att and "[성공]" in _out,
      f"고치기 전 {_b_att} · 고친 뒤 {_a_att} · 기록 {_fx}")
 _rb = _run("rebuild", "--yes", "--allow-mock")

@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from . import struct_map
+from . import struct_map, toc
 
 def frame_paths(pieces):
     """시트마다 「고정 규칙 / 통째」 — 재료는 조각의 `meta`다(새 계산 0 · 어댑터가 `split_path`로 무엇으로 잘랐는지 말한다)."""
@@ -236,6 +236,7 @@ def range_chunks(name, lines, rows, info, ranges, locator, sep, base_meta, frame
     빼고 경로에 둔다 — 지금 분할과 같은 꼴) · 크기 권장값의 `CHUNK_OVER`배를 넘는 구간만 형제 줄 앞에서 나눈다(`_sibling_parts` — 조각의
     주인 · 사슬은 그 구간의 것 그대로 · `meta.range_split`). 같은 구간이면 같은 청크다(LLM 0 — 재생)."""
     text_of = dict(lines)
+    heads = [n for n, _t in lines if n in info and n != FRAME_ROW]
     meta0 = {"split_path": PATH_STRUCT, "frame": name, **base_meta, "split_level": "구간"}
     if frame_info:
         meta0["structure_frame"] = frame_info
@@ -245,11 +246,15 @@ def range_chunks(name, lines, rows, info, ranges, locator, sep, base_meta, frame
         body = [(n, t) for n, t in lines if g["from_row"] <= n <= g["to_row"] and n not in hs]
         if not body:
             continue
-        section = sep.join(text_of[r].strip() for r in hs) or name
         over = len("\n".join(t for _n, t in body)) > struct_map.CHUNK_MAX_CHARS * CHUNK_OVER
         for part in (_sibling_parts(body, rows) if over else [body]):
+            # 나뉜 조각의 경로 = 첫 줄의 주인 제목(그 줄이 제목이면 그 줄 · 아니면 그 위의 가장 가까운 제목)의 사슬 · 나뉘지 않은 구간은
+            # 구간의 주인 그대로 (B130 ② — 자른 단의 청크는 연 제목 · 나눔 조각은 첫 줄의 주인)
+            own = next((n for n in reversed(heads) if g["from_row"] <= n <= part[0][0]), g.get("owner_row")) if over else g.get("owner_row")
+            ch = _chain_of(info, own) if over else hs
+            section = sep.join(text_of[r].strip() for r in ch) or name
             meta = {**meta0, "section_path": section, "chunk_range": [g["from_row"], g["to_row"]],
-                    "structure": [_chain_item(info.get(r) or {}, text_of[r].strip(), r) for r in hs]}
+                    "structure": [_chain_item(info.get(r) or {}, text_of[r].strip(), r) for r in ch]}
             if over:
                 meta["range_split"] = True
             out.append({"source_locator": locator(part[0][0], part[-1][0]), "section": section,
@@ -300,16 +305,22 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
     tally = tally if tally is not None else {}
     key = ask.key() if callable(getattr(ask, "key", None)) else None
 
+    doc_hints = (ask.doc_state(doc_id).get("hints") or []) if callable(getattr(ask, "doc_state", None)) else []
+
     def fn(frame, labs):
         if frame in skip:
             return None
         h = labels_hash(labs)
         hit = kept.get(frame)
         conf = (confirmed or {}).get(frame)
+        if conf and conf.get("toc") != toc.TOC_VERSION:
+            tally.setdefault("옛 확정", []).append(frame)     # 목차 판이 다른 옛 확정 — 재생하지 않고 다시 보인다 (B130 ⑤)
+            conf = None
         if conf and conf.get("labels") == h:
             tally["확정"] = tally.get("확정", 0) + 1
             st = {**conf, "source": "confirmed", "calls": 0, "confirmed": True}
-        elif hit and hit.get("labels") == h and hit.get("key") == key:
+        elif (hit and hit.get("labels") == h and hit.get("key") == key
+              and (hit.get("doc_hints") or []) == doc_hints):        # 문서 힌트가 바뀌면 다시 묻는다 (B130 ④)
             tally["재사용"] = tally.get("재사용", 0) + 1
             st = hit
         else:
@@ -332,6 +343,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 "chunks": v.get("chunks") or [], "chunks_dropped": v.get("chunks_dropped"),
                 "mode": v.get("mode") or "llm", "edits": v.get("edits") or [], "edits_dropped": v.get("edits_dropped") or [],
                 "joins": v.get("joins") or [], "hints": v.get("hints") or [], "answer": v.get("answer"),
+                "rules": v.get("rules") or [], "doc_hints": v.get("doc_hints") or [],
                 "confirmed": bool(v.get("confirmed")), "prompt_version": v.get("prompt_version")}
             tally.setdefault("방식", {})[frame] = v.get("mode") or "llm"
         return st

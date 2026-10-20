@@ -19,7 +19,7 @@
 """
 from __future__ import annotations
 
-from parser import struct_map, struct_rule
+from parser import struct_map, struct_rule, toc
 
 ADAPTER = {
     "doc_type": "prose_docx_basic",
@@ -51,7 +51,7 @@ def _rows(raw, lines):
     has_outline = any(p.get("outline") is not None for p in paras.values())
     cand = [(i, t) for i, t in lines
             if paras[i].get("kind") == "para" and not paras[i].get("numbered")]
-    nums = {} if has_outline else struct_map.number_levels(cand)
+    nums = {} if has_outline else toc.number_levels(cand)
     rows = []
     for i, _t in lines:
         p = paras[i]

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -170,6 +171,67 @@ try:
 except ValueError:
     _raised = True
 show("B89 ① 행 목록 없는 청크는 결함으로 드러난다 (원래 locator를 붙여 넘기지 않는다)", _raised)
+
+# ────────────────────────────────────────────────────────────── B130 ①② 목차 · 경로 · 제목 줄
+print("\n■ B130 목차는 번호 이어짐 · 다시 시작으로 · 모든 청크가 목차 경로 전체를 · 제목 줄은 자기 청크에")
+import tempfile                                                       # noqa: E402
+from openpyxl import Workbook                                         # noqa: E402
+from parser import toc, tuning                                        # noqa: E402
+TOC = ["1. 공정별 상세사양", "1) 적용 범위", "이 사양은 노칭 공정에 적용한다.", "가. 일반", "설비는 정해진 자리에 둔다.", "나. 생산능력",
+       "1) 생산 capa", "월 100만 셀을 만든다.", "2) 설비 가동률", "가동률은 90%다.", "다. 수량", "1) 설비 수량", "두 대를 둔다.",
+       "2) 예비품", "예비 금형 하나.", "라. 검사", "4) 검수방법", "A. 입고전 검수", "외관을 본다.", "B. 입고후 검수", "치수를 잰다."]
+_tlines = list(enumerate(TOC, 1))
+_lv = {r: v[0] for r, v in toc.number_levels(_tlines).items()}
+_chain = toc.toc_chains(_tlines, _lv)[1]
+_par = {r: (_chain(r)[-2] if len(_chain(r)) > 1 else None) for r in _lv}
+show("ⓐ 목차 — 「나.」의 부모 = 「1.」(「1) 적용 범위」 아래에 가. · 나.가 들지 않는다) · 「나.」 아래 「1)」의 부모 = 「나.」 · 「A.」의 부모 = 「4)」",
+     _par[6] == 1 and _par[4] == 1 and _par[2] == 1 and _par[7] == 6 and _par[9] == 6 and _par[12] == 11 and _par[17] == 16
+     and _par[18] == 17 and _par[20] == 17, f"부모 {_par}")
+_td = Path(tempfile.mkdtemp(prefix="b130_"))
+_wb = Workbook()
+_wb.active.title = "사양"
+for _i, _t in _tlines:
+    _wb.active.cell(row=_i, column=1, value=_t)
+_wb.save(_td / "B130T.xlsx")
+
+
+def _paths_ok(env):
+    """청크마다 (경로 = 주인 사슬 전체 · 본문의 제목 줄은 전부 그 주인의 자손 — 남의 꼬리 0) · 빠진 제목 줄."""
+    bad, seen = [], set()
+    for c in env["chunks"]:
+        _ns = [int(x) for x in re.findall(r"R(\d+)", c["source_locator"])]
+        body = list(range(_ns[0], _ns[-1] + 1))
+        path = [p.strip() for p in (c.get("section") or "").split(">") if p.strip()]
+        rows = [r for r in _lv if TOC[r - 1] in path]
+        owner = rows[-1] if rows else None
+        if path != [TOC[r - 1] for r in _chain(owner)] if owner else path:
+            bad.append(("경로", c["source_locator"], path))
+        for r in body:
+            if r in _lv and owner is not None and owner not in _chain(r):
+                bad.append(("남의 꼬리", c["source_locator"], TOC[r - 1]))
+        seen |= set(rows) | {r for r in body if r in _lv}
+    return bad, sorted(set(_lv) - seen)
+
+
+_res_t = {}
+for _how, _knob in (("자른 단", {"chunk_rows": [1, 2]}), ("글자 상한 조각", {"chunk_rows": [1, 2], "chunk_max_chars": 12})):
+    tuning.apply(_knob)
+    struct_map.invalidate("B130T")
+    _res_t[_how] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[]).envelope
+    struct_map.invalidate("B130T")
+    _res_t[_how + " · rules"] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[],
+                                               structure=lambda d, f, labs: {"skip": True, "mode": "rules"}).envelope
+tuning.apply({})
+_chk = {k: _paths_ok(v) for k, v in _res_t.items()}
+_sec = [c["section"] for c in _res_t["글자 상한 조각"]["chunks"]]
+show("ⓑ 경로 — 모든 청크가 시트 아래 목차 경로 전체(자른 단 · 글자 상한 조각 · rules 방식 같다) · 예 「… > 라. 검사 > 4) 검수방법 > A. 입고전 검수」",
+     all(not b for b, _m in _chk.values()) and "1. 공정별 상세사양 > 라. 검사 > 4) 검수방법 > A. 입고전 검수" in _sec
+     and [c["section"] for c in _res_t["자른 단 · rules"]["chunks"]] == [c["section"] for c in _res_t["자른 단"]["chunks"]],
+     f"{ {k: b[:2] for k, (b, _m) in _chk.items()} } · 조각 경로 {_sec[-3:]}")
+show("ⓒ 제목 줄 — 남의 청크 끝줄에 붙은 제목 0 · 빠진 제목 줄 0(본문 첫 줄이거나 경로에)",
+     all(not m for _b, m in _chk.values()), f"빠짐 { {k: m for k, (_b, m) in _chk.items()} }")
+shutil.rmtree(_td, ignore_errors=True)
+
 _imp = sorted({ln.split()[1].split(".")[0]
                for f in (ROOT / "parser").rglob("*.py")
                for ln in f.read_text(encoding="utf-8").splitlines()

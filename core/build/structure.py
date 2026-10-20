@@ -316,6 +316,8 @@ def structurer(layers=None):
     def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None):
         from core.build.extract import prompt_version
         from parser.struct_rule import draft_structure
+        if hints is None:
+            hints = doc_state(doc_id)["hints"] or None    # 힌트는 문서 규칙 — 그 문서의 모든 시트에 (B130 ④)
         m = mode or MODE
         if m == "rules":                            # 규칙 나무 + 크기 구간(B118) — 구조 LLM 0 · 방식만 남긴다
             return {"skip": True, "mode": "rules"}
@@ -327,7 +329,8 @@ def structurer(layers=None):
             if SE.hint_edit(doc_id, frame) is None:
                 m = "llm"                           # mock — 옛 꼴(나무 전체) 힌트는 llm 답으로 읽는다 · 힌트 없으면 판정 없음
         if m == "edit":
-            return _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live)
+            return _with_rules(doc_id, frame, labs, _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live),
+                               cats, hints)
         if live:
             gateway.require(TAG)                    # 부르기 직전의 관문(설정 없음 = 명시적 실패 · 조립은 막지 않는다)
             answers, chunks, calls, failed = _live(doc_id, frame, labs, cats, cfgs, hints)
@@ -345,13 +348,62 @@ def structurer(layers=None):
         ranges, why = check_chunks(doc_id, frame, labs, heads, chunks)
         _LOG.info("문서 구조 %s · %s — 제목 %d · 버림 %d · 구간 %s · 호출 %d%s", doc_id, frame, len(heads), len(dropped),
                   len(ranges) if ranges else (f"버림({why})" if why else 0), calls, f" · 실패 {failed}" if failed else "")
-        return {"headings": heads, "dropped": dropped, "calls": calls, "source": source, "mode": "llm",
-                "prompt_version": prompt_version(PROMPT), **({"chunks": ranges} if ranges else {}),
-                **({"chunks_dropped": why} if why else {}), **({"failed": failed} if failed else {}),
-                **({"hints": list(hints)} if hints else {})}
+        return _with_rules(doc_id, frame, labs, {
+            "headings": heads, "dropped": dropped, "calls": calls, "source": source, "mode": "llm",
+            "prompt_version": prompt_version(PROMPT), **({"chunks": ranges} if ranges else {}),
+            **({"chunks_dropped": why} if why else {}), **({"failed": failed} if failed else {}),
+            **({"hints": list(hints)} if hints else {})}, cats, hints)
     fn.key = lambda: key(cfgs)
     fn.takes_ctx = True
+    fn.doc_state = doc_state
     return fn
+
+
+# ---------------------------------------------------------------- 문서 규칙 (B130 ④ — 힌트는 문서 규칙 · 되말하고 문서 전체에)
+#: 이 프로세스의 구조 확인에서 받은 문서 힌트 · 이해한 규칙 `{doc_id: {hints, rules}}` — 확정 기록이 문서 힌트로 남긴다
+DOC = {}
+RULE_KEYS = ("shape", "role", "category", "parent_shape", "said")
+
+
+def _merge_rules(old, new):
+    """꼴마다 하나 — 뒤의 규칙이 이긴다(같은 꼴을 다시 말했다)."""
+    out = {x.get("shape"): {k: x.get(k) for k in RULE_KEYS} for x in old or []}
+    for x in new or []:
+        out[x.get("shape")] = {k: x.get(k) for k in RULE_KEYS}
+    return list(out.values())
+
+
+def doc_state(doc_id):
+    """그 문서의 문서 힌트 · 이해한 규칙 — 확정 기록(목차 판이 같은 것) + 이 프로세스의 구조 확인 · 위에서 아래로."""
+    from parser.toc import TOC_VERSION
+    hints, rules = [], []
+    for v in (_confirmed_all().get(doc_id) or {}).values():
+        if v.get("toc") == TOC_VERSION:
+            hints += [h for h in v.get("doc_hints") or [] if h not in hints]
+            rules = _merge_rules(rules, v.get("doc_rules"))
+    now = DOC.get(doc_id) or {}
+    hints += [h for h in now.get("hints") or [] if h not in hints]
+    return {"hints": hints, "rules": _merge_rules(rules, now.get("rules"))}
+
+
+def add_doc_hint(doc_id, text):
+    DOC.setdefault(doc_id, {"hints": [], "rules": []})["hints"].append(text)
+
+
+def _with_rules(doc_id, frame, labs, st, cats, hints):
+    """구조 결과 위에 문서 규칙(지금까지의 규칙 + 이 답이 되말한 규칙)을 같은 꼴 줄 전부에 — 결정적 · 받은 규칙은 문서 상태에 쌓는다."""
+    if not st:
+        return st
+    from core.build import structure_edit as SE
+    mine = list((st.get("answer") or {}).get("rules") or [])
+    rules = _merge_rules(doc_state(doc_id)["rules"], mine)
+    if rules:
+        heads, seen = SE.apply_rules(doc_id, frame, labs, st.get("headings") or [], rules, cats)
+        st = {**st, "headings": heads, "rules": seen}
+        ok = [x for x in seen if not x.get("버림") and any(x.get("shape") == m.get("shape") for m in mine)]
+        if ok:
+            DOC.setdefault(doc_id, {"hints": [], "rules": []})["rules"] = _merge_rules(DOC[doc_id].get("rules"), ok)
+    return {**st, "doc_hints": list(hints or [])}
 
 
 def _edit(doc_id, frame, labs, draft, cats, cfgs, ctx, hints, prev, live):
@@ -405,14 +457,19 @@ def confirmed_of(doc_id):
 
 
 def confirm(doc_id, frame, st, hints=None):
-    """시트 하나 확정 — 최종 나무 · 붙임 · 준 힌트 · 방식 · 판 · 이름표 해시(원자 쓰기) · 재구축 · 재인입이 그대로 재생(LLM 0)."""
+    """시트 하나 확정 — 최종 나무 · 붙임 · 준 힌트 · 방식 · 판 · 이름표 해시(원자 쓰기) · 재구축 · 재인입이 그대로 재생(LLM 0).
+    목차 규칙 판(`toc`) · LLM 답(고침 목록 · 이해한 규칙) · 문서 힌트 · 문서 규칙도 남긴다(B130 ⑤ — 판이 다른 옛 확정은 재생하지 않는다 ·
+    다시 힌트로 열면 앞 출력이 앞 판단 전체다)."""
     from datetime import datetime, timezone
     from core import paths
+    from parser.toc import TOC_VERSION
+    doc = doc_state(doc_id)
     d = _confirmed_all()
     d.setdefault(doc_id, {})[frame] = {
         "labels": st.get("labels"), "mode": st.get("mode"), "headings": st.get("headings") or [],
         "joins": st.get("joins") or [], "chunks": st.get("chunks") or [], "hints": list(hints or st.get("hints") or []),
-        "prompt_version": st.get("prompt_version"), "by": "사람",
+        "prompt_version": st.get("prompt_version"), "toc": TOC_VERSION, "answer": st.get("answer"),
+        "rules": st.get("rules") or [], "doc_hints": doc["hints"], "doc_rules": doc["rules"], "by": "사람",
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     p = confirmed_path()
     paths.ensure(p)
@@ -597,4 +654,5 @@ def counts(report):
             "재사용": (report or {}).get("재사용", 0),
             "버림": sum(len(f.get("dropped") or []) for f in fr.values()),
             "실패": sum(1 for f in fr.values() if f.get("failed")),
-            "고침": sum(int(f.get("fixed") or 0) for f in fr.values())}
+            "고침": sum(int(f.get("fixed") or 0) for f in fr.values()),
+            "옛 확정": len((report or {}).get("옛 확정") or [])}
