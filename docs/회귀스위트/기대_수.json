@@ -66,7 +66,7 @@
    "secs": 21
   },
   "test_g6_close": {
-   "n": 26,
+   "n": 28,
    "secs": 27
   },
   "test_contract": {
@@ -161,6 +161,14 @@
    "suite": "test_g6_close",
    "from": 22,
    "to": 26,
+   "why": ""
+  },
+  {
+   "at": "2026-10-20",
+   "head": "31b42ae",
+   "suite": "test_g6_close",
+   "from": 26,
+   "to": 28,
    "why": ""
   }
  ]
