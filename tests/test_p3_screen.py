@@ -43,7 +43,7 @@ def _side(name):
 
 def _fixtures(dt):
     """cp 픽스처 쌍을 `dt` 이름으로 — `ONTO_FIXTURES`가 가리킬 임시 자리(B60)."""
-    fx = Path(_tf.mkdtemp(prefix=f"fx{dt[2:]}_", dir=str(ROOT)))
+    fx = Path(_tf.mkdtemp(prefix=f"fx{dt[2:]}_"))
     (fx / "fixtures/adapters").mkdir(parents=True)
     (fx / "fixtures/schemas").mkdir(parents=True)
     (fx / f"fixtures/adapters/{dt}.py").write_text(

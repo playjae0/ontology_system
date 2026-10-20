@@ -48,7 +48,7 @@ def _review_at(home, dt):
 
 
 # ── B50 ⓐ 자동 갈래 재료 — 규약 10을 어긴 판 → 자동 재생성 → PASS
-_fx = Path(_tf.mkdtemp(prefix="b50fx_", dir=str(ROOT)))
+_fx = Path(_tf.mkdtemp(prefix="b50fx_"))
 (_fx / "fixtures/adapters").mkdir(parents=True)
 (_fx / "fixtures/schemas").mkdir(parents=True)
 _good = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8").replace(
@@ -70,7 +70,7 @@ for _n in ("b50t", "b50t_rev1"):
         json.dumps(_csch, ensure_ascii=False), encoding="utf-8")
 
 # ── [정정]40 재료 — 지시 재생성분이 붉은 판(f40ok는 자동 해소 · f40no는 해소 못 함)
-_f40 = Path(_tf.mkdtemp(prefix="fx40_", dir=str(ROOT)))
+_f40 = Path(_tf.mkdtemp(prefix="fx40_"))
 (_f40 / "fixtures/adapters").mkdir(parents=True)
 (_f40 / "fixtures/schemas").mkdir(parents=True)
 _g40 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")

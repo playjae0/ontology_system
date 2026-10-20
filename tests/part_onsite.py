@@ -369,7 +369,7 @@ _mark = ROOT / "data" / "doc_types.json"   # 옛 배치
 _made_mark = not _mark.exists()
 if _made_mark:
     _mark.parent.mkdir(parents=True, exist_ok=True)  # 레포 쓰기 예외: 옛 배치 표식은 코드 폴더 자리(migrate.legacy_root)라 레포에만 선다 · mock 세계는 보지 않는다
-    _mark.write_text("{}", encoding="utf-8")  # 레포 쓰기 예외: 옛 배치 표식(코드 폴더 data/doc_types.json) — 없던 것만 만들고 지운다
+    _mark.write_text("{}", encoding="utf-8")  # 레포 쓰기 예외: 옛 배치 표식(코드 폴더의 옛 등록부 파일) — 없던 것만 만들고 지운다
 try:
     _empty = Path(tempfile.mkdtemp(prefix="b78empty_"))
     _e = dict(os.environ, USE_MOCK="0", ONTO_HOME=str(_empty))

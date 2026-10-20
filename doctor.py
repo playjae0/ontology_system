@@ -387,6 +387,15 @@ def _env_diff(clean_rc, residue):
         print(f"         {why}")
 
 
+#: 이번 회귀가 남긴 붉은 기록 자리(B133 ②) — 회귀 끝의 클린이 명령 로그를 지우고 다시 열므로 결과 줄 앞에서 한 번 더 적는다(`_red_tail`)
+REDS = []
+
+
+def _red_tail():
+    for p in REDS:
+        print(f"  붉은 기록 — {p}(임시 루트 · 출력.txt)")
+
+
 def run_suites(quick=False, names=None, serial=False, jobs=None, why=None, result=None):
     """회귀 — `names`를 주면 그 스위트만(고른 실행 — 판정 아님 · 완료판정 4 「클린 2회」는 재지 않는다).
 
@@ -432,6 +441,7 @@ def run_suites(quick=False, names=None, serial=False, jobs=None, why=None, resul
             line(NG, f"{name:<17} 중복 canonical", res["dup_out"].splitlines()[0] if res["dup_out"] else "")
         red = DR.settle(res, ok and res["dup"] == 0 and not res["residue"])   # 붉으면 임시 자리 + 출력 전문을 남긴다 (B133 ②)
         if red:
+            REDS.append(red)
             print(f"         붉은 기록 — {red}(임시 루트 · 출력.txt)")
     gone = DR.removed(SUITES, rec, why) if names is None else []
     for n, k, ok, note in gone:
@@ -556,6 +566,7 @@ def main(argv):
             print("  고른 스위트 0종 — 바뀐 파일을 읽는 스위트가 없다")
             return 0
         ok = run_suites(names=names, **_run_opts(argv))
+        _red_tail()
         print(f"\n{'=' * 66}\n결과: {sel.HEAD_LINE} — 고른 {len(names)}종 {'통과' if ok else '실패'} · 마감은 전체 doctor\n{'=' * 66}")
         return 0 if ok else 1
     only_env = "--env" in argv
@@ -581,6 +592,7 @@ def main(argv):
     suites_ok = run_suites(quick, **_run_opts(argv))
     show_state()
     operating("transition")    # 사내 전환 판정 — 운영 루트를 읽기만 (B111 ①)
+    _red_tail()
 
     print(f"\n{'=' * 66}")
     if V.fails():

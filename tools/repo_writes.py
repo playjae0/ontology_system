@@ -11,7 +11,7 @@
   재는 곳 = `tests/`의 `.py`(픽스처를 만드는 `tests/fixtures/` 아래는 뺀다)
   레포 경로 = `ROOT` · `__file__`에서 나온 식과 그 식을 받은 이름(같은 파일 안 · 대입을 따라간다)
   쓰기 = `write_text` · `write_bytes` · `mkdir` · `unlink` · `touch` · `rename` · `replace` · `rmdir` · `save` · 쓰기 모드 `open` ·
-         `shutil` 복사 · 이동 · 지우기의 대상 · `os` 지우기 · 만들기 · 이름 바꾸기
+         `shutil` 복사 · 이동 · 지우기의 대상 · `os` 지우기 · 만들기 · 이름 바꾸기 · 레포를 `dir=`로 준 임시 폴더 · 파일
 
 등재 예외는 그 줄 끝 주석 `# 레포 쓰기 예외: <까닭>` — 화면이 예외 수와 자리를 따로 말한다.
 """
@@ -30,6 +30,7 @@ _PATH_WRITES = {"write_text", "write_bytes", "mkdir", "unlink", "touch", "rename
 _SHUTIL_DST = {"copy", "copy2", "copyfile", "copytree", "move"}
 _SHUTIL_ONE = {"rmtree"}
 _OS_ONE = {"remove", "unlink", "rmdir", "makedirs", "mkdir", "rename", "replace", "removedirs"}
+_TEMP_DIR = {"mkdtemp", "mkstemp", "TemporaryDirectory", "NamedTemporaryFile", "SpooledTemporaryFile"}    # `dir=`가 레포면 레포에 만든다
 
 
 _PATH_METHODS = {"resolve", "absolute", "with_suffix", "with_name", "with_stem", "joinpath", "expanduser"}
@@ -91,7 +92,11 @@ def writes(src, rel="?"):
         if not isinstance(c, ast.Call):
             continue
         f, what = c.func, None
-        if isinstance(f, ast.Attribute):
+        fname = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else None
+        tdir = next((k.value for k in c.keywords if k.arg == "dir"), c.args[2] if fname == "mkdtemp" and len(c.args) > 2 else None)
+        if fname in _TEMP_DIR and tdir is not None and _is_path(tdir, names):
+            what = f"tempfile.{fname}(dir=레포)"
+        elif isinstance(f, ast.Attribute):
             base = f.value
             mod = base.id if isinstance(base, ast.Name) else None
             if f.attr == "save":

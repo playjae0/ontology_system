@@ -9,9 +9,9 @@ quality): 표 CP01(cp · process) · PFMEA01(pfmea · quality) · 산문 RFQ01(p
 `HOME`은 빈 임시 폴더(운영자의 `~/.onto/llm.json`을 물지 않는다).
 
 잠그는 성질:
-  ⓐ 운영 루트 불변: 그 폴더를 `ONTO_HOME`으로 `doctor.py --quick` — 두 갈래(설정 파일 `"USE_MOCK": 0` · 환경변수
+  ⓐ 운영 루트 불변: 그 폴더를 `ONTO_HOME`으로 기본 `doctor.py` · `--quick` — 두 갈래(설정 파일 `"USE_MOCK": 0` · 환경변수
      `USE_MOCK=0`) ⇒ 폴더 전체 지문(파일 목록 + 바이트 해시 · 락 파일 포함) 전후 같다 · rc 0 · 머리 상태 줄이 그 폴더 ·
-     모드 실호출 / 격리는 한 함수다 — 회귀 스위트 전부 · doctor · 네 벌이 그 함수에 닿고(소스 대조) 정의는 하나
+     모드 실호출 · 회귀 0 · 사내 전환 판정(B133 ③) / 격리는 한 함수다 — 회귀 스위트 전부 · doctor · 네 벌이 그 함수에 닿고(소스 대조) 정의는 하나
   ⓑ 클린 확인: 그 폴더의 `init --fresh --all` — 비대화형 거부(지문 불변 · 다음 줄 `--yes` · rc 1) · 터미널 `n`(지문 불변) ·
      `--yes`(지금의 클린 — ③④ 빈 상태 · 보존 여섯 0 · ②등록 · 층 · 원본 · 설정 바이트 그대로) / mock 루트의 클린은 묻지
      않는다 / 기본 `init --fresh`는 묻지 않고 보존 여섯을 남긴다 / 확인 없이 부른 클린(코드)은 `CleanRefused` · 쓰기 0
@@ -32,6 +32,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import os
 import shutil
 import signal
@@ -196,19 +197,22 @@ if not (all(v == "성공" for v in _first.values()) and {"data", "work", "regist
     raise SystemExit("바닥을 세우지 못했다 — 첫 인입 · 폴더 모양 (위 줄)")
 
 # ────────────────────────────────────────────────────────────── ⓐ
-print("\n■ B111 ① 점검은 운영 상태 폴더를 읽기만 한다 — doctor --quick 두 갈래")
-for _label, _env_var, _cfg in (("설정 파일 \"USE_MOCK\": 0", False, {"USE_MOCK": 0}),
-                               ("환경변수 USE_MOCK=0", True, {"CHAT_MODEL": "시험"})):
+# 기대 변경(B133 ③ — 기본 doctor가 점검이다 · 옛 --quick은 기본과 같다 — 갈래 하나씩)
+print("\n■ B111 ① 점검은 운영 상태 폴더를 읽기만 한다 — 기본 doctor · --quick 두 갈래")
+for _label, _env_var, _cfg, _args in (("설정 파일 \"USE_MOCK\": 0 · 기본 doctor", False, {"USE_MOCK": 0}, ()),
+                                      ("환경변수 USE_MOCK=0 · --quick", True, {"CHAT_MODEL": "시험"}, ("--quick",))):
     (T / "llm.json").write_text(json.dumps(_cfg) + "\n", encoding="utf-8")
     _f0 = _fp(T)
     _t0 = time.time()
-    _rc, _out = _sp("--quick", env=_shell(T, env_var=_env_var), script="doctor.py")
+    _rc, _out = _sp(*_args, env=_shell(T, env_var=_env_var), script="doctor.py")
     _f1 = _fp(T)
     _head = next((ln.strip() for ln in _out.splitlines() if ln.strip().startswith("상태 폴더 ")), "")
+    _suites = re.findall(r"^\s*\[[^\]]+\] test_\w+\s+\d+ PASS / \d+ FAIL", _out, re.M)
     show(f"ⓐ {_label} — 폴더 전체 지문 전후 같다(파일 {len(_f0)} · 락 포함 · 로그 포함) · rc 0 · 머리 상태 줄 = 그 폴더 · "
-         "모드 실호출",
-         _rc == 0 and _f0 == _f1 and _head.startswith(f"상태 폴더 {T.resolve()} ") and "모드 실호출" in _head,
-         f"rc {_rc} · {time.time() - _t0:.0f}초 · 지문 {'같음' if _f0 == _f1 else _fpdiff(_f0, _f1)}")
+         "모드 실호출 · 회귀 0 · 사내 전환 판정 그대로 (B133 ③)",
+         _rc == 0 and _f0 == _f1 and _head.startswith(f"상태 폴더 {T.resolve()} ") and "모드 실호출" in _head
+         and not _suites and "회귀는 따로 부른다" in _out and "④ 사내 전환" in _out,
+         f"rc {_rc} · {time.time() - _t0:.1f}초 · 스위트 줄 {len(_suites)} · 지문 {'같음' if _f0 == _f1 else _fpdiff(_f0, _f1)}")
     print(f"      {_head}")
     _say(_out, "운영 명령의 모드", "결과:")
 (T / "llm.json").write_text(json.dumps({"USE_MOCK": 0}) + "\n", encoding="utf-8")
