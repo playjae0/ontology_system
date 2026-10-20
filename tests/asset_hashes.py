@@ -41,11 +41,11 @@ def _sha(p):
     return h.hexdigest()
 
 
-def files():
-    """대상 파일 전수 — 레포 기준 상대 경로 순."""
+def files(root=ROOT):
+    """대상 파일 전수 — 레포 기준 상대 경로 순(`root` — 변이 시험은 사본 뿌리 · B133)."""
     out = []
     for a in ASSETS:
-        p = ROOT / a
+        p = root / a
         if p.is_file():
             out.append(p)
         elif p.is_dir():
@@ -54,9 +54,9 @@ def files():
     return sorted(out)
 
 
-def compute():
-    """`{상대경로: sha256}` — 지금 레포의 실물."""
-    return {p.relative_to(ROOT).as_posix(): _sha(p) for p in files()}
+def compute(root=ROOT):
+    """`{상대경로: sha256}` — 지금 레포(또는 사본 뿌리)의 실물."""
+    return {p.relative_to(root).as_posix(): _sha(p) for p in files(root)}
 
 
 def record():
@@ -66,9 +66,9 @@ def record():
     return json.loads(RECORD.read_text(encoding="utf-8")).get("files") or {}
 
 
-def diff():
-    """`(달라진 것, 기록에 없는 것, 사라진 것)` — 전부 상대 경로."""
-    now, was = compute(), record()
+def diff(root=ROOT):
+    """`(달라진 것, 기록에 없는 것, 사라진 것)` — 전부 상대 경로 · 기록은 레포의 것."""
+    now, was = compute(root), record()
     changed = sorted(k for k in now if k in was and now[k] != was[k])
     added = sorted(k for k in now if k not in was)
     gone = sorted(k for k in was if k not in now)
@@ -76,9 +76,9 @@ def diff():
 
 
 def write():
-    RECORD.parent.mkdir(parents=True, exist_ok=True)
+    RECORD.parent.mkdir(parents=True, exist_ok=True)  # 레포 쓰기 예외: 기록을 쓰는 도구(--write · 마감 한 줄의 장부) — 시험이 아니다
     now = compute()
-    RECORD.write_text(json.dumps({"자산": list(ASSETS), "files": now},
+    RECORD.write_text(json.dumps({"자산": list(ASSETS), "files": now},  # 레포 쓰기 예외: 기록을 쓰는 도구(--write · 마감 한 줄의 장부)
                                  ensure_ascii=False, indent=1) + "\n",
                       encoding="utf-8")
     return len(now)

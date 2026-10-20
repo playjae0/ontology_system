@@ -12,8 +12,9 @@
   0 장부(`tools/ledger.py` — PROGRESS 최근 3회차 · 안건 정리 · 결정 번호 · 자산 해시 · 무엇을 옮겼나 한 줄씩) · 코드 지도를 다시
     만든다(생성물 — `docs/회귀스위트/추출_구조.py`) · 바뀌었으면 「갱신 — 커밋에 넣는다」(FAIL 아님)
   1 사전 점검 — `test_g1_g2` · `test_places`(클린 단독 · doctor의 기대 수) · 층 어휘 정적 점검(`tools/layer_words.py` — 코드 ·
-    지시문에 층 config의 카테고리 이름 · 층 폴더 이름 0 · B121 ①) · 문서 검사 일곱(`점검_*.py` — 모양 포함)
-  2 마감 doctor 1회 — 전체 · 클린 단독 · 병렬(스위트마다 제 임시 루트 — `--serial`이면 직렬) · 완료판정 4(클린 2회 동일 그래프)
+    지시문에 층 config의 카테고리 이름 · 층 폴더 이름 0 · B121 ①) · 레포 쓰기 정적 점검(`tools/repo_writes.py` — 시험 소스에서
+    레포 경로로 쓰기 0 · B133 ①) · 문서 검사 일곱(`점검_*.py` — 모양 포함)
+  2 마감 doctor 1회 — 회귀 명령(`doctor.py --regress` — B133 ③) · 전체 · 클린 단독 · 병렬(스위트마다 제 임시 자리 — `--serial`이면 직렬) · 완료판정 4(클린 2회 동일 그래프)
   3 네 벌 — `tools/four_way.py --base <커밋>`(0 같다 · 1 다르다 · 2 못 돌았다)
   4 §7 상한 — 코드 지도 ⓔ의 파일 · 함수 상한 위반 수
   5 자산 해시 — 레포 정본 자산(`prompts/` · `kit/` · `schemas/blocks.json` · `layers/`)이 기록과 같은가(0단계가 다시 쓴 뒤)
@@ -179,6 +180,8 @@ def main(argv):
     row(rc == 0, f"사전 점검 {' · '.join(PRE)}", f"{got}/{want} PASS" if got is not None else f"rc {rc}")
     rc, t = _run([sys.executable, str(ROOT / "tools" / "layer_words.py")], logs / "1_layer_words.txt", env)
     row(rc == 0, "층 어휘 정적 점검", (t.strip().splitlines() or [""])[-1].strip()[:120])
+    rc, t = _run([sys.executable, str(ROOT / "tools" / "repo_writes.py")], logs / "1_repo_writes.txt", env)
+    row(rc == 0, "레포 쓰기 정적 점검", (t.strip().splitlines() or [""])[-1].strip()[:120])      # 시험은 레포에 쓰지 않는다 (B133 ①)
     parts, bad = [], []
     with ThreadPoolExecutor(len(CHECKS)) as ex:            # 일곱은 서로 다른 결과 파일 — 함께 돈다(순서는 그대로)
         got = list(ex.map(lambda k: _run([sys.executable, str(ROOT / SUITE_DIR / f"점검_{k}.py")],
@@ -192,7 +195,7 @@ def main(argv):
 
     # 2 마감 doctor 1회
     res_file = logs / "2_doctor_result.json"
-    cmd = ([sys.executable, "doctor.py"] + (["--only", *only] if only else []) + (["--serial"] if serial else [])
+    cmd = ([sys.executable, "doctor.py"] + (["--only", *only] if only else ["--regress"]) + (["--serial"] if serial else [])
            + [x for k, v in why.items() for x in ("--why", f"{k}={v}")] + ["--result", str(res_file)])
     t_doc = time.time()
     rc_doc, t = _run(cmd, logs / "2_doctor.txt", env)

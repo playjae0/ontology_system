@@ -261,7 +261,7 @@ class _FakeRes:
 
 
 _st_amb = json.loads((REVIEW / "toc_report" / "state.json").read_text(encoding="utf-8"))
-_amb_path = ROOT / "_b58_amb.xlsx"
+_amb_path = Path(_tf.mkdtemp(prefix="b58amb_")) / "_b58_amb.xlsx"     # 임시 자리(레포에 쓰지 않는다 · B133)
 _orig_judge, _orig_read = _FORM.judge, R.reader.read
 try:
     # 표본 하나가 **사람에게 올라오는** 상황을 만든다 — 판정기는 그대로 두고

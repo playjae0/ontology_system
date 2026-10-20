@@ -275,7 +275,8 @@ show("S13 — attach가 다른 청크(L1)의 개체로 붙어 has_property 생�
 # 성공 경로만 시험하면 미해소에 임시 노드를 만들거나 표면형을 그대로 엣지 끝점에
 # 채우는 구현이 회귀를 통과한다 — 임시 노드 금지(문서 3)와 선언된 4경로 밖 엣지
 # 금지(문서 1 I12)가 완료판정에서 걸러지지 않는다.
-_hint = ROOT / "tests" / "fixtures" / "extract_hints" / "S13NEG.json"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+_hint = _FXR.EXTRACT_HINTS / "S13NEG.json"
 _hint.write_text(json.dumps({"S13NEG-C001": {
     "entities": [{"surface": "세척 노즐 압력", "category": "Property"}],
     "relations": [],
@@ -302,7 +303,7 @@ _n0, _e0 = _counts()
 _bad = dict(_env, doc_id="S13NEG2",
             chunks=[dict(_env["chunks"][0], source_locator="S13NEG2-C001",
                          process_ref="레이저노칭")])   # 좌표까지 미해소 — 연쇄 드롭
-(ROOT / "tests" / "fixtures" / "extract_hints" / "S13NEG2.json").write_text(
+(_FXR.EXTRACT_HINTS / "S13NEG2.json").write_text(
     json.dumps({"S13NEG2-C001": _hint and json.loads(_hint.read_text(encoding="utf-8"))["S13NEG-C001"]},
                ensure_ascii=False), encoding="utf-8")
 run_document(_bad)
@@ -338,7 +339,7 @@ show("S13 부정 — 좌표 미해소 자식은 노드로 만들지 않는다 ·
              for d in it.get("dropped_entities") or []),
      f"orphan_anchor {len(_oa2)}건")
 for _f in ("S13NEG", "S13NEG2"):
-    (ROOT / "tests" / "fixtures" / "extract_hints" / f"{_f}.json").unlink(missing_ok=True)
+    (_FXR.EXTRACT_HINTS / f"{_f}.json").unlink(missing_ok=True)
 
 # 체크포인트 재사용
 before = (EXTRACT_DIR / "QPPT01.json").read_text(encoding="utf-8")

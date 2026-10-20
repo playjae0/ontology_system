@@ -33,7 +33,8 @@ from parser import pipeline, struct_map, tuning          # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX       # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="b123_"))
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 
 
 def _quiet():

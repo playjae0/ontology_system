@@ -89,7 +89,8 @@ show("③ 격자 포맷이라고 무조건 제안하지 않는다 (표는 거부
 # ⓐⓒⓓ — 인입 2회로 실증한다. **클린에서 시작한다**(찌꺼기가 판정에 섞이지 않게).
 init.init(fresh_=True, all_=True)
 bootstrap("process", echo=False)
-_W = ROOT / "_b58_toc_wrapper.py"
+import tempfile as _tmpw                                       # noqa: E402
+_W = Path(_tmpw.mkdtemp(prefix="b58_")) / "_b58_toc_wrapper.py"     # 래퍼는 임시 자리(레포에 쓰지 않는다 · B133)
 _W.write_text("# -*- coding: utf-8 -*-\n"
               "from parser.adapters import basic_prose_xlsx\n"
               "ADAPTER = {**basic_prose_xlsx.ADAPTER, 'doc_type': 'toc_basic'}\n"

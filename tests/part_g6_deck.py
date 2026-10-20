@@ -194,7 +194,8 @@ _s5 = next(cid for cid, c in _ch["chunks"].items() if c.get("doc_id") == DID and
 _dir = TMP / "dir"
 _dir.mkdir()
 (_dir / f"{DID}.pptx").write_bytes(PATH.read_bytes())
-_hint = ROOT / "tests" / "fixtures" / "extract_hints" / f"{DID}@deck.json"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+_hint = _FXR.EXTRACT_HINTS / f"{DID}@deck.json"
 _hint.write_text(json.dumps(DECK, ensure_ascii=False), encoding="utf-8")
 with _quiet():
     init.init(fresh_=True, all_=True)

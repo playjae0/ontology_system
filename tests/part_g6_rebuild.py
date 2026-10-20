@@ -58,7 +58,8 @@ from parser import coord_pairs as CP, tagger as TG                              
 
 FX = ROOT / "tests" / "fixtures"
 RAW = FX / "raw"
-HINTS = FX / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 A = "시험자"
 X = "노칭"                                         # 문서 좌표 — 산문 둘 · ⓕ
 _hinted = []

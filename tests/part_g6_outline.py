@@ -311,7 +311,8 @@ _P.knobs().unlink()
 _P.reset()
 _setup()                                                 # 클린 — 앞 실행의 같은 표기 노드(이미 붙은 것)를 물지 않게
 _em = _env("엑셀", "B115CM", "process")                 # mock — 추출 힌트(벨트 하나) · 개요 힌트 없음 · 선별 규칙 없음
-_HINT = ROOT / "tests" / "fixtures" / "extract_hints" / "B115CM.json"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+_HINT = _FXR.EXTRACT_HINTS / "B115CM.json"
 _HINT.write_text(json.dumps({c["source_locator"]: {"entities": [{"surface": "벨트", "category": "Component"}],
                                                    "relations": [], "attach": []}
                              for c in _em["chunks"] if "벨트" in c["text"]}, ensure_ascii=False), encoding="utf-8")
