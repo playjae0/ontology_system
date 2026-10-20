@@ -139,6 +139,9 @@ def print_split_notes(report):
         n = structure_mod.counts(st)
         roles = " · ".join(f"{k} {v}" for k, v in n["역할"].items())
         _screen.say(f"   구조 — 시트 {n['시트']} · 제목 {n['제목']}" + (f"({roles})" if roles else "")
+                    + (f" · 사다리 {n['사다리']}" if n.get("사다리") else "")
+                    + (f" · 판단 필요 {n['판단 필요']}" if n.get("판단 필요") else "")
+                    + (f" · 답 빠짐 {n['답 빠짐']}" if n.get("답 빠짐") else "")
                     + f" · LLM 호출 {n['호출']} · 재사용 {n['재사용']}"
                     + (f" · 버림 {n['버림']}" if n["버림"] else "") + (f" · 실패 {n['실패']}" if n["실패"] else "")
                     + (f" · 사람 고침 {n['고침']}" if n["고침"] else ""), "head")

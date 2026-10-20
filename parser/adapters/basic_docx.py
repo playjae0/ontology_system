@@ -91,10 +91,14 @@ def extract(raw, struct_map_fn=None, structure_fn=None) -> list[dict]:
     lines = _lines(raw)
     out = []
     if lines:
+        rows = _rows(raw, lines)
+        labs = struct_rule.labels(FRAME, lines, rows, _marks(raw), False)
+        if structure_fn is not None and callable(getattr(structure_fn, "prepare", None)):
+            structure_fn.prepare({FRAME: labs})             # 문서 사다리 — 본문 하나 (B132 ③ · 엑셀과 같은 길)
         out = struct_rule.frame_chunks(
-            FRAME, lines, _rows(raw, lines), _locator, ADAPTER["expects"]["section_sep"],
+            FRAME, lines, rows, _locator, ADAPTER["expects"]["section_sep"],
             {}, structure_fn=structure_fn, marks_fn=lambda: _marks(raw), sheet=False,
-            flat_reason="계층 신호 0건 — 본문을 통째로 실었다")
+            flat_reason="계층 신호 0건 — 본문을 통째로 실었다", labs=labs)
     return out + _image_pieces(raw, out)
 
 

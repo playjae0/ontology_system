@@ -1,54 +1,44 @@
 # -*- coding: utf-8 -*-
-"""칸 2.4 — **목차** — 번호 줄의 서수 · 번호 이어짐 · 다시 시작으로 세우는 목차와 그 부모 사슬 (B130 ①②).
+"""칸 2.4 — **목차** — 꼴 서명의 이어짐 · 다시 시작 · 계층 사다리로 세우는 목차와 그 부모 사슬 (B130 ①② · B132 ②④).
 
-    number_levels(lines)      `[(행, 글)]` → `{행: (레벨, 군)}` — 레벨 = 목차 나무의 깊이(엑셀 산문 · Word 같은 함수)
-    toc_chains(lines, levels)  제목마다 부모 사슬 · 줄마다 주인 제목 — 청크 경로(`struct_map.split`)가 쓴다
+    number_levels(lines, ladder=None)  `[(행, 글)]` → `{행: (레벨, 서명)}` — 레벨 = 목차 나무의 깊이(엑셀 산문 · Word 같은 함수)
+    code_ladder(frames)                문서의 시트들(`[[(행, 글)]]`)에서 **코드 사다리** — 다시 시작 증거로 선 서명의 단 순서
+    toc_chains(lines, levels)          제목마다 부모 사슬 · 줄마다 주인 제목 — 청크 경로(`struct_map.split`)가 쓴다
 
-번호 꼴 판정(`heading_family` · `number_shape`)은 `struct_map`이 갖고 여기는 그 위에서 목차만 세운다.
+번호를 읽는 것은 꼴 서명 한 함수(`parser/sig.py`)다. 제목 후보는 짧은 줄만(`struct_map.HEADING_MAX_CHARS` — 넘는 번호 줄은 목록 항목 ·
+자르는 자리가 아니다). 사다리(`{"levels": [{"sigs": [서명…]}…]}` — LLM 또는 코드)가 오면 그 단 순서가 목차의 방향을 정한다.
 """
 from __future__ import annotations
 
-import re
+from parser import sig as SG
 
-from parser.struct_map import DOTTED, heading_family, number_shape
-
-#: **목차 규칙 판**(B130 ①) — 구조 확인의 확정 기록이 이 판을 적는다 · 판이 다른 옛 확정은 재생하지 않는다(목차가 틀렸을 수 있다)
-TOC_VERSION = "toc-2"
-_HANGUL = "가나다라마바사아자차카타파하"
-_ROMAN = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ"
+#: **목차 규칙 판**(B130 ① · B132 — 꼴 서명 · 사다리) — 구조 확인의 확정 기록이 이 판을 적는다 · 판이 다른 옛 확정은 재생하지
+#: 않는다(목차가 틀렸을 수 있다)
+TOC_VERSION = "toc-3"
 
 
-def number_value(text, shape):
-    """줄 머리 번호의 서수(1부터) — 꼴마다 · 점 번호는 마지막 마디 · 읽지 못하면 None(`-`는 세지 않는다) (B126 ② · B130 ①)."""
-    t = str(text or "").strip()
-    if shape == "1.1":
-        m = re.match(r"\d+(?:\.\d+)+", t)
-        return int(m.group().split(".")[-1]) if m else None
-    if shape in ("(1)", "1)", "1.", "제1장"):
-        m = re.search(r"\d+", t)
-        return int(m.group()) if m else None
-    if shape in ("가.", "가)"):
-        return _HANGUL.index(t[0]) + 1 if t and t[0] in _HANGUL else None
-    if shape == "Ⅰ.":
-        return _ROMAN.index(t[0]) + 1 if t and t[0] in _ROMAN else None
-    if shape == "A.":
-        return ord(t[0].upper()) - 64 if t and t[0].isalpha() and t[0].isascii() else None
-    if shape == "①":
-        return ord(t[0]) - 0x245F if t and 0x2460 <= ord(t[0]) <= 0x2473 else None
-    return None
+def _short(text):
+    from parser.struct_map import HEADING_MAX_CHARS
+    return len(str(text or "").strip()) <= HEADING_MAX_CHARS
 
 
-def _toc_key(text, fam, depth):
-    """목차의 꼴 열쇠 — 번호 꼴 표기(`1)` · `(1)` · `가.` …) · 점 번호는 마디 수까지(`1.` · `1.1`은 다른 꼴)."""
-    return ("1.", depth) if fam == DOTTED else (number_shape(text) or fam, 1)
+def hits_of(lines, ladder_sigs=()):
+    """목차 후보 `[(행, 서명, 서수)]` — 짧은 줄 · 서수가 있는 서명(기호 서명은 사다리에 든 것만)."""
+    out = []
+    for r, t in lines:
+        s, v = SG.signature(t)
+        if s and _short(t) and (v is not None or s in ladder_sigs):
+            out.append((r, s, v))
+    return out
 
 
-def _toc(hits, forbid, seen=None):
-    """열린 제목의 스택으로 목차를 세운다 — `{행: 단}` · `seen`이면 다시 시작한 자리 `(자식 꼴, 부모 꼴, 부모 서수)`를 적는다.
+def _toc(hits, forbid, seen=None, rank=None):
+    """열린 제목의 스택으로 목차를 세운다 — `{행: 단}` · `seen`이면 다시 시작한 자리 `(자식 서명, 부모 서명, 부모 서수)`를 적는다.
 
-    ⓐ 열린 줄 가운데 같은 꼴 · 서수 − 1이 있으면 그 줄까지 닫고 형제 ⓑ 서수가 첫째면 맨 위 열린 제목의 자식(그 꼴이 그 부모 꼴
-    아래로 가면 안 되는 방향이면 — `forbid` — 열린 줄을 닫고 그 위의 자식) ⓒ 둘 다 아니면 같은 꼴이 열려 있으면 그 형제 · 그
-    꼴이 다시 시작한 부모 꼴이 열려 있으면 그 자식 · 아니면 맨 위의 자식."""
+    ⓐ 열린 줄 가운데 같은 서명 · 서수 − 1이 있으면 그 줄까지 닫고 형제 ⓑ 서수가 첫째면 맨 위 열린 제목의 자식(그 서명이 그 부모
+    서명 아래로 가면 안 되는 방향이면 — `forbid` — 열린 줄을 닫고 그 위의 자식) ⓒ 둘 다 아니면 같은 서명이 열려 있으면 그 형제 · 그
+    서명이 다시 시작한 부모 서명이 열려 있으면 그 자식 · 사다리(`rank` — 서명의 단 번호)가 있으면 단이 더 얕은 가장 가까운 열린 줄의
+    자식 · 아니면 맨 위의 자식."""
     stack, out, under = [], {}, {}
     for r, key, val in hits:
         sib = next((i for i in range(len(stack) - 1, -1, -1)
@@ -65,6 +55,9 @@ def _toc(hits, forbid, seen=None):
                     del stack[par + 1:]
             while stack and (key, stack[-1][0]) in forbid:
                 stack.pop()
+            if rank and key in rank:                         # 사다리 — 단이 같거나 깊은 열린 줄은 부모가 아니다
+                while stack and rank.get(stack[-1][0], -1) >= rank[key]:
+                    stack.pop()
             if val == 1 and stack:
                 under.setdefault(key, set()).add(stack[-1][0])
                 if seen is not None:
@@ -75,37 +68,76 @@ def _toc(hits, forbid, seen=None):
     return out
 
 
-def number_levels(lines):
-    """`[(행, 글)]` → `{행: (레벨, 군)}` — **목차는 번호 이어짐 · 다시 시작으로 세운다**(B130 ① — 사람이 목차를 읽는 방식).
+def evidence(frames_hits):
+    """다시 시작 증거 — `(ev {(자식, 부모): (강한 수, 수)}, 처음 나온 차례 {서명: n})` · 시트를 넘어 합친다(문서 전체)."""
+    ev, first = {}, {}
+    for hits in frames_hits:
+        for _r, s, _v in hits:
+            first.setdefault(s, len(first))
+        seen = []
+        _toc(hits, set(), seen)
+        for child, parent, pval in seen:
+            if child == parent:
+                continue
+            strong, n = ev.get((child, parent), (0, 0))
+            ev[(child, parent)] = (strong + (pval is not None and pval > 1), n + 1)
+    return ev, first
 
-    같은 꼴 번호가 1씩 이어지면 형제 · 첫째 번호(1 · 가 · A · ① · Ⅰ · (1) — 점 번호는 마지막 마디)로 다시 시작하면 바로 위 열린 제목의
-    자식 — 같은 꼴이 여러 단에 쓰여도 맞게 선다(레벨 = 목차 나무의 깊이). 같은 문서에서 두 꼴이 서로의 아래에서 다시 시작했다면
-    한 방향만 남긴다(부모가 첫째가 아닌 다시 시작 → 횟수 → 먼저 나온 꼴이 위) — 진 방향의 자식 관계는 세우지 않는다(열린 줄을 닫고 그
-    위의 자식). 점 번호는 마디 수가 꼴을 가른다(`1.1`은 `1.`의 자식 — 점 번호만 쓰는 시트의 레벨은 마디 수 그대로)."""
-    hits, fam_of, first = [], {}, {}
-    for r, t in lines:
-        hf = heading_family(t)
-        if not hf:
-            continue
-        key = _toc_key(t, *hf)
-        hits.append((r, key, number_value(t, key[0] if key[0] != "1." else ("1." if key[1] == 1 else "1.1"))))
-        fam_of[r] = hf[0]
-        first.setdefault(key, len(first))
-    seen = []
-    _toc(hits, set(), seen)
-    ev = {}
-    for child, parent, pval in seen:
-        if child == parent:
-            continue
-        strong, n = ev.get((child, parent), (0, 0))
-        ev[(child, parent)] = (strong + (pval is not None and pval > 1), n + 1)
-    forbid = set()
+
+def forbid_of(ev, first):
+    """두 서명이 서로의 아래에서 다시 시작했다면 한 방향만 — 부모가 첫째가 아닌 다시 시작 → 횟수 → 먼저 나온 서명이 위."""
+    out = set()
     for (c, p), score in ev.items():
         back = ev.get((p, c))
         if back and (back[0], back[1], -first[p]) > (score[0], score[1], -first[c]):
-            forbid.add((c, p))                       # 반대 방향이 이긴다 — c는 p 아래로 가지 않는다
-    lv = _toc(hits, forbid)
-    return {r: (lv[r], fam_of[r]) for r, _k, _v in hits}
+            out.add((c, p))                               # 반대 방향이 이긴다 — c는 p 아래로 가지 않는다
+    return out
+
+
+def code_ladder(frames):
+    """**코드 사다리**(B132 ③ 폴백 · `rules` 방식) — 시트들의 줄(`[[(행, 글)]]`)에서 서명의 단 순서 `{"levels": [{"sigs": [...]}], "by": "코드"}`.
+
+    다시 시작 증거(이긴 방향만)를 부모 → 자식 사슬로 보고 서명마다 가장 긴 사슬의 깊이가 단이다 · 증거가 없는 서명은 맨 위 단 ·
+    같은 단 안의 차례는 처음 나온 차례 · 역할 · 카테고리는 비운다(LLM 사다리 · 사람 힌트의 몫)."""
+    fh = [hits_of(lines) for lines in frames]
+    ev, first = evidence(fh)
+    forbid = forbid_of(ev, first)
+    edges = {(c, p) for (c, p) in ev if (c, p) not in forbid}
+    level = {s: 0 for s in first}
+    for _i in range(len(first) + 1):                      # 가장 긴 사슬 — 고리는 이긴 방향만 남아 없다(남아도 횟수로 끊긴다)
+        changed = False
+        for c, p in edges:
+            if level.get(c, 0) < level.get(p, 0) + 1 <= len(first):
+                level[c] = level[p] + 1
+                changed = True
+        if not changed:
+            break
+    out = {}
+    for s in sorted(first, key=lambda s: (level[s], first[s])):
+        out.setdefault(level[s], []).append(s)
+    return {"levels": [{"sigs": out[k], "role": None, "category": None} for k in sorted(out)], "by": "코드"}
+
+
+def rank_of(ladder):
+    """사다리 → `{서명: 단 번호}`(0부터 · 위에서 아래)."""
+    return {s: i for i, lv in enumerate((ladder or {}).get("levels") or []) for s in lv.get("sigs") or []}
+
+
+def number_levels(lines, ladder=None):
+    """`[(행, 글)]` → `{행: (레벨, 서명)}` — **목차는 이어짐 · 다시 시작으로 세운다**(B130 ① — 사람이 목차를 읽는 방식).
+
+    같은 서명이 서수 1씩 이어지면 형제 · 첫째 서수(1 · 가 · A · ① · Ⅰ · (1) — 점 번호는 마지막 마디)로 다시 시작하면 바로 위 열린
+    제목의 자식 — 같은 서명이 여러 단에 쓰여도 맞게 선다(레벨 = 목차 나무의 깊이). 방향은 사다리가 정한다(없으면 그 줄들의 코드
+    사다리 — 두 서명이 서로의 아래에서 다시 시작했다면 한 방향만 · `forbid_of`)."""
+    rank = rank_of(ladder) if ladder else None
+    hits = hits_of(lines, set(rank or ()))
+    if rank is None:
+        ev, first = evidence([hits])
+        forbid = forbid_of(ev, first)
+    else:
+        forbid = {(c, p) for c in rank for p in rank if rank[c] <= rank[p]}
+    lv = _toc(hits, forbid, rank=rank)
+    return {r: (lv[r], s) for r, s, _v in hits}
 
 
 def toc_chains(lines, levels):
