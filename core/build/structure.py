@@ -175,7 +175,8 @@ def structurer(layers=None):
             st["source"] = "hint"
         mine = [x for x in out.get("rules") or [] if x.get("shape")]
         if mine:                                            # 사다리 고침 — 문서 규칙(뒤 시트에도) · 이 시트는 고친 사다리로 다시 세운다
-            DOC.setdefault(doc_id, {"hints": [], "rules": []})["rules"] = _merge_rules(DOC[doc_id].get("rules"), mine)
+            doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
+            doc["rules"] = _merge_rules(doc.get("rules"), mine)
             ladder = ladder_now(doc_id, cats)
             built = PL.apply(labs, ladder, d["counts"])
         edits, missing, stray = LA.answers_to_edits(doc_id, frame, built["headings"], built["needs"], out.get("answers"))
@@ -267,6 +268,7 @@ def confirm(doc_id, frame, st, hints=None):
         "joins": st.get("joins") or [], "chunks": st.get("chunks") or [], "hints": list(hints or st.get("hints") or []),
         "prompt_version": st.get("prompt_version"), "toc": TOC_VERSION, "answer": st.get("answer"),
         "rules": st.get("rules") or [], "doc_hints": doc["hints"], "doc_rules": doc["rules"], "ladder": st.get("ladder"),
+        "ladder_base": (DOCL.get(doc_id) or {}).get("base") or st.get("ladder"),
         "by": "사람",
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     p = confirmed_path()

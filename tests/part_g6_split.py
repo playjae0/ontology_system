@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""G6 — **구조는 규칙 나무가 기준 · LLM은 고칠 곳만 이유와 함께 · 시트마다 확인 · 구조까지만** (B126).
+"""G6 — **구조는 사다리로 선 목차가 기준 · 시트 확인은 판단 필요의 답과 고칠 곳만 이유와 함께 · 시트마다 확인 · 구조까지만** (B126 · B132).
 
-창작 표본(시트 셋 · 수치는 근거가 아니다 [정정] 50) · `edit` 답은 가짜 게이트웨이(실호출 갈래 — 입력 조립 · 검사는 실물) ·
+창작 표본(시트 셋 · 수치는 근거가 아니다 [정정] 50) · 사다리 · 시트 확인 답은 가짜 게이트웨이(실호출 갈래 — 입력 조립 · 검사는 실물) ·
 `--split-only`는 mock 힌트(`{"edits": …}` 꼴). LLM 품질은 사내에서 잰다. 대표 사례 하나씩:
-  ⓐ 고침 없는 `edit` = `rules` · `rules` = 구조 함수 없는 파싱(B118 청크)
+  ⓐ 고침 없는 시트 확인(사다리 = 코드 사다리) = `rules` · `rules` = 구조 함수 없는 파싱(B118 청크)
   ⓑ 고침(제목 더함 · 부모 바꿈 · 대상) → 사슬에 유닛 · 이유가 md에 · 어긋난 고침만 버린다
-  ⓒ 확인 고리 — 힌트 → 둘째 호출 입력에 앞 출력 + 힌트 → 다시 찍기 → `c` → 확정 기록 → 보존분 없이 다시 파싱해도 구조 LLM 0 · 같은 나무
-  ⓓ 형태 단서 — 「가.」 아래 「1.」 다시 시작 · 「1)~11)」 이어짐이 LLM 입력에
-  ⓔ 규칙 나무가 빈 시트만 llm · `structure_mode=llm`이면 `edit` 호출 0
+  ⓒ 확인 고리 — 힌트 → 둘째 시트 확인 입력에 앞 출력 + 힌트 → 다시 찍기 → `c` → 확정 기록 → 보존분 없이 다시 파싱해도 구조 LLM 0 · 같은 나무
+  ⓓ 서명 통계가 사다리 입력에 — 「9.」가 「가.」 아래에서 다시 시작 · 「9)」 11줄 이어짐(공통사양)
   ⓕ `--split-only` — 추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`
   B127 ⓓ 확정한 시트에 힌트 → 확정을 비켜 두고 기록된 힌트 + 새 힌트로 다시 → `c`면 새 나무 · 쌓인 힌트 · ⓔ `q`면 기록 그대로
-네 벌(ⓖ)은 마감 한 줄의 네 벌 단계가 잰다.
+  B130 나무 화면 · 힌트는 사다리 고침(문서 규칙 — 둘째 시트에도) · 옛 확정은 다시
+네 벌(ⓖ)은 마감 한 줄의 네 벌 단계가 잰다. (B126 ⓔ `llm` 방식은 B132 ⑧에서 폐기 — 그 어서션은 지웠다)
 """
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _xlsx():
     return p
 
 
-def _parse(p, structure="edit", confirmed=None):
+def _parse(p, structure="ladder", confirmed=None):
     st = None if structure is None else ST.structurer(["process"])
     res = pipeline.parse(BX, DID, str(p), closed_list=[], sheet_roles={n: "prose" for n in SHEETS},
                          structure=st, structure_confirmed=confirmed)
@@ -80,16 +80,26 @@ def _chain(res, frame, needle):
     return [x.get("name") or x.get("text") for x in (c.get("meta") or {}).get("structure") or []]
 
 
+def _ladder(body):
+    """가짜 사다리 — 코드 사다리를 그대로 되말한다(역할 없음 · 근거 행 없음)."""
+    return {"levels": [{**lv, "rows": [], "why": "코드 사다리 그대로"} for lv in body["code_ladder"]["levels"]], "unnumbered": []}
+
+
+def _body_answers(body):
+    return [{"row": n["row"], "heading": False, "parent": None, "role": None, "name": None, "category": None, "why": "본문"}
+            for n in body.get("needs") or []]
+
+
 def _structure(body):
-    """가짜 ⑪ — `edit`이면 시트 E만 고침(힌트가 있으면 둘째 판) · 그 밖은 고침 0 · llm이면 제목 0(판정 없음 아님 — 빈 나무)."""
-    if body.get("mode") != "edit":
-        return {"headings": []}
+    """가짜 ⑪ — 사다리는 코드 사다리 · 시트 확인은 시트 E만 고침(힌트가 있으면 둘째 판) · 그 밖은 고침 0 · 판단 필요는 본문 답."""
+    if body.get("task") == "ladder":
+        return _ladder(body)
     if body["frame"] != E:
-        return {"edits": [], "headings": []}
+        return {"answers": _body_answers(body), "edits": [], "rules": []}
     eds = [_E(e) for e in EDITS[:1]] if not body.get("hints") else [_E(e) for e in EDITS]
     if any(AGAIN in h for h in body.get("hints") or []):      # 확정한 시트를 다시 연 힌트(B127 ③) — 새 답
         eds.append(_E({"row": 5, "what": "제목 뺌", "why": WHY["다시"]}))
-    return {"edits": eds, "headings": [{"row": 7, "role": "대상", "name": "적층부", "category": "Unit", "why": "둘째 설비 단위"}]}
+    return {"answers": _body_answers(body), "edits": eds, "rules": []}
 
 
 with contextlib.redirect_stdout(io.StringIO()):
@@ -98,21 +108,22 @@ with contextlib.redirect_stdout(io.StringIO()):
 _x = _xlsx()
 ST.confirmed_path().unlink(missing_ok=True)
 
-# ────────────────────────────────────────────────────────────── ⓐ 바닥 — rules = 구조 함수 없음 · 고침 없는 edit = rules
-print("\n■ ⓐ 규칙 나무가 바닥")
+# ────────────────────────────────────────────────────────────── ⓐ 바닥 — rules = 구조 함수 없음 · 고침 없는 시트 확인 = rules
+print("\n■ ⓐ 코드 사다리가 바닥")
 ST.MODE = "rules"
 _r0 = _parse(_x, structure=None)
 struct_map.invalidate(DID)
 _r1 = _parse(_x)
-ST.MODE = "edit"
+ST.MODE = "ladder"
 struct_map.invalidate(DID)
 CALLS.clear()
-with Live(by={"structure": lambda b: {"edits": [], "headings": []}}):
+with Live(by={"structure": lambda b: _ladder(b) if b.get("task") == "ladder" else
+              {"answers": _body_answers(b), "edits": [], "rules": []}}):
     _r2 = _parse(_x)
 _modes = {f: x.get("mode") for f, x in (_r2.report["structure"]["프레임"]).items()}
-show("ⓐ `rules` = 구조 함수 없는 파싱(B118 청크) · 고침 없는 `edit` = `rules`(규칙 나무 시트) · 구조 LLM 0(rules)",
+show("ⓐ `rules` = 구조 함수 없는 파싱(B118 청크) · 고침 없는 시트 확인 = `rules`(코드 사다리 목차) · 구조 LLM 0(rules)",
      all(_by(_r1, f) == _by(_r0, f) for f in (E, N)) and all(_by(_r2, f) == _by(_r1, f) for f in (E, N))
-     and _modes.get(E) == "edit" and (_r1.report.get("structure") or {}).get("방식", {}).get(E) == "rules"
+     and _modes.get(E) == "ladder" and (_r1.report.get("structure") or {}).get("방식", {}).get(E) == "rules"
      and _r1.report["structure"]["프레임"][E]["headings"],                 # rules도 구조 확인에 규칙 나무가 선다
      f"청크 E {len(_by(_r0, E))}/{len(_by(_r1, E))}/{len(_by(_r2, E))} · 방식 {_modes}")
 
@@ -120,7 +131,7 @@ show("ⓐ `rules` = 구조 함수 없는 파싱(B118 청크) · 고침 없는 `e
 print("\n■ ⓑ 고칠 곳만 이유와 함께")
 struct_map.invalidate(DID)
 CALLS.clear()
-with Live(by={"structure": lambda b: {**_structure({**b, "hints": ["다 고친다"]})}}):
+with Live(by={"structure": lambda b: _structure({**b, "hints": ["다 고친다"]})}):
     _r3 = _parse(_x)
 _f3 = _r3.report["structure"]["프레임"][E]
 _md = split_report.write_md(DID, _r3.report, _r3.envelope).read_text(encoding="utf-8")
@@ -141,6 +152,7 @@ _screen.ask = lambda prompt: next(_answers)
 _buf = io.StringIO()
 with Live(by={"structure": _structure}):
     _r4 = _parse(_x)
+    _ladder_calls = [(p, b) for p, b in CALLS if b.get("task") == "ladder"]
     with contextlib.redirect_stdout(_buf):
         _r5, _go = SS.gate(_r4, DID, lambda: _parse(_x, confirmed=ST.confirmed_of(DID)), layers=["process"])
 _screen.ask = _ask0
@@ -160,13 +172,14 @@ show("ⓒ 힌트 → 둘째 호출 입력에 앞 출력 + 힌트 · 다시 찍�
      and _chain(_r6, E, "메모 본문")[-1:] == ["설비 메모"],
      f"호출 {len(_calls)} · 확정 {sorted(_cf)} · 재생 호출 {len([p for p, _b in CALLS if p == 'structure'])}")
 
-# ────────────────────────────────────────────────────────────── ⓓ 형태 단서
-_form = _calls[0]["form"]["번호 이어짐"] if _calls else []
-show("ⓓ 형태 단서가 LLM 입력에 — 「1.」이 「나.」 아래에서 다시 시작 · 「1)」 11개 이어짐(공통사양)",
-     any("'1.' 8행 — '가.'(7행) 아래에서 다시 시작" in x for x in _form)
-     and any("'1)' 2~12행 11개 이어짐" in x for x in split_report.SE.run_lines(split_report.SE.number_runs(
-         _r4.report["structure"]["프레임"][N]["labels"]))),
-     f"{_form}")
+# ────────────────────────────────────────────────────────────── ⓓ 서명 통계(형태 단서) — 사다리 입력
+_lad = [b for p, b in _ladder_calls if p == "structure"]
+_stats = (_lad[0].get("stats") or {}) if _lad else {}
+_e9 = next((x for x in _stats.get(E) or [] if x["서명"] == "9."), {})
+_n9 = next((x for x in _stats.get(N) or [] if x["서명"] == "9)"), {})
+show("ⓓ 서명 통계가 사다리 입력에(문서당 1호출) — 「9.」가 「가.」 아래에서 다시 시작(3 · 8행) · 「9)」 11줄 · 이어짐 10(공통사양)",
+     len(_lad) == 1 and [x["행"] for x in _e9.get("다시 시작") or [] if x["아래"] == "가."] == [3, 8]
+     and _n9.get("수") == 11 and _n9.get("이어짐") == 10, f"사다리 호출 {len(_lad)} · 9. {_e9} · 9) {_n9}")
 
 # ────────────────────────────────────────────────────────────── B127 ③ 확정한 시트도 힌트로 다시 연다
 print("\n■ B127 ③ 확정한 시트에 힌트 — 확정을 비켜 두고 다시 · c면 덮고 q면 그대로")
@@ -219,9 +232,13 @@ _wb.save(_p2)
 
 
 def _rule_llm(body):
-    """가짜 ⑪ — 힌트가 꼴 규칙이면 되말한다(이해한 규칙) · 고침은 없다(코드가 그 꼴 줄 전부에 적용한다)."""
+    """가짜 ⑪ — 사다리는 코드 사다리 · 시트 확인은 힌트가 꼴 규칙이면 사다리 고침으로 되말한다 · 고침은 없다(코드가 그 서명 줄 전부에
+    적용한다)."""
+    if body.get("task") == "ladder":
+        return _ladder(body)
     said = [{"shape": "가.", "role": "대상", "category": "Unit", "parent_shape": None, "said": "'가.' 줄은 유닛(대상)의 단"}]
-    return {"edits": [], "headings": [], "rules": said if any(RULE_HINT in h for h in body.get("hints") or []) else []}
+    return {"answers": _body_answers(body), "edits": [],
+            "rules": said if any(RULE_HINT in h for h in body.get("hints") or []) else []}
 
 
 def _parse2(confirmed=None):
@@ -243,17 +260,17 @@ _s2calls = [b for p_, b in CALLS if p_ == "structure" and b.get("frame") == S2]
 _tgt = {f: {h["row"]: (h.get("role"), h.get("name"), h.get("category")) for h in _fr9[f]["headings"]} for f in (S1, S2)}
 _md9 = split_report.write_md(DID2, _r9.report, _r9.envelope).read_text(encoding="utf-8")
 show("ⓓ 나무 — 화면 · md 모두 들여쓰기 나무(자식 줄이 한 단 깊다) · 청크마다 전체 경로(시트 › … › 자기 제목)",
-     re.search(r"^ {2}- 1행 .*가\. 공급부$", _md9, re.M) and re.search(r"^ {4}- 2행 .*1\) 속도", _md9, re.M)
+     re.search(r"^ {2}- 1행 .*가\. 공급부 — ", _md9, re.M) and re.search(r"^ {4}- 2행 .*1\) 속도", _md9, re.M)
      and f"첫 줄 '1) 속도' · 끝 줄 '속도는 50이다.' · 경로 {S1} › 가. 공급부" in _md9 and f"경로 {S1} › 가. 공급부" in _scr,
      " / ".join(ln.strip() for ln in _md9.splitlines() if "경로" in ln)[:200])
-show("ⓔ 문서 규칙 — 첫 시트 힌트 → 이해한 규칙(꼴 가. · 대상 · Unit) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
+show("ⓔ 문서 규칙 — 첫 시트 힌트 → 사다리 고침(서명 가. · 대상 · Unit) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
      "화면에 적용 수 · 묻는 줄에 줄 고침 명령 0",
      _go and _tgt[S1].get(1) == ("대상", "공급부", "Unit") and _tgt[S1].get(4) == ("대상", "적층부", "Unit")
      and _tgt[S2].get(1) == ("대상", "이송부", "Unit") and _tgt[S2].get(3) == ("대상", "반전부", "Unit")
      and _s2calls and RULE_HINT in (_s2calls[-1].get("hints") or [])          # 힌트 뒤 둘째 시트의 첫 호출부터(파싱 첫 판은 힌트 전)
-     and "적용 2줄 / 그 꼴 전체 2줄" in _scr and _prompts and not any("고침" in x for x in _prompts),
+     and "적용 2줄 / 그 서명 전체 2줄" in _scr and _prompts and not any("고침" in x for x in _prompts),
      f"S1 {_tgt[S1]} · S2 {_tgt[S2]} · S2 호출 {len(_s2calls)} · 힌트 {[b.get('hints') for b in _s2calls]} · 적용 줄 "
-     f"{[ln.strip()[:60] for ln in _scr.splitlines() if '이해한 규칙' in ln][:2]} · 묻는 줄 {_prompts[:1]}")
+     f"{[ln.strip()[:60] for ln in _scr.splitlines() if '사다리 고침' in ln][:2]} · 묻는 줄 {_prompts[:1]}")
 struct_map.invalidate(DID2)
 CALLS.clear()
 with Live(by={"structure": _rule_llm}):
@@ -281,24 +298,9 @@ show("ⓕ 판이 없는 옛 확정은 재생하지 않고 다시 보인다(구�
 _raw.pop(DID2, None)
 ST.confirmed_path().write_text(json.dumps(_raw, ensure_ascii=False), encoding="utf-8")
 
-# ────────────────────────────────────────────────────────────── ⓔ 빈 규칙 나무 → llm · structure_mode=llm
-print("\n■ ⓔ 규칙 나무가 빈 시트만 llm · structure_mode=llm")
-_m4 = {f: x.get("mode") for f, x in _r4.report["structure"]["프레임"].items()}
-struct_map.invalidate(DID)
-ST.confirmed_path().unlink(missing_ok=True)
-ST.MODE = "llm"
-CALLS.clear()
-with Live(by={"structure": _structure}):
-    _r7 = _parse(_x)
-ST.MODE = "edit"
-show("ⓔ 규칙 나무가 빈 시트(메모)만 llm · 나머지 edit · `structure_mode=llm`이면 시트 전부 llm(B124 입력 — 규칙 나무 · edit 0)",
-     _m4.get(M) == "llm" and _m4.get(E) == "edit" and _m4.get(N) == "edit"
-     and all(x.get("mode") == "llm" for x in _r7.report["structure"]["프레임"].values())
-     and CALLS and all(b.get("mode") != "edit" and "rules_tree" not in b for p, b in CALLS if p == "structure"),
-     f"edit 기본 {_m4} · llm {len([1 for p, _b in CALLS if p == 'structure'])}호출")
-
 # ────────────────────────────────────────────────────────────── ⓕ --split-only
 print("\n■ ⓕ ingest-file --split-only")
+ST.confirmed_path().unlink(missing_ok=True)
 _register("process", "b126_process")
 (HINTS / f"{DID}@structure.json").write_text(json.dumps({E: {"edits": EDITS[:1], "headings": []}}, ensure_ascii=False),
                                              encoding="utf-8")

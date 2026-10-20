@@ -360,6 +360,10 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
         pick, _why, _oor = choose_level(stats)
     all_head = {r["row"]: (r.get("level") or 0) for r in smap.get("rows") or []
                 if r.get("heading")}
+    if not pick and all_head and not stats:
+        # 본문 줄이 하나도 없는 프레임(줄 전부가 제목 — 번호 줄만 쓴 시트) — 맨 위 단에서만 자른다 · 깊은 제목 줄이 본문이다
+        # (전부 자르면 청크가 0이 되어 글이 사라진다 · B132)
+        pick = min(all_head.values())
     level_of = ({n: l for n, l in all_head.items() if l <= pick}
                 if pick else dict(all_head))
     text_of = dict(lines)

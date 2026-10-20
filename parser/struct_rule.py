@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from . import ladder as PL
 from . import struct_map, toc
 
 def frame_paths(pieces):
@@ -242,9 +243,11 @@ def _chain_item(h, text, row=None):
     return out
 
 
-def _ladder_key(ask, frames, doc_hints):
+def _ladder_key(ask, frames):
+    """문서 사다리 보존의 열쇠 — 판 + 시트마다 이름표(문서 힌트는 넣지 않는다 — 힌트는 시트 확인이 사다리 고침으로 되말한다 ·
+    사다리를 다시 묻지 않는다 · 문서당 1)."""
     key = ask.key() if callable(getattr(ask, "key", None)) else None
-    return {"key": key, "labels": {f: labels_hash(l) for f, l in sorted(frames.items())}, "doc_hints": list(doc_hints)}
+    return {"key": key, "labels": {f: labels_hash(l) for f, l in sorted(frames.items())}}
 
 
 def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, skip=(), confirmed=None, ctx=None):
@@ -265,9 +268,13 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
         frames = {f: l for f, l in frames.items() if f not in skip}
         if not frames or not callable(getattr(ask, "prepare", None)):
             return None
-        k = _ladder_key(ask, frames, doc_hints)
+        k = _ladder_key(ask, frames)
         hit = kept.get(LKEY)
-        if hit and hit.get("ladder_key") == k:
+        conf = [(confirmed or {}).get(f) or {} for f in frames]
+        if all(c.get("toc") == toc.TOC_VERSION and c.get("labels") == labels_hash(frames[f]) and c.get("ladder_base")
+               for f, c in zip(frames, conf)):                # 시트 전부 확정 — 확정 기록의 사다리(LLM 0 · 재구축 재생)
+            d = ask.adopt(doc_id, {"base": conf[0]["ladder_base"], "source": "확정", "counts": PL.doc_counts(frames)})
+        elif hit and hit.get("ladder_key") == k:
             d = ask.adopt(doc_id, hit)
             tally["재사용"] = tally.get("재사용", 0) + 1
         else:
@@ -291,7 +298,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
         now = ask.ladder_of(doc_id) if callable(getattr(ask, "ladder_of", None)) else None
         if conf and conf.get("labels") == h:
             tally["확정"] = tally.get("확정", 0) + 1
-            st = {**conf, "source": "confirmed", "calls": 0, "confirmed": True}
+            st = {**conf, "source": "confirmed", "calls": 0, "confirmed": True, "ladder_source": "확정"}
         elif (hit and hit.get("labels") == h and hit.get("key") == key
               and (hit.get("doc_hints") or []) == doc_hints and hit.get("ladder") == now):   # 사다리 · 문서 힌트가 바뀌면 다시
             tally["재사용"] = tally.get("재사용", 0) + 1

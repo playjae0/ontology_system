@@ -95,12 +95,13 @@ def skeleton(labs, heads, needs, lo=None, hi=None):
         r = x["row"]
         base = {"row": r, "sig": x.get("sig"), "head": _head(x), "depth": x.get("depth") or 0, "col": x.get("col"),
                 **({"marks": x["marks"]} if x.get("marks") else {})}
-        if r in head:
+        at = {"toc": toc.get(r), "parent": head[r].get("parent"), "role": head[r].get("role")} if r in head else {}
+        if r in need:                                       # 판단 필요가 먼저 — 제목으로 선 줄이어도 이유를 단다
             flush()
-            out.append({"kind": "제목", **base, "toc": toc.get(r), "parent": head[r].get("parent"), "role": head[r].get("role")})
-        elif r in need:
+            out.append({"kind": "판단 필요", **base, **at, "need": need[r]["kind"], "why": need[r]["why"]})
+        elif r in head:
             flush()
-            out.append({"kind": "판단 필요", **base, "need": need[r]["kind"], "why": need[r]["why"]})
+            out.append({"kind": "제목", **base, **at})
         elif r in near:
             flush()
             out.append({"kind": "앞뒤", **base})
