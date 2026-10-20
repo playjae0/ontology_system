@@ -92,7 +92,7 @@ show("① 시스템 5 — reader head·골격 닫힌 목록·층 어휘·공용 
                             "blocks", "adapter_skeleton"}
      and pkg["system"]["skeleton_closed_list"]["count"] == 46)
 show("① 초안은 fixture가 반환한다 (USE_MOCK — D-10·D-26)",
-     "tests/fixtures/fixtures/adapters/toc_report.py" in r.stdout)
+     "fixtures/adapters/toc_report.py" in r.stdout)     # 픽스처 뿌리는 회귀의 사본일 수 있다(B133)
 _gen = r
 
 r = run("review", "toc_report", "--instruct", "공정명 헤딩 레벨을 2단까지만 잡아라")

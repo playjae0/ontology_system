@@ -8,8 +8,8 @@
     직렬(`--serial`) — 레포 mock 루트 하나에서 차례로(병렬 결과를 대조하는 길) · 픽스처 사본 · 작업 폴더는 병렬과 같다
 
 **레포는 시험이 읽기만 한다**(B133 ①) — 회귀 앞뒤 작업 트리 대조(`repo_tree` — 남은 쓰기) · 쓰고 지우는 것은 정적 점검(`tools/repo_writes.py`).
-**붉은 스위트는 자리를 남긴다**(B133 ②) — 그 임시 자리 + 출력 전문(`출력.txt`)을 `RED_DIR`로 옮기고 자리를 한 줄 · 초록은 지운다 ·
-지난 붉은 자리는 최근 `RED_KEEP`개만 남긴다(다음 회귀가 정리).
+**붉은 스위트는 자리를 남긴다**(B133 ②) — 그 임시 자리 + 출력 전문(`출력.txt`)을 시스템 임시 폴더의 `onto_red_<시각>_<pid>_<스위트>`로
+옮기고 자리를 한 줄 · 초록은 지운다 · 지난 붉은 자리는 최근 `RED_KEEP`개만 남긴다(다음 회귀가 정리).
 
 **기대 수는 생성물이다**(`docs/회귀스위트/기대_수.json` — 마감 한 줄 `tools/close.py`가 쓴다 · doctor는 읽기만):
   ⓐ PASS 0 · FAIL 하나 이상 · 종료 코드 ≠ 0 은 늘 붉다 — 시험이 조용히 안 돈 것
@@ -36,7 +36,8 @@ RECORD = ROOT / Path("docs", "회귀스위트", "기대_수.json")
 #: 동시에 도는 스위트 수 — 4 근방(기계가 작으면 2) · `--jobs N`
 JOBS = min(4, max(2, os.cpu_count() or 2))
 #: 붉은 스위트의 자리(임시 자리 + 출력 전문)를 모으는 곳 · 남기는 수(최근 것부터 — 창작 기본값)
-RED_DIR = Path(tempfile.gettempdir()) / "onto_red"
+RED_DIR = Path(tempfile.gettempdir())
+RED_PREFIX = "onto_red_"
 RED_KEEP = 20
 _LOW_SECS = 10                          # 소요 기록이 없는 스위트의 어림(넣는 순서에만 쓴다)
 
@@ -111,8 +112,7 @@ def _temp_root(prefix, mock=True):
         fx = tmp / "fixtures"
         shutil.copytree(fixtures.ROOT_DIR, fx, ignore=shutil.ignore_patterns("__pycache__"))
         env[fixtures.ENV] = str(fx)
-    work = tmp / "work"
-    work.mkdir()
+    work = Path(tempfile.mkdtemp(prefix="work_", dir=tmp))
     home = None
     if mock:
         home = tmp / paths.MOCK_HOME
@@ -142,9 +142,7 @@ def _job(name, serial):
 def prune_red(keep=None):
     """지난 붉은 자리를 최근 `keep`(기본 `RED_KEEP`)개만 남긴다 — 지운 수."""
     keep = RED_KEEP if keep is None else keep
-    if not RED_DIR.is_dir():
-        return 0
-    dirs = sorted((p for p in RED_DIR.iterdir() if p.is_dir()), key=lambda p: p.name)
+    dirs = sorted((p for p in RED_DIR.glob(f"{RED_PREFIX}*") if p.is_dir()), key=lambda p: p.name)
     old = dirs[:-keep] if keep > 0 else dirs
     for p in old:
         shutil.rmtree(p, ignore_errors=True)
@@ -152,9 +150,8 @@ def prune_red(keep=None):
 
 
 def keep_red(tmp, name, text):
-    """붉은 스위트의 임시 자리를 `RED_DIR/<시각>_<이름>`으로 옮기고 출력 전문(`출력.txt`)을 남긴다 — 그 자리."""
-    RED_DIR.mkdir(parents=True, exist_ok=True)
-    dst = RED_DIR / f"{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{name}"
+    """붉은 스위트의 임시 자리를 `RED_DIR/onto_red_<시각>_<pid>_<이름>`으로 옮기고 출력 전문(`출력.txt`)을 남긴다 — 그 자리."""
+    dst = RED_DIR / f"{RED_PREFIX}{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{name}"
     shutil.move(str(tmp), str(dst))
     (dst / "출력.txt").write_text(text, encoding="utf-8")
     return dst

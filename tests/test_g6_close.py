@@ -272,6 +272,7 @@ sys.path.remove(str(BOX))
 print("\n■ ⓑ 마감 한 줄 — 첫 FAIL에서 멈추지 않고 끝까지 · rc 1")
 (BOX / "doctor.py").write_text(
     "import sys\n"
+    "open(__file__ + '.argv', 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + '\\n')\n"
     "if '--only' in sys.argv:\n"
     "    print('  [  OK ] 합계 2/2 PASS — 고른 실행 — 판정 아님')\n"
     "    sys.exit(0)\n"
@@ -294,11 +295,13 @@ _rows = re.findall(r"^\[(PASS|FAIL|갱신|건너뜀)\] ([^—\n]+)", _summ, re.M
 _lab = {lab.strip(): v for v, lab in _rows}
 _doc = next((v for k, v in _lab.items() if k.startswith("마감 doctor")), None)
 _chk = next((ln for ln in _summ.splitlines() if "문서 검사 일곱" in ln), "")
-# 기대 변경(B131 ③② — 장부 넷이 0단계에 · 끝에 기대 수 기록 — doctor가 붉으면 「건너뜀」)
-show("ⓑ 장부 → 사전 점검(층 어휘 포함) → doctor → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열셋 줄이 전부 요약에 선다",
-     len(_rows) == 13 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
-     and "층 어휘 정적 점검" in _lab and "PROGRESS 최근 3회차" in _lab and _lab.get("기대 수 기록") == "건너뜀",
-     f"줄 {len(_rows)} · {list(_lab)}")
+# 기대 변경(B133 — 사전 점검에 레포 쓰기 정적 점검 · doctor는 회귀 명령으로)
+_argv = (BOX / "doctor.py.argv").read_text(encoding="utf-8").split() if (BOX / "doctor.py.argv").exists() else []
+show("ⓑ 장부 → 사전 점검(층 어휘 · 레포 쓰기 포함) → doctor(회귀 명령) → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열넷 줄이 요약에",
+     len(_rows) == 14 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
+     and "층 어휘 정적 점검" in _lab and "레포 쓰기 정적 점검" in _lab and "PROGRESS 최근 3회차" in _lab
+     and _lab.get("기대 수 기록") == "건너뜀" and "--regress" in _argv,
+     f"줄 {len(_rows)} · doctor 인자 {_argv} · {list(_lab)}")
 show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 뒤 네 벌도 돌았다 · rc 1",
      rc5 == 1 and _doc == "FAIL" and "[FAIL]" in _chk and "모양" in _chk and _lab.get("네 벌") == "PASS"
      and "전부 같다" in _summ and re.search(r"FAIL [2-9]", _summ),

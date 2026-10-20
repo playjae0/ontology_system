@@ -58,11 +58,15 @@ print(json.dumps({"coord": coord, "layers": sorted(discover()),
 '''
 
 
+from core.state import fixtures as _FXE                               # noqa: E402
+
+
 def _env_for(root):
     """그 루트의 mock 상태 — 레포면 이 시험의 루트 그대로(병렬 회귀는 제 임시 루트 — B131 ①) · 사본이면 사본 옆 mock 루트."""
     env = {**os.environ, "USE_MOCK": "1"}
     if Path(root).resolve() != ROOT:
         env[_P.MOCK_HOME_ENV] = str(Path(root) / _P.MOCK_HOME)
+        env[_FXE.ENV] = str(Path(root) / "tests" / "fixtures")       # 사본의 픽스처(회귀가 준 사본이 아니다 — B133)
     return env
 
 

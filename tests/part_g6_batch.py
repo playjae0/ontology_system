@@ -189,7 +189,8 @@ show("①ⓒ 분류 없는 SystemExit이 0건이다 (새 거부는 표시해야 
 import tempfile as _tf61                                             # noqa: E402
 _root61 = Path(_tf61.mkdtemp(prefix="b61_"))
 shutil.copytree(ROOT / "cli", _root61 / "cli", ignore=shutil.ignore_patterns("__pycache__"))
-shutil.copy2(ROOT / "run.py", _root61 / "run.py")
+for _f61 in ROOT.glob("*.py"):                                     # 뿌리 진입점(run.py · doctor.py …) — 다음 줄의 파일 꼴이 가리킨다
+    shutil.copy2(_f61, _root61 / _f61.name)
 _p61 = _root61 / "cli" / "viewer" / "server.py"
 _src61 = _p61.read_text(encoding="utf-8")
 _p61.write_text(_src61 + '\n\ndef _b61_probe():\n'

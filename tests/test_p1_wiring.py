@@ -108,7 +108,7 @@ struct_map.invalidate("PPTNOTE")
 print("\n■ 생성 하네스 — 구축 모드 3단 배선 (생성 → 검수 → 확정)")
 from cli.parse import cmd_build                              # noqa: E402
 
-rc = cmd_build(["tests/fixtures/fixtures/adapters/ipqc.py", "ipqc_p1",
+rc = cmd_build([str(ROOT / "tests/fixtures/fixtures/adapters/ipqc.py"), "ipqc_p1",
                 str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx")])
 outdir = _P.review() / "ipqc_p1"
 show("3단이 파일로 이어진다 — 입력 패키지 · 검수 뷰 데이터 · 승인 기록",
@@ -120,7 +120,7 @@ show("검수 뷰 **데이터**까지가 P1이다 (HTML 렌더는 P2 — 경계)"
 show("기계 관문이 검수 앞에 선다 (preflight + 파싱 + self-check 전 표본)",
      rc == 0 and all(s["preflight"] and s["parsed"] for s in view["samples"]))
 show("표본 2부면 1부 경고가 뜨지 않는다", not view["warnings"])
-cmd_build(["tests/fixtures/fixtures/adapters/ipqc.py", "ipqc_p1_solo", str(RAW / "IPQC01.xlsx")])
+cmd_build([str(ROOT / "tests/fixtures/fixtures/adapters/ipqc.py"), "ipqc_p1_solo", str(RAW / "IPQC01.xlsx")])
 solo = json.loads(_P.review("ipqc_p1_solo", "view.json").read_text(encoding="utf-8"))
 show("표본 1부면 '변형 미관찰 · 근거 1건일 수 있음' 경고 (D-22 확장 문구)",
      solo["warnings"] and "근거 1건" in solo["warnings"][0])
