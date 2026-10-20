@@ -282,6 +282,9 @@ _rd = BOX / "docs" / "spec" / "README.md"
 _rd.write_text(_rd.read_text(encoding="utf-8") + "\n~~시험 취소선~~\n", encoding="utf-8")
 # 장부(B131 ③) — 살아 있는 요청문 하나를 둔다 → PROGRESS는 둘만 남기고(이번 회차가 셋째) 가장 오래된 절을 옮긴다
 (BOX / "docs" / "안건" / "B999_요청문.md").write_text("# B999 시험 요청문\n", encoding="utf-8")
+_pg = BOX / "PROGRESS.md"                                  # 사본에 시험 절 하나 — 레포 장부 상태와 무관하게 옮길 절이 늘 있다
+_pg.write_text(_pg.read_text(encoding="utf-8").rstrip() + "\n\n---\n\n## B998 — 시험 절\n\n- 장부가 옮길 것이 있게\n",
+               encoding="utf-8")
 _secs0 = re.findall(r"^## (B\d+) — ", (BOX / "PROGRESS.md").read_text(encoding="utf-8"), re.M)
 _live0 = [m.group(1) for f in (BOX / "docs" / "안건").glob("*_요청문.md")
           if (m := re.match(r"(B\d+)_요청문", f.name)) and m.group(1) not in _secs0]
@@ -303,9 +306,10 @@ show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 �
 _secs1 = re.findall(r"^## (B\d+) — ", (BOX / "PROGRESS.md").read_text(encoding="utf-8"), re.M)
 _moved = [x for x in _secs0 if x not in _secs1]
 _pl = next((ln for ln in _summ.splitlines() if "PROGRESS 최근 3회차" in ln), "")
-show("ⓔ 장부 — 마감 한 줄 한 번으로 PROGRESS가 살아 있는 회차 포함 셋 · 밀린 절은 archive 본문 + 색인 한 줄 · "
+# 기대 변경(B132 — 이번 회차는 살아 있는 요청문 가운데 하나 · 다음 회차 요청문이 미리 와도 남기는 절을 더 줄이지 않는다)
+show("ⓔ 장부 — 마감 한 줄 한 번으로 PROGRESS가 이번 회차 포함 셋(미리 온 다음 요청문은 세지 않는다) · 밀린 절은 archive 본문 + 색인 한 줄 · "
      "그 회차의 안건은 지운다 · 무엇을 옮겼나가 요약 줄에",
-     len(_secs1) == max(0, 3 - len(_live0)) and _moved and all((BOX / "docs" / "archive" / "장부" / f"PROGRESS_{x}.md").exists() for x in _moved)
+     len(_secs1) == max(0, 3 - min(1, len(_live0))) and _moved and all((BOX / "docs" / "archive" / "장부" / f"PROGRESS_{x}.md").exists() for x in _moved)
      and all(f"본문 `docs/archive/장부/PROGRESS_{x}.md`" in (BOX / "PROGRESS.md").read_text(encoding="utf-8") for x in _moved)
      and not any((BOX / "docs" / "안건").glob(f"{_moved[0]}_*.md")) and "옮김" in _pl
      and (BOX / "docs" / "안건" / "B999_요청문.md").exists(),

@@ -161,11 +161,12 @@ def _graph():
 
 
 EX.invalidate("RFQ01")
-_o1 = _ingest("--sheets", "auto", "--step", answers="c\nc\nc\nq\n")
+# 기대 변경(B132 — 산문은 시트마다 구조 확인 관문 · RFQ01은 산문 시트 셋): 선택 · 구조 확인 ×3 · 파싱 · 좌표 → 추출 예고에서 q
+_o1 = _ingest("--sheets", "auto", "--step", answers="c\n" * 6 + "q\n")
 _ck1 = EX.has_checkpoint("RFQ01")
 _q0 = json.dumps(store.read(store.QUEUE, []), sort_keys=True)
 _g0 = _graph()
-_o2 = _ingest("--sheets", "auto", "--step", answers="c\nc\nc\nc\nq\n")
+_o2 = _ingest("--sheets", "auto", "--step", answers="c\n" * 7 + "q\n")
 _same = (json.dumps(store.read(store.QUEUE, []), sort_keys=True) == _q0 and _graph() == _g0)
 _o3 = _ingest("--sheets", "auto")
 _o4 = _run("ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp",

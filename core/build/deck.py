@@ -56,10 +56,14 @@ def _closed():
 
 
 def key(cfgs):
-    """보존분 재사용의 판 — 문서 구조와 같은 판(지시문 · 층 config 추출 칸) + 골격 닫힌 목록 판."""
+    """보존분 재사용의 판 — 덱 지시문 판(`3.3_outline.md`) · 층 config 추출 칸 · 골격 닫힌 목록 판(산문 구조의 판 · 방식과 무관 — B132)."""
+    from core.build.extract import prompt_version
+    from core.state import config_scope
     from parser import tagger
     nodes, _idx = _closed()
-    return {**ST.key(cfgs), "skeleton": tagger.list_version(nodes)}
+    return {"prompt_version": prompt_version(PROMPT),
+            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items())),
+            "skeleton": tagger.list_version(nodes)}
 
 
 def _canon(name, idx):

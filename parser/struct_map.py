@@ -414,10 +414,11 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
         deeper = {n: l for n, l in all_head.items() if l == pick + 1}
         if deeper:
             out = _resplit(out, deeper, locator)
-    deeper = {n for n, l in all_head.items() if pick and l == pick + 1}
+    deeper = {n: l for n, l in all_head.items() if pick and l > pick}
     out = cap_chars(out, deeper, locator, keep_rows, keep_cap, keep_split)
     from parser.toc import toc_chains              # 목차(B130 ②) — toc가 이 모듈의 번호 꼴을 읽어 지연 import
-    owner_of, chain = toc_chains(lines, all_head)
+    owner_of, chain = toc_chains(lines, all_head, {r["row"]: r["parent"] for r in smap.get("rows") or []
+                                                   if r.get("heading") and "parent" in r})
     for c in out:
         r0, own = c.pop("_row0", None), c.pop("_owner", None)
         hs = chain(owner_of.get(r0) if c.pop("_piece", False) else own)
@@ -428,7 +429,8 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
 
 
 def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split=None):
-    """**글자 상한**(B87 ③) — 넘는 청크만: 더 깊은 제목에서 한 단계 → 그래도 넘으면 행 경계.
+    """**글자 상한**(B87 ③ · B132 ⑥) — 넘는 청크만: **깊은 제목을 차례로**(자른 단 바로 아래 단 → 그래도 넘는 조각은 그 아래 단 …) →
+    더 깊은 제목이 없으면 행 경계. `deeper`는 자른 단보다 깊은 제목 `{행: 단}`(행 모음이면 한 단으로 본다).
 
     셀 중간은 자르지 않는다 — 한 행이 혼자 상한을 넘으면 통째로 두고
     `meta.over_char_cap`. 조각마다 `meta.char_cap_from`(원래 청크의 자리)을 싣는다 —
@@ -451,18 +453,8 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
         if join and keep_split is not None:
             pieces = [(part, False) for part in keep_split(lines)]
         else:
-            parts, seg = [], []
-            for n, x in lines:                 # ① 더 깊은 제목에서 한 단계(지금 규칙)
-                if n in deeper and seg:
-                    parts.append(seg)
-                    seg = []
-                seg.append((n, x))
-            if seg:
-                parts.append(seg)
-            pieces = []
-            for part in parts:                 # ② 그래도 넘으면 행 경계
-                pieces += (_pack(part) if len("\n".join(x for _n, x in part)) > CHUNK_MAX_CHARS
-                           else [(part, False)])
+            levels = deeper if isinstance(deeper, dict) else {n: 1 for n in deeper or ()}
+            pieces = _by_depth(lines, levels)
         for part, over in pieces:
             meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"]}
             if over:
@@ -470,6 +462,25 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
             out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
                         "text": "\n".join(x for _n, x in part), "meta": meta, "_row0": part[0][0], "_piece": True})
     return out
+
+
+def _by_depth(part, levels):
+    """넘는 조각을 **얕은 제목 단부터 차례로** 나눈다 — 그 조각에 든 가장 얕은 단의 제목 앞에서 자르고, 그래도 넘는 조각은 그 아래 단으로 ·
+    더 깊은 제목이 없으면 행 경계(`_pack`) — `[(행 목록, 혼자_넘음)]` · 순서 · 내용 무손실."""
+    if len("\n".join(x for _n, x in part)) <= CHUNK_MAX_CHARS:
+        return [(part, False)]
+    here = sorted({levels[n] for n, _x in part[1:] if n in levels})       # 첫 줄 앞은 자르는 자리가 아니다
+    if not here:
+        return _pack(part)
+    cut, segs, seg = here[0], [], []
+    for n, x in part:
+        if levels.get(n) == cut and seg:
+            segs.append(seg)
+            seg = []
+        seg.append((n, x))
+    segs.append(seg)
+    deeper = {n: l for n, l in levels.items() if l > cut}
+    return [p for sg in segs for p in _by_depth(sg, deeper)]
 
 
 def _pack(part):

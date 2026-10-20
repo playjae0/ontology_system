@@ -112,10 +112,15 @@ def hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, doc_coord
     """덱 구조 훅 `fn(slides) -> 결정 또는 None` — 보존분(같은 입력 · 같은 판)이면 LLM 0 · 고침은 보존분 위에 덮는다."""
     key = ask.key() if callable(getattr(ask, "key", None)) else None
 
+    def same(old):
+        # 옛 보존분의 `mode` 칸(산문 구조 방식 — 덱과 무관 · B132 전에는 덱 열쇠가 구조 열쇠를 빌려 섞여 있었다)은 견주지 않는다
+        return isinstance(old, dict) and isinstance(key, dict) and \
+            {k: v for k, v in old.items() if k != "mode"} == {k: v for k, v in key.items() if k != "mode"} or old == key
+
     def fn(slides):
         h = labels_hash(slides, doc_coord)
         hit = kept or {}
-        if hit.get("labels") == h and hit.get("key") == key and hit.get("answer"):
+        if hit.get("labels") == h and same(hit.get("key")) and hit.get("answer"):
             ans, reused = hit["answer"], True
         else:
             ans, reused = ask(doc_id, slides, doc_coord=doc_coord), False

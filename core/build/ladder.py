@@ -22,7 +22,8 @@ from parser.struct_rule import FRAME_ROW, ROLES, TARGET_ROLES
 
 _LOG = log.get(__name__)
 
-PROMPT = "outline"
+#: 지시문 이름(`prompts/2.4_ladder.md` — 사다리 · 시트 확인 · 판이 따로 · 개요 · 덱은 `3.3_outline.md`)
+PROMPT = "ladder"
 #: 골격 보기의 제목 줄 앞부분 글자 · 판단 필요 행의 앞뒤 줄 수 · 사다리 입력의 앞부분 행 수(창작 기본값)
 HEAD_CHARS = 40
 NEAR = 2

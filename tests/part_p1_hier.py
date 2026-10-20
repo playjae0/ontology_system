@@ -172,6 +172,18 @@ try:
 except ValueError:
     _raised = True
 show("B89 ① 행 목록 없는 청크는 결함으로 드러난다 (원래 locator를 붙여 넘기지 않는다)", _raised)
+# B132 ⑥ — 넘는 조각은 깊은 제목을 차례로(한 단계 → 두 단계 … → 행 경계) · 합성 줄(창작 — 근거가 아니다)
+_syn6 = [(1, "1. 상세"), (2, "가. 공급"), (3, "1) 속도"), (4, "속" * 40), (5, "2) 하중"), (6, "하" * 40), (7, "나. 적층"), (8, "짧은 본문")]
+_lv6 = {1: 1, 2: 2, 3: 3, 5: 3, 7: 2}
+struct_map.CHUNK_MAX_CHARS = 60
+try:
+    _sp6 = struct_map.split({"분할_레벨": 1, "rows": [{"row": r, "heading": r in _lv6, "level": _lv6.get(r, 0)} for r, _t in _syn6]},
+                            _syn6, lambda a, b: f"S!R{a}" if a == b else f"S!R{a}-R{b}")
+finally:
+    struct_map.CHUNK_MAX_CHARS = _cap
+_st6 = [_rows_of_loc(p["source_locator"])[0] for p in _sp6]
+show("B132 ⑥ 글자 상한 — 넘는 조각은 깊은 제목을 차례로 나눈다(가. 단으로 나눠도 넘는 조각은 1) 단에서 · 행 경계는 더 깊은 제목이 없을 때만)",
+     _st6 == [2, 3, 5, 7] and all(len(p["text"]) <= 60 for p in _sp6), f"조각 시작 {_st6}")
 
 # ────────────────────────────────────────────────────────────── B130 ①② 목차 · 경로 · 제목 줄
 print("\n■ B130 목차는 번호 이어짐 · 다시 시작으로 · 모든 청크가 목차 경로 전체를 · 제목 줄은 자기 청크에")

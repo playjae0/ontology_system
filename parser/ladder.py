@@ -96,7 +96,7 @@ def apply(labs, ladder, counts=None):
     """이름표 + 사다리 → `{"headings": [{row, parent, role, name, category, sig, by}], "needs": [{row, kind, why}]}`.
 
     번호 줄 — 사다리에 든 서명만 목차에 선다(이어짐 · 다시 시작 · 사다리의 단 순서 — `parser/toc`) · 번호 없는 줄 — 사다리의
-    `unnumbered` 규칙에 맞는 줄만(그 규칙의 단) · 어댑터의 구조 단(Word 개요 수준 — 서명 없는 draft 제목)은 사다리 위 단 · 역할 ·
+    `unnumbered` 규칙에 맞는 줄만(그 규칙의 단) · 어댑터의 구조 단(Word 개요 수준 — 표시 `개요n`)은 사다리 위 단 · 역할 ·
     카테고리는 그 단의 것(대상이면 이름 = 줄 글에서 번호를 뗀 것)."""
     rows = _body(labs)
     by_row = {x["row"]: x for x in rows}
@@ -109,8 +109,8 @@ def apply(labs, ladder, counts=None):
         s, v = x.get("sig"), x.get("ord")
         if s and s in rank and _short(x):
             hits.append((x["row"], s, v))
-        elif not s and x.get("draft"):
-            key = f"{_OUTLINE}{x['draft']}"
+        elif not s and x.get("draft") and any(str(m).startswith(_OUTLINE) for m in x.get("marks") or []):
+            key = f"{_OUTLINE}{x['draft']}"                 # Word 개요 수준만(작성자가 매긴 구조) — 굵게 초안은 단 신호가 아니다
             rank.setdefault(key, -100 + int(x["draft"]))
             hits.append((x["row"], key, None))
         elif not s:
@@ -165,7 +165,8 @@ def needs(labs, heads, rank, key_of, counts):
         for r in rs:
             v = by_row[r].get("ord")
             if v is not None and prev is not None and v != prev + 1:       # 첫 형제가 1이 아닌 것(발췌)은 끊김이 아니다
-                add(r, "ⓒ", f"이어짐 끊김 — '{s}' {prev} 다음 {v}")
+                add(r, "ⓒ", f"다시 시작 — 같은 부모 아래 '{s}'가 1부터 다시(부모 후보가 둘 이상)" if v == 1
+                    else f"이어짐 끊김 — '{s}' {prev} 다음 {v}")
             prev = v if v is not None else prev
     for h in heads:
         p = head.get(h.get("parent"))

@@ -6,7 +6,8 @@
 
   ⓐ PROGRESS 최근 3회차 — `## B### — …` 절이 셋을 넘으면 오래된 것부터 `docs/archive/장부/PROGRESS_B###.md`로 옮기고 색인에
      한 줄 · **이번 회차를 셋째로 친다**(살아 있는 요청문 — PROGRESS에 절이 없는 `docs/안건/B###_요청문.md` — 가 있으면 남기는
-     절은 그만큼 적다: 마감 보고를 쓰면 셋이 된다)
+     절은 둘: 마감 보고를 쓰면 셋이 된다 · 이번 회차는 그 가운데 번호가 가장 앞인 하나다 — 다음 회차의 요청문이 미리 와 있어도
+     남기는 절을 더 줄이지 않는다 · B132)
   ⓑ 안건 정리 — 살아 있는 요청문 + PROGRESS에 남은 회차의 안건만 남긴다(나머지 `B###_*.md`는 지운다 — git 이력이 보관이다)
   ⓒ 결정 번호 — `DECISIONS.md`의 `D-###`가 겹침 · 빈 번호 없이 이어지는가 · 말번 · 기준 커밋 뒤 새 번호 · PROGRESS가 적은
      번호가 장부에 다 있는가(채번 전 번호를 적지 않는다 — CLAUDE.md §4)
@@ -56,7 +57,8 @@ def _index_line(rid, body):
 
 def live_rounds(secs_ids, agenda=AGENDA):
     """살아 있는 회차 — 요청문은 있고 PROGRESS에 절이 없다(이번에 마감하는 회차)."""
-    reqs = sorted(m.group(1) for p in agenda.glob("*.md") if (m := _REQ.match(p.name)))
+    reqs = sorted((m.group(1) for p in agenda.glob("*.md") if (m := _REQ.match(p.name))),
+                  key=lambda r: (int(re.match(r"B(\d+)", r).group(1)), r))      # 번호 순(B99 < B100)
     return [r for r in reqs if r not in secs_ids]
 
 
@@ -65,7 +67,7 @@ def progress(dry=False):
     text = PROGRESS.read_text(encoding="utf-8")
     pre, secs = _sections(text)
     live = live_rounds({r for r, _b in secs})
-    keep = max(0, KEEP - len(live))
+    keep = max(0, KEEP - min(1, len(live)))              # 이번 회차는 하나(가장 앞 번호) — 미리 온 다음 요청문은 세지 않는다
     move, stay = (secs[:-keep] if keep else secs), (secs[-keep:] if keep else [])
     if len(secs) <= keep:
         return [], live, [r for r, _b in secs]
@@ -137,7 +139,8 @@ def run(base=None, dry=False):
     moved, live, stay = progress(dry)
     rows.append((None if moved else True, "PROGRESS 최근 3회차",
                  (f"옮김 {' · '.join(moved)} → docs/archive/장부/PROGRESS_<회차>.md · 색인 {len(moved)}줄" if moved
-                  else "그대로") + f" · 남음 {' · '.join(stay) or '없음'}" + (f" · 이번 회차 {' · '.join(live)}" if live else "")))
+                  else "그대로") + f" · 남음 {' · '.join(stay) or '없음'}" + (f" · 이번 회차 {live[0]}" if live else "")
+                 + (f" · 다음 요청문 {' · '.join(live[1:])}(남긴다)" if len(live) > 1 else "")))
     gone = agenda(set(live) | set(stay), dry)
     rows.append((None if gone else True, "안건 정리", f"지움 {' · '.join(gone)}" if gone else "그대로"))
     ok, msg = decisions(base)
