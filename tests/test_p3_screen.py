@@ -11,6 +11,8 @@ from p3_common import _P, _reg_src, _call_names   # noqa: F401 — `*`는 밑줄
 
 from cli import interview as _IV
 import ast as _ast
+import atexit as _ax
+from concurrent.futures import ThreadPoolExecutor as _Pool
 import contextlib as _ctx
 import io as _io
 import os as _os
@@ -18,6 +20,94 @@ import tempfile as _tf
 from core.llm import gateway
 
 setup()
+
+
+# ── 곁 루트 — 서로 기대지 않는 흐름은 다른 상태 루트에서 미리 띄운다 (B121 ②ⓓ) ──────
+#
+# 산문 포맷 기본값(B59 ③ · pptx_b59) · 저장값을 안 믿는 관문(B60 ① · cp60) · 힌트만 준 생성
+# (B60 ② · cp62 끝 갈래)은 이 스위트의 다른 구획이 남긴 상태를 읽지 않는다. 그래서 **루트마다
+# 흐름 하나**로 동시에 돌리고 판정은 제 구획에서 한다 — 같은 루트에 하위 실행 둘이 도는 일은
+# 없다. 루트는 setup() 직후 바닥의 사본이고 이름이 `state_mock`이라 mock 루트와 같게 돈다
+# (`core/paths.py` `ONTO_MOCK_HOME` 머리말). 곁 루트의 산출은 `_P.mirror`로 그 루트에서 읽는다.
+_TMP = Path(_tf.mkdtemp(prefix="p3screen_"))
+_ax.register(shutil.rmtree, _TMP, True)
+for _dt in ("pptx_b59", "cp60", "cp62"):
+    reset(_dt)                                 # 사본이 옛 판을 물려받지 않게 — 바닥에서 먼저 치운다
+
+
+def _side(name):
+    home = _TMP / name / "state_mock"
+    shutil.copytree(_P.home(), home)           # 사본은 띄우기 전에 뜬다 — 바닥이 움직이기 전이다
+    return home, {**_os.environ, "ONTO_MOCK_HOME": str(home)}
+
+
+def _fixtures(dt):
+    """cp 픽스처 쌍을 `dt` 이름으로 — `ONTO_FIXTURES`가 가리킬 임시 자리(B60)."""
+    fx = Path(_tf.mkdtemp(prefix=f"fx{dt[2:]}_", dir=str(ROOT)))
+    (fx / "fixtures/adapters").mkdir(parents=True)
+    (fx / "fixtures/schemas").mkdir(parents=True)
+    (fx / f"fixtures/adapters/{dt}.py").write_text(
+        (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
+        .replace('"doc_type": "cp"', f'"doc_type": "{dt}"', 1), encoding="utf-8")
+    (fx / f"fixtures/schemas/{dt}.json").write_text(json.dumps(
+        {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")),
+         "doc_type": dt}, ensure_ascii=False), encoding="utf-8")
+    return fx
+
+
+def _flow59(env):
+    """B59 ③ — **플래그 없이** 산문 포맷 표본을 생성한다(`run()`은 `--no-basic`을 붙여 여기서 안 쓴다)."""
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
+                           "pptx_b59", "quality", str(RAW / "PPT_basic.pptx"),
+                           "--allow-mock"], capture_output=True, text=True,
+                          cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
+
+
+def _flow60(home, env):
+    """B60 ① — generate → 작업 사본 어댑터를 규약 10 위반으로 → confirm → 옛 판 harness_out → status.
+
+    판정은 「B60 ①」 구획이 한다 — 여기서는 돌리고 그 루트의 산출을 모아 돌려준다.
+    """
+    def reg(*a):
+        return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
+                               "--allow-mock"], capture_output=True, text=True,
+                              cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
+
+    st_p = _P.mirror(REVIEW / "cp60" / "state.json", home)
+    reg("generate", "cp60", "process", str(RAW / "CP01.xlsx"), "--no-basic")
+    st = json.loads(st_p.read_text(encoding="utf-8"))
+    out = {"saved_pass": st["machine_gate"] == "PASS"}
+    # 디스크의 어댑터만 바꾼다 — 저장값은 PASS 그대로다.
+    # **바꿀 곳은 작업 사본이다**(B62 ①-c) — 관문 입구에서 시스템이 `review/`로 복사해
+    # 거기에 채우므로, 그 뒤로 관문이 읽는 어댑터는 `state.adapter`가 가리키는 사본이다
+    # (등록부 자리 — 곁 루트의 같은 자리). fixture 원본은 손대지 않는 자리라(D-26)
+    # 거기를 고치면 아무 데도 안 닿는다.
+    ad = _P.mirror(_P.registry(st["adapter"]), home)
+    ad.write_text(ad.read_text(encoding="utf-8").replace(
+        "\nADAPTER = {",
+        "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
+        encoding="utf-8")
+    out["confirm"] = reg("confirm", "cp60", "--by", "검수자")
+    _dt_p = _P.mirror(store.path(store.DOC_TYPES), home)
+    out["registered"] = "cp60" in (json.loads(_dt_p.read_text(encoding="utf-8"))
+                                   if _dt_p.exists() else {})
+    st = json.loads(st_p.read_text(encoding="utf-8"))
+    out["gate"] = st["machine_gate"]
+    # 옛 판(태그 없는 harness_out)을 두고 status → 관문이 돌고 태그 붙은 블록이 뜬다.
+    st["harness_out"] = re.sub(r"(\[(?:PASS|FAIL)\])\s+G[0-9A-Z]{2}\s\s", r"\1 ", st["harness_out"])
+    st_p.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
+    out["status"] = reg("status", "cp60")
+    out["harness_out"] = json.loads(st_p.read_text(encoding="utf-8"))["harness_out"]
+    return out
+
+
+_fx60 = _fixtures("cp60")
+_POOL = _Pool(max_workers=3)
+_h59, _e59 = _side("pptx_b59")
+_f59 = _POOL.submit(_flow59, _e59)
+_h60, _e60 = _side("cp60")
+_f60 = _POOL.submit(_flow60, _h60, {**_e60, "ONTO_FIXTURES": str(_fx60)})
+_h62 = _side("cp62")[0]                        # B60 ② 끝 갈래(힌트만) — 픽스처가 그 구획에서 서므로 거기서 띄운다
 
 
 print("\n■ B58 ② — 관문이 pipeline.parse 전 구간을 돈다")
@@ -75,7 +165,8 @@ _hp = "⑤ 파서 전 구간" in json.loads(
     (REVIEW / "toc_report" / "state.json").read_text(encoding="utf-8"))["harness_out"]
 show("②ⓐ prose — 관문이 ⑤까지 돌고 PASS했다",
      "기계 관문 PASS" in _g.stdout and _hp)
-run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
+_r2 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
+_r2ok = _r2.returncode == 0 and (REVIEW / "toc_report" / "view.json").exists()   # ⑤가 이 실행을 쓴다 (B121 ②ⓓ)
 _an = view_of("toc_report")["sections"]["parse_result"]["anomalies"]
 show("②ⓐ prose — 검수 화면에 기계 오류 0 (failure 종 0건)",
      not [a for a in _an if a["kind"] == "failure"], str(_an[:2]))
@@ -113,13 +204,10 @@ show("⑤ⓐ 생성의 뷰 산출에 비용 스위치가 꺼져 있다 (좌표 �
      _reg_src()
      and "[좌표 태깅]" not in _g5.stdout)
 # **review는 남는다** — 없애면 재생성 지시·좌표 보조·추출 리허설의 자리가 사라진다.
-_r5 = run("review", "toc_report", "--rows", "200", "--no-llm-coord", "--no-extract")
-show("⑤ review는 선택 명령으로 남는다 (고칠 때 들어가는 자리)",
-     _r5.returncode == 0
-     and (REVIEW / "toc_report" / "view.json").exists())
-# ⓐ **review 없이 confirm이 된다.**
-reset("toc_report")
-run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"), str(RAW / "TOC02.xlsx"))
+# 같은 review 명령(같은 플래그)을 ②ⓐ에서 이미 돌렸다 — 그 실행을 잰다(B121 ②ⓓ).
+show("⑤ review는 선택 명령으로 남는다 (고칠 때 들어가는 자리)", _r2ok)
+# ⓐ **review 없이 confirm이 된다.** — 위 generate가 막 세운 판을 그대로 확정한다
+# (review를 끼우지 않았으니 다시 세울 까닭이 없다 · B121 ②ⓓ).
 _c5 = run("confirm", "toc_report", "--by", "검수자 정")
 show("⑤ⓐ review를 거치지 않고 confirm이 선다 (generate → 뷰 확인 → confirm)",
      _c5.returncode == 0 and registry.lookup("toc_report") is not None)
@@ -299,20 +387,15 @@ show("②ⓒ 문답 지시에 관문 판정 원문이 함께 간다 (답만 보�
      or "[관문 판정 원문]" in _REG59)
 
 # ③ⓒ **전부 산문 포맷이면 LLM 호출 0** — 그 길로 안 들어가게 하는 것이 먼저다.
-reset("pptx_b59")
 # **플래그 없이** 부른다 — 재는 것이 「기본값이 고정 어댑터인가」다. `run()` 헬퍼는
-# LLM 경로를 재려고 `--no-basic`을 붙이므로 여기서는 쓰지 않는다.
-_g59 = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", "generate",
-                       "pptx_b59", "quality", str(RAW / "PPT_basic.pptx"),
-                       "--allow-mock"], capture_output=True, text=True,
-                      cwd=str(ROOT), stdin=subprocess.DEVNULL)
-_st59 = json.loads((REVIEW / "pptx_b59" / "state.json").read_text(encoding="utf-8"))
+# LLM 경로를 재려고 `--no-basic`을 붙이므로 여기서는 쓰지 않는다(`_flow59` · 곁 루트 · B121 ②ⓓ).
+_g59 = _f59.result()
+_st59 = json.loads(_P.mirror(REVIEW / "pptx_b59" / "state.json", _h59).read_text(encoding="utf-8"))
 show("③ⓒ 전부 산문 포맷이고 플래그가 없으면 고정 어댑터로 가고 LLM 호출 0",
      _g59.returncode == 0 and _st59.get("use_basic") is True
      and "호출 0회" in _g59.stdout, _g59.stdout[-80:].strip()[:70])
 show("③ⓑ --no-basic이면 LLM 생성 경로로 간다 (사람이 고를 수 있다)",
      "--no-basic" in _REG59 and "no_basic=no_basic" in _REG59)
-reset("pptx_b59")
 
 # ④ **어느 폴더·어느 판으로 돌았나**가 관문 산출 첫 줄에 있다.
 _ok59, _out59 = Rgate.harness(ROOT / "tests/fixtures/adapters/cp.py",
@@ -345,78 +428,43 @@ show("①ⓓ 「생성을 다시 돌려라」 문면 0건 (판정 줄이 없으�
      "생성을 다시 돌려라" not in _REG60)
 
 # ①ⓒ **저장값이 PASS인데 어댑터가 디스크에서 규약 10 위반으로 바뀌면 confirm이 막는다.**
-_fx60 = Path(_tf.mkdtemp(prefix="fx60_", dir=str(ROOT)))
-(_fx60 / "fixtures/adapters").mkdir(parents=True)
-(_fx60 / "fixtures/schemas").mkdir(parents=True)
-_cp60 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-(_fx60 / "fixtures/adapters/cp60.py").write_text(
-    _cp60.replace('"doc_type": "cp"', '"doc_type": "cp60"', 1), encoding="utf-8")
-(_fx60 / "fixtures/schemas/cp60.json").write_text(json.dumps(
-    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp60"},
-    ensure_ascii=False), encoding="utf-8")
-_e60 = {**_os.environ, "ONTO_FIXTURES": str(_fx60)}
-
-
-def _reg60(*a):
-    return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
-                           "--allow-mock"], capture_output=True, text=True,
-                          cwd=str(ROOT), env=_e60, stdin=subprocess.DEVNULL)
-
-
-reset("cp60")
-_reg60("generate", "cp60", "process", str(RAW / "CP01.xlsx"), "--no-basic")
-_st60 = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
-_saved_pass = _st60["machine_gate"] == "PASS"
-# 디스크의 어댑터만 바꾼다 — 저장값은 PASS 그대로다.
-# **바꿀 곳은 작업 사본이다**(B62 ①-c) — 관문 입구에서 시스템이 `review/`로 복사해
-# 거기에 채우므로, 그 뒤로 관문이 읽는 어댑터는 `state.adapter`가 가리키는 사본이다.
-# fixture 원본은 손대지 않는 자리라(D-26) 거기를 고치면 아무 데도 안 닿는다.
-_ad60 = Rdraft._at(_st60["adapter"])
-_ad60.write_text(_ad60.read_text(encoding="utf-8").replace(
-    "\nADAPTER = {",
-    "\n\ndef _expand_merged(sheet):\n    return dict(sheet.get('cells') or {})\n\n\nADAPTER = {", 1),
-    encoding="utf-8")
-_c60 = _reg60("confirm", "cp60", "--by", "검수자")
-_st60b = json.loads((REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))
+# 흐름(generate → 사본 변조 → confirm → 옛 판 → status)은 곁 루트에서 돌았다(`_flow60` · B121 ②ⓓ).
+_r60 = _f60.result()
+_c60, _s60 = _r60["confirm"], _r60["status"]
 show("①ⓒ 저장값 PASS + 어댑터 규약 10 위반 → confirm이 FAIL로 막는다 (저장값을 안 믿는다)",
-     _saved_pass and _c60.returncode != 0 and registry.lookup("cp60") is None
-     and _st60b["machine_gate"] == "FAIL"
+     _r60["saved_pass"] and _c60.returncode != 0 and not _r60["registered"]
+     and _r60["gate"] == "FAIL"
      and "G13" in [c for c, _l, _d in Rgate.fail_lines(_c60.stdout)],
-     f"저장 PASS={_saved_pass} · rc={_c60.returncode} · 지금={_st60b['machine_gate']}")
-# 옛 판(태그 없는 harness_out)을 두고 status → 관문이 돌고 태그 붙은 블록이 뜬다.
-_st60b["harness_out"] = _re.sub(r"(\[(?:PASS|FAIL)\])\s+G[0-9A-Z]{2}\s\s", r"\1 ", _st60b["harness_out"])
-(REVIEW / "cp60" / "state.json").write_text(json.dumps(_st60b, ensure_ascii=False), encoding="utf-8")
-_s60 = _reg60("status", "cp60")
+     f"저장 PASS={_r60['saved_pass']} · rc={_c60.returncode} · 지금={_r60['gate']}")
 show("①ⓐ 태그 없는 옛 harness_out에도 status가 관문을 돌려 태그 붙은 블록을 낸다",
      _s60.returncode != 0 and [c for c, _l, _d in Rgate.fail_lines(_s60.stdout)] == ["G13"]
-     and "[관문] ROOT=" in json.loads(
-         (REVIEW / "cp60" / "state.json").read_text(encoding="utf-8"))["harness_out"])
-reset("cp60")
+     and "[관문] ROOT=" in _r60["harness_out"])
 shutil.rmtree(_fx60, ignore_errors=True)
 
 
 # ── B60 ② 문답의 확정 요약이 생성의 입력이다 ──────────────────────────────
 print("\n■ B60 ② — 대화는 이력, 판단은 확정 요약 하나")
 
-_fx62 = Path(_tf.mkdtemp(prefix="fx62_", dir=str(ROOT)))
-(_fx62 / "fixtures/adapters").mkdir(parents=True)
-(_fx62 / "fixtures/schemas").mkdir(parents=True)
-(_fx62 / "fixtures/adapters/cp62.py").write_text(
-    (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
-    .replace('"doc_type": "cp"', '"doc_type": "cp62"', 1), encoding="utf-8")
-(_fx62 / "fixtures/schemas/cp62.json").write_text(json.dumps(
-    {**json.loads((ROOT / "tests/fixtures/schemas/cp.json").read_text(encoding="utf-8")), "doc_type": "cp62"},
-    ensure_ascii=False), encoding="utf-8")
+_fx62 = _fixtures("cp62")
 _e62 = {**_os.environ, "ONTO_FIXTURES": str(_fx62), "ONTO_DUMP_PROMPT": "1"}
 
 
-def _reg62(*a, feed=""):
+def _reg62(*a, feed="", env=None):
     return subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a,
                            "--allow-mock", "--no-basic"] if a[0] == "generate" else
                           [sys.executable, str(ROOT / "run.py"), "register", *a, "--allow-mock"],
-                          capture_output=True, text=True, cwd=str(ROOT), env=_e62, input=feed)
+                          capture_output=True, text=True, cwd=str(ROOT), env=env or _e62, input=feed)
 
 
+def _flow62h():
+    """끝 갈래(힌트만 준 생성)는 곁 루트에서 — 문답 갈래와 동시에 돈다(B121 ②ⓓ). 패키지·지시문을 돌려준다."""
+    _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--hint", "3~7행 병합은 위 값 채움",
+           env={**_e62, "ONTO_MOCK_HOME": str(_h62)})
+    return (json.loads(_P.mirror(REVIEW / "cp62" / "input_package.json", _h62).read_text(encoding="utf-8")),
+            _P.mirror(_P.register_debug("cp62", "prompt_rendered.md"), _h62).read_text(encoding="utf-8"))
+
+
+_f62h = _POOL.submit(_flow62h)
 reset("cp62")
 # 문답: r1 Q1=«1»(위 값 채움)·교정 빈줄 → r2 교정 문장 → r3 «진행» → 요약 확인 «Y»
 _g62 = _reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--interview",
@@ -471,14 +519,13 @@ _transcript62 = "\n".join(
 show("②ⓔ 확정 요약이 라운드 전문보다 짧다 (프롬프트가 줄어든다)",
      0 < len(_summary62) < len(_transcript62),
      f"요약 {len(_summary62)}자 · 전문 {len(_transcript62)}자")
-# **힌트만 준 경우** — 힌트 문장이 그대로 한 항목. 자리는 항상 있다.
-reset("cp62")
-_reg62("generate", "cp62", "process", str(RAW / "CP01.xlsx"), "--hint", "3~7행 병합은 위 값 채움")
-_pk62h = json.loads((REVIEW / "cp62" / "input_package.json").read_text(encoding="utf-8"))
+# **힌트만 준 경우** — 힌트 문장이 그대로 한 항목. 자리는 항상 있다(곁 루트 `_flow62h`).
+_pk62h, _pr62h = _f62h.result()
+_POOL.shutdown()
 _dh = [d for b in Rivlog._hint_batches(_pk62h["human"]["hint"]) for d in b["decisions"]]
 show("② 문답 없이 --hint만 주면 힌트 문장이 확정 사항 한 항목이다 (자리는 항상 있다)",
      len(_dh) == 1 and _dh[0]["decision"] == "3~7행 병합은 위 값 채움"
-     and "[확정 사항" in _P.register_debug("cp62", "prompt_rendered.md").read_text(encoding="utf-8"))
+     and "[확정 사항" in _pr62h)
 # **LLM 지점이 늘지 않는다** — 요약은 문답 라운드와 같은 자리다. B63 ②가 호출 태그를
 # `interview`로 갈랐지만 **지점은 그대로 ⑤** 하나다(문서 7 §7.6-B-2의 닫힌 9종).
 _IVSRC = (ROOT / "cli" / "interview.py").read_text(encoding="utf-8")

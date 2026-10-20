@@ -11,7 +11,59 @@ from p3_common import *                       # noqa: F401,F403 — 바닥은 �
 from p3_common import _P, _reg_src            # noqa: F401 — `*`는 밑줄 이름을 건너뛴다
 from core.state.bootstrap import coord_layer      # 좌표 층은 묻는다 (B85)
 
+import atexit as _ax
+from concurrent.futures import ThreadPoolExecutor as _Pool
+import os as _os
+import tempfile as _tf
+
 setup()
+
+
+# ── 곁 루트 — S10 · S15는 다른 상태 루트에서 미리 띄운다 (B121 ②ⓓ) ──────────────────
+#
+# S10의 두 흐름(toc_report · ipqc 1부 생성 → 검수)과 S15(ipqc 2부 생성 → 검수 → 확정)는
+# 이 스위트의 다른 구획이 남긴 상태를 읽지 않는다. 그래서 **루트마다 흐름 하나**로 S1과
+# 동시에 돌리고 판정은 제 구획에서 한다 — 같은 루트에 하위 실행 둘이 도는 일은 없다. 루트는
+# setup() 직후 바닥의 사본이고 이름이 `state_mock`이라 mock 루트와 같게 돈다(`core/paths.py`
+# `ONTO_MOCK_HOME` 머리말). 명령 줄은 `run()`과 같다 — 루트만 env로 갈린다.
+_TMP = Path(_tf.mkdtemp(prefix="p3reg_"))
+_ax.register(shutil.rmtree, _TMP, True)
+
+
+def _side(name):
+    home = _TMP / name / "state_mock"
+    shutil.copytree(_P.home(), home)           # 사본은 띄우기 전에 뜬다 — 바닥이 움직이기 전이다
+    return home, {**_os.environ, "ONTO_MOCK_HOME": str(home)}
+
+
+def _flow(home, env, dt, *steps):
+    """곁 루트에서 등록 단계를 차례로 — 단계마다 (화면, 그때의 뷰)를 돌려준다."""
+    out, view = [], _P.mirror(REVIEW / dt / "view.json", home)
+    for a in steps:
+        r = subprocess.run([sys.executable, str(ROOT / "run.py"), "register", *a],
+                           capture_output=True, text=True, cwd=str(ROOT), env=env,
+                           stdin=subprocess.DEVNULL)
+        out.append((r, json.loads(view.read_text(encoding="utf-8")) if view.exists() else None))
+    return out
+
+
+def _registered_at(home):
+    """곁 루트의 등록부(`doc_types.json`)에 오른 이름들."""
+    p = _P.mirror(store.path(store.DOC_TYPES), home)
+    return set(json.loads(p.read_text(encoding="utf-8"))) if p.exists() else set()
+
+
+_POOL = _Pool(max_workers=3)
+_h15, _e15 = _side("s15")
+_f15 = _POOL.submit(_flow, _h15, _e15, "ipqc",
+                    ("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
+                     "--hint", "16열 검사 성적서", "--allow-mock", "--no-basic"),
+                    ("review", "ipqc", "--allow-mock"),
+                    ("confirm", "ipqc", "--by", "검수자 한지우", "--allow-mock"))
+_f10 = {dt: _POOL.submit(_flow, *_side(dt), dt,
+                         ("generate", dt, "process", str(RAW / s), "--allow-mock", "--no-basic"),
+                         ("review", dt, "--allow-mock"))
+        for dt, s in (("ipqc", "IPQC01.xlsx"), ("toc_report", "TOC01.xlsx"))}
 
 
 print("\n■ doc_type 등록부 — 묻는 곳은 셋, 답하는 곳은 하나 (카드 M2 · D-8)")
@@ -41,6 +93,7 @@ show("① 시스템 5 — reader head·골격 닫힌 목록·층 어휘·공용 
      and pkg["system"]["skeleton_closed_list"]["count"] == 46)
 show("① 초안은 fixture가 반환한다 (USE_MOCK — D-10·D-26)",
      "tests/fixtures/fixtures/adapters/toc_report.py" in r.stdout)
+_gen = r
 
 r = run("review", "toc_report", "--instruct", "공정명 헤딩 레벨을 2단까지만 잡아라")
 # **관문은 생성 안에서 돈다**(M9 개정 · B50) — 검수는 내용을 본다. 통과분만 넘어오므로
@@ -50,7 +103,8 @@ show("② 검수는 생성이 세운 관문 값을 확인만 한다 (하네스�
      [l.strip() for l in r.stdout.splitlines() if "기계 관문" in l][:1])
 # **판정 수를 박지 않는다** — 기계 관문은 자란다(B31이 2종을 더했다). 박아 두면
 # 관문을 강화할 때마다 이 줄이 깨져, 어서션이 개선을 막는 자리가 된다.
-_gen = run("generate", "toc_report", "--resume")
+# 재는 화면은 **첫 generate**의 것이다 — 같은 줄을 보려고 `--resume`을 한 번 더 돌리지
+# 않는다(B121 ②ⓓ · 이어하기 자체는 test_p3_flow B67 ①이 잰다).
 _m = re.search(r"기계 관문\(하네스\): PASS — (\d+) PASS / (\d+) FAIL", _gen.stdout)
 show("② 하네스는 **생성 안에서** kit 실물을 호출한다 (재작성 아님)",
      "run_adapter.py" in _reg_src()
@@ -102,10 +156,9 @@ show("S1 말단 — 등록된 어댑터로 운영 파싱이 돈다", res.ok and 
 
 # ============================================================ S10
 print("\n■ S10 표본 1부 경고 (TOC01 단독)")
-reset("toc_report")
-run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"))
-run("review", "toc_report")
-solo = view_of("toc_report")
+# 두 흐름은 곁 루트에서 S1과 함께 돌았다(머리 「곁 루트」 · B121 ②ⓓ) — 여기서는 뷰만 읽는다.
+# 그래서 S1의 등재(toc_report)가 이 구획에서 걷히지 않고 아래 3소비자까지 간다.
+solo = _f10["toc_report"].result()[-1][1]
 warn = [a for a in solo["sections"]["parse_result"]["anomalies"] if a["kind"] == "warning"]
 show("표본 1부면 경고가 **이상 신호로** 뜬다 (발췌에 숨지 않는다)", len(warn) == 1)
 show("D-22 확장 문구 그대로 — '선언된 관계는 근거 1건일 수 있음'",
@@ -115,25 +168,19 @@ show("1부 등록의 **선언 edges가 특별 확인 대상**으로 동봉된다
      "declared_edges" in (warn[0].get("detail") or {})
      and warn[0]["detail"]["declared_edges"] == [],
      "toc_report는 prose라 선언 edges가 없다 — 아래에서 table 1부로 보강한다")
-reset("toc_report")
 # 보강 — table 1부는 선언 edges가 실제로 실린다(그것이 "특별 확인 대상"의 대상이다)
-reset("ipqc")
-run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"))
-run("review", "ipqc")
-w2 = [a for a in view_of("ipqc")["sections"]["parse_result"]["anomalies"]
+w2 = [a for a in _f10["ipqc"].result()[-1][1]["sections"]["parse_result"]["anomalies"]
       if a["kind"] == "warning"]
 show("table 1부는 선언 edges가 동봉된다 — 근거 1건일 수 있는 바로 그 선언이다",
      w2 and w2[0]["detail"]["declared_edges"],
      str([e.get("relation") for e in w2[0]["detail"]["declared_edges"]]))
-reset("ipqc")
 
 # ============================================================ S15
 print("\n■ S15 정형 등록 — ipqc 2부 · 봉인 정답표 대조")
-run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
-    "--hint", "16열 검사 성적서")
-_gi = run("generate", "ipqc", "process", str(RAW / "IPQC01.xlsx"), str(RAW / "IPQC02.xlsx"),
-          "--hint", "16열 검사 성적서")
-r = run("review", "ipqc")
+# generate → review → confirm은 곁 루트에서 S1과 함께 돌았다(머리 「곁 루트」 · B121 ②ⓓ).
+# 같은 generate를 두 번 돌려 둘째 화면을 재던 것을 한 번으로 — 첫 화면이 같은 줄을 낸다(B121 ②ⓓ).
+(_gi, _), (r, v), (_c15, _v15) = _f15.result()
+_POOL.shutdown()
 # [B31] **관문이 새로 생겨 이 fixture를 막는다 — 그것이 관문이 도는 증거다.**
 # mock 초안은 fixture를 그대로 돌려주고(D-10) 그 fixture는 **B27 이전 스냅샷**이라
 # 규약 10을 지키지 않는다. 파싱·배정표·봉인 대조는 그대로 돌지만 기계 관문은
@@ -146,7 +193,6 @@ show("[B31] 기계 관문이 규약 10 미준수 fixture를 막는다 — **생�
      str([c for c, _l, _d in Rgate.fail_lines(_gi.stdout)][:3]))
 show("ipqc 2부 파싱은 그대로 돈다 — 조각 33+20 (관문과 파싱은 다른 축)",
      "조각 33" in r.stdout and "조각 20" in r.stdout)
-v = view_of("ipqc")
 roles = {x["field"]: x["role"] for x in v["sections"]["role_table"]}
 
 # ---- 6지선다 ----
@@ -208,18 +254,12 @@ show("2부면 1부 경고가 뜨지 않는다 (표본 수가 판정한다)",
 
 # [B31 · 판정필요-14] ipqc fixture는 규약 10 미준수라 **관문이 확정을 막는다.**
 # 그것이 관문의 일이다 — 확정은 기계 관문 PASS를 전제한다(§6.5).
-r = run("confirm", "ipqc", "--by", "검수자 한지우")
 show("[B31] 관문 FAIL이면 확정이 막힌다 (미준수 어댑터가 등재되지 않는다)",
-     r.returncode != 0 and not registry.lookup("ipqc"))
+     _c15.returncode != 0 and "ipqc" not in _registered_at(_h15))
 
-# [B31 이관] ipqc는 규약 10 미준수라 확정이 막히므로(판정필요-14), **여기서 다시
-# 확정해** 뒤 구획(3소비자)이 볼 등재분을 세운다 — 앞선 확정은 지문 스캔 탐침이
-# 등록부를 비운 뒤라 남아 있지 않다. 커버리지를 잃지 않기 위한 이관이다.
-# 이 구획은 앞과 **다른 환경**에서 돈다(탐침이 review/·등록부를 새로 세운다).
-# 그래서 여기서 준수 doc_type을 처음부터 세워 확정까지 잇는다.
-run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx"), "--hint", "목차형")
-run("review", "toc_report")
-run("confirm", "toc_report", "--by", "검수자 한지우")
+# [B31 이관] ipqc는 규약 10 미준수라 확정이 막히므로(판정필요-14), 뒤 구획(3소비자)이
+# 볼 등재분은 **S1의 확정**(toc_report · 검수자 박서준)이다 — S10이 곁 루트로 옮겨 그
+# 등재를 걷지 않는다. 같은 생성·검수·확정을 한 번 더 세우던 것을 걷었다(B121 ②ⓓ).
 show("이름 중복은 거부한다 (조회가 어느 쪽을 답할지 정해지지 않는다)",
      run("generate", "toc_report", "process", str(RAW / "TOC01.xlsx")).returncode != 0)
 show("존재하지 않는 층 지정은 거부한다 (층 선행 완결 — ⑵-③ · R1은 국면 2)",
@@ -242,7 +282,7 @@ out = subprocess.run([sys.executable, "-m", "cli.platform", "doctypes"],
                      capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout
 show("③ 플랫폼 노출 — 같은 등록부를 열람한다 (D-67 계보)",
      "toc_report" in out and "status=registered" in out
-     and "승인=검수자 한지우" in out)
+     and "승인=검수자 박서준" in out)
 registered = json.loads(store.path(store.DOC_TYPES).read_text(encoding="utf-8"))
 show("셋이 같은 실물을 본다 — 등록부 파일 하나 (registry/doc_types.json)",
      store.path(store.DOC_TYPES).exists() and set(registered) == {"toc_report"},
@@ -254,8 +294,8 @@ show("층 등록부와는 다른 장부다 — 목적이 다르면 장부도 다
 print("\n■ 경계 — 하지 않는 것 (M3 · R1)")
 src = _reg_src()
 show("n6 검수 뷰에 **층 초안 구획이 없다** (층 검수 뷰로 이관 — ⑺-⓪ 종결)",
-     "층 초안" not in json.dumps(view_of("ipqc"), ensure_ascii=False)
-     and len(view_of("ipqc")["sections"]) == 3)
+     "층 초안" not in json.dumps(_v15, ensure_ascii=False)      # S15 끝(confirm 뒤)의 ipqc 뷰
+     and len(_v15["sections"]) == 3)
 show("층 등록 기능(R1)을 만들지 않았다 — 존재하는 층만 지정 가능",
      "국면 2" in src and "discover()" in src)
 show("렌더러·하네스를 복제하지 않았다 (kit 실물 호출)",
