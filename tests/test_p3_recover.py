@@ -424,12 +424,14 @@ show("⑧ 경로 비교가 파일명이 아니라 전체 경로다 (D-110의 대
      and _ING._norm_path("./a/x.xlsx") != _ING._norm_path("./b/x.xlsx")
      and _ING._norm_path("a/x.xlsx") == _ING._norm_path("./a/x.xlsx"))
 # `return` 아래가 통째로 도달 불가였다 — 완료판정 4가 한 번도 계측된 적이 없다.
-_b55_doc = (ROOT / "doctor.py").read_text(encoding="utf-8")
-show("⑨ 멱등 계측이 도달 가능하다 (헬퍼 `_clean()`을 부르고 2회 실행·비교한다)",
-     "rc, residue = _clean()" in _b55_doc
-     and _b55_doc.index("rc, residue = _clean()")
-     < _b55_doc.index("g1, q1, r1 = snap()")
-     and "클린 2회 동일 그래프" in _b55_doc)
+# 계측의 자리는 회귀 실행 모듈이다(B131 ① — 병렬이면 제 임시 루트에서 스위트와 함께 돈다) · doctor는 그것을 부른다.
+_b55_doc = (ROOT / "cli" / "doctor_run.py").read_text(encoding="utf-8")
+_b55_dr = (ROOT / "doctor.py").read_text(encoding="utf-8")
+show("⑨ 멱등 계측이 도달 가능하다 (클린 헬퍼를 부르고 2회 실행·비교한다 · doctor가 부른다)",
+     "rc, residue = clean(env, home)" in _b55_doc
+     and _b55_doc.index("rc, residue = clean(env, home)")
+     < _b55_doc.index("snaps.append(_snap(home))")
+     and "클린 2회 동일 그래프" in _b55_dr and "doctor_run.idempotent(serial)" in _b55_dr)
 # **문면을 조각으로 쓴다** — 이 줄이 「층 그래프 파일을 아는 코드」 검사(test_g1_g2)에
 # 걸리지 않게. `doctor.py`가 같은 이유로 `"graph" + ".json"`을 쓴다(레포의 관용).
 show("⑨ snap()이 층 그래프 파일을 바이트로 여는 근거가 주석에 있다 (B6 예외 명시)",

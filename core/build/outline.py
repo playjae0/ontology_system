@@ -99,7 +99,7 @@ def tree(env):
                 by_key[key] = len(heads) + 1
                 h = {"id": by_key[key], "text": ps[i], "parent": pid, "depth": i + 1,
                      "path": extract_ctx.PATH_SEP.join(key)}
-                if info[i] is not None:
+                if info[i] is not None and info[i].get("role"):   # 역할이 선 제목만 — 역할 없는 사다리 단(코드)은 개요가 묻는다 (B132)
                     h["struct"] = info[i]
                 heads.append(h)
             pid = by_key[key]

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 · 2.4 — **구조 표 · 구조 확인** — 목차(나무)와 LLM 판단을 보이고, 사람이 **문서 규칙**으로 힌트를 준다 (B119 ③ · B130 ③④).
+"""칸 0.3 · 2.4 — **구조 확인** — 계층 사다리 · 목차 · 판단 필요와 답을 보이고, 사람이 **사다리 고침 · 행 고침**을 힌트로 준다 (B119 ③ · B130 ③④ · B132 ⑦).
 
     파싱 끝 (산문 · 구조가 섰을 때)
       ├ 약한 구조 신호 — 늘 크게(`[약한 구조]`) · 비대화형이면 기록(인입 기록 · `show summary`)에 남기고 진행
-      └ `--step`이면 시트마다 규칙 나무 · 이해한 규칙(적용 n줄 / 그 꼴 전체 m줄) · 고친 나무(바뀐 줄 표시) · 청크마다 전체 경로를
-        보이고 묻는다: `c` 확정 · `q` 멈춤 · 힌트(문서 규칙 — 그 문서의 모든 시트에 · 특정 줄도 말로) · `새로`
+      └ `--step`이면 시트마다 사다리 한 줄 · 들여쓰기 목차(역할 · 바뀐 줄) · 판단 필요와 LLM의 답 · 사다리 고침(적용 n줄 / 전체 m줄) ·
+        청크마다 전체 경로를 보이고 묻는다: `c` 확정 · `q` 멈춤 · 힌트(문서 규칙 — 「가.는 9) 위다」 · 「가. 단은 대상 Unit」 같은 사다리
+        고침은 문서 전체에 다시 · 「R36은 제목이 아니다」 같은 행 고침)
 
 줄 고침 명령은 받지 않는다 — 옛 고침 기록(`registry/structure_fixes.json` — 등록 단)은 파싱 · 재구축이 그대로 재생한다.
 
@@ -16,37 +17,16 @@ from __future__ import annotations
 from cli import _screen
 from core.build import structure as ST
 
-PROMPT = "   [계속 c / 멈춤 q / 힌트 <글> · 새로] "
+PROMPT = "   [계속 c / 멈춤 q / 힌트 <글>] "
 DECK_PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 제목 <글> · <번호> 이어짐 <슬라이드|없음> · 개요 <글>] "
 DECK_HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 공정 노칭,스태킹」(골격 이름 · 없음) · 「<번호> 제목 <그 슬라이드 글>」 · "
              "「<번호> 이어짐 <앞 슬라이드 번호|없음>」 · 「개요 <한 단락>」 — 다시 친다")
-HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 그 밖의 글은 **힌트 — 문서 규칙**(예 「'가.'는 유닛 단 · 그 아래 '1)'은 사양 묶음」 · "
-        "특정 줄도 말로 「23행은 제목이 아니다」) — LLM이 규칙을 되말하고 그 문서의 모든 시트에 건다 · 「새로」는 llm 방식으로 다시 — 다시 친다")
+HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 그 밖의 글은 **힌트 — 문서 규칙**(사다리 고침 「가.는 9) 위다」 · 「가. 단은 대상 <카테고리>」 — "
+        "LLM이 되말하고 문서 전체에 다시 세운다 / 행 고침 「R36은 제목이 아니다」) — 다시 친다")
 
 
 def weak_lines(weak):
     return [f"   [약한 구조] 시트 '{fr}' — " + " · ".join(sig) for fr, sig in (weak or {}).items()]
-
-
-def _target(r):
-    if r.get("이름") and r.get("카테고리"):
-        return f"{r['이름']}({r['카테고리']})"
-    return "—"
-
-
-def print_table(rows):
-    t = _screen.Table([("번호", 4, True), ("시트", 14, False), ("행", 5, True), ("단", 3, True), ("역할", 10, False),
-                       ("대상", 28, False), ("줄", 40, False), ("초안", 10, False)], flex=6, keep=(4, 5))
-    for r in rows:
-        diff = (("다름 " if r.get("다름") else "") + (f"초안{r['초안']} " if r.get("초안") else "")
-                + (f"형제 「{r['형제']}」" if r.get("형제") else ""))
-        role = "(본문)" if r.get("본문") else (r.get("역할") or "—") + ("*" if r.get("by") else "")
-        t.row([r["번호"], r["시트"], r["행"] if r["행"] else "시트", r["단"] or "", role, _target(r), r.get("글") or "",
-               diff.strip()], [None, None, "aux", "aux", "warn" if r.get("by") else None, None, "aux",
-                               "warn" if r.get("다름") else "aux"])
-    t.end()
-    print("   * = 사람이 고친 줄 · 다름 = 고정 규칙 초안의 단과 다르다(초안n = 초안의 단 · (본문) = 초안은 제목인데 구조가 뺐다) · "
-          "형제 「꼴」 = 같은 번호 꼴 줄의 단 · 역할이 갈렸다")
 
 
 def print_deck(rows):
@@ -114,32 +94,25 @@ def _deck_gate(res, doc_id, dk, reparse):
         dk = (res.report or {}).get("deck") or {}
 
 
-def _sheet_answer(answer, rows, cats):
-    """묻는 줄의 답 — 「새로」 또는 힌트(문서 규칙 · B130 ④ — 줄 고침 명령은 받지 않는다 · 옛 고침 기록은 재생된다)."""
+def _sheet_answer(answer):
+    """묻는 줄의 답 — 힌트(문서 규칙 · B130 ④ — 줄 고침 명령은 받지 않는다 · 옛 고침 기록은 재생된다)."""
     a = answer.strip()
-    if not a:
-        return None
-    return ("new", None) if a == "새로" else ("hint", a)
+    return ("hint", a) if a else None
 
 
-def _print_sheet(name, fr, res, rows, st):
+def _print_sheet(name, fr, res):
     from cli import split_report as SR
     blk = SR.sheet_block(name, fr, SR.chunks_of(res.envelope, name))
     _screen.say("   ── 구조 확인 — " + blk[0], "head")
     for ln in blk[1:]:
         print("   " + ln)
-    if rows:
-        print_table(rows)
-    for ln in ST.range_lines(st):                    # 청크 구간 · 버린 사유 (B124 ②)
-        if f"'{name}'" in ln:
-            print(ln)
 
 
 def gate(res, doc_id, reparse, *, ask=True, layers=None):
-    """파싱 끝의 **구조 확인**(B126 ③) — `(res, 계속?)`. `--step`이면 시트마다 전부 보이고(준 것 · LLM 판단과 이유 · 고친 뒤 나무 ·
-    청크마다 첫 줄 · 끝 줄 · 사슬 — 같은 내용을 `export/split_<doc_id>.md`에) 묻는다: `c` 이 시트 확정(기록 → 재구축 재생) → 다음
-    시트 · `q` 멈춤 · 힌트 → 그 시트를 같은 방식으로 다시(앞 출력 + 힌트 전부) · `새로` → llm 방식으로 다시 · 옛 줄 고침도 받는다.
-    확정 기록으로 재생된 시트에 힌트 · `새로`를 주면 그 고리 동안 확정을 비켜 둔다(B127 ③ — 입력의 힌트 = 기록된 힌트 + 이번 힌트)."""
+    """파싱 끝의 **구조 확인**(B126 ③ · B132 ⑦) — `(res, 계속?)`. `--step`이면 시트마다 전부 보이고(사다리 · 목차 · 판단 필요와 답 ·
+    고침 · 청크마다 첫 줄 · 끝 줄 · 경로 — 같은 내용을 `export/split_<doc_id>.md`에) 묻는다: `c` 이 시트 확정(기록 → 재구축 재생) →
+    다음 시트 · `q` 멈춤 · 힌트 → 그 시트를 다시 확인(앞 판단 + 문서 힌트 전부 · 사다리 고침은 뒤 시트에도).
+    확정 기록으로 재생된 시트에 힌트를 주면 그 고리 동안 확정을 비켜 둔다(B127 ③ — 입력의 힌트 = 기록된 힌트 + 이번 힌트)."""
     from core.state.bootstrap import coord_layer
     coord_in = coord_layer() in (layers or [coord_layer()])
     try:
@@ -172,11 +145,9 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
             return res, True
         name = frames[pos]
         fr = st["프레임"][name]
-        rows = [r for r in ST.table(st) if r["시트"] == name]
-        _print_sheet(name, fr, res, rows, st)
+        _print_sheet(name, fr, res)
         md = SR.write_md(doc_id, res.report, res.envelope)
-        cats = ST.categories(ST._cfgs(layers))
-        got = _screen.answer(PROMPT, "go", eof=True, other=lambda a: _sheet_answer(a, rows, cats), hint=HELP)
+        got = _screen.answer(PROMPT, "go", eof=True, other=_sheet_answer, hint=HELP)
         if got is False:
             print("   멈춤 — 구조까지(파싱 산출 parsed/ · 구조 보존분은 남았다 · 그래프 쓰기 0)")
             return res, False
@@ -188,20 +159,18 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
                   + (f" · 다음 시트 '{frames[pos + 1]}'" if pos + 1 < len(frames) else ""))
             pos += 1
             continue
-        kind, val = got
-        if kind == "hint":                   # 힌트는 문서 규칙 — 그 문서의 모든 시트에 (B130 ④)
-            ST.add_doc_hint(doc_id, val)
+        _kind, val = got
+        ST.add_doc_hint(doc_id, val)         # 힌트는 문서 규칙 — 그 문서의 모든 시트에 (B130 ④)
         hs = ST.doc_state(doc_id)["hints"]
         if fr.get("confirmed"):              # 확정한 시트에 다시 힌트 — 이 고리에서는 확정을 비켜 둔다(B127 ③)
             ST.SUSPENDED.add((doc_id, name))
             print(f"   확정 기록을 비켜 둔다 — 시트 '{name}'(c면 새 나무로 덮는다 · q면 그대로)")
-        print(f"   {'새로(llm 방식)' if kind == 'new' else '힌트(문서 규칙)'} — 시트 '{name}'를 다시 묻는다(앞 판단 + 문서 힌트 {len(hs)}"
-              " · 뒤 시트도 이 힌트로 다시 묻는다)")
+        print(f"   힌트(문서 규칙) — 시트 '{name}'를 다시 확인한다(앞 판단 + 문서 힌트 {len(hs)} · 사다리 고침은 뒤 시트에도)")
         ST.reask(doc_id, name, fr.get("labels") or [], (res.envelope or {}).get("source_path"), hints=hs,
                  # 앞 판단 전체 — 고침 목록 · 고친 나무 · 이해한 규칙 (B130 ⑤ — 확정한 시트를 다시 열어도 앞 고침이 빠지지 않는다)
-                 prev={"edits": (fr.get("answer") or {}).get("edits") or [], "headings": fr.get("headings") or [],
+                 prev={"answers": (fr.get("answer") or {}).get("answers") or [],
+                       "edits": (fr.get("answer") or {}).get("edits") or [], "headings": fr.get("headings") or [],
                        "rules": fr.get("rules") or []},
-                 mode="llm" if kind == "new" or fr.get("mode") == "llm" else None,
                  layers=layers, ctx={"doc_type": (res.envelope or {}).get("doc_type"),
                                      "doc_coord": (res.envelope or {}).get("doc_coord"), "frames": frames})
         res = reparse()

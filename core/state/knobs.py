@@ -93,19 +93,19 @@ KNOBS = {
                            "연결 보강(LLM 지점 ⑫) 실행당 호출 상한 — 재연결 뒤에도 엣지 없는 · 공정에만 붙은 개체를 닫힌 "
                            "후보 안에서 잇는 판정(0이면 끔 · 넘는 대상은 「상한 밖 n」 줄 — 다음 인입 · 재구축이 잇는다)",
                            "인입 마무리 「연결 보강 — 대상 n → 붙음 …」 줄 · python run.py show report <doc_id>"),
-    "structure_mode": ("core.build.structure", ("MODE",), "choice:rules|edit|llm",
-                       "문서 구조 방식 — rules(규칙 나무 + 크기 구간 · 구조 LLM 0) · edit(기본 — 규칙 나무를 주고 고칠 곳만 이유와 함께) · "
-                       "llm(LLM이 나무 · 구간을 새로) · 규칙 나무가 빈 시트는 edit여도 llm",
+    "structure_mode": ("core.build.structure", ("MODE",), "choice:rules|ladder",
+                       "문서 구조 방식 — ladder(기본 — 계층 사다리 문서당 1 · 시트 확인 시트당 1 · LLM이 판단 · 코드가 적용 · 검사) · "
+                       "rules(코드 사다리 · 구조 LLM 0) · 옛 값 edit · llm은 폐기(ladder로 바꾼다)",
                        "python run.py ingest-file <문서> --split-only --step — 방식을 바꿔 같은 문서를 싸게 비교"),
     "structure_line_chars": ("core.build.structure", ("LINE_CHARS",), "int",
-                             "문서 구조(지점 ⑪) 입력의 줄당 글자 상한 — 줄 전체가 원칙이고 이것을 넘는 줄만 자른다",
+                             "문서 개요(지점 ⑪ 제목 목록 — 슬라이드 · 쪽 제목) 입력의 제목 글자 상한(구조 호출은 골격 보기라 쓰지 않는다)",
                              "인입 구조 표 · python run.py show report <doc_id> --md"),
     "structure_call_tokens": ("core.build.structure", ("CALL_TOKENS",), "int",
-                              "문서 구조 한 호출에 싣는 양(어림 토큰 = 줄 글자 / 2) — 넘으면 나눠 부르고 열린 제목을 넘긴다",
+                              "덱 구조 한 호출에 싣는 양(어림 토큰 = 글자 / 2) — 넘으면 나눠 부르고 앞 판단을 넘긴다",
                               "인입 구조 끝 줄의 호출 수"),
     "structure_chunk_over": ("parser.struct_rule", ("CHUNK_OVER",), "int",
-                             "구조가 낸 청크 구간이 크기 권장값(chunk_max_chars)의 몇 배까지 그대로인가 — 넘는 구간만 형제 줄 "
-                             "앞에서 나눈다(조각의 주인 · 사슬은 그 구간의 것)",
+                             "시트 확인의 붙임 구간이 크기 권장값(chunk_max_chars)의 몇 배까지 한 청크인가 — 넘는 구간만 형제 줄 "
+                             "앞에서 나눈다",
                              "python run.py show dist chunks · show report <doc_id> --md 추출 청크 표"),
     "ppt_slide_chars": ("parser.adapters.basic_ppt", ("SLIDE_MAX_CHARS",), "int",
                         "PPT 슬라이드 본문의 글자 임계 — 넘는 슬라이드만 본문 근거 청크를 구조 지도로 나눈다(추출은 그래도 "
@@ -143,6 +143,10 @@ def default(name):
     return vals[0] if len(vals) == 1 else list(vals)
 
 
+#: **폐기한 값 → 바꿀 값**(B132 ⑧ — 운영 관문이 그 문면으로 멈춘다 · 조용히 바꾸지 않는다)
+RETIRED = {"structure_mode": {"edit": "ladder", "llm": "ladder"}}
+
+
 def _check(name, v, dflt):
     kind = KNOBS[name][2]
 
@@ -156,6 +160,13 @@ def _check(name, v, dflt):
           "dict": lambda: isinstance(v, dict) and set(v) == set(dflt)
           and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v.values()),
           }[kind]() if not kind.startswith("choice:") else v in kind[len("choice:"):].split("|")
+    if not ok and name in RETIRED and v in RETIRED[name]:
+        raise KnobError(
+            f"[상태] 손잡이 '{name}'의 값 {json.dumps(v, ensure_ascii=False)}는 폐기한 값이다 — "
+            f"{json.dumps(RETIRED[name][v], ensure_ascii=False)}로 바꾼다(기대 {kind})\n"
+            f"  근거 — {paths.show(paths.knobs())}\n"
+            f"  ▶ 다음 줄: \"{name}\": {json.dumps(RETIRED[name][v], ensure_ascii=False)} 로 고치거나 키를 지운다(기본값으로 돈다) "
+            f"→ python run.py show knobs")
     if not ok:
         raise KnobError(
             f"[상태] 손잡이 '{name}'의 값 {json.dumps(v, ensure_ascii=False)}가 형 밖이다 — "

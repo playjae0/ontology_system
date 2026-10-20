@@ -58,13 +58,20 @@ print(json.dumps({"coord": coord, "layers": sorted(discover()),
 '''
 
 
+def _env_for(root):
+    """그 루트의 mock 상태 — 레포면 이 시험의 루트 그대로(병렬 회귀는 제 임시 루트 — B131 ①) · 사본이면 사본 옆 mock 루트."""
+    env = {**os.environ, "USE_MOCK": "1"}
+    if Path(root).resolve() != ROOT:
+        env[_P.MOCK_HOME_ENV] = str(Path(root) / _P.MOCK_HOME)
+    return env
+
+
 def run(root, *argv, script=None):
     """그 루트에서 한 번 돌린다 — 상태는 **레포 옆**이라 루트가 곧 상태다."""
     cmd = [sys.executable, "-c", script] if script else \
         [sys.executable, str(Path(root) / "run.py"), *argv]
     return subprocess.run(cmd, capture_output=True, text=True, cwd=str(root),
-                          env={**os.environ, "USE_MOCK": "1"},
-                          stdin=subprocess.DEVNULL)
+                          env=_env_for(root), stdin=subprocess.DEVNULL)
 
 
 def pipeline(root, doctor=True):
@@ -78,7 +85,7 @@ def pipeline(root, doctor=True):
     dump = run(root, script=DUMP)
     quick = subprocess.run([sys.executable, str(Path(root) / "doctor.py"), "--quick"],
                            capture_output=True, text=True, cwd=str(root),
-                           env={**os.environ, "USE_MOCK": "1"}, stdin=subprocess.DEVNULL) if doctor else None
+                           env=_env_for(root), stdin=subprocess.DEVNULL) if doctor else None
     return {"boot": boot.stdout, "ask": ask.stdout + ask.stderr,
             "dump": json.loads(dump.stdout or "{}"), "dump_err": dump.stderr[-300:],
             "quick_rc": quick.returncode if quick else None, "quick": quick.stdout if quick else ""}

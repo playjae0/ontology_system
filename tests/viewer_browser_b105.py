@@ -3,7 +3,7 @@
 
 `viewer_browser_b104.py`와 같은 처지다(D-165 ②) — Playwright·Chromium이 있어야 하고 사내 클론에는 없어 **회귀
 (`doctor.py`)에 넣지 않는다**. 회귀에는 브라우저 없이 재는 성질(CLI `[원 레코드]` 줄 수 = `--json` records 수 ·
-값·별칭·출처가 저장된 그대로 — `tests/test_g6_coord_pairs.py`)만 둔다. 여기 것은 회차 보고에 실행 결과로 붙인다.
+값·별칭·출처가 저장된 그대로 — `tests/test_coord.py`의 조각 g6_coord_pairs)만 둔다. 여기 것은 회차 보고에 실행 결과로 붙인다.
 
 표본은 **창작**이다 — mock 그래프(CP01·PFMEA01·PPT01~03·QPPT01). 재는 것:
   ⓐ ⓖ 카드 수 = CLI `--json`의 `records` 수(같은 함수 `as_json(answer(q))`) · 카드의 원문 = 레코드 그대로

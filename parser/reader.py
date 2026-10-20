@@ -17,6 +17,7 @@ xlsx →
       "merged":  ["A4:A31", "B4:B5", ...],  # 병합 범위 원본
       "indent":  {"A5": 3, ...},            # 들여쓰기 수준 (0이 아닌 셀만)
       "bold":    ["A1", "A3", ...],         # 굵은 셀
+      "size":    {"A1": 14.0, ...},          # 글자 크기 · "fill": {"A1": "FFFFFF00"} 채우기(단색) — 보조 표시(B132 ①)
       "images":  [{"cell": "A17", "ref": "img_001", "mime": "image/png"}, ...],
   }],
   "_images": {"img_001": (b"…", "image/png")},  # 그림이 있을 때만 (B88 ① — zip에서 직접)
@@ -121,7 +122,7 @@ def read_xlsx(path):
     all_images, n_img = {}, 0
     sheets = []
     for ws in wb.worksheets:
-        cells, indent, bold = {}, {}, []
+        cells, indent, bold, size, fill = {}, {}, [], {}, {}
         for row in ws.iter_rows():
             for c in row:
                 if c.value is None:
@@ -133,6 +134,11 @@ def read_xlsx(path):
                     indent[addr] = int(ind)
                 if c.font and c.font.bold:
                     bold.append(addr)
+                if c.font and c.font.sz:                  # 글자 크기 · 채우기 — 보조 표시(B132 ① · 단 신호가 아니다)
+                    size[addr] = float(c.font.sz)
+                fg = getattr(getattr(c, "fill", None), "fgColor", None)
+                if getattr(c.fill, "fill_type", None) == "solid" and getattr(fg, "rgb", None) and isinstance(fg.rgb, str):
+                    fill[addr] = fg.rgb
         images = []
         for cell, blob, mime in zimgs.get(ws.title, []):
             n_img += 1
@@ -146,6 +152,8 @@ def read_xlsx(path):
             "merged": [str(r) for r in ws.merged_cells.ranges],
             "indent": indent,
             "bold": bold,
+            "size": size,
+            "fill": fill,
             "images": images,
         }
         # **숨김 시트**(B112 ② — 사내: 숨김 시트의 다른 공정 내용이 prose로 들어갔다) · 키는 **숨김일 때만** —

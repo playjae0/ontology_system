@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from p1_common import *          # noqa: F401,F403 — 바닥은 하나다
 from p1_common import _P, done   # noqa: F401
 
+from parser import sig as SG                                         # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX                   # noqa: E402
 
 HIER, FONT = RAW / "HIER01.xlsx", RAW / "FONT01.xlsx"
@@ -33,7 +34,7 @@ def _sheet(path, name):
 
 
 def _heads(sheet):
-    _lines, rows = BX._rows_of(sheet, BX._content_column(sheet))
+    _lines, rows, _m = BX._rows_of(sheet)
     text = dict(_lines)
     return [(text[r["row"]], r["level"]) for r in rows if r["heading"]], _lines, rows
 
@@ -46,7 +47,7 @@ for _f in ("TOC01.xlsx", "TOC02.xlsx", "RFQ01.xlsx"):
         _col = BX._content_column(_sh)
         if not _col:
             continue
-        _l, _rows = BX._rows_of(_sh, _col)
+        _l, _rows, _m = BX._rows_of(_sh)
         _t = dict(_l)
         for _r in _rows:                   # 구판의 규칙: 점 번호면 레벨 = 점 개수, 아니면 0
             _m = re.match(r"^(\d+(?:\.\d+)*)[.)]?\s+", _t[_r["row"]])
@@ -60,7 +61,7 @@ for _txt, _lv in _h:
 show("① `Ⅰ./1./가./(1)` 혼용 — 레벨이 처음 나온 순서대로 1~4",
      [lv for _txt, lv in _h[:4]] == [1, 2, 3, 4]
      and [t.split()[0] for t, _lv in _h[:4]] == ["Ⅰ.", "1.", "가.", "(1)"], str(_h[:4]))
-_long = [t for _r, t in _hl if len(t) > struct_map.HEADING_MAX_CHARS and struct_map.heading_family(t[:20])]
+_long = [t for _r, t in _hl if len(t) > struct_map.HEADING_MAX_CHARS and SG.signature(t)[1] is not None]
 show("① 60자 넘는 번호 행은 제목이 아니다 (목록 항목·본문)",
      _long and not any(t in dict(_h) for t in _long), f"긴 번호 행 {len(_long)}")
 _bul = [t for _r, t in _hl if t[:1] in "-•·"]
@@ -94,7 +95,7 @@ show("③ 넘는 청크의 조각은 전부 상한 이하다 (혼자 넘는 행 
      f"조각 {len(_parts)} · 최대 {max(len(p['text']) for p in _parts)}자")
 _cells = {r: t for r, t in _hl}
 _long_sh = _sheet(HIER, "장문")
-_cl = dict(BX._rows_of(_long_sh, BX._content_column(_long_sh))[0])
+_cl = dict(BX._rows_of(_long_sh)[0])
 
 
 def _rows_of_loc(loc):
@@ -116,7 +117,7 @@ show("③ 조각을 이으면 원래 청크의 글과 같다 (무손실)",
      str({k: len(v) for k, v in _joined.items()}))
 
 # ────────────────────────────────────────────────────────────── ②
-# 계층 규칙 선언(⑦ struct_rule)은 B121 ③에서 지웠다 — 안 선 시트는 문서 구조(⑪ — test_g6_structure)가 세운다.
+# 계층 규칙 선언(⑦ struct_rule)은 B121 ③에서 지웠다 — 안 선 시트는 문서 구조(⑪ — 조각 g6_structure)가 세운다.
 print("\n■ 안 선 시트의 등록")
 
 
@@ -146,7 +147,7 @@ def _whole_cells(pieces, cells):
 
 
 _nl = _sheet(RAW / "NL01.xlsx", "사양")
-_nlc = dict(BX._rows_of(_nl, BX._content_column(_nl))[0])
+_nlc = dict(BX._rows_of(_nl)[0])
 _nlp = BX.extract(read(str(RAW / "NL01.xlsx")))
 _rep = _parse(RAW / "NL01.xlsx", "B89NL")
 show("B89 ① 글자 상한 갈래 — 조각 글 = 그 locator 행 범위의 온전한 셀들 · locator 유일 · validator 결함 0",
@@ -177,6 +178,7 @@ print("\n■ B130 목차는 번호 이어짐 · 다시 시작으로 · 모든 �
 import tempfile                                                       # noqa: E402
 from openpyxl import Workbook                                         # noqa: E402
 from parser import toc, tuning                                        # noqa: E402
+from core.build import structure as _ST                               # noqa: E402
 TOC = ["1. 공정별 상세사양", "1) 적용 범위", "이 사양은 노칭 공정에 적용한다.", "가. 일반", "설비는 정해진 자리에 둔다.", "나. 생산능력",
        "1) 생산 capa", "월 100만 셀을 만든다.", "2) 설비 가동률", "가동률은 90%다.", "다. 수량", "1) 설비 수량", "두 대를 둔다.",
        "2) 예비품", "예비 금형 하나.", "라. 검사", "4) 검수방법", "A. 입고전 검수", "외관을 본다.", "B. 입고후 검수", "치수를 잰다."]
@@ -219,8 +221,10 @@ for _how, _knob in (("자른 단", {"chunk_rows": [1, 2]}), ("글자 상한 조�
     struct_map.invalidate("B130T")
     _res_t[_how] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[]).envelope
     struct_map.invalidate("B130T")
+    _ST.MODE = "rules"                                               # 구조 방식 rules — 코드 사다리 (B132 ⑧)
     _res_t[_how + " · rules"] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[],
-                                               structure=lambda d, f, labs: {"skip": True, "mode": "rules"}).envelope
+                                               structure=_ST.structurer()).envelope
+    _ST.MODE = "ladder"
 tuning.apply({})
 _chk = {k: _paths_ok(v) for k, v in _res_t.items()}
 _sec = [c["section"] for c in _res_t["글자 상한 조각"]["chunks"]]

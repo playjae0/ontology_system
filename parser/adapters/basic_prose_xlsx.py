@@ -90,59 +90,65 @@ def _wide_merges(sheet):
 
 
 # 헤딩 신호의 이름 — 화면·기록이 같은 말을 쓴다 (B68 ①)
-SIG_NUM, SIG_MERGE, SIG_BOLD = "번호", "가로병합", "굵게+들여쓰기"
+SIG_NUM = "번호"
 MAP_SOURCE = "adapter:basic_prose_xlsx"
 
 
-def _rows_of(sheet, col):
-    """`(줄 목록, 헤딩 판정 rows)` — **신호 넷의 우선순위는 명시적이다.**
+def _col_index(col):
+    n = 0
+    for ch in col:
+        n = n * 26 + (ord(ch) - 64)
+    return n
 
-    | 신호 | 레벨 | 왜 이 순서인가 |
-    |---|---|---|
-    | 번호 패턴 군(B87 ①) | 점 번호는 점의 개수 · 다른 군은 시트 안 첫 등장 순서 | 사람이 **직접 적은** 깊이다 — 가장 강한 근거 |
-    | 가로 병합 | 1 | 구획 제목의 관용 서식. 깊이 정보는 없다 |
-    | 굵게 | 들여쓰기 + 1 | 서식은 깊이를 말하지 않으므로 들여쓰기가 보탠다 |
-    | 들여쓰기만 | — | **헤딩이 아니다.** 본문 인용도 들여쓴다 |
 
-    들여쓰기 단독을 헤딩으로 치지 않는 것이 핵심이다 — 치면 인용문 한 줄이 구획을
-    열어 그 아래 본문이 통째로 엉뚱한 `section`을 얻는다. 번호 군과 짧은 행 조건
-    (`struct_map.HEADING_MAX_CHARS`)은 `parser.struct_map`이 소유한다 — 패턴이 두 벌이면
-    어댑터와 지도 경로의 제목이 갈린다.
-    """
+#: 행 안의 칸 이음 — 문서 본문(Word)의 표 행과 같은 글자(B132 ① — 단계마다 다른 열에 쓴 시트도 제목이 줄에 든다)
+CELL_SEP = " | "
+
+
+def _row_lines(sheet):
+    """**줄 = 행 전체**(B132 ① — 판정 0) — `(줄 [(행, 글)], 재료 {행: {col, ci, spaces, indent, bold, merged, size, fill}})`.
+
+    글은 그 행에서 글이 있는 칸을 열 순서로 이은 것(`CELL_SEP`) · 한 열에만 글이 있는 시트는 지금과 같은 글이다(줄 · 청크 바이트 그대로) ·
+    시작 열 = 글이 처음 나오는 열 · 앞 공백 수는 `strip` 전에 센다(탭 4 · 전각 공백 2) · 셀 서식 들여쓰기 · 굵게 · 글자 크기 · 채우기는
+    시작 칸의 것(보조 표시 — 단 신호로 쓰지 않는다)."""
     cells = sheet.get("cells") or {}
     bold = set(sheet.get("bold") or [])
     indent = sheet.get("indent") or {}
+    size = sheet.get("size") or {}
+    fill = sheet.get("fill") or {}
     wide = _wide_merges(sheet)
-    lines = []
-    for r in range(1, int(sheet.get("max_row") or 0) + 1):
-        text = str(cells.get(f"{col}{r}", "")).strip()
-        if text:
-            lines.append((r, text))
+    by_row = {}
+    for a, v in cells.items():
+        c, r = _addr(a)
+        if c and str(v).strip():
+            by_row.setdefault(r, []).append((_col_index(c), c, str(v)))
+    lines, mats = [], {}
+    for r in sorted(by_row):
+        got = sorted(by_row[r])
+        _ci, col, raw = got[0]
+        lead = raw[:len(raw) - len(raw.lstrip())]
+        a = f"{col}{r}"
+        lines.append((r, CELL_SEP.join(t.strip() for _i, _c, t in got)))
+        mats[r] = {"col": col, "ci": got[0][0], "spaces": sum(4 if ch == "\t" else 2 if ch == "\u3000" else 1 for ch in lead),
+                   "indent": int(indent.get(a, 0) or 0), "bold": a in bold, "merged": r in wide,
+                   **({"size": size[a]} if a in size else {}), **({"fill": fill[a]} if a in fill else {})}
+    return lines, mats
+
+
+def _rows_of(sheet):
+    """`(줄 목록, 헤딩 판정 rows, 재료)` — 제목 판정은 **꼴 서명의 목차 하나**다(B132 ② — `parser/toc.number_levels` · 코드 사다리).
+
+    서식(굵게 · 병합 · 글자 크기 · 색)은 사내 시트에서 정형화되어 있지 않아 **단 신호로 쓰지 않는다**(이름표의 보조 표시로만 —
+    문서 구조가 본다). 짧은 번호 줄만 제목 후보다(`struct_map.HEADING_MAX_CHARS` — 넘는 번호 줄은 목록 항목)."""
+    lines, mats = _row_lines(sheet)
     nums = toc.number_levels(lines)
     rows = []
     for r, _text in lines:
-        a = f"{col}{r}"
-        if r in nums:
-            lv, fam = nums[r]
-            sig = _num_signal(fam)
-        elif r in wide:
-            lv, sig = 1, SIG_MERGE
-        elif a in bold:
-            lv, sig = int(indent.get(a, 0)) + 1, SIG_BOLD
-        else:
-            lv, sig = 0, None
-        # **무엇으로 정했는지를 남긴다**(B68 ①) — 판정 규칙도 순서도 그대로다.
-        # 구판은 결과(level)만 남기고 신호를 버려서, 사람이 「무엇을 기준으로
+        lv, sg = nums.get(r, (0, None))
+        # **무엇으로 정했는지를 남긴다**(B68 ①) — 구판은 결과(level)만 남기고 신호를 버려서, 사람이 「무엇을 기준으로
         # 잘랐나」를 화면 어디에서도 볼 수 없었다(사내 실측 여덟째).
-        rows.append({"row": r, "heading": bool(lv), "level": lv, "signal": sig})
-    return lines, rows
-
-
-def _num_signal(fam):
-    """신호 이름에 **군**을 싣는다(B87 ①) — 점 번호는 구판 이름 그대로(`번호`)."""
-    if fam == struct_map.DOTTED:
-        return SIG_NUM
-    return f"{SIG_NUM}({struct_map.FAMILY_LABEL.get(fam, fam)})"
+        rows.append({"row": r, "heading": bool(lv), "level": lv, "signal": f"{SIG_NUM}({sg})" if lv else None})
+    return lines, rows, mats
 
 
 def split_basis(rows):
@@ -154,9 +160,8 @@ def split_basis(rows):
     for r in rows:
         if r.get("heading") and r.get("signal"):
             cnt[r["signal"]] = cnt.get(r["signal"], 0) + 1
-    # 순서: 점 번호 → 다른 번호 군(처음 나온 순) → 가로병합 → 굵게 (B87 ①)
-    keys = ([SIG_NUM] + [k for k in cnt if k.startswith(SIG_NUM + "(")]
-            + [SIG_MERGE, SIG_BOLD])
+    # 순서: 서명마다 처음 나온 순 (B132 ② — 서식은 단 신호가 아니다)
+    keys = [k for k in cnt if k.startswith(SIG_NUM)]
     inner = " · ".join(f"{k} {cnt[k]}" for k in keys if cnt.get(k))
     return f"어댑터 신호: {inner or '없음'}"
 
@@ -171,11 +176,28 @@ def extract(raw, struct_map_fn=None, structure_fn=None) -> list[dict]:
     **무조건** 부른다 — 고정 규칙의 판정은 초안으로 이름표에 실리고, 돌아온 구조(제목 줄의 단 · 역할 · 대상)를
     **데이터로** 적용한다. 없거나 None이면(mock 힌트 없음) 고정 규칙 그대로다.
     """
+    sheets = raw.get("sheets") or []
+    prep = [_prep(sh) for sh in sheets]
+    if structure_fn is not None and callable(getattr(structure_fn, "prepare", None)):
+        structure_fn.prepare({p["name"]: p["labs"] for p in prep if p})   # 문서 사다리 — 시트보다 먼저 한 번 (B132 ③)
     out = []
-    for sh in raw.get("sheets") or []:
-        mine = _sheet_chunks(sh, structure_fn)
+    for sh, p in zip(sheets, prep):
+        mine = _sheet_chunks(sh, structure_fn, p)
         out += mine + _image_pieces(sh, mine)
     return out
+
+
+def _prep(sh):
+    """시트 하나의 줄 · 판정 · 재료 · 이름표(한 번만 만든다) — 글이 없으면 None."""
+    name = sh.get("name") or "Sheet1"
+    col = _content_column(sh)
+    if not col:
+        return None
+    lines, rows, mats = _rows_of(sh)
+    if not lines:
+        return None
+    return {"name": name, "col": col, "lines": lines, "rows": rows, "mats": mats,
+            "labs": struct_rule.labels(name, lines, rows, _marks(mats), True, mats)}
 
 
 _ROWS = re.compile(r"!R(\d+)(?:-R(\d+))?$")
@@ -212,37 +234,27 @@ def _image_pieces(sheet, chunks):
     return out
 
 
-def _marks(sheet, col):
-    """줄 표시(이름표의 재료 · B119 ①) — `{행: [굵게 · 들여쓰기n · 병합 · 다른 열]}`(본문 열 기준 · 번호 꼴은 공용 함수가 단다)."""
-    cells = sheet.get("cells") or {}
-    bold = set(sheet.get("bold") or [])
-    indent = sheet.get("indent") or {}
-    wide = _wide_merges(sheet)
-    other = set()
-    for a, v in cells.items():
-        c, r = _addr(a)
-        if c and c != col and str(v).strip():
-            other.add(r)
+def _marks(mats):
+    """줄 표시(이름표의 보조 재료 · B119 ① · B132 ①) — `{행: [굵게 · 병합 · 크기n · 채움]}`(시작 칸 기준 · 시트에서 흔한 크기는 싣지
+    않는다 · 서명 · 들여쓰기 깊이 · 빈 행 뒤는 공용 함수가 단다)."""
+    sizes = [m["size"] for m in mats.values() if "size" in m]
+    common = max(set(sizes), key=sizes.count) if sizes else None
     out = {}
-    for r in range(1, int(sheet.get("max_row") or 0) + 1):
-        a = f"{col}{r}"
-        mk = [m for m, on in (("굵게", a in bold), (f"들여쓰기{indent.get(a)}", indent.get(a)),
-                              ("병합", r in wide), ("다른 열", r in other)) if on]
+    for r, m in mats.items():
+        mk = [k for k, on in (("굵게", m.get("bold")), ("병합", m.get("merged")),
+                              (f"크기{m.get('size')}", m.get("size") not in (None, common)), ("채움", m.get("fill"))) if on]
         if mk:
             out[r] = mk
     return out
 
 
-def _sheet_chunks(sh, structure_fn=None):
+def _sheet_chunks(sh, structure_fn=None, prep=None):
     """시트 하나의 글 조각 — 순서는 `struct_rule.frame_chunks` 한 벌이다(엑셀·Word 같이)."""
     exp = ADAPTER["expects"]
-    name = sh.get("name") or "Sheet1"
-    col = _content_column(sh)
-    if not col:
+    p = prep if prep is not None else _prep(sh)
+    if not p:
         return []
-    lines, rows = _rows_of(sh, col)
-    if not lines:
-        return []
+    name, col, lines, rows, mats = p["name"], p["col"], p["lines"], p["rows"], p["mats"]
 
     def locator(a, b, _n=name):
         base = exp["frame_format"].format(sheet=_n, a=a)
@@ -251,7 +263,7 @@ def _sheet_chunks(sh, structure_fn=None):
     return struct_rule.frame_chunks(
         # 시트명은 늘 싣는다(B102 ① — 맥락 줄의 시트 칸 · 제목이 있으면 구획 경로에 시트가 없다)
         name, lines, rows, locator, exp["section_sep"], {"content_column": col, "sheet": name},
-        structure_fn=structure_fn, marks_fn=lambda: _marks(sh, col),
+        structure_fn=structure_fn, marks_fn=lambda: _marks(mats), mats=mats, labs=p["labs"],
         flat_reason="계층 신호 0건 — 시트를 통째로 실었다")
 
 
@@ -266,7 +278,7 @@ def level_report(raw):
         col = _content_column(sh)
         if not col:
             continue
-        lines, rows = _rows_of(sh, col)
+        lines, rows, _m = _rows_of(sh)
         if not lines or not any(r["heading"] for r in rows):
             continue
         stats = struct_map.level_stats({"rows": rows}, lines)

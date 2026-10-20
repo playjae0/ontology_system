@@ -83,18 +83,18 @@ from core.state import log as _LOG                                  # noqa: E402
 from concurrent.futures import ThreadPoolExecutor                  # noqa: E402
 _bg = ThreadPoolExecutor(2)
 _facts_f = _bg.submit(DS.suite_facts, SUITES)                       # 정적 선택 그래프 — 아래 하위 실행을 기다리는 동안 짓는다
-rc, out = _run(["doctor.py", "--only", "g6_reg"])
+rc, out = _run(["doctor.py", "--only", "p1_wir"])
 _log = max(_LOG.log_dir().glob("doctor_*.log"), key=lambda p: p.stat().st_mtime, default=T / "없음")
 _ran = re.findall(r"^\s*\[[^\]]+\] (test_[a-z0-9_]+)\s+\d+ PASS / \d+ FAIL", out, re.M)
 _head = "\n".join(out.splitlines()[:4])
 _sum = next((ln for ln in out.splitlines() if "합계" in ln and "PASS" in ln), "")
 show("ⓐ --only 접두 하나 ⇒ 그 스위트만 돈다 · 머리와 합계 줄에 「고른 실행 — 판정 아님」",
-     rc == 0 and _ran == ["test_g6_registry"] and DS.HEAD_LINE in _head and DS.HEAD_LINE in _sum,
+     rc == 0 and _ran == ["test_p1_wiring"] and DS.HEAD_LINE in _head and DS.HEAD_LINE in _sum,
      f"rc {rc} · 돈 스위트 {_ran} · 합계 {_sum.strip()[:80]}")
 _lt = _log.read_text(encoding="utf-8") if _log.exists() else ""
 _tail = _lt[_lt.rfind("===== 실행 시작"):]                         # 이번 실행 몫(클린이 지우면 다시 연 머리부터)
 show("ⓐ 명령 로그에도 「고른 실행 — 판정 아님」(이번 실행의 결과 줄)",
-     f"결과: {DS.HEAD_LINE}" in _tail and "--only g6_reg" in _tail, f"{_log.name} · 이번 몫 {len(_tail)}자")
+     f"결과: {DS.HEAD_LINE}" in _tail and "--only p1_wir" in _tail, f"{_log.name} · 이번 몫 {len(_tail)}자")
 rc2, out2 = _run(["doctor.py", "--only", "없는_스위트"])
 show("ⓐ 모르는 이름 ⇒ 사용법 · rc 2(아무것도 돌지 않는다)", rc2 == 2 and "[사용법]" in out2 and "PASS /" not in out2,
      f"rc {rc2}")
@@ -226,6 +226,49 @@ show("ⓔ 폴백 사슬(제목 개체 → 그 위 → 공정)을 끈 사본 — 
      _fn is not None and rc12 == 1 and _bottoms(out12) == {"C"}, f"rc {rc12} · 다른 바닥 {sorted(_bottoms(out12))}")
 _git(BOX, "checkout", "-q", "--", "core/build/heading.py")
 
+print("\n■ ⓓ 기대 수는 생성물 — 늘면 「+n」 · 사유 없는 감소는 붉다 · 사유 있으면 기록 · PASS 0은 늘 붉다 (B131 ②)")
+_rp = BOX / "tests" / "test_p1_wiring.py"
+_rp_src = _rp.read_text(encoding="utf-8")
+_rec = json.loads((ROOT / "docs" / "회귀스위트" / "기대_수.json").read_text(encoding="utf-8"))
+_n0 = _rec["suites"]["test_p1_wiring"]["n"]
+
+
+def _dr(src, *extra):
+    """사본에서 그 스위트를 고친 판으로 doctor --only 하나 · `(rc, 화면, --result)`."""
+    _rp.write_text(src, encoding="utf-8")
+    _rf = T / "dr_result.json"
+    _rf.unlink(missing_ok=True)
+    rc, out = _run(["doctor.py", "--only", "test_p1_wiring", "--result", str(_rf), *extra], cwd=BOX)
+    return rc, out, (json.loads(_rf.read_text(encoding="utf-8")) if _rf.exists() else {})
+
+
+_plus = _rp_src.replace("\ndone()", '\nshow("시험 — 하나 더", True)\ndone()')
+_minus = re.sub(r"\nshow\(", "\nif False: show(", _rp_src, count=1)
+_zero = _rp_src.replace("from __future__ import annotations", "from __future__ import annotations\nimport sys; sys.exit(0)", 1)
+_spec = importlib.util.spec_from_file_location("close_box", BOX / "tools" / "close.py")
+_CL = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_CL)
+sys.path.insert(0, str(BOX))
+import doctor as _DOC                                                   # noqa: E402 — 스위트 목록(import만)
+rc7, out7, res7 = _dr(_plus)
+_rec7, _ch7 = _CL.expect_record(_rec, res7, _DOC.SUITES, "시험", "2026-10-20", whole=False)
+show("ⓓ 어서션 하나를 더한 사본 — doctor가 「+1」로 지나가고 마감 한 줄의 기록 함수가 그 수를 쓴다(바뀜 +1)",
+     rc7 == 0 and "+1(기록" in out7 and _rec7["suites"]["test_p1_wiring"]["n"] == _n0 + 1
+     and _CL.expect_line(_ch7) == "test_p1_wiring +1",
+     f"rc {rc7} · {_CL.expect_line(_ch7)}")
+rc8, out8, _r8 = _dr(_minus)
+rc9, out9, res9 = _dr(_minus, "--why", "test_p1_wiring=시험 — 하나를 지웠다")
+_rec9, _ch9 = _CL.expect_record(_rec, res9, _DOC.SUITES, "시험", "2026-10-20", whole=False)
+show("ⓓ 하나를 지운 사본 — 사유 없으면 붉다(rc 1) · 사유가 있으면 지나가고 기록에 −1과 사유가 남는다",
+     rc8 == 1 and "사유가 없다" in out8 and rc9 == 0 and _rec9["suites"]["test_p1_wiring"]["n"] == _n0 - 1
+     and _rec9["log"][-1]["why"] == "시험 — 하나를 지웠다" and "−1" in _CL.expect_line(_ch9),
+     f"rc {rc8} → 사유 {rc9} · {_CL.expect_line(_ch9)}")
+rc10, out10, _r10 = _dr(_zero, "--why", "test_p1_wiring=사유가 있어도")
+show("ⓓ 스위트가 돌지 않는 사본(PASS 0) — 사유가 있어도 붉다",
+     rc10 == 1 and "늘 붉다" in out10, f"rc {rc10}")
+_rp.write_text(_rp_src, encoding="utf-8")
+sys.path.remove(str(BOX))
+
 print("\n■ ⓑ 마감 한 줄 — 첫 FAIL에서 멈추지 않고 끝까지 · rc 1")
 (BOX / "doctor.py").write_text(
     "import sys\n"
@@ -237,20 +280,36 @@ print("\n■ ⓑ 마감 한 줄 — 첫 FAIL에서 멈추지 않고 끝까지 ·
     "sys.exit(1)\n", encoding="utf-8")
 _rd = BOX / "docs" / "spec" / "README.md"
 _rd.write_text(_rd.read_text(encoding="utf-8") + "\n~~시험 취소선~~\n", encoding="utf-8")
+# 장부(B131 ③) — 살아 있는 요청문 하나를 둔다 → PROGRESS는 둘만 남기고(이번 회차가 셋째) 가장 오래된 절을 옮긴다
+(BOX / "docs" / "안건" / "B999_요청문.md").write_text("# B999 시험 요청문\n", encoding="utf-8")
+_secs0 = re.findall(r"^## (B\d+) — ", (BOX / "PROGRESS.md").read_text(encoding="utf-8"), re.M)
+_live0 = [m.group(1) for f in (BOX / "docs" / "안건").glob("*_요청문.md")
+          if (m := re.match(r"(B\d+)_요청문", f.name)) and m.group(1) not in _secs0]
 rc5, out5 = _run(["tools/close.py", "--base", "HEAD"], cwd=BOX)
 _summ = out5.split("마감 한 줄 요약", 1)[1] if "마감 한 줄 요약" in out5 else ""
-_rows = re.findall(r"^\[(PASS|FAIL|갱신)\] ([^—\n]+)", _summ, re.M)
+_rows = re.findall(r"^\[(PASS|FAIL|갱신|건너뜀)\] ([^—\n]+)", _summ, re.M)
 _lab = {lab.strip(): v for v, lab in _rows}
 _doc = next((v for k, v in _lab.items() if k.startswith("마감 doctor")), None)
 _chk = next((ln for ln in _summ.splitlines() if "문서 검사 일곱" in ln), "")
-show("ⓑ 사전 점검(층 어휘 포함) → doctor → 네 벌 → §7 상한 → 자산 해시 — 단계 여덟 줄이 전부 요약에 선다",
-     len(_rows) == 8 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
-     and "층 어휘 정적 점검" in _lab,
+# 기대 변경(B131 ③② — 장부 넷이 0단계에 · 끝에 기대 수 기록 — doctor가 붉으면 「건너뜀」)
+show("ⓑ 장부 → 사전 점검(층 어휘 포함) → doctor → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열셋 줄이 전부 요약에 선다",
+     len(_rows) == 13 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
+     and "층 어휘 정적 점검" in _lab and "PROGRESS 최근 3회차" in _lab and _lab.get("기대 수 기록") == "건너뜀",
      f"줄 {len(_rows)} · {list(_lab)}")
 show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 뒤 네 벌도 돌았다 · rc 1",
      rc5 == 1 and _doc == "FAIL" and "[FAIL]" in _chk and "모양" in _chk and _lab.get("네 벌") == "PASS"
      and "전부 같다" in _summ and re.search(r"FAIL [2-9]", _summ),
      f"rc {rc5} · doctor {_doc} · {_chk[:90]}")
+_secs1 = re.findall(r"^## (B\d+) — ", (BOX / "PROGRESS.md").read_text(encoding="utf-8"), re.M)
+_moved = [x for x in _secs0 if x not in _secs1]
+_pl = next((ln for ln in _summ.splitlines() if "PROGRESS 최근 3회차" in ln), "")
+show("ⓔ 장부 — 마감 한 줄 한 번으로 PROGRESS가 살아 있는 회차 포함 셋 · 밀린 절은 archive 본문 + 색인 한 줄 · "
+     "그 회차의 안건은 지운다 · 무엇을 옮겼나가 요약 줄에",
+     len(_secs1) == max(0, 3 - len(_live0)) and _moved and all((BOX / "docs" / "archive" / "장부" / f"PROGRESS_{x}.md").exists() for x in _moved)
+     and all(f"본문 `docs/archive/장부/PROGRESS_{x}.md`" in (BOX / "PROGRESS.md").read_text(encoding="utf-8") for x in _moved)
+     and not any((BOX / "docs" / "안건").glob(f"{_moved[0]}_*.md")) and "옮김" in _pl
+     and (BOX / "docs" / "안건" / "B999_요청문.md").exists(),
+     f"절 {_secs0} → {_secs1} · 살아 있는 {_live0} · {_pl[:120]}")
 _steps = re.search(r"단계 전문 (\S+)", _summ)                     # 사본의 단계 전문 — 시험이 지운다
 _fw = (Path(_steps.group(1)) / "3_four_way.txt") if _steps else None
 out11 = _fw.read_text(encoding="utf-8") if _fw and _fw.exists() else ""

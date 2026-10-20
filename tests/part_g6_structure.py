@@ -13,8 +13,7 @@ quality는 시험 덧칠의 렌즈 `Unit`):
 
 잠그는 성질:
   ⓐ 구조 — ⓑ에서 유닛 줄이 트리에 서고 경로에 든다(`시트 › 유닛 › 지정사양`) · 한 유닛 아래 청크 둘이 같은 유닛 노드 · ⓐ는 고정 규칙과
-     같은 트리 · 같은 파일이면 구조 LLM 0 · 검사(목록 밖 줄 · 역할 밖 · 앞에 없는 부모 → 초안 · 글자 밖 이름 · 목록 밖 카테고리 → 대상
-     버림 · 호출 실패 → 초안 그대로 · 보존 0)
+     같은 트리 · 같은 파일이면 구조 LLM 0 (구조의 답은 계층 사다리 + 시트 확인 — B132 · 검사 · 폴백은 조각 ladder)
   ⓑ 소속 — 세 표본 모두 주인이 있는 개체는 그 유닛에 붙는다(유닛 이하 = 주인 있는 개체 수) · 공정으로 가는 것은 주인 없는 개체뿐 ·
      지어낸 이름은 버림(후보 밖 0) · 추출 · 보강 입력에 구조 사슬 · 다른 공정 가드와 부딪힌 구조 유닛을 센다
   ⓒ 관문 — `--step` 구조 표에서 「<번호> <카테고리>」 → 등록 단 기록 · 다시 파싱(LLM 0) · 그 아래 개체가 그 유닛에 · 재구축이 재생 ·
@@ -51,8 +50,6 @@ from core.state.world import World                      # noqa: E402
 from parser import pipeline, struct_map, tagger as TG, tuning   # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
 
-ST.MODE = "llm"          # 기대 변경(B126 ① — 이 시험은 llm 방식(B124)을 잰다 · 기본은 edit · edit는 test_g6_split)
-
 TMP = Path(tempfile.mkdtemp(prefix="b119_"))
 HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
 LAYERS = ("process", "quality")
@@ -71,11 +68,12 @@ def _rows_of(key, lay):
                               "3. 적층 unit", "3.1 기본사양", f"{a} 기준은 40이다.", f"{d} 기준은 2000이다.",
                               "4. 스태킹", "연계 조건은 따로 정한다."])
     if key == "B":                         # 번호 없는 유닛 줄 + 되풀이되는 번호 소제목(TW 꼴)
-        return ("TW 사양", ["공통 사항", f"{e} 기준은 1주다.", f"{g} 기준은 2주다.", "언와인더 unit", "1) 기본사양",
-                           f"{a} 기준은 100이다.", f"{b} 기준은 5이다.", "2) 지정사양", f"{c} 기준은 30이다.",
+        # 기대 변경(B132 — 번호 없는 제목은 사다리의 규칙(빈 행 뒤 짧은 줄)으로 선다 · 유닛 줄 앞에 빈 행)
+        return ("TW 사양", ["공통 사항", f"{e} 기준은 1주다.", f"{g} 기준은 2주다.", None, "언와인더 unit", "1) 기본사양",
+                           f"{a} 기준은 100이다.", f"{b} 기준은 5이다.", "2) 지정사양", f"{c} 기준은 30이다.", None,
                            "리와인더 unit", "1) 기본사양", f"{a} 기준은 80이다.", "2) 지정사양", f"{d} 기준은 20이다."])
     return ("포장 사양", ["포장 사양서", f"포장 unit의 {a} 기준은 30이다.", f"포장 unit의 {b} 기준은 2이다.",
-                        f"봉합 unit의 {c} 기준은 180이다.", "기타", f"{e} 기준은 육안이다.", f"{g} 기준은 매일이다."])
+                        f"봉합 unit의 {c} 기준은 180이다.", None, "기타", f"{e} 기준은 육안이다.", f"{g} 기준은 매일이다."])
 
 
 #: 문서 구조의 답(창작 — 가짜 LLM이 그대로 낸다) — `(줄 글자, 단, 역할, 대상 이름)`
@@ -86,6 +84,17 @@ STRUCT = {"A": [("1. 개요", 1, "주제", None), ("2. 공급 unit", 1, "대상"
                 ("2) 지정사양", 2, "묶음", None), ("리와인더 unit", 1, "대상", "리와인더 unit"),
                 ("1) 기본사양", 2, "묶음", None), ("2) 지정사양", 2, "묶음", None)],
           "C": [("포장 사양서", 1, "주제", None), ("기타", 1, "주제", None)]}
+_NOTE = lambda why: {"rows": [], "why": why}
+#: 계층 사다리의 답(창작 — 가짜 LLM이 그대로 낸다 · B132 ③) · 시트 확인의 고침(사다리가 못 정한 줄)
+LADDER = {"A": {"levels": [{"sigs": ["9."], "role": "대상", "category": "Unit", **_NOTE("공정 아래 유닛 단")},
+                           {"sigs": ["9.9"], "role": "묶음", "category": None, **_NOTE("사양 묶음")}], "unnumbered": []},
+          "B": {"levels": [{"sigs": ["9)"], "role": "묶음", "category": None, **_NOTE("사양 묶음")}],
+                "unnumbered": [{"when": ["빈 줄 뒤", "짧은 줄"], "level": 0, "role": "대상", "category": "Unit",
+                                "why": "빈 행 뒤 짧은 줄은 유닛"}]},
+          "C": {"levels": [], "unnumbered": [{"when": ["빈 줄 뒤", "짧은 줄"], "level": 0, "role": "주제", "category": None,
+                                              "why": "빈 행 뒤 짧은 줄은 주제"}]}}
+FIXES = {"A": [{"row": 1, "what": "역할", "parent": None, "to_row": None, "role": "주제", "name": None, "category": None,
+                "why": "개요는 유닛이 아니다"}]}
 
 
 def _hint_struct(key, lay):
@@ -125,20 +134,12 @@ ANS = {}
 
 
 def _structure(body):
-    """줄 글자로 답을 찾는다 — 같은 글자가 되풀이되면 차례대로 · 부모는 단으로."""
-    out, stack, at = [], [], 0
-    lines = body["lines"]
-    for t, d, r, n in ANS.get(body["frame"]) or []:
-        i = next((j for j in range(at, len(lines)) if lines[j]["text"] == t[:ST.LINE_CHARS]), None)
-        if i is None:
-            continue
-        at = i + 1
-        while stack and stack[-1][0] >= d:
-            stack.pop()
-        out.append({"row": lines[i]["row"], "parent": stack[-1][1] if stack else None, "role": r,
-                    "name": n, "category": ANS["@unit"] if n else None})
-        stack.append((d, lines[i]["row"]))
-    return {"headings": out}
+    """⑪ 두 호출 — 계층 사다리(문서당 1)는 표본의 사다리 · 시트 확인(시트당 1)은 판단 필요마다 본문 답 + 표본의 고침."""
+    if body.get("task") == "ladder":
+        return ANS["@ladder"]
+    return {"answers": [{"row": n["row"], "heading": False, "parent": None, "role": None, "name": None, "category": None,
+                         "why": "본문"} for n in body.get("needs") or []],
+            "edits": ANS["@fixes"], "rules": []}
 
 
 def _extract(body):
@@ -171,7 +172,7 @@ def _ingest_live(key, lay, did, again=False):
     """가짜 게이트웨이로 파싱(문서 구조 주입) → 인입 → 마무리. 돌려주는 것은 `(봉투, 호출 기록)`."""
     path, sheet = _xlsx(key, lay, did)
     ANS.clear()
-    ANS.update({sheet: STRUCT[key], "@unit": "Unit", "@layer": lay})
+    ANS.update({sheet: STRUCT[key], "@unit": "Unit", "@layer": lay, "@ladder": LADDER[key], "@fixes": FIXES.get(key, [])})
     with Live(by={"structure": _structure, "extract": _extract, "reinforce": lambda b: {"pick": None}}):
         res = pipeline.parse(BX, did, str(path), closed_list=TG.closed_list("process"), doc_coord="노칭",
                              sheet_roles={sheet: "prose"}, structure=ST.structurer([lay]),
@@ -257,28 +258,6 @@ _oa3 = [(f"{k}·{lay}", RES[(k, lay)]["again"] == 0 and RES[(k, lay)]["again_sam
 show("ⓐ 같은 파일을 다시 넣으면 구조 LLM 0(보존분 · 같은 조각) — 처음은 시트마다 1회 이상 (표본 셋 × 층 둘)",
      all(o for _k, o in _oa3), str(_oa3) + " · " + str([(k, lay, RES[(k, lay)]["again"], RES[(k, lay)]["again_same"])
                                                      for lay in LAYERS for k in "ABC"]))
-
-# 검사 — 결정적 규칙(목록 밖 줄 · 역할 밖 · 앞에 없는 부모 → 초안 · 글자 밖 이름 · 목록 밖 카테고리 → 대상 버림)
-_labs = [{"row": 0, "text": "S", "marks": ["시트"], "draft": 0}, {"row": 1, "text": "1. 개요", "marks": [], "draft": 1},
-         {"row": 2, "text": "언와인더 unit", "marks": [], "draft": 0}, {"row": 3, "text": "속도는 1이다.", "marks": [], "draft": 0},
-         {"row": 4, "text": "2. 이송 unit", "marks": [], "draft": 1}]
-_ans = [{"row": 1, "parent": None, "role": "주제", "name": None, "category": None},
-        {"row": 2, "parent": 1, "role": "대상", "name": "없는 unit", "category": "Unit"},
-        {"row": 4, "parent": 9, "role": "대상", "name": "이송 unit", "category": "Unit"},
-        {"row": 3, "parent": None, "role": "몰라", "name": None, "category": None},
-        {"row": 77, "parent": None, "role": "주제", "name": None, "category": None},
-        {"row": 0, "parent": None, "role": "대상", "name": "S", "category": "Mystery"}]
-_heads, _drop = ST.check("B119CHK", "S", _labs, _ans, {"Unit": "정의"})
-_by = {h["row"]: h for h in _heads}
-with Live(by={"structure": lambda b: (_ for _ in ()).throw(gateway.GatewayError(500, "가짜 실패", "fake"))}):
-    _fail = ST.structurer(["process"])("B119FAIL", "S", _labs)
-show("ⓐ 검사 — 목록 밖 줄 · 역할 밖 · 앞에 없는 부모는 그 줄만 초안으로 · 글자 밖 이름 · 목록 밖 카테고리는 대상만 버림(역할 그대로) · "
-     "호출 실패는 시트 전체 초안(보존 0)",
-     set(_by) == {0, 1, 2, 4} and _by[2]["role"] == "대상" and _by[2]["name"] is None and _by[4].get("draft")
-     and _by[4]["role"] is None and _by[0]["name"] is None and 3 not in _by
-     and sorted(d["row"] for d in _drop) == [0, 2, 3, 4, 77]
-     and _fail.get("failed") and [h["row"] for h in _fail["headings"]] == [1, 4] and _fail["calls"] == 1,
-     f"제목 {sorted(_by)} · 버림 {[(d['row'], d['why'][:14]) for d in _drop]} · 실패 → {[h['row'] for h in _fail['headings']]}")
 
 # ⓑ 소속
 _ob1, RATIO = [], {}
@@ -388,7 +367,9 @@ def _drive(argv, answers, wait=25):
     return _screen.strip_ansi(out.decode("utf-8", "replace")), sent
 
 
-GATE = ("설비 사양", ["설비 사양", "공급부", "속도 기준은 50이다.", "적층부", "하중 기준은 3이다."])
+# 기대 변경(B132 ⑥ — 구조는 목차 위의 크기 구간 · 대상 줄에서 억지로 자르지 않는다): 유닛마다 본문 두 줄(유닛 단이 크기 구간에 든다)
+GATE = ("설비 사양", ["설비 사양", "공급부", "속도 기준은 50이다.", "무게 기준은 9이다.", "적층부", "하중 기준은 3이다.",
+                    "폭 기준은 7이다."])
 GATE_ST = [{"text": "설비 사양", "depth": 1, "role": "주제"}, {"text": "공급부", "depth": 2, "role": "주제"},
            {"text": "적층부", "depth": 2, "role": "대상", "name": "적층부", "category": "Unit"}]
 _made = []
@@ -429,6 +410,8 @@ with contextlib.redirect_stdout(io.StringIO()):
     RUN.cmd_bootstrap([])
 _register("process", "b119_process")
 tuning.apply({"chunk_rows": [1, 2]})
+KNOBS = _P.home() / "knobs.json"                         # 명령(하위 프로세스)도 같은 작은 청크(사내 손잡이 자리)
+KNOBS.write_text(json.dumps({"chunk_rows": [1, 2]}), encoding="utf-8")
 ST.fixes_path().unlink(missing_ok=True)                 # 등록 단(사람의 고침)은 클린이 남긴다 — 시험 몫을 치운다
 _gp = _mock_doc("B119GATE", GATE[0], GATE[1], GATE_ST, ("속도", "하중"), belongs=False)
 _argv = ["ingest-file", str(_gp), "--doc-type", "b119_process", "--allow-mock", "--coord", "노칭", "--sheets", "1:prose"]
@@ -494,6 +477,7 @@ show("⑤ 값 표 — 구조 칸(가장 가까운 제목 줄의 역할) · 소�
      len(_ok5) >= 4 and all(o for o, *_r in _ok5), f"행 {len(_ok5)} · {[x for x in _ok5 if not x[0]][:2] or _ok5[:1]}")
 
 # ── 정리
+KNOBS.unlink(missing_ok=True)
 ST.fixes_path().unlink(missing_ok=True)
 for _d in _made:
     for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@structure.json"):

@@ -7,7 +7,7 @@
         causes 사슬 · cross 질의 · **Q1~8 회귀 무오염**(§8-6 채널분리)
   3.5′: 재인입 회귀 — 노드 중복 0 · provenance 복원 · run.py all 2회 동일 그래프
 
-사용: python tests/test_g4.py
+사용: python tests/test_query.py g4   (합친 스위트 test_query의 조각 — B131 ④)
 """
 from __future__ import annotations
 

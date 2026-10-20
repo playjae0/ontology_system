@@ -8,7 +8,7 @@ process) · 산문 B118SQ(prose 엑셀 사본 · quality · 힌트 개체 Failur
   ⓐ 숫자 — 문서 한 줄 요약의 수 = 맞춤표의 같은 줄(결말 · 보류 · 소속 대상)의 수 · `show summary`의 층별(골격 · auto · 확정 · 엣지 없는
      노드 · 관계별 엣지) · 문서별(노드 · 엣지 · 보류) 수 = 그래프 · 대장에서 센 수 · `--diff`는 바뀐 줄만(안 바뀐 줄은 같다)
   ⓑ 점수 — `--template` CSV의 행 = 그 문서 대장의 개체 행 · 정답을 채운 표로 맞음 · 틀림 · 빈칸 · 재구축 뒤 같은 표로 같은 수
-  ⓒ 위치 칸 — 추출 청크 표 · 판정 값 표의 시트 칸 · 청크 칸 = 그 조각의 (시트, 경로 끝) · 잘리지 않는다(`…` 0)
+  (ⓒ 위치 칸은 B131 ④에서 지웠다 — 화면 글자 · 값 표 칸은 md 보고서 시험이 잡는다)
   ⓓ 묻는 자리 — 저장 전 관문 전부에서 `ㅂ` · Ctrl-C · `q`는 멈춤(그래프 · 사전 · 큐 · 청크 지문 = 시작 전) · 빈 Enter · 모르는 답은
      다시 묻는다 · `c` · `ㅊ`만 계속(끝까지 = 멈추지 않고 넣은 것) · 저장 뒤 관문의 멈춤은 남은 머리를 묻지 않는다 · y/N · Y/n 규칙 ·
      `cli/`의 입력은 한 자리(`_screen.ask`)이고 그것을 부르는 것은 `_screen.answer`뿐
@@ -192,22 +192,8 @@ show("ⓐ --diff는 바뀐 줄만 — 넷째 문서 줄이 더해지고 · 보�
      and all(a != b for _k, a, b in _dd) and len(_same) + sum(1 for _k, _a, b in _dd if b is not None) == len(_lines)
      and f"바뀐 줄 {len(_dd)}" in _cli, f"바뀐 줄 {len(_dd)} · 같은 줄 {len(_same)}")
 
-print("\n■ ⓒ 위치 칸 둘 — 시트 | 청크(경로 끝) · 잘리지 않는다")
-_pos = []
-for case, out in OUT.items():
-    d = _doc(case)
-    env = json.loads(_P.parsed(f"{d}.json").read_text(encoding="utf-8"))
-    pieces = [c for c in (env.get("chunks") or []) + (env.get("records") or []) if c.get("source_locator")]
-    places = {extract_ctx.place(c) for c in pieces}
-    locs = {r.get("locator") for r in (ledger.read(d) or {}).get("rows") or []}
-    want_v = {where_cells(x, {c["source_locator"]: extract_ctx.place(c) for c in pieces}) for x in locs}
-    ex = [ln.split(" | ") for ln in out.splitlines() if re.match(r"\s+\d+/\d+ \| ", ln)]
-    vals = [ln.split(" | ") for ln in out.splitlines() if re.match(r"\s+[✓+?✗·!] \| ", ln)]
-    ex_ok = all((c[1].strip(), c[2].strip()) in places and "…" not in c[1] + c[2] for c in ex)
-    v_ok = bool(vals) and all((c[1].strip(), c[2].strip()) in want_v and "…" not in c[1] + c[2] for c in vals)
-    _pos.append((case, (ex_ok and (bool(ex) or case.startswith("표"))) and v_ok, len(ex), len(vals)))
-show("ⓒ 추출 청크 표 · 판정 값 표(-v)의 시트 칸 · 청크 칸 = 그 조각의 (시트, 경로 끝) · `…` 0 (표 · 산문 × 층 둘)",
-     all(ok for _c, ok, *_n in _pos), " · ".join(f"{c} 청크 행 {a} · 값 행 {b}" for c, _ok, a, b in _pos))
+# ⓒ 위치 칸(칸 글자 · 잘림 표지)은 지웠다(B131 ④ — 화면 글자는 재지 않는다 · 값 표 칸은 md 보고서 시험(test_judge의 조각 judge2 —
+# 값 표 행 = 대장 개체 행 · 잘림 0)이 같은 칸 함수로 잡는다).
 
 # ────────────────────────────────────────────────────────────── ⓑ 점수
 print("\n■ ⓑ 점수표 — 정답표 초안 · 채점 · 재구축 뒤 같은 표")
@@ -260,22 +246,24 @@ show("ⓓ c · ㅊ만 계속 — 관문 전부를 c와 ㅊ로 지나면 끝까�
 _stop = []
 for case in CASES:
     k_all = BEFORE[case.split(" · ")[0]]
-    plan = ([(k, (STOP_K, CTRL_C, STOP_Q)[(k - 1) % 3]) for k in range(1, k_all + 1)] if case.endswith("process") else [])
-    plan += [(k_all, s) for s in (STOP_K, CTRL_C, STOP_Q) if (k_all, s) not in plan]
+    # 성질 하나 = 시나리오 하나(B131 ④): 표는 관문마다 멈춤 답 하나씩 돌려(관문 전부 · 답 셋을 함께 덮는다) · 산문은 판정 예고 하나
+    plan = ([(k, (STOP_K, CTRL_C, STOP_Q)[(k - 1) % 3]) for k in range(1, k_all + 1)] if case.endswith("process")
+            else [(k_all, CTRL_C)])
     for k, s in plan:
         _base()
         out, _sent, n = _drive(_argv(case, "--step"), [C] * (k - 1) + [s])
         _stop.append((case, k, {STOP_K: "ㅂ", CTRL_C: "Ctrl-C", STOP_Q: "q"}[s],
                       "멈춤" in out and "[성공]" not in out and n == k and _trace() == FULL[case][0]))
 show("ⓓ 저장 전 관문 전부(process — 관문마다 · quality — 판정 예고)에서 ㅂ · Ctrl-C · q는 멈춤 — 흔적(그래프 · 사전 · 큐 · 청크) = 시작 전",
-     all(ok for *_x, ok in _stop) and len(_stop) >= 4 + 2 + 3,
+     all(ok for *_x, ok in _stop) and len(_stop) >= 4 + 1
+     and {a for _c, _k, a, _ok in _stop} == {"ㅂ", "Ctrl-C", "q"},
      f"{len(_stop)}회 · 어긋남 {[(c, k, a) for c, k, a, ok in _stop if not ok][:4]}")
 _re = []
-for case in ("표 · process", "산문 · quality"):
+for case in ("표 · process",):               # 대표 하나(B131 ④ — 다시 묻기는 묻는 한 함수의 성질 · 형태와 무관)
     _base()
     out, sent, n = _drive(_argv(case, "--step"), [b"\n", b"x\n", STOP_K])
     _re.append((case, n == 3 and out.count("다시 친다") == 2 and "멈춤" in out and _trace() == FULL[case][0]))
-show("ⓓ 빈 Enter · 모르는 답은 다시 묻는다(계속으로 읽지 않는다) — 같은 관문에서 세 번 묻고 ㅂ에서 멈춤 (표 · 산문)",
+show("ⓓ 빈 Enter · 모르는 답은 다시 묻는다(계속으로 읽지 않는다) — 같은 관문에서 세 번 묻고 ㅂ에서 멈춤",
      all(ok for _c, ok in _re), str(_re))
 _base()
 out, _sent, n = _drive(_argv("표 · process", "--step"), [C] * BEFORE["표"] + [STOP_K])

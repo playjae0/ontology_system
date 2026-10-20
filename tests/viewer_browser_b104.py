@@ -3,7 +3,7 @@
 
 `viewer_browser.py`·`viewer_browser_b103.py`와 같은 처지다(D-165 ②) — Playwright·Chromium이 있어야 하고 사내
 클론에는 없어 **회귀(`doctor.py`)에 넣지 않는다**. 회귀에는 브라우저 없이 재는 성질(CLI ⓐ~ⓕ = `--json`의 수 ·
-쓴 근거 표시 · 후보 밖 id 0 — `tests/test_g6_hybrid.py`)만 둔다. 여기 것은 회차 보고에 실행 결과로 붙인다.
+쓴 근거 표시 · 후보 밖 id 0 — `tests/test_query.py`의 조각 g6_hybrid)만 둔다. 여기 것은 회차 보고에 실행 결과로 붙인다.
 
 표본은 **창작**이다 — mock 그래프(CP01·PFMEA01·PPT01~03·QPPT01) · 실호출 갈래는 가짜 게이트웨이
 (`tests/fake_gateway.py` — 임베딩 동의어 표 · 선별 · 답변 대역). 수치는 메커니즘 확인이다([정정] 50).

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""B86 ①~⑤ — 「사내 모양」 잔여 다섯의 잠금 (⑥ 전 구간은 `test_g6_shanae_root`).
+"""B86 ①~⑤ — 「사내 모양」 잔여 다섯의 잠금 (⑥ 전 구간은 `test_site`의 조각 shanae_root).
 
 잠그는 성질:
   ① 화면의 경로는 `paths.show` 하나가 적는다 — `relative_to(ROOT)` 0 · 세 갈래 무예외
@@ -32,8 +32,7 @@ RFQ = ROOT / "tests" / "fixtures" / "raw" / "RFQ01.xlsx"
 TOC = ROOT / "tests" / "fixtures" / "raw" / "TOC01.xlsx"
 DT = "b86_rfq_sample"            # 등록 표본 시험의 doc_type — 끝나면 치운다
 DT2 = "b86_rfq_again"            # 같은 파일을 다른 종류로 — 기록은 문서의 것이다
-ENV = {**os.environ, "USE_MOCK": "1", "NO_COLOR": "1"}
-ENV.pop("ONTO_MOCK_HOME", None)
+ENV = {**os.environ, "USE_MOCK": "1", "NO_COLOR": "1"}   # 하위 실행은 이 시험과 같은 루트(병렬 회귀의 임시 루트 그대로 — B131 ①)
 
 
 def _sp(*argv, env=None, cwd=None):
@@ -43,7 +42,7 @@ def _sp(*argv, env=None, cwd=None):
 
 
 def _pty(*argv, answers=""):
-    """관문은 tty에서만 산다 — `test_g6_sheets`와 같은 방식."""
+    """관문은 tty에서만 산다 — `test_intake`의 조각 sheets와 같은 방식."""
     import pty
     pid, fd = pty.fork()
     if pid == 0:                                             # pragma: no cover
@@ -205,10 +204,29 @@ def _wmf_xlsx(dst):
 
 _wx = _tmp / "WMF01.xlsx"
 _wmf_xlsx(_wx)
-# 변환기(`soffice`)가 없는 사내를 흉내 낸다 — 있으면 WMF는 PNG로 바뀌어 요약된다(B88 ①).
-_rc, _o, _e = _sp("-m", "cli.parse", "run", "parser/adapters/basic_prose_xlsx.py",
-                  str(_wx), str(_tmp / "wmf.json"), "--allow-mock",
-                  env={**ENV, "PATH": os.path.dirname(sys.executable)})
+# 변환기(`soffice`)가 없는 사내를 흉내 낸다 — 있으면 WMF는 PNG로 바뀌어 요약된다(B88 ①). **후보를 전부 가린다**(PATH · 표준 자리 ·
+# 지정 — soffice는 PATH 밖 표준 자리에서도 찾는다(B129 ①) · 찾기 · 변환 함수는 실물 · test_g6_capture B129 ⓑ와 같은 방식 · B132 ⓪)
+from contextlib import redirect_stderr as _rerr, redirect_stdout as _rout   # noqa: E402
+from cli import parse as _PARSE                                     # noqa: E402
+from parser import render as _RD                                   # noqa: E402
+_keep = (_RD.SOFFICE_PLACES, os.environ.get("PATH"), os.environ.pop(_RD.SOFFICE_ENV, None))
+_RD.SOFFICE_PLACES = ()
+(_tmp / "no_office").mkdir()
+os.environ["PATH"] = str(_tmp / "no_office")
+_ob, _eb = io.StringIO(), io.StringIO()
+try:
+    with _rout(_ob), _rerr(_eb):
+        try:
+            _rc = _PARSE.main(["run", "parser/adapters/basic_prose_xlsx.py", str(_wx), str(_tmp / "wmf.json"),
+                               "--allow-mock"]) or 0
+        except SystemExit as _x:
+            _rc = _x.code if isinstance(_x.code, int) else 1
+finally:
+    _RD.SOFFICE_PLACES = _keep[0]
+    os.environ["PATH"] = _keep[1] or ""
+    if _keep[2] is not None:
+        os.environ[_RD.SOFFICE_ENV] = _keep[2]
+_o, _e = _ob.getvalue(), _eb.getvalue()
 _lines = [l.strip() for l in _o.splitlines() if "읽지 못해 건너뜀" in l]
 show("④ 버린 그림은 **한 줄**이고 종류가 붙는다 · 원문 경고는 stderr에 0",
      len(_lines) == 1 and "WMF 1" in _lines[0]
