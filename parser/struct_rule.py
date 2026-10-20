@@ -189,7 +189,8 @@ def apply_fixes(st, fixes, labs):
 
 def structure_rows(lines, st):
     """검사된 구조 → `(rows, info)` — rows는 고정 규칙과 같은 꼴(단 = 부모 사슬의 깊이 · 신호 `구조`) ·
-    info는 `{행: {row, parent, role, name, category, depth}}`(0행 = 시트 자신)."""
+    info는 `{행: {row, parent, role, name, category, depth}}`(0행 = 시트 자신) · 제목 행은 `parent`도 싣는다(경로는 부모 사슬 — 단 차례가
+    아니다)."""
     present = {n for n, _t in lines}
     info, depth = {}, {}
     for h in st.get("headings") or []:
@@ -202,7 +203,9 @@ def structure_rows(lines, st):
         depth[r] = depth.get(p, 0) + 1 if p not in (None, FRAME_ROW) else 1
         info[r] = {**h, "depth": depth[r]}
     rows = [{"row": n, "heading": n in depth, "level": depth.get(n, 0),
-             "signal": SIG_STRUCT if n in depth else None} for n, _t in lines]
+             "signal": SIG_STRUCT if n in depth else None,
+             **({"parent": info[n].get("parent") if info[n].get("parent") != FRAME_ROW else None} if n in depth else {})}
+            for n, _t in lines]
     return rows, info
 
 

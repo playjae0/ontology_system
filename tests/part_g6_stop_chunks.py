@@ -49,7 +49,8 @@ for _d, _e in _HINTED.items():
 #: 형태마다 대표 하나 — (원본, doc_type, 추가 인자, 구축 안 관문까지의 답). 멈춤 자리는 형태로 갈린다(표 = 구축 전 · 산문 =
 #: 구축 안) · 층에 무관한 자리라 층은 둘을 나눠 든다 — 층 호환은 층 어휘 정적 점검 + 네 벌이 잰다 (B121 ②ⓒ)
 CASES = {"표 · process": (FX / "raw" / "CP01.xlsx", None, [], None),
-         "산문 · quality": (TMP / "B110SQ.xlsx", QDT, ["--sheets", SH, "--coord", "노칭"], "c\nc\nc\nc\nq\n")}
+         # 기대 변경(B132 — 산문은 시트마다 구조 확인 관문 · 표본은 산문 시트 셋): 선택 · 구조 확인 ×3 · 파싱 · 좌표 · 추출 예고 → 추출 결과에서 q
+         "산문 · quality": (TMP / "B110SQ.xlsx", QDT, ["--sheets", SH, "--coord", "노칭"], "c\n" * 7 + "q\n")}
 TS = ("created", "at", "first_seen", "last_seen", "last_tried", "last_fp", "attempts", "obsoleted_at", "confirmed_at",
       "parsed_at", "first_ingested_at", "ingested_at", "updated_at", "last_hit")
 

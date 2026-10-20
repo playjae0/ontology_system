@@ -70,7 +70,11 @@ def apply_edits(doc_id, frame, labs, draft, out, cats):
             return None
         return {"name": got, "category": e["category"]}
 
-    for e in (out or {}).get("edits") or []:
+    phase = {"제목 더함": 0, "제목 뺌": 1, "부모 바꿈": 2, "역할": 3, "대상": 3, "붙임": 4}
+    edits = [e for e in (out or {}).get("edits") or [] if isinstance(e, dict)]
+    # 적용 순서는 동사로 고정한다(답 · 고침이 어느 차례로 와도 같은 나무) — 제목 더함(행 순 — 부모가 먼저 선다) → 제목 뺌 → 부모 바꿈 → 역할 · 대상 → 붙임
+    edits.sort(key=lambda e: (phase.get(e.get("what"), 5), order.get(e.get("row"), 1 << 30) if e.get("what") == "제목 더함" else 0))
+    for e in edits:
         r, w = e.get("row"), e.get("what")
         if r not in order or r == FRAME_ROW and w not in ("역할", "대상"):
             drop(e, "시트에 없는 줄")

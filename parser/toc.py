@@ -145,15 +145,17 @@ def number_levels(lines, ladder=None):
     return {r: (lv[r], s) for r, s, _v in hits}
 
 
-def toc_chains(lines, levels):
+def toc_chains(lines, levels, parents=None):
     """목차의 부모 사슬 — `(주인 {행: 그 줄의 주인 제목}, chain(제목) → 그 제목과 조상 전부 · 위에서 아래로)` · 주인은 그 줄이 제목이면
-    그 줄 · 아니면 그 위의 가장 가까운 제목 · `levels`는 `{제목 행: 단}`(단 = 목차 깊이) (B130 ②)."""
+    그 줄 · 아니면 그 위의 가장 가까운 제목 · `levels`는 `{제목 행: 단}`(단 = 목차 깊이) (B130 ②) · `parents`(`{제목 행: 부모 행}` —
+    구조가 선 프레임)가 오면 부모는 그것이다(단 차례로 되짚지 않는다 · B132)."""
     parent, owner, st, cur = {}, {}, [], None
+    parents = parents or {}
     for n, _t in lines:
         if n in levels:
             while st and st[-1][0] >= levels[n]:
                 st.pop()
-            parent[n] = st[-1][1] if st else None
+            parent[n] = parents[n] if n in parents and (parents[n] is None or parents[n] in levels) else (st[-1][1] if st else None)
             st.append((levels[n], n))
             cur = n
         owner[n] = cur

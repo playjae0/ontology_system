@@ -165,7 +165,8 @@ def needs(labs, heads, rank, key_of, counts):
         for r in rs:
             v = by_row[r].get("ord")
             if v is not None and prev is not None and v != prev + 1:       # 첫 형제가 1이 아닌 것(발췌)은 끊김이 아니다
-                add(r, "ⓒ", f"이어짐 끊김 — '{s}' {prev} 다음 {v}")
+                add(r, "ⓒ", f"다시 시작 — 같은 부모 아래 '{s}'가 1부터 다시(부모 후보가 둘 이상)" if v == 1
+                    else f"이어짐 끊김 — '{s}' {prev} 다음 {v}")
             prev = v if v is not None else prev
     for h in heads:
         p = head.get(h.get("parent"))
