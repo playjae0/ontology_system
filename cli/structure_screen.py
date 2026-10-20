@@ -186,11 +186,19 @@ def _print_sheet(name, fr, res, rows, st):
 def gate(res, doc_id, reparse, *, ask=True, layers=None):
     """파싱 끝의 **구조 확인**(B126 ③) — `(res, 계속?)`. `--step`이면 시트마다 전부 보이고(준 것 · LLM 판단과 이유 · 고친 뒤 나무 ·
     청크마다 첫 줄 · 끝 줄 · 사슬 — 같은 내용을 `export/split_<doc_id>.md`에) 묻는다: `c` 이 시트 확정(기록 → 재구축 재생) → 다음
-    시트 · `q` 멈춤 · 힌트 → 그 시트를 같은 방식으로 다시(앞 출력 + 힌트 전부) · `새로` → llm 방식으로 다시 · 옛 줄 고침도 받는다."""
+    시트 · `q` 멈춤 · 힌트 → 그 시트를 같은 방식으로 다시(앞 출력 + 힌트 전부) · `새로` → llm 방식으로 다시 · 옛 줄 고침도 받는다.
+    확정 기록으로 재생된 시트에 힌트 · `새로`를 주면 그 고리 동안 확정을 비켜 둔다(B127 ③ — 입력의 힌트 = 기록된 힌트 + 이번 힌트)."""
     from core.state.bootstrap import coord_layer
+    coord_in = coord_layer() in (layers or [coord_layer()])
+    try:
+        return _gate_loop(res, doc_id, reparse, ask, layers, coord_in)
+    finally:
+        ST.SUSPENDED.difference_update({k for k in ST.SUSPENDED if k[0] == doc_id})   # 비켜 둔 확정은 고리 밖으로 새지 않는다
+
+
+def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
     from cli import split_report as SR
     from parser.struct_rule import labels_hash
-    coord_in = coord_layer() in (layers or [coord_layer()])
     pos, hints = 0, {}
     while True:
         if not res.ok:                       # 고친 뒤 다시 파싱이 실패했다 — 진행하지 않는다
@@ -221,7 +229,9 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
             print("   멈춤 — 구조까지(파싱 산출 parsed/ · 구조 보존분은 남았다 · 그래프 쓰기 0)")
             return res, False
         if got is True:
-            ST.confirm(doc_id, name, {**fr, "labels": labels_hash(fr.get("labels") or [])}, hints.get(name))
+            if not fr.get("confirmed"):              # 확정 기록 재생 그대로면 다시 쓰지 않는다
+                ST.confirm(doc_id, name, {**fr, "labels": labels_hash(fr.get("labels") or [])}, hints.get(name))
+            ST.SUSPENDED.discard((doc_id, name))
             print(f"   확정 — 시트 '{name}' · 기록 {ST.confirmed_path().name} · md {md.name if md else '-'}"
                   + (f" · 다음 시트 '{frames[pos + 1]}'" if pos + 1 < len(frames) else ""))
             pos += 1
@@ -235,12 +245,16 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
                   + f" · 기록 {ST.fixes_path().name} · 다시 파싱한다(LLM 0)")
             res = reparse()
             continue
-        hs = hints.setdefault(name, [])
+        hs = hints.setdefault(name, list(fr.get("hints") or []) if fr.get("confirmed") else [])   # 기록된 힌트 + 이번 힌트
         if kind == "hint":
             hs.append(val)
+        if fr.get("confirmed"):              # 확정한 시트에 다시 힌트 — 이 고리에서는 확정을 비켜 둔다(B127 ③)
+            ST.SUSPENDED.add((doc_id, name))
+            print(f"   확정 기록을 비켜 둔다 — 시트 '{name}'(c면 새 나무로 덮는다 · q면 그대로)")
         print(f"   {'새로(llm 방식)' if kind == 'new' else '힌트'} — 시트 '{name}'를 다시 묻는다(앞 출력 + 힌트 {len(hs)})")
         ST.reask(doc_id, name, fr.get("labels") or [], (res.envelope or {}).get("source_path"), hints=hs,
-                 prev=fr.get("answer") or {"headings": fr.get("headings")}, mode="llm" if kind == "new" else None,
+                 prev=fr.get("answer") or {"headings": fr.get("headings")},
+                 mode="llm" if kind == "new" or fr.get("mode") == "llm" else None,
                  layers=layers, ctx={"doc_type": (res.envelope or {}).get("doc_type"),
                                      "doc_coord": (res.envelope or {}).get("doc_coord"), "frames": frames})
         res = reparse()

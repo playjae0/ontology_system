@@ -9,6 +9,7 @@
   ⓓ 형태 단서 — 「가.」 아래 「1.」 다시 시작 · 「1)~11)」 이어짐이 LLM 입력에
   ⓔ 규칙 나무가 빈 시트만 llm · `structure_mode=llm`이면 `edit` 호출 0
   ⓕ `--split-only` — 추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`
+  B127 ⓓ 확정한 시트에 힌트 → 확정을 비켜 두고 기록된 힌트 + 새 힌트로 다시 → `c`면 새 나무 · 쌓인 힌트 · ⓔ `q`면 기록 그대로
 네 벌(ⓖ)은 마감 한 줄의 네 벌 단계가 잰다.
 """
 from __future__ import annotations
@@ -40,7 +41,9 @@ SHEETS = {E: ["가. 공급부", "공급부는 소재를 넣는다.", "1. 기본 
               "나. 적층부", "1. 기본 사양", "장력 기준은 30이다.", "설비 메모", "메모 본문이다."],
           N: ["2. 공통사양"] + [f"{i}) 항목{i}의 기준은 {i}이다." for i in range(1, 12)],
           M: ["회의에서 정한 것", "속도는 다음 회의에서 다시 본다.", "하중은 그대로 둔다."]}
-WHY = {"대상": "줄 머리의 이름이 설비 단위다", "더함": "번호 없는 제목 줄", "부모": "메모는 시트 전체에 걸린다"}
+WHY = {"대상": "줄 머리의 이름이 설비 단위다", "더함": "번호 없는 제목 줄", "부모": "메모는 시트 전체에 걸린다",
+       "다시": "지정 사양은 기본 사양과 한 덩어리"}
+AGAIN = "지정 사양은 제목이 아니다"
 EDITS = [{"row": 1, "what": "대상", "name": "공급부", "category": "Unit", "why": WHY["대상"]},
          {"row": 10, "what": "제목 더함", "parent": 7, "role": "주제", "why": WHY["더함"]},
          {"row": 10, "what": "부모 바꿈", "parent": None, "why": WHY["부모"]},
@@ -83,6 +86,8 @@ def _structure(body):
     if body["frame"] != E:
         return {"edits": [], "headings": []}
     eds = [_E(e) for e in EDITS[:1]] if not body.get("hints") else [_E(e) for e in EDITS]
+    if any(AGAIN in h for h in body.get("hints") or []):      # 확정한 시트를 다시 연 힌트(B127 ③) — 새 답
+        eds.append(_E({"row": 5, "what": "제목 뺌", "why": WHY["다시"]}))
     return {"edits": eds, "headings": [{"row": 7, "role": "대상", "name": "적층부", "category": "Unit", "why": "둘째 설비 단위"}]}
 
 
@@ -121,7 +126,7 @@ _md = split_report.write_md(DID, _r3.report, _r3.envelope).read_text(encoding="u
 show("ⓑ 대상 · 제목 더함 · 부모 바꿈 → 「속도」 사슬에 유닛 공급부 · 「메모」는 시트 바로 아래 · 이유가 md에 · 없는 줄 고침만 버림",
      _chain(_r3, E, "속도 기준")[:1] == ["공급부"] and _chain(_r3, E, "메모 본문")[-1:] == ["설비 메모"]
      and "적층부" not in _chain(_r3, E, "메모 본문") and len(_f3["edits"]) == 3 and len(_f3["edits_dropped"]) == 1
-     and all(w in _md for w in WHY.values()) and "시트에 없는 줄" in _md,
+     and all(WHY[k] in _md for k in ("대상", "더함", "부모")) and "시트에 없는 줄" in _md,
      f"사슬 {_chain(_r3, E, '속도 기준')} / {_chain(_r3, E, '메모 본문')} · 고침 {len(_f3['edits'])} · 버림 {len(_f3['edits_dropped'])}")
 
 # ────────────────────────────────────────────────────────────── ⓒ 확인 고리 — 힌트 · 다시 · 확정 · 재생
@@ -161,6 +166,36 @@ show("ⓓ 형태 단서가 LLM 입력에 — 「1.」이 「나.」 아래에서
      and any("'1)' 2~12행 11개 이어짐" in x for x in split_report.SE.run_lines(split_report.SE.number_runs(
          _r4.report["structure"]["프레임"][N]["labels"]))),
      f"{_form}")
+
+# ────────────────────────────────────────────────────────────── B127 ③ 확정한 시트도 힌트로 다시 연다
+print("\n■ B127 ③ 확정한 시트에 힌트 — 확정을 비켜 두고 다시 · c면 덮고 q면 그대로")
+
+
+def _reopen(answers):
+    """확정 기록만으로 재생한 파싱(보존분 없음) → 구조 확인 고리 — 돌려주는 것은 `(E 시트 호출 본문들, 확정 기록 바이트)`."""
+    struct_map.invalidate(DID)
+    CALLS.clear()
+    it = iter(answers)
+    _screen.ask = lambda prompt: next(it)
+    with Live(by={"structure": _structure}), contextlib.redirect_stdout(io.StringIO()):
+        SS.gate(_parse(_x, confirmed=ST.confirmed_of(DID)), DID, lambda: _parse(_x, confirmed=ST.confirmed_of(DID)),
+                layers=["process"])
+    _screen.ask = _ask0
+    return [b for p, b in CALLS if p == "structure" and b.get("frame") == E], ST.confirmed_path().read_bytes()
+
+
+_old = ST.confirmed_of(DID)[E]
+_c7, _b7 = _reopen([AGAIN, "c", "c", "c"])
+_new = ST.confirmed_of(DID)[E]
+show("B127 ⓓ 확정한 시트에 힌트 → 다시 묻는 입력의 힌트 = 기록된 힌트 + 새 힌트 · 앞 출력 = 확정된 나무 → c → 기록이 새 나무 · 쌓인 힌트",
+     len(_c7) == 1 and _c7[0].get("hints") == [HINT_TEXT, AGAIN]
+     and [h["row"] for h in (_c7[0].get("previous") or {}).get("headings") or []] == [h["row"] for h in _old["headings"]]
+     and 5 in [h["row"] for h in _old["headings"]] and 5 not in [h["row"] for h in _new["headings"]]
+     and _new["hints"] == [HINT_TEXT, AGAIN] and not ST.SUSPENDED,
+     f"호출 {len(_c7)} · 힌트 {_c7[0].get('hints') if _c7 else None} · 기록 제목 {[h['row'] for h in _new['headings']]}")
+_c8, _b8 = _reopen(["하나 더 바꿔 본다", "q"])
+show("B127 ⓔ 확정한 시트에 힌트를 준 뒤 q → 확정 기록이 바이트까지 그대로",
+     len(_c8) == 1 and _b8 == _b7 and not ST.SUSPENDED, f"호출 {len(_c8)} · 같음 {_b8 == _b7}")
 
 # ────────────────────────────────────────────────────────────── ⓔ 빈 규칙 나무 → llm · structure_mode=llm
 print("\n■ ⓔ 규칙 나무가 빈 시트만 llm · structure_mode=llm")

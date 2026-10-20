@@ -393,9 +393,15 @@ def _confirmed_all():
         return {}
 
 
+#: 구조 확인 고리에서 **비켜 둔 확정 시트** `{(doc_id, 시트)}`(B127 ③ — 확정한 시트에 사람이 다시 힌트를 줬다 · 그 고리 동안만 ·
+#: `c`면 새 확정이 기록을 덮고 `q`면 옛 기록 그대로)
+SUSPENDED = set()
+
+
 def confirmed_of(doc_id):
-    """그 문서의 확정 시트 `{시트: {labels, mode, headings, joins, hints, prompt_version, by, at}}` — 파서가 데이터로 받는다."""
-    return dict(_confirmed_all().get(doc_id) or {})
+    """그 문서의 확정 시트 `{시트: {labels, mode, headings, joins, hints, prompt_version, by, at}}` — 파서가 데이터로 받는다
+    (비켜 둔 시트는 뺀다)."""
+    return {f: v for f, v in (_confirmed_all().get(doc_id) or {}).items() if (doc_id, f) not in SUSPENDED}
 
 
 def confirm(doc_id, frame, st, hints=None):

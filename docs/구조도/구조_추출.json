@@ -10,8 +10,8 @@
    ],
    "단계": "인입",
    "주체": "자산",
-   "bytes": 40133,
-   "금지": 51,
+   "bytes": 43373,
+   "금지": 52,
    "표행": 7,
    "조항": [
     "B46",
@@ -44,8 +44,10 @@
     "P7"
    ],
    "자산": [
+    "export/split_<doc_id>.md",
     "registry/adapters/{doc_type}.py",
     "registry/sheet_roles/<doc_id>.json",
+    "registry/structure_confirmed.json",
     "registry/structure_fixes.json"
    ],
    "코드": [
@@ -62,7 +64,7 @@
    ],
    "단계": "인입",
    "주체": "LLM",
-   "bytes": 12604,
+   "bytes": 12775,
    "금지": 14,
    "표행": 0,
    "조항": [
@@ -468,7 +470,7 @@
    ],
    "단계": "저장",
    "주체": "기계",
-   "bytes": 47591,
+   "bytes": 47814,
    "금지": 49,
    "표행": 11,
    "조항": [
@@ -546,7 +548,7 @@
    ],
    "단계": "인입",
    "주체": "LLM",
-   "bytes": 17838,
+   "bytes": 18024,
    "금지": 17,
    "표행": 0,
    "조항": [

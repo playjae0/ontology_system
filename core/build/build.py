@@ -392,12 +392,19 @@ class Builder(CoordMixin):
                          parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
             from core.build import replay as _rp
             rp, why = _rp.pick(self, at, surface, category, canonical)
-        if rp is not None:
-            return rp, why
         sent = None
-        if chunk_text:
+        if chunk_text and (rp is None or rp[3].get("second_due")):
             from core.build.extract_ctx import around
             sent = around(chunk_text, surface, _matcher.JUDGE_CONTEXT_CHARS)
+        if rp is not None:
+            if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
+                got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
+                                         polarity=polarity, parent=parent_canonical, sentence=sent)
+                if got is not None:
+                    from core.build import replay as _rp
+                    _rp.note_second(got[0] == "match")
+                    return got, why
+            return rp, why
         return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
                        parent=parent_canonical, sentence=sent), why
 

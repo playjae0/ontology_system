@@ -478,9 +478,19 @@ def summary(lines, res, after, before=None):
 
 
 def second_counts(rows):
-    """2차 판정(B123 ③) — `(부른 개체 행 n, 매칭으로 바뀐 m)` · 대장 행의 `judge2`에서(새 계산 0)."""
-    got = [r.get("judge2") for r in rows or [] if r.get("role") == "entity" and r.get("judge2")]
+    """2차 판정(B123 ③) — `(이번에 부른 개체 행 n, 매칭으로 바뀐 m)` · 대장 행의 `judge2`에서(새 계산 0 · 재생이 옮긴 지난 기록은
+    빼고 재생의 2차(`judge2.replay`)는 넣는다)."""
+    got = [r.get("judge2") for r in rows or [] if r.get("role") == "entity" and r.get("judge2")
+           and (r.get("path") != "replay" or r["judge2"].get("replay"))]
     return len(got), sum(1 for j in got if j.get("now") == "match")
+
+
+def replay_second_counts(rows):
+    """재생의 불확실(B127 ①) — `(재생된 불확실 n, 그중 2차를 부른 m, 매칭으로 바뀐 k)` · 대장 행에서(새 계산 0)."""
+    rp = [r for r in rows or [] if r.get("role") == "entity" and r.get("path") == "replay"
+          and (r.get("verdict") == "uncertain" or (r.get("judge2") or {}).get("replay"))]
+    j2 = [r["judge2"] for r in rp if (r.get("judge2") or {}).get("replay")]
+    return len(rp), len(j2), sum(1 for j in j2 if j.get("now") == "match")
 
 
 def summary_text(doc_id, s):
@@ -497,7 +507,8 @@ def summary_text(doc_id, s):
     return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
             f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else "")
             + _value_text(s.get("값"))
-            + (f" | 2차 {s['2차'][0]:,} → 바뀜 {s['2차'][1]:,}" if (s.get("2차") or (0,))[0] else ""))
+            + (f" | 2차 {s['2차'][0]:,} → 바뀜 {s['2차'][1]:,}" if (s.get("2차") or (0,))[0] else "")
+            + (" | 재생 불확실 {:,} → 2차 {:,} → 바뀜 {:,}".format(*s["재생 2차"]) if (s.get("재생 2차") or (0,))[0] else ""))
 
 
 def _value_text(v):
@@ -540,7 +551,8 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
     after = layer_counts(graphs)
     return {"doc_id": doc_id, "줄": lines,
-            "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "2차": second_counts(rows)},
+            "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "2차": second_counts(rows),
+                     "재생 2차": replay_second_counts(rows)},
             "그래프": graph_lines(res, after, (run or {}).get("층 전")),
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),
