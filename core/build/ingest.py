@@ -209,6 +209,8 @@ def register_doc(env, dh, routing=None):
     _skip = (env.get("context") or {}).get("images_skipped")
     if _skip:
         entry["images_skipped"] = _skip
+    if (env.get("context") or {}).get("capture_off"):       # `--no-capture`(B128 ②) — 재구축이 같은 옵션으로 넣는다
+        entry["capture_off"] = True
     # **그때 쓴 손잡이 값과 출처**(B91 ⑤) — 파싱이 계약 JSON의 context에 실었다(있을 때만)
     _kn = (env.get("context") or {}).get("knobs")
     if _kn:

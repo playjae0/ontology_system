@@ -121,6 +121,10 @@ def _page_map(path, raw):
     """
     try:
         from . import render
+        ok, _route, miss = render.capture_path(path)          # 캡처 가능 판정 한 자리 (B128 ①)
+        if not ok:
+            _LOG.info("쪽 렌더 없음 — %s", miss)
+            return {}
         got = render.render_pages(path)
     except Exception as e:                                  # noqa: BLE001
         _LOG.warning("쪽 렌더 실패 — %s: %s", type(e).__name__, e)

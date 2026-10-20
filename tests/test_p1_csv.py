@@ -234,7 +234,7 @@ try:
          _nres.ok and _npic["meta"]["slide_render"] == "none"
          and len(_nres.envelope["chunks"]) == 12)
     show("렌더 부재는 진단으로 드러난다 (조용히 다르게 돌지 않는다)",
-         render.available()[0] is False and "soffice" in render.available()[1])
+         render.capture_path(_PPTX)[0] is False and "soffice" in render.capture_path(_PPTX)[2])   # 기대 변경(B128 ① — 판정 한 자리)
 finally:
     _sh.which = _realwhich
 

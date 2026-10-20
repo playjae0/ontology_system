@@ -154,26 +154,7 @@
 - B120 — 산문의 값: 「항목 = 값」을 주인 아래 노드의 속성으로 · 값을 받는 카테고리 선언 · 추출 판은 config 칸 해시 · 2026-10-19 · **완료** — 본문 `docs/archive/장부/PROGRESS_B120.md`
 - B123 — 다듬기: 잘리지 않는 md 보고서 · 붙은 자리 칸에 관계 · 불확실만 청크 문장을 보고 다시 판정 · 2026-10-19 · **완료** — 본문 `docs/archive/장부/PROGRESS_B123.md`
 - B124 — 구조 v2: 시트 전문과 형태 힌트를 보고 LLM이 나무 · 자르는 자리 · 주인을 함께 · 역할은 층 중립 · 층 힌트는 config · 2026-10-19 · **완료** — 본문 `docs/archive/장부/PROGRESS_B124.md`
-
----
-
-## B125 — PPT: 슬라이드가 추출 단위 · 캡처를 추출에 · 덱 구조 1회(제목 · 이어짐 · 공정 목록 · 덱 개요) · 청크 공정은 목록 (2026-10-19 · 동작 변경 — PPT 청크 경계 · 추출 입력 · 지시문 둘)
-
-> 요청문 `docs/안건/B125_요청문.md` · B124 마감 `b009ab0` 위 · 가벼운 회차(개발 중 doctor 전체 0 · 고른 실행 5회).
-
-- 전제 4행 — `29 · 44 · 171` · `0` · `206 · 0` · `255 · 155` (기대 그대로)
-- 마감 한 줄 2회 — 1회: doctor 1940/1964(옛 PPT 임계 600자에서만 지도 경로로 가던 시험 둘 · 공정 목록을 「깨진 어댑터」로 보던 관문 시험 하나 — 기대 변경 · 표 레코드의 목록은 계약 검사가 잡게 했다) · 2회: 코드 지도 갱신 · 사전 점검 118/118 · 문서 검사 일곱 위반 0 · **doctor 1963/1964 · 클린 2회 동일 그래프** · **네 벌 전부 같다**(A · B · C) · §7 상한 위반 0(`build.py` 842행 → 좌표 손을 `build_coord.py`로 나눔 · `pipeline.parse` 127 → 120행) · 자산 해시 같음 · 남은 1 = `test_g6_numbers` ⓓ(pty 멈춤 답 — 그 실행만 50초로 늘어짐) · 같은 커밋 클린 단독 2회 18/18 PASS(25초)
-- ⓐ 상자 — PASS: 글 상자 제목 + 작은 상자 여섯 슬라이드 → 본문 근거 청크 1 · 추출 호출 1 · 상자 분할 0
-- ⓑ 같은 슬라이드 — PASS: 추출 입력 하나에 본문 · `[표 S4-TB1]` · `[노트]` · 값 표 · 노트는 실림 · 그림 요약에만 있는 값은 버림
-- ⓒ 캡처 — PASS: 그림 없는 슬라이드에도 추출 입력에 캡처(`capture=page` · 있음 4) · 렌더가 없으면 `none` + `캡처 — 있음 0 · 없음 4(soffice 없음)` · 인입은 선다
-- ⓓ 덱 구조 — PASS: 글 상자 제목이 제목 · (계속)은 앞 슬라이드의 경로 · 공정 · 덱 개요가 모든 추출 맥락 줄에 · 골격 밖 공정 버림 1 · 개체 없음 1
-- ⓔ 다공정 — PASS: `노칭::커터` · `스태킹::매거진`이 각자 제 공정 아래 · 언급만 한 탭용접은 노드 0 + 관련 링크 · `--coord` 없이 `ingest-dir` rc 0
-- ⓕ 고침 · 재생 — PASS: `4 공정 스태킹` → `@덱` 기록 → 다시 파싱 덱 구조 LLM 0 · 그 슬라이드 공정 스태킹 · 네 벌 A · B · C 전부 같다(mock 표본에 PPT 없음 — 바뀐 몫 0)
-- 어서션 +6(`test_g6_deck`) · 삭제 1(`test_p1_core6` 「② shape 단위 분할」 — 상자 분할 폐지) · 기대 변경 6(`test_p1_core6` 임계 꼴 · `test_p1_csv` 슬라이드 10 · `test_g6_belongs` 판 e-2.0 · `test_p1_wiring` · `test_p3_recover` 손잡이 700(창작 값 — 옛 지도 경로를 잰다) · `test_p3_screen` 깨진 검체 G51 → G52)
-- 가결정 D-205(11건) · 명세 패치 `docs/안건/B125_명세패치.md` 14항목 `--check` 통과(문서 1 C3 · C13 · 새 M25 · 문서 2 셋 · 문서 4 둘 · 문서 6 둘 · 문서 7 셋 · 부록 하나) — B123 · B124 패치와 겹치는 `지금` 0
-- 바뀐 자리 — `normalizer.coord_refs`(공정 목록 읽는 손) · `Builder.resolve_coords` · `main_coord` · `mention_coords` · 다른 공정 가드 목록 전체(`build_coord.py`) · 부착 후보 합 · 맥락 줄 개요 칸 · `parser/deck.py`(입력 · 보존 · 고침 · 결정) · `core/build/deck.py`(⑪ 태그 `deck` · 검사) · `basic_ppt`(상자 분할 삭제 · `SLIDE_MAX_CHARS` · 추출 단위) · `core/build/extract_unit.py`(묶음 · 출처 청크 · 캡처) · 값 대조에서 그림 요약 제외 · 표 레코드의 목록 = 계약 결함 · 구조 관문 덱 표 · 지시문 e-2.0 · o-3.1 · 가이드(런북 §3 · 2B §7 셋) · 구조도 06
-- 사내 config 줄 — 손잡이는 바꿀 때만 `knobs.json` `ppt_slide_chars`(3000 — 창작 기본값) · PPT doc_type 렌즈는 그대로(등록부) · 재구축 때 PPT · PDF는 덱 구조 1회 + 추출을 다시 묻는다(지시문 e-2.0 · 어댑터 판 1.1) · 사내 확인 `which soffice` · `python run.py llm-check`(⑦ 그림 입력)
-- 소요 약 52분 — 읽기 · 설계 8분 · 구현 20분(④ → ③ → ① → ②) · 시험 작성 6분 · 문서 · 장부 8분(명세 패치 14 · D-205 · 가이드 · 요청문) · 마감 한 줄 2회(8분 31초 · 9분 0초 — 사이 고침 3분) · 보고 2분
+- B125 — PPT: 슬라이드가 추출 단위 · 캡처를 추출에 · 덱 구조 1회(제목 · 이어짐 · 공정 목록 · 덱 개요) · 청크 공정은 목록 · 2026-10-19 · **완료** — 본문 `docs/archive/장부/PROGRESS_B125.md`
 
 ---
 
@@ -215,3 +196,26 @@
 - 바뀐 자리 — `replay.pick`(2차 기록 옮김 · `second_due` · 셈) · `matcher.second_at` · `Builder._judge` · `reconcile.replay_second_counts` · 화면 셋(판정 재생 줄 · 재구축 끝 · 한 줄 요약) · `structure.SUSPENDED` · `structure_screen.gate`(비켜 두기 · 쌓인 힌트) · 런북 둘
 - 사내 config 줄 — 없음(재구축 · 재인입이 지난 불확실에 2차를 한 번 — 끄려면 `knobs.json` `judge_context_chars` 0)
 - 소요 약 19분 — 반입 1분 · 읽기 · 전제 1분 · 구현 ①② 3분 · 시험 작성 ①②와 ③ 구현 · 시험 3분 · 문서 · 명세 패치 · 장부 3분 · 마감 한 줄 1회 8분
+
+---
+
+## B128 — PPT 캡처가 실제로 돌게: 캡처 가능 판정 한 자리 · 실호출 PPT · PDF는 파싱 전에 그림 입력과 캡처 길 · 필요한 것은 한 곳 (2026-10-20 · 동작 변경 — 사전 점검 · 캡처 · 환경 점검)
+
+> 요청문 `docs/안건/B128_요청문.md` · hub_103 반입 `eb9e50a` 위 · 가벼운 회차(개발 중 doctor 전체 0 · 고른 실행만).
+
+- 전제 6행 — `112` · `113` · `613` · `148` · `0` · `render.py 65 · 110 · reader.py 448` (기대 그대로)
+- 구현 환경 — PyMuPDF 1.25.5 · LibreOffice 24.2(`/usr/bin/soffice` · Impress 있음) · python-pptx 1.0.2 — 설치 없이 실경로가 돌았다
+- 마감 한 줄 1회 — 전부 PASS(doctor 1980/1980 · 클린 2회 동일 그래프 · 네 벌 전부 같다 · §7 위반 0 · 자산 해시 같다 · 소요 490초)
+- ⓐ PASS(실경로 · soffice를 뺀 PATH의 하위 실행): PPTX + 더 최신 PDF → 추출 호출 5 · 호출마다 캡처 1장 · PDF 문서도 같다(5쪽 · 각 1장 · PyMuPDF만으로)
+- ⓑ PASS: soffice 없음 · 옆 PDF 없음 · 실호출 → 사전 점검 「캡처」에서 멈춤(파싱 0 · 빠진 것 「LibreOffice(Impress 포함 — soffice) 또는 … 더 최신 PDF」 · 다음 줄 `--no-capture`) · 같은 명령에 `--no-capture` → 진행 · 문서 대장 `capture_off` · 추출 입력에 그림 0
+- ⓒ PASS: 게이트웨이가 그림을 거부(HTTP 400)하면 박힌 그림이 없는 PPT도 사전 점검 「그림」에서 멈춘다(다음 줄 `llm-check ⑦` · `--no-capture`)
+- ⓓ PASS(이 기계에 soffice 있음): PPTX만으로 추출 호출마다 캡처 1장 · 숨김 슬라이드 하나를 더해도 렌더 5쪽 = 보이는 5장
+- ⓔ PASS: `doctor --env`에 `pymupdf (선택)` · `soffice 있음 — /usr/bin/soffice`(실제 변환으로 쟀다) · `PPT 캡처 — 가능(soffice)` · `render.pymupdf()`가 `pymupdf` 모듈 · 폐기 경고 0
+- ⓕ 네 벌 — 전부 같다(A · B · C — mock은 사전 점검 · 캡처를 타지 않는다)
+- 실경로가 잡은 결함 하나 — `llm-check` ⑦의 거부 갈래가 `GatewayError.code`(없는 속성)를 읽어 그 자리에서 죽었다 → `status`(B128 전부터의 결함 — 실호출 400에서만 드러난다)
+- 어서션 +5(`test_g6_capture`) · 기대 변경 2(`test_g6_deck` · `test_p1_csv` — 판정 함수의 이름 · 답 꼴) · 삭제 0
+- 가결정 D-208(7건 — 판정 함수 자리 · soffice 변환 재는 법 · ⑦ 그림 만드는 법 · 사전 점검의 자리 · `--no-capture` 기록 · PyMuPDF 이름 · 시험의 실경로) · 명세 패치 `docs/안건/B128_명세패치.md` 4항목 `--check` 통과(문서 6 §6.4 규약 5 둘 · 문서 7 §7.6-B-0′ · §7.6-B-6)
+- 바뀐 자리 — `parser/render.capture_path` · `pymupdf` · `render_pages`(길 그대로) · `parser/reader.read_pdf` · `extract_unit.capture` · `pipeline._page_map` · `core/llm/preflight`(단계 「캡처」 · 그림 입력 조건) · `cli/preflight.capture_docs` · `cli/ingest` · `ingest_batch` · `parse` · `rebuild`(`--no-capture` · 기록) · `core/llm/check`(⑦ 캡처 크기 그림) · `doctor --env` · `requirements.txt` · 런북 · 2B 증상표 · 구조도 02
+- 사내 설치 줄 — `python -m pip install -r requirements.txt` + LibreOffice(Impress 포함 — 또는 PowerPoint에서 PDF로 저장해 같은 폴더 · 같은 이름으로) → `python doctor.py --env`의 `PPT 캡처 — 가능(…)` · `python run.py llm-check` ⑦ 통과
+- 소요 약 23분 — 반입 1분 · 읽기 · 전제 · 환경 2분 · 구현 ①②③ 4분 · 시험 작성 · 실경로 디버그 4분 · 문서 · 명세 패치 · 장부 3분 · 마감 한 줄 1회 8분 · 장부 마감 1분
+

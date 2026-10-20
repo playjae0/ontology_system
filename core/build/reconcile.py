@@ -508,7 +508,8 @@ def summary_text(doc_id, s):
             f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else "")
             + _value_text(s.get("값"))
             + (f" | 2차 {s['2차'][0]:,} → 바뀜 {s['2차'][1]:,}" if (s.get("2차") or (0,))[0] else "")
-            + (" | 재생 불확실 {:,} → 2차 {:,} → 바뀜 {:,}".format(*s["재생 2차"]) if (s.get("재생 2차") or (0,))[0] else ""))
+            + (" | 재생 불확실 {:,} → 2차 {:,} → 바뀜 {:,}".format(*s["재생 2차"]) if (s.get("재생 2차") or (0,))[0] else "")
+            + (" | 캡처 끔" if s.get("캡처 끔") else ""))
 
 
 def _value_text(v):
@@ -552,7 +553,8 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     after = layer_counts(graphs)
     return {"doc_id": doc_id, "줄": lines,
             "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "2차": second_counts(rows),
-                     "재생 2차": replay_second_counts(rows)},
+                     "재생 2차": replay_second_counts(rows),
+                     "캡처 끔": bool(((env or {}).get("context") or {}).get("capture_off"))},
             "그래프": graph_lines(res, after, (run or {}).get("층 전")),
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),

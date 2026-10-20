@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """칸 3.1 — 일괄 투입 — 파일 하나 또는 경로 하나로 **선택 → 파싱 → 인입**을 잇는다 (문서 6 §6.4 · B46).
 
-  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images]
+  python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images] [--no-capture]
                                   [--step] [--step-every N] [--narrow embed|overlap]
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
                                   [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [--split-only]
@@ -376,7 +376,7 @@ def _step_stops(res, sel, row, ask=True):
     return False
 
 
-def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step):
+def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step, no_capture=False):
     """파싱 — 리허설 산출(파싱 앞 몫) → `run_parse` → 실패면 큐 · 행 → 시트별 조각 → **구조 관문**(B119 ③ — 고치면 다시 파싱).
 
     돌려주는 것은 `(파싱 결과, 쓴 자리)` · 멈추거나 실패했으면 `(None, None)`(`row`에 사유). `ingest_file`에서 떼어냈다(B119 — 함수 상한 120행)."""
@@ -388,7 +388,8 @@ def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step):
 
     def _parse_now():
         return run_parse(str(sel["adapter"]), sel["doc_id"], str(doc), coord_cap=coord_cap,
-                         sheet_roles=roles, no_images=no_images, doc_coord=doc_coord, layers=lz)
+                         sheet_roles=roles, no_images=no_images, doc_coord=doc_coord, layers=lz,
+                         no_capture=no_capture)
     res, out = _parse_now()
     if not res.ok:
         rows = SCR.fail_rows(res.failures)
@@ -432,7 +433,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
                 no_images=False, preflight=None, coord=None, revise=False,
-                allow_duplicate=False, split_only=False):
+                allow_duplicate=False, split_only=False, no_capture=False):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다. `split_only`(B126 ④)면 파싱 · 좌표 · 구조 확인까지만
     (추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`)."""
@@ -461,13 +462,13 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         row["status"] = "선택만"
         print("   (dry-run — 파싱·인입 안 함)")
         return row
-    if not _preflight_once(doc, preflight, no_images, sel.get("doc_type")):
+    if not _preflight_once(doc, preflight, no_images, sel.get("doc_type"), no_capture):
         row.update(status=FAIL, preflight_fail=True,
                    reason="사전 점검 실패 — 파싱 전에 멈췄다(LLM 추가 0 · 쓰기 0)")
         return row
     try:
         stage["이름"] = "파싱"
-        res, out = _parse_doc(doc, sel, row, coord_cap, _roles, no_images, _dc, step)
+        res, out = _parse_doc(doc, sel, row, coord_cap, _roles, no_images, _dc, step, no_capture)
         if res is None:
             return row
         if split_only:
@@ -600,18 +601,21 @@ def _kept_lines(doc, sel, stage):
     print(f"   ▶ 다음 줄 — 위 원인을 고친 뒤 같은 명령: python run.py ingest-file {doc}{dt}")
 
 
-def _preflight_once(doc, pf, no_images, doc_type=None):
+def _preflight_once(doc, pf, no_images, doc_type=None, no_capture=False):
     """**사전 점검 — 실행당 1회**(B98 ①): `pf`는 실행이 공유하는 칸(`ingest-dir`이 하나를 넘긴다).
 
     채팅은 실호출이면 늘 · 임베딩은 이 실행의 좁히기가 `embed`일 때 · 그림은 문서(폴더면
-    그 안 어느 문서)에 그림이 있고 `--no-images`가 아닐 때 · 공통 config는 늘(구축이 쓴다).
+    그 안 어느 문서)에 그림이 있고 `--no-images`가 아닐 때 · PPT · PDF면 그림 입력과 캡처 길(B128 ② — `--no-capture` ·
+    `--no-images`면 빼고) · 공통 config는 늘(구축이 쓴다).
     """
     from cli import preflight as PF
     from core.llm.narrow import narrow_choice
     pf = pf if pf is not None else {}
     if pf.get("ok") is None:
         imgs = pf["images"] if "images" in pf else (not no_images and PF.has_images(doc))
-        pf["ok"] = PF.gate(chat=True, embed=narrow_choice()[0] == "embed", images=imgs)
+        cap = pf["capture"] if "capture" in pf else PF.capture_docs([(doc, {"no_images": no_images,
+                                                                           "no_capture": no_capture})])
+        pf["ok"] = PF.gate(chat=True, embed=narrow_choice()[0] == "embed", images=imgs, capture=cap)
         SCR.stage_head("사전 점검", "통과" if pf["ok"] else "멈춤")
     # **등록 스키마 재대조**(B99 ⑩) — doc_type마다 한 번(일괄이면 처음 만난 doc_type마다)
     done = pf.setdefault("schemas", {})
@@ -689,7 +693,8 @@ def main(argv):
     # **그림 없이 넣기는 명시적으로만**(B88 ①) — 게이트웨이가 그림을 못 받을 때의 출구다.
     # 그 사실은 인입 기록과 `show doc`에 남는다(조용한 건너뜀 0).
     no_img = "--no-images" in args
-    args = [a for a in args if a != "--no-images"]
+    no_cap = "--no-capture" in args               # 캡처 없이 — 명시적으로만 · 기록에 남는다 (B128 ②)
+    args = [a for a in args if a not in ("--no-images", "--no-capture")]
     dt = None
     if "--doc-type" in args:
         i = args.index("--doc-type")
@@ -731,12 +736,12 @@ def main(argv):
                              "문서마다 시트 자리가 다르다 (폴더에는 --sheets auto)")
         rows = ingest_dir(target, dt, dry, adapter_paths, coord_cap=cap,
                           recurse=_from_raw, progress_every=prog_every,
-                          no_images=no_img, sheets=sheets_spec, revise=revise)
+                          no_images=no_img, sheets=sheets_spec, revise=revise, no_capture=no_cap)
     else:
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,
                             sheets=sheets_spec, no_images=no_img, coord=coord_spec,
-                            revise=revise, split_only=split_only)]
+                            revise=revise, split_only=split_only, no_capture=no_cap)]
         print(summary(rows))
     return 0 if all(r["status"] in (OK, "선택만", SPLIT_ONLY) for r in rows) else 1
 

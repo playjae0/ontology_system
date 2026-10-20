@@ -109,7 +109,7 @@ def capture(env):
     if doc_id in _PAGES:
         return _PAGES[doc_id]
     from parser import render
-    ok, why = render.available()
+    ok, _route, why = render.capture_path(env.get("source_path"))     # 캡처 가능 판정 한 자리 (B128 ①)
     got = None
     if ok:
         try:

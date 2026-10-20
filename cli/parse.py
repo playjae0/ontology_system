@@ -262,7 +262,7 @@ def coord_screen():
 
 
 def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
-              sheet_roles=None, no_images=False, doc_coord=None, layers=None):
+              sheet_roles=None, no_images=False, doc_coord=None, layers=None, no_capture=False):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
     있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
@@ -281,7 +281,9 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     # 무엇이든 그 답을 쓴다.
     # **누적 줄**(B97 ②) — 계층 규칙 · 그림 요약 · 좌표 태깅이 이 안에서 LLM을 부른다
     with _screen.ticker("파싱(구조·그림 요약·좌표)"):
-        res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **injections(layers),
+        inj = injections(layers)
+        inj["capture"] = inj["capture"] and not no_capture       # `--no-capture` — 캡처 없이(사람이 명시 · 기록) (B128 ②)
+        res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **inj,
                              structure_fixes=structure_mod.fixes_of(doc_id),     # 사람의 구조 고침 (B119 ③)
                              structure_confirmed=structure_mod.confirmed_of(doc_id),   # 구조 확인의 확정 시트 (B126 ③)
                              layer=coord_layer(),
@@ -295,6 +297,10 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
         from cli import doc_coord as _dc                 # 좌표 줄 (B102 ⑦)
         print(_dc.coord_line(res.envelope))
         res.report["coord_pairs"] = _dc.pair_screen(res.envelope)   # 판정 전 좌표 쌍 표 (B105 ③)
+    from core.llm.preflight import CAPTURE_SUFFIXES
+    if no_capture and res.ok and str(doc).lower().endswith(CAPTURE_SUFFIXES):
+        res.envelope.setdefault("context", {})["capture_off"] = True     # 인입 기록 · 한 줄 요약 「캡처 끔」 (B128 ②)
+        print("   캡처 끔 — --no-capture(슬라이드 · 쪽 캡처 없이 추출한다 · 기록에 남는다)")
     _skip = res.report.get("images")
     if _skip and res.ok:
         # **명시적으로 뺀 그림은 기록에 남는다**(B88 ①) — 계약 JSON의 context(임의 dict)에

@@ -122,8 +122,8 @@ with _quiet():
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
 _register()
-_keep = (render.available, render.render_pages)
-render.available = lambda: (True, "시험")
+_keep = (render.capture_path, render.render_pages)
+render.capture_path = lambda path=None, probe=False: (True, "시험", None)      # 기대 변경(B128 ① — 판정 한 자리의 이름 · 답 꼴)
 render.render_pages = lambda path: {n: f"PNG{n}".encode() for n in range(1, 6)}   # 보이는 슬라이드 5장의 가짜 렌더
 struct_map.invalidate(DID)
 RES, ENV, PCALLS = _parse()
@@ -156,11 +156,11 @@ _cap = {c["chunk_id"]: c.get("capture") for c in _ck["candidates"] if c.get("cap
 _pre = next((n for n in NOTES if n.get("단계") == "추출예고"), {})
 EX.invalidate(DID)                                   # 렌더가 없는 환경 — 같은 문서를 다시 뽑는다
 EU._PAGES.clear()
-render.available = lambda: (False, "soffice 없음")
+render.capture_path = lambda path=None, probe=False: (False, "없음", "soffice 없음")
 _n2, _c2 = _run(ENV)
 _pre2 = next((n for n in _n2 if n.get("단계") == "추출예고"), {})
 _ck2 = json.loads(EX.checkpoint_path(DID).read_text(encoding="utf-8"))
-render.available, render.render_pages = _keep
+render.capture_path, render.render_pages = _keep
 show("ⓒ 그림 없는 슬라이드에도 캡처가 추출 입력에(capture=page) · 렌더가 없으면 none + 화면 수(사유) · 인입은 선다",
      _s2 and _s2[0].get("_images") == 1 and set(_cap.values()) == {"page"}
      and (_pre.get("캡처") or {}).get("있음") == 4
