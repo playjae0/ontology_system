@@ -169,7 +169,7 @@ def structurer(layers=None):
                 store.append_defect(f"{doc_id}: 시트 확인 호출 실패 — 시트 '{frame}' — {e} → 사다리 목차 그대로")
                 out, failed = {"answers": [], "edits": [], "rules": []}, f"{type(e).__name__}: {str(e)[:120]}"
         else:
-            out = LA.hint_check(doc_id, frame, labs, built["headings"])
+            out = LA.hint_check(doc_id, frame, labs, built["headings"], built["needs"])
             if out is None:
                 return {**st, "doc_hints": list(hints or [])}     # 판정 없음 — 사다리 목차 그대로(판단 필요는 남는다)
             st["source"] = "hint"

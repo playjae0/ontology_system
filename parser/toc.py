@@ -97,12 +97,17 @@ def forbid_of(ev, first):
 def code_ladder(frames):
     """**코드 사다리**(B132 ③ 폴백 · `rules` 방식) — 시트들의 줄(`[[(행, 글)]]`)에서 서명의 단 순서 `{"levels": [{"sigs": [...]}], "by": "코드"}`.
 
-    다시 시작 증거(이긴 방향만)를 부모 → 자식 사슬로 보고 서명마다 가장 긴 사슬의 깊이가 단이다 · 증거가 없는 서명은 맨 위 단 ·
-    같은 단 안의 차례는 처음 나온 차례 · 역할 · 카테고리는 비운다(LLM 사다리 · 사람 힌트의 몫)."""
+    다시 시작 증거(이긴 방향만)로 목차를 한 번 더 세워 실제로 선 부모 → 자식(진 방향을 닫은 뒤의 자리 — `1) › 가.`가 지면 `가.`는
+    `1.` 아래)을 사슬로 보고 서명마다 가장 긴 사슬의 깊이가 단이다 · 증거가 없는 서명은 맨 위 단 · 같은 단 안의 차례는 처음 나온
+    차례 · 역할 · 카테고리는 비운다(LLM 사다리 · 사람 힌트의 몫)."""
     fh = [hits_of(lines) for lines in frames]
     ev, first = evidence(fh)
     forbid = forbid_of(ev, first)
-    edges = {(c, p) for (c, p) in ev if (c, p) not in forbid}
+    edges = set()
+    for hits in fh:
+        seen = []
+        _toc(hits, forbid, seen)
+        edges |= {(c, p) for c, p, _v in seen if c != p and (c, p) not in forbid}
     level = {s: 0 for s in first}
     for _i in range(len(first) + 1):                      # 가장 긴 사슬 — 고리는 이긴 방향만 남아 없다(남아도 횟수로 끊긴다)
         changed = False

@@ -98,7 +98,10 @@ def apply_edits(doc_id, frame, labs, draft, out, cats):
             if e.get("role") not in ROLES or (r not in heads and r != FRAME_ROW):
                 drop(e, f"역할 밖 '{e.get('role')}'" if e.get("role") not in ROLES else "제목이 아니다")
                 continue
-            heads.setdefault(r, {"row": r, "parent": None, "name": None, "category": None})["role"] = e["role"]
+            h = heads.setdefault(r, {"row": r, "parent": None, "name": None, "category": None})
+            h["role"] = e["role"]
+            if e["role"] not in TARGET_ROLES:                    # 대상이 아닌 역할 — 사다리가 단 이름 · 카테고리를 뗀다
+                h.update(name=None, category=None)
         elif w == "대상":
             tg = target(e, r) if (r in heads or r == FRAME_ROW) else None
             if tg is None:

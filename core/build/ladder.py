@@ -161,7 +161,7 @@ def _when_ok(w):
 
 def check_ladder(doc_id, raw, frames, cats):
     """사다리 답의 검사 — `(사다리 또는 None, 버림 [사유])` · 서명은 그 문서에 있는 것 · 한 서명은 한 단 · 역할 셋 · 카테고리 목록 ·
-    조건 닫힌 목록 — 어긋난 칸만 버린다(남은 단이 0이면 None → 코드 사다리)."""
+    조건 닫힌 목록 — 어긋난 칸만 버린다(남은 단 · 규칙이 0이면 None → 코드 사다리 · 번호 없는 문서는 규칙만으로 선다)."""
     have = {x["sig"] for labs in frames.values() for x in labs if x.get("sig")}
     used, levels, bad = set(), [], []
 
@@ -201,7 +201,7 @@ def check_ladder(doc_id, raw, frames, cats):
         cat = u.get("category") if u.get("role") in TARGET_ROLES and u.get("category") in cats else None
         rules.append({"when": [str(w) for w in u["when"]], "level": u["level"], "role": u.get("role"), "category": cat,
                       "why": str(u.get("why") or "")[:200]})
-    if not levels:
+    if not levels and not rules:
         return None, bad
     return {"levels": levels, "unnumbered": rules}, bad
 
@@ -247,8 +247,9 @@ def ask_check(frame, labs, built, ladder, cats, cfgs=None, ctx=None, hints=None,
             "rules": [x for x in (out or {}).get("rules") or [] if isinstance(x, dict)]}
 
 
-def hint_check(doc_id, frame, labs, heads):
-    """mock — 그 시트의 힌트 · 없으면 None. 나무 꼴(`[{text, depth, role, name?, category?}]`)은 지금 목차에 대한 고침으로 바꾼다."""
+def hint_check(doc_id, frame, labs, heads, needs=()):
+    """mock — 그 시트의 힌트 · 없으면 None. 나무 꼴(`[{text, depth, role, name?, category?}]`)은 지금 목차에 대한 고침으로 바꾼다
+    (나무는 줄 전부를 말하므로 판단 필요의 답을 겸한다 — 판단 필요 행은 답으로 · 나머지는 고침으로)."""
     from core.state import fixtures as _fx
     p = _fx.EXTRACT_HINTS / f"{doc_id}@structure.json"
     if not p.exists():
@@ -260,17 +261,20 @@ def hint_check(doc_id, frame, labs, heads):
     if isinstance(hint, dict):
         return {"answers": list(hint.get("answers") or []), "edits": list(hint.get("edits") or []),
                 "rules": list(hint.get("rules") or [])}
-    return {"answers": [], "edits": tree_edits(labs, heads, hint), "rules": []}
+    want = _tree_rows(labs, hint)
+    ask = {n["row"] for n in needs}
+    answers = [{"row": r, "heading": r in want, "parent": (want.get(r) or {}).get("parent"),
+                **{k: (want.get(r) or {}).get(k) for k in ("role", "name", "category")}, "why": "힌트 나무"} for r in sorted(ask)]
+    return {"answers": answers, "edits": tree_edits(labs, heads, hint, skip=ask), "rules": []}
 
 
-def tree_edits(labs, heads, tree):
-    """나무 꼴 힌트 → 지금 목차에 대한 고침(제목 더함 · 제목 뺌 · 부모 바꿈 · 역할 · 대상) — 고친 뒤가 그 나무다."""
+def _tree_rows(labs, tree):
+    """나무 꼴 → `{행: {parent, role, name, category}}`(줄 글자로 찾는다 — 같은 글자는 차례대로 · 0단은 시트)."""
     rows = [x for x in labs if x["row"] != FRAME_ROW]
-    want, stack, at, frame_t = {}, [], 0, None
+    want, stack, at = {}, [], 0
     for e in tree or []:
         d = int(e.get("depth") or 0)
         if d == 0:
-            frame_t = e
             continue
         t = str(e.get("text") or "").strip()
         i = next((j for j in range(at, len(rows)) if str(rows[j]["text"]).strip() == t), None)
@@ -282,11 +286,20 @@ def tree_edits(labs, heads, tree):
             stack.pop()
         want[rows[i]["row"]] = {"parent": stack[-1][1] if stack else None, **{k: e.get(k) for k in ("role", "name", "category")}}
         stack.append((d, rows[i]["row"]))
+    return want
+
+
+def tree_edits(labs, heads, tree, skip=()):
+    """나무 꼴 힌트 → 지금 목차에 대한 고침(제목 더함 · 제목 뺌 · 부모 바꿈 · 역할 · 대상) — 고친 뒤가 그 나무다(`skip` 행은 답이 맡는다)."""
+    want = _tree_rows(labs, tree)
+    frame_t = next((e for e in tree or [] if int(e.get("depth") or 0) == 0), None)
     have = {h["row"]: h for h in heads}
     edits = []
-    for r in [h["row"] for h in heads if h["row"] not in want and h["row"] != FRAME_ROW]:
+    for r in [h["row"] for h in heads if h["row"] not in want and h["row"] != FRAME_ROW and h["row"] not in skip]:
         edits.append(_e(r, "제목 뺌", why="힌트 나무에 없다"))
     for r, w in want.items():
+        if r in skip:
+            continue
         if r not in have:
             edits.append(_e(r, "제목 더함", parent=w["parent"], role=w["role"], why="힌트 나무"))
         elif have[r].get("parent") != w["parent"]:

@@ -83,7 +83,7 @@ from parser.adapters import basic_prose_xlsx as _bx68                  # noqa: E
 
 _raw68 = read(str(ROOT / "tests" / "fixtures" / "raw" / "TOC01.xlsx"))
 _col68 = _bx68._content_column(_raw68["sheets"][0])
-_lines68, _rows68 = _bx68._rows_of(_raw68["sheets"][0], _col68)
+_lines68, _rows68, _m68 = _bx68._rows_of(_raw68["sheets"][0])
 _rep68 = _bx68.level_report(_raw68)
 show("① level_report 항목마다 분할_기준·지도_출처가 있다",
      _rep68 and all(x.get("분할_기준") and x.get("지도_출처") for x in _rep68),
