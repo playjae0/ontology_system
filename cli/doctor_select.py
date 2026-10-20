@@ -51,6 +51,19 @@ def _consts(nodes):
     return {c.value for n in nodes for c in ast.walk(n) if isinstance(c, ast.Constant) and isinstance(c.value, str)}
 
 
+def _walk(tree):
+    """나무를 **한 번** 돈다 — `(마디 목록(ast.walk와 같은 차례), {자식: 부모})`."""
+    from collections import deque
+    out, parent, todo = [], {}, deque([tree])
+    while todo:
+        n = todo.popleft()
+        out.append(n)
+        for ch in ast.iter_child_nodes(n):
+            parent[ch] = n
+            todo.append(ch)
+    return out, parent
+
+
 def _is_root(node):
     return isinstance(node, ast.Name) and node.id.upper().lstrip("_").endswith("ROOT")
 
@@ -100,20 +113,22 @@ class Graph:
         return out
 
     def _imports(self, nodes, pkg=""):
+        return self._import_refs((n for root in nodes for n in ast.walk(root)), pkg)
+
+    def _import_refs(self, walked, pkg=""):
         refs = set()
-        for root in nodes:
-            for n in ast.walk(root):
-                if isinstance(n, ast.Import):
-                    for a in n.names:
-                        refs |= self._resolve(a.name)
-                elif isinstance(n, ast.ImportFrom):
-                    base = n.module or ""
-                    if n.level:
-                        parts = pkg.split(".") if pkg else []
-                        base = ".".join(parts[:max(0, len(parts) - n.level + 1)] + ([base] if base else []))
-                    refs |= self._resolve(base)
-                    for a in n.names:
-                        refs |= self._resolve(f"{base}.{a.name}" if base else a.name, exact=True)
+        for n in walked:
+            if isinstance(n, ast.Import):
+                for a in n.names:
+                    refs |= self._resolve(a.name)
+            elif isinstance(n, ast.ImportFrom):
+                base = n.module or ""
+                if n.level:
+                    parts = pkg.split(".") if pkg else []
+                    base = ".".join(parts[:max(0, len(parts) - n.level + 1)] + ([base] if base else []))
+                refs |= self._resolve(base)
+                for a in n.names:
+                    refs |= self._resolve(f"{base}.{a.name}" if base else a.name, exact=True)
         return refs
 
     # ---------------------------------------------------------------- run.py 명령 마디
@@ -150,18 +165,18 @@ class Graph:
         return out
 
     # ---------------------------------------------------------------- 파일 하나
-    def _scan_calls(self, tree, rec):
-        """글로 훑는 줄 — 그 줄의 문자열(부모 폴더 대조) · 코드 폴더를 훑으면 그 폴더 · 레포 뿌리면 전부 · 레포 통째 사본."""
-        parent, named = {}, {}
-        for n in ast.walk(tree):
-            for ch in ast.iter_child_nodes(n):
-                parent[ch] = n
+    def _scan_calls(self, tree, rec, walked=None, parent=None):
+        """글로 훑는 줄 — 그 줄의 문자열(부모 폴더 대조) · 코드 폴더를 훑으면 그 폴더 · 레포 뿌리면 전부 · 레포 통째 사본.
+        `walked` · `parent`는 한 번 훑은 마디 · 부모(`_walk` — B121 ② 같은 결과 · 나무를 한 번만 돈다)."""
+        if walked is None:
+            walked, parent = _walk(tree)
+        named = {}
         for n in tree.body:                               # 모듈 머리의 이름 목록(`ASSETS = ("prompts", "kit", …)`)
             if isinstance(n, ast.Assign) and isinstance(n.value, (ast.Tuple, ast.List, ast.Set)):
                 for t in n.targets:
                     if isinstance(t, ast.Name):
                         named[t.id] = _consts([n.value])
-        for c in ast.walk(tree):
+        for c in walked:
             if not isinstance(c, ast.Call):
                 continue
             fn = getattr(c.func, "attr", getattr(c.func, "id", None))
@@ -203,8 +218,9 @@ class Graph:
         except SyntaxError:
             return rec
         pkg = f[:-3].replace("/", ".").rsplit(".", 1)[0] if "/" in f else ""
-        refs = self._imports([tree], pkg)
-        consts = _consts([tree])
+        walked, parent = _walk(tree)
+        refs = self._import_refs(walked, pkg)
+        consts = {c.value for c in walked if isinstance(c, ast.Constant) and isinstance(c.value, str)}
         for v in consts:
             if _MOD.match(v):
                 refs |= self._resolve(v, main=True)
@@ -216,7 +232,7 @@ class Graph:
             if v == "ls-files":
                 rec["whole"] = True
         rec["run"] = "run.py" in consts or any(_PYLIT.match(v) and v.endswith("/run.py") for v in consts)
-        self._scan_calls(tree, rec)
+        self._scan_calls(tree, rec, walked, parent)
         rec["refs"], rec["consts"] = refs - {f}, consts
         return rec
 
@@ -287,9 +303,13 @@ def suite_facts(suites):
     return {s: g.facts(f"tests/{s}.py") for s in suites}
 
 
+def _unpickable(f):
+    return f.startswith(UNPICKABLE) and (f.startswith("tests/fixtures/") or not f.endswith(".py"))
+
+
 def readers(f, facts):
     """파일 하나를 읽는 스위트 — `None`이면 고를 수 없다(전체)."""
-    if f.startswith(UNPICKABLE) and (f.startswith("tests/fixtures/") or not f.endswith(".py")):
+    if _unpickable(f):
         return None
     name, up = Path(f).name, Path(f).parent.name
     top = next((d for d in sorted(CODE_DIRS, key=len, reverse=True) if f.startswith(d + "/")), None)
@@ -305,7 +325,10 @@ def readers(f, facts):
 
 
 def pick_changed(suites, files, facts=None):
-    """`(고른 스위트 또는 None(=전체), 줄 목록)` — 파일마다 무엇을 골랐나."""
+    """`(고른 스위트 또는 None(=전체), 줄 목록)` — 파일마다 무엇을 골랐나 · 고를 수 없는 파일이 있으면 그래프를 짓지 않는다."""
+    stop = next((f for f in files if _unpickable(f)), None)
+    if stop is not None:
+        return None, [f"{stop} — 이름을 지어 읽는 자산 폴더 · 고를 수 없다 → 전체"]
     facts = facts if facts is not None else suite_facts(suites)
     picked, lines = set(), []
     for f in files:

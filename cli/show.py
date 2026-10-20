@@ -270,9 +270,9 @@ def cmd_doc(args):
               f"({_sr.get('decided_by')} · {_sr.get('at')})")
         for _n, _r in (_sr.get("sheets") or {}).items():
             print(f"    · {_screen.pad(_n, 20)}{_r}")
-    # **시트마다 무엇으로 잘랐나**(B87 ②) — 고정 규칙 / 선언(패턴 목록) / 통째.
+    # **시트마다 무엇으로 잘랐나**(B87) — 고정 규칙 / 통째.
     # 재료는 청크의 `meta.split_path`다(새 계산 0). 산문 엑셀이 아니면 줄이 없다.
-    _hier = struct_rule.summary(list(mine.values()), {}, [])["시트"]
+    _hier = struct_rule.frame_paths(list(mine.values()))
     if any((c.get("meta") or {}).get("split_path") for c in mine.values()):
         print("  계층")
         for _n, _how in _hier.items():

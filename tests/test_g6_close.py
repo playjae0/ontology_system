@@ -13,7 +13,8 @@
      순서와 끝까지를 잰다) 명세에 취소선 하나를 넣으면 ⇒ 단계 일곱 줄이 전부 요약에 서고 · doctor FAIL 뒤에도 네 벌(진짜)이 돌아
      「전부 같다」 · rc 1 · `--base`가 없으면 rc 2
   ⓒ 명세 패치 — 지금 명세에서 고른 문장으로 만든 패치는 `--check` 통과 · 쓰기 0 · `지금`이 둘 · 없음 · `바뀔`에 취소선은 그
-     항목 이름과 함께 FAIL · `--apply`는 하나라도 어긋나면 쓰기 0(명세 사본 지문 같음) · 다 맞으면 그 문장만 바뀐다 · 점검이
+     항목 이름과 함께 FAIL · `--apply`는 하나라도 어긋나면 쓰기 0(명세 사본 지문 같음) · 다 맞으면 그 문장만 바뀐다 · 미러
+     body만 바뀌면 「재봉인 대상 <쌍>」 알림(실패 아님 · `--apply`는 쓴다) · 다른 검사가 함께 늘면 쓰기 0(B121 ④) · 점검이
      레포의 검사 결과 파일을 바꾸지 않는다
   ⓓ 명세 모양 — 지금 명세는 기준 그대로 통과 · 사본에 취소선 하나 · 칸 밖 글 하나를 더하면 둘 다 위반이고 기준은 그대로 ·
      줄어든 수는 기준을 내린다(기준 사본에 수와 기록)
@@ -77,6 +78,9 @@ SUITES = re.findall(r'^    \("(test_[a-z0-9_]+|verify_roundtrip)"', (ROOT / "doc
 # ────────────────────────────────────────────────────────────── ⓐ
 print("\n■ ⓐ 고르기 — --only · --changed (판정 아님)")
 from core.state import log as _LOG                                  # noqa: E402 — 명령 로그 자리(그 모듈이 안다)
+from concurrent.futures import ThreadPoolExecutor                  # noqa: E402
+_bg = ThreadPoolExecutor(2)
+_facts_f = _bg.submit(DS.suite_facts, SUITES)                       # 정적 선택 그래프 — 아래 하위 실행을 기다리는 동안 짓는다
 rc, out = _run(["doctor.py", "--only", "g6_reg"])
 _log = max(_LOG.log_dir().glob("doctor_*.log"), key=lambda p: p.stat().st_mtime, default=T / "없음")
 _ran = re.findall(r"^\s*\[[^\]]+\] (test_[a-z0-9_]+)\s+\d+ PASS / \d+ FAIL", out, re.M)
@@ -94,11 +98,69 @@ show("ⓐ 모르는 이름 ⇒ 사용법 · rc 2(아무것도 돌지 않는다)"
      f"rc {rc2}")
 
 _table = json.loads((ROOT / "docs" / "회귀스위트" / "자산" / "스위트_읽기_표본.json").read_text(encoding="utf-8"))["표본"]
-_facts = DS.suite_facts(SUITES)
+_facts = _facts_f.result()
 _lost = {f: sorted(set(want) - (DS.readers(f, _facts) or set(SUITES))) for f, want in _table.items()}
 _lost = {f: v for f, v in _lost.items() if v}
 show("ⓐ 실행 기록 표본의 파일마다 정적 선택 ⊇ 실제로 읽은 스위트(빠뜨림 0)",
      not _lost and len(_table) >= 5, f"표본 {len(_table)} 파일 · 빠뜨림 {_lost}")
+
+# ⓒ의 재료 — 명세 사본 · 패치 표본(실행은 아래 레포 사본 실행과 함께 돈다 · B121 ②ⓓ)
+SP = T / "spec_copy" / "docs" / "spec"
+shutil.copytree(ROOT / "docs" / "spec", SP)
+shutil.copytree(ROOT / "docs" / "archive", SP.parent / "archive")
+_name = "0_기반과원칙.md"
+_text = (SP / _name).read_text(encoding="utf-8")
+_line = next(ln for ln in _text.splitlines() if 20 < len(ln) < 300 and not ln.lstrip().startswith(("|", "#", ">"))
+             and "~~" not in ln and _text.count(ln) == 1)
+_twice = next(w for w in ("문서", "규칙", "판정") if _text.count(w) > 1)
+_new = " 시험으로 끼운 문장이다(B117)."
+GOOD = T / "good.md"
+GOOD.write_text(f"# 시험 패치\n\n### {_name} 좋음\n지금: {_line}\n바뀔: {_line}{_new}\n까닭: B117 ② 시험\n",
+                encoding="utf-8")
+BAD = T / "bad.md"
+BAD.write_text(f"# 시험 패치\n\n### {_name} 좋음\n지금: {_line}\n바뀔: {_line}{_new}\n까닭: 시험\n\n"
+               f"### {_name} 둘\n지금: {_twice}\n바뀔: {_twice}(B117)\n까닭: 시험\n\n"
+               f"### {_name} 없음\n지금: 이 문장은 명세에 없다 ZQX\n바뀔: 없다(B117)\n까닭: 시험\n\n"
+               f"### {_name} 취소선\n지금: {_line}\n바뀔: {_line} ~~옛 규칙~~ 새 규칙(B117)\n까닭: 시험\n",
+               encoding="utf-8")
+_res = {f: f.read_bytes() for f in (ROOT / "docs" / "회귀스위트" / "자산").glob("*_결과.json")}
+_fp0 = _fp(SP)
+# 미러 재봉인(B121 ④) — 늘어난 것이 미러 봉인뿐이면 알림(실패 아님) · 다른 검사가 함께 늘면 쓰기 0
+_pair = next(x for x in json.loads((ROOT / "docs" / "회귀스위트" / "미러쌍.json").read_text(encoding="utf-8"))
+             if x["body"]["kind"] == "para" and (SP / x["body"]["doc"]).read_text(encoding="utf-8").count(x["body"]["anchor"]) == 1)
+_anc = _pair["body"]["anchor"]
+_mir = f"### {_pair['body']['doc']} 미러 body\n지금: {_anc}\n바뀔: {_anc} 시험으로 끼운 문장이다(B121).\n까닭: 시험\n"
+MIR, MIX = T / "mirror.md", T / "mirror_shape.md"
+MIR.write_text("# 시험 패치\n\n" + _mir, encoding="utf-8")
+MIX.write_text("# 시험 패치\n\n" + _mir + f"\n### {_name} 긴 줄\n지금: {_line}{_new}\n바뀔: {_line}{_new}\n{'가' * 1600}(B121)\n"
+               "까닭: 시험\n", encoding="utf-8")
+
+def _spec_runs():
+    """ⓒ의 하위 실행 묶음 — 명세 사본(SP)에서만 돈다(레포 사본 BOX의 실행과 함께 돈다 · 어서션은 아래 ⓒ 자리에서 같은 순서로)."""
+    r = {"fp0": _fp(SP)}
+    r[7] = _run(["tools/spec_patch.py", "--check", str(GOOD), "--spec", str(SP)])
+    r["fp7"] = _fp(SP)
+    r[9] = _run(["tools/spec_patch.py", "--apply", str(BAD), "--spec", str(SP)])   # 항목 줄은 --check와 같은 함수(verify)
+    r["fp9"] = _fp(SP)
+    r["others"] = {p.name: p.read_bytes() for p in SP.glob("*.md") if p.name != _name}
+    r[10] = _run(["tools/spec_patch.py", "--apply", str(GOOD), "--spec", str(SP)])
+    r["after"] = (SP / _name).read_text(encoding="utf-8")
+    r["others_after"] = {n: (SP / n).read_bytes() for n in r["others"]}
+    r["tmp_left"] = list(SP.glob(".*.tmp"))
+    body = SP / _pair["body"]["doc"]
+    r["body0"] = body.read_bytes()
+    r[13] = _run(["tools/spec_patch.py", "--check", str(MIR), "--spec", str(SP)])
+    r[14] = _run(["tools/spec_patch.py", "--apply", str(MIR), "--spec", str(SP)])
+    r["body14"] = body.read_bytes()
+    body.write_bytes(r["body0"])
+    r["fp1"] = _fp(SP)
+    r[15] = _run(["tools/spec_patch.py", "--apply", str(MIX), "--spec", str(SP)])
+    r["fp15"] = _fp(SP)
+    return r
+
+
+_spec_f = _bg.submit(_spec_runs)
+
 
 # 레포 사본(git) — 작업 트리(추적 + 추적 밖 새 파일 · 무시 파일 제외)
 BOX = T / "box"
@@ -138,12 +200,7 @@ def _bottoms(text):
     return {m.group(1) for m in re.finditer(r"^([ABC]) .*(?:빠짐 [1-9]|더함 [1-9]|다른 파일 \['|같음 False)", text, re.M)}
 
 
-rc11, out11 = _run(["tools/four_way.py", "--base", "HEAD"], cwd=BOX)
-# 기대 변경(B119 ⑥ — 바닥 C에 표본 ⓑ(TW 꼴) FWC3가 더해져 산문 셋)
-show("ⓔ 같은 커밋끼리 — 바닥 A · B · C 전부 같다(rc 0) · C가 넣은 산문 셋이 성공",
-     rc11 == 0 and "전부 같다" in out11 and not _bottoms(out11)
-     and re.search(r"지금 C 넣기 \{'FWC1': '성공', 'FWC2': '성공', 'FWC3': '성공'\}", out11),
-     (out11.strip().splitlines() or [""])[-1])
+# 같은 커밋끼리(A · B · C 전부 같다)는 아래 ⓑ 마감 한 줄 안의 네 벌(진짜)이 잰다 — 한 번만 돈다 (B121 ②ⓓ)
 _hd = BOX / "core" / "build" / "heading.py"
 _src = _hd.read_text(encoding="utf-8")
 _fn = next((n for n in ast.walk(ast.parse(_src)) if isinstance(n, ast.FunctionDef) and n.name == "chain_for"), None)
@@ -181,6 +238,13 @@ show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 �
      and "전부 같다" in _summ and re.search(r"FAIL [2-9]", _summ),
      f"rc {rc5} · doctor {_doc} · {_chk[:90]}")
 _steps = re.search(r"단계 전문 (\S+)", _summ)                     # 사본의 단계 전문 — 시험이 지운다
+_fw = (Path(_steps.group(1)) / "3_four_way.txt") if _steps else None
+out11 = _fw.read_text(encoding="utf-8") if _fw and _fw.exists() else ""
+# 기대 변경(B119 ⑥ — 바닥 C에 표본 ⓑ(TW 꼴) FWC3가 더해져 산문 셋) · 마감 한 줄 안의 네 벌 전문으로 잰다(B121 ②ⓓ)
+show("ⓔ 같은 커밋끼리 — 바닥 A · B · C 전부 같다(rc 0) · C가 넣은 산문 셋이 성공",
+     "전부 같다" in out11 and not _bottoms(out11)
+     and re.search(r"지금 C 넣기 \{'FWC1': '성공', 'FWC2': '성공', 'FWC3': '성공'\}", out11),
+     (out11.strip().splitlines() or [""])[-1])
 if _steps and Path(_steps.group(1)).name.startswith("onto_close_"):
     shutil.rmtree(_steps.group(1), ignore_errors=True)
 rc6, out6 = _run(["tools/close.py"])
@@ -188,45 +252,31 @@ show("ⓑ --base가 없으면 사용법 · rc 2", rc6 == 2 and "[사용법]" in 
 
 # ────────────────────────────────────────────────────────────── ⓒ
 print("\n■ ⓒ 명세 패치 — --check · --apply(사본)")
-SP = T / "spec_copy" / "docs" / "spec"
-shutil.copytree(ROOT / "docs" / "spec", SP)
-shutil.copytree(ROOT / "docs" / "archive", SP.parent / "archive")
-_name = "0_기반과원칙.md"
-_text = (SP / _name).read_text(encoding="utf-8")
-_line = next(ln for ln in _text.splitlines() if 20 < len(ln) < 300 and not ln.lstrip().startswith(("|", "#", ">"))
-             and "~~" not in ln and _text.count(ln) == 1)
-_twice = next(w for w in ("문서", "규칙", "판정") if _text.count(w) > 1)
-_new = " 시험으로 끼운 문장이다(B117)."
-GOOD = T / "good.md"
-GOOD.write_text(f"# 시험 패치\n\n### {_name} 좋음\n지금: {_line}\n바뀔: {_line}{_new}\n까닭: B117 ② 시험\n",
-                encoding="utf-8")
-BAD = T / "bad.md"
-BAD.write_text(f"# 시험 패치\n\n### {_name} 좋음\n지금: {_line}\n바뀔: {_line}{_new}\n까닭: 시험\n\n"
-               f"### {_name} 둘\n지금: {_twice}\n바뀔: {_twice}(B117)\n까닭: 시험\n\n"
-               f"### {_name} 없음\n지금: 이 문장은 명세에 없다 ZQX\n바뀔: 없다(B117)\n까닭: 시험\n\n"
-               f"### {_name} 취소선\n지금: {_line}\n바뀔: {_line} ~~옛 규칙~~ 새 규칙(B117)\n까닭: 시험\n",
-               encoding="utf-8")
-_res = {f: f.read_bytes() for f in (ROOT / "docs" / "회귀스위트" / "자산").glob("*_결과.json")}
-_fp0 = _fp(SP)
-rc7, out7 = _run(["tools/spec_patch.py", "--check", str(GOOD), "--spec", str(SP)])
+_R = _spec_f.result()
+_bg.shutdown()
+rc7, out7 = _R[7]
 show("ⓒ 지금 명세에서 고른 문장의 패치 ⇒ --check 통과(사본 적용 뒤 문서 검사 일곱 그대로) · 쓰기 0",
-     rc7 == 0 and "[PASS] 사본 적용 뒤 문서 검사 일곱" in out7 and _fp(SP) == _fp0, f"rc {rc7}")
-rc8, out8 = _run(["tools/spec_patch.py", "--check", str(BAD), "--spec", str(SP)])
-_fl = [ln for ln in out8.splitlines() if ln.startswith("[FAIL]")]
+     rc7 == 0 and "[PASS] 사본 적용 뒤 문서 검사 일곱" in out7 and _R["fp7"] == _R["fp0"], f"rc {rc7}")
+rc9, out9 = _R[9]
+_fl = [ln for ln in out9.splitlines() if ln.startswith("[FAIL]")]
 show("ⓒ 지금이 둘 · 없음 · 바뀔에 취소선 ⇒ 그 항목 이름과 함께 FAIL · 맞는 항목은 PASS",
-     rc8 == 1 and any("둘" in x and "번" in x for x in _fl) and any("없음" in x and "0번" in x for x in _fl)
+     rc9 == 1 and any("둘" in x and "번" in x for x in _fl) and any("없음" in x and "0번" in x for x in _fl)
      and any(x.startswith(f"[FAIL] {_name} 취소선") and "취소선" in x.split("—", 1)[-1] for x in _fl)
-     and f"[PASS] {_name} 좋음" in out8, " | ".join(_fl)[:240])
-rc9, out9 = _run(["tools/spec_patch.py", "--apply", str(BAD), "--spec", str(SP)])
+     and f"[PASS] {_name} 좋음" in out9, " | ".join(_fl)[:240])
 show("ⓒ --apply는 하나라도 어긋나면 쓰기 0 — 명세 사본 지문 같음",
-     rc9 == 1 and "쓰기 0" in out9 and _fp(SP) == _fp0, f"rc {rc9}")
-_others = {p.name: p.read_bytes() for p in SP.glob("*.md") if p.name != _name}
-rc10, out10 = _run(["tools/spec_patch.py", "--apply", str(GOOD), "--spec", str(SP)])
-_after = (SP / _name).read_text(encoding="utf-8")
+     rc9 == 1 and "쓰기 0" in out9 and _R["fp9"] == _R["fp0"], f"rc {rc9}")
+rc10, _out10 = _R[10]
 show("ⓒ 다 맞으면 --apply가 그 문장만 바꾼다(다른 파일 바이트 그대로 · 임시 파일 흔적 0)",
-     rc10 == 0 and _after == _text.replace(_line, _line + _new, 1)
-     and all((SP / n).read_bytes() == b for n, b in _others.items()) and not list(SP.glob(".*.tmp")),
-     f"rc {rc10}")
+     rc10 == 0 and _R["after"] == _text.replace(_line, _line + _new, 1)
+     and _R["others_after"] == _R["others"] and not _R["tmp_left"], f"rc {rc10}")
+(rc13, out13), (rc14, out14), (rc15, out15) = _R[13], _R[14], _R[15]
+_note = f"[알림] 재봉인 대상 {_pair['id']}"
+show("ⓒ 미러 body만 바꾸는 패치 ⇒ --check는 「재봉인 대상 <쌍>」 알림 · 통과 · 쓰기 0 · --apply는 쓰고 같은 줄 (B121 ④)",
+     rc13 == 0 and _note in out13 and rc14 == 0 and _note in out14 and "적용 — 파일 1" in out14
+     and _R["body14"] != _R["body0"], f"rc {rc13} · {rc14} · {_pair['id'][:30]}")
+show("ⓒ 미러와 함께 다른 검사(모양 — 1500자+ 줄)가 늘면 ⇒ 재봉인 알림 없이 어긋남 · 쓰기 0 (B121 ④)",
+     rc15 == 1 and "늘었다: 미러 · 모양" in out15 and "재봉인 대상" not in out15 and "쓰기 0" in out15
+     and _R["fp15"] == _R["fp1"], f"rc {rc15}")
 show("ⓒ 패치 점검 · 적용이 레포의 검사 결과 파일을 바꾸지 않는다",
      all(f.read_bytes() == b for f, b in _res.items()), f"결과 파일 {len(_res)}")
 

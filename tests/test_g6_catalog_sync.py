@@ -222,7 +222,8 @@ _rc_off, _o_off = _boot()
 _rw(_P.common(), lambda c: c["categories"]["Process"].update(also={"Unit": ["sub", "detail"]})
     or c["categories"]["FailureEffect"].update(also={"Failure": ["main"]}))
 _rc_on, _o_on = _boot()
-_dq = subprocess.run([sys.executable, str(ROOT / "doctor.py"), "--quick"], cwd=str(ROOT),
+# doctor 머리 줄 = doctor가 하위 실행으로 그리는 화면 그 함수(`cli.doctor_view head`) — doctor 전체를 돌리지 않는다(B121 ②ⓓ)
+_dq = subprocess.run([sys.executable, "-m", "cli.doctor_view", "head"], cwd=str(ROOT),
                      capture_output=True, text=True, env={**os.environ, "USE_MOCK": "1"},
                      stdin=subprocess.DEVNULL).stdout
 show("ⓕ 겸 상태 세 갈래 — 꺼짐(겸 없음) · 켜짐(겸 + 겸 단 별칭) · 반쪽(⚠ 별칭 0) · 종료 코드 0 · doctor 같은 상태",

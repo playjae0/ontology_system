@@ -119,7 +119,8 @@ with tempfile.TemporaryDirectory(prefix="b90_") as _td:
     _rc3, _o3 = _boot()
     show("① ⓐ 빈칸을 채워 저장하면 bootstrap이 선다", _rc3 == 0, _o3.strip()[-120:])
 
-_q = subprocess.run([sys.executable, str(ROOT / "doctor.py"), "--quick"], cwd=str(ROOT),
+# doctor 머리 줄 = doctor가 하위 실행으로 그리는 화면 그 함수(`cli.doctor_view head`) — doctor 전체를 돌리지 않는다(B121 ②ⓓ)
+_q = subprocess.run([sys.executable, "-m", "cli.doctor_view", "head"], cwd=str(ROOT),
                     capture_output=True, text=True, env={**os.environ, "USE_MOCK": "1"},
                     stdin=subprocess.DEVNULL).stdout
 show("① doctor 첫 줄이 좌표 층과 공통 config 판을 말한다",

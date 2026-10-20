@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -97,9 +98,10 @@ def main(argv):
     got, want = _doctor_total(t)
     row(rc == 0, f"사전 점검 {' · '.join(PRE)}", f"{got}/{want} PASS" if got is not None else f"rc {rc}")
     parts, bad = [], []
-    for k in CHECKS:
-        rc, t = _run([sys.executable, str(ROOT / SUITE_DIR / f"점검_{k}.py")], logs / f"1_check_{k}.txt", env,
-                     {"REFINED_DIR": "docs/spec"})
+    with ThreadPoolExecutor(len(CHECKS)) as ex:            # 일곱은 서로 다른 결과 파일 — 함께 돈다(순서는 그대로)
+        got = list(ex.map(lambda k: _run([sys.executable, str(ROOT / SUITE_DIR / f"점검_{k}.py")],
+                                         logs / f"1_check_{k}.txt", env, {"REFINED_DIR": "docs/spec"}), CHECKS))
+    for k, (rc, t) in zip(CHECKS, got):
         last = (t.strip().splitlines() or [""])[-1].strip()
         parts.append(f"{k} {last[:60]}")
         if rc:

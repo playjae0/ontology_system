@@ -75,7 +75,7 @@ SUITES = [
     ("test_g6_alias_book", 13, "B108 — 별칭 대장(쓰는 손 하나 · 이름으로 · 같은 별칭 한 항목 · LLM 매칭 · 사람 · 개명 · 병합) · 재구축 동치(스냅샷 = seed + 대장 · 판 같음 · 태깅 0 · bootstrap 앞뒤 같음) · 처음 채움(공통 진입 · 재구축 계획) · 거두기(alias-reject · 비대화형 계획만 · 다시 싣지 않는다) · show aliases · 재구축 끝 줄 · 골격 개명 대상 없음 — 표·산문 × 층 둘"),
     ("test_g6_log_pipe", 8, "B109 — 명령 로그 보존(재구축 · 기본 fresh가 남기고 클린만 지운다) · 화면이 닫혀도 트레이스백 0(읽기 — run.py · python -m cli.* · doctor.py · 화면 스레드 · 쓰기 — 141 · 멈춤 줄 · ③은 시작 전 · 문서 끝 · 마무리까지 중 하나 · 줄 위치 표본 · 재인입은 회수 그래프까지 되돌림) — 표·산문 × 층 둘"),
     ("test_g6_stop_chunks", 5, "B110 — 시험·doctor의 하위 프로세스는 표준입력을 물려받지 않는다(소스 대조 0) · 닫힌 화면의 flush·close는 조용히 · 사람이 멈춘 문서(--step q · --step-every q)는 청크·그래프·사전·큐가 시작 전 · 문서 대장·체크포인트는 남고 다시 치면 추출 재사용으로 같은 결과 — 표·산문 × 층 둘"),
-    ("test_g6_ops_root", 16, "B111 — 운영 상태 폴더는 점검이 읽기만 한다(doctor --quick 두 갈래 · 설정 파일/환경변수 · 폴더 지문 전후 같다 · 격리는 한 함수) · 운영 루트의 클린은 묻는다(비대화형 거부 · 터미널 n · --yes · mock 루트와 기본 fresh는 그대로 · 코드 거부) · 재구축은 지우기 전에 사전 점검(실호출 설정 없음 · 지문 불변) · 끝나지 않은 재구축은 계획 파일에서 이어 간다(kill -9 · 중단 · 문서 실패 · 사전 점검 실패 → 같은 그래프 · 끝) — 표·산문 × 층 둘"),
+    ("test_g6_ops_root", 14, "B111 — 운영 상태 폴더는 점검이 읽기만 한다(doctor --quick 두 갈래 · 설정 파일/환경변수 · 폴더 지문 전후 같다 · 격리는 한 함수) · 운영 루트의 클린은 묻는다(비대화형 거부 · 터미널 n · --yes · mock 루트와 기본 fresh는 그대로 · 코드 거부) · 재구축은 지우기 전에 사전 점검(실호출 설정 없음 · 지문 불변) · 끝나지 않은 재구축은 계획 파일에서 이어 간다(kill -9 · 중단 · 문서 실패 · 사전 점검 실패 → 같은 그래프 · 끝) — 표·산문 × 층 둘"),
     ("test_g6_reconcile", 17, "B112 — 맞춤표(식마다 칸 합 = 전체 · 값 = 대장 개체 행 · 보류 = 결과 묶음 · 인입 · show report · 재구축 재생 · 명령 로그 · 깨뜨린 묶음 [결함]) · 시트 숨김(표 · 기본 skip · LLM 0 · --sheets로 살림 · 기록이 있어도 표) · 청크 목차(행 = 청크 · 상태 합 · 라벨 엑셀·PPT · 개체 0 목록) · 소속 대상 합 · 엣지 없는 노드 = 그래프 · 대장 dir = 엣지 방향 · 문서 좌표 경고·후보 · 체크포인트 자리·없으면 [결함] — 표·산문 × 층 둘"),
     ("test_g6_relink", 11, "B113 — 다른 공정 골격 이름은 노드 0 · 관련 링크(about) · 대장 mention · 맞춤 칸(산문 × 층 둘 · 표) · 빈칸 표시(개체 칸 개체 0 · 좌표 칸은 문서 좌표 · 값 칸은 그대로 + 표지 · 목록은 공통 config) · 재연결(좌표 미해소 보류 행이 ops relink로 선다 · 추출 LLM 0 · 되살린 노드는 사전에 남는다 · 뒤 청크 유닛에 앞 개체가 다음 바퀴에 · 붙음 0에서 멈춤 · 클린 2회 같다)"),
     ("test_g6_outline", 5, "B115 — 문서 개요(대상 제목만 노드 · 주제 0 · 제목에 없는 이름 · 목록 밖 카테고리 버림 · 같은 제목이면 재사용 LLM 0 · 추출 입력에 조상 제목 개체) · 상위로 올라가는 폴백 사슬(NG unit → 추출부 → 공정 · 대장 폴백(제목 n단) · 맞춤 제목 폴백 · 소속 대상 제목 개체) · 연결 보강(엣지 없는 · 공정에만 붙은 개체 · 후보 안 · 근거 문장 · 버림 · 재구축 재생 LLM 0 · 상한 손잡이 · mock 판정 없음) · 엑셀 · Word · PPT 같은 함수 · 표는 개요 0 — 표·산문 × 층 둘"),
@@ -104,7 +104,7 @@ SUITES = [
     ("test_p1_csv", 54, "CSV reader 구조 등가 · 인코딩·구분자 판정 · PPT/PDF 임계 경로"),
     ("test_p1_form", 35, "스프레드시트 산문 레벨 규칙 · 형태 판정(시트 역할 — 입구는 시트마다 · 역할 뒤 prose 시트) · 관문 ③④의 시트 역할 · 큐 case 두 값"),
     ("test_p1_coord", 26, "시스템이 아는 값은 LLM이 쓰지 않는다 · 분할 기준 · 좌표 태깅 상한"),
-    ("test_p1_hier", 24, "산문 엑셀 계층(B87) — 번호 군·첫 등장 레벨 · 글자 상한(행 경계·무손실) · 규칙 선언(안 선 시트만·기록·재사용·ref/mock/리허설 호출 0) · 셀 안 줄바꿈의 locator(B89 — 행이 단위)"),
+    ("test_p1_hier", 13, "산문 엑셀 계층(B87) — 번호 군·첫 등장 레벨 · 글자 상한(행 경계·무손실) · 안 선 시트의 등록 · 셀 안 줄바꿈의 locator(B89 — 행이 단위)"),
     ("test_p1_media", 19, "리더의 폭(B88) — 엑셀 그림 → ④(ref·skip 0 · 변환·건너뜀 사유 · --no-images 기록 · 재사용) · docx(개요 수준·번호·표·그림·삭제 0·.doc 거부) · 등록 doc_type status(운영 어댑터)"),
     ("test_p2", 68, "어댑터 생성 킷 6종 · 검수 뷰 렌더러 · 지도 필드 셋 · B76 스켈레톤 최소 어댑터·형 검사 G4F · B77 전시물 실행 관문"),
     # **P3는 파일 여덟이다**(B78 2b) — 등록 파이프라인의 칸별로 갈랐고 합은 그대로다.
@@ -116,7 +116,7 @@ SUITES = [
     ("test_p3_screen", 52, "관문 전 구간 · 막는 이유와 다음 줄 · status·confirm 재실행 · 확정 요약"),
     ("test_p3_ledger", 46, "관문이 채우고 찍는다 · columns 값 셋 · 어휘 정적 대조 · 형태 판정 문의"),
     ("test_p3_flow", 65, "지문·미선택 갈래 · CSV 등가 · 열 판정 대장 · 분할 줄 · 좌표 예고 · G39·G4G"),
-    ("test_2a_gateway", 76, "게이트웨이 골조 — 12지점 도달 가능성 · **12지점 본문 스모크**(B79 ③ⓒ · ⑩시트 역할 B91 · ⑪문서 개요 · ⑫연결 보강 B115) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
+    ("test_2a_gateway", 75, "게이트웨이 골조 — 12지점 도달 가능성 · **12지점 본문 스모크**(B79 ③ⓒ · ⑩시트 역할 B91 · ⑪문서 개요 · ⑫연결 보강 B115) · ⑦ 배선 · 변이 시험 · B63 대장 잠금 · **B80 요청 조립(CHAT_TEMPERATURE)·임베딩 백엔드 gateway|local**"),
     # **뷰어는 세미 플랫폼이다**(B82) — headless로 잰다(브라우저 의존 0).
     ("test_viewer", 60, "뷰어 서버(쓰기 0 · 자리 탈출 거부) · 벤더링 렌더러 · 질의 trace 계측 · 연결 현황 · B84 테마 대비·다시 칠하기·상호작용·오류 문면 · B103 배치 셋·닻·연결 없는 노드·이웃·노드 상세의 근거 · B114 힘 배치 워커(시간 끊기 0 · 난수 0) · 크기 계단 · 힘 손잡이 · 벡터 이어 만들기 · 진행 줄 · 질의 단계 · 상태 라우트 GET만"),
     ("verify_roundtrip", 50, "raw 실물 ↔ 계약 JSON 역산 정합"),
@@ -197,15 +197,16 @@ def _clean():
     return r.returncode, residue
 
 
-def _capture_lines():
+def _capture_lines(probe=True):
     """**PPT · PDF 캡처**(B128 ③) — soffice(Impress · 실제 변환)와 판정 한 자리(`parser.render.capture_path`)의 답 한 줄.
     실호출 PPT · PDF 인입은 사전 점검이 같은 함수로 멈추므로 여기 답이 곧 그 답이다(문서마다 옆 PDF는 따로 잰다)."""
     from core import paths                                  # noqa: F401 — 파서 주입(soffice 지정 자리 — B129 ①)
     from parser import render
     exe, where, tried = render.find_soffice()               # 찾기 한 함수 (B129 ①)
-    ok, route, miss = render.capture_path(probe=True)
+    ok, route, miss = render.capture_path(probe=probe)      # 실제 변환은 `--env`만(몇 초 — 전체 · --quick은 Impress 구성 요소로)
     line(OK if exe else WARN, f"soffice {'있음 — ' + exe + '(' + where + ')' if exe else '없음'}",
-         "LibreOffice — PPTX → PDF 변환(캡처 길 하나 · Impress 포함 · 실제 변환으로 쟀다)" if exe
+         ("LibreOffice — PPTX → PDF 변환(캡처 길 하나 · Impress 포함 · " + ("실제 변환으로 쟀다)" if probe else
+                                                                     "구성 요소로 쟀다 — 실제 변환은 --env)")) if exe
          else f"찾아본 자리: {tried} — LibreOffice(Impress 포함)를 표준 자리에 깔거나 다른 자리면 셸 설정 파일에 "
               f"{render.SOFFICE_ENV}=<soffice 경로> · 또는 PowerPoint에서 PDF로 저장해 같은 폴더 · 같은 이름으로")
     line(OK if ok else WARN, f"PPT 캡처 — {'가능(' + route + ')' if ok else '불가'}",
@@ -214,7 +215,7 @@ def _capture_lines():
 
 
 # ================================================================ ① 환경
-def check_env():
+def check_env(probe=False):
     head("① 환경 — 이 기계에서 돌아가는가")
 
     v = sys.version_info
@@ -241,7 +242,7 @@ def check_env():
         except (ImportError, ValueError):
             found = False
         line(OK, f"{mod} (선택)" if found else f"{mod} 없음 (선택 — 문제 아님)", why)
-    _capture_lines()
+    _capture_lines(probe)
     # **CSV는 의존이 없다** — 표준 `csv` 모듈이라 선택 의존 목록에 오르지 않는다.
     line(OK, "csv/tsv 읽기 (표준 라이브러리)",
          "reader가 받는 포맷: .xlsx · .xlsm · .pptx · .csv · .tsv — "
@@ -622,7 +623,7 @@ def main(argv):
     # 상태 줄 · 층 이름(B99 ①) · 정합(B99 ⑩) — 운영 루트를 읽기만 (B111 ①)
     operating("head")
 
-    env_ok = check_env()
+    env_ok = check_env(probe=only_env)
     if only_env:
         print(f"\n{'=' * 66}")
         print("환경 점검만 수행했다. 전체는 `python doctor.py`")

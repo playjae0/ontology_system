@@ -223,8 +223,7 @@ def number_levels(lines):
 def monotonic_reasons(rows):
     """레벨이 **비단조**인 곳 — 첫 제목이 1이 아니거나 한 번에 두 단계 이상 내려간다.
 
-    `validate`의 레벨 검사와 같은 규칙이다(한 벌) — 규칙 선언을 부를지 정하는 조건이
-    그 검사와 갈리면 「고정 규칙이 섰다」의 뜻이 두 개가 된다.
+    `validate`의 레벨 검사가 이 함수를 부른다(한 벌).
     """
     out, prev = [], 0
     for r in rows:

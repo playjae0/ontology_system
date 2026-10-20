@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """G6 ㉖ 명령 로그 보존 · 화면이 닫혀도 트레이스백 없이 (B109 ① ②).
 
-창작 표본(mock)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표·산문) × 층(process · quality):
-표 CP01(cp · process) · PFMEA01(pfmea · quality) · 산문 B109SP(prose 엑셀 · process · 힌트 개체 Property) · B109SQ(같은
-통합문서 사본 · quality · 힌트 개체 Failure). 화면 닫힘은 둘로 잰다 — 진짜 파이프(자식 프로세스의 화면을 첫 쓰기 전에 닫는다 ·
+창작 표본(mock)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 대표 둘(B121 ②ⓒ — 형태 · 층을 한 번씩):
+표 CP01(cp · process) · 산문 B109SQ(prose 엑셀 사본 · quality · 힌트 개체 Failure). 화면 닫힘은 둘로 잰다 — 진짜 파이프(자식 프로세스의 화면을 첫 쓰기 전에 닫는다 ·
 `| head -0`과 같다)와 줄 위치(공통 진입의 화면 스트림이 k번째 줄에서 `BrokenPipeError` — 파이프가 그 줄에서 닫힌 것과 같다).
 
 잠그는 성질:
@@ -50,10 +49,9 @@ _HINTED = {"B109SP": {"surface": "B109 산문 속성", "category": "Property"},
 for _d, _e in _HINTED.items():
     (HINTS / f"{_d}.json").write_text(json.dumps({"사양_기계!R8-R17": {"entities": [_e], "relations": []}},
                                                 ensure_ascii=False), encoding="utf-8")
-#: 형태 × 층 — (원본, doc_type, 추가 인자)
+#: 대표 둘 — (원본, doc_type, 추가 인자) · 되돌림 경계는 형태 · 층과 무관한 한 자리(`run_document`)라 곱하지 않는다(B121 ②ⓒ —
+#: 표 · process와 산문 · quality가 두 형태 · 두 층을 한 번씩 · 층 호환은 층 어휘 정적 점검 + 네 벌이 잰다)
 CASES = {"표 · process": (FX / "raw" / "CP01.xlsx", None, []),
-         "표 · quality": (FX / "raw" / "PFMEA01.xlsx", None, []),
-         "산문 · process": (TMP / "B109SP.xlsx", DT, ["--sheets", SH, "--coord", "노칭"]),
          "산문 · quality": (TMP / "B109SQ.xlsx", QDT, ["--sheets", SH, "--coord", "노칭"])}
 TS = ("created", "at", "first_seen", "last_seen", "last_tried", "last_fp", "attempts", "obsoleted_at", "confirmed_at",
       "parsed_at", "first_ingested_at", "ingested_at", "updated_at", "last_hit")
@@ -254,7 +252,7 @@ show("ⓑ 쓰기 명령 파이프 닫힘(표 · 산문 × 층 둘) — 트레이
 _cuts = {}
 for case in CASES:
     n = TOTAL[case]
-    picks = sorted(set(range(1, n, max(1, n // 8))) | set(range(max(1, n - 11), n + 1)))
+    picks = sorted(set(range(1, n, max(1, n // 6))) | set(range(max(1, n - 9), n + 1)))   # B121 ②ⓓ — 고른 여섯 + 끝 열
     for k in picks:
         _base()
         rc, _l, lg = _inproc(case, k)

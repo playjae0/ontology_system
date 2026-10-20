@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """G6 — **숫자와 기준이 보이게** — 숫자 세 층 · 점수표 · 위치 칸 둘 · 묻는 자리 · 보강 버림 재생 · 거부 묶음 · 영향 범위 (B118).
 
-창작 표본(mock)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표 · 산문) × 층(process · quality): 표 CP01(cp ·
-process) · PFMEA01(pfmea · quality) · 산문 B118SP(prose 엑셀 · process · 힌트 개체 Property) · B118SQ(같은 통합문서 사본 · quality ·
-힌트 개체 Failure). 관문 답은 pty로 — **묻는 줄이 뜬 뒤에** 하나씩 넣는다(Ctrl-C는 그때의 SIGINT).
+창작 표본(mock)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 대표 둘(B121 ②ⓒ — 형태 · 층을 한 번씩): 표 CP01(cp ·
+process) · 산문 B118SQ(prose 엑셀 사본 · quality · 힌트 개체 Failure). 관문 답은 pty로 — **묻는 줄이 뜬 뒤에** 하나씩 넣는다(Ctrl-C는 그때의 SIGINT).
 
 잠그는 성질:
   ⓐ 숫자 — 문서 한 줄 요약의 수 = 맞춤표의 같은 줄(결말 · 보류 · 소속 대상)의 수 · `show summary`의 층별(골격 · auto · 확정 · 엣지 없는
@@ -55,10 +54,8 @@ _HINTED = {"B118SP": [{"surface": f"B118 산문 속성 {k}", "category": "Proper
 for _d, _e in _HINTED.items():
     (HINTS / f"{_d}.json").write_text(json.dumps({"사양_기계!R8-R17": {"entities": _e, "relations": []}},
                                                 ensure_ascii=False), encoding="utf-8")
-CASES = {"표 · process": (FX / "raw" / "CP01.xlsx", None, []),
-         "표 · quality": (FX / "raw" / "PFMEA01.xlsx", None, []),
-         "산문 · process": (TMP / "B118SP.xlsx", DT, ["--sheets", SH, "--coord", "노칭"]),
-         "산문 · quality": (TMP / "B118SQ.xlsx", QDT, ["--sheets", SH, "--coord", "노칭"])}
+CASES = {"표 · process": (FX / "raw" / "CP01.xlsx", None, []),          # 대표 둘(B121 ②ⓒ — 형태 · 층을 한 번씩 · 층 호환은
+         "산문 · quality": (TMP / "B118SQ.xlsx", QDT, ["--sheets", SH, "--coord", "노칭"])}   # 층 어휘 정적 점검 + 네 벌)
 #: 저장 전 관문 수(표 — 선택 · 파싱 · 좌표 · 판정 예고 / 산문 — + 추출 예고 · 추출 결과·판정 예고)
 BEFORE = {"표": 4, "산문": 5}
 PROMPT = "[계속 c / 멈춤 q]".encode("utf-8")
@@ -138,7 +135,7 @@ print("\n■ ⓐ 숫자 세 층 — 문서 한 줄 요약 · 전체 판 · 전�
 _base()
 OUT = {}
 for i, case in enumerate(CASES):
-    if i == 3:
+    if i == len(CASES) - 1:                 # 마지막 문서 앞의 판(--diff가 그 문서 몫만 바뀐 줄로 낸다)
         with contextlib.redirect_stdout(io.StringIO()):
             SS.main(["--save", "b118_3"])
     OUT[case] = _run(*_argv(case, "-v"))
@@ -184,7 +181,7 @@ for case in CASES:
     x = _raw["문서"].get(d) or {}
     _doc_ok.append((d, (x.get("노드"), x.get("엣지"), x.get("보류")) == (nn, ne, held), (nn, ne, held)))
 show("ⓐ show summary — 층별(노드 · 골격 · auto · 엣지 없는 노드 · 관계별 엣지) · 문서별(노드 · 엣지 · 보류) = 그래프 · 대장에서 센 수",
-     _lay_ok and all(ok for _d, ok, _x in _doc_ok) and len(_raw["문서"]) == 4,
+     _lay_ok and all(ok for _d, ok, _x in _doc_ok) and len(_raw["문서"]) == len(CASES),
      " · ".join(f"{d} {x}" for d, _ok, x in _doc_ok))
 _before = SS.load("b118_3")
 _dd = SS.diff(_before, _lines)
@@ -215,7 +212,7 @@ show("ⓒ 추출 청크 표 · 판정 값 표(-v)의 시트 칸 · 청크 칸 = 
 # ────────────────────────────────────────────────────────────── ⓑ 점수
 print("\n■ ⓑ 점수표 — 정답표 초안 · 채점 · 재구축 뒤 같은 표")
 _score_ok = []
-for case in ("표 · process", "산문 · process"):
+for case in ("표 · process",):              # 대표 하나(B121 ②ⓒ — 점수표는 대장 행을 읽는 한 함수 · 형태와 무관)
     d = _doc(case)
     show_score.table_path(d).unlink(missing_ok=True)
     t_out = _run("show", "score", d, "--template")
@@ -232,7 +229,7 @@ for case in ("표 · process", "산문 · process"):
 _rb = _run("rebuild", "--yes", "--allow-mock")
 for item in _score_ok:
     item.append(show_score.score(_doc(item[0])))
-show("ⓑ --template CSV의 행 = 대장의 개체 행 · 채운 표로 맞음 3(= · ㅇ · o) · 틀림 2(틀린 이름) · 빈칸 나머지 (표 · 산문)",
+show("ⓑ --template CSV의 행 = 대장의 개체 행 · 채운 표로 맞음 3(= · ㅇ · o) · 틀림 2(틀린 이름) · 빈칸 나머지",
      all(ok and a and (a["맞음"], a["틀림"], a["빈칸"]) == (3, 2, len(show_score.entity_rows(_doc(c))) - 5)
          for c, ok, a, _b in _score_ok),
      " · ".join(f"{c} {a and (a['맞음'], a['틀림'], a['빈칸'])}" for c, _ok, a, _b in _score_ok))
@@ -271,10 +268,10 @@ for case in CASES:
         _stop.append((case, k, {STOP_K: "ㅂ", CTRL_C: "Ctrl-C", STOP_Q: "q"}[s],
                       "멈춤" in out and "[성공]" not in out and n == k and _trace() == FULL[case][0]))
 show("ⓓ 저장 전 관문 전부(process — 관문마다 · quality — 판정 예고)에서 ㅂ · Ctrl-C · q는 멈춤 — 흔적(그래프 · 사전 · 큐 · 청크) = 시작 전",
-     all(ok for *_x, ok in _stop) and len(_stop) >= 2 * 3 + 4 + 5,
+     all(ok for *_x, ok in _stop) and len(_stop) >= 4 + 2 + 3,
      f"{len(_stop)}회 · 어긋남 {[(c, k, a) for c, k, a, ok in _stop if not ok][:4]}")
 _re = []
-for case in ("표 · process", "산문 · process"):
+for case in ("표 · process", "산문 · quality"):
     _base()
     out, sent, n = _drive(_argv(case, "--step"), [b"\n", b"x\n", STOP_K])
     _re.append((case, n == 3 and out.count("다시 친다") == 2 and "멈춤" in out and _trace() == FULL[case][0]))

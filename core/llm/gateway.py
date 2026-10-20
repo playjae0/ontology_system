@@ -88,7 +88,6 @@ POINTS = {
 # 준다(1.3 문답 · 1.4 생성). 화면·로그는 태그를 받아도 **어느 지점인가**를 답해야
 # 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
 CALL_TAGS = {"interview": "generate",
-             "struct_rule": "struct_map",      # B87 ② — 계층 규칙 선언은 ⑦ 안의 호출이다
              "structure": "outline",           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
              "deck": "outline"}                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(같은 지시문)
 

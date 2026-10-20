@@ -374,10 +374,9 @@ try:
     _q1 = Rdraft.basic_adapter_proposal([str(_SKIP)], said_prose=True)
 finally:
     _unroled(_SKIP)
-show("B89 ③ 제안 계산(청크·규칙 선언 시트)은 skip을 뺀 시트로 한다 — 운영과 같은 시트",
-     _q0 and _q1 and _q1["chunks"] < _q0["chunks"] and _q1["rule_frames"] < _q0["rule_frames"],
-     f"청크 {_q0 and _q0['chunks']}→{_q1 and _q1['chunks']} · "
-     f"규칙 시트 {_q0 and _q0['rule_frames']}→{_q1 and _q1['rule_frames']}")
+show("B89 ③ 제안 계산(청크)은 skip을 뺀 시트로 한다 — 운영과 같은 시트",
+     _q0 and _q1 and _q1["chunks"] < _q0["chunks"],
+     f"청크 {_q0 and _q0['chunks']}→{_q1 and _q1['chunks']}")
 from cli.register import generate as _gen                       # noqa: E402
 import io as _io                                                  # noqa: E402
 _stdin, sys.stdin = sys.stdin, _io.StringIO("")                  # 비대화형 — 권유는 고정 어댑터로

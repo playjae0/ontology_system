@@ -372,28 +372,6 @@ def _kill9():
     return f"둘째 문서 도중 kill -9(대장 {seen} · rc {rc})"
 
 
-def _interrupt():
-    """중단(Ctrl-C)은 **둘째 문서 구축 안에서 `KeyboardInterrupt`** — 되돌림 손이 도는 끊김. 진짜 신호는 정리(`__del__`) 중에
-    닿으면 CPython이 삼켜 재구축이 끝까지 가는 수가 있어(실측 1회) 자리를 정해 일으킨다 — 손이 돌지 못하는 끊김은 kill -9."""
-    from core.build import entry as EN
-    bd0, seen = EN._build_document, []
-
-    def bd(env, *a, **k):
-        if env["doc_id"] == "PFMEA01":
-            seen.append(list(json.loads(REG.read_text(encoding="utf-8"))))
-            raise KeyboardInterrupt
-        return bd0(env, *a, **k)
-    EN._build_document = bd
-    try:
-        _quiet(RB.main, ["--allow-mock", "--yes"], bootstrap=RUN.cmd_bootstrap, screen=RUN.fresh_screen)
-        how = "끝까지 갔다"
-    except KeyboardInterrupt:
-        how = "KeyboardInterrupt"
-    finally:
-        EN._build_document = bd0
-    return f"둘째 문서 구축 도중 중단({how} · 그때 대장 {seen[0] if seen else None})"
-
-
 def _docfail():
     f = RAWH / "PFMEA01.xlsx"
     keep = f.read_bytes()
@@ -427,7 +405,9 @@ def _preflight_after():
     return f"문서 하나 실패 뒤 사전 점검 실패(rc {rc})"
 
 
-for _how in (_kill9, _interrupt, _docfail, _preflight_after):
+# 끊김 둘(B121 ②ⓓ — 되돌림 손이 돌지 못하는 kill -9 · 문서 실패 뒤 사전 점검 실패 — 「이어 간다」는 끊긴 방식과 무관한 계획 파일
+# 한 자리라 넷을 곱하지 않는다 · 되돌림 손이 도는 중단(Ctrl-C)은 문서 단위 되돌림 시험(test_g6_stop_chunks · test_g6_safe_log)이 잰다)
+for _how in (_kill9, _preflight_after):
     _restore()
     _what = _how()
     _k = len(json.loads(REG.read_text(encoding="utf-8")))

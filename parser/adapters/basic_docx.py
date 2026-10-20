@@ -3,8 +3,8 @@
 
 `.pptx`는 슬라이드가, `.pdf`는 쪽이 경계를 주고, 스프레드시트는 계층을 읽어야 경계가
 나온다. Word는 스프레드시트 쪽이다 — 문단을 행으로 보고 **B87의 분할 엔진**을 그대로
-탄다(`parser.struct_rule.frame_chunks` → `struct_map.split` · 레벨 선택 · 글자 상한 · 규칙
-선언 훅). 분할 규칙을 새로 만들지 않는다(두 벌 금지).
+탄다(`parser.struct_rule.frame_chunks` → `struct_map.split` · 레벨 선택 · 글자 상한 · 문서
+구조 훅). 분할 규칙을 새로 만들지 않는다(두 벌 금지).
 
 **제목 판정** — 문단마다 하나를 고른다:
 
@@ -15,7 +15,7 @@
 | 굵게(문단 전체) | 1 | 개요·번호가 없는 문서의 마지막 신호 |
 | 번호 목록(`w:numPr`) · 표 행 | — | **제목이 아니다** — 목록과 표는 그 절의 본문이다 |
 
-**LLM 0회다**(규칙 선언 훅은 코어가 주입하고, 고정 규칙으로 안 선 문서에서만 부른다).
+**어댑터는 LLM 0회다**(문서 구조 훅은 코어가 주입한다 — B119 ①).
 """
 from __future__ import annotations
 
@@ -68,28 +68,6 @@ def _rows(raw, lines):
     return rows
 
 
-def rule_frames(raw):
-    """고정 규칙으로 안 선 프레임 — 규칙 선언의 대상(B87 ②와 같은 뜻)."""
-    lines = _lines(raw)
-    return [FRAME] if lines and not struct_rule.fixed_ok(_rows(raw, lines)) else []
-
-
-def rule_sample(raw):
-    paras = {p["index"]: p for p in raw.get("paragraphs") or []}
-    return [{"row": i, "text": t[:struct_rule.RULE_SAMPLE_CHARS],
-             "bold": bool(paras[i].get("bold")), "indent": 0, "merge": False}
-            for i, t in _lines(raw)[:struct_rule.RULE_SAMPLE_ROWS]]
-
-
-def _by_rule(raw, decl):
-    paras = {p["index"]: p for p in raw.get("paragraphs") or []}
-    lines = _lines(raw)
-    marks = {i: {"head": t if paras[i].get("kind") == "para"
-                 and not paras[i].get("numbered") else "",
-                 "bold": bool(paras[i].get("bold"))} for i, t in lines}
-    return lines, struct_rule.apply(lines, marks, decl)
-
-
 def _locator(a, b):
     base = ADAPTER["expects"]["frame_format"].format(a=a)
     return base if a == b else f"{base}-P{b}"
@@ -107,7 +85,7 @@ def _marks(raw):
     return out
 
 
-def extract(raw, struct_map_fn=None, struct_rule_fn=None, structure_fn=None) -> list[dict]:
+def extract(raw, struct_map_fn=None, structure_fn=None) -> list[dict]:
     """docx 원시 → 조각. `struct_map_fn`은 받되 부르지 않는다(규칙이 레벨을 정한다) · `structure_fn`은
     문서 구조 훅(B119 ① — 엑셀과 같은 함수 · 이름표에 시트 줄이 없다)."""
     lines = _lines(raw)
@@ -115,9 +93,7 @@ def extract(raw, struct_map_fn=None, struct_rule_fn=None, structure_fn=None) -> 
     if lines:
         out = struct_rule.frame_chunks(
             FRAME, lines, _rows(raw, lines), _locator, ADAPTER["expects"]["section_sep"],
-            {}, rule_fn=struct_rule_fn, sample_fn=lambda: rule_sample(raw),
-            by_rule=lambda decl: _by_rule(raw, decl),
-            structure_fn=structure_fn, marks_fn=lambda: _marks(raw), sheet=False,
+            {}, structure_fn=structure_fn, marks_fn=lambda: _marks(raw), sheet=False,
             flat_reason="계층 신호 0건 — 본문을 통째로 실었다")
     return out + _image_pieces(raw, out)
 

@@ -105,17 +105,22 @@ def scan():
     """`[(파일, 줄, 옛 이름, 지금 자리, 원문)]` — 파일 순·줄 순."""
     pats = {old: re.compile(r'(?<![\w/])' + re.escape(old)) for old in MOVED}
     split = {old: rx for old in MOVED if (rx := _split_form(old))}
+    parts = {old: [x for x in old.rstrip("/").split("/") if x] for old in MOVED}
     hits = []
     for p in targets():
         try:
-            lines = p.read_text(encoding="utf-8").splitlines()
+            text = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        for i, ln in enumerate(lines, 1):
+        # **글자 거르기 먼저**(B121 ② — 같은 결과 · 정규식은 그 글자가 든 줄에서만): 두 형태 다 옛 이름의 조각 글자를 품는다
+        olds = [o for o in MOVED if o in text or (o in split and all(x in text for x in parts[o]))]
+        if not olds:
+            continue
+        for i, ln in enumerate(text.splitlines(), 1):
             if LEGACY_MARK in ln:
                 continue
-            for old in MOVED:
-                if pats[old].search(ln) or (old in split and split[old].search(ln)):
+            for old in olds:
+                if (old in ln and pats[old].search(ln)) or (old in split and parts[old][-1] in ln and split[old].search(ln)):
                     hits.append((p.relative_to(ROOT).as_posix(), i, old, MOVED[old],
                                  ln.strip()[:90]))
     return hits
