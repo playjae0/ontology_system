@@ -46,7 +46,8 @@ from core.state.world import World                      # noqa: E402
 from parser import pipeline, struct_map, tagger as TG   # noqa: E402
 from parser.adapters import basic_docx as DX, basic_prose_xlsx as BX   # noqa: E402
 
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 TMP = Path(__import__("tempfile").mkdtemp(prefix="b102_"))   # 클린(init --fresh)이 지우지 않는 자리
 XLSX_SHEETS = {"이송 유닛": ["1. 구동부", "모터는 서보 모터를 쓴다.", "2. 안전", "커버를 단다."],
                "가압 유닛": ["모터는 유압 모터를 쓴다.", "가압력은 매 시간 기록한다."]}

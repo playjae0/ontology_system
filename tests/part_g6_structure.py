@@ -51,7 +51,8 @@ from parser import pipeline, struct_map, tagger as TG, tuning   # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="b119_"))
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 LAYERS = ("process", "quality")
 #: 층마다 개체 말 다섯(창작) — 앞 넷은 유닛 아래 · 다섯째는 주인 없는 자리 · 여섯째는 지어낸 주인
 WORDS = {"process": ("속도", "하중", "장력", "모터 회전수", "검사 주기", "점검 주기"),

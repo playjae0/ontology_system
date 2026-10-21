@@ -33,7 +33,8 @@ from parser import pipeline, struct_map, toc             # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX       # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="b126_"))
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 DID = "B126S"
 E, N, M = "설비 사양", "공통사양", "메모"
 SHEETS = {E: ["가. 공급부", "공급부는 소재를 넣는다.", "1. 기본 사양", "속도 기준은 50이다.", "2. 지정 사양", "하중 기준은 3이다.",

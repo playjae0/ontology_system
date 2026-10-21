@@ -30,8 +30,10 @@ from pathlib import Path
 # `core/paths.py`가 이 모듈을 읽으므로(픽스처 뿌리) 역참조하지 않는다 — 순환.
 ROOT = Path(__file__).resolve().parent.parent.parent
 
+#: 픽스처 뿌리를 옮기는 환경변수 — 사내 반입 · 회귀(스위트마다 사본 — B133)가 쓴다
+ENV = "ONTO_FIXTURES"
 #: 픽스처 뿌리. 사내 반입 시 `ONTO_FIXTURES`로 갈아 끼운다.
-ROOT_DIR = Path(os.environ.get("ONTO_FIXTURES") or (ROOT / "tests" / "fixtures"))
+ROOT_DIR = Path(os.environ.get(ENV) or (ROOT / "tests" / "fixtures"))
 
 PARSED = ROOT_DIR / "parsed"
 RAW = ROOT_DIR / "raw"

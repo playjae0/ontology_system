@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """칸 0.3 — 사내 이식 점검기 — **가져온 것이 온전한가 · 다음에 무엇을 해야 하는가** (국면 2 진입 도구).
 
-    python doctor.py            전체 (환경 → 자체 검증 → 상태 → 사내 전환 판정)
-    python doctor.py --quick    회귀 생략 (느린 기계용 — 전체도 보통 20초 안이다)
+    python doctor.py            점검 (환경 → 머리 상태 · 정합 · 설정 파일 → 상태 → 사내 전환 판정 — **회귀 0 · 몇 초** · B133 ③)
+    python doctor.py --regress  점검 + 회귀 (반입 직후 한 번 — 36스위트 · 완료판정 4 · 기대 수 대조 · 몇 분)
     python doctor.py --env      환경만 (반입 직후 첫 실행 — 30초)
+    python doctor.py --quick    기본과 같다(옛 이름 — 받고 한 줄로 알린다)
     python doctor.py --only <스위트…>          고른 스위트만 (개발 중 · **판정 아님** — B117 ①)
     python doctor.py --changed [<기준 커밋>]   바뀐 파일을 읽는 스위트만 (개발 중 · **판정 아님** · 고를 수 없으면 전체)
     … --list                                   고르기만 보고 돌리지 않는다
-    … --serial · --jobs N                      회귀를 직렬로(레포 mock 루트) · 병렬 수(기본 4 근방 — 스위트마다 임시 루트 · B131 ①)
+    … --serial · --jobs N                      회귀를 직렬로(레포 mock 루트) · 병렬 수(기본 4 근방 — 스위트마다 임시 자리 · B131 ①)
     … --why <스위트>=<사유>                    기대 수보다 적은 스위트를 사유와 함께 지나가게(기록은 마감 한 줄 · B131 ②)
+    (회귀 쪽 선택지 — `--serial` · `--jobs` · `--why` · `--result` — 가 있으면 `--regress`를 친 것과 같다)
 
 **왜 이 파일이 있나.** 레포를 사내로 옮기면 받는 사람은 "무엇부터 돌려야 하나"를 모른다.
 문서를 다 읽게 하는 것은 답이 아니다 — **한 줄을 돌리면 현재 위치와 다음 한 걸음이
@@ -385,6 +387,15 @@ def _env_diff(clean_rc, residue):
         print(f"         {why}")
 
 
+#: 이번 회귀가 남긴 붉은 기록 자리(B133 ②) — 회귀 끝의 클린이 명령 로그를 지우고 다시 열므로 결과 줄 앞에서 한 번 더 적는다(`_red_tail`)
+REDS = []
+
+
+def _red_tail():
+    for p in REDS:
+        print(f"  붉은 기록 — {p}(임시 루트 · 출력.txt)")
+
+
 def run_suites(quick=False, names=None, serial=False, jobs=None, why=None, result=None):
     """회귀 — `names`를 주면 그 스위트만(고른 실행 — 판정 아님 · 완료판정 4 「클린 2회」는 재지 않는다).
 
@@ -392,12 +403,14 @@ def run_suites(quick=False, names=None, serial=False, jobs=None, why=None, resul
     (`cli/doctor_run` 머리말 ⓐ~ⓓ — B131 ②) · `result`가 있으면 스위트마다 수를 그 파일에 적는다(마감 한 줄이 기록을 쓴다)."""
     from cli import doctor_run as DR
     why = why or {}
-    head("② 자체 검증 — 가져온 것이 온전한가 (회귀 전체)" if names is None
+    head(("② 자체 검증 — 회귀는 따로 부른다" if quick else "② 자체 검증 — 가져온 것이 온전한가 (회귀 전체)") if names is None
          else f"② 고른 스위트 {len(names)}종 — {sel.HEAD_LINE}")
     if quick:
-        print("  (--quick: 건너뛴다. 반입 직후에는 반드시 한 번 돌려라)")
+        print(f"  회귀는 따로 부른다 — {REGRESS_CMD}(반입 직후 한 번 · 몇 분) · 기본 doctor는 점검만(회귀 0)")
         return None
     jobs = jobs or DR.JOBS
+    pruned = DR.prune_red()
+    tree0 = DR.repo_tree()
     print("  각 스위트를 **클린 상태에서 단독 실행**한다 — 연속 실행은 판정 규격이 아니다\n"
           + (f"  직렬 — 레포 mock 루트 하나에서 차례로(--serial)\n" if serial else
              f"  병렬 {jobs} — 스위트마다 제 임시 mock 루트(직렬은 --serial)\n"))
@@ -426,12 +439,19 @@ def run_suites(quick=False, names=None, serial=False, jobs=None, why=None, resul
             dup.append(name)
             total_ok = False
             line(NG, f"{name:<17} 중복 canonical", res["dup_out"].splitlines()[0] if res["dup_out"] else "")
+        red = DR.settle(res, ok and res["dup"] == 0 and not res["residue"])   # 붉으면 임시 자리 + 출력 전문을 남긴다 (B133 ②)
+        if red:
+            REDS.append(red)
+            print(f"         붉은 기록 — {red}(임시 루트 · 출력.txt)")
     gone = DR.removed(SUITES, rec, why) if names is None else []
     for n, k, ok, note in gone:
         total_ok &= ok
         line(OK if ok else NG, f"{n:<17} 기록 {k} PASS — 스위트 목록에 없다", note)
     got = sum(r[1] for r in results)
     want = sum(r[3] for r in results)
+    same, tnote = DR.tree_diff(tree0, DR.repo_tree())          # 레포는 시험이 읽기만 한다 — 남은 쓰기 (B133 ①)
+    line(OK if same is not False else NG, "레포 작업 트리 — 회귀 앞뒤", tnote + (f" · 지난 붉은 기록 {pruned}개 정리" if pruned else ""))
+    total_ok &= same is not False
     if idem is not None:
         line(OK if idem[0] else NG, "클린 2회 동일 그래프 (완료판정 4)", idem[1])
         total_ok &= idem[0]
@@ -526,6 +546,11 @@ def _run_opts(argv):
     return {"serial": "--serial" in argv, "jobs": jobs, "why": DR.parse_why(argv), "result": res}
 
 
+#: 회귀 명령(B133 ③ — 기본 doctor는 점검만) · 회귀 쪽 선택지(이것이 있으면 회귀를 돈다)
+REGRESS_CMD = "python doctor.py --regress"
+REGRESS_OPTS = ("--regress", "--serial", "--why", "--jobs", "--result")
+
+
 def main(argv):
     names, sel_head, stop = _picked(argv)
     if stop is not None:
@@ -541,14 +566,18 @@ def main(argv):
             print("  고른 스위트 0종 — 바뀐 파일을 읽는 스위트가 없다")
             return 0
         ok = run_suites(names=names, **_run_opts(argv))
+        _red_tail()
         print(f"\n{'=' * 66}\n결과: {sel.HEAD_LINE} — 고른 {len(names)}종 {'통과' if ok else '실패'} · 마감은 전체 doctor\n{'=' * 66}")
         return 0 if ok else 1
     only_env = "--env" in argv
-    quick = "--quick" in argv or only_env
+    regress = any(a in argv for a in REGRESS_OPTS) and not only_env
+    quick = not regress                     # 기본 doctor는 점검만 — 회귀는 `--regress`(B133 ③ · 옛 `--quick`은 기본과 같다)
 
     print("=" * 66)
-    print("  온톨로지 시스템 — 사내 이식 점검  (국면 1 완료본)")
+    print("  온톨로지 시스템 — 사내 이식 점검  (국면 1 완료본)" + ("  · 회귀 포함" if regress else ""))
     print("=" * 66)
+    if "--quick" in argv:
+        print(f"  --quick은 기본 doctor와 같다(기본이 점검만 — 회귀 0) · 회귀는 {REGRESS_CMD}")
     if sel_head:                # 고르려 했으나 고를 수 없었다 — 전체를 돈다(그 사실을 머리에)
         print(f"  {sel_head}")
     # 상태 줄 · 층 이름(B99 ①) · 정합(B99 ⑩) — 운영 루트를 읽기만 (B111 ①)
@@ -563,12 +592,13 @@ def main(argv):
     suites_ok = run_suites(quick, **_run_opts(argv))
     show_state()
     operating("transition")    # 사내 전환 판정 — 운영 루트를 읽기만 (B111 ①)
+    _red_tail()
 
     print(f"\n{'=' * 66}")
     if V.fails():
         print(f"결과: **{V.fails()}건이 조치 필요**다 — 위 [{NG.strip()}] 항목을 먼저 해결한다")
     else:
-        verdict = "온전하다" if suites_ok else ("회귀 미수행" if quick else "회귀 실패")
+        verdict = "온전하다" if suites_ok else (f"점검 통과(회귀는 {REGRESS_CMD} — 반입 직후 한 번)" if quick else "회귀 실패")
         print(f"결과: 반입물은 {verdict}. 다음은 ④의 권장 순서다")
     print("=" * 66)
     return 1 if V.fails() else 0

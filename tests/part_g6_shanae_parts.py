@@ -217,7 +217,7 @@ _ob, _eb = io.StringIO(), io.StringIO()
 try:
     with _rout(_ob), _rerr(_eb):
         try:
-            _rc = _PARSE.main(["run", "parser/adapters/basic_prose_xlsx.py", str(_wx), str(_tmp / "wmf.json"),
+            _rc = _PARSE.main(["run", str(ROOT / "parser/adapters/basic_prose_xlsx.py"), str(_wx), str(_tmp / "wmf.json"),
                                "--allow-mock"]) or 0
         except SystemExit as _x:
             _rc = _x.code if isinstance(_x.code, int) else 1

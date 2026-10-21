@@ -43,7 +43,8 @@ from core.state import config_scope as CS                          # noqa: E402
 from core.state.world import World                                 # noqa: E402
 
 FX = ROOT / "tests" / "fixtures"
-HINTS = FX / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 QDT = "b118pq"
 SH = "2-4:prose 5:ref *:skip"
 TMP = Path(tempfile.mkdtemp(prefix="b118_"))

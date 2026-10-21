@@ -116,4 +116,6 @@ for f in sorted(findings, key=lambda x: (x["구분"], x["대상"])):
     loc = f"  ← {sec_of(f['대상'].split('`')[1])}" if f["구분"] == "자산에만" and "`" in f["대상"] else ""
     print(f"  {f['대상']:<{w}}  {f['실태']}{loc}")
 print(f"\n총 {len(findings)}건 — 판정 대상")
-json.dump(findings, open(os.path.join(os.path.dirname(__file__), "자산", "자산대조_결과.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+# 결과 파일은 **레포 명세를 잴 때만** 쓴다 — 사본을 잰 결과(명세 패치 검사 · 시험)가 레포 기록을 덮지 않는다(점검_모양과 같은 규칙 · B133 ①)
+if os.path.normpath(os.path.abspath(SPEC)) == os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "spec")):
+    json.dump(findings, open(os.path.join(os.path.dirname(__file__), "자산", "자산대조_결과.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)

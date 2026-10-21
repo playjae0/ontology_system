@@ -18,6 +18,8 @@
      레포의 검사 결과 파일을 바꾸지 않는다
   ⓕ 층 어휘 정적 점검(B121 ①) — 지금 레포 위반 0 · 사본 core에 카테고리 이름 하나를 넣으면 rc 1과 그 자리 · 마감 한 줄의
      사전 점검에 그 줄이 선다
+  ⓕ′ 레포 쓰기 정적 점검(B133 ①) — 지금 레포 위반 0 · 사본 시험에 레포 쓰기를 심으면 rc 1과 그 자리 · ⓓ′ 붉은 기록(B133 ②) — PASS 0
+     사본의 임시 루트 · 출력 전문이 남고 자리가 화면 · 명령 로그에 · ⓑ 마감 한 줄은 doctor를 회귀 명령(`--regress`)으로 부른다
   ⓓ 명세 모양 — 지금 명세는 기준 그대로 통과 · 사본에 취소선 하나 · 칸 밖 글 하나를 더하면 둘 다 위반이고 기준은 그대로 ·
      줄어든 수는 기준을 내린다(기준 사본에 수와 기록)
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
@@ -80,6 +82,7 @@ SUITES = re.findall(r'^    \("(test_[a-z0-9_]+|verify_roundtrip)"', (ROOT / "doc
 # ────────────────────────────────────────────────────────────── ⓐ
 print("\n■ ⓐ 고르기 — --only · --changed (판정 아님)")
 from core.state import log as _LOG                                  # noqa: E402 — 명령 로그 자리(그 모듈이 안다)
+from core import paths as _P                                         # noqa: E402 — mock 루트 훅 이름(그 모듈이 안다)
 from concurrent.futures import ThreadPoolExecutor                  # noqa: E402
 _bg = ThreadPoolExecutor(2)
 _facts_f = _bg.submit(DS.suite_facts, SUITES)                       # 정적 선택 그래프 — 아래 하위 실행을 기다리는 동안 짓는다
@@ -202,6 +205,15 @@ _git(BOX, "checkout", "-q", "--", "core/build/heading.py")
 show("ⓕ 층 어휘 정적 점검 — 지금 레포 위반 0(rc 0) · 사본 core에 카테고리 이름 하나를 넣으면 rc 1 · 그 파일 · 낱말을 말한다 (B121 ①)",
      _lw0[0] == 0 and "위반 0건" in _lw0[1] and _lw1[0] == 1 and f"core/build/heading.py" in _lw1[1] and f"'{_cat}'" in _lw1[1],
      f"rc {_lw0[0]} · {_lw1[0]} · {_cat}")
+# 레포 쓰기 정적 점검(B133 ①) — 지금 레포 위반 0 · 사본 시험 하나에 레포 쓰기를 심으면 붉고 그 자리를 말한다
+_rw0 = _run(["tools/repo_writes.py"])
+_rwf = BOX / "tests" / "test_p1_wiring.py"
+_rwf.write_text(_rwf.read_text(encoding="utf-8") + '\n(ROOT / "b133_probe.txt").write_text("x")\n', encoding="utf-8")
+_rw1 = _run(["tools/repo_writes.py", "--root", str(BOX)])
+_git(BOX, "checkout", "-q", "--", "tests/test_p1_wiring.py")
+show("ⓕ 레포 쓰기 정적 점검 — 지금 레포 위반 0(rc 0) · 사본 시험에 레포 쓰기 하나를 심으면 rc 1 · 그 파일을 말한다 (B133 ①)",
+     _rw0[0] == 0 and "위반 0건" in _rw0[1] and _rw1[0] == 1 and "[위반] tests/test_p1_wiring.py" in _rw1[1],
+     f"rc {_rw0[0]} · {_rw1[0]}")
 
 # ────────────────────────────────────────────────────────────── ⓑ
 # ────────────────────────────────────────────────────────────── ⓔ
@@ -233,12 +245,12 @@ _rec = json.loads((ROOT / "docs" / "회귀스위트" / "기대_수.json").read_t
 _n0 = _rec["suites"]["test_p1_wiring"]["n"]
 
 
-def _dr(src, *extra):
+def _dr(src, *extra, env=None):
     """사본에서 그 스위트를 고친 판으로 doctor --only 하나 · `(rc, 화면, --result)`."""
     _rp.write_text(src, encoding="utf-8")
     _rf = T / "dr_result.json"
     _rf.unlink(missing_ok=True)
-    rc, out = _run(["doctor.py", "--only", "test_p1_wiring", "--result", str(_rf), *extra], cwd=BOX)
+    rc, out = _run(["doctor.py", "--only", "test_p1_wiring", "--result", str(_rf), *extra], cwd=BOX, env=env)
     return rc, out, (json.loads(_rf.read_text(encoding="utf-8")) if _rf.exists() else {})
 
 
@@ -257,21 +269,34 @@ show("ⓓ 어서션 하나를 더한 사본 — doctor가 「+1」로 지나가�
      and _CL.expect_line(_ch7) == "test_p1_wiring +1",
      f"rc {rc7} · {_CL.expect_line(_ch7)}")
 rc8, out8, _r8 = _dr(_minus)
+for _m8 in re.finditer(r"붉은 기록 — (\S+?)\(임시 루트", out8):          # 이 시험이 일부러 붉힌 자리는 거둔다(B133 ②)
+    shutil.rmtree(_m8.group(1), ignore_errors=True)
 rc9, out9, res9 = _dr(_minus, "--why", "test_p1_wiring=시험 — 하나를 지웠다")
 _rec9, _ch9 = _CL.expect_record(_rec, res9, _DOC.SUITES, "시험", "2026-10-20", whole=False)
 show("ⓓ 하나를 지운 사본 — 사유 없으면 붉다(rc 1) · 사유가 있으면 지나가고 기록에 −1과 사유가 남는다",
      rc8 == 1 and "사유가 없다" in out8 and rc9 == 0 and _rec9["suites"]["test_p1_wiring"]["n"] == _n0 - 1
      and _rec9["log"][-1]["why"] == "시험 — 하나를 지웠다" and "−1" in _CL.expect_line(_ch9),
      f"rc {rc8} → 사유 {rc9} · {_CL.expect_line(_ch9)}")
-rc10, out10, _r10 = _dr(_zero, "--why", "test_p1_wiring=사유가 있어도")
+_redh = T / "red_home"                                                # 이 실행의 명령 로그 자리(그 루트 아래를 훑는다)
+rc10, out10, _r10 = _dr(_zero, "--why", "test_p1_wiring=사유가 있어도", env=dict(ENV, **{_P.MOCK_HOME_ENV: str(_redh)}))
 show("ⓓ 스위트가 돌지 않는 사본(PASS 0) — 사유가 있어도 붉다",
      rc10 == 1 and "늘 붉다" in out10, f"rc {rc10}")
+# 붉은 기록(B133 ②) — 붉은 스위트의 임시 루트와 출력 전문이 남고 그 자리가 화면 · 명령 로그에 한 줄
+_redm = re.search(r"붉은 기록 — (\S+?)\(임시 루트", out10)
+_redd = Path(_redm.group(1)) if _redm else T / "없음"
+_redlog = "".join(f.read_text(encoding="utf-8") for f in _redh.rglob("doctor_*.log"))
+show("ⓓ 붉은 스위트는 임시 루트(픽스처 사본 · 작업 폴더)와 출력 전문을 남기고 그 자리가 화면 · 명령 로그에 있다 (B133 ②)",
+     _redd.is_dir() and (_redd / "fixtures").is_dir() and "## stdout" in ((_redd / "출력.txt").read_text(encoding="utf-8")
+                                                                         if (_redd / "출력.txt").exists() else "")
+     and str(_redd) in _redlog, f"{_redd} · 로그 {len(_redlog)}자")
+shutil.rmtree(_redd, ignore_errors=True)
 _rp.write_text(_rp_src, encoding="utf-8")
 sys.path.remove(str(BOX))
 
 print("\n■ ⓑ 마감 한 줄 — 첫 FAIL에서 멈추지 않고 끝까지 · rc 1")
 (BOX / "doctor.py").write_text(
     "import sys\n"
+    "open(__file__ + '.argv', 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + '\\n')\n"
     "if '--only' in sys.argv:\n"
     "    print('  [  OK ] 합계 2/2 PASS — 고른 실행 — 판정 아님')\n"
     "    sys.exit(0)\n"
@@ -294,11 +319,13 @@ _rows = re.findall(r"^\[(PASS|FAIL|갱신|건너뜀)\] ([^—\n]+)", _summ, re.M
 _lab = {lab.strip(): v for v, lab in _rows}
 _doc = next((v for k, v in _lab.items() if k.startswith("마감 doctor")), None)
 _chk = next((ln for ln in _summ.splitlines() if "문서 검사 일곱" in ln), "")
-# 기대 변경(B131 ③② — 장부 넷이 0단계에 · 끝에 기대 수 기록 — doctor가 붉으면 「건너뜀」)
-show("ⓑ 장부 → 사전 점검(층 어휘 포함) → doctor → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열셋 줄이 전부 요약에 선다",
-     len(_rows) == 13 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
-     and "층 어휘 정적 점검" in _lab and "PROGRESS 최근 3회차" in _lab and _lab.get("기대 수 기록") == "건너뜀",
-     f"줄 {len(_rows)} · {list(_lab)}")
+# 기대 변경(B133 — 사전 점검에 레포 쓰기 정적 점검 · doctor는 회귀 명령으로)
+_argv = (BOX / "doctor.py.argv").read_text(encoding="utf-8").split() if (BOX / "doctor.py.argv").exists() else []
+show("ⓑ 장부 → 사전 점검(층 어휘 · 레포 쓰기 포함) → doctor(회귀 명령) → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열넷 줄이 요약에",
+     len(_rows) == 14 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
+     and "층 어휘 정적 점검" in _lab and "레포 쓰기 정적 점검" in _lab and "PROGRESS 최근 3회차" in _lab
+     and _lab.get("기대 수 기록") == "건너뜀" and "--regress" in _argv,
+     f"줄 {len(_rows)} · doctor 인자 {_argv} · {list(_lab)}")
 show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 뒤 네 벌도 돌았다 · rc 1",
      rc5 == 1 and _doc == "FAIL" and "[FAIL]" in _chk and "모양" in _chk and _lab.get("네 벌") == "PASS"
      and "전부 같다" in _summ and re.search(r"FAIL [2-9]", _summ),

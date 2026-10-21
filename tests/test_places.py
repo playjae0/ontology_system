@@ -341,13 +341,20 @@ show("레포 정본 자산의 해시 기록이 실물과 같다 (prompts·kit·b
      not (_chg79 or _add79 or _gone79),
      f"다름 {_chg79} · 기록 없음 {_add79} · 사라짐 {_gone79}")
 # **변이 — 지시문 한 줄을 고치면 잡히는가.** 되돌린다(자산은 고치지 않는다).
-_pr79 = ROOT / "prompts" / "2.8_coord_tag.md"
+# 변이는 **자산 사본**에서 한다(레포 지시문을 고치지 않는다 — 병렬 회귀의 다른 스위트가 그 파일을 읽는다 · B133)
+import tempfile as _tf79                                            # noqa: E402
+_root79 = Path(_tf79.mkdtemp(prefix="b79_"))
+for _a79 in _AH79.ASSETS:
+    _src = ROOT / _a79
+    (_sh.copytree(_src, _root79 / _a79) if _src.is_dir() else
+     (_root79 / _a79).parent.mkdir(parents=True, exist_ok=True) or _sh.copy2(_src, _root79 / _a79))
+_pr79 = _root79 / "prompts" / "2.8_coord_tag.md"
 _keep79 = _pr79.read_bytes()
 try:
     _pr79.write_bytes(_keep79 + "\n<!-- 변이 -->\n".encode("utf-8"))
-    _chg2 = _AH79.diff()[0]
+    _chg2 = _AH79.diff(_root79)[0]
 finally:
-    _pr79.write_bytes(_keep79)
+    _sh.rmtree(_root79, ignore_errors=True)
 show("지시문을 고치면 대조가 그 파일을 짚는다 (사내에서 고치지 않는 것을 기계가 잰다)",
      _chg2 == ["prompts/2.8_coord_tag.md"] and not _AH79.diff()[0], str(_chg2))
 

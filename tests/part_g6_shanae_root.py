@@ -91,6 +91,7 @@ class Root:
         self.coord = coord
         self.env = {**os.environ, "USE_MOCK": "1", "NO_COLOR": "1"}
         self.env.pop("ONTO_HOME", None)
+        self.env["ONTO_FIXTURES"] = str(self.code / "tests" / "fixtures")   # 사본 코드의 픽스처(회귀가 준 사본이 아니다 — B133)
         self.state = None
         if outside:
             self.state = base / name / "onto_state"            # **코드 밖**

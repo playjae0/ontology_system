@@ -141,7 +141,8 @@ class Site:
 print("■ B71 ① — 추출 힌트는 USE_MOCK=1에서만")
 
 HINT_DOC = "B71HINT"
-_hint = ROOT / "tests" / "fixtures" / "extract_hints" / f"{HINT_DOC}.json"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+_hint = _FXR.EXTRACT_HINTS / f"{HINT_DOC}.json"
 _probe = (
     "import json,sys; sys.path.insert(0,'.')\n"
     "from core.build import extract as EX\n"
@@ -244,15 +245,24 @@ with Site() as site:
          f"섞인 이름 {names_in(_keep.stdout)}")
 
     # ── 변이 — 기본 소재지의 mock 가드를 빼면 붉어진다 ────────────────
-    _p = ROOT / "cli" / "scan.py"
-    _orig = _p.read_text(encoding="utf-8")
+    # 변이는 **사본 모듈**로 한다(레포 소스를 고치지 않는다 — 병렬 회귀의 다른 스위트가 `cli/scan.py`를 읽는다 · B133):
+    # 가드를 뺀 사본을 그 하위 실행에서만 `cli.scan`으로 끼워 `run.py scan`을 그대로 돈다
+    _orig = (ROOT / "cli" / "scan.py").read_text(encoding="utf-8")
     _mut = _orig.replace("(ADAPTER_DIRS if gateway.use_mock() else [])", "ADAPTER_DIRS")
     assert _mut != _orig, "가드 문면이 바뀌었다 — 변이 시험이 대상을 못 찾는다"
-    _p.write_text(_mut, encoding="utf-8")
+    _mp = Path(tempfile.mkdtemp(prefix="b71mut_")) / "scan.py"
+    _mp.write_text(_mut, encoding="utf-8")
+    _prog = ("import importlib.util, runpy, sys\n"
+             f"sys.path.insert(0, {str(ROOT)!r})\n"
+             f"spec = importlib.util.spec_from_file_location('cli.scan', {str(_mp)!r})\n"
+             "m = importlib.util.module_from_spec(spec)\nsys.modules['cli.scan'] = m\nspec.loader.exec_module(m)\n"
+             "import cli\ncli.scan = m\n"
+             f"sys.argv = ['run.py', 'scan', {str(SAMPLE)!r}]\n"
+             f"runpy.run_path({str(ROOT / 'run.py')!r}, run_name='__main__')\n")
     try:
-        _bad = site.run("scan", str(SAMPLE), keep_fixtures=True)
+        _bad = site.run(py=_prog, keep_fixtures=True)
     finally:
-        _p.write_text(_orig, encoding="utf-8")
+        shutil.rmtree(_mp.parent, ignore_errors=True)
     show("② 변이 — 기본 소재지의 mock 가드를 빼면 mock 자산이 화면에 돌아온다",
          bool(names_in(_bad.stdout)), f"섞인 이름 {names_in(_bad.stdout)}")
     show("② 되돌리면 다시 0이다",
@@ -358,8 +368,8 @@ show("③ 이관 로그가 무엇을 어디로 옮겼는지 남긴다 (해시 �
 _mark = ROOT / "data" / "doc_types.json"   # 옛 배치
 _made_mark = not _mark.exists()
 if _made_mark:
-    _mark.parent.mkdir(parents=True, exist_ok=True)
-    _mark.write_text("{}", encoding="utf-8")
+    _mark.parent.mkdir(parents=True, exist_ok=True)  # 레포 쓰기 예외: 옛 배치 표식은 코드 폴더 자리(migrate.legacy_root)라 레포에만 선다 · mock 세계는 보지 않는다
+    _mark.write_text("{}", encoding="utf-8")  # 레포 쓰기 예외: 옛 배치 표식(코드 폴더의 옛 등록부 파일) — 없던 것만 만들고 지운다
 try:
     _empty = Path(tempfile.mkdtemp(prefix="b78empty_"))
     _e = dict(os.environ, USE_MOCK="0", ONTO_HOME=str(_empty))
@@ -418,7 +428,7 @@ try:
 finally:
     shutil.rmtree(_nol, ignore_errors=True)
     if _made_mark:
-        _mark.unlink(missing_ok=True)
+        _mark.unlink(missing_ok=True)  # 레포 쓰기 예외: 위에서 만든 옛 배치 표식을 지운다
     shutil.rmtree(_lg, ignore_errors=True)
     shutil.rmtree(_empty, ignore_errors=True)
 

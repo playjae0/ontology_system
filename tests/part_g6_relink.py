@@ -35,7 +35,8 @@ from parser import normalizer as NM, pipeline, struct_map, tagger as TG   # noqa
 from parser.adapters import basic_prose_xlsx as BX        # noqa: E402
 from router import discover                               # noqa: E402
 
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 RAWS = ROOT / "tests" / "fixtures" / "raw"
 TMP = Path(__import__("tempfile").mkdtemp(prefix="b113_"))
 _made = []

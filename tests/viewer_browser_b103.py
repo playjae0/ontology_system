@@ -57,7 +57,8 @@ def show(label, ok, detail=""):
     return bool(ok)
 
 
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 DET = "B103DET"
 
 

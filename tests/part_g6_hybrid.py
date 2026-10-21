@@ -44,7 +44,8 @@ from parser import pipeline, struct_map, tagger as TG   # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
 from fake_gateway import CALLS, Live                    # noqa: E402 — 실호출 갈래의 대역(전송·채팅·설정만)
 
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 TMP = Path(tempfile.mkdtemp(prefix="b104_"))
 _made = []
 

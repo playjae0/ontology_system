@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 — **회귀 실행** — 스위트마다 임시 mock 루트에서 함께 돈다(병렬) · 기대 수는 기록 파일에서 읽는다 (B131 ①②).
+"""칸 0.3 — **회귀 실행** — 스위트마다 임시 자리에서 함께 돈다(병렬) · 기대 수는 기록 파일에서 읽는다 (B131 ①② · B133 ①②).
 
-    병렬(기본) — 스위트마다 **제 상태 루트**(시험 전용 훅 `ONTO_MOCK_HOME`=<임시>/<mock 루트 이름> — 이름이 mock 자리라 레포 mock 루트와 같은
-                 규칙: 층 자산을 레포 seed로 · `init --fresh --all`이 클린) → 클린 → 스위트 → 중복 canonical 점검 → 지운다 ·
-                 동시에 `JOBS`개 · 지난 소요가 긴 것부터 넣고 화면은 스위트 목록 순서
-    직렬(`--serial`) — 레포 mock 루트 하나에서 차례로(옛 길 그대로 — 병렬 결과를 대조하는 길)
+    병렬(기본) — 스위트마다 **제 임시 자리**: 상태 루트(시험 전용 훅 `ONTO_MOCK_HOME`=<임시>/<mock 루트 이름> — 이름이 mock 자리라 레포
+                 mock 루트와 같은 규칙: 층 자산을 레포 seed로 · `init --fresh --all`이 클린) · **픽스처 뿌리 사본**(`ONTO_FIXTURES` — 시험이
+                 픽스처에 써도 제 사본에만 · B133 ①) · **작업 폴더** → 클린 → 스위트 → 중복 canonical 점검 · 동시에 `JOBS`개 · 지난 소요가
+                 긴 것부터 넣고 화면은 스위트 목록 순서
+    직렬(`--serial`) — 레포 mock 루트 하나에서 차례로(병렬 결과를 대조하는 길) · 픽스처 사본 · 작업 폴더는 병렬과 같다
+
+**레포는 시험이 읽기만 한다**(B133 ①) — 회귀 앞뒤 작업 트리 대조(`repo_tree` — 남은 쓰기) · 쓰고 지우는 것은 정적 점검(`tools/repo_writes.py`).
+**붉은 스위트는 자리를 남긴다**(B133 ②) — 그 임시 자리 + 출력 전문(`출력.txt`)을 시스템 임시 폴더의 `onto_red_<시각>_<pid>_<스위트>`로
+옮기고 자리를 한 줄 · 초록은 지운다 · 지난 붉은 자리는 최근 `RED_KEEP`개만 남긴다(다음 회귀가 정리).
 
 **기대 수는 생성물이다**(`docs/회귀스위트/기대_수.json` — 마감 한 줄 `tools/close.py`가 쓴다 · doctor는 읽기만):
   ⓐ PASS 0 · FAIL 하나 이상 · 종료 코드 ≠ 0 은 늘 붉다 — 시험이 조용히 안 돈 것
@@ -30,6 +35,10 @@ ROOT = Path(__file__).resolve().parent.parent
 RECORD = ROOT / Path("docs", "회귀스위트", "기대_수.json")
 #: 동시에 도는 스위트 수 — 4 근방(기계가 작으면 2) · `--jobs N`
 JOBS = min(4, max(2, os.cpu_count() or 2))
+#: 붉은 스위트의 자리(임시 자리 + 출력 전문)를 모으는 곳 · 남기는 수(최근 것부터 — 창작 기본값)
+RED_DIR = Path(tempfile.gettempdir())
+RED_PREFIX = "onto_red_"
+RED_KEEP = 20
 _LOW_SECS = 10                          # 소요 기록이 없는 스위트의 어림(넣는 순서에만 쓴다)
 
 
@@ -92,35 +101,102 @@ def clean(env=None, home=None):
     return r.returncode, _residue(Path(home))
 
 
-def _temp_root(prefix):
-    """`(임시 폴더, 그 아래 mock 루트, 하위 실행 환경)` — 루트 이름 · 훅 이름은 자리 소유자(`core/paths.py`)가 안다."""
+def _temp_root(prefix, mock=True):
+    """`(임시 폴더, 그 아래 mock 루트 또는 None, 하위 실행 환경, 작업 폴더)` — 픽스처 뿌리 사본(B133 ①) · mock 루트는 `mock`일 때만(직렬은
+    레포 mock 루트) · 루트 이름 · 훅 이름은 자리 소유자(`core/paths.py` · `core/state/fixtures.py`)가 안다."""
     from core import paths
+    from core.state import fixtures
     tmp = Path(tempfile.mkdtemp(prefix=prefix))
-    home = tmp / paths.MOCK_HOME
-    return tmp, home, dict(os.environ, **{paths.MOCK_HOME_ENV: str(home)})
+    env = dict(os.environ)
+    if fixtures.ROOT_DIR.is_dir():
+        fx = tmp / "fixtures"
+        shutil.copytree(fixtures.ROOT_DIR, fx, ignore=shutil.ignore_patterns("__pycache__"))
+        env[fixtures.ENV] = str(fx)
+    work = Path(tempfile.mkdtemp(prefix="work_", dir=tmp))
+    home = None
+    if mock:
+        home = tmp / paths.MOCK_HOME
+        env[paths.MOCK_HOME_ENV] = str(home)
+    return tmp, home, env, work
 
 
 def _job(name, serial):
-    """스위트 하나 — 병렬이면 제 임시 루트에서 클린 → 실행 → 중복 점검 → 지운다."""
-    tmp, env, home = None, None, None
-    if not serial:
-        tmp, home, env = _temp_root(f"onto_{name}_")
+    """스위트 하나 — 제 임시 자리에서 클린 → 실행 → 중복 점검. 임시 자리는 결과에 싣고 지우지 않는다 — 판정한 쪽이 `settle`로
+    초록이면 지우고 붉으면 남긴다(B133 ②)."""
+    tmp, home, env, work = _temp_root(f"onto_{name}_", mock=not serial)
+    crc, res = clean(env, home)
+    t0 = time.time()
+    r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")], capture_output=True, text=True,
+                       cwd=str(work), env=env, stdin=subprocess.DEVNULL)
+    dt = time.time() - t0
+    d = subprocess.run([sys.executable, str(ROOT / "tests" / "dup_scan.py")], capture_output=True, text=True,
+                       cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
+    lines = [ln.strip() for ln in r.stdout.splitlines()]
+    return {"name": name, "r": r, "secs": dt, "clean_rc": crc, "residue": res, "tmp": tmp,
+            "p": sum(1 for ln in lines if ln.startswith("[PASS]")),     # 판정 줄만 센다(B50)
+            "f": sum(1 for ln in lines if ln.startswith("[FAIL]")),
+            "dup": d.returncode, "dup_out": (d.stdout or "").strip()}
+
+
+# ---------------------------------------------------------------- 붉은 기록 (B133 ②)
+def prune_red(keep=None):
+    """지난 붉은 자리를 최근 `keep`(기본 `RED_KEEP`)개만 남긴다 — 지운 수."""
+    keep = RED_KEEP if keep is None else keep
+    dirs = sorted((p for p in RED_DIR.glob(f"{RED_PREFIX}*") if p.is_dir()), key=lambda p: p.name)
+    old = dirs[:-keep] if keep > 0 else dirs
+    for p in old:
+        shutil.rmtree(p, ignore_errors=True)
+    return len(old)
+
+
+def keep_red(tmp, name, text):
+    """붉은 스위트의 임시 자리를 `RED_DIR/onto_red_<시각>_<pid>_<이름>`으로 옮기고 출력 전문(`출력.txt`)을 남긴다 — 그 자리."""
+    dst = RED_DIR / f"{RED_PREFIX}{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{name}"
+    shutil.move(str(tmp), str(dst))
+    (dst / "출력.txt").write_text(text, encoding="utf-8")
+    return dst
+
+
+def settle(res, ok):
+    """판정이 끝난 스위트의 임시 자리 — 초록이면 지우고 붉으면 남긴다 · 남긴 자리(또는 None)."""
+    tmp = res.get("tmp")
+    if tmp is None or not Path(tmp).exists():
+        return None
+    if ok:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None
+    r = res["r"]
+    text = (f"# {res['name']} — PASS {res['p']} · FAIL {res['f']} · rc {r.returncode} · {res['secs']:.0f}s · 클린 rc "
+            f"{res['clean_rc']} · 잔재 {res['residue']} · 중복 rc {res['dup']}\n\n## stdout\n{r.stdout}\n\n## stderr\n{r.stderr}\n"
+            + (f"\n## 중복 canonical\n{res['dup_out']}\n" if res.get("dup") else ""))
+    return keep_red(tmp, res["name"], text)
+
+
+# ---------------------------------------------------------------- 레포 작업 트리 (B133 ① — 회귀 앞뒤 대조)
+def repo_tree():
+    """레포 작업 트리의 지문 `{경로: 상태 · 내용 해시}`(git이 추적 · 추적하지 않는 파일 — 무시 목록 밖) · git을 못 부르면 None."""
     try:
-        crc, res = clean(env, home)
-        t0 = time.time()
-        r = subprocess.run([sys.executable, str(ROOT / "tests" / f"{name}.py")], capture_output=True, text=True,
-                           cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
-        dt = time.time() - t0
-        d = subprocess.run([sys.executable, str(ROOT / "tests" / "dup_scan.py")], capture_output=True, text=True,
-                           cwd=str(ROOT), env=env, stdin=subprocess.DEVNULL)
-        lines = [ln.strip() for ln in r.stdout.splitlines()]
-        return {"name": name, "r": r, "secs": dt, "clean_rc": crc, "residue": res,
-                "p": sum(1 for ln in lines if ln.startswith("[PASS]")),     # 판정 줄만 센다(B50)
-                "f": sum(1 for ln in lines if ln.startswith("[FAIL]")),
-                "dup": d.returncode, "dup_out": (d.stdout or "").strip()}
-    finally:
-        if tmp is not None:
-            shutil.rmtree(tmp, ignore_errors=True)
+        r = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=str(ROOT),
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode:
+        return None
+    out = {}
+    for ln in r.stdout.splitlines():
+        rel = ln[3:].strip().strip('"')
+        p = ROOT / rel
+        h = hashlib.sha256(p.read_bytes()).hexdigest()[:16] if p.is_file() else "-"
+        out[rel] = f"{ln[:2]} {h}"
+    return out
+
+
+def tree_diff(before, after):
+    """`(같다, 덧말)` — 둘 중 하나가 None(git 없음)이면 `(None, 사유)`."""
+    if before is None or after is None:
+        return None, "git을 부를 수 없어 건너뛰었다"
+    diff = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    return (not diff), ("같다" if not diff else f"달라진 자리 {len(diff)} — {' · '.join(diff[:6])}")
 
 
 def run(names, serial=False, jobs=JOBS, rec=None, extra=None):
@@ -163,11 +239,11 @@ def _snap(home):
 
 
 def idempotent(serial=False):
-    """**클린 2회 동일 그래프**(문서 7 §7.6-4) — `(통과, 덧말)`. 병렬이면 제 임시 루트에서(스위트와 함께 돈다)."""
+    """**클린 2회 동일 그래프**(문서 7 §7.6-4) — `(통과, 덧말)`. 병렬이면 제 임시 루트에서(스위트와 함께 돈다) · 다르면 그 자리를 남긴다."""
     from core import paths
-    tmp, env, home = None, None, paths.home()
+    tmp, env, home, same = None, None, paths.home(), True
     if not serial:
-        tmp, home, env = _temp_root("onto_idem_")
+        tmp, home, env, _work = _temp_root("onto_idem_")
     try:
         rc, residue = clean(env, home)
         if rc or residue:
@@ -179,8 +255,12 @@ def idempotent(serial=False):
             snaps.append(_snap(home))
         (g1, q1, r1), (g2, q2, r2) = snaps
         same = g1 == g2 and q1 == q2
-        return same, (f"그래프 {len(g1)}층 바이트 동일 · 큐 {len(q1)}항목 집합 동일 · 거부 로그 {r1}→{r2}" if same else
-                      f"그래프 {'동일' if g1 == g2 else '다름'} · 큐 1회만 {len(q1 - q2)}건 / 2회만 {len(q2 - q1)}건")
+        note = (f"그래프 {len(g1)}층 바이트 동일 · 큐 {len(q1)}항목 집합 동일 · 거부 로그 {r1}→{r2}" if same else
+                f"그래프 {'동일' if g1 == g2 else '다름'} · 큐 1회만 {len(q1 - q2)}건 / 2회만 {len(q2 - q1)}건")
+        if not same and tmp is not None:
+            note += f" · 붉은 기록 {keep_red(tmp, '클린2회', note + chr(10))}"
+            tmp = None
+        return same, note
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)

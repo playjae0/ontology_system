@@ -38,7 +38,8 @@ from core.state.world import World              # noqa: E402
 from parser import tagger as TG                 # noqa: E402
 from cli import ops_review as OR, show as SH, show_learn as SL   # noqa: E402
 
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 MATRIX = [("표", "process", "Unit"), ("표", "quality", "Failure"),
           ("산문", "process", "Unit"), ("산문", "quality", "Failure")]
 BASE, VAR = "B101 유량계", "B101 유량 감지기"

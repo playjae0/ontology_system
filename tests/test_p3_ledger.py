@@ -46,7 +46,7 @@ def _at(home, *argv, fixtures=None, feed=None):
 
 
 # ── B62 ② 재료 — 문답 생성(b64) · B60 이전 꼴 패키지(b64old)
-_fx64 = Path(_tf.mkdtemp(prefix="fx64_", dir=str(ROOT)))
+_fx64 = Path(_tf.mkdtemp(prefix="fx64_"))
 (_fx64 / "fixtures/adapters").mkdir(parents=True)
 (_fx64 / "fixtures/schemas").mkdir(parents=True)
 for _dt in ("b64", "b64old"):
@@ -79,7 +79,7 @@ def _flow_b64(h):
 
 
 # ── B65 ⑤④ 재료 — 형태 판정이 안 서는 표본
-_d66 = Path(_tf.mkdtemp(prefix="b65f_", dir=str(ROOT)))
+_d66 = Path(_tf.mkdtemp(prefix="b65f_"))
 _amb66 = _d66 / "amb.csv"
 _rows66 = [["내용", "비고", "쪽"]]
 for _i in range(1, 5):
@@ -120,7 +120,7 @@ _F = {"b64": _pool.submit(_flow_b64, _H["b64"]), "b65f": _pool.submit(_flow_b65f
 
 print("\n■ B62 — 관문이 채우고 찍는다 · 재시도의 기본은 이어가기")
 
-_fx63 = Path(_tf.mkdtemp(prefix="fx63_", dir=str(ROOT)))
+_fx63 = Path(_tf.mkdtemp(prefix="fx63_"))
 (_fx63 / "fixtures/adapters").mkdir(parents=True)
 (_fx63 / "fixtures/schemas").mkdir(parents=True)
 # **LLM이 쓴 header_labels에 한 글자 오타**가 있는 어댑터 — ①-a 이전 코드의 산출이다.
@@ -343,7 +343,7 @@ print("\n■ B64 — columns 값 셋(열문자·라벨·합치기)을 시스템�
 from parser import preflight as _PF64                             # noqa: E402
 
 # 같은 라벨이 두 열(D·G)에 있는 표본을 만든다 — 사내 실측의 모양이다.
-_d64 = Path(_tf.mkdtemp(prefix="b64_", dir=str(ROOT)))
+_d64 = Path(_tf.mkdtemp(prefix="b64_"))
 _csv64 = _d64 / "dup64.csv"
 _csv64.write_text("대공정,세부공정,공정번호,Center,관리항목,규격,Center\n"
                   "조립,노칭,OP-10,노칭 프레스,노칭 정밀도,±0.05mm,\n"
@@ -410,7 +410,7 @@ _draft64.write_text(
     "}\n\n\n"
     "def extract(raw, struct_map_fn=None):\n"
     "    return []\n", encoding="utf-8")
-_st64 = {"doc_type": "c38t", "adapter": str(_draft64.relative_to(ROOT)), "revision": 0}
+_st64 = {"doc_type": "c38t", "adapter": str(_draft64), "revision": 0}    # 임시 자리 — 절대 경로(registry.at이 받는다 · B133)
 Rgate.stamp_system_fields(_st64, [str(_csv64)])
 _after64 = R._load(Rdraft._at(_st64["adapter"]), "c38_after").ADAPTER
 _exp_after = _after64["expects"]
@@ -441,7 +441,7 @@ show("⑤ 초안의 틀린 값 셋이 저장본에 남지 않는다 (오타 라�
      and _exp_after["columns"]["center"] == ["D", "G"])
 # **변이 — 스탬프를 끄면 붉어진다**(그리고 되돌린다). 스탬프가 없으면 관문이 읽는
 # 것은 초안 그대로이고, 그 값은 재계산값과 다르다 — 그것이 C38이 막는 상태다.
-_st64["adapter"] = str(_draft64.relative_to(ROOT))     # 작업 사본 이전으로 되돌린다
+_st64["adapter"] = str(_draft64)     # 작업 사본 이전으로 되돌린다
 shutil.rmtree(R.REVIEW / "c38t", ignore_errors=True)
 _keep64, Rgate.stamp_system_fields = Rgate.stamp_system_fields, lambda st, samples: None
 try:
@@ -459,7 +459,7 @@ _sh64 = shutil.rmtree(_d64, ignore_errors=True)
 # ── B65 ①② 하네스가 LLM 산출을 실행 전에 어휘로 거른다 ──────────────────
 print("\n■ B65 — 어휘가 닫힌 자리는 실행 전에 정적으로 대조한다")
 
-_d65 = Path(_tf.mkdtemp(prefix="b65_", dir=str(ROOT)))
+_d65 = Path(_tf.mkdtemp(prefix="b65_"))
 _cp65 = (ROOT / "tests/fixtures/adapters/cp.py").read_text(encoding="utf-8")
 _sc65 = _P.fixture_schemas("cp.json")
 

@@ -88,10 +88,11 @@ def _register_one(layer, dt):
                             indent=2) + "\n", encoding="utf-8")
     ad = ROOT / "parser" / "adapters" / "basic_prose_xlsx.py"
     if dt != DT:
-        # 이름이 다르면 **위임 래퍼**를 둔다(등록의 기본 어댑터 경로와 같은 모양 — 어댑터는 이름으로 찾는다)
-        ad = _P.adapters(f"{dt}.py")
-        _P.ensure(ad)
-        ad.write_text("from parser.adapters import basic_prose_xlsx\n"
+        # 이름이 다르면 **위임 래퍼**를 둔다(등록의 기본 어댑터 경로와 같은 모양 — 어댑터는 이름으로 찾는다 · 자리는 등록 단)
+        wrap = _P.adapters(f"{dt}.py")
+        _P.ensure(wrap)
+        ad = wrap
+        wrap.write_text("from parser.adapters import basic_prose_xlsx\n"
                       f"ADAPTER = {{**basic_prose_xlsx.ADAPTER, \"doc_type\": {dt!r}}}\n"
                       "extract = basic_prose_xlsx.extract\n", encoding="utf-8")
     dts = store.read(store.DOC_TYPES, {})

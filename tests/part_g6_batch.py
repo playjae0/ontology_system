@@ -185,12 +185,18 @@ show("①ⓒ 분류 없는 SystemExit이 0건이다 (새 거부는 표시해야 
      not _EX.unmarked(_rows61),
      f"{len(_rows61)}곳 전수 · 미분류 {_at61(_EX.unmarked(_rows61))}")
 # ⓓ **변이** — 표시 없는 거부를 하나 넣으면 붉어진다(그리고 되돌린다).
-_p61 = ROOT / "cli" / "viewer" / "server.py"
+# 변이는 **사본 뿌리**에서 한다(레포 소스를 고치지 않는다 — 병렬 회귀의 다른 스위트가 그 파일을 읽는다 · B133)
+import tempfile as _tf61                                             # noqa: E402
+_root61 = Path(_tf61.mkdtemp(prefix="b61_"))
+shutil.copytree(ROOT / "cli", _root61 / "cli", ignore=shutil.ignore_patterns("__pycache__"))
+for _f61 in ROOT.glob("*.py"):                                     # 뿌리 진입점(run.py · doctor.py …) — 다음 줄의 파일 꼴이 가리킨다
+    shutil.copy2(_f61, _root61 / _f61.name)
+_p61 = _root61 / "cli" / "viewer" / "server.py"
 _src61 = _p61.read_text(encoding="utf-8")
 _p61.write_text(_src61 + '\n\ndef _b61_probe():\n'
                          '    raise SystemExit("표시 없는 거부")\n', encoding="utf-8")
 try:
-    _mut61 = len(_EX.unmarked())
+    _mut61 = len(_EX.unmarked(_EX.scan(_root61)))
 finally:
     _p61.write_text(_src61, encoding="utf-8")
 show("①ⓓ 표시 없는 거부를 하나 넣으면 붉어진다 (되돌리면 초록)",
@@ -215,9 +221,10 @@ _p61.write_text(_src69 + '\n\ndef _b69_probe():\n'
                          '  ▶ 다음 줄:\\n     python run.py nosuch")  # [상태]\n',
                 encoding="utf-8")
 try:
-    _mut69 = _EX.unknown_next()
+    _mut69 = _EX.unknown_next(_EX.scan(_root61), _root61)
 finally:
     _p61.write_text(_src69, encoding="utf-8")
+    shutil.rmtree(_root61, ignore_errors=True)
 show("④ⓑ 없는 명령을 다음 줄로 주면 붉어진다 (되돌리면 초록)",
      len(_mut69) == 1 and _mut69[0]["cmd"] == "run:nosuch"
      and not _EX.unknown_next(), str([r["cmd"] for r in _mut69]))

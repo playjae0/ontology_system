@@ -55,12 +55,12 @@ def _named(src, name):
     return ""
 
 
-def targets():
-    """사람이 치는 자리 — `cli/`의 전 모듈(패키지 포함)과 `run.py`."""
-    return sorted((ROOT / "cli").rglob("*.py")) + [ROOT / "run.py"]
+def targets(root=ROOT):
+    """사람이 치는 자리 — `cli/`의 전 모듈(패키지 포함)과 `run.py`(`root` — 변이 시험은 사본 뿌리 · B133)."""
+    return sorted((root / "cli").rglob("*.py")) + [root / "run.py"]
 
 
-def scan():
+def scan(root=ROOT):
     """`[{file, line, mark, text, ok}]` — 파일 순·줄 순.
 
     `text`는 `raise SystemExit(...)` 문 전체의 원문이다. **화면에 무엇이 나오나**를
@@ -68,7 +68,7 @@ def scan():
     나눠 두면 스캐너가 못 보고, 사람이 문면을 고칠 때도 두 자리를 봐야 한다.
     """
     out = []
-    for f in targets():
+    for f in targets(root):
         src = f.read_text(encoding="utf-8")
         lines = src.splitlines()
         for node in ast.walk(ast.parse(src)):
@@ -85,7 +85,7 @@ def scan():
             # 찾아가고, 그 자리를 지우면 표시가 가리키는 것이 없어 빨갛다.
             if m and m.group(2):
                 text += "\n" + _named(src, m.group(2))
-            out.append({"file": str(f.relative_to(ROOT)), "line": node.lineno,
+            out.append({"file": str(f.relative_to(root)), "line": node.lineno,
                         "mark": mark, "text": text,
                         "ok": mark != "상태" or any(k in text for k in NEXT_LINE)})
     return out
@@ -100,14 +100,14 @@ _CMD_FILE = re.compile(r"python\s+([A-Za-z_][A-Za-z0-9_/-]*\.py)")
 _PLACEHOLDER = ("<", "{", "…", "[")
 
 
-def run_commands():
+def run_commands(root=ROOT):
     """`run.py`가 아는 명령 이름 — **명령 표의 키가 정본이다**(문면을 읽지 않는다).
 
     표는 `{...}[cmd]()` 꼴로 그 자리에서 불린다 — 이름 붙은 dict가 아니다.
     그래서 **문자열 키만 가진 dict 리터럴 중 가장 큰 것**을 명령 표로 본다:
     `run.py`에 그런 표는 하나이고, 둘이 되면 그때 이 함수가 갈라져야 한다.
     """
-    src = (ROOT / "run.py").read_text(encoding="utf-8")
+    src = (root / "run.py").read_text(encoding="utf-8")
     best = set()
     for node in ast.walk(ast.parse(src)):
         if isinstance(node, ast.Dict) and node.keys and all(
@@ -129,7 +129,7 @@ def next_commands(text):
     return out
 
 
-def unknown_next(rows=None):
+def unknown_next(rows=None, root=ROOT):
     """**없는 명령을 다음 줄로 주는 자리** (B69 ④).
 
     B68 회차 실측: `_kit_line_re`의 상태 거부가 `python run.py doctor`를 줬는데
@@ -138,15 +138,15 @@ def unknown_next(rows=None):
 
     문면을 세지 않는다 — **이름의 실재**만 본다.
     """
-    known = run_commands()
+    known = run_commands(root)
     bad = []
-    for r in (rows if rows is not None else scan()):
+    for r in (rows if rows is not None else scan(root)):
         for kind, name in next_commands(r["text"]):
             # `python -m cli.x`는 **모듈이거나 패키지**다(B78 2b — `cli/register/`).
             ok = (name in known if kind == "run" else
-                  ((ROOT / "cli" / f"{name}.py").exists()
-                   or (ROOT / "cli" / name / "__main__.py").exists())
-                  if kind == "cli" else (ROOT / name).exists())
+                  ((root / "cli" / f"{name}.py").exists()
+                   or (root / "cli" / name / "__main__.py").exists())
+                  if kind == "cli" else (root / name).exists())
             if not ok:
                 bad.append({**r, "cmd": f"{kind}:{name}"})
     return bad

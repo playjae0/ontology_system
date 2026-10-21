@@ -357,7 +357,8 @@ show("① /api/graph — 닻과 연결 없는 노드가 노드 전체를 나눈�
      f"노드 {len(_ids)} · 닻 {len(_g['anchor'])} · 엣지 없음 {len(_g['detached']['edgeless'])} · "
      f"섬 {len(_g['detached']['island'])} · 뿌리 {len(_g['roots'])} · 문턱 {_g['explore_threshold']}")
 # 엣지 없는 노드 수 = B102 끝 요약 — 좌표 없는 청크의 불량(품질층 산문 · 창작 · 추출 힌트)
-_HD = ROOT / "tests" / "fixtures" / "extract_hints" / "B103VW.json"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+_HD = _FXR.EXTRACT_HINTS / "B103VW.json"
 _HD.write_text(json.dumps({"B103VW-C1": {"entities": [{"surface": "B103 뷰어 고립 불량", "category": "Failure"}],
                                          "relations": [], "attach": []}}, ensure_ascii=False), encoding="utf-8")
 _e0 = len(VD.graph()["detached"]["edgeless"])

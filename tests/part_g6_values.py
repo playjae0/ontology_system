@@ -34,7 +34,8 @@ from parser import pipeline, struct_map, tuning         # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="b120_"))
-HINTS = ROOT / "tests" / "fixtures" / "extract_hints"
+from core.state import fixtures as _FXR                   # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+HINTS = _FXR.EXTRACT_HINTS
 DT = "b120_process"
 SHEET = "TW 사양"
 UNITS = [{"text": "언와인더 unit", "depth": 1, "role": "대상", "name": "언와인더 unit", "category": "Unit"},
