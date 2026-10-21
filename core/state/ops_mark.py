@@ -115,6 +115,25 @@ def confirm_doc(doc_id, actor, reason="", dry_run=False):
     return pv
 
 
+def alias_key(node, surface, cfg):
+    """별칭의 **조회 키** — 그 표기를 그 노드의 부모 아래에서 조립한 스코프 canonical · `(키, 부모)` (`ops alias` · 사람 후보 같은 함수)."""
+    parent = node.get("parent") or node.get("mirror_scope")
+    return scope_canonical(surface, node["category"], parent, cfg)[0], parent
+
+
+def alias_clash(dic, get, nid, node, surface, cfg):
+    """**같은 자리 다른 노드에 붙은 표기**(같은 카테고리 · 같은 부모의 살아 있는 다른 노드) — `(id, 노드)` · 없으면 None.
+    `ops alias`의 거부와 사람 후보 「같은 것」의 검사가 같은 함수다(B140 ②). `get`은 id → 노드."""
+    key, parent = alias_key(node, surface, cfg)
+    for other in set(dic.lookup(surface)) | set(dic.lookup(key)):
+        o = get(other)
+        if other == nid or not o or not is_live(o) or o["category"] != node["category"]:
+            continue
+        if (o.get("parent") or o.get("mirror_scope")) == parent:
+            return other, o
+    return None
+
+
 def alias(layer, target, surface, actor, reason="", dry_run=False):
     """**사람이 표기를 잇는다** — 사전에 표기 하나를 손으로 등재한다 (B74 ⑤ · I6).
 
@@ -143,17 +162,11 @@ def alias(layer, target, surface, actor, reason="", dry_run=False):
     w, g, layer = ops._open(layer, nid)
     node = ops._target(g, nid)                  # 툼스톤·없는 id는 여기서 거부된다
     cfg = ops._cfg(layer)
-    parent = node.get("parent") or node.get("mirror_scope")
     dic = Dictionary.open()
-    key, _scoped = scope_canonical(surface, node["category"], parent, cfg)
-    for other in set(dic.lookup(surface)) | set(dic.lookup(key)):
-        o = w.get(other)
-        if other == nid or not o or not is_live(o):
-            continue
-        if o["category"] != node["category"]:
-            continue
-        if (o.get("parent") or o.get("mirror_scope")) != parent:
-            continue
+    key, parent = alias_key(node, surface, cfg)
+    clash = alias_clash(dic, w.get, nid, node, surface, cfg)
+    if clash:
+        other, o = clash
         raise ops.OpRefused(
             f"'{surface}'는 이미 같은 자리의 다른 노드에 붙어 있다 — "
             f"'{o['canonical']}' ({other})\n"

@@ -125,8 +125,8 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
         finally:
             _gw.set_lens(None)
         extracted = extracted or did
-        prose_gate(env, ck, loc2id, lay, notice, lens=lay)
         lb = root.for_layer(lay)
-        prose_mod.build_prose(env, cfgs[lay], lb.g, ck["candidates"], builder=lb, defer_save=True,
+        cands = prose_gate(env, ck, loc2id, lay, notice, lens=lay, cfg=cfgs[lay], graph=lb.g, outline=ol)   # 사람 후보 (B140 ③)
+        prose_mod.build_prose(env, cfgs[lay], lb.g, cands, builder=lb, defer_save=True,
                               outline=ol)
     return root, extracted

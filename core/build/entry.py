@@ -368,19 +368,28 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
         from core.build import outline as outline_mod
         ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
-        prose_gate(env, ck, loc2id, layer, notice)
-        builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"], defer_save=True, outline=ol)
+        cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보를 보탠 후보 (B140 ③)
+        builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
 
 
-def prose_gate(env, ck, loc2id, layer, notice, lens=None):
+def prose_gate(env, ck, loc2id, layer, notice, lens=None, *, cfg=None, graph=None, outline=None):
     """산문의 **판정 예고 = 추출 뒤 관문** (B97 ④) — 표기는 추출이 끝나야 안다.
 
     `--step`이면 화면이 여기서 묻고 `False`면 멈춘다(그래프 쓰기 0 · 체크포인트는 완료로
     남아 재실행은 추출 재사용으로 구축만 간다). 렌즈 길도 렌즈마다 같은 함수를 지난다.
+    예고에 **사람 후보 판**(B140 ① — 이름 없는 대상 · 읽기만)이 함께 가고 · 돌려주는 것은 구축이 쓸 후보다 — 사람 후보 기록을
+    추출 후보에 보탠 것(③ — 알림이 없는 길(재구축 · 배치)에서도 · 체크포인트는 그대로).
     """
-    if notice is None:
-        return
+    from core.build import human
+    if notice is not None:
+        _notice_plan(env, ck, loc2id, layer, notice, lens,
+                     human.Board(env, ck["candidates"], cfg, graph, layer, loc2id, outline) if cfg is not None else None)
+    return human.apply(env, ck["candidates"], cfg or {}, loc2id)
+
+
+def _notice_plan(env, ck, loc2id, layer, notice, lens, board):
+    """추출 뒤 판정 예고 — `False`면 멈춘다(위 `prose_gate`)."""
     _by_loc = {c["source_locator"]: c for c in env.get("chunks") or []}
     _loc_of = {cid: loc for loc, cid in loc2id.items()}
     plan = decision_plan(
@@ -391,7 +400,7 @@ def prose_gate(env, ck, loc2id, layer, notice, lens=None):
          for c in ck["candidates"]
          for e in (c.get("entities") or []) if e.get("surface")],
         [c.get("process_ref") for c in env.get("chunks") or [] if c.get("process_ref")], layer)
-    if notice({**plan, "추출뒤": True, "렌즈": lens}) is False:
+    if notice({**plan, "추출뒤": True, "렌즈": lens, "사람후보": board}) is False:
         raise StepStop("사람이 멈췄다 — 추출 뒤 판정 예고까지 (그래프 쓰기 0 · 추출 체크포인트는 "
                        "완료로 남는다 — 다시 치면 추출 재사용으로 구축만 간다)")
 
@@ -404,7 +413,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
     사전을 먼저 쓰면 그래프 저장이 실패했을 때 사전이 없는 노드를 가리킨다.
     """
     from core import matcher as _mt
-    from core.build import coord_scan, replay as _rp
+    from core.build import coord_scan, human as human_mod, replay as _rp
     # **좌표 쌍 대조**(B105 ③④) — 표·산문·렌즈 세 길이 여기 한 자리 · 좌표 단계 화면과 같은 함수 · 같은 입력
     coord_scan.enqueue(_RUN.get("env") or {}, builder)
     _check_integrity(builder, doc_id)
@@ -422,7 +431,8 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
                 "저해상도": loop.LOWRES["n"], "제목폴백": loop.LOWRES["heading"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
-                "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res)})
+                "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res),
+                "사람": human_mod.summary(builder.ledger.rows if builder.ledger else [], doc_id)})   # 사람 후보 (B140 ③)
     return None, metrics, extracted
 
 

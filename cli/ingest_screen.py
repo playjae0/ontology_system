@@ -139,7 +139,7 @@ def stage_head(label, detail=""):
     _screen.say(_stage_end(), "aux")
 
 
-def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False):
+def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False, ask_fn=None):
     """**단계 머리**를 찍고(`--step`이 아니어도 — B99 ④) `ask`면 `[계속 c / 멈춤 q]`를 묻는다.
 
     머리 아래 **단계 끝 줄**(걸린 시간 · LLM 호출 · 입력/출력)이 붙는다 — `--step`은 같은 머리에
@@ -159,7 +159,7 @@ def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False):
     if not ask:
         return True
     print(f"   {why}")
-    if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
+    if not (ask_fn() if ask_fn else _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True)):   # 묻는 자리가 따로면 그 함수 (B140 ②)
         if saved:                              # 저장 표지 뒤 — 끝난 문서다(B109 ②) · 되돌리지 않는다
             print(f"   멈춤 — 이 문서는 이미 저장됐다(되돌리지 않는다) · 남은 머리는 묻지 않는다")
             return False
@@ -444,8 +444,11 @@ def build_screen(step=False, stage=None, prose=False):
                 stage.update({"이름": "판정", "값": 0, "총": info["값_수"], "t0": None})
                 _judge.update(stage)
             if info.get("추출뒤"):
-                # 산문은 **추출 뒤 단계 머리**가 이 줄이다(B97 ④ · 늘 — B99 ④) — `--step`이면 묻는다
-                return _step_gate(8, lz + body, prose=True, ask=step)
+                # 산문은 **추출 뒤 단계 머리**가 이 줄이다(B97 ④ · 늘 — B99 ④) — `--step`이면 묻는다 · 머리 아래 사람 후보 (B140 ①②)
+                from cli import human_gate
+                hb = info.get("사람후보")
+                return _step_gate(8, lz + body, prose=True, ask=step, body=human_gate.lines(hb, step) if hb else None,
+                                  ask_fn=(lambda: human_gate.ask(hb)) if hb else None)
             if step:
                 return          # 표 문서 — 관문 3(판정 예고)이 이미 같은 수를 찍었다
             _screen.say(f"   판정 예고 {lz}— {body}", "head")
@@ -489,6 +492,9 @@ def build_screen(step=False, stage=None, prose=False):
               f"저해상도 부착 {info.get('저해상도', 0):,}행{_hf}"
               + (f" · 큐: {head}" if head else " · 큐 0")
               + f" · {_screen.usage_pair(doc_since(), '이 문서')}")
+        if info.get("사람"):                      # 사람 후보 한 줄 (B140 ③)
+            from cli import human_gate
+            print(human_gate.end_line(info["사람"]))
         # **문서 끝 결과표**(B99 ⑤) — 층별 증감 · 이번/이전 큐 · LLM 지점별
         from cli import result_screen
         LAST_RESULT["res"] = info.get("결과")

@@ -557,12 +557,17 @@ def _finalize_screen():
     gateway.set_doc("(마무리)")                  # 재시도 판정의 사용량은 마무리로 센다 (B99 ③)
     from cli import _screen
     stage = {"이름": "연결 보강"}
+    from core.build import human
+    h0 = human.waiting()                         # 사람 후보 이름을 기다리던 고아 행 (B140 ③)
     with _screen.ticker("연결 보강", where=SCR.ticker_where(stage)):
         fin = finalize(notice=SCR.reinforce_screen(stage))
     SCR.stage_head("마무리", "미러 · 재시도 · 연결 보강")
     print(f"   {fin['retry_line']}")
     print(f"   미러 — 새 짝 엣지 {fin['mirror_new']:,} · 비대칭(mirror_asymmetry) {fin['mirror_asym']:,}")
     print(f"   {fin['reinforce_line']}")
+    if h0:
+        h1 = human.waiting()
+        print(f"   사람 후보 — 재연결 붙음 {h0 - h1:,} · 남음 {h1:,}(그 이름을 기다리던 고아 행)")
     return fin
 
 

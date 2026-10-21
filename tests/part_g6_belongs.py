@@ -21,6 +21,8 @@ quality)에서 같은 성질을 잰다(CLAUDE.md §4 범용성).
   ⓖ 대장 `target`·`attached`·`from` · 「표기 → 붙은 노드」 · 「└ 관계 → 상대」 · `--trace` · 좌표 줄 · 끝 요약 ·
      목록 · 재시도 분포 · 표 진행 줄 분모 = 실제 값 수
   ⓗ 해시 없는 보존물 재사용 0 · 동명 다른 경로 멈춤 / `--revise`면 개정
+  B140 이름 없는 대상 — [5/8] 예고(쓰기 0 · LLM 0) · 더하기(pty 관문 → 기록 → [6/8]이 평소 길로) · 다른 문서 고아 · 같은 것 ·
+     다시(재인입 · 재구축 · 지우기) · 관계 끝점 사전 조회 · 소속 노드의 좌표 상속 · 막기 · 비대화형
 """
 from __future__ import annotations
 
@@ -487,6 +489,240 @@ show("ⓗ 같은 doc_id · 다른 원본 경로 — 상태 거부 + 다음 줄(�
      and g1 == g0 and "개정 — " in o3 and Path(str(src3)).parent.name == "b",
      " / ".join([l.strip() for l in o2.splitlines() if "[상태]" in l or "--revise" in l][:3])
      + f" · 등록 경로 {src2} → {src3}")
+
+# ────────────────────────────────────────────────────────────── B140 사람 후보 · 끝점 조회 · 좌표 상속
+print("\n■ B140 이름 없는 대상 — [5/8] 예고 · 더하기 · 같은 것 · 다시 · 끝점 조회 · 좌표 상속 · 막기 · 비대화형")
+import json as _js                                         # noqa: E402
+import os as _os                                           # noqa: E402
+import select as _sel                                      # noqa: E402
+import signal as _sig                                      # noqa: E402
+from core.build import belongs as BL, human as HU, outline as OL   # noqa: E402
+from core.build import structure as _STR                   # noqa: E402
+from core.state import human_candidates as HC              # noqa: E402
+from parser import tuning as _TU                           # noqa: E402
+from cli import _screen as _SC                             # noqa: E402
+overlay()                                                  # 클린 · 기본 config(덧칠은 품질층 어휘뿐)
+_register("process", DT)
+(_P.home() / "knobs.json").write_text(_js.dumps({"chunk_rows": [1, 2]}), encoding="utf-8")   # 제목이 경로에 서게(창작 손잡이)
+_TU.apply({"chunk_rows": [1, 2]})
+HC.path().unlink(missing_ok=True)
+#: FWC1 꼴(창작 — 네 벌 C의 표본 꼴) · 「실린더」는 소속 · 관계 끝점으로만 쓰인다
+B140_ROWS = ["1. 개요", "센서가 셀 위치를 본다.", "2. 추출부", "추출부는 셀을 꺼낸다.", "2.1 NG unit",
+             "모터 회전수는 3000rpm이다.", "실린더 행정은 50mm다."]
+B140_OUT = {"2. 추출부": {"name": "추출부", "category": "Unit"}, "2.1 NG unit": {"name": "NG unit", "category": "Unit"}}
+B140_WORDS = (("모터 회전수", "Property"), ("실린더 행정", "Property"), ("실린더봉 행정", "Property"), ("실린더 압력", "Property"),
+              ("센서", "Unit"), ("모터", "Unit"))
+
+
+def _b140(did, rows, uses=None, rels=(), coord="노칭"):
+    """창작 엑셀 + mock 힌트(추출 · 개요) — `uses` {개체: 소속 이름(카테고리 없음)} · `rels` [(src, rel, dst)]는 그 말이 든 청크에."""
+    path = TMP / f"{did}.xlsx"
+    wb = Workbook()
+    wb.active.title = "사양"
+    for r, v in enumerate(rows, 1):
+        wb.active.cell(row=r, column=1, value=v)
+    wb.save(path)
+    struct_map.invalidate(did)
+    env = pipeline.parse(BX, did, str(path), sheet_roles={"사양": "prose"}, closed_list=[],
+                         structure=_STR.structurer(["process"])).envelope
+    hints = {}
+    for c in env["chunks"]:
+        t = c.get("text") or ""
+        own = next((x for x in reversed((c.get("meta") or {}).get("structure") or []) if x.get("name")), None)
+        words = [(w, k) for w, k in B140_WORDS if w in t]
+        words = [(w, k) for w, k in words if not any(w != v and w in v for v, _k in words)]
+        ents = []
+        for w, k in words:
+            bel = ({"name": (uses or {})[w], "category": None, "from": "본문"} if w in (uses or {}) else
+                   {"name": own["name"], "category": own["category"], "from": "제목"} if own else None)
+            ents.append({"surface": w, "category": k, **({"belongs_to": bel} if bel else {})})
+        rl = [{"src": a, "rel": r_, "dst": d_} for a, r_, d_ in rels if d_ in t]
+        if ents or rl:
+            hints[c["source_locator"]] = {"entities": ents, "relations": rl, "attach": []}
+    _hint(did, hints)
+    _made.append(did)
+    (HINTS / f"{did}@outline.json").write_text(_js.dumps(B140_OUT, ensure_ascii=False), encoding="utf-8")
+    _made.append(f"{did}@outline")
+    return path, ("--coord", coord) if coord else ("--coord", "none")
+
+
+def _go(path, coord, *extra, answers=None):
+    return _run("ingest-file", str(path), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose", *coord, *extra,
+                answers=answers)
+
+
+def _drive(argv, rules):
+    """pty 도우미 — 묻는 줄이 뜰 때마다 그 줄의 표지에 맞는 답(`rules` [(표지, [답…])] · 없으면 c) · 끝까지."""
+    import pty
+    pid, fd = pty.fork()
+    if pid == 0:                                                       # pragma: no cover
+        _os.environ.update(USE_MOCK="1", COLUMNS="200")
+        _os.chdir(str(ROOT))
+        _os.execv(sys.executable, [sys.executable, str(ROOT / "run.py"), *argv])
+    marks = ("[계속 c / 멈춤 q", "[OK o / 위 노드", "번호(Enter", "[OK o / 취소 x]", "[y/N]", "[Y/n]")
+    out, used, seen = b"", {}, 0
+    while True:
+        r_, _w, _x = _sel.select([fd], [], [], 60)
+        if not r_:
+            _os.kill(pid, _sig.SIGKILL)
+            break
+        try:
+            d_ = _os.read(fd, 4096)
+        except OSError:
+            break
+        if not d_:
+            break
+        out += d_
+        txt = out.decode("utf-8", "replace")
+        hits = sorted((m.start(), mk) for mk in marks for m in re.finditer(re.escape(mk), txt))
+        while seen < len(hits):
+            pos = hits[seen][0]
+            line = txt[txt.rfind("\n", 0, pos) + 1:pos + 80]
+            ans = "c"
+            for mk, q in rules:
+                if mk in line:
+                    k = used.get(mk, 0)
+                    ans, used[mk] = q[min(k, len(q) - 1)], k + 1
+                    break
+            _os.write(fd, (ans + "\n").encode())
+            seen += 1
+    _os.waitpid(pid, 0)
+    return _SC.strip_ansi(out.decode("utf-8", "replace"))
+
+
+def _state_print():
+    """상태 지문 — 상태 루트 파일마다 (자리, 크기, 바이트 해시)(로그 제외)."""
+    import hashlib
+    return sorted((str(f.relative_to(_P.home())), hashlib.sha256(f.read_bytes()).hexdigest()[:12])
+                  for f in _P.home().rglob("*") if f.is_file() and "logs" not in f.parts)
+
+
+def _board(did):
+    env = _js.loads(_P.parsed(f"{did}.json").read_text(encoding="utf-8"))
+    ck = _js.loads(EX.checkpoint_path(did).read_text(encoding="utf-8"))
+    l2i = {c["source_locator"]: cid for cid, c in store.read(store.CHUNKS, {"chunks": {}})["chunks"].items()
+           if c.get("doc_id") == did}
+    from core.state.bootstrap import load_config, open_graph as _og
+    return HU.Board(env, ck["candidates"], load_config("process"), _og("process"), "process", l2i, OL.load(did))
+
+
+def _live_named(canon):
+    return [n for _l, n in World().nodes() if n["canonical"] == canon and n.get("status") != "deleted"]
+
+
+def _edges_of(nid):
+    w = World()
+    return [(w.get(e["src"])["canonical"], e["rel"], w.get(e["dst"])["canonical"]) for _l, g in w.graphs.items()
+            for e in g.edges if nid in (e["src"], e["dst"]) and e.get("status") != "deleted"]
+
+
+def _orph(did, key):
+    return [x for x in store.read(store.QUEUE, []) if x.get("kind") == "orphan_attach" and x.get("doc_id") == did
+            and (x.get("payload") or {}).get("key") == key]
+
+
+# 먼저 넣은 문서(기록 없음) — 「실린더」 고아가 큐에 선다
+_pP, _cP = _b140("B140P", [x.replace("셀 위치", "셀 높이") for x in B140_ROWS], {"실린더 행정": "실린더"},   # 다른 문서(같은 내용이면 보류)
+                 [("실린더", "has_property", "실린더 행정")])
+_go(_pP, _cP)
+_pA, _cA = _b140("B140A", B140_ROWS, {"실린더 행정": "실린더"},
+                 [("실린더", "has_property", "실린더 행정"), ("유령", "has_property", "모터 회전수")])
+_oa0 = _go(_pA, _cA)
+_bd = _board("B140A")
+_u0, _s0 = gateway.usage_total()["calls"], _state_print()
+_rw0, _tl0 = _bd.rows()
+_it0 = next((x for x in _rw0 if x["name"] == "실린더"), {})
+_up0, _cat0 = _bd.recommend(_it0) if _it0 else (None, None)
+_pv0 = _bd.preview(_it0, _up0, _cat0) if _it0 else {}
+show("B140 ⓐ 예고 — 「실린더」가 소속 · 관계 · 다른 문서 고아 수와 함께 목록에 · 본문에 없는 이름은 번호 없이 꼬리 · 셈 · 상세 · "
+     "미리보기는 상태 지문 전후 같다(쓰기 0 · LLM 0)",
+     (_it0.get("소속"), _it0.get("관계"), _it0.get("고아")) == (1, 1, {"B140P": 1}) and _tl0 == {"종": 1, "관계": 1}
+     and "1. 실린더 — 소속 1" in _oa0 and "본문에 없는 이름 1종" in _oa0 and _pv0.get("node") == "노칭::실린더"
+     and _state_print() == _s0 and gateway.usage_total()["calls"] == _u0,
+     f"목록 {[(x['name'], x['소속'], x['관계'], x['고아']) for x in _rw0]} · 꼬리 {_tl0} · 추천 {_up0} · {_cat0} · 미리보기 {_pv0.get('node')}")
+_ckb = EX.checkpoint_path("B140A").read_bytes()
+_ob = _drive(["ingest-file", str(_pA), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose", *_cA, "--step"],
+             [("더하기 n", ["n 1", "c"]), ("[OK o / 위 노드", ["o"])])
+_cy = _live_named("노칭::실린더")
+_rowA = {r["surface"]: r for r in LG.read("B140A")["rows"] if r.get("role") == "entity"}
+_eA = _edges_of(_cy[0]["id"]) if _cy else []
+show("B140 ⓑ 더하기 — 관문(pty) n → 상세 → OK → 기록 → [6/8]이 「노칭::실린더」를 고른 위 노드(노칭) 아래 세운다 · 이 문서의 소속 개체가 "
+     "그 노드에 붙고(임시 연결 0) 그 이름을 끝점으로 한 관계가 커밋 · 소속 미해소 0",
+     [r["kind"] for r in HC.of("B140A")] == [HC.NEW] and _cy and ("노칭::실린더", "part_of", "노칭") in _eA
+     and ("노칭::실린더", "has_property", "노칭::실린더::실린더 행정") in _eA
+     and not any(str(a.get("path")).startswith("폴백") for a in _rowA.get("실린더 행정", {}).get("attached") or [])
+     and _rowA.get("실린더", {}).get("by") == HU.HUMAN and not _orph("B140A", "실린더") and "만들 노드 — 노칭::실린더" in _ob,
+     f"기록 {HC.of('B140A')} · 엣지 {_eA} · 고아 {len(_orph('B140A', '실린더'))}")
+_pPn = _live_named("노칭::실린더 행정")
+show("B140 ⓒ 다른 문서 고아 — 먼저 넣은 문서의 「실린더」 고아가 그 노드를 만든 인입의 마무리 재연결에서 붙는다",
+     not _orph("B140P", "실린더") and _pPn and ("노칭::실린더", "has_property", "노칭::실린더 행정") in _edges_of(_pPn[0]["id"])
+     and "사람 후보 — 재연결 붙음 1" in _ob,
+     f"P 고아 {len(_orph('B140P', '실린더'))} · 마무리 {[ln.strip() for ln in _ob.splitlines() if '재연결 붙음' in ln]}")
+_pS, _cS = _b140("B140S", ["1. 구동", "실린더봉 행정은 40mm다."], {"실린더봉 행정": "실린더봉"})
+HC.add("B140S", {"kind": HC.SAME, "name": "실린더봉", "target": {"name": "노칭::실린더", "layer": "process", "category": "Unit"}})
+_go(_pS, _cS)
+from core.state import alias_book as _AB                   # noqa: E402
+_sb = str((_AB.AliasBook.open().get("실린더봉", _AB.name(_cy[0])) or {}).get("source")) if _cy else ""
+_rS = next((r for r in LG.read("B140S")["rows"] if r.get("surface") == "실린더봉 행정"), {})
+_clash = _board("B140A").same_check({"name": "센서"}, {"name": "노칭::실린더", "layer": "process", "category": "Unit"})
+show("B140 ⓓ 같은 것 — 별칭이 등재되고(별칭 대장 출처 사람) 그 표기의 고아가 붙는다 · 같은 자리 다른 노드에 붙은 표기는 거부(ops alias와 같은 검사)",
+     _sb == "사람" and any(a.get("other") == "노칭::실린더" and str(a.get("path")).startswith("소속")
+                          for a in _rS.get("attached") or []) and not _orph("B140S", "실린더봉")
+     and "이미 같은 자리의 다른 노드에 붙어 있다" in str(_clash),
+     f"대장 출처 {_sb} · 붙은 곳 {_rS.get('attached')} · 거부 {str(_clash)[:60]}")
+_g0 = sorted(_edges_of(_cy[0]["id"])) if _cy else []
+_oe = _go(_pA, _cA)
+_g1 = sorted(_edges_of(_live_named("노칭::실린더")[0]["id"])) if _live_named("노칭::실린더") else []
+_run("rebuild", "--yes")                                   # 재구축 = 기본 fresh(재구축 안) → 문서 대장 차례로 재인입
+_g2 = sorted(_edges_of(_live_named("노칭::실린더")[0]["id"])) if _live_named("노칭::실린더") else []
+HC.drop("B140A", 1)
+_go(_pA, _cA)
+_hA = [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN]
+show("B140 ⓔ 다시 — 같은 문서 재인입은 묻지 않고 기록을 적용해 같은 엣지 · 기본 fresh 뒤 재구축도 같다 · 지우기로 걷으면 다음 인입에서 빠진다",
+     _g0 and _g0 == _g1 == _g2 and "사람 기록 1 — 적용" in _oe and "더하기 n" not in _oe and not _hA,
+     f"엣지 {len(_g0)} / {len(_g1)} / {len(_g2)} · 걷은 뒤 사람 행 {len(_hA)}")
+# 끝점 조회 — 다른 문서가 만든 노드를 끝점으로 · 사전 히트 둘이 좁혀도 둘이면 미해소
+from core.state.bootstrap import open_graph as _og2         # noqa: E402
+from core.dictionary import Dictionary as _Dc               # noqa: E402
+_gp = _og2("process")
+_d2 = _Dc.open()
+for _par in ("노칭", "노칭::NG unit"):                       # 같은 표기 「브래킷」 둘(창작 — 같은 좌표 아래)
+    _bid = _gp.add_node(f"{_par}::브래킷", "Unit", "auto", provenance=["B140 시험"], mirror_scope=_par, polarity="none")
+    _d2.register("브래킷", _bid, provenance="B140 시험")
+_gp.save()
+_d2.save()
+_pR, _cR = _b140("B140R", ["1. 구동", "실린더 압력은 5bar다. 브래킷 압력도 같다."], None,
+                 [("실린더", "has_property", "실린더 압력"), ("브래킷", "has_property", "실린더 압력")])
+_go(_pR, _cR)
+_pr = _live_named("노칭::실린더 압력")
+_eR = _edges_of(_pr[0]["id"]) if _pr else []
+_dfx = _P.work("defects.log").read_text(encoding="utf-8")
+show("B140 ⓕ 끝점 조회 — 다른 문서가 만든 「노칭::실린더」를 끝점으로 한 관계가 커밋 · 사전 히트 둘이고 좁혀도 둘이면 지금처럼 미해소(결함)",
+     ("노칭::실린더", "has_property", "노칭::실린더 압력") in _eR and not any("브래킷" in a for a, _r, _d in _eR)
+     and "B140R: 관계 후보 끝점 미해소 — '브래킷'" in _dfx,
+     f"엣지 {_eR}")
+_pN, _cN = _b140("B140N", ["1. 구동", "모터는 실린더에 붙는다."], {"모터": "실린더"}, coord=None)
+_q0 = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == "B140N" and x.get("kind") == "missing_field"]
+_go(_pN, _cN)
+_mo = _live_named("노칭::모터")
+show("B140 ⓖ 좌표 상속 — 좌표 없는 청크의 개체가 소속 노드(「노칭::실린더」)의 좌표로 선다(전에는 보류 — missing_field)",
+     _mo and any("B140N" in p_ for p_ in _mo[0].get("provenance") or [])
+     and not [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == "B140N" and x.get("kind") == "missing_field"],
+     f"노드 {[n['canonical'] for n in _mo]} · 보류 {len(_q0)}")
+_bA = _board("B140A")
+_ngu = {"name": "NG unit", "category": "Unit", "kind": "제목 개체"}
+show("B140 ⓗ 막기 — 좌표 카테고리는 고를 수 없다 · 매핑 없는 위 노드(NG unit · Unit)는 고를 수 없다(이유) · 추출 체크포인트 바이트 그대로",
+     "Process" not in _bA.categories() and "매핑 없음" in str(_bA.why_not(_ngu, "Unit"))
+     and EX.checkpoint_path("B140A").read_bytes() == _ckb,
+     f"카테고리 {_bA.categories()} · 이유 {_bA.why_not(_ngu, 'Unit')}")
+HC.add("B140A", {"kind": HC.NEW, "name": "실린더", "category": "Unit", "upper": {"name": "노칭", "category": "Process", "kind": "골격"}})
+_oi = _go(_pA, _cA, "--step")
+show("B140 ⓘ 비대화형 — 목록과 안내 줄만(묻지 않는다) · 지난 기록은 적용한다",
+     "사람 기록 1 — 적용" in _oi and "더하기 n" not in _oi and [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN],
+     " / ".join(ln.strip() for ln in _oi.splitlines() if "사람" in ln)[:200])
+HC.path().unlink(missing_ok=True)
+(_P.home() / "knobs.json").unlink(missing_ok=True)
+_TU.apply({})
 
 # ── 정리 — 표본·힌트·등록은 남기지 않는다
 for d in set(_made):
