@@ -466,8 +466,8 @@ _stage75 = {"이름": "판정", "값": 7, "총": 60}
 _line75 = _IG75.spend_line(_stage75)
 _u75 = _LL74.usage_total()
 show("③ 실패 줄이 비용을 말하고 그 수가 `llm.usage_total()`과 같다",
-     f"호출 {_u75['calls']:,}" in _line75
-     and f"토큰 {_u75.get('total_tokens', 0):,}" in _line75
+     # 기대 변경(B139 ⑤ — 비용은 이 문서 · 누계 두 마디 · 누계 = 게이트웨이 누계)
+     f"누계 호출 {_u75['calls']:,} · 입력 {_u75.get('prompt_tokens', 0):,} · 출력 {_u75.get('completion_tokens', 0):,}" in _line75
      and "판정 값 7/60" in _line75, _line75[:80])
 _pb75 = _io.StringIO()
 with _ctx.redirect_stdout(_pb75):

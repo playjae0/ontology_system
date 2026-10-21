@@ -436,6 +436,7 @@ def _result(builder, doc_id):
     seen = {_qkey(x) for x in _RUN["q0"]}
     q = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == doc_id]
     rej = (store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or [])[_RUN.get("rej0", 0):]
+    table = gateway.usage_table(doc_id)          # 끝 표 — 갈래별(B139 ⑤ · 게이트웨이 누계 그대로 · 부른 것이 없으면 키도 없다)
     res = result_mod.collect(doc_id, builder.ledger.rows if builder.ledger else [],
                              _RUN.get("layers0") or {}, after,
                              [x for x in q if _qkey(x) not in seen],
@@ -443,7 +444,7 @@ def _result(builder, doc_id):
                              [x for x in rej if x.get("doc_id") == doc_id],
                              gateway.usage_by(doc_id),
                              extra={"LLM 별칭": len(_build_added()),
-                                    "LLM 갈래": gateway.usage_table(doc_id),     # 끝 표 — 갈래별(B139 ⑤ · 게이트웨이 누계 그대로)
+                                    **({"LLM 갈래": table} if table else {}),
                                     "좌표 학습": _RUN.get("coord_learn") or {},
                                     # 붙은 곳 끝 요약(B102 ⑦) — 대장 · 봉투 · 그래프에서(새 판정 0)
                                     **result_mod.landing(builder.ledger.rows if builder.ledger else [],
