@@ -342,24 +342,25 @@ def _read_doc(res, path, sheet_roles, max_rows):
 
 def _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks, map_structure,
              src_hash, structure_fn=None, deck_fn=None):
-    """③ extract — prose면 지도 훅(⑦)과 **받는 어댑터에만** 문서 구조 · 덱 구조 훅을 건넨다.
+    """③ extract — prose면 **받는 어댑터에만** 지도 훅(⑦) · 문서 구조 · 덱 구조 훅을 건넨다.
 
     훅을 모든 어댑터에 넘기지 않는 이유: 생성 어댑터·다른 기본 어댑터의 서명은
-    `extract(raw, struct_map_fn=None)`이고, 모르는 인자를 넘기면 `TypeError`가
-    **어댑터 결함처럼** 보인다. 서명을 보고 건넨다.
+    `extract(raw, struct_map_fn=None)`이고(옛 꼴은 `extract(raw)`), 모르는 인자를 넘기면 `TypeError`가
+    **어댑터 결함처럼** 보인다. 서명을 보고 건넨다 — 호환은 받는 인자로만 가르고 `TypeError`를 받아 다시 부르지 않는다
+    (구조 · 지도 코드 안의 `TypeError`가 「훅 없는 파싱」으로 사라지지 않고 파싱 실패로 드러난다 · B134 ①).
     """
     if adapter.ADAPTER.get("payload_kind") != "prose":
         return adapter.extract(raw)
-    kw = {"struct_map_fn": _map_hook(doc_id, kept_maps, made_maps, map_picks,
-                                     ask=map_structure, src_hash=src_hash)}
-    if structure_fn is not None and "structure_fn" in _params(adapter.extract):
+    takes = _params(adapter.extract)
+    kw = {}
+    if "struct_map_fn" in takes:
+        kw["struct_map_fn"] = _map_hook(doc_id, kept_maps, made_maps, map_picks,
+                                        ask=map_structure, src_hash=src_hash)     # 지도 — 받는 어댑터에만 (B134 ①)
+    if structure_fn is not None and "structure_fn" in takes:
         kw["structure_fn"] = structure_fn                       # 문서 구조 — 받는 어댑터에만 (B119 ①)
-    if deck_fn is not None and "deck_fn" in _params(adapter.extract):
+    if deck_fn is not None and "deck_fn" in takes:
         kw["deck_fn"] = deck_fn                                 # 덱 구조 — 받는 어댑터에만 (B125 ③)
-    try:
-        return adapter.extract(raw, **kw)
-    except TypeError:
-        return adapter.extract(raw)                              # 지도 훅 없는 어댑터
+    return adapter.extract(raw, **kw)
 
 
 def _params(fn):

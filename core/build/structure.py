@@ -181,6 +181,8 @@ def structurer(layers=None):
             if out is None:
                 return {**st, "doc_hints": list(hints or [])}     # 판정 없음 — 사다리 목차 그대로(판단 필요는 남는다)
             st["source"] = "hint"
+        out, shaped = LA.shape(doc_id, "시트 확인", out, frame)   # 꼴이 어긋난 답 · 칸은 버린다 — 사다리 목차 그대로 (B134 ②)
+        out = out or {"answers": [], "edits": [], "rules": []}
         mine = [x for x in out.get("rules") or [] if x.get("shape")]
         if mine:                                            # 사다리 고침 — 문서 규칙(뒤 시트에도) · 이 시트는 고친 사다리로 다시 세운다
             doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
@@ -196,7 +198,7 @@ def structurer(layers=None):
                 "joins": joins, "edits": took,
                 "edits_dropped": bad, "answer": out, "missing": missing, "stray": stray,
                 "rules": LA.rule_counts(labs, heads, mine), "doc_hints": list(hints or []),
-                **({"failed": failed} if failed else {})}
+                **({"failed": failed} if failed else {}), **({"shape_dropped": shaped} if shaped else {})}
     fn.key = lambda: key(cfgs)
     fn.takes_ctx = True
     fn.doc_state = doc_state
@@ -360,7 +362,7 @@ def weak(report, pieces=(), coord_in=True):
     """**약한 구조 신호**(B119 ③ — 구현이 센다) — 시트마다 `{시트: [신호 문장]}`(없으면 빈 dict).
 
     ①대상 0 — 제목이 둘 이상인데 대상 역할이 0(문서의 층에 좌표 층이 있을 때 — `coord_in`) ②판단 필요가 남았다 · 답 빠짐 ③상한에서
-    잘린 청크 ④같은 서명 형제의 단 · 역할이 다름 ⑤호출 실패 · 사다리가 코드로 섰다(실호출에서)."""
+    잘린 청크 ④같은 서명 형제의 단 · 역할이 다름 ⑤호출 실패 · 사다리가 코드로 섰다(실호출에서) · 시트 확인 답 꼴 어긋남(B134 ②)."""
     out = {}
     cut = {}
     for c in pieces or []:
@@ -382,6 +384,8 @@ def weak(report, pieces=(), coord_in=True):
             got.append(f"같은 서명 「{k}」 형제 {len(rows)}줄의 단 · 역할이 다르다")
         if fr.get("failed"):
             got.append("시트 확인 호출 실패 — 사다리 목차 그대로")
+        if fr.get("shape_dropped"):
+            got.append(f"시트 확인 답 꼴 어긋남({' · '.join(fr['shape_dropped'])}) — 사다리 목차 그대로")
         if got:
             out[frame] = got
     return out

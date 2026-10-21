@@ -6,6 +6,8 @@
     시트 확인 입력 = 그 시트의 골격 보기(제목 줄은 앞 `HEAD_CHARS`자 + 「…총 n자」 · 서명 · 깊이 · 시작 열 · 역할 · 본문은 접는다 · 판단
              필요 행은 이유와 앞뒤 `NEAR`줄) + 사다리 + 문서 힌트 · 출력 = 판단 필요 행마다 답(빠짐없이) + 고침(B126 여섯 동사) + 사다리 고침
     검사     서명은 그 문서에 있는 것 · 역할은 셋 · 카테고리는 닫힌 목록 · 조건은 닫힌 목록 — **어긋난 칸만** 버린다(결함 로그)
+    답 꼴   `shape` 한 함수(실호출 답 · mock 힌트) — 답이 dict가 아니면 답 전체를 · 목록이어야 하는 칸이 목록이 아니면 그 칸을 버린다
+             (사다리는 코드 사다리 · 시트 확인은 사다리 목차 그대로 · 결함 로그 한 줄 — B134 ②)
 
 mock — 사다리는 힌트 `<doc_id>@ladder.json` · 시트 확인은 `<doc_id>@structure.json`의 그 시트(`{answers, edits, rules}` 또는 나무
 `[{text, depth, role, name?, category?}]` — 나무는 지금 목차에 대한 고침으로 바꿔 쓴다) · 없으면 판정 없음(사다리는 코드 사다리).
@@ -136,6 +138,40 @@ def front(frames, built):
     return {"frame": name, "skeleton": skeleton(frames[name], heads, needs, span[0], span[-1]) if span else []}
 
 
+# ---------------------------------------------------------------- 답 꼴 검사 (B134 ② — 실호출 답 · mock 힌트가 같은 함수)
+#: 답 종류마다 **목록이어야 하는 칸** · 칸 항목의 조건(dict 밖은 늘 뺀다)
+SHAPE = {"사다리": ("levels", "unnumbered"), "시트 확인": ("answers", "edits", "rules")}
+_ITEM_OK = {"rules": lambda x: isinstance(x.get("shape"), str)}
+
+
+def shape(doc_id, what, out, frame=None):
+    """답 꼴 검사 — `(쓸 답 또는 None, 버린 것 [사유])` · 답이 없으면 `(None, [])` · dict가 아니면 답 전체를 버린다(None) · 목록이어야
+    하는 칸(`SHAPE`)이 목록이 아니면 그 칸을 빈 목록으로 · 목록 안의 꼴이 어긋난 항목은 뺀다 · 버린 것이 있으면 결함 로그 한 줄
+    (문서 · 시트 · 어긋난 칸) — 정상 답은 그대로 지나간다."""
+    if out is None:
+        return None, []
+    if not isinstance(out, dict):
+        clean, bad = None, [f"답 전체({type(out).__name__})"]
+    else:
+        clean, bad = dict(out), []
+        for k in SHAPE[what]:
+            v = out.get(k)
+            if v is None:
+                clean[k] = []
+            elif not isinstance(v, list):
+                clean[k] = []
+                bad.append(f"{k}({type(v).__name__})")
+            else:
+                ok = _ITEM_OK.get(k, lambda _x: True)
+                clean[k] = [x for x in v if isinstance(x, dict) and ok(x)]
+                if len(clean[k]) < len(v):
+                    bad.append(f"{k} 항목 {len(v) - len(clean[k])}")
+    if bad:
+        store.append_defect(f"{doc_id}: {what} — 답 꼴 어긋남" + (f" · 시트 '{frame}'" if frame else "")
+                            + f" · {' · '.join(bad)} → 그 칸 버림")
+    return clean, bad
+
+
 # ---------------------------------------------------------------- 사다리 — 호출 · mock · 검사
 def ask_ladder(frames, built, code, cats, cfgs=None, ctx=None, hints=None):
     out = gateway.chat(
@@ -164,17 +200,21 @@ def _when_ok(w):
 def check_ladder(doc_id, raw, frames, cats):
     """사다리 답의 검사 — `(사다리 또는 None, 버림 [사유])` · 서명은 그 문서에 있는 것 · 한 서명은 한 단 · 역할 셋 · 카테고리 목록 ·
     조건 닫힌 목록 — 어긋난 칸만 버린다(남은 단 · 규칙이 0이면 None → 코드 사다리 · 번호 없는 문서는 규칙만으로 선다)."""
+    raw, bad = shape(doc_id, "사다리", raw)
+    if raw is None:
+        return None, bad
     have = {x["sig"] for labs in frames.values() for x in labs if x.get("sig")}
-    used, levels, bad = set(), [], []
+    used, levels = set(), []
 
     def drop(why):
         store.append_defect(f"{doc_id}: 계층 사다리 — {why}")
         bad.append(why)
-    for lv in (raw or {}).get("levels") or []:
-        if not isinstance(lv, dict):
+    for lv in raw["levels"]:
+        if not isinstance(lv.get("sigs"), list):
+            drop(f"단의 서명 칸 꼴({type(lv.get('sigs')).__name__}) — 그 단 버림")
             continue
         sigs = []
-        for s in lv.get("sigs") or []:
+        for s in lv["sigs"]:
             if s not in have:
                 drop(f"문서에 없는 서명 '{s}'")
             elif s in used:
@@ -192,10 +232,10 @@ def check_ladder(doc_id, raw, frames, cats):
             drop(f"닫힌 목록 밖 카테고리 '{cat}'")
             cat = None
         levels.append({"sigs": sigs, "role": role, "category": cat, "why": str(lv.get("why") or "")[:200],
-                       "rows": [r for r in lv.get("rows") or [] if isinstance(r, int)][:6]})
+                       "rows": [r for r in (lv.get("rows") if isinstance(lv.get("rows"), list) else []) if isinstance(r, int)][:6]})
     rules = []
-    for u in (raw or {}).get("unnumbered") or []:
-        if not isinstance(u, dict) or not u.get("when") or not all(_when_ok(w) for w in u["when"]) \
+    for u in raw["unnumbered"]:
+        if not isinstance(u.get("when"), list) or not u["when"] or not all(_when_ok(w) for w in u["when"]) \
                 or not isinstance(u.get("level"), int) or not 0 <= u["level"] <= len(levels) \
                 or u.get("role") not in (None, *ROLES):
             drop(f"번호 없는 제목 규칙 버림 {json.dumps(u, ensure_ascii=False)[:120]}")
@@ -244,9 +284,7 @@ def ask_check(frame, labs, built, ladder, cats, cfgs=None, ctx=None, hints=None,
               "needs": [{"row": n["row"], "need": n["kind"], "why": n["why"]} for n in built["needs"]],
               "hints": list(hints or []), "previous": prev}, ensure_ascii=False)}],
         json_schema=check_schema(), point="structure")
-    return {"answers": [a for a in (out or {}).get("answers") or [] if isinstance(a, dict)],
-            "edits": [e for e in (out or {}).get("edits") or [] if isinstance(e, dict)],
-            "rules": [x for x in (out or {}).get("rules") or [] if isinstance(x, dict)]}
+    return out                                              # 꼴 검사는 부르는 쪽이 `shape`로(mock 힌트와 같은 함수 — B134 ②)
 
 
 def hint_check(doc_id, frame, labs, heads, needs=()):
@@ -260,9 +298,8 @@ def hint_check(doc_id, frame, labs, heads, needs=()):
     if hint is None:
         return None
     gateway.mock("structure", f"힌트(시트 확인) {p.name} · {frame}")
-    if isinstance(hint, dict):
-        return {"answers": list(hint.get("answers") or []), "edits": list(hint.get("edits") or []),
-                "rules": list(hint.get("rules") or [])}
+    if not isinstance(hint, list):
+        return hint                                         # `{answers, edits, rules}` — 꼴 검사는 `shape`(B134 ②)
     want = _tree_rows(labs, hint)
     ask = {n["row"] for n in needs}
     answers = [{"row": r, "heading": r in want, "parent": (want.get(r) or {}).get("parent"),
@@ -275,6 +312,8 @@ def _tree_rows(labs, tree):
     rows = [x for x in labs if x["row"] != FRAME_ROW]
     want, stack, at = {}, [], 0
     for e in tree or []:
+        if not isinstance(e, dict):
+            continue
         d = int(e.get("depth") or 0)
         if d == 0:
             continue
@@ -294,7 +333,7 @@ def _tree_rows(labs, tree):
 def tree_edits(labs, heads, tree, skip=()):
     """나무 꼴 힌트 → 지금 목차에 대한 고침(제목 더함 · 제목 뺌 · 부모 바꿈 · 역할 · 대상) — 고친 뒤가 그 나무다(`skip` 행은 답이 맡는다)."""
     want = _tree_rows(labs, tree)
-    frame_t = next((e for e in tree or [] if int(e.get("depth") or 0) == 0), None)
+    frame_t = next((e for e in tree or [] if isinstance(e, dict) and int(e.get("depth") or 0) == 0), None)
     have = {h["row"]: h for h in heads}
     edits = []
     for r in [h["row"] for h in heads if h["row"] not in want and h["row"] != FRAME_ROW and h["row"] not in skip]:

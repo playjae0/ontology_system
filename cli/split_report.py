@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """칸 0.3 · 2.4 — **구조 확인의 시트 한 덩어리**(B126 ③ · B132 ⑦) — 화면과 `export/split_<doc_id>.md`가 같은 함수로 같은 내용을 낸다.
 
-    머리 — 방식 · 사다리의 출처 · 판단 필요 · 답 빠짐 · 고침 · 버림 · 붙임 · 힌트 · 청크
+    머리 — 방식 · 사다리의 출처 · 판단 필요 · 답 빠짐 · 고침 · 버림 · 붙임 · 힌트 · 청크 (답 꼴이 어긋나 버린 칸이 있으면 그 한 줄)
     계층 사다리: 시트 › 9. › 가.(대상 · Unit) › 9)(묶음) › A.   (단마다 서명 · 역할 · 카테고리 · 번호 없는 제목의 규칙)
     목차 — 들여쓰기 = 목차 깊이 · 서명 · 역할 · 대상 · 사다리 목차와 달라진 줄은 `← 바뀜`
     판단 필요 — 행마다 이유와 답(제목 · 부모 · 역할 · 이유 — 답이 없으면 「답 없음」) · 고침 · 버린 고침 · 사다리 고침(적용 n줄 / 전체 m줄)
@@ -58,6 +58,8 @@ def sheet_block(frame, fr, chunks):
             + f" · 버림 {len(fr.get('edits_dropped') or [])} · 붙임 {len(fr.get('joins') or [])} · 힌트 {len(fr.get('hints') or [])}"
             + f" · 청크 {len(chunks)}")
     out = [head, ladder_line(fr.get("ladder"))]
+    if fr.get("shape_dropped"):                                       # 답 꼴이 어긋나 버린 칸 (B134 ②)
+        out.append(f"시트 확인 답 버림 — 꼴이 어긋남 {' · '.join(fr['shape_dropped'])} → 사다리 목차 그대로(판단 필요는 남는다)")
     was = {h["row"]: h.get("parent") for h in fr.get("toc0") or heads}
     dep = _depths(heads)
     out.append(f"목차 — 제목 {len([h for h in heads if h['row'] != FRAME_ROW])}줄")

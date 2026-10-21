@@ -12,6 +12,8 @@
   ⓕ 폴백 — 사다리 호출 실패 · mock 힌트 없음이면 코드 사다리(`rules`와 같은 목차)
   ⓖ 화면 — 사다리 한 줄 · 들여쓰기 목차 · 판단 필요와 답 · 경로 (md 같게)
   ⓗ 방식 — `structure_mode` 값 둘 · 옛 값은 문면으로 멈춘다 · 읽는 곳 0이 된 경로 0
+  B134 — 시트 확인 답 꼴이 어긋나면 그 칸만 버리고 사다리 목차(결함 로그 · 화면) · 사다리 답이 문자열이면 코드 사다리 · 구조 함수 안의
+     TypeError는 파싱 실패 · 지도 훅을 받지 않는 옛 꼴 어댑터는 그대로 파싱
 (B124 「구조 v2」 조각 — LLM 청크 구간 · 구간 검사 · 폴백은 경로를 지워(B132 ⑧) 이 조각으로 바꿨다 · ⓘ는 test_site · ⓙ는 네 벌 단계)
 """
 from __future__ import annotations
@@ -186,6 +188,75 @@ show("ⓕ 사다리 호출 실패 · mock 힌트 없음이면 코드 사다리�
      and _fail.report["structure"]["사다리"] == "코드(호출 실패)" and _bare.report["structure"]["사다리"] == "코드(힌트 없음)",
      f"사다리 {_fail.report['structure'].get('사다리')} / {_bare.report['structure'].get('사다리')} · 목차 같음 "
      f"{[_tree(x, S1) == _tree(_rules, S1) for x in (_fail, _bare)]}")
+
+# ────────────────────────────────────────────────────────────── 답 꼴 · 코드의 오류 (B134)
+print("\n■ B134 — 어긋난 답 꼴은 그 답만 버린다 · 코드의 TypeError는 파싱 실패 · 훅 없는 옛 꼴 어댑터")
+from core.state import store as _STO                     # noqa: E402 — 결함 로그 자리(그 모듈이 안다)
+_dfp = _STO.path(_STO.DEFECTS)
+_df0 = _dfp.read_text(encoding="utf-8") if _dfp.exists() else ""
+
+
+def _int_answers(body):
+    """첫 시트의 시트 확인 답 `answers`가 정수 — 나머지는 정상 답."""
+    return {"answers": 5, "edits": [], "rules": []} if body.get("task") == "check" and body["frame"] == S1 else _llm(body)
+
+
+ST.DOC.pop(DID, None)
+struct_map.invalidate(DID)
+with Live(by={"structure": _int_answers}):
+    _ri = _parse(_x)
+_fi1, _fi2 = (_ri.report.get("structure") or {}).get("프레임", {}).get(S1) or {}, \
+    (_ri.report.get("structure") or {}).get("프레임", {}).get(S2) or {}
+_new = (_dfp.read_text(encoding="utf-8") if _dfp.exists() else "")[len(_df0):]
+_blk = split_report.sheet_block(S1, _fi1, []) if _fi1 else []
+show("B134 ⓐ 시트 확인 답 answers가 정수 → 그 시트는 사다리 목차로 서고 구조 표가 있다 · 결함 로그 한 줄(문서 · 시트 · 칸) · 화면에 답 버림 · "
+     "다른 시트는 정상 답대로",
+     _ri.ok and _fi1 and [(h["row"], h.get("parent")) for h in _fi1["headings"]] == [(h["row"], h.get("parent")) for h in _fi1["toc0"]]
+     and _fi1["needs"] and _fi1["shape_dropped"] == ["answers(int)"]
+     and sum(1 for ln in _new.splitlines() if "답 꼴 어긋남" in ln and f"'{S1}'" in ln and "answers(int)" in ln) == 1
+     and any("시트 확인 답 버림" in ln and "answers(int)" in ln for ln in _blk)
+     and not _fi2.get("shape_dropped") and not _fi2.get("missing"),
+     f"ok {_ri.ok} · 버림 {_fi1.get('shape_dropped')} · 둘째 시트 빠짐 {_fi2.get('missing')}")
+ST.DOC.pop(DID, None)
+struct_map.invalidate(DID)
+with Live(by={"structure": lambda b: json.dumps(LADDER) if b.get("task") == "ladder" else _llm(b)}):
+    _rs = _parse(_x)
+show("B134 ⓑ 사다리 답이 문자열 → 코드 사다리로 선다(「코드(답 버림)」) · 파싱 성공",
+     _rs.ok and (_rs.report.get("structure") or {}).get("사다리") == "코드(답 버림)",
+     f"ok {_rs.ok} · 사다리 {(_rs.report.get('structure') or {}).get('사다리')} · {_rs.failures[:1]}")
+ST.DOC.pop(DID, None)
+struct_map.invalidate(DID)
+
+
+def _type_error(_b):
+    raise TypeError("B134 시험 — 구조 함수 안의 TypeError")
+
+
+with Live(by={"structure": _type_error}):
+    _rt = _parse(_x)
+show("B134 ⓒ 구조 함수 안에서 TypeError → 파싱 실패이고 사유에 TypeError가 보인다(구조 없는 성공 0)",
+     not _rt.ok and any("TypeError" in f["reason"] for f in _rt.failures) and not _rt.envelope,
+     f"ok {_rt.ok} · {[f['reason'][:80] for f in _rt.failures]}")
+ST.DOC.pop(DID, None)
+struct_map.invalidate(DID)
+
+
+class _OldAdapter:
+    """지도 훅을 받지 않는 옛 꼴 어댑터(시험 사본 — `extract(raw)`)."""
+    ADAPTER = BX.ADAPTER
+
+    @staticmethod
+    def extract(raw):
+        return BX.extract(raw)
+
+
+_ro = pipeline.parse(_OldAdapter, DID, str(_x), closed_list=[], sheet_roles={S1: "prose", S2: "prose"},
+                     structure=ST.structurer(["process"]))
+show("B134 ⓓ 지도 훅을 받지 않는 옛 꼴 어댑터가 지금처럼 파싱된다(훅 없이 · 청크가 선다)",
+     _ro.ok and len(_ro.envelope["chunks"]) > 0 and "structure" not in _ro.report,
+     f"ok {_ro.ok} · 청크 {len((_ro.envelope or {}).get('chunks') or [])} · {_ro.failures[:1]}")
+ST.DOC.pop(DID, None)
+struct_map.invalidate(DID)
 
 # ────────────────────────────────────────────────────────────── ⓖ 화면
 print("\n■ ⓖ 구조 확인 화면")
