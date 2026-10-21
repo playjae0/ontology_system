@@ -236,13 +236,17 @@ _made.append("B104ADD")
 run_document(_extra)
 CQ.answer("육안 점검 교체 주기는?")
 _s2 = {k: dict(v) for k, v in V.STATS.items()}
-show("ⓒ 캐시 재사용 — 두 번째 질의는 벡터 재계산 0 · 청크를 더하면 그 몫만 다시(노드 그대로면 0) · "
-     "판(갈래·모델)이 바뀌면 통째로 다시",
+# 기대 변경(B136 ③ — 저장의 열쇠가 판 + 글 해시라 판마다 따로 담기고 섞이지 않는다 · 돌아온 판은 제 벡터를 다시 쓴다)
+import sqlite3 as _sq0                                   # noqa: E402
+_c0 = _sq0.connect(str(_P.vectors(V.DB)))
+_bks = sorted(r[0] for r in _c0.execute("SELECT DISTINCT backend FROM v"))
+_c0.close()
+show("ⓒ 벡터 재사용 — 두 번째 질의는 벡터 재계산 0 · 청크를 더하면 그 몫만 다시(노드 그대로면 0) · "
+     "판(갈래·모델)이 바뀌면 다른 공간(판마다 따로 담긴다 · 섞이지 않는다)",
      _s1["chunks"]["made"] == 0 and _s1["nodes"]["made"] == 0 and _s2["chunks"]["made"] == 2
      and _s2["chunks"]["reused"] == _s1["chunks"]["reused"] and _s2["nodes"]["made"] == 0
-     and _s0["chunks"]["reused"] == 0 == _s0["nodes"]["reused"] and V.cost_line().startswith("벡터 — "),
-     f"판 바뀐 뒤 {_s0['chunks']['made']}/{_s0['nodes']['made']} 다시 · 두 번째 {_s1['chunks']} · "
-     f"청크 2 추가 뒤 {_s2['chunks']} · {V.cost_line()}")
+     and len(_bks) == 2 and V.cost_line().startswith("벡터 — "),
+     f"판 {_bks} · 두 번째 {_s1['chunks']} · 청크 2 추가 뒤 {_s2['chunks']} · {V.cost_line()}")
 
 # ────────────────────────────────────────────────────────────── ⓓ
 print("\n■ B104 ④ 답 — 짧게 · 쓴 근거 · 링크 결과와 나란히")
@@ -302,14 +306,188 @@ show("ⓔ 링킹 두 칸(사전만 0 → 보충 1) · 문서 검색 doc@k가 근
 
 # ────────────────────────────────────────────────────────────── ⓕ
 print("\n■ B104 ⑥ 쓰기 0")
-show("ⓕ 질의는 ③진실·②등록에 쓰지 않는다(해시 불변 — 캐시는 work/vectors) — 시험이 더한 문서(B104ADD)는 제외",
-     _P.vectors("chunks.json").exists() and _P.vectors("nodes.json").exists()
+# 기대 변경(B136 ③ — 벡터 저장은 `work/vectors/vectors.sqlite` 하나)
+show("ⓕ 질의는 ③진실·②등록에 쓰지 않는다(해시 불변 — 벡터 저장은 work/vectors) — 시험이 더한 문서(B104ADD)는 제외",
+     _P.vectors(V.DB).exists() and V.count("nodes") > 0 and V.count("chunks") > 0
      and not (_P.data() / "vectors").exists(), str(sorted(p.name for p in _P.vectors().iterdir())))
 _hq = _state_hash()
 with Live():
     CQ.answer("노칭 틈새는 어떻게 관리해?")
 CQ.answer("육안 점검 교체 주기는?")
 show("ⓕ 질의 전후 ③진실·②등록 해시 같다 (mock · 가짜 게이트웨이 둘 다)", _state_hash() == _hq)
+
+# ────────────────────────────────────────────────────────────── B136 임베딩 정리
+print("\n■ B136 — 노드 벡터 글 · 판정 좁히기 글 · 벡터 저장 · run.py vectors · show near (해시 벡터는 메커니즘만 · 순위는 가짜 임베딩)")
+import base64 as _b64                                    # noqa: E402
+import os as _os                                         # noqa: E402
+import shutil as _sh                                     # noqa: E402
+import subprocess as _sp                                 # noqa: E402
+import sys as _sys                                       # noqa: E402
+from array import array as _arr                          # noqa: E402
+from cli import show_near as _SN, vectors as _CV         # noqa: E402
+from core import matcher as _MT                          # noqa: E402
+from core.llm import embeddings as _EM, narrow as _NR    # noqa: E402
+from core.query import hybrid as _HY                     # noqa: E402
+from router import discover as _disc                     # noqa: E402
+_gr = {l: open_graph(l) for l in _disc()}
+_cf = {l: load_config(l) for l in _gr}
+_tx, _inf = _HY.node_texts(_gr, _cf)
+_defs = [d for c in _cf.values() for d in (c.get("categories") or {}).values() if isinstance(d, str) and len(d) > 8]
+_sh.rmtree(_P.vectors(), ignore_errors=True)
+V.begin()
+_HY.warm(_gr, _cf)
+_nch = V.STATS["chunks"]["made"]
+_lay0, _nid0 = next((l, i) for l, g in sorted(_gr.items()) for i in sorted(g.nodes))
+_gr[_lay0].nodes[_nid0].setdefault("aliases", []).append({"surface": "B136 시험 별칭"})   # 메모리만 — 저장하지 않는다
+V.begin()
+_HY.warm(_gr, _cf)
+show("B136 ⓐ 노드 벡터 글에 정의문 글자 0 · 별칭 하나 바꾼 노드만 다시 만든다(1) · 청크 벡터는 다시 쓴다(다시 쓴 수 = 청크 전부)",
+     _defs and not any(d in t for t in _tx.values() for d in _defs) and V.STATS["nodes"]["made"] == 1
+     and V.STATS["chunks"]["made"] == 0 and V.STATS["chunks"]["reused"] == _nch > 0, f"{V.STATS}")
+_gr[_lay0].nodes[_nid0]["aliases"].pop()
+
+
+def _bag(text, dim=1024):
+    """가짜 임베딩 — 낱말 주머니(같은 낱말이 든 글끼리 가깝다 · 순위 판정 전용)."""
+    v = [0.0] * dim
+    for w in re.split(r"[\s|,:]+", text or ""):
+        if w:
+            v[int(hashlib.sha256(w.encode("utf-8")).hexdigest(), 16) % dim] += 1.0
+    return v
+
+
+_pool = [{"id": f"P{i:02d}", "canonical": f"노칭 부품 {i}", "aliases": ["NP-100"] if i == 7 else [f"별칭{i}"],
+          "category": "Unit"} for i in range(15)]
+_emb0 = _EM.embed
+_EM.embed = _bag
+_NR.set_narrow("embed")
+_MT._VEC.clear()
+try:
+    _kept, _how = _MT._narrow("NP-100", _pool, 5)
+finally:
+    _EM.embed = _emb0
+    _NR.set_narrow(None)
+    _MT._VEC.clear()
+_sp4 = (ROOT / "docs" / "spec" / "4_쓰기절차.md").read_text(encoding="utf-8")
+show("B136 ⓑ 판정 좁히기 후보 글 = 이름 + 별칭(정의문 0) · 별칭 표기와 같은 후보가 맨 앞(가짜 임베딩) · 주석 · 명세가 같은 규칙",
+     _MT.cand_text(_pool[7]) == "노칭 부품 7 | 별칭: NP-100" and _how == "임베딩" and _kept[0]["id"] == "P07"
+     and "이름 + 별칭" in _sp4 and "임베딩 대상은 노드의 canonical과 정의문" not in _sp4,
+     f"{_how} · 앞 {[c['id'] for c in _kept[:3]]}")
+_env = {**_os.environ, "USE_MOCK": "1"}
+
+
+def _vec_cmd(*a):
+    r = _sp.run([_sys.executable, str(ROOT / "run.py"), "vectors", *a], cwd=str(ROOT), env=_env, capture_output=True,
+                text=True, stdin=_sp.DEVNULL)
+    return r.returncode, r.stdout + r.stderr
+
+
+_sh.rmtree(_P.vectors(), ignore_errors=True)
+_r1 = _vec_cmd()
+_r2 = _vec_cmd()
+_sh.rmtree(_P.vectors(), ignore_errors=True)
+_save0, _many0, _k = V.SAVE_EVERY, _EM.embed_many, {"n": 0}
+
+
+def _cut(texts, batch=32):
+    _k["n"] += 1
+    if _k["n"] > 2:
+        raise KeyboardInterrupt("끊음(시험)")
+    return _many0(texts, batch)
+
+
+V.SAVE_EVERY, _EM.embed_many = 16, _cut
+try:
+    with contextlib.redirect_stdout(io.StringIO()):
+        _CV.main([])
+except KeyboardInterrupt:
+    pass
+V.SAVE_EVERY, _EM.embed_many = _save0, _many0
+_mid = V.count()
+_r3 = _vec_cmd()
+_m1 = [int(x.replace(",", "")) for x in re.findall(r"만든 ([\d,]+)", _r1[1])]
+_m2 = [int(x.replace(",", "")) for x in re.findall(r"만든 ([\d,]+)", _r2[1])]
+_m3 = [int(x.replace(",", "")) for x in re.findall(r"만든 ([\d,]+)", _r3[1])]
+show("B136 ⓒ run.py vectors — 처음 n 만들고 · 다시 치면 0 · 중간에 끊고 다시 치면 남은 것만 · 끝 줄이 선다",
+     _r1[0] == 0 and sum(_m1) > 0 and _r2[0] == 0 and sum(_m2) == 0 and 0 < _mid < sum(_m1)
+     and sum(_m3) == sum(_m1) - _mid and all("벡터 끝 —" in r[1] for r in (_r1, _r2, _r3)),
+     f"처음 {_m1} · 다시 {_m2} · 끊긴 뒤 저장 {_mid} · 남은 것 {_m3}")
+fresh()                                                   # 클린 바닥 — 저장도 지운다
+_clean_gone = not _P.vectors(V.DB).exists()
+V.begin()
+_HY.warm()
+_before = V.count()
+init.init(fresh_=True)                                    # 기본 fresh — 벡터는 남는다(보존 일곱)
+_kept_fresh = V.count()
+for _ly in ("process", "quality"):
+    bootstrap(_ly, echo=False)
+for _dd in DOCS:
+    run_document(load(_dd))
+finalize()                                                # 같은 문서를 다시 넣는다(재구축)
+V.begin()
+_HY.warm()
+_after = {k: dict(v) for k, v in V.STATS.items()}
+_oldtxt = "B136 옛 캐시 글"
+_old = _P.vectors("nodes.json")
+_P.ensure(_old)
+_old.write_text(json.dumps({"backend": _EM.backend_id(), "kind": "nodes", "items": {"x": {
+    "ver": V._ver(_oldtxt), "v": _b64.b64encode(_arr("f", _EM.embed(_oldtxt)).tobytes()).decode("ascii")}}}), encoding="utf-8")
+V.begin()
+V.vectors("nodes", {"x": _oldtxt})
+_mig = (dict(V.STATS["nodes"]), _old.exists())
+show("B136 ⓓ 기본 fresh는 벡터를 남기고 재구축 뒤 다시 만든 벡터 0(글이 같다) · 클린은 지운다 · 옛 JSON을 한 번 옮겨 담는다",
+     _clean_gone and _before > 0 and _kept_fresh == _before and _after and all(x["made"] == 0 for x in _after.values())
+     and _mig[0]["made"] == 0 and _mig[0]["reused"] == 1 and not _mig[1],
+     f"클린 뒤 저장 없음 {_clean_gone} · fresh 전 {_before} → 뒤 {_kept_fresh} · 재구축 뒤 {_after} · 옛 JSON {_mig}")
+_ch0 = V.count("chunks")
+_w = ("import sys; from core.query import vectors as V; V.SAVE_EVERY = 16; "
+      "V.vectors('chunks', {f'{sys.argv[1]}{i}': f'동시 {sys.argv[1]} {i}' for i in range(200)})")
+_ps = [_sp.Popen([_sys.executable, "-c", _w, t], cwd=str(ROOT), env=_env, stdin=_sp.DEVNULL, stdout=_sp.DEVNULL,
+                 stderr=_sp.PIPE, text=True) for t in ("갑", "을")]
+_errs = [p.communicate()[1] for p in _ps]
+import sqlite3 as _sq                                    # noqa: E402
+_con = _sq.connect(str(_P.vectors(V.DB)))
+_ok = _con.execute("PRAGMA integrity_check").fetchone()[0]
+_con.close()
+show("B136 ⓔ 동시 저장 — 두 프로세스가 같은 저장에 동시에 쓰면 깨짐 0 · 둘의 몫이 다 남는다",
+     all(p.returncode == 0 for p in _ps) and _ok == "ok" and V.count("chunks") == _ch0 + 400,
+     f"{_ok} · {_ch0} → {V.count('chunks')} · {_errs}")
+_gr3 = {l: open_graph(l) for l in _disc()}
+_cf3 = {l: load_config(l) for l in _gr3}
+_t3, _i3 = _HY.node_texts(_gr3, _cf3)
+_raw3 = {i: n for g in _gr3.values() for i, n in g.nodes.items()}
+_key = lambda i: (_i3[i]["layer"], _i3[i]["category"], _raw3[i].get("parent") or _raw3[i].get("mirror_scope"))   # noqa: E731
+_grp = {}
+for _i in sorted(_i3):
+    _grp.setdefault(_key(_i), []).append(_i)
+_big = next(k for k, v in sorted(_grp.items(), key=str) if len(v) >= 2)
+_a, _b = _grp[_big][:2]
+_d = next(i for i in sorted(_i3) if _i3[i]["layer"] == _big[0] and _i3[i]["category"] != _big[1])
+_e = next((i for i in sorted(_i3) if _key(i)[:2] == _big[:2] and _key(i)[2] != _big[2]), None)
+_same = {_t3[x] for x in (_a, _b, _d, _e) if x}
+_order = {t: n for n, t in enumerate(sorted(_t3.values()))}
+_EM.embed_many = lambda texts, batch=32: [[1.0 if (t in _same and j == 0) or (t not in _same and j == _order.get(t, 0) + 1)
+                                           else 0.0 for j in range(len(_order) + 2)] for t in texts]
+_sh.rmtree(_P.vectors(), ignore_errors=True)               # 심을 벡터만 담는다(앞 시험의 해시 벡터를 비운다)
+V.vectors("nodes", _t3)
+_EM.embed_many = _many0
+
+
+def _fp():
+    return {p.relative_to(_P.home()).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(_P.home().rglob("*")) if p.is_file()}
+
+
+_f0 = _fp()
+_bn = io.StringIO()
+with contextlib.redirect_stdout(_bn):
+    _SN.cmd_near(["--top", "50"])
+_f1 = _fp()
+_lines = [ln for ln in _bn.getvalue().splitlines() if "↔" in ln]
+_nm = lambda i: _i3[i]["canonical"]                      # noqa: E731
+show("B136 ⓕ 중복 후보 보고 — 심은 가까운 쌍이 나오고(가짜 임베딩) 다른 카테고리 · 다른 부모 쌍은 나오지 않는다 · 상태 지문 전후 같다(쓰기 0)",
+     len(_lines) == 1 and _nm(_a) in _lines[0] and _nm(_b) in _lines[0] and "100.0%" in _lines[0] and _f0 == _f1
+     and "ops merge" in _bn.getvalue(), f"쌍 {_lines} · 다른 카테고리 {_nm(_d)} · 다른 부모 {_nm(_e) if _e else '없음'}")
 
 for d in set(_made):
     (HINTS / f"{d}.json").unlink(missing_ok=True)

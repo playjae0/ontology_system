@@ -31,6 +31,8 @@
   python run.py query "<질문>" [--json]
                                   질의 4단 (cli/query.py 라우터로 위임).
                                   --json = 답 묶음을 stdout에 한 덩어리로 (모드 줄은 stderr)
+  python run.py vectors [--only nodes|chunks]
+                                  질의 벡터를 만든다 — 바뀐 것만 · LLM 0 · 그래프 터미널과 따로 (cli/vectors.py · B136 ④)
   python run.py ops <연산> ...     I축 4연산 (cli/ops.py로 위임)
   python run.py gauges             계기판 8종 (cli/platform.py로 위임)
   python run.py platform <명령>    플랫폼 창구 4′ (cli/platform.py로 위임)
@@ -88,7 +90,7 @@ def fresh_screen(rep, all_, head="[init --fresh]"):
 def cmd_init(args):
     """빈 상태의 **단일 정의**. 회귀 규약과 완료판정 4번이 같은 바닥을 쓰게 한다.
 
-    `--fresh`는 보존 여섯을 남기고(재구축의 바닥 — B106 ① · 별칭 대장 B108 ① · 명령 로그 B109 ①) `--fresh --all`이
+    `--fresh`는 보존 일곱을 남기고(재구축의 바닥 — B106 ① · 별칭 대장 B108 ① · 명령 로그 B109 ① · 질의 벡터 B136 ③) `--fresh --all`이
     클린이다. **운영(실호출) 루트의 클린은 묻는다**(B111 ① — 지울 것과 크기 · 터미널이면 y/N · 비대화형은 거부 ·
     `--yes`). 묻는 규칙은 재구축과 같은 함수(`_gate.approved`)다."""
     from core.state import init as I
@@ -102,10 +104,10 @@ def cmd_init(args):
         head, pv = "[init --fresh --all]", I.preview()
         print(f"{head} 운영 상태 폴더의 클린이다 — {paths.home()}{paths.home_note()} · 모드 실호출")
         print(f"{head} 지울 것 — " + " · ".join(f"{l} {n:,}파일 {_bytes(b)}" for l, n, b in pv["kept"])
-              + " (기본 fresh가 남기는 여섯 — 다시 만들려면 LLM을 다시 부른다)")
+              + " (기본 fresh가 남기는 일곱 — 다시 만들려면 LLM · 임베딩을 다시 부른다)")
         print(f"{head} 지울 것(단 전체) — " + " · ".join(f"{l} {n:,}파일 {_bytes(b)}" for l, n, b in pv["wiped"])
               + " · 남는 것 — registry/ · layers/ · raw/")
-        print(f"{head} 재구축의 바닥은 기본 fresh다 — python run.py init --fresh (보존 여섯을 남긴다)")
+        print(f"{head} 재구축의 바닥은 기본 fresh다 — python run.py init --fresh (보존 일곱을 남긴다)")
         if not approved("--yes" in args, "python run.py init --fresh --all --yes"):
             print(f"{head} 지우지 않았다 — 운영 상태 폴더 그대로")
             return 1
@@ -435,6 +437,12 @@ def cmd_show(args):
     return main(args)
 
 
+def cmd_vectors(args):
+    """질의 벡터 단독 명령 — 노드 · 청크 벡터를 만든다(바뀐 것만 · LLM 0 · B136 ④)."""
+    from cli.vectors import main
+    return main(args)
+
+
 def cmd_export(args):
     """파생물 내보내기 — 진실은 data/의 JSON이다(P5)."""
     from cli.export import main
@@ -504,6 +512,7 @@ def _dispatch(argv):
      "ingest-file": lambda: cmd_ingest_batch(sys.argv[2:]),
      "ingest-dir": lambda: cmd_ingest_batch(sys.argv[2:]),
      "show": lambda: cmd_show(sys.argv[2:]),
+     "vectors": lambda: cmd_vectors(sys.argv[2:]),
      "export": lambda: cmd_export(sys.argv[2:]),
      "llm-check": lambda: cmd_llm_check(sys.argv[2:]),
      "skeleton-confirm": lambda: cmd_skeleton_confirm(sys.argv[2:]),

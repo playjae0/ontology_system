@@ -155,6 +155,12 @@ def _vec(text, cand=False):
     return _VEC[text]
 
 
+def cand_text(c):
+    """판정 좁히기의 **후보 글** — 이름 + 별칭(정의문 0 · B136 ②) · 「이름 | 별칭: a, b」."""
+    al = sorted({a for a in c.get("aliases") or [] if a and a != c["canonical"]})
+    return c["canonical"] + (f" | 별칭: {', '.join(al)}" if al else "")
+
+
 def _narrow(surface, pool, top_n, *, scoped=False):
     """후보를 **상한 안으로 좁힌다** — 임베딩 또는 겹침 (B73 ① · B75 ①).
 
@@ -176,13 +182,11 @@ def _narrow(surface, pool, top_n, *, scoped=False):
         LAST_NARROW.update(how="겹침", top=[(c["id"], c["canonical"], _overlap(surface, c["canonical"]))
                                            for c in scored[:3]])
         return scored[:top_n], "겹침"
-    # **임베딩 대상은 canonical과 정의문이다**(문서 4 §4.2 ② — 정의문이 빠지면
-    # 카테고리 경계가 벡터에 실리지 않는다). 벡터는 저장하지 않는다(P5) — 메모리에 한 번(B99 ⑨).
+    # **후보 쪽 임베딩 글은 이름 + 별칭이다**(문서 4 §4.2 ② · B136 ② — 같은 부모 · 같은 카테고리로 걸러진 후보에 같은 정의문을
+    # 붙이면 가르는 힘만 준다 · 별칭 표기와 같은 후보가 앞에 와야 한다). 벡터는 저장하지 않는다(P5) — 메모리에 한 번(B99 ⑨).
     from core.llm import embeddings
     qv = _vec(surface)
-    score = {c["id"]: embeddings.cosine(qv, _vec(" ".join(
-        [c["canonical"], c.get("정의문") or c.get("definition") or ""]).strip(), cand=True))
-             for c in pool}
+    score = {c["id"]: embeddings.cosine(qv, _vec(cand_text(c), cand=True)) for c in pool}
     scored = sorted(pool, key=lambda c: -score[c["id"]])
     LAST_NARROW.update(how="임베딩", top=[(c["id"], c["canonical"], score[c["id"]])
                                          for c in scored[:3]])

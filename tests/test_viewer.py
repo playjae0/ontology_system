@@ -438,17 +438,18 @@ try:
 except KeyboardInterrupt:
     pass
 _E.embed_many = _many
-_kept = len(json.loads(_P.vectors("nodes.json").read_text(encoding="utf-8"))["items"])
+# 기대 변경(B136 ③ — 저장은 sqlite 하나 · 「같은 파일」은 「같은 저장 내용(글 해시 → 벡터)」)
+_kept = _V.count("nodes")
 _V.begin()
 _H.warm()
-_st, _resumed = dict(_V.STATS["nodes"]), _P.vectors("nodes.json").read_bytes()
+_st, _resumed = dict(_V.STATS["nodes"]), _V.fingerprint("nodes")
 _sh.rmtree(_P.vectors(), ignore_errors=True)
 _V.SAVE_EVERY = _save_every
 _V.begin()
 _H.warm()
-show("④ 벡터 이어 만들기 — 끊기 전 저장분은 재사용 · 나머지만 만든다 · 이어 만든 파일 = 처음부터 만든 파일",
+show("④ 벡터 이어 만들기 — 끊기 전 저장분은 재사용 · 나머지만 만든다 · 이어 만든 저장 = 처음부터 만든 저장",
      _kept and _st["reused"] == _kept and _st["made"] + _st["reused"] == len(_g["nodes"])
-     and _resumed == _P.vectors("nodes.json").read_bytes(), f"저장 {_kept} · 다시 {_st}")
+     and _resumed == _V.fingerprint("nodes"), f"저장 {_kept} · 다시 {_st}")
 show("④ 진행 줄 — 저장마다 「벡터 — 노드 n/m · 청크 n/m · 경과 · 남은 예상」",
      _lines and all(_re2.match(r"^벡터 — 노드 [\d,]+/[\d,]+ · 청크 [\d,]+/[\d,]+ · 경과 [\d.]+초 · 남은 예상 ", x)
                     for x in _lines), _lines[0] if _lines else "")
