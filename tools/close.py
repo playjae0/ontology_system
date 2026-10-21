@@ -10,7 +10,8 @@
 본다. 종료 코드는 하나라도 FAIL이면 1이다. 각 단계의 전문은 시스템 임시 폴더에 남기고 요약 끝 줄이 그 자리를 말한다(레포 밖).
 
   0 장부(`tools/ledger.py` — PROGRESS 최근 3회차 · 안건 정리 · 결정 번호 · 자산 해시 · 무엇을 옮겼나 한 줄씩) · 코드 지도를 다시
-    만든다(생성물 — `docs/회귀스위트/추출_구조.py`) · 바뀌었으면 「갱신 — 커밋에 넣는다」(FAIL 아님)
+    만든다(생성물 — `docs/회귀스위트/추출_구조.py`) · 바뀌었으면 「갱신 — 커밋에 넣는다」(FAIL 아님) · **바뀐 지시문**(반입 커밋 대비 ·
+    지시문마다 「판 올림 a → b」 · 「서술만(판 그대로 — 재호출 0)」 · 「새 지시문」 · 「지움」 — 판을 올릴지는 요청문 · 허브가 정한다 · B135 ③)
   1 사전 점검 — `test_g1_g2` · `test_places`(클린 단독 · doctor의 기대 수) · 층 어휘 정적 점검(`tools/layer_words.py` — 코드 ·
     지시문에 층 config의 카테고리 이름 · 층 폴더 이름 0 · B121 ①) · 레포 쓰기 정적 점검(`tools/repo_writes.py` — 시험 소스에서
     레포 경로로 쓰기 0 · B133 ①) · 문서 검사 일곱(`점검_*.py` — 모양 포함)
@@ -65,6 +66,32 @@ def _doctor_total(text):
 
 
 _MARK = {True: "PASS", False: "FAIL", None: "갱신", "skip": "건너뜀"}
+
+
+def prompt_changes(base):
+    """반입 커밋 대비 **바뀐 지시문** `[(파일, 무엇)]` — 판(`version:`)이 다르면 판 올림 · 같으면 서술만 (B135 ③)."""
+    def ver(text):
+        return next((ln.split(":", 1)[1].strip() for ln in (text or "").splitlines()[:10] if ln.startswith("version:")), "?")
+
+    def git(*a):
+        r = subprocess.run(["git", *a], cwd=str(ROOT), capture_output=True, stdin=subprocess.DEVNULL)
+        return r.stdout.decode("utf-8", "replace") if r.returncode == 0 else None
+    old = {Path(x).name for x in (git("ls-tree", "--name-only", base, "prompts/") or "").splitlines() if x.endswith(".md")}
+    now = {f.name for f in (ROOT / "prompts").glob("*.md")}
+    out = []
+    for f in sorted(old | now):
+        a = git("show", f"{base}:prompts/{f}") if f in old else None
+        b = (ROOT / "prompts" / f).read_text(encoding="utf-8") if f in now else None
+        if a == b:
+            continue
+        out.append((f, f"새 지시문(판 {ver(b)})" if a is None else "지움" if b is None else
+                    f"판 올림 {ver(a)} → {ver(b)}" if ver(a) != ver(b) else f"서술만(판 {ver(b)} 그대로 — 재호출 0)"))
+    return out
+
+
+def _prompt_row(base):
+    ch = prompt_changes(base)
+    return (None if ch else True, "바뀐 지시문", " · ".join(f"{f} {w}" for f, w in ch) if ch else "없음(반입 커밋 대비)")
 
 
 def _why_args(argv):
@@ -165,6 +192,7 @@ def main(argv):
     import ledger
     for ok, label, detail in ledger.run(base):
         row(ok, label, detail)
+    row(*_prompt_row(base))                                     # 바뀐 지시문 — 판 올림 · 서술만 (B135 ③)
     # 0 코드 지도(생성물)
     _map = ROOT / "docs" / "구조도" / "10_코드_지도.md"
     before = _map.read_bytes() if _map.exists() else b""

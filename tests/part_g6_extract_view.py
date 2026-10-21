@@ -8,8 +8,10 @@
   ⓐ 한 렌즈 산문 인입에 추출 예고 줄 — 부를 청크 = 청크 − ref − 재사용 · 청크 줄 수와 같다
   ⓑ 청크마다 메타 줄(개체 표기·카테고리 전부 · 관계 수) · 끝 줄에 사용량
   ⓒ 누적 줄은 시간 기준(호출이 늘면 시작 한 줄 · 간격마다 누적) · mock이고 호출 0이면 말이 없다
-  ⓓ 도중 중단 → 부분 파일만 · 재실행은 끝난 청크를 부르지 않고 이어서 완료 · 한 번에 돈 것과 같다
-  ⓔ 재사용 조건(어댑터 판)이 다르면 부분 파일을 버리고 처음부터
+  B135(가짜 게이트웨이 — 실호출 갈래의 호출 보존) ⓐ 청크 하나의 경로만 바꾸면 그 청크만 부른다 · 결과가 전부 다시 부른 것과 같다
+     ⓒ 도입 — 호출 보존 없는 옛 체크포인트로 호출 0 · 씨앗 ⓑ 지시문 문면만 바꾸면 재호출 0과 한 줄 · 판을 올리면 전부 다시
+     ⓔ 중단 뒤 다시 — 끝난 호출은 부르지 않고 실패한 호출은 다시 부른다 (B97 ③의 부분 파일 이어 쓰기를 흡수 — 그 두 어서션은 이것으로
+     고치고 「어댑터 판이 다르면 처음부터」는 지웠다: 같은 입력이면 어댑터 판과 무관하게 다시 쓴다)
   ⓕ --step 산문: 추출 예고에서 멈추면 체크포인트 0 · 추출 뒤에서 멈추면 그래프·큐 쓰기 0 ·
      체크포인트 완료 · 재실행은 추출 재사용 · 표 문서의 관문은 판정 예고 그대로
 """
@@ -49,10 +51,11 @@ def _chunk_rows(text):
 
 
 _rows = _chunk_rows(_out)
-_m = re.search(r"청크 (\d+)\(ref 시트 (\d+) · 체크포인트 재사용 (\d+) 제외\) → LLM ≤ (\d+)회",
+# 기대 변경(B135 ① — 예고는 「부를 n · 다시 씀 m」)
+_m = re.search(r"청크 (\d+)\(ref 시트 (\d+)\) → 부를 (\d+) · 다시 씀 (\d+)\(같은 입력 — LLM 0\) → LLM ≤ (\d+)회",
                _pre[0] if _pre else "")
-show("ⓐ 한 렌즈 산문 인입에 추출 예고 줄 — 부를 청크 = 청크 − ref − 재사용 = 청크 줄 수",
-     bool(_m) and int(_m[1]) - int(_m[2]) - int(_m[3]) == int(_m[4]) == len(_rows) > 0
+show("ⓐ 한 렌즈 산문 인입에 추출 예고 줄 — 부를 청크 = 청크 − ref − 다시 씀 = 청크 줄 수",
+     bool(_m) and int(_m[1]) - int(_m[2]) - int(_m[4]) == int(_m[3]) == int(_m[5]) == len(_rows) > 0
      and "렌즈 예고" not in _out, (_pre or [""])[0].strip())
 
 _env = json.loads(_P.parsed("RFQ01.json").read_text(encoding="utf-8"))
@@ -108,48 +111,127 @@ show("ⓒ 누적 줄은 시간 기준(시작 한 줄 · 간격마다 누적 · �
      _b1.getvalue() == "" and sum("LLM 사용 시작" in l for l in _t) == 1
      and sum("· 추출 2/9 · 호출" in l and "경과" in l for l in _t) >= 2, _t[1:2])
 
-print("\n■ B97 ③ 청크 단위 이어 쓰기")
-EX.invalidate("RFQ01")
-_calls.clear()
-
-
-def _boom(cid, chunk, cfg, vocab):
-    if len(_calls) == 3:
-        raise KeyboardInterrupt              # 시험 주입 — 넷째 청크에서 끊긴다
-    return _fake(cid, chunk, cfg, vocab)
-
-
-EX._candidates_for = _boom
-try:
-    _extract()
-except KeyboardInterrupt:
-    pass
-_mid = (EX.partial_path("RFQ01").exists(), EX.has_checkpoint("RFQ01"))
-EX._candidates_for = _fake
-_n0 = len(_calls)
-_res, _made, _txt2 = _extract()
-show("ⓓ 도중 중단 → 부분 파일만 · 재실행은 끝난 청크를 부르지 않고 이어서 완료 · 한 번에 돈 것과 같다",
-     _mid == (True, False) and len(_calls) - _n0 == len(_rows) - 3 and _made
-     and not EX.partial_path("RFQ01").exists()
-     and json.dumps(_res["candidates"]) == json.dumps(_ref["candidates"])
-     and "추출 이어서 — 끝난 청크 3" in _txt2,
-     [l.strip() for l in _txt2.splitlines() if "이어서" in l or "추출 예고" in l])
-
-EX.invalidate("RFQ01")
-_calls.clear()
-EX._candidates_for = _boom
-try:
-    _extract()
-except KeyboardInterrupt:
-    pass
-EX._candidates_for = _fake
-_env["adapter_version"] = str(_env.get("adapter_version")) + "+b97"
-_n0 = len(_calls)
-_, _, _txt3 = _extract()
-show("ⓔ 재사용 조건(어댑터 판)이 다르면 부분 파일을 버리고 처음부터",
-     len(_calls) - _n0 == len(_rows) and "이어서" not in _txt3
-     and not EX.partial_path("RFQ01").exists())
 EX._candidates_for = _orig
+
+# ────────────────────────────────────────────────────────────── B135 — 호출 단위 재사용 (가짜 게이트웨이 · 실호출 갈래)
+print("\n■ B135 ① 호출 단위 재사용 · ② 도입 씨앗 · ③ 판과 문면 · 중단 뒤 다시")
+import copy as _cp                                           # noqa: E402
+import hashlib as _hl                                        # noqa: E402
+import shutil as _sh                                         # noqa: E402
+import tempfile as _tf                                       # noqa: E402
+from fake_gateway import CALLS as _GW, Live as _Live          # noqa: E402
+from core.build import extract_calls as _EC                  # noqa: E402
+_cdir = _EC.folder("RFQ01")
+
+
+def _ans(body):
+    """가짜 ① — 보낸 청크 글마다 결정적인 개체 하나(입력이 같으면 같은 답)."""
+    h = _hl.sha256(str(body.get("chunk")).encode("utf-8")).hexdigest()[:4]
+    return {"entities": [{"surface": f"부품{h}", "category": "Component", "parent": None, "belongs_to": None, "value": None}],
+            "relations": [], "about": []}
+
+
+def _xl(env=None):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        out, made = EX.extract(env or _env, _cfg, _loc, _vocab(_cfg), notice=extract_screen())
+    return out, made, buf.getvalue()
+
+
+def _n():
+    return sum(1 for p, _b in _GW if p == "extract")
+
+
+def _clean():
+    EX.invalidate("RFQ01")
+    _sh.rmtree(_cdir, ignore_errors=True)
+    del _GW[:]
+
+
+_clean()
+_env2 = _cp.deepcopy(_env)
+_c2 = next(c for c in _env2["chunks"] if c.get("source_locator") in _loc and (c.get("meta") or {}).get("sheet_role") != "ref")
+_c2.setdefault("meta", {})["section_path"] = str((_c2.get("meta") or {}).get("section_path") or "") + " › 시험 경로"
+with _Live(by={"extract": _ans}):
+    _full, _, _ = _xl()
+    _nf = _n()
+    del _GW[:]
+    _one, _, _t1 = _xl(_env2)
+    _n1 = _n()
+    _clean()
+    _all2, _, _ = _xl(_env2)
+show("B135 ⓐ 청크 하나의 경로만 바꾼 재추출 → 그 청크만 부른다(호출 1) · 체크포인트 후보가 전부 다시 부른 것과 같다 · 예고에 「다시 씀」",
+     _nf > 1 and _n1 == 1 and json.dumps(_one["candidates"]) == json.dumps(_all2["candidates"])
+     and f"부를 1 · 다시 씀 {_nf - 1}" in _t1, f"전부 {_nf} · 경로 하나 바꾼 뒤 {_n1}")
+_clean()
+with _Live(by={"extract": _ans}):
+    _xl()
+    _sh.rmtree(_cdir, ignore_errors=True)                     # B134 판처럼 — 호출 보존 없음 · 체크포인트에 문면 칸 없음
+    _ck = json.loads(EX.checkpoint_path("RFQ01").read_text(encoding="utf-8"))
+    EX.checkpoint_path("RFQ01").write_text(json.dumps({k: v for k, v in _ck.items() if k not in ("prompt", "prompt_text")},
+                                                      ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    del _GW[:]
+    _r0, _m0, _t0 = _xl()
+    _n0 = _n()
+    _seed = len(list(_cdir.glob("*.json"))) if _cdir.exists() else 0
+    EX.invalidate("RFQ01")                                    # 재인입이 체크포인트를 버린 뒤(같은 문서)
+    del _GW[:]
+    _r1, _, _ = _xl()
+    _nr = _n()
+show("B135 ⓒ 도입 — B134 판 체크포인트(호출 보존 없음)로 같은 문서 → 호출 0 · 씨앗 청크마다 · 체크포인트를 버린 뒤에도 호출 0",
+     _n0 == 0 and not _m0 and _seed == _nf and f"씨앗 {_nf}" in _t0 and _nr == 0
+     and json.dumps(_r1["candidates"]) == json.dumps(_full["candidates"]), f"호출 {_n0} · 씨앗 {_seed} · 버린 뒤 {_nr}")
+_pd = Path(_tf.mkdtemp(prefix="b135p_"))
+_sh.copytree(ROOT / "prompts", _pd / "prompts")
+_pf = next((_pd / "prompts").glob("*_extract.md"))
+_pdir0 = gateway.prompts_dir
+gateway.prompts_dir = lambda: str(_pd / "prompts")
+gateway._DRIFT_SAID.clear()
+try:
+    _pf.write_text(_pf.read_text(encoding="utf-8") + "\n<!-- 시험 — 서술만 -->\n", encoding="utf-8")
+    with _Live(by={"extract": _ans}):
+        EX.invalidate("RFQ01")
+        del _GW[:]
+        _rb, _, _tb = _xl()
+        _nb = _n()
+        _txt = _pf.read_text(encoding="utf-8")
+        _v = next(ln for ln in _txt.splitlines() if ln.startswith("version:"))
+        _pf.write_text(_txt.replace(_v, _v + "-시험", 1), encoding="utf-8")
+        EX.invalidate("RFQ01")
+        del _GW[:]
+        _xl()
+        _nv = _n()
+finally:
+    gateway.prompts_dir = _pdir0
+    _sh.rmtree(_pd, ignore_errors=True)
+show("B135 ⓑ 지시문 문면만 바꾼 사본(판 그대로) → 재호출 0 · 「서술만 바뀜」 한 줄 / 판을 올린 사본 → 그 지시문의 호출 전부 다시",
+     _nb == 0 and "지시문 서술만 바뀜" in _tb and _nv == _nf, f"서술만 {_nb} · 판 올림 {_nv}/{_nf}")
+_clean()
+_k = {"n": 0}
+
+
+def _flaky(body):
+    _k["n"] += 1
+    if _k["n"] == 2:
+        raise gateway.GatewayError(500, "가짜 실패", "fake")
+    if _k["n"] == 4:
+        raise KeyboardInterrupt                              # 시험 주입 — 넷째 호출에서 끊긴다
+    return _ans(body)
+
+
+with _Live(by={"extract": _flaky}):
+    try:
+        _xl()
+    except KeyboardInterrupt:
+        pass
+_mid = (EX.has_checkpoint("RFQ01"), len(list(_cdir.glob("*.json"))) if _cdir.exists() else 0)
+with _Live(by={"extract": _ans}):
+    _re, _made, _ = _xl()
+    _ne = _n()
+show("B135 ⓔ 중단 뒤 다시 — 끝난 호출은 다시 부르지 않고(보존 둘) 실패한 호출은 다시 부른다 · 체크포인트는 끝까지 돈 뒤에만 · 한 번에 돈 것과 같다",
+     _mid == (False, 2) and _ne == _nf - 2 and _made and json.dumps(_re["candidates"]) == json.dumps(_full["candidates"]),
+     f"끊긴 뒤 {_mid} · 다시 부름 {_ne}/{_nf}")
+_clean()
 
 print("\n■ B97 ④ --step 산문 관문")
 

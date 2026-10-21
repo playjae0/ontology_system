@@ -332,16 +332,16 @@ try:
 except KeyboardInterrupt:
     pass
 E.embed_many = _real_many
-saved = len(json.loads(_P.vectors("nodes.json").read_text(encoding="utf-8"))["items"])
+saved = V.count("nodes")             # 저장은 sqlite 하나(B136 ③)
 V.begin()
 H.warm()
 again = dict(V.STATS["nodes"])
-resumed = _P.vectors("nodes.json").read_bytes()
+resumed = V.fingerprint("nodes")
 shutil.rmtree(_P.vectors(), ignore_errors=True)
 V.SAVE_EVERY = 256
 V.begin()
 H.warm()
-clean = _P.vectors("nodes.json").read_bytes()
+clean = V.fingerprint("nodes")
 total = again["made"] + again["reused"]
 show("ⓒ 끊었다 다시 치면 이어 간다 — 저장된 몫은 재사용 · 만든 수가 0부터가 아니다 · 이어 만든 파일 = 처음부터 만든 파일",
      saved == 48 and again["reused"] == saved and again["made"] == total - saved and resumed == clean,

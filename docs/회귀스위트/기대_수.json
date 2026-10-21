@@ -3,75 +3,75 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 7
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 7
+   "secs": 6
   },
   "test_g3": {
    "n": 82,
    "secs": 2
   },
   "test_query": {
-   "n": 112,
+   "n": 118,
    "secs": 9
   },
   "test_ops": {
    "n": 84,
-   "secs": 6
+   "secs": 7
   },
   "test_intake": {
    "n": 98,
-   "secs": 17
+   "secs": 14
   },
   "test_ingest_view": {
-   "n": 70,
-   "secs": 28
+   "n": 72,
+   "secs": 30
   },
   "test_coord": {
    "n": 49,
-   "secs": 12
+   "secs": 11
   },
   "test_catalog": {
    "n": 57,
-   "secs": 20
+   "secs": 17
   },
   "test_safety": {
    "n": 35,
-   "secs": 63
+   "secs": 58
   },
   "test_judge": {
    "n": 71,
-   "secs": 7
+   "secs": 9
   },
   "test_build": {
    "n": 49,
-   "secs": 17
+   "secs": 14
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 21
+   "secs": 19
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 6
   },
   "test_structure": {
-   "n": 59,
-   "secs": 15
+   "n": 69,
+   "secs": 13
   },
   "test_g6_capture": {
    "n": 9,
-   "secs": 21
+   "secs": 19
   },
   "test_g6_close": {
-   "n": 28,
-   "secs": 27
+   "n": 29,
+   "secs": 32
   },
   "test_contract": {
    "n": 76,
-   "secs": 25
+   "secs": 18
   },
   "test_p1_core6": {
    "n": 42,
@@ -91,15 +91,15 @@
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 3
+   "secs": 4
   },
   "test_p2": {
    "n": 68,
-   "secs": 4
+   "secs": 5
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 7
+   "secs": 6
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,11 +107,11 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 6
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 7
+   "secs": 4
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,11 +119,11 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 7
+   "secs": 8
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 5
+   "secs": 3
   },
   "test_p3_flow": {
    "n": 65,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 24
+   "secs": 26
   }
  },
  "log": [
@@ -169,6 +169,46 @@
    "suite": "test_g6_close",
    "from": 26,
    "to": 28,
+   "why": ""
+  },
+  {
+   "at": "2026-10-21",
+   "head": "bbb0a56",
+   "suite": "test_structure",
+   "from": 59,
+   "to": 63,
+   "why": ""
+  },
+  {
+   "at": "2026-10-21",
+   "head": "60e9994",
+   "suite": "test_ingest_view",
+   "from": 70,
+   "to": 72,
+   "why": ""
+  },
+  {
+   "at": "2026-10-21",
+   "head": "60e9994",
+   "suite": "test_g6_close",
+   "from": 28,
+   "to": 29,
+   "why": ""
+  },
+  {
+   "at": "2026-10-21",
+   "head": "1f8121f",
+   "suite": "test_structure",
+   "from": 63,
+   "to": 69,
+   "why": ""
+  },
+  {
+   "at": "2026-10-21",
+   "head": "71fe03b",
+   "suite": "test_query",
+   "from": 112,
+   "to": 118,
    "why": ""
   }
  ]

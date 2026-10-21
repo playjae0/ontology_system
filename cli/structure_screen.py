@@ -105,7 +105,10 @@ def _print_sheet(name, fr, res):
     blk = SR.sheet_block(name, fr, SR.chunks_of(res.envelope, name))
     _screen.say("   ── 구조 확인 — " + blk[0], "head")
     for ln in blk[1:]:
-        print("   " + ln)
+        if SR.NEED_MARK in ln:                     # 판단 필요 줄 — 터미널일 때만 색(로그 · 파이프 · md는 표지) (B137 ⑥)
+            _screen.say("   " + ln, "new")
+        else:
+            print("   " + ln)
 
 
 def gate(res, doc_id, reparse, *, ask=True, layers=None):
@@ -124,7 +127,7 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
 def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
     from cli import split_report as SR
     from parser.struct_rule import labels_hash
-    pos = 0
+    pos, said = 0, False
     while True:
         if not res.ok:                       # 고친 뒤 다시 파싱이 실패했다 — 진행하지 않는다
             print("   다시 파싱 실패 — " + "; ".join(f["reason"] for f in res.failures)[:200])
@@ -141,7 +144,12 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
                 _screen.say(ln, "warn")
         res.envelope.setdefault("context", {})["structure"] = {**ST.counts(st), "약한": weak}
         frames = list(st.get("프레임") or {})
+        if ask and frames and not said:
+            said = True
+            _screen.say("   " + SR.ladder_usage(st), "aux")       # 사다리 단계의 사용량 — 한 번 (B137 ⑦)
         if not ask or pos >= len(frames):
+            if ask and frames:
+                _screen.say("   " + SR.total_usage(st), "aux")   # 문서 끝 구조 합계 (B137 ⑦)
             return res, True
         name = frames[pos]
         fr = st["프레임"][name]

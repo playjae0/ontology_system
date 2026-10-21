@@ -322,7 +322,7 @@ def parsed(*parts):
 
 
 def vectors(*parts):
-    """④작업 **질의 벡터 캐시** — `work/vectors/<chunks|nodes>.json` (B104 ③ · 재생성 가능 · fresh가 지운다)."""
+    """④작업 **질의 벡터 저장** — `work/vectors/vectors.sqlite` (B104 ③ · B136 ③ — 파생물 · 기본 fresh가 남긴다 · 클린이 지운다)."""
     return work("vectors", *parts)
 
 

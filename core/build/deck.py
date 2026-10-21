@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """칸 2.4 · ⑪ — **덱 구조**(B125 ③) — PPT 덱 한 벌을 한 번에 보고 슬라이드마다 제목 · 구획 · 이어짐 · 다루는 공정 ·
-언급 공정 · 개체 없음과 덱 개요를 정한다(지점 ⑪ 문서 구조의 PPT 입력 꼴 — 호출 태그 `deck` · 지시문 `3.3_outline.md`).
+언급 공정 · 개체 없음과 덱 개요를 정한다(지점 ⑪ 문서 구조의 PPT 입력 꼴 — 호출 태그 `deck` · 지시문 `2.4_deck.md` — B135 ④ 개요와 가름 · 판 o-3.3 그대로).
 
     입력  슬라이드마다 상자 글(시각 순서 · placeholder 제목 표시 = 힌트) · 노트 앞부분 · 표 · 차트 머리
           + 문서 좌표(있으면 힌트) + 골격 닫힌 목록 + 층 힌트(`prompts.structure`)
@@ -23,7 +23,7 @@ from core.state.ids import norm
 
 _LOG = log.get(__name__)
 
-PROMPT = "outline"
+PROMPT = "deck"
 TAG = "deck"
 
 SCHEMA = {
@@ -56,7 +56,7 @@ def _closed():
 
 
 def key(cfgs):
-    """보존분 재사용의 판 — 덱 지시문 판(`3.3_outline.md`) · 층 config 추출 칸 · 골격 닫힌 목록 판(산문 구조의 판 · 방식과 무관 — B132)."""
+    """보존분 재사용의 판 — 덱 지시문 판(`2.4_deck.md`) · 층 config 추출 칸 · 골격 닫힌 목록 판(산문 구조의 판 · 방식과 무관 — B132)."""
     from core.build.extract import prompt_version
     from core.state import config_scope
     from parser import tagger
@@ -181,14 +181,13 @@ def decker(layers=None):
     live = not gateway.use_mock()
 
     def fn(doc_id, slides, doc_coord=None):
-        from core.build.extract import prompt_version
         nodes, idx = _closed()
         if live:
             gateway.require(TAG)
             ans, calls, failed = _live(doc_id, slides, doc_coord, nodes, cfgs)
             if failed:
                 return {"slides": {}, "overview": None, "dropped": {}, "calls": calls, "failed": failed,
-                        "source": "live", "prompt_version": prompt_version(PROMPT)}
+                        "source": "live", **gateway.prompt_stamp(PROMPT)}
             source = "live"
         else:
             ans, calls, source = hint_answer(doc_id), 0, "hint"
@@ -196,8 +195,9 @@ def decker(layers=None):
                 return None
         out = check(doc_id, slides, ans, idx)
         _LOG.info("덱 구조 %s — 슬라이드 %d · 버림 %s · 호출 %d", doc_id, len(out["slides"]), out["dropped"], calls)
-        return {**out, "calls": calls, "source": source, "prompt_version": prompt_version(PROMPT)}
+        return {**out, "calls": calls, "source": source, **gateway.prompt_stamp(PROMPT)}   # 판 · 문면 해시 (B135 ③)
     fn.key = lambda: key(cfgs)
+    fn.drift = lambda rec: gateway.prompt_drift(PROMPT, rec)     # 보존분을 다시 쓸 때 — 판 그대로 · 문면만 바뀜 한 줄
     return fn
 
 

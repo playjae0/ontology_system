@@ -572,7 +572,8 @@ def extract_screen(step=False, stage=None):
         if k in ("개요예고", "개요끝", "개요재사용"):
             return _outline_line(info, lz, stage, step)
         if k == "추출재사용":
-            _screen.say(f"   추출 {lz}— 체크포인트 재사용(LLM 0) · {paths.show(info['자리'])}", "head")
+            _screen.say(f"   추출 {lz}— 체크포인트 재사용(LLM 0) · {paths.show(info['자리'])}"
+                        + (f" · 호출 보존 씨앗 {info['씨앗']:,}" if info.get("씨앗") else ""), "head")
         elif k == "추출저장":                        # 끝난 뒤 그 자리에 있나 (B112 ⑦)
             where = paths.show(info["자리"])
             if info.get("전실패"):
@@ -583,9 +584,6 @@ def extract_screen(step=False, stage=None):
             else:
                 _screen.say(f"   [결함] 추출이 끝났는데 체크포인트가 없다 {lz}— {where} (로그 · 결함 장부에도)",
                             "fail")
-        elif k == "추출이어서":
-            _screen.say(f"   추출 이어서 {lz}— 끝난 청크 {info['끝난']:,} · "
-                        f"남은 {info['남은']:,}", "head")
         elif k == "추출예고":
             box["t"], box["u0"] = extract_table(info.get("자리목록")), gateway.usage_total()
             if stage is not None:
@@ -593,8 +591,8 @@ def extract_screen(step=False, stage=None):
                 stage.update({"이름": "추출", "값": 0, "총": info["호출"], "t0": time.monotonic()})
             if info.get("렌즈여럿"):
                 return None                       # 렌즈 예고가 같은 자리를 맡았다(두 줄 0)
-            head = (f"추출 예고 {lz}— 청크 {info['청크']:,}(ref 시트 {info['ref']:,} · "
-                    f"체크포인트 재사용 {info['재사용']:,} 제외) → LLM ≤ {info['호출']:,}회")
+            head = (f"추출 예고 {lz}— 청크 {info['청크']:,}(ref 시트 {info['ref']:,}) → 부를 {info['호출']:,} · "
+                    f"다시 씀 {info['재사용']:,}(같은 입력 — LLM 0) → LLM ≤ {info['호출']:,}회")
             if info.get("다시"):                    # 옛 추출을 다시 뽑는 이유(B102 ⑥)
                 head += f" · 다시 뽑는다 — {info['다시']}"
             if info.get("개체없음"):                # 덱 구조의 「개체 없음」 슬라이드 — 부르지 않는다 (B125 ①)

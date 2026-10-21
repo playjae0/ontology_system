@@ -313,19 +313,29 @@ _pg.write_text(_pg.read_text(encoding="utf-8").rstrip() + "\n\n---\n\n## B998 �
 _secs0 = re.findall(r"^## (B\d+) — ", (BOX / "PROGRESS.md").read_text(encoding="utf-8"), re.M)
 _live0 = [m.group(1) for f in (BOX / "docs" / "안건").glob("*_요청문.md")
           if (m := re.match(r"(B\d+)_요청문", f.name)) and m.group(1) not in _secs0]
+# 바뀐 지시문(B135 ③) — 사본에서 하나는 서술만 · 하나는 판을 올린다 → 요약 줄이 지시문마다 말한다
+_pdk = next((BOX / "prompts").glob("*_deck.md"))
+_pdk.write_text(_pdk.read_text(encoding="utf-8") + "\n<!-- 시험 — 서술만 -->\n", encoding="utf-8")
+_piv = next((BOX / "prompts").glob("*_interview.md"))
+_piv_t = _piv.read_text(encoding="utf-8")
+_piv_v = next(ln for ln in _piv_t.splitlines() if ln.startswith("version:"))
+_piv.write_text(_piv_t.replace(_piv_v, _piv_v + "-시험", 1), encoding="utf-8")
 rc5, out5 = _run(["tools/close.py", "--base", "HEAD"], cwd=BOX)
 _summ = out5.split("마감 한 줄 요약", 1)[1] if "마감 한 줄 요약" in out5 else ""
 _rows = re.findall(r"^\[(PASS|FAIL|갱신|건너뜀)\] ([^—\n]+)", _summ, re.M)
 _lab = {lab.strip(): v for v, lab in _rows}
 _doc = next((v for k, v in _lab.items() if k.startswith("마감 doctor")), None)
 _chk = next((ln for ln in _summ.splitlines() if "문서 검사 일곱" in ln), "")
-# 기대 변경(B133 — 사전 점검에 레포 쓰기 정적 점검 · doctor는 회귀 명령으로)
+# 기대 변경(B133 — 사전 점검에 레포 쓰기 정적 점검 · doctor는 회귀 명령으로 · B135 — 바뀐 지시문 줄)
 _argv = (BOX / "doctor.py.argv").read_text(encoding="utf-8").split() if (BOX / "doctor.py.argv").exists() else []
-show("ⓑ 장부 → 사전 점검(층 어휘 · 레포 쓰기 포함) → doctor(회귀 명령) → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열넷 줄이 요약에",
-     len(_rows) == 14 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
+show("ⓑ 장부 → 바뀐 지시문 → 사전 점검(층 어휘 · 레포 쓰기 포함) → doctor(회귀 명령) → 네 벌 → §7 상한 → 자산 해시 → 기대 수 — 단계 열다섯 줄이 요약에",
+     len(_rows) == 15 and any(k.startswith("네 벌") for k in _lab) and "§7 상한" in _lab and "자산 해시" in _lab
      and "층 어휘 정적 점검" in _lab and "레포 쓰기 정적 점검" in _lab and "PROGRESS 최근 3회차" in _lab
      and _lab.get("기대 수 기록") == "건너뜀" and "--regress" in _argv,
      f"줄 {len(_rows)} · doctor 인자 {_argv} · {list(_lab)}")
+_pln = next((ln for ln in _summ.splitlines() if "바뀐 지시문" in ln), "")
+show("ⓑ 바뀐 지시문 줄(B135 ③) — 사본에서 서술만 바꾼 지시문은 「서술만」 · 판을 올린 지시문은 「판 올림 a → b」",
+     _lab.get("바뀐 지시문") == "갱신" and f"{_pdk.name} 서술만" in _pln and f"{_piv.name} 판 올림" in _pln, _pln[:200])
 show("ⓑ 넣은 FAIL(명세 취소선 · doctor 실패)이 FAIL로 서고 그 뒤 네 벌도 돌았다 · rc 1",
      rc5 == 1 and _doc == "FAIL" and "[FAIL]" in _chk and "모양" in _chk and _lab.get("네 벌") == "PASS"
      and "전부 같다" in _summ and re.search(r"FAIL [2-9]", _summ),

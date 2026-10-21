@@ -18,6 +18,7 @@ xlsx →
       "indent":  {"A5": 3, ...},            # 들여쓰기 수준 (0이 아닌 셀만)
       "bold":    ["A1", "A3", ...],         # 굵은 셀
       "size":    {"A1": 14.0, ...},          # 글자 크기 · "fill": {"A1": "FFFFFF00"} 채우기(단색) — 보조 표시(B132 ①)
+      "color":   {"A1": "FFFF0000", ...},     # 글자색(검정 · 자동 밖만 — rgb 또는 "theme<n>") — 보조 표시(B137 ③)
       "images":  [{"cell": "A17", "ref": "img_001", "mime": "image/png"}, ...],
   }],
   "_images": {"img_001": (b"…", "image/png")},  # 그림이 있을 때만 (B88 ① — zip에서 직접)
@@ -91,6 +92,25 @@ def _need(module, pip_name, ext):
 
 
 
+#: 글자색에서 「기본」으로 읽는 값 — 검정(rgb) · 글자 기본 테마(dk1 = 1) · 자동 — 색 표시를 달지 않는다
+_PLAIN_COLORS = ("FF000000", "00000000", "theme1")
+
+
+def _font_color(font):
+    """셀 글자색 — rgb(`FFFF0000`) 또는 테마(`theme4`) · 기본(검정 · 자동)이면 None (B137 ③ — 보조 표시)."""
+    col = getattr(font, "color", None) if font is not None else None
+    if col is None:
+        return None
+    kind = getattr(col, "type", None)
+    if kind == "rgb" and isinstance(getattr(col, "rgb", None), str):
+        v = col.rgb
+    elif kind == "theme" and isinstance(getattr(col, "theme", None), int):
+        v = f"theme{col.theme}"
+    else:
+        return None
+    return None if v in _PLAIN_COLORS else v
+
+
 def read_xlsx(path):
     """**import는 함수 안이다** (문서 7 §7.1 선택 의존의 지연 import 격리).
 
@@ -122,7 +142,7 @@ def read_xlsx(path):
     all_images, n_img = {}, 0
     sheets = []
     for ws in wb.worksheets:
-        cells, indent, bold, size, fill = {}, {}, [], {}, {}
+        cells, indent, bold, size, fill, color = {}, {}, [], {}, {}, {}
         for row in ws.iter_rows():
             for c in row:
                 if c.value is None:
@@ -139,6 +159,9 @@ def read_xlsx(path):
                 fg = getattr(getattr(c, "fill", None), "fgColor", None)
                 if getattr(c.fill, "fill_type", None) == "solid" and getattr(fg, "rgb", None) and isinstance(fg.rgb, str):
                     fill[addr] = fg.rgb
+                fc = _font_color(c.font)
+                if fc:
+                    color[addr] = fc
         images = []
         for cell, blob, mime in zimgs.get(ws.title, []):
             n_img += 1
@@ -154,6 +177,7 @@ def read_xlsx(path):
             "bold": bold,
             "size": size,
             "fill": fill,
+            "color": color,
             "images": images,
         }
         # **숨김 시트**(B112 ② — 사내: 숨김 시트의 다른 공정 내용이 prose로 들어갔다) · 키는 **숨김일 때만** —

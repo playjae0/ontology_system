@@ -6,7 +6,8 @@
 
 두 자리:
   · **링킹 후보**(`link_candidates`) — 질문 문장 벡터 ↔ 노드 벡터 상위 k(손잡이 `query_link_top_k`). 노드 벡터의
-    재료는 「canonical · 카테고리와 그 정의 · 별칭 · 닻까지의 길」 — **어디의 무엇**(`anchor` 한 자리)이다.
+    재료는 「이름 · 카테고리 이름 · 별칭 · 닻까지의 길」 — **어디의 무엇**(`anchor` 한 자리)이다 · **카테고리 정의문은 넣지 않는다**
+    (B136 ① — 같은 카테고리 노드에 같은 정의문이 붙으면 노드를 가르는 이름 사슬 · 위치가 묻힌다 · 정의문은 판정 · 선별 입력의 몫).
     고르는 것은 LLM(지점 ⑥ · `query._link_llm`) — 여기는 후보만 낸다.
   · **문서 검색 채널**(`doc_search`) — 질문 벡터 ↔ 청크 벡터 상위 k(유사도 문턱 `query_doc_min_sim` 이상) + BM25
     상위 k(공유 토큰이 있을 때만 — 점수 0은 없다) · 합쳐 중복 제거(번갈아 · 둘 다면 앞). 링킹이 빗나가도 돈다 —
@@ -37,22 +38,13 @@ DOC_MIN_SIM = 50
 SELECT = None
 
 
-def _defs(configs):
-    """카테고리 → 정의문(층 config `categories` — 집 층이 먼저 · 문자열만)."""
-    out = {}
-    for cfg in configs.values():
-        for cat, d in (cfg.get("categories") or {}).items():
-            if isinstance(d, str) and cat not in out:
-                out[cat] = d
-    return out
+def node_texts(graphs, configs=None):
+    """노드마다 벡터의 재료와 화면 재료 — `({id: 재료}, {id: {canonical, category, layer, where}})`.
 
-
-def node_texts(graphs, configs):
-    """노드마다 벡터의 재료와 화면 재료 — `({id: 재료}, {id: {canonical, category, layer, where}})`."""
+    재료 = 이름 · 카테고리 이름 · 별칭 · 위치(닻까지의 길) — 정의문 0(B136 ①). `configs`는 받기만 한다(재료가 층 config를 읽지 않는다)."""
     nodes, edges = A.lists(graphs)
     anc = A.anchors(nodes, edges)
     names = {n["id"]: n["name"] for n in nodes}
-    defs = _defs(configs)
     raw = {n["id"]: g.nodes[n["id"]] for g in graphs.values() for n in nodes if n["id"] in g.nodes}
     texts, info = {}, {}
     for n in nodes:
@@ -60,7 +52,7 @@ def node_texts(graphs, configs):
         al = [a.get("surface") if isinstance(a, dict) else a for a in r.get("aliases") or []]
         where = A.path_text(n["id"], anc, names)
         texts[n["id"]] = " | ".join(x for x in (
-            n["name"], f"{n['category']}: {defs.get(n['category'], '')}".rstrip(": "),
+            n["name"], n["category"],
             ("별칭: " + ", ".join(sorted({a for a in al if a}))) if al else "",
             f"위치: {where}" if where and where != n["name"] else "") if x)
         info[n["id"]] = {"canonical": n["name"], "category": n["category"], "layer": n["layer"],
@@ -87,10 +79,11 @@ def _chunk_text(c):
     return f"[{head}] {c.get('text') or ''}" if head else (c.get("text") or "")
 
 
-def warm(graphs=None, configs=None):
+def warm(graphs=None, configs=None, kinds=None):
     """**벡터 준비** — 질의가 견줄 노드 · 청크 벡터를 미리(B114 ④ — 질의의 첫 단계 · 뷰어 시작의 미리 만들기가 이
     함수 하나). 재료는 `link_candidates` · `doc_search`와 같은 함수(`node_texts` · `_chunk_text`)라 뒤의 두 자리는
-    캐시를 재사용한다. 계획(두 종류의 분모)을 먼저 세우고 종류마다 만든다 — 돌려주는 것은 `{종류: (있던 수, 전체)}`."""
+    저장을 재사용한다. 계획(두 종류의 분모)을 먼저 세우고 종류마다 만든다 — 돌려주는 것은 `{종류: (있던 수, 전체)}` · `kinds`를 주면
+    그 종류만(`run.py vectors --only` — B136 ④)."""
     if graphs is None:
         from core.state.bootstrap import load_config, open_graph
         from router import discover
@@ -99,7 +92,7 @@ def warm(graphs=None, configs=None):
     ch = (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {})
     jobs = [("nodes", node_texts(graphs, configs or {})[0]),
             ("chunks", {cid: _chunk_text(c) for cid, c in ch.items()})]
-    jobs = [(k, t) for k, t in jobs if t]
+    jobs = [(k, t) for k, t in jobs if t and (kinds is None or k in kinds)]
     got = V.plan(jobs)
     for kind, texts in jobs:
         V.vectors(kind, texts)

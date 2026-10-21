@@ -15,6 +15,8 @@ _LOG = log.get(__name__)
 
 #: 고침의 닫힌 꼴 — 제목 더함 · 제목 뺌 · 부모 바꿈 · 역할 · 대상 · 붙임
 WHATS = ("제목 더함", "제목 뺌", "부모 바꿈", "역할", "대상", "붙임")
+#: 사다리 고침이 거는 범위(닫힌 둘 — B137 ⑤) — 없으면 「꼴 전부」(옛 답 · 힌트)
+SCOPES = ("꼴 전부", "첫 서수 목록")
 
 EDIT_SCHEMA = {
     "type": "object",
@@ -34,13 +36,14 @@ EDIT_SCHEMA = {
                            "why": {"type": "string"}},
             "required": ["row", "role", "name", "category", "why"], "additionalProperties": False}},
         # **사다리 고침**(B130 ④ · B132 ⑤ — 힌트 · 판단이 서명에 걸린 규칙이면 되말한다 · `shape` = 서명 · 코드가 문서 사다리를 고쳐 그
-        # 문서의 뒤 시트까지 다시 세운다 · 아니면 빈 목록)
+        # 문서의 뒤 시트까지 다시 세운다 · 아니면 빈 목록) · `scope`(B137 ⑤ — 「꼴 전부」 그 서명의 단 · 「첫 서수 목록」 `parent_shape`
+        # 아래에서 첫 서수로 시작하는 그 서명의 목록만 — 꼴 전부를 옮기지 않는다)
         "rules": {"type": "array", "items": {
             "type": "object",
             "properties": {"shape": {"type": "string"}, "role": {"type": ["string", "null"]},
                            "category": {"type": ["string", "null"]}, "parent_shape": {"type": ["string", "null"]},
-                           "said": {"type": "string"}},
-            "required": ["shape", "role", "category", "parent_shape", "said"], "additionalProperties": False}}},
+                           "scope": {"type": "string", "enum": list(SCOPES)}, "said": {"type": "string"}},
+            "required": ["shape", "role", "category", "parent_shape", "scope", "said"], "additionalProperties": False}}},
     "required": ["edits", "headings", "rules"], "additionalProperties": False,
 }
 
