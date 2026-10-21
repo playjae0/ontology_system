@@ -20,6 +20,7 @@ from core.llm import gateway
 from core.state import log, store
 from parser import ladder as PL
 from parser import sig as SG
+from core.build.structure_edit import SCOPES as SE_SCOPES
 from parser.struct_rule import FRAME_ROW, ROLES, TARGET_ROLES
 
 _LOG = log.get(__name__)
@@ -96,9 +97,12 @@ def skeleton(labs, heads, needs, lo=None, hi=None):
             body.clear()
     for x in rows:
         r = x["row"]
+        rest = [m for m in x.get("marks") or [] if not str(m).startswith(PL.FORMAT)]
         base = {"row": r, "sig": x.get("sig"), "head": _head(x), "depth": x.get("depth") or 0, "col": x.get("col"),
-                **({"marks": x["marks"]} if x.get("marks") else {})}
-        at = {"toc": toc.get(r), "parent": head[r].get("parent"), "role": head[r].get("role")} if r in head else {}
+                **({"fmt": PL.fmt_text(x)} if PL.fmt_text(x) else {}),        # 짧은 서식 표시 — 보조 단서 (B137 ③)
+                **({"marks": rest} if rest else {})}
+        at = {"toc": toc.get(r), "parent": head[r].get("parent"), "role": head[r].get("role"),
+              **({"title": True} if head[r].get("sig") == PL.TITLE else {})} if r in head else {}
         if r in need:                                       # 판단 필요가 먼저 — 제목으로 선 줄이어도 이유를 단다
             flush()
             out.append({"kind": "판단 필요", **base, **at, "need": need[r]["kind"], "why": need[r]["why"]})
@@ -248,17 +252,53 @@ def check_ladder(doc_id, raw, frames, cats):
     return {"levels": levels, "unnumbered": rules}, bad
 
 
-def fix_ladder(ladder, rules, cats):
-    """**사다리 고침**(시트 확인 · 사람 힌트의 규칙 `{shape, role, category, parent_shape, said}` — `shape` = 서명) — 새 사다리 · 결정적.
+def scope_of(rule):
+    """사다리 고침의 범위 — 없으면 「꼴 전부」(옛 답 · 힌트 · B137 ⑤)."""
+    return rule.get("scope") or SE_SCOPES[0]
 
-    그 서명의 단에 역할 · 카테고리를 건다(단에 서명이 여럿이면 그 서명만 떼어 같은 자리에 새 단) · `parent_shape`가 오면 그 서명을
-    그 서명 단의 바로 아래 단으로 옮긴다 · 사다리에 없는 서명은 맨 아래(또는 부모 서명 아래)에 새 단으로 · 닫힌 목록 밖은 버린다."""
+
+def check_rules(doc_id, frame, rules, have):
+    """사다리 고침의 검사(B137 ⑤ — 기계적) — `(쓸 규칙, 버림 [{규칙 …, 버림}])` · 서명 · 부모 서명은 그 문서에 있는 것 · 범위는 닫힌 둘 ·
+    「첫 서수 목록」은 부모 서명이 있어야 한다 — 밖이면 그 규칙만 버린다(결함 로그)."""
+    kept, bad = [], []
+    for x in rules or []:
+        why = None
+        if x.get("shape") not in have:
+            why = f"문서에 없는 서명 '{x.get('shape')}'"
+        elif scope_of(x) not in SE_SCOPES:
+            why = f"범위 밖 '{x.get('scope')}'"
+        elif x.get("parent_shape") is not None and x["parent_shape"] not in have:
+            why = f"문서에 없는 부모 서명 '{x['parent_shape']}'"
+        elif scope_of(x) == SE_SCOPES[1] and not x.get("parent_shape"):
+            why = "첫 서수 목록 규칙에 부모 서명이 없다"
+        if why:
+            store.append_defect(f"{doc_id}: 사다리 고침 버림 — {why} (시트 '{frame}')")
+            bad.append({**x, "버림": why})
+        else:
+            kept.append(x)
+    return kept, bad
+
+
+def fix_ladder(ladder, rules, cats):
+    """**사다리 고침**(시트 확인 · 사람 힌트의 규칙 `{shape, role, category, parent_shape, scope, said}` — `shape` = 서명) — 새 사다리 · 결정적.
+
+    범위 「꼴 전부」 — 그 서명의 단에 역할 · 카테고리를 건다(단에 서명이 여럿이면 그 서명만 떼어 같은 자리에 새 단) · `parent_shape`가 오면
+    그 서명을 그 서명 단의 바로 아래 단으로 옮긴다 · 사다리에 없는 서명은 맨 아래(또는 부모 서명 아래)에 새 단으로 · 닫힌 목록 밖은 버린다.
+    범위 「첫 서수 목록」(B137 ⑤) — 단은 그대로 두고 `lists`에 「`parent_shape` 아래에서 첫 서수로 시작하는 그 서명의 목록」을 건다(그 목록의
+    줄만 그 줄의 자식 · 역할 · 카테고리 — `parser/ladder.apply`)."""
     levels = [dict(lv, sigs=list(lv.get("sigs") or [])) for lv in (ladder or {}).get("levels") or []]
+    lists = [dict(u) for u in (ladder or {}).get("lists") or []]
     for rule in rules or []:
         s, psh = rule.get("shape"), rule.get("parent_shape")
         role = rule.get("role") if rule.get("role") in ROLES else None
         cat = rule.get("category") if role in TARGET_ROLES and rule.get("category") in cats else None
         if not s:
+            continue
+        if scope_of(rule) == SE_SCOPES[1]:
+            if psh:
+                lists = [u for u in lists if (u["shape"], u["parent_shape"]) != (s, psh)] + [
+                    {"shape": s, "parent_shape": psh, "role": role, "category": cat,
+                     "why": str(rule.get("said") or "사람 힌트")[:200], "by": "고침"}]
             continue
         at = next((i for i, lv in enumerate(levels) if s in lv["sigs"]), None)
         if at is not None:
@@ -271,7 +311,7 @@ def fix_ladder(ladder, rules, cats):
         where = pi + 1 if pi is not None else (at if at is not None else len(levels))
         levels.insert(min(where, len(levels)), {"sigs": [s], "role": role, "category": cat,
                                                 "why": str(rule.get("said") or "사람 힌트")[:200], "rows": [], "by": "고침"})
-    return {**(ladder or {}), "levels": levels}
+    return {**(ladder or {}), "levels": levels, **({"lists": lists} if lists else {})}
 
 
 # ---------------------------------------------------------------- 시트 확인 — 호출 · mock · 답을 고침으로
@@ -357,7 +397,8 @@ def tree_edits(labs, heads, tree, skip=()):
 
 def _e(row, what, **kw):
     return {"row": row, "what": what, "parent": kw.get("parent"), "to_row": None, "role": kw.get("role"),
-            "name": kw.get("name"), "category": kw.get("category"), "why": kw.get("why") or ""}
+            "name": kw.get("name"), "category": kw.get("category"), "why": kw.get("why") or "",
+            **({"src": kw["src"]} if kw.get("src") else {})}
 
 
 def answers_to_edits(doc_id, frame, heads, needs, answers):
@@ -375,15 +416,15 @@ def answers_to_edits(doc_id, frame, heads, needs, answers):
         why = str(a.get("why") or "판단 필요의 답")
         if a.get("heading"):
             if r not in have:
-                edits.append(_e(r, "제목 더함", parent=a.get("parent"), role=a.get("role"), why=why))
+                edits.append(_e(r, "제목 더함", parent=a.get("parent"), role=a.get("role"), why=why, src="답"))
             elif have[r].get("parent") != a.get("parent"):
-                edits.append(_e(r, "부모 바꿈", parent=a.get("parent"), why=why))
+                edits.append(_e(r, "부모 바꿈", parent=a.get("parent"), why=why, src="답"))
             if a.get("role") in TARGET_ROLES and a.get("name"):
-                edits.append(_e(r, "대상", name=a.get("name"), category=a.get("category"), why=why))
+                edits.append(_e(r, "대상", name=a.get("name"), category=a.get("category"), why=why, src="답"))
             elif a.get("role"):
-                edits.append(_e(r, "역할", role=a.get("role"), why=why))
+                edits.append(_e(r, "역할", role=a.get("role"), why=why, src="답"))
         elif r in have:
-            edits.append(_e(r, "제목 뺌", why=why))
+            edits.append(_e(r, "제목 뺌", why=why, src="답"))
     missing = sorted(want - got)
     if missing:
         store.append_defect(f"{doc_id}: 시트 확인 — 판단 필요 답 빠짐 {len(missing)}(시트 '{frame}' {missing[:6]}) → 코드 자리 그대로")
@@ -391,14 +432,34 @@ def answers_to_edits(doc_id, frame, heads, needs, answers):
 
 
 def rule_counts(labs, heads, rules):
-    """사다리 고침마다 「적용 n줄 / 그 서명 전체 m줄」 — 그 서명 줄 가운데 그 역할의 제목으로 선 수."""
+    """사다리 고침마다 「적용 n줄 / 그 서명 전체 m줄」 — 꼴 전부는 그 서명 줄 가운데 그 역할의 제목으로 선 수 · 첫 서수 목록은 그 규칙이
+    건 줄 수(B137 ⑤)."""
     role = {h["row"]: h.get("role") for h in heads}
     out = []
     for x in rules or []:
         rows = [y["row"] for y in labs if y.get("sig") == x.get("shape") and y["row"] != FRAME_ROW]
-        out.append({**x, "적용": sum(1 for r in rows if r in role and (x.get("role") is None or role[r] == x.get("role"))),
-                    "전체": len(rows)})
+        if scope_of(x) == SE_SCOPES[1]:
+            got = sum(1 for h in heads if h.get("rule") == [x.get("shape"), x.get("parent_shape")])
+        else:
+            got = sum(1 for r in rows if r in role and (x.get("role") is None or role[r] == x.get("role")))
+        out.append({**x, "적용": got, "전체": len(rows)})
     return out
+
+
+# ---------------------------------------------------------------- 사용량 갈래 (B137 ⑦ — 지점 ⑪ 안의 사다리 · 시트 확인)
+def spent(before):
+    """`gateway.usage_total()` 스냅샷 이후의 사용량 — `{calls, prompt, completion, total}`(그 단계에서 정해진 몫 · 화면 한 줄의 재료)."""
+    now = gateway.usage_total()
+    d = {k: int(now.get(k, 0) or 0) - int((before or {}).get(k, 0) or 0)
+         for k in ("calls", "prompt_tokens", "completion_tokens", "total_tokens")}
+    return {"calls": d["calls"], "prompt": d["prompt_tokens"], "completion": d["completion_tokens"], "total": d["total_tokens"]}
+
+
+def changed(draft, heads):
+    """초안과 다른 줄 수(B137 ⑦ — LLM이 실제로 바꾼 정도) — 제목이 되거나 빠지거나 부모 · 역할이 바뀐 줄 · 시트(0행)는 세지 않는다."""
+    a = {h["row"]: (h.get("parent"), h.get("role")) for h in draft or [] if h["row"] != FRAME_ROW}
+    b = {h["row"]: (h.get("parent"), h.get("role")) for h in heads or [] if h["row"] != FRAME_ROW}
+    return sorted(r for r in set(a) | set(b) if a.get(r) != b.get(r))
 
 
 def name_of(text):

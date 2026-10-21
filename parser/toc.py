@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from parser import sig as SG
 
-#: **목차 규칙 판**(B130 ① · B132 — 꼴 서명 · 사다리) — 구조 확인의 확정 기록이 이 판을 적는다 · 판이 다른 옛 확정은 재생하지
-#: 않는다(목차가 틀렸을 수 있다)
-TOC_VERSION = "toc-3"
+#: **목차 규칙 판**(B130 ① · B132 — 꼴 서명 · 사다리 · B137 — 첫 서수 · 이어짐의 초안 · 첫 행 시트 제목) — 구조 확인의 확정 기록이
+#: 이 판을 적는다 · 판이 다른 옛 확정은 재생하지 않는다(목차가 틀렸을 수 있다)
+TOC_VERSION = "toc-4"
 
 
 def _short(text):
@@ -32,22 +32,44 @@ def hits_of(lines, ladder_sigs=()):
     return out
 
 
-def _toc(hits, forbid, seen=None, rank=None):
+def _toc(hits, forbid, seen=None, rank=None, first=None):
     """열린 제목의 스택으로 목차를 세운다 — `{행: 단}` · `seen`이면 다시 시작한 자리 `(자식 서명, 부모 서명, 부모 서수)`를 적는다.
 
     ⓐ 열린 줄 가운데 같은 서명 · 서수 − 1이 있으면 그 줄까지 닫고 형제 ⓑ 서수가 첫째면 맨 위 열린 제목의 자식(그 서명이 그 부모
     서명 아래로 가면 안 되는 방향이면 — `forbid` — 열린 줄을 닫고 그 위의 자식) ⓒ 둘 다 아니면 같은 서명이 열려 있으면 그 형제 · 그
     서명이 다시 시작한 부모 서명이 열려 있으면 그 자식 · 사다리(`rank` — 서명의 단 번호)가 있으면 단이 더 얕은 가장 가까운 열린 줄의
-    자식 · 아니면 맨 위의 자식."""
+    자식 · 아니면 맨 위의 자식.
+
+    `first`(**목차 초안** — 계층 사다리 적용 · B137 ①)가 오면 ⓑ의 첫 서수는 `forbid` · 사다리로 열린 줄을 닫지 않고 **바로 위 제목 줄의
+    자식**이다(같은 꼴이 두 깊이에 선다) — 그 자리가 `forbid`와 어긋나면 `first["clash"]`에 행을 적는다(판단 필요의 재료) · 문서 규칙
+    「P 아래에서 첫 서수로 시작하는 S 목록」(`first["lists"]` — `{(S, P)}`)에 맞으면 가장 가까운 열린 P 줄의 자식이고 그 목록의 이어지는
+    줄과 함께 `first["ruled"]`(`{행: (S, P)}`)에 적는다 · 이어짐도 첫 서수도 아닌 번호 줄은 같은 꼴의 열린 줄을 찾지 않고 사다리의 단
+    순서(ⓒ)로 서며 `first["loose"]`에 적는다."""
     stack, out, under = [], {}, {}
     for r, key, val in hits:
         sib = next((i for i in range(len(stack) - 1, -1, -1)
                     if stack[i][0] == key and val is not None and stack[i][1] == val - 1), None)
-        if sib is None and val != 1:
+        if sib is None and val != 1 and not (first is not None and rank and key in rank):
             sib = next((i for i in range(len(stack) - 1, -1, -1) if stack[i][0] == key), None)
+        if first is not None and sib is None and val not in (None, 1):
+            first["loose"].append(r)                               # 이어짐도 첫 서수도 아니다 — 사다리 단 순서로 선다
         if sib is not None:
             lv = stack[sib][2]
+            if first is not None and stack[sib][3] in first["ruled"]:
+                first["ruled"][r] = first["ruled"][stack[sib][3]]      # 규칙이 건 목록의 이어지는 줄
             del stack[sib:]
+        elif first is not None and val == 1:
+            par = next((i for i in range(len(stack) - 1, -1, -1) if (key, stack[i][0]) in first["lists"]), None)
+            if par is not None:
+                first["ruled"][r] = (key, stack[par][0])
+                del stack[par + 1:]
+            elif stack and (key, stack[-1][0]) in forbid:
+                first["clash"].append(r)                               # 첫 서수는 바로 위의 자식 — 단 순서와 어긋남
+            if stack:
+                under.setdefault(key, set()).add(stack[-1][0])
+                if seen is not None:
+                    seen.append((key, stack[-1][0], stack[-1][1]))
+            lv = stack[-1][2] + 1 if stack else 1
         else:
             if val != 1 and under.get(key):
                 par = next((i for i in range(len(stack) - 1, -1, -1) if stack[i][0] in under[key]), None)
@@ -63,7 +85,7 @@ def _toc(hits, forbid, seen=None, rank=None):
                 if seen is not None:
                     seen.append((key, stack[-1][0], stack[-1][1]))
             lv = stack[-1][2] + 1 if stack else 1
-        stack.append((key, val, lv))
+        stack.append((key, val, lv, r))
         out[r] = lv
     return out
 

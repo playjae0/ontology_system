@@ -102,6 +102,7 @@ def _ladder(doc_id, frames, cfgs, cats, live, ctx):
     counts = PL.doc_counts(frames)
     built = {n: PL.apply(labs, code, counts) for n, labs in frames.items()}
     raw, src, calls, failed, dropped = None, "코드", 0, None, []
+    u0 = gateway.usage_total()
     if MODE == "ladder":
         if live:
             gateway.require(TAG)                    # 부르기 직전의 관문(설정 없음 = 명시적 실패 · 조립은 막지 않는다)
@@ -113,6 +114,7 @@ def _ladder(doc_id, frames, cfgs, cats, live, ctx):
                 failed = f"{type(e).__name__}: {str(e)[:120]}"
         else:
             raw = LA.hint_ladder(doc_id)
+    usage = {**LA.spent(u0), "calls": calls}             # 사다리 갈래의 사용량 (B137 ⑦)
     lad = None
     if raw is not None:
         lad, dropped = LA.check_ladder(doc_id, raw, frames, cats)
@@ -121,7 +123,7 @@ def _ladder(doc_id, frames, cfgs, cats, live, ctx):
         src = "코드(호출 실패)" if failed else ("코드(힌트 없음)" if not live else "코드")
     base = {**(lad or code), "by": src}
     return {"base": base, "code": code, "source": src, "calls": calls, "failed": failed, "dropped": dropped,
-            "counts": counts}
+            "counts": counts, "usage": usage}
 
 
 def ladder_now(doc_id, cats):
@@ -146,13 +148,15 @@ def structurer(layers=None):
         return DOCL[doc_id]
 
     def adopt(doc_id, kept):
-        DOCL[doc_id] = {**kept, "calls": 0, "source": f"{kept.get('source') or '코드'} · 재사용"}
+        DOCL[doc_id] = {**kept, "calls": 0, "source": f"{kept.get('source') or '코드'} · 재사용",
+                        "usage": {"calls": 0, "prompt": 0, "completion": 0, "total": 0}}
         return DOCL[doc_id]
 
     def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None):
         from core.build import ladder as LA
         from core.build import structure_edit as SE
         from parser import ladder as PL
+        from parser.toc import rank_of
         if hints is None:
             hints = doc_state(doc_id)["hints"] or None    # 힌트는 문서 규칙 — 그 문서의 모든 시트에 (B130 ④)
         if doc_id not in DOCL:
@@ -160,13 +164,15 @@ def structurer(layers=None):
         d = DOCL[doc_id]
         ladder = ladder_now(doc_id, cats)
         built = PL.apply(labs, ladder, d["counts"])
-        st = {"headings": built["headings"], "toc0": built["headings"], "needs": built["needs"], "ladder": ladder,
+        draft = built["headings"]                           # 초안 — 시트 확인이 바꾼 줄을 이것과 견준다 (B137 ⑥⑦)
+        st = {"headings": draft, "toc0": draft, "needs": built["needs"], "ladder": ladder,
               "ladder_source": d["source"],
               "mode": mode or MODE, "calls": 0, "source": "code", **gateway.prompt_stamp(PROMPT),   # 판 · 문면 해시 (B135 ③)
               **({"hints": list(hints)} if hints else {})}
         if (mode or MODE) == "rules":
             return {**st, "doc_hints": list(hints or [])}
         failed = None
+        u0 = gateway.usage_total()
         if live:
             gateway.require(TAG)
             st.update(calls=1, source="live")
@@ -180,9 +186,11 @@ def structurer(layers=None):
             if out is None:
                 return {**st, "doc_hints": list(hints or [])}     # 판정 없음 — 사다리 목차 그대로(판단 필요는 남는다)
             st["source"] = "hint"
+        st["usage"] = {**LA.spent(u0), "calls": st["calls"]}      # 시트 확인 갈래의 사용량 (B137 ⑦)
         out, shaped = LA.shape(doc_id, "시트 확인", out, frame)   # 꼴이 어긋난 답 · 칸은 버린다 — 사다리 목차 그대로 (B134 ②)
         out = out or {"answers": [], "edits": [], "rules": []}
-        mine = [x for x in out.get("rules") or [] if x.get("shape")]
+        have = set(d["counts"]) | {x["sig"] for x in labs if x.get("sig")} | set(rank_of(ladder))
+        mine, rbad = LA.check_rules(doc_id, frame, [x for x in out.get("rules") or [] if x.get("shape")], have)
         if mine:                                            # 사다리 고침 — 문서 규칙(뒤 시트에도) · 이 시트는 고친 사다리로 다시 세운다
             doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
             doc["rules"] = _merge_rules(doc.get("rules"), mine)
@@ -193,10 +201,11 @@ def structurer(layers=None):
                                                  {"edits": edits + list(out.get("edits") or []), "headings": []}, cats)
         _LOG.info("시트 확인 %s · %s — 판단 필요 %d · 답 빠짐 %d · 고침 %d · 버림 %d", doc_id, frame, len(built["needs"]),
                   len(missing), len(took), len(bad))
-        return {**st, "headings": heads, "toc0": built["headings"], "needs": built["needs"], "ladder": ladder,
-                "joins": joins, "edits": took,
+        return {**st, "headings": heads, "toc0": draft, "needs": built["needs"], "ladder": ladder,
+                "joins": joins, "edits": took, "line_edits": len(out.get("edits") or []),
                 "edits_dropped": bad, "answer": out, "missing": missing, "stray": stray,
-                "rules": LA.rule_counts(labs, heads, mine), "doc_hints": list(hints or []),
+                "rules": LA.rule_counts(labs, heads, mine), "rules_dropped": rbad, "changed": LA.changed(draft, heads),
+                "doc_hints": list(hints or []),
                 **({"failed": failed} if failed else {}), **({"shape_dropped": shaped} if shaped else {})}
     fn.key = lambda: key(cfgs)
     fn.drift = lambda rec: gateway.prompt_drift(PROMPT, rec)     # 보존분을 다시 쓸 때 — 판 그대로 · 문면만 바뀜 한 줄 (B135 ③)
@@ -211,14 +220,20 @@ def structurer(layers=None):
 # ---------------------------------------------------------------- 문서 규칙 (B130 ④ — 힌트는 문서 규칙 · 사다리 고침으로 되말한다)
 #: 이 프로세스의 구조 확인에서 받은 문서 힌트 · 사다리 고침 `{doc_id: {hints, rules}}` — 확정 기록이 문서 힌트로 남긴다
 DOC = {}
-RULE_KEYS = ("shape", "role", "category", "parent_shape", "said")
+RULE_KEYS = ("shape", "role", "category", "parent_shape", "scope", "said")
+
+
+def _rule_key(x):
+    """규칙 하나의 자리 — 꼴 전부는 서명마다 · 첫 서수 목록은 (서명, 부모 서명)마다(B137 ⑤)."""
+    from core.build import ladder as LA
+    return (x.get("shape"), x.get("parent_shape")) if LA.scope_of(x) == LA.SE_SCOPES[1] else x.get("shape")
 
 
 def _merge_rules(old, new):
-    """서명마다 하나 — 뒤의 규칙이 이긴다(같은 서명을 다시 말했다)."""
-    out = {x.get("shape"): {k: x.get(k) for k in RULE_KEYS} for x in old or []}
+    """자리마다 하나 — 뒤의 규칙이 이긴다(같은 서명을 다시 말했다)."""
+    out = {_rule_key(x): {k: x.get(k) for k in RULE_KEYS} for x in old or []}
     for x in new or []:
-        out[x.get("shape")] = {k: x.get(k) for k in RULE_KEYS}
+        out[_rule_key(x)] = {k: x.get(k) for k in RULE_KEYS}
     return list(out.values())
 
 
@@ -346,16 +361,18 @@ def record_fix(doc_id, frame, row, fix):
 
 # ---------------------------------------------------------------- 약한 구조 신호 · 셈 (화면 · 기록의 재료)
 def sibling_clash(fr):
-    """**같은 서명 형제의 단 · 역할이 다르다**(B124 ② — 약한 구조 신호 · 자동으로 고치지 않는다) — `{서명: [행 …]}`.
-    서명이 같은 짧은 줄이 둘 이상인데 (목차 깊이, 역할)이 갈린 서명만 · 제목이 아닌 줄은 (0, 없음)."""
-    depth = _depths(fr.get("headings") or [])
-    role = {h["row"]: h.get("role") for h in fr.get("headings") or []}
+    """**같은 서명 형제의 역할이 다르다**(B124 ② — 약한 구조 신호 · 자동으로 고치지 않는다) — `{서명: [행 …]}`.
+    같은 부모 아래 같은 서명의 제목이 둘 이상인데 역할이 갈린 서명만(같은 꼴이 두 깊이에 서는 것은 신호가 아니다 — B137 ①)."""
+    sig = {x["row"]: x.get("sig") for x in fr.get("labels") or []}
     fam = {}
-    for x in fr.get("labels") or []:
-        if x.get("sig") and x["row"] != FRAME_ROW:
-            fam.setdefault(x["sig"], []).append(x["row"])
-    return {k: v for k, v in fam.items()
-            if len(v) > 1 and len({(depth.get(r, 0), role.get(r)) for r in v}) > 1}
+    for h in fr.get("headings") or []:
+        if sig.get(h["row"]) and h["row"] != FRAME_ROW:
+            fam.setdefault((sig[h["row"]], h.get("parent")), []).append(h)
+    out = {}
+    for (s, _p), hs in fam.items():
+        if len(hs) > 1 and len({h.get("role") for h in hs}) > 1:
+            out.setdefault(s, []).extend(h["row"] for h in hs)
+    return out
 
 
 def weak(report, pieces=(), coord_in=True):
@@ -381,7 +398,7 @@ def weak(report, pieces=(), coord_in=True):
         if cut.get(frame):
             got.append(f"글자 상한에서 잘린 청크 {cut[frame]}")
         for k, rows in sibling_clash(fr).items():
-            got.append(f"같은 서명 「{k}」 형제 {len(rows)}줄의 단 · 역할이 다르다")
+            got.append(f"같은 서명 「{k}」 형제 {len(rows)}줄의 역할이 다르다")
         if fr.get("failed"):
             got.append("시트 확인 호출 실패 — 사다리 목차 그대로")
         if fr.get("shape_dropped"):

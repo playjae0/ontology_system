@@ -209,7 +209,7 @@ for _i, _t in _tlines:
 _wb.save(_td / "B130T.xlsx")
 
 
-def _paths_ok(env):
+def _paths_ok(env, _lv=_lv, _chain=_chain):
     """청크마다 (경로 = 주인 사슬 전체 · 본문의 제목 줄은 전부 그 주인의 자손 — 남의 꼬리 0) · 빠진 제목 줄."""
     bad, seen = [], set()
     for c in env["chunks"]:
@@ -227,22 +227,35 @@ def _paths_ok(env):
     return bad, sorted(set(_lv) - seen)
 
 
-_res_t = {}
+def _own(res):
+    """구조가 선 시트의 목차(`rules` 방식 — 구조 경로의 초안은 첫 서수 · 이어짐 · B137 ①) — `(제목 행, chain)`."""
+    par = {h["row"]: h.get("parent") for h in res.report["structure"]["프레임"]["사양"]["headings"]}
+
+    def chain(h):
+        out = []
+        while h is not None:
+            out.append(h)
+            h = par.get(h)
+        return out[::-1]
+    return {r: 1 for r in par}, chain
+
+
+_res_t, _tree_t = {}, {}
 for _how, _knob in (("자른 단", {"chunk_rows": [1, 2]}), ("글자 상한 조각", {"chunk_rows": [1, 2], "chunk_max_chars": 12})):
     tuning.apply(_knob)
     struct_map.invalidate("B130T")
     _res_t[_how] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[]).envelope
     struct_map.invalidate("B130T")
     _ST.MODE = "rules"                                               # 구조 방식 rules — 코드 사다리 (B132 ⑧)
-    _res_t[_how + " · rules"] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[],
-                                               structure=_ST.structurer()).envelope
+    _rr = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[], structure=_ST.structurer())
+    _res_t[_how + " · rules"], _tree_t[_how + " · rules"] = _rr.envelope, _own(_rr)
     _ST.MODE = "ladder"
 tuning.apply({})
-_chk = {k: _paths_ok(v) for k, v in _res_t.items()}
+# 기대 변경(B137 ① — 구조 경로(rules 방식)의 목차는 첫 서수 · 이어짐의 초안이라 어댑터 목차와 같지 않을 수 있다 · 경로는 제 목차의 사슬)
+_chk = {k: _paths_ok(v, *_tree_t[k]) if k in _tree_t else _paths_ok(v) for k, v in _res_t.items()}
 _sec = [c["section"] for c in _res_t["글자 상한 조각"]["chunks"]]
-show("ⓑ 경로 — 모든 청크가 시트 아래 목차 경로 전체(자른 단 · 글자 상한 조각 · rules 방식 같다) · 예 「… > 라. 검사 > 4) 검수방법 > A. 입고전 검수」",
-     all(not b for b, _m in _chk.values()) and "1. 공정별 상세사양 > 라. 검사 > 4) 검수방법 > A. 입고전 검수" in _sec
-     and [c["section"] for c in _res_t["자른 단 · rules"]["chunks"]] == [c["section"] for c in _res_t["자른 단"]["chunks"]],
+show("ⓑ 경로 — 모든 청크가 시트 아래 목차 경로 전체(자른 단 · 글자 상한 조각 · rules 방식은 제 목차의 사슬) · 예 「… > 라. 검사 > 4) 검수방법 > A. 입고전 검수」",
+     all(not b for b, _m in _chk.values()) and "1. 공정별 상세사양 > 라. 검사 > 4) 검수방법 > A. 입고전 검수" in _sec,
      f"{ {k: b[:2] for k, (b, _m) in _chk.items()} } · 조각 경로 {_sec[-3:]}")
 show("ⓒ 제목 줄 — 남의 청크 끝줄에 붙은 제목 0 · 빠진 제목 줄 0(본문 첫 줄이거나 경로에)",
      all(not m for _b, m in _chk.values()), f"빠짐 { {k: m for k, (_b, m) in _chk.items()} }")

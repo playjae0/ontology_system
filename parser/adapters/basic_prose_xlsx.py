@@ -106,16 +106,17 @@ CELL_SEP = " | "
 
 
 def _row_lines(sheet):
-    """**줄 = 행 전체**(B132 ① — 판정 0) — `(줄 [(행, 글)], 재료 {행: {col, ci, spaces, indent, bold, merged, size, fill}})`.
+    """**줄 = 행 전체**(B132 ① — 판정 0) — `(줄 [(행, 글)], 재료 {행: {col, ci, spaces, indent, bold, merged, size, fill, color}})`.
 
     글은 그 행에서 글이 있는 칸을 열 순서로 이은 것(`CELL_SEP`) · 한 열에만 글이 있는 시트는 지금과 같은 글이다(줄 · 청크 바이트 그대로) ·
-    시작 열 = 글이 처음 나오는 열 · 앞 공백 수는 `strip` 전에 센다(탭 4 · 전각 공백 2) · 셀 서식 들여쓰기 · 굵게 · 글자 크기 · 채우기는
-    시작 칸의 것(보조 표시 — 단 신호로 쓰지 않는다)."""
+    시작 열 = 글이 처음 나오는 열 · 앞 공백 수는 `strip` 전에 센다(탭 4 · 전각 공백 2) · 셀 서식 들여쓰기 · 굵게 · 글자 크기 · 채우기 ·
+    글자색은 시작 칸의 것(보조 표시 — 단 신호로 쓰지 않는다)."""
     cells = sheet.get("cells") or {}
     bold = set(sheet.get("bold") or [])
     indent = sheet.get("indent") or {}
     size = sheet.get("size") or {}
     fill = sheet.get("fill") or {}
+    color = sheet.get("color") or {}
     wide = _wide_merges(sheet)
     by_row = {}
     for a, v in cells.items():
@@ -131,7 +132,8 @@ def _row_lines(sheet):
         lines.append((r, CELL_SEP.join(t.strip() for _i, _c, t in got)))
         mats[r] = {"col": col, "ci": got[0][0], "spaces": sum(4 if ch == "\t" else 2 if ch == "\u3000" else 1 for ch in lead),
                    "indent": int(indent.get(a, 0) or 0), "bold": a in bold, "merged": r in wide,
-                   **({"size": size[a]} if a in size else {}), **({"fill": fill[a]} if a in fill else {})}
+                   **({"size": size[a]} if a in size else {}), **({"fill": fill[a]} if a in fill else {}),
+                   **({"color": color[a]} if a in color else {})}
     return lines, mats
 
 
@@ -235,14 +237,17 @@ def _image_pieces(sheet, chunks):
 
 
 def _marks(mats):
-    """줄 표시(이름표의 보조 재료 · B119 ① · B132 ①) — `{행: [굵게 · 병합 · 크기n · 채움]}`(시작 칸 기준 · 시트에서 흔한 크기는 싣지
-    않는다 · 서명 · 들여쓰기 깊이 · 빈 행 뒤는 공용 함수가 단다)."""
+    """줄 표시(이름표의 보조 재료 · B119 ① · B132 ① · B137 ③) — `{행: [굵게 · 병합 · 크기n · 채움 · 글자색]}`(시작 칸 기준 · 시트에서 흔한
+    크기 · 글자색은 싣지 않는다 · 서명 · 들여쓰기 깊이 · 빈 행 뒤는 공용 함수가 단다)."""
     sizes = [m["size"] for m in mats.values() if "size" in m]
     common = max(set(sizes), key=sizes.count) if sizes else None
+    colors = [m.get("color") for m in mats.values()]
+    usual = max(set(colors), key=colors.count) if colors else None
     out = {}
     for r, m in mats.items():
         mk = [k for k, on in (("굵게", m.get("bold")), ("병합", m.get("merged")),
-                              (f"크기{m.get('size')}", m.get("size") not in (None, common)), ("채움", m.get("fill"))) if on]
+                              (f"크기{m.get('size')}", m.get("size") not in (None, common)), ("채움", m.get("fill")),
+                              ("글자색", m.get("color") != usual)) if on]
         if mk:
             out[r] = mk
     return out

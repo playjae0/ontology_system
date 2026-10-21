@@ -287,6 +287,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 made[LKEY] = {k2: v for k2, v in d.items() if k2 != "calls"} | {"ladder_key": k}
         tally["사다리"] = d.get("source")
         tally["사다리_꼴"] = d.get("base")
+        tally["사다리_사용"] = d.get("usage") or {}                 # 사다리 갈래의 사용량 (B137 ⑦)
         return d
 
     def fn(frame, labs):
@@ -299,6 +300,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
             tally.setdefault("옛 확정", []).append(frame)     # 목차 판이 다른 옛 확정 — 재생하지 않고 다시 보인다 (B130 ⑤)
             conf = None
         now = ask.ladder_of(doc_id) if callable(getattr(ask, "ladder_of", None)) else None
+        asked = False                                         # 이 실행이 부른 판정인가 — 사용량 줄은 그때만 (B137 ⑦)
         if conf and conf.get("labels") == h:
             tally["확정"] = tally.get("확정", 0) + 1
             st = {**conf, "source": "confirmed", "calls": 0, "confirmed": True, "ladder_source": "확정"}
@@ -310,6 +312,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 ask.drift(hit)                                # 판 그대로 · 문면만 바뀜이면 한 줄 (B135 ③)
         else:
             st = ask(doc_id, frame, labs, ctx=ctx) if getattr(ask, "takes_ctx", False) else ask(doc_id, frame, labs)
+            asked = True
             if st is not None:
                 tally["호출"] = tally.get("호출", 0) + int(st.get("calls") or 0)
                 st = {**st, "labels": h, "key": key}
@@ -326,6 +329,8 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 "edits": st.get("edits") or [], "edits_dropped": st.get("edits_dropped") or [],
                 "joins": st.get("joins") or [], "hints": st.get("hints") or [], "answer": st.get("answer"),
                 "missing": st.get("missing") or [], "rules": st.get("rules") or [], "doc_hints": st.get("doc_hints") or [],
+                "rules_dropped": st.get("rules_dropped") or [], "changed": st.get("changed") or [],
+                "line_edits": st.get("line_edits", 0), "usage": st.get("usage") if asked else None,
                 "confirmed": bool(st.get("confirmed")), "prompt_version": st.get("prompt_version")}
             tally.setdefault("방식", {})[frame] = st.get("mode")
         return st

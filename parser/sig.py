@@ -137,6 +137,35 @@ def signature(text):
     return (h[0], h[1]) if h else (None, None)
 
 
+def show(sig):
+    """화면 표기 — 서명의 숫자를 **첫 서수**로(`9.` → `1.` · `9)` → `1)` · `9-9` → `1-1` · `제9장` → `제1장` · 한글 · 영문 · 원숫자는 그대로 —
+    가 · A에는 0이 없어 1이 첫째다 · B137 ⑥). 내부 서명은 그대로다."""
+    return str(sig or "").replace("9", "1")
+
+
+def attached(text):
+    """**붙은 다단 번호 후보**(B137 ④) — 다단 번호(`3.2` · `1.2.3`) 바로 뒤에 글이 붙은 줄의 `(서명, 서수)` 또는 `(None, None)`.
+
+    `signature`는 이 줄을 번호로 읽지 않는다(`3.2출하검수` — 값일 수도: `1.5배` · `2024.10월`) — 판정하지 않고 판단 필요의 재료로만 쓴다."""
+    t = str(text or "").lstrip()
+    i, parts = 0, []
+    while i < len(t) and len(parts) < MAX_ATOMS:
+        j = i
+        while j < len(t) and t[j].isdigit() and t[j].isascii():
+            j += 1
+        if j == i:
+            return None, None
+        parts.append(int(t[i:j]))
+        if j < len(t) and t[j] == "." and j + 1 < len(t) and t[j + 1].isdigit() and t[j + 1].isascii():
+            i = j + 1
+            continue
+        i = j
+        break
+    if len(parts) < 2 or i >= len(t) or t[i].isspace() or t[i] in ".)":
+        return None, None
+    return ".".join("9" for _p in parts), parts[-1]
+
+
 def strip_head(text):
     """줄 글자에서 번호 머리를 뗀 이름 — 번호가 없으면 그대로(앞뒤 공백 · 셀 이음 `|`만 뗀다)."""
     t = str(text or "")
