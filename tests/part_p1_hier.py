@@ -251,14 +251,47 @@ for _how, _knob in (("자른 단", {"chunk_rows": [1, 2]}), ("글자 상한 조�
     _res_t[_how + " · rules"], _tree_t[_how + " · rules"] = _rr.envelope, _own(_rr)
     _ST.MODE = "ladder"
 tuning.apply({})
-# 기대 변경(B137 ① — 구조 경로(rules 방식)의 목차는 첫 서수 · 이어짐의 초안이라 어댑터 목차와 같지 않을 수 있다 · 경로는 제 목차의 사슬)
-_chk = {k: _paths_ok(v, *_tree_t[k]) if k in _tree_t else _paths_ok(v) for k, v in _res_t.items()}
+# 기대 변경(B139 ② — 첫 서수와 사다리 단 순서가 어긋나면 초안은 사다리라 rules 방식도 어댑터 목차와 같다 · B137 ①의 예외를 걷는다)
+_chk = {k: _paths_ok(v) for k, v in _res_t.items()}
 _sec = [c["section"] for c in _res_t["글자 상한 조각"]["chunks"]]
-show("ⓑ 경로 — 모든 청크가 시트 아래 목차 경로 전체(자른 단 · 글자 상한 조각 · rules 방식은 제 목차의 사슬) · 예 「… > 라. 검사 > 4) 검수방법 > A. 입고전 검수」",
+show("ⓑ 경로 — 모든 청크가 시트 아래 목차 경로 전체(자른 단 · 글자 상한 조각 · rules 방식 — 같은 목차) · 예 「… > 라. 검사 > 4) 검수방법 > A. 입고전 검수」",
      all(not b for b, _m in _chk.values()) and "1. 공정별 상세사양 > 라. 검사 > 4) 검수방법 > A. 입고전 검수" in _sec,
      f"{ {k: b[:2] for k, (b, _m) in _chk.items()} } · 조각 경로 {_sec[-3:]}")
 show("ⓒ 제목 줄 — 남의 청크 끝줄에 붙은 제목 0 · 빠진 제목 줄 0(본문 첫 줄이거나 경로에)",
      all(not m for _b, m in _chk.values()), f"빠짐 { {k: m for k, (_b, m) in _chk.items()} }")
+
+# ────────────────────────────────────────────────────────────── B139 ②① 충돌의 기본값 · 목록 단위
+print("\n■ B139 첫 서수와 사다리가 어긋나면 초안은 사다리 · 부모 바꿈은 목록 단위")
+from fake_gateway import Live                                         # noqa: E402
+from core.build import structure_edit as _SE                          # noqa: E402
+_LAD9 = {"levels": [{"sigs": [s], "role": None, "category": None, "rows": [], "why": "단"} for s in ("9.", "가.", "9)", "A.")],
+         "unnumbered": []}
+_m9 = {}
+for _mode in ("rules", "ladder"):
+    _ST.MODE = _mode
+    _ST.DOC.pop("B130T", None)
+    struct_map.invalidate("B130T")
+    with Live(by={"structure": lambda b: _LAD9 if b.get("task") == "ladder" else {"answers": [], "edits": [], "rules": []}}):
+        _m9[_mode] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[],
+                                    structure=_ST.structurer(["process"])).report["structure"]["프레임"]["사양"]
+_ST.MODE = "ladder"
+_tr9 = {k: {h["row"]: h.get("parent") for h in f["headings"]} for k, f in _m9.items()}
+_cl9 = {k: {n["row"]: n["why"] for n in f["needs"] if n["kind"] == "ⓒ"} for k, f in _m9.items()}
+show("B139 ⓑ 충돌의 기본값 — B130 꼴이 rules · ladder 둘 다 가. · 나. · 다. → 「1.」 아래(초안 = 어댑터 목차) + 판단 필요(「첫 서수로는 바로 위 "
+     "2행 아래」) · 사내 꼴은 B137 ⓐ가 그대로 잰다",
+     all(_tr9[k] == _par for k in _m9) and all("첫 서수로는 바로 위 2행" in _cl9[k].get(4, "") for k in _m9),
+     f"가. 나. 다. 부모 { {k: [_tr9[k].get(r) for r in (4, 6, 11)] for k in _m9} } · 4행 판단 필요 { {k: _cl9[k].get(4, '')[:30] for k in _m9} }")
+#: 갈린 나무가 나던 초안(15626ef — 첫 서수가 늘 이겨 가. · 나. · 다. · 라.가 「1) 적용 범위」 아래) 위에 고침 하나
+_old9 = {**_par, 4: 2, 6: 2, 11: 2, 16: 2}
+_lab9 = _m9["rules"]["labels"]
+_ed9 = lambda row, parent: _SE.apply_edits("B130T", "사양", _lab9, [{"row": r, "parent": p, "role": None} for r, p in _old9.items()],  # noqa: E731
+                                           {"edits": [{"row": row, "what": "부모 바꿈", "parent": parent}], "headings": []}, [])[0]
+_hd9 = {h["row"]: h.get("parent") for h in _ed9(4, 1)}
+_mid9 = {h["row"]: h.get("parent") for h in _ed9(11, 1)}
+show("B139 ⓐ 목록 단위 — 「가.」를 「1.」 아래로 옮기면 「나.」 · 「다.」 · 「라.」와 그 아래 「1)」 · 「2)」가 함께(나무가 갈리지 않는다 — 어댑터 목차와 같다) · "
+     "목록 중간 줄(「다.」) 하나의 고침은 그 줄만",
+     _hd9 == _par and _mid9 == {**_old9, 11: 1},
+     f"머리 고침 {[_hd9.get(r) for r in (4, 6, 7, 11, 12, 16)]} · 중간 줄 고침 {[_mid9.get(r) for r in (4, 6, 11, 16)]}")
 shutil.rmtree(_td, ignore_errors=True)
 
 _imp = sorted({ln.split()[1].split(".")[0]

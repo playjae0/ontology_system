@@ -10,10 +10,11 @@
   ⓓ 판단 필요 — 넷이 하나씩 표시 · 시트 확인 입력에 이유와 앞뒤 두 줄 · 답으로 바뀐다 · 코드가 혼자 정한 애매한 줄 0
   ⓔ 시트 확인 — 시트당 1 · 골격 보기(본문 접음 · 줄 전문 0) · 「대개 맞다」 0 · 사다리 고침이 둘째 시트에도
   ⓕ 폴백 — 사다리 호출 실패 · mock 힌트 없음이면 코드 사다리(`rules`와 같은 목차)
-  ⓖ 화면 — 사다리 한 줄 · 들여쓰기 목차 · 판단 필요와 답 · 경로 (md 같게)
+  ⓖ 화면 — 사다리 한 줄 · 나무 목차 · 판단 필요와 답 (md 같게)
   ⓗ 방식 — `structure_mode` 값 둘 · 옛 값은 문면으로 멈춘다 · 읽는 곳 0이 된 경로 0
   B134 — 시트 확인 답 꼴이 어긋나면 그 칸만 버리고 사다리 목차(결함 로그 · 화면) · 사다리 답이 문자열이면 코드 사다리 · 구조 함수 안의
      TypeError는 파싱 실패 · 지도 훅을 받지 않는 옛 꼴 어댑터는 그대로 파싱
+  B139 — 같은 꼴 판단 필요는 시트마다 하나(답은 그 줄 전부에) · 구조 화면은 나무 글자 · 꼴 표기 0 · ✂ 청크 경계 · 청크 안 표지
 (B124 「구조 v2」 조각 — LLM 청크 구간 · 구간 검사 · 폴백은 경로를 지워(B132 ⑧) 이 조각으로 바꿨다 · ⓘ는 test_site · ⓙ는 네 벌 단계)
 """
 from __future__ import annotations
@@ -273,16 +274,17 @@ with Live(by={"structure": _llm}), contextlib.redirect_stdout(_buf):
 _screen.ask = _ask0
 tuning.apply({})
 _scr = _buf.getvalue()
-_ind = {r: next((len(ln) - len(ln.lstrip()) for ln in _scr.splitlines() if ln.lstrip().startswith(f"{r}행 ")), -1) for r in (5, 6)}
+#: 목차 줄 — 나무 글자(├─ └─ │)를 걷은 줄이 「n행 」으로 시작한다 · 그 자리(글자 수)가 깊이
+_tl = lambda scr, r: next((ln for ln in scr.splitlines() if ln.lstrip(" │├└─").startswith(f"{r}행 ")), "")   # noqa: E731
+_ind = {r: _tl(_scr, r).find(f"{r}행 ") for r in (5, 6)}
 _md = split_report.write_md(DID, _rg.report, _rg.envelope).read_text(encoding="utf-8")
-# 기대 변경(B137 ⑥ — 사다리는 첫 서수 표기 · 판단 필요는 따로 목록이 아니라 목차 줄에 표지 + 답)
+# 기대 변경(B137 ⑥ — 사다리는 첫 서수 표기 · 판단 필요는 따로 목록이 아니라 목차 줄에 표지 + 답 · B139 ④ — 목차는 나무 글자 · 청크 경로는 ✂ 줄(B139 ⓓ))
 LINE = "계층 사다리: 시트 › 1.(주제) › 가.(대상 · Unit) › 1)(묶음) › A."
-_l20 = [ln for ln in (_scr + "\n" + _md).splitlines() if ln.lstrip(" -").startswith("20행 ")]
-show("ⓖ 화면 — 사다리 한 줄 · 들여쓰기 목차(A.가 2)보다 한 단 깊다) · 판단 필요와 답(목차 줄) · 청크마다 전체 경로 · md에 같은 줄",
-     _go and LINE in _scr and LINE in _md and _ind[6] == _ind[5] + 2 > 2
-     and len(_l20) == 2 and all(split_report.NEED_MARK in ln and "맨 위(LLM)" in ln for ln in _l20)
-     and f"경로 {S1} › 6.공정별 상세사양 › 가. | 노칭 unit › 2)지정사양 › A.입고전 검수" in _scr,
-     " / ".join(ln.strip()[:90] for ln in _scr.splitlines() if "계층 사다리" in ln or ln.lstrip().startswith("20행"))[:300])
+_l20 = [ln for ln in (_scr + "\n" + _md).splitlines() if ln.lstrip(" -│├└─").startswith("20행 ")]
+show("ⓖ 화면 — 사다리 한 줄 · 나무 목차(A.가 2)보다 한 단 깊다) · 판단 필요와 답(목차 줄) · md에 같은 줄",
+     _go and LINE in _scr and LINE in _md and _ind[6] > _ind[5] > 2
+     and len(_l20) == 2 and all(split_report.NEED_MARK in ln and "맨 위(LLM)" in ln for ln in _l20),
+     " / ".join(ln.strip()[:90] for ln in _scr.splitlines() if "계층 사다리" in ln or "20행" in ln)[:300])
 ST.confirmed_path().unlink(missing_ok=True)
 
 # ────────────────────────────────────────────────────────────── ⓗ 방식
@@ -411,10 +413,14 @@ _scr7 = _buf.getvalue()
 _s7 = _g7.report["structure"]
 _fa, _fb = _s7["프레임"][SA], _s7["프레임"][SB]
 _tr = lambda fr, k="headings": [(h["row"], h.get("parent")) for h in fr[k]]
-show("B137 ⓐ 사내 꼴 표본 — 코드 초안(LLM 0)이 맞다(6. 맨 위 · 가. · 나. 그 아래 · 1. · 2.가 가. · 나. 아래) · 사다리 답이 「9. › 가.」여도 "
-     "초안이 같다(꼴 하나가 두 깊이에)",
-     _tr(_c7[SA]) == WANT_A and _tr(_fa, "toc0") == WANT_A and _fa["ladder_source"] == "LLM",
-     f"코드 {_tr(_c7[SA])} · 사다리 답 초안 {_tr(_fa, 'toc0')}")
+# 기대 변경(B139 ② — 첫 서수와 사다리 단 순서가 어긋나면 초안은 사다리를 따르고 판단 필요 「첫 서수로는 바로 위 n행 아래」)
+_ck7 = next((b for p, b in CALLS if p == "structure" and b.get("task") == "check" and b.get("frame") == SA), {})
+_cl7 = {n["row"]: n["why"] for n in _ck7.get("needs") or [] if n["need"] == "ⓒ"}
+show("B137 ⓐ 사내 꼴 표본 — 코드 초안(LLM 0)이 맞다(6. 맨 위 · 가. · 나. 그 아래 · 1. · 2.가 가. · 나. 아래) / B139 ② 사다리 답이 「9. › 가.」이면 "
+     "초안은 사다리(1. · 2.가 가.의 형제)이고 그 첫 서수 줄이 판단 필요(「첫 서수로는 바로 위 가. 아래」)",
+     _tr(_c7[SA]) == WANT_A and _tr(_fa, "toc0") == [(1, None), (2, 1), (3, 1), (5, 1), (7, 1), (8, 1)]
+     and set(_cl7) == {3, 8} and all("첫 서수로는 바로 위" in w for w in _cl7.values()) and _fa["ladder_source"] == "LLM",
+     f"코드 {_tr(_c7[SA])} · 사다리 답 초안 {_tr(_fa, 'toc0')} · 판단 필요 {sorted(_cl7)}")
 show("B137 ⓑ 첫 행 = 시트 제목 — 번호를 붙인 이름 · 뗀 이름 · 공백이 다른 이름이 모두 시트 제목 · 다른 글이면 지금처럼(시트 제목 없음)",
      all(PLD.title_row(_lab(n, f)) == 1 for n, f in _ttl) and PLD.title_row(_lab("공정별 상세사양", "가. 이송 물류")) is None
      and [h["by"] for h in _c7[SA]["headings"] if h["row"] == 1] == ["시트 제목"],
@@ -433,7 +439,7 @@ show("B137 ⓓ 규칙 한 줄 — 「가. 아래 첫 서수로 시작하는 '1.'
      and _ra[1]["role"] is None and _fa["line_edits"] == 0 and [x["적용"] for x in _fa["rules"]] == [3],
      f"목차 {_tr(_fa)} · 역할 {[(r, _ra[r].get('role'), _ra[r].get('by')) for r in (1, 3, 5, 8)]} · 규칙 적용 {[x['적용'] for x in _fa['rules']]}")
 _md7 = split_report.write_md(D7, _g7.report, _g7.envelope).read_text(encoding="utf-8")
-_l10 = next((ln for ln in _scr7.splitlines() if ln.lstrip().startswith("10행 ")), "")
+_l10 = _tl(_scr7, 10)                                    # 기대 변경(B139 ④ — 목차 줄은 나무 글자로 시작)
 show("B137 ⓔ 화면 — 사다리 첫 서수 표기 · 접은 형제 줄 · 목차 줄의 판단 필요 표지와 LLM 답 · 시트마다 LLM 한 줄 · ✎ · md 끝의 버린 고침",
      _go7 and "시트 › 1.(주제) › 가. · 1)" in _scr7 and "외 3줄" in _scr7 and split_report.NEED_MARK in _l10 and "(LLM)" in _l10
      and "✎" in _l10 and sum(1 for ln in _scr7.splitlines() if ln.strip().startswith("LLM —")) == 2
@@ -548,7 +554,8 @@ _lc = {x["row"] for x in _fc8["labels"] if "……" in str(x.get("text"))}
 show("B138 ⓒ 목차 필드 — 문서 앞 목차 필드의 줄이 목차 · 청크에 0 · 구조 확인(md)에 「목차 필드 — 2줄 거름」 · 필드가 아닌 손 목차 줄은 "
      "판단 필요(「손 목차?」)",
      _ra.get("toc_field_lines") == 2 and "…… 2" not in _ch8 and not any("……" in str(x.get("text")) for x in _fa8["labels"])
-     and "목차 필드 — 2줄 거름" in _md8 and len(_lc) == 3 and {n["row"] for n in _fc8["needs"] if n["kind"] == "ⓖ"} == _lc,
+     # 기대 변경(B139 ③ — 같은 이유의 손 목차 줄은 판단 필요 하나(`rows` = 그 줄 전부 · 답은 그 줄 전부에))
+     and "목차 필드 — 2줄 거름" in _md8 and len(_lc) == 3 and [set(n.get("rows") or ()) for n in _fc8["needs"] if n["kind"] == "ⓖ"] == [_lc],
      f"거름 {_ra.get('toc_field_lines')} · 청크에 남은 목차 줄 {'…… 2' in _ch8} · 손 목차 {[(n['row'], n['kind']) for n in _fc8['needs']]}")
 _one = lambda t, title=None, name="이송사양서.docx": {"path": name, "title": title, "paragraphs": [  # noqa: E731
     {"index": 1, "kind": "para", "text": t}]}
@@ -556,5 +563,54 @@ show("B138 ⓓ 문서 제목 — 파일 이름과 같은 첫 문단(공백 다�
      _par8.get(_ix["이송 사양서"], "없음") is None and [h["by"] for h in _fa8["headings"] if h["row"] == _ix["이송 사양서"]] == ["시트 제목"]
      and BD._title(_one("1. 이송사양서")) == 1 and BD._title(_one("이송 설비 사양", "이송 설비 사양", "x.docx")) == 1
      and BD._title(_one("개요")) is None, f"문서 제목 줄 {[h['row'] for h in _fa8['headings'] if h.get('by') == '시트 제목']}")
+
+# ────────────────────────────────────────────────────────────── B139 ③④ 같은 꼴은 한 번에 · 구조 화면
+print("\n■ B139 같은 꼴 판단 필요는 한 번에 · 구조 화면(나무 · 청크 경계 · 청크 안 표지)")
+D9 = "B139G"
+#: 「1) › - 글머리」 꼴(창작 — 허브 확인 ③) · 사다리는 9. › 9) · 「-」는 사다리 밖 꼴 세 줄
+G9 = ["1. 이송 사양", "1) 이송 방식", "- 컨베이어", "- 속도", "2) 적재 방식", "- 랙", "3) 검수", "검수 본문이다."]
+_wb9 = Workbook()
+_wb9.active.title = "이송"
+for _i, _t in enumerate(G9, 1):
+    _wb9.active.cell(row=_i, column=1, value=_t)
+_wb9.save(TMP / f"{D9}.xlsx")
+_LAD9 = {"levels": [{"sigs": ["9."], "role": "주제", "category": None, **_N("장")},
+                    {"sigs": ["9)"], "role": "묶음", "category": None, **_N("항")}], "unnumbered": []}
+
+
+def _llm9(body):
+    """가짜 ⑪ — 사다리 9. › 9) · 시트 확인은 같은 꼴 묶음 하나에 「제목 — 1) 아래」 답 한 줄."""
+    if body.get("task") == "ladder":
+        return _LAD9
+    return {"answers": [{"row": n["row"], "heading": True, "parent": 2, "role": "묶음", "name": None, "category": None,
+                         "why": "글머리는 그 1)의 세목"} for n in body.get("needs") or []], "edits": [], "rules": []}
+
+
+CALLS.clear()
+ST.DOC.pop(D9, None)
+struct_map.invalidate(D9)
+with Live(by={"structure": _llm9}):
+    _f9 = pipeline.parse(BX, D9, str(TMP / f"{D9}.xlsx"), closed_list=[], sheet_roles={"이송": "prose"},
+                         structure=ST.structurer(["process"])).report["structure"]["프레임"]["이송"]
+_ask9 = [n for p, b in CALLS if p == "structure" and b.get("task") == "check" for n in b.get("needs") or []]
+_h9 = {h["row"]: h.get("parent") for h in _f9["headings"]}
+show("B139 ⓒ 같은 꼴 — 「-」 글머리 세 줄이 판단 필요 하나(줄 수 3 · 예시 둘)로 묻고 답이 세 줄 전부에(1) · 2) 아래 제목) · "
+     "「1)」 · 「2)」 · 「3)」은 제목 그대로",
+     [(n["need"], n.get("rows")) for n in _ask9] == [("ⓐ", [3, 4, 6])] and "R3 · R4" in _ask9[0]["why"]
+     and [_h9.get(r) for r in (3, 4, 6)] == [2, 2, 5] and [_h9.get(r) for r in (2, 5, 7)] == [1, 1, 1],
+     f"물은 판단 필요 {[(n['row'], n['need'], n.get('rows')) for n in _ask9]} · 부모 {_h9}")
+_trs = [ln for ln in _scr.splitlines() if ln.lstrip(" │├└─").split("행 ")[0].isdigit() and ("├─" in ln or "└─" in ln)]
+_txt = {}                                                # 시트 둘의 줄 글 — `{행: {글…}}`
+for _fg in _rg.report["structure"]["프레임"].values():
+    for _x9 in _fg["labels"]:
+        _txt.setdefault(_x9["row"], set()).add(_x9.get("text"))
+_cut = [ln for ln in _scr.splitlines() if ln.lstrip(" │").startswith(f"{split_report.CHUNK_MARK} 청크 ")]
+_in = [ln for ln in _trs if "청크 안 — 경로 영향 없음" in ln]
+show("B139 ⓓ 화면 — 나무 표시(├─ · └─ · │) · 줄마다 꼴 표기 0(「n행 글 — 」) · 「✂ 청크 n — 경로」 · 청크 안 판단 필요 표지(대표 사례 — ⓖ 화면)",
+     _trs and all(any(ln.lstrip(" │├└─").startswith(f"{r}행 {t} — ") for t in _txt[r]) for ln in _trs
+                  for r in [int(ln.lstrip(" │├└─").split("행 ")[0])]) and any("│" in ln for ln in _trs)
+     and any(f"{S1} › 6.공정별 상세사양 › 가. | 노칭 unit › 2)지정사양 › A.입고전 검수" in ln for ln in _cut)
+     and _in and all(split_report.NEED_MARK in ln for ln in _in),
+     f"나무 줄 {len(_trs)} · ✂ {len(_cut)} · 청크 안 {[ln.strip()[:60] for ln in _in]}")
 
 done()

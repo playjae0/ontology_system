@@ -145,8 +145,8 @@ with Live(by={"structure": _structure}):
 _rows = lambda r: [(h["row"], h.get("parent"), h.get("role"), h.get("name")) for h in r.report["structure"]["프레임"][E]["headings"]]
 show("ⓒ 힌트 → 둘째 호출 입력에 앞 출력 + 힌트 · 다시 찍은 나무에 고침 · c → 확정 기록(힌트) · 보존분 없이 다시 파싱해도 구조 LLM 0 · 같은 나무",
      _go and len(_calls) == 2 and _calls[1].get("previous") and _calls[1].get("hints") == [HINT_TEXT]
-     # 기대 변경(B137 ⑥ — 고침의 이유는 md 끝 절에만 · 화면은 바뀐 줄에 ✎)
-     and _scr.count(f"구조 확인 — 시트 '{E}'") == 2 and any(ln.lstrip().startswith("10행 ") and "✎" in ln for ln in _scr.splitlines())
+     # 기대 변경(B137 ⑥ — 고침의 이유는 md 끝 절에만 · 화면은 바뀐 줄에 ✎ · B139 ④ — 목차 줄은 나무 글자로 시작)
+     and _scr.count(f"구조 확인 — 시트 '{E}'") == 2 and any(ln.lstrip(" │├└─").startswith("10행 ") and "✎" in ln for ln in _scr.splitlines())
      and _cf.get(E, {}).get("hints") == [HINT_TEXT]
      and not [p for p, _b in CALLS if p == "structure"] and _rows(_r6) == _rows(_r5)
      and _chain(_r6, E, "메모 본문")[-1:] == ["설비 메모"],

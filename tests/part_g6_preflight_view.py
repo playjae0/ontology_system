@@ -14,6 +14,7 @@
   ⓖ 구축 실패 → 실패 줄에 추출 체크포인트 보존 · 다음 줄
   ⓗ 표: 한글 긴 표기·줄바꿈 섞인 표기·80칸에서 칸 정렬 유지 · 30초 행이 행 중간에 끼지 않는다
   ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · 새 층에 빨강·노랑 0(특이점 전용)
+  B139 ⓔ 단계 끝 줄은 이 단계 · 누계 · 끝 표 갈래 합 = 게이트웨이 누계 · 명령 끝 줄은 공통 진입 한 자리
 """
 from __future__ import annotations
 
@@ -230,6 +231,46 @@ show("ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · tty면 새 층이 칠해진다
      "\033" not in _od and "\033" not in _oc and "\033" in _on and _off == "x"
      and all(not ({"red", "yellow"} & set(_screen.KINDS[k]))
              for k in ("head", "prog", "beat", "aux")))
+
+# ────────────────────────────────────────────────────────────── B139 ⑤ 토큰 — 이 단계 · 누계 · 끝 표 · 명령 끝 줄
+print("\n■ B139 단계 끝 줄(이 단계 · 누계) · 끝 표(갈래 합 = 게이트웨이 누계) · 명령 끝 줄(공통 진입 한 자리)")
+_U9 = r"""
+import json, sys
+sys.path.insert(0, "tests")
+from fake_gateway import Live
+from cli import _entry, ingest_screen as SCR
+from core.llm import embeddings, gateway
+def main(argv):
+    if argv == ["none"]:
+        return 0
+    gateway.set_doc("B139U")
+    SCR.stage_reset()
+    with gateway.branch("구조 사다리"):
+        gateway._account("structure", {"usage": {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}})
+    gateway._account("structure", {"usage": {"prompt_tokens": 200, "completion_tokens": 20, "total_tokens": 220}})
+    print(SCR._stage_end())
+    gateway._account("extract", {"usage": {"prompt_tokens": 700, "completion_tokens": 70, "total_tokens": 770}})
+    with Live():
+        embeddings.embed("이송 속도")
+    print(SCR._stage_end())
+    by, tb = gateway.usage_by("B139U"), gateway.usage_table("B139U")
+    print(json.dumps({"by": [sum(v[k] for v in by.values()) for k in ("calls", "prompt", "completion")],
+                      "tb": [sum(o[k] for o in tb) for k in ("calls", "prompt", "completion")],
+                      "갈래": sorted(o["갈래"] for o in tb)}, ensure_ascii=False))
+    return 0
+sys.exit(_entry.run("b139usage", main, sys.argv[1:]))
+"""
+_u9 = [_sp.run([sys.executable, "-c", _U9] + a, cwd=str(ROOT), env={**os.environ, "USE_MOCK": "1"}, capture_output=True,
+               text=True, stdin=_sp.DEVNULL, timeout=120) for a in ([], ["none"])]
+_e9 = re.findall(r"└ [\d.]+초 · 이 단계 호출 (\d+) · 입력 ([\d,]+) · 출력 ([\d,]+) / 누계 호출 (\d+) · 입력 ([\d,]+)", _u9[0].stdout)
+_j9 = json.loads(_u9[0].stdout.strip().splitlines()[-1]) if _u9[0].returncode == 0 else {}
+show("B139 ⓔ 토큰 — 단계 끝 줄마다 이 단계 · 누계(누계는 쌓인다) · 끝 표 갈래(구조 사다리 · 시트 확인 · 추출 · 임베딩) 합 = 게이트웨이 누계 · "
+     "LLM을 부른 명령은 공통 진입이 끝 줄 + 끝 표(표준 오류) · 부르지 않은 명령은 0",
+     [(int(c), int(t)) for c, _i, _o, t, _ti in _e9] == [(2, 2), (2, 4)] and _j9.get("by") == _j9.get("tb") == [4, 1000, 100]
+     and _j9.get("갈래") == sorted(["구조 사다리", "시트 확인", "추출", "임베딩"])
+     and "■ 명령 끝 — LLM 사용량 — 이 명령 호출 4" in _u9[0].stderr and "LLM 끝 표(이 명령)" in _u9[0].stderr
+     and "■ 명령 끝" not in _u9[1].stderr,
+     f"단계 끝 {_e9} · 합 {_j9} · 끝 줄 {[ln for ln in _u9[0].stderr.splitlines() if '명령 끝' in ln][:1]} · {_u9[0].stderr[-300:]}")
 init.init(fresh_=True, all_=True)
 
 done()

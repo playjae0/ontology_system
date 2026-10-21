@@ -443,6 +443,7 @@ def _result(builder, doc_id):
                              [x for x in rej if x.get("doc_id") == doc_id],
                              gateway.usage_by(doc_id),
                              extra={"LLM 별칭": len(_build_added()),
+                                    "LLM 갈래": gateway.usage_table(doc_id),     # 끝 표 — 갈래별(B139 ⑤ · 게이트웨이 누계 그대로)
                                     "좌표 학습": _RUN.get("coord_learn") or {},
                                     # 붙은 곳 끝 요약(B102 ⑦) — 대장 · 봉투 · 그래프에서(새 판정 0)
                                     **result_mod.landing(builder.ledger.rows if builder.ledger else [],

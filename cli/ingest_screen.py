@@ -106,25 +106,29 @@ TABLE_SEQ = (0, 1, 2, 3, 4, 5, 6)
 PROSE_SEQ = (0, 1, 2, 7, 8, 4, 5, 6)
 
 
-#: 단계 끝 줄의 기준점 — 머리를 낼 때마다 갱신한다(문서 머리에서 비운다).
-_MARK = {"t": None, "u": None}
+#: 단계 끝 줄의 기준점 — 머리를 낼 때마다 갱신한다(문서 머리에서 비운다) · `doc`은 문서 머리의 사용량(문서 끝 줄 「이 문서」)
+_MARK = {"t": None, "u": None, "doc": None}
 
 
 def stage_reset():
     """문서가 바뀌면 단계 시계를 다시 잡는다(`cli/ingest._doc_header`)."""
     import time
-    _MARK.update(t=time.monotonic(), u=gateway.usage_total())
+    u = gateway.usage_total()
+    _MARK.update(t=time.monotonic(), u=u, doc=u)
+
+
+def doc_since():
+    """문서 머리의 사용량 스냅샷(없으면 None — 누계만)."""
+    return _MARK.get("doc")
 
 
 def _stage_end():
-    """**단계 끝 줄**(B99 ④) — 앞 머리 이후 걸린 시간 · LLM 호출 · 입력/출력(게이트웨이 누계 차)."""
+    """**단계 끝 줄**(B99 ④ · B139 ⑤) — 앞 머리 이후 걸린 시간 · 이 단계 호출 · 입력 · 출력 / 누계(게이트웨이 누계 그대로)."""
     import time
     if _MARK["t"] is None:
         stage_reset()
-    u = gateway.usage_total()
-    line = (f"   └ {time.monotonic() - _MARK['t']:.1f}초 · LLM 호출 "
-            f"{u['calls'] - _MARK['u']['calls']:,} · {_screen.tokens(u, _MARK['u'])}")
-    _MARK.update(t=time.monotonic(), u=u)
+    line = f"   └ {time.monotonic() - _MARK['t']:.1f}초 · {_screen.usage_pair(_MARK['u'])}"
+    _MARK.update(t=time.monotonic(), u=gateway.usage_total())
     return line
 
 
@@ -480,12 +484,11 @@ def build_screen(step=False, stage=None, prose=False):
                         f"저해상도 부착 {info.get('저해상도', 0)}행{_hf}") and go
         _step_gate(6, head or "큐 0", prose=prose, ask=step and go, saved=True)
         _orphan_next(info.get("doc_id"))
-        u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
               f"저해상도 부착 {info.get('저해상도', 0):,}행{_hf}"
               + (f" · 큐: {head}" if head else " · 큐 0")
-              + f" · LLM 호출 {u['calls']:,} · {_screen.tokens(u)}")
+              + f" · {_screen.usage_pair(doc_since(), '이 문서')}")
         # **문서 끝 결과표**(B99 ⑤) — 층별 증감 · 이번/이전 큐 · LLM 지점별
         from cli import result_screen
         LAST_RESULT["res"] = info.get("결과")

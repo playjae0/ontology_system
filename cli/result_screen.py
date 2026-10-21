@@ -45,10 +45,18 @@ def lines(res):
         bo = res.get("본문에 없는 개체") or {}
         if bo.get("n"):
             out.append(f"     청크 본문에 글자 그대로 없는 개체 {bo['n']:,} · 그림 요약에서 {bo.get('그림', 0):,}")
-    for pt, u in sorted((res.get("LLM") or {}).items()):
-        out.append(f"     LLM {pt} — 호출 {u['calls']:,} · 입력 {u['prompt']:,} · 출력 {u['completion']:,} · "
-                   f"1회 평균 {u['avg']:,} · 1회 최대 {u['max']:,}")
+    out += _screen.usage_table_lines(table_of(res), "LLM 끝 표(이 문서)")
     return out
+
+
+def table_of(res):
+    """결과 묶음의 끝 표 줄 — `LLM 갈래`(B139 ⑤) · 그 키가 없는 옛 대장은 지점별(`LLM`)을 갈래 = 지점으로."""
+    if "LLM 갈래" in (res or {}):
+        return res["LLM 갈래"]
+    rows = [{"갈래": pt, "지점": pt, "calls": u["calls"], "prompt": u["prompt"], "completion": u["completion"]}
+            for pt, u in ((res or {}).get("LLM") or {}).items()]
+    tot = sum(o["prompt"] + o["completion"] for o in rows)
+    return [{**o, "몫": round(100.0 * (o["prompt"] + o["completion"]) / tot, 1) if tot else None} for o in rows]
 
 
 def show(res):
@@ -57,26 +65,25 @@ def show(res):
 
 
 def batch(rows):
-    """일괄 투입 끝 — 문서별 한 줄 + 전체 합(층별 합 · 지점별 합)."""
+    """일괄 투입 끝 — 문서별 한 줄(호출 · 입력 · 출력) + 전체 합(층별 합) + 끝 표(이 실행의 갈래 전부 · B139 ⑤)."""
     from core.build.result import totals
     got = [r for r in rows if r.get("result")]
     if not got:
         return
     _screen.say("   문서별 결과", "head")
+    from core.llm import gateway
     tn = te = 0
-    calls = {}
     for r in got:
         res = r["result"]
         n, e, _a = totals(res)
         tn, te = tn + n, te + e
-        c = sum(u["calls"] for u in (res.get("LLM") or {}).values())
-        for pt, u in (res.get("LLM") or {}).items():
-            calls[pt] = calls.get(pt, 0) + u["calls"]
+        u = [sum(x[k] for x in table_of(res)) for k in ("calls", "prompt", "completion")]
         print(f"     {r['doc_id']:<20} 값 {res['값']:,} · 새 노드 {res['새 노드']:,} · 불확실 "
               f"{res['불확실']:,} · 보류 {sum((res.get('보류') or {}).values()):,} · 노드 {n:+,} · "
-              f"엣지 {e:+,} · LLM 호출 {c:,}")
-    print(f"     전체 — 문서 {len(got):,} · 노드 {tn:+,} · 엣지 {te:+,} · LLM 호출 "
-          + (" · ".join(f"{pt} {n:,}" for pt, n in sorted(calls.items())) or "0"))
+              f"엣지 {e:+,} · LLM 호출 {u[0]:,} · 입력 {u[1]:,} · 출력 {u[2]:,}")
+    print(f"     전체 — 문서 {len(got):,} · 노드 {tn:+,} · 엣지 {te:+,}")
+    for ln in _screen.usage_table_lines(gateway.usage_table(), "LLM 끝 표(이 배치 — 문서 밖 호출 포함)"):
+        print(ln)
 
 
 # ---------------------------------------------------------------- 맞춤표 (B112 ①④⑤)

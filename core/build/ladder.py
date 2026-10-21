@@ -87,7 +87,8 @@ def skeleton(labs, heads, needs, lo=None, hi=None):
     head = {h["row"]: h for h in heads}
     need = {n["row"]: n for n in needs}
     toc = _depth_of(heads)
-    near = {r for n in need for i, x in enumerate(rows) if x["row"] == n
+    eg = {r for n in needs for r in list(n.get("rows") or [])[:2]}       # 같은 꼴 묶음의 예시 둘도 앞뒤와 함께 (B139 ③)
+    near = {r for n in set(need) | eg for i, x in enumerate(rows) if x["row"] == n
             for r in (y["row"] for y in rows[max(0, i - NEAR):i + NEAR + 1])}
     out, body = [], []
 
@@ -178,12 +179,13 @@ def shape(doc_id, what, out, frame=None):
 
 # ---------------------------------------------------------------- 사다리 — 호출 · mock · 검사
 def ask_ladder(frames, built, code, cats, cfgs=None, ctx=None, hints=None):
-    out = gateway.chat(
-        [{"role": "system", "content": gateway.prompt_for(PROMPT, cfgs or {}, "structure")},
-         {"role": "user", "content": json.dumps(
-             {"task": "ladder", "categories": cats, "context": ctx or {}, "front": front(frames, built),
-              "stats": PL.stats(frames), "code_ladder": code, "hints": list(hints or [])}, ensure_ascii=False)}],
-        json_schema=LADDER_SCHEMA, point="structure")
+    with gateway.branch("구조 사다리"):                    # 태그는 시트 확인과 같다 — 끝 표의 갈래는 따로 (B139 ⑤)
+        out = gateway.chat(
+            [{"role": "system", "content": gateway.prompt_for(PROMPT, cfgs or {}, "structure")},
+             {"role": "user", "content": json.dumps(
+                 {"task": "ladder", "categories": cats, "context": ctx or {}, "front": front(frames, built),
+                  "stats": PL.stats(frames), "code_ladder": code, "hints": list(hints or [])}, ensure_ascii=False)}],
+            json_schema=LADDER_SCHEMA, point="structure")
     return out or {}
 
 
@@ -321,7 +323,8 @@ def ask_check(frame, labs, built, ladder, cats, cfgs=None, ctx=None, hints=None,
          {"role": "user", "content": json.dumps(
              {"task": "check", "categories": cats, "frame": frame, "context": ctx or {}, "ladder": ladder,
               "toc": skeleton(labs, built["headings"], built["needs"]),
-              "needs": [{"row": n["row"], "need": n["kind"], "why": n["why"]} for n in built["needs"]],
+              "needs": [{"row": n["row"], "need": n["kind"], "why": n["why"], **({"rows": n["rows"]} if n.get("rows") else {})}
+                        for n in built["needs"]],
               "hints": list(hints or []), "previous": prev}, ensure_ascii=False)}],
         json_schema=check_schema(), point="structure")
     return out                                              # 꼴 검사는 부르는 쪽이 `shape`로(mock 힌트와 같은 함수 — B134 ②)
@@ -401,11 +404,27 @@ def _e(row, what, **kw):
             **({"src": kw["src"]} if kw.get("src") else {})}
 
 
+def group_rules(needs, answers, labs):
+    """**같은 꼴 판단 필요의 답 → 규칙 한 줄**(B139 ③) — 사다리 밖 꼴(ⓐ · `rows`)의 답이 제목이면 그 꼴을 사다리에 넣는 규칙
+    (`꼴 전부` · 부모 서명 = 답의 부모 줄의 서명 — 없으면 맨 아래 단) · 본문이면 규칙 0(그 꼴 줄은 본문 그대로)."""
+    sig = {x["row"]: x.get("sig") for x in labs}
+    ask = {n["row"]: n for n in needs if n.get("rows") and n["kind"] == "ⓐ"}
+    out = []
+    for a in answers or []:
+        n = ask.get(a.get("row"))
+        if n and a.get("heading") and sig.get(n["row"]):
+            out.append({"shape": sig[n["row"]], "role": a.get("role"), "category": a.get("category"),
+                        "parent_shape": sig.get(a.get("parent")), "scope": SE_SCOPES[0],
+                        "said": f"판단 필요 답 — '{SG.show(sig[n['row']])}' 줄 {len(n['rows'])}줄은 제목 · {a.get('why') or ''}"[:200]})
+    return out
+
+
 def answers_to_edits(doc_id, frame, heads, needs, answers):
     """판단 필요의 답 → 고침 목록 · `(고침, 답 빠진 행, 판단 필요가 아닌 줄의 답)` — 답은 **판단 필요 행마다 빠짐없이**가 원칙이다
-    (빠진 행은 코드가 세운 자리 그대로 · 결함 로그)."""
+    (빠진 행은 코드가 세운 자리 그대로 · 결함 로그) · 같은 꼴 묶음(`rows`)의 답은 그 줄 전부에(본문이면 줄마다 제목 뺌)."""
     have = {h["row"]: h for h in heads}
     want = {n["row"] for n in needs}
+    rows = {n["row"]: n["rows"] for n in needs if n.get("rows")}
     got, edits, stray = set(), [], []
     for a in answers or []:
         r = a.get("row")
@@ -414,6 +433,10 @@ def answers_to_edits(doc_id, frame, heads, needs, answers):
             continue
         got.add(r)
         why = str(a.get("why") or "판단 필요의 답")
+        if r in rows:                                       # 같은 꼴 묶음 — 답은 그 줄 전부에 (B139 ③)
+            if not a.get("heading"):
+                edits += [_e(x, "제목 뺌", why=why, src="답") for x in rows[r] if x in have]
+            continue                                        # 제목이면 규칙(`group_rules`)이 그 꼴 줄 전부를 세웠다
         if a.get("heading"):
             if r not in have:
                 edits.append(_e(r, "제목 더함", parent=a.get("parent"), role=a.get("role"), why=why, src="답"))

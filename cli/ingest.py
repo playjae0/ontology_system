@@ -630,12 +630,10 @@ def spend_line(stage):
 
     수는 `gateway.usage_total()` 그대로다 — 화면이 제 계산을 하지 않는다.
     """
-    u = gateway.usage_total()
     where = stage.get("이름", "선택")
     if where == "판정" and stage.get("총"):
         where = f"판정 값 {stage.get('값', 0)}/{stage['총']}"
-    return (f"이 문서까지 — LLM 호출 {u['calls']:,} · {_screen.tokens(u)} · "
-            f"멈춘 단계 {where}")
+    return f"이 문서까지 — {_screen.usage_pair(SCR.doc_since(), '이 문서')} · 멈춘 단계 {where}"
 
 
 def main(argv):

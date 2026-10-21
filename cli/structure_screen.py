@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from cli import _screen
 from core.build import structure as ST
+from core.llm import gateway
 
 PROMPT = "   [계속 c / 멈춤 q / 힌트 <글>] "
 DECK_PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 제목 <글> · <번호> 이어짐 <슬라이드|없음> · 개요 <글>] "
@@ -78,6 +79,7 @@ def _deck_gate(res, doc_id, dk, reparse):
     from core.build import deck as DK
     while True:
         print_deck(dk.get("표") or [])
+        _screen.say("   " + _screen.branch_line("덱", doc_id), "aux")      # 덱 갈래의 사용량 · 누계 (B139 ⑤)
         got = _screen.answer(DECK_PROMPT, "go", eof=True, other=lambda a: parse_deck_fix(a, dk.get("표") or []),
                              hint=DECK_HELP)
         if got is True or got is False:
@@ -151,7 +153,7 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
                 print("   " + SR.toc_field_line(st))               # 거른 목차 필드 (B138 ③)
         if not ask or pos >= len(frames):
             if ask and frames:
-                _screen.say("   " + SR.total_usage(st), "aux")   # 문서 끝 구조 합계 (B137 ⑦)
+                _screen.say("   " + SR.total_usage(st) + f" / {_screen.usage_pair()}", "aux")   # 문서 끝 구조 합계 · 누계 (B137 ⑦ · B139 ⑤)
             return res, True
         name = frames[pos]
         fr = st["프레임"][name]
@@ -176,6 +178,7 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
             ST.SUSPENDED.add((doc_id, name))
             print(f"   확정 기록을 비켜 둔다 — 시트 '{name}'(c면 새 나무로 덮는다 · q면 그대로)")
         print(f"   힌트(문서 규칙) — 시트 '{name}'를 다시 확인한다(앞 판단 + 문서 힌트 {len(hs)} · 사다리 고침은 뒤 시트에도)")
+        u0 = gateway.usage_total()
         ST.reask(doc_id, name, fr.get("labels") or [], (res.envelope or {}).get("source_path"), hints=hs,
                  # 앞 판단 전체 — 고침 목록 · 고친 나무 · 이해한 규칙 (B130 ⑤ — 확정한 시트를 다시 열어도 앞 고침이 빠지지 않는다)
                  prev={"answers": (fr.get("answer") or {}).get("answers") or [],
@@ -184,3 +187,4 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
                  layers=layers, ctx={"doc_type": (res.envelope or {}).get("doc_type"),
                                      "doc_coord": (res.envelope or {}).get("doc_coord"), "frames": frames})
         res = reparse()
+        _screen.say(f"   다시 확인 끝 — {_screen.usage_line(u0)}", "aux")     # 다시 확인 한 번의 사용량 · 누계 (B139 ⑤)

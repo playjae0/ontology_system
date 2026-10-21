@@ -213,7 +213,7 @@ show("ⓔ 사용량 줄에 문서가 달린다 — 한 실행 두 문서 → 로
 print("\n■ B99 ④ 단계 머리·끝 줄 (표 · 산문)")
 _heads_t = re.findall(r"^── \[(\d+)/7\] (\S+)", _o1, re.M)
 _heads_p = re.findall(r"^── \[(\d+)/8\] (\S+)", _o2, re.M)
-_ends = len(re.findall(r"^   └ [\d.]+초 · LLM 호출 \d+ · 토큰", _o1, re.M))
+_ends = len(re.findall(r"^   └ [\d.]+초 · 이 단계 호출 \d+ .* / 누계 호출 \d+", _o1, re.M))   # 기대 변경(B139 ⑤ — 이 단계 · 누계)
 from cli import ingest_screen as _SCR       # noqa: E402
 import contextlib as _ctx, io as _io        # noqa: E401,E402
 _b1, _b2 = _io.StringIO(), _io.StringIO()

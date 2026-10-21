@@ -59,9 +59,8 @@ def gate(*, chat=True, embed=False, images=False, catalog=True, capture=()):
         tag = s["tag"] if s["ok"] is None else s.get("tag")
         names.append(s["label"] + (f"({tag})" if tag else ""))
     if r["ok"]:
-        from core.llm import gateway
         _screen.say(f"   사전 점검 — {' · '.join(names)} — 통과 ({r['secs']:.1f}초 · "
-                    f"{_screen.tokens(gateway.usage_total(), r['since'])})", "head")
+                    f"{_screen.usage_pair(r['since'])})", "head")
         return True
     bad = r["stages"][-1]
     _screen.say(f"   사전 점검 — **{bad['label']}**에서 멈춘다 (파싱 0 · LLM 추가 0 · 쓰기 0)",

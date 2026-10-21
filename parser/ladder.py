@@ -7,9 +7,9 @@
     title_row(labs)                  첫 행이 시트 제목 · 문서 제목이면 그 행(B137 ② · B138 ④)
     same_name(text, names)           첫 줄 글이 이름(시트 이름 · 파일 이름 · 문서 속성 제목)과 같은가 — 시트 제목 · 문서 제목의 한 함수
 
-**초안**(코드 — LLM이 최종 · B137 ①): 번호 줄은 이어짐(같은 꼴의 열린 목록에서 바로 다음 서수) → 그 목록의 형제 · 첫 서수(그 꼴의 첫
-번호) → **바로 위 제목 줄의 자식**(같은 꼴이 두 깊이에 선다) · 둘 다 아니면 사다리의 단 순서. 사다리 단 순위(`forbid`)는 근거 하나다 —
-어긋나면 판단 필요. **첫 행 = 시트 제목**(번호를 붙인 채 · 뗀 채 · 공백 · 마침표 무시)이면 그 줄은 목차 맨 위에 서고 단을 다투지 않는다 ·
+**초안**(코드 — LLM이 최종 · B137 ① · B139 ②): 번호 줄은 이어짐(같은 꼴의 열린 목록에서 바로 다음 서수) → 그 목록의 형제 · 첫 서수(그
+꼴의 첫 번호) → **바로 위 제목 줄의 자식**(같은 꼴이 두 깊이에 선다) · 둘 다 아니면 사다리의 단 순서. 첫 서수의 자리가 사다리 단 순위
+(`forbid`)와 어긋나면 초안은 사다리를 따르고 판단 필요(「첫 서수로는 바로 위 n행 아래」). **첫 행 = 시트 제목**(번호를 붙인 채 · 뗀 채 · 공백 · 마침표 무시)이면 그 줄은 목차 맨 위에 서고 단을 다투지 않는다 ·
 Word는 어댑터가 같은 함수로 견줘 「문서 제목」을 단 줄(B138 ④). **개요 수준**(Word — 표시 `개요n`)이 있는 줄은 번호보다 먼저 개요의 단에
 선다(작성자가 문서 구조로 매긴 깊이 — B138 ⑤).
 
@@ -198,7 +198,7 @@ def apply(labs, ladder, counts=None):
                 rank.setdefault(key, float(rules[hit].get("level") or 0) - 0.5)
                 hits.append((x["row"], key, None))
     forbid = {(c, p) for c in rank for p in rank if rank[c] <= rank[p]}
-    first = {"lists": set(lists), "clash": [], "ruled": {}, "loose": []}
+    first = {"lists": set(lists), "clash": {}, "ruled": {}, "loose": []}
     lv = toc._toc(hits, forbid, rank=rank, first=first)
     parent, stack = {}, []
     for r, _k, _v in hits:
@@ -222,7 +222,7 @@ def apply(labs, ladder, counts=None):
     return {"headings": heads, "needs": needs(labs, heads, rank, counts or {}, first["clash"], first["loose"])}
 
 
-def needs(labs, heads, rank, counts, clash=(), loose=()):
+def needs(labs, heads, rank, counts, clash=None, loose=()):
     """판단 필요(머리말) — `[{row, kind, why, tag}]` 이름표 순 · 한 줄에 하나(앞의 것 — 뒤의 이유는 `why`에 덧붙인다)."""
     rows = _body(labs)
     by_row = {x["row"]: x for x in labs if x["row"] != 0}
@@ -235,18 +235,32 @@ def needs(labs, heads, rank, counts, clash=(), loose=()):
                 out[r]["why"] += f" · {why}"
             return
         out[r] = {"row": r, "kind": kind, "why": why, "tag": tag or TAGS.get(kind) or NEED_KINDS[kind]}
+
+    def group(rs, kind, why, tag=None):
+        """같은 꼴 · 같은 이유의 여러 줄 — 판단 필요 하나(대표 = 첫 줄 · `rows` = 그 줄 전부 · 답은 그 줄 전부에)."""
+        add(rs[0], kind, why + (" · 답은 그 줄 전부에" if len(rs) > 1 else ""), tag)
+        if len(rs) > 1:
+            out[rs[0]]["rows"] = list(rs)
+    fam = {}
     for x in rows:
         s = x.get("sig")
         if s and s not in rank and x["row"] not in head and _short(x) and counts.get(s, 0) >= 2:
-            add(x["row"], "ⓐ", f"사다리에 없는 서명 '{SG.show(s)}'(문서에 {counts[s]}줄)")
+            fam.setdefault(s, []).append(x["row"])
+    for s, rs in fam.items():                  # 같은 꼴은 시트마다 하나 — 답은 그 꼴 줄 전부에 (B139 ③)
+        group(rs, "ⓐ", f"사다리에 없는 서명 '{SG.show(s)}' — 이 시트 {len(rs)}줄(예 {_eg(rs)}) · 문서 {counts[s]}줄")
     for h in heads:
         p = h.get("parent")
         if p in by_row and (by_row[h["row"]].get("depth") or 0) < (by_row[p].get("depth") or 0):
             add(h["row"], "ⓑ", f"들여쓰기 깊이 {by_row[h['row']].get('depth') or 0}가 부모 {p}행(깊이 "
                                 f"{by_row[p].get('depth') or 0})보다 얕다")
-    for r in clash:
-        add(r, "ⓒ", f"첫 서수로 바로 위 {head[r].get('parent')}행 아래에 섰다 — 사다리 단 순서와 어긋남(부모 후보가 둘 이상)", "다시 시작?")
+    for r, above in (clash or {}).items():
+        add(r, "ⓒ", f"첫 서수로는 바로 위 {above}행 아래 — 사다리 단 순서를 따라 {head[r].get('parent') or '맨 위'}"
+                    f"{'행' if head[r].get('parent') else ''} 아래에 섰다(부모 후보가 둘 이상)", "다시 시작?")
+    at = {h["row"]: i for i, h in enumerate(heads)}
     for r in loose:
+        if any(at[h["row"]] < at[r] and h.get("parent") == head[r].get("parent") and h.get("sig") == head[r].get("sig")
+               and by_row[h["row"]].get("ord") == (by_row[r].get("ord") or 0) - 1 for h in heads):
+            continue                                         # 선 자리에 앞 서수 형제가 있다 — 이어짐(충돌로 닫힌 목록의 다음 줄)
         add(r, "ⓒ", f"이어지는 목록도 첫 서수도 아니다 — 사다리 단 순서로 {head[r].get('parent')}행 아래에 섰다", "번호 끊김")
     kids = {}
     for h in heads:
@@ -274,7 +288,7 @@ def needs(labs, heads, rank, counts, clash=(), loose=()):
         cand, _v = SG.attached(x.get("text"))
         if cand and not x.get("sig") and _short(x) and x["row"] not in head:
             add(x["row"], "ⓕ", f"붙은 다단 번호 '{SG.show(cand)}' — 번호인지 값(1.5배 · 2024.10월)인지")
-    _word_needs(rows, add)
+    _word_needs(rows, add, group)
     for x in rows:
         if not x.get("sig") and x.get("gap") and _short(x) and x["row"] not in head:
             add(x["row"], "ⓓ", "빈 행 뒤 짧은 번호 없는 줄")
@@ -287,12 +301,16 @@ def _outline(x):
     return any(str(m).startswith(_OUTLINE) for m in x.get("marks") or [])
 
 
-def _word_needs(rows, add):
+def _eg(rs):
+    return " · ".join(f"R{r}" for r in rs[:2])
+
+
+def _word_needs(rows, add, group):
     """ⓖ 손 목차 · ⓗ 개요 수준과 어긋남 · ⓘ 풀지 못한 자동 번호(B138 — 재료가 있는 문서에서만 선다 · 엑셀 산문과 같은 함수)."""
     lead = [i for i, x in enumerate(rows) if _short(x) and LEADER.search(str(x.get("text") or ""))]
     if len(lead) >= LEADER_MIN and lead[-1] < len(rows) / 2:
-        for i in lead:
-            add(rows[i]["row"], "ⓖ", "목차 줄 같다(이음 · 쪽 번호가 문서 앞에 몰림) — 문서 앞 목차면 본문")
+        rs = [rows[i]["row"] for i in lead]
+        group(rs, "ⓖ", f"목차 줄 같다 — 이음 · 쪽 번호 줄 {len(rs)}줄이 문서 앞에 몰림(예 {_eg(rs)}) — 문서 앞 목차면 본문")
     outl = [x for x in rows if _outline(x)]
     if outl:
         by_lv = {}

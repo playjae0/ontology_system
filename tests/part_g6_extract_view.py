@@ -90,7 +90,7 @@ _ln = _chunk_rows(_txt)
 show("ⓑ 청크마다 메타 줄(개체 표기·카테고리 전부 · 관계 수) · 끝 줄에 사용량",
      len(_ln) == len(_rows) > 0 and all("부품" in l and "[Component]" in l and "치수[Property]" in l
                                     and l.split(" | ")[5].strip() == "1" for l in _ln)   # 위치 두 칸(B118 ③ · 기대 변경)
-     and any("추출 끝 —" in l and "LLM 사용량 — 호출" in l for l in _txt.splitlines()),
+     and any("추출 끝 —" in l and "LLM 사용량 — " in l for l in _txt.splitlines()),   # 기대 변경(B139 ⑤ — 문면은 재지 않는다)
      _ln[0].strip()[:90] if _ln else "")
 
 print("\n■ B97 ② 시간 기준 누적 줄")

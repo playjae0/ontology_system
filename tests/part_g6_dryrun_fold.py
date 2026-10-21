@@ -78,7 +78,8 @@ with contextlib.redirect_stdout(_buf):
 _rg, _og = _run("register", "generate", "b96toc", "quality", str(ROOT / "tests/fixtures/raw/TOC01.xlsx"), "--allow-mock")
 _rv, _ov = _run("register", "review", "b96toc", "--no-llm-coord", "--allow-mock")
 show("ⓔ 시트 역할 관문 · 뷰 확인 끝에 사용량 줄(mock이면 0)",
-     "LLM 사용량 — 호출 0회" in _buf.getvalue() and "LLM 사용량 — 호출" in _ov,
+     # 기대 변경(B139 ⑤ — 끝 줄 문면은 이 단계 · 누계 · 문면은 재지 않고 줄이 있는가만)
+     "LLM 사용량 — " in _buf.getvalue() and "LLM 사용량 — " in _ov,
      [l.strip() for l in _ov.splitlines() if "LLM 사용량" in l][:1])
 shutil.rmtree(_P.registry("review", "b96toc"), ignore_errors=True)
 

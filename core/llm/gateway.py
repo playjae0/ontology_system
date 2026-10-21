@@ -49,6 +49,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import re
@@ -576,12 +577,48 @@ def usage_by(doc_id=None):
     return out
 
 
-def _account(point, raw):
+#: **갈래 이름**(B139 ⑤ — 끝 표의 줄) — 태그 · 지점의 짧은 이름 · 한 지점 안에서 갈리는 호출(⑪ — 구조 사다리 · 시트 확인 ·
+#: 개요 · 덱)은 태그가 가르고 태그 하나 안에서 또 갈리면 호출부가 `branch(이름)`으로 말한다(구조 사다리)
+BRANCHES = {"extract": "추출", "judge": "판정", "embed": "임베딩", "image_summary": "그림 요약", "generate": "생성", "interview": "문답",
+            "link": "질의 링킹", "struct_map": "구조 지도", "answer": "답변", "coord_tag": "좌표 태깅", "sheet_role": "시트 역할",
+            "outline": "개요", "structure": "시트 확인", "deck": "덱", "reinforce": "보강", "chat": "사전 점검"}
+_BRANCH = []
+#: 갈래 × 문서별 누계 — `{(갈래, 지점, doc_id): {calls, prompt, completion}}`(`_account`가 `USAGE_BY`와 같은 자리에서 센다)
+USAGE_BRANCH = {}
+
+
+@contextlib.contextmanager
+def branch(name):
+    """그 안의 호출을 갈래 `name`으로 센다(태그 하나 안의 갈래 — 구조 사다리)."""
+    _BRANCH.append(name)
+    try:
+        yield
+    finally:
+        _BRANCH.pop()
+
+
+def usage_table(doc_id=None, docs=None):
+    """**끝 표**(B139 ⑤) — `[{갈래, 지점, calls, prompt, completion, 몫}]` 입력+출력이 큰 차례 · 몫 = 그 갈래의 입력+출력 ÷ 전체(%) ·
+    `doc_id`면 그 문서 · `docs`면 그 문서들 · 둘 다 없으면 이 프로세스 전부 — 갈래 합 = `usage_by` 합(같은 `_account`가 센다)."""
+    rows = {}
+    for (br, pt, did), v in USAGE_BRANCH.items():
+        if (doc_id is not None and did != doc_id) or (docs is not None and did not in docs):
+            continue
+        o = rows.setdefault((br, pt), {"갈래": br, "지점": pt, "calls": 0, "prompt": 0, "completion": 0})
+        o.update({k: o[k] + v[k] for k in ("calls", "prompt", "completion")})
+    tot = sum(o["prompt"] + o["completion"] for o in rows.values())
+    for o in rows.values():
+        o["몫"] = round(100.0 * (o["prompt"] + o["completion"]) / tot, 1) if tot else None
+    return sorted(rows.values(), key=lambda o: (-(o["prompt"] + o["completion"]), -o["calls"], o["갈래"]))
+
+
+def _account(point, raw, quiet=False):
     """응답 1건의 사용량을 누계에 더하고 로그로 남긴다.
 
     **게이트웨이가 `usage`를 안 주면 조용히 넘어간다** — OpenAI 호환이라도 필드가
     선택인 구현이 있다. 다만 `calls`는 언제나 센다: 「몇 번 불렀나」는 usage 없이도
-    알 수 있고, ⑥의 「몇천 회 호출」 문제에서 그 수가 판단 재료다.
+    알 수 있고, ⑥의 「몇천 회 호출」 문제에서 그 수가 판단 재료다. 갈래(`USAGE_BRANCH` — B139 ⑤)도 여기서 센다 ·
+    `quiet`면 호출마다의 로그 줄을 내지 않는다(임베딩 — 건수가 많다 · 끝 표가 합을 낸다).
     """
     USAGE["calls"] += 1
     u = (raw or {}).get("usage") if isinstance(raw, dict) else None
@@ -605,6 +642,14 @@ def _account(point, raw):
         b["prompt"] += int(u.get("prompt_tokens") or 0)
         b["completion"] += int(u.get("completion_tokens") or 0)
         b["max"] = max(b["max"], int(u.get("total_tokens") or 0))
+    br = USAGE_BRANCH.setdefault((_BRANCH[-1] if _BRANCH else BRANCHES.get(point, pl), pl, DOC["doc_id"]),
+                                 {"calls": 0, "prompt": 0, "completion": 0})
+    br["calls"] += 1
+    if isinstance(u, dict):
+        br["prompt"] += int(u.get("prompt_tokens") or 0)
+        br["completion"] += int(u.get("completion_tokens") or 0)
+    if quiet:
+        return
     where = (f"문서 {DOC['doc_id']}" + (f" · 렌즈 {DOC['lens']}" if DOC["lens"] else "")
              if DOC["doc_id"] else "문서 없음")
     log.llm_usage(_LOG, pl, u if isinstance(u, dict) else None, fin, where=where)

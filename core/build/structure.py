@@ -190,12 +190,15 @@ def structurer(layers=None):
         out, shaped = LA.shape(doc_id, "시트 확인", out, frame)   # 꼴이 어긋난 답 · 칸은 버린다 — 사다리 목차 그대로 (B134 ②)
         out = out or {"answers": [], "edits": [], "rules": []}
         have = set(d["counts"]) | {x["sig"] for x in labs if x.get("sig")} | set(rank_of(ladder))
-        mine, rbad = LA.check_rules(doc_id, frame, [x for x in out.get("rules") or [] if x.get("shape")], have)
+        mine, rbad = LA.check_rules(doc_id, frame, [x for x in out.get("rules") or [] if x.get("shape")]
+                                    + LA.group_rules(built["needs"], out.get("answers"), labs), have)   # 같은 꼴 답 = 규칙 (B139 ③)
         if mine:                                            # 사다리 고침 — 문서 규칙(뒤 시트에도) · 이 시트는 고친 사다리로 다시 세운다
             doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
             doc["rules"] = _merge_rules(doc.get("rules"), mine)
             ladder = ladder_now(doc_id, cats)
-            built = PL.apply(labs, ladder, d["counts"])
+            asked, built = built["needs"], PL.apply(labs, ladder, d["counts"])
+            now = {n["row"] for n in built["needs"]}
+            built["needs"] += [n for n in asked if n.get("rows") and n["row"] not in now]   # 물은 같은 꼴 묶음은 답과 함께 남는다
         edits, missing, stray = LA.answers_to_edits(doc_id, frame, built["headings"], built["needs"], out.get("answers"))
         heads, joins, took, bad = SE.apply_edits(doc_id, frame, labs, built["headings"],
                                                  {"edits": edits + list(out.get("edits") or []), "headings": []}, cats)

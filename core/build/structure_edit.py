@@ -3,6 +3,8 @@
 
     고침  `[{row, what, parent, to_row, role, name, category, why}]` — 여섯 동사(`WHATS`): 제목 더함 · 제목 뺌 · 부모 바꿈 · 역할 · 대상 · 붙임
     검사  그 줄이 시트에 있나 · 부모가 앞의 제목인가 · 이름이 줄 글자 그대로인가 · 붙임이 겹치지 않나 — **어긋난 고침만** 버리고 센다
+    목록  「부모 바꿈」이 **목록 머리**(같은 부모 아래 같은 꼴의 앞 서수가 없는 줄)를 옮기면 그 목록(같은 꼴로 서수가 이어지는 형제 —
+          그 자손은 형제를 따라간다)이 함께 옮긴다 · 목록 중간 줄 하나의 고침은 그 줄만(B139 ①)
 
 바탕은 사다리로 선 목차(`parser/ladder.apply`)다 — 고칠 것이 없으면 그대로다. 자르기는 고친 목차 위의 크기 구간 + 붙임
 (`parser.struct_rule.frame_chunks`).
@@ -48,6 +50,24 @@ EDIT_SCHEMA = {
 }
 
 # ---------------------------------------------------------------- 고침 적용 · 검사 (결정적)
+def _list_tail(r, parent, heads, lab, order):
+    """목록 머리 `r`의 이어지는 형제(같은 옛 부모 · 같은 꼴 · 서수 +1씩) — `r`이 머리가 아니면(앞 서수 형제가 있으면) 빈 목록."""
+    sig, v = (lab.get(r) or {}).get("sig"), (lab.get(r) or {}).get("ord")
+    if not sig or v is None:
+        return []
+    sibs = sorted((x for x in heads if x != r and heads[x].get("parent") == parent
+                   and (lab.get(x) or {}).get("sig") == sig), key=lambda x: order.get(x, 1 << 30))
+    if any(order.get(x, 0) < order[r] and lab[x].get("ord") == v - 1 for x in sibs):
+        return []                                            # 목록 중간 줄 — 그 줄만
+    out, last = [], v
+    for x in (x for x in sibs if order.get(x, 0) > order[r]):
+        if lab[x].get("ord") != last + 1:
+            break
+        out.append(x)
+        last += 1
+    return out
+
+
 def apply_edits(doc_id, frame, labs, draft, out, cats):
     """규칙 나무 + 고침 → `(제목 [{row, parent, role, name, category, why?}], 붙임 [{from_row, to_row}], 받은 고침, 버린 고침)` ·
     어긋난 고침만 버린다(결함 로그 · 셈) — 시트 전체를 버리지 않는다."""
@@ -55,6 +75,7 @@ def apply_edits(doc_id, frame, labs, draft, out, cats):
     from parser.struct_rule import FRAME_ROW, ROLES, TARGET_ROLES
     order = {x["row"]: i for i, x in enumerate(labs)}
     text = {x["row"]: x.get("text") for x in labs}
+    lab = {x["row"]: x for x in labs}
     heads = {h["row"]: dict(h) for h in draft}
     joins, took, bad = [], [], []
 
@@ -100,7 +121,10 @@ def apply_edits(doc_id, frame, labs, draft, out, cats):
             if r not in heads or not is_before(e.get("parent"), r):
                 drop(e, "제목이 아니다" if r not in heads else f"부모 {e.get('parent')}행이 앞의 제목이 아니다")
                 continue
+            old = heads[r].get("parent")
             heads[r]["parent"] = None if e.get("parent") == FRAME_ROW else e.get("parent")
+            for f in _list_tail(r, old, heads, lab, order):
+                heads[f]["parent"] = heads[r]["parent"]          # 목록 단위 — 이어지는 형제도 같은 부모로 (B139 ①)
         elif w == "역할":
             if e.get("role") not in ROLES or (r not in heads and r != FRAME_ROW):
                 drop(e, f"역할 밖 '{e.get('role')}'" if e.get("role") not in ROLES else "제목이 아니다")

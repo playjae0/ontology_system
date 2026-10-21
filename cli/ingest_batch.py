@@ -65,10 +65,7 @@ def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP
     if not dry_run:
         # **총계 한 줄**(B73 ①) — 문서마다의 요약은 위에 있고, 배치의 비용은
         # 여기서만 보인다. 사람이 「이 폴더를 넣으면 얼마」를 알 자리다.
-        u = gateway.usage_total()
-        print(_screen.banner(
-            f"  전체 — 문서 {len(rows):,} · LLM 호출 {u['calls'] - u0['calls']:,} · "
-            f"{_screen.tokens(u, u0)}"))
+        print(_screen.banner(f"  전체 — 문서 {len(rows):,} · {_screen.usage_pair(u0, '이 배치')}"))
         if log.LOG_PATH:
             print(f"  로그 {log.LOG_PATH}  (INFO 전량 · 화면은 판단이 갈린 값만)")
     return rows
