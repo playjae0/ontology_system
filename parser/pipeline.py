@@ -463,6 +463,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
         return res.fail("parse_failure", f"{type(e).__name__}: {e}")
     if st_tally.get("프레임"):
         res.report["structure"] = st_tally            # 구조 표 · 약한 구조 신호의 재료 (B119 ①③)
+        if raw.get("toc_field_lines"):
+            st_tally["목차 필드"] = raw["toc_field_lines"]   # 리더가 거른 목차 필드의 줄 수 — 구조 확인 한 줄 (B138 ③)
     if dk_tally:
         res.report["deck"] = dk_tally                 # 덱 구조 표 · 끝 줄의 재료 (B125 ③)
 

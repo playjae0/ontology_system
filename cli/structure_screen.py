@@ -147,6 +147,8 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
         if ask and frames and not said:
             said = True
             _screen.say("   " + SR.ladder_usage(st), "aux")       # 사다리 단계의 사용량 — 한 번 (B137 ⑦)
+            if SR.toc_field_line(st):
+                print("   " + SR.toc_field_line(st))               # 거른 목차 필드 (B138 ③)
         if not ask or pos >= len(frames):
             if ask and frames:
                 _screen.say("   " + SR.total_usage(st), "aux")   # 문서 끝 구조 합계 (B137 ⑦)
