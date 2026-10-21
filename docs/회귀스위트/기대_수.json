@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 5
+   "secs": 6
   },
   "test_places": {
    "n": 32,
@@ -11,15 +11,15 @@
   },
   "test_g3": {
    "n": 82,
-   "secs": 2
+   "secs": 3
   },
   "test_query": {
    "n": 112,
-   "secs": 7
+   "secs": 9
   },
   "test_ops": {
    "n": 84,
-   "secs": 9
+   "secs": 6
   },
   "test_intake": {
    "n": 98,
@@ -27,7 +27,7 @@
   },
   "test_ingest_view": {
    "n": 72,
-   "secs": 29
+   "secs": 52
   },
   "test_coord": {
    "n": 49,
@@ -35,31 +35,31 @@
   },
   "test_catalog": {
    "n": 57,
-   "secs": 18
+   "secs": 16
   },
   "test_safety": {
    "n": 35,
-   "secs": 57
+   "secs": 54
   },
   "test_judge": {
    "n": 71,
-   "secs": 7
+   "secs": 9
   },
   "test_build": {
    "n": 49,
-   "secs": 14
+   "secs": 13
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 18
+   "secs": 17
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 8
+   "secs": 9
   },
   "test_structure": {
-   "n": 63,
-   "secs": 14
+   "n": 69,
+   "secs": 16
   },
   "test_g6_capture": {
    "n": 9,
@@ -67,11 +67,11 @@
   },
   "test_g6_close": {
    "n": 29,
-   "secs": 29
+   "secs": 26
   },
   "test_contract": {
    "n": 76,
-   "secs": 18
+   "secs": 19
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,11 +87,11 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 2
+   "secs": 3
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 4
+   "secs": 3
   },
   "test_p2": {
    "n": 68,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 9
+   "secs": 6
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,7 +107,7 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 3
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
@@ -115,11 +115,11 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 7
   },
   "test_p3_ledger": {
    "n": 46,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 65,
-   "secs": 10
+   "secs": 8
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 25
+   "secs": 24
   }
  },
  "log": [
@@ -193,6 +193,14 @@
    "suite": "test_g6_close",
    "from": 28,
    "to": 29,
+   "why": ""
+  },
+  {
+   "at": "2026-10-21",
+   "head": "1f8121f",
+   "suite": "test_structure",
+   "from": 63,
+   "to": 69,
    "why": ""
   }
  ]
