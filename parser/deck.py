@@ -122,6 +122,8 @@ def hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, doc_coord
         hit = kept or {}
         if hit.get("labels") == h and same(hit.get("key")) and hit.get("answer"):
             ans, reused = hit["answer"], True
+            if callable(getattr(ask, "drift", None)):
+                ask.drift(ans)                  # 판 그대로 · 문면만 바뀜이면 한 줄 (B135 ③)
         else:
             ans, reused = ask(doc_id, slides, doc_coord=doc_coord), False
             if ans is None:

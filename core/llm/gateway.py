@@ -89,7 +89,7 @@ POINTS = {
 # 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
 CALL_TAGS = {"interview": "generate",
              "structure": "outline",           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
-             "deck": "outline"}                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(같은 지시문)
+             "deck": "outline"}                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(지시문은 `2.4_deck.md` — B135 ④)
 
 
 def point_label(point):
@@ -503,6 +503,38 @@ def prompt_version(name):
     log.explicit_fail(_LOG, f"core.llm.prompt_version[{name}]",
                       f"{name}.md 머리말에 version: 줄이 없다")
     raise ValueError(f"{name}.md: 머리말 version: 줄이 없다")
+
+
+def prompt_text_hash(name):
+    """그 지시문의 **문면 해시**(파일 전문 · 앞 12자) — 기록만 한다(재사용 열쇠는 판이다 · B135 ③)."""
+    import hashlib
+    return hashlib.sha256(prompt(name).encode("utf-8")).hexdigest()[:12]
+
+
+def prompt_stamp(name):
+    """답 · 보존분에 함께 적는 지시문 표지 `{prompt, prompt_version, prompt_text}` — 판은 지시문 이름과 함께 적는다
+    (판 접두가 겹쳐도 섞이지 않게 · B135 ③)."""
+    return {"prompt": name, "prompt_version": prompt_version(name), "prompt_text": prompt_text_hash(name)}
+
+
+#: 이 프로세스에서 「서술만 바뀜」을 이미 말한 지시문(한 번만 말한다)
+_DRIFT_SAID = set()
+
+
+def prompt_drift(name, rec):
+    """**판은 그대로인데 문면이 다르다**(B135 ③ — 사람이 판을 올리지 않았다 → 재호출 0) — 그 사실을 화면 한 줄로(지시문마다 한 번) ·
+    참이면 True. 문면 해시가 없는 옛 기록 · 판이 다른 기록은 말하지 않는다(판이 다르면 재사용하지 않는다)."""
+    rec = rec or {}
+    if not rec.get("prompt_text") or rec.get("prompt_version") != prompt_version(name):
+        return False
+    if rec["prompt_text"] == prompt_text_hash(name):
+        return False
+    if name not in _DRIFT_SAID:
+        _DRIFT_SAID.add(name)
+        print(f"   지시문 서술만 바뀜 — {os.path.basename(prompt_path(name) or name)} 판 {rec['prompt_version']} 그대로 · 재호출 없음")
+        _LOG.info("지시문 서술만 바뀜 — %s 판 %s · 문면 %s → %s", name, rec["prompt_version"], rec["prompt_text"],
+                  prompt_text_hash(name))
+    return True
 
 
 # 세션 누계 — `register generate`가 끝에 한 줄로 보고한다. **프로세스 수명 동안만**

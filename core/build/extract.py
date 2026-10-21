@@ -124,69 +124,16 @@ def reuse_check(env, lens=None, cfg=None, outline=None, p=None):
 
 def invalidate(doc_id, lens=None):
     """재인입 — 청크가 바뀌었으므로 체크포인트를 버린다 (규약 7). 렌즈를 안 주면 렌즈 판도 전부.
-    부분 파일(B97 ③)도 같이 버린다 — 바뀐 청크에 옛 청크의 후보를 이어 붙이지 않는다."""
-    for p in (checkpoint_path(doc_id, lens), partial_path(doc_id, lens)):
-        if p.exists():
-            p.unlink()
-    if lens is None and EXTRACT_DIR.exists():
-        for pat in (f"{doc_id}@*.json", f"{doc_id}@*.partial.jsonl"):
+    **호출 보존(`extract_calls`)은 버리지 않는다** — 열쇠가 보낸 입력이라 바뀐 청크는 저절로 다시 부르고 그대로인 청크는 다시 쓴다
+    (B135 ①) · B135 전의 부분 파일(`*.partial.jsonl`)은 읽는 곳이 없어 함께 지운다."""
+    p = checkpoint_path(doc_id, lens)
+    if p.exists():
+        p.unlink()
+    if EXTRACT_DIR.exists():
+        pats = ([f"{doc_id}@*.json"] if lens is None else []) + [f"{doc_id}*.partial.jsonl"]
+        for pat in pats:
             for q in EXTRACT_DIR.glob(pat):
                 q.unlink()
-
-
-# ---------------------------------------------------------------- 이어 쓰기 (B97 ③)
-def partial_path(doc_id, lens=None):
-    """이어 쓰기 **부분 파일** — 최종 체크포인트와 **다른 이름**이다(「파일 존재 = 추출 완료」 불변).
-
-    확장자가 `.jsonl`이라 체크포인트를 찾는 glob(`*@*.json` · `<doc>@*.json`)에 걸리지 않는다.
-    첫 줄은 재사용 조건(문서 해시 · 어댑터 판 · 렌즈), 다음 줄부터 끝난 청크 하나씩이다.
-    """
-    return EXTRACT_DIR / (f"{doc_id}@{lens}.partial.jsonl" if lens
-                          else f"{doc_id}.partial.jsonl")
-
-
-def _partial_key(env, lens, cfg=None):
-    """부분 파일 머리 — 체크포인트와 **같은 조건**(B102 ⑥ · 개요 B115 ③) + 렌즈."""
-    return {**_now_key(env, cfg, _OUTLINE.get("ol")), "lens": lens}
-
-
-def _partial_load(env, lens, cfg=None):
-    """끝난 청크 `{chunk_id: 후보}` — 조건이 다르면 **버리고** 로그 한 줄(빈 dict).
-
-    줄 단위 덧붙임이라 쓰다 끊긴 마지막 줄은 읽지 못한다 — 그 청크는 다시 부른다
-    (반쯤 쓰인 후보를 쓰지 않는다 · 원자 단위가 줄이다).
-    """
-    p = partial_path(env["doc_id"], lens)
-    if not p.exists():
-        return {}
-    lines = p.read_text(encoding="utf-8").splitlines()
-    try:
-        head = json.loads(lines[0]) if lines else None
-    except ValueError:
-        head = None
-    if head != _partial_key(env, lens, cfg):
-        _LOG.info("extract: %s 부분 파일 폐기 — 재사용 조건(문서·어댑터·지시문·층 config·렌즈) 불일치",
-                  env["doc_id"])
-        p.unlink()
-        return {}
-    done = {}
-    for ln in lines[1:]:
-        try:
-            e = json.loads(ln)
-        except ValueError:
-            break
-        done[e["chunk_id"]] = e
-    return done
-
-
-def _partial_append(env, lens, entry, cfg=None):
-    """끝난 청크 하나를 줄로 덧붙인다 — flush + fsync(끊겨도 앞 줄은 남는다)."""
-    p = paths.ensure(partial_path(env["doc_id"], lens))
-    head = "" if p.exists() else json.dumps(_partial_key(env, lens, cfg), ensure_ascii=False) + "\n"
-    with open(p, "a", encoding="utf-8") as f:
-        f.write(head + json.dumps(entry, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
 
 
 # ---------------------------------------------------------------- USE_MOCK
@@ -348,8 +295,6 @@ _DOC = {}
 _HEADS = {}
 #: 위치 → 구조 사슬(B119 ② — 그 조각 위의 제목 줄 위에서 아래로 · 역할 · 대상)
 _CHAIN = {}
-#: 지금 추출하는 문서의 개요(부분 파일 머리의 재사용 조건 — `extract()`가 채운다)
-_OUTLINE = {}
 
 
 def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
@@ -365,21 +310,7 @@ def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
     # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
     # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
     tmpl = gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract")   # 층 힌트 한 함수 (B124 ③)
-    user = json.dumps(
-             {"categories": categories_with_also(cfg),
-              "relations": cfg.get("relations"),
-              # **값을 받는 카테고리**(B120 ② — 층 config 선언 · 없으면 빈 목록 = 값 0)
-              "value_categories": sorted((cfg.get("value_categories") or {}).keys())
-              if isinstance(cfg.get("value_categories"), dict) else [],
-              # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
-              "attach_candidates": attach_candidates(chunk.get("process_ref")),
-              "parent_candidates": parent_candidates(chunk),
-              # **넷째 소속 출처**(B115 ③) — 이 청크 위의 제목 개체(개요가 대상으로 정한 제목 · 가까운 것부터)
-              "heading_candidates": _HEADS.get(chunk.get("source_locator")) or [],
-              # **구조 사슬**(B119 ②) — 이 청크 위의 제목 줄(역할 · 글자 · 대상) 위에서 아래로 · 가장 구체적인 주인을 고르는 재료
-              "structure_chain": _CHAIN.get(chunk.get("source_locator")) or [],
-              # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
-              "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)
+    user = _payload(chunk, cfg)
     # **캡처**(B125 ② — 그 슬라이드 · 쪽의 렌더 · 있을 때만): 배치 · 화살표 · 붙음을 보는 근거 — 이름과 값은 글자에서
     content = [{"type": "text", "text": user}, gateway._image_part(image, "image/png")] if image else user
     try:
@@ -395,6 +326,54 @@ def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
             "entities": ents,
             "relations": out.get("relations", []),
             "attach": [], **extra}                  # 소속은 개체의 `belongs_to`가 말한다(B102 ③)
+
+
+def _payload(chunk, cfg):
+    """실호출 사용자 글 — **조립은 여기 하나**(호출 보존의 열쇠가 같은 글을 해시한다 · B135 ①)."""
+    return json.dumps(
+             {"categories": categories_with_also(cfg),
+              "relations": cfg.get("relations"),
+              # **값을 받는 카테고리**(B120 ② — 층 config 선언 · 없으면 빈 목록 = 값 0)
+              "value_categories": sorted((cfg.get("value_categories") or {}).keys())
+              if isinstance(cfg.get("value_categories"), dict) else [],
+              # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
+              "attach_candidates": attach_candidates(chunk.get("process_ref")),
+              "parent_candidates": parent_candidates(chunk),
+              # **넷째 소속 출처**(B115 ③) — 이 청크 위의 제목 개체(개요가 대상으로 정한 제목 · 가까운 것부터)
+              "heading_candidates": _HEADS.get(chunk.get("source_locator")) or [],
+              # **구조 사슬**(B119 ②) — 이 청크 위의 제목 줄(역할 · 글자 · 대상) 위에서 아래로 · 가장 구체적인 주인을 고르는 재료
+              "structure_chain": _CHAIN.get(chunk.get("source_locator")) or [],
+              # 청크 머리는 **맥락 줄 하나**(B102 ① — 문서 · 공정 · 시트 · 경로 · 포맷 전부 한 함수)
+              "chunk": extract_ctx.with_context(chunk, _DOC)}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------- 호출 보존 (B135 ① — 실호출만 · `extract_calls`)
+#: 지금 추출하는 문서의 호출 보존 재료 `{doc, lens, used, base}` — `extract()`가 채운다(mock이면 비어 있다)
+_CALLS = {}
+
+
+def _calls_begin(doc_id, lens, cfg):
+    """호출 보존의 문서 재료 — 열쇠의 고정 몫(지시문 이름 · 판 · 모델 · 온도 · 층 힌트 · 답 꼴)을 한 번 센다 · mock이면 비운다."""
+    import hashlib
+    _CALLS.clear()
+    if gateway.use_mock():
+        return
+    g = gateway.config()
+    hints = gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract")[len(gateway.prompt("extract")):]
+    _CALLS.update({"doc": doc_id, "lens": lens, "used": set(), "stamp": gateway.prompt_stamp("extract"),
+                   "base": {"prompt": "extract", "version": prompt_version(), "model": g.get("model"),
+                            "temperature": gateway.temperature_line(g), "layer_hints": hints,
+                            "schema": hashlib.sha256(json.dumps(EXTRACT_SCHEMA, sort_keys=True).encode()).hexdigest()[:16]}})
+
+
+def _call_key(chunk, cfg, image=None):
+    """그 호출의 열쇠 — 실제로 보낼 사용자 글 · 그림 해시 + 고정 몫 · mock이면 None."""
+    if not _CALLS:
+        return None
+    import hashlib
+    from core.build import extract_calls as EC
+    return EC.key({**_CALLS["base"], "user": _payload(chunk, cfg),
+                   "image": hashlib.sha256(image).hexdigest()[:16] if image else None})
 
 
 def categories_with_also(cfg):
@@ -500,8 +479,18 @@ def _call_chunk(doc_id, cid, c, cfg, vocab, hints, image=None):
             ents, extra = _optional(h)
             return {"chunk_id": cid, "entities": ents, "relations": h.get("relations", []),
                     "attach": h.get("attach", []), **extra}
+        from core.build import extract_calls as EC
+        k = _call_key(c, cfg, image)
+        got = EC.get(_CALLS["doc"], _CALLS["lens"], k) if k else None
+        if got is not None:                             # 같은 입력 — 그 답을 다시 쓴다(LLM 0 · B135 ①)
+            _CALLS["used"].add(k)
+            return {"chunk_id": cid, **got}
         # 캡처가 있을 때만 그림을 넘긴다 — 없으면 지금 서명 그대로(바꿔 끼운 대역 · 확장이 같은 손을 쓴다)
-        return _candidates_for(cid, c, cfg, vocab, image=image) if image is not None else _candidates_for(cid, c, cfg, vocab)
+        res = _candidates_for(cid, c, cfg, vocab, image=image) if image is not None else _candidates_for(cid, c, cfg, vocab)
+        if k:                                           # 끝난 호출은 바로 담는다 — 끊겨도 다음에 다시 부르지 않는다
+            EC.put(_CALLS["doc"], _CALLS["lens"], k, {x: v for x, v in res.items() if x != "chunk_id"}, _CALLS["stamp"])
+            _CALLS["used"].add(k)
+        return res
     except Exception as e:                              # noqa: BLE001
         # **무후보와 구분한다** — `entities: []`는 「봤는데 없었다」이고 `failed`는
         # 「보지 못했다」다. 둘을 같은 모양으로 두면 구축이 「후보 0건인 청크」로 세어
@@ -511,7 +500,7 @@ def _call_chunk(doc_id, cid, c, cfg, vocab, hints, image=None):
         return {"chunk_id": cid, "failed": why, "entities": [], "relations": [], "attach": []}
 
 
-_TOC_STATE = {"call": "부름", "ref": "ref", "skip": "거름", "done": "재사용", "none": "개체 없음"}
+_TOC_STATE = {"call": "부름", "ref": "ref", "skip": "거름", "none": "개체 없음"}
 
 
 def _toc(rows, env):
@@ -521,9 +510,9 @@ def _toc(rows, env):
              len(c.get("text") or "")) for n, (k, _cid, c) in enumerate(rows, start=1)]
 
 
-def _todo(env, chunk_ids_by_locator, skip, done):
-    """부를 청크와 건너뛸 청크를 **부르기 전에** 가른다 — 예고와 루프가 같은 표를 쓴다."""
-    rows, ref, lens_sk, resumed = [], 0, 0, 0
+def _todo(env, chunk_ids_by_locator, skip):
+    """부를 청크와 건너뛸 청크를 **부르기 전에** 가른다 — 예고와 루프가 같은 표를 쓴다(다시 쓸 호출은 단위가 가른다 — `_unit_hit`)."""
+    rows, ref, lens_sk = [], 0, 0
     for c in env.get("chunks", []):
         cid = chunk_ids_by_locator.get(c.get("source_locator"))
         if cid is None:
@@ -538,17 +527,57 @@ def _todo(env, chunk_ids_by_locator, skip, done):
         elif (c.get("meta") or {}).get("sheet_role") == "ref":
             ref += 1
             rows.append(("ref", cid, c))         # 목차에만 든다(B112 ③) — 부르지도 후보를 남기지도 않는다
-        elif cid in done:
-            resumed += 1
-            rows.append(("done", cid, c))
         elif (c.get("meta") or {}).get("no_entities"):
             rows.append(("none", cid, c))        # 덱 구조가 「개체 없음」(표지 · 제목만)으로 표시 — 부르지 않는다 (B125 ①)
         else:
             rows.append(("call", cid, c))
-    return rows, ref, lens_sk, resumed
+    return rows, ref, lens_sk
 
 
-_STOP_NAME = {"추출예고": "추출 예고", "추출이어서": "추출 이어서", "개요예고": "개요 예고"}
+def _unit_keys(unit, cfg, hints, pages):
+    """그 단위의 호출 열쇠 — `_call_unit`과 같은 갈래(청크 하나 · 캡처 없음 = 청크의 열쇠 · 그 밖은 합친 청크 + 캡처) · mock · 힌트면 None."""
+    from core.build import extract_unit as EU
+    if not _CALLS or hints:
+        return None
+    img = (pages or {}).get(EU.page_of(unit))
+    if len(unit) == 1 and img is None:
+        return [_call_key(unit[0][1], cfg)]
+    chunk, _bid = EU.merged(unit)
+    return [_call_key(chunk, cfg, img)]
+
+
+def _unit_hit(unit, cfg, hints, pages):
+    """그 단위를 **다시 쓰는가**(보낼 입력이 같은 답이 남아 있다 — LLM 0 · B135 ①)."""
+    from core.build import extract_calls as EC
+    ks = _unit_keys(unit, cfg, hints, pages)
+    return bool(ks) and all((EC.folder(_CALLS["doc"], _CALLS["lens"]) / f"{k}.json").exists() for k in ks)
+
+
+def _seed(env, ck, cfg, chunk_ids_by_locator, skip):
+    """**도입 씨앗**(B135 ②) — 문서 단위 체크포인트가 지금 조건과 같아 그대로 쓸 때, 그 청크 몫의 답을 지금 조립한 입력의 열쇠로 담는다
+    (청크 하나 = 호출 하나 · 캡처 없음만 — 슬라이드 · 쪽 묶음 · 실패 · 거름 · 개체 없음은 담지 않는다) · 담은 수."""
+    from core.build import extract_calls as EC
+    from core.build import extract_unit as EU
+    if not _CALLS:
+        return 0
+    rows, _r, _l = _todo(env, chunk_ids_by_locator, skip)
+    by = {c.get("chunk_id"): c for c in ck.get("candidates") or []}
+    n = 0
+    for unit in EU.group(rows):
+        if len(unit) != 1 or (env.get("capture") and EU.page_of(unit) is not None):
+            continue
+        cid, c = unit[0]
+        cand = by.get(cid)
+        if not cand or any(cand.get(x) for x in ("failed", "lens_skipped", "no_entities")) or "capture" in cand:
+            continue
+        k = _call_key(c, cfg)
+        if not (EC.folder(_CALLS["doc"], _CALLS["lens"]) / f"{k}.json").exists():
+            EC.put(_CALLS["doc"], _CALLS["lens"], k, {x: v for x, v in cand.items() if x != "chunk_id"}, _CALLS["stamp"])
+            n += 1
+    return n
+
+
+_STOP_NAME = {"추출예고": "추출 예고", "개요예고": "개요 예고"}
 
 
 #: 이 프로세스가 돈 추출의 사실 — `{(doc_id, 렌즈 또는 ""): {부름, 재사용}}` (B112 ① — 문서 끝 맞춤표의 청크 줄 ·
@@ -564,6 +593,19 @@ def _say(notice, info):
                        f"(LLM 0 · 그래프 쓰기 0)")
 
 
+def _context(env, outline):
+    """추출 입력의 문서 칸 — 맥락 줄(B102 ①) · 개요의 제목 개체(B115 ③) · 구조 사슬(B119 ②) · 호출 보존의 열쇠가 같은 재료를 본다."""
+    from core.build import outline as OL
+    _DOC.clear()
+    _DOC.update(extract_ctx.doc_info(env))
+    _HEADS.clear()
+    _HEADS.update({c.get("source_locator"): OL.heading_candidates(outline, c.get("source_locator"))
+                   for c in env.get("chunks", [])})
+    _CHAIN.clear()
+    _CHAIN.update({c.get("source_locator"): OL.structure_chain(outline, c.get("source_locator"))
+                   for c in env.get("chunks", [])})
+
+
 def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice=None, outline=None):
     """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
 
@@ -574,50 +616,45 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
 
     **보이게 한다**(B97): 부르기 전에 예고(`추출예고` — 청크 · ref · 이어서 제외 → LLM ≤ m) ·
     청크마다 메타(`추출청크`) · 끝(`추출끝`)을 `notice`로 낸다 — 화면은 진입점이 그린다.
-    **청크 단위 이어 쓰기**(B97 ③): 끝난 청크는 부분 파일에 줄로 덧붙이고, 다시 돌면 조건이
-    같을 때 끝난 청크를 부르지 않는다 · 다 끝나면 체크포인트로 올리고 부분 파일을 지운다.
+    **호출 단위 재사용**(B135 ① — 실호출): 호출마다 보낸 입력의 해시로 답을 담고(`extract_calls` — 끝난 호출은 바로) 다시 돌면
+    입력이 같은 호출은 부르지 않고 그 답을 쓴다 — 청크 하나의 경로만 바뀌면 그 청크만 부른다 · 끊긴 뒤 다시 쳐도 끝난 호출은
+    부르지 않는다(이어 쓰기를 흡수했다) · 문서 단위 체크포인트는 「추출 완료」 표시 · 구축이 읽는 후보 · 조건이 같으면 그대로 쓰는
+    빠른 길(그때 씨앗을 담는다 — B135 ②)이다.
     """
     doc_id = env["doc_id"]
     _carry(env, lens, cfg, outline, notice)          # 그 종류 등록 검수의 리허설 산출 — 조건이 같으면 운영 자리로 (B116 ②)
+    _context(env, outline)
+    _calls_begin(doc_id, lens, cfg)                  # 호출 보존 — 실호출만 (B135 ①)
     ok, why = reuse_check(env, lens, cfg, outline)   # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥) · 개요 (B115 ③)
     if ok:
-        _say(notice, {"단계": "추출재사용", "렌즈": lens, "자리": checkpoint_path(doc_id, lens)})
         ck = json.loads(checkpoint_path(doc_id, lens).read_text(encoding="utf-8"))
+        gateway.prompt_drift("extract", ck)          # 판 그대로 · 문면만 바뀜 — 한 줄 (B135 ③)
+        seeded = _seed(env, ck, cfg, chunk_ids_by_locator, skip)
+        _say(notice, {"단계": "추출재사용", "렌즈": lens, "자리": checkpoint_path(doc_id, lens), "씨앗": seeded})
         RUN[(doc_id, lens or "")] = {"부름": 0, "재사용": sum(1 for c in ck.get("candidates") or []
                                                          if not c.get("lens_skipped"))}
         return ck, False
     if has_checkpoint(doc_id, lens):
-        # **조용히 옛 판을 쓰지 않는다** — 조건이 깨졌으면 버리고 다시 뽑는다.
+        # **조용히 옛 판을 쓰지 않는다** — 조건이 깨졌으면 버리고 다시 뽑는다(같은 입력의 호출은 보존이 다시 쓴다 · B135 ①).
         _LOG.info("extract: %s 체크포인트 폐기 — %s", doc_id, why)
         checkpoint_path(doc_id, lens).unlink()
 
     hints = _load_hints(doc_id)
-    _DOC.clear()
-    _DOC.update(extract_ctx.doc_info(env))         # 맥락 줄의 문서·문서 좌표 칸 (B102 ①)
-    from core.build import outline as OL
-    _OUTLINE["ol"] = outline
-    _HEADS.clear()
-    _HEADS.update({c.get("source_locator"): OL.heading_candidates(outline, c.get("source_locator"))
-                   for c in env.get("chunks", [])})
-    _CHAIN.clear()
-    _CHAIN.update({c.get("source_locator"): OL.structure_chain(outline, c.get("source_locator"))
-                   for c in env.get("chunks", [])})
-    done = _partial_load(env, lens, cfg)
-    rows, ref_skipped, lens_skipped, resumed = _todo(env, chunk_ids_by_locator, skip, done)
+    rows, ref_skipped, lens_skipped = _todo(env, chunk_ids_by_locator, skip)
     from core.build import extract_unit as EU
     units = EU.group(rows)                              # 추출 단위 — 슬라이드 · 쪽은 한 호출 (B125 ①)
-    first = {u[0][0]: u for u in units}
-    m = len(units)
     pages, cap_why = EU.capture(env) if (units and not gateway.use_mock()) else ({}, None)
     cap = None
     if env.get("capture") and units and not gateway.use_mock():
         has = sum(1 for u in units if pages.get(EU.page_of(u)) is not None)
         cap = {"있음": has, "없음": len(units) - has, **({"사유": cap_why} if cap_why else {})}
-    if resumed:
-        _say(notice, {"단계": "추출이어서", "렌즈": lens, "끝난": resumed, "남은": m})
+    again = {n for n, u in enumerate(units) if _unit_hit(u, cfg, hints, pages)}     # 다시 쓸 단위 (B135 ①)
+    first = {u[0][0]: (n, u) for n, u in enumerate(units)}
+    m = len(units) - len(again)
+    reused = sum(len(units[n]) for n in again)
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows),
                   "다시": (why if why and why != "체크포인트 없음" else None),
-                  "ref": ref_skipped, "거름": lens_skipped, "재사용": resumed, "호출": m, "캡처": cap,
+                  "ref": ref_skipped, "거름": lens_skipped, "재사용": reused, "호출": m, "캡처": cap,
                   "개체없음": sum(1 for r in rows if r[0] == "none"),
                   "목차": _toc(rows, env), "자리목록": [extract_ctx.place(c) for _k, _cid, c in rows]})
     u0 = gateway.usage_total()
@@ -629,20 +666,19 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
             candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [],
                                "lens_skipped": True})
             continue
-        if kind == "done":
-            candidates.append(done[cid])
-            continue
         if kind == "none":                              # 개체 없음(덱 구조) — 부르지 않는다 · 체크포인트에는 남는다
             candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [], "no_entities": True})
             continue
         if cid not in first:
             continue                                    # 단위의 나머지 청크 — 첫 청크의 호출이 함께 받았다
+        n, unit = first[cid]
+        if n in again:                                  # 같은 입력 — 남은 답을 다시 쓴다(LLM 0 · 청크마다 줄 0)
+            candidates += _call_unit(doc_id, unit, cfg, vocab, hints, pages)
+            continue
         i += 1
         t0 = gateway.usage_total()
-        entries = _call_unit(doc_id, first[cid], cfg, vocab, hints, pages)
-        for en in entries:
-            candidates.append(en)
-            _partial_append(env, lens, en, cfg)
+        entries = _call_unit(doc_id, unit, cfg, vocab, hints, pages)
+        candidates += entries
         entry = {"entities": [e for en in entries for e in en.get("entities") or []],
                  "relations": [r for en in entries for r in en.get("relations") or []],
                  "attach": [a for en in entries for a in en.get("attach") or []],
@@ -657,7 +693,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
                                  lens, extract_ctx.place(c)))
     called = [x for x in candidates if not x.get("lens_skipped")]
     failed = sum(1 for x in called if x.get("failed"))
-    RUN[(doc_id, lens or "")] = {"부름": i, "재사용": resumed}
+    RUN[(doc_id, lens or "")] = {"부름": i, "재사용": reused}
     _by = {cid: c for _k, cid, c in rows}
     _say(notice, {"단계": "추출끝", "렌즈": lens, "청크": len(called), "실패": failed,
                   "개체": sum(len(x.get("entities") or []) for x in called),
@@ -669,18 +705,18 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
                   "실패목록": [(extract_ctx.chunk_label(_by.get(x["chunk_id"]) or {}), x["failed"])
                                for x in called if x.get("failed")]})
 
-    # **전건 실패면 체크포인트도 부분 파일도 남기지 않는다** — 「파일 존재 = 추출 완료」(P-1)
-    # · 실패만 든 부분 파일을 이어 쓰면 재시도가 영영 막힌다.
+    # **전건 실패면 체크포인트를 남기지 않는다** — 「파일 존재 = 추출 완료」(P-1) · 실패한 호출은 보존에 없다(다시 부른다).
     if candidates and failed == len(candidates):
         store.append_defect(
             f"{doc_id}: 전 청크 추출 실패 {failed}건 — 체크포인트를 쓰지 않는다")
-        partial_path(doc_id, lens).unlink(missing_ok=True)
         _say(notice, {"단계": "추출저장", "렌즈": lens, "자리": checkpoint_path(doc_id, lens), "있음": False,
                       "전실패": True})
         return {"doc_id": doc_id, "stage": "extract", "candidates": candidates,
                 "all_failed": True}, False
     out = _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, outline)
-    partial_path(doc_id, lens).unlink(missing_ok=True)       # 올린 뒤에 지운다 — 순서가 계약이다
+    if _CALLS:                                               # 끝까지 돌았다 — 이 실행이 쓰지 않은 답을 지운다 (B135 ①)
+        from core.build import extract_calls as EC
+        EC.prune(doc_id, lens, _CALLS["used"])
     _say(notice, {"단계": "추출저장", "렌즈": lens, "자리": checkpoint_path(doc_id, lens),
                   "있음": saved(doc_id, lens)})
     return out, True
@@ -716,14 +752,14 @@ def saved(doc_id, lens=None):
 
 
 def checkpoint_files(doc_id):
-    """그 문서의 추출 체크포인트 — 기본 + 렌즈판(부분 파일은 뺀다). 성공 줄이 자리를 말한다(B112 ⑦)."""
+    """그 문서의 추출 체크포인트 — 기본 + 렌즈판(호출 보존 `calls/`는 하위 폴더라 걸리지 않는다). 성공 줄이 자리를 말한다(B112 ⑦)."""
     if not EXTRACT_DIR.exists():
         return []
     return sorted(EXTRACT_DIR.glob(f"{doc_id}.json")) + sorted(EXTRACT_DIR.glob(f"{doc_id}@*.json"))
 
 
 def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, outline=None):
-    """최종 체크포인트 — 이 파일이 생기면 추출 완료다(부분 파일은 그 뒤에 지운다)."""
+    """최종 체크포인트 — 이 파일이 생기면 추출 완료다."""
     from core.build import outline as OL
     from core.state import config_scope
     out = {
@@ -733,6 +769,7 @@ def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, out
         # **재사용 조건의 둘째 축**(B78 1b) — 봉투가 바뀌면 청크가 바뀐다.
         "doc_hash": doc_hash(env),
         "prompt_version": prompt_version(),
+        "prompt": "extract", "prompt_text": gateway.prompt_text_hash("extract"),     # 지시문 이름 · 문면 해시 — 기록만 (B135 ③)
         "config_version": cfg.get("config_version") or cfg.get("skeleton_version"),   # 기록만(B120 ③)
         "config_extract": config_scope.extract_key(cfg),     # 재사용의 층 config 판 — 추출 갈래 칸의 해시(B120 ③)
         "layer": cfg["layer"],

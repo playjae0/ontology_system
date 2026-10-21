@@ -314,8 +314,19 @@ _fake = lambda doc_id, slides, doc_coord=None: _asked.append(doc_id) or {"slides
 _fake.key = lambda: _k1
 _old = {"labels": PD.labels_hash(_slides, None), "key": {**_k1, "mode": "edit"}, "answer": {"slides": {}, "overview": "옛 개요"}}
 _got = PD.hook(_fake, "B132K", kept=_old, made={}, tally={})(_slides)
-show("ⓚ 개요 · 덱은 `3.3_outline.md`의 판(구조 지시문과 따로) · 덱 열쇠는 구조 방식과 무관 · 옛 보존분(열쇠에 방식 칸)이 그대로 재사용(LLM 0)",
-     prompt_version("outline") != prompt_version(ST.PROMPT) and _k1 == _k2 and "mode" not in _k1 and not _asked and _got is not None,
-     f"개요 판 {prompt_version('outline')} · 구조 판 {prompt_version(ST.PROMPT)} · 덱 다시 물음 {len(_asked)}")
+# 기대 변경(B135 ④ — 덱은 제 지시문 `2.4_deck.md` · 판은 개요의 판을 이어받는다 · 개요 지시문에 고침 · 덱 절 0)
+from core.build import outline as _OLK                    # noqa: E402
+_oh = [{"id": 1, "text": "노칭", "parent": None, "depth": 1, "path": "노칭"}]
+_onow = _OLK._now_key(_oh, _cf["process"])
+_op = TMP / "b134_outline.json"                           # B134 판 개요 체크포인트 — 문면 칸 없음
+_op.write_text(json.dumps({**_onow, "headings": [], "of": {}}, ensure_ascii=False), encoding="utf-8")
+_otxt = gateway.prompt("outline")
+show("ⓚ 개요 · 덱은 구조 지시문과 판이 따로 · 덱 열쇠는 구조 방식과 무관 · 옛 덱 보존분(열쇠에 방식 칸)이 그대로 재사용(LLM 0) / B135 ⓓ 덱은 "
+     "제 지시문(판은 개요 판 그대로) · B134 판 개요 체크포인트도 재사용 · 개요 지시문에 고침 · 덱 절 0",
+     prompt_version("outline") != prompt_version(ST.PROMPT) and _k1 == _k2 and "mode" not in _k1 and not _asked and _got is not None
+     and DK.PROMPT == "deck" and gateway.prompt_path("deck") != gateway.prompt_path("outline")
+     and prompt_version("deck") == prompt_version("outline") and _OLK._reuse("B135K", None, _onow, _op)[0] is not None
+     and "고침 입력" not in _otxt and "덱 입력" not in _otxt and '"mode": "edit"' not in _otxt,
+     f"개요 판 {prompt_version('outline')} · 덱 판 {prompt_version('deck')} · 구조 판 {prompt_version(ST.PROMPT)} · 덱 다시 물음 {len(_asked)}")
 
 done()

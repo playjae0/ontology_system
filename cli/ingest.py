@@ -587,12 +587,13 @@ def _kept_lines(doc, sel, stage):
     did = sel["doc_id"]
     if not EX.EXTRACT_DIR.exists():
         return
+    from core.build import extract_calls as EC
     done = EX.checkpoint_files(did)
-    part = sorted(EX.EXTRACT_DIR.glob(f"{did}*.partial.jsonl"))
+    part = EC.count(did)
     if done:
         print("   추출 체크포인트는 남았다 — 같은 명령이면 재사용(LLM 0) · 구축만 다시 간다")
     elif part:
-        print("   추출 부분 파일이 남았다 — 같은 명령이면 끝난 청크는 부르지 않고 이어서 한다")
+        print(f"   추출 호출 보존 {part:,}이 남았다 — 같은 명령이면 끝난 호출은 부르지 않고 그 답을 다시 쓴다")
     elif (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind") == "prose":
         print("   추출 체크포인트 없음 — 같은 명령은 추출부터 다시 한다")
     else:

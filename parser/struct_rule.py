@@ -306,6 +306,8 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
               and (hit.get("doc_hints") or []) == doc_hints and hit.get("ladder") == now):   # 사다리 · 문서 힌트가 바뀌면 다시
             tally["재사용"] = tally.get("재사용", 0) + 1
             st = hit
+            if callable(getattr(ask, "drift", None)):
+                ask.drift(hit)                                # 판 그대로 · 문면만 바뀜이면 한 줄 (B135 ③)
         else:
             st = ask(doc_id, frame, labs, ctx=ctx) if getattr(ask, "takes_ctx", False) else ask(doc_id, frame, labs)
             if st is not None:

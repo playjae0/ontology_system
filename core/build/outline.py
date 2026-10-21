@@ -180,7 +180,9 @@ def load_any(doc_id):
 
 def _write(doc_id, lens, cfg, now, heads, of, source):
     from core import paths
-    out = {"doc_id": doc_id, "stage": "outline", **now, "layer": cfg.get("layer"),
+    out = {"doc_id": doc_id, "stage": "outline", **now, "prompt": PROMPT,
+           "prompt_text": gateway.prompt_text_hash(PROMPT),          # 지시문 이름 · 문면 해시 — 기록만 (B135 ③)
+           "layer": cfg.get("layer"),
            "source": source, "headings": heads, "of": of}
     if lens:
         out["lens"] = lens
@@ -307,6 +309,7 @@ def run(env, cfg, *, lens=None, notice=None):
     _carry(env, lens, now, notice)                 # 그 종류 등록 검수의 리허설 산출 — 조건이 같으면 운영 자리로 (B116 ②)
     ck, why = _reuse(doc_id, lens, now)
     if ck is not None:
+        gateway.prompt_drift(PROMPT, ck)               # 판 그대로 · 문면만 바뀜이면 한 줄 (B135 ③)
         _say(notice, {"단계": "개요재사용", "렌즈": lens, "자리": checkpoint_path(doc_id, lens),
                       **_counts(ck["headings"])})
         return ck

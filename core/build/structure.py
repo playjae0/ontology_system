@@ -152,7 +152,6 @@ def structurer(layers=None):
     def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None):
         from core.build import ladder as LA
         from core.build import structure_edit as SE
-        from core.build.extract import prompt_version
         from parser import ladder as PL
         if hints is None:
             hints = doc_state(doc_id)["hints"] or None    # 힌트는 문서 규칙 — 그 문서의 모든 시트에 (B130 ④)
@@ -163,7 +162,7 @@ def structurer(layers=None):
         built = PL.apply(labs, ladder, d["counts"])
         st = {"headings": built["headings"], "toc0": built["headings"], "needs": built["needs"], "ladder": ladder,
               "ladder_source": d["source"],
-              "mode": mode or MODE, "calls": 0, "source": "code", "prompt_version": prompt_version(PROMPT),
+              "mode": mode or MODE, "calls": 0, "source": "code", **gateway.prompt_stamp(PROMPT),   # 판 · 문면 해시 (B135 ③)
               **({"hints": list(hints)} if hints else {})}
         if (mode or MODE) == "rules":
             return {**st, "doc_hints": list(hints or [])}
@@ -200,6 +199,7 @@ def structurer(layers=None):
                 "rules": LA.rule_counts(labs, heads, mine), "doc_hints": list(hints or []),
                 **({"failed": failed} if failed else {}), **({"shape_dropped": shaped} if shaped else {})}
     fn.key = lambda: key(cfgs)
+    fn.drift = lambda rec: gateway.prompt_drift(PROMPT, rec)     # 보존분을 다시 쓸 때 — 판 그대로 · 문면만 바뀜 한 줄 (B135 ③)
     fn.takes_ctx = True
     fn.doc_state = doc_state
     fn.prepare = prepare

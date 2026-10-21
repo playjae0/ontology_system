@@ -570,7 +570,8 @@ def main(argv):
         print(f"\n{'=' * 66}\n결과: {sel.HEAD_LINE} — 고른 {len(names)}종 {'통과' if ok else '실패'} · 마감은 전체 doctor\n{'=' * 66}")
         return 0 if ok else 1
     only_env = "--env" in argv
-    regress = any(a in argv for a in REGRESS_OPTS) and not only_env
+    # 회귀 쪽 인자 하나 · 또는 고르려다 전체로 떨어진 `--changed`(고르기는 회귀 쪽이다 — B135에서 찾은 B133 결함)
+    regress = (any(a in argv for a in REGRESS_OPTS) or sel_head is not None) and not only_env
     quick = not regress                     # 기본 doctor는 점검만 — 회귀는 `--regress`(B133 ③ · 옛 `--quick`은 기본과 같다)
 
     print("=" * 66)
