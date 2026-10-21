@@ -425,6 +425,9 @@ _book.setdefault("채택", {})["B106 탐침 표기"] = {"canonical": X, "layer":
                                                "hits": 0, "출처": "시험 탐침"}
 _book.setdefault("목록밖", {})
 store.write(store.COORD_LEARNED, _book)
+# 기대 변경(B136 ③ — 보존 일곱: 질의 벡터 저장도 탐침 하나 — 남길 자리 전부가 비어 있지 않아야 「바이트 그대로」를 잰다)
+from core.query import vectors as _VEC                   # noqa: E402
+_VEC.vectors("chunks", {"_B136_PROBE": "B136 탐침 벡터"})
 S1, N_OPS = _snap(), len(oplog.read())
 _T0, _PROBE = _tree(), {}
 

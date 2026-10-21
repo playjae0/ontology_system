@@ -417,7 +417,7 @@ _clean_gone = not _P.vectors(V.DB).exists()
 V.begin()
 _HY.warm()
 _before = V.count()
-init.init(fresh_=True)                                    # 기본 fresh — 벡터는 남는다(보존 일곱)
+init.init(fresh_=True)                                    # 시험 대상: 기본 fresh — 벡터는 남는다(보존 일곱)
 _kept_fresh = V.count()
 for _ly in ("process", "quality"):
     bootstrap(_ly, echo=False)
