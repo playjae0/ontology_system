@@ -4,11 +4,14 @@
     apply(labs, ladder, doc_counts)  이름표 → `{headings, needs}` — 모든 시트에 같은 함수(엑셀 산문 · Word)
     stats(frames)                    문서 전체 서명 통계(시트마다 서명별 수 · 이어짐 · 다시 시작 자리 · 깊이별 서명) — 사다리 입력
     code(frames)                     코드 사다리(다시 시작 증거 — `parser/toc.code_ladder` · `rules` 방식 · 폴백)
-    title_row(labs)                  첫 행이 시트 제목이면 그 행(B137 ②)
+    title_row(labs)                  첫 행이 시트 제목 · 문서 제목이면 그 행(B137 ② · B138 ④)
+    same_name(text, names)           첫 줄 글이 이름(시트 이름 · 파일 이름 · 문서 속성 제목)과 같은가 — 시트 제목 · 문서 제목의 한 함수
 
 **초안**(코드 — LLM이 최종 · B137 ①): 번호 줄은 이어짐(같은 꼴의 열린 목록에서 바로 다음 서수) → 그 목록의 형제 · 첫 서수(그 꼴의 첫
 번호) → **바로 위 제목 줄의 자식**(같은 꼴이 두 깊이에 선다) · 둘 다 아니면 사다리의 단 순서. 사다리 단 순위(`forbid`)는 근거 하나다 —
-어긋나면 판단 필요. **첫 행 = 시트 제목**(번호를 붙인 채 · 뗀 채 · 공백 · 마침표 무시)이면 그 줄은 목차 맨 위에 서고 단을 다투지 않는다.
+어긋나면 판단 필요. **첫 행 = 시트 제목**(번호를 붙인 채 · 뗀 채 · 공백 · 마침표 무시)이면 그 줄은 목차 맨 위에 서고 단을 다투지 않는다 ·
+Word는 어댑터가 같은 함수로 견줘 「문서 제목」을 단 줄(B138 ④). **개요 수준**(Word — 표시 `개요n`)이 있는 줄은 번호보다 먼저 개요의 단에
+선다(작성자가 문서 구조로 매긴 깊이 — B138 ⑤).
 
 사다리 꼴: `{"levels": [{"sigs": [서명…], "role", "category"}], "unnumbered": [{"when": [조건…], "level", "role", "category"}],
 "lists": [{"shape", "parent_shape", "role", "category"}], "by"}` — 위에서 아래로 단 · 역할은 닫힌 셋(대상 · 묶음 · 주제) · 번호 없는 제목의
@@ -16,9 +19,12 @@
 
 **판단 필요**(코드가 정하지 않고 표시 — `NEED_KINDS`): ⓐ사다리에 없는데 제목 같은 서명 ⓑ부모보다 들여쓰기가 얕다 ⓒ이어짐이 끊김 ·
 다시 시작의 부모가 둘 이상(첫 서수가 단 순서와 어긋남 · 사다리 단을 건너뜀) ⓓ빈 행 뒤 짧은 번호 없는 줄 ⓔ서식이 형제 · 앞뒤 본문과
-다르다(보조 단서 — 서식만으로 깊이를 정하지 않는다) ⓕ붙은 다단 번호(`3.2출하검수` — 값일 수도). 답은 시트 확인(LLM · 사람)의 몫이다.
+다르다(보조 단서 — 서식만으로 깊이를 정하지 않는다 · Word는 문단 스타일) ⓕ붙은 다단 번호(`3.2출하검수` — 값일 수도) ⓖ손 목차(`…… 3` 꼴
+줄이 문서 앞에 몰림) ⓗ개요 수준과 번호가 어긋남 ⓘ풀지 못한 자동 번호(Word — 번호 글 없음). 답은 시트 확인(LLM · 사람)의 몫이다.
 """
 from __future__ import annotations
+
+import re
 
 from parser import sig as SG
 from parser import toc
@@ -26,11 +32,18 @@ from parser import toc
 #: 번호 없는 제목 규칙의 닫힌 조건 — `빈 줄 뒤` · `짧은 줄` · `굵게` · `병합` · `깊이 n` · `시작 열 X`
 WHEN = ("빈 줄 뒤", "짧은 줄", "굵게", "병합")
 NEED_KINDS = {"ⓐ": "사다리에 없는 서명", "ⓑ": "들여쓰기 어긋남", "ⓒ": "이어짐 · 다시 시작", "ⓓ": "빈 행 뒤 짧은 줄",
-              "ⓔ": "서식 다름", "ⓕ": "붙은 다단 번호"}
+              "ⓔ": "서식 다름", "ⓕ": "붙은 다단 번호", "ⓖ": "손 목차", "ⓗ": "개요 수준과 어긋남", "ⓘ": "풀지 못한 자동 번호"}
 #: 판단 필요의 한 마디(화면 · md의 목차 줄 — B137 ⑥)
-TAGS = {"ⓐ": "사다리 밖?", "ⓑ": "깊이 어긋남", "ⓓ": "빈 행 뒤 제목?", "ⓔ": "서식 다름", "ⓕ": "붙은 번호?"}
-#: 서식 표시 — 이름표 `marks` 가운데 서식(같은 문서 안 비교의 보조 단서 · B137 ③)
-FORMAT = ("굵게", "크기", "채움", "글자색")
+TAGS = {"ⓐ": "사다리 밖?", "ⓑ": "깊이 어긋남", "ⓓ": "빈 행 뒤 제목?", "ⓔ": "서식 다름", "ⓕ": "붙은 번호?", "ⓖ": "손 목차?",
+        "ⓗ": "개요 어긋남", "ⓘ": "번호 꼴?"}
+#: 서식 표시 — 이름표 `marks` 가운데 서식(같은 문서 안 비교의 보조 단서 · B137 ③ · Word는 문단 스타일 이름 — B138 ②)
+FORMAT = ("굵게", "크기", "채움", "글자색", "스타일")
+#: 문서 제목 표시(Word 어댑터가 `same_name`으로 단다 — B138 ④) · 풀지 못한 자동 번호 표시의 머리(B138 ①)
+DOC_TITLE = "문서 제목"
+NUM_UNKNOWN = "자동 번호 · 수준"
+#: 손 목차 줄 — 점 · 줄임표 이음 뒤 쪽 번호(`개요 …… 3`) · 문서 앞(앞 절반)에 셋 이상 몰리면 판단 필요 ⓖ(B138 ③)
+LEADER = re.compile(r"(\.{3,}|…+|·{3,}|‥+|-{3,})\s*\d{1,4}\s*$")
+LEADER_MIN = 3
 #: 시트 제목 줄의 열쇠(서명이 아니다 — 단을 다투지 않는다 · B137 ②)
 TITLE = "@제목"
 _OUTLINE = "개요"                               # 어댑터의 구조 단(Word 개요 수준 — 서명 없는 draft 제목)
@@ -45,17 +58,25 @@ def _flat(t):
     return "".join(ch for ch in str(t or "") if not ch.isspace() and ch not in ".|")
 
 
-def title_row(labs):
-    """**첫 행 = 시트 제목**(B137 ②) — 시트의 첫 글 줄이 시트 이름과 같으면 그 행 · 아니면 None. 번호를 붙인 채 · 뗀 채 둘 다 견준다
-    (양쪽 모두) · 공백 · 마침표 · 셀 이음 차이는 무시한다 · 시트 이름이 없는 프레임(Word 본문)은 None."""
-    frame = next((x for x in labs if x["row"] == 0), None)
-    rows = [x for x in labs if x["row"] != 0]
-    if frame is None or not rows:
-        return None
-
+def same_name(text, names):
+    """첫 줄 글이 이름 가운데 하나와 같은가 — 번호를 붙인 채 · 뗀 채 둘 다 견준다(양쪽 모두) · 공백 · 마침표 · 셀 이음 차이는 무시한다
+    (B137 ② 시트 제목 · B138 ④ 문서 제목의 한 함수)."""
     def forms(t):
         return {f for f in (_flat(t), _flat(SG.strip_head(t))) if f}
-    return rows[0]["row"] if forms(rows[0]["text"]) & forms(frame["text"]) else None
+    mine = forms(text)
+    return any(mine & forms(n) for n in names or () if n)
+
+
+def title_row(labs):
+    """**첫 행 = 시트 제목**(B137 ②) — 시트의 첫 글 줄이 시트 이름과 같으면 그 행 · 시트 이름이 없는 프레임(Word 본문)은 첫 글 줄에
+    「문서 제목」 표시가 있으면 그 행(어댑터가 파일 이름 · 문서 속성 제목과 `same_name`으로 견줬다 — B138 ④) · 아니면 None."""
+    frame = next((x for x in labs if x["row"] == 0), None)
+    rows = [x for x in labs if x["row"] != 0]
+    if not rows:
+        return None
+    if frame is None:
+        return rows[0]["row"] if DOC_TITLE in (rows[0].get("marks") or []) else None
+    return rows[0]["row"] if same_name(rows[0]["text"], [frame["text"]]) else None
 
 
 def _body(labs):
@@ -164,12 +185,12 @@ def apply(labs, ladder, counts=None):
         rank[TITLE] = -1000                                 # 맨 위 — 어느 단도 그 위로 닫지 않는다
     for x in rows:
         s, v = x.get("sig"), x.get("ord")
-        if s and s in rank and _short(x):
-            hits.append((x["row"], s, v))
-        elif not s and x.get("draft") and any(str(m).startswith(_OUTLINE) for m in x.get("marks") or []):
-            key = f"{_OUTLINE}{x['draft']}"                 # Word 개요 수준만(작성자가 매긴 구조) — 굵게 초안은 단 신호가 아니다
+        if x.get("draft") and _outline(x):
+            key = f"{_OUTLINE}{x['draft']}"                 # Word 개요 수준 먼저(작성자가 매긴 구조 · 번호보다 강하다 — B138 ⑤)
             rank.setdefault(key, -100 + int(x["draft"]))
             hits.append((x["row"], key, None))
+        elif s and s in rank and _short(x):
+            hits.append((x["row"], s, v))
         elif not s:
             hit = next((i for i, r in enumerate(rules) if _match(r, x)), None)
             if hit is not None:
@@ -240,7 +261,8 @@ def needs(labs, heads, rank, counts, clash=(), loose=()):
             prev = v if v is not None else prev
     for h in heads:
         p = head.get(h.get("parent"))
-        if by_row[h["row"]].get("ord") == 1 and p and p["sig"] != TITLE and isinstance(rank.get(h["sig"]), int) \
+        if by_row[h["row"]].get("ord") == 1 and p and not str(p["sig"]).startswith((TITLE, _OUTLINE)) \
+                and isinstance(rank.get(h["sig"]), int) \
                 and isinstance(rank.get(p["sig"]), int) and rank[h["sig"]] - rank[p["sig"]] >= 2:
             add(h["row"], "ⓒ", f"다시 시작 — 사다리 단을 건너뛰었다(부모 후보가 둘 이상 · 지금 부모 {p['row']}행)", "다시 시작?")
     t = title_row(labs)
@@ -252,12 +274,45 @@ def needs(labs, heads, rank, counts, clash=(), loose=()):
         cand, _v = SG.attached(x.get("text"))
         if cand and not x.get("sig") and _short(x) and x["row"] not in head:
             add(x["row"], "ⓕ", f"붙은 다단 번호 '{SG.show(cand)}' — 번호인지 값(1.5배 · 2024.10월)인지")
+    _word_needs(rows, add)
     for x in rows:
         if not x.get("sig") and x.get("gap") and _short(x) and x["row"] not in head:
             add(x["row"], "ⓓ", "빈 행 뒤 짧은 번호 없는 줄")
     _format_needs(rows, heads, by_row, head, add)
     order = {x["row"]: i for i, x in enumerate(labs)}
     return sorted(out.values(), key=lambda n: order.get(n["row"], 0))
+
+
+def _outline(x):
+    return any(str(m).startswith(_OUTLINE) for m in x.get("marks") or [])
+
+
+def _word_needs(rows, add):
+    """ⓖ 손 목차 · ⓗ 개요 수준과 어긋남 · ⓘ 풀지 못한 자동 번호(B138 — 재료가 있는 문서에서만 선다 · 엑셀 산문과 같은 함수)."""
+    lead = [i for i, x in enumerate(rows) if _short(x) and LEADER.search(str(x.get("text") or ""))]
+    if len(lead) >= LEADER_MIN and lead[-1] < len(rows) / 2:
+        for i in lead:
+            add(rows[i]["row"], "ⓖ", "목차 줄 같다(이음 · 쪽 번호가 문서 앞에 몰림) — 문서 앞 목차면 본문")
+    outl = [x for x in rows if _outline(x)]
+    if outl:
+        by_lv = {}
+        for x in outl:
+            if x.get("sig"):
+                by_lv.setdefault(x.get("draft"), []).append(x)
+        used = {x["sig"] for x in outl if x.get("sig")}
+        for lv, xs in by_lv.items():
+            sigs = [x["sig"] for x in xs]
+            ref = max(sigs, key=lambda k: (sigs.count(k), -sigs.index(k)))
+            for x in xs:
+                if x["sig"] != ref:
+                    add(x["row"], "ⓗ", f"개요 수준 {lv} 제목들의 번호 꼴('{SG.show(ref)}')과 다르다('{SG.show(x['sig'])}')")
+        for x in rows:
+            if x.get("sig") in used and not _outline(x) and _short(x):
+                add(x["row"], "ⓗ", f"제목(개요 수준)과 같은 번호 꼴 '{SG.show(x['sig'])}'인데 개요 수준이 없다")
+    for x in rows:
+        m = next((str(m) for m in x.get("marks") or [] if str(m).startswith(NUM_UNKNOWN)), None)
+        if m:
+            add(x["row"], "ⓘ", f"자동 번호를 풀지 못했다({m[len(NUM_UNKNOWN):].strip()}) — 번호 글 없이 실었다")
 
 
 def _format_needs(rows, heads, by_row, head, add):

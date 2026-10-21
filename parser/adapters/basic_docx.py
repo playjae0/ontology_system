@@ -6,19 +6,26 @@
 탄다(`parser.struct_rule.frame_chunks` → `struct_map.split` · 레벨 선택 · 글자 상한 · 문서
 구조 훅). 분할 규칙을 새로 만들지 않는다(두 벌 금지).
 
-**제목 판정** — 문단마다 하나를 고른다:
+**제목 근거의 순서**(초안 — 문서 구조가 엑셀과 같은 함수로 최종을 정한다 · B138 ⑤):
 
 | 신호 | 레벨 | 근거 |
 |---|---|---|
-| 개요 수준(`w:outlineLvl` — 문단 또는 스타일 상속) | 수준 + 1 | 작성자가 **문서 구조로** 매긴 깊이다 — 스타일 이름이 아니라 수준을 본다(로캘마다 id가 다르다) |
-| 번호 패턴 군(B87 ①) | 첫 등장 순서 | **개요 수준이 하나도 없는 문서에서만**(D-169 ③) — 개요로 짠 문서의 손 번호는 목록이다 |
+| 개요 수준(`w:outlineLvl` — 문단 또는 스타일 상속) | 수준 + 1 | 작성자가 **문서 구조로** 매긴 깊이다 — 가장 강하다 · 스타일 이름이 아니라 수준을 본다(로캘마다 id가 다르다) |
+| 자동 번호(되살린 보이는 번호 · 문단 또는 스타일 상속) · 손 번호 | 목차(이어짐 · 첫 서수) | **개요 수준이 하나도 없는 문서에서만**(D-169 ③) — 번호 목록을 일괄로 본문 처리하지 않는다(사다리 · 첫 서수의 재료 · 목록인지는 판단 필요) · 목록 수준(`ilvl`)은 깊이 재료 |
 | 굵게(문단 전체) | 1 | 개요·번호가 없는 문서의 마지막 신호 |
-| 번호 목록(`w:numPr`) · 표 행 | — | **제목이 아니다** — 목록과 표는 그 절의 본문이다 |
+| 문단 스타일 · 들여쓰기(`w:ind`) | — | 보조 표시(서식 비교 · 단 신호가 아니다) |
+| 표 행 | — | **제목이 아니다** — 표는 그 절의 본문이다 |
+
+**문서 제목**: 첫 글 문단이 파일 이름 · 문서 속성 제목과 같으면(`parser/ladder.same_name` — 시트 제목과 같은 함수) 표시 「문서 제목」 —
+목차 맨 위에 서고 단을 다투지 않는다(B138 ④). 목차 필드의 문단은 리더가 이미 거른다(B138 ③).
 
 **어댑터는 LLM 0회다**(문서 구조 훅은 코어가 주입한다 — B119 ①).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+from parser import ladder as PL
 from parser import struct_map, struct_rule, toc
 
 ADAPTER = {
@@ -47,21 +54,21 @@ def _lines(raw):
 
 
 def _rows(raw, lines):
+    """초안 판정 — 개요 수준 → 번호(되살린 자동 번호 · 손 번호 — 개요 없는 문서만) → 굵게(B138 ⑤ — 번호 목록을 일괄로 빼지 않는다)."""
     paras = {p["index"]: p for p in raw.get("paragraphs") or []}
     has_outline = any(p.get("outline") is not None for p in paras.values())
-    cand = [(i, t) for i, t in lines
-            if paras[i].get("kind") == "para" and not paras[i].get("numbered")]
+    cand = [(i, t) for i, t in lines if paras[i].get("kind") == "para"]
     nums = {} if has_outline else toc.number_levels(cand)
     rows = []
     for i, _t in lines:
         p = paras[i]
         lv, sig = 0, None
-        if p.get("kind") == "para" and not p.get("numbered"):
+        if p.get("kind") == "para":
             if p.get("outline") is not None:
                 lv, sig = p["outline"] + 1, SIG_OUTLINE
             elif i in nums:
                 lv, sig = nums[i][0], SIG_NUM
-            elif not has_outline and p.get("bold") \
+            elif not has_outline and p.get("bold") and not p.get("numbered") \
                     and len(p.get("text") or "") <= struct_map.HEADING_MAX_CHARS:
                 lv, sig = 1, SIG_BOLD
         rows.append({"row": i, "heading": bool(lv), "level": lv, "signal": sig})
@@ -73,16 +80,38 @@ def _locator(a, b):
     return base if a == b else f"{base}-P{b}"
 
 
+def _title(raw):
+    """첫 글 문단이 문서 제목인가 — 파일 이름 · 문서 속성 제목과 `PL.same_name`(B138 ④ — 시트 제목과 같은 함수) · 그 문단 번호 또는 None."""
+    first = next((p for p in raw.get("paragraphs") or [] if p.get("kind") == "para" and p.get("text")), None)
+    names = [Path(str(raw.get("path") or "")).stem, raw.get("title")]
+    return first["index"] if first and PL.same_name(first["text"], names) else None
+
+
 def _marks(raw):
-    """줄 표시(이름표의 재료 · B119 ①) — `{문단: [굵게 · 개요n · 번호 목록 · 표 행]}`."""
+    """줄 표시(이름표의 재료 · B119 ① · B138 ①②④) — `{문단: [굵게 · 개요n · 번호 목록 · 자동 번호 · 자동 번호 · 수준 n · 스타일 <이름> ·
+    들여씀 · 문서 제목 · 표 행]}` · 문서에서 흔한 문단 스타일은 싣지 않는다(엑셀의 흔한 크기와 같다)."""
+    paras = raw.get("paragraphs") or []
+    names = [p.get("style") for p in paras if p.get("kind") == "para"]
+    usual = max(set(names), key=names.count) if names else None
+    title = _title(raw)
     out = {}
-    for p in raw.get("paragraphs") or []:
+    for p in paras:
         mk = [m for m, on in (("굵게", p.get("bold")),
                               (f"개요{(p.get('outline') or 0) + 1}", p.get("outline") is not None),
-                              ("번호 목록", p.get("numbered")), ("표 행", p.get("kind") == "table_row")) if on]
+                              ("번호 목록", p.get("numbered")), ("자동 번호", p.get("num")),
+                              (f"{PL.NUM_UNKNOWN} {(p.get('num_level') or 0) + 1}", p.get("num_unknown")),
+                              (f"스타일 {p.get('style')}", p.get("style") and p.get("style") != usual),
+                              ("들여씀", p.get("indent")), (PL.DOC_TITLE, p["index"] == title),
+                              ("표 행", p.get("kind") == "table_row")) if on]
         if mk:
             out[p["index"]] = mk
     return out
+
+
+def _mats(raw):
+    """깊이 재료 — 목록 수준(`ilvl` — 작성자가 매긴 깊이 · 엑셀의 시작 열 · 앞 공백 자리 · B138 ②) · 목록이 아닌 문단은 맨 위 단과 같은 0."""
+    return {p["index"]: {"ci": 0, "indent": (p.get("num_level") or 0) if p.get("numbered") else 0, "spaces": 0}
+            for p in raw.get("paragraphs") or []}
 
 
 def extract(raw, struct_map_fn=None, structure_fn=None) -> list[dict]:
@@ -92,7 +121,7 @@ def extract(raw, struct_map_fn=None, structure_fn=None) -> list[dict]:
     out = []
     if lines:
         rows = _rows(raw, lines)
-        labs = struct_rule.labels(FRAME, lines, rows, _marks(raw), False)
+        labs = struct_rule.labels(FRAME, lines, rows, _marks(raw), False, _mats(raw))
         if structure_fn is not None and callable(getattr(structure_fn, "prepare", None)):
             structure_fn.prepare({FRAME: labs})             # 문서 사다리 — 본문 하나 (B132 ③ · 엑셀과 같은 길)
         out = struct_rule.frame_chunks(

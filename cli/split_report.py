@@ -234,6 +234,12 @@ def ladder_usage(st):
     return f"사다리 — {src} · {spent(u)}"
 
 
+def toc_field_line(st):
+    """「목차 필드 — n줄 거름(목차 재료 · 청크에서 뺐다)」(B138 ③ — 리더가 거른 목차 필드의 결과 줄) · 없으면 None."""
+    n = (st or {}).get("목차 필드")
+    return f"목차 필드 — {n}줄 거름(목차 재료 · 청크에서 뺐다)" if n else None
+
+
 def total_usage(st):
     """문서 끝 구조 합계 — 사다리 + 시트 확인의 호출 · 입출력 · 초안과 다른 줄(B137 ⑦)."""
     frames = ((st or {}).get("프레임") or {}).values()
@@ -252,7 +258,8 @@ def write_md(doc_id, report, env):
     frames = st.get("프레임") or {}
     if not frames:
         return None
-    lines = [f"# 구조 확인 — {doc_id}", "", f"- {ladder_usage(st)}", f"- {total_usage(st)}", ""]
+    lines = [f"# 구조 확인 — {doc_id}", "", f"- {ladder_usage(st)}", f"- {total_usage(st)}"] + (
+        [f"- {toc_field_line(st)}"] if toc_field_line(st) else []) + [""]
     for frame, fr in frames.items():
         blk = sheet_block(frame, fr, chunks_of(env, frame))
         # 들여쓰기를 지킨다(나무 — B130 ③): 앞 공백 두 칸이 한 단

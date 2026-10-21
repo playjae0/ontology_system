@@ -4,7 +4,7 @@
     signature("1.기본사양")  → ("9.", 1)     signature("(가) 범위")  → ("(가)", 1)     signature("4)검수방법") → ("9)", 4)
     signature("1-1 공급부")  → ("9-9", 1)    signature("■ 개요")    → ("■", None)     signature("b. 지정")    → ("a.", 2)
 
-**정해 둔 꼴 목록이 없다** — 숫자 → `9` · 한글 가~하 → `가` · 영문 대문자 → `A` · 소문자 → `a` · 원숫자 → `①` · 괄호 숫자 → `⑴` ·
+**정해 둔 꼴 목록이 없다** — 숫자 → `9` · 한글 가~하 → `가` · 초성 ㄱ~ㅎ → `ㄱ`(B138 — Word 자동 번호 꼴 `chosung`) · 영문 대문자 → `A` · 소문자 → `a` · 원숫자 → `①` · 괄호 숫자 → `⑴` ·
 로마 숫자 → `Ⅰ` · 장절(`제1장`) → `제9장` · 기호는 그대로. 띄어쓰기 · 줄 길이와 무관하다(번호 뒤 공백이 없어도 · 60자가 넘어도 같은
 서명 — 60자 문턱은 「자르는 자리인가」에만 쓴다 · `struct_map.HEADING_MAX_CHARS`). 서수는 마지막 마디의 값(`1.2` → 2)이고 기호 · 글머리표는
 서수가 없다(None).
@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 HANGUL = "가나다라마바사아자차카타파하"
+CHOSUNG = "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ"
 ROMAN = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ"
 _ROMAN_ASCII = {"I": 1, "V": 5, "X": 10}
 #: 글머리 기호 — 서명은 기호 그대로 · 서수 없음
@@ -63,6 +64,8 @@ def _atom(t, i):
             return "Ⅰ", _roman_value(t[i:j]), j
     if c in HANGUL:
         return "가", HANGUL.index(c) + 1, i + 1
+    if c in CHOSUNG:
+        return "ㄱ", CHOSUNG.index(c) + 1, i + 1
     if "A" <= c <= "Z":
         return "A", ord(c) - 64, i + 1
     if "a" <= c <= "z":
@@ -100,7 +103,7 @@ def _head(text):
         if got is None:
             return None
         piece, val, j = got
-        alpha = piece in ("가", "A", "a")
+        alpha = piece in ("가", "ㄱ", "A", "a")
         nxt = t[j] if j < len(t) else ""
         if alpha and not (nxt in _DELIM or (sig[:1] in _OPEN and nxt in _CLOSE)):
             return None                                 # `가나다` · `Abc` — 글자 하나 뒤에는 구분 글자가 있어야 번호다

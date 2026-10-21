@@ -447,4 +447,114 @@ show("B137 ⓕ 토큰 — 사다리 · 시트 확인 사용량이 갈려 멈춤�
      f"사다리 {_s7['사다리_사용']} · 시트 {_fa['usage']} · 다른 줄 {_fa['changed']} / {_fb['changed']}")
 ST.confirmed_path().unlink(missing_ok=True)
 
+# ────────────────────────────────────────────────────────────── B138 — Word 목차 재료 (판단은 B137 함수 그대로)
+print("\n■ B138 — Word: 자동 번호 되살리기 · 목록 수준 · 스타일 표시 · 목차 필드 거름 · 문서 제목 · 개요 먼저")
+import zipfile                                            # noqa: E402
+from parser.adapters import basic_docx as BD              # noqa: E402
+_WNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def _wp(text="", style=None, num=None, runs=None):
+    """문단 하나 — `num`은 `(numId, ilvl)` · `runs`는 날 런 XML(필드 문자 · 명령)."""
+    ppr = (f'<w:pStyle w:val="{style}"/>' if style else "") + (
+        f'<w:numPr><w:ilvl w:val="{num[1]}"/><w:numId w:val="{num[0]}"/></w:numPr>' if num else "")
+    return f"<w:p>{f'<w:pPr>{ppr}</w:pPr>' if ppr else ''}{runs or ''}{f'<w:r><w:t>{text}</w:t></w:r>' if text else ''}</w:p>"
+
+
+def _lvl(il, fmt, txt):
+    return f'<w:lvl w:ilvl="{il}"><w:start w:val="1"/><w:numFmt w:val="{fmt}"/><w:lvlText w:val="{txt}"/></w:lvl>'
+
+
+def _wdoc(path, body, styles, numbering, title=None):
+    """표준 라이브러리로 docx(창작 표본 — python-docx 0) · 번호 정의 · 스타일 · 문서 속성 제목."""
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/'
+                   'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+                   'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/></Types>')
+        z.writestr("word/document.xml", f'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="{_WNS}"><w:body>{body}'
+                   '</w:body></w:document>')
+        z.writestr("word/styles.xml", f'<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="{_WNS}">{styles}</w:styles>')
+        z.writestr("word/numbering.xml", f'<?xml version="1.0" encoding="UTF-8"?><w:numbering xmlns:w="{_WNS}">{numbering}'
+                   '</w:numbering>')
+        if title:
+            z.writestr("docProps/core.xml", '<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://'
+                       'schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/'
+                       f'1.1/"><dc:title>{title}</dc:title></cp:coreProperties>')
+    return path
+
+
+_STY = ('<w:style w:type="paragraph" w:default="1" w:styleId="a"><w:name w:val="바탕글"/></w:style>'
+        '<w:style w:type="paragraph" w:styleId="L2"><w:name w:val="목록 2"/><w:basedOn w:val="a"/>'
+        '<w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="H1"><w:name w:val="제목 1"/><w:pPr><w:outlineLvl w:val="0"/>'
+        '<w:numPr><w:numId w:val="3"/></w:numPr></w:pPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="H2"><w:name w:val="제목 2"/><w:pPr><w:outlineLvl w:val="1"/>'
+        '<w:numPr><w:ilvl w:val="1"/><w:numId w:val="3"/></w:numPr></w:pPr></w:style>')
+_NUM = ('<w:abstractNum w:abstractNumId="1">' + _lvl(0, "decimal", "%1.") + _lvl(1, "ganada", "%2.") + _lvl(2, "decimal", "%3)")
+        + '</w:abstractNum><w:abstractNum w:abstractNumId="2">' + _lvl(0, "koreanCounting", "%1.") + '</w:abstractNum>'
+        '<w:abstractNum w:abstractNumId="3">' + _lvl(0, "decimal", "%1.") + _lvl(1, "decimal", "%1.%2.") + '</w:abstractNum>'
+        '<w:abstractNum w:abstractNumId="4">' + _lvl(0, "decimal", "%1)") + '</w:abstractNum>'
+        + "".join(f'<w:num w:numId="{n}"><w:abstractNumId w:val="{n}"/></w:num>' for n in (1, 2, 3, 4)))
+_FLD = ('<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>')
+# A — 개요 없음 · 자동 번호(문단 직접 1 · 스타일 상속 2 — 목록 2) · 문서 앞 목차 필드 둘 · 첫 문단 = 파일 이름(공백 다름) · 모르는 꼴 하나
+_xa = _wdoc(TMP / "이송사양서.docx", "".join([
+    _wp("이송 사양서"), _wp("1. 이송 물류 …… 2", runs=_FLD), _wp("가. 기본사양 …… 2"),
+    _wp(runs='<w:r><w:fldChar w:fldCharType="end"/></w:r>'),
+    _wp("이송 물류", num=(1, 0)), _wp("기본사양", style="L2"), _wp("속도는 60ppm이다."), _wp("검수", num=(1, 2)),
+    _wp("검수는 매일 한다."), _wp("지정사양", style="L2"), _wp("폭은 20mm다."), _wp("적재", num=(1, 0)), _wp("기본사양", style="L2"),
+    _wp("장력은 30N이다."), _wp("특수 항목", num=(2, 0)), _wp("특수 본문이다.")]), _STY, _NUM)
+# B — 개요 수준(제목 1 · 2 — 스타일에 건 번호 「1.」 · 「1.1.」) · 개요 없는 손 번호 「3. 결론」 · 본문 번호 목록 「1)」 / C — 손 목차 셋(문서 앞)
+_xc = _wdoc(TMP / "B138C.docx", "".join([_wp("목차"), _wp("1. 개요 …… 1"), _wp("2. 사양 …… 2"), _wp("3. 결론 …… 3")]
+                                        + [_wp(f"본문 {i}째 줄이다.") for i in range(1, 7)]), _STY, _NUM)
+_xb = _wdoc(TMP / "B138B.docx", "".join([
+    _wp("개요", style="H1"), _wp("개요 본문이다."), _wp("범위", style="H2"), _wp("범위 본문이다."), _wp("사양", style="H1"),
+    _wp("속도", num=(4, 0)), _wp("속도는 30이다."), _wp("폭", num=(4, 0)), _wp("3. 결론"), _wp("결론 본문이다.")]), _STY, _NUM)
+_ra = read(str(_xa))
+_pa = {p["index"]: p for p in _ra["paragraphs"]}
+_txt = [p["text"] for p in _ra["paragraphs"]]
+show("B138 ⓐ 자동 번호 — 「1. › 가. › 1)」(문단 직접 · 스타일 상속)이 보이는 번호 글로 · 아래 단은 위 단이 바뀌면 다시(「2. 적재」 뒤 「가.」) · "
+     "모르는 꼴은 「자동 번호 · 수준 1」 + 판단 필요",
+     [t for t in _txt if t.endswith(("물류", "기본사양", "검수", "지정사양", "적재"))]
+     == ["1. 이송 물류", "가. 기본사양", "1) 검수", "나. 지정사양", "2. 적재", "가. 기본사양"]
+     and any(p.get("num_unknown") and p["text"] == "특수 항목" for p in _pa.values())
+     and "자동 번호 · 수준 1" in (BD._marks(_ra).get(next(i for i, p in _pa.items() if p["text"] == "특수 항목")) or []),
+     str(_txt[:9]))
+struct_map.invalidate("B138A")
+_wa = pipeline.parse(BD, "B138A", str(_xa), closed_list=[], structure=ST.structurer(["process"]))
+_fa8 = _wa.report["structure"]["프레임"][BD.FRAME]
+_ix = {p["text"]: p["index"] for p in _ra["paragraphs"]}
+_par8 = {h["row"]: h.get("parent") for h in _fa8["headings"]}
+_want8 = {_ix["이송 사양서"]: None, _ix["1. 이송 물류"]: _ix["이송 사양서"], _ix["2. 적재"]: _ix["이송 사양서"],
+          _ix["1) 검수"]: [p["index"] for p in _ra["paragraphs"] if p["text"] == "가. 기본사양"][0]}
+struct_map.invalidate("B138B")
+_wb8 = pipeline.parse(BD, "B138B", str(_xb), closed_list=[], structure=ST.structurer(["process"]))
+_rb = read(str(_xb))
+_ib = {p["text"]: p["index"] for p in _rb["paragraphs"]}
+_fb8 = _wb8.report["structure"]["프레임"][BD.FRAME]
+_hb8 = {h["row"]: h.get("parent") for h in _fb8["headings"]}
+_nb8 = {n["row"]: n for n in _fb8["needs"]}
+show("B138 ⓑ 목차 — 개요 없는 자동 번호 문서가 B137 함수로 맞는 초안(LLM 0) · 개요 문서는 개요대로 서고(1. 개요 › 1.1. 범위 · 2. 사양) "
+     "어긋난 번호 줄(손 번호 「3. 결론」)만 판단 필요",
+     all(_par8.get(r, "없음") == p for r, p in _want8.items()) and _hb8.get(_ib["1.1. 범위"]) == _ib["1. 개요"]
+     and _hb8.get(_ib["1. 개요"]) is None and _hb8.get(_ib["2. 사양"]) is None
+     and set(_nb8) == {_ib["3. 결론"]} and "개요 수준" in _nb8[_ib["3. 결론"]]["why"],
+     f"A {[(_par8.get(r), p) for r, p in _want8.items()]} · B 판단 필요 {[(r, n['kind'], n['why'][:40]) for r, n in sorted(_nb8.items())]}")
+_ch8 = " ".join(c["text"] for c in _wa.envelope["chunks"])
+_md8 = split_report.write_md("B138A", _wa.report, _wa.envelope).read_text(encoding="utf-8")
+struct_map.invalidate("B138C")
+_fc8 = pipeline.parse(BD, "B138C", str(_xc), closed_list=[], structure=ST.structurer(["process"])).report["structure"]["프레임"][BD.FRAME]
+_lc = {x["row"] for x in _fc8["labels"] if "……" in str(x.get("text"))}
+show("B138 ⓒ 목차 필드 — 문서 앞 목차 필드의 줄이 목차 · 청크에 0 · 구조 확인(md)에 「목차 필드 — 2줄 거름」 · 필드가 아닌 손 목차 줄은 "
+     "판단 필요(「손 목차?」)",
+     _ra.get("toc_field_lines") == 2 and "…… 2" not in _ch8 and not any("……" in str(x.get("text")) for x in _fa8["labels"])
+     and "목차 필드 — 2줄 거름" in _md8 and len(_lc) == 3 and {n["row"] for n in _fc8["needs"] if n["kind"] == "ⓖ"} == _lc,
+     f"거름 {_ra.get('toc_field_lines')} · 청크에 남은 목차 줄 {'…… 2' in _ch8} · 손 목차 {[(n['row'], n['kind']) for n in _fc8['needs']]}")
+_one = lambda t, title=None, name="이송사양서.docx": {"path": name, "title": title, "paragraphs": [  # noqa: E731
+    {"index": 1, "kind": "para", "text": t}]}
+show("B138 ⓓ 문서 제목 — 파일 이름과 같은 첫 문단(공백 다름 · 번호 붙임)과 문서 속성 제목과 같은 첫 문단이 맨 위 · 다른 글이면 없음",
+     _par8.get(_ix["이송 사양서"], "없음") is None and [h["by"] for h in _fa8["headings"] if h["row"] == _ix["이송 사양서"]] == ["시트 제목"]
+     and BD._title(_one("1. 이송사양서")) == 1 and BD._title(_one("이송 설비 사양", "이송 설비 사양", "x.docx")) == 1
+     and BD._title(_one("개요")) is None, f"문서 제목 줄 {[h['row'] for h in _fa8['headings'] if h.get('by') == '시트 제목']}")
+
 done()

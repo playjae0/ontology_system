@@ -142,8 +142,10 @@ _d2 = read(str(DOC2))
 _rows2 = DX._rows(_d2, DX._lines(_d2))
 _t2 = {p["index"]: p["text"] for p in _d2["paragraphs"]}
 _heads2 = [(_t2[r["row"]], r["level"]) for r in _rows2 if r["heading"]]
-show("② 스타일 없이 번호만 있는 문서는 B87 번호 패턴으로 선다 · 번호 목록(`w:numPr`)은 제목 아님",
-     _heads2 == [("1. 개요", 1), ("1.1 적용 범위", 2), ("2. 사양", 1)], str(_heads2))
+# 기대 변경(B138 ⑤ — 번호 목록을 일괄로 본문 처리하지 않는다: 번호 꼴이 목차의 재료 · 목록인지는 판단 필요(풀지 못한 번호 정의는 ⓘ))
+show("② 스타일 없이 번호만 있는 문서는 번호 꼴 목차로 선다 · 번호 목록(`w:numPr`)도 목차 재료 · 풀지 못한 번호 정의는 「자동 번호 · 수준 1」",
+     _heads2 == [("1. 개요", 1), ("1.1 적용 범위", 2), ("2. 사양", 1), ("1. 속도는 분당 30 미터 이상", 2)]
+     and any("자동 번호 · 수준 1" in mk for mk in DX._marks(_d2).values()), str(_heads2))
 _p1 = DX.extract(_d1)
 _txt = "\n".join(p.get("text") or "" for p in _p1)
 show("② 표는 행마다 한 줄 `셀 | 셀 | …`로 그 절의 본문에 든다",
