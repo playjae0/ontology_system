@@ -72,16 +72,17 @@ from parser.reader import MissingDependency              # noqa: E402
 OK, FAIL, SKIP = "성공", "실패", "미선택"
 
 
-def _norm_path(p):
+def _norm_path(p, recorded=False):
     """경로 비교용 정규화 — 상대/절대·`./`·심볼릭 링크 차이로 헛경고를 내지 않는다.
 
-    대장의 표기는 **상태 루트 기준 상대**일 수 있다(B79 ②) — 되돌려서 비교한다.
-    그러지 않으면 이사 한 번에 「다른 경로에서 인입된 적 있다」가 전건 뜬다.
-    """
+    **기록의 표기만**(`recorded`) 상태 루트 기준 상대일 수 있다(B79 ②) — 그것만 되돌린다(그러지 않으면 이사 한 번에
+    「다른 경로에서 인입된 적 있다」가 전건 뜬다). **지금 친 경로는 작업 폴더 기준**이다(B141 ② — 같은 파일을 상대 경로로
+    다시 넣으면 상태 루트 아래로 잘못 되돌려 멈췄다)."""
+    q = paths.from_home(p) if recorded else Path(p)
     try:
-        return str(paths.from_home(p).resolve())
+        return str(q.resolve())
     except OSError:
-        return str(paths.from_home(p).absolute())
+        return str(q.absolute())
 
 
 def doc_id_of(path):
@@ -289,7 +290,7 @@ def _ingest_file_select(doc, sel, row, step, revise=False, dry_run=False):
     # **다른 원본 경로의 같은 doc_id는 상태 거부다**(B102 ⑧) — 구판은 경고만 하고 개정으로
     # 돌아, 다른 폴더의 같은 이름 문서가 앞 문서의 그래프·대장을 조용히 덮었다. 개정이면
     # 사람이 `--revise`로 말한다(폴더에 주면 그 폴더 전부 — 폴더를 옮긴 경우 · `--dry-run`은 말만 한다).
-    if prev and prev.get("source_path") and _norm_path(prev["source_path"]) != _norm_path(doc):
+    if prev and prev.get("source_path") and _norm_path(prev["source_path"], recorded=True) != _norm_path(doc):
         if dry_run and not revise:                # 선택만 보는 자리 — 쓰기 0이라 멈추지 않고 말만 한다
             print(f"   ⚠ 같은 doc_id가 다른 원본 경로에서 인입된 적 있다({prev['source_path']}) — "
                   f"실제 인입이면 멈춘다(개정이면 --revise)")

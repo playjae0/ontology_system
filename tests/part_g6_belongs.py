@@ -483,12 +483,27 @@ g1 = sorted(n["id"] for _l, n in World().nodes())
 src2 = (store.read(store.DOC_REGISTRY, {}).get("B102SAME") or {}).get("source_path")
 o3 = _run("ingest-file", str(fb), "--doc-type", DT, "--allow-mock", "--sheets", "1-2:prose", "--revise")
 src3 = (store.read(store.DOC_REGISTRY, {}).get("B102SAME") or {}).get("source_path")
+# B141 ② — 상태 폴더 안의 파일(기록은 상태 루트 기준 상대)을 작업 폴더 기준 상대 경로로 다시 넣는다
+_fr = _P.ensure(_P.raw("B141REL.xlsx"))
+_wbr = Workbook()
+_wbr.active.title = "이송 유닛"
+for _i, _v in enumerate(["1. 구동부", "모터는 리니어 모터를 쓴다."], 1):
+    _wbr.active.cell(row=_i, column=1, value=_v)
+_wbr.save(_fr)
+_made.append("B141REL")
+o4 = _run("ingest-file", str(_fr), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose")
+src4 = (store.read(store.DOC_REGISTRY, {}).get("B141REL") or {}).get("source_path")
+o5 = _run("ingest-file", __import__("os").path.relpath(_fr, ROOT), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose")
 _unregister(DT)
 show("ⓗ 같은 doc_id · 다른 원본 경로 — 상태 거부 + 다음 줄(이름 변경 · --revise) · 그래프·등록 그대로 / --revise면 개정",
      "[상태] 같은 doc_id(B102SAME)" in o2 and "--revise" in o2 and Path(str(src2)).parent.name == "a"
      and g1 == g0 and "개정 — " in o3 and Path(str(src3)).parent.name == "b",
      " / ".join([l.strip() for l in o2.splitlines() if "[상태]" in l or "--revise" in l][:3])
      + f" · 등록 경로 {src2} → {src3}")
+show("B141 ⓑ 경로 — 같은 파일을 작업 폴더 기준 상대 경로로 다시 넣으면 멈추지 않는다(기록은 상태 루트 기준 표기 · 절대 경로와 같은 결과) · "
+     "같은 이름의 다른 파일은 위 ⓗ처럼 멈춘다",
+     "[성공]" in o4 and not Path(str(src4)).is_absolute() and "[상태]" not in o5 and "[성공]" in o5,
+     f"기록 {src4} · 다시 넣은 줄 {[ln.strip()[:80] for ln in o5.splitlines() if '[성공]' in ln or '[상태]' in ln][:1]}")
 
 # ────────────────────────────────────────────────────────────── B140 사람 후보 · 끝점 조회 · 좌표 상속
 print("\n■ B140 이름 없는 대상 — [5/8] 예고 · 더하기 · 같은 것 · 다시 · 끝점 조회 · 좌표 상속 · 막기 · 비대화형")
