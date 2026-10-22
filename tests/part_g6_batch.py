@@ -113,7 +113,8 @@ _keepenv = {k: os.environ.get(k) for k in ("ONTO_HOME", "USE_MOCK")}
 try:
     os.environ.update(ONTO_HOME=str(_moved), USE_MOCK="0")
     _P.reset()
-    _same79 = (IG._norm_path(_reg79["source_path"])
+    # 기대 변경(B141 ② — 기록의 표기만 상태 루트 기준으로 되돌린다(`recorded`) · 지금 친 경로는 작업 폴더 기준)
+    _same79 = (IG._norm_path(_reg79["source_path"], recorded=True)
                == IG._norm_path(_moved / "raw" / "사내" / "가지" / "CP01.xlsx"))
 finally:
     for _k, _v in _keepenv.items():
