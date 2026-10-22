@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """칸 0.3 — doctor의 **운영 상태 폴더 화면** — 읽기만 (B111 ① · `doctor.py`에서 나눴다 — §7 파일 상한).
 
-    python -m cli.doctor_view <head|config|transition>      (doctor가 셸 환경 그대로 부른다)
+    python -m cli.doctor_view <head|config|transition|write>      (doctor가 셸 환경 그대로 부른다)
 
 **왜 따로 도나.** doctor 본체는 격리 환경(mock · 기본 mock 루트 — `gateway.isolate`)에서 돌고 그 아래 실행이
 전부 그 환경을 물려받는다. 운영 루트에 대해 하는 일 — 머리 상태 줄 · 층 이름 · 정합 · 설정 파일 줄 · 사내 전환
@@ -268,8 +268,41 @@ def _head_view():
     integrity_line()
 
 
+# ================================================================ 쓰기 탐침 (B141 ③)
+def write_probe(where):
+    """쓸 수 있나 — `where`(아직 없으면 가장 가까운 있는 위 폴더)에 임시 파일 하나를 만들고 바로 지운다(이름은 실행마다 ·
+    남기지 않는다) · `(가능, 이유)`."""
+    import os
+    import tempfile
+    d = Path(where)
+    while not d.exists() and d != d.parent:
+        d = d.parent
+    try:
+        fd, probe = tempfile.mkstemp(dir=str(d), prefix=".doctor_write_probe_")
+        os.close(fd)
+        os.unlink(probe)
+        return True, None
+    except OSError as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
+def write_lines(home=None, code=None):
+    """**쓰기 탐침 둘** — 재는 자리 그대로 말한다: 운영 상태 폴더(`$ONTO_HOME` — 못 쓰면 [필요] · 인입이 돌지 않는다) ·
+    코드 폴더(레포 뿌리 — 못 쓰면 [주의] · 인입은 돈다 · 막히는 것은 직렬 회귀와 파이썬 캐시뿐)."""
+    from core import paths                                                # noqa: E402
+    home, code = Path(home or paths.home()), Path(code or ROOT)
+    ok, why = write_probe(home)
+    line(OK if ok else NG, f"상태 폴더 쓰기 {'가능' if ok else '불가'} — {home}",
+         "인입 산출 · 등록 · 진실 · 작업을 쓸 수 있다" if ok else
+         f"{why} — 인입이 돌지 않는다(상태 폴더 자리 ONTO_HOME 또는 그 폴더 권한)")
+    ok, why = write_probe(code)
+    line(OK if ok else WARN, f"코드 폴더 쓰기 {'가능' if ok else '불가'} — {code}",
+         "직렬 회귀(--regress --serial — 코드 폴더 안 state_mock) · 파이썬 캐시를 쓸 수 있다" if ok else
+         f"{why} — 인입은 돈다 · 막히는 것: python doctor.py --regress --serial(코드 폴더 안 state_mock) · 파이썬 캐시(__pycache__)")
+
+
 #: 운영 루트를 읽는 화면 — doctor 본체의 `operating()`이 이름으로 부른다.
-VIEWS = {"head": _head_view, "config": config_lines, "transition": transition}
+VIEWS = {"head": _head_view, "config": config_lines, "transition": transition, "write": write_lines}
 
 
 def main(argv):

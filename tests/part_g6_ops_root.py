@@ -22,6 +22,8 @@ quality): 표 CP01(cp · process) · PFMEA01(pfmea · quality) · 산문 RFQ01(p
      계획 파일에서 이어 간다 · 문서 대장 k건은 그 도중의 것」 · `--yes` 뒤 그래프 · 사전 · 큐가 기준과 같다 · 「끝」 →
      다음 계획은 문서 대장에서(이어 간다는 줄 0)
 
+  B141 ⓒ doctor 쓰기 탐침 둘 — 상태 폴더(못 쓰면 [필요]) · 코드 폴더(못 쓰면 [주의] — 인입은 돈다) · 탐침 파일 0
+
 지문의 「명령 로그 제외」(ⓑ ⓒ ⓓ의 멈춤): 사람이 친 운영 명령은 그 실행의 로그를 남긴다(화면 = 로그 · B99 ③) — 지문은
 `work/logs/`를 뺀 전체이고, 로그 쪽은 바뀐 것이 그 명령의 로그 파일뿐인지 따로 본다. ⓐ의 doctor는 로그까지 0이다.
 """
@@ -427,6 +429,39 @@ for _how in (_kill9, _preflight_after):
          and "지난 재구축이 끝나지 않았다" not in _p2 and "문서 3(다시 넣을 것 3" in _plan_line(_p2),
          f"계획 「{_plan_line(_p0)}」 · 계획 파일 {_st} · 기준과 다른 것 {_diff(_s, S_REF) or '없음'}")
     _say(_p0, "지난 재구축이")
+
+# ────────────────────────────────────────────────────────────── B141 ③ doctor 쓰기 탐침 둘
+print("\n■ B141 ③ doctor 쓰기 탐침 — 상태 폴더 · 코드 폴더(재는 자리 그대로)")
+from cli import doctor_view as _DV                   # noqa: E402
+_wd = Path(tempfile.mkdtemp(prefix="b141_w_"))
+_ok = _wd / "ok"
+_ok.mkdir()
+_blk = _wd / "ro"
+_blk.mkdir()
+os.chmod(_blk, 0o500)                               # 권한을 뺀 폴더
+if os.geteuid() == 0:                               # 루트 셸은 권한 비트가 막지 못한다 — 디렉터리가 아닌 자리로 대신 잰다
+    os.chmod(_blk, 0o700)
+    _blk.rmdir()
+    _blk.write_text("디렉터리가 아니다", encoding="utf-8")
+
+
+def _wl(home, code):
+    f0, buf = _DV.fails(), io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _DV.write_lines(home=home, code=code)
+    return buf.getvalue(), _DV.fails() - f0
+
+
+_t1, _n1 = _wl(_ok, _blk)
+_t2, _n2 = _wl(_blk, _ok)
+show("B141 ⓒ doctor 쓰기 탐침 — 상태 폴더 · 코드 폴더가 각각 재는 자리를 말한다 · 코드 폴더 불가는 [필요]가 아니다(인입은 돈다 · "
+     "막히는 것) · 상태 폴더 불가는 [필요] · 탐침 파일을 남기지 않는다",
+     f"상태 폴더 쓰기 가능 — {_ok}" in _t1 and f"코드 폴더 쓰기 불가 — {_blk}" in _t1 and "인입은 돈다" in _t1 and _n1 == 0
+     and f"상태 폴더 쓰기 불가 — {_blk}" in _t2 and "인입이 돌지 않는다" in _t2 and _n2 == 1 and not list(_ok.iterdir()),
+     f"[필요] 수 {_n1} · {_n2} · " + " / ".join(ln.strip() for ln in (_t1 + _t2).splitlines() if "쓰기" in ln)[:300])
+if _blk.is_dir():
+    os.chmod(_blk, 0o700)
+shutil.rmtree(_wd, ignore_errors=True)
 
 _restore()
 _unregister(DT)                                      # ②등록 · ⓪원본은 클린이 지우지 않는다 — 다음 스위트의 바닥에 남기지 않는다

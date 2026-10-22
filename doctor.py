@@ -276,13 +276,7 @@ def check_env(probe=False):
              " · ".join([f"다름 {x}" for x in _chg] + [f"기록 없음 {x}" for x in _add]
                         + [f"사라짐 {x}" for x in _gone])[:400])
 
-    try:
-        fd, probe = tempfile.mkstemp(dir=str(ROOT), prefix=".doctor_write_probe_")   # 이름은 실행마다(B131 ①)
-        os.close(fd)
-        os.unlink(probe)
-        line(OK, "레포 쓰기 권한", "상태 폴더(등록·진실·작업)를 만들 수 있다")
-    except OSError as e:
-        line(NG, "레포 쓰기 권한 없음", f"{e} — 실행 산출물을 만들 수 없다")
+    operating("write")          # 쓰기 탐침 둘 — 운영 상태 폴더 · 코드 폴더(재는 자리 그대로 · B141 ③)
 
     return V.fails() == 0
 
