@@ -121,9 +121,23 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
     from core.state.bootstrap import coord_layer
     coord_in = coord_layer() in (layers or [coord_layer()])
     try:
-        return _gate_loop(res, doc_id, reparse, ask, layers, coord_in)
+        res, go = _gate_loop(res, doc_id, reparse, ask, layers, coord_in)
     finally:
         ST.SUSPENDED.difference_update({k for k in ST.SUSPENDED if k[0] == doc_id})   # 비켜 둔 확정은 고리 밖으로 새지 않는다
+    if res.ok and go:
+        md_of(doc_id, res)
+    return res, go
+
+
+def md_of(doc_id, res):
+    """**구조 확인 md를 쓰는 한 자리**(B141 ① — `--step`이 아니어도 · 배치 · 재구축도 이 길) — 구조가 선 산문이면
+    `export/split_<doc_id>.md`(같은 함수 `split_report.write_md`)와 그 자리 한 줄 · 구조가 없으면(표 · 고정 규칙) 쓰지 않는다."""
+    from cli import split_report as SR
+    from core import paths
+    md = SR.write_md(doc_id, res.report, res.envelope)
+    if md:
+        _screen.say(f"   구조 확인 md — {paths.show(md)}(목차 · 청크 경계 — 문서마다)", "aux")
+    return md
 
 
 def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):

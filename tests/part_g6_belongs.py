@@ -686,10 +686,20 @@ show("B140 ⓓ 같은 것 — 별칭이 등재되고(별칭 대장 출처 사람
      and "이미 같은 자리의 다른 노드에 붙어 있다" in str(_clash),
      f"대장 출처 {_sb} · 붙은 곳 {_rS.get('attached')} · 거부 {str(_clash)[:60]}")
 _g0 = sorted(_edges_of(_cy[0]["id"])) if _cy else []
+_mdA = _P.export("split_B140A.md")
+_mdA.unlink(missing_ok=True)
 _oe = _go(_pA, _cA)
+_md1 = _mdA.read_text(encoding="utf-8") if _mdA.exists() else ""
 _g1 = sorted(_edges_of(_live_named("노칭::실린더")[0]["id"])) if _live_named("노칭::실린더") else []
 _run("rebuild", "--yes")                                   # 재구축 = 기본 fresh(재구축 안) → 문서 대장 차례로 재인입
 _g2 = sorted(_edges_of(_live_named("노칭::실린더")[0]["id"])) if _live_named("노칭::실린더") else []
+_md2 = _mdA.exists()
+_oc = _run("ingest-file", str(_FXR.RAW / "CP01.xlsx"), "--doc-type", "cp", "--allow-mock")
+show("B141 ⓐ md — --step 없이 넣은 산문 문서도 구조 확인 md(구조 확인 화면과 같은 함수 · 그 자리 한 줄)가 선다 · 재구축(기본 fresh) 뒤에도 "
+     "있다 · 표 문서는 생기지 않는다",
+     _md1.startswith("# 구조 확인 — B140A") and "계층 사다리" in _md1 and "구조 확인 md — " in _oe and _md2
+     and "[성공]" in _oc and not _P.export("split_CP01.md").exists(),
+     f"md {len(_md1)}자 · 재구축 뒤 {_md2} · 표 {_P.export('split_CP01.md').exists()}")
 HC.drop("B140A", 1)
 _go(_pA, _cA)
 _hA = [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN]

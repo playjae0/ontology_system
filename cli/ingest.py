@@ -421,11 +421,12 @@ SPLIT_ONLY = "구조까지"
 
 
 def _split_only(res, sel, row):
-    """**구조까지만**(B126 ④) — md를 쓰고 멈춘다(추출 0 · 그래프 쓰기 0 · 확정한 시트는 기록 — 다음 인입이 재생)."""
-    from cli import split_report as SR
+    """**구조까지만**(B126 ④) — 멈춘다(추출 0 · 그래프 쓰기 0 · 확정한 시트는 기록 — 다음 인입이 재생) · md는 구조 단계가 이미
+    썼다(`structure_screen.md_of` — B141 ① · 그 줄이 위에 있다)."""
     from core import paths
-    md = SR.write_md(sel["doc_id"], res.report, res.envelope)
-    print(f"   구조까지 — 추출 0 · 그래프 쓰기 0 · md {paths.show(md) if md else '없음(구조 없음 — 고정 규칙 그대로)'}")
+    md = paths.export(f"split_{sel['doc_id']}.md")
+    md = md if md.exists() else None
+    print(f"   구조까지 — 추출 0 · 그래프 쓰기 0 · md {'위 줄' if md else '없음(구조 없음 — 고정 규칙 그대로)'}")
     row.update(status=SPLIT_ONLY, reason="--split-only — 구조 확인까지", split_md=str(md) if md else None)
     return row
 
