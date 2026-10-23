@@ -130,19 +130,19 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
 
 
 def md_of(doc_id, res):
-    """**구조 확인 md를 쓰는 한 자리**(B141 ① — `--step`이 아니어도 · 배치 · 재구축도 이 길) — 구조가 선 산문이면
-    `export/split_<doc_id>.md`(같은 함수 `split_report.write_md`)와 그 자리 한 줄 · PPT(봉투에 덱 블록)는 봉투만 읽어 같은 자리에
-    (`cli/envelope_md.write` — B143 ④) · 구조가 없으면(표 · 고정 규칙) 쓰지 않는다."""
-    from cli import envelope_md as EM, split_report as SR
+    """**구조 확인 md를 쓰는 한 자리**(B141 ① — `--step`이 아니어도 · 배치 · 재구축도 이 길) — 봉투에 구조 블록(엑셀 · Word) · 덱
+    블록(PPT)이 있으면 봉투만 읽어 `export/split_<doc_id>.md`(`cli/envelope_md.write` — B143 ④ · B146 ②)와 그 자리 한 줄 · 블록이
+    없으면(표 · 고정 규칙) 쓰지 않는다."""
+    from cli import envelope_md as EM
     from core import paths
-    md = SR.write_md(doc_id, res.report, res.envelope) or EM.write(doc_id, res.envelope)
+    md = EM.write(doc_id, res.envelope)
     if md:
         _screen.say(f"   구조 확인 md — {paths.show(md)}(목차 · 청크 경계 — 문서마다)", "aux")
     return md
 
 
 def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
-    from cli import split_report as SR
+    from cli import envelope_md as EM, split_report as SR
     from parser.struct_rule import labels_hash
     pos, said = 0, False
     while True:
@@ -173,7 +173,7 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
         name = frames[pos]
         fr = st["프레임"][name]
         _print_sheet(name, fr, res)
-        md = SR.write_md(doc_id, res.report, res.envelope)
+        md = EM.write(doc_id, res.envelope)
         got = _screen.answer(PROMPT, "go", eof=True, other=_sheet_answer, hint=HELP)
         if got is False:
             print("   멈춤 — 구조까지(파싱 산출 parsed/ · 구조 보존분은 남았다 · 그래프 쓰기 0)")

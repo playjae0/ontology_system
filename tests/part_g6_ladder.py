@@ -34,6 +34,7 @@ from g6_common import _run                               # noqa: E402
 from openpyxl import Workbook                            # noqa: E402
 import run as RUN                                        # noqa: E402
 from cli import _screen, split_report, structure_screen as SS   # noqa: E402
+from cli import envelope_md as _EMD146                                   # noqa: E402 — md는 봉투에서 (B146 ②)
 from core.build import structure as ST, structure_edit as SE   # noqa: E402
 from core.llm import gateway                             # noqa: E402
 from core.state import knobs as KN                       # noqa: E402
@@ -277,7 +278,7 @@ _scr = _buf.getvalue()
 #: 목차 줄 — 나무 글자(├─ └─ │)를 걷은 줄이 「n행 」으로 시작한다 · 그 자리(글자 수)가 깊이
 _tl = lambda scr, r: next((ln for ln in scr.splitlines() if ln.lstrip(" │├└─").startswith(f"{r}행 ")), "")   # noqa: E731
 _ind = {r: _tl(_scr, r).find(f"{r}행 ") for r in (5, 6)}
-_md = split_report.write_md(DID, _rg.report, _rg.envelope).read_text(encoding="utf-8")
+_md = _EMD146.write(DID, _rg.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 # 기대 변경(B137 ⑥ — 사다리는 첫 서수 표기 · 판단 필요는 따로 목록이 아니라 목차 줄에 표지 + 답 · B139 ④ — 목차는 나무 글자 · 청크 경로는 ✂ 줄(B139 ⓓ))
 LINE = "계층 사다리: 시트 › 1.(주제) › 가.(대상 · Unit) › 1)(묶음) › A."
 _l20 = [ln for ln in (_scr + "\n" + _md).splitlines() if ln.lstrip(" -│├└─").startswith("20행 ")]
@@ -438,7 +439,7 @@ show("B137 ⓓ 규칙 한 줄 — 「가. 아래 첫 서수로 시작하는 '1.'
      _tr(_fa) == WANT_A and all(_ra[r]["role"] == "묶음" and _ra[r]["by"] == "규칙" for r in (3, 5, 8))
      and _ra[1]["role"] is None and _fa["line_edits"] == 0 and [x["적용"] for x in _fa["rules"]] == [3],
      f"목차 {_tr(_fa)} · 역할 {[(r, _ra[r].get('role'), _ra[r].get('by')) for r in (1, 3, 5, 8)]} · 규칙 적용 {[x['적용'] for x in _fa['rules']]}")
-_md7 = split_report.write_md(D7, _g7.report, _g7.envelope).read_text(encoding="utf-8")
+_md7 = _EMD146.write(D7, _g7.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 _l10 = _tl(_scr7, 10)                                    # 기대 변경(B139 ④ — 목차 줄은 나무 글자로 시작)
 show("B137 ⓔ 화면 — 사다리 첫 서수 표기 · 접은 형제 줄 · 목차 줄의 판단 필요 표지와 LLM 답 · 시트마다 LLM 한 줄 · ✎ · md 끝의 버린 고침",
      _go7 and "시트 › 1.(주제) › 가. · 1)" in _scr7 and "외 3줄" in _scr7 and split_report.NEED_MARK in _l10 and "(LLM)" in _l10
@@ -547,7 +548,7 @@ show("B138 ⓑ 목차 — 개요 없는 자동 번호 문서가 B137 함수로 �
      and set(_nb8) == {_ib["3. 결론"]} and "개요 수준" in _nb8[_ib["3. 결론"]]["why"],
      f"A {[(_par8.get(r), p) for r, p in _want8.items()]} · B 판단 필요 {[(r, n['kind'], n['why'][:40]) for r, n in sorted(_nb8.items())]}")
 _ch8 = " ".join(c["text"] for c in _wa.envelope["chunks"])
-_md8 = split_report.write_md("B138A", _wa.report, _wa.envelope).read_text(encoding="utf-8")
+_md8 = _EMD146.write("B138A", _wa.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 struct_map.invalidate("B138C")
 _fc8 = pipeline.parse(BD, "B138C", str(_xc), closed_list=[], structure=ST.structurer(["process"])).report["structure"]["프레임"][BD.FRAME]
 _lc = {x["row"] for x in _fc8["labels"] if "……" in str(x.get("text"))}

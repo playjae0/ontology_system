@@ -28,6 +28,7 @@ from g6_common import _register, _run, _unregister, data_hash   # noqa: E402
 from openpyxl import Workbook                            # noqa: E402
 import run as RUN                                        # noqa: E402
 from cli import _screen, split_report, structure_screen as SS   # noqa: E402
+from cli import envelope_md as _EMD146                                   # noqa: E402 — md는 봉투에서 (B146 ②)
 from core.build import structure as ST                   # noqa: E402
 from parser import pipeline, struct_map, toc             # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX       # noqa: E402
@@ -114,7 +115,7 @@ CALLS.clear()
 with Live(by={"structure": lambda b: _structure({**b, "hints": ["다 고친다"]})}):
     _r3 = _parse(_x)
 _f3 = _r3.report["structure"]["프레임"][E]
-_md = split_report.write_md(DID, _r3.report, _r3.envelope).read_text(encoding="utf-8")
+_md = _EMD146.write(DID, _r3.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 show("ⓑ 대상 · 제목 더함 · 부모 바꿈 → 「속도」 사슬에 유닛 공급부 · 「메모」는 시트 바로 아래 · 이유가 md에 · 없는 줄 고침만 버림",
      _chain(_r3, E, "속도 기준")[:1] == ["공급부"] and _chain(_r3, E, "메모 본문")[-1:] == ["설비 메모"]
      and "적층부" not in _chain(_r3, E, "메모 본문") and len(_f3["edits"]) == 3 and len(_f3["edits_dropped"]) == 1

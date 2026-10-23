@@ -8,9 +8,10 @@ md는 보기다 — **md에만 있는 정보 0** · LLM은 md를 읽지 않는�
     단위마다  경로 · 공정 · 쪽 · 버림 · 사람 고침 + 근거 조각 원문(`[본문]` · `[표 …]` · `[차트 …]` · `[그림 요약 …]` — 묶음 머리는
               추출 입력과 같은 손 `core/build/extract_unit._tag`) · `[노트]`(한 번)
 
-단위 표의 판단 칸은 봉투의 구조 블록이 준다 — 지금은 PPT 덱 블록(`deck.slides[]` — B143 ②)이고, 블록이 없는 봉투는 쓰지 않는다
-(None — 엑셀 · Word의 구조 확인 md는 `cli/split_report.write_md`가 그대로 쓴다 · 같은 꼴로 옮기는 것은 다음 회차). 쓰는 자리는
-`cli/structure_screen.md_of` 한 자리다(인입 · `--split-only` · 배치 · 재구축이 같은 길).
+단위 표의 판단 칸은 봉투의 블록이 준다 — PPT는 덱 블록(`deck.slides[]` — B143 ②) · 엑셀 · Word는 구조 블록(`structure.units[]` —
+B146 ① · 시트마다 목차 나무 · 청크 경계 · 판단 기록 — 꼴은 `cli/split_report.md_lines`의 시트 덩어리)이고, 두 블록은 같은 읽기 함수
+(`units` — 단위 → 그 근거 청크)로 읽힌다 · 블록이 없는 봉투는 쓰지 않는다(None). 쓰는 자리는 이 모듈의 `write` 하나 · 부르는 자리는
+`cli/structure_screen`(인입 · `--split-only` · 배치 · 재구축 · 구조 확인 관문이 같은 길) — 보고 · 캐시를 읽지 않는다(B146 ②).
 """
 from __future__ import annotations
 
@@ -35,10 +36,16 @@ def _title(s, chunks):
     return base + ("*" if s.get("fixed") else "")
 
 
-def units(env):
-    """`[(단위 판단, [청크 …])]` — 구조 블록의 단위마다 그 근거 청크(블록이 든 위치 차례 그대로) · 블록이 없으면 빈 목록."""
+#: 봉투의 판단 블록 — 블록 이름 → 단위 목록 칸(B146 ① — 두 블록이 같은 꼴: 단위 → 판단 + 청크 위치 `chunks`)
+BLOCKS = {"deck": "slides", "structure": "units"}
+
+
+def units(env, kind=None):
+    """`[(단위 판단, [청크 …])]` — 블록(`kind` — `deck` · `structure` · None이면 둘 다)의 단위마다 그 근거 청크(블록이 든 위치 차례
+    그대로) · 블록이 없으면 빈 목록. 덱 블록의 슬라이드와 구조 블록의 단위(시트 · Word 구획)를 같은 함수가 읽는다."""
     by = {c.get("source_locator"): c for c in env.get("chunks") or []}
-    return [(s, [by[x] for x in s.get("chunks") or [] if x in by]) for s in ((env.get("deck") or {}).get("slides")) or []]
+    return [(s, [by[x] for x in s.get("chunks") or [] if x in by])
+            for k, f in BLOCKS.items() if kind in (None, k) for s in ((env.get(k) or {}).get(f)) or []]
 
 
 def _body(c):
@@ -50,7 +57,7 @@ def _body(c):
 def lines(env):
     """봉투 → md 줄들(봉투 밖을 읽지 않는다)."""
     doc_id = env.get("doc_id")
-    us = units(env)
+    us = units(env, "deck")
     chunks = env.get("chunks") or []
     src = env.get("source_path")
     dk = env.get("deck") or {}
@@ -92,13 +99,28 @@ def lines(env):
     return out
 
 
+def text(doc_id, env):
+    """봉투 → md 글 전체(쓰지 않는다) — 구조 블록(엑셀 · Word)이면 시트 덩어리(`split_report.md_lines`) · 덱 블록(PPT)이면 위 꼴 ·
+    블록이 없으면 None."""
+    env = env or {}
+    if env.get("deck"):
+        ls = lines(env)
+    elif env.get("structure"):
+        from cli import split_report as SR
+        ls = SR.md_lines(doc_id, env)
+    else:
+        return None
+    return "\n".join(ls) + "\n" if ls else None
+
+
 def write(doc_id, env):
-    """`export/split_<doc_id>.md`에 쓴다(원자 쓰기) — 쓴 자리 · 구조 블록이 없으면 None(쓰지 않는다)."""
-    if not (env or {}).get("deck"):
+    """`export/split_<doc_id>.md`에 쓴다(원자 쓰기) — 쓴 자리 · 블록이 없으면 None(쓰지 않는다)."""
+    body = text(doc_id, env)
+    if body is None:
         return None
     from core import paths
     from core.state import store
     p = paths.export(f"split_{doc_id}.md")
     paths.ensure(p)
-    store.atomic_write_bytes(p, ("\n".join(lines(env)) + "\n").encode("utf-8"))
+    store.atomic_write_bytes(p, body.encode("utf-8"))
     return p
