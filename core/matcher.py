@@ -131,12 +131,16 @@ def gate(pool, place, graph, dictionary, base):
     out = []
     for c in pool:
         n = graph.get(c["id"]) or {}
-        if _same_name(c, n, dictionary, base, place):
-            c["same_name"] = True
         if place is None:
+            if _same_name(c, n, dictionary, base, place):
+                c["same_name"] = True
             out.append(c)
             continue
-        rel = place.relation(c["id"], graph)
+        rel = place.relation(c["id"], graph)        # 관계(공정 줄기)가 먼저 — 다른 줄기는 같은 이름을 재지 않는다(B144 ①)
+        if rel == SP.OTHER:
+            continue
+        if _same_name(c, n, dictionary, base, place):
+            c["same_name"] = True
         if rel not in SP.KEEP:
             if rel == SP.APART and c.get("same_name"):
                 place.apart.append(c["canonical"])            # 같은 이름 · 다른 소유자 — 화면 줄 · 사람이 ops merge
@@ -346,7 +350,12 @@ def gated(surface, category, layer, graph, dictionary, *, scoped=True, polarity=
     # ② 후보 검색 — 위 안전망 넷으로 걸러 담는다(상한 안으로 좁히는 것은 `candidates` — B73 ①).
     pool = []
     hosts = _hosts(category)
-    for nid, n in graph.nodes.items():
+    use = place if category in scope_cats else None
+    # 관문이 서는 값은 **같은 공정 줄기의 노드만** 훑는다(B144 ① 공정 색인 — 다른 줄기는 관문이 어차피 뺀다 · 결과 그대로)
+    from core.build import scope_path as SP
+    ids = SP.stem_nodes(use, graph, category, hosts) if use is not None else graph.nodes
+    for nid in ids:
+        n = graph.nodes[nid]
         if nid in seen or not is_live(n):
             continue
         if not _is(n, category, hosts) or n["layer"] != layer:
@@ -357,7 +366,6 @@ def gated(surface, category, layer, graph, dictionary, *, scoped=True, polarity=
             continue
         pool.append(_cand(nid, n, also=category if n["category"] != category else None))
     # **관문이 먼저다**(B75 ② · B142 ①) — 상한 이하 여부와 무관하다 · 자리가 없으면 거르지 않는다.
-    use = place if category in scope_cats else None
     pool = gate(pool, use, graph, dictionary, surface)
     hit = sure(out, pool, use)
     if hit:

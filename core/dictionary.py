@@ -39,6 +39,7 @@ class Dictionary:
     def __init__(self, entries=None):
         self._d = entries if entries is not None else {}
         self._fold = None              # 2차 대조 색인(메모리 파생 · 저장하지 않는다 — B96 ④)
+        self.version = 0               # 고칠 때마다 +1 — 조회 결과를 기억하는 자리의 무효화 경계(B144 ①)
 
     # ------------------------------------------------------------ 열기·저장
     @classmethod
@@ -75,6 +76,7 @@ class Dictionary:
         ids = self._d.setdefault(key, [])
         if node_id not in ids:
             ids.append(node_id)
+            self.version += 1
         self._fold = None
         return key
 
@@ -142,6 +144,7 @@ class Dictionary:
                 del self._d[key]
             moved += 1
         self._fold = None
+        self.version += 1
         return moved
 
     def drop(self, node_id):
@@ -160,6 +163,7 @@ class Dictionary:
         if not ids:
             del self._d[key]
         self._fold = None
+        self.version += 1
         return True
 
 

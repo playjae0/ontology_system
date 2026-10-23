@@ -46,15 +46,26 @@ def _homes(b, x):
     return _home(b, x)
 
 
+def _dict_ver(b):
+    """사전의 판 — 그 사전 객체 · 고친 횟수(`Dictionary.version`) · 판이 없는 사전이면 None(기억하지 않는다)."""
+    v = getattr(b.dict, "version", None)
+    return None if v is None else (id(b.dict), v)
+
+
 def walk(b, scope):
     """부모 경로 글자 → `(공정 id, 공정 그래프, [(소유자 id, 그래프) — 가까운 것부터])` · 공정에 닿지 못하면 공정 칸이 None.
 
-    한 빌더 안에서는 글자마다 한 번 걷는다(닿은 것만 기억 — 문서 하나의 빌더 수명 · 그 사이 노드가 지워지지 않는다)."""
+    한 빌더 안에서는 글자마다 한 번 걷는다(닿은 것은 빌더 수명 동안 · 그 사이 노드가 지워지지 않는다). **닿지 못한 걸음도
+    기억한다**(B144 ①) — 사전의 판(`_dict_ver`)이 같은 동안만: 위 노드가 새로 등재되면 다시 걷는다(못 닿던 글자가 닿을 수 있다)."""
     from core.state.bootstrap import COORD_CATEGORY
     memo = b.__dict__.setdefault("_walks", {})
     key = norm(scope or "")
     if key in memo:
         return memo[key]
+    miss = b.__dict__.setdefault("_walk_miss", {})
+    ver = _dict_ver(b)
+    if ver is not None and key in miss and miss[key][0] == ver:
+        return None, None, miss[key][1]
     owners, seen = [], set()
     while scope and norm(scope) not in seen and len(seen) < MAX_DEPTH:
         seen.add(norm(scope))
@@ -76,6 +87,8 @@ def walk(b, scope):
             return memo[key]
         owners.append((x, hg))
         scope = scope_of(hg.get(x))
+    if ver is not None:
+        miss[key] = (ver, owners)
     return None, None, owners
 
 
@@ -116,19 +129,25 @@ def names_of(n):
     return {fold_latin(x).replace(" ", "") for x in out if x}
 
 
-def _emb_similar(a, b):
-    """두 소유자 이름의 임베딩 유사도가 문턱 이상인가 — 임베딩을 쓰는 실행에서만(겹침 실행은 False)."""
-    from core.llm import embeddings, narrow
-    if narrow.narrow_choice()[0] != "embed":
+def names(b, n):
+    """`names_of`를 빌더(문서 하나)에 노드마다 한 번(B144 ①) — 이름 · 맨 이름 · 별칭 수가 바뀌면 그 노드만 다시 잰다."""
+    memo = b.__dict__.setdefault("_names", {})
+    sig = (n.get("canonical"), base_name_of(n), len(n.get("aliases") or ()))
+    k = n.get("id") or id(n)
+    hit = memo.get(k)
+    if hit is None or hit[0] != sig:
+        hit = memo[k] = (sig, names_of(n))
+    return hit[1]
+
+
+def _emb_similar(a, b, mode):
+    """두 소유자 이름의 임베딩 유사도가 문턱 이상인가 — 임베딩을 쓰는 실행에서만(`mode` — 좁히기 방법 · 겹침 실행은 False)."""
+    if mode != "embed":
         return False
     from core import matcher
+    from core.llm import embeddings
     na, nb = base_name_of(a) or a.get("canonical"), base_name_of(b) or b.get("canonical")
     return embeddings.cosine(matcher._vec(na), matcher._vec(nb)) * 100 >= OWNER_SIMILAR_PCT
-
-
-def owner_similar(a, b):
-    """소유자 둘(다른 노드)의 이름이 비슷한가 — 이름 · 별칭 · 라틴 접기 겹침 · 임베딩 유사도(문턱 손잡이)."""
-    return bool(names_of(a) & names_of(b)) or _emb_similar(a, b)
 
 
 def _label(g, nid):
@@ -147,7 +166,11 @@ class Place:
         self.owners = ([tuple(owner)] + walk_node(b, *owner)[2]) if owner and owner[0] else []
         self.base = norm(surface or "")
         self.parent = parent
+        self.parent_key = norm(parent or "")
         self.apart, self.similar = [], []
+        # **값 하나에 한 번**(B144 ①) — 후보마다 다시 재던 것: 좁히기 방법 · 값의 사전 조회 · 줄기 · 같은 근거와의 관계
+        self._mode = self._ids = self._fold = None
+        self._stem, self._rel = {}, {}
 
     def names(self):
         """판정 입력의 경로 — 공정부터 가장 가까운 소유자까지(이름)."""
@@ -157,13 +180,25 @@ class Place:
         p, pg, ow = walk_node(self.b, nid, g)
         return ([_label(pg, p)] if p else []) + [_label(og, x) for x, og in reversed(ow)]
 
+    def in_stem(self, p, pg):
+        """그 공정이 값의 공정 줄기 안인가 — 공정마다 한 번."""
+        if p not in self._stem:
+            self._stem[p] = stem(self.b, self.proc, (p, pg))
+        return self._stem[p]
+
     def relation(self, nid, g):
-        """후보 하나와의 관계 — 위 표의 닫힌 다섯."""
+        """후보 하나와의 관계 — 위 표의 닫힌 다섯 · 같은 공정 · 같은 소유자 근거면 값마다 한 번 잰다."""
         n = (g.get(nid) if g is not None else None) or {}
-        if self.parent and norm(scope_of(n) or "") == norm(self.parent):
+        if self.parent and norm(scope_of(n) or "") == self.parent_key:
             return SAME
         p, pg, ow = walk_node(self.b, nid, g)
-        if not stem(self.b, self.proc, (p, pg)):
+        key = (p, tuple(x for x, _g in ow))
+        if key not in self._rel:
+            self._rel[key] = self._relation(p, pg, ow)
+        return self._rel[key]
+
+    def _relation(self, p, pg, ow):
+        if not self.in_stem(p, pg):
             return OTHER
         mine = [x for x, _g in self.owners]
         theirs = [x for x, _g in ow]
@@ -176,15 +211,79 @@ class Place:
         if mine[0] in theirs or theirs[0] in mine:
             return COMPAT
         a, ag = self.owners[0]
-        return SIMILAR if owner_similar(ag.get(a) or {}, ow[0][1].get(ow[0][0]) or {}) else APART
+        return SIMILAR if self.owner_similar(ag.get(a) or {}, ow[0][1].get(ow[0][0]) or {}) else APART
+
+    def owner_similar(self, a, b):
+        """소유자 둘(다른 노드)의 이름이 비슷한가 — 이름 · 별칭 · 라틴 접기 겹침 · 임베딩 유사도(문턱 손잡이)."""
+        if names(self.b, a) & names(self.b, b):
+            return True
+        if self._mode is None:
+            from core.llm import narrow
+            self._mode = narrow.narrow_choice()[0]
+        return _emb_similar(a, b, self._mode)
 
     def same_name(self, nid, n, dictionary):
         """그 후보가 들어온 값과 **같은 이름**인가 — 사전 표기(원 표기 키) · 맨 이름 · 별칭 · 라틴 접기(공백 무시)."""
         if not self.base:
             return False
-        if nid in set(dictionary.lookup(self.base)):
+        if self._ids is None:
+            self._ids = set(dictionary.lookup(self.base))
+            self._fold = fold_latin(self.base).replace(" ", "")
+        if nid in self._ids:
             return True
-        return fold_latin(self.base).replace(" ", "") in names_of(n)
+        return self._fold in names(self.b, n)
+
+
+class _Index:
+    """**공정 색인**(B144 ①) — 문서 하나(빌더) 동안 그래프의 노드를 `(카테고리, 단)` → 부모 경로 글자(norm) → [id]로 한 번
+    나눠 둔다(골격 노드는 제 id로 — 제가 공정이다). 노드가 늘면 그 노드만 더한다(그래프 노드는 빌드 중 지워지지 않고 더해지기만 한다 ·
+    줄면 다시 나눈다). 값은 같은 공정 줄기 · 같은 부모 경로 글자의 묶음만 훑는다 — 다른 줄기는 관문이 어차피 뺀다(`Place.relation`의
+    `OTHER`와 같은 판정 · 결과 그대로)."""
+
+    def __init__(self, g):
+        self.g, self.n, self.pos, self.groups = g, 0, {}, {}
+
+    def sync(self):
+        nodes = self.g.nodes
+        if len(nodes) < self.n:
+            self.n, self.pos, self.groups = 0, {}, {}
+        if len(nodes) == self.n:
+            return self
+        from itertools import islice
+        for nid in islice(nodes, self.n, None):
+            n = nodes[nid] or {}
+            self.pos[nid] = len(self.pos)
+            grp = self.groups.setdefault((n.get("category"), n.get("tier")), ({}, []))
+            if _coord(n):
+                grp[1].append(nid)
+            else:
+                sc = scope_of(n)
+                if sc:
+                    grp[0].setdefault(norm(sc), (sc, []))[1].append(nid)
+        self.n = len(nodes)
+        return self
+
+
+def stem_nodes(pl, g, category, hosts):
+    """값의 공정 줄기 안 노드 id(그래프 차례 그대로) — 그 카테고리(주 ∪ 겸)의 묶음에서 부모 경로가 값의 이름 부모와 같거나 걸음이
+    줄기 안 공정에 닿는 것 · 골격 노드는 제가 줄기 안일 때. 나머지 거르기(살아 있음 · 층 · 극성 …)는 호출부(`matcher.gated`)가 그대로."""
+    idx = pl.b.__dict__.setdefault("_pidx", {})
+    ix = idx.get(id(g))
+    if ix is None or ix.g is not g:
+        ix = idx[id(g)] = _Index(g)
+    ix.sync()
+    out = []
+    for (cat, tier), (scopes, coords) in ix.groups.items():
+        if cat != category and tier not in (hosts.get(cat) or ()):
+            continue
+        for key, (sc, ids) in scopes.items():
+            if (pl.parent and key == pl.parent_key) or pl.in_stem(*walk(pl.b, sc)[:2]):
+                out += ids
+        for nid in coords:
+            n = g.get(nid) or {}
+            if (pl.parent and norm(scope_of(n) or "") == pl.parent_key) or pl.in_stem(nid, g):
+                out.append(nid)
+    return sorted(out, key=ix.pos.__getitem__)
 
 
 def place(b, category, coord, owner, surface, parent):
