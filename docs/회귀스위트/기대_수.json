@@ -3,11 +3,11 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 6
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 6
+   "secs": 9
   },
   "test_g3": {
    "n": 82,
@@ -15,19 +15,19 @@
   },
   "test_query": {
    "n": 118,
-   "secs": 11
+   "secs": 9
   },
   "test_ops": {
    "n": 84,
-   "secs": 8
+   "secs": 9
   },
   "test_intake": {
    "n": 98,
-   "secs": 15
+   "secs": 16
   },
   "test_ingest_view": {
    "n": 73,
-   "secs": 30
+   "secs": 31
   },
   "test_coord": {
    "n": 49,
@@ -39,15 +39,15 @@
   },
   "test_safety": {
    "n": 36,
-   "secs": 62
+   "secs": 64
   },
   "test_judge": {
    "n": 85,
-   "secs": 10
+   "secs": 9
   },
   "test_build": {
-   "n": 61,
-   "secs": 20
+   "n": 63,
+   "secs": 21
   },
   "test_rebuild": {
    "n": 42,
@@ -55,23 +55,23 @@
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 8
   },
   "test_structure": {
    "n": 82,
-   "secs": 16
+   "secs": 17
   },
   "test_g6_capture": {
    "n": 9,
-   "secs": 19
+   "secs": 20
   },
   "test_g6_close": {
    "n": 29,
-   "secs": 31
+   "secs": 33
   },
   "test_contract": {
    "n": 76,
-   "secs": 21
+   "secs": 20
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,7 +87,7 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 4
+   "secs": 3
   },
   "test_p1_media": {
    "n": 19,
@@ -95,7 +95,7 @@
   },
   "test_p2": {
    "n": 68,
-   "secs": 5
+   "secs": 4
   },
   "test_p3_register": {
    "n": 73,
@@ -103,7 +103,7 @@
   },
   "test_p3_prompt": {
    "n": 60,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_gate": {
    "n": 76,
@@ -115,7 +115,7 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 65,
-   "secs": 8
+   "secs": 11
   },
   "test_2a_gateway": {
    "n": 75,
@@ -139,11 +139,11 @@
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 0
+   "secs": 1
   },
   "test_site": {
    "n": 56,
-   "secs": 26
+   "secs": 27
   }
  },
  "log": [
@@ -289,6 +289,14 @@
    "suite": "test_judge",
    "from": 80,
    "to": 85,
+   "why": ""
+  },
+  {
+   "at": "2026-10-23",
+   "head": "0a34ec0",
+   "suite": "test_build",
+   "from": 61,
+   "to": 63,
    "why": ""
   }
  ]
