@@ -414,10 +414,8 @@ class Builder(CoordMixin):
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
                        belongs=None, at=None, chunk_text=None, coord=None, owner=None):
-        """3분기 — 매칭 / 신규 / 불확실(신규+표시).
-
-        `coord`(`(좌표 id, 그래프)`)와 `owner`(`(소유자 id, 그래프)` — 산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
-        판정의 **자리**다(B142 — `core/build/scope_path.place`): 관문은 카테고리 · 공정 줄기 · 경로는 증거(이름은 그대로).
+        """3분기 — 매칭 / 신규 / 불확실(신규+표시). `coord` · `owner`(산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
+        판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름은 그대로).
 
         `chunk_text`(그 표기가 나온 청크의 원문 — 산문이 준다)가 있으면 1차가 불확실일 때 그 앞뒤 글로 2차를 묻는다
         (B123 ③ — `matcher.second` · 표의 행은 청크가 아니라 주지 않는다).
