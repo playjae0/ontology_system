@@ -62,6 +62,7 @@ def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage, extra=Non
         "doc_id": doc_id,
         "값": len(ent),
         "사전 연결": sum(1 for r in ent if r.get("path") == "dictionary"),
+        "경로 연결": sum(1 for r in ent if r.get("path") == "path_compat"),     # 경로 호환 같은 이름 — LLM 0 (B142 ②)
         "LLM 연결": sum(1 for r in ent if r.get("verdict") == "match"
                        and (r.get("llm") or {}).get("calls", 0) > 0),
         "새 노드": v.get("new", 0),

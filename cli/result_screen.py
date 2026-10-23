@@ -18,7 +18,8 @@ def lines(res):
     if not res:
         return []
     hold = res.get("보류") or {}
-    out = [f"   결과 — 값 {res['값']:,} → 사전 연결 {res['사전 연결']:,} · LLM 연결 {res['LLM 연결']:,} · "
+    out = [f"   결과 — 값 {res['값']:,} → 사전 연결 {res['사전 연결']:,} · 경로 연결 {res.get('경로 연결', 0):,} · "
+           f"LLM 연결 {res['LLM 연결']:,} · "
            f"새 노드 {res['새 노드']:,} · 불확실 {res['불확실']:,} · 보류 {sum(hold.values()):,}"
            + (f"({_kinds(hold)})" if hold else "")]
     if res.get("관계 버림"):
@@ -106,6 +107,11 @@ def reconcile_lines(mt, limit=None):
         out.append("     " + _formula(ln))
         if not ln["맞음"]:
             out.append(f"     [결함] {ln['줄'].strip()} 합 {ln['합']:,} ≠ 전체 {ln['전체']:,}")
+    k, ex, sim = mt.get("소유자") or (0, [], 0)
+    if k or sim:                           # 같은 이름 · 다른 소유자(B142 ⑥ — 전체 목록은 show report --md · 합칠 것이면 ops merge)
+        out.append(f"     같은 이름 · 다른 소유자 — 새 노드 중 같은 공정 줄기의 다른 소유자 아래 같은 이름이 있는 것 {k:,}"
+                   + (f"(예 {' · '.join(ex)})" if ex else "") + f" · 소유자 이름 비슷 → LLM {sim:,}"
+                   + (f" — 전체 python run.py show report {mt['doc_id']} --md" if k or sim else ""))
     for g in mt.get("그래프") or []:
         out.append("     " + g)
     out.append("     큐 — " + " · ".join(f"{k} {v}" for k, v in (mt.get("큐") or {}).items()))

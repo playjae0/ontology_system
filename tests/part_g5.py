@@ -405,11 +405,12 @@ from core.dictionary import Dictionary as _DIC75                   # noqa: E402
 _g75 = open_graph("process")
 _cfg75 = load_config("process")
 _sc75 = (_cfg75.get("canonical_scope") or {}).get("bind_categories", [])
+from core.build.naming import scope_of as _SO75                       # noqa: E402 — 부모 경로 칸(B142 ⑤)
+# 기대 변경(B142 ⑤ — 부모 경로 칸 이름 scope · 옛 칸은 같은 함수가 읽는다)
 _units75 = [n for n in _g75.nodes.values()
-            if ops.is_live(n) and n.get("category") == "Unit"
-            and (n.get("parent") or n.get("mirror_scope"))]
+            if ops.is_live(n) and n.get("category") == "Unit" and _SO75(n)]
 _t75 = _units75[0]
-_p75 = _t75.get("parent") or _t75.get("mirror_scope")
+_p75 = _SO75(_t75)
 ops.alias("process", _t75["id"], "현장표기ZZ", ACTOR, reason="현장이 그렇게 부른다")
 
 
@@ -427,10 +428,10 @@ show("⑤ 등재 뒤 **같은 부모 아래** 그 표기가 exact로 해소된�
      f"{_p75}::현장표기ZZ → {_t75['canonical']}")
 _other75 = next((n for n in _units75
                  if n["id"] != _t75["id"]
-                 and (n.get("parent") or n.get("mirror_scope")) == _p75), None)
+                 and _SO75(n) == _p75), None)
 if _other75 is None:                     # 같은 부모의 짝이 없으면 하나 세운다
     _oid75 = _g75.add_node(f"{_p75}::짝설비ZZ", "Unit", "auto",
-                           provenance=["시험"], parent=_p75, mirror_scope=_p75)
+                           provenance=["시험"], scope=_p75)
     _g75.save()
     _other75 = _g75.get(_oid75)
 try:

@@ -272,7 +272,7 @@ def warnings():
 def mirror_warnings(configs=None):
     """**미러 규칙과 집의 어긋남**(B100 ④) — `[(문면, 다음 줄)]` · 경고만(막지 않는다 — 사람 판단).
 
-    극성 결합·미러 짝 키(`mirror_scope`·`mirror_name`)는 노드를 만드는 **집 층의 빌더**가 그 층
+    극성 결합·미러 짝 키(부모 경로 `scope` · 맨 이름 `base_name`)는 노드를 만드는 **집 층의 빌더**가 그 층
     config로 적는다. 어떤 층 L이 카테고리 C를 `polarity.bind_categories`에 묶었는데 C의 집 H(≠L)의
     config에 그 규칙이 없으면, 이 구성에서는 C 노드의 극성·미러 짝이 조용히 빠진다(B99 ⑪ 재현 —
     집을 옮기면 mirrors 26 → 20). 규칙을 층 사이로 옮겨 읽는 코드는 넣지 않는다 — 말하고 사람이 옮긴다.

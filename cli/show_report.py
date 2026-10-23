@@ -51,7 +51,7 @@ def cmd_report(args):
     print(f"■ {doc} 판정 대장 — 행 {len(rows)}건 "
           f"(entity {kinds.get('entity', 0)} · anchor {kinds.get('anchor', 0)} · "
           f"부착 {kinds.get('attribute', 0) + kinds.get('content', 0) + kinds.get('attach', 0)})")
-    print(f"  값 {su['값']} · 사전 {su['사전']} · 스코프→판정 {su['스코프']} · "
+    print(f"  값 {su['값']} · 사전 {su['사전']} · 경로 {su['경로']} · 스코프→판정 {su['스코프']} · "
           f"임베딩→판정 {su['임베딩']} · 겹침→판정 {su['겹침']} · 신규 {su['신규']} · "
           f"불확실 {su['불확실']} · 보류 {su['보류']} · LLM 호출 {su['호출']} · "
           f"토큰 {su['토큰']}")

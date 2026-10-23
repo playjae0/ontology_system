@@ -139,9 +139,15 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
 
 
 def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
-    """① **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7)."""
+    """① **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7).
+
+    열 차례는 **소유자 열이 먼저**다(B142 ③ — 같은 행에 스키마가 선언한 소유 엣지 · `scope_path.table_owners`) — 개체 열의
+    판정이 그 행의 소유자를 자리로 받는다(이름은 그대로)."""
+    from core.build import scope_path
     rec = r.rec
+    owners = b.__dict__.setdefault("_table_owners", scope_path.table_owners(schema, cfg))
     state = {"b": b, "graph": graph, "cfg": cfg, "prov": r.prov, "ref": r.ref,
+             "owners": owners, "resolved": r.resolved,
              "locator": rec.get("source_locator"),
              "dropped_entities": r.dropped_ents,
              "ref_g": r.ref_g, "parent": r.parent, "et": r.et,
@@ -150,7 +156,8 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
              "defer": r.defer, "field": None}
     hctx = loop.Ctx(graphs=b.graphs(), dic=b.dict, buffer=b.buffer, queue=store,
                record=rec, schema=schema, state=state)
-    for f, spec in fields.items():
+    for f in scope_path.owner_first(list(fields), owners):
+        spec = fields[f]
         if f not in rec or rec[f] in (None, ""):
             continue
         role = spec.get("role")

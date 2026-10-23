@@ -14,7 +14,7 @@ from core.dictionary import Dictionary
 from core.state.ids import norm
 from core.state.status import is_live
 from core.state.world import World
-from core.build.naming import scope_canonical
+from core.build.naming import scope_canonical, scope_of
 
 
 def _ops():
@@ -117,7 +117,7 @@ def confirm_doc(doc_id, actor, reason="", dry_run=False):
 
 def alias_key(node, surface, cfg):
     """별칭의 **조회 키** — 그 표기를 그 노드의 부모 아래에서 조립한 스코프 canonical · `(키, 부모)` (`ops alias` · 사람 후보 같은 함수)."""
-    parent = node.get("parent") or node.get("mirror_scope")
+    parent = scope_of(node)
     return scope_canonical(surface, node["category"], parent, cfg)[0], parent
 
 
@@ -129,7 +129,7 @@ def alias_clash(dic, get, nid, node, surface, cfg):
         o = get(other)
         if other == nid or not o or not is_live(o) or o["category"] != node["category"]:
             continue
-        if (o.get("parent") or o.get("mirror_scope")) == parent:
+        if scope_of(o) == parent:
             return other, o
     return None
 
@@ -225,7 +225,7 @@ def alias_reject(layer, target, surface, actor, reason="", dry_run=False):
         raise ops.OpRefused(f"'{surface}'는 골격 seed 별칭이다 — 골격 파일 `ALIASES`에서 지우고 "
                             f"python run.py bootstrap (원천이 사람의 파일이다)")
     cfg = ops._cfg(layer)
-    parent = node.get("parent") or node.get("mirror_scope")
+    parent = scope_of(node)
     key, _s = scope_canonical(surface, node["category"], parent, cfg)
     book = alias_book.AliasBook.open()
     r = book.get(surface, alias_book.name(node))

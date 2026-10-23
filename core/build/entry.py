@@ -33,7 +33,7 @@ def finalize(layers=None, notice=None):
 
     문서 빌드 안에서 돌리면 **뒤에 인입되는 문서가 만드는 노드를 보지 못한다** — mirrors
     재평가가 한 박자 늦어 큐가 1회차 3건 → 2회차 4건으로 수렴했다(20회차 후속 실측).
-    노드에 짝 키를 적어 두는 것(`mirror_scope`·`mirror_name`)은 그대로 층 빌드가 하고,
+    노드에 짝 키를 적어 두는 것(부모 경로 `scope` · 맨 이름 `base_name`)은 그대로 층 빌드가 하고,
     **재평가와 큐 갱신만** 이쪽으로 옮긴다 — 자동 규칙 자체를 옮기는 것이 아니다.
 
     큐 항목의 `doc_id`는 `None`이다. 이 조건은 **어느 한 문서의 것이 아니라 그래프 전체의
@@ -153,14 +153,14 @@ def _plan_hit(b, m, layer):
     if ref_id is None and loop._scoped_category(category, lay, b):
         return False                # 좌표 없는 스코프 개체는 판정에 오르지 않는다
     eb = b.for_layer(lay)
-    key, pol, _scoped, _sc = entity_key(surface, category, eb.cfg,
-                                        electrode_type=et, parent_canonical=parent,
-                                        anchor_polarity=apol)
-    from core.build.naming import scope_categories
-    scope_cats = scope_categories(eb.cfg)
-    return bool(matcher.dict_hits(key, category, lay, eb.g, b.dict,
-                                  polarity=pol, parent=parent,
-                                  scope_cats=scope_cats))
+    key, pol, scoped, _sc = entity_key(surface, category, eb.cfg,
+                                       electrode_type=et, parent_canonical=parent,
+                                       anchor_polarity=apol)
+    # **판정과 같은 관문**(B142 — `matcher.gated` · 자리는 좌표만: 예고는 행의 소유자를 해소하지 않는다)
+    from core.build import scope_path
+    place = scope_path.place(eb, category, (ref_id, ref_g), None, surface, parent)
+    return bool(matcher.gated(key, category, lay, eb.g, b.dict, scoped=scoped, polarity=pol,
+                              parent=parent, cfg=eb.cfg, place=place)[0])
 
 
 def decision_plan(mentions, refs, layer):

@@ -456,7 +456,8 @@ _gr3 = {l: open_graph(l) for l in _disc()}
 _cf3 = {l: load_config(l) for l in _gr3}
 _t3, _i3 = _HY.node_texts(_gr3, _cf3)
 _raw3 = {i: n for g in _gr3.values() for i, n in g.nodes.items()}
-_key = lambda i: (_i3[i]["layer"], _i3[i]["category"], _raw3[i].get("parent") or _raw3[i].get("mirror_scope"))   # noqa: E731
+from core.build.naming import scope_of as _SO3                    # noqa: E402 — 부모 경로 칸(B142 ⑤ · 기대 변경)
+_key = lambda i: (_i3[i]["layer"], _i3[i]["category"], _SO3(_raw3[i]))   # noqa: E731
 _grp = {}
 for _i in sorted(_i3):
     _grp.setdefault(_key(_i), []).append(_i)

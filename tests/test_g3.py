@@ -28,6 +28,7 @@ from core.state.bootstrap import bootstrap, load_config, open_graph   # noqa: E4
 from core.build.build import Builder                           # noqa: E402
 from core.build.extract import EXTRACT_DIR                     # noqa: E402
 from core.build.entry import finalize, run_document                   # noqa: E402
+from core.build.naming import base_name_of as _BN3, scope_of as _SO3  # noqa: E402 — 부모 경로 · 맨 이름 칸(B142 ⑤)
 
 allok = True
 
@@ -112,8 +113,8 @@ _pol_vals = ["cathode", "anode"]
 _by_key = {}
 for _n in P.nodes.values():
     if _n["status"] != "seed" and _n.get("polarity") in _pol_vals:
-        _by_key.setdefault((_n.get("mirror_scope"), _n.get("mirror_name")),
-                           set()).add(_n["polarity"])
+        # 기대 변경(B142 ⑤ — 짝 키의 칸 이름 scope · base_name · 읽는 함수 하나)
+        _by_key.setdefault((_SO3(_n), _BN3(_n)), set()).add(_n["polarity"])
 _false = [x["payload"]["base"] for x in q("mirror_asymmetry")
           if len(_by_key.get((x["payload"]["scope"], x["payload"]["name"]), ())) > 1]
 show("mirror_asymmetry 오검출 0건 (짝이 있는데 큐에 오른 항목이 없다)",
@@ -495,10 +496,12 @@ show("ⓑ 스코프 접두가 붙은 극성 유닛 쌍도 자동 페어링된다
          for e in P.edges if e["rel"] == "mirrors"
          and P.get(e["src"]) and P.get(e["src"])["category"] == "Unit"),
      str(_upairs))
-show("ⓑ 짝 키의 이름부가 접두를 포함하지 않는다 (mirror_name은 자기 이름부만)",
-     all("::" not in (n.get("mirror_name") or "") for n in P.nodes.values()),
+# 기대 변경(B142 ⑤ — 맨 이름 칸 base_name · 칸이 비면 이 어서션은 빈 것을 센다 — 극성 노드는 칸이 있어야 한다)
+show("ⓑ 짝 키의 이름부가 접두를 포함하지 않는다 (맨 이름 base_name은 자기 이름부만)",
+     all("::" not in (_BN3(n) or "") for n in P.nodes.values())
+     and all(_BN3(n) for n in P.nodes.values() if n["status"] != "seed" and n.get("polarity") in _pol_vals),
      str([n["canonical"] for n in P.nodes.values()
-          if "::" in (n.get("mirror_name") or "")][:3]))
+          if "::" in (_BN3(n) or "")][:3]))
 
 # ⓒ alias·질의 — 접두 없는 표면형으로 링킹된다
 _np = [n for n in P.nodes.values() if n["canonical"] == "노칭::노칭 프레스"]

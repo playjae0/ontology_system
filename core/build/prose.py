@@ -96,6 +96,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                if bel and not bel.get("legacy") else None)
         # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
         e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs, main)
+        owner = None                               # 판정의 자리 — 소속 대상 노드(B142 ③ · 이름 부모와 같은 재료)
         if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
             e_ref, e_g = tgt[1], tgt[2]            # 골격 소속 = 그 개체의 좌표
             e_parent, e_pol = e_g.get(e_ref)["canonical"], b.anchor_polarity(e_ref, e_g)
@@ -105,6 +106,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                 if up:
                     e_ref, e_g, e_parent, e_pol = up, upg, upg.get(up)["canonical"], b.anchor_polarity(up, upg)
             e_parent = name_parent(e["category"], tgt[2].get(tgt[1])["canonical"], e_parent, b.cfg)
+            owner = (tgt[1], tgt[2])
         # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다.
         nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
                                     coord=(e_ref, e_g), coords=coords,     # 다른 공정 가드 = 목록 전체의 계보 (B125 ④)
@@ -113,7 +115,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                                     anchor_polarity=e_pol,
                                     coord_surface=src.get("process_ref"), belongs=bel,
                                     at=(_loc or cid, e.get("category")),       # 판정 재생의 자리 (B106 ②)
-                                    chunk_text=src.get("text"))                # 2차 판정의 문장 (B123 ③)
+                                    chunk_text=src.get("text"),                # 2차 판정의 문장 (B123 ③)
+                                    owner=owner)
         last = eb.last or {}
         row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
                            role="entity", surface=e["surface"],
@@ -133,6 +136,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                            belongs_to=(bel or {}).get("name"),
                            category=last.get("category"), scope=last.get("scope"),
                            replay=last.get("replay"), judge2=last.get("judge2"),
+                           apart=last.get("apart"), similar=last.get("similar"),
                            by=HUMAN if e.get("by") == HUMAN else None)        # 사람 후보 표지 (B140 ③)
         if nid:
             values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)

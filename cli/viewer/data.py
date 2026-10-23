@@ -141,7 +141,7 @@ def funnel():
         cnt["값"] = len(led)
         for r in led:
             path, verdict = r.get("path"), r.get("verdict")
-            if path == "dictionary":
+            if path in ("dictionary", "path_compat"):      # 결정적 연결(LLM 0) — 경로 호환 같은 이름도 (B142 ②)
                 cnt["사전"] += 1
             elif path == "skeleton":
                 cnt["스코프"] += 1

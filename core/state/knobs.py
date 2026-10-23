@@ -121,6 +121,11 @@ KNOBS = {
                             "2차 판정의 문장 — 1차가 불확실인 산문 개체에 그 표기 앞뒤 이 글자 수의 청크 원문을 붙여 같은 "
                             "후보로 한 번 더 묻는다(0이면 끔 · 비용은 불확실 수에 비례)",
                             "인입 판정 끝 줄 「2차 n → 바뀜 m」 · 문서 한 줄 요약 · python run.py show report <doc_id> --md"),
+    "owner_similar_pct": ("core.build.scope_path", ("OWNER_SIMILAR_PCT",), "pct",
+                          "소유자 이름 비슷 문턱(%) — 같은 공정 줄기 · 같은 카테고리인데 소유자가 다른 노드면 두 소유자 이름의 "
+                          "임베딩 유사도가 이 이상일 때 LLM 판정 · 아래면 다른 것(이름 · 별칭 · 라틴 접기 겹침은 문턱 없이 비슷 · "
+                          "임베딩을 쓰는 실행에서만)",
+                          "인입 끝 「같은 이름 · 다른 소유자 … 소유자 이름 비슷 → LLM n」 줄 · python run.py show report <doc_id> --md"),
     "viewer_force": ("cli.viewer.data", ("FORCE",), "dict",
                      "뷰어 힘 배치(ForceAtlas2 계열) — scaling(반발) · gravity(떨어진 덩어리를 붙잡는 중력) · "
                      "iterations(반복 수 — 같은 반복 수면 같은 그림)",

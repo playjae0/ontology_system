@@ -27,6 +27,7 @@ from core.state.bootstrap import load_config
 from core.build.build import Builder
 from core.dictionary import Dictionary
 from core.graph import STATUS_DELETED
+from core.build.naming import base_name_of, scope_of, set_scope
 from core.state.world import World
 # 생존 판정·툼스톤 체인은 core/status.py가 소유한다 — 이름은 여기서도 그대로 보인다
 # (`ops.is_live`·`ops.STATUS_MERGED`·`ops.resolve_chain`·`ops.MAX_CHAIN` — 호출 계약 유지).
@@ -324,11 +325,11 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
     _rename_one(node, new_canonical)
     for c in children:                                       # 연쇄 — 주소가 바뀌었으므로
         _rename_one(c, new_canonical + c["canonical"][len(old):])
-    if node.get("mirror_scope") == old:
-        node["mirror_scope"] = new_canonical
-    for _l, c in w.nodes():                                  # 짝 키도 층 전부(B100 ④)
-        if c.get("mirror_scope") == old:
-            c["mirror_scope"] = new_canonical
+    if scope_of(node) == old:
+        set_scope(node, new_canonical)
+    for _l, c in w.nodes():                                  # 부모 경로도 층 전부(B100 ④ · 칸 이름 B142 ⑤)
+        if scope_of(c) == old:
+            set_scope(c, new_canonical)
     dictionary.save()
     book.save()
     w.save()
@@ -598,8 +599,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
                          provenance=list(t.get("provenance") or []),
                          aliases=[],
                          polarity=node.get("polarity", "none"),
-                         mirror_scope=node.get("mirror_scope"),
-                         mirror_name=node.get("mirror_name"))
+                         scope=scope_of(node), base_name=base_name_of(node))
         book.retarget(alias_book.name(node), alias_book.name(g.get(new)),
                       surfaces=set(t.get("aliases") or []), source="분리")
         for s in (t.get("aliases") or []):

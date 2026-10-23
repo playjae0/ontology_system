@@ -417,12 +417,16 @@ def h_entity(value, spec, ctx):
         _ledger_entity(st, value, lay, None)
         return None
 
+    # **표 행의 소유자**(B142 ③) — 같은 행의 소유 엣지 개체(먼저 해소됐다) · 판정의 자리일 뿐 이름은 그대로다
+    of = (st.get("owners") or {}).get(st.get("field"))
+    oid = (st.get("resolved") or {}).get(of) if of else None
     nid, eb = st["b"].resolve_at_home(value, spec["category"], st["prov"],
                                       coord=(st["ref"], st.get("ref_g")),
                                       electrode_type=st["et"],
                                       parent_canonical=st["parent"],
                                       anchor_polarity=st["anchor_pol"],
-                                      at=(st.get("locator"), st.get("field")))   # 판정 재생의 자리 (B106 ②)
+                                      at=(st.get("locator"), st.get("field")),   # 판정 재생의 자리 (B106 ②)
+                                      owner=(oid, st["external"].get(of, st["graph"])) if oid else None)
     _ledger_entity(st, value, lay, eb.last)
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g

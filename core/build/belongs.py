@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from core import matcher
 from core.state import store
+from core.build.naming import scope_of
 from core.state.ids import fold_latin, norm
 from core.state.status import is_live
 
@@ -154,7 +155,7 @@ def lookup(b, name, cat=None, *, coord=None, src=None, doc=None):
 
 
 def coord_of(b, nid, g):
-    """골격 밖 노드의 **좌표** — 스코프(이름 부모 canonical `mirror_scope`)를 거슬러 닿는 골격 노드 `(id, 그래프)` · 없으면
+    """골격 밖 노드의 **좌표** — 부모 경로(이름 부모 canonical `scope`)를 거슬러 닿는 골격 노드 `(id, 그래프)` · 없으면
     `(None, None)`(B140 ⑤ — 소속 노드의 좌표를 물려받는 재료 · 사전 조회의 좁힘)."""
     from core.build.heading import _is_coord
     from core.state.bootstrap import COORD_CATEGORY
@@ -164,7 +165,7 @@ def coord_of(b, nid, g):
         n = g.get(nid) or {}
         if _is_coord(n):
             return nid, g
-        scope = n.get("mirror_scope")
+        scope = scope_of(n)
         if not scope:
             return None, None
         sid, sg = b.resolve_anchor(scope, COORD_CATEGORY, None, defer=[])
@@ -216,7 +217,8 @@ def _ledger_row(b, eb, nid, at, name, bel):
                  candidates_n=last.get("candidates_n", 0), confidence=last.get("confidence", 0.0),
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
                  same_doc=last.get("same_doc"), target=b.canonical_of(nid), belongs_from=bel.get("from"),
-                 category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"))
+                 category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
+                 apart=last.get("apart"), similar=last.get("similar"))
 
 
 def edge_of(cfg, tgt_cat, child_cat):

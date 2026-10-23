@@ -75,6 +75,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
         name, cat = h["target"]["name"], h["target"]["category"]
         ref, ref_g, parent, pol = _kw(b, src, prov)
         ups = _landed_ups(h, by, landed)
+        owner = None                                # 판정의 자리 — 위 제목 개체(B142 ③ · 이름 부모와 같은 재료)
         if ups:
             uid, ug, _d = ups[0]
             un = ug.get(uid) or {}
@@ -82,9 +83,10 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                 ref, ref_g, parent, pol = uid, ug, un["canonical"], b.anchor_polarity(uid, ug)
             else:                                   # 이름에 소속 — 부모 제목 개체 아래 (B102 ⑤ · 한 함수 B119 ④)
                 parent = name_parent(cat, un.get("canonical"), parent, b.cfg)
+                owner = (uid, ug)
         nid, eb = b.resolve_at_home(name, cat, prov, coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
                                     parent_canonical=parent, anchor_polarity=pol,
-                                    coord_surface=src.get("process_ref"), at=(h["path"], cat))
+                                    coord_surface=src.get("process_ref"), at=(h["path"], cat), owner=owner)
         last = eb.last or {}
         row = b.ledger.add(locator=h["path"], field=cat, role=ROLE, surface=name,
                            canonical=last.get("canonical"), layer=last.get("layer") or b.layer,
@@ -93,7 +95,8 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            candidates_n=last.get("candidates_n", 0), confidence=last.get("confidence", 0.0),
                            llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
                            same_doc=last.get("same_doc"), target=b.canonical_of(nid),
-                           category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"))
+                           category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
+                           apart=last.get("apart"), similar=last.get("similar"))
         if not nid:
             continue
         hg = b.graph_of(nid) or graph

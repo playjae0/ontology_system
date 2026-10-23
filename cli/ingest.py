@@ -480,11 +480,11 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         _u0 = gateway.usage_total()["calls"]
         from core import matcher as _mt
         _plan_n = _value_count(res.envelope, sel) or 1     # 분모 = 판정 예고의 값 수 (B102 ⑦)
-        stage["이름"], stage["총"] = "판정", _plan_n
+        stage["이름"], stage["총"] = SCR.JUDGE, _plan_n
         _mt.PROGRESS = SCR.judge_progress(_plan_n, stage=stage, every=step_every,
                                       stride=progress_every)
         # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
-        _ledger.ON_ROW = SCR.row_printer(res.envelope)
+        _ledger.ON_ROW = SCR.row_printer(res.envelope, stage=stage)
         try:
             # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
@@ -638,8 +638,8 @@ def spend_line(stage):
     수는 `gateway.usage_total()` 그대로다 — 화면이 제 계산을 하지 않는다.
     """
     where = stage.get("이름", "선택")
-    if where == "판정" and stage.get("총"):
-        where = f"판정 값 {stage.get('값', 0)}/{stage['총']}"
+    if where == SCR.JUDGE and stage.get("총"):
+        where = f"판정 값 {stage.get('값', 0)}/{stage['총']} · 판정 호출 {stage.get('호출') or 0}"
     return f"이 문서까지 — {_screen.usage_pair(SCR.doc_since(), '이 문서')} · 멈춘 단계 {where}"
 
 

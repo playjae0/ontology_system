@@ -85,6 +85,28 @@ def nest_categories(cfg):
     return list(((cfg or {}).get("canonical_scope") or {}).get("nest_categories") or [])
 
 
+#: 부모 경로 · 맨 이름 칸 — 새 칸 앞, 옛 칸 뒤(B142 ⑤ — 재구축 전 그래프는 옛 칸만 있다 · 옛 `parent`는 시험 노드의 칸)
+SCOPE_FIELDS = ("scope", "mirror_scope", "parent")
+BASE_FIELDS = ("base_name", "mirror_name")
+
+
+def scope_of(node):
+    """노드의 **부모 경로** — 이름 부모 canonical 글자(`노칭::실린더`) · 없으면 None. 읽는 자리는 이 함수 하나(B142 ⑤)."""
+    return next((node.get(k) for k in SCOPE_FIELDS if (node or {}).get(k)), None) if node else None
+
+
+def base_name_of(node):
+    """노드의 **맨 이름** — 주소 접두를 뺀 자기 이름부(정규화 표기) · 없으면 None(골격 · 옛 노드는 canonical로 본다)."""
+    return next((node.get(k) for k in BASE_FIELDS if (node or {}).get(k)), None) if node else None
+
+
+def set_scope(node, scope):
+    """부모 경로를 새 칸에 쓰고 옛 칸을 걷는다(개명 연쇄 — 한 노드의 부모 경로 칸은 하나)."""
+    for k in SCOPE_FIELDS[1:]:
+        node.pop(k, None)
+    node["scope"] = scope
+
+
 def name_parent(category, owner_canonical, coord_parent, cfg):
     """**이름 부모 한 함수**(B119 ④) — 소속이 **골격 밖 노드**(유닛 · 제목 개체)로 해소된 개체의 이름 부모.
 
