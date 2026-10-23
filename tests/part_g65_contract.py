@@ -35,7 +35,7 @@ show("A1 회수 — 사라진 청크를 가리키는 describes가 남지 않는�
 show("A1 회수 — 근거가 0이 된 auto 노드는 삭제가 아니라 evidence_lost 큐 (첫 발화)",
      len(q_of("evidence_lost")) >= 1, f"{len(q_of('evidence_lost'))}건")
 show("A1 보존 — 살아있는 노드의 사전 엔트리는 유지된다 (③ 회수 아님)",
-     node_by("process", "노칭::노칭 정밀도") is not None
+     node_by("process", "노칭::노칭 프레스::노칭 정밀도") is not None  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
      and store.read(store.DICTIONARY, {}).get(norm("노칭 프레스")))
 show("A1 보존 — 미검토 작업목록(auto_node)은 재인입이 지우지 않는다",
      len(q_of("auto_node")) == auto0, f"{auto0} → {len(q_of('auto_node'))}")
@@ -62,7 +62,7 @@ run_document(dict(TABLE, doc_id="XREV", records=[dict(SOLO, 규격="±0.1mm")]))
 sc0 = len(q_of("spec_conflict", "XREV"))
 run_document(dict(TABLE, doc_id="XREV", revision="R2",
                   records=[dict(SOLO, 규격="±0.5mm")]))
-n = node_by("process", "노칭::감사 전용 인자")
+n = node_by("process", "노칭::노칭 프레스::감사 전용 인자")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 vals = [it["value"] for it in (n["attrs"].get("spec") or [])]
 show("C4 같은 문서의 값 개정이 거짓 spec_conflict를 만들지 않는다 (교체)",
      len(q_of("spec_conflict", "XREV")) == sc0 and "±0.5mm" in vals
@@ -191,12 +191,12 @@ show("C2 질의에 자기참조 거짓 사실이 나오지 않는다",
 
 # C1 — 이름이 같고 값이 다른 attr는 무음 폐기가 아니라 spec_conflict
 fresh()
-x = node_by("process", "노칭::노칭 정밀도")
-y = node_by("process", "노칭::금형 클리어런스")
+x = node_by("process", "노칭::노칭 프레스::노칭 정밀도")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
+y = node_by("process", "노칭::노칭 프레스::금형 클리어런스")
 xa = copy.deepcopy(x["attrs"]); ya = copy.deepcopy(y["attrs"])
 before_sc = len(q_of("spec_conflict"))
 ops.merge("process", y["id"], x["id"], actor="시험자", reason="C1 repro")
-keep = node_by("process", "노칭::노칭 정밀도") or node_by("process", "노칭::금형 클리어런스")
+keep = node_by("process", "노칭::노칭 프레스::노칭 정밀도") or node_by("process", "노칭::노칭 프레스::금형 클리어런스")
 merged = keep["attrs"].get("spec") or []
 vals = {it["value"] for it in merged} if isinstance(merged, list) else set()
 queued = {x2["payload"].get("incoming") for x2 in q_of("spec_conflict")}
@@ -215,7 +215,7 @@ run_document(dict(TABLE, doc_id="XATTR_A",
                   records=[dict(CPREC, source_locator="XA-R1", 측정방법="방법A")]))
 run_document(dict(TABLE, doc_id="XATTR_B",
                   records=[dict(CPREC, source_locator="XB-R1", 측정방법="방법B")]))
-n = node_by("process", "노칭::노칭 정밀도")
+n = node_by("process", "노칭::노칭 프레스::노칭 정밀도")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 at = n["attrs"].get("측정방법")
 prov = at.get("provenance") if isinstance(at, dict) else \
     [p for it in at for p in it["provenance"]]

@@ -189,7 +189,7 @@ _knobs({})
 _lm1 = _lm.read_text(encoding="utf-8").count("\n") if _lm.exists() else 0
 L1 = r1["trace"]["linking"]
 show("ⓑ 사전에 없는 동의 표현(「틈새」)이 임베딩 후보 + 선별로 노드에 닿는다 — method embed+llm · 점수 · 이유 · 어디의 무엇",
-     [x["canonical"] for x in L1] == ["노칭::금형 클리어런스"] and L1[0]["method"] == "embed+llm"
+     [x["canonical"] for x in L1] == ["노칭::cathode::금형 클리어런스"] and L1[0]["method"] == "embed+llm"  # 기대 변경(B144 ② — CP 이름이 설비 아래로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 노드는 같은 이름 PFMEA 노드)
      and L1[0].get("why") and L1[0].get("score") is not None and L1[0].get("where"),
      " ‖ ".join(f"{x['canonical']} [{x['method']} · 점수 {x.get('score')} · 이유 「{x.get('why')}」 · "
                 f"위치 {x.get('where')}]" for x in L1))
@@ -200,7 +200,7 @@ show("ⓑ 후보 밖 id 0 · LLM이 받은 후보 수 ≤ k(5) < 노드 전부 �
 m2 = {x["canonical"]: x["method"] for x in r2["trace"]["linking"]}
 m3 = {x["canonical"]: x["method"] for x in r3["trace"]["linking"]}
 show("ⓑ 보충(기본) — 사전 노드는 그대로 + 선별이 더한다 · 폴백 — 사전이 잡으면 선별 호출 0(지금 규칙)",
-     m2.get("노칭") == "dict" and m2.get("노칭::금형 클리어런스") == "embed+llm"
+     m2.get("노칭") == "dict" and m2.get("노칭::cathode::금형 클리어런스") == "embed+llm"  # 기대 변경(B144 ② — CP 이름이 설비 아래로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 노드는 같은 이름 PFMEA 노드)
      and m3 == {k: v for k, v in m2.items() if v == "dict"} and not c3,
      f"보충 {m2} · 폴백 {m3} · 폴백 선별 호출 {len(c3)}")
 show("ⓑ 링킹 미스율은 사전 단 기준 — 선별이 찾았어도 사전이 못 찾은 질문은 link_miss에 적재(사전이 잡은 질문은 0)",
@@ -290,7 +290,7 @@ show("ⓓ 답 — 5줄 이내(줄 수 표시) · used_facts·used_chunks가 사�
 # ────────────────────────────────────────────────────────────── ⓔ
 print("\n■ B104 ⑤ 채점 — 링킹 사전만 vs 보충 · 문서 검색 doc@k (BM25 대조군 옆)")
 _qs = [{"id": "B104-1", "type": "Q1", "q": "틈새는 어떻게 관리해?", "expected_path": "chunk",
-        "expected_linked": ["process:노칭::금형 클리어런스"], "expected_docs": ["CP01"]},
+        "expected_linked": ["process:노칭::cathode::금형 클리어런스"], "expected_docs": ["CP01"]},  # 기대 변경(B144 ② — CP 이름이 설비 아래로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 노드는 같은 이름 PFMEA 노드)
        {"id": "B104-2", "type": "Q1", "q": "육안 점검 교체 주기는?", "expected_path": "chunk",
         "expected_docs": ["PPT03"]}]
 with Live():

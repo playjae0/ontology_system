@@ -167,6 +167,8 @@ def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair
         under_old |= {e["src"] for _l, e in all_edges
                       if e["rel"] in skel_rels and e["dst"] in under_old | {old_parent["id"]}
                       and e.get("status") != STATUS_DELETED}
+        if old_parent.get("category") != parent["category"]:
+            under_old.add(old_parent["id"])      # 옛 부모가 소유자(설비)면 그 소유 엣지도 옛 소속이다(B144 ② — 표도 설비 아래)
     for lay, e in all_edges:
         g = w.graphs[lay]
         if e.get("status") == STATUS_DELETED:
@@ -327,9 +329,13 @@ def rename(layer, nid, new_canonical, actor, reason="", dry_run=False):
         _rename_one(c, new_canonical + c["canonical"][len(old):])
     if scope_of(node) == old:
         set_scope(node, new_canonical)
+    pre = old + _sep(cfg)
     for _l, c in w.nodes():                                  # 부모 경로도 층 전부(B100 ④ · 칸 이름 B142 ⑤)
-        if scope_of(c) == old:
+        sc = scope_of(c)
+        if sc == old:
             set_scope(c, new_canonical)
+        elif sc and sc.startswith(pre):                      # 손자 이하 — 소유자 아래 값(B144 ② — 표도 설비 아래)
+            set_scope(c, new_canonical + sc[len(old):])
     dictionary.save()
     book.save()
     w.save()

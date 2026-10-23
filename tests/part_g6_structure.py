@@ -330,8 +330,11 @@ def _table_names(nest):
 
 
 _tn1, _tn0 = _table_names(True), _table_names(False)
-show("ⓓ 표(CP01 · PFMEA01)의 이름 · 병합 키 — `nest_categories`가 있어도 없을 때와 같다(표는 소속이 공정)",
-     _tn1 == _tn0 and _tn1, f"auto 노드 {len(_tn1)} · 같음 {_tn1 == _tn0}")
+# 기대 변경(B144 ② — 표도 산문과 같은 이름 규칙: `nest_categories`면 관리항목은 같은 행의 설비 아래 · 없으면 공정 아래)
+show("ⓓ 표(CP01 · PFMEA01)의 이름 — `nest_categories`가 있으면 관리항목은 설비 아래(산문 소속과 같은 함수) · 없으면 공정 아래",
+     "노칭::노칭 프레스::노칭 정밀도" in _tn1 and "노칭::노칭 정밀도" not in _tn1
+     and "노칭::노칭 정밀도" in _tn0 and not any(n.startswith("노칭::노칭 프레스::") for n in _tn0),
+     f"auto 노드 {len(_tn1)} · {len(_tn0)} · {[n for n in _tn1 if '노칭 정밀도' in n]} · {[n for n in _tn0 if '노칭 정밀도' in n]}")
 
 # ────────────────────────────────────────────────────────────── ⓒ 관문 · 약한 구조 · ⑤ 화면 — 명령 그대로(mock 힌트)
 print("\n■ ⓒ 구조 관문 · 약한 구조 · ⑤ 값 표 칸 — 명령 그대로 (mock 힌트)")

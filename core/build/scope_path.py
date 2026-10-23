@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
-"""칸 3.4 — **부모 경로** — 공정 줄기 · 소유자 사슬 · 경로 호환 (B142 ①②③).
+"""칸 3.4 — **부모 경로** — 공정 줄기 · 소유자 사슬 · 경로 호환 (B142 ①②③ · B144 ①③).
 
 **이름이 기준이고 경로는 증거다**(열쇠가 아니다). 노드의 부모 경로(`naming.scope_of` — 이름 부모 canonical 글자)를 사전의
 canonical 키로 풀어 **노드로** 거슬러 간다(가까운 것부터 — `walk`): 닿는 골격 노드가 그 노드의 **공정**이고 가는 길의 노드가
-**소유자 사슬**이다(`belongs.coord_of`도 이 걸음이다). 판정의 관문은 카테고리와 **공정 줄기**(같은 공정이거나 골격에서 한쪽이
-다른 쪽의 위 · 아래)뿐이고, 사슬은 들어온 값과 후보를 견주는 재료다(`Place.relation`):
+**소유자 사슬**이다(`belongs.coord_of`도 이 걸음이다). 후보의 **소유자 근거**는 그 사슬 + 그 노드로 들어오는 **소유 엣지**의
+소유자마다 그 소유자부터의 사슬이다(B144 ③ — `_Edges` · 근거가 여럿이면 전부). 판정의 관문은 카테고리와 **공정 줄기**(같은
+공정이거나 골격에서 한쪽이 다른 쪽의 위 · 아래)뿐이고, 근거는 들어온 값과 후보를 견주는 재료다(`Place.relation`):
 
     공정 줄기가 다름                                         OTHER    후보가 아니다(LLM 0)
-    둘 다 소유자 없음 · 같은 공정                            SAME
-    한쪽 경로 없음 · 공정 칸 높이만 다름                      COMPAT
-    가장 가까운 소유자가 같은 노드                            SAME
+    둘 다 소유자 근거 없음 · 같은 공정                        SAME
+    한쪽 소유자 근거가 전혀 없음 · 공정 칸 높이만 다름         COMPAT
+    값의 가장 가까운 소유자가 어느 근거 사슬의 머리            SAME
     한쪽 사슬이 다른 쪽의 가까운 소유자를 품음(깊이만 다름)    COMPAT
     소유자가 다른 노드 · 이름 비슷(이름 · 별칭 · 라틴 접기 ·   SIMILAR  LLM 판정(입력에 두 경로)
       임베딩 유사도 ≥ `OWNER_SIMILAR_PCT`)
     소유자가 다른 노드 · 뚜렷이 다름                          APART    다른 것 — 후보에서 뺀다
+
+소유자 없는 노드가 경로 호환으로 A의 값을 받으면 소속 엣지가 서고, 다음 B의 값부터는 소유자 갈림으로 본다(순서에 달린 합침을
+막는다 · 소유자 없는 값이 어디에 붙는지는 순서에 따라 달라도 된다).
 
 부모 경로 글자가 들어온 값의 이름 부모와 **같으면** 걷지 않고 SAME이다(지금의 이름 규칙 그대로 — 같은 글자는 같은 자리).
 후보의 공정에 닿지 못하면(사슬이 끊겼다) OTHER다 — 모르는 자리를 근거로 붙이지 않는다. 들어온 값의 소유자는 호출부가 준다
@@ -169,16 +173,32 @@ class Place:
         self.parent_key = norm(parent or "")
         self.apart, self.similar = [], []
         # **값 하나에 한 번**(B144 ①) — 후보마다 다시 재던 것: 좁히기 방법 · 값의 사전 조회 · 줄기 · 같은 근거와의 관계
-        self._mode = self._ids = self._fold = None
+        self._mode = self._ids = self._fold = self._eix = None
         self._stem, self._rel = {}, {}
 
     def names(self):
         """판정 입력의 경로 — 공정부터 가장 가까운 소유자까지(이름)."""
         return [_label(self.proc[1], self.proc[0])] + [_label(g, x) for x, g in reversed(self.owners)]
 
-    def path_of(self, nid, g):
+    def chains(self, nid, g):
+        """후보의 **소유자 근거**(B144 ③) — `(공정 id, 그래프, [사슬 …])` · 사슬 = `[(소유자 id, 그래프) — 가까운 것부터]`.
+        부모 경로 사슬(`walk_node`) + 그 노드로 들어오는 소유 엣지마다 그 소유자부터의 사슬(`edge_index` — 값마다 한 번 맞춘다) ·
+        머리가 같은 것은 하나."""
         p, pg, ow = walk_node(self.b, nid, g)
-        return ([_label(pg, p)] if p else []) + [_label(og, x) for x, og in reversed(ow)]
+        out = [ow] if ow else []
+        heads = {c[0][0] for c in out}
+        if self._eix is None:
+            self._eix = edge_index(self.b)
+        for x, xg in self._eix.of(nid):
+            if x not in heads:
+                heads.add(x)
+                out.append([(x, xg)] + walk_node(self.b, x, xg)[2])
+        return p, pg, out
+
+    def path_of(self, nid, g):
+        """판정 입력의 후보 경로 — 공정부터 가장 가까운 소유자까지(부모 경로 사슬 · 없으면 첫 소유 엣지의 사슬)."""
+        p, pg, cs = self.chains(nid, g)
+        return ([_label(pg, p)] if p else []) + [_label(og, x) for x, og in reversed(cs[0] if cs else [])]
 
     def in_stem(self, p, pg):
         """그 공정이 값의 공정 줄기 안인가 — 공정마다 한 번."""
@@ -191,27 +211,29 @@ class Place:
         n = (g.get(nid) if g is not None else None) or {}
         if self.parent and norm(scope_of(n) or "") == self.parent_key:
             return SAME
-        p, pg, ow = walk_node(self.b, nid, g)
-        key = (p, tuple(x for x, _g in ow))
+        p, pg, cs = self.chains(nid, g)
+        key = (p, tuple(tuple(x for x, _g in c) for c in cs))
         if key not in self._rel:
-            self._rel[key] = self._relation(p, pg, ow)
+            self._rel[key] = self._relation(p, pg, cs)
         return self._rel[key]
 
-    def _relation(self, p, pg, ow):
+    def _relation(self, p, pg, cs):
+        """근거가 여럿이면 전부(B144 ③): 들어온 값의 가장 가까운 소유자가 어느 사슬의 머리 → 같은 소유자 · 어느 사슬 안이거나
+        어느 머리가 값의 사슬 안(깊이만 다름) → 경로 호환 · 근거가 있는데 겹치지 않으면 소유자 갈림(머리 중 이름 비슷이 있으면 판정).
+        **「한쪽 경로 없음」은 소유자 근거가 전혀 없는 쪽만**이다 — 소유 엣지를 받은 노드는 그 소유자를 근거로 진다."""
         if not self.in_stem(p, pg):
             return OTHER
         mine = [x for x, _g in self.owners]
-        theirs = [x for x, _g in ow]
-        if not mine and not theirs:
+        if not mine and not cs:
             return SAME if self.proc[0] == p else COMPAT
-        if not mine or not theirs:
+        if not mine or not cs:
             return COMPAT
-        if mine[0] == theirs[0]:
+        if any(mine[0] == c[0][0] for c in cs):
             return SAME
-        if mine[0] in theirs or theirs[0] in mine:
+        if any(mine[0] in [x for x, _g in c] or c[0][0] in mine for c in cs):
             return COMPAT
         a, ag = self.owners[0]
-        return SIMILAR if self.owner_similar(ag.get(a) or {}, ow[0][1].get(ow[0][0]) or {}) else APART
+        return SIMILAR if any(self.owner_similar(ag.get(a) or {}, c[0][1].get(c[0][0]) or {}) for c in cs) else APART
 
     def owner_similar(self, a, b):
         """소유자 둘(다른 노드)의 이름이 비슷한가 — 이름 · 별칭 · 라틴 접기 겹침 · 임베딩 유사도(문턱 손잡이)."""
@@ -262,6 +284,90 @@ class _Index:
                     grp[0].setdefault(norm(sc), (sc, []))[1].append(nid)
         self.n = len(nodes)
         return self
+
+
+#: 이 빌드가 열지 않은 층의 **읽기 전용 사본**(B144 ③) — 층 → (파일 판, 그래프) · 판(`GraphStore.stamp`)이 같으면 다시 읽지 않는다
+_SNAP = {}
+
+
+class _Edges:
+    """**소유 엣지 색인**(B144 ③) — 자식 노드 id → [(소유자 id, 그래프)]. 엣지는 문서 층에 서므로 층 전부를 본다(B100): 이 빌드가
+    연 그래프(엣지가 늘면 그 엣지만 더한다) + 열지 않은 층의 읽기 전용 사본. 소유 엣지 = 두 끝 카테고리의 카테고리쌍 매핑이 정한
+    관계 · 방향과 같은 엣지(`belongs.edge_of` — 산문 소속 · `table_owners`와 같은 표) · 자식은 `nest_categories` · 소유자는
+    살아 있는 골격 밖 노드(골격은 공정이지 소유자가 아니다) · 사람이 지운 엣지는 아니다."""
+
+    def __init__(self, b):
+        self.b, self.parts, self.others, self.pairs = b, {}, None, {}
+
+    def _world(self):
+        from router import discover
+        from core.graph import GraphStore
+        mine = {g.layer: g for g in self.b.graphs()}
+        if self.others is None:
+            self.others = {}
+            for lay in discover():
+                if lay not in mine:
+                    gs = GraphStore.for_layer(lay)
+                    st = gs.stamp()
+                    if _SNAP.get(lay, (None,))[0] != st or st is None:
+                        _SNAP[lay] = (st, gs.load())
+                    self.others[lay] = _SNAP[lay][1]
+        return [mine[k] for k in sorted(mine)] + [g for k, g in sorted(self.others.items()) if k not in mine]
+
+    def sync(self):
+        world = self._world()
+        live = {id(g) for g in world}
+        for k in [k for k in self.parts if k not in live]:
+            del self.parts[k]                              # 사본이던 층이 이 빌드에 열렸다 — 연 그래프로 다시 센다
+        for g in world:
+            part = self.parts.setdefault(id(g), {"g": g, "n": 0, "own": {}})
+            for e in g.edges[part["n"]:]:
+                hit = self._owner_edge(e, world)
+                if hit:
+                    part["own"].setdefault(hit[0], []).append(hit[1])
+            part["n"] = len(g.edges)
+        self.world = world
+        return self
+
+    def _owner_edge(self, e, world):
+        from core.graph import STATUS_DELETED
+        if e.get("status") == STATUS_DELETED:
+            return None
+        ends = []
+        for nid in (e.get("src"), e.get("dst")):
+            g = next((g for g in world if g.get(nid)), None)
+            ends.append((nid, g, g.get(nid) if g is not None else None))
+        if not ends[0][2] or not ends[1][2]:
+            return None
+        nest = nest_categories(self.b.cfg)
+        for (oid, og, o), (_cid, _cg, c), fwd_need in ((ends[0], ends[1], True), (ends[1], ends[0], False)):
+            if c.get("category") not in nest or _coord(o) or not is_live(o):
+                continue
+            k = (o.get("category"), c.get("category"))
+            if k not in self.pairs:
+                from core.build.belongs import edge_of
+                self.pairs[k] = edge_of(self.b.cfg, *k)
+            rel, fwd = self.pairs[k]
+            if rel and rel == e.get("rel") and fwd == fwd_need:
+                return _cid, (oid, og)
+        return None
+
+    def of(self, nid):
+        out, seen = [], set()
+        for part in self.parts.values():
+            for x, xg in part["own"].get(nid) or ():
+                if x not in seen:
+                    seen.add(x)
+                    out.append((x, xg))
+        return out
+
+
+def edge_index(b):
+    """빌더(문서 하나)의 소유 엣지 색인 — 부를 때 늘어난 엣지만 더한다(값마다 한 번 · `Place`)."""
+    ix = b.__dict__.get("_eidx")
+    if ix is None:
+        ix = b.__dict__["_eidx"] = _Edges(b)
+    return ix.sync()
 
 
 def stem_nodes(pl, g, category, hosts):
@@ -315,6 +421,18 @@ def table_owners(schema, cfg):
             if rel == e.get("relation") and fwd == (owner == a):
                 out[child] = owner
     return out
+
+
+def owner_parent(cfg, category, owner, coord_parent):
+    """**표 행의 이름 부모**(B144 ②) — 같은 행의 소유 엣지 개체(`owner` — `(id, 그래프)` · `table_owners`)가 골격 밖 노드이면
+    `naming.name_parent`(산문 소속과 같은 함수 — `nest_categories`면 그 노드의 canonical) · 없거나 골격 노드(제 공정 — 자기 좌표)면
+    좌표 그대로. 표 인입(`loop.h_entity`) · 재시도 착지(`retry`) · 판정 예고(`entry`)가 이 함수 하나로 이름을 짓는다."""
+    from core.build.naming import name_parent
+    oid, og = owner or (None, None)
+    n = (og.get(oid) if oid and og is not None else None) or {}
+    if not n or _coord(n):
+        return coord_parent
+    return name_parent(category, n.get("canonical"), coord_parent, cfg)
 
 
 def owner_first(fields, owners):

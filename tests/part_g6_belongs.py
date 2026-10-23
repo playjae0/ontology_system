@@ -664,8 +664,10 @@ _eA = _edges_of(_cy[0]["id"]) if _cy else []
 show("B140 ⓑ 더하기 — 관문(pty) n → 상세 → OK → 기록 → [6/8]이 「노칭::실린더」를 고른 위 노드(노칭) 아래 세운다 · 이 문서의 소속 개체가 "
      "그 노드에 붙고(임시 연결 0) 그 이름을 끝점으로 한 관계가 커밋 · 소속 미해소 0",
      [r["kind"] for r in HC.of("B140A")] == [HC.NEW] and _cy and ("노칭::실린더", "part_of", "노칭") in _eA
-     # 기대 변경(B142 ② — 같은 자식은 한 노드: 이 문서의 「실린더 행정」이 먼저 선 노칭::실린더 행정에 경로 호환으로 붙는다)
-     and ("노칭::실린더", "has_property", "노칭::실린더 행정") in _eA and not _live_named("노칭::실린더::실린더 행정")
+     # 기대 변경(B144 ③ — 먼저 선 「노칭::실린더 행정」은 제목 개체 NG unit의 폴백 엣지를 소유자 근거로 진다: 실린더 아래 값은
+     # 소유자 갈림이라 실린더 아래 이름으로 선다 · 그 노드는 대장에 「다른 소유자 아래 같은 이름」으로 남는다)
+     and ("노칭::실린더", "has_property", "노칭::실린더::실린더 행정") in _eA
+     and "노칭::실린더 행정" in (_rowA.get("실린더 행정", {}).get("apart") or [])
      and not any(str(a.get("path")).startswith("폴백") for a in _rowA.get("실린더 행정", {}).get("attached") or [])
      and _rowA.get("실린더", {}).get("by") == HU.HUMAN and not _orph("B140A", "실린더") and "만들 노드 — 노칭::실린더" in _ob,
      f"기록 {HC.of('B140A')} · 엣지 {_eA} · 고아 {len(_orph('B140A', '실린더'))}")
@@ -679,8 +681,9 @@ _go(_pH, _cH)
 _rH = next((r for r in LG.read("B142H")["rows"] if r.get("surface") == "실린더 행정" and r.get("role") == "entity"), {})
 show("B142 ⓗ 재연결로 붙은 자식 — 먼저 넣은 문서의 납작한 「노칭::실린더 행정」(재연결로 실린더에 붙음)에 뒤 문서의 같은 자식이 붙는다"
      "(경로 호환 · 중복 0 · 차례 의존 0)",
-     _rH.get("target") == "노칭::실린더 행정" and _rH.get("path") == "path_compat"
-     and len(_live_named("노칭::실린더 행정")) == 1 and not _live_named("노칭::실린더::실린더 행정"),
+     # 기대 변경(B144 ②③ — 뒤 문서의 같은 자식은 실린더 아래 같은 이름(사전)으로 만나 새 노드를 세우지 않는다)
+     _rH.get("target") == "노칭::실린더::실린더 행정" and _rH.get("path") == "dictionary" and _rH.get("verdict") == "match"
+     and len(_live_named("노칭::실린더 행정")) == 1 and len(_live_named("노칭::실린더::실린더 행정")) == 1,
      f"뒤 문서 행 {_rH.get('path')} → {_rH.get('target')}")
 _pS, _cS = _b140("B140S", ["1. 구동", "실린더봉 행정은 40mm다."], {"실린더봉 행정": "실린더봉"})
 HC.add("B140S", {"kind": HC.SAME, "name": "실린더봉", "target": {"name": "노칭::실린더", "layer": "process", "category": "Unit"}})

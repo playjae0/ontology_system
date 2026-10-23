@@ -107,6 +107,11 @@ def _entity_surfaces(env, schema):
     스키마와 레코드에 있다 — **LLM 0**으로 센다.
     """
     fields = (schema or {}).get("fields") or {}
+    # 표 행의 소유자(B144 ② — 이름 부모가 그 노드다) · 층을 모르는 스키마는 소유자 없음(지금 그대로)
+    from core.build import scope_path
+    from parser.normalizer import null_marker
+    lay = (schema or {}).get("layer")
+    owners = scope_path.table_owners(schema, load_config(lay)) if fields and lay else {}
     out = []
     for rec in env.get("records") or []:
         for f, spec in fields.items():
@@ -114,12 +119,16 @@ def _entity_surfaces(env, schema):
                 continue
             v = rec.get(f)
             if isinstance(v, str) and v.strip():
+                of = owners.get(f)
+                ov = rec.get(of) if of else None
                 out.append({"surface": v.strip(), "field": f,
                             "category": (spec or {}).get("category"),
                             "target_layer": (spec or {}).get("target_layer"),
                             # 좌표는 행이 쓰는 것과 같은 순서다 — ref 없으면 group
                             "ref": rec.get("process_ref") or rec.get("process_group"),
-                            "electrode_type": rec.get("electrode_type")})
+                            "electrode_type": rec.get("electrode_type"),
+                            **({"owner": {"surface": ov.strip(), "category": fields[of].get("category")}}
+                               if isinstance(ov, str) and ov.strip() and not null_marker(ov) else {})})
     return out
 
 
@@ -133,8 +142,6 @@ def _plan_hit(b, m, layer):
     좌표 해소도 판정과 같은 경로(골격 조회 → 하강 → 극성 상속)를 지나되 **쓰지
     않는다**: 미해소 좌표는 `defer` 자루로 받아 버린다(예고가 큐를 만들지 않는다).
     """
-    from core.build.build import entity_key
-    from core import matcher
     surface, category = m.get("surface"), m.get("category")
     if not surface or not category:
         return False
@@ -153,14 +160,30 @@ def _plan_hit(b, m, layer):
     if ref_id is None and loop._scoped_category(category, lay, b):
         return False                # 좌표 없는 스코프 개체는 판정에 오르지 않는다
     eb = b.for_layer(lay)
-    key, pol, scoped, _sc = entity_key(surface, category, eb.cfg,
-                                       electrode_type=et, parent_canonical=parent,
-                                       anchor_polarity=apol)
-    # **판정과 같은 관문**(B142 — `matcher.gated` · 자리는 좌표만: 예고는 행의 소유자를 해소하지 않는다)
+    # **표 행의 소유자 → 이름 부모**(B144 ② — 판정과 같은 함수 `scope_path.owner_parent`): 소유자는 판정 없이 잰다 — 사전 · 경로
+    # 호환이 답하면 그 노드 · 아니면 새로 설 이름(소유자 키)이 부모다(예고는 노드를 만들지 않는다)
     from core.build import scope_path
-    place = scope_path.place(eb, category, (ref_id, ref_g), None, surface, parent)
-    return bool(matcher.gated(key, category, lay, eb.g, b.dict, scoped=scoped, polarity=pol,
-                              parent=parent, cfg=eb.cfg, place=place)[0])
+    from core.build.naming import name_parent
+    owner, o = None, m.get("owner")
+    if o and parent:
+        hit, okey = _plan_key(b, o["surface"], o["category"], ref_id, ref_g, parent, apol, et)
+        owner = (hit[0]["id"], b.for_layer(b.home_of(o["category"])).g) if hit else None
+        parent = (scope_path.owner_parent(eb.cfg, category, owner, parent) if owner
+                  else name_parent(category, okey, parent, eb.cfg))
+    return bool(_plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=owner)[0])
+
+
+def _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=None):
+    """예고 한 값 — `(판정 없이 붙는 후보, 조회 키)` · 판정과 같은 키(`entity_key`) · 같은 관문(`matcher.gated` · B142)."""
+    from core.build import scope_path
+    from core.build.build import entity_key
+    lay = b.home_of(category)
+    eb = b.for_layer(lay)
+    key, pol, scoped, _sc = entity_key(surface, category, eb.cfg, electrode_type=et, parent_canonical=parent,
+                                       anchor_polarity=apol)
+    place = scope_path.place(eb, category, (ref_id, ref_g), owner, surface, parent)
+    return matcher.gated(key, category, lay, eb.g, b.dict, scoped=scoped, polarity=pol,
+                         parent=parent, cfg=eb.cfg, place=place)[0], key
 
 
 def decision_plan(mentions, refs, layer):

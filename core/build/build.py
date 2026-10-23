@@ -59,6 +59,11 @@ def entity_key(surface, category, cfg, *, electrode_type=None,
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
 
+def _key_text(k, sep):
+    """짝 키의 부모 요소를 글자로 — 겹(골격 밖 부모 · `_mirror_scope`)이면 `sep`으로 잇는다."""
+    return sep.join(_key_text(x, sep) for x in k if x) if isinstance(k, tuple) else k
+
+
 class Builder(CoordMixin):
     def __init__(self, graph, cfg, schema, doc_id, layer):
         self.anchor_hold = None                   # 마지막 좌표 해소의 보류 사유(B104 ①)
@@ -415,7 +420,7 @@ class Builder(CoordMixin):
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
                        belongs=None, at=None, chunk_text=None, coord=None, owner=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시). `coord` · `owner`(산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
-        판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름은 그대로).
+        판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름 부모는 호출부가 `naming.name_parent`로 · B144 ②).
 
         `chunk_text`(그 표기가 나온 청크의 원문 — 산문이 준다)가 있으면 1차가 불확실일 때 그 앞뒤 글로 2차를 묻는다
         (B123 ③ — `matcher.second` · 표의 행은 청크가 아니라 주지 않는다).
@@ -670,7 +675,7 @@ class Builder(CoordMixin):
         return ATTR_ADDED
 
     # ---------------------------------------------------------------- mirrors
-    def _mirror_scope(self, scope):
+    def _mirror_scope(self, scope, _depth=0):
         """짝 키의 부모 요소 — **부모가 mirror 쌍이면 동일시한다**(F3 하향 연쇄).
 
         부모가 축 인스턴스이고 그 인스턴스가 mirrors로 이어져 있으면, 그 아래 같은
@@ -688,6 +693,11 @@ class Builder(CoordMixin):
         node = next((n for n in self.g.nodes.values() if n["canonical"] == scope), None)
         if node is None or not is_bound(node.get("polarity"), self.cfg):
             return scope
+        from core.build.heading import _is_coord
+        if not _is_coord(node) and scope_of(node) and _depth < 16:
+            # **골격 밖 부모**(소유자 — 유닛 · 설비 · B144 ②): 그 부모의 짝 키가 이 자리다 — `탭용접::cathode::융착기::용접 강도`와
+            # `탭용접::anode::융착기::용접 강도`가 한 키(부모들이 같은 자리면 같은 키 · 짝 없는 쪽은 편측 큐 그대로)
+            return self._mirror_scope(scope_of(node), _depth + 1), base_name_of(node) or node["canonical"]
         mrel = (self.cfg.get("mirrors") or {}).get("relation")
         if not any(e["src"] == node["id"] and e["rel"] == mrel for e in self.g.edges):
             return scope
@@ -742,6 +752,7 @@ class Builder(CoordMixin):
             only = next(iter(pair))
             scope, name = base
             sep = (self.cfg.get("canonical_scope") or {}).get("sep", "::")
+            scope = _key_text(scope, sep)                # 골격 밖 부모의 짝 키는 겹 — 글자로 펴서 싣는다(B144 ②)
             label = f"{scope}{sep}{name}" if scope else name
             store.enqueue("mirror_asymmetry",
                           f"'{label}'가 {only} 쪽에만 있다 (극성 쌍의 구성 불일치)",

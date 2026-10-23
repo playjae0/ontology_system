@@ -142,7 +142,7 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
     """① **role만이 분기 스위치다** — 코드에 필드명이 등장하지 않는다 (문서 2 §2.7).
 
     열 차례는 **소유자 열이 먼저**다(B142 ③ — 같은 행에 스키마가 선언한 소유 엣지 · `scope_path.table_owners`) — 개체 열의
-    판정이 그 행의 소유자를 자리로 받는다(이름은 그대로)."""
+    판정이 그 행의 소유자를 자리로 · 이름 부모로 받는다(B144 ② — 산문 소속과 같은 함수 `scope_path.owner_parent`)."""
     from core.build import scope_path
     rec = r.rec
     owners = b.__dict__.setdefault("_table_owners", scope_path.table_owners(schema, cfg))

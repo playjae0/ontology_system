@@ -125,9 +125,9 @@ show("id 불변 (P4)", g.get(스태킹) is not None
      and g.get(스태킹)["canonical"] == "스태킹(개선)")
 show("옛 canonical이 alias로 자동 강등",
      "스태킹" in {a["surface"] for a in g.get(스태킹)["aliases"]})
-show("스코프 자식 canonical 연쇄 변경",
-     any(n["canonical"] == "스태킹(개선)::적층 정렬도" for n in g.nodes.values())
-     and not any(n["canonical"] == "스태킹::적층 정렬도" for n in g.nodes.values()))
+show("스코프 자식 canonical 연쇄 변경",  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
+     any(n["canonical"] == "스태킹(개선)::스태커::적층 정렬도" for n in g.nodes.values())
+     and not any(n["canonical"].startswith("스태킹::스태커") for n in g.nodes.values()))
 show("옛 이름으로도 계속 찾힌다 (재매칭이 깨지지 않는다)",
      스태킹 in store.read(store.DICTIONARY, {}).get(norm("스태킹"), []))
 
@@ -250,7 +250,7 @@ print("\n■ 이관(스코프 변경 연쇄) — I축 4연산과 별개 작업 (
 import subprocess as _sp5                                       # noqa: E402
 full_run()
 _g = open_graph("process")
-_prop = next(i for i, n in _g.nodes.items() if n["canonical"] == "노칭::노칭 정밀도")
+_prop = next(i for i, n in _g.nodes.items() if n["canonical"] == "노칭::노칭 프레스::노칭 정밀도")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 _newp = next(i for i, n in _g.nodes.items()
              if n.get("tier") == "sub" and "스태킹" in n["canonical"])
 _before = [(_g.get(e["src"])["canonical"], e["rel"]) for e in _g.edges
@@ -264,7 +264,7 @@ show("이관이 canonical 스코프를 갈아 끼운다 (소속이 주소다)",
      _g2.get(_prop)["canonical"] == "스태킹::노칭 정밀도",
      _g2.get(_prop)["canonical"])
 show("옛 이름이 alias로 남는다 (문서에는 옛 이름이 계속 나온다 — I1과 같은 이유)",
-     any(a["surface"] == "노칭::노칭 정밀도" for a in _g2.get(_prop)["aliases"]))
+     any(a["surface"] == "노칭::노칭 프레스::노칭 정밀도" for a in _g2.get(_prop)["aliases"]))  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 _after = [(_g2.get(e["src"])["canonical"], e["rel"]) for e in _g2.edges
           if e["dst"] == _prop and e.get("status") != "deleted_by_user"]
 show("**엣지가 새 부모로 재배선된다** — 개명에는 없는 일이다",

@@ -64,7 +64,7 @@ show("E3 USE_MOCK=0에서 문형 폴백은 명시적으로 실패한다 (예외 
      (r.stderr or "").strip().splitlines()[-1:][0] if r.stderr else "무예외")
 
 fresh()
-n = node_by("process", "노칭::노칭 정밀도")
+n = node_by("process", "노칭::노칭 프레스::노칭 정밀도")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 ops.rename("process", n["id"], "노칭::노칭 정밀도 v2", actor="시험자", reason="E4 repro")
 log = store.read(store.OPS_LOG, [])
 show("E4 연산 로그의 시점이 하드코딩 상수가 아니다",

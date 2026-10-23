@@ -101,7 +101,7 @@ show("mirrors 엣지 생성", rel["mirrors"] > 0, str(rel["mirrors"]))
 # 짝은 **polarity 필드**로 찾는다(F3 — 문자열 파싱 폐지). 스코프가 붙은 관리항목의
 # 짝도 찾아야 하며, 못 찾으면 정상 쌍이 비대칭 큐로 새어 나간다.
 show("C10 mirror_asymmetry 참 양성 (anode 쪽에만 '버 높이')",
-     "노칭::버 높이" in [x["payload"]["base"] for x in q("mirror_asymmetry")],
+     "노칭::노칭 프레스::버 높이" in [x["payload"]["base"] for x in q("mirror_asymmetry")],  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
      str([x["payload"]["base"] for x in q("mirror_asymmetry")]))
 
 # ★ 판정필요-5 ① — F3 하향 연쇄 (틀 v2.7 · 카드 F3 · CH3B v2.2 3.5 규약 6)
@@ -140,7 +140,7 @@ _bad = [n["canonical"] for n in P.nodes.values()
         and "::" not in n["canonical"]]
 show("스코프 카테고리는 주소에 실린다 (B26 — Property·Unit 둘 다)",
      not _bad and {"탭용접::cathode::초음파 융착기", "탭용접::초음파 융착기",
-                   "탭용접::cathode::용접 강도"} <= canon(P),
+                   "탭용접::cathode::초음파 융착기::용접 강도"} <= canon(P),  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
      str(_bad or sorted(c for c in canon(P) if "융착" in c)))
 show("비스코프 카테고리는 이름에 실린다 (F1 결합 유지)",
      all("::" not in n["canonical"] for n in P.nodes.values()
@@ -154,8 +154,8 @@ show("비스코프 카테고리는 이름에 실린다 (F1 결합 유지)",
 # **페어링이 성립하는지**가 이 항의 판정이고 그것은 그대로다.
 show("스코프 붙은 관리항목의 극성 쌍도 페어링 (구 strip 방식이 놓치던 자리)",
      any(e["rel"] == "mirrors"
-         and P.get(e["src"])["canonical"] == "노칭::cathode::노칭 정밀도"
-         and P.get(e["dst"])["canonical"] == "노칭::anode::노칭 정밀도"
+         and P.get(e["src"])["canonical"] == "노칭::cathode::노칭 프레스::노칭 정밀도"  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
+         and P.get(e["dst"])["canonical"] == "노칭::anode::노칭 프레스::노칭 정밀도"
          for e in P.edges),
      str(sorted(c for c in canon(P) if "노칭 정밀도" in c)))
 show("Tier1(seed) 골격은 mirror_asymmetry 대상이 아님 (A11-4)",
@@ -165,7 +165,7 @@ show("Tier1(seed) 골격은 mirror_asymmetry 대상이 아님 (A11-4)",
 # ★ M2 — D5(극성 모호)는 **구조적으로 소멸**했다(A11-6). "탭용접"은 개념 노드가
 # 극성 무관 alias를 단독 소유하므로 모호하지 않고 **저해상도 부착**된다.
 show("C5′ 개념 해상도 anchor('탭용접') → 개념 노드에 부착 (저해상도 부착)",
-     any(n["canonical"] == "탭용접::용접 가압력" for n in P.nodes.values()))
+     any(n["canonical"] == "탭용접::초음파 융착기::용접 가압력" for n in P.nodes.values()))  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 show("C5′ 극성 모호 orphan_anchor 0건 (D5 구조 소멸)",
      not any("모호" in x["reason"] for x in q("orphan_anchor")),
      str([x["reason"] for x in q("orphan_anchor")]))
@@ -186,7 +186,7 @@ def _axis_twice(c):
 # 표 경로라 인입 순서에 무관하다. 구판 증인(PPT01 유래 `…용접 가압력`)은 G6.5 E2가
 # mock 폴백 어휘를 골격 닫힌 목록으로 한정하면서 corpus에서 사라졌다.
 show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
-     "탭용접::cathode::용접 강도" in canon(P)
+     "탭용접::cathode::초음파 융착기::용접 강도" in canon(P)  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
      and not any(_axis_twice(c) for c in canon(P)),
      str([c for c in canon(P) if _axis_twice(c)]))
 # ★ P1 §0 — A11-9 ⓪ 하강 부착 (판정필요-6 종결 어서션)
@@ -202,7 +202,7 @@ show("A11-9 ⓪ 인스턴스가 없으면 하강하지 않는다 (임의 생성 
      str(sorted(c for c in canon(P) if "주액량" in c)))
 show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
      next(n for n in P.nodes.values()
-          if n["canonical"] == "탭용접::cathode::용접 강도")["polarity"] == "cathode")
+          if n["canonical"] == "탭용접::cathode::초음파 융착기::용접 강도")["polarity"] == "cathode")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 show("polarity가 닫힌 4값 밖으로 새지 않음 (cathode/anode/none/unbound)",
      {n.get("polarity") for n in list(P.nodes.values()) + list(Q.nodes.values())}
      <= {"cathode", "anode", "none", "unbound"},
