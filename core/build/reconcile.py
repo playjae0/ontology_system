@@ -114,6 +114,8 @@ def value_cell(r):
     out = OUTCOME.get(verdict)
     if path == "dictionary":
         return "사전", out or verdict
+    if path == "path_compat":                     # 경로 호환 같은 이름(B142 ② — LLM 0)
+        return "경로", out or verdict
     if path in ("skeleton", "self_coord"):
         return "골격", out or verdict
     if path == "replay" and out:
@@ -127,7 +129,7 @@ def value_cell(r):
     return "그 밖", f"{path}:{verdict}"
 
 
-VALUE_ORDER = ("사전", "골격", "재생", "기억", "LLM 일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
+VALUE_ORDER = ("사전", "골격", "경로", "재생", "기억", "LLM 일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
                "보류", "그 밖")
 
 
@@ -139,7 +141,7 @@ def value_lines(rows):
         cells[k] += 1
         if d:
             subs.setdefault(k, Counter())[d] += 1
-    det = {k: _sub(c) for k, c in subs.items() if k not in ("사전", "골격")}
+    det = {k: _sub(c) for k, c in subs.items() if k not in ("사전", "골격", "경로")}
     ends = Counter("보류" if hold_reason(r) else END.get(r.get("verdict"), "그 밖") for r in ent)
     return [line("값(개체 행)", len(ent), [(k, cells.get(k, 0), det.get(k, "")) for k in VALUE_ORDER]),
             line("결말(개체 행)", len(ent),
@@ -477,6 +479,15 @@ def summary(lines, res, after, before=None):
             "가드 부딪힘": _cells(lines, "구조 · 다른 공정 가드")[0], "값": _cells(lines, "값(산문)")[:2]}
 
 
+def owner_counts(rows):
+    """**같은 이름 · 다른 소유자**(B142 ⑥) — `(새 노드 중 같은 이름이 같은 공정 줄기의 다른 소유자 아래 있는 것 k, 예 셋,
+    소유자 이름 비슷 → 판정에 오른 개체 행 n)` · 대장 행의 `apart` · `similar`에서(새 계산 0 · 사람이 `ops merge`로 본다)."""
+    ent = [r for r in rows or [] if r.get("role") in ("entity", "belongs", "heading")]
+    apart = [r for r in ent if r.get("verdict") in ("new", "uncertain") and r.get("apart")]
+    ex = [f"{r.get('canonical')} ↔ {r['apart'][0]}" for r in apart[:3]]
+    return len(apart), ex, sum(1 for r in ent if r.get("similar"))
+
+
 def second_counts(rows):
     """2차 판정(B123 ③) — `(이번에 부른 개체 행 n, 매칭으로 바뀐 m)` · 대장 행의 `judge2`에서(새 계산 0 · 재생이 옮긴 지난 기록은
     빼고 재생의 2차(`judge2.replay`)는 넣는다)."""
@@ -552,6 +563,7 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
     after = layer_counts(graphs)
     return {"doc_id": doc_id, "줄": lines,
+            "소유자": owner_counts(rows),
             "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "2차": second_counts(rows),
                      "재생 2차": replay_second_counts(rows),
                      "캡처 끔": bool(((env or {}).get("context") or {}).get("capture_off"))},

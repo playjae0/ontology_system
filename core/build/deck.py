@@ -6,7 +6,8 @@
           + 문서 좌표(있으면 힌트) + 골격 닫힌 목록 + 층 힌트(`prompts.structure`)
     출력  {slides: [{slide, title, section, continues, processes, mentions, no_entities}], overview}
     검사  제목은 그 슬라이드 상자 글 안 · 구획은 덱 글 안 · 이어짐은 앞 슬라이드 · 공정 · 언급은 골격 닫힌 목록 안
-          (하나라도 밖이면 그 슬라이드의 공정은 지금 방식) — 어긋나면 그 칸만 버리고 결함 로그(코드는 검사만)
+          (하나라도 밖이면 그 슬라이드의 공정은 지금 방식) — 어긋나면 그 칸만 버리고 결함 로그(코드는 검사만) · 버린 칸은
+          그 슬라이드 판단의 `dropped`에(봉투 덱 블록이 싣는다 — B143 ②)
 
 **LLM이 보고 판단한다** — placeholder 제목 · 문서 좌표는 힌트이고 강제하지 않는다. 파서는 LLM을 부르지 않으므로 이 함수가
 주입된다(`cli.parse.injections` — 문서 구조와 같은 결) · mock은 힌트 `<doc_id>@deck.json`만(없으면 판정 없음 — 지금 방식).
@@ -84,9 +85,11 @@ def check(doc_id, slides, ans, idx):
     order = [s["slide"] for s in slides]
     deck_text = norm("\n".join(_boxes_text(s) for s in slides))
     out, drop = {}, {"슬라이드": 0, "제목": 0, "구획": 0, "이어짐": 0, "공정": 0, "언급": 0}
+    drops = {}                                     # 슬라이드마다 버린 칸 — 봉투 덱 블록의 `dropped`(B143 ②)
 
     def bad(what, n, why):
         drop[what] += 1
+        drops.setdefault(n, []).append(what)
         store.append_defect(f"{doc_id}: 덱 구조 — 슬라이드 {n} {what} 버림({why}) → 지금 방식")
 
     for a in (ans or {}).get("slides") or []:
@@ -126,6 +129,8 @@ def check(doc_id, slides, ans, idx):
         d["mentions"] = [x for x in dict.fromkeys(x for _m, x in ms if x) if x not in (d.get("processes") or [])]
         if a.get("no_entities") is True:
             d["no_entities"] = True
+        if drops.get(n):
+            d["dropped"] = list(drops[n])
         out[n] = d
     ov = " ".join(str((ans or {}).get("overview") or "").split())[:OVERVIEW_CHARS] or None
     return {"slides": out, "overview": ov, "dropped": {k: v for k, v in drop.items() if v}}

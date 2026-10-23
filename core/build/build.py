@@ -21,7 +21,7 @@ from core.state import store
 from core.dictionary import Dictionary
 from core.state import alias_book
 from core.state.ids import norm
-from core.matcher import MATCH, NEW, UNCERTAIN, dict_hits, resolve
+from core.matcher import MATCH, NEW, UNCERTAIN, gated, resolve
 
 #: 골격 밖 반복 판정 기억(B100 ⑤) — 한 실행(프로세스) 안 · 열쇠에 골격·사전의 판이 들어 있다.
 _MEMO = {}
@@ -35,7 +35,7 @@ from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표�
 from core.state.status import is_live
 from core.build.build_coord import CoordMixin              # 좌표 계보 · 공정 목록 (B125 ④ — 800행 상한으로 나눴다)
 from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
-                     is_bound, scope_canonical)
+                     is_bound, scope_canonical, scope_of, base_name_of)
 
 def entity_key(surface, category, cfg, *, electrode_type=None,
                parent_canonical=None, anchor_polarity=None):
@@ -57,6 +57,11 @@ def entity_key(surface, category, cfg, *, electrode_type=None,
 
 
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
+
+
+def _key_text(k, sep):
+    """짝 키의 부모 요소를 글자로 — 겹(골격 밖 부모 · `_mirror_scope`)이면 `sep`으로 잇는다."""
+    return sep.join(_key_text(x, sep) for x in k if x) if isinstance(k, tuple) else k
 
 
 class Builder(CoordMixin):
@@ -151,7 +156,7 @@ class Builder(CoordMixin):
         if hit:
             return hit
         eb = self.for_category(category)
-        return eb.resolve_entity(surface, category, prov, **kw), eb
+        return eb.resolve_entity(surface, category, prov, coord=coord, **kw), eb
 
     def graph_of(self, nid):
         """그 노드가 사는 그래프 — 이 빌드가 연 그래프 중에서. 없으면 `None`."""
@@ -381,15 +386,17 @@ class Builder(CoordMixin):
         return load_config(node["layer"])
 
     # ---------------------------------------------------------------- entity
-    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, chunk_text):
+    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, chunk_text, place=None):
         """판정 한 번 — `((분기, node_id, 점수, 판정 dict), 재생하지 못한 사유)`.
 
-        **판정 재생**(B106 ②) — 사전이 답하지 않은 값만 · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
+        **판정 재생**(B106 ②) — 판정 없이 붙지 않는 값만(사전 · 경로 호환 같은 이름이 답하지 않았다 — `matcher.gated` ·
+        후보 조립과 같은 함수) · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
         좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `chunk_text`(산문)가 있으면 그 표기 앞뒤 글이 2차 판정의
         문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다."""
         rp = why = None
-        if not dict_hits(canonical, category, self.layer, self.g, self.dict, polarity=polarity,
-                         parent=parent_canonical, scope_cats=scope_categories(self.cfg)):
+        pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
+                    parent=parent_canonical, cfg=self.cfg, place=place)
+        if not pre[0]:
             from core.build import replay as _rp
             rp, why = _rp.pick(self, at, surface, category, canonical)
         sent = None
@@ -399,19 +406,21 @@ class Builder(CoordMixin):
         if rp is not None:
             if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
                 got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
-                                         polarity=polarity, parent=parent_canonical, sentence=sent)
+                                         polarity=polarity, parent=parent_canonical, sentence=sent,
+                                         place=place, pre=pre)
                 if got is not None:
                     from core.build import replay as _rp
                     _rp.note_second(got[0] == "match")
                     return got, why
             return rp, why
         return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
-                       parent=parent_canonical, sentence=sent), why
+                       parent=parent_canonical, sentence=sent, place=place, pre=pre), why
 
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
-                       belongs=None, at=None, chunk_text=None):
-        """3분기 — 매칭 / 신규 / 불확실(신규+표시).
+                       belongs=None, at=None, chunk_text=None, coord=None, owner=None):
+        """3분기 — 매칭 / 신규 / 불확실(신규+표시). `coord` · `owner`(산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
+        판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름 부모는 호출부가 `naming.name_parent`로 · B144 ②).
 
         `chunk_text`(그 표기가 나온 청크의 원문 — 산문이 준다)가 있으면 1차가 불확실일 때 그 앞뒤 글로 2차를 묻는다
         (B123 ③ — `matcher.second` · 표의 행은 청크가 아니라 주지 않는다).
@@ -460,9 +469,11 @@ class Builder(CoordMixin):
         if mkey in _MEMO:
             return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey])
         from core.llm import gateway as _llm
+        from core.build import scope_path
         _u0 = _llm.usage_total()
+        place = scope_path.place(self, category, coord, owner, surface, parent_canonical)
         (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped, polarity,
-                                                   parent_canonical, at, chunk_text)
+                                                   parent_canonical, at, chunk_text, place=place)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
@@ -477,6 +488,8 @@ class Builder(CoordMixin):
                      "category": category, "scope": parent_canonical if scoped_category else None,
                      "replay": why,                       # 재생하지 못한 사유 — 재판정 행의 표지(B106 ②)
                      "judge2": v.get("second"),           # 2차 판정 — 단계 · 근거 문장 자리(B123 ③ · 불렀을 때만)
+                     "apart": v.get("apart"),             # 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드(B142 ⑥)
+                     "similar": v.get("similar"),         # 소유자 이름 비슷 → 판정에 올린 후보(B142 ②⑥)
                      "llm": {"calls": _u1["calls"] - _u0["calls"],
                              "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
                              "out_tokens": (_u1["completion_tokens"]
@@ -485,7 +498,8 @@ class Builder(CoordMixin):
             if v.get("same_doc"):
                 self.last["same_doc"] = True
             # 판정으로 붙은 표기는 **출처 LLM 매칭**으로 남는다(B101 ④) — 사전 히트·기억은 아니다
-            _by = (None if (v.get("replayed_path") or v.get("path")) in ("dictionary", "memo", "self_coord", "none")
+            _by = (None if (v.get("replayed_path") or v.get("path")) in ("dictionary", "memo", "self_coord", "path_compat",
+                                                                         "none")
                    else {"by": "LLM 매칭", "confidence": round(float(conf or 0), 4),
                          "doc": self.doc_id})
             self._register(surface, nid, prov, key=canonical, by=_by)
@@ -500,11 +514,11 @@ class Builder(CoordMixin):
 
         extra = {"_scoped": True} if scoped and category in scope_categories(self.cfg) else {}
         extra["polarity"] = polarity                     # 닫힌 4값을 항상 기록한다
-        # mirrors 짝 키의 두 요소 — **부모**와 **주소 접두를 제외한 자기 이름부**다
-        # (F3). canonical을 되 파싱하지 않기 위해(A11-8) 조립 시점에 적어 둔다.
-        # 스코프가 없는 카테고리는 부모가 이름에 실리지 않으므로 부모 요소도 없다.
-        extra["mirror_scope"] = parent_canonical if scoped_category else None
-        extra["mirror_name"] = norm(surface)
+        # **부모 경로**(`scope`)와 **맨 이름**(`base_name` — 주소 접두를 뺀 자기 이름부)이다(B142 ⑤ — 옛 칸 `mirror_scope` ·
+        # `mirror_name`). canonical을 되 파싱하지 않기 위해(A11-8) 조립 시점에 적어 둔다 — 극성 짝 키 · 판정의 경로 · 별칭 검사가
+        # 읽는다(`naming.scope_of` · `base_name_of`). 스코프가 없는 카테고리는 부모가 이름에 실리지 않으므로 부모 경로도 없다.
+        extra["scope"] = parent_canonical if scoped_category else None
+        extra["base_name"] = norm(surface)
         nid = self.g.add_node(canonical, category, "auto", provenance=[prov], **extra)
         _matcher.SAME_DOC.add(nid)                       # 같은 문서 예외의 표지 (B101 ①)
         self._register(surface, nid, prov, key=canonical)
@@ -661,7 +675,7 @@ class Builder(CoordMixin):
         return ATTR_ADDED
 
     # ---------------------------------------------------------------- mirrors
-    def _mirror_scope(self, scope):
+    def _mirror_scope(self, scope, _depth=0):
         """짝 키의 부모 요소 — **부모가 mirror 쌍이면 동일시한다**(F3 하향 연쇄).
 
         부모가 축 인스턴스이고 그 인스턴스가 mirrors로 이어져 있으면, 그 아래 같은
@@ -679,6 +693,11 @@ class Builder(CoordMixin):
         node = next((n for n in self.g.nodes.values() if n["canonical"] == scope), None)
         if node is None or not is_bound(node.get("polarity"), self.cfg):
             return scope
+        from core.build.heading import _is_coord
+        if not _is_coord(node) and scope_of(node) and _depth < 16:
+            # **골격 밖 부모**(소유자 — 유닛 · 설비 · B144 ②): 그 부모의 짝 키가 이 자리다 — `탭용접::cathode::융착기::용접 강도`와
+            # `탭용접::anode::융착기::용접 강도`가 한 키(부모들이 같은 자리면 같은 키 · 짝 없는 쪽은 편측 큐 그대로)
+            return self._mirror_scope(scope_of(node), _depth + 1), base_name_of(node) or node["canonical"]
         mrel = (self.cfg.get("mirrors") or {}).get("relation")
         if not any(e["src"] == node["id"] and e["rel"] == mrel for e in self.g.edges):
             return scope
@@ -719,8 +738,7 @@ class Builder(CoordMixin):
             pol = n.get("polarity")
             if pol not in vals:
                 continue
-            key = (self._mirror_scope(n.get("mirror_scope")),
-                   n.get("mirror_name") or n["canonical"])
+            key = (self._mirror_scope(scope_of(n)), base_name_of(n) or n["canonical"])
             by_key.setdefault(key, {})[pol] = nid
         for base, pair in by_key.items():
             if len(pair) == len(vals):
@@ -734,6 +752,7 @@ class Builder(CoordMixin):
             only = next(iter(pair))
             scope, name = base
             sep = (self.cfg.get("canonical_scope") or {}).get("sep", "::")
+            scope = _key_text(scope, sep)                # 골격 밖 부모의 짝 키는 겹 — 글자로 펴서 싣는다(B144 ②)
             label = f"{scope}{sep}{name}" if scope else name
             store.enqueue("mirror_asymmetry",
                           f"'{label}'가 {only} 쪽에만 있다 (극성 쌍의 구성 불일치)",

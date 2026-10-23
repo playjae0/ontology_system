@@ -74,10 +74,10 @@ _b57_envB = dict(_b57_base, doc_id="SAMEB", source_path="b.xlsx",
                  records=[dict(_b57_rec), _b57_extra])
 run_document(_b57_env); finalize()
 run_document(_b57_envB); finalize()
-_b57_node = node_by("process", "노칭::공유좌표시험")   # canonical_scope가 붙는다
+_b57_node = node_by("process", "노칭::노칭 프레스::공유좌표시험")   # canonical_scope가 붙는다 · 기대 변경(B144 ② — 설비 아래)
 _b57_before = list(_b57_node["provenance"])
 run_document(_b57_envB); finalize()          # SAMEB만 재인입
-_b57_after = list(node_by("process", "노칭::공유좌표시험")["provenance"])
+_b57_after = list(node_by("process", "노칭::노칭 프레스::공유좌표시험")["provenance"])
 show("①ⓑ(iii) 같은 locator의 두 문서 — 하나를 재인입해도 **다른 문서 근거가 남는다**",
      "SAMEA#Sheet1!R12" in _b57_after,
      f"전 {_b57_before} → 후 {_b57_after}")
@@ -140,16 +140,16 @@ def _b57_coordq(q):
 
 
 show("②ⓐ process_ref 있음 — 종전 그대로 좌표에 붙는다",
-     _b57_n1 and _b57_n1["canonical"] == "노칭::사다리시험"
+     _b57_n1 and _b57_n1["canonical"] == "노칭::노칭 프레스::사다리시험"  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
      and not _b57_coordq(_b57_q1), _b57_n1 and _b57_n1["canonical"])
 # **저해상도는 큐를 달지 않는다** — 그룹으로라도 붙었으면 그 지식은 그래프에 있고,
 # 사람이 할 일이 없다. 해상도가 낮다는 사실은 붙은 노드가 개념 노드인 것으로 드러난다.
 show("②ⓒ process_group만 있으면 **저해상도 부착** — 그룹에 붙고 좌표 큐 0건",
-     _b57_n2 and _b57_n2["canonical"] == "조립::사다리시험"
+     _b57_n2 and _b57_n2["canonical"] == "노칭::노칭 프레스::사다리시험"  # 기대 변경(B144 ② — 설비가 경로 호환으로 붙은 노드 아래 이름)
      and not _b57_coordq(_b57_q2),
      f"{_b57_n2 and _b57_n2['canonical']} · 좌표 큐 {len(_b57_coordq(_b57_q2))}건")
 # 저해상도에서 늘어난 큐가 있다면 **노드 생성 통지(auto_node)뿐**이다 — 그룹 좌표에
-# 붙으면서 `조립::노칭 프레스`가 새로 서기 때문이고, 좌표에 대한 불평이 아니다.
+# 붙으면서 새 관리항목이 서기 때문이고(설비는 공정 칸 높이만 다른 기존 노드에 붙는다 — B142 · B144), 좌표에 대한 불평이 아니다.
 show("②ⓒ 저해상도가 늘리는 큐는 auto_node(노드 생성 통지)뿐이다",
      {x["kind"] for x in _b57_q2} <= {"auto_node"},
      f"{len(_b57_q1)} → {len(_b57_q2)}건 · "

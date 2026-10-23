@@ -324,8 +324,8 @@ _hint("RFQ01", {
     "사양_기계!R19-R23": {"entities": [{"surface": "노칭 정밀도", "category": "Property"},
                                        {"surface": "버 높이", "category": "Property"}], "relations": []},
     "요구사항!R2-R3": {"entities": [{"surface": "적층 정렬도", "category": "Property"}], "relations": []}})
-#: 품질 산문 — 집이 process인 개체 둘(「금형 간극」 새 노드 · 그 끝점으로 가는 품질 그래프 엣지 `controlled_by` · 「노칭
-#: 정밀도 편차」는 표의 auto 노드와 겹쳐 불확실 — 큐 종결 연산의 대상). PFMEA01(표 × quality)이 맡던 교차를 산문 하나가
+#: 품질 산문 — 집이 process인 개체 둘(「금형 간극」 새 노드 · 그 끝점으로 가는 품질 그래프 엣지 `controlled_by` · 「버
+#: 높이 편차」는 산문의 auto 노드와 겹쳐 불확실 — 큐 종결 연산의 대상). PFMEA01(표 × quality)이 맡던 교차를 산문 하나가
 #: 맡는다(B121 ②ⓒ)
 _hint("B106Q", {
     "사양_기계!R8-R17": {"entities": [{"surface": "가압력 부족", "category": "Failure"},
@@ -334,7 +334,7 @@ _hint("B106Q", {
                         "relations": [{"src": "금형 클리어런스 과다", "rel": "causes", "dst": "가압력 부족"},
                                       {"src": "금형 클리어런스 과다", "rel": "controlled_by", "dst": "금형 간극"}]},
     "사양_기계!R19-R23": {"entities": [{"surface": "버 발생량 과다", "category": "Failure"},
-                                       {"surface": "노칭 정밀도 편차", "category": "Property"}], "relations": []},
+                                       {"surface": "버 높이 편차", "category": "Property"}], "relations": []},   # 기대 변경(B144 ② — 표의 노칭 정밀도는 설비 아래 이름이라 mock 판정의 포함 규칙에 안 겹친다 · 산문 「노칭::버 높이」와 겹치는 값으로)
     "사양_전장!R5-R6": {"entities": [{"surface": "전원 차단 실패", "category": "Failure"}], "relations": []}})
 SHEETS = "2-4:prose 5:ref *:skip"
 DOCS = [("CP01", RAW / "CP01.xlsx", "cp", None, None), ("RFQ01", RFQ, DT, SHEETS, X),
@@ -364,19 +364,19 @@ def _live_edge(src, rel=None, dst=None):
 
 with contextlib.redirect_stdout(io.StringIO()):
     ops.confirm("process", _id("process", "노칭::노칭 프레스"), A, "B106 확인")
-    ops.merge("process", _id("process", "노칭::금형 간극"), _id("process", "노칭::금형 클리어런스"), A,
+    _ur = next(r for r in OR.items("all") if r["surface"] == "버 높이 편차")
+    _dec = OR.decide(_ur, "m", A)                         # 큐 종결 — ops review 합침(queue:resolve 기록 · 가까운 후보가 합쳐지기 전에)
+    ops.merge("process", _id("process", "노칭::금형 간극"), _id("process", "노칭::노칭 프레스::금형 클리어런스"), A,   # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
               reason="B106 합침(품질 문서의 노드 → 표 · 품질 그래프의 엣지가 따라간다)")
-    ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::버 높이"), A,
+    ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::노칭 프레스::버 높이"), A,
               reason="B106 합침(산문 → 표)")
-    ops.alias("process", _id("process", "노칭::노칭 정밀도"), "노칭 정확도", A, "B106 표기(표)")
+    ops.alias("process", _id("process", "노칭::노칭 프레스::노칭 정밀도"), "노칭 정확도", A, "B106 표기(표)")
     ops.alias("quality", _id("quality", "전원 차단 실패"), "전원 차단 불량", A, "B106 표기(산문)")
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B106 폐기")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B106 엣지 삭제(표)")
     _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 장치::이송 속도"))   # 산문 소속 엣지   # 기대 변경(B119 ④ — 사양은 주인 아래 `nest_categories`)
     ops.delete_edge("process", _e2["src"], _e2["rel"], _e2["dst"], A, "B106 엣지 삭제(산문 소속)")
-    _ur = next(r for r in OR.items("all") if r["surface"] == "노칭 정밀도 편차")
-    _dec = OR.decide(_ur, "m", A)                         # 큐 종결 — ops review 합침(queue:resolve 기록)
     CA.ack(CP.GROUP, ("스태킹", "노칭"), A, "B106 쌍 확인")
 _unc = next((r for r in OR.items("all") if r["doc_id"] == "RFQ01"), None)
 

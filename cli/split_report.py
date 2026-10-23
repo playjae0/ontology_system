@@ -5,13 +5,16 @@
     계층 사다리: 시트 › 1. › 가.(대상 · Unit) › 1)(묶음) › A.   (서명의 숫자는 첫 서수로 · 단마다 역할 · 카테고리 · 번호 없는 제목의 규칙)
     LLM — 판단 필요 답 a/b · 규칙 r · 줄 고침 e(적용 x · 버림 y — 이유별 수)   (시트마다 한 줄 · 규칙마다 아래 한 줄)
     시트 확인 — 호출 1 · 입력 c · 출력 d · 초안과 다른 줄 x/제목 y
-    목차 — 들여쓰기 = 목차 깊이 · 첫 서수 표기 · 역할 · 대상 · LLM이 바꾼 줄 ✎ · 판단 필요는 그 줄에 ⚠ 한 마디 + 답(줄 끝) ·
+    목차 — 나무 글자(├─ · └─ · │) = 목차 깊이 · 역할 · 대상 · LLM이 바꾼 줄 ✎ · 판단 필요는 그 줄에 ⚠ 한 마디 + 답(줄 끝) ·
+           청크가 시작하는 줄 앞에 ✂ 청크 n — 경로 · 청크 안 판단 필요는 「청크 안 — 경로 영향 없음」 ·
            하위가 없는 형제 줄이 셋 이상 이어지면 첫 줄 + 「… 외 n줄(2)~11))」(판단 필요 · 바뀐 줄은 접지 않는다)
-    청크 — 첫 줄 · 끝 줄 · 전체 경로(시트 › … › 자기 제목 — 라벨 잘림 없이)
+    청크 — 화면은 수 한 줄 · md는 첫 줄 · 끝 줄 · 전체 경로(시트 › … › 자기 제목 — 라벨 잘림 없이)
 md도 들여쓰기를 지킨다(B130 ③) · 고침과 버린 고침의 상세는 md 끝 절에만(`detail_lines`). 판정 0 — 파싱의 구조 셈(`report["structure"]`)과
 봉투 청크를 읽기만 한다.
 """
 from __future__ import annotations
+
+import re
 
 from parser import sig as SG
 from parser.ladder import TITLE
@@ -125,8 +128,27 @@ def _answer_tail(a, by, who):
     return f" → {SG.show(px.get('sig')) + '(' + str(p) + '행)' if px.get('sig') else str(p) + '행'} 아래({who})"
 
 
-def toc_lines(frame, fr):
-    """목차 줄 — 제목 · 판단 필요 줄 · LLM이 뺀 줄을 이름표 순으로 · 형제 줄 접기(B137 ⑥) — `[(줄, 판단 필요인가)]`."""
+#: 청크 머리 표지 · 나무 글자(화면 · md 같은 글자 — B139 ④)
+CHUNK_MARK = "✂"
+_TEE, _ELL, _BAR, _GAP = "├─ ", "└─ ", "│  ", "   "
+_TREE_LINE = re.compile(r"^  [│ ]*(├─|└─|✂)")
+_SPAN = re.compile(r"!(?:R|P)(\d+)(?:-(?:R|P)(\d+))?")
+
+
+def _spans(frame, chunks):
+    """청크마다 `(시작 행, 끝 행, 번호, 경로)` — locator에서(그림 조각 · 행 없는 것은 뺀다)."""
+    out = []
+    for i, c in enumerate(chunks or [], start=1):
+        m = _SPAN.search(str(c.get("source_locator") or ""))
+        if m and not c.get("image_ref"):
+            a = int(m.group(1))
+            out.append((a, int(m.group(2) or a), i, path_of(frame, c)))
+    return sorted(out)
+
+
+def _items(frame, fr):
+    """목차에 보일 줄 — 제목 · 판단 필요 줄 · LLM이 뺀 줄 · **나무 순서**(부모 아래 자식 · 행 순 — 부모가 엇갈려도 나무가 맞게) · 하위 없는
+    형제 셋 이상은 접는다 · `[{row, parent, line, tail, need, rows?}]`(`parent`는 보이는 줄 가운데)."""
     labs = fr.get("labels") or []
     by = {x["row"]: x for x in labs}
     heads = fr.get("headings") or []
@@ -136,46 +158,90 @@ def toc_lines(frame, fr):
     draft = {h["row"] for h in fr.get("toc0") or heads}
     changed = set(fr.get("changed") or [])
     who = "힌트" if fr.get("source") == "hint" else "LLM"
-    dep = _depths(heads)
     kids = {h.get("parent") for h in heads}
     order = [x["row"] for x in labs if x["row"] != FRAME_ROW and (x["row"] in head or x["row"] in need or x["row"] in draft)]
-    rows, cur = [], 0
+    rows, cur = {}, None
     for r in order:
-        x = by.get(r) or {}
-        h = head.get(r)
-        d = dep.get(r, 1) if h else cur + 1
+        x, h = by.get(r) or {}, head.get(r)
+        par = (h.get("parent") if h.get("parent") != FRAME_ROW else None) if h else cur
         if h:
-            cur = dep.get(r, 1)
-        label = frame if r == FRAME_ROW else str(x.get("text") or "")
-        if h:
+            cur = r
             body = (f"{h.get('role') or '역할 없음'}{_target(h)}" + (" · 시트 제목" if h.get("sig") == TITLE else "")
                     + (" *" if h.get("by") == "사람" else "") + (" ✎" if r in changed else ""))
         else:
             body = "본문" + (" ✎" if r in changed else "")
-        ln = f"{'  ' * max(0, d - 1)}{r}행 {SG.show(x.get('sig')) or '·'} {label} — {body}"
         n = need.get(r)
-        if n:
-            ln += f"  {NEED_MARK} {n.get('tag') or n['kind']}" + _answer_tail(ans.get(r), by, who)
-        foldable = bool(h) and r not in kids and not n and r not in changed and h.get("sig") != TITLE
-        rows.append({"row": r, "line": ln, "need": bool(n), "fold": foldable, "parent": h.get("parent") if h else ("본문", r)})
+        tail = (f"  {NEED_MARK} {n.get('tag') or n['kind']}" + (f"({len(n['rows'])}줄)" if n.get("rows") else "")
+                + _answer_tail(ans.get(r), by, who)) if n else ""
+        rows[r] = {"row": r, "parent": par, "line": f"{r}행 {x.get('text') or ''} — {body}", "tail": tail, "need": bool(n),
+                   "fold": bool(h) and r not in kids and not n and r not in changed and h.get("sig") != TITLE}
+    for it in rows.values():
+        if it["parent"] not in rows:
+            it["parent"] = None
+    child = {}
+    for r in order:
+        child.setdefault(rows[r]["parent"], []).append(r)
+    flat, stack = [], list(reversed(child.get(None, [])))
+    while stack:                                             # 나무 순서 — 깊이 우선 · 형제는 행 순
+        r = stack.pop()
+        flat.append(rows[r])
+        stack += reversed(child.get(r, []))
     out, i = [], 0
-    while i < len(rows):
+    while i < len(flat):
         j = i
-        while j + 1 < len(rows) and rows[j + 1]["fold"] and rows[i]["fold"] and rows[j + 1]["parent"] == rows[i]["parent"]:
+        while j + 1 < len(flat) and flat[j + 1]["fold"] and flat[i]["fold"] and flat[j + 1]["parent"] == flat[i]["parent"]:
             j += 1
         if j - i + 1 >= FOLD_MIN:
-            ind = rows[i]["line"][:len(rows[i]["line"]) - len(rows[i]["line"].lstrip())]
-            out += [(rows[i]["line"], False),
-                    (f"{ind}… 외 {j - i}줄({_num(by[rows[i + 1]['row']])}~{_num(by[rows[j]['row']])})", False)]
+            out += [flat[i], {"row": flat[i + 1]["row"], "parent": flat[i]["parent"], "need": False, "tail": "", "fold": True,
+                              "line": f"… 외 {j - i}줄({_num(by[flat[i + 1]['row']])}~{_num(by[flat[j]['row']])})",
+                              "rows": [rw["row"] for rw in flat[i + 1:j + 1]]}]
         else:
-            out += [(rw["line"], rw["need"]) for rw in rows[i:j + 1]]
+            out += flat[i:j + 1]
         i = j + 1
     return out
 
 
-def sheet_block(frame, fr, chunks):
+def toc_lines(frame, fr, chunks=None):
+    """목차 줄(B137 ⑥ · B139 ④) — **나무 글자**(`├─` · `└─` · `│` — 깊이 · 형제가 보이게) · 줄마다 꼴 표기 없음(꼴은 사다리 한 줄에만 —
+    `행 · 글 — 역할 · 표지`) · **청크 경계**(`✂ 청크 n — 경로` — 청크가 그 줄에서 시작하면 그 줄 앞 · 본문에서 시작하면 바로 앞 줄 뒤) ·
+    청크 안 줄의 판단 필요는 그대로 올리고 「청크 안 — 경로 영향 없음」 · `[(줄, 판단 필요인가)]`."""
+    items = _items(frame, fr)
+    kids = {}
+    for k, it in enumerate(items):
+        kids.setdefault(it["parent"], []).append(k)
+    last = {ks[-1] for ks in kids.values()}
+    pos = {it["row"]: k for k, it in enumerate(items) if not it.get("rows")}
+
+    def prefix(k):
+        chain, p = [], items[k]["parent"]
+        while p is not None:
+            chain.append(pos[p])
+            p = items[pos[p]]["parent"]
+        return "".join(_GAP if a in last else _BAR for a in reversed(chain))
+    spans = _spans(frame, chunks)
+    rowset = sorted(pos)
+    before, after = {}, {}
+    for a, _b, i, path in spans:
+        mark = f"{CHUNK_MARK} 청크 {i} — {path}"
+        if a in pos:
+            before.setdefault(pos[a], []).append(mark)
+        else:
+            prev = max((r for r in rowset if r < a), default=None)
+            (after.setdefault(pos[prev], []) if prev is not None else before.setdefault(0, [])).append(mark)
+    inside = lambda r: any(a < r <= b for a, b, _i, _p in spans)             # noqa: E731
+    out = []
+    for k, it in enumerate(items):
+        out += [(f"{prefix(k)}{m}", False) for m in before.get(k, [])]
+        tail = it["tail"] + (" · 청크 안 — 경로 영향 없음" if it["need"] and inside(it["row"]) else "")
+        out.append((f"{prefix(k)}{_ELL if k in last else _TEE}{it['line']}{tail}", it["need"]))
+        out += [(f"{prefix(k)}{_GAP if k in last else _BAR}{m}", False) for m in after.get(k, [])]
+    return out
+
+
+def sheet_block(frame, fr, chunks, md=False):
     """시트 한 덩어리의 줄 목록(앞 공백 없이 — 화면은 들여 찍고 md는 그대로) · `fr`은 구조 셈의 그 시트 · `chunks`는 그 시트의 청크.
-    판단 필요 줄은 `NEED_MARK`를 단다(화면이 그 줄만 칠한다 — 터미널일 때만)."""
+    판단 필요 줄은 `NEED_MARK`를 단다(화면이 그 줄만 칠한다 — 터미널일 때만) · 청크의 첫 줄 · 끝 줄 목록은 `md`일 때만(화면은 수 한 줄 —
+    경계는 목차 안 `✂` · B139 ④)."""
     heads = fr.get("headings") or []
     needs = fr.get("needs") or []
     head = (f"시트 '{frame}' · 방식 {fr.get('mode') or '-'} · 사다리 {fr.get('ladder_source') or '-'}"
@@ -196,9 +262,9 @@ def sheet_block(frame, fr, chunks):
         out.append(f"  규칙 — 서명 '{SG.show(x.get('shape'))}' {what} 「{x.get('said') or ''}」 → 적용 {x.get('적용', 0)}줄 / 그 서명 전체 "
                    f"{x.get('전체', 0)}줄")
     out.append(f"목차 — 제목 {len([h for h in heads if h['row'] != FRAME_ROW])}줄 · 판단 필요 {len(needs)}({NEED_MARK})")
-    out += [f"  {ln}" for ln, _n in toc_lines(frame, fr)]
-    out.append(f"청크 {len(chunks)}")
-    for i, c in enumerate(chunks, start=1):
+    out += [f"  {ln}" for ln, _n in toc_lines(frame, fr, chunks)]
+    out.append(f"청크 {len(chunks)}" + ("" if md else " — 경계는 목차의 ✂ · 첫 줄 · 끝 줄은 md에"))
+    for i, c in enumerate(chunks if md else [], start=1):
         body = [ln for ln in str(c.get("text") or "").splitlines() if ln.strip()] or [""]
         out.append(f"  {i}. {c.get('source_locator')} · 첫 줄 '{body[0].strip()}' · 끝 줄 '{body[-1].strip()}' · 경로 "
                    + path_of(frame, c))
@@ -261,9 +327,17 @@ def write_md(doc_id, report, env):
     lines = [f"# 구조 확인 — {doc_id}", "", f"- {ladder_usage(st)}", f"- {total_usage(st)}"] + (
         [f"- {toc_field_line(st)}"] if toc_field_line(st) else []) + [""]
     for frame, fr in frames.items():
-        blk = sheet_block(frame, fr, chunks_of(env, frame))
-        # 들여쓰기를 지킨다(나무 — B130 ③): 앞 공백 두 칸이 한 단
-        lines += [f"## {blk[0]}", ""] + [f"{'  ' * ((len(x) - len(x.lstrip())) // 2)}- {x.strip()}" for x in blk[1:]] + [""]
+        blk = sheet_block(frame, fr, chunks_of(env, frame), md=True)
+        lines += [f"## {blk[0]}", ""]
+        fence = False
+        for x in blk[1:]:
+            tree = bool(_TREE_LINE.match(x))
+            if tree != fence:                      # 목차 줄은 코드 블록 — 나무 글자의 앞 공백을 지킨다(B139 ④)
+                lines.append("```")
+                fence = tree
+            # 들여쓰기를 지킨다(나무 — B130 ③): 앞 공백 두 칸이 한 단
+            lines.append(x[2:] if tree else f"{'  ' * ((len(x) - len(x.lstrip())) // 2)}- {x.strip()}")
+        lines += (["```"] if fence else []) + [""]
     detail = [(frame, detail_lines(frame, fr)) for frame, fr in frames.items()]
     if any(d for _f, d in detail):
         lines += ["## 고침 상세(적용 · 버림)", ""]

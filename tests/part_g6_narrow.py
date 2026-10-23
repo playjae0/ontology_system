@@ -47,8 +47,18 @@ show("① 후보 수가 상한 안이다 (전량이 아니다)",
 show("① 상한이 손잡이 하나다 (코드에 흩어져 있지 않다)",
      isinstance(_MT73.CANDIDATE_TOP_N, int) and _MT73.CANDIDATE_TOP_N > 0)
 # **스코프 근처가 먼저다** — 같은 부모 아래 노드가 다른 부모보다 앞선다.
+# 기대 변경(B142 ① — 관문은 값의 자리(공정 줄기)가 건다 · 부모 글자만 주는 호출은 거르지 않는다 · 노칭과 스태킹은 다른 줄기)
+from core.build import scope_path as _SP73                       # noqa: E402
+from core.build.build import Builder as _BLD73                   # noqa: E402
+
+
+def _place73(proc, surface, cat="Property", parent=None):
+    _b = _BLD73(open_graph("process"), _cfg73, None, "B73", "process")
+    return _SP73.place(_b, cat, _b.resolve_anchor(proc, "Process", None, defer=[]), None, surface, parent or proc)
+
+
 _cs73 = _MT73.candidates("노칭::설비XX", "Unit", "process", _g73, _dic73,
-                         parent="노칭", cfg=_cfg73)
+                         parent="노칭", cfg=_cfg73, place=_place73("노칭", "설비XX", "Unit"))
 show("① 같은 부모 아래 후보가 있으면 다른 부모는 먼저 오지 않는다 (스코프 근처)",
      _cs73 and all(c.get("parent") == "노칭" for c in _cs73),
      f"{len(_cs73)}건 · 부모 {sorted({c.get('parent') for c in _cs73})}")
@@ -107,7 +117,7 @@ show("③ confirmed 후보는 지금과 같다 (사람이 확인한 노드에는
      _v73b["type"] == _MT73.MATCH, str(_v73b))
 show("③ 지시문이 그 규칙을 말하고 판이 올랐다",
      "status" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8")
-     and "version: j-1.2" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8"))   # 기대 변경(B123 ③ — 2차 입력 칸 · j-1.2)
+     and "version: j-1.3" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8"))   # 기대 변경(B123 ③ — 2차 입력 칸 · j-1.2 → B142 ② — 경로 · j-1.3)
 
 # ② retry는 조건부다 — 후보 집합이 그대로면 LLM 0
 from core.build import retry as _RT73                                    # noqa: E402
@@ -181,6 +191,7 @@ from core import matcher as _MT74                                  # noqa: E402
 from core.llm import gateway as _LL74, narrow                                      # noqa: E402
 from core.build.build import entity_key as _KEY74                        # noqa: E402
 from core.dictionary import Dictionary as _DIC74                   # noqa: E402
+from core.build.naming import scope_of as _SO142_74                # noqa: E402 — 부모 경로 칸(B142 ⑤)
 
 init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
@@ -215,7 +226,7 @@ _cfg74 = load_config("process")
 _dic74 = _DIC74.open()
 _u74 = next(n for n in _g74.nodes.values()
             if n.get("category") == "Unit" and n.get("status") == "auto")
-_pa74 = _u74.get("parent") or _u74.get("mirror_scope")
+_pa74 = _SO142_74(_u74)          # 기대 변경(B142 ⑤ — 부모 경로 칸 scope · 읽는 함수 하나)
 _sc74 = (_cfg74.get("canonical_scope") or {}).get("bind_categories", [])
 _k74, _pol74, _, _ = _KEY74(_u74["canonical"].split("::")[-1], "Unit", _cfg74,
                             parent_canonical=_pa74)
@@ -435,18 +446,19 @@ _g75 = open_graph("process")
 _dic75 = _DIC74.open()
 _cfg75b = load_config("process")
 _sc75 = (_cfg75b.get("canonical_scope") or {}).get("bind_categories", [])
+# 기대 변경(B142 ① — 관문은 카테고리 · 공정 줄기(값의 자리) · 부모 글자 정확 일치가 아니다 · 「스코프로 끝」 → 「관문으로 끝」)
 _cd75 = _MT74.candidates("노칭::없는항목ZZ", "Property", "process", _g75, _dic75,
-                         parent="노칭", cfg=_cfg75b)
-show("② 판정에 오른 후보 전부 parent가 값의 parent와 같다",
-     _cd75 and all(c.get("parent") == "노칭" for c in _cd75),
-     f"후보 {len(_cd75)}개 · 부모 {sorted({c.get('parent') for c in _cd75})}")
+                         parent="노칭", cfg=_cfg75b, place=_place73("노칭", "없는항목ZZ"))
+show("② 판정에 오른 후보 전부 값과 같은 공정 줄기다(경로가 다른 실물을 가리키면 빠진다)",
+     _cd75 and all(c.get("path_relation") in _SP73.KEEP for c in _cd75),
+     f"후보 {len(_cd75)}개 · 관계 {sorted({c.get('path_relation') for c in _cd75})}")
 _MT74.reset_stats()
-_cd75b = _MT74.candidates("새공정::없는항목ZZ", "Property", "process", _g75, _dic75,
-                          parent="아무도없는공정ZZ", cfg=_cfg75b)
-_v75 = _MT74.match("새공정::없는항목ZZ", _cd75b, "Property", _cfg75b)
-show("② 같은 부모 아래가 0개면 후보 0 · LLM 0 · NEW (답이 정해져 있다)",
+_cd75b = _MT74.candidates("패키징::파우치 포밍::없는항목ZZ", "Property", "process", _g75, _dic75,
+                          parent="패키징::파우치 포밍", cfg=_cfg75b, place=_place73("패키징::파우치 포밍", "없는항목ZZ"))
+_v75 = _MT74.match("패키징::파우치 포밍::없는항목ZZ", _cd75b, "Property", _cfg75b)
+show("② 같은 공정 줄기 아래가 0개면 후보 0 · LLM 0 · NEW (답이 정해져 있다)",
      not _cd75b and _v75["type"] == _MT74.NEW and _MT74.STATS["판정"] == 0
-     and _MT74.STATS["스코프끝"] == 1,
+     and _MT74.STATS["관문끝"] == 1,
      f"후보 {len(_cd75b)} · {_v75['type']} · 판정 {_MT74.STATS['판정']}")
 _cd75c = _MT74.candidates("떠도는항목ZZ", "Property", "process", _g75, _dic75,
                           parent=None, cfg=_cfg75b)
@@ -466,8 +478,8 @@ _stage75 = {"이름": "판정", "값": 7, "총": 60}
 _line75 = _IG75.spend_line(_stage75)
 _u75 = _LL74.usage_total()
 show("③ 실패 줄이 비용을 말하고 그 수가 `llm.usage_total()`과 같다",
-     f"호출 {_u75['calls']:,}" in _line75
-     and f"토큰 {_u75.get('total_tokens', 0):,}" in _line75
+     # 기대 변경(B139 ⑤ — 비용은 이 문서 · 누계 두 마디 · 누계 = 게이트웨이 누계)
+     f"누계 호출 {_u75['calls']:,} · 입력 {_u75.get('prompt_tokens', 0):,} · 출력 {_u75.get('completion_tokens', 0):,}" in _line75
      and "판정 값 7/60" in _line75, _line75[:80])
 _pb75 = _io.StringIO()
 with _ctx.redirect_stdout(_pb75):
@@ -514,5 +526,258 @@ show("③ 판정 도중 멈추면 **그래프·큐 쓰기 0**이다 (부분 쓰�
      f" · 큐 {'같다' if _before75[1] == _after75[1] else '다르다'}")
 show("③ 사전도 그대로다 (판정이 남긴 등재가 되돌려진다)",
      _before75[2] == _after75[2])
+
+# ════════════════════════════════════════════════════════════════════
+# B142 — 노드 맞추기: 관문은 공정 줄기 · 경로는 호환 증거 · 표 행의 소유자 · 별칭 후보 · 칸 이름 · 화면의 수
+# ════════════════════════════════════════════════════════════════════
+print("\n■ B142 — 노드 맞추기 (창작 표본 · mock · 가짜 게이트웨이)")
+import fake_gateway as _FG142                                         # noqa: E402
+from cli import ingest_screen as _SCR142                              # noqa: E402
+from core.build import ledger as _LG142, reconcile as _RC142          # noqa: E402
+from core.build.naming import base_name_of as _BN142, name_parent as _NP142, scope_of as _SO142   # noqa: E402
+from core.state import ops_mark as _OM142                             # noqa: E402
+from core.state.status import is_live as _live142                     # noqa: E402
+
+init.init(fresh_=True, all_=True)
+for _lay in ("process", "quality"):
+    bootstrap(_lay, echo=False)
+_CP142 = json.loads((ROOT / "tests/fixtures/parsed/CP01.json").read_text(encoding="utf-8"))
+_cfg142 = load_config("process")
+
+
+def _pr142(doc, owner, child, proc="노칭"):
+    """산문 꼴 노드 — 소속 대상(유닛) 아래 이름 규칙 그대로 · 판정의 자리는 산문 소속과 같은 손(`resolve_at_home` · `owner`)."""
+    b = _BLD73(open_graph("process"), _cfg142, None, doc, "process")
+    ref, rg = b.resolve_anchor(proc, "Process", f"{doc}#1", defer=[])
+    pol = b.anchor_polarity(ref, rg)              # 좌표의 극성 상속 — 산문 청크와 같다(A11-9 ①)
+    uid, ub = b.resolve_at_home(owner, "Unit", f"{doc}#1", coord=(ref, rg), parent_canonical=rg.get(ref)["canonical"],
+                                anchor_polarity=pol)
+    par = _NP142("Property", ub.g.get(uid)["canonical"], rg.get(ref)["canonical"], _cfg142)
+    _pid, pb = b.resolve_at_home(child, "Property", f"{doc}#1", coord=(ref, rg), parent_canonical=par, owner=(uid, ub.g),
+                                 anchor_polarity=pol)
+    for _x in b.graphs():
+        _x.save()
+    b.flush()
+    return dict(pb.last)
+
+
+def _cp142(doc, rows, **extra):
+    """CP 꼴 행(공정 · 설비 · 관리항목) — 표 인입(`run_document`) · 개체 행을 표기로 · `extra`는 행에 더할 칸(같은 내용 보류 비키기)."""
+    e = dict(_CP142, doc_id=doc)
+    base = {k: v for k, v in _CP142["records"][0].items() if k not in ("설비", "관리항목", "규격", "측정방법", "대응계획")}
+    e["records"] = [dict(base, source_locator=f"{doc}-R{i}", process_ref=pr, 설비=u, 관리항목=x, **extra)
+                    for i, (pr, u, x) in enumerate(rows, 1)]
+    _run72(e)
+    return {r["surface"]: r for r in _LG142.read(doc)["rows"] if r.get("role") == "entity"}
+
+
+def _named142(name):
+    return sorted(n["canonical"] for n in open_graph("process").nodes.values() if _live142(n) and _BN142(n) == name)
+
+
+_pa142 = _pr142("B142P1", "실린더", "실린더 행정")
+_ca142 = _cp142("B142C1", [("노칭", "실린더", "실린더 행정")])
+_cr142 = _cp142("B142C2", [("노칭", "실린더", "실린더 속도")])
+_rr142 = _pr142("B142P2", "실린더", "실린더 속도")
+# 기대 변경(B144 ② — 표도 산문과 같은 이름 규칙: CP 값이 소유자 아래 같은 이름(사전 키)이라 경로 호환이 아니라 사전으로 만난다)
+show("B142 ⓐ 표 ↔ 산문 — CP 꼴 행이 산문이 만든 소유자 아래 같은 이름 노드에 붙는다(사전 · LLM 0 · 새 노드 0) · "
+     "거꾸로(CP 먼저 · 산문 나중)도 한 노드",
+     _ca142["실린더 행정"]["path"] == "dictionary" and _named142("실린더 행정") == ["노칭::실린더::실린더 행정"]
+     and _rr142["path"] == "dictionary" and _named142("실린더 속도") == ["노칭::실린더::실린더 속도"],
+     f"CP → {_ca142['실린더 행정'].get('target')} · 거꾸로 → {_rr142.get('canonical')} · {_named142('실린더 속도')}")
+_pr142("B142P3", "펀치", "펀치 마모", proc="노칭::노칭 타발")
+_cb142 = _cp142("B142C3", [("노칭", "펀치", "펀치 마모")])
+# 기대 변경(B144 ② — 설비가 경로 호환으로 붙으면 관리항목은 그 설비 아래 이름이라 사전으로 만난다)
+show("B142 ⓑ 공정 칸 높이만 다름 — 산문은 하위 공정 · CP는 상위 공정 → 설비 · 관리항목 둘 다 붙는다",
+     _cb142["펀치"]["path"] == "path_compat" and len(_named142("펀치 마모")) == 1 and len(_named142("펀치")) == 1,
+     f"{_named142('펀치 마모')} · {_named142('펀치')}")
+_pr142("B142P4", "TW 용접기", "실린더 압력")
+_cc142 = _cp142("B142C4", [("노칭", "가압 유닛", "실린더 압력")])
+show("B142 ⓒ 소유자 뚜렷이 다름 → 따로 — CP 행의 설비(다른 유닛)가 소유자라 같은 이름 후보가 하나여도 붙지 않는다(표 행의 "
+     "소유자) · 다른 소유자 아래 같은 이름은 대장에 남는다",
+     _cc142["실린더 압력"]["verdict"] == "new" and len(_named142("실린더 압력")) == 2
+     and _cc142["실린더 압력"].get("apart") == ["노칭::TW 용접기::실린더 압력"],
+     f"{_named142('실린더 압력')} · apart {_cc142['실린더 압력'].get('apart')}")
+_seen142 = []
+with _FG142.Live(by={"judge": lambda body: (_seen142.append(body), {"type": "new", "matched_id": None, "confidence": 0.9})[1]}):
+    _pr142("B142P5", "틈새 유닛", "클리어런스 값")
+    _sd142 = _pr142("B142P6", "간극 유닛", "클리어런스 값")
+_jb142 = next((b for b in reversed(_seen142) if any(c.get("path_relation") == _SP73.SIMILAR for c in b["candidates"])), {})
+show("B142 ⓓ 소유자 이름 비슷(따로 선 소유자 · 임베딩 유사) → LLM 판정 · 입력에 두 경로(값 · 후보) · 대장에 「소유자 이름 비슷」",
+     _jb142.get("path") == ["노칭", "간극 유닛"] and _sd142.get("similar") == ["노칭::틈새 유닛::클리어런스 값"]
+     and any(c.get("path") == ["노칭", "틈새 유닛"] for c in _jb142.get("candidates") or []),
+     f"값 경로 {_jb142.get('path')} · 후보 {[(c.get('path'), c.get('path_relation')) for c in _jb142.get('candidates') or []][:2]}")
+_g142 = open_graph("process")
+_dic142 = _DIC74.open()
+_ua = _g142.add_node("노칭::가압 블록", "Unit", "auto", provenance=["B142 시험"], scope="노칭", base_name="가압 블록",
+                     polarity="none", _scoped=True)
+_ub = _g142.add_node("노칭::가압 블록::실린더 몸통", "Unit", "auto", provenance=["B142 시험"], scope="노칭::가압 블록",
+                     base_name="실린더 몸통", polarity="none", _scoped=True)
+_uc = _g142.add_node("노칭::가압 블록::실린더 몸통::몸통 행정", "Property", "auto", provenance=["B142 시험"],
+                     scope="노칭::가압 블록::실린더 몸통", base_name="몸통 행정", polarity="none", _scoped=True)
+for _i, _c in ((_ua, "노칭::가압 블록"), (_ub, "노칭::가압 블록::실린더 몸통"), (_uc, "노칭::가압 블록::실린더 몸통::몸통 행정")):
+    _dic142.register(_c, _i, provenance="B142 시험")
+_g142.save()
+_dic142.save()
+_bE = _BLD73(open_graph("process"), _cfg142, None, "B142E", "process")
+_rE = _bE.resolve_anchor("노칭", "Process", "B142E#1", defer=[])
+_eE, _ebE = _bE.resolve_at_home("몸통 행정", "Property", "B142E#1", coord=_rE, parent_canonical="노칭::가압 블록",
+                                owner=(_ua, _bE.g))
+show("B142 ⓔ 깊이만 다름(중간 소유자 「실린더 몸통」이 빠짐) → 붙는다(경로 호환)",
+     _eE == _uc and _ebE.last.get("path") == "path_compat", f"{_ebE.last.get('path')} → {_ebE.last.get('canonical')}")
+_MT74.reset_stats()
+_fO = _pr142("B142P7", "실린더", "실린더 행정", proc="스태킹")
+_fP = _pr142("B142P8", "실린더", "실린더 행정", proc="노칭::cathode")
+_bF = _BLD73(open_graph("process"), _cfg142, None, "B142F", "process")
+_gF = _bF.g
+_nF = _gF.add_node("실린더 행정", "Property", "auto", provenance=["B142 시험"], base_name="실린더 행정", polarity="none")
+_plF = _SP73.place(_bF, "Property", _bF.resolve_anchor("노칭", "Process", None, defer=[]), None, "실린더 행정", "노칭")
+show("B142 ⓕ 다른 공정 줄기 → 후보 아님(LLM 0 · 새 노드) · 극성이 다르면 후보 아님 · 부모 미해소 노드는 관문을 못 지난다",
+     _fO.get("path") == "none" and _fO.get("verdict") == "new" and _MT74.STATS["판정"] == 0
+     and _fP.get("verdict") == "new" and len(_named142("실린더 행정")) == 3 and _plF.relation(_nF, _gF) == _SP73.OTHER,
+     f"다른 줄기 {_fO.get('path')}:{_fO.get('verdict')} · 극성 {_fP.get('canonical')} · {_named142('실린더 행정')}")
+_bG = _BLD73(open_graph("process"), _cfg142, None, "B142G", "process")
+for _i in range(15):
+    _bG.g.add_node(f"노칭::gap 항목 {_i:02d}", "Property", "auto", provenance=["B142 시험"], scope="노칭",
+                   base_name=f"gap 항목 {_i:02d}", polarity="none", _scoped=True)
+_gA = _bG.g.add_node("노칭::GAP SIZE", "Property", "auto", provenance=["B142 시험"], scope="노칭", base_name="gap size",
+                     polarity="none", _scoped=True)
+_gB = _bG.g.add_node("노칭::간격 크기", "Property", "auto", provenance=["B142 시험"], scope="노칭", base_name="간격 크기",
+                     polarity="none", _scoped=True, aliases=[{"surface": "Gap Size", "provenance": ["B142 시험"]}])
+_plG = _SP73.place(_bG, "Property", _bG.resolve_anchor("노칭", "Process", None, defer=[]), None, "gap size", "노칭")
+_cG = _MT74.candidates("노칭::gap size", "Property", "process", _bG.g, _bG.dict, parent="노칭", cfg=_cfg142, place=_plG)
+show("B142 ⓖ 별칭 · 라틴 접기로 맞는 후보는 상한 좁히기 뒤에도 남는다(동의어 판정이 기본)",
+     len(_cG) <= _MT74.CANDIDATE_TOP_N and {_gA, _gB} <= {c["id"] for c in _cG} and not any(c.get("exact") for c in _cG),
+     f"후보 {len(_cG)} · 같은 이름 {[c['canonical'] for c in _cG if c.get('same_name')]}")
+_gI = open_graph("process")
+_nn142 = next(n for n in _gI.nodes.values() if n["canonical"] == "노칭::실린더::실린더 행정")   # 구축이 세운 노드
+_nf142 = (_nn142.get("scope"), _nn142.get("base_name"), "mirror_scope" in _nn142 or "mirror_name" in _nn142)
+_bI0 = _BLD73(_gI, _cfg142, None, "B142I", "process")
+_mk0 = {i: (_bI0._mirror_scope(_SO142(n)), _BN142(n) or n["canonical"]) for i, n in _gI.nodes.items()}
+_cl0 = _OM142.alias_clash(_DIC74.open(), _gI.get, _uc, _gI.get(_uc), "실린더 행정", _cfg142)
+for _n in _gI.nodes.values():                                   # 옛 칸만 있는 그래프(재구축 전 · B142 ⑤)
+    if "scope" in _n:
+        _n["mirror_scope"] = _n.pop("scope")
+    if "base_name" in _n:
+        _n["mirror_name"] = _n.pop("base_name")
+_gI.save()
+_bI = _BLD73(open_graph("process"), _cfg142, None, "B142I", "process")
+_mk1 = {i: (_bI._mirror_scope(_SO142(n)), _BN142(n) or n["canonical"]) for i, n in _bI.g.nodes.items()}
+_ci142 = _cp142("B142C5", [("노칭", "실린더", "실린더 행정")], 측정방법="옛 칸 그래프")
+_cl1 = _OM142.alias_clash(_DIC74.open(), open_graph("process").get, _uc, open_graph("process").get(_uc), "실린더 행정", _cfg142)
+show("B142 ⓘ 칸 이름 — 새 노드는 scope · base_name · 옛 칸만 있는 그래프에서도 판정 · 극성 짝 키 · 별칭 검사 결과가 같다",
+     _nf142 == ("노칭::실린더", "실린더 행정", False) and _mk0 == _mk1
+     and _ci142["실린더 행정"]["target"] == "노칭::실린더::실린더 행정"
+     and _ci142["실린더 행정"]["path"] == "dictionary"         # 기대 변경(B144 ② — 표도 소유자 아래 이름 · 사전 · 옛 칸으로도)
+     and _cl0 == _cl1,
+     f"판정 → {_ci142['실린더 행정'].get('target')} · 짝 키 같다 {_mk0 == _mk1} · 별칭 검사 같다 {_cl0 == _cl1}")
+_st142 = {"이름": _SCR142.JUDGE, "총": 10}
+_on142 = _SCR142.row_printer(None, stage=_st142)
+with _ctx.redirect_stdout(_io.StringIO()):
+    for _r in _LG142.read("B142C1")["rows"]:
+        _on142(_r)
+    _SCR142.judge_progress(10, stage=_st142)({"판정": 1})
+_rows142 = _LG142.read("B142C3")["rows"] + _LG142.read("B142C4")["rows"]   # 기대 변경(B144 ② — 경로 칸 재료는 C3의 설비)
+_vl142 = _RC142.value_lines(_rows142)[0]
+_k142 = _RC142.owner_counts(_LG142.read("B142C4")["rows"])
+show("B142 ⓙ 화면의 수 — 진행 줄은 처리한 값(개체 행)과 판정 호출을 갈라 든다 · 끝 맞춤 값 줄의 합 = 값 수(경로 칸 포함) · "
+     "같은 이름 · 다른 소유자 줄의 재료",
+     _st142["값"] == sum(1 for r in _LG142.read("B142C1")["rows"] if r.get("role") == "entity") and _st142["호출"] == 1
+     and _vl142["맞음"] and dict((k, n) for k, n, _d in _vl142["칸"]).get("경로", 0) >= 1 and _k142[0] == 1,
+     f"값 {_st142['값']} · 판정 호출 {_st142['호출']} · 값 줄 합 {_vl142['합']}/{_vl142['전체']} · 다른 소유자 {_k142[0]}")
+
+# ════════════════════════════════════════════════════════════════════
+# B144 — 표도 산문과 같은 이름 규칙 · 노드의 소유자 근거에 소유 엣지 · 판정 관문의 반복 계산 걷기
+# ════════════════════════════════════════════════════════════════════
+print("\n■ B144 — 노드 맞추기 후속 (창작 표본 · mock)")
+from core.build import belongs as _BE144, gate as _GT144              # noqa: E402
+
+
+def _pe144(doc, owner, child, proc="노칭"):
+    """산문 꼴 값 — `owner`가 있으면 산문 소속과 같은 손(대상 해소 → 이름 부모 → 소속 엣지 `belongs.edge_of` · `gate.commit_edge`)."""
+    b = _BLD73(open_graph("process"), _cfg142, None, doc, "process")
+    ref, rg = b.resolve_anchor(proc, "Process", f"{doc}#1", defer=[])
+    pol, par, own = b.anchor_polarity(ref, rg), rg.get(ref)["canonical"], None
+    if owner:
+        uid, ub = b.resolve_at_home(owner, "Unit", f"{doc}#1", coord=(ref, rg), parent_canonical=par, anchor_polarity=pol)
+        own, par = (uid, ub.g), _NP142("Property", ub.g.get(uid)["canonical"], par, _cfg142)
+    pid, pb = b.resolve_at_home(child, "Property", f"{doc}#1", coord=(ref, rg), parent_canonical=par, owner=own,
+                                anchor_polarity=pol)
+    if own and pid:
+        rel, fwd = _BE144.edge_of(_cfg142, "Unit", "Property")
+        s, d = (own[0], pid) if fwd else (pid, own[0])
+        _GT144.commit_edge(b.g, s, rel, d, _cfg142, _GT144.PATH_EXTRACT, [f"{doc}#1"], doc, src_graph=b.g, dst_graph=b.g)
+    for _x in b.graphs():
+        _x.save()
+    b.flush()
+    return dict(pb.last)
+
+
+_c1 = _cp142("B144C1", [("노칭", "A설비1", "압력1"), ("노칭", "B설비1", "압력1")])
+_p1 = [_pe144("B144P1", "A설비1", "압력1"), _pe144("B144P2", "B설비1", "압력1")]
+_p2 = [_pe144("B144P3", "A설비2", "압력2"), _pe144("B144P4", "B설비2", "압력2")]
+_c2 = [r for r in (_cp142("B144C2", [("노칭", "A설비2", "압력2"), ("노칭", "B설비2", "압력2")]) and
+                   _LG142.read("B144C2")["rows"]) if r.get("field") == "관리항목"]
+show("B144 ⓐ 순서 무관 — CP 두 행(A설비 · B설비 아래 압력) + 산문 A · B 아래 압력: CP 먼저 · 산문 먼저 둘 다 노드 둘 · 이름이 "
+     "같다(소유자 아래) · 나중에 온 쪽은 사전으로 붙는다",
+     _named142("압력1") == ["노칭::A설비1::압력1", "노칭::B설비1::압력1"]
+     and _named142("압력2") == ["노칭::A설비2::압력2", "노칭::B설비2::압력2"]
+     and all(x.get("path") == "dictionary" for x in _p1) and all(r.get("path") == "dictionary" for r in _c2),
+     f"{_named142('압력1')} · {_named142('압력2')} · 산문 {[x.get('path') for x in _p1]} · CP {[r.get('path') for r in _c2]}")
+_s1 = [_pe144("B144P5", None, "압력3"), _pe144("B144P6", "A설비3", "압력3"), _pe144("B144P7", "B설비3", "압력3")]
+_s2 = [_pe144("B144P8", "A설비4", "압력4"), _pe144("B144P9", None, "압력4"), _pe144("B144PA", "B설비4", "압력4")]
+_own144 = {x["node_id"] for x in _s1[1:2] + _s2[0:1]}, {x["node_id"] for x in _s1[2:] + _s2[2:]}
+show("B144 ⓑ 소속 없는 노드 — 소속 없는 「압력」이 A설비의 값을 받으면(소속 엣지) B설비의 값은 받지 않는다 · 거꾸로도 · "
+     "A설비 압력과 B설비 압력은 어느 순서에서도 한 노드가 아니다(소속 없는 값이 어디에 붙는지는 순서에 달려도 된다)",
+     _s1[1]["node_id"] == _s1[0]["node_id"] and _s1[2]["node_id"] != _s1[1]["node_id"]
+     and _s2[2]["node_id"] != _s2[0]["node_id"] and not (_own144[0] & _own144[1]),
+     f"A {[x.get('path') for x in _s1]} · 거꾸로 {[x.get('path') for x in _s2]} · {_named142('압력3')} · {_named142('압력4')}")
+_s3 = _pe144("B144PB", "펌프", "실린더 압력")
+_s3a = _pe144("B144PC", "송출 모듈", "토출 압력")            # 거꾸로(산문 먼저) — 이름이 서로 포함되지 않게(mock 판정은 포함 규칙)
+_s3b = _cp142("B144C3", [("노칭", "증압 유닛", "토출 압력")])["토출 압력"]
+show("B144 ⓒ S3 — B142 ⓒ 뒤 다른 소유자(펌프) 아래 같은 이름이 가압 유닛 행의 노드에 붙지 않는다(어느 순서든)",
+     _s3.get("verdict") == "new" and len(_named142("실린더 압력")) == 3
+     and _s3b.get("verdict") == "new" and len(_named142("토출 압력")) == 2,
+     f"{_named142('실린더 압력')} · {_named142('토출 압력')} · 산문 먼저 {_s3a.get('path')}:{_s3a.get('canonical')}")
+
+
+def _cost144(n):
+    """값 M(10)개 · 같은 카테고리 노드 n개의 후보 조립 — 설정 읽기 · 골격 조회 횟수(창작 표본)."""
+    g = open_graph("process")
+    b = _BLD73(g, _cfg142, None, f"B144E{n}", "process")
+    u = [g.add_node(f"노칭::비용설비{j}", "Unit", "auto", provenance=["t"], scope="노칭", base_name=f"비용설비{j}",
+                    polarity="none", _scoped=True) for j in range(3)]
+    for k in range(n):
+        g.add_node(f"노칭::비용설비{k % 3}::항목{k}", "Property", "auto", provenance=["t"], scope=f"노칭::비용설비{k % 3}",
+                   base_name=f"항목{k}", polarity="none", _scoped=True)
+    for j, x in enumerate(u):
+        b.dict.register(f"노칭::비용설비{j}", x, provenance="t")
+    seen = {"설정": 0, "골격": 0}
+    cfg0, ra0 = _LL74.config, b.resolve_anchor
+    _LL74.config = lambda: (seen.__setitem__("설정", seen["설정"] + 1), cfg0())[1]
+    b.resolve_anchor = lambda *a, **k: (seen.__setitem__("골격", seen["골격"] + 1), ra0(*a, **k))[1]
+    try:
+        for v in range(10):
+            pl = _SP73.place(b, "Property", b.resolve_anchor("노칭", "Process", None, defer=[]), (u[v % 3], g),
+                             f"값{v}", f"노칭::비용설비{v % 3}")
+            _MT74.candidates(f"노칭::비용설비{v % 3}::값{v}", "Property", "process", g, b.dict,
+                             parent=f"노칭::비용설비{v % 3}", cfg=_cfg142, place=pl)
+    finally:
+        _LL74.config = cfg0
+    return seen
+
+
+_e1, _e2 = _cost144(60), _cost144(240)
+show("B144 ⓔ 비용 — 값 10개에서 같은 카테고리 노드가 60 → 240이어도 설정 읽기 · 골격 조회 횟수가 같다(노드 수에 비례하지 않는다)",
+     _e1 == _e2 and _e1["설정"] <= 2 * 10, f"노드 60 {_e1} · 240 {_e2}")
+_pe144("B144PG", "노칭 프레스", "노칭 피치")
+_rg144 = _sp72.run([sys.executable, "run.py", "ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp",
+                    "--allow-mock"], cwd=str(ROOT), capture_output=True, text=True, stdin=_sp72.DEVNULL,
+                   env={**_LL74.isolated_env(), "USE_MOCK": "1"}, timeout=600)
+_gr144 = [r for r in (_LG142.read("CP01") or {}).get("rows") or [] if r.get("surface") == "노칭 피치"]
+show("B144 ⓖ 실경로 — CP 인입 CLI(ingest-file) 하나: 산문이 만든 소유자 아래 노드에 사전으로 붙는다(새 노드 0)",
+     _rg144.returncode == 0 and _gr144 and all(r.get("path") == "dictionary" for r in _gr144)
+     and _named142("노칭 피치") == ["노칭::노칭 프레스::노칭 피치"],
+     f"rc {_rg144.returncode} · {[(r.get('path'), r.get('target')) for r in _gr144]} · {_named142('노칭 피치')}")
 
 done()

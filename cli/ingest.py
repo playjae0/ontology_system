@@ -72,16 +72,17 @@ from parser.reader import MissingDependency              # noqa: E402
 OK, FAIL, SKIP = "성공", "실패", "미선택"
 
 
-def _norm_path(p):
+def _norm_path(p, recorded=False):
     """경로 비교용 정규화 — 상대/절대·`./`·심볼릭 링크 차이로 헛경고를 내지 않는다.
 
-    대장의 표기는 **상태 루트 기준 상대**일 수 있다(B79 ②) — 되돌려서 비교한다.
-    그러지 않으면 이사 한 번에 「다른 경로에서 인입된 적 있다」가 전건 뜬다.
-    """
+    **기록의 표기만**(`recorded`) 상태 루트 기준 상대일 수 있다(B79 ②) — 그것만 되돌린다(그러지 않으면 이사 한 번에
+    「다른 경로에서 인입된 적 있다」가 전건 뜬다). **지금 친 경로는 작업 폴더 기준**이다(B141 ② — 같은 파일을 상대 경로로
+    다시 넣으면 상태 루트 아래로 잘못 되돌려 멈췄다)."""
+    q = paths.from_home(p) if recorded else Path(p)
     try:
-        return str(paths.from_home(p).resolve())
+        return str(q.resolve())
     except OSError:
-        return str(paths.from_home(p).absolute())
+        return str(q.absolute())
 
 
 def doc_id_of(path):
@@ -289,7 +290,7 @@ def _ingest_file_select(doc, sel, row, step, revise=False, dry_run=False):
     # **다른 원본 경로의 같은 doc_id는 상태 거부다**(B102 ⑧) — 구판은 경고만 하고 개정으로
     # 돌아, 다른 폴더의 같은 이름 문서가 앞 문서의 그래프·대장을 조용히 덮었다. 개정이면
     # 사람이 `--revise`로 말한다(폴더에 주면 그 폴더 전부 — 폴더를 옮긴 경우 · `--dry-run`은 말만 한다).
-    if prev and prev.get("source_path") and _norm_path(prev["source_path"]) != _norm_path(doc):
+    if prev and prev.get("source_path") and _norm_path(prev["source_path"], recorded=True) != _norm_path(doc):
         if dry_run and not revise:                # 선택만 보는 자리 — 쓰기 0이라 멈추지 않고 말만 한다
             print(f"   ⚠ 같은 doc_id가 다른 원본 경로에서 인입된 적 있다({prev['source_path']}) — "
                   f"실제 인입이면 멈춘다(개정이면 --revise)")
@@ -420,11 +421,12 @@ SPLIT_ONLY = "구조까지"
 
 
 def _split_only(res, sel, row):
-    """**구조까지만**(B126 ④) — md를 쓰고 멈춘다(추출 0 · 그래프 쓰기 0 · 확정한 시트는 기록 — 다음 인입이 재생)."""
-    from cli import split_report as SR
+    """**구조까지만**(B126 ④) — 멈춘다(추출 0 · 그래프 쓰기 0 · 확정한 시트는 기록 — 다음 인입이 재생) · md는 구조 단계가 이미
+    썼다(`structure_screen.md_of` — B141 ① · 그 줄이 위에 있다)."""
     from core import paths
-    md = SR.write_md(sel["doc_id"], res.report, res.envelope)
-    print(f"   구조까지 — 추출 0 · 그래프 쓰기 0 · md {paths.show(md) if md else '없음(구조 없음 — 고정 규칙 그대로)'}")
+    md = paths.export(f"split_{sel['doc_id']}.md")
+    md = md if md.exists() else None
+    print(f"   구조까지 — 추출 0 · 그래프 쓰기 0 · md {'위 줄' if md else '없음(구조 없음 — 고정 규칙 그대로)'}")
     row.update(status=SPLIT_ONLY, reason="--split-only — 구조 확인까지", split_md=str(md) if md else None)
     return row
 
@@ -478,11 +480,11 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         _u0 = gateway.usage_total()["calls"]
         from core import matcher as _mt
         _plan_n = _value_count(res.envelope, sel) or 1     # 분모 = 판정 예고의 값 수 (B102 ⑦)
-        stage["이름"], stage["총"] = "판정", _plan_n
+        stage["이름"], stage["총"] = SCR.JUDGE, _plan_n
         _mt.PROGRESS = SCR.judge_progress(_plan_n, stage=stage, every=step_every,
                                       stride=progress_every)
         # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
-        _ledger.ON_ROW = SCR.row_printer(res.envelope)
+        _ledger.ON_ROW = SCR.row_printer(res.envelope, stage=stage)
         try:
             # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
@@ -557,12 +559,17 @@ def _finalize_screen():
     gateway.set_doc("(마무리)")                  # 재시도 판정의 사용량은 마무리로 센다 (B99 ③)
     from cli import _screen
     stage = {"이름": "연결 보강"}
+    from core.build import human
+    h0 = human.waiting()                         # 사람 후보 이름을 기다리던 고아 행 (B140 ③)
     with _screen.ticker("연결 보강", where=SCR.ticker_where(stage)):
         fin = finalize(notice=SCR.reinforce_screen(stage))
     SCR.stage_head("마무리", "미러 · 재시도 · 연결 보강")
     print(f"   {fin['retry_line']}")
     print(f"   미러 — 새 짝 엣지 {fin['mirror_new']:,} · 비대칭(mirror_asymmetry) {fin['mirror_asym']:,}")
     print(f"   {fin['reinforce_line']}")
+    if h0:
+        h1 = human.waiting()
+        print(f"   사람 후보 — 재연결 붙음 {h0 - h1:,} · 남음 {h1:,}(그 이름을 기다리던 고아 행)")
     return fin
 
 
@@ -630,12 +637,10 @@ def spend_line(stage):
 
     수는 `gateway.usage_total()` 그대로다 — 화면이 제 계산을 하지 않는다.
     """
-    u = gateway.usage_total()
     where = stage.get("이름", "선택")
-    if where == "판정" and stage.get("총"):
-        where = f"판정 값 {stage.get('값', 0)}/{stage['총']}"
-    return (f"이 문서까지 — LLM 호출 {u['calls']:,} · {_screen.tokens(u)} · "
-            f"멈춘 단계 {where}")
+    if where == SCR.JUDGE and stage.get("총"):
+        where = f"판정 값 {stage.get('값', 0)}/{stage['총']} · 판정 호출 {stage.get('호출') or 0}"
+    return f"이 문서까지 — {_screen.usage_pair(SCR.doc_since(), '이 문서')} · 멈춘 단계 {where}"
 
 
 def main(argv):

@@ -126,6 +126,18 @@ def _usage_tail():
                       for pt, v in sorted(by.items()))
 
 
+def _end_usage(u0):
+    """**명령 끝 줄**(B139 ⑤) — LLM(임베딩 포함)을 부른 명령이면 늘 · 표준 오류로(표준 출력이 묶음 하나인 명령이 있다) — 누계 한 줄 +
+    이 실행이 아직 끝 표를 내지 않았으면 끝 표(문서 · 배치 끝 표가 이미 났으면 줄만)."""
+    from core.llm import gateway
+    if gateway.usage_total()["calls"] == u0["calls"]:
+        return
+    print(f"■ 명령 끝 — {_screen.usage_line(u0, '이 명령')}", file=sys.stderr)
+    if not _screen.TABLE_SHOWN["done"]:
+        for ln in _screen.usage_table_lines(gateway.usage_table(), "LLM 끝 표(이 명령)"):
+            print(ln, file=sys.stderr)
+
+
 def doc_header(doc_id, doc_type=None, kind=None, lenses=None):
     """**문서 머리줄**(B99 ③) — 문서를 다루는 명령 전부가 이 함수를 부른다 · 게이트웨이 문서 문맥을 채운다."""
     from core.llm import gateway
@@ -226,7 +238,9 @@ def run(command, main, argv=None):
         try:
             _adopt_ops_log()
             _fill_alias_book()
+            u0 = gateway.usage_total()
             rc = main(argv) or 0
+            _end_usage(u0)
         except SystemExit as e:
             code = e.code
             if isinstance(code, str):

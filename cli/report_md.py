@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 
+from cli import _screen
 from core import paths
 
 #: 대장의 붙은 자리에 없는 엣지(정형 관계 · 미러 · 자동 엣지)의 방식 칸
@@ -131,6 +132,14 @@ def build(doc_id, data):
     out += ["", "## 추출 청크", ""]
     out += (_table(("#", "렌즈", "시트", "청크", "라벨", "개체", "관계", "상태"), ch) if ch
             else ["추출 체크포인트 없음(표 문서 · 또는 아직 뽑지 않았다)"])
+    lt = RS.table_of(data.get("result"))
+    out += ["", "## LLM 사용량 — 갈래별(게이트웨이 누계 그대로 · 몫 = 입력+출력)", ""]
+    out += _table(_screen.USAGE_HEADS, _screen.usage_cells(lt)) if lt else ["LLM 호출 0(또는 결과 묶음 없음)"]
+    own = [r for r in rows if r.get("apart") or r.get("similar")]
+    out += ["", "## 같은 이름 · 다른 소유자 — 판정이 견준 것(합칠 것이면 `ops merge`)", ""]
+    out += (_table(("표기", "이름", "판정", "다른 소유자 아래 같은 이름", "소유자 이름 비슷 → 판정"),
+                   [[r.get("surface"), r.get("canonical"), r.get("verdict"), " ; ".join(r.get("apart") or []),
+                     " ; ".join(r.get("similar") or [])] for r in own]) if own else ["없음"])
     out += ["", "## 판정 값", ""]
     out += _table(("#",) + SCR.VALUE_HEADS[1:] + ("2차", "값"), _value_rows(rows, env))
     return "\n".join(out) + "\n"

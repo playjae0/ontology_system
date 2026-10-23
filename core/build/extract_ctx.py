@@ -22,7 +22,8 @@ def doc_info(env):
     src = (env or {}).get("source_path") or ""
     return {"name": PurePath(str(src)).name if src else None,
             "coord": (env or {}).get("doc_coord"),
-            "overview": (env or {}).get("doc_overview")}           # 문서 개요(덱 구조 — B125 ③ · 없으면 칸 없음)
+            # 문서 개요 — 봉투 덱 블록(B143 ② · 덱 구조 — 없으면 칸 없음) · 옛 키 `doc_overview`는 재파싱 전 봉투
+            "overview": ((env or {}).get("deck") or {}).get("overview") or (env or {}).get("doc_overview")}
 
 
 def _path(p):

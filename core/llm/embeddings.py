@@ -127,6 +127,7 @@ def embed(text):
     raw = gateway._post(f"{cfg['embed_url']}/embeddings",
                     {"model": cfg["embed_model"], "input": text},
                     cfg["key"], cfg["timeout"])
+    gateway._account("embed", raw, quiet=True)       # 임베딩도 게이트웨이 사용량이다 — 끝 표의 갈래 「임베딩」 (B139 ⑤)
     out = list(raw["data"][0]["embedding"])
     STATS.update(backend="gateway", device=None, load_s=None,
                  encode_ms=round((time.perf_counter() - t0) * 1000), dim=len(out))

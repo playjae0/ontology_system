@@ -85,12 +85,35 @@ def nest_categories(cfg):
     return list(((cfg or {}).get("canonical_scope") or {}).get("nest_categories") or [])
 
 
+#: 부모 경로 · 맨 이름 칸 — 새 칸 앞, 옛 칸 뒤(B142 ⑤ — 재구축 전 그래프는 옛 칸만 있다 · 옛 `parent`는 시험 노드의 칸)
+SCOPE_FIELDS = ("scope", "mirror_scope", "parent")
+BASE_FIELDS = ("base_name", "mirror_name")
+
+
+def scope_of(node):
+    """노드의 **부모 경로** — 이름 부모 canonical 글자(`노칭::실린더`) · 없으면 None. 읽는 자리는 이 함수 하나(B142 ⑤)."""
+    return next((node.get(k) for k in SCOPE_FIELDS if (node or {}).get(k)), None) if node else None
+
+
+def base_name_of(node):
+    """노드의 **맨 이름** — 주소 접두를 뺀 자기 이름부(정규화 표기) · 없으면 None(골격 · 옛 노드는 canonical로 본다)."""
+    return next((node.get(k) for k in BASE_FIELDS if (node or {}).get(k)), None) if node else None
+
+
+def set_scope(node, scope):
+    """부모 경로를 새 칸에 쓰고 옛 칸을 걷는다(개명 연쇄 — 한 노드의 부모 경로 칸은 하나)."""
+    for k in SCOPE_FIELDS[1:]:
+        node.pop(k, None)
+    node["scope"] = scope
+
+
 def name_parent(category, owner_canonical, coord_parent, cfg):
-    """**이름 부모 한 함수**(B119 ④) — 소속이 **골격 밖 노드**(유닛 · 제목 개체)로 해소된 개체의 이름 부모.
+    """**이름 부모 한 함수**(B119 ④ · B144 ②) — 소유자가 **골격 밖 노드**(유닛 · 제목 개체)로 해소된 개체의 이름 부모.
 
     `nest_categories`에 든 카테고리(사양 · 값)면 그 노드의 canonical(`노칭::언와인더 unit::속도`) · 아니면 좌표의 부모 그대로
-    (`노칭::속도`). 한 카테고리가 `bind_categories`와 `nest_categories` 둘 다에 있어도 같다 — 소속이 골격(공정)이면 이 함수를
-    부르지 않고 좌표가 부모다(표의 CP · PFMEA는 소속이 공정이라 병합 키가 바뀌지 않는다). 부모 노드가 없으면 좌표 그대로."""
+    (`노칭::속도`). 한 카테고리가 `bind_categories`와 `nest_categories` 둘 다에 있어도 같다. 소유자는 문서 형태와 무관하다 —
+    산문은 소속 대상 · 표는 같은 행의 소유 엣지 개체(`scope_path.owner_parent` — CP의 설비 → 관리항목 · PFMEA처럼 소유 엣지가 없는
+    표는 공정 아래) · 제목은 위 제목 개체. 소유자가 골격(공정)이면 이 함수를 부르지 않고 좌표가 부모다 · 부모 노드가 없으면 좌표 그대로."""
     if owner_canonical and category in nest_categories(cfg):
         return owner_canonical
     return coord_parent
@@ -99,9 +122,9 @@ def name_parent(category, owner_canonical, coord_parent, cfg):
 def scope_canonical(surface, category, parent_canonical, cfg):
     """canonical 스코프 — `{부모}::{표면형}` (CH3B 3.5 규약 4).
 
-    **부모는 세부공정이지 설비가 아니다.** 관리항목은 세부공정 단위로 관리되고
-    CP와 PFMEA가 같은 키로 만나야 하기 때문이다 — 스코프 기준을 설비로 바꾸면
-    걸침 문서의 병합 키가 갈라진다(그 변경은 스키마 한 줄이지만 지뢰다).
+    **부모는 이름 부모 한 함수(`name_parent`)가 정한다**(B144 ②) — 세부공정이거나, 소유자를 아는 값(`nest_categories`)이면
+    그 소유자(`노칭::설비::관리항목`). 표 · 산문이 같은 규칙이라 같은 것은 같은 이름(사전 키)으로 만나고, 소유자를 모르는 값은
+    세부공정 바로 아래에 선다 — 이름이 갈리는 남은 경우는 관문(공정 줄기)과 경로 호환이 잇는다(`scope_path`).
 
     부모가 미해소면 스코프를 붙이지 않는다. 좌표를 모른 채 만든 노드를
     스코프 붙은 노드와 합치면 오병합이므로, 후보에서도 제외된다(규약 5).

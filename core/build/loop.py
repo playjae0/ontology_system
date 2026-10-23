@@ -417,12 +417,19 @@ def h_entity(value, spec, ctx):
         _ledger_entity(st, value, lay, None)
         return None
 
+    # **표 행의 소유자**(B142 ③ · B144 ②) — 같은 행의 소유 엣지 개체(먼저 해소됐다)가 판정의 자리이자 **이름 부모**다
+    # (산문 소속과 같은 함수 `naming.name_parent` — `scope_path.owner_parent` · 소유자가 없거나 골격 노드면 공정 그대로)
+    of = (st.get("owners") or {}).get(st.get("field"))
+    oid = (st.get("resolved") or {}).get(of) if of else None
+    owner = (oid, st["external"].get(of, st["graph"])) if oid else None
+    from core.build.scope_path import owner_parent
     nid, eb = st["b"].resolve_at_home(value, spec["category"], st["prov"],
                                       coord=(st["ref"], st.get("ref_g")),
                                       electrode_type=st["et"],
-                                      parent_canonical=st["parent"],
+                                      parent_canonical=owner_parent(st["b"].cfg, spec["category"], owner, st["parent"]),
                                       anchor_polarity=st["anchor_pol"],
-                                      at=(st.get("locator"), st.get("field")))   # 판정 재생의 자리 (B106 ②)
+                                      at=(st.get("locator"), st.get("field")),   # 판정 재생의 자리 (B106 ②)
+                                      owner=owner)
     _ledger_entity(st, value, lay, eb.last)
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g

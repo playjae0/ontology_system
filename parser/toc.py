@@ -41,7 +41,8 @@ def _toc(hits, forbid, seen=None, rank=None, first=None):
     자식 · 아니면 맨 위의 자식.
 
     `first`(**목차 초안** — 계층 사다리 적용 · B137 ①)가 오면 ⓑ의 첫 서수는 `forbid` · 사다리로 열린 줄을 닫지 않고 **바로 위 제목 줄의
-    자식**이다(같은 꼴이 두 깊이에 선다) — 그 자리가 `forbid`와 어긋나면 `first["clash"]`에 행을 적는다(판단 필요의 재료) · 문서 규칙
+    자식**이다(같은 꼴이 두 깊이에 선다) — 그 자리가 `forbid`(사다리 단 순서)와 어긋나면 **초안은 사다리를 따르고**(ⓑ의 닫기 · B139 ②)
+    `first["clash"]`에 `{행: 바로 위 제목 행}`을 적는다(판단 필요의 재료) · 문서 규칙
     「P 아래에서 첫 서수로 시작하는 S 목록」(`first["lists"]` — `{(S, P)}`)에 맞으면 가장 가까운 열린 P 줄의 자식이고 그 목록의 이어지는
     줄과 함께 `first["ruled"]`(`{행: (S, P)}`)에 적는다 · 이어짐도 첫 서수도 아닌 번호 줄은 같은 꼴의 열린 줄을 찾지 않고 사다리의 단
     순서(ⓒ)로 서며 `first["loose"]`에 적는다."""
@@ -64,7 +65,9 @@ def _toc(hits, forbid, seen=None, rank=None, first=None):
                 first["ruled"][r] = (key, stack[par][0])
                 del stack[par + 1:]
             elif stack and (key, stack[-1][0]) in forbid:
-                first["clash"].append(r)                               # 첫 서수는 바로 위의 자식 — 단 순서와 어긋남
+                first["clash"][r] = stack[-1][3]                       # 첫 서수로는 바로 위의 자식 — 단 순서와 어긋나 사다리를 따른다
+                while stack and (key, stack[-1][0]) in forbid:
+                    stack.pop()
             if stack:
                 under.setdefault(key, set()).add(stack[-1][0])
                 if seen is not None:

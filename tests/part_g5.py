@@ -125,9 +125,9 @@ show("id 불변 (P4)", g.get(스태킹) is not None
      and g.get(스태킹)["canonical"] == "스태킹(개선)")
 show("옛 canonical이 alias로 자동 강등",
      "스태킹" in {a["surface"] for a in g.get(스태킹)["aliases"]})
-show("스코프 자식 canonical 연쇄 변경",
-     any(n["canonical"] == "스태킹(개선)::적층 정렬도" for n in g.nodes.values())
-     and not any(n["canonical"] == "스태킹::적층 정렬도" for n in g.nodes.values()))
+show("스코프 자식 canonical 연쇄 변경",  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
+     any(n["canonical"] == "스태킹(개선)::스태커::적층 정렬도" for n in g.nodes.values())
+     and not any(n["canonical"].startswith("스태킹::스태커") for n in g.nodes.values()))
 show("옛 이름으로도 계속 찾힌다 (재매칭이 깨지지 않는다)",
      스태킹 in store.read(store.DICTIONARY, {}).get(norm("스태킹"), []))
 
@@ -250,7 +250,7 @@ print("\n■ 이관(스코프 변경 연쇄) — I축 4연산과 별개 작업 (
 import subprocess as _sp5                                       # noqa: E402
 full_run()
 _g = open_graph("process")
-_prop = next(i for i, n in _g.nodes.items() if n["canonical"] == "노칭::노칭 정밀도")
+_prop = next(i for i, n in _g.nodes.items() if n["canonical"] == "노칭::노칭 프레스::노칭 정밀도")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 _newp = next(i for i, n in _g.nodes.items()
              if n.get("tier") == "sub" and "스태킹" in n["canonical"])
 _before = [(_g.get(e["src"])["canonical"], e["rel"]) for e in _g.edges
@@ -264,7 +264,7 @@ show("이관이 canonical 스코프를 갈아 끼운다 (소속이 주소다)",
      _g2.get(_prop)["canonical"] == "스태킹::노칭 정밀도",
      _g2.get(_prop)["canonical"])
 show("옛 이름이 alias로 남는다 (문서에는 옛 이름이 계속 나온다 — I1과 같은 이유)",
-     any(a["surface"] == "노칭::노칭 정밀도" for a in _g2.get(_prop)["aliases"]))
+     any(a["surface"] == "노칭::노칭 프레스::노칭 정밀도" for a in _g2.get(_prop)["aliases"]))  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
 _after = [(_g2.get(e["src"])["canonical"], e["rel"]) for e in _g2.edges
           if e["dst"] == _prop and e.get("status") != "deleted_by_user"]
 show("**엣지가 새 부모로 재배선된다** — 개명에는 없는 일이다",
@@ -405,11 +405,12 @@ from core.dictionary import Dictionary as _DIC75                   # noqa: E402
 _g75 = open_graph("process")
 _cfg75 = load_config("process")
 _sc75 = (_cfg75.get("canonical_scope") or {}).get("bind_categories", [])
+from core.build.naming import scope_of as _SO75                       # noqa: E402 — 부모 경로 칸(B142 ⑤)
+# 기대 변경(B142 ⑤ — 부모 경로 칸 이름 scope · 옛 칸은 같은 함수가 읽는다)
 _units75 = [n for n in _g75.nodes.values()
-            if ops.is_live(n) and n.get("category") == "Unit"
-            and (n.get("parent") or n.get("mirror_scope"))]
+            if ops.is_live(n) and n.get("category") == "Unit" and _SO75(n)]
 _t75 = _units75[0]
-_p75 = _t75.get("parent") or _t75.get("mirror_scope")
+_p75 = _SO75(_t75)
 ops.alias("process", _t75["id"], "현장표기ZZ", ACTOR, reason="현장이 그렇게 부른다")
 
 
@@ -427,10 +428,10 @@ show("⑤ 등재 뒤 **같은 부모 아래** 그 표기가 exact로 해소된�
      f"{_p75}::현장표기ZZ → {_t75['canonical']}")
 _other75 = next((n for n in _units75
                  if n["id"] != _t75["id"]
-                 and (n.get("parent") or n.get("mirror_scope")) == _p75), None)
+                 and _SO75(n) == _p75), None)
 if _other75 is None:                     # 같은 부모의 짝이 없으면 하나 세운다
     _oid75 = _g75.add_node(f"{_p75}::짝설비ZZ", "Unit", "auto",
-                           provenance=["시험"], parent=_p75, mirror_scope=_p75)
+                           provenance=["시험"], scope=_p75)
     _g75.save()
     _other75 = _g75.get(_oid75)
 try:

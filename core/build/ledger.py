@@ -34,7 +34,8 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "proposal",                      # 연결 보강 버림의 제안 `{target, rel}` — 재생이 지금 config로 게이트를 다시 돈다(B118 ⑤)
          "belongs_to",                    # 산문 개체가 낸 소속 이름(B119 ⑤ — 화면의 소속(출처) 칸 · 출처는 `from`)
          "value",                         # 산문 개체의 값 `{attr, value, verdict}`(B120 ① — `core/build/values.land`가 단다)
-         "judge2")                        # 2차 판정 `{was, now, span}`(B123 ③ — 1차 불확실 · 청크 원문의 근거 문장 자리)
+         "judge2",                        # 2차 판정 `{was, now, span}`(B123 ③ — 1차 불확실 · 청크 원문의 근거 문장 자리)
+         "apart", "similar")              # 같은 이름 · 다른 소유자 아래 노드 · 소유자 이름 비슷 → 판정(B142 ⑥ — 이름 · 위 5)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -74,7 +75,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
-        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None):
+        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, similar=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -111,7 +112,9 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 산문 개체가 낸 소속 이름(B119 ⑤ — 소속(출처) 칸의 재료)
                  ("belongs_to", belongs_to),
                  # 2차 판정(B123 ③ — 1차 불확실 · 단계 · 근거 문장 자리 · 불렀을 때만)
-                 ("judge2", judge2)):
+                 ("judge2", judge2),
+                 # 판정이 견준 사실(B142 ⑥) — 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드 · 소유자 이름 비슷 후보
+                 ("apart", apart), ("similar", similar)):
         if v is not None:
             r[k] = v
     return r
@@ -128,7 +131,8 @@ def judged(last, *, locator, field, surface, layer, target):
                 queue_kind=last.get("queue_kind"), narrow=last.get("narrow"),
                 emb_top=last.get("emb_top"), nearest=last.get("nearest"), same_doc=last.get("same_doc"),
                 target=target, category=last.get("category"), scope=last.get("scope"),
-                replay=last.get("replay"), judge2=last.get("judge2"))
+                replay=last.get("replay"), judge2=last.get("judge2"),
+                apart=last.get("apart"), similar=last.get("similar"))
 
 
 def put_row(doc_id, new, old=None):
@@ -191,7 +195,7 @@ def read(doc_id):
 def summary(rows):
     """머리 집계 — `show report`와 어서션이 **같은 함수로** 센다(B22의 결)."""
     ent = [r for r in rows if r.get("role") == "entity"]
-    out = {"값": len(ent), "사전": 0, "스코프": 0, "임베딩": 0, "겹침": 0,
+    out = {"값": len(ent), "사전": 0, "경로": 0, "스코프": 0, "임베딩": 0, "겹침": 0,
            "신규": 0, "불확실": 0, "보류": 0, "호출": 0, "토큰": 0}
     for r in rows:
         u = r.get("llm") or {}
@@ -201,6 +205,8 @@ def summary(rows):
         p, v = r.get("path"), r.get("verdict")
         if p == "dictionary":
             out["사전"] += 1
+        elif p == "path_compat":
+            out["경로"] += 1
         elif p == "scope+judge":
             out["스코프"] += 1
         elif p == "embedding+judge":

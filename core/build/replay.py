@@ -17,6 +17,8 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
   · `uncertain` → 지금처럼 불확실(새 노드 + 큐 — LLM 0 · 가장 가까운 후보는 이름으로 다시 찾는다) · **2차 기록(`judge2`)이
     없고 산문 문장이 있으면 2차를 한 번**(B127 ① — 불확실은 내린 판정이 아니다 · 매칭이면 그 노드 · 기록이 남아 다음은 LLM 0)
   · 그 밖(골격 밖 · 보류)은 재생하지 않는다 — 코드가 다시 판정한다
+  · **후보 0으로 끝난 새 노드**(경로 `none`)도 재생하지 않는다(B142) — 부른 판정이 없어 아낄 것이 없고, 관문(공정 줄기 ·
+    경로 호환)이 넓어지면 그때 없던 후보가 선다 · 세지도 적지도 않는다
 
 재료는 개체 행(`entity`)과 **소속 대상 행**(`belongs` — 산문 개체의 `belongs_to`가 골격 · 버퍼 · 사전에 없어 새로
 해소한 판정 · 열 `소속`)이다. 재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 —
@@ -132,6 +134,8 @@ def pick(b, at, surface, category, canonical):
     r = next((x for x in rows if norm(x.get("canonical") or "") == norm(canonical or "")), None)
     if r is None:
         return _miss("대상 없음")
+    if r.get("path") == "none" and r["verdict"] == "new":
+        return None, None              # 후보 0으로 끝난 새 노드 — 재생할 판정이 없다(다시 잰다 · 관문이 넓어지면 후보가 선다 · B142)
     v = {"path": "replay", "replayed_path": r.get("path"), "candidates_n": 0,
          "confidence": r.get("confidence") or 0.0}
     if r["verdict"] == "match":

@@ -106,25 +106,29 @@ TABLE_SEQ = (0, 1, 2, 3, 4, 5, 6)
 PROSE_SEQ = (0, 1, 2, 7, 8, 4, 5, 6)
 
 
-#: 단계 끝 줄의 기준점 — 머리를 낼 때마다 갱신한다(문서 머리에서 비운다).
-_MARK = {"t": None, "u": None}
+#: 단계 끝 줄의 기준점 — 머리를 낼 때마다 갱신한다(문서 머리에서 비운다) · `doc`은 문서 머리의 사용량(문서 끝 줄 「이 문서」)
+_MARK = {"t": None, "u": None, "doc": None}
 
 
 def stage_reset():
     """문서가 바뀌면 단계 시계를 다시 잡는다(`cli/ingest._doc_header`)."""
     import time
-    _MARK.update(t=time.monotonic(), u=gateway.usage_total())
+    u = gateway.usage_total()
+    _MARK.update(t=time.monotonic(), u=u, doc=u)
+
+
+def doc_since():
+    """문서 머리의 사용량 스냅샷(없으면 None — 누계만)."""
+    return _MARK.get("doc")
 
 
 def _stage_end():
-    """**단계 끝 줄**(B99 ④) — 앞 머리 이후 걸린 시간 · LLM 호출 · 입력/출력(게이트웨이 누계 차)."""
+    """**단계 끝 줄**(B99 ④ · B139 ⑤) — 앞 머리 이후 걸린 시간 · 이 단계 호출 · 입력 · 출력 / 누계(게이트웨이 누계 그대로)."""
     import time
     if _MARK["t"] is None:
         stage_reset()
-    u = gateway.usage_total()
-    line = (f"   └ {time.monotonic() - _MARK['t']:.1f}초 · LLM 호출 "
-            f"{u['calls'] - _MARK['u']['calls']:,} · {_screen.tokens(u, _MARK['u'])}")
-    _MARK.update(t=time.monotonic(), u=u)
+    line = f"   └ {time.monotonic() - _MARK['t']:.1f}초 · {_screen.usage_pair(_MARK['u'])}"
+    _MARK.update(t=time.monotonic(), u=gateway.usage_total())
     return line
 
 
@@ -135,7 +139,7 @@ def stage_head(label, detail=""):
     _screen.say(_stage_end(), "aux")
 
 
-def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False):
+def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False, ask_fn=None):
     """**단계 머리**를 찍고(`--step`이 아니어도 — B99 ④) `ask`면 `[계속 c / 멈춤 q]`를 묻는다.
 
     머리 아래 **단계 끝 줄**(걸린 시간 · LLM 호출 · 입력/출력)이 붙는다 — `--step`은 같은 머리에
@@ -155,7 +159,7 @@ def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False):
     if not ask:
         return True
     print(f"   {why}")
-    if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
+    if not (ask_fn() if ask_fn else _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True)):   # 묻는 자리가 따로면 그 함수 (B140 ②)
         if saved:                              # 저장 표지 뒤 — 끝난 문서다(B109 ②) · 되돌리지 않는다
             print(f"   멈춤 — 이 문서는 이미 저장됐다(되돌리지 않는다) · 남은 머리는 묻지 않는다")
             return False
@@ -176,15 +180,17 @@ MARKS = {"match": "✓", "attached": "✓", "new": "+", "uncertain": "?", "lowre
          "orphan": "✗", "gate_reject": "✗", "anchor": "·", "pending": "·"}
 
 #: 경로 → 짧은 이름. 화면이 경로를 다시 해석하지 않는다(대장의 값 그대로).
-PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "scope+judge": "스코프",
+PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "path_compat": "경로", "scope+judge": "스코프",
               "embedding+judge": "임베딩", "overlap+judge": "겹침", "self_coord": "자기 좌표",
               "memo": "기억", "replay": "재생", "none": "—"}
 
 #: 줄을 찍는 자리 — **판단이 갈린 값**이다(사용자 확정 2026-09-22).
 LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject", "mention")   # mention — 다른 공정 언급(B113 ①)
 
-#: 이번 문서의 집계 — 진행 줄이 이것을 함께 낸다(대장에서 센다 · 새 계산 0).
+#: 이번 문서의 집계 — 진행 줄이 이것을 함께 낸다(대장에서 센다 · 새 계산 0). `값` = 처리한 값(개체 행 — B142 ⑥)
 TALLY = {"값": 0, "사전": 0, "NEW": 0, "불확실": 0, "큐": 0, "orphan": 0}
+#: 판정 단계의 이름 — 누적 줄이 이 단계에서만 값과 판정 호출을 갈라 적는다(B142 ⑥)
+JUDGE = "판정"
 
 
 def _loud(row):
@@ -215,7 +221,7 @@ def value_line(row):
     return _screen.paint(text, v if v in _screen.KINDS else None)
 
 
-def row_printer(env=None):
+def row_printer(env=None, stage=None):
     """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부).
 
     산문(봉투에 청크가 있다)이면 값 행을 **조각의 부착이 끝날 때**(`ledger.ON_CHUNK`) 붙은 자리와 함께 낸다(B119 ⑤ —
@@ -254,7 +260,12 @@ def row_printer(env=None):
                 show(row)
 
     def on_row(row):
-        TALLY["값"] += 1
+        if row.get("role") == "entity":            # 처리한 값 = 개체 행(좌표 · 부착 행은 값이 아니다 — B142 ⑥)
+            TALLY["값"] += 1
+            if stage is not None and stage.get("이름") == JUDGE:
+                import time
+                stage["값"] = TALLY["값"]
+                stage["t0"] = stage.get("t0") or time.monotonic()
         if row.get("path") == "dictionary":
             TALLY["사전"] += 1
         if row.get("verdict") == "new":
@@ -437,11 +448,14 @@ def build_screen(step=False, stage=None, prose=False):
                     f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
             if info.get("추출뒤") and stage is not None:
                 # 산문 판정의 총수 = 추출이 낸 개체 수(B99 ⑦ — 레코드 수가 아니다)
-                stage.update({"이름": "판정", "값": 0, "총": info["값_수"], "t0": None})
+                stage.update({"이름": JUDGE, "값": 0, "총": info["값_수"], "t0": None})
                 _judge.update(stage)
             if info.get("추출뒤"):
-                # 산문은 **추출 뒤 단계 머리**가 이 줄이다(B97 ④ · 늘 — B99 ④) — `--step`이면 묻는다
-                return _step_gate(8, lz + body, prose=True, ask=step)
+                # 산문은 **추출 뒤 단계 머리**가 이 줄이다(B97 ④ · 늘 — B99 ④) — `--step`이면 묻는다 · 머리 아래 사람 후보 (B140 ①②)
+                from cli import human_gate
+                hb = info.get("사람후보")
+                return _step_gate(8, lz + body, prose=True, ask=step, body=human_gate.lines(hb, step) if hb else None,
+                                  ask_fn=(lambda: human_gate.ask(hb)) if hb else None)
             if step:
                 return          # 표 문서 — 관문 3(판정 예고)이 이미 같은 수를 찍었다
             _screen.say(f"   판정 예고 {lz}— {body}", "head")
@@ -456,9 +470,10 @@ def build_screen(step=False, stage=None, prose=False):
             from core.matcher import CANDIDATE_TOP_N
             # **좁힘을 갈라 적는다**(B75 ①) — 임베딩으로 골랐는지 겹침으로 골랐는지가
             # 같은 문서를 두 설정으로 넣어 견줄 때의 유일한 표지다.
-            # `스코프로 끝`은 **판정 없이** 끝난 수다(B75 ② — 같은 부모 아래 0개).
-            print(f"   판정 — 호출 {j.get('판정', 0):,} · 사전 {j.get('사전', 0):,} · "
-                  f"스코프로 끝 {j.get('스코프끝', 0):,} · "
+            # `관문으로 끝`은 **판정 없이** 끝난 수다(B75 ② · B142 ① — 같은 공정 줄기 · 경로 호환 후보 0개) ·
+            # `경로`는 경로 호환 같은 이름으로 붙은 수(B142 ② — LLM 0).
+            print(f"   판정 — 호출 {j.get('판정', 0):,} · 사전 {j.get('사전', 0):,} · 경로 {j.get('경로', 0):,} · "
+                  f"관문으로 끝 {j.get('관문끝', 0):,} · "
                   f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
                   f"(상한 {CANDIDATE_TOP_N})"
@@ -480,12 +495,14 @@ def build_screen(step=False, stage=None, prose=False):
                         f"저해상도 부착 {info.get('저해상도', 0)}행{_hf}") and go
         _step_gate(6, head or "큐 0", prose=prose, ask=step and go, saved=True)
         _orphan_next(info.get("doc_id"))
-        u = gateway.usage_total()
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
               f"저해상도 부착 {info.get('저해상도', 0):,}행{_hf}"
               + (f" · 큐: {head}" if head else " · 큐 0")
-              + f" · LLM 호출 {u['calls']:,} · {_screen.tokens(u)}")
+              + f" · {_screen.usage_pair(doc_since(), '이 문서')}")
+        if info.get("사람"):                      # 사람 후보 한 줄 (B140 ③)
+            from cli import human_gate
+            print(human_gate.end_line(info["사람"]))
         # **문서 끝 결과표**(B99 ⑤) — 층별 증감 · 이번/이전 큐 · LLM 지점별
         from cli import result_screen
         LAST_RESULT["res"] = info.get("결과")
@@ -698,7 +715,11 @@ def ticker_where(stage):
     def where():
         import time
         n, t, t0 = stage.get("값") or 0, stage.get("총"), stage.get("t0")
-        out = f"{stage.get('이름', '?')}" + (f" {n:,}/{t:,} · 남은 {max(0, t - n):,}" if t else "")
+        if stage.get("이름") == JUDGE:              # 값(처리한 대장 행)과 판정 호출을 가른다 — 남은 것은 남은 값(B142 ⑥)
+            out = (f"{JUDGE}" + (f" 값 {n:,}/{t:,} · 판정 호출 {stage.get('호출') or 0:,} · 남은 값 {max(0, t - n):,}"
+                                 if t else ""))
+        else:
+            out = f"{stage.get('이름', '?')}" + (f" {n:,}/{t:,} · 남은 {max(0, t - n):,}" if t else "")
         if t and n and t0:                            # 예상 — 지금까지의 속도 그대로 (B99 ⑦)
             out += f" · 예상 {(time.monotonic() - t0) / n * max(0, t - n) / 60:.1f}분"
         return out
@@ -732,7 +753,7 @@ def judge_progress(total, stage=None, every=0, stride=None):
         # **누적에 대장 집계를 더한다**(B81 ④) — 사람이 알고 싶은 것은 토큰만이
         # 아니라 「몇이 붙고 몇이 새로 생겼나」다. 수는 대장에서 센 것 그대로다.
         # 값 = **처리한 값**(대장 행 — 사전 히트 포함) / 판정 예고의 값 수 · 호출 = 판정 호출 수(B102 ⑦)
-        return (f"[판정] 값 {max(TALLY['값'], 1):,}/{total_now():,} · 호출 {n:,} · 누적 {_screen.tokens(u)}"
+        return (f"[판정] 값 {max(TALLY['값'], 1):,}/{total_now():,} · 판정 호출 {n:,} · 누적 {_screen.tokens(u)}"
                 f" · 사전 {TALLY['사전']:,} · NEW {TALLY['NEW']:,}"
                 f" · 불확실 {TALLY['불확실']:,} · 큐 {TALLY['큐']:,}")
 
@@ -741,7 +762,7 @@ def judge_progress(total, stage=None, every=0, stride=None):
     def progress(stats):
         n = stats.get("판정", 0)
         if stage is not None:
-            stage["값"] = n
+            stage["호출"] = n                         # 값은 대장 행이 센다(`row_printer`) — 여기는 판정 호출(B142 ⑥)
             if n == 1 or not stage.get("t0"):
                 import time
                 stage.setdefault("t0", time.monotonic())
@@ -751,16 +772,16 @@ def judge_progress(total, stage=None, every=0, stride=None):
             _LOG.info("판정 진행 — 값 %d/%d · 호출 %d · 누적 %s",
                       n, total_now() or 0, n, _screen.tokens(u))
         if every and n % every == 0 and n < (total_now() or 0):
-            _judge_gate(n, total_now(), u)
+            _judge_gate(TALLY["값"], n, total_now(), u)
     return progress
 
 
-def _judge_gate(n, total, u):
-    """판정 **안**의 멈춤 자리 (B75 ③ⓒ). 비대화형이면 묻지 않는다."""
+def _judge_gate(v, n, total, u):
+    """판정 **안**의 멈춤 자리 (B75 ③ⓒ). 비대화형이면 묻지 않는다 · `v` 처리한 값 · `n` 판정 호출(B142 ⑥)."""
     if not sys.stdin.isatty():
         return
-    left = max(0, (total or 0) - n)
-    _screen.say(f"   [판정] 값 {n:,}/{total:,} · 호출 {n:,} · 누적 {_screen.tokens(u)} · "
+    left = max(0, (total or 0) - v)
+    _screen.say(f"   [판정] 값 {v:,}/{total:,} · 판정 호출 {n:,} · 누적 {_screen.tokens(u)} · "
                 f"남은 값 {left:,}", "prog")
     if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
         from core.build.entry import Stopped

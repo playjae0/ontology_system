@@ -136,20 +136,77 @@ def tokens(u, since=None):
     return f"토큰 {t:,}(입력 {i:,} · 출력 {o:,})"
 
 
-def usage_line(since=None):
-    """**LLM 사용량 한 줄** — LLM을 부를 수 있는 사용자 명령의 끝 줄 문구는 이 함수 하나다(B96 ③).
+def _io(u, b=None):
+    """`호출 a · 입력 b · 출력 c` — 게이트웨이가 입력 · 출력을 주지 않으면(합만) 그 문면(`tokens`)."""
+    b = b or {}
 
-    `since`는 명령 시작점의 `gateway.usage_total()` — 그 차이를 센다(없으면 프로세스 누계).
+    def d(k):
+        return int((u or {}).get(k, 0) or 0) - int(b.get(k, 0) or 0)
+    if d("total_tokens") and not (d("prompt_tokens") or d("completion_tokens")):
+        return f"호출 {d('calls'):,} · {tokens(u, b)}"
+    return f"호출 {d('calls'):,} · 입력 {d('prompt_tokens'):,} · 출력 {d('completion_tokens'):,}"
+
+
+def usage_pair(since=None, what="이 단계"):
+    """**사용량 두 마디**(B139 ⑤) — `이 단계 호출 a · 입력 b · 출력 c / 누계 호출 A · 입력 B · 출력 C` · 단계 끝 줄 · 문서 끝 줄 ·
+    명령 끝 줄이 이 함수 하나다(`what`만 다르다 — 이 단계 · 이 문서 · 이 배치) · `since`가 없으면 누계만 · 누계는 이 실행(프로세스) 전부."""
+    from core.llm import gateway
+    u = gateway.usage_total()
+    return (f"{what} {_io(u, since)} / " if since is not None else "") + f"누계 {_io(u)}"
+
+
+def usage_line(since=None, what="이 단계"):
+    """**LLM 사용량 한 줄** — LLM을 부를 수 있는 사용자 명령의 끝 줄 문구는 이 함수 하나다(B96 ③ · B139 ⑤ — 이 단계 · 누계).
+
+    `since`는 그 단계 시작점의 `gateway.usage_total()` — 그 차이와 누계를 함께(없으면 누계만).
     mock이면 0이다. 수는 게이트웨이 누계 그대로(화면이 제 계산을 하지 않는다).
     """
     from core.llm import gateway
-    u = gateway.usage_total()
-    b = since or {}
+    u, b = gateway.usage_total(), since or {}
+    cut_ = int(u.get("truncated", 0)) - int(b.get("truncated", 0))
+    return f"LLM 사용량 — {usage_pair(since, what)}" + (f" · **응답 잘림 {cut_}회**" if cut_ else "")
 
-    def d(k):
-        return int(u.get(k, 0)) - int(b.get(k, 0))
-    return (f"LLM 사용량 — 호출 {d('calls'):,}회 · {tokens(u, b)}"
-            + (f" · **응답 잘림 {d('truncated')}회**" if d("truncated") else ""))
+
+#: 끝 표를 이 실행에서 낸 적이 있나 — 명령 끝(`cli/_entry`)은 문서 · 배치 끝 표가 없었던 명령에만 표를 낸다(겹치지 않게 · B139 ⑤)
+TABLE_SHOWN = {"done": False}
+
+
+def _pt(point):
+    """지점 표기 — 원문자 번호(①~⑫)가 있으면 그것만(표의 칸)."""
+    return point[:1] if point[:1] in "①②③④⑤⑥⑦⑧⑨⑩⑪⑫" else point
+
+
+def usage_cells(rows):
+    """끝 표의 칸 — `[[갈래, 지점, 호출, 입력, 출력, 몫]]` + 합계 줄(재료는 `gateway.usage_table` 그대로 · 화면과 md가 같은 함수)."""
+    out = [[o["갈래"], _pt(o["지점"]), f"{o['calls']:,}", f"{o['prompt']:,}", f"{o['completion']:,}",
+            "-" if o.get("몫") is None else f"{o['몫']:.1f}%"] for o in rows]
+    tot = [sum(o[k] for o in rows) for k in ("calls", "prompt", "completion")]
+    return out + [["합계", "", f"{tot[0]:,}", f"{tot[1]:,}", f"{tot[2]:,}", "100%" if any(o.get("몫") for o in rows) else "-"]]
+
+
+USAGE_HEADS = ("갈래", "지점", "호출", "입력", "출력", "몫")
+
+
+def usage_table_lines(rows, title="LLM 끝 표"):
+    """**끝 표**(B139 ⑤ — 문서 끝 · 배치 끝 · 명령 끝 · `show report`) — 갈래 · 지점 · 호출 · 입력 · 출력 · 몫 · 합계 줄 · 없으면 빈 목록."""
+    if not rows:
+        return []
+    TABLE_SHOWN["done"] = True
+    cells = [list(USAGE_HEADS)] + usage_cells(rows)
+    width = [max(w(r[i]) for r in cells) for i in range(len(USAGE_HEADS))]
+    out = [f"   {title} — 갈래마다 게이트웨이 누계 그대로(몫 = 입력+출력)"]
+    for r in cells:
+        out.append("     " + "".join(pad(c, width[i] + 2) if i < 2 else " " * (width[i] - w(c)) + c + "  "
+                                     for i, c in enumerate(r)).rstrip())
+    return out
+
+
+def branch_line(name, doc_id=None):
+    """한 갈래의 한 줄(B139 ⑤ — 덱 표처럼 갈래 하나가 그 단계인 자리) — `덱 — 호출 a · 입력 b · 출력 c / 누계 …` · 재료는 끝 표 그대로."""
+    from core.llm import gateway
+    o = next((x for x in gateway.usage_table(doc_id) if x["갈래"] == name), None)
+    mine = f"호출 {o['calls']:,} · 입력 {o['prompt']:,} · 출력 {o['completion']:,}" if o else "호출 0"
+    return f"LLM {name} — {mine} / {usage_pair()}"
 
 
 # ── 시간 기준 누적 줄 (B97 ②) ───────────────────────────────────────────────

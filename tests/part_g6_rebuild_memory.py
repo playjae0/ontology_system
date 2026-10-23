@@ -196,12 +196,12 @@ def _live_edge(src, rel=None, dst=None):
 
 with contextlib.redirect_stdout(io.StringIO()):
     ops.confirm("process", _id("process", "노칭::노칭 프레스"), A, "B107 확인(표)")
-    _k, _g = _id("process", "노칭::금형 클리어런스"), _id("process", "노칭::금형 간극")
+    _k, _g = _id("process", "노칭::노칭 프레스::금형 클리어런스"), _id("process", "노칭::금형 간극")   # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
     ops.merge("process", _g, _k, A, canonical="노칭::금형 간극", override=_k,
               reason="B107 합침(품질 문서의 노드 → 표 · 이름은 없어지는 쪽)")
-    ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::버 높이"), A,
+    ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::노칭 프레스::버 높이"), A,
               reason="B107 합침(산문 → 표)")
-    ops.alias("process", _id("process", "노칭::노칭 정밀도"), "노칭 정확도", A, "B107 표기(표)")
+    ops.alias("process", _id("process", "노칭::노칭 프레스::노칭 정밀도"), "노칭 정확도", A, "B107 표기(표)")
     ops.alias("quality", _id("quality", "전원 차단 실패"), "전원 차단 불량", A, "B107 표기(산문)")
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B107 폐기(표)")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
@@ -426,7 +426,9 @@ _rp = {d: _rows(d, lambda r: (r["locator"], r["field"], r["surface"]) in
                 {(x["locator"], x["field"], x["surface"]) for x in _after_c[d]}) for d in ("B107CP",)}
 show("ⓒ 재구축 ⇒ 재시도가 붙인 값이 재생된다(그 행 경로 replay · 끝 보고 「키 없음」 0 · 「대상 없음」 0 · 판정 호출 0) — 표",
      _rc == 0 and _endC.get("키 없음") == 0 and _endC.get("대상 없음") == 0 and _endC.get("판정") == 0
-     and CALLS.get("judge", 0) == 0 and all(_rp[d] and all(r.get("path") == "replay" for r in _rp[d]) for d in _rp),
+     # 기대 변경(B144 ② — 새 설비 아래 첫 값은 후보 0으로 끝난 새 노드라 재생하지 않고 다시 잰다(B142 · LLM 0) · 나머지는 재생)
+     and CALLS.get("judge", 0) == 0 and all(_rp[d] and all(r.get("path") in ("replay", "none") for r in _rp[d])
+                                            and any(r.get("path") == "replay" for r in _rp[d]) for d in _rp),
      f"끝 줄 {_endC} · mock 판정 {CALLS.get('judge', 0)} · " + " · ".join(
          f"{d} " + ", ".join(f"{r['surface']} {r.get('path')}" for r in _rp[d]) for d in _rp))
 for ln in _end_lines(OUT_C)[:3]:

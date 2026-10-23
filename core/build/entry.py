@@ -33,7 +33,7 @@ def finalize(layers=None, notice=None):
 
     문서 빌드 안에서 돌리면 **뒤에 인입되는 문서가 만드는 노드를 보지 못한다** — mirrors
     재평가가 한 박자 늦어 큐가 1회차 3건 → 2회차 4건으로 수렴했다(20회차 후속 실측).
-    노드에 짝 키를 적어 두는 것(`mirror_scope`·`mirror_name`)은 그대로 층 빌드가 하고,
+    노드에 짝 키를 적어 두는 것(부모 경로 `scope` · 맨 이름 `base_name`)은 그대로 층 빌드가 하고,
     **재평가와 큐 갱신만** 이쪽으로 옮긴다 — 자동 규칙 자체를 옮기는 것이 아니다.
 
     큐 항목의 `doc_id`는 `None`이다. 이 조건은 **어느 한 문서의 것이 아니라 그래프 전체의
@@ -107,6 +107,11 @@ def _entity_surfaces(env, schema):
     스키마와 레코드에 있다 — **LLM 0**으로 센다.
     """
     fields = (schema or {}).get("fields") or {}
+    # 표 행의 소유자(B144 ② — 이름 부모가 그 노드다) · 층을 모르는 스키마는 소유자 없음(지금 그대로)
+    from core.build import scope_path
+    from parser.normalizer import null_marker
+    lay = (schema or {}).get("layer")
+    owners = scope_path.table_owners(schema, load_config(lay)) if fields and lay else {}
     out = []
     for rec in env.get("records") or []:
         for f, spec in fields.items():
@@ -114,12 +119,16 @@ def _entity_surfaces(env, schema):
                 continue
             v = rec.get(f)
             if isinstance(v, str) and v.strip():
+                of = owners.get(f)
+                ov = rec.get(of) if of else None
                 out.append({"surface": v.strip(), "field": f,
                             "category": (spec or {}).get("category"),
                             "target_layer": (spec or {}).get("target_layer"),
                             # 좌표는 행이 쓰는 것과 같은 순서다 — ref 없으면 group
                             "ref": rec.get("process_ref") or rec.get("process_group"),
-                            "electrode_type": rec.get("electrode_type")})
+                            "electrode_type": rec.get("electrode_type"),
+                            **({"owner": {"surface": ov.strip(), "category": fields[of].get("category")}}
+                               if isinstance(ov, str) and ov.strip() and not null_marker(ov) else {})})
     return out
 
 
@@ -133,8 +142,6 @@ def _plan_hit(b, m, layer):
     좌표 해소도 판정과 같은 경로(골격 조회 → 하강 → 극성 상속)를 지나되 **쓰지
     않는다**: 미해소 좌표는 `defer` 자루로 받아 버린다(예고가 큐를 만들지 않는다).
     """
-    from core.build.build import entity_key
-    from core import matcher
     surface, category = m.get("surface"), m.get("category")
     if not surface or not category:
         return False
@@ -153,14 +160,30 @@ def _plan_hit(b, m, layer):
     if ref_id is None and loop._scoped_category(category, lay, b):
         return False                # 좌표 없는 스코프 개체는 판정에 오르지 않는다
     eb = b.for_layer(lay)
-    key, pol, _scoped, _sc = entity_key(surface, category, eb.cfg,
-                                        electrode_type=et, parent_canonical=parent,
-                                        anchor_polarity=apol)
-    from core.build.naming import scope_categories
-    scope_cats = scope_categories(eb.cfg)
-    return bool(matcher.dict_hits(key, category, lay, eb.g, b.dict,
-                                  polarity=pol, parent=parent,
-                                  scope_cats=scope_cats))
+    # **표 행의 소유자 → 이름 부모**(B144 ② — 판정과 같은 함수 `scope_path.owner_parent`): 소유자는 판정 없이 잰다 — 사전 · 경로
+    # 호환이 답하면 그 노드 · 아니면 새로 설 이름(소유자 키)이 부모다(예고는 노드를 만들지 않는다)
+    from core.build import scope_path
+    from core.build.naming import name_parent
+    owner, o = None, m.get("owner")
+    if o and parent:
+        hit, okey = _plan_key(b, o["surface"], o["category"], ref_id, ref_g, parent, apol, et)
+        owner = (hit[0]["id"], b.for_layer(b.home_of(o["category"])).g) if hit else None
+        parent = (scope_path.owner_parent(eb.cfg, category, owner, parent) if owner
+                  else name_parent(category, okey, parent, eb.cfg))
+    return bool(_plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=owner)[0])
+
+
+def _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=None):
+    """예고 한 값 — `(판정 없이 붙는 후보, 조회 키)` · 판정과 같은 키(`entity_key`) · 같은 관문(`matcher.gated` · B142)."""
+    from core.build import scope_path
+    from core.build.build import entity_key
+    lay = b.home_of(category)
+    eb = b.for_layer(lay)
+    key, pol, scoped, _sc = entity_key(surface, category, eb.cfg, electrode_type=et, parent_canonical=parent,
+                                       anchor_polarity=apol)
+    place = scope_path.place(eb, category, (ref_id, ref_g), owner, surface, parent)
+    return matcher.gated(key, category, lay, eb.g, b.dict, scoped=scoped, polarity=pol,
+                         parent=parent, cfg=eb.cfg, place=place)[0], key
 
 
 def decision_plan(mentions, refs, layer):
@@ -368,19 +391,28 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
         from core.build import outline as outline_mod
         ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
-        prose_gate(env, ck, loc2id, layer, notice)
-        builder = prose_mod.build_prose(env, cfg, graph, ck["candidates"], defer_save=True, outline=ol)
+        cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보를 보탠 후보 (B140 ③)
+        builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
 
 
-def prose_gate(env, ck, loc2id, layer, notice, lens=None):
+def prose_gate(env, ck, loc2id, layer, notice, lens=None, *, cfg=None, graph=None, outline=None):
     """산문의 **판정 예고 = 추출 뒤 관문** (B97 ④) — 표기는 추출이 끝나야 안다.
 
     `--step`이면 화면이 여기서 묻고 `False`면 멈춘다(그래프 쓰기 0 · 체크포인트는 완료로
     남아 재실행은 추출 재사용으로 구축만 간다). 렌즈 길도 렌즈마다 같은 함수를 지난다.
+    예고에 **사람 후보 판**(B140 ① — 이름 없는 대상 · 읽기만)이 함께 가고 · 돌려주는 것은 구축이 쓸 후보다 — 사람 후보 기록을
+    추출 후보에 보탠 것(③ — 알림이 없는 길(재구축 · 배치)에서도 · 체크포인트는 그대로).
     """
-    if notice is None:
-        return
+    from core.build import human
+    if notice is not None:
+        _notice_plan(env, ck, loc2id, layer, notice, lens,
+                     human.Board(env, ck["candidates"], cfg, graph, layer, loc2id, outline) if cfg is not None else None)
+    return human.apply(env, ck["candidates"], cfg or {}, loc2id)
+
+
+def _notice_plan(env, ck, loc2id, layer, notice, lens, board):
+    """추출 뒤 판정 예고 — `False`면 멈춘다(위 `prose_gate`)."""
     _by_loc = {c["source_locator"]: c for c in env.get("chunks") or []}
     _loc_of = {cid: loc for loc, cid in loc2id.items()}
     plan = decision_plan(
@@ -391,7 +423,7 @@ def prose_gate(env, ck, loc2id, layer, notice, lens=None):
          for c in ck["candidates"]
          for e in (c.get("entities") or []) if e.get("surface")],
         [c.get("process_ref") for c in env.get("chunks") or [] if c.get("process_ref")], layer)
-    if notice({**plan, "추출뒤": True, "렌즈": lens}) is False:
+    if notice({**plan, "추출뒤": True, "렌즈": lens, "사람후보": board}) is False:
         raise StepStop("사람이 멈췄다 — 추출 뒤 판정 예고까지 (그래프 쓰기 0 · 추출 체크포인트는 "
                        "완료로 남는다 — 다시 치면 추출 재사용으로 구축만 간다)")
 
@@ -404,7 +436,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
     사전을 먼저 쓰면 그래프 저장이 실패했을 때 사전이 없는 노드를 가리킨다.
     """
     from core import matcher as _mt
-    from core.build import coord_scan, replay as _rp
+    from core.build import coord_scan, human as human_mod, replay as _rp
     # **좌표 쌍 대조**(B105 ③④) — 표·산문·렌즈 세 길이 여기 한 자리 · 좌표 단계 화면과 같은 함수 · 같은 입력
     coord_scan.enqueue(_RUN.get("env") or {}, builder)
     _check_integrity(builder, doc_id)
@@ -422,7 +454,8 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
                 "저해상도": loop.LOWRES["n"], "제목폴백": loop.LOWRES["heading"], "총_노드": metrics.get("nodes"),
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
-                "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res)})
+                "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res),
+                "사람": human_mod.summary(builder.ledger.rows if builder.ledger else [], doc_id)})   # 사람 후보 (B140 ③)
     return None, metrics, extracted
 
 
@@ -436,6 +469,7 @@ def _result(builder, doc_id):
     seen = {_qkey(x) for x in _RUN["q0"]}
     q = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == doc_id]
     rej = (store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or [])[_RUN.get("rej0", 0):]
+    table = gateway.usage_table(doc_id)          # 끝 표 — 갈래별(B139 ⑤ · 게이트웨이 누계 그대로 · 부른 것이 없으면 키도 없다)
     res = result_mod.collect(doc_id, builder.ledger.rows if builder.ledger else [],
                              _RUN.get("layers0") or {}, after,
                              [x for x in q if _qkey(x) not in seen],
@@ -443,6 +477,7 @@ def _result(builder, doc_id):
                              [x for x in rej if x.get("doc_id") == doc_id],
                              gateway.usage_by(doc_id),
                              extra={"LLM 별칭": len(_build_added()),
+                                    **({"LLM 갈래": table} if table else {}),
                                     "좌표 학습": _RUN.get("coord_learn") or {},
                                     # 붙은 곳 끝 요약(B102 ⑦) — 대장 · 봉투 · 그래프에서(새 판정 0)
                                     **result_mod.landing(builder.ledger.rows if builder.ledger else [],

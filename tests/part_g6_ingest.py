@@ -208,11 +208,12 @@ from cli import ingest_screen as SCR81                                # noqa: E4
 from core.build import ledger as LG81                                 # noqa: E402
 
 # ③ 색은 **특이점에만** · 비-tty면 ESC 0. (여기 stdout은 파이프다 — 회귀가 그 조건이다.)
-_row_new = {"canonical": "노칭::버 높이", "verdict": "new", "candidates_n": 0,
+# 기대 변경(B142 ⑥ — 처리한 값은 개체 행만 센다 · 행에 역할을 단다)
+_row_new = {"role": "entity", "canonical": "노칭::버 높이", "verdict": "new", "candidates_n": 0,
             "path": "skeleton", "llm": {"calls": 0}, "queue_kind": "auto_node"}
-_row_dict = {"canonical": "노칭", "verdict": "match", "candidates_n": 1,
+_row_dict = {"role": "entity", "canonical": "노칭", "verdict": "match", "candidates_n": 1,
              "path": "dictionary", "llm": {"calls": 0}, "queue_kind": None}
-_row_unc = {"canonical": "패키징::실링 온도", "verdict": "uncertain", "candidates_n": 3,
+_row_unc = {"role": "entity", "canonical": "패키징::실링 온도", "verdict": "uncertain", "candidates_n": 3,
             "path": "scope+judge", "llm": {"calls": 1}, "confidence": 0.41,
             "queue_kind": "uncertain_match"}
 _line_new = SCR81.value_line(_row_new)

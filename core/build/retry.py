@@ -617,19 +617,33 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
     # 없으니 중복도 없다. 세운 노드의 id를 dropped_edges 해소에 쓴다.
     revived, rows = {}, []
     parent = (rg.get(ref) or {}).get("canonical")
-    for d in pl.get("dropped_entities") or []:
+    # **표 행의 소유자 → 이름 부모**(B144 ② — 인입과 같은 함수): 드롭된 개체 열 · 엣지로 그 행의 소유 엣지를 다시 읽고
+    # 소유자 열을 먼저 세운다(`scope_path.table_owners` · `owner_first` · `owner_parent`)
+    from core.build import scope_path
+    ents = pl.get("dropped_entities") or []
+    owners = scope_path.table_owners({"fields": {d["field"]: {"role": "entity", "category": d.get("category")}
+                                                 for d in ents if d.get("field")},
+                                      "edges": pl.get("dropped_edges") or []}, cfg)
+    order = {f: i for i, f in enumerate(scope_path.owner_first([d["field"] for d in ents if d.get("field")], owners))}
+    homes = {}
+    for d in sorted(ents, key=lambda d: order.get(d.get("field"), len(order))):
         lay2 = d.get("target_layer") or rlay
         g2 = graphs.get(lay2)
         if g2 is None:
             continue
         b2 = _builder(g2, cfgs[lay2], did, lay2, b0.dict)
-        nid2, eb2 = b2.resolve_at_home(d["surface"], d["category"], prov, coord=(ref, rg),
-                                       electrode_type=et, parent_canonical=parent, anchor_polarity=pol)
+        of = owners.get(d.get("field"))
+        owner = (revived[of], homes[of]) if of in homes else None
+        nid2, eb2 = b2.resolve_at_home(d["surface"], d["category"], prov, coord=(ref, rg), electrode_type=et,
+                                       parent_canonical=scope_path.owner_parent(b2.cfg, d["category"], owner, parent),
+                                       anchor_polarity=pol, owner=owner)
         b2.flush()
         rows.append((d, lay2, eb2, nid2))         # 대장 행은 잇고 난 뒤에 — 붙은 자리까지 (B107 ③ · B113 ③)
         if nid2:
             revived[d.get("field") or d["surface"]] = nid2
             revived[d["surface"]] = nid2
+            if d.get("field"):
+                homes[d["field"]] = eb2.g
             n += 1
 
     ends = set()

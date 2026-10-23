@@ -22,7 +22,7 @@ import json
 from core.llm import gateway, narrow
 from core.state import log
 from core.state.ids import norm
-from core.build.naming import POLARITY_NONE
+from core.build.naming import POLARITY_NONE, scope_of
 from core.state.status import is_live
 
 # 판정 임계 — **층 config `match_threshold`가 소유한다**(문서 3 §3.1 키 일람).
@@ -84,7 +84,7 @@ CANDIDATE_TOP_N = 12
 
 # **판정의 계측** — 화면이 「어떻게 좁혔고 몇 번 불렀나」를 세는 재료다(B73 ①).
 # 세는 자리가 **그 일을 하는 자리**와 같아야 화면과 실물이 갈리지 않는다.
-STATS = {"판정": 0, "사전": 0, "스코프": 0, "스코프끝": 0, "임베딩": 0, "겹침": 0,
+STATS = {"판정": 0, "사전": 0, "경로": 0, "스코프": 0, "관문끝": 0, "임베딩": 0, "겹침": 0,
          "그대로": 0, "후보합": 0, "조립": 0, "2차": 0, "2차바뀜": 0}
 
 #: **2차 판정**(B123 ③) — 1차가 불확실이면 그 표기가 나온 청크의 문장(표기 앞뒤 이 글자 수)을 붙여 같은 후보로 한 번 더
@@ -119,23 +119,59 @@ def _overlap(a, b):
     return len(x & y) / max(1, len(x | y))
 
 
-def scope_filter(pool, parent, scope_cats, category):
-    """**스코프는 하드 필터다** — 부모가 다른 노드는 후보에 **넣지 않는다** (B75 ②).
+def gate(pool, place, graph, dictionary, base):
+    """**관문 — 카테고리 · 공정 줄기**(B142 ① — B75 ②의 하드 필터를 잇는다) · 경로는 증거다(②).
 
-    D-152 ①이 적은 규율의 실물이다. 구판은 「상한을 넘을 때만」 부모로 좁혔고, 그
-    결과 둘이 새어 나갔다: ⓐ후보가 12개 이하면 다른 공정의 노드가 그대로 판정에
-    올랐다 ⓑ같은 부모 아래가 **0개면** 필터를 건너뛰어 **다른 공정 전량**이
-    임베딩→판정에 올랐다 — 답이 NEW로 정해져 있는 새 공정의 첫 값들이 매번 모델을
-    불렀다(사내 실측 열넷째: 목록 밖 53종 · 새 공정 다수).
+    `place`(들어온 값의 자리 — `core/build/scope_path.Place`)가 후보마다 관계를 낸다: 공정 줄기가 다르거나(다른 실물 —
+    문서 4 §4.5-6) 소유자가 뚜렷이 다르면 **후보에 넣지 않는다**(감점이 아니라 제외 · LLM 0). 남는 후보는 경로(`path` —
+    공정부터 가장 가까운 소유자까지)와 관계(`path_relation`)를 지고 판정에 오른다 — 남은 것이 0이면 `match`가 그 자리에서
+    NEW를 낸다(LLM 0 · 임베딩 0). 같은 이름(`same_name` — 사전 표기 · 별칭 · 라틴 접기)은 좁히기가 자르지 않는다(④).
+    자리가 없는 값(이름 규칙 카테고리가 아니거나 이름 부모가 없다)은 거르지 않는다 — 모르는 것을 근거로 버리지 않는다."""
+    from core.build import scope_path as SP
+    out = []
+    for c in pool:
+        n = graph.get(c["id"]) or {}
+        if place is None:
+            if _same_name(c, n, dictionary, base, place):
+                c["same_name"] = True
+            out.append(c)
+            continue
+        rel = place.relation(c["id"], graph)        # 관계(공정 줄기)가 먼저 — 다른 줄기는 같은 이름을 재지 않는다(B144 ①)
+        if rel == SP.OTHER:
+            continue
+        if _same_name(c, n, dictionary, base, place):
+            c["same_name"] = True
+        if rel not in SP.KEEP:
+            if rel == SP.APART and c.get("same_name"):
+                place.apart.append(c["canonical"])            # 같은 이름 · 다른 소유자 — 화면 줄 · 사람이 ops merge
+            continue
+        c["path"], c["path_relation"] = place.path_of(c["id"], graph), rel
+        if rel == SP.SIMILAR:
+            place.similar.append(c["canonical"])              # 소유자 둘로 갈림 — 합칠 후보(LLM이 본다)
+        out.append(c)
+    return out
 
-    부모가 다르면 다른 실물이다(문서 4 §4.5-6). 그래서 **0개면 후보 0**이고,
-    `match`가 그 자리에서 NEW를 낸다 — LLM 0 · 임베딩 0.
 
-    부모가 없는 값(좌표 미해소)은 거르지 않는다 — 모르는 것을 근거로 버리지 않는다.
-    """
-    if not parent or category not in (scope_cats or ()):
-        return pool, False
-    return [c for c in pool if c.get("parent") == parent], True
+def _same_name(c, n, dictionary, base, place):
+    if place is not None:
+        return place.same_name(c["id"], n, dictionary)
+    from core.state.ids import fold_latin
+    k = fold_latin(base or "").replace(" ", "")
+    return bool(k) and any(fold_latin(x).replace(" ", "") == k for x in [c["canonical"]] + list(c.get("aliases") or []))
+
+
+def sure(out, pool, place):
+    """**판정 없이 붙는 후보**(B142 ② — 경로 호환 · LLM 0) — 사전 exact가 없을 때만: 같은 이름 · **같은 소유자**가 하나면 그것 ·
+    아니면 같은 이름이 하나이고 그것이 **호환**이면 그것(소유자 이름이 비슷한 후보나 같은 이름 둘 이상은 판정이 본다)."""
+    from core.build import scope_path as SP
+    if out or place is None:
+        return None
+    names = [c for c in pool if c.get("same_name")]
+    owner = [c for c in names if c.get("path_relation") == SP.SAME]
+    pick = owner if owner else names
+    if len(pick) == 1 and pick[0].get("path_relation") in (SP.SAME, SP.COMPAT):
+        return dict(pick[0], exact=True, via="path_compat")
+    return None
 
 
 #: **후보 임베딩은 실행 중 메모리에 한 번**(B99 ⑨ · 문서 4 §4.3 ② 「로드 시 1회」) — 파일 저장 0.
@@ -164,7 +200,7 @@ def cand_text(c):
 def _narrow(surface, pool, top_n, *, scoped=False):
     """후보를 **상한 안으로 좁힌다** — 임베딩 또는 겹침 (B73 ① · B75 ①).
 
-    스코프 하드 필터는 이 함수 **앞**에서 이미 걸렸다(`scope_filter`) — 여기 오는
+    관문(카테고리 · 공정 줄기 · 경로 — `gate`)은 이 함수 **앞**에서 이미 걸렸다 — 여기 오는
     것은 「같은 자리의 후보」이고, 그것이 상한을 넘을 때만 유사도가 돈다.
 
     **무엇으로 좁히는지는 설정이 정한다**(`CANDIDATE_NARROW` — B75 ①): 임베딩은
@@ -176,12 +212,16 @@ def _narrow(surface, pool, top_n, *, scoped=False):
     """
     if len(pool) <= top_n:
         return pool, ("스코프" if scoped else "그대로")
+    # **같은 이름은 좁히기가 자르지 않는다**(B142 ④ — 사전 표기 · 별칭 · 라틴 접기 · 동의어 판정이 기본이다) — 남은 자리만 좁힌다
+    must = [c for c in pool if c.get("same_name")]
+    pool = [c for c in pool if not c.get("same_name")]
+    top_n = max(0, top_n - len(must))
     mode, _why = narrow.narrow_choice()
     if mode == "overlap":
         scored = sorted(pool, key=lambda c: -_overlap(surface, c["canonical"]))
         LAST_NARROW.update(how="겹침", top=[(c["id"], c["canonical"], _overlap(surface, c["canonical"]))
                                            for c in scored[:3]])
-        return scored[:top_n], "겹침"
+        return must + scored[:top_n], "겹침"
     # **후보 쪽 임베딩 글은 이름 + 별칭이다**(문서 4 §4.2 ② · B136 ② — 같은 부모 · 같은 카테고리로 걸러진 후보에 같은 정의문을
     # 붙이면 가르는 힘만 준다 · 별칭 표기와 같은 후보가 앞에 와야 한다). 벡터는 저장하지 않는다(P5) — 메모리에 한 번(B99 ⑨).
     from core.llm import embeddings
@@ -190,14 +230,15 @@ def _narrow(surface, pool, top_n, *, scoped=False):
     scored = sorted(pool, key=lambda c: -score[c["id"]])
     LAST_NARROW.update(how="임베딩", top=[(c["id"], c["canonical"], score[c["id"]])
                                          for c in scored[:3]])
-    return scored[:top_n], "임베딩"
+    return must + scored[:top_n], "임베딩"
 
 
 # **생성 경로의 닫힌 값**(B74 ②) — 대장이 적는 `path`가 여기 밖이면 FAIL이다.
 # 코드가 아는 사실만 적는다(LLM 산출이 아니다 — C38의 결).
 PATHS = ("skeleton", "dictionary", "scope+judge", "embedding+judge",
          "overlap+judge", "self_coord", "memo", "replay", "reinforce",
-         "none")  # self_coord — 자기 좌표(B90 ③) · memo — 반복 판정 기억(B100 ⑤) · replay — 판정 재생(B106 ②) · reinforce — 연결 보강(B115 ④ · 지점 ⑫)
+         "path_compat",
+         "none")  # self_coord — 자기 좌표(B90 ③) · memo — 반복 판정 기억(B100 ⑤) · replay — 판정 재생(B106 ②) · reinforce — 연결 보강(B115 ④ · 지점 ⑫) · path_compat — 경로 호환 같은 이름(B142 ② · LLM 0)
 
 # 좁힌 방법 → 경로 이름. `그대로`(좁힐 것도 없었다)는 **그 실행이 고른 방법**의
 # 이름으로 적는다 — 후보를 무엇으로 고르는 세계였는지가 그 자리의 사실이다(B75 ①).
@@ -249,7 +290,7 @@ def _cand_base(nid, n, exact=False):
     return {"id": nid, "canonical": n["canonical"],
             "aliases": [a["surface"] for a in n.get("aliases") or []],
             "category": n["category"], "layer": n.get("layer"),
-            "parent": n.get("parent") or n.get("mirror_scope"),
+            "parent": scope_of(n),
             "scoped": bool(n.get("_scoped")),
             "polarity": _pol(n.get("polarity")),
             # **아직 사람이 확인하지 않은 노드인지 판정이 알아야 한다**(B73 ③).
@@ -284,15 +325,57 @@ def dict_hits(surface, category, layer, graph, dictionary, *, polarity=None,
         if _pol(n.get("polarity")) != want:
             continue
         if scoped_cat and parent is not None \
-                and (n.get("parent") or n.get("mirror_scope")) != parent:
+                and scope_of(n) != parent:
             continue
         out.append(_cand(nid, n, exact=True,
                          also=category if n["category"] != category else None))
     return out
 
 
+def gated(surface, category, layer, graph, dictionary, *, scoped=True, polarity=None, parent=None, cfg=None,
+          place=None):
+    """**관문까지** — `(판정 없이 붙는 후보, 판정에 올릴 후보(좁히기 전), 관문이 걸렸나)` · LLM · 임베딩 0.
+
+    판정 재생(`build._judge`)과 예고(`entry._plan_hit`)가 이것으로 「판정 없이 붙는가」를 잰다 — 후보 조립(`candidates`)과
+    **같은 함수**다(B74 ①의 결 · 예고 · 재생 · 판정이 다른 열쇠로 사전을 보지 않는다)."""
+    want = _pol(polarity)
+    from core.build.naming import scope_categories
+    scope_cats = scope_categories(cfg)
+
+    # ① 사전 조회 — 결정적·무LLM. **예고와 판정이 같은 함수를 쓴다**(B74 ①).
+    out = dict_hits(surface, category, layer, graph, dictionary,
+                    polarity=polarity, parent=parent, scope_cats=scope_cats)
+    seen = {c["id"] for c in out}
+
+    # ② 후보 검색 — 위 안전망 넷으로 걸러 담는다(상한 안으로 좁히는 것은 `candidates` — B73 ①).
+    pool = []
+    hosts = _hosts(category)
+    use = place if category in scope_cats else None
+    # 관문이 서는 값은 **같은 공정 줄기의 노드만** 훑는다(B144 ① 공정 색인 — 다른 줄기는 관문이 어차피 뺀다 · 결과 그대로)
+    from core.build import scope_path as SP
+    ids = SP.stem_nodes(use, graph, category, hosts) if use is not None else graph.nodes
+    for nid in ids:
+        n = graph.nodes[nid]
+        if nid in seen or not is_live(n):
+            continue
+        if not _is(n, category, hosts) or n["layer"] != layer:
+            continue
+        if not scoped and n.get("_scoped"):
+            continue
+        if _pol(n.get("polarity")) != want:
+            continue
+        pool.append(_cand(nid, n, also=category if n["category"] != category else None))
+    # **관문이 먼저다**(B75 ② · B142 ①) — 상한 이하 여부와 무관하다 · 자리가 없으면 거르지 않는다.
+    pool = gate(pool, use, graph, dictionary, surface)
+    hit = sure(out, pool, use)
+    if hit:
+        out = [hit]
+        pool = [c for c in pool if c["id"] != hit["id"]]
+    return out, pool, use is not None
+
+
 def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
-               polarity=None, parent=None, cfg=None, top_n=None):
+               polarity=None, parent=None, cfg=None, top_n=None, place=None, pre=None):
     """**후보 조립** — 판정과 분리한다 (문서 7 §7.1 · 문서 4 §4.3-6).
 
     후보 하나의 형태는 명세가 정한다 — `canonical` · `aliases` · **부착 위치
@@ -311,39 +394,18 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
     4. **부모 미해소 ↔ 스코프 노드**(문서 4 §4.5-6) — 좌표를 모른 채 만든 노드를
        유사도로 합치면 오병합이다.
 
-    사전 히트는 **`exact` 표시를 달아** 앞에 둔다 — 결정적·무LLM 경로라 판정이
-    그것을 1.0으로 인정할 근거가 후보에 남아야 한다.
+    그 위에 **관문**(B142 ① — 카테고리 · 공정 줄기 · `place`가 있을 때)과 **경로 호환**(②)이 선다 — `gated`.
+    사전 히트 · 경로 호환 같은 이름은 **`exact` 표시를 달아** 앞에 둔다 — 결정적·무LLM 경로라 판정이
+    그것을 1.0으로 인정할 근거가 후보에 남아야 한다. `pre`는 이미 잰 `gated`의 답(재생 앞에서 잰 것 — 두 번 걷지 않는다).
     """
-    want = _pol(polarity)
-    from core.build.naming import scope_categories
-    scope_cats = scope_categories(cfg)
-
-    # ① 사전 조회 — 결정적·무LLM. **예고와 판정이 같은 함수를 쓴다**(B74 ①).
-    out = dict_hits(surface, category, layer, graph, dictionary,
-                    polarity=polarity, parent=parent, scope_cats=scope_cats)
-    seen = {c["id"] for c in out}
-
-    # ② 후보 검색 — 위 안전망 넷으로 걸러 담고, **상한 안으로 좁힌다**(B73 ①).
-    pool = []
-    hosts = _hosts(category)
-    for nid, n in graph.nodes.items():
-        if nid in seen or not is_live(n):
-            continue
-        if not _is(n, category, hosts) or n["layer"] != layer:
-            continue
-        if not scoped and n.get("_scoped"):
-            continue
-        if _pol(n.get("polarity")) != want:
-            continue
-        pool.append(_cand(nid, n, also=category if n["category"] != category else None))
-    # **스코프 하드 필터가 먼저다**(B75 ②) — 상한 이하 여부와 무관하다.
-    pool, scoped_hard = scope_filter(pool, parent, scope_cats, category)
-    if scoped_hard and not pool and not out:
-        # 같은 부모 아래가 없다 — 답은 NEW로 정해져 있다. 여기서 끝낸다.
-        STATS["스코프끝"] += 1
-    # **후보 전량을 판정에 올리지 않는다**(B73 ①) — 상한 안으로 좁힌다.
+    out, pool, gated_ = pre or gated(surface, category, layer, graph, dictionary, scoped=scoped, polarity=polarity,
+                                     parent=parent, cfg=cfg, place=place)
+    if gated_ and not pool and not out:
+        # 같은 공정 줄기 · 경로 호환 후보가 없다 — 답은 NEW로 정해져 있다. 여기서 끝낸다.
+        STATS["관문끝"] += 1
+    # **후보 전량을 판정에 올리지 않는다**(B73 ①) — 상한 안으로 좁힌다(같은 이름은 남긴다 — ④).
     kept, how = _narrow(surface, pool, top_n or CANDIDATE_TOP_N,
-                        scoped=scoped_hard)
+                        scoped=gated_)
     STATS["조립"] += 1
     STATS["후보합"] += len(out) + len(kept)
     STATS[how] = STATS.get(how, 0) + 1
@@ -354,7 +416,7 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
     return out + kept
 
 
-def match(surface, candidates, category, cfg=None):
+def match(surface, candidates, category, cfg=None, *, where=None):
     """**개체 판정은 이 함수 하나로 수렴한다** (문서 7 §7.1 core 접근 경계).
 
     입력은 `mention` + 후보들, 출력은 `{"type", "matched_id", "confidence"}`다
@@ -371,10 +433,10 @@ def match(surface, candidates, category, cfg=None):
     """
     pool = _pool(candidates, category)
     for c in pool:
-        if c.get("exact"):                           # 사전 히트 — 결정적·무LLM 경로
-            STATS["사전"] += 1
+        if c.get("exact"):                           # 사전 히트 · 경로 호환 같은 이름 — 결정적·무LLM 경로
+            STATS["경로" if c.get("via") else "사전"] += 1
             return {"type": MATCH, "matched_id": c["id"], "confidence": 1.0,
-                    "path": "dictionary"}
+                    "path": c.get("via") or "dictionary"}
     if not pool:
         return {"type": NEW, "matched_id": None, "confidence": 0.0,
                 "path": "none"}
@@ -384,7 +446,7 @@ def match(surface, candidates, category, cfg=None):
         PROGRESS(dict(STATS))
 
     if not gateway.use_mock():
-        return _judge_live(surface, pool, category, cfg, path=path)
+        return _judge_live(surface, pool, category, cfg, path=path, where=where)
     gateway.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
 
     best, score = None, 0.0
@@ -415,7 +477,7 @@ def _pool(candidates, category):
             if c.get("category") == category or category in (c.get("also") or ())]
 
 
-def second(surface, cands, category, cfg, v1, sentence):
+def second(surface, cands, category, cfg, v1, sentence, where=None):
     """**2차 판정**(B123 ③) — 1차 `v1`이 불확실이고 문장이 있을 때만 · 같은 후보 · 같은 계약(후보 밖 id 버림 · 임계 ·
     auto 가드)으로 그 표기가 나온 문장 `sentence = {"text", "span"}`을 붙여 한 번 더 묻는다.
 
@@ -427,7 +489,7 @@ def second(surface, cands, category, cfg, v1, sentence):
             or not JUDGE_CONTEXT_CHARS or gateway.use_mock():
         return v1
     STATS["2차"] += 1
-    v2 = _judge_live(surface, pool, category, cfg, path=v1.get("path"), sentence=sentence["text"])
+    v2 = _judge_live(surface, pool, category, cfg, path=v1.get("path"), sentence=sentence["text"], where=where)
     got = v2.get("type") == MATCH
     if got:
         STATS["2차바뀜"] += 1
@@ -463,7 +525,7 @@ def _guard_auto(verdict, pool):
     return verdict
 
 
-def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None):
+def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None, where=None):
     """지점 ② 개체 동일성 판정의 실호출 갈래 — **반환 계약이 mock과 같다.**
 
     입력은 `mention` + 후보들이고 후보 하나는 `canonical`·`aliases`·부착 위치·
@@ -474,10 +536,13 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None):
     **판정기가 후보 밖의 id를 답하면 버린다.** 모델이 지어낸 id가 엣지 끝점이
     되면 그래프에 없는 노드를 가리키는 엣지가 선다.
 
-    `sentence`(2차 — B123 ③)가 있으면 입력에 `context`(그 표기가 나온 문장)가 더해진다 · 계약은 그대로다.
+    `sentence`(2차 — B123 ③)가 있으면 입력에 `context`(그 표기가 나온 문장)가 더해진다 · `where`(B142 ② — 값의 경로:
+    공정부터 가장 가까운 소유자까지)가 있으면 `path` — 후보는 저마다 `path` · `path_relation`을 진다 · 계약은 그대로다.
     """
     ids = {c["id"] for c in pool}
     body = {"mention": surface, "category": category, "candidates": pool}
+    if where:
+        body["path"] = where
     if sentence:
         body["context"] = sentence
     out = gateway.chat(
@@ -530,7 +595,8 @@ def _evidence(v, cands):
                                 for i, cn, s in top]}
 
 
-def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, polarity=None, parent=None, sentence=None):
+def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, polarity=None, parent=None, sentence=None,
+              place=None, pre=None):
     """**재생의 불확실에 2차만 한 번**(B127 ① — 지난 대장에 2차 기록이 없는 불확실 행) — 지금 후보 · 같은 계약(`second`) ·
     돌려주는 것은 `resolve`와 같은 튜플(경로는 `replay` 그대로 · `second.replay`) 또는 None(부르지 않았다 — 재생 그대로)."""
     if not sentence or not sentence.get("text") or not JUDGE_CONTEXT_CHARS or gateway.use_mock():
@@ -539,10 +605,10 @@ def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, p
     cfg = load_config(layer)
     LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
-                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
+                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg, place=place, pre=pre)
     v0 = {"type": UNCERTAIN, "matched_id": None, "confidence": v1.get("confidence") or 0.0,
           "path": v1.get("replayed_path") or "replay"}
-    v = second(surface, cands, category, cfg, v0, sentence)
+    v = second(surface, cands, category, cfg, v0, sentence, where=place.names() if place else None)
     if "second" not in v:
         return None
     _evidence(v, cands)
@@ -552,7 +618,7 @@ def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, p
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
-            polarity=None, parent=None, sentence=None):
+            polarity=None, parent=None, sentence=None, place=None, pre=None):
     """후보 조립 + 판정의 2단을 한 번에 — Pass 1 entity 경로의 편의 형태다.
 
     돌려주는 것은 `(분기, node_id 또는 None, 점수, 판정 dict)` 튜플이다 — 네 번째는
@@ -564,9 +630,14 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     cfg = load_config(layer)
     LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
-                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg)
-    v = second(surface, cands, category, cfg, match(surface, cands, category, cfg), sentence)   # 불확실만 2차 (B123 ③)
+                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg, place=place, pre=pre)
+    where = place.names() if place else None      # 값의 경로 — 판정 입력(B142 ②)
+    v = second(surface, cands, category, cfg, match(surface, cands, category, cfg, where=where), sentence,
+               where=where)                       # 불확실만 2차 (B123 ③)
     _evidence(v, cands)
+    if place is not None:                         # 견준 사실 — 대장 행이 옮긴다(화면 줄 · B142 ⑥)
+        v["apart"] = sorted(set(place.apart))[:5] or None
+        v["similar"] = sorted(set(place.similar))[:5] or None
     # **후보 수는 판정의 반환이 아니라 조립의 사실이다** — 계약(문서 4 §4.3-6)의
     # 세 키에 `path` 하나만 더한다(B74 ②). 대장이 적을 나머지는 여기서 싣는다.
     v["candidates_n"] = len(cands)

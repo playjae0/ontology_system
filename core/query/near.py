@@ -9,6 +9,7 @@ mock 해시 벡터의 유사도는 품질 근거가 아니다(가짜 확신 — 
 """
 from __future__ import annotations
 
+from core.build.naming import scope_of
 from core.llm import embeddings as E
 from core.query import hybrid as H, vectors as V
 
@@ -35,7 +36,7 @@ def pairs(graphs, configs=None, *, layer=None, min_sim=None, top=None):
         if layer and inf["layer"] != layer:
             continue
         r = raw.get(nid) or {}
-        groups.setdefault((inf["layer"], inf["category"], r.get("parent") or r.get("mirror_scope")), []).append(nid)
+        groups.setdefault((inf["layer"], inf["category"], scope_of(r)), []).append(nid)
     found = []
     for (lay, cat, par), ids in groups.items():
         ids = sorted(i for i in ids if i in vecs)

@@ -93,6 +93,14 @@ class GraphStore:
         """
         return self._path.exists()
 
+    def stamp(self):
+        """저장 파일의 판 — `(mtime_ns, 크기)` · 없으면 None(경로를 밖에 내주지 않고 · B144 ③ 읽기 전용 사본의 무효화 경계)."""
+        try:
+            st = self._path.stat()
+        except FileNotFoundError:
+            return None
+        return st.st_mtime_ns, st.st_size
+
     def load(self):
         if self._path.exists():
             data = _loads(self._path.read_bytes())

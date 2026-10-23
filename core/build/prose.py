@@ -13,7 +13,8 @@ from core.build.build import Builder
 from core.build import gate
 from core.build import ledger as _lg
 from core.build.ledger import Ledger
-from core.build import belongs, extract_ctx, heading, values
+from core.build import belongs, extract_ctx, heading, human, values
+from core.build.human import HUMAN                    # 사람 후보의 표지 — 추출 후보 줄 · 대장 행의 `by` (B140 ③)
 from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
 from core.build.naming import name_parent
 from core.state.status import is_live
@@ -86,7 +87,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
         bel = None if k in cyc else bmap.get(k)
         if bel and null_marker(bel.get("name")):
             bel = None                             # 소속 이름이 빈칸 표시 — 소속 없음(B113 ②)
-        if bel and not bel.get("legacy"):
+        if bel and not bel.get("legacy") and e.get("by") != HUMAN:   # 사람 후보의 위 노드는 사람이 골랐다 (B140 ③)
             where = belongs.source_of(bel["name"], src, doc)
             if where is None:                      # 지어낸 소속 — 버린다(지어내지 않는다)
                 belongs.drop_invented(b.doc_id, e["surface"], bel, cid)
@@ -95,11 +96,17 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                if bel and not bel.get("legacy") else None)
         # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
         e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs, main)
+        owner = None                               # 판정의 자리 — 소속 대상 노드(B142 ③ · 이름 부모와 같은 재료)
         if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
             e_ref, e_g = tgt[1], tgt[2]            # 골격 소속 = 그 개체의 좌표
             e_parent, e_pol = e_g.get(e_ref)["canonical"], b.anchor_polarity(e_ref, e_g)
         elif tgt and tgt[0] == belongs.NODE:      # 이름에 소속 — 골격 밖 노드 아래 (B102 ⑤ · 한 함수 B119 ④)
+            if not ref and not e.get("parent"):    # 청크 좌표가 없으면 그 노드의 좌표를 물려받는다 (B140 ⑤)
+                up, upg = belongs.coord_of(b, tgt[1], tgt[2])
+                if up:
+                    e_ref, e_g, e_parent, e_pol = up, upg, upg.get(up)["canonical"], b.anchor_polarity(up, upg)
             e_parent = name_parent(e["category"], tgt[2].get(tgt[1])["canonical"], e_parent, b.cfg)
+            owner = (tgt[1], tgt[2])
         # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다.
         nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
                                     coord=(e_ref, e_g), coords=coords,     # 다른 공정 가드 = 목록 전체의 계보 (B125 ④)
@@ -108,7 +115,8 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                                     anchor_polarity=e_pol,
                                     coord_surface=src.get("process_ref"), belongs=bel,
                                     at=(_loc or cid, e.get("category")),       # 판정 재생의 자리 (B106 ②)
-                                    chunk_text=src.get("text"))                # 2차 판정의 문장 (B123 ③)
+                                    chunk_text=src.get("text"),                # 2차 판정의 문장 (B123 ③)
+                                    owner=owner)
         last = eb.last or {}
         row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
                            role="entity", surface=e["surface"],
@@ -127,7 +135,9 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                            belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
                            belongs_to=(bel or {}).get("name"),
                            category=last.get("category"), scope=last.get("scope"),
-                           replay=last.get("replay"), judge2=last.get("judge2"))
+                           replay=last.get("replay"), judge2=last.get("judge2"),
+                           apart=last.get("apart"), similar=last.get("similar"),
+                           by=HUMAN if e.get("by") == HUMAN else None)        # 사람 후보 표지 (B140 ③)
         if nid:
             values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)
             plans.append({"nid": nid, "tgt": tgt, "bel": bel, "row": row})
@@ -313,7 +323,9 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
     # 찾고 · 상위로 올라가는 폴백 사슬의 칸이 된다. 개요가 없거나 대상이 없으면 0(지금 길 그대로).
     landed = heading.land(b, cfg, graph, env, outline, {loc: cid for cid, loc in loc_of.items()})
     _lg.chunk_done(None)                          # 제목 개체 행 — 붙은 자리와 함께 화면에 (B119 ⑤)
+    human.aliases(b, env["doc_id"])               # 사람 후보 같은 것 — 있는 노드면 해소 앞에 (B140 ③)
     coords = _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of)
+    human.aliases(b, env["doc_id"], after=True)   # 대상이 이번 새것이면 그 노드가 선 뒤
 
     # ════════════════ Pass 2 (부착) ════════════════
     # **비정형의 순회 단위는 레코드가 아니라 청크(추출 후보)다**(문서 4 §4.2).
@@ -336,14 +348,16 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
         touched = set()
 
         # ③ 경로 — 추출 후보. 게이트의 실질 관문이다.
+        doc = extract_ctx.doc_info(env)
         for r in cand.get("relations", []):
-            s = b.buffer.get(loop._n(r["src"]))
-            d = b.buffer.get(loop._n(r["dst"]))
+            # 끝점 = 이름 조회 한 함수(이 문서 버퍼 · 골격 · 사전 — 그 청크에 이름이 있을 때만 · B140 ⑤)
+            sh, dh = (belongs.lookup(b, r[k], coord=ref, src=src, doc=doc) for k in ("src", "dst"))
+            s, d = (sh or (None, None))[1], (dh or (None, None))[1]
             if s and d:
                 # **엣지는 뽑은 층에**, 끝점은 제 집 그래프에서 읽는다(걸침 엣지 — B90 ②)
                 br = gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
                                       [prov], env["doc_id"], evidence_chunk=cid,
-                                      src_graph=b.graph_of(s), dst_graph=b.graph_of(d))
+                                      src_graph=sh[2], dst_graph=dh[2])
                 if br == gate.COMMIT:
                     touched |= {s, d}
                     _attached(rows.get(s), r["rel"], b.canonical_of(d), "관계", "→")

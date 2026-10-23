@@ -418,8 +418,9 @@ print("\n■ B55 ⑧⑨ — 경로 경고 · 멱등 계측 · 골든셋 유형")
 from cli import ingest as _ING                                    # noqa: E402
 
 # doc_id가 파일명 stem 파생이라(D-110) **파일명 비교는 참이 될 수 없었다**.
+# 기대 변경(B141 ② — 기록의 표기만 상태 루트 기준으로 되돌린다 · 지금 친 경로는 작업 폴더 기준)
 show("⑧ 경로 비교가 파일명이 아니라 전체 경로다 (D-110의 대가가 화면에 뜬다)",
-     "_norm_path(prev[\"source_path\"]) != _norm_path(doc)" in
+     "_norm_path(prev[\"source_path\"], recorded=True) != _norm_path(doc)" in
      (ROOT / "cli" / "ingest.py").read_text(encoding="utf-8")
      and _ING._norm_path("./a/x.xlsx") != _ING._norm_path("./b/x.xlsx")
      and _ING._norm_path("a/x.xlsx") == _ING._norm_path("./a/x.xlsx"))
