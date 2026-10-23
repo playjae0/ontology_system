@@ -183,6 +183,21 @@ show("ⓓ 글 상자 제목이 제목 · (계속)은 앞 슬라이드의 경로 
      f"제목 {_by['슬라이드 2']['section']!r} · 경로 {_by['슬라이드 3']['meta']['section_path']!r} · 수 {_dk.get('수')} · "
      f"버림 {_dk.get('버림')}")
 
+# ────────────────────────────────────────────────────────────── B143 ⓑ 덱 블록
+print("\n■ B143 ⓑ 덱 블록 — 덱 판단이 parsed JSON 한 곳에")
+from parser import deck as PDK                           # noqa: E402
+_blk = (ENV.get("deck") or {}).get("slides") or []
+_vals = {i: list(x.values()) for i, x in enumerate(_blk, 1)}
+_bad = PDK.mismatch({**ENV, "chunks": [dict(c, process_ref="스태킹") if c["source_locator"] == "슬라이드 2" else c
+                                       for c in ENV["chunks"]]})
+show("B143 ⓑ 봉투 하나에 슬라이드마다 이어짐 · 제목 초안과 판단 · 공정 목록 · 언급 · 개체 없음 · 버림 · 근거 위치 · 청크 칸과 어긋나지 "
+     "않는다(어긋나게 바꾸면 결함으로 잡힌다) · 개요도 블록에(옛 doc_overview 0)",
+     len(_blk) == 5 and not PDK.mismatch(ENV) and _bad and "doc_overview" not in ENV
+     and 2 in _vals[3] and ["노칭", "스태킹"] in _vals[5] and ["탭용접"] in _vals[5] and ["공정"] in _vals[1]
+     and "노칭 금형 점검 결과" in _vals[2] and ["슬라이드 4", "S4-TB1", "S4-P1"] in _vals[4]
+     and (ENV.get("deck") or {}).get("overview") == DECK["overview"],
+     f"슬라이드 {len(_blk)} · 어긋남 {len(PDK.mismatch(ENV))} → 바꾸면 {len(_bad)} · 3번 {_blk[2] if len(_blk) > 2 else None}")
+
 # ────────────────────────────────────────────────────────────── ⓔ 다공정
 print("\n■ ⓔ 다공정 — 개체는 제 공정 아래 · 언급은 관련 링크")
 _g = open_graph("process")
@@ -201,9 +216,37 @@ with _quiet():
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
 _register()
-_p = subprocess.run([sys.executable, "run.py", "ingest-dir", str(_dir), "--doc-type", DT, "--allow-mock"], cwd=str(ROOT),
-                    capture_output=True, text=True, stdin=subprocess.DEVNULL, env={**_iso.isolated_env(), "USE_MOCK": "1"},
-                    timeout=600)
+
+
+def _sub(*a):
+    return subprocess.run([sys.executable, "run.py", *a], cwd=str(ROOT), capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL, env={**_iso.isolated_env(), "USE_MOCK": "1"}, timeout=600)
+
+
+# B143 ⓐ — 공정 목록(슬라이드 5 노칭 · 스태킹)이 든 덱으로 등록 실경로 — 좌표 쌍 표가 목록을 받는다
+_rg = _sub("register", "generate", "b143_reg", "process", str(_dir / f"{DID}.pptx"), "--use-basic", "--allow-mock")
+_rs = _sub("register", "status", "b143_reg", "--allow-mock")
+show("B143 ⓐ 공정 목록이 둘 이상인 슬라이드가 든 덱 — register generate --use-basic → status가 끝까지 돈다(좌표 쌍 표 · 관문 줄)",
+     _rg.returncode == 0 and "좌표 쌍 —" in _rg.stdout and "[결함]" not in _rg.stdout + _rg.stderr
+     and _rs.returncode == 0 and "기계 관문(하네스): PASS" in _rs.stdout,
+     f"generate rc {_rg.returncode} · status rc {_rs.returncode} · "
+     + next((ln.strip() for ln in _rg.stdout.splitlines() if "좌표 쌍 —" in ln), (_rg.stdout + _rg.stderr)[-120:]))
+# B143 ⓓ · ⓔ — PPT --split-only: 추출 0 · 그래프 쓰기 0 · parsed JSON과 md · md는 봉투만으로 찍은 글
+from cli import envelope_md as EMD                       # noqa: E402
+_so = _sub("ingest-file", str(_dir / f"{DID}.pptx"), "--doc-type", DT, "--allow-mock", "--split-only")
+_md = _P.export(f"split_{DID}.md")
+_pj = json.loads(_P.parsed(f"{DID}.json").read_text(encoding="utf-8")) if _P.parsed(f"{DID}.json").exists() else {}
+_mdt = _md.read_text(encoding="utf-8") if _md.exists() else ""
+import re as _re                                         # noqa: E402
+show("B143 ⓓ PPT --split-only — 추출 호출 0 · 그래프 쓰기 0 · parsed JSON과 md가 남는다 · md 슬라이드 표 행 수 = 덱 블록 슬라이드 수",
+     _so.returncode == 0 and "구조까지" in _so.stdout and not EX.checkpoint_path(DID).exists()
+     and not open_graph("process").nodes.keys() - {n for n, x in open_graph("process").nodes.items() if x.get("status") == "seed"}
+     and _pj.get("deck") and len([ln for ln in _mdt.splitlines() if _re.match(r"^\| \d+ \|", ln)]) == len(_pj["deck"]["slides"]),
+     f"rc {_so.returncode} · md {_md.exists()} · 표 행 {len([ln for ln in _mdt.splitlines() if _re.match(r'^[|] [0-9]+ [|]', ln)])} · "
+     f"덱 블록 {len((_pj.get('deck') or {}).get('slides') or [])}")
+show("B143 ⓔ md ⊆ JSON — md 글자 = parsed JSON(봉투) 하나로 찍은 글(md를 쓰는 함수는 봉투 밖을 읽지 않는다)",
+     bool(_mdt) and _mdt == "\n".join(EMD.lines(_pj)) + "\n", f"md {len(_mdt)}자")
+_p = _sub("ingest-dir", str(_dir), "--doc-type", DT, "--allow-mock")
 _hint.unlink(missing_ok=True)
 show("ⓔ 노칭 · 스태킹 슬라이드의 개체가 각자 제 공정 아래 · 언급만 한 탭용접은 노드 0 + 관련 링크 · --coord 없이 ingest-dir 성공",
      {"노칭::커터", "스태킹::매거진"} <= _names and not any(x.endswith("::탭용접") for x in _names if x)
@@ -228,6 +271,30 @@ show("ⓕ 구조 표의 공정 고침 → 기록(@덱) → 다시 파싱이 그�
      _got == (4, {"processes": ["스태킹"]}) and "deck" not in _c2b and _s4b["process_ref"] == "스태킹"
      and (_r2.report["deck"]["수"]["고침"] == 1) and "@덱" in json.loads(ST.fixes_path().read_text(encoding="utf-8"))[DID],
      f"고침 {_got} · 다시 파싱 호출 {_c2b} · 슬라이드 4 공정 {_s4b['process_ref']}")
+
+# ────────────────────────────────────────────────────────────── B143 ⓒ 추출 입력은 JSON + 캡처만
+print("\n■ B143 ⓒ 추출 입력 — 덱 블록 고침이 맥락 줄로 · 원본은 캡처에서만")
+from core.build import extract_ctx as XC                 # noqa: E402
+_d4 = next((x for x in (_e2.get("deck") or {}).get("slides") or [] if 4 in x.values()), {})
+_line4 = XC.context_line(_s4b, XC.doc_info(_e2))
+_opened, _rendered = [], []
+import builtins as _bi                                    # noqa: E402
+_open0 = _bi.open
+_bi.open = lambda f, *a, **k: (_opened.append(str(f)), _open0(f, *a, **k))[1]
+render.capture_path = lambda path=None, probe=False: (True, "시험", None)
+render.render_pages = lambda path: (_rendered.append(str(path)), {n: b"PNG" for n in range(1, 6)})[1]
+EU._PAGES.clear()
+EX.invalidate(DID)
+try:
+    _run(_e2)
+finally:
+    _bi.open = _open0
+    render.capture_path, render.render_pages = _keep
+show("B143 ⓒ 덱 블록의 공정 고침(사람)이 추출 입력 맥락 줄을 따른다 · 원본 파일은 캡처 렌더에서만 열린다(추출은 봉투 + 캡처)",
+     ["스태킹"] in _d4.values() and any(isinstance(v, list) and "processes" in v for v in _d4.values())
+     and "공정: 스태킹" in _line4
+     and "개요: " + DECK["overview"] in _line4 and _rendered == [str(PATH)] and str(PATH) not in _opened,
+     f"맥락 줄 {_line4[:80]} · 렌더 {len(_rendered)} · 원본 열기 {sum(1 for x in _opened if x == str(PATH))}")
 
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)

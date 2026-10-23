@@ -131,10 +131,11 @@ def gate(res, doc_id, reparse, *, ask=True, layers=None):
 
 def md_of(doc_id, res):
     """**구조 확인 md를 쓰는 한 자리**(B141 ① — `--step`이 아니어도 · 배치 · 재구축도 이 길) — 구조가 선 산문이면
-    `export/split_<doc_id>.md`(같은 함수 `split_report.write_md`)와 그 자리 한 줄 · 구조가 없으면(표 · 고정 규칙) 쓰지 않는다."""
-    from cli import split_report as SR
+    `export/split_<doc_id>.md`(같은 함수 `split_report.write_md`)와 그 자리 한 줄 · PPT(봉투에 덱 블록)는 봉투만 읽어 같은 자리에
+    (`cli/envelope_md.write` — B143 ④) · 구조가 없으면(표 · 고정 규칙) 쓰지 않는다."""
+    from cli import envelope_md as EM, split_report as SR
     from core import paths
-    md = SR.write_md(doc_id, res.report, res.envelope)
+    md = SR.write_md(doc_id, res.report, res.envelope) or EM.write(doc_id, res.envelope)
     if md:
         _screen.say(f"   구조 확인 md — {paths.show(md)}(목차 · 청크 경계 — 문서마다)", "aux")
     return md

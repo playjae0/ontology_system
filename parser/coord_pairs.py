@@ -11,10 +11,15 @@
 상위 표기가 골격 노드 여럿의 별칭이면(공유 별칭) 그중 하나라도 하위 자신이거나 조상이면 맞음이다 — 첫 노드를
 고르지 않는다(B102 ②). 파서 자리라 core를 모른다: 표기를 노드로 푸는 일은 호출자 몫이고(구축 · 좌표 단계는
 사전 — 구축과 같은 해소 · 등록은 닫힌 목록 `SnapView`), 여기는 풀린 canonical과 부모 사슬 · 극성 · 축값만 받는다.
+
+**하위는 목록일 수 있다**(B125 ④ — 덱 구조가 고른 공정 · B143 ①): 목록이면 원소마다 같은 `verdict`(조각 하나의 판정은
+원소 판정의 합 · 「대조됨」은 원소 하나라도 풀렸으면) · 덱 구조가 「없음」을 낸 빈 목록은 대조 0(상위로 내려가 보지 않는다) ·
+목록을 읽는 손은 `parser.normalizer.coord_refs` 하나다. 맞바꿔 보기(`swapped`)는 하위가 하나인 조각만 본다.
 """
 from __future__ import annotations
 
 from parser import tagger
+from parser.normalizer import coord_refs
 
 GROUP, OUTSIDE, POLARITY = "상위", "상위 골격 밖", "극성"
 #: **문서 좌표를 상위로 삼은 대조**(B106 ⑤) — 행에 상위가 없고 문서 좌표가 있을 때. 판정은 `verdict` 그대로이고
@@ -142,20 +147,26 @@ class SnapView:
         return sorted(got)
 
     def judge(self, piece):
+        """조각 하나 → `(판정 목록, 풀린 하위 canonical — 목록이면 처음 풀린 것)` · 하위 목록이면 원소마다 같은 판정(B143 ①)."""
         g, et = piece.get("process_group"), piece.get("electrode_type")
-        r = piece.get("process_ref")
-        rc = self.ref(r, et, g) if r else (self.ref(g, et) if g else None)   # 하위가 비면 상위로(저해상도 — 구축과 같다)
-        return verdict(g, self.groups(g), rc, et, parent_of=self.parent_of,
-                       polarity_of=self.polarity_of, axis=self.axis), rc
+        raw = piece.get("process_ref")
+        if isinstance(raw, (list, tuple)) and not coord_refs(raw):
+            return [], None                                  # 덱 구조의 「없음」 — 대조 0
+        refs = coord_refs(raw)
+        rcs = [self.ref(r, et, g) for r in refs] if refs else [self.ref(g, et) if g else None]   # 하위가 비면 상위로(저해상도 — 구축과 같다)
+        vs = [v for rc in rcs for v in verdict(g, self.groups(g), rc, et, parent_of=self.parent_of,
+                                                polarity_of=self.polarity_of, axis=self.axis)]
+        return vs, next((rc for rc in rcs if rc), None)
 
 
 def swapped(pieces, view):
     """**맞바꿔 보기** — 상위·하위를 바꿔 대조하면 맞는 행 `(맞음, 대조됨)`(둘 다 골격에 맞은 행만 센다)."""
     ok = n = 0
     for p in pieces:
-        g, r = p.get("process_group"), p.get("process_ref")
-        if not (g and r):
+        g, rs = p.get("process_group"), coord_refs(p.get("process_ref"))
+        if not (g and len(rs) == 1):                     # 하위가 하나인 조각만(목록은 맞바꿀 상위가 없다 — B143 ①)
             continue
+        r = rs[0]
         vs, rc = view.judge(dict(p, process_group=r, process_ref=g))
         if rc and view.groups(r):
             n += 1

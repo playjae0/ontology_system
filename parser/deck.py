@@ -7,6 +7,9 @@
     decide(answer, slides)          이어진 슬라이드는 앞 슬라이드의 구획 · 공정을 잇는다(낸 것이 있으면 낸 것)
 
 결정은 `{번호: {title, section, continues, processes(None = 판정 없음), mentions, no_entities}}` · 개요는 `tally["개요"]`.
+
+    block(tally, chunks)            **봉투의 덱 블록**(B143 ②) — `deck.overview` + `deck.slides[]` · 슬라이드 단위 판단의 정본
+    mismatch(env)                   덱 블록 ↔ 청크 칸(추출이 쓰는 투영)의 어긋남 — 있으면 파싱 결함
 """
 from __future__ import annotations
 
@@ -137,6 +140,55 @@ def hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, doc_coord
         if tally is not None:
             tally.update({"수": {**n, "호출": 0 if reused else ans.get("calls", 0), "재사용": int(reused), "고침": n_fix,
                                  **({"실패": ans["failed"]} if ans.get("failed") else {})},
-                          "표": rows, "개요": ans.get("overview"), "버림": ans.get("dropped") or {}})
+                          "표": rows, "개요": ans.get("overview"), "버림": ans.get("dropped") or {},
+                          "결정": dec})                # 슬라이드마다의 결정 — 봉투 덱 블록의 재료(B143 ②)
         return dec
     return fn
+
+
+def block(tally, chunks):
+    """**봉투의 덱 블록**(B143 ②) — `{"overview", "slides": [슬라이드 …]}` · 슬라이드 단위 판단의 정본이고 청크 칸(`process_ref` 목록 ·
+    `meta.mentions` · `meta.no_entities` · `meta.section_path`)은 추출이 쓰는 투영이다(어긋나면 `mismatch`가 결함으로 잡는다).
+
+    슬라이드마다 `slide`(번호) · `page`(보이는 쪽 — 숨김 슬라이드를 뺀 차례 · 캡처 쪽) · `title_draft`(placeholder 제목) ·
+    `title`(판단 제목 — 덱 구조가 낸 것 · 없으면 None) · `section`(구획) · `continues`(이어진 앞 슬라이드) · `processes`(다루는 공정 —
+    None = 판정 없음 · [] = 없음) · `mentions`(언급 공정) · `no_entities` · `dropped`(검사에 어긋나 버린 칸) · `fixed`(사람이 고친 칸) ·
+    `chunks`(그 슬라이드의 근거 청크 위치 — 조각 차례 그대로). 칸 이름은 가결정이다(사내 결과를 보고 다시 판단한다)."""
+    from parser import tagger
+    locs = {}
+    for c in chunks or []:
+        n = tagger._page_no(c)                       # 조각의 슬라이드 번호 — 쪽 그림 · 캡처가 읽는 손 하나
+        if n is not None:
+            locs.setdefault(n, []).append(c.get("source_locator"))
+    dec = (tally or {}).get("결정") or {}
+    out = []
+    for r in (tally or {}).get("표") or []:
+        n = r["슬라이드"]
+        d = dec.get(n) or dec.get(str(n)) or {}
+        out.append({"slide": n, "page": r["번호"], "title_draft": r.get("초안") or None, "title": d.get("title"),
+                    "section": d.get("section"), "continues": d.get("continues"), "processes": d.get("processes"),
+                    "mentions": list(d.get("mentions") or []), "no_entities": bool(d.get("no_entities")),
+                    "dropped": list(d.get("dropped") or []), "fixed": list(d.get("by") or []),
+                    "chunks": locs.get(n, [])})
+    return {"overview": (tally or {}).get("개요"), "slides": out}
+
+
+def mismatch(env):
+    """덱 블록 ↔ 청크 칸의 어긋남 — 결함 문면 목록(비면 맞음 · 덱 블록이 없으면 대조 0). 공정은 판정이 섰을 때만 견준다."""
+    from parser.normalizer import coord_refs
+    by = {c.get("source_locator"): c for c in env.get("chunks") or []}
+    out = []
+    for s in ((env.get("deck") or {}).get("slides")) or []:
+        for loc in s.get("chunks") or []:
+            c = by.get(loc)
+            if c is None:
+                out.append(f"덱 블록 슬라이드 {s['slide']}의 근거 '{loc}'가 청크에 없다")
+                continue
+            m = c.get("meta") or {}
+            if s.get("processes") is not None and coord_refs(c.get("process_ref")) != list(s["processes"]):
+                out.append(f"슬라이드 {s['slide']} 공정 {s['processes']} ≠ 청크 '{loc}' {c.get('process_ref')!r}")
+            if list(m.get("mentions") or []) != list(s.get("mentions") or []):
+                out.append(f"슬라이드 {s['slide']} 언급 {s.get('mentions')} ≠ 청크 '{loc}' {m.get('mentions')}")
+            if bool(m.get("no_entities")) != bool(s.get("no_entities")):
+                out.append(f"슬라이드 {s['slide']} 개체 없음 {s.get('no_entities')} ≠ 청크 '{loc}'")
+    return out

@@ -15,11 +15,12 @@ from __future__ import annotations
 
 from core.state.bootstrap import COORD_CATEGORY
 from parser import coord_pairs as CP
+from parser.normalizer import coord_refs
 
 
 def scan(env, b):
     """조각마다 `{loc, prov, verdicts, both, node_pol}` — `both`는 상위·하위가 둘 다 골격에 맞았나(등록 관문의 분모와
-    같은 뜻). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 집에서 — `_graph_for`).
+    같은 뜻 · 공정 목록이면 원소 하나라도) · `node_pol`은 `{하위 canonical: 극성}`(공정 목록이면 원소마다). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 집에서 — `_graph_for`).
 
     **행에 상위가 없고 문서 좌표가 있으면 문서 좌표를 상위로** 같은 판정에 넣는다(B106 ⑤) — 하위가 문서 좌표
     노드 자신이거나 그 아래면 맞음 · 밖이면 어긋남(종류 `DOC_GROUP` — 쌍의 열쇠는 상위와 같다). 「행에 상위가
@@ -32,19 +33,23 @@ def scan(env, b):
         loc = p.get("source_locator")
         prov = f"{doc_id}#{loc}" if loc else doc_id
         ref_s, grp_s, et = p.get("process_ref"), p.get("process_group"), p.get("electrode_type")
-        if isinstance(ref_s, list):
-            continue                                # 공정 목록(덱 구조가 골격 안에서 고른 것 — B125 ④)은 쌍 대조 밖
-        sink = []                                   # 보류는 구축의 몫이다 — 여기서는 버리는 자루
-        ref, ref_g = b.resolve_anchor(ref_s or grp_s, COORD_CATEGORY, prov, defer=sink)
-        ref = b.descend_anchor(ref, et, ref_g)
+        refs = coord_refs(ref_s)
+        if isinstance(ref_s, list) and not refs:
+            continue                                # 덱 구조의 「없음」 — 대조 0 (B143 ①)
         own = None if (p.get("meta") or {}).get("group_from_ref") else grp_s   # 행이 가져온 상위만
         by_doc = bool(dc) and not own               # 상위 — 행의 것 먼저 · 없으면 문서 좌표(B106 ⑤)
         up = dc if by_doc else grp_s
-        vs, gcs = b.coord_verdicts(up, ref, et, ref_g)
-        if by_doc:
-            vs = [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in vs]
-        out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": bool(ref and up and gcs),
-                    "node_pol": (ref_g.get(ref) or {}).get("polarity") if ref else None})
+        vs, both, pols = [], False, {}
+        for one in refs or [None]:                  # 공정 목록이면 원소마다 같은 판정(B125 ④ · B143 ① — 등록 SnapView와 같은 꼴)
+            sink = []                               # 보류는 구축의 몫이다 — 여기서는 버리는 자루
+            ref, ref_g = b.resolve_anchor(one or grp_s, COORD_CATEGORY, prov, defer=sink)
+            ref = b.descend_anchor(ref, et, ref_g)
+            v1, gcs = b.coord_verdicts(up, ref, et, ref_g)
+            vs += [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in v1] if by_doc else v1
+            both = both or bool(ref and up and gcs)
+            if ref:
+                pols[ref_g.get(ref)["canonical"]] = (ref_g.get(ref) or {}).get("polarity")
+        out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": both, "node_pol": pols})
     return out
 
 
@@ -61,7 +66,8 @@ def enqueue(env, b):
         for kind, pair in r["verdicts"]:
             if kind == CP.OUTSIDE:
                 continue
-            coord_acks.enqueue(CP.reason(kind, pair, r["node_pol"]), env.get("doc_id"),
-                               CP.payload(kind, pair, r["prov"], r["node_pol"]))
+            pol = r["node_pol"].get(pair[1])                 # 쌍의 하위 노드 극성(공정 목록이면 원소마다 — B143 ①)
+            coord_acks.enqueue(CP.reason(kind, pair, pol), env.get("doc_id"),
+                               CP.payload(kind, pair, r["prov"], pol))
             n += 1
     return n
