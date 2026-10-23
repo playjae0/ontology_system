@@ -664,10 +664,10 @@ _eA = _edges_of(_cy[0]["id"]) if _cy else []
 show("B140 ⓑ 더하기 — 관문(pty) n → 상세 → OK → 기록 → [6/8]이 「노칭::실린더」를 고른 위 노드(노칭) 아래 세운다 · 이 문서의 소속 개체가 "
      "그 노드에 붙고(임시 연결 0) 그 이름을 끝점으로 한 관계가 커밋 · 소속 미해소 0",
      [r["kind"] for r in HC.of("B140A")] == [HC.NEW] and _cy and ("노칭::실린더", "part_of", "노칭") in _eA
-     # 기대 변경(B144 ③ — 먼저 선 「노칭::실린더 행정」은 제목 개체 NG unit의 폴백 엣지를 소유자 근거로 진다: 실린더 아래 값은
-     # 소유자 갈림이라 실린더 아래 이름으로 선다 · 그 노드는 대장에 「다른 소유자 아래 같은 이름」으로 남는다)
-     and ("노칭::실린더", "has_property", "노칭::실린더::실린더 행정") in _eA
-     and "노칭::실린더 행정" in (_rowA.get("실린더 행정", {}).get("apart") or [])
+     # 기대 변경(B145 ① — 소속 미해소로 선 폴백(NG unit)은 근거가 아니고 고아가 기다리는 「실린더」가 근거: 이 문서의 「실린더
+     # 행정」(소속 실린더)이 먼저 선 노칭::실린더 행정에 판정 없이 붙는다 · 실린더 아래 하나)
+     and ("노칭::실린더", "has_property", "노칭::실린더 행정") in _eA and not _live_named("노칭::실린더::실린더 행정")
+     and _rowA.get("실린더 행정", {}).get("path") == "path_compat"
      and not any(str(a.get("path")).startswith("폴백") for a in _rowA.get("실린더 행정", {}).get("attached") or [])
      and _rowA.get("실린더", {}).get("by") == HU.HUMAN and not _orph("B140A", "실린더") and "만들 노드 — 노칭::실린더" in _ob,
      f"기록 {HC.of('B140A')} · 엣지 {_eA} · 고아 {len(_orph('B140A', '실린더'))}")
@@ -681,9 +681,9 @@ _go(_pH, _cH)
 _rH = next((r for r in LG.read("B142H")["rows"] if r.get("surface") == "실린더 행정" and r.get("role") == "entity"), {})
 show("B142 ⓗ 재연결로 붙은 자식 — 먼저 넣은 문서의 납작한 「노칭::실린더 행정」(재연결로 실린더에 붙음)에 뒤 문서의 같은 자식이 붙는다"
      "(경로 호환 · 중복 0 · 차례 의존 0)",
-     # 기대 변경(B144 ②③ — 뒤 문서의 같은 자식은 실린더 아래 같은 이름(사전)으로 만나 새 노드를 세우지 않는다)
-     _rH.get("target") == "노칭::실린더::실린더 행정" and _rH.get("path") == "dictionary" and _rH.get("verdict") == "match"
-     and len(_live_named("노칭::실린더 행정")) == 1 and len(_live_named("노칭::실린더::실린더 행정")) == 1,
+     # 기대 변경(B145 ① — 실린더 아래 하나라 뒤 문서의 같은 자식은 재연결된 납작한 노드에 경로 호환으로 붙는다)
+     _rH.get("target") == "노칭::실린더 행정" and _rH.get("path") == "path_compat"
+     and len(_live_named("노칭::실린더 행정")) == 1 and not _live_named("노칭::실린더::실린더 행정"),
      f"뒤 문서 행 {_rH.get('path')} → {_rH.get('target')}")
 _pS, _cS = _b140("B140S", ["1. 구동", "실린더봉 행정은 40mm다."], {"실린더봉 행정": "실린더봉"})
 HC.add("B140S", {"kind": HC.SAME, "name": "실린더봉", "target": {"name": "노칭::실린더", "layer": "process", "category": "Unit"}})
@@ -757,6 +757,32 @@ _oi = _go(_pA, _cA, "--step")
 show("B140 ⓘ 비대화형 — 목록과 안내 줄만(묻지 않는다) · 지난 기록은 적용한다",
      "사람 기록 1 — 적용" in _oi and "더하기 n" not in _oi and [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN],
      " / ".join(ln.strip() for ln in _oi.splitlines() if "사람" in ln)[:200])
+# ── B145 — 소속을 말했는데 미해소라 선 폴백은 소유자 근거가 아니다(기다리는 이름이 근거) · 말하지 않은 값의 폴백은 근거
+B140_WORDS = B140_WORDS + (("토크", "Property"), ("밸브 개도", "Property"))
+_gq, _dq = _og2("process"), _Dc.open()
+_pu = _gq.add_node("노칭::펌프", "Unit", "auto", provenance=["B145 시험"], scope="노칭", base_name="펌프", polarity="none", _scoped=True)
+for _k in ("펌프", "노칭::펌프"):
+    _dq.register(_k, _pu, provenance="B145 시험")
+_gq.save(), _dq.save()
+_go(*_b140("B145P", ["1. 구동", "밸브 개도는 30%다."], {"밸브 개도": "밸브"}))       # 소속 밸브 — 미해소 → 폴백 + 고아
+_go(*_b140("B145A", ["1. 구동", "펌프 밸브 개도는 40%다."], {"밸브 개도": "펌프"}))  # 소속 펌프 — 기다리는 이름과 다르다
+_rb = next((r for r in LG.read("B145A")["rows"] if r.get("surface") == "밸브 개도" and r.get("role") == "entity"), {})
+show("B145 ⓑ 기다리는 이름과 다른 소유자 — 소속 「밸브」를 기다리는 노드에 소속 「펌프」의 같은 이름은 붙지 않는다(소유자 갈림)",
+     _rb.get("target") == "노칭::펌프::밸브 개도" and "노칭::밸브 개도" in (_rb.get("apart") or [])
+     and len(_live_named("노칭::밸브 개도")) == 1, f"{_rb.get('path')} → {_rb.get('target')} · apart {_rb.get('apart')}")
+_pC, _cC = _b140("B145C", B140_ROWS[:5] + ["토크는 5Nm다."])
+_hc = _js.loads((HINTS / "B145C.json").read_text(encoding="utf-8"))
+for _e in (e for v in _hc.values() for e in v["entities"]):
+    _e.pop("belongs_to", None)                         # 소속을 말하지 않은 값 — 위 제목 개체(NG unit)로 폴백
+_hint("B145C", _hc)
+_go(_pC, _cC)
+_go(*_b140("B145D", ["1. 구동", "펌프 토크는 7Nm다."], {"토크": "펌프"}))
+_rc = next((r for r in LG.read("B145D")["rows"] if r.get("surface") == "토크" and r.get("role") == "entity"), {})
+_fc = next((r for r in LG.read("B145C")["rows"] if r.get("surface") == "토크" and r.get("role") == "entity"), {})
+show("B145 ⓒ 소속을 말하지 않은 값의 폴백은 근거 — 제목 개체 아래 폴백된 「토크」에 다른 소유자(펌프) 아래 「토크」는 붙지 않는다",
+     any(str(a.get("path")).startswith("폴백(") for a in _fc.get("attached") or [])
+     and _rc.get("target") == "노칭::펌프::토크" and len(_live_named("노칭::토크")) == 1,
+     f"폴백 {_fc.get('attached')} · {_rc.get('path')} → {_rc.get('target')}")
 HC.path().unlink(missing_ok=True)
 (_P.home() / "knobs.json").unlink(missing_ok=True)
 _TU.apply({})

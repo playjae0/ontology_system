@@ -19,6 +19,10 @@ canonical 키로 풀어 **노드로** 거슬러 간다(가까운 것부터 — `
 소유자 없는 노드가 경로 호환으로 A의 값을 받으면 소속 엣지가 서고, 다음 B의 값부터는 소유자 갈림으로 본다(순서에 달린 합침을
 막는다 · 소유자 없는 값이 어디에 붙는지는 순서에 따라 달라도 된다).
 
+**폴백은 두 종류다**(B145): 소속을 말했는데 그 이름이 아직 없어 임시로 선 폴백(그 노드의 열린 고아 항목 provenance로만 받쳐진
+엣지)과 근거가 0인 엣지(재연결이 발자국을 뺐다)는 근거가 아니고, 그 노드가 **기다리는 소유자 이름**(`waiting` — 고아 큐
+`attach_to`)이 근거다 · 소속을 말하지 않은 값의 폴백은 근거 그대로.
+
 부모 경로 글자가 들어온 값의 이름 부모와 **같으면** 걷지 않고 SAME이다(지금의 이름 규칙 그대로 — 같은 글자는 같은 자리).
 후보의 공정에 닿지 못하면(사슬이 끊겼다) OTHER다 — 모르는 자리를 근거로 붙이지 않는다. 들어온 값의 소유자는 호출부가 준다
 (산문 — 소속 대상 노드 · 표 — 같은 행의 소유 엣지 개체 `table_owners` · 제목 — 위 제목 개체) · 이름 규칙이 소유자를 싣는
@@ -173,7 +177,7 @@ class Place:
         self.parent_key = norm(parent or "")
         self.apart, self.similar = [], []
         # **값 하나에 한 번**(B144 ①) — 후보마다 다시 재던 것: 좁히기 방법 · 값의 사전 조회 · 줄기 · 같은 근거와의 관계
-        self._mode = self._ids = self._fold = self._eix = None
+        self._mode = self._ids = self._fold = self._eix = self._w = None
         self._stem, self._rel = {}, {}
 
     def names(self):
@@ -189,16 +193,24 @@ class Place:
         heads = {c[0][0] for c in out}
         if self._eix is None:
             self._eix = edge_index(self.b)
-        for x, xg in self._eix.of(nid):
+        for x, xg in self._eix.of(nid, self.waiting_of(nid)[0]):
             if x not in heads:
                 heads.add(x)
                 out.append([(x, xg)] + walk_node(self.b, x, xg)[2])
         return p, pg, out
 
+    def waiting_of(self, nid):
+        """그 후보가 기다리는 소유자 이름 `(provenance 집합, 접은 이름 집합, [원 이름])`(B145 — `waiting` · 값마다 한 번 읽는다)."""
+        if self._w is None:
+            self._w = waiting(self.b)
+        return self._w.get(nid) or ((), frozenset(), [])
+
     def path_of(self, nid, g):
-        """판정 입력의 후보 경로 — 공정부터 가장 가까운 소유자까지(부모 경로 사슬 · 없으면 첫 소유 엣지의 사슬)."""
+        """판정 입력의 후보 경로 — 공정부터 가장 가까운 소유자까지(부모 경로 사슬 · 없으면 첫 소유 엣지의 사슬 · 그것도 없으면
+        기다리는 소유자 이름)."""
         p, pg, cs = self.chains(nid, g)
-        return ([_label(pg, p)] if p else []) + [_label(og, x) for x, og in reversed(cs[0] if cs else [])]
+        tail = [_label(og, x) for x, og in reversed(cs[0])] if cs else self.waiting_of(nid)[2][:1]
+        return ([_label(pg, p)] if p else []) + tail
 
     def in_stem(self, p, pg):
         """그 공정이 값의 공정 줄기 안인가 — 공정마다 한 번."""
@@ -212,28 +224,34 @@ class Place:
         if self.parent and norm(scope_of(n) or "") == self.parent_key:
             return SAME
         p, pg, cs = self.chains(nid, g)
-        key = (p, tuple(tuple(x for x, _g in c) for c in cs))
+        wn = self.waiting_of(nid)
+        key = (p, tuple(tuple(x for x, _g in c) for c in cs), frozenset(wn[1]))
         if key not in self._rel:
-            self._rel[key] = self._relation(p, pg, cs)
+            self._rel[key] = self._relation(p, pg, cs, wn)
         return self._rel[key]
 
-    def _relation(self, p, pg, cs):
+    def _relation(self, p, pg, cs, wn=((), frozenset(), [])):
         """근거가 여럿이면 전부(B144 ③): 들어온 값의 가장 가까운 소유자가 어느 사슬의 머리 → 같은 소유자 · 어느 사슬 안이거나
         어느 머리가 값의 사슬 안(깊이만 다름) → 경로 호환 · 근거가 있는데 겹치지 않으면 소유자 갈림(머리 중 이름 비슷이 있으면 판정).
-        **「한쪽 경로 없음」은 소유자 근거가 전혀 없는 쪽만**이다 — 소유 엣지를 받은 노드는 그 소유자를 근거로 진다."""
+        **「한쪽 경로 없음」은 소유자 근거가 전혀 없는 쪽만**이다 — 소유 엣지를 받은 노드는 그 소유자를 근거로 진다. **기다리는
+        소유자 이름**(`wn` — B145)도 근거다: 값의 가장 가까운 소유자의 이름 · 별칭 · 라틴 접기와 같으면 같은 소유자 · 값의 더 먼
+        소유자와 같으면 경로 호환 · 아니면 소유자 갈림(이름 비슷 → 판정)."""
         if not self.in_stem(p, pg):
             return OTHER
         mine = [x for x, _g in self.owners]
-        if not mine and not cs:
+        w = set(wn[1])
+        if not mine and not cs and not w:
             return SAME if self.proc[0] == p else COMPAT
-        if not mine or not cs:
-            return COMPAT
-        if any(mine[0] == c[0][0] for c in cs):
-            return SAME
-        if any(mine[0] in [x for x, _g in c] or c[0][0] in mine for c in cs):
+        if not mine or not (cs or w):
             return COMPAT
         a, ag = self.owners[0]
-        return SIMILAR if any(self.owner_similar(ag.get(a) or {}, c[0][1].get(c[0][0]) or {}) for c in cs) else APART
+        if any(mine[0] == c[0][0] for c in cs) or w & names(self.b, ag.get(a) or {}):
+            return SAME
+        if any(mine[0] in [x for x, _g in c] or c[0][0] in mine for c in cs) \
+                or any(w & names(self.b, og.get(x) or {}) for x, og in self.owners[1:]):
+            return COMPAT
+        near = [c[0][1].get(c[0][0]) or {} for c in cs] + [{"canonical": x} for x in wn[2]]
+        return SIMILAR if any(self.owner_similar(ag.get(a) or {}, o) for o in near) else APART
 
     def owner_similar(self, a, b):
         """소유자 둘(다른 노드)의 이름이 비슷한가 — 이름 · 별칭 · 라틴 접기 겹침 · 임베딩 유사도(문턱 손잡이)."""
@@ -324,7 +342,7 @@ class _Edges:
             for e in g.edges[part["n"]:]:
                 hit = self._owner_edge(e, world)
                 if hit:
-                    part["own"].setdefault(hit[0], []).append(hit[1])
+                    part["own"].setdefault(hit[0], []).append((*hit[1], e))
             part["n"] = len(g.edges)
         self.world = world
         return self
@@ -352,14 +370,53 @@ class _Edges:
                 return _cid, (oid, og)
         return None
 
-    def of(self, nid):
+    def of(self, nid, waiting=()):
+        """그 노드의 소유자 `[(id, 그래프)]` — 소유 엣지가 **근거일 때만**(B145): 근거(provenance)가 0인 엣지(재연결이 폴백의 발자국을
+        뺐다 — `retry._withdraw_lowres`)와 그 노드의 열린 고아 항목 provenance로만 받쳐진 엣지(소속을 말했는데 미해소라 선 임시
+        폴백 — `waiting`)는 근거가 아니다 · 소속을 말하지 않은 값의 폴백은 근거 그대로."""
         out, seen = [], set()
         for part in self.parts.values():
-            for x, xg in part["own"].get(nid) or ():
-                if x not in seen:
-                    seen.add(x)
-                    out.append((x, xg))
+            for x, xg, e in part["own"].get(nid) or ():
+                prov = set(e.get("provenance") or ())
+                if x in seen or not prov or prov <= set(waiting):
+                    continue
+                seen.add(x)
+                out.append((x, xg))
         return out
+
+
+def waiting(b):
+    """**기다리는 소유자 이름**(B145) — 노드 id → `(provenance 집합, 이름 집합(라틴 접기 · 공백 무시), [원 이름 …])` · 열린
+    `orphan_attach`(소속을 말했는데 그 이름이 아직 없다 — 산문 `_belongs_edges`) 항목의 행마다. 큐 파일의 판(크기 · 시각)이 같은
+    동안 빌더에 한 번 읽는다 — 큐는 그 사실의 자리이고 재연결이 붙이면 항목이 내려간다(그때는 소속 엣지가 근거다)."""
+    from core.state import store
+    p = store.path(store.QUEUE)
+    try:
+        st = p.stat()
+        stamp = (st.st_mtime_ns, st.st_size)
+    except FileNotFoundError:
+        stamp = None
+    hit = b.__dict__.get("_wait")
+    if hit is not None and hit[0] == stamp:
+        return hit[1]
+    out = {}
+    for x in (store.read(store.QUEUE, []) if stamp else []):
+        if x.get("kind") != "orphan_attach":
+            continue
+        pl = x.get("payload") or {}
+        for r in pl.get("items") or [pl]:
+            nid, name = r.get("node_id"), r.get("attach_to") or pl.get("attach_to")
+            if not nid or not name:
+                continue
+            w = out.setdefault(nid, (set(), set(), []))
+            if r.get("provenance"):
+                w[0].add(r["provenance"])
+            k = fold_latin(norm(name)).replace(" ", "")
+            if k not in w[1]:
+                w[1].add(k)
+                w[2].append(norm(name))
+    b.__dict__["_wait"] = (stamp, out)
+    return out
 
 
 def edge_index(b):
