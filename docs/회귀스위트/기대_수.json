@@ -7,19 +7,19 @@
   },
   "test_places": {
    "n": 32,
-   "secs": 7
+   "secs": 6
   },
   "test_g3": {
    "n": 82,
-   "secs": 2
+   "secs": 3
   },
   "test_query": {
    "n": 118,
-   "secs": 10
+   "secs": 11
   },
   "test_ops": {
    "n": 84,
-   "secs": 7
+   "secs": 8
   },
   "test_intake": {
    "n": 98,
@@ -35,11 +35,11 @@
   },
   "test_catalog": {
    "n": 57,
-   "secs": 16
+   "secs": 17
   },
   "test_safety": {
    "n": 36,
-   "secs": 58
+   "secs": 62
   },
   "test_judge": {
    "n": 85,
@@ -47,7 +47,7 @@
   },
   "test_build": {
    "n": 61,
-   "secs": 19
+   "secs": 20
   },
   "test_rebuild": {
    "n": 42,
@@ -63,15 +63,15 @@
   },
   "test_g6_capture": {
    "n": 9,
-   "secs": 18
+   "secs": 19
   },
   "test_g6_close": {
    "n": 29,
-   "secs": 30
+   "secs": 31
   },
   "test_contract": {
    "n": 76,
-   "secs": 19
+   "secs": 21
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,15 +83,15 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 3
+   "secs": 4
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 3
+   "secs": 4
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 3
+   "secs": 4
   },
   "test_p2": {
    "n": 68,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_prompt": {
    "n": 60,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 65,
-   "secs": 10
+   "secs": 8
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 25
+   "secs": 26
   }
  },
  "log": [
