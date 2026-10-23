@@ -3,51 +3,51 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 5
+   "secs": 7
   },
   "test_places": {
    "n": 32,
-   "secs": 9
+   "secs": 8
   },
   "test_g3": {
    "n": 82,
-   "secs": 3
+   "secs": 2
   },
   "test_query": {
    "n": 118,
-   "secs": 9
+   "secs": 10
   },
   "test_ops": {
    "n": 84,
-   "secs": 9
+   "secs": 6
   },
   "test_intake": {
    "n": 98,
-   "secs": 16
+   "secs": 17
   },
   "test_ingest_view": {
    "n": 73,
-   "secs": 31
+   "secs": 30
   },
   "test_coord": {
    "n": 49,
-   "secs": 11
+   "secs": 13
   },
   "test_catalog": {
    "n": 57,
-   "secs": 17
+   "secs": 16
   },
   "test_safety": {
    "n": 36,
-   "secs": 64
+   "secs": 60
   },
   "test_judge": {
    "n": 85,
-   "secs": 9
+   "secs": 11
   },
   "test_build": {
    "n": 63,
-   "secs": 21
+   "secs": 22
   },
   "test_rebuild": {
    "n": 42,
@@ -55,11 +55,11 @@
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 8
+   "secs": 7
   },
   "test_structure": {
-   "n": 82,
-   "secs": 17
+   "n": 86,
+   "secs": 18
   },
   "test_g6_capture": {
    "n": 9,
@@ -67,7 +67,7 @@
   },
   "test_g6_close": {
    "n": 29,
-   "secs": 33
+   "secs": 32
   },
   "test_contract": {
    "n": 76,
@@ -83,7 +83,7 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 4
+   "secs": 3
   },
   "test_p1_form": {
    "n": 35,
@@ -91,7 +91,7 @@
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 4
+   "secs": 3
   },
   "test_p2": {
    "n": 68,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 6
+   "secs": 8
   },
   "test_p3_prompt": {
    "n": 60,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 65,
-   "secs": 11
+   "secs": 10
   },
   "test_2a_gateway": {
    "n": 75,
@@ -139,11 +139,11 @@
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 1
+   "secs": 0
   },
   "test_site": {
    "n": 56,
-   "secs": 27
+   "secs": 25
   }
  },
  "log": [
@@ -297,6 +297,14 @@
    "suite": "test_build",
    "from": 61,
    "to": 63,
+   "why": ""
+  },
+  {
+   "at": "2026-10-23",
+   "head": "d02042f",
+   "suite": "test_structure",
+   "from": 82,
+   "to": 86,
    "why": ""
   }
  ]
