@@ -301,6 +301,40 @@ show("ⓒ 엣지 없는(quality) · 공정에만 붙은(process) 개체가 후�
      "버림 · 재구축(기본 fresh → 다시 넣기)은 추출 · 개요 · 보강 호출 0으로 같은 연결 (층 둘)",
      all(o for _l, o, _d in _oc), " ‖ ".join(d for _l, _o, d in _oc))
 
+# B147 ④ — 마무리 화면의 LLM 사용 갈래별 한 줄(끝 표 함수 `usage_table("(마무리)")` 그대로) · 합 = 그 구간 호출 수
+import contextlib as _cl147                                   # noqa: E402
+import io as _io147                                           # noqa: E402
+import re as _re147                                           # noqa: E402
+from cli import ingest as _IG147                              # noqa: E402
+from core.llm import gateway as _GW147                        # noqa: E402
+
+
+class _LiveU(Live):
+    """보강 시험의 주입 그대로 + 게이트웨이 누계에 한 번 센다(가짜 게이트웨이는 `chat`을 바꿔 누계를 거치지 않는다)."""
+
+    def chat(self, messages, json_schema=None, point=None, **kw):
+        out = super().chat(messages, json_schema=json_schema, point=point, **kw)
+        _GW147._account(point, {"usage": {"prompt_tokens": 10, "completion_tokens": 2}})
+        return out
+
+
+_setup()
+OUT.clear(), BEL.clear(), REIN.clear()
+OUT.update(UNITS), REIN.update(_RE)
+_u0147 = sum(o["calls"] for o in _GW147.usage_table(doc_id="(마무리)"))
+with _LiveU(by={"outline": _outline, "extract": _extract, "reinforce": _reinforce}):
+    run_document(_env("엑셀", "B147D", "process"), notice=[].append)
+    _n0147, _buf147 = len(CALLS), _io147.StringIO()
+    with _cl147.redirect_stdout(_buf147):
+        _IG147._finalize_screen()
+    _n1147 = len(CALLS)
+_ln147 = [ln.strip() for ln in _buf147.getvalue().splitlines() if ln.strip().startswith("LLM 마무리 · ")]
+_sum147 = sum(int(_re147.search(r"호출 ([\d,]+)", ln).group(1).replace(",", "")) for ln in _ln147)
+show("ⓓ 마무리 화면 — 미러 · 재시도 · 연결 보강 줄 아래 LLM 사용 갈래별 한 줄 · 합 = 그 구간 호출 수(끝 표 함수 그대로)",
+     _u0147 == 0 and _ln147 and _n1147 > _n0147 and _sum147 == _n1147 - _n0147,
+     f"{_ln147} · 구간 호출 {_n1147 - _n0147}")
+_GW147.set_doc(None)
+
 # 상한 — 사내 손잡이 `reinforce_call_cap`(실행당 호출) · mock 선별 규칙이 없으면 판정 없음(호출 0 · 행 0)
 _setup()
 _P.knobs().write_text(json.dumps({"reinforce_call_cap": 1, "chunk_rows": [1, 2]}), encoding="utf-8")

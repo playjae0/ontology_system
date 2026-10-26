@@ -387,11 +387,14 @@ def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles, confirmed=N
 
 def _env_extras(env, res, doc_coord, dk_tally):
     """봉투의 문서 칸 — 문서 좌표(B102 ② — 맥락 줄 · 좌표 줄) · **덱 블록**(B143 ② — `deck.overview` · `deck.slides[]` — 덱 판단의
-    정본 · 맥락 줄의 개요 칸 · 사람용 md가 읽는다) · 캡처 쪽 수(B125 ② — 추출이 원본에서 쪽을 뜬다). 없는 칸은 키도 없다."""
+    정본 · 맥락 줄의 개요 칸 · 사람용 md가 읽는다) · **구조 블록**(B146 ① — 엑셀 · Word의 구조 판단 · 단위마다 목차 · 청크 경계 ·
+    판단 기록 — `struct_rule.block` · 사람용 md가 읽는다) · 캡처 쪽 수(B125 ② — 추출이 원본에서 쪽을 뜬다). 없는 칸은 키도 없다."""
     if doc_coord:
         env["doc_coord"] = doc_coord
     if dk_tally:
         env["deck"] = deck_mod.block(dk_tally, env.get("chunks"))
+    if (res.report.get("structure") or {}).get("프레임"):
+        env["structure"] = struct_rule.block(res.report["structure"], env.get("chunks"))   # 구조 블록 (B146 ① — 엑셀 · Word)
     if res.report.get("capture_pages"):
         env["capture"] = {"pages": res.report["capture_pages"]}
 

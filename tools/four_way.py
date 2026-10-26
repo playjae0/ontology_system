@@ -10,7 +10,7 @@
 `data/`의 파일 목록(새 파일이 생기면 여기 뜬다). 시각·횟수 키는 빼고, 의미 축 id는 그 노드의
 `층:canonical`로 바꿔 대조한다(ULID는 실행마다 다르다).
 
-**세 바닥** — 같은 표본을 같은 순서로 넣는다:
+**네 바닥** — 같은 표본을 같은 순서로 넣는다:
   A: `init --fresh --all` → bootstrap → 표 표본 다섯(`TABLE`)을 하나씩 `ingest_file`(비대화형 —
      선택이 안 되는 표본은 「미선택」 그대로가 대조 대상이다)
   B: 회귀 바닥 `tests/g65_common.fresh()`(CP01 · PFMEA01 · PPT01~03 · QPPT01 + finalize)
@@ -18,6 +18,10 @@
      좌표가 서지 않는 문서 하나) — 이 스크립트가 사본 안에서 엑셀 · mock 힌트(개요 `<doc>@outline.json` · 추출)를 만들고 연결
      보강 선별 규칙(`reinforce.SELECT` — 첫 후보)을 주입해 `ingest_file`(마무리 포함)로 넣는다. 기준 커밋에 표본이 없어도 된다
      (재료가 이 파일에 있다). B113~B116 몫(다른 공정 가드 · 빈칸 · 재연결 · 개요 · 제목 개체 · 폴백 사슬 · 연결 보강)이 대조에 보인다.
+  D: **사내 꼴 표**(B147 ⑤ — 창작 `CPU_ROWS`): 유닛 열 없는 CP — 상위 좌표 = 공정 · 하위 좌표 = 골격의 자식 단(사내의 유닛 단과
+     같은 자리) · 관리항목 entity · 규격 · 측정방법 attribute → 관리항목 · 대응계획 content → 관리항목 · 엣지 `@process_ref
+     has_property 관리항목`. 스키마 · 어댑터를 등록 단에 직접 두고(등록 LLM 0) 엑셀을 만들어 `ingest_file`(마무리 포함 · 보강
+     선별 규칙 주입)로 넣는다 — 기준 커밋에 표본이 없어도 된다(재료가 이 파일에 있다).
 
 **자리를 가른다**: 기준은 `git archive`로, 지금은 작업 트리(커밋 안 한 변경 포함 · 무시 파일 제외)를
 임시 폴더에 복사하고, 사본마다 **자기 `state_mock/`**에서 돈다 — 레포의 `state_mock/`은 건드리지
@@ -78,6 +82,40 @@ PROSE_WORDS = (("모터 회전수", "Property"), ("실린더 행정", "Property"
                ("스태킹", "Process"), ("센서", "Unit"), ("N/A", "Property"), ("속도", "Property"),
                ("하중", "Property"), ("장력", "Property"))
 PROSE_DT = "fw_prose"
+#: 바닥 D의 사내 꼴 표(창작 — 근거가 아니다) — 같은 좌표 둘 이상 · 같은 관리항목 이름이 다른 좌표에 하나
+CPU_DT = "fw_cp_unit"
+CPU_HEAD = ("공정구분", "공정명", "관리항목", "규격", "측정방법", "대응계획")
+CPU_ROWS = (("노칭", "노칭 타발", "버 높이", "10um 이하", "현미경", "금형 재연마"),
+            ("노칭", "노칭 타발", "타발 치수", "0.1mm 이내", "캘리퍼", "금형 점검"),
+            ("노칭", "전극 리와인딩", "버 높이", "12um 이하", "현미경", "재검"),
+            ("노칭", "전극 리와인딩", "권취 장력", "30N", "로드셀", "장력 조정"))
+CPU_SCHEMA = {"doc_type": CPU_DT, "schema_version": 1, "layer": "process", "payload_kind": "table",
+              "use_blocks": ["common_core", "process_coord"],
+              "fields": {"관리항목": {"role": "entity", "category": "Property"},
+                         "규격": {"role": "attribute", "attach_to_field": "관리항목", "attr_name": "spec", "contextual": True,
+                                "optional": True},
+                         "측정방법": {"role": "attribute", "attach_to_field": "관리항목", "optional": True},
+                         "대응계획": {"role": "content", "attach_to_field": "관리항목", "optional": True}},
+              "edges": [{"from": "@process_ref", "relation": "has_property", "to": "관리항목"}]}
+CPU_ADAPTER = '''from parser import normalizer
+
+ADAPTER = {"doc_type": %r, "adapter_version": "fw-1", "payload_kind": "table",
+           "expects": {"header_row": 1, "data_start_row": 2, "header_labels": %r,
+                       "columns": {"process_group": "A", "process_ref": "B", "관리항목": "C", "규격": "D", "측정방법": "E",
+                                   "대응계획": "F"}}}
+
+
+def extract(raw):
+    exp, out = ADAPTER["expects"], []
+    for sheet in raw.get("sheets", []):
+        cells = normalizer.expand_merged(sheet)
+        for row in range(exp["data_start_row"], int(sheet.get("max_row", 0)) + 1):
+            rec = {f: str(cells.get("%%s%%d" %% (c, row)) or "").strip() for f, c in exp["columns"].items()}
+            if any(rec.values()):
+                rec["source_locator"] = "%%s!R%%d" %% (sheet.get("name", "sheet"), row)
+                out.append(rec)
+    return out
+''' % (CPU_DT, list(CPU_HEAD))
 SAMPLES = 3                          # 다른 것마다 보이는 견본 수
 CUT = 300                            # 견본 한 줄 길이
 
@@ -141,6 +179,7 @@ def dump(out):
         G.fresh()
     res["B"] = _state()
     res["C_status"], res["C"] = _prose(quiet)
+    res["D_status"], res["D"] = _cp_unit(quiet)
     Path(out).write_text(json.dumps(res, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
     return 0
 
@@ -234,6 +273,51 @@ def _prose(quiet):
     return st, _state()
 
 
+def cpu_setup(schema=None):
+    """사내 꼴 표 종류(`CPU_DT`)를 지금 상태 루트의 등록 단에 직접 세우고(등록 LLM 0) 표본 엑셀을 원본 자리에 쓴다 — 엑셀 자리.
+    바닥 D와 시험(B147 ⓑⓒ — 스키마를 바꿔 넣는다)이 같은 재료를 쓴다."""
+    from openpyxl import Workbook
+    from core import paths as P
+    from core.state import store
+    sp, ap = P.ensure(P.schemas(f"{CPU_DT}.json")), P.ensure(P.adapters(f"{CPU_DT}.py"))
+    sp.write_text(json.dumps(schema or CPU_SCHEMA, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ap.write_text(CPU_ADAPTER, encoding="utf-8")
+    dts = store.read(store.DOC_TYPES, {})
+    dts[CPU_DT] = {"doc_type": CPU_DT, "status": "registered", "layer": "process", "schema": f"schemas/{CPU_DT}.json",
+                   "adapter": str(ap), "schema_version": 1}
+    store.write(store.DOC_TYPES, dts)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "CP"
+    for r, row in enumerate((CPU_HEAD,) + CPU_ROWS, 1):
+        for c, v in enumerate(row, 1):
+            ws.cell(row=r, column=c, value=v)
+    path = P.ensure(P.raw("FWCPU.xlsx"))
+    wb.save(path)
+    return path
+
+
+def _cp_unit(quiet):
+    """바닥 D — 클린 → bootstrap → 사내 꼴 표 종류를 등록 단에 직접 → 엑셀을 만들고 넣는다(마무리 포함 · 보강 선별 주입)."""
+    import run as RUN
+    from cli import ingest as IG
+    from core.build import reinforce
+    from core.state import init
+    with quiet(io.StringIO()):
+        init.init(fresh_=True, all_=True)
+        RUN.cmd_bootstrap([])
+    path = cpu_setup()
+    reinforce.SELECT = _select
+    try:
+        with quiet(io.StringIO()):
+            r = IG.ingest_file(str(path), CPU_DT, ask=False)
+        st = {"FWCPU": (r or {}).get("status")}
+    except SystemExit as e:
+        st = {"FWCPU": f"exit {e.code}"}
+    reinforce.SELECT = None
+    return st, _state()
+
+
 # ---------------------------------------------------------------- 사본 · 실행
 def _git(*args):
     return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, check=True).stdout
@@ -277,7 +361,7 @@ def _run(work, trees):
 # ---------------------------------------------------------------- 대조
 def _summary(label, d):
     out = []
-    for side in [x for x in ("A", "B", "C") if x in d]:
+    for side in [x for x in ("A", "B", "C", "D") if x in d]:
         g = d[side]
         out.append(f"{label} {side}" + (f" 넣기 {d[side + '_status']}" if side + "_status" in d else "")
                    + f" · 노드 { {k: len(v['nodes']) for k, v in g['graph'].items()} }"
@@ -297,9 +381,9 @@ def _diff(label, p, q):
 
 def compare(a, b):
     """벌마다 다른 것 — `(줄들, 다른 것이 있는가)`."""
-    same = a["A_status"] == b["A_status"] and a.get("C_status") == b.get("C_status")
-    lines, differs = [f"A · C 넣기 결과 같음 {same}"], not same
-    for side in [x for x in ("A", "B", "C") if x in a or x in b]:
+    same = all(a.get(f"{s}_status") == b.get(f"{s}_status") for s in ("A", "C", "D"))
+    lines, differs = [f"A · C · D 넣기 결과 같음 {same}"], not same
+    for side in [x for x in ("A", "B", "C", "D") if x in a or x in b]:
         if side not in a or side not in b:
             lines.append(f"{side} 한쪽에만 있다 — 기준 {side in a} · 지금 {side in b}")
             differs = True

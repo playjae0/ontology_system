@@ -393,10 +393,8 @@ show("④ⓔ 참조 어댑터·스켈레톤 어댑터는 셀 None 변이를 지�
           "tests/fixtures/adapters/cp.py", "tests/fixtures/schemas/cp.json",
           "tests/fixtures/raw/CP01.xlsx"],
          capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout)
-show("④ 템플릿 판이 올랐고 셀 접근 규약이 실렸다",
-     re.search(r"^version: 1\.7$",
-               (ROOT / "prompts/1.4_generate.md").read_text(encoding="utf-8"), re.M)
-     and "셀 값은 스켈레톤의 읽기 꼴로만" in
+show("④ 셀 접근 규약이 실렸다",            # 기대 변경(B147 ⓕ — 판 번호는 마감의 「바뀐 지시문」 점검이 잰다 · 규약 문면만)
+     "셀 값은 스켈레톤의 읽기 꼴로만" in
      (ROOT / "prompts/1.4_generate.md").read_text(encoding="utf-8"))
 
 print("\n── B76 ① 형 검사 관문 G4F ──")
@@ -474,6 +472,38 @@ for _n77, _doc77 in (("cp", "CP01.xlsx"), ("ipqc", "IPQC01.xlsx"),
                    if "[FAIL]" in l][:1] or [f"{_n77}: rc={_r77.returncode}"]
 show("② 전시물 3쌍이 제 표본으로 관문 전 구간을 지난다 (문자열이 아니라 실행)",
      not _bad77, " ‖ ".join(_bad77) or "FAIL 0")
+
+# ── B147 ① 부착 대상 규칙 — 관문 G4J (킷 하네스 실경로 · 대역 없이) ─────────
+# 값(속성 · 내용)은 그 행의 개체 열에 붙는다 — 좌표를 가리킨 스키마는 FAIL이고 문면이 붙일 수 있는 선언 필드를 담는다.
+from tools import four_way as _FW147                                  # noqa: E402 — 바닥 D의 재료(사내 꼴 표 · 창작)
+from openpyxl import Workbook as _WB147                               # noqa: E402
+_d147 = Path(_tf76.mkdtemp(prefix="b147_"))
+(_d147 / f"{_FW147.CPU_DT}.py").write_text(_FW147.CPU_ADAPTER, encoding="utf-8")
+_wb147 = _WB147()
+for _r147, _row147 in enumerate((_FW147.CPU_HEAD,) + _FW147.CPU_ROWS, 1):
+    for _c147, _v147 in enumerate(_row147, 1):
+        _wb147.active.cell(row=_r147, column=_c147, value=_v147)
+_wb147.save(_d147 / "FWCPU.xlsx")
+_f147 = _FW147.CPU_SCHEMA["fields"]
+for _n147, _s147 in (("bad", {**_FW147.CPU_SCHEMA, "fields": {**_f147, "규격": {**_f147["규격"], "attach_to_field": "process_ref"}}}),
+                     ("good", _FW147.CPU_SCHEMA)):
+    (_d147 / f"{_n147}.json").write_text(json.dumps(_s147, ensure_ascii=False), encoding="utf-8")
+
+
+def _g4j(out):
+    return next((l.strip() for l in out.splitlines() if "G4J" in l), "")
+
+
+_ob147 = _g4j(gate76(_d147 / f"{_FW147.CPU_DT}.py", _d147 / "bad.json", _d147 / "FWCPU.xlsx")[1])
+_og147 = _g4j(gate76(_d147 / f"{_FW147.CPU_DT}.py", _d147 / "good.json", _d147 / "FWCPU.xlsx")[1])
+_op147 = _g4j(gate76(ROOT / "tests/fixtures/adapters/pfmea.py", ROOT / "tests/fixtures/schemas/pfmea.json",
+                     ROOT / "tests/fixtures/raw/PFMEA01.xlsx")[1])
+show("ⓐ G4J — 속성이 좌표(process_ref)를 가리키면 FAIL · 문면에 그것이 무엇인지 · 붙일 수 있는 선언 필드(관리항목) · 개체 열로 "
+     "고치면 PASS · pfmea(선언 anchor 대상) PASS 그대로",
+     _ob147.startswith("[FAIL]") and "'process_ref'는 구조 필드" in _ob147 and "붙일 수 있는 선언 필드: 관리항목" in _ob147
+     and _og147.startswith("[PASS]") and _op147.startswith("[PASS]"),
+     f"{_ob147[:160]} ‖ {_og147[:60]} ‖ {_op147[:60]}")
+_sh76.rmtree(_d147, ignore_errors=True)
 
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — P2 완료판정 충족" if allok else "FAIL")

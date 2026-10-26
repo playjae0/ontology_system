@@ -3,63 +3,63 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 6
+   "secs": 4
   },
   "test_places": {
    "n": 32,
-   "secs": 6
+   "secs": 9
   },
   "test_g3": {
    "n": 82,
-   "secs": 3
+   "secs": 2
   },
   "test_query": {
    "n": 118,
-   "secs": 11
+   "secs": 10
   },
   "test_ops": {
    "n": 84,
-   "secs": 8
+   "secs": 9
   },
   "test_intake": {
    "n": 98,
-   "secs": 15
+   "secs": 16
   },
   "test_ingest_view": {
    "n": 73,
-   "secs": 30
+   "secs": 33
   },
   "test_coord": {
    "n": 49,
-   "secs": 11
+   "secs": 12
   },
   "test_catalog": {
-   "n": 57,
-   "secs": 17
+   "n": 59,
+   "secs": 22
   },
   "test_safety": {
    "n": 36,
-   "secs": 62
+   "secs": 66
   },
   "test_judge": {
    "n": 85,
    "secs": 10
   },
   "test_build": {
-   "n": 61,
-   "secs": 20
+   "n": 63,
+   "secs": 22
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 20
+   "secs": 21
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 8
   },
   "test_structure": {
-   "n": 82,
-   "secs": 16
+   "n": 87,
+   "secs": 19
   },
   "test_g6_capture": {
    "n": 9,
@@ -67,7 +67,7 @@
   },
   "test_g6_close": {
    "n": 29,
-   "secs": 31
+   "secs": 36
   },
   "test_contract": {
    "n": 76,
@@ -83,23 +83,23 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 4
+   "secs": 2
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 4
+   "secs": 3
   },
   "test_p1_media": {
    "n": 19,
    "secs": 4
   },
   "test_p2": {
-   "n": 68,
-   "secs": 5
+   "n": 69,
+   "secs": 6
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 6
+   "secs": 7
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,7 +107,7 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 5
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
@@ -115,19 +115,19 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 7
+   "secs": 8
   },
   "test_p3_ledger": {
    "n": 46,
    "secs": 3
   },
   "test_p3_flow": {
-   "n": 65,
-   "secs": 8
+   "n": 64,
+   "secs": 10
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 26
+   "secs": 27
   }
  },
  "log": [
@@ -290,6 +290,54 @@
    "from": 80,
    "to": 85,
    "why": ""
+  },
+  {
+   "at": "2026-10-23",
+   "head": "0a34ec0",
+   "suite": "test_build",
+   "from": 61,
+   "to": 63,
+   "why": ""
+  },
+  {
+   "at": "2026-10-23",
+   "head": "d02042f",
+   "suite": "test_structure",
+   "from": 82,
+   "to": 86,
+   "why": ""
+  },
+  {
+   "at": "2026-10-26",
+   "head": "ba5160f",
+   "suite": "test_catalog",
+   "from": 57,
+   "to": 59,
+   "why": ""
+  },
+  {
+   "at": "2026-10-26",
+   "head": "ba5160f",
+   "suite": "test_structure",
+   "from": 86,
+   "to": 87,
+   "why": ""
+  },
+  {
+   "at": "2026-10-26",
+   "head": "ba5160f",
+   "suite": "test_p2",
+   "from": 68,
+   "to": 69,
+   "why": ""
+  },
+  {
+   "at": "2026-10-26",
+   "head": "ba5160f",
+   "suite": "test_p3_flow",
+   "from": 65,
+   "to": 64,
+   "why": "B147 ⓕ 지움 — 지시문 판 번호만 재던 어서션(한 번 고친 것의 확인 · 판 올림은 마감의 바뀐 지시문 점검이 잰다)"
   }
  ]
 }

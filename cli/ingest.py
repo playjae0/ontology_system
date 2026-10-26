@@ -570,6 +570,8 @@ def _finalize_screen():
     if h0:
         h1 = human.waiting()
         print(f"   사람 후보 — 재연결 붙음 {h0 - h1:,} · 남음 {h1:,}(그 이름을 기다리던 고아 행)")
+    for o in gateway.usage_table(doc_id="(마무리)"):    # 마무리 구간의 LLM — 갈래별 한 줄(끝 표 함수 그대로 · 호출 0이면 줄 없음 · B147 ④)
+        print(f"   LLM 마무리 · {o['갈래']} — 호출 {o['calls']:,} · 입력 {o['prompt']:,} · 출력 {o['completion']:,}")
     return fin
 
 

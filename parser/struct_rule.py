@@ -277,11 +277,14 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
         if all(c.get("toc") == toc.TOC_VERSION and c.get("labels") == labels_hash(frames[f]) and c.get("ladder_base")
                for f, c in zip(frames, conf)):                # 시트 전부 확정 — 확정 기록의 사다리(LLM 0 · 재구축 재생)
             d = ask.adopt(doc_id, {"base": conf[0]["ladder_base"], "source": "확정", "counts": PL.doc_counts(frames)})
+            tally["사다리_길"] = BY_CONFIRMED
         elif hit and hit.get("ladder_key") == k:
             d = ask.adopt(doc_id, hit)
             tally["재사용"] = tally.get("재사용", 0) + 1
+            tally["사다리_길"] = BY_KEPT
         else:
             d = ask.prepare(doc_id, frames, ctx) if getattr(ask, "takes_ctx", False) else ask.prepare(doc_id, frames)
+            tally["사다리_길"] = BY_ASKED
             tally["호출"] = tally.get("호출", 0) + int(d.get("calls") or 0)
             if made is not None and not d.get("failed"):
                 made[LKEY] = {k2: v for k2, v in d.items() if k2 != "calls"} | {"ladder_key": k}
@@ -301,13 +304,16 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
             conf = None
         now = ask.ladder_of(doc_id) if callable(getattr(ask, "ladder_of", None)) else None
         asked = False                                         # 이 실행이 부른 판정인가 — 사용량 줄은 그때만 (B137 ⑦)
+        by = BY_ASKED                                         # 판단 길 — 구조 블록이 싣는다 (B146 ①)
         if conf and conf.get("labels") == h:
             tally["확정"] = tally.get("확정", 0) + 1
             st = {**conf, "source": "confirmed", "calls": 0, "confirmed": True, "ladder_source": "확정"}
+            by = BY_CONFIRMED
         elif (hit and hit.get("labels") == h and hit.get("key") == key
               and (hit.get("doc_hints") or []) == doc_hints and hit.get("ladder") == now):   # 사다리 · 문서 힌트가 바뀌면 다시
             tally["재사용"] = tally.get("재사용", 0) + 1
             st = hit
+            by = BY_KEPT
             if callable(getattr(ask, "drift", None)):
                 ask.drift(hit)                                # 판 그대로 · 문면만 바뀜이면 한 줄 (B135 ③)
         else:
@@ -331,8 +337,50 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 "missing": st.get("missing") or [], "rules": st.get("rules") or [], "doc_hints": st.get("doc_hints") or [],
                 "rules_dropped": st.get("rules_dropped") or [], "changed": st.get("changed") or [],
                 "line_edits": st.get("line_edits", 0), "usage": st.get("usage") if asked else None,
-                "confirmed": bool(st.get("confirmed")), "prompt_version": st.get("prompt_version")}
+                "confirmed": bool(st.get("confirmed")), "prompt_version": st.get("prompt_version"), "by": by}
             tally.setdefault("방식", {})[frame] = st.get("mode")
         return st
     fn.prepare = prepare
     return fn
+
+
+#: 구조 판단의 **길**(B146 ①) — 사람이 확정한 시트의 재생 · 같은 판의 보존분 재사용 · 이번 실행이 부른 판정(코드 · 힌트 · LLM — `source`)
+BY_CONFIRMED, BY_KEPT, BY_ASKED = "확정", "재사용", "판정"
+#: 구조 블록 단위에만 있는 칸(셈의 시트 칸이 아니다)
+_UNIT_KEYS = ("unit", "chunks", "chunk_paths")
+
+
+def block(tally, chunks):
+    """**구조 블록**(B146 ① — 봉투 최상위 `structure` · 덱 블록과 같은 결) — 파싱의 구조 셈(`report["structure"]`)을 봉투에 옮긴다.
+
+    `{"ladder": {source, base, usage, by}, "toc_field_lines"?, "old_confirmed"?, "units": [단위 …]}` · 단위(시트 · Word 구획)마다
+    `unit`(이름) · 목차 나무와 판단 기록(셈의 시트 칸 그대로 — 제목 줄 `headings` · 초안 `toc0` · 이름표 `labels` · 판단 필요 ·
+    사다리 · 출처 `source` · 판단 길 `by` · 지시문 판 · 고침 · 버림 · 붙임 · 힌트 · 규칙 · 사용량 · 확정) + **청크 경계**(`chunks` —
+    그 단위의 청크 위치 · `chunk_paths` — 청크마다 목차 경로). 청크 칸은 바꾸지 않는다(문서 해시 밖 — 추출 재사용 그대로)."""
+    frames = (tally or {}).get("프레임") or {}
+    if not frames:
+        return None
+    units = []
+    for frame, fr in frames.items():
+        cs = [c for c in chunks or [] if (c.get("meta") or {}).get("frame") == frame]
+        units.append({"unit": frame, **fr, "chunks": [c.get("source_locator") for c in cs],
+                      "chunk_paths": {c.get("source_locator"): (c.get("meta") or {}).get("section_path") for c in cs}})
+    out = {"ladder": {"source": tally.get("사다리"), "base": tally.get("사다리_꼴"), "usage": tally.get("사다리_사용") or {},
+                      "by": tally.get("사다리_길")}, "units": units}
+    if tally.get("목차 필드"):
+        out["toc_field_lines"] = tally["목차 필드"]
+    if tally.get("옛 확정"):
+        out["old_confirmed"] = list(tally["옛 확정"])
+    return out
+
+
+def tally_of(blk):
+    """구조 블록 → 구조 셈 꼴(`split_report`가 읽는 꼴 — 봉투만으로 md를 찍는다 · B146 ②) · 블록이 없으면 None."""
+    if not blk or not blk.get("units"):
+        return None
+    lad = blk.get("ladder") or {}
+    st = {"사다리": lad.get("source"), "사다리_꼴": lad.get("base"), "사다리_사용": lad.get("usage") or {},
+          "프레임": {u["unit"]: {k: v for k, v in u.items() if k not in _UNIT_KEYS} for u in blk["units"]}}
+    if blk.get("toc_field_lines"):
+        st["목차 필드"] = blk["toc_field_lines"]
+    return st

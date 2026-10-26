@@ -31,11 +31,18 @@ def has_images(path):
 def schema_gate(doc_type):
     """**등록 스키마 재대조**(B99 ⑩) — `bootstrap` 끝 재대조와 같은 함수(`cli/register/recheck.run`).
 
-    그 doc_type의 FAIL만 멈춘다(⚠ 경고는 말만 한다) — 구축 전에 「층 어휘 밖 스키마」를 잡는다.
+    그 doc_type의 FAIL만 멈춘다 — 구축 전에 「층 어휘 밖 스키마」를 잡는다 · ⚠ 경고(부착 대상 규칙 — B147 ① 등)는 화면에
+    내고 지나간다.
     """
     from cli.register import recheck
     rows = [r for r in recheck.run() if r[0] == doc_type]
     bad = [line for _dt, ok, line in rows if not ok and " FAIL — " in line]
+    warn = [line for _dt, ok, line in rows if not ok and " FAIL — " not in line]
+    if warn:
+        _screen.say("   사전 점검 — 스키마 재대조 ⚠ (멈추지 않는다)", "new")
+        for ln in warn:
+            for part in ln.split("\n"):
+                print(f"     {part.strip()}")
     if not bad:
         return True
     _screen.say("   사전 점검 — **스키마 재대조**에서 멈춘다 (파싱 0 · LLM 추가 0 · 쓰기 0)", "fail")

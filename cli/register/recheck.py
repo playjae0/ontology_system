@@ -11,6 +11,10 @@ G4E). 킷은 core를 모르므로 subprocess로 부르고 층 자리를 건넨�
 경고 하나를 더 낸다: **prose doc_type이 등록된 층이 좌표 카테고리를 말하지 않는다**
 (`categories`에도 `relation_patterns`에도 없다) — 그 층의 prose 문서는 좌표를 못 단다
 (prose 스키마의 좌표 블록이 그 카테고리를 부른다 — 관문 G4C가 그 자리에서 선다).
+
+**부착 대상 규칙**(B147 ① — 관문 G4J와 같은 함수 `parser.attach_rule`)도 같은 하위 실행이 싣는다 — 속성 · 내용의
+`attach_to_field`가 개체 열이 아니면 **⚠**(멈추지 않음 — 인입하면 그 값은 보류된다) · 줄에 필드 · 대상 · 붙일 수 있는 선언
+필드 · 다음 줄(`register generate <dt> --revise`). 이미 등록된 스키마는 자동으로 고치지 않는다(사람이 다시 등록한다).
 """
 from __future__ import annotations
 
@@ -72,6 +76,10 @@ def run():
                         if schema.get("payload_kind") != "prose" else "")
                 out.append((dt, False, f"{dt:<14} FAIL — {f.replace('[FAIL] ', '')[:200]}\n"
                                        f"               다음 줄: {fix}{redo}"))
+        for a in j.get("attach") or []:                    # 부착 대상 규칙 — ⚠ (B147 ①)
+            out.append((dt, False, f"{dt:<14} ⚠ 부착 대상 — {a}\n"
+                                   f"               다음 줄: python -m cli.register generate {dt} --revise "
+                                   f"(인입은 멈추지 않는다 — 그 값은 보류된다)"))
         if schema.get("payload_kind") == "prose" and lay:
             try:
                 speaks = _speaks(load_config(lay), COORD_CATEGORY)

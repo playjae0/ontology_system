@@ -4,8 +4,9 @@
 
   · **언제** — 빌드 말미(`entry.finalize`): 미러 · 재연결 바퀴(B113 ③ — 붙음 0에서 멈춘다)가 끝난 **뒤** · 이 실행이
     구축한 문서만(`entry.BUILT`).
-  · **대상** — 그 문서 대장의 개체 행 중 노드가 **엣지 0**이거나 **골격 좌표에만 붙은** 것(노드마다 한 번 · 위치가
-    청크인 행만 — 근거 원문이 있어야 한다).
+  · **대상** — 그 문서 대장의 개체 행 중 노드가 **엣지 0**이거나 **골격 좌표에만 · 규칙 B 폴백으로만 붙은** 것(노드마다 한 번 ·
+    위치가 청크인 행만 — 근거 원문이 있어야 한다). 문서가 말한 관계로 좌표에 붙은 개체(대장 붙은 자리 `관계` · `소속(…)` —
+    스키마 엣지 · 소속)는 대상이 아니다 — 저해상도가 아니라 문서의 진술이다(B147 ③).
   · **입력(자기 청크만)** — 개체(이름 · 카테고리) + 그 개체가 나온 청크 원문(맥락 줄 포함 · 다른 청크 본문 0) + 조상
     제목 개체(가까운 것부터) + **닫힌 후보**(`candidates` — 같은 문서 · 같은 제목 서브트리의 노드 · 가까운 것부터 ·
     상한 `CAND_MAX`) + 관계 목록.
@@ -78,9 +79,31 @@ def _index(graphs):
     return nodes, ends
 
 
-def targets(rows, nodes, ends, chunk_of):
-    """`[(행, node_id, 사유)]` — 엣지 0(`엣지 0`) 또는 골격 좌표에만 붙은(`공정만`) 개체 · 노드마다 처음 행 하나."""
+#: 대장 붙은 자리 — 규칙 B 폴백(좌표 · 제목 개체 사슬)과 문서의 진술(스키마 엣지 · 소속) (B147 ③)
+FALLBACK, STATED = ("폴백",), ("관계", "소속")
+
+
+def ways(rows):
+    """`{node_id: {붙은 자리 …}}` — 그 문서 대장의 개체 행이 단 엣지의 자리(`attached[].path`) · 노드마다 모은다."""
+    out = {}
+    for r in rows:
+        if r.get("role") == "entity" and r.get("node_id"):
+            out.setdefault(r["node_id"], set()).update(a.get("path") or "" for a in r.get("attached") or [])
+    return out
+
+
+def _fallback_only(paths):
+    """좌표에 붙은 자리가 폴백뿐인가 — 폴백이 있고 진술(관계 · 소속)이 없다."""
+    paths = paths or ()
+    return any(p.startswith(FALLBACK) for p in paths) and not any(p.startswith(STATED) for p in paths)
+
+
+def targets(rows, nodes, ends, chunk_of, how=None):
+    """`[(행, node_id, 사유)]` — 엣지 0(`엣지 0`) 또는 골격 좌표에만 · 폴백으로만 붙은(`공정만`) 개체 · 노드마다 처음 행 하나.
+
+    `how`는 그 문서의 붙은 자리(`ways`) — 없으면 `rows`에서 센다(앞 대상이 이었는지 다시 볼 때는 문서의 표를 건넨다)."""
     from core.build.heading import _is_coord
+    how = ways(rows) if how is None else how
     seen, out = set(), []
     for r in rows:
         nid = r.get("node_id")
@@ -90,7 +113,8 @@ def targets(rows, nodes, ends, chunk_of):
         if not n or not is_live(n) or _is_coord(n):
             continue
         others = ends.get(nid) or set()
-        if others and not all(_is_coord((nodes.get(o) or (None, None))[1]) for o in others):
+        if others and not (all(_is_coord((nodes.get(o) or (None, None))[1]) for o in others)
+                           and _fallback_only(how.get(nid))):
             continue
         seen.add(nid)
         out.append((r, nid, "공정만" if others else "엣지 0"))
@@ -217,11 +241,12 @@ def run(docs, graphs=None, notice=None):
     graphs = graphs or {lay: open_graph(lay) for lay in discover()}
     nodes, ends = _index(graphs)
     ch = (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {})
-    plan = []
+    plan, hows = [], {}
     for doc_id, lay in docs.items():
         chunk_of = {c.get("source_locator"): (cid, c) for cid, c in ch.items() if c.get("doc_id") == doc_id}
         rows = _rows(doc_id)
-        for r, nid, why in targets(rows, nodes, ends, chunk_of):
+        hows[doc_id] = ways(rows)
+        for r, nid, why in targets(rows, nodes, ends, chunk_of, hows[doc_id]):
             plan.append((doc_id, lay, rows, chunk_of, r, nid, why))
     cap = knobs.get("reinforce_call_cap")
     live = not gateway.use_mock()
@@ -235,7 +260,7 @@ def run(docs, graphs=None, notice=None):
     cfgs, touched = {}, set()
     for i, (doc_id, lay, rows, chunk_of, r, nid, why) in enumerate(plan, 1):
         cfg = cfgs.setdefault(lay, load_config(lay))
-        if not targets([r], nodes, ends, chunk_of):
+        if not targets([r], nodes, ends, chunk_of, hows[doc_id]):
             res = "이미 붙음(앞 대상이 이었다)"           # 앞 대상의 엣지가 이 노드에 닿았다 — 대상이 아니다
         else:
             res = _one(doc_id, lay, cfg, graphs, nodes, ends, rows, chunk_of, r, nid, why, cap, live)

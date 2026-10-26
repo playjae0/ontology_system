@@ -255,6 +255,77 @@ show("ⓔ 노칭 · 스태킹 슬라이드의 개체가 각자 제 공정 아래
      f"노드 {sorted(x for x in _names if x and ('커터' in x or '매거진' in x))} · ingest-dir rc {_p.returncode} · "
      + (_p.stdout + _p.stderr).strip().splitlines()[-1][:120])
 
+# ────────────────────────────────────────────────────────────── B146 ⓔ 중간 파일 지도
+print("\n■ B146 ⓔ 중간 파일 지도 — 표 · 엑셀 산문 · PPT를 하나씩 넣은 상태 루트 ↔ 상태 폴더 가이드 표")
+from g6_common import RFQ as _RFQ6, _register as _reg6, DT as _DT6   # noqa: E402 — 산문 엑셀 표본(B83)
+with _quiet():
+    init.init(fresh_=True, all_=True)                     # 클린 — 앞 절의 산출이 섞이지 않게
+    RUN.cmd_bootstrap([])
+_register()
+_reg6()
+_hint.write_text(json.dumps(DECK, ensure_ascii=False), encoding="utf-8")
+_ins6 = [_sub("ingest-file", str(_dir / f"{DID}.pptx"), "--doc-type", DT, "--allow-mock").returncode,
+         _sub("ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp", "--allow-mock").returncode,
+         _sub("ingest-file", str(_RFQ6), "--doc-type", _DT6, "--allow-mock", "--sheets", "2-4:prose 5:ref *:skip").returncode]
+_hint.unlink(missing_ok=True)
+_files = sorted(str(f.relative_to(_P.home())) for f in _P.home().rglob("*")
+                if f.is_file() and not any(x.startswith(".") or x == "__pycache__" for x in f.relative_to(_P.home()).parts))
+_gd = (ROOT / "docs/가이드/상태_폴더_가이드.md").read_text(encoding="utf-8")
+_rows6 = [[c.strip() for c in ln.strip().strip("|").split("|")] for ln in _gd.split("### 2-1.")[1].split("\n## ")[0].splitlines()
+          if ln.startswith("| `")]
+
+
+def _rx146(tok, doc=None):
+    """지도의 자리 → 정규식 — `<doc_id>`는 그 문서 · 다른 `<…>`는 한 칸 · `/`로 끝나면 그 아래 전부."""
+    parts = _re.split(r"(<[^>]+>)", tok)
+    return _re.compile("".join((_re.escape(doc) if doc and x == "<doc_id>" else "[^/]+") if x.startswith("<") else _re.escape(x)
+                               for x in parts) + (".*" if tok.endswith("/") else ""))
+
+
+_toks6 = [(r, _re.findall(r"`([^`]+)`", r[0])) for r in _rows6]
+_loose6 = [f for f in _files if not any(_rx146(t).fullmatch(f) for _r, ts in _toks6 for t in ts)]
+_miss6 = [(t, d) for r, ts in _toks6 for col, d in ((6, "CP01"), (7, "RFQ01"), (8, DID)) if r[col] == "●"
+          for t in ts if not any(_rx146(t, d).fullmatch(f) for f in _files)]
+show("B146 ⓔ 중간 파일 지도 — 표 · 엑셀 산문 · PPT를 하나씩 넣은 상태 루트의 파일이 전부 가이드 표의 자리에 들고 · 표가 「생긴다(●)」고 한 "
+     "자리는 그 포맷 문서의 파일이 있다",
+     _ins6 == [0, 0, 0] and _files and not _loose6 and not _miss6,
+     f"인입 rc {_ins6} · 파일 {len(_files)} · 표 밖 {_loose6[:4]} · 없음 {_miss6[:4]}")
+
+# B146 ⓐ~ⓓ — 구조 블록(엑셀 · Word) · 덱 블록과 같은 읽기 함수 · md는 봉투 하나에서 · 문서 해시 · 확정 시트
+from core.state import ids as _IDS6                         # noqa: E402
+from parser.adapters import basic_docx as _BD6               # noqa: E402
+from parser.struct_rule import labels_hash as _LH6           # noqa: E402
+_rq = json.loads(_P.parsed("RFQ01.json").read_text(encoding="utf-8"))
+_mdq = _P.export("split_RFQ01.md").read_text(encoding="utf-8")
+_P.work("struct_maps", "RFQ01.json").unlink(missing_ok=True)       # 보고 · 캐시 없이 — 봉투(JSON)만
+struct_map.invalidate("B146W")
+_ew = pipeline.parse(_BD6, "B146W", str(ROOT / "tests/fixtures/raw/DOC01.docx"), closed_list=[],
+                     structure=ST.structurer(["process"])).envelope
+_ewj = json.loads(json.dumps(_ew, ensure_ascii=False))
+_uq = (_rq.get("structure") or {}).get("units") or []
+show("B146 ⓐ 구조 블록 — 엑셀 산문(시트 둘 이상) · Word 봉투에 단위마다 목차 나무 · 청크 경계 · 판단 출처 · md는 봉투(JSON) 하나로 찍은 글과 같다",
+     len(_uq) >= 2 and all(u.get("headings") and u.get("chunks") and u.get("by") and u.get("source") for u in _uq)
+     and EMD.text("RFQ01", _rq) == _mdq and (_ewj.get("structure") or {}).get("units")
+     and EMD.text("B146W", _ewj) == EMD.text("B146W", _ew) and "## 시트" in EMD.text("B146W", _ewj),
+     f"단위 {[(u['unit'], u['by'], len(u['chunks'])) for u in _uq]} · Word 단위 {len((_ewj.get('structure') or {}).get('units') or [])}")
+_pj6 = json.loads(_P.parsed(f"{DID}.json").read_text(encoding="utf-8"))
+show("B146 ⓑ PPT md는 B143 꼴 그대로 · 덱 블록과 구조 블록이 같은 읽기 함수(units)로 읽힌다(단위 → 그 근거 청크)",
+     EMD.text(DID, _pj6) == "\n".join(EMD.lines(_pj6)) + "\n" and EMD.units(_pj6) and EMD.units(_rq)
+     and all(cs for _u, cs in EMD.units(_pj6) + EMD.units(_rq)),
+     f"PPT 단위 {len(EMD.units(_pj6))} · 엑셀 단위 {len(EMD.units(_rq))}")
+_u0 = _uq[0]
+ST.confirm("RFQ01", _u0["unit"], {**_u0, "labels": _LH6(_u0.get("labels") or [])}, ST.doc_state("RFQ01")["hints"])
+_cf0 = ST.confirmed_path().read_bytes()
+_x7 = _sub("ingest-file", str(_RFQ6), "--doc-type", _DT6, "--allow-mock", "--sheets", "2-4:prose 5:ref *:skip")
+_rq2 = json.loads(_P.parsed("RFQ01.json").read_text(encoding="utf-8"))
+show("B146 ⓒ ⓓ 같은 문서를 다시 넣으면 추출 체크포인트 재사용(문서 해시 = 구조 블록 밖) · 사람이 확정한 시트는 구조 블록에 출처 「확정」 · "
+     "확정 기록 파일은 그대로",
+     "체크포인트 재사용" in _x7.stdout and _IDS6.doc_hash(_rq2) == _IDS6.doc_hash({k: v for k, v in _rq2.items() if k != "structure"})
+     and _rq2["structure"]["units"][0]["by"] == "확정" and ST.confirmed_path().read_bytes() == _cf0,
+     f"rc {_x7.returncode} · 첫 단위 {_rq2['structure']['units'][0]['by']} · "
+     + next((ln.strip() for ln in _x7.stdout.splitlines() if "체크포인트" in ln), (_x7.stdout + _x7.stderr)[-160:]))
+ST.confirmed_path().unlink(missing_ok=True)
+
 # ────────────────────────────────────────────────────────────── ⓕ 고침 · 재생
 print("\n■ ⓕ 고침 · 재생")
 with _quiet():

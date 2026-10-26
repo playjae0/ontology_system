@@ -9,8 +9,8 @@
            청크가 시작하는 줄 앞에 ✂ 청크 n — 경로 · 청크 안 판단 필요는 「청크 안 — 경로 영향 없음」 ·
            하위가 없는 형제 줄이 셋 이상 이어지면 첫 줄 + 「… 외 n줄(2)~11))」(판단 필요 · 바뀐 줄은 접지 않는다)
     청크 — 화면은 수 한 줄 · md는 첫 줄 · 끝 줄 · 전체 경로(시트 › … › 자기 제목 — 라벨 잘림 없이)
-md도 들여쓰기를 지킨다(B130 ③) · 고침과 버린 고침의 상세는 md 끝 절에만(`detail_lines`). 판정 0 — 파싱의 구조 셈(`report["structure"]`)과
-봉투 청크를 읽기만 한다.
+md도 들여쓰기를 지킨다(B130 ③) · 고침과 버린 고침의 상세는 md 끝 절에만(`detail_lines`). 판정 0 — 화면은 파싱의 구조 셈
+(`report["structure"]`)을 · md는 **봉투 하나**(구조 블록 + 청크 — `md_lines` · B146 ②)를 읽기만 한다(같은 셈 꼴 · 같은 함수).
 """
 from __future__ import annotations
 
@@ -316,18 +316,20 @@ def total_usage(st):
     return f"구조 합계 — {spent(tot)} · 초안과 다른 줄 {ch}/제목 {hs}"
 
 
-def write_md(doc_id, report, env):
-    """`export/split_<doc_id>.md` — 시트마다 같은 덩어리 + 끝 절(고침 상세)(원자 쓰기) · 쓴 경로를 돌려준다(구조가 없으면 None)."""
-    from core import paths
-    from core.state import store
-    st = (report or {}).get("structure") or {}
-    frames = st.get("프레임") or {}
-    if not frames:
+def md_lines(doc_id, env):
+    """구조 확인 md의 줄들 — **봉투 하나에서**(B146 ② — 구조 블록 `structure` + 청크 · 보고 · 캐시를 읽지 않는다) · 시트마다 같은
+    덩어리 + 끝 절(고침 상세) · 구조 블록이 없으면 None. 쓰는 자리는 `cli/envelope_md.write` 하나다."""
+    from cli import envelope_md as EM
+    from parser.struct_rule import tally_of
+    st = tally_of((env or {}).get("structure"))
+    if not st:
         return None
+    frames = st["프레임"]
     lines = [f"# 구조 확인 — {doc_id}", "", f"- {ladder_usage(st)}", f"- {total_usage(st)}"] + (
         [f"- {toc_field_line(st)}"] if toc_field_line(st) else []) + [""]
-    for frame, fr in frames.items():
-        blk = sheet_block(frame, fr, chunks_of(env, frame), md=True)
+    for u, cs in EM.units(env, "structure"):       # 단위와 그 청크 — 덱 블록과 같은 읽기 함수 (B146 ①)
+        frame = u["unit"]
+        blk = sheet_block(frame, frames[frame], cs, md=True)
         lines += [f"## {blk[0]}", ""]
         fence = False
         for x in blk[1:]:
@@ -344,7 +346,4 @@ def write_md(doc_id, report, env):
         for frame, d in detail:
             lines += [f"- 시트 '{frame}'"] + [f"  - {x}" for x in d] if d else []
         lines.append("")
-    p = paths.export(f"split_{doc_id}.md")
-    paths.ensure(p)
-    store.atomic_write_bytes(p, ("\n".join(lines) + "\n").encode("utf-8"))
-    return p
+    return lines
