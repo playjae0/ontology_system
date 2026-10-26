@@ -300,7 +300,7 @@ _mdq = _P.export("split_RFQ01.md").read_text(encoding="utf-8")
 _P.work("struct_maps", "RFQ01.json").unlink(missing_ok=True)       # 보고 · 캐시 없이 — 봉투(JSON)만
 struct_map.invalidate("B146W")
 _ew = pipeline.parse(_BD6, "B146W", str(ROOT / "tests/fixtures/raw/DOC01.docx"), closed_list=[],
-                     structure=ST.structurer(["process"])).envelope
+                     structure=ST.structurer()).envelope
 _ewj = json.loads(json.dumps(_ew, ensure_ascii=False))
 _uq = (_rq.get("structure") or {}).get("units") or []
 show("B146 ⓐ 구조 블록 — 엑셀 산문(시트 둘 이상) · Word 봉투에 단위마다 목차 나무 · 청크 경계 · 판단 출처 · md는 봉투(JSON) 하나로 찍은 글과 같다",

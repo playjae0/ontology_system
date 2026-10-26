@@ -4,13 +4,14 @@
 층 config · 층 공통 config의 최상위 키를 세 갈래로 가른다 — **분류는 이 표 하나다**(B120 ③ 추출 재사용의 판이 같은 표를 읽는다):
 
   · 추출 — 추출 입력에 실제로 들어가는 칸: 층 `categories`(이름 · 정의문) · `relations`(관계 이름) · `relevance_terms`(렌즈
-    거름) · `extract_patterns`(mock 문형) · `value_categories`(값을 받는 카테고리 — B120 ②) · `prompts`(층 힌트 — 구조 · 추출 ·
-    보강 · 판정 지시문에 덧붙는 층의 말 — B124 ③) · 공통 `categories`(겸 한 줄이
-    정의문 끝에 붙는다) → **산문 추출을 다시 뽑는다** — 추출 · 개요 · 구조 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
-    B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다)
+    거름) · `extract_patterns`(mock 문형) · `value_categories`(값을 받는 카테고리 — B120 ②) · `prompts`(층 힌트 — 목차 노드화 ·
+    추출 · 보강 · 판정 지시문에 덧붙는 층의 말 — B124 ③ · B148 ⑤) · 공통 `categories`(겸 한 줄이
+    정의문 끝에 붙는다) → **산문 추출을 다시 뽑는다** — 추출 · 목차 노드화 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
+    B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다 · 메타의 구조 판단은 층 config를 읽지 않는다 — B148 ①)
   · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `category_pair_map` · `mirrors` · `polarity` · `skeleton` · 공통
     `canonical_scope` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
   · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) · 표에 없는 키 → 영향 없음
+    (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥)
 
 **지난 인입이 쓴 config**는 문서 대장(`doc_registry.json`)의 `config_parts`(칸마다 내용 해시)다 — 인입이 적고(`ingest.register_doc`)
 `bootstrap` 끝 줄이 지금과 칸별로 대조한다(`impact`). 내용은 저장하지 않는다(해시만 — 바뀌었나만 안다).
@@ -23,6 +24,9 @@ import json
 #: 층 config — 갈래마다 키(닫힌 표 · 밖은 「그 밖」)
 LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories", "prompts"),
          "구축": ("relation_patterns", "category_pair_map", "mirrors", "polarity", "skeleton")}
+#: 층 config — 그 밖 갈래의 아는 키(영향 없음 · 갈래 판정은 `kind`가 「그 밖」으로 본다 · B148 ⑥ — 가이드 항목 표의 나머지)
+OTHER = {"질의": ("query_intents", "query_traverse", "cross_layer_traverse", "fact_templates"),
+         "기록": ("layer", "config_version", "registration", "skeleton_version"), "판정 문턱": ("match_threshold",)}
 #: 층 공통 config(`layers/common.json`)
 COMMON = {"추출": ("categories",), "구축": ("canonical_scope",)}
 COMMON_KEY = "공통"
@@ -50,6 +54,11 @@ def extract_key(cfg):
     com = _common()
     return _h({"층": {k: (cfg or {}).get(k) for k in LAYER["추출"] if k in (cfg or {})},
                COMMON_KEY: {k: com.get(k) for k in COMMON["추출"] if k in com}})
+
+
+def layer_keys():
+    """층 config의 아는 키 전부 — 갈래 표(`LAYER`) + 그 밖(`OTHER`) · 차례는 표 그대로."""
+    return tuple(k for table in (LAYER, OTHER) for keys in table.values() for k in keys)
 
 
 def kind(key, common=False):

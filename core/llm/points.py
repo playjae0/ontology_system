@@ -104,18 +104,15 @@ SHEET_ROLE_SCHEMA = {
 }
 
 
-def judge_sheet(name, sample, lenses):
+def judge_sheet(name, sample):
     """지점 ⑩ 시트 역할 판정의 **실호출 갈래** — `{"role": prose|ref, "reason": …}` (B91 ②).
 
-    `lenses`는 `[{"layer", "categories": {이름: 정의문}, "relevance_terms": [...]}]`이다 —
-    **판정 기준은 층 정의다**(사용자 확정 2026-09-29): 템플릿에 층 어휘가 0이고, 무엇이 그
-    층의 글인지는 주입된 정의문이 말한다. 빈 시트는 부르지 않는다(호출부가 `skip`).
-    답이 닫힌 둘 밖이면 `ref`로 읽는다(모르면 ref — 호출부가 그 사실을 이유에 남긴다).
+    입력은 **시트 이름과 표본 줄만**이다(B148 ④ — 층 카테고리 · 관련어 0 · 층을 바꿔도 같은 시트의 답이 같다).
+    빈 시트는 부르지 않는다(호출부가 `skip`). 답이 닫힌 둘 밖이면 `ref`로 읽는다(모르면 ref — 호출부가 그 사실을 이유에 남긴다).
     """
     out = gateway.chat([{"role": "system", "content": gateway.prompt("sheet_role")},
                         {"role": "user", "content": json.dumps(
-                            {"sheet": name, "head_rows": sample, "lenses": lenses},
-                            ensure_ascii=False)}],
+                            {"sheet": name, "head_rows": sample}, ensure_ascii=False)}],
                        json_schema=SHEET_ROLE_SCHEMA, point="sheet_role")
     role = out.get("role")
     reason = str(out.get("reason") or "")[:200]

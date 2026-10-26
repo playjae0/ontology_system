@@ -203,9 +203,9 @@ SH.path(_did_h).unlink(missing_ok=True)   # 지난 실행의 기록이 남아 �
 _rows = SG.rows_of(HID)
 from core.llm import points as _PT        # noqa: E402
 _called, _orig = [], _PT.sheet_judge
-_PT.sheet_judge = lambda: (lambda name, sample, info: _called.append(name) or {"role": "prose", "reason": "시험"})
+_PT.sheet_judge = lambda: (lambda name, sample: _called.append(name) or {"role": "prose", "reason": "시험"})   # 기대 변경(B148 ④ — 표본 줄만)
 try:
-    SG.judge(_rows, None, True)
+    SG.judge(_rows, True)
 finally:
     _PT.sheet_judge = _orig
 _byn = {r["name"]: r for r in _rows}

@@ -42,6 +42,8 @@ UNITS = [{"text": "언와인더 unit", "depth": 1, "role": "대상", "name": "�
          {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"},
          {"text": "리와인더 unit", "depth": 1, "role": "대상", "name": "리와인더 unit", "category": "Unit"},
          {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"}]
+#: 유닛 제목 → 카테고리 — 목차 노드화 mock 힌트(`<doc>@outline.json`)와 추출 소속이 같은 값(B148 ② — 카테고리는 그래프 단계)
+CAT_OF = {x["text"]: x["category"] for x in UNITS if x.get("category")}
 #: 창작 표본 — 둘째 문서는 언와인더 장력만 다른 값(충돌)
 DOCS = {"B120TW": ["언와인더 unit", "1) 기본사양", "속도는 100ppm이다.", "2) 지정사양", "장력은 30N이다. 작성일 2026-10-16 · 3쪽",
                    "리와인더 unit", "1) 기본사양", "속도는 80ppm이다.", "2) 지정사양", "장력은 20N이다."],
@@ -59,7 +61,7 @@ def _value(word, text):
 def _hints(did, p):
     """구조 힌트로 자른 조각마다 추출 힌트(소속 = 사슬의 가장 깊은 대상 · 값 = 말 뒤의 숫자+단위 · 지어낸 값은 INVENTED)."""
     env = pipeline.parse(BX, did, str(p), closed_list=[], sheet_roles={SHEET: "prose"},
-                         structure=ST.structurer(["process"])).envelope
+                         structure=ST.structurer()).envelope
     out = {}
     for c in env["chunks"]:
         own = next((x for x in reversed(c["meta"].get("structure") or []) if x.get("name")), None)
@@ -68,8 +70,9 @@ def _hints(did, p):
             if w + "은" not in c["text"] and w + "는" not in c["text"]:
                 continue
             v = INVENTED.get((did, own and own["name"], w)) or _value(w, c["text"])
+            # 기대 변경(B148 ② — 메타의 사슬에는 카테고리가 없다 · 소속 카테고리는 표본 표(목차 노드화 힌트와 같은 값))
             ents.append({"surface": w, "category": "Property", "value": v,
-                         "belongs_to": {"name": own["name"], "category": own["category"], "from": "제목"} if own else None})
+                         "belongs_to": {"name": own["name"], "category": CAT_OF[own["text"]], "from": "제목"} if own else None})
         if ents:
             out[c["source_locator"]] = {"entities": ents, "relations": [], "attach": []}
     struct_map.invalidate(did)
@@ -123,6 +126,8 @@ for _did, _rows in DOCS.items():
     if _did == "B120TW2":
         _st = [UNITS[0], UNITS[2]]
     (HINTS / f"{_did}@structure.json").write_text(json.dumps({SHEET: _st}, ensure_ascii=False), encoding="utf-8")
+    (HINTS / f"{_did}@outline.json").write_text(json.dumps({t: {"category": c} for t, c in CAT_OF.items()}, ensure_ascii=False),
+                                               encoding="utf-8")
     HINTS_OF[_did] = _hints(_did, _p)
     _put_hints(_did)
     with contextlib.redirect_stdout(io.StringIO()):

@@ -21,6 +21,8 @@ quality는 시험 덧칠의 렌즈 `Unit`):
   ⓓ 이름 — 유닛에 붙은 사양 `공정::유닛::사양`(같은 이름이 유닛마다 다른 노드) · 공정에 붙은 사양 `공정::사양` · 표(CP · PFMEA)는
      `nest_categories`가 있어도 이름이 같다
   ⑤ 화면 — 값 표의 구조 · 소속(출처) · 붙은 자리 칸 = 대장 행
+  B148 ⓐ 층 config(카테고리 목록 · 정의문 · 층 힌트) · 렌즈 관련어를 바꿔도 봉투가 같고 구조 호출 입력(메시지 실물)에 층 어휘 0 ·
+     ⓑ 바꾼 뒤 같은 문서 — 구조는 보존분(LLM 0) · 목차 노드화는 층마다 다시 · ⓒ 렌즈 둘이면 목차 노드화 두 판정(그 층의 카테고리)
 네 벌(ⓔ — 바닥 C에 표본 ⓑ)은 마감 한 줄의 네 벌 단계가 잰다.
 """
 from __future__ import annotations
@@ -46,6 +48,7 @@ from cli import _screen                                 # noqa: E402
 from core.build import ledger as LG, outline as OL, reconcile as RC, structure as ST   # noqa: E402
 from core.build.entry import finalize, run_document     # noqa: E402
 from core.llm import gateway                            # noqa: E402
+from core.state import registry                         # noqa: E402
 from core.state.world import World                      # noqa: E402
 from parser import pipeline, struct_map, tagger as TG, tuning   # noqa: E402
 from parser.adapters import basic_prose_xlsx as BX      # noqa: E402
@@ -98,8 +101,12 @@ FIXES = {"A": [{"row": 1, "what": "역할", "parent": None, "to_row": None, "rol
                 "why": "개요는 유닛이 아니다"}]}
 
 
+#: 표본의 유닛 카테고리(창작 — 목차 노드화 힌트 · 추출 소속이 같은 값)
+UNIT = "Unit"
+
+
 def _hint_struct(key, lay):
-    return {_rows_of(key, lay)[0]: [{"text": t, "depth": d, "role": r, **({"name": n, "category": "Unit"} if n else {})}
+    return {_rows_of(key, lay)[0]: [{"text": t, "depth": d, "role": r, **({"name": n} if n else {})}
                                     for t, d, r, n in STRUCT[key]]}
 
 
@@ -143,6 +150,12 @@ def _structure(body):
             "edits": ANS["@fixes"], "rules": []}
 
 
+def _outline(body):
+    """목차 노드화(그래프 단계 — 가짜 LLM · B148 ②): 메타가 대상으로 정한 제목은 유닛 카테고리 · 그 밖은 이 층의 노드 아님."""
+    return {"headings": [{"id": h["id"], "role": h.get("role"), "name": h.get("name"),
+                          "category": ANS["@unit"] if h.get("role") == "대상" else None} for h in body.get("toc") or []]}
+
+
 def _extract(body):
     text = body["chunk"].split("\n", 1)[-1] if body["chunk"].startswith("[") else body["chunk"]
     chain = body.get("structure_chain") or []
@@ -174,9 +187,10 @@ def _ingest_live(key, lay, did, again=False):
     path, sheet = _xlsx(key, lay, did)
     ANS.clear()
     ANS.update({sheet: STRUCT[key], "@unit": "Unit", "@layer": lay, "@ladder": LADDER[key], "@fixes": FIXES.get(key, [])})
-    with Live(by={"structure": _structure, "extract": _extract, "reinforce": lambda b: {"pick": None}}):
+    # 기대 변경(B148 ② — 카테고리는 목차 노드화가 정한다 · 가짜 LLM에 그 답을 더했다)
+    with Live(by={"structure": _structure, "outline": _outline, "extract": _extract, "reinforce": lambda b: {"pick": None}}):
         res = pipeline.parse(BX, did, str(path), closed_list=TG.closed_list("process"), doc_coord="노칭",
-                             sheet_roles={sheet: "prose"}, structure=ST.structurer([lay]),
+                             sheet_roles={sheet: "prose"}, structure=ST.structurer(),
                              structure_fixes=ST.fixes_of(did))
         env = res.envelope
         env["doc_type"] = f"b119_{lay}"
@@ -380,7 +394,8 @@ _made = []
 
 
 def _mock_doc(did, sheet, rows, struct, words, belongs=True):
-    """mock 힌트 둘(구조 · 추출)과 엑셀 — 추출 힌트는 지금 구조로 자른 조각의 위치로(소속 = 사슬의 가장 깊은 대상)."""
+    """mock 힌트 셋(구조 · 목차 노드화 · 추출)과 엑셀 — 추출 힌트는 지금 구조로 자른 조각의 위치로(소속 = 사슬의 가장 깊은 대상 ·
+    카테고리는 목차 노드화 힌트와 같은 유닛 — 기대 변경 B148 ②: 메타의 사슬에는 카테고리가 없다)."""
     wb = Workbook()
     wb.remove(wb.active)
     ws = wb.create_sheet(title=sheet)
@@ -389,13 +404,15 @@ def _mock_doc(did, sheet, rows, struct, words, belongs=True):
     p = TMP / f"{did}.xlsx"
     wb.save(p)
     (HINTS / f"{did}@structure.json").write_text(json.dumps({sheet: struct}, ensure_ascii=False), encoding="utf-8")
+    (HINTS / f"{did}@outline.json").write_text(json.dumps({x["text"]: {"category": UNIT} for x in struct if x.get("name")},
+                                                          ensure_ascii=False), encoding="utf-8")
     env = pipeline.parse(BX, did, str(p), closed_list=[], sheet_roles={sheet: "prose"},
-                         structure=ST.structurer(["process"])).envelope
+                         structure=ST.structurer()).envelope
     hints = {}
     for c in env["chunks"]:
         own = next((x for x in reversed(c["meta"].get("structure") or []) if x.get("name")), None)
         ents = [{"surface": w, "category": "Property",
-                 "belongs_to": ({"name": own["name"], "category": own["category"], "from": "제목"} if own and belongs else None)}
+                 "belongs_to": ({"name": own["name"], "category": UNIT, "from": "제목"} if own and belongs else None)}
                 for w in words if w + " 기준" in c["text"]]
         if ents:
             hints[c["source_locator"]] = {"entities": ents, "relations": [], "attach": []}
@@ -418,6 +435,11 @@ KNOBS = _P.home() / "knobs.json"                         # 명령(하위 프로�
 KNOBS.write_text(json.dumps({"chunk_rows": [1, 2]}), encoding="utf-8")
 ST.fixes_path().unlink(missing_ok=True)                 # 등록 단(사람의 고침)은 클린이 남긴다 — 시험 몫을 치운다
 _gp = _mock_doc("B119GATE", GATE[0], GATE[1], GATE_ST, ("속도", "하중"), belongs=False)
+# 기대 변경(B148 ② — 카테고리는 목차 노드화가 정한다: 「공급부」는 메타 역할이 주제인 동안은 노드가 아니고, 사람 고침으로 대상이 되면
+# 목차 노드화의 답(창작 힌트)이 카테고리를 준다 · 옛 고침 기록의 category 칸은 읽지 않는다)
+_oh = HINTS / "B119GATE@outline.json"
+_oh.write_text(json.dumps({**json.loads(_oh.read_text(encoding="utf-8")), "공급부": {"category": UNIT}}, ensure_ascii=False),
+               encoding="utf-8")
 _argv = ["ingest-file", str(_gp), "--doc-type", "b119_process", "--allow-mock", "--coord", "노칭", "--sheets", "1:prose"]
 _before = _run(*_argv)
 _b_att = _att_of("B119GATE", "속도")
@@ -480,11 +502,89 @@ for cells in _vrows:
 show("⑤ 값 표 — 구조 칸(가장 가까운 제목 줄의 역할) · 소속(출처) 칸 = 대장 belongs_to(사슬) · 붙은 자리 칸 = 대장 attached (산문 · -v)",
      len(_ok5) >= 4 and all(o for o, *_r in _ok5), f"행 {len(_ok5)} · {[x for x in _ok5 if not x[0]][:2] or _ok5[:1]}")
 
+# ────────────────────────────────────────────────────────────── B148 ①② 구조 판단은 층을 모른다 · 목차 노드화가 층마다
+print("\n■ B148 — 층을 바꿔도 메타가 같다 · 구조는 재사용 · 목차 노드화는 층마다 (표본 ⓑ · 렌즈 둘)")
+SEEN = []
+
+
+class _LiveS(Live):
+    """구조 호출의 입력 실물(지시문 + 사용자 글 — 메시지 전부)을 그대로 모은다."""
+
+    def chat(self, messages, json_schema=None, point=None, **kw):
+        if point == "structure":
+            SEEN.append(json.dumps(messages, ensure_ascii=False))
+        return super().chat(messages, json_schema=json_schema, point=point, **kw)
+
+
+def _parse148(did, full):
+    """표본 ⓑ(process)를 구조 주입으로 파싱 — `full`이면 인입 · 마무리 · 아니면 목차 노드화만(렌즈마다). `(봉투, 구조 입력, 호출)`."""
+    path, sheet = _xlsx("B", "process", did)
+    ANS.clear()
+    ANS.update({sheet: STRUCT["B"], "@unit": UNIT, "@layer": "process", "@ladder": LADDER["B"], "@fixes": FIXES.get("B", [])})
+    del SEEN[:]
+    with _LiveS(by={"structure": _structure, "outline": _outline, "extract": _extract, "reinforce": lambda b: {"pick": None}}):
+        env = pipeline.parse(BX, did, str(path), closed_list=TG.closed_list("process"), doc_coord="노칭",
+                             sheet_roles={sheet: "prose"}, structure=ST.structurer(),
+                             structure_fixes=ST.fixes_of(did)).envelope
+        env["doc_type"] = "b119_process"
+        for c in env["chunks"]:
+            c["doc_type"] = env["doc_type"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            if full:
+                run_document(env)
+                finalize()
+            else:
+                for _l in LAYERS:
+                    OL.run(env, load_config(_l), lens=_l)
+        return env, list(SEEN), list(CALLS)
+
+
+def _bare(env):
+    """봉투에서 시각 칸만 뺀 것(ⓐ — 청크 · 구조 블록 · 시트 역할은 그대로)."""
+    return json.loads(re.sub(r'"(parsed_at|created_at|at|ts)": "[^"]*"', '"\\1": ""', json.dumps(env, ensure_ascii=False)))
+
+
+_setup()
+registry.set_lenses("b119_process", list(LAYERS))
+_env1, _seen1, _c1 = _parse148("B148S", full=True)
+_vocab1 = {c for _l in LAYERS for c in load_config(_l)["categories"]}
+_hint1 = (load_config("process").get("prompts") or {}).get("structure") or ""
+_src1 = [(OL.load("B148S", _l) or {}).get("source") for _l in LAYERS]
+
+
+def _swap(c):                                             # 상태 2 — 카테고리 목록 · 정의문 · 층 힌트 · 렌즈 관련어를 바꾼다
+    c["categories"] = {**{k: f"{v} — B148 바꾼 정의문" for k, v in c["categories"].items()}, "Mystery148": "B148 새 카테고리"}
+    c.setdefault("prompts", {})["structure"] = "B148 층 힌트 — 이 층에서 유닛 제목은 Mystery148이다."
+    c["relevance_terms"] = ["B148관련어"]
+
+
+for _l in LAYERS:
+    _rw(_P.layers(_l, "config.json"), _swap)
+_envb, _seenb, _cb = _parse148("B148S", full=False)       # ⓑ 같은 문서 — 구조는 보존분 · 목차 노드화는 층마다 다시
+struct_map.invalidate("B148S")                           # ⓐ 구조 보존분을 지우고 다시 묻는다 — 입력 · 봉투가 상태 1과 같아야 한다
+_env2, _seen2, _c2 = _parse148("B148S", full=False)
+_vocab = _vocab1 | {c for _l in LAYERS for c in load_config(_l)["categories"]}
+_leak = sorted(w for w in _vocab | {_hint1[:24], "B148 층 힌트", "B148관련어"} if w and any(w in s for s in _seen1 + _seen2))
+_ol1 = [b for p, b in _c1 if p == "outline"]
+_olb = [b for p, b in _cb if p == "outline"]
+show("ⓐ 층 config(카테고리 목록 · 정의문 · 층 힌트) · 렌즈 관련어를 바꾼 두 상태 — 봉투(청크 · 구조 블록 · 시트 역할)가 같다(시각 칸 "
+     "제외) · 구조 호출 입력(메시지 실물)이 같고 층 카테고리 이름 · 층 힌트 0",
+     _seen1 and _seen1 == _seen2 and _bare(_env1) == _bare(_env2) and not _leak,
+     f"구조 호출 {len(_seen1)} → {len(_seen2)} · 같은 입력 {_seen1 == _seen2} · 봉투 같음 {_bare(_env1) == _bare(_env2)} · 샌 말 {_leak}")
+show("ⓑ 층 config를 바꾼 뒤 같은 문서 — 구조 판단은 보존분(LLM 0) · 목차 노드화는 그 층에서 다시 묻는다(새 카테고리가 입력에)",
+     not _seenb and len(_olb) == len(LAYERS) and all("Mystery148" in b["categories"] for b in _olb),
+     f"구조 호출 {len(_seenb)} · 목차 노드화 호출 {len(_olb)}")
+show("ⓒ 목차 노드화는 층마다 — 렌즈 둘(process · quality)이면 두 판정 · 입력 카테고리는 그 층의 것 · 메타가 대상으로 정한 제목도 "
+     "LLM이 카테고리를 정한다(구조를 옮기는 갈래 0)",
+     len(_ol1) == 2 and {"Property" in b["categories"] for b in _ol1} == {True, False} and _src1 == ["live", "live"],
+     f"호출 {len(_ol1)} · 카테고리 {[sorted(b['categories']) for b in _ol1]} · 출처 {_src1}")
+registry.set_lenses("b119_process", ["process"])
+
 # ── 정리
 KNOBS.unlink(missing_ok=True)
 ST.fixes_path().unlink(missing_ok=True)
 for _d in _made:
-    for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@structure.json"):
+    for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@structure.json", HINTS / f"{_d}@outline.json"):
         _p.unlink(missing_ok=True)
 for lay in LAYERS:
     _unregister(f"b119_{lay}")

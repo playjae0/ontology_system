@@ -2,15 +2,17 @@
 """칸 2.4 · ⑪ — **계층 사다리(문서당 1) · 골격 보기 · 시트 확인(시트당 1)** — LLM은 규칙을 정하고 확인한다 · 코드는 재료 · 적용 · 검사 (B132 ③⑤).
 
     사다리   입력 = 문서의 앞부분(사슬이 가장 깊이 내려간 첫 대목의 골격 보기 · 길어도 `FRONT_ROWS`행) + 문서 전체 서명 통계 + 코드 사다리 +
-             문서 맥락 + 층 힌트 + 문서 힌트 — **줄 전문 0** · 출력 = 단마다 서명 · 역할 · 카테고리 + 번호 없는 제목의 규칙
+             문서 맥락 + 문서 힌트 — **줄 전문 0 · 층 0**(B148 ① — 층 카테고리 · 정의문 · 층 힌트를 받지 않는다) · 출력 = 단마다 서명 ·
+             역할 + 번호 없는 제목의 규칙(카테고리 0 — 그래프 단계의 목차 노드화가 층마다 정한다)
     시트 확인 입력 = 그 시트의 골격 보기(제목 줄은 앞 `HEAD_CHARS`자 + 「…총 n자」 · 서명 · 깊이 · 시작 열 · 역할 · 본문은 접는다 · 판단
              필요 행은 이유와 앞뒤 `NEAR`줄) + 사다리 + 문서 힌트 · 출력 = 판단 필요 행마다 답(빠짐없이) + 고침(B126 여섯 동사) + 사다리 고침
-    검사     서명은 그 문서에 있는 것 · 역할은 셋 · 카테고리는 닫힌 목록 · 조건은 닫힌 목록 — **어긋난 칸만** 버린다(결함 로그)
+    검사     서명은 그 문서에 있는 것 · 역할은 셋 · 조건은 닫힌 목록 — **어긋난 칸만** 버린다(결함 로그)
     답 꼴   `shape` 한 함수(실호출 답 · mock 힌트) — 답이 dict가 아니면 답 전체를 · 목록이어야 하는 칸이 목록이 아니면 그 칸을 버린다
              (사다리는 코드 사다리 · 시트 확인은 사다리 목차 그대로 · 결함 로그 한 줄 — B134 ②)
 
 mock — 사다리는 힌트 `<doc_id>@ladder.json` · 시트 확인은 `<doc_id>@structure.json`의 그 시트(`{answers, edits, rules}` 또는 나무
-`[{text, depth, role, name?, category?}]` — 나무는 지금 목차에 대한 고침으로 바꿔 쓴다) · 없으면 판정 없음(사다리는 코드 사다리).
+`[{text, depth, role, name?}]` — 나무는 지금 목차에 대한 고침으로 바꿔 쓴다 · 옛 힌트의 `category`는 읽지 않는다) · 없으면 판정 없음
+(사다리는 코드 사다리).
 """
 from __future__ import annotations
 
@@ -39,14 +41,13 @@ LADDER_SCHEMA = {
         "levels": {"type": "array", "items": {
             "type": "object",
             "properties": {"sigs": {"type": "array", "items": {"type": "string"}}, "role": _ROLE,
-                           "category": {"type": ["string", "null"]}, "rows": {"type": "array", "items": {"type": "integer"}},
-                           "why": {"type": "string"}},
-            "required": ["sigs", "role", "category", "rows", "why"], "additionalProperties": False}},
+                           "rows": {"type": "array", "items": {"type": "integer"}}, "why": {"type": "string"}},
+            "required": ["sigs", "role", "rows", "why"], "additionalProperties": False}},
         "unnumbered": {"type": "array", "items": {
             "type": "object",
             "properties": {"when": {"type": "array", "items": {"type": "string"}}, "level": {"type": "integer"},
-                           "role": _ROLE, "category": {"type": ["string", "null"]}, "why": {"type": "string"}},
-            "required": ["when", "level", "role", "category", "why"], "additionalProperties": False}}},
+                           "role": _ROLE, "why": {"type": "string"}},
+            "required": ["when", "level", "role", "why"], "additionalProperties": False}}},
     "required": ["levels", "unnumbered"], "additionalProperties": False,
 }
 
@@ -59,9 +60,8 @@ def check_schema():
                     "type": "object",
                     "properties": {"row": {"type": "integer"}, "heading": {"type": "boolean"},
                                    "parent": {"type": ["integer", "null"]}, "role": _ROLE,
-                                   "name": {"type": ["string", "null"]}, "category": {"type": ["string", "null"]},
-                                   "why": {"type": "string"}},
-                    "required": ["row", "heading", "parent", "role", "name", "category", "why"],
+                                   "name": {"type": ["string", "null"]}, "why": {"type": "string"}},
+                    "required": ["row", "heading", "parent", "role", "name", "why"],
                     "additionalProperties": False}},
                 "edits": EDIT_SCHEMA["properties"]["edits"], "rules": EDIT_SCHEMA["properties"]["rules"]},
             "required": ["answers", "edits", "rules"], "additionalProperties": False}
@@ -178,12 +178,13 @@ def shape(doc_id, what, out, frame=None):
 
 
 # ---------------------------------------------------------------- 사다리 — 호출 · mock · 검사
-def ask_ladder(frames, built, code, cats, cfgs=None, ctx=None, hints=None):
+def ask_ladder(frames, built, code, ctx=None, hints=None):
+    """사다리 실호출 — 지시문은 공통 지시문 그대로(층 힌트 0 · B148 ①) · 입력에 층 카테고리 0."""
     with gateway.branch("구조 사다리"):                    # 태그는 시트 확인과 같다 — 끝 표의 갈래는 따로 (B139 ⑤)
         out = gateway.chat(
-            [{"role": "system", "content": gateway.prompt_for(PROMPT, cfgs or {}, "structure")},
+            [{"role": "system", "content": gateway.prompt(PROMPT)},
              {"role": "user", "content": json.dumps(
-                 {"task": "ladder", "categories": cats, "context": ctx or {}, "front": front(frames, built),
+                 {"task": "ladder", "context": ctx or {}, "front": front(frames, built),
                   "stats": PL.stats(frames), "code_ladder": code, "hints": list(hints or [])}, ensure_ascii=False)}],
             json_schema=LADDER_SCHEMA, point="structure")
     return out or {}
@@ -203,8 +204,8 @@ def _when_ok(w):
     return w in PL.WHEN or w.startswith("깊이 ") or w.startswith("시작 열 ")
 
 
-def check_ladder(doc_id, raw, frames, cats):
-    """사다리 답의 검사 — `(사다리 또는 None, 버림 [사유])` · 서명은 그 문서에 있는 것 · 한 서명은 한 단 · 역할 셋 · 카테고리 목록 ·
+def check_ladder(doc_id, raw, frames):
+    """사다리 답의 검사 — `(사다리 또는 None, 버림 [사유])` · 서명은 그 문서에 있는 것 · 한 서명은 한 단 · 역할 셋 ·
     조건 닫힌 목록 — 어긋난 칸만 버린다(남은 단 · 규칙이 0이면 None → 코드 사다리 · 번호 없는 문서는 규칙만으로 선다)."""
     raw, bad = shape(doc_id, "사다리", raw)
     if raw is None:
@@ -233,11 +234,7 @@ def check_ladder(doc_id, raw, frames, cats):
         role = lv.get("role") if lv.get("role") in ROLES else None
         if lv.get("role") not in (None, *ROLES):
             drop(f"역할 밖 '{lv.get('role')}'")
-        cat = lv.get("category") if role in TARGET_ROLES else None
-        if cat is not None and cat not in cats:
-            drop(f"닫힌 목록 밖 카테고리 '{cat}'")
-            cat = None
-        levels.append({"sigs": sigs, "role": role, "category": cat, "why": str(lv.get("why") or "")[:200],
+        levels.append({"sigs": sigs, "role": role, "why": str(lv.get("why") or "")[:200],
                        "rows": [r for r in (lv.get("rows") if isinstance(lv.get("rows"), list) else []) if isinstance(r, int)][:6]})
     rules = []
     for u in raw["unnumbered"]:
@@ -246,8 +243,7 @@ def check_ladder(doc_id, raw, frames, cats):
                 or u.get("role") not in (None, *ROLES):
             drop(f"번호 없는 제목 규칙 버림 {json.dumps(u, ensure_ascii=False)[:120]}")
             continue
-        cat = u.get("category") if u.get("role") in TARGET_ROLES and u.get("category") in cats else None
-        rules.append({"when": [str(w) for w in u["when"]], "level": u["level"], "role": u.get("role"), "category": cat,
+        rules.append({"when": [str(w) for w in u["when"]], "level": u["level"], "role": u.get("role"),
                       "why": str(u.get("why") or "")[:200]})
     if not levels and not rules:
         return None, bad
@@ -281,25 +277,24 @@ def check_rules(doc_id, frame, rules, have):
     return kept, bad
 
 
-def fix_ladder(ladder, rules, cats):
-    """**사다리 고침**(시트 확인 · 사람 힌트의 규칙 `{shape, role, category, parent_shape, scope, said}` — `shape` = 서명) — 새 사다리 · 결정적.
+def fix_ladder(ladder, rules):
+    """**사다리 고침**(시트 확인 · 사람 힌트의 규칙 `{shape, role, parent_shape, scope, said}` — `shape` = 서명) — 새 사다리 · 결정적.
 
-    범위 「꼴 전부」 — 그 서명의 단에 역할 · 카테고리를 건다(단에 서명이 여럿이면 그 서명만 떼어 같은 자리에 새 단) · `parent_shape`가 오면
-    그 서명을 그 서명 단의 바로 아래 단으로 옮긴다 · 사다리에 없는 서명은 맨 아래(또는 부모 서명 아래)에 새 단으로 · 닫힌 목록 밖은 버린다.
+    범위 「꼴 전부」 — 그 서명의 단에 역할을 건다(단에 서명이 여럿이면 그 서명만 떼어 같은 자리에 새 단) · `parent_shape`가 오면
+    그 서명을 그 서명 단의 바로 아래 단으로 옮긴다 · 사다리에 없는 서명은 맨 아래(또는 부모 서명 아래)에 새 단으로 · 역할 밖은 역할 없음.
     범위 「첫 서수 목록」(B137 ⑤) — 단은 그대로 두고 `lists`에 「`parent_shape` 아래에서 첫 서수로 시작하는 그 서명의 목록」을 건다(그 목록의
-    줄만 그 줄의 자식 · 역할 · 카테고리 — `parser/ladder.apply`)."""
+    줄만 그 줄의 자식 · 역할 — `parser/ladder.apply`) · 옛 규칙의 `category`는 읽지 않는다(B148 ①)."""
     levels = [dict(lv, sigs=list(lv.get("sigs") or [])) for lv in (ladder or {}).get("levels") or []]
     lists = [dict(u) for u in (ladder or {}).get("lists") or []]
     for rule in rules or []:
         s, psh = rule.get("shape"), rule.get("parent_shape")
         role = rule.get("role") if rule.get("role") in ROLES else None
-        cat = rule.get("category") if role in TARGET_ROLES and rule.get("category") in cats else None
         if not s:
             continue
         if scope_of(rule) == SE_SCOPES[1]:
             if psh:
                 lists = [u for u in lists if (u["shape"], u["parent_shape"]) != (s, psh)] + [
-                    {"shape": s, "parent_shape": psh, "role": role, "category": cat,
+                    {"shape": s, "parent_shape": psh, "role": role,
                      "why": str(rule.get("said") or "사람 힌트")[:200], "by": "고침"}]
             continue
         at = next((i for i, lv in enumerate(levels) if s in lv["sigs"]), None)
@@ -311,17 +306,18 @@ def fix_ladder(ladder, rules, cats):
                 at += 1
         pi = next((i for i, lv in enumerate(levels) if psh in lv["sigs"]), None) if psh else None
         where = pi + 1 if pi is not None else (at if at is not None else len(levels))
-        levels.insert(min(where, len(levels)), {"sigs": [s], "role": role, "category": cat,
+        levels.insert(min(where, len(levels)), {"sigs": [s], "role": role,
                                                 "why": str(rule.get("said") or "사람 힌트")[:200], "rows": [], "by": "고침"})
     return {**(ladder or {}), "levels": levels, **({"lists": lists} if lists else {})}
 
 
 # ---------------------------------------------------------------- 시트 확인 — 호출 · mock · 답을 고침으로
-def ask_check(frame, labs, built, ladder, cats, cfgs=None, ctx=None, hints=None, prev=None):
+def ask_check(frame, labs, built, ladder, ctx=None, hints=None, prev=None):
+    """시트 확인 실호출 — 공통 지시문 그대로(층 힌트 0 · B148 ①) · 입력에 층 카테고리 0."""
     out = gateway.chat(
-        [{"role": "system", "content": gateway.prompt_for(PROMPT, cfgs or {}, "structure")},
+        [{"role": "system", "content": gateway.prompt(PROMPT)},
          {"role": "user", "content": json.dumps(
-             {"task": "check", "categories": cats, "frame": frame, "context": ctx or {}, "ladder": ladder,
+             {"task": "check", "frame": frame, "context": ctx or {}, "ladder": ladder,
               "toc": skeleton(labs, built["headings"], built["needs"]),
               "needs": [{"row": n["row"], "need": n["kind"], "why": n["why"], **({"rows": n["rows"]} if n.get("rows") else {})}
                         for n in built["needs"]],
@@ -331,7 +327,7 @@ def ask_check(frame, labs, built, ladder, cats, cfgs=None, ctx=None, hints=None,
 
 
 def hint_check(doc_id, frame, labs, heads, needs=()):
-    """mock — 그 시트의 힌트 · 없으면 None. 나무 꼴(`[{text, depth, role, name?, category?}]`)은 지금 목차에 대한 고침으로 바꾼다
+    """mock — 그 시트의 힌트 · 없으면 None. 나무 꼴(`[{text, depth, role, name?}]`)은 지금 목차에 대한 고침으로 바꾼다
     (나무는 줄 전부를 말하므로 판단 필요의 답을 겸한다 — 판단 필요 행은 답으로 · 나머지는 고침으로)."""
     from core.state import fixtures as _fx
     p = _fx.EXTRACT_HINTS / f"{doc_id}@structure.json"
@@ -346,12 +342,12 @@ def hint_check(doc_id, frame, labs, heads, needs=()):
     want = _tree_rows(labs, hint)
     ask = {n["row"] for n in needs}
     answers = [{"row": r, "heading": r in want, "parent": (want.get(r) or {}).get("parent"),
-                **{k: (want.get(r) or {}).get(k) for k in ("role", "name", "category")}, "why": "힌트 나무"} for r in sorted(ask)]
+                **{k: (want.get(r) or {}).get(k) for k in ("role", "name")}, "why": "힌트 나무"} for r in sorted(ask)]
     return {"answers": answers, "edits": tree_edits(labs, heads, hint, skip=ask), "rules": []}
 
 
 def _tree_rows(labs, tree):
-    """나무 꼴 → `{행: {parent, role, name, category}}`(줄 글자로 찾는다 — 같은 글자는 차례대로 · 0단은 시트)."""
+    """나무 꼴 → `{행: {parent, role, name}}`(줄 글자로 찾는다 — 같은 글자는 차례대로 · 0단은 시트)."""
     rows = [x for x in labs if x["row"] != FRAME_ROW]
     want, stack, at = {}, [], 0
     for e in tree or []:
@@ -368,7 +364,7 @@ def _tree_rows(labs, tree):
         at = i + 1
         while stack and stack[-1][0] >= d:
             stack.pop()
-        want[rows[i]["row"]] = {"parent": stack[-1][1] if stack else None, **{k: e.get(k) for k in ("role", "name", "category")}}
+        want[rows[i]["row"]] = {"parent": stack[-1][1] if stack else None, **{k: e.get(k) for k in ("role", "name")}}
         stack.append((d, rows[i]["row"]))
     return want
 
@@ -389,18 +385,18 @@ def tree_edits(labs, heads, tree, skip=()):
         elif have[r].get("parent") != w["parent"]:
             edits.append(_e(r, "부모 바꿈", parent=w["parent"], why="힌트 나무"))
         if w.get("role") in TARGET_ROLES and w.get("name"):
-            edits.append(_e(r, "대상", name=w["name"], category=w.get("category"), why="힌트 나무"))
+            edits.append(_e(r, "대상", name=w["name"], why="힌트 나무"))
         elif w.get("role"):
             edits.append(_e(r, "역할", role=w["role"], why="힌트 나무"))
     if frame_t and frame_t.get("role"):
         edits.append(_e(FRAME_ROW, "대상" if frame_t.get("name") else "역할", role=frame_t.get("role"),
-                        name=frame_t.get("name"), category=frame_t.get("category"), why="힌트 나무(시트)"))
+                        name=frame_t.get("name"), why="힌트 나무(시트)"))
     return edits
 
 
 def _e(row, what, **kw):
     return {"row": row, "what": what, "parent": kw.get("parent"), "to_row": None, "role": kw.get("role"),
-            "name": kw.get("name"), "category": kw.get("category"), "why": kw.get("why") or "",
+            "name": kw.get("name"), "why": kw.get("why") or "",
             **({"src": kw["src"]} if kw.get("src") else {})}
 
 
@@ -413,7 +409,7 @@ def group_rules(needs, answers, labs):
     for a in answers or []:
         n = ask.get(a.get("row"))
         if n and a.get("heading") and sig.get(n["row"]):
-            out.append({"shape": sig[n["row"]], "role": a.get("role"), "category": a.get("category"),
+            out.append({"shape": sig[n["row"]], "role": a.get("role"),
                         "parent_shape": sig.get(a.get("parent")), "scope": SE_SCOPES[0],
                         "said": f"판단 필요 답 — '{SG.show(sig[n['row']])}' 줄 {len(n['rows'])}줄은 제목 · {a.get('why') or ''}"[:200]})
     return out
@@ -443,7 +439,7 @@ def answers_to_edits(doc_id, frame, heads, needs, answers):
             elif have[r].get("parent") != a.get("parent"):
                 edits.append(_e(r, "부모 바꿈", parent=a.get("parent"), why=why, src="답"))
             if a.get("role") in TARGET_ROLES and a.get("name"):
-                edits.append(_e(r, "대상", name=a.get("name"), category=a.get("category"), why=why, src="답"))
+                edits.append(_e(r, "대상", name=a.get("name"), why=why, src="답"))
             elif a.get("role"):
                 edits.append(_e(r, "역할", role=a.get("role"), why=why, src="답"))
         elif r in have:

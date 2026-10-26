@@ -46,10 +46,6 @@ KNOBS = {
     "form_auto": ("parser.form", ("AUTO_MIN_FOR", "AUTO_MAX_AGAINST"), "pair0",
                   "형태 판정 자동 조건 [찬성 최소, 반대 최대]",
                   "python run.py show dist forms"),
-    "sheet_min_hits": ("parser.form", ("SHEET_MIN_HITS",), "int0",
-                       "시트 로직 제안의 사전 적중 문턱 — 모양이 산문이어도 렌즈 층 어휘가 이만큼(종) "
-                       "안 나오면 ref · 자동 모드는 로직과 LLM이 합의해야 자동",
-                       "python run.py show dist sheets"),
     "skeleton_column_pct": ("parser.tagger", ("SKELETON_COLUMN_PCT",), "pct",
                             "등록 관문 골격 값 열 문턱(%) — entity 열의 값이 이 비율 이상 골격 목록에 있으면 "
                             "FAIL(좌표·anchor로 매핑해야 한다)",
@@ -156,6 +152,8 @@ def default(name):
 
 #: **폐기한 값 → 바꿀 값**(B132 ⑧ — 운영 관문이 그 문면으로 멈춘다 · 조용히 바꾸지 않는다)
 RETIRED = {"structure_mode": {"edit": "ladder", "llm": "ladder"}}
+#: **폐기한 키 → 까닭**(B148 ④ — 파일에 있으면 운영 관문이 지울 키를 말하며 멈춘다 · 조용히 무시하지 않는다)
+RETIRED_KEYS = {"sheet_min_hits": "시트 역할 로직 제안은 모양만 본다(층 어휘 적중 0 — B148 ④)"}
 
 
 def _check(name, v, dflt):
@@ -199,6 +197,12 @@ def load():
     if not isinstance(raw, dict):
         raise KnobError(f"[상태] 손잡이 파일은 {{이름: 값}} 한 벌이다 — {paths.show(p)}")
     vals = {k: v for k, v in raw.items() if not k.startswith("_")}   # `_`로 시작하면 주석
+    gone = sorted(k for k in vals if k in RETIRED_KEYS)
+    if gone:
+        raise KnobError(
+            f"[상태] 손잡이 파일에 폐기한 키 {gone} — {paths.show(p)}\n"
+            + "".join(f"  {k} — {RETIRED_KEYS[k]}\n" for k in gone)
+            + f"  ▶ 다음 줄: 그 키를 지운다 → python run.py show knobs")
     bad = sorted(set(vals) - set(KNOBS))
     if bad:
         raise KnobError(
@@ -289,4 +293,4 @@ def rows():
 
 #: 인입 기록에 싣는 손잡이 — 청크를 가르는 셋 · 형태·시트 판정
 PARSE_RECORD = ("heading_max_chars", "chunk_rows", "chunk_max_chars", "form_auto",
-                "sheet_thresholds", "sheet_min_hits", "ppt_slide_chars")
+                "sheet_thresholds", "ppt_slide_chars")

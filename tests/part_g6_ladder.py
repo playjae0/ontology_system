@@ -91,7 +91,7 @@ def _llm(body):
 
 def _parse(p, confirmed=None):
     return pipeline.parse(BX, DID, str(p), closed_list=[], sheet_roles={S1: "prose", S2: "prose"},
-                          structure=ST.structurer(["process"]), structure_confirmed=confirmed)
+                          structure=ST.structurer(), structure_confirmed=confirmed)
 
 
 def _tree(res, frame):
@@ -140,9 +140,10 @@ _chk = {b["frame"]: b for p, b in CALLS if p == "structure" and b.get("task") ==
 _h1 = {h["row"]: h for h in _f1["headings"]}
 _want = [(1, None), (2, 1), (3, 2), (5, 2), (6, 5), (8, 5), (12, 1), (13, 12), (15, 12), (17, 12), (20, None), (22, 1)]
 _lin = json.dumps(_lad[0], ensure_ascii=False) if _lad else ""
-show("ⓒ 사다리 답(`9. › 가.(대상 · Unit) › 9) › A.`)으로 목차가 맞고 단의 역할이 줄에(대상 이름 = 번호를 뗀 글) · 사다리 호출 문서당 1 · "
-     "입력에 줄 전문 0(본문 · 긴 제목의 전문 없음)",
-     _tree(_r, S1) == _want and (_h1[2]["role"], _h1[2]["name"], _h1[2]["category"]) == ("대상", "노칭 unit", "Unit")
+show("ⓒ 사다리 답(`9. › 가.(대상) › 9) › A.`)으로 목차가 맞고 단의 역할이 줄에(대상 이름 = 번호를 뗀 글 · 카테고리 칸 0) · 사다리 호출 "
+     "문서당 1 · 입력에 줄 전문 0(본문 · 긴 제목의 전문 없음)",
+     # 기대 변경(B148 ① — 메타는 층을 모른다: 줄에 역할 · 이름만 · 카테고리는 그래프 단계의 목차 노드화가 정한다)
+     _tree(_r, S1) == _want and (_h1[2]["role"], _h1[2]["name"]) == ("대상", "노칭 unit") and "category" not in _h1[2]
      # 기대 변경(B137 ② — 1행은 시트 제목 · 역할은 시트 확인이 정한다 — 사다리 단의 역할 「주제」를 받지 않는다)
      and _h1[12]["name"] == "스태킹 unit" and _h1[1]["by"] == "시트 제목" and len(_lad) == 1
      and FOLDED not in _lin and LONG not in _lin and "stats" in _lad[0],
@@ -254,7 +255,7 @@ class _OldAdapter:
 
 
 _ro = pipeline.parse(_OldAdapter, DID, str(_x), closed_list=[], sheet_roles={S1: "prose", S2: "prose"},
-                     structure=ST.structurer(["process"]))
+                     structure=ST.structurer())
 show("B134 ⓓ 지도 훅을 받지 않는 옛 꼴 어댑터가 지금처럼 파싱된다(훅 없이 · 청크가 선다)",
      _ro.ok and len(_ro.envelope["chunks"]) > 0 and "structure" not in _ro.report,
      f"ok {_ro.ok} · 청크 {len((_ro.envelope or {}).get('chunks') or [])} · {_ro.failures[:1]}")
@@ -280,10 +281,11 @@ _tl = lambda scr, r: next((ln for ln in scr.splitlines() if ln.lstrip(" │├�
 _ind = {r: _tl(_scr, r).find(f"{r}행 ") for r in (5, 6)}
 _md = _EMD146.write(DID, _rg.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 # 기대 변경(B137 ⑥ — 사다리는 첫 서수 표기 · 판단 필요는 따로 목록이 아니라 목차 줄에 표지 + 답 · B139 ④ — 목차는 나무 글자 · 청크 경로는 ✂ 줄(B139 ⓓ))
-LINE = "계층 사다리: 시트 › 1.(주제) › 가.(대상 · Unit) › 1)(묶음) › A."
+# 기대 변경(B148 ③ — 사다리 줄의 문면 비교는 지움(화면 글자) · 화면의 사다리 한 줄이 md에 같은 줄이라는 성질만)
+LINE = next((ln.strip() for ln in _scr.splitlines() if ln.strip().startswith("계층 사다리: 시트 › ")), None)
 _l20 = [ln for ln in (_scr + "\n" + _md).splitlines() if ln.lstrip(" -│├└─").startswith("20행 ")]
 show("ⓖ 화면 — 사다리 한 줄 · 나무 목차(A.가 2)보다 한 단 깊다) · 판단 필요와 답(목차 줄) · md에 같은 줄",
-     _go and LINE in _scr and LINE in _md and _ind[6] > _ind[5] > 2
+     _go and LINE and LINE in _md and _ind[6] > _ind[5] > 2
      and len(_l20) == 2 and all(split_report.NEED_MARK in ln and "맨 위(LLM)" in ln for ln in _l20),
      " / ".join(ln.strip()[:90] for ln in _scr.splitlines() if "계층 사다리" in ln or "20행" in ln)[:300])
 ST.confirmed_path().unlink(missing_ok=True)
@@ -308,7 +310,7 @@ print("\n■ ⓚ 개요 · 덱 — 판이 구조와 따로 · 옛 보존분 재�
 from core.build import deck as DK                         # noqa: E402
 from core.build.extract import prompt_version             # noqa: E402
 from parser import deck as PD                             # noqa: E402
-_cf = ST._cfgs(["process"])
+_cf = DK._cfgs(["process"])                              # 기대 변경(B148 ⑤ — 층 config를 읽는 자리는 덱 몫 · 구조 판단은 층 0)
 _k1 = DK.key(_cf)
 ST.MODE = "rules"
 _k2 = DK.key(_cf)
@@ -330,7 +332,8 @@ show("ⓚ 개요 · 덱은 구조 지시문과 판이 따로 · 덱 열쇠는 �
      "제 지시문(판은 개요 판 그대로) · B134 판 개요 체크포인트도 재사용 · 개요 지시문에 고침 · 덱 절 0",
      prompt_version("outline") != prompt_version(ST.PROMPT) and _k1 == _k2 and "mode" not in _k1 and not _asked and _got is not None
      and DK.PROMPT == "deck" and gateway.prompt_path("deck") != gateway.prompt_path("outline")
-     and prompt_version("deck") == prompt_version("outline") and _OLK._reuse("B135K", None, _onow, _op)[0] is not None
+     # 기대 변경(B148 ② — 「덱 판 = 개요 판」(B135에 한 번 맞춘 것의 확인)은 지움 · 개요 지시문을 고쳐도 덱은 다시 돌지 않는다)
+     and _OLK._reuse("B135K", None, _onow, _op)[0] is not None
      and "고침 입력" not in _otxt and "덱 입력" not in _otxt and '"mode": "edit"' not in _otxt,
      f"개요 판 {prompt_version('outline')} · 덱 판 {prompt_version('deck')} · 구조 판 {prompt_version(ST.PROMPT)} · 덱 다시 물음 {len(_asked)}")
 
@@ -390,7 +393,7 @@ def _llm7(body):
 
 def _p7(confirmed=None):
     return pipeline.parse(BX, D7, str(_x7()), closed_list=[], sheet_roles={SA: "prose", SB: "prose"},
-                          structure=ST.structurer(["process"]), structure_confirmed=confirmed)
+                          structure=ST.structurer(), structure_confirmed=confirmed)
 
 
 struct_map.invalidate(D7)
@@ -528,14 +531,14 @@ show("B138 ⓐ 자동 번호 — 「1. › 가. › 1)」(문단 직접 · 스�
      and "자동 번호 · 수준 1" in (BD._marks(_ra).get(next(i for i, p in _pa.items() if p["text"] == "특수 항목")) or []),
      str(_txt[:9]))
 struct_map.invalidate("B138A")
-_wa = pipeline.parse(BD, "B138A", str(_xa), closed_list=[], structure=ST.structurer(["process"]))
+_wa = pipeline.parse(BD, "B138A", str(_xa), closed_list=[], structure=ST.structurer())
 _fa8 = _wa.report["structure"]["프레임"][BD.FRAME]
 _ix = {p["text"]: p["index"] for p in _ra["paragraphs"]}
 _par8 = {h["row"]: h.get("parent") for h in _fa8["headings"]}
 _want8 = {_ix["이송 사양서"]: None, _ix["1. 이송 물류"]: _ix["이송 사양서"], _ix["2. 적재"]: _ix["이송 사양서"],
           _ix["1) 검수"]: [p["index"] for p in _ra["paragraphs"] if p["text"] == "가. 기본사양"][0]}
 struct_map.invalidate("B138B")
-_wb8 = pipeline.parse(BD, "B138B", str(_xb), closed_list=[], structure=ST.structurer(["process"]))
+_wb8 = pipeline.parse(BD, "B138B", str(_xb), closed_list=[], structure=ST.structurer())
 _rb = read(str(_xb))
 _ib = {p["text"]: p["index"] for p in _rb["paragraphs"]}
 _fb8 = _wb8.report["structure"]["프레임"][BD.FRAME]
@@ -550,7 +553,7 @@ show("B138 ⓑ 목차 — 개요 없는 자동 번호 문서가 B137 함수로 �
 _ch8 = " ".join(c["text"] for c in _wa.envelope["chunks"])
 _md8 = _EMD146.write("B138A", _wa.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 struct_map.invalidate("B138C")
-_fc8 = pipeline.parse(BD, "B138C", str(_xc), closed_list=[], structure=ST.structurer(["process"])).report["structure"]["프레임"][BD.FRAME]
+_fc8 = pipeline.parse(BD, "B138C", str(_xc), closed_list=[], structure=ST.structurer()).report["structure"]["프레임"][BD.FRAME]
 _lc = {x["row"] for x in _fc8["labels"] if "……" in str(x.get("text"))}
 show("B138 ⓒ 목차 필드 — 문서 앞 목차 필드의 줄이 목차 · 청크에 0 · 구조 확인(md)에 「목차 필드 — 2줄 거름」 · 필드가 아닌 손 목차 줄은 "
      "판단 필요(「손 목차?」)",
@@ -592,7 +595,7 @@ ST.DOC.pop(D9, None)
 struct_map.invalidate(D9)
 with Live(by={"structure": _llm9}):
     _f9 = pipeline.parse(BX, D9, str(TMP / f"{D9}.xlsx"), closed_list=[], sheet_roles={"이송": "prose"},
-                         structure=ST.structurer(["process"])).report["structure"]["프레임"]["이송"]
+                         structure=ST.structurer()).report["structure"]["프레임"]["이송"]
 _ask9 = [n for p, b in CALLS if p == "structure" and b.get("task") == "check" for n in b.get("needs") or []]
 _h9 = {h["row"]: h.get("parent") for h in _f9["headings"]}
 show("B139 ⓒ 같은 꼴 — 「-」 글머리 세 줄이 판단 필요 하나(줄 수 3 · 예시 둘)로 묻고 답이 세 줄 전부에(1) · 2) 아래 제목) · "

@@ -171,10 +171,6 @@ SHEET_ROLES = ("prose", "ref", "skip")
 #: 산문 최소 20.6 vs 참조 최대 11.2 사이에서 **15**를, 행은 표지(4) 위 **8**을 잡았다.
 #: 세 문턱을 **AND로** 본다 — 도면목록은 글자비 1.00·행 30이지만 평균 7.0에서 갈린다.
 SHEET_THRESHOLDS = {"text_ratio": 0.8, "rows": 8, "avg_len": 15}
-#: 사전 적중 문턱(B91 ②) — 모양이 산문이어도 **렌즈 층 어휘가 이만큼(종 수) 안 나오면**
-#: `ref`로 제안한다(「모르면 ref」). 어휘가 비었으면(사전·관련어 0) 모양만 본다. 창작
-#: 기본값이다 — 사내 실측(`show dist sheets`의 로직=최종 일치율)으로 `knobs.json`에서 정한다.
-SHEET_MIN_HITS = 1
 #: 시트 역할 판정(⑩)이 보는 앞부분 — 비어 있지 않은 행 앞 N행 · 행마다 앞자리(B87 ② 표본 규칙 그대로 · B121 ③에서 여기로)
 SHEET_SAMPLE_ROWS = 60
 SHEET_SAMPLE_CHARS = 80
@@ -197,17 +193,13 @@ def sheet_stats(sheet):
 def suggest_role(stat, thresholds=None):
     """제안 하나 — `prose` · `ref` · `skip`. **제안은 제안이다**(기록은 사람의 답).
 
-    로직 제안(B91 ②)은 모양 신호 + **사전 적중**이다 — `stat["hits"]`(렌즈 층 어휘가 시트에
-    나온 종 수)가 있으면 모양이 산문이어도 `SHEET_MIN_HITS` 미만이면 `ref`다(모르면 ref).
-    `hits`가 없으면(어휘가 비었다) 모양만 본다.
+    로직 제안은 **모양만**이다(B148 ④ — 층 어휘 적중 0 · 층과 그래프 상태가 바뀌어도 같은 시트의 제안이 같다).
     """
     th = thresholds or SHEET_THRESHOLDS
     if not stat.get("values"):
         return "skip"                      # 빈 시트는 읽을 것이 없다
     if (stat["text_ratio"] >= th["text_ratio"] and stat["rows"] >= th["rows"]
             and stat["avg_len"] >= th["avg_len"]):
-        if stat.get("hits") is not None and stat["hits"] < SHEET_MIN_HITS:
-            return "ref"
         return "prose"
     return "ref"
 
@@ -229,31 +221,12 @@ def sheet_lines(sheet, n=None, width=None):
     return out if width is None else [x[:width] for x in out]
 
 
-def _hits(sheet, vocab):
-    """렌즈 층 어휘가 시트 본문에 나온 **종 수**(결정적 · LLM 0) — 어휘가 비면 `None`."""
-    if not vocab:
-        return None
-    text = re.sub(r"\s+", " ", " ".join(sheet_lines(sheet)))     # 렌즈 점수와 같은 정규화
-    low = _fold(text)                         # 2차 — 라틴 대소문자 무시(B96 ④)
-    return sum(1 for w in vocab if w and (w in text or _fold(w) in low))
-
-
-def _fold(s):
-    """라틴 문자만 소문자로 — `core.state.ids.fold_latin`과 같은 규칙(파서는 core를 모른다)."""
-    import unicodedata
-    return "".join(ch.lower() if "LATIN" in unicodedata.name(ch, "") else ch for ch in s)
-
-
-def sheet_table(raw, thresholds=None, vocab=None):
-    """통합문서의 **시트 전부**를 표로 — 번호·이름·크기·글자비·앞부분·적중·제안.
-
-    `vocab`은 렌즈 층 어휘(정규화 표기 — 연속 공백 하나 · 주입된다: 파서는 사전을 모른다)다.
-    """
+def sheet_table(raw, thresholds=None):
+    """통합문서의 **시트 전부**를 표로 — 번호·이름·크기·글자비·앞부분·제안(모양만 — 층 0 · B148 ④)."""
     rows = []
     for i, sh in enumerate((raw or {}).get("sheets") or [], start=1):
         st = sheet_stats(sh)
         st["no"] = i
-        st["hits"] = _hits(sh, vocab)
         st["state"] = sh.get("state") or "visible"            # 숨김(B112 ②) — 기본 제안은 skip
         st["suggest"] = "skip" if st["state"] != "visible" else suggest_role(st, thresholds)
         st["sample"] = sheet_lines(sh, SHEET_SAMPLE_ROWS, SHEET_SAMPLE_CHARS)

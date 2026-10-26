@@ -13,8 +13,8 @@
 Word는 어댑터가 같은 함수로 견줘 「문서 제목」을 단 줄(B138 ④). **개요 수준**(Word — 표시 `개요n`)이 있는 줄은 번호보다 먼저 개요의 단에
 선다(작성자가 문서 구조로 매긴 깊이 — B138 ⑤).
 
-사다리 꼴: `{"levels": [{"sigs": [서명…], "role", "category"}], "unnumbered": [{"when": [조건…], "level", "role", "category"}],
-"lists": [{"shape", "parent_shape", "role", "category"}], "by"}` — 위에서 아래로 단 · 역할은 닫힌 셋(대상 · 묶음 · 주제) · 번호 없는 제목의
+사다리 꼴: `{"levels": [{"sigs": [서명…], "role"}], "unnumbered": [{"when": [조건…], "level", "role"}],
+"lists": [{"shape", "parent_shape", "role"}], "by"}` — 위에서 아래로 단 · 역할은 닫힌 셋(대상 · 묶음 · 주제 · 카테고리 0 — B148 ①) · 번호 없는 제목의
 규칙은 닫힌 조건(`WHEN`)으로만 말한다 · `lists`는 시트 확인의 규칙 「P 아래에서 첫 서수로 시작하는 S 목록」(꼴 전부를 옮기지 않는다).
 
 **판단 필요**(코드가 정하지 않고 표시 — `NEED_KINDS`): ⓐ사다리에 없는데 제목 같은 서명 ⓑ부모보다 들여쓰기가 얕다 ⓒ이어짐이 끊김 ·
@@ -166,12 +166,12 @@ def _match(rule, x):
 
 
 def apply(labs, ladder, counts=None):
-    """이름표 + 사다리 → `{"headings": [{row, parent, role, name, category, sig, by}], "needs": [{row, kind, why, tag}]}`.
+    """이름표 + 사다리 → `{"headings": [{row, parent, role, name, sig, by}], "needs": [{row, kind, why, tag}]}`.
 
     번호 줄 — 사다리에 든 서명만 목차에 선다(초안 — 이어짐 · 첫 서수 · 사다리의 단 순서 — `parser/toc`) · 번호 없는 줄 — 사다리의
     `unnumbered` 규칙에 맞는 줄만(그 규칙의 단) · 어댑터의 구조 단(Word 개요 수준 — 표시 `개요n`)은 사다리 위 단 · 시트 제목 줄은
-    맨 위(역할 없음 — 시트 확인이 정한다) · 역할 · 카테고리는 그 단의 것(대상이면 이름 = 줄 글에서 번호를 뗀 것) · 첫 서수 목록
-    규칙(`lists`)에 걸린 줄은 그 규칙의 것(`by` 「규칙」)."""
+    맨 위(역할 없음 — 시트 확인이 정한다) · 역할은 그 단의 것(대상이면 이름 = 줄 글에서 번호를 뗀 것 · 카테고리 0 — B148 ①) · 첫 서수
+    목록 규칙(`lists`)에 걸린 줄은 그 규칙의 것(`by` 「규칙」)."""
     title = title_row(labs)
     rows = _body(labs)
     by_row = {x["row"]: x for x in labs if x["row"] != 0}
@@ -209,15 +209,15 @@ def apply(labs, ladder, counts=None):
     heads = []
     for r, k, _v in hits:
         if k == TITLE:
-            heads.append({"row": r, "parent": None, "role": None, "name": None, "category": None, "sig": k, "by": "시트 제목"})
+            heads.append({"row": r, "parent": None, "role": None, "name": None, "sig": k, "by": "시트 제목"})
             continue
         lst = lists.get(first["ruled"].get(r)) if r in first["ruled"] else None
         src = (lst if lst and lst.get("role") else None) or meta.get(k) or (rules[int(k[1:])] if k.startswith("~") else {})
-        role, cat = src.get("role"), src.get("category")
-        h = {"row": r, "parent": parent[r], "role": role, "name": None, "category": None, "sig": k,
+        role = src.get("role")
+        h = {"row": r, "parent": parent[r], "role": role, "name": None, "sig": k,
              "by": "규칙" if lst else "사다리", **({"rule": list(first["ruled"][r])} if lst else {})}
-        if role == "대상" and cat:
-            h.update(name=SG.strip_head(by_row[r]["text"]), category=cat)
+        if role == "대상":
+            h["name"] = SG.strip_head(by_row[r]["text"])
         heads.append(h)
     return {"headings": heads, "needs": needs(labs, heads, rank, counts or {}, first["clash"], first["loose"])}
 

@@ -399,6 +399,21 @@ show("ⓕ 정의문을 바꾸면 「추출 다시 — 문서 n · 판은 자동�
      any("추출 다시" in ln and "process.categories" in ln for ln in _imp2), " | ".join(_imp2))
 _cfgp.write_bytes(_keep_cfg)
 
+# B148 ⑥ — config 작성 가이드 항목 표 = 코드가 아는 층 config 키(빠진 것 0 · 남는 것 0) · 아는 키는 코드가 읽고 · seed 키는 아는 키 안
+_gd148 = (ROOT / "docs/가이드/config작성_가이드.md").read_text(encoding="utf-8")
+_gk148 = set(re.findall(r"^\| `([a-z_]+)` \|", _gd148[_gd148.index("## 0-b."):_gd148.index("## 0-a.")], re.M))
+_ck148 = set(CS.layer_keys())
+_sk148 = {k for p_ in list((ROOT / "layers").glob("*/config.json")) + list((ROOT / "tests/fixtures").rglob("layers*/*/config.json"))
+          for k in json.loads(p_.read_text(encoding="utf-8")) if not k.startswith("_")}
+_src148 = "\n".join(p_.read_text(encoding="utf-8") for d_ in ("core", "cli", "parser", "router")
+                     for p_ in (ROOT / d_).rglob("*.py") if p_.name != "config_scope.py")
+_un148 = sorted(k for k in _ck148 if f'"{k}"' not in _src148)
+show("ⓗ config 작성 가이드 항목 표 = 코드가 아는 층 config 키(`config_scope.layer_keys` — 빠진 것 0 · 남는 것 0) · 아는 키는 코드가 "
+     "읽는다 · seed 층 config의 키는 아는 키 안",
+     _gk148 == _ck148 and _sk148 <= _ck148 and not _un148,
+     f"표 {len(_gk148)} · 코드 {len(_ck148)} · 표만 {sorted(_gk148 - _ck148)} · 코드만 {sorted(_ck148 - _gk148)} · seed 밖 "
+     f"{sorted(_sk148 - _ck148)} · 읽는 곳 0 {_un148}")
+
 RF.SELECT = None
 for _d in list(_HINTED) + list(FW.PROSE):
     for _p in (HINTS / f"{_d}.json", HINTS / f"{_d}@outline.json", HINTS / f"{_d}@structure.json"):

@@ -313,8 +313,7 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True, coord=None):
     거부 문면은 `sheet_gate.gate()` 한 벌이다(등록 표본과 같은 함수 · B86 ⑤).
     """
     kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
-    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask,
-                          lenses=registry.lenses_of(sel.get("doc_type")) or None)
+    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask)
     if stop is None:
         # **문서 좌표**도 이 관문 자리에서 정한다(B102 ② — 한 번 묻는다 · 한 줄)
         from cli import doc_coord as DC

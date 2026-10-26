@@ -74,9 +74,11 @@ PROSE_STRUCTURE = {"FWC3": {"TW 사양": [
     {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"},
     {"text": "리와인더 unit", "depth": 1, "role": "대상", "name": "리와인더 unit", "category": "Unit"},
     {"text": "1) 기본사양", "depth": 2, "role": "묶음"}, {"text": "2) 지정사양", "depth": 2, "role": "묶음"}]}}
-#: 개요 mock 힌트 — 제목 글자 → 대상
+#: 목차 노드화 mock 힌트 — 제목 글자 → 대상(카테고리의 출처 — B148 ② · 메타가 대상으로 정한 제목은 카테고리만 쓴다)
 PROSE_OUTLINE = {"2. 추출부": {"name": "추출부", "category": "Unit"}, "2.1 NG unit": {"name": "NG unit", "category": "Unit"},
-                 "3. 이송부": {"name": "이송부", "category": "Unit"}, "1. 이송부": {"name": "이송부", "category": "Unit"}}
+                 "3. 이송부": {"name": "이송부", "category": "Unit"}, "1. 이송부": {"name": "이송부", "category": "Unit"},
+                 "언와인더 unit": {"name": "언와인더 unit", "category": "Unit"},
+                 "리와인더 unit": {"name": "리와인더 unit", "category": "Unit"}}
 #: 추출 mock 힌트 — 조각 글에 든 말 → 개체(소속 없음 · 폴백 사슬 · 보강의 재료)
 PROSE_WORDS = (("모터 회전수", "Property"), ("실린더 행정", "Property"), ("벨트 장력", "Property"),
                ("스태킹", "Process"), ("센서", "Unit"), ("N/A", "Property"), ("속도", "Property"),
@@ -199,7 +201,7 @@ def _structure_kw():
     if "structure" not in inspect.signature(pipeline.parse).parameters:
         return {}
     from core.build import structure as ST
-    return {"structure": ST.structurer(["process"])}
+    return {"structure": ST.structurer()}
 
 
 def _roles_of_copy(hint):
@@ -255,7 +257,8 @@ def _prose(quiet):
         for c in env.get("chunks") or []:
             # 소속 = 그 조각의 구조 사슬에서 대상이 선 가장 깊은 줄(지시문 「가장 구체적인 주인」의 창작 대역 · 구조가 없으면 없음)
             own = next((x for x in reversed((c.get("meta") or {}).get("structure") or []) if x.get("name")), None)
-            bel = {"name": own["name"], "category": own["category"], "from": "제목"} if own else None
+            cat = (PROSE_OUTLINE.get(str((own or {}).get("text") or "")) or {}).get("category")   # 카테고리는 목차 노드화 몫 (B148 ②)
+            bel = {"name": own["name"], "category": cat, "from": "제목"} if own and cat else None
             words = [(w, cat) for w, cat in PROSE_WORDS if w in (c.get("text") or "")]
             words = [(w, cat) for w, cat in words if not any(w != v and w in v for v, _c in words)]   # 긴 말이 이긴다
             ents = [{"surface": w, "category": cat, **({"belongs_to": bel} if bel else {}), **_value(w, cat, c.get("text"))}

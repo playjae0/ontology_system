@@ -2,7 +2,7 @@
 """칸 0.3 · 2.4 — **구조 확인의 시트 한 덩어리**(B126 ③ · B132 ⑦ · B137 ⑥⑦) — 화면과 `export/split_<doc_id>.md`가 같은 함수로 같은 내용을 낸다.
 
     머리 — 방식 · 사다리의 출처 · 판단 필요 · 답 빠짐 · 고침 · 버림 · 붙임 · 힌트 · 청크 (답 꼴이 어긋나 버린 칸이 있으면 그 한 줄)
-    계층 사다리: 시트 › 1. › 가.(대상 · Unit) › 1)(묶음) › A.   (서명의 숫자는 첫 서수로 · 단마다 역할 · 카테고리 · 번호 없는 제목의 규칙)
+    계층 사다리: 시트 › 1. › 가.(대상) › 1)(묶음) › A.   (서명의 숫자는 첫 서수로 · 단마다 역할 · 번호 없는 제목의 규칙 · 카테고리 칸 0 — B148 ③)
     LLM — 판단 필요 답 a/b · 규칙 r · 줄 고침 e(적용 x · 버림 y — 이유별 수)   (시트마다 한 줄 · 규칙마다 아래 한 줄)
     시트 확인 — 호출 1 · 입력 c · 출력 d · 초안과 다른 줄 x/제목 y
     목차 — 나무 글자(├─ · └─ · │) = 목차 깊이 · 역할 · 대상 · LLM이 바꾼 줄 ✎ · 판단 필요는 그 줄에 ⚠ 한 마디 + 답(줄 끝) ·
@@ -26,14 +26,15 @@ FOLD_MIN = 3
 
 
 def _target(h):
-    return f" {h['name']}({h['category']})" if h.get("name") and h.get("category") else ""
+    """대상 이름 표지 — 이름만(카테고리는 그래프 단계의 목차 노드화가 층마다 정한다 — B148 ③)."""
+    return f" {h['name']}" if h.get("name") else ""
 
 
 def _edit_line(e):
     what = e.get("what")
     par = f"{e['parent']}행" if e.get("parent") else "시트"
     extra = {"제목 더함": f"(부모 {par})", "부모 바꿈": f"(→ 부모 {par})",
-             "역할": f"(→ {e.get('role')})", "대상": f"(→ {e.get('name')} · {e.get('category')})",
+             "역할": f"(→ {e.get('role')})", "대상": f"(→ {e.get('name')})",
              "붙임": f"(~{e.get('to_row')}행)"}.get(what, "")
     return f"{e.get('row')}행 {what}{extra} — {e.get('why') or '이유 없음'}"
 
@@ -51,11 +52,10 @@ def _sigs(sigs):
 
 
 def ladder_line(ladder):
-    """「계층 사다리: 시트 › 1. › 가.(대상 · Unit) › 1)(묶음) › A.」 + 번호 없는 제목의 규칙 + 첫 서수 목록 규칙 — 서명은 첫 서수 표기."""
+    """「계층 사다리: 시트 › 1. › 가.(대상) › 1)(묶음) › A.」 + 번호 없는 제목의 규칙 + 첫 서수 목록 규칙 — 서명은 첫 서수 표기."""
     parts = []
     for lv in (ladder or {}).get("levels") or []:
-        tag = " · ".join(x for x in (lv.get("role"), lv.get("category")) if x)
-        parts.append(_sigs(lv.get("sigs")) + (f"({tag})" if tag else ""))
+        parts.append(_sigs(lv.get("sigs")) + (f"({lv['role']})" if lv.get("role") else ""))
     rules = [f"{' · '.join(u.get('when') or [])} → 단 {u.get('level')}" + (f"({u['role']})" if u.get("role") else "")
              for u in (ladder or {}).get("unnumbered") or []]
     lists = [f"{SG.show(u.get('parent_shape'))} 아래 첫 서수 {SG.show(u.get('shape'))} 목록" + (f"({u['role']})" if u.get("role") else "")
@@ -258,7 +258,7 @@ def sheet_block(frame, fr, chunks, md=False):
     for x in fr.get("rules") or []:                                   # 사다리 고침 — 문서 규칙 (B130 ④ · B132 ⑦ · B137 ⑤)
         scope = (f"{SG.show(x.get('parent_shape'))} 아래 첫 서수 목록" if x.get("scope") == "첫 서수 목록"
                  else f"부모 서명 '{SG.show(x['parent_shape'])}'" if x.get("parent_shape") else None)
-        what = " · ".join(v for v in (x.get("role"), x.get("category"), scope) if v)
+        what = " · ".join(v for v in (x.get("role"), scope) if v)
         out.append(f"  규칙 — 서명 '{SG.show(x.get('shape'))}' {what} 「{x.get('said') or ''}」 → 적용 {x.get('적용', 0)}줄 / 그 서명 전체 "
                    f"{x.get('전체', 0)}줄")
     out.append(f"목차 — 제목 {len([h for h in heads if h['row'] != FRAME_ROW])}줄 · 판단 필요 {len(needs)}({NEED_MARK})")

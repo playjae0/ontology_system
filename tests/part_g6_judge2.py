@@ -135,7 +135,7 @@ _xp = TMP / f"{DID}.xlsx"
 _wb.save(_xp)
 (HINTS / f"{DID}@structure.json").write_text(json.dumps({SHEET: STRUCT}, ensure_ascii=False), encoding="utf-8")
 _env = pipeline.parse(BX, DID, str(_xp), closed_list=[], sheet_roles={SHEET: "prose"},
-                      structure=ST.structurer(["process"])).envelope
+                      structure=ST.structurer()).envelope
 _hints = {}
 for _c in _env["chunks"]:
     _own = next((x for x in reversed(_c["meta"].get("structure") or []) if x.get("name")), None)

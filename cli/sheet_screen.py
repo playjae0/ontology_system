@@ -16,12 +16,12 @@ from core import paths
 # 한 번 정한다. 표의 재료는 `parser/form.sheet_table()`이고 **여기서 새로 판독하지
 # 않는다**(reader가 이미 낸 값의 투영 — 화면이 제 계산을 하지 않는다는 B81 ①과 같다).
 #
-# 제안은 **두 벌**이다(B91 ②): 로직(모양 + 렌즈 층 어휘 적중 · LLM 0)과 LLM(렌즈 층 정의문 ·
-# 지점 ⑩). 마지막 열 「제안」은 둘이 같으면 그것, 어긋나면 `ref`다(모르면 ref) — 사람이 표를
+# 제안은 **두 벌**이다(B91 ②): 로직(모양만 · LLM 0)과 LLM(표본 줄만 · 지점 ⑩) — 둘 다 층을 모른다(B148 ④).
+# 마지막 열 「제안」은 둘이 같으면 그것, 어긋나면 `ref`다(모르면 ref) — 사람이 표를
 # 보고 고치고, 그 답이 기록이 된다(`core/state/sheets.py`).
 SHEET_HEAD = "   " + (_screen.pad("#", 4) + _screen.pad("시트", 20)
                       + _screen.pad("행", 6) + _screen.pad("열", 5)
-                      + _screen.pad("숨김", 10) + _screen.pad("글자셀", 8) + _screen.pad("적중", 6)
+                      + _screen.pad("숨김", 10) + _screen.pad("글자셀", 8)
                       + _screen.pad("앞부분", 34) + _screen.pad("로직", 7)
                       + _screen.pad("LLM", 7) + "제안")
 
@@ -69,7 +69,6 @@ def sheet_row(r, known=None):
                     + _screen.pad(f"{r['rows']:,}", 6) + _screen.pad(r["cols"], 5)
                     + _screen.pad(STATE_LABEL.get(r.get("state", "visible"), r.get("state")), 10)
                     + _screen.pad(f"{int(round(r['text_ratio'] * 100))}%", 8)
-                    + _screen.pad("—" if r.get("hits") is None else r["hits"], 6)
                     + _screen.pad(_screen.cut("「" + (r["head"] or "—") + "」", 32), 34)
                     + _screen.pad(r.get("logic") or r["suggest"], 7)
                     + _screen.pad(r.get("llm") or "끔", 7)
