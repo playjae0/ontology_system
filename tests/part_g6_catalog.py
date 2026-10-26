@@ -317,11 +317,29 @@ _h147 = ((_LG147.read("FWCPU") or {}).get("result") or {}).get("보류") or {}
 _msg147 = "'규격'(attribute)의 attach_to_field 'process_ref'는 구조 필드"
 show("ⓑ 등록된 위반 스키마 — bootstrap 끝 · 재대조(doctor [2′]) · 인입 사전 점검이 ⚠ 줄(필드 · 붙일 수 있는 선언 필드 · 다음 줄) · "
      "인입은 멈추지 않는다 · 보류 사유는 「개체 열이 아니다」(좌표 미해소 0)",
-     all(_msg147 in o and f"generate {_FW147.CPU_DT} --revise" in o for o in (_ob147, "\n".join(_rc147)))
+     # 기대 변경(B148 ⑦ — 다음 줄은 등록 층 · 표본 자리까지 · mock이면 mock 관문 플래그 · 사전 점검도 같은 줄)
+     all(_msg147 in o and f"generate {_FW147.CPU_DT} process <표본...> --revise --allow-mock" in o
+         for o in (_ob147, "\n".join(_rc147), _oi147))
      and "붙일 수 있는 선언 필드: 관리항목" in "\n".join(_rc147)
      and "스키마 재대조 ⚠ (멈추지 않는다)" in _oi147 and _msg147 in _oi147 and "   인입 — record" in _oi147
      and _h147.get(_RS147.ATTACH_NOT_TARGET) == len(_FW147.CPU_ROWS) and _RS147.HOLD_REASONS[2][2] not in _h147,
      f"보류 {_h147} · ⚠ {[l.split(chr(10))[0][:90] for l in _rc147]}")
+# B148 ⑦ ⓘ — 재등록 다음 줄을 그대로 쳐서(셸 없이 같은 낱말) 사용법이 아니라 생성 단계로 · 표본은 그 종류 등록 상태의 표본
+import shlex as _sh148                                                 # noqa: E402
+import shutil as _st148                                                # noqa: E402
+_P.ensure(_P.review(_FW147.CPU_DT, "state.json"))
+_P.review(_FW147.CPU_DT, "state.json").write_text(json.dumps({"samples": [str(_x147)]}, ensure_ascii=False), encoding="utf-8")
+_ln148 = next(p_.split("다음 줄: ", 1)[1].split(" (인입은")[0] for l in recheck.run() if l[0] == _FW147.CPU_DT and not l[1]
+              for p_ in l[2].split("\n") if "다음 줄: python" in p_)
+_rg148 = _sp147.run(_sh148.split(_ln148), capture_output=True, text=True, cwd=str(ROOT), env={**_os147.environ, "USE_MOCK": "1"},
+                    stdin=_sp147.DEVNULL)
+_og148 = _rg148.stdout + _rg148.stderr
+_st148.rmtree(_P.review(_FW147.CPU_DT), ignore_errors=True)
+show("ⓘ 재등록 다음 줄(재대조 ⚠ · 인입 사전 점검과 같은 함수)을 그대로 치면 사용법이 아니라 생성 단계로 들어간다 — 층은 스키마 · "
+     "표본은 등록 상태의 표본(없으면 자리표시)",
+     f"generate {_FW147.CPU_DT} process {_sh148.quote(str(_x147))} --revise" in _ln148
+     and f"■ ① 생성 — {_FW147.CPU_DT} (층 process · 표본 1부)" in _og148 and "[사용법]" not in _og148,
+     f"{_ln148[:120]} → {[ln for ln in _og148.splitlines() if ln.startswith('■ ①')][:1]}")
 _FW147.cpu_setup()                                                    # 고친 스키마(개체 열) — 같은 표를 다시
 _oi147b = _run147("ingest-file", str(_x147), "--doc-type", _FW147.CPU_DT, "--allow-mock")
 _rows147 = (_LG147.read("FWCPU") or {}).get("rows") or []

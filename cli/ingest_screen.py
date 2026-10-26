@@ -54,8 +54,8 @@ def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
         out.append(f"  큐: parse_failure {queued}건 (같은 내용)")
     out.append("  ▶ 다음 줄:")
     out.append(f"     (문서를 고친 뒤)      python run.py ingest-file {doc}")
-    out.append(f"     양식이 바뀐 거면:     python -m cli.register generate "
-               f"{doc_type or '<doc_type>'} --revise")
+    from cli.register.recheck import revise_line
+    out.append(f"     양식이 바뀐 거면:     {revise_line(doc_type) if doc_type else revise_line('<doc_type>', {})}")
     return "\n".join(out)
 
 
