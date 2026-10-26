@@ -497,10 +497,7 @@ _tpl72 = R.generate_template()
 show("① 템플릿이 「meta도 role이다 · 딕셔너리로 묶지 마라」를 말한다",
      "meta`도 role이다" in _tpl72 and "묶지 마라" in _tpl72
      and "G39" in _tpl72)
-show("① 템플릿 판이 올랐다 (판 번호는 머리말 하나가 말한다 — B63 ①)",
-     re.search(r"^version: 1\.7$",
-               (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8"),
-               re.M) is not None)
+# 지움(B147 ⓕ — 판 번호 확인은 한 번 고친 것의 확인 · 판 올림은 마감의 「바뀐 지시문」 점검이 잰다)
 _ref72 = json.loads((R.KIT / "참조어댑터" / "cp.json").read_text(encoding="utf-8"))
 _refmod72 = _iu72.module_from_spec(
     _iu72.spec_from_file_location("ref72", R.KIT / "참조어댑터" / "cp.py"))

@@ -7,8 +7,11 @@ config(층 · 공통)를 바꾸면 이미 등록된 doc_type의 스키마가 새
 (`gate_checks.check_vocab`)를 다시 돌린다 — 두 벌 0. 킷은 core를 모르므로 CLI가
 subprocess로 부른다(`--layers`로 층 자리를 건넨다 — 관문과 같은 결).
 
+**부착 대상 규칙**(B147 ① — 관문 G4J와 같은 함수 `gate_checks.attach_problems`)도 함께 싣는다 — 재대조는 그것을 ⚠(멈추지
+않음)로 낸다(이미 등록된 스키마는 사람이 다시 등록한다).
+
 사용: python kit/check_vocab.py [--layers DIR] <schema.json> [<schema.json> ...]
-      → 스키마마다 JSON 한 줄 {"schema", "ok", "lines": [판정 줄 …]}
+      → 스키마마다 JSON 한 줄 {"schema", "ok", "lines": [판정 줄 …], "attach": [부착 대상 어긋남 문면 …]}
 """
 import contextlib
 import io
@@ -21,19 +24,21 @@ sys.path.insert(0, str(ROOT))            # run_adapter.py와 같은 결 — 킷�
 
 import gate_screen                        # noqa: E402
 import gate_tables as tables              # noqa: E402
-from gate_checks import check_vocab       # noqa: E402
+from gate_checks import attach_problems, check_vocab   # noqa: E402
 from gate_tables import load_blocks       # noqa: E402
 
 
 def one(path):
     schema = json.loads(Path(path).read_text(encoding="utf-8"))
-    fields, _blocks = load_blocks(schema)
+    fields, blocks = load_blocks(schema)
     gate_screen.ok_all = True
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         ok = check_vocab(schema, fields, Path(path).name)
+    from parser import attach_rule
     return {"schema": str(path), "ok": bool(ok),
-            "lines": [ln.strip() for ln in buf.getvalue().splitlines() if ln.strip()]}
+            "lines": [ln.strip() for ln in buf.getvalue().splitlines() if ln.strip()],
+            "attach": [attach_rule.line(p) for p in attach_problems(schema, blocks)]}
 
 
 def main(argv):

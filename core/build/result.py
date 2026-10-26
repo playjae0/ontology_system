@@ -19,6 +19,10 @@ HOLD_REASONS = (("anchor", "orphan", "좌표 목록 밖"),
                 (None, "pending", "좌표 미해소로 스코프 노드 미생성"),
                 (None, "gate_reject", "카테고리 밖(관문)"))
 
+#: 속성 · 내용의 부착 보류 사유 — 행이 든다(B147 ② — `table._attach_hold` · 위 표의 「좌표 미해소」는 좌표 행 몫)
+ATTACH_UNRESOLVED = "부착 대상 개체가 그 행에서 미해소"
+ATTACH_NOT_TARGET = "부착 대상이 개체 열이 아니다(스키마 — 다시 등록)"
+
 
 def layer_counts(graphs):
     """`{층: (노드, 엣지, auto)}` — 증감의 재료."""

@@ -333,6 +333,26 @@ def check_coord_pairs(schema, pieces, nodes):
     return ok
 
 
+def attach_problems(schema, block_fields=None):
+    """부착 대상 규칙의 어긋남(B147 ① — 판정은 `parser.attach_rule` 하나 · 재대조 `check_vocab.py`도 이 함수) —
+    선언 필드(블록 전개 전) · 구조 필드(`STRUCT_ONLY` + 구축의 `STRUCTURAL`) · 블록 필드 이름을 건넨다."""
+    from parser import attach_rule
+    if block_fields is None:
+        block_fields = load_blocks(schema)[1]
+    return attach_rule.problems(schema.get("fields") or {}, STRUCT_ONLY | structural_fields(), block_fields)
+
+
+def check_attach(schema, block_fields=None):
+    """**G4J**(B147 ①) — role `attribute` · `content`의 `attach_to_field`가 선언된 `entity` · `anchor` 필드다.
+    FAIL 문면은 필드 · 가리킨 대상 · 그것이 무엇인지 · 붙일 수 있는 선언 필드 목록을 담는다(자동 재생성 갈래 — G1B와 같은 결)."""
+    from parser import attach_rule
+    bad = attach_problems(schema, block_fields)
+    n = sum(1 for v in (schema.get("fields") or {}).values()
+            if isinstance(v, dict) and v.get("role") in attach_rule.VALUE_ROLES and v.get("attach_to_field"))
+    return show("G4J  속성 · 내용의 attach_to_field가 그 행의 개체 열(선언된 entity · anchor)",
+                not bad, " · ".join(attach_rule.line(p) for p in bad) or f"{n}건")
+
+
 def check_schema(schema, pieces, label, payload_kind=None):
     print(f"\n④ 매칭 스키마 정합 — {label}")
     show("G41  헤더 4키 (doc_type·schema_version·layer·use_blocks)",
@@ -379,6 +399,7 @@ def check_schema(schema, pieces, label, payload_kind=None):
     # **사라졌다**고 말하고, 그것은 거짓이다.
     show(f"G48  edges {len(edges)}건의 from/to가 전부 선언된 필드",
          not unknown, str(unknown) + " (attach_to_field 포함)")
+    check_attach(schema, block_fields)                      # G4J (B147 ①)
     check_vocab(schema, fields, label)
     # 조각 ↔ 스키마 대조 (인입 검증 ③단계의 드라이런)
     if pieces:

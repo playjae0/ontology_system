@@ -292,6 +292,55 @@ show("⑤ prose doc_type의 층이 좌표 카테고리를 말하지 않으면 �
      str([l[:80] for dt, _o, l in _r3 if dt == "ppt_quality"]))
 init.init(fresh_=True, all_=True)
 
+# ────────────────────────────────────────────────────────────── B147 ⓑⓒ
+print("\n■ B147 ①② 등록된 스키마의 부착 대상 — 재대조 ⚠ · 인입은 멈추지 않는다 · 보류 사유 · 고친 스키마")
+import os as _os147                                                   # noqa: E402
+import subprocess as _sp147                                           # noqa: E402
+from tools import four_way as _FW147                                  # noqa: E402 — 바닥 D의 재료(창작 — 한 자리)
+from core.build import ledger as _LG147, reinforce as _RF147, result as _RS147   # noqa: E402
+from core.build.heading import _is_coord as _isc147                   # noqa: E402
+
+
+def _run147(*argv):
+    r = _sp147.run([sys.executable, str(ROOT / "run.py"), *argv], capture_output=True, text=True, cwd=str(ROOT),
+                   env={**_os147.environ, "USE_MOCK": "1"}, stdin=_sp147.DEVNULL)
+    return r.stdout + r.stderr
+
+
+init.init(fresh_=True, all_=True)
+_f147 = _FW147.CPU_SCHEMA["fields"]
+_x147 = _FW147.cpu_setup({**_FW147.CPU_SCHEMA, "fields": {**_f147, "규격": {**_f147["규격"], "attach_to_field": "process_ref"}}})
+_ob147 = _run147("bootstrap")
+_rc147 = [l for dt, ok, l in recheck.run() if dt == _FW147.CPU_DT and not ok]       # doctor [2′]가 부르는 같은 함수
+_oi147 = _run147("ingest-file", str(_x147), "--doc-type", _FW147.CPU_DT, "--allow-mock")
+_h147 = ((_LG147.read("FWCPU") or {}).get("result") or {}).get("보류") or {}
+_msg147 = "'규격'(attribute)의 attach_to_field 'process_ref'는 구조 필드"
+show("ⓑ 등록된 위반 스키마 — bootstrap 끝 · 재대조(doctor [2′]) · 인입 사전 점검이 ⚠ 줄(필드 · 붙일 수 있는 선언 필드 · 다음 줄) · "
+     "인입은 멈추지 않는다 · 보류 사유는 「개체 열이 아니다」(좌표 미해소 0)",
+     all(_msg147 in o and f"generate {_FW147.CPU_DT} --revise" in o for o in (_ob147, "\n".join(_rc147)))
+     and "붙일 수 있는 선언 필드: 관리항목" in "\n".join(_rc147)
+     and "스키마 재대조 ⚠ (멈추지 않는다)" in _oi147 and _msg147 in _oi147 and "   인입 — record" in _oi147
+     and _h147.get(_RS147.ATTACH_NOT_TARGET) == len(_FW147.CPU_ROWS) and _RS147.HOLD_REASONS[2][2] not in _h147,
+     f"보류 {_h147} · ⚠ {[l.split(chr(10))[0][:90] for l in _rc147]}")
+_FW147.cpu_setup()                                                    # 고친 스키마(개체 열) — 같은 표를 다시
+_oi147b = _run147("ingest-file", str(_x147), "--doc-type", _FW147.CPU_DT, "--allow-mock")
+_rows147 = (_LG147.read("FWCPU") or {}).get("rows") or []
+_nodes147, _ends147 = _RF147._index({lay: open_graph(lay) for lay in ("process", "quality")})
+_ch147 = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}
+_cof147 = {c.get("source_locator"): (cid, c) for cid, c in _ch147.items() if c.get("doc_id") == "FWCPU"}
+_items147 = {r["node_id"]: r["locator"] for r in _rows147 if r.get("role") == "entity" and r.get("node_id")}
+_att147 = [r for r in _rows147 if r.get("role") in ("attribute", "content")]
+_tg147 = {nid for _r, nid, _w in _RF147.targets(_rows147, _nodes147, _ends147, _cof147)}
+show("ⓒ 고친 스키마 — 값이 관리항목에 붙는다(부착 보류 0) · 그 관리항목들은 좌표에만 붙었어도 스키마 엣지(문서의 진술)라 연결 보강 "
+     "대상이 아니다",
+     "   인입 — record" in _oi147b and _att147 and all(r.get("verdict") == "attached" for r in _att147)
+     and _items147 and all(loc in _cof147 for loc in _items147.values())
+     and all(_ends147.get(n) and all(_isc147(_nodes147[o][1]) for o in _ends147[n]) for n in _items147)
+     and not set(_items147) & _tg147,
+     f"부착 {len(_att147)} · 보류 {[r['field'] for r in _att147 if r.get('verdict') != 'attached']} · 관리항목 "
+     f"{len(_items147)} · 보강 대상 {len(set(_items147) & _tg147)}")
+init.init(fresh_=True, all_=True)
+
 # ────────────────────────────────────────────────────────────── ⑥
 print("\n■ B90 ⑥ registry — 원자적 쓰기 · 디버그 파일은 작업 단")
 import ast as _ast                                                    # noqa: E402

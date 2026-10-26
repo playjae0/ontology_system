@@ -62,8 +62,8 @@ def build_table(env, cfg, schema, graph, defer_save=False):
         loop._check_fields(rec, fields, r.prov, doc_id)
         _row_anchor(b, r, envelope_ctx, doc_id)
         _row_roles(b, r, fields, schema, graph, cfg, doc_id)
-        _row_attributes(b, r, graph)
-        _row_contents(b, r, doc_id)
+        _row_attributes(b, r, graph, fields)
+        _row_contents(b, r, doc_id, fields)
         _row_edges(r, schema, fields, graph, cfg, doc_id, b)
         _row_fallback(b, r, schema, fields, graph, cfg, doc_id)
         loop._land_deferred(r.defer, r.dropped, r.pending, doc_id,
@@ -185,7 +185,15 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
             r.contents.append((f, spec))
 
 
-def _row_attributes(b, r, graph):
+def _attach_hold(fields, af):
+    """부착 보류 행의 **사유**(B147 ②) — 대상이 붙일 수 있는 개체 열인데 그 행에서 미해소인가 · 표 구축이 부착 대상으로
+    해소하지 않는 필드인가(스키마 문제) — 판정은 부착 대상 규칙 한 함수(`parser.attach_rule.kind_of` — 관문 G4J와 같다)."""
+    from core.build import result
+    from parser import attach_rule
+    return result.ATTACH_NOT_TARGET if attach_rule.kind_of(fields, af, loop.STRUCTURAL) else result.ATTACH_UNRESOLVED
+
+
+def _row_attributes(b, r, graph, fields):
     """attribute 부착 — **「미해소」와 「값 없음」을 가른다**(문서 4 §4.4-4 — B12).
 
     `attach_to_field`가 가리키는 필드가 그 행에서 **빈 셀이면 아무것도 하지 않는다** —
@@ -207,7 +215,7 @@ def _row_attributes(b, r, graph):
                               "context": r.ctx or None,
                               "provenance": r.prov,
                               "attach_to_field": af})
-            _ledger_attach(b, r, f, "attribute", None, "pending")
+            _ledger_attach(b, r, f, "attribute", None, "pending", hold=_attach_hold(fields, af))
             continue
         tg = r.external.get(af, graph)
         # 같은 캐시의 빌더를 쓴다 — 새로 만들면 그 그래프는 저장되지 않는다(D3).
@@ -218,7 +226,7 @@ def _row_attributes(b, r, graph):
                        blank=null_marker(rec[f]))    # 값은 그대로 · 빈칸 표시면 그 표시를 함께(B113 ②)
 
 
-def _row_contents(b, r, doc_id):
+def _row_contents(b, r, doc_id, fields):
     """content — describes 연결, 필드별 청크(D8)."""
     rec = r.rec
     for f, spec in r.contents:
@@ -228,7 +236,7 @@ def _row_contents(b, r, doc_id):
             _describe(doc_id, rec, f, tgt)
             _ledger_attach(b, r, f, "content", tgt, "attached", blank=null_marker(rec[f]))
         elif af2 and rec.get(af2) not in (None, "") and not null_marker(rec.get(af2)):
-            _ledger_attach(b, r, f, "content", None, "pending")
+            _ledger_attach(b, r, f, "content", None, "pending", hold=_attach_hold(fields, af2))
             # 값은 있는데 대상이 미해소다 — 청크는 이미 보존돼 있고(링킹 0건
             # 청크도 남긴다) 연결만 못 한 것이므로 결함 로그로 드러낸다.
             # 빈 셀이면 기록하지 않는다 — 그 행에 대상이 없는 것이 정상이다(B12).
@@ -237,12 +245,12 @@ def _row_contents(b, r, doc_id):
                 f"'{f}' → '{af2}'={rec.get(af2)!r} @ {r.prov}")
 
 
-def _ledger_attach(b, r, field, role, target, verdict, layer=None, blank=None):
+def _ledger_attach(b, r, field, role, target, verdict, layer=None, blank=None, hold=None):
     """부착 시도 한 건의 대장 행 — **붙었나 보류인가**가 이 표의 종류 열이다(B74 ②).
 
     부착에는 판정이 없다(대상은 같은 행이 이미 해소한 노드다) — 그래서 `path`는
     `none`이고 LLM도 0이다. 그래도 행을 남기는 이유: 사람이 문서를 옆에 놓고 볼 때
-    「이 열의 값이 어디에 갔나」가 행 단위로 답해져야 한다.
+    「이 열의 값이 어디에 갔나」가 행 단위로 답해져야 한다 · 보류 행은 사유를 든다(`hold` — B147 ②).
     """
     if b is None or b.ledger is None:
         return
@@ -251,7 +259,7 @@ def _ledger_attach(b, r, field, role, target, verdict, layer=None, blank=None):
     b.ledger.add(locator=r.rec.get("source_locator"), field=field, role=role,
                  surface=None, canonical=n.get("canonical"),
                  layer=layer or (n.get("layer") if n else None),
-                 path="none", verdict=verdict, node_id=target, blank=blank)
+                 path="none", verdict=verdict, node_id=target, blank=blank, hold=hold)
 
 
 def _row_edges(r, schema, fields, graph, cfg, doc_id, b=None):
