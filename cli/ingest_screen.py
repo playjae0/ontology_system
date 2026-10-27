@@ -508,12 +508,11 @@ def build_screen(step=False, stage=None, prose=False):
         LAST_RESULT["res"] = info.get("결과")
         result_screen.show(info.get("결과"))
         result_screen.show_reconcile(info.get("맞춤"), limit=LIST_LIMIT)     # 맞춤표 (B112 ①④⑤)
-        # **인입 끝 목록**(B102 ⑦) — 불확실 · 보류 · `show report`와 같은 함수 · 줄 상한
+        # **인입 끝 목록**(B102 ⑦ → B149 ④) — 원인 묶음(못 찾은 것 · 값은 가장 위 원인에서 한 번) · `show report`와 같은 함수 · 줄 상한
         _doc = (info.get("결과") or {}).get("doc_id")
         if _doc:
-            from cli.show_report import hold_unc_lines
-            from core.build import ledger as _lg
-            _ln = hold_unc_lines((_lg.read(_doc) or {}).get("rows") or [], limit=LIST_LIMIT, doc=_doc)
+            from cli.report_cause import cause_block
+            _ln = cause_block(_doc, limit=LIST_LIMIT)
             for ln in _ln:
                 print(ln)
             if _ln:
@@ -521,7 +520,7 @@ def build_screen(step=False, stage=None, prose=False):
     return notice
 
 
-#: 인입 끝 목록의 줄 상한(목록마다) — 전체는 `show report`.
+#: 인입 끝 원인 묶음의 줄 상한(층마다) — 전체는 `show report`.
 LIST_LIMIT = 8
 
 #: 마지막 문서의 결과 묶음 — 일괄 투입 끝 줄이 문서별로 모은다(`cli/ingest.ingest_file`).

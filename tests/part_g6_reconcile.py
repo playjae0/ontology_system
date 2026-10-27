@@ -18,6 +18,9 @@
      대장 `attached.dir` = 실제 엣지 방향 · `--trace`의 소속 줄 (층 둘)
   ⓔ 문서 좌표: 띄어쓰기로 어긋나는 파일명 — 경고 줄 · 후보(보여만 · 기록 0) · 경고의 행 = 결과 묶음의 「좌표 미해소」
   ⓕ 체크포인트: 추출 끝에 자리 · 있음 · 쓰기가 빠진 상태에서 `[결함]`(화면 · 결함 장부)
+  B149 진단 — ⓐ 문서 좌표 없음(원인 하나 · 합 = 보류 · 고아 행) ⓑ 구간 좌표 없음(다른 시트의 가장 위 제목) ⓒ 소속 이름 없음(= 고아 큐
+     항목 수) ⓓ 목차 나무(문제 가지만 · 보류 수 = 대장 · -v 전부) ⓔ 표(골격 밖 좌표 표기 한 줄 · 좌표 표기 목록) ⓕ 인입 끝 = 같은 함수
+     ⓖ 읽기 전용(상태 루트 바이트 같음 · LLM 0)
 """
 from __future__ import annotations
 
@@ -381,6 +384,126 @@ show("ⓕ 추출 끝에 체크포인트 자리와 있음 · 쓰기가 빠지면 
      and "[결함] 추출이 끝났는데 체크포인트가 없다" in _buf2.getvalue()
      and "B112CKX: 추출이 끝났는데 체크포인트가 없다" in _dfx,
      f"{_ok_line.strip()} / {[ln.strip() for ln in _buf2.getvalue().splitlines() if '[결함]' in ln][:1]}")
+
+# ────────────────────────────────────────────────────────────── B149 진단 출력
+print("\n■ B149 진단 출력 — 원인 묶음(못 찾은 것 · 값은 가장 위 원인에서 한 번) · 목차 나무 · 표의 좌표 표기 목록 · 읽기 전용")
+from cli import report_cause as RCZ                     # noqa: E402
+from core.build import outline as OL149                 # noqa: E402
+from core.build.result import hold_reason as _hr149     # noqa: E402
+from openpyxl import load_workbook as _lw149            # noqa: E402
+
+
+def _ingest149(path, sheets, hint_of, *extra):
+    """창작 엑셀 → 추출 힌트(위치마다 · `hint_of(조각)`) → 인입(화면) — `(doc_id, 화면)`."""
+    did = IG.doc_id_of(path)
+    from core.build import structure as _ST149
+    env = pipeline.parse(BX, did, str(path), closed_list=TG.closed_list("process"), doc_coord=None,
+                         sheet_roles={s: "prose" for s in sheets}, structure=_ST149.structurer()).envelope   # 인입과 같은 조각 위치
+    struct_map.invalidate(did)
+    _hint(did, {c["source_locator"]: {"entities": hint_of(c), "relations": [], "attach": []} for c in env["chunks"]
+                if hint_of(c)})
+    return did, _run("ingest-file", str(path), "--doc-type", DT, "--allow-mock",
+                     "--sheets", " ".join(f"{i + 1}:prose" for i in range(len(sheets))), *extra)
+
+
+def _lost149(did):
+    """못 붙은 값 — 보류 행 ∪ 고아 행(대장 · 큐에서 따로 센다)."""
+    rows = (LG.read(did) or {}).get("rows") or []
+    items = {((it.get("provenance") or "").split("#")[-1], it.get("surface"))
+             for x in store.read(store.QUEUE, []) if x.get("kind") == "orphan_attach" and x.get("doc_id") == did
+             for it in (x.get("payload") or {}).get("items") or []}
+    return sum(1 for r in rows if _hr149(r) or (r.get("role") == "entity" and (r.get("locator"), r.get("surface")) in items))
+
+
+_ents149 = lambda c: [{"surface": w, "category": "Property"} for w in ("장력", "속도") if w in c.get("text", "")]
+init.init(fresh_=True, all_=True)
+for _lay in ("process", "quality"):
+    bootstrap(_lay, echo=False)
+_register("process", DT)
+# ⓐ 문서 좌표 없음 — 파일명 · --coord · 제목 어디에도 골격 이름이 없다
+XA = _book(TMP / "B149_설비_사양서.xlsx", {"일반": ("visible", ["1. 범위", "장력은 매 시간 기록한다.", "2. 운전",
+                                                               "속도는 분당 기록한다."])})
+_da, _oa = _ingest149(XA, ["일반"], _ents149)
+_ca = RCZ.causes(RCZ.material(_da))
+_ra = _run("show", "report", _da)
+show("ⓐ 문서 좌표 없음 — 원인 묶음 첫 줄 「문서 좌표 없음 — 값 n」 + 가까운 골격 이름 + 처방(--coord · 실경로) · 원인 하나 · 합 = "
+     "보류 · 고아 행 수(아래 원인에서 다시 세지 않는다)",
+     _ca and _ca[0]["원인"] == RCZ.DOC and len(_ca) == 1 and sum(g["값"] for g in _ca) == _lost149(_da) > 0
+     and "    문서 좌표 없음 — 문서 좌표 · 값" in _ra and "가까운 골격 이름(보여만 준다)" in _ra
+     and f"ingest-file {XA} --doc-type {DT} --coord <골격 이름>" in _ra,
+     f"원인 {[(g['원인'], g['값']) for g in _ca]} · 못 붙은 값 {_lost149(_da)}")
+# ⓕ 인입 끝 화면 — 원인 묶음 위 n줄(같은 함수 · 전체는 show report)
+_lines_a = RCZ.cause_block(_da, limit=IS.LIST_LIMIT)
+show("ⓕ 인입 끝 화면이 원인 묶음 위 n줄을 낸다(`show report`와 같은 함수 · 값 중심 보류 목록 0)",
+     _lines_a and all(ln in _oa for ln in _lines_a if ln.strip()) and f"전체는 python run.py show report {_da}" in _oa
+     and "보류 목록 — 사유" not in _oa, [ln.strip()[:60] for ln in _lines_a if ln.strip()][:2])
+# ⓖ 읽기 전용 — show report 전후 상태 루트 바이트 같음(명령 로그 제외) · LLM 0
+_h0 = {p: p.read_bytes() for p in _P.home().rglob("*") if p.is_file() and "logs" not in p.parts}
+_rg = _run("show", "report", _da, "-v")
+_h1 = {p: p.read_bytes() for p in _P.home().rglob("*") if p.is_file() and "logs" not in p.parts}
+show("ⓖ 읽기 전용 — show report(-v 포함) 전후 상태 루트 바이트 같음(명령 로그 제외) · LLM 0",
+     _h0 == _h1 and "LLM 사용량" not in _rg, f"파일 {len(_h0)} · 바뀐 것 {[p.name for p in set(_h0) | set(_h1) if _h0.get(p) != _h1.get(p)][:3]}")
+# ⓑ 구간 좌표 없음 · ⓓ 목차 나무 — 시트 하나만 골격 이름(시트 「노칭」의 첫 줄 = 시트 제목 「노칭」 — 그 조각의 제목 사슬이 골격 이름)
+XB = _book(TMP / "B149_구간.xlsx", {"노칭": ("visible", ["노칭", "장력은 매 시간 기록한다."]),
+                                   "기타 사양": ("visible", ["1. 운전", "속도는 분당 기록한다.", "2. 점검", "속도를 본다."])})
+_db, _ob = _ingest149(XB, ["노칭", "기타 사양"], _ents149)
+_mb = RCZ.material(_db)
+_cb = RCZ.causes(_mb)
+_rows_b = (LG.read(_db) or {}).get("rows") or []
+_heldb = {r.get("locator") for r in _rows_b if _hr149(r)}
+_other_locs = {c["source_locator"] for c in _mb["env"]["chunks"] if (c.get("meta") or {}).get("sheet") == "기타 사양"}
+show("ⓑ 구간 좌표 없음 — 골격 이름 시트의 값은 붙고 · 다른 시트의 가장 위 제목이 「구간 좌표 없음 — <경로> 값 n」 한 줄",
+     [(g["원인"], g["못 찾은 것"]) for g in _cb] == [(RCZ.SECTION, "기타 사양")]
+     and _cb[0]["값"] == sum(1 for r in _rows_b if _hr149(r) and r.get("locator") in _other_locs) > 0
+     and not {c["source_locator"] for c in _mb["env"]["chunks"] if (c.get("meta") or {}).get("sheet") == "노칭"} & _heldb
+     and any(r.get("surface") == "장력" and r.get("node_id") for r in _rows_b),
+     f"원인 {[(g['원인'], g['못 찾은 것'], g['값']) for g in _cb]}")
+_tb, _tv = RCZ.tree_lines(_mb), RCZ.tree_lines(_mb, verbose=True)
+_line_o = next((ln for ln in _tb if ln.strip().startswith("1. 운전 — ")), "")
+_tr149 = OL149.tree(_mb["env"])
+_hid_o = next(h["id"] for h in _tr149["headings"] if h["path"].endswith("1. 운전"))
+_n_o = sum(1 for r in _rows_b if _hr149(r) and _tr149["of"].get(r.get("locator")) == _hid_o)   # 그 제목 바로 아래 조각의 보류
+show("ⓓ 목차 나무 — 문제 가지만 펼침(골격 시트는 접힘) · 줄의 좌표 출처 · 노드 상태 · 보류 수 = 봉투 · 대장 · -v면 전부",
+     any(ln.strip().startswith("기타 사양 — 좌표 없음") for ln in _tb) and f"보류 {_n_o:,}" in _line_o and "노드: " in _line_o
+     and not any(ln.strip().startswith("노칭 — ") for ln in _tb) and any("다 붙은 가지 1" in ln for ln in _tb)
+     and any(ln.strip().startswith("노칭 — 좌표 노칭(자기)") for ln in _tv),
+     f"{_line_o.strip()} · 접음 {[ln.strip() for ln in _tb if '다 붙은' in ln]}")
+# ⓒ 소속 이름 없음 — 그 이름이 청크에 있지만 노드가 없다(카테고리 없는 소속 — 고아 큐)
+XC = _book(TMP / "B149_소속.xlsx", {"사양": ("visible", ["1. 반송", "장력은 반송 유닛에서 잰다.", "속도는 반송 유닛의 값이다."])})
+_dc, _oc = _ingest149(XC, ["사양"], lambda c: [{"surface": w, "category": "Property",
+                                               "belongs_to": {"name": "반송 유닛", "category": None, "from": "본문"}}
+                                              for w in ("장력", "속도") if w in c.get("text", "")], "--coord", "노칭")
+_cc = RCZ.causes(RCZ.material(_dc))
+_q_c = sum(int((x.get("payload") or {}).get("rows") or 0) for x in store.read(store.QUEUE, [])
+           if x.get("kind") == "orphan_attach" and x.get("doc_id") == _dc and (x.get("payload") or {}).get("key") == "반송 유닛")
+show("ⓒ 소속 이름 없음 — 기다리는 이름마다 한 줄 · 값 수 = 고아 큐의 그 이름 항목 수 · 처방은 사람 후보(--step)",
+     [(g["원인"], g["못 찾은 것"]) for g in _cc if g["원인"] == RCZ.BELONGS] == [(RCZ.BELONGS, "반송 유닛")]
+     and next(g["값"] for g in _cc if g["원인"] == RCZ.BELONGS) == _q_c > 0
+     and "--step" in next(g["처방"] for g in _cc if g["원인"] == RCZ.BELONGS),
+     f"원인 {[(g['원인'], g['못 찾은 것'], g['값']) for g in _cc]} · 큐 {_q_c}")
+# ⓔ 표 — 좌표 표기 하나가 골격 밖(CP01 사본의 「프리 실링」 한 행)
+_wb = _lw149(RAWS / "CP01.xlsx")
+_ws = _wb.worksheets[0]
+for _row in _ws.iter_rows(min_row=4):
+    if _row[2].value == "프리 실링":
+        _row[2].value = "없는공정B149"
+XT = TMP / "B149_CP.xlsx"
+_wb.save(XT)
+_ot = _run("ingest-file", str(XT), "--doc-type", "cp", "--allow-mock")
+_dt = IG.doc_id_of(XT)
+_mt149 = RCZ.material(_dt)
+_ct = RCZ.causes(_mt149)
+_rows_t = (LG.read(_dt) or {}).get("rows") or []
+_lt = [ln for ln in RCZ.tree_lines(_mt149) if "없는공정B149" in ln]
+_nt149 = sum(1 for r in _rows_t if _hr149(r) and RC.row_coord(r, _mt149["by_loc"]) == "없는공정B149")
+show("ⓔ 표 — 골격 밖 좌표 표기 하나가 한 줄(값 = 그 표기의 보류 행) · 목차 나무 자리는 좌표 표기 목록(그 표기 → 없음 · 행 1)",
+     (RCZ.SECTION, "좌표 표기 '없는공정B149'") in [(g["원인"], g["못 찾은 것"]) for g in _ct]
+     and next(g["값"] for g in _ct if g["못 찾은 것"] == "좌표 표기 '없는공정B149'") == _nt149 > 0
+     and len(_lt) == 1 and "· 행 1 ·" in _lt[0] and "좌표 표기 목록" in RCZ.tree_lines(_mt149)[1],
+     f"원인 {[(g['원인'], g['못 찾은 것'], g['값']) for g in _ct]} · {(_lt or [''])[0].strip()}")
+for _x in (XA, XB, XC, XT):
+    _d149 = IG.doc_id_of(_x)
+    SH.path(_d149).unlink(missing_ok=True)
 
 for _d in set(_made):
     (HINTS / f"{_d}.json").unlink(missing_ok=True)

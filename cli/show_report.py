@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 — `show report <doc_id>` — **행별 판정 대장** + 문서 끝 결과표 · 보류 목록 · 불확실 목록 (B74 ④ · B99 ⑤).
+"""칸 0.3 — `show report <doc_id>` — **진단**(문서 머리 → 원인 묶음 → 목차 나무 — B149 · `cli/report_cause.py`) + 문서 끝
+결과표 · 맞춤표 · `--rows` 행별 판정 대장 · `--trace` 값마다 추적 (B74 ④ · B99 ⑤).
 
 재료는 인입이 남긴 대장(`<상태>/work/ingest_log/<doc_id>.json` · ④단)과 그 파일에 붙은 결과
 묶음(`core/build/result.collect`)이다 — **여기서 새로 세지 않는다.** `cli/show.py`에서 떼어냈다
@@ -41,9 +42,11 @@ def cmd_report(args):
         print(f"■ {doc} 인입 보고서 — 칸 전부(잘림 0) · 요약 · 맞춤 · 카테고리 쌍별 연결 · 추출 청크 · 판정 값")
         print(f"  보고서 {paths.show(report_md.write(doc, data))}")
         return 0
+    from cli import report_cause
+    diag, diag_js = report_cause.report(doc, data, verbose=_screen.VERBOSE or "-v" in args)   # -v는 진입점이 뗀다(전역 화면 플래그)
     if as_json:
         print(json.dumps({"doc_id": doc, "rows": rows,
-                          "summary": ledger.summary(rows)},
+                          "summary": ledger.summary(rows), "진단": diag_js},
                          ensure_ascii=False, indent=1))
         return 0
     su = ledger.summary(rows)
@@ -55,6 +58,17 @@ def cmd_report(args):
           f"임베딩→판정 {su['임베딩']} · 겹침→판정 {su['겹침']} · 신규 {su['신규']} · "
           f"불확실 {su['불확실']} · 보류 {su['보류']} · LLM 호출 {su['호출']} · "
           f"토큰 {su['토큰']}")
+    for ln in diag:                              # 머리 → 원인 묶음 → 목차 나무 (B149)
+        print(ln)
+    if "--rows" in args:                         # 행별 판정 대장 — 행 전부 (B74 ④)
+        _rows_table(rows)
+    else:
+        print(f"\n  (행별 판정 대장: python run.py show report {doc} --rows · 값마다 추적: --trace)")
+    _report_extra(data, rows)                    # 결과표 · 맞춤표 (B99 ⑤ · B112 ①)
+    return 0
+
+
+def _rows_table(rows):
     print("\n  " + _screen.pad("locator", 18) + _screen.pad("필드", 12)
           + _screen.pad("표기 → canonical", 46) + _screen.pad("경로", 15)
           + _screen.pad("판정", 11) + "큐")
@@ -67,8 +81,6 @@ def cmd_report(args):
               + _screen.pad(r.get("field") or "—", 12) + _screen.pad(_screen.cut(arrow, 44), 46)
               + _screen.pad(r.get("path"), 15) + _screen.pad(r.get("verdict"), 11)
               + (r.get("queue_kind") or ""))
-    _report_extra(data, rows)                    # 결과표 · 보류 · 불확실 (B99 ⑤⑨)
-    return 0
 
 
 def _report_diff(args):
@@ -167,9 +179,8 @@ def _refuse_no_ledger(doc):
 
 
 def _report_extra(data, rows):
-    """결과표(인입 끝과 같은 줄) · 보류 목록(사유별 · 표기 · 행 수) · 불확실 목록(가장 가까운 후보)."""
+    """결과표(인입 끝과 같은 줄) · 맞춤표 — 못 붙은 것은 원인 묶음이 맡는다(B149 — 값 중심 보류 · 불확실 목록의 자리)."""
     from cli import result_screen
-    from core.build.result import hold_reason
     if data.get("result"):
         print("")
         result_screen.show(data["result"])
@@ -179,59 +190,6 @@ def _report_extra(data, rows):
         from core.build import reconcile
         result_screen.show_reconcile(reconcile.for_report(data.get("doc_id") or (rows[0].get("doc_id") if rows else ""),
                                                           data))    # 맞춤표 — 인입 끝과 같은 함수 (B112 ①)
-    for ln in hold_unc_lines(rows, doc=data.get("doc_id")):
-        print(ln)
-
-
-def _hold_coord(r, by_loc):
-    """보류 행의 좌표 — 좌표 행이면 그 표기 자체 · 아니면 그 조각의 좌표(없으면 「좌표 없음」) (B112 ④ ·
-    `reconcile.row_coord` 하나 — 문서 좌표 경고와 같은 함수)."""
-    from core.build.reconcile import row_coord
-    co = row_coord(r, by_loc)
-    if r.get("role") == "anchor" and co:
-        return f"{co}(이 표기가 좌표)"
-    return co or "좌표 없음"
-
-
-def hold_unc_lines(rows, limit=None, doc=None):
-    """보류 목록(**사유 → 좌표 → 표기 · 행 수** — B112 ④: 좌표가 없어서 멈춘 것임을 줄이 말한다) · 불확실 목록(가장
-    가까운 후보) — `show report`와 인입 끝이 같은 함수(B102 ⑦). 좌표는 파싱 봉투의 조각에서(`doc` — 없으면 「좌표 없음」).
-    `limit`이면 목록마다 그 줄까지 · 넘으면 「… 외 n — 전체는 show report」."""
-    from core.build.result import hold_reason
-    out = []
-    by_loc = {}
-    _pp = paths.parsed(f"{doc}.json") if doc else None
-    if _pp is not None and _pp.exists():
-        from core.build.reconcile import by_locator
-        by_loc = by_locator(json.loads(_pp.read_text(encoding="utf-8")))
-    held = Counter((hold_reason(r), _hold_coord(r, by_loc), r.get("surface") or r.get("canonical") or "(표기 없음)")
-                   for r in rows if hold_reason(r))
-    if held:
-        out.append("")
-        out.append("  보류 목록 — 사유 → 좌표 → 표기 · 행 수")
-        items = sorted(held.items(), key=lambda x: (x[0][0], x[0][1], -x[1], x[0][2]))
-        why0 = None
-        for (why, co, s_), n in items[:limit]:
-            if why != why0:
-                out.append(f"    {why} — {sum(v for k, v in held.items() if k[0] == why):,}행")
-                why0 = why
-            out.append(f"      {_screen.pad(_screen.cut(co, 30), 32)}{_screen.pad(_screen.cut(s_, 40), 42)}{n:,}")
-        if limit is not None and len(items) > limit:
-            out.append(f"    … 외 {len(items) - limit:,}")
-    unc = [r for r in rows if r.get("verdict") in ("uncertain", "lowres")]
-    if unc:
-        out.append("")
-        out.append("  불확실 목록 — 표기 · 가장 가까운 후보(판정 · 임베딩 상위)")
-        for r in unc[:limit]:
-            near = r.get("nearest") or {}
-            tops = " · ".join(f"{c.get('canonical')} {c.get('score', 0):.2f}"
-                              for c in near.get("top") or [])
-            out.append(f"    {_screen.pad(_screen.cut(r.get('surface') or '—', 30), 32)}"
-                       f"{near.get('by') or '—'}: {near.get('canonical') or '—'}"
-                       + (f" · 상위 {tops}" if tops else ""))
-        if limit is not None and len(unc) > limit:
-            out.append(f"    … 외 {len(unc) - limit:,}")
-    return out
 
 
 def _coord_src(meta):
