@@ -3,11 +3,11 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 6
+   "secs": 4
   },
   "test_places": {
    "n": 32,
-   "secs": 6
+   "secs": 7
   },
   "test_g3": {
    "n": 82,
@@ -19,11 +19,11 @@
   },
   "test_ops": {
    "n": 84,
-   "secs": 6
+   "secs": 7
   },
   "test_intake": {
    "n": 99,
-   "secs": 15
+   "secs": 17
   },
   "test_ingest_view": {
    "n": 74,
@@ -31,47 +31,47 @@
   },
   "test_coord": {
    "n": 49,
-   "secs": 12
+   "secs": 11
   },
   "test_catalog": {
    "n": 60,
-   "secs": 22
+   "secs": 19
   },
   "test_safety": {
    "n": 36,
-   "secs": 59
+   "secs": 57
   },
   "test_judge": {
    "n": 85,
-   "secs": 12
+   "secs": 11
   },
   "test_build": {
-   "n": 70,
-   "secs": 25
+   "n": 73,
+   "secs": 28
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 23
+   "secs": 20
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 6
+   "secs": 7
   },
   "test_structure": {
    "n": 100,
-   "secs": 22
+   "secs": 19
   },
   "test_g6_capture": {
    "n": 9,
-   "secs": 18
+   "secs": 20
   },
   "test_g6_close": {
    "n": 29,
-   "secs": 27
+   "secs": 29
   },
   "test_contract": {
    "n": 76,
-   "secs": 20
+   "secs": 23
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,7 +87,7 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 5
+   "secs": 3
   },
   "test_p1_media": {
    "n": 19,
@@ -95,7 +95,7 @@
   },
   "test_p2": {
    "n": 69,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_register": {
    "n": 73,
@@ -119,19 +119,19 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 6
+   "secs": 7
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 4
+   "secs": 3
   },
   "test_p3_flow": {
    "n": 64,
-   "secs": 9
+   "secs": 8
   },
   "test_2a_gateway": {
    "n": 75,
-   "secs": 1
+   "secs": 2
   },
   "test_viewer": {
    "n": 60,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 22
+   "secs": 21
   }
  },
  "log": [
@@ -393,6 +393,14 @@
    "suite": "test_structure",
    "from": 94,
    "to": 100,
+   "why": ""
+  },
+  {
+   "at": "2026-10-27",
+   "head": "7b13909",
+   "suite": "test_build",
+   "from": 70,
+   "to": 73,
    "why": ""
   }
  ]
