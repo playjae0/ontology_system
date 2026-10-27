@@ -313,6 +313,12 @@ show("B157 ⓑ B102 ② 표본 — 시트명 「적층」은 그 조각 좌표 �
      and _up157["process_ref"] == "노칭::노칭 타발" and _up157["meta"].get("coord_ignored") == ["노칭"]
      and (_cc157["다른 공정 구간"], _cc157["위 공정 표기"]) == (1, 1),
      f"S1 {_with['S1']['process_ref']} · 조상 {_up157['process_ref']} {_up157['meta'].get('coord_ignored')} · 칸 {_cc157}")
+# B157 리뷰 고침 — 정확 일치를 먼저(줄기 밖 「ABC」 정확 · 줄기 안 「abc」는 접기로만 맞는다 → 정확한 쪽 — 사전 조회와 같은 차례)
+_nd157 = [{"canonical": "P", "parent": None}, {"canonical": "Q", "parent": None, "aliases": ["ABC"]},
+          {"canonical": "P1", "parent": "P", "aliases": ["abc"]}]
+_x157r = TG.coord_from_section([{"source_locator": "S1", "section": "1. ABC"}], nodes=_nd157, doc_coord="P")[0]
+show("B157 리뷰 고침 ⓑ 정확 일치가 있으면 접기 대조를 섞지 않는다 — 제목 「1. ABC」(줄기 밖 Q의 별칭 정확 · 줄기 안 P1의 「abc」는 접기) → Q 쪽",
+     _x157r["process_ref"] == "ABC" and _x157r["meta"].get("coord_other") == "1. ABC", f"{_x157r}")
 _mn157 = next((r for r in _lr157 if r.get("surface") == "노칭" and r.get("field") == "Unit"), {})
 show("B157 ⓒ 본문 가드 그대로 — 「2. 스태킹」 구간 본문의 「노칭」 개체 → 관련 링크(노드 0)",
      _mn157.get("verdict") == "mention" and not _live("스태킹::노칭"), f"노칭 {_mn157.get('verdict')}")

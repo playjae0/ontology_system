@@ -518,6 +518,16 @@ show("B151 ⓓ 공정 걸기(문서 좌표 「노칭」) — 슬라이드 4는 3
      and not PDK.mismatch(_ep) and _sl(_ed, 8)["process_ref"] == "노칭" and _sl(_ed, 8)["meta"].get("coord_from_doc"),
      f"3·4 {_sl(_ed, 3)['process_ref']} · {_sl(_ed, 4)['process_ref']} · 어긋남 {sorted(_mis)} · 고아 {len(_orp)} · 물음 {_ASK} · "
      f"7 {_s7['process_ref']} {_s7['meta'].get('coord_tags')} · 8 {_sl(_ed, 8)['process_ref']}")
+# B157 리뷰 고침 — 덱 판단이 「공정 없음」(빈 목록 — 어댑터는 좌표를 싣지 않는다)이라 한 슬라이드는 제목이 줄기 밖 공정 이름이어도 지금 그대로
+_p157 = _deck151(TMP / "B157D.pptx", [["B157 보고"], ["2. 스태킹", "적층 속도 10ppm"]])
+_a157 = {"slides": [{"slide": 1, "title": "B157 보고", "section": None, "continues": None, "subject": None, "processes": [],
+                     "no_entities": True},
+                    {"slide": 2, "title": "2. 스태킹", "section": None, "continues": None, "subject": None, "processes": [],
+                     "no_entities": False}], "overview": "보고"}
+_s157 = _sl(_p151("B157D", _p157, _a157)[1], 2)
+show("B157 리뷰 고침 ⓐ 덱 판단 「공정 없음」 슬라이드(제목 「2. 스태킹」 · 문서 좌표 「노칭」) — 다른 공정 구간을 세우지 않고 문서 좌표를 물려받는다",
+     _s157["process_ref"] == "노칭" and _s157["meta"].get("coord_from_doc") and not _s157["meta"].get("coord_other"),
+     f"{_s157['process_ref']} · {_s157.get('meta', {}).get('coord_other')}")
 # B154 ① 좌표 쌍 다음 줄 — 상위의 출처로(ⓓ의 덱 = 문서 좌표 상위 · 행 상위가 어긋난 표 조각 = 행)
 from cli import coord_queue as CQU154, doc_coord as DC154   # noqa: E402
 _ps154, _qs154, _ts154 = io.StringIO(), io.StringIO(), io.StringIO()
