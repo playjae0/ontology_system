@@ -25,7 +25,7 @@ _LOG = log.get(__name__)
 
 
 # ---------------------------------------------------------------- 비정형 (1d′)
-def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
+def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=None, outline=None):
     """Pass 1 — 청크마다 **좌표부터** 세운다 · 소속 대상을 먼저 해소한다(B102 ④). 돌려주는 것은
     `{chunk_id: 좌표 묶음 + 소속 계획}`.
 
@@ -54,13 +54,15 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of):
                          node_id=r_id,
                          queue_kind=None if (r_id or not s) else "orphan_anchor",
                          hold=None if r_id else hold)
-        ref, ref_g = b.main_coord(res)
+        # 골격 이름 제목 아래면 그 골격 노드로 내린다(B150 ② — 내리기만 · 봉투는 그대로 · anchor 행은 봉투의 좌표)
+        low = heading.coord_below(b, landed, outline, src)
+        ref, ref_g = low or b.main_coord(res)
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         b.mention_coords((src.get("meta") or {}).get("mentions"), COORD_CATEGORY, prov)   # 언급 공정 → 관련 링크 (B125 ④)
         plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
                                 (ref, ref_g, parent, anchor_pol), _loc,
-                                coords=[(r_id, r_g) for _s, r_id, r_g, _h in res if r_id])
+                                coords=[low] if low else [(r_id, r_g) for _s, r_id, r_g, _h in res if r_id])
         coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol, plans)
     return coords
 
@@ -324,7 +326,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
     landed = heading.land(b, cfg, graph, env, outline, {loc: cid for cid, loc in loc_of.items()})
     _lg.chunk_done(None)                          # 제목 개체 행 — 붙은 자리와 함께 화면에 (B119 ⑤)
     human.aliases(b, env["doc_id"])               # 사람 후보 같은 것 — 있는 노드면 해소 앞에 (B140 ③)
-    coords = _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of)
+    coords = _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed, outline)
     human.aliases(b, env["doc_id"], after=True)   # 대상이 이번 새것이면 그 노드가 선 뒤
 
     # ════════════════ Pass 2 (부착) ════════════════

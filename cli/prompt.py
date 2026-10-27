@@ -169,6 +169,21 @@ _REGEN_SECTION = re.compile(
     r"\n---\n\n## \[재생성 지시\].*?" + re.escape(REGEN_SLOT) + r"\n?", re.S)
 
 
+# 스키마만 새 판 구획의 자리(B150 ③) — 문장은 템플릿 몫 · 코드는 운영 스키마 전문만 채우거나 구획째 지운다.
+SCHEMA_ONLY_SLOT = "{{운영_스키마}}"
+_SCHEMA_ONLY_SECTION = re.compile(
+    r"\n---\n\n## \[스키마만 새 판.*?" + re.escape(SCHEMA_ONLY_SLOT) + r"\n?", re.S)
+
+
+def _fill_schema_only(text, hint):
+    """`human.hint.schema_only`가 있으면 운영 스키마 전문을 자리에 · 없으면 **구획째** 지운다(재생성 구획과 같은 결)."""
+    so = hint.get("schema_only") if isinstance(hint, dict) else None
+    if not isinstance(so, dict):
+        return _SCHEMA_ONLY_SECTION.sub("", text)
+    body = json.dumps(so.get("schema") or {}, ensure_ascii=False, indent=2)
+    return text.replace(SCHEMA_ONLY_SLOT, f"```json\n{body}\n```")
+
+
 def _fill_regeneration(text, items):
     """지시 목록을 자리에 넣거나, 지시가 없으면 **구획째** 지운다."""
     if not items:
@@ -222,6 +237,7 @@ def _render_template(text, pkg, *, regeneration=None):
     """
     sysd = pkg.get("system") or {}
     voc = sysd.get("layer_vocabulary") or {}
+    text = _fill_schema_only(text, (pkg.get("human") or {}).get("hint"))   # 스키마만 새 판 (B150 ③)
 
     cats = voc.get("categories") or {}
     cat_md = "\n".join(f"- `{k}` — {v}" for k, v in cats.items()) or "- (없음)"

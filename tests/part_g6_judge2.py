@@ -180,13 +180,14 @@ if _cols is None:
 else:
     os.environ["COLUMNS"] = _cols
 LG.ON_CHUNK = None
+# 기대 변경(B150 ① — 인입 화면은 붙은 자리를 칸이 아니라 조각 부착 때 └ 줄로 연결마다 · 칸(md 보고서 · value_cells)은 관계 상대(방식) 그대로)
 _tree = [ln for ln in _buf.getvalue().splitlines() if re.match(r"\s+└ ", ln) and "└ 소속" not in ln]
 _multi = [r for r in _ent if len(r.get("attached") or []) > 1]
 _stuck = [SCR.value_cells(r, {}, {})[0][SCR.VALUE_HEADS.index("붙은 자리")] for r in _ent if r.get("attached")]
-show("ⓑ 붙은 자리 칸 = 관계 상대(방식) · 연결이 하나인 행은 └ 줄 0 · 둘 이상인 행만 연결마다 한 줄",
-     _multi and len(_tree) == sum(len(r["attached"]) for r in _multi)
+show("ⓑ 붙은 자리 칸(md) = 관계 상대(방식) · 인입 화면의 └ 줄은 연결마다 한 줄(조각 부착 때)",
+     _multi and len(_tree) == sum(len(r.get("attached") or []) for r in _ent)
      and all(s.startswith(r["attached"][0]["rel"] + " ") for s, r in zip(_stuck, [r for r in _ent if r.get("attached")])),
-     f"└ 줄 {len(_tree)} · 둘 이상인 행 {len(_multi)} · 칸 {_stuck[:2]}")
+     f"└ 줄 {len(_tree)} · 연결 {sum(len(r.get('attached') or []) for r in _ent)} · 칸 {_stuck[:2]}")
 
 for _p in (HINTS / f"{DID}.json", HINTS / f"{DID}@structure.json", HINTS / f"{DID}@outline.json"):
     _p.unlink(missing_ok=True)

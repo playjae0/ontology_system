@@ -1,5 +1,5 @@
 {
- "_출처": "tools/suite_reads.py --write — 실행 기록(창작 표본 위의 회귀) · 회귀는 정적 선택이 이 표를 빠뜨리지 않는지 잰다 · B131 ④ 스위트 통합 때 이름만 옮겼다(합친 스위트는 옛 스위트를 조각으로 그대로 돈다 — 읽는 파일이 같다)",
+ "_출처": "tools/suite_reads.py --write — 실행 기록(창작 표본 위의 회귀) · 회귀는 정적 선택이 이 표를 빠뜨리지 않는지 잰다",
  "표본": {
   "core/build/heading.py": [
    "test_2a_gateway",
@@ -9,6 +9,8 @@
    "test_coord",
    "test_g1_g2",
    "test_g3",
+   "test_g6_capture",
+   "test_g6_close",
    "test_g6_rehearsal",
    "test_ingest_view",
    "test_intake",
@@ -40,6 +42,8 @@
    "test_coord",
    "test_g1_g2",
    "test_g3",
+   "test_g6_capture",
+   "test_g6_close",
    "test_g6_rehearsal",
    "test_ingest_view",
    "test_intake",
@@ -68,6 +72,7 @@
    "test_catalog",
    "test_coord",
    "test_g1_g2",
+   "test_g6_close",
    "test_g6_rehearsal",
    "test_ingest_view",
    "test_intake",
@@ -97,6 +102,8 @@
    "test_coord",
    "test_g1_g2",
    "test_g3",
+   "test_g6_capture",
+   "test_g6_close",
    "test_g6_rehearsal",
    "test_ingest_view",
    "test_intake",
@@ -130,25 +137,25 @@
    "test_catalog",
    "test_coord",
    "test_g1_g2",
-   "test_g6_rehearsal",
+   "test_g6_close",
    "test_ingest_view",
    "test_intake",
    "test_judge",
-   "test_ops",
    "test_p1_media",
    "test_p3_flow",
    "test_p3_gate",
    "test_p3_prompt",
-   "test_p3_view",
    "test_places",
    "test_query",
    "test_rebuild",
    "test_safety",
-   "test_site"
+   "test_site",
+   "test_structure"
   ],
   "tests/stub_gateway.py": [
    "test_coord",
    "test_g1_g2",
+   "test_g6_close",
    "test_g6_rehearsal",
    "test_places",
    "test_rebuild",
@@ -156,7 +163,8 @@
    "test_site"
   ],
   "docs/구조도/00_칸_대장.md": [
-   "test_2a_gateway"
+   "test_2a_gateway",
+   "test_g6_close"
   ]
  }
 }

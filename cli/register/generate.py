@@ -111,8 +111,9 @@ def cmd_roles(args):
     return 0
 
 
-def _cmd_generate_revise(doc_type, layer):
-    """⓪ **새 판**(`--revise`)의 전제 — 등록분인가 · 고정 어댑터가 아닌가.
+def _cmd_generate_revise(doc_type, layer, schema_only=False):
+    """⓪ **새 판**(`--revise`)의 전제 — 등록분인가 · 고정 어댑터가 아닌가. `schema_only`(B150 ③)면 표 등록분인가까지 보고
+    스키마만 새 판의 재료 `{adapter, revision, schema}`(운영 어댑터 자리 · 그 판 · 운영 스키마)를 돌려준다(아니면 None).
 
     `cmd_generate`에서 단계로 떼어냈다(B78 2c) — 한 함수가 404행이면 어느 단계에서
     막혔는지를 사람이 줄 번호로 찾게 된다.
@@ -139,6 +140,20 @@ def _cmd_generate_revise(doc_type, layer):
     if _docs:
         print(f"    ※ 이 doc_type으로 인입된 문서 {len(_docs)}건 — "
               f"확정해도 **자동 재인입은 없다**(문서 4 §4.8-7)")
+    if not schema_only:
+        return None
+    _ad, _sc = registry.at(_cur["adapter"]), registry.schema_path(doc_type)
+    _schema = json.loads(_sc.read_text(encoding="utf-8")) if _sc and _sc.exists() else {}
+    if _schema.get("payload_kind") == "prose" or not _ad.exists():
+        # **고정 어댑터(산문)는 대상이 아니다** — 산문 스키마는 층 선언이 전부라 다시 만들 것이 없다(§6.4-5)
+        raise SystemExit(f"[생성] --schema-only는 **표 등록분**에만 쓴다 — '{doc_type}'은 "                 # [상태]
+                         + ("산문(고정 어댑터 — 스키마는 층 선언뿐)" if _ad.exists() else "운영 어댑터 파일이 없다")
+                         + f"\n  근거 — {paths.show(_sc) if _sc else store.path(store.DOC_TYPES)} · "
+                           f"{paths.show(_ad)}\n"
+                         f"  ▶ 다음 줄:\n"
+                         f"     python -m cli.register generate {doc_type} {layer or '<층>'} <표본...> --revise")
+    print(f"  ▶ 스키마만 새 판 — 운영 어댑터 {paths.show(_ad)}는 그대로 두고 스키마만 다시 만든다 (B150 ③)")
+    return {"adapter": str(draft_mod._rel(_ad)), "revision": _cur.get("revision", 0), "schema": _schema}
 
 
 def _cmd_generate_resume(doc_type, layer, samples, no_fewshot):
@@ -346,8 +361,11 @@ def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revi
 
 
 def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
-                          interview, drop_interview):
-    """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`."""
+                          interview, drop_interview, operating=None):
+    """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`.
+
+    `operating`(스키마만 새 판 — B150 ③)이면 그 재료를 `human.hint`의 `schema_only`에(`--no-fewshot`과 같은 그릇) ·
+    `system.adapter_skeleton`은 스켈레톤 대신 **운영 어댑터의 전문**(키 수 그대로 — 값만 바뀐다 · 생성 지시문이 그렇게 읽는다)."""
     from core.state.bootstrap import coord_layer, load_config   # 이름 규칙은 공통 config에서 얹는다
     # **골격 목록은 등록 층 몫 함수 하나에서**(B100 ②) — 좌표 층 몫 + 이 층 자기 골격 · 노드마다 몫 표시
     _sk_nodes = tagger.registration_list(layer, coord_layer())
@@ -362,8 +380,9 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
                   # **끈 사실을 기록하되 사람 4키를 늘리지 않는다**(B30 재현 조건 ·
                   # 문서 6 §6.5 표). `hint`가 「사람이 준 것」의 자리이므로 그 안에
                   # 싣는다 — 문답 전문을 같은 자리에 실은 D-101과 같은 규칙이다.
-                  "hint": ({"text": hint, "no_fewshot": True}
-                           if no_fewshot else hint)},
+                  "hint": ({"text": hint, **({"no_fewshot": True} if no_fewshot else {}),
+                            **({"schema_only": operating} if operating else {})}
+                           if (no_fewshot or operating) else hint)},
         "system": {
             # **관찰 재료 그릇 안에 열 프로파일을 함께 싣는다**(B39·B36) —
             # 시스템 5키를 늘리지 않는다. 앞 N줄 창으로는 보이지 않는 사실(행마다
@@ -411,8 +430,8 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
             # 그 파일을 열 수 없어 뼈대를 **작문**하게 된다. 실측: 전송분의 extract가
             # 시그니처와 docstring에서 끝났다. 시스템 키는 **5 그대로**다 — 값의
             # 형태만 바뀐다(문서 6 §6.5 표).
-            "adapter_skeleton": _strip_module_doc(
-                (KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8")),
+            "adapter_skeleton": (draft_mod._at(operating["adapter"]).read_text(encoding="utf-8") if operating
+                                 else _strip_module_doc((KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8"))),
         },
     }
     d = _dir(doc_type)
@@ -514,7 +533,8 @@ def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
                          f"     python run.py llm-check\n"
                          f"     USE_MOCK=0 python -m cli.register generate "
                          f"{doc_type} --resume")
-    print(f"   초안 수령: {draft_mod._rel(ad)} · {draft_mod._rel(sc)}")
+    print(f"   초안 수령: {draft_mod._rel(ad)} · {draft_mod._rel(sc)}"
+          + (" (스키마만 — 어댑터는 운영 판 그대로)" if draft_mod.schema_only_of(doc_type) else ""))
     if gateway.usage_total()["calls"]:
         from cli import _screen
         print(f"   {_screen.usage_line()}")          # 문구는 한 함수 (B96 ③)
@@ -533,7 +553,7 @@ def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                  no_fewshot=False, resume=False, use_basic=False,
                  drop_interview=False, revise=False, as_name=None,
-                 no_basic=False, sheets=None):
+                 no_basic=False, sheets=None, schema_only=False):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
@@ -548,8 +568,8 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
         # **변형 등록** — 기존 doc_type은 손대지 않고 새 이름으로 정상 경로를 간다.
         print(f"  ▶ 변형 등록 — '{doc_type}'은 그대로 두고 '{as_name}'으로 간다")
         doc_type = as_name
-    if revise:
-        _cmd_generate_revise(doc_type, layer)
+    revise = revise or schema_only                 # 스키마만 새 판도 새 판이다 (B150 ③)
+    op = _cmd_generate_revise(doc_type, layer, schema_only) if revise else None
     if resume:
         return _cmd_generate_resume(doc_type, layer, samples, no_fewshot)
     _cmd_generate_guard(doc_type, layer, samples, revise)
@@ -566,11 +586,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                          f"  근거 — 설정 파일 {gateway.config_sources()['read'] or '없음(환경변수만)'}\n"
                          f"  ▶ 다음 줄 — 단계별 원인을 본다:\n"
                          f"     python run.py llm-check")
-    _r = _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
+    # 스키마만 새 판은 형태가 이미 정해졌다(표 · 운영 어댑터) — 형태 판정 · 고정 어댑터 권유를 건너뛴다
+    _r = None if op else _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
     if _r is not None:
         return _r
     pkg, d = _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
-                                   interview, drop_interview)
+                                   interview, drop_interview, operating=op)
     _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview)
     return _cmd_generate_draft(doc_type, layer, samples, pkg, revise)
 

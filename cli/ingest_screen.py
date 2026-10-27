@@ -224,24 +224,22 @@ def value_line(row):
 def row_printer(env=None, stage=None):
     """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부).
 
-    산문(봉투에 청크가 있다)이면 값 행을 **조각의 부착이 끝날 때**(`ledger.ON_CHUNK`) 붙은 자리와 함께 낸다(B119 ⑤ —
-    한 줄에 구조 역할 · 소속(출처) · 붙은 자리) · 표는 지금처럼 행이 서는 대로(붙은 자리는 행 아래 `└` 줄)."""
+    **판정 행이 서는 대로 찍는다**(표 · 산문 같은 결 — B150 ①: 산문의 판정은 Pass 1이라 조각 부착 끝까지 모으면 줄이 한참
+    없다가 쏟아진다) · 산문은 경로 칸에 걸린 시간(앞 값 행 이후 — 판정 호출 포함)을 함께 · 붙은 자리는 **조각 부착이 끝날 때**
+    (`ledger.ON_CHUNK`) 그 조각의 찍은 값 행 아래 `└` 줄로 덧붙인다(구조 역할 · 소속(출처)는 그 줄의 칸 — B119 ⑤)."""
+    import time
     for k in TALLY:
         TALLY[k] = 0
     prose = bool((env or {}).get("chunks"))
-    pending = {}
+    shown = {}                                       # 위치 → 찍은 값 행(산문 — 붙은 자리는 조각 부착 때)
+    clock = {"t": time.monotonic()}
 
-    def show(row):
+    def show(row, secs=None):
         lab = labels.get(row.get("locator"))          # 자르지 않은 줄 · 전체 경로는 명령 로그에(B118 ③)
         _LOG.info("값 %s%s", value_line(row).strip(), f" · 자리 {lab}" if lab else "")
-        table.row(*value_cells(row, places, roles, prose, wide))
+        table.row(*value_cells(row, places, roles, prose, wide, secs=secs, live=True))
         if prose and not wide and row.get("belongs_to"):           # 좁은 화면 — 소속(출처)는 행 아래 줄로
             print(f"     └ 소속 {row['belongs_to']}({FROM_SHOW.get(row.get('from'), row.get('from') or '-')})")
-        att = (row.get("attached") or []) if prose else []
-        # 연결이 둘 이상이거나 -v일 때만 — 하나면 칸이 다 말한다(B123 ② · 전부는 --md · 로그) · 좁은 화면은 칸이 빠지니 늘
-        if len(att) > 1 or _screen.VERBOSE or not wide:
-            for a in att:
-                print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
 
     def on_edge(row, info):
         # 붙은 자리 한 줄(B102 ⑦) — 그 값이 찍힌 줄 아래 · 로그에는 자르지 않은 줄
@@ -255,15 +253,16 @@ def row_printer(env=None, stage=None):
     _lg.ON_EDGE = on_edge
 
     def on_chunk(loc=None):
-        for k in ([loc] if loc is not None else list(pending)):
-            for row in pending.pop(k, []):
-                show(row)
+        """조각 부착 끝 — 그 조각에서 찍은 값 행의 붙은 자리를 `└` 줄로(연결마다 — 표의 붙은 자리 줄과 같은 결)."""
+        for k in ([loc] if loc is not None else list(shown)):
+            for row in shown.pop(k, []):
+                for a in row.get("attached") or []:
+                    print(f"     └ {row.get('surface') or row.get('canonical')} · {a['rel']} {a['dir']} {a['other']} ({a['path']})")
 
     def on_row(row):
         if row.get("role") == "entity":            # 처리한 값 = 개체 행(좌표 · 부착 행은 값이 아니다 — B142 ⑥)
             TALLY["값"] += 1
             if stage is not None and stage.get("이름") == JUDGE:
-                import time
                 stage["값"] = TALLY["값"]
                 stage["t0"] = stage.get("t0") or time.monotonic()
         if row.get("path") == "dictionary":
@@ -276,11 +275,12 @@ def row_printer(env=None, stage=None):
             TALLY["orphan"] += 1
         if row.get("queue_kind"):
             TALLY["큐"] += 1
+        now = time.monotonic()
+        secs, clock["t"] = (now - clock["t"]) if prose else None, now
         if _screen.VERBOSE or _loud(row):
+            show(row, secs)
             if prose:
-                pending.setdefault(row.get("locator"), []).append(row)
-            else:
-                show(row)
+                shown.setdefault(row.get("locator"), []).append(row)
     # 위치 두 칸의 재료(B118 ③) — 봉투의 조각마다 `(시트, 경로 끝)` · 대장 행의 위치로 찾는다(새 판정 0)
     from core.build import extract_ctx as _xc
     pieces = [c for c in ((env or {}).get("chunks") or []) + ((env or {}).get("records") or [])
@@ -289,7 +289,7 @@ def row_printer(env=None, stage=None):
     labels = {c["source_locator"]: _xc.chunk_label(c) for c in pieces}
     roles = struct_roles(env) if prose else {}
     wide = _screen.term_width() >= WIDE_MIN
-    table = value_table(list(places.values()), prose, wide)
+    table = value_table(list(places.values()), prose, wide, live=True)
     _lg.ON_CHUNK = on_chunk if prose else None
     on_row.flush = on_chunk
     return on_row
@@ -325,25 +325,32 @@ PROSE_COLS = (3, 9, 10)
 #: 소속(출처) · 붙은 자리를 칸으로 낼 터미널 폭 — 좁으면 행 아래 `└` 줄로(위치 두 칸이 잘리지 않게 · B118 ③)
 WIDE_COLS = (9, 10)
 WIDE_MIN = 150
+#: 산문 인입 화면에서 빼는 칸 — 붙은 자리(판정 순간엔 없다 · 조각 부착 때 `└` 줄 — B150 ①)
+LIVE_DROP = 10
 
 
-def _drop(prose, wide):
-    return set(PROSE_COLS) if not prose else (set() if wide else set(WIDE_COLS))
+def _drop(prose, wide, live=False):
+    """뺄 칸 — 표 문서는 산문 몫 칸 · 좁은 화면은 소속(출처) · 붙은 자리 · 산문 인입 화면(`live`)은 붙은 자리(판정 순간엔 아직 없다 —
+    조각 부착 때 `└` 줄 · B150 ①)."""
+    if not prose:
+        return set(PROSE_COLS)
+    return (set() if wide else set(WIDE_COLS)) | ({LIVE_DROP} if live else set())
 
 
 #: 판정 값 표의 칸 이름 — 화면 표와 md 보고서(`cli/report_md`)가 같은 칸을 같은 순서로 쓴다(`value_cells`의 순서)
 VALUE_HEADS = ("", "시트", "청크", "구조", "표기", "카테고리/열", "판정", "경로", "확신", "소속(출처)", "붙은 자리", "노드/큐")
 
 
-def value_table(places=None, prose=True, wide=True):
+def value_table(places=None, prose=True, wide=True, live=False):
     """판정 값 표(B98 ⑥) — 기호 · 시트 · 청크 · 구조 · 표기 · 카테고리/열 · 판정 · 경로 · 확신 · 소속(출처) · 붙은 자리 · 노드/큐.
 
     구조 · 소속(출처) · 붙은 자리(B119 ⑤)는 산문 몫(표 문서는 빈 칸) — 어느 단계에서 틀렸는지(구조 → 소속 → 붙음) 한 줄에서."""
     # 고정 칸은 좁게(경로 · 큐는 `…`로 잘려도 대장·로그에 전부 있다) — 표기 칸이 남게 (B99 ⑦⑨) · 위치 두 칸은 이 문서 폭
     ws, wc = place_widths(places)
-    widths = (1, ws, wc, 9, 40, 10, 9, 13, 4, 18, 22, 16)
+    # 산문 진행 표(live)는 붙은 자리 칸이 `└` 줄로 가고 경로 칸이 걸린 시간을 함께 진다(B150 ① — 표 문서 화면은 그대로)
+    widths = (1, ws, wc, 9, 40, 10, 9, 26 if live and prose else 13, 4, 18, 22, 16)
     cols = [(h, wd, h == "확신") for h, wd in zip(VALUE_HEADS, widths)]
-    cut = _drop(prose, wide)
+    cut = _drop(prose, wide, live)
     cols = [c for i, c in enumerate(cols) if i not in cut]
     return _screen.Table(cols, flex=4 if prose else 3, keep=(1, 2))
 
@@ -366,8 +373,8 @@ def where_cells(locator, places=None):
     return (sheet, rest) if sheet else ("", loc)
 
 
-def value_cells(row, places=None, roles=None, prose=True, wide=True):
-    """대장 행 하나 → 표의 칸(값 · 색 층). **새 정보 0** — 행의 값을 그대로 옮긴다(B81 ①)."""
+def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, live=False):
+    """대장 행 하나 → 표의 칸(값 · 색 층). **새 정보 0** — 행의 값을 그대로 옮긴다(B81 ①) · `secs`면 경로 칸에 걸린 시간."""
     v = row.get("verdict") or "pending"
     calls = (row.get("llm") or {}).get("calls", 0)
     n = row.get("candidates_n") or 0
@@ -400,7 +407,9 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True):
     cells = [MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
              row.get("field") or "", v, how, conf, bel, stuck, where]
     kinds = [k, "aux", "aux", "aux", k, "aux", k, "aux", "aux", None, None, "aux"]
-    cut = _drop(prose, wide)
+    if secs is not None:
+        cells[7] = f"{how} · {secs:.1f}초"
+    cut = _drop(prose, wide, live)
     return [c for i, c in enumerate(cells) if i not in cut], [c for i, c in enumerate(kinds) if i not in cut]
 
 
@@ -414,6 +423,7 @@ def build_screen(step=False, stage=None, prose=False):
     큐는 **집계 단위**로 말한다(B72 ②): `unknown_field 1종(meta 118행)`. 행마다
     한 건이면 사람이 판정할 하나가 118건 밑에 묻힌다.
     """
+    from cli.extract_screen import extract_screen       # 추출 화면 칸(B150 — 800행 상한으로 나눴다)
     _ex = extract_screen(step=step, stage=stage)
     _judge = dict(stage or {})
 
@@ -508,12 +518,11 @@ def build_screen(step=False, stage=None, prose=False):
         LAST_RESULT["res"] = info.get("결과")
         result_screen.show(info.get("결과"))
         result_screen.show_reconcile(info.get("맞춤"), limit=LIST_LIMIT)     # 맞춤표 (B112 ①④⑤)
-        # **인입 끝 목록**(B102 ⑦) — 불확실 · 보류 · `show report`와 같은 함수 · 줄 상한
+        # **인입 끝 목록**(B102 ⑦ → B149 ④) — 원인 묶음(못 찾은 것 · 값은 가장 위 원인에서 한 번) · `show report`와 같은 함수 · 줄 상한
         _doc = (info.get("결과") or {}).get("doc_id")
         if _doc:
-            from cli.show_report import hold_unc_lines
-            from core.build import ledger as _lg
-            _ln = hold_unc_lines((_lg.read(_doc) or {}).get("rows") or [], limit=LIST_LIMIT, doc=_doc)
+            from cli.report_cause import cause_block
+            _ln = cause_block(_doc, limit=LIST_LIMIT)
             for ln in _ln:
                 print(ln)
             if _ln:
@@ -521,7 +530,7 @@ def build_screen(step=False, stage=None, prose=False):
     return notice
 
 
-#: 인입 끝 목록의 줄 상한(목록마다) — 전체는 `show report`.
+#: 인입 끝 원인 묶음의 줄 상한(층마다) — 전체는 `show report`.
 LIST_LIMIT = 8
 
 #: 마지막 문서의 결과 묶음 — 일괄 투입 끝 줄이 문서별로 모은다(`cli/ingest.ingest_file`).
@@ -555,135 +564,6 @@ def end_lists(info):
         out.append(f"   실패 청크 {len(info['실패목록']):,} — 라벨 · 사유")
         out += [f"     {_screen.pad(_screen.cut(lab, 40), 42)}{why}" for lab, why in info["실패목록"]]
     return out
-
-
-def extract_table(places=None):
-    """추출 청크 표(B98 ⑥) — 번호 · 시트 · 청크(경로 끝) · 개체 수 · 개체(카테고리) · 관계 · 입력 · 출력 · 누적."""
-    ws, wc = place_widths(places)
-    return _screen.Table([("번호", 7, True), ("시트", ws, False), ("청크", wc, False), ("개체", 4, True),
-                          ("개체(카테고리)", 60, False), ("관계", 4, True), ("입력", 6, True),
-                          ("출력", 6, True), ("누적", 8, True)], flex=4, keep=(1, 2))
-
-
-def extract_screen(step=False, stage=None):
-    """**산문 추출 화면** (B97 ①② · 표 B98 ⑥) — 세 진입(한 렌즈 · 렌즈마다 · `cli.extract`)이 같은 함수다.
-
-    core는 사실만 낸다(`core/build/extract.extract`의 `notice`) — 예고 · 청크마다 메타 ·
-    끝. 화면은 예고·끝은 줄로, 청크는 **이어지는 표**로 그리고, `--step`이면 추출 예고에서
-    묻는다(`False` = 멈춤). `stage`를 주면 누적 줄(`_screen.ticker`)이 읽는 「어디」를 갱신한다.
-    """
-    box = {"t": None, "u0": None}
-
-    def notice(info):
-        k = info.get("단계")
-        lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
-        if k in ("추출리허설", "개요리허설"):           # 등록 검수의 리허설 산출 (B116 ②)
-            what = "추출" if k == "추출리허설" else "목차 노드화"
-            if info["쓴다"]:
-                _screen.say(f"   {what} {lz}— 리허설 산출({info['종류']} 등록 검수)을 운영 자리로 옮겼다 · "
-                            f"{paths.show(info['자리'])}", "head")
-            else:
-                _screen.say(f"   {what} {lz}— 리허설 산출({info['종류']})을 쓰지 않는다: {info['이유']} "
-                            f"(그 자리에서 지웠다 · 지금 조건으로 다시 판정)", "aux")
-            return None
-        if k in ("개요예고", "개요끝", "개요재사용"):
-            return _outline_line(info, lz, stage, step)
-        if k == "추출재사용":
-            _screen.say(f"   추출 {lz}— 체크포인트 재사용(LLM 0) · {paths.show(info['자리'])}"
-                        + (f" · 호출 보존 씨앗 {info['씨앗']:,}" if info.get("씨앗") else ""), "head")
-        elif k == "추출저장":                        # 끝난 뒤 그 자리에 있나 (B112 ⑦)
-            where = paths.show(info["자리"])
-            if info.get("전실패"):
-                _screen.say(f"   추출 체크포인트 {lz}— 쓰지 않았다(전 청크 실패 — 다시 치면 처음부터) · 자리 {where}",
-                            "fail")
-            elif info["있음"]:
-                _screen.say(f"   추출 체크포인트 {lz}— {where} (있음)", "head")
-            else:
-                _screen.say(f"   [결함] 추출이 끝났는데 체크포인트가 없다 {lz}— {where} (로그 · 결함 장부에도)",
-                            "fail")
-        elif k == "추출예고":
-            box["t"], box["u0"] = extract_table(info.get("자리목록")), gateway.usage_total()
-            if stage is not None:
-                import time
-                stage.update({"이름": "추출", "값": 0, "총": info["호출"], "t0": time.monotonic()})
-            if info.get("렌즈여럿"):
-                return None                       # 렌즈 예고가 같은 자리를 맡았다(두 줄 0)
-            head = (f"추출 예고 {lz}— 청크 {info['청크']:,}(ref 시트 {info['ref']:,}) → 부를 {info['호출']:,} · "
-                    f"다시 씀 {info['재사용']:,}(같은 입력 — LLM 0) → LLM ≤ {info['호출']:,}회")
-            if info.get("다시"):                    # 옛 추출을 다시 뽑는 이유(B102 ⑥)
-                head += f" · 다시 뽑는다 — {info['다시']}"
-            if info.get("개체없음"):                # 덱 구조의 「개체 없음」 슬라이드 — 부르지 않는다 (B125 ①)
-                head += f" · 개체 없음 {info['개체없음']:,}"
-            cp = info.get("캡처")                   # 슬라이드 · 쪽 캡처 (B125 ②)
-            if cp:
-                _screen.say(f"   캡처 — 있음 {cp['있음']:,} · 없음 {cp['없음']:,}"
-                            + (f"({cp['사유']})" if cp.get("사유") and cp["없음"] else ""), "warn" if cp["없음"] else "head")
-            # 머리는 늘(B99 ④) — `--step`이면 묻는다 · 머리 아래 청크 목차 + 청크 맞춤 줄(B112 ③)
-            return _step_gate(7, head.split("— ", 1)[1], prose=True, ask=step, body=toc_lines(info))
-        elif k == "추출청크":
-            if stage is not None:
-                stage["값"] = info["i"]
-            _chunk_row(box, info, lz)
-        elif k == "추출끝":
-            if box["t"] is not None:
-                box["t"].end()
-            _screen.say(f"   추출 끝 {lz}— 청크 {info['청크']:,} · 개체 {info['개체']:,} · "
-                        f"관계 {info['관계']:,} · 실패 {info['실패']:,} · "
-                        f"{_screen.usage_line(info.get('since'))}", "head")
-            for ln in end_lists(info):                    # 개체 0 · 실패 청크 목록 (B112 ③)
-                _screen.say(ln, "fail" if ln.startswith("   실패 청크") else None)
-        return None
-    return notice
-
-
-def _outline_line(info, lz, stage, step=False):
-    """**목차 노드화 줄**(B115 ① · B148 ②) — 예고(제목 n · 좌표 c → LLM ≤ 1회) · 끝(대상 · 주제 · 버림 + 대상 목록) · 재사용(LLM 0).
-    `--step`이면 실호출이 있을 때 예고에서 묻는다(비용 전에 멈춘다 — `False`면 그래프 쓰기 0 · LLM 0)."""
-    k = info["단계"]
-    if k == "개요예고":
-        if stage is not None:
-            import time
-            stage.update({"이름": "목차 노드화", "값": 0, "총": info["호출"], "t0": time.monotonic()})
-        head = (f"목차 노드화 예고 {lz}— 제목 {info['제목']:,}(골격 이름 {info.get('좌표', 0):,} — 묻지 않는다) → LLM ≤ "
-                f"{info['호출']:,}회(목차 · 항목 아래 청크 수 · 본문 0)")
-        if info.get("다시"):
-            head += f" · 다시 묻는다 — {info['다시']}"
-        _screen.say(f"   {head}", "head")
-        if step and info["호출"] and sys.stdin.isatty():
-            if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
-                print("   멈춤 — 목차 노드화 예고까지(LLM 0 · 그래프 쓰기 0) ▶ 같은 명령을 다시 친다")
-                return False
-        return None
-    cnt = (f"제목 {info['제목']:,} = 대상 {info['대상']:,} + 주제 {info['주제']:,} + 버림 {info['버림']:,}")
-    if k == "개요재사용":
-        _screen.say(f"   목차 노드화 {lz}— 체크포인트 재사용(LLM 0) · {cnt} · {paths.show(info['자리'])}", "head")
-    else:
-        where = f" · {paths.show(info['자리'])}" if info.get("자리") else " · 판정 없음(mock · 힌트 없음 — 전부 주제)"
-        _screen.say(f"   목차 노드화 끝 {lz}— {cnt} · {_screen.usage_line(info.get('since'))}{where}", "head")
-    for path, name, cat in info.get("대상목록") or []:
-        _screen.say(f"     제목 개체 {name}[{cat}] ← {path}", "aux")
-    return None
-
-
-def _chunk_row(box, info, lz):
-    """청크 한 행 — 개체는 전부(칸이 좁으면 `…` · `-v`면 행 아래 전체 · 전체는 늘 로그와 체크포인트)."""
-    t = box["t"] or extract_table()
-    box["t"] = t
-    ents = " · ".join(f"{s}[{c}]" for s, c in info["개체"])
-    tok = info.get("토큰") or {}
-    cum = _screen.tokens(gateway.usage_total(), box["u0"]).split("(")[0].replace("토큰 ", "")
-    if info.get("실패"):
-        cell, kind = f"✗ 실패 — {info['실패']}", "fail"
-    else:
-        cell, kind = ents or "— (개체 0)", (None if ents else "aux")
-    sheet, end = info.get("자리") or where_cells(info["locator"])
-    t.row([f"{info['i']}/{info['m']}", lz + sheet, end, len(info["개체"]), cell,
-           info["관계"], f"{tok.get('prompt_tokens', 0):,}", f"{tok.get('completion_tokens', 0):,}",
-           cum],
-          ["prog", "aux", "aux", "aux" if not info["개체"] else None, kind, None, "aux", "aux", "aux"],
-          extra=(ents if _screen.VERBOSE and ents else None))
-    _LOG.info("추출 %s %s(%s) · 개체 %s · %s", info["i"], info["locator"], info.get("라벨") or "", ents,
-              _screen.tokens(tok))
 
 
 def reinforce_screen(stage=None):

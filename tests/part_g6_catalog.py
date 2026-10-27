@@ -318,7 +318,8 @@ _msg147 = "'규격'(attribute)의 attach_to_field 'process_ref'는 구조 필드
 show("ⓑ 등록된 위반 스키마 — bootstrap 끝 · 재대조(doctor [2′]) · 인입 사전 점검이 ⚠ 줄(필드 · 붙일 수 있는 선언 필드 · 다음 줄) · "
      "인입은 멈추지 않는다 · 보류 사유는 「개체 열이 아니다」(좌표 미해소 0)",
      # 기대 변경(B148 ⑦ — 다음 줄은 등록 층 · 표본 자리까지 · mock이면 mock 관문 플래그 · 사전 점검도 같은 줄)
-     all(_msg147 in o and f"generate {_FW147.CPU_DT} process <표본...> --revise --allow-mock" in o
+     # 기대 변경(B150 ③ — 부착 대상 ⚠의 다음 줄은 스키마만 새 판 `--schema-only`)
+     all(_msg147 in o and f"generate {_FW147.CPU_DT} process <표본...> --schema-only --allow-mock" in o
          for o in (_ob147, "\n".join(_rc147), _oi147))
      and "붙일 수 있는 선언 필드: 관리항목" in "\n".join(_rc147)
      and "스키마 재대조 ⚠ (멈추지 않는다)" in _oi147 and _msg147 in _oi147 and "   인입 — record" in _oi147
@@ -331,15 +332,33 @@ _P.ensure(_P.review(_FW147.CPU_DT, "state.json"))
 _P.review(_FW147.CPU_DT, "state.json").write_text(json.dumps({"samples": [str(_x147)]}, ensure_ascii=False), encoding="utf-8")
 _ln148 = next(p_.split("다음 줄: ", 1)[1].split(" (인입은")[0] for l in recheck.run() if l[0] == _FW147.CPU_DT and not l[1]
               for p_ in l[2].split("\n") if "다음 줄: python" in p_)
+# 기대 변경(B150 ③ — 다음 줄은 스키마만 새 판 · 그대로 치면 생성 → 관문(운영 어댑터 + 새 스키마) → 확정까지 · mock 초안 = 고친 스키마)
+from cli.register import FIXTURES as _FX150                            # noqa: E402 — 픽스처 뿌리(회귀가 스위트마다 주는 사본)
+from core.state import registry as _RG150                              # noqa: E402
+_fs150 = _FX150 / "schemas" / f"{_FW147.CPU_DT}.json"
+_fs150.write_text(json.dumps(_FW147.CPU_SCHEMA, ensure_ascii=False), encoding="utf-8")
+_ad150 = _RG150.at(_RG150.lookup(_FW147.CPU_DT)["adapter"])
+_ab150 = _ad150.read_bytes()
 _rg148 = _sp147.run(_sh148.split(_ln148), capture_output=True, text=True, cwd=str(ROOT), env={**_os147.environ, "USE_MOCK": "1"},
                     stdin=_sp147.DEVNULL)
 _og148 = _rg148.stdout + _rg148.stderr
+_hn150 = json.loads(_P.review(_FW147.CPU_DT, "state.json").read_text(encoding="utf-8")).get("harness_out") or ""
+_cf150 = _sp147.run([sys.executable, "-m", "cli.register", "confirm", _FW147.CPU_DT, "--by", "B150", "--allow-mock"],
+                    capture_output=True, text=True, cwd=str(ROOT), env={**_os147.environ, "USE_MOCK": "1"},
+                    stdin=_sp147.DEVNULL)
+_rc150 = [l for dt, ok, l in recheck.run() if dt == _FW147.CPU_DT and not ok]
+_e150 = _RG150.lookup(_FW147.CPU_DT) or {}
+_fs150.unlink()
 _st148.rmtree(_P.review(_FW147.CPU_DT), ignore_errors=True)
-show("ⓘ 재등록 다음 줄(재대조 ⚠ · 인입 사전 점검과 같은 함수)을 그대로 치면 사용법이 아니라 생성 단계로 들어간다 — 층은 스키마 · "
-     "표본은 등록 상태의 표본(없으면 자리표시)",
-     f"generate {_FW147.CPU_DT} process {_sh148.quote(str(_x147))} --revise" in _ln148
-     and f"■ ① 생성 — {_FW147.CPU_DT} (층 process · 표본 1부)" in _og148 and "[사용법]" not in _og148,
-     f"{_ln148[:120]} → {[ln for ln in _og148.splitlines() if ln.startswith('■ ①')][:1]}")
+show("ⓒ 부착 위반 스키마로 등록된 표 종류 — 재대조 ⚠의 다음 줄이 스키마만 새 판(`--schema-only`)이고 그대로 치면 생성 단계 · "
+     "관문은 운영 어댑터 + 새 스키마(G4J PASS) · 확정 뒤 어댑터 파일 바이트 그대로 · 판 오름 · 재대조 ⚠ 0",
+     f"generate {_FW147.CPU_DT} process {_sh148.quote(str(_x147))} --schema-only" in _ln148
+     and f"■ ① 생성 — {_FW147.CPU_DT} (층 process · 표본 1부)" in _og148 and "[사용법]" not in _og148
+     and "[PASS] G4J" in _hn150 and _cf150.returncode == 0 and _ad150.read_bytes() == _ab150
+     and _e150.get("revision") == 1 and not _rc150,
+     f"{_ln148[:90]} → 관문 G4J {'[PASS] G4J' in _hn150} · 확정 rc {_cf150.returncode} · 어댑터 같음 "
+     f"{_ad150.read_bytes() == _ab150} · 판 {_e150.get('revision')} · ⚠ {[l[:80] for l in _rc150]} · "
+     f"{(_og148 + _cf150.stdout + _cf150.stderr)[-300:] if _cf150.returncode else ''}")
 _FW147.cpu_setup()                                                    # 고친 스키마(개체 열) — 같은 표를 다시
 _oi147b = _run147("ingest-file", str(_x147), "--doc-type", _FW147.CPU_DT, "--allow-mock")
 _rows147 = (_LG147.read("FWCPU") or {}).get("rows") or []

@@ -43,8 +43,9 @@ def _exists(sample):
     return (p if p.is_absolute() else paths.ROOT / p).exists()
 
 
-def revise_line(dt, schema=None):
-    """재등록 다음 줄(B148 ⑦) — `python -m cli.register generate <dt> <등록 층> <표본...> --revise`."""
+def revise_line(dt, schema=None, schema_only=False):
+    """재등록 다음 줄(B148 ⑦) — `python -m cli.register generate <dt> <등록 층> <표본...> --revise` · 스키마 칸만 고치면
+    (부착 대상 ⚠ — B147) `--schema-only`(운영 어댑터 그대로 · B150 ③)."""
     if schema is None:
         sc = registry.schema_path(dt)
         schema = json.loads(sc.read_text(encoding="utf-8")) if sc and sc.exists() else {}
@@ -56,7 +57,8 @@ def revise_line(dt, schema=None):
     smp = " ".join(shlex.quote(s) for s in got) if got and all(_exists(s) for s in got) else "<표본...>"
     from core.llm import gateway
     allow = " --allow-mock" if gateway.use_mock() else ""        # mock이면 mock 관문의 플래그까지(그대로 쳐서 돈다)
-    return f"python -m cli.register generate {dt} {(schema or {}).get('layer') or '<층>'} {smp} --revise{allow}"
+    flag = "--schema-only" if schema_only else "--revise"
+    return f"python -m cli.register generate {dt} {(schema or {}).get('layer') or '<층>'} {smp} {flag}{allow}"
 
 
 def _speaks(cfg, category):
@@ -104,7 +106,7 @@ def run():
                                        f"               다음 줄: {fix}{redo}"))
         for a in j.get("attach") or []:                    # 부착 대상 규칙 — ⚠ (B147 ①)
             out.append((dt, False, f"{dt:<14} ⚠ 부착 대상 — {a}\n"
-                                   f"               다음 줄: {revise_line(dt, schema)} "
+                                   f"               다음 줄: {revise_line(dt, schema, schema_only=True)} "
                                    f"(인입은 멈추지 않는다 — 그 값은 보류된다)"))
         if schema.get("payload_kind") == "prose" and lay:
             try:

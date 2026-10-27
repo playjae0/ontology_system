@@ -608,7 +608,8 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
     _roles = samples_mod.sample_roles(doc_type, st, samples)
     while True:
         # **관문 입구다**(B62 ①-c) — `fix` 양쪽에서 돈다. 하네스가 읽기 전에 채운다.
-        _info = stamp_system_fields(st, samples)
+        # 스키마만 새 판(B150 ③)은 운영 어댑터를 그대로 쓴다 — 찍기는 등록 때 끝났다(어댑터 바이트 그대로)
+        _info = None if draft_mod.schema_only_of(doc_type) else stamp_system_fields(st, samples)
         if _info:
             print(_info)
         # **열 판정 대장은 관문 입구에서 선다**(B67 ②) — 스탬프가 `columns`를

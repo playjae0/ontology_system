@@ -41,6 +41,7 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
     실호출 갈래도 파일로 떨어뜨린다: 하네스가 실행으로 판정하는 대상이 파일이고,
     승인 기록(approval.json)이 가리키는 것도 파일이다.
     """
+    so = schema_only_of(doc_type)                  # 스키마만 새 판이면 어댑터는 운영 판 그대로 (B150 ③)
     if gateway.use_mock():
         gateway.mock("generate", f"fixture {doc_type} rev{revision}")
         # **mock에서도 지시문을 조립해 덤프한다**(플래그가 켜졌을 때만) — 조립이
@@ -55,11 +56,25 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
         for stem in ([f"{doc_type}_rev{revision}"] if revision else []) + [doc_type]:
             ad = FIXTURES / "adapters" / f"{stem}.py"
             sc = FIXTURES / "schemas" / f"{stem}.json"
+            if so and sc.exists():
+                return _at(so["adapter"]), sc
             if ad.exists() and sc.exists():
                 return ad, sc
         return None, None
     return _draft_live(doc_type, revision,
-                       instruction=instruction, history=history)
+                       instruction=instruction, history=history, schema_only=so)
+
+
+def schema_only_of(doc_type):
+    """**스키마만 새 판**(B150 ③)의 재료 `{adapter, revision, schema}`(운영 어댑터 자리 · 그 판 · 운영 스키마) 또는 None —
+    정본은 입력 패키지의 `human.hint`(`--no-fewshot`과 같은 그릇 · 사람 4키 그대로). 초안 · 관문 · 지시문이 이 한 함수로 묻는다."""
+    try:
+        pkg = json.loads((REVIEW / doc_type / "input_package.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    hint = (pkg.get("human") or {}).get("hint")
+    so = hint.get("schema_only") if isinstance(hint, dict) else None
+    return so if isinstance(so, dict) and so.get("adapter") else None
 
 
 # **구조화 출력의 strict 요건**(B44): 최상위·중첩을 막론하고 모든 object에서
@@ -124,7 +139,7 @@ GENERATE_SCHEMA = {
 ROLE_KEYS = ("role_counts", "attribute_ranking", "confidence_cut")
 
 
-def generate_schema(payload_kind):
+def generate_schema(payload_kind, schema_only=False):
     """계열별 산출 스키마 (B58 ⑥) — **prose에서는 role 집계를 요구하지 않는다.**
 
     구판은 한 벌뿐이었고 `required`가 셋을 강제했다. **스키마 `required`는 모델이
@@ -138,13 +153,16 @@ def generate_schema(payload_kind):
 
     계열의 출처는 **형태 판정 하나다**(문서 1 C37) — 여기서 따로 재지 않는다.
     """
-    if payload_kind == "table":
+    # **스키마만 새 판**(B150 ③)이면 `adapter_py`도 같은 규칙으로 뺀다 — 운영 어댑터를 그대로 쓰고 모델은 어댑터를 내지 않는다
+    drop = ((set() if payload_kind == "table" else set(ROLE_KEYS))
+            | ({"adapter_py"} if schema_only else set()))
+    if not drop:
         return GENERATE_SCHEMA
     return {**GENERATE_SCHEMA,
             "properties": {k: v for k, v in GENERATE_SCHEMA["properties"].items()
-                           if k not in ROLE_KEYS},
+                           if k not in drop},
             "required": [k for k in GENERATE_SCHEMA["required"]
-                         if k not in ROLE_KEYS]}
+                         if k not in drop]}
 
 
 def sample_roles_of(sample):
@@ -323,7 +341,7 @@ def instruction_items(instruction, history=None):
     return items
 
 
-def _draft_live(doc_type, revision, *, instruction=None, history=None):
+def _draft_live(doc_type, revision, *, instruction=None, history=None, schema_only=None):
     """지점 ⑤의 실호출 갈래 — 생성 LLM에 입력 패키지를 넘긴다.
 
     입력 패키지(사람 4 + 시스템 5)는 이미 `input_package.json`으로 서 있다 —
@@ -360,7 +378,7 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
         # **계열이 스키마를 가른다**(B58 ⑥) — prose에는 role 집계를 요구하지 않는다.
         _kind = payload_kind_of_samples(
             (json.loads(raw_pkg).get("human") or {}).get("samples") or [])
-        out = gateway.chat(msgs, json_schema=generate_schema(_kind), point="generate")
+        out = gateway.chat(msgs, json_schema=generate_schema(_kind, bool(schema_only)), point="generate")
     except Exception as e:
         _note_error(doc_type, e)
         raise
@@ -368,7 +386,10 @@ def _draft_live(doc_type, revision, *, instruction=None, history=None):
     suffix = f"_rev{revision}" if revision else ""
     ad = d / f"adapter{suffix}.py"
     sc = d / f"schema{suffix}.json"
-    write_file(ad, out["adapter_py"])
+    if schema_only:                         # 운영 어댑터 그대로 — 쓰지 않는다 (B150 ③)
+        ad = _at(schema_only["adapter"])
+    else:
+        write_file(ad, out["adapter_py"])
     # **`unmappable`은 코드가 스키마에 병합한다**(B49). 모델에게 `schema_json`
     # 문자열 **안에** 직접 넣게 하면 두 자리(최상위 키와 문자열 속)가 어긋날 때
     # 어느 쪽이 정본인지 정해지지 않는다 — 산출은 최상위 키 하나로 받고 병합은

@@ -11,7 +11,8 @@
    제목 트리의 부모-자식은 **카테고리쌍 매핑**의 관계로 잇는다(`belongs.edge_of` — 두 방향) — 매핑이 없으면 그
    위로 올라가고(결함 로그) · 맨 위까지 없으면 좌표 폴백(지금 규칙). **좌표 제목**(B148 ②)은 해소 대신 다른 공정 가드(`other_process`
    — `resolve_at_home`의 첫 단계와 같은 함수) → 골격 노드(`resolve_anchor` 조회만 · 극성 하강은 그 아래 첫 조각의 극성) — 골격 자신이라
-   트리 엣지 · 폴백 0 · 그 아래 청크의 소속 후보 · 폴백 사슬에 그 골격 노드가 제목 노드 자리로 선다.
+   트리 엣지 · 폴백 0 · 그 아래 청크의 소속 후보 · 폴백 사슬에 그 골격 노드가 제목 노드 자리로 선다 · 그 아래 조각의 좌표가 그
+   노드의 조상이면 그 노드로 내린다(`coord_below` — 산문 Pass 1 · 제목 착지가 같은 함수 · B150 ②).
 2. **폴백 사슬의 재료**(`chain_for`) — 조각 하나 위의 제목 개체 노드를 가까운 것부터 `[(node_id, 그래프, 단)]`.
    산문 개체가 소속 · 관계 · 스키마 어느 엣지에도 서지 못하면 `loop.fallback_untouched`가 이 사슬을 먼저 타고
    (`폴백(제목 n단)` — n은 제목 트리의 깊이 · 맨 위 = 1단) 그다음 좌표(`폴백`)로 간다.
@@ -52,13 +53,45 @@ def _is_coord(n):
     return bool(n) and n.get("category") == COORD_CATEGORY and n.get("status") in ("seed", "confirmed")
 
 
-def _kw(b, src, prov):
-    """그 조각의 좌표 해소 재료 — `(좌표 id, 그래프, 부모 canonical, 극성)` (산문 pass1과 같은 순서 · 큐 0)."""
+def _kw(b, src, prov, landed=None, ol=None):
+    """그 조각의 좌표 해소 재료 — `(좌표 id, 그래프, 부모 canonical, 극성)` (산문 pass1과 같은 순서 · 큐 0 · 좌표 하강 같은 함수)."""
     from core.state.bootstrap import COORD_CATEGORY
     res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"),
                            defer=[])                       # 공정 목록 — 주 좌표는 하나일 때만 (B125 ④)
-    ref, ref_g = b.main_coord(res)
+    ref, ref_g = coord_below(b, landed, ol, src) or b.main_coord(res)
     return ref, ref_g, (ref_g.get(ref)["canonical"] if ref else None), b.anchor_polarity(ref, ref_g)
+
+
+def coord_below(b, landed, ol, src):
+    """**조각 좌표 하강**(B150 ②) — 그 조각 위 가장 가까운 **좌표 제목**(골격 이름 제목이 골격 노드에 앉은 것)이 조각 좌표의
+    아래면 그 골격 노드 `(id, 그래프)` · 아니면 None(조각 좌표 그대로). **내리기만**: 조각 좌표(문서 좌표에서 물려받은 것도 같은
+    대조)가 그 노드의 조상일 때만 — 같은 노드 · 더 깊은 자기 좌표 · 다른 줄기 · 좌표 없음 · 공정 목록(주 좌표 없음)은 그대로.
+    대조는 개념 노드끼리(극성 하강 전 — `resolve_anchor` 조회만) · 극성은 그 조각의 극성으로 지금 하강 함수(`descend_anchor`) ·
+    메타(봉투)는 바꾸지 않는다 — 이름은 지금 이름 규칙이 이 좌표로 짓는다(표의 `process_ref`가 그 노드인 행과 같은 이름)."""
+    if not landed:
+        return None
+    from core.build import outline as OL
+    from core.state.bootstrap import COORD_CATEGORY
+    from parser.normalizer import coord_refs
+    refs = coord_refs(src.get("process_ref"))
+    if len(refs) != 1:
+        return None
+    h = next((h for h in OL.chain(ol, src.get("source_locator"))
+              if h.get("coord") and h["id"] in landed and _is_coord(landed[h["id"]][1].get(landed[h["id"]][0]))), None)
+    if h is None:
+        return None
+    hid, g = b.resolve_anchor(h["target"]["name"], COORD_CATEGORY, None, defer=[])
+    rid, rg = b.resolve_anchor(refs[0], COORD_CATEGORY, None, defer=[])
+    if not hid or not rid or rid == hid:
+        return None
+    pm = b._parent_map(g, COORD_CATEGORY)
+    up, c = [], pm.get(g.get(hid)["canonical"])
+    while c and c not in up and len(up) < 64:      # 그 노드의 조상(가까운 것부터)
+        up.append(c)
+        c = pm.get(c)
+    if rg.get(rid)["canonical"] not in up:
+        return None
+    return (b.descend_anchor(hid, src.get("electrode_type"), g) or hid), g
 
 
 def _coord(b, name, cat, prov, src, ref, ref_g):
@@ -93,7 +126,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
         loc = src.get("source_locator")
         prov = f"{env['doc_id']}#{loc}" if loc else env["doc_id"]
         name, cat = h["target"]["name"], h["target"]["category"]
-        ref, ref_g, parent, pol = _kw(b, src, prov)
+        ref, ref_g, parent, pol = _kw(b, src, prov, landed, ol)
         ups = _landed_ups(h, by, landed)
         owner = None                                # 판정의 자리 — 위 제목 개체(B142 ③ · 이름 부모와 같은 재료)
         if ups:
