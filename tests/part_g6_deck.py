@@ -534,6 +534,17 @@ show("B154 ⓐ 좌표 쌍 다음 줄 — 덱(문서 좌표 상위)은 문서 좌
      _nx(_ps154) and _nx(_ps154) == _nx(_qs154) and all("문서 좌표 상위" in x and "열 매핑" not in x for x in _nx(_ps154))
      and "--coord <상위 공정>" in _nx(_ps154)[0] and _nx(_ts154) and all("열 매핑을 바로잡는다" in x for x in _nx(_ts154)),
      f"파싱 {_nx(_ps154)[:1]} · 큐 {len(_nx(_qs154))}줄 · 표 {[x[:40] for x in _nx(_ts154)]}")
+from cli import report_cause as RC154                      # noqa: E402
+_h154 = RC154.head_count(RC154.material("B151D"))[:2]
+store.append_defect("B151D: 관계 후보 끝점 미해소 — '브래킷' -part_of-> '노칭' @ B151D:b154")   # 관계 끝점 표본(결함 로그의 꼴 그대로)
+_l154 = [ln.strip() for ln in RC154.report("B151D")[0]]
+show("B154 ⓑ 행 밖 — 값은 다 붙었고(못 붙은 행 0) 골격에 없는 공정 표기 「스태킹 공정」 · 끝점 없는 관계가 원인 묶음 아래 「행 밖」에 · "
+     "머리 수 그대로(행 밖은 합에 없다)",
+     _h154[0] == 0 and f"원인 묶음 — 못 붙은 행 0 / 전체 {_h154[1]}" in _l154
+     and any(x.startswith("공정 표기 — 골격에 없음 '스태킹 공정' · 조각 ") for x in _l154)
+     and "관계 — 끝점 없음 '브래킷' · 못 선 관계 1 · B151D:b154" in _l154
+     and RC154.head_count(RC154.material("B151D"))[:2] == _h154,
+     f"머리 {_h154} · {[x for x in _l154 if '—' in x][:4]}")
 # ⓔ 공정이 없는 덱
 D151E =[["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
 A151E = {"slides": [{"slide": 1, "title": "투자 계획", "section": None, "continues": None, "subject": None, "processes": [],

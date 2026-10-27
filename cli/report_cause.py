@@ -15,7 +15,8 @@
   3 소속 이름 없음 — 기다리는 이름마다(고아 큐 `orphan_attach`)
   4 관계 끝점 없음 — 끝점 이름마다(결함 로그 · 위 원인으로 못 선 값의 이름은 빼고)
   5 그 밖 — 표기 모호 · 골격 밖 · 카테고리 밖(관문) · 부착 대상 · 불확실
-줄 차례는 원인 순 → 못 붙은 행이 많은 차례 · 못 붙은 행이 0인 원인은 줄 0(`--json`에는 남는다). 처방 줄은 그 종류에 맞는 길을
+줄 차례는 원인 순 → 못 붙은 행이 많은 차례 · 못 붙은 행이 0인 원인은 원인 줄 0 — 행이 아닌 잃은 것(끝점 없는 관계 · 골격에 없는
+공정 표기)은 그 아래 **행 밖**(`outside` — 행의 합 밖 · B154 ②). 처방 줄은 그 종류에 맞는 길을
 그대로 쳐서 도는 꼴로 보인다(고르지 않는다).
 """
 from __future__ import annotations
@@ -272,22 +273,49 @@ def _revise(dt):
     return revise_line(dt, schema_only=True)            # 부착 대상은 스키마 칸 — 운영 어댑터 그대로(B150 ③)
 
 
-def head_line(mat, layer=None):
+def head_line(mat, layer=None, force=False):
     """원인 묶음 머리 — `원인 묶음 — 못 붙은 행 n / 전체 N — 개체 a/A · … · 보류 x · 고아 y · 불확실 z`(0인 종류 · 상태는 뺀다) ·
-    못 붙은 행이 0이면 None(묶음 0)."""
+    못 붙은 행이 0이면 None(묶음 0) — `force`(행 밖이 있다 — B154 ②)면 `원인 묶음 — 못 붙은 행 0 / 전체 N`."""
     n, tot, kinds, states = head_count(mat, layer)
-    if not n:
+    if not n and not force:
         return None
-    return (f"  원인 묶음 — 못 붙은 행 {n:,} / 전체 {tot:,} — " + " · ".join(f"{k} {a:,}/{b:,}" for k, a, b in kinds)
+    return (f"  원인 묶음 — 못 붙은 행 {n:,} / 전체 {tot:,}"
+            + (" — " + " · ".join(f"{k} {a:,}/{b:,}" for k, a, b in kinds) if n and kinds else "")
             + "".join(f" · {s} {states[s]:,}" for s in STATES if states.get(s)))
 
 
+def outside(mat, cs, layer=None):
+    """**행 밖**(B154 ②) — 못 붙은 행으로 세지 않는 잃은 것 `[{무엇, 말, 위치, 처방}]` · 행의 합(머리 · 원인 줄 · 목차 나무)에 섞지 않는다:
+    관계 끝점 없음(원인 묶음의 끝점 무리 그대로 — 위 원인으로 못 선 값의 이름은 이미 빠졌다) · 골격에 없는 공정 표기(좌표 행 보류 —
+    좌표 목록 밖 · 골격에 없는 좌표 — 중 위 원인 줄의 「못 찾은 것」에 이미 든 표기는 뺀다 — 그 표기 때문에 값이 못 붙었으면 원인 줄이 말한다)."""
+    from core.build.result import HOLD_REASONS, hold_reason
+    out = [{"무엇": "관계", "말": f"끝점 없음 '{g['못 찾은 것']}' · 못 선 관계 {g['밖']:,}", "위치": g["위치"], "처방": g["처방"]}
+           for g in cs or [] if g["원인"] == ENDPOINT and not g["행"] and g["밖"]]
+    named = " ".join(str(g["못 찾은 것"]) for g in cs or [] if g["행"])
+    by = {}
+    for r in mat["rows"]:
+        why = str(hold_reason(r) or "") if r.get("role") == "anchor" else ""
+        s = r.get("surface")
+        if (not s or not (why == HOLD_REASONS[0][2] or why.startswith("골격에 없는 좌표")) or f"'{s}'" in named
+                or (layer and r.get("layer") and r.get("layer") != layer)):
+            continue
+        e = by.setdefault(s, {"n": 0, "locs": []})
+        e["n"] += 1
+        if r.get("locator") and r["locator"] not in e["locs"] and len(e["locs"]) < 2:
+            e["locs"].append(r["locator"])
+    out += [{"무엇": "공정 표기", "말": f"골격에 없음 '{s}' · 조각 {e['n']:,}", "위치": " · ".join(e["locs"]),
+             "처방": f"골격 ALIASES에 \"{s}\" → python run.py bootstrap → python run.py ops relink all --doc {mat['doc_id']} --actor <이름>"}
+            for s, e in sorted(by.items(), key=lambda x: (-x[1]["n"], x[0]))]
+    return out
+
+
 def cause_lines(cs, limit=None, mat=None, layer=None):
-    """원인 묶음 → 줄들(못 붙은 행 0이면 빈 목록) — 머리(`head_line`) + 원인마다 `<원인> — <못 찾은 것> · 못 붙은 행 m(종류별) ·
-    <위치>` + `▶ 처방` · 행 0인 원인은 줄 0. `limit`이면 그 줄까지 · 넘으면 「… 외 n」."""
+    """원인 묶음 → 줄들(못 붙은 행 0이고 행 밖도 0이면 빈 목록) — 머리(`head_line`) + 원인마다 `<원인> — <못 찾은 것> · 못 붙은 행
+    m(종류별) · <위치>` + `▶ 처방` · 행 0인 원인은 줄 0 · 그 아래 **행 밖**(`outside` — B154 ②). `limit`이면 그 줄까지 · 넘으면 「… 외 n」."""
+    out_items = outside(mat, cs, layer) if mat is not None else []
     cs = [g for g in cs or [] if g["행"]]
-    head = head_line(mat, layer) if mat is not None else None
-    if not cs or (mat is not None and not head):
+    head = head_line(mat, layer, force=bool(out_items)) if mat is not None else None
+    if not (cs or out_items) or (mat is not None and not head):
         return []
     from cli import _screen
     out = ["", head or f"  원인 묶음 — 못 붙은 행 {sum(g['행'] for g in cs):,}"]
@@ -303,6 +331,13 @@ def cause_lines(cs, limit=None, mat=None, layer=None):
         out.append(f"      ▶ {g['처방']}")
     if limit is not None and len(cs) > limit:
         out.append(f"    … 외 {len(cs) - limit:,}")
+    if out_items:
+        out.append("    행 밖 — 못 붙은 행으로 세지 않는 잃은 것(행의 합 밖)")
+        for it in out_items[:limit]:
+            out.append(f"    {it['무엇']} — {_screen.cut(it['말'], 80)}" + (f" · {it['위치']}" if it["위치"] else ""))
+            out.append(f"      ▶ {it['처방']}")
+        if limit is not None and len(out_items) > limit:
+            out.append(f"    … 행 밖 외 {len(out_items) - limit:,}")
     return out
 
 
@@ -447,5 +482,5 @@ def report(doc_id, data=None, verbose=False, limit=None):
         lines += cause_lines(cs, limit, mat, lay)
         tl = tree_lines(mat, verbose, lay) if limit is None else []
         lines += tl
-        js["층"][lay or "-"] = {"원인": cs, "목차": tl}
+        js["층"][lay or "-"] = {"원인": cs, "행 밖": outside(mat, cs, lay), "목차": tl}
     return lines, js
