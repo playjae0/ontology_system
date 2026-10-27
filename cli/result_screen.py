@@ -121,13 +121,7 @@ def reconcile_lines(mt, limit=None):
         out.append(f"       {lay}:{canon}({cat}) — {why}")
     if limit is not None and len(el) > limit:
         out.append(f"       … 외 {len(el) - limit:,} — 전체는 python run.py show report {mt['doc_id']}")
-    dc = mt.get("문서 좌표")
-    if dc:
-        out.append(f"     문서 좌표 없음 — 좌표 미해소 보류 {dc['행']:,}행 · ▶ python run.py ingest-file <문서> "
-                   f"--coord <골격 이름>")
-        out.append("       가까운 골격 이름(띄어쓰기 · 대소문자 무시 — 보여만 준다): "
-                   + (" · ".join(dc["후보"]) if dc["후보"] else "없음"))
-    return out
+    return out                                   # 문서 좌표 없음은 원인 묶음의 첫 원인 줄이 말한다(가까운 골격 이름 · 처방 — B152 ⑤)
 
 
 def show_reconcile(mt, limit=None):
