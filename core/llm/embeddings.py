@@ -21,6 +21,9 @@ from pathlib import Path
 from core.llm import gateway
 
 DIM = 64            # mock 벡터 차원. 실호출 갈래의 차원은 모델이 정한다.
+#: 임베딩 입력 한도(글자) — 게이트웨이 · mock의 한 글 상한(사내 손잡이 `embed_max_chars` · 창작 기본값 — 사내가 모델 한도로 정한다 ·
+#: 로컬은 그 모델의 최대 토큰이 한도다 · B153 ③)
+MAX_CHARS = 4000
 
 _LOG = gateway.log.get(__name__)
 
@@ -95,13 +98,70 @@ def _local_model(raw):
     return model
 
 
+def _local():
+    return not gateway.use_mock() and (gateway.config().get("embed_backend") or "gateway") == "local"
+
+
+def limit():
+    """**입력 한도 한 자리**(B153 ③) — `{n, unit, from, note, tok}`: 로컬 = 그 모델의 최대 토큰(`max_seq_length` · 그 토크나이저로
+    센다 — 특수 토큰 몫 포함) · 게이트웨이 · mock = 손잡이 `embed_max_chars`(글자) · 로컬 토크나이저를 못 부르면 글자로 재고
+    `note`가 그 사실을 말한다."""
+    from core import paths            # noqa: F401 — 자리 소유자가 먼저(knobs → paths → knobs 순환을 피한다)
+    from core.state import knobs
+    chars = {"n": knobs.get("embed_max_chars"), "unit": "자", "from": "손잡이", "note": None, "tok": None}
+    if not _local():
+        return chars
+    try:
+        model = _local_model(gateway.require("embed", need=("embed_model",))["embed_model"])
+    except gateway.NotConfigured:
+        model = None
+    n, tok = int(getattr(model, "max_seq_length", 0) or 0), getattr(model, "tokenizer", None)
+    if n and callable(tok):
+        return {"n": n, "unit": "토큰", "from": "모델", "note": None, "tok": tok}
+    return dict(chars, note="로컬 토크나이저를 못 불러 글자로 쟀다")
+
+
+#: 토큰 수 기억(프로세스 안 · 글 해시 — 같은 글을 두 번 세지 않는다)
+_LEN = {}
+
+
+def measure(text, lim=None):
+    """그 한도의 단위로 잰 길이 — 토큰(로컬 · 특수 토큰 포함) 또는 글자."""
+    lim = lim or limit()
+    t = text or ""
+    if lim["tok"] is None:
+        return len(t)
+    k = (id(lim["tok"]), hashlib.sha256(t.encode("utf-8")).hexdigest()[:16])
+    if k not in _LEN:
+        _LEN[k] = len(lim["tok"](t, add_special_tokens=True, truncation=False, verbose=False)["input_ids"])
+    return _LEN[k]
+
+
+def fit(text, lim=None):
+    """**한도 안으로** — `(글, 원래 길이, 잘랐나)`. 넘으면 **앞을 지키고 꼬리를 자른다**(머리 — 맥락 칸 — 가 앞에 있다) · 결정적 ·
+    모델의 조용한 자름 · 게이트웨이의 길이 실패 대신 같은 규칙 · 보이는 결과(B153 ③)."""
+    lim = lim or limit()
+    t = text or ""
+    n = measure(t, lim)
+    if n <= lim["n"]:
+        return t, n, False
+    if lim["tok"] is None:
+        return t[:lim["n"]], n, True
+    lo, hi = 0, len(t)                              # 한도 안의 가장 긴 앞 — 이분 탐색
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if measure(t[:mid], lim) <= lim["n"] else (lo, mid - 1)
+    return t[:lo], n, True
+
+
 def embed(text):
     """텍스트 하나를 벡터로. **갈래가 셋이어도 반환 계약은 하나다** — `list[float]`.
 
     소비부는 어느 쪽인지 몰라야 한다(§7.6-B-3). 그래야 mock 회귀가 실 연결에도
     유효하다 — 차원이 다른 것은 계약 위반이 아니다(모델이 정한다), 형태가 다른
-    것이 위반이다. **갈래가 갈리는 자리는 이 함수 하나다**(B80 ③).
+    것이 위반이다. **갈래가 갈리는 자리는 이 함수 하나다**(B80 ③). 입력은 한도 안으로 맞춘 뒤 넣는다(`fit` — B153 ③).
     """
+    text = fit(text)[0]
     if gateway.use_mock():
         gateway.mock("embed", f"sha256 → {DIM}차 정규화 벡터")
         return _mock_vector(text)
@@ -143,8 +203,10 @@ def embed_many(texts, batch=32):
     texts = list(texts)
     if not texts:
         return []
-    if gateway.use_mock() or (gateway.config().get("embed_backend") or "gateway") != "local":
+    if not _local():
         return [embed(t) for t in texts]
+    lim = limit()
+    texts = [fit(t, lim)[0] for t in texts]
     cfg = gateway.require("embed", need=("embed_model",))
     model = _local_model(cfg["embed_model"])
     t0 = time.perf_counter()

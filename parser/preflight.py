@@ -130,6 +130,26 @@ def resolve_columns(raw, exp):
     return out, bad
 
 
+def field_labels(raw, exp):
+    """출력 필드 → 그 열의 **문서 머리 글** — `{필드: 글}` (B153 ① — 표 청크 벡터의 머리 · 메타라 층과 무관 · 결정적).
+
+    열은 `resolve_columns`가 확정한 열문자 그대로 · 글은 헤더 행의 그 셀(`norm_label` — 지문과 같은 손) · 열이 여럿이면 다른
+    글만 ` / `로 잇는다 · 읽지 못한 필드(라벨 미해소 · 빈 헤더 셀)는 빠진다."""
+    hr = exp.get("header_row")
+    sh, err = sheet_of(raw, exp)
+    if err or not hr:
+        return {}
+    cells = sh.get("cells") or {}
+    out = {}
+    for field, v in resolve_columns(raw, exp)[0].items():
+        labs = [norm_label(cells.get(f"{c}{hr}")) for c in (v if isinstance(v, list) else [v])
+                if COL_LETTERS.match(str(c))]
+        labs = list(dict.fromkeys(x for x in labs if x))
+        if labs:
+            out[field] = " / ".join(labs)
+    return out
+
+
 def header_row_suspect(raw, exp):
     """`columns`가 가리키는 열의 **헤더 셀이 비어 있나** — 비면 detail, 아니면 `None`.
 

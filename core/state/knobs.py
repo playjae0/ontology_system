@@ -79,6 +79,10 @@ KNOBS = {
                           "문서 검색 채널의 임베딩 유사도 문턱(%) — 넘는 청크만 · BM25는 공유 토큰이 있을 때만 · "
                           "둘 다 비면 「근거 없음」(모델마다 점수 분포가 다르다)",
                           "python run.py query \"<질문>\" — [문서 검색] 줄의 점수"),
+    "embed_max_chars": ("core.llm.embeddings", ("MAX_CHARS",), "int",
+                        "임베딩 입력 한도(글자) — 게이트웨이 · mock 갈래의 한 글 상한(모델 한도로 정한다 · 로컬은 모델의 최대 토큰) · "
+                        "넘는 글은 앞(머리)을 지키고 꼬리를 잘라 넣는다",
+                        "python run.py show dist embed · python run.py vectors 끝 줄 「넘어 자른 글」"),
     # ── 중복 후보 보고(B136 ⑤ — 읽기 전용 · 창작 기본값 · 모델마다 유사도 분포가 다르다)
     "near_min_sim": ("core.query.near", ("MIN_SIM",), "pct",
                      "중복 후보 보고 문턱(%) — 같은 층 · 카테고리 · 부모 안에서 노드 벡터 유사도가 넘는 쌍만",

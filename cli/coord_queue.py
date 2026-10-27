@@ -23,6 +23,26 @@ def _cmd(op, kind, pair, extra=""):
     return f'python run.py ops {op} all "{pair[0]}" "{pair[1]}"{pol} --actor <이름>{extra}'
 
 
+#: 쌍 상위의 출처 둘 — 행(표의 상위 열 · 극성 · 상위 이름 골격 밖) · 문서 좌표(행에 상위가 없어 문서 좌표로 잰 쌍 — B106 ⑤)
+ROW, DOC = "행", "문서 좌표"
+
+
+def next_lines(kinds, doc=None, dt=None):
+    """좌표 쌍 **다음 줄 한 자리**(B154 ① — 판정 전 쌍 화면 · 큐 화면이 같이 부른다) — 쌍의 상위가 어디서 왔나(`ROW` · `DOC`)로
+    고른다(문서 형태 · doc_type으로 가르지 않는다) · 섞이면 종류마다 한 줄 · `doc` · `dt`가 있으면 그대로 쳐서 도는 꼴로 채운다."""
+    ack = "이대로 두려면 쌍 확인(python run.py platform queue coord_mismatch)"
+    out = []
+    if ROW in kinds:
+        out.append(f"▶ 다음 줄(행의 상위) — 열이 뒤바뀌었으면 재등록(python -m cli.register generate {dt or '<dt>'} <층> <표본> "
+                   "--revise --hint \"상위(process_group)·하위(process_ref) 열 매핑을 바로잡는다\" — 가이드 §4 재등록 순서) · "
+                   "골격이 틀렸으면 seed(부모·이름 변경은 재구축 — 가이드 §7) · 별칭이면 ALIASES + python run.py bootstrap · " + ack)
+    if DOC in kinds:
+        out.append(f"▶ 다음 줄(문서 좌표 상위) — 여러 공정을 다루는 문서면 문서 좌표를 상위 공정으로 다시(python run.py ingest-file "
+                   f"{doc or '<문서>'} --doc-type {dt or '<dt>'} --coord <상위 공정>) · 표기가 다른 이름이면 골격 ALIASES + "
+                   "python run.py bootstrap · " + ack)
+    return out
+
+
 def groups():
     """`[((종류, 쌍), {rows, docs, locs, open, done, rec})]` — 열린 행이 많은 쌍부터 · 확인된 쌍은 뒤."""
     acks = CA.acked()
@@ -75,11 +95,12 @@ def show():
             print("     ▶ 이대로 둔다(확인함): " + _cmd("coord-ack", kind, pair, ' [--reason "<메모>"]'))
         elif e["rec"]:
             print(f"     ▶ 확인 취소: {_cmd('coord-unack', kind, pair)}")
-    if live:
-        print("  ▶ 다음 줄 — 고치는 길: 상위·하위 열이 뒤바뀌었으면 재등록(python -m cli.register generate <dt> <층> "
-              "<표본> --revise --hint \"상위(process_group)·하위(process_ref) 열 매핑을 바로잡는다\" — 가이드 §4 재등록 "
-              "순서) · 골격 트리가 틀렸으면 seed를 고치고 python run.py bootstrap "
-              "(부모·이름 변경은 재구축 — 가이드 §7) · 표기가 다른 이름이면 ALIASES + python run.py bootstrap → 재인입")
+    kinds = {k for (kind, _p), e in live for k in ((DOC,) if kind == CP.GROUP and e["doc_upper"] == e["rows"]
+                                                   else (ROW, DOC) if kind == CP.GROUP and e["doc_upper"] else (ROW,))}
+    docs = sorted({d for (kind, _p), e in live if kind == CP.GROUP and e["doc_upper"] for d in e["docs"]})
+    reg = store.read(store.DOC_REGISTRY, {}).get(docs[0]) or {} if len(docs) == 1 else {}
+    for ln in next_lines(kinds, paths.from_home(reg["source_path"]) if reg.get("source_path") else None, reg.get("doc_type")):
+        print(f"  {ln}")
 
 
 def run_ops(a):

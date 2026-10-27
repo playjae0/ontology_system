@@ -102,6 +102,17 @@ finally:
     _MT73.gateway.use_mock = _um73
 show("① 실호출 경로가 embed()에 닿는다 (CANDIDATE_NARROW=embed · 미설정이면 시끄럽게)",
      _emb73 == "NotConfigured", _emb73)
+_p153 = [{"id": f"N{i:02d}", "canonical": f"노칭::노칭 프레스::설비{i:02d}", "aliases": [f"설비{i:02d}", "NP"] if i == 3 else [],
+          "category": "Unit", "same_name": i == 9} for i in range(12)]
+_MT73.narrow.set_narrow("embed")
+try:
+    _k153, _h153 = _MT73._narrow("설비03", _p153, 4)
+finally:
+    _MT73.narrow.set_narrow(None)
+    _MT73._VEC.clear()
+show("B153 ⓓ 판정 좁히기 — embed · 상한을 넘는 후보의 글이 「맨 이름 | 별칭」(경로 접두 0) · 같은 이름 후보는 자르지 않는다",
+     _MT73.cand_text(_p153[3]) == "설비03 | 별칭: NP" and not any("::" in _MT73.cand_text(c) for c in _p153)
+     and _h153 == "임베딩" and len(_k153) == 4 and any(c["id"] == "N09" for c in _k153), f"{_h153} · {[c['id'] for c in _k153]}")
 
 # ③ 후보에 status — auto는 표시되고, 유사도 매칭은 uncertain으로 내려간다
 show("③ 후보가 status와 근거 건수를 싣는다 (판정이 auto를 안다)",

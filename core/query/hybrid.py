@@ -6,13 +6,15 @@
 
 두 자리:
   · **링킹 후보**(`link_candidates`) — 질문 문장 벡터 ↔ 노드 벡터 상위 k(손잡이 `query_link_top_k`). 노드 벡터의
-    재료는 「이름 · 카테고리 이름 · 별칭 · 닻까지의 길」 — **어디의 무엇**(`anchor` 한 자리)이다 · **카테고리 정의문은 넣지 않는다**
+    재료는 「맨 이름 · 카테고리 이름 · 별칭 · 위치(위 이름 사슬)」 — **어디의 무엇**(`anchor` 한 자리)이다 · 경로는 위치에 한 번 ·
+    관계 이름 0(같은 카테고리 노드끼리 같아 가르는 정보 0 — B153 ②) · **카테고리 정의문은 넣지 않는다**
     (B136 ① — 같은 카테고리 노드에 같은 정의문이 붙으면 노드를 가르는 이름 사슬 · 위치가 묻힌다 · 정의문은 판정 · 선별 입력의 몫).
     고르는 것은 LLM(지점 ⑥ · `query._link_llm`) — 여기는 후보만 낸다.
   · **문서 검색 채널**(`doc_search`) — 질문 벡터 ↔ 청크 벡터 상위 k(유사도 문턱 `query_doc_min_sim` 이상) + BM25
     상위 k(공유 토큰이 있을 때만 — 점수 0은 없다) · 합쳐 중복 제거(번갈아 · 둘 다면 앞). 링킹이 빗나가도 돈다 —
     **둘 다 비면 「근거 없음」**이다(문턱이 없으면 임베딩 상위 k는 늘 k건이라 「근거 없음」이 성립하지 않는다).
-    BM25는 이 채널의 한 재료이고 골든셋 대조군(`bm25.py` — 그래프·사전·임베딩·LLM을 읽지 않는다)은 그대로다.
+    BM25는 이 채널의 한 재료이고(청크 벡터와 **같은 재료** — 머리 + 원문 · B153 ①) 골든셋 대조군(`bm25.py` — 그래프·사전·임베딩·LLM을
+    읽지 않는다)은 그대로다.
 
 mock: 임베딩은 해시 벡터(`embeddings` — 결정적 · 점수는 가짜 확신이다) · 선별은 **결정적 규칙의 주입**
 (`SELECT` — 시험이 넣는다 · 비면 고르지 않는다).
@@ -41,20 +43,26 @@ SELECT = None
 def node_texts(graphs, configs=None):
     """노드마다 벡터의 재료와 화면 재료 — `({id: 재료}, {id: {canonical, category, layer, where}})`.
 
-    재료 = 이름 · 카테고리 이름 · 별칭 · 위치(닻까지의 길) — 정의문 0(B136 ①). `configs`는 받기만 한다(재료가 층 config를 읽지 않는다)."""
+    재료 = `맨 이름 | 카테고리 | 별칭: … | 위치: 위 > … > 주인` — 맨 이름은 `base_name`(없으면 canonical의 끝 마디) · 별칭은 맨 이름과
+    같은 것을 빼고 정렬 · 위치는 이름 사슬(`anchor.name_chain` — 관계 이름 0 · 비면 칸 0) · 정의문 0(B136 ① · B153 ②). 화면 재료의
+    `where`는 엣지 꼴 그대로(`anchor.path_text`). `configs`는 받기만 한다(재료가 층 config를 읽지 않는다)."""
+    from core.build.naming import base_name_of
+    from core.state.ids import norm
     nodes, edges = A.lists(graphs)
     anc = A.anchors(nodes, edges)
     names = {n["id"]: n["name"] for n in nodes}
     raw = {n["id"]: g.nodes[n["id"]] for g in graphs.values() for n in nodes if n["id"] in g.nodes}
+    base = {n["id"]: base_name_of(raw.get(n["id"])) or n["name"].split("::")[-1] for n in nodes}
     texts, info = {}, {}
     for n in nodes:
         r = raw.get(n["id"]) or {}
-        al = [a.get("surface") if isinstance(a, dict) else a for a in r.get("aliases") or []]
-        where = A.path_text(n["id"], anc, names)
+        bare = base[n["id"]]
+        al = sorted({a for a in (x.get("surface") if isinstance(x, dict) else x for x in r.get("aliases") or [])
+                     if a and norm(a) != norm(bare)})
+        chain = A.name_chain(n["id"], anc, names, base)
         texts[n["id"]] = " | ".join(x for x in (
-            n["name"], n["category"],
-            ("별칭: " + ", ".join(sorted({a for a in al if a}))) if al else "",
-            f"위치: {where}" if where and where != n["name"] else "") if x)
+            bare, n["category"], ("별칭: " + ", ".join(al)) if al else "", f"위치: {chain}" if chain else "") if x)
+        where = A.path_text(n["id"], anc, names)
         info[n["id"]] = {"canonical": n["name"], "category": n["category"], "layer": n["layer"],
                          "where": where}
     return texts, info
@@ -73,9 +81,15 @@ def link_candidates(question, graphs, configs, k, exclude=()):
 
 
 def _chunk_text(c):
-    """청크 벡터의 재료 — 구획 · 좌표 · 본문(맥락이 「어디의 글」을 말한다)."""
+    """청크 벡터 · 문서 검색 BM25의 재료 — `[머리] 원문`(머리가 「어디의 무엇에 관한 글」을 문서의 말로 말한다 · B153 ①).
+
+    표 content 청크(`meta.field`) = `[열 머리 글(없으면 필드 이름) · 주인 · 좌표]` — 행 위치(`section`)는 넣지 않는다 ·
+    산문 청크 = `[경로 · 좌표 · 다루는 것(PPT `meta.subject`)]`. 머리가 비면 원문만."""
     from parser.normalizer import coord_text
-    head = " · ".join(x for x in (c.get("section"), coord_text(c.get("process_ref"))) if x)
+    m = c.get("meta") or {}
+    coord = coord_text(c.get("process_ref"))
+    parts = (m.get("label") or m["field"], m.get("owner"), coord) if m.get("field") else (c.get("section"), coord, m.get("subject"))
+    head = " · ".join(str(x) for x in parts if x)
     return f"[{head}] {c.get('text') or ''}" if head else (c.get("text") or "")
 
 
@@ -111,7 +125,7 @@ def doc_search(question, k, min_sim, trace=None):
     qv = V.question(question)
     emb = sorted(((round(E.cosine(qv, v), 4), cid) for cid, v in vecs.items()), key=lambda t: (-t[0], t[1]))
     emb = [(cid, s) for s, cid in emb if s * 100 >= min_sim][:k]
-    bm = bm25.search(question, k, index=bm25.Index({cid: c.get("text") or "" for cid, c in ch.items()}))
+    bm = bm25.search(question, k, index=bm25.Index({cid: _chunk_text(c) for cid, c in ch.items()}))   # 벡터와 같은 재료(B153 ①)
     es, bs = dict(emb), dict(bm)
     order, seen = [], set()
     for pair in zip(emb + [None] * len(bm), bm + [None] * len(emb)):

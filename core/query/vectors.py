@@ -13,7 +13,11 @@
     읽는 쪽이 파일을 건드리지 않는다: WAL은 읽기도 공유 메모리 파일을 고친다).
   · 옛 `work/vectors/<종류>.json`(B136 전)이 있으면 쓰는 길이 처음 열 때 한 번 옮겨 담고 지운다(사내 청크 벡터를 다시 만들지 않게).
 
-계측(`STATS[종류]`)은 질의 한 건(`begin`부터)의 만든 수 · 재사용 수 · 시간 · 판 — 화면 한 줄(`cost_line`)의 재료다.
+계측(`STATS[종류]`)은 질의 한 건(`begin`부터)의 만든 수 · 재사용 수 · 시간 · 판 · 넘어 자른 글 수 · 가장 긴 길이 — 화면 한 줄
+(`cost_line` · `fit_line`)의 재료다.
+
+**입력 한도**(B153 ③): 재료는 저장 열쇠를 셈하기 전에 한도 안으로 맞춘다(`embeddings.fit` — 앞을 지키고 꼬리를 자른다) — 열쇠는
+**자른 뒤의 글**이라 같은 입력은 같은 벡터 · 다시 쓰기 그대로다.
 
 **묶음 · 이어 저장 · 진행**(B114 ④): 만들 몫은 `BATCH`개씩 묶어 임베딩하고(로컬 모델이면 한 번에 — `embed_many`)
 `SAVE_EVERY`개마다 커밋한다 — 끊겨도 다음 호출은 저장된 몫을 재사용하고 나머지만 만든다. 저장마다 진행(`core/query/status`)을
@@ -34,8 +38,9 @@ from core import paths
 from core.llm import embeddings as E
 from core.query import status
 
-#: 마지막 호출의 계측 — `{종류: {made, reused, secs, backend}}`
+#: 마지막 호출의 계측 — `{종류: {made, reused, secs, backend, cut, longest}}`
 STATS = {}
+_KIND = {"nodes": "노드", "chunks": "청크"}
 #: 묶음 크기 · 이어 저장(커밋) 간격(창작 값 — 사내 실측 전 · B114 ④)
 BATCH = 32
 SAVE_EVERY = 256
@@ -103,6 +108,17 @@ def _get(con, bid, vers):
     return out
 
 
+def _fitted(texts):
+    """한도 안의 재료 — `({id: 맞춘 글}, 넘어 자른 수, 자른 글 중 가장 긴 원래 길이)` (B153 ③)."""
+    lim = E.limit()
+    out, cut, longest = {}, 0, 0
+    for i, t in texts.items():
+        out[i], n, was = E.fit(t, lim)
+        if was:
+            cut, longest = cut + 1, max(longest, n)
+    return out, cut, longest
+
+
 def _split(con, texts, bid):
     """재사용할 것과 만들 것 — `({id: 벡터 바이트}, todo[(id, ver)])`(같은 글은 한 번만 만든다)."""
     vers = {i: _ver(texts[i]) for i in texts}
@@ -123,7 +139,7 @@ def lookup(kind, texts):
     if con is None:
         return {}
     try:
-        items, _todo, _v = _split(con, texts, E.backend_id())
+        items, _todo, _v = _split(con, _fitted(texts)[0], E.backend_id())
     finally:
         con.close()
     return {i: _unpack(b) for i, b in items.items()}
@@ -160,7 +176,7 @@ def plan(jobs):
     out = {}
     try:
         for kind, texts in jobs:
-            items, _todo, _v = _split(con, texts, bid)
+            items, _todo, _v = _split(con, _fitted(texts)[0], bid)
             out[kind] = (len(items), len(texts))
     finally:
         if con is not None:
@@ -177,6 +193,7 @@ def vectors(kind, texts):
 
 def _vectors(kind, texts):
     bid = E.backend_id()
+    texts, cut, longest = _fitted(texts)
     con = _open()
     try:
         items, todo, vers = _split(con, texts, bid)
@@ -201,7 +218,8 @@ def _vectors(kind, texts):
     prev = STATS.get(kind) if STATS.get(kind, {}).get("backend") == bid else None
     made_n = fresh + (prev["made"] if prev else 0)
     STATS[kind] = {"made": made_n, "reused": max(0, len(texts) - made_n),
-                   "secs": round(time.perf_counter() - t0 + (prev["secs"] if prev else 0), 2), "backend": bid}
+                   "secs": round(time.perf_counter() - t0 + (prev["secs"] if prev else 0), 2), "backend": bid,
+                   "cut": cut, "longest": longest}
     return out
 
 
@@ -215,12 +233,24 @@ def question(text):
     return _unpack(_pack(E.embed(text)))
 
 
+def fit_line(stats=None):
+    """한도 한 조각 — `한도 <n><단위>(<출처>) · 넘어 자른 글 — 노드 a · 청크 b(가장 긴 m)` · 0이면 `… · 넘은 글 0` (B153 ③)."""
+    s = STATS if stats is None else stats
+    lim = E.limit()
+    head = f"한도 {lim['n']:,}{lim['unit']}({lim['from']})" + (f" · {lim['note']}" if lim["note"] else "")
+    if not any(v.get("cut") for v in s.values()):
+        return f"{head} · 넘은 글 0"
+    parts = " · ".join(f"{_KIND.get(k, k)} {v.get('cut', 0):,}" for k, v in sorted(s.items(), reverse=True))
+    return f"{head} · 넘어 자른 글 — {parts}(가장 긴 {max(v.get('longest', 0) for v in s.values()):,}{lim['unit']})"
+
+
 def cost_line():
-    """벡터 한 줄 — `벡터 — 노드 만든 a · 재사용 b · 청크 만든 c · 재사용 d · <판> · n.n초` (마지막 질의 · 없으면 빈 문자열)."""
+    """벡터 한 줄 — `벡터 — 노드 만든 a · 재사용 b · 청크 만든 c · 재사용 d · <판> · n.n초 · <한도 조각>` (마지막 질의 · 없으면 빈 문자열)."""
     if not STATS:
         return ""
-    parts = [f"{ {'nodes': '노드', 'chunks': '청크'}.get(k, k)} 만든 {s['made']:,} · 재사용 {s['reused']:,}"
+    parts = [f"{_KIND.get(k, k)} 만든 {s['made']:,} · 재사용 {s['reused']:,}"
              for k, s in sorted(STATS.items(), reverse=True)]
     bid = next(iter(STATS.values()))["backend"]
     return (f"벡터 — {' · '.join(parts)} · {bid} · "
-            f"{sum(s['secs'] for s in STATS.values()):.1f}초" + (f" · {E.cost_line()}" if E.cost_line() else ""))
+            f"{sum(s['secs'] for s in STATS.values()):.1f}초" + (f" · {E.cost_line()}" if E.cost_line() else "")
+            + f" · {fit_line()}")

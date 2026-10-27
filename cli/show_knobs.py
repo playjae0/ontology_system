@@ -6,7 +6,7 @@
 `show dist <무엇>`이다. 여기는 **쓰지 않는다**(값은 사람이 `$ONTO_HOME/knobs.json`에 쓴다).
 
     python run.py show knobs
-    python run.py show dist chunks|headings|forms|sheets|evidence|lens|ref
+    python run.py show dist chunks|headings|forms|sheets|evidence|lens|ref|embed
 """
 from __future__ import annotations
 
@@ -152,8 +152,39 @@ def dist_ref():
     return 0
 
 
+def dist_embed(top=10):
+    """임베딩 입력 길이 — 종류별(노드 · 표 청크 · 산문 청크) 길이 분포(한도 대비 구간) · 넘은 글 상위(B153 ③ · 읽기 전용 · 벡터 0).
+    재료는 벡터와 같은 함수(`hybrid.node_texts` · `_chunk_text`) · 셈은 같은 한도(`embeddings.limit` · `measure`) — 넘은 수가
+    `run.py vectors` 끝 줄 「넘어 자른 글」과 같다."""
+    from core.llm import embeddings as E
+    from core.query import hybrid as H
+    from core.state.bootstrap import open_graph
+    from router import discover
+    lim = E.limit()
+    texts, info = H.node_texts({lay: open_graph(lay) for lay in discover()})
+    rows = [("노드", info[i]["canonical"], "-", E.measure(t, lim)) for i, t in texts.items()]
+    for cid, c in (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}).items():
+        kind = "표 청크" if (c.get("meta") or {}).get("field") else "산문 청크"
+        rows.append((kind, cid, c.get("doc_id") or "-", E.measure(H._chunk_text(c), lim)))
+    n, unit = lim["n"], lim["unit"]
+    print(f"■ 임베딩 입력 길이 — embed_max_chars {knobs.get('embed_max_chars')} · 한도 {n:,}{unit}({lim['from']})"
+          + (f" · {lim['note']}" if lim["note"] else ""))
+    for kind in ("노드", "표 청크", "산문 청크"):
+        xs = [r[3] for r in rows if r[0] == kind]
+        print(_dist_line(f"{kind}({unit})", xs))
+        if xs:
+            bins = (sum(x <= n * .5 for x in xs), sum(n * .5 < x <= n * .8 for x in xs), sum(n * .8 < x <= n for x in xs),
+                    sum(x > n for x in xs))
+            print(f"  {'':<14} 한도 대비 — ~50% {bins[0]} · ~80% {bins[1]} · ~100% {bins[2]} · 넘음 {bins[3]}")
+    over = sorted((r for r in rows if r[3] > n), key=lambda r: (-r[3], r[0], r[1]))
+    print(f"  넘은 글 {len(over)}(앞을 지키고 꼬리를 잘라 넣는다)" + (" — 상위:" if over else ""))
+    for kind, i, doc, x in over[:top]:
+        print(f"    {kind} · {i} · {doc} · {x:,}{unit}")
+    return 0
+
+
 DIST = {"lens": dist_lens, "ref": dist_ref, "chunks": dist_chunks, "headings": dist_headings, "forms": dist_forms,
-        "sheets": dist_sheets, "evidence": dist_evidence}
+        "sheets": dist_sheets, "evidence": dist_evidence, "embed": dist_embed}
 
 
 def cmd_dist(args):

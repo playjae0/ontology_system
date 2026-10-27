@@ -189,7 +189,7 @@ _knobs({})
 _lm1 = _lm.read_text(encoding="utf-8").count("\n") if _lm.exists() else 0
 L1 = r1["trace"]["linking"]
 show("ⓑ 사전에 없는 동의 표현(「틈새」)이 임베딩 후보 + 선별로 노드에 닿는다 — method embed+llm · 점수 · 이유 · 어디의 무엇",
-     [x["canonical"] for x in L1] == ["노칭::cathode::금형 클리어런스"] and L1[0]["method"] == "embed+llm"  # 기대 변경(B144 ② — CP 이름이 설비 아래로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 노드는 같은 이름 PFMEA 노드)
+     [x["canonical"].split("::")[-1] for x in L1] == ["금형 클리어런스"] and L1[0]["method"] == "embed+llm"  # 기대 변경(B153 ② — 노드 글이 맨 이름 · 이름 사슬로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 것은 같은 이름 노드 하나 — 성질로 잰다)
      and L1[0].get("why") and L1[0].get("score") is not None and L1[0].get("where"),
      " ‖ ".join(f"{x['canonical']} [{x['method']} · 점수 {x.get('score')} · 이유 「{x.get('why')}」 · "
                 f"위치 {x.get('where')}]" for x in L1))
@@ -200,7 +200,7 @@ show("ⓑ 후보 밖 id 0 · LLM이 받은 후보 수 ≤ k(5) < 노드 전부 �
 m2 = {x["canonical"]: x["method"] for x in r2["trace"]["linking"]}
 m3 = {x["canonical"]: x["method"] for x in r3["trace"]["linking"]}
 show("ⓑ 보충(기본) — 사전 노드는 그대로 + 선별이 더한다 · 폴백 — 사전이 잡으면 선별 호출 0(지금 규칙)",
-     m2.get("노칭") == "dict" and m2.get("노칭::cathode::금형 클리어런스") == "embed+llm"  # 기대 변경(B144 ② — CP 이름이 설비 아래로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 노드는 같은 이름 PFMEA 노드)
+     m2.get("노칭") == "dict" and any(k.endswith("::금형 클리어런스") and v == "embed+llm" for k, v in m2.items())  # 기대 변경(B153 ② — 같은 까닭 · 성질로 잰다)
      and m3 == {k: v for k, v in m2.items() if v == "dict"} and not c3,
      f"보충 {m2} · 폴백 {m3} · 폴백 선별 호출 {len(c3)}")
 show("ⓑ 링킹 미스율은 사전 단 기준 — 선별이 찾았어도 사전이 못 찾은 질문은 link_miss에 적재(사전이 잡은 질문은 0)",
@@ -290,7 +290,7 @@ show("ⓓ 답 — 5줄 이내(줄 수 표시) · used_facts·used_chunks가 사�
 # ────────────────────────────────────────────────────────────── ⓔ
 print("\n■ B104 ⑤ 채점 — 링킹 사전만 vs 보충 · 문서 검색 doc@k (BM25 대조군 옆)")
 _qs = [{"id": "B104-1", "type": "Q1", "q": "틈새는 어떻게 관리해?", "expected_path": "chunk",
-        "expected_linked": ["process:노칭::cathode::금형 클리어런스"], "expected_docs": ["CP01"]},  # 기대 변경(B144 ② — CP 이름이 설비 아래로 바뀌어 가짜 임베딩 후보 차례가 달라짐 · 닿는 노드는 같은 이름 PFMEA 노드)
+        "expected_linked": [f"{L1[0].get('layer') or 'process'}:{L1[0]['canonical']}" if L1 else "-"], "expected_docs": ["CP01"]},  # 기대 변경(B153 ② — ⓑ가 닿은 노드를 기대로 · 가짜 임베딩 차례에 묶지 않는다)
        {"id": "B104-2", "type": "Q1", "q": "육안 점검 교체 주기는?", "expected_path": "chunk",
         "expected_docs": ["PPT03"]}]
 with Live():
@@ -489,6 +489,71 @@ _nm = lambda i: _i3[i]["canonical"]                      # noqa: E731
 show("B136 ⓕ 중복 후보 보고 — 심은 가까운 쌍이 나오고(가짜 임베딩) 다른 카테고리 · 다른 부모 쌍은 나오지 않는다 · 상태 지문 전후 같다(쓰기 0)",
      len(_lines) == 1 and _nm(_a) in _lines[0] and _nm(_b) in _lines[0] and "100.0%" in _lines[0] and _f0 == _f1
      and "ops merge" in _bn.getvalue(), f"쌍 {_lines} · 다른 카테고리 {_nm(_d)} · 다른 부모 {_nm(_e) if _e else '없음'}")
+
+# ────────────────────────────────────────────────────────────── B153
+print("\n■ B153 — 임베딩 재료: 표 청크 머리 · 노드 글 · 입력 길이 (창작 표본 · mock — 수치는 근거가 아니다)")
+from core.state.ids import doc_hash as _DH153                     # noqa: E402
+with contextlib.redirect_stdout(io.StringIO()):
+    fresh()
+_raw153 = TMP / "b153"
+_raw153.mkdir(exist_ok=True)
+_ing153 = []
+for _src, _dst, _dt in (("CP01.xlsx", "B153CP.xlsx", "cp"), ("PFMEA01.xlsx", "B153FM.xlsx", "pfmea")):
+    _sh.copy(_FXR.RAW / _src, _raw153 / _dst)                    # 원본 엑셀에서 파싱하는 길(같은 doc_id 충돌을 피해 이름만 바꾼다)
+    _ing153.append(_sp.run([_sys.executable, str(ROOT / "run.py"), "ingest-file", str(_raw153 / _dst), "--doc-type", _dt,
+                            "--allow-mock"], cwd=str(ROOT), env=_env, capture_output=True, text=True, stdin=_sp.DEVNULL,
+                           timeout=600).returncode)
+_ch153 = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+_ev153 = {d: json.loads(_P.parsed(f"{d}.json").read_text(encoding="utf-8")) for d in ("B153CP", "B153FM")}
+_cpk = next(k for k, c in _ch153.items() if c["doc_id"] == "B153CP" and c["text"] == "공정 정지 후 금형 점검")
+_fm = next(c for c in _ch153.values() if c["doc_id"] == "B153FM" and c["meta"].get("field") == "prevention_control")
+_bm153 = _HY.doc_search("노칭 정밀도 대응계획", 20, 101)          # 문턱 101% — 임베딩 0 · BM25만
+show("B153 ⓐ 표 청크 — 원본 엑셀(ingest-file)의 봉투 field_labels = 실물 헤더 글 · meta.label · owner · 재료 「[열 머리 · 주인 · 좌표] 원문」"
+     "(행 위치 0) · 청크 id · 문서 해시 그대로 · 열 이름 · 주인만 든 질문을 BM25가 같은 재료로 찾는다",
+     _ing153 == [0, 0] and _ev153["B153FM"]["field_labels"].get("prevention_control") == "예방관리"
+     and _fm["meta"].get("label") == "예방관리" and _fm["meta"].get("owner")
+     and _HY._chunk_text(_ch153[_cpk]) == "[대응계획 · 노칭 정밀도 · 노칭] 공정 정지 후 금형 점검"
+     and _ch153[_cpk]["section"] not in _HY._chunk_text(_ch153[_cpk]) and _cpk.endswith("-대응계획")
+     and _DH153(_ev153["B153CP"]) == _DH153({k: v for k, v in _ev153["B153CP"].items() if k != "field_labels"})
+     and any(x["chunk_id"] == _cpk and x["by"] == ["bm25"] for x in _bm153),
+     f"인입 rc {_ing153} · {_fm['meta']} · {_HY._chunk_text(_ch153[_cpk])} · BM25 {[x['chunk_id'][-12:] for x in _bm153][:5]}")
+_coord153 = __import__("parser.normalizer", fromlist=["coord_text"]).coord_text
+_old153 = lambda c: (lambda h: f"[{h}] {c.get('text') or ''}" if h else (c.get("text") or ""))(   # noqa: E731 — B152까지의 재료
+    " · ".join(x for x in (c.get("section"), _coord153(c.get("process_ref"))) if x))
+_pr153 = {k: c for k, c in _ch153.items() if not c["meta"].get("field") and not c["meta"].get("subject")}
+V.vectors("chunks", {k: _old153(c) for k, c in _pr153.items()})
+V.begin()
+V.vectors("chunks", {k: _HY._chunk_text(c) for k, c in _pr153.items()})
+show("B153 ⓑ 산문 청크 — 머리 그대로(재료가 같아 만든 수 0 · 다시 씀 = 전부) · PPT 다루는 것은 머리 끝에",
+     _pr153 and V.STATS["chunks"]["made"] == 0 and V.STATS["chunks"]["reused"] == len(_pr153)
+     and _HY._chunk_text({"text": "t", "section": "S", "meta": {"subject": "노칭 커터"}}) == "[S · 노칭 커터] t",
+     f"산문 {len(_pr153)} · {V.STATS['chunks']}")
+_gr153 = {l: open_graph(l) for l in _disc()}
+_t153, _i153 = _HY.node_texts(_gr153)
+_by153 = {_i153[i]["canonical"]: (t, _i153[i]["where"]) for i, t in _t153.items()}
+_np = _by153.get("노칭::노칭 프레스::노칭 정밀도", ("", ""))
+show("B153 ⓒ 노드 글 — 「맨 이름 | Property | 별칭 | 위치: 노칭 > 노칭 프레스」(관계 이름 · 화살표 0 · 경로 한 번) · 극성 갈래 마디 · "
+     "골격 노드는 골격 경로 · 화면의 where는 엣지 꼴 그대로",
+     _np[0].startswith("노칭 정밀도 | Property | ") and _np[0].endswith(" | 위치: 노칭 > 노칭 프레스") and "→" not in _np[0]
+     and "노칭::" not in _np[0] and "—has_property→" in _np[1]
+     and any(c.startswith("탭용접::cathode::") and "위치: 탭용접 > cathode" in t for c, (t, _w) in _by153.items())
+     and _by153.get("탭용접::cathode", ("",))[0].endswith("| 위치: 탭용접"),
+     f"{_np[0]} · 화면 {_np[1][:60]}")
+_knobs({"embed_max_chars": 40})
+_r153 = [_vec_cmd(), _vec_cmd()]
+_d153 = _sp.run([_sys.executable, str(ROOT / "run.py"), "show", "dist", "embed"], cwd=str(ROOT), env=_env, capture_output=True,
+                text=True, stdin=_sp.DEVNULL)
+_cut153 = [int(x.replace(",", "")) for x in re.findall(r"(?:노드|청크) ([\d,]+)", (re.findall(r"넘어 자른 글 — (.*?)\(", _r153[0][1]) or [""])[0])]
+_over153 = re.findall(r"넘은 글 ([\d,]+)", _d153.stdout)
+_fit153 = _EM.fit(_HY._chunk_text(_fm))[0]
+show("B153 ⓔ 길이 — 한도를 작게(embed_max_chars 40) · 넘는 글은 머리를 지키고 꼬리가 잘려 한도 안 · 끝 줄 「넘어 자른 글 — 노드 a · 청크 b"
+     "(가장 긴 m)」 · show dist embed가 같은 수 · 다시 치면 재사용(만든 수 0)",
+     _r153[0][0] == 0 and _cut153 and sum(_cut153) > 0 and "가장 긴" in _r153[0][1] and "한도 40자(손잡이)" in _r153[0][1]
+     and _over153 and int(_over153[0].replace(",", "")) == sum(_cut153)
+     and sum(int(x.replace(",", "")) for x in re.findall(r"만든 ([\d,]+)", _r153[1][1])) == 0
+     and _fit153.startswith("[예방관리 · ") and len(_fit153) == 40 < len(_HY._chunk_text(_fm)),
+     f"끝 줄 자른 {_cut153} · dist 넘은 글 {_over153} · 맞춘 글 {_fit153!r} · rc {_d153.returncode}")
+_knobs({})
 
 for d in set(_made):
     (HINTS / f"{d}.json").unlink(missing_ok=True)
