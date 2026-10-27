@@ -518,8 +518,24 @@ show("B151 ⓓ 공정 걸기(문서 좌표 「노칭」) — 슬라이드 4는 3
      and not PDK.mismatch(_ep) and _sl(_ed, 8)["process_ref"] == "노칭" and _sl(_ed, 8)["meta"].get("coord_from_doc"),
      f"3·4 {_sl(_ed, 3)['process_ref']} · {_sl(_ed, 4)['process_ref']} · 어긋남 {sorted(_mis)} · 고아 {len(_orp)} · 물음 {_ASK} · "
      f"7 {_s7['process_ref']} {_s7['meta'].get('coord_tags')} · 8 {_sl(_ed, 8)['process_ref']}")
+# B154 ① 좌표 쌍 다음 줄 — 상위의 출처로(ⓓ의 덱 = 문서 좌표 상위 · 행 상위가 어긋난 표 조각 = 행)
+from cli import coord_queue as CQU154, doc_coord as DC154   # noqa: E402
+_ps154, _qs154, _ts154 = io.StringIO(), io.StringIO(), io.StringIO()
+with contextlib.redirect_stdout(_ps154):
+    DC154.pair_screen(_ed)
+with contextlib.redirect_stdout(_qs154):
+    CQU154.show()
+with contextlib.redirect_stdout(_ts154):
+    DC154.pair_screen({"doc_id": "B154T", "doc_type": "cp", "source_path": "B154T.xlsx",
+                       "records": [{"source_locator": "CP!R4", "process_group": "스태킹", "process_ref": "노칭"}]})
+_nx = lambda b: [ln.strip() for ln in b.getvalue().splitlines() if ln.strip().startswith("▶ 다음 줄(")]   # noqa: E731
+show("B154 ⓐ 좌표 쌍 다음 줄 — 덱(문서 좌표 상위)은 문서 좌표 줄 · 열 매핑 0 · 파싱 화면과 큐 화면이 같은 줄 · 행 상위가 어긋난 표 "
+     "조각은 열 매핑 줄",
+     _nx(_ps154) and _nx(_ps154) == _nx(_qs154) and all("문서 좌표 상위" in x and "열 매핑" not in x for x in _nx(_ps154))
+     and "--coord <상위 공정>" in _nx(_ps154)[0] and _nx(_ts154) and all("열 매핑을 바로잡는다" in x for x in _nx(_ts154)),
+     f"파싱 {_nx(_ps154)[:1]} · 큐 {len(_nx(_qs154))}줄 · 표 {[x[:40] for x in _nx(_ts154)]}")
 # ⓔ 공정이 없는 덱
-D151E = [["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
+D151E =[["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
 A151E = {"slides": [{"slide": 1, "title": "투자 계획", "section": None, "continues": None, "subject": None, "processes": [],
                      "no_entities": True},
                     {"slide": 2, "title": "예산 3억", "section": None, "continues": None, "subject": "예산", "processes": [],

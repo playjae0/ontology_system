@@ -154,13 +154,10 @@ def pair_screen(env):
     print(f"   {CP.head_line(t, acked)} · 대조 {t['checked']:,}행(상위·하위가 둘 다 골격에 맞은 행)")
     for ln in CP.pair_lines(t, acked):
         print(f"     {ln}")
-    if live or t["outside"]:
-        print("     ▶ 다음 줄 — 열이 뒤바뀌었으면 재등록(python -m cli.register generate "
-              f"{env.get('doc_type') or '<dt>'} <층> <표본> --revise --hint "
-              "\"상위(process_group)·하위(process_ref) 열 매핑을 바로잡는다\" — 가이드 §4 재등록 순서) · "
-              "골격이 틀렸으면 seed(부모·이름 변경은 재구축 — 가이드 §7) · "
-              "별칭이면 ALIASES + python run.py bootstrap · 이대로 두려면 쌍 확인"
-              "(python run.py platform queue coord_mismatch)")
+    from cli.coord_queue import DOC, ROW, next_lines           # 다음 줄 한 자리 — 쌍 상위의 출처로 고른다(B154 ①)
+    kinds = {DOC if k[0] == CP.DOC_GROUP else ROW for k in live} | ({ROW} if t["outside"] else set())
+    for ln in next_lines(kinds, env.get("source_path"), env.get("doc_type")):
+        print(f"     {ln}")
     return {"쌍": len(live), "행": sum(e["rows"] for e in live.values()), "상위_밖": len(t["outside"]),
             "확인됨": len(acked), "대조": t["checked"]}
 
