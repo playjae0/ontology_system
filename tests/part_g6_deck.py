@@ -571,6 +571,23 @@ show("B155 ⓒ 덱 추출까지만 — md에 슬라이드마다 맥락 줄(다�
      and all(x in _md155 for x in ("사전 일치", "판정에 오름", "보류 예상", "검사 버림(값 글자)", "⚠ 부른 단위인데 개체 0"))
      and json.dumps(store.read(store.DOC_REGISTRY, {}), sort_keys=True) == _g155,
      f"{_rx155[0].reason} · " + " | ".join(ln for ln in _md155.splitlines() if ln.startswith("- 사전 일치")))
+#: 리뷰 고침(PR #111) — ①개체 부모가 주 좌표를 이긴다(좌표 없는 청크라도 부모가 서면 보류 예상이 아니다 — 구축과 같은 손) ②봉투가
+#: 체크포인트와 다른 판이면 그 사실을 말하고 저장된 청크로 찍는다
+from core.build.build import Builder as _BD155                                    # noqa: E402
+_m155 = XMD155.material("B155D")
+_m155.update(doc=XC151.doc_info(_m155["env"]), closed={"process": XMD155._closed("process")},
+             builders={"process": _BD155(open_graph("process"), load_config("process"), None, "(시험)", "process")})
+_pl155 = XMD155._plan(_m155, "process", {"source_locator": "x", "text": "노칭 신규 커터 점검", "process_ref": None},
+                      _ent("신규 커터", "Unit", parent="노칭"))
+_pe155 = json.loads(_P.parsed("B155D.json").read_text(encoding="utf-8"))
+_pe155["chunks"][1]["text"] += " (고친 문서)"
+_P.parsed("B155D.json").write_text(json.dumps(_pe155, ensure_ascii=False), encoding="utf-8")   # --split-only로 다시 파싱한 꼴
+_st155 = XMD155.material("B155D")
+show("B155 리뷰 고침 — 판정 예고는 개체 부모를 먼저 본다(좌표 없는 청크 + 부모 「노칭」 → 판정에 오름 · 보류 예상 0) · 봉투가 체크포인트와 "
+     "다른 판이면 md 머리가 그 사실을 말한다(저장된 청크로 찍는다)",
+     _pl155 == ("판정에 오름", []) and _st155["stale"] and not XMD155.material("B155X")["stale"]
+     and "다른 판이다" in (XMD155.text("B155D") or ""),
+     f"예고 {_pl155} · 다른 판 {_st155['stale']} · 청크 {len(_st155['chunks'])}")
 # ⓔ 공정이 없는 덱
 D151E = [["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
 A151E = {"slides": [{"slide": 1, "title": "투자 계획", "section": None, "continues": None, "subject": None, "processes": [],

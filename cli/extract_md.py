@@ -21,19 +21,24 @@ from core import paths
 
 
 def material(doc_id):
-    """`{env, chunks: {chunk_id: 조각}, checkpoints: [(층, 렌즈, 체크포인트)]}` — 원문은 봉투(없으면 저장된 청크)에서."""
+    """`{env, chunks: {chunk_id: 조각}, checkpoints: [(층, 렌즈, 체크포인트)], stale}` — 원문은 봉투에서 · 봉투가 체크포인트와 다른 판
+    (문서 해시가 다르다 — 인입 뒤 고친 문서를 `--split-only`로 다시 파싱)이면 체크포인트의 청크 id가 사는 저장된 청크에서(`stale` 참 —
+    머리가 그 사실을 말한다 · 저장된 청크가 없으면 단위가 빈다)."""
     from core.build import extract as EX
     from core.build.ingest import prose_chunk_ids
     from core.state import store
+    from core.state.ids import doc_hash
     pp = paths.parsed(f"{doc_id}.json")
     env = json.loads(pp.read_text(encoding="utf-8")) if pp.exists() else {}
-    chunks = dict((cid, c) for c, cid in prose_chunk_ids(env)) if env.get("chunks") else {
-        cid: c for cid, c in (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}).items() if c.get("doc_id") == doc_id}
     cks = []
     for p in EX.checkpoint_files(doc_id):
         ck = json.loads(p.read_text(encoding="utf-8"))
         cks.append((ck.get("layer"), ck.get("lens"), ck))
-    return {"doc_id": doc_id, "env": env, "chunks": chunks, "checkpoints": cks}
+    dh = doc_hash(env) if env.get("chunks") else None
+    stale = bool(dh) and any(ck.get("doc_hash") not in (None, dh) for _l, _z, ck in cks)
+    chunks = dict((cid, c) for c, cid in prose_chunk_ids(env)) if dh and not stale else {
+        cid: c for cid, c in (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}).items() if c.get("doc_id") == doc_id}
+    return {"doc_id": doc_id, "env": env, "chunks": chunks, "checkpoints": cks, "stale": stale}
 
 
 def _units(mat):
@@ -67,7 +72,7 @@ def _where(text, word):
 
 def _plan(mat, layer, chunk, e):
     """개체 하나의 판정 예고 — `(갈래, [검사 버림])`: 갈래 = 보류 예상(좌표 없음 · 좌표 목록 밖) · 사전 일치 · 판정에 오름."""
-    from core.build import belongs, extract as EX
+    from core.build import belongs
     from core.build.entry import _plan_hit
     from core.build.extract_unit import _is_image, text_of
     from core.build.values import verbatim
@@ -78,17 +83,20 @@ def _plan(mat, layer, chunk, e):
     bel = e.get("belongs_to") or {}
     if bel.get("name") and belongs.source_of(bel["name"], chunk, mat["doc"]) is None:
         drop.append("소속 출처")
-    if e.get("parent") and e["parent"] not in EX.parent_candidates(chunk):
-        drop.append("부모 후보 밖")
     from core.build.naming import scope_categories
+    from core.build.prose import parent_hit
     b = mat["builders"][layer]
-    refs = coord_refs(chunk.get("process_ref"))
-    if _plan_hit(b, {"surface": e.get("surface"), "category": e.get("category"), "ref": chunk.get("process_ref"),
+    pid, pg = parent_hit(b, e, chunk, "(추출 확인)", {}, defer=[])     # 개체 부모가 주 좌표를 이긴다 — 구축과 같은 손(쓰기 0)
+    if e.get("parent") and not pid:
+        drop.append("부모 후보 밖")                                    # 구축은 null로 읽고 주 좌표를 쓴다
+    ref = pg.get(pid)["canonical"] if pid else chunk.get("process_ref")
+    refs = coord_refs(ref)
+    if _plan_hit(b, {"surface": e.get("surface"), "category": e.get("category"), "ref": ref,
                      "electrode_type": chunk.get("electrode_type")}, layer):
         way = "사전 일치"
     elif e.get("category") in scope_categories(b.cfg) and not refs:   # 이름에 좌표(부모)가 붙는 카테고리만 좌표를 기다린다
         way = "보류 예상(좌표 없음)"
-    elif e.get("category") in scope_categories(b.cfg) and not any(mat["closed"][layer](r) for r in refs):
+    elif e.get("category") in scope_categories(b.cfg) and not pid and not any(mat["closed"][layer](r) for r in refs):
         way = "보류 예상(좌표 목록 밖)"
     else:
         way = "판정에 오름"
@@ -106,6 +114,9 @@ def _head(mat):
     out = [f"# 추출 확인 — {mat['doc_id']}", "",
            f"- 문서 {env.get('source_path') or '—'} · doc_type {env.get('doc_type') or '—'} · 지시문 판 "
            + " · ".join(dict.fromkeys(str(ck.get("prompt_version")) for _l, _z, ck in mat["checkpoints"]) or ["—"])]
+    if mat.get("stale"):
+        out.append("- ⚠ 봉투(parsed/)가 추출 체크포인트와 다른 판이다(문서 해시가 다르다) — 원문은 저장된 청크에서 찍었다(없는 단위는 빠진다) · "
+                   "같은 문서를 --extract-only로 다시 치면 맞는다")
     for lay, lens, ck in mat["checkpoints"]:
         cs = ck.get("candidates") or []
         run = EX.RUN.get((mat["doc_id"], lens or "")) or {}
