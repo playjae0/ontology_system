@@ -31,7 +31,7 @@ from cli._gate import require_live_or_allow    # mock 관문 (B48)
 from cli.prompt import _dir as review_dir      # 폴더를 만드는 자리는 하나다 (B77 ④)
 from core.state.bootstrap import coord_layer
 from core import paths
-from core.build import deck as deck_mod, structure as structure_mod
+from core.build import deck as deck_mod, reading as reading_mod, structure as structure_mod
 from core.llm import gateway, points, struct_map_pass
 from parser import pipeline, preflight, reader, validator
 
@@ -61,6 +61,8 @@ def injections():
            "structure": structure_mod.structurer(),
            # ⑪ 안의 덱 구조(B125 ③) — PPT 덱마다 1회(제목 · 이어짐 · 다루는 것 · 공정 표기 · 덱 개요 · mock은 힌트 · 층 0)
            "deck": deck_mod.decker(),
+           # ④ 안의 쪽 판독(B156 ②) — PPT · PDF 쪽마다(덱 판단 다음 · 캡처가 주 입력 · mock은 힌트 · 층 0)
+           "reading": reading_mod.reader(),
            # 슬라이드 · 쪽 캡처를 추출에(B125 ② — 실호출일 때 · `--no-images`면 파서가 끈다)
            "capture": not gateway.use_mock()}
     if not gateway.use_mock():
@@ -132,6 +134,18 @@ def image_screen():
     return notice
 
 
+def reading_notice(info):
+    """쪽 판독의 **예고** 줄 — 부르기 전에(B156 ②) · 보존분 재사용은 LLM 0 · 읽기 지식이 바뀌어 다시 부르는 수를 따로."""
+    from core.build.reading import KNOWLEDGE
+    if not (info.get("부름") or info.get("재사용")):
+        return
+    _screen.say(f"   쪽 판독 — 쪽 {info['쪽']} · 부름 ≤ {info['부름']} · 재사용 {info['재사용']} · 건너뜀 {info['건너뜀']}"
+                + (f" · 지움 {info['지움']}" if info.get("지움") else "")
+                + (f" · 읽기 지식이 바뀌어 다시 {info['지식바뀜']}" if info.get("지식바뀜") else "")
+                + f" · 읽기 지식 {'있음' if info.get('읽기지식') else '없음'}({paths.show(paths.registry(KNOWLEDGE))})"
+                + (f" · 캡처 없음({info['캡처사유']})" if info.get("캡처사유") else ""), "head")
+
+
 def print_split_notes(report):
     """분할 끝 줄(B87 · B119) — 문서 구조 · 덱 구조 · 글자 상한. 해당이 없으면 줄도 없다."""
     st = (report or {}).get("structure")
@@ -156,6 +170,12 @@ def print_split_notes(report):
                     + (f" · 실패 {dk['실패']}" if dk.get("실패") else ""), "warn" if dk.get("실패") else "head")
         if dk.get("옛 언급 고침"):                   # 옛 `@덱` 고침의 언급 칸 — 읽지 않는다(B151 ④)
             _screen.say(f"   읽지 않은 옛 언급 고침 {dk['옛 언급 고침']} — 언급 칸은 없어졌다(다른 공정 언급은 그래프 단계가 잡는다)", "aux")
+    rd = ((report or {}).get("reading") or {}).get("수")
+    if rd:                                          # 쪽 판독 끝 줄 (B156 ⑥)
+        _screen.say(f"   쪽 판독 — 쪽 {rd['쪽']} · 부름 {rd['부름']} · 재사용 {rd['재사용']} · 건너뜀 {rd['건너뜀']} · 지움 {rd['지움']} · "
+                    f"버림 {rd['버림']} · {_screen.branch_line('쪽 판독', None)}"
+                    + (f" · 사람 판독 고침 {rd['고침']}" if rd.get("고침") else "")
+                    + (f" · 실패 {rd['실패']}" if rd.get("실패") else ""), "warn" if rd.get("실패") else "head")
     cap = ((report or {}).get("split") or {}).get("글자_상한") or {}
     if cap:
         print(f"   글자 상한 초과 {cap['초과_청크']}청크 → 행 경계로 {cap['조각']}조각"
@@ -273,6 +293,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     with _screen.ticker("파싱(구조·그림 요약·좌표)"):
         inj = injections()
         inj["capture"] = inj["capture"] and not no_capture       # `--no-capture` — 캡처 없이(사람이 명시 · 기록) (B128 ②)
+        inj["reading"].notice = reading_notice                  # 판독 예고 — 부르기 전에 (B156 ②)
         res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **inj,
                              structure_fixes=structure_mod.fixes_of(doc_id),     # 사람의 구조 고침 (B119 ③)
                              structure_confirmed=structure_mod.confirmed_of(doc_id),   # 구조 확인의 확정 시트 (B126 ③)
@@ -414,7 +435,7 @@ def cmd_build(args):
         res = pipeline.parse(mod, f"{doc_type.upper()}{i:02d}", s,
                              layer=coord_layer(),
                              **{**injections(), "structure": None,   # 구축은 파악만 (B119)
-                                "deck": None, "capture": False})
+                                "deck": None, "capture": False, "reading": None})
         allok &= bool(pf_ok and res.ok)
         print(f"   {Path(s).name}: preflight {'OK' if pf_ok else 'MISMATCH'} · "
               f"파싱 {'OK' if res.ok else 'FAIL'} · 조각 {res.report.get('pieces', 0)}")

@@ -145,17 +145,13 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
     return plans
 
 
-def _entity_parent(b, e, src, prov, cid, pcs, main):
-    """개체 하나의 **이름 부모** — `(좌표 id, 그래프, 부모 canonical, 극성)` (B91 ③).
-
-    추출이 `parent`를 냈고 그것이 **부모 후보**(`extract.parent_candidates` — 좌표 서브트리 +
-    본문에 나오는 골격 이름 · 같은 함수로 다시 센다) 안이며 골격 노드로 해소되면 그것이다.
-    후보 밖이면 null로 읽고 결함 로그에 남긴다(지어낸 부모로 이름을 만들지 않는다).
-    `parent`가 없으면 주 좌표 그대로다(지금과 같다). `pcs`는 청크 안 캐시다.
-    """
+def parent_hit(b, e, src, prov, pcs, defer=None):
+    """개체 `parent`의 골격 노드 `(좌표 id, 그래프)` 또는 `(None, None)` — 부모 후보(`extract.parent_candidates`) 안이고 골격 노드로
+    해소될 때만 · 쓰기 0(결함 로그는 부르는 쪽 몫 · `defer`를 주면 미해소 적재도 그 자루로). 구축(`_entity_parent`)과 추출 확인 md의
+    판정 예고(`cli/extract_md`)가 같은 손이다."""
     want = e.get("parent")
     if not want:
-        return main
+        return None, None
     if "set" not in pcs:
         from core.build.extract import parent_candidates
         pcs["set"] = {norm(x): x for x in parent_candidates(src)}
@@ -167,7 +163,23 @@ def _entity_parent(b, e, src, prov, cid, pcs, main):
     if hit is None:                                  # 2차 — 라틴 대소문자 · 하나일 때만 (B96 ④)
         _c = pcs["fold"].get(fold_latin(want)) or set()
         hit = next(iter(_c)) if len(_c) == 1 else None
-    pid, pg = b.resolve_anchor(hit, COORD_CATEGORY, prov) if hit else (None, None)
+    if not hit:
+        return None, None
+    return b.resolve_anchor(hit, COORD_CATEGORY, prov, **({"defer": defer} if defer is not None else {}))
+
+
+def _entity_parent(b, e, src, prov, cid, pcs, main):
+    """개체 하나의 **이름 부모** — `(좌표 id, 그래프, 부모 canonical, 극성)` (B91 ③).
+
+    추출이 `parent`를 냈고 그것이 **부모 후보**(`extract.parent_candidates` — 좌표 서브트리 +
+    본문에 나오는 골격 이름 · 같은 함수로 다시 센다) 안이며 골격 노드로 해소되면 그것이다.
+    후보 밖이면 null로 읽고 결함 로그에 남긴다(지어낸 부모로 이름을 만들지 않는다).
+    `parent`가 없으면 주 좌표 그대로다(지금과 같다). `pcs`는 청크 안 캐시다.
+    """
+    want = e.get("parent")
+    if not want:
+        return main
+    pid, pg = parent_hit(b, e, src, prov, pcs)
     if not pid:
         store.append_defect(f"{b.doc_id}: 개체 부모 후보 밖 — '{want}' (개체 '{e['surface']}' "
                             f"@ {cid}) → null · 주 좌표를 쓴다")

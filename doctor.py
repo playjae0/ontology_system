@@ -114,6 +114,7 @@ OPTIONAL = [("orjson", "그래프 직렬화 가속 — 없으면 표준 json으�
             ("openpyxl", "xlsx 읽기 — 파서 전용·지연 import"),
             ("pptx", "pptx 읽기 — 파서 전용·지연 import (패키지명 python-pptx)"),
             ("pymupdf", "PDF 읽기 · 쪽 렌더(PPT · PDF 캡처) — 지연 import (패키지명 PyMuPDF · 옛 판은 fitz)"),
+            ("PIL", "쪽 캡처 보관(JPEG — 손잡이 keep_page_captures) — 지연 import (패키지명 Pillow · 없으면 보관만 꺼진다)"),
             # **로컬 임베딩**(B80 ③) — `EMBED_BACKEND=local`일 때만 부른다.
             ("sentence_transformers",
              "로컬 임베딩 — EMBED_BACKEND=local일 때만 · 지연 import "

@@ -5,17 +5,18 @@
 포맷 전부 한 함수). 한 단위의 호출 입력은 첫 본문 청크 + 묶음 머리를 단 나머지(`[표 S3-TB1]` · `[차트 …]` · `[그림 요약 …]`) +
 노트(`[노트]` — 한 번) + 캡처(그 슬라이드 · 쪽의 렌더 — 있을 때만)다. 답의 개체는 **그 표기 · 값 글자가 든 근거 청크**로 가고
 (없으면 본문 청크) 관계 · 관련 링크는 본문 청크에 남는다(엣지 끝점은 문서 버퍼가 잇는다).
-**렌더 바이트는 저장하지 않는다**(문서 1 B16) — 문서마다 원본(`source_path`)에서 한 번 떠서 이 실행 안에서만 쓴다.
+캡처는 문서마다 한 번 뜬다 — 손잡이 `keep_page_captures`가 켜져 있으면 ④작업 단의 보관분(원본에서 다시 만들 수 있는 쪽 JPEG)을 쓰고
+아니면 원본(`source_path`)에서 떠서 이 실행 안에서만 쓴다(`core/state/captures` — B156 ⑤ · 원본 바이너리 저장 0).
 """
 from __future__ import annotations
 
-from core.state import log
+from core.state import captures as _CAP, log
 from core.state.ids import norm
 
 _LOG = log.get(__name__)
 
-#: 이 실행의 캡처 — `{doc_id: ({쪽 번호: png}, 사유 또는 None)}`(문서마다 한 번 렌더)
-_PAGES = {}
+#: 이 실행의 캡처 — `{doc_id: ({쪽 번호: 바이트}, 사유 또는 None)}`(문서마다 한 번 — 판독과 같은 판 · 자리는 `core/state/captures` — B156 ⑤)
+_PAGES = _CAP._PAGES
 
 
 def unit_key(c):
@@ -100,27 +101,13 @@ def split(entry, unit, bid):
 
 
 def capture(env):
-    """그 문서의 캡처 `({쪽 번호: png}, 사유 또는 None)` — 파싱이 켰을 때만(`env["capture"]`) · 문서마다 한 번 원본에서 뜬다 ·
-    보이는 쪽 수와 렌더 수가 다르면 붙이지 않는다(틀린 쪽을 보내느니 없는 편이 낫다)."""
-    doc_id = env.get("doc_id")
+    """그 문서의 캡처 `({쪽 번호: 바이트}, 사유 또는 None)` — 파싱이 켰을 때만(`env["capture"]`) · 문서마다 한 번 · 보관분(손잡이
+    `keep_page_captures`)이 있으면 그것 · 없으면 원본에서 뜬다(`core/state/captures.pages` — 판독과 같은 손 · B156 ⑤) · 보이는 쪽 수와
+    렌더 수가 다르면 붙이지 않는다(틀린 쪽을 보내느니 없는 편이 낫다)."""
     want = (env.get("capture") or {}).get("pages")
     if not want:
         return {}, None
-    if doc_id in _PAGES:
-        return _PAGES[doc_id]
-    from parser import render
-    ok, _route, why = render.capture_path(env.get("source_path"))     # 캡처 가능 판정 한 자리 (B128 ①)
-    got = None
-    if ok:
-        try:
-            got = render.render_pages(env.get("source_path"))
-        except Exception as e:                                # noqa: BLE001 — 캡처 없이 진행한다
-            why = f"{type(e).__name__}: {e}"
-    if got and len(got) != want:
-        _LOG.warning("캡처 — 렌더 %d쪽 · 보이는 쪽 %d — 대응이 서지 않아 붙이지 않는다", len(got), want)
-        got, why = None, f"렌더 {len(got)}쪽 ≠ 보이는 쪽 {want}"
-    _PAGES[doc_id] = (dict(got) if got else {}), (None if got else (why or "렌더 없음"))
-    return _PAGES[doc_id]
+    return _CAP.pages(env.get("doc_id"), env.get("source_path"), want)
 
 
 def page_of(unit):

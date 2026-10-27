@@ -18,7 +18,7 @@ import logging
 import inspect
 import sys
 
-from . import deck as deck_mod, normalizer, preflight, struct_map, struct_rule, tagger, validator
+from . import deck as deck_mod, normalizer, preflight, reading as reading_mod, struct_map, struct_rule, tagger, validator
 from .reader import head, read
 
 _LOG = logging.getLogger("onto.parser.pipeline")
@@ -185,7 +185,7 @@ def _drop_images(res, pieces, no_images):
 
 def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps,
                   made_maps, map_picks, src_hash, image_notice=None, made_struct=None,
-                  made_deck=None, capture=False):
+                  made_deck=None, capture=False, made_reading=None):
     """④ 이미지 요약 — 보존분 재사용과 새로 받은 것의 저장. 돌려주는 것은 조각이다.
 
     `parse`에서 단계로 떼어냈다(B78 2c) — 지도·요약의 보존 규칙이 한 자리에 모인다.
@@ -224,6 +224,9 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
         fresh["structure"] = {**(kept_map.get("structure") or {}), **made_struct}
     if made_deck:
         fresh["deck"] = made_deck                     # 덱 구조 — 같은 파일 · 같은 판이면 LLM 0 (B125 ③)
+    if made_reading:
+        # 쪽 판독 — 같은 파일(원본 해시) 안에서 쪽마다 열쇠(입력 · 지시문 판 · 읽기 지식 · 힌트)가 같으면 LLM 0 (B156 ②)
+        fresh["reading"] = {**(kept_map.get("reading") or {}), **made_reading}
     if kept_img and kept_img != (kept_map.get("image_summaries") or {}):
         fresh["image_summaries"] = kept_img
     if fresh:
@@ -236,8 +239,8 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
 
 def _capture(res, pieces, raw):
     """**슬라이드 캡처의 자리**(B125 ②) — 그림 유무와 무관하게 PPT · PDF 조각에 쪽 번호(`meta.page_no` — 숨김 슬라이드를 뺀
-    보이는 순서 · PDF는 쪽 그대로)를 단다. **렌더 바이트는 저장하지 않는다**(문서 1 B16) — 추출이 원본(`source_path`)에서
-    다시 떠서 그 슬라이드 호출에 붙인다(`core/build/extract_unit.capture`). 돌려주는 것은 `(조각, 보이는 쪽 수)`."""
+    보이는 순서 · PDF는 쪽 그대로)를 단다. 파서는 캡처를 들고 있지 않는다 — 판독 · 추출이 문서마다 한 번 떠서(보관분이 있으면 그것 ·
+    `core/state/captures` — B156 ⑤) 그 슬라이드 호출에 붙인다(`core/build/extract_unit.capture`). 돌려주는 것은 `(조각, 보이는 쪽 수)`."""
     slides = raw.get("slides")
     if slides is not None:
         page_of = {s["index"]: n for n, s in enumerate((x for x in slides if not x.get("hidden")), start=1)}
@@ -385,11 +388,12 @@ def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles, confirmed=N
                                        confirmed=confirmed, ctx=ctx), made, tally)
 
 
-def _env_extras(env, res, doc_coord, dk_tally, nodes=None, labels=None):
+def _env_extras(env, res, doc_coord, dk_tally, nodes=None, labels=None, boxes=None, reading=None):
     """봉투의 문서 칸 — 문서 좌표(B102 ② — 맥락 줄 · 좌표 줄) · **덱 블록**(B143 ② — `deck.overview` · `deck.slides[]` — 덱 판단의
     정본 · 맥락 줄의 개요 칸 · 사람용 md가 읽는다) · **구조 블록**(B146 ① — 엑셀 · Word의 구조 판단 · 단위마다 목차 · 청크 경계 ·
     판단 기록 — `struct_rule.block` · 사람용 md가 읽는다) · 캡처 쪽 수(B125 ② — 추출이 원본에서 쪽을 뜬다) · **열 머리 글**(표 —
-    `field_labels` — 출력 필드 → 문서 머리 글 · 표 청크 벡터의 머리 · B153 ①). 없는 칸은 키도 없다."""
+    `field_labels` — 출력 필드 → 문서 머리 글 · 표 청크 벡터의 머리 · B153 ①) · **상자 목록**(쪽 문서 — 상자마다 위치 · 크기 · B156 ①) ·
+    **판독 블록**(B156 ② — 쪽마다 그림 · 배치 관계 · 쪽 요약 · 메타 — 청크 밖). 없는 칸은 키도 없다."""
     if doc_coord:
         env["doc_coord"] = doc_coord
     if labels:
@@ -400,6 +404,10 @@ def _env_extras(env, res, doc_coord, dk_tally, nodes=None, labels=None):
         env["structure"] = struct_rule.block(res.report["structure"], env.get("chunks"))   # 구조 블록 (B146 ① — 엑셀 · Word)
     if res.report.get("capture_pages"):
         env["capture"] = {"pages": res.report["capture_pages"]}
+    if boxes:
+        env["boxes"] = boxes
+    if reading:
+        env["reading"] = reading
 
 
 def _deck_hook(deck, doc_id, kept_map, fixes):
@@ -411,12 +419,23 @@ def _deck_hook(deck, doc_id, kept_map, fixes):
                           fixes=(fixes or {}).get(deck_mod.FRAME)), made, tally)
 
 
+def _read_pages(res, reading, doc_id, path, raw, dk_tally, kept_map, fixes, capture):
+    """쪽 판독(B156 ②) — 덱 판단 다음 · 쪽마다 · `(판독 블록 또는 None, 새로 받은 판독)` · 판독 표 · 끝 줄의 재료는 `report["reading"]`."""
+    made, tally = {}, {}
+    block = reading_mod.hook(reading, doc_id, path, raw, dk_tally, kept=kept_map.get("reading"), made=made, tally=tally,
+                             fixes=(fixes or {}).get(reading_mod.FRAME), capture=capture)
+    if tally:
+        res.report["reading"] = tally
+    return block, made
+
+
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
           context=None, closed_list=None, parsed_at="2026-01-05T00:00:00",
           summarize=None, pick_coord=None, map_structure=None,
           max_rows=None, progress=None, coord_notice=None, coord_cap=None,
           sheet_roles=None, no_images=False,
-          image_notice=None, doc_coord=None, structure=None, structure_fixes=None, deck=None, capture=False, structure_confirmed=None):
+          image_notice=None, doc_coord=None, structure=None, structure_fixes=None, deck=None, capture=False, structure_confirmed=None,
+          reading=None):
     """문서 하나를 계약 JSON으로. 어댑터는 모듈(또는 ADAPTER+extract를 가진 객체).
 
     **LLM 3지점은 함수로 온다**(B48 · 문서 7 §7.6-B-1) — 파서는 모드를 읽지 않는다:
@@ -428,6 +447,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
     | `structure(doc_id, frame, labels)` | ⑪ 안의 문서 구조(B119 ①) | 산문 시트마다 실호출(mock은 힌트) | 고정 규칙 그대로 |
     | `deck(doc_id, slides)` | ⑪ 안의 덱 구조(B125 ③ · `capture` 참이면 쪽 번호를 달아 추출이 캡처를 붙인다 — B125 ②) | PPT 덱마다 1회(mock은 힌트) | 지금 방식 |
+    | `reading(doc_id, 입력, …)` | ④ 안의 쪽 판독(B156 ② — 덱 판단 다음 · `capture` 참이면 쪽 캡처를 주 입력으로) | PPT · PDF 쪽마다 1회(mock은 힌트) | 판독 없음 |
 
     `structure_fixes`(`{프레임: {행: 고침}}`)는 사람이 구조 표에서 고친 것(등록 단 — 데이터로 받는다 · B119 ③).
 
@@ -473,6 +493,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
             st_tally["목차 필드"] = raw["toc_field_lines"]   # 리더가 거른 목차 필드의 줄 수 — 구조 확인 한 줄 (B138 ③)
     if dk_tally:
         res.report["deck"] = dk_tally                 # 덱 구조 표 · 끝 줄의 재료 (B125 ③)
+    rd_block, made_reading = _read_pages(res, reading, doc_id, path, raw, dk_tally, kept_map, structure_fixes,
+                                         capture and not no_images)
 
     pieces, rep = normalizer.normalize(                               # ④ normalizer
         pieces,
@@ -489,7 +511,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
                            kept_maps, made_maps, map_picks, src_hash,
-                           image_notice, made_struct, made_deck, capture=capture and not no_images)
+                           image_notice, made_struct, made_deck, capture=capture and not no_images,
+                           made_reading=made_reading)
     # **문서 좌표**(B102 ② — 사람·기록·파일명 · 인입이 정해 데이터로 준다): 시트명·제목 대조는 그 서브트리
     # 안에서만 받고, 그래도 빈 조각(표·산문 공통)은 문서 좌표를 물려받는다
     pieces = normalizer.blank_coords(pieces)     # 좌표 칸의 빈칸 표시 → 빈 값(문서 좌표를 물려받는다 — B113 ②)
@@ -502,7 +525,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,
                           context=context)
     _env_extras(env, res, doc_coord, dk_tally, nodes,
-                preflight.field_labels(raw, exp) if a.get("payload_kind") == "table" else None)
+                preflight.field_labels(raw, exp) if a.get("payload_kind") == "table" else None,
+                reading_mod.boxes(raw), rd_block)
     ok, defects = validator.check(env)                               # ⑥ validator
     dk_bad = deck_mod.mismatch(env)                                  # 덱 블록 ↔ 청크 칸(투영) — 어긋나면 결함 (B143 ②)
     if dk_bad:
@@ -515,18 +539,21 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
 
     res.ok, res.envelope = True, env
     res.report["pieces"] = len(pieces)
-    # **분할 크기 분포**(B45) — 자르는 규칙은 건드리지 않고 결과만 잰다.
-    # **어댑터 경로에도 레벨별 분포를 낸다**(B45 정정 ④) — 사람이 상수를 고를
-    # 재료다. 지도 경로가 이미 내는 그 형태를 쓴다: 새 형태를 만들면 화면이 둘로
-    # 갈린다. `split_level`을 선언한 어댑터면 고른 값도 함께 보인다.
+    res.report["split"] = _split_stats(adapter, raw, pieces, map_picks)
+    return res
+
+
+def _split_stats(adapter, raw, pieces, map_picks):
+    """**분할 크기 분포**(B45) — 자르는 규칙은 건드리지 않고 결과만 잰다.
+
+    **어댑터 경로에도 레벨별 분포를 낸다**(B45 정정 ④) — 사람이 상수를 고를 재료다. 지도 경로가 이미 내는 그 형태를 쓴다: 새 형태를
+    만들면 화면이 둘로 갈린다. `split_level`을 선언한 어댑터면 고른 값도 함께 보인다. **어댑터가 제 계산을 내놓으면 그것이
+    정본이다**(B58 ③) — 고정 산문 어댑터는 신호 넷(번호·굵게·들여쓰기·가로병합)으로 계층을 읽는데, `adapter_level_picks`는 번호 패턴
+    하나만 본다. 두 벌이 다른 답을 내면 화면의 레벨과 실제로 자른 레벨이 갈린다."""
+    a = adapter.ADAPTER
     if not map_picks and a.get("payload_kind") == "prose":
-        # **어댑터가 제 계산을 내놓으면 그것이 정본이다**(B58 ③) — 고정 산문
-        # 어댑터는 신호 넷(번호·굵게·들여쓰기·가로병합)으로 계층을 읽는데,
-        # `adapter_level_picks`는 번호 패턴 하나만 본다. 두 벌이 다른 답을 내면
-        # 화면의 레벨과 실제로 자른 레벨이 갈린다.
         rep = getattr(adapter, "level_report", None)
         picks = rep(raw) if callable(rep) else struct_map.adapter_level_picks(a, raw)
         if picks:
             map_picks = picks
-    res.report["split"] = struct_map.split_stats(pieces, map_picks)
-    return res
+    return struct_map.split_stats(pieces, map_picks)

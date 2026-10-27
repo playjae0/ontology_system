@@ -96,7 +96,8 @@ _MDNAME = re.compile(r"`([^`\s]+\.md)`")
 
 
 #: **상태 산출물**의 이름 — 레포 파일이 아니라 실행이 `$ONTO_HOME` 아래에 만든다.
-STATE_MD = {"prompt_rendered.md"}          # work/register/<dt>/ — 생성 프롬프트의 렌더 사본
+STATE_MD = {"prompt_rendered.md",          # work/register/<dt>/ — 생성 프롬프트의 렌더 사본
+            "reading_knowledge.md"}        # registry/ — 사내 읽기 지식(쪽 판독 · 레포에는 틀 kit/읽기지식_틀.md — B156)
 
 
 def _repo_files():
@@ -105,7 +106,7 @@ def _repo_files():
 
 
 def _exists_md(name, here, files):
-    if any(c in name for c in "<{*…") or name in STATE_MD:
+    if any(c in name for c in "<{*…") or name.rsplit("/", 1)[-1] in STATE_MD:
         return True                                   # 자리표시자 · 상태 산출물
     for base in (here, ROOT, ROOT / "docs"):
         if (base / name).exists():

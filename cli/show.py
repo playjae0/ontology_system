@@ -586,7 +586,8 @@ def cmd_extract(args):
     print(f"  재현성 3입력   adapter {d.get('adapter_version')} · "
           f"prompt {d.get('prompt_version')} · config {d.get('config_version')}")
     print(f"  추출 시점      {d.get('extracted_at')}")
-    ch = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+    from cli import extract_md
+    ch = extract_md.material(doc_id)["chunks"]       # 추출 확인 md와 같은 재료 — 봉투의 청크(추출까지만이면 저장 0 · B155 ②)
     full = "--full" in args
     from core.build import extract_ctx
     _src = (store.read(store.DOC_REGISTRY, {}).get(doc_id) or {}).get("source_path")

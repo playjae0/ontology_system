@@ -312,7 +312,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
     tmpl = gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract")   # 층 힌트 한 함수 (B124 ③)
     user = _payload(chunk, cfg)
     # **캡처**(B125 ② — 그 슬라이드 · 쪽의 렌더 · 있을 때만): 배치 · 화살표 · 붙음을 보는 근거 — 이름과 값은 글자에서
-    content = [{"type": "text", "text": user}, gateway._image_part(image, "image/png")] if image else user
+    from core.state.captures import mime
+    content = [{"type": "text", "text": user}, gateway._image_part(image, mime(image))] if image else user   # 보관분은 JPEG (B156 ⑤)
     try:
         out = gateway.chat([{"role": "system", "content": tmpl}, {"role": "user", "content": content}],
                            json_schema=EXTRACT_SCHEMA, point="extract")

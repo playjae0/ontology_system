@@ -72,7 +72,7 @@ POINTS = {
     "extract": "①비정형 추출",
     "judge": "②개체 동일성 판정",
     "embed": "③임베딩",
-    "image_summary": "④이미지 요약",
+    "image_summary": "④그림 · 쪽 판독 (그림마다 요약 · 쪽 문서는 쪽마다 판독)",
     "generate": "⑤구축 모드 생성 (어댑터·매칭 스키마)",
     "link": "⑥질의 링킹 (사전 스캔 → LLM 폴백 → 임베딩 훅 3단)",
     "struct_map": "⑦구조 지도 패스",
@@ -90,7 +90,8 @@ POINTS = {
 # 하므로 여기서 되돌린다: 태그를 POINTS에 넣으면 명세가 닫아 둔 9종이 흔들린다.
 CALL_TAGS = {"interview": "generate",
              "structure": "outline",           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
-             "deck": "outline"}                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(지시문은 `2.4_deck.md` — B135 ④)
+             "deck": "outline",                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(지시문은 `2.4_deck.md` — B135 ④)
+             "reading": "image_summary"}       # B156 ② — 쪽 판독(PPT · PDF 쪽마다)은 ④ 그림 · 쪽 판독 안의 호출이다(지시문 `2.4_reading.md`)
 
 
 def point_label(point):
@@ -581,7 +582,7 @@ def usage_by(doc_id=None):
 #: 목차 노드화 · 덱)은 태그가 가르고 태그 하나 안에서 또 갈리면 호출부가 `branch(이름)`으로 말한다(구조 사다리)
 BRANCHES = {"extract": "추출", "judge": "판정", "embed": "임베딩", "image_summary": "그림 요약", "generate": "생성", "interview": "문답",
             "link": "질의 링킹", "struct_map": "구조 지도", "answer": "답변", "coord_tag": "좌표 태깅", "sheet_role": "시트 역할",
-            "outline": "목차 노드화", "structure": "시트 확인", "deck": "덱", "reinforce": "보강", "chat": "사전 점검"}
+            "outline": "목차 노드화", "structure": "시트 확인", "deck": "덱", "reading": "쪽 판독", "reinforce": "보강", "chat": "사전 점검"}
 _BRANCH = []
 #: 갈래 × 문서별 누계 — `{(갈래, 지점, doc_id): {calls, prompt, completion}}`(`_account`가 `USAGE_BY`와 같은 자리에서 센다)
 USAGE_BRANCH = {}

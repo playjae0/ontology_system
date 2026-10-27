@@ -30,6 +30,7 @@ from core import paths
 #: 형: `int`(≥1) · `int0`(≥0) · `range`([작은, 큰] 정수 · 1 ≤ 작은 < 큰) ·
 #:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수) · `pct`(1~100 정수) ·
 #:     `choice:<값|값…>`(닫힌 문자열 — B104 ②)
+#:     `bool`(true · false — B156 ⑤)
 KNOBS = {
     "heading_max_chars": ("parser.struct_map", ("HEADING_MAX_CHARS",), "int",
                           "제목 후보의 최대 글자 — 넘는 번호 행은 제목이 아니다",
@@ -126,6 +127,11 @@ KNOBS = {
                           "임베딩 유사도가 이 이상일 때 LLM 판정 · 아래면 다른 것(이름 · 별칭 · 라틴 접기 겹침은 문턱 없이 비슷 · "
                           "임베딩을 쓰는 실행에서만)",
                           "인입 끝 「같은 이름 · 다른 소유자 … 소유자 이름 비슷 → LLM n」 줄 · python run.py show report <doc_id> --md"),
+    "keep_page_captures": ("core.state.captures", ("KEEP",), "bool",
+                           "쪽 캡처 보관 — 켜면(true) PPT · PDF 쪽마다 캡처 한 장을 ④작업(work/captures/<doc_id>/)에 JPEG(긴 변 "
+                           "1,600px)로 두고 판독 · 추출이 그것을 쓴다(문서마다 렌더 한 번 · 원본 바이너리 · 그림 원본은 저장 0) · "
+                           "끄면(false) 메모리만",
+                           "python run.py show dist captures"),
     "viewer_force": ("cli.viewer.data", ("FORCE",), "dict",
                      "뷰어 힘 배치(ForceAtlas2 계열) — scaling(반발) · gravity(떨어진 덩어리를 붙잡는 중력) · "
                      "iterations(반복 수 — 같은 반복 수면 같은 그림)",
@@ -172,6 +178,7 @@ def _check(name, v, dflt):
           "pair0": lambda: isinstance(v, list) and len(v) == 2 and _int(v[0], 1) and _int(v[1], 0),
           "dict": lambda: isinstance(v, dict) and set(v) == set(dflt)
           and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v.values()),
+          "bool": lambda: isinstance(v, bool),
           }[kind]() if not kind.startswith("choice:") else v in kind[len("choice:"):].split("|")
     if not ok and name in RETIRED and v in RETIRED[name]:
         raise KnobError(

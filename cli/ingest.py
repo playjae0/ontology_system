@@ -4,7 +4,7 @@
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images] [--no-capture]
                                   [--step] [--step-every N] [--narrow embed|overlap]
                                   [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
-                                  [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [--split-only]
+                                  [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [--split-only | --extract-only]
                                   [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
                                   [--narrow embed|overlap] [--progress-every N] [--sheets auto] [--revise] [--no-replay]
@@ -417,6 +417,7 @@ def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step, no_c
 
 
 SPLIT_ONLY = "구조까지"
+EXTRACT_ONLY = "추출까지"
 
 
 def _split_only(res, sel, row):
@@ -430,14 +431,38 @@ def _split_only(res, sel, row):
     return row
 
 
+def _extract_only(doc, sel, row):
+    """**추출까지만**(B155 ①) — 구축이 추출 뒤에서 멈췄다(그래프 · 사전 · 큐 · 청크 · 문서 대장 쓰기 0) · 추출 md를 찍고 확정 줄을 낸다
+    (플래그 없는 같은 줄 — 추출 재사용 · LLM 0)."""
+    import shlex
+    from cli import extract_md
+    md = extract_md.write(sel["doc_id"])
+    argv = [a for a in sys.argv[1:] if a != "--extract-only"]
+    again = ("python run.py " + " ".join(shlex.quote(a) for a in argv) if Path(sys.argv[0]).name == "run.py" and argv
+             else f"python run.py ingest-file {shlex.quote(str(doc))} --doc-type {sel.get('doc_type')}")
+    print(f"   추출까지 — 그래프 쓰기 0 · 추출 md {paths.show(md) if md else '없음(체크포인트 없음)'} · ▶ 확정: {again}")
+    row.update(status=EXTRACT_ONLY, reason="--extract-only — 추출까지", extract_md=str(md) if md else None, again=again)
+    return row
+
+
+def _table_refused(sel, row):
+    """표 문서는 추출이 없다 — `--extract-only`의 상태 거부 한 줄(B155 ①)."""
+    from cli.parse import load_adapter
+    if not sel.get("adapter") or load_adapter(str(sel["adapter"])).ADAPTER.get("payload_kind") != "table":
+        return False
+    print("   [상태] 표는 추출이 없다 — --split-only 또는 플래그 없이")
+    row.update(status=FAIL, reason="[상태] 표는 추출이 없다 — --split-only 또는 플래그 없이")
+    return True
+
+
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 finalize_after=True, coord_cap=COORD_CAP, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
                 no_images=False, preflight=None, coord=None, revise=False,
-                allow_duplicate=False, split_only=False, no_capture=False):
+                allow_duplicate=False, split_only=False, no_capture=False, extract_only=False):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다. `split_only`(B126 ④)면 파싱 · 좌표 · 구조 확인까지만
-    (추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`)."""
+    (추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`) · `extract_only`(B155 ①)면 추출까지만(쓰기 0 · `export/extract_<doc_id>.md`)."""
     try:
         sel = select(doc, doc_type, adapter_paths)
     except MissingDependency as e:
@@ -453,6 +478,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     _r, stage, step = _ingest_file_select(doc, sel, row, step, revise, dry_run)
     if _r is not None:
         return _r
+    if extract_only and _table_refused(sel, row):
+        return row
     # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
     # 기록을 읽어 넘기는 쪽이 여기다. 정해지지 않으면 **읽지 않는다**(상태 거부).
     _roles, _stop, _dc = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask, coord=coord)
@@ -488,7 +515,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
                 r, m, _extracted = run_document(
-                    res.envelope, routing=sel["basis"], allow_duplicate=allow_duplicate,
+                    res.envelope, routing=sel["basis"], allow_duplicate=allow_duplicate, extract_only=extract_only,
                     notice=SCR.build_screen(step=step, stage=stage,
                                         prose=res.envelope.get("payload_kind") == "prose"))
         finally:
@@ -496,6 +523,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             getattr(_ledger.ON_ROW, "flush", lambda: None)()      # 남은 산문 값 행 (B119 ⑤)
             _ledger.ON_ROW = _ledger.ON_EDGE = _ledger.ON_CHUNK = None
             _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
+        if getattr(r, "extract_stop", False):       # 추출까지만 (B155 ①)
+            return _extract_only(doc, sel, row)
         if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
             row.update(status=SKIP, reason=r.reason)
             return row
@@ -656,7 +685,10 @@ def main(argv):
         args.remove("--dry-run")
     step = "--step" in args
     split_only = "--split-only" in args               # 구조까지만 (B126 ④)
-    args = [a for a in args if a != "--split-only"]
+    extract_only = "--extract-only" in args           # 추출까지만 (B155 ①)
+    if split_only and extract_only:
+        raise SystemExit("[투입] --split-only와 --extract-only는 같이 주지 않는다 — 멈춤 자리는 하나다")  # [사용법]
+    args = [a for a in args if a not in ("--split-only", "--extract-only")]
     if step:
         args.remove("--step")
     # **판정 안에서 멈추는 자리**(B75 ③ⓒ) — `--step`과 독립이고 같이 줄 수 있다.
@@ -730,8 +762,9 @@ def main(argv):
         if step_every:
             print("[투입] --step-every 무시 — ingest-dir는 일괄이다 "
                   "(판정 안에서 멈추려면 ingest-file 하나씩)")
-        if split_only:
-            raise SystemExit("[투입] --split-only는 ingest-file 하나에만 준다 — 문서마다 구조를 보고 비교한다")  # [사용법]
+        if split_only or extract_only:
+            raise SystemExit(f"[투입] {'--split-only' if split_only else '--extract-only'}는 ingest-file 하나에만 준다 — "  # [사용법]
+                             "문서마다 보고 비교한다")
         if coord_spec is not None:
             raise SystemExit("[투입] --coord는 ingest-file 하나에만 준다 — 문서마다 공정이 다르다 "  # [사용법]
                              "(폴더는 기록 · 파일명 제안으로 정한다)")
@@ -748,9 +781,9 @@ def main(argv):
         rows = [ingest_file(target, dt, dry, adapter_paths, coord_cap=cap, step=step,
                             step_every=step_every, progress_every=prog_every,
                             sheets=sheets_spec, no_images=no_img, coord=coord_spec,
-                            revise=revise, split_only=split_only, no_capture=no_cap)]
+                            revise=revise, split_only=split_only, no_capture=no_cap, extract_only=extract_only)]
         print(summary(rows))
-    return 0 if all(r["status"] in (OK, "선택만", SPLIT_ONLY) for r in rows) else 1
+    return 0 if all(r["status"] in (OK, "선택만", SPLIT_ONLY, EXTRACT_ONLY) for r in rows) else 1
 
 
 # **일괄 투입은 `cli/ingest_batch.py`로 갔다**(B106 ① — §7 파일 상한 · 재구축이 같은 고리를 쓴다) —

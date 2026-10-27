@@ -10,11 +10,10 @@
    ],
    "단계": "인입",
    "주체": "자산",
-   "bytes": 63188,
-   "금지": 74,
+   "bytes": 66084,
+   "금지": 75,
    "표행": 7,
    "조항": [
-    "B16",
     "B46",
     "B47",
     "B48",
@@ -45,11 +44,14 @@
     "P7"
    ],
    "자산": [
+    "export/extract_<doc_id>.md",
     "export/split_<doc_id>.md",
     "registry/adapters/{doc_type}.py",
+    "registry/reading_knowledge.md",
     "registry/sheet_roles/<doc_id>.json",
     "registry/structure_confirmed.json",
-    "registry/structure_fixes.json"
+    "registry/structure_fixes.json",
+    "work/captures/<doc_id>/"
    ],
    "코드": [
     "cli/sheet_gate.py",
@@ -100,8 +102,8 @@
    ],
    "단계": "인입",
    "주체": "기계",
-   "bytes": 19570,
-   "금지": 23,
+   "bytes": 19745,
+   "금지": 22,
    "표행": 22,
    "조항": [
     "B53",
@@ -231,7 +233,7 @@
    ],
    "단계": "쓰기",
    "주체": "기계",
-   "bytes": 6707,
+   "bytes": 6750,
    "금지": 6,
    "표행": 5,
    "조항": [
@@ -331,7 +333,7 @@
    ],
    "단계": "운영",
    "주체": "사람",
-   "bytes": 28470,
+   "bytes": 28659,
    "금지": 28,
    "표행": 18,
    "조항": [
@@ -473,7 +475,7 @@
    ],
    "단계": "저장",
    "주체": "기계",
-   "bytes": 50168,
+   "bytes": 50746,
    "금지": 51,
    "표행": 11,
    "조항": [
@@ -550,7 +552,7 @@
    ],
    "단계": "인입",
    "주체": "LLM",
-   "bytes": 20555,
+   "bytes": 20651,
    "금지": 18,
    "표행": 0,
    "조항": [

@@ -27,6 +27,9 @@ python-pptx>=0.6.21  ; python_version >= "3.10"
 # 없으면: `.pdf` 읽기와 **쪽 렌더**(PPT · PDF 캡처 · 그림 요약의 맥락)가 빠진다 — 실호출 PPT · PDF 인입은 사전 점검에서
 # 멈춘다(`--no-capture`면 캡처 없이). XLSX는 그대로 돈다. 코드는 `import pymupdf`로 부른다(옛 판은 `fitz`).
 PyMuPDF>=1.23        ; python_version >= "3.10"
+# 없으면: 쪽 캡처 보관(손잡이 `keep_page_captures` — ④작업 `work/captures/<doc_id>/`에 쪽마다 JPEG)만 꺼진다 — 판독 · 추출은
+# 메모리 캡처(PNG)로 그대로 돈다(B156). 코드는 `from PIL import Image`로 부른다.
+Pillow>=9            ; python_version >= "3.10"
 
 # ── 직렬화 가속 (선택) ────────────────────────────────────────────────────
 # 없으면: 표준 json으로 폴백한다. 계기판 7(graph MB)의 직렬화 방식 표기가 바뀔 뿐이다.

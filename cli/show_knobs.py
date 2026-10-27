@@ -6,7 +6,7 @@
 `show dist <무엇>`이다. 여기는 **쓰지 않는다**(값은 사람이 `$ONTO_HOME/knobs.json`에 쓴다).
 
     python run.py show knobs
-    python run.py show dist chunks|headings|forms|sheets|evidence|lens|ref|embed
+    python run.py show dist chunks|headings|forms|sheets|evidence|lens|ref|embed|captures
 """
 from __future__ import annotations
 
@@ -183,8 +183,21 @@ def dist_embed(top=10):
     return 0
 
 
+def dist_captures(top=10):
+    """쪽 캡처 보관 — 문서 수 · 쪽 수 · 총용량 · 가장 큰 문서(B156 ⑤ · 읽기 전용 · ④작업 `work/captures/`)."""
+    from core.state import captures as CAP
+    rows = CAP.stats()
+    total = sum(r[2] for r in rows)
+    print(f"■ 쪽 캡처 보관 — keep_page_captures {'켬' if knobs.get('keep_page_captures') else '끔'} · "
+          f"{paths.show(paths.captures())} · 문서 {len(rows)} · 쪽 {sum(r[1] for r in rows)} · 총 {total / 1024:,.0f}KB")
+    print(_dist_line("쪽당 KB", [round(r[2] / r[1] / 1024) for r in rows]))
+    for d, n, b in sorted(rows, key=lambda r: -r[2])[:top]:
+        print(f"  {d:<20} 쪽 {n} · {b / 1024:,.0f}KB")
+    return 0
+
+
 DIST = {"lens": dist_lens, "ref": dist_ref, "chunks": dist_chunks, "headings": dist_headings, "forms": dist_forms,
-        "sheets": dist_sheets, "evidence": dist_evidence, "embed": dist_embed}
+        "sheets": dist_sheets, "evidence": dist_evidence, "embed": dist_embed, "captures": dist_captures}
 
 
 def cmd_dist(args):
