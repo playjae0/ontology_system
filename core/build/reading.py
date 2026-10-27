@@ -137,7 +137,7 @@ def _live(doc_id, inp, capture, images, hint):
     for ref, blob, mm in images or ():
         parts += [{"type": "text", "text": f"[그림 {ref}]"}, gateway._image_part(blob, mm)]
     return gateway.chat([{"role": "system", "content": sys_}, {"role": "user", "content": parts}],
-                        json_schema=SCHEMA, point=TAG)
+                        json_schema=SCHEMA, point="reading")      # 호출 지점 이름은 글자로(칸 대장 L칸 대조 — TAG와 같다)
 
 
 def hint_answer(doc_id):
@@ -152,11 +152,10 @@ def reader(notice=None):
     판) · `fn.notice`가 예고 줄(진입점이 단다) · 층 인자 없음."""
     from core.state import captures
     live = not gateway.use_mock()
-    if live:
-        gateway.require(TAG)                # 미설정이면 파싱 전에 명시적으로 실패한다(그림 요약과 같은 결)
 
     def fn(doc_id, inp, *, capture=None, images=(), hint=None, text=""):
         if live:
+            gateway.require(TAG)            # 미설정이면 명시적 실패(덱 구조와 같은 결 — 실호출 인입은 사전 점검이 먼저 멈춘다)
             try:
                 ans = _live(doc_id, inp, capture, images, hint)
             except gateway.NotConfigured:
