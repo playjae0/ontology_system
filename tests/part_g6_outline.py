@@ -18,6 +18,8 @@
   ⓓ 엑셀 · Word · PPT가 같은 함수(PPT는 슬라이드 제목 · 구획이 개요) · 표 문서는 제목이 없어 개요 0
   B148 ⓓ 골격 이름 제목(문서 좌표 「노칭」 · 제목 「노칭 타발」)은 목차 노드화에 묻지 않고 골격 노드 — 새 노드 0 · 그 아래 개체가 그 골격
      노드에 · 다른 공정 이름 제목(「스태킹」)은 가드 그대로(개요 = 목차 노드화 — B148 ② 용어)
+  B150 ⓑ 골격 이름 제목 아래 조각은 그 골격 노드로 좌표를 내린다 — 이름이 표(process_ref = 그 노드)와 같은 노드 · 더 깊은 자기
+     좌표는 그대로
 """
 from __future__ import annotations
 
@@ -402,12 +404,45 @@ _new = sorted(n["canonical"] for _l, n in World().nodes() if n["id"] not in _nod
 _hd = {r["surface"]: r.get("node_id") for r in _rows("B148D", "heading")}
 _clash = RC.guard_clashes(OL.load("B148D"), _rows("B148D", "heading"))
 _mo = _att("B148D", "모터")
+# 기대 변경(B150 ② — 그 아래 개체는 골격 노드로 내린 좌표로 이름을 짓는다(「노칭::노칭 타발::모터」) · 제목 자신의 새 노드만 0이다)
 show("ⓓ 문서 좌표 「노칭」 산문의 제목 「노칭 타발」(골격 자식 단) — 목차 노드화에 묻지 않고 골격 노드로(새 노드 0 · 제목 개체 = 골격 "
      "노드) · 그 아래 개체가 그 골격 노드에 붙는다 · 「스태킹」(다른 공정)은 가드 그대로(노드 0 · 부딪힘 1)",
-     "1. 노칭 타발" not in _asked and "2. 스태킹" not in _asked and not [n for n in _new if "타발" in n or "스태킹" in n]
+     "1. 노칭 타발" not in _asked and "2. 스태킹" not in _asked and not [n for n in _new if n.split("::")[-1] in ("노칭 타발", "스태킹")]
      and _hd.get("노칭 타발") and not _hd.get("스태킹") and len(_mo) == 1 and _mo[0][1].endswith("노칭 타발")
      and _mo[0][0].startswith("폴백(제목") and len(_clash) == 1 and "스태킹" in _clash[0],
      f"물은 제목 {_asked} · 새 노드 {_new} · 제목 개체 {_hd} · 모터 {_mo} · 부딪힘 {_clash}")
+
+# ────────────────────────────────────────────────────────────── B150 ② 골격 이름 제목 아래 조각 좌표 하강
+print("\n■ B150 ② 골격 이름 제목 아래 조각은 그 골격 노드로 좌표를 내린다 — 표와 같은 노드 · 더 깊은 자기 좌표는 그대로")
+WORDS += (("모터 회전수", "Property"), ("금형 수명", "Property"))
+
+
+def _prose150(doc_id, coord, rows, own=None):
+    struct_map.invalidate(doc_id)
+    env = pipeline.parse(BX, doc_id, str(_xlsx(TMP / f"{doc_id}.xlsx", {"사양": rows})), closed_list=TG.closed_list("process"),
+                         doc_coord=coord, sheet_roles={"사양": "prose"}).envelope
+    env["doc_type"] = "b115_process"
+    for c in env["chunks"]:
+        c["doc_type"] = env["doc_type"]
+        if own and own[0] in (c.get("text") or ""):      # 그 조각의 자기 좌표(좌표 태깅이 세운 것과 같은 꼴)
+            c["process_ref"], c["meta"] = own[1], {**(c.get("meta") or {}), "coord_from_doc": False}
+    _run(env, {})
+    return {r["surface"]: r for r in _rows(doc_id)}
+
+
+_setup()
+_pr = _prose150("B150P", "노칭", ["1. 노칭 타발", "모터 회전수는 3000rpm이다."])
+run_document({**TABLE, "doc_id": "B150T", "records": [dict(CPREC, source_locator="B150T-R1", process_ref="노칭 타발",
+                                                            관리항목="모터 회전수")]})
+_tr = {r["surface"]: r for r in _rows("B150T")}
+_setup()
+_dp = _prose150("B150K", "조립", ["1. 노칭", "금형 수명은 10만 타다."], own=("금형 수명", "노칭 타발"))
+_m, _t, _k = _pr.get("모터 회전수") or {}, _tr.get("모터 회전수") or {}, _dp.get("금형 수명") or {}
+show("ⓑ 문서 좌표 「노칭」 · 제목 「1. 노칭 타발」 아래 「모터 회전수」 → 「노칭::노칭 타발::모터 회전수」 · 같은 항목의 표 행(process_ref "
+     "노칭 타발)과 같은 노드 · 조각이 더 깊은 자기 좌표(「1. 노칭」 아래 「노칭 타발」)면 그대로",
+     _m.get("target") == "노칭::노칭 타발::모터 회전수" and _m.get("node_id") and _m.get("node_id") == _t.get("node_id")
+     and _k.get("target") == "노칭::노칭 타발::금형 수명",
+     f"산문 {_m.get('target')} {_m.get('node_id')} · 표 {_t.get('target')} {_t.get('node_id')} · 자기 좌표 {_k.get('target')}")
 
 for _lay in ("process", "quality"):
     _unregister(f"b115_{_lay}")                          # 등록 단은 클린이 남긴다 — 다음 스위트가 보지 않게 치운다
