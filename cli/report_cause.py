@@ -83,10 +83,10 @@ def _norm(s):
 
 
 def _src(piece):
-    """조각 좌표의 출처 — 자기 · 문서 좌표 · 없음 · 무시 · 공유 별칭 건너뜀(봉투 표시에서 · `doc_coord.coord_counts`와 같은 표시)."""
+    """조각 좌표의 출처 — 자기 · 문서 좌표 · 없음 · 위 공정 표기 · 공유 별칭 건너뜀(봉투 표시에서 · `doc_coord.coord_counts`와 같은 표시)."""
     m = (piece or {}).get("meta") or {}
     if not (piece or {}).get("process_ref"):
-        return "무시" if m.get("coord_ignored") else "공유 별칭 건너뜀" if m.get("coord_shared_skip") else "없음"
+        return "위 공정 표기" if m.get("coord_ignored") else "공유 별칭 건너뜀" if m.get("coord_shared_skip") else "없음"
     return "문서 좌표" if m.get("coord_from_doc") else "자기"
 
 

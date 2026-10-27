@@ -32,8 +32,12 @@ ROW_KIND = {"anchor": "좌표 행", "entity": "개체 행", "belongs": "소속 �
             "attribute": "속성·내용 행", "content": "속성·내용 행"}
 
 
+#: 합 밖 표시의 꼬리 — 수 뒤에 붙는 뜻(B157 ③ — 조각 좌표 줄 · 인입 좌표 줄이 같은 이름)
+SIDE_TAIL = {"다른 공정 구간": "(쌍 대조로)", "위 공정 표기": "(문서 좌표 그대로)"}
+
+
 def _sub(cnt):
-    return " · ".join(f"{k} {n:,}" for k, n in cnt.items() if n)
+    return " · ".join(f"{k} {n:,}{SIDE_TAIL.get(k, '')}" for k, n in cnt.items() if n)
 
 
 def line(label, total, cells, note=""):
@@ -84,8 +88,10 @@ def coord_cells(env):
             cell["LLM 태깅"] += 1
         else:
             cell["자기"] += 1                       # 범위 안 해소(scope)도 자기 표기에서 온 좌표다
-        if m.get("coord_ignored"):
-            side["무시(문서 좌표 밖)"] += 1
+        if m.get("coord_other"):                  # 줄기 밖 공정 이름 구간 — 그 공정 좌표(합 안에서는 자기 · B157 ③)
+            side["다른 공정 구간"] += 1
+        if m.get("coord_ignored"):                # 조상 표기 — 문서 좌표 그대로
+            side["위 공정 표기"] += 1
         if m.get("coord_shared_skip"):
             side["공유 별칭 건너뜀"] += 1
         if m.get("null_marked"):                  # 좌표 칸의 빈칸 표시를 비웠다(B113 ② — 문서 좌표를 물려받는다)

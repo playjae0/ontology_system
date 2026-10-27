@@ -75,22 +75,8 @@ def parts_info(chunk):
 
     시트 칸은 `meta.structure_frame`(시트 자신 — 0행) · 경로 칸은 `meta.structure`를 글자로 차례대로 맞춘다(접힌 중복에도
     어긋나지 않게). 구조가 없는 조각(슬라이드 · 쪽 · mock 힌트 없음)은 전부 None."""
-    m = chunk.get("meta") or {}
-    ps = parts(chunk)
-    if "structure" not in m and "structure_frame" not in m:
-        return [None] * len(ps)
-    out, items, k = [], list(m.get("structure") or []), 0
-    for i, p in enumerate(ps):
-        if i == 0 and m.get("sheet") and p == str(m.get("sheet")):
-            out.append(m.get("structure_frame") or {"role": None, "text": p})
-            continue
-        j = next((t for t in range(k, len(items)) if str(items[t].get("text") or "").strip() == p), None)
-        if j is None:
-            out.append({"role": None, "text": p})
-            continue
-        out.append(items[j])
-        k = j + 1
-    return out
+    from parser.struct_rule import chain_items
+    return chain_items(parts(chunk), chunk.get("meta") or {})       # 시트명 · 제목 대조와 같은 손 (B157 ①)
 
 
 def tree(env):
@@ -332,14 +318,10 @@ def coords(doc_id, heads, skeleton=None):
     """**골격 이름 제목**(B148 ②) — `{제목 id: 대상}` — 대상이 될 수 있는 제목(메타 역할이 대상이거나 역할 없음)의 이름(메타의 이름 ·
     없으면 제목 글에서 번호 머리를 뗀 것)이 골격 노드에 맞으면 좌표 카테고리 · `coord: true`."""
     from core.state.bootstrap import COORD_CATEGORY
-    from parser import sig as SG
-    from parser.struct_rule import TARGET_ROLES
+    from parser.struct_rule import heading_name
     look, out = None, {}
     for h in heads:
-        st = h.get("struct") or {}
-        if st.get("role") and st["role"] not in TARGET_ROLES:
-            continue
-        name = st.get("name") or SG.strip_head(h["text"])
+        name = heading_name(h["text"], h.get("struct"))   # 이름 고르기 한 손 — 파싱의 시트명 · 제목 대조와 같다 (B157 ①)
         if not name:
             continue
         look = look or skeleton or _skeleton(doc_id)

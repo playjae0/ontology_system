@@ -405,11 +405,12 @@ _hd = {r["surface"]: r.get("node_id") for r in _rows("B148D", "heading")}
 _clash = RC.guard_clashes(OL.load("B148D"), _rows("B148D", "heading"))
 _mo = _att("B148D", "모터")
 # 기대 변경(B150 ② — 그 아래 개체는 골격 노드로 내린 좌표로 이름을 짓는다(「노칭::노칭 타발::모터」) · 제목 자신의 새 노드만 0이다)
+# 기대 변경(B157 ① — 줄기 밖 공정 이름 제목 「2. 스태킹」은 그 구간의 공정 좌표 · 제목도 그 골격 노드에 앉는다(가드 부딪힘 0))
 show("ⓓ 문서 좌표 「노칭」 산문의 제목 「노칭 타발」(골격 자식 단) — 목차 노드화에 묻지 않고 골격 노드로(새 노드 0 · 제목 개체 = 골격 "
-     "노드) · 그 아래 개체가 그 골격 노드에 붙는다 · 「스태킹」(다른 공정)은 가드 그대로(노드 0 · 부딪힘 1)",
+     "노드) · 그 아래 개체가 그 골격 노드에 붙는다 · 「스태킹」(줄기 밖 공정)도 그 골격 노드로(부딪힘 0 · 아래 개체는 스태킹 아래)",
      "1. 노칭 타발" not in _asked and "2. 스태킹" not in _asked and not [n for n in _new if n.split("::")[-1] in ("노칭 타발", "스태킹")]
-     and _hd.get("노칭 타발") and not _hd.get("스태킹") and len(_mo) == 1 and _mo[0][1].endswith("노칭 타발")
-     and _mo[0][0].startswith("폴백(제목") and len(_clash) == 1 and "스태킹" in _clash[0],
+     and _hd.get("노칭 타발") and _hd.get("스태킹") and len(_mo) == 1 and _mo[0][1].endswith("노칭 타발")
+     and _mo[0][0].startswith("폴백(제목") and not _clash and "스태킹::벨트" in _new,
      f"물은 제목 {_asked} · 새 노드 {_new} · 제목 개체 {_hd} · 모터 {_mo} · 부딪힘 {_clash}")
 
 # ────────────────────────────────────────────────────────────── B150 ② 골격 이름 제목 아래 조각 좌표 하강

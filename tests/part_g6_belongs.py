@@ -232,14 +232,16 @@ pcs = [{"source_locator": "S1", "section": "적층"},            # 다른 공정
 _with = {p["source_locator"]: p for p in TG.coord_from_section(pcs, nodes=nodes, doc_coord="노칭")}
 _none = {p["source_locator"]: p for p in TG.coord_from_section(pcs, nodes=nodes)}
 _sub_idx = TG.scoped_index(nodes, "노칭")[0]            # 노칭 서브트리 안에서 하나로 풀리는 표기
-_ok_b1 = (all(p["process_ref"] in _sub_idx for p in _with.values())
-          and _with["S1"]["meta"].get("coord_ignored") == ["적층"] and _with["S1"]["meta"].get("coord_from_doc")
+# 기대 변경(B157 ① — 줄기 밖 공정 이름의 시트명 「적층」(스태킹)은 그 공정 좌표 + 쌍 대조로 · 덱 · 표와 같은 규칙 — 무시 0)
+_ok_b1 = (all(p["process_ref"] in _sub_idx for k, p in _with.items() if k != "S1")
+          and _with["S1"]["process_ref"] == "적층" and _with["S1"]["meta"].get("coord_other") == "적층"
+          and not _with["S1"]["meta"].get("coord_ignored") and not _with["S1"]["meta"].get("coord_from_doc")
           # 기대 변경(B104 ①) — 범위 안에서 하나인 공유 별칭은 그 노드 canonical로 쓰고 원 표기는 meta에
           and _with["S2"]["process_ref"] == _sub_idx["비전 검사"]["canonical"]
           and _with["S2"]["meta"].get("coord_tag_from") == "비전 검사" and _with["S3"]["process_ref"] == "노칭 타발")
 _ok_b2 = (_none["S2"].get("process_ref") is None and _none["S2"]["meta"].get("coord_shared_skip") == ["비전 검사"]
           and _none["S1"]["process_ref"] == "적층")
-show("ⓑ 문서 좌표면 서브트리 밖 좌표 0(밖 이름은 무시 표시 · 문서 좌표 물려받음) · 없으면 공유 별칭 좌표 0",
+show("ⓑ 문서 좌표면 줄기 밖 공정 이름 시트는 그 공정(B157) · 공유 별칭은 범위 안 하나 · 없으면 공유 별칭 좌표 0",
      _ok_b1 and _ok_b2, f"좌표 있음 {[(k, p['process_ref']) for k, p in _with.items()]} · "
      f"없음 {[(k, p.get('process_ref')) for k, p in _none.items()]}")
 _s1 = TG.suggest_doc_coord("B102_노칭_사양.xlsx", nodes)
@@ -268,6 +270,57 @@ _inh = TG.inherit_doc_coord(_recs, "노칭")
 show("ⓑ 표도 같은 함수 — 빈 행만 문서 좌표를 물려받는다(있는 값은 덮지 않는다)",
      [r["process_ref"] for r in _inh] == ["노칭", "노칭 타발"] and _inh[0]["meta"].get("coord_from_doc")
      and not (_inh[1].get("meta") or {}).get("coord_from_doc"), str([r["process_ref"] for r in _inh]))
+
+# ────────────────────────────────────────────────────────────── B157 줄기 밖 공정 이름 구간
+print("\n■ B157 — 줄기 밖 공정 이름의 시트명 · 제목은 그 구간의 공정(쌍 대조로) · 조상 표기는 문서 좌표 그대로 · 본문 가드 그대로")
+from core.build import structure as ST157                 # noqa: E402
+_x157 = Workbook()
+_x157.active.title = "사양"
+for _i, _v in enumerate(["1. 노칭 타발", "타발 속도는 30spm이다.", "2. 스태킹", "적층 속도는 10ppm이다. 노칭과 연동한다.",
+                         "3. Notching 공정", "공정 온도는 25도이다."], 1):
+    _x157.active.cell(row=_i, column=1, value=_v)
+_x157.save(TMP / "B157S.xlsx")
+struct_map.invalidate("B157S")
+_e157 = pipeline.parse(BX, "B157S", str(TMP / "B157S.xlsx"), closed_list=TG.closed_list("process"), doc_coord="노칭",
+                       sheet_roles={"사양": "prose"}, structure=ST157.structurer()).envelope
+_e157["doc_type"] = "ppt_process"
+for _c in _e157["chunks"]:
+    _c["doc_type"] = "ppt_process"
+_hint("B157S", {"사양!R2": {"entities": [{"surface": "타발 속도", "category": "Property", "value": "30spm"}], "relations": []},
+                "사양!R4": {"entities": [{"surface": "적층 속도", "category": "Property", "value": "10ppm"},
+                                       {"surface": "노칭", "category": "Unit"}], "relations": []},
+                "사양!R6": {"entities": [{"surface": "공정 온도", "category": "Property", "value": "25도"}], "relations": []}})
+_pr157 = DC.pair_report(_e157)[0]["pairs"].get(("문서 좌표", ("노칭", "스태킹")), {}).get("rows")
+with contextlib.redirect_stdout(io.StringIO()):
+    run_document(dict(_e157))
+_made.append("B157S")
+_rf157 = {c["source_locator"]: c for c in _e157["chunks"]}
+_q157 = [q for q in store.read(store.QUEUE, []) if q.get("doc_id") == "B157S" and q.get("kind") == "coord_mismatch"]
+_lr157 = (LG.read("B157S") or {}).get("rows") or []
+_hd157 = next((r for r in _lr157 if r.get("surface") == "스태킹" and r.get("field") == "Process"), {})
+show("B157 ⓐ 허브 표본(--coord 노칭) — 「2. 스태킹」 아래 조각 좌표 = 스태킹 · 판정 전 쌍 화면과 구축 큐의 「노칭 ↛ 스태킹」 같은 수 · "
+     "「적층 속도」 → 스태킹::적층 속도 · 제목 「스태킹」 착지 = 골격 노드 · 「1.」 「3.」 아래는 그대로(문서 좌표)",
+     _rf157["사양!R4"]["process_ref"] == "스태킹" and _rf157["사양!R4"]["meta"].get("coord_other") == "2. 스태킹"
+     and _pr157 == len(_q157) == 1 and _live("스태킹::적층 속도") and not _live("노칭::적층 속도")
+     and (_hd157.get("verdict"), _hd157.get("target")) == ("match", "스태킹")
+     and all(_rf157[k]["process_ref"] == "노칭" and _rf157[k]["meta"].get("coord_from_doc") for k in ("사양!R2", "사양!R6")),
+     f"R4 {_rf157['사양!R4']['process_ref']} · 쌍 {_pr157} · 큐 {len(_q157)} · 제목 {_hd157.get('verdict')} → {_hd157.get('target')}")
+_up157 = TG.coord_from_section([{"source_locator": "S9", "section": "노칭"}], nodes=nodes, doc_coord="노칭::노칭 타발")[0]
+_cc157 = DC.coord_counts({"chunks": [_with["S1"], _up157]})
+show("B157 ⓑ B102 ② 표본 — 시트명 「적층」은 그 조각 좌표 「적층」 + 쌍 어긋남 · 조상 표기(문서 좌표 「노칭 타발」 · 시트명 「노칭」)는 "
+     "문서 좌표 그대로 · 화면 칸 「다른 공정 구간」 1 · 「위 공정 표기」 1",
+     _with["S1"]["process_ref"] == "적층" and DC.pair_report({"doc_id": "B157B", "doc_coord": "노칭", "chunks": [_with["S1"]]})[0]["pairs"]
+     and _up157["process_ref"] == "노칭::노칭 타발" and _up157["meta"].get("coord_ignored") == ["노칭"]
+     and (_cc157["다른 공정 구간"], _cc157["위 공정 표기"]) == (1, 1),
+     f"S1 {_with['S1']['process_ref']} · 조상 {_up157['process_ref']} {_up157['meta'].get('coord_ignored')} · 칸 {_cc157}")
+_mn157 = next((r for r in _lr157 if r.get("surface") == "노칭" and r.get("field") == "Unit"), {})
+show("B157 ⓒ 본문 가드 그대로 — 「2. 스태킹」 구간 본문의 「노칭」 개체 → 관련 링크(노드 0)",
+     _mn157.get("verdict") == "mention" and not _live("스태킹::노칭"), f"노칭 {_mn157.get('verdict')}")
+_n157 = _parse("엑셀", "B157N", doc_coord="노칭")
+show("B157 ⓓ 다른 공정 구간이 없는 산문 표본 — 새 표시 0 · 조각 좌표는 지금처럼 문서 좌표(봉투 바이트 비교는 마감 보고)",
+     not any((c.get("meta") or {}).get("coord_other") for c in _n157["chunks"])
+     and all(c["process_ref"] == "노칭" and (c.get("meta") or {}).get("coord_from_doc") for c in _n157["chunks"]),
+     str([c["process_ref"] for c in _n157["chunks"]]))
 
 # ────────────────────────────────────────────────────────────── ⓒ ⓓ ⓔ(산문)
 print("\n■ B102 ③④⑤ 소속 · 이름에 소속 · 좌표 없는 스코프 개체 0 (엑셀·Word × 층 둘)")

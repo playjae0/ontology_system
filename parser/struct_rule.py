@@ -109,6 +109,40 @@ FRAME_ROW = 0
 BODY = "본문"
 
 
+def heading_name(text, item=None):
+    """**골격 이름 제목의 이름 고르기**(B148 ② · B157 ①) — 대상이 될 수 있는 제목(메타 역할이 대상이거나 역할 없음)이면 메타가 단
+    이름 · 없으면 제목 글에서 번호 머리를 뗀 것 · 그 밖의 역할이면 None. 목차 노드화의 골격 이름 제목(`core/build/outline.coords`)과
+    파싱의 시트명 · 제목 대조(`tagger.coord_from_section`)가 이 함수 하나를 쓴다."""
+    from . import sig as SG
+    st = item or {}
+    if st.get("role") and st["role"] not in TARGET_ROLES:
+        return None
+    return st.get("name") or SG.strip_head(text) or None
+
+
+def chain_items(segs, meta, sheet_first=True):
+    """제목 사슬 칸마다 메타가 단 구조 — `segs`(제목 글 차례)와 같은 길이의 `{row, text, role, name?}` 또는 None.
+
+    첫 칸이 시트 이름이면 `meta.structure_frame`(시트 자신 · 없으면 None) · 나머지는 `meta.structure`를 글자로 차례대로 맞춘다(접힌
+    중복에도 어긋나지 않게 · 못 맞으면 `{role: None, text}`). 구조가 없는 조각(슬라이드 · 쪽 · mock 힌트 없음)은 전부 None.
+    목차 트리(`core/build/outline.parts_info`)와 시트명 · 제목 대조가 같은 손이다."""
+    m = meta or {}
+    if "structure" not in m and "structure_frame" not in m:
+        return [None] * len(segs)
+    out, items, k = [], list(m.get("structure") or []), 0
+    for i, p in enumerate(segs):
+        if sheet_first and i == 0 and m.get("sheet") and p == str(m.get("sheet")):
+            out.append(m.get("structure_frame") or {"role": None, "text": p})
+            continue
+        j = next((t for t in range(k, len(items)) if str(items[t].get("text") or "").strip() == p), None)
+        if j is None:
+            out.append({"role": None, "text": p})
+            continue
+        out.append(items[j])
+        k = j + 1
+    return out
+
+
 def labels(name, lines, rows, marks, sheet=True, mats=None):
     """줄 이름표 — `[{row, text, marks, draft, sig, ord, col, depth, gap, len}]`(줄마다 · `sheet`면 0행 = 시트 이름) (B119 ① · B132 ①②).
 

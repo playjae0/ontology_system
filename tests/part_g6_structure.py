@@ -317,9 +317,13 @@ show("ⓑ 추출 입력에 구조 사슬(그 청크 위의 제목 줄 — 역할
 
 _clash = {lay: RES[("A", lay)]["clash"] for lay in LAYERS}       # 그 층의 실행 안에서 잰 것(다음 층의 클린 전)
 _line_a = RC.summary_text("B119AP", RES[("A", "process")]["mt"]["요약"])
-show("ⓑ 다른 공정 가드와 부딪힌 구조 유닛을 센다(「4. 스태킹」 — 노드 0 · 관련 링크) · 한 줄 요약에 「구조 · 가드 부딪힘」 (층 둘)",
-     all(len(v) == 1 and "스태킹" in v[0] for v in _clash.values()) and "구조 · 가드 부딪힘 1" in _line_a,
-     f"{_clash} · {_line_a[-60:]}")
+# 기대 변경(B157 ① — 줄기 밖 공정 이름의 대상 제목 「4. 스태킹」은 그 구간의 공정 좌표로 선다(쌍 대조로) · 제목은 그 골격 노드에 앉아
+# 가드와 부딪히지 않는다 — 덱 · 표와 같은 규칙)
+_st157 = {lay: [c for c in RES[("A", lay)]["env"]["chunks"] if "4. 스태킹" in str(c.get("section"))] for lay in LAYERS}
+show("ⓑ 줄기 밖 공정 이름의 대상 제목(「4. 스태킹」) — 그 구간 조각 좌표 = 스태킹(쌍 대조로) · 가드 부딪힘 0 · 한 줄 요약에 부딪힘 없음 (층 둘)",
+     all(not v for v in _clash.values()) and "가드 부딪힘" not in _line_a
+     and all(cs and all(c["process_ref"] == "스태킹" and (c.get("meta") or {}).get("coord_other") for c in cs) for cs in _st157.values()),
+     f"{_clash} · {[(lay, [c['process_ref'] for c in cs]) for lay, cs in _st157.items()]} · {_line_a[-60:]}")
 
 # ⓓ 이름
 _np = RES[("A", "process")]["nodes"]
