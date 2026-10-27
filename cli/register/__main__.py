@@ -111,6 +111,10 @@ def _run(argv):
         revise = "--revise" in rest
         if revise:
             rest.remove("--revise")
+        # **스키마만 새 판**(B150 ③) — 운영 어댑터는 그대로 · 스키마만 다시 만든다(새 판이다)
+        schema_only = "--schema-only" in rest
+        if schema_only:
+            rest.remove("--schema-only")
         as_name = opt("--as", None)
         # **렌즈**(B91 ①) — prose 추출이 보는 층 목록(`a,b` 또는 `all`) · 없으면 등록 층 하나
         lenses = opt("--lenses", None)
@@ -126,7 +130,7 @@ def _run(argv):
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
                             drop_interview=drop_iv, revise=revise, as_name=as_name,
-                            no_basic=no_basic, sheets=sheets)
+                            no_basic=no_basic, sheets=sheets, schema_only=schema_only)
         if lenses:
             _dt = as_name or rest[0]
             _st = _state(_dt)

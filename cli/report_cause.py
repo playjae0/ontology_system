@@ -223,7 +223,7 @@ def _fix_section(mat, what):
 
 def _revise(dt):
     from cli.register.recheck import revise_line
-    return revise_line(dt)
+    return revise_line(dt, schema_only=True)            # 부착 대상은 스키마 칸 — 운영 어댑터 그대로(B150 ③)
 
 
 def cause_lines(cs, limit=None, mat=None):
