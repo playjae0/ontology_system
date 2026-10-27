@@ -4,7 +4,7 @@
 md는 보기다 — **md에만 있는 정보 0** · LLM은 md를 읽지 않는다(호출 입력은 봉투에서 조립한다). 꼴은 포맷을 가리지 않는다:
 
     머리      문서 · 단위 수 · 조각 수 · 문서 좌표 · 개요 · 캡처
-    단위 표   단위마다 한 줄 — 번호 · 제목(초안 → 판단) · 이어짐 · 다루는 공정 · 언급 · 개체 없음 · 근거 조각 · 글자
+    단위 표   단위마다 한 줄 — 번호 · 제목(초안 → 판단) · 이어짐 · 다루는 것 · 공정(문서 표기 → 골격) · 개체 없음 · 근거 조각 · 글자
     단위마다  경로 · 공정 · 쪽 · 버림 · 사람 고침 + 근거 조각 원문(`[본문]` · `[표 …]` · `[차트 …]` · `[그림 요약 …]` — 묶음 머리는
               추출 입력과 같은 손 `core/build/extract_unit._tag`) · `[노트]`(한 번)
 
@@ -22,8 +22,14 @@ def _cell(x):
     return str(x if x not in (None, "") else "—").replace("|", "\\|").replace("\n", " ")
 
 
-def _procs(ps):
-    return "—" if ps is None else (" · ".join(ps) or "없음")
+def procs_cell(s):
+    """공정 칸(덱 블록 슬라이드 하나) — 문서 표기 그대로 · 골격에 맞은 표기는 `표기 → canonical`(블록의 `matched` — 태깅과 같은 색인) ·
+    안 맞은 표기는 `표기(?)`(그래프 단계에서 해소 · 큐) · None = 판정 없음(—) · [] = 없음 (B151 ④). 화면 · md가 이 손 하나."""
+    ps = s.get("processes")
+    if ps is None:
+        return "—"
+    got = list(s.get("matched") or []) + [None] * len(ps)
+    return " · ".join((p if c == p else f"{p} → {c}") if c else f"{p}(?)" for p, c in zip(ps, got)) or "없음"
 
 
 def _title(s, chunks):
@@ -69,19 +75,20 @@ def lines(env):
     if cap:
         out.append(f"- 캡처 — 보이는 쪽 {cap}(추출이 원본에서 뜬다 · 저장 0)")
     out += ["", "## 슬라이드 표", "",
-            "| 번호 | 제목(초안 → 판단) | 이어짐 | 다루는 공정 | 언급 | 개체 없음 | 근거 조각 | 글자 |",
+            "| 번호 | 제목(초안 → 판단) | 이어짐 | 다루는 것 | 공정 | 개체 없음 | 근거 조각 | 글자 |",
             "|---:|---|---:|---|---|---|---:|---:|"]
     for s, cs in us:
         out.append("| " + " | ".join(_cell(x) for x in (
-            s.get("slide"), _title(s, cs), s.get("continues"), _procs(s.get("processes")),
-            " · ".join(s.get("mentions") or []), "예" if s.get("no_entities") else "",
+            s.get("slide"), _title(s, cs), s.get("continues"), s.get("subject"), procs_cell(s),
+            "예" if s.get("no_entities") else "",
             len(cs), sum(len(c.get("text") or "") for c in cs))) + " |")
-    out += ["", "다루는 공정 — = 판정 없음(경로 · 문서 좌표) · 없음 = 덱 구조가 「공정 없음」 · * = 사람이 고친 칸이 있다", ""]
+    out += ["", "공정 — 문서 표기 그대로 · `표기 → 골격` = 골격에 맞았다 · `표기(?)` = 안 맞았다(그래프 단계에서 해소 · 큐) · "
+                "— = 판정 없음 · 없음 = 공정을 말하지 않는다(둘 다 경로 · 문서 좌표) · * = 사람이 고친 칸이 있다", ""]
     for s, cs in us:
         m0 = (cs[0].get("meta") or {}) if cs else {}
         out += [f"## 슬라이드 {s.get('slide')} — {_title(s, cs)}", "",
-                f"- 쪽 {s.get('page')} · 경로 {m0.get('section_path') or '—'} · 다루는 공정 {_procs(s.get('processes'))}"
-                + (f" · 언급 {' · '.join(s['mentions'])}" if s.get("mentions") else "")
+                f"- 쪽 {s.get('page')} · 경로 {m0.get('section_path') or '—'} · 다루는 것 {s.get('subject') or '—'} · "
+                f"공정 {procs_cell(s)}"
                 + (f" · 이어짐 ← 슬라이드 {s['continues']}" if s.get("continues") is not None else "")
                 + (" · 개체 없음" if s.get("no_entities") else "")]
         if cap and m0.get("page_no"):

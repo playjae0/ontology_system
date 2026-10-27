@@ -12,8 +12,8 @@
 슬라이드의 청크는 전부 `meta.extract_unit`(= 「슬라이드 N」)을 진다: 추출은 그 단위마다 한 번 묻는다(본문 · 표 · 차트 · 노트 ·
 그림 요약 + 캡처 — `core/build/extract_unit`).
 
-**덱 구조**(B125 ③ — 지점 ⑪ · 코어가 `deck_fn`으로 주입)가 있으면 슬라이드마다 제목 · 구획 · 이어짐 · 다루는 공정 · 언급 공정 ·
-개체 없음을 그 결정으로 쓴다(placeholder 제목은 초안 · 이어진 슬라이드는 앞 슬라이드의 경로 · 공정). 없으면 지금 방식.
+**덱 구조**(B125 ③ — 지점 ⑪ · 코어가 `deck_fn`으로 주입)가 있으면 슬라이드마다 제목 · 구획 · 이어짐 · 다루는 것 · 다루는 공정(문서
+표기 — B151 ②) · 개체 없음을 그 결정으로 쓴다(placeholder 제목은 초안 · 이어진 슬라이드는 앞 슬라이드의 경로 · 공정). 없으면 지금 방식.
 
 어댑터는 순수 함수 계약(C11)이라 LLM을 부르지 않는다. ②의 지도와 덱 구조는 **코어**가 산출해 넘겨준다.
 """
@@ -188,13 +188,13 @@ def _body_chunks(body, loc, section, s, spath, idx, exp, struct_map_fn):
 
 
 def _unit(c, loc, d):
-    """한 슬라이드의 청크 — 추출 단위 · 덱 구조의 공정(목록 — 판정이 섰을 때만) · 언급 공정 · 개체 없음."""
+    """한 슬라이드의 청크 — 추출 단위 · 덱 구조의 공정(**문서 표기 그대로** — 있을 때만 · 골격에 거는 것은 좌표 태깅 — B151 ②) ·
+    다루는 것 · 개체 없음. 공정이 비었으면 싣지 않는다 — 워드와 같은 길(구획 대조 → 문서 좌표 물려받기)이 정한다."""
     m = {**(c.get("meta") or {}), "extract_unit": loc}
-    if d.get("processes") is not None:
+    if d.get("processes"):
         c = {**c, "process_ref": coord_value(d["processes"])}
-        m["deck_coord"] = True                             # 덱 구조가 정한 공정(없음 포함) — 문서 좌표 · 경로 대조는 힌트였다
-    if d.get("mentions"):
-        m["mentions"] = list(d["mentions"])
+    if d.get("subject"):
+        m["subject"] = d["subject"]
     if d.get("no_entities"):
         m["no_entities"] = True
     return {**c, "meta": m}

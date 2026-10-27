@@ -39,11 +39,11 @@ PARSED_DIR = paths.parsed()    # 운영 산출 자리 (문서 7 §7.8 — 파일
 REVIEW = paths.review()
 
 
-def injections(layers=None):
+def injections():
     """파서에 내려보낼 **LLM 함수 3종을 한 번에 만든다** (문서 7 §7.6-B-1 · B48).
 
-    **문서 구조**(B119 ① — ⑪ 안의 호출 `structure`)도 여기서 만든다 — **층을 모른다**(B148 ① — `layers`는 덱 구조만 받는다 ·
-    회차 ④까지). mock이면 힌트를 읽는 함수다(힌트가 없으면 판정 없음 — 고정 규칙 그대로).
+    **문서 구조**(B119 ① — ⑪ 안의 호출 `structure`)와 **덱 구조**도 여기서 만든다 — 둘 다 **층을 모른다**(B148 ① · B151 ① — 층 인자
+    없음). mock이면 힌트를 읽는 함수다(힌트가 없으면 판정 없음 — 고정 규칙 그대로).
 
     **모드는 여기서 한 번 정하고 아래로 내려간다.** 파서에는 「지금 mock인가」라는
     질문이 없으므로(파서 무판독), 「실호출 모드인데 함수가 안 왔다」를 잡을 수 있는
@@ -59,8 +59,8 @@ def injections(layers=None):
            "map_structure": struct_map_pass.struct_mapper(),
            # ⑪ 안의 문서 구조(B119 ①) — 산문 시트마다 무조건(개요와 한 지시문)
            "structure": structure_mod.structurer(),
-           # ⑪ 안의 덱 구조(B125 ③) — PPT 덱마다 1회(제목 · 이어짐 · 공정 목록 · 덱 개요 · mock은 힌트)
-           "deck": deck_mod.decker(layers),
+           # ⑪ 안의 덱 구조(B125 ③) — PPT 덱마다 1회(제목 · 이어짐 · 다루는 것 · 공정 표기 · 덱 개요 · mock은 힌트 · 층 0)
+           "deck": deck_mod.decker(),
            # 슬라이드 · 쪽 캡처를 추출에(B125 ② — 실호출일 때 · `--no-images`면 파서가 끈다)
            "capture": not gateway.use_mock()}
     if not gateway.use_mock():
@@ -151,9 +151,11 @@ def print_split_notes(report):
     if dk:                                          # 덱 구조 끝 줄 (B125 ③)
         _screen.say(f"   덱 구조 — 슬라이드 {dk['슬라이드']} · 제목 초안과 다름 {dk['제목다름']} · 이어짐 {dk['이어짐']} · "
                     f"공정 하나 {dk['공정하나']} · 둘 이상 {dk['공정둘이상']} · 없음 {dk['공정없음']} · "
-                    f"문서 좌표와 다름 {dk['좌표다름']} · 버림 {dk['버림']} · LLM 호출 {dk['호출']} · 재사용 {dk['재사용']}"
+                    f"버림 {dk['버림']} · LLM 호출 {dk['호출']} · 재사용 {dk['재사용']}"
                     + (f" · 사람 고침 {dk['고침']}" if dk.get("고침") else "")
                     + (f" · 실패 {dk['실패']}" if dk.get("실패") else ""), "warn" if dk.get("실패") else "head")
+        if dk.get("옛 언급 고침"):                   # 옛 `@덱` 고침의 언급 칸 — 읽지 않는다(B151 ④)
+            _screen.say(f"   읽지 않은 옛 언급 고침 {dk['옛 언급 고침']} — 언급 칸은 없어졌다(다른 공정 언급은 그래프 단계가 잡는다)", "aux")
     cap = ((report or {}).get("split") or {}).get("글자_상한") or {}
     if cap:
         print(f"   글자 상한 초과 {cap['초과_청크']}청크 → 행 경계로 {cap['조각']}조각"
@@ -251,7 +253,7 @@ def coord_screen():
 
 
 def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
-              sheet_roles=None, no_images=False, doc_coord=None, layers=None, no_capture=False):
+              sheet_roles=None, no_images=False, doc_coord=None, no_capture=False):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
     있어야 플랫폼이 그 상태를 파일로 판정할 수 있다.
@@ -269,7 +271,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     # 무엇이든 그 답을 쓴다.
     # **누적 줄**(B97 ②) — 문서 구조 · 그림 요약 · 좌표 태깅이 이 안에서 LLM을 부른다
     with _screen.ticker("파싱(구조·그림 요약·좌표)"):
-        inj = injections(layers)
+        inj = injections()
         inj["capture"] = inj["capture"] and not no_capture       # `--no-capture` — 캡처 없이(사람이 명시 · 기록) (B128 ②)
         res = pipeline.parse(load_adapter(adapter_path), doc_id, doc, **inj,
                              structure_fixes=structure_mod.fixes_of(doc_id),     # 사람의 구조 고침 (B119 ③)
