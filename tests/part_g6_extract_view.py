@@ -33,7 +33,7 @@ import os as _os                             # noqa: E402
 # 넓은 화면(160칸)에서 잰다 — 개체 칸은 가변 칸이라 좁으면 `…`(전체는 `-v` · 로그) · 위치 두 칸(B118 ③ — 잘리지 않는 칸)이
 # 폭을 더 써서 120칸에서는 개체 칸이 두 글자 모자란다(기대 변경)
 _os.environ["COLUMNS"] = "160"
-from cli.ingest_screen import extract_screen  # noqa: E402
+from cli.extract_screen import extract_screen  # noqa: E402
 from core.build import extract as EX        # noqa: E402
 from core.build.entry import _vocab          # noqa: E402
 from core.llm import gateway                 # noqa: E402

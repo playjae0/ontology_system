@@ -57,7 +57,7 @@ def run(paths, *, force=False, layer=None):
         # 층이 없으면 **좌표 층**이다(B85 ② — 폴더 이름을 박지 않는다).
         cfg = load_config(layer or (schema or {}).get("layer") or coord_layer())
         from core.build import outline as OL
-        from cli.ingest_screen import extract_screen
+        from cli.extract_screen import extract_screen
         _ol = OL.run(env, cfg, notice=extract_screen())     # 문서 개요 — 추출 입력의 넷째 소속 출처 (B115 ①)
         _ok, _why = EX.reuse_check(               # 문서 · 어댑터 · 지시문 · 층 config (B102 ⑥) · 개요 (B115 ③)
             env, cfg=cfg, outline=_ol)
@@ -81,7 +81,8 @@ def run(paths, *, force=False, layer=None):
                   if c.get("doc_id") == doc_id}
         from core.build.entry import _vocab
         from cli import _screen
-        from cli.ingest_screen import extract_screen, ticker_where
+        from cli.extract_screen import extract_screen
+        from cli.ingest_screen import ticker_where
         # **인입과 같은 화면**(B97 ①②) — 예고 · 청크마다 메타 · 누적 줄 · 끝 줄
         stage = {"이름": "추출"}
         with _screen.ticker("추출", where=ticker_where(stage)):
