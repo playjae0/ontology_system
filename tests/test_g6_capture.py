@@ -272,6 +272,65 @@ if render.capture_path()[0]:
 else:
     show("ⓓ soffice — 이 기계에는 soffice(Impress)가 없다(허브가 실경로를 돈다)", True, f"{render.capture_path()[2]}")
 
+# ────────────────────────────────────────────────────────────── B156 ⓓ 캡처 보관(실경로) · ⓔ PDF 쪽 판독
+print("\n■ B156 — 쪽 캡처 보관(대역 없이 — 렌더 · JPEG 저장 실물) · PDF 쪽 판독")
+from core.state import captures as CAP156, knobs as KN156   # noqa: E402
+from cli import envelope_md as EMD156, show_knobs as SK156   # noqa: E402
+if render.capture_path()[0]:
+    from PIL import Image as _Img156
+    _pk = _deck(TMP / "B156K.pptx")
+    _ck, _whyk, _pgk = _images_per_call(_pk, PX, "B156K")             # 손잡이 기본(켬) — 렌더 · 보관 · 추출이 그 판
+    _jf = sorted(_P.captures("B156K").glob("p*.jpg"))
+    _ims = [_Img156.open(f) for f in _jf]
+    _t0 = [f.stat().st_mtime_ns for f in _jf]
+    EU._PAGES.clear()
+    _again = CAP156.pages("B156K", str(_pk), _pgk)[0]                 # 다음 실행 — 보관분(렌더 없이 · 파일 그대로)
+    _d156 = io.StringIO()
+    with contextlib.redirect_stdout(_d156):
+        SK156.dist_captures()
+    _knf = _P.knobs()
+    _knf.write_text(json.dumps({"keep_page_captures": False}), encoding="utf-8")
+    KN156.reset()
+    KN156.apply()                                                     # 손잡이 파일을 다시 읽는다(상태 루트는 이미 정해졌다)
+    _po = _deck(TMP / "B156O.pptx")
+    _co, _whyo, _pgo = _images_per_call(_po, PX, "B156O")              # 끔 — 메모리만(보관 0) · 추출은 그대로 캡처
+    _knf.unlink()
+    KN156.reset()
+    KN156.apply()
+    show("B156 ⓓ 실경로(대역 없이) — 실제 pptx 렌더 · 캡처 보관 켬 → ④작업 work/captures/<doc_id>/에 쪽마다 JPEG 한 장(긴 변 ≤ 1,600) · "
+         "다음 실행은 보관분 그대로 · show dist captures에 총용량 · 끔이면 보관 0(추출은 메모리 캡처로 그대로)",
+         _ck and set(_ck) == {1} and len(_jf) == _pgk == 5 and all(i.format == "JPEG" and max(i.size) <= 1600 for i in _ims)
+         and [f.stat().st_mtime_ns for f in _jf] == _t0 and _again.get(1) == _jf[0].read_bytes()
+         and "B156K" in _d156.getvalue() and "총 " in _d156.getvalue()
+         and _co and set(_co) == {1} and not _P.captures("B156O").exists(),
+         f"쪽 {len(_jf)} · 크기 {[i.size for i in _ims[:2]]} · 끔 {_P.captures('B156O').exists()} · "
+         + next((ln.strip() for ln in _d156.getvalue().splitlines() if ln.startswith("■")), ""))
+else:
+    show("B156 ⓓ 캡처 보관 — 이 기계에는 soffice(Impress)가 없다(허브가 실경로를 돈다)", True, f"{render.capture_path()[2]}")
+from core.build import reading as RD156                  # noqa: E402
+from core.state import fixtures as FX156                 # noqa: E402 — 픽스처 뿌리(회귀는 스위트마다 사본 — B133)
+from fixtures.make_pdf import build as _mkpdf            # noqa: E402
+_pp = _mkpdf(TMP / "B156P.pdf")
+_rhp = FX156.EXTRACT_HINTS / "B156P@reading.json"
+_rhp.write_text(json.dumps({"pages": {
+    "1": {"figures": [], "relations": [], "summary": [{"text": "노칭 쪽이다.", "boxes": ["P1"]}]},
+    "2": {"figures": [{"box": "P2-P1", "kind": "사진", "labels": [], "seen": [{"text": "갈색 사각형 하나", "basis": "보임"}],
+                       "meaning": "스태킹 설비 사진으로 보인다", "unreadable": False}],
+          "relations": [{"from": "P2", "to": "P2-P1", "relation": "설명"}],
+          "summary": [{"text": "스태킹 쪽과 그림이다.", "boxes": ["P2", "P2-P1"]}]}}}, ensure_ascii=False), encoding="utf-8")
+with _quiet():
+    _rp6 = pipeline.parse(PDF, "B156P", str(_pp), closed_list=TG.closed_list("process"), layer="process", reading=RD156.reader())
+_ep6 = _rp6.envelope
+_rhp.unlink(missing_ok=True)
+_pg6 = {e["page"]: e for e in (_ep6.get("reading") or {}).get("pages") or []}
+_b26 = next((b for pg in (_ep6.get("boxes") or {}).get("pages") or [] if pg["page"] == 2 for b in pg["boxes"] if b["id"] == "P2-P1"), {})
+_mdp = EMD156.text("B156P", _ep6) or ""
+show("B156 ⓔ PDF — 같은 함수로 쪽 판독(쪽 글 상자 P<n> + 그림 · 리더가 가진 위치 · 크기) · 판독 없는 쪽은 그대로 · md에 쪽마다 원문 + [판독]",
+     _rp6.ok and _pg6.get(2, {}).get("figures", [{}])[0].get("box") == "P2-P1" and _pg6[2]["relations"]
+     and _pg6.get(3, {}).get("skipped") == "판독 없음" and isinstance(_b26.get("width"), float) and _b26.get("rel")
+     and "## 쪽 2" in _mdp and "- 그림 P2-P1 — 종류 사진" in _mdp,
+     f"쪽 {[(k, v.get('skipped') or len(v.get('summary') or [])) for k, v in sorted(_pg6.items())]} · 그림 상자 {_b26}")
+
 # ────────────────────────────────────────────────────────────── ⓔ 환경 점검
 print("\n■ ⓔ 환경 점검 — doctor --env")
 _env = subprocess.run([sys.executable, str(ROOT / "doctor.py"), "--env"], capture_output=True, text=True, cwd=str(ROOT),

@@ -153,8 +153,11 @@ def _unit(mat, name, cids):
     from core.build.extract_unit import text_of
     chunks = [mat["chunks"][x] for x in cids]
     c0 = chunks[0]
-    pages = set((mat["env"].get("capture") or {}).get("pages") or [])
+    n_cap = (mat["env"].get("capture") or {}).get("pages") or 0      # 보이는 쪽 수(정수 — 추출이 쪽마다 캡처를 붙인다)
     page = (c0.get("meta") or {}).get("page_no")
+    from cli import reading_md as RM
+    rd = RM.entry(mat["env"], page=page) if page else None
+    link = f" · [보관 캡처]({RM._UP}{rd['capture']})" if rd and rd.get("capture") else ""
     out = [f"### {name}", "",
            f"- 맥락 줄: {extract_ctx.context_line(c0, mat['doc']) or '—'}"]
     for lay, lens, _ck in mat["checkpoints"]:
@@ -164,7 +167,7 @@ def _unit(mat, name, cids):
     att = EX.attach_candidates(c0.get("process_ref"))
     out += [f"- 부착 후보 {len(att):,}" + (f": {' · '.join(att[:5])}" + (" …" if len(att) > 5 else "") if att else ""),
             f"- 부모 후보: {' · '.join(EX.parent_candidates(c0)) or '없음'}",
-            f"- 캡처: {f'붙음(쪽 {page})' if page in pages else '없음'}", ""]
+            f"- 캡처: {f'붙음(쪽 {page})' if page and page <= n_cap else '없음'}{link}", ""]
     from cli.envelope_md import _body                 # 원문 묶음 — 구조 확인 md와 같은 손(머리 · 본문)
     notes = None
     for c in chunks:

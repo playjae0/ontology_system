@@ -11,7 +11,7 @@
 
 **덱 구조 표**(PPT — B125 ③ · B151 ④): 번호 · 슬라이드 · 제목 · 초안(placeholder) · 이어짐 · 다루는 것 · 공정(문서 표기 → 골격) · 고침
 `<번호> 공정 <a,b|없음>`(문서 표기 — 덱 글 안) · `<번호> 다루는 것 <글>` · `<번호> 제목 <글>` · `<번호> 이어짐 <슬라이드|없음>` · `개요 <글>`
-→ 같은 기록 파일의 `@덱` 프레임 → 다시 파싱(LLM 0).
+→ 같은 기록 파일의 `@덱` 프레임 → 다시 파싱(LLM 0). 덱 표 다음(PDF는 그 자리)에 **판독 표**(B156 ③ — `cli/reading_screen`).
 """
 from __future__ import annotations
 
@@ -115,6 +115,14 @@ def _deck_gate(res, doc_id, dk, reparse):
         dk = (res.report or {}).get("deck") or {}
 
 
+def _reading_gate(res, doc_id, reparse):
+    """판독 표(B156 ③) — 봉투에 판독 블록이 있을 때만(없으면 그대로 계속)."""
+    if not (res.envelope or {}).get("reading"):
+        return res, True
+    from cli import reading_screen as RS
+    return RS.gate(res, doc_id, reparse)
+
+
 def _sheet_answer(answer):
     """묻는 줄의 답 — 힌트(문서 규칙 · B130 ④ — 줄 고침 명령은 받지 않는다 · 옛 고침 기록은 재생된다)."""
     a = answer.strip()
@@ -170,10 +178,13 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
             return res, False
         st = (res.report or {}).get("structure")
         dk = (res.report or {}).get("deck")
-        if dk and not st:                    # PPT — 덱 구조 표 (B125 ③)
-            return _deck_gate(res, doc_id, dk, reparse) if ask else (res, True)
-        if not st:
-            return res, True
+        if dk and not st:                    # PPT — 덱 구조 표 (B125 ③) → 판독 표 (B156 ③)
+            if not ask:
+                return res, True
+            res, go = _deck_gate(res, doc_id, dk, reparse)
+            return _reading_gate(res, doc_id, reparse) if go and res.ok else (res, go)
+        if not st:                           # PDF 등 덱 · 구조 블록이 없는 쪽 문서 — 판독 표만 (B156 ③)
+            return _reading_gate(res, doc_id, reparse) if ask else (res, True)
         weak = ST.weak(st, (res.envelope or {}).get("chunks") or [], coord_in)
         if pos == 0:
             for ln in weak_lines(weak):

@@ -331,6 +331,12 @@ def extract(*parts):
     return work("extract", *parts)
 
 
+def captures(*parts):
+    """④작업 **쪽 캡처 보관** — `work/captures/<doc_id>/p001.jpg` · `index.json` (B156 ⑤ — 원본에서 다시 만든다 · 손잡이
+    `keep_page_captures` · 클린 · 기본 fresh가 지운다)."""
+    return work("captures", *parts)
+
+
 def struct_maps(*parts):
     """④작업 구조 지도 보존 — `work/struct_maps/<doc_id>.json` (파서에는 `bind_parser`가 이 함수를 주입한다)."""
     return work("struct_maps", *parts)

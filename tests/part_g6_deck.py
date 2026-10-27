@@ -601,6 +601,118 @@ show("B151 ⓕ 옛 @덱 고침(공정 · 언급 칸 포함) — 제목 · 공정
      f"{[ln.strip() for ln in _buf151.getvalue().splitlines() if '옛 언급' in ln]}")
 ST.fixes_path().unlink(missing_ok=True)
 
+# ────────────────────────────────────────────────────────────── B156 쪽 판독
+print("\n■ B156 — 쪽 판독(메타 · 층 무관) · 상자 위치 · 크기 · 판독 표(다시 · 지움) · 추출 · 그래프 불변")
+from core.build import reading as RD156                  # noqa: E402
+from g6_common import _run as _pty156                    # noqa: E402 — pty 도우미(관문은 tty에서만 산다)
+with _quiet():
+    init.init(fresh_=True, all_=True)
+    RUN.cmd_bootstrap([])
+_register()
+#: mock 판독 힌트(창작) — 쪽 4는 검사에 걸리는 칸 넷(없는 상자 · 목록 밖 관계 · 근거 없는 요약 · 보임/추론 밖) · `again`은 사람 힌트의 답
+R156 = {"pages": {
+    "2": {"figures": [], "relations": [], "summary": [{"text": "노칭 금형 마모와 클리어런스를 점검했다.", "boxes": ["S2-B1", "S2-B2"]}]},
+    "3": {"figures": [], "relations": [], "summary": [{"text": "앞 장에 이어 다이 균열을 봤다.", "boxes": ["S3-B2"]}]},
+    "4": {"figures": [{"box": "S4-P1", "kind": "도면", "labels": ["장력", "T-1"],
+                       "seen": [{"text": "그림 속 글자 T-1", "basis": "보임"}, {"text": "커터 단면으로 보인다", "basis": "추론"},
+                                {"text": "느낌", "basis": "느낌"}],
+                       "meaning": "표의 장력 기준을 그림으로 보인다", "unreadable": False},
+                      {"box": "S9-P9", "kind": "사진", "labels": [], "seen": [], "meaning": None, "unreadable": False}],
+          "relations": [{"from": "S4-B1", "to": "S4-TB1", "relation": "설명"}, {"from": "S4-TB1", "to": "S4-P1", "relation": "무관"}],
+          "summary": [{"text": "커터 사양 표와 도면이다.", "boxes": ["S4-TB1", "S4-P1"]}, {"text": "근거 없는 문장", "boxes": ["없는상자"]}],
+          "again": {"figures": [], "relations": [], "summary": [{"text": "도면의 치수 T-1을 다시 읽었다.", "boxes": ["S4-P1"]}]}},
+    "5": {"figures": [], "relations": [], "summary": [{"text": "노칭과 스태킹 연동을 함께 본다.", "boxes": ["S5-B2"]}]}}}
+_rh156 = _FXR.EXTRACT_HINTS / f"{DID}@reading.json"
+_hint.write_text(json.dumps(DECK, ensure_ascii=False), encoding="utf-8")
+_rh156.write_text(json.dumps(R156, ensure_ascii=False), encoding="utf-8")
+_SEEN156, _NOTE156 = [], []
+
+
+def _p156(reading=True):
+    """mock 파싱(덱 · 판독 힌트) — 판독 함수에 들어간 입력(실물)을 모은다."""
+    fn = RD156.reader(notice=_NOTE156.append) if reading else None
+    if fn is not None:
+        inner = fn
+
+        def fn(doc_id, inp, **kw):
+            _SEEN156.append(json.loads(json.dumps(inp, ensure_ascii=False)))
+            return inner(doc_id, inp, **kw)
+        for k in ("key", "live", "pages", "capture_ref", "notice", "drift"):
+            setattr(fn, k, getattr(inner, k))
+    with _quiet():
+        res = pipeline.parse(PX, DID, str(PATH), closed_list=TG.closed_list("process"), layer="process", deck=DK.decker(),
+                             structure_fixes=ST.fixes_of(DID), reading=fn)
+    return res, res.envelope
+
+
+struct_map.invalidate(DID)
+_ra6, _ea6 = _p156()
+_in6 = list(_SEEN156)
+_rn6, _en6 = _p156(reading=False)                       # 판독 없는 파싱 — B156 전과 같은 길
+_rd6 = {e["page"]: e for e in _ea6["reading"]["pages"]}
+_p4 = _rd6[4]
+_bx4 = next(b for pg in _ea6["boxes"]["pages"] if pg["page"] == 4 for b in pg["boxes"] if b["id"] == "S4-P1")
+_md6 = EMD.text(DID, _ea6)
+show("B156 ⓐ PPT 덱 — 봉투 reading(쪽마다 그림 · 그림 속 글자 · 보임/추론 · 배치 관계 · 쪽 요약 + 근거 id) · 개체 없음 장 건너뜀 · 검사(없는 "
+     "상자 · 목록 밖 관계 · 근거 없는 요약 문장 · 보임/추론 밖 → dropped) · split md에 [판독]과 [그림 요약]이 나란히 · 상자 위치 · 크기",
+     _rd6[1].get("skipped") == "개체 없음" and _p4["figures"][0]["box"] == "S4-P1" and _p4["figures"][0]["labels_in_text"] == ["장력"]
+     and [s["basis"] for s in _p4["figures"][0]["seen"]] == ["보임", "추론"] and len(_p4["figures"]) == 1
+     and _p4["relations"] == [{"from": "S4-B1", "to": "S4-TB1", "relation": "설명"}]
+     and [s["boxes"] for s in _p4["summary"]] == [["S4-TB1", "S4-P1"]]
+     and _p4["dropped"] == {"보이는 것": 1, "그림": 1, "관계": 1, "요약": 1}
+     and all(isinstance(_bx4[k], int) for k in ("left", "top", "width", "height")) and 0 < _bx4["rel"][0] < 1
+     and "[판독] 출처 mock" in _md6 and "[그림 요약 S4-P1]" in _md6 and "- 그림 S4-P1 — 종류 도면" in _md6,
+     f"쪽 {[(e['page'], e.get('skipped') or len(e.get('summary') or [])) for e in _ea6['reading']['pages']]} · 버림 {_p4['dropped']} · "
+     f"상자 {_bx4}")
+show("B156 ⓕ 추출 · 그래프 불변 — 판독이 있든 없든 같은 덱의 청크(그림 요약 글 포함) · 추출 입력의 맥락 줄이 같다 · 판독 블록은 청크 밖",
+     json.dumps(_en6["chunks"], sort_keys=True, ensure_ascii=False) == json.dumps(_ea6["chunks"], sort_keys=True, ensure_ascii=False)
+     and [XC.context_line(c, XC.doc_info(_en6)) for c in _en6["chunks"]]
+     == [XC.context_line(c, XC.doc_info(_ea6)) for c in _ea6["chunks"]] and "reading" not in _en6 and "boxes" in _en6,
+     f"청크 {len(_ea6['chunks'])} · 판독 없는 봉투 키 {sorted(k for k in _en6 if k in ('reading', 'boxes'))}")
+_rb6, _eb6 = _p156()                                    # 같은 덱 재파싱 — 보존분 재사용
+_kb6 = _rb6.report["reading"]["수"]
+_kn6 = _P.registry(RD156.KNOWLEDGE)
+_P.ensure(_kn6)
+_kn6.write_text("# 읽기 지식\n노칭 커터는 은색 날이다.\n", encoding="utf-8")
+del _NOTE156[:]
+_rk6, _ek6 = _p156()                                    # 읽기 지식을 고치면 다시 부른다(예고에 수)
+_kn6.unlink()
+_rw(_P.layers("process", "config.json"), lambda c: c.setdefault("prompts", {}).__setitem__("structure", "층 힌트 B156 — 매거진은 설비다"))
+struct_map.invalidate(DID)
+del _SEEN156[:]
+_rl6, _el6 = _p156()                                    # 층 config가 바뀐 상태에서 처음부터 — 판독 입력이 같다
+show("B156 ⓑ 같은 덱 재파싱 → 판독 재사용(부름 0) · 읽기 지식을 고치면 다시 부름(예고에 「읽기 지식이 바뀌어 다시」 수) · 층 config를 바꿔도 "
+     "판독 입력(실물)이 같다 · 이어진 장은 앞 장 쪽 요약을 받는다",
+     (_kb6["부름"], _kb6["재사용"]) == (0, 4) and _NOTE156 and _NOTE156[0]["지식바뀜"] == 4
+     and _rk6.report["reading"]["수"]["부름"] == 4 and _ek6["reading"]["knowledge"]
+     and _SEEN156 == _in6 and next(x for x in _in6 if x["page"] == 3)["previous"] == "노칭 금형 마모와 클리어런스를 점검했다.",
+     f"재파싱 {(_kb6['부름'], _kb6['재사용'])} · 예고 {_NOTE156[:1]} · 입력 같음 {_SEEN156 == _in6}")
+RD156.record_fix(DID, 4, {"action": "다시", "hint": "도면의 치수를 읽어라"})
+_rx6, _ex6 = _p156()
+RD156.record_fix(DID, 5, {"action": "지움"})
+_ry6, _ey6 = _p156()
+_kx6, _ky6 = _rx6.report["reading"]["수"], _ry6.report["reading"]["수"]
+_x4 = next(e for e in _ex6["reading"]["pages"] if e["page"] == 4)
+_y5 = next(e for e in _ey6["reading"]["pages"] if e["page"] == 5)
+ST.fixes_path().unlink(missing_ok=True)
+_o6 = _pty156("ingest-file", str(PATH), "--doc-type", DT, "--allow-mock", "--split-only", "--step",
+              answers="c\nc\n4 다시 도면의 치수를 읽어라\n5 지움\nc\n" + "c\n" * 3)   # [1/8] · 덱 표 · 판독 표(다시 · 지움 · 계속)
+_fx6 = (json.loads(ST.fixes_path().read_text(encoding="utf-8")) if ST.fixes_path().exists() else {}).get(DID, {}).get("@판독", {})
+_pj156 = json.loads(_P.parsed(f"{DID}.json").read_text(encoding="utf-8")) if _P.parsed(f"{DID}.json").exists() else {}
+_pr156 = {e["page"]: e for e in (_pj156.get("reading") or {}).get("pages") or []}
+show("B156 ⓒ 판독 고침 — 「4 다시 <힌트>」는 그 장만 다시(다른 장 재사용 · 출처 hint) · 「5 지움」은 그 장 판독 0(지움 표시) · --step(pty) "
+     "판독 표의 동사가 @판독 프레임에 기록 · 그 파싱 산출이 재생",
+     (_kx6["부름"], _kx6["재사용"]) == (1, 3) and _x4["source"] == "hint" and _x4["summary"][0]["text"].startswith("도면의 치수")
+     and _y5.get("deleted") and not _y5.get("summary") and (_ky6["부름"], _ky6["지움"], _ky6["고침"]) == (0, 1, 2)
+     and (_fx6.get("4") or {}).get("action") == "다시" and (_fx6.get("4") or {}).get("hint") == "도면의 치수를 읽어라"
+     and (_fx6.get("5") or {}).get("action") == "지움" and "구조까지" in _o6
+     and (_pr156.get(4) or {}).get("source") == "hint" and (_pr156.get(5) or {}).get("deleted"),
+     f"다시 {(_kx6['부름'], _kx6['재사용'])} · 지움 {(_ky6['부름'], _ky6['지움'])} · 기록 {sorted(_fx6)} · pty 끝 "
+     f"{[ln.strip()[:50] for ln in _o6.splitlines() if '고침 —' in ln or '구조까지' in ln][:3]}")
+ST.fixes_path().unlink(missing_ok=True)
+_hint.unlink(missing_ok=True)
+_rh156.unlink(missing_ok=True)
+
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)
 store.write(store.DOC_TYPES, dts)

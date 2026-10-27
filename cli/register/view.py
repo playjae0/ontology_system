@@ -517,7 +517,7 @@ def _review_parse(mod, samples, rows, roles, llm_coord):
                 # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
                 mod, doc_id_of(s), s, layer=coord_layer(),
                 # 문서 · 덱 구조는 층을 모른다 — 운영 인입과 같은 판단(B148 ① · B151 ① — 리허설 산출의 판이 같아야 운영이 재사용한다)
-                **{**injections(), "pick_coord": pick},
+                **{**injections(), "pick_coord": pick, "reading": None},   # 쪽 판독은 운영 인입에서(사람이 보는 메타 · B156)
                 max_rows=rows, sheet_roles=roles.get(str(Path(s).resolve())), doc_coord=coords[s],
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out

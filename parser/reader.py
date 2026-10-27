@@ -36,7 +36,7 @@ pptx →
       "hidden": False,                      # 숨김 슬라이드 — 어댑터가 거른다
       "title":  "노칭 설비 구성",             # 제목 플레이스홀더 (없으면 "")
       "layout": "Title and Content",        # 구획 헤더 판정에 쓴다
-      "shapes": [                           # **시각 순서**(top→left) · 닫힌 8종
+      "shapes": [                           # **시각 순서**(top→left) · 닫힌 8종 · 상자마다 left·top·width·height(EMU — B156 ①)
         {"id": "S1-T1",  "kind": "title",    "text": "…"},
         {"id": "S1-TB1", "kind": "table",    "text": "A | B\n1 | 2", "rows": 5, "cols": 2},
         {"id": "S1-CH1", "kind": "chart",    "text": "[차트: …] …", "chart_type": "LINE"},
@@ -219,6 +219,40 @@ def _pos(sh):
             left if left is not None else 1 << 40)
 
 
+#: 그룹 안 좌표를 모를 때(그룹 변환을 못 읽음) — 위치 · 크기 칸은 비운다(지어내지 않는다)
+_NO_XF = "?"
+
+
+def _geom(sh, xf=None):
+    """상자의 **위치 · 크기**(B156 ① — 슬라이드 좌표 EMU) — 그룹 안 상자는 그룹 변환(`_group_xf`)을 거친다 · 모르면 칸이 None."""
+    v = [getattr(sh, k, None) for k in ("left", "top", "width", "height")]
+    if xf == _NO_XF or any(x is None for x in v):
+        return {"left": None, "top": None, "width": None, "height": None}
+    if callable(xf):
+        v = xf(*v)
+    return dict(zip(("left", "top", "width", "height"), (int(round(x)) for x in v)))
+
+
+def _group_xf(sh, outer=None):
+    """그룹 안 좌표 → 바깥 좌표의 사상(`a:xfrm`의 off · ext · chOff · chExt) — 못 읽으면 `_NO_XF`."""
+    if outer == _NO_XF:
+        return _NO_XF
+    try:
+        x = sh._element.grpSpPr.find(f"{_A_NS}xfrm")
+        (ox, oy), (ex, ey) = [(int(e.get(a)), int(e.get(b))) for e, a, b in
+                              ((x.find(f"{_A_NS}off"), "x", "y"), (x.find(f"{_A_NS}ext"), "cx", "cy"))]
+        (cx, cy), (cw, ch) = [(int(e.get(a)), int(e.get(b))) for e, a, b in
+                              ((x.find(f"{_A_NS}chOff"), "x", "y"), (x.find(f"{_A_NS}chExt"), "cx", "cy"))]
+    except Exception:                                       # noqa: BLE001 — 그 그룹 안 상자는 위치 칸 0
+        return _NO_XF
+    sx, sy = (ex / cw if cw else 1.0), (ey / ch if ch else 1.0)
+
+    def f(left, top, width, height):
+        v = (ox + (left - cx) * sx, oy + (top - cy) * sy, width * sx, height * sy)
+        return outer(*v) if callable(outer) else v
+    return f
+
+
 def _table_text(sh):
     """표 → 행 단위 ` | ` 이음. **병합은 전개하지 않는다** — 원문 위치 그대로.
 
@@ -339,8 +373,8 @@ def _shape_kind(sh):
     return "text"
 
 
-def _walk(shapes, slide, prefix, images, counters, reasons):
-    """shape 트리를 **시각 순서**로 훑어 레코드 배열을 만든다. 그룹은 재귀."""
+def _walk(shapes, slide, prefix, images, counters, reasons, xf=None):
+    """shape 트리를 **시각 순서**로 훑어 레코드 배열을 만든다. 그룹은 재귀 · 레코드마다 위치 · 크기(`_geom` — B156 ①)."""
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     out = []
     for sh in sorted(shapes, key=_pos):
@@ -352,8 +386,9 @@ def _walk(shapes, slide, prefix, images, counters, reasons):
         if stype == MSO_SHAPE_TYPE.GROUP:
             counters["G"] = counters.get("G", 0) + 1
             out += _walk(sh.shapes, slide, f"{prefix}-G{counters['G']}",
-                         images, counters, reasons)
+                         images, counters, reasons, _group_xf(sh, xf))
             continue
+        geo = _geom(sh, xf)
 
         def _id(kind):
             tag = _KIND_TAG[kind]
@@ -364,13 +399,13 @@ def _walk(shapes, slide, prefix, images, counters, reasons):
             text, nr, nc = _table_text(sh)
             if text.strip():
                 out.append({"id": _id("table"), "kind": "table", "text": text,
-                            "rows": nr, "cols": nc})
+                            "rows": nr, "cols": nc, **geo})
             continue
 
         if getattr(sh, "has_chart", False):
             text, ctype = _chart_text(sh)
             out.append({"id": _id("chart"), "kind": "chart", "text": text,
-                        "chart_type": ctype})
+                        "chart_type": ctype, **geo})
             continue
 
         if stype == MSO_SHAPE_TYPE.PICTURE or (
@@ -382,21 +417,21 @@ def _walk(shapes, slide, prefix, images, counters, reasons):
                 # (문서 5 §5.2-2 원본 바이너리 비저장). 요약만 보존된다.
                 images[ref] = (img.blob, img.content_type)
                 out.append({"id": ref, "kind": "picture", "image_ref": ref,
-                            "mime": img.content_type, "bytes_len": len(img.blob)})
+                            "mime": img.content_type, "bytes_len": len(img.blob), **geo})
             except Exception as e:                          # noqa: BLE001
                 reasons.append(f"그림 판독 실패: {type(e).__name__}")
             continue
 
         if stype == MSO_SHAPE_TYPE.PLACEHOLDER and _is_diagram(sh):
             text, why = _smartart_text(sh, slide)
-            out.append({"id": _id("smartart"), "kind": "smartart", "text": text})
+            out.append({"id": _id("smartart"), "kind": "smartart", "text": text, **geo})
             if why:
                 reasons.append(why)
             continue
 
         if _is_diagram(sh):
             text, why = _smartart_text(sh, slide)
-            out.append({"id": _id("smartart"), "kind": "smartart", "text": text})
+            out.append({"id": _id("smartart"), "kind": "smartart", "text": text, **geo})
             if why:
                 reasons.append(why)
             continue
@@ -406,8 +441,7 @@ def _walk(shapes, slide, prefix, images, counters, reasons):
             if not text:
                 continue
             kind = _shape_kind(sh)
-            out.append({"id": _id(kind), "kind": kind, "text": text,
-                        "top": getattr(sh, "top", None), "left": getattr(sh, "left", None)})
+            out.append({"id": _id(kind), "kind": kind, "text": text, **geo})
     return out
 
 
@@ -441,6 +475,7 @@ def read_pptx(path):
     from pptx import Presentation
     prs = Presentation(path)
     slides, images = [], {}
+    size = [prs.slide_width, prs.slide_height]              # 쪽 크기(EMU) — 상자 위치의 비율 분모 (B156 ①)
     deck_title = ""
     for i, s in enumerate(prs.slides, start=1):
         reasons = []
@@ -464,8 +499,19 @@ def read_pptx(path):
             "shapes": recs, "notes": notes,
             "unresolved_reasons": reasons,
         })
-    return {"format": "pptx", "path": path, "deck_title": deck_title,
+    return {"format": "pptx", "path": path, "deck_title": deck_title, "slide_size": size,
             "slides": slides, "_images": images}
+
+
+def _pdf_rect(page, xref):
+    """PDF 그림의 위치 · 크기(pt — 쪽에 처음 놓인 자리 · B156 ①) — 못 읽으면 칸이 None(지어내지 않는다)."""
+    try:
+        r = (page.get_image_rects(xref) or [None])[0]
+    except Exception:                                       # noqa: BLE001
+        r = None
+    if r is None:
+        return {"left": None, "top": None, "width": None, "height": None}
+    return {"left": r.x0, "top": r.y0, "width": r.width, "height": r.height}
 
 
 def read_pdf(path):
@@ -501,9 +547,9 @@ def read_pdf(path):
                 mime = f"image/{ext.get('ext') or 'png'}"
                 images[ref] = (blob, mime)
                 imgs.append({"id": ref, "kind": "picture", "image_ref": ref,
-                             "mime": mime, "bytes_len": len(blob)})
+                             "mime": mime, "bytes_len": len(blob), **_pdf_rect(page, info[0])})
             pages.append({"index": i, "text": page.get_text("text") or "",
-                          "images": imgs})
+                          "images": imgs, "size": [page.rect.width, page.rect.height]})
     finally:
         doc.close()
     return {"format": "pdf", "path": path, "toc": toc,
