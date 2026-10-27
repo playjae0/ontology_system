@@ -385,12 +385,15 @@ def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles, confirmed=N
                                        confirmed=confirmed, ctx=ctx), made, tally)
 
 
-def _env_extras(env, res, doc_coord, dk_tally, nodes=None):
+def _env_extras(env, res, doc_coord, dk_tally, nodes=None, labels=None):
     """봉투의 문서 칸 — 문서 좌표(B102 ② — 맥락 줄 · 좌표 줄) · **덱 블록**(B143 ② — `deck.overview` · `deck.slides[]` — 덱 판단의
     정본 · 맥락 줄의 개요 칸 · 사람용 md가 읽는다) · **구조 블록**(B146 ① — 엑셀 · Word의 구조 판단 · 단위마다 목차 · 청크 경계 ·
-    판단 기록 — `struct_rule.block` · 사람용 md가 읽는다) · 캡처 쪽 수(B125 ② — 추출이 원본에서 쪽을 뜬다). 없는 칸은 키도 없다."""
+    판단 기록 — `struct_rule.block` · 사람용 md가 읽는다) · 캡처 쪽 수(B125 ② — 추출이 원본에서 쪽을 뜬다) · **열 머리 글**(표 —
+    `field_labels` — 출력 필드 → 문서 머리 글 · 표 청크 벡터의 머리 · B153 ①). 없는 칸은 키도 없다."""
     if doc_coord:
         env["doc_coord"] = doc_coord
+    if labels:
+        env["field_labels"] = labels
     if dk_tally:
         env["deck"] = deck_mod.block(dk_tally, env.get("chunks"), nodes)   # 공정 표기마다 골격 대조(태깅과 같은 색인 — B151 ④)
     if (res.report.get("structure") or {}).get("프레임"):
@@ -498,7 +501,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     env = tagger.envelope(adapter, doc_id, path, pieces, revision=revision,
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,
                           context=context)
-    _env_extras(env, res, doc_coord, dk_tally, nodes)
+    _env_extras(env, res, doc_coord, dk_tally, nodes,
+                preflight.field_labels(raw, exp) if a.get("payload_kind") == "table" else None)
     ok, defects = validator.check(env)                               # ⑥ validator
     dk_bad = deck_mod.mismatch(env)                                  # 덱 블록 ↔ 청크 칸(투영) — 어긋나면 결함 (B143 ②)
     if dk_bad:

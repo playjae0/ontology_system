@@ -238,6 +238,14 @@ def _join_values(rec, schema):
     return [rec[k] for k in sorted(rec) if k != "source_locator"]
 
 
+def _content_meta(field, rec, fields, labels):
+    """표 content 청크의 meta — 필드 · **그 열의 문서 머리 글**(`label` — 봉투 `field_labels`) · **주인**(`owner` — 그 필드의
+    `attach_to_field` 칸의 그 행 값 · 문서 글자 그대로) (B153 ①). 없는 칸은 키도 없다 — `section`(행 위치)은 그대로 둔다."""
+    own = rec.get((fields.get(field) or {}).get("attach_to_field") or "")
+    own = " / ".join(str(x) for x in own if x) if isinstance(own, list) else ("" if own is None else str(own).strip())
+    return {"field": field, **({"label": labels[field]} if labels.get(field) else {}), **({"owner": own} if own else {})}
+
+
 def ingest(env, *, allow_duplicate=False, routing=None):
     """계약 JSON 하나를 인입해 근거 축 id를 확정한다.
 
@@ -310,8 +318,9 @@ def ingest(env, *, allow_duplicate=False, routing=None):
         res.chunk_ids.append(cid)
 
     if env.get("payload_kind") == "table":
-        content_fields = [f for f, d in (schema or {}).get("fields", {}).items()
-                          if d.get("role") == "content"]
+        fields = (schema or {}).get("fields", {})
+        content_fields = [f for f, d in fields.items() if d.get("role") == "content"]
+        labels = env.get("field_labels") or {}
         for rec in env.get("records", []):
             vals = _join_values(rec, schema)
             joined = US.join("" if v is None else norm(v) for v in vals)
@@ -326,7 +335,7 @@ def ingest(env, *, allow_duplicate=False, routing=None):
             for f in content_fields:
                 if rec.get(f):
                     put_chunk(f"{rid}-{f}", rec[f], rec.get("source_locator", ""),
-                              rec.get("source_locator"), {"field": f}, rec.get("process_ref"))
+                              rec.get("source_locator"), _content_meta(f, rec, fields, labels), rec.get("process_ref"))
     else:
         for c in env.get("chunks", []):
             text, section = c.get("text", ""), c.get("section", "")

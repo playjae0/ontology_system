@@ -86,6 +86,21 @@ def lists(graphs):
     return nodes, edges
 
 
+def name_chain(nid, anc, canon, base):
+    """닻까지의 길을 **이름만으로** — 그 노드 위의 이름 사슬을 위에서 아래로 ` > `(관계 이름 · 화살표 0 · 자기 0 — 노드 벡터의
+    재료 · B153 ②). 닻(골격)은 제 경로 마디 전부(극성 갈래는 그 마디 그대로) · 그 아래 위성은 맨 이름(`base`) · 골격 노드는 제 경로의
+    위 마디 · 닻이 없으면 빈 문자열. 화면의 길(`path_text` — 엣지 꼴)은 그대로다."""
+    if nid not in anc:
+        return ""
+    hosts, cur = [], nid
+    while anc[cur]["host"] != cur:
+        cur = anc[cur]["host"]
+        hosts.append(cur)
+    if not hosts:
+        return " > ".join(canon.get(nid, nid).split("::")[:-1])
+    return " > ".join(canon.get(cur, cur).split("::") + [base.get(h) or canon.get(h, h) for h in reversed(hosts[:-1])])
+
+
 def path_text(nid, anc, names):
     """닻까지의 길을 한 줄로 — `노칭 프레스 —part_of→ 노칭`(엣지 방향 그대로) · 골격이면 이름 · 없으면 빈 문자열."""
     a = anc.get(nid)

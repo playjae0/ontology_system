@@ -13,7 +13,7 @@
     python -m cli.show schema <doc_type>      매칭 스키마 — 필드→role 배정표
     python -m cli.show meta                   메타데이터 계약 3층을 실물로
     python -m cli.show knobs                  사내 손잡이 — 값 · 출처 · 분포를 보는 명령
-    python -m cli.show dist   <무엇>           손잡이 값을 정할 분포 (chunks·headings·forms·sheets·evidence)
+    python -m cli.show dist   <무엇>           손잡이 값을 정할 분포 (chunks·headings·forms·sheets·evidence·lens·ref·embed)
     python -m cli.show learned                좌표 학습 기록 · 새 공정 후보 (B101)
     python -m cli.show aliases [층] [--source …] [--node …]   별칭 대장 — seed 것과 대장 것 · 출처 · 문서 · 횟수 (B108)
     python -m cli.show summary [--save <이름> | --diff <이름1> <이름2>]   전체 판 — 층 · 문서 · 큐 · 보류 · 재연결 · 불확실 · 값 (B118)

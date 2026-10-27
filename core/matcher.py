@@ -192,9 +192,12 @@ def _vec(text, cand=False):
 
 
 def cand_text(c):
-    """판정 좁히기의 **후보 글** — 이름 + 별칭(정의문 0 · B136 ②) · 「이름 | 별칭: a, b」."""
-    al = sorted({a for a in c.get("aliases") or [] if a and a != c["canonical"]})
-    return c["canonical"] + (f" | 별칭: {', '.join(al)}" if al else "")
+    """판정 좁히기의 **후보 글** — 맨 이름 + 별칭(정의문 0 · B136 ② · 경로 접두 0 — 후보는 이미 같은 줄기로 걸러져 접두가 모두 같다 ·
+    B153 ②) · 「맨 이름 | 별칭: a, b」(맨 이름 = canonical의 끝 마디 · 별칭은 맨 이름 · canonical과 같은 것을 뺀다)."""
+    from core.state.ids import norm
+    bare = c["canonical"].split("::")[-1]
+    al = sorted({a for a in c.get("aliases") or [] if a and norm(a) not in (norm(bare), norm(c["canonical"]))})
+    return bare + (f" | 별칭: {', '.join(al)}" if al else "")
 
 
 def _narrow(surface, pool, top_n, *, scoped=False):
