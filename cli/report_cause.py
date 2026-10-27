@@ -134,11 +134,12 @@ def _kinds_text(cnt):
 
 
 def head_count(mat, layer=None):
-    """원인 묶음 머리의 재료 — `(못 붙은 행 n, 전체 N, 종류별 [(종류, 못 붙음, 전체)], 상태별 Counter)`."""
+    """원인 묶음 머리의 재료 — `(못 붙은 행 n, 전체 N, 종류별 [(종류, 못 붙음, 전체)], 상태별 Counter)` · 종류는 **전체가 0이 아닌 것
+    전부**(못 붙음 0이어도 — 보이는 분모 합 = 전체 · B154 ③)."""
     vals = _values(mat, layer)
     tot = Counter(kind_of(r) for _i, r in _rows(mat, layer))
     lost = Counter(kind_of(r) for _i, r, _s in vals)
-    return len(vals), sum(tot.values()), [(k, lost[k], tot[k]) for k in KINDS if lost.get(k)], \
+    return len(vals), sum(tot.values()), [(k, lost[k], tot[k]) for k in KINDS if tot.get(k)], \
         Counter(s for _i, _r, s in vals)
 
 
@@ -274,7 +275,8 @@ def _revise(dt):
 
 
 def head_line(mat, layer=None, force=False):
-    """원인 묶음 머리 — `원인 묶음 — 못 붙은 행 n / 전체 N — 개체 a/A · … · 보류 x · 고아 y · 불확실 z`(0인 종류 · 상태는 뺀다) ·
+    """원인 묶음 머리 — `원인 묶음 — 못 붙은 행 n / 전체 N — 개체 a/A · … · 보류 x · 고아 y · 불확실 z`(종류는 전체가 0이 아닌 것 전부 ·
+    0인 상태는 뺀다 — B154 ③) ·
     못 붙은 행이 0이면 None(묶음 0) — `force`(행 밖이 있다 — B154 ②)면 `원인 묶음 — 못 붙은 행 0 / 전체 N`."""
     n, tot, kinds, states = head_count(mat, layer)
     if not n and not force:

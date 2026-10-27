@@ -534,7 +534,7 @@ _hx = RCZ.head_line(_mx152) or ""
 show("B152 ⓑ 속성만 못 붙은 원인이 보인다 — 부착 대상 표본(개체는 붙고 속성이 보류) → 「그 밖 — 부착 대상」 줄에 속성·내용 수 · 개체 칸 없음 · "
      "머리 「속성·내용 b/B」",
      len(_gx) == 1 and set(_gx[0]["종류"]) == {"속성·내용"} and _gx[0]["행"] > 0
-     and f"속성·내용 {_gx[0]['행']}/" in _hx and " 개체 " not in _hx,
+     and f"속성·내용 {_gx[0]['행']}/" in _hx and "개체 0/" in _hx,   # 기대 변경(B154 ③ — 머리는 전체가 0이 아닌 종류 전부 · 개체는 못 붙음 0)
      f"{_hx.strip()} · {[(g['원인'], g['못 찾은 것'], g['종류']) for g in _cx152]}")
 _sums = []
 for _d152 in (_db, _dc, _dt):
@@ -546,9 +546,13 @@ for _d152 in (_db, _dc, _dt):
         _kc.update(g["종류"])
     _tree = RCZ.tree_lines(_m152, verbose=True)
     _lost_tree = sum(int(m.group(1).replace(",", "")) for ln in _tree for m in [re.search(r"못 붙음 ([\d,]+)", ln)] if m)
-    _sums.append((_d152, _n152, dict(_kc) == {k: a for k, a, _b in _kinds}, sum(_kc.values()), _lost_tree))
+    _sums.append((_d152, _n152, dict(_kc) == {k: a for k, a, _b in _kinds if a}, sum(_kc.values()), _lost_tree))   # 기대 변경(B154 ③ — 머리에 못 붙음 0인 종류도 선다)
 show("B152 ⓒ 합 — B149 ⓑ · ⓒ · ⓔ 표본에서 원인 줄의 종류별 합 = 머리의 분자 · 목차 나무(펼친 줄 + 접은 줄) · 좌표 표기 목록의 못 붙음 합 = 머리의 n",
      all(ok and n == s == lt and n > 0 for _d, n, ok, s, lt in _sums), str(_sums))
+_dn154 = [(d, sum(b for _k, _a, b in RCZ.head_count(RCZ.material(d))[2]), RCZ.head_count(RCZ.material(d))[1]) for d in (_db, _dc, _dt)]
+_hb154 = RCZ.head_line(RCZ.material(_db)) or ""
+show("B154 ⓒ 머리의 분모 — 제목 행이 든 표본(B149 ⓑ)에서 못 붙음 0인 종류도 서서 보이는 분모 합 = 전체(B149 ⓑ · ⓒ · ⓔ 표본)",
+     all(a == b > 0 for _d, a, b in _dn154) and " 0/" in _hb154, f"{_hb154.strip()} · {_dn154}")
 for _x in (XA, XB, XC, XT):
     _d149 = IG.doc_id_of(_x)
     SH.path(_d149).unlink(missing_ok=True)
