@@ -22,7 +22,7 @@ PROMPT = "   [계속 c / 멈춤 q / 힌트 <글>] "
 DECK_PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 제목 <글> · <번호> 이어짐 <슬라이드|없음> · 개요 <글>] "
 DECK_HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 공정 노칭,스태킹」(골격 이름 · 없음) · 「<번호> 제목 <그 슬라이드 글>」 · "
              "「<번호> 이어짐 <앞 슬라이드 번호|없음>」 · 「개요 <한 단락>」 — 다시 친다")
-HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 그 밖의 글은 **힌트 — 문서 규칙**(사다리 고침 「가.는 9) 위다」 · 「가. 단은 대상 <카테고리>」 — "
+HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 그 밖의 글은 **힌트 — 문서 규칙**(사다리 고침 「가.는 9) 위다」 · 「가. 단은 대상이다」 — "
         "LLM이 되말하고 문서 전체에 다시 세운다 / 행 고침 「R36은 제목이 아니다」) — 다시 친다")
 
 
@@ -199,7 +199,7 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
                  prev={"answers": (fr.get("answer") or {}).get("answers") or [],
                        "edits": (fr.get("answer") or {}).get("edits") or [], "headings": fr.get("headings") or [],
                        "rules": fr.get("rules") or []},
-                 layers=layers, ctx={"doc_type": (res.envelope or {}).get("doc_type"),
+                 ctx={"doc_type": (res.envelope or {}).get("doc_type"),
                                      "doc_coord": (res.envelope or {}).get("doc_coord"), "frames": frames})
         res = reparse()
         _screen.say(f"   다시 확인 끝 — {_screen.usage_line(u0)}", "aux")     # 다시 확인 한 번의 사용량 · 누계 (B139 ⑤)

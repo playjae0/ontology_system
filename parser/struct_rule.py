@@ -153,16 +153,16 @@ def draft_structure(labs):
             continue
         while stack and stack[-1][0] >= lv:
             stack.pop()
-        out.append({"row": x["row"], "parent": stack[-1][1] if stack else None, "role": None,
-                    "name": None, "category": None})
+        out.append({"row": x["row"], "parent": stack[-1][1] if stack else None, "role": None, "name": None})
         stack.append((lv, x["row"]))
     return out
 
 
 def apply_fixes(st, fixes, labs):
-    """사람의 고침(등록 단 · `{행: {role, name, category} | {role: "본문"}}`)을 구조 위에 — 결정적(재구축이 같은 고침을 쓴다).
+    """사람의 고침(등록 단 · `{행: {role, name} | {role: "본문"}}`)을 구조 위에 — 결정적(재구축이 같은 고침을 쓴다).
 
-    고칠 수 있는 것은 **역할과 대상**이다(단은 그대로) — 제목이 아니던 줄을 고치면 그 앞 제목의 형제로 선다."""
+    고칠 수 있는 것은 **역할과 대상 이름**이다(단은 그대로 · 옛 기록의 `category`는 읽지 않는다 — B148 ①) — 제목이 아니던 줄을 고치면
+    그 앞 제목의 형제로 선다."""
     if not fixes:
         return st
     st = dict(st or {"headings": draft_structure(labs), "source": "draft"})
@@ -181,7 +181,7 @@ def apply_fixes(st, fixes, labs):
         if r not in heads:
             prev = [x for x in order[:order.index(r)] if x in heads and x != FRAME_ROW]
             heads[r] = {"row": r, "parent": heads[prev[-1]].get("parent") if prev else None}
-        heads[r].update(role=fx.get("role"), name=fx.get("name"), category=fx.get("category"), by="사람")
+        heads[r].update(role=fx.get("role"), name=fx.get("name"), by="사람")
     st["headings"] = [heads[r] for r in order if r in heads]
     st["fixed"] = len(fixes)
     return st
@@ -189,7 +189,7 @@ def apply_fixes(st, fixes, labs):
 
 def structure_rows(lines, st):
     """검사된 구조 → `(rows, info)` — rows는 고정 규칙과 같은 꼴(단 = 부모 사슬의 깊이 · 신호 `구조`) ·
-    info는 `{행: {row, parent, role, name, category, depth}}`(0행 = 시트 자신) · 제목 행은 `parent`도 싣는다(경로는 부모 사슬 — 단 차례가
+    info는 `{행: {row, parent, role, name, depth}}`(0행 = 시트 자신) · 제목 행은 `parent`도 싣는다(경로는 부모 사슬 — 단 차례가
     아니다)."""
     present = {n for n, _t in lines}
     info, depth = {}, {}
@@ -238,12 +238,23 @@ def _sibling_parts(body, rows):
 
 
 def _chain_item(h, text, row=None):
+    """청크 `meta.structure` 사슬의 한 칸 — 행 · 글 · 역할 · 이름(대상일 때) · 사람 표지(카테고리 0 — B148 ①)."""
     out = {"row": h.get("row", row), "text": text, "role": h.get("role")}
-    if h.get("name") and h.get("category"):
-        out.update(name=h["name"], category=h["category"])
+    if h.get("name"):
+        out["name"] = h["name"]
     if h.get("by"):
         out["by"] = h["by"]
     return out
+
+
+def uncategorized(x):
+    """사람 기록(확정 시트 — 나무 · 사다리 바탕 · 답 · 규칙)에서 `category` 칸을 걷은 사본(B148 ③ — 기록은 지우지 않고 그 칸을 읽지 않는다 ·
+    카테고리는 그래프 단계의 목차 노드화가 층마다 정한다)."""
+    if isinstance(x, dict):
+        return {k: uncategorized(v) for k, v in x.items() if k != "category"}
+    if isinstance(x, list):
+        return [uncategorized(v) for v in x]
+    return x
 
 
 def _ladder_key(ask, frames):
@@ -256,7 +267,7 @@ def _ladder_key(ask, frames):
 def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None, skip=(), confirmed=None, ctx=None):
     """어댑터에 건넬 **구조 훅** — `fn.prepare(frames)`(문서 사다리 — 시트보다 먼저 한 번 · B132 ③) + 시트마다 `fn(frame, labels)`.
 
-    `ask(doc_id, frame, labels)` → 검사가 끝난 구조 `{headings: [{row, parent, role, name, category}], needs, ladder, calls, failed?}`
+    `ask(doc_id, frame, labels)` → 검사가 끝난 구조 `{headings: [{row, parent, role, name}], needs, ladder, calls, failed?}`
     또는 None(판정 없음). `ask.key()`가 판(지시문 · config · 방식)을 말한다 · `skip`(`ref` 시트)은 부르지 않는다. 보존분(같은 이름표 ·
     같은 판 · 같은 문서 힌트 · 같은 사다리)이면 그것(호출 0) · 사다리도 문서 단위로 같다(`"@사다리"`). 사람의 고침(`fixes[frame]` —
     등록 단)은 그 위에 덮는다 · **확정 시트**(`confirmed[frame]` — 구조 확인에서 사람이 확정 · B126 ③)는 같은 이름표 · 같은 목차
@@ -273,7 +284,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
             return None
         k = _ladder_key(ask, frames)
         hit = kept.get(LKEY)
-        conf = [(confirmed or {}).get(f) or {} for f in frames]
+        conf = [uncategorized((confirmed or {}).get(f) or {}) for f in frames]
         if all(c.get("toc") == toc.TOC_VERSION and c.get("labels") == labels_hash(frames[f]) and c.get("ladder_base")
                for f, c in zip(frames, conf)):                # 시트 전부 확정 — 확정 기록의 사다리(LLM 0 · 재구축 재생)
             d = ask.adopt(doc_id, {"base": conf[0]["ladder_base"], "source": "확정", "counts": PL.doc_counts(frames)})
@@ -298,7 +309,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
             return None
         h = labels_hash(labs)
         hit = kept.get(frame)
-        conf = (confirmed or {}).get(frame)
+        conf = uncategorized((confirmed or {}).get(frame))     # 확정 기록 — 나무 · 역할 · 이름은 그대로 · 카테고리 칸은 읽지 않는다 (B148 ③)
         if conf and conf.get("toc") != toc.TOC_VERSION:
             tally.setdefault("옛 확정", []).append(frame)     # 목차 판이 다른 옛 확정 — 재생하지 않고 다시 보인다 (B130 ⑤)
             conf = None

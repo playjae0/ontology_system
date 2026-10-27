@@ -146,7 +146,7 @@ def cases():
             and isinstance(r.get("rows"), list) and r["rows"]),
         # **⑪ 안의 호출 태그 `structure`**(B119 ① — 시트마다의 문서 구조) — 검사가 끝난 구조 dict(제목 줄 목록 · 호출 수)
         "structure": (
-            lambda: __import__("core.build.structure", fromlist=["x"]).structurer(["process"])(
+            lambda: __import__("core.build.structure", fromlist=["x"]).structurer()(
                 "D1", "S1", [{"row": 0, "text": "S1", "marks": ["시트"], "draft": 0},
                              {"row": 1, "text": "1. 개요", "marks": ["번호1."], "draft": 1},
                              {"row": 2, "text": "본문 문장이다.", "marks": [], "draft": 0}]),
@@ -162,14 +162,12 @@ def cases():
             lambda: points.pick_coord("탭 용접", ["탭용접", "노칭"]),
             lambda r: r is None or isinstance(r, str)),
         "sheet_role": (
-            lambda: points.judge_sheet("가격", ["품목 | 단가", "A | 100"],
-                                       [{"layer": "L", "categories": {"C": "정의"},
-                                         "relevance_terms": []}]),
+            lambda: points.judge_sheet("가격", ["품목 | 단가", "A | 100"]),   # 기대 변경(B148 ④ — 표본 줄만 · 층 0)
             lambda r: r.get("role") in ("prose", "ref") and isinstance(r.get("reason"), str)),
         # ⑪문서 개요(B115 ①) — `{제목 id: 대상 또는 None}` · ⑫연결 보강(B115 ④) — 고른 것 dict 또는 None
         "outline": (
-            lambda: __import__("core.build.outline", fromlist=["x"])._ask(
-                [{"id": 1, "text": "2) NG unit", "parent": None, "depth": 1}], cfg),
+            lambda: __import__("core.build.outline", fromlist=["x"])._ask(   # 기대 변경(B148 ② — 목차 노드화 입력에 청크 수 · 본문 줄 수)
+                [{"id": 1, "text": "2) NG unit", "parent": None, "depth": 1, "path": "2) NG unit"}], cfg, {}),
             lambda r: isinstance(r, dict) and all(v is None or {"name", "category"} <= set(v) for v in r.values())),
         "reinforce": (
             lambda: __import__("core.build.reinforce", fromlist=["x"])._ask(

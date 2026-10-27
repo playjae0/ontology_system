@@ -67,8 +67,8 @@ def cases():
         # ── ⑩시트 역할 판정(B91 ②) — 관문(`cli/sheet_gate.py`)이 타는 팩토리
         "sheet_role": points.sheet_judge,
         # ── ⑪문서 개요 · ⑫연결 보강(B115 ①④) — 구축이 타는 실호출 본문(인라인 분기 — `outline.run` · `reinforce._one`)
-        "outline": lambda: __import__("core.build.outline", fromlist=["x"])._ask(
-            [{"id": 1, "text": "1. 개요", "parent": None, "depth": 1}], load_config(_coord)),
+        "outline": lambda: __import__("core.build.outline", fromlist=["x"])._ask(   # 기대 변경(B148 ② — 목차 노드화 입력)
+            [{"id": 1, "text": "1. 개요", "parent": None, "depth": 1, "path": "1. 개요"}], load_config(_coord), {}),
         "reinforce": lambda: __import__("core.build.reinforce", fromlist=["x"])._ask(
             {"entity": {"name": "가", "category": "Unit"}, "chunk": "가", "headings": [], "candidates": [],
              "relations": []}),

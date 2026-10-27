@@ -272,8 +272,8 @@ def belongs_line(rows, cks, chunk_loc, skeleton, orphans):
 
 
 def outline_lines(doc_id, cks, rows):
-    """`개요(제목) N = 대상 + 주제 + 버림`(렌즈마다 — 개요 체크포인트) · `제목 개체(행) n = 값 칸`(대장의 `heading` 행 —
-    값 줄과 같은 닫힌 표) (B115 ①②). 개요가 없으면(표 · 제목 없는 산문 · mock 힌트 없음) 줄 0."""
+    """`목차 노드화(제목) N = 대상 + 주제 + 버림`(렌즈마다 — 목차 노드화 체크포인트 · B148 이름) · `제목 개체(행) n = 값 칸`(대장의 `heading` 행 —
+    값 줄과 같은 닫힌 표) (B115 ①②). 목차 노드화가 없으면(표 · 제목 없는 산문 · mock 힌트 없음) 줄 0."""
     from core.build import outline as OL
     out = []
     for lens, _ck in cks:
@@ -283,7 +283,7 @@ def outline_lines(doc_id, cks, rows):
         hs = ol.get("headings") or []
         tg = sum(1 for h in hs if h.get("target"))
         dr = sum(1 for h in hs if h.get("dropped"))
-        out.append(line("개요(제목" + (f" · 렌즈 {lens}" if lens else "") + ")", len(hs),
+        out.append(line("목차 노드화(제목" + (f" · 렌즈 {lens}" if lens else "") + ")", len(hs),
                         [("대상", tg, ""), ("주제", len(hs) - tg - dr, ""), ("버림", dr, "")]))
         if any("struct" in h or h.get("role") for h in hs):   # 문서 구조의 역할(B119 ①) — 같은 제목의 다른 가름
             rc = Counter(h.get("role") or "역할 없음" for h in hs)

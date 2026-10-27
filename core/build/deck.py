@@ -179,10 +179,22 @@ def hint_answer(doc_id):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
+def _cfgs(layers):
+    """그 문서의 층(렌즈) config — 없으면 좌표 층(덱은 층 힌트를 받는다 — 메타 회차 ④까지 그대로 · B148 ⑤)."""
+    from core.state.bootstrap import coord_layer, load_config
+    out = {}
+    for lay in list(layers or []) or [coord_layer()]:
+        try:
+            out[lay] = load_config(lay)
+        except (OSError, ValueError, KeyError) as e:
+            _LOG.warning("덱 구조 — 층 %s config를 읽지 못했다: %s", lay, e)
+    return out
+
+
 def decker(layers=None):
     """파서에 내려보낼 **덱 구조 함수** `fn(doc_id, slides, doc_coord=None)` — 실호출이면 ⑪(태그 `deck`) · mock이면 힌트 ·
     돌려주는 것은 검사가 끝난 판단 또는 None(판정 없음). `fn.key()`가 보존분의 판이다."""
-    cfgs = ST._cfgs(layers)
+    cfgs = _cfgs(layers)
     live = not gateway.use_mock()
 
     def fn(doc_id, slides, doc_coord=None):

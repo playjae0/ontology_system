@@ -99,7 +99,7 @@ def _now_key(env, cfg=None, outline=None):
 
 
 _LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
-          "config_extract": "층 config(추출 칸)", "outline": "개요"}
+          "config_extract": "층 config(추출 칸)", "outline": "목차 노드화"}
 
 
 def reuse_check(env, lens=None, cfg=None, outline=None, p=None):

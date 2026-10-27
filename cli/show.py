@@ -19,6 +19,7 @@
     python -m cli.show summary [--save <이름> | --diff <이름1> <이름2>]   전체 판 — 층 · 문서 · 큐 · 보류 · 재연결 · 불확실 · 값 (B118)
     python -m cli.show score  <doc_id> [--template] | --all   점수표 — 사람이 채운 정답표로 맞음 · 틀림 · 정답률 (B118)
     python -m cli.show near   [층] [--top N]                  중복 후보 — 같은 층 · 카테고리 · 부모 안에서 노드 벡터가 가까운 쌍(읽기 전용 · B136)
+    python -m cli.show structure --diff <저장 폴더>             구조 전후 비교 — 저장한 봉투(work/parsed 사본)와 지금 봉투 · 문서마다 청크 경계 · 시트 역할이 바뀐 시트 수 (B148)
     python -m cli.show log gate --by-pattern       게이트 거부를 삼항별로 · 넣을 config 줄 (B118)
 
 **진실은 `data/`의 JSON이다.** Cypher·Mermaid·임베딩은 전부 거기서 파생되는
@@ -666,6 +667,11 @@ def _aliases_cmd(args):
     return show_learn.cmd_aliases(args)
 
 
+def _structure_cmd(args):
+    from cli import show_structure                  # 구조 전후 비교는 제 파일에 산다 (B148 ③)
+    return show_structure.main(args)
+
+
 def main(argv):
     from cli import show_knobs as _knobs            # 손잡이 화면은 제 파일에 산다 (B91 ⑤)
     from cli._gate import require_knobs
@@ -678,7 +684,7 @@ def main(argv):
              "log": cmd_log, "extract": cmd_extract, "bm25": cmd_bm25,
              "report": cmd_report, "knobs": _knobs.cmd_knobs, "dist": _knobs.cmd_dist,
              "learned": _learn_cmd, "aliases": _aliases_cmd, "summary": _summary_cmd, "score": _score_cmd,
-             "near": _near_cmd}
+             "near": _near_cmd, "structure": _structure_cmd}
     if cmd not in table:
         raise SystemExit(f"알 수 없는 명령: {cmd}\n{__doc__}")                  # [사용법]
     return table[cmd](rest)

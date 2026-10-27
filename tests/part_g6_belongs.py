@@ -539,7 +539,7 @@ def _b140(did, rows, uses=None, rels=(), coord="노칭"):
     wb.save(path)
     struct_map.invalidate(did)
     env = pipeline.parse(BX, did, str(path), sheet_roles={"사양": "prose"}, closed_list=[],
-                         structure=_STR.structurer(["process"])).envelope
+                         structure=_STR.structurer()).envelope
     hints = {}
     for c in env["chunks"]:
         t = c.get("text") or ""
@@ -549,7 +549,8 @@ def _b140(did, rows, uses=None, rels=(), coord="노칭"):
         ents = []
         for w, k in words:
             bel = ({"name": (uses or {})[w], "category": None, "from": "본문"} if w in (uses or {}) else
-                   {"name": own["name"], "category": own["category"], "from": "제목"} if own else None)
+                   {"name": own["name"], "category": (B140_OUT.get(own["text"]) or {}).get("category"), "from": "제목"}
+                   if own else None)                       # 기대 변경(B148 ② — 사슬에 카테고리 0 · 카테고리는 목차 노드화 힌트)
             ents.append({"surface": w, "category": k, **({"belongs_to": bel} if bel else {})})
         rl = [{"src": a, "rel": r_, "dst": d_} for a, r_, d_ in rels if d_ in t]
         if ents or rl:

@@ -22,7 +22,6 @@ TARGETS = {
     "chunk_max_chars": (struct_map, ("CHUNK_MAX_CHARS",)),
     "sheet_thresholds": (form, ("SHEET_THRESHOLDS",)),
     "form_auto": (form, ("AUTO_MIN_FOR", "AUTO_MAX_AGAINST")),
-    "sheet_min_hits": (form, ("SHEET_MIN_HITS",)),
     "skeleton_column_pct": (tagger, ("SKELETON_COLUMN_PCT",)),
     "coord_pair_pct": (coord_pairs, ("COORD_PAIR_PCT",)),
     "structure_chunk_over": (struct_rule, ("CHUNK_OVER",)),

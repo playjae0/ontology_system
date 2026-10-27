@@ -54,8 +54,8 @@ def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
         out.append(f"  큐: parse_failure {queued}건 (같은 내용)")
     out.append("  ▶ 다음 줄:")
     out.append(f"     (문서를 고친 뒤)      python run.py ingest-file {doc}")
-    out.append(f"     양식이 바뀐 거면:     python -m cli.register generate "
-               f"{doc_type or '<doc_type>'} --revise")
+    from cli.register.recheck import revise_line
+    out.append(f"     양식이 바뀐 거면:     {revise_line(doc_type) if doc_type else revise_line('<doc_type>', {})}")
     return "\n".join(out)
 
 
@@ -578,7 +578,7 @@ def extract_screen(step=False, stage=None):
         k = info.get("단계")
         lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
         if k in ("추출리허설", "개요리허설"):           # 등록 검수의 리허설 산출 (B116 ②)
-            what = "추출" if k == "추출리허설" else "개요"
+            what = "추출" if k == "추출리허설" else "목차 노드화"
             if info["쓴다"]:
                 _screen.say(f"   {what} {lz}— 리허설 산출({info['종류']} 등록 검수)을 운영 자리로 옮겼다 · "
                             f"{paths.show(info['자리'])}", "head")
@@ -637,28 +637,29 @@ def extract_screen(step=False, stage=None):
 
 
 def _outline_line(info, lz, stage, step=False):
-    """**문서 개요 줄**(B115 ①) — 예고(제목 n → LLM ≤ 1회) · 끝(대상 · 주제 · 버림 + 대상 목록) · 재사용(LLM 0).
+    """**목차 노드화 줄**(B115 ① · B148 ②) — 예고(제목 n · 좌표 c → LLM ≤ 1회) · 끝(대상 · 주제 · 버림 + 대상 목록) · 재사용(LLM 0).
     `--step`이면 실호출이 있을 때 예고에서 묻는다(비용 전에 멈춘다 — `False`면 그래프 쓰기 0 · LLM 0)."""
     k = info["단계"]
     if k == "개요예고":
         if stage is not None:
             import time
-            stage.update({"이름": "개요", "값": 0, "총": info["호출"], "t0": time.monotonic()})
-        head = f"개요 예고 {lz}— 제목 {info['제목']:,} → LLM ≤ {info['호출']:,}회(제목 계층만 · 본문 0)"
+            stage.update({"이름": "목차 노드화", "값": 0, "총": info["호출"], "t0": time.monotonic()})
+        head = (f"목차 노드화 예고 {lz}— 제목 {info['제목']:,}(골격 이름 {info.get('좌표', 0):,} — 묻지 않는다) → LLM ≤ "
+                f"{info['호출']:,}회(목차 · 항목 아래 청크 수 · 본문 0)")
         if info.get("다시"):
             head += f" · 다시 묻는다 — {info['다시']}"
         _screen.say(f"   {head}", "head")
         if step and info["호출"] and sys.stdin.isatty():
             if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
-                print("   멈춤 — 개요 예고까지(LLM 0 · 그래프 쓰기 0) ▶ 같은 명령을 다시 친다")
+                print("   멈춤 — 목차 노드화 예고까지(LLM 0 · 그래프 쓰기 0) ▶ 같은 명령을 다시 친다")
                 return False
         return None
     cnt = (f"제목 {info['제목']:,} = 대상 {info['대상']:,} + 주제 {info['주제']:,} + 버림 {info['버림']:,}")
     if k == "개요재사용":
-        _screen.say(f"   개요 {lz}— 체크포인트 재사용(LLM 0) · {cnt} · {paths.show(info['자리'])}", "head")
+        _screen.say(f"   목차 노드화 {lz}— 체크포인트 재사용(LLM 0) · {cnt} · {paths.show(info['자리'])}", "head")
     else:
         where = f" · {paths.show(info['자리'])}" if info.get("자리") else " · 판정 없음(mock · 힌트 없음 — 전부 주제)"
-        _screen.say(f"   개요 끝 {lz}— {cnt} · {_screen.usage_line(info.get('since'))}{where}", "head")
+        _screen.say(f"   목차 노드화 끝 {lz}— {cnt} · {_screen.usage_line(info.get('since'))}{where}", "head")
     for path, name, cat in info.get("대상목록") or []:
         _screen.say(f"     제목 개체 {name}[{cat}] ← {path}", "aux")
     return None

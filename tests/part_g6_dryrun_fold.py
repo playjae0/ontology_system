@@ -73,8 +73,7 @@ from cli import sheet_gate as SG   # noqa: E402
 import contextlib, io               # noqa: E402,E401
 _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf):
-    SG.gate(str(ROOT / "tests/fixtures/raw/RFQ01.xlsx"), "XB96", "prose", dry_run=True,
-            lenses=["process"])
+    SG.gate(str(ROOT / "tests/fixtures/raw/RFQ01.xlsx"), "XB96", "prose", dry_run=True)   # 기대 변경(B148 ④ — 시트 관문은 층 0)
 _rg, _og = _run("register", "generate", "b96toc", "quality", str(ROOT / "tests/fixtures/raw/TOC01.xlsx"), "--allow-mock")
 _rv, _ov = _run("register", "review", "b96toc", "--no-llm-coord", "--allow-mock")
 show("ⓔ 시트 역할 관문 · 뷰 확인 끝에 사용량 줄(mock이면 0)",
@@ -100,7 +99,7 @@ _run("bootstrap")
 show("ⓕ 대소문자만 다른 표기가 사전·적중·좌표에서 맞는다(하나일 때만) · 둘 이상이면 미스",
      _d.lookup("notching") == ["N1"] and _d.lookup("Nc") == [] and _d.lookup("NC") == ["A"]
      and _score("NOTCHING 공정", {"notching"}) == 1
-     and _FORM._hits({"cells": {"A1": "NOTCHING 사양"}}, {"notching"}) == 1
+     # 기대 변경(B148 ④ — 시트 역할의 어휘 적중을 걷었다 · 그 자리의 대소문자 대조는 지움)
      and _plans and _plans[0]["정확_일치"] == 1 and _plans[0]["표기_종수"] == 0
      and "노칭" in _EX.attach_candidates("NOTCHING"),
      f"{_d.lookup('notching')} · {_EX.attach_candidates('NOTCHING')[:2]}")

@@ -273,7 +273,7 @@ for _mode in ("rules", "ladder"):
     struct_map.invalidate("B130T")
     with Live(by={"structure": lambda b: _LAD9 if b.get("task") == "ladder" else {"answers": [], "edits": [], "rules": []}}):
         _m9[_mode] = pipeline.parse(BX, "B130T", str(_td / "B130T.xlsx"), closed_list=[],
-                                    structure=_ST.structurer(["process"])).report["structure"]["프레임"]["사양"]
+                                    structure=_ST.structurer()).report["structure"]["프레임"]["사양"]
 _ST.MODE = "ladder"
 _tr9 = {k: {h["row"]: h.get("parent") for h in f["headings"]} for k, f in _m9.items()}
 _cl9 = {k: {n["row"]: n["why"] for n in f["needs"] if n["kind"] == "ⓒ"} for k, f in _m9.items()}
@@ -285,7 +285,7 @@ show("B139 ⓑ 충돌의 기본값 — B130 꼴이 rules · ladder 둘 다 가. 
 _old9 = {**_par, 4: 2, 6: 2, 11: 2, 16: 2}
 _lab9 = _m9["rules"]["labels"]
 _ed9 = lambda row, parent: _SE.apply_edits("B130T", "사양", _lab9, [{"row": r, "parent": p, "role": None} for r, p in _old9.items()],  # noqa: E731
-                                           {"edits": [{"row": row, "what": "부모 바꿈", "parent": parent}], "headings": []}, [])[0]
+                                           {"edits": [{"row": row, "what": "부모 바꿈", "parent": parent}], "headings": []})[0]   # 기대 변경(B148 ① — 고침 검사는 층을 모른다 · 카테고리 목록 인자 0)
 _hd9 = {h["row"]: h.get("parent") for h in _ed9(4, 1)}
 _mid9 = {h["row"]: h.get("parent") for h in _ed9(11, 1)}
 show("B139 ⓐ 목록 단위 — 「가.」를 「1.」 아래로 옮기면 「나.」 · 「다.」 · 「라.」와 그 아래 「1)」 · 「2)」가 함께(나무가 갈리지 않는다 — 어댑터 목차와 같다) · "

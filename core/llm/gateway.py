@@ -78,8 +78,8 @@ POINTS = {
     "struct_map": "⑦구조 지도 패스",
     "answer": "⑧답변 생성",
     "coord_tag": "⑨좌표 태깅 (닫힌 목록 선택 또는 null)",
-    "sheet_role": "⑩시트 역할 판정 (prose/ref + 이유 — 렌즈 층 정의문 주입)",
-    "outline": "⑪문서 구조 (시트마다 줄 이름표 · 제목 목록 — 제목 줄의 단 · 역할 · 대상)",
+    "sheet_role": "⑩시트 역할 판정 (prose/ref + 이유 — 시트 이름 · 표본 줄만 · 층 어휘 0)",
+    "outline": "⑪문서 구조 · 목차 노드화 (사다리 · 시트 확인 · 덱 — 층 0 · 목차 노드화 — 제목마다 이 층의 노드 · 카테고리)",
     "reinforce": "⑫연결 보강 (엣지 없는 개체 — 닫힌 후보 안에서 소속·관계 + 근거 문장)",
 }
 
@@ -578,10 +578,10 @@ def usage_by(doc_id=None):
 
 
 #: **갈래 이름**(B139 ⑤ — 끝 표의 줄) — 태그 · 지점의 짧은 이름 · 한 지점 안에서 갈리는 호출(⑪ — 구조 사다리 · 시트 확인 ·
-#: 개요 · 덱)은 태그가 가르고 태그 하나 안에서 또 갈리면 호출부가 `branch(이름)`으로 말한다(구조 사다리)
+#: 목차 노드화 · 덱)은 태그가 가르고 태그 하나 안에서 또 갈리면 호출부가 `branch(이름)`으로 말한다(구조 사다리)
 BRANCHES = {"extract": "추출", "judge": "판정", "embed": "임베딩", "image_summary": "그림 요약", "generate": "생성", "interview": "문답",
             "link": "질의 링킹", "struct_map": "구조 지도", "answer": "답변", "coord_tag": "좌표 태깅", "sheet_role": "시트 역할",
-            "outline": "개요", "structure": "시트 확인", "deck": "덱", "reinforce": "보강", "chat": "사전 점검"}
+            "outline": "목차 노드화", "structure": "시트 확인", "deck": "덱", "reinforce": "보강", "chat": "사전 점검"}
 _BRANCH = []
 #: 갈래 × 문서별 누계 — `{(갈래, 지점, doc_id): {calls, prompt, completion}}`(`_account`가 `USAGE_BY`와 같은 자리에서 센다)
 USAGE_BRANCH = {}

@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""칸 3.4 — **제목 개체** — 문서 개요가 「대상」으로 정한 제목을 노드로 · 상위로 올라가는 폴백 사슬 (B115 ②③).
+"""칸 3.4 — **제목 개체** — 목차 노드화가 「대상」으로 정한 제목을 노드로 · 상위로 올라가는 폴백 사슬 (B115 ②③ · B148 ②).
 
-개요(`core/build/outline.py` — 지점 ⑪)가 제목마다 대상 `{name, category}` 또는 주제를 정했다. 여기서 하는 일 둘:
+목차 노드화(`core/build/outline.py` — 지점 ⑪)가 제목마다 대상 `{name, category}` · 좌표(`coord` — 골격 이름 제목) 또는 주제를
+정했다. 여기서 하는 일 둘:
 
 1. **노드로 세운다**(`land`) — 제목 트리 순서(부모 먼저)로 지금의 공통 해소 길(`Builder.resolve_at_home` — 다른 공정
    이름 가드 · 사전 → 재생 → 판정 · 다른 문서의 같은 유닛과 만나면 붙는다)을 지난다. 이름 규칙 그대로 — 가장 가까운
    위 제목 개체가 골격이면 그것이 좌표 · `nest_categories`면 그 이름 아래. 좌표 · 극성 · 증거는 그 제목 아래 **첫 조각**의
    것이다. 대장 행은 역할 `heading`(위치 = 제목 경로 · 열 = 카테고리) — 재구축이 재생한다(`replay.ROLES`).
    제목 트리의 부모-자식은 **카테고리쌍 매핑**의 관계로 잇는다(`belongs.edge_of` — 두 방향) — 매핑이 없으면 그
-   위로 올라가고(결함 로그) · 맨 위까지 없으면 좌표 폴백(지금 규칙).
+   위로 올라가고(결함 로그) · 맨 위까지 없으면 좌표 폴백(지금 규칙). **좌표 제목**(B148 ②)은 해소 대신 다른 공정 가드(`other_process`
+   — `resolve_at_home`의 첫 단계와 같은 함수) → 골격 노드(`resolve_anchor` 조회만 · 극성 하강은 그 아래 첫 조각의 극성) — 골격 자신이라
+   트리 엣지 · 폴백 0 · 그 아래 청크의 소속 후보 · 폴백 사슬에 그 골격 노드가 제목 노드 자리로 선다.
 2. **폴백 사슬의 재료**(`chain_for`) — 조각 하나 위의 제목 개체 노드를 가까운 것부터 `[(node_id, 그래프, 단)]`.
    산문 개체가 소속 · 관계 · 스키마 어느 엣지에도 서지 못하면 `loop.fallback_untouched`가 이 사슬을 먼저 타고
    (`폴백(제목 n단)` — n은 제목 트리의 깊이 · 맨 위 = 1단) 그다음 좌표(`폴백`)로 간다.
@@ -58,6 +61,23 @@ def _kw(b, src, prov):
     return ref, ref_g, (ref_g.get(ref)["canonical"] if ref else None), b.anchor_polarity(ref, ref_g)
 
 
+def _coord(b, name, cat, prov, src, ref, ref_g):
+    """좌표 제목의 착지 — `(node_id, 그래프)` 또는 `(None, None)` · 다른 공정이면 관련 링크(노드 0) · 아니면 골격 노드(판정 0 · 큐 0)."""
+    other = b.other_process(name, (ref, ref_g))
+    if other is not None:
+        b._mention(name, cat, prov, other)
+        return None, None
+    nid, g = b.resolve_anchor(name, cat, prov, defer=[])
+    if not nid:
+        b.last = {"canonical": name, "verdict": "pending", "path": "none", "layer": b.layer}
+        return None, None
+    nid = b.descend_anchor(nid, src.get("electrode_type"), g) or nid
+    b.last = {"canonical": g.get(nid)["canonical"], "verdict": "match", "path": "skeleton", "confidence": 1.0,
+              "layer": getattr(g, "layer", b.layer), "queue_kind": None, "candidates_n": 0, "node_id": nid,
+              "category": cat, "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
+    return nid, g
+
+
 def land(b, cfg, graph, env, ol, chunk_id_of):
     """제목 개체를 노드로 — `{제목 id: (node_id, 그래프, 깊이)}`. `chunk_id_of`는 위치 → 청크 id(증거)."""
     from core.build import loop
@@ -84,9 +104,13 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
             else:                                   # 이름에 소속 — 부모 제목 개체 아래 (B102 ⑤ · 한 함수 B119 ④)
                 parent = name_parent(cat, un.get("canonical"), parent, b.cfg)
                 owner = (uid, ug)
-        nid, eb = b.resolve_at_home(name, cat, prov, coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
-                                    parent_canonical=parent, anchor_polarity=pol,
-                                    coord_surface=src.get("process_ref"), at=(h["path"], cat), owner=owner)
+        cg = None
+        if h.get("coord"):                          # 골격 이름 제목 — 좌표 (B148 ②)
+            (nid, cg), eb = _coord(b, name, cat, prov, src, ref, ref_g), b
+        else:
+            nid, eb = b.resolve_at_home(name, cat, prov, coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
+                                        parent_canonical=parent, anchor_polarity=pol,
+                                        coord_surface=src.get("process_ref"), at=(h["path"], cat), owner=owner)
         last = eb.last or {}
         row = b.ledger.add(locator=h["path"], field=cat, role=ROLE, surface=name,
                            canonical=last.get("canonical"), layer=last.get("layer") or b.layer,
@@ -99,7 +123,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            apart=last.get("apart"), similar=last.get("similar"))
         if not nid:
             continue
-        hg = b.graph_of(nid) or graph
+        hg = cg or b.graph_of(nid) or graph
         b.buffer[norm(name)] = nid                  # 같은 문서의 소속 이름이 이 노드를 찾는다(버퍼 · B102 ④)
         landed[h["id"]] = (nid, hg, h["depth"])
         if _is_coord(hg.get(nid)):

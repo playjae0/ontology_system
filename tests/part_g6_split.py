@@ -8,6 +8,7 @@
   ⓕ `--split-only` — 추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`
   B127 ⓓ 확정한 시트에 힌트 → 확정을 비켜 두고 기록된 힌트 + 새 힌트로 다시 → `c`면 새 나무 · 쌓인 힌트 · ⓔ `q`면 기록 그대로
   B130 힌트는 사다리 고침(문서 규칙 — 둘째 시트에도) · 확정 → 재생 · 옛 확정은 다시
+  B148 ⓔ 카테고리가 든 옛 확정 기록 — 나무 · 이름은 확정 그대로 · 봉투 · 화면 · md에 카테고리 칸 0 · ⓖ `show structure --diff` — 바뀐 시트 1
 네 벌(ⓖ)은 마감 한 줄의 네 벌 단계가 잰다. (B132 — `edit` · `llm` 방식 · 형태 단서를 지워 그 어서션 ⓐ · ⓓ · ⓔ를 지웠고 나무 화면 문면(B130 ⓓ)은
 사다리 조각 ⓖ가 잰다)
 """
@@ -65,7 +66,7 @@ def _xlsx():
 
 
 def _parse(p, structure="ladder", confirmed=None):
-    st = None if structure is None else ST.structurer(["process"])
+    st = None if structure is None else ST.structurer()
     res = pipeline.parse(BX, DID, str(p), closed_list=[], sheet_roles={n: "prose" for n in SHEETS},
                          structure=st, structure_confirmed=confirmed)
     return res
@@ -208,14 +209,14 @@ def _rule_llm(body):
     적용한다)."""
     if body.get("task") == "ladder":
         return _ladder(body)
-    said = [{"shape": "가.", "role": "대상", "category": "Unit", "parent_shape": None, "said": "'가.' 줄은 유닛(대상)의 단"}]
+    said = [{"shape": "가.", "role": "대상", "parent_shape": None, "said": "'가.' 줄은 대상의 단"}]
     return {"answers": _body_answers(body), "edits": [],
             "rules": said if any(RULE_HINT in h for h in body.get("hints") or []) else []}
 
 
 def _parse2(confirmed=None):
     return pipeline.parse(BX, DID2, str(_p2), closed_list=[], sheet_roles={S1: "prose", S2: "prose"},
-                          structure=ST.structurer(["process"]), structure_confirmed=confirmed)
+                          structure=ST.structurer(), structure_confirmed=confirmed)
 
 
 struct_map.invalidate(DID2)
@@ -229,11 +230,12 @@ _screen.ask = _ask0
 _scr = _buf.getvalue()
 _fr9 = _r9.report["structure"]["프레임"]
 _s2calls = [b for p_, b in CALLS if p_ == "structure" and b.get("frame") == S2]
-_tgt = {f: {h["row"]: (h.get("role"), h.get("name"), h.get("category")) for h in _fr9[f]["headings"]} for f in (S1, S2)}
-show("ⓔ 문서 규칙 — 첫 시트 힌트 → 사다리 고침(서명 가. · 대상 · Unit) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
+# 기대 변경(B148 ① — 사다리 고침은 역할만 건다 · 카테고리 칸 0 · 카테고리는 그래프 단계의 목차 노드화)
+_tgt = {f: {h["row"]: (h.get("role"), h.get("name")) for h in _fr9[f]["headings"]} for f in (S1, S2)}
+show("ⓔ 문서 규칙 — 첫 시트 힌트 → 사다리 고침(서명 가. · 대상) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
      "화면에 적용 수 · 묻는 줄에 줄 고침 명령 0",
-     _go and _tgt[S1].get(1) == ("대상", "공급부", "Unit") and _tgt[S1].get(4) == ("대상", "적층부", "Unit")
-     and _tgt[S2].get(1) == ("대상", "이송부", "Unit") and _tgt[S2].get(3) == ("대상", "반전부", "Unit")
+     _go and _tgt[S1].get(1) == ("대상", "공급부") and _tgt[S1].get(4) == ("대상", "적층부")
+     and _tgt[S2].get(1) == ("대상", "이송부") and _tgt[S2].get(3) == ("대상", "반전부")
      and _s2calls and RULE_HINT in (_s2calls[-1].get("hints") or [])          # 힌트 뒤 둘째 시트의 첫 호출부터(파싱 첫 판은 힌트 전)
      and "적용 2줄 / 그 서명 전체 2줄" in _scr and _prompts and not any("고침" in x for x in _prompts),
      f"S1 {_tgt[S1]} · S2 {_tgt[S2]} · S2 호출 {len(_s2calls)} · 힌트 {[b.get('hints') for b in _s2calls]} · 적용 줄 "
@@ -248,6 +250,35 @@ show("ⓔ 확정 → 재구축 재생 — 구조 LLM 0 · 같은 나무 · 기�
      and all(_r10.report["structure"]["프레임"][f]["headings"] == _fr9[f]["headings"] for f in (S1, S2))
      and all(v.get("toc") == toc.TOC_VERSION and v.get("doc_hints") == [RULE_HINT] and v.get("doc_rules")
              for v in _rec.values()), f"재생 호출 {len(CALLS)} · 기록 {sorted(_rec)}")
+# B148 ③ — 카테고리가 든 옛 확정 기록(B148 전 꼴): 나무 · 이름은 확정 그대로 · 카테고리 칸은 읽지 않는다(기록은 지우지 않는다)
+_raw148 = json.loads(ST.confirmed_path().read_text(encoding="utf-8"))
+
+
+def _with_cat(x):
+    if isinstance(x, dict):
+        return {**{k: _with_cat(v) for k, v in x.items()}, **({"category": "Unit"} if x.get("name") else {})}
+    return [_with_cat(v) for v in x] if isinstance(x, list) else x
+
+
+ST.confirmed_path().write_text(json.dumps({**_raw148, DID2: _with_cat(_raw148[DID2])}, ensure_ascii=False), encoding="utf-8")
+ST.DOC.pop(DID2, None)
+struct_map.invalidate(DID2)
+CALLS.clear()
+with Live(by={"structure": _rule_llm}), contextlib.redirect_stdout(io.StringIO()):
+    _r12 = _parse2(confirmed=ST.confirmed_of(DID2))
+    _md12 = SS.md_of(DID2, _r12)
+_txt12 = _md12.read_text(encoding="utf-8") if _md12 else ""
+_fr12 = _r12.report["structure"]["프레임"]
+show("ⓔ 카테고리가 든 옛 확정 기록 — 나무 · 이름은 확정 그대로(구조 LLM 0) · 봉투에 카테고리 칸 0(카테고리는 목차 노드화가 정한다) · "
+     "구조 확인 화면 · md에 카테고리 칸 0 · 기록은 그대로",
+     not [1 for p_, _b in CALLS if p_ == "structure"]
+     and all(_fr12[f]["headings"] == _fr9[f]["headings"] for f in (S1, S2))
+     and '"category"' not in json.dumps(_r12.envelope, ensure_ascii=False)
+     and "카테고리" not in _scr and _txt12 and "카테고리" not in _txt12 and "Unit" not in _txt12
+     and '"category"' in ST.confirmed_path().read_text(encoding="utf-8"),
+     f"재생 호출 {len(CALLS)} · 나무 같음 {[_fr12[f]['headings'] == _fr9[f]['headings'] for f in (S1, S2)]} · md "
+     f"{len(_txt12)}자")
+ST.confirmed_path().write_text(json.dumps(_raw148, ensure_ascii=False), encoding="utf-8")
 _raw = json.loads(ST.confirmed_path().read_text(encoding="utf-8"))
 for _v in _raw[DID2].values():
     _v.pop("toc", None)                                 # B130 전의 확정 — 판이 없다
@@ -284,5 +315,20 @@ show("ⓕ `--split-only` — 구조까지(추출 0 · 그래프 쓰기 0) · md�
      data_hash() == _h0 and _md_p.exists() and WHY["대상"] in _md_p.read_text(encoding="utf-8")
      and "구조까지" in _out and "추출" not in "".join(ln for ln in _out.splitlines() if ln.strip().startswith("[단계]")),
      " / ".join(ln.strip() for ln in _out.splitlines() if "구조까지" in ln or "split_" in ln)[:300])
+
+# ────────────────────────────────────────────────────────────── B148 ③ 전후 비교 — show structure --diff
+import shutil as _sh148                                   # noqa: E402
+_saved = TMP / "parsed_saved"
+_sh148.rmtree(_saved, ignore_errors=True)
+_sh148.copytree(_P.work("parsed"), _saved)
+_pe = json.loads((_saved / f"{DID}.json").read_text(encoding="utf-8"))
+_u = next(u for u in (_pe.get("structure") or {}).get("units") or [] if len(u.get("chunks") or []) >= 2)
+_gone = _u["chunks"].pop()                               # 저장본 한 시트의 청크 경계를 바꾼다(끝 청크를 앞 청크에 합친 꼴)
+_pe["chunks"] = [c for c in _pe["chunks"] if c.get("source_locator") != _gone]
+(_saved / f"{DID}.json").write_text(json.dumps(_pe, ensure_ascii=False), encoding="utf-8")
+_od = _run("show", "structure", "--diff", str(_saved))
+_sum = next((ln for ln in _od.splitlines() if ln.strip().startswith("합 —")), "")
+show("ⓖ 전후 비교 — 봉투 폴더 둘(한 시트의 청크 경계를 바꾼 사본) → 바뀐 시트 1 · 역할이 바뀐 시트 0",
+     "청크 경계가 바뀐 시트 1" in _sum and "시트 역할이 바뀐 시트 0" in _sum, _sum.strip() or _od[-200:])
 
 done()

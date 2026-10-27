@@ -14,14 +14,20 @@ G4E). 킷은 core를 모르므로 subprocess로 부르고 층 자리를 건넨�
 
 **부착 대상 규칙**(B147 ① — 관문 G4J와 같은 함수 `parser.attach_rule`)도 같은 하위 실행이 싣는다 — 속성 · 내용의
 `attach_to_field`가 개체 열이 아니면 **⚠**(멈추지 않음 — 인입하면 그 값은 보류된다) · 줄에 필드 · 대상 · 붙일 수 있는 선언
-필드 · 다음 줄(`register generate <dt> --revise`). 이미 등록된 스키마는 자동으로 고치지 않는다(사람이 다시 등록한다).
+필드 · 다음 줄. 이미 등록된 스키마는 자동으로 고치지 않는다(사람이 다시 등록한다).
+
+**재등록 다음 줄은 그대로 쳐서 도는 꼴이다**(B148 ⑦ — `revise_line` 한 자리 · 재대조 ⚠ · FAIL · 인입 사전 점검 · 인입 실패 블록이 같은
+함수): `python -m cli.register generate <dt> <등록 층> <표본...> --revise` — 층은 스키마의 `layer` · 표본은 그 종류 등록 상태의 표본이
+전부 있으면 그것(따옴표 처리) · 아니면 자리표시 `<표본...>` · mock이면 끝에 `--allow-mock`.
 """
 from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 from core import paths
 from core.state import registry
@@ -30,6 +36,27 @@ KIT = paths.ROOT / "kit"
 #: 판정 태그 → 고칠 자리(층 config 키)
 _FIX = {"G4C": "categories(또는 relation_patterns)", "G4D": "relations",
         "G4E": "relation_patterns"}
+
+
+def _exists(sample):
+    p = Path(sample)
+    return (p if p.is_absolute() else paths.ROOT / p).exists()
+
+
+def revise_line(dt, schema=None):
+    """재등록 다음 줄(B148 ⑦) — `python -m cli.register generate <dt> <등록 층> <표본...> --revise`."""
+    if schema is None:
+        sc = registry.schema_path(dt)
+        schema = json.loads(sc.read_text(encoding="utf-8")) if sc and sc.exists() else {}
+    sp = paths.review(dt, "state.json")                      # 읽기만(폴더를 만들지 않는다 — 점검은 운영 폴더를 읽기만 · B111)
+    try:
+        got = [str(s) for s in (json.loads(sp.read_text(encoding="utf-8")).get("samples") or [])] if sp.exists() else []
+    except (OSError, ValueError):
+        got = []
+    smp = " ".join(shlex.quote(s) for s in got) if got and all(_exists(s) for s in got) else "<표본...>"
+    from core.llm import gateway
+    allow = " --allow-mock" if gateway.use_mock() else ""        # mock이면 mock 관문의 플래그까지(그대로 쳐서 돈다)
+    return f"python -m cli.register generate {dt} {(schema or {}).get('layer') or '<층>'} {smp} --revise{allow}"
 
 
 def _speaks(cfg, category):
@@ -72,13 +99,12 @@ def run():
                 fl = m.group(1) if m else lay
                 fix = (f"{paths.show(paths.layers(fl, 'config.json'))}의 {_FIX[tag]}"
                        if tag else "스키마와 층 config를 대조한다")
-                redo = (f" · 또는 python -m cli.register generate {dt} --revise"
-                        if schema.get("payload_kind") != "prose" else "")
+                redo = (f" · 또는 {revise_line(dt, schema)}" if schema.get("payload_kind") != "prose" else "")
                 out.append((dt, False, f"{dt:<14} FAIL — {f.replace('[FAIL] ', '')[:200]}\n"
                                        f"               다음 줄: {fix}{redo}"))
         for a in j.get("attach") or []:                    # 부착 대상 규칙 — ⚠ (B147 ①)
             out.append((dt, False, f"{dt:<14} ⚠ 부착 대상 — {a}\n"
-                                   f"               다음 줄: python -m cli.register generate {dt} --revise "
+                                   f"               다음 줄: {revise_line(dt, schema)} "
                                    f"(인입은 멈추지 않는다 — 그 값은 보류된다)"))
         if schema.get("payload_kind") == "prose" and lay:
             try:

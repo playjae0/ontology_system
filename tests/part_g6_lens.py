@@ -161,7 +161,7 @@ _RFQ = str(ROOT / "tests/fixtures/raw/RFQ01.xlsx")
 def _gate(doc_id, **kw):
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        out = SG.gate(_RFQ, doc_id, "prose", lenses=["process"], **kw)
+        out = SG.gate(_RFQ, doc_id, "prose", **kw)           # 기대 변경(B148 ④ — 시트 관문은 층을 모른다 · lenses 인자 0)
     return out, _screen.strip_ansi(buf.getvalue())
 
 
@@ -183,7 +183,7 @@ SH.path("XB91A").unlink(missing_ok=True)
 _ra, _ao = _gate("XB91A", spec=SG.AUTO)
 _rec_a = SH.read("XB91A") or {}
 _real_j = PT.sheet_judge
-PT.sheet_judge = lambda: (lambda name, sample, info: {"role": "prose", "reason": "시험 — 전부 prose"})
+PT.sheet_judge = lambda: (lambda name, sample: {"role": "prose", "reason": "시험 — 전부 prose"})   # 기대 변경(B148 ④ — 표본 줄만)
 try:
     SH.path("XB91B").unlink(missing_ok=True)
     _rb, _bo = _gate("XB91B", spec=SG.AUTO)
@@ -214,6 +214,32 @@ show("② LLM 제안은 끌 수 있다(플래그) — 표의 LLM 열이 「끔�
      _o_n.splitlines()[0][:70])
 for _d in ("XB91H", "XB91A", "XB91B"):
     SH.path(_d).unlink(missing_ok=True)
+
+
+# B148 ④ — 시트 역할은 모양만(층 어휘 적중 0): 층 어휘를 바꿔도 같은 제안 · 사람 기록이 이긴다 · 폐기한 손잡이는 안내
+def _sug():
+    rows = SG.rows_of(_RFQ)
+    SG.judge(rows)
+    return {r["name"]: (r["logic"], r["llm"], r["suggest"]) for r in rows}
+
+
+_s0 = _sug()
+for _l in ("process", "quality"):
+    _rw(_P.layers(_l, "config.json"), lambda c: c.update(
+        relevance_terms=list(_s0), categories={**c["categories"], "Price148": "견적의 가격 · 납기 항목"}))
+_s1 = _sug()
+_pick = next(n for n, (_lg, _lm, s) in _s0.items() if s == "prose")
+SH.write("XB91R", _RFQ, {n: ("ref" if n == _pick else s) for n, (_lg, _lm, s) in _s0.items()}, "gate")
+(_rr, _sr), _ro = _gate("XB91R", ask=False)
+SH.path("XB91R").unlink(missing_ok=True)
+_knobs_file({"sheet_min_hits": 3})
+_rck, _ok = _run("show", "knobs")
+_knobs_file(None)
+show("ⓕ 시트 역할 — 렌즈 층 어휘(관련어 · 카테고리)를 바꿔도 같은 시트의 제안이 같다 · 사람 기록이 이긴다(제안과 달라도 기록대로) · "
+     "`sheet_min_hits`가 든 손잡이 파일은 폐기 안내(지울 키 · 다음 줄)",
+     _s0 == _s1 and (_rr or {}).get(_pick) == "ref"
+     and _rck != 0 and "폐기한 키" in _ok and "sheet_min_hits" in _ok and "다음 줄" in _ok and "Traceback" not in _ok,
+     f"제안 같음 {_s0 == _s1} · 기록 시트 {_pick} → {(_rr or {}).get(_pick)} · 손잡이 {_ok.strip().splitlines()[0][:70]}")
 
 # ────────────────────────────────────────────────────────────── ③
 print("\n■ B91 ③ prose 좌표 셋 — 주 좌표 · 개체별 부모 · 관련 링크")

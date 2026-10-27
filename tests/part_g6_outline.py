@@ -16,6 +16,8 @@
   ⓒ 연결 보강: 재연결 뒤 엣지 없는(층 quality) · 공정에만 붙은(층 process) 개체가 후보 안에서 근거 문장과 함께 붙는다 ·
      후보 밖 id · 원문에 없는 근거는 버린다 · 재구축(기본 fresh → 다시 넣기)에서 재생(LLM 0 — 추출 · 개요 · 보강 호출 0)
   ⓓ 엑셀 · Word · PPT가 같은 함수(PPT는 슬라이드 제목 · 구획이 개요) · 표 문서는 제목이 없어 개요 0
+  B148 ⓓ 골격 이름 제목(문서 좌표 「노칭」 · 제목 「노칭 타발」)은 목차 노드화에 묻지 않고 골격 노드 — 새 노드 0 · 그 아래 개체가 그 골격
+     노드에 · 다른 공정 이름 제목(「스태킹」)은 가드 그대로(개요 = 목차 노드화 — B148 ② 용어)
 """
 from __future__ import annotations
 
@@ -33,7 +35,7 @@ import make_b88 as MB                                   # noqa: E402 — Word �
 from fake_gateway import CALLS, Live                    # noqa: E402
 from g6_common import _register, _unregister            # noqa: E402
 from openpyxl import Workbook                           # noqa: E402
-from core.build import ledger as LG, outline as OL, reinforce as RF   # noqa: E402
+from core.build import ledger as LG, outline as OL, reconcile as RC, reinforce as RF   # noqa: E402
 from core.state.world import World                      # noqa: E402
 from parser import pipeline, struct_map, tagger as TG, tuning   # noqa: E402
 from parser.adapters import basic_docx as DX, basic_ppt as PX, basic_prose_xlsx as BX   # noqa: E402
@@ -73,10 +75,10 @@ def _setup():
     tuning.apply({"chunk_rows": [1, 2]})
 
 
-def _xlsx(path):
+def _xlsx(path, sheets=None):
     wb = Workbook()
     wb.remove(wb.active)
-    for name, rows in XL.items():
+    for name, rows in (sheets or XL).items():
         ws = wb.create_sheet(title=name)
         for r, v in enumerate(rows, 1):
             ws.cell(row=r, column=1, value=v)
@@ -142,12 +144,13 @@ WORDS = (("모터", "Component"), ("실린더", "Component"), ("벨트", "Compon
 
 
 def _outline(body):
-    # 기대 변경(B119 ① — 제목 목록 호출도 문서 구조와 한 계약: `lines` → `headings[{row, parent, role, name, category}]`)
+    # 기대 변경(B148 ② — 목차 노드화의 입력은 메타 목차 `toc[{id, path, text, parent, depth, role, name, chunks, body_lines}]` ·
+    # 답은 `headings[{id, role, name, category}]` — 메타가 역할을 정한 제목은 그 역할 · 이름 그대로 · 카테고리만)
     out = []
-    for ln in body["lines"]:
-        t = OUT.get(ln["text"])
-        out.append({"row": ln["row"], "parent": ln.get("fixed_parent"), "role": "대상" if t else "주제",
-                    "name": (t or {}).get("name"), "category": (t or {}).get("category")})
+    for h in body["toc"]:
+        t = OUT.get(h["text"])
+        out.append({"id": h["id"], "role": h.get("role") or ("대상" if t else "주제"),
+                    "name": h.get("name") or (t or {}).get("name"), "category": (t or {}).get("category")})
     return {"headings": out}
 
 
@@ -381,6 +384,30 @@ _od.append(("표", OL.tree(_cp)["headings"] == [] and not _rows("B115DT", "headi
             and OL.load("B115DT") is None, f"표: 제목 {OL.tree(_cp)['headings']} · 제목 개체 행 {len(_rows('B115DT', 'heading'))}"))
 show("ⓓ Word(제목 스타일) · PPT(덱 › 구획 › 슬라이드 제목)도 같은 함수 — 개요가 대상으로 정한 제목에 붙는다 · 표 문서는 제목 "
      "계층이 없어 개요 · 제목 개체 0", all(o for _f, o, _d in _od), " ‖ ".join(d for _f, _o, d in _od))
+
+# ────────────────────────────────────────────────────────────── B148 ② 골격 이름 제목
+print("\n■ B148 ② 골격 이름 제목 — 좌표로(묻지 않는다 · 새 노드 0) · 다른 공정은 가드 그대로")
+_XD = {"노칭 사양": ["1. 노칭 타발", "모터는 서보 모터를 쓴다.", "2. 스태킹", "벨트는 평벨트를 쓴다."]}
+_setup()
+struct_map.invalidate("B148D")
+_ed = pipeline.parse(BX, "B148D", str(_xlsx(TMP / "B148_노칭.xlsx", _XD)), closed_list=TG.closed_list("process"),
+                     doc_coord="노칭", sheet_roles={"노칭 사양": "prose"}).envelope
+_ed["doc_type"] = "b115_process"
+for _c in _ed["chunks"]:
+    _c["doc_type"] = _ed["doc_type"]
+_nodes0 = {n["id"] for _l, n in World().nodes()}
+_nd, _cd = _run(_ed, {})                                 # 목차 노드화의 답 비움 — 골격 이름 제목은 묻지 않는다
+_asked = [h["text"] for p, b in _cd if p == "outline" for h in b["toc"]]
+_new = sorted(n["canonical"] for _l, n in World().nodes() if n["id"] not in _nodes0 and ops.is_live(n))
+_hd = {r["surface"]: r.get("node_id") for r in _rows("B148D", "heading")}
+_clash = RC.guard_clashes(OL.load("B148D"), _rows("B148D", "heading"))
+_mo = _att("B148D", "모터")
+show("ⓓ 문서 좌표 「노칭」 산문의 제목 「노칭 타발」(골격 자식 단) — 목차 노드화에 묻지 않고 골격 노드로(새 노드 0 · 제목 개체 = 골격 "
+     "노드) · 그 아래 개체가 그 골격 노드에 붙는다 · 「스태킹」(다른 공정)은 가드 그대로(노드 0 · 부딪힘 1)",
+     "1. 노칭 타발" not in _asked and "2. 스태킹" not in _asked and not [n for n in _new if "타발" in n or "스태킹" in n]
+     and _hd.get("노칭 타발") and not _hd.get("스태킹") and len(_mo) == 1 and _mo[0][1].endswith("노칭 타발")
+     and _mo[0][0].startswith("폴백(제목") and len(_clash) == 1 and "스태킹" in _clash[0],
+     f"물은 제목 {_asked} · 새 노드 {_new} · 제목 개체 {_hd} · 모터 {_mo} · 부딪힘 {_clash}")
 
 for _lay in ("process", "quality"):
     _unregister(f"b115_{_lay}")                          # 등록 단은 클린이 남긴다 — 다음 스위트가 보지 않게 치운다

@@ -145,7 +145,7 @@ def code_ladder(frames):
     out = {}
     for s in sorted(first, key=lambda s: (level[s], first[s])):
         out.setdefault(level[s], []).append(s)
-    return {"levels": [{"sigs": out[k], "role": None, "category": None} for k in sorted(out)], "by": "코드"}
+    return {"levels": [{"sigs": out[k], "role": None} for k in sorted(out)], "by": "코드"}
 
 
 def rank_of(ladder):

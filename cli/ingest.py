@@ -185,7 +185,7 @@ def select(doc, doc_type=None, adapter_paths=None):
         return {**out, "status": "none",
                 "reason": f"자격 있는 어댑터 0건 — {why}. "
                           f"다음: --doc-type <dt> 또는 "
-                          f"python -m cli.register generate <dt> --revise"}
+                          f"python -m cli.register generate <dt> <층> <표본...> --revise"}
     # 차이 내역은 **개수만** — 열 이름 전부를 문서마다 늘어놓으면 목록이 읽히지 않는다.
     # 자세한 내역은 `run.py scan <문서>`가 낸다(같은 대조).
     diffs = [f"{x['doc_type']}(누락 {len(x['missing'])}·잉여 {len(x['extra'])})"
@@ -313,8 +313,7 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True, coord=None):
     거부 문면은 `sheet_gate.gate()` 한 벌이다(등록 표본과 같은 함수 · B86 ⑤).
     """
     kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
-    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask,
-                          lenses=registry.lenses_of(sel.get("doc_type")) or None)
+    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask)
     if stop is None:
         # **문서 좌표**도 이 관문 자리에서 정한다(B102 ② — 한 번 묻는다 · 한 줄)
         from cli import doc_coord as DC

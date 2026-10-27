@@ -4,9 +4,9 @@
 **최종 판단은 LLM이고 사람이 그 위다 · 코드는 재료 · 적용 · 검사**(사용자 2026-10-20 — 「룰은 LLM에 정보를 주고 LLM이 판단」):
 
   · 재료(파서 — 판정 0): 줄 = 행 전체 · 시작 열 · 들여쓰기 깊이 · 꼴 서명 · 서수 · 빈 행 뒤 · 보조 표시(`parser.struct_rule.labels`)
-  · **계층 사다리**(지점 ⑪ · 태그 `structure` · 지시문 `prompts/2.4_ladder.md` · 문서당 한 번 — `core/build/ladder.py`): 단마다 서명 · 역할 · 카테고리 + 번호 없는 제목의
+  · **계층 사다리**(지점 ⑪ · 태그 `structure` · 지시문 `prompts/2.4_ladder.md` · 문서당 한 번 — `core/build/ladder.py`): 단마다 서명 · 역할 + 번호 없는 제목의
     규칙 · 입력은 앞부분의 골격 보기 · 서명 통계 · 코드 사다리 — **줄 전문 0** · 실패 · mock 힌트 없음이면 **코드 사다리**(`rules`와 같은 길)
-  · **목차**(파서 — `parser/ladder.apply`): 사다리 + 이어짐 · 다시 시작 + 들여쓰기 깊이 → 제목 줄마다 부모 · 역할 · 대상 + **판단 필요**
+  · **목차**(파서 — `parser/ladder.apply`): 사다리 + 이어짐 · 다시 시작 + 들여쓰기 깊이 → 제목 줄마다 부모 · 역할 · 이름 + **판단 필요**
     넷(코드가 정하지 않고 표시)
   · **시트 확인**(지점 ⑪ · 시트당 한 번): 골격 보기 → 판단 필요 행마다 답 + 고침(B126 여섯 동사 · `structure_edit.apply_edits` 검사) +
     사다리 고침(문서 규칙 — 그 문서의 뒤 시트에도)
@@ -14,7 +14,9 @@
 방식은 둘(사내 손잡이 `structure_mode`): **`ladder`(기본)** · `rules`(LLM 0 — 코드 사다리 · 시트 확인 0). 옛 값 `edit` · `llm`은 폐기 —
 `knobs.json`에 있으면 운영 관문이 바꿀 값을 말하며 멈춘다(`core/state/knobs.RETIRED`). 보존 = 구조 지도 보존 파일 `work/struct_maps/<doc_id>.json`의
 `structure[<시트>]`와 문서의 사다리(`structure["@사다리"]`) — 같은 이름표 · 같은 판이면 LLM 0 · 재구축이 재생한다.
-코드에 층 어휘 0 — 카테고리는 층 config가 · 역할은 닫힌 시스템 어휘(파서 계약)가 말한다.
+**층을 모른다**(B148 ① — 사용자 확정 2026-10-26 「메타는 범용 조건에서 쓴 문서」): 입력에 층 카테고리 · 정의문 · 층 힌트 0 · 출력에 카테고리
+0(목차 나무 · 청크 경계 · 제목마다 역할 · 이름) · 보존분의 판은 지시문 판 · 방식만(층 config를 바꿔도 구조는 다시 묻지 않는다) — 카테고리는
+그래프 단계의 **목차 노드화**(`core/build/outline.py`)가 층마다 정한다. 역할은 닫힌 시스템 어휘(파서 계약)가 말한다.
 """
 from __future__ import annotations
 
@@ -38,55 +40,12 @@ MODE = "ladder"
 MODES = ("rules", "ladder")
 #: 보존분의 문서 사다리 자리(시트 이름과 겹치지 않는 열쇠)
 LADDER_KEY = "@사다리"
-#: **개요(제목 목록) 호출의 답 꼴**(`outline._ask` — B132 전 그대로 · 청크 구간은 제목 목록 호출이면 빈 목록 · 지시문 `3.3_outline.md`가 말한다)
-SCHEMA = {
-    "type": "object",
-    "properties": {"headings": {"type": "array", "items": {
-        "type": "object",
-        "properties": {"row": {"type": "integer"},
-                       "parent": {"type": ["integer", "null"]},
-                       "role": {"type": "string", "enum": list(ROLES)},
-                       "name": {"type": ["string", "null"]},
-                       "category": {"type": ["string", "null"]}},
-        "required": ["row", "parent", "role", "name", "category"], "additionalProperties": False}},
-        "chunks": {"type": "array", "items": {
-            "type": "object",
-            "properties": {"from_row": {"type": "integer"}, "to_row": {"type": "integer"},
-                           "owner_row": {"type": ["integer", "null"]}},
-            "required": ["from_row", "to_row", "owner_row"], "additionalProperties": False}}},
-    "required": ["headings", "chunks"], "additionalProperties": False,
-}
 
-
-# ---------------------------------------------------------------- 판 · 카테고리
-def _cfgs(layers):
-    from core.state.bootstrap import coord_layer, load_config
-    out = {}
-    for lay in list(layers or []) or [coord_layer()]:
-        try:
-            out[lay] = load_config(lay)
-        except (OSError, ValueError, KeyError) as e:
-            _LOG.warning("문서 구조 — 층 %s config를 읽지 못했다: %s", lay, e)
-    return out
-
-
-def categories(cfgs):
-    """닫힌 카테고리 + 정의문 — 렌즈가 여럿이면 층마다의 합(구조는 문서마다 한 번이다)."""
-    from core.build.extract import categories_with_also
-    out = {}
-    for cfg in cfgs.values():
-        for k, v in categories_with_also(cfg).items():
-            out.setdefault(k, v)
-    return out
-
-
-def key(cfgs):
-    """보존분 재사용의 판 — 지시문 판 · 층 config 판(층마다 추출 갈래 칸의 해시 — B120 ③ · 추출과 같은 함수) · 방식."""
+# ---------------------------------------------------------------- 판
+def key():
+    """보존분 재사용의 판 — 지시문 판 · 방식만(층 config 판 0 — B148 ① · 층 config를 바꿔도 구조는 다시 묻지 않는다)."""
     from core.build.extract import prompt_version
-    from core.state import config_scope
-    return {"prompt_version": prompt_version(PROMPT),
-            "config_extract": " · ".join(f"{k}:{config_scope.extract_key(c)}" for k, c in sorted(cfgs.items())),
-            "mode": MODE}                                    # 방식을 바꾸면 다시 묻는다 (B126 ①)
+    return {"prompt_version": prompt_version(PROMPT), "mode": MODE}   # 방식을 바꾸면 다시 묻는다 (B126 ①)
 
 
 # ---------------------------------------------------------------- 문서 사다리 (문서당 한 번)
@@ -94,7 +53,7 @@ def key(cfgs):
 DOCL = {}
 
 
-def _ladder(doc_id, frames, cfgs, cats, live, ctx):
+def _ladder(doc_id, frames, live, ctx):
     """문서 사다리 — LLM(실호출) · 힌트(mock) · 코드 사다리(`rules` · 실패 · 힌트 없음) · 사다리 고침(문서 규칙)은 그 위에."""
     from core.build import ladder as LA
     from parser import ladder as PL
@@ -108,7 +67,7 @@ def _ladder(doc_id, frames, cfgs, cats, live, ctx):
             gateway.require(TAG)                    # 부르기 직전의 관문(설정 없음 = 명시적 실패 · 조립은 막지 않는다)
             calls = 1
             try:
-                raw = LA.ask_ladder(frames, built, code, cats, cfgs, ctx, doc_state(doc_id)["hints"])
+                raw = LA.ask_ladder(frames, built, code, ctx, doc_state(doc_id)["hints"])
             except gateway.GatewayError as e:
                 store.append_defect(f"{doc_id}: 계층 사다리 호출 실패 — {e} → 코드 사다리")
                 failed = f"{type(e).__name__}: {str(e)[:120]}"
@@ -117,7 +76,7 @@ def _ladder(doc_id, frames, cfgs, cats, live, ctx):
     usage = {**LA.spent(u0), "calls": calls}             # 사다리 갈래의 사용량 (B137 ⑦)
     lad = None
     if raw is not None:
-        lad, dropped = LA.check_ladder(doc_id, raw, frames, cats)
+        lad, dropped = LA.check_ladder(doc_id, raw, frames)
         src = ("LLM" if live else "힌트") if lad else "코드(답 버림)"
     elif MODE == "ladder":
         src = "코드(호출 실패)" if failed else ("코드(힌트 없음)" if not live else "코드")
@@ -126,25 +85,23 @@ def _ladder(doc_id, frames, cfgs, cats, live, ctx):
             "counts": counts, "usage": usage}
 
 
-def ladder_now(doc_id, cats):
+def ladder_now(doc_id):
     """그 문서의 지금 사다리 — 바탕 사다리 + 사다리 고침(확정 기록의 문서 규칙 + 이 프로세스의 구조 확인 · 위에서 아래로)."""
     from core.build import ladder as LA
     d = DOCL.get(doc_id) or {}
     rules = doc_state(doc_id)["rules"]
-    return LA.fix_ladder(d.get("base"), rules, cats) if rules else d.get("base")
+    return LA.fix_ladder(d.get("base"), rules) if rules else d.get("base")
 
 
 # ---------------------------------------------------------------- 주입 함수
-def structurer(layers=None):
+def structurer():
     """파서에 내려보낼 **문서 구조 함수** `fn(doc_id, frame, labels)` + `fn.prepare(doc_id, frames)`(문서 사다리 — 시트보다 먼저 한 번).
 
-    `fn.key()`가 보존분의 판이다 · 돌려주는 것은 검사가 끝난 구조(제목 · 판단 필요 · 사다리 · 시트 확인의 답)."""
-    cfgs = _cfgs(layers)
-    cats = categories(cfgs)
+    `fn.key()`가 보존분의 판이다 · 돌려주는 것은 검사가 끝난 구조(제목 · 판단 필요 · 사다리 · 시트 확인의 답) · 층 인자 0(B148 ①)."""
     live = not gateway.use_mock()
 
     def prepare(doc_id, frames, ctx=None):
-        DOCL[doc_id] = _ladder(doc_id, frames, cfgs, cats, live, ctx)
+        DOCL[doc_id] = _ladder(doc_id, frames, live, ctx)
         return DOCL[doc_id]
 
     def adopt(doc_id, kept):
@@ -162,7 +119,7 @@ def structurer(layers=None):
         if doc_id not in DOCL:
             prepare(doc_id, {frame: labs}, ctx)           # 사다리를 먼저 세우지 않은 부르기(한 프레임 문서 · 고리) — 이 프레임으로
         d = DOCL[doc_id]
-        ladder = ladder_now(doc_id, cats)
+        ladder = ladder_now(doc_id)
         built = PL.apply(labs, ladder, d["counts"])
         draft = built["headings"]                           # 초안 — 시트 확인이 바꾼 줄을 이것과 견준다 (B137 ⑥⑦)
         st = {"headings": draft, "toc0": draft, "needs": built["needs"], "ladder": ladder,
@@ -177,7 +134,7 @@ def structurer(layers=None):
             gateway.require(TAG)
             st.update(calls=1, source="live")
             try:
-                out = LA.ask_check(frame, labs, built, ladder, cats, cfgs, ctx, hints, prev)
+                out = LA.ask_check(frame, labs, built, ladder, ctx, hints, prev)
             except gateway.GatewayError as e:
                 store.append_defect(f"{doc_id}: 시트 확인 호출 실패 — 시트 '{frame}' — {e} → 사다리 목차 그대로")
                 out, failed = {"answers": [], "edits": [], "rules": []}, f"{type(e).__name__}: {str(e)[:120]}"
@@ -195,13 +152,13 @@ def structurer(layers=None):
         if mine:                                            # 사다리 고침 — 문서 규칙(뒤 시트에도) · 이 시트는 고친 사다리로 다시 세운다
             doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
             doc["rules"] = _merge_rules(doc.get("rules"), mine)
-            ladder = ladder_now(doc_id, cats)
+            ladder = ladder_now(doc_id)
             asked, built = built["needs"], PL.apply(labs, ladder, d["counts"])
             now = {n["row"] for n in built["needs"]}
             built["needs"] += [n for n in asked if n.get("rows") and n["row"] not in now]   # 물은 같은 꼴 묶음은 답과 함께 남는다
         edits, missing, stray = LA.answers_to_edits(doc_id, frame, built["headings"], built["needs"], out.get("answers"))
         heads, joins, took, bad = SE.apply_edits(doc_id, frame, labs, built["headings"],
-                                                 {"edits": edits + list(out.get("edits") or []), "headings": []}, cats)
+                                                 {"edits": edits + list(out.get("edits") or []), "headings": []})
         _LOG.info("시트 확인 %s · %s — 판단 필요 %d · 답 빠짐 %d · 고침 %d · 버림 %d", doc_id, frame, len(built["needs"]),
                   len(missing), len(took), len(bad))
         return {**st, "headings": heads, "toc0": draft, "needs": built["needs"], "ladder": ladder,
@@ -210,20 +167,20 @@ def structurer(layers=None):
                 "rules": LA.rule_counts(labs, heads, mine), "rules_dropped": rbad, "changed": LA.changed(draft, heads),
                 "doc_hints": list(hints or []),
                 **({"failed": failed} if failed else {}), **({"shape_dropped": shaped} if shaped else {})}
-    fn.key = lambda: key(cfgs)
+    fn.key = key
     fn.drift = lambda rec: gateway.prompt_drift(PROMPT, rec)     # 보존분을 다시 쓸 때 — 판 그대로 · 문면만 바뀜 한 줄 (B135 ③)
     fn.takes_ctx = True
     fn.doc_state = doc_state
     fn.prepare = prepare
     fn.adopt = adopt
-    fn.ladder_of = lambda doc_id: ladder_now(doc_id, cats) if doc_id in DOCL else None
+    fn.ladder_of = lambda doc_id: ladder_now(doc_id) if doc_id in DOCL else None
     return fn
 
 
 # ---------------------------------------------------------------- 문서 규칙 (B130 ④ — 힌트는 문서 규칙 · 사다리 고침으로 되말한다)
 #: 이 프로세스의 구조 확인에서 받은 문서 힌트 · 사다리 고침 `{doc_id: {hints, rules}}` — 확정 기록이 문서 힌트로 남긴다
 DOC = {}
-RULE_KEYS = ("shape", "role", "category", "parent_shape", "scope", "said")
+RULE_KEYS = ("shape", "role", "parent_shape", "scope", "said")       # 옛 규칙의 `category`는 읽지 않는다 (B148 ①)
 
 
 def _rule_key(x):
@@ -304,12 +261,12 @@ def confirm(doc_id, frame, st, hints=None):
     store.atomic_write_bytes(p, (json.dumps(d, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
-def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, layers=None, ctx=None):
+def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, ctx=None):
     """구조 확인의 고리(B126 ③) — 그 시트를 같은 방식(또는 `mode`)으로 다시 부르고(앞 출력 + 힌트 전부) 구조 보존분의 그 시트
     자리에 둔다 → 다시 파싱이 그것을 쓴다(LLM 0). 돌려주는 것은 새 구조 또는 None."""
     from parser import struct_map
     from parser.struct_rule import labels_hash
-    fn = structurer(layers)
+    fn = structurer()
     st = fn(doc_id, frame, labs, ctx=ctx, hints=hints, prev=prev, mode=mode)
     if not st or st.get("skip"):
         return st
@@ -345,7 +302,8 @@ def _migrated(fx):
 
 
 def fixes_of(doc_id):
-    """그 문서의 고침 `{시트: {행: {role, name, category}}}` — 파서가 데이터로 받는다(구조 위에 덮는다) · 옛 역할 이름은 옮겨 읽는다."""
+    """그 문서의 고침 `{시트: {행: {role, name}}}` — 파서가 데이터로 받는다(구조 위에 덮는다) · 옛 역할 이름은 옮겨 읽는다 · 옛 기록의
+    `category`는 읽지 않는다(B148 ①)."""
     return {fr: {int(r): _migrated(fx) for r, fx in rows.items()}
             for fr, rows in (_fixes_all().get(doc_id) or {}).items()}
 

@@ -42,8 +42,8 @@ REVIEW = paths.review()
 def injections(layers=None):
     """파서에 내려보낼 **LLM 함수 3종을 한 번에 만든다** (문서 7 §7.6-B-1 · B48).
 
-    **문서 구조**(B119 ① — ⑪ 안의 호출 `structure`)도 여기서 만든다 — `layers`는 그 문서의 층(렌즈)이고 닫힌 카테고리의
-    출처다(없으면 좌표 층). mock이면 힌트를 읽는 함수다(힌트가 없으면 판정 없음 — 고정 규칙 그대로).
+    **문서 구조**(B119 ① — ⑪ 안의 호출 `structure`)도 여기서 만든다 — **층을 모른다**(B148 ① — `layers`는 덱 구조만 받는다 ·
+    회차 ④까지). mock이면 힌트를 읽는 함수다(힌트가 없으면 판정 없음 — 고정 규칙 그대로).
 
     **모드는 여기서 한 번 정하고 아래로 내려간다.** 파서에는 「지금 mock인가」라는
     질문이 없으므로(파서 무판독), 「실호출 모드인데 함수가 안 왔다」를 잡을 수 있는
@@ -58,7 +58,7 @@ def injections(layers=None):
            "pick_coord": points.coord_picker(),
            "map_structure": struct_map_pass.struct_mapper(),
            # ⑪ 안의 문서 구조(B119 ①) — 산문 시트마다 무조건(개요와 한 지시문)
-           "structure": structure_mod.structurer(layers),
+           "structure": structure_mod.structurer(),
            # ⑪ 안의 덱 구조(B125 ③) — PPT 덱마다 1회(제목 · 이어짐 · 공정 목록 · 덱 개요 · mock은 힌트)
            "deck": deck_mod.decker(layers),
            # 슬라이드 · 쪽 캡처를 추출에(B125 ② — 실호출일 때 · `--no-images`면 파서가 끈다)
