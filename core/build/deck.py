@@ -58,8 +58,9 @@ def key():
     return {"prompt_version": prompt_version(PROMPT)}
 
 
-def _boxes_text(s):
-    return "\n".join(b.get("text") or "" for b in s.get("boxes") or [] if b.get("kind") not in ("table", "chart"))
+def _boxes_text(s, heads=True):
+    """슬라이드의 상자 글 — 덱 입력이 준 표 · 차트 머리까지(공정 · 다루는 것 · 구획의 근거 자리) · 제목 검사만 머리를 뺀다(`heads=False`)."""
+    return "\n".join(b.get("text") or "" for b in s.get("boxes") or [] if heads or b.get("kind") not in ("table", "chart"))
 
 
 def deck_text(slides):
@@ -97,7 +98,7 @@ def check(doc_id, slides, ans):
         d = {}
         t = a.get("title")
         if isinstance(t, str) and t.strip():
-            if norm(t) in norm(_boxes_text(by[n])):
+            if norm(t) in norm(_boxes_text(by[n], heads=False)):
                 d["title"] = t.strip()
             else:
                 bad("제목", n, f"'{t[:40]}'가 그 슬라이드 글에 없다")

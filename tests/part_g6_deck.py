@@ -486,6 +486,12 @@ show("B151 ⓒ 다루는 것 · 공정 검사 — 슬라이드 글에 없는 명
      and _sl(_ea, 2)["meta"].get("subject") == "노칭 커터" and "다루는 것: 노칭 커터" in XC151.context_line(_sl(_ea, 2))
      and _sl(_ea, 4)["meta"].get("subject") == "스태킹 매거진",
      f"슬라이드 2 {_s2} · 맥락 줄 {XC151.context_line(_sl(_ea, 2))[:120]}")
+#: 표 · 차트 머리도 덱 글이다 — 덱 입력이 준 머리에만 있는 공정 표기 · 다루는 것은 남는다(제목 검사만 머리를 뺀다)
+_hd = DK.check("B151H", [{"slide": 1, "layout": "", "boxes": [{"kind": "title", "text": "검사 결과"},
+                                                              {"kind": "table", "text": "스태킹 공정 | 정렬 | 판정"}]}],
+               {"slides": [{"slide": 1, "title": "검사 결과", "subject": "정렬", "processes": ["스태킹"]}]})["slides"][1]
+show("B151 ⓒ 표 머리의 공정 표기 · 다루는 것 — 덱 입력이 준 표 머리에만 있어도 검사를 지난다",
+     _hd.get("processes") == ["스태킹"] and _hd.get("subject") == "정렬" and not _hd.get("dropped"), _hd)
 # ⓓ 공정 걸기 — mock(⑨ 없음) 그래프 단계 · ⑨ 주입(시험 pick)
 with _quiet():
     init.init(fresh_=True, all_=True)
