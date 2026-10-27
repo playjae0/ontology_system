@@ -266,8 +266,19 @@ class StepStop(Stopped):
     """
 
 
+#: 추출까지만의 멈춤 사유(결과의 `reason`)
+EXTRACT_STOP = "추출까지 — 그래프 · 사전 · 큐 · 청크 · 문서 대장 쓰기 0 · 추출 체크포인트는 남는다"
+
+
+class ExtractStop(Stopped):
+    """**추출까지만**(B155 ① — `--extract-only`) — 추출(렌즈면 층마다 전부) 뒤 판정 예고 자리에서 멈춘다.
+
+    `Stopped`와 같은 되돌림이되 **문서 대장도 시작 전으로**(사람의 멈춤과 다른 점 — 보려고 넣은 문서는 넣은 문서가 아니다) ·
+    남는 것은 체크포인트(`parsed/` · 추출 · 목차 노드화) — 확정은 같은 줄을 플래그 없이(추출 재사용 · LLM 0)."""
+
+
 def run_document(path_or_env, layer=None, *, allow_duplicate=False,
-                 routing=None, notice=None):
+                 routing=None, notice=None, extract_only=False):
     env = path_or_env
     doc_id, doc_type = env["doc_id"], env["doc_type"]
 
@@ -317,7 +328,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         _e0 = len(graph.edges)
         _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
         _, metrics, extracted = _build_document(
-            env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0)
+            env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0, extract_only)
         BUILT[doc_id] = layer                    # 마무리의 연결 보강 대상 (B115 ④)
         return res, metrics, extracted
     except BaseException as stop:
@@ -330,13 +341,14 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
             _LOG.info("저장 뒤 멈춤 — %s: 이 문서는 끝까지 썼다(%s · 되돌리지 않는다)", doc_id, type(stop).__name__)
             raise
         human = isinstance(stop, Stopped)
-        _undo(t0, keep_registry=human)
+        _undo(t0, keep_registry=human and not isinstance(stop, ExtractStop))   # 추출까지만은 문서 대장도 시작 전으로(B155 ①)
         _LOG.info("되돌림 — %s: 이 문서의 쓰기를 시작 전으로 되돌렸다(%s%s)", doc_id, type(stop).__name__,
                   " — 사람·관문의 멈춤: 인입 기록 · 체크포인트는 남는다" if human else "")
         if not human:
             raise                                   # 실패 줄은 호출부가 낸다(B98 ②)
         res.status, res.reason = "held", str(stop)
         res.step_stop = isinstance(stop, StepStop)
+        res.extract_stop = isinstance(stop, ExtractStop)
         return res, None, False
 
 
@@ -360,8 +372,8 @@ def _undo(t0, keep_registry=False):
 
 
 def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
-                    notice, _n0, _e0, _a0):
-    """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다."""
+                    notice, _n0, _e0, _a0, extract_only=False):
+    """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다 · `extract_only`면 추출 뒤에 멈춘다(B155 ①)."""
     extracted = False
     builder = None
     if kind == "table":
@@ -385,12 +397,14 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
         if _lz != [layer]:
             from core.build import lens as lens_mod
             builder, extracted = lens_mod.build_with_lenses(env, _lz, layer, graph, loc2id,
-                                                            notice)
+                                                            notice, extract_only=extract_only)
             return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
         vocab = _vocab(cfg)
         from core.build import outline as outline_mod
         ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
         ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
+        if extract_only:
+            raise ExtractStop(EXTRACT_STOP)
         cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보를 보탠 후보 (B140 ③)
         builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)

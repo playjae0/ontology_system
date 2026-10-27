@@ -238,6 +238,13 @@ def _join_values(rec, schema):
     return [rec[k] for k in sorted(rec) if k != "source_locator"]
 
 
+def prose_chunk_ids(env):
+    """산문 봉투의 청크 id — 봉투 차례 그대로 `[(조각, chunk_id)]` · 인입과 추출 보기(추출까지만 — 청크 쓰기 0)가 같은 셈(B155 ②)."""
+    occ = OccCounter()
+    return [(c, chunk_id(env["doc_id"], c.get("text", ""), c.get("section", ""),
+                         occ.next(c.get("section", ""), c.get("text", "")))) for c in env.get("chunks", [])]
+
+
 def _content_meta(field, rec, fields, labels):
     """표 content 청크의 meta — 필드 · **그 열의 문서 머리 글**(`label` — 봉투 `field_labels`) · **주인**(`owner` — 그 필드의
     `attach_to_field` 칸의 그 행 값 · 문서 글자 그대로) (B153 ①). 없는 칸은 키도 없다 — `section`(행 위치)은 그대로 둔다."""
@@ -337,10 +344,9 @@ def ingest(env, *, allow_duplicate=False, routing=None):
                     put_chunk(f"{rid}-{f}", rec[f], rec.get("source_locator", ""),
                               rec.get("source_locator"), _content_meta(f, rec, fields, labels), rec.get("process_ref"))
     else:
-        for c in env.get("chunks", []):
-            text, section = c.get("text", ""), c.get("section", "")
-            put_chunk(chunk_id(doc_id, text, section, occ.next(section, text)),
-                      text, section, c.get("source_locator"), c.get("meta"), c.get("process_ref"))
+        for c, cid in prose_chunk_ids(env):
+            put_chunk(cid, c.get("text", ""), c.get("section", ""), c.get("source_locator"), c.get("meta"),
+                      c.get("process_ref"))
 
     store.write(store.CHUNKS, chunks)
     register_doc(env, dh, routing)

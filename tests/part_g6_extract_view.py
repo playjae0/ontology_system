@@ -263,4 +263,52 @@ show("ⓕ --step 산문: 추출 예고 멈춤 = 체크포인트 0 · 추출 뒤 
 _unregister()
 init.init(fresh_=True, all_=True)
 
+print("\n■ B155 — 추출까지만(--extract-only) · 추출 md")
+import hashlib as _hl                        # noqa: E402
+from core.state.bootstrap import bootstrap as _bs   # noqa: E402
+for _lay in ("process", "quality"):
+    _bs(_lay, echo=False)
+_register()
+
+
+def _writes():
+    """그래프 · 사전 · 큐 · 청크 · 문서 대장의 바이트(쓰기 0을 잰다)."""
+    d = _P.data()
+    fs = [p for lay in ("process", "quality") for p in sorted((d / lay).rglob("*")) if p.is_file()]
+    fs += [d / n for n in ("dictionary.json", "review_queue.json", "chunks.json", "doc_registry.json")]
+    return {p.name + str(p.parent.name): _hl.sha256(p.read_bytes()).hexdigest() if p.exists() else None
+            for p in fs if not p.name.endswith(".lock")}
+
+
+EX.invalidate("RFQ01")
+_w0 = _writes()
+_x1 = _ingest("--sheets", "auto", "--extract-only")
+_w1 = _writes()
+_md155 = _P.export("extract_RFQ01.md")
+_again = next((ln.split("▶ 확정: ", 1)[1].strip() for ln in _x1.splitlines() if "▶ 확정: " in ln), "")
+show("B155 ⓐ 산문 엑셀 --extract-only — 추출 체크포인트 있음 · 그래프 · 사전 · 큐 · 청크 · 문서 대장이 실행 전과 바이트 같음 · "
+     "export/extract_<doc_id>.md · 끝 줄의 확정 줄(플래그 없는 같은 줄)",
+     EX.has_checkpoint("RFQ01") and _w0 == _w1 and _md155.exists() and "추출까지 — 그래프 쓰기 0" in _x1
+     and _again.startswith("python run.py ingest-file ") and "--extract-only" not in _again and "--sheets auto" in _again,
+     f"확정 줄 {_again} · 바뀐 파일 {[k for k in _w1 if _w0.get(k) != _w1.get(k)]}")
+_x2 = _run(*_again.split()[2:])
+show("B155 ⓑ 확정 줄을 그대로 — 추출 재사용(LLM 0) · 그래프 씀(문서 대장에 선다)",
+     "체크포인트 재사용(LLM 0)" in _x2 and _writes() != _w1 and "RFQ01" in store.read(store.DOC_REGISTRY, {}),
+     [ln.strip()[:70] for ln in _x2.splitlines() if "재사용" in ln][:2])
+_x5 = _run("ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp", "--allow-mock", "--extract-only")
+show("B155 ⓔ 표 문서 --extract-only — 상태 거부 한 줄(추출이 없다)",
+     sum("[상태] 표는 추출이 없다" in ln for ln in _x5.splitlines()) >= 1 and "추출까지 —" not in _x5,
+     [ln.strip()[:60] for ln in _x5.splitlines() if "[상태]" in ln][:1])
+init.init(fresh_=True, all_=True)
+for _lay in ("process", "quality"):
+    _bs(_lay, echo=False)
+_register()
+EX.invalidate("RFQ01")
+_x6 = _ingest("--sheets", "auto", "--extract-only", "--step", answers="c\n" * 7)
+show("B155 ⓕ --extract-only --step(pty) — 구조 관문 · 추출 예고는 묻고 · 추출 뒤 관문(판정 예고)은 묻지 않고 멈춘다",
+     "구조 확인" in _x6 and "[4/8] 추출 예고" in _x6 and "[5/8] 추출 결과·판정 예고" not in _x6 and "추출까지 — 그래프 쓰기 0" in _x6,
+     [ln.strip()[:50] for ln in _x6.splitlines() if "/8]" in ln][:6])
+_unregister()
+init.init(fresh_=True, all_=True)
+
 done()

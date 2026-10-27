@@ -120,14 +120,17 @@ def text(doc_id, env):
     return "\n".join(ls) + "\n" if ls else None
 
 
-def write(doc_id, env):
-    """`export/split_<doc_id>.md`에 쓴다(원자 쓰기) — 쓴 자리 · 블록이 없으면 None(쓰지 않는다)."""
-    body = text(doc_id, env)
-    if body is None:
-        return None
+def save(name, body):
+    """사람용 md를 `export/<name>`에 쓰는 **한 자리**(원자 쓰기 — 구조 확인 md · 추출 확인 md `cli/extract_md` · B155 ②) — 쓴 자리."""
     from core import paths
     from core.state import store
-    p = paths.export(f"split_{doc_id}.md")
+    p = paths.export(name)
     paths.ensure(p)
     store.atomic_write_bytes(p, body.encode("utf-8"))
     return p
+
+
+def write(doc_id, env):
+    """`export/split_<doc_id>.md`에 쓴다(원자 쓰기) — 쓴 자리 · 블록이 없으면 None(쓰지 않는다)."""
+    body = text(doc_id, env)
+    return None if body is None else save(f"split_{doc_id}.md", body)

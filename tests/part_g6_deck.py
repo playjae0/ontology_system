@@ -545,8 +545,34 @@ show("B154 ⓑ 행 밖 — 값은 다 붙었고(못 붙은 행 0) 골격에 없�
      and "관계 — 끝점 없음 '브래킷' · 못 선 관계 1 · B151D:b154" in _l154
      and RC154.head_count(RC154.material("B151D"))[:2] == _h154,
      f"머리 {_h154} · {[x for x in _l154 if '—' in x][:4]}")
+# B155 ⓒ 추출까지만 — 덱(B151 덱 표본) · 추출 md(맥락 줄 · 원문 · 개체 표 · 판정 예고 · 한눈에)
+def _x155(body):
+    t = body["chunk"]
+    if "커터 마모" in t:                                  # 사전 일치 · 판정에 오름(글에 없음) · 값 글자 버림
+        return {"entities": [_ent("노칭", "Process"), _ent("커터 홀더", "Unit"), _ent("마모량", "Property", value="0.09mm")],
+                "relations": [], "about": []}
+    if "정렬 기준 0.2mm" in t:                            # 좌표 「스태킹 공정」은 골격 밖 — 보류 예상
+        return {"entities": [_ent("정렬 지그", "Unit")], "relations": [], "about": []}
+    return {"entities": [], "relations": [], "about": []}   # 일정 슬라이드 — 부른 단위인데 개체 0
+
+
+_r155, _e155, _c155, _m155 = _p151("B155D", P151, A151)
+_P.ensure(_P.parsed("B155D.json"))
+_P.parsed("B155D.json").write_text(json.dumps(_e155, ensure_ascii=False), encoding="utf-8")   # 파싱이 남기는 봉투 자리
+_g155 = json.dumps(store.read(store.DOC_REGISTRY, {}), sort_keys=True)
+with Live(by={"extract": _x155, "outline": lambda b: {"headings": []}}), _quiet():
+    _rx155 = run_document(dict(_e155), extract_only=True)
+from cli import extract_md as XMD155                    # noqa: E402
+_md155 = XMD155.text("B155D") or ""
+show("B155 ⓒ 덱 추출까지만 — md에 슬라이드마다 맥락 줄(다루는 것) · 원문 · 개체 표(글에서 찾은 자리 · 「글에 없음」) · 판정 예고(사전 일치 · "
+     "판정에 오름 · 보류 예상 · 검사 버림) · 한눈에 ⚠ · 문서 대장 0",
+     getattr(_rx155[0], "extract_stop", False) and "다루는 것: 노칭 커터" in _md155 and "커터 마모 0.03mm" in _md155
+     and "| 커터 홀더 | Unit |" in _md155 and "글에 없음" in _md155 and "| 노칭 | Process |" in _md155
+     and all(x in _md155 for x in ("사전 일치", "판정에 오름", "보류 예상", "검사 버림(값 글자)", "⚠ 부른 단위인데 개체 0"))
+     and json.dumps(store.read(store.DOC_REGISTRY, {}), sort_keys=True) == _g155,
+     f"{_rx155[0].reason} · " + " | ".join(ln for ln in _md155.splitlines() if ln.startswith("- 사전 일치")))
 # ⓔ 공정이 없는 덱
-D151E =[["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
+D151E = [["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
 A151E = {"slides": [{"slide": 1, "title": "투자 계획", "section": None, "continues": None, "subject": None, "processes": [],
                      "no_entities": True},
                     {"slide": 2, "title": "예산 3억", "section": None, "continues": None, "subject": "예산", "processes": [],
