@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 7
+   "secs": 6
   },
   "test_places": {
    "n": 32,
@@ -11,11 +11,11 @@
   },
   "test_g3": {
    "n": 82,
-   "secs": 3
+   "secs": 4
   },
   "test_query": {
    "n": 122,
-   "secs": 16
+   "secs": 14
   },
   "test_ops": {
    "n": 84,
@@ -23,7 +23,7 @@
   },
   "test_intake": {
    "n": 100,
-   "secs": 20
+   "secs": 19
   },
   "test_ingest_view": {
    "n": 78,
@@ -31,11 +31,11 @@
   },
   "test_coord": {
    "n": 49,
-   "secs": 13
+   "secs": 12
   },
   "test_catalog": {
    "n": 60,
-   "secs": 23
+   "secs": 22
   },
   "test_safety": {
    "n": 36,
@@ -43,27 +43,27 @@
   },
   "test_judge": {
    "n": 86,
-   "secs": 13
+   "secs": 12
   },
   "test_build": {
-   "n": 74,
+   "n": 79,
    "secs": 30
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 23
+   "secs": 25
   },
   "test_g6_rehearsal": {
    "n": 18,
    "secs": 9
   },
   "test_structure": {
-   "n": 109,
+   "n": 110,
    "secs": 25
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 23
+   "secs": 25
   },
   "test_g6_close": {
    "n": 29,
@@ -71,7 +71,7 @@
   },
   "test_contract": {
    "n": 76,
-   "secs": 27
+   "secs": 23
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,7 +83,7 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 3
+   "secs": 4
   },
   "test_p1_form": {
    "n": 35,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 7
+   "secs": 6
   },
   "test_p3_prompt": {
    "n": 60,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 64,
-   "secs": 10
+   "secs": 11
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 25
+   "secs": 24
   }
  },
  "log": [
@@ -489,6 +489,30 @@
    "suite": "test_structure",
    "from": 108,
    "to": 109,
+   "why": ""
+  },
+  {
+   "at": "2026-10-27",
+   "head": "0ddc99e",
+   "suite": "test_build",
+   "from": 74,
+   "to": 78,
+   "why": ""
+  },
+  {
+   "at": "2026-10-27",
+   "head": "4cf8891",
+   "suite": "test_build",
+   "from": 78,
+   "to": 79,
+   "why": ""
+  },
+  {
+   "at": "2026-10-27",
+   "head": "4cf8891",
+   "suite": "test_structure",
+   "from": 109,
+   "to": 110,
    "why": ""
   }
  ]

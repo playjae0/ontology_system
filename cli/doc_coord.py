@@ -112,7 +112,7 @@ def coord_counts(env):
     """조각 좌표의 출처별 수(B102 ⑦ — 표·산문 같은 함수) — 봉투의 `meta` 표시에서(새 계산 0)."""
     pcs = (env or {}).get("records") or (env or {}).get("chunks") or []
     out = {"조각": len(pcs), "자기": 0, "문서 좌표": 0, "태깅": 0, "없음": 0,
-           "무시(문서 좌표 밖)": 0, "공유 별칭 건너뜀": 0, "공유 별칭 범위 안 해소": 0}
+           "다른 공정 구간": 0, "위 공정 표기": 0, "공유 별칭 건너뜀": 0, "공유 별칭 범위 안 해소": 0}
     for p in pcs:
         m = p.get("meta") or {}
         if not p.get("process_ref"):
@@ -125,8 +125,10 @@ def coord_counts(env):
             out["자기"] += 1                       # 범위 안 해소(scope)도 자기 표기에서 온 좌표다
         if m.get("coord_tag_source") == "scope":
             out["공유 별칭 범위 안 해소"] += 1          # 원 표기는 meta.coord_tag_from (B104 ①)
+        if m.get("coord_other"):
+            out["다른 공정 구간"] += 1                  # 줄기 밖 공정 이름 구간 — 그 공정(쌍 대조로 · B157 ③)
         if m.get("coord_ignored"):
-            out["무시(문서 좌표 밖)"] += 1
+            out["위 공정 표기"] += 1                    # 조상 표기 — 문서 좌표 그대로
         if m.get("coord_shared_skip"):
             out["공유 별칭 건너뜀"] += 1
     return out
@@ -163,6 +165,7 @@ def pair_screen(env):
 
 
 def coord_line(env):
+    from core.build.reconcile import SIDE_TAIL
     c = coord_counts(env)
     return ("   좌표 — " + f"조각 {c['조각']:,} · "
-            + " · ".join(f"{k} {v:,}" for k, v in c.items() if k != "조각"))
+            + " · ".join(f"{k} {v:,}{SIDE_TAIL.get(k, '')}" for k, v in c.items() if k != "조각"))

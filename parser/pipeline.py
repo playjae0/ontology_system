@@ -516,7 +516,8 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     # **문서 좌표**(B102 ② — 사람·기록·파일명 · 인입이 정해 데이터로 준다): 시트명·제목 대조는 그 서브트리
     # 안에서만 받고, 그래도 빈 조각(표·산문 공통)은 문서 좌표를 물려받는다
     pieces = normalizer.blank_coords(pieces)     # 좌표 칸의 빈칸 표시 → 빈 값(문서 좌표를 물려받는다 — B113 ②)
-    pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes, doc_coord=doc_coord)
+    pieces = tagger.coord_from_section(pieces, layer=layer, nodes=nodes, doc_coord=doc_coord,
+                                       deck=(dk_tally or {}).get("결정"))     # 덱 판단 조각은 지금 그대로(B157)
     # **좌표 태깅의 계획과 결과를 리포트에 남긴다**(B69 ②) — 화면이 흘러간 뒤에도
     pieces = _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
                           coord_notice, progress, doc_coord=doc_coord)

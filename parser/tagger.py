@@ -360,7 +360,7 @@ def suggest_doc_coord(filename, nodes, seps="_-. ()[]"):
 
 
 def coord_from_section(pieces, *, layer=None, nodes=None,
-                       ref_field="process_ref", sep=" > ", doc_coord=None):
+                       ref_field="process_ref", sep=" > ", doc_coord=None, deck=None):
     """산문 조각의 `section`(헤딩 경로)에서 좌표를 세운다 (B43 ④ · B102 ②).
 
     **대조는 `scoped_index()` 하나를 재사용한다** — 좌표 태깅과 같은 연산이다.
@@ -369,29 +369,45 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
       ①**정확 일치만**(라틴 대소문자 2차 포함) — 추론도 문자열 파싱도 하지 않는다. 일치가 없으면 비운다.
       ②경로에 일치가 여럿이면 **가장 깊은 것**(뒤쪽).
       ③**이미 값이 있으면 덮지 않는다** — 어댑터가 낸 좌표가 우선이다.
-      ④**문서 좌표가 있으면 그 서브트리 안에서만** 받는다 — 밖에 맞은 것은 쓰지 않고 `meta.coord_ignored`
-        (다른 공정 인터페이스 서술이 그 공정으로 옮겨 가지 않게) · 공유 별칭은 `meta.coord_shared_skip`.
+      ④**문서 좌표가 있으면** 줄기(문서 좌표 자신 · 조상 · 서브트리) 안의 서브트리 일치만 글 그대로 받는다 · 줄기 **밖**
+        공정 이름 구간(시트명은 글 그대로 · 제목은 골격 이름 제목과 같은 이름 고르기 `struct_rule.heading_name` · 공유
+        별칭은 맞은 노드 전부가 밖일 때만)이 가장 깊은 일치면 **그 공정**(표기 그대로 · `meta.coord_other` = 원 구간 글 —
+        쌍 대조가 「문서 좌표 ↛ 그 공정」으로 보인다 · 덱 · 표와 같은 규칙 — B157) · 조상 표기는 쓰지 않고
+        `meta.coord_ignored`(문서 좌표 그대로) · 공유 별칭은 `meta.coord_shared_skip`. 덱 판단의 공정 목록 칸이 있는
+        조각(B151 — `deck` = 슬라이드마다의 결정 · 그 슬라이드의 `processes`가 목록이면 · 비어 어댑터가 좌표를 싣지 않은 것도)은
+        줄기 밖 구간을 쓰지 않는다(`coord_ignored` — 덱 판단이 정한다).
       ⑤그래도 비면 **문서 좌표를 물려받는다**(`meta.coord_from_doc`) — 표·산문 같은 함수(`inherit_doc_coord`).
       ⑥전역 공유 별칭이 범위 안에서 하나면 **그 노드의 canonical**을 쓴다(`scope_pick` — B104 ①).
     """
+    from .struct_rule import chain_items, heading_name
     nodes = nodes if nodes is not None else closed_list(layer)
     idx, shared, _a = scoped_index(nodes, doc_coord)
     full, full_shared, _f = scoped_index(nodes)
+    stem = _stem(nodes, doc_coord) if doc_coord else None
     out = []
     for p in pieces:
         r = dict(p)
         if not r.get(ref_field) and r.get("section"):
-            hit, ignored, skipped = [], [], []
-            for seg in (x.strip() for x in str(r["section"]).split(sep)):
-                if not seg:
-                    continue
+            hit, ignored, skipped, other = [], [], [], None
+            judged = _deck_judged(r, deck) or isinstance(r.get(ref_field), list)   # 덱 판단의 「공정 없음」 — 줄기 밖 구간을 쓰지 않는다
+            segs = [x.strip() for x in str(r["section"]).split(sep) if x.strip()]
+            sheet = (r.get("meta") or {}).get("sheet")
+            for i, (seg, item) in enumerate(zip(segs, chain_items(segs, r.get("meta")))):
                 if seg in shared:
                     skipped.append(seg)
                 elif seg in idx or fold_hit(seg, idx) is not None:
                     hit.append(seg)
-                elif doc_coord and (seg in full or fold_hit(seg, full) is not None):
-                    ignored.append(seg)
-            if hit:
+                    other = None                               # 더 깊은 줄기 안 일치가 이긴다
+                elif doc_coord:
+                    name = None if judged else (seg if i == 0 and seg == sheet else heading_name(seg, item))
+                    if name and _outside(nodes, stem, name):
+                        other = (seg, name)
+                    elif seg in full or fold_hit(seg, full) is not None:
+                        ignored.append(seg)                    # 조상 표기 · 덱 판단 조각 — 쓰지 않고 표시만(지금 그대로)
+            if other:
+                r[ref_field] = other[1]                        # 줄기 밖 공정 이름 구간 — 그 공정(표기 그대로 · B157 ①)
+                r.setdefault("meta", {}).update(coord_from_section=True, coord_other=other[0])
+            elif hit:
                 one = scope_pick(hit[-1], idx, full_shared)      # 범위 안에서 하나인 공유 별칭 (B104 ①)
                 r[ref_field] = one["canonical"] if one else hit[-1]   # 가장 깊은 일치
                 r.setdefault("meta", {})["coord_from_section"] = True
@@ -404,6 +420,33 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
                 r.setdefault("meta", {})["coord_shared_skip"] = skipped
         out.append(r)
     return inherit_doc_coord(out, doc_coord, ref_field)
+
+
+def _stem(nodes, canonical):
+    """문서 좌표의 줄기 — `(서브트리 canonical 집합, 조상 canonical 집합)` (다른 공정 가드 `other_process`와 같은 줄기)."""
+    up = {n["canonical"]: n.get("parent") for n in nodes}
+    anc, c = set(), up.get(canonical)
+    while c and c not in anc and len(anc) < 64:
+        anc.add(c)
+        c = up.get(c)
+    return subtree(nodes, canonical), anc
+
+
+def _deck_judged(piece, deck):
+    """그 조각의 슬라이드에 덱 판단의 공정 목록 칸이 있나(`processes`가 목록 — 비어도) · 결정이 없거나 판정 없음(None)이면 거짓."""
+    n = _page_no(piece) if deck else None
+    d = (deck.get(n) or deck.get(str(n))) if n is not None else None
+    return isinstance((d or {}).get("processes"), list)
+
+
+def _outside(nodes, stem, name):
+    """구간 이름이 **줄기 밖** 골격 노드에 맞나 — 맞은 노드가 있고 전부가 문서 좌표의 줄기(서브트리 · 조상) 밖이면 참.
+    대조는 정확 · 정확이 없을 때만 라틴 접기(사전 조회와 같은 차례) · 공유 별칭이면 그 표기를 가진 노드 전부(하나라도 줄기
+    안이면 거짓)."""
+    keys = [(n["canonical"], [n["canonical"]] + list(n.get("aliases") or [])) for n in nodes]
+    got = {c for c, ks in keys if name in ks} or {c for c, ks in keys if any(_fold(k) == _fold(name) for k in ks)}
+    sub, anc = stem
+    return bool(got) and not (got & (sub | anc))
 
 
 def inherit_doc_coord(pieces, doc_coord, ref_field="process_ref"):
