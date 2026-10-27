@@ -385,27 +385,27 @@ def _structure_hook(structure, doc_id, kept_map, fixes, sheet_roles, confirmed=N
                                        confirmed=confirmed, ctx=ctx), made, tally)
 
 
-def _env_extras(env, res, doc_coord, dk_tally):
+def _env_extras(env, res, doc_coord, dk_tally, nodes=None):
     """봉투의 문서 칸 — 문서 좌표(B102 ② — 맥락 줄 · 좌표 줄) · **덱 블록**(B143 ② — `deck.overview` · `deck.slides[]` — 덱 판단의
     정본 · 맥락 줄의 개요 칸 · 사람용 md가 읽는다) · **구조 블록**(B146 ① — 엑셀 · Word의 구조 판단 · 단위마다 목차 · 청크 경계 ·
     판단 기록 — `struct_rule.block` · 사람용 md가 읽는다) · 캡처 쪽 수(B125 ② — 추출이 원본에서 쪽을 뜬다). 없는 칸은 키도 없다."""
     if doc_coord:
         env["doc_coord"] = doc_coord
     if dk_tally:
-        env["deck"] = deck_mod.block(dk_tally, env.get("chunks"))
+        env["deck"] = deck_mod.block(dk_tally, env.get("chunks"), nodes)   # 공정 표기마다 골격 대조(태깅과 같은 색인 — B151 ④)
     if (res.report.get("structure") or {}).get("프레임"):
         env["structure"] = struct_rule.block(res.report["structure"], env.get("chunks"))   # 구조 블록 (B146 ① — 엑셀 · Word)
     if res.report.get("capture_pages"):
         env["capture"] = {"pages": res.report["capture_pages"]}
 
 
-def _deck_hook(deck, doc_id, kept_map, fixes, doc_coord):
-    """덱 구조 훅(B125 ③) — `(훅 또는 None, 새로 받은 판단, 셈)` · 고침은 `@덱` 프레임."""
+def _deck_hook(deck, doc_id, kept_map, fixes):
+    """덱 구조 훅(B125 ③) — `(훅 또는 None, 새로 받은 판단, 셈)` · 고침은 `@덱` 프레임 · 문서 좌표를 받지 않는다(B151 ①)."""
     made, tally = {}, {}
     if deck is None:
         return None, made, tally
     return (deck_mod.hook(deck, doc_id, kept=kept_map.get("deck"), made=made, tally=tally,
-                          fixes=(fixes or {}).get(deck_mod.FRAME), doc_coord=doc_coord), made, tally)
+                          fixes=(fixes or {}).get(deck_mod.FRAME)), made, tally)
 
 
 def parse(adapter, doc_id, path, *, layer=None, revision="R1",
@@ -424,7 +424,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     | `map_structure(doc_id, lines)` | ⑦구조 지도 | 실호출 | 번호 패턴 휴리스틱 |
     | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
     | `structure(doc_id, frame, labels)` | ⑪ 안의 문서 구조(B119 ①) | 산문 시트마다 실호출(mock은 힌트) | 고정 규칙 그대로 |
-    | `deck(doc_id, slides, doc_coord=)` | ⑪ 안의 덱 구조(B125 ③ · `capture` 참이면 쪽 번호를 달아 추출이 캡처를 붙인다 — B125 ②) | PPT 덱마다 1회(mock은 힌트) | 지금 방식 |
+    | `deck(doc_id, slides)` | ⑪ 안의 덱 구조(B125 ③ · `capture` 참이면 쪽 번호를 달아 추출이 캡처를 붙인다 — B125 ②) | PPT 덱마다 1회(mock은 힌트) | 지금 방식 |
 
     `structure_fixes`(`{프레임: {행: 고침}}`)는 사람이 구조 표에서 고친 것(등록 단 — 데이터로 받는다 · B119 ③).
 
@@ -458,7 +458,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
 
     st_fn, made_struct, st_tally = _structure_hook(structure, doc_id, kept_map, structure_fixes, sheet_roles,
                                                    structure_confirmed, _doc_ctx(a, doc_coord, raw))
-    dk_fn, made_deck, dk_tally = _deck_hook(deck, doc_id, kept_map, structure_fixes, doc_coord)
+    dk_fn, made_deck, dk_tally = _deck_hook(deck, doc_id, kept_map, structure_fixes)
     try:                                                             # ③ extract
         pieces = _extract(adapter, raw, doc_id, kept_maps, made_maps, map_picks,
                           map_structure, src_hash, st_fn, dk_fn)
@@ -498,7 +498,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     env = tagger.envelope(adapter, doc_id, path, pieces, revision=revision,
                           parsed_at=parsed_at, parser_version=PARSER_VERSION,
                           context=context)
-    _env_extras(env, res, doc_coord, dk_tally)
+    _env_extras(env, res, doc_coord, dk_tally, nodes)
     ok, defects = validator.check(env)                               # ⑥ validator
     dk_bad = deck_mod.mismatch(env)                                  # 덱 블록 ↔ 청크 칸(투영) — 어긋나면 결함 (B143 ②)
     if dk_bad:

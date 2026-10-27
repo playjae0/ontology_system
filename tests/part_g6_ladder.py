@@ -310,16 +310,18 @@ print("\n■ ⓚ 개요 · 덱 — 판이 구조와 따로 · 옛 보존분 재�
 from core.build import deck as DK                         # noqa: E402
 from core.build.extract import prompt_version             # noqa: E402
 from parser import deck as PD                             # noqa: E402
-_cf = DK._cfgs(["process"])                              # 기대 변경(B148 ⑤ — 층 config를 읽는 자리는 덱 몫 · 구조 판단은 층 0)
-_k1 = DK.key(_cf)
+# 기대 변경(B151 ① — 덱 열쇠는 지시문 판만 · 층 config를 읽지 않는다 · 입력 지문에 문서 좌표 0)
+from core.state.bootstrap import load_config as _lc151   # noqa: E402
+_cf = {"process": _lc151("process")}
+_k1 = DK.key()
 ST.MODE = "rules"
-_k2 = DK.key(_cf)
+_k2 = DK.key()
 ST.MODE = "ladder"
 _slides = [{"slide": 1, "layout": "제목", "boxes": [{"kind": "text", "text": "노칭 점검"}]}]
 _asked = []
-_fake = lambda doc_id, slides, doc_coord=None: _asked.append(doc_id) or {"slides": {}, "overview": ""}
+_fake = lambda doc_id, slides: _asked.append(doc_id) or {"slides": {}, "overview": ""}
 _fake.key = lambda: _k1
-_old = {"labels": PD.labels_hash(_slides, None), "key": {**_k1, "mode": "edit"}, "answer": {"slides": {}, "overview": "옛 개요"}}
+_old = {"labels": PD.labels_hash(_slides), "key": {**_k1, "mode": "edit"}, "answer": {"slides": {}, "overview": "옛 개요"}}
 _got = PD.hook(_fake, "B132K", kept=_old, made={}, tally={})(_slides)
 # 기대 변경(B135 ④ — 덱은 제 지시문 `2.4_deck.md` · 판은 개요의 판을 이어받는다 · 개요 지시문에 고침 · 덱 절 0)
 from core.build import outline as _OLK                    # noqa: E402

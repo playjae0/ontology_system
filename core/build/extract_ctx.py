@@ -34,7 +34,8 @@ def _path(p):
 
 
 def context_fields(chunk, doc=None):
-    """맥락 칸 `[(이름, 값)]` — 값이 있는 칸만 · 순서 문서 → 개요 → 공정 → 시트 → 경로."""
+    """맥락 칸 `[(이름, 값)]` — 값이 있는 칸만 · 순서 문서 → 개요 → 공정 → 시트 → 경로 → 다루는 것(PPT 덱 판단의 `meta.subject` —
+    B151 ③ · 덱 블록이 정본)."""
     m = chunk.get("meta") or {}
     sheet = m.get("sheet")
     path = m.get("section_path")
@@ -44,6 +45,7 @@ def context_fields(chunk, doc=None):
     # 경로가 시트 이름 그 자체면(제목 없는 시트) 두 번 싣지 않는다
     if path and str(path) != str(sheet or ""):
         out.append(("경로", _path(path)))
+    out.append(("다루는 것", m.get("subject")))
     return [(k, v) for k, v in out if v]
 
 

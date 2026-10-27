@@ -384,11 +384,11 @@ def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step, no_c
     from parser import struct_map as _SM
     for _ln in _RH.take_parse(sel.get("doc_type"), sel["doc_id"], _SM.source_hash(str(doc))):
         print("   " + _ln)
-    lz = registry.lenses_of(sel.get("doc_type")) or None     # 문서 구조의 닫힌 카테고리 출처 (B119 ①)
+    lz = registry.lenses_of(sel.get("doc_type")) or None     # 구조 확인의 약한 구조 신호 — 좌표 층이 렌즈에 있는가 (B119 ③)
 
     def _parse_now():
         return run_parse(str(sel["adapter"]), sel["doc_id"], str(doc), coord_cap=coord_cap,
-                         sheet_roles=roles, no_images=no_images, doc_coord=doc_coord, layers=lz,
+                         sheet_roles=roles, no_images=no_images, doc_coord=doc_coord,
                          no_capture=no_capture)
     res, out = _parse_now()
     if not res.ok:

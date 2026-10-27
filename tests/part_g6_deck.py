@@ -9,6 +9,8 @@
   ⓓ 덱 구조 — 글 상자 제목 → 그 글이 제목 · 「(계속)」 → 앞 슬라이드의 경로 · 공정 · 덱 개요가 모든 추출 맥락 줄에 · 골격 밖 공정 버림 셈
   ⓔ 다공정 — 노칭 · 스태킹 슬라이드: 개체가 각자 제 공정 아래 · 언급만 한 공정은 노드 0 + 관련 링크 · `--coord` 없이 `ingest-dir` 성공
   ⓕ 고침 · 재생 — 공정 고침 → 기록 → 다시 파싱이 그대로(덱 구조 LLM 0)
+  B151 ⓐ~ⓕ 덱 판단은 층 · 골격 · 문서 좌표를 모른다(두 상태의 입력이 같다 · 층 config를 바꿔도 재사용) · 다루는 것 · 공정 표기 검사 ·
+       공정 걸기는 표와 같은 길(정확 · ⑨ 표기마다 한 번 · 목록 원소마다 · 못 맞으면 그대로 → 큐) · 공정 없는 덱 · 옛 언급 고침은 읽지 않는다
 네 벌(A · B 같음 · C 바뀐 몫)은 마감 한 줄의 네 벌 단계가 잰다.
 """
 from __future__ import annotations
@@ -59,17 +61,18 @@ def _register():
 
 
 # ── 가짜 LLM의 답(창작) — 덱 구조 · 추출 · 그림 요약
+# 기대 변경(B151 ① — 덱 판단의 칸: 언급 공정 0 · 다루는 것 `subject` · 공정은 문서 표기)
 DECK = {"slides": [
-    {"slide": 1, "title": "노칭 · 스태킹 점검 보고", "section": None, "continues": None, "processes": ["없는공정"],
-     "mentions": [], "no_entities": True},
-    {"slide": 2, "title": "노칭 금형 점검 결과", "section": None, "continues": None, "processes": ["노칭"], "mentions": [],
+    {"slide": 1, "title": "노칭 · 스태킹 점검 보고", "section": None, "continues": None, "subject": None, "processes": ["없는공정"],
+     "no_entities": True},
+    {"slide": 2, "title": "노칭 금형 점검 결과", "section": None, "continues": None, "subject": "노칭 금형", "processes": ["노칭"],
      "no_entities": False},
-    {"slide": 3, "title": "노칭 금형 점검 결과 (계속)", "section": None, "continues": 2, "processes": [], "mentions": [],
+    {"slide": 3, "title": "노칭 금형 점검 결과 (계속)", "section": None, "continues": 2, "subject": None, "processes": [],
      "no_entities": False},
-    {"slide": 4, "title": "커터 사양", "section": None, "continues": None, "processes": ["노칭"], "mentions": [],
+    {"slide": 4, "title": "커터 사양", "section": None, "continues": None, "subject": "커터 사양", "processes": ["노칭"],
      "no_entities": False},
-    {"slide": 5, "title": "노칭 · 스태킹 연동 점검", "section": None, "continues": None, "processes": ["노칭", "스태킹"],
-     "mentions": ["탭용접"], "no_entities": False}],
+    {"slide": 5, "title": "노칭 · 스태킹 연동 점검", "section": None, "continues": None, "subject": "노칭 · 스태킹 연동 점검",
+     "processes": ["노칭", "스태킹"], "no_entities": False}],
     "overview": "노칭 금형과 스태킹 연동을 점검한 보고서다."}
 
 
@@ -88,7 +91,8 @@ def _extract(body):
         ents = [_ent("장력", "Property", value="30N"), _ent("압력", "Property", value="5bar"),
                 _ent("온도", "Property", value="80도")]
     elif "매거진" in t:
-        ents = [_ent("커터", "Unit", parent="노칭"), _ent("매거진", "Unit", parent="스태킹")]
+        # 기대 변경(B151 ② — 다른 공정 언급은 덱 판단이 아니라 그래프 단계의 산문 함수가 잡는다: 본문의 「탭용접」이 개체로 뽑히면 가드)
+        ents = [_ent("커터", "Unit", parent="노칭"), _ent("매거진", "Unit", parent="스태킹"), _ent("탭용접", "Unit")]
     return {"entities": ents, "relations": [], "about": []}
 
 
@@ -100,7 +104,7 @@ def _live():
 def _parse(**kw):
     with _live():
         res = pipeline.parse(PX, DID, str(PATH), closed_list=TG.closed_list("process"), layer="process",
-                             deck=DK.decker(["process"]), capture=True, structure_fixes=ST.fixes_of(DID),
+                             deck=DK.decker(), capture=True, structure_fixes=ST.fixes_of(DID),
                              summarize=lambda ref, **k: "도면 — 온도 80도", **kw)
         calls = [p for p, _b in CALLS]
     env = res.envelope
@@ -190,10 +194,12 @@ _blk = (ENV.get("deck") or {}).get("slides") or []
 _vals = {i: list(x.values()) for i, x in enumerate(_blk, 1)}
 _bad = PDK.mismatch({**ENV, "chunks": [dict(c, process_ref="스태킹") if c["source_locator"] == "슬라이드 2" else c
                                        for c in ENV["chunks"]]})
-show("B143 ⓑ 봉투 하나에 슬라이드마다 이어짐 · 제목 초안과 판단 · 공정 목록 · 언급 · 개체 없음 · 버림 · 근거 위치 · 청크 칸과 어긋나지 "
-     "않는다(어긋나게 바꾸면 결함으로 잡힌다) · 개요도 블록에(옛 doc_overview 0)",
+# 기대 변경(B151 ① — 언급 칸 0 · 다루는 것 칸)
+show("B143 ⓑ 봉투 하나에 슬라이드마다 이어짐 · 제목 초안과 판단 · 공정 목록 · 다루는 것 · 개체 없음 · 버림 · 근거 위치 · 청크 칸과 "
+     "어긋나지 않는다(어긋나게 바꾸면 결함으로 잡힌다) · 개요도 블록에(옛 doc_overview 0)",
      len(_blk) == 5 and not PDK.mismatch(ENV) and _bad and "doc_overview" not in ENV
-     and 2 in _vals[3] and ["노칭", "스태킹"] in _vals[5] and ["탭용접"] in _vals[5] and ["공정"] in _vals[1]
+     and 2 in _vals[3] and ["노칭", "스태킹"] in _vals[5] and "노칭 · 스태킹 연동 점검" in _vals[5] and ["공정"] in _vals[1]
+     and not any("mentions" in x for x in _blk)
      and "노칭 금형 점검 결과" in _vals[2] and ["슬라이드 4", "S4-TB1", "S4-P1"] in _vals[4]
      and (ENV.get("deck") or {}).get("overview") == DECK["overview"],
      f"슬라이드 {len(_blk)} · 어긋남 {len(PDK.mismatch(ENV))} → 바꾸면 {len(_bad)} · 3번 {_blk[2] if len(_blk) > 2 else None}")
@@ -334,7 +340,7 @@ with _quiet():
 _register()
 struct_map.invalidate(DID)
 _r1, _e1, _c1 = _parse()                               # 덱 구조 1회(보존)
-_got = STS.parse_deck_fix("4 공정 스태킹", (_r1.report.get("deck") or {}).get("표") or [])
+_got = STS.parse_deck_fix("4 공정 스태킹", (_r1.report.get("deck") or {}).get("표") or [], STS.deck_text_of(_e1))
 DK.record_fix(DID, *_got)
 _r2, _e2, _c2b = _parse()                              # 다시 파싱 — 보존분 위에 고침(LLM 0)
 _s4b = next(c for c in _e2["chunks"] if c["source_locator"] == "슬라이드 4")
@@ -366,6 +372,175 @@ show("B143 ⓒ 덱 블록의 공정 고침(사람)이 추출 입력 맥락 줄�
      and "공정: 스태킹" in _line4
      and "개요: " + DECK["overview"] in _line4 and _rendered == [str(PATH)] and str(PATH) not in _opened,
      f"맥락 줄 {_line4[:80]} · 렌더 {len(_rendered)} · 원본 열기 {sum(1 for x in _opened if x == str(PATH))}")
+
+# ────────────────────────────────────────────────────────────── B151 덱 중립화
+print("\n■ B151 — 덱 판단은 층 · 골격 · 문서 좌표를 모른다 · 공정은 문서 표기 · 공정 걸기는 표와 같은 길")
+from pptx import Presentation                            # noqa: E402
+from pptx.util import Inches                             # noqa: E402
+from cli import parse as CP                              # noqa: E402
+from core.build import extract_ctx as XC151             # noqa: E402
+from g65_common import _rw                               # noqa: E402
+SEEN151 = []
+
+
+class _Live151(Live):
+    """덱 호출의 입력 실물(지시문 + 사용자 글 — 메시지 전부)을 그대로 모은다."""
+
+    def chat(self, messages, json_schema=None, point=None, **kw):
+        if point == "deck":
+            SEEN151.append([dict(m) for m in messages])
+        return super().chat(messages, json_schema=json_schema, point=point, **kw)
+
+
+def _deck151(path, slides):
+    """창작 덱 — 슬라이드마다 글 상자들(첫 상자가 제목 자리)."""
+    prs = Presentation()
+    for boxes in slides:
+        s = prs.slides.add_slide(prs.slide_layouts[6])
+        for i, text in enumerate(boxes):
+            s.shapes.add_textbox(Inches(0.5), Inches(0.3 + i * 1.2), Inches(8), Inches(0.5)).text_frame.text = text
+    _P.ensure(path)
+    prs.save(path)
+    return path
+
+
+D151 = [["B151 점검 보고"], ["노칭 커터 점검", "커터 마모 0.03mm"], ["스태킹 매거진 점검", "매거진 정렬 0.1mm"],
+        ["스태킹 매거진 점검 (계속)", "정렬 핀 교체"], ["스태킹 공정 정렬 기준", "정렬 기준 0.2mm"],
+        ["스태킹 공정 정렬 기준 (계속)", "기준 갱신 3월"], ["노칭 · 스태킹 공정 연동", "커터와 매거진을 함께 본다"], ["일정", "3월 착수"]]
+A151 = {"slides": [
+    {"slide": 1, "title": "B151 점검 보고", "section": None, "continues": None, "subject": None, "processes": [],
+     "no_entities": True},
+    {"slide": 2, "title": "노칭 커터 점검", "section": None, "continues": None, "subject": "노칭 커터 · 없는 말",
+     "processes": ["노칭", "없는공정"], "no_entities": False},
+    {"slide": 3, "title": "스태킹 매거진 점검", "section": None, "continues": None, "subject": "스태킹 매거진",
+     "processes": ["스태킹"], "no_entities": False},
+    {"slide": 4, "title": "스태킹 매거진 점검 (계속)", "section": None, "continues": 3, "subject": None, "processes": [],
+     "no_entities": False},
+    {"slide": 5, "title": "스태킹 공정 정렬 기준", "section": None, "continues": None, "subject": "정렬 기준",
+     "processes": ["스태킹 공정"], "no_entities": False},
+    {"slide": 6, "title": "스태킹 공정 정렬 기준 (계속)", "section": None, "continues": 5, "subject": None, "processes": [],
+     "no_entities": False},
+    {"slide": 7, "title": "노칭 · 스태킹 공정 연동", "section": None, "continues": None, "subject": "커터 · 매거진",
+     "processes": ["노칭", "스태킹 공정"], "no_entities": False},
+    {"slide": 8, "title": "일정", "section": None, "continues": None, "subject": "일정", "processes": [], "no_entities": False}],
+    "overview": "노칭 · 스태킹 점검 보고서다."}
+P151 = _deck151(TMP / "B151D.pptx", D151)
+
+
+def _p151(doc_id, path, answer, pick=None, coord="노칭", keep=False):
+    if not keep:                                         # 보존분(덱 판단은 구조 지도 보존분에 산다)을 지우고 처음부터
+        struct_map.invalidate(doc_id)
+    del SEEN151[:]
+    with _Live151(by={"deck": lambda b: answer, "extract": lambda b: {"entities": [], "relations": [], "about": []},
+                      "outline": lambda b: {"headings": []}, "reinforce": lambda b: {"pick": None}}):
+        res = pipeline.parse(PX, doc_id, str(path), closed_list=TG.closed_list("process"), layer="process", deck=DK.decker(),
+                             structure_fixes=ST.fixes_of(doc_id), doc_coord=coord, pick_coord=pick)
+        calls = [p_ for p_, _b in CALLS]
+    env = res.envelope
+    env["doc_type"] = DT
+    for c in env["chunks"]:
+        c["doc_type"] = DT
+    return res, env, calls, [list(m) for m in SEEN151]
+
+
+def _judged(env):
+    return [{k: s.get(k) for k in ("slide", "title", "section", "continues", "subject", "processes", "no_entities")}
+            for s in (env.get("deck") or {}).get("slides") or []]
+
+
+def _sl(env, n):
+    return next(c for c in env["chunks"] if c["source_locator"] == f"슬라이드 {n}")
+
+
+with _quiet():
+    init.init(fresh_=True, all_=True)
+    RUN.cmd_bootstrap([])
+_register()
+_ra, _ea, _ca, _ma = _p151("B151D", P151, A151)
+_rw(_P.layers("process", "config.json"), lambda c: c.setdefault("prompts", {}).__setitem__("structure", "층 힌트 B151 — 매거진은 설비다"))
+_rc151, _eb, _cb, _mb = _p151("B151D", P151, A151, keep=True)   # 같은 상태 · 층 config만 바뀜 — 보존분 재사용
+_sk = _P.layers("process", "skeleton.json")
+_rw(_sk, lambda s: s["ALIASES"].setdefault("스태킹", []).append("스태킹 B151"))   # 골격 판이 바뀐다
+with _quiet():
+    RUN.cmd_bootstrap([])                                # 별칭을 골격에(fresh 없이) — 덱 판단 보존분은 아래가 지운다
+_r2b, _e2b, _c2b2, _m2b = _p151("B151D", P151, A151, coord="조립")   # 층 힌트 · 골격 판 · 문서 좌표가 다른 상태에서 다시 묻는다
+_sys = [m[0]["content"] for m in _ma + _m2b]
+_usr = [json.loads(m[1]["content"]) for m in _ma + _m2b]
+from tools import layer_words as _LW151                  # noqa: E402
+_lw = [v for v in _LW151.scan(ROOT) if "2.4_deck" in str(v)] if hasattr(_LW151, "scan") else []
+show("B151 ⓐ 층 config(층 힌트) · 골격 판 · 문서 좌표를 바꾼 두 상태에서 같은 덱 — 덱 블록의 판단 칸이 같다 · 덱 호출 입력(실물)에 층 힌트 · 골격 "
+     "이름 목록 · 문서 좌표 0(두 상태의 입력이 글자까지 같다) · 덱 지시문 층 어휘 0 · 추출 지시문 판 그대로(e-2.0)",
+     _ma and _m2b and _judged(_ea) == _judged(_e2b) and _ma == _m2b
+     and all(set(u) == {"deck", "previous", "slides"} for u in _usr)
+     and not any(x in s for s in _sys for x in ("층 힌트 B151", "## 층 어휘", "탭용접", "패키징"))
+     and not _lw and EX.prompt_version() == "e-2.0",
+     f"호출 {len(_ma)} · {len(_m2b)} · 같은 입력 {_ma == _m2b} · 판단 같음 {_judged(_ea) == _judged(_e2b)} · 입력 열쇠 "
+     f"{sorted(_usr[0]) if _usr else None} · 추출 판 {EX.prompt_version()}")
+show("B151 ⓑ 층 config를 바꾼 뒤 같은 덱 재파싱 → 덱 판단 보존분 재사용(LLM 0)",
+     "deck" not in _cb and (_rc151.report["deck"]["수"]["재사용"] == 1) and _judged(_eb) == _judged(_ea),
+     f"호출 {_cb} · 재사용 {_rc151.report['deck']['수'].get('재사용')}")
+_s2 = next(s for s in _ea["deck"]["slides"] if s["slide"] == 2)
+show("B151 ⓒ 다루는 것 · 공정 검사 — 슬라이드 글에 없는 명사구 · 덱 글에 없는 공정 표기는 버려지고 dropped에 · 있는 것은 덱 블록 · "
+     "청크 meta · 맥락 줄(「다루는 것」 칸)에",
+     _s2["subject"] == "노칭 커터" and _s2["processes"] == ["노칭"] and {"다루는 것", "공정"} <= set(_s2["dropped"])
+     and _sl(_ea, 2)["meta"].get("subject") == "노칭 커터" and "다루는 것: 노칭 커터" in XC151.context_line(_sl(_ea, 2))
+     and _sl(_ea, 4)["meta"].get("subject") == "스태킹 매거진",
+     f"슬라이드 2 {_s2} · 맥락 줄 {XC151.context_line(_sl(_ea, 2))[:120]}")
+# ⓓ 공정 걸기 — mock(⑨ 없음) 그래프 단계 · ⑨ 주입(시험 pick)
+with _quiet():
+    init.init(fresh_=True, all_=True)
+    RUN.cmd_bootstrap([])
+_register()
+_rd, _ed, _cd, _md = _p151("B151D", P151, A151)
+_n151, _cr151 = _run(_ed)
+_q151 = [q for q in store.read(store.QUEUE, []) if q.get("doc_id") == "B151D"]
+_mis = {(q.get("payload") or {}).get("provenance", "").split("#")[-1] for q in _q151 if q.get("kind") == "coord_mismatch"}
+_orp = [q for q in _q151 if q.get("kind") == "orphan_anchor"]
+_ASK = []
+_rp, _ep, _cp, _mp = _p151("B151P", P151, A151, pick=lambda ref, cands: (_ASK.append(ref), "스태킹" if ref == "스태킹 공정" else None)[1])
+_s7 = _sl(_ep, 7)
+show("B151 ⓓ 공정 걸기(문서 좌표 「노칭」) — 슬라이드 4는 3을 이어 「스태킹」 · 태깅에서 골격에 맞음 · 문서 좌표 밖이라 coord_mismatch에 "
+     "그 슬라이드들 · 골격 · 별칭에 없는 「스태킹 공정」은 ⑨ 없는 mock에서 그대로 → orphan_anchor 큐 · ⑨ 주입이면 같은 표기를 한 번 묻고 "
+     "채택은 canonical + 원 표기 meta(목록 조각은 원소마다) · 공정 빈 슬라이드는 문서 좌표를 물려받는다",
+     _sl(_ed, 3)["process_ref"] == "스태킹" and _sl(_ed, 4)["process_ref"] == "스태킹"
+     and {"슬라이드 3", "슬라이드 4"} <= _mis and _sl(_ed, 5)["process_ref"] == "스태킹 공정"
+     and any("스태킹 공정" in json.dumps(q, ensure_ascii=False) for q in _orp)
+     and _ASK == ["스태킹 공정"] and _sl(_ep, 5)["process_ref"] == "스태킹" and _sl(_ep, 6)["process_ref"] == "스태킹"
+     and (_sl(_ep, 5)["meta"].get("coord_tag_source"), _sl(_ep, 5)["meta"].get("coord_tag_from")) == ("live", "스태킹 공정")
+     and _s7["process_ref"] == ["노칭", "스태킹"]
+     and [(x["from"], x.get("source")) for x in _s7["meta"].get("coord_tags") or []] == [("노칭", None), ("스태킹 공정", "live")]
+     and not PDK.mismatch(_ep) and _sl(_ed, 8)["process_ref"] == "노칭" and _sl(_ed, 8)["meta"].get("coord_from_doc"),
+     f"3·4 {_sl(_ed, 3)['process_ref']} · {_sl(_ed, 4)['process_ref']} · 어긋남 {sorted(_mis)} · 고아 {len(_orp)} · 물음 {_ASK} · "
+     f"7 {_s7['process_ref']} {_s7['meta'].get('coord_tags')} · 8 {_sl(_ed, 8)['process_ref']}")
+# ⓔ 공정이 없는 덱
+D151E = [["투자 계획"], ["예산 3억", "3월 집행"], ["일정", "4월 착수"]]
+A151E = {"slides": [{"slide": 1, "title": "투자 계획", "section": None, "continues": None, "subject": None, "processes": [],
+                     "no_entities": True},
+                    {"slide": 2, "title": "예산 3억", "section": None, "continues": None, "subject": "예산", "processes": [],
+                     "no_entities": False},
+                    {"slide": 3, "title": "일정", "section": None, "continues": None, "subject": "일정", "processes": [],
+                     "no_entities": False}], "overview": "투자 계획서다."}
+_re, _ee, _ce, _me = _p151("B151E", _deck151(TMP / "B151E.pptx", D151E), A151E, coord=None)
+_ne, _cre = _run(_ee)
+_qe = [q for q in store.read(store.QUEUE, []) if q.get("doc_id") == "B151E"]
+show("B151 ⓔ 공정이 없는 덱 — 모든 슬라이드 공정 빈 목록 · 다루는 것은 채워진다 · 파싱 · 구축 오류 0 · 큐 0",
+     _re.ok and all(s["processes"] == [] for s in _ee["deck"]["slides"])
+     and [s["subject"] for s in _ee["deck"]["slides"]] == [None, "예산", "일정"]
+     and not any(c.get("process_ref") for c in _ee["chunks"]) and not _qe and not PDK.mismatch(_ee),
+     f"공정 {[s['processes'] for s in _ee['deck']['slides']]} · 다루는 것 {[s['subject'] for s in _ee['deck']['slides']]} · 큐 {len(_qe)}")
+# ⓕ 옛 @덱 고침(공정 · 언급 칸 포함)
+DK.record_fix("B151D", 3, {"title": "스태킹 매거진 점검", "processes": ["노칭"], "mentions": ["탭용접"]})
+_rf, _ef, _cf, _mf = _p151("B151D", P151, A151, keep=True)
+_buf151 = io.StringIO()
+with contextlib.redirect_stdout(_buf151):
+    CP.print_split_notes(_rf.report)
+_s3f = next(s for s in _ef["deck"]["slides"] if s["slide"] == 3)
+show("B151 ⓕ 옛 @덱 고침(공정 · 언급 칸 포함) — 제목 · 공정은 고침대로 · 언급 칸은 읽지 않고 화면에 한 줄",
+     _s3f["title"] == "스태킹 매거진 점검" and _s3f["processes"] == ["노칭"] and "mentions" not in _s3f
+     and "읽지 않은 옛 언급 고침 1" in _buf151.getvalue() and "deck" not in _cf,
+     f"슬라이드 3 {_s3f.get('title')} · {_s3f.get('processes')} · 줄 "
+     f"{[ln.strip() for ln in _buf151.getvalue().splitlines() if '옛 언급' in ln]}")
+ST.fixes_path().unlink(missing_ok=True)
 
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)

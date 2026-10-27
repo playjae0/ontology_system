@@ -109,15 +109,3 @@ class CoordMixin:
         """**주 좌표** — 공정이 하나일 때만 그 해소 `(id, 그래프)` · 둘 이상이면 `(None, None)`(개체가 `parent`로 제 공정을
         고른다 — 못 고르면 좌표 없음 · 지어내지 않는다 · B125 ④)."""
         return (resolved[0][1], resolved[0][2]) if len(resolved) == 1 else (None, None)
-
-    def mention_coords(self, names, category, prov):
-        """**언급 공정**(B125 ④ — 덱 구조가 「언급만 한 공정」으로 낸 것) → 그 청크의 관련 링크 재료(`mentions` — 다른 공정
-        언급과 같은 함수 `loop.link_mentions`) · 노드 0 · 조회 전용(큐 0)."""
-        from parser.normalizer import coord_refs
-        if not hasattr(self, "mentions"):
-            self.mentions = []
-        loc = (prov or "").split("#", 1)[-1] if "#" in str(prov or "") else prov
-        for s in coord_refs(names):
-            nid, _g = self.resolve_anchor(s, category, prov, defer=[])
-            if nid:
-                self.mentions.append({"locator": loc, "node_id": nid, "surface": s})

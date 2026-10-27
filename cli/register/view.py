@@ -494,7 +494,7 @@ def _ingested_lines(doc_type, samples):
               + (f' --sheets "{spec}"' if spec else ""))
 
 
-def _review_parse(mod, samples, rows, roles, llm_coord, layers=None):
+def _review_parse(mod, samples, rows, roles, llm_coord):
     """표본 파싱(리허설) — 무LLM 1차 → 좌표 미스를 세고 사람이 켜면 LLM 보조로 다시. `cmd_review`에서 떼어냈다(B116 · 함수 상한)."""
     from cli import doc_coord as DC
     from cli.ingest import doc_id_of            # 리허설도 운영 doc_id다 (B51-2 · B55 ⑤)
@@ -516,8 +516,8 @@ def _review_parse(mod, samples, rows, roles, llm_coord, layers=None):
                 # 가리키는 것은 좌표 층의 골격이라, 품질층 doc_type의 리허설이
                 # 제 층의 닫힌 목록(빈 목록)을 읽으면 좌표가 전부 목록 밖이 된다.
                 mod, doc_id_of(s), s, layer=coord_layer(),
-                # 문서 구조는 **운영 인입과 같은 층의 카테고리로**(B119 ① — 리허설 산출의 판이 같아야 운영이 재사용한다)
-                **{**injections(layers), "pick_coord": pick},
+                # 문서 · 덱 구조는 층을 모른다 — 운영 인입과 같은 판단(B148 ① · B151 ① — 리허설 산출의 판이 같아야 운영이 재사용한다)
+                **{**injections(), "pick_coord": pick},
                 max_rows=rows, sheet_roles=roles.get(str(Path(s).resolve())), doc_coord=coords[s],
                 progress=lambda a, b, c, _l=lbl: _progress(a, b, c, label=_l)))
         return out
@@ -582,9 +582,7 @@ def cmd_review(doc_type, instruct=None, rows=REHEARSAL_ROWS, llm_coord=None,
     from cli.register import rehearsal as rehearsal_mod
     with rehearsal_mod.Session(doc_type, samples) as rs:
         _ingested_lines(doc_type, samples)
-        from core.state import registry as _reg
-        results = _review_parse(mod, samples, rows, _roles, llm_coord,
-                                layers=_reg.lenses_of(doc_type) or [st["layer"]])
+        results = _review_parse(mod, samples, rows, _roles, llm_coord)
         rs.truncated = any((r.report.get("rehearsal") or {}).get("truncated") for r in results)
         _parse_lines(results)
         # **prose ②구획 — 추출 리허설**(B51). 비용 관문은 좌표 보조와 동형이다.

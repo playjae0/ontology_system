@@ -9,8 +9,9 @@
 
 줄 고침 명령은 받지 않는다 — 옛 고침 기록(`registry/structure_fixes.json` — 등록 단)은 파싱 · 재구축이 그대로 재생한다.
 
-**덱 구조 표**(PPT — B125 ③): 번호 · 슬라이드 · 제목 · 초안(placeholder) · 이어짐 · 다루는 공정 · 언급 · 고침 `<번호> 공정 <a,b|없음>` ·
-`<번호> 제목 <글>` · `<번호> 이어짐 <슬라이드|없음>` · `개요 <글>` → 같은 기록 파일의 `@덱` 프레임 → 다시 파싱(LLM 0).
+**덱 구조 표**(PPT — B125 ③ · B151 ④): 번호 · 슬라이드 · 제목 · 초안(placeholder) · 이어짐 · 다루는 것 · 공정(문서 표기 → 골격) · 고침
+`<번호> 공정 <a,b|없음>`(문서 표기 — 덱 글 안) · `<번호> 다루는 것 <글>` · `<번호> 제목 <글>` · `<번호> 이어짐 <슬라이드|없음>` · `개요 <글>`
+→ 같은 기록 파일의 `@덱` 프레임 → 다시 파싱(LLM 0).
 """
 from __future__ import annotations
 
@@ -19,9 +20,10 @@ from core.build import structure as ST
 from core.llm import gateway
 
 PROMPT = "   [계속 c / 멈춤 q / 힌트 <글>] "
-DECK_PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 제목 <글> · <번호> 이어짐 <슬라이드|없음> · 개요 <글>] "
-DECK_HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 공정 노칭,스태킹」(골격 이름 · 없음) · 「<번호> 제목 <그 슬라이드 글>」 · "
-             "「<번호> 이어짐 <앞 슬라이드 번호|없음>」 · 「개요 <한 단락>」 — 다시 친다")
+DECK_PROMPT = ("   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 다루는 것 <글> · <번호> 제목 <글> · "
+               "<번호> 이어짐 <슬라이드|없음> · 개요 <글>] ")
+DECK_HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 공정 <표기>,<표기>」(덱에 적힌 표기 그대로 · 없음) · 「<번호> 다루는 것 <말>」 · "
+             "「<번호> 제목 <그 슬라이드 글>」 · 「<번호> 이어짐 <앞 슬라이드 번호|없음>」 · 「개요 <한 단락>」 — 다시 친다")
 HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 그 밖의 글은 **힌트 — 문서 규칙**(사다리 고침 「가.는 9) 위다」 · 「가. 단은 대상이다」 — "
         "LLM이 되말하고 문서 전체에 다시 세운다 / 행 고침 「R36은 제목이 아니다」) — 다시 친다")
 
@@ -30,32 +32,39 @@ def weak_lines(weak):
     return [f"   [약한 구조] 시트 '{fr}' — " + " · ".join(sig) for fr, sig in (weak or {}).items()]
 
 
-def print_deck(rows):
-    """덱 구조 표(B125 ③) — 슬라이드마다 한 줄 · `*` = 사람이 고친 칸이 있다."""
+def print_deck(rows, block=None):
+    """덱 구조 표(B125 ③) — 슬라이드마다 한 줄 · 공정 칸은 덱 블록의 문서 표기 → 골격(md와 같은 손 `envelope_md.procs_cell`) ·
+    `*` = 사람이 고친 칸이 있다."""
+    from cli.envelope_md import procs_cell
+    by = {s.get("slide"): s for s in (block or {}).get("slides") or []}
     t = _screen.Table([("번호", 4, True), ("슬라이드", 8, True), ("제목", 30, False), ("초안", 20, False), ("이어짐", 6, True),
-                       ("다루는 공정", 22, False), ("언급", 16, False)], flex=2, keep=(5,))
+                       ("다루는 것", 20, False), ("공정", 24, False)], flex=2, keep=(5,))
     for r in rows:
-        ps = r.get("공정")
+        s = by.get(r["슬라이드"]) or {"processes": r.get("공정")}
         t.row([r["번호"], r["슬라이드"], (r.get("제목") or "—") + ("*" if r.get("by") else ""),
                "" if r.get("제목") == r.get("초안") else (r.get("초안") or "(없음)"),
-               r.get("이어짐") or "", ("(개체 없음) " if r.get("개체없음") else "")
-               + ("—" if ps is None else (" · ".join(ps) or "없음")), " · ".join(r.get("언급") or [])],
-              [None, "aux", "warn" if r.get("by") else None, "aux", "aux", None, "aux"])
+               r.get("이어짐") or "", ("(개체 없음) " if r.get("개체없음") else "") + (r.get("다루는것") or ""),
+               procs_cell(s)],
+              [None, "aux", "warn" if r.get("by") else None, "aux", "aux", None, None])
     t.end()
-    print("   초안 = placeholder 제목(덱 구조와 같으면 비운다) · 다루는 공정 — = 판정 없음(지금 방식 — 경로 · 문서 좌표) · * = 사람이 고쳤다")
+    print("   초안 = placeholder 제목(덱 구조와 같으면 비운다) · 공정 — 문서 표기 · `→` 골격에 맞음 · (?) 안 맞음(그래프 단계에서 "
+          "해소 · 큐) · — = 판정 없음(경로 · 문서 좌표) · * = 사람이 고쳤다")
 
 
-def parse_deck_fix(answer, rows):
-    """덱 고침 → `(슬라이드 번호 · 0 = 덱 개요, 고침)` · 못 읽으면 None. 공정은 골격 닫힌 목록 안이어야 한다."""
+def parse_deck_fix(answer, rows, text=None):
+    """덱 고침 → `(슬라이드 번호 · 0 = 덱 개요, 고침)` · 못 읽으면 None. 공정은 **문서 표기**이고 덱 글(`text` — `core.build.deck.deck_text`
+    · 덱 판단의 검사와 같은 글 · 같은 정규화) 안이어야 한다(B151 ④ — 골격 검사 0)."""
     toks = answer.split()
     if len(toks) >= 2 and toks[0] == "개요":
         return 0, {"overview": " ".join(toks[1:])}
     if len(toks) < 3 or not toks[0].isdigit():
         return None
     row = next((r for r in rows if r["번호"] == int(toks[0])), None)
-    rest = " ".join(toks[2:])
     if row is None:
         return None
+    if toks[1:3] == ["다루는", "것"] and len(toks) > 3:
+        return row["슬라이드"], {"subject": " ".join(toks[3:])}
+    rest = " ".join(toks[2:])
     if toks[1] == "제목":
         return row["슬라이드"], {"title": rest}
     if toks[1] == "이어짐":
@@ -65,22 +74,32 @@ def parse_deck_fix(answer, rows):
     if toks[1] == "공정":
         names = [] if rest == "없음" else [x.strip() for x in rest.replace("·", ",").split(",") if x.strip()]
         from core.build import deck as DK
-        _nodes, idx = DK._closed()
-        canon = [DK._canon(x, idx) for x in names]
-        if any(c is None for c in canon):
-            print("   골격 밖 공정 — " + " · ".join(x for x, c in zip(names, canon) if c is None) + " (골격 이름을 친다)")
+        out = [x for x in names if text is None or DK.in_text(x, text)]
+        if len(out) < len(names):
+            print("   덱 글에 없는 표기 — " + " · ".join(x for x in names if x not in out) + " (덱에 적힌 표기 그대로 친다)")
             return None
-        return row["슬라이드"], {"processes": canon}
+        return row["슬라이드"], {"processes": out}
     return None
+
+
+def deck_text_of(env):
+    """덱 고침 검사의 글 — 원본을 다시 읽어 덱 입력과 같은 글(`deck_input` → `deck_text` · LLM 0)."""
+    from core.build import deck as DK
+    from parser import deck as PD, reader
+    try:
+        return DK.deck_text(PD.deck_input(reader.read(str((env or {}).get("source_path")))))
+    except Exception:                                    # noqa: BLE001 — 못 읽으면 검사 없이(사람의 고침)
+        return None
 
 
 def _deck_gate(res, doc_id, dk, reparse):
     """덱 구조 표를 보이고 묻는다 — `(res, 계속?)` · 고치면 기록하고 다시 파싱한다(LLM 0 — 보존분 위에 고침)."""
     from core.build import deck as DK
+    text = deck_text_of(res.envelope)
     while True:
-        print_deck(dk.get("표") or [])
+        print_deck(dk.get("표") or [], (res.envelope or {}).get("deck"))
         _screen.say("   " + _screen.branch_line("덱", doc_id), "aux")      # 덱 갈래의 사용량 · 누계 (B139 ⑤)
-        got = _screen.answer(DECK_PROMPT, "go", eof=True, other=lambda a: parse_deck_fix(a, dk.get("표") or []),
+        got = _screen.answer(DECK_PROMPT, "go", eof=True, other=lambda a: parse_deck_fix(a, dk.get("표") or [], text),
                              hint=DECK_HELP)
         if got is True or got is False:
             if got is False:

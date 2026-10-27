@@ -102,7 +102,7 @@ def _images_per_call(path, adapter, did):
     EX.invalidate(did)
     with _live(), _quiet():
         res = pipeline.parse(adapter, did, str(path), closed_list=TG.closed_list("process"), layer="process",
-                             deck=DK.decker(["process"]) if adapter is PX else None, capture=True)
+                             deck=DK.decker() if adapter is PX else None, capture=True)
         env = res.envelope
         env["doc_type"] = DT
         for c in env["chunks"]:

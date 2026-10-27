@@ -403,20 +403,6 @@ def row_coord(r, by_loc):
     return coord_text((by_loc.get(r.get("locator")) or {}).get("process_ref")) or None
 
 
-def doc_coord_warning(rows, env, nodes):
-    """문서 좌표가 없고 **좌표가 없어서** 「좌표 미해소」로 보류된 행(표기 없는 좌표 행 · 좌표 없는 조각의 행)이 있으면
-    `{행, 후보}` · 아니면 None (B112 ⑤ — 동작 불변 · 제 좌표를 든 보류는 문서 좌표로 풀리지 않는다 — 세지 않는다)."""
-    from core.build.result import HOLD_REASONS
-    from core.build.retry import _doc_coords
-    if (env or {}).get("doc_coord") or (_doc_coords().get((env or {}).get("doc_id")) or {}).get("coord"):
-        return None                                # 문서 좌표가 있다 — 인입 때 · 그 뒤 기록(ops relink --coord)
-    loc = by_locator(env)
-    n = sum(1 for r in rows if hold_reason(r) == HOLD_REASONS[2][2] and not row_coord(r, loc))
-    if not n:
-        return None
-    return {"행": n, "후보": near_coords((env or {}).get("source_path"), nodes)}
-
-
 # ---------------------------------------------------------------- 그래프 · 큐
 def graph_lines(res, after, before=None):
     """층마다 `노드 전 → 후 (이 문서 +n)` — 전 수는 그 실행의 사실(없으면 지금 수와 이 문서 몫만).
@@ -571,7 +557,6 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),
             "엣지 없는 노드": edgeless(rows, graphs, doc_id, names, skeleton, orphans),
-            "문서 좌표": doc_coord_warning(rows, env, nodes),
             "소속 이름": names, "고아": orphans, "제목 개체": heading_names(rows)}
 
 

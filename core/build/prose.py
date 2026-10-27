@@ -59,7 +59,6 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
         ref, ref_g = low or b.main_coord(res)
         parent = ref_g.get(ref)["canonical"] if ref else None
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
-        b.mention_coords((src.get("meta") or {}).get("mentions"), COORD_CATEGORY, prov)   # 언급 공정 → 관련 링크 (B125 ④)
         plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
                                 (ref, ref_g, parent, anchor_pol), _loc,
                                 coords=[low] if low else [(r_id, r_g) for _s, r_id, r_g, _h in res if r_id])

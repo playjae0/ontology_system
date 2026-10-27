@@ -338,13 +338,14 @@ _hint(_did_e, {c["source_locator"]: {"entities": [{"surface": "장력", "categor
 _oe = _run("ingest-file", str(XE), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose")
 _res_e = (LG.read(_did_e) or {}).get("result") or {}
 _unres = (_res_e.get("보류") or {}).get("좌표 미해소로 스코프 노드 미생성", 0)
-_wl = next((ln for ln in _oe.splitlines() if ln.strip().startswith("문서 좌표 없음 — ")), "")
-_cand = next((ln for ln in _oe.splitlines() if "가까운 골격 이름" in ln), "")
+# 기대 변경(B152 ⑤ — 맞춤 아래 옛 경고 두 줄 0 · 같은 사실은 원인 묶음의 「문서 좌표 없음」 줄 — 가까운 골격 이름 · 실경로 처방)
+_wl = next((ln for ln in _oe.splitlines() if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 못 붙은 행")), "")
+_cand = _wl
 #: 보류가 0이 아닌 맞춤 묶음 — ⓐ의 대표 둘은 보류 0이라 이 인입 화면(이미 돈 실행)에서 잰다(B121 ②ⓒ — PFMEA01 몫)
 _oke, _whye = _sum_ok(_oe, _did_e)
-show("ⓔ 경고 줄 — 「문서 좌표 없음 — 좌표 미해소 보류 n행 · ▶ --coord」 · n = 결과 묶음의 보류 · 후보에 띄어쓰기 무시로 "
-     "맞는 골격 이름 · 자동 적용 0(문서 좌표 기록은 없음) · 그 화면의 맞춤 묶음도 식마다 합 = 전체 · 보류(행) = 결과 묶음(ⓐ)",
-     _unres > 0 and f"좌표 미해소 보류 {_unres}행" in _wl and "--coord <골격 이름>" in _wl
+show("ⓔ 문서 좌표 없음 — 원인 묶음의 「문서 좌표 없음」 줄에 가까운 골격 이름(띄어쓰기 무시) · 옛 경고 줄 0 · 처방 --coord · "
+     "자동 적용 0(문서 좌표 기록은 없음) · 그 화면의 맞춤 묶음도 식마다 합 = 전체 · 보류(행) = 결과 묶음(ⓐ)",
+     _unres > 0 and _wl and "좌표 미해소 보류" not in _oe and "--coord <골격 이름>" in _oe
      and "노칭::전극 리와인딩" in _cand and "문서 좌표 — 없음 (출처: 없음)" in _oe
      and (DC.recorded(_did_e) or {}).get("coord") is None and _oke,
      f"{_wl.strip()} / {_cand.strip()} / {_whye}")
@@ -407,12 +408,12 @@ def _ingest149(path, sheets, hint_of, *extra):
 
 
 def _lost149(did):
-    """못 붙은 값 — 보류 행 ∪ 고아 행(대장 · 큐에서 따로 센다)."""
-    rows = (LG.read(did) or {}).get("rows") or []
+    """못 붙은 행 — 보류 행 ∪ 고아 행(대장 · 큐에서 따로 센다 · 좌표 행은 세지 않는다 — 기대 변경 B152 ①)."""
+    rows = [r for r in (LG.read(did) or {}).get("rows") or [] if r.get("role") != "anchor"]
     items = {((it.get("provenance") or "").split("#")[-1], it.get("surface"))
              for x in store.read(store.QUEUE, []) if x.get("kind") == "orphan_attach" and x.get("doc_id") == did
              for it in (x.get("payload") or {}).get("items") or []}
-    return sum(1 for r in rows if _hr149(r) or (r.get("role") == "entity" and (r.get("locator"), r.get("surface")) in items))
+    return sum(1 for r in rows if _hr149(r) or ((r.get("locator"), r.get("surface")) in items))
 
 
 _ents149 = lambda c: [{"surface": w, "category": "Property"} for w in ("장력", "속도") if w in c.get("text", "")]
@@ -426,12 +427,13 @@ XA = _book(TMP / "B149_설비_사양서.xlsx", {"일반": ("visible", ["1. 범�
 _da, _oa = _ingest149(XA, ["일반"], _ents149)
 _ca = RCZ.causes(RCZ.material(_da))
 _ra = _run("show", "report", _da)
-show("ⓐ 문서 좌표 없음 — 원인 묶음 첫 줄 「문서 좌표 없음 — 값 n」 + 가까운 골격 이름 + 처방(--coord · 실경로) · 원인 하나 · 합 = "
-     "보류 · 고아 행 수(아래 원인에서 다시 세지 않는다)",
-     _ca and _ca[0]["원인"] == RCZ.DOC and len(_ca) == 1 and sum(g["값"] for g in _ca) == _lost149(_da) > 0
-     and "    문서 좌표 없음 — 문서 좌표 · 값" in _ra and "가까운 골격 이름(보여만 준다)" in _ra
+# 기대 변경(B152 ① — 수의 단위는 못 붙은 행(좌표 행 제외) · 원인 줄 「못 붙은 행 m(종류별)」)
+show("ⓐ 문서 좌표 없음 — 원인 묶음 첫 줄 「문서 좌표 없음 — 못 붙은 행 n」 + 가까운 골격 이름 + 처방(--coord · 실경로) · 원인 하나 · "
+     "합 = 보류 · 고아 행 수(좌표 행 제외 · 아래 원인에서 다시 세지 않는다)",
+     _ca and _ca[0]["원인"] == RCZ.DOC and len(_ca) == 1 and sum(g["행"] for g in _ca) == _lost149(_da) > 0
+     and "    문서 좌표 없음 — 문서 좌표 · 못 붙은 행" in _ra and "가까운 골격 이름(보여만 준다)" in _ra
      and f"ingest-file {XA} --doc-type {DT} --coord <골격 이름>" in _ra,
-     f"원인 {[(g['원인'], g['값']) for g in _ca]} · 못 붙은 값 {_lost149(_da)}")
+     f"원인 {[(g['원인'], g['행']) for g in _ca]} · 못 붙은 행 {_lost149(_da)}")
 # ⓕ 인입 끝 화면 — 원인 묶음 위 n줄(같은 함수 · 전체는 show report)
 _lines_a = RCZ.cause_block(_da, limit=IS.LIST_LIMIT)
 show("ⓕ 인입 끝 화면이 원인 묶음 위 n줄을 낸다(`show report`와 같은 함수 · 값 중심 보류 목록 0)",
@@ -452,19 +454,22 @@ _cb = RCZ.causes(_mb)
 _rows_b = (LG.read(_db) or {}).get("rows") or []
 _heldb = {r.get("locator") for r in _rows_b if _hr149(r)}
 _other_locs = {c["source_locator"] for c in _mb["env"]["chunks"] if (c.get("meta") or {}).get("sheet") == "기타 사양"}
-show("ⓑ 구간 좌표 없음 — 골격 이름 시트의 값은 붙고 · 다른 시트의 가장 위 제목이 「구간 좌표 없음 — <경로> 값 n」 한 줄",
+# 기대 변경(B152 ① — 못 붙은 행 · 좌표 행 제외)
+show("ⓑ 구간 좌표 없음 — 골격 이름 시트의 값은 붙고 · 다른 시트의 가장 위 제목이 「구간 좌표 없음 — <경로> 못 붙은 행 n」 한 줄",
      [(g["원인"], g["못 찾은 것"]) for g in _cb] == [(RCZ.SECTION, "기타 사양")]
-     and _cb[0]["값"] == sum(1 for r in _rows_b if _hr149(r) and r.get("locator") in _other_locs) > 0
+     and _cb[0]["행"] == sum(1 for r in _rows_b if _hr149(r) and r.get("role") != "anchor" and r.get("locator") in _other_locs) > 0
      and not {c["source_locator"] for c in _mb["env"]["chunks"] if (c.get("meta") or {}).get("sheet") == "노칭"} & _heldb
      and any(r.get("surface") == "장력" and r.get("node_id") for r in _rows_b),
-     f"원인 {[(g['원인'], g['못 찾은 것'], g['값']) for g in _cb]}")
+     f"원인 {[(g['원인'], g['못 찾은 것'], g['행']) for g in _cb]}")
 _tb, _tv = RCZ.tree_lines(_mb), RCZ.tree_lines(_mb, verbose=True)
 _line_o = next((ln for ln in _tb if ln.strip().startswith("1. 운전 — ")), "")
 _tr149 = OL149.tree(_mb["env"])
 _hid_o = next(h["id"] for h in _tr149["headings"] if h["path"].endswith("1. 운전"))
-_n_o = sum(1 for r in _rows_b if _hr149(r) and _tr149["of"].get(r.get("locator")) == _hid_o)   # 그 제목 바로 아래 조각의 보류
-show("ⓓ 목차 나무 — 문제 가지만 펼침(골격 시트는 접힘) · 줄의 좌표 출처 · 노드 상태 · 보류 수 = 봉투 · 대장 · -v면 전부",
-     any(ln.strip().startswith("기타 사양 — 좌표 없음") for ln in _tb) and f"보류 {_n_o:,}" in _line_o and "노드: " in _line_o
+# 기대 변경(B152 ④ — 「붙음 · 못 붙음」(못 붙은 행 — 좌표 행 제외))
+_n_o = sum(1 for r in _rows_b if _hr149(r) and r.get("role") != "anchor"
+           and _tr149["of"].get(r.get("locator")) == _hid_o)   # 그 제목 바로 아래 조각의 못 붙은 행
+show("ⓓ 목차 나무 — 문제 가지만 펼침(골격 시트는 접힘) · 줄의 좌표 출처 · 노드 상태 · 못 붙음 수 = 봉투 · 대장 · -v면 전부",
+     any(ln.strip().startswith("기타 사양 — 좌표 없음") for ln in _tb) and f"못 붙음 {_n_o:,}" in _line_o and "노드: " in _line_o
      and not any(ln.strip().startswith("노칭 — ") for ln in _tb) and any("다 붙은 가지 1" in ln for ln in _tb)
      and any(ln.strip().startswith("노칭 — 좌표 노칭(자기)") for ln in _tv),
      f"{_line_o.strip()} · 접음 {[ln.strip() for ln in _tb if '다 붙은' in ln]}")
@@ -476,11 +481,12 @@ _dc, _oc = _ingest149(XC, ["사양"], lambda c: [{"surface": w, "category": "Pro
 _cc = RCZ.causes(RCZ.material(_dc))
 _q_c = sum(int((x.get("payload") or {}).get("rows") or 0) for x in store.read(store.QUEUE, [])
            if x.get("kind") == "orphan_attach" and x.get("doc_id") == _dc and (x.get("payload") or {}).get("key") == "반송 유닛")
-show("ⓒ 소속 이름 없음 — 기다리는 이름마다 한 줄 · 값 수 = 고아 큐의 그 이름 항목 수 · 처방은 사람 후보(--step)",
+# 기대 변경(B152 ① — 못 붙은 행)
+show("ⓒ 소속 이름 없음 — 기다리는 이름마다 한 줄 · 못 붙은 행 = 고아 큐의 그 이름 항목 수 · 처방은 사람 후보(--step)",
      [(g["원인"], g["못 찾은 것"]) for g in _cc if g["원인"] == RCZ.BELONGS] == [(RCZ.BELONGS, "반송 유닛")]
-     and next(g["값"] for g in _cc if g["원인"] == RCZ.BELONGS) == _q_c > 0
+     and next(g["행"] for g in _cc if g["원인"] == RCZ.BELONGS) == _q_c > 0
      and "--step" in next(g["처방"] for g in _cc if g["원인"] == RCZ.BELONGS),
-     f"원인 {[(g['원인'], g['못 찾은 것'], g['값']) for g in _cc]} · 큐 {_q_c}")
+     f"원인 {[(g['원인'], g['못 찾은 것'], g['행']) for g in _cc]} · 큐 {_q_c}")
 # ⓔ 표 — 좌표 표기 하나가 골격 밖(CP01 사본의 「프리 실링」 한 행)
 _wb = _lw149(RAWS / "CP01.xlsx")
 _ws = _wb.worksheets[0]
@@ -495,12 +501,54 @@ _mt149 = RCZ.material(_dt)
 _ct = RCZ.causes(_mt149)
 _rows_t = (LG.read(_dt) or {}).get("rows") or []
 _lt = [ln for ln in RCZ.tree_lines(_mt149) if "없는공정B149" in ln]
-_nt149 = sum(1 for r in _rows_t if _hr149(r) and RC.row_coord(r, _mt149["by_loc"]) == "없는공정B149")
-show("ⓔ 표 — 골격 밖 좌표 표기 하나가 한 줄(값 = 그 표기의 보류 행) · 목차 나무 자리는 좌표 표기 목록(그 표기 → 없음 · 행 1)",
+# 기대 변경(B152 ① ④ — 못 붙은 행(좌표 행 제외) · 목록 줄 「레코드 r · 붙음 · 못 붙음」)
+_nt149 = sum(1 for r in _rows_t if _hr149(r) and r.get("role") != "anchor"
+             and RC.row_coord(r, _mt149["by_loc"]) == "없는공정B149")
+show("ⓔ 표 — 골격 밖 좌표 표기 하나가 한 줄(못 붙은 행 = 그 표기의 보류 행) · 목차 나무 자리는 좌표 표기 목록(그 표기 → 없음 · 레코드 1)",
      (RCZ.SECTION, "좌표 표기 '없는공정B149'") in [(g["원인"], g["못 찾은 것"]) for g in _ct]
-     and next(g["값"] for g in _ct if g["못 찾은 것"] == "좌표 표기 '없는공정B149'") == _nt149 > 0
-     and len(_lt) == 1 and "· 행 1 ·" in _lt[0] and "좌표 표기 목록" in RCZ.tree_lines(_mt149)[1],
-     f"원인 {[(g['원인'], g['못 찾은 것'], g['값']) for g in _ct]} · {(_lt or [''])[0].strip()}")
+     and next(g["행"] for g in _ct if g["못 찾은 것"] == "좌표 표기 '없는공정B149'") == _nt149 > 0
+     and len(_lt) == 1 and "· 레코드 1 ·" in _lt[0] and "좌표 표기 목록" in RCZ.tree_lines(_mt149)[1],
+     f"원인 {[(g['원인'], g['못 찾은 것'], g['행']) for g in _ct]} · {(_lt or [''])[0].strip()}")
+
+# ────────────────────────────────────────────────────────────── B152 진단 화면의 수 단위
+print("\n■ B152 — 수의 단위는 못 붙은 행(좌표 행 제외 · 맞춤표 행 종류) · 머리 · 원인 줄 · 목차 나무가 같은 행 집합")
+_ma152 = RCZ.material(_da)
+_hd152 = RCZ.head_line(_ma152) or ""
+_ra_lines = _ra.splitlines()
+_doc152 = next((ln for ln in _ra_lines if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 못 붙은 행")), "")
+_ent152 = sum(1 for r in (LG.read(_da) or {}).get("rows") or [] if r.get("role") == "entity")
+show("B152 ⓐ 단위 — 문서 좌표 없는 산문(값 2 · 조각 2) → 원인 줄 「못 붙은 행 2(개체 2)」 · 머리 「개체 2/2」 · 같은 화면 맞춤 「값(개체 행) 2」와 "
+     "같은 수 · 좌표 행 0",
+     _ent152 == 2 and "못 붙은 행 2(개체 2)" in _doc152 and "못 붙은 행 2 / 전체 2 — 개체 2/2" in _hd152 and _hd152.strip() in _ra
+     and re.search(r"값\(개체 행\) 2\b", _ra) and not any("좌표" in k for k in (RCZ.head_count(_ma152)[2] or [])),
+     f"{_hd152.strip()} · {_doc152.strip()[:80]}")
+from collections import Counter                          # noqa: E402
+from tools import four_way as _FW152                      # noqa: E402 — B147 부착 대상 표본(창작 — 한 자리)
+_f152 = _FW152.CPU_SCHEMA["fields"]
+_x152 = _FW152.cpu_setup({**_FW152.CPU_SCHEMA, "fields": {**_f152, "규격": {**_f152["규격"], "attach_to_field": "process_ref"}}})
+_run("ingest-file", str(_x152), "--doc-type", _FW152.CPU_DT, "--allow-mock")
+_mx152 = RCZ.material("FWCPU")
+_cx152 = RCZ.causes(_mx152)
+_gx = [g for g in _cx152 if g["원인"] == RCZ.OTHER and "개체 열" in str(g["못 찾은 것"])]
+_hx = RCZ.head_line(_mx152) or ""
+show("B152 ⓑ 속성만 못 붙은 원인이 보인다 — 부착 대상 표본(개체는 붙고 속성이 보류) → 「그 밖 — 부착 대상」 줄에 속성·내용 수 · 개체 칸 없음 · "
+     "머리 「속성·내용 b/B」",
+     len(_gx) == 1 and set(_gx[0]["종류"]) == {"속성·내용"} and _gx[0]["행"] > 0
+     and f"속성·내용 {_gx[0]['행']}/" in _hx and " 개체 " not in _hx,
+     f"{_hx.strip()} · {[(g['원인'], g['못 찾은 것'], g['종류']) for g in _cx152]}")
+_sums = []
+for _d152 in (_db, _dc, _dt):
+    _m152 = RCZ.material(_d152)
+    _n152, _tot, _kinds, _st = RCZ.head_count(_m152)
+    _c152 = RCZ.causes(_m152)
+    _kc = Counter()
+    for g in _c152:
+        _kc.update(g["종류"])
+    _tree = RCZ.tree_lines(_m152, verbose=True)
+    _lost_tree = sum(int(m.group(1).replace(",", "")) for ln in _tree for m in [re.search(r"못 붙음 ([\d,]+)", ln)] if m)
+    _sums.append((_d152, _n152, dict(_kc) == {k: a for k, a, _b in _kinds}, sum(_kc.values()), _lost_tree))
+show("B152 ⓒ 합 — B149 ⓑ · ⓒ · ⓔ 표본에서 원인 줄의 종류별 합 = 머리의 분자 · 목차 나무(펼친 줄 + 접은 줄) · 좌표 표기 목록의 못 붙음 합 = 머리의 n",
+     all(ok and n == s == lt and n > 0 for _d, n, ok, s, lt in _sums), str(_sums))
 for _x in (XA, XB, XC, XT):
     _d149 = IG.doc_id_of(_x)
     SH.path(_d149).unlink(missing_ok=True)
