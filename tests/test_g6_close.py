@@ -22,6 +22,8 @@
      사본의 임시 루트 · 출력 전문이 남고 자리가 화면 · 명령 로그에 · ⓑ 마감 한 줄은 doctor를 회귀 명령(`--regress`)으로 부른다
   ⓓ 명세 모양 — 지금 명세는 기준 그대로 통과 · 사본에 취소선 하나 · 칸 밖 글 하나를 더하면 둘 다 위반이고 기준은 그대로 ·
      줄어든 수는 기준을 내린다(기준 사본에 수와 기록)
+  ⓖ 명세 낱말 대조(B158 ②) — 기준 판(git)에서 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 적으면 rc 0 · 머리줄 하나를 바꾼
+     사본 ⇒ rc 1
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
 """
 from __future__ import annotations
@@ -419,6 +421,22 @@ _rec = json.loads(_tb.read_text(encoding="utf-8"))
 show("ⓓ 줄어든 수는 기준을 그 수로 내린다(기준 사본에 수와 기록)",
      not bad2 and "취소선" in low2 and _rec["취소선"] == now2["취소선"] and _rec.get("기록")
      and "취소선" in _rec["기록"][-1]["내림"], f"내림 {low2}")
+
+# ────────────────────────────────────────────────────────────── ⓖ
+print("\n■ ⓖ 명세 낱말 대조 — 사라진 낱말은 대조 표에 있어야 · 머리줄은 그대로 (B158 ②)")
+from tools import spec_terms as STM                                   # noqa: E402
+_old = STM._git_show("HEAD", "docs/spec/7_구현규격과검증.md")         # 기준은 git의 판(실경로 — 작업 트리와 무관)
+_word = next(t for t, k in sorted(STM.terms(_old).items()) if k == "백틱" and _old.count(t) == 1 and t.isascii() and t.isidentifier())
+_gone = _old.replace(f"`{_word}`", "")                                # 문서에 한 번뿐인 백틱 낱말 하나를 지운 사본
+rc_g1, _ln1, _d1 = STM.compare(_old, _gone)
+_acc = f"| 낱말 | 방향 | 까닭 · 자리 |\n|---|---|---|\n| `{_word}` | 사라짐 | 중복 — 남은 자리 시험 |\n"
+rc_g2, _ln2, _d2 = STM.compare(_old, _gone, _acc)
+_h = next(l for l in _old.split("\n") if l.startswith("## "))
+rc_g3, _ln3, _d3 = STM.compare(_old, _old.replace(_h, _h + " (바꿈)", 1), "")
+show("ⓖ 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 적으면 rc 0 · 머리줄 하나를 바꾼 사본 ⇒ rc 1(대조 표가 비어도)",
+     rc_g1 == 1 and set(_d1) == {(_word, "사라짐")} and rc_g2 == 0 and rc_g3 == 1
+     and any("머리줄 — 다르다" in x for x in _ln3) and STM.compare(_old, _old)[0] == 0,
+     f"낱말 {_word} · rc {rc_g1} · {rc_g2} · {rc_g3}")
 
 shutil.rmtree(T, ignore_errors=True)
 print("\n" + "=" * 62)
