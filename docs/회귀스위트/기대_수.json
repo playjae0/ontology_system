@@ -3,31 +3,31 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 6
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 9
+   "secs": 7
   },
   "test_g3": {
    "n": 82,
-   "secs": 4
+   "secs": 3
   },
   "test_query": {
    "n": 122,
-   "secs": 14
+   "secs": 13
   },
   "test_ops": {
    "n": 84,
-   "secs": 7
+   "secs": 8
   },
   "test_intake": {
    "n": 100,
-   "secs": 19
+   "secs": 17
   },
   "test_ingest_view": {
    "n": 78,
-   "secs": 31
+   "secs": 30
   },
   "test_coord": {
    "n": 49,
@@ -35,43 +35,43 @@
   },
   "test_catalog": {
    "n": 60,
-   "secs": 22
+   "secs": 21
   },
   "test_safety": {
    "n": 36,
-   "secs": 64
+   "secs": 59
   },
   "test_judge": {
    "n": 86,
-   "secs": 12
+   "secs": 10
   },
   "test_build": {
    "n": 79,
-   "secs": 30
+   "secs": 28
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 25
+   "secs": 20
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 9
+   "secs": 7
   },
   "test_structure": {
    "n": 110,
-   "secs": 25
+   "secs": 21
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 25
+   "secs": 23
   },
   "test_g6_close": {
-   "n": 29,
+   "n": 30,
    "secs": 31
   },
   "test_contract": {
    "n": 76,
-   "secs": 23
+   "secs": 22
   },
   "test_p1_core6": {
    "n": 42,
@@ -91,11 +91,11 @@
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 5
+   "secs": 3
   },
   "test_p2": {
    "n": 69,
-   "secs": 6
+   "secs": 5
   },
   "test_p3_register": {
    "n": 73,
@@ -119,7 +119,7 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 6
   },
   "test_p3_ledger": {
    "n": 46,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 64,
-   "secs": 11
+   "secs": 9
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 24
+   "secs": 22
   }
  },
  "log": [
@@ -513,6 +513,14 @@
    "suite": "test_structure",
    "from": 109,
    "to": 110,
+   "why": ""
+  },
+  {
+   "at": "2026-10-28",
+   "head": "bd4c79a",
+   "suite": "test_g6_close",
+   "from": 29,
+   "to": 30,
    "why": ""
   }
  ]
