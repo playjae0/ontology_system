@@ -21,7 +21,8 @@
   ⓕ′ 레포 쓰기 정적 점검(B133 ①) — 지금 레포 위반 0 · 사본 시험에 레포 쓰기를 심으면 rc 1과 그 자리 · ⓓ′ 붉은 기록(B133 ②) — PASS 0
      사본의 임시 루트 · 출력 전문이 남고 자리가 화면 · 명령 로그에 · ⓑ 마감 한 줄은 doctor를 회귀 명령(`--regress`)으로 부른다
   ⓓ 명세 모양 — 지금 명세는 기준 그대로 통과 · 사본에 취소선 하나 · 칸 밖 글 하나를 더하면 둘 다 위반이고 기준은 그대로 ·
-     줄어든 수는 기준을 내린다(기준 사본에 수와 기록)
+     줄어든 수는 기준을 내린다(기준 사본에 수와 기록) · 목록 항목 바로 뒤에 붙은 문단 하나 ⇒ 붙음 위반 · 빈 줄을 넣으면 붙음 그대로
+     (B159 ②)
   ⓖ 명세 낱말 대조(B158 ②) — 기준 판(git)에서 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 적으면 rc 0 · 머리줄 하나를 바꾼
      사본 ⇒ rc 1
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
@@ -413,6 +414,14 @@ show("ⓓ 사본에 취소선 하나 · 칸 밖 글 하나 ⇒ 둘 다 위반 ·
      now1["취소선"] == now0["취소선"] + 1 and now1["칸 밖"] == now0["칸 밖"] + 1
      and any(x.startswith("취소선") for x in bad1) and any(x.startswith("칸 밖") for x in bad1)
      and Path(SH.BASE_FILE).read_bytes() == _base_bytes, " · ".join(b[:30] for b in bad1))
+_b.write_text(_b.read_text(encoding="utf-8").replace("\n~~시험~~\n", "\n").replace("| 가 | 나 | 칸 밖 글\n", "")
+              + "\n- 목록 항목\n붙은 문단\n", encoding="utf-8")
+bad_s, now_s, _bs, _ls = SH.judge(str(SP2), write=False)
+_b.write_text(_b.read_text(encoding="utf-8").replace("- 목록 항목\n붙은 문단\n", "- 목록 항목\n\n떨어진 문단\n"), encoding="utf-8")
+bad_s2, now_s2, _bs2, _ls2 = SH.judge(str(SP2), write=False)
+show("ⓓ 목록 항목 바로 뒤에 붙은 문단 하나 ⇒ 붙음 위반 · 빈 줄을 넣으면 붙음이 지금 명세와 같다(위반 0) (B159 ②)",
+     now_s["붙음"] == now0["붙음"] + 1 and any(x.startswith("붙음") for x in bad_s)
+     and now_s2["붙음"] == now0["붙음"] and not bad_s2, f"{now0['붙음']} → {now_s['붙음']} · {now_s2['붙음']} · {bad_s}")
 _tb = T / "shape" / "기준.json"
 _tb.write_text(json.dumps(dict(base0, 취소선=now0["취소선"] + 2), ensure_ascii=False), encoding="utf-8")
 SH.BASE_FILE = str(_tb)
