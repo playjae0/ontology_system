@@ -2,13 +2,15 @@
 """명세 모양 점검 — 늘어나지 않게 (문서 검사 일곱째 · B117 ③).
 
 명세 본문에 회차마다 덧붙인 흔적이 쌓였다(허브 진단 2026-10-16): 취소선 · 한 줄에 1500자가 넘는 문단 · 표 행의 마지막
-칸 밖에 붙은 글(렌더링에서 안 보인다). 세 수를 세어 **기준값보다 늘면 위반**이다. 줄면 기준값을 그 수로 내리고 기록한다
+칸 밖에 붙은 글(렌더링에서 안 보인다) · 본문 `[개정]` 표지(B158 — 새 개정은 패치로 지금 규칙을 고쳐 쓴다 · 표지를 덧붙이지 않는다).
+네 수를 세어 **기준값보다 늘면 위반**이다. 줄면 기준값을 그 수로 내리고 기록한다
 (내려간 기준은 다시 오르지 않는다 — 정제 패스가 줄인 만큼 잠긴다).
 
   · 대상 — 명세 본문(`REFINED_DIR` 아래 `*.md` · 개정대장 제외 · 보관 파일은 `docs/archive/`라 애초에 밖이다)
   · 취소선 — 한 줄 안의 `~~…~~` 짝 수
   · 긴 줄 — 글자 수 1500 초과인 줄 수
   · 표 칸 밖 — `|`로 시작하는 표 행 중 끝이 `|`가 아닌 행 수(마지막 칸 뒤에 붙은 글)
+  · 개정 표지 — 본문의 `[개정]` 수(B158)
   · 기준값 — 자산 `docs/회귀스위트/자산/명세_모양.json`
 
 같은 함수(`measure` · `judge`)를 마감 한 줄(`tools/close.py`)과 명세 패치 점검(`tools/spec_patch.py --check`)이 부른다.
@@ -25,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_SPEC = os.path.normpath(os.path.join(HERE, "..", "spec"))
 BASE_FILE = os.path.join(HERE, "자산", "명세_모양.json")
 LONG = 1500
-KEYS = ("취소선", "긴 줄", "칸 밖")
+KEYS = ("취소선", "긴 줄", "칸 밖", "개정 표지")
 _STRIKE = re.compile(r"~~[^~\n]+?~~")
 
 
@@ -35,7 +37,7 @@ def body_files(spec):
 
 
 def measure(spec):
-    """`{취소선 · 긴 줄 · 칸 밖: 수, "자리": {키: [파일:행 …]}}`."""
+    """`{취소선 · 긴 줄 · 칸 밖 · 개정 표지: 수, "자리": {키: [파일:행 …]}}`."""
     out = {k: 0 for k in KEYS}
     where = {k: [] for k in KEYS}
     for f in body_files(spec):
@@ -52,6 +54,10 @@ def measure(spec):
             if s.startswith("|") and not s.endswith("|"):
                 out["칸 밖"] += 1
                 where["칸 밖"].append(f"{name}:{i}")
+            n = line.count("[개정]")
+            if n:
+                out["개정 표지"] += n
+                where["개정 표지"].append(f"{name}:{i}")
     out["자리"] = where
     return out
 
@@ -82,15 +88,15 @@ def judge(spec, write=None):
 
 
 def line(now, base, bad):
-    return (f"취소선 {now['취소선']} · 1500자+ 줄 {now['긴 줄']} · 표 칸 밖 {now['칸 밖']} "
-            f"(기준 {base['취소선']} · {base['긴 줄']} · {base['칸 밖']}) · 위반 {len(bad)}건")
+    return (f"취소선 {now['취소선']} · 1500자+ 줄 {now['긴 줄']} · 표 칸 밖 {now['칸 밖']} · [개정] 표지 {now['개정 표지']} "
+            f"(기준 {base['취소선']} · {base['긴 줄']} · {base['칸 밖']} · {base['개정 표지']}) · 위반 {len(bad)}건")
 
 
 def main():
     spec = os.environ.get("REFINED_DIR", REPO_SPEC)
     bad, now, base, lowered = judge(spec)
     print("=" * 62)
-    print("명세 모양 점검 — 취소선 · 긴 줄 · 표 칸 밖 글이 늘지 않는가")
+    print("명세 모양 점검 — 취소선 · 긴 줄 · 표 칸 밖 글 · [개정] 표지가 늘지 않는가")
     print("=" * 62)
     for b in bad:
         print(f"  [위반] {b}")
