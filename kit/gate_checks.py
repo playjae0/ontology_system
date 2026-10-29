@@ -152,10 +152,10 @@ def check_shapes(schema, mod):
 def check_ledger_coverage(schema, mod):
     """**G4G — 스키마 `fields` 전부에 대장 행이 있는가** (B76 ②).
 
-    대장(B67)은 열 프로파일로만 세워져, 어댑터가 쓰는 열이 프로파일 밖이면
-    **스키마에 있어도 행이 없는 필드**가 생겼다. 그 필드는 기계 제안 대조와
-    「이어가기」에서 빠진다 — 사람이 판정한 것이 아니라 **기계가 빠뜨린 것**이라
-    질문이 아니라 FAIL이다(사내 실측 열다섯째의 둘째 원인).
+    대장은 프로파일 ∪ 어댑터가 쓰는 열의 (열 · 필드) 쌍마다 행을 세운다(B76 ② · B162).
+    그래도 **스키마에 있는데 행이 없는 필드**는 대장을 세우는 자리가 빠뜨린 것이다 —
+    그 필드는 기계 제안 대조와 「이어가기」에서 빠진다 — 사람이 판정할 것이 아니라
+    FAIL이다. 문면은 그 필드 · 어댑터 열 · 같은 열의 다른 필드를 말한다.
 
     대장 경로가 없으면 대상이 아니다(킷 단독 실행).
     """
@@ -177,9 +177,19 @@ def check_ledger_coverage(schema, mod):
     cols = (getattr(mod, "ADAPTER", {}).get("expects") or {}).get("columns") or {}
     struct = structural_fields()
     miss = [f for f in sorted(fields) if f not in have and f not in struct]
-    det = " ‖ ".join(
-        f"대장에 없는 필드 {f} — 어댑터 columns {cols.get(f)!r} · 프로파일 밖"
-        for f in miss)
+    # 같은 열에 대장 행이 있는 다른 필드 — 원인(한 열 · 필드 여럿)이 문면에서 보이게
+    on_col = {}
+    for r in rows or []:
+        if r.get("field"):
+            on_col.setdefault(str(r.get("col")), set()).add(r["field"])
+
+    def _why(f):
+        v = cols.get(f)
+        others = sorted({o for c in (v if isinstance(v, (list, tuple)) else [v])
+                         for o in on_col.get(str(c), ()) if o != f})
+        return (f"대장에 없는 필드 {f} — 어댑터 columns {v!r}"
+                + (f" · 같은 열의 대장 행 {', '.join(others)}" if others else ""))
+    det = " ‖ ".join(_why(f) for f in miss)
     return show("G4G  열 판정 대장이 스키마 필드 전부를 덮는다", not miss, det)
 
 

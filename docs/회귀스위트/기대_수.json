@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 5
+   "secs": 4
   },
   "test_places": {
    "n": 32,
@@ -15,15 +15,15 @@
   },
   "test_query": {
    "n": 131,
-   "secs": 15
+   "secs": 16
   },
   "test_ops": {
    "n": 84,
-   "secs": 6
+   "secs": 7
   },
   "test_intake": {
    "n": 100,
-   "secs": 17
+   "secs": 15
   },
   "test_ingest_view": {
    "n": 78,
@@ -31,35 +31,35 @@
   },
   "test_coord": {
    "n": 49,
-   "secs": 10
+   "secs": 11
   },
   "test_catalog": {
    "n": 60,
-   "secs": 18
+   "secs": 19
   },
   "test_safety": {
    "n": 36,
-   "secs": 56
+   "secs": 58
   },
   "test_judge": {
    "n": 86,
-   "secs": 9
+   "secs": 10
   },
   "test_build": {
    "n": 79,
-   "secs": 24
+   "secs": 27
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 20
+   "secs": 19
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 6
   },
   "test_structure": {
    "n": 111,
-   "secs": 21
+   "secs": 23
   },
   "test_g6_capture": {
    "n": 11,
@@ -71,7 +71,7 @@
   },
   "test_contract": {
    "n": 76,
-   "secs": 22
+   "secs": 23
   },
   "test_p1_core6": {
    "n": 42,
@@ -91,11 +91,11 @@
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 4
+   "secs": 3
   },
   "test_p2": {
    "n": 69,
-   "secs": 6
+   "secs": 5
   },
   "test_p3_register": {
    "n": 73,
@@ -107,11 +107,11 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 3
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 4
+   "secs": 5
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,15 +119,15 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 6
+   "secs": 7
   },
   "test_p3_ledger": {
    "n": 46,
    "secs": 3
   },
   "test_p3_flow": {
-   "n": 64,
-   "secs": 8
+   "n": 69,
+   "secs": 9
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 22
+   "secs": 23
   }
  },
  "log": [
@@ -553,6 +553,14 @@
    "suite": "test_query",
    "from": 130,
    "to": 131,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "04cc970",
+   "suite": "test_p3_flow",
+   "from": 64,
+   "to": 69,
    "why": ""
   }
  ]

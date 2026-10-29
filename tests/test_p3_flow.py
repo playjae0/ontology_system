@@ -592,6 +592,70 @@ show("① 한 필드가 열 여럿이어도 `role_table`이 죽지 않고 표를
      f"{len(_rt76)}행")
 _lp76.write_text(_save76, encoding="utf-8")
 
+# ── B162 — 한 열을 필드 둘이 읽는다: 대장 행은 (열 · 필드) 쌍마다 ─────────────
+# 사내 품질 표: 셀 하나를 이름 · 서술 둘로 나누어 읽는 어댑터 — 열마다 행 하나면 둘째
+# 필드가 대장에서 빠져 G4G가 막았다. 같은 스냅샷에 둘째 필드를 같은 열로 더한 사본이다.
+print("\n■ B162 한 열 · 필드 둘 — 대장 행은 (열 · 필드) 쌍마다")
+reset("ipqc")
+shutil.copytree(_snap67, REVIEW / "ipqc")
+_st162 = R._state("ipqc")
+_base162 = next(r for r in Rledger.read_ledger("ipqc")
+                if r.get("field") in _fld76 and r["field"] not in _struct76)
+_col162, _bf162 = _base162["col"], _base162["field"]
+_new162 = f"{_bf162} 설명"                 # 이름이 다른 필드를 품는 꼴 — 지시 매칭이 갈라야 한다
+_ap162, _sp162 = Rdraft._at(_st162["adapter"]), Rdraft._at(_st162["schema"])
+_src162 = _ap162.read_text(encoding="utf-8")
+_ap162.write_text(_src162.replace('"columns": {', f'"columns": {{"{_new162}": "{_col162}", ', 1),
+                  encoding="utf-8")
+_sj162 = json.loads(_sp162.read_text(encoding="utf-8"))
+_sj162["fields"][_new162] = {"role": "content", "정의문": "같은 셀의 서술 부분(시험 창작 꼴)"}
+_sp162.write_text(json.dumps(_sj162, ensure_ascii=False), encoding="utf-8")
+Rledger.sync_ledger("ipqc", _st162)
+_on162 = [r for r in Rledger.read_ledger("ipqc") if r.get("col") == _col162]
+_ok162, _out162 = Rgate.harness(_ap162, _sp162, [RAW / "IPQC01.xlsx"], doc_type="ipqc")
+_head162 = Rledger.ledger_block("ipqc").splitlines()[0]
+_ncol162 = len({r.get("col") for r in Rledger.read_ledger("ipqc")})
+show("ⓐ 한 열 · 필드 둘 → 대장 행 둘(같은 열 · 각자 필드) · G4G PASS · 머리 줄 열 수 = 서로 다른 열 수",
+     len(_on162) == 2 and {r.get("field") for r in _on162} == {_bf162, _new162}
+     and "[PASS] G4G" in _out162 and f"— {_ncol162}열 · " in _head162,
+     f"{_col162}열 {[r.get('field') for r in _on162]} · {_head162.strip()[:40]}")
+
+# ⓒ 열문자만 부르는 지시는 어느 필드인지 못 정한다 — 이력에만(문서 6 「못 집으면 이력에만」)
+_hc162 = Rledger.apply_to_ledger("ipqc", f"{_col162}열은 content다", "instruct rev 162")
+_same162 = [r for r in Rledger.read_ledger("ipqc") if r.get("col") == _col162] == _on162
+_hf162 = Rledger.apply_to_ledger("ipqc", f"{_new162}은 content다", "instruct rev 162")
+_by162 = {r.get("field"): r.get("by") for r in Rledger.read_ledger("ipqc") if r.get("col") == _col162}
+show("ⓒ --instruct가 열문자만 부르면 그 열 두 행 변화 0 · 필드 이름을 부르면 그 행만 바뀐다",
+     _hc162 == 0 and _same162 and _hf162 == 1
+     and _by162[_new162] == "instruct rev 162" and _by162[_bf162] != "instruct rev 162",
+     f"열만 {_hc162}행 · 필드 {_hf162}행 · {_by162}")
+
+# ⓑ 그 행은 앞자리다(어댑터 columns 맨 앞) — 열 하나를 열쇠로 이으면 뒤 행의 판단이 덮는다
+Rgate.regate("ipqc", R._state("ipqc"))
+_kept162 = next(r for r in Rledger.read_ledger("ipqc")
+                if (r.get("col"), r.get("field")) == (_col162, _new162))
+show("ⓑ 그 열의 한 행을 사람이 정한 뒤 관문을 다시 돌려도 그 행의 by · role이 남는다",
+     _kept162.get("by") == "instruct rev 162" and _kept162.get("role") == "content",
+     f"by {_kept162.get('by')} · role {_kept162.get('role')}")
+
+# ⓔ 기계 제안은 열마다 하나다 — 두 필드 모두 그 열에 대조되면 둘 다 열문자를 가진 것이다
+_other162 = next(x for x in Rdraft._ROLES if x not in {_base162.get("role"), "content"})
+_rt162 = Rledger.role_table(_sj162, R._load(_ap162, "p3_b162"), R._state("ipqc"),
+                            [{"열": {_col162: {"기계제안": {"제안": _other162}}}}])
+_ms162 = {r["field"]: r.get("machine_suggest") for r in _rt162 if r["field"] in (_bf162, _new162)}
+show("ⓔ `role_table`에서 두 필드 모두 열문자를 갖는다 (같은 열의 기계 제안이 둘 다에 대조된다)",
+     _ms162 == {_bf162: _other162, _new162: _other162}, str(_ms162))
+
+# ⓓ 대장에서 한 행을 지우면 — 원인이 보이는 문면(그 필드 · 어댑터 열 · 같은 열의 다른 필드)
+_lj162 = json.loads(_lp76.read_text(encoding="utf-8"))
+_lj162["columns"] = [r for r in _lj162["columns"] if r.get("field") != _new162]
+_lp76.write_text(json.dumps(_lj162, ensure_ascii=False), encoding="utf-8")
+_ok162d, _out162d = Rgate.harness(_ap162, _sp162, [RAW / "IPQC01.xlsx"], doc_type="ipqc")
+_g4g162 = next((l.strip() for l in _out162d.splitlines() if "G4G" in l), "")
+show("ⓓ G4G 문면에 「프로파일 밖」 0 · 행이 빠지면 FAIL 줄이 그 필드와 같은 열의 다른 필드를 말한다",
+     "[FAIL]" in _g4g162 and _new162 in _g4g162 and f"같은 열의 대장 행 {_bf162}" in _g4g162
+     and "프로파일 밖" not in _g4g162, _g4g162[:120])
+
 print("\n■ B76 ③ 등록 흐름의 예외는 문면으로 죽는다")
 _dl76 = store.path(store.DEFECTS)
 _before76 = _dl76.read_text(encoding="utf-8") if _dl76.exists() else ""
