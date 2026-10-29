@@ -7,19 +7,19 @@
   },
   "test_places": {
    "n": 32,
-   "secs": 6
+   "secs": 8
   },
   "test_g3": {
    "n": 82,
    "secs": 2
   },
   "test_query": {
-   "n": 122,
-   "secs": 13
+   "n": 130,
+   "secs": 17
   },
   "test_ops": {
    "n": 84,
-   "secs": 7
+   "secs": 8
   },
   "test_intake": {
    "n": 100,
@@ -39,27 +39,27 @@
   },
   "test_safety": {
    "n": 36,
-   "secs": 60
+   "secs": 58
   },
   "test_judge": {
    "n": 86,
-   "secs": 9
+   "secs": 10
   },
   "test_build": {
    "n": 79,
-   "secs": 27
+   "secs": 26
   },
   "test_rebuild": {
    "n": 42,
-   "secs": 21
+   "secs": 20
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 8
+   "secs": 7
   },
   "test_structure": {
    "n": 111,
-   "secs": 22
+   "secs": 21
   },
   "test_g6_capture": {
    "n": 11,
@@ -71,7 +71,7 @@
   },
   "test_contract": {
    "n": 76,
-   "secs": 23
+   "secs": 22
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,15 +83,15 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 4
+   "secs": 2
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 3
+   "secs": 2
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 4
+   "secs": 5
   },
   "test_p2": {
    "n": 69,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 7
+   "secs": 5
   },
   "test_p3_prompt": {
    "n": 60,
@@ -115,7 +115,7 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 2
+   "secs": 1
   },
   "test_p3_screen": {
    "n": 52,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 64,
-   "secs": 9
+   "secs": 8
   },
   "test_2a_gateway": {
    "n": 75,
@@ -135,7 +135,7 @@
   },
   "test_viewer": {
    "n": 60,
-   "secs": 3
+   "secs": 2
   },
   "verify_roundtrip": {
    "n": 50,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 23
+   "secs": 22
   }
  },
  "log": [
@@ -537,6 +537,14 @@
    "suite": "test_structure",
    "from": 110,
    "to": 111,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "6775b42",
+   "suite": "test_query",
+   "from": 122,
+   "to": 130,
    "why": ""
   }
  ]
