@@ -5,7 +5,8 @@
 극성 상속 → 소유자 이름 부모 → `build.entity_key`)로 해소해 열쇠를 짓는다(두 번째 구현 0): 사전 · 경로 호환이 답하면 그 노드 ·
 아니면 새로 설 이름(집 층과 함께) · 대상이 anchor면 골격 조회(구축과 같은 `resolve_anchor`). `contextual`이면 맥락(봉투 ∪ 레코드
 — 구축과 같은 덮어쓰기)을 더한다. 값의 같음은 구축의 충돌 판정과 같다(통째 비교). 기수는 **문서 안**이다(문서 간은 충돌 시험의
-몫). LLM 0 · 쓰기 0(좌표 미해소는 버리는 자루). `contextual` 열에서 맥락이 딕셔너리가 아닌 행(계약 위반 — 구축은 `missing_field`
+몫 · 문서는 표본 경로로 가른다). LLM 0 · 쓰기 0(좌표 미해소는 버리는 자루). 새로 설 이름은 사전과 같은 정규화(`ids.norm`)로 잰다 ·
+값의 같음은 `Builder.put_attribute`와 같은 `==`(1과 1.0은 같다 — 구조체 안의 수도). `contextual` 열에서 맥락이 딕셔너리가 아닌 행(계약 위반 — 구축은 `missing_field`
 를 올리고 맥락 없이 싣는다)은 세지 않고 수만 낸다 — 그 갈림은 열의 성질이 아니라 맥락의 꼴 때문이다(D-249 ⑥).
 
 판정 규칙(`fails`): 값이 갈리는 대상이 **둘 이상**이고 **잴 수 있는 대상(두 행 이상 나온 대상)의 절반 이상**일 때 — 열의 성질이다.
@@ -55,9 +56,10 @@ def _one(b, f, spec, fields, owners, docs):
             rc = rec.get("context") if isinstance(rec.get("context"), dict) else {}
             ctx = {**base, **rc} if spec.get("contextual") else {}
             k = (d.get("doc"), tid, json.dumps(ctx, sort_keys=True, ensure_ascii=False, default=str))
-            g = groups.setdefault(k, {"rows": 0, "vals": set(), "name": tv.strip()})
+            g = groups.setdefault(k, {"rows": 0, "vals": [], "name": tv.strip()})
             g["rows"] += 1
-            g["vals"].add(json.dumps(rec[f], sort_keys=True, ensure_ascii=False, default=str))
+            if not any(v == rec[f] for v in g["vals"]):     # 구축의 충돌 판정과 같은 같음(`put_attribute`의 ==)
+                g["vals"].append(rec[f])
     meas = [g for g in groups.values() if g["rows"] >= 2]
     split = [g for g in meas if len(g["vals"]) >= 2]
     return {"field": f, "target": af, "measurable": len(meas), "split": len(split),
@@ -78,7 +80,8 @@ def _target(b, rec, af, fields, owners):
     if not r:
         return None
     hits, key, lay = r
-    return ("node", hits[0]["id"]) if hits else ("key", lay, key)
+    from core.state.ids import norm
+    return ("node", hits[0]["id"]) if hits else ("key", lay, norm(key))     # 사전 등재와 같은 정규화(연속 공백)
 
 
 def fails(m):

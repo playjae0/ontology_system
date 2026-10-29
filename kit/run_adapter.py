@@ -506,9 +506,10 @@ def run_pipeline(mod, schema, doc, label):
         # **좌표 쌍**(B105 ② · G4I) — 태깅이 끝난 조각으로(운영 좌표 단계 · 구축과 같은 판정)
         check_coord_pairs(schema, env.get("records") or env.get("chunks") or [], nodes)
         if tables.RECORDS_OUT and env.get("records") is not None:
-            # G4L(B166 ①)의 재료 — 문서 하나 한 줄(봉투 맥락 · 레코드) · 세는 것은 등록 흐름이다(구축의 노드 열쇠)
+            # G4L(B166 ①)의 재료 — 문서 하나 한 줄(봉투 맥락 · 레코드) · 세는 것은 등록 흐름이다(구축의 노드 열쇠) ·
+            # 문서는 표본 경로로 가른다(다른 폴더의 같은 이름 표본이 한 문서로 섞이지 않게)
             with open(tables.RECORDS_OUT, "a", encoding="utf-8") as _fo:
-                _fo.write(json.dumps({"doc": Path(doc).name, "env": {"context": env.get("context"),
+                _fo.write(json.dumps({"doc": str(Path(doc).resolve()), "env": {"context": env.get("context"),
                                       "records": env["records"]}}, ensure_ascii=False, default=str) + "\n")
         rep = res.report or {}
         co = rep.get("coords") or {}

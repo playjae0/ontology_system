@@ -319,6 +319,24 @@ show("ⓒ G4L 문면이 자동 지시로 분류된다", any("G4L" in x for x in 
 _g166 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")
 show("ⓓ 생성 지시문 판 1.10 · 그래프 입장 시험에 ⓒ 기수 시험(세 시험)",
      "\nversion: 1.10\n" in _g166 and "ⓒ **기수 시험**" in _g166 and "**세 시험이 모두 예**" in _g166)
+#: 리뷰 고침(PR #121) — ①새로 설 이름은 사전과 같은 정규화(연속 공백) ②값의 같음은 구축의 ==(1과 1.0) ③문서는 표본 경로로
+from core.build import cardinality as CD166      # noqa: E402
+_r166 = load("PFMEA01")["records"][0]
+
+
+def _m166(*docs):
+    """(표본 경로, [(고장모드, 예방 값)]) 여럿 → 예방 열의 기수."""
+    return next(m for m in CD166.measure([{"doc": d, "env": {"context": {}, "records": [
+        dict(_r166, failure_mode=fm, prevention_control=v) for fm, v in rows]}} for d, rows in docs], _sa166)
+        if m["field"] == "prevention_control")
+
+
+_n166 = [(m["measurable"], m["split"]) for m in (_m166(("/x/a.xlsx", [("B166 신규 고장", "가"), ("B166  신규 고장", "나")])),
+                                                  _m166(("/x/a.xlsx", [("B166 신규 고장", 1), ("B166 신규 고장", 1.0)])),
+                                                  _m166(("/x/CP.xlsx", [("B166 고장 갑", "가")]),
+                                                        ("/y/CP.xlsx", [("B166 고장 갑", "나")])))]
+show("B166 리뷰 고침 — 표기의 연속 공백만 다른 새 대상은 한 대상 · 1과 1.0은 같은 값 · 이름이 같은 다른 표본은 다른 문서",
+     _n166 == [(1, 1), (1, 0), (0, 0)], f"(잴 수 있는 대상 · 갈림) {_n166}")
 
 print("\n■ B100 ③ 지시문 · 자산 해시")
 _p14 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")
