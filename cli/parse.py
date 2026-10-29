@@ -134,6 +134,16 @@ def image_screen():
     return notice
 
 
+def picture_part(info):
+    """판독 입력의 그림 원본 셈 한 토막(B168 ② — `parser/reading_pick`) · 그림 · 표시가 없으면 빈 글."""
+    g = (info or {}).get("그림") or {}
+    if not (g.get("원본") or g.get("캡처로 봄") or g.get("표시")):
+        return ""
+    return (f" · 그림 원본 {g['원본']} · 같은 꼴 {g['같은 꼴']} · 장식 {g['장식']} · 그룹 {g['그룹']} · 캡처로 봄 {g['캡처로 봄']}"
+            + (f" · 사람이 뺌 {g['사람이 뺌']}" if g.get("사람이 뺌") else "") + (f" · 표시 {g['표시']}" if g.get("표시") else "")
+            + (" · 바이트 비교만" if g.get("바이트만") and (g.get("원본") or g.get("캡처로 봄")) else ""))
+
+
 def reading_notice(info):
     """쪽 판독의 **예고** 줄 — 부르기 전에(B156 ②) · 보존분 재사용은 LLM 0 · 읽기 지식이 바뀌어 다시 부르는 수를 따로."""
     from core.build.reading import KNOWLEDGE
@@ -142,6 +152,7 @@ def reading_notice(info):
     _screen.say(f"   쪽 판독 — 쪽 {info['쪽']} · 부름 ≤ {info['부름']} · 재사용 {info['재사용']} · 건너뜀 {info['건너뜀']}"
                 + (f" · 지움 {info['지움']}" if info.get("지움") else "")
                 + (f" · 읽기 지식이 바뀌어 다시 {info['지식바뀜']}" if info.get("지식바뀜") else "")
+                + picture_part(info)
                 + f" · 읽기 지식 {'있음' if info.get('읽기지식') else '없음'}({paths.show(paths.registry(KNOWLEDGE))})"
                 + (f" · 캡처 없음({info['캡처사유']})" if info.get("캡처사유") else ""), "head")
 
@@ -173,7 +184,7 @@ def print_split_notes(report):
     rd = ((report or {}).get("reading") or {}).get("수")
     if rd:                                          # 쪽 판독 끝 줄 (B156 ⑥)
         _screen.say(f"   쪽 판독 — 쪽 {rd['쪽']} · 부름 {rd['부름']} · 재사용 {rd['재사용']} · 건너뜀 {rd['건너뜀']} · 지움 {rd['지움']} · "
-                    f"버림 {rd['버림']} · {_screen.branch_line('쪽 판독', None)}"
+                    f"버림 {rd['버림']}{picture_part(rd)} · {_screen.branch_line('쪽 판독', None)}"
                     + (f" · 사람 판독 고침 {rd['고침']}" if rd.get("고침") else "")
                     + (f" · 실패 {rd['실패']}" if rd.get("실패") else ""), "warn" if rd.get("실패") else "head")
     cap = ((report or {}).get("split") or {}).get("글자_상한") or {}

@@ -185,6 +185,17 @@ def reader(notice=None):
 
 # ---------------------------------------------------------------- 사람의 고침 (판독 표 — 등록 단)
 def record_fix(doc_id, page, fix):
-    """판독 고침 한 칸 — `@판독` 프레임(쪽 번호 · `{action: 다시, hint}` 또는 `{action: 지움}` — 같은 쪽은 덮는다 · 덱 고침과 같은 파일)."""
+    """판독 고침 한 칸 — `@판독` 프레임(쪽 번호 · `{action: 다시, hint}` 또는 `{action: 지움}` — 같은 쪽은 덮는다 · 덱 고침과 같은 파일).
+    `자세히` · `빼기`(B168 ③ — `{action, box}`)는 그 쪽 칸의 그림 목록(`자세히` · `빼기`)에 더한다(같은 그림은 다른 목록에서 뺀다) ·
+    다시 · 지움은 그 목록을 남긴다."""
     from core.build import structure as ST
+    from parser.reading import DETAIL, DROP
+    cur = {k: v for k, v in ((ST.fixes_of(doc_id).get(FRAME) or {}).get(int(page)) or {}).items() if k not in ("by", "at")}
+    if fix.get("action") in (DETAIL, DROP):
+        other = DROP if fix["action"] == DETAIL else DETAIL
+        cur[fix["action"]] = sorted(set(cur.get(fix["action"]) or []) | {fix["box"]})
+        cur[other] = [x for x in cur.get(other) or [] if x != fix["box"]]
+        fix = {k: v for k, v in cur.items() if v not in ([], None)}
+    else:
+        fix = {**{k: cur[k] for k in (DETAIL, DROP) if cur.get(k)}, **fix}
     ST.record_fix(doc_id, FRAME, page, fix)

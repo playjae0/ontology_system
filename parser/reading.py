@@ -8,7 +8,9 @@
                                      덱 판단이 개체 없음으로 정한 장 · 글 · 그림이 둘 다 없는 쪽 · 사람이 지운 장은 건너뜀
 
 **추출 · 그래프는 바꾸지 않는다**(B156 — 메타에 더하기만) — 청크 · 그림 요약 글 · 추출 입력은 판독과 무관하다(판독을 추출에 쓰는 일은
-다음 회차). 사람의 고침은 `@판독` 프레임(`<쪽> 다시 <힌트>` · `<쪽> 지움` — 등록 단 고침 기록 · 덱 고침과 같은 파일)이다.
+다음 회차). 판독 입력의 상자 목록 · 그림 원본은 `parser/reading_pick`이 고른다(B168 — 표시 · 조각 그룹 · 같은 꼴 · 장식 · 예외 ·
+사람의 `자세히` · `빼기` — 봉투 `boxes`는 그대로). 사람의 고침은 `@판독` 프레임(`<쪽> 다시 <힌트>` · `<쪽> 지움` · `<쪽> 자세히 <그림 id>` ·
+`<쪽> 빼기 <그림 id>` — 등록 단 고침 기록 · 덱 고침과 같은 파일)이다.
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import json
 BOX_CHARS = 300
 FRAME = "@판독"
 AGAIN, DELETE = "다시", "지움"
+DETAIL, DROP = "자세히", "빼기"                 # 그림 하나를 원본으로 · 원본 0(B168 ③ — `reading_pick`이 읽는다)
 #: 건너뜀 사유
 SKIP_NONE, SKIP_EMPTY, SKIP_CAPTURE, SKIP_DELETED = "개체 없음", "빈 쪽", "캡처 없음", "지움"
 _GEO = ("left", "top", "width", "height")
@@ -111,10 +114,11 @@ def _input(r, prev):
 
 
 def _images(r, images):
-    """그 쪽 그림 원본 `[(상자 id, 바이트, 형식)]` — 모델이 받는 형식(PNG · JPEG)만."""
+    """그 쪽 그림 원본 `[(상자 id, 바이트, 형식)]` — 모델이 받는 형식(PNG · JPEG) · 고른 것(`image` 「원본」 — B168 ②)만."""
     out = []
     for b in r["pg"]["boxes"]:
-        blob, mime = images.get(b["id"], (None, None)) if b["kind"] == "picture" else (None, None)
+        keep = b["kind"] == "picture" and not b.get("image")              # 「캡처로 봄」 표시가 없는 그림
+        blob, mime = images.get(b["id"], (None, None)) if keep else (None, None)
         if blob and mime in ("image/png", "image/jpeg"):
             out.append((b["id"], blob, mime))
     return out
@@ -161,12 +165,15 @@ def hook(ask, doc_id, path, raw, deck_tally=None, *, kept=None, made=None, tally
     base = dict(ask.key()) if callable(getattr(ask, "key", None)) else {}
     bare = {k: v for k, v in base.items() if k != "knowledge"}
     kept, images = dict(kept or {}), raw.get("_images") or {}
-    rows = _rows(raw, bx, dec, (deck_tally or {}).get("개요"), fixes, live, caps)
-    plan = _plan(rows, kept, caps, images, base, bare)
+    from parser import reading_pick
+    sel, picked = reading_pick.pick(raw, bx, fixes, live)          # 판독 입력의 상자 · 그림 원본(B168 — 봉투 boxes는 그대로)
+    rbx = {**bx, "pages": [dict(pg, boxes=sel[pg["page"]]["boxes"]) for pg in bx["pages"]]}
+    rows = _rows(raw, rbx, dec, (deck_tally or {}).get("개요"), fixes, live, caps)
+    plan = {**_plan(rows, kept, caps, images, base, bare), "그림": picked}
     if callable(getattr(ask, "notice", None)):
         ask.notice({**plan, "읽기지식": bool(base.get("knowledge")), "캡처": len(caps), "캡처사유": cap_why})
     n = {**plan, "부름": 0, "재사용": 0, "버림": 0, "호출": 0, "실패": 0,
-         "고침": sum(1 for r in rows if r["fix"].get("action") in (AGAIN, DELETE))}
+         "고침": sum(1 for r in rows if r["fix"].get("action") in (AGAIN, DELETE) or r["fix"].get(DETAIL) or r["fix"].get(DROP))}
     out, summ = [], {}
     for r in rows:
         pg = r["pg"]
@@ -195,6 +202,7 @@ def hook(ask, doc_id, path, raw, deck_tally=None, *, kept=None, made=None, tally
         summ[pg["page"]] = _summary_text(ans)
         cref = ask.capture_ref(doc_id, pg["page"]) if caps.get(pg["page"]) and callable(getattr(ask, "capture_ref", None)) else None
         out.append({**e, "source": ans.get("source"), "reused": reused, **({"capture": cref} if cref else {}),
+                    **({"images": sel[pg["page"]]["images"]} if sel[pg["page"]]["images"] else {}),
                     **{f: ans.get(f) or [] for f in ("figures", "relations", "summary")},
                     "dropped": dict(ans.get("dropped") or {}),
                     **({"failed": ans["failed"]} if ans.get("failed") else {}),

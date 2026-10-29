@@ -373,9 +373,11 @@ def _shape_kind(sh):
     return "text"
 
 
-def _walk(shapes, slide, prefix, images, counters, reasons, xf=None):
-    """shape 트리를 **시각 순서**로 훑어 레코드 배열을 만든다. 그룹은 재귀 · 레코드마다 위치 · 크기(`_geom` — B156 ①)."""
+def _walk(shapes, slide, prefix, images, counters, reasons, xf=None, marks=None):
+    """shape 트리를 **시각 순서**로 훑어 레코드 배열을 만든다. 그룹은 재귀 · 레코드마다 위치 · 크기(`_geom` — B156 ①).
+    `marks`(B168 ① — `reader_marks.collector`)가 글 없는 도형 · 선 · 연결선 · 조각 그룹을 따로 모은다(레코드 배열은 그대로)."""
     from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from parser import reader_marks as RM
     out = []
     for sh in sorted(shapes, key=_pos):
         try:
@@ -385,14 +387,16 @@ def _walk(shapes, slide, prefix, images, counters, reasons, xf=None):
 
         if stype == MSO_SHAPE_TYPE.GROUP:
             counters["G"] = counters.get("G", 0) + 1
-            out += _walk(sh.shapes, slide, f"{prefix}-G{counters['G']}",
-                         images, counters, reasons, _group_xf(sh, xf))
+            gid, n0, m0 = f"{prefix}-G{counters['G']}", len(out), len((marks or {}).get("marks") or [])
+            out += _walk(sh.shapes, slide, gid, images, counters, reasons, _group_xf(sh, xf), marks)
+            RM.group(marks, sh, gid, out[n0:], m0, _geom(sh, xf))
             continue
         geo = _geom(sh, xf)
 
         def _id(kind):
             tag = _KIND_TAG[kind]
             counters[tag] = counters.get(tag, 0) + 1
+            RM.note(marks, sh, f"{prefix}-{tag}{counters[tag]}")      # 연결선 끝점의 재료(B168 ①)
             return f"{prefix}-{tag}{counters[tag]}"
 
         if getattr(sh, "has_table", False):
@@ -436,12 +440,12 @@ def _walk(shapes, slide, prefix, images, counters, reasons, xf=None):
                 reasons.append(why)
             continue
 
-        if getattr(sh, "has_text_frame", False):
-            text = sh.text_frame.text.strip()
-            if not text:
-                continue
+        text = sh.text_frame.text.strip() if getattr(sh, "has_text_frame", False) else ""
+        if text:
             kind = _shape_kind(sh)
             out.append({"id": _id(kind), "kind": kind, "text": text, **geo})
+        else:
+            RM.mark(marks, sh, prefix, geo)              # 글 없는 도형 · 선 · 연결선 — 판독 입력에만(B168 ①)
     return out
 
 
@@ -474,12 +478,14 @@ def read_pptx(path):
     _need("pptx", "python-pptx", ".pptx")
     from pptx import Presentation
     prs = Presentation(path)
-    slides, images = [], {}
+    from parser import reader_marks as RM
+    slides, images, marks = [], {}, {}
     size = [prs.slide_width, prs.slide_height]              # 쪽 크기(EMU) — 상자 위치의 비율 분모 (B156 ①)
     deck_title = ""
     for i, s in enumerate(prs.slides, start=1):
-        reasons = []
-        recs = _walk(s.shapes, s, f"S{i}", images, {}, reasons)
+        reasons, mk = [], RM.collector()
+        recs = _walk(s.shapes, s, f"S{i}", images, {}, reasons, marks=mk)
+        marks[i] = RM.finish(mk)                          # 표시 상자 · 조각 그룹 — 곁 칸(분할 · 청크 · 추출 입력 밖 · B168 ①)
         title = next((r["text"] for r in recs if r["kind"] == "title"), "")
         if i == 1 and title:
             deck_title = title
@@ -500,7 +506,7 @@ def read_pptx(path):
             "unresolved_reasons": reasons,
         })
     return {"format": "pptx", "path": path, "deck_title": deck_title, "slide_size": size,
-            "slides": slides, "_images": images}
+            "slides": slides, "_images": images, "_marks": marks}
 
 
 def _pdf_rect(page, xref):

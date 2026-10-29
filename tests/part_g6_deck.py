@@ -740,6 +740,131 @@ ST.fixes_path().unlink(missing_ok=True)
 _hint.unlink(missing_ok=True)
 _rh156.unlink(missing_ok=True)
 
+# ────────────────────────────────────────────────────────────── B168 판독 입력
+print("\n■ B168 — 판독 입력: 그림 원본은 필요한 것만 · 표시 상자(판독 입력에만) · 고침 동사 「자세히 · 빼기」")
+from PIL import Image as _Im168                          # noqa: E402 — 시험이 덱을 짓는다(창작 · 새 픽스처 파일 0)
+from pptx.dml.color import RGBColor as _RGB168           # noqa: E402
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE     # noqa: E402
+from cli import reading_screen as RSC168                  # noqa: E402
+from parser import reader as RDR168, reader_marks as RM168, reading as RDG168   # noqa: E402
+
+
+def _png168(c):
+    b = io.BytesIO()
+    _Im168.new("RGB", (24, 24), c).save(b, "PNG")
+    return b.getvalue()
+
+
+def _deck168(name, builds):
+    prs = Presentation()
+    for fn in builds:
+        fn(prs.slides.add_slide(prs.slide_layouts[6]))
+    path = TMP / name
+    _P.ensure(path)
+    prs.save(path)
+    return path
+
+
+def _pic168(s, data, x, y):
+    return s.shapes.add_picture(io.BytesIO(data), Inches(x), Inches(y), Inches(0.6), Inches(0.6))
+
+
+def _read168(path, fixes=None):
+    """판독 훅을 가짜 판독(입력 · 보낸 그림 id를 모은다)으로 — `(쪽 → (입력, 원본 id), 셈, 판독 블록)`."""
+    seen, tally = {}, {}
+
+    def ask(doc_id, inp, *, capture=None, images=(), hint=None, text=""):
+        seen[inp["page"]] = (inp, [r for r, _b, _m in images])
+        return {"figures": [], "relations": [], "summary": [{"text": "시험", "boxes": [inp["boxes"][0]["id"]]}],
+                "dropped": {}, "calls": 0, "source": "mock"}
+    blk = RDG168.hook(ask, "B168", str(path), RDR168.read(str(path)), fixes=fixes, tally=tally)
+    return seen, (tally.get("수") or {}).get("그림") or {}, blk
+
+
+_red168, _logo168, _blue168 = _png168((200, 30, 30)), _png168((30, 30, 200)), _png168((30, 200, 30))
+
+
+def _ten(s):
+    s.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(6), Inches(0.5)).text_frame.text = "같은 그림 열 장"
+    for i in range(10):
+        _pic168(s, _red168, 0.5 + (i % 5) * 1.2, 1.0 + (i // 5) * 1.2)
+    o = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(2.8), Inches(0.9), Inches(0.8), Inches(0.8))   # 셋째 그림에 빨간 원
+    o.fill.solid()
+    o.fill.fore_color.rgb = _RGB168(0xFF, 0, 0)
+
+
+_A168 = _deck168("B168A.pptx", [_ten])
+_sa, _ga, _ = _read168(_A168)
+_ia, _oa = _sa[1]
+_marks168 = [b for b in _ia["boxes"] if b["kind"] == RM168.KIND]
+_seen168 = [b["id"] for b in _ia["boxes"] if str(b.get("image") or "").startswith("캡처로 봄")]
+show("B168 ⓐ 같은 그림 10장 중 1장에 빨간 원(글 없는 도형) → 상자 목록에 표시 1 · 원본은 대표 1 + 그 1장(표시가 겹친 예외) · 나머지 8 「캡처로 봄」",
+     len(_marks168) == 1 and _oa == ["S1-P1", "S1-P3"] and len(_seen168) == 8 and (_ga["원본"], _ga["같은 꼴"]) == (2, 8),
+     f"표시 {[(m['id'], m.get('shape'), m.get('color')) for m in _marks168]} · 원본 {_oa} · 셈 {_ga}")
+
+
+def _logo(text):
+    def f(s):
+        s.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(6), Inches(0.5)).text_frame.text = text
+        _pic168(s, _logo168, 8, 6)
+    return f
+
+
+_sb, _gb, _ = _read168(_deck168("B168B.pptx", [_logo("쪽 하나"), _logo("쪽 둘"), _logo("쪽 셋")]))
+show("B168 ⓑ 모든 쪽에 같은 로고 → 장식 · 원본 입력 0",
+     all(not v[1] for v in _sb.values()) and len(_sb) == 3 and (_gb["장식"], _gb["원본"]) == (3, 0), f"셈 {_gb}")
+
+
+def _arrow(s):
+    tb = s.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(3), Inches(0.5))
+    tb.text_frame.text = "이 그림을 보라"
+    _pic168(s, _blue168, 1, 3)
+    p2 = _pic168(s, _blue168, 5, 3)                       # 같은 꼴 — 연결선이 가리켜 원본(예외)
+    c = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(1), Inches(1), Inches(5), Inches(3))
+    c.begin_connect(tb, 2)
+    c.end_connect(p2, 0)
+
+
+_sc, _gc, _ = _read168(_deck168("B168C.pptx", [_arrow]))
+_cx = [b for b in _sc[1][0]["boxes"] if b["kind"] == RM168.KIND]
+show("B168 ⓒ 연결선 하나(글 상자 → 그림) → 표시 상자에 from → to · 그 그림은 원본(같은 꼴이어도 — 예외)",
+     [(b.get("shape"), b.get("from"), b.get("to")) for b in _cx] == [("연결선", "S1-B1", "S1-P2")]
+     and _sc[1][1] == ["S1-P1", "S1-P2"], f"표시 {_cx} · 원본 {_sc[1][1]}")
+
+_keep168 = (RM168.collector, RM168.finish)
+
+
+def _env168(path, did):
+    with _quiet():
+        res = pipeline.parse(PX, did, str(path), closed_list=TG.closed_list("process"), layer="process")
+    return json.dumps({k: v for k, v in (res.envelope or {}).items() if k != "parsed_at"}, ensure_ascii=False, sort_keys=True)
+
+
+_d168 = [(p, _env168(p, f"B168D{i}")) for i, p in enumerate((_FXR.RAW / "PPT_basic.pptx", _FXR.RAW / "PPT_shapes.pptx", _A168,
+                                                               TMP / "B168C.pptx"))]
+RM168.collector, RM168.finish = (lambda: None), (lambda m: {"marks": [], "groups": []})     # 표시를 모으지 않는 리더(B168 전 모양)
+try:
+    _d168b = [_env168(p, f"B168D{i}") for i, (p, _e) in enumerate(_d168)]
+finally:
+    RM168.collector, RM168.finish = _keep168
+show("B168 ⓓ 판독 없는 덱(PPT_basic · PPT_shapes · 표시 · 연결선이 있는 창작 덱 둘)의 봉투(분할 · 청크 · 상자 목록 · 덱 칸 — 추출 입력의 "
+     "재료)가 표시를 모으지 않는 리더와 바이트 같다 · 봉투에 표시 0",
+     [e for _p, e in _d168] == _d168b and not any(RM168.KIND in e for _p, e in _d168),
+     f"같음 {[a == b for (_p, a), b in zip(_d168, _d168b)]}")
+
+_benv = {"boxes": RDG168.boxes(RDR168.read(str(_A168))), "reading": _read168(_A168)[2]}
+for _ans in ("1 자세히 S1-P5", "1 빼기 S1-P1"):
+    _pg, _fx = RSC168.parse_fix(_ans, _benv)
+    RD156.record_fix("B168", _pg, _fx)
+_fxe = ST.fixes_of("B168").get(RDG168.FRAME) or {}
+_se, _ge, _be = _read168(_A168, fixes=_fxe)
+_im = _be["pages"][0].get("images") or {}
+show("B168 ⓔ 「1 자세히 S1-P5」 → 그 그림 원본 입력 · 「1 빼기 S1-P1」 → 원본 0(사람이 뺌) · 기록은 @판독 그 쪽 칸의 그림 목록",
+     "S1-P5" in _se[1][1] and "S1-P1" not in _se[1][1] and _im.get("S1-P1", "").endswith("사람이 뺌")
+     and (_fxe.get(1) or {}).get("자세히") == ["S1-P5"] and (_fxe.get(1) or {}).get("빼기") == ["S1-P1"],
+     f"원본 {_se[1][1]} · 기록 {_fxe.get(1)} · 셈 {_ge}")
+ST.fixes_path().unlink(missing_ok=True)
+
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)
 store.write(store.DOC_TYPES, dts)
