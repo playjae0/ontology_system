@@ -109,7 +109,6 @@ def _entity_surfaces(env, schema):
     fields = (schema or {}).get("fields") or {}
     # 표 행의 소유자(B144 ② — 이름 부모가 그 노드다) · 층을 모르는 스키마는 소유자 없음(지금 그대로)
     from core.build import scope_path
-    from parser.normalizer import null_marker
     lay = (schema or {}).get("layer")
     owners = scope_path.table_owners(schema, load_config(lay)) if fields and lay else {}
     out = []
@@ -117,19 +116,28 @@ def _entity_surfaces(env, schema):
         for f, spec in fields.items():
             if (spec or {}).get("role") != "entity":
                 continue
-            v = rec.get(f)
-            if isinstance(v, str) and v.strip():
-                of = owners.get(f)
-                ov = rec.get(of) if of else None
-                out.append({"surface": v.strip(), "field": f,
-                            "category": (spec or {}).get("category"),
-                            "target_layer": (spec or {}).get("target_layer"),
-                            # 좌표는 행이 쓰는 것과 같은 순서다 — ref 없으면 group
-                            "ref": rec.get("process_ref") or rec.get("process_group"),
-                            "electrode_type": rec.get("electrode_type"),
-                            **({"owner": {"surface": ov.strip(), "category": fields[of].get("category")}}
-                               if isinstance(ov, str) and ov.strip() and not null_marker(ov) else {})})
+            m = plan_mention(rec, f, fields, owners)
+            if m:
+                out.append(m)
     return out
+
+
+def plan_mention(rec, f, fields, owners):
+    """레코드 한 칸의 **판정 재료** — 표기 · 열 · 카테고리 · 좌표 · 축값 · 소유자(B74 ① · B144 ②) · 값이 비었으면 None.
+    예고와 등록 관문의 기수(G4L — `core/build/cardinality` · B166)가 같은 재료를 쓴다."""
+    from parser.normalizer import null_marker
+    spec, v = fields.get(f) or {}, rec.get(f)
+    if not (isinstance(v, str) and v.strip()):
+        return None
+    of = owners.get(f)
+    ov = rec.get(of) if of else None
+    return {"surface": v.strip(), "field": f, "category": spec.get("category"),
+            "target_layer": spec.get("target_layer"),
+            # 좌표는 행이 쓰는 것과 같은 순서다 — ref 없으면 group
+            "ref": rec.get("process_ref") or rec.get("process_group"),
+            "electrode_type": rec.get("electrode_type"),
+            **({"owner": {"surface": ov.strip(), "category": fields[of].get("category")}}
+               if isinstance(ov, str) and ov.strip() and not null_marker(ov) else {})}
 
 
 def _plan_hit(b, m, layer):
@@ -142,9 +150,16 @@ def _plan_hit(b, m, layer):
     좌표 해소도 판정과 같은 경로(골격 조회 → 하강 → 극성 상속)를 지나되 **쓰지
     않는다**: 미해소 좌표는 `defer` 자루로 받아 버린다(예고가 큐를 만들지 않는다).
     """
+    r = plan_resolve(b, m)
+    return bool(r and r[0])
+
+
+def plan_resolve(b, m):
+    """한 값의 **판정 없는 해소** — `(판정 없이 붙는 후보, 조회 키, 집 층)` · 판정에 오르지 않는 값(표기 · 카테고리 없음 · 좌표
+    없는 스코프 개체)이면 None. 예고(`_plan_hit`)와 등록 관문의 기수(G4L — `core/build/cardinality` · B166)가 같은 길이다."""
     surface, category = m.get("surface"), m.get("category")
     if not surface or not category:
-        return False
+        return None
     lay = b.home_of(category)       # 판정과 같은 자리 — 집 (B90 ②)
     et = m.get("electrode_type")
     sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
@@ -158,7 +173,7 @@ def _plan_hit(b, m, layer):
     parent = ref_g.get(ref_id)["canonical"] if ref_id else None
     apol = b.anchor_polarity(ref_id, ref_g) if ref_id else None
     if ref_id is None and loop._scoped_category(category, lay, b):
-        return False                # 좌표 없는 스코프 개체는 판정에 오르지 않는다
+        return None                 # 좌표 없는 스코프 개체는 판정에 오르지 않는다
     eb = b.for_layer(lay)
     # **표 행의 소유자 → 이름 부모**(B144 ② — 판정과 같은 함수 `scope_path.owner_parent`): 소유자는 판정 없이 잰다 — 사전 · 경로
     # 호환이 답하면 그 노드 · 아니면 새로 설 이름(소유자 키)이 부모다(예고는 노드를 만들지 않는다)
@@ -170,7 +185,8 @@ def _plan_hit(b, m, layer):
         owner = (hit[0]["id"], b.for_layer(b.home_of(o["category"])).g) if hit else None
         parent = (scope_path.owner_parent(eb.cfg, category, owner, parent) if owner
                   else name_parent(category, okey, parent, eb.cfg))
-    return bool(_plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=owner)[0])
+    hits, key = _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=owner)
+    return hits, key, lay
 
 
 def _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=None):

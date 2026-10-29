@@ -185,3 +185,8 @@ SHEET_ROLES = None
 # 없으면 커버리지 검사를 돌리지 않는다: 킷은 등록 흐름 밖에서도 단독으로 돈다.
 LEDGER_FLAG = "--ledger"
 LEDGER = None
+
+# ⑤단 레코드를 **내려쓰는 자리**(B166 ① — G4L) — attribute 기수는 구축의 노드 열쇠(core)로 재므로 등록 흐름이 센다.
+# 킷은 파서 산출을 그 파일에 한 문서 한 줄로 덧붙일 뿐이다(core를 모른다). 없으면 쓰지 않는다(단독 실행).
+RECORDS_FLAG = "--records-out"
+RECORDS_OUT = None

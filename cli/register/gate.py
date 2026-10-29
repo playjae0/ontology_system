@@ -16,6 +16,7 @@ from core.state import fixtures, log, registry, store
 from parser import pipeline, preflight, profile, reader, tagger
 from pathlib import Path
 import json
+import os
 import re
 import subprocess
 import sys
@@ -56,12 +57,46 @@ def harness(adapter, schema, samples, package=None, doc_type=None, roles_map=Non
     _rf = samples_mod.roles_file(roles_map)
     if _rf:
         pkg += ["--sheet-roles", _rf]
+    # ⑤단 레코드를 받을 임시 파일(B166 ① — G4L은 구축의 노드 열쇠로 재므로 core를 아는 이쪽이 센다) · 끝나면 지운다
+    import tempfile
+    _fd, _recs = tempfile.mkstemp(prefix="gate_records_", suffix=".jsonl")
+    os.close(_fd)
+    pkg += ["--records-out", _recs]
     try:
         r = _run_kit(adapter, schema, pkg, samples)
+        g4l = _g4l(schema, _recs)
     finally:
         if _rf:
             Path(_rf).unlink(missing_ok=True)
-    return r.returncode == 0, r.stdout
+        Path(_recs).unlink(missing_ok=True)
+    return r.returncode == 0 and "[FAIL] G4L" not in g4l, r.stdout + g4l
+
+
+def _g4l(schema_path, recs_path):
+    """**G4L — attribute 열의 기수**(B166 ①) — 수는 core가 센다(`core/build/cardinality` — 구축의 노드 열쇠) · 줄은 하네스 판정 줄과
+    같은 꼴(`kit/gate_screen.LINE_RE`) · FAIL은 자동 지시(`AUTO_FIX`) · 한 건 충돌 · 잴 수 없음은 보고 한 줄."""
+    p = Path(recs_path)
+    if not p.exists() or not p.stat().st_size:
+        return ""
+    from core.build import cardinality
+    docs = [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    rows = cardinality.measure(docs, json.loads(Path(schema_path).read_text(encoding="utf-8")))
+    if not rows:
+        return ""
+    bad = [m for m in rows if cardinality.fails(m)]
+    det = " ‖ ".join(f"attribute 열 '{m['field']}'(대상 열 '{m['target']}') — 값이 갈리는 대상 {m['split']} / 잴 수 있는 대상 "
+                     f"{m['measurable']} — attribute가 아니다 — 행마다 다른 서술이면 content(같은 `attach_to_field`) · 반복되는 "
+                     f"이름이면 entity · 모델 · 라인처럼 맥락이 갈리면 `contextual: true`" for m in bad)
+    out = [f"  [{'FAIL' if bad else 'PASS'}] G4L  attribute 열은 한 대상 · 한 맥락에 값 하나  — "
+           + (det or " · ".join(f"{m['field']} {m['split']}/{m['measurable']}" for m in rows))]
+    for m in rows:
+        if m in bad:
+            continue
+        if m["split"] == 1:
+            out.append(f"      [보고] attribute 열 '{m['field']}' — 문서 안 충돌 1({m['splits'][0]}) — 인입 때 spec_conflict")
+        elif not m["measurable"]:
+            out.append(f"      [보고] attribute 열 '{m['field']}' — 대상마다 한 행 — 기수를 잴 수 없다")
+    return "\n".join(out) + "\n"
 
 
 def _run_kit(adapter, schema, pkg, samples):
@@ -101,6 +136,8 @@ AUTO_FIX = {
     "어댑터가 내는 키가 전부 스키마": "빠진 필드 이름과 처방이 문면에 있다",
     # **anchor 열의 대상 목록**(B164 ②) — 열 · 대상 카테고리 · 맞은 수와 고칠 키가 문면에 있다.
     "anchor 열의 값이 대상 골격 목록에": "열 · 대상 카테고리 · 고칠 키(`target_category`)가 문면에 있다",
+    # **attribute 열의 기수**(B166 ①) — 열 · 대상 열 · 갈리는 대상 수와 처방(content · entity · contextual)이 문면에 있다.
+    "attribute 열은 한 대상 · 한 맥락에 값 하나": "열 · 갈리는 대상 수 · 처방이 문면에 있다",
 }
 
 

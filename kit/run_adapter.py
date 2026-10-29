@@ -505,6 +505,11 @@ def run_pipeline(mod, schema, doc, label):
              isinstance(env, dict) and bool(env), f'키 {sorted(env)[:6]}')
         # **좌표 쌍**(B105 ② · G4I) — 태깅이 끝난 조각으로(운영 좌표 단계 · 구축과 같은 판정)
         check_coord_pairs(schema, env.get("records") or env.get("chunks") or [], nodes)
+        if tables.RECORDS_OUT and env.get("records") is not None:
+            # G4L(B166 ①)의 재료 — 문서 하나 한 줄(봉투 맥락 · 레코드) · 세는 것은 등록 흐름이다(구축의 노드 열쇠)
+            with open(tables.RECORDS_OUT, "a", encoding="utf-8") as _fo:
+                _fo.write(json.dumps({"doc": Path(doc).name, "env": {"context": env.get("context"),
+                                      "records": env["records"]}}, ensure_ascii=False, default=str) + "\n")
         rep = res.report or {}
         co = rep.get("coords") or {}
         # 좌표 목록 밖 이름은 **인입 소관**(orphan_anchor)이라 관문의 실패가 아니다 —
@@ -553,6 +558,10 @@ if __name__ == "__main__":
     if tables.COORD_CAT_FLAG in _argv:             # 좌표 카테고리 — anchor 생략의 기본 (B164 ②)
         _i = _argv.index(tables.COORD_CAT_FLAG)
         tables.COORD_CATEGORY = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+    if tables.RECORDS_FLAG in _argv:               # ⑤단 레코드를 내려쓸 자리 (B166 ① — G4L은 등록 흐름이 잰다)
+        _i = _argv.index(tables.RECORDS_FLAG)
+        tables.RECORDS_OUT = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
     if tables.CLOSED_FLAG in _argv:               # 골격 닫힌 목록 파일 (B86 ②)
         _i = _argv.index(tables.CLOSED_FLAG)
