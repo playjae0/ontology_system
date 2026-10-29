@@ -279,9 +279,9 @@ def sync_ledger(doc_type, st, samples=None):
 
     자리는 **관문 입구**(`stamp_system_fields` 직후)다. 초회·재생성 매번 돌고,
     읽는 것은 셋이다: 확정된 `expects.columns`(C38 스탬프 뒤 열문자) · `schema.json`의
-    필드별 role · `unmappable[]`. **행 집합은 열 프로파일이 정한다** — 표본에 있는
-    열은 판정됐든 아니든 전부 한 행을 갖는다: 빠진 열이 대장에서도 빠지면
-    「생성이 빠뜨렸다」가 보이지 않는다.
+    필드별 role · `unmappable[]`. **행은 (열 · 필드) 쌍마다다**(B162) — 표본에 있는
+    열은 판정됐든 아니든 전부 행을 갖고(빠진 열이 대장에서도 빠지면 「생성이
+    빠뜨렸다」가 보이지 않는다), 한 열을 필드 여럿이 읽으면 필드마다 행 하나다.
 
     **orphan을 여기서 다시 계산하지 않는다** — `unmappable_of`의 셋째 값을 읽는다.
     계산이 둘이면 한쪽만 고쳐지는 날이 오고, 그날 관문과 대장이 다른 말을 한다.
@@ -306,10 +306,14 @@ def sync_ledger(doc_type, st, samples=None):
         return []
     exp = a.get("expects") or {}
     fields, _blocks = load_blocks(schema)
-    field_of = {}
+    # **열 → 필드 목록**(B162) — 셀 하나를 두 값으로 나누어 읽는 어댑터는 한 열에
+    # 필드가 둘이다. 열마다 하나만 잡으면 둘째 필드가 대장에서 빠져 G4G가 막는다.
+    fields_of = {}
     for f, v in (exp.get("columns") or {}).items():
         for c in (v if isinstance(v, (list, tuple)) else [v]):
-            field_of.setdefault(str(c), f)
+            got = fields_of.setdefault(str(c), [])
+            if f not in got:
+                got.append(f)
     label_of = _labels_by_col(exp, mod, samples or st.get("samples"))
     kind = {}
     for u in unmappable_of(schema, mod)[0]:
@@ -318,7 +322,12 @@ def sync_ledger(doc_type, st, samples=None):
         kind[u["field"]] = ("open:undecided", None)
     for u in unmappable_of(schema, mod)[2]:
         kind[u["field"]] = ("open:orphan", None)
-    prev = {r.get("col"): r for r in read_ledger(doc_type)}
+    # 이전 판단의 열쇠는 **(열 · 필드)**다(B162) — 열만이면 한 열의 두 행이 서로의
+    # 판단을 덮는다. 필드 없는 행은 열로 찾는다(코드가 아직 그 열을 쓰지 않는 자리).
+    prev_pair, prev_col = {}, {}
+    for r in read_ledger(doc_type):
+        prev_pair.setdefault((r.get("col"), r.get("field")), r)
+        prev_col.setdefault(r.get("col"), r)
     by_now = f"generate rev{st.get('revision', 0)}"
     rows = []
     # **프로파일 열 + 어댑터가 쓰는 열의 합집합으로 돈다**(B76 ②). 프로파일은
@@ -326,25 +335,26 @@ def sync_ledger(doc_type, st, samples=None):
     # **스키마에 있어도 대장에 행이 없는 필드**가 생긴다 — 그 필드는 기계 제안
     # 대조와 「이어가기」에서 조용히 빠졌다(사내 실측 열다섯째의 둘째 원인).
     # 합치기 리스트는 열마다 행 하나다(같은 `field`).
-    cols = sorted(set(prof) | set(field_of),
+    cols = sorted(set(prof) | set(fields_of),
                   key=lambda c: (len(str(c)), str(c)))
     for col in cols:
-        lab, fld = label_of.get(col), field_of.get(col)
-        st_role = kind.get(lab, (None, None))
-        role = (fields.get(fld) or {}).get("role") if fld else st_role[1]
-        status = "decided" if fld else (st_role[0] or "open:orphan")
-        row = {"col": col, "label": lab, "role": role, "field": fld,
-               "by": by_now, "status": status}
-        old = prev.get(col)
-        if old and (old.get("role"), old.get("field")) == (role, fld) and old.get("by"):
-            row["by"] = old["by"]           # 판단이 그대로면 출처도 그대로
-        elif old and not fld and str(old.get("by") or "").startswith(
-                ("interview", "instruct")):
-            # **사람이 정한 것을 산출이 지우지 않는다**(B67 ② — 이 회차의 성질).
-            # 코드가 아직 그 열을 쓰지 않을 뿐이고, 그 사실은 `status`가 말한다:
-            # role은 사람의 것, status는 산출의 것 — 둘이 갈린 것이 지금 상태다.
-            row["role"], row["by"] = old.get("role") or role, old["by"]
-        rows.append(row)
+        lab = label_of.get(col)
+        for fld in fields_of.get(col) or [None]:
+            st_role = kind.get(lab, (None, None))
+            role = (fields.get(fld) or {}).get("role") if fld else st_role[1]
+            status = "decided" if fld else (st_role[0] or "open:orphan")
+            row = {"col": col, "label": lab, "role": role, "field": fld,
+                   "by": by_now, "status": status}
+            old = prev_pair.get((col, fld)) if fld else prev_col.get(col)
+            if old and (old.get("role"), old.get("field")) == (role, fld) and old.get("by"):
+                row["by"] = old["by"]           # 판단이 그대로면 출처도 그대로
+            elif old and not fld and str(old.get("by") or "").startswith(
+                    ("interview", "instruct")):
+                # **사람이 정한 것을 산출이 지우지 않는다**(B67 ② — 이 회차의 성질).
+                # 코드가 아직 그 열을 쓰지 않을 뿐이고, 그 사실은 `status`가 말한다:
+                # role은 사람의 것, status는 산출의 것 — 둘이 갈린 것이 지금 상태다.
+                row["role"], row["by"] = old.get("role") or role, old["by"]
+            rows.append(row)
     return _save_ledger(doc_type, rows)
 
 
@@ -374,15 +384,30 @@ def apply_to_ledger(doc_type, text, by):
 
     role 이름이 문면에 **정확히 하나** 있으면 그 행의 role로 삼는다. 둘 이상이면
     무엇을 고르는지가 판단이라 손대지 않는다.
+
+    **한 열에 행이 둘 이상이면 필드 이름을 부른 행만**이다(B162) — 열문자 · 라벨은
+    그 열의 행 전부가 같아서 어느 필드인지 못 정한다.
     """
     rows = read_ledger(doc_type)
     if not rows or not (text or "").strip():
         return 0
     named = [r for r in draft_mod._ROLES if re.search(rf"(?<![A-Za-z]){r}(?![A-Za-z])", text)]
+    per_col = {}
+    for r in rows:
+        per_col.setdefault(r.get("col"), []).append(r.get("field") or "")
     hit = 0
     for r in rows:
         if not _col_named(text, r):
             continue
+        mates, fld = per_col[r.get("col")], r.get("field") or ""
+        if len(mates) > 1:
+            # 같은 열의 더 긴 필드 이름이 이 이름을 품으면 그 자리를 빼고 본다(「규격」 · 「규격 설명」)
+            rest = text
+            for m in mates:
+                if fld and m != fld and fld in m:
+                    rest = rest.replace(m, "")
+            if not (fld and fld in rest):
+                continue
         if len(named) == 1:
             r["role"] = named[0]
         r["by"], r["status"], hit = by, "decided", hit + 1
@@ -403,11 +428,15 @@ def apply_decisions_to_ledger(doc_type, decisions):
 
 
 def ledger_block(doc_type, rows=None):
-    """대장 한 줄에 한 열 — 관문 화면·`status`가 같은 블록을 쓴다 (B67 ③)."""
+    """대장 한 줄에 한 행 — 관문 화면·`status`가 같은 블록을 쓴다 (B67 ③).
+
+    머리 줄의 열 수는 **서로 다른 열**이다 — 한 열을 필드 여럿이 읽으면 행이 더 많다(B162).
+    """
     rows = read_ledger(doc_type) if rows is None else rows
     if not rows:
         return ""
-    out = [f"  열 판정 대장 — {len(rows)}열 "
+    ncol = len({r.get("col") for r in rows})
+    out = [f"  열 판정 대장 — {ncol}열{f' · {len(rows)}행' if len(rows) > ncol else ''} "
            f"({sum(1 for r in rows if str(r.get('status')).startswith('open')) or 0}건 미해결)"
            f"  {paths.show(ledger_path(doc_type))}"]
     for r in rows:
