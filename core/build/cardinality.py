@@ -5,7 +5,8 @@
 극성 상속 → 소유자 이름 부모 → `build.entity_key`)로 해소해 열쇠를 짓는다(두 번째 구현 0): 사전 · 경로 호환이 답하면 그 노드 ·
 아니면 새로 설 이름(집 층과 함께) · 대상이 anchor면 골격 조회(구축과 같은 `resolve_anchor`). `contextual`이면 맥락(봉투 ∪ 레코드
 — 구축과 같은 덮어쓰기)을 더한다. 값의 같음은 구축의 충돌 판정과 같다(통째 비교). 기수는 **문서 안**이다(문서 간은 충돌 시험의
-몫). LLM 0 · 쓰기 0(좌표 미해소는 버리는 자루).
+몫). LLM 0 · 쓰기 0(좌표 미해소는 버리는 자루). `contextual` 열에서 맥락이 딕셔너리가 아닌 행(계약 위반 — 구축은 `missing_field`
+를 올리고 맥락 없이 싣는다)은 세지 않고 수만 낸다 — 그 갈림은 열의 성질이 아니라 맥락의 꼴 때문이다(D-249 ⑥).
 
 판정 규칙(`fails`): 값이 갈리는 대상이 **둘 이상**이고 **잴 수 있는 대상(두 행 이상 나온 대상)의 절반 이상**일 때 — 열의 성질이다.
 한 건의 충돌은 정보다(인입 때 spec_conflict가 사람에게 올린다).
@@ -36,7 +37,7 @@ def measure(docs, schema):
 def _one(b, f, spec, fields, owners, docs):
     from parser.normalizer import null_marker
     af = spec["attach_to_field"]
-    groups = {}
+    groups, bad_ctx = {}, 0
     for d in docs or []:
         env = d.get("env") or {}
         base = env.get("context") if isinstance(env.get("context"), dict) else {}
@@ -44,6 +45,10 @@ def _one(b, f, spec, fields, owners, docs):
             tv = rec.get(af)
             if rec.get(f) in (None, "") or not isinstance(tv, str) or not tv.strip() or null_marker(tv):
                 continue                              # 값 없음 · 붙을 대상 없음 — 구축도 싣지 않는다
+            if spec.get("contextual") and any(c is not None and not isinstance(c, dict)
+                                              for c in (env.get("context"), rec.get("context"))):
+                bad_ctx += 1                          # 맥락이 딕셔너리가 아니다(계약 위반) — 열의 성질이 아니라 잴 수 없다
+                continue
             tid = _target(b, rec, af, fields, owners)
             if tid is None:
                 continue
@@ -56,7 +61,7 @@ def _one(b, f, spec, fields, owners, docs):
     meas = [g for g in groups.values() if g["rows"] >= 2]
     split = [g for g in meas if len(g["vals"]) >= 2]
     return {"field": f, "target": af, "measurable": len(meas), "split": len(split),
-            "splits": [g["name"] for g in split]}
+            "splits": [g["name"] for g in split], "bad_ctx": bad_ctx}
 
 
 def _target(b, rec, af, fields, owners):

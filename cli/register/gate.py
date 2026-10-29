@@ -90,11 +90,14 @@ def _g4l(schema_path, recs_path):
     out = [f"  [{'FAIL' if bad else 'PASS'}] G4L  attribute 열은 한 대상 · 한 맥락에 값 하나  — "
            + (det or " · ".join(f"{m['field']} {m['split']}/{m['measurable']}" for m in rows))]
     for m in rows:
+        if m.get("bad_ctx"):
+            out.append(f"      [보고] attribute 열 '{m['field']}' — 맥락이 딕셔너리가 아닌 행 {m['bad_ctx']}(계약 위반 — 인입 때 "
+                       f"missing_field · 맥락 없이 쌓인다) — 그 행은 기수를 재지 않았다")
         if m in bad:
             continue
         if m["split"] == 1:
             out.append(f"      [보고] attribute 열 '{m['field']}' — 문서 안 충돌 1({m['splits'][0]}) — 인입 때 spec_conflict")
-        elif not m["measurable"]:
+        elif not m["measurable"] and not m.get("bad_ctx"):
             out.append(f"      [보고] attribute 열 '{m['field']}' — 대상마다 한 행 — 기수를 잴 수 없다")
     return "\n".join(out) + "\n"
 
