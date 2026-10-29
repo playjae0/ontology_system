@@ -20,6 +20,9 @@
      노드에 · 다른 공정 이름 제목(「스태킹」)은 가드 그대로(개요 = 목차 노드화 — B148 ② 용어)
   B150 ⓑ 골격 이름 제목 아래 조각은 그 골격 노드로 좌표를 내린다 — 이름이 표(process_ref = 그 노드)와 같은 노드 · 더 깊은 자기
      좌표는 그대로
+  B160 ⓐⓑ 실호출 갈래에 보낸 추출 지시문에 규칙 A~D(지속 지식만 · 기록은 개체 아님 · 기록 청크는 관련 링크 · 값은 기준만 · 결론은
+     기준값) · 값 예시 · 목차 노드화 지시문에 기록 제목(E) · 두 지시문 층 어휘 0 · 옛 판 체크포인트는 그 판을 이유로 다시 묻고 뽑는다 ·
+     체크포인트 머리 = 지시문 파일의 판(판 문자열을 박지 않는다)
 """
 from __future__ import annotations
 
@@ -444,6 +447,48 @@ show("ⓑ 문서 좌표 「노칭」 · 제목 「1. 노칭 타발」 아래 「
      _m.get("target") == "노칭::노칭 타발::모터 회전수" and _m.get("node_id") and _m.get("node_id") == _t.get("node_id")
      and _k.get("target") == "노칭::노칭 타발::금형 수명",
      f"산문 {_m.get('target')} {_m.get('node_id')} · 표 {_t.get('target')} {_t.get('node_id')} · 자기 좌표 {_k.get('target')}")
+
+# ────────────────────────────────────────────────────────────── B160 기록은 노드도 값도 아니다 — 지시문 규칙 · 판 올림
+print("\n■ B160 기록은 노드도 값도 아니다 — 실호출 갈래에 보낸 지시문에 규칙 A~E · 옛 판 체크포인트는 다시 (산문 · 층 하나)")
+from core.build import extract as EX                    # noqa: E402
+from tools import layer_words as LW                     # noqa: E402
+SYS = {}
+
+
+class _Sys(Live):
+    """보낸 시스템 글(조립된 지시문)을 지점마다 하나 남긴다 — 나머지는 가짜 게이트웨이 그대로."""
+
+    def chat(self, messages, json_schema=None, point=None, **kw):
+        SYS.setdefault(point, messages[0]["content"])
+        return super().chat(messages, json_schema=json_schema, point=point, **kw)
+
+
+_setup()
+_e160 = _env("엑셀", "B160A", "process")
+_pv = EX.prompt_version
+EX.prompt_version = lambda name="extract": f"옛판-{name}"     # 옛 판 체크포인트 · 호출 보존(판이 열쇠에 든다)
+try:
+    _run(_e160, UNITS)
+finally:
+    EX.prompt_version = _pv
+OUT.update(UNITS)
+_n160 = []
+with _Sys(by={"outline": _outline, "extract": _extract, "reinforce": _reinforce}):
+    run_document(_e160, notice=_n160.append)
+_why = {n["단계"]: n.get("다시") for n in _n160 if n.get("단계") in ("개요예고", "추출예고")}
+_ck = {k: json.loads(p.read_text(encoding="utf-8")).get("prompt_version")
+       for k, p in (("extract", EX.checkpoint_path("B160A")), ("outline", OL.checkpoint_path("B160A")))}
+_A_D = ("지속 지식만", "기록은 그 청크의 주제여도 개체로 내지 않는다", "**기록 청크**", "값은 문서가 정한 기준",
+        "채택한 조건 · 판정", "| 3차 실험 장력 118 N 측정 | 기록 — 값 아님 |", "| 실험 결과 120 N으로 설정하기로 함 | 값(결론) |")
+_lw = [v for v in LW.scan(ROOT)[0] + LW.scan(ROOT)[1] if "3.3_" in v[0]]
+show("B160 ⓐⓑ 실호출 추출 지시문에 규칙 A~D · 값 예시 · 목차 노드화 지시문에 기록 제목(E) · 두 지시문 층 어휘 0(예외 0) · 옛 판 "
+     "체크포인트 → 「지시문 옛판 → 지금 판」으로 다시 묻고 뽑는다 · 체크포인트 머리 = 지시문 파일의 판",
+     all(x in SYS.get("extract", "") for x in _A_D) and "**기록 제목**" in SYS.get("outline", "") and not _lw
+     and _why == {"개요예고": f"지시문 옛판-outline → {EX.prompt_version('outline')}",
+                  "추출예고": f"지시문 옛판-extract → {EX.prompt_version()}"}
+     and _ck == {"extract": EX.prompt_version(), "outline": EX.prompt_version("outline")},
+     f"규칙 {sum(x in SYS.get('extract', '') for x in _A_D)}/{len(_A_D)} · 기록 제목 {'**기록 제목**' in SYS.get('outline', '')} · "
+     f"층 어휘 {_lw} · 다시 {_why} · 체크포인트 {_ck}")
 
 for _lay in ("process", "quality"):
     _unregister(f"b115_{_lay}")                          # 등록 단은 클린이 남긴다 — 다음 스위트가 보지 않게 치운다
