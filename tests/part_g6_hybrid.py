@@ -720,6 +720,41 @@ _ser = [f"{p.relative_to(ROOT)}:{n}" for d in ("core", "cli", "parser") for p in
         if re.search(r"(dumps|sha256)\([^\n]*\.(nodes|edges)\b", ln)]
 show("B161 ⓘ 경계 — graph.py 밖에서 그래프 노드 · 엣지를 직렬화 · 해시하는 코드 0(정적 점검 · 지문은 GraphStore.content_fp 하나)",
      not _ser, f"{_ser}")
+# 기대 변경(B161 PR 리뷰 — 동시 실행): 확인과 읽기가 한 판 · 갈아 끼우는 쪽 공유 잠금 · gc 배타 잠금
+V.begin()
+_HY.warm(_gr161)
+_lv2 = V.lookup("nodes", _HY.node_texts(_gr161)[0])
+_want2 = [(i, s) for s, i in sorted(((round(_EM.cosine(_qv161, v), 4), i) for i, v in _lv2.items()),
+                                    key=lambda t: (-t[0], t[1]))[:5]]
+_ens0 = _HY._ensure
+_HY._ensure = lambda *a, **k: (_ens0(*a, **k), V.index_write("nodes", {"남의 판": "남의 판 글"}, {}, "남의 지문", _HY.MATERIAL_VER))[0]
+try:
+    _race = [(x["id"], x["score"]) for x in _HY.link_candidates(_q161, _gr161, {}, 5)]   # 맞춘 뒤 · 읽기 전에 남이 갈아 끼웠다
+finally:
+    _HY._ensure = _ens0
+_HY.warm(_gr161)
+_pend = ("import sys, time; from core.query import vectors as V; from core.llm import embeddings as E; b = E.backend_id()\n"
+         "with V._gc_guard(exclusive=False):\n"
+         "    import sqlite3; from core import paths; c = sqlite3.connect(str(paths.vectors(V.DB)))\n"
+         "    c.execute(\"INSERT OR IGNORE INTO v VALUES (?, 'pend161', 'nodes', ?)\", (b, bytes(4))); c.commit()\n"
+         "    open(sys.argv[1], 'w').close(); time.sleep(1.0)\n"
+         "    c.execute(\"INSERT OR REPLACE INTO idx VALUES (?, 'nodes', 'pend161', 'pend161', NULL, NULL, 't', 1, 0)\", (b,)); c.commit()\n")
+_mark = TMP / "pend161.held"
+_pp = _sp.Popen([_sys.executable, "-c", _pend, str(_mark)], cwd=str(ROOT), env=_env, stdin=_sp.DEVNULL, stdout=_sp.DEVNULL,
+                stderr=_sp.PIPE, text=True)
+for _ in range(200):
+    if _mark.exists() or _pp.poll() is not None:
+        break
+    __import__("time").sleep(0.05)
+_gone2 = V.gc()                                            # 새 벡터가 색인에 오를 때까지 기다린다
+_pe = _pp.communicate()[1]
+_kept2 = _db("SELECT COUNT(*) FROM v WHERE ver = 'pend161'")[0][0]
+_db("DELETE FROM idx WHERE id = 'pend161'", write=True)
+_db("DELETE FROM v WHERE ver = 'pend161'", write=True)
+show("B161 ⓗ′ 동시 실행 — 맞춘 뒤 다른 입력으로 색인이 갈렸어도 링킹 후보는 제 입력의 결과(남의 판을 읽지 않는다) · 다른 프로세스가 새 벡터를 "
+     "색인에 올리는 동안 --gc는 기다리고 그 벡터를 지우지 않는다",
+     _race == _want2 and _pp.returncode == 0 and _mark.exists() and _kept2 == 1,
+     f"후보 {_race[:2]} · 기대 {_want2[:2]} · gc 지운 {_gone2} · 새 벡터 남음 {_kept2} · {_pe[-120:]}")
 
 for d in set(_made):
     (HINTS / f"{d}.json").unlink(missing_ok=True)

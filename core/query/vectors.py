@@ -29,16 +29,27 @@
 `idx JOIN v`로 읽는다. 다시 쓸 때는 그 종류의 `idx`를 한 트랜잭션에서 통째로 갈고 `meta`를 마지막에 쓴다(`meta`가 있으면 그
 `idx`는 완전하다). 참조 없는 벡터(`idx`의 어느 행도 가리키지 않는 `v` 행 — 옛 글)는 세기만 하고 지우는 것은 `gc` 하나다
 (`run.py vectors --gc` — 그 판만). 설명 · 표의 열은 구조도 `docs/구조도/11_벡터.md`.
+
+**동시 실행**(B161 · PR 리뷰): 읽는 자리는 기대한 지문을 넘기면 `meta` 확인과 읽기를 **한 읽기 트랜잭션**에서 한다(사이에 다른
+프로세스 · 스레드가 색인을 갈아 끼워도 남의 판을 읽지 않는다 — 다르면 None · 호출부가 제 입력으로 다시 찾는다). 색인을 갈아 끼우는
+쪽은 프로세스 사이 공유 잠금 · `gc`는 배타 잠금(`gc.lock` — 아직 색인에 오르지 않은 새 벡터를 지우지 않는다 · 잠금이 없는 플랫폼은
+저장과 같은 규칙으로 생략).
 """
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import sqlite3
 import threading
 import time
 from array import array
+
+try:                                    # 프로세스 사이 정리 잠금 — 없는 플랫폼(Windows)은 생략(store와 같은 규칙)
+    import fcntl
+except ImportError:                     # pragma: no cover
+    fcntl = None
 
 from core import paths
 from core.llm import embeddings as E
@@ -264,22 +275,55 @@ def index_ok(kind, src_fp, mat_ver):
     return got == (src_fp, mat_ver, lim_key())
 
 
-def index_vectors(kind):
-    """`{id: 벡터}` — 색인에서(`idx JOIN v` · 쓰기 0)."""
+def _snap(kind, expect, q, conv):
+    """색인 읽기 하나 — `expect = (지문, 재료 판)`을 주면 **같은 읽기 트랜잭션 안에서** `meta`가 그 지문 · 판 · 한도일 때만 읽고
+    아니면 None(남의 판을 읽지 않는다) · `expect`가 없으면 확인 없이 읽는다 · 쓰기 0."""
+    bid = E.backend_id()
+    want = None if expect is None else (expect[0], expect[1], lim_key())
+
+    def run(c):
+        c.execute("BEGIN")                         # 두 SELECT가 한 판을 본다(쓰는 쪽은 이 읽기가 끝날 때까지 커밋하지 못한다)
+        try:
+            if want is not None and c.execute("SELECT src_fp, mat_ver, lim FROM meta WHERE backend = ? AND kind = ?",
+                                              (bid, kind)).fetchone() != want:
+                return None
+            return conv(c.execute(q, (bid, kind)).fetchall())
+        finally:
+            c.rollback()
+    return _ro(run, None if expect is not None else conv([]))
+
+
+def index_vectors(kind, expect=None):
+    """`{id: 벡터}` — 색인에서(`idx JOIN v` · 쓰기 0) · `expect`가 맞지 않으면 None."""
     q = "SELECT i.id, v.v FROM idx i JOIN v ON v.backend = i.backend AND v.ver = i.ver WHERE i.backend = ? AND i.kind = ?"
-    return {i: _unpack(b) for i, b in _ro(lambda c: c.execute(q, (E.backend_id(), kind)).fetchall(), [])}
+    return _snap(kind, expect, q, lambda rows: {i: _unpack(b) for i, b in rows})
 
 
-def index_texts(kind):
-    """`{id: 임베딩한 글(자른 뒤)}` — 색인에서(문서 검색의 BM25 재료 · 쓰기 0)."""
-    return dict(_ro(lambda c: c.execute("SELECT id, text FROM idx WHERE backend = ? AND kind = ?",
-                                        (E.backend_id(), kind)).fetchall(), []))
+def index_texts(kind, expect=None):
+    """`{id: 임베딩한 글(자른 뒤)}` — 색인에서(문서 검색의 BM25 재료 · 쓰기 0) · `expect`가 맞지 않으면 None."""
+    return _snap(kind, expect, "SELECT id, text FROM idx WHERE backend = ? AND kind = ?", dict)
 
 
-def index_rows(kind):
-    """`[(id, layer, doc_id, 원래 길이, 잘랐나)]` — 색인에서(`show dist embed` · 쓰기 0)."""
-    return _ro(lambda c: c.execute("SELECT id, layer, doc_id, len, cut FROM idx WHERE backend = ? AND kind = ? ORDER BY id",
-                                   (E.backend_id(), kind)).fetchall(), [])
+def index_rows(kind, expect=None):
+    """`[(id, layer, doc_id, 원래 길이, 잘랐나)]` — 색인에서(`show dist embed` · 쓰기 0) · `expect`가 맞지 않으면 None."""
+    return _snap(kind, expect, "SELECT id, layer, doc_id, len, cut FROM idx WHERE backend = ? AND kind = ? ORDER BY id", list)
+
+
+@contextlib.contextmanager
+def _gc_guard(exclusive):
+    """프로세스 사이 정리 잠금 — 색인을 갈아 끼우는 쪽은 공유(여럿이 함께) · `gc`는 배타. 새 벡터는 색인에 오르기 전까지 참조가
+    없다 — 그 사이에 다른 프로세스의 `gc`가 지우지 못하게 한다."""
+    if fcntl is None:                              # pragma: no cover
+        yield
+        return
+    p = paths.vectors("gc.lock")
+    paths.ensure(p)
+    with open(p, "a+") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 def index_plan(kind):
@@ -321,19 +365,20 @@ def index_write(kind, texts, extra, src_fp, mat_ver):
         if index_ok(kind, src_fp, mat_ver):
             return _fill(kind)
         rows = _fit_rows(texts)
-        _vectors(kind, texts, rows)
-        bid = E.backend_id()
-        con = _open()
-        try:
-            with con:
-                con.execute("DELETE FROM idx WHERE backend = ? AND kind = ?", (bid, kind))
-                con.executemany("INSERT OR REPLACE INTO idx VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                [(bid, kind, i, _ver(t), *(extra.get(i) or (None, None)), t, n, int(was))
-                                 for i, (t, n, was) in sorted(rows.items())])
-                con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?, ?, ?, ?, ?)",
-                            (bid, kind, src_fp, mat_ver, lim_key(), time.strftime("%Y-%m-%dT%H:%M:%S")))
-        finally:
-            con.close()
+        with _gc_guard(exclusive=False):           # 새 벡터가 색인에 오를 때까지 다른 프로세스의 gc가 지우지 못한다
+            _vectors(kind, texts, rows)
+            bid = E.backend_id()
+            con = _open()
+            try:
+                with con:
+                    con.execute("DELETE FROM idx WHERE backend = ? AND kind = ?", (bid, kind))
+                    con.executemany("INSERT OR REPLACE INTO idx VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                    [(bid, kind, i, _ver(t), *(extra.get(i) or (None, None)), t, n, int(was))
+                                     for i, (t, n, was) in sorted(rows.items())])
+                    con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?, ?, ?, ?, ?)",
+                                (bid, kind, src_fp, mat_ver, lim_key(), time.strftime("%Y-%m-%dT%H:%M:%S")))
+            finally:
+                con.close()
         STATS[kind]["index"] = "다시 씀"
 
 
@@ -348,7 +393,7 @@ def orphans():
 def gc():
     """**참조 없는 벡터를 지운다** — 이 판만(다른 판의 행은 그대로) · 지운 수. 명시 명령(`run.py vectors --gc`)이 종류 전부의
     색인을 지금 입력에 맞춘 뒤에만 부른다(인입 · 질의 · 뷰어 · 재구축은 지우지 않는다)."""
-    with _LOCK:
+    with _LOCK, _gc_guard(exclusive=True):         # 색인을 갈아 끼우는 프로세스가 있으면 끝날 때까지 기다린다
         con = _open()
         try:
             with con:

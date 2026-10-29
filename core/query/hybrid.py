@@ -114,15 +114,20 @@ def _apply(kind, fp, todo):
 
 
 def _ensure(kind, graphs=None, chunks=None, configs=None):
-    """그 종류의 색인을 지금 입력에 맞춘다 — 링킹 후보 · 문서 검색이 읽기 전에(벡터 준비가 방금 맞췄으면 지문만 잰다)."""
-    _apply(kind, *_decide(kind, graphs, chunks, configs))
+    """그 종류의 색인을 지금 입력에 맞춘다 — 링킹 후보 · 문서 검색이 읽기 전에(벡터 준비가 방금 맞췄으면 지문만 잰다) ·
+    돌려주는 것은 읽을 때 넘길 기대 `(지문, 재료 판)`."""
+    fp, todo = _decide(kind, graphs, chunks, configs)
+    _apply(kind, fp, todo)
+    return fp, MATERIAL_VER
 
 
 def link_candidates(question, graphs, configs, k, exclude=()):
     """질문 벡터 ↔ 노드 벡터 상위 k — `[{id, canonical, category, layer, where, score}]` (점수 내림 · 동점은 id).
-    벡터는 색인에서(B161 — 노드 글을 다시 조립하지 않는다) · 화면 정보는 상위 k만."""
-    _ensure("nodes", graphs, configs=configs)
-    vecs = V.index_vectors("nodes")
+    벡터는 색인에서(B161 — 노드 글을 다시 조립하지 않는다) · 화면 정보는 상위 k만. 맞춘 뒤 읽기 전에 다른 자리가 다른 입력으로
+    색인을 갈아 끼웠으면 제 입력의 글로 찾는다(남의 판을 읽지 않는다)."""
+    vecs = V.index_vectors("nodes", _ensure("nodes", graphs, configs=configs))
+    if vecs is None:
+        vecs = V.vectors("nodes", node_texts(graphs, configs)[0])
     if not vecs:
         return []
     qv = V.question(question)
@@ -173,12 +178,15 @@ def doc_search(question, k, min_sim, trace=None):
     ch = (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {})
     if not ch:
         return []
-    _ensure("chunks", chunks=ch)                   # 벡터 · BM25 재료는 색인에서(B161 — 청크 글을 다시 조립하지 않는다)
-    vecs = V.index_vectors("chunks")
+    want = _ensure("chunks", chunks=ch)            # 벡터 · BM25 재료는 색인에서(B161 — 청크 글을 다시 조립하지 않는다)
+    vecs, texts = V.index_vectors("chunks", want), V.index_texts("chunks", want)
+    if vecs is None or texts is None:              # 맞춘 뒤 다른 자리가 다른 입력으로 갈아 끼웠다 — 제 입력의 글로
+        texts = {cid: _chunk_text(c) for cid, c in ch.items()}
+        vecs = V.vectors("chunks", texts)
     qv = V.question(question)
     emb = sorted(((round(E.cosine(qv, v), 4), cid) for cid, v in vecs.items() if cid in ch), key=lambda t: (-t[0], t[1]))
     emb = [(cid, s) for s, cid in emb if s * 100 >= min_sim][:k]
-    texts = {cid: t for cid, t in V.index_texts("chunks").items() if cid in ch}
+    texts = {cid: t for cid, t in texts.items() if cid in ch}
     bm = bm25.search(question, k, index=bm25.Index(texts))       # 벡터와 같은 재료(B153 ① — 색인의 글이 그 재료다)
     es, bs = dict(emb), dict(bm)
     order, seen = [], set()

@@ -29,8 +29,9 @@ def pairs(graphs, configs=None, *, layer=None, min_sim=None, top=None):
     점수 내림(동점은 id) · `layer`를 주면 그 층만."""
     min_sim = MIN_SIM if min_sim is None else min_sim
     top = TOP if top is None else top
-    if V.index_ok("nodes", H.src_fp("nodes", graphs), H.MATERIAL_VER):
-        vecs, info = V.index_vectors("nodes"), H.node_info(graphs)
+    vecs = V.index_vectors("nodes", (H.src_fp("nodes", graphs), H.MATERIAL_VER))     # 지문 확인과 읽기가 한 판(B161)
+    if vecs is not None:
+        info = H.node_info(graphs)
     else:
         texts, info = H.node_texts(graphs, configs)
         vecs = V.lookup("nodes", texts)

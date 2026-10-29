@@ -163,12 +163,13 @@ def dist_embed(top=10):
     lim = E.limit()
     graphs = {lay: open_graph(lay) for lay in discover()}
     chunks = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}
-    ok = all(V.index_ok(k, H.src_fp(k, graphs, chunks), H.MATERIAL_VER) for k in H.KINDS)
+    got = {k: V.index_rows(k, (H.src_fp(k, graphs, chunks), H.MATERIAL_VER)) for k in H.KINDS}   # 지문 확인과 읽기가 한 판
+    ok = all(v is not None for v in got.values())
     if ok:
         canon = {i: n.get("canonical") for g in graphs.values() for i, n in g.nodes.items()}
-        rows = [("노드", canon.get(i, i), "-", x) for i, _l, _d, x, _c in V.index_rows("nodes")]
+        rows = [("노드", canon.get(i, i), "-", x) for i, _l, _d, x, _c in got["nodes"]]
         rows += [("표 청크" if ((chunks.get(i) or {}).get("meta") or {}).get("field") else "산문 청크", i, d or "-", x)
-                 for i, _l, d, x, _c in V.index_rows("chunks")]
+                 for i, _l, d, x, _c in got["chunks"]]
     else:
         texts, info = H.node_texts(graphs)
         rows = [("노드", info[i]["canonical"], "-", E.measure(t, lim)) for i, t in texts.items()]
