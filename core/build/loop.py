@@ -373,10 +373,13 @@ def h_anchor(value, spec, ctx):
     반환: `resolved_id` 또는 `None`. 미해소는 `orphan_anchor`로 가되 **적재는
     레코드 말미로 미룬다**(문서 2 §2.4-①) — 그 행이 무엇을 만들었는지가 아직
     정해지지 않았고, 큐 항목이 재시도의 손잡이이기 때문이다.
+
+    `target_category`를 생략하면 좌표 카테고리다(문서 2 §2.4 ① — B164) — 좌표를 블록이 아니라
+    `fields`에 직접 적은 스키마는 블록의 값을 받지 않는다(스키마 선언이 블록을 이긴다).
     """
     st = ctx.state
-    nid, ng = st["b"].resolve_anchor(value, spec["target_category"], st["prov"],
-                                     defer=st["defer"])
+    nid, ng = st["b"].resolve_anchor(value, spec.get("target_category") or COORD_CATEGORY,
+                                     st["prov"], defer=st["defer"])
     if nid is not None and ng is not st["graph"]:
         st["external"][st["field"]] = ng
     return nid

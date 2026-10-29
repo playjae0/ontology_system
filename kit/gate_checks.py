@@ -303,6 +303,46 @@ def check_skeleton_columns(schema, fields, pieces):
     return ok
 
 
+def check_anchor_columns(schema, fields, pieces):
+    """**anchor 열의 대상 목록**(B164 ② · G4K) — anchor 열의 표본 값이 그 대상 카테고리 목록에 하나도 없으면 FAIL.
+
+    anchor는 값이 이미 있는 골격 노드를 가리킨다(문서 2 §2.4 ①) — 하나도 가리키지 않으면 매핑이 틀렸다. 대상은
+    `target_category`이고 생략이면 좌표 카테고리다(구축과 같은 규칙 — 킷은 `--coord-category`로 받는다). 재료는 G4H와
+    같다(`tagger.registration_list` · `skeleton_hits`). 일부만 맞으면 판정이 아니라 보고 한 줄(별칭 후보). 목록이나 좌표
+    카테고리를 받지 못하면 대조를 생략하고 그렇게 말한다(하네스 단독 실행)."""
+    from parser import tagger
+    if not (tables.CLOSED_LIST and tables.COORD_LAYER):
+        print("      골격 목록 없음 — G4K 대조 생략 (등록 흐름은 --closed-list · --coord-layer로 건넨다)")
+        return True
+    nodes = tagger.registration_list(schema.get("layer"), tables.COORD_LAYER, path=tables.CLOSED_LIST)
+    bad, part, seen = [], [], []
+    for name, spec in fields.items():
+        if spec.get("role") != "anchor":
+            continue
+        cat = spec.get("target_category") or tables.COORD_CATEGORY
+        if not cat:
+            print(f"      anchor 열 '{name}' — 좌표 카테고리를 받지 못했다(--coord-category) · G4K 대조 생략")
+            continue
+        vals = [p.get(name) for p in pieces if p.get(name) not in (None, "")]
+        if not vals:
+            continue
+        hit, _by = tagger.skeleton_hits(vals, [n for n in nodes if n.get("category") == cat])
+        seen.append(f"{name} {len(hit)}/{len(vals)}")
+        if not hit:
+            bad.append((name, cat, len(vals), not spec.get("target_category")))
+        elif len(hit) < len(vals):
+            part.append((name, len(vals) - len(hit), len(vals)))
+    detail = [f"anchor 열 '{name}'의 값 0/{n}이 {cat} 목록에 있다"
+              + (" (target_category 생략 — 좌표 카테고리)" if omitted else "")
+              + " — `target_category`를 그 값의 골격 카테고리로(공정이 아니면 반드시 적는다) · 골격이 없으면 골격부터"
+              for name, cat, n, omitted in bad]
+    ok = show("G4K  anchor 열의 값이 대상 골격 목록에 하나 이상", not bad,
+              " ‖ ".join(detail) if bad else " · ".join(seen))
+    for name, k, n in part:
+        print(f"      [보고] anchor 열 '{name}' {k}/{n}이 목록 밖 — 별칭 후보")
+    return ok
+
+
 def _axis(layer):
     """좌표 층의 극성 축값 — 층 config `polarity.values`(킷은 core를 모른다 — 건네받은 층 폴더에서 읽는다)."""
     p = tables.layers_dir() / str(layer) / "config.json"
@@ -424,6 +464,7 @@ def check_schema(schema, pieces, label, payload_kind=None):
         show("G4A  필수 필드가 조각에 실제로 채워짐 (missing_field 큐 예상분)",
              not missing, str(missing))
         check_skeleton_columns(schema, fields, pieces)        # G4H (B100 ③)
+        check_anchor_columns(schema, fields, pieces)          # G4K (B164 ②)
     # role 루프 드라이런 — 핸들러 분기가 전부 도는가
     HANDLED = {r: 0 for r in ROLES}
     unmapped_in_fields = [k for k, v in fields.items() if v.get("role") == "UNMAPPABLE"]

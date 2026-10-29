@@ -550,7 +550,11 @@ if __name__ == "__main__":
         _i = _argv.index(tables.COORD_FLAG)
         tables.COORD_LAYER = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
-    if tables.CLOSED_FLAG in _argv:                # 골격 닫힌 목록 파일 (B86 ②)
+    if tables.COORD_CAT_FLAG in _argv:             # 좌표 카테고리 — anchor 생략의 기본 (B164 ②)
+        _i = _argv.index(tables.COORD_CAT_FLAG)
+        tables.COORD_CATEGORY = _argv[_i + 1] if _i + 1 < len(_argv) else None
+        del _argv[_i:_i + 2]
+    if tables.CLOSED_FLAG in _argv:               # 골격 닫힌 목록 파일 (B86 ②)
         _i = _argv.index(tables.CLOSED_FLAG)
         tables.CLOSED_LIST = _argv[_i + 1] if _i + 1 < len(_argv) else None
         del _argv[_i:_i + 2]
