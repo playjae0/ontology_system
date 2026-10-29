@@ -867,6 +867,18 @@ show("B168 ⓔ 「1 자세히 S1-P5」 → 그 그림 원본 입력 · 「1 빼�
      f"원본 {_se[1][1]} · 기록 {_fxe.get(1)} · 셈 {_ge}")
 ST.fixes_path().unlink(missing_ok=True)
 
+
+def _grp(s):
+    g = s.shapes.add_group_shape()
+    for i, c in enumerate((_red168, _blue168)):
+        g.shapes.add_picture(io.BytesIO(c), Inches(1 + i), Inches(1), Inches(0.6), Inches(0.6))
+
+
+_sg, _gg, _bg = _read168(_deck168("B168G.pptx", [_grp]))
+show("B168 리뷰 고침 글 없이 그림 조각 그룹만 있는 쪽 → 빈 쪽으로 건너뛰지 않고 읽는다(빈 쪽은 봉투 상자로 · 입력은 그룹 상자)",
+     1 in _sg and any(b["kind"] == RM168.GROUP for b in _sg[1][0]["boxes"]),
+     f"부른 쪽 {sorted(_sg)} · 건너뜀 {[p.get('skipped') for p in (_bg or {}).get('pages') or []]}")
+
 # ────────────────────────────────────────────────────────────── B169 판독 지시문 r-1.1 · md 이름표
 print("\n■ B169 — 그림마다 첫 줄 「무엇인가 · 확신 · 근거」 · 일반 지식 절 · md 이름표 · 추출 확인 md에 판독")
 _f169 = {"kind": "사진", "labels": [], "seen": [], "meaning": None, "unreadable": False}
@@ -931,6 +943,8 @@ def _sent170(env):
 
 
 _wr170 = _sent170(_ea6)
+_sent170(_ea6)                                            # 다시 — 체크포인트만 지운다(호출 보존 그대로)
+_run170 = dict(EX.RUN.get((_ea6["doc_id"], "")) or {})
 _r4 = next((s for s in _wr170 if "[판독 그림 S4-P1]" in s[2]), None)
 show("B170 ⓐ 판독이 있는 쪽의 추출 입력에 [판독] 묶음(쪽 요약 · 배치) · 그 쪽 그림 요약 자리에 판독 그림 칸(첫 줄 · 그림 속 글자) · 그 호출만 "
      "판독 절 · 소속 출처에 판독",
@@ -958,6 +972,9 @@ show("B170 ⓓ 그림 속 글자에서 나온 이름은 출처 「판독」 · �
      BL170.source_of("T-1", _s4, _doc170) == "판독" and BL170.source_of("커터 단면", _s4, _doc170) is None
      and BL170.source_of("단면 도면", _s4, _doc170) is None and "reading" not in XC170.doc_info(_en6),
      f"T-1 {BL170.source_of('T-1', _s4, _doc170)} · 커터 단면 {BL170.source_of('커터 단면', _s4, _doc170)}")
+show("B170 리뷰 고침 판독이 있는 덱을 다시 추출하면(호출 보존 그대로) 판독을 실은 단위도 다시 쓸 단위로 센다 — 부름 0(다시 쓸 단위 · 씨앗의 "
+     "열쇠 = 보낸 입력 한 손)",
+     _run170.get("부름") == 0 and (_run170.get("재사용") or 0) > 0, f"다시 돈 셈 {_run170}")
 
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)

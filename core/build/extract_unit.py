@@ -70,6 +70,19 @@ def merged(unit):
     return {**body, "text": "\n\n".join(p for p in parts if p)}, bid
 
 
+def sent(unit, pages):
+    """그 단위가 **실제로 보내는** 입력 — `(판독을 실은 단위, [(id, 청크, 캡처)], 합친 id 또는 None)` · 청크 하나 · 캡처 없음이면 그
+    청크 · 그 밖은 합친 청크 + 캡처 · 판독이 있는 쪽은 판독을 실은 뒤(B170) — 호출 · 다시 쓸 단위 · 씨앗의 열쇠가 이 한 손을 쓴다."""
+    from core.build import extract_reading as ER
+    img = (pages or {}).get(page_of(unit))
+    unit, rd = ER.apply(unit)                      # 판독이 있는 쪽 — 그림 칸 · [판독] 묶음(없으면 그대로)
+    put = (lambda c: {**c, "text": f"{c.get('text') or ''}\n\n{rd}"}) if rd else (lambda c: c)
+    if len(unit) == 1 and img is None:
+        return unit, [(cid, put(c), None) for cid, c in unit], None
+    chunk, bid = merged(unit)
+    return unit, [(bid, put(chunk), img)], bid
+
+
 def _source(e, unit, bid):
     """개체의 출처 청크 — 값 글자가 든 원문 청크 → 표기 글자가 든 청크(원문 먼저 · 그림 요약 다음) → 본문 청크."""
     from core.build.values import verbatim

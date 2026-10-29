@@ -465,15 +465,12 @@ def _call_unit(doc_id, unit, cfg, vocab, hints, pages):
     mock · 힌트는 청크마다 지금 그대로(한 호출로 센다) · 실호출은 묶음을 합친 한 청크 + 캡처(있으면)로 한 번 묻고 답을 근거
     청크로 나눈다(`extract_unit.split` — 개체는 그 글자가 든 청크 · 관계 · 관련 링크는 본문 청크)."""
     from core.build import extract_unit as EU
-    img = (pages or {}).get(EU.page_of(unit))
     if gateway.use_mock() or hints:
         return [_call_chunk(doc_id, cid, c, cfg, vocab, hints) for cid, c in unit]
-    unit, rd = ER.apply(unit)                      # 판독이 있는 쪽 — 그림 칸 · [판독] 묶음(B170 · 없으면 그대로)
-    if len(unit) == 1 and img is None:
-        return [_call_chunk(doc_id, cid, ({**c, "text": f"{c.get('text') or ''}\n\n{rd}"} if rd else c), cfg, vocab, None)
-                for cid, c in unit]
-    chunk, bid = EU.merged(unit)
-    chunk = {**chunk, "text": f"{chunk.get('text') or ''}\n\n{rd}"} if rd else chunk
+    unit, sent, bid = EU.sent(unit, pages)         # 보낼 입력 — 판독이 있는 쪽은 판독을 실은 뒤(B170)
+    if bid is None:
+        return [_call_chunk(doc_id, cid, c, cfg, vocab, None) for cid, c, _img in sent]
+    _bid, chunk, img = sent[0]
     entry = _call_chunk(doc_id, bid, chunk, cfg, vocab, None, image=img)
     entry["capture"] = "page" if img is not None else "none"      # 그 호출이 캡처를 봤나 (B125 ② — slide_render)
     return EU.split(entry, unit, bid)
@@ -543,15 +540,11 @@ def _todo(env, chunk_ids_by_locator, skip):
 
 
 def _unit_keys(unit, cfg, hints, pages):
-    """그 단위의 호출 열쇠 — `_call_unit`과 같은 갈래(청크 하나 · 캡처 없음 = 청크의 열쇠 · 그 밖은 합친 청크 + 캡처) · mock · 힌트면 None."""
+    """그 단위의 호출 열쇠 — `_call_unit`과 같은 입력(`extract_unit.sent` — 판독을 실은 뒤) · mock · 힌트면 None."""
     from core.build import extract_unit as EU
     if not _CALLS or hints:
         return None
-    img = (pages or {}).get(EU.page_of(unit))
-    if len(unit) == 1 and img is None:
-        return [_call_key(unit[0][1], cfg)]
-    chunk, _bid = EU.merged(unit)
-    return [_call_key(chunk, cfg, img)]
+    return [_call_key(c, cfg, img) for _id, c, img in EU.sent(unit, pages)[1]]
 
 
 def _unit_hit(unit, cfg, hints, pages):
@@ -574,7 +567,7 @@ def _seed(env, ck, cfg, chunk_ids_by_locator, skip):
     for unit in EU.group(rows):
         if len(unit) != 1 or (env.get("capture") and EU.page_of(unit) is not None):
             continue
-        cid, c = unit[0]
+        cid, c, _img = EU.sent(unit, None)[1][0]   # 보낼 입력의 열쇠로 담는다(판독을 실은 뒤 — B170)
         cand = by.get(cid)
         if not cand or any(cand.get(x) for x in ("failed", "lens_skipped", "no_entities")) or "capture" in cand:
             continue

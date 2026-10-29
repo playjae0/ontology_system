@@ -167,8 +167,9 @@ def hook(ask, doc_id, path, raw, deck_tally=None, *, kept=None, made=None, tally
     kept, images = dict(kept or {}), raw.get("_images") or {}
     from parser import reading_pick
     sel, picked = reading_pick.pick(raw, bx, fixes, live)          # 판독 입력의 상자 · 그림 원본(B168 — 봉투 boxes는 그대로)
-    rbx = {**bx, "pages": [dict(pg, boxes=sel[pg["page"]]["boxes"]) for pg in bx["pages"]]}
-    rows = _rows(raw, rbx, dec, (deck_tally or {}).get("개요"), fixes, live, caps)
+    # 빈 쪽은 봉투 상자로 가른다(조각 그룹만 있는 쪽도 읽는다) · 입력은 고른 상자
+    rows = [dict(r, pg=dict(r["pg"], boxes=sel[r["pg"]["page"]]["boxes"]))
+            for r in _rows(raw, bx, dec, (deck_tally or {}).get("개요"), fixes, live, caps)]
     plan = {**_plan(rows, kept, caps, images, base, bare), "그림": picked}
     if callable(getattr(ask, "notice", None)):
         ask.notice({**plan, "읽기지식": bool(base.get("knowledge")), "캡처": len(caps), "캡처사유": cap_why})
