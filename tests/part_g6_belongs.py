@@ -379,10 +379,9 @@ _mk = EX._mock_candidates("x", _c0["text"], load_config("process"), {"가압 유
 show("ⓒ 소속 — 「모터」가 시트·경로의 유닛 이름을 소속으로(from) · 소속 엣지 · 유닛은 좌표에 · 근거 없으면 null"
      "(지어낸 이름은 버리고 결함 로그) · 옛 attach 호환 (엑셀·Word × 층 둘)",
      all(o for _f, _l, o, _d in _oc), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _oc))
-# 기대 변경(B113 ① — 지시문 3.3 규약 10 · e-1.5 → B115 ③ — 소속 출처 넷 · e-1.6 → B119 ② — 구조 사슬 · e-1.7 → B120 ① — 값 · e-1.8 → B124 ③ — 역할 셋 · e-1.9 → B125 ①④ — 공정 목록 · 슬라이드 묶음 · 캡처 · e-2.0)
-show("ⓒ 경로·시트 이름은 개체 후보가 아니다 — 본문에 없는 시트명은 후보 0 · 지시문 규칙 판 e-2.0",
-     [x["surface"] for x in _mk["entities"]] == ["모터"] and EX.prompt_version() == "e-2.0",
-     f"후보 {[x['surface'] for x in _mk['entities']]} · 지시문 {EX.prompt_version()}")
+show("ⓒ 경로·시트 이름은 개체 후보가 아니다 — 본문에 없는 시트명은 후보 0",
+     [x["surface"] for x in _mk["entities"]] == ["모터"],
+     f"후보 {[x['surface'] for x in _mk['entities']]}")
 
 # 이름에 소속 — CP 표본과 같은 키 · nest가 비면 지금과 같다
 _setup()

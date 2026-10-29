@@ -33,7 +33,6 @@ ALLOW = {
     ("prompts/1.4_generate.md", "Process"): "킷 유지 규칙의 옛 판 서술 — 지시문 판 1.7 · 개정 때 지운다",
     ("prompts/1.4_generate.md", "Unit"): "킷 유지 규칙의 옛 판 서술 — 지시문 판 1.7 · 개정 때 지운다",
     ("prompts/1.4_generate.md", "Property"): "킷 유지 규칙의 옛 판 서술 — 지시문 판 1.7 · 개정 때 지운다",
-    ("prompts/3.3_extract.md", "Unit"): "소속 출력 예시(좌표 층 후보) — 지시문 판 e-2.0 · 바꾸면 사내 추출 재사용이 깨진다",
 }
 
 

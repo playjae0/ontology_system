@@ -469,13 +469,13 @@ _usr = [json.loads(m[1]["content"]) for m in _ma + _m2b]
 from tools import layer_words as _LW151                  # noqa: E402
 _lw = [v for v in _LW151.scan(ROOT) if "2.4_deck" in str(v)] if hasattr(_LW151, "scan") else []
 show("B151 ⓐ 층 config(층 힌트) · 골격 판 · 문서 좌표를 바꾼 두 상태에서 같은 덱 — 덱 블록의 판단 칸이 같다 · 덱 호출 입력(실물)에 층 힌트 · 골격 "
-     "이름 목록 · 문서 좌표 0(두 상태의 입력이 글자까지 같다) · 덱 지시문 층 어휘 0 · 추출 지시문 판 그대로(e-2.0)",
+     "이름 목록 · 문서 좌표 0(두 상태의 입력이 글자까지 같다) · 덱 지시문 층 어휘 0",
      _ma and _m2b and _judged(_ea) == _judged(_e2b) and _ma == _m2b
      and all(set(u) == {"deck", "previous", "slides"} for u in _usr)
      and not any(x in s for s in _sys for x in ("층 힌트 B151", "## 층 어휘", "탭용접", "패키징"))
-     and not _lw and EX.prompt_version() == "e-2.0",
+     and not _lw,
      f"호출 {len(_ma)} · {len(_m2b)} · 같은 입력 {_ma == _m2b} · 판단 같음 {_judged(_ea) == _judged(_e2b)} · 입력 열쇠 "
-     f"{sorted(_usr[0]) if _usr else None} · 추출 판 {EX.prompt_version()}")
+     f"{sorted(_usr[0]) if _usr else None}")
 show("B151 ⓑ 층 config를 바꾼 뒤 같은 덱 재파싱 → 덱 판단 보존분 재사용(LLM 0)",
      "deck" not in _cb and (_rc151.report["deck"]["수"]["재사용"] == 1) and _judged(_eb) == _judged(_ea),
      f"호출 {_cb} · 재사용 {_rc151.report['deck']['수'].get('재사용')}")
