@@ -93,6 +93,12 @@ class GraphStore:
         """
         return self._path.exists()
 
+    def content_fp(self):
+        """**지금 메모리의 내용**(노드 · 엣지)의 지문 — 저장과 같은 직렬화의 sha256 앞 16(B161 — 질의 벡터 색인의 입력 지문).
+        파일 판(`stamp`)이 아니라 내용을 잰다: 호출부가 메모리에서 바꾼 그래프를 넘기는 길이 있다 · 별칭 하나만 바뀌어도 다르다."""
+        import hashlib
+        return hashlib.sha256(_dumps({"nodes": self.nodes, "edges": self.edges})).hexdigest()[:16]
+
     def stamp(self):
         """저장 파일의 판 — `(mtime_ns, 크기)` · 없으면 None(경로를 밖에 내주지 않고 · B144 ③ 읽기 전용 사본의 무효화 경계)."""
         try:
