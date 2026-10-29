@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 — **추출 확인 md**(B155 ②) — 봉투(`parsed/`) · 추출 체크포인트 · 목차 노드화 체크포인트에서 `export/extract_<doc_id>.md`를 찍는다.
+"""칸 0.3 — **추출 확인 md**(B155 ② · B167 ③) — 봉투(`parsed/`) · 추출 체크포인트 · 목차 노드화 체크포인트 · 판정 대장(중간 저장 —
+없으면 확정 대장)에서 `export/extract_<doc_id>.md`를 찍는다.
 
 md는 보기다 — **md에만 있는 정보 0** · 되돌려 읽지 않는다 · 쓰는 자리는 구조 확인 md와 같은 한 자리(`envelope_md.save`). 재료는
-`material` 하나 — `show extract <doc_id>`가 같은 함수로 청크를 찾는다(추출까지만이면 청크 쓰기 0이라 원문은 봉투에서 · B155 ①).
+`material` 하나 — `show extract <doc_id>`가 같은 함수로 청크를 찾는다(판정까지면 청크 쓰기 0이라 원문은 봉투에서 · B155 ①).
 
     머리      문서 · doc_type · 렌즈(층) · 지시문 판 · 단위 수(부름 · 재사용 · 개체 없음으로 건너뜀 · 실패)
     한눈에    단위 × 층 — 개체 · 관계 · 관련 링크 · 부른 단위인데 개체 0이면 ⚠
-    판정 예고 층마다 — 사전 일치 · 판정에 오름 · 보류 예상 · 검사에서 버려짐 + 판정에 오를 표기(LLM 0 · 쓰기 0 — 새 노드인지
-              일치인지는 판정이 정한다)
+    판정      층마다 — 기존 노드 · 새 노드 · 보류(사유) 수 + 값마다 「표기 → 기존 노드 X | 새 노드 | 보류」 · 후보 수 · 근거(경로 ·
+              확신) — 대장 행 그대로(값 판정의 역할 — 개체 · 소속 대상 · 제목 개체)
     단위마다  추출이 받은 것(맥락 줄 · 구조 사슬 · 부착 후보 · 부모 후보 · 캡처) · 원문 · 층마다 개체 표(글에서 찾은 자리 · 판정 예고) ·
               관계 · 관련 링크
 
@@ -38,7 +39,10 @@ def material(doc_id):
     stale = bool(dh) and any(ck.get("doc_hash") not in (None, dh) for _l, _z, ck in cks)
     chunks = dict((cid, c) for c, cid in prose_chunk_ids(env)) if dh and not stale else {
         cid: c for cid, c in (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}).items() if c.get("doc_id") == doc_id}
-    return {"doc_id": doc_id, "env": env, "chunks": chunks, "checkpoints": cks, "stale": stale}
+    from core.build import ledger
+    led = ledger.read_partial(doc_id) or ledger.read(doc_id) or {}
+    return {"doc_id": doc_id, "env": env, "chunks": chunks, "checkpoints": cks, "stale": stale,
+            "rows": led.get("rows") or [], "partial": ledger.read_partial(doc_id) is not None}
 
 
 def _units(mat):
@@ -140,21 +144,37 @@ def _glance(mat, units):
     return out + [""]
 
 
-def _plans(mat):
+def verdict_of(r):
+    """대장 행 하나의 판정 — `(갈래, 글)`: 갈래 = 기존 노드 · 새 노드 · 보류 · 글 = 「기존 노드 X」 · 「새 노드」 · 「보류(사유)」."""
+    v = r.get("verdict")
+    if v == "match":
+        return "기존 노드", f"기존 노드 {r.get('target') or r.get('canonical')}" + (" (이 문서에서 선 노드)" if r.get("same_doc") else "")
+    if v in ("new", "uncertain"):
+        near = (r.get("nearest") or {}).get("canonical") if v == "uncertain" else None
+        return "새 노드", "새 노드" + (f" (불확실 — 가까운 후보 {near})" if near else " (불확실)" if v == "uncertain" else "")
+    return "보류", f"보류({r.get('hold') or r.get('queue_kind') or v})"
+
+
+def _judged(mat):
+    """**판정** 절(B167 ③) — 층마다 수와 값마다 판정 · 대장 행 그대로(md에만 있는 정보 0)."""
+    from core.build.replay import ROLES
+    rows = [r for r in mat["rows"] if r.get("role") in ROLES]
+    if not rows:
+        return ["## 판정", "", "- 판정 대장이 없다 — 판정 전에 멈췄다(--step) 또는 판정에 오른 값 0", ""]
     out = []
-    for lay, _lens, ck in mat["checkpoints"]:
-        tally, judged = {"사전 일치": 0, "판정에 오름": 0, "보류 예상": 0, "검사에서 버려짐": 0}, []
-        for c in ck.get("candidates") or []:
-            ch = mat["chunks"].get(c.get("chunk_id")) or {}
-            for e in c.get("entities") or []:
-                way, drop = _plan(mat, lay, ch, e)
-                tally["보류 예상" if way.startswith("보류") else way] += 1
-                tally["검사에서 버려짐"] += bool(drop)
-                if way == "판정에 오름" and e.get("surface") not in judged:
-                    judged.append(e.get("surface"))
-        out += [f"## 판정 예고 — 층 {lay} (LLM 0 · 쓰기 0)", "",
-                "- " + " · ".join(f"{k} {v:,}" for k, v in tally.items()),
-                "- 판정에 오를 표기(새 노드인지 일치인지는 판정이 정한다): " + (" · ".join(map(str, judged)) or "없음"), ""]
+    for lay in dict.fromkeys(r.get("layer") or "—" for r in rows):
+        mine = [(r, *verdict_of(r)) for r in rows if (r.get("layer") or "—") == lay]
+        tally = {k: sum(1 for _r, w, _t in mine if w == k) for k in ("기존 노드", "새 노드", "보류")}
+        why = {}
+        for _r, w, txt in mine:
+            if w == "보류":
+                why[txt[3:-1]] = why.get(txt[3:-1], 0) + 1
+        out += [f"## 판정 — 층 {lay}" + (" (확정 전 · 중간 저장)" if mat.get("partial") else ""), "",
+                "- " + " · ".join(f"{k} {v:,}" for k, v in tally.items())
+                + (" (" + " · ".join(f"{k} {v:,}" for k, v in why.items()) + ")" if why else ""), "",
+                "| 표기 | 판정 | 후보 | 근거 |", "|---|---|---|---|"]
+        out += [f"| {_cell(r.get('surface'))} | {_cell(txt)} | {int(r.get('candidates_n') or 0)} | "
+                f"{_cell(r.get('path'))} · {float(r.get('confidence') or 0):.2f} |" for r, _w, txt in mine] + [""]
     return out
 
 
@@ -226,7 +246,7 @@ def text(doc_id, mat=None):
     mat["closed"] = {lay: _closed(lay) for lay in lays}
     mat["builders"] = {lay: Builder(open_graph(lay), load_config(lay), None, "(추출 확인)", lay) for lay in lays}
     units = _units(mat)
-    out = _head(mat) + _glance(mat, units) + _plans(mat) + ["## 단위마다", ""]
+    out = _head(mat) + _glance(mat, units) + _judged(mat) + ["## 단위마다", ""]
     for name, cids in units:
         out += _unit(mat, name, cids)
     return "\n".join(out) + "\n"

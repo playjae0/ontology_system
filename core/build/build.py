@@ -392,13 +392,22 @@ class Builder(CoordMixin):
         **판정 재생**(B106 ②) — 판정 없이 붙지 않는 값만(사전 · 경로 호환 같은 이름이 답하지 않았다 — `matcher.gated` ·
         후보 조립과 같은 함수) · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
         좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `chunk_text`(산문)가 있으면 그 표기 앞뒤 글이 2차 판정의
-        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다."""
-        rp = why = None
+        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
+        판정에 오른 값은 **근거 지문**(B167 ② — `replay.basis`)을 판정 dict에 싣는다 — 대장 행이 옮기고 재생이 다시 잰 것과 견준다."""
+        rp = why = fp = None
         pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
                     parent=parent_canonical, cfg=self.cfg, place=place)
         if not pre[0]:
             from core.build import replay as _rp
-            rp, why = _rp.pick(self, at, surface, category, canonical)
+            fp = _rp.basis(canonical, pre, self.cfg)
+            rp, why = _rp.pick(self, at, surface, category, canonical, basis_now=fp)
+        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, chunk_text, place, pre, rp)
+        if fp is not None:
+            got[3]["basis"] = fp
+        return got, why
+
+    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, chunk_text, place, pre, rp):
+        """재생(`rp`) 또는 판정 — `(분기, node_id, 점수, 판정 dict)`(위 `_judge`의 몸)."""
         sent = None
         if chunk_text and (rp is None or rp[3].get("second_due")):
             from core.build.extract_ctx import around
@@ -411,10 +420,10 @@ class Builder(CoordMixin):
                 if got is not None:
                     from core.build import replay as _rp
                     _rp.note_second(got[0] == "match")
-                    return got, why
-            return rp, why
+                    return got
+            return rp
         return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
-                       parent=parent_canonical, sentence=sent, place=place, pre=pre), why
+                       parent=parent_canonical, sentence=sent, place=place, pre=pre)
 
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
@@ -487,7 +496,7 @@ class Builder(CoordMixin):
                      # 판정 재생의 키 몫(B106 ②) — 대장 행이 옮긴다
                      "category": category, "scope": parent_canonical if scoped_category else None,
                      "replay": why,                       # 재생하지 못한 사유 — 재판정 행의 표지(B106 ②)
-                     "judge2": v.get("second"),           # 2차 판정 — 단계 · 근거 문장 자리(B123 ③ · 불렀을 때만)
+                     "judge2": v.get("second"), "basis": v.get("basis"),   # 2차 판정(B123 ③ · 불렀을 때만) · 근거 지문(B167 ② — 판정에 오른 값만)
                      "apart": v.get("apart"),             # 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드(B142 ⑥)
                      "similar": v.get("similar"),         # 소유자 이름 비슷 → 판정에 올린 후보(B142 ②⑥)
                      "llm": {"calls": _u1["calls"] - _u0["calls"],

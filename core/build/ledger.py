@@ -2,7 +2,8 @@
 """칸 3.4 — 판정 대장 — **문서마다, 값마다, 어떻게 해소했는가** (B74 ② · 문서 7 §7.8).
 
     <상태>/work/ingest_log/{doc_id}.json      (④단 — B78 1b · 자리는 `store.path`가 안다)
-    <상태>/work/ingest_log/{doc_id}.partial.json  (중간 저장 — 표의 공정 그룹 경계마다 · 확정하면 지운다 · B165)
+    <상태>/work/ingest_log/{doc_id}.partial.json  (중간 저장 — 표의 공정 그룹 경계마다 · 판정까지(`--extract-only`)는 대장 전부 ·
+                                                  확정하면 지운다 · B165 · B167)
 
 정본이 아니라 **장부**다: 재인입이 덮고, 그래프를 되돌려 읽지 않는다. 있는 이유는
 하나다 — 「몇 개가 로직이고 몇 개가 LLM인가」와 「이 행이 어디에 붙었나」를 **사후에
@@ -36,7 +37,8 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "belongs_to",                    # 산문 개체가 낸 소속 이름(B119 ⑤ — 화면의 소속(출처) 칸 · 출처는 `from`)
          "value",                         # 산문 개체의 값 `{attr, value, verdict}`(B120 ① — `core/build/values.land`가 단다)
          "judge2",                        # 2차 판정 `{was, now, span}`(B123 ③ — 1차 불확실 · 청크 원문의 근거 문장 자리)
-         "apart", "similar")              # 같은 이름 · 다른 소유자 아래 노드 · 소유자 이름 비슷 → 판정(B142 ⑥ — 이름 · 위 5)
+         "apart", "similar",              # 같은 이름 · 다른 소유자 아래 노드 · 소유자 이름 비슷 → 판정(B142 ⑥ — 이름 · 위 5)
+         "basis")                         # 근거 지문 — 판정에 오른 값의 후보 이름 · 지시문 판 · 임계 해시(B167 ② · `replay.basis`)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -56,6 +58,10 @@ ON_GROUP = None
 
 #: 멈춘 실행의 **중간 저장** 꼬리 — `ingest_log/{doc_id}.partial.json`(B165 ① · 머리에 문서 해시 · 확정하면 지운다)
 PARTIAL = ".partial.json"
+
+#: **판정까지**(B167 ① — `--extract-only`) — 문서 해시면 `Ledger.save`가 확정 대장 대신 중간 저장(대장 전부)으로 쓴다 ·
+#: 되돌림 경계(`entry.run_document`)가 문서마다 켜고 끈다
+HOLD = None
 
 
 def chunk_done(locator=None):
@@ -96,7 +102,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
-        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, similar=None):
+        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, similar=None, basis=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -135,7 +141,9 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 2차 판정(B123 ③ — 1차 불확실 · 단계 · 근거 문장 자리 · 불렀을 때만)
                  ("judge2", judge2),
                  # 판정이 견준 사실(B142 ⑥) — 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드 · 소유자 이름 비슷 후보
-                 ("apart", apart), ("similar", similar)):
+                 ("apart", apart), ("similar", similar),
+                 # 근거 지문(B167 ② — 판정에 오른 값만 · 재생이 다시 잰 것과 견준다)
+                 ("basis", basis)):
         if v is not None:
             r[k] = v
     return r
@@ -153,7 +161,7 @@ def judged(last, *, locator, field, surface, layer, target):
                 emb_top=last.get("emb_top"), nearest=last.get("nearest"), same_doc=last.get("same_doc"),
                 target=target, category=last.get("category"), scope=last.get("scope"),
                 replay=last.get("replay"), judge2=last.get("judge2"),
-                apart=last.get("apart"), similar=last.get("similar"))
+                apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"))
 
 
 def put_row(doc_id, new, old=None):
@@ -192,7 +200,11 @@ class Ledger:
         return self.rows[-1]
 
     def save(self):
-        """**재인입이 덮는다** — 이전 대장이 남지 않는다(완료판정 ②) · 확정하면 중간 저장은 지운다(B165)."""
+        """**재인입이 덮는다** — 이전 대장이 남지 않는다(완료판정 ②) · 확정하면 중간 저장은 지운다(B165) · 판정까지(`HOLD`)면
+        확정 대장은 그대로 두고 대장 전부를 중간 저장으로(B167 ① — 확정의 재생 재료)."""
+        if HOLD is not None:
+            self.save_partial(HOLD)
+            return len(self.rows)
         store.write(name_of(self.doc_id),
                     {"doc_id": self.doc_id, "rows": self.rows})
         store.path(partial_name(self.doc_id)).unlink(missing_ok=True)

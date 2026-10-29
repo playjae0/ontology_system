@@ -153,7 +153,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
                            same_doc=last.get("same_doc"), target=b.canonical_of(nid),
                            category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
-                           apart=last.get("apart"), similar=last.get("similar"))
+                           apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"))
         if not nid:
             continue
         hg = cg or b.graph_of(nid) or graph

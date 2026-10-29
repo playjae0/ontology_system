@@ -25,6 +25,8 @@
        ⓑ 공정 아닌 anchor 열의 `target_category`가 빠지면 G4K FAIL + 문면 · 맞으면 PASS · 목록 없으면 생략 줄
        ⓒ G4K는 자동 지시 갈래
        ⓓ G4K는 대상 카테고리를 스냅샷의 층 전부에서 고른다(집이 다른 층) · 목록 파일이 없으면 생략
+  B166 ⓐ cp는 G4L PASS + 보고 「문서 안 충돌 1」 · 극성이 갈린 값은 다른 대상 ⓑ 대부분의 대상에서 값이 갈리는 attribute 열은
+       FAIL(k/m · 처방) · content면 PASS ⓒ 자동 지시 ⓓ 생성 지시문 판 1.10 · ⓒ 기수 시험
 """
 from __future__ import annotations
 
@@ -293,6 +295,48 @@ with tempfile.TemporaryDirectory(prefix="b164r_") as td:
 _g4kp164 = next((l.strip() for l in _outp164.splitlines() if "G4K" in l), "")
 show("ⓓ G4K — 대상의 집이 등록 층 · 좌표 층 밖이어도 맞춘다(구축과 같은 집) · 목록 자리에 파일이 없으면 생략(전부 FAIL 0)",
      "[PASS] G4K" in _g4kp164 and "G4K 대조 생략" in _nf164 and "[FAIL] G4K" not in _nf164, _g4kp164[:120])
+
+print("\n■ B166 G4L — attribute 열은 한 대상 · 한 맥락에 값 하나 (대상 = 구축이 값을 싣는 노드 — 판정 예고와 같은 해소)")
+_outc166 = GT.harness(FX / "adapters" / "cp.py", _P.fixture_schemas("cp.json"), [RAW / "CP01.xlsx"])[1]
+_l166 = [l.strip() for l in _outc166.splitlines() if "G4L" in l or "[보고] attribute" in l]
+show("ⓐ cp(CP01 그대로) → G4L PASS · 보고 「문서 안 충돌 1(적층 정렬도)」 · 극성이 갈린 값(노칭 정밀도)은 다른 대상으로 센다",
+     any(l.startswith("[PASS] G4L") for l in _l166) and any("문서 안 충돌 1(적층 정렬도)" in l for l in _l166)
+     and not any("노칭 정밀도" in l for l in _l166), " ‖ ".join(_l166)[:200])
+# 창작 — 같은 고장모드에 행마다 다른 예방 방안 서술을 attribute로(사내 PFMEA의 꼴)
+_sa166 = _cp164.deepcopy(_sch164)
+_sa166["fields"]["prevention_control"] = {"role": "attribute", "attach_to_field": "failure_mode", "attr_name": "prevention"}
+with tempfile.TemporaryDirectory(prefix="b166_") as td:
+    _ps166 = Path(td) / "pfmea_attr.json"
+    _ps166.write_text(json.dumps(_sa166, ensure_ascii=False), encoding="utf-8")
+    _outa166 = GT.harness(FX / "adapters" / "pfmea.py", _ps166, [RAW / "PFMEA01.xlsx"])[1]
+_la166 = next((l.strip() for l in _outa166.splitlines() if "G4L" in l), "")
+_lo166 = next((l.strip() for l in _outg164.splitlines() if "G4L" in l), "")      # 원래 스키마(예방 · 검출은 content)
+show("ⓑ 대부분의 대상에서 행마다 다른 값이 오는 attribute 열 → G4L FAIL · 문면에 k/m과 처방 · content로 두면 PASS",
+     _la166.startswith("[FAIL] G4L") and "'prevention_control'" in _la166 and "값이 갈리는 대상" in _la166
+     and "content" in _la166 and not _lo166.startswith("[FAIL]"), _la166[:160])
+show("ⓒ G4L 문면이 자동 지시로 분류된다", any("G4L" in x for x in GT.classify_failures(_outa166)[0])
+     and not any("G4L" in x for x in GT.classify_failures(_outa166)[1]))
+_g166 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")
+show("ⓓ 생성 지시문 판 1.10 · 그래프 입장 시험에 ⓒ 기수 시험(세 시험)",
+     "\nversion: 1.10\n" in _g166 and "ⓒ **기수 시험**" in _g166 and "**세 시험이 모두 예**" in _g166)
+#: 리뷰 고침(PR #121) — ①새로 설 이름은 사전과 같은 정규화(연속 공백) ②값의 같음은 구축의 ==(1과 1.0) ③문서는 표본 경로로
+from core.build import cardinality as CD166      # noqa: E402
+_r166 = load("PFMEA01")["records"][0]
+
+
+def _m166(*docs):
+    """(표본 경로, [(고장모드, 예방 값)]) 여럿 → 예방 열의 기수."""
+    return next(m for m in CD166.measure([{"doc": d, "env": {"context": {}, "records": [
+        dict(_r166, failure_mode=fm, prevention_control=v) for fm, v in rows]}} for d, rows in docs], _sa166)
+        if m["field"] == "prevention_control")
+
+
+_n166 = [(m["measurable"], m["split"]) for m in (_m166(("/x/a.xlsx", [("B166 신규 고장", "가"), ("B166  신규 고장", "나")])),
+                                                  _m166(("/x/a.xlsx", [("B166 신규 고장", 1), ("B166 신규 고장", 1.0)])),
+                                                  _m166(("/x/CP.xlsx", [("B166 고장 갑", "가")]),
+                                                        ("/y/CP.xlsx", [("B166 고장 갑", "나")])))]
+show("B166 리뷰 고침 — 표기의 연속 공백만 다른 새 대상은 한 대상 · 1과 1.0은 같은 값 · 이름이 같은 다른 표본은 다른 문서",
+     _n166 == [(1, 1), (1, 0), (0, 0)], f"(잴 수 있는 대상 · 갈림) {_n166}")
 
 print("\n■ B100 ③ 지시문 · 자산 해시")
 _p14 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")

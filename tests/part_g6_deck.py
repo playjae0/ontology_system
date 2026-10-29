@@ -561,7 +561,7 @@ def _x155(body):
     if "커터 마모" in t:                                  # 사전 일치 · 판정에 오름(글에 없음) · 값 글자 버림
         return {"entities": [_ent("노칭", "Process"), _ent("커터 홀더", "Unit"), _ent("마모량", "Property", value="0.09mm")],
                 "relations": [], "about": []}
-    if "정렬 기준 0.2mm" in t:                            # 좌표 「스태킹 공정」은 골격 밖 — 보류 예상
+    if "정렬 기준 0.2mm" in t:                            # 좌표 「스태킹」 아래 — 판정에 오름(판정 절에 새 노드)
         return {"entities": [_ent("정렬 지그", "Unit")], "relations": [], "about": []}
     return {"entities": [], "relations": [], "about": []}   # 일정 슬라이드 — 부른 단위인데 개체 0
 
@@ -574,13 +574,13 @@ with Live(by={"extract": _x155, "outline": lambda b: {"headings": []}}), _quiet(
     _rx155 = run_document(dict(_e155), extract_only=True)
 from cli import extract_md as XMD155                    # noqa: E402
 _md155 = XMD155.text("B155D") or ""
-show("B155 ⓒ 덱 추출까지만 — md에 슬라이드마다 맥락 줄(다루는 것) · 원문 · 개체 표(글에서 찾은 자리 · 「글에 없음」) · 판정 예고(사전 일치 · "
-     "판정에 오름 · 보류 예상 · 검사 버림) · 한눈에 ⚠ · 문서 대장 0",
-     getattr(_rx155[0], "extract_stop", False) and "다루는 것: 노칭 커터" in _md155 and "커터 마모 0.03mm" in _md155
-     and "| 커터 홀더 | Unit |" in _md155 and "글에 없음" in _md155 and "| 노칭 | Process |" in _md155
-     and all(x in _md155 for x in ("사전 일치", "판정에 오름", "보류 예상", "검사 버림(값 글자)", "⚠ 부른 단위인데 개체 0"))
+_need155 = ("다루는 것: 노칭 커터", "커터 마모 0.03mm", "| 커터 홀더 | Unit |", "글에 없음", "| 노칭 | Process |", "사전 일치",
+            "판정에 오름", "검사 버림(값 글자)", "⚠ 부른 단위인데 개체 0", "## 판정 — 층 process")
+show("B155 ⓒ (B167 고침) 덱 판정까지 — md에 슬라이드마다 맥락 줄(다루는 것) · 원문 · 개체 표(글에서 찾은 자리 · 「글에 없음」 · "
+     "판정 예고 칸(사전 일치 · 판정에 오름 · 검사 버림)) · 판정 절 · 한눈에 ⚠ · 문서 대장 0",
+     getattr(_rx155[0], "extract_stop", False) and all(x in _md155 for x in _need155)
      and json.dumps(store.read(store.DOC_REGISTRY, {}), sort_keys=True) == _g155,
-     f"{_rx155[0].reason} · " + " | ".join(ln for ln in _md155.splitlines() if ln.startswith("- 사전 일치")))
+     f"{_rx155[0].reason} · 빠진 것 {[x for x in _need155 if x not in _md155]}")
 #: 리뷰 고침(PR #111) — ①개체 부모가 주 좌표를 이긴다(좌표 없는 청크라도 부모가 서면 보류 예상이 아니다 — 구축과 같은 손) ②봉투가
 #: 체크포인트와 다른 판이면 그 사실을 말하고 저장된 청크로 찍는다
 from core.build.build import Builder as _BD155                                    # noqa: E402

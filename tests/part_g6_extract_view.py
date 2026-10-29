@@ -14,6 +14,8 @@
      고치고 「어댑터 판이 다르면 처음부터」는 지웠다: 같은 입력이면 어댑터 판과 무관하게 다시 쓴다)
   ⓕ --step 산문: 추출 예고에서 멈추면 체크포인트 0 · 추출 뒤에서 멈추면 그래프·큐 쓰기 0 ·
      체크포인트 완료 · 재실행은 추출 재사용 · 표 문서의 관문은 판정 예고 그대로
+  B167 ⓐ `--extract-only`는 판정까지(쓰기 0 · 중간 저장 · md 판정 절 수 = 대장) ⓑ 확정은 판정 재생 · 그래프가 플래그 없는 인입과 같다
+     (B155 ⓐⓑ 고침 · ⓔ 표 거부는 지움 — 표도 판정까지 · B155 ⓕ 고침 — 추출 뒤 관문도 묻는다)
 """
 from __future__ import annotations
 
@@ -263,7 +265,7 @@ show("ⓕ --step 산문: 추출 예고 멈춤 = 체크포인트 0 · 추출 뒤 
 _unregister()
 init.init(fresh_=True, all_=True)
 
-print("\n■ B155 — 추출까지만(--extract-only) · 추출 md")
+print("\n■ B155 · B167 — 판정까지(--extract-only) · 추출 md · 확정 = 판정 재생")
 import hashlib as _hl                        # noqa: E402
 from core.state.bootstrap import bootstrap as _bs   # noqa: E402
 for _lay in ("process", "quality"):
@@ -280,33 +282,71 @@ def _writes():
             for p in fs if not p.name.endswith(".lock")}
 
 
+from cli.extract_md import verdict_of as _vof          # noqa: E402
+from core.build import ledger as _LG, replay as _RP    # noqa: E402
+
+
+def _world():
+    """층마다 노드(이름 · 카테고리 · status) · 엣지(이름으로) · 큐(종류 · 문서) — id 밖의 모양(플래그 없이 넣은 것과 견준다)."""
+    names = {i: n.get("canonical") for lay in ("process", "quality") for i, n in open_graph(lay).nodes.items()}
+    out = {lay: (sorted((n.get("canonical"), n.get("category"), n.get("status")) for n in open_graph(lay).nodes.values()),
+                 sorted((names.get(e["src"]), e["rel"], names.get(e["dst"])) for e in open_graph(lay).edges))
+           for lay in ("process", "quality")}
+    out["queue"] = sorted((x["kind"], x.get("doc_id")) for x in store.read(store.QUEUE, []))
+    return out
+
+
+def _again_of(text):
+    """끝 줄의 확정 줄 — `▶ 확정(…): <같은 줄>`."""
+    return next((ln.split("▶ 확정", 1)[1].split("): ", 1)[-1].strip() for ln in text.splitlines() if "▶ 확정" in ln), "")
+
+
 EX.invalidate("RFQ01")
 _w0 = _writes()
 _x1 = _ingest("--sheets", "auto", "--extract-only")
 _w1 = _writes()
 _md155 = _P.export("extract_RFQ01.md")
-_again = next((ln.split("▶ 확정: ", 1)[1].strip() for ln in _x1.splitlines() if "▶ 확정: " in ln), "")
-show("B155 ⓐ 산문 엑셀 --extract-only — 추출 체크포인트 있음 · 그래프 · 사전 · 큐 · 청크 · 문서 대장이 실행 전과 바이트 같음 · "
-     "export/extract_<doc_id>.md · 끝 줄의 확정 줄(플래그 없는 같은 줄)",
-     EX.has_checkpoint("RFQ01") and _w0 == _w1 and _md155.exists() and "추출까지 — 그래프 쓰기 0" in _x1
+_again = _again_of(_x1)
+_rows167 = [r for r in (_LG.read_partial("RFQ01") or {}).get("rows") or [] if r.get("role") in _RP.ROLES]
+_mdt = _md155.read_text(encoding="utf-8") if _md155.exists() else ""
+_lays = {r.get("layer") or "—" for r in _rows167}
+_tally = {lay: "- " + " · ".join(f"{k} {sum(1 for r in _rows167 if (r.get('layer') or '—') == lay and _vof(r)[0] == k):,}"
+                                 for k in ("기존 노드", "새 노드", "보류")) for lay in _lays}
+show("B167 ⓐ (B155 ⓐ 고침) 산문 --extract-only = 판정까지 — 그래프 · 사전 · 큐 · 청크 · 문서 대장이 실행 전과 바이트 같음 · 확정 대장 0 · "
+     "판정 대장은 중간 저장에 · 추출 확인 md 판정 절의 기존 · 새 · 보류 수가 대장과 같다 · 끝 줄의 확정 줄",
+     EX.has_checkpoint("RFQ01") and _w0 == _w1 and _LG.read("RFQ01") is None and _rows167
+     and all(f"## 판정 — 층 {lay}" in _mdt and _tally[lay] in _mdt for lay in _lays) and "판정까지 — 그래프 쓰기 0" in _x1
      and _again.startswith("python run.py ingest-file ") and "--extract-only" not in _again and "--sheets auto" in _again,
-     f"확정 줄 {_again} · 바뀐 파일 {[k for k in _w1 if _w0.get(k) != _w1.get(k)]}")
+     f"확정 줄 {_again} · 바뀐 파일 {[k for k in _w1 if _w0.get(k) != _w1.get(k)]} · 수 {_tally}")
 _x2 = _run(*_again.split()[2:])
-show("B155 ⓑ 확정 줄을 그대로 — 추출 재사용(LLM 0) · 그래프 씀(문서 대장에 선다)",
-     "체크포인트 재사용(LLM 0)" in _x2 and _writes() != _w1 and "RFQ01" in store.read(store.DOC_REGISTRY, {}),
-     [ln.strip()[:70] for ln in _x2.splitlines() if "재사용" in ln][:2])
-_x5 = _run("ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp", "--allow-mock", "--extract-only")
-show("B155 ⓔ 표 문서 --extract-only — 상태 거부 한 줄(추출이 없다)",
-     sum("[상태] 표는 추출이 없다" in ln for ln in _x5.splitlines()) >= 1 and "추출까지 —" not in _x5,
-     [ln.strip()[:60] for ln in _x5.splitlines() if "[상태]" in ln][:1])
+def _verdicts(rows):
+    """값마다 판정 — (자리 · 열 · 표기 · 판정 · 붙은 이름)."""
+    return sorted((str(r.get("locator")), str(r.get("field")), str(r.get("surface")), r.get("verdict"),
+                   str(r.get("target") or r.get("canonical"))) for r in rows if r.get("role") in _RP.ROLES)
+
+
+_fin = (_LG.read("RFQ01") or {}).get("rows") or []
+_due = [r for r in _fin if r.get("role") in _RP.ROLES and str(r.get("path")).endswith("+judge")]
+_wx = _world()
 init.init(fresh_=True, all_=True)
 for _lay in ("process", "quality"):
     _bs(_lay, echo=False)
 _register()
 EX.invalidate("RFQ01")
-_x6 = _ingest("--sheets", "auto", "--extract-only", "--step", answers="c\n" * 7)
-show("B155 ⓕ --extract-only --step(pty) — 구조 관문 · 추출 예고는 묻고 · 추출 뒤 관문(판정 예고)은 묻지 않고 멈춘다",
-     "구조 확인" in _x6 and "[4/8] 추출 예고" in _x6 and "[5/8] 추출 결과·판정 예고" not in _x6 and "추출까지 — 그래프 쓰기 0" in _x6,
+_ingest("--sheets", "auto")                              # 처음부터 플래그 없이
+show("B167 ⓑ (B155 ⓑ 고침) 확정 줄을 그대로 — 추출 재사용 · 값마다 판정이 판정까지의 대장 그대로(다시 판정한 값 0) · 중간 저장 지움 · "
+     "그래프 · 큐가 처음부터 플래그 없이 넣은 것과 같다",
+     "체크포인트 재사용(LLM 0)" in _x2 and _verdicts(_fin) == _verdicts(_rows167) and not _due
+     and _LG.read_partial("RFQ01") is None and _wx == _world(),
+     f"판정 {len(_verdicts(_fin))}값 · 다시 판정 {len(_due)}")
+init.init(fresh_=True, all_=True)
+for _lay in ("process", "quality"):
+    _bs(_lay, echo=False)
+_register()
+EX.invalidate("RFQ01")
+_x6 = _ingest("--sheets", "auto", "--extract-only", "--step", answers="c\n" * 9)
+show("B155 ⓕ (B167 고침) --extract-only --step(pty) — 구조 관문 · 추출 예고 · 추출 뒤 관문(판정 예고)을 묻고 판정까지 가서 멈춘다",
+     "구조 확인" in _x6 and "[4/8] 추출 예고" in _x6 and "[5/8] 추출 결과·판정 예고" in _x6 and "판정까지 — 그래프 쓰기 0" in _x6,
      [ln.strip()[:50] for ln in _x6.splitlines() if "/8]" in ln][:6])
 _unregister()
 init.init(fresh_=True, all_=True)

@@ -417,7 +417,7 @@ def _parse_doc(doc, sel, row, coord_cap, roles, no_images, doc_coord, step, no_c
 
 
 SPLIT_ONLY = "구조까지"
-EXTRACT_ONLY = "추출까지"
+EXTRACT_ONLY = "판정까지"
 
 
 def _split_only(res, sel, row):
@@ -431,28 +431,21 @@ def _split_only(res, sel, row):
     return row
 
 
-def _extract_only(doc, sel, row):
-    """**추출까지만**(B155 ①) — 구축이 추출 뒤에서 멈췄다(그래프 · 사전 · 큐 · 청크 · 문서 대장 쓰기 0) · 추출 md를 찍고 확정 줄을 낸다
-    (플래그 없는 같은 줄 — 추출 재사용 · LLM 0)."""
+def _extract_only(doc, sel, row, stage):
+    """**판정까지**(B155 ① · B167 ①) — 구축이 저장 직전에 멈췄다(그래프 · 사전 · 큐 · 청크 · 문서 대장 쓰기 0 · 판정 대장은 중간 저장) ·
+    사용량 줄 · 추출 md(산문 — 표는 추출이 없어 판정 행 `show report --rows`)를 찍고 확정 줄을 낸다(플래그 없는 같은 줄 — 추출 재사용 ·
+    판정 재생 LLM 0 · 근거가 바뀐 값만 다시)."""
     import shlex
     from cli import extract_md
     md = extract_md.write(sel["doc_id"])
     argv = [a for a in sys.argv[1:] if a != "--extract-only"]
     again = ("python run.py " + " ".join(shlex.quote(a) for a in argv) if Path(sys.argv[0]).name == "run.py" and argv
              else f"python run.py ingest-file {shlex.quote(str(doc))} --doc-type {sel.get('doc_type')}")
-    print(f"   추출까지 — 그래프 쓰기 0 · 추출 md {paths.show(md) if md else '없음(체크포인트 없음)'} · ▶ 확정: {again}")
-    row.update(status=EXTRACT_ONLY, reason="--extract-only — 추출까지", extract_md=str(md) if md else None, again=again)
+    print("   " + spend_line(stage))
+    see = f"추출 md {paths.show(md)}" if md else f"판정 행 python run.py show report {sel['doc_id']} --rows"
+    print(f"   판정까지 — 그래프 쓰기 0 · {see} · ▶ 확정(추출 재사용 · 판정 재생 LLM 0 — 근거가 바뀐 값만 다시): {again}")
+    row.update(status=EXTRACT_ONLY, reason="--extract-only — 판정까지", extract_md=str(md) if md else None, again=again)
     return row
-
-
-def _table_refused(sel, row):
-    """표 문서는 추출이 없다 — `--extract-only`의 상태 거부 한 줄(B155 ①)."""
-    from cli.parse import load_adapter
-    if not sel.get("adapter") or load_adapter(str(sel["adapter"])).ADAPTER.get("payload_kind") != "table":
-        return False
-    print("   [상태] 표는 추출이 없다 — --split-only 또는 플래그 없이")
-    row.update(status=FAIL, reason="[상태] 표는 추출이 없다 — --split-only 또는 플래그 없이")
-    return True
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
@@ -462,7 +455,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                 allow_duplicate=False, split_only=False, no_capture=False, extract_only=False):
     """문서 1건 — 선택 → 파싱 → 인입. 돌려주는 것은 결과 1행(dict)이다. **예외를 밖으로
     던지지 않는다** — 문서 단위 독립(C14)이라 실패는 행에 적힌다. `split_only`(B126 ④)면 파싱 · 좌표 · 구조 확인까지만
-    (추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`) · `extract_only`(B155 ①)면 추출까지만(쓰기 0 · `export/extract_<doc_id>.md`)."""
+    (추출 0 · 그래프 쓰기 0 · `export/split_<doc_id>.md`) · `extract_only`(B167 ①)면 판정까지(쓰기 0 · 판정 대장 중간 저장 · 산문은 `export/extract_<doc_id>.md`)."""
     try:
         sel = select(doc, doc_type, adapter_paths)
     except MissingDependency as e:
@@ -478,8 +471,6 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
     _r, stage, step = _ingest_file_select(doc, sel, row, step, revise, dry_run)
     if _r is not None:
         return _r
-    if extract_only and _table_refused(sel, row):
-        return row
     # **시트 역할은 파싱 앞에서 정해진다**(B83 ③) — 파서는 역할을 데이터로 받을 뿐이고,
     # 기록을 읽어 넘기는 쪽이 여기다. 정해지지 않으면 **읽지 않는다**(상태 거부).
     _roles, _stop, _dc = _sheet_gate(doc, sel, spec=sheets, dry_run=dry_run, ask=ask, coord=coord)
@@ -524,8 +515,8 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
             getattr(_ledger.ON_ROW, "flush", lambda: None)()      # 남은 산문 값 행 (B119 ⑤)
             _ledger.ON_ROW = _ledger.ON_EDGE = _ledger.ON_CHUNK = _ledger.ON_GROUP = None
             _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
-        if getattr(r, "extract_stop", False):       # 추출까지만 (B155 ①)
-            return _extract_only(doc, sel, row)
+        if getattr(r, "extract_stop", False):       # 판정까지 (B155 ① · B167 ①)
+            return _extract_only(doc, sel, row, stage)
         if getattr(r, "step_stop", False):          # `--step` 관문에서 멈췄다 (B97 ④)
             row.update(status=SKIP, reason=r.reason)
             return row
@@ -686,7 +677,7 @@ def main(argv):
         args.remove("--dry-run")
     step = "--step" in args
     split_only = "--split-only" in args               # 구조까지만 (B126 ④)
-    extract_only = "--extract-only" in args           # 추출까지만 (B155 ①)
+    extract_only = "--extract-only" in args           # 판정까지 (B167 ①)
     if split_only and extract_only:
         raise SystemExit("[투입] --split-only와 --extract-only는 같이 주지 않는다 — 멈춤 자리는 하나다")  # [사용법]
     args = [a for a in args if a not in ("--split-only", "--extract-only")]
