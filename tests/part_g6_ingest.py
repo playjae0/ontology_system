@@ -186,7 +186,8 @@ show("④ 판정 예고에서 q → 그래프 쓰기 0 (읽기만 한 자리에�
 show("④ 멈춘 화면이 **이어서 넣는 다음 줄**을 준다 (막다른 길 0 · B61)",
      "ingest-file" in _scr72.split("멈춤 —")[-1]
      and "skeleton.json" in _scr72.split("멈춤 —")[-1])
-_scr72c = _step_run72("c\nc\nc\nc\nc\nc\nc\n")
+# 기대 변경(B165 — CP01은 공정 그룹 셋(조립 · 스태킹 · 조립)이라 판정 안의 그룹 경계 둘에서도 묻는다: 7단계 + 2)
+_scr72c = _step_run72("c\n" * 9)
 show("④ 끝까지 가면 7단계가 다 뜨고 인입이 끝난다",
      all(f"[{i}/7]" in _scr72c for i in range(1, 8)) and "인입 끝" in _scr72c,
      [l.strip() for l in _scr72c.splitlines() if "인입 끝" in l][:1])
