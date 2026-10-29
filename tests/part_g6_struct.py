@@ -24,6 +24,7 @@
   B164 ⓐ 좌표를 fields에 직접 적고 `target_category`를 뺀 스키마로 구축이 돈다 · 좌표 골격 노드로 해소(블록 판과 같다)
        ⓑ 공정 아닌 anchor 열의 `target_category`가 빠지면 G4K FAIL + 문면 · 맞으면 PASS · 목록 없으면 생략 줄
        ⓒ G4K는 자동 지시 갈래
+       ⓓ G4K는 대상 카테고리를 스냅샷의 층 전부에서 고른다(집이 다른 층) · 목록 파일이 없으면 생략
 """
 from __future__ import annotations
 
@@ -279,6 +280,19 @@ show("ⓑ 공정 아닌 anchor 열의 target_category가 빠지면 G4K FAIL + �
 show("ⓒ G4K 문면이 자동 지시로 분류된다 (classify_failures의 auto)",
      any("G4K" in a for a in GT.classify_failures(_outb164)[0])
      and not any("G4K" in a for a in GT.classify_failures(_outb164)[1]))
+
+# PR #119 리뷰 — 대상 카테고리의 집이 등록 층 · 좌표 층 밖이어도(구축은 집 그래프에서 푼다) · 목록 자리에 파일이 없으면(bootstrap 전)
+_schp164 = dict(_cp164.deepcopy(_sch164), layer="process")      # 품질 층 대상(FailureEffect)을 공정 층 스키마가 가리킨다(창작)
+with tempfile.TemporaryDirectory(prefix="b164r_") as td:
+    _pp164 = Path(td) / "pfmea_proc.json"
+    _pp164.write_text(json.dumps(_schp164, ensure_ascii=False), encoding="utf-8")
+    _outp164 = GT.harness(FX / "adapters" / "pfmea.py", _pp164, [RAW / "PFMEA01.xlsx"])[1]
+    _nf164 = GT._run_kit(FX / "adapters" / "pfmea.py", _P.fixture_schemas("pfmea.json"),
+                         ["--closed-list", str(Path(td) / "없음.json"), "--coord-layer", BS.coord_layer(),
+                          "--coord-category", BS.COORD_CATEGORY], [RAW / "PFMEA01.xlsx"]).stdout
+_g4kp164 = next((l.strip() for l in _outp164.splitlines() if "G4K" in l), "")
+show("ⓓ G4K — 대상의 집이 등록 층 · 좌표 층 밖이어도 맞춘다(구축과 같은 집) · 목록 자리에 파일이 없으면 생략(전부 FAIL 0)",
+     "[PASS] G4K" in _g4kp164 and "G4K 대조 생략" in _nf164 and "[FAIL] G4K" not in _nf164, _g4kp164[:120])
 
 print("\n■ B100 ③ 지시문 · 자산 해시")
 _p14 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")
