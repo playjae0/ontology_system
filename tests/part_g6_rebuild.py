@@ -28,6 +28,9 @@
   ⓕ 문서 좌표 상위(표 × process · 산문 × quality · 태깅을 지난 조각): 상위 없는 행 + 문서 좌표 X + 하위 Y가 X 밖 ⇒
      쌍 표·큐에 「문서 좌표 'X' ↛ 하위 'Y'」 · 좌표 단계 쌍·행 수 = 구축 큐 / Y가 X 안이면 0 / 행에 상위가 있으면 그
      상위로만 · 하위는 그대로 / `coord-ack` 같은 쌍
+  B165 ⓐ 표의 공정 그룹 경계마다 중간 저장 · 요약 손잡이(그룹 수만큼) · 확정 뒤 중간 저장 0 · 그래프가 나누지 않은 실행과 같다
+       ⓑ 둘째 그룹에서 멈춤 → 시작 전 판 · 중간 저장 남음 → 다시 치면 첫 그룹은 재생 · 최종 그래프 같다
+       ⓒ 원본 해시가 바뀌면 중간 저장을 쓰지 않는다 · `--step` 없으면 묻지 않는다
 """
 from __future__ import annotations
 
@@ -589,6 +592,104 @@ for _p in sorted((ROOT / "tests").rglob("*.py")) + [ROOT / "doctor.py"]:
               if _pat.search(ln) and not ln.lstrip().startswith("#") and "# 시험 대상: 기본 fresh" not in ln]
 show("ⓐ 회귀 · doctor · 시험의 클린 호출은 전부 --all — 기본 fresh 호출 0(소스 대조)",
      not _left and _files, f"클린을 부르는 파일 {len(_files)} · 기본 호출 {_left or 0}")
+
+# ── B165 판정을 공정 그룹 단위로 — 중간 저장 · 그룹 손잡이 · 멈춘 뒤 다시 치면 재생 (표 — mock PFMEA 레코드 사본을 두 그룹으로)
+print("\n■ B165 공정 그룹 경계 — 중간 저장 · 요약 · 멈춘 뒤 다시 치면 끝난 그룹은 재생")
+from core.build import table as TB                                                   # noqa: E402
+from core.build.entry import Stopped                                                 # noqa: E402
+from cli import _screen as SC, ingest_screen as ISC                                  # noqa: E402
+
+
+def _pf165(tail=None):
+    """PFMEA01 레코드 사본 — 뒤 절반의 상위 공정을 다른 값으로(창작 · 행 순서 그대로 · 값이 바뀌는 자리가 경계)."""
+    env = load("PFMEA01")
+    for r in env["records"][len(env["records"]) // 2:]:
+        r["process_group"] = "전극"
+    if tail:
+        env["records"][-1]["failure_mode"] = tail       # 원본이 바뀌었다(문서 해시가 다르다)
+    return env
+
+
+def _base165():
+    with contextlib.redirect_stdout(io.StringIO()):
+        init.init(fresh_=True, all_=True)
+        RUN.cmd_bootstrap([])
+
+
+def _world165():
+    """비교 재료 — 층마다 노드(이름 · 카테고리 · status) · 엣지(이름으로) · 큐(종류 · 문서)."""
+    names = {i: n.get("canonical") for lay in ("process", "quality") for i, n in open_graph(lay).nodes.items()}
+    out = {lay: (sorted((n.get("canonical"), n.get("category"), n.get("status")) for n in open_graph(lay).nodes.values()),
+                 sorted((names.get(e["src"]), e["rel"], names.get(e["dst"]), e.get("status")) for e in open_graph(lay).edges))
+           for lay in ("process", "quality")}
+    out["queue"] = sorted((x["kind"], x.get("doc_id")) for x in store.read(store.QUEUE, []))
+    return out
+
+
+def _stop165(info):
+    if not info["끝"]:
+        raise Stopped("시험 — 둘째 그룹에서 멈춤")
+
+
+_PF = "PFMEA01"
+RP.OFF, RP.COUNT_ALL = None, False                  # 앞 ⓓ의 `--no-replay`가 켠 끔을 기본으로(인입 한 번의 재생 규칙)
+_base165()
+_seen165 = []
+LG.ON_GROUP = lambda i: _seen165.append((i["이름"], i["끝"], store.path(LG.partial_name(i["doc_id"])).exists()))
+run_document(_pf165())
+LG.ON_GROUP = None
+_wg165, _left165 = _world165(), store.path(LG.partial_name(_PF)).exists()
+_base165()
+_fld165, TB._Groups.FIELD = TB._Groups.FIELD, "__시험_그룹_없음__"     # 그룹을 나누지 않은 실행
+run_document(_pf165())
+TB._Groups.FIELD = _fld165
+show("ⓐ 그룹 경계마다 중간 저장 · 요약 손잡이가 그룹 수만큼 · 확정 뒤 중간 저장 0 · 그래프 · 큐가 그룹을 나누지 않은 실행과 같다",
+     [(n, e) for n, e, _p in _seen165] == [("조립", False), ("전극", True)] and _seen165[0][2]
+     and not _left165 and _wg165 == _world165(),
+     f"손잡이 {_seen165} · 확정 뒤 중간 저장 {_left165}")
+
+_base165()
+_pre165 = _world165()
+LG.ON_GROUP = _stop165
+_r165 = run_document(_pf165())[0]
+LG.ON_GROUP = None
+_mid165, _part165 = _world165(), LG.read_partial(_PF)
+_g1 = {r["source_locator"] for r in _pf165()["records"][:len(_pf165()["records"]) // 2]}
+run_document(_pf165())
+_rows165 = [r for r in LG.read(_PF)["rows"] if r.get("locator") in _g1 and r.get("role") == "entity"]
+show("ⓑ 둘째 그룹에서 멈춤 → 그래프 · 큐 시작 전 판 · 중간 저장 남음 → 다시 치면 첫 그룹 값은 재생(경로 replay · 판정 0) · "
+     "최종 그래프가 멈춤 없는 실행과 같다",
+     _r165.status == "held" and _mid165 == _pre165 and _part165 and _part165.get("rows")
+     and any(r.get("path") == "replay" for r in _rows165)
+     and not any(str(r.get("path")).endswith("+judge") for r in _rows165)
+     and _world165() == _wg165 and LG.read_partial(_PF) is None,
+     f"멈춤 {_r165.status} · 중간 저장 {len((_part165 or {}).get('rows') or [])}행 · 첫 그룹 경로 "
+     f"{sorted({r.get('path') for r in _rows165})}")
+
+_base165()
+LG.ON_GROUP = _stop165
+run_document(_pf165())
+LG.ON_GROUP = None
+run_document(_pf165(tail="B165 바뀐 고장"))
+_asked, _ans0, _in0 = [], SC.answer, ISC.sys.stdin
+SC.answer = lambda *a, **k: _asked.append(a) or False
+ISC.sys.stdin = type("Tty", (), {"isatty": lambda self: True})()
+_info165 = {"이름": "조립", "번째": 1, "행": 1, "끝": False, "doc_id": _PF,
+            "요약": LG.group_summary([]), "누계": LG.group_summary([])}
+try:
+    _quiet(ISC.group_gate(step=False), _info165)
+    _no_ask = not _asked
+    try:
+        _quiet(ISC.group_gate(step=True), _info165)
+        _stopped = False
+    except Stopped:
+        _stopped = True
+finally:
+    SC.answer, ISC.sys.stdin = _ans0, _in0
+show("ⓒ 원본 해시가 바뀌면 중간 저장을 쓰지 않는다(재생 0 · 버림 표지) · --step 없으면 묻지 않는다(있으면 묻고 q는 멈춤)",
+     RP.PARTIAL.get("버림") and not any(r.get("path") == "replay" for r in LG.read(_PF)["rows"])
+     and _no_ask and _stopped and len(_asked) == 1,
+     f"중간 저장 {RP.PARTIAL} · 물음 {len(_asked)}")
 
 # ── 뒷정리 — 시험이 세운 것은 시험이 치운다
 for _d in _hinted:

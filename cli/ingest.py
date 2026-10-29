@@ -511,6 +511,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
                                       stride=progress_every)
         # **값 줄은 대장 행이 낸다**(B81 ①) — 화면은 대장의 투영이다.
         _ledger.ON_ROW = SCR.row_printer(res.envelope, stage=stage)
+        _ledger.ON_GROUP = SCR.group_gate(step=step)        # 표의 공정 그룹 요약 · --step이면 그룹마다 멈춤 (B165 ②)
         try:
             # **누적 줄은 시간 기준 한 자리**(B97 ②) — 추출·판정이 같은 줄을 낸다
             with _screen.ticker("구축(추출·판정)", where=SCR.ticker_where(stage)):
@@ -521,7 +522,7 @@ def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
         finally:
             _mt.PROGRESS = None
             getattr(_ledger.ON_ROW, "flush", lambda: None)()      # 남은 산문 값 행 (B119 ⑤)
-            _ledger.ON_ROW = _ledger.ON_EDGE = _ledger.ON_CHUNK = None
+            _ledger.ON_ROW = _ledger.ON_EDGE = _ledger.ON_CHUNK = _ledger.ON_GROUP = None
             _screen.close()                          # 값 표를 닫는다 (B98 ⑥)
         if getattr(r, "extract_stop", False):       # 추출까지만 (B155 ①)
             return _extract_only(doc, sel, row)

@@ -466,6 +466,11 @@ def build_screen(step=False, stage=None, prose=False):
                 hb = info.get("사람후보")
                 return _step_gate(8, lz + body, prose=True, ask=step, body=human_gate.lines(hb, step) if hb else None,
                                   ask_fn=(lambda: human_gate.ask(hb)) if hb else None)
+            from core.build import replay as _rp      # 멈춘 실행의 중간 저장(B165 ③) — 쓰는가 · 버렸나 한 줄
+            if _rp.PARTIAL.get("버림") is not None:
+                _screen.say("   중간 저장 — 원본이 바뀌어 중간 저장을 쓰지 않는다", "aux")
+            elif _rp.PARTIAL.get("행"):
+                _screen.say(f"   중간 저장 — 멈춘 실행의 판정 {_rp.PARTIAL['행']:,}행을 재생 재료로(끝난 그룹은 LLM 0)", "aux")
             if step:
                 return          # 표 문서 — 관문 3(판정 예고)이 이미 같은 수를 찍었다
             _screen.say(f"   판정 예고 {lz}— {body}", "head")
@@ -655,6 +660,26 @@ def judge_progress(total, stage=None, every=0, stride=None):
         if every and n % every == 0 and n < (total_now() or 0):
             _judge_gate(TALLY["값"], n, total_now(), u)
     return progress
+
+
+def group_gate(step=False):
+    """**그룹 요약 줄**(B165 ①②) — 표의 공정 그룹 하나가 끝날 때(`ledger.ON_GROUP` · 수는 대장에서 센 것 그대로) ·
+    `--step`(대화형)이면 그룹 경계에서 묻는다 — `q`는 사람의 멈춤(`Stopped` — 되돌림 · 중간 저장은 남는다 · 다시 치면 끝난
+    그룹은 재생). 마지막 그룹 · 비대화형 · `--step` 없음은 묻지 않는다."""
+    def on_group(info):
+        s, t = info["요약"], info["누계"]
+        _screen.close()
+        _screen.say(f"   [그룹 {info['번째']}] {info['이름']} — 행 {info['행']:,} · 값 {s['값']:,} · 매칭 {s['매칭']:,} · "
+                    f"신규 {s['신규']:,} · 불확실 {s['불확실']:,} · LLM 호출 {s['호출']:,} · 골격 밖 공정 {s['골격밖']:,} · "
+                    f"누계 값 {t['값']:,} · 호출 {t['호출']:,}", "head")
+        if info.get("끝") or not step or not sys.stdin.isatty():
+            return
+        _screen.say(f"   그룹 판정 행 — python run.py show report {info['doc_id']} --rows (중간 저장)", "aux")
+        if not _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True):
+            from core.build.entry import Stopped
+            raise Stopped(f"사람이 멈췄다 — 공정 그룹 '{info['이름']}'까지 (그래프 쓰기 0 · 중간 저장은 남는다 — "
+                          f"다시 치면 끝난 그룹은 재생 · LLM 0)")
+    return on_group
 
 
 def _judge_gate(v, n, total, u):
