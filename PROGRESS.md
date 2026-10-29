@@ -300,4 +300,4 @@
 - 보인 것(고치지 않음) — 가이드 `2B_작업가이드.md` §4 관문 태그 표(121행 근방)에 G4K 줄이 없다(자동 지시라 사람이 칠 명령은 그대로 — 요청문 「가이드 그대로」)
 - 사내 config 줄 — 없음 · 사내 영향 — 재구축 불요
 - 사내 다음 줄 — 반입 → `python doctor.py`(**[2′]에는 G4K가 서지 않는다** — BLOCKERS 20) → `python -m cli.register generate pfmea <층> <표본> --schema-only --hint "…"`(예방 · 검출 content · 영향 명칭 `target_category: FailureEffect` — 좌표의 `target_category`는 이제 적지 않아도 된다 · 관문에 G4K 줄이 선다) → `show schema pfmea` 앞뒤 대조 → confirm → `ingest-file`(KeyError 없이 판정 단계를 지나는지)
-- 소요 약 40분(이 기계 시각 07:43 → 08:23) — 반입 · 전제 · 코드 읽기 8분 · 구현(생략 규칙 · G4K · 플래그) 6분 · 시험 작성 · 고른 스위트 3회 10분 · 구조도 · 가결정 · BLOCKERS 4분 · 마감 한 줄 2회 5분 · 첫 회 FAIL 고침 3분 · 나머지는 B165 코드 읽기와 겹침
+- 소요 약 16분(이 기계 시각 07:43 → 07:59) — 반입 · 전제 · 코드 읽기 4분 · 구현(생략 규칙 · G4K · 플래그) 2분 · 시험 작성 · 고른 스위트 2회 3분 · 구조도 · 가결정 · BLOCKERS 1분 · 마감 한 줄 2회 4분(첫 회 FAIL 고침 2분 포함 · 기다리는 동안 B165 코드 읽기)
