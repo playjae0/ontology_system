@@ -328,7 +328,7 @@ _mdp = EMD156.text("B156P", _ep6) or ""
 show("B156 ⓔ PDF — 같은 함수로 쪽 판독(쪽 글 상자 P<n> + 그림 · 리더가 가진 위치 · 크기) · 판독 없는 쪽은 그대로 · md에 쪽마다 원문 + [판독]",
      _rp6.ok and _pg6.get(2, {}).get("figures", [{}])[0].get("box") == "P2-P1" and _pg6[2]["relations"]
      and _pg6.get(3, {}).get("skipped") == "판독 없음" and isinstance(_b26.get("width"), float) and _b26.get("rel")
-     and "## 쪽 2" in _mdp and "- 그림 P2-P1 — 종류 사진" in _mdp,
+     and "## 쪽 2" in _mdp and "- **그림 P2-P1**:" in _mdp and "  - 종류 사진" in _mdp,          # 이름표 줄(B169 고침)
      f"쪽 {[(k, v.get('skipped') or len(v.get('summary') or [])) for k, v in sorted(_pg6.items())]} · 그림 상자 {_b26}")
 
 # ────────────────────────────────────────────────────────────── ⓔ 환경 점검

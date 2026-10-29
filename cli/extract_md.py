@@ -9,7 +9,7 @@ md는 보기다 — **md에만 있는 정보 0** · 되돌려 읽지 않는다 �
     한눈에    단위 × 층 — 개체 · 관계 · 관련 링크 · 부른 단위인데 개체 0이면 ⚠
     판정      층마다 — 기존 노드 · 새 노드 · 보류(사유) 수 + 값마다 「표기 → 기존 노드 X | 새 노드 | 보류」 · 후보 수 · 근거(경로 ·
               확신) — 대장 행 그대로(값 판정의 역할 — 개체 · 소속 대상 · 제목 개체)
-    단위마다  추출이 받은 것(맥락 줄 · 구조 사슬 · 부착 후보 · 부모 후보 · 캡처) · 원문 · 층마다 개체 표(글에서 찾은 자리 · 판정 예고) ·
+    단위마다  추출이 받은 것(맥락 줄 · 구조 사슬 · 부착 후보 · 부모 후보 · 캡처) · 그 쪽 판독(이름표 줄 — B169) · 원문 · 층마다 개체 표(글에서 찾은 자리 · 판정 예고) ·
               관계 · 관련 링크
 
 단위는 추출 호출 단위다(청크 `meta.extract_unit` — PPT 슬라이드 · PDF 쪽 · 없으면 청크 하나) — 형태로 가르지 않는다.
@@ -185,12 +185,14 @@ def _unit(mat, name, cids):
     chunks = [mat["chunks"][x] for x in cids]
     c0 = chunks[0]
     n_cap = (mat["env"].get("capture") or {}).get("pages") or 0      # 보이는 쪽 수(정수 — 추출이 쪽마다 캡처를 붙인다)
-    page = (c0.get("meta") or {}).get("page_no")
+    m0 = c0.get("meta") or {}
+    page = m0.get("page_no")
     from cli import reading_md as RM
-    rd = RM.entry(mat["env"], page=page) if page else None
+    rd = (RM.entry(mat["env"], page=page) if page                     # 그 쪽 판독 — 보이는 쪽 번호 · 없으면 슬라이드 번호(B169 ②)
+          else RM.entry(mat["env"], slide=m0.get("slide")) if m0.get("slide") is not None else None)
     link = f" · [보관 캡처]({RM._UP}{rd['capture']})" if rd and rd.get("capture") else ""
     out = [f"### {name}", "",
-           f"- 맥락 줄: {extract_ctx.context_line(c0, mat['doc']) or '—'}"]
+           f"- **맥락 줄**: {extract_ctx.context_line(c0, mat['doc']) or '—'}"]
     for lay, lens, _ck in mat["checkpoints"]:
         ch = OL.structure_chain(OL.load(mat["doc_id"], lens), c0.get("source_locator"))
         if ch:
@@ -198,7 +200,8 @@ def _unit(mat, name, cids):
     att = EX.attach_candidates(c0.get("process_ref"))
     out += [f"- 부착 후보 {len(att):,}" + (f": {' · '.join(att[:5])}" + (" …" if len(att) > 5 else "") if att else ""),
             f"- 부모 후보: {' · '.join(EX.parent_candidates(c0)) or '없음'}",
-            f"- 캡처: {f'붙음(쪽 {page})' if page and page <= n_cap else '없음'}{link}", ""]
+            f"- 캡처: {f'붙음(쪽 {page})' if page and page <= n_cap else '없음'}{link}"]
+    out += RM.block(mat["env"], rd, capture=False) or [""]       # 그 쪽 판독 — 봉투 `reading` 그대로(B169 ②)
     from cli.envelope_md import _body                 # 원문 묶음 — 구조 확인 md와 같은 손(머리 · 본문)
     notes = None
     for c in chunks:

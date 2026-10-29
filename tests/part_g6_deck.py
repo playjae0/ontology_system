@@ -640,7 +640,8 @@ _register()
 R156 = {"pages": {
     "2": {"figures": [], "relations": [], "summary": [{"text": "노칭 금형 마모와 클리어런스를 점검했다.", "boxes": ["S2-B1", "S2-B2"]}]},
     "3": {"figures": [], "relations": [], "summary": [{"text": "앞 장에 이어 다이 균열을 봤다.", "boxes": ["S3-B2"]}]},
-    "4": {"figures": [{"box": "S4-P1", "kind": "도면", "labels": ["장력", "T-1"],
+    "4": {"figures": [{"box": "S4-P1", "what": "커터 장력 기준을 보이는 단면 도면이다", "certainty": "높음", "grounds": "그림 속 글자",
+                       "kind": "도면", "labels": ["장력", "T-1"],
                        "seen": [{"text": "그림 속 글자 T-1", "basis": "보임"}, {"text": "커터 단면으로 보인다", "basis": "추론"},
                                 {"text": "느낌", "basis": "느낌"}],
                        "meaning": "표의 장력 기준을 그림으로 보인다", "unreadable": False},
@@ -681,14 +682,15 @@ _p4 = _rd6[4]
 _bx4 = next(b for pg in _ea6["boxes"]["pages"] if pg["page"] == 4 for b in pg["boxes"] if b["id"] == "S4-P1")
 _md6 = EMD.text(DID, _ea6)
 show("B156 ⓐ PPT 덱 — 봉투 reading(쪽마다 그림 · 그림 속 글자 · 보임/추론 · 배치 관계 · 쪽 요약 + 근거 id) · 개체 없음 장 건너뜀 · 검사(없는 "
-     "상자 · 목록 밖 관계 · 근거 없는 요약 문장 · 보임/추론 밖 → dropped) · split md에 [판독]과 [그림 요약]이 나란히 · 상자 위치 · 크기",
+     "상자 · 목록 밖 관계 · 근거 없는 요약 문장 · 보임/추론 밖 → dropped) · split md에 판독 이름표 줄과 [그림 요약]이 나란히(B169 고침) · "
+     "상자 위치 · 크기",
      _rd6[1].get("skipped") == "개체 없음" and _p4["figures"][0]["box"] == "S4-P1" and _p4["figures"][0]["labels_in_text"] == ["장력"]
      and [s["basis"] for s in _p4["figures"][0]["seen"]] == ["보임", "추론"] and len(_p4["figures"]) == 1
      and _p4["relations"] == [{"from": "S4-B1", "to": "S4-TB1", "relation": "설명"}]
      and [s["boxes"] for s in _p4["summary"]] == [["S4-TB1", "S4-P1"]]
      and _p4["dropped"] == {"보이는 것": 1, "그림": 1, "관계": 1, "요약": 1}
      and all(isinstance(_bx4[k], int) for k in ("left", "top", "width", "height")) and 0 < _bx4["rel"][0] < 1
-     and "[판독] 출처 mock" in _md6 and "[그림 요약 S4-P1]" in _md6 and "- 그림 S4-P1 — 종류 도면" in _md6,
+     and "- **판독**: 출처 mock" in _md6 and "[그림 요약 S4-P1]" in _md6 and "- **그림 S4-P1**:" in _md6 and "  - 종류 도면" in _md6,
      f"쪽 {[(e['page'], e.get('skipped') or len(e.get('summary') or [])) for e in _ea6['reading']['pages']]} · 버림 {_p4['dropped']} · "
      f"상자 {_bx4}")
 show("B156 ⓕ 추출 · 그래프 불변 — 판독이 있든 없든 같은 덱의 청크(그림 요약 글 포함) · 추출 입력의 맥락 줄이 같다 · 판독 블록은 청크 밖",
@@ -864,6 +866,42 @@ show("B168 ⓔ 「1 자세히 S1-P5」 → 그 그림 원본 입력 · 「1 빼�
      and (_fxe.get(1) or {}).get("자세히") == ["S1-P5"] and (_fxe.get(1) or {}).get("빼기") == ["S1-P1"],
      f"원본 {_se[1][1]} · 기록 {_fxe.get(1)} · 셈 {_ge}")
 ST.fixes_path().unlink(missing_ok=True)
+
+# ────────────────────────────────────────────────────────────── B169 판독 지시문 r-1.1 · md 이름표
+print("\n■ B169 — 그림마다 첫 줄 「무엇인가 · 확신 · 근거」 · 일반 지식 절 · md 이름표 · 추출 확인 md에 판독")
+_f169 = {"kind": "사진", "labels": [], "seen": [], "meaning": None, "unreadable": False}
+_k169 = RD156.check("B169", {"page": 1, "boxes": [{"id": "S1-P1", "kind": "picture"}, {"id": "S1-P2", "kind": "picture"}]},
+                    {"figures": [dict(_f169, box="S1-P1", what="파우치 셀의 측면 사진이다", certainty="높음", grounds="보이는 것"),
+                                 dict(_f169, box="S1-P2", what="같은 셀의 윗면이다", certainty="아주 높음", grounds=None)],
+                     "relations": [], "summary": []})
+show("B169 ⓐ 판독 산출의 그림마다 첫 줄 · 확신(닫힌 셋) · 근거 · 셋 밖 확신은 그 칸만 버림(첫 줄은 남는다)",
+     [(f["what"], f["certainty"], f["grounds"]) for f in _k169["figures"]]
+     == [("파우치 셀의 측면 사진이다", "높음", "보이는 것"), ("같은 셀의 윗면이다", None, None)] and _k169["dropped"] == {"확신": 1},
+     f"그림 {[(f['box'], f['certainty']) for f in _k169['figures']]} · 버림 {_k169['dropped']}")
+_pr169 = (ROOT / "prompts" / "2.4_reading.md").read_text(encoding="utf-8")
+_lw169 = subprocess.run([sys.executable, str(ROOT / "tools" / "layer_words.py")], capture_output=True, text=True, cwd=str(ROOT),
+                        stdin=subprocess.DEVNULL)
+_ah169 = subprocess.run([sys.executable, str(ROOT / "tests" / "asset_hashes.py")], capture_output=True, text=True, cwd=str(ROOT),
+                        stdin=subprocess.DEVNULL)
+show("B169 ⓑ 지시문 r-1.1 · 첫 줄 · 확신 · 근거 · 제조 문서를 읽는 일반 지식 절 · 층 어휘 정적 점검 위반 0 · 자산 해시 일치",
+     "\nversion: r-1.1\n" in _pr169 and "## 제조 문서를 읽는 일반 지식" in _pr169 and "`certainty`" in _pr169
+     and "위반 0건" in _lw169.stdout and _ah169.returncode == 0, f"층 어휘 {_lw169.stdout.strip()[-40:]} · 해시 rc {_ah169.returncode}")
+from core.build.ingest import prose_chunk_ids as _pci169    # noqa: E402
+_ch169 = dict((cid, c) for c, cid in _pci169(_ea6))
+_c4 = next(cid for cid, c in _ch169.items() if (c.get("meta") or {}).get("slide") == 4)
+_x169 = XMD155.text(DID, {"doc_id": DID, "env": _ea6, "chunks": _ch169, "stale": False, "rows": [], "partial": False,
+                          "checkpoints": [("process", None, {"candidates": [{"chunk_id": _c4, "entities": []}]})]}) or ""
+show("B169 ⓒ split md · 추출 확인 md의 이름표 줄 — **맥락 줄** · **쪽 요약** · **배치** · **그림 <id>**: 첫 줄(확신 · 근거) · 추출 확인 md에 "
+     "그 단위의 판독",
+     all(x in _md6 for x in ("- **그림 S4-P1**: 커터 장력 기준을 보이는 단면 도면이다 (확신 높음 · 근거 그림 속 글자)",
+                             "- **배치**: S4-B1 → S4-TB1 설명", "- **쪽 요약**: 커터 사양 표와 도면이다."))
+     and all(x in _x169 for x in ("- **맥락 줄**:", "- **판독**: 출처 mock", "- **그림 S4-P1**:", "- **쪽 요약**:")),
+     " | ".join(ln for ln in _x169.splitlines() if "**" in ln)[:200])
+_lab169 = ("**판독**", "**그림 ", "**배치**", "**쪽 요약**")
+_n169 = EMD.text(DID, _en6) or ""
+show("B169 ⓓ 판독이 없는 문서 — split md · 추출 확인 md에 판독 줄 0(판독 칸이 비면 줄을 내지 않는다) · 추출 확인 md의 맥락 줄은 이름표",
+     _n169 and not any(x in _n169 for x in _lab169) and "- **맥락 줄**:" in _md155 and not any(x in _md155 for x in _lab169),
+     f"split {len(_n169)}자 · 추출 확인 판독 줄 {[x for x in _lab169 if x in _md155]}")
 
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)
