@@ -18,6 +18,10 @@
 
 mock: 임베딩은 해시 벡터(`embeddings` — 결정적 · 점수는 가짜 확신이다) · 선별은 **결정적 규칙의 주입**
 (`SELECT` — 시험이 넣는다 · 비면 고르지 않는다).
+
+**색인을 맞추는 자리는 `_ensure` 하나**(B161): 넘겨받은 내용(노드 — 층 이름 순 그래프 객체의 노드 · 엣지 · 청크 — 청크 저장의
+내용)의 지문 · 재료 판 `MATERIAL_VER` · 입력 한도가 저장의 색인과 같으면 글을 조립하지 않고(재료 함수 호출 0) 색인에서
+읽는다 · 다르면 재료 함수로 글을 조립해 색인을 갈아 끼운다. 벡터 준비(`warm`) · 링킹 후보 · 문서 검색이 이 함수를 지난다.
 """
 from __future__ import annotations
 
@@ -38,6 +42,23 @@ DOC_MIN_SIM = 50
 
 #: mock 선별 규칙 — `(question, candidates) -> [{"id", "why"}]` · 시험이 주입한다(None이면 고르지 않는다)
 SELECT = None
+#: **재료 규칙의 판**(B161) — `node_texts` · `_chunk_text`의 규칙을 바꾸는 회차가 올린다(지문이 같아도 색인을 다시 쓴다)
+MATERIAL_VER = "m-1"
+KINDS = ("nodes", "chunks")
+
+
+def _info_of(n, anc, names):
+    return {"canonical": n["name"], "category": n["category"], "layer": n["layer"], "where": A.path_text(n["id"], anc, names)}
+
+
+def node_info(graphs, ids=None):
+    """링킹 후보 · 중복 후보의 **화면 정보** `{id: {canonical, category, layer, where}}` — 고른 id만(`None`이면 살아 있는 노드
+    전부) · 글을 조립하지 않는다 · 닻 계산은 그래프 전부 한 번(B161)."""
+    nodes, edges = A.lists(graphs)
+    anc = A.anchors(nodes, edges)
+    names = {n["id"]: n["name"] for n in nodes}
+    want = None if ids is None else set(ids)
+    return {n["id"]: _info_of(n, anc, names) for n in nodes if want is None or n["id"] in want}
 
 
 def node_texts(graphs, configs=None):
@@ -62,22 +83,53 @@ def node_texts(graphs, configs=None):
         chain = A.name_chain(n["id"], anc, names, base)
         texts[n["id"]] = " | ".join(x for x in (
             bare, n["category"], ("별칭: " + ", ".join(al)) if al else "", f"위치: {chain}" if chain else "") if x)
-        where = A.path_text(n["id"], anc, names)
-        info[n["id"]] = {"canonical": n["name"], "category": n["category"], "layer": n["layer"],
-                         "where": where}
+        info[n["id"]] = _info_of(n, anc, names)
     return texts, info
 
 
+# ---------------------------------------------------------------- 색인 맞추기 (B161)
+def src_fp(kind, graphs=None, chunks=None):
+    """넘겨받은 내용의 지문 — 노드: 층 이름 순 그래프 객체의 노드 · 엣지 내용(`GraphStore.content_fp`) · 청크: 청크 저장의 내용."""
+    if kind == "nodes":
+        return store.content_fp([[lay, graphs[lay].content_fp()] for lay in sorted(graphs or {})])
+    return store.content_fp(chunks or {})
+
+
+def _decide(kind, graphs, chunks, configs=None):
+    """`(지문, None)` — 색인이 맞다 · `(지문, (재료, {id: (층, 문서)}))` — 다시 쓸 몫(재료 함수가 여기서만 불린다)."""
+    fp = src_fp(kind, graphs, chunks)
+    if V.index_ok(kind, fp, MATERIAL_VER):
+        return fp, None
+    if kind == "nodes":
+        texts, info = node_texts(graphs, configs)
+        return fp, (texts, {i: (info[i]["layer"], None) for i in texts})
+    return fp, ({cid: _chunk_text(c) for cid, c in chunks.items()}, {cid: (None, c.get("doc_id")) for cid, c in chunks.items()})
+
+
+def _apply(kind, fp, todo):
+    if todo is None:
+        V.index_fill(kind)
+    else:
+        V.index_write(kind, todo[0], todo[1], fp, MATERIAL_VER)
+
+
+def _ensure(kind, graphs=None, chunks=None, configs=None):
+    """그 종류의 색인을 지금 입력에 맞춘다 — 링킹 후보 · 문서 검색이 읽기 전에(벡터 준비가 방금 맞췄으면 지문만 잰다)."""
+    _apply(kind, *_decide(kind, graphs, chunks, configs))
+
+
 def link_candidates(question, graphs, configs, k, exclude=()):
-    """질문 벡터 ↔ 노드 벡터 상위 k — `[{id, canonical, category, layer, where, score}]` (점수 내림 · 동점은 id)."""
-    texts, info = node_texts(graphs, configs)
-    if not texts:
+    """질문 벡터 ↔ 노드 벡터 상위 k — `[{id, canonical, category, layer, where, score}]` (점수 내림 · 동점은 id).
+    벡터는 색인에서(B161 — 노드 글을 다시 조립하지 않는다) · 화면 정보는 상위 k만."""
+    _ensure("nodes", graphs, configs=configs)
+    vecs = V.index_vectors("nodes")
+    if not vecs:
         return []
-    vecs = V.vectors("nodes", texts)
     qv = V.question(question)
     scored = sorted(((round(E.cosine(qv, v), 4), i) for i, v in vecs.items() if i not in exclude),
                     key=lambda t: (-t[0], t[1]))[:max(0, int(k))]
-    return [{"id": i, **info[i], "score": s} for s, i in scored]
+    info = node_info(graphs, [i for _s, i in scored])
+    return [{"id": i, **info[i], "score": s} for s, i in scored if i in info]
 
 
 def _chunk_text(c):
@@ -104,12 +156,12 @@ def warm(graphs=None, configs=None, kinds=None):
         graphs = {lay: open_graph(lay) for lay in discover()}
         configs = {lay: load_config(lay) for lay in graphs}
     ch = (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {})
-    jobs = [("nodes", node_texts(graphs, configs or {})[0]),
-            ("chunks", {cid: _chunk_text(c) for cid, c in ch.items()})]
-    jobs = [(k, t) for k, t in jobs if t and (kinds is None or k in kinds)]
-    got = V.plan(jobs)
-    for kind, texts in jobs:
-        V.vectors(kind, texts)
+    # 색인을 지금 입력에 맞춘다(B161) — 지문이 같은 종류는 글 조립 0 · 다른 종류만 재료 함수로 조립해 갈아 끼운다
+    dec = {k: _decide(k, graphs, ch, configs or {}) for k in KINDS if kinds is None or k in kinds}
+    got = V.plan([(k, todo[0]) for k, (_fp, todo) in dec.items() if todo is not None and todo[0]],
+                 {k: V.index_plan(k) for k, (_fp, todo) in dec.items() if todo is None})
+    for kind, (fp, todo) in dec.items():
+        _apply(kind, fp, todo)
     return got
 
 
@@ -121,11 +173,13 @@ def doc_search(question, k, min_sim, trace=None):
     ch = (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {})
     if not ch:
         return []
-    vecs = V.vectors("chunks", {cid: _chunk_text(c) for cid, c in ch.items()})
+    _ensure("chunks", chunks=ch)                   # 벡터 · BM25 재료는 색인에서(B161 — 청크 글을 다시 조립하지 않는다)
+    vecs = V.index_vectors("chunks")
     qv = V.question(question)
-    emb = sorted(((round(E.cosine(qv, v), 4), cid) for cid, v in vecs.items()), key=lambda t: (-t[0], t[1]))
+    emb = sorted(((round(E.cosine(qv, v), 4), cid) for cid, v in vecs.items() if cid in ch), key=lambda t: (-t[0], t[1]))
     emb = [(cid, s) for s, cid in emb if s * 100 >= min_sim][:k]
-    bm = bm25.search(question, k, index=bm25.Index({cid: _chunk_text(c) for cid, c in ch.items()}))   # 벡터와 같은 재료(B153 ①)
+    texts = {cid: t for cid, t in V.index_texts("chunks").items() if cid in ch}
+    bm = bm25.search(question, k, index=bm25.Index(texts))       # 벡터와 같은 재료(B153 ① — 색인의 글이 그 재료다)
     es, bs = dict(emb), dict(bm)
     order, seen = [], set()
     for pair in zip(emb + [None] * len(bm), bm + [None] * len(emb)):

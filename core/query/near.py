@@ -3,7 +3,8 @@
 
 같은 것이 두 노드로 갈라진 쌍(표기 변형 · 띄어쓰기 · 약어)을 사람이 고르게 후보를 낸다 — **임베딩은 후보를 내고 판단은 사람이다**
 (병합 · 별칭은 지금의 `ops`). 벡터 글은 질의의 노드 벡터와 같은 함수(`hybrid.node_texts` — 이름 · 카테고리 · 별칭 · 위치)이고
-**저장에 있는 벡터만 읽는다**(`vectors.lookup` — 만들지 않는다 · 쓰기 0 · 없는 노드는 센다 → `run.py vectors`).
+**저장에 있는 벡터만 읽는다** — 색인이 지금 그래프와 맞으면 색인에서(`vectors.index_vectors` — 글 조립 0 · B161) · 없거나 지문이
+다르면 글을 조립해 글 해시로 찾는다(`vectors.lookup`) · 둘 다 만들지 않는다 · 쓰기 0 · 없는 노드는 센다 → `run.py vectors`.
 문턱 · 상위 N은 사내 손잡이(`near_min_sim` · `near_top` — 창작 기본값 · 모델마다 유사도 분포가 다르다).
 mock 해시 벡터의 유사도는 품질 근거가 아니다(가짜 확신 — 품질은 사내 첫 측정).
 """
@@ -28,8 +29,11 @@ def pairs(graphs, configs=None, *, layer=None, min_sim=None, top=None):
     점수 내림(동점은 id) · `layer`를 주면 그 층만."""
     min_sim = MIN_SIM if min_sim is None else min_sim
     top = TOP if top is None else top
-    texts, info = H.node_texts(graphs, configs)
-    vecs = V.lookup("nodes", texts)
+    if V.index_ok("nodes", H.src_fp("nodes", graphs), H.MATERIAL_VER):
+        vecs, info = V.index_vectors("nodes"), H.node_info(graphs)
+    else:
+        texts, info = H.node_texts(graphs, configs)
+        vecs = V.lookup("nodes", texts)
     raw = _raw(graphs)
     groups = {}
     for nid, inf in info.items():

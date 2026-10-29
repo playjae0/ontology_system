@@ -155,20 +155,30 @@ def dist_ref():
 def dist_embed(top=10):
     """임베딩 입력 길이 — 종류별(노드 · 표 청크 · 산문 청크) 길이 분포(한도 대비 구간) · 넘은 글 상위(B153 ③ · 읽기 전용 · 벡터 0).
     재료는 벡터와 같은 함수(`hybrid.node_texts` · `_chunk_text`) · 셈은 같은 한도(`embeddings.limit` · `measure`) — 넘은 수가
-    `run.py vectors` 끝 줄 「넘어 자른 글」과 같다."""
+    `run.py vectors` 끝 줄 「넘어 자른 글」과 같다. 색인이 지금 입력과 맞으면 색인의 원래 길이를 읽는다(다시 재지 않는다 · B161)."""
     from core.llm import embeddings as E
-    from core.query import hybrid as H
+    from core.query import hybrid as H, vectors as V
     from core.state.bootstrap import open_graph
     from router import discover
     lim = E.limit()
-    texts, info = H.node_texts({lay: open_graph(lay) for lay in discover()})
-    rows = [("노드", info[i]["canonical"], "-", E.measure(t, lim)) for i, t in texts.items()]
-    for cid, c in (store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}).items():
-        kind = "표 청크" if (c.get("meta") or {}).get("field") else "산문 청크"
-        rows.append((kind, cid, c.get("doc_id") or "-", E.measure(H._chunk_text(c), lim)))
+    graphs = {lay: open_graph(lay) for lay in discover()}
+    chunks = store.read(store.CHUNKS, {"chunks": {}}).get("chunks") or {}
+    ok = all(V.index_ok(k, H.src_fp(k, graphs, chunks), H.MATERIAL_VER) for k in H.KINDS)
+    if ok:
+        canon = {i: n.get("canonical") for g in graphs.values() for i, n in g.nodes.items()}
+        rows = [("노드", canon.get(i, i), "-", x) for i, _l, _d, x, _c in V.index_rows("nodes")]
+        rows += [("표 청크" if ((chunks.get(i) or {}).get("meta") or {}).get("field") else "산문 청크", i, d or "-", x)
+                 for i, _l, d, x, _c in V.index_rows("chunks")]
+    else:
+        texts, info = H.node_texts(graphs)
+        rows = [("노드", info[i]["canonical"], "-", E.measure(t, lim)) for i, t in texts.items()]
+        for cid, c in chunks.items():
+            kind = "표 청크" if (c.get("meta") or {}).get("field") else "산문 청크"
+            rows.append((kind, cid, c.get("doc_id") or "-", E.measure(H._chunk_text(c), lim)))
     n, unit = lim["n"], lim["unit"]
     print(f"■ 임베딩 입력 길이 — embed_max_chars {knobs.get('embed_max_chars')} · 한도 {n:,}{unit}({lim['from']})"
-          + (f" · {lim['note']}" if lim["note"] else ""))
+          + (f" · {lim['note']}" if lim["note"] else "")
+          + ("" if ok else " · 색인이 지금 입력과 달라 다시 쟀다(python run.py vectors가 색인을 맞춘다)"))
     for kind in ("노드", "표 청크", "산문 청크"):
         xs = [r[3] for r in rows if r[0] == kind]
         print(_dist_line(f"{kind}({unit})", xs))

@@ -23,6 +23,12 @@
 `SAVE_EVERY`개마다 커밋한다 — 끊겨도 다음 호출은 저장된 몫을 재사용하고 나머지만 만든다. 저장마다 진행(`core/query/status`)을
 고치고 화면 손잡이 `ON_PROGRESS`(줄 하나를 받는다)를 부른다. 한 프로세스 안에서는 한 번에 하나만 만든다(잠금 — 같은 몫을 두 번
 만들지 않는다 · 프로세스 사이는 저장이 받는다). 읽기 전용 조회(`lookup`)는 저장을 열기만 한다(만들지 않는다 — `show near`).
+
+**색인**(B161): 같은 파일에 표 둘 — `idx`(판 · 종류 · id → 글 해시 · 층 · 문서 · 글 · 원래 길이 · 잘랐나)와 `meta`(판 · 종류마다
+색인이 무엇으로 만들어졌나 — 넘겨받은 내용의 지문 · 재료 판 · 한도). 지문이 같으면(`index_ok`) 질의는 글을 다시 조립하지 않고
+`idx JOIN v`로 읽는다. 다시 쓸 때는 그 종류의 `idx`를 한 트랜잭션에서 통째로 갈고 `meta`를 마지막에 쓴다(`meta`가 있으면 그
+`idx`는 완전하다). 참조 없는 벡터(`idx`의 어느 행도 가리키지 않는 `v` 행 — 옛 글)는 세기만 하고 지우는 것은 `gc` 하나다
+(`run.py vectors --gc` — 그 판만). 설명 · 표의 열은 구조도 `docs/구조도/11_벡터.md`.
 """
 from __future__ import annotations
 
@@ -77,6 +83,11 @@ def _open(write=True):
     con = sqlite3.connect(str(p), timeout=30)
     con.execute("CREATE TABLE IF NOT EXISTS v (backend TEXT NOT NULL, ver TEXT NOT NULL, kind TEXT NOT NULL, "
                 "v BLOB NOT NULL, PRIMARY KEY (backend, ver))")
+    con.execute("CREATE TABLE IF NOT EXISTS idx (backend TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL, "
+                "ver TEXT NOT NULL, layer TEXT, doc_id TEXT, text TEXT NOT NULL, len INTEGER NOT NULL, cut INTEGER NOT NULL, "
+                "PRIMARY KEY (backend, kind, id))")
+    con.execute("CREATE TABLE IF NOT EXISTS meta (backend TEXT NOT NULL, kind TEXT NOT NULL, src_fp TEXT NOT NULL, "
+                "mat_ver TEXT NOT NULL, lim TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (backend, kind))")
     _migrate(con)
     return con
 
@@ -108,15 +119,17 @@ def _get(con, bid, vers):
     return out
 
 
-def _fitted(texts):
-    """한도 안의 재료 — `({id: 맞춘 글}, 넘어 자른 수, 자른 글 중 가장 긴 원래 길이)` (B153 ③)."""
+def _fit_rows(texts):
+    """`{id: (맞춘 글, 원래 길이, 잘랐나)}` — 한도는 한 번 잰다(B153 ③ · 색인의 `len` · `cut`이 이 값이다 · B161)."""
     lim = E.limit()
-    out, cut, longest = {}, 0, 0
-    for i, t in texts.items():
-        out[i], n, was = E.fit(t, lim)
-        if was:
-            cut, longest = cut + 1, max(longest, n)
-    return out, cut, longest
+    return {i: E.fit(t, lim) for i, t in texts.items()}
+
+
+def _fitted(texts, rows=None):
+    """한도 안의 재료 — `({id: 맞춘 글}, 넘어 자른 수, 자른 글 중 가장 긴 원래 길이)` (B153 ③)."""
+    rows = _fit_rows(texts) if rows is None else rows
+    cut = [n for _t, n, was in rows.values() if was]
+    return {i: r[0] for i, r in rows.items()}, len(cut), max(cut, default=0)
 
 
 def _split(con, texts, bid):
@@ -169,11 +182,12 @@ def fingerprint(kind=None):
         con.close()
 
 
-def plan(jobs):
-    """`[(종류, {id: 재료})]`의 진행 계획을 먼저 세운다 — 줄이 처음부터 두 종류의 분모를 말한다(임베딩 0 · 저장은 읽기만)."""
+def plan(jobs, ready=None):
+    """`[(종류, {id: 재료})]`의 진행 계획을 먼저 세운다 — 줄이 처음부터 두 종류의 분모를 말한다(임베딩 0 · 저장은 읽기만).
+    `ready`는 색인이 맞은 종류의 `{종류: (있는 수, 전체)}`(B161 — 글을 조립하지 않은 몫)."""
     bid = E.backend_id()
     con = _open(write=False)
-    out = {}
+    out = dict(ready or {})
     try:
         for kind, texts in jobs:
             items, _todo, _v = _split(con, _fitted(texts)[0], bid)
@@ -191,9 +205,9 @@ def vectors(kind, texts):
         return _vectors(kind, texts)
 
 
-def _vectors(kind, texts):
+def _vectors(kind, texts, rows=None):
     bid = E.backend_id()
-    texts, cut, longest = _fitted(texts)
+    texts, cut, longest = _fitted(texts, rows)
     con = _open()
     try:
         items, todo, vers = _split(con, texts, bid)
@@ -221,6 +235,133 @@ def _vectors(kind, texts):
                    "secs": round(time.perf_counter() - t0 + (prev["secs"] if prev else 0), 2), "backend": bid,
                    "cut": cut, "longest": longest}
     return out
+
+
+# ---------------------------------------------------------------- 색인 (B161 — id → 글 해시 · 지문)
+def lim_key():
+    """색인 지문의 한도 칸 — `embeddings.limit()`의 수 · 단위(바뀌면 자른 글이 바뀐다)."""
+    lim = E.limit()
+    return f"{lim['n']}{lim['unit']}"
+
+
+def _ro(fn, default):
+    """읽기 전용 질의 하나 — 저장이 없거나 색인 표가 없으면(옛 저장) `default`(쓰기 0)."""
+    con = _open(write=False)
+    if con is None:
+        return default
+    try:
+        return fn(con)
+    except sqlite3.OperationalError:               # 옛 저장 — idx · meta가 아직 없다
+        return default
+    finally:
+        con.close()
+
+
+def index_ok(kind, src_fp, mat_ver):
+    """그 종류의 색인이 지금 입력(넘겨받은 내용의 지문 · 재료 판 · 한도)으로 만들어졌나 — 읽기만 한다."""
+    got = _ro(lambda c: c.execute("SELECT src_fp, mat_ver, lim FROM meta WHERE backend = ? AND kind = ?",
+                                  (E.backend_id(), kind)).fetchone(), None)
+    return got == (src_fp, mat_ver, lim_key())
+
+
+def index_vectors(kind):
+    """`{id: 벡터}` — 색인에서(`idx JOIN v` · 쓰기 0)."""
+    q = "SELECT i.id, v.v FROM idx i JOIN v ON v.backend = i.backend AND v.ver = i.ver WHERE i.backend = ? AND i.kind = ?"
+    return {i: _unpack(b) for i, b in _ro(lambda c: c.execute(q, (E.backend_id(), kind)).fetchall(), [])}
+
+
+def index_texts(kind):
+    """`{id: 임베딩한 글(자른 뒤)}` — 색인에서(문서 검색의 BM25 재료 · 쓰기 0)."""
+    return dict(_ro(lambda c: c.execute("SELECT id, text FROM idx WHERE backend = ? AND kind = ?",
+                                        (E.backend_id(), kind)).fetchall(), []))
+
+
+def index_rows(kind):
+    """`[(id, layer, doc_id, 원래 길이, 잘랐나)]` — 색인에서(`show dist embed` · 쓰기 0)."""
+    return _ro(lambda c: c.execute("SELECT id, layer, doc_id, len, cut FROM idx WHERE backend = ? AND kind = ? ORDER BY id",
+                                   (E.backend_id(), kind)).fetchall(), [])
+
+
+def index_plan(kind):
+    """색인이 맞은 종류의 진행 분모 — `(벡터가 있는 수, 색인 행 수)`."""
+    q = ("SELECT COUNT(*), SUM(EXISTS(SELECT 1 FROM v WHERE v.backend = i.backend AND v.ver = i.ver)) "
+         "FROM idx i WHERE i.backend = ? AND i.kind = ?")
+    n, have = _ro(lambda c: c.execute(q, (E.backend_id(), kind)).fetchone(), (0, 0))
+    return have or 0, n or 0
+
+
+def index_fill(kind):
+    """**색인이 맞을 때** — 글 조립 0 · 해시 0 · `idx`가 가리키는 벡터가 `v`에 다 있는지만 보고 빠진 글(`idx.text`)만 임베딩한다."""
+    with _LOCK:
+        _fill(kind)
+
+
+def _fill(kind):
+    bid = E.backend_id()
+    q = ("SELECT i.id, i.text FROM idx i WHERE i.backend = ? AND i.kind = ? AND NOT EXISTS "
+         "(SELECT 1 FROM v WHERE v.backend = i.backend AND v.ver = i.ver)")
+    miss = dict(_ro(lambda c: c.execute(q, (bid, kind)).fetchall(), []))
+    prev = STATS.get(kind) if STATS.get(kind, {}).get("backend") == bid else None
+    if miss:
+        _vectors(kind, miss)                       # 빠진 몫만 — 만든 수는 그 호출이 STATS에 더한다
+    n, cut, longest = _ro(lambda c: c.execute(
+        "SELECT COUNT(*), COALESCE(SUM(cut), 0), COALESCE(MAX(CASE WHEN cut THEN len END), 0) FROM idx "
+        "WHERE backend = ? AND kind = ?", (bid, kind)).fetchone(), (0, 0, 0))
+    made = (STATS.get(kind) or {}).get("made", 0) if miss else (prev["made"] if prev else 0)
+    secs = (STATS.get(kind) or {}).get("secs", 0.0) if miss else (prev["secs"] if prev else 0.0)
+    STATS[kind] = {"made": made, "reused": max(0, n - made), "secs": secs, "backend": bid, "cut": cut,
+                   "longest": longest, "index": "그대로"}
+
+
+def index_write(kind, texts, extra, src_fp, mat_ver):
+    """**색인을 다시 쓴다** — `{id: 재료}`(조립은 호출부 — 재료 규칙은 시스템 소유) · `extra = {id: (층, 문서)}`. `v`에 없는 글만
+    임베딩(지금 규칙 그대로)한 뒤 한 트랜잭션에서 그 종류의 `idx`를 통째로 갈고 `meta`를 마지막에 쓴다. 잠금을 잡은 뒤 이미
+    같은 지문으로 맞아 있으면(다른 자리가 먼저 썼다) 쓰지 않는다."""
+    with _LOCK:
+        if index_ok(kind, src_fp, mat_ver):
+            return _fill(kind)
+        rows = _fit_rows(texts)
+        _vectors(kind, texts, rows)
+        bid = E.backend_id()
+        con = _open()
+        try:
+            with con:
+                con.execute("DELETE FROM idx WHERE backend = ? AND kind = ?", (bid, kind))
+                con.executemany("INSERT OR REPLACE INTO idx VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                [(bid, kind, i, _ver(t), *(extra.get(i) or (None, None)), t, n, int(was))
+                                 for i, (t, n, was) in sorted(rows.items())])
+                con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?, ?, ?, ?, ?)",
+                            (bid, kind, src_fp, mat_ver, lim_key(), time.strftime("%Y-%m-%dT%H:%M:%S")))
+        finally:
+            con.close()
+        STATS[kind]["index"] = "다시 씀"
+
+
+_ORPHAN = "FROM v WHERE backend = ? AND NOT EXISTS (SELECT 1 FROM idx i WHERE i.backend = v.backend AND i.ver = v.ver)"
+
+
+def orphans():
+    """참조 없는 벡터 수(이 판) — `idx`의 어느 행도 가리키지 않는 `v` 행(옛 글의 벡터 · 세기만 한다 · 색인이 없으면 0)."""
+    return _ro(lambda c: c.execute("SELECT COUNT(*) " + _ORPHAN, (E.backend_id(),)).fetchone()[0], 0)
+
+
+def gc():
+    """**참조 없는 벡터를 지운다** — 이 판만(다른 판의 행은 그대로) · 지운 수. 명시 명령(`run.py vectors --gc`)이 종류 전부의
+    색인을 지금 입력에 맞춘 뒤에만 부른다(인입 · 질의 · 뷰어 · 재구축은 지우지 않는다)."""
+    with _LOCK:
+        con = _open()
+        try:
+            with con:
+                return con.execute("DELETE " + _ORPHAN, (E.backend_id(),)).rowcount
+        finally:
+            con.close()
+
+
+def index_line(stats=None):
+    """색인 한 조각 — `색인 — 노드 그대로 · 청크 다시 씀`(색인을 거치지 않은 계측이면 빈 문자열)."""
+    s = STATS if stats is None else stats
+    parts = [f"{_KIND.get(k, k)} {v['index']}" for k, v in sorted(s.items(), reverse=True) if v.get("index")]
+    return f"색인 — {' · '.join(parts)}" if parts else ""
 
 
 def begin():
@@ -253,4 +394,4 @@ def cost_line():
     bid = next(iter(STATS.values()))["backend"]
     return (f"벡터 — {' · '.join(parts)} · {bid} · "
             f"{sum(s['secs'] for s in STATS.values()):.1f}초" + (f" · {E.cost_line()}" if E.cost_line() else "")
-            + f" · {fit_line()}")
+            + (f" · {index_line()}" if index_line() else "") + f" · {fit_line()}")

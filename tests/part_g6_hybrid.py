@@ -17,6 +17,9 @@
   ⓓ 답: 5줄 이내 표시 · used_facts·used_chunks 표시 · CLI가 ⓐ~ⓕ를 나란히 · `--json`과 CLI가 같은 수
   ⓔ 채점: 링킹 사전만 vs 보충 · 문서 검색 doc@k가 BM25 대조군 옆에
   ⓕ 쓰기 0(③진실·②등록 해시 불변 — 캐시는 `work/vectors/`)
+  B161 질의 벡터 색인: 색인 행 = 노드 + 청크(글 = 재료 함수의 출력 · 글 해시가 v에) · 지문이 같으면 재료 함수 호출 0이고 결과가
+     색인 전의 길과 같다 · 재료 판 · 한도가 바뀌면 다시 쓴다 · 참조 없는 벡터는 세기만 하고 --gc만 지운다(그 판만) · 옛 저장에서
+     만든 벡터 0 · show near · dist embed는 색인에서(쓰기 0) · 두 프로세스가 함께 갈아 끼워도 깨짐 0 · 그래프 직렬화는 graph.py 안
 """
 from __future__ import annotations
 
@@ -554,6 +557,169 @@ show("B153 ⓔ 길이 — 한도를 작게(embed_max_chars 40) · 넘는 글은 
      and _fit153.startswith("[예방관리 · ") and len(_fit153) == 40 < len(_HY._chunk_text(_fm)),
      f"끝 줄 자른 {_cut153} · dist 넘은 글 {_over153} · 맞춘 글 {_fit153!r} · rc {_d153.returncode}")
 _knobs({})
+
+# ────────────────────────────────────────────────────────────── B161 질의 벡터 색인
+print("\n■ B161 — 질의 벡터 색인(id → 글 해시 · 지문): 같으면 조립 0 · 바뀐 것만 · 정리는 --gc만 (해시 벡터는 메커니즘만)")
+import sqlite3 as _sq161                                  # noqa: E402
+from cli import show_knobs as _SK                         # noqa: E402
+from core.query import bm25 as _BM                        # noqa: E402
+
+
+def _db(q, a=(), write=False):
+    c = _sq161.connect(str(_P.vectors(V.DB)))
+    try:
+        got = c.execute(q, a).fetchall()
+        if write:
+            c.commit()
+        return got
+    finally:
+        c.close()
+
+
+def _made161(out):
+    return sum(int(x.replace(",", "")) for x in re.findall(r"만든 ([\d,]+)", out))
+
+
+_calls161 = {"n": 0}
+_nt0, _ct0 = _HY.node_texts, _HY._chunk_text
+
+
+def _counted(on):
+    """재료 함수 둘을 세는 대역으로 바꾼다(on) · 되돌린다(off) — 셈만 하고 결과는 그대로."""
+    if not on:
+        _HY.node_texts, _HY._chunk_text = _nt0, _ct0
+        return
+
+    def wrap(f):
+        def w(*a, **k):
+            _calls161["n"] += 1
+            return f(*a, **k)
+        return w
+    _HY.node_texts, _HY._chunk_text = wrap(_nt0), wrap(_ct0)
+
+
+_sh.rmtree(_P.vectors(), ignore_errors=True)
+_r161 = _vec_cmd()
+_gr161 = {l: open_graph(l) for l in _disc()}
+_t161 = _HY.node_texts(_gr161)[0]
+_ch161 = store.read(store.CHUNKS, {"chunks": {}})["chunks"]
+_bid161 = _EM.backend_id()
+_ix161 = {(k, i): (ver, t) for k, i, ver, t in _db("SELECT kind, id, ver, text FROM idx WHERE backend = ?", (_bid161,))}
+_vs161 = {r[0] for r in _db("SELECT ver FROM v WHERE backend = ?", (_bid161,))}
+_want161 = ({("nodes", i): _EM.fit(t)[0] for i, t in _t161.items()}
+            | {("chunks", c): _EM.fit(_HY._chunk_text(x))[0] for c, x in _ch161.items()})
+_mt161 = _db("SELECT kind FROM meta WHERE backend = ? ORDER BY kind", (_bid161,))
+show("B161 ⓐ 색인이 선다 — idx 행 = 노드 + 청크 · 행마다 글 해시가 v에 있다 · 글 = 재료 함수의 출력(자른 뒤) · meta 두 줄",
+     _r161[0] == 0 and len(_ix161) == len(_t161) + len(_ch161) > 0 and all(v in _vs161 for v, _t in _ix161.values())
+     and {k: t for k, (_v, t) in _ix161.items()} == _want161 and _mt161 == [("chunks",), ("nodes",)],
+     f"idx {len(_ix161)} = 노드 {len(_t161)} + 청크 {len(_ch161)} · meta {_mt161}")
+_q161 = "노칭 금형 교체 주기는?"
+_qv161 = V.question(_q161)
+_lv161 = V.lookup("nodes", _t161)                          # 색인 전의 길 — 글 → 해시 → 벡터(대조군)
+_old_lk = [(i, s) for s, i in sorted(((round(_EM.cosine(_qv161, v), 4), i) for i, v in _lv161.items()),
+                                     key=lambda t: (-t[0], t[1]))[:5]]
+_ctx161 = {c: _HY._chunk_text(x) for c, x in _ch161.items()}
+_cv161 = V.lookup("chunks", _ctx161)
+_old_es = {c: round(_EM.cosine(_qv161, v), 4) for c, v in _cv161.items()}
+_old_bs = dict(_BM.search(_q161, 8, index=_BM.Index(_ctx161)))
+_counted(True)
+try:
+    V.begin()
+    _HY.warm()
+    _w161 = V.index_line()
+    _lk161 = _HY.link_candidates(_q161, _gr161, {}, 5)
+    _ds161 = _HY.doc_search(_q161, 8, 0)
+    _an161 = CQ.answer(_q161)
+finally:
+    _counted(False)
+_top_es = [(c, x) for c, x in sorted(_old_es.items(), key=lambda t: (-t[1], t[0])) if x * 100 >= 0][:8]
+show("B161 ⓑ 지문이 같으면 조립 0 — 두 번째 벡터 준비 · 링킹 후보 · 문서 검색 · 질의 한 건에서 재료 함수 호출 0 · 「색인 — 그대로」 · "
+     "링킹 후보 · 문서 검색이 색인 전의 길(글 → 해시 → 벡터 · 같은 재료의 BM25)과 같은 순위 · 같은 점수",
+     _calls161["n"] == 0 and _w161 == "색인 — 노드 그대로 · 청크 그대로"
+     and [(x["id"], x["score"]) for x in _lk161] == _old_lk
+     and {x["chunk_id"] for x in _ds161} == {c for c, _s in _top_es} | set(_old_bs)
+     and all(x["embed"] == _old_es[x["chunk_id"]] for x in _ds161 if "embed" in x["by"])
+     and all(x["bm25"] == round(_old_bs[x["chunk_id"]], 4) for x in _ds161 if "bm25" in x["by"]) and _an161.get("path"),
+     f"재료 호출 {_calls161['n']} · {_w161} · 링킹 {len(_lk161)} · 문서 검색 {len(_ds161)}")
+_d161 = []
+_mv161 = _HY.MATERIAL_VER
+for _knob, _mat in (({"embed_max_chars": 3999}, _mv161), ({}, "m-시험")):   # 하나씩만 바꾼다 — 한도 · 재료 판
+    _knobs(_knob)
+    _HY.MATERIAL_VER = _mat
+    V.begin()
+    _HY.warm()
+    _d161 += [V.index_line(), sum(s["made"] for s in V.STATS.values())]
+    _knobs({})
+    _HY.MATERIAL_VER = _mv161
+    _HY.warm()                                             # 되돌린 입력으로 색인을 다시 맞춘다
+show("B161 ⓓ 재료 판(MATERIAL_VER) · 입력 한도(embed_max_chars)가 바뀌면 지문이 같아도 색인을 다시 쓴다(글이 같으면 만든 벡터 0)",
+     _d161 == ["색인 — 노드 다시 씀 · 청크 다시 씀", 0] * 2, f"{_d161}")
+_lay161, _nid161 = next((l, i) for l, g in sorted(_gr161.items()) for i in sorted(g.nodes) if i in _t161)
+_db("INSERT OR IGNORE INTO v VALUES ('다른 판(시험)', 'x161', 'nodes', ?)", (b"\0\0\0\0",), write=True)
+_n161 = V.count()
+
+
+def _alias161(add):
+    g = open_graph(_lay161)
+    al = g.nodes[_nid161].setdefault("aliases", [])
+    al.append({"surface": "B161 시험 별칭"}) if add else al.pop()
+    g.save()
+
+
+_alias161(True)
+_e161 = [_vec_cmd()]
+_kept161 = V.count()
+_e161 += [_vec_cmd("--gc"), _vec_cmd()]
+_alias161(False)
+_vec_cmd()                                                 # 별칭을 되돌린 그래프로 색인 · 벡터를 맞춘다(ⓕ의 바닥)
+_orph = [re.findall(r"참조 없는 벡터 ([\d,]+)\(이 판\)", o) for _rc, o in _e161]
+_gone = re.findall(r"지운 벡터 ([\d,]+)", _e161[1][1])
+_other = _db("SELECT COUNT(*) FROM v WHERE backend = '다른 판(시험)'")[0][0]
+show("B161 ⓔ 정리 — 별칭을 바꿔 저장하면 끝 줄 「참조 없는 벡터 1」(지우지 않는다) · --gc 「지운 벡터 1」 → 다시 0 · 다른 판의 행은 남는다",
+     [r for r, _o in _e161] == [0, 0, 0] and _orph == [["1"], ["0"], ["0"]] and _gone == ["1"] and _kept161 == _n161 + 1
+     and _other == 1, f"참조 없는 {_orph} · 지운 {_gone} · 저장 {_n161} → {_kept161} · 다른 판 {_other}")
+_db("DROP TABLE idx", write=True)
+_db("DROP TABLE meta", write=True)
+_f161 = _vec_cmd()
+show("B161 ⓕ 옛 저장(idx · meta 없음)에서 vectors → 색인이 서고 만든 벡터 0(벡터는 다 다시 쓴다)",
+     _f161[0] == 0 and _made161(_f161[1]) == 0 and "색인 — 노드 다시 씀 · 청크 다시 씀" in _f161[1]
+     and len(_db("SELECT * FROM meta")) >= 2, f"{_f161[1].splitlines()[-1][:160]}")
+_knobs({"embed_max_chars": 40})
+_g161 = _vec_cmd()
+_fp161 = _fp()
+_counted(True)
+_out161 = io.StringIO()
+try:
+    with contextlib.redirect_stdout(_out161):
+        _SN.cmd_near([])
+        _SK.dist_embed()
+finally:
+    _counted(False)
+_fp161b = _fp()                                            # 손잡이를 되돌리기 전에 잰다(knobs.json도 상태다)
+_knobs({})
+_cutg = sum(int(x.replace(",", "")) for x in re.findall(r"(?:노드|청크) ([\d,]+)",
+                                                        (re.findall(r"넘어 자른 글 — (.*?)\(", _g161[1]) or [""])[0]))
+_overg = re.findall(r"넘은 글 ([\d,]+)", _out161.getvalue())
+show("B161 ⓖ 읽기 전용 — show near · show dist embed가 색인에서 읽는다(재료 함수 호출 0 · 다시 재지 않는다) · 상태 지문 전후 같다 · "
+     "dist 넘은 수 = vectors 끝 줄 「넘어 자른 글」",
+     _calls161["n"] == 0 and _fp161 == _fp161b and _overg and int(_overg[0].replace(",", "")) == _cutg > 0
+     and "색인이 지금 입력과 달라" not in _out161.getvalue(), f"재료 호출 {_calls161['n']} · 넘은 {_overg} · 자른 {_cutg}")
+_db("DELETE FROM meta", write=True)                        # 두 프로세스가 동시에 색인을 갈아 끼운다
+_ph = [_sp.Popen([_sys.executable, str(ROOT / "run.py"), "vectors"], cwd=str(ROOT), env=_env, stdin=_sp.DEVNULL,
+                 stdout=_sp.DEVNULL, stderr=_sp.PIPE, text=True) for _ in range(2)]
+_eh = [p.communicate()[1] for p in _ph]
+_ih = _db("PRAGMA integrity_check")[0][0]
+_gr161 = {l: open_graph(l) for l in _disc()}
+show("B161 ⓗ 동시 쓰기 — 두 프로세스가 같은 저장의 색인을 함께 갈아 끼워도 깨짐 0 · 색인 행 = 노드 + 청크 · meta 두 줄(마지막에 쓴다)",
+     all(p.returncode == 0 for p in _ph) and _ih == "ok"
+     and len(_db("SELECT id FROM idx WHERE backend = ?", (_bid161,))) == len(_HY.node_texts(_gr161)[0]) + len(_ch161)
+     and len(_db("SELECT kind FROM meta WHERE backend = ?", (_bid161,))) == 2, f"{_ih} · {[e[-120:] for e in _eh if e]}")
+_ser = [f"{p.relative_to(ROOT)}:{n}" for d in ("core", "cli", "parser") for p in sorted((ROOT / d).rglob("*.py"))
+        if p.as_posix() != (ROOT / "core" / "graph.py").as_posix()
+        for n, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"(dumps|sha256)\([^\n]*\.(nodes|edges)\b", ln)]
+show("B161 ⓘ 경계 — graph.py 밖에서 그래프 노드 · 엣지를 직렬화 · 해시하는 코드 0(정적 점검 · 지문은 GraphStore.content_fp 하나)",
+     not _ser, f"{_ser}")
 
 for d in set(_made):
     (HINTS / f"{d}.json").unlink(missing_ok=True)

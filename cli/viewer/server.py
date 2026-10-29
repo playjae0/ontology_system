@@ -172,9 +172,10 @@ def _warm():
         print(f"  [viewer] 벡터 준비 실패 — {type(e).__name__}: {e} (질의가 같은 사유를 화면에 낸다)", flush=True)
         return
     made = sum(t - d for d, t in got.values())
-    print(f"  [viewer] 벡터 준비 끝 — {QS.vec_line()}" if made else
+    idx = f" · {V.index_line()}" if V.index_line() else ""                 # 색인 그대로 / 다시 씀 (B161)
+    print(f"  [viewer] 벡터 준비 끝 — {QS.vec_line()}{idx}" if made else
           "  [viewer] 벡터 준비 — 이미 있다(" + " · ".join(f"{QS.KIND_NAME.get(k, k)} {t:,}"
-                                                     for k, (_d, t) in got.items()) + ")", flush=True)
+                                                     for k, (_d, t) in got.items()) + f"){idx}", flush=True)
 
 
 def main(args):

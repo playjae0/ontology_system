@@ -160,6 +160,12 @@ def read(name, default):
     return _loads(p.read_bytes()) if p.exists() else default
 
 
+def content_fp(obj):
+    """넘겨받은 내용의 지문 — 저장과 같은 직렬화의 sha256 앞 16(B161 — 청크 저장 내용 · 질의 벡터 색인의 입력 지문)."""
+    import hashlib
+    return hashlib.sha256(_dumps(obj)).hexdigest()[:16]
+
+
 def write(name, obj):
     # 폴더는 `atomic_write_bytes`가 만든다(부모 mkdir) — 여기서 또 만들지 않는다(B77 ④).
     atomic_write_bytes(path(name), _dumps(obj))
