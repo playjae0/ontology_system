@@ -3,7 +3,8 @@
 
 대표 사례 하나(가벼운 회차 · 창작 표본 — 수치는 근거가 아니다 [정정] 50) · 가짜 게이트웨이(실호출 갈래 — 판정 지시문 · 후보 · 계약은
 실물). 「B123 전의 대장」은 2차를 끈 첫 인입(`judge_context_chars` 0)으로 만든다:
-  ⓐ 2차 기록이 없는 불확실 → 재생에서 2차 한 번 → 매칭이면 그 노드(새 노드 · 큐 0) · 기록이 남는다 · 수가 부른 수와 같다
+  ⓐ 2차 기록이 없는 불확실 → 재생에서 2차 한 번 → 매칭이면 그 노드(새 노드 · 큐 0) · 기록이 남는다 · 수가 부른 수와 같다 ·
+     그 때문에 후보가 바뀐 값은 「근거 바뀜」(B167 고침)
   ⓑ 2차 기록이 있는 불확실 → 재생 LLM 0 · 불확실 그대로
   ⓒ 같은 상태로 한 번 더 재구축 → 판정 LLM 0
 네 벌(ⓕ)은 마감 한 줄의 네 벌 단계가 잰다(mock 판정은 문장을 읽지 않아 2차 0).
@@ -90,11 +91,14 @@ print("\n■ ⓐ 재생의 불확실 — 2차 기록이 없으면 한 번")
 _j1 = _run()
 _r = _row("정밀도")
 _q = [q for q in q_of("uncertain_match", DID) if (q.get("payload") or {}).get("surface") == "정밀도"]
-show("ⓐ 2차 기록 없는 불확실 → 재생에서 2차 한 번(문장 붙은 호출만) → 매칭이면 그 노드(새 노드 · 큐 0) · 기록이 남는다 · 수 = 부른 수",
+_j2nd = [b for b in _j1 if "context" in b and str(b.get("mention", "")).endswith("::정밀도")]
+show("ⓐ (B167 고침) 2차 기록 없는 불확실 → 재생에서 2차 한 번(문장 붙은 호출) → 매칭이면 그 노드(새 노드 · 큐 0) · 기록이 남는다 · "
+     "2차 수 = 부른 수 · 그 때문에 후보가 바뀐 값(피치 — 「정밀도」 노드가 서지 않는다)은 「근거 바뀜」으로 다시 묻는다",
      _before == ("uncertain", None, "uncertain") and _r.get("verdict") == "match" and _r.get("target") == "노칭::노칭 정밀도"
      and (_r.get("judge2") or {}).get("replay") and (_r.get("judge2") or {}).get("now") == "match"
      and node_by("process", "노칭::정밀도") is None and not _q
-     and _j1 and all("context" in b for b in _j1) and RP.DOC["2차"] == len(_j1) and RP.DOC["2차 바뀜"] == 1,
+     and RP.DOC["2차"] == len(_j2nd) == 1 and RP.DOC["2차 바뀜"] == 1
+     and _row("피치").get("replay") == "근거 바뀜" and RP.DOC["근거 바뀜"] == 1,
      f"전 {_before} · 뒤 {_r.get('verdict')} → {_r.get('target')} · 2차 {_r.get('judge2')} · 호출 {len(_j1)} · 재생 {dict(RP.DOC)}")
 
 print("\n■ ⓑ 2차 기록이 있는 불확실 · ⓒ 한 번 더 재구축")
