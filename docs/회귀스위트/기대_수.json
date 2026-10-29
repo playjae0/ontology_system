@@ -3,11 +3,11 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 6
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 6
+   "secs": 10
   },
   "test_g3": {
    "n": 82,
@@ -15,35 +15,35 @@
   },
   "test_query": {
    "n": 131,
-   "secs": 20
+   "secs": 18
   },
   "test_ops": {
    "n": 84,
-   "secs": 7
+   "secs": 8
   },
   "test_intake": {
    "n": 100,
-   "secs": 19
+   "secs": 20
   },
   "test_ingest_view": {
    "n": 78,
-   "secs": 38
+   "secs": 36
   },
   "test_coord": {
    "n": 49,
-   "secs": 14
+   "secs": 13
   },
   "test_catalog": {
    "n": 69,
-   "secs": 23
+   "secs": 26
   },
   "test_safety": {
    "n": 36,
-   "secs": 65
+   "secs": 61
   },
   "test_judge": {
    "n": 86,
-   "secs": 13
+   "secs": 11
   },
   "test_build": {
    "n": 79,
@@ -51,27 +51,27 @@
   },
   "test_rebuild": {
    "n": 47,
-   "secs": 25
+   "secs": 26
   },
   "test_g6_rehearsal": {
    "n": 18,
    "secs": 8
   },
   "test_structure": {
-   "n": 116,
+   "n": 120,
    "secs": 27
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 27
+   "secs": 24
   },
   "test_g6_close": {
    "n": 31,
-   "secs": 33
+   "secs": 31
   },
   "test_contract": {
    "n": 76,
-   "secs": 28
+   "secs": 21
   },
   "test_p1_core6": {
    "n": 42,
@@ -95,11 +95,11 @@
   },
   "test_p2": {
    "n": 69,
-   "secs": 7
+   "secs": 5
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 8
+   "secs": 7
   },
   "test_p3_prompt": {
    "n": 60,
@@ -115,11 +115,11 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 7
   },
   "test_p3_ledger": {
    "n": 46,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 24
+   "secs": 25
   }
  },
  "log": [
@@ -633,6 +633,14 @@
    "suite": "test_structure",
    "from": 111,
    "to": 116,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "6c6d82b",
+   "suite": "test_structure",
+   "from": 116,
+   "to": 120,
    "why": ""
   }
  ]
