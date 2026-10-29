@@ -307,14 +307,17 @@ def check_anchor_columns(schema, fields, pieces):
     """**anchor 열의 대상 목록**(B164 ② · G4K) — anchor 열의 표본 값이 그 대상 카테고리 목록에 하나도 없으면 FAIL.
 
     anchor는 값이 이미 있는 골격 노드를 가리킨다(문서 2 §2.4 ①) — 하나도 가리키지 않으면 매핑이 틀렸다. 대상은
-    `target_category`이고 생략이면 좌표 카테고리다(구축과 같은 규칙 — 킷은 `--coord-category`로 받는다). 재료는 G4H와
-    같다(`tagger.registration_list` · `skeleton_hits`). 일부만 맞으면 판정이 아니라 보고 한 줄(별칭 후보). 목록이나 좌표
-    카테고리를 받지 못하면 대조를 생략하고 그렇게 말한다(하네스 단독 실행)."""
+    `target_category`이고 생략이면 좌표 카테고리다(구축과 같은 규칙 — 킷은 `--coord-category`로 받는다). 대상 노드는
+    **스냅샷의 층 전부**에서 그 카테고리를 고른다 — 구축은 카테고리의 집 그래프에서 찾으므로 집이 등록 층 · 좌표 층 밖이어도
+    풀린다(PR #119 리뷰). 맞춤은 G4H와 같은 `skeleton_hits`. 일부만 맞으면 판정이 아니라 보고 한 줄(별칭 후보). 목록 파일이
+    없거나(건넨 자리에 파일이 없을 때도 — bootstrap 전) 좌표 카테고리를 받지 못하면 대조를 생략하고 그렇게 말한다."""
     from parser import tagger
-    if not (tables.CLOSED_LIST and tables.COORD_LAYER):
-        print("      골격 목록 없음 — G4K 대조 생략 (등록 흐름은 --closed-list · --coord-layer로 건넨다)")
+    if not (tables.CLOSED_LIST and Path(tables.CLOSED_LIST).exists()):
+        print("      골격 목록 없음 — G4K 대조 생략 (등록 흐름은 --closed-list로 건넨다 · 파일이 없으면 bootstrap부터)")
         return True
-    nodes = tagger.registration_list(schema.get("layer"), tables.COORD_LAYER, path=tables.CLOSED_LIST)
+    snap = json.load(open(tables.CLOSED_LIST, encoding="utf-8"))
+    nodes = [n for lay, blk in snap.items() if isinstance(blk, dict)
+             for n in tagger.closed_list(lay, path=tables.CLOSED_LIST)]
     bad, part, seen = [], [], []
     for name, spec in fields.items():
         if spec.get("role") != "anchor":
