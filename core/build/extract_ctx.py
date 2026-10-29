@@ -19,11 +19,14 @@ _SEPS = (" > ", " / ")
 
 def doc_info(env):
     """봉투에서 맥락 줄의 문서 칸 재료 — `{"name": 파일 이름, "coord": 문서 좌표}`."""
+    from core.build.extract_reading import doc_labels
     src = (env or {}).get("source_path") or ""
+    lab = doc_labels(env)                    # 판독의 그림 속 글자(B170 — 소속 출처 재검사 · 읽은 쪽이 있을 때만 칸)
     return {"name": PurePath(str(src)).name if src else None,
             "coord": (env or {}).get("doc_coord"),
             # 문서 개요 — 봉투 덱 블록(B143 ② · 덱 구조 — 없으면 칸 없음) · 옛 키 `doc_overview`는 재파싱 전 봉투
-            "overview": ((env or {}).get("deck") or {}).get("overview") or (env or {}).get("doc_overview")}
+            "overview": ((env or {}).get("deck") or {}).get("overview") or (env or {}).get("doc_overview"),
+            **({"reading": lab} if lab else {})}
 
 
 def _path(p):

@@ -37,6 +37,7 @@
   "prompts/2.8_coord_tag.md": "0a51a45df12843c3483494d390f5fcb364bd1e0c457991e568a51b9e8e19cae9",
   "prompts/2.8_image_summary.md": "bcd13c5af4583cce4af7364f07750fdfb10e5f9c9b52f735c4ffd0251e7bbb6a",
   "prompts/3.3_extract.md": "f1ac41461f91890389bff8850c7c2a1856f7e9edf42b11b1b03fcca1eb7d8d82",
+  "prompts/3.3_extract_reading.md": "9152cd6b3d49fffb48c95b950f7caae7d44eed74f12074d70a26c99e97a1fd30",
   "prompts/3.3_outline.md": "9c3a77d5d915b2c0d4700bc85e5e05c1b2bb231f7ff2b50ee63e7cfbbb233257",
   "prompts/3.4_judge.md": "a8ba0e5d329dca8e86d12e57ae049ad634f72c9ac262914d90764589cbdbb725",
   "prompts/3.4_reinforce.md": "4b06f22c16c7658c78a5ae5c77b0d2414c8d9609c9c0b65e10877315f82d3e4c",

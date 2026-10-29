@@ -47,7 +47,7 @@ def _is_image(c):
 def _tag(c):
     k, loc = (c.get("meta") or {}).get("shape_kind"), c.get("source_locator")
     if _is_image(c):
-        return f"[그림 요약 {loc}]"
+        return f"[판독 그림 {loc}]" if c.get("_reading_fig") else f"[그림 요약 {loc}]"     # 판독이 있는 쪽은 판독 그림 칸(B170)
     return {"table": f"[표 {loc}]", "chart": f"[차트 {loc}]"}.get(k)
 
 

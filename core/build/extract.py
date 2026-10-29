@@ -31,7 +31,7 @@ from core import paths
 from core.llm import gateway
 from core.state import log, store
 from core.state.ids import doc_hash, fold_latin, norm
-from core.build import extract_ctx
+from core.build import extract_ctx, extract_reading as ER
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 EXTRACT_DIR = paths.extract()   # 자리는 core/paths.py가 안다 (B78 1a)
@@ -95,11 +95,12 @@ def _now_key(env, cfg=None, outline=None):
     if cfg is not None:
         now["config_extract"] = config_scope.extract_key(cfg)
     now["outline"] = OL.targets_key(outline)
+    now["reading"] = ER.doc_key(env)                 # 판독 몫(B170 — 읽은 쪽이 있는 문서만 · 없으면 None이라 옛 열쇠와 같다)
     return now
 
 
 _LABEL = {"doc_hash": "문서", "adapter_version": "어댑터", "prompt_version": "지시문",
-          "config_extract": "층 config(추출 칸)", "outline": "목차 노드화"}
+          "config_extract": "층 config(추출 칸)", "outline": "목차 노드화", "reading": "판독"}
 
 
 def reuse_check(env, lens=None, cfg=None, outline=None, p=None):
@@ -309,14 +310,14 @@ def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
 
     # 실호출 — 지시문 템플릿(파일) + 층 어휘(config) + **부착 후보 목록**을 실행 시
     # 조립한다(문서 4 §4.10). 세 자산은 **각자 제자리에서 각자 버전을 갖는다**(B9).
-    tmpl = gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract")   # 층 힌트 한 함수 (B124 ③)
+    tmpl = ER.system(gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract"), chunk)   # 층 힌트 · 판독 절(B124 ③ · B170)
     user = _payload(chunk, cfg)
     # **캡처**(B125 ② — 그 슬라이드 · 쪽의 렌더 · 있을 때만): 배치 · 화살표 · 붙음을 보는 근거 — 이름과 값은 글자에서
     from core.state.captures import mime
     content = [{"type": "text", "text": user}, gateway._image_part(image, mime(image))] if image else user   # 보관분은 JPEG (B156 ⑤)
     try:
         out = gateway.chat([{"role": "system", "content": tmpl}, {"role": "user", "content": content}],
-                           json_schema=EXTRACT_SCHEMA, point="extract")
+                           json_schema=ER.schema(EXTRACT_SCHEMA, chunk), point="extract")
     except gateway.GatewayError as e:
         if image and getattr(e, "status", None) == 400:
             raise RuntimeError("추출: 게이트웨이가 캡처(이미지 입력)를 받지 않는다 — 그림 없이 넣으려면 "
@@ -374,7 +375,8 @@ def _call_key(chunk, cfg, image=None):
     import hashlib
     from core.build import extract_calls as EC
     return EC.key({**_CALLS["base"], "user": _payload(chunk, cfg),
-                   "image": hashlib.sha256(image).hexdigest()[:16] if image else None})
+                   "image": hashlib.sha256(image).hexdigest()[:16] if image else None,
+                   **({"reading": ER.version()} if chunk.get(ER.MARK) else {})})     # 판독 절 판(판독이 있는 청크만 · B170)
 
 
 def categories_with_also(cfg):
@@ -464,9 +466,14 @@ def _call_unit(doc_id, unit, cfg, vocab, hints, pages):
     청크로 나눈다(`extract_unit.split` — 개체는 그 글자가 든 청크 · 관계 · 관련 링크는 본문 청크)."""
     from core.build import extract_unit as EU
     img = (pages or {}).get(EU.page_of(unit))
-    if gateway.use_mock() or hints or (len(unit) == 1 and img is None):
+    if gateway.use_mock() or hints:
         return [_call_chunk(doc_id, cid, c, cfg, vocab, hints) for cid, c in unit]
+    unit, rd = ER.apply(unit)                      # 판독이 있는 쪽 — 그림 칸 · [판독] 묶음(B170 · 없으면 그대로)
+    if len(unit) == 1 and img is None:
+        return [_call_chunk(doc_id, cid, ({**c, "text": f"{c.get('text') or ''}\n\n{rd}"} if rd else c), cfg, vocab, None)
+                for cid, c in unit]
     chunk, bid = EU.merged(unit)
+    chunk = {**chunk, "text": f"{chunk.get('text') or ''}\n\n{rd}"} if rd else chunk
     entry = _call_chunk(doc_id, bid, chunk, cfg, vocab, None, image=img)
     entry["capture"] = "page" if img is not None else "none"      # 그 호출이 캡처를 봤나 (B125 ② — slide_render)
     return EU.split(entry, unit, bid)
@@ -599,6 +606,7 @@ def _context(env, outline):
     from core.build import outline as OL
     _DOC.clear()
     _DOC.update(extract_ctx.doc_info(env))
+    ER.begin(env)                                  # 판독이 있는 쪽(B170)
     _HEADS.clear()
     _HEADS.update({c.get("source_locator"): OL.heading_candidates(outline, c.get("source_locator"))
                    for c in env.get("chunks", [])})
@@ -782,6 +790,7 @@ def _write_checkpoint(env, cfg, lens, candidates, ref_skipped, lens_skipped, out
         out["ref_skipped"] = ref_skipped
     if OL.targets_key(outline):
         out["outline"] = OL.targets_key(outline)             # 재사용 조건의 개요 몫(B115 ③ — 대상이 있을 때만)
+    out.update({"reading": ER.doc_key(env)} if ER.doc_key(env) else {})   # 재사용 조건의 판독 몫(B170 — 읽은 쪽이 있을 때만)
     if lens:
         out["lens"] = lens                                   # 렌즈 판 (B91 ①)
         out["lens_skipped"] = lens_skipped

@@ -903,6 +903,62 @@ show("B169 ⓓ 판독이 없는 문서 — split md · 추출 확인 md에 판�
      _n169 and not any(x in _n169 for x in _lab169) and "- **맥락 줄**:" in _md155 and not any(x in _md155 for x in _lab169),
      f"split {len(_n169)}자 · 추출 확인 판독 줄 {[x for x in _lab169 if x in _md155]}")
 
+# ────────────────────────────────────────────────────────────── B170 판독을 추출에
+print("\n■ B170 — 판독이 있는 청크에만 [판독] 묶음 · 그림 칸 · 이름 출처에 그림 속 글자 · 판독 없는 문서는 바이트 그대로")
+import hashlib as _hl170                                  # noqa: E402
+from core.llm import gateway                              # noqa: E402
+from core.build import belongs as BL170, extract_ctx as XC170, extract_reading as ER170   # noqa: E402
+from core.build.entry import _vocab as _vocab170          # noqa: E402
+_cfg170 = load_config("process")
+#: B170 전의 추출 지시문 · 답 꼴(`8dec743`의 `prompts/3.3_extract.md` · `EXTRACT_SCHEMA`) — 판독이 없는 문서가 받는 것과 같아야 한다
+_PRE170 = {"prompt": "f1ac41461f918903", "schema": "6f3e6047d44e1cea"}
+
+
+def _sent170(env):
+    """실호출 갈래(가짜 게이트웨이)로 추출 — 호출마다 `(지시문, 답 꼴, 사용자 글)`."""
+    sent = []
+    EX.invalidate(env["doc_id"])
+    with Live(by={"extract": lambda body: {"entities": [], "relations": [], "about": []}}), _quiet():
+        inner = gateway.chat
+
+        def chat(messages, json_schema=None, point=None, **kw):
+            if point == "extract":
+                sent.append((messages[0]["content"], json_schema, messages[1]["content"]))
+            return inner(messages, json_schema=json_schema, point=point, **kw)
+        gateway.chat = chat
+        EX.extract(env, _cfg170, {loc: cid for c, cid in _pci169(env) for loc in [c["source_locator"]]}, _vocab170(_cfg170))
+    return sent
+
+
+_wr170 = _sent170(_ea6)
+_r4 = next((s for s in _wr170 if "[판독 그림 S4-P1]" in s[2]), None)
+show("B170 ⓐ 판독이 있는 쪽의 추출 입력에 [판독] 묶음(쪽 요약 · 배치) · 그 쪽 그림 요약 자리에 판독 그림 칸(첫 줄 · 그림 속 글자) · 그 호출만 "
+     "판독 절 · 소속 출처에 판독",
+     _r4 is not None and "[판독]" in _r4[2] and "커터 장력 기준을 보이는 단면 도면이다" in _r4[2] and "「T-1」" in _r4[2]
+     and "[그림 요약 S4-P1]" not in _r4[2] and "## 판독이 있는 청크" in _r4[0]
+     and "판독" in _r4[1]["properties"]["entities"]["items"]["properties"]["belongs_to"]["properties"]["from"]["enum"],
+     f"호출 {len(_wr170)} · 판독 붙은 호출 {sum('[판독]' in s[2] for s in _wr170)}")
+_wo170 = _sent170(_en6)
+_sys0 = gateway.prompt_for("extract", {"process": _cfg170}, "extract")
+show("B170 ⓑ 판독이 없는 문서 — 실제 추출 지시문 · 답 꼴 · 사용자 글이 B170 전과 바이트 같다(지시문 파일 · 답 꼴 해시가 그 판 · 판독 0) · "
+     "체크포인트에 판독 칸 0",
+     _wo170 and all(s[0] == _sys0 and s[1] == EX.EXTRACT_SCHEMA and "판독" not in s[2] for s in _wo170)
+     and _hl170.sha256((ROOT / "prompts" / "3.3_extract.md").read_bytes()).hexdigest()[:16] == _PRE170["prompt"]
+     and _hl170.sha256(json.dumps(EX.EXTRACT_SCHEMA, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16] == _PRE170["schema"]
+     and "reading" not in json.loads(EX.checkpoint_path(_en6["doc_id"]).read_text(encoding="utf-8")),
+     f"호출 {len(_wo170)}")
+_ke, _kn = EX._now_key(_ea6, _cfg170), EX._now_key(_en6, _cfg170)
+show("B170 ⓒ 판독이 있는 문서만 재사용 열쇠가 바뀐다(판독 해시) · 판독을 지우면 다시 같은 열쇠 · 판독 없는 체크포인트로는 판독 있는 봉투를 "
+     "재사용하지 않는다",
+     _ke["reading"] and _kn["reading"] is None and EX._now_key({**_ea6, "reading": None}, _cfg170) == _kn
+     and EX.reuse_check(_ea6, cfg=_cfg170)[1].startswith("판독") and EX.reuse_check(_en6, cfg=_cfg170)[0],
+     f"판독 몫 {_ke['reading']} · 재사용 {EX.reuse_check(_ea6, cfg=_cfg170)}")
+_doc170, _s4 = XC170.doc_info(_ea6), _ch169[_c4]
+show("B170 ⓓ 그림 속 글자에서 나온 이름은 출처 「판독」 · 외형 추론만 있는 이름(보이는 것의 추론 · 첫 줄)은 출처가 아니다 · 판독 없는 봉투는 판독 칸 0",
+     BL170.source_of("T-1", _s4, _doc170) == "판독" and BL170.source_of("커터 단면", _s4, _doc170) is None
+     and BL170.source_of("단면 도면", _s4, _doc170) is None and "reading" not in XC170.doc_info(_en6),
+     f"T-1 {BL170.source_of('T-1', _s4, _doc170)} · 커터 단면 {BL170.source_of('커터 단면', _s4, _doc170)}")
+
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)
 store.write(store.DOC_TYPES, dts)
