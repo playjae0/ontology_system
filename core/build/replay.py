@@ -23,7 +23,8 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
 재료는 개체 행(`entity`)과 **소속 대상 행**(`belongs` — 산문 개체의 `belongs_to`가 골격 · 버퍼 · 사전에 없어 새로
 해소한 판정 · 열 `소속`)이다. 재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 —
 재시도가 붙인 값은 B107 ③부터 재시도가 그 행을 갈아 끼운다 · `by: "retry"`) · 대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) ·
-끔(`--no-replay` — 문서 하나 또는 재구축 전부). 수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` —
+끔(`--no-replay` — 문서 하나 또는 재구축 전부) · **근거 바뀜**(B167 ② — 판정에 오른 값의 근거 지문(`basis` — 그때의 후보 이름 ·
+판정 지시문 판 · 임계)이 지금 다시 센 것과 다르다 · 지문 없는 옛 행은 지금처럼 재생한다). 수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` —
 재구축 보고)가 센다. **처음 인입**(그 문서의 지난 대장도 중간 저장도 없다 — B165)은 재생 대상이 아니라 세지도 행에 적지도 않는다 —
 재구축 · `--no-replay` 실행은 대장 없는 문서의 판정도 「키 없음」으로 센다(그 수가 재구축의 판정 비용이다 · `COUNT_ALL`).
 """
@@ -40,7 +41,7 @@ COUNT_ALL = False
 #: 지금 문서가 재생 대상인가 — `begin`이 정한다(지난 대장이 있거나 `COUNT_ALL`)
 LIVE = False
 
-_ZERO = {"재생": 0, "재판정": 0, "키 없음": 0, "대상 없음": 0, "끔": 0, "불확실": 0, "2차": 0, "2차 바뀜": 0}
+_ZERO = {"재생": 0, "재판정": 0, "키 없음": 0, "대상 없음": 0, "끔": 0, "근거 바뀜": 0, "불확실": 0, "2차": 0, "2차 바뀜": 0}
 #: 실행 누계 — 재구축 보고 · 문서마다는 `DOC`
 STATS = dict(_ZERO)
 DOC = dict(_ZERO)
@@ -73,10 +74,12 @@ def begin(doc_id, doc_hash=None):
     **멈춘 실행의 중간 저장**(B165 ③ — `ledger.read_partial`)도 재료다 — 지난 확정 대장보다 새 판이라 앞에 둔다 · 처음
     인입이어도 중간 저장이 있으면 재생 대상 · 문서 해시가 지금 원본과 다르면 버린다(`PARTIAL` — 화면 한 줄의 재료)."""
     from core.build import ledger
+    from core.llm import gateway
     global LIVE
     DOC.update(_ZERO)
     TABLE.clear()
     PARTIAL.clear()
+    _JUDGE["판"] = gateway.prompt_version("judge")     # 근거 지문의 지시문 판 — 문서마다 한 번 읽는다(B167 ②)
     data = ledger.read(doc_id)
     part = ledger.read_partial(doc_id)
     if part is not None and doc_hash is not None and part.get("doc_hash") != doc_hash:
@@ -95,6 +98,30 @@ def begin(doc_id, doc_hash=None):
         TABLE.setdefault(key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")), []).append(r)
         n += 1
     return n
+
+
+#: 근거 지문의 판정 지시문 판 — `begin`이 문서마다 읽는다(값마다 파일을 열지 않는다)
+_JUDGE = {}
+
+
+def basis(surface, pre, cfg):
+    """**근거 지문**(B167 ②) — 판정에 오른 값의 근거 해시 하나: 판정이 볼 후보(`pre` = `matcher.gated`의 답 → 좁히기 — 판정의
+    `matcher.candidates`와 같은 함수 · LLM 0) · 판정 지시문 판(`3.4_judge`) · 임계. 후보는 **이름**(층 · 카테고리 · canonical)으로
+    적는다 — id는 재구축이 새로 발급한다(옛 id는 재구축 뒤 없다 · `_near`의 결). 판정 때와 재생 때 같은 함수가 잰다."""
+    import hashlib
+    import json
+    from core import matcher
+    out, pool, scoped = pre
+    keep = dict(matcher.LAST_NARROW)
+    kept, _how = matcher._narrow(surface, list(pool), matcher.CANDIDATE_TOP_N, scoped=scoped)
+    matcher.LAST_NARROW.clear()
+    matcher.LAST_NARROW.update(keep)                  # 좁힌 기록은 판정의 것이다 — 여기서 남기지 않는다
+    names = sorted(f"{c.get('layer')}|{c.get('category')}|{norm(c.get('canonical') or '')}" for c in list(out) + kept)
+    if "판" not in _JUDGE:
+        from core.llm import gateway
+        _JUDGE["판"] = gateway.prompt_version("judge")
+    raw = json.dumps([names, _JUDGE["판"], matcher.threshold(cfg)], ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _count(what):
@@ -126,7 +153,7 @@ def _near(b, near, category):
     return out
 
 
-def pick(b, at, surface, category, canonical):
+def pick(b, at, surface, category, canonical, basis_now=None):
     """재생 판정 — `(결과, 사유)`. 결과는 `(분기, node_id, 점수, 판정 dict)`(`matcher.resolve`와 같은 모양) 또는 None
     (지금처럼 판정) · 사유는 재생하지 못한 까닭(`키 없음` · `대상 없음` · `끔` — 대장 행 `replay`에 남는다).
 
@@ -134,7 +161,8 @@ def pick(b, at, surface, category, canonical):
     있는데 부모 좌표가 달라졌으면(골격 이름·부모가 바뀌었다) **대상 없음**이다 — 옛 이름에서 새 이름으로 옮겨
     재생하지 않는다(재판정 — 수가 보인다). 사전이 이미 답한 값에는 부르지 않는다(호출부가 사전 히트를 먼저 본다).
     재생 대상이 아닌 문서(처음 인입 — `LIVE` 거짓)와 자리(`at`) 없는 판정(orphan 재시도 — 그 문서의 표가 아니다)은
-    `(None, None)` — 세지도 적지도 않는다."""
+    `(None, None)` — 세지도 적지도 않는다. `basis_now`(지금 다시 잰 근거 지문)가 행의 지문과 다르면 **근거 바뀜**(B167 ②) ·
+    지문 없는 옛 행은 지금처럼."""
     if not LIVE or not at:
         return None, None              # 자리 없는 판정(재시도 — B107 ③은 그 판정을 대장에 적는다)은 재생 대상이 아니다
     if OFF:
@@ -148,6 +176,8 @@ def pick(b, at, surface, category, canonical):
         return _miss("대상 없음")
     if r.get("path") == "none" and r["verdict"] == "new":
         return None, None              # 후보 0으로 끝난 새 노드 — 재생할 판정이 없다(다시 잰다 · 관문이 넓어지면 후보가 선다 · B142)
+    if basis_now is not None and r.get("basis") not in (None, basis_now):
+        return _miss("근거 바뀜")       # 판정과 지금 사이에 후보 · 지시문 판 · 임계가 바뀌었다 — 그 값만 다시 묻는다(B167 ②)
     v = {"path": "replay", "replayed_path": r.get("path"), "candidates_n": 0,
          "confidence": r.get("confidence") or 0.0}
     if r["verdict"] == "match":

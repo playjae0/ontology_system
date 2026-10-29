@@ -131,7 +131,7 @@ try:
          all(len(v) == 1 for v in _calls.values())
          and _pre.get("청크") == 2 and _pre.get("호출") == 2 and _pre.get("거름") == 2,
          str({k: v for k, v in _pre.items() if k != "단계"}))
-    # B155 ⓓ 추출까지만 — 렌즈 둘(층마다 뽑은 뒤 멈춘다 · 문서 대장 0)
+    # B155 ⓓ 판정까지(B167) — 렌즈 둘(층마다 뽑고 판정한 뒤 멈춘다 · 문서 대장 0)
     _envm = dict(_env, doc_id="XB91M", chunks=[dict(c, source_locator=c["source_locator"].replace("XB91L", "XB91M"),
                                                     text=c["text"] + " (B155)") for c in _env["chunks"]])
     _P.ensure(_P.parsed("XB91M.json"))
@@ -139,13 +139,15 @@ try:
     _reg155 = json.dumps(store.read(store.DOC_REGISTRY, {}), sort_keys=True)
     _rx = run_document(_envm, extract_only=True)
     from cli import extract_md as _XMD                   # noqa: E402
+    from core.build import ledger as _LG, replay as _RP  # noqa: E402
     _mdx = _XMD.text("XB91M") or ""
-    show("B155 ⓓ 렌즈(층 둘) 추출까지만 — 층마다 추출 체크포인트 · md에 층마다 칸 · 문서 대장 0",
+    _lx = {r.get("layer") for r in (_LG.read_partial("XB91M") or {}).get("rows") or [] if r.get("role") in _RP.ROLES}
+    show("B155 ⓓ (B167 고침) 렌즈(층 둘) 판정까지 — 층마다 추출 체크포인트 · md에 층마다 칸 · 판정 절이 중간 저장 대장의 층마다 · 문서 대장 0",
          _rx[0].status == "held" and getattr(_rx[0], "extract_stop", False)
          and EX.has_checkpoint("XB91M", "process") and EX.has_checkpoint("XB91M", "quality")
-         and "판정 예고 — 층 process" in _mdx and "판정 예고 — 층 quality" in _mdx and "#### 층 quality" in _mdx
+         and _lx and all(f"## 판정 — 층 {lay}" in _mdx for lay in _lx) and "#### 층 quality" in _mdx
          and json.dumps(store.read(store.DOC_REGISTRY, {}), sort_keys=True) == _reg155,
-         f"{_rx[0].reason} · md 층 칸 {[ln for ln in _mdx.splitlines() if ln.startswith('## 판정 예고')]}")
+         f"{_rx[0].reason} · 대장 층 {_lx} · md 판정 칸 {[ln for ln in _mdx.splitlines() if ln.startswith('## 판정')]}")
     _knobs_file({"lens_call_cap": 1})
     EX.invalidate("XB91L")
     _r2 = run_document(dict(_env, revision="R2"), notice=lambda i: False if i.get("단계") == "렌즈상한" else None)

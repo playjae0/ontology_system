@@ -31,6 +31,8 @@
   B165 ⓐ 표의 공정 그룹 경계마다 중간 저장 · 요약 손잡이(그룹 수만큼) · 확정 뒤 중간 저장 0 · 그래프가 나누지 않은 실행과 같다
        ⓑ 둘째 그룹에서 멈춤 → 시작 전 판 · 중간 저장 남음 → 다시 치면 첫 그룹은 재생 · 최종 그래프 같다
        ⓒ 원본 해시가 바뀌면 중간 저장을 쓰지 않는다 · `--step` 없으면 묻지 않는다
+  B167 ⓓ 표 `--extract-only`는 판정까지(쓰기 0 · 중간 저장) · 확정이 재생(지문 없는 옛 행도) · 그래프가 플래그 없는 실행과 같다
+       ⓒ 판정과 확정 사이에 후보가 서면 그 값만 「근거 바뀜」으로 다시 묻는다
 """
 from __future__ import annotations
 
@@ -283,9 +285,10 @@ def _ledger_rows(dids):
 
 
 def _end_numbers(out):
-    """끝 줄 「판정 — 재생 n · 재판정 m(키 없음 a · 대상 없음 b · 끔 c)」의 수."""
-    m = re.search(r"판정 — 재생 ([\d,]+) · 재판정 ([\d,]+)\(키 없음 ([\d,]+) · 대상 없음 ([\d,]+) · 끔 ([\d,]+)\)", out)
-    keys = ("재생", "재판정", "키 없음", "대상 없음", "끔")
+    """끝 줄 「판정 — 재생 n · 재판정 m(키 없음 a · 대상 없음 b · 끔 c · 근거 바뀜 d)」의 수(B167 — 근거 바뀜 칸)."""
+    m = re.search(r"판정 — 재생 ([\d,]+) · 재판정 ([\d,]+)\(키 없음 ([\d,]+) · 대상 없음 ([\d,]+) · 끔 ([\d,]+) · "
+                  r"근거 바뀜 ([\d,]+)\)", out)
+    keys = ("재생", "재판정", "키 없음", "대상 없음", "끔", "근거 바뀜")
     return dict(zip(keys, (int(x.replace(",", "")) for x in m.groups()))) if m else {}
 
 
@@ -690,6 +693,45 @@ show("ⓒ 원본 해시가 바뀌면 중간 저장을 쓰지 않는다(재생 0 
      RP.PARTIAL.get("버림") and not any(r.get("path") == "replay" for r in LG.read(_PF)["rows"])
      and _no_ask and _stopped and len(_asked) == 1,
      f"중간 저장 {RP.PARTIAL} · 물음 {len(_asked)}")
+
+print("\n■ B167 표 판정까지(--extract-only) → 확정 = 판정 재생 · 근거 지문")
+_base165()
+_pre167 = _world165()
+_rx167 = run_document(_pf165(), extract_only=True)[0]
+_mid167, _p167 = _world165(), LG.read_partial(_PF)
+_was167 = {(r.get("locator"), r.get("field"), r.get("surface")): r.get("path") for r in (_p167 or {}).get("rows") or []}
+_g1 = {r["source_locator"] for r in _pf165()["records"][:len(_pf165()["records"]) // 2]}
+for _r in (_p167 or {}).get("rows") or []:
+    if _r.get("locator") in _g1:
+        _r.pop("basis", None)                             # 첫 그룹은 지문 없는 옛 행(B167 전 대장)으로
+store.write(LG.partial_name(_PF), _p167)
+_held167 = (_rx167.status, getattr(_rx167, "extract_stop", False), _PF in store.read(store.DOC_REGISTRY, {}),
+            LG.read(_PF) is not None)
+run_document(_pf165())
+_fin167 = [r for r in LG.read(_PF)["rows"] if r.get("role") in RP.ROLES]
+_due167 = [r for r in _fin167 if str(_was167.get((r.get("locator"), r.get("field"), r.get("surface")))).endswith("+judge")]
+show("B167 ⓓ 표 --extract-only → 판정까지(held · 그래프 · 큐 시작 전 판 · 문서 대장 · 확정 대장 0 · 중간 저장에 대장 전부) · "
+     "확정이 판정에 오른 값 전부를 재생(지문 없는 옛 행도) · 최종 그래프 · 큐가 플래그 없는 실행과 같다",
+     _held167 == ("held", True, False, False) and _mid167 == _pre167 and _due167
+     and any(r.get("locator") in _g1 for r in _due167) and all(r.get("path") == "replay" for r in _due167)
+     and _world165() == _wg165 and LG.read_partial(_PF) is None,
+     f"멈춤 {_held167} · 판정에 오른 값 {len(_due167)} · 경로 {sorted({r.get('path') for r in _due167})}")
+
+_base165()
+run_document(_pf165(), extract_only=True)
+_gp = open_graph("process")
+_gp.add_node("노칭::B167 새 후보", "Property", "auto", provenance=["(시험 B167 ⓒ)"], _scoped=True, polarity="none",
+             scope="노칭", base_name="b167 새 후보")          # 판정과 확정 사이에 선 후보 — 「노칭」 아래 Property 값의 근거가 바뀐다
+_gp.save()
+_was167 = {(r.get("locator"), r.get("field"), r.get("surface")): r.get("path") for r in LG.read_partial(_PF)["rows"]}
+run_document(_pf165())
+_fin167 = [r for r in LG.read(_PF)["rows"] if r.get("role") in RP.ROLES]
+_moved = [r.get("canonical") for r in _fin167 if r.get("replay") == "근거 바뀜"]
+_rest = [r for r in _fin167 if r.get("canonical") not in _moved
+         and str(_was167.get((r.get("locator"), r.get("field"), r.get("surface")))).endswith("+judge")]
+show("B167 ⓒ 판정과 확정 사이에 후보가 하나 더 서면(시험이 노드를 더한다) 그 값만 「근거 바뀜」으로 다시 묻고 나머지는 재생",
+     _moved == ["노칭::노칭정밀도"] and RP.DOC["근거 바뀜"] == 1 and _rest and all(r.get("path") == "replay" for r in _rest),
+     f"근거 바뀜 {_moved} · 나머지 경로 {sorted({r.get('path') for r in _rest})} · 재생 {dict(RP.DOC)}")
 
 # ── 뒷정리 — 시험이 세운 것은 시험이 치운다
 for _d in _hinted:

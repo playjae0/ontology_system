@@ -73,7 +73,7 @@ def plan(env, lenses, loc2id, cfgs, graphs, dictionary, min_score):
     return skip, len(chunks), calls
 
 
-def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None, extract_only=False):
+def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
     """렌즈 여럿(또는 등록 층이 아닌 렌즈)으로 추출·구축 — `(뿌리 빌더, 추출했나)`.
 
     뿌리는 문서 층의 빌더 하나다 — 렌즈 빌더는 `for_layer`로 받아 그래프·사전·버퍼·대장을
@@ -81,7 +81,7 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None, extract_on
     """
     from core.build import extract as extract_mod, prose as prose_mod
     from core.build.build import Builder
-    from core.build.entry import EXTRACT_STOP, ExtractStop, StepStop, Stopped, _vocab, prose_gate
+    from core.build.entry import StepStop, Stopped, _vocab, prose_gate
     from core.build.ledger import Ledger
     from core.state import knobs
     from core.state.bootstrap import load_config, open_graph
@@ -125,12 +125,8 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None, extract_on
         finally:
             _gw.set_lens(None)
         extracted = extracted or did
-        if extract_only:
-            continue                             # 추출까지만 — 렌즈 전부를 뽑은 뒤 멈춘다(B155 ①)
         lb = root.for_layer(lay)
         cands = prose_gate(env, ck, loc2id, lay, notice, lens=lay, cfg=cfgs[lay], graph=lb.g, outline=ol)   # 사람 후보 (B140 ③)
         prose_mod.build_prose(env, cfgs[lay], lb.g, cands, builder=lb, defer_save=True,
                               outline=ol)
-    if extract_only:
-        raise ExtractStop(EXTRACT_STOP)
     return root, extracted

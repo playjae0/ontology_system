@@ -282,15 +282,16 @@ class StepStop(Stopped):
     """
 
 
-#: 추출까지만의 멈춤 사유(결과의 `reason`)
-EXTRACT_STOP = "추출까지 — 그래프 · 사전 · 큐 · 청크 · 문서 대장 쓰기 0 · 추출 체크포인트는 남는다"
+#: 판정까지의 멈춤 사유(결과의 `reason`)
+EXTRACT_STOP = "판정까지 — 그래프 · 사전 · 큐 · 청크 · 문서 대장 쓰기 0 · 체크포인트 · 판정 대장 중간 저장은 남는다"
 
 
 class ExtractStop(Stopped):
-    """**추출까지만**(B155 ① — `--extract-only`) — 추출(렌즈면 층마다 전부) 뒤 판정 예고 자리에서 멈춘다.
+    """**판정까지**(B155 ① · B167 ① — `--extract-only`) — 추출(렌즈면 층마다 전부) · 판정(구축)까지 가고 저장 직전에 멈춘다.
 
     `Stopped`와 같은 되돌림이되 **문서 대장도 시작 전으로**(사람의 멈춤과 다른 점 — 보려고 넣은 문서는 넣은 문서가 아니다) ·
-    남는 것은 체크포인트(`parsed/` · 추출 · 목차 노드화) — 확정은 같은 줄을 플래그 없이(추출 재사용 · LLM 0)."""
+    남는 것은 체크포인트(`parsed/` · 추출 · 목차 노드화)와 판정 대장 중간 저장(`ledger.HOLD` — 대장 전부) — 확정은 같은 줄을
+    플래그 없이(추출 재사용 · 판정 재생 LLM 0 · 근거가 바뀐 값만 다시)."""
 
 
 def run_document(path_or_env, layer=None, *, allow_duplicate=False,
@@ -314,6 +315,9 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     # 끝나면 표지를 세운다 — 그 앞의 멈춤은 시작 전으로 · 그 뒤는 끝난 문서다.
     t0 = _start(doc_id)
     _RUN["committed"] = False
+    from core.build import ledger as _lg
+    from core.state.ids import doc_hash as _dh
+    _lg.HOLD = _dh(env) if extract_only else None          # 판정까지 — 대장은 중간 저장으로(B167 ①)
     try:
         res = ingest(env, allow_duplicate=allow_duplicate,   # ①doc_hash ①′회수 ②id ③필드
                      routing=routing)
@@ -328,7 +332,6 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         del _bld.ADDED[:]
         # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
         from core.build import replay as _rp
-        from core.state.ids import doc_hash as _dh
         _rp.begin(doc_id, _dh(env))                       # 멈춘 실행의 중간 저장도 — 원본이 바뀌었으면 버린다(B165 ③)
         # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)
         _q0 = store.read(store.QUEUE, [])
@@ -358,7 +361,7 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
             _LOG.info("저장 뒤 멈춤 — %s: 이 문서는 끝까지 썼다(%s · 되돌리지 않는다)", doc_id, type(stop).__name__)
             raise
         human = isinstance(stop, Stopped)
-        _undo(t0, keep_registry=human and not isinstance(stop, ExtractStop))   # 추출까지만은 문서 대장도 시작 전으로(B155 ①)
+        _undo(t0, keep_registry=human and not isinstance(stop, ExtractStop))   # 판정까지는 문서 대장도 시작 전으로(B155 ① · B167)
         _LOG.info("되돌림 — %s: 이 문서의 쓰기를 시작 전으로 되돌렸다(%s%s)", doc_id, type(stop).__name__,
                   " — 사람·관문의 멈춤: 인입 기록 · 체크포인트는 남는다" if human else "")
         if not human:
@@ -367,14 +370,18 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         res.step_stop = isinstance(stop, StepStop)
         res.extract_stop = isinstance(stop, ExtractStop)
         return res, None, False
+    finally:
+        _lg.HOLD = None
 
 
 def _start(doc_id):
-    """문서 시작 전 판 — 되돌림이 돌아갈 자리(B109 ②). 재인입이면 회수(`withdraw`)가 층 그래프를 저장하므로 그것도."""
+    """문서 시작 전 판 — 되돌림이 돌아갈 자리(B109 ②). 재인입이면 회수(`withdraw`)가 층 그래프를 저장하므로 그것도 ·
+    관문 거부 기록도(B167 ① — 판정까지 뒤 확정이 같은 거부를 두 번 적지 않게)."""
     from router import discover as _disc
     reg = store.read(store.DOC_REGISTRY, {})
     return {"queue": store.read(store.QUEUE, []), "chunks": store.read(store.CHUNKS, {"chunks": {}, "describes": []}),
-            "registry": reg, "graphs": [open_graph(lay) for lay in _disc()] if doc_id in reg else []}
+            "registry": reg, "graphs": [open_graph(lay) for lay in _disc()] if doc_id in reg else [],
+            "rejects": store.read(store.GATE_REJECTS, None)}
 
 
 def _undo(t0, keep_registry=False):
@@ -386,11 +393,16 @@ def _undo(t0, keep_registry=False):
         store.write(store.DOC_REGISTRY, t0["registry"])
     store.write(store.QUEUE, t0["queue"])
     store.write(store.CHUNKS, t0["chunks"])
+    if t0.get("rejects") is not None:
+        store.write(store.GATE_REJECTS, t0["rejects"])
+    else:
+        store.path(store.GATE_REJECTS).unlink(missing_ok=True)
 
 
 def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                     notice, _n0, _e0, _a0, extract_only=False):
-    """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다 · `extract_only`면 추출 뒤에 멈춘다(B155 ①)."""
+    """구축 본체 — 되돌림 경계 **안**이다(B75 ③). 위 함수가 그 경계를 친다 · `extract_only`면 판정(구축) 뒤 저장 직전에
+    멈춘다(B167 ① — 표 · 산문 · 렌즈 한 자리)."""
     extracted = False
     builder = None
     if kind == "table":
@@ -413,17 +425,16 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
                if (_registry.lookup(env["doc_type"]) or {}).get("lenses") else [layer])
         if _lz != [layer]:
             from core.build import lens as lens_mod
-            builder, extracted = lens_mod.build_with_lenses(env, _lz, layer, graph, loc2id,
-                                                            notice, extract_only=extract_only)
-            return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
-        vocab = _vocab(cfg)
-        from core.build import outline as outline_mod
-        ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
-        ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
-        if extract_only:
-            raise ExtractStop(EXTRACT_STOP)
-        cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보를 보탠 후보 (B140 ③)
-        builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
+            builder, extracted = lens_mod.build_with_lenses(env, _lz, layer, graph, loc2id, notice)
+        else:
+            vocab = _vocab(cfg)
+            from core.build import outline as outline_mod
+            ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
+            ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
+            cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보 (B140 ③)
+            builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
+    if extract_only:
+        raise ExtractStop(EXTRACT_STOP)         # 판정까지 — 저장 직전(대장은 `ledger.HOLD`로 중간 저장에 있다 · B167 ①)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
 
 
