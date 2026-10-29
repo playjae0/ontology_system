@@ -24,7 +24,7 @@ canonical(조회 키) = 지금 조립한 조회 키」로 잰다(스코프 카�
 해소한 판정 · 열 `소속`)이다. 재생하지 않는 경우(→ 지금처럼 판정): 키가 대장에 없다(대장 행이 없는 판정 —
 재시도가 붙인 값은 B107 ③부터 재시도가 그 행을 갈아 끼운다 · `by: "retry"`) · 대상 canonical이 없다(골격 이름·부모가 바뀌었다 등) ·
 끔(`--no-replay` — 문서 하나 또는 재구축 전부). 수는 문서마다(`DOC` — 판정 끝 줄)와 실행 누계(`STATS` —
-재구축 보고)가 센다. **처음 인입**(그 문서의 지난 대장이 없다)은 재생 대상이 아니라 세지도 행에 적지도 않는다 —
+재구축 보고)가 센다. **처음 인입**(그 문서의 지난 대장도 중간 저장도 없다 — B165)은 재생 대상이 아니라 세지도 행에 적지도 않는다 —
 재구축 · `--no-replay` 실행은 대장 없는 문서의 판정도 「키 없음」으로 센다(그 수가 재구축의 판정 비용이다 · `COUNT_ALL`).
 """
 from __future__ import annotations
@@ -46,6 +46,8 @@ STATS = dict(_ZERO)
 DOC = dict(_ZERO)
 #: 이번 문서의 재료 — `{키: 대장 행}`
 TABLE = {}
+#: 이번 문서의 중간 저장(B165 ③) — `{"행": n}`(재료로 씀) · `{"버림": n}`(원본이 바뀌어 쓰지 않음) · 없으면 빈 dict
+PARTIAL = {}
 
 REPLAYABLE = ("match", "new", "uncertain")
 #: 재료가 되는 대장 행의 역할 — 개체 값 · 소속 대상(`core/build/belongs.FIELD` 열) · 제목 개체(B115 ② — 위치 = 제목 경로)
@@ -65,19 +67,29 @@ def key(locator, field, surface, layer):
     return (str(locator), str(field), norm(surface or ""), layer)
 
 
-def begin(doc_id):
-    """문서 실행 시작 — 그 문서의 지난 대장을 재료로 읽는다(새 대장이 덮기 전). 돌려주는 것은 재료 수."""
+def begin(doc_id, doc_hash=None):
+    """문서 실행 시작 — 그 문서의 지난 대장을 재료로 읽는다(새 대장이 덮기 전). 돌려주는 것은 재료 수.
+
+    **멈춘 실행의 중간 저장**(B165 ③ — `ledger.read_partial`)도 재료다 — 지난 확정 대장보다 새 판이라 앞에 둔다 · 처음
+    인입이어도 중간 저장이 있으면 재생 대상 · 문서 해시가 지금 원본과 다르면 버린다(`PARTIAL` — 화면 한 줄의 재료)."""
     from core.build import ledger
     global LIVE
     DOC.update(_ZERO)
     TABLE.clear()
+    PARTIAL.clear()
     data = ledger.read(doc_id)
-    LIVE = data is not None or COUNT_ALL
+    part = ledger.read_partial(doc_id)
+    if part is not None and doc_hash is not None and part.get("doc_hash") != doc_hash:
+        PARTIAL["버림"] = len(part.get("rows") or [])
+        part = None
+    elif part is not None:
+        PARTIAL["행"] = len(part.get("rows") or [])
+    LIVE = data is not None or part is not None or COUNT_ALL
     # **연결 보강의 지난 행**(B115 ④) — 보강은 빌드 말미(`finalize`)에 돌아 그때는 새 대장이 이미 덮었다 · 여기서 잡아 둔다
     from core.build import reinforce
     reinforce.PRIOR[doc_id] = [r for r in (data or {}).get("rows") or [] if r.get("role") == reinforce.ROLE]
     n = 0
-    for r in (data or {}).get("rows") or []:
+    for r in ((part or {}).get("rows") or []) + ((data or {}).get("rows") or []):
         if r.get("role") not in ROLES or r.get("verdict") not in REPLAYABLE:
             continue
         TABLE.setdefault(key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")), []).append(r)

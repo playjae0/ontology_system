@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from core.state.bootstrap import coord_layer
+from core.state.bootstrap import COORD_CATEGORY, coord_layer
 from cli.interview import (  # noqa: F401
     INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
     finalize as iv_finalize)
@@ -42,8 +42,9 @@ def harness(adapter, schema, samples, package=None, doc_type=None, roles_map=Non
         pkg += ["--ledger", str(led)]
     # **층 어휘는 상태 루트에서 본다**(B79 ①) — 킷은 core를 모르므로 자리를 건넨다.
     pkg += ["--layers", str(paths.layers())]
-    # 좌표 층의 이름도 같은 방식으로 건넨다(B85 ②) — 킷은 카테고리 판정을 못 한다.
-    pkg += ["--coord-layer", coord_layer()]
+    # 좌표 층의 이름도 같은 방식으로 건넨다(B85 ②) — 킷은 카테고리 판정을 못 한다. 좌표 카테고리도
+    # (B164 ② — anchor의 `target_category` 생략이 가리키는 목록 · 구축과 같은 값).
+    pkg += ["--coord-layer", coord_layer(), "--coord-category", COORD_CATEGORY]
     # 닫힌 목록 **파일**도 건넨다(B86 ②) — 킷은 상태 루트를 모르고 파서의 자리 주입은
     # subprocess에 닿지 않는다. 자리는 여기서 짓는다(store가 이름 → 자리를 안다).
     pkg += ["--closed-list", str(store.path(store.SKELETON_LIST))]
@@ -98,6 +99,8 @@ AUTO_FIX = {
     # **어댑터가 내는 키**(B72 ①) — 빠진 이름과 무엇을 하라는지가 문면에 있다.
     # 이것이 없어서 「스키마에 없는 필드 'meta'」가 **인입에서 행마다** 떴다.
     "어댑터가 내는 키가 전부 스키마": "빠진 필드 이름과 처방이 문면에 있다",
+    # **anchor 열의 대상 목록**(B164 ②) — 열 · 대상 카테고리 · 맞은 수와 고칠 키가 문면에 있다.
+    "anchor 열의 값이 대상 골격 목록에": "열 · 대상 카테고리 · 고칠 키(`target_category`)가 문면에 있다",
 }
 
 

@@ -21,6 +21,9 @@
      표·산문 × 층 둘
   ⓗ 골격 별칭 추가 + `bootstrap`(끝 줄 「보류 n건 … 다음 인입 마무리에서 다시 붙는다」) → 다음 마무리에서
      보류분 연결 — 그래프 수가 그대로여도(재시도 지문에 골격·사전의 판) · 표·산문 × 층 둘
+  B164 ⓐ 좌표를 fields에 직접 적고 `target_category`를 뺀 스키마로 구축이 돈다 · 좌표 골격 노드로 해소(블록 판과 같다)
+       ⓑ 공정 아닌 anchor 열의 `target_category`가 빠지면 G4K FAIL + 문면 · 맞으면 PASS · 목록 없으면 생략 줄
+       ⓒ G4K는 자동 지시 갈래
 """
 from __future__ import annotations
 
@@ -208,6 +211,74 @@ with tempfile.TemporaryDirectory(prefix="b100_") as td:
     _ok_c.append(("quality", "문턱100", "[PASS]" in l100 and "문턱 100%" in l100, l100.strip()[:160]))
 show("ⓒ 관문 G4H — 골격 값 열을 entity로 → FAIL 문면 + 다음 줄(좌표 몫·자기 몫) · 원래 매핑은 PASS(ⓑ) · 문턱은 손잡이",
      all(o for _l, _s, o, _d in _ok_c), " ‖ ".join(f"{l}·{s} {d}" for l, s, _o, d in _ok_c))
+
+print("\n■ B164 ① anchor의 target_category 생략 = 좌표 카테고리 · ② 관문 G4K")
+import copy as _cp164                              # noqa: E402
+from core.state import registry as RG164          # noqa: E402
+_sch164 = RG164.schema_of("pfmea")
+_blk164 = json.loads(_P.blocks().read_text(encoding="utf-8"))
+_cb164 = next(b for b in _sch164["use_blocks"] if "process_ref" in (_blk164.get(b) or {}))
+# 사내 LLM 스키마의 꼴 — 좌표를 블록이 아니라 fields에 직접 · `target_category` 없이(창작 사본)
+_direct164 = dict(_sch164, use_blocks=[b for b in _sch164["use_blocks"] if b != _cb164],
+                  fields={**{f: {k: v for k, v in s.items() if k != "target_category"}
+                             for f, s in _blk164[_cb164].items() if not f.startswith("_")},
+                          **_sch164["fields"]})
+
+
+def _coord164():
+    """PFMEA01이 남긴 엣지 중 좌표 골격 노드로 가는 것 — (출발 이름, 관계, 골격 이름)."""
+    names = {i: n.get("canonical") for lay in ("process", "quality") for i, n in open_graph(lay).nodes.items()}
+    sk = {i: n["canonical"] for i, n in open_graph("process").nodes.items()
+          if n.get("category") == BS.COORD_CATEGORY}
+    return {(names.get(e.get("src")), e.get("rel"), sk[e["dst"]])
+            for lay in ("process", "quality") for e in open_graph(lay).edges
+            if e.get("dst") in sk and any(str(p).startswith("PFMEA01#") for p in e.get("provenance") or [])}
+
+
+_fresh()
+run_document(load("PFMEA01"))
+_blk_e164 = _coord164()
+_fresh()
+with tempfile.TemporaryDirectory(prefix="b164_") as td:
+    _sp164 = Path(td) / "b164pf.json"
+    _sp164.write_text(json.dumps(_direct164, ensure_ascii=False), encoding="utf-8")
+    if RG164.lookup("b164pf"):
+        RG164.unregister("b164pf")                 # 등록 단은 클린이 안 지운다
+    RG164.register("b164pf", layer=_sch164["layer"], adapter="(시험)", schema=str(_sp164),
+                   adapter_version="t", approved_by="시험", approved_at="t")
+    _env164 = load("PFMEA01")
+    for _r in [_env164] + (_env164.get("records") or []):
+        _r["doc_type"] = "b164pf"
+    try:
+        run_document(_env164)
+        _err164 = None
+    except Exception as _e:                        # noqa: BLE001 — 고치기 전에는 KeyError로 멈췄다
+        _err164 = f"{type(_e).__name__}: {_e}"
+    _dir_e164 = _coord164()
+    RG164.unregister("b164pf")
+show("ⓐ 좌표를 fields에 직접 적고 target_category를 뺀 스키마로 구축이 돈다 · 좌표 골격 노드로 해소(블록 판과 같은 엣지)",
+     _err164 is None and _blk_e164 and _dir_e164 == _blk_e164,
+     f"예외 {_err164} · 좌표 엣지 {len(_dir_e164)}/{len(_blk_e164)}")
+
+# ② 공정 아닌 anchor 열에서 target_category를 빼면 — 조용히 좌표 목록에서 찾아 전 행 orphan이 될 자리를 등록이 막는다
+_af164 = next(f for f, s in _sch164["fields"].items()
+              if s.get("role") == "anchor" and s.get("target_category") not in (None, BS.COORD_CATEGORY))
+_bad164 = _cp164.deepcopy(_sch164)
+_bad164["fields"][_af164].pop("target_category")
+with tempfile.TemporaryDirectory(prefix="b164g_") as td:
+    _bp164 = Path(td) / "pfmea_b164.json"
+    _bp164.write_text(json.dumps(_bad164, ensure_ascii=False), encoding="utf-8")
+    _okb164, _outb164 = GT.harness(FX / "adapters" / "pfmea.py", _bp164, [RAW / "PFMEA01.xlsx"])
+_okg164, _outg164 = GT.harness(FX / "adapters" / "pfmea.py", _P.fixture_schemas("pfmea.json"), [RAW / "PFMEA01.xlsx"])
+_nol164 = GT._run_kit(FX / "adapters" / "pfmea.py", _P.fixture_schemas("pfmea.json"), [], [RAW / "PFMEA01.xlsx"]).stdout
+_g4k164 = next((l.strip() for l in _outb164.splitlines() if "G4K" in l), "")
+show("ⓑ 공정 아닌 anchor 열의 target_category가 빠지면 G4K FAIL + 문면 · 맞으면 PASS · 목록 없으면 생략 줄",
+     "[FAIL]" in _g4k164 and f"'{_af164}'" in _g4k164 and " 0/" in _g4k164 and "target_category" in _g4k164
+     and "[PASS] G4K" in _outg164 and "G4K 대조 생략" in _nol164,
+     _g4k164[:160])
+show("ⓒ G4K 문면이 자동 지시로 분류된다 (classify_failures의 auto)",
+     any("G4K" in a for a in GT.classify_failures(_outb164)[0])
+     and not any("G4K" in a for a in GT.classify_failures(_outb164)[1]))
 
 print("\n■ B100 ③ 지시문 · 자산 해시")
 _p14 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")

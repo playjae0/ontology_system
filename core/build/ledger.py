@@ -2,6 +2,7 @@
 """칸 3.4 — 판정 대장 — **문서마다, 값마다, 어떻게 해소했는가** (B74 ② · 문서 7 §7.8).
 
     <상태>/work/ingest_log/{doc_id}.json      (④단 — B78 1b · 자리는 `store.path`가 안다)
+    <상태>/work/ingest_log/{doc_id}.partial.json  (중간 저장 — 표의 공정 그룹 경계마다 · 확정하면 지운다 · B165)
 
 정본이 아니라 **장부**다: 재인입이 덮고, 그래프를 되돌려 읽지 않는다. 있는 이유는
 하나다 — 「몇 개가 로직이고 몇 개가 LLM인가」와 「이 행이 어디에 붙었나」를 **사후에
@@ -50,10 +51,21 @@ ON_EDGE = None
 #: 조각 하나의 부착이 끝났다(B119 ⑤) — 산문 화면이 그 조각의 값 행을 붙은 자리와 함께 낸다(위치 · None = 남은 전부).
 ON_CHUNK = None
 
+#: 표의 공정 그룹 하나가 끝났다(B165 ①) — 화면이 그룹 요약 줄을 내고 `--step`이면 묻는다(멈춤은 `entry.Stopped`)
+ON_GROUP = None
+
+#: 멈춘 실행의 **중간 저장** 꼬리 — `ingest_log/{doc_id}.partial.json`(B165 ① · 머리에 문서 해시 · 확정하면 지운다)
+PARTIAL = ".partial.json"
+
 
 def chunk_done(locator=None):
     if ON_CHUNK is not None:
         ON_CHUNK(locator)
+
+
+def group_done(info):
+    if ON_GROUP is not None:
+        ON_GROUP(info)
 
 
 def attach(row, rel, other, how, arrow):
@@ -68,6 +80,15 @@ def attach(row, rel, other, how, arrow):
 
 def name_of(doc_id):
     return f"{DIR}/{doc_id}.json"
+
+
+def partial_name(doc_id):
+    return f"{DIR}/{doc_id}{PARTIAL}"
+
+
+def read_partial(doc_id):
+    """그 문서의 중간 저장(멈춘 실행 · 확정 전) — 없으면 None."""
+    return store.read(partial_name(doc_id), None) if store.path(partial_name(doc_id)).exists() else None
 
 
 def row(*, locator=None, field=None, role=None, surface=None,
@@ -171,10 +192,16 @@ class Ledger:
         return self.rows[-1]
 
     def save(self):
-        """**재인입이 덮는다** — 이전 대장이 남지 않는다(완료판정 ②)."""
+        """**재인입이 덮는다** — 이전 대장이 남지 않는다(완료판정 ②) · 확정하면 중간 저장은 지운다(B165)."""
         store.write(name_of(self.doc_id),
                     {"doc_id": self.doc_id, "rows": self.rows})
+        store.path(partial_name(self.doc_id)).unlink(missing_ok=True)
         return len(self.rows)
+
+    def save_partial(self, doc_hash):
+        """**그룹 경계의 중간 저장**(B165 ①) — 지금까지의 행 · 머리에 문서 해시(원본이 바뀌면 재생이 버린다) · 원자적 쓰기."""
+        store.write(partial_name(self.doc_id),
+                    {"doc_id": self.doc_id, "doc_hash": doc_hash, "rows": self.rows})
 
 
 def attach_result(doc_id, result):
@@ -221,6 +248,16 @@ def summary(rows):
     return out
 
 
+def group_summary(rows):
+    """**그룹 요약의 수**(B165 ①) — 대장 행에서 센다: 값 · 매칭 · 신규 · 불확실 · LLM 호출 · 골격 밖 공정(못 푼 좌표의 표기 종수)."""
+    from core.state.ids import norm
+    s = summary(rows)
+    return {"값": s["값"], "매칭": sum(1 for r in rows if r.get("role") == "entity" and r.get("verdict") == "match"),
+            "신규": s["신규"], "불확실": s["불확실"], "호출": s["호출"],
+            "골격밖": len({norm(r["surface"]) for r in rows
+                        if r.get("role") == "anchor" and r.get("verdict") == "orphan" and r.get("surface")})}
+
+
 def made_by():
     """`node_id → 그 노드를 처음 만든 행의 path` (B74 ③ — 뷰어가 읽는다).
 
@@ -232,6 +269,8 @@ def made_by():
     if not d.exists():
         return out
     for f in sorted(d.glob("*.json")):
+        if f.name.endswith(PARTIAL):
+            continue                                # 중간 저장은 확정 전이다(B165) — 그 노드는 그래프에 없다
         data = store.read(f"{DIR}/{f.name}", None) or {}
         for r in data.get("rows") or []:
             nid = r.get("node_id")

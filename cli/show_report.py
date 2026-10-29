@@ -31,7 +31,8 @@ def cmd_report(args):
         raise SystemExit("doc_id를 달라: run.py show report CP01")          # [사용법]
     doc = args[0]
     as_json = "--json" in args
-    data = ledger.read(doc)
+    part = ledger.read_partial(doc)                # 멈춘 · 진행 중인 실행의 중간 저장이 있으면 그것(B165 ②)
+    data = part if part is not None else ledger.read(doc)
     if data is None:
         _refuse_no_ledger(doc)
     rows = data.get("rows") or []
@@ -45,12 +46,14 @@ def cmd_report(args):
     from cli import report_cause
     diag, diag_js = report_cause.report(doc, data, verbose=_screen.VERBOSE or "-v" in args)   # -v는 진입점이 뗀다(전역 화면 플래그)
     if as_json:
-        print(json.dumps({"doc_id": doc, "rows": rows,
+        print(json.dumps({"doc_id": doc, "rows": rows, **({"중간저장": True} if part is not None else {}),
                           "summary": ledger.summary(rows), "진단": diag_js},
                          ensure_ascii=False, indent=1))
         return 0
     su = ledger.summary(rows)
     kinds = Counter(r.get("role") for r in rows)
+    if part is not None:
+        print(f"  (중간 저장 — 멈춘 · 진행 중인 실행 · 확정 전 · {paths.show(store.path(ledger.partial_name(doc)))})")
     print(f"■ {doc} 판정 대장 — 행 {len(rows)}건 "
           f"(entity {kinds.get('entity', 0)} · anchor {kinds.get('anchor', 0)} · "
           f"부착 {kinds.get('attribute', 0) + kinds.get('content', 0) + kinds.get('attach', 0)})")
@@ -168,7 +171,7 @@ def _refuse_no_ledger(doc):
     # **대장의 자리는 store가 안다**(B86 ③) — 구판은 레포의 옛 ③단 자리를 문면에 적고
     # **대장 수도 거기서 셌다**(B78 1b에 ④단 `work/`로 옮겼다 — 늘 0건이었다).
     _dir = store.path(ledger.DIR)
-    _n = len(list(_dir.glob("*.json"))) if _dir.exists() else 0
+    _n = len([f for f in _dir.glob("*.json") if not f.name.endswith(ledger.PARTIAL)]) if _dir.exists() else 0
     raise SystemExit(                                                    # [상태] 문면=_refuse_no_ledger
         f"[대장] '{doc}'의 판정 대장이 없다 — {paths.show(store.path(ledger.name_of(doc)))} "
         f"(인입 기록은 {'있다' if meta else '없다'} · 대장 파일 {_n}건)\n"

@@ -73,6 +73,9 @@ def _base():
     _register("quality", QDT)
 
 
+from core.build import ledger as _LDG                                  # noqa: E402 — 중간 저장 꼬리(B165)
+
+
 def _state():
     """③ + 판정 대장 — 그래프(층마다) · 사전 · 큐 · 청크 · 문서 대장 · 대장 행 · data 파일 목록(id는 이름으로 · 시각 뺌)."""
     nm = {n["id"]: f"{lay}:{n['canonical']}" for lay, n in World().nodes()}
@@ -90,8 +93,9 @@ def _state():
                   for lay, g in World().graphs.items()},
         "dict": store.read(store.DICTIONARY, {}), "queue": store.read(store.QUEUE, []),
         "chunks": store.read(store.CHUNKS, {}), "docs": store.read(store.DOC_REGISTRY, {}),
-        "ledger": {f.name: json.loads(f.read_text(encoding="utf-8")) for f in sorted(led.glob("*.json"))}
-        if led.exists() else {},
+        # 기대 변경(B165 — 멈춘 실행의 중간 저장은 다시 칠 때의 재생 재료다(④ · 체크포인트와 같은 결) · 흔적 비교 밖)
+        "ledger": {f.name: json.loads(f.read_text(encoding="utf-8")) for f in sorted(led.glob("*.json"))
+                   if not f.name.endswith(_LDG.PARTIAL)} if led.exists() else {},
         "files": sorted(_P.rel_to_home(x) for x in _P.data().rglob("*") if x.is_file() and not x.name.endswith(".lock"))}),
         ensure_ascii=False, sort_keys=True)
 

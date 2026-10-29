@@ -312,7 +312,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         del _bld.ADDED[:]
         # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
         from core.build import replay as _rp
-        _rp.begin(doc_id)
+        from core.state.ids import doc_hash as _dh
+        _rp.begin(doc_id, _dh(env))                       # 멈춘 실행의 중간 저장도 — 원본이 바뀌었으면 버린다(B165 ③)
         # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)
         _q0 = store.read(store.QUEUE, [])
         from core.dictionary import Dictionary as _D

@@ -57,7 +57,9 @@ def build_table(env, cfg, schema, graph, defer_save=False):
     doc_id = env["doc_id"]
     envelope_ctx = loop._context(env, env.get("source_path"), doc_id)
 
+    groups = _Groups(b.ledger, env)            # 판정을 공정 그룹 단위로 끊는다 (B165 ①)
     for rec in env.get("records", []):
+        groups.step(rec)
         r = _Row(rec, doc_id)
         loop._check_fields(rec, fields, r.prov, doc_id)
         _row_anchor(b, r, envelope_ctx, doc_id)
@@ -70,8 +72,9 @@ def build_table(env, cfg, schema, graph, defer_save=False):
                        dropped_entities=r.dropped_ents,
                        coord_missing=(r.coord_case == "missing"), prov=r.prov,
                        electrode_type=r.et)
+    groups.end()
 
-    if getattr(b, "mentions", None):                 # 다른 공정 언급 → 관련 링크 (B113 ① — 산문과 같은 함수)
+    if getattr(b, "mentions", None):                # 다른 공정 언급 → 관련 링크 (B113 ① — 산문과 같은 함수)
         ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
         if loop.link_mentions(b, ch):
             store.write(store.CHUNKS, ch)
@@ -79,6 +82,46 @@ def build_table(env, cfg, schema, graph, defer_save=False):
         b.flush()
     b.ledger.save()
     return b
+
+
+class _Groups:
+    """**판정을 공정 그룹 단위로 끊는다**(B165 ①) — `process_group` 값이 바뀌는 자리마다 대장 중간 저장 + 그룹 손잡이
+    (`ledger.ON_GROUP` — 요약 줄 · `--step`이면 멈춤).
+
+    행 순서 그대로다(다시 정렬하지 않는다 — 결과가 한 번에 돌린 것과 같다) · 빈 값의 행은 앞 그룹에 든다 · 값이 내내
+    같거나 없으면 경계 0(지금과 같다 — 중간 저장 · 손잡이 0) · 마지막 그룹은 확정 저장이 겸한다. 그래프 · 사전 · 큐 ·
+    청크는 문서 끝에 한 번이다(문서 단위 원자성 C14 그대로 — 멈추면 되돌림 경계가 시작 전 판으로)."""
+    FIELD = "process_group"
+
+    def __init__(self, led, env):
+        self.led, self.env = led, env
+        names = [x.get(self.FIELD) for x in env.get("records") or [] if x.get(self.FIELD) not in (None, "")]
+        self.on = any(a != b for a, b in zip(names, names[1:]))
+        self.cur, self.start, self.recs, self.no, self.hash = None, 0, 0, 0, None
+
+    def step(self, rec):
+        g = rec.get(self.FIELD)
+        if g not in (None, "") and g != self.cur:
+            if self.on and self.cur is not None:
+                self._done(last=False)
+            self.cur = g
+        self.recs += 1
+
+    def end(self):
+        if self.on and self.recs:
+            self._done(last=True)
+
+    def _done(self, last):
+        from core.build import ledger as ledger_mod
+        from core.state.ids import doc_hash
+        self.no += 1
+        if not last:
+            self.hash = self.hash or doc_hash(self.env)
+            self.led.save_partial(self.hash)
+        ledger_mod.group_done({"이름": self.cur, "번째": self.no, "행": self.recs, "끝": last,
+                               "요약": ledger_mod.group_summary(self.led.rows[self.start:]),
+                               "누계": ledger_mod.group_summary(self.led.rows), "doc_id": self.led.doc_id})
+        self.start, self.recs = len(self.led.rows), 0
 
 
 def _row_anchor(b, r, envelope_ctx, doc_id):

@@ -165,6 +165,11 @@ KNOBS_PATH = None
 COORD_FLAG = "--coord-layer"
 COORD_LAYER = None
 
+# 좌표 **카테고리**도 건네받는다(B164 ② — 같은 결) — anchor의 `target_category` 생략은 좌표
+# 카테고리다(문서 2 §2.4 ①). 받지 못하면 생략한 anchor 열의 대조(G4K)를 생략하고 그렇게 말한다.
+COORD_CAT_FLAG = "--coord-category"
+COORD_CATEGORY = None
+
 # 골격 닫힌 목록 **파일**도 건네받는다(B86 ② — `--layers`와 같은 결). 파서의
 # 주입 전 기본값이 없으므로 킷이 받지 못하면 좌표 대조를 **생략하고 그렇게 말한다**.
 CLOSED_FLAG = "--closed-list"
