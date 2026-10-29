@@ -269,8 +269,8 @@ with tempfile.TemporaryDirectory(prefix="b164g_") as td:
     _bp164 = Path(td) / "pfmea_b164.json"
     _bp164.write_text(json.dumps(_bad164, ensure_ascii=False), encoding="utf-8")
     _okb164, _outb164 = GT.harness(FX / "adapters" / "pfmea.py", _bp164, [RAW / "PFMEA01.xlsx"])
-_okg164, _outg164 = GT.harness(FX / "adapters" / "pfmea.py", FX / "schemas" / "pfmea.json", [RAW / "PFMEA01.xlsx"])
-_nol164 = GT._run_kit(FX / "adapters" / "pfmea.py", FX / "schemas" / "pfmea.json", [], [RAW / "PFMEA01.xlsx"]).stdout
+_okg164, _outg164 = GT.harness(FX / "adapters" / "pfmea.py", _P.fixture_schemas("pfmea.json"), [RAW / "PFMEA01.xlsx"])
+_nol164 = GT._run_kit(FX / "adapters" / "pfmea.py", _P.fixture_schemas("pfmea.json"), [], [RAW / "PFMEA01.xlsx"]).stdout
 _g4k164 = next((l.strip() for l in _outb164.splitlines() if "G4K" in l), "")
 show("ⓑ 공정 아닌 anchor 열의 target_category가 빠지면 G4K FAIL + 문면 · 맞으면 PASS · 목록 없으면 생략 줄",
      "[FAIL]" in _g4k164 and f"'{_af164}'" in _g4k164 and " 0/" in _g4k164 and "target_category" in _g4k164

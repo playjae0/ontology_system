@@ -323,7 +323,9 @@ def check_anchor_columns(schema, fields, pieces):
         if not cat:
             print(f"      anchor 열 '{name}' — 좌표 카테고리를 받지 못했다(--coord-category) · G4K 대조 생략")
             continue
-        vals = [p.get(name) for p in pieces if p.get(name) not in (None, "")]
+        # 낱값만 — 목록 · 구조체는 조회 값이 아니다(그 꼴은 ⑤단 계약 검사 G52가 잡는다)
+        vals = [p.get(name) for p in pieces
+                if isinstance(p.get(name), (str, int, float)) and p.get(name) != ""]
         if not vals:
             continue
         hit, _by = tagger.skeleton_hits(vals, [n for n in nodes if n.get("category") == cat])
