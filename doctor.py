@@ -182,6 +182,11 @@ def _capture_lines(probe=True):
     line(OK if ok else WARN, f"PPT 캡처 — {'가능(' + route + ')' if ok else '불가'}",
          "PPT · PDF 실호출 인입은 사전 점검에서 이 길과 그림 입력(llm-check ⑦)을 잰다" if ok
          else f"빠진 것: {miss} — 실호출 PPT 인입은 사전 점검에서 멈춘다(캡처 없이는 --no-capture)")
+    if probe:                                               # 캡처 한글 글꼴(B168 ④) — `--env`만(fc-match 한 번)
+        st, fam = render.korean_font()
+        line(OK if st == render.FONT_OK else WARN, f"PPT 캡처 한글 글꼴 — {st}" + (f"({fam})" if fam else ""),
+             "soffice 캡처가 한글을 이 글꼴로 그린다" if st == render.FONT_OK
+             else render.FONT_NEXT + " · 실호출 PPT · PDF 사전 점검이 같은 경고를 낸다(멈추지 않는다)")
 
 
 # ================================================================ ① 환경

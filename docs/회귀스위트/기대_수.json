@@ -3,51 +3,51 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 7
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 9
+   "secs": 8
   },
   "test_g3": {
    "n": 82,
-   "secs": 3
+   "secs": 2
   },
   "test_query": {
    "n": 131,
-   "secs": 19
+   "secs": 18
   },
   "test_ops": {
    "n": 84,
-   "secs": 9
+   "secs": 8
   },
   "test_intake": {
    "n": 100,
    "secs": 19
   },
   "test_ingest_view": {
-   "n": 77,
-   "secs": 37
+   "n": 78,
+   "secs": 35
   },
   "test_coord": {
    "n": 49,
-   "secs": 13
+   "secs": 14
   },
   "test_catalog": {
-   "n": 68,
-   "secs": 27
+   "n": 69,
+   "secs": 26
   },
   "test_safety": {
    "n": 36,
-   "secs": 70
+   "secs": 62
   },
   "test_judge": {
    "n": 86,
-   "secs": 12
+   "secs": 11
   },
   "test_build": {
    "n": 79,
-   "secs": 34
+   "secs": 29
   },
   "test_rebuild": {
    "n": 47,
@@ -55,23 +55,23 @@
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 9
+   "secs": 8
   },
   "test_structure": {
-   "n": 111,
-   "secs": 26
+   "n": 126,
+   "secs": 27
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 26
+   "secs": 23
   },
   "test_g6_close": {
    "n": 31,
-   "secs": 37
+   "secs": 31
   },
   "test_contract": {
    "n": 76,
-   "secs": 22
+   "secs": 21
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,11 +87,11 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 2
+   "secs": 5
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 4
+   "secs": 5
   },
   "test_p2": {
    "n": 69,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 7
+   "secs": 5
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,7 +107,7 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 7
+   "secs": 5
   },
   "test_p3_view": {
    "n": 32,
@@ -115,15 +115,15 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 6
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 5
+   "secs": 3
   },
   "test_p3_flow": {
    "n": 69,
@@ -135,7 +135,7 @@
   },
   "test_viewer": {
    "n": 60,
-   "secs": 2
+   "secs": 3
   },
   "verify_roundtrip": {
    "n": 50,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 25
+   "secs": 26
   }
  },
  "log": [
@@ -609,6 +609,54 @@
    "suite": "test_rebuild",
    "from": 45,
    "to": 47,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "3c3d091",
+   "suite": "test_ingest_view",
+   "from": 77,
+   "to": 78,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "3c3d091",
+   "suite": "test_catalog",
+   "from": 68,
+   "to": 69,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "3c3d091",
+   "suite": "test_structure",
+   "from": 111,
+   "to": 116,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "6c6d82b",
+   "suite": "test_structure",
+   "from": 116,
+   "to": 120,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "9c1f816",
+   "suite": "test_structure",
+   "from": 120,
+   "to": 124,
+   "why": ""
+  },
+  {
+   "at": "2026-10-29",
+   "head": "da7336d",
+   "suite": "test_structure",
+   "from": 124,
+   "to": 126,
    "why": ""
   }
  ]

@@ -4,10 +4,10 @@ PDF)의 한 쪽을 캡처 · 그림 원본 · 상자 목록 · 덱 판단의 그
 
     입력  쪽 캡처(주 입력) + 그 쪽 그림 원본 + 상자 목록 + 덱 판단의 그 장 칸(PPT) + 앞 장 쪽 요약(이어진 장) + 읽기 지식 + 사람 힌트
           — **층 config · 골격 목록 0**(메타는 층과 무관하다 — B148 대전제)
-    출력  {figures: [{box, kind, labels, seen: [{text, basis}], meaning, unreadable}], relations: [{from, to, relation}],
+    출력  {figures: [{box, what, certainty, grounds, kind, labels, seen: [{text, basis}], meaning, unreadable}], relations: [{from, to, relation}],
            summary: [{text, boxes}]}
     검사  상자 id 실재 · 종류 · 관계 이름은 닫힌 목록 · 보이는 것의 근거는 보임/추론 · 요약 문장마다 근거 id ≥ 1 — 어긋난 칸만 버리고
-          결함 로그(코드는 검사만) · 그림 속 글자는 그 쪽 상자 글에 있으면 `labels_in_text`에 표시(없어도 버리지 않는다)
+          결함 로그(코드는 검사만) · 첫 줄(`what` — 무엇인가 한 문장) · 확신(닫힌 셋 — 밖이면 그 칸만 버림) · 근거(B169) · 그림 속 글자는 그 쪽 상자 글에 있으면 `labels_in_text`에 표시(없어도 버리지 않는다)
 
 **읽기 지식**(④ — `registry/reading_knowledge.md` · 등록 단 사람 자산 하나 · 층 무관 · 없으면 일반 지식만)은 지시문 끝에 붙고 그
 해시가 보존 열쇠에 든다(고치면 그 뒤 판독은 다시 부른다). 파서는 LLM을 부르지 않으므로 이 함수가 주입된다(`cli.parse.injections`) ·
@@ -34,19 +34,23 @@ KNOWLEDGE = "reading_knowledge.md"
 KINDS = ("사진", "도면", "그래프", "흐름도", "스크린샷", "전후 비교", "그 밖")
 RELATIONS = ("설명", "가리킴", "라벨", "전후 비교", "순서", "원인→결과", "비교")
 BASIS = ("보임", "추론")
+CERTAINTY = ("높음", "중간", "낮음")            # 그림 첫 줄의 확신(B169 ①)
 
 SCHEMA = {
     "type": "object",
     "properties": {
         "figures": {"type": "array", "items": {
             "type": "object",
-            "properties": {"box": {"type": "string"}, "kind": {"type": "string"},
+            "properties": {"box": {"type": "string"}, "what": {"type": ["string", "null"]},
+                           "certainty": {"type": ["string", "null"]}, "grounds": {"type": ["string", "null"]},
+                           "kind": {"type": "string"},
                            "labels": {"type": "array", "items": {"type": "string"}},
                            "seen": {"type": "array", "items": {
                                "type": "object", "properties": {"text": {"type": "string"}, "basis": {"type": "string"}},
                                "required": ["text", "basis"], "additionalProperties": False}},
                            "meaning": {"type": ["string", "null"]}, "unreadable": {"type": "boolean"}},
-            "required": ["box", "kind", "labels", "seen", "meaning", "unreadable"], "additionalProperties": False}},
+            "required": ["box", "what", "certainty", "grounds", "kind", "labels", "seen", "meaning", "unreadable"],
+            "additionalProperties": False}},
         "relations": {"type": "array", "items": {
             "type": "object", "properties": {"from": {"type": "string"}, "to": {"type": "string"}, "relation": {"type": "string"}},
             "required": ["from", "to", "relation"], "additionalProperties": False}},
@@ -103,7 +107,12 @@ def check(doc_id, inp, ans, text=""):
             else:
                 bad("보이는 것", f"근거 '{str((st or {}).get('basis'))[:10]}'는 보임 · 추론 밖이거나 글이 비었다")
         labels = [str(x).strip() for x in f.get("labels") or [] if str(x).strip()]
-        figs.append({"box": f["box"], "kind": kind, "labels": labels,
+        sure = f.get("certainty")
+        if sure not in (None, "") and sure not in CERTAINTY:
+            bad("확신", f"'{str(sure)[:10]}'는 높음 · 중간 · 낮음 밖")
+            sure = None
+        figs.append({"box": f["box"], "what": str(f.get("what") or "").strip() or None, "certainty": sure or None,
+                     "grounds": str(f.get("grounds") or "").strip() or None, "kind": kind, "labels": labels,
                      "labels_in_text": [x for x in labels if norm(x) in whole],
                      "seen": seen, "meaning": str(f.get("meaning") or "").strip() or None,
                      "unreadable": bool(f.get("unreadable"))})
@@ -185,6 +194,17 @@ def reader(notice=None):
 
 # ---------------------------------------------------------------- 사람의 고침 (판독 표 — 등록 단)
 def record_fix(doc_id, page, fix):
-    """판독 고침 한 칸 — `@판독` 프레임(쪽 번호 · `{action: 다시, hint}` 또는 `{action: 지움}` — 같은 쪽은 덮는다 · 덱 고침과 같은 파일)."""
+    """판독 고침 한 칸 — `@판독` 프레임(쪽 번호 · `{action: 다시, hint}` 또는 `{action: 지움}` — 같은 쪽은 덮는다 · 덱 고침과 같은 파일).
+    `자세히` · `빼기`(B168 ③ — `{action, box}`)는 그 쪽 칸의 그림 목록(`자세히` · `빼기`)에 더한다(같은 그림은 다른 목록에서 뺀다) ·
+    다시 · 지움은 그 목록을 남긴다."""
     from core.build import structure as ST
+    from parser.reading import DETAIL, DROP
+    cur = {k: v for k, v in ((ST.fixes_of(doc_id).get(FRAME) or {}).get(int(page)) or {}).items() if k not in ("by", "at")}
+    if fix.get("action") in (DETAIL, DROP):
+        other = DROP if fix["action"] == DETAIL else DETAIL
+        cur[fix["action"]] = sorted(set(cur.get(fix["action"]) or []) | {fix["box"]})
+        cur[other] = [x for x in cur.get(other) or [] if x != fix["box"]]
+        fix = {k: v for k, v in cur.items() if v not in ([], None)}
+    else:
+        fix = {**{k: cur[k] for k in (DETAIL, DROP) if cur.get(k)}, **fix}
     ST.record_fix(doc_id, FRAME, page, fix)

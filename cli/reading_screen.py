@@ -3,7 +3,8 @@
 
     번호(쪽) · 슬라이드 · 쪽 요약 앞부분 · 그림 · 관계 · 버림 · 상태(부름 · 재사용 · 출처 · 건너뜀 · 지움 · 사람 힌트)
     `c` 계속 · `q` 멈춤 · `<번호> 다시 <힌트>`(그 장만 힌트를 넣어 다시 판독 — 힌트는 보존 열쇠에 · 다른 장은 재사용) ·
-    `<번호> 지움`(그 장 판독을 쓰지 않는다 — 봉투에 지움 표시)
+    `<번호> 지움`(그 장 판독을 쓰지 않는다 — 봉투에 지움 표시) · `<번호> 자세히 <그림 id>`(그 그림을 원본으로) ·
+    `<번호> 빼기 <그림 id>`(그 그림 원본 0 — 사람이 뺌 · B168 ③)
 
 고침은 `registry/structure_fixes.json`의 `@판독` 프레임(덱 고침 `@덱`과 같은 파일 · 같은 꼴 — 재파싱 · 재구축이 재생) → 다시 파싱.
 `--split-only --step`이면 판독까지 보고 고친 뒤 구조까지에서 멈춘다(추출 0 · 그래프 쓰기 0).
@@ -13,9 +14,10 @@ from __future__ import annotations
 from cli import _screen
 from cli import reading_md as RM
 
-PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 다시 <힌트> · <번호> 지움] "
+PROMPT = "   [계속 c / 멈춤 q / 고침 <번호> 다시 <힌트> · <번호> 지움 · <번호> 자세히|빼기 <그림 id>] "
 HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 다시 <힌트>」(그 장만 힌트를 넣어 다시 읽는다 — 다른 장은 재사용) · "
-        "「<번호> 지움」(그 장 판독을 쓰지 않는다) — 번호는 표의 쪽 번호 · 다시 친다")
+        "「<번호> 지움」(그 장 판독을 쓰지 않는다) · 「<번호> 자세히 <그림 id>」(캡처로 본 그림을 원본으로) · 「<번호> 빼기 <그림 id>」"
+        "(읽은 그림의 원본을 뺀다) — 번호는 표의 쪽 번호 · 그림 id는 split md의 상자 id · 다시 친다")
 
 
 def _state(e):
@@ -43,7 +45,7 @@ def print_table(env):
 
 def parse_fix(answer, env):
     """판독 고침 → `(쪽 번호, 고침)` · 못 읽으면 None. 번호는 판독 표의 쪽 번호(판독 블록에 있는 쪽만)."""
-    from parser.reading import AGAIN, DELETE
+    from parser.reading import AGAIN, DELETE, DETAIL, DROP
     toks = answer.split()
     if len(toks) < 2 or not toks[0].isdigit():
         return None
@@ -54,7 +56,15 @@ def parse_fix(answer, env):
         return page, {"action": DELETE}
     if toks[1] == AGAIN and len(toks) > 2:
         return page, {"action": AGAIN, "hint": " ".join(toks[2:])}
+    if toks[1] in (DETAIL, DROP) and len(toks) == 3 and toks[2] in _pictures(env, page):
+        return page, {"action": toks[1], "box": toks[2]}
     return None
+
+
+def _pictures(env, page):
+    """그 쪽 그림 상자 id(봉투 상자 목록)."""
+    pg = next((x for x in (env.get("boxes") or {}).get("pages") or [] if x.get("page") == page), {})
+    return {b["id"] for b in pg.get("boxes") or [] if b.get("kind") == "picture"}
 
 
 def gate(res, doc_id, reparse):
@@ -72,6 +82,7 @@ def gate(res, doc_id, reparse):
         page, fix = got
         RD.record_fix(doc_id, page, fix)
         print(f"   고침 — 쪽 {page} {fix['action']}" + (f" 「{fix['hint']}」" if fix.get("hint") else "")
+              + (f" {fix['box']}" if fix.get("box") else "")
               + f" · 기록 {ST.fixes_path().name}(@판독) · 다시 파싱한다(그 장만 다시 · 다른 장 재사용)")
         res = reparse()
         if not res.ok:

@@ -48,9 +48,13 @@ def short(e, n=48):
 
 
 def _fig(f):
+    """그림 한 줄(이름표 · 첫 줄 · 확신 · 근거 — B169 ②) + 아래 줄(종류 · 그림 속 글자 · 보이는 것 · 의미)."""
     labels = " ".join(f"「{x}」" for x in f.get("labels") or []) or "없음"
     inside = f.get("labels_in_text") or []
-    out = [f"- 그림 {f.get('box')} — 종류 {f.get('kind') or '—'} · 그림 속 글자 {labels}"
+    why = " · ".join(x for x in (f"확신 {f['certainty']}" if f.get("certainty") else "",
+                                 f"근거 {f['grounds']}" if f.get("grounds") else "") if x)
+    out = [f"- **그림 {f.get('box')}**: {f.get('what') or '—'}" + (f" ({why})" if why else ""),
+           f"  - 종류 {f.get('kind') or '—'} · 그림 속 글자 {labels}"
            + (f"(상자 글에도: {' · '.join(inside)})" if inside else "") + (" · 읽을 수 없음" if f.get("unreadable") else "")]
     out += [f"  - {s['basis']}: {s['text']}" for s in f.get("seen") or []]
     if f.get("meaning"):
@@ -58,24 +62,26 @@ def _fig(f):
     return out
 
 
-def block(env, e):
-    """쪽 하나의 [판독] 블록 줄들(봉투 밖을 읽지 않는다)."""
+def block(env, e, capture=True):
+    """쪽 하나의 판독 줄들 — 이름표 줄(**판독** · **그림** · **배치** · **쪽 요약** — B169 ②) · 판독 칸이 비면 그 줄은 없다 ·
+    봉투 밖을 읽지 않는다 · 추출 확인 md도 같은 손(`capture` 거짓 — 캡처 줄은 그쪽 머리가 낸다)."""
     if e is None:
         return []
     if e.get("deleted"):
-        return ["[판독] 지움(사람 — 이 장 판독을 쓰지 않는다)", ""]
+        return ["- **판독**: 지움(사람 — 이 장 판독을 쓰지 않는다)", ""]
     if e.get("skipped"):
-        return [f"[판독] 건너뜀 — {e['skipped']}", ""]
-    out = [f"[판독] 출처 {e.get('source') or '—'}" + (" · 재사용" if e.get("reused") else "")
+        return [f"- **판독**: 건너뜀 — {e['skipped']}", ""]
+    out = [f"- **판독**: 출처 {e.get('source') or '—'}" + (" · 재사용" if e.get("reused") else "")
            + (f" · 사람 힌트 「{e['hint']}」" if e.get("hint") else "") + (f" · 실패 {e['failed']}" if e.get("failed") else "")]
-    if e.get("capture"):
+    if capture and e.get("capture"):
         out.append(f"- 캡처 [쪽 {e.get('page')}]({_UP}{e['capture']})")
     for f in e.get("figures") or []:
         out += _fig(f)
-    for r in e.get("relations") or []:
-        out.append(f"- 배치 — {r['from']} → {r['to']} {r['relation']}")
-    for s in e.get("summary") or []:
-        out.append(f"- 쪽 요약 — {s['text']} (근거 {' · '.join(s.get('boxes') or [])})")
+    if e.get("relations"):
+        out.append("- **배치**: " + " · ".join(f"{r['from']} → {r['to']} {r['relation']}" for r in e["relations"]))
+    if e.get("summary"):
+        out.append("- **쪽 요약**: " + " ".join(f"{s['text']} (근거 {' · '.join(s.get('boxes') or [])})"
+                                             for s in e["summary"]))
     if e.get("dropped"):
         out.append("- 버림 — " + " · ".join(f"{k} {v}" for k, v in e["dropped"].items()))
     return out + [""]

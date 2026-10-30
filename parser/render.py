@@ -164,6 +164,30 @@ def capture_path(path=None, probe=False):
     return True, SOFFICE, None
 
 
+#: 캡처 한글 글꼴(B168 ④) — 상태 셋
+FONT_OK, FONT_NONE, FONT_UNKNOWN = "있음", "없음", "확인 불가"
+FONT_NEXT = "캡처의 한글이 깨져 판독이 배치만 본다 — 한글 글꼴(예: 나눔 · Noto CJK)을 깔고 fontconfig 대체 지정"
+
+
+def korean_font():
+    """**PPT 캡처의 한글 글꼴**(B168 ④) — `fc-match :lang=ko`가 고른 글꼴이 한국어를 덮는가 · `(상태, 글꼴 이름)`.
+    `fc-match`가 없으면 확인 불가(soffice는 fontconfig로 글꼴을 고른다 — 없는 기계는 다른 길)."""
+    import shutil
+    import subprocess
+    exe = shutil.which("fc-match")
+    if not exe:
+        return FONT_UNKNOWN, None
+    try:
+        r = subprocess.run([exe, ":lang=ko", "--format=%{family}\n%{lang}\n"], capture_output=True, text=True,
+                           timeout=10, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return FONT_UNKNOWN, None
+    lines = (r.stdout or "").splitlines()
+    fam = (lines[0].split(",")[0].strip() if lines else "") or None
+    langs = set((lines[1] if len(lines) > 1 else "").split("|"))
+    return (FONT_OK, fam) if fam and "ko" in langs else (FONT_NONE, fam)
+
+
 def _probe(exe):
     """작은 PPTX 한 장을 실제로 변환해 본다 — 실패 사유 또는 None(python-pptx가 없으면 그 사유)."""
     try:

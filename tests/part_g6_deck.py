@@ -640,7 +640,8 @@ _register()
 R156 = {"pages": {
     "2": {"figures": [], "relations": [], "summary": [{"text": "노칭 금형 마모와 클리어런스를 점검했다.", "boxes": ["S2-B1", "S2-B2"]}]},
     "3": {"figures": [], "relations": [], "summary": [{"text": "앞 장에 이어 다이 균열을 봤다.", "boxes": ["S3-B2"]}]},
-    "4": {"figures": [{"box": "S4-P1", "kind": "도면", "labels": ["장력", "T-1"],
+    "4": {"figures": [{"box": "S4-P1", "what": "커터 장력 기준을 보이는 단면 도면이다", "certainty": "높음", "grounds": "그림 속 글자",
+                       "kind": "도면", "labels": ["장력", "T-1"],
                        "seen": [{"text": "그림 속 글자 T-1", "basis": "보임"}, {"text": "커터 단면으로 보인다", "basis": "추론"},
                                 {"text": "느낌", "basis": "느낌"}],
                        "meaning": "표의 장력 기준을 그림으로 보인다", "unreadable": False},
@@ -681,14 +682,15 @@ _p4 = _rd6[4]
 _bx4 = next(b for pg in _ea6["boxes"]["pages"] if pg["page"] == 4 for b in pg["boxes"] if b["id"] == "S4-P1")
 _md6 = EMD.text(DID, _ea6)
 show("B156 ⓐ PPT 덱 — 봉투 reading(쪽마다 그림 · 그림 속 글자 · 보임/추론 · 배치 관계 · 쪽 요약 + 근거 id) · 개체 없음 장 건너뜀 · 검사(없는 "
-     "상자 · 목록 밖 관계 · 근거 없는 요약 문장 · 보임/추론 밖 → dropped) · split md에 [판독]과 [그림 요약]이 나란히 · 상자 위치 · 크기",
+     "상자 · 목록 밖 관계 · 근거 없는 요약 문장 · 보임/추론 밖 → dropped) · split md에 판독 이름표 줄과 [그림 요약]이 나란히(B169 고침) · "
+     "상자 위치 · 크기",
      _rd6[1].get("skipped") == "개체 없음" and _p4["figures"][0]["box"] == "S4-P1" and _p4["figures"][0]["labels_in_text"] == ["장력"]
      and [s["basis"] for s in _p4["figures"][0]["seen"]] == ["보임", "추론"] and len(_p4["figures"]) == 1
      and _p4["relations"] == [{"from": "S4-B1", "to": "S4-TB1", "relation": "설명"}]
      and [s["boxes"] for s in _p4["summary"]] == [["S4-TB1", "S4-P1"]]
      and _p4["dropped"] == {"보이는 것": 1, "그림": 1, "관계": 1, "요약": 1}
      and all(isinstance(_bx4[k], int) for k in ("left", "top", "width", "height")) and 0 < _bx4["rel"][0] < 1
-     and "[판독] 출처 mock" in _md6 and "[그림 요약 S4-P1]" in _md6 and "- 그림 S4-P1 — 종류 도면" in _md6,
+     and "- **판독**: 출처 mock" in _md6 and "[그림 요약 S4-P1]" in _md6 and "- **그림 S4-P1**:" in _md6 and "  - 종류 도면" in _md6,
      f"쪽 {[(e['page'], e.get('skipped') or len(e.get('summary') or [])) for e in _ea6['reading']['pages']]} · 버림 {_p4['dropped']} · "
      f"상자 {_bx4}")
 show("B156 ⓕ 추출 · 그래프 불변 — 판독이 있든 없든 같은 덱의 청크(그림 요약 글 포함) · 추출 입력의 맥락 줄이 같다 · 판독 블록은 청크 밖",
@@ -739,6 +741,240 @@ show("B156 ⓒ 판독 고침 — 「4 다시 <힌트>」는 그 장만 다시(�
 ST.fixes_path().unlink(missing_ok=True)
 _hint.unlink(missing_ok=True)
 _rh156.unlink(missing_ok=True)
+
+# ────────────────────────────────────────────────────────────── B168 판독 입력
+print("\n■ B168 — 판독 입력: 그림 원본은 필요한 것만 · 표시 상자(판독 입력에만) · 고침 동사 「자세히 · 빼기」")
+from PIL import Image as _Im168                          # noqa: E402 — 시험이 덱을 짓는다(창작 · 새 픽스처 파일 0)
+from pptx.dml.color import RGBColor as _RGB168           # noqa: E402
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE     # noqa: E402
+from cli import reading_screen as RSC168                  # noqa: E402
+from parser import reader as RDR168, reader_marks as RM168, reading as RDG168   # noqa: E402
+
+
+def _png168(c):
+    b = io.BytesIO()
+    _Im168.new("RGB", (24, 24), c).save(b, "PNG")
+    return b.getvalue()
+
+
+def _deck168(name, builds):
+    prs = Presentation()
+    for fn in builds:
+        fn(prs.slides.add_slide(prs.slide_layouts[6]))
+    path = TMP / name
+    _P.ensure(path)
+    prs.save(path)
+    return path
+
+
+def _pic168(s, data, x, y):
+    return s.shapes.add_picture(io.BytesIO(data), Inches(x), Inches(y), Inches(0.6), Inches(0.6))
+
+
+def _read168(path, fixes=None):
+    """판독 훅을 가짜 판독(입력 · 보낸 그림 id를 모은다)으로 — `(쪽 → (입력, 원본 id), 셈, 판독 블록)`."""
+    seen, tally = {}, {}
+
+    def ask(doc_id, inp, *, capture=None, images=(), hint=None, text=""):
+        seen[inp["page"]] = (inp, [r for r, _b, _m in images])
+        return {"figures": [], "relations": [], "summary": [{"text": "시험", "boxes": [inp["boxes"][0]["id"]]}],
+                "dropped": {}, "calls": 0, "source": "mock"}
+    blk = RDG168.hook(ask, "B168", str(path), RDR168.read(str(path)), fixes=fixes, tally=tally)
+    return seen, (tally.get("수") or {}).get("그림") or {}, blk
+
+
+_red168, _logo168, _blue168 = _png168((200, 30, 30)), _png168((30, 30, 200)), _png168((30, 200, 30))
+
+
+def _ten(s):
+    s.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(6), Inches(0.5)).text_frame.text = "같은 그림 열 장"
+    for i in range(10):
+        _pic168(s, _red168, 0.5 + (i % 5) * 1.2, 1.0 + (i // 5) * 1.2)
+    o = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(2.8), Inches(0.9), Inches(0.8), Inches(0.8))   # 셋째 그림에 빨간 원
+    o.fill.solid()
+    o.fill.fore_color.rgb = _RGB168(0xFF, 0, 0)
+
+
+_A168 = _deck168("B168A.pptx", [_ten])
+_sa, _ga, _ = _read168(_A168)
+_ia, _oa = _sa[1]
+_marks168 = [b for b in _ia["boxes"] if b["kind"] == RM168.KIND]
+_seen168 = [b["id"] for b in _ia["boxes"] if str(b.get("image") or "").startswith("캡처로 봄")]
+show("B168 ⓐ 같은 그림 10장 중 1장에 빨간 원(글 없는 도형) → 상자 목록에 표시 1 · 원본은 대표 1 + 그 1장(표시가 겹친 예외) · 나머지 8 「캡처로 봄」",
+     len(_marks168) == 1 and _oa == ["S1-P1", "S1-P3"] and len(_seen168) == 8 and (_ga["원본"], _ga["같은 꼴"]) == (2, 8),
+     f"표시 {[(m['id'], m.get('shape'), m.get('color')) for m in _marks168]} · 원본 {_oa} · 셈 {_ga}")
+
+
+def _logo(text):
+    def f(s):
+        s.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(6), Inches(0.5)).text_frame.text = text
+        _pic168(s, _logo168, 8, 6)
+    return f
+
+
+_sb, _gb, _ = _read168(_deck168("B168B.pptx", [_logo("쪽 하나"), _logo("쪽 둘"), _logo("쪽 셋")]))
+show("B168 ⓑ 모든 쪽에 같은 로고 → 장식 · 원본 입력 0",
+     all(not v[1] for v in _sb.values()) and len(_sb) == 3 and (_gb["장식"], _gb["원본"]) == (3, 0), f"셈 {_gb}")
+
+
+def _arrow(s):
+    tb = s.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(3), Inches(0.5))
+    tb.text_frame.text = "이 그림을 보라"
+    _pic168(s, _blue168, 1, 3)
+    p2 = _pic168(s, _blue168, 5, 3)                       # 같은 꼴 — 연결선이 가리켜 원본(예외)
+    c = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(1), Inches(1), Inches(5), Inches(3))
+    c.begin_connect(tb, 2)
+    c.end_connect(p2, 0)
+
+
+_sc, _gc, _ = _read168(_deck168("B168C.pptx", [_arrow]))
+_cx = [b for b in _sc[1][0]["boxes"] if b["kind"] == RM168.KIND]
+show("B168 ⓒ 연결선 하나(글 상자 → 그림) → 표시 상자에 from → to · 그 그림은 원본(같은 꼴이어도 — 예외)",
+     [(b.get("shape"), b.get("from"), b.get("to")) for b in _cx] == [("연결선", "S1-B1", "S1-P2")]
+     and _sc[1][1] == ["S1-P1", "S1-P2"], f"표시 {_cx} · 원본 {_sc[1][1]}")
+
+_keep168 = (RM168.collector, RM168.finish)
+
+
+def _env168(path, did):
+    with _quiet():
+        res = pipeline.parse(PX, did, str(path), closed_list=TG.closed_list("process"), layer="process")
+    return json.dumps({k: v for k, v in (res.envelope or {}).items() if k != "parsed_at"}, ensure_ascii=False, sort_keys=True)
+
+
+_d168 = [(p, _env168(p, f"B168D{i}")) for i, p in enumerate((_FXR.RAW / "PPT_basic.pptx", _FXR.RAW / "PPT_shapes.pptx", _A168,
+                                                               TMP / "B168C.pptx"))]
+RM168.collector, RM168.finish = (lambda: None), (lambda m: {"marks": [], "groups": []})     # 표시를 모으지 않는 리더(B168 전 모양)
+try:
+    _d168b = [_env168(p, f"B168D{i}") for i, (p, _e) in enumerate(_d168)]
+finally:
+    RM168.collector, RM168.finish = _keep168
+show("B168 ⓓ 판독 없는 덱(PPT_basic · PPT_shapes · 표시 · 연결선이 있는 창작 덱 둘)의 봉투(분할 · 청크 · 상자 목록 · 덱 칸 — 추출 입력의 "
+     "재료)가 표시를 모으지 않는 리더와 바이트 같다 · 봉투에 표시 0",
+     [e for _p, e in _d168] == _d168b and not any(RM168.KIND in e for _p, e in _d168),
+     f"같음 {[a == b for (_p, a), b in zip(_d168, _d168b)]}")
+
+_benv = {"boxes": RDG168.boxes(RDR168.read(str(_A168))), "reading": _read168(_A168)[2]}
+for _ans in ("1 자세히 S1-P5", "1 빼기 S1-P1"):
+    _pg, _fx = RSC168.parse_fix(_ans, _benv)
+    RD156.record_fix("B168", _pg, _fx)
+_fxe = ST.fixes_of("B168").get(RDG168.FRAME) or {}
+_se, _ge, _be = _read168(_A168, fixes=_fxe)
+_im = _be["pages"][0].get("images") or {}
+show("B168 ⓔ 「1 자세히 S1-P5」 → 그 그림 원본 입력 · 「1 빼기 S1-P1」 → 원본 0(사람이 뺌) · 기록은 @판독 그 쪽 칸의 그림 목록",
+     "S1-P5" in _se[1][1] and "S1-P1" not in _se[1][1] and _im.get("S1-P1", "").endswith("사람이 뺌")
+     and (_fxe.get(1) or {}).get("자세히") == ["S1-P5"] and (_fxe.get(1) or {}).get("빼기") == ["S1-P1"],
+     f"원본 {_se[1][1]} · 기록 {_fxe.get(1)} · 셈 {_ge}")
+ST.fixes_path().unlink(missing_ok=True)
+
+
+def _grp(s):
+    g = s.shapes.add_group_shape()
+    for i, c in enumerate((_red168, _blue168)):
+        g.shapes.add_picture(io.BytesIO(c), Inches(1 + i), Inches(1), Inches(0.6), Inches(0.6))
+
+
+_sg, _gg, _bg = _read168(_deck168("B168G.pptx", [_grp]))
+show("B168 리뷰 고침 글 없이 그림 조각 그룹만 있는 쪽 → 빈 쪽으로 건너뛰지 않고 읽는다(빈 쪽은 봉투 상자로 · 입력은 그룹 상자)",
+     1 in _sg and any(b["kind"] == RM168.GROUP for b in _sg[1][0]["boxes"]),
+     f"부른 쪽 {sorted(_sg)} · 건너뜀 {[p.get('skipped') for p in (_bg or {}).get('pages') or []]}")
+
+# ────────────────────────────────────────────────────────────── B169 판독 지시문 r-1.1 · md 이름표
+print("\n■ B169 — 그림마다 첫 줄 「무엇인가 · 확신 · 근거」 · 일반 지식 절 · md 이름표 · 추출 확인 md에 판독")
+_f169 = {"kind": "사진", "labels": [], "seen": [], "meaning": None, "unreadable": False}
+_k169 = RD156.check("B169", {"page": 1, "boxes": [{"id": "S1-P1", "kind": "picture"}, {"id": "S1-P2", "kind": "picture"}]},
+                    {"figures": [dict(_f169, box="S1-P1", what="파우치 셀의 측면 사진이다", certainty="높음", grounds="보이는 것"),
+                                 dict(_f169, box="S1-P2", what="같은 셀의 윗면이다", certainty="아주 높음", grounds=None)],
+                     "relations": [], "summary": []})
+show("B169 ⓐ 판독 산출의 그림마다 첫 줄 · 확신(닫힌 셋) · 근거 · 셋 밖 확신은 그 칸만 버림(첫 줄은 남는다)",
+     [(f["what"], f["certainty"], f["grounds"]) for f in _k169["figures"]]
+     == [("파우치 셀의 측면 사진이다", "높음", "보이는 것"), ("같은 셀의 윗면이다", None, None)] and _k169["dropped"] == {"확신": 1},
+     f"그림 {[(f['box'], f['certainty']) for f in _k169['figures']]} · 버림 {_k169['dropped']}")
+_pr169 = (ROOT / "prompts" / "2.4_reading.md").read_text(encoding="utf-8")
+_lw169 = subprocess.run([sys.executable, str(ROOT / "tools" / "layer_words.py")], capture_output=True, text=True, cwd=str(ROOT),
+                        stdin=subprocess.DEVNULL)
+_ah169 = subprocess.run([sys.executable, str(ROOT / "tests" / "asset_hashes.py")], capture_output=True, text=True, cwd=str(ROOT),
+                        stdin=subprocess.DEVNULL)
+show("B169 ⓑ 지시문 r-1.1 · 첫 줄 · 확신 · 근거 · 제조 문서를 읽는 일반 지식 절 · 층 어휘 정적 점검 위반 0 · 자산 해시 일치",
+     "\nversion: r-1.1\n" in _pr169 and "## 제조 문서를 읽는 일반 지식" in _pr169 and "`certainty`" in _pr169
+     and "위반 0건" in _lw169.stdout and _ah169.returncode == 0, f"층 어휘 {_lw169.stdout.strip()[-40:]} · 해시 rc {_ah169.returncode}")
+from core.build.ingest import prose_chunk_ids as _pci169    # noqa: E402
+_ch169 = dict((cid, c) for c, cid in _pci169(_ea6))
+_c4 = next(cid for cid, c in _ch169.items() if (c.get("meta") or {}).get("slide") == 4)
+_x169 = XMD155.text(DID, {"doc_id": DID, "env": _ea6, "chunks": _ch169, "stale": False, "rows": [], "partial": False,
+                          "checkpoints": [("process", None, {"candidates": [{"chunk_id": _c4, "entities": []}]})]}) or ""
+show("B169 ⓒ split md · 추출 확인 md의 이름표 줄 — **맥락 줄** · **쪽 요약** · **배치** · **그림 <id>**: 첫 줄(확신 · 근거) · 추출 확인 md에 "
+     "그 단위의 판독",
+     all(x in _md6 for x in ("- **그림 S4-P1**: 커터 장력 기준을 보이는 단면 도면이다 (확신 높음 · 근거 그림 속 글자)",
+                             "- **배치**: S4-B1 → S4-TB1 설명", "- **쪽 요약**: 커터 사양 표와 도면이다."))
+     and all(x in _x169 for x in ("- **맥락 줄**:", "- **판독**: 출처 mock", "- **그림 S4-P1**:", "- **쪽 요약**:")),
+     " | ".join(ln for ln in _x169.splitlines() if "**" in ln)[:200])
+_lab169 = ("**판독**", "**그림 ", "**배치**", "**쪽 요약**")
+_n169 = EMD.text(DID, _en6) or ""
+show("B169 ⓓ 판독이 없는 문서 — split md · 추출 확인 md에 판독 줄 0(판독 칸이 비면 줄을 내지 않는다) · 추출 확인 md의 맥락 줄은 이름표",
+     _n169 and not any(x in _n169 for x in _lab169) and "- **맥락 줄**:" in _md155 and not any(x in _md155 for x in _lab169),
+     f"split {len(_n169)}자 · 추출 확인 판독 줄 {[x for x in _lab169 if x in _md155]}")
+
+# ────────────────────────────────────────────────────────────── B170 판독을 추출에
+print("\n■ B170 — 판독이 있는 청크에만 [판독] 묶음 · 그림 칸 · 이름 출처에 그림 속 글자 · 판독 없는 문서는 바이트 그대로")
+import hashlib as _hl170                                  # noqa: E402
+from core.llm import gateway                              # noqa: E402
+from core.build import belongs as BL170, extract_ctx as XC170, extract_reading as ER170   # noqa: E402
+from core.build.entry import _vocab as _vocab170          # noqa: E402
+_cfg170 = load_config("process")
+#: B170 전의 추출 지시문 · 답 꼴(`8dec743`의 `prompts/3.3_extract.md` · `EXTRACT_SCHEMA`) — 판독이 없는 문서가 받는 것과 같아야 한다
+_PRE170 = {"prompt": "f1ac41461f918903", "schema": "6f3e6047d44e1cea"}
+
+
+def _sent170(env):
+    """실호출 갈래(가짜 게이트웨이)로 추출 — 호출마다 `(지시문, 답 꼴, 사용자 글)`."""
+    sent = []
+    EX.invalidate(env["doc_id"])
+    with Live(by={"extract": lambda body: {"entities": [], "relations": [], "about": []}}), _quiet():
+        inner = gateway.chat
+
+        def chat(messages, json_schema=None, point=None, **kw):
+            if point == "extract":
+                sent.append((messages[0]["content"], json_schema, messages[1]["content"]))
+            return inner(messages, json_schema=json_schema, point=point, **kw)
+        gateway.chat = chat
+        EX.extract(env, _cfg170, {loc: cid for c, cid in _pci169(env) for loc in [c["source_locator"]]}, _vocab170(_cfg170))
+    return sent
+
+
+_wr170 = _sent170(_ea6)
+_sent170(_ea6)                                            # 다시 — 체크포인트만 지운다(호출 보존 그대로)
+_run170 = dict(EX.RUN.get((_ea6["doc_id"], "")) or {})
+_r4 = next((s for s in _wr170 if "[판독 그림 S4-P1]" in s[2]), None)
+show("B170 ⓐ 판독이 있는 쪽의 추출 입력에 [판독] 묶음(쪽 요약 · 배치) · 그 쪽 그림 요약 자리에 판독 그림 칸(첫 줄 · 그림 속 글자) · 그 호출만 "
+     "판독 절 · 소속 출처에 판독",
+     _r4 is not None and "[판독]" in _r4[2] and "커터 장력 기준을 보이는 단면 도면이다" in _r4[2] and "「T-1」" in _r4[2]
+     and "[그림 요약 S4-P1]" not in _r4[2] and "## 판독이 있는 청크" in _r4[0]
+     and "판독" in _r4[1]["properties"]["entities"]["items"]["properties"]["belongs_to"]["properties"]["from"]["enum"],
+     f"호출 {len(_wr170)} · 판독 붙은 호출 {sum('[판독]' in s[2] for s in _wr170)}")
+_wo170 = _sent170(_en6)
+_sys0 = gateway.prompt_for("extract", {"process": _cfg170}, "extract")
+show("B170 ⓑ 판독이 없는 문서 — 실제 추출 지시문 · 답 꼴 · 사용자 글이 B170 전과 바이트 같다(지시문 파일 · 답 꼴 해시가 그 판 · 판독 0) · "
+     "체크포인트에 판독 칸 0",
+     _wo170 and all(s[0] == _sys0 and s[1] == EX.EXTRACT_SCHEMA and "판독" not in s[2] for s in _wo170)
+     and _hl170.sha256((ROOT / "prompts" / "3.3_extract.md").read_bytes()).hexdigest()[:16] == _PRE170["prompt"]
+     and _hl170.sha256(json.dumps(EX.EXTRACT_SCHEMA, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16] == _PRE170["schema"]
+     and "reading" not in json.loads(EX.checkpoint_path(_en6["doc_id"]).read_text(encoding="utf-8")),
+     f"호출 {len(_wo170)}")
+_ke, _kn = EX._now_key(_ea6, _cfg170), EX._now_key(_en6, _cfg170)
+show("B170 ⓒ 판독이 있는 문서만 재사용 열쇠가 바뀐다(판독 해시) · 판독을 지우면 다시 같은 열쇠 · 판독 없는 체크포인트로는 판독 있는 봉투를 "
+     "재사용하지 않는다",
+     _ke["reading"] and _kn["reading"] is None and EX._now_key({**_ea6, "reading": None}, _cfg170) == _kn
+     and EX.reuse_check(_ea6, cfg=_cfg170)[1].startswith("판독") and EX.reuse_check(_en6, cfg=_cfg170)[0],
+     f"판독 몫 {_ke['reading']} · 재사용 {EX.reuse_check(_ea6, cfg=_cfg170)}")
+_doc170, _s4 = XC170.doc_info(_ea6), _ch169[_c4]
+show("B170 ⓓ 그림 속 글자에서 나온 이름은 출처 「판독」 · 외형 추론만 있는 이름(보이는 것의 추론 · 첫 줄)은 출처가 아니다 · 판독 없는 봉투는 판독 칸 0",
+     BL170.source_of("T-1", _s4, _doc170) == "판독" and BL170.source_of("커터 단면", _s4, _doc170) is None
+     and BL170.source_of("단면 도면", _s4, _doc170) is None and "reading" not in XC170.doc_info(_en6),
+     f"T-1 {BL170.source_of('T-1', _s4, _doc170)} · 커터 단면 {BL170.source_of('커터 단면', _s4, _doc170)}")
+show("B170 리뷰 고침 판독이 있는 덱을 다시 추출하면(호출 보존 그대로) 판독을 실은 단위도 다시 쓸 단위로 센다 — 부름 0(다시 쓸 단위 · 씨앗의 "
+     "열쇠 = 보낸 입력 한 손)",
+     _run170.get("부름") == 0 and (_run170.get("재사용") or 0) > 0, f"다시 돈 셈 {_run170}")
 
 dts = store.read(store.DOC_TYPES, {})
 dts.pop(DT, None)

@@ -68,6 +68,9 @@ def gate(*, chat=True, embed=False, images=False, catalog=True, capture=()):
     if r["ok"]:
         _screen.say(f"   사전 점검 — {' · '.join(names)} — 통과 ({r['secs']:.1f}초 · "
                     f"{_screen.usage_pair(r['since'])})", "head")
+        for s in r["stages"]:
+            if s.get("warn"):
+                _screen.say(f"   ⚠ {s['warn']}", "warn")       # 멈추지 않는 경고(B168 ④)
         return True
     bad = r["stages"][-1]
     _screen.say(f"   사전 점검 — **{bad['label']}**에서 멈춘다 (파싱 0 · LLM 추가 0 · 쓰기 0)",

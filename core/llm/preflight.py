@@ -29,7 +29,8 @@ CAPTURE_SUFFIXES = (".pptx", ".pdf")
 NO_CAPTURE_NEXT = "캡처 없이 진행하려면 같은 명령에 --no-capture(기록에 남는다)"
 #: 채팅을 쓰는 실행이 부를 수 있는 지시문 — 파일이 있는지 「설정」 단계가 본다(B115 ① — ⑪개요 · ⑫연결 보강이
 #: 구축 중에 처음 불려 그때 없다고 죽지 않게 · 추출 · 판정과 같이)
-CHAT_PROMPTS = ("extract", "outline", "deck", "ladder", "judge", "reinforce")
+CHAT_PROMPTS = ("extract", "outline", "deck", "ladder", "judge", "reinforce", "reading",   # 쪽 판독 ④(B168 ④)
+                "extract_reading")                                                            # 추출의 판독 절(B170)
 
 
 def run(*, chat=True, embed=False, images=False, catalog=True, capture=()):
@@ -51,8 +52,9 @@ def run(*, chat=True, embed=False, images=False, catalog=True, capture=()):
                       ("캡처", lambda: _capture(capture) if live and capture else _skip(live, bool(capture))),
                       ("공통 config", lambda: _catalog() if catalog else (None, "", "", "")),
                       ("쓰기", _write)):
-        ok, detail, nxt, tag = fn()
-        out.append({"label": label, "ok": ok, "detail": detail, "next": nxt, "tag": tag})
+        ok, detail, nxt, tag, *warn = fn()
+        out.append({"label": label, "ok": ok, "detail": detail, "next": nxt, "tag": tag,
+                    **({"warn": warn[0]} if warn and warn[0] else {})})     # 멈추지 않는 경고(B168 ④ — 캡처 한글 글꼴)
         if ok is False:
             return done(False)
     return done(True)
@@ -151,7 +153,9 @@ def _capture(docs):
                 + (f"\n… 외 {len(bad) - 5:,}" if len(bad) > 5 else ""),
                 "LibreOffice(Impress 포함)를 깔거나 PowerPoint에서 PDF로 저장해 같은 폴더 · 같은 이름으로 둔다"
                 " (pip install PyMuPDF가 빠졌으면 그것부터) · " + NO_CAPTURE_NEXT, "")
-    return True, "", "", " · ".join(f"{k} {v}" for k, v in routes.items())
+    st, fam = render.korean_font()                 # 캡처 한글 글꼴(B168 ④) — 없으면 경고만(멈추지 않는다)
+    warn = None if st == render.FONT_OK else f"PPT 캡처 한글 글꼴 {st}{f'({fam})' if fam else ''} — {render.FONT_NEXT}"
+    return True, "", "", " · ".join(f"{k} {v}" for k, v in routes.items()), warn
 
 
 def _catalog():

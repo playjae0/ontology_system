@@ -273,4 +273,39 @@ show("B139 ⓔ 토큰 — 단계 끝 줄마다 이 단계 · 누계(누계는 �
      f"단계 끝 {_e9} · 합 {_j9} · 끝 줄 {[ln for ln in _u9[0].stderr.splitlines() if '명령 끝' in ln][:1]} · {_u9[0].stderr[-300:]}")
 init.init(fresh_=True, all_=True)
 
+print("\n■ B168 ⓕ 캡처 한글 글꼴 — doctor --env 줄 · 사전 점검 경고(멈추지 않는다) · 판독 지시문")
+from core.state import fixtures as _FXR168          # noqa: E402
+from parser import render as RND168                 # noqa: E402
+_real168 = RND168.korean_font()                      # 실경로(대역 없음 — 이 기계의 fc-match)
+with tempfile.TemporaryDirectory(prefix="b168_") as _td:
+    _stub = Path(_td) / "fc-match"
+    _stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")         # 결과가 빈 fc-match — 글꼴 없음 환경
+    _stub.chmod(0o755)
+    _path0 = os.environ.get("PATH", "")
+    os.environ["PATH"] = f"{_td}{os.pathsep}{_path0}"
+    try:
+        _none168 = RND168.korean_font()
+        _cap168 = PRE._capture([str(_FXR168.RAW / "PPT_basic.pptx")])
+        _doc168 = _sp.run([sys.executable, str(ROOT / "doctor.py"), "--env"], cwd=str(ROOT), env={**os.environ, "USE_MOCK": "1"},
+                          capture_output=True, text=True, stdin=_sp.DEVNULL, timeout=300)
+    finally:
+        os.environ["PATH"] = _path0
+_hp0 = gateway.has_prompt
+gateway.has_prompt = lambda n: n != "reading" and _hp0(n)              # 판독 지시문이 빠진 자산
+os.environ.update(LLM_GATEWAY_URL="http://시험", CHAT_MODEL="m")
+try:
+    _gone168 = PRE._config(True, True, False)
+finally:
+    gateway.has_prompt = _hp0
+    for k in ("LLM_GATEWAY_URL", "CHAT_MODEL"):
+        os.environ.pop(k, None)
+_line168 = next((ln.strip() for ln in _doc168.stdout.splitlines() if "PPT 캡처 한글 글꼴" in ln), "")
+show("B168 ⓕ fc-match 결과가 빈 환경 → doctor --env 줄 「PPT 캡처 한글 글꼴 — 없음」 · 사전 점검 캡처 단계는 통과하고 경고(한글 글꼴 + 대체 지정) · "
+     "판독 지시문이 없으면 사전 점검 「설정」이 앞에서 잡는다 · 실경로 fc-match는 셋 중 하나로 답한다",
+     _none168[0] == RND168.FONT_NONE and "PPT 캡처 한글 글꼴 — 없음" in _line168
+     and _cap168[0] is True and len(_cap168) == 5 and "한글 글꼴" in (_cap168[4] or "")
+     and _gone168[0] is False and "_reading.md" in _gone168[1]
+     and _real168[0] in (RND168.FONT_OK, RND168.FONT_NONE, RND168.FONT_UNKNOWN),
+     f"doctor 줄 {_line168!r} · 경고 {(_cap168 + (None,) * 5)[4]} · 설정 {_gone168[1][:60]} · 실경로 {_real168}")
+
 done()

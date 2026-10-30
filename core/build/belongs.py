@@ -55,7 +55,8 @@ def belongs_of(cand):
 
 
 def source_of(name, src, doc=None):
-    """이름이 나온 자리 — `본문` · `경로` · `시트` · `공정` · `후보`(부착 후보) 중 처음 맞는 것 · 없으면 None.
+    """이름이 나온 자리 — `본문` · `경로` · `시트` · `공정` · `판독`(그 쪽 판독의 그림 속 글자 — B170) · `후보`(부착 후보) 중 처음 맞는
+    것 · 없으면 None.
 
     넷째 출처 `제목`(B115 ③ — 개요가 대상으로 정한 제목 개체)은 이름이 제목 글자 안에 있으니(`outline._check`가
     그것만 남긴다) 경로 · 시트 칸에서 같이 맞는다 — 따로 재지 않는다."""
@@ -69,6 +70,9 @@ def source_of(name, src, doc=None):
     for f, v in extract_ctx.context_fields(src, doc):
         if f != "문서" and k in _k(v):
             return f
+    from core.build.extract_reading import labels
+    if any(k in _k(x) for x in labels(src, doc)):
+        return "판독"                       # 그 쪽 판독의 그림 속 글자만(B170 — 외형으로 알아본 이름은 출처가 아니다)
     if any(_k(c) == k or _k(c).endswith(k) for c in attach_candidates(src.get("process_ref"))):
         return "후보"
     return None
