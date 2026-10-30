@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 86,
-   "secs": 5
+   "secs": 4
   },
   "test_places": {
    "n": 32,
@@ -11,47 +11,47 @@
   },
   "test_g3": {
    "n": 82,
-   "secs": 2
+   "secs": 1
   },
   "test_query": {
    "n": 131,
-   "secs": 18
+   "secs": 15
   },
   "test_ops": {
    "n": 84,
-   "secs": 8
+   "secs": 7
   },
   "test_intake": {
    "n": 100,
-   "secs": 19
+   "secs": 15
   },
   "test_ingest_view": {
    "n": 78,
-   "secs": 35
+   "secs": 34
   },
   "test_coord": {
    "n": 49,
-   "secs": 14
+   "secs": 11
   },
   "test_catalog": {
    "n": 69,
-   "secs": 26
+   "secs": 20
   },
   "test_safety": {
    "n": 36,
-   "secs": 62
+   "secs": 54
   },
   "test_judge": {
    "n": 86,
-   "secs": 11
+   "secs": 9
   },
   "test_build": {
    "n": 79,
-   "secs": 29
+   "secs": 26
   },
   "test_rebuild": {
    "n": 47,
-   "secs": 26
+   "secs": 21
   },
   "test_g6_rehearsal": {
    "n": 18,
@@ -59,19 +59,19 @@
   },
   "test_structure": {
    "n": 126,
-   "secs": 27
+   "secs": 23
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 23
+   "secs": 21
   },
   "test_g6_close": {
-   "n": 31,
-   "secs": 31
+   "n": 32,
+   "secs": 27
   },
   "test_contract": {
    "n": 76,
-   "secs": 21
+   "secs": 19
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,19 +87,19 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 5
+   "secs": 2
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 5
+   "secs": 3
   },
   "test_p2": {
    "n": 69,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,15 +107,15 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 5
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 6
+   "secs": 5
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 2
+   "secs": 1
   },
   "test_p3_screen": {
    "n": 52,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 11
+   "secs": 9
   },
   "test_2a_gateway": {
    "n": 75,
@@ -135,7 +135,7 @@
   },
   "test_viewer": {
    "n": 60,
-   "secs": 3
+   "secs": 2
   },
   "verify_roundtrip": {
    "n": 50,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 26
+   "secs": 20
   }
  },
  "log": [
@@ -657,6 +657,14 @@
    "suite": "test_structure",
    "from": 124,
    "to": 126,
+   "why": ""
+  },
+  {
+   "at": "2026-10-30",
+   "head": "3ce2b77",
+   "suite": "test_g6_close",
+   "from": 31,
+   "to": 32,
    "why": ""
   }
  ]

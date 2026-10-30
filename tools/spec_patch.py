@@ -19,6 +19,8 @@
 **늘어난 것이 미러 봉인뿐이면**(미러 body · mirror 문면이 바뀌었고 앵커는 그대로) 실패가 아니라 「재봉인 대상 <쌍>」 알림이다(B121 ④) —
 허브가 양쪽을 대조한 뒤 `점검_미러.py --seal`. 다른 검사가 함께 늘면 지금처럼 어긋남이다.
 `--apply`는 같은 검사를 지나야만 쓴다 — 파일마다 임시 파일 + `os.replace`(원자적) · 하나라도 어긋나면 쓰기 0 · 재봉인 알림은 쓴 뒤에도 같은 줄.
+**글자 증감**(B163 ⓪ — 명세 패치 규칙을 기억에 기대지 않게 · CLAUDE.md §8): 항목 줄 끝에 `(±n자)`(`바뀔` − `지금`) · 결과 줄 바로 앞에
+「글자 증감 합 ±n자」(항목의 합) — 표시만이다(판정 · 종료 코드 불변).
 """
 from __future__ import annotations
 
@@ -97,12 +99,17 @@ def lint(it):
     return bad
 
 
+def _signed(n):
+    return f"+{n:,}" if n > 0 else f"−{-n:,}" if n < 0 else "0"
+
+
 def plan(patch, spec=SPEC):
-    """`(새 글 {파일: 글}, 항목 결과 [(이름, 어긋남 목록)], 양식 오류)` — 쓰기 0."""
+    """`(새 글 {파일: 글}, 항목 결과 [(이름, 어긋남 목록, 글자 증감)], 양식 오류)` — 쓰기 0."""
     items, errs = parse(Path(patch).read_text(encoding="utf-8"))
     texts, results = {}, []
     for it in items:
         bad = []
+        delta = len(it.get("바뀔") or "") - len(it.get("지금") or "")
         p = _target(spec, it["file"])
         if not p.exists():
             bad.append(f"파일 없음 {it['file']}")
@@ -114,7 +121,7 @@ def plan(patch, spec=SPEC):
             else:
                 texts[p] = t.replace(it["지금"], it["바뀔"], 1)
             bad += lint(it)
-        results.append((it["name"], bad))
+        results.append((it["name"], bad, delta))
     return texts, results, errs
 
 
@@ -150,9 +157,10 @@ def verify(patch, spec=SPEC):
     lines, ok = [], not errs
     for name, why in errs:
         lines.append(f"[FAIL] 양식 — {name}: {why}")
-    for name, bad in results:
+    for name, bad, delta in results:
         ok = ok and not bad
-        lines.append(f"[{'PASS' if not bad else 'FAIL'}] {name}" + (f" — {' · '.join(bad)}" if bad else ""))
+        lines.append(f"[{'PASS' if not bad else 'FAIL'}] {name}" + (f" — {' · '.join(bad)}" if bad else "")
+                     + f" ({_signed(delta)}자)")
     tmp = Path(tempfile.mkdtemp(prefix="spec_patch_"))
     kept = {f: f.read_bytes() for f in (CHECK_DIR / "자산").glob("*_결과.json")}   # 검사가 남기는 결과 파일 — 점검은 쓰기 0
     try:
@@ -182,6 +190,7 @@ def verify(patch, spec=SPEC):
         for f, b in kept.items():
             if not f.exists() or f.read_bytes() != b:
                 f.write_bytes(b)
+    lines.append(f"글자 증감 합 {_signed(sum(d for _n, _b, d in results))}자")     # 결과 줄 바로 앞(표시만 — 판정 불변)
     return ok, lines, texts
 
 
@@ -189,7 +198,7 @@ def apply(patch, spec=SPEC):
     """허브 — 검사를 지난 패치만 쓴다(파일마다 임시 파일 → 전부 준비된 뒤 `os.replace`) · 어긋나면 쓰기 0."""
     ok, lines, texts = verify(patch, spec)
     if not ok:
-        return False, lines + ["쓰기 0 — 위 어긋남을 고친 패치로 다시"]
+        return False, lines[:-1] + ["쓰기 0 — 위 어긋남을 고친 패치로 다시"] + lines[-1:]     # 증감 합은 결과 줄 바로 앞
     staged = []
     try:
         for p, t in texts.items():
@@ -201,7 +210,7 @@ def apply(patch, spec=SPEC):
     finally:
         for tmp, _p in staged:
             tmp.unlink(missing_ok=True)
-    return True, lines + [f"적용 — 파일 {len(texts)}"]
+    return True, lines[:-1] + [f"적용 — 파일 {len(texts)}"] + lines[-1:]
 
 
 def main(argv):
