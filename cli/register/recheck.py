@@ -9,7 +9,7 @@
 G4E). 킷은 core를 모르므로 subprocess로 부르고 층 자리를 건넨다(관문과 같은 결).
 
 경고 하나를 더 낸다: **prose doc_type이 등록된 층이 좌표 카테고리를 말하지 않는다**
-(`categories`에도 `relation_patterns`에도 없다) — 그 층의 prose 문서는 좌표를 못 단다
+(`categories`에도 `uses`에도 없다 — B174 ②) — 그 층의 prose 문서는 좌표를 못 단다
 (prose 스키마의 좌표 블록이 그 카테고리를 부른다 — 관문 G4C가 그 자리에서 선다).
 
 **부착 대상 규칙**(B147 ① — 관문 G4J와 같은 함수 `parser.attach_rule`)도 같은 하위 실행이 싣는다 — 속성 · 내용의
@@ -62,8 +62,9 @@ def revise_line(dt, schema=None, schema_only=False):
 
 
 def _speaks(cfg, category):
-    return category in (cfg.get("categories") or {}) or any(
-        category in (p.get("src"), p.get("dst")) for p in cfg.get("relation_patterns") or [])
+    """층이 그 카테고리를 말하는가 — 집 카테고리 ∪ `uses`(B174 ② — 패턴표에서 짐작하지 않는다)."""
+    from core.state import catalog
+    return category in catalog.spoken(cfg)
 
 
 def run():
@@ -115,7 +116,7 @@ def run():
                 speaks = False
             if not speaks:
                 out.append((dt, False, f"{dt:<14} ⚠ 층 {lay}이 {COORD_CATEGORY}를 말하지 않는다 "
-                                       f"(categories에도 relation_patterns에도 없다) — 이 층의 "
+                                       f"(categories에도 uses에도 없다) — 이 층의 "
                                        f"prose 문서는 좌표를 못 단다"))
     return out
 

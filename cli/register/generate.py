@@ -13,6 +13,7 @@ from core import paths
 from cli import _screen
 from core.llm import check, gateway, points
 from core.state import fixtures, log, registry, store
+from core.state import catalog as _catalog
 from parser import pipeline, preflight, profile, reader, tagger
 from pathlib import Path
 from router import discover
@@ -422,8 +423,10 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
             "layer_vocabulary": {"layer": layer,
                                  "layers": sorted(discover()),
                                  "categories": cfg.get("categories"),
+                                 "uses": cfg.get("uses") or [],
                                  "relations": cfg.get("relations"),
-                                 "relation_patterns": cfg.get("relation_patterns")},
+                                 # 그 층의 게이트 패턴 — 층 패턴 + 그 층에 걸리는 위아래 쌍(B174 ② · 한 함수)
+                                 "relation_patterns": _catalog.layer_patterns(cfg)},
             "blocks": json.loads(paths.blocks()
                                  .read_text(encoding="utf-8")),
             # **경로가 아니라 본문을 싣는다**(B29 ★①) — 경로만 보내면 생성 세션이
