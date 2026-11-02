@@ -202,7 +202,7 @@ def naming_rule(cat=None, configs=None):
     cat = cat or {}
     sk = skeleton_categories(configs or {})
     cats = cat.get("categories") or {}
-    path = [c for c in sorted(cats) if c not in sk and not (cats[c] or {}).get("no_path")]
+    path = [c for c in sorted(cats) if c not in sk and "no_path" not in (cats[c] or {})]   # 사유가 비어도 「안 씀」(지도가 말한다)
     nest = list(dict.fromkeys(p["lower"] for p in pairs(cat) if p["upper"] not in sk))
     return {"path": path, "nest": nest, "sep": sep(cat)}
 
@@ -358,12 +358,12 @@ def problems(configs=None, cat=None):
     return out
 
 
-def warnings():
+def warnings(cat=None):
     """경고(거부 아님) — `[문면]`. **겸의 집 불일치**(B91 ⑥ · D-171 ⑦): 주 카테고리 C가 X를
     겸하는데 X의 집이 C의 집과 다르면, 겸 후보는 판정이 보는 **집 그래프 안만** 보므로 그
     구성에서는 겸 매칭이 조용히 빠진다 — 막지 않고 말한다(사람이 의도했을 수 있다).
     """
-    cats = load().get("categories") or {}
+    cats = (cat if cat is not None else load()).get("categories") or {}
     out = []
     for c, v in sorted(cats.items()):
         hc = (v or {}).get("home")
@@ -376,7 +376,7 @@ def warnings():
     return out
 
 
-def mirror_warnings(configs=None):
+def mirror_warnings(configs=None, cat=None):
     """**미러 규칙과 집의 어긋남**(B100 ④) — `[(문면, 다음 줄)]` · 경고만(막지 않는다 — 사람 판단).
 
     극성 결합·미러 짝 키(부모 경로 `scope` · 맨 이름 `base_name`)는 노드를 만드는 **집 층의 빌더**가 그 층
@@ -385,7 +385,7 @@ def mirror_warnings(configs=None):
     집을 옮기면 mirrors 26 → 20). 규칙을 층 사이로 옮겨 읽는 코드는 넣지 않는다 — 말하고 사람이 옮긴다.
     """
     configs = configs or _layer_configs()
-    cats = load().get("categories") or {}
+    cats = (cat if cat is not None else load()).get("categories") or {}
     out = []
     for lay, cfg in sorted(configs.items()):
         pol = cfg.get("polarity") or {}

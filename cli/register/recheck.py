@@ -34,7 +34,7 @@ from core.state import registry
 
 KIT = paths.ROOT / "kit"
 #: 판정 태그 → 고칠 자리(층 config 키)
-_FIX = {"G4C": "categories(또는 relation_patterns)", "G4D": "relations",
+_FIX = {"G4C": "uses(다른 층 카테고리 — B174) 또는 categories(집 카테고리)", "G4D": "relations",
         "G4E": "relation_patterns"}
 
 
@@ -67,8 +67,9 @@ def _speaks(cfg, category):
     return category in catalog.spoken(cfg)
 
 
-def run():
-    """`[(doc_type, ok, 줄)]` — 줄은 화면에 그대로 싣는다. 등록 0이면 빈 목록."""
+def run(layers_dir=None):
+    """`[(doc_type, ok, 줄)]` — 줄은 화면에 그대로 싣는다. 등록 0이면 빈 목록 · `layers_dir`(지도의 제안 폴더 — B174 ④)를 주면
+    그 층 자산으로 대조한다(없으면 상태 루트)."""
     from core.state.bootstrap import COORD_CATEGORY, load_config
     dts = registry.all_doc_types()
     targets = [(dt, registry.schema_path(dt)) for dt in sorted(dts)]
@@ -76,7 +77,7 @@ def run():
     if not targets:
         return []
     r = subprocess.run([sys.executable, str(KIT / "check_vocab.py"),
-                        "--layers", str(paths.layers())] + [str(p) for _dt, p in targets],
+                        "--layers", str(layers_dir or paths.layers())] + [str(p) for _dt, p in targets],
                        capture_output=True, text=True, cwd=str(paths.ROOT),
                        stdin=subprocess.DEVNULL)
     got = {}
@@ -111,7 +112,9 @@ def run():
                                    f"(인입은 멈추지 않는다 — 그 값은 보류된다)"))
         if schema.get("payload_kind") == "prose" and lay:
             try:
-                speaks = _speaks(load_config(lay), COORD_CATEGORY)
+                cfg_l = (json.loads((Path(layers_dir) / lay / "config.json").read_text(encoding="utf-8"))
+                         if layers_dir else load_config(lay))
+                speaks = _speaks(cfg_l, COORD_CATEGORY)
             except (OSError, ValueError):
                 speaks = False
             if not speaks:
