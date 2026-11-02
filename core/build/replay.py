@@ -184,8 +184,6 @@ def pick(b, at, surface, category, canonical, basis_now=None):
         nid = _find(b, r.get("target") or r.get("canonical"), category)
         if nid is None:
             return _miss("대상 없음")
-        if r.get("same_doc"):
-            v["same_doc"] = True
         _count("재생")
         return ("match", nid, v["confidence"], v), None
     if r.get("judge2"):

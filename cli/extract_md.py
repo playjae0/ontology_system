@@ -148,7 +148,7 @@ def verdict_of(r):
     """대장 행 하나의 판정 — `(갈래, 글)`: 갈래 = 기존 노드 · 새 노드 · 보류 · 글 = 「기존 노드 X」 · 「새 노드」 · 「보류(사유)」."""
     v = r.get("verdict")
     if v == "match":
-        return "기존 노드", f"기존 노드 {r.get('target') or r.get('canonical')}" + (" (이 문서에서 선 노드)" if r.get("same_doc") else "")
+        return "기존 노드", f"기존 노드 {r.get('target') or r.get('canonical')}"
     if v in ("new", "uncertain"):
         near = (r.get("nearest") or {}).get("canonical") if v == "uncertain" else None
         return "새 노드", "새 노드" + (f" (불확실 — 가까운 후보 {near})" if near else " (불확실)" if v == "uncertain" else "")

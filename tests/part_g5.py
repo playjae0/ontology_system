@@ -335,8 +335,7 @@ show("제시는 판정이 아니다 — 링킹 미스율을 오염시키지 않�
 # ── B73 ④ — 자동 노드의 사람 확정 (큐 종결 · 감사 H12) ──────────────────
 #
 # 시스템이 세운 노드(`status: auto`)를 사람이 「맞다」로 끝내는 경로가 **없었다** —
-# `resolve_item` 호출 0 · `confirmed` 생산자 0. 그래서 auto는 영원히 auto였고,
-# 그 노드는 다음 판정의 후보에서 계속 보수적으로 다뤄진다(B73 ③).
+# `resolve_item` 호출 0 · `confirmed` 생산자 0. 그래서 auto는 영원히 auto였다.
 print("\n■ B73 ④ — ops confirm: status 변경 + 큐 종결")
 
 _g74 = open_graph("process")

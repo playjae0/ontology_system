@@ -151,7 +151,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            verdict=loop._VERDICT.get(last.get("verdict"), "pending"), node_id=nid,
                            candidates_n=last.get("candidates_n", 0), confidence=last.get("confidence", 0.0),
                            llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
-                           same_doc=last.get("same_doc"), target=b.canonical_of(nid),
+                           target=b.canonical_of(nid),
                            category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
                            apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"))
         if not nid:

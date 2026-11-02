@@ -31,7 +31,7 @@ ADDED = []
 HOLD_AMBIGUOUS = "표기 모호(골격 노드 여럿)"
 #: 값 싣기의 결과(`put_attribute` — 표 · 산문 한 함수 · B120 ①): 새 항목 · 같은 값(출처만 더함) · 같은 맥락 다른 값(spec_conflict)
 ATTR_ADDED, ATTR_SAME, ATTR_CONFLICT = "added", "same", "conflict"
-from core import matcher as _matcher              # noqa: E402 — SAME_DOC 표지
+from core import matcher as _matcher              # noqa: E402 — 2차 판정 · 문장 폭
 from core.state.status import is_live
 from core.build.build_coord import CoordMixin              # 좌표 계보 · 공정 목록 (B125 ④ — 800행 상한으로 나눴다)
 from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
@@ -504,8 +504,6 @@ class Builder(CoordMixin):
                              "out_tokens": (_u1["completion_tokens"]
                                             - _u0["completion_tokens"])}}
         if verdict == MATCH:
-            if v.get("same_doc"):
-                self.last["same_doc"] = True
             # 판정으로 붙은 표기는 **출처 LLM 매칭**으로 남는다(B101 ④) — 사전 히트·기억은 아니다
             _by = (None if (v.get("replayed_path") or v.get("path")) in ("dictionary", "memo", "self_coord", "path_compat",
                                                                          "none")
@@ -529,7 +527,6 @@ class Builder(CoordMixin):
         extra["scope"] = parent_canonical if scoped_category else None
         extra["base_name"] = norm(surface)
         nid = self.g.add_node(canonical, category, "auto", provenance=[prov], **extra)
-        _matcher.SAME_DOC.add(nid)                       # 같은 문서 예외의 표지 (B101 ①)
         self._register(surface, nid, prov, key=canonical)
         self.last["queue_kind"] = "auto_node" if verdict == NEW else "uncertain_match"
         store.enqueue("auto_node" if verdict == NEW else "uncertain_match",

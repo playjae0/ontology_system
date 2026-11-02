@@ -325,10 +325,9 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
             return res, None, False
         graph = open_graph(layer)
         graph.build_begin()
-        # 같은 문서 예외의 표지 · 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ①④)
+        # 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ④)
         from core import matcher as _mt
         from core.build import build as _bld
-        _mt.SAME_DOC.clear()
         del _bld.ADDED[:]
         # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
         from core.build import replay as _rp

@@ -28,7 +28,7 @@ VERDICTS = ("match", "new", "uncertain", "anchor", "lowres", "orphan",
 
 _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "verdict", "node_id", "candidates_n", "confidence", "llm", "queue_kind",
-         "narrow", "emb_top", "nearest", "same_doc", "target", "from", "attached", "hold",
+         "narrow", "emb_top", "nearest", "target", "from", "attached", "hold",
          "category", "scope", "replay",   # 판정 재생의 키 몫 · 재판정 사유(B106 ② · 있을 때만)
          "by",                            # 그 행을 적은 손이 인입 루프가 아닐 때(B107 ③ — "retry")
          "blank",                         # 값 칸이 빈칸 표시였다 — 원문은 그대로 · 표지만(B113 ②)
@@ -100,7 +100,7 @@ def read_partial(doc_id):
 def row(*, locator=None, field=None, role=None, surface=None,
         canonical=None, layer=None, path="none", verdict="pending",
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
-        queue_kind=None, narrow=None, emb_top=None, nearest=None, same_doc=None,
+        queue_kind=None, narrow=None, emb_top=None, nearest=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
         blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, similar=None, basis=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
@@ -117,9 +117,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
          "llm": dict(llm or {"calls": 0, "in_tokens": 0, "out_tokens": 0}),
          "queue_kind": queue_kind}
     # 판정 근거(B99 ⑨) — **있을 때만** 단다(근거 없는 행의 대장 바이트는 그대로)
-    # 같은 문서 auto에 붙은 매칭(B101 ①) — 그때만 `same_doc: true`
     for k, v in (("narrow", narrow), ("emb_top", emb_top), ("nearest", nearest),
-                 ("same_doc", same_doc or None),
                  # 붙은 노드 · 소속 출처(B102 ⑦) — 붙은 자리(`attached`)는 엣지를 단 뒤 호출부가 단다
                  ("target", target), ("from", belongs_from),
                  # 보류 사유가 목록 밖이 아닐 때(B104 ① — 「표기 모호」) — 그때만 단다
@@ -158,7 +156,7 @@ def judged(last, *, locator, field, surface, layer, target):
                 node_id=last.get("node_id"), candidates_n=last.get("candidates_n", 0),
                 confidence=last.get("confidence", 0.0), llm=last.get("llm"),
                 queue_kind=last.get("queue_kind"), narrow=last.get("narrow"),
-                emb_top=last.get("emb_top"), nearest=last.get("nearest"), same_doc=last.get("same_doc"),
+                emb_top=last.get("emb_top"), nearest=last.get("nearest"),
                 target=target, category=last.get("category"), scope=last.get("scope"),
                 replay=last.get("replay"), judge2=last.get("judge2"),
                 apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"))

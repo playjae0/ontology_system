@@ -28,6 +28,7 @@ def items(layer=None):
         out.append({"doc_id": x.get("doc_id"), "surface": pl.get("surface"), "node_id": pl.get("node_id"),
                     "canonical": pl.get("canonical"), "layer": pl.get("layer"),
                     "near_id": near.get("id"), "near": near.get("canonical"), "score": score,
+                    # 가드는 걷혔다(B172) — B172 전에 쌓인 큐 항목(③ · 누적)은 그 표지를 그대로 진다 · 읽는 자리는 이 칸 하나
                     "guard": near.get("by") == "가드"})
     return out
 
