@@ -90,10 +90,11 @@ def _cat_of(fields, name):
 
 def _pair_edges(common, configs, old):
     """위아래 쌍의 엣지 `[(출발, 관계, 도착)]` — 새 모양은 공통 `pairs` · 옛 모양은 층 매핑의 합(옛 뜻)."""
+    edges = {catalog.pair_edge(p) for p in catalog.pairs(common)}           # 공통에 이미 있는 쌍 + 옛 층 매핑(옛 뜻)
     if old:
-        return sorted({(k.partition(",")[0], r, k.partition(",")[2])
-                       for c in configs.values() for k, r in (c.get(catalog.OLD_LAYER_KEYS[0]) or {}).items()})
-    return sorted({catalog.pair_edge(p) for p in catalog.pairs(common)})
+        edges |= {(k.partition(",")[0], r, k.partition(",")[2])
+                  for c in configs.values() for k, r in (c.get(catalog.OLD_LAYER_KEYS[0]) or {}).items()}
+    return sorted(edges)
 
 
 def _uses(lay, cfg, old, schemas):
@@ -101,7 +102,7 @@ def _uses(lay, cfg, old, schemas):
     if not old:
         return sorted(set(cfg.get("uses") or []))
     mapped = {x for k in (cfg.get(catalog.OLD_LAYER_KEYS[0]) or {}) for x in k.split(",")}
-    return sorted((_talks(lay, cfg, schemas) | mapped) - set(cfg.get("categories") or {}))
+    return sorted((_talks(lay, cfg, schemas) | mapped | set(cfg.get("uses") or [])) - set(cfg.get("categories") or {}))
 
 
 def _talks(lay, cfg, schemas):
@@ -140,9 +141,9 @@ def _name_forms(common, configs, old, edges):
     """카테고리마다 **경로**와 **이름 꼴**(B174 ④ — 사용자 「조건이 많으니 지도가 보여라」) — `{카테고리: (경로, 이름 꼴)}`."""
     sk = catalog.skeleton_categories(configs)
     cats = common.get("categories") or {}
-    if old:
-        sc = common.get(catalog.OLD_COMMON_KEYS[0]) or {}
-        bind, nest = set(sc.get("bind_categories") or []), set(sc.get("nest_categories") or [])
+    rule = catalog.legacy_rule(common, configs) if old else None             # 옛 키가 남아도 이름 규칙이 새 모양이면 새 뜻
+    if rule:
+        bind, nest, _sep = rule
         ups = {c: sorted({(s if d == c else d) for s, _r, d in edges if c in (s, d)} - {c} - sk) for c in nest}
         path = {c: ("골격" if c in sk else "씀" if c in bind | nest else "안 씀 — (사유 없음 · 옛 목록 밖)") for c in cats}
     else:

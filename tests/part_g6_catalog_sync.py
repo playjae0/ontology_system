@@ -501,6 +501,24 @@ show("B174 ⓕ 지도 — 카테고리마다 이름 꼴(골격 · 경로 · 위 
      and _m174["categories"]["Property"]["name_form"].startswith("<공정>::<Unit>::<이름>")
      and _rc != 0 and "[멈춤] 쌍 Unit,Process의 관계가 층마다 다르다" in _o and not _P.config_next("layers").exists(),
      [ln for ln in _o.splitlines() if "[멈춤]" in ln][:1])
+
+# 리뷰 고침(B174) — 섞인 모양(공통은 새 모양 · 층에 남은 겹친 정의) · 「안 씀」 카테고리의 앞말(순수 함수 — 레포 config 읽기만)
+_com174 = json.loads((ROOT / "layers" / "common.json").read_text(encoding="utf-8"))
+_cfg174 = {lay: json.loads((ROOT / "layers" / lay / "config.json").read_text(encoding="utf-8")) for lay in ("process", "quality")}
+_cfg174["quality"]["categories"]["Property"] = "(시험) 관리항목"
+_cfg174["quality"]["uses"].remove("Property")
+_mx174 = CN.propose(_com174, _cfg174)
+show("B174 리뷰 고침 ⓐ 섞인 모양 → 제안은 공통 쌍 · sep · 경로를 그대로 두고 겹친 정의만 uses로(이름 바뀜 0 · 제안은 새 모양)",
+     not _mx174["stops"] and _mx174["common"]["pairs"] == _com174["pairs"] and _mx174["common"]["sep"] == _com174["sep"]
+     and not any("no_path" in v for v in _mx174["common"]["categories"].values())
+     and "Property" in _mx174["layers"]["quality"]["uses"] and not _mx174["report"]["이름 바뀜"]
+     and not catalog.old_shape(_mx174["layers"], _mx174["common"]),
+     f"쌍 {len(_mx174['common']['pairs'])} · quality uses {_mx174['layers']['quality']['uses']}")
+_com174["categories"]["Property"]["no_path"] = "(시험) 공용 분류"
+_nr174 = catalog.naming_rule(_com174, _cfg174)
+show("B174 리뷰 고침 ⓑ 「안 씀」 카테고리는 위가 일반 노드인 쌍의 아래여도 앞말이 없다 — 이름 규칙과 지도 이름 꼴이 같은 답",
+     "Property" not in _nr174["path"] + _nr174["nest"]
+     and CM.name_forms(_com174, _cfg174)["Property"] == "이름 그대로(경로 안 씀)", str(_nr174))
 init.init(fresh_=True, all_=True)
 
 done()
