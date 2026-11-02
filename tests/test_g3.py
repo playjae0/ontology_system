@@ -134,7 +134,8 @@ show("canonical 중복 0건 (스코프 없는 Unit은 F1 극성 결합을 유지
 # [B26] 옛 문장은 «Unit은 이름에 · Property는 주소에»였다 — **옛 정체성 모델**이다.
 # 이제 가르는 축은 카테고리가 아니라 **스코프 대상인가**다(문서 4 §4.5-5):
 # 스코프 카테고리는 주소에, 비스코프는 이름에.
-_scoped = set(load_config("process")["canonical_scope"]["bind_categories"])
+from core.build.naming import scope_categories   # noqa: E402 — 이름 규칙은 공통 config(B174 — 읽는 함수 하나)
+_scoped = set(scope_categories())
 _bad = [n["canonical"] for n in P.nodes.values()
         if n["status"] != "seed" and n["category"] in _scoped
         and "::" not in n["canonical"]]

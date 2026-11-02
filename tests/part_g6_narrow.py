@@ -233,7 +233,8 @@ _dic74 = _DIC74.open()
 _u74 = next(n for n in _g74.nodes.values()
             if n.get("category") == "Unit" and n.get("status") == "auto")
 _pa74 = _SO142_74(_u74)          # 기대 변경(B142 ⑤ — 부모 경로 칸 scope · 읽는 함수 하나)
-_sc74 = (_cfg74.get("canonical_scope") or {}).get("bind_categories", [])
+from core.build.naming import scope_categories as _SC74             # noqa: E402 — 읽는 함수 하나(B174)
+_sc74 = _SC74()
 _k74, _pol74, _, _ = _KEY74(_u74["canonical"].split("::")[-1], "Unit", _cfg74,
                             parent_canonical=_pa74)
 show("① 등재된 키가 **해소가 여는 키**다 (exact 후보가 선다)",
@@ -451,7 +452,7 @@ print("\n── B75 ② 스코프는 하드 필터다 ──")
 _g75 = open_graph("process")
 _dic75 = _DIC74.open()
 _cfg75b = load_config("process")
-_sc75 = (_cfg75b.get("canonical_scope") or {}).get("bind_categories", [])
+_sc75 = _SC74()
 # 기대 변경(B142 ① — 관문은 카테고리 · 공정 줄기(값의 자리) · 부모 글자 정확 일치가 아니다 · 「스코프로 끝」 → 「관문으로 끝」)
 _cd75 = _MT74.candidates("노칭::없는항목ZZ", "Property", "process", _g75, _dic75,
                          parent="노칭", cfg=_cfg75b, place=_place73("노칭", "없는항목ZZ"))

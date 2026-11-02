@@ -290,16 +290,15 @@ init.init(fresh_=True, all_=True)
 print("\n■ B95 ② 새 카테고리 경고에 이름 규칙 한 줄 — 표시")
 init.init(fresh_=True, all_=True)
 _boot()
-_rw(_P.common(), lambda c: c["canonical_scope"]["bind_categories"].append("Component"))
 _new_layer({"Component": "구성 부품(창작)", "DefectHistory": "이슈 이력의 결함(창작)"})
 _rcd, _od = _boot("--dry-run")
 _rc, _o = _boot()
-show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 적용(bind_categories 안) · 미적용(기준과 「노드가 생기기 전에」) · 종료 코드 불변 · dry-run 같다",
+show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 경로 씀(기본 · no_path 없음) · 「노드가 생기기 전에」 · 종료 코드 불변 · dry-run 같다"
+     "(고침 B174 — 목록이 아니라 기본 씀)",
      _rc == 0 and _rcd == 0
-     and "이름 규칙: 'Component'는 공정 스코프 적용" in _o
-     and "이름 규칙: 'DefectHistory'는 미적용" in _o and "노드가 생기기 전에 정한다" in _o
-     and "공용 분류도 아니면" in _o and "공정을 모르면" not in _o           # 기대 변경(B171 — 기준 「기본으로 넣는다」 · 옛 질문 문면 0)
-     and "이름 규칙: 'DefectHistory'는 미적용" in _od,
+     and "이름 규칙: 'Component'는 경로 씀" in _o and "이름 규칙: 'DefectHistory'는 경로 씀" in _o
+     and "노드가 생기기 전에 정한다" in _o and "공정을 모르면" not in _o
+     and "이름 규칙: 'DefectHistory'는 경로 씀" in _od,
      [l.strip()[:60] for l in _o.splitlines() if "이름 규칙" in l][:2])
 _drop_layer()
 init.init(fresh_=True, all_=True)

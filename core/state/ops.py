@@ -192,7 +192,8 @@ def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair
             # ② 옛 부모 하위 설비를 통한 부착 — 그 소속 주장을 걷고 새 부모에
             #    좌표 부착을 세운다. 새 부모 아래 대응 설비를 **만들지 않는다**.
             e["status"] = STATUS_DELETED
-            rel = pair.get(f"{parent['category']},{node['category']}")
+            from core.state import catalog
+            rel = catalog.pair_relation(cfg, parent["category"], node["category"])   # 위아래 쌍 한 자리(B174 ①)
             if rel:
                 g.add_edge(parent["id"], rel, nid, "auto",
                            list(e.get("provenance") or []))

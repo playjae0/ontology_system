@@ -63,7 +63,7 @@ def load_config(layer):
     """층 config — 파일 그대로(층 이름만 폴더 이름으로).
 
     이름 규칙 · 위아래 쌍은 층 사이의 사실이라 공통 config 한 곳에 살고 **얹지 않는다** — 읽는 자리는 함수다
-    (`naming.scope_categories` · `naming.nest_categories` · `gate.pair_relation` · `catalog.sep` — B174 ①).
+    (`naming.scope_categories` · `naming.nest_categories` · `catalog.pair_relation` · `catalog.sep` — B174 ①).
     """
     cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
     # **층 이름의 정본은 폴더 이름이다**(B99 ①) — 파일 안 `"layer"`가 달라도 읽는 쪽은 폴더 이름을

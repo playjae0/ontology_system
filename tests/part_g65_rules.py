@@ -122,9 +122,11 @@ show("⑤ⓐ polarity만 다르고 canonical이 같은 노드 0건 (D-57이 지�
 # **단정하는 문장**이 사라졌는지를 본다 — 「구판은 …라고 적어 두었다」는 설명은
 # 남아야 한다(왜 고쳤는지가 기록이다). 문자열을 통째로 세면 그 설명이 걸린다.
 _b57_bsrc = (ROOT / "core" / "build" / "build.py").read_text(encoding="utf-8")
+from core.build.naming import scope_categories as _SC57                    # noqa: E402 — 읽는 함수 하나(B174)
 show("⑤ 스코프 대상 카테고리는 config가 갖는다 (코드가 이름을 단정하지 않는다)",
-     load_config("process").get("canonical_scope", {}).get("bind_categories")      # 기대 변경(B171 — 값은 공통 config가 정본 · 목록을 시험에 박지 않는다)
-     == json.loads((ROOT / "layers" / "common.json").read_text(encoding="utf-8"))["canonical_scope"]["bind_categories"]
+     "canonical_scope" not in load_config("process")                              # 고침(B174 — 이름 규칙은 공통 config의 경로 · 얹지 않는다)
+     and set(_SC57()) == {c for c, v in json.loads((ROOT / "layers" / "common.json").read_text(encoding="utf-8"))["categories"].items()
+                          if "no_path" not in v} - {load_config(l).get("skeleton", {}).get("category") for l in ("process", "quality")}
      and "카테고리(현행 Property)뿐이다" not in _b57_bsrc
      and "bind_categories`가 정하고 코드는 그것을 읽는다" in _b57_bsrc)
 show("⑤ 회귀 대조 자산이 개정본 기준이다 (감사 에이전트가 읽는 자리)",

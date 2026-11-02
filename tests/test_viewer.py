@@ -367,7 +367,7 @@ _e0 = len(VD.graph()["detached"]["edgeless"])
 _cm = _P.common()
 _cm0 = _cm.read_text(encoding="utf-8")
 _cj = json.loads(_cm0)
-_cj["canonical_scope"]["bind_categories"] = [c for c in _cj["canonical_scope"]["bind_categories"] if c != "Failure"]
+_cj["categories"]["Failure"]["no_path"] = "시험 — 이 문서만 경로 안 씀"        # 고침(B174 — 경로는 카테고리 칸)
 _cm.write_text(json.dumps(_cj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 run_document({"doc_id": "B103VW", "doc_type": "ppt_quality", "payload_kind": "prose", "source_path": "B103VW.pptx",
               "revision": "R1", "parsed_at": "2026-10-07T00:00:00", "parser_version": "m", "adapter_version": "m",

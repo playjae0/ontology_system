@@ -50,12 +50,9 @@ def snapshot(doc_prefix):
 print("\n■ B90 ① 층 공통 config — 카테고리 카탈로그")
 init.init(fresh_=True, all_=True)
 _decl = catalog.declared_by()
-show("① mock 카탈로그는 층 선언의 복사다 — 집 = 선언한 층 하나 · 거부 0 · 이름 규칙은 카탈로그에만",
+show("① mock 카탈로그는 층 선언의 복사다 — 집 = 선언한 층 하나 · 거부 0 · 이름 규칙은 공통 config에만(고침 B174 — 옛 모양 0)",
      all(len(v) == 1 and catalog.home(c) == v[0] for c, v in _decl.items())
-     and catalog.problems() == []
-     and not any("canonical_scope" in json.loads(_P.layers(l, "config.json").read_text(encoding="utf-8"))
-                 for l in _decl["Process"] + _decl["Failure"])
-     and load_config("quality").get("canonical_scope") == catalog.canonical_scope(),
+     and catalog.problems() == [] and catalog.old_shape() == [],
      str({c: catalog.home(c) for c in _decl}))
 
 
@@ -79,7 +76,7 @@ show("① 거부 네 갈래(ⓑ 카탈로그 밖 · ⓒ 선언 안 한 집 · �
      all(any(t == k for t, _m in v) for k, v in _cases.items())
      and any("Tool" in m for _t, m in _cases["ⓑ"])
      and any("선언하지 않은 층" in m for _t, m in _cases["ⓒ"])
-     and any("에서 지운다" in m for _t, m in _cases["ⓓ"])
+     and any("옛 모양" in m and "제안" in m for _t, m in _cases["ⓓ"])          # 고침 B174 — 옛 모양은 제안으로
      and sum(1 for t, _m in _cases["ⓔ"] if t == "ⓔ") == 2,
      str({k: [t for t, _m in v] for k, v in _cases.items()}))
 init.init(fresh_=True, all_=True)
@@ -91,9 +88,9 @@ with tempfile.TemporaryDirectory(prefix="b90_") as _td:
     shutil.copytree(ROOT / "layers" / "quality", _r / "layers" / "quality")
     _rw(_r / "layers" / "quality" / "config.json",
         lambda c: c["categories"].update(OV["quality"]["categories"]))
-    # 사내 옛 판 모양 — 이름 규칙이 아직 층 config에 있다(초안이 그것을 옮긴다)
-    _rw(_r / "layers" / "process" / "config.json",
-        lambda c: c.update(canonical_scope=catalog.canonical_scope()))
+    # 사내 옛 판 모양 — 이름 규칙이 아직 층 config에 있다(고침 B174 — 초안은 옮기지 않고 옛 모양 제안이 읽는다)
+    _rw(_r / "layers" / "process" / "config.json", lambda c: c.update(canonical_scope={
+        "bind_categories": ["Failure", "Property", "Unit"], "nest_categories": ["Property"], "sep": "::"}))
     (_r / "registry").mkdir()
     (_r / "registry" / "doc_types.json").write_text("{}", encoding="utf-8")   # 이관된 루트
     _env = {**os.environ, "USE_MOCK": "0", "ONTO_HOME": str(_r)}
@@ -107,17 +104,17 @@ with tempfile.TemporaryDirectory(prefix="b90_") as _td:
     # 멈춘다(기대 변경 · B92 ① — 잠그는 성질은 그대로: 겹친 집은 사람 · 이름 규칙은 옮긴다).
     _cj = _r / "layers" / "common.json"
     _d = json.loads(_cj.read_text(encoding="utf-8")) if _cj.exists() else {}
-    show("① ⓐ 운영에서 없으면 층 config에서 만들고 멈춘다 — 겹친 카테고리의 집은 빈칸 · 이름 규칙은 옮긴다 · 초안 파일 0",
+    show("① ⓐ 운영에서 없으면 층 config에서 만들고 멈춘다 — 겹친 카테고리의 집은 빈칸 · 초안 파일 0(고침 B174 — 이름 규칙은 옮기지 않는다)",
          _rc1 != 0 and _d.get("categories", {}).get("Unit", {}).get("home") == ""
          and _d["categories"]["Process"]["home"] == "process"
-         and "canonical_scope" in _d and "빈칸" in _o1
+         and "canonical_scope" not in _d and "빈칸" in _o1
          and not (_r / "layers" / "common.draft.json").exists(),
          _o1.strip().splitlines()[0][:100] if _o1.strip() else "")
     _d["categories"]["Unit"]["home"] = "process"
     _cj.write_text(json.dumps(_d, ensure_ascii=False), encoding="utf-8")
-    _rw(_r / "layers" / "process" / "config.json", lambda c: c.pop("canonical_scope", None))
     _rc3, _o3 = _boot()
-    show("① ⓐ 빈칸을 채워 저장하면 bootstrap이 선다", _rc3 == 0, _o3.strip()[-120:])
+    show("① ⓐ 빈칸을 채워 저장하면 다음은 옛 모양(겹친 정의 · 층의 이름 규칙) — 제안 · 보고를 쓰고 멈춘다(고침 B174 — 옛: 선다)",
+         _rc3 != 0 and "옛 모양" in _o3 and (_r / "work" / "config_next" / "보고.md").exists(), _o3.strip()[:120])
 
 # doctor 머리 줄 = doctor가 하위 실행으로 그리는 화면 그 함수(`cli.doctor_view head`) — doctor 전체를 돌리지 않는다(B121 ②ⓓ)
 _q = subprocess.run([sys.executable, "-m", "cli.doctor_view", "head"], cwd=str(ROOT),

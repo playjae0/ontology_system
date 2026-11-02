@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from core import matcher
 from core.build import gate
-from core.state import log, store
+from core.state import catalog, log, store
 from core.state.bootstrap import load_config, open_graph
 from core.build.build import Builder
 from core.state.status import is_live
@@ -316,7 +316,7 @@ def _pick_any(surface, graphs, cfgs, dic):
     """
     exact, fuzzy = {}, {}
     for lay, g in graphs.items():
-        for cat in (cfgs[lay].get("categories") or {}):
+        for cat in sorted(catalog.spoken(cfgs[lay])):
             cands = matcher.candidates(surface, cat, lay, g, dic)
             if not cands:
                 continue

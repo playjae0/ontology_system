@@ -97,13 +97,30 @@ def _rw(path, fn):
     Path(path).write_text(json.dumps(c, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def component_floor(quality_uses=("Component",)):
+    """**Component 바닥**(B102 시험들 — B174 새 모양): 덧칠(Component) + 소속 엣지의 위아래 쌍(Component → Unit · Process — 공통
+    config 한 곳 · 위가 Unit이라 Component 이름은 그 아래) + 품질층이 Component를 쓴다(`uses`) — 상태 루트에만 · 골격까지."""
+    overlay(component=True)
+    _rw(_P.common(), lambda c: c.setdefault("pairs", []).extend(
+        {"lower": "Component", "upper": u, "rel": "part_of", "src": "lower", "정의문": f"Component가 {u}에 속한다"}
+        for u in ("Unit", "Process")))
+    _rw(_P.layers("quality", "config.json"), lambda c: c.setdefault("uses", []).extend(
+        x for x in quality_uses if x not in c.get("uses", [])))
+    for lay in ("process", "quality"):
+        bootstrap(lay, echo=False)
+
+
 def overlay(*, component=False, also=False):
     """클린 → 상태 루트의 층 config·카탈로그에 덧칠 → 골격. 레포 seed는 건드리지 않는다."""
     init.init(fresh_=True, all_=True)
     lays = ("quality", "process") if component else ("quality",)
+    homes = {k: v["home"] for k, v in OV["common"]["categories"].items()}
     for lay in lays:
         def _f(c, lay=lay):
-            c["categories"].update(OV[lay]["categories"])
+            # 집이 그 층인 카테고리만 정의문 · 다른 층 카테고리는 `uses`(B174 ② — 렌즈로 겹쳐 선언하지 않는다)
+            c["categories"].update({k: v for k, v in OV[lay]["categories"].items() if homes.get(k, lay) == lay})
+            c.setdefault("uses", []).extend(k for k in OV[lay]["categories"] if homes.get(k, lay) != lay
+                                            and k not in c.get("uses", []))
             c["relation_patterns"] += OV[lay]["relation_patterns"]
             c.setdefault("query_traverse", {}).update(OV[lay].get("query_traverse") or {})
         _rw(_P.layers(lay, "config.json"), _f)

@@ -193,7 +193,8 @@ def _about_hit(b, cfg, a):
     여럿이면 `None`(호출부가 버리고 기록한다). 카테고리는 층 카테고리(겸 포함) 안이어야 한다.
     """
     surface, cat = (a or {}).get("surface"), (a or {}).get("category")
-    if not surface or cat not in (cfg.get("categories") or {}):
+    from core.state import catalog
+    if not surface or cat not in catalog.spoken(cfg):                    # 그 층이 말하는 카테고리(집 ∪ uses — B174 ②)
         return None
     hosts = matcher._hosts(cat)
     nid = b.buffer.get(loop._n(surface))

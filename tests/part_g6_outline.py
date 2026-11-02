@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures"))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
-from g65_common import _P, _rw, done, overlay   # noqa: F401
+from g65_common import _P, component_floor, _rw, done, overlay   # noqa: F401
 
 import make_b88 as MB                                   # noqa: E402 — Word 조립 재료(창작)
 from fake_gateway import CALLS, Live                    # noqa: E402
@@ -54,28 +54,10 @@ XL = {"추출 사양": ["1. 개요", "본 사양은 추출 설비의 범위를 �
 
 
 def _setup():
-    """덧칠(Component · 겸 렌즈) + `nest_categories` + 소속 엣지의 카테고리쌍 — 상태 루트에만(B102 시험과 같은 바닥) ·
+    """덧칠(Component) + 소속 엣지의 위아래 쌍(공통 config) — 상태 루트에만(B102 시험과 같은 바닥) ·
     청크 목표 행 손잡이(작은 표본에서 제목 2~3단)."""
-    overlay(component=True)
-    _rw(_P.common(), lambda c: c.setdefault("canonical_scope", {}).__setitem__("nest_categories", ["Component"]))
-    pats = [{"src": s_, "rel": "part_of", "dst": d_, "symmetric": False, "정의문": f"{s_}가 {d_}에 속한다"}
-            for s_, d_ in (("Component", "Unit"), ("Component", "Process"), ("Unit", "Process"))]
-    pairs = {f"{p_['src']},{p_['dst']}": "part_of" for p_ in pats}
-
-    def _q(c):
-        c["categories"]["Component"] = "(품질층의 렌즈) 불량이 일어나는 구성 기계"
-        c["relation_patterns"] += pats
-        c.setdefault("category_pair_map", {}).update(pairs)
-
-    def _p(c):
-        have = {(p_["src"], p_["rel"], p_["dst"]) for p_ in c["relation_patterns"]}
-        c["relation_patterns"] += [p_ for p_ in pats if (p_["src"], p_["rel"], p_["dst"]) not in have]
-        for k, v in pairs.items():
-            c.setdefault("category_pair_map", {}).setdefault(k, v)
-    _rw(_P.layers("quality", "config.json"), _q)
-    _rw(_P.layers("process", "config.json"), _p)
+    component_floor()                             # B174 — 위아래 쌍 · uses(공통 바닥)
     for lay in ("process", "quality"):
-        bootstrap(lay, echo=False)
         _register(lay, f"b115_{lay}")           # 실호출 갈래는 mock 내장 doc_type을 모른다 — 등록 단에 세운다
     tuning.apply({"chunk_rows": [1, 2]})
 

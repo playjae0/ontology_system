@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
-from g65_common import _P, _rw, done, overlay   # noqa: F401
+from g65_common import _P, component_floor, _rw, done, overlay   # noqa: F401
 from g6_common import _register, _unregister, _run, DT   # noqa: E402
 
 from openpyxl import Workbook, load_workbook             # noqa: E402
@@ -61,27 +61,8 @@ def _hint(doc_id, by_loc):
 
 
 def _setup():
-    """덧칠(Component · 겸 렌즈) + `nest_categories` + 소속 엣지의 카테고리쌍 — 상태 루트에만(B102 시험과 같은 바닥)."""
-    overlay(component=True)
-    _rw(_P.common(), lambda c: c.setdefault("canonical_scope", {}).__setitem__("nest_categories", ["Component"]))
-    pats = [{"src": s_, "rel": "part_of", "dst": d_, "symmetric": False, "정의문": f"{s_}가 {d_}에 속한다"}
-            for s_, d_ in (("Component", "Unit"), ("Component", "Process"), ("Unit", "Process"))]
-    pairs = {f"{p_['src']},{p_['dst']}": "part_of" for p_ in pats}
-
-    def _q(c):
-        c["categories"]["Component"] = "(품질층의 렌즈) 불량이 일어나는 구성 기계"
-        c["relation_patterns"] += pats
-        c.setdefault("category_pair_map", {}).update(pairs)
-
-    def _p(c):
-        have = {(p_["src"], p_["rel"], p_["dst"]) for p_ in c["relation_patterns"]}
-        c["relation_patterns"] += [p_ for p_ in pats if (p_["src"], p_["rel"], p_["dst"]) not in have]
-        for k, v in pairs.items():
-            c.setdefault("category_pair_map", {}).setdefault(k, v)
-    _rw(_P.layers("quality", "config.json"), _q)
-    _rw(_P.layers("process", "config.json"), _p)
-    for lay in ("process", "quality"):
-        bootstrap(lay, echo=False)
+    """덧칠(Component) + 소속 엣지의 위아래 쌍(공통 config) — 상태 루트에만(B102 시험과 같은 바닥)."""
+    component_floor()                             # B174 — 위아래 쌍 · uses(공통 바닥)
 
 
 def _prose(doc_id, lay, sheets, ents_of, doc_coord="탭용접", path=None):
