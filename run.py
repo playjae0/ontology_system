@@ -53,7 +53,7 @@
   python run.py skeleton-confirm <층> --by <이름>
                                    골격 확정 — 판정 → 뷰 대조 → 기록
   python run.py show <명령> ...    산출물 열람 — tree·node·doc·report·chunk·edges·schema·meta
-  python run.py export <형식>      파생물 — cypher · csv · mermaid
+  python run.py export <형식>      파생물 — cypher · csv · mermaid · html · config(config 지도)
 """
 import json
 import sys
