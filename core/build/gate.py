@@ -50,7 +50,8 @@ PATH_AUTO = "auto"          # ④
 
 
 def _index(cfg):
-    pats = cfg.get("relation_patterns") or []
+    from core.state import catalog
+    pats = catalog.layer_patterns(cfg)                   # 층 패턴 + 그 층에 걸리는 위아래 쌍(B174 ②)
     forward = {(p["src"], p["rel"], p["dst"]): p for p in pats}
     reverse = {(p["dst"], p["rel"], p["src"]): p for p in pats
                if not p.get("symmetric")}
@@ -59,12 +60,11 @@ def _index(cfg):
 
 
 def pair_relation(cfg, src_cat, dst_cat):
-    """관계는 category_pair_map이 결정한다 — 게이트 패턴표의 특수형(§6-3).
+    """관계는 공통 config의 위아래 쌍이 결정한다 — 게이트 패턴표의 특수형(§6-3 · B174 ① — 층마다 두지 않고 한 곳).
 
-    표·산문·재시도 세 경로가 같은 표를 읽는다. 한 곳에 두어야 표의 키 형식
-    (`"src,dst"`)이 세 벌로 갈리지 않는다.
-    """
-    return (cfg.get("category_pair_map") or {}).get(f"{src_cat},{dst_cat}")
+    표·산문·재시도 세 경로가 같은 함수를 읽는다(`catalog.pair_relation` — 그 층이 두 카테고리를 다 말할 때만)."""
+    from core.state import catalog
+    return catalog.pair_relation(cfg, src_cat, dst_cat)
 
 
 

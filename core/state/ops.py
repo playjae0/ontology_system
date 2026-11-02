@@ -80,8 +80,9 @@ def _cfg(layer):
     return load_config(layer)
 
 
-def _sep(cfg):
-    return (cfg.get("canonical_scope") or {}).get("sep", "::")
+def _sep(cfg=None):
+    from core.state import catalog
+    return catalog.sep()
 
 
 def log_op(op, actor, targets, reason, detail=None, names=None):
@@ -124,12 +125,11 @@ def preview(layer, op, nid, **kw):
 def _scope_children(w, parent_canonical, cfg):
     """스코프 접두로 그 노드에 매달린 자식들 — canonical 연쇄의 대상.
 
-    스코프가 걸린 카테고리만 본다(config `canonical_scope.bind_categories`).
+    스코프가 걸린 카테고리만 본다(이름 규칙 — `naming.scope_categories`).
     부모 개명이 자식 이름을 끌고 가는 것은 **스코프가 주소이기 때문**이며,
     주소가 아닌 카테고리는 연쇄 대상이 아니다. 자식의 집은 부모의 집과 다를 수 있다 —
     **층 전부**에서 찾는다(B100 ④).
     """
-    sc = cfg.get("canonical_scope") or {}
     from core.build.naming import scope_categories
     binds, sep = scope_categories(cfg), _sep(cfg)
     pre = parent_canonical + sep
@@ -139,7 +139,7 @@ def _scope_children(w, parent_canonical, cfg):
 
 
 # ---------------------------------------------------------------- I1 개명
-def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair):
+def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair_rels):
     """이관의 **엣지 재배선** — 옛 부모에서 떼고 새 부모에 단다. 돌려주는 것은 옮긴 수.
 
     `transfer`에서 단계로 떼어냈다(B78 2c). 엣지는 **층 전부**에서 보고, 새 엣지는 옛 엣지가
@@ -176,7 +176,7 @@ def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair
         other = e["dst"] if e["src"] == nid else (e["src"] if e["dst"] == nid else None)
         if other is None or other == parent["id"]:
             continue
-        if e["rel"] not in skel_rels and e["rel"] not in set(pair.values()):
+        if e["rel"] not in skel_rels and e["rel"] not in pair_rels:
             continue
         on = w.get(other)
         if not on:
@@ -238,7 +238,6 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
             "seed 노드는 이관 대상이 아니다 — 골격의 원천은 사람의 파일이고 "
             "구조 개정의 정본 경로는 seed 개정이다(문서 4 §4.9-1)")
 
-    sc = cfg.get("canonical_scope") or {}
     sep = _sep(cfg)
     old = node["canonical"]
     names = {"node": oplog.name(node), "parent": oplog.name(parent)}      # 바꾸기 전 이름 (B106 ③)
@@ -254,9 +253,10 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
 
     # ① 엣지 재배선 — 골격에 매단 관계를 새 부모로.
     skel_rels = set((cfg.get("skeleton") or {}).get("relations", {}).values())
-    pair = (cfg.get("category_pair_map") or {})
+    from core.state import catalog
+    pair_rels = {p["rel"] for p in catalog.layer_pairs(cfg)}      # 위아래 쌍의 관계(B174 ① — 공통 config 한 곳)
     moved = _transfer_edges(w, cfg, node, parent, scoped, sep, old,
-                            nid, skel_rels, pair)
+                            nid, skel_rels, pair_rels)
 
     # ② canonical 연쇄 — 개명과 같은 기구를 재사용한다.
     dictionary = Dictionary.open()

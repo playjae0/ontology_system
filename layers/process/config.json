@@ -34,11 +34,7 @@
     "has_property",
     "mirrors"
   ],
-  "category_pair_map": {
-    "Unit,Process": "part_of",
-    "Process,Property": "has_property",
-    "Unit,Property": "has_property"
-  },
+  "uses": [],
   "match_threshold": 0.85,
   "query_traverse": {
     "part_of": {
@@ -74,27 +70,6 @@
   "prompts": {"structure": "이 층에서 대상 제목은 셋이다 — 설비(그 아래 글 전체가 장비 하나 전체를 말한다 · 카테고리 Unit) · 유닛(설비를 이루는 유닛 · 부(部) · 모듈 — 「언와인더 unit」 「공급부」 · 카테고리 Unit) · 항목(관리 항목 · 사양 하나의 이름 — 그 아래 줄이 그 값이다 · 카테고리 Property). 설비 전체를 부르는 「○○ unit」(설비 이름)과 설비의 한 부분인 유닛을 가른다 — 둘 다 Unit이다. 사양을 묶는 소제목(기본사양 · 지정사양 · 요구사항)은 이 층의 노드가 아니다."},
   "_relation_patterns_note": "추출 경로 전용 게이트 패턴. 골격 관계(Process part_of/precedes/mirrors Process)는 여기 넣지 않는다 — 넣으면 추출이 골격을 개정한다. 층이 어떤 관계를 갖는지의 선언은 위 relations 배열이 한다.",
   "relation_patterns": [
-    {
-      "src": "Unit",
-      "rel": "part_of",
-      "dst": "Process",
-      "symmetric": false,
-      "정의문": "설비가 그 공정에 속한다"
-    },
-    {
-      "src": "Unit",
-      "rel": "has_property",
-      "dst": "Property",
-      "symmetric": false,
-      "정의문": "설비가 그 관리항목을 갖는다"
-    },
-    {
-      "src": "Process",
-      "rel": "has_property",
-      "dst": "Property",
-      "symmetric": false,
-      "정의문": "공정이 그 관리항목을 갖는다"
-    },
     {
       "src": "Unit",
       "rel": "mirrors",
