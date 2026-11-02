@@ -87,7 +87,9 @@ _knobs_file(None)
 
 # ────────────────────────────────────────────────────────────── ①
 print("\n■ B91 ① 렌즈 — doc_type의 층 목록")
-overlay()                                  # 품질층도 Unit을 선언한다(집 = process)
+overlay()                                  # 품질층도 Unit을 쓴다(uses · 집 = process)
+# 고침(B174 — 품질층은 Unit을 정의하지 않는다 · 렌즈 관련성은 집 카테고리 어휘 + relevance_terms(추출 입력은 ②회차까지 그대로))
+_rw(_P.layers("quality", "config.json"), lambda c: c.update(relevance_terms=["노칭 프레스"]))
 run_document(load("CP01"))
 if registry.lookup("b91lens"):
     registry.unregister("b91lens")         # 등록 단은 클린이 안 지운다
@@ -355,7 +357,10 @@ print("\n■ B91 ⑥ 겸 집 불일치 경고 — 막지 않고 말한다")
 from core.state import catalog as _CAT             # noqa: E402
 overlay(also=True)                                 # Process가 Unit을 겸한다 · 둘 다 집 process
 _w0 = _CAT.warnings()
-_rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))   # 품질층도 Unit 선언
+_rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))   # 집을 품질층으로
+_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Unit="(시험) 설비")      # 고침(B174 — 새 집이 정의 ·
+    or c.update(uses=[x for x in c.get("uses", []) if x != "Unit"]))                                # 옛 집 층은 uses · 겹친 정의 0)
+_rw(_P.layers("process", "config.json"), lambda c: (c["categories"].pop("Unit"), c.setdefault("uses", []).append("Unit")))
 _w1, _p1 = _CAT.warnings(), _CAT.problems()
 _rcb, _ob = _run("bootstrap")
 show("⑥ 겸 카테고리의 집이 주 카테고리의 집과 다르면 bootstrap이 경고한다(거부 아님 · 같으면 0)",

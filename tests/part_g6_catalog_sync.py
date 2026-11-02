@@ -114,6 +114,7 @@ print("\n■ B92 ② 노드가 있는 카테고리의 집 변경을 막는다")
 _boot()                                            # 골격이 서야 문서가 노드를 만든다
 run_document(load("CP01"))                         # Unit 노드가 process 그래프에
 _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Unit="설비"))
+_rw(_P.layers("process", "config.json"), lambda c: (c["categories"].pop("Unit"), c.setdefault("uses", []).append("Unit")))   # 고침(B174 — 겹친 정의 0)
 _rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))
 _rc, _o = _boot()
 show("ⓔ 노드가 있는 카테고리의 home을 바꾸면 멈춘다 — 옛 집은 노드가 있는 그래프",
@@ -144,19 +145,19 @@ with tempfile.TemporaryDirectory(prefix="b92_") as _td:
     _d = json.loads(_cj.read_text(encoding="utf-8")) if _cj.exists() else {}
     _rw(_cj, lambda c: c["categories"]["Unit"].update(home="process"))
     _rc2, _o2 = _boot(env=_env)
-    show("ⓖ 운영 처음 — common.json을 바로 만든다(한 층 → 그 층 · 겹침 → 빈칸 + 멈춤) · 초안 파일 0 · 채우면 선다",
+    show("ⓖ 운영 처음 — common.json을 바로 만든다(한 층 → 그 층 · 겹침 → 빈칸 + 멈춤) · 초안 파일 0 · 채우면 다음은 옛 모양 제안"
+         "(고침 B174 — 겹친 정의는 uses로 옮긴다 · 옛: 선다)",
          _rc1 != 0 and _d.get("categories", {}).get("Unit", {}).get("home") == ""
          and _d["categories"]["Process"]["home"] == "process"
-         and not (_r / "layers" / "common.draft.json").exists() and _rc2 == 0,
+         and not (_r / "layers" / "common.draft.json").exists() and _rc2 != 0 and "옛 모양" in _o2,
          _o1.strip().splitlines()[0][:90] if _o1.strip() else "")
 
 # ────────────────────────────────────────────────────────────── B93
 print("\n■ B93 ① 골격 카테고리의 집은 골격 층 — 자동")
 init.init(fresh_=True, all_=True)
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Process="공정(렌즈)"))
-_rw(_P.common(), lambda c: c["categories"].pop("Process"))
+_rw(_P.common(), lambda c: c["categories"].pop("Process"))     # 고침(B174 — 품질층은 Process를 uses로 쓴다 · 겹친 정의 0)
 _rc, _o = _boot()
-show("ⓐ 두 층이 골격 카테고리를 함께 선언해도 집 = 골격 층 자동(빈칸·멈춤 0)",
+show("ⓐ 다른 층이 골격 카테고리를 써도(uses) 집 = 골격 층 자동(빈칸·멈춤 0)",
      _rc == 0 and _common()["categories"].get("Process", {}).get("home") == "process"
      and "골격이 process에 있다" in _o and "빈칸" not in _o,
      [l for l in _o.splitlines() if "'Process'" in l][:1])
@@ -176,6 +177,7 @@ print("\n■ B93 ② 골격 모순 거부 — 심기 전에")
 init.init(fresh_=True, all_=True)
 _rw(_P.layers("quality", "config.json"), lambda c: c["skeleton"].update(category="Process")
     or c["categories"].update(Process="공정(렌즈)"))
+_rw(_P.common(), lambda c: c["categories"].pop("Process"))     # 고침(B174 — 집이 정해진 겹친 정의는 옛 모양 관문이 먼저 멈춘다)
 _rc, _o = _boot()
 show("ⓒ 두 층의 골격이 같은 카테고리면 멈춘다",
      _rc != 0 and "함께 가진다" in _o and "두 벌" in _o,
@@ -188,9 +190,13 @@ EQ = "b95eq"
 def _move_skeleton():
     """골격을 새 층 `b95eq`로 옮긴다(창작) — 공정층 config는 골격 선언을 잃는다."""
     shutil.copytree(_P.layers("process"), _P.layers(EQ))
-    _rw(_P.layers(EQ, "config.json"), lambda c: c.update(layer=EQ))
-    _rw(_P.layers("process", "config.json"), lambda c: c.pop("skeleton")
-        or c["categories"].pop("Process"))
+    _rw(_P.layers(EQ, "config.json"), lambda c: c.update(layer=EQ, relation_patterns=[], uses=[], value_categories={},
+                                                         categories={"Process": c["categories"]["Process"]}))
+    def _p(c):                                     # 고침(B174 — 겹친 정의 0 · 공정층은 골격 카테고리를 uses로)
+        c.pop("skeleton")
+        c["categories"].pop("Process")
+        c.setdefault("uses", []).append("Process")
+    _rw(_P.layers("process", "config.json"), _p)
 
 
 print("\n■ B95 ① 골격 카테고리의 어긋난 집 — 노드 0이면 자동 교정")
@@ -241,19 +247,19 @@ print("\n■ B94 ① 쓰는 층(used_by) — 결과 기록 · 사람이 관리�
 from core.build import ledger as _LG       # noqa: E402
 from core.build import extract as _EX      # noqa: E402
 init.init(fresh_=True, all_=True)
-_decl0 = catalog.declared_by()
+_decl0 = catalog.used_by()                                     # 고침(B174 — 집 정의 ∪ uses)
 _ub0 = {c: v.get("used_by") for c, v in _common()["categories"].items()}
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Property="품질 인자(창작)"))
+_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].remove("Property"))
 _v0, _l0 = _common()["common_version"], len(_logs())
 _rc, _o = _boot()
 _ub1 = _common()["categories"]["Property"].get("used_by")
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].pop("Property"))
+_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].append("Property"))
 _rc2, _o2 = _boot()
-show("ⓐ used_by = 층 config의 선언(처음 · 선언 추가/삭제마다) · 판 +1 · 로그",
+show("ⓐ used_by = 층 config의 집 정의 ∪ uses(처음 · 추가/삭제마다) · 판 +1 · 로그(고침 B174 — 옛: 선언만)",
      all(_ub0[c] == _decl0[c] for c in _decl0)
-     and _rc == 0 and _ub1 == ["process", "quality"] and _common()["common_version"] >= _v0 + 2
-     and _common()["categories"]["Property"]["used_by"] == ["process"]
-     and "used_by 'Property' + quality" in _o and "used_by 'Property' − quality" in _o2
+     and _rc == 0 and _ub1 == ["process"] and _common()["common_version"] >= _v0 + 2
+     and _common()["categories"]["Property"]["used_by"] == ["process", "quality"]
+     and "used_by 'Property' − quality" in _o and "used_by 'Property' + quality" in _o2
      and "used_by 'Property'" in _logs()[_l0:],
      [l for l in _o.splitlines() if "used_by" in l][:1])
 _rw(_P.common(), lambda c: c["categories"]["Failure"].update(used_by=["process", "엉뚱한층"])

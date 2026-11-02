@@ -98,7 +98,7 @@ def propose(common, configs, schemas=()):
             h = (cats.get(c) or {}).get("home")
             if h and h != lay:
                 rep["정의문"].append(f"'{c}' — 집 {h}: {(configs.get(h, {}).get('categories') or {}).get(c, '')} ‖ "
-                                     f"{lay}: {own[c]} (이 층 추출이 다시 돈다)")
+                                     f"{lay}: {own[c]} (이 층 추출이 다시 돈다 — 이 카테고리는 ②회차까지 이 층 추출이 묻지 않는다)")
                 del own[c]
                 uses.append(c)
         talk = {x for p in cfg.get("relation_patterns") or [] for x in (p.get("src"), p.get("dst")) if x}
@@ -193,7 +193,8 @@ def screen(dry_run=False):
     if prop["stops"]:
         return 1
     if dry_run:
-        print("  (--dry-run — 제안을 쓰지 않는다 · --dry-run 없이 치면 work/config_next/에 제안 · 보고를 쓴다)")
+        print(f"[bootstrap] --dry-run — 쓰기 0 · 멈출 것 {len(olds)}건(옛 모양 — --dry-run 없이 치면 work/config_next/에 제안 · "
+              f"보고를 쓴다)")
         return 1
     rp = write(prop)
     nxt, lay = paths.config_next(), paths.layers()                 # 셸 위치와 무관하게 — 절대 경로

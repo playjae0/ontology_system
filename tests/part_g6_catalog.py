@@ -271,15 +271,15 @@ _rw(_P.layers("process", "config.json"),              # 카테고리를 지운�
 _r1 = recheck.run()
 init.init(fresh_=True, all_=True)
 _r2 = recheck.run()
-_rw(_P.layers("quality", "config.json"),
-    lambda c: c.update(relation_patterns=[p for p in c["relation_patterns"]
-                                          if "Process" not in (p["src"], p["dst"])]))
+_rw(_P.layers("quality", "config.json"),                      # 고침(B174 — 말하는 카테고리는 categories ∪ uses)
+    lambda c: c.update(uses=[x for x in c["uses"] if x != "Process"],
+                       relation_patterns=[p for p in c["relation_patterns"] if "Process" not in (p["src"], p["dst"])]))
 _r3 = recheck.run()
 _fail1 = {dt for dt, ok, _l in _r1 if not ok}
 show("⑤ 카테고리 하나를 지우면 그것을 쓰는 doc_type이 FAIL 줄로 — 고칠 자리(층 config 키)를 말한다",
      all(ok for _dt, ok, _l in _r0) and {"cp", "pfmea"} <= _fail1
      and all("다음 줄" in l and "config.json의" in l for dt, ok, l in _r1 if not ok and "FAIL" in l)
-     and any(dt == "pfmea" and "layers/process/config.json의 categories" in l
+     and any(dt == "pfmea" and "layers/process/config.json의" in l and "categories" in l     # 고침(B174 — 고칠 자리 문면에 uses가 함께)
              for dt, ok, l in _r1 if not ok),
      str(sorted(_fail1)))
 show("⑤ 되돌리면 전부 PASS", _r2 and all(ok for _dt, ok, _l in _r2),

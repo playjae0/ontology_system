@@ -101,6 +101,10 @@ def component_floor(quality_uses=("Component",)):
     """**Component 바닥**(B102 시험들 — B174 새 모양): 덧칠(Component) + 소속 엣지의 위아래 쌍(Component → Unit · Process — 공통
     config 한 곳 · 위가 Unit이라 Component 이름은 그 아래) + 품질층이 Component를 쓴다(`uses`) — 상태 루트에만 · 골격까지."""
     overlay(component=True)
+    _rw(_P.common(), lambda c: c["categories"]["Component"].pop("no_path", None))   # 옛 nest = 경로 씀(B174 — 같은 뜻)
+    # 옛 바닥은 nest = [Component]뿐이었다 — 위가 일반 노드(Unit)인 다른 쌍은 걷는다(관리항목은 공정 스코프 · 같은 뜻)
+    _rw(_P.common(), lambda c: c.__setitem__("pairs", [p for p in c.get("pairs") or []
+                                                       if not (p["upper"] == "Unit" and p["lower"] != "Component")]))
     _rw(_P.common(), lambda c: c.setdefault("pairs", []).extend(
         {"lower": "Component", "upper": u, "rel": "part_of", "src": "lower", "정의문": f"Component가 {u}에 속한다"}
         for u in ("Unit", "Process")))
@@ -132,6 +136,8 @@ def overlay(*, component=False, also=False):
     def _c(c):
         c["categories"].update({k: v for k, v in OV["common"]["categories"].items()
                                 if component or k != "Component"})
+        if component:                             # 옛 판 이름 규칙 목록 밖이던 덧칠 카테고리 = 경로 안 씀(B174 — 같은 뜻)
+            c["categories"]["Component"] = {**c["categories"]["Component"], "no_path": "시험 덧칠 — 옛 판 이름 규칙 밖"}
         if also:
             for k, v in OV["also"].items():
                 c["categories"][k]["also"] = v

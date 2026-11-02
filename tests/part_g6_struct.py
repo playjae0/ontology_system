@@ -489,7 +489,15 @@ from core.state import catalog as CT              # noqa: E402
 _ok_f = []
 for cat, frm, to in (("Property", "process", "quality"), ("Unit", "process", "quality")):
     init.init(fresh_=True, all_=True)
-    _rw_json(_P.layers(to, "config.json"), lambda c, cat=cat: c["categories"].update({cat: "(시험 렌즈)"}))
+    _rw_json(_P.layers(to, "config.json"), lambda c, cat=cat: c["categories"].update({cat: "(시험 렌즈)"})
+             or c.update(uses=[x for x in c.get("uses", []) if x != cat]))
+    def _frm(c, cat=cat):                          # 고침(B174 — 옛 집 층은 uses · 겹친 정의 0 · 값 카테고리도 집 층으로)
+        c["categories"].pop(cat)
+        c.setdefault("uses", []).append(cat)
+        val = (c.get("value_categories") or {}).pop(cat, None)
+        if val:
+            _rw_json(_P.layers(to, "config.json"), lambda q: q.setdefault("value_categories", {}).update({cat: val}))
+    _rw_json(_P.layers(frm, "config.json"), _frm)
     _rw_json(_P.common(), lambda c, cat=cat, to=to: c["categories"][cat].update(home=to))
     w1 = CT.mirror_warnings()
     import subprocess as _sp                       # noqa: E402
