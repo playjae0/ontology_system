@@ -382,6 +382,23 @@ show("ⓒ 지금이 둘 · 없음 · 바뀔에 취소선 ⇒ 그 항목 이름�
      and f"[PASS] {_name} 좋음" in out9, " | ".join(_fl)[:240])
 show("ⓒ --apply는 하나라도 어긋나면 쓰기 0 — 명세 사본 지문 같음",
      rc9 == 1 and "쓰기 0" in out9 and _R["fp9"] == _R["fp0"], f"rc {rc9}")
+
+
+def _deltas(out):
+    """항목 줄 끝 `(±n자)` 목록 · 결과 줄 바로 앞 「글자 증감 합 ±n자」(없으면 None)."""
+    num = lambda s: int(s.replace(",", "").replace("−", "-").lstrip("+"))     # noqa: E731
+    ls = out.splitlines()
+    items = [num(m.group(1)) for ln in ls if ln.startswith(("[PASS]", "[FAIL]"))
+             for m in [re.search(r"\(([+−]?[\d,]+)자\)$", ln)] if m]
+    at = next((i for i, ln in enumerate(ls) if ln.startswith("결과:")), 0)
+    m = re.match(r"글자 증감 합 ([+−]?[\d,]+)자$", ls[at - 1]) if at else None
+    return items, (num(m.group(1)) if m else None)
+
+
+(_d7, _s7), (_d9, _s9) = _deltas(out7), _deltas(out9)
+show("ⓒ 글자 증감 표시(B163 ⓪) — 항목 줄마다 (±n자) = 바뀔 − 지금 · 결과 줄 바로 앞 합 = 항목의 합 · 판정 · 종료 코드는 그대로",
+     _d7 == [len(_new)] and _s7 == len(_new) and len(_d9) == 4 and _s9 == sum(_d9) and rc7 == 0 and rc9 == 1,
+     f"점검 {_d7} 합 {_s7} · 어긋남 {_d9} 합 {_s9}")
 rc10, _out10 = _R[10]
 show("ⓒ 다 맞으면 --apply가 그 문장만 바꾼다(다른 파일 바이트 그대로 · 임시 파일 흔적 0)",
      rc10 == 0 and _R["after"] == _text.replace(_line, _line + _new, 1)
