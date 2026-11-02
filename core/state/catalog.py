@@ -259,9 +259,9 @@ def old_shape(configs=None, cat=None):
     집이 아닌 층의 카테고리 정의(정의문은 집 한 곳 · 다른 층은 `uses`)."""
     configs = configs if configs is not None else _layer_configs()
     cat = _cat_or_none(cat) or {}
-    out = [f"공통 config에 {k}" for k in OLD_COMMON_KEYS if k in cat]
+    out = [f"공통 config에 {k}가 남아 있다" for k in OLD_COMMON_KEYS if k in cat]
     for lay, cfg in sorted(configs.items()):
-        out += [f"층 {lay} config에 {k}" for k in OLD_LAYER_KEYS if k in cfg]
+        out += [f"층 {lay}의 config에 {k}가 남아 있다" for k in OLD_LAYER_KEYS if k in cfg]
     cats = cat.get("categories") or {}
     for c, lays in sorted(declared_by(configs).items()):
         h = (cats.get(c) or {}).get("home")
@@ -346,10 +346,9 @@ def problems(configs=None, cat=None):
             if bad or not tiers:
                 out.append(("ⓔ", f"'{c}'의 also['{other}']의 단 {bad or tiers}가 "
                                  f"{'·'.join(TIERS)} 밖이다"))
+    out += [("ⓓ", f"{m} — 옛 모양이다(이름 규칙 · 위아래 쌍은 공통 config 한 곳 · 정의문은 집 층 · 다른 층은 uses) · "
+                   f"python run.py bootstrap이 새 모양 제안을 쓰고 멈춘다") for m in old_shape(configs, cat)]
     for lay, cfg in sorted(configs.items()):
-        if "canonical_scope" in cfg:
-            out.append(("ⓓ", f"층 {lay}의 config에 canonical_scope가 남아 있다 — 옛 모양이다(이름 규칙은 공통 config의 "
-                             f"카테고리 경로 · 위아래 쌍) · python run.py bootstrap이 새 모양 제안을 쓴다"))
         vc = cfg.get("value_categories")                         # 값을 받는 카테고리 (B120 ②)
         if vc is not None and (not isinstance(vc, dict) or any(
                 c not in (cfg.get("categories") or {}) or not isinstance(n, str) or not n.strip()

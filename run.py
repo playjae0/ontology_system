@@ -236,6 +236,10 @@ def _catalog_gate(dry_run=False):
     from core.state import catalog, catalog_sync
     if paths.common(draft=True).exists():
         print(f"[bootstrap] {paths.show(paths.common(draft=True))}는 쓰지 않는 파일이다(지워도 된다)")
+    from cli import config_next                       # 옛 모양이면 제안 · 보고를 쓰고 멈춘다(B174 ③)
+    rc = config_next.screen(dry_run=dry_run) if paths.common().exists() else None
+    if rc is not None:
+        return rc
     exists = paths.common().exists()
     p = None
     try:
