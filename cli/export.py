@@ -4,6 +4,7 @@
     python -m cli.export cypher [출력.cypher]    Neo4j 적재용
     python -m cli.export csv    [출력디렉터리]    nodes.csv · edges.csv (Gephi·엑셀)
     python -m cli.export mermaid [층]            보고서용 다이어그램 (골격)
+    python -m cli.export config [경로]           config 지도 — 층 · 카테고리 · 연결 포인트 · 점검 (B173 · `cli/export_config.py`)
 
 **여기서 나오는 것은 전부 파생물이다.** 진실은 `data/`의 JSON 그래프 + 청크 저장소이고
 (P5), 이 파일들은 언제든 다시 만들 수 있다 — 그래서 **되돌려 읽지 않는다.** 시각화
@@ -290,7 +291,7 @@ def main(argv):
     if not argv:
         raise SystemExit(__doc__)                                         # [사용법]
     table = {"cypher": cmd_cypher, "csv": cmd_csv, "mermaid": cmd_mermaid,
-             "html": cmd_html}
+             "html": cmd_html, "config": cmd_config}
     cmd, rest = argv[0], argv[1:]
     if cmd not in table:
         raise SystemExit(f"알 수 없는 형식: {cmd}\n{__doc__}")                  # [사용법]
@@ -400,19 +401,19 @@ def graph_data(world):
     return nodes, edges
 
 
-def build_html(world, *, query_panel=False):
+def build_html(world, *, query_panel=False, title="온톨로지 그래프"):
     """**템플릿은 하나다** — 파일로 저장하는 `export html`과 뷰어가 같은 것을 쓴다.
 
     복제하면 한쪽만 고쳐지고, 그 순간 「뷰어에서 본 그림」과 「내보낸 그림」이 다른
     것이 된다 — 화면이 증거인 시스템에서 그것은 증거가 갈리는 것이다.
 
     `query_panel`은 **자리 5개를 채우느냐 비우느냐** 하나다. 끄면 옛 산출과
-    한 글자도 다르지 않다(질문 패널도 `highlight`도 들어가지 않는다).
+    한 글자도 다르지 않다(질문 패널도 `highlight`도 들어가지 않는다). `title`은 머리 글(config 지도 — B173 · 기본은 옛 글).
     """
     nodes, edges = graph_data(world)
     n_cross = sum(1 for e in edges if e["cross"])
     sec = _sections()
-    html = (sec["page"].replace("__TITLE__", "온톨로지 그래프")
+    html = (sec["page"].replace("__TITLE__", title)
             .replace("__SUB__", f"노드 {len(nodes)} · 엣지 {len(edges)} · "
                                 f"걸침 {n_cross} · 층 {len(world)}")
             .replace("/*__DATA__*/", json.dumps({"nodes": nodes, "edges": edges},
@@ -465,6 +466,12 @@ def cmd_html(args):
     print("  ※ 외부 CDN 없음 — 사내망·오프라인에서 그대로 열린다")
     print("  ※ 파생물이다 — 여기서 고친 것은 돌아오지 않는다(P5). 고치려면 run.py ops")
     return 0
+
+
+def cmd_config(args):
+    """**config 지도**(B173 · 읽기만) — 본체는 `cli/export_config.py`(모델 `cli/config_map.py`)."""
+    from cli import export_config
+    return export_config.main(args)
 
 
 # **진입점은 파일 끝이다.** 중간에 두면 그 아래 정의된 명령(cmd_html)이 `main()`의

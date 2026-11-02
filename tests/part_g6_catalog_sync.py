@@ -17,6 +17,8 @@
       겸 상태 세 갈래 표시(종료 코드 0 · doctor 같은 상태)
   B95 골격 카테고리의 어긋난 집은 옛 집 그래프에 노드 0이면 자동 교정(있으면 노드 수 문면으로 멈춤) ·
       새 카테고리 경고에 이름 규칙 줄(적용·미적용)
+  B173 config 지도(읽기만) — ⓐ 층 사이 연결 포인트 · 선언 없이 씀 ⓑ 점검은 카탈로그 · 재대조 문면 그대로 + 새 점검 줄
+      ⓒ `--json` 두 번 바이트 같음 · 관계 패턴 하나를 지운 사본과의 대조가 그 하나만 ⓓ HTML 실경로 외부 주소 0 · 쓰기 0
 """
 from __future__ import annotations
 
@@ -334,6 +336,89 @@ show("ⓕ 골격 별칭이면 매칭(노드 0) · 골격이 아닌 카테고리�
      _nc and _nc[0].get("verdict") == "match" and (_pg.get(_nc[0]["node_id"]) or {}).get("canonical") == "노칭"
      and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 1,
      f"NC → {(_pg.get((_nc or [{}])[0].get('node_id')) or {}).get('canonical')} · 새 {sorted(_new)}")
+init.init(fresh_=True, all_=True)
+
+# ────────────────────────────────────────────────────────────── B173
+print("\n■ B173 config 지도 — 모델 · 점검 · JSON · 대조 · HTML (읽기만)")
+import contextlib                                                          # noqa: E402
+import hashlib                                                             # noqa: E402
+import io                                                                  # noqa: E402
+from cli import config_map as CM, export_config as XC                     # noqa: E402
+from cli.register import recheck as _RC173                                 # noqa: E402
+for _lay in ("process", "quality"):
+    bootstrap(_lay, echo=False)
+
+
+def _hash173():
+    """그래프 · config · 등록부 — 읽기만의 증거(B173 ⓓ)."""
+    h = _P.home()
+    return {str(f.relative_to(h)): hashlib.sha256(f.read_bytes()).hexdigest()
+            for sub in ("data", "layers", "registry") for f in sorted((h / sub).rglob("*")) if f.is_file()}
+
+
+_h173 = _hash173()
+_m173 = CM.build()
+_cr173 = {(x["layer"], x["rel"], x["category"], x["home"]) for x in _m173["links"]["cross"] if x["from"] == "관계 패턴"}
+_us173 = {(x["layer"], x["category"]) for x in _m173["links"]["uses"]}
+show("B173 ⓐ 모델 — 품질층 → 공정층 연결 포인트 둘(관계 패턴 occurs_in → Process · controlled_by → Property) · "
+     "Property는 「선언 없이 관계 패턴에서만 씀」",
+     _cr173 == {("quality", "occurs_in", "Process", "process"), ("quality", "controlled_by", "Property", "process")}
+     and ("quality", "Property") in _us173, f"걸침 {sorted(_cr173)} · 선언 없이 씀 {sorted(_us173)}")
+
+_qc173 = _P.layers("quality", "config.json")
+_q0173 = _qc173.read_bytes()
+try:                                                                       # 사본 config — 층 이름 ≠ 폴더 · 없는 관계의 패턴
+    _rw(_qc173, lambda c: (c.update(layer="b173다른이름"),
+                           c["relation_patterns"].append(dict(c["relation_patterns"][0], rel="b173_없는_관계"))))
+    _mb173 = CM.build()
+    _cat173 = [ln for _t, ln in catalog.problems()]
+    _rc173 = sorted(ln for _d, ok, ln in _RC173.run() if not ok)
+finally:
+    _qc173.write_bytes(_q0173)
+
+
+def _got173(lv, frm):
+    return [x["line"] for x in _mb173["checks"][lv] if x["from"].startswith(frm)]
+
+
+show("B173 ⓑ 점검 — 카탈로그 거부 · 등록 스키마 재대조 줄이 그 함수의 문면 그대로 · 새 점검(패턴의 관계가 그 층 "
+     "relations에 없다)이 사본 config에서 경고 한 줄",
+     _cat173 and _got173("거부", "카탈로그") == _cat173
+     and sorted(_got173("거부", "등록 스키마") + _got173("경고", "등록 스키마")) == _rc173
+     and len([ln for ln in _got173("경고", "지도") if "b173_없는_관계" in ln]) == 1,
+     f"카탈로그 {_cat173} · 새 점검 {_got173('경고', '지도')}")
+
+_t173 = Path(tempfile.mkdtemp(prefix="b173_"))
+with contextlib.redirect_stdout(io.StringIO()):
+    XC.main(["--json", str(_t173 / "a.json")])
+    XC.main(["--json", str(_t173 / "a2.json")])
+_lay173, _p173 = next((lay, p) for lay, d in _m173["layers"].items() for p in d["patterns"]
+                      if all(_m173["categories"][c]["home"] == lay for c in (p["src"], p["dst"])))
+_c173 = _P.layers(_lay173, "config.json")
+_c0173 = _c173.read_bytes()
+try:                                                                       # 사본 config — 층 안 관계 패턴 하나를 지운다
+    _rw(_c173, lambda c: c.update(relation_patterns=[x for x in c["relation_patterns"] if (x["src"], x["rel"], x["dst"])
+                                                      != (_p173["src"], _p173["rel"], _p173["dst"])]))
+    with contextlib.redirect_stdout(io.StringIO()):
+        XC.main(["--json", str(_t173 / "b.json")])
+finally:
+    _c173.write_bytes(_c0173)
+_d173 = XC.diff(json.loads((_t173 / "a.json").read_text(encoding="utf-8")),
+                json.loads((_t173 / "b.json").read_text(encoding="utf-8")))
+show("B173 ⓒ --json 두 번이 바이트 같다 · 관계 패턴 하나를 지운 사본과의 --diff가 그 하나만 낸다",
+     (_t173 / "a.json").read_bytes() == (_t173 / "a2.json").read_bytes()
+     and _d173 == [f"- 관계 패턴 — {_lay173}: {_p173['src']} -{_p173['rel']}-> {_p173['dst']}"
+                   + (" (대칭)" if _p173["symmetric"] else "")], f"대조 {_d173}")
+
+_r173 = subprocess.run([sys.executable, str(ROOT / "run.py"), "export", "config"], cwd=str(ROOT),
+                       env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+_html173 = _P.export("config_map.html").read_text(encoding="utf-8") if _P.export("config_map.html").exists() else ""
+show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 외부 주소 0 · 관계 그림은 지금 뷰어(걸침 엣지 표시) · "
+     "그래프 · config · 등록부 바이트 그대로",
+     _r173.returncode == 0 and "<iframe" in _html173 and "&quot;cross&quot;: true" in _html173
+     and "http://" not in _html173 and "https://" not in _html173 and _hash173() == _h173,
+     f"rc {_r173.returncode} · {_r173.stdout.strip().splitlines()[:1]} · {len(_html173):,}B")
+shutil.rmtree(_t173, ignore_errors=True)
 init.init(fresh_=True, all_=True)
 
 done()
