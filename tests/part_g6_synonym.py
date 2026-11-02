@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""G6 ⑲ 동의어 학습 — 같은 문서 auto 매칭 · 좌표 학습 보존 · 새 공정 후보 · 별칭 출처 · 불확실 일괄
+"""G6 ⑲ 동의어 학습 — auto 노드 매칭(문서를 가리지 않는다) · 좌표 학습 보존 · 새 공정 후보 · 별칭 출처 · 불확실 일괄
 검토 · 극성 values 경고 (B101).
 
 창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 판정 점수는 시험이
-유사도 함수에 주입한다(LLM 판정 대역 — 임계 이상 0.9). 형태(표·산문) × 층(process · quality)에서 같은
+유사도 함수에 주입한다(LLM 판정 대역 — 임계 이상 0.9 · 임계 아래 0.6). 형태(표·산문) × 층(process · quality)에서 같은
 성질을 잰다(CLAUDE.md §4 범용성).
 
 잠그는 성질:
-  ⓐ 같은 문서: 앞 행·청크가 만든 auto 노드에 뒤의 변형 표기가 판정(임계 이상)으로 매칭 · 별칭(출처 LLM 매칭)
-     · 대장 `same_doc` / 다른 문서의 auto 노드에는 가드 그대로(uncertain + 가장 가까운 후보) · 결과표의 수
+  ⓐ auto 노드에 변형 표기가 판정(임계 이상)으로 매칭 · 별칭(출처 LLM 매칭) — 같은 문서도 다른 문서도 같은 기준
+     (B172 — 가드 걷음) / 임계 아래는 uncertain + 가장 가까운 후보(B172 ⓑ)
   ⓑ 좌표 학습: 문서 A에서 채택한 표기가 문서 B에서 LLM 0으로 맞는다 · 예고 「학습 적중」 · null은 같은 닫힌 목록
      판이면 B에서 다시 묻지 않는다(B107 ② 기억) · 거부 뒤 다시 묻는다 · 승격 + bootstrap 뒤 사람 보증 별칭(정확
      일치)으로 맞는다 · 판이 바뀌어 null은 다시 묻는다
@@ -43,7 +43,8 @@ HINTS = _FXR.EXTRACT_HINTS
 MATRIX = [("표", "process", "Unit"), ("표", "quality", "Failure"),
           ("산문", "process", "Unit"), ("산문", "quality", "Failure")]
 BASE, VAR = "B101 유량계", "B101 유량 감지기"
-OTHERS = ["B101 유량 측정기", "B101 유량 센서", "B101 유량 검출기"]
+VAR2 = "B101 유량 계측기"                          # 다른 문서의 변형 표기 — 임계 이상(B172 ⓐ)
+OTHERS = ["B101 유량 측정기", "B101 유량 센서", "B101 유량 검출기"]   # 임계 아래(B172 ⓑ)
 
 
 def _fresh():
@@ -56,9 +57,12 @@ _real_sim = MT._similarity
 
 
 def _sim(a, b):
-    """판정 대역 — 변형 표기 ↔ 기준 표기는 0.9(임계 이상 · 1.0 미만). 나머지는 원래 함수."""
-    if BASE in str(b) and any(v in str(a) for v in [VAR] + OTHERS):
+    """판정 대역 — 변형 표기 ↔ 기준 표기는 0.9(임계 이상 · 1.0 미만) · 다른 표기 ↔ 기준 표기는 0.6(임계 아래).
+    나머지는 원래 함수."""
+    if BASE in str(b) and any(v in str(a) for v in (VAR, VAR2)):
         return 0.9
+    if BASE in str(b) and any(v in str(a) for v in OTHERS):
+        return 0.6
     return _real_sim(a, b)
 
 
@@ -117,7 +121,7 @@ def _show_node(name):
     return b.getvalue()
 
 
-print("\n■ B101 ① 같은 문서 auto 노드에 LLM 매칭 · 다른 문서는 가드 · ⑤ 일괄 검토 · ④ 별칭 출처")
+print("\n■ B172 auto 노드에 LLM 매칭(같은 문서 · 다른 문서) · 임계 아래 불확실 · B101 ⑤ 일괄 검토 · ④ 별칭 출처")
 _ok_a, _ok_d, _ok_e = [], [], []
 MT._similarity = _sim
 try:
@@ -130,17 +134,17 @@ try:
         rows_a = [r for r in (LG.read(da) or {}).get("rows") or [] if r.get("surface") == VAR]
         base = _node(BASE)
         al = {a["surface"]: a for a in base.get("aliases") or []}
-        run_document(_env(form, lay, cat, db, OTHERS))
-        res_b = (LG.read(db) or {}).get("result") or {}
+        run_document(_env(form, lay, cat, db, [VAR2] + OTHERS))
+        rows_b = [r for r in (LG.read(db) or {}).get("rows") or [] if r.get("surface") == VAR2]
         um = [x for x in store.read(store.QUEUE, []) if x["kind"] == "uncertain_match" and x["doc_id"] == db]
-        near_ok = all((x["payload"].get("nearest") or {}).get("id") == base["id"]
-                      and (x["payload"].get("nearest") or {}).get("by") == "가드" for x in um)
-        _ok_a.append((form, lay, rows_a and rows_a[0]["verdict"] == "match" and rows_a[0].get("same_doc")
-                      and rows_a[0]["node_id"] == base["id"] and (al.get(VAR) or {}).get("by") == "LLM 매칭"
-                      and res_a.get("같은 문서 auto 매칭") == 1 and res_a.get("LLM 별칭", 0) >= 1
-                      and len(um) == len(OTHERS) and near_ok and res_b.get("가드(다른 문서 auto)") == len(OTHERS),
-                      f"A: 같은 문서 매칭 {res_a.get('같은 문서 auto 매칭')} · LLM 별칭 {res_a.get('LLM 별칭')} · "
-                      f"B: 가드 {res_b.get('가드(다른 문서 auto)')} · 불확실 {len(um)}"))
+        near_ok = all((x["payload"].get("nearest") or {}).get("id") == base["id"] for x in um)
+        _ok_a.append((form, lay, rows_a and rows_a[0]["verdict"] == "match" and rows_a[0]["node_id"] == base["id"]
+                      and (al.get(VAR) or {}).get("by") == "LLM 매칭" and res_a.get("LLM 별칭", 0) >= 1
+                      and rows_b and rows_b[0]["verdict"] == "match" and rows_b[0]["node_id"] == base["id"]
+                      and _node(BASE)["status"] == "auto"
+                      and len(um) == len(OTHERS) and near_ok,
+                      f"A: {rows_a and rows_a[0]['verdict']} · LLM 별칭 {res_a.get('LLM 별칭')} · "
+                      f"B: {VAR2} {rows_b and rows_b[0]['verdict']} · 불확실 {len(um)}"))
         # ⑤ 일괄 검토 — 비대화형은 계획만
         a = SimpleNamespace(layer="all", actor="B101시험")
         q0 = json.dumps(store.read(store.QUEUE, []), sort_keys=True, ensure_ascii=False)
@@ -171,8 +175,8 @@ try:
         _unreg([f"b101t{lay[0]}"])
 finally:
     MT._similarity = _real_sim
-show("ⓐ 같은 문서 auto 노드에 변형 표기 매칭(별칭 LLM 매칭 · 대장 same_doc) / 다른 문서 auto는 가드 그대로 "
-     "(uncertain + 가장 가까운 후보) · 결과표의 수 (표·산문 × 층 둘)",
+show("B172 ⓐⓑ auto 노드에 변형 표기가 임계 이상이면 붙는다 — 같은 문서도 다른 문서도(별칭 LLM 매칭) / 임계 아래는 "
+     "uncertain + 가장 가까운 후보 (표·산문 × 층 둘 · 고침 — 옛 기대: 다른 문서는 가드 · 대장 same_doc · 결과표의 수)",
      all(o for _f, _l, o, _d in _ok_a), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_a))
 show("ⓔ 일괄 검토 — 비대화형은 계획만(쓰기 0) · 합침(m)·별개(c)·건너뜀(s)이 ops 함수로 · 끝점 없는 엣지 0 "
      "(표·산문 × 층 둘)", all(o for _f, _l, o, _d in _ok_e), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_e))

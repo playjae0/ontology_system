@@ -114,21 +114,16 @@ show("B153 ⓓ 판정 좁히기 — embed · 상한을 넘는 후보의 글이 �
      _MT73.cand_text(_p153[3]) == "설비03 | 별칭: NP" and not any("::" in _MT73.cand_text(c) for c in _p153)
      and _h153 == "임베딩" and len(_k153) == 4 and any(c["id"] == "N09" for c in _k153), f"{_h153} · {[c['id'] for c in _k153]}")
 
-# ③ 후보에 status — auto는 표시되고, 유사도 매칭은 uncertain으로 내려간다
-show("③ 후보가 status와 근거 건수를 싣는다 (판정이 auto를 안다)",
-     all("status" in c and "evidence" in c for c in _ce73))
+# ③ 후보의 상태는 판정 기준을 바꾸지 않는다 — auto 가드는 걷혔다(B172 · 옛 B73 ③ 어서션 넷: 후보 칸 · auto 내림 지움 · 둘 고침)
 _auto73 = [c for c in _MT73.candidates("노칭::설비00", "Unit", "process", _g73, _dic73)
-           if c.get("status") == "auto" and not c.get("exact")]
+           if _g73.get(c["id"])["status"] == "auto" and not c.get("exact")]
 _v73 = _MT73.match("노칭::설비0", _auto73, "Unit", _cfg73)
-show("③ auto 후보에 **유사도로는 붙지 않는다** (uncertain — 연쇄를 끊는다)",
-     _v73["type"] == _MT73.UNCERTAIN or _v73["matched_id"] is None, str(_v73))
-_conf73 = [dict(c, status="confirmed") for c in _auto73]
-_v73b = _MT73.match("노칭::설비0", _conf73, "Unit", _cfg73)
-show("③ confirmed 후보는 지금과 같다 (사람이 확인한 노드에는 붙는다)",
-     _v73b["type"] == _MT73.MATCH, str(_v73b))
-show("③ 지시문이 그 규칙을 말하고 판이 올랐다",
-     "status" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8")
-     and "version: j-1.3" in (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8"))   # 기대 변경(B123 ③ — 2차 입력 칸 · j-1.2 → B142 ② — 경로 · j-1.3)
+_v73b = _MT73.match("노칭::설비0", [dict(c, status="confirmed") for c in _auto73], "Unit", _cfg73)
+show("③ auto 후보 · confirmed 후보가 같은 판정이다 — 임계 이상이면 붙는다(B172 — 고침 · 옛 기대: auto는 uncertain)",
+     _v73["type"] == _MT73.MATCH and _v73 == _v73b, f"{_v73} / {_v73b}")
+_j73 = (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8")
+show("③ 지시문에 후보 상태 · 근거 건수의 기준 0 · 판이 올랐다(B172 ⓒ — 고침 · 옛 기대: 그 규칙을 말한다 · j-1.3)",
+     "status" not in _j73 and "evidence" not in _j73 and "`auto`" not in _j73 and "version: j-1.4" in _j73)
 
 # ② retry는 조건부다 — 후보 집합이 그대로면 LLM 0
 from core.build import retry as _RT73                                    # noqa: E402

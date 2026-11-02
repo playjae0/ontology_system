@@ -7,7 +7,7 @@
 잠그는 성질:
   ⓘ 산문 판정 진행의 총수 = 추출이 낸 개체 수(표는 레코드 기준 그대로) · 값 표의 위치 열 = 대장 locator
   ⓙ 좌표 진단 — 목록 밖 표기 상위(행 수 내림) 표 + 다음 줄(골격 파일 · ALIASES · bootstrap) · LLM 전
-  ⓚ 후보 임베딩 인코딩 횟수 = 후보 노드 수(판정 수와 무관) · 결과 불변 · 불확실의 가장 가까운 후보(LLM · 가드)
+  ⓚ 후보 임베딩 인코딩 횟수 = 후보 노드 수(판정 수와 무관) · 결과 불변 · 불확실의 가장 가까운 후보(판정이 고른 것)
   ⓛ 정합 점검이 주입한 어긋남을 센다 · 정리는 계획만 → --apply에서만(사람 판단 항목은 남김) ·
      스키마 재대조 어긋남 → 사전 점검에서 멈춤
 """
@@ -100,8 +100,7 @@ for s in ("후보노드 3", "후보노드 7", "다른 표기", "후보노드 3",
     _tops.append([c["id"] for c in kept])
 _first = _tops[0] == _tops[3]                  # 같은 질의 → 같은 결과(캐시가 결과를 바꾸지 않는다)
 NR.set_narrow(None)
-_g = MT._guard_auto({"type": MT.MATCH, "matched_id": "N01", "confidence": 0.8, "path": "p"},
-                    [{"id": "N01", "canonical": "후보 노드 1", "status": "auto"}])
+_g = {"type": MT.UNCERTAIN, "matched_id": None, "confidence": 0.8, "path": "p", "nearest_id": "N01"}   # 임계 아래 판정
 MT.LAST_NARROW.clear()
 MT.LAST_NARROW.update(how="임베딩", top=[("N01", "후보 노드 1", 0.91)])
 _ev = dict(_g)
@@ -115,10 +114,10 @@ finally:
 from cli.platform import auto_next_lines       # noqa: E402
 _nx = auto_next_lines({"payload": {"node_id": "NEW1", "layer": "process",
                                    "nearest": _ev["nearest"]}})
-show("ⓚ 후보 임베딩 인코딩 = 후보 노드 수(판정 5회와 무관) · 결과 불변 · 불확실의 가장 가까운 후보(가드 · LLM) · "
-     "그 id로 칠 다음 줄",
+show("ⓚ 후보 임베딩 인코딩 = 후보 노드 수(판정 5회와 무관) · 결과 불변 · 불확실의 가장 가까운 후보(판정 · LLM) · "
+     "그 id로 칠 다음 줄(고침 B172 — 옛 기대: 가드가 내린 후보 · by 가드)",
      MT.ENCODES["후보"] == 20 and _first and how == "임베딩"
-     and _g["type"] == MT.UNCERTAIN and _g.get("guarded") and _ev["nearest"]["by"] == "가드"
+     and _ev["nearest"]["by"] == "mock 판정" and _ev["nearest"]["id"] == "N01"
      and _ev["nearest"]["canonical"] == "후보 노드 1" and _ev["emb_top"] == 0.91
      and _lv.get("nearest_id") == "N02" and "ops merge    process NEW1 N01" in _nx,
      f"후보 인코딩 {MT.ENCODES['후보']} · {_ev['nearest']}")

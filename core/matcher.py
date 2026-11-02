@@ -296,10 +296,6 @@ def _cand_base(nid, n, exact=False):
             "parent": scope_of(n),
             "scoped": bool(n.get("_scoped")),
             "polarity": _pol(n.get("polarity")),
-            # **아직 사람이 확인하지 않은 노드인지 판정이 알아야 한다**(B73 ③).
-            # 오판 하나가 다음 문서를 끌어당기는 연쇄를 여기서 끊는다.
-            "status": n.get("status"),
-            "evidence": len(n.get("provenance") or []),
             "exact": exact}
 
 
@@ -465,8 +461,7 @@ def match(surface, candidates, category, cfg=None, *, where=None):
             best, score = c["id"], s
 
     if score >= threshold(cfg):
-        return _guard_auto({"type": MATCH, "matched_id": best,
-                            "confidence": score, "path": path}, pool)
+        return {"type": MATCH, "matched_id": best, "confidence": score, "path": path}
     if score > 0.0:
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
         return {"type": UNCERTAIN, "matched_id": None, "confidence": score,
@@ -481,8 +476,7 @@ def _pool(candidates, category):
 
 
 def second(surface, cands, category, cfg, v1, sentence, where=None):
-    """**2차 판정**(B123 ③) — 1차 `v1`이 불확실이고 문장이 있을 때만 · 같은 후보 · 같은 계약(후보 밖 id 버림 · 임계 ·
-    auto 가드)으로 그 표기가 나온 문장 `sentence = {"text", "span"}`을 붙여 한 번 더 묻는다.
+    """**2차 판정**(B123 ③) — 1차 `v1`이 불확실이고 문장이 있을 때만 · 같은 후보 · 같은 계약(후보 밖 id 버림 · 임계)으로 그 표기가 나온 문장 `sentence = {"text", "span"}`을 붙여 한 번 더 묻는다.
 
     **매칭만 바꾼다** — 2차가 매칭이면 그 노드 · 불확실이거나 새 것이면 1차 그대로(신규 + `uncertain_match` — 사람이
     본다 · 비대칭 그대로). 돌려주는 판정에 `second {was, now, span}`이 실린다(대장의 단계 · 근거 문장 자리).
@@ -499,33 +493,6 @@ def second(surface, cands, category, cfg, v1, sentence, where=None):
     out = dict(v2) if got else dict(v1)
     out["second"] = {"was": v1.get("type"), "now": v2.get("type"), "span": list(sentence.get("span") or [])}
     return out
-
-
-#: **이번 문서 실행이 만든 auto 노드**(B101 ① — 같은 문서 예외). 빌더가 노드를 만들 때 넣고
-#: 문서 실행 시작에 비운다(`entry.run_document`). 다른 문서가 만든 auto 노드는 여기 없다 — 가드 그대로.
-SAME_DOC = set()
-
-
-def _guard_auto(verdict, pool):
-    """**auto 노드에 붙는 매칭은 표기가 같을 때만**이다 (B73 ③).
-
-    `status: auto`는 아직 사람이 확인하지 않은 노드다. 그것에 유사도로 붙이면
-    **오판 하나가 다음 문서를 끌어당기는 연쇄**가 된다 — 판정이 자기 산출을
-    근거로 삼는 꼴이다. 확신 1.0(표기 동일·사전 히트)이 아니면 `uncertain`으로
-    내린다. 계약은 닫힌 3값 그대로이고(`uncertain`은 신규+표시 — 규약 1의
-    비대칭), 큐 kind도 `uncertain_match` 그대로다.
-    """
-    c = next((x for x in pool if x["id"] == verdict.get("matched_id")), None)
-    if c and c.get("status") == "auto" and c["id"] in SAME_DOC \
-            and float(verdict.get("confidence") or 0) < 1.0:
-        # 같은 문서 안의 표기 변형 — 판정이 임계 이상이면 붙는다(B101 ① · 연쇄는 문서를 넘지 않는다)
-        return dict(verdict, same_doc=True)
-    if c and c.get("status") == "auto" and float(verdict.get("confidence") or 0) < 1.0:
-        return {"type": UNCERTAIN, "matched_id": None,
-                "confidence": verdict.get("confidence", 0.0),
-                "path": verdict.get("path"),
-                "nearest_id": c["id"], "guarded": True}       # 가드로 내려갔다 (B99 ⑨)
-    return verdict
 
 
 def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None, where=None):
@@ -566,8 +533,7 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None, 
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
                 "path": path, "nearest_id": mid}
     if vtype == MATCH:
-        return _guard_auto({"type": MATCH, "matched_id": mid,
-                            "confidence": conf, "path": path}, pool)
+        return {"type": MATCH, "matched_id": mid, "confidence": conf, "path": path}
     if vtype not in (MATCH, NEW, UNCERTAIN):
         _LOG.warning("판정 분기가 닫힌 3값 밖이다 — uncertain으로 둔다: %r", vtype)
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
@@ -581,7 +547,7 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None, 
 def _evidence(v, cands):
     """**판정 근거**(B99 ⑨) — 좁힘 방법 · 임베딩 최고 점수 · 불확실이면 가장 가까운 후보.
 
-    판정은 바꾸지 않는다 — 판정이 이미 아는 것(LLM이 고른 후보 · 가드가 내린 후보 · 좁힘 점수)을
+    판정은 바꾸지 않는다 — 판정이 이미 아는 것(LLM이 고른 후보 · 좁힘 점수)을
     대장·큐·화면이 읽을 자리에 싣는다. 불확실은 신규로 만들어지므로 **가까운 후보**가 사람의 재료다.
     """
     top = LAST_NARROW.get("top") or []
@@ -591,8 +557,7 @@ def _evidence(v, cands):
     if v.get("type") == UNCERTAIN:
         nid = v.get("nearest_id")
         name = next((c.get("canonical") for c in cands if c.get("id") == nid), None)
-        v["nearest"] = {"by": "가드" if v.get("guarded") else
-                        ("LLM" if not gateway.use_mock() else "mock 판정"),
+        v["nearest"] = {"by": "LLM" if not gateway.use_mock() else "mock 판정",
                         "id": nid, "canonical": name,
                         "top": [{"id": i, "canonical": cn, "score": round(float(s), 4)}
                                 for i, cn, s in top]}

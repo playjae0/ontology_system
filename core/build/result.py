@@ -80,9 +80,6 @@ def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage, extra=Non
               if any(d)},
         "큐 이번": dict(Counter(x["kind"] for x in q_new)),
         "큐 이전": dict(Counter(x["kind"] for x in q_old)),
-        # 동의어 학습(B101 ①④) — 같은 문서 auto 매칭 · 가드로 내려간 것(다른 문서 auto) · 더한 별칭
-        "같은 문서 auto 매칭": sum(1 for r in ent if r.get("same_doc")),
-        "가드(다른 문서 auto)": sum(1 for r in ent if (r.get("nearest") or {}).get("by") == "가드"),
         **(extra or {}),
     }
 

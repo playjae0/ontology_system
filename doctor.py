@@ -68,7 +68,7 @@ SUITES = [
      ("test_g6_catalog", "test_g6_catalog_sync", "test_g6_dryrun_fold", "test_g6_struct",)),
     ("test_safety", "층 이름 = 폴더 이름 · 어떤 예외든 되돌림 · 화면 전체를 명령 로그로 · 로그 보존 · 화면이 닫혀도 트레이스백 0 · 하위 실행 표준입력 0 · 사람이 멈춘 문서는 시작 전 · 운영 폴더는 점검이 읽기만 · 운영 루트 클린은 묻는다 · 재구축 사전 점검 · 이어 가기",
      ("test_g6_safe_log", "test_g6_log_pipe", "test_g6_stop_chunks", "test_g6_ops_root",)),
-    ("test_judge", "판정 진단 · 같은 문서 auto 매칭 · 좌표 학습 · 2단 판정 · md 보고서 · 재생의 불확실은 2차 한 번 · 후보 상한 · 조건부 retry · 판정 대장 · 임베딩 선택",
+    ("test_judge", "판정 진단 · auto 노드 매칭 · 좌표 학습 · 2단 판정 · md 보고서 · 재생의 불확실은 2차 한 번 · 후보 상한 · 조건부 retry · 판정 대장 · 임베딩 선택",
      ("test_g6_diag", "test_g6_synonym", "test_g6_judge2", "test_g6_replay2", "test_g6_narrow",)),
     ("test_build", "맥락 줄 · 문서 좌표 · 소속 · 산문의 값 · 다른 공정 이름은 관련 링크 · 빈칸 표시 · 재연결 · 맞춤표 · 시트 숨김 · 청크 목차",
      ("test_g6_belongs", "test_g6_values", "test_g6_relink", "test_g6_reconcile",)),

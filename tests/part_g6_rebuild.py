@@ -330,9 +330,22 @@ _hint("RFQ01", {
     "사양_기계!R19-R23": {"entities": [{"surface": "노칭 정밀도", "category": "Property"},
                                        {"surface": "버 높이", "category": "Property"}], "relations": []},
     "요구사항!R2-R3": {"entities": [{"surface": "적층 정렬도", "category": "Property"}], "relations": []}})
+#: 판정 대역(B172 — mock 유사도는 1.0 · 0.95 · 0뿐이라 가드가 걷힌 뒤 불확실이 저절로 서지 않는다): 이 세계의 불확실 둘
+#: (산문 「노칭 프레스기」 ↔ 표의 「노칭 프레스」 · 품질 산문 「버 높이 편차」 ↔ 산문의 「버 높이」)은 임계 아래 점수(0.6)로 —
+#: 큐 종결 · 문서 단위 확인의 「불확실 제외」가 잰다(옛 가드가 내리던 둘 · 재구축도 같은 함수를 본다)
+from core import matcher as _MT172                                                  # noqa: E402
+_sim0 = _MT172._similarity
+_UNC172 = {("노칭 프레스기", "노칭 프레스"), ("버 높이 편차", "버 높이")}
+
+
+def _last(x):
+    return _norm(str(x).split("::")[-1])
+
+
+_MT172._similarity = lambda a, b: 0.6 if (_last(a), _last(b)) in _UNC172 else _sim0(a, b)
 #: 품질 산문 — 집이 process인 개체 둘(「금형 간극」 새 노드 · 그 끝점으로 가는 품질 그래프 엣지 `controlled_by` · 「버
-#: 높이 편차」는 산문의 auto 노드와 겹쳐 불확실 — 큐 종결 연산의 대상). PFMEA01(표 × quality)이 맡던 교차를 산문 하나가
-#: 맡는다(B121 ②ⓒ)
+#: 높이 편차」는 산문의 auto 노드와 겹쳐 불확실(위 판정 대역) — 큐 종결 연산의 대상). PFMEA01(표 × quality)이 맡던 교차를
+#: 산문 하나가 맡는다(B121 ②ⓒ)
 _hint("B106Q", {
     "사양_기계!R8-R17": {"entities": [{"surface": "가압력 부족", "category": "Failure"},
                                       {"surface": "금형 클리어런스 과다", "category": "Failure"},
@@ -732,6 +745,29 @@ _rest = [r for r in _fin167 if r.get("canonical") not in _moved
 show("B167 ⓒ 판정과 확정 사이에 후보가 하나 더 서면(시험이 노드를 더한다) 그 값만 「근거 바뀜」으로 다시 묻고 나머지는 재생",
      _moved == ["노칭::노칭정밀도"] and RP.DOC["근거 바뀜"] == 1 and _rest and all(r.get("path") == "replay" for r in _rest),
      f"근거 바뀜 {_moved} · 나머지 경로 {sorted({r.get('path') for r in _rest})} · 재생 {dict(RP.DOC)}")
+
+_base165()
+run_document(_pf165(), extract_only=True)
+_p172 = LG.read_partial(_PF)
+_due172 = [r for r in _p172["rows"] if r.get("role") in RP.ROLES and r.get("basis")
+           and not (r.get("path") == "none" and r.get("verdict") == "new")]          # 후보 0으로 끝난 새 노드는 재생 대상이 아니다(B142)
+#: 가드로 내려갔던 행 — 판정은 임계 이상(대역 0.9)이라 했는데 가드가 불확실로 적었다(B172 전 대장의 꼴 · 시험이 바꾼다)
+_gd172 = next(r for r in _due172 if str(r.get("path")).endswith("+judge"))
+_gd172.update(verdict="uncertain", node_id=None, nearest={"by": "가드", "id": None, "canonical": None})
+store.write(LG.partial_name(_PF), _p172)
+_pv172, _s172 = gateway.prompt_version, _MT172._similarity
+gateway.prompt_version = lambda name, _f=_pv172: "j-시험" if name == "judge" else _f(name)   # 판정 지시문 판이 바뀌었다
+_MT172._similarity = lambda a, b: 0.9 if _last(a) == _norm(_gd172["surface"]) else _s172(a, b)
+try:
+    run_document(_pf165())
+finally:
+    gateway.prompt_version, _MT172._similarity = _pv172, _s172
+_gd172b = next(r for r in LG.read(_PF)["rows"] if (r.get("locator"), r.get("field"), r.get("surface"))
+               == (_gd172.get("locator"), _gd172.get("field"), _gd172.get("surface")))
+show("B172 ⓓ 판정 지시문 판이 바뀌면 판정에 오른 값은 전부 「근거 바뀜」으로 다시 묻는다(재생 0) · 가드로 내려갔던 값도 다시 물어 붙는다",
+     _due172 and RP.DOC["근거 바뀜"] == len(_due172) and RP.DOC["재생"] == 0
+     and _gd172b.get("replay") == "근거 바뀜" and _gd172b.get("verdict") == "match",
+     f"판정에 오른 값 {len(_due172)} · 재생 {dict(RP.DOC)} · 그 행 {_gd172b.get('surface')} → {_gd172b.get('verdict')}")
 
 # ── 뒷정리 — 시험이 세운 것은 시험이 치운다
 for _d in _hinted:

@@ -220,7 +220,7 @@ def _ledger_row(b, eb, nid, at, name, bel):
                  verdict=loop._VERDICT.get(last.get("verdict"), "pending"), node_id=nid,
                  candidates_n=last.get("candidates_n", 0), confidence=last.get("confidence", 0.0),
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
-                 same_doc=last.get("same_doc"), target=b.canonical_of(nid), belongs_from=bel.get("from"),
+                 target=b.canonical_of(nid), belongs_from=bel.get("from"),
                  category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
                  apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"))
 

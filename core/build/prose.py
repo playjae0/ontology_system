@@ -131,7 +131,6 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                            llm=last.get("llm"),
                            queue_kind=last.get("queue_kind"),
                            nearest=last.get("nearest"),
-                           same_doc=last.get("same_doc"),
                            target=b.canonical_of(nid),
                            belongs_from=(bel or {}).get("from") or ("옛 attach" if (bel or {}).get("legacy") else None),
                            belongs_to=(bel or {}).get("name"),
