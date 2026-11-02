@@ -44,7 +44,7 @@ def _rows(model):
     for c, v in (model.get("categories") or {}).items():
         out.add(("카테고리", c))
         out.add(("집", f"{c} → {v.get('home')}"))
-        out |= {("겸", f"{c} 겸 {o} {'·'.join(t)}") for o, t in (v.get("also") or {}).items()}
+        out |= {("겸", f"{c} 겸 {o} {'·'.join(sorted(t))}") for o, t in (v.get("also") or {}).items()}   # 단은 포함만 본다(순서 뜻 0)
         out.add(("이름 규칙", f"{c}: {v.get('naming')}"))
     lk = model.get("links") or {}
     out |= {("걸침", f"{x['layer']}: {x['src']} -{x['rel']}-> {x['dst']} · 끝 {x['category']}(집 {x['home']}) · {x['from']}")
