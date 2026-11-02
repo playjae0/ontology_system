@@ -432,7 +432,7 @@ init.init(fresh_=True, all_=True)
 # ────────────────────────────────────────────────────────────── B174
 print("\n■ B174 옛 모양 → 제안 · 보고 · 멈춤 · 지도 앞뒤 (옛 mock config 사본 — 창작)")
 from cli import config_next as CN                                          # noqa: E402
-OLD174 = ROOT / "tests" / "fixtures" / "layers_b174_old"                  # B173 판 mock config 그대로(옛 모양)
+OLD174 = ROOT / "tests" / "fixtures" / "config_b174_old"                  # B173 판 mock config 그대로(옛 모양 — seed 층 아님)
 
 
 def _old174(edit=None):
