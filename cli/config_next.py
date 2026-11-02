@@ -5,12 +5,14 @@
 옛 키(`catalog.old_shape` — 공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 카테고리 정의)를 읽는 자리는
 옛 모양 감지와 여기(제안 짓기)뿐이다. 제안 규칙:
   ⓐ 옛 이름 규칙 목록(`bind` ∪ `nest`)에 없던 카테고리(골격 제외)는 경로 「안 씀」 + 사유 「이전 판 그대로 …」
-  ⓑ 층 `category_pair_map`의 쌍은 위아래 쌍으로(엣지 방향 그대로) — 위 · 아래는 골격이 위 · 옛 nest가 아래 · 둘 다 아니면 키
-     앞이 위(판단을 보고에 적는다) · **층끼리 같은 쌍에 다른 관계면 제안을 쓰지 않고 그 쌍을 문면으로**(사람이 고른다)
+  ⓑ 층 `category_pair_map`의 쌍은 위아래 쌍으로(엣지 방향 그대로) — 위 · 아래는 골격이 위 · 옛 nest가 아래 · 같은 관계의 골격
+     끝 삼항과 같은 쪽 · 다 아니면 키 앞이 위(판단을 보고에 적는다) · **층끼리 같은 쌍에 다른 관계면 제안을 쓰지 않고 그 쌍을
+     문면으로**(사람이 고른다)
   ⓒ 집이 아닌 층의 카테고리 정의는 그 층 `uses`로 · 정의문은 집 층 것을 두고 다른 층 정의문은 보고에 나란히
   ⓓ 관계 패턴 · 등록 스키마(공용 좌표 블록 포함)에만 나오던 다른 층 카테고리도 `uses`로(골격 카테고리 포함)
   ⓔ 위아래 쌍과 같은 삼항은 층 `relation_patterns`에서 뺀다(정의문은 쌍으로) — 층 `relations` · 정의문 · 추출 입력 칸은 그대로
-보고에는 **이름이 바뀌는 카테고리**(위가 일반 노드인 쌍의 아래인데 옛 nest에 없던 것 — 앞뒤 이름 꼴 · 노드 수)와 **층마다 새로
+보고에는 **이름이 바뀌는 카테고리**(지도의 이름 꼴이 앞뒤로 다른 것 — 위가 일반 노드인 쌍의 아래인데 옛 nest에 없던 것 · 앞뒤
+이름 꼴 · 노드 수)와 **층마다 새로
 걸리는 위아래 쌍**(그 층이 두 카테고리를 다 말하는데 옛 그 층 매핑에 없던 것)이 먼저 보인다.
 """
 from __future__ import annotations
@@ -44,12 +46,25 @@ def _schema_cats(schemas):
     return out
 
 
+def _map_triples(cfg):
+    return [(k.partition(",")[0], r, k.partition(",")[2]) for k, r in sorted((cfg.get("category_pair_map") or {}).items())]
+
+
+def _src_side(configs, sk):
+    """관계마다 src 쪽(`upper` · `lower`) — 한 끝이 골격인 관계 패턴 · 매핑 삼항에서(골격이 위) · 층마다 갈리면 뺀다."""
+    side = {}
+    for cfg in configs.values():
+        for s, r, d in [(p.get("src"), p.get("rel"), p.get("dst")) for p in cfg.get("relation_patterns") or []] + _map_triples(cfg):
+            if (s in sk) != (d in sk):
+                side.setdefault(r, set()).add("upper" if s in sk else "lower")
+    return {r: next(iter(v)) for r, v in side.items() if len(v) == 1}
+
+
 def _pairs(configs, sk, nest):
     """ⓑ 층 `category_pair_map` → 위아래 쌍 · `(쌍 목록, 판단 줄, 멈춤 줄)`."""
-    seen, stops = {}, []
+    seen, stops, side = {}, [], _src_side(configs, sk)
     for lay, cfg in sorted(configs.items()):
-        for k, rel in sorted((cfg.get("category_pair_map") or {}).items()):
-            s, _, d = k.partition(",")
+        for s, rel, d in _map_triples(cfg):
             seen.setdefault((s, d), {}).setdefault(rel, []).append(lay)
     out, why = [], []
     for (s, d), rels in sorted(seen.items()):
@@ -62,6 +77,8 @@ def _pairs(configs, sk, nest):
             up, how = (s, d) if s in sk else (d, s), "골격이 위"
         elif (s in nest) != (d in nest):
             up, how = (d, s) if s in nest else (s, d), "옛 nest가 아래"
+        elif rel in side:
+            up, how = (s, d) if side[rel] == "upper" else (d, s), f"같은 관계 {rel}의 골격 끝 삼항과 같은 쪽"
         else:
             up, how = (s, d), "키 앞이 위(판단 — 다르면 lower · upper를 바꿔 적는다)"
         upper, lower = up
@@ -77,6 +94,8 @@ def _pairs(configs, sk, nest):
 
 def propose(common, configs, schemas=()):
     """**제안**(순수 함수 — 쓰지 않는다) — `{"common", "layers", "stops", "report"}` · `stops`가 있으면 제안을 쓰지 않는다."""
+    from cli.config_map import name_forms
+    before = name_forms(common or {}, configs or {})
     common, configs = json.loads(json.dumps(common or {})), json.loads(json.dumps(configs or {}))
     sk = catalog.skeleton_categories(configs)
     bind, nest, sep = _old_rule(common, configs)
@@ -88,8 +107,7 @@ def propose(common, configs, schemas=()):
             rep["안 씀"].append(c)
     pairs, rep["쌍"], stops = _pairs(configs, sk, nest)                       # ⓑ
     edges = {catalog.pair_edge(p) for p in pairs}
-    old_pair = {lay: {(k.partition(",")[0], r, k.partition(",")[2]) for k, r in (c.get("category_pair_map") or {}).items()}
-                for lay, c in configs.items()}
+    old_pair = {lay: set(_map_triples(c)) for lay, c in configs.items()}
     sc_cats = _schema_cats(schemas)
     for lay, cfg in sorted(configs.items()):
         own = cfg.get("categories") or {}
@@ -102,6 +120,7 @@ def propose(common, configs, schemas=()):
                 del own[c]
                 uses.append(c)
         talk = {x for p in cfg.get("relation_patterns") or [] for x in (p.get("src"), p.get("dst")) if x}
+        talk |= {x for s, _r, d in _map_triples(cfg) for x in (s, d)}                # 옛 매핑에 이름 붙은 카테고리도 쓴다
         for c in sorted((talk | sc_cats.get(lay, set())) - set(own) - set(uses)):   # ⓓ
             uses.append(c)
         if uses:
@@ -124,9 +143,8 @@ def propose(common, configs, schemas=()):
     for k in catalog.OLD_COMMON_KEYS:
         common.pop(k, None)
     common["pairs"], common["sep"] = pairs, sep
-    for p in pairs:                                                            # 이름이 바뀌는 카테고리
-        if p["upper"] not in sk and p["lower"] not in nest:
-            rep["이름 바뀜"].append((p["lower"], p["upper"]))
+    after = name_forms(common, configs)                                        # 이름이 바뀌는 카테고리 — 지도의 이름 꼴 앞뒤
+    rep["이름 바뀜"] = [(c, before[c], after[c]) for c in sorted(after) if c in before and before[c] != after[c]]
     return {"common": common, "layers": configs, "stops": stops, "report": rep}
 
 
@@ -141,8 +159,8 @@ def report_md(prop, counts=None):
     L = ["# config 새 모양 제안 — 보고 (B174 ③)", "",
          "> 제안은 `layers/`와 같은 모양이다 · 옛 파일은 `옛/`에 남았다 · 지도로 앞뒤를 맞춘 뒤 복사한다(화면의 다음 줄).", "",
          "## 이름이 바뀌는 카테고리 (재구축이 필요하다)", ""]
-    L += [f"- `{lo}` — 지금 `<공정>::<이름>` → 제안 `<공정>::<{up}>::<이름>`(위 {up}가 이어지면) · 노드 {counts.get(lo, 0):,} · "
-          f"새 인입 전에 python run.py rebuild" for lo, up in rep["이름 바뀜"]] or ["- 없음"]
+    L += [f"- `{c}` — 지금 `{b}` → 제안 `{a}` · 노드 {counts.get(c, 0):,} · 새 인입 전에 python run.py rebuild"
+          for c, b, a in rep["이름 바뀜"]] or ["- 없음"]
     L += ["", "## 층마다 새로 걸리는 위아래 쌍 (그 층이 두 카테고리를 다 말한다 — 옛 그 층 매핑에는 없었다)", ""]
     L += [f"- {x}" for x in rep["새로 걸림"]] or ["- 없음"]
     for title, key in (("ⓐ 경로 「안 씀」(옛 이름 규칙 밖 — 사유를 적거나 지워서 「씀」으로)", "안 씀"),
@@ -165,7 +183,7 @@ def write(prop):
         paths.config_next("layers", lay, "config.json").write_text(
             json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     rp = paths.config_next("보고.md")
-    rp.write_text(report_md(prop, _counts([lo for lo, _u in prop["report"]["이름 바뀜"]])), encoding="utf-8")
+    rp.write_text(report_md(prop, _counts([c for c, _b, _a in prop["report"]["이름 바뀜"]])), encoding="utf-8")
     return rp
 
 

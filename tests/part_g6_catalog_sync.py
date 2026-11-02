@@ -19,6 +19,9 @@
       새 카테고리 경고에 이름 규칙 줄(적용·미적용)
   B173 config 지도(읽기만) — ⓐ 층 사이 연결 포인트 · 선언 없이 씀 ⓑ 점검은 카탈로그 · 재대조 문면 그대로 + 새 점검 줄
       ⓒ `--json` 두 번 바이트 같음 · 관계 패턴 하나를 지운 사본과의 대조가 그 하나만 ⓓ HTML 실경로 외부 주소 0 · 쓰기 0
+  B174 옛 모양 → 제안 — ⓑ 옛 mock config → 제안 · 보고 · 멈춤(쓰기 0) · 지도 지금 ↔ 제안 대조 0 ⓒ (일반 노드) 아래 (경로 씀) 쌍
+      → 보고의 이름이 바뀌는 카테고리 · 앞뒤 이름 꼴 ⓓ 옛 목록 밖 → 「안 씀 + 사유」 · 사유 없는 「안 씀」은 지도의 누락
+      ⓕ 지도의 카테고리마다 이름 꼴 · 층끼리 같은 쌍 다른 관계는 제안 없이 멈춤
 """
 from __future__ import annotations
 
@@ -424,6 +427,80 @@ show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 
      and "http://" not in _html173 and "https://" not in _html173 and _hash173() == _h173,
      f"rc {_r173.returncode} · {_r173.stdout.strip().splitlines()[:1]} · {len(_html173):,}B")
 shutil.rmtree(_t173, ignore_errors=True)
+init.init(fresh_=True, all_=True)
+
+# ────────────────────────────────────────────────────────────── B174
+print("\n■ B174 옛 모양 → 제안 · 보고 · 멈춤 · 지도 앞뒤 (옛 mock config 사본 — 창작)")
+from cli import config_next as CN                                          # noqa: E402
+OLD174 = ROOT / "tests" / "fixtures" / "layers_b174_old"                  # B173 판 mock config 그대로(옛 모양)
+
+
+def _old174(edit=None):
+    """클린 → 새 모양으로 골격 → 상태 루트 config만 옛 mock 사본으로(그 위에 `edit`)."""
+    init.init(fresh_=True, all_=True)
+    _boot()
+    for f in ("common.json", "process/config.json", "quality/config.json"):
+        shutil.copy(OLD174 / f, _P.layers(f))
+    if edit:
+        edit()
+
+
+def _maps174():
+    """지도 지금(상태 루트) · 제안(`work/config_next/layers`) JSON → `--diff` 줄."""
+    nx = _P.config_next()
+    with contextlib.redirect_stdout(io.StringIO()):
+        XC.main(["--json", str(nx / "지금.json")])
+        XC.main(["--from", str(nx / "layers"), "--json", str(nx / "제안.json")])
+    return XC.diff(*(json.loads((nx / f).read_text(encoding="utf-8")) for f in ("지금.json", "제안.json")))
+
+
+_old174()
+_h174 = _hash173()
+_rc, _o = _boot()
+_w174 = _hash173() == _h174
+_pc, _pl = CM.read(_P.config_next("layers"))
+_d174 = _maps174()
+show("B174 ⓑ 옛 모양 mock config → bootstrap이 제안(layers 모양) · 보고를 쓰고 멈춘다 · 그래프 · config · 등록부 쓰기 0 · "
+     "제안은 새 모양 · 지도 지금 ↔ 제안 --diff 0",
+     _rc != 0 and "옛 모양" in _o and _P.config_next("보고.md").exists() and _w174
+     and not catalog.old_shape(_pl, _pc) and _d174 == [],
+     f"rc {_rc} · 쓰기 0 {_w174} · 제안 옛 모양 {catalog.old_shape(_pl, _pc)} · 대조 {_d174[:3]}")
+
+
+def _edit174():                                    # 사본 config — (일반 노드) 아래 (경로 씀) 쌍 · 옛 목록 밖 카테고리
+    _rw(_P.layers("quality", "config.json"), lambda c: c.setdefault("category_pair_map", {}).update({"Failure,Unit": "occurs_in"}))
+    _rw(_P.common(), lambda c: c["categories"].update(Tool={"home": "process"}))
+    _rw(_P.layers("process", "config.json"), lambda c: c["categories"].update(Tool="공구(창작)"))
+
+
+_old174(_edit174)
+_rc, _o = _boot()
+_rep = _P.config_next("보고.md").read_text(encoding="utf-8") if _P.config_next("보고.md").exists() else ""
+_ren = _rep.split("## 이름이 바뀌는 카테고리", 1)[-1].split("\n## ", 1)[0]
+_pc, _pl = CM.read(_P.config_next("layers"))
+show("B174 ⓒ (일반 노드 카테고리) 아래 (경로 쓰는 카테고리) 쌍을 더한 옛 모양 → 보고 「이름이 바뀌는 카테고리」에 그 카테고리와 "
+     "앞뒤 이름 꼴 · 위 · 아래는 같은 관계의 골격 끝 삼항과 같은 쪽",
+     _rc != 0 and "`Failure` — 지금 `<공정>::<이름>` → 제안 `<공정>::<Unit>::<이름>" in _ren
+     and {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"} in _pc.get("pairs", []),
+     [ln for ln in _ren.splitlines() if "Failure" in ln][:1])
+_d0 = _pc["categories"].get("Tool", {}).get("no_path")
+_rw(_P.config_next("layers", "common.json"), lambda c: c["categories"]["Tool"].update(no_path=""))
+_miss = [x["line"] for x in CM.build(_P.config_next("layers"))["checks"]["경고"] if "'Tool'" in x["line"]]
+show("B174 ⓓ 옛 목록 밖 카테고리는 제안에서 「안 씀 + 사유」 · 사유 없는 「안 씀」은 지도 점검의 누락",
+     _d0 == CN.WHY_KEPT and "Tool" in _rep.split("## ⓐ", 1)[-1].split("\n## ", 1)[0]
+     and len(_miss) == 1 and _miss[0].startswith("누락 — 'Tool'"), f"사유 {_d0!r} · 점검 {_miss}")
+
+_old174(lambda: _rw(_P.layers("process", "config.json"),
+                    lambda c: c["category_pair_map"].update({"Unit,Process": "located_in"})))
+_rw(_P.layers("quality", "config.json"), lambda c: c.setdefault("category_pair_map", {}).update({"Unit,Process": "part_of"}))
+_rc, _o = _boot()
+_m174 = CM.build()
+show("B174 ⓕ 지도 — 카테고리마다 이름 꼴(골격 · 경로 · 위 노드 아래) · 제안 폴더를 읽는 길(위 ⓑ) · 층끼리 같은 쌍 다른 관계면 "
+     "제안 없이 문면(멈춤)",
+     _m174["categories"]["Process"]["name_form"] == "이름 그대로(골격)"
+     and _m174["categories"]["Property"]["name_form"].startswith("<공정>::<Unit>::<이름>")
+     and _rc != 0 and "[멈춤] 쌍 Unit,Process의 관계가 층마다 다르다" in _o and not _P.config_next("layers").exists(),
+     [ln for ln in _o.splitlines() if "[멈춤]" in ln][:1])
 init.init(fresh_=True, all_=True)
 
 done()

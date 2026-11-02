@@ -15,7 +15,8 @@
      삼항이 통과한다 · 겸을 지우면 지금처럼 새 노드(겸은 데이터) · 추출 어휘에 겸 한 줄 ·
      `show node`가 겸을 보인다
   ④ 층 안 확장으로 닿은 걸침 엣지도 저장한 층의 템플릿으로 문장화된다 · 다리로도 닿으면 한 번만
-  ⑤ config를 바꾸면 등록 스키마 재대조가 doc_type마다 FAIL/PASS 줄을 낸다 · prose 층의 좌표 경고
+  ⑤ config를 바꾸면 등록 스키마 재대조가 doc_type마다 FAIL/PASS 줄을 낸다 · prose 층의 좌표 경고 · B174 ⓔ G4C 문면이 uses를
+     말한다(골격 카테고리 포함) · 새 모양 mock 지도의 「선언 없이 씀」 0
   ⑥ 등록 패키지의 쓰기는 원자적 한 자리 · 디버그 파일은 작업 단(work/)
 """
 from __future__ import annotations
@@ -288,6 +289,13 @@ show("⑤ prose doc_type의 층이 좌표 카테고리를 말하지 않으면 �
      any(dt == "ppt_quality" and "⚠" in l and "좌표를 못 단다" in l for dt, _o, l in _r3),
      str([l[:80] for dt, _o, l in _r3 if dt == "ppt_quality"]))
 init.init(fresh_=True, all_=True)
+from cli import config_map as _CM174                                 # noqa: E402
+_g4c174 = [l for dt, ok, l in _r3 if dt == "pfmea" and not ok and "G4C" in l]
+_miss174 = _CM174.counts(_CM174.build())["선언 없이 씀"]
+show("B174 ⓔ G4C — uses에 없는 다른 층 카테고리(골격 카테고리 Process)를 쓰는 스키마 FAIL · 문면이 uses를 말한다 · 적으면 PASS"
+     "(⑤ 되돌림) · 새 모양 mock 지도의 「선언 없이 씀」 0",
+     _g4c174 and all("uses" in l for l in _g4c174) and all(ok for dt, ok, _l in _r2 if dt == "pfmea") and _miss174 == 0,
+     f"{[l[:110] for l in _g4c174]} · 선언 없이 씀 {_miss174}")
 
 # ────────────────────────────────────────────────────────────── B147 ⓑⓒ
 print("\n■ B147 ①② 등록된 스키마의 부착 대상 — 재대조 ⚠ · 인입은 멈추지 않는다 · 보류 사유 · 고친 스키마")

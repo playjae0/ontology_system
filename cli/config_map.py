@@ -97,10 +97,11 @@ def _pair_edges(common, configs, old):
 
 
 def _uses(lay, cfg, old, schemas):
-    """층이 쓰는 다른 층 카테고리 — 새 모양은 `uses` · 옛 모양은 관계 패턴 · 스키마에서 읽힌 것(옛 뜻)."""
+    """층이 쓰는 다른 층 카테고리 — 새 모양은 `uses` · 옛 모양은 관계 패턴 · 스키마 · 층 매핑에서 읽힌 것(옛 뜻)."""
     if not old:
         return sorted(set(cfg.get("uses") or []))
-    return sorted(_talks(lay, cfg, schemas) - set(cfg.get("categories") or {}))
+    mapped = {x for k in (cfg.get(catalog.OLD_LAYER_KEYS[0]) or {}) for x in k.split(",")}
+    return sorted((_talks(lay, cfg, schemas) | mapped) - set(cfg.get("categories") or {}))
 
 
 def _talks(lay, cfg, schemas):
@@ -165,6 +166,12 @@ def _name_forms(common, configs, old, edges):
             form = f"{COORD_TOKEN}::<이름>"
         out[c] = (pth, form)
     return out
+
+
+def name_forms(common, configs):
+    """`{카테고리: 이름 꼴}` — 옛 모양은 옛 뜻 · 새 모양은 새 뜻(제안 보고가 앞뒤를 지도와 같은 함수로 잰다 — B174 ③)."""
+    old = bool(catalog.old_shape(configs, common))
+    return {c: f for c, (_p, f) in _name_forms(common, configs, old, _pair_edges(common, configs, old)).items()}
 
 
 def _categories(common, configs, old, edges):
