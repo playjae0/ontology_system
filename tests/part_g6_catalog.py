@@ -150,9 +150,9 @@ show("② ⓐ 품질 prose가 공정층에 이미 있는 Unit을 말하면 그 �
 show("② ⓑ 새 Unit은 집(공정층)에 생기고 큐 layer=process",
      "노칭::노칭 커터" in _ps["p_units"]
      and ("auto_node", "process", "노칭 커터") in _ps["queue"], str(_ps["queue"]))
-show("② ⓒ 그 문서의 엣지는 품질층에 저장되고 끝점은 공정층 노드다",
-     ("occurs_in", "칼날 마모", "노칭::노칭 프레스") in _ps["q_edges"]
-     and ("occurs_in", "칼날 마모", "노칭::노칭 커터") in _ps["q_edges"], str(_ps["q_edges"]))
+show("② ⓒ 그 문서의 엣지는 품질층에 저장되고 끝점은 공정층 노드다",     # 기대 변경(B171 — 고장은 공정 경로 이름)
+     ("occurs_in", "노칭::칼날 마모", "노칭::노칭 프레스") in _ps["q_edges"]
+     and ("occurs_in", "노칭::칼날 마모", "노칭::노칭 커터") in _ps["q_edges"], str(_ps["q_edges"]))
 overlay()
 run_document(load("CP01"))
 _row = {"process_group": "조립", "process_ref": "노칭", "electrode_type": "both",
@@ -254,7 +254,7 @@ def _facts(question):
         return ["(json 아님) " + r.stdout[-120:]]
 
 
-_want = "칼날 마모는 노칭::노칭 프레스 공정에서 발생한다"
+_want = "노칭::칼날 마모는 노칭::노칭 프레스 공정에서 발생한다"     # 기대 변경(B171 — 고장은 공정 경로 이름)
 _f1 = _facts("칼날 마모는 어디서 생기나")
 _f2 = _facts("칼날 마모와 노칭 프레스")
 show("④ 품질층에 저장된 걸침 엣지가 품질층 확장으로 닿으면 문장이 된다 (저장한 층의 템플릿)",

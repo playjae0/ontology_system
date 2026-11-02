@@ -169,12 +169,13 @@ def scope_line(p, category):
     """새 카테고리의 **이름 규칙 상태** 한 줄(B95 ②) — 표시일 뿐(자동 추정 0).
 
     `canonical_scope.bind_categories` 안이면 이름에 공정 접두가 붙는다(공정이 다르면 다른 노드 ·
-    좌표 미해소면 노드를 만들지 않는다). 판정 기준은 질문 하나 — 공정을 모르면 뜻이 없는가.
+    좌표 미해소면 노드를 만들지 않는다). 기준은 「기본으로 넣는다」 — 넣지 않는 것은 공정 자체(골격)와 여러 공정이
+    함께 쓰는 공용 분류뿐이다(B171).
     """
     bind = ((p["catalog"].get("canonical_scope") or {}).get("bind_categories") or [])
     if category in bind:
         return f"이름 규칙: '{category}'는 공정 스코프 적용(bind_categories 안)"
-    return (f"이름 규칙: '{category}'는 미적용 — 공정을 모르면 뜻이 없는 것(공정마다 다른 실물·값)이면 "
+    return (f"이름 규칙: '{category}'는 미적용 — 공정 자체(골격)도, 여러 공정이 함께 쓰는 공용 분류도 아니면 "
             f"공통 config canonical_scope.bind_categories에 넣는다 · 노드가 생기기 전에 정한다")
 
 

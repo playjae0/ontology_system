@@ -142,6 +142,18 @@ show("스코프 카테고리는 주소에 실린다 (B26 — Property·Unit 둘 
      not _bad and {"탭용접::cathode::초음파 융착기", "탭용접::초음파 융착기",
                    "탭용접::cathode::초음파 융착기::용접 강도"} <= canon(P),  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
      str(_bad or sorted(c for c in canon(P) if "융착" in c)))
+# B171 — 고장도 이름 규칙 카테고리(공통 config `bind_categories`): 공정이 다르면 다른 노드 · 같은 공정이면 한 노드 · 좌표 없으면 노드 0
+_fails = [n for n in Q.nodes.values() if n["category"] == "Failure" and n["status"] != "seed"]
+_layer = [n for n in _fails if n["canonical"].split("::")[-1] == "적층 어긋남"]
+show("B171 ⓐ 같은 표기의 고장이 다른 공정 행이면 두 노드(노칭 · 스태킹의 절연 파괴) · 같은 공정이면 한 노드(스태킹 두 행의 적층 어긋남) — "
+     "이름에 공정 경로 · 원형 표기는 별칭",
+     {"노칭::절연 파괴", "스태킹::절연 파괴"} <= canon(Q) and len(_layer) == 1
+     and _layer[0]["canonical"] == "스태킹::적층 어긋남" and "적층 어긋남" in {a["surface"] for a in _layer[0]["aliases"]},
+     str(sorted(n["canonical"] for n in _fails if n["canonical"].endswith(("절연 파괴", "적층 어긋남")))))
+_orph = [x for x in q("orphan_anchor") if "레이저노칭" in str(x.get("payload"))]
+show("B171 ⓑ 좌표가 골격 밖인 행(R13 레이저노칭)의 고장은 노드 0 · 재료(표기)는 orphan_anchor 항목이 든다",
+     not [n for n in _fails if n["canonical"].endswith("슬리팅 버")] and any("슬리팅 버" in str(x["payload"]) for x in _orph),
+     f"고장 노드 {[n['canonical'] for n in _fails if '슬리팅' in n['canonical']]} · 항목 {len(_orph)}")
 show("비스코프 카테고리는 이름에 실린다 (F1 결합 유지)",
      all("::" not in n["canonical"] for n in P.nodes.values()
          if n["status"] != "seed" and n["category"] not in _scoped

@@ -244,10 +244,10 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.alias("process", _node("process", "스태킹::적층")["id"], HUM_P, A, "B108 표기(골격 · 표)")
     ops.alias("process", _node("process", "스태킹::적층")["id"], HUM_P, A, "B108 같은 표기 두 번")
     ops.alias("quality", _node("quality", "화재")["id"], HUM_Q, A, "B108 표기(골격 · 산문 층)")
-    ops.alias("quality", _node("quality", "B108 산문 고장")["id"], "B108 산문 고장 별칭", A, "B108 표기(엔티티 · 산문)")
+    ops.alias("quality", _node("quality", "노칭::B108 산문 고장")["id"], "B108 산문 고장 별칭", A, "B108 표기(엔티티 · 산문)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.rename("process", _node("process", "노칭::B108 관리 가")["id"], "노칭::B108 관리 가 개명", A, "B108 개명(표)")
-    _keep = _node("quality", "B108 산문 고장")["id"]
-    ops.merge("quality", _node("quality", "B108 품질 가")["id"], _keep, A, override=_keep,
+    _keep = _node("quality", "노칭::B108 산문 고장")["id"]   # 기대 변경(B171 — 고장은 공정 경로 이름)
+    ops.merge("quality", _node("quality", "노칭::B108 품질 가")["id"], _keep, A, override=_keep,
               reason="B108 병합(표 → 산문)")
 B_ALL = AB.AliasBook.open()
 print(f"  첫 인입 4문서 · 사람 연산 {len(oplog.read())}건 · 대장 {AB.counts(B_ALL)}")
@@ -257,9 +257,9 @@ print("\n■ B108 ① 별칭 대장 — 쓰는 손 하나 · 이름으로 · 같
 _want = {("B108 적층 라인", "process", "스태킹::적층", "LLM 매칭"), ("B108 불남", "quality", "화재", "LLM 매칭"),
          ("B108 타발 공정", "process", "노칭::노칭 타발", "LLM 매칭"), ("B108 쇼트", "quality", "단락", "LLM 매칭"),
          (HUM_P, "process", "스태킹::적층", "사람"), (HUM_Q, "quality", "화재", "사람"),
-         ("B108 산문 고장 별칭", "quality", "B108 산문 고장", "사람"),
+         ("B108 산문 고장 별칭", "quality", "노칭::B108 산문 고장", "사람"),   # 기대 변경(B171 — 고장은 공정 경로 이름)
          ("노칭::B108 관리 가", "process", "노칭::B108 관리 가 개명", "개명"),
-         ("B108 품질 가", "quality", "B108 산문 고장", "병합")}
+         ("B108 품질 가", "quality", "노칭::B108 산문 고장", "병합")}   # 기대 변경(B171 — 고장은 공정 경로 이름)
 _have = _live()
 _rows = {(r["surface"], r["target"]["canonical"]): r for r in B_ALL.rows}
 show("ⓐ 인입의 LLM 매칭(골격 대상 — 표·산문 × 층 둘) · ops alias(골격 층 둘 · 엔티티) · 개명 · 병합이 만든 seed 밖 별칭이 "
@@ -371,8 +371,8 @@ _h0 = _data_hash()
 _od = _run("ops", "alias-reject", "process", "스태킹::적층", HUM_P, "--actor", A)
 _h1 = _data_hash()
 _oy = _run("ops", "alias-reject", "process", "스태킹::적층", HUM_P, "--actor", A, "--yes")
-_oe = _run("ops", "alias-reject", "quality", "B108 산문 고장", "B108 산문 고장 별칭", "--actor", A, "--yes")
-_n, _nq = _node("process", "스태킹::적층"), _node("quality", "B108 산문 고장")
+_oe = _run("ops", "alias-reject", "quality", "노칭::B108 산문 고장", "B108 산문 고장 별칭", "--actor", A, "--yes")   # 기대 변경(B171 — 고장은 공정 경로 이름)
+_n, _nq = _node("process", "스태킹::적층"), _node("quality", "노칭::B108 산문 고장")   # 기대 변경(B171 — 고장은 공정 경로 이름)
 _r = AB.AliasBook.open().get(HUM_P, AB.name(_n))
 _rec = [x for x in oplog.read() if x.get("op") == "alias:reject"]
 
@@ -394,7 +394,7 @@ for ln in (_od + _oy).splitlines():
     if ln.strip() and not ln.startswith("[실행") and "=====" not in ln:
         print(f"      {ln}")
 _rc, OUT_D = _rebuild()
-_n, _nq = _node("process", "스태킹::적층"), _node("quality", "B108 산문 고장")
+_n, _nq = _node("process", "스태킹::적층"), _node("quality", "노칭::B108 산문 고장")   # 기대 변경(B171 — 고장은 공정 경로 이름)
 _rep = next((ln.strip() for ln in OUT_D.splitlines() if ln.strip().startswith("사람 판단 재생")), "")
 show("ⓓ 재구축 뒤에도 빠져 있다(골격 — 대장이 bootstrap에서 막고 · 엔티티 — 판정 재생이 다시 붙이려 해도 쓰는 손이 막는다) · "
      "대장은 「거부」 그대로 · 사람 판단 재생은 이미 그 상태",

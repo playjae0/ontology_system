@@ -362,12 +362,20 @@ _HD = _FXR.EXTRACT_HINTS / "B103VW.json"
 _HD.write_text(json.dumps({"B103VW-C1": {"entities": [{"surface": "B103 뷰어 고립 불량", "category": "Failure"}],
                                          "relations": [], "attach": []}}, ensure_ascii=False), encoding="utf-8")
 _e0 = len(VD.graph()["detached"]["edgeless"])
+# 기대 변경(B171 — 고장이 이름 규칙 카테고리라 좌표 없는 고장은 노드 0): 엣지 없는 노드를 내는 표본은 이름 규칙 밖 카테고리 —
+# 이 문서 하나만 상태 루트 공통 config 사본에서 고장을 뺀 판으로 돈다(레포 seed 그대로)
+_cm = _P.common()
+_cm0 = _cm.read_text(encoding="utf-8")
+_cj = json.loads(_cm0)
+_cj["canonical_scope"]["bind_categories"] = [c for c in _cj["canonical_scope"]["bind_categories"] if c != "Failure"]
+_cm.write_text(json.dumps(_cj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 run_document({"doc_id": "B103VW", "doc_type": "ppt_quality", "payload_kind": "prose", "source_path": "B103VW.pptx",
               "revision": "R1", "parsed_at": "2026-10-07T00:00:00", "parser_version": "m", "adapter_version": "m",
               "context": {}, "chunks": [{"source_locator": "B103VW-C1", "process_group": None, "process_ref": None,
                                          "electrode_type": "both", "text": "B103 뷰어 고립 불량 이야기",
                                          "section": "본문", "meta": {}}]})
 _HD.unlink(missing_ok=True)
+_cm.write_text(_cm0, encoding="utf-8")
 _e1 = len(VD.graph()["detached"]["edgeless"])
 _land = ((ledger.read("B103VW") or {}).get("result") or {}).get("엣지 없는 노드")
 show("① 연결 없는 노드의 「엣지 없음」 수가 B102 끝 요약 「엣지 없는 노드」와 같다(그 문서가 더한 만큼)",
