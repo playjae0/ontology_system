@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 from core import matcher
-from core.state import store
+from core.state import catalog, store
 from core.build.naming import scope_of
 from core.state.ids import fold_latin, norm
 from core.state.status import is_live
@@ -142,7 +142,7 @@ def lookup(b, name, cat=None, *, coord=None, src=None, doc=None):
         n = g.get(nid) or {}
         if n and (not cat or matcher._is(n, cat, hosts)):
             return NODE, nid, g
-    if not here or (cat and cat not in (b.cfg.get("categories") or {})):
+    if not here or (cat and cat not in catalog.spoken(b.cfg)):          # 그 층이 말하는 카테고리(집 ∪ uses — B174 ②)
         return None
     hits = {}
     for x in set(b.dict.lookup(name)):
@@ -198,7 +198,7 @@ def resolve_target(b, bel, prov, chunk_kw, at=None):
     hit = lookup(b, name, cat, coord=(chunk_kw.get("coord") or (None,))[0])   # 앞 단 — 관계 끝점과 같은 함수 (B140 ⑤)
     if hit:
         return hit
-    if not cat or cat not in (b.cfg.get("categories") or {}):
+    if not cat or cat not in catalog.spoken(b.cfg):
         return None
     nid, eb = b.resolve_at_home(name, cat, prov, at=at, **chunk_kw)
     _ledger_row(b, eb, nid, at, name, bel)

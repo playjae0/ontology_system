@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures"))
 from g65_common import *          # noqa: F401,F403 — 바닥은 하나다
-from g65_common import _P, _rw, done, overlay   # noqa: F401
+from g65_common import _P, component_floor, _rw, done, overlay   # noqa: F401
 
 import make_b88 as MB                                   # noqa: E402 — Word 조립 재료(창작)
 from fake_gateway import CALLS, Live                    # noqa: E402
@@ -54,28 +54,10 @@ XL = {"추출 사양": ["1. 개요", "본 사양은 추출 설비의 범위를 �
 
 
 def _setup():
-    """덧칠(Component · 겸 렌즈) + `nest_categories` + 소속 엣지의 카테고리쌍 — 상태 루트에만(B102 시험과 같은 바닥) ·
+    """덧칠(Component) + 소속 엣지의 위아래 쌍(공통 config) — 상태 루트에만(B102 시험과 같은 바닥) ·
     청크 목표 행 손잡이(작은 표본에서 제목 2~3단)."""
-    overlay(component=True)
-    _rw(_P.common(), lambda c: c.setdefault("canonical_scope", {}).__setitem__("nest_categories", ["Component"]))
-    pats = [{"src": s_, "rel": "part_of", "dst": d_, "symmetric": False, "정의문": f"{s_}가 {d_}에 속한다"}
-            for s_, d_ in (("Component", "Unit"), ("Component", "Process"), ("Unit", "Process"))]
-    pairs = {f"{p_['src']},{p_['dst']}": "part_of" for p_ in pats}
-
-    def _q(c):
-        c["categories"]["Component"] = "(품질층의 렌즈) 불량이 일어나는 구성 기계"
-        c["relation_patterns"] += pats
-        c.setdefault("category_pair_map", {}).update(pairs)
-
-    def _p(c):
-        have = {(p_["src"], p_["rel"], p_["dst"]) for p_ in c["relation_patterns"]}
-        c["relation_patterns"] += [p_ for p_ in pats if (p_["src"], p_["rel"], p_["dst"]) not in have]
-        for k, v in pairs.items():
-            c.setdefault("category_pair_map", {}).setdefault(k, v)
-    _rw(_P.layers("quality", "config.json"), _q)
-    _rw(_P.layers("process", "config.json"), _p)
+    component_floor()                             # B174 — 위아래 쌍 · uses(공통 바닥)
     for lay in ("process", "quality"):
-        bootstrap(lay, echo=False)
         _register(lay, f"b115_{lay}")           # 실호출 갈래는 mock 내장 doc_type을 모른다 — 등록 단에 세운다
     tuning.apply({"chunk_rows": [1, 2]})
 
@@ -256,9 +238,10 @@ show("ⓐ 대상 제목만 노드(대장 heading) · 주제 노드 0 · 제목�
      all(o for _l, o, _d in _oa), " ‖ ".join(d for _l, _o, d in _oa))
 
 # ────────────────────────────────────────────────────────────── ⓑ
-print("\n■ B115 ③ 상위로 올라가는 폴백 사슬 — NG unit → 추출부 → 공정 (층 둘)")
+print("\n■ B115 ③ 상위로 올라가는 폴백 사슬 — NG unit → 추출부 → 공정 (공정층)")
 _ob = []
-for _lay in ("process", "quality"):
+# 고침(B174 — 품질층은 Component를 `uses`로 쓴다 · 추출 입력(묻는 카테고리)에 uses를 싣는 것은 ②회차 — 그 층의 셈은 그때)
+for _lay in ("process",):
     _got = {}
     for _tag, _ans in (("둘 다", UNITS), ("추출부만", {"2. 추출부": UNITS["2. 추출부"]}), ("없음", {})):
         _setup()
@@ -274,7 +257,7 @@ for _lay in ("process", "quality"):
                 and _a[2] == (1, True) and _a[3] == (1, True) and _c[2][0] in (0, None),
                 f"{_lay}: 모터 {_a[0]} / {_b[0]} / {_c[0]} · 실린더 {_a[1]} · 맞춤 제목 폴백 {_a[2]} · 소속 제목 개체 {_a[3]}"))
 show("ⓑ 본문에 소속 없는 개체 — NG unit이 대상이면 거기(제목 3단) · 주제면 추출부(2단) · 둘 다 아니면 공정(좌표 폴백) · 소속 "
-     "이름이 제목 개체면 그것 · 맞춤 「제목 폴백」·「제목 개체」 칸 (층 둘)",
+     "이름이 제목 개체면 그것 · 맞춤 「제목 폴백」·「제목 개체」 칸 (공정층)",
      all(o for _l, o, _d in _ob), " ‖ ".join(d for _l, _o, d in _ob))
 
 # ────────────────────────────────────────────────────────────── ⓒ
@@ -298,8 +281,10 @@ for _lay in ("process", "quality"):
     _lk2 = {r["surface"]: r for r in _rows(_did, "link")}
     _edges2 = _edges()
     _want = "벨트" if _lay == "process" else "버"
-    _oc.append((_lay, _first.get(_want, ("",))[0] == "attached" and _first.get("롤러", ("",))[0] == "gate_reject"
-                and _first.get("가이드", ("",))[0] == "gate_reject"
+    _comp = _lay == "process"                            # 고침(B174 — 품질층은 Component를 묻지 않는다(uses · ②회차) — 버림 셈은 공정층)
+    _oc.append((_lay, _first.get(_want, ("",))[0] == "attached"
+                and (not _comp or (_first.get("롤러", ("",))[0] == "gate_reject"
+                                   and _first.get("가이드", ("",))[0] == "gate_reject"))
                 and not [p for p, _b in _c2 if p in ("extract", "outline", "reinforce")]
                 and _lk2.get(_want, {}).get("path") == "replay" and _lk2[_want]["verdict"] == "attached"
                 and _edges1 == _edges2,

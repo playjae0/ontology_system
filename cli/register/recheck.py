@@ -9,7 +9,7 @@
 G4E). 킷은 core를 모르므로 subprocess로 부르고 층 자리를 건넨다(관문과 같은 결).
 
 경고 하나를 더 낸다: **prose doc_type이 등록된 층이 좌표 카테고리를 말하지 않는다**
-(`categories`에도 `relation_patterns`에도 없다) — 그 층의 prose 문서는 좌표를 못 단다
+(`categories`에도 `uses`에도 없다 — B174 ②) — 그 층의 prose 문서는 좌표를 못 단다
 (prose 스키마의 좌표 블록이 그 카테고리를 부른다 — 관문 G4C가 그 자리에서 선다).
 
 **부착 대상 규칙**(B147 ① — 관문 G4J와 같은 함수 `parser.attach_rule`)도 같은 하위 실행이 싣는다 — 속성 · 내용의
@@ -34,7 +34,7 @@ from core.state import registry
 
 KIT = paths.ROOT / "kit"
 #: 판정 태그 → 고칠 자리(층 config 키)
-_FIX = {"G4C": "categories(또는 relation_patterns)", "G4D": "relations",
+_FIX = {"G4C": "uses(다른 층 카테고리 — B174) 또는 categories(집 카테고리)", "G4D": "relations",
         "G4E": "relation_patterns"}
 
 
@@ -62,12 +62,14 @@ def revise_line(dt, schema=None, schema_only=False):
 
 
 def _speaks(cfg, category):
-    return category in (cfg.get("categories") or {}) or any(
-        category in (p.get("src"), p.get("dst")) for p in cfg.get("relation_patterns") or [])
+    """층이 그 카테고리를 말하는가 — 집 카테고리 ∪ `uses`(B174 ② — 패턴표에서 짐작하지 않는다)."""
+    from core.state import catalog
+    return category in catalog.spoken(cfg)
 
 
-def run():
-    """`[(doc_type, ok, 줄)]` — 줄은 화면에 그대로 싣는다. 등록 0이면 빈 목록."""
+def run(layers_dir=None):
+    """`[(doc_type, ok, 줄)]` — 줄은 화면에 그대로 싣는다. 등록 0이면 빈 목록 · `layers_dir`(지도의 제안 폴더 — B174 ④)를 주면
+    그 층 자산으로 대조한다(없으면 상태 루트)."""
     from core.state.bootstrap import COORD_CATEGORY, load_config
     dts = registry.all_doc_types()
     targets = [(dt, registry.schema_path(dt)) for dt in sorted(dts)]
@@ -75,7 +77,7 @@ def run():
     if not targets:
         return []
     r = subprocess.run([sys.executable, str(KIT / "check_vocab.py"),
-                        "--layers", str(paths.layers())] + [str(p) for _dt, p in targets],
+                        "--layers", str(layers_dir or paths.layers())] + [str(p) for _dt, p in targets],
                        capture_output=True, text=True, cwd=str(paths.ROOT),
                        stdin=subprocess.DEVNULL)
     got = {}
@@ -110,12 +112,14 @@ def run():
                                    f"(인입은 멈추지 않는다 — 그 값은 보류된다)"))
         if schema.get("payload_kind") == "prose" and lay:
             try:
-                speaks = _speaks(load_config(lay), COORD_CATEGORY)
+                cfg_l = (json.loads((Path(layers_dir) / lay / "config.json").read_text(encoding="utf-8"))
+                         if layers_dir else load_config(lay))
+                speaks = _speaks(cfg_l, COORD_CATEGORY)
             except (OSError, ValueError):
                 speaks = False
             if not speaks:
                 out.append((dt, False, f"{dt:<14} ⚠ 층 {lay}이 {COORD_CATEGORY}를 말하지 않는다 "
-                                       f"(categories에도 relation_patterns에도 없다) — 이 층의 "
+                                       f"(categories에도 uses에도 없다) — 이 층의 "
                                        f"prose 문서는 좌표를 못 단다"))
     return out
 

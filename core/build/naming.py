@@ -73,16 +73,19 @@ def is_bound(polarity, cfg):
     return polarity in (cfg.get("polarity") or {}).get("values", [])
 
 
-def scope_categories(cfg):
-    """**이름에 부모가 붙는 카테고리** — 공통 config `canonical_scope`의 `bind_categories` ∪ `nest_categories`
-    (B102 ⑤ — 데이터 · 코드가 카테고리 이름을 모른다). 한 자리에서 읽는다(판정 · 막이 · 연쇄)."""
-    sc = (cfg or {}).get("canonical_scope") or {}
-    return list(dict.fromkeys(list(sc.get("bind_categories") or []) + list(sc.get("nest_categories") or [])))
+def scope_categories(cfg=None):
+    """**이름에 부모가 붙는 카테고리** — 공통 config의 경로 「씀」 ∪ 위아래 쌍의 nest(B174 ① · `catalog.naming_rule` — 데이터 ·
+    코드가 카테고리 이름을 모른다). 한 자리에서 읽는다(판정 · 막이 · 연쇄) · `cfg`는 부르는 모양을 지키는 자리(읽지 않는다)."""
+    from core.state import catalog
+    rule = catalog.naming_rule()
+    return list(dict.fromkeys(rule["path"] + rule["nest"]))
 
 
-def nest_categories(cfg):
-    """소속이 골격 밖 노드로 해소되면 **그 노드의 canonical을 이름 부모로** 쓰는 카테고리(B102 ⑤)."""
-    return list(((cfg or {}).get("canonical_scope") or {}).get("nest_categories") or [])
+def nest_categories(cfg=None):
+    """소속이 골격 밖 노드로 해소되면 **그 노드의 canonical을 이름 부모로** 쓰는 카테고리 — 위아래 쌍에서 위가 일반 노드인 아래
+    카테고리(B102 ⑤ · B174 ① — 목록 없이 쌍에서)."""
+    from core.state import catalog
+    return list(catalog.naming_rule()["nest"])
 
 
 #: 부모 경로 · 맨 이름 칸 — 새 칸 앞, 옛 칸 뒤(B142 ⑤ — 재구축 전 그래프는 옛 칸만 있다 · 옛 `parent`는 시험 노드의 칸)
@@ -111,7 +114,7 @@ def name_parent(category, owner_canonical, coord_parent, cfg):
     """**이름 부모 한 함수**(B119 ④ · B144 ②) — 소유자가 **골격 밖 노드**(유닛 · 제목 개체)로 해소된 개체의 이름 부모.
 
     `nest_categories`에 든 카테고리(사양 · 값)면 그 노드의 canonical(`노칭::언와인더 unit::속도`) · 아니면 좌표의 부모 그대로
-    (`노칭::속도`). 한 카테고리가 `bind_categories`와 `nest_categories` 둘 다에 있어도 같다. 소유자는 문서 형태와 무관하다 —
+    (`노칭::속도`). 소유자는 문서 형태와 무관하다 —
     산문은 소속 대상 · 표는 같은 행의 소유 엣지 개체(`scope_path.owner_parent` — CP의 설비 → 관리항목 · PFMEA처럼 소유 엣지가 없는
     표는 공정 아래) · 제목은 위 제목 개체. 소유자가 골격(공정)이면 이 함수를 부르지 않고 좌표가 부모다 · 부모 노드가 없으면 좌표 그대로."""
     if owner_canonical and category in nest_categories(cfg):
@@ -129,12 +132,12 @@ def scope_canonical(surface, category, parent_canonical, cfg):
     부모가 미해소면 스코프를 붙이지 않는다. 좌표를 모른 채 만든 노드를
     스코프 붙은 노드와 합치면 오병합이므로, 후보에서도 제외된다(규약 5).
     """
-    sc = cfg.get("canonical_scope")
-    if not sc or category not in scope_categories(cfg):
+    if category not in scope_categories(cfg):
         return surface, True
     if not parent_canonical:
         return surface, False                            # 미해소 — 병합 금지 표시
-    sep = sc.get("sep", "::")
+    from core.state import catalog
+    sep = catalog.sep()
     if sep in surface:                                   # 이미 스코프가 붙어 있음
         return surface, True
     return f"{parent_canonical}{sep}{surface}", True

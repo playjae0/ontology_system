@@ -23,7 +23,10 @@
     "occurs_in",
     "controlled_by"
   ],
-  "category_pair_map": {},
+  "uses": [
+    "Process",
+    "Property"
+  ],
   "match_threshold": 0.85,
   "query_traverse": {
     "causes": {

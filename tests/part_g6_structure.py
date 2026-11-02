@@ -125,11 +125,11 @@ def _xlsx(key, lay, did):
 
 
 def _setup():
-    """클린 → 덧칠(quality에 렌즈 `Unit`) → 소속 엣지의 카테고리쌍(층마다) · 문서 종류 둘 · 청크 목표 행 손잡이(작은 표본)."""
+    """클린 → 덧칠(quality가 `Unit`을 쓴다) → 소속 엣지의 위아래 쌍(공통 config — B174) · 문서 종류 둘 · 청크 목표 행 손잡이(작은 표본)."""
     with contextlib.redirect_stdout(io.StringIO()):
         overlay()
-    _rw(_P.layers("quality", "config.json"),
-        lambda c: c.setdefault("category_pair_map", {}).update({"Failure,Unit": "occurs_in"}))
+    _rw(_P.common(), lambda c: c.setdefault("pairs", []).append(
+        {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"}))
     for lay in LAYERS:
         with contextlib.redirect_stdout(io.StringIO()):
             bootstrap(lay, echo=False)
@@ -340,8 +340,8 @@ def _table_names(nest):
     with contextlib.redirect_stdout(io.StringIO()):
         init.init(fresh_=True, all_=True)
         RUN.cmd_bootstrap([])
-        if not nest:
-            _rw(_P.common(), lambda c: c["canonical_scope"].pop("nest_categories", None))
+        if not nest:                              # 고침(B174 — nest는 위아래 쌍에서: 설비가 관리항목의 위인 쌍을 뺀다)
+            _rw(_P.common(), lambda c: c.update(pairs=[x for x in c["pairs"] if (x["lower"], x["upper"]) != ("Property", "Unit")]))
         for d in ("CP01", "PFMEA01"):
             run_document(load(d))
     return sorted(n["canonical"] for _l, n in World().nodes() if n.get("status") == "auto")

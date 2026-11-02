@@ -218,7 +218,8 @@ class _TreeParser:
 def _plant_tree(g, seed, skel, cfg, register):
     """파싱 → 검증 → 적재. 검증이 끝난 뒤에만 그래프를 건드린다."""
     labels = seed.get(KEY_LABELS) or {}
-    sep = (cfg.get("canonical_scope") or {}).get("sep", "::")   # 구분자 `::` 통일(M2)
+    from core.state import catalog
+    sep = catalog.sep()                                    # 구분자 `::` 통일(M2) — 공통 config 한 곳(B174 ①)
     tree = seed.get(KEY_TREE)
     if tree is None:
         raise SeedError(f"seed에 트리 블록({KEY_TREE})이 없다")

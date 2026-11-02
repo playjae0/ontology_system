@@ -131,9 +131,10 @@ def plan(configs=None, current=None, counter=count_nodes):
                 if n:
                     out["moved"].append((c, home, lay, n))
     # **쓰는 층(`used_by`)은 결과 기록이다**(B94 ①) — 위 판정은 이것을 읽지 않는다(낡은 값이
-    # 판정을 이기지 않게). 층 config의 선언에서 다시 적는다 · 손으로 고친 값도 되돌린다.
+    # 판정을 이기지 않게). 층 config의 집 정의 ∪ `uses`에서 다시 적는다(B174 ②) · 손으로 고친 값도 되돌린다.
+    users = catalog.used_by(configs)
     for c in sorted(cats):
-        want = list(decl.get(c, []))
+        want = list(users.get(c, []))
         have = (cats[c] or {}).get("used_by")
         if have != want:
             cats[c]["used_by"] = want
@@ -168,15 +169,17 @@ def existing_lines(p, configs=None):
 def scope_line(p, category):
     """새 카테고리의 **이름 규칙 상태** 한 줄(B95 ②) — 표시일 뿐(자동 추정 0).
 
-    `canonical_scope.bind_categories` 안이면 이름에 공정 접두가 붙는다(공정이 다르면 다른 노드 ·
-    좌표 미해소면 노드를 만들지 않는다). 기준은 「기본으로 넣는다」 — 넣지 않는 것은 공정 자체(골격)와 여러 공정이
-    함께 쓰는 공용 분류뿐이다(B171).
+    경로 「씀」이면 이름에 공정 접두가 붙는다(공정이 다르면 다른 노드 · 좌표 미해소면 노드를 만들지 않는다). 기준은 「기본은 씀」
+    — 안 쓰는 것은 공정 자체(골격)와 여러 공정이 함께 쓰는 공용 분류뿐이고 사유를 적는다(B171 · B174 ① — 공통 config `no_path`).
     """
-    bind = ((p["catalog"].get("canonical_scope") or {}).get("bind_categories") or [])
-    if category in bind:
-        return f"이름 규칙: '{category}'는 공정 스코프 적용(bind_categories 안)"
-    return (f"이름 규칙: '{category}'는 미적용 — 공정 자체(골격)도, 여러 공정이 함께 쓰는 공용 분류도 아니면 "
-            f"공통 config canonical_scope.bind_categories에 넣는다 · 노드가 생기기 전에 정한다")
+    rule = catalog.naming_rule(p["catalog"], catalog._layer_configs())
+    if category in rule["path"]:
+        return f"이름 규칙: '{category}'는 경로 씀(기본 — 공통 config에 no_path 없음) · 노드가 생기기 전에 정한다"
+    why = ((p["catalog"].get("categories") or {}).get(category) or {}).get("no_path")
+    if why:
+        return (f"이름 규칙: '{category}'는 경로 안 씀 — 사유 「{why}」 · 공정 자체(골격)도, 여러 공정이 함께 쓰는 공용 분류도 "
+                f"아니면 공통 config no_path를 지운다")
+    return f"이름 규칙: '{category}'는 골격 — 이름 그대로(층 config skeleton)"
 
 
 def new_categories(p):

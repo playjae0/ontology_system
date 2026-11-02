@@ -15,7 +15,8 @@
      삼항이 통과한다 · 겸을 지우면 지금처럼 새 노드(겸은 데이터) · 추출 어휘에 겸 한 줄 ·
      `show node`가 겸을 보인다
   ④ 층 안 확장으로 닿은 걸침 엣지도 저장한 층의 템플릿으로 문장화된다 · 다리로도 닿으면 한 번만
-  ⑤ config를 바꾸면 등록 스키마 재대조가 doc_type마다 FAIL/PASS 줄을 낸다 · prose 층의 좌표 경고
+  ⑤ config를 바꾸면 등록 스키마 재대조가 doc_type마다 FAIL/PASS 줄을 낸다 · prose 층의 좌표 경고 · B174 ⓔ G4C 문면이 uses를
+     말한다(골격 카테고리 포함) · 새 모양 mock 지도의 「선언 없이 씀」 0
   ⑥ 등록 패키지의 쓰기는 원자적 한 자리 · 디버그 파일은 작업 단(work/)
 """
 from __future__ import annotations
@@ -50,12 +51,9 @@ def snapshot(doc_prefix):
 print("\n■ B90 ① 층 공통 config — 카테고리 카탈로그")
 init.init(fresh_=True, all_=True)
 _decl = catalog.declared_by()
-show("① mock 카탈로그는 층 선언의 복사다 — 집 = 선언한 층 하나 · 거부 0 · 이름 규칙은 카탈로그에만",
+show("① mock 카탈로그는 층 선언의 복사다 — 집 = 선언한 층 하나 · 거부 0 · 이름 규칙은 공통 config에만(고침 B174 — 옛 모양 0)",
      all(len(v) == 1 and catalog.home(c) == v[0] for c, v in _decl.items())
-     and catalog.problems() == []
-     and not any("canonical_scope" in json.loads(_P.layers(l, "config.json").read_text(encoding="utf-8"))
-                 for l in _decl["Process"] + _decl["Failure"])
-     and load_config("quality").get("canonical_scope") == catalog.canonical_scope(),
+     and catalog.problems() == [] and catalog.old_shape() == [],
      str({c: catalog.home(c) for c in _decl}))
 
 
@@ -79,7 +77,7 @@ show("① 거부 네 갈래(ⓑ 카탈로그 밖 · ⓒ 선언 안 한 집 · �
      all(any(t == k for t, _m in v) for k, v in _cases.items())
      and any("Tool" in m for _t, m in _cases["ⓑ"])
      and any("선언하지 않은 층" in m for _t, m in _cases["ⓒ"])
-     and any("에서 지운다" in m for _t, m in _cases["ⓓ"])
+     and any("옛 모양" in m and "제안" in m for _t, m in _cases["ⓓ"])          # 고침 B174 — 옛 모양은 제안으로
      and sum(1 for t, _m in _cases["ⓔ"] if t == "ⓔ") == 2,
      str({k: [t for t, _m in v] for k, v in _cases.items()}))
 init.init(fresh_=True, all_=True)
@@ -91,9 +89,9 @@ with tempfile.TemporaryDirectory(prefix="b90_") as _td:
     shutil.copytree(ROOT / "layers" / "quality", _r / "layers" / "quality")
     _rw(_r / "layers" / "quality" / "config.json",
         lambda c: c["categories"].update(OV["quality"]["categories"]))
-    # 사내 옛 판 모양 — 이름 규칙이 아직 층 config에 있다(초안이 그것을 옮긴다)
-    _rw(_r / "layers" / "process" / "config.json",
-        lambda c: c.update(canonical_scope=catalog.canonical_scope()))
+    # 사내 옛 판 모양 — 이름 규칙이 아직 층 config에 있다(고침 B174 — 초안은 옮기지 않고 옛 모양 제안이 읽는다)
+    _rw(_r / "layers" / "process" / "config.json", lambda c: c.update(canonical_scope={
+        "bind_categories": ["Failure", "Property", "Unit"], "nest_categories": ["Property"], "sep": "::"}))
     (_r / "registry").mkdir()
     (_r / "registry" / "doc_types.json").write_text("{}", encoding="utf-8")   # 이관된 루트
     _env = {**os.environ, "USE_MOCK": "0", "ONTO_HOME": str(_r)}
@@ -107,17 +105,17 @@ with tempfile.TemporaryDirectory(prefix="b90_") as _td:
     # 멈춘다(기대 변경 · B92 ① — 잠그는 성질은 그대로: 겹친 집은 사람 · 이름 규칙은 옮긴다).
     _cj = _r / "layers" / "common.json"
     _d = json.loads(_cj.read_text(encoding="utf-8")) if _cj.exists() else {}
-    show("① ⓐ 운영에서 없으면 층 config에서 만들고 멈춘다 — 겹친 카테고리의 집은 빈칸 · 이름 규칙은 옮긴다 · 초안 파일 0",
+    show("① ⓐ 운영에서 없으면 층 config에서 만들고 멈춘다 — 겹친 카테고리의 집은 빈칸 · 초안 파일 0(고침 B174 — 이름 규칙은 옮기지 않는다)",
          _rc1 != 0 and _d.get("categories", {}).get("Unit", {}).get("home") == ""
          and _d["categories"]["Process"]["home"] == "process"
-         and "canonical_scope" in _d and "빈칸" in _o1
+         and "canonical_scope" not in _d and "빈칸" in _o1
          and not (_r / "layers" / "common.draft.json").exists(),
          _o1.strip().splitlines()[0][:100] if _o1.strip() else "")
     _d["categories"]["Unit"]["home"] = "process"
     _cj.write_text(json.dumps(_d, ensure_ascii=False), encoding="utf-8")
-    _rw(_r / "layers" / "process" / "config.json", lambda c: c.pop("canonical_scope", None))
     _rc3, _o3 = _boot()
-    show("① ⓐ 빈칸을 채워 저장하면 bootstrap이 선다", _rc3 == 0, _o3.strip()[-120:])
+    show("① ⓐ 빈칸을 채워 저장하면 다음은 옛 모양(겹친 정의 · 층의 이름 규칙) — 제안 · 보고를 쓰고 멈춘다(고침 B174 — 옛: 선다)",
+         _rc3 != 0 and "옛 모양" in _o3 and (_r / "work" / "config_next" / "보고.md").exists(), _o3.strip()[:120])
 
 # doctor 머리 줄 = doctor가 하위 실행으로 그리는 화면 그 함수(`cli.doctor_view head`) — doctor 전체를 돌리지 않는다(B121 ②ⓓ)
 _q = subprocess.run([sys.executable, "-m", "cli.doctor_view", "head"], cwd=str(ROOT),
@@ -274,15 +272,15 @@ _rw(_P.layers("process", "config.json"),              # 카테고리를 지운�
 _r1 = recheck.run()
 init.init(fresh_=True, all_=True)
 _r2 = recheck.run()
-_rw(_P.layers("quality", "config.json"),
-    lambda c: c.update(relation_patterns=[p for p in c["relation_patterns"]
-                                          if "Process" not in (p["src"], p["dst"])]))
+_rw(_P.layers("quality", "config.json"),                      # 고침(B174 — 말하는 카테고리는 categories ∪ uses)
+    lambda c: c.update(uses=[x for x in c["uses"] if x != "Process"],
+                       relation_patterns=[p for p in c["relation_patterns"] if "Process" not in (p["src"], p["dst"])]))
 _r3 = recheck.run()
 _fail1 = {dt for dt, ok, _l in _r1 if not ok}
 show("⑤ 카테고리 하나를 지우면 그것을 쓰는 doc_type이 FAIL 줄로 — 고칠 자리(층 config 키)를 말한다",
      all(ok for _dt, ok, _l in _r0) and {"cp", "pfmea"} <= _fail1
      and all("다음 줄" in l and "config.json의" in l for dt, ok, l in _r1 if not ok and "FAIL" in l)
-     and any(dt == "pfmea" and "layers/process/config.json의 categories" in l
+     and any(dt == "pfmea" and "layers/process/config.json의" in l and "categories" in l     # 고침(B174 — 고칠 자리 문면에 uses가 함께)
              for dt, ok, l in _r1 if not ok),
      str(sorted(_fail1)))
 show("⑤ 되돌리면 전부 PASS", _r2 and all(ok for _dt, ok, _l in _r2),
@@ -291,6 +289,13 @@ show("⑤ prose doc_type의 층이 좌표 카테고리를 말하지 않으면 �
      any(dt == "ppt_quality" and "⚠" in l and "좌표를 못 단다" in l for dt, _o, l in _r3),
      str([l[:80] for dt, _o, l in _r3 if dt == "ppt_quality"]))
 init.init(fresh_=True, all_=True)
+from cli import config_map as _CM174                                 # noqa: E402
+_g4c174 = [l for dt, ok, l in _r3 if dt == "pfmea" and not ok and "G4C" in l]
+_miss174 = _CM174.counts(_CM174.build())["선언 없이 씀"]
+show("B174 ⓔ G4C — uses에 없는 다른 층 카테고리(골격 카테고리 Process)를 쓰는 스키마 FAIL · 문면이 uses를 말한다 · 적으면 PASS"
+     "(⑤ 되돌림) · 새 모양 mock 지도의 「선언 없이 씀」 0",
+     _g4c174 and all("uses" in l for l in _g4c174) and all(ok for dt, ok, _l in _r2 if dt == "pfmea") and _miss174 == 0,
+     f"{[l[:110] for l in _g4c174]} · 선언 없이 씀 {_miss174}")
 
 # ────────────────────────────────────────────────────────────── B147 ⓑⓒ
 print("\n■ B147 ①② 등록된 스키마의 부착 대상 — 재대조 ⚠ · 인입은 멈추지 않는다 · 보류 사유 · 고친 스키마")

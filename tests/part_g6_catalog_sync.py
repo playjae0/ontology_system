@@ -19,6 +19,9 @@
       새 카테고리 경고에 이름 규칙 줄(적용·미적용)
   B173 config 지도(읽기만) — ⓐ 층 사이 연결 포인트 · 선언 없이 씀 ⓑ 점검은 카탈로그 · 재대조 문면 그대로 + 새 점검 줄
       ⓒ `--json` 두 번 바이트 같음 · 관계 패턴 하나를 지운 사본과의 대조가 그 하나만 ⓓ HTML 실경로 외부 주소 0 · 쓰기 0
+  B174 옛 모양 → 제안 — ⓑ 옛 mock config → 제안 · 보고 · 멈춤(쓰기 0) · 지도 지금 ↔ 제안 대조 0 ⓒ (일반 노드) 아래 (경로 씀) 쌍
+      → 보고의 이름이 바뀌는 카테고리 · 앞뒤 이름 꼴 ⓓ 옛 목록 밖 → 「안 씀 + 사유」 · 사유 없는 「안 씀」은 지도의 누락
+      ⓕ 지도의 카테고리마다 이름 꼴 · 층끼리 같은 쌍 다른 관계는 제안 없이 멈춤
 """
 from __future__ import annotations
 
@@ -114,6 +117,7 @@ print("\n■ B92 ② 노드가 있는 카테고리의 집 변경을 막는다")
 _boot()                                            # 골격이 서야 문서가 노드를 만든다
 run_document(load("CP01"))                         # Unit 노드가 process 그래프에
 _rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Unit="설비"))
+_rw(_P.layers("process", "config.json"), lambda c: (c["categories"].pop("Unit"), c.setdefault("uses", []).append("Unit")))   # 고침(B174 — 겹친 정의 0)
 _rw(_P.common(), lambda c: c["categories"]["Unit"].update(home="quality"))
 _rc, _o = _boot()
 show("ⓔ 노드가 있는 카테고리의 home을 바꾸면 멈춘다 — 옛 집은 노드가 있는 그래프",
@@ -144,19 +148,19 @@ with tempfile.TemporaryDirectory(prefix="b92_") as _td:
     _d = json.loads(_cj.read_text(encoding="utf-8")) if _cj.exists() else {}
     _rw(_cj, lambda c: c["categories"]["Unit"].update(home="process"))
     _rc2, _o2 = _boot(env=_env)
-    show("ⓖ 운영 처음 — common.json을 바로 만든다(한 층 → 그 층 · 겹침 → 빈칸 + 멈춤) · 초안 파일 0 · 채우면 선다",
+    show("ⓖ 운영 처음 — common.json을 바로 만든다(한 층 → 그 층 · 겹침 → 빈칸 + 멈춤) · 초안 파일 0 · 채우면 다음은 옛 모양 제안"
+         "(고침 B174 — 겹친 정의는 uses로 옮긴다 · 옛: 선다)",
          _rc1 != 0 and _d.get("categories", {}).get("Unit", {}).get("home") == ""
          and _d["categories"]["Process"]["home"] == "process"
-         and not (_r / "layers" / "common.draft.json").exists() and _rc2 == 0,
+         and not (_r / "layers" / "common.draft.json").exists() and _rc2 != 0 and "옛 모양" in _o2,
          _o1.strip().splitlines()[0][:90] if _o1.strip() else "")
 
 # ────────────────────────────────────────────────────────────── B93
 print("\n■ B93 ① 골격 카테고리의 집은 골격 층 — 자동")
 init.init(fresh_=True, all_=True)
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Process="공정(렌즈)"))
-_rw(_P.common(), lambda c: c["categories"].pop("Process"))
+_rw(_P.common(), lambda c: c["categories"].pop("Process"))     # 고침(B174 — 품질층은 Process를 uses로 쓴다 · 겹친 정의 0)
 _rc, _o = _boot()
-show("ⓐ 두 층이 골격 카테고리를 함께 선언해도 집 = 골격 층 자동(빈칸·멈춤 0)",
+show("ⓐ 다른 층이 골격 카테고리를 써도(uses) 집 = 골격 층 자동(빈칸·멈춤 0)",
      _rc == 0 and _common()["categories"].get("Process", {}).get("home") == "process"
      and "골격이 process에 있다" in _o and "빈칸" not in _o,
      [l for l in _o.splitlines() if "'Process'" in l][:1])
@@ -176,6 +180,7 @@ print("\n■ B93 ② 골격 모순 거부 — 심기 전에")
 init.init(fresh_=True, all_=True)
 _rw(_P.layers("quality", "config.json"), lambda c: c["skeleton"].update(category="Process")
     or c["categories"].update(Process="공정(렌즈)"))
+_rw(_P.common(), lambda c: c["categories"].pop("Process"))     # 고침(B174 — 집이 정해진 겹친 정의는 옛 모양 관문이 먼저 멈춘다)
 _rc, _o = _boot()
 show("ⓒ 두 층의 골격이 같은 카테고리면 멈춘다",
      _rc != 0 and "함께 가진다" in _o and "두 벌" in _o,
@@ -188,9 +193,13 @@ EQ = "b95eq"
 def _move_skeleton():
     """골격을 새 층 `b95eq`로 옮긴다(창작) — 공정층 config는 골격 선언을 잃는다."""
     shutil.copytree(_P.layers("process"), _P.layers(EQ))
-    _rw(_P.layers(EQ, "config.json"), lambda c: c.update(layer=EQ))
-    _rw(_P.layers("process", "config.json"), lambda c: c.pop("skeleton")
-        or c["categories"].pop("Process"))
+    _rw(_P.layers(EQ, "config.json"), lambda c: c.update(layer=EQ, relation_patterns=[], uses=[], value_categories={},
+                                                         categories={"Process": c["categories"]["Process"]}))
+    def _p(c):                                     # 고침(B174 — 겹친 정의 0 · 공정층은 골격 카테고리를 uses로)
+        c.pop("skeleton")
+        c["categories"].pop("Process")
+        c.setdefault("uses", []).append("Process")
+    _rw(_P.layers("process", "config.json"), _p)
 
 
 print("\n■ B95 ① 골격 카테고리의 어긋난 집 — 노드 0이면 자동 교정")
@@ -241,19 +250,19 @@ print("\n■ B94 ① 쓰는 층(used_by) — 결과 기록 · 사람이 관리�
 from core.build import ledger as _LG       # noqa: E402
 from core.build import extract as _EX      # noqa: E402
 init.init(fresh_=True, all_=True)
-_decl0 = catalog.declared_by()
+_decl0 = catalog.used_by()                                     # 고침(B174 — 집 정의 ∪ uses)
 _ub0 = {c: v.get("used_by") for c, v in _common()["categories"].items()}
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].update(Property="품질 인자(창작)"))
+_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].remove("Property"))
 _v0, _l0 = _common()["common_version"], len(_logs())
 _rc, _o = _boot()
 _ub1 = _common()["categories"]["Property"].get("used_by")
-_rw(_P.layers("quality", "config.json"), lambda c: c["categories"].pop("Property"))
+_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].append("Property"))
 _rc2, _o2 = _boot()
-show("ⓐ used_by = 층 config의 선언(처음 · 선언 추가/삭제마다) · 판 +1 · 로그",
+show("ⓐ used_by = 층 config의 집 정의 ∪ uses(처음 · 추가/삭제마다) · 판 +1 · 로그(고침 B174 — 옛: 선언만)",
      all(_ub0[c] == _decl0[c] for c in _decl0)
-     and _rc == 0 and _ub1 == ["process", "quality"] and _common()["common_version"] >= _v0 + 2
-     and _common()["categories"]["Property"]["used_by"] == ["process"]
-     and "used_by 'Property' + quality" in _o and "used_by 'Property' − quality" in _o2
+     and _rc == 0 and _ub1 == ["process"] and _common()["common_version"] >= _v0 + 2
+     and _common()["categories"]["Property"]["used_by"] == ["process", "quality"]
+     and "used_by 'Property' − quality" in _o and "used_by 'Property' + quality" in _o2
      and "used_by 'Property'" in _logs()[_l0:],
      [l for l in _o.splitlines() if "used_by" in l][:1])
 _rw(_P.common(), lambda c: c["categories"]["Failure"].update(used_by=["process", "엉뚱한층"])
@@ -290,16 +299,15 @@ init.init(fresh_=True, all_=True)
 print("\n■ B95 ② 새 카테고리 경고에 이름 규칙 한 줄 — 표시")
 init.init(fresh_=True, all_=True)
 _boot()
-_rw(_P.common(), lambda c: c["canonical_scope"]["bind_categories"].append("Component"))
 _new_layer({"Component": "구성 부품(창작)", "DefectHistory": "이슈 이력의 결함(창작)"})
 _rcd, _od = _boot("--dry-run")
 _rc, _o = _boot()
-show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 적용(bind_categories 안) · 미적용(기준과 「노드가 생기기 전에」) · 종료 코드 불변 · dry-run 같다",
+show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 경로 씀(기본 · no_path 없음) · 「노드가 생기기 전에」 · 종료 코드 불변 · dry-run 같다"
+     "(고침 B174 — 목록이 아니라 기본 씀)",
      _rc == 0 and _rcd == 0
-     and "이름 규칙: 'Component'는 공정 스코프 적용" in _o
-     and "이름 규칙: 'DefectHistory'는 미적용" in _o and "노드가 생기기 전에 정한다" in _o
-     and "공용 분류도 아니면" in _o and "공정을 모르면" not in _o           # 기대 변경(B171 — 기준 「기본으로 넣는다」 · 옛 질문 문면 0)
-     and "이름 규칙: 'DefectHistory'는 미적용" in _od,
+     and "이름 규칙: 'Component'는 경로 씀" in _o and "이름 규칙: 'DefectHistory'는 경로 씀" in _o
+     and "노드가 생기기 전에 정한다" in _o and "공정을 모르면" not in _o
+     and "이름 규칙: 'DefectHistory'는 경로 씀" in _od,
      [l.strip()[:60] for l in _o.splitlines() if "이름 규칙" in l][:2])
 _drop_layer()
 init.init(fresh_=True, all_=True)
@@ -419,6 +427,80 @@ show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 
      and "http://" not in _html173 and "https://" not in _html173 and _hash173() == _h173,
      f"rc {_r173.returncode} · {_r173.stdout.strip().splitlines()[:1]} · {len(_html173):,}B")
 shutil.rmtree(_t173, ignore_errors=True)
+init.init(fresh_=True, all_=True)
+
+# ────────────────────────────────────────────────────────────── B174
+print("\n■ B174 옛 모양 → 제안 · 보고 · 멈춤 · 지도 앞뒤 (옛 mock config 사본 — 창작)")
+from cli import config_next as CN                                          # noqa: E402
+OLD174 = ROOT / "tests" / "fixtures" / "config_b174_old"                  # B173 판 mock config 그대로(옛 모양 — seed 층 아님)
+
+
+def _old174(edit=None):
+    """클린 → 새 모양으로 골격 → 상태 루트 config만 옛 mock 사본으로(그 위에 `edit`)."""
+    init.init(fresh_=True, all_=True)
+    _boot()
+    for f in ("common.json", "process/config.json", "quality/config.json"):
+        shutil.copy(OLD174 / f, _P.layers(f))
+    if edit:
+        edit()
+
+
+def _maps174():
+    """지도 지금(상태 루트) · 제안(`work/config_next/layers`) JSON → `--diff` 줄."""
+    nx = _P.config_next()
+    with contextlib.redirect_stdout(io.StringIO()):
+        XC.main(["--json", str(nx / "지금.json")])
+        XC.main(["--from", str(nx / "layers"), "--json", str(nx / "제안.json")])
+    return XC.diff(*(json.loads((nx / f).read_text(encoding="utf-8")) for f in ("지금.json", "제안.json")))
+
+
+_old174()
+_h174 = _hash173()
+_rc, _o = _boot()
+_w174 = _hash173() == _h174
+_pc, _pl = CM.read(_P.config_next("layers"))
+_d174 = _maps174()
+show("B174 ⓑ 옛 모양 mock config → bootstrap이 제안(layers 모양) · 보고를 쓰고 멈춘다 · 그래프 · config · 등록부 쓰기 0 · "
+     "제안은 새 모양 · 지도 지금 ↔ 제안 --diff 0",
+     _rc != 0 and "옛 모양" in _o and _P.config_next("보고.md").exists() and _w174
+     and not catalog.old_shape(_pl, _pc) and _d174 == [],
+     f"rc {_rc} · 쓰기 0 {_w174} · 제안 옛 모양 {catalog.old_shape(_pl, _pc)} · 대조 {_d174[:3]}")
+
+
+def _edit174():                                    # 사본 config — (일반 노드) 아래 (경로 씀) 쌍 · 옛 목록 밖 카테고리
+    _rw(_P.layers("quality", "config.json"), lambda c: c.setdefault("category_pair_map", {}).update({"Failure,Unit": "occurs_in"}))
+    _rw(_P.common(), lambda c: c["categories"].update(Tool={"home": "process"}))
+    _rw(_P.layers("process", "config.json"), lambda c: c["categories"].update(Tool="공구(창작)"))
+
+
+_old174(_edit174)
+_rc, _o = _boot()
+_rep = _P.config_next("보고.md").read_text(encoding="utf-8") if _P.config_next("보고.md").exists() else ""
+_ren = _rep.split("## 이름이 바뀌는 카테고리", 1)[-1].split("\n## ", 1)[0]
+_pc, _pl = CM.read(_P.config_next("layers"))
+show("B174 ⓒ (일반 노드 카테고리) 아래 (경로 쓰는 카테고리) 쌍을 더한 옛 모양 → 보고 「이름이 바뀌는 카테고리」에 그 카테고리와 "
+     "앞뒤 이름 꼴 · 위 · 아래는 같은 관계의 골격 끝 삼항과 같은 쪽",
+     _rc != 0 and "`Failure` — 지금 `<공정>::<이름>` → 제안 `<공정>::<Unit>::<이름>" in _ren
+     and {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"} in _pc.get("pairs", []),
+     [ln for ln in _ren.splitlines() if "Failure" in ln][:1])
+_d0 = _pc["categories"].get("Tool", {}).get("no_path")
+_rw(_P.config_next("layers", "common.json"), lambda c: c["categories"]["Tool"].update(no_path=""))
+_miss = [x["line"] for x in CM.build(_P.config_next("layers"))["checks"]["경고"] if "'Tool'" in x["line"]]
+show("B174 ⓓ 옛 목록 밖 카테고리는 제안에서 「안 씀 + 사유」 · 사유 없는 「안 씀」은 지도 점검의 누락",
+     _d0 == CN.WHY_KEPT and "Tool" in _rep.split("## ⓐ", 1)[-1].split("\n## ", 1)[0]
+     and len(_miss) == 1 and _miss[0].startswith("누락 — 'Tool'"), f"사유 {_d0!r} · 점검 {_miss}")
+
+_old174(lambda: _rw(_P.layers("process", "config.json"),
+                    lambda c: c["category_pair_map"].update({"Unit,Process": "located_in"})))
+_rw(_P.layers("quality", "config.json"), lambda c: c.setdefault("category_pair_map", {}).update({"Unit,Process": "part_of"}))
+_rc, _o = _boot()
+_m174 = CM.build()
+show("B174 ⓕ 지도 — 카테고리마다 이름 꼴(골격 · 경로 · 위 노드 아래) · 제안 폴더를 읽는 길(위 ⓑ) · 층끼리 같은 쌍 다른 관계면 "
+     "제안 없이 문면(멈춤)",
+     _m174["categories"]["Process"]["name_form"] == "이름 그대로(골격)"
+     and _m174["categories"]["Property"]["name_form"].startswith("<공정>::<Unit>::<이름>")
+     and _rc != 0 and "[멈춤] 쌍 Unit,Process의 관계가 층마다 다르다" in _o and not _P.config_next("layers").exists(),
+     [ln for ln in _o.splitlines() if "[멈춤]" in ln][:1])
 init.init(fresh_=True, all_=True)
 
 done()

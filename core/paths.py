@@ -307,6 +307,12 @@ def register_debug(doc_type, name):
     return work("register", doc_type, name)
 
 
+def config_next(*parts):
+    """**config 새 모양 제안**(B174 ③ — ④작업) — `layers/`와 같은 모양의 제안 · 옛 파일 사본(`옛/`) · 보고. 사람이 지도로 보고
+    복사한다(되돌려 읽는 것은 지도 `export config --from`뿐)."""
+    return work("config_next", *parts)
+
+
 def work(*parts):
     """작업 단 — **재생성 가능한** 단계 산출·장부·로그.
 

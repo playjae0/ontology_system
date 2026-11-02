@@ -60,22 +60,16 @@ ALIAS_LOAD = {}
 
 
 def load_config(layer):
-    """층 config — **이름 규칙(`canonical_scope`)은 공통 config의 것을 얹어** 돌려준다 (B90 ①).
+    """층 config — 파일 그대로(층 이름만 폴더 이름으로).
 
-    이름 규칙은 층 사이의 사실이라 카탈로그 한 곳에 산다. 읽는 자리(키 조립·매칭·
-    이관 연쇄)는 전부 층 config로 묻고 있으므로 여기서 한 번 얹는다 — 읽는 자리마다
-    카탈로그를 따로 열면 하나가 빠지는 날이 온다. 카탈로그를 못 읽으면(운영 · 초안 전)
-    층 config에 남은 것을 그대로 쓴다 — 거부는 `bootstrap`이 한다.
+    이름 규칙 · 위아래 쌍은 층 사이의 사실이라 공통 config 한 곳에 살고 **얹지 않는다** — 읽는 자리는 함수다
+    (`naming.scope_categories` · `naming.nest_categories` · `catalog.pair_relation` · `catalog.sep` — B174 ①).
     """
     cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
     # **층 이름의 정본은 폴더 이름이다**(B99 ①) — 파일 안 `"layer"`가 달라도 읽는 쪽은 폴더 이름을
     # 받는다(다르면 `layer_name_problems`가 거부한다 · 사내: 폴더 `equip` · config `"equipment"`
     # → 같은 그래프를 두 번 열어 새 노드가 덮였다). 고치기 전 상태에서도 소실 0이 되게 하는 자리다.
     cfg["layer"] = layer
-    from core.state import catalog
-    sc = catalog.canonical_scope()
-    if sc is not None:
-        cfg["canonical_scope"] = sc
     return cfg
 
 

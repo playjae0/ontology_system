@@ -1,0 +1,46 @@
+{
+  "common_version": 1,
+  "categories": {
+    "Process": {
+      "home": "process",
+      "used_by": [
+        "process"
+      ]
+    },
+    "Unit": {
+      "home": "process",
+      "used_by": [
+        "process"
+      ]
+    },
+    "Property": {
+      "home": "process",
+      "used_by": [
+        "process"
+      ]
+    },
+    "Failure": {
+      "home": "quality",
+      "used_by": [
+        "quality"
+      ]
+    },
+    "FailureEffect": {
+      "home": "quality",
+      "used_by": [
+        "quality"
+      ]
+    }
+  },
+  "canonical_scope": {
+    "bind_categories": [
+      "Failure",
+      "Property",
+      "Unit"
+    ],
+    "nest_categories": [
+      "Property"
+    ],
+    "sep": "::"
+  }
+}

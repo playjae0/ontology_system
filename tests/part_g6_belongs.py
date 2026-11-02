@@ -15,7 +15,7 @@ quality)에서 같은 성질을 잰다(CLAUDE.md §4 범용성).
   ⓒ 소속: 「모터」가 시트·경로·본문의 유닛 이름을 소속으로 갖는다(from) · 근거 없으면 null(지어낸 이름은 버림) ·
      경로·시트 이름은 개체 후보가 아니다 · 옛 체크포인트 `attach` 호환
   ⓓ 이름에 소속: 두 유닛의 「모터」가 다른 노드 · 소속 없는 「모터」는 좌표 접두 · `Property`는 공정 스코프(CP와 같은
-     키로 만난다) · `nest_categories`가 비면 지금과 같다
+     키로 만난다)
   ⓔ 좌표 없는 스코프 개체 0(표·산문 × 층 둘) · 재료는 큐가 든다 · 좌표를 주고 다시 넣으면 붙는다 · 엣지 없는 노드 0
   ⓕ 재사용 조건: 지시문 판·층 config 판이 바뀌면 다시 뽑는다(이유 줄)
   ⓖ 대장 `target`·`attached`·`from` · 「표기 → 붙은 노드」 · 「└ 관계 → 상대」 · `--trace` · 좌표 줄 · 끝 요약 ·
@@ -93,32 +93,9 @@ def _parse(form, doc_id, doc_coord=None, layer=None):
     return r.envelope
 
 
-def _setup(nest=("Component",)):
-    """덧칠(Component · 겸 렌즈) + 공통 `nest_categories` + 소속 엣지에 필요한 카테고리쌍 — 상태 루트에만."""
-    overlay(component=True)
-
-    def _c(c):
-        c.setdefault("canonical_scope", {})["nest_categories"] = list(nest)
-    _rw(_P.common(), _c)
-
-    pats = [{"src": s_, "rel": "part_of", "dst": d_, "symmetric": False, "정의문": f"{s_}가 {d_}에 속한다"}
-            for s_, d_ in (("Component", "Unit"), ("Component", "Process"), ("Unit", "Process"))]
-    pairs = {f"{p_['src']},{p_['dst']}": "part_of" for p_ in pats}
-
-    def _q(c):                                    # 품질 층도 Component·Unit을 렌즈로 쓴다(층 둘)
-        c["categories"]["Component"] = "(품질층의 렌즈) 불량이 일어나는 구성 기계"
-        c["relation_patterns"] += pats
-        c.setdefault("category_pair_map", {}).update(pairs)
-
-    def _p(c):                                    # 공정 층 — 이미 있는 쌍은 그대로(덧칠은 더하기만)
-        have = {(p_["src"], p_["rel"], p_["dst"]) for p_ in c["relation_patterns"]}
-        c["relation_patterns"] += [p_ for p_ in pats if (p_["src"], p_["rel"], p_["dst"]) not in have]
-        for k, v in pairs.items():
-            c.setdefault("category_pair_map", {}).setdefault(k, v)
-    _rw(_P.layers("quality", "config.json"), _q)
-    _rw(_P.layers("process", "config.json"), _p)
-    for lay in ("process", "quality"):
-        bootstrap(lay, echo=False)
+def _setup():
+    """덧칠(Component) + 소속 엣지의 위아래 쌍(공통 config) + 품질층이 Component를 쓴다 — 상태 루트에만(B174 공통 바닥)."""
+    component_floor()
 
 
 def _hint(doc_id, by_loc):
@@ -383,19 +360,16 @@ show("ⓒ 경로·시트 이름은 개체 후보가 아니다 — 본문에 없�
      [x["surface"] for x in _mk["entities"]] == ["모터"],
      f"후보 {[x['surface'] for x in _mk['entities']]}")
 
-# 이름에 소속 — CP 표본과 같은 키 · nest가 비면 지금과 같다
+# 이름에 소속 — CP 표본과 같은 키(고침 B174 — nest만 끄는 경우는 config로 표현되지 않는다: 위아래 쌍에서 파생)
 _setup()
 run_document(_prose_env("엑셀", "process", "B102KEY"))
 _cp = {**TABLE, "doc_id": "B102CPK", "records": [dict(CPREC, source_locator="K1", 관리항목="가압력")]}
 run_document(_cp)
 _pk = _live("노칭::가압력", "Property")
-_setup(nest=())
-run_document(_prose_env("엑셀", "process", "B102FLAT"))
-_flat = {r["target"] for r in (LG.read("B102FLAT") or {}).get("rows") or [] if r.get("surface") == "모터"}
-_made += ["B102KEY", "B102FLAT"]
-show("ⓓ 이름에 소속 — 두 유닛의 「모터」는 다른 노드 · Property는 공정 스코프(CP 행과 한 노드) · nest가 비면 지금과 같다(스코프 밖 이름 하나)",
-     all(o for _f, _l, o, _d in _od) and len(_pk) == 1 and _flat == {"모터"},
-     " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _od) + f" ‖ CP·산문 가압력 노드 {len(_pk)} · nest 빈 목록 → {sorted(_flat)}")
+_made += ["B102KEY"]
+show("ⓓ 이름에 소속 — 두 유닛의 「모터」는 다른 노드 · Property는 공정 스코프(CP 행과 한 노드)",
+     all(o for _f, _l, o, _d in _od) and len(_pk) == 1,
+     " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _od) + f" ‖ CP·산문 가압력 노드 {len(_pk)}")
 
 # 좌표 없는 스코프 개체 0 — 표·산문 × 층 둘
 for form, lay in [("표", "process"), ("표", "quality"), ("엑셀", "process"), ("Word", "quality")]:

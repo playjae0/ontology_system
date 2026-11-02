@@ -6,10 +6,10 @@
   · 추출 — 추출 입력에 실제로 들어가는 칸: 층 `categories`(이름 · 정의문) · `relations`(관계 이름) · `relevance_terms`(렌즈
     거름) · `extract_patterns`(mock 문형) · `value_categories`(값을 받는 카테고리 — B120 ②) · `prompts`(층 힌트 — 목차 노드화 ·
     추출 · 보강 · 판정 지시문에 덧붙는 층의 말 — B124 ③ · B148 ⑤) · 공통 `categories`(겸 한 줄이
-    정의문 끝에 붙는다) → **산문 추출을 다시 뽑는다** — 추출 · 목차 노드화 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
+    정의문 끝에 붙는다 — 공통은 겸 칸만 잰다 · B174) → **산문 추출을 다시 뽑는다** — 추출 · 목차 노드화 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
     B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다 · 메타의 구조 판단은 층 config를 읽지 않는다 — B148 ①)
-  · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `category_pair_map` · `mirrors` · `polarity` · `skeleton` · 공통
-    `canonical_scope` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
+  · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `uses` · `mirrors` · `polarity` · `skeleton` · 공통 카테고리의 집 · 경로
+    (`no_path`) · 위아래 쌍(`pairs`) · `sep` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
   · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) · 표에 없는 키 → 영향 없음
     (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥)
 
@@ -23,12 +23,12 @@ import json
 
 #: 층 config — 갈래마다 키(닫힌 표 · 밖은 「그 밖」)
 LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories", "prompts"),
-         "구축": ("relation_patterns", "category_pair_map", "mirrors", "polarity", "skeleton")}
+         "구축": ("relation_patterns", "uses", "mirrors", "polarity", "skeleton")}
 #: 층 config — 그 밖 갈래의 아는 키(영향 없음 · 갈래 판정은 `kind`가 「그 밖」으로 본다 · B148 ⑥ — 가이드 항목 표의 나머지)
 OTHER = {"질의": ("query_intents", "query_traverse", "cross_layer_traverse", "fact_templates"),
          "기록": ("layer", "config_version", "registration", "skeleton_version"), "판정 문턱": ("match_threshold",)}
-#: 층 공통 config(`layers/common.json`)
-COMMON = {"추출": ("categories",), "구축": ("canonical_scope",)}
+#: 층 공통 config(`layers/common.json`) — 카테고리 항목은 칸마다 편다(`common_view` — 추출 입력은 겸뿐 · `used_by`는 기록 · B174)
+COMMON = {"추출": ("categories.also",), "구축": ("categories.home", "categories.no_path", "pairs", "sep")}
 COMMON_KEY = "공통"
 
 
@@ -46,14 +46,25 @@ def _common():
         return {}
 
 
+def common_view(com):
+    """공통 config의 칸 — 카테고리 항목을 칸마다 편다(`categories.also` · `.home` · `.no_path` · 나머지 최상위 키 그대로 ·
+    `used_by`는 결과 기록이라 대조 밖)."""
+    cats = (com or {}).get("categories") or {}
+    out = {f"categories.{k}": {c: (v or {}).get(k) for c, v in sorted(cats.items()) if (v or {}).get(k)}
+           for k in ("also", "home", "no_path")}
+    out.update({k: v for k, v in (com or {}).items() if k != "categories"})
+    return out
+
+
 def extract_key(cfg):
     """**추출 재사용의 층 config 판**(B120 ③) — 그 층 config와 공통 config의 **추출 갈래 칸** 내용 해시.
 
     bootstrap의 「추출 다시」 알림(`impact`)과 같은 표(`LAYER` · `COMMON`)를 읽으므로 알림과 실제 재추출이 늘 같다 —
-    구축 갈래(`relation_patterns` · `category_pair_map` · `canonical_scope` …)와 그 밖(`config_version` …)은 판에 들지 않는다."""
-    com = _common()
+    구축 갈래(`relation_patterns` · `uses` · 공통 카테고리의 집 · 경로 · 위아래 쌍 …)와 그 밖(`config_version` · `used_by` …)은 판에
+    들지 않는다."""
+    com = common_view(_common())
     return _h({"층": {k: (cfg or {}).get(k) for k in LAYER["추출"] if k in (cfg or {})},
-               COMMON_KEY: {k: com.get(k) for k in COMMON["추출"] if k in com}})
+               COMMON_KEY: {k: com[k] for k in COMMON["추출"] if com.get(k)}})
 
 
 def layer_keys():
@@ -82,7 +93,7 @@ def snapshot(layers=None):
             out[lay] = parts(load_config(lay))
         except Exception:                                   # noqa: BLE001 — 못 읽는 층은 지문 0(대조가 「바뀜」으로 본다)
             out[lay] = {}
-    out[COMMON_KEY] = parts(_common())
+    out[COMMON_KEY] = parts(common_view(_common()))
     return out
 
 

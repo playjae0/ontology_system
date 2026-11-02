@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections import Counter
 
 from core.build import belongs, extract_ctx, gate
-from core.state import human_candidates as HC, store
+from core.state import catalog as _catalog, human_candidates as HC, store
 from core.state.ids import norm
 from parser.normalizer import null_marker
 
@@ -79,7 +79,8 @@ class Board:
         ref = self.coord(cid)[0]
         if belongs.lookup(self.b, name, cat, coord=ref, src=self.src.get(cid), doc=self.doc):
             return True
-        return bool(cat and cat in (self.cfg.get("categories") or {}) and ref)
+        from core.state import catalog
+        return bool(cat and cat in catalog.spoken(self.cfg) and ref)       # 그 층이 말하는 카테고리(B174 ②)
 
     def rows(self):
         """`(목록, 꼬리)` — 목록은 잃을 것이 많은 차례 `[{name, 소속, 소실, 관계, 고아 {문서: 행}, 청크, cats, items, rec}]` ·
@@ -251,7 +252,7 @@ def apply(env, cands, cfg, loc2id):
     그 청크에 같은 표기의 개체가 있으면 보태지 않는다 · 카테고리가 이 층 어휘 밖이면 건너뛴다(렌즈). 돌려주는 것은 새 목록(바뀐
     청크만 사본 — 추출 체크포인트는 그대로)."""
     recs = [r for r in HC.of(env["doc_id"]) if r.get("kind") == HC.NEW
-            and r.get("category") in (cfg.get("categories") or {})]
+            and r.get("category") in _catalog.spoken(cfg)]
     if not recs:
         return cands
     doc, src = extract_ctx.doc_info(env), _src_of(env, loc2id)

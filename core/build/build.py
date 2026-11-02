@@ -757,7 +757,8 @@ class Builder(CoordMixin):
             # 비대칭 — 한쪽 극성에만 달린 자식
             only = next(iter(pair))
             scope, name = base
-            sep = (self.cfg.get("canonical_scope") or {}).get("sep", "::")
+            from core.state import catalog
+            sep = catalog.sep()
             scope = _key_text(scope, sep)                # 골격 밖 부모의 짝 키는 겹 — 글자로 펴서 싣는다(B144 ②)
             label = f"{scope}{sep}{name}" if scope else name
             store.enqueue("mirror_asymmetry",

@@ -1,0 +1,158 @@
+{
+  "layer": "quality",
+  "categories": {
+    "Failure": "공정에서 발생할 수 있는 불량·고장 현상. 고장모드와 고장원인의 병합(열린 집합). 방향은 행 구조가 부여.",
+    "FailureEffect": "셀 관점의 결과 분류(단락, 화재 등). 닫힌 Tier1 목록 — anchor 전용, entity 생성 금지."
+  },
+  "skeleton": {
+    "type": "flat",
+    "category": "FailureEffect",
+    "data": [
+      "단락",
+      "화재",
+      "방전기능상실",
+      "충전기능상실"
+    ]
+  },
+  "mirrors": {
+    "enabled": false
+  },
+  "relations": [
+    "causes",
+    "affects",
+    "occurs_in",
+    "controlled_by"
+  ],
+  "category_pair_map": {},
+  "match_threshold": 0.85,
+  "query_traverse": {
+    "causes": {
+      "both": {
+        "direction": "both",
+        "recursive": false
+      }
+    },
+    "affects": {
+      "both": {
+        "direction": "both",
+        "recursive": false
+      }
+    }
+  },
+  "cross_layer_traverse": {
+    "occurs_in": {
+      "direction": "both",
+      "recursive": false
+    },
+    "controlled_by": {
+      "direction": "both",
+      "recursive": false
+    }
+  },
+  "fact_templates": {
+    "causes": "{src}는 {dst}의 원인이 될 수 있다",
+    "affects": "{src}는 {dst}(으)로 이어질 수 있다",
+    "occurs_in": "{src}는 {dst} 공정에서 발생한다",
+    "controlled_by": "{src}는 {dst}(으)로 관리한다",
+    "attr:severity": "{node}의 심각도: {value} (출처: {prov})",
+    "node:replaced": "(대체됨: {old} → {new})",
+    "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
+  },
+  "prompts": {},
+  "relation_patterns": [
+    {
+      "src": "Failure",
+      "rel": "causes",
+      "dst": "Failure",
+      "symmetric": false,
+      "정의문": "앞의 불량이 뒤의 불량을 일으킨다 (동종 쌍 — 방향에 출처가 필요하다)"
+    },
+    {
+      "src": "Failure",
+      "rel": "affects",
+      "dst": "FailureEffect",
+      "symmetric": false,
+      "정의문": "불량이 그 영향으로 이어진다"
+    },
+    {
+      "src": "Failure",
+      "rel": "occurs_in",
+      "dst": "Process",
+      "symmetric": false,
+      "정의문": "불량이 그 공정에서 발생한다 (층간 브리지)"
+    },
+    {
+      "src": "Failure",
+      "rel": "controlled_by",
+      "dst": "Property",
+      "symmetric": false,
+      "정의문": "불량이 그 관리항목으로 통제된다 (층간 브리지)"
+    }
+  ],
+  "config_version": "quality-1",
+  "registration": "registered",
+  "query_intents": {
+    "flow": [
+      "전체 공정 흐름",
+      "공정 흐름",
+      "전체 흐름"
+    ],
+    "order": [
+      "다음 공정",
+      "다음은",
+      "다음에 오는",
+      "다음 단계"
+    ],
+    "general": [
+      "영어로",
+      "영문으로",
+      "동작 원리"
+    ],
+    "value": [
+      "규격이",
+      "규격은",
+      "규격 뭐",
+      "몇 ",
+      "얼마"
+    ],
+    "reverse": [
+      "관리하는",
+      "발생할 수 있는",
+      "이어질 수 있는",
+      "어디서"
+    ],
+    "structure": [
+      "어떤 설비",
+      "무슨 설비",
+      "어떤 관리",
+      "무슨 관리",
+      "어떤 인자",
+      "있어?"
+    ],
+    "describe": [
+      "어떻게",
+      "관리 방법",
+      "방법은"
+    ]
+  },
+  "_query_intents_note": "CH5 5.3 질문 유형 대응표의 표기 목록. **USE_MOCK의 결정적 분류기**이며 실물 경로에서는 LLM이 유형을 판정한다(core/query/query.py의 HOOK). 선언 순서가 우선순위다 — 좁은 유형을 먼저 둔다.",
+  "_extract_patterns_note": "USE_MOCK 문형 폴백의 규칙 표 (증분0 §5-1). **관계 이름은 층 어휘이므로 코드가 아니라 여기 있다** — 카드 B1 예외 3호의 해소 경로가 이 이동이다. 정규식은 구문이고 `rel`이 층 어휘다. 실LLM 경로에는 해당 없다(USE_MOCK=0이면 폴백 자체가 명시 실패 — G6.5 E3).",
+  "extract_patterns": [
+    {
+      "pattern": "(.+?)로 인해 (.+?)(?:가|이) 발생",
+      "rel": "causes"
+    },
+    {
+      "pattern": "(.+?)(?:는|은) (.+?)(?:를|을) 유발",
+      "rel": "causes"
+    },
+    {
+      "pattern": "(.+?)(?:는|은) (.+?)(?:으로|로) 이어진다",
+      "rel": "affects"
+    },
+    {
+      "pattern": "(.+?)(?:이|가) (.+?)(?:으로|로) 이어진다",
+      "rel": "affects"
+    }
+  ]
+}

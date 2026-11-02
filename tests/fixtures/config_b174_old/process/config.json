@@ -1,0 +1,164 @@
+{
+  "layer": "process",
+  "categories": {
+    "Process": "제품을 만들기 위해 수행하는 작업 단계. 기능으로 정의되며 설비 기종이 바뀌어도 존재한다(예: 노칭, 스태킹). 설비 이름이 아니라 '하는 일'의 이름.",
+    "Unit": "공정을 수행하는 물리 장비의 기종/표준 명칭(예: 노칭 프레스). 지그·금형 등 도구류 포함. 호기·특정 공장 개체는 제외.",
+    "Property": "공정/설비에서 관리·측정·통제되는 항목의 이름(예: 노칭 정밀도). 관리항목/특성/CTQ 포함. 규격값·측정값·판정결과는 제외(attribute). **자재·부품·소재 이름은 Property가 아니다** — 자재는 3번째 층 후보이고(미결 R5) 지금 층에는 대응 카테고리가 없다. 자재 열은 role=content(서술) 또는 role=meta(관리 정보)로 배정하고, **개체로 만들지 않는다.**"
+  },
+  "skeleton": {
+    "type": "tree-v3.2",
+    "category": "Process",
+    "source": "skeleton.json",
+    "relations": {
+      "child": "part_of",
+      "sibling": "precedes"
+    }
+  },
+  "mirrors": {
+    "enabled": true,
+    "relation": "mirrors"
+  },
+  "polarity": {
+    "bind_categories": [
+      "Unit",
+      "Property"
+    ],
+    "values": [
+      "cathode",
+      "anode"
+    ]
+  },
+  "relations": [
+    "part_of",
+    "precedes",
+    "has_property",
+    "mirrors"
+  ],
+  "category_pair_map": {
+    "Unit,Process": "part_of",
+    "Process,Property": "has_property",
+    "Unit,Property": "has_property"
+  },
+  "match_threshold": 0.85,
+  "query_traverse": {
+    "part_of": {
+      "down": {
+        "direction": "in",
+        "recursive": true
+      },
+      "up": {
+        "direction": "out",
+        "recursive": false
+      }
+    },
+    "has_property": {
+      "both": {
+        "direction": "both",
+        "recursive": false
+      }
+    }
+  },
+  "fact_templates": {
+    "part_of": "{src}는 {dst}의 하위 요소이다",
+    "precedes": "{src} 다음 공정은 {dst}이다",
+    "has_property": "{src}의 관리인자: {dst}",
+    "mirrors": "{src}는 {dst}와(과) 극성 대칭 공정/설비이다",
+    "attr:spec": "{node}의 규격: {value} (출처: {prov})",
+    "precedes:derived": "({scope} 기준) {src} 다음 공정은 {dst}이다",
+    "precedes:none": "{src}의 다음 공정은 골격에 선언되어 있지 않다 (순서 정보 없음)",
+    "attr:측정방법": "{node}의 측정방법: {value} (출처: {prov})",
+    "node:replaced": "(대체됨: {old} → {new})",
+    "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
+  },
+  "_fact_note": "맥락형 attr(spec 등)은 context 그룹별 한 줄씩 렌더: '[model=M1] 규격: ...'. mirrors는 query_traverse 기본 미포함(비대칭 조회 시에만 명시적 확장 — HOOK).",
+  "prompts": {"structure": "이 층에서 대상 제목은 셋이다 — 설비(그 아래 글 전체가 장비 하나 전체를 말한다 · 카테고리 Unit) · 유닛(설비를 이루는 유닛 · 부(部) · 모듈 — 「언와인더 unit」 「공급부」 · 카테고리 Unit) · 항목(관리 항목 · 사양 하나의 이름 — 그 아래 줄이 그 값이다 · 카테고리 Property). 설비 전체를 부르는 「○○ unit」(설비 이름)과 설비의 한 부분인 유닛을 가른다 — 둘 다 Unit이다. 사양을 묶는 소제목(기본사양 · 지정사양 · 요구사항)은 이 층의 노드가 아니다."},
+  "_relation_patterns_note": "추출 경로 전용 게이트 패턴. 골격 관계(Process part_of/precedes/mirrors Process)는 여기 넣지 않는다 — 넣으면 추출이 골격을 개정한다. 층이 어떤 관계를 갖는지의 선언은 위 relations 배열이 한다.",
+  "relation_patterns": [
+    {
+      "src": "Unit",
+      "rel": "part_of",
+      "dst": "Process",
+      "symmetric": false,
+      "정의문": "설비가 그 공정에 속한다"
+    },
+    {
+      "src": "Unit",
+      "rel": "has_property",
+      "dst": "Property",
+      "symmetric": false,
+      "정의문": "설비가 그 관리항목을 갖는다"
+    },
+    {
+      "src": "Process",
+      "rel": "has_property",
+      "dst": "Property",
+      "symmetric": false,
+      "정의문": "공정이 그 관리항목을 갖는다"
+    },
+    {
+      "src": "Unit",
+      "rel": "mirrors",
+      "dst": "Unit",
+      "symmetric": true,
+      "정의문": "극성만 다른 대칭 설비다"
+    },
+    {
+      "src": "Property",
+      "rel": "mirrors",
+      "dst": "Property",
+      "symmetric": true,
+      "정의문": "극성만 다른 대칭 관리항목이다"
+    }
+  ],
+  "skeleton_version": "process-3.2",
+  "config_version": "process-1",
+  "registration": "builtin",
+  "query_intents": {
+    "flow": [
+      "전체 공정 흐름",
+      "공정 흐름",
+      "전체 흐름"
+    ],
+    "order": [
+      "다음 공정",
+      "다음은",
+      "다음에 오는",
+      "다음 단계"
+    ],
+    "general": [
+      "영어로",
+      "영문으로",
+      "동작 원리"
+    ],
+    "value": [
+      "규격이",
+      "규격은",
+      "규격 뭐",
+      "몇 ",
+      "얼마"
+    ],
+    "reverse": [
+      "관리하는",
+      "발생할 수 있는",
+      "이어질 수 있는",
+      "어디서"
+    ],
+    "structure": [
+      "어떤 설비",
+      "무슨 설비",
+      "어떤 관리",
+      "무슨 관리",
+      "어떤 인자",
+      "있어?"
+    ],
+    "describe": [
+      "어떻게",
+      "관리 방법",
+      "방법은"
+    ]
+  },
+  "_query_intents_note": "CH5 5.3 질문 유형 대응표의 표기 목록. **USE_MOCK의 결정적 분류기**이며 실물 경로에서는 LLM이 유형을 판정한다(core/query/query.py의 HOOK). 선언 순서가 우선순위다 — 좁은 유형을 먼저 둔다.",
+  "_extract_patterns_note": "USE_MOCK 문형 폴백의 규칙 표 (증분0 §5-1). **관계 이름은 층 어휘이므로 코드가 아니라 여기 있다** — 카드 B1 예외 3호의 해소 경로가 이 이동이다. 정규식은 구문이고 `rel`이 층 어휘다. 실LLM 경로에는 해당 없다(USE_MOCK=0이면 폴백 자체가 명시 실패 — G6.5 E3).",
+  "extract_patterns": [],
+  "value_categories": {"Property": "설비사양"}
+}

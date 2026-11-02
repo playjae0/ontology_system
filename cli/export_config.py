@@ -4,8 +4,10 @@ JSON으로 낸다 · 두 모델의 뜻 차이를 잰다.
 
     python run.py export config [경로]              HTML 한 장(기본 export/config_map.html) + 화면 요약
     python run.py export config --json [경로]       같은 모델을 JSON으로(기본 export/config_map.json — 이름순 · 결정적)
-    python run.py export config --diff a.json b.json  두 모델의 뜻 차이만(카테고리 · 집 · 겸 · 이름 규칙 · 관계 패턴 ·
-                                                     위아래 매핑 · 연결 포인트) — 같으면 rc 0 · 다르면 rc 1
+    python run.py export config --from <layers 폴더> …  그 폴더(제안 — `work/config_next/layers`)를 읽는다(상태 루트 쓰기 0)
+    python run.py export config --diff a.json b.json  두 모델의 뜻 차이만(카테고리 · 집 · 겸 · 이름 꼴 · 층 카테고리 · 관계 패턴 ·
+                                                     위아래 쌍 · 쓰는 카테고리 · 연결 포인트) — 같으면 rc 0 · 다르면 rc 1
+                                                     (층마다 걸리는 위아래 쌍은 공통 쌍 · uses에서 따라 나오는 파생이라 대조 밖)
 
 **관계 그림은 지금 뷰어를 다시 쓴다**(`cli.export.build_html` — 카테고리 하나 = 점 하나(집 층) · 관계 패턴 하나 = 엣지
 하나(선언한 층) · 끝점의 층이 다르면 뷰어 규칙 그대로 붉은 점선). 뷰어 쪽은 한 화면을 다 쓰는 그림이라 표와 한 장에
@@ -22,9 +24,7 @@ from core import paths
 from cli import config_map as M
 from cli.export import build_html, out_path
 
-#: 뜻 차이를 재는 칸 — 정의문 글 · 렌즈 · 골격 노드 수 · 점검 문면은 뜻이 아니다(모양 이전의 대조 대상 밖)
-_DIFF_LAYER = ("categories", "patterns", "pair_map")
-_DIFF_CAT = ("home", "also", "naming")
+#: 뜻 차이에서 빼는 것 — 정의문 글 · 렌즈 · 골격 노드 수 · 점검 문면 · 경로 사유 · 층마다 걸리는 위아래 쌍(파생)
 
 
 def model_json(model):
@@ -40,18 +40,17 @@ def _rows(model):
         out |= {("층 카테고리", f"{lay}: {c}") for c in d.get("categories") or {}}
         out |= {("관계 패턴", f"{lay}: {p['src']} -{p['rel']}-> {p['dst']}" + (" (대칭)" if p.get("symmetric") else ""))
                 for p in d.get("patterns") or []}
-        out |= {("위아래 매핑", f"{lay}: {k} → {v}") for k, v in (d.get("pair_map") or {}).items()}
+        out |= {("쓰는 카테고리", f"{lay}: {c}") for c in d.get("uses") or []}
+    out |= {("위아래 쌍", f"{s} -{r}-> {t}") for s, r, t in model.get("pairs") or []}
     for c, v in (model.get("categories") or {}).items():
         out.add(("카테고리", c))
         out.add(("집", f"{c} → {v.get('home')}"))
         out |= {("겸", f"{c} 겸 {o} {'·'.join(sorted(t))}") for o, t in (v.get("also") or {}).items()}   # 단은 포함만 본다(순서 뜻 0)
-        out.add(("이름 규칙", f"{c}: {v.get('naming')}"))
+        out.add(("이름 꼴", f"{c}: {v.get('name_form')}"))
     lk = model.get("links") or {}
     out |= {("걸침", f"{x['layer']}: {x['src']} -{x['rel']}-> {x['dst']} · 끝 {x['category']}(집 {x['home']}) · {x['from']}")
-            for x in lk.get("cross") or []}
-    out |= {("선언 없이 씀", f"{x['layer']}: {x['category']}(집 {x['home']}) · {'·'.join(x['via'])}")
-            for x in lk.get("uses") or []}
-    out |= {("여러 층 선언", f"{x['category']} {x['layers']} 집 {x['home']}") for x in lk.get("shared") or []}
+            for x in lk.get("cross") or [] if x["from"] != "위아래 쌍"}
+    out |= {("여러 층 정의", f"{x['category']} {x['layers']} 집 {x['home']}") for x in lk.get("shared") or []}
     return out
 
 
@@ -76,6 +75,8 @@ def _world(model):
     for lay, d in model["layers"].items():
         world[lay].edges += [{"src": f"C:{p['src']}", "dst": f"C:{p['dst']}", "rel": p["rel"], "status": "confirmed",
                               "provenance": [f"{lay} 관계 패턴"]} for p in d["patterns"]]
+        world[lay].edges += [{"src": f"C:{s}", "dst": f"C:{t}", "rel": r, "status": "confirmed",
+                              "provenance": [f"{lay} 위아래 쌍(공통 config)"]} for s, r, t in d["pairs"]]
     return world
 
 
@@ -115,8 +116,9 @@ def _layer_html(lay, d):
                      [(p["src"], p["rel"], p["dst"], "대칭" if p["symmetric"] else "") for p in d["patterns"]])
             + _table(("항목", "값"), [
                 ("골격", f"{sk.get('type')} · {sk.get('category')} · 노드 {sk.get('nodes')}" if sk else "없음"),
+                ("uses(쓰는 다른 층 카테고리)", " · ".join(d["uses"]) or "없음"),
                 ("관계 목록", " · ".join(d["relations"]) or "없음"),
-                ("위아래 매핑", " · ".join(f"{k} → {v}" for k, v in d["pair_map"].items()) or "없음"),
+                ("위아래 쌍(이 층에 걸리는 것)", " · ".join(f"{s} -{r}-> {t}" for s, r, t in d["pairs"]) or "없음"),
                 ("극성", f"{' · '.join(pol.get('bind_categories') or [])} — {' · '.join(pol.get('values') or [])}"
                  if pol else "없음"),
                 ("미러", "선언" if d["mirrors"] else "없음"),
@@ -136,24 +138,25 @@ def render_html(model):
     lk = model["links"]
     viewer = build_html(_world(model), query_panel=False, title="config 지도 — 카테고리 · 관계 패턴")
     head = " · ".join(f"{k} {v}" for k, v in n.items())
-    body = (f"<h1>config 지도</h1><div class=\"sub\">{_e(head)} · 좌표 층 {_e(model['coord']['layer'])}"
+    body = (f"<h1>config 지도</h1><div class=\"sub\">{_e(model.get('shape'))} · {_e(head)} · 좌표 층 {_e(model['coord']['layer'])}"
             f"({_e(model['coord']['category'])}) · 읽기만(지금 config · 카탈로그 · 등록부가 읽힌 그대로)</div>"
             "<h2>관계 그림</h2><p class=\"sub\">카테고리 = 점(집 층) · 관계 패턴 = 엣지(선언한 층) · 층을 넘는 엣지는 "
             "붉은 점선(걸침이 될 수 있는 자리)</p>"
             f"<iframe title=\"관계 그림\" srcdoc=\"{html.escape(viewer, quote=True)}\"></iframe>"
             "<h2>층</h2>" + "".join(_layer_html(lay, d) for lay, d in model["layers"].items())
-            + "<h2>카테고리</h2>"
-            + _table(("카테고리", "집", "선언한 층", "겸", "이름 규칙", "골격"),
-                     [(c, v["home"], " · ".join(v["declared_by"]),
-                       " · ".join(f"{o}({'·'.join(t)})" for o, t in v["also"].items()), v["naming"],
+            + "<h2>카테고리 — 공통 config</h2>"
+            + _table(("category", "home", "used_by", "also", "경로", "이름 꼴", "skeleton"),
+                     [(c, v["home"], " · ".join(v["used_by"]),
+                       " · ".join(f"{o}({'·'.join(t)})" for o, t in v["also"].items()), v["path"], v["name_form"],
                        " · ".join(v["skeleton_of"])) for c, v in model["categories"].items()])
-            + "<h2>층 사이 연결 포인트</h2><h3>걸침이 될 수 있는 엣지 — 끝 카테고리의 집이 그 층이 아니다</h3>"
+            + "<h2>위아래 쌍 — 공통 config</h2>"
+            + _table(("출발", "관계", "도착"), [tuple(e) for e in model["pairs"]])
+            + "<h2>층 사이 연결 포인트</h2><h3>층을 넘는 엣지 — 끝 카테고리의 집이 그 층이 아니다</h3>"
             + _table(("층", "출발", "관계", "도착", "끝", "끝의 집", "출처"),
                      [(x["layer"], x["src"], x["rel"], x["dst"], x["category"], x["home"], x["from"]) for x in lk["cross"]])
-            + "<h3>선언 없이 관계 패턴에서만 쓰는 카테고리</h3>"
-            + _table(("층", "카테고리", "집", "관계"), [(x["layer"], x["category"], x["home"], " · ".join(x["via"]))
-                                                   for x in lk["uses"]])
-            + "<h3>여러 층이 선언한 카테고리(렌즈 겹침 — 노드는 집 하나)</h3>"
+            + "<h3>uses — 층이 쓰는 다른 층 카테고리(누락은 점검 표)</h3>"
+            + _table(("층", "카테고리", "집"), [(x["layer"], x["category"], x["home"]) for x in lk["uses"]])
+            + "<h3>여러 층이 정의한 카테고리 — 정의문은 집 한 곳이어야 한다</h3>"
             + _table(("카테고리", "선언한 층", "집"), [(x["category"], " · ".join(x["layers"]), x["home"]) for x in lk["shared"]])
             + "<h2>점검</h2>" + _checks_html(model["checks"]))
     return (f"<!doctype html>\n<html lang=\"ko\"><head><meta charset=\"utf-8\">"
@@ -165,9 +168,10 @@ def render_html(model):
 def summary(model, where):
     """화면 요약 몇 줄 — 수 · 거부 문면(앞 다섯) · 파일 자리."""
     n = M.counts(model)
-    out = [f"[export] config 지도 — 층 {n['층']} · 카테고리 {n['카테고리']} · 관계 패턴 {n['관계 패턴']} · 연결 포인트 "
-           f"걸침 {n['걸침']} · 선언 없이 씀 {n['선언 없이 씀']} · 여러 층 선언 {n['여러 층 선언']} · 거부 {n['거부']} · "
-           f"경고 {n['경고']} · 표시 {n['표시']}"]
+    out = [f"[export] config 지도({model.get('shape')}) — 층 {n['층']} · 카테고리 {n['카테고리']} · 관계 패턴 {n['관계 패턴']} · "
+           f"위아래 쌍 {n['위아래 쌍']} · 연결 포인트 걸침 {n['걸침']} · 쓰는 카테고리 {n['쓰는 카테고리']} · 선언 없이 씀 "
+           f"{n['선언 없이 씀']} · 여러 층 선언 {n['여러 층 선언']} · 거부 {n['거부']} · 경고 {n['경고']} · 표시 {n['표시']}"]
+    out += [f"  이름 꼴 — {c}: {v['name_form']}" for c, v in model["categories"].items()]
     bad = model["checks"]["거부"]
     out += [f"  [거부] {x['line']}" for x in bad[:5]]
     if len(bad) > 5:
@@ -189,7 +193,13 @@ def main(args):
         for ln in lines:
             print(f"  {ln}")
         return 1 if lines else 0
-    model = M.build()
+    src = None
+    if "--from" in args:
+        i = args.index("--from")
+        if i + 1 >= len(args):
+            raise SystemExit("사용법: python run.py export config --from <layers 폴더> [--json 경로 | 경로]")   # [사용법]
+        src, args = args[i + 1], args[:i] + args[i + 2:]
+    model = M.build(src)
     if args[:1] == ["--json"]:
         out = out_path(args[1] if len(args) > 1 else None, "config_map.json")
         out.write_text(model_json(model), encoding="utf-8")

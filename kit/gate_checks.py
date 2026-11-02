@@ -56,22 +56,34 @@ def _vocab(layer):
         c = json.load(open(cfg, encoding="utf-8"))
     except Exception:
         return {}
-    return {"layer": layer, "categories": c.get("categories"),
+    return {"layer": layer, "categories": c.get("categories"), "uses": c.get("uses"),
             "relations": c.get("relations"),
             "relation_patterns": c.get("relation_patterns")}
 
 
-def _homes():
-    """공통 config의 집 표 — `{카테고리: 층}` (B90 ② · 없으면 빈 표 — 대조하지 않는다).
-
-    킷은 core를 모르므로 파일을 직접 읽는다 — 자리는 건네받은 층 폴더(`--layers`) 옆이다.
-    """
-    p = tables.layers_dir() / "common.json"
+def _common():
+    """공통 config — 킷은 core를 모르므로 파일을 직접 읽는다(자리는 건네받은 층 폴더 `--layers` 옆 · 못 읽으면 빈 dict)."""
     try:
-        cats = json.load(open(p, encoding="utf-8")).get("categories") or {}
+        return json.load(open(tables.layers_dir() / "common.json", encoding="utf-8")) or {}
     except Exception:
         return {}
+
+
+def _homes():
+    """공통 config의 집 표 — `{카테고리: 층}` (B90 ② · 없으면 빈 표 — 대조하지 않는다)."""
+    cats = _common().get("categories") or {}
     return {c: (v or {}).get("home") for c, v in cats.items() if (v or {}).get("home")}
+
+
+def _pair_triples(spoken):
+    """그 층이 두 카테고리를 다 말하는 위아래 쌍의 엣지 삼항(B174 ② — `core.state.catalog.layer_patterns`와 같은 규칙 · 킷 몫)."""
+    out = set()
+    for p in _common().get("pairs") or []:
+        if not isinstance(p, dict) or p.get("lower") not in spoken or p.get("upper") not in spoken or not p.get("rel"):
+            continue
+        up = p.get("src") == "upper"
+        out.add((p["upper"] if up else p["lower"], p["rel"], p["lower"] if up else p["upper"]))
+    return out
 
 
 def _cat_of(fields, name):
@@ -212,12 +224,10 @@ def check_vocab(schema, fields, label):
 
     # G4C — category는 **그 층이 말하는 카테고리** 안이다.
     #
-    # 「그 층이 말하는 것」 = 자기 `categories` + **패턴표가 이름 붙인 카테고리**다.
-    # 층은 제 패턴표에서 다른 층의 카테고리를 부른다(quality의 `Failure occurs_in
-    # Process`) — 좌표 블록의 `target_category`가 그 자리다. 패턴표에 없는 이름만
-    # 걸리므로 오타(`Proces`)는 그대로 잡힌다. 걸침 필드(`target_layer`)는 그 층의
-    # 목록으로 본다 — 사람이 층을 지정했으면 그 층이 정본이다.
-    spoken = set(cats) | {p.get(k) for p in pats for k in ("src", "dst") if p.get(k)}
+    # 「그 층이 말하는 것」 = 자기 `categories`(집 카테고리) + **`uses`**(쓰는 다른 층 카테고리 — 골격 카테고리 포함)다(B174 ② —
+    # 패턴표에서 짐작하지 않는다). 좌표 블록의 `target_category`도 이 목록으로 본다 — 없으면 `uses`에 적으라고 말한다.
+    # 걸침 필드(`target_layer`)는 그 층의 목록으로 본다 — 사람이 층을 지정했으면 그 층이 정본이다.
+    spoken = set(cats) | set(voc.get("uses") or [])
     homes = _homes()
     bad_c = []
     for name, f in fields.items():
@@ -234,7 +244,8 @@ def check_vocab(schema, fields, label):
                 continue
             own = set(_vocab(tl).get("categories") or {}) if tl else spoken
             if v not in own:
-                bad_c.append(f"{name}.{key}={v!r}는 {tl or layer} 카테고리에 없다 · "
+                hint = "" if tl else f" · 다른 층 카테고리면 layers/{layer}/config.json의 uses에 적는다"
+                bad_c.append(f"{name}.{key}={v!r}는 {tl or layer} 카테고리에 없다{hint} · "
                              f"있는 것: {' · '.join(sorted(own)) or '(어휘 없음)'}")
     show("G4C  전 필드의 category가 층 목록 안", not bad_c, " ‖ ".join(bad_c))
 
@@ -247,7 +258,7 @@ def check_vocab(schema, fields, label):
 
     # G4E — 삼항이 패턴표 안이다. 카테고리를 모르는 쪽은 대조하지 않는다(모르면
     # 묻지 않고 넘긴다 — G47·G48이 그 자리를 이미 본다).
-    ok_tri = {(p.get("src"), p.get("rel"), p.get("dst")) for p in pats}
+    ok_tri = {(p.get("src"), p.get("rel"), p.get("dst")) for p in pats} | _pair_triples(spoken)
     bad_t = []
     for e in edges:
         src, dst = _cat_of(fields, e.get("from")), _cat_of(fields, e.get("to"))
@@ -255,7 +266,7 @@ def check_vocab(schema, fields, label):
         if not (src and dst and rel in rels):
             continue
         if (src, rel, dst) not in ok_tri:
-            allow = [f"{p['src']} → {p['dst']}" for p in pats if p.get("rel") == rel]
+            allow = sorted({f"{a} → {b}" for a, r, b in ok_tri if r == rel})
             bad_t.append(f"({src}, {rel}, {dst})는 패턴표에 없다 · "
                          f"{rel}의 허용: {' · '.join(allow) or '(없음)'}")
     show("G4E  전 edges의 삼항이 relation_patterns 안", not bad_t, " ‖ ".join(bad_t))

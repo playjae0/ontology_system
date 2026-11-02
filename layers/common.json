@@ -4,7 +4,8 @@
     "Process": {
       "home": "process",
       "used_by": [
-        "process"
+        "process",
+        "quality"
       ]
     },
     "Unit": {
@@ -16,7 +17,8 @@
     "Property": {
       "home": "process",
       "used_by": [
-        "process"
+        "process",
+        "quality"
       ]
     },
     "Failure": {
@@ -32,15 +34,28 @@
       ]
     }
   },
-  "canonical_scope": {
-    "bind_categories": [
-      "Failure",
-      "Property",
-      "Unit"
-    ],
-    "nest_categories": [
-      "Property"
-    ],
-    "sep": "::"
-  }
+  "pairs": [
+    {
+      "lower": "Unit",
+      "upper": "Process",
+      "rel": "part_of",
+      "src": "lower",
+      "정의문": "설비가 그 공정에 속한다"
+    },
+    {
+      "lower": "Property",
+      "upper": "Process",
+      "rel": "has_property",
+      "src": "upper",
+      "정의문": "공정이 그 관리항목을 갖는다"
+    },
+    {
+      "lower": "Property",
+      "upper": "Unit",
+      "rel": "has_property",
+      "src": "upper",
+      "정의문": "설비가 그 관리항목을 갖는다"
+    }
+  ],
+  "sep": "::"
 }

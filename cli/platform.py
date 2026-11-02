@@ -685,9 +685,10 @@ def cmd_dashboard():
     print("\n  공정별 관리항목 수 (상위 8)")
     g = graphs.get(_coord)
     if g:
-        pair = (load_config(_coord).get("category_pair_map") or {})
-        # 좌표 카테고리에서 나가는 쌍의 관계 — 카테고리 이름을 코드에 적지 않는다(층 어휘 0 · B121 ①)
-        rel = next((v for k, v in pair.items() if k.split(",", 1)[0] == COORD_CATEGORY), None) or "has_property"
+        from core.state import catalog
+        # 좌표 카테고리에서 나가는 위아래 쌍의 관계 — 카테고리 이름을 코드에 적지 않는다(층 어휘 0 · B121 ① · B174 ①)
+        rel = next((r for s, r, _d in map(catalog.pair_edge, catalog.layer_pairs(load_config(_coord)))
+                    if s == COORD_CATEGORY), None) or "has_property"
         cnt = Counter()
         names = {i: n["canonical"] for i, n in g.nodes.items()}
         for e in g.edges:

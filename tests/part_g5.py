@@ -403,7 +403,8 @@ from core.dictionary import Dictionary as _DIC75                   # noqa: E402
 
 _g75 = open_graph("process")
 _cfg75 = load_config("process")
-_sc75 = (_cfg75.get("canonical_scope") or {}).get("bind_categories", [])
+from core.build.naming import scope_categories as _SC75             # noqa: E402 — 읽는 함수 하나(B174)
+_sc75 = _SC75()
 from core.build.naming import scope_of as _SO75                       # noqa: E402 — 부모 경로 칸(B142 ⑤)
 # 기대 변경(B142 ⑤ — 부모 경로 칸 이름 scope · 옛 칸은 같은 함수가 읽는다)
 _units75 = [n for n in _g75.nodes.values()
