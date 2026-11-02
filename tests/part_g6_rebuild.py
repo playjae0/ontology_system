@@ -377,7 +377,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::노칭 프레스::버 높이"), A,
               reason="B106 합침(산문 → 표)")
     ops.alias("process", _id("process", "노칭::노칭 프레스::노칭 정밀도"), "노칭 정확도", A, "B106 표기(표)")
-    ops.alias("quality", _id("quality", "전원 차단 실패"), "전원 차단 불량", A, "B106 표기(산문)")
+    ops.alias("quality", _id("quality", "노칭::전원 차단 실패"), "전원 차단 불량", A, "B106 표기(산문)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B106 폐기")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B106 엣지 삭제(표)")

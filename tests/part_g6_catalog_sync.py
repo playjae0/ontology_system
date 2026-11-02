@@ -296,6 +296,7 @@ show("ⓓ 새 카테고리 경고에 이름 규칙 줄 — 적용(bind_categorie
      _rc == 0 and _rcd == 0
      and "이름 규칙: 'Component'는 공정 스코프 적용" in _o
      and "이름 규칙: 'DefectHistory'는 미적용" in _o and "노드가 생기기 전에 정한다" in _o
+     and "공용 분류도 아니면" in _o and "공정을 모르면" not in _o           # 기대 변경(B171 — 기준 「기본으로 넣는다」 · 옛 질문 문면 0)
      and "이름 규칙: 'DefectHistory'는 미적용" in _od,
      [l.strip()[:60] for l in _o.splitlines() if "이름 규칙" in l][:2])
 _drop_layer()

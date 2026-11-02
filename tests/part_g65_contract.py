@@ -164,8 +164,8 @@ show("B6 기존 노드의 alias가 리스트 객체로 오염되지 않는다",
 print("\n■ ③ 병합·값의 무손실 계약 (C1·C2·C3·C5·C6)")
 fresh()
 # ② 물리 중복 — 같은 대상으로 affects 엣지를 각각 가진 쌍(봉인 R2-0 ②)
-a = node_by("quality", "슬리팅 버")
-b = node_by("quality", "버 발생")
+a = node_by("quality", "노칭::절연 파괴")    # 기대 변경(B171 — 고장은 공정 경로 이름 · 「슬리팅 버」는 골격 밖 좌표(레이저노칭)라 노드 0 → 같은 공정 · 같은 대상(단락)의 쌍)
+b = node_by("quality", "노칭::버 발생")
 ops.merge("quality", a["id"], b["id"], actor="시험자", reason="C2 repro ②")
 g = open_graph("quality")
 dup = [k for k in {(e2["src"], e2["rel"], e2["dst"]) for e2 in g.edges}
@@ -175,11 +175,11 @@ show("C2 병합 후 (src,rel,dst) 물리 중복 0 · provenance는 합집합 (R2
      not dup, f"중복 {len(dup)}건")
 # ① 자기 루프 — 서로 causes 엣지를 가진 쌍(봉인 R2-0 ①)
 fresh()
-a = node_by("quality", "가압력 부족")
-b = node_by("quality", "용접 강도 부족")
+a = node_by("quality", "탭용접::cathode::가압력 부족")    # 기대 변경(B171 — 고장은 공정 경로 이름)
+b = node_by("quality", "탭용접::cathode::용접 강도 부족")
 ops.merge("quality", a["id"], b["id"], actor="시험자", reason="C1·C2 repro ①")
 g = open_graph("quality")
-keep = node_by("quality", "용접 강도 부족") or node_by("quality", "가압력 부족")
+keep = node_by("quality", "탭용접::cathode::용접 강도 부족") or node_by("quality", "탭용접::cathode::가압력 부족")
 show("C2 병합이 자기참조 엣지를 만들지 않는다 (자기 루프는 참 관계가 아니다)",
      not [e for e in g.edges if e["src"] == e["dst"]],
      str([e["rel"] for e in g.edges if e["src"] == e["dst"]]))
@@ -227,8 +227,8 @@ show("C3 비맥락형 교차 출처 충돌은 spec_conflict + **기존 값 보�
 
 # C5 — 툼스톤은 매칭 후보가 아니다
 fresh()
-a = node_by("quality", "가압력 부족")
-b = node_by("quality", "용접 강도 부족")
+a = node_by("quality", "탭용접::cathode::가압력 부족")    # 기대 변경(B171 — 고장은 공정 경로 이름)
+b = node_by("quality", "탭용접::cathode::용접 강도 부족")
 ops.merge("quality", a["id"], b["id"], actor="시험자", reason="C5 repro")
 g = open_graph("quality")
 tomb = next(n2 for n2 in g.nodes.values() if n2.get("merged_into"))
@@ -242,10 +242,10 @@ show("C5 후보 검색이 툼스톤에 MATCH하지 않는다 (is_live 필터 —
 
 # C6 — 분리 리다이렉트는 배분표대로만
 fresh()
-a = node_by("quality", "가압력 부족")
-b = node_by("quality", "용접 강도 부족")
+a = node_by("quality", "탭용접::cathode::가압력 부족")    # 기대 변경(B171 — 고장은 공정 경로 이름)
+b = node_by("quality", "탭용접::cathode::용접 강도 부족")
 ops.merge("quality", a["id"], b["id"], actor="시험자", reason="C6 repro 전단")
-src = node_by("quality", "용접 강도 부족") or node_by("quality", "가압력 부족")
+src = node_by("quality", "탭용접::cathode::용접 강도 부족") or node_by("quality", "탭용접::cathode::가압력 부족")
 own = [i for i, e2 in enumerate(open_graph("quality").edges)
        if e2["src"] == src["id"] or e2["dst"] == src["id"]]
 als = [al["surface"] for al in src["aliases"]]
@@ -254,7 +254,7 @@ back = [s for s in als if "가압력" in s]
 plan = {"targets": [
     {"canonical": src["canonical"], "aliases": [s for s in als if s not in back],
      "provenance": list(src["provenance"]), "edges": own},
-    {"canonical": "가압력 부족", "aliases": [s for s in back if s != "가압력 부족"],
+    {"canonical": "탭용접::cathode::가압력 부족", "aliases": [s for s in back if s != "탭용접::cathode::가압력 부족"],   # 기대 변경(B171)
      "provenance": [], "edges": []}]}
 ops.split("quality", src["id"], plan, actor="시험자", reason="C6 repro")
 d = store.read(store.DICTIONARY, {})

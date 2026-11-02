@@ -126,11 +126,12 @@ show("층 등록에 코드가 없다 — config가 선언한 관계·카테고�
      set(reg["quality"]["relations"]) == set(load_config("quality")["relations"]))
 
 qcanon = {n["canonical"] for n in QG.nodes.values()}
-show("causes 사슬 존재 (이물 유입 → 절연 파괴 → 내부 단락)",
-     {"이물 유입", "절연 파괴", "내부 단락"} <= qcanon
-     and any(QG.get(e["src"])["canonical"] == "절연 파괴"
-             and QG.get(e["dst"])["canonical"] == "내부 단락"
-             for e in QG.edges if e["rel"] == "causes"))
+# 기대 변경(B171 — 고장은 공정 경로 이름 · 「절연 파괴」는 노칭의 고장 모드(R3)와 스태킹의 원인(R4)이라 두 노드 · 사슬은 공정마다)
+_chain = (("노칭::이물 유입", "노칭::절연 파괴"), ("스태킹::절연 파괴", "스태킹::내부 단락"))
+show("causes 사슬 존재 — 노칭 「이물 유입 → 절연 파괴」 · 스태킹 「절연 파괴 → 내부 단락」(공정이 다르면 다른 노드)",
+     {x for pair in _chain for x in pair} <= qcanon
+     and all(any(QG.get(e["src"])["canonical"] == s and QG.get(e["dst"])["canonical"] == d
+                 for e in QG.edges if e["rel"] == "causes") for s, d in _chain))
 show("cross 9번 — occurs_in 역방향으로 노칭의 Failure들이 나온다",
      len([f for f in results[9]["facts"] if "공정에서 발생" in f]) >= 3,
      str([f for f in results[9]["facts"] if "공정에서 발생" in f][:2]))

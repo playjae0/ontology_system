@@ -203,14 +203,14 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::노칭 프레스::버 높이"), A,
               reason="B107 합침(산문 → 표)")
     ops.alias("process", _id("process", "노칭::노칭 프레스::노칭 정밀도"), "노칭 정확도", A, "B107 표기(표)")
-    ops.alias("quality", _id("quality", "전원 차단 실패"), "전원 차단 불량", A, "B107 표기(산문)")
+    ops.alias("quality", _id("quality", "노칭::전원 차단 실패"), "전원 차단 불량", A, "B107 표기(산문)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B107 폐기(표)")
     _e1 = _live_edge(_id("process", "패키징::사이드 실링::실러"))
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B107 엣지 삭제(표)")
-    _e2 = _live_edge(_id("quality", "가압력 부족"), "controlled_by", _id("process", "노칭::가압력"))   # 품질 그래프 · 끝점은 process
+    _e2 = _live_edge(_id("quality", "노칭::가압력 부족"), "controlled_by", _id("process", "노칭::가압력"))   # 품질 그래프 · 끝점은 process · 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.delete_edge("quality", _e2["src"], _e2["rel"], _e2["dst"], A, "B107 엣지 삭제(산문 · 층 건너는 엣지)")
-    ops.confirm("quality", _id("quality", "가압력 부족"), A, "B107 확인(산문)")
-    ops.obsolete("quality", _id("quality", "금형 클리어런스 과다"), A, _id("quality", "가압력 부족"), "B107 폐기(산문 · 대체)")
+    ops.confirm("quality", _id("quality", "노칭::가압력 부족"), A, "B107 확인(산문)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
+    ops.obsolete("quality", _id("quality", "노칭::금형 클리어런스 과다"), A, _id("quality", "노칭::가압력 부족"), "B107 폐기(산문 · 대체)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.rename("process", _id("process", "노칭::노칭 프레스"), "노칭::노칭 프레스 장비", A, "B107 개명(확인 뒤)")
 S1 = _snap()
 RECS = oplog.read()
