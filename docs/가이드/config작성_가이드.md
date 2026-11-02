@@ -107,7 +107,7 @@
 | 카탈로그에 있고 선언도 있다 | **건드리지 않는다** — `home`·`also`는 사람 값 | 겸(`also`)은 사람이 쓴다 |
 | 노드가 있는 카테고리의 `home`을 바꿨다 | **멈춘다** — 옛 집 그래프에 그 카테고리 노드가 남아 있다 | 재구축(`python run.py rebuild`) 또는 `home`을 되돌린다 |
 | **처음**(파일 없음) | 같은 규칙으로 `common.json`을 바로 만든다 · 빈칸이 있으면 멈춘다 | 빈칸을 채우고 다시 `bootstrap` |
-| **옛 모양**(공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 카테고리 정의) | 맞추기 전에 새 모양 **제안**(`work/config_next/layers/` — `layers/`와 같은 모양) · **보고**(`work/config_next/보고.md`)를 쓰고 **멈춘다** — 그래프 · config · 등록부 쓰기 0 | 보고(이름이 바뀌는 카테고리 · 「안 씀」 사유 · 나란히 놓인 정의문)를 읽고 화면 다음 줄대로 지도 대조(`export config --json` 둘 → `--diff`) → 복사 → `bootstrap` · 이름이 바뀌는 카테고리가 있으면 새 인입 전에 `python run.py rebuild` |
+| **옛 모양**(공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 카테고리 정의) | 맞추기 전에 새 모양 **제안**(`work/config_next/layers/` — `layers/`와 같은 모양) · **보고**(같은 폴더의 보고 md)를 쓰고 **멈춘다** — 그래프 · config · 등록부 쓰기 0 | 보고(이름이 바뀌는 카테고리 · 「안 씀」 사유 · 나란히 놓인 정의문)를 읽고 화면 다음 줄대로 지도 대조(`export config --json` 둘 → `--diff`) → 복사 → `bootstrap` · 이름이 바뀌는 카테고리가 있으면 새 인입 전에 `python run.py rebuild` |
 
 **뼈대층(설비·공정)을 처음 세울 때**의 골격 두 단 · 겸 · 별칭은 `골격작성_가이드.md` §3-a(그때만 쓰는 절)다. `bootstrap` 끝에 골격 카테고리마다 겸 상태(켜짐 · 꺼짐 · 반쪽 ⚠) 한 줄이 뜬다 — 표시일 뿐이다.
 
