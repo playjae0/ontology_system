@@ -203,7 +203,7 @@ def naming_rule(cat=None, configs=None):
     sk = skeleton_categories(configs or {})
     cats = cat.get("categories") or {}
     path = [c for c in sorted(cats) if c not in sk and "no_path" not in (cats[c] or {})]   # 사유가 비어도 「안 씀」(지도가 말한다)
-    nest = list(dict.fromkeys(p["lower"] for p in pairs(cat) if p["upper"] not in sk))
+    nest = list(dict.fromkeys(p["lower"] for p in pairs(cat) if p["upper"] not in sk and p["lower"] in path))   # 「안 씀」은 앞말도 없다
     return {"path": path, "nest": nest, "sep": sep(cat)}
 
 
@@ -251,6 +251,19 @@ def used_by(configs=None):
 
 #: 옛 모양의 키(B174 ③) — 읽는 자리는 옛 모양 감지와 제안 짓기뿐이다
 OLD_COMMON_KEYS = ("canonical_scope",)
+
+
+def legacy_rule(common, configs):
+    """**옛 이름 규칙** `(bind, nest, sep)` — 공통 `canonical_scope` · 없으면 층에 남은 것(공통이 새 모양 이름 규칙 — 위아래 쌍이나
+    `no_path` — 을 아직 갖지 않을 때만 · 가지면 공통이 정본) · 없으면 None(제안 · 지도의 옛 뜻 해석이 같은 함수로 읽는다)."""
+    common = common or {}
+    sc = common.get(OLD_COMMON_KEYS[0])
+    has_new = bool(common.get("pairs")) or any("no_path" in (v or {}) for v in (common.get("categories") or {}).values())
+    if sc is None and not has_new:
+        sc = next((c[OLD_LAYER_KEYS[1]] for _l, c in sorted((configs or {}).items()) if c.get(OLD_LAYER_KEYS[1])), None)
+    if not sc:
+        return None
+    return set(sc.get("bind_categories") or []), set(sc.get("nest_categories") or []), sc.get("sep")
 OLD_LAYER_KEYS = ("category_pair_map", "canonical_scope")
 
 

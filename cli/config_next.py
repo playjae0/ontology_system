@@ -27,10 +27,6 @@ from core.state import catalog
 WHY_KEPT = "이전 판 그대로 — 사유를 적거나 지워서 「씀」으로"
 
 
-def _old_rule(common, configs):
-    sc = common.get("canonical_scope") or next((c["canonical_scope"] for _l, c in sorted(configs.items())
-                                                 if c.get("canonical_scope")), {})
-    return set(sc.get("bind_categories") or []), set(sc.get("nest_categories") or []), sc.get("sep") or "::"
 
 
 def _schema_cats(schemas):
@@ -98,14 +94,22 @@ def propose(common, configs, schemas=()):
     before = name_forms(common or {}, configs or {})
     common, configs = json.loads(json.dumps(common or {})), json.loads(json.dumps(configs or {}))
     sk = catalog.skeleton_categories(configs)
-    bind, nest, sep = _old_rule(common, configs)
+    rule = catalog.legacy_rule(common, configs)                                # 없으면 공통 이름 규칙이 이미 새 모양 — 그대로 둔다
+    bind, nest, sep = rule or (set(), set(), None)
     cats = common.setdefault("categories", {})
     rep = {"안 씀": [], "쌍": [], "uses": [], "정의문": [], "패턴 뺌": [], "이름 바뀜": [], "새로 걸림": []}
-    for c, v in sorted(cats.items()):                                          # ⓐ
+    for c, v in sorted(cats.items()) if rule else ():                          # ⓐ
         if c not in sk and c not in bind | nest and not (v or {}).get("no_path"):
             cats[c] = {**(v or {}), "no_path": WHY_KEPT}
             rep["안 씀"].append(c)
-    pairs, rep["쌍"], stops = _pairs(configs, sk, nest)                       # ⓑ
+    pairs, rep["쌍"], stops = _pairs(configs, sk, nest)                       # ⓑ — 공통에 이미 있는 쌍은 두고 더한다
+    have = {(p["lower"], p["upper"]): p for p in common.get("pairs") or []}
+    for p in list(pairs):
+        q = have.get((p["lower"], p["upper"]))
+        if q and q["rel"] != p["rel"]:
+            stops.append(f"쌍 {p['lower']} → {p['upper']}의 관계가 공통 pairs({q['rel']})와 층 매핑({p['rel']})에서 다르다 · "
+                         f"한 관계로 고친 뒤 다시 bootstrap(추측하지 않는다)")
+    pairs = list(common.get("pairs") or []) + [p for p in pairs if (p["lower"], p["upper"]) not in have]
     edges = {catalog.pair_edge(p) for p in pairs}
     old_pair = {lay: set(_map_triples(c)) for lay, c in configs.items()}
     sc_cats = _schema_cats(schemas)
@@ -134,7 +138,7 @@ def propose(common, configs, schemas=()):
                 if k == "category_pair_map":
                     new["uses"] = uses
                 continue
-            new[k] = keep if k == "relation_patterns" else v
+            new[k] = keep if k == "relation_patterns" else uses if k == "uses" else v
         new.setdefault("uses", uses)
         configs[lay] = new
         spk = catalog.spoken(new)
@@ -142,7 +146,7 @@ def propose(common, configs, schemas=()):
                            if {s, d} <= spk and (s, r, d) not in old_pair.get(lay, set())]
     for k in catalog.OLD_COMMON_KEYS:
         common.pop(k, None)
-    common["pairs"], common["sep"] = pairs, sep
+    common["pairs"], common["sep"] = pairs, common.get("sep") or sep or "::"
     after = name_forms(common, configs)                                        # 이름이 바뀌는 카테고리 — 지도의 이름 꼴 앞뒤
     rep["이름 바뀜"] = [(c, before[c], after[c]) for c in sorted(after) if c in before and before[c] != after[c]]
     return {"common": common, "layers": configs, "stops": stops, "report": rep}
