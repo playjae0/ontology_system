@@ -63,6 +63,9 @@ def cmd_report(args):
           f"토큰 {su['토큰']}")
     for ln in diag:                              # 머리 → 원인 묶음 → 목차 나무 (B149)
         print(ln)
+    from cli import coord_table                  # 좌표마다 한 줄 — 인입 그룹 끝과 같은 함수(B176 ②)
+    print("\n  좌표 — 그 좌표 아래 값이 그래프에서 어떻게 됐나(붙음 초록 · 새로 노랑 · 그래프에 없음 빨강)")
+    coord_table.show(rows, indent="    ")
     if "--rows" in args:                         # 행별 판정 대장 — 행 전부 (B74 ④)
         _rows_table(rows)
     else:
@@ -72,18 +75,20 @@ def cmd_report(args):
 
 
 def _rows_table(rows):
+    """행 전부 — 행마다 결과의 색과 표시(B176 — `_screen.outcome` · 인입 값 줄과 같은 함수)."""
     print("\n  " + _screen.pad("locator", 18) + _screen.pad("필드", 12)
           + _screen.pad("표기 → canonical", 46) + _screen.pad("경로", 15)
-          + _screen.pad("판정", 11) + "큐")
+          + _screen.pad("판정", 11) + "표시 · 큐")
     for r in rows:
         left = (r.get("surface") or "—")
         right = r.get("canonical") or "—"
         nid = (r.get("node_id") or "")[:6]
         arrow = f"{left} → {right}" + (f" ({nid})" if nid else "")
-        print("  " + _screen.pad(r.get("locator") or "—", 18)
-              + _screen.pad(r.get("field") or "—", 12) + _screen.pad(_screen.cut(arrow, 44), 46)
-              + _screen.pad(r.get("path"), 15) + _screen.pad(r.get("verdict"), 11)
-              + (r.get("queue_kind") or ""))
+        _res, kind, mark = _screen.outcome(r)
+        print(_screen.paint("  " + _screen.pad(r.get("locator") or "—", 18)
+                            + _screen.pad(r.get("field") or "—", 12) + _screen.pad(_screen.cut(arrow, 44), 46)
+                            + _screen.pad(r.get("path"), 15) + _screen.pad(r.get("verdict"), 11)
+                            + " · ".join(x for x in (mark, r.get("queue_kind")) if x), kind))
 
 
 def _report_diff(args):

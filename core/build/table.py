@@ -119,6 +119,7 @@ class _Groups:
             self.hash = self.hash or doc_hash(self.env)
             self.led.save_partial(self.hash)
         ledger_mod.group_done({"이름": self.cur, "번째": self.no, "행": self.recs, "끝": last,
+                               "rows": self.led.rows[self.start:],     # 그룹의 대장 행 — 화면이 좌표마다 센다(B176 · 읽기만)
                                "요약": ledger_mod.group_summary(self.led.rows[self.start:]),
                                "누계": ledger_mod.group_summary(self.led.rows), "doc_id": self.led.doc_id})
         self.start, self.recs = len(self.led.rows), 0

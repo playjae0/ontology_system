@@ -259,11 +259,11 @@ def summary(rows):
 
 
 def group_summary(rows):
-    """**그룹 요약의 수**(B165 ①) — 대장 행에서 센다: 값 · 매칭 · 신규 · 불확실 · LLM 호출 · 골격 밖 공정(못 푼 좌표의 표기 종수)."""
+    """**그룹 요약의 수**(B165 ①) — 대장 행에서 센다: 값 · LLM 호출 · 골격 밖 좌표(못 푼 좌표의 표기 종수) · 값의 결과(붙음 ·
+    새로 · 보류)는 화면의 좌표 표가 같은 행에서 센다(B176 — `cli/coord_table`)."""
     from core.state.ids import norm
     s = summary(rows)
-    return {"값": s["값"], "매칭": sum(1 for r in rows if r.get("role") == "entity" and r.get("verdict") == "match"),
-            "신규": s["신규"], "불확실": s["불확실"], "호출": s["호출"],
+    return {"값": s["값"], "호출": s["호출"],
             "골격밖": len({norm(r["surface"]) for r in rows
                         if r.get("role") == "anchor" and r.get("verdict") == "orphan" and r.get("surface")})}
 

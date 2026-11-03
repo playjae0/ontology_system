@@ -31,6 +31,7 @@
   B165 ⓐ 표의 공정 그룹 경계마다 중간 저장 · 요약 손잡이(그룹 수만큼) · 확정 뒤 중간 저장 0 · 그래프가 나누지 않은 실행과 같다
        ⓑ 둘째 그룹에서 멈춤 → 시작 전 판 · 중간 저장 남음 → 다시 치면 첫 그룹은 재생 · 최종 그래프 같다
        ⓒ 원본 해시가 바뀌면 중간 저장을 쓰지 않는다 · `--step` 없으면 묻지 않는다
+  B176 ⓑ 그룹 손잡이의 좌표 표 — 좌표마다 붙음 + 새로 + 보류 = 대장의 그 좌표 값 행 수
   B167 ⓓ 표 `--extract-only`는 판정까지(쓰기 0 · 중간 저장) · 확정이 재생(지문 없는 옛 행도) · 그래프가 플래그 없는 실행과 같다
        ⓒ 판정과 확정 사이에 후보가 서면 그 값만 「근거 바뀜」으로 다시 묻는다
 """
@@ -650,8 +651,9 @@ def _stop165(info):
 _PF = "PFMEA01"
 RP.OFF, RP.COUNT_ALL = None, False                  # 앞 ⓓ의 `--no-replay`가 켠 끔을 기본으로(인입 한 번의 재생 규칙)
 _base165()
-_seen165 = []
-LG.ON_GROUP = lambda i: _seen165.append((i["이름"], i["끝"], store.path(LG.partial_name(i["doc_id"])).exists()))
+_seen165, _grows176 = [], []
+LG.ON_GROUP = lambda i: (_seen165.append((i["이름"], i["끝"], store.path(LG.partial_name(i["doc_id"])).exists())),
+                         _grows176.append(list(i["rows"])))
 run_document(_pf165())
 LG.ON_GROUP = None
 _wg165, _left165 = _world165(), store.path(LG.partial_name(_PF)).exists()
@@ -663,6 +665,31 @@ show("ⓐ 그룹 경계마다 중간 저장 · 요약 손잡이가 그룹 수만
      [(n, e) for n, e, _p in _seen165] == [("조립", False), ("전극", True)] and _seen165[0][2]
      and not _left165 and _wg165 == _world165(),
      f"손잡이 {_seen165} · 확정 뒤 중간 저장 {_left165}")
+
+# B176 ⓑ 그룹 손잡이의 좌표 표 — 좌표마다 「붙음 + 새로 + 보류 (+ 노드 아님)」 = 대장에서 그 좌표 위치들의 값 행 수(창작 표본 — 같음만)
+from cli import coord_table as CT176                                                  # noqa: E402
+
+
+def _vals176(rows, name):
+    """대장에서 따로 센다 — 그 좌표(해소 노드 이름 · 못 찾았으면 표기)에 선 위치의 값 행 수."""
+    locs = {r.get("locator") for r in rows if r.get("role") == "anchor"
+            and (r.get("canonical") if r.get("node_id") else r.get("surface")) == name}
+    return sum(1 for r in rows if r.get("role") == "entity" and r.get("locator") in locs)
+
+
+_ct176 = [(c["좌표"], c["붙음"] + c["새로"] + c["보류"], c["노드 아님"], _vals176(g, c["좌표"]))
+          for g in _grows176 for c in CT176.table(g)]
+# 같은 노드에 상위 공정으로 붙은 위치(저해상도)가 섞여도 한 줄 — 첫 그룹에서 행 둘 이상인 좌표의 한 위치만 저해상도로 바꾼 사본(리뷰 고침 · PR #131)
+_c2 = next(c for c in CT176.table(_grows176[0]) if c["찾음"] and c["행"] >= 2)
+_l2 = next(r.get("locator") for r in _grows176[0] if r.get("role") == "anchor" and r.get("canonical") == _c2["좌표"])
+_one176 = [c for c in CT176.table([dict(r, verdict="lowres") if r.get("role") == "anchor" and r.get("locator") == _l2 else r
+                                   for r in _grows176[0]]) if c["좌표"] == _c2["좌표"]]
+show("B176 ⓑ 좌표 표(mock PFMEA 두 그룹 사본 · 그룹 끝) — 좌표마다 붙음 + 새로 + 보류 = 대장의 그 좌표 값 행 수(노드 아님 0) · "
+     "저해상도 위치가 섞여도 좌표 한 줄",
+     len(_grows176) == 2 and _ct176 and all(s == n and e == 0 for _c, s, e, n in _ct176)
+     and all(len(g) for g in _grows176) and len(_one176) == 1 and _one176[0]["저해상도"] == 1
+     and _one176[0]["행"] == _c2["행"],
+     f"{_ct176[:4]} · 저해상도 섞음 {[(c['좌표'], c['행'], c['저해상도']) for c in _one176]}")
 
 _base165()
 _pre165 = _world165()
