@@ -7,7 +7,7 @@
   },
   "test_places": {
    "n": 32,
-   "secs": 8
+   "secs": 10
   },
   "test_g3": {
    "n": 88,
@@ -15,63 +15,63 @@
   },
   "test_query": {
    "n": 131,
-   "secs": 18
+   "secs": 20
   },
   "test_ops": {
    "n": 84,
-   "secs": 8
+   "secs": 9
   },
   "test_intake": {
    "n": 100,
-   "secs": 18
+   "secs": 22
   },
   "test_ingest_view": {
-   "n": 78,
-   "secs": 43
+   "n": 77,
+   "secs": 53
   },
   "test_coord": {
    "n": 49,
-   "secs": 13
+   "secs": 17
   },
   "test_catalog": {
    "n": 81,
-   "secs": 26
+   "secs": 35
   },
   "test_safety": {
    "n": 36,
-   "secs": 67
+   "secs": 88
   },
   "test_judge": {
    "n": 84,
-   "secs": 8
+   "secs": 15
   },
   "test_build": {
-   "n": 79,
-   "secs": 23
+   "n": 80,
+   "secs": 32
   },
   "test_rebuild": {
-   "n": 48,
-   "secs": 36
+   "n": 49,
+   "secs": 43
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 10
   },
   "test_structure": {
    "n": 126,
-   "secs": 25
+   "secs": 36
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 23
+   "secs": 26
   },
   "test_g6_close": {
    "n": 32,
-   "secs": 32
+   "secs": 40
   },
   "test_contract": {
    "n": 76,
-   "secs": 20
+   "secs": 27
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,23 +83,23 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 3
+   "secs": 5
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 3
+   "secs": 4
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 3
+   "secs": 4
   },
   "test_p2": {
    "n": 69,
-   "secs": 6
+   "secs": 7
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 7
+   "secs": 8
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,15 +107,15 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 3
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
@@ -123,11 +123,11 @@
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 3
+   "secs": 4
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 11
+   "secs": 15
   },
   "test_2a_gateway": {
    "n": 75,
@@ -139,11 +139,11 @@
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 0
+   "secs": 1
   },
   "test_site": {
    "n": 56,
-   "secs": 24
+   "secs": 30
   }
  },
  "log": [
@@ -721,6 +721,30 @@
    "suite": "test_catalog",
    "from": 78,
    "to": 81,
+   "why": ""
+  },
+  {
+   "at": "2026-11-03",
+   "head": "82fc358",
+   "suite": "test_ingest_view",
+   "from": 78,
+   "to": 77,
+   "why": "B176 값 줄 화면 글자 어서션 둘 지움(+1 색 함수 ⓐ · 순 -1)"
+  },
+  {
+   "at": "2026-11-03",
+   "head": "82fc358",
+   "suite": "test_build",
+   "from": 79,
+   "to": 80,
+   "why": ""
+  },
+  {
+   "at": "2026-11-03",
+   "head": "82fc358",
+   "suite": "test_rebuild",
+   "from": 48,
+   "to": 49,
    "why": ""
   }
  ]
