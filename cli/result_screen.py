@@ -24,6 +24,10 @@ def lines(res):
            + (f"({_kinds(hold)})" if hold else "")]
     if res.get("관계 버림"):
         out.append("     관계 버림(관문) — " + " · ".join(f"{t} {n:,}" for t, n in res["관계 버림"]))
+    if res.get("반대 방향 공존"):                    # 사실 관계의 반대 방향이 함께 섰다(B175 — 구조 관계는 큐 direction_conflict)
+        cx = res["반대 방향 공존"]
+        out.append(f"     반대 방향 공존 {len(cx):,}쌍 — " + " · ".join(f"{x['src']} -{x['rel']}-> {x['dst']}" for x in cx[:3])
+                   + (" …" if len(cx) > 3 else "") + f" · 전부 python run.py show report {res['doc_id']} --json")
     for lay, d in sorted((res.get("층") or {}).items()):
         out.append(f"     층 {lay} — 노드 {d['노드']:+,}(auto {d['auto']:+,}) · 엣지 {d['엣지']:+,}")
     out.append(f"     큐 — 이번 실행 {_kinds(res.get('큐 이번'))} · 이전 실행이 남긴 것 "

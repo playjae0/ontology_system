@@ -570,6 +570,61 @@ show("③ validator 결함 여러 건이 각각 한 줄이 된다 (합쳐 자르
                            "detail": {"defects": ["A", "B", "C"]}}])) == 3)
 (_P.parsed() / "CP03_bad.json").unlink(missing_ok=True)
 
+# ============================================================ B175 같은 두 노드 · 같은 관계의 반대 방향
+print("\n■ B175 반대 방향 엣지 — 구조 관계는 보류(먼저 선 것을 둔다) · 사실 관계는 공존 · 층 전부 · 대칭은 그대로")
+from core.build import entry as _E175, gate as _G175          # noqa: E402
+_cfg175 = json.loads(json.dumps(load_config("process")))      # 시험 안 config — 같은 카테고리 쌍의 구조 · 사실 관계(창작)
+_cfg175["relations"] = list(_cfg175["relations"]) + ["causes"]
+_cfg175["relation_patterns"] = list(_cfg175["relation_patterns"]) + [
+    {"src": "Unit", "rel": "part_of", "dst": "Unit", "symmetric": False, "정의문": "(시험) 설비가 설비에 속한다"},
+    {"src": "Unit", "rel": "causes", "dst": "Unit", "symmetric": False, "정의문": "(시험) 설비가 설비의 원인이다"}]
+_g175 = open_graph("process")
+_u = {k: _g175.add_node(f"노칭::B175 {k}", "Unit", "auto", provenance=[f"B175#{k}"]) for k in "ABCD"}
+
+
+def _ce175(a, rel, b, doc, prov):
+    return _G175.commit_edge(_g175, _u[a], rel, _u[b], _cfg175, _G175.PATH_SCHEMA, [prov], doc,
+                             src_graph=_g175, dst_graph=_g175)
+
+
+def _dc175(doc):
+    return [x for x in store.read(store.QUEUE, []) if x["kind"] == "direction_conflict" and x["doc_id"] == doc]
+
+
+_va = (_ce175("A", "part_of", "B", "B175A", "B175A#1"), _ce175("B", "part_of", "A", "B175A", "B175A#2"))
+_qa = _dc175("B175A")
+show("B175 ⓐ 구조 관계(part_of — 위아래 쌍의 관계) — 반대 방향이 경로 ②로 오면 커밋 0 · direction_conflict 1 · 먼저 선 엣지의 "
+     "출처가 항목에 · 먼저 선 엣지는 그대로",
+     _va == (_G175.COMMIT, _G175.DIRECTION_CONFLICT) and len(_qa) == 1
+     and _qa[0]["payload"]["opposite"]["provenance"] == ["B175A#1"] and _qa[0]["payload"]["provenance"] == ["B175A#2"]
+     and _g175.edge(_u["A"], "part_of", _u["B"]) and not _g175.edge(_u["B"], "part_of", _u["A"]),
+     f"{_va} · 큐 {len(_qa)}")
+_k175 = len(_G175.COEXIST)
+_E175._RUN.update(coex0=_k175, q0=store.read(store.QUEUE, []), layers0={}, env={},
+                  rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []))
+_vb = (_ce175("A", "causes", "B", "B175B", "B175B#1"), _ce175("B", "causes", "A", "B175B", "B175B#2"))
+_rb = _E175._result(Builder(_g175, _cfg175, None, "B175B", "process"), "B175B").get("반대 방향 공존") or []
+show("B175 ⓑ 사실 관계(causes) — 반대 방향이 오면 둘 다 선다 · 문서 끝 결과의 「반대 방향 공존」이 그 한 쌍(관계 · 두 출처)",
+     _vb == (_G175.COMMIT, _G175.COMMIT) and not _dc175("B175B") and len(_rb) == 1 and _rb[0]["rel"] == "causes"
+     and _rb[0]["new"]["provenance"] == ["B175B#2"] and _rb[0]["first"]["provenance"] == ["B175B#1"],
+     str(_rb)[:160])
+_gq175 = open_graph("quality")                                # 반대 엣지가 다른 층 파일에(이 빌드가 연 그래프가 아니다)
+_gq175.add_edge(_u["C"], "part_of", _u["D"], "auto", ["B175C#1"])
+_gq175.add_edge(_u["C"], "causes", _u["D"], "auto", ["B175C#2"])
+_gq175.save()
+_k175 = len(_G175.COEXIST)
+_vc = (_ce175("D", "part_of", "C", "B175C", "B175C#3"), _ce175("D", "causes", "C", "B175C", "B175C#4"))
+_qc, _cc = _dc175("B175C"), _G175.COEXIST[_k175:]
+show("B175 ⓒ 반대 엣지가 다른 층 그래프에 있어도 같다 — 구조는 보류(먼저 선 엣지의 층) · 사실은 공존(층 전부)",
+     _vc == (_G175.DIRECTION_CONFLICT, _G175.COMMIT) and len(_qc) == 1
+     and _qc[0]["payload"]["opposite"]["layer"] == "quality" and len(_cc) == 1 and _cc[0]["first"]["layer"] == "quality",
+     f"{_vc} · 큐 {len(_qc)} · 공존 {len(_cc)}")
+_k175, _q175 = len(_G175.COEXIST), len(store.read(store.QUEUE, []))
+_vd = (_ce175("A", "mirrors", "B", "B175D", "B175D#1"), _ce175("B", "mirrors", "A", "B175D", "B175D#2"))
+show("B175 ⓓ 대칭 관계(mirrors)는 지금 그대로 — 양방향 커밋 · 큐 0 · 공존 0",
+     _vd == (_G175.COMMIT, _G175.COMMIT) and len(_G175.COEXIST) == _k175 and len(store.read(store.QUEUE, [])) == _q175,
+     str(_vd))
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

@@ -17,6 +17,9 @@
 분기 (CH3A 3.4):
     패턴 안                  → 커밋
     패턴과 방향만 반대        → 커밋하지 않고 `direction_conflict` 큐 (**자동으로 뒤집지 않는다**)
+    같은 두 노드에 반대 방향 엣지가 이미 있음(층 전부 · 대칭 관계 밖 — B175)
+                              → 위아래 쌍의 관계(구조)면 커밋하지 않고 `direction_conflict` 큐(먼저 선 것을 둔다 · 두 출처)
+                                · 그 밖(사실)은 커밋하고 문서 끝 결과에 「반대 방향 공존」
     관계는 선언됐으나 패턴 밖 → 거부 + 사유 기록 (`invalid_pattern`)
     관계 자체가 미선언        → 발생 불가(③이 닫힌 목록 선택) — 방어적으로 거부 + 기록
     동종 쌍 방향성 관계의 ③   → 커밋하지 않고 `direction_unverifiable` 큐 (근거 청크 동봉)
@@ -100,21 +103,64 @@ def _categories(n):
         return {n["category"]}
 
 
-def _judge_also(s, rel, d, cfg, path, verdict):
-    """**겸을 인정한다**(B90 ③) — 주 카테고리 쌍이 통과하지 못했을 때만 겸 조합을 본다.
+def _judge_also(s, rel, d, cfg, path, verdict, pat=None):
+    """**겸을 인정한다**(B90 ③) — 주 카테고리 쌍이 통과하지 못했을 때만 겸 조합을 본다 · `(분기, 패턴)`.
 
     끝점의 카테고리 집합 = 주 ∪ 겸이고, 어느 조합이든 패턴에 있으면 통과다(스테이션
     노드에 `구성품 part_of 설비`가 바로 붙는다). 겸이 없으면 주 판정 그대로다 — 한 조합뿐이다.
     """
     sc, dc = _categories(s), _categories(d)
     if len(sc) == 1 and len(dc) == 1:
-        return verdict
+        return verdict, pat
     for a in sorted(sc):
         for b in sorted(dc):
-            if (a, b) != (s["category"], d["category"]) and \
-                    judge(a, rel, b, cfg, path)[0] == COMMIT:
-                return COMMIT
-    return verdict
+            if (a, b) != (s["category"], d["category"]):
+                v, p = judge(a, rel, b, cfg, path)
+                if v == COMMIT:
+                    return COMMIT, p
+    return verdict, pat
+
+
+#: 이번 실행의 **반대 방향 공존**(B175) — 사실 관계의 반대 방향이 함께 선 쌍 · 문서 끝 결과가 그 문서 몫을 읽는다(`entry._result`)
+COEXIST = []
+#: 반대 방향 판정의 범위 — 이 실행이 쓰는 그래프(층 → 살아 있는 사본) · 나머지 층은 읽기 전용 사본(`GraphStore.snapshot`)
+_LIVE = {}
+#: 그래프마다 엣지 색인 — 층 → `{g, n, map}`(엣지 목록은 빌드 동안 뒤에만 붙는다 — 늘어난 몫만 더한다)
+_IDX = {}
+
+
+def _world(*graphs):
+    """**층 전부**(엣지는 문서 층에 산다 — B100) — 넘겨받은 그래프 · 이 실행이 쓰던 사본(그 뒤로 파일을 쓴 자리가 없을 때) ·
+    나머지는 읽기 전용 사본."""
+    from router import discover
+    from core.graph import GraphStore
+    out = {g.layer: g for g in graphs if g is not None}
+    _LIVE.update(out)
+    for lay in discover():
+        if lay not in out:
+            g = _LIVE.get(lay)
+            out[lay] = g if g is not None and g.current() else GraphStore.snapshot(lay)
+    return out
+
+
+def _edge_map(g):
+    ix = _IDX.get(g.layer)
+    if ix is None or ix["g"] is not g or ix["n"] > len(g.edges):
+        ix = _IDX[g.layer] = {"g": g, "n": 0, "map": {}}
+    for e in g.edges[ix["n"]:]:
+        ix["map"][(e["src"], e["rel"], e["dst"])] = e
+    ix["n"] = len(g.edges)
+    return ix["map"]
+
+
+def _opposite(world, src, rel, dst):
+    """같은 두 노드 · 같은 관계의 **반대 방향** 엣지 `(층, 엣지)` — 사람이 지운 엣지는 아니다 · 없으면 None."""
+    from core.graph import STATUS_DELETED
+    for lay in sorted(world):
+        e = _edge_map(world[lay]).get((dst, rel, src))
+        if e is not None and e.get("status") != STATUS_DELETED:
+            return lay, e
+    return None
 
 
 #: 거부의 출처 — 경로 → 이름(B118 ⑥ 거부 묶음의 칸 · 연결 보강은 `source`로 준다)
@@ -149,11 +195,30 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
         log_reject(rel, "?" if not s else s["category"], "?" if not d else d["category"],
                    UNRESOLVED_ENDPOINT, path, doc_id, source, cfg.get("layer"))
         return UNRESOLVED_ENDPOINT
-    verdict, _ = judge(s["category"], rel, d["category"], cfg, path)
+    verdict, pat = judge(s["category"], rel, d["category"], cfg, path)
     if verdict != COMMIT:
-        verdict = _judge_also(s, rel, d, cfg, path, verdict)
+        verdict, pat = _judge_also(s, rel, d, cfg, path, verdict, pat)
 
     if verdict == COMMIT:
+        hit = None
+        if not (pat or {}).get("symmetric") and graph.edge(src, rel, dst) is None:   # 새 엣지일 때만(같은 방향 중복 · 툼스톤은 그대로)
+            hit = _opposite(_world(graph, src_graph, dst_graph), src, rel, dst)
+        if hit:
+            from core.state import catalog
+            first = {"layer": hit[0], "status": hit[1].get("status"), "provenance": list(hit[1].get("provenance") or [])}
+            if rel in catalog.structural_relations():
+                store.enqueue(DIRECTION_CONFLICT,
+                              f"{s['category']} -{rel}-> {d['category']}: 같은 두 노드에 반대 방향이 먼저 있다(구조 관계 — "
+                              f"먼저 선 것을 둔다 · 자동 반전 없음)", doc_id,
+                              {"src": src, "rel": rel, "dst": dst,
+                               "src_canonical": s["canonical"], "dst_canonical": d["canonical"],
+                               "src_category": s["category"], "dst_category": d["category"],
+                               "path": path, "evidence_chunk": evidence_chunk,
+                               "provenance": provenance, "opposite": first})
+                return DIRECTION_CONFLICT
+            COEXIST.append({"doc_id": doc_id, "rel": rel, "src": s["canonical"], "dst": d["canonical"],
+                            "new": {"layer": graph.layer, "path": path, "provenance": list(provenance or [])},
+                            "first": first})
         # 이 관문을 지난 엣지는 전부 문서·규칙 유래다 — status는 `auto` 하나다.
         graph.add_edge(src, rel, dst, "auto", provenance)
         return COMMIT

@@ -304,10 +304,6 @@ class _Index:
         return self
 
 
-#: 이 빌드가 열지 않은 층의 **읽기 전용 사본**(B144 ③) — 층 → (파일 판, 그래프) · 판(`GraphStore.stamp`)이 같으면 다시 읽지 않는다
-_SNAP = {}
-
-
 class _Edges:
     """**소유 엣지 색인**(B144 ③) — 자식 노드 id → [(소유자 id, 그래프)]. 엣지는 문서 층에 서므로 층 전부를 본다(B100): 이 빌드가
     연 그래프(엣지가 늘면 그 엣지만 더한다) + 열지 않은 층의 읽기 전용 사본. 소유 엣지 = 두 끝 카테고리의 카테고리쌍 매핑이 정한
@@ -325,11 +321,7 @@ class _Edges:
             self.others = {}
             for lay in discover():
                 if lay not in mine:
-                    gs = GraphStore.for_layer(lay)
-                    st = gs.stamp()
-                    if _SNAP.get(lay, (None,))[0] != st or st is None:
-                        _SNAP[lay] = (st, gs.load())
-                    self.others[lay] = _SNAP[lay][1]
+                    self.others[lay] = GraphStore.snapshot(lay)      # 읽기 전용 사본(B144 ③ — 한 자리)
         return [mine[k] for k in sorted(mine)] + [g for k, g in sorted(self.others.items()) if k not in mine]
 
     def sync(self):

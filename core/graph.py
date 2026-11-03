@@ -53,6 +53,8 @@ ALARM_BUILD_SECONDS = 30.0
 
 # 엣지 status 어휘 (구현문서 §2.3)
 STATUS_DELETED = "deleted_by_user"
+#: 읽기 전용 사본 — 파일 자리 → (판, 그래프) · `GraphStore.snapshot`
+_SNAP = {}
 
 
 def _default_data_dir() -> Path:
@@ -75,12 +77,24 @@ class GraphStore:
         base = Path(data_dir) if data_dir else _default_data_dir()
         return cls(base / layer / cls.FILENAME, layer)
 
+    @classmethod
+    def snapshot(cls, layer):
+        """**읽기 전용 사본**(B144 ③ · B175) — 이 빌드가 열지 않은 층 · 파일 판(`stamp`)이 같으면 다시 읽지 않는다 · 고치지 않는다
+        (쓰는 자리는 연 그래프 하나 — 한 자리 · `scope_path` 소유 엣지 색인 · `gate` 반대 방향 판정이 같이 쓴다)."""
+        gs = cls.for_layer(layer)
+        st, key = gs.stamp(), str(gs._path)
+        hit = _SNAP.get(key)
+        if hit is None or hit[0] != st or st is None:
+            _SNAP[key] = hit = (st, gs.load())
+        return hit[1]
+
     def __init__(self, path, layer):
         self._path = Path(path)
         self.layer = layer
         self.nodes: dict[str, dict] = {}
         self.edges: list[dict] = []
         self._tombstones: set[tuple[str, str, str]] = set()
+        self._loaded = None                     # 이 사본이 읽거나 쓴 파일 판 — `current`(B175)
         self._build_started: float | None = None
         self.metrics: dict = {}
 
@@ -115,7 +129,12 @@ class GraphStore:
         else:
             self.nodes, self.edges = {}, []
         self._reindex_tombstones()
+        self._loaded = self.stamp()
         return self
+
+    def current(self):
+        """이 사본 뒤로 파일을 쓴 자리가 없는가 — 읽은(쓴) 판과 지금 판이 같다(되돌림 · 다른 사본의 저장이면 아니다 · B175)."""
+        return self._loaded is not None and self._loaded == self.stamp()
 
     def save(self):
         """원자적 쓰기 + 파일 락으로 저장한다 (문서 7 §7.1).
@@ -125,8 +144,10 @@ class GraphStore:
         같은 방어를 두 벌 쓰면 한쪽만 고쳐지는 날이 온다.
         """
         from core.state import store
-        return store.atomic_write_bytes(
+        out = store.atomic_write_bytes(
             self._path, _dumps({"nodes": self.nodes, "edges": self.edges}))
+        self._loaded = self.stamp()
+        return out
 
     def _reindex_tombstones(self):
         self._tombstones = {
@@ -175,6 +196,10 @@ class GraphStore:
     # ---------- 읽기 ----------
     def get(self, nid):
         return self.nodes.get(nid)
+
+    def edge(self, src, rel, dst):
+        """그 방향 엣지(사람이 지운 툼스톤 포함) — 없으면 None."""
+        return next((e for e in self.edges if e["src"] == src and e["rel"] == rel and e["dst"] == dst), None)
 
 
     def neighbors(self, ids, traverse_spec, trace=None):
