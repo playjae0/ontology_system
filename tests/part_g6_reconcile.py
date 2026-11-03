@@ -21,6 +21,7 @@
   B149 진단 — ⓐ 문서 좌표 없음(원인 하나 · 합 = 보류 · 고아 행) ⓑ 구간 좌표 없음(다른 시트의 가장 위 제목) ⓒ 소속 이름 없음(= 고아 큐
      항목 수) ⓓ 목차 나무(문제 가지만 · 보류 수 = 대장 · -v 전부) ⓔ 표(골격 밖 좌표 표기 한 줄 · 좌표 표기 목록) ⓕ 인입 끝 = 같은 함수
      ⓖ 읽기 전용(상태 루트 바이트 같음 · LLM 0)
+  B176 ⓒ 좌표를 못 찾은 행이 있는 사본의 좌표 표 — 그 좌표 줄은 못 찾음(빨강) · 그 행의 값은 전부 보류
 """
 from __future__ import annotations
 
@@ -490,6 +491,15 @@ show("ⓔ 표 — 골격 밖 좌표 표기 하나가 한 줄(못 붙은 행 = �
      and next(g["행"] for g in _ct if g["못 찾은 것"] == "좌표 표기 '없는공정B149'") == _nt149 > 0
      and len(_lt) == 1 and "· 레코드 1 ·" in _lt[0] and "좌표 표기 목록" in RCZ.tree_lines(_mt149)[1],
      f"원인 {[(g['원인'], g['못 찾은 것'], g['행']) for g in _ct]} · {(_lt or [''])[0].strip()}")
+# B176 ⓒ 같은 사본의 좌표 표(`show report` · 인입 그룹 끝과 같은 함수) — 그 좌표 줄은 못 찾음 · 그 행의 값은 전부 보류
+from cli import _screen as SC176, coord_table as CT176  # noqa: E402
+_c176 = next((c for c in CT176.table(_rows_t) if c["좌표"] == "없는공정B149"), None)
+_locs176 = {r.get("locator") for r in _rows_t if r.get("role") == "anchor" and r.get("surface") == "없는공정B149"}
+_n176 = sum(1 for r in _rows_t if r.get("role") == "entity" and r.get("locator") in _locs176)
+show("B176 ⓒ 좌표를 못 찾은 행이 있는 사본 — 그 좌표 줄이 「못 찾음」(사유 목록 밖) · 그 행의 값이 전부 보류로 센다",
+     _c176 is not None and _c176["찾음"] is False and _c176["행"] == 1 and _c176["보류"] == _c176["값"] == _n176 > 0
+     and SC176.KINDS[CT176.line(_c176)[1]] == ("red",),
+     str(_c176))
 
 # ────────────────────────────────────────────────────────────── B152 진단 화면의 수 단위
 print("\n■ B152 — 수의 단위는 못 붙은 행(좌표 행 제외 · 맞춤표 행 종류) · 머리 · 원인 줄 · 목차 나무가 같은 행 집합")

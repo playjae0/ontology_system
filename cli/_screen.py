@@ -25,15 +25,26 @@ _C = {"reset": "\033[0m", "bold": "\033[1m", "reverse": "\033[7m",
       "red": "\033[31m", "yellow": "\033[33m", "green": "\033[32m",
       "cyan": "\033[36m", "magenta": "\033[35m", "dim": "\033[2m"}
 
-#: **특이점 표** — verdict·사건 이름 → 색. 목록에 없는 것은 **칠하지 않는다**.
+#: 표시 칸이 이 값이면 그 행의 보류 사유(대장 `hold` · 사유 표 — `result.hold_reason` · 없으면 큐 종류)
+HOLD_MARK = "보류 사유"
+#: 새로 생김 중 검토 큐에 든 값의 표시 — 좌표 줄이 「새로 b(검토 c)」로 센다
+REVIEW = "검토"
+#: **판정 결과 표**(B176 — 사용자 확정 2026-11-03) — 대장 verdict → (그 값이 그래프에서 어떻게 됐나, 색, 표시). 색은 판정
+#: 이름이 아니라 **결과 하나**를 말한다: 붙음 초록 · 새로 생김 노랑 · 그래프에 없음 빨강 · 노드 아님 흐리게 · 결과 없음은 칠하지
+#: 않는다. 대장 `VERDICTS` 전부가 여기 있다(시험이 잡는다) · 읽는 손은 `outcome` 하나.
+OUTCOME = {
+    "anchor": ("붙음", "green", None), "match": ("붙음", "green", None), "attached": ("붙음", "green", None),
+    "lowres": ("붙음", "green", "저해상도"),                  # 좌표가 상위 공정에만 — 그래도 그래프에 붙었다
+    "new": ("새로 생김", "yellow", None),
+    "uncertain": ("새로 생김", "yellow", REVIEW),             # 새 노드를 만들고 검토 큐(uncertain_match)
+    "orphan": ("그래프에 없음", "red", HOLD_MARK), "gate_reject": ("그래프에 없음", "red", HOLD_MARK),
+    "mention": ("노드 아님", "dim", "관련 링크"),             # 다른 공정 언급(B113 ①)
+    "blank": (None, None, None), "pending": (None, None, None)}
+
+#: **특이점 표** — verdict·사건 이름 → 색. 목록에 없는 것은 **칠하지 않는다** · 판정 이름의 색은 위 결과 표에서 온다(B176).
 KINDS = {
-    "new": ("yellow",),                      # 새로 생겼다 — 사람이 볼 자리
-    "uncertain": ("red",),
-    "lowres": ("red",),
-    "orphan": ("red", "bold"),               # 좌표 미해소 — 붙지 못했다
-    "gate_reject": ("red", "bold"),
+    **{v: (c,) for v, (_r, c, _m) in OUTCOME.items() if c},
     "fail": ("red", "bold"),                 # [FAIL] · [결함] · 실패 —
-    "match": ("green",),                     # LLM이 붙인 값
     "banner": ("reverse",),                  # 중간·끝 요약 한 줄
     "dim": ("dim",),
     # ── 세 층(B98 ⑤ · 사용자 확정 2026-10-02) — **빨강·노랑은 위의 특이점 전용**이다
@@ -68,6 +79,20 @@ def paint(text, kind=None, *, stream=None):
     if not parts or not enabled(stream):
         return text
     return "".join(_C[p] for p in parts) + text + _C["reset"]
+
+
+def outcome(row):
+    """대장 행 하나 → `(결과, 색 이름, 표시)` — **색 판단은 이 함수 하나**다(인입 값 줄 · 그룹 끝 좌표 줄 · `show report` 좌표
+    표 · `--rows` — B176). 새 판정 0 — 이미 적힌 `verdict` · `hold` · `queue_kind`를 읽는다. 값 행의 `pending`은 좌표 미해소로
+    만들지 않은 값이라 그래프에 없음이다(보류 사유 표와 같은 결 · D-260) · 표 밖 판정은 결과 없음(칠하지 않는다)."""
+    v = row.get("verdict")
+    if v == "pending" and row.get("role") == "entity":
+        v = "orphan"
+    res, color, mark = OUTCOME.get(v, (None, None, None))
+    if mark == HOLD_MARK:
+        from core.build.result import hold_reason
+        mark = hold_reason(row) or row.get("queue_kind")
+    return res, (v if color else None), mark
 
 
 def banner(text, *, stream=None):

@@ -175,17 +175,16 @@ def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False, ask_
 
 
 # ── 값 줄 (B81 ①) ────────────────────────────────────────────────────────
-#: verdict → 기호. **닫힌 표**이고 색은 특이점에만 붙는다(B81 ③ · `_screen.KINDS`).
-MARKS = {"match": "✓", "attached": "✓", "new": "+", "uncertain": "?", "lowres": "?",
-         "orphan": "✗", "gate_reject": "✗", "anchor": "·", "pending": "·"}
+#: 결과(`_screen.outcome` — 그 값이 그래프에서 어떻게 됐나 · B176) → 기호. 결과 없음은 `·`.
+MARKS = {"붙음": "✓", "새로 생김": "+", "그래프에 없음": "✗", "노드 아님": "↗"}
 
 #: 경로 → 짧은 이름. 화면이 경로를 다시 해석하지 않는다(대장의 값 그대로).
 PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "path_compat": "경로", "scope+judge": "스코프",
               "embedding+judge": "임베딩", "overlap+judge": "겹침", "self_coord": "자기 좌표",
               "memo": "기억", "replay": "재생", "none": "—"}
 
-#: 줄을 찍는 자리 — **판단이 갈린 값**이다(사용자 확정 2026-09-22).
-LOUD_VERDICTS = ("new", "uncertain", "orphan", "lowres", "gate_reject", "mention")   # mention — 다른 공정 언급(B113 ①)
+#: 줄을 찍는 결과 — 새로 생김(노랑) · 그래프에 없음(빨강) · 붙음은 줄 대신 그룹 끝 좌표 줄의 수(B176 · `-v`면 전부)
+LOUD = ("새로 생김", "그래프에 없음")
 
 #: 이번 문서의 집계 — 진행 줄이 이것을 함께 낸다(대장에서 센다 · 새 계산 0). `값` = 처리한 값(개체 행 — B142 ⑥)
 TALLY = {"값": 0, "사전": 0, "NEW": 0, "불확실": 0, "큐": 0, "orphan": 0}
@@ -194,8 +193,8 @@ JUDGE = "판정"
 
 
 def _loud(row):
-    """이 행을 화면에 한 줄로 낼 것인가 — LLM이 든 경로거나 특이 verdict."""
-    return (row.get("verdict") in LOUD_VERDICTS
+    """이 행을 화면에 한 줄로 낼 것인가 — LLM이 든 경로거나 결과가 노랑 · 빨강(B176 — `_screen.outcome`)."""
+    return (_screen.outcome(row)[0] in LOUD
             or (row.get("llm") or {}).get("calls", 0) > 0
             or "judge" in str(row.get("path") or ""))
 
@@ -214,11 +213,12 @@ def value_line(row):
             if row.get("target") and row.get("surface") and row["target"] != row["surface"]
             else (row.get("target") or row.get("canonical") or row.get("surface") or "—"))
     q = f"   → 큐 {row['queue_kind']}" if row.get("queue_kind") else ""
+    res, kind, mark = _screen.outcome(row)                   # 색 · 기호 · 표시는 결과 하나(B176)
     if v == "mention":                                       # 다른 공정 이름 — 노드 0 · 관련 링크(B113 ①)
         return _screen.paint(f"    ↗ {row.get('surface')} → 관련 링크 {row.get('canonical')} "
-                             f"(다른 공정 언급 — 노드 0)", None)
-    text = f"    {MARKS.get(v, '·')} {name:<28} {v:<10} {how}{q}"
-    return _screen.paint(text, v if v in _screen.KINDS else None)
+                             f"(다른 공정 언급 — 노드 0)", kind)
+    text = f"    {MARKS.get(res, '·')} {name:<28} {v:<10} {how}{q}" + (f"   [{mark}]" if mark else "")
+    return _screen.paint(text, kind)
 
 
 def row_printer(env=None, stage=None):
@@ -269,7 +269,7 @@ def row_printer(env=None, stage=None):
             TALLY["사전"] += 1
         if row.get("verdict") == "new":
             TALLY["NEW"] += 1
-        if row.get("verdict") in ("uncertain", "lowres"):
+        if row.get("verdict") == "uncertain":         # 저해상도는 붙음이다(B176 — 결과 표)
             TALLY["불확실"] += 1
         if row.get("verdict") == "orphan":
             TALLY["orphan"] += 1
@@ -392,7 +392,9 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, 
         where += f" · 가까움({near.get('by')}) {near['canonical']}"
     if not conf and row.get("emb_top") is not None:          # 임베딩 최고 유사도(B99 ⑨ — LLM 확신이 없을 때 그 칸에)
         conf = f"e{row['emb_top']:.2f}"
-    k = v if v in _screen.KINDS else None
+    res, k, mark = _screen.outcome(row)            # 색 · 기호 · 표시는 결과 하나(B176)
+    if mark and v != "mention":                    # 표시(검토 · 저해상도 · 보류 사유)는 노드/큐 칸 앞에
+        where = f"{mark} · {where}" if where else mark
     if v in ("mention", "blank"):                  # 노드 0 — 표기 그대로 · 관련 링크 대상(B113 ①②)
         name, how = row.get("surface") or "—", ("다른 공정" if v == "mention" else "빈칸 표시")
         where = f"관련 링크 {row.get('canonical')}" if v == "mention" else "개체 0"
@@ -404,7 +406,7 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, 
     # 붙은 자리 = 관계 상대(방식) — 첫 연결 · 둘 이상이면 +n(B123 ② — 칸만 봐도 관계가 보인다)
     stuck = (f"{att[0]['rel']} {att[0]['other']}({att[0]['path']})" + (f" +{len(att) - 1}" if len(att) > 1 else "")
              if att else "")
-    cells = [MARKS.get(v, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
+    cells = [MARKS.get(res, "·"), sheet, end, (roles or {}).get(row.get("locator")) or "", name,
              row.get("field") or "", v, how, conf, bel, stuck, where]
     kinds = [k, "aux", "aux", "aux", k, "aux", k, "aux", "aux", None, None, "aux"]
     if secs is not None:
@@ -667,11 +669,14 @@ def group_gate(step=False):
     `--step`(대화형)이면 그룹 경계에서 묻는다 — `q`는 사람의 멈춤(`Stopped` — 되돌림 · 중간 저장은 남는다 · 다시 치면 끝난
     그룹은 재생). 마지막 그룹 · 비대화형 · `--step` 없음은 묻지 않는다."""
     def on_group(info):
-        s, t = info["요약"], info["누계"]
+        from cli import coord_table
+        s, t, rows = info["요약"], info["누계"], info.get("rows") or []
+        o = coord_table.totals(rows)                 # 값의 결과 — 아래 좌표 줄과 같은 셈(B176)
         _screen.close()
-        _screen.say(f"   [그룹 {info['번째']}] {info['이름']} — 행 {info['행']:,} · 값 {s['값']:,} · 매칭 {s['매칭']:,} · "
-                    f"신규 {s['신규']:,} · 불확실 {s['불확실']:,} · LLM 호출 {s['호출']:,} · 골격 밖 공정 {s['골격밖']:,} · "
-                    f"누계 값 {t['값']:,} · 호출 {t['호출']:,}", "head")
+        _screen.say(f"   [그룹 {info['번째']}] {info['이름']} — 행 {info['행']:,} · 값 {s['값']:,} · 붙음 {o['붙음']:,} · "
+                    f"새로 {o['새로']:,}(검토 {o['검토']:,}) · 보류 {o['보류']:,} · LLM 호출 {s['호출']:,} · "
+                    f"골격 밖 좌표 {s['골격밖']:,} · 누계 값 {t['값']:,} · 호출 {t['호출']:,}", "head")
+        coord_table.show(rows)                       # 그 그룹의 좌표마다 한 줄(B176 ②)
         if info.get("끝") or not step or not sys.stdin.isatty():
             return
         _screen.say(f"   그룹 판정 행 — python run.py show report {info['doc_id']} --rows (중간 저장)", "aux")

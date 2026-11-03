@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""G6 ⑤ 인입 화면 — 판정 예고 · 큐 집계 · 다음 줄 · `--step`(B72)."""
+"""G6 ⑤ 인입 화면 — 판정 예고 · 큐 집계 · 다음 줄 · `--step`(B72) · 값 줄 · 색(B81) · 색 함수가 대장 판정 전부에 결과(B176 ⓐ)."""
 from __future__ import annotations
 
 import sys
@@ -230,11 +230,22 @@ class _TTY81:
 
 
 _tty81 = _TTY81()
-show("③ tty에서는 특이점에만 색이 붙는다 (new 노랑 · 불확실 빨강 · 사전 무색)",
+# 고침(B176 — 색은 그 값이 그래프에서 어떻게 됐나: 불확실은 새로 생김이라 노랑 · 그래프에 없음 빨강 · 옛 기대: 불확실 빨강)
+show("③ tty에서는 결과에만 색이 붙는다 (new · 불확실 노랑 · orphan 빨강 · 결과 없음 무색)",
      "\033[33m" in SC.paint("x", "new", stream=_tty81)
-     and "\033[31m" in SC.paint("x", "uncertain", stream=_tty81)
+     and "\033[33m" in SC.paint("x", "uncertain", stream=_tty81)
+     and "\033[31m" in SC.paint("x", "orphan", stream=_tty81)
      and SC.paint("x", None, stream=_tty81) == "x"
      and "\033[7m" in SC.banner("x", stream=_tty81))
+# B176 ⓐ 색 함수 하나가 대장의 닫힌 판정 전부에 결과를 낸다(표 밖 판정 0)
+_oc176 = {v: SC.outcome({"role": "entity", "verdict": v, "queue_kind": "q"}) for v in LG81.VERDICTS}
+show("B176 ⓐ 색 함수가 대장 VERDICTS 전부에 결과를 낸다 — 불확실 → 새로 생김(검토) · orphan · gate_reject → 그래프에 없음 · "
+     "lowres → 붙음(저해상도)",
+     set(SC.OUTCOME) == set(LG81.VERDICTS)
+     and _oc176["uncertain"][0] == _oc176["new"][0] == "새로 생김" and _oc176["uncertain"][2] == SC.REVIEW
+     and _oc176["orphan"][0] == _oc176["gate_reject"][0] == "그래프에 없음"
+     and _oc176["lowres"][0] == _oc176["match"][0] == "붙음" and _oc176["lowres"][2] == "저해상도",
+     str({v: o[0] for v, o in _oc176.items()}))
 _keep_nc = os.environ.get("NO_COLOR")
 os.environ["NO_COLOR"] = "1"
 try:
@@ -244,13 +255,7 @@ finally:
         "NO_COLOR", _keep_nc)
 show("③ NO_COLOR=1이면 tty에서도 ESC 0 (표준 환경변수를 존중한다)", _nc81 == "x", repr(_nc81))
 
-show("① 값 줄이 대장 행의 값을 그대로 낸다 (새 정보 0 · 화면은 투영이다)",
-     "new" in _line_new and "노칭::버 높이" in _line_new
-     and "후보 0" in _line_new and "→ 큐 auto_node" in _line_new
-     and "?" not in _line_new, _line_new.strip())
-show("① LLM이 든 값은 후보 수와 확신을 낸다",
-     all(x in SCR81.value_line(_row_unc) for x in ("uncertain", "LLM", "후보 3", "0.41")),
-     SCR81.value_line(_row_unc).strip())
+# 지움(B176 — 값 줄의 화면 글자(판정 이름 · 후보 · 큐 · 옛 기호 「?」)를 재던 둘 · 값 줄의 색 · 기호는 결과 함수 하나 — 위 B176 ⓐ)
 show("① 사전으로 끝난 값은 줄을 찍지 않는다 (판단이 갈린 자리만 — 수로만 센다)",
      not SCR81._loud(_row_dict) and SCR81._loud(_row_new) and SCR81._loud(_row_unc))
 # ① 집계는 대장 행에서 — 콜백을 직접 돌려 잰다(화면과 같은 함수).
