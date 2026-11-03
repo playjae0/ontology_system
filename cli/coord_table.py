@@ -16,21 +16,23 @@ NONE = "좌표 없음"
 
 
 def _coord(anchors):
-    """위치의 좌표 행들 → `(이름, 찾음, 사유, 저해상도)` — 찾음은 참 · 거짓 · None(좌표 없음)."""
+    """위치의 좌표 행들 → `((이름, 찾음, 사유), 저해상도)` — 앞이 좌표 키(찾음은 참 · 거짓 · None(좌표 없음)) · 저해상도는 그
+    위치가 상위 공정으로 붙었는가(키에 넣지 않는다 — 같은 노드에 선 위치는 해상도와 무관하게 한 줄)."""
     named = [a for a in anchors if a.get("surface") or a.get("node_id")]
     if not named:
-        return NONE, None, None, False
+        return (NONE, None, None), False
     name = " · ".join(str(a.get("canonical") if a.get("node_id") else a.get("surface")) for a in named)
     miss = [a for a in named if not a.get("node_id")]
     if miss:
-        return name, False, _screen.outcome(miss[0])[2], False
-    return name, True, None, any(a.get("verdict") == "lowres" for a in named)
+        return (name, False, _screen.outcome(miss[0])[2]), False
+    return (name, True, None), any(a.get("verdict") == "lowres" for a in named)
 
 
 def table(rows):
     """대장 행 → 좌표마다 `{좌표, 찾음, 사유, 저해상도, 행, 값, 붙음, 새로, 검토, 보류, 노드 아님}` — 처음 나온 순서.
 
-    `행` = 그 좌표에 선 위치 수(표의 행 · 산문의 조각) · `값` = 그 위치들의 값 행 수 = 붙음 + 새로 + 보류 + 노드 아님."""
+    `행` = 그 좌표에 선 위치 수(표의 행 · 산문의 조각) · `저해상도` = 그중 상위 공정으로 붙은 위치 수 · `값` = 그 위치들의 값 행
+    수 = 붙음 + 새로 + 보류 + 노드 아님."""
     anchors, values, order = {}, {}, []
     for r in rows:
         role = r.get("role")
@@ -42,10 +44,11 @@ def table(rows):
         (anchors if role == "anchor" else values).setdefault(loc, []).append(r)
     out = {}
     for loc in order:
-        key = _coord(anchors.get(loc) or [])
-        c = out.setdefault(key, {"좌표": key[0], "찾음": key[1], "사유": key[2], "저해상도": key[3], "행": 0, "값": 0,
+        key, low = _coord(anchors.get(loc) or [])
+        c = out.setdefault(key, {"좌표": key[0], "찾음": key[1], "사유": key[2], "저해상도": 0, "행": 0, "값": 0,
                                  "붙음": 0, "새로": 0, "검토": 0, "보류": 0, "노드 아님": 0})
         c["행"] += 1
+        c["저해상도"] += low
         for v in values.get(loc) or []:
             res, _kind, mark = _screen.outcome(v)
             c["값"] += 1
@@ -65,7 +68,7 @@ def totals(rows):
 
 def line(c):
     """좌표 하나 → `(글, 색 이름)` — 찾음 초록 · 못 찾음 빨강 · 좌표 없음은 보류가 있으면 빨강."""
-    head = c["좌표"] + (" (저해상도)" if c["저해상도"] else "")
+    head = c["좌표"] + (f" (저해상도 {c['저해상도']:,}행)" if c["저해상도"] else "")
     more = [f"{k} {c[k]:,}" for k in ("노드 아님",) if c[k]]
     if c["찾음"] is False:
         more = [f"{k} {c[k]:,}" for k in ("붙음", "새로") if c[k]] + more

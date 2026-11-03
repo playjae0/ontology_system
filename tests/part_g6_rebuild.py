@@ -679,9 +679,17 @@ def _vals176(rows, name):
 
 _ct176 = [(c["좌표"], c["붙음"] + c["새로"] + c["보류"], c["노드 아님"], _vals176(g, c["좌표"]))
           for g in _grows176 for c in CT176.table(g)]
-show("B176 ⓑ 좌표 표(mock PFMEA 두 그룹 사본 · 그룹 끝) — 좌표마다 붙음 + 새로 + 보류 = 대장의 그 좌표 값 행 수(노드 아님 0)",
+# 같은 노드에 상위 공정으로 붙은 위치(저해상도)가 섞여도 한 줄 — 첫 그룹에서 행 둘 이상인 좌표의 한 위치만 저해상도로 바꾼 사본(리뷰 고침 · PR #131)
+_c2 = next(c for c in CT176.table(_grows176[0]) if c["찾음"] and c["행"] >= 2)
+_l2 = next(r.get("locator") for r in _grows176[0] if r.get("role") == "anchor" and r.get("canonical") == _c2["좌표"])
+_one176 = [c for c in CT176.table([dict(r, verdict="lowres") if r.get("role") == "anchor" and r.get("locator") == _l2 else r
+                                   for r in _grows176[0]]) if c["좌표"] == _c2["좌표"]]
+show("B176 ⓑ 좌표 표(mock PFMEA 두 그룹 사본 · 그룹 끝) — 좌표마다 붙음 + 새로 + 보류 = 대장의 그 좌표 값 행 수(노드 아님 0) · "
+     "저해상도 위치가 섞여도 좌표 한 줄",
      len(_grows176) == 2 and _ct176 and all(s == n and e == 0 for _c, s, e, n in _ct176)
-     and all(len(g) for g in _grows176), str(_ct176[:4]))
+     and all(len(g) for g in _grows176) and len(_one176) == 1 and _one176[0]["저해상도"] == 1
+     and _one176[0]["행"] == _c2["행"],
+     f"{_ct176[:4]} · 저해상도 섞음 {[(c['좌표'], c['행'], c['저해상도']) for c in _one176]}")
 
 _base165()
 _pre165 = _world165()
