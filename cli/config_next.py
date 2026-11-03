@@ -104,12 +104,15 @@ def propose(common, configs, schemas=()):
             rep["안 씀"].append(c)
     pairs, rep["쌍"], stops = _pairs(configs, sk, nest)                       # ⓑ — 공통에 이미 있는 쌍은 두고 더한다
     have = {(p["lower"], p["upper"]): p for p in common.get("pairs") or []}
-    for p in list(pairs):
-        q = have.get((p["lower"], p["upper"]))
-        if q and q["rel"] != p["rel"]:
-            stops.append(f"쌍 {p['lower']} → {p['upper']}의 관계가 공통 pairs({q['rel']})와 층 매핑({p['rel']})에서 다르다 · "
-                         f"한 관계로 고친 뒤 다시 bootstrap(추측하지 않는다)")
-    pairs = list(common.get("pairs") or []) + [p for p in pairs if (p["lower"], p["upper"]) not in have]
+    seen = dict(have)
+    for p in list(pairs):                                                      # 같은 두 카테고리 — 관계 · 방향이 다르면 멈춘다
+        q = seen.setdefault((p["lower"], p["upper"]), p)
+        if q is not p and catalog.pair_edge(q) != catalog.pair_edge(p):
+            stops.append(f"쌍 {p['lower']} → {p['upper']}의 엣지가 둘이다 — {' -'.join(catalog.pair_edge(q)[:2])}-> "
+                         f"{catalog.pair_edge(q)[2]} ‖ {' -'.join(catalog.pair_edge(p)[:2])}-> {catalog.pair_edge(p)[2]} · "
+                         f"한 관계 · 한 방향으로 고친 뒤 다시 bootstrap(추측하지 않는다)")
+    pairs = list(common.get("pairs") or []) + list({(p["lower"], p["upper"]): p for p in pairs
+                                                    if (p["lower"], p["upper"]) not in have}.values())
     edges = {catalog.pair_edge(p) for p in pairs}
     old_pair = {lay: set(_map_triples(c)) for lay, c in configs.items()}
     sc_cats = _schema_cats(schemas)

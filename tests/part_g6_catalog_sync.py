@@ -519,6 +519,21 @@ _nr174 = catalog.naming_rule(_com174, _cfg174)
 show("B174 리뷰 고침 ⓑ 「안 씀」 카테고리는 위가 일반 노드인 쌍의 아래여도 앞말이 없다 — 이름 규칙과 지도 이름 꼴이 같은 답",
      "Property" not in _nr174["path"] + _nr174["nest"]
      and CM.name_forms(_com174, _cfg174)["Property"] == "이름 그대로(경로 안 씀)", str(_nr174))
+_oc174 = json.loads((OLD174 / "common.json").read_text(encoding="utf-8"))
+_ocf174 = {lay: json.loads((OLD174 / lay / "config.json").read_text(encoding="utf-8")) for lay in ("process", "quality")}
+_oc174["canonical_scope"] = {}                                 # 옛 규칙이 있되 목록이 비었다 = 아무것도 경로를 쓰지 않았다
+_em174 = CN.propose(_oc174, _ocf174)
+_rv174 = json.loads(json.dumps(_cfg174))
+_rv174["quality"]["uses"].append("Property")
+_rv174["quality"]["categories"].pop("Property")
+_rv174["quality"]["category_pair_map"] = {"Process,Unit": "part_of"}   # 공통 쌍 Unit → Process와 방향이 거꾸로
+_rp174 = CN.propose(json.loads((ROOT / "layers" / "common.json").read_text(encoding="utf-8")), _rv174)
+show("B174 리뷰 고침 ⓒ 빈 옛 규칙(canonical_scope {})은 규칙이다 — 골격 밖 카테고리 전부 「안 씀」 · 이름 바뀜 0 / ⓓ 공통 쌍과 "
+     "방향이 거꾸로인 남은 층 매핑은 제안 없이 멈춘다",
+     {c for c, v in _em174["common"]["categories"].items() if "no_path" in v} == {"Unit", "Property", "Failure"}
+     and not _em174["report"]["이름 바뀜"] and not _em174["stops"]
+     and len(_rp174["stops"]) == 1 and "엣지가 둘이다" in _rp174["stops"][0],
+     f"안 씀 {sorted(c for c, v in _em174['common']['categories'].items() if 'no_path' in v)} · 멈춤 {_rp174['stops'][:1]}")
 init.init(fresh_=True, all_=True)
 
 done()

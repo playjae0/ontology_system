@@ -257,11 +257,11 @@ def legacy_rule(common, configs):
     """**옛 이름 규칙** `(bind, nest, sep)` — 공통 `canonical_scope` · 없으면 층에 남은 것(공통이 새 모양 이름 규칙 — 위아래 쌍이나
     `no_path` — 을 아직 갖지 않을 때만 · 가지면 공통이 정본) · 없으면 None(제안 · 지도의 옛 뜻 해석이 같은 함수로 읽는다)."""
     common = common or {}
-    sc = common.get(OLD_COMMON_KEYS[0])
+    sc = (common[OLD_COMMON_KEYS[0]] or {}) if OLD_COMMON_KEYS[0] in common else None   # 빈 규칙도 규칙이다(목록 빈 것)
     has_new = bool(common.get("pairs")) or any("no_path" in (v or {}) for v in (common.get("categories") or {}).values())
     if sc is None and not has_new:
-        sc = next((c[OLD_LAYER_KEYS[1]] for _l, c in sorted((configs or {}).items()) if c.get(OLD_LAYER_KEYS[1])), None)
-    if not sc:
+        sc = next(((c[OLD_LAYER_KEYS[1]] or {}) for _l, c in sorted((configs or {}).items()) if OLD_LAYER_KEYS[1] in c), None)
+    if sc is None:
         return None
     return set(sc.get("bind_categories") or []), set(sc.get("nest_categories") or []), sc.get("sep")
 OLD_LAYER_KEYS = ("category_pair_map", "canonical_scope")
