@@ -171,6 +171,11 @@ def pairs(cat=None):
             if isinstance(p, dict) and p.get("lower") and p.get("upper") and p.get("rel")]
 
 
+def structural_relations(cat=None):
+    """**구조 관계** — 위아래 쌍의 관계 이름(B175 · 카테고리와 무관 — 같은 관계 이름은 모든 층에서 같은 뜻) · 반대 방향은 보류된다."""
+    return {p["rel"] for p in pairs(cat)}
+
+
 def pair_edge(p):
     """쌍의 엣지 `(출발 카테고리, 관계, 도착 카테고리)` — `src`가 `upper`면 위 → 아래 · 아니면 아래 → 위."""
     return (p["upper"], p["rel"], p["lower"]) if p.get("src") == "upper" else (p["lower"], p["rel"], p["upper"])
