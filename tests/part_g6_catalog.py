@@ -18,6 +18,7 @@
   ⑤ config를 바꾸면 등록 스키마 재대조가 doc_type마다 FAIL/PASS 줄을 낸다 · prose 층의 좌표 경고 · B174 ⓔ G4C 문면이 uses를
      말한다(골격 카테고리 포함) · 새 모양 mock 지도의 「선언 없이 씀」 0
   ⑥ 등록 패키지의 쓰기는 원자적 한 자리 · 디버그 파일은 작업 단(work/)
+  B178 ⓐ 묻는 목록 = 말하는 카테고리(uses 정의문은 집 층) ⓑ 추출 판 — uses 빈 층 그대로 · 쓰는 층은 집 층 정의문까지 ⓒ 품질 산문의 공정층 값이 집 그래프에서 해소
 """
 from __future__ import annotations
 
@@ -296,6 +297,60 @@ show("B174 ⓔ G4C — uses에 없는 다른 층 카테고리(골격 카테고�
      "(⑤ 되돌림) · 새 모양 mock 지도의 「선언 없이 씀」 0",
      _g4c174 and all("uses" in l for l in _g4c174) and all(ok for dt, ok, _l in _r2 if dt == "pfmea") and _miss174 == 0,
      f"{[l[:110] for l in _g4c174]} · 선언 없이 씀 {_miss174}")
+
+# ────────────────────────────────────────────────────────────── B178 묻는 목록 = 말하는 카테고리 · 추출 판
+print("\n■ B178 추출이 묻는 카테고리 = 그 층이 말하는 카테고리(집 ∪ uses · 정의문은 집 층) · 추출 판 · 품질 산문의 공정층 값")
+import contextlib                                                      # noqa: E402
+import copy as _cp178                                                  # noqa: E402
+import io                                                              # noqa: E402
+import json as _js178                                                  # noqa: E402
+from core.build.extract import categories_with_also as _ask178        # noqa: E402
+from core.state import config_scope as _CS178                         # noqa: E402
+from core.build import ledger as _LG178                               # noqa: E402
+init.init(fresh_=True, all_=True)
+for _lay in ("process", "quality"):
+    bootstrap(_lay, echo=False)
+
+
+def _cfg178(lay):
+    return _js178.loads(_P.layers(lay, "config.json").read_text(encoding="utf-8"))
+
+
+_pc178, _qc178 = _cfg178("process"), _cfg178("quality")
+_qa178 = _ask178(_qc178)
+show("B178 ⓐ 품질층 묻는 목록에 uses 카테고리(정의문 = 집 층 config 그대로) · uses가 빈 층의 묻는 목록은 그 층 categories 그대로",
+     set(_qc178["uses"]) <= set(_qa178) and all(_qa178[c] == _pc178["categories"][c] for c in _qc178["uses"])
+     and _ask178(_pc178) == _pc178["categories"] and not _pc178.get("uses"),
+     f"품질층 {list(_qa178)} · 공정층 {list(_ask178(_pc178))}")
+_k178 = {lay: _CS178.extract_key(c) for lay, c in (("process", _pc178), ("quality", _qc178))}
+_c178 = sorted(set(_qc178["uses"]) - set(_qc178["categories"]))[0]
+_p0178 = _P.layers("process", "config.json").read_bytes()
+try:                                                                   # 사본 — 집 층(공정층)에서 uses 카테고리의 정의문만 고친다
+    _rw(_P.layers("process", "config.json"), lambda c: c["categories"].update({_c178: c["categories"][_c178] + " (B178 시험)"}))
+    _kq178 = _CS178.extract_key(_cfg178("quality"))
+finally:
+    _P.layers("process", "config.json").write_bytes(_p0178)
+show("B178 ⓑ 추출 판 — uses가 빈 층은 uses 칸 없이 잰 판과 같다(판 그대로) · uses가 있는 층은 바뀐다 · 집 층에서 그 카테고리 정의문을 "
+     "고치면 쓰는 층의 판도 바뀐다",
+     _k178["process"] == _CS178.extract_key({k: v for k, v in _pc178.items() if k != "uses"})
+     and _k178["quality"] != _CS178.extract_key({k: v for k, v in _qc178.items() if k != "uses"})
+     and _kq178 != _k178["quality"], f"집 층 정의문 바꾼 카테고리 {_c178}")
+with contextlib.redirect_stdout(io.StringIO()):
+    run_document(load("CP01"))
+_env178 = _cp178.deepcopy(load("QPPT01"))                             # 품질 산문 사본(창작 — 힌트 없는 doc_id라 mock 문형이 뽑는다)
+_env178["doc_id"] = "QB178"
+for _c in _env178["chunks"]:
+    _c["doc_id"] = "QB178"
+_env178["chunks"][-1].update(text="버 발생은 노칭 정밀도로 관리한다.", process_ref="노칭")
+with contextlib.redirect_stdout(io.StringIO()):
+    run_document(_env178)
+_pg178 = open_graph("process")
+_v178 = [r for r in (_LG178.read("QB178") or {}).get("rows") or [] if r.get("role") == "entity"
+         and catalog.home(r.get("category")) == "process"]
+show("B178 ⓒ 품질 산문 청크에서 집이 공정층인 카테고리 값이 뽑혀 공정층 그래프에서 해소된다(대장 층 = 집 · 노드는 공정층 그래프)",
+     _v178 and all(r.get("layer") == "process" and r.get("node_id") in _pg178.nodes for r in _v178),
+     str([(r.get("surface"), r.get("category"), r.get("verdict"), r.get("target")) for r in _v178]))
+init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── B147 ⓑⓒ
 print("\n■ B147 ①② 등록된 스키마의 부착 대상 — 재대조 ⚠ · 인입은 멈추지 않는다 · 보류 사유 · 고친 스키마")

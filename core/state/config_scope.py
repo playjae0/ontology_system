@@ -8,7 +8,8 @@
     추출 · 보강 · 판정 지시문에 덧붙는 층의 말 — B124 ③ · B148 ⑤) · 공통 `categories`(겸 한 줄이
     정의문 끝에 붙는다 — 공통은 겸 칸만 잰다 · B174) → **산문 추출을 다시 뽑는다** — 추출 · 목차 노드화 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
     B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다 · 메타의 구조 판단은 층 config를 읽지 않는다 — B148 ①)
-  · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `uses` · `mirrors` · `polarity` · `skeleton` · 공통 카테고리의 집 · 경로
+  · 둘 다 — 층 `uses`(묻는 목록에 그 카테고리 · 집 층 정의문이 든다 · 게이트의 걸린 쌍 — B178 ②) → 다시 뽑고 다시 판정한다
+  · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `mirrors` · `polarity` · `skeleton` · 공통 카테고리의 집 · 경로
     (`no_path`) · 위아래 쌍(`pairs`) · `sep` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
   · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) · 표에 없는 키 → 영향 없음
     (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥)
@@ -22,8 +23,10 @@ import hashlib
 import json
 
 #: 층 config — 갈래마다 키(닫힌 표 · 밖은 「그 밖」)
-LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories", "prompts"),
+LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories", "prompts", "uses"),
          "구축": ("relation_patterns", "uses", "mirrors", "polarity", "skeleton")}
+#: 두 갈래에 다 드는 칸 — `uses`는 묻는 목록(추출 · B178 ②)이자 게이트의 걸린 쌍(구축 · B174)
+USES = "uses"
 #: 층 config — 그 밖 갈래의 아는 키(영향 없음 · 갈래 판정은 `kind`가 「그 밖」으로 본다 · B148 ⑥ — 가이드 항목 표의 나머지)
 OTHER = {"질의": ("query_intents", "query_traverse", "cross_layer_traverse", "fact_templates"),
          "기록": ("layer", "config_version", "registration", "skeleton_version"), "판정 문턱": ("match_threshold",)}
@@ -56,26 +59,40 @@ def common_view(com):
     return out
 
 
+def uses_view(cfg):
+    """`uses` 칸이 추출에 주는 것 — 쓰는 카테고리 이름 · 그 정의문(집 층 config — `catalog.definition`)(B178 ②)."""
+    from core.state import catalog
+    own = (cfg or {}).get("categories") or {}
+    return {USES: list((cfg or {}).get(USES) or []),
+            "정의문": {c: catalog.definition(c) for c in (cfg or {}).get(USES) or [] if c not in own}}
+
+
 def extract_key(cfg):
     """**추출 재사용의 층 config 판**(B120 ③) — 그 층 config와 공통 config의 **추출 갈래 칸** 내용 해시.
 
     bootstrap의 「추출 다시」 알림(`impact`)과 같은 표(`LAYER` · `COMMON`)를 읽으므로 알림과 실제 재추출이 늘 같다 —
-    구축 갈래(`relation_patterns` · `uses` · 공통 카테고리의 집 · 경로 · 위아래 쌍 …)와 그 밖(`config_version` · `used_by` …)은 판에
-    들지 않는다."""
+    구축 갈래(`relation_patterns` · 공통 카테고리의 집 · 경로 · 위아래 쌍 …)와 그 밖(`config_version` · `used_by` …)은 판에
+    들지 않는다. `uses`는 묻는 목록(쓰는 카테고리 · 그 집 층 정의문 — `uses_view`)으로 들고 **빈 층은 판이 그대로다**(B178 ②)."""
     com = common_view(_common())
-    return _h({"층": {k: (cfg or {}).get(k) for k in LAYER["추출"] if k in (cfg or {})},
-               COMMON_KEY: {k: com[k] for k in COMMON["추출"] if com.get(k)}})
+    return _h({"층": {k: (cfg or {}).get(k) for k in LAYER["추출"] if k in (cfg or {}) and k != USES},
+               COMMON_KEY: {k: com[k] for k in COMMON["추출"] if com.get(k)},
+               **({USES: uses_view(cfg)} if (cfg or {}).get(USES) else {})})
 
 
 def layer_keys():
-    """층 config의 아는 키 전부 — 갈래 표(`LAYER`) + 그 밖(`OTHER`) · 차례는 표 그대로."""
-    return tuple(k for table in (LAYER, OTHER) for keys in table.values() for k in keys)
+    """층 config의 아는 키 전부 — 갈래 표(`LAYER`) + 그 밖(`OTHER`) · 차례는 표 그대로(두 갈래에 든 키는 한 번)."""
+    return tuple(dict.fromkeys(k for table in (LAYER, OTHER) for keys in table.values() for k in keys))
+
+
+def kinds(key, common=False):
+    """키 하나가 드는 갈래 전부 — `추출` · `구축`(둘 다일 수 있다 — `uses`) · 없으면 `그 밖`."""
+    table = COMMON if common else LAYER
+    return [k for k, keys in table.items() if key in keys] or ["그 밖"]
 
 
 def kind(key, common=False):
-    """키 하나의 갈래 — `추출` · `구축` · `그 밖`."""
-    table = COMMON if common else LAYER
-    return next((k for k, keys in table.items() if key in keys), "그 밖")
+    """키 하나의 갈래(첫째) — `추출` · `구축` · `그 밖`."""
+    return kinds(key, common)[0]
 
 
 def parts(cfg):
@@ -90,7 +107,10 @@ def snapshot(layers=None):
     out = {}
     for lay in layers or discover():
         try:
-            out[lay] = parts(load_config(lay))
+            cfg = load_config(lay)
+            out[lay] = parts(cfg)
+            if cfg.get(USES):                               # 쓰는 카테고리는 이름 · 집 층 정의문까지(B178 ② — 빈 층은 칸 지문 그대로)
+                out[lay][USES] = _h(uses_view(cfg))
         except Exception:                                   # noqa: BLE001 — 못 읽는 층은 지문 0(대조가 「바뀜」으로 본다)
             out[lay] = {}
     out[COMMON_KEY] = parts(common_view(_common()))
@@ -104,7 +124,8 @@ def changed(old, new):
         a, b = old[lay] or {}, new[lay] or {}
         for key in sorted(set(a) | set(b)):
             if a.get(key) != b.get(key):
-                out[kind(key, lay == COMMON_KEY)].append(f"{lay}.{key}")
+                for k in kinds(key, lay == COMMON_KEY):
+                    out[k].append(f"{lay}.{key}")
     return out
 
 

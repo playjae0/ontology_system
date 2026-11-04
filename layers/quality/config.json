@@ -156,6 +156,11 @@
     {
       "pattern": "(.+?)(?:이|가) (.+?)(?:으로|로) 이어진다",
       "rel": "affects"
+    },
+    {
+      "pattern": "(.+?)(?:는|은) (.+?)(?:으로|로) 관리",
+      "rel": "controlled_by",
+      "categories": ["Failure", "Property"]
     }
   ]
 }

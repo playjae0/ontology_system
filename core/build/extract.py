@@ -148,7 +148,8 @@ def invalidate(doc_id, lens=None):
 
 
 def _patterns(cfg):
-    return [(re.compile(p["pattern"]), p["rel"])
+    """mock 문형 `(정규식, 관계, 두 끝의 카테고리)` — 카테고리 칸은 선택(골격 어휘에 없는 표기를 묻는 목록 안에서만 — B178 ①)."""
+    return [(re.compile(p["pattern"]), p["rel"], list(p.get("categories") or [None, None]))
             for p in (cfg.get("extract_patterns") or [])]
 
 
@@ -380,13 +381,10 @@ def _call_key(chunk, cfg, image=None):
 
 
 def categories_with_also(cfg):
-    """층 카테고리 어휘 + **겸 한 줄**(B90 ③) — 문안은 공통 config `also`에서 렌더한다.
-
-    템플릿에는 층 어휘를 적지 않는다(B9) — 겸도 층 사이의 데이터라 여기서 정의문 끝에
-    붙인다. 겸이 없으면 층 config 값 그대로다.
-    """
+    """**묻는 목록** — 그 층이 말하는 카테고리(`catalog.asked` — 집 ∪ `uses` · `uses`의 정의문은 집 층에서 · B178 ①) + **겸 한 줄**
+    (B90 ③ — 문안은 공통 config `also`에서 렌더해 정의문 끝에 · 템플릿에는 층 어휘를 적지 않는다 B9) · 추출 · 목차 노드화 · 사람 후보가 같은 목록."""
     from core.state import catalog
-    cats = dict(cfg.get("categories") or {})
+    cats = catalog.asked(cfg)
     try:
         lines = catalog.also_lines()
     except catalog.CatalogError:
@@ -413,13 +411,14 @@ def _mock_candidates(chunk_id, text, cfg, vocab):
     def cat_of(surface):
         return vocab.get(norm(surface))
 
-    for pat, rel in _patterns(cfg):
+    asked = categories_with_also(cfg)             # 실호출이 받는 묻는 목록 — mock도 그 안에서만 카테고리를 단다(B178 ①)
+    for pat, rel, pcats in _patterns(cfg):
         m = pat.search(text)
         if not m:
             continue
         src, dst = norm(m.group(1)), norm(m.group(2))
-        for s in (src, dst):
-            c = cat_of(s)
+        for s, pc in zip((src, dst), pcats):
+            c = cat_of(s) or (pc if pc in asked else None)
             if c and not any(e["surface"] == s for e in entities):
                 entities.append({"surface": s, "category": c})
         relations.append({"src": src, "rel": rel, "dst": dst})
