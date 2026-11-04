@@ -24,14 +24,15 @@ from __future__ import annotations
 from core import matcher
 from core.state import catalog, store
 from core.build.naming import scope_of
-from core.state.ids import fold_latin, norm
+from core.state.ids import norm
+from parser.namefold import key as name_key
 from core.state.status import is_live
 
 SKELETON, NODE = "골격", "노드"
 
 
 def _k(s):
-    return fold_latin(norm(s or "")).replace(" ", "")
+    return name_key(s or "")
 
 
 def belongs_of(cand):

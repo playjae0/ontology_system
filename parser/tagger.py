@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .namefold import key as name_key
+
 # 골격 닫힌 목록 스냅샷의 자리 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7)
 # 자리를 **받는다**(B78 1b). 값이 아니라 함수다: 상태 루트가 갈리면 파서도 같이
 # 움직여야 한다. **주입 전 기본값은 없다**(B86 ②) — 구판은 B78 이전 레포 자리
@@ -221,20 +223,13 @@ def snapshot_meta(layer, coord, path=None):
                  "count": (snap.get(lay) or {}).get("count") or 0} for sh, lay in lays}
 
 
-def _fold(s):
-    """라틴 문자만 소문자로 — `core.state.ids.fold_latin`과 같은 규칙(파서는 core를 모른다)."""
-    import unicodedata
-    return "".join(ch.lower() if "LATIN" in unicodedata.name(ch, "") else ch
-                   for ch in " ".join(str(s).split()))
-
-
 def fold_hit(ref, idx):
-    """**2차 대조**(B96 ④) — 정확 일치가 빗나간 표기를 라틴 대소문자 무시로 다시 본다 ·
-    가리키는 노드가 **하나일 때만** 그 노드(둘 이상이면 None — 지금처럼 목록 밖)."""
+    """**2차 대조**(B96 ④) — 정확 일치가 빗나간 표기를 이름 표기 대조 키(`namefold.key` — 공백 무시 · 대소문자 · 전각 ·
+    B179 ①)로 다시 본다 · 가리키는 노드가 **하나일 때만** 그 노드(둘 이상이면 None — 지금처럼 목록 밖)."""
     if not ref:
         return None
-    f = _fold(ref)
-    hit = {id(n): n for k, n in idx.items() if _fold(k) == f}
+    f = name_key(ref)
+    hit = {id(n): n for k, n in idx.items() if name_key(k) == f}
     return next(iter(hit.values())) if len(hit) == 1 else None
 
 
@@ -309,7 +304,7 @@ def scope_pick(ref, scoped_idx, shared):
     「표기 모호」로 보류한다. 그 밖의 맞음은 표기 그대로다(바꾸지 않는다)."""
     if not ref:
         return None
-    key = ref if ref in shared else next((k for k in sorted(shared) if _fold(k) == _fold(ref)), None)
+    key = ref if ref in shared else next((k for k in sorted(shared) if name_key(k) == name_key(ref)), None)
     return scoped_idx.get(key) if key is not None else None
 
 
@@ -444,7 +439,7 @@ def _outside(nodes, stem, name):
     대조는 정확 · 정확이 없을 때만 라틴 접기(사전 조회와 같은 차례) · 공유 별칭이면 그 표기를 가진 노드 전부(하나라도 줄기
     안이면 거짓)."""
     keys = [(n["canonical"], [n["canonical"]] + list(n.get("aliases") or [])) for n in nodes]
-    got = {c for c, ks in keys if name in ks} or {c for c, ks in keys if any(_fold(k) == _fold(name) for k in ks)}
+    got = {c for c, ks in keys if name in ks} or {c for c, ks in keys if any(name_key(k) == name_key(name) for k in ks)}
     sub, anc = stem
     return bool(got) and not (got & (sub | anc))
 

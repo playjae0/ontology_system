@@ -107,6 +107,21 @@ show("ⓖ norm·문서 id는 그대로다(대소문자를 접지 않는다)",
      norm("Notching") == "Notching"
      and _dh({"doc_type": "t", "chunks": [{"text": "Notching"}]})
      != _dh({"doc_type": "t", "chunks": [{"text": "notching"}]}))
+
+print("\n■ B179 ① 이름 표기 대조 한 함수 — 공백 무시 · 대소문자 · 전각")
+from core.build import scope_path as _SP            # noqa: E402
+from core import dictionary as _DM                  # noqa: E402
+from parser.namefold import key as _nk              # noqa: E402
+_d2 = _D({})
+for _s, _i in (("노칭커터", "C1"), ("cutter", "C2"), ("커터", "C3")):
+    _d2.register(_s, _i, provenance="t")
+_n2 = [{"canonical": "노칭커터", "aliases": []}]
+show("ⓗ 「노칭 커터」 = 「노칭커터」 · 「ＣＵＴＴＥＲ」 = 「cutter」 · 「커터 설비」 ≠ 「커터」(접미어 그대로) · core(사전 · 소유자 이름)와 "
+     "파서(2차 대조)가 같은 함수",
+     _d2.lookup("노칭 커터") == ["C1"] and _d2.lookup("ＣＵＴＴＥＲ") == ["C2"] and _d2.lookup("커터 설비") == []
+     and _TG.fold_hit("노칭 커터", _TG.surfaces(_n2)) is _n2[0]
+     and _DM.name_key is _SP.name_key is _TG.name_key is _nk,
+     f"{_d2.lookup('노칭 커터')} · {_d2.lookup('ＣＵＴＴＥＲ')} · {_d2.lookup('커터 설비')}")
 init.init(fresh_=True, all_=True)
 
 done()

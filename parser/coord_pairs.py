@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from parser import tagger
+from parser.namefold import key as name_key
 from parser.normalizer import coord_refs
 
 GROUP, OUTSIDE, POLARITY = "상위", "상위 골격 밖", "극성"
@@ -142,8 +143,8 @@ class SnapView:
             return []
         got = self.owners.get(surface)
         if got is None:
-            f = tagger._fold(surface)
-            got = set().union(*[v for k, v in self.owners.items() if tagger._fold(k) == f] or [set()])
+            f = name_key(surface)
+            got = set().union(*[v for k, v in self.owners.items() if name_key(k) == f] or [set()])
         return sorted(got)
 
     def judge(self, piece):

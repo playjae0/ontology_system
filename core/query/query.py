@@ -160,7 +160,7 @@ def _link_fold(q, dictionary, graphs):
     대소문자만 다른 표기가 **둘 이상의 노드**를 가리키면 채택하지 않는다(미스 + 로그 · B96 ④).
     """
     low, hits, taken = fold_latin(q), [], []
-    groups = dictionary.fold_groups()
+    groups = dictionary.fold_groups(fold_latin)          # 글 속 찾기 — 공백을 지우지 않는 키(B179 ① 밖)
     for f in sorted(groups, key=len, reverse=True):
         if not f or f not in low or any(f in t for t in taken):
             continue

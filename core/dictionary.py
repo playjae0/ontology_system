@@ -28,7 +28,8 @@
 from __future__ import annotations
 
 from core.state import log, store
-from core.state.ids import fold_latin, norm
+from core.state.ids import norm
+from parser.namefold import key as name_key
 
 _LOG = log.get(__name__)
 
@@ -38,7 +39,7 @@ class Dictionary:
 
     def __init__(self, entries=None):
         self._d = entries if entries is not None else {}
-        self._fold = None              # 2차 대조 색인(메모리 파생 · 저장하지 않는다 — B96 ④)
+        self._fold = None              # 2차 대조 색인 `{키 함수: 색인}`(메모리 파생 · 저장하지 않는다 — B96 ④ · B179 ①)
         self.version = 0               # 고칠 때마다 +1 — 조회 결과를 기억하는 자리의 무효화 경계(B144 ①)
 
     # ------------------------------------------------------------ 열기·저장
@@ -93,26 +94,29 @@ class Dictionary:
             return list(hit)
         return self.fold_lookup(surface)
 
-    def fold_groups(self):
-        """`fold_latin(표기) → {node_id}` — 라틴 대소문자만 다른 표기를 한 키로 모은 색인(메모리)."""
+    def fold_groups(self, fold=name_key):
+        """`fold(표기) → {node_id}` — 키가 같은 표기를 모은 색인(메모리 · 키 함수마다 한 번). 기본은 이름 표기 대조 키
+        (`parser.namefold.key` — 공백 무시 · 대소문자 · 전각 · B179 ①) · 글 속 찾기(질의 링킹)는 `ids.fold_latin`을 준다."""
         if self._fold is None:
-            idx = {}
+            self._fold = {}
+        idx = self._fold.get(fold)
+        if idx is None:
+            idx = self._fold[fold] = {}
             for k, ids in self._d.items():
-                idx.setdefault(fold_latin(k), set()).update(ids)
-            self._fold = idx
-        return self._fold
+                idx.setdefault(fold(k), set()).update(ids)
+        return idx
 
     def fold_lookup(self, surface):
-        """**2차 대조**(B96 ④) — 정확 일치가 빗나갔을 때만 · 라틴 대소문자를 무시하고 다시 본다.
+        """**2차 대조**(B96 ④) — 정확 일치가 빗나갔을 때만 · 이름 표기 대조 키(공백 · 대소문자 · 전각 — B179 ①)로 다시 본다.
 
-        대상 노드가 **하나일 때만** 채택한다. 둘 이상(대소문자만 다른 표기가 다른 노드를
+        대상 노드가 **하나일 때만** 채택한다. 둘 이상(키만 같은 표기가 다른 노드를
         가리킨다)이면 지금처럼 미스이고 로그 한 줄이다 — 고르는 것은 사람이다.
         """
-        ids = self.fold_groups().get(fold_latin(surface)) or set()
+        ids = self.fold_groups().get(name_key(surface)) or set()
         if len(ids) == 1:
             return list(ids)
         if len(ids) > 1:
-            _LOG.info("대소문자 무시 대조가 둘 이상을 가리킨다 — '%s' → %d개 · 미스로 둔다",
+            _LOG.info("표기 대조가 둘 이상을 가리킨다 — '%s' → %d개 · 미스로 둔다",
                       surface, len(ids))
         return []
 

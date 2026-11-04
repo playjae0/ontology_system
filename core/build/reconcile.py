@@ -377,8 +377,8 @@ def edgeless(rows, graphs, doc_id, names, skeleton, orphans):
 
 # ---------------------------------------------------------------- 문서 좌표 경고 (⑤)
 def _fold(s):
-    from core.state.ids import fold_latin, norm
-    return fold_latin(norm(s or "")).replace(" ", "")
+    from parser.namefold import key
+    return key(s or "")
 
 
 def near_coords(source_path, nodes, top=5):

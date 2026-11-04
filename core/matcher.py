@@ -155,9 +155,9 @@ def gate(pool, place, graph, dictionary, base):
 def _same_name(c, n, dictionary, base, place):
     if place is not None:
         return place.same_name(c["id"], n, dictionary)
-    from core.state.ids import fold_latin
-    k = fold_latin(base or "").replace(" ", "")
-    return bool(k) and any(fold_latin(x).replace(" ", "") == k for x in [c["canonical"]] + list(c.get("aliases") or []))
+    from parser.namefold import key
+    k = key(base or "")
+    return bool(k) and any(key(x) == k for x in [c["canonical"]] + list(c.get("aliases") or []))
 
 
 def sure(out, pool, place):

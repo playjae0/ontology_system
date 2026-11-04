@@ -19,7 +19,8 @@ from parser.normalizer import null_marker            # 빈칸 표시 — 표와 
 from core.build.naming import name_parent
 from core.state.status import is_live
 from core.state import log, store
-from core.state.ids import fold_latin, norm
+from core.state.ids import norm
+from parser.namefold import key as name_key
 
 _LOG = log.get(__name__)
 
@@ -156,11 +157,11 @@ def parent_hit(b, e, src, prov, pcs, defer=None):
         pcs["set"] = {norm(x): x for x in parent_candidates(src)}
         _f = {}
         for x in pcs["set"].values():
-            _f.setdefault(fold_latin(x), set()).add(x)
+            _f.setdefault(name_key(x), set()).add(x)
         pcs["fold"] = _f
     hit = pcs["set"].get(norm(want))
-    if hit is None:                                  # 2차 — 라틴 대소문자 · 하나일 때만 (B96 ④)
-        _c = pcs["fold"].get(fold_latin(want)) or set()
+    if hit is None:                                  # 2차 — 이름 표기 대조 키 · 하나일 때만 (B96 ④ · B179 ①)
+        _c = pcs["fold"].get(name_key(want)) or set()
         hit = next(iter(_c)) if len(_c) == 1 else None
     if not hit:
         return None, None

@@ -31,7 +31,8 @@ canonical 키로 풀어 **노드로** 거슬러 간다(가까운 것부터 — `
 from __future__ import annotations
 
 from core.build.naming import base_name_of, nest_categories, scope_of
-from core.state.ids import fold_latin, norm
+from core.state.ids import norm
+from parser.namefold import key as name_key
 from core.state.status import is_live
 
 OTHER, SAME, COMPAT, SIMILAR, APART = "다른 줄기", "같은 소유자", "경로 호환", "소유자 갈림(이름 비슷)", "소유자 갈림"
@@ -132,9 +133,9 @@ def stem(b, p, q):
 
 
 def names_of(n):
-    """견줄 이름들 — 맨 이름 · canonical · 별칭(라틴 접기 · 공백 무시)."""
+    """견줄 이름들 — 맨 이름 · canonical · 별칭(이름 표기 대조 키 — 공백 무시 · 대소문자 · 전각 · B179 ①)."""
     out = {base_name_of(n) or "", n.get("canonical") or ""} | {a.get("surface") or "" for a in n.get("aliases") or []}
-    return {fold_latin(x).replace(" ", "") for x in out if x}
+    return {name_key(x) for x in out if x}
 
 
 def names(b, n):
@@ -268,7 +269,7 @@ class Place:
             return False
         if self._ids is None:
             self._ids = set(dictionary.lookup(self.base))
-            self._fold = fold_latin(self.base).replace(" ", "")
+            self._fold = name_key(self.base)
         if nid in self._ids:
             return True
         return self._fold in names(self.b, n)
@@ -403,7 +404,7 @@ def waiting(b):
             w = out.setdefault(nid, (set(), set(), []))
             if r.get("provenance"):
                 w[0].add(r["provenance"])
-            k = fold_latin(norm(name)).replace(" ", "")
+            k = name_key(name)
             if k not in w[1]:
                 w[1].add(k)
                 w[2].append(norm(name))
