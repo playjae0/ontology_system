@@ -171,8 +171,26 @@ def _adopt_ops_log():
             print("[사람 판단 기록] " + ln)
 
 
+def _adopt_surface_book():
+    """**표기 대장 이전**(B179 ②) — 대장이 없고 옛 두 파일(좌표 학습 · 별칭 대장)이 있으면 첫 실행에서 한 번 옮긴다 ·
+    옛 파일은 보관(지우지 않는다) · 한 줄 보고."""
+    try:
+        from core.state import surface_book
+        r = surface_book.migrate()
+    except Exception as e:                          # noqa: BLE001 — 옮기지 못해도 명령은 돈다(문면으로 말한다)
+        print(f"[표기 대장] 옛 두 파일 옮김에서 멈췄다 — {e} · 옛 파일은 그대로다 · 다음 실행이 다시 옮긴다")
+        return
+    if r:
+        from core import paths
+        from core.state import store
+        print(f"[표기 대장] 옛 두 파일을 옮겼다 — 좌표 학습 채택 {r['채택']:,} · 목록 밖 {r['목록 밖']:,} + 별칭 대장 "
+              f"{r['별칭']:,} = {r['앞']:,}항목 → {paths.show(store.path(store.SURFACE_BOOK))} {r['뒤']:,}항목(사람 보증 "
+              f"{r['사람 보증']:,} · 기계 판단 {r['기계 판단']:,}) · 옛 파일은 보관 "
+              f"{' · '.join(paths.show(p) for p in r['옛'])}(지우지 않는다 — B179 ②)")
+
+
 def _fill_alias_book():
-    """**별칭 대장 처음 채움**(B108 ①) — 대장 파일이 아직 없으면(B108 전 상태의 첫 실행) 지금 그래프의 seed 밖
+    """**별칭 대장 처음 채움**(B108 ①) — 표기 대장의 별칭 갈래를 아직 쓴 적이 없으면(B108 전 상태의 첫 실행) 지금 그래프의 seed 밖
     별칭을 이름으로 채운다 — 지우기 전에. 채울 것이 없으면 파일을 만들지 않는다(bootstrap이 만든다)."""
     try:
         from core.state import alias_book
@@ -186,7 +204,7 @@ def _fill_alias_book():
         from core import paths
         from core.state import store
         print(f"[별칭 대장] 지금 그래프의 seed 밖 별칭 {r['filled']:,}건을 이름으로 채웠다 — "
-              f"{paths.show(store.path(store.ALIAS_BOOK))}(골격 대상 {r['skeleton']:,} · 기본 fresh가 남긴다 — B108 ①)")
+              f"{paths.show(store.path(store.SURFACE_BOOK))}(골격 대상 {r['skeleton']:,} · 기본 fresh가 남긴다 — B108 ① · B179 ②)")
 
 
 def _closed(command, streams, finished):
@@ -237,6 +255,7 @@ def run(command, main, argv=None):
     try:
         try:
             _adopt_ops_log()
+            _adopt_surface_book()
             _fill_alias_book()
             u0 = gateway.usage_total()
             rc = main(argv) or 0

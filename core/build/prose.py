@@ -19,7 +19,8 @@ from parser.normalizer import null_marker            # 빈칸 표시 — 표와 
 from core.build.naming import name_parent
 from core.state.status import is_live
 from core.state import log, store
-from core.state.ids import fold_latin, norm
+from core.state.ids import norm
+from parser.namefold import key as name_key
 
 _LOG = log.get(__name__)
 
@@ -136,7 +137,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                            belongs_to=(bel or {}).get("name"),
                            category=last.get("category"), scope=last.get("scope"),
                            replay=last.get("replay"), judge2=last.get("judge2"),
-                           apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"),
+                           apart=last.get("apart"), basis=last.get("basis"),
                            by=HUMAN if e.get("by") == HUMAN else None)        # 사람 후보 표지 (B140 ③)
         if nid:
             values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)
@@ -156,11 +157,11 @@ def parent_hit(b, e, src, prov, pcs, defer=None):
         pcs["set"] = {norm(x): x for x in parent_candidates(src)}
         _f = {}
         for x in pcs["set"].values():
-            _f.setdefault(fold_latin(x), set()).add(x)
+            _f.setdefault(name_key(x), set()).add(x)
         pcs["fold"] = _f
     hit = pcs["set"].get(norm(want))
-    if hit is None:                                  # 2차 — 라틴 대소문자 · 하나일 때만 (B96 ④)
-        _c = pcs["fold"].get(fold_latin(want)) or set()
+    if hit is None:                                  # 2차 — 이름 표기 대조 키 · 하나일 때만 (B96 ④ · B179 ①)
+        _c = pcs["fold"].get(name_key(want)) or set()
         hit = next(iter(_c)) if len(_c) == 1 else None
     if not hit:
         return None, None

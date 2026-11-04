@@ -122,11 +122,6 @@ KNOBS = {
                             "2차 판정의 문장 — 1차가 불확실인 산문 개체에 그 표기 앞뒤 이 글자 수의 청크 원문을 붙여 같은 "
                             "후보로 한 번 더 묻는다(0이면 끔 · 비용은 불확실 수에 비례)",
                             "인입 판정 끝 줄 「2차 n → 바뀜 m」 · 문서 한 줄 요약 · python run.py show report <doc_id> --md"),
-    "owner_similar_pct": ("core.build.scope_path", ("OWNER_SIMILAR_PCT",), "pct",
-                          "소유자 이름 비슷 문턱(%) — 같은 공정 줄기 · 같은 카테고리인데 소유자가 다른 노드면 두 소유자 이름의 "
-                          "임베딩 유사도가 이 이상일 때 LLM 판정 · 아래면 다른 것(이름 · 별칭 · 라틴 접기 겹침은 문턱 없이 비슷 · "
-                          "임베딩을 쓰는 실행에서만)",
-                          "인입 끝 「같은 이름 · 다른 소유자 … 소유자 이름 비슷 → LLM n」 줄 · python run.py show report <doc_id> --md"),
     "keep_page_captures": ("core.state.captures", ("KEEP",), "bool",
                            "쪽 캡처 보관 — 켜면(true) PPT · PDF 쪽마다 캡처 한 장을 ④작업(work/captures/<doc_id>/)에 JPEG(긴 변 "
                            "1,600px)로 두고 판독 · 추출이 그것을 쓴다(문서마다 렌더 한 번 · 원본 바이너리 · 그림 원본은 저장 0) · "
@@ -163,7 +158,8 @@ def default(name):
 #: **폐기한 값 → 바꿀 값**(B132 ⑧ — 운영 관문이 그 문면으로 멈춘다 · 조용히 바꾸지 않는다)
 RETIRED = {"structure_mode": {"edit": "ladder", "llm": "ladder"}}
 #: **폐기한 키 → 까닭**(B148 ④ — 파일에 있으면 운영 관문이 지울 키를 말하며 멈춘다 · 조용히 무시하지 않는다)
-RETIRED_KEYS = {"sheet_min_hits": "시트 역할 로직 제안은 모양만 본다(층 어휘 적중 0 — B148 ④)"}
+RETIRED_KEYS = {"sheet_min_hits": "시트 역할 로직 제안은 모양만 본다(층 어휘 적중 0 — B148 ④)",
+                "owner_similar_pct": "소유자가 다른 노드면 다른 것이다 — 소유자 이름 비슷으로 다시 묻는 판정을 지웠다(B179 ③)"}
 
 
 def _check(name, v, dflt):

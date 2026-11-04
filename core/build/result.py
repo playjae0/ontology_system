@@ -92,8 +92,8 @@ def totals(res):
 
 
 def _k(s):
-    from core.state.ids import fold_latin, norm
-    return fold_latin(norm(s or "")).replace(" ", "")
+    from parser.namefold import key
+    return key(s or "")
 
 
 def landing(rows, env, graphs, doc_id, top=5):

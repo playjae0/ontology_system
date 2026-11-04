@@ -82,8 +82,8 @@ def _endpoint_misses(doc_id):
 
 
 def _norm(s):
-    from core.state.ids import fold_latin, norm
-    return fold_latin(norm(s or "")).replace(" ", "")
+    from parser.namefold import key
+    return key(s or "")
 
 
 def _src(piece):

@@ -41,6 +41,7 @@ from core import matcher as MT                                     # noqa: E402
 from core.dictionary import Dictionary                             # noqa: E402
 from core.llm import gateway, points                               # noqa: E402
 from core.state import alias_book as AB, bootstrap as BS, oplog    # noqa: E402
+from core.state import surface_book as SB                          # noqa: E402
 from core.state import fixtures as FXA                             # noqa: E402 — 표본 어댑터 자리
 from core.state.bootstrap import coord_layer                       # noqa: E402
 from core.state.status import is_live                              # noqa: E402
@@ -195,6 +196,14 @@ def _end(out):
     return dict(zip(("추출", "판정", "태깅", "대장", "있음", "없음"), n))
 
 
+def _drop_alias_book():
+    """대장 없는 B108 전 모양 — 표기 대장에서 별칭 갈래와 처음 채움 표지를 뺀다(B179 ② — 옛 `alias_book.json` 지우기와 같은 자리)."""
+    d = store.read(store.SURFACE_BOOK, {}) or {}
+    d["entries"] = [e for e in d.get("entries") or [] if e.get("갈래") != SB.ALIAS]
+    d.pop(SB.FILLED, None)
+    store.write(store.SURFACE_BOOK, d)
+
+
 def _live():
     return {(r["surface"], r["target"]["layer"], r["target"]["canonical"], r["source"])
             for r in AB.AliasBook.open().rows if r["status"] == AB.LIVE}
@@ -346,7 +355,7 @@ for ln in OUT_B.splitlines():
 # ────────────────────────────────────────────────────────────── ⓒ 처음 채움
 print("\n■ B108 ① 처음 채움 — 대장 없는 B108 전 모양 → 첫 실행 · 재구축 계획이 지금 그래프에서")
 L0 = _live()
-store.path(store.ALIAS_BOOK).unlink()
+_drop_alias_book()
 _oc = _run("show", "aliases")                         # 아무 명령 — 공통 진입이 채운다
 L1 = _live()
 show("ⓒ 첫 실행(공통 진입)이 지금 그래프의 seed 밖 별칭을 이름으로 채운다 — 표기 · 대상 · 출처가 지운 대장과 같다(처음 채움 표시)",
@@ -355,7 +364,7 @@ show("ⓒ 첫 실행(공통 진입)이 지금 그래프의 seed 밖 별칭을 �
 for ln in _oc.splitlines():
     if ln.startswith("[별칭 대장]"):
         print(f"      {ln}")
-store.path(store.ALIAS_BOOK).unlink()
+_drop_alias_book()
 _pl, _po = _quiet(RB.make_plan)
 _, _ps = _quiet(RB.show_plan, _pl)
 _pline = next((ln.strip() for ln in _ps.splitlines() if ln.strip().startswith("별칭 대장")), "")
@@ -459,6 +468,31 @@ show("ⓔ seed를 되돌려 다시 재구축하면 그 대상의 별칭이 다�
      and _ef.get("없음") == len(_gone_f) and all(r["target"]["canonical"].startswith("스태킹::" + NEW) for r in _gone_f),
      f"끝 줄 {_ef} · 판 {_skel()[1]} · 없음 " + (" · ".join(f"'{r['surface']}' → {r['target']['canonical']}({r['source']})"
                                                          for r in _gone_f) or "0"))
+
+# ────────────────────────────────────────────────────────────── B179 ② 표기 대장 이전
+print("\n■ B179 ② 표기 대장 이전 — 옛 두 파일(좌표 학습 · 별칭 대장) → 대장 하나 · 옛 파일 보관 · 다시 돌려도 같다")
+_rows0 = AB.AliasBook.open().rows                      # 지금 별칭 갈래 = 옛 `alias_book.json`의 모양
+_learn0 = {"채택": {"B179 학습 표기": {"canonical": X, "layer": coord_layer(), "doc_id": "B179", "hits": 2}},
+           "목록밖": {"B179 목록 밖": {"rows": 3, "docs": ["B179"], "first_seen": "t", "list_version": "v"}}}
+_SBP = store.path(store.SURFACE_BOOK)
+_SBP.unlink()
+store.write(store.COORD_LEARNED, _learn0)
+store.write(store.ALIAS_BOOK, {"entries": _rows0})
+_om = _run("show", "learned")                            # 아무 명령 — 공통 진입이 옮긴다
+_b1 = _SBP.read_bytes()
+_run("show", "aliases")
+_b2 = _SBP.read_bytes()
+_held = {Path(p).resolve() for p in init.held()}          # 기본 fresh가 남기는 자리 — 옛 두 파일도(보관)
+_c179 = SB.counts()
+_hum = sum(1 for r in _rows0 if SB.standing(r["source"]) == SB.HUMAN)
+show("ⓑ 옛 두 파일 → 표기 대장 항목 수 = 옛 항목 수의 합 · 옛 파일 보관(fresh가 남기는 자리) · 두 번째 실행은 바이트 같다 · 지위가 사람 보증 / "
+     "기계 판단을 가른다 · 두 갈래가 옛 모양 그대로 읽힌다",
+     _c179["합"] == len(_rows0) + 2 and _c179[SB.HUMAN] == _hum > 0 and _c179[SB.MACHINE] == len(_rows0) + 2 - _hum
+     and store.path(store.COORD_LEARNED).is_file() and store.path(store.ALIAS_BOOK).is_file()
+     and {store.path(n).resolve() for n in (store.COORD_LEARNED, store.ALIAS_BOOK, store.SURFACE_BOOK)} <= _held
+     and _b2 == _b1 == _SBP.read_bytes() and SB.learned() == _learn0 and AB.AliasBook.open().rows == _rows0,
+     f"합 {_c179['합']} · 사람 보증 {_c179[SB.HUMAN]} · 기계 판단 {_c179[SB.MACHINE]} · "
+     + next((ln for ln in _om.splitlines() if ln.startswith("[표기 대장]")), "(이전 줄 없음)")[:150])
 
 for d in _hinted:
     (HINTS / f"{d}.json").unlink(missing_ok=True)

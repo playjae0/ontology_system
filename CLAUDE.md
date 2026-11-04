@@ -111,7 +111,7 @@
   되돌린다(되돌림 경계 `run_document` 하나 · 문서 시작 전 판 · B109 · B110) · 화면에 나온 것은 로그에도 있다(진입점은 전부 `cli/_entry.py`) ·
   화면이 닫혀도 공통 진입 한 자리가 받는다(B109) · 노드는 집 층 · 엣지는 문서 층(B100 — 층 전부를 연다) · LLM 지점은 닫힌 12(문서 7 §7.6-B-2).
 - **한 자리 목록 — 같은 일을 하는 두 번째 자리를 만들지 않는다**(무엇 → 자리):
-  표기 2차 대조 → `ids.fold_latin` · 청크 맥락 줄 → `core/build/extract_ctx` · 개체 해소(다른 공정 가드 포함) → `Builder.resolve_at_home` ·
+  이름 ↔ 이름 표기 대조(공백 · 대소문자 · 전각) → `parser.namefold.key`(글 속 찾기는 `ids.fold_latin`) · 청크 맥락 줄 → `core/build/extract_ctx` · 개체 해소(다른 공정 가드 포함) → `Builder.resolve_at_home` ·
   빈칸 표시 → `parser/normalizer.null_marker` · 좌표 쌍 판정 → `parser.coord_pairs.verdict` · 별칭 붙이기 → `alias_book.attach` ·
   재연결 · 연결 보강 → `core/build/retry` · `core/build/reinforce` · 문서 개요 · 제목 개체 → `core/build/outline` · `core/build/heading` ·
   문서 끝 맞춤표 → `core/build/reconcile` · 뷰어 닻 → `core/query/anchor.py` · 사용량 · 진행 화면 → `_screen.usage_line` · `_screen.ticker` ·
@@ -151,8 +151,8 @@
 - **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ⓪원본(`raw/` — 사람이 넣는 문서 · 재구축 입력 · B80 ②)
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
   승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`·`doc_coords.json`(B102)·`coord_acks.json`(B105)·`ops_log.json`(B106 — 사람 판단 기록 · 대상 이름) · 층 공통 config·층 config·seed)
-  ③진실(`data/` 9종 — 좌표 학습 `coord_learned.json`(B101) · 별칭 대장 `alias_book.json`(B108) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
-  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`extract/outline/`(B115)·`extract/rehearsal/`(B116 — 둘 다 `extract/` 안이라 보존 여섯 그대로)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`(④ — B109 로그는 다시 만들 수 없는 기록) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
+  ③진실(`data/` 8종 — 표기 대장 `surface_book.json`(좌표 학습 + 별칭 대장 · 항목마다 지위 사람 보증 / 기계 판단 · B179) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
+  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`extract/outline/`(B115)·`extract/rehearsal/`(B116 — 둘 다 `extract/` 안이라 보존 여섯 그대로)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`·`vectors/`(④ — B109 로그는 다시 만들 수 없는 기록) · `surface_book.json`(③ — 옛 두 대장 파일은 보관 · 수 밖)) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
   자리에 둔다. 폴더를 만드는 코드는 `core/paths.py::ensure` 하나다.
 - **어서션은 성질만**(화면 문면·수를 세지 않는다). 회차당 순증은 완료판정에 필요한 만큼만 —

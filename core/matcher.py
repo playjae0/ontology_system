@@ -125,7 +125,7 @@ def gate(pool, place, graph, dictionary, base):
     `place`(들어온 값의 자리 — `core/build/scope_path.Place`)가 후보마다 관계를 낸다: 공정 줄기가 다르거나(다른 실물 —
     문서 4 §4.5-6) 소유자가 뚜렷이 다르면 **후보에 넣지 않는다**(감점이 아니라 제외 · LLM 0). 남는 후보는 경로(`path` —
     공정부터 가장 가까운 소유자까지)와 관계(`path_relation`)를 지고 판정에 오른다 — 남은 것이 0이면 `match`가 그 자리에서
-    NEW를 낸다(LLM 0 · 임베딩 0). 같은 이름(`same_name` — 사전 표기 · 별칭 · 라틴 접기)은 좁히기가 자르지 않는다(④).
+    NEW를 낸다(LLM 0 · 임베딩 0). 같은 이름(`same_name` — 사전 표기 · 별칭 · 표기 대조 키)은 좁히기가 자르지 않는다(④).
     자리가 없는 값(이름 규칙 카테고리가 아니거나 이름 부모가 없다)은 거르지 않는다 — 모르는 것을 근거로 버리지 않는다."""
     from core.build import scope_path as SP
     out = []
@@ -146,8 +146,6 @@ def gate(pool, place, graph, dictionary, base):
                 place.apart.append(c["canonical"])            # 같은 이름 · 다른 소유자 — 화면 줄 · 사람이 ops merge
             continue
         c["path"], c["path_relation"] = place.path_of(c["id"], graph), rel
-        if rel == SP.SIMILAR:
-            place.similar.append(c["canonical"])              # 소유자 둘로 갈림 — 합칠 후보(LLM이 본다)
         out.append(c)
     return out
 
@@ -155,9 +153,9 @@ def gate(pool, place, graph, dictionary, base):
 def _same_name(c, n, dictionary, base, place):
     if place is not None:
         return place.same_name(c["id"], n, dictionary)
-    from core.state.ids import fold_latin
-    k = fold_latin(base or "").replace(" ", "")
-    return bool(k) and any(fold_latin(x).replace(" ", "") == k for x in [c["canonical"]] + list(c.get("aliases") or []))
+    from parser.namefold import key
+    k = key(base or "")
+    return bool(k) and any(key(x) == k for x in [c["canonical"]] + list(c.get("aliases") or []))
 
 
 def sure(out, pool, place):
@@ -605,7 +603,6 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     _evidence(v, cands)
     if place is not None:                         # 견준 사실 — 대장 행이 옮긴다(화면 줄 · B142 ⑥)
         v["apart"] = sorted(set(place.apart))[:5] or None
-        v["similar"] = sorted(set(place.similar))[:5] or None
     # **후보 수는 판정의 반환이 아니라 조립의 사실이다** — 계약(문서 4 §4.3-6)의
     # 세 키에 `path` 하나만 더한다(B74 ②). 대장이 적을 나머지는 여기서 싣는다.
     v["candidates_n"] = len(cands)

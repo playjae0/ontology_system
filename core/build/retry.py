@@ -64,9 +64,12 @@ def _material_print():
     import hashlib
     import json as _json
     h = hashlib.sha1()
-    for name in (store.SKELETON_LIST, store.DICTIONARY, store.COORD_LEARNED):
+    from core.state import surface_book
+    for name in (store.SKELETON_LIST, store.DICTIONARY):
         h.update(_json.dumps(store.read(name, {}), sort_keys=True, ensure_ascii=False,
                              default=str).encode("utf-8"))
+    h.update(_json.dumps(surface_book.learned(), sort_keys=True, ensure_ascii=False,   # 좌표 학습 갈래만(B179 ②)
+                         default=str).encode("utf-8"))
     return "판:" + h.hexdigest()[:12]
 
 
@@ -488,7 +491,8 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     ref, rlay, rg = _tier1(surface, category, graphs, dic)
     if ref is None:
         # **좌표 학습 기록**(B101 ② · B113 ③) — LLM이 채택한 표기는 인입이 바로 쓴다 · 재연결도 같은 기록을 본다
-        x = (store.read(store.COORD_LEARNED, {}).get("채택") or {}).get(surface) or {}
+        from core.state import surface_book
+        x = surface_book.learned()["채택"].get(surface) or {}
         if x.get("canonical"):
             ref, rlay, rg = _tier1(x["canonical"], category, graphs, dic)
     if ref is None:

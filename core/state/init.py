@@ -12,13 +12,13 @@
 **대체로 같은 것은 판정의 바닥이 될 수 없다.**
 
     python run.py init                  빈 상태를 만든다 (있으면 그대로 둔다)
-    python run.py init --fresh          지우고 다시 만든다 — **비용·지식이 든 산출 · 명령 로그 · 질의 벡터 일곱은 남긴다**(B106 ① · B108 ① · B109 ① · B136 ③)
+    python run.py init --fresh          지우고 다시 만든다 — **비용·지식이 든 산출 · 명령 로그 · 질의 벡터 여섯은 남긴다**(B106 ① · B109 ① · B136 ③ · B179 ②)
     python run.py init --fresh --all    전부 지운다 — **클린**(회귀 바닥 · doctor · 시험)
                                         운영(실호출) 루트면 묻는다 · 비대화형은 거부 · `--yes`(B111 ①)
 
 **fresh 기본은 재구축의 바닥이다**(B106 ① · 사용자 결정 2026-10-08): 산문 추출(`work/extract/`) ·
-구조 지도(`work/struct_maps/`) · 판정 대장(`work/ingest_log/` — 판정 재생의 재료) · 좌표 학습
-(`data/coord_learned.json`) · 별칭 대장(`data/alias_book.json` — seed 밖 별칭의 이름 · B108 ①) · 명령 로그
+구조 지도(`work/struct_maps/`) · 판정 대장(`work/ingest_log/` — 판정 재생의 재료) · 표기 대장
+(`data/surface_book.json` — 좌표 학습 + seed 밖 별칭의 이름 · B108 ① · B179 ② · 옛 두 파일은 보관 — 수 밖) · 명령 로그
 (`work/logs/` — 다시 만들 수 없는 실행 기록 · B109 ①) · 질의 벡터(`work/vectors/` — 임베딩 비용이 든 파생물 · 글이 같으면 재구축에도
 다시 쓴다 · B136 ③)를 남기고 나머지 ③④⑤를 지운다 — 다시 넣을 때 LLM을
 처음부터 부르지 않고, 쌓인 별칭이 처음부터 쓰이고, 재구축 전에 무슨 일이 있었는지가 로그에 남게.
@@ -76,11 +76,18 @@ EMPTY = {
 
 
 def kept():
-    """**fresh 기본이 남기는 것** 일곱(B106 ① · 별칭 대장 B108 ① · 명령 로그 B109 ① · 질의 벡터 B136 ③) — `[(표기, 경로)]`.
-    자리는 소유자에게 묻는다(경로 조립 0)."""
+    """**fresh 기본이 남기는 것** 여섯(B106 ① · 명령 로그 B109 ① · 질의 벡터 B136 ③ · 표기 대장 B179 ②) — `[(표기, 경로)]`.
+    자리는 소유자에게 묻는다(경로 조립 0). 옛 두 대장 파일(표기 대장 이전의 원천)도 남기되 수 밖이다(`surface_book.legacy_paths`)."""
     return [("산문 추출", paths.extract()), ("구조 지도", paths.work("struct_maps")),
-            ("판정 대장", store.path("ingest_log")), ("좌표 학습", store.path(store.COORD_LEARNED)),
-            ("별칭 대장", store.path(store.ALIAS_BOOK)), ("명령 로그", log.log_dir()), ("질의 벡터", paths.vectors())]
+            ("판정 대장", store.path("ingest_log")), ("표기 대장", store.path(store.SURFACE_BOOK)),
+            ("명령 로그", log.log_dir()), ("질의 벡터", paths.vectors())]
+
+
+def held(keep=()):
+    """기본 fresh가 남기는 자리 전부 — 보존 여섯(`kept()`) + `keep` + 옛 두 대장 파일(보관 · 수 밖 — B179 ②) + 이번 실행의 로그."""
+    from core.state import surface_book
+    return ([p for _l, p in kept()] + [Path(k) for k in keep] + surface_book.legacy_paths()
+            + ([Path(log.LOG_PATH)] if log.LOG_PATH else []))
 
 
 def _size(p):
@@ -113,14 +120,14 @@ def guarded():
 
 
 def preview():
-    """클린이 지울 것 — `{kept, wiped}` `[(표기, 파일 수, 바이트)]`. 보존 일곱(기본 fresh가 남기는 것 —
+    """클린이 지울 것 — `{kept, wiped}` `[(표기, 파일 수, 바이트)]`. 보존 여섯(기본 fresh가 남기는 것 —
     지우면 LLM을 다시 부른다)은 따로 센다 · 화면이 묻기 전에 크기를 말한다. 쓰기 0."""
     return {"kept": [(label, *_size(p)) for label, p in kept()],
             "wiped": [(f"{tier}/", *_size(getattr(paths, tier)())) for tier in WIPE_TIERS]}
 
 
 def fresh(all_=False, keep=(), report=None, confirmed=False):
-    """지운다 — **기본은 보존 일곱(`kept()`)과 이번 실행의 로그 · `keep`을 남기고**, `all_`이면
+    """지운다 — **기본은 보존 여섯(`kept()`)과 이번 실행의 로그 · `keep`을 남기고**, `all_`이면
     `data/`·`work/`·`export/`를 폴더째(클린 — 회귀 바닥 · 열린 로그는 다시 열린다 — `log._Reopening`).
     운영 루트의 클린은 `confirmed`일 때만(B111 ① — 아니면 `CleanRefused` · 쓰기 0).
 
@@ -138,8 +145,7 @@ def fresh(all_=False, keep=(), report=None, confirmed=False):
     rep = report if report is not None else {}
     rep["kept"], rep["wiped"] = [], []
     # 이번 실행의 로그는 자리가 어디든(`ONTO_LOG_FILE`) 남긴다 — 재구축이 따로 챙기던 것을 이 한 자리로(B109 ①)
-    hold = [] if all_ else ([p for _l, p in kept()] + [Path(k) for k in keep]
-                            + ([Path(log.LOG_PATH)] if log.LOG_PATH else []))
+    hold = [] if all_ else held(keep)
     for label, p in ([] if all_ else kept()):
         n, b = _size(p)
         if n:
@@ -231,7 +237,7 @@ def ensure():
 
 
 def init(fresh_=False, all_=False, keep=(), report=None, confirmed=False):
-    """`fresh_` — 지우고 다시 만든다(기본은 보존 일곱을 남긴다 · `all_`이면 클린 · `keep`은 더 남길 경로 —
+    """`fresh_` — 지우고 다시 만든다(기본은 보존 여섯을 남긴다 · `all_`이면 클린 · `keep`은 더 남길 경로 —
     재구축 계획 파일 · `confirmed`는 운영 루트 클린의 사람 확인). 돌려주는 것은 새로 만든 빈 상태 목록이다."""
     if fresh_:
         fresh(all_=all_, keep=keep, report=report, confirmed=confirmed)

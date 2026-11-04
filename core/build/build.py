@@ -498,7 +498,6 @@ class Builder(CoordMixin):
                      "replay": why,                       # 재생하지 못한 사유 — 재판정 행의 표지(B106 ②)
                      "judge2": v.get("second"), "basis": v.get("basis"),   # 2차 판정(B123 ③ · 불렀을 때만) · 근거 지문(B167 ② — 판정에 오른 값만)
                      "apart": v.get("apart"),             # 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드(B142 ⑥)
-                     "similar": v.get("similar"),         # 소유자 이름 비슷 → 판정에 올린 후보(B142 ②⑥)
                      "llm": {"calls": _u1["calls"] - _u0["calls"],
                              "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
                              "out_tokens": (_u1["completion_tokens"]

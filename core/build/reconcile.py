@@ -377,8 +377,8 @@ def edgeless(rows, graphs, doc_id, names, skeleton, orphans):
 
 # ---------------------------------------------------------------- 문서 좌표 경고 (⑤)
 def _fold(s):
-    from core.state.ids import fold_latin, norm
-    return fold_latin(norm(s or "")).replace(" ", "")
+    from parser.namefold import key
+    return key(s or "")
 
 
 def near_coords(source_path, nodes, top=5):
@@ -472,12 +472,12 @@ def summary(lines, res, after, before=None):
 
 
 def owner_counts(rows):
-    """**같은 이름 · 다른 소유자**(B142 ⑥) — `(새 노드 중 같은 이름이 같은 공정 줄기의 다른 소유자 아래 있는 것 k, 예 셋,
-    소유자 이름 비슷 → 판정에 오른 개체 행 n)` · 대장 행의 `apart` · `similar`에서(새 계산 0 · 사람이 `ops merge`로 본다)."""
+    """**같은 이름 · 다른 소유자**(B142 ⑥) — `(새 노드 중 같은 이름이 같은 공정 줄기의 다른 소유자 아래 있는 것 k, 예 셋)` ·
+    대장 행의 `apart`에서(새 계산 0 · 사람이 `ops merge`로 본다)."""
     ent = [r for r in rows or [] if r.get("role") in ("entity", "belongs", "heading")]
     apart = [r for r in ent if r.get("verdict") in ("new", "uncertain") and r.get("apart")]
     ex = [f"{r.get('canonical')} ↔ {r['apart'][0]}" for r in apart[:3]]
-    return len(apart), ex, sum(1 for r in ent if r.get("similar"))
+    return len(apart), ex
 
 
 def second_counts(rows):

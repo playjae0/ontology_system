@@ -124,7 +124,7 @@
    ],
    "단계": "인입",
    "주체": "자산",
-   "bytes": 25667,
+   "bytes": 25711,
    "금지": 27,
    "표행": 24,
    "조항": [
@@ -142,7 +142,7 @@
    ],
    "자산": [
     "data/chunks.json",
-    "data/coord_learned.json",
+    "data/surface_book.json",
     "registry/schemas/{doc_type}.json",
     "tests/fixtures/schemas/pfmea.json"
    ],
@@ -255,7 +255,7 @@
    ],
    "단계": "쓰기",
    "주체": "LLM",
-   "bytes": 15856,
+   "bytes": 15912,
    "금지": 13,
    "표행": 0,
    "조항": [
@@ -273,7 +273,7 @@
     "P7"
    ],
    "자산": [
-    "data/alias_book.json"
+    "data/surface_book.json"
    ],
    "코드": [
     "core/matcher.py"
@@ -476,7 +476,7 @@
    ],
    "단계": "저장",
    "주체": "기계",
-   "bytes": 50843,
+   "bytes": 50647,
    "금지": 51,
    "표행": 11,
    "조항": [

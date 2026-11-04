@@ -244,10 +244,11 @@ def _subtree(process_ref, nodes):
                 if norm(n["canonical"]) == key or key in
                 {norm(a) for a in (n.get("aliases") or [])}), None)
     if ref is None:
-        # 2차 — 라틴 대소문자 무시 · 대상이 하나일 때만 (B96 ④)
-        fk = fold_latin(process_ref)
+        # 2차 — 이름 표기 대조 키(공백 · 대소문자 · 전각) · 대상이 하나일 때만 (B96 ④ · B179 ①)
+        from parser.namefold import key
+        fk = key(process_ref)
         hits = [n for n in nodes
-                if fk in {fold_latin(x) for x in [n["canonical"], *(n.get("aliases") or [])]}]
+                if fk in {key(x) for x in [n["canonical"], *(n.get("aliases") or [])]}]
         ref = hits[0] if len(hits) == 1 else None
     if ref is None:
         return []
