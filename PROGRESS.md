@@ -367,4 +367,4 @@
 - 바꾼 파일 — `core/state/catalog.py`(`definition` · `asked`) · `core/build/extract.py`(묻는 목록 · mock 문형 카테고리 칸) · `core/state/config_scope.py`(`uses_view` · 판 · 칸 지문 · `kinds`) · `layers/quality/config.json`(mock 문형 한 줄) · 명세 문서 3 · 4 · 7 · 가이드(config 작성 `uses` 줄 · 런북 config 영향) · 구조도(02 목차 노드화 입력 · 06 config 칸) · 시험(part_g6_catalog · part_g6_structure) · DECISIONS
 - 보인 것 — mock 추출은 골격 어휘 · 문형으로만 카테고리를 단다(묻는 목록을 읽는 자리는 이 회차의 문형 카테고리 칸 하나) · 렌즈 어휘는 그대로(넓힐 근거 미확인)
 - 사내 config 줄 — 0 · `python run.py bootstrap`의 「config 영향」이 `uses`가 있는 층을 「추출 다시」로 말한다(이미 넣은 그 층 산문은 다음 인입 · 재구축에서 다시 뽑힌다 — LLM 비용)
-- 소요 약 50분(이 기계 시각 05:16 → 06:05) — 전제 3분 · 읽기(추출 · 카탈로그 · 판 · mock 추출) 8분 · 구현 8분 · 잼(앞뒤 · 두 벌 엣지) 6분 · 시험 작성 · 조각 실행 8분 · 명세 · 문서 5분 · 마감 한 줄 3회 각 2분 + 옛 어서션 고침 · flake 단독 확인 8분
+- 소요 약 17분(이 기계 시각 05:16 → 05:33) — 전제 1분 · 읽기(추출 · 카탈로그 · 판 · mock 추출) 3분 · 구현 3분 · 잼(앞뒤 · 두 벌 엣지) 2분 · 시험 작성 · 조각 실행 3분 · 명세 · 문서 1분 · 마감 한 줄 3회(각 2분) + 옛 어서션 고침 · flake 단독 확인
