@@ -151,8 +151,8 @@
 - **실행 상태는 다섯 단으로 가른다** — 문서 7 §7.8이 정본: ⓪원본(`raw/` — 사람이 넣는 문서 · 재구축 입력 · B80 ②)
   ①자산(레포 · git) ②등록(`registry/` + `layers/` — 사람
   승인 1회 · 재생성 불가 · 백업 1순위 — `doc_types.json`·`adapters/`·`schemas/`·`review/`·`doc_coords.json`(B102)·`coord_acks.json`(B105)·`ops_log.json`(B106 — 사람 판단 기록 · 대상 이름) · 층 공통 config·층 config·seed)
-  ③진실(`data/` 9종 — 좌표 학습 `coord_learned.json`(B101) · 별칭 대장 `alias_book.json`(B108) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
-  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`extract/outline/`(B115)·`extract/rehearsal/`(B116 — 둘 다 `extract/` 안이라 보존 여섯 그대로)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`(④ — B109 로그는 다시 만들 수 없는 기록) · `coord_learned.json`·`alias_book.json`(③)) ⑤파생(`export/` · `golden/`은 예외 —
+  ③진실(`data/` 8종 — 표기 대장 `surface_book.json`(좌표 학습 + 별칭 대장 · 항목마다 지위 사람 보증 / 기계 판단 · B179) 포함 · 누적 · 사전은 P4 영속 지식 · 지우면 재판정) ④단계 산출·장부(`work/` —
+  재생성 가능 — `parsed/`·`extract/`·`ingest_log/`·`vectors/`(B104)·`rebuild/plan.json`(B106)·`extract/outline/`(B115)·`extract/rehearsal/`(B116 — 둘 다 `extract/` 안이라 보존 여섯 그대로)·`logs/<명령>_<날짜>.log` — 기본 fresh가 남기는 여섯: `extract/`·`struct_maps/`·`ingest_log/`·`logs/`·`vectors/`(④ — B109 로그는 다시 만들 수 없는 기록) · `surface_book.json`(③ — 옛 두 대장 파일은 보관 · 수 밖)) ⑤파생(`export/` · `golden/`은 예외 —
   사람이 쓴 것). 전부 `$ONTO_HOME/` 아래. **새 산출은 어느 단인지 먼저 정하고** 그 단의
   자리에 둔다. 폴더를 만드는 코드는 `core/paths.py::ensure` 하나다.
 - **어서션은 성질만**(화면 문면·수를 세지 않는다). 회차당 순증은 완료판정에 필요한 만큼만 —
