@@ -217,6 +217,25 @@ def spoken(cfg):
     return set((cfg or {}).get("categories") or {}) | set((cfg or {}).get("uses") or [])
 
 
+def definition(category):
+    """그 카테고리의 **정의문 — 집 층 config 한 곳**(B174 · B178 ① — 다른 층 config에 다시 적지 않는다) · 집이 없거나 못 읽으면 빈 글."""
+    try:
+        h = home(category)
+    except CatalogError:
+        return ""
+    p = paths.layers(h, "config.json") if h else None
+    if not p or not p.exists():
+        return ""
+    return str((json.loads(p.read_text(encoding="utf-8")).get("categories") or {}).get(category) or "")
+
+
+def asked(cfg):
+    """**추출이 묻는 카테고리** `{이름: 정의문}`(B178 ①) = 그 층이 말하는 카테고리(`spoken` — 받는 거름과 같은 함수) · 집 카테고리는
+    그 층 정의문 · `uses`는 집 층의 정의문(`definition`) · 차례는 집 카테고리(층 config 차례) → `uses`(이름순)."""
+    own = dict((cfg or {}).get("categories") or {})
+    return {**own, **{c: definition(c) for c in sorted(spoken(cfg) - set(own))}}
+
+
 def layer_pairs(cfg, cat=None):
     """그 층에 걸리는 위아래 쌍 — 두 카테고리를 다 말하는 층(`spoken`)."""
     sp = spoken(cfg)
