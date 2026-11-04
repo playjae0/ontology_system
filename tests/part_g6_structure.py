@@ -588,9 +588,12 @@ show("ⓐ 층 config(카테고리 목록 · 정의문 · 층 힌트) · 렌즈 �
 show("ⓑ 층 config를 바꾼 뒤 같은 문서 — 구조 판단은 보존분(LLM 0) · 목차 노드화는 그 층에서 다시 묻는다(새 카테고리가 입력에)",
      not _seenb and len(_olb) == len(LAYERS) and all("Mystery148" in b["categories"] for b in _olb),
      f"구조 호출 {len(_seenb)} · 목차 노드화 호출 {len(_olb)}")
-show("ⓒ 목차 노드화는 층마다 — 렌즈 둘(process · quality)이면 두 판정 · 입력 카테고리는 그 층의 것 · 메타가 대상으로 정한 제목도 "
+# 고침(B178 — 묻는 목록은 그 층이 말하는 카테고리(집 ∪ uses)라 품질층 입력에도 공정층 카테고리가 든다 · 층을 가르는 것은 집이
+# 품질층인 카테고리 · 옛 기대: 공정층 카테고리(Property)가 한 층에만)
+show("ⓒ 목차 노드화는 층마다 — 렌즈 둘(process · quality)이면 두 판정 · 입력 카테고리는 그 층이 말하는 것 · 메타가 대상으로 정한 제목도 "
      "LLM이 카테고리를 정한다(구조를 옮기는 갈래 0)",
-     len(_ol1) == 2 and {"Property" in b["categories"] for b in _ol1} == {True, False} and _src1 == ["live", "live"],
+     len(_ol1) == 2 and {"Failure" in b["categories"] for b in _ol1} == {True, False}
+     and len({frozenset(b["categories"]) for b in _ol1}) == 2 and _src1 == ["live", "live"],
      f"호출 {len(_ol1)} · 카테고리 {[sorted(b['categories']) for b in _ol1]} · 출처 {_src1}")
 registry.set_lenses("b119_process", ["process"])
 
