@@ -32,6 +32,7 @@
        ⓑ 둘째 그룹에서 멈춤 → 시작 전 판 · 중간 저장 남음 → 다시 치면 첫 그룹은 재생 · 최종 그래프 같다
        ⓒ 원본 해시가 바뀌면 중간 저장을 쓰지 않는다 · `--step` 없으면 묻지 않는다
   B176 ⓑ 그룹 손잡이의 좌표 표 — 좌표마다 붙음 + 새로 + 보류 = 대장의 그 좌표 값 행 수
+  B177 ⓒ 판정 예고의 목록 밖 좌표 = 좌표 층으로 센 수(품질층 문서 · 구축이 못 푼 좌표 표기 종수)
   B167 ⓓ 표 `--extract-only`는 판정까지(쓰기 0 · 중간 저장) · 확정이 재생(지문 없는 옛 행도) · 그래프가 플래그 없는 실행과 같다
        ⓒ 판정과 확정 사이에 후보가 서면 그 값만 「근거 바뀜」으로 다시 묻는다
 """
@@ -690,6 +691,21 @@ show("B176 ⓑ 좌표 표(mock PFMEA 두 그룹 사본 · 그룹 끝) — 좌표
      and all(len(g) for g in _grows176) and len(_one176) == 1 and _one176[0]["저해상도"] == 1
      and _one176[0]["행"] == _c2["행"],
      f"{_ct176[:4]} · 저해상도 섞음 {[(c['좌표'], c['행'], c['저해상도']) for c in _one176]}")
+
+# B177 ⓒ 판정 예고의 목록 밖 좌표는 좌표 층으로 센다 — 품질층 문서(mock PFMEA01 사본)에서 = 구축이 못 푼 좌표 표기 종수 · 층과 무관
+from core.build.entry import _entity_surfaces as _es177, decision_plan as _dp177   # noqa: E402
+from core.build.ingest import load_schema as _ls177                               # noqa: E402
+from core.state.bootstrap import coord_layer as _cl177                            # noqa: E402
+_env177 = _pf165()
+_sc177 = _ls177(_env177["doc_type"])
+_refs177 = [x.get("process_ref") for x in _env177["records"] if x.get("process_ref")]
+_plan177 = {lay: _dp177(_es177(_env177, _sc177), _refs177, lay)["목록밖_좌표"] for lay in (_sc177["layer"], _cl177())}
+_orph177 = len({_norm(r["surface"]) for r in LG.read(_PF)["rows"]
+                if r.get("role") == "anchor" and r.get("verdict") == "orphan" and r.get("surface")})
+show("B177 ⓒ 판정 예고의 목록 밖 좌표 — 품질층 문서(mock PFMEA01 사본)에서 좌표 층으로 센 수 = 구축이 못 푼 좌표 표기 종수 · "
+     "문서 층 · 좌표 층 어느 쪽으로 물어도 같다",
+     _sc177["layer"] != _cl177() and _orph177 > 0 and set(_plan177.values()) == {_orph177},
+     f"예고 {_plan177} · 대장의 못 푼 좌표 표기 {_orph177}")
 
 _base165()
 _pre165 = _world165()

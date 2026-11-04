@@ -206,7 +206,7 @@ def decision_plan(mentions, refs, layer):
     """**판정 예고** — 부르기 전에 몇 번 부를지 센다 (B72 ② · B74 ① · B22의 정신).
 
     넷을 센다: ①판정에 올라가는 **값의 수**(행 × entity 열) ②문서 내 중복을 제외한
-    표기 종수 ③그중 **사전이 이미 아는 것**(값 단위 — 판정과 같은 키) ④골격 밖 좌표.
+    표기 종수 ③그중 **사전이 이미 아는 것**(값 단위 — 판정과 같은 키) ④골격 밖 좌표(좌표 층의 골격으로 — B177 ②).
 
     **상한은 ① − ③이다**: 개체 판정은 **행마다** 돈다(같은 표기라도 부모 좌표가
     다르면 다른 노드다). 사전 히트는 `match`가 exact로 끊으므로 호출이 없고, 그
@@ -236,14 +236,17 @@ def decision_plan(mentions, refs, layer):
         if _plan_hit(b, m, layer):
             hits += 1
     from parser.normalizer import coord_refs
+    from core.state.bootstrap import coord_layer
+    # 좌표 골격은 좌표 층에만 있다(문서 3 §3.6 공정은 한 벌) — 문서 층이 아니라 좌표 층에서 잰다(B177 ② · 값 셈은 집 층 그대로)
+    cg = g if layer == coord_layer() else open_graph(coord_layer())
     out_of_list = []
     for r in [x for v in refs for x in coord_refs(v)]:        # 공정은 목록 (B125 ④)
         n = norm(r)
         if n in out_of_list:
             continue
         if not [nid for nid in dic.lookup(r)
-                if nid in g.nodes
-                and (g.get(nid) or {}).get("status") in ("seed", "confirmed")]:
+                if nid in cg.nodes
+                and (cg.get(nid) or {}).get("status") in ("seed", "confirmed")]:
             out_of_list.append(n)
     return {"단계": "판정예고", "값_수": vals, "표기_종수": len(kinds),
             "사전_히트": hits, "예상_호출": max(0, vals - hits),

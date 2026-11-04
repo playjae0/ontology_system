@@ -321,7 +321,7 @@ _oe = _run("ingest-file", str(XE), "--doc-type", DT, "--allow-mock", "--sheets",
 _res_e = (LG.read(_did_e) or {}).get("result") or {}
 _unres = (_res_e.get("보류") or {}).get("좌표 미해소로 스코프 노드 미생성", 0)
 # 기대 변경(B152 ⑤ — 맞춤 아래 옛 경고 두 줄 0 · 같은 사실은 원인 묶음의 「문서 좌표 없음」 줄 — 가까운 골격 이름 · 실경로 처방)
-_wl = next((ln for ln in _oe.splitlines() if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 못 붙은 행")), "")
+_wl = next((ln for ln in _oe.splitlines() if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 확인할 행")), "")
 _cand = _wl
 #: 보류가 0이 아닌 맞춤 묶음 — ⓐ의 대표 둘은 보류 0이라 이 인입 화면(이미 돈 실행)에서 잰다(B121 ②ⓒ — PFMEA01 몫)
 _oke, _whye = _sum_ok(_oe, _did_e)
@@ -369,6 +369,7 @@ show("ⓕ 추출 끝에 체크포인트 자리와 있음 · 쓰기가 빠지면 
      f"{_ok_line.strip()} / {[ln.strip() for ln in _buf2.getvalue().splitlines() if '[결함]' in ln][:1]}")
 
 # ────────────────────────────────────────────────────────────── B149 진단 출력
+# 기대 변경(B177 ③ — 진단의 화면 낱말: 「못 붙은 행 · 못 붙음」 → 「확인할 행」 · 「붙음」 → 「닿음」 · 「다 붙은 가지」 → 「확인할 행이 없는 가지」 · 행 집합 · 합 그대로) — 아래 B149 · B152 · 위 B112 ⑤의 문면 대조
 print("\n■ B149 진단 출력 — 원인 묶음(못 찾은 것 · 값은 가장 위 원인에서 한 번) · 목차 나무 · 표의 좌표 표기 목록 · 읽기 전용")
 from cli import report_cause as RCZ                     # noqa: E402
 from core.build import outline as OL149                 # noqa: E402
@@ -413,7 +414,7 @@ _ra = _run("show", "report", _da)
 show("ⓐ 문서 좌표 없음 — 원인 묶음 첫 줄 「문서 좌표 없음 — 못 붙은 행 n」 + 가까운 골격 이름 + 처방(--coord · 실경로) · 원인 하나 · "
      "합 = 보류 · 고아 행 수(좌표 행 제외 · 아래 원인에서 다시 세지 않는다)",
      _ca and _ca[0]["원인"] == RCZ.DOC and len(_ca) == 1 and sum(g["행"] for g in _ca) == _lost149(_da) > 0
-     and "    문서 좌표 없음 — 문서 좌표 · 못 붙은 행" in _ra and "가까운 골격 이름(보여만 준다)" in _ra
+     and "    문서 좌표 없음 — 문서 좌표 · 확인할 행" in _ra and "가까운 골격 이름(보여만 준다)" in _ra
      and f"ingest-file {XA} --doc-type {DT} --coord <골격 이름>" in _ra,
      f"원인 {[(g['원인'], g['행']) for g in _ca]} · 못 붙은 행 {_lost149(_da)}")
 # ⓕ 인입 끝 화면 — 원인 묶음 위 n줄(같은 함수 · 전체는 show report)
@@ -451,10 +452,10 @@ _hid_o = next(h["id"] for h in _tr149["headings"] if h["path"].endswith("1. 운�
 _n_o = sum(1 for r in _rows_b if _hr149(r) and r.get("role") != "anchor"
            and _tr149["of"].get(r.get("locator")) == _hid_o)   # 그 제목 바로 아래 조각의 못 붙은 행
 show("ⓓ 목차 나무 — 문제 가지만 펼침(골격 시트는 접힘) · 줄의 좌표 출처 · 노드 상태 · 못 붙음 수 = 봉투 · 대장 · -v면 전부",
-     any(ln.strip().startswith("기타 사양 — 좌표 없음") for ln in _tb) and f"못 붙음 {_n_o:,}" in _line_o and "노드: " in _line_o
-     and not any(ln.strip().startswith("노칭 — ") for ln in _tb) and any("다 붙은 가지 1" in ln for ln in _tb)
+     any(ln.strip().startswith("기타 사양 — 좌표 없음") for ln in _tb) and f"확인할 행 {_n_o:,}" in _line_o and "노드: " in _line_o
+     and not any(ln.strip().startswith("노칭 — ") for ln in _tb) and any("확인할 행이 없는 가지 1" in ln for ln in _tb)
      and any(ln.strip().startswith("노칭 — 좌표 노칭(자기)") for ln in _tv),
-     f"{_line_o.strip()} · 접음 {[ln.strip() for ln in _tb if '다 붙은' in ln]}")
+     f"{_line_o.strip()} · 접음 {[ln.strip() for ln in _tb if '없는 가지' in ln]}")
 # ⓒ 소속 이름 없음 — 그 이름이 청크에 있지만 노드가 없다(카테고리 없는 소속 — 고아 큐)
 XC = _book(TMP / "B149_소속.xlsx", {"사양": ("visible", ["1. 반송", "장력은 반송 유닛에서 잰다.", "속도는 반송 유닛의 값이다."])})
 _dc, _oc = _ingest149(XC, ["사양"], lambda c: [{"surface": w, "category": "Property",
@@ -506,11 +507,11 @@ print("\n■ B152 — 수의 단위는 못 붙은 행(좌표 행 제외 · 맞�
 _ma152 = RCZ.material(_da)
 _hd152 = RCZ.head_line(_ma152) or ""
 _ra_lines = _ra.splitlines()
-_doc152 = next((ln for ln in _ra_lines if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 못 붙은 행")), "")
+_doc152 = next((ln for ln in _ra_lines if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 확인할 행")), "")
 _ent152 = sum(1 for r in (LG.read(_da) or {}).get("rows") or [] if r.get("role") == "entity")
 show("B152 ⓐ 단위 — 문서 좌표 없는 산문(값 2 · 조각 2) → 원인 줄 「못 붙은 행 2(개체 2)」 · 머리 「개체 2/2」 · 같은 화면 맞춤 「값(개체 행) 2」와 "
      "같은 수 · 좌표 행 0",
-     _ent152 == 2 and "못 붙은 행 2(개체 2)" in _doc152 and "못 붙은 행 2 / 전체 2 — 개체 2/2" in _hd152 and _hd152.strip() in _ra
+     _ent152 == 2 and "확인할 행 2(개체 2)" in _doc152 and "확인할 행 2 / 전체 2 — 개체 2/2" in _hd152 and _hd152.strip() in _ra
      and re.search(r"값\(개체 행\) 2\b", _ra) and not any("좌표" in k for k in (RCZ.head_count(_ma152)[2] or [])),
      f"{_hd152.strip()} · {_doc152.strip()[:80]}")
 from collections import Counter                          # noqa: E402
@@ -536,7 +537,7 @@ for _d152 in (_db, _dc, _dt):
     for g in _c152:
         _kc.update(g["종류"])
     _tree = RCZ.tree_lines(_m152, verbose=True)
-    _lost_tree = sum(int(m.group(1).replace(",", "")) for ln in _tree for m in [re.search(r"못 붙음 ([\d,]+)", ln)] if m)
+    _lost_tree = sum(int(m.group(1).replace(",", "")) for ln in _tree for m in [re.search(r"확인할 행 ([\d,]+)", ln)] if m)
     _sums.append((_d152, _n152, dict(_kc) == {k: a for k, a, _b in _kinds if a}, sum(_kc.values()), _lost_tree))   # 기대 변경(B154 ③ — 머리에 못 붙음 0인 종류도 선다)
 show("B152 ⓒ 합 — B149 ⓑ · ⓒ · ⓔ 표본에서 원인 줄의 종류별 합 = 머리의 분자 · 목차 나무(펼친 줄 + 접은 줄) · 좌표 표기 목록의 못 붙음 합 = 머리의 n",
      all(ok and n == s == lt and n > 0 for _d, n, ok, s, lt in _sums), str(_sums))

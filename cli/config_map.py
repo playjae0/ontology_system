@@ -25,11 +25,12 @@ from pathlib import Path
 from core.state.bootstrap import COORD_CATEGORY, NoCoordLayer, coord_layer, open_graph
 from core.state.status import is_live
 
-MAP_VERSION = 2
+MAP_VERSION = 3                                    # 3 — 공통 쌍 정의 · 층의 쌍에서만 온 것 · 이름 꼴 표기(B177 ①)
 #: 점검 갈래 — 거부(인입 · bootstrap이 멈춘다) · 경고(막지 않는다 · 고칠 거리) · 표시(사람이 본다)
 LEVELS = ("거부", "경고", "표시")
-#: 이름 꼴의 좌표 자리 — 카테고리 이름이 아니라 「공정 경로」라는 말(층 어휘 0)
-COORD_TOKEN = "<공정>"
+#: 이름 꼴의 좌표 자리 — 좌표 카테고리 이름(등록 블록 자산 `process_coord` — 코드에 카테고리 이름 0 · B177 ①) · 이름 자리는 `<name>`
+COORD_TOKEN = f"<{COORD_CATEGORY}>"
+NAME_TOKEN = "<name>"
 
 
 def _first_line(text):
@@ -122,7 +123,10 @@ def _layer(lay, cfg, lenses, edges, old, schemas):
                  key=lambda p: (p["src"] or "", p["rel"] or "", p["dst"] or ""))
     uses = _uses(lay, cfg, old, schemas)
     spk = set(cfg.get("categories") or {}) | set(uses)
+    raw = {(p.get("src"), p.get("rel"), p.get("dst")) for p in cfg.get("relation_patterns") or []}
     return {
+        # 이 층에 걸린 쌍 중 층 패턴에 없는 것 — 공통 `pairs`에서만 온다(B177 ① 표시 「pairs에서」 · 옛 모양은 층 매핑이라 0)
+        "pairs_only": [] if old else [list(e) for e in edges if {e[0], e[2]} <= spk and tuple(e) not in raw],
         "categories": {c: _first_line(d) for c, d in sorted((cfg.get("categories") or {}).items())},
         "uses": uses,
         "skeleton": _skeleton(lay, cfg),
@@ -158,13 +162,14 @@ def _name_forms(common, configs, old, edges):
     for c in sorted(cats):
         pth = path[c]
         if pth == "골격":
-            form = "이름 그대로(골격)"
+            form = f"{NAME_TOKEN}  (skeleton — 이름 그대로)"
         elif pth.startswith("안 씀"):
-            form = "이름 그대로(경로 안 씀)"
+            form = f"{NAME_TOKEN}  (no_path — 이름 그대로)"
         elif ups.get(c):
-            form = " | ".join(f"{COORD_TOKEN}::<{u}>::<이름>" for u in ups[c]) + f" | {COORD_TOKEN}::<이름>(위가 없으면)"
+            form = (" | ".join(f"{COORD_TOKEN}::<{u}>::{NAME_TOKEN}" for u in ups[c])
+                    + f" | {COORD_TOKEN}::{NAME_TOKEN}  (upper 노드가 없으면)")
         else:
-            form = f"{COORD_TOKEN}::<이름>"
+            form = f"{COORD_TOKEN}::{NAME_TOKEN}"
         out[c] = (pth, form)
     return out
 
@@ -298,6 +303,7 @@ def build(src=None):
     return {"map_version": MAP_VERSION, "shape": "옛 모양" if old else "새 모양",
             "coord": {"layer": coord, "category": COORD_CATEGORY}, "layers": layers,
             "pairs": [list(e) for e in edges], "categories": cats, "links": links(layers, cats, schemas),
+            "pair_defs": sorted(catalog.pairs(common), key=lambda p: (p["lower"], p["upper"], p["rel"])),
             "checks": checks(layers, cats, common, configs, src, schemas)}
 
 

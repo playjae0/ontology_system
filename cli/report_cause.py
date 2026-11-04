@@ -5,9 +5,9 @@
 (조각 좌표와 그 출처 표시 · 제목 사슬) · 문서 좌표 기록 · 고아 큐(기다리는 이름) · 결함 로그(관계 후보 끝점 미해소) · 목차
 노드화 체크포인트. **읽기만** 한다(LLM 0 · 새 판정 0 · 쓰기 0) · 표 · 산문 · 형식 전부 같은 함수 · 층 어휘 0.
 
-**수의 단위는 「못 붙은 행」이다**(B152) — 판정 대장 행 중 좌표 행(`anchor`)을 뺀 행이 보류 · 고아 · 불확실 · 종류는 맞춤표 「보류(행)」의
+**수의 단위는 「확인할 행」이다**(B152) — 판정 대장 행 중 좌표 행(`anchor`)을 뺀 행이 보류 · 고아 · 불확실 · 종류는 맞춤표 「보류(행)」의
 행 종류(`reconcile.ROW_KIND` — 개체 · 속성·내용 · 소속 · 그 밖) · 좌표 행은 원인 판정 · 위치의 재료로만 쓴다. 원인 묶음 머리 · 원인 줄 ·
-목차 나무 · 좌표 표기 목록이 같은 행 집합이라 서로 맞는다(원인 줄의 종류별 합 = 머리의 분자 = 나무 · 목록의 못 붙음 합).
+목차 나무 · 좌표 표기 목록이 같은 행 집합이라 서로 맞는다(원인 줄의 종류별 합 = 머리의 분자 = 나무 · 목록의 확인할 행 합).
 
 원인 키(위에서부터 — 행은 가장 위 원인에서 한 번만 센다):
   1 문서 좌표 없음 — 문서 좌표가 없고 좌표가 선 조각이 하나도 없다
@@ -15,7 +15,7 @@
   3 소속 이름 없음 — 기다리는 이름마다(고아 큐 `orphan_attach`)
   4 관계 끝점 없음 — 끝점 이름마다(결함 로그 · 위 원인으로 못 선 값의 이름은 빼고)
   5 그 밖 — 표기 모호 · 골격 밖 · 카테고리 밖(관문) · 부착 대상 · 불확실
-줄 차례는 원인 순 → 못 붙은 행이 많은 차례 · 못 붙은 행이 0인 원인은 원인 줄 0 — 행이 아닌 잃은 것(끝점 없는 관계 · 골격에 없는
+줄 차례는 원인 순 → 확인할 행이 많은 차례 · 확인할 행이 0인 원인은 원인 줄 0 — 행이 아닌 잃은 것(끝점 없는 관계 · 골격에 없는
 공정 표기)은 그 아래 **행 밖**(`outside` — 행의 합 밖 · B154 ②). 처방 줄은 그 종류에 맞는 길을
 그대로 쳐서 도는 꼴로 보인다(고르지 않는다).
 """
@@ -31,8 +31,12 @@ DOC, SECTION, BELONGS, ENDPOINT, OTHER = "문서 좌표 없음", "구간 좌표 
 RANK = {DOC: 1, SECTION: 2, BELONGS: 3, ENDPOINT: 4, OTHER: 5}
 #: 행 종류의 차례(맞춤표 「보류(행)」의 종류에서 좌표 행을 뺀 것 — 이름은 `kind_of`가 「행」을 뗀다)
 KINDS = ("개체", "속성·내용", "소속", "그 밖")
-#: 못 붙은 행의 상태(한 행은 하나 · 보류가 먼저)
+#: 확인할 행의 상태(한 행은 하나 · 보류가 먼저)
 STATES = ("보류", "고아", "불확실")
+#: **진단의 화면 낱말**(B177 ③ — 「붙음」은 값의 결과 하나(`_screen.outcome` · B176)라 진단은 다른 말을 쓴다 · 행 집합 · 합은 B152 그대로):
+#: 셈 대상 행 중 보류 · 고아 · 불확실 행은 「확인할 행」 · 그 밖에 노드에 닿은 행(새로 생김 · 기존 노드 모두)은 「닿음」
+CHECK = "확인할 행"
+REACHED = "닿음"
 #: 결함 로그의 관계 후보 끝점 미해소 줄(`core/build/prose.py`가 쓴다)
 ENDPOINT_MARK = "관계 후보 끝점 미해소 — "
 
@@ -95,7 +99,7 @@ def _coord(piece):
     return coord_text((piece or {}).get("process_ref")) or None
 
 
-# ---------------------------------------------------------------- 수의 단위 — 못 붙은 행 (B152 ①)
+# ---------------------------------------------------------------- 수의 단위 — 확인할 행 (B152 ①)
 def kind_of(r):
     """행 종류 — 맞춤표 「보류(행)」의 종류 함수 그대로(`reconcile.ROW_KIND` · 없으면 그 밖)에서 「행」을 뗀 이름."""
     from core.build.reconcile import ROW_KIND
@@ -109,7 +113,7 @@ def _rows(mat, layer=None):
 
 
 def _values(mat, layer=None):
-    """못 붙은 행 — `[(행 차례, 행, 상태)]` 상태 = 보류 · 고아 · 불확실(한 행은 하나 · 보류가 먼저 · 좌표 행은 세지 않는다)."""
+    """확인할 행 — `[(행 차례, 행, 상태)]` 상태 = 보류 · 고아 · 불확실(한 행은 하나 · 보류가 먼저 · 좌표 행은 세지 않는다)."""
     key = ("_values", layer)
     if key in mat:
         return mat[key]
@@ -134,8 +138,8 @@ def _kinds_text(cnt):
 
 
 def head_count(mat, layer=None):
-    """원인 묶음 머리의 재료 — `(못 붙은 행 n, 전체 N, 종류별 [(종류, 못 붙음, 전체)], 상태별 Counter)` · 종류는 **전체가 0이 아닌 것
-    전부**(못 붙음 0이어도 — 보이는 분모 합 = 전체 · B154 ③)."""
+    """원인 묶음 머리의 재료 — `(확인할 행 n, 전체 N, 종류별 [(종류, 확인할 행, 전체)], 상태별 Counter)` · 종류는 **전체가 0이 아닌 것
+    전부**(확인할 행 0이어도 — 보이는 분모 합 = 전체 · B154 ③)."""
     vals = _values(mat, layer)
     tot = Counter(kind_of(r) for _i, r in _rows(mat, layer))
     lost = Counter(kind_of(r) for _i, r, _s in vals)
@@ -167,7 +171,7 @@ def _top_heading(mat):
 
 
 def causes(mat, layer=None):
-    """원인 묶음 — `[{원인, 못 찾은 것, 행, 종류, 위치, 처방}]`(원인 순 → 못 붙은 행 수). 행은 가장 위 원인에서 한 번만 · 큐 항목 ·
+    """원인 묶음 — `[{원인, 못 찾은 것, 행, 종류, 위치, 처방}]`(원인 순 → 확인할 행 수). 행은 가장 위 원인에서 한 번만 · 큐 항목 ·
     끝점 이름처럼 대장 행이 아닌 것은 `밖`에만 센다(행 0이면 화면 줄 0)."""
     from core.build.result import ATTACH_NOT_TARGET, ATTACH_UNRESOLVED, HOLD_REASONS, hold_reason
     vals = _values(mat, layer)
@@ -275,19 +279,19 @@ def _revise(dt):
 
 
 def head_line(mat, layer=None, force=False):
-    """원인 묶음 머리 — `원인 묶음 — 못 붙은 행 n / 전체 N — 개체 a/A · … · 보류 x · 고아 y · 불확실 z`(종류는 전체가 0이 아닌 것 전부 ·
+    """원인 묶음 머리 — `원인 묶음 — 확인할 행 n / 전체 N — 개체 a/A · … · 보류 x · 고아 y · 불확실 z`(종류는 전체가 0이 아닌 것 전부 ·
     0인 상태는 뺀다 — B154 ③) ·
-    못 붙은 행이 0이면 None(묶음 0) — `force`(행 밖이 있다 — B154 ②)면 `원인 묶음 — 못 붙은 행 0 / 전체 N`."""
+    확인할 행이 0이면 None(묶음 0) — `force`(행 밖이 있다 — B154 ②)면 `원인 묶음 — 확인할 행 0 / 전체 N`."""
     n, tot, kinds, states = head_count(mat, layer)
     if not n and not force:
         return None
-    return (f"  원인 묶음 — 못 붙은 행 {n:,} / 전체 {tot:,}"
+    return (f"  원인 묶음 — {CHECK} {n:,} / 전체 {tot:,}"
             + (" — " + " · ".join(f"{k} {a:,}/{b:,}" for k, a, b in kinds) if n and kinds else "")
             + "".join(f" · {s} {states[s]:,}" for s in STATES if states.get(s)))
 
 
 def outside(mat, cs, layer=None):
-    """**행 밖**(B154 ②) — 못 붙은 행으로 세지 않는 잃은 것 `[{무엇, 말, 위치, 처방}]` · 행의 합(머리 · 원인 줄 · 목차 나무)에 섞지 않는다:
+    """**행 밖**(B154 ②) — 확인할 행으로 세지 않는 잃은 것 `[{무엇, 말, 위치, 처방}]` · 행의 합(머리 · 원인 줄 · 목차 나무)에 섞지 않는다:
     관계 끝점 없음(원인 묶음의 끝점 무리 그대로 — 위 원인으로 못 선 값의 이름은 이미 빠졌다) · 골격에 없는 공정 표기(좌표 행 보류 —
     좌표 목록 밖 · 골격에 없는 좌표 — 중 위 원인 줄의 「못 찾은 것」에 이미 든 표기는 뺀다 — 그 표기 때문에 값이 못 붙었으면 원인 줄이 말한다)."""
     from core.build.result import HOLD_REASONS, hold_reason
@@ -312,7 +316,7 @@ def outside(mat, cs, layer=None):
 
 
 def cause_lines(cs, limit=None, mat=None, layer=None):
-    """원인 묶음 → 줄들(못 붙은 행 0이고 행 밖도 0이면 빈 목록) — 머리(`head_line`) + 원인마다 `<원인> — <못 찾은 것> · 못 붙은 행
+    """원인 묶음 → 줄들(확인할 행 0이고 행 밖도 0이면 빈 목록) — 머리(`head_line`) + 원인마다 `<원인> — <못 찾은 것> · 확인할 행
     m(종류별) · <위치>` + `▶ 처방` · 행 0인 원인은 줄 0 · 그 아래 **행 밖**(`outside` — B154 ②). `limit`이면 그 줄까지 · 넘으면 「… 외 n」."""
     out_items = outside(mat, cs, layer) if mat is not None else []
     cs = [g for g in cs or [] if g["행"]]
@@ -320,7 +324,7 @@ def cause_lines(cs, limit=None, mat=None, layer=None):
     if not (cs or out_items) or (mat is not None and not head):
         return []
     from cli import _screen
-    out = ["", head or f"  원인 묶음 — 못 붙은 행 {sum(g['행'] for g in cs):,}"]
+    out = ["", head or f"  원인 묶음 — {CHECK} {sum(g['행'] for g in cs):,}"]
     for g in cs[:limit]:
         tail = f" · {g['위치']}" if g["위치"] else ""
         near = ""
@@ -328,13 +332,13 @@ def cause_lines(cs, limit=None, mat=None, layer=None):
             from core.build.reconcile import near_coords
             nc = near_coords(mat["env"].get("source_path"), mat["skeleton"])
             near = " · 가까운 골격 이름(보여만 준다): " + (" · ".join(nc) if nc else "없음")
-        out.append(f"    {g['원인']} — {_screen.cut(str(g['못 찾은 것']), 60)} · 못 붙은 행 {g['행']:,}"
+        out.append(f"    {g['원인']} — {_screen.cut(str(g['못 찾은 것']), 60)} · {CHECK} {g['행']:,}"
                    f"({_kinds_text(g['종류'])}){tail}{near}")
         out.append(f"      ▶ {g['처방']}")
     if limit is not None and len(cs) > limit:
         out.append(f"    … 외 {len(cs) - limit:,}")
     if out_items:
-        out.append("    행 밖 — 못 붙은 행으로 세지 않는 잃은 것(행의 합 밖)")
+        out.append(f"    행 밖 — {CHECK}으로 세지 않는 잃은 것(행의 합 밖)")
         for it in out_items[:limit]:
             out.append(f"    {it['무엇']} — {_screen.cut(it['말'], 80)}" + (f" · {it['위치']}" if it["위치"] else ""))
             out.append(f"      ▶ {it['처방']}")
@@ -351,8 +355,8 @@ def head_lines(mat):
 
 
 def _counts(mat, locs, layer=None):
-    """위치들의 행 — `(붙음, 못 붙음, 그 안 고아, 센 행 차례들)` — 단위는 원인 묶음과 같은 못 붙은 행(좌표 행 제외 · B152 ①) · 붙음은
-    셈 대상 행 중 못 붙지 않고 노드에 닿은 것."""
+    """위치들의 행 — `(닿음, 확인할 행, 그 안 고아, 센 행 차례들)` — 단위는 원인 묶음과 같은 확인할 행(좌표 행 제외 · B152 ①) · 닿음은
+    셈 대상 행 중 확인할 행이 아니고 노드에 닿은 것."""
     lost = {i: s for i, _r, s in _values(mat, layer)}
     a = b = o = 0
     seen = set()
@@ -408,7 +412,8 @@ def tree_lines(mat, verbose=False, layer=None):
         return s
     for h in t["headings"]:                     # 제목 개체 행의 위치 = 제목 경로 — 그 제목의 몫으로 센다
         own.setdefault(h["id"], set()).add(h["path"])
-    out = ["", "  목차 나무 — 제목 · 좌표(출처) · 노드 · 붙음 · 못 붙음" + ("" if verbose else " · 다 붙은 가지는 접는다(-v면 전부)")]
+    out = ["", f"  목차 나무 — 제목 · 좌표(출처) · 노드 · {REACHED} · {CHECK}"
+           + ("" if verbose else f" · {CHECK}이 없는 가지는 접는다(-v면 전부)")]
     counted = set()
 
     def walk(parent, depth):
@@ -427,21 +432,21 @@ def tree_lines(mat, verbose=False, layer=None):
             co, src = _coord(first), _src(first)
             where = f"좌표 {co}({src})" if co else "좌표 없음" + (f"({src})" if src != "없음" else "")
             out.append(f"  {'  ' * depth}{h['text']} — {where} · 노드: "
-                       f"{_node_state(by_path.get(h['path']), mat['rows'])} · 붙음 {a1:,} · 못 붙음 {b1:,}"
+                       f"{_node_state(by_path.get(h['path']), mat['rows'])} · {REACHED} {a1:,} · {CHECK} {b1:,}"
                        + (f"(고아 {o1:,})" if o1 else ""))
             walk(h["id"], depth + 1)
         if folded[0]:
-            out.append(f"  {'  ' * depth}… 다 붙은 가지 {folded[0]:,} · 붙음 {folded[1]:,}")
+            out.append(f"  {'  ' * depth}… {CHECK}이 없는 가지 {folded[0]:,} · {REACHED} {folded[1]:,}")
     walk(None, 1)
     rest = [r for i, r, _s in _values(mat, layer) if i not in counted]
-    if rest:                                     # 어느 제목 아래에도 안 걸린 못 붙은 행 — 합이 머리와 맞게 그 까닭과 함께
-        out.append(f"    (목차 밖) — 제목 아래 조각이 아닌 위치 · 못 붙음 {len(rest):,} · "
+    if rest:                                     # 어느 제목 아래에도 안 걸린 확인할 행 — 합이 머리와 맞게 그 까닭과 함께
+        out.append(f"    (목차 밖) — 제목 아래 조각이 아닌 위치 · {CHECK} {len(rest):,} · "
                    + " · ".join(dict.fromkeys(str(r.get("locator")) for r in rest[:3])))
     return out
 
 
 def _coord_list(mat, layer=None):
-    """표의 목차 자리 — 좌표 표기 → 골격 노드 또는 없음 · 레코드 · 붙음 · 못 붙음(못 붙은 행 단위 — B152 ④)."""
+    """표의 목차 자리 — 좌표 표기 → 골격 노드 또는 없음 · 레코드 · 닿음 · 확인할 행(확인할 행 단위 — B152 ④)."""
     from core.build.result import hold_reason
     recs = mat["env"].get("records") or []
     if not recs:
@@ -453,12 +458,12 @@ def _coord_list(mat, layer=None):
     for r in mat["rows"]:
         if r.get("role") == "anchor":
             anchors.setdefault(_norm(r.get("surface")), r)
-    out = ["", "  좌표 표기 목록 — 표기 → 골격 노드 또는 없음 · 레코드 · 붙음 · 못 붙음"]
+    out = ["", f"  좌표 표기 목록 — 표기 → 골격 노드 또는 없음 · 레코드 · {REACHED} · {CHECK}"]
     for co, locs in sorted(by.items(), key=lambda x: (-len(x[1]), x[0])):
         a, b, o, _seen = _counts(mat, locs, layer)
         ar = anchors.get(_norm(co)) or {}
         to = ar.get("canonical") if ar.get("node_id") else (hold_reason(ar) or ("문서 좌표" if mat["doc_coord"] else "없음"))
-        out.append(f"    {co} → {to or '없음'} · 레코드 {len(locs):,} · 붙음 {a:,} · 못 붙음 {b:,}" + (f"(고아 {o:,})" if o else ""))
+        out.append(f"    {co} → {to or '없음'} · 레코드 {len(locs):,} · {REACHED} {a:,} · {CHECK} {b:,}" + (f"(고아 {o:,})" if o else ""))
     return out
 
 
