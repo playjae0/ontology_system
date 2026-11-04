@@ -12,9 +12,10 @@ canonical 키로 풀어 **노드로** 거슬러 간다(가까운 것부터 — `
     한쪽 소유자 근거가 전혀 없음 · 공정 칸 높이만 다름         COMPAT
     값의 가장 가까운 소유자가 어느 근거 사슬의 머리            SAME
     한쪽 사슬이 다른 쪽의 가까운 소유자를 품음(깊이만 다름)    COMPAT
-    소유자가 다른 노드 · 이름 비슷(이름 · 별칭 · 라틴 접기 ·   SIMILAR  LLM 판정(입력에 두 경로)
-      임베딩 유사도 ≥ `OWNER_SIMILAR_PCT`)
-    소유자가 다른 노드 · 뚜렷이 다름                          APART    다른 것 — 후보에서 뺀다
+    소유자가 다른 노드                                        APART    다른 것 — 후보에서 뺀다(LLM 0)
+
+**소유자가 다른 노드면 다른 것이다**(B179 ③ · 결정 C) — 소유자는 설 때 이미 같은지 판단을 받았다 · 이름이 비슷한 소유자로
+다시 묻지 않는다 · 잘못 갈린 것은 사람이 `ops merge`(재료 — 대장 `apart` · 인입 끝 「같은 이름 · 다른 소유자」 줄).
 
 소유자 없는 노드가 경로 호환으로 A의 값을 받으면 소속 엣지가 서고, 다음 B의 값부터는 소유자 갈림으로 본다(순서에 달린 합침을
 막는다 · 소유자 없는 값이 어디에 붙는지는 순서에 따라 달라도 된다).
@@ -35,12 +36,9 @@ from core.state.ids import norm
 from parser.namefold import key as name_key
 from core.state.status import is_live
 
-OTHER, SAME, COMPAT, SIMILAR, APART = "다른 줄기", "같은 소유자", "경로 호환", "소유자 갈림(이름 비슷)", "소유자 갈림"
+OTHER, SAME, COMPAT, APART = "다른 줄기", "같은 소유자", "경로 호환", "소유자 갈림"
 #: 판정에 오르는 관계(나머지는 후보에서 뺀다)
-KEEP = (SAME, COMPAT, SIMILAR)
-#: **소유자 이름 비슷**의 임베딩 문턱(%) — 사내 손잡이 `owner_similar_pct`(창작 기본값 · 임베딩을 쓰는 실행에서만 —
-#: 겹침 실행(mock 기본)은 이름 · 별칭 · 라틴 접기만 본다)
-OWNER_SIMILAR_PCT = 85
+KEEP = (SAME, COMPAT)
 #: 사슬 길이 상한(순환 방어 — 골격 깊이보다 넉넉히)
 MAX_DEPTH = 16
 
@@ -149,16 +147,6 @@ def names(b, n):
     return hit[1]
 
 
-def _emb_similar(a, b, mode):
-    """두 소유자 이름의 임베딩 유사도가 문턱 이상인가 — 임베딩을 쓰는 실행에서만(`mode` — 좁히기 방법 · 겹침 실행은 False)."""
-    if mode != "embed":
-        return False
-    from core import matcher
-    from core.llm import embeddings
-    na, nb = base_name_of(a) or a.get("canonical"), base_name_of(b) or b.get("canonical")
-    return embeddings.cosine(matcher._vec(na), matcher._vec(nb)) * 100 >= OWNER_SIMILAR_PCT
-
-
 def _label(g, nid):
     n = (g.get(nid) if g is not None else None) or {}
     return base_name_of(n) or n.get("canonical")
@@ -166,8 +154,8 @@ def _label(g, nid):
 
 class Place:
     """**들어온 값의 자리** — 공정 · 소유자 사슬 · 이름 부모 글자 · 맨 이름. 후보 조립(`matcher.candidates`)이 후보마다
-    `relation`을 묻고, 판정 입력의 「경로」(`names`)를 받는다. 견준 사실(다른 소유자 아래 같은 이름 · 소유자 이름 비슷)은
-    `apart` · `similar`에 쌓여 대장 행이 옮긴다(화면 줄 · `show report --md`)."""
+    `relation`을 묻고, 판정 입력의 「경로」(`names`)를 받는다. 견준 사실(다른 소유자 아래 같은 이름)은 `apart`에 쌓여 대장
+    행이 옮긴다(화면 줄 · `show report --md`)."""
 
     def __init__(self, b, coord, owner, surface, parent):
         self.b = b
@@ -176,9 +164,9 @@ class Place:
         self.base = norm(surface or "")
         self.parent = parent
         self.parent_key = norm(parent or "")
-        self.apart, self.similar = [], []
-        # **값 하나에 한 번**(B144 ①) — 후보마다 다시 재던 것: 좁히기 방법 · 값의 사전 조회 · 줄기 · 같은 근거와의 관계
-        self._mode = self._ids = self._fold = self._eix = self._w = None
+        self.apart = []
+        # **값 하나에 한 번**(B144 ①) — 후보마다 다시 재던 것: 값의 사전 조회 · 줄기 · 같은 근거와의 관계
+        self._ids = self._fold = self._eix = self._w = None
         self._stem, self._rel = {}, {}
 
     def names(self):
@@ -233,10 +221,10 @@ class Place:
 
     def _relation(self, p, pg, cs, wn=((), frozenset(), [])):
         """근거가 여럿이면 전부(B144 ③): 들어온 값의 가장 가까운 소유자가 어느 사슬의 머리 → 같은 소유자 · 어느 사슬 안이거나
-        어느 머리가 값의 사슬 안(깊이만 다름) → 경로 호환 · 근거가 있는데 겹치지 않으면 소유자 갈림(머리 중 이름 비슷이 있으면 판정).
+        어느 머리가 값의 사슬 안(깊이만 다름) → 경로 호환 · 근거가 있는데 겹치지 않으면 소유자 갈림(후보에서 뺀다 — B179 ③).
         **「한쪽 경로 없음」은 소유자 근거가 전혀 없는 쪽만**이다 — 소유 엣지를 받은 노드는 그 소유자를 근거로 진다. **기다리는
-        소유자 이름**(`wn` — B145)도 근거다: 값의 가장 가까운 소유자의 이름 · 별칭 · 라틴 접기와 같으면 같은 소유자 · 값의 더 먼
-        소유자와 같으면 경로 호환 · 아니면 소유자 갈림(이름 비슷 → 판정)."""
+        소유자 이름**(`wn` — B145)도 근거다: 값의 가장 가까운 소유자의 이름 · 별칭 · 표기 대조 키와 같으면 같은 소유자 · 값의 더 먼
+        소유자와 같으면 경로 호환 · 아니면 소유자 갈림."""
         if not self.in_stem(p, pg):
             return OTHER
         mine = [x for x, _g in self.owners]
@@ -251,20 +239,10 @@ class Place:
         if any(mine[0] in [x for x, _g in c] or c[0][0] in mine for c in cs) \
                 or any(w & names(self.b, og.get(x) or {}) for x, og in self.owners[1:]):
             return COMPAT
-        near = [c[0][1].get(c[0][0]) or {} for c in cs] + [{"canonical": x} for x in wn[2]]
-        return SIMILAR if any(self.owner_similar(ag.get(a) or {}, o) for o in near) else APART
-
-    def owner_similar(self, a, b):
-        """소유자 둘(다른 노드)의 이름이 비슷한가 — 이름 · 별칭 · 라틴 접기 겹침 · 임베딩 유사도(문턱 손잡이)."""
-        if names(self.b, a) & names(self.b, b):
-            return True
-        if self._mode is None:
-            from core.llm import narrow
-            self._mode = narrow.narrow_choice()[0]
-        return _emb_similar(a, b, self._mode)
+        return APART
 
     def same_name(self, nid, n, dictionary):
-        """그 후보가 들어온 값과 **같은 이름**인가 — 사전 표기(원 표기 키) · 맨 이름 · 별칭 · 라틴 접기(공백 무시)."""
+        """그 후보가 들어온 값과 **같은 이름**인가 — 사전 표기(원 표기 키) · 맨 이름 · 별칭 · 표기 대조 키(공백 · 대소문자 · 전각)."""
         if not self.base:
             return False
         if self._ids is None:

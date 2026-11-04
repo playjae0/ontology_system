@@ -37,7 +37,7 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "belongs_to",                    # 산문 개체가 낸 소속 이름(B119 ⑤ — 화면의 소속(출처) 칸 · 출처는 `from`)
          "value",                         # 산문 개체의 값 `{attr, value, verdict}`(B120 ① — `core/build/values.land`가 단다)
          "judge2",                        # 2차 판정 `{was, now, span}`(B123 ③ — 1차 불확실 · 청크 원문의 근거 문장 자리)
-         "apart", "similar",              # 같은 이름 · 다른 소유자 아래 노드 · 소유자 이름 비슷 → 판정(B142 ⑥ — 이름 · 위 5)
+         "apart",                         # 같은 이름 · 다른 소유자 아래 노드(B142 ⑥ — 이름 · 위 5)
          "basis")                         # 근거 지문 — 판정에 오른 값의 후보 이름 · 지시문 판 · 임계 해시(B167 ② · `replay.basis`)
 
 
@@ -102,7 +102,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         node_id=None, candidates_n=0, confidence=0.0, llm=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
-        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, similar=None, basis=None):
+        blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, basis=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -138,8 +138,8 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  ("belongs_to", belongs_to),
                  # 2차 판정(B123 ③ — 1차 불확실 · 단계 · 근거 문장 자리 · 불렀을 때만)
                  ("judge2", judge2),
-                 # 판정이 견준 사실(B142 ⑥) — 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드 · 소유자 이름 비슷 후보
-                 ("apart", apart), ("similar", similar),
+                 # 판정이 견준 사실(B142 ⑥) — 같은 이름 · 같은 공정 줄기 · 다른 소유자 아래 노드
+                 ("apart", apart),
                  # 근거 지문(B167 ② — 판정에 오른 값만 · 재생이 다시 잰 것과 견준다)
                  ("basis", basis)):
         if v is not None:
@@ -159,7 +159,7 @@ def judged(last, *, locator, field, surface, layer, target):
                 emb_top=last.get("emb_top"), nearest=last.get("nearest"),
                 target=target, category=last.get("category"), scope=last.get("scope"),
                 replay=last.get("replay"), judge2=last.get("judge2"),
-                apart=last.get("apart"), similar=last.get("similar"), basis=last.get("basis"))
+                apart=last.get("apart"), basis=last.get("basis"))
 
 
 def put_row(doc_id, new, old=None):

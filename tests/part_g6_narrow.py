@@ -609,11 +609,21 @@ _seen142 = []
 with _FG142.Live(by={"judge": lambda body: (_seen142.append(body), {"type": "new", "matched_id": None, "confidence": 0.9})[1]}):
     _pr142("B142P5", "틈새 유닛", "클리어런스 값")
     _sd142 = _pr142("B142P6", "간극 유닛", "클리어런스 값")
-_jb142 = next((b for b in reversed(_seen142) if any(c.get("path_relation") == _SP73.SIMILAR for c in b["candidates"])), {})
-show("B142 ⓓ 소유자 이름 비슷(따로 선 소유자 · 임베딩 유사) → LLM 판정 · 입력에 두 경로(값 · 후보) · 대장에 「소유자 이름 비슷」",
-     _jb142.get("path") == ["노칭", "간극 유닛"] and _sd142.get("similar") == ["노칭::틈새 유닛::클리어런스 값"]
-     and any(c.get("path") == ["노칭", "틈새 유닛"] for c in _jb142.get("candidates") or []),
-     f"값 경로 {_jb142.get('path')} · 후보 {[(c.get('path'), c.get('path_relation')) for c in _jb142.get('candidates') or []][:2]}")
+# 고침(B179 ③ — B142 ⓓ 「소유자 이름 비슷 → LLM 판정」을 지웠다: 소유자가 다른 노드면 후보에서 빠진다 · 폐기 키 문면은 같은 자리에)
+_jb179 = [b for b in _seen142 if b.get("path") == ["노칭", "간극 유닛"]]
+from core.state import knobs as _KN179                                # noqa: E402
+_P.knobs().write_text(json.dumps({"owner_similar_pct": 85}), encoding="utf-8")
+try:
+    _KN179.load()
+    _kn179 = ""
+except _KN179.KnobError as _e:
+    _kn179 = str(_e)
+_P.knobs().unlink()
+show("B179 ⓒ 소유자가 다른 노드인 같은 이름 관리항목(따로 선 소유자 · 이름 비슷) → LLM을 부르지 않고 다른 노드 · 같은 이름은 대장 "
+     "apart(사람 병합의 재료) · 손잡이 파일의 `owner_similar_pct`는 폐기 키 문면(지울 키 · 다음 줄)으로 멈춘다",
+     not _jb179 and len(_named142("클리어런스 값")) == 2 and _sd142.get("apart") == ["노칭::틈새 유닛::클리어런스 값"]
+     and "폐기한 키" in _kn179 and "owner_similar_pct" in _kn179 and "다음 줄" in _kn179,
+     f"판정 {len(_jb179)} · {_named142('클리어런스 값')} · apart {_sd142.get('apart')} · {_kn179.splitlines()[0][:60] if _kn179 else '멈춤 없음'}")
 _g142 = open_graph("process")
 _dic142 = _DIC74.open()
 _ua = _g142.add_node("노칭::가압 블록", "Unit", "auto", provenance=["B142 시험"], scope="노칭", base_name="가압 블록",
