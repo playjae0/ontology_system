@@ -65,8 +65,11 @@ def _material_print():
     import json as _json
     h = hashlib.sha1()
     from core.state import surface_book
-    for body in (store.read(store.SKELETON_LIST, {}), store.read(store.DICTIONARY, {}), surface_book.learned()):
-        h.update(_json.dumps(body, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8"))
+    for name in (store.SKELETON_LIST, store.DICTIONARY):
+        h.update(_json.dumps(store.read(name, {}), sort_keys=True, ensure_ascii=False,
+                             default=str).encode("utf-8"))
+    h.update(_json.dumps(surface_book.learned(), sort_keys=True, ensure_ascii=False,   # 좌표 학습 갈래만(B179 ②)
+                         default=str).encode("utf-8"))
     return "판:" + h.hexdigest()[:12]
 
 

@@ -309,8 +309,9 @@ show("ⓓ --trace — 행마다 「소속 이름 → 대상(종류) → 결과�
      and any("버림(출처 없음" in ln for ln in _tl), _tl[:2])
 
 # ────────────────────────────────────────────────────────────── ⓔ
-print("\n■ B112 ⑤ 문서 좌표 경고 — 파일명 조각이 띄어쓰기로 어긋남")
-XE = _book(TMP / "B112_전극리와인딩_사양.xlsx", {"사양": ("visible", ["장력은 매 시간 기록한다.", "커버를 단다."])})
+print("\n■ B112 ⑤ 문서 좌표 경고 — 파일명에 골격 이름이 구분자 없이 붙어 있다")
+# 고침(B179 ① — 파일명 조각 「전극리와인딩」은 이제 공백 무시로 골격 이름에 맞아 제안이 선다 · 가까운 이름은 조각이 아닌 글 속에서)
+XE = _book(TMP / "B112전극리와인딩사양.xlsx", {"사양": ("visible", ["장력은 매 시간 기록한다.", "커버를 단다."])})
 _did_e = IG.doc_id_of(XE)
 _env_e = pipeline.parse(BX, _did_e, str(XE), closed_list=TG.closed_list("process"), doc_coord=None,
                         sheet_roles={"사양": "prose"}).envelope
