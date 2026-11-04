@@ -17,6 +17,7 @@
       겸 상태 세 갈래 표시(종료 코드 0 · doctor 같은 상태)
   B95 골격 카테고리의 어긋난 집은 옛 집 그래프에 노드 0이면 자동 교정(있으면 노드 수 문면으로 멈춤) ·
       새 카테고리 경고에 이름 규칙 줄(적용·미적용)
+  B177 ① 지도 표기 — ⓐ 옛 모양 지금 ↔ 제안 --diff가 층 걸림 한 줄 ⓑ 그림 색 축 layer(뷰어 기본은 자동 그대로) · 이름 꼴 좌표 자리 = 좌표 카테고리
   B173 config 지도(읽기만) — ⓐ 층 사이 연결 포인트 · 선언 없이 씀 ⓑ 점검은 카탈로그 · 재대조 문면 그대로 + 새 점검 줄
       ⓒ `--json` 두 번 바이트 같음 · 관계 패턴 하나를 지운 사본과의 대조가 그 하나만 ⓓ HTML 실경로 외부 주소 0 · 쓰기 0
   B174 옛 모양 → 제안 — ⓑ 옛 mock config → 제안 · 보고 · 멈춤(쓰기 0) · 지도 지금 ↔ 제안 대조 0 ⓒ (일반 노드) 아래 (경로 씀) 쌍
@@ -415,8 +416,8 @@ _d173 = XC.diff(json.loads((_t173 / "a.json").read_text(encoding="utf-8")),
                 json.loads((_t173 / "b.json").read_text(encoding="utf-8")))
 show("B173 ⓒ --json 두 번이 바이트 같다 · 관계 패턴 하나를 지운 사본과의 --diff가 그 하나만 낸다",
      (_t173 / "a.json").read_bytes() == (_t173 / "a2.json").read_bytes()
-     and _d173 == [f"- 관계 패턴 — {_lay173}: {_p173['src']} -{_p173['rel']}-> {_p173['dst']}"
-                   + (" (대칭)" if _p173["symmetric"] else "")], f"대조 {_d173}")
+     and _d173 == [f"- relation_patterns — {_lay173}: {_p173['src']} -{_p173['rel']}-> {_p173['dst']}"   # 고침(B177 ① — config 키 낱말)
+                   + (" (symmetric)" if _p173["symmetric"] else "")], f"대조 {_d173}")
 
 _r173 = subprocess.run([sys.executable, str(ROOT / "run.py"), "export", "config"], cwd=str(ROOT),
                        env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -427,6 +428,20 @@ show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 
      and "http://" not in _html173 and "https://" not in _html173 and _hash173() == _h173,
      f"rc {_r173.returncode} · {_r173.stdout.strip().splitlines()[:1]} · {len(_html173):,}B")
 shutil.rmtree(_t173, ignore_errors=True)
+# B177 ⓑ 지도의 그림은 색 축 layer(그리기 인자) · 뷰어 기본은 자동 그대로(인자 없으면 템플릿의 자동 고름 한 줄 그대로) ·
+# 이름 꼴의 좌표 자리는 좌표 카테고리 이름(등록 블록 자산 — 코드에 카테고리 이름 0은 층 어휘 점검이 잰다)
+from cli import export as EX177                                            # noqa: E402
+from core.state.bootstrap import COORD_CATEGORY as _CC177                 # noqa: E402
+_w177 = XC._world(_m173)
+_auto177, _lay177 = EX177.build_html(_w177), EX177.build_html(_w177, color_axis="layer")
+show("B177 ⓑ 지도 그림의 색 축은 layer(그리기 인자 · 칩 · 띠와 같은 색 함수) · 인자가 없으면 자동 고름 그대로 · "
+     "이름 꼴의 좌표 자리 = 좌표 카테고리 이름",
+     EX177._COLOR_AX in _auto177 and EX177._COLOR_AX not in _lay177
+     and _lay177.replace('const COLOR_AX = "layer" ?? (() => {', EX177._COLOR_AX) == _auto177
+     and "&quot;layer&quot; ??" in XC.render_html(_m173)
+     and all(v["name_form"].startswith(f"<{_CC177}>::") for v in _m173["categories"].values()
+             if not v["skeleton_of"] and not v["path"].startswith("안 씀")),
+     f"이름 꼴 {[v['name_form'] for v in _m173['categories'].values()][:2]}")
 init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── B174
@@ -460,10 +475,11 @@ _rc, _o = _boot()
 _w174 = _hash173() == _h174
 _pc, _pl = CM.read(_P.config_next("layers"))
 _d174 = _maps174()
+# 고침(B177 ⓐ — `--diff`가 층 걸림을 잰다: 옛 모양에서 품질층 게이트가 허용하는 삼항이 하나 늘었다 · 옛 기대: --diff 0)
 show("B174 ⓑ 옛 모양 mock config → bootstrap이 제안(layers 모양) · 보고를 쓰고 멈춘다 · 그래프 · config · 등록부 쓰기 0 · "
-     "제안은 새 모양 · 지도 지금 ↔ 제안 --diff 0",
+     "제안은 새 모양 · B177 ⓐ 지도 지금 ↔ 제안 --diff는 층 걸림 한 줄(품질층에 새로 걸린 쌍)",
      _rc != 0 and "옛 모양" in _o and _P.config_next("보고.md").exists() and _w174
-     and not catalog.old_shape(_pl, _pc) and _d174 == [],
+     and not catalog.old_shape(_pl, _pc) and _d174 == ["+ pairs (layer) — quality: Process -has_property-> Property"],
      f"rc {_rc} · 쓰기 0 {_w174} · 제안 옛 모양 {catalog.old_shape(_pl, _pc)} · 대조 {_d174[:3]}")
 
 
@@ -480,7 +496,7 @@ _ren = _rep.split("## 이름이 바뀌는 카테고리", 1)[-1].split("\n## ", 1
 _pc, _pl = CM.read(_P.config_next("layers"))
 show("B174 ⓒ (일반 노드 카테고리) 아래 (경로 쓰는 카테고리) 쌍을 더한 옛 모양 → 보고 「이름이 바뀌는 카테고리」에 그 카테고리와 "
      "앞뒤 이름 꼴 · 위 · 아래는 같은 관계의 골격 끝 삼항과 같은 쪽",
-     _rc != 0 and "`Failure` — 지금 `<공정>::<이름>` → 제안 `<공정>::<Unit>::<이름>" in _ren
+     _rc != 0 and "`Failure` — 지금 `<Process>::<name>` → 제안 `<Process>::<Unit>::<name>" in _ren   # 고침(B177 ① — 이름 꼴 토큰)
      and {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"} in _pc.get("pairs", []),
      [ln for ln in _ren.splitlines() if "Failure" in ln][:1])
 _d0 = _pc["categories"].get("Tool", {}).get("no_path")
@@ -497,8 +513,8 @@ _rc, _o = _boot()
 _m174 = CM.build()
 show("B174 ⓕ 지도 — 카테고리마다 이름 꼴(골격 · 경로 · 위 노드 아래) · 제안 폴더를 읽는 길(위 ⓑ) · 층끼리 같은 쌍 다른 관계면 "
      "제안 없이 문면(멈춤)",
-     _m174["categories"]["Process"]["name_form"] == "이름 그대로(골격)"
-     and _m174["categories"]["Property"]["name_form"].startswith("<공정>::<Unit>::<이름>")
+     _m174["categories"]["Process"]["name_form"] == "<name>  (skeleton — 이름 그대로)"            # 고침(B177 ① — 이름 꼴 토큰)
+     and _m174["categories"]["Property"]["name_form"].startswith("<Process>::<Unit>::<name>")
      and _rc != 0 and "[멈춤] 쌍 Unit,Process의 관계가 층마다 다르다" in _o and not _P.config_next("layers").exists(),
      [ln for ln in _o.splitlines() if "[멈춤]" in ln][:1])
 
@@ -518,7 +534,7 @@ _com174["categories"]["Property"]["no_path"] = "(시험) 공용 분류"
 _nr174 = catalog.naming_rule(_com174, _cfg174)
 show("B174 리뷰 고침 ⓑ 「안 씀」 카테고리는 위가 일반 노드인 쌍의 아래여도 앞말이 없다 — 이름 규칙과 지도 이름 꼴이 같은 답",
      "Property" not in _nr174["path"] + _nr174["nest"]
-     and CM.name_forms(_com174, _cfg174)["Property"] == "이름 그대로(경로 안 씀)", str(_nr174))
+     and CM.name_forms(_com174, _cfg174)["Property"] == "<name>  (no_path — 이름 그대로)", str(_nr174))   # 고침(B177 ① — 이름 꼴 토큰)
 _oc174 = json.loads((OLD174 / "common.json").read_text(encoding="utf-8"))
 _ocf174 = {lay: json.loads((OLD174 / lay / "config.json").read_text(encoding="utf-8")) for lay in ("process", "quality")}
 _oc174["canonical_scope"] = {}                                 # 옛 규칙이 있되 목록이 비었다 = 아무것도 경로를 쓰지 않았다

@@ -401,7 +401,22 @@ def graph_data(world):
     return nodes, edges
 
 
-def build_html(world, *, query_panel=False, title="온톨로지 그래프"):
+#: 색 축 자리(B177 ① — 그리기 인자 `color_axis`) — 템플릿의 자동 고름 한 줄 · 인자가 없으면 건드리지 않는다(뷰어 산출 바이트 그대로)
+_COLOR_AX = "const COLOR_AX = (() => {"
+
+
+def node_color(value):
+    """뷰어의 점 색(`viewer.html`의 `color()`)과 같은 색 — 바깥 장의 칩 · 띠가 그림의 점과 같은 색을 쓴다(B177 ① · 팔레트는 템플릿 한 자리)."""
+    pal = re.findall(r'"(#[0-9a-fA-F]{6})"', re.search(r"const PAL = \[(.*?)\];", _sections()["page"], re.S).group(1))
+    h = 0
+    for ch in str(value):
+        u = ord(ch) if ord(ch) < 0x10000 else 0xD800 + ((ord(ch) - 0x10000) >> 10)   # charCodeAt(0) — 첫 UTF-16 단위
+        h = (h * 31 + u) & 0xFFFFFFFF
+    h = h - 0x100000000 if h >= 0x80000000 else h
+    return pal[abs(h) % len(pal)]
+
+
+def build_html(world, *, query_panel=False, title="온톨로지 그래프", color_axis=None):
     """**템플릿은 하나다** — 파일로 저장하는 `export html`과 뷰어가 같은 것을 쓴다.
 
     복제하면 한쪽만 고쳐지고, 그 순간 「뷰어에서 본 그림」과 「내보낸 그림」이 다른
@@ -409,6 +424,7 @@ def build_html(world, *, query_panel=False, title="온톨로지 그래프"):
 
     `query_panel`은 **자리 5개를 채우느냐 비우느냐** 하나다. 끄면 옛 산출과
     한 글자도 다르지 않다(질문 패널도 `highlight`도 들어가지 않는다). `title`은 머리 글(config 지도 — B173 · 기본은 옛 글).
+    `color_axis`면 점 색을 그 축으로 정한다(config 지도는 `layer` — B177 ①) · 없으면 값이 가장 많이 갈리는 축(지금 그대로).
     """
     nodes, edges = graph_data(world)
     n_cross = sum(1 for e in edges if e["cross"])
@@ -418,6 +434,9 @@ def build_html(world, *, query_panel=False, title="온톨로지 그래프"):
                                 f"걸침 {n_cross} · 층 {len(world)}")
             .replace("/*__DATA__*/", json.dumps({"nodes": nodes, "edges": edges},
                                                 ensure_ascii=False)))
+    if color_axis:
+        assert html.count(_COLOR_AX) == 1, _COLOR_AX     # 자리가 사라지면 조용히 자동 축으로 돌아간다
+        html = html.replace(_COLOR_AX, f"const COLOR_AX = {json.dumps(color_axis)} ?? (() => {{")
     fill = ((sec["panel_css"], sec["panel_html"], sec["hl_before"],
              sec["hl_after"], sec["panel_js"]) if query_panel else ("",) * 5)
     for slot, code in zip(_SLOTS, fill):
