@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """칸 2.8 — **좌표 학습 기록의 사람 손** — 목록 · 승격 · 거부 · 새 공정 후보 (B101 ②③).
 
-좌표 태깅(⑨)이 목록 밖 표기를 골격 노드로 채택하면 파서가 그 대응을 학습 기록(③진실
-`data/coord_learned.json`)에 남기고 **다음부터 바로 쓴다**(LLM 0). 사람 보증은 아니다 —
+좌표 태깅(⑨)이 목록 밖 표기를 골격 노드로 채택하면 파서가 그 대응을 학습 기록(③진실 표기 대장
+`data/surface_book.json`의 좌표 학습 갈래 — 지위 기계 판단 · B179 ②)에 남기고 **다음부터 바로 쓴다**(LLM 0). 사람 보증은 아니다 —
 여기서 사람이 보고 **승격**(골격 `ALIASES`로 — 다음 줄 `bootstrap`)하거나 **거부**(기록을 지운다 —
 다음엔 다시 묻는다)한다. 「목록에 없음」(null) 답은 해소에 쓰지 않고 **새 공정 후보**로만 보인다 —
 골격을 넓힐지는 사람이 정한다(문서 3 §3.6 원칙 9). null 답은 그때의 닫힌 목록 판과 함께 기억되어 같은 판이면
@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 
 from core import paths
-from core.state import store
+from core.state import store, surface_book
 
 
 class LearnRefused(Exception):
@@ -23,8 +23,7 @@ class LearnRefused(Exception):
 
 
 def book():
-    d = store.read(store.COORD_LEARNED, {}) or {}
-    return {"채택": dict(d.get("채택") or {}), "목록밖": dict(d.get("목록밖") or {})}
+    return surface_book.learned()
 
 
 def rows():
@@ -73,7 +72,7 @@ def promote(surface, actor):
         al.append(surface)
     store.atomic_write_bytes(p, (json.dumps(seed, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     b["채택"].pop(surface)
-    store.write(store.COORD_LEARNED, b)
+    surface_book.write_learned(b)
     from core.state.ops import log_op
     log_op("learn:promote", actor, [rec.get("id") or rec["canonical"]], "",
            {"surface": surface, "canonical": rec["canonical"], "skeleton": paths.show(p)})
@@ -95,10 +94,10 @@ def reject(surface, actor):
         if not miss.get("list_version"):
             raise LearnRefused(f"학습 기록에 '{surface}'가 없다(채택 · 목록 밖 기억 둘 다) — python run.py show learned")
         miss.pop("list_version")
-        store.write(store.COORD_LEARNED, b)
+        surface_book.write_learned(b)
         log_op("learn:reject", actor, [surface], "", {"surface": surface, "canonical": None, "kind": "목록밖"})
         return {"surface": surface, "canonical": None}
-    store.write(store.COORD_LEARNED, b)
+    surface_book.write_learned(b)
     log_op("learn:reject", actor, [rec.get("id") or rec["canonical"]], "",
            {"surface": surface, "canonical": rec["canonical"]})
     return {"surface": surface, "canonical": rec["canonical"]}

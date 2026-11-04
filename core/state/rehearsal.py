@@ -148,7 +148,8 @@ def take_parse(doc_type, doc_id, src_hash):
     lp = place(doc_type, doc_id, LEARNED)
     if lp.exists():
         add = json.loads(lp.read_text(encoding="utf-8"))
-        book = store.read(store.COORD_LEARNED, {})
+        from core.state import surface_book
+        book = surface_book.learned()
         have = set(book.get("채택") or {}) | set(book.get("목록밖") or {})
         n = 0
         for sec in ("채택", "목록밖"):
@@ -157,7 +158,7 @@ def take_parse(doc_type, doc_id, src_hash):
                     book.setdefault(sec, {})[k] = v
                     n += 1
         if n:
-            store.write(store.COORD_LEARNED, book)
+            surface_book.write_learned(book)
         lines.append(f"리허설 산출({doc_type}) — 좌표 학습 {n:,}표기를 옮겼다(운영 기록에 없던 것만)")
         lp.unlink()
     _prune(doc_type, doc_id)

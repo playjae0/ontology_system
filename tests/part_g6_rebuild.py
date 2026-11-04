@@ -441,11 +441,10 @@ show("ⓔ --yes 뒤 그 노드 전부 confirmed · 다른 문서(CP01)의 auto�
 _probe_map = _P.work("struct_maps", "_B106_PROBE.json")
 _P.ensure(_probe_map)
 _probe_map.write_text('{"doc_id": "_B106_PROBE", "maps": {}}\n', encoding="utf-8")
-_book = store.read(store.COORD_LEARNED, {}) or {}
-_book.setdefault("채택", {})["B106 탐침 표기"] = {"canonical": X, "layer": "process", "doc_id": "_B106_PROBE",
-                                               "hits": 0, "출처": "시험 탐침"}
-_book.setdefault("목록밖", {})
-store.write(store.COORD_LEARNED, _book)
+from core.state import surface_book as _SB             # noqa: E402 — 고침(B179 ② — 좌표 학습은 표기 대장의 갈래)
+_book = _SB.learned()
+_book["채택"]["B106 탐침 표기"] = {"canonical": X, "layer": "process", "doc_id": "_B106_PROBE", "hits": 0, "출처": "시험 탐침"}
+_SB.write_learned(_book)
 # 기대 변경(B136 ③ — 보존 일곱: 질의 벡터 저장도 탐침 하나 — 남길 자리 전부가 비어 있지 않아야 「바이트 그대로」를 잰다)
 from core.query import vectors as _VEC                   # noqa: E402
 _VEC.vectors("chunks", {"_B136_PROBE": "B136 탐침 벡터"})

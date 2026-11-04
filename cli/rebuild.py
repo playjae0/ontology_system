@@ -104,6 +104,10 @@ def show_plan(plan):
     for ln in backfill_lines(plan["backfill"]):
         print("  " + ln)
     ab = plan["alias_book"]
+    from core.state import surface_book as SB
+    sb = SB.counts()
+    print(f"  표기 대장 {sb['합']:,}(사람 보증 {sb[SB.HUMAN]:,} · 기계 판단 {sb[SB.MACHINE]:,}) — 좌표 학습 "
+          f"{sb['갈래'][SB.LEARN]:,} · 목록 밖 {sb['갈래'][SB.MISS]:,} · 별칭 {sb['갈래'][SB.ALIAS]:,}(B179 ②)")
     print(f"  별칭 대장 {ab['total']:,}(이번에 채움 {ab['filled']:,}) · 골격 대상 {ab['skeleton']:,}"
           + (f" · 거부 {ab['rejected']:,}" if ab["rejected"] else "")
           + " — 재구축의 bootstrap이 골격 대상 별칭을 스냅샷 전에 싣는다")

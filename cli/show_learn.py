@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
-"""칸 2.8 — **동의어 학습 화면** — 좌표 학습 목록 · 새 공정 후보 · 별칭 출처 (B101 ②③④) · 별칭 대장 (B108 ①).
+"""칸 2.8 — **동의어 학습 화면** — 좌표 학습 목록 · 새 공정 후보 · 별칭 출처 (B101 ②③④) · 별칭 대장 (B108 ①) — 둘 다
+표기 대장 하나의 갈래이고 줄마다 **지위**(사람 보증 | 기계 판단 — B179 ②).
 
-    python run.py show learned        좌표 학습 기록(표기 · 노드 · 문서 · 적중 · 시각) + 새 공정 후보
+    python run.py show learned        표기 대장 수 + 좌표 학습(지위 · 표기 · 노드 · 문서 · 적중 · 시각) + 새 공정 후보
     python run.py show aliases [층] [--source <출처>] [--node <이름|id>]
-                                      별칭 대장 — 대상마다 seed 별칭과 대장 별칭(표기 · 출처 · 문서 · 횟수 · 상태)
+                                      별칭 갈래 — 대상마다 seed 별칭과 대장 별칭(표기 · 지위 · 출처 · 문서 · 횟수 · 상태)
 
 읽기 전용이다. 승격·거부는 `run.py ops learn-promote|learn-reject <층> <표기> --actor` · 별칭 거두기는
 `run.py ops alias-reject <층> <대상> <표기> --actor`.
 """
 from __future__ import annotations
 
-from core.state import coord_learn
+from core.state import coord_learn, surface_book as SB
 
 
 def alias_source(a):
@@ -36,12 +37,18 @@ def node_alias_lines(n):
 
 
 def cmd_learned(args):
+    from core import paths
+    from core.state import store
+    c = SB.counts()
+    print(f"■ 표기 대장 {c['합']:,}항목 — 사람 보증 {c[SB.HUMAN]:,} · 기계 판단 {c[SB.MACHINE]:,} · 좌표 학습 "
+          f"{c['갈래'][SB.LEARN]:,} · 목록 밖 {c['갈래'][SB.MISS]:,} · 별칭 {c['갈래'][SB.ALIAS]:,}(show aliases) "
+          f"({paths.show(store.path(store.SURFACE_BOOK))} — 기본 fresh가 남긴다)")
     rows = coord_learn.rows()
-    print(f"■ 좌표 학습 기록 — {len(rows):,}표기 (LLM이 채택 · 바로 쓴다 · 사람 보증 아님)")
+    print(f"\n■ 좌표 학습 — {len(rows):,}표기 (LLM이 채택 · 바로 쓴다 · 사람이 승격하면 골격 별칭)")
     if rows:
-        print(f"  {'표기':<20} {'골격 노드':<24} {'문서':<14} {'적중':>5}  시각")
+        print(f"  {'지위':<6} {'표기':<20} {'골격 노드':<24} {'문서':<14} {'적중':>5}  시각")
     for s, r in rows:
-        print(f"  {s:<20} {r.get('canonical', ''):<24} {str(r.get('doc_id')):<14} "
+        print(f"  {SB.MACHINE:<6} {s:<20} {r.get('canonical', ''):<24} {str(r.get('doc_id')):<14} "
               f"{int(r.get('hits') or 0):>5,}  {r.get('at')}")
     if rows:
         print("  ▶ 다음 줄 — 맞으면 승격(골격 ALIASES로): python run.py ops learn-promote <층> <표기> "
@@ -51,9 +58,9 @@ def cmd_learned(args):
     cands = coord_learn.candidates()
     print(f"\n■ 새 공정 후보 — {len(cands):,}표기 (태깅이 「목록에 없음」으로 답했다 · 해소에 쓰지 않는다)")
     if cands:
-        print(f"  {'표기':<20} {'행':>5} {'큐 행':>5}  {'문서':<24} 처음 본 때")
+        print(f"  {'지위':<6} {'표기':<20} {'행':>5} {'큐 행':>5}  {'문서':<24} 처음 본 때")
     for s, r, q in cands:
-        print(f"  {s:<20} {int(r.get('rows') or 0):>5,} {q:>5,}  {', '.join(r.get('docs') or [])[:24]:<24} "
+        print(f"  {SB.MACHINE:<6} {s:<20} {int(r.get('rows') or 0):>5,} {q:>5,}  {', '.join(r.get('docs') or [])[:24]:<24} "
               f"{r.get('first_seen')}")
     if cands:
         print("  ▶ 다음 줄 — 새 공정이면 골격 노드로, 있는 공정의 다른 이름이면 그 노드의 ALIASES에 더한다 "
@@ -77,7 +84,7 @@ def _entry_line(r, miss):
     d = (f"문서 {docs[0]}" + (f" → {docs[-1]}" if len(docs) > 1 else "") + f"({len(docs):,})") if docs else "문서 —"
     rej = r.get("rejected") or {}
     st = r["status"] + (f"({rej.get('actor')} · {rej.get('at')})" if rej else "")
-    return (f"     대장  {r['surface']}  ← {r['source']} · {d} · {int(r.get('count') or 0):,}회 · {st}"
+    return (f"     대장  {r['surface']}  [{SB.standing(r['source'])}] ← {r['source']} · {d} · {int(r.get('count') or 0):,}회 · {st}"
             + (" · 그래프에 없음" if id(r) in miss else "") + (" · 처음 채움" if r.get("filled") else ""))
 
 
@@ -105,8 +112,11 @@ def cmd_aliases(args):
     by = {}
     for r in live:
         by[r["source"]] = by.get(r["source"], 0) + 1
-    print(f"■ 별칭 대장 — 살아 있음 {len(live):,} · 거부 {len(rows) - len(live):,} · 골격 대상 "
-          f"{sum(1 for r in live if r.get('skeleton')):,} ({paths.show(store.path(store.ALIAS_BOOK))} — 기본 fresh가 남긴다)"
+    print(f"■ 별칭 대장(표기 대장의 별칭 갈래) — 살아 있음 {len(live):,} · 거부 {len(rows) - len(live):,} · 골격 대상 "
+          f"{sum(1 for r in live if r.get('skeleton')):,} · 사람 보증 "
+          f"{sum(1 for r in live if SB.standing(r['source']) == SB.HUMAN):,} · 기계 판단 "
+          f"{sum(1 for r in live if SB.standing(r['source']) == SB.MACHINE):,} "
+          f"({paths.show(store.path(store.SURFACE_BOOK))} — 기본 fresh가 남긴다)"
           + "".join(f" · {k} {v}" for k, v in (("층", layer), ("출처", src), ("대상", want)) if v))
     print("  출처별 — " + " · ".join(f"{s} {by.get(s, 0):,}" for s in AB.SOURCES))
     print(f"  그래프에 있음 {sum(1 for r in live if id(r) not in miss):,} · 없음 {sum(1 for r in live if id(r) in miss):,}")

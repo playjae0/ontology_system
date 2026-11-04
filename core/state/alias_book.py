@@ -2,7 +2,8 @@
 """칸 0.3 — **별칭 대장** — 쌓인 별칭을 이름으로 남기고, 재구축에서도 처음부터 쓴다 (B108 ① · 사용자 결정
 2026-10-14 「별칭은 누적·호환해 활용하는 핵심 자산이다」).
 
-    <상태>/data/alias_book.json      ③진실 — 기본 fresh가 남긴다(`init.kept()`) · `--all`(클린)이 지운다
+    <상태>/data/surface_book.json의 별칭 갈래   ③진실 표기 대장(B179 ② — 좌표 학습과 한 파일 · 항목마다 지위 ·
+                                               곳) — 기본 fresh가 남긴다(`init.kept()`) · `--all`(클린)이 지운다
 
 **쓰는 손은 하나다**(`attach`) — 노드에 seed 밖 별칭이 붙는 자리 전부(인입 · `ops alias`의 `Builder._register` ·
 개명 · 이관 · 병합 · 분리)가 이 함수를 지나 대장에 **이름으로** 남긴다. 항목 = 표기 · 대상(층 · canonical ·
@@ -30,7 +31,7 @@
 """
 from __future__ import annotations
 
-from core.state import log, store
+from core.state import log, store, surface_book
 from core.state.ids import norm
 
 _LOG = log.get(__name__)
@@ -88,7 +89,7 @@ def _muted():
 
 
 class AliasBook:
-    """`data/alias_book.json` — `{"entries": [항목 …]}`. 여는 입구 `open` · 쓰기 `save`(바뀐 것이 있을 때만)."""
+    """표기 대장의 별칭 갈래 — 행 `[항목 …]`. 여는 입구 `open` · 쓰기 `save`(바뀐 것이 있을 때만 · 제 갈래만)."""
 
     def __init__(self, data=None):
         self.rows = list((data or {}).get("entries") or [])
@@ -97,15 +98,16 @@ class AliasBook:
 
     @classmethod
     def open(cls):
-        return cls(store.read(store.ALIAS_BOOK, None))
+        return cls({"entries": surface_book.alias_rows()})
 
     @staticmethod
     def exists():
-        return store.path(store.ALIAS_BOOK).is_file()
+        """처음 채움이 끝났나(별칭 갈래를 한 번이라도 썼다)."""
+        return surface_book.alias_filled()
 
     def save(self, force=False):
         if self.dirty or force:
-            store.write(store.ALIAS_BOOK, {"entries": self.rows})
+            surface_book.write_aliases(self.rows)
             self.dirty = False
 
     # ------------------------------------------------------------ 조회

@@ -28,13 +28,13 @@ from pathlib import Path
 
 from core import paths
 from core.llm import gateway
-from core.state import log, store
+from core.state import log, store, surface_book
 
 _LOG = log.get(__name__)
 ROOT = paths.ROOT
 
 #: 임시 루트에 사본으로 두는 ③진실 — 추출 · 개요 · 표본 파싱이 읽는 것(그래프 · 청크 · 문서 대장 · 큐는 아니다)
-SEED_DATA = (store.SKELETON_LIST, store.DICTIONARY, store.ALIAS_BOOK, store.COORD_LEARNED, store.REGISTRY)
+SEED_DATA = (store.SKELETON_LIST, store.DICTIONARY, store.SURFACE_BOOK, store.REGISTRY)   # 표기 대장 = 좌표 학습 + 별칭 (B179 ②)
 #: 하위 프로세스의 입출력(임시 루트 안 · 상태 단 밖)
 IN_DIR, OUT_FILE = "rehearsal_in", "rehearsal_out.json"
 
@@ -102,7 +102,7 @@ class Session:
         for p in [paths.knobs()] + [store.path(n) for n in SEED_DATA]:
             if Path(p).exists():
                 _copy(p, paths.mirror(p, self.home))
-        self.learned0 = _read_json(store.path(store.COORD_LEARNED), {})
+        self.learned0 = surface_book.learned()
         reg = store.read(store.DOC_REGISTRY, {})
         for did in self.ids:
             od = OL.checkpoint_path(did).parent
@@ -126,10 +126,13 @@ class Session:
                 self._merge_learned(_read_json(lp, {}))
 
     def _learned_path(self):
-        return paths.mirror(store.path(store.COORD_LEARNED), self.home)
+        return paths.mirror(store.path(store.SURFACE_BOOK), self.home)
+
+    def _read_learned(self):
+        return surface_book.learned(self._learned_path())
 
     def _merge_learned(self, add):
-        book = _read_json(self._learned_path(), {})
+        book = self._read_learned()
         have = set(book.get("채택") or {}) | set(book.get("목록밖") or {})
         for sec in ("채택", "목록밖"):
             for k, v in (add.get(sec) or {}).items():
@@ -138,15 +141,14 @@ class Session:
         self._write_learned(book)
 
     def _write_learned(self, d):
-        store.atomic_write_bytes(self._learned_path(),
-                                 (json.dumps(d, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        surface_book.write_learned(d, self._learned_path())
 
     def _bind(self):
         """표본 파싱의 쓰기 자리 — 구조 지도 보존 · 좌표 학습을 임시 루트로(읽기는 그 사본에서)."""
         from parser import struct_map, tagger
         sm_dir = paths.mirror(paths.struct_maps(), self.home)
         struct_map.use_dir(lambda: sm_dir)
-        tagger.use_learned(lambda: _read_json(self._learned_path(), {}), self._write_learned)
+        tagger.use_learned(self._read_learned, self._write_learned)
 
     # ------------------------------------------------------------ 추출(하위 프로세스)
     def env(self):
@@ -191,7 +193,7 @@ class Session:
     def _save(self):
         """그 실행이 쓴 LLM 산출 → ④단 자리(문서마다 · 운영 사본과 같은 것은 빼고) · 좌표 학습은 새 표기만."""
         from core.state import rehearsal as RH
-        now = _read_json(self._learned_path(), {})
+        now = self._read_learned()
         have = set(self.learned0.get("채택") or {}) | set(self.learned0.get("목록밖") or {})
         new = {sec: {k: v for k, v in (now.get(sec) or {}).items() if k not in have} for sec in ("채택", "목록밖")}
         for did in self.ids:
