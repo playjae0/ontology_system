@@ -209,6 +209,9 @@ def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidenc
     `heading.chain_for`)이고 **좌표보다 먼저** 탄다 — 카테고리쌍 매핑(두 방향)이 있는 첫 제목 개체에 붙고(대장
     `폴백(제목 n단)`) · 끝까지 없으면 좌표에 규칙 B(`폴백`). 사슬에 든 노드 자신(제목 개체)은 건너뛴다(트리 엣지가 맡는다).
 
+    **부모 엣지가 이미 있는 노드는 붙이지 않는다**(B180 ① — 층 전부 · `gate.parent_edge`): 사슬 · 좌표 둘 다 건너뛰고 대장
+    붙은 자리에 `부모 있음`(상대 = 그 부모 · 새 엣지 0).
+
     `items`는 `[(node_id, 엣지를 쓸 그래프)]` · 돌려주는 것은 붙인 `[(node_id, 관계)]`. 대장 행이 있으면
     붙은 자리(`attached` — 폴백 · 좌표)를 단다(B102 ⑦ · `rows`를 안 주면 대장의 개체 행)."""
     from core.build import ledger as _lg
@@ -220,6 +223,10 @@ def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidenc
     heads = {c[0] for c in chain or ()}
     for nid, graph in items:
         if nid is None or nid in touched or nid in heads or nid in [d for d, _r in done]:
+            continue
+        par = gate.parent_edge(nid, graph, b.graph_of(nid))
+        if par:
+            _lg.attach(rows.get(nid), par[0], par[2], _lg.KEPT, "←" if par[3] else "→")
             continue
         hit = _chain_attach(b, cfg, graph, nid, chain, prov, doc_id, evidence_chunk)
         if hit:

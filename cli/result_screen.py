@@ -28,6 +28,10 @@ def lines(res):
         cx = res["반대 방향 공존"]
         out.append(f"     반대 방향 공존 {len(cx):,}쌍 — " + " · ".join(f"{x['src']} -{x['rel']}-> {x['dst']}" for x in cx[:3])
                    + (" …" if len(cx) > 3 else "") + f" · 전부 python run.py show report {res['doc_id']} --json")
+    if res.get("같은 엣지 출처만"):                  # 같은 엣지는 그래프 전체에 한 벌(B180 ②) — 다른 층에 있던 엣지에 이 문서 출처만
+        sh = res["같은 엣지 출처만"]
+        out.append(f"     다른 층의 같은 엣지에 출처만 더함 {len(sh):,} — "
+                   + " · ".join(f"{x['src']} -{x['rel']}-> {x['dst']}({x['layer']})" for x in sh[:3]) + (" …" if len(sh) > 3 else ""))
     for lay, d in sorted((res.get("층") or {}).items()):
         out.append(f"     층 {lay} — 노드 {d['노드']:+,}(auto {d['auto']:+,}) · 엣지 {d['엣지']:+,}")
     out.append(f"     큐 — 이번 실행 {_kinds(res.get('큐 이번'))} · 이전 실행이 남긴 것 "

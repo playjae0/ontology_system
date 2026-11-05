@@ -74,6 +74,11 @@ def group_done(info):
         ON_GROUP(info)
 
 
+#: 붙은 자리 — **부모 있음 · 폴백 안 함**(B180 ①): 위치 폴백 차례에 그 노드가 이미 부모 엣지(층 전부)를 가져 새 엣지를 세우지
+#: 않았다 · 상대는 그 부모(부착 맞춤 칸 「부모 있음 — 폴백 안 함」 · 연결 보강은 폴백과 같이 본다)
+KEPT = "부모 있음"
+
+
 def attach(row, rel, other, how, arrow):
     """대장 행에 **이 값이 만든 엣지**를 단다 — `{rel, other, path(소속|관계|폴백), dir}` · 표·산문·폴백 한 손."""
     if row is None or not rel:

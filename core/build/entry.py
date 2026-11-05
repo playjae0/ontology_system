@@ -345,7 +345,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
                     d0={k: list(v) for k, v in _D.open().entries().items()},
                     layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
                     rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []),
-                    coex0=len(_gate.COEXIST))                 # 반대 방향 공존 — 이 문서 실행이 더한 몫만(B175)
+                    coex0=len(_gate.COEXIST),                 # 반대 방향 공존 — 이 문서 실행이 더한 몫만(B175)
+                    shared0=len(_gate.SHARED))                # 다른 층의 같은 엣지에 출처만 더함 — 같은 몫(B180 ②)
         loop.LOWRES.update(n=0, heading=0)
         _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
         _n0 = len(graph.nodes)
@@ -514,6 +515,7 @@ def _result(builder, doc_id):
     world = {lay: mine.get(lay) or open_graph(lay) for lay in set(discover()) | set(mine)}
     after = result_mod.layer_counts(world)
     coex = [x for x in gate.COEXIST[_RUN.get("coex0", 0):] if x.get("doc_id") == doc_id]   # 반대 방향 공존(B175)
+    shared = [x for x in gate.SHARED[_RUN.get("shared0", 0):] if x.get("doc_id") == doc_id]   # 같은 엣지 한 벌(B180 ②)
     seen = {_qkey(x) for x in _RUN["q0"]}
     q = [x for x in store.read(store.QUEUE, []) if x.get("doc_id") == doc_id]
     rej = (store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or [])[_RUN.get("rej0", 0):]
@@ -528,6 +530,7 @@ def _result(builder, doc_id):
                                     **({"LLM 갈래": table} if table else {}),
                                     "좌표 학습": _RUN.get("coord_learn") or {},
                                     **({"반대 방향 공존": coex} if coex else {}),       # 있을 때만(없으면 대장 바이트 그대로)
+                                    **({"같은 엣지 출처만": shared} if shared else {}),
                                     # 붙은 곳 끝 요약(B102 ⑦) — 대장 · 봉투 · 그래프에서(새 판정 0)
                                     **result_mod.landing(builder.ledger.rows if builder.ledger else [],
                                                          _RUN.get("env") or {}, world, doc_id)})

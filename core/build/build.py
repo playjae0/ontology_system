@@ -84,6 +84,8 @@ class Builder(CoordMixin):
         # 판정 대장 — 문서 하나에 하나이고 걸침 하위 빌더와 **공유한다**(B74 ②).
         self.ledger = None
         self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
+        # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
+        gate.bind([graph], lambda lay: self.for_layer(lay).g)
 
     # ---------------------------------------------------------------- 걸침
     def for_layer(self, layer):

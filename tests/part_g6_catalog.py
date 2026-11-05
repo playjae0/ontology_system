@@ -350,6 +350,81 @@ _v178 = [r for r in (_LG178.read("QB178") or {}).get("rows") or [] if r.get("rol
 show("B178 ⓒ 품질 산문 청크에서 집이 공정층인 카테고리 값이 뽑혀 공정층 그래프에서 해소된다(대장 층 = 집 · 노드는 공정층 그래프)",
      _v178 and all(r.get("layer") == "process" and r.get("node_id") in _pg178.nodes for r in _v178),
      str([(r.get("surface"), r.get("category"), r.get("verdict"), r.get("target")) for r in _v178]))
+
+# ────────────────────────────────────────────────────────────── B180 엣지 원칙
+print("\n■ B180 위치 폴백은 부모 엣지가 어느 층에도 없는 노드에만 · 같은 엣지는 그래프 전체에 한 벌(B178 ⓒ 사본 · 창작)")
+from core.state import fixtures as _FX180                             # noqa: E402 — 추출 힌트 자리(시험 사본)
+from core.build import gate as _GT180                                  # noqa: E402
+
+
+def _q180(doc_id, text, ents, base="QPPT01"):
+    """산문 사본(품질 QPPT01 · 공정 PPT01) — 마지막 조각 글 · 공정 좌표 노칭 · 그 조각의 추출 힌트(관계 0)."""
+    env = _cp178.deepcopy(load(base))
+    env["doc_id"] = doc_id
+    for c in env["chunks"]:
+        c["doc_id"] = doc_id
+    last = env["chunks"][-1]
+    last.update(text=text, process_ref="노칭")
+    _FX180.EXTRACT_HINTS.mkdir(parents=True, exist_ok=True)
+    (_FX180.EXTRACT_HINTS / f"{doc_id}.json").write_text(_js178.dumps(
+        {last["source_locator"]: {"entities": ents, "relations": [], "attach": []}}, ensure_ascii=False), encoding="utf-8")
+    with contextlib.redirect_stdout(io.StringIO()):
+        run_document(env)
+    return [r for r in (_LG178.read(doc_id) or {}).get("rows") or [] if r.get("role") == "entity"]
+
+
+def _ends180(nid):
+    return {lay: [e for e in open_graph(lay).edges if nid in (e["src"], e["dst"])] for lay in ("process", "quality")}
+
+
+def _kept180(rows, surface):
+    return sum(1 for r in rows if r.get("surface") == surface
+               and any(a.get("path") == _LG178.KEPT for a in r.get("attached") or []))
+
+
+_PROP180 = {"category": "Property"}
+_pe180 = len(open_graph("process").edges)
+_nq180 = next((r.get("node_id") for r in _v178 if r.get("surface") == "노칭 정밀도"), None)
+_qe180 = len(_ends180(_nq180)["quality"]) if _nq180 else 0                 # B178 ⓒ의 관계 엣지(controlled_by)는 그대로
+_ra180 = _q180("QB180A", "노칭 정밀도를 매 교대 확인한다.", [{"surface": "노칭 정밀도", **_PROP180}])
+_na180 = next((r.get("node_id") for r in _ra180 if r.get("surface") == "노칭 정밀도"), None)
+show("B180 ⓐ 공정층 기존 노드(부모 있음)에 붙은 품질 산문 관리항목 — 품질층 파일에 그 노드의 새 엣지 0 · 공정층 엣지 수 그대로 · "
+     "「부모 있음 — 폴백 안 함」 1",
+     _na180 in open_graph("process").nodes and _na180 == _nq180 and len(_ends180(_na180)["quality"]) == _qe180
+     and len(open_graph("process").edges) == _pe180 and _kept180(_ra180, "노칭 정밀도") == 1,
+     f"품질층 엣지 {_qe180} → {len(_ends180(_na180)['quality'])} · 공정층 엣지 {_pe180} → {len(open_graph('process').edges)}")
+_rb180 = _q180("QB180B", "노칭 진동을 매 교대 확인한다.", [{"surface": "노칭 진동", **_PROP180}])
+_nb180 = next((r.get("node_id") for r in _rb180 if r.get("surface") == "노칭 진동"), None)
+_eb180 = sum(len(v) for v in _ends180(_nb180).values())
+_rc180 = _q180("QB180C", "노칭 진동을 매 교대 확인한다.", [{"surface": "노칭 진동", **_PROP180}])
+show("B180 ⓑ 공정층에 없던 새 관리항목(품질 산문) — 노드는 공정층 · 부모 엣지 하나(좌표 폴백) · 다른 문서가 같은 노드를 말해도 "
+     "폴백 엣지가 다시 서지 않는다(부모 있음)",
+     _nb180 in open_graph("process").nodes and _eb180 == 1 and sum(len(v) for v in _ends180(_nb180).values()) == 1
+     and _kept180(_rc180, "노칭 진동") == 1, f"엣지 {_eb180} → {sum(len(v) for v in _ends180(_nb180).values())}")
+_bel180 = {"name": "노칭", "category": "Process", "from": "본문"}
+_q180("PB180E", "노칭 공정은 노칭 온도를 관리한다.", [{"surface": "노칭 온도", **_PROP180, "belongs_to": _bel180}], base="PPT01")
+_q180("QB180D", "노칭 공정은 노칭 온도를 관리한다.", [{"surface": "노칭 온도", **_PROP180, "belongs_to": _bel180}])
+_q180("PB180F", "노칭 공정은 노칭 진동을 관리한다.", [{"surface": "노칭 진동", **_PROP180, "belongs_to": _bel180}], base="PPT01")
+_nt180 = next((n for n, x in open_graph("process").nodes.items() if x.get("canonical") == "노칭::노칭 온도"), None)
+
+
+def _own180(nid, lay):
+    return [e for e in open_graph(lay).edges if e["dst"] == nid and e["rel"] == "has_property"]
+
+
+_sh180 = {d: ((_LG178.read(d) or {}).get("result") or {}).get("같은 엣지 출처만") or [] for d in ("QB180D", "PB180F")}
+show("B180 ⓒ 같은 엣지는 그래프 전체에 한 벌 — 공정 산문이 세운 공정층 소속 엣지를 품질 산문이 다시 말하면 품질 문서 출처만 더해지고 "
+     "품질층 파일에 그 엣지 0 · 거꾸로 품질층에만 있는 폴백 엣지를 공정 문서가 말하면 그 품질층 엣지에 출처(이 빌드가 연 층으로 저장) · "
+     "결과에 「다른 층의 같은 엣지에 출처만 더함」",
+     len(_own180(_nt180, "process")) == 1 and not _own180(_nt180, "quality")
+     and any(str(p).startswith("QB180D#") for p in _own180(_nt180, "process")[0]["provenance"])
+     and not _own180(_nb180, "process") and len(_own180(_nb180, "quality")) == 1
+     and any(str(p).startswith("PB180F#") for p in _own180(_nb180, "quality")[0]["provenance"])
+     and [x["layer"] for x in _sh180["QB180D"]] == ["process"] and [x["layer"] for x in _sh180["PB180F"]] == ["quality"],
+     f"노칭 온도 공정층 {[e['provenance'] for e in _own180(_nt180, 'process')]} · 품질층 {len(_own180(_nt180, 'quality'))} / "
+     f"노칭 진동 품질층 {[e['provenance'] for e in _own180(_nb180, 'quality')]} · 공정층 {len(_own180(_nb180, 'process'))}")
+for _d in ("QB180A", "QB180B", "QB180C", "QB180D", "PB180E", "PB180F"):
+    (_FX180.EXTRACT_HINTS / f"{_d}.json").unlink(missing_ok=True)
 init.init(fresh_=True, all_=True)
 
 # ────────────────────────────────────────────────────────────── B147 ⓑⓒ
