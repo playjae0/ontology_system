@@ -20,13 +20,13 @@ from core.state.bootstrap import COORD_CATEGORY, load_config, open_graph
 from core.build.ingest import IngestResult, ingest, load_schema
 from core.state.status import is_live
 from core.build.retry import retry_orphans
+from parser.normalizer import ROW_MARKS
 
 # **구조 필드** — role 핸들러를 타지 않고 시스템이 직접 읽는다(문서 2 §2.5 규약 3).
 # `doc_type`은 조각 공통 층의 일원이고(§2.2 계약 ①) 스키마 조회 키다(봉투 값의 반복) —
 # 여기 없으면 조각이 계약대로 달고 온 필드가 `unknown_field` 큐로 간다.
 STRUCTURAL = {"doc_type", "process_group", "process_ref", "process_no",
-              "electrode_type", "source_locator", "section", "context",
-              "meta"}     # 파서가 조각에 다는 표지(좌표 태깅 출처 · 상위를 하위에서 땀 · 골격 칸 판단 — B181) · 스키마 값이 아니다
+              "electrode_type", "source_locator", "section", "context"}
 
 # 봉투 `payload_kind`의 **닫힌 2값**(CH2 2.2). 밖의 값은 폴백 대상이 아니라 계약 위반이다.
 PAYLOAD_KINDS = ("table", "prose")
@@ -66,6 +66,11 @@ def _check_fields(rec, fields, prov, doc_id):
     for f, v in rec.items():
         if f in fields or f in STRUCTURAL:
             continue
+        if f == "meta" and isinstance(v, dict):
+            # 파서 표지(`parser.normalizer.ROW_MARKS`)만 빼고 — 문서가 실어 온 값은 큐로 간다(B182 ⓪)
+            v = {k: x for k, x in v.items() if k not in ROW_MARKS}
+            if not v:
+                continue
         # **문서 × 필드 단위 1건**(B72 ②) — 같은 열이 118행이면 사람이 판정할 것은
         # 하나다(「이 열이 스키마에 없다」). 값은 `items[]`에 그대로 남는다(G5).
         store.enqueue_rows("unknown_field", f"스키마에 없는 필드 '{f}'", doc_id, f,

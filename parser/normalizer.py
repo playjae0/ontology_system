@@ -25,6 +25,12 @@ NULL_MARKERS = ("-", "—", "–", "N/A", "n/a", "해당 없음", "해당없음"
 _MARKERS = None
 #: 좌표 칸 — 빈칸 표시면 비워 문서 좌표를 물려받는다(계약 B `process_coord` 블록의 두 칸)
 COORD_FIELDS = ("process_ref", "process_group")
+#: **파서 표지** — 파서(이 파일 · `tagger` · `coord_rows`)가 표 행의 `meta`에 다는 키의 닫힌 목록(B182 ⓪).
+#: 구축은 이 키만 구조로 보고 뺀다 — 문서가 실어 온 `meta` 값(어댑터 산출)은 지금처럼 `unknown_field`(B72 ②).
+#: 파서에 표지를 더하면 여기에도 더한다.
+ROW_MARKS = frozenset({"null_marked", "coord_from_section", "coord_other", "coord_ignored", "coord_shared_skip",
+                       "coord_from_doc", "coord_tag_source", "coord_tag_from", "coord_tag_scope", "coord_tags",
+                       "coord_judge", "group_from_ref"})
 
 
 def use_null_markers(fn):
