@@ -186,10 +186,10 @@ def plan(b, env, outline=None):
         up = cx.up_of(p, s, low, outline)
         g = groups.setdefault((key(s), up), {"surface": s, "provs": [], "up": up, "judge": coord_judged(p, s)})
         g["provs"].append(prov)
-    out = []
-    for g in groups.values():
-        out.append(_decide(cx, g))
-    return out
+    for g in groups.values():                                     # 최소 출현 수는 한 노드가 될 행을 함께 센다(같은 이름 · 같은 줄기)
+        g["mentions"] = sum(len(h["provs"]) for (k, _u), h in groups.items()
+                            if k == key(g["surface"]) and _same_stem(cx.pm, h["up"], g["up"]))
+    return [_decide(cx, g) for g in groups.values()]
 
 
 def _decide(cx, g):
@@ -233,7 +233,7 @@ def _decide(cx, g):
         e.update(act="hold", hold=HOLD_NAME)
         return e
     need = min_mentions()
-    if need > 1 and e["rows"] + _open_rows(s) < need:
+    if need > 1 and g.get("mentions", e["rows"]) + _open_rows(s) < need:
         e.update(act="hold", hold=HOLD_FEW)
         return e
     cx.names.add(canon)
@@ -300,12 +300,13 @@ def fill(b, nid, up, tier, prov):
 
 def settle(b, env, outline=None):
     """**구축 앞 패스**(B182 ①) — 이 문서의 좌표 골격 칸을 계획대로 세운다 · 행마다 그 자리(`b.coord_at[(prov, 표기)]`)와 보류
-    사유(`b.coord_hold[표기 키]`)를 남긴다 — 뒤의 좌표 해소(`resolve_anchor`)가 그것을 먼저 본다(같은 이름 · 다른 줄기)."""
+    사유(`b.coord_hold[(prov, 표기)]` · 표기 키)를 남긴다 — 뒤의 좌표 해소(`resolve_anchor`)가 그것을 먼저 본다(같은 이름 · 다른 줄기)."""
     from parser.namefold import key
     made = {}
     for e in plan(b, env, outline):
-        if e["act"] == "hold":
+        if e["act"] == "hold":                       # 행마다(같은 이름의 다른 행이 섰어도 이 행은 보류 · 사전보다 먼저) + 표기 키(사유 표시)
             b.coord_hold[key(e["surface"])] = e["hold"]
+            b.coord_hold.update({(prov, e["surface"]): e["hold"] for prov in e["provs"] if prov})
             continue
         if e["act"] == "new":
             made[id(e)] = make(b, e["surface"], e["provs"][0], answer=e["answer"], canonical=e["canonical"],

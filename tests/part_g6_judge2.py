@@ -363,6 +363,7 @@ _rc = _doc("B182C", [dict(_c, source_locator="C1", process_group="노칭", proce
                      dict(_c, source_locator="C2", process_group="조립", process_ref="신공정X", effect_category="단락"),
                      dict(_c, source_locator="C3", process_group="스태킹", process_ref="신공정X", effect_category="단락"),
                      dict(_c, source_locator="C4", process_group=None, process_ref="신공정Y", effect_category="단락"),
+                     dict(_c, source_locator="C0", process_group="스태킹", process_ref="신공정Z", effect_category="단락"),
                      dict(_c, source_locator="C5", process_group="노칭::전극 언와인딩", process_ref="신공정Z",
                           effect_category="외관 손상X")])
 _y0 = _pv("신공정Y")
@@ -370,11 +371,21 @@ _up0 = _up(_y0) if _y0 else "?"
 _rc2 = _doc("B182C2", [dict(_c, source_locator="D1", process_group="패키징", process_ref="신공정Y", effect_category="단락")])
 _an = {r["locator"]: r for r in _rc + _rc2 if r.get("role") == "anchor"}
 _x, _sx = _pv("신공정X"), _pv("스태킹::신공정X")
+_P.knobs().write_text(json.dumps({"provisional_min_mentions": 2}), encoding="utf-8")   # 최소 출현 수 — 같은 줄기의 행은 함께 센다(리뷰 #137 P2)
+KN.apply()
+_rm = _doc("B182M", [dict(_c, source_locator="M1", process_group="조립", process_ref="신공정W", effect_category="단락"),
+                     dict(_c, source_locator="M2", process_group="노칭", process_ref="신공정W", effect_category="단락"),
+                     dict(_c, source_locator="M3", process_group="노칭", process_ref="신공정V", effect_category="단락")])
+_P.knobs().unlink()
+KN.apply()
+_am = {r["locator"]: r for r in _rm if r.get("role") == "anchor"}
 show("B182 ⓒ 같은 잠정 이름 — 같은 줄기의 부모면 같은 노드 · 다른 줄기면 `부모::이름` 따로 · 부모 미정 노드에 부모를 말하는 행이 "
-     "오면 채운다(노드 수 그대로)",
+     "오면 채운다(노드 수 그대로) · 손잡이 provisional_min_mentions 2면 같은 줄기의 두 행이 함께 세져 서고 한 행뿐인 표기는 보류(리뷰 #137 P2)",
      bool(_x and _sx) and _up(_x) == "노칭" and _up(_sx) == "스태킹"
      and _an["C1"]["node_id"] == _an["C2"]["node_id"] == _x["id"] and _an["C3"]["node_id"] == _sx["id"]
-     and _up0 is None and _an["D1"]["node_id"] == _an["C4"]["node_id"] == _y0["id"] and _up(_pv("신공정Y")) == "패키징",
+     and _up0 is None and _an["D1"]["node_id"] == _an["C4"]["node_id"] == _y0["id"] and _up(_pv("신공정Y")) == "패키징"
+     and _pv("신공정W") and _am["M1"]["node_id"] == _am["M2"]["node_id"] == _pv("신공정W")["id"]
+     and _am["M3"].get("hold") == PV.HOLD_FEW and not _pv("신공정V"),
      f"신공정X ← {_up(_x) if _x else '-'} · 스태킹::신공정X ← {_up(_sx) if _sx else '-'} · 신공정Y {_up0} → {_up(_pv('신공정Y')) if _y0 else '-'}")
 
 _n0 = sum(len(open_graph(lay).nodes) for lay in ("process", "quality"))
@@ -385,9 +396,10 @@ _cm = TG.coord_from_section(NZ.blank_coords([{"source_locator": "K1", "process_r
 _qz = [x for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == "B182C" and x["kind"] == "orphan_anchor"]
 _cat = {(x["payload"].get("surface"), x["payload"].get("category")) for x in _qz}
 show("B182 ⓔ 바꾸지 않는 것 — 닫힌 분류 목록 밖은 보류 · 파일명 제안은 노드 0 · 「전 공정」 좌표 칸은 문서 좌표 · 맨 아래 단 아래 "
-     "자리는 보류 + 「골격 아래 새 단」",
+     "자리는 보류 + 「골격 아래 새 단」(같은 이름이 다른 줄기 행에서 섰어도 그 행은 보류 — 리뷰 #137 P2)",
      ("외관 손상X", "FailureEffect") in _cat and _n0 == _n1 and not _pv("신공정Q") and _cm[0]["process_ref"] == "노칭"
-     and ("신공정Z", COORD_CATEGORY) in _cat and _an["C5"].get("hold") == PV.HOLD_DEEP and not _pv("신공정Z"),
+     and ("신공정Z", COORD_CATEGORY) in _cat and _an["C5"].get("hold") == PV.HOLD_DEEP and _an["C5"].get("node_id") is None
+     and _an["C0"]["node_id"] == (_pv("신공정Z") or {}).get("id"),
      f"보류 {sorted(_cat)} · 제안 {_sug} · 전공정 → {_cm[0]['process_ref']} · C5 {_an['C5'].get('hold')}")
 _unregister(D181)
 

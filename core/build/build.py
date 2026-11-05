@@ -499,7 +499,7 @@ class Builder(CoordMixin):
             coord_surface = many[0]
             kind = "orphan_anchor"
             # **실제 사유를 말한다**(B104 ①) — 표기 모호(골격 노드 여럿)와 목록 밖은 처방이 다르다
-            why, cands = self.anchor_hold_of(coord_surface)
+            why, cands = self.anchor_hold_of(coord_surface, prov=prov)
             store.enqueue_rows(kind, (f"좌표 '{coord_surface}'가 {why}" + (f"(— {' · '.join(cands)})" if cands else "")
                                       + f"라 '{surface}'를 만들지 않았다"
                                       if why else f"좌표 '{coord_surface}'가 골격 목록 밖이라 '{surface}'를 만들지 않았다"),

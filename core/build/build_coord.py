@@ -174,6 +174,7 @@ class CoordMixin:
         # auto 노드뿐이면 anchor로 쓰지 않는다(문서 2 §2.4-①). 산문에서 스쳐 언급된 auto 노드가 골격 행세하는 우회로를 막는다.
         tier1 = first_fixed(g, [nid for nid in live if is_skeleton(g.get(nid))])
         autos = [nid for nid in live if not is_skeleton(g.get(nid))]
+        row_hold = self.coord_hold.get((prov, surface)) if category == COORD_CATEGORY else None
 
         def _hold(reason, extra):
             # **층을 싣는다**(B72 ③) — 다음 줄이 `layers/<층>/skeleton.json`을
@@ -193,6 +194,10 @@ class CoordMixin:
                 defer.append(item)
             return None, None
 
+        if row_hold and not any(not g.get(n).get(PROVISIONAL) for n in tier1):
+            # 앞 패스가 이 행을 보류했다(B182 — 같은 이름이 다른 행에서 잠정으로 섰어도 이 행의 자리는 아니다 · 사람이 고정한 골격은 그대로)
+            self.anchor_hold = row_hold
+            return _hold(f"{row_hold} — '{surface}'", {})
         if len(tier1) == 1:
             # **해소된 좌표도 문서 버퍼에 싣는다**(문서 4 §4.2 Pass 1) — 버퍼는
             # `정규화 표면형 → node_id` 맵이고 anchor·entity를 **둘 다** 담는다.
@@ -251,7 +256,7 @@ class CoordMixin:
         self.buffer[norm(surface)] = nid
         return nid
 
-    def anchor_hold_of(self, surface, category=None):
+    def anchor_hold_of(self, surface, category=None, prov=None):
         """좌표 표기가 왜 안 풀렸나(B104 ①) — 골격 노드 여럿을 가리키면 `(HOLD_AMBIGUOUS, [canonical…])` ·
         아니면 `(None, [])`(목록 밖). 사전 조회 한 번 — `resolve_anchor`와 같은 Tier1 기준이다."""
         from core.state.bootstrap import COORD_CATEGORY
@@ -263,7 +268,7 @@ class CoordMixin:
                                                                     and is_skeleton(g.get(n))]))
         if len(t1) > 1:
             return HOLD_AMBIGUOUS, t1
-        return self.coord_hold.get(_fold(surface or "")), []     # 잠정 노드로 세우지 못한 사유(B182) · 없으면 None(목록 밖)
+        return (self.coord_hold.get((prov, surface)) or self.coord_hold.get(_fold(surface or ""))), []   # 잠정으로 세우지 못한 사유(B182)
 
 
 def coord_judged(piece, surface):
