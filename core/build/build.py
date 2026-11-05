@@ -394,8 +394,7 @@ class Builder(CoordMixin):
                          "path": "none", "confidence": 0.0, "layer": self.layer,
                          "queue_kind": "invalid_category", "node_id": None}
             return None
-        # **좌표 없는 스코프 개체 0**(B102 ⑤ · 문서 4 §4.4) — 이름 규칙 카테고리인데 부모 좌표가 없으면
-        # 노드를 만들지 않는다. 자리를 아예 말하지 않은 값만 자리 추정(B183 — 같은 것이 하나면 그 노드) · 재료는 큐가 든다.
+        # **좌표 없는 스코프 개체 0**(B102 ⑤ · 문서 4 §4.4) — 노드를 만들지 않는다 · 자리를 아예 말하지 않은 값만 자리 추정(B183) · 재료는 큐
         if category in scope_categories(self.cfg) and not parent_canonical:
             return self._no_coord(surface, category, prov, coord_surface, belongs,
                                   guess=dict(electrode_type=electrode_type, row=row, field=field, at=at))
