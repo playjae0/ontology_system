@@ -423,6 +423,16 @@ show("B180 ⓒ 같은 엣지는 그래프 전체에 한 벌 — 공정 산문이
      and [x["layer"] for x in _sh180["QB180D"]] == ["process"] and [x["layer"] for x in _sh180["PB180F"]] == ["quality"],
      f"노칭 온도 공정층 {[e['provenance'] for e in _own180(_nt180, 'process')]} · 품질층 {len(_own180(_nt180, 'quality'))} / "
      f"노칭 진동 품질층 {[e['provenance'] for e in _own180(_nb180, 'quality')]} · 공정층 {len(_own180(_nb180, 'process'))}")
+import gc as _gc180                                                    # noqa: E402
+import weakref as _wr180                                               # noqa: E402
+from core.build.build import Builder as _B180                          # noqa: E402
+_g180 = open_graph("process")
+_w180 = _wr180.ref(_g180)
+_B180(_g180, load_config("process"), None, "B180G", "process")
+del _g180
+_gc180.collect()
+show("B180 ② 층 열기는 빌더 · 그래프를 약하게만 쥔다 — 빌더와 그래프를 놓으면 둘 다 풀리고 열기 표에서 빠진다(문서마다 쌓이지 않는다)",
+     _w180() is None and not any(k is _w180() for k in _GT180._OPEN.keys()), f"열기 표 {len(_GT180._OPEN)}")
 for _d in ("QB180A", "QB180B", "QB180C", "QB180D", "PB180E", "PB180F"):
     (_FX180.EXTRACT_HINTS / f"{_d}.json").unlink(missing_ok=True)
 init.init(fresh_=True, all_=True)

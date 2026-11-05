@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import weakref
+
 from core.build import gate
 from core.state import store
 from core.dictionary import Dictionary
@@ -85,7 +87,7 @@ class Builder(CoordMixin):
         self.ledger = None
         self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
         # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
-        gate.bind([graph], lambda lay: self.for_layer(lay).g)
+        gate.bind([graph], lambda lay, me=weakref.ref(self): me().for_layer(lay).g if me() is not None else None)
 
     # ---------------------------------------------------------------- 걸침
     def for_layer(self, layer):

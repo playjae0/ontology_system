@@ -137,7 +137,9 @@ _OPEN = weakref.WeakKeyDictionary()
 
 
 def bind(graphs, opener):
-    """이 그래프들을 쓰는 손의 층 열기 `opener(층) -> 그래프`를 건다(빌더 · 재연결 배치) — 이미 걸렸으면 그대로."""
+    """이 그래프들을 쓰는 손의 층 열기 `opener(층) -> 그래프 또는 None`을 건다(빌더 · 재연결 배치) — 이미 걸렸으면 그대로.
+    **`opener`는 손 · 그래프를 약하게만 쥔다**(값이 키를 강하게 쥐면 약한 키가 풀리지 않아 문서마다 빌더가 쌓인다) — 손이 사라지면
+    None을 돌려준다."""
     for g in graphs:
         if g is not None and g not in _OPEN:
             _OPEN[g] = opener
@@ -221,8 +223,9 @@ def _share(graph, world, hit, src, rel, dst, provenance, doc_id, s, d):
     이 실행이 쓰는 그래프일 때만 · 아니면 False(이 층에 쓴다 — 연 손 없는 호출)."""
     lay, e = hit
     opener = _OPEN.get(graph)
-    if opener is not None:
-        e = opener(lay).edge(src, rel, dst)
+    og = opener(lay) if opener is not None else None
+    if og is not None:
+        e = og.edge(src, rel, dst)
     elif _LIVE.get(lay) is not world[lay]:
         return False
     if e is None:

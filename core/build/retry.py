@@ -14,6 +14,8 @@
 """
 from __future__ import annotations
 
+import weakref
+
 from core import matcher
 from core.build import gate
 from core.state import catalog, log, store
@@ -144,7 +146,8 @@ def retry_orphans(layers=None):
 
     lays = layers or discover()
     graphs = {lay: open_graph(lay) for lay in lays}
-    gate.bind(graphs.values(), graphs.__getitem__)   # 다른 층의 같은 엣지 — 이 배치가 저장하는 그래프에(B180 ②)
+    _wr = {lay: weakref.ref(g) for lay, g in graphs.items()}       # 다른 층의 같은 엣지 — 이 배치가 저장하는 그래프에(B180 ② · 약하게)
+    gate.bind(graphs.values(), lambda lay, wr=_wr: wr[lay]() if lay in wr else None)
     cfgs = {lay: load_config(lay) for lay in lays}
     dic = Dictionary.open()
     healed = {k: 0 for k in RETRY_KINDS + (COORD_HOLD,)}
