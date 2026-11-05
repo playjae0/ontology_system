@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from core.state.bootstrap import COORD_CATEGORY
+from core.build.build_coord import coord_judged, judge_cells
 from core import matcher
 from core.build import gate, loop
 from core.build.build import Builder
@@ -52,6 +53,7 @@ def build_table(env, cfg, schema, graph, defer_save=False):
     규칙 B 폴백 → 말미 적재. 단계의 순서가 계약이다(문서 2 §2.4 · 문서 4 §4.4)."""
     # **층 이름은 연 그래프의 폴더 이름**(B99 ①) — config 안 `"layer"`는 검사 대상이지 이름이 아니다
     b = Builder(graph, cfg, schema, env["doc_id"], graph.layer)
+    b.doc_coord = env.get("doc_coord")
     b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 행마다 적는다 (B74 ②)
     fields = schema["fields"]
     doc_id = env["doc_id"]
@@ -146,8 +148,9 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
     """
     rec = r.rec
     _ref_s, _grp_s = rec.get("process_ref"), rec.get("process_group")
+    _cj = coord_judged(rec, _ref_s)                 # 파서의 골격 칸 판단(B181 ① — 애매면 보류에 후보)
     r.ref, r.ref_g = b.resolve_anchor(_ref_s, COORD_CATEGORY, r.prov,
-                                      defer=r.defer)
+                                      defer=r.defer, judged=_cj)
     if not _ref_s:
         if _grp_s:
             # **저해상도 부착** — 그룹은 조상 대조용이지만, 좌표가 아예 없으면
@@ -178,7 +181,8 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
                               else "anchor" if r.ref else "orphan"),
                      node_id=r.ref,
                      queue_kind=None if r.ref else "orphan_anchor",
-                     hold=None if r.ref else b.anchor_hold)
+                     hold=None if r.ref else b.anchor_hold,
+                     **(judge_cells(_cj) if r.coord_case != "low_res" else {}))
     r.hold = None if r.ref else b.anchor_hold        # 이 행의 좌표 보류 사유 — 드롭된 값 행도 같은 사유(B104 ①)
 
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 2.8·3.8·④⑨⑩ — **지점별 얇은 배선**: 이미지 요약 · 좌표 태깅 · 시트 역할 판정 (문서 6 §6.1·§6.4).
+"""칸 2.8·3.8·④⑨⑩ — **지점별 얇은 배선**: 이미지 요약 · 좌표 태깅(판단은 `core.matcher` 한 자리 — B181) · 시트 역할 판정 (문서 6 §6.1·§6.4).
 
 여기 있는 것은 «무엇을 보내고 무엇을 받는가»뿐이다 — 설정·재시도·전송은
 `gateway`가 안다. 파서는 이 모듈을 import하지 않는다: 팩토리가 함수를 주입한다
@@ -64,28 +64,25 @@ def image_summarizer():
     return summarize_image
 
 
-COORD_SCHEMA = {
-    "type": "object",
-    "properties": {"canonical": {"type": ["string", "null"]}},
-    "required": ["canonical"], "additionalProperties": False,
-}
+def pick_coord(surface, cands, row=None, field="process_ref", doc_coord=None):
+    """지점 ⑨ 좌표 태깅(골격 칸)의 **실호출 갈래** — **판단은 개체 · 닫힌 분류와 같은 한 자리**(`matcher.decide` — B181 ①).
 
-
-def pick_coord(surface, choices):
-    """지점 ⑨ 좌표 태깅의 **실호출 갈래** — 닫힌 목록에서 고르거나 null.
-
-    **고르는 것이지 만드는 것이 아니다.** 목록 밖 답은 호출부(파서)가 버린다 —
-    모델이 지어낸 좌표가 태깅되면 인입의 orphan_anchor가 그것을 골격으로 착각한다.
-    """
-    out = gateway.chat([{"role": "system", "content": gateway.prompt("coord_tag")},
-                {"role": "user", "content": json.dumps(
-                    {"surface": surface, "choices": choices}, ensure_ascii=False)}],
-               json_schema=COORD_SCHEMA, point="coord_tag")
-    return out.get("canonical")
+    `cands` = 골격 목록 후보(이름 · 별칭 · 부모 경로 — `{id, canonical, aliases, path}`) · `row` = 그 표기가 처음 나온 행(애매면
+    원문으로 한 번 더 — 표는 같은 행의 다른 칸 · 청크는 그 표기 앞뒤 · ③) · `doc_coord` = 문서 좌표. 돌려주는 것은 판정 꼴 dict
+    (`type` · `matched_id` · `confidence` …) — **고르는 것이지 만드는 것이 아니다**: 후보 밖 id · 문턱 아래 같다는 애매(계약) ·
+    파서는 같다만 쓴다(다르다 · 애매는 목록 밖 그대로 → 인입의 `orphan_anchor`)."""
+    from core import matcher
+    from core.build.extract_ctx import source_of, value_path
+    from core.state.bootstrap import COORD_CATEGORY, coord_layer, load_config
+    from core.state.surface_book import SKELETON
+    pool = [{**c, "category": COORD_CATEGORY} for c in cands]
+    sent = source_of(row, surface, field, matcher.context_chars()) if row else None
+    return matcher.decide(surface, pool, COORD_CATEGORY, load_config(coord_layer()), sentence=sent,
+                          where=value_path(row, field, doc_coord), point="coord_tag", place=SKELETON)
 
 
 def coord_picker():
-    """USE_MOCK이면 None(닫힌 목록 정확 일치 — **모델을 부르지 않는다**), 아니면 실호출.
+    """USE_MOCK이면 None(닫힌 목록 정확 일치 — **모델을 부르지 않는다**), 아니면 실호출(판단 한 자리 — `matcher.decide`).
 
     `image_summarizer()`와 같은 형태다 — **None이 mock 갈래의 표현이고**, 파서의
     `tag()`가 그 분기를 이미 갖고 있다.

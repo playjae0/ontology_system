@@ -361,15 +361,16 @@ def _step_stops(res, sel, row, ask=True):
         # 관문은 추출 예고 · 추출 결과·판정 예고 둘이고 구축 안에서 묻는다(`ingest_screen.build_screen`).
         return False
     # **판정 예고에서 멈추면 그래프에 쓴 것이 0이다** — 그 자리가 이 단계다.
-    from core.build.entry import _entity_surfaces, decision_plan
+    from core.build.entry import _closed_surfaces, _entity_surfaces, decision_plan
     _sc = registry.schema_of(sel["doc_type"]) or {}
     _pl = decision_plan(
         _entity_surfaces(res.envelope, _sc),
         [x.get("process_ref") for x in (res.envelope.get("records") or [])
-         if x.get("process_ref")], _sc.get("layer") or coord_layer())
+         if x.get("process_ref")], _sc.get("layer") or coord_layer(), closed=_closed_surfaces(res.envelope, _sc))
     if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
                       f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
-                      f"{_pl['예상_호출']}회", ask=ask):
+                      f"{_pl['예상_호출']}회"
+                      + (f" · 닫힌 분류 판단 ≤ {_pl['닫힌_분류']}회" if _pl.get("닫힌_분류") else ""), ask=ask):
         row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
                                        "(그래프 쓰기 0)")
         return True

@@ -79,7 +79,7 @@ def _counted(point, detail=""):
     return _mock0(point, detail)
 
 
-def _fake_pick(surface, choices):
+def _fake_pick(surface, cands, **_k):          # 판단 꼴의 주입(B181 ① · 고침 — 답 None은 「다르다」 없이 목록 밖)
     gateway._account("coord_tag", {"usage": {"prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10}})
     PICKED.append(surface)
     return None

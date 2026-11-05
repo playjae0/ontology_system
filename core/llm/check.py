@@ -31,6 +31,10 @@ _LOG = log.get(__name__)
 PING = "ping"
 
 
+
+#: 지점 → 그 지점이 쓰는 지시문(이름이 다를 때만) — 골격 칸(좌표 태깅)은 같은지 판단 한 자리다(B181 ① — `3.4_judge`)
+PROMPT_OF = {"coord_tag": "judge"}
+
 def mock_state():
     """지금 mock인가를 **문장으로** 돌려준다 — 호출부가 환경변수를 읽지 않게.
 
@@ -183,7 +187,7 @@ def _probe_points(cfg, points, add):
     #
     # 지시문 파일이 있는 지점은 그것을 실어 보낸다 — 프롬프트가 게이트웨이를
     # 통과하는지까지 봐야 «붙었다»가 실전 의미를 갖는다. 파일이 없는 지점
-    # (⑤생성·⑦구조지도·⑨좌표)은 지시문 없이 왕복만 시험한다.
+    # (⑤생성·⑦구조지도)은 지시문 없이 왕복만 시험한다 · ⑨좌표는 판정 지시문(`PROMPT_OF`).
     for pt in (points or []):
         label = f"지점 {gateway.POINTS.get(pt, pt)}"
         try:
@@ -195,13 +199,14 @@ def _probe_points(cfg, points, add):
                 _EM.embed(PING)
                 add("·", label, True, f"{cfg['embed_backend']} · {_EM.cost_line()}")
                 continue
-            msgs = ([{"role": "system", "content": gateway.prompt(pt)}]
-                    if gateway.has_prompt(pt) else [])
+            pn = PROMPT_OF.get(pt, pt)
+            msgs = ([{"role": "system", "content": gateway.prompt(pn)}]
+                    if gateway.has_prompt(pn) else [])
             msgs.append({"role": "user", "content": PING})
             out = gateway.chat(msgs, point=pt)
             add("·", label, True,
                 f"응답 앞 40자: {str(out.get('text'))[:40]!r}"
-                + ("" if gateway.has_prompt(pt) else "  (지시문 파일 없는 지점 — 왕복만)"))
+                + ("" if gateway.has_prompt(pn) else "  (지시문 파일 없는 지점 — 왕복만)"))
         except Exception as e:
             add("·", label, False, f"{type(e).__name__}: {e}")
 

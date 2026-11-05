@@ -30,7 +30,7 @@ from core import paths
 #: 형: `int`(≥1) · `int0`(≥0) · `range`([작은, 큰] 정수 · 1 ≤ 작은 < 큰) ·
 #:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수) · `pct`(1~100 정수) ·
 #:     `choice:<값|값…>`(닫힌 문자열 — B104 ②)
-#:     `bool`(true · false — B156 ⑤)
+#:     `bool`(true · false — B156 ⑤) · `unit`(0 < 수 ≤ 1 — B181 ⑤)
 KNOBS = {
     "heading_max_chars": ("parser.struct_map", ("HEADING_MAX_CHARS",), "int",
                           "제목 후보의 최대 글자 — 넘는 번호 행은 제목이 아니다",
@@ -119,9 +119,17 @@ KNOBS = {
                         "슬라이드 1회 · 상자 수는 보지 않는다)",
                         "python run.py show dist chunks · show report <doc_id> --md 추출 청크 표"),
     "judge_context_chars": ("core.matcher", ("JUDGE_CONTEXT_CHARS",), "int0",
-                            "2차 판정의 문장 — 1차가 불확실인 산문 개체에 그 표기 앞뒤 이 글자 수의 청크 원문을 붙여 같은 "
-                            "후보로 한 번 더 묻는다(0이면 끔 · 비용은 불확실 수에 비례)",
-                            "인입 판정 끝 줄 「2차 n → 바뀜 m」 · 문서 한 줄 요약 · python run.py show report <doc_id> --md"),
+                            "다시 묻기의 원문 — 같은지 판단의 1차가 애매면 원문(산문은 그 표기 앞뒤 이 글자 수 · 표는 같은 "
+                            "행의 다른 칸을 합쳐 이 글자 수 근처)을 붙여 같은 후보로 한 번 더 묻는다(세 곳 공통 · 0이면 끔 · "
+                            "비용은 애매 수에 비례)",
+                            "인입 끝 「판단 수치」 곳별 줄의 다시 묻기 · python run.py show report <doc_id>"),
+    "match_threshold": ("core.matcher", ("THRESHOLD",), "unit",
+                        "같다고 받는 기준 — 같은지 판단의 「같다」 확실도가 이 값 아래면 애매(골격 칸 · 닫힌 분류 · 개체 "
+                        "공통 · 옛 층 config 키는 bootstrap이 옮긴다)",
+                        "인입 끝 「판단 수치」 곳별 줄(확실도 구간 · 기준 근처 짝) · python run.py show report <doc_id>"),
+    "candidate_top_n": ("core.matcher", ("CANDIDATE_TOP_N",), "int",
+                        "판정 후보 상한 — 개체 판정에 올리는 후보 수(같은 이름은 자르지 않는다 · 넘으면 임베딩 · 겹침으로 좁힌다)",
+                        "인입 판정 끝 줄 「후보 평균 n(상한 N)」 · python run.py show report <doc_id>"),
     "keep_page_captures": ("core.state.captures", ("KEEP",), "bool",
                            "쪽 캡처 보관 — 켜면(true) PPT · PDF 쪽마다 캡처 한 장을 ④작업(work/captures/<doc_id>/)에 JPEG(긴 변 "
                            "1,600px)로 두고 판독 · 추출이 그것을 쓴다(문서마다 렌더 한 번 · 원본 바이너리 · 그림 원본은 저장 0) · "
@@ -175,6 +183,7 @@ def _check(name, v, dflt):
           "dict": lambda: isinstance(v, dict) and set(v) == set(dflt)
           and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v.values()),
           "bool": lambda: isinstance(v, bool),
+          "unit": lambda: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v <= 1,
           }[kind]() if not kind.startswith("choice:") else v in kind[len("choice:"):].split("|")
     if not ok and name in RETIRED and v in RETIRED[name]:
         raise KnobError(
@@ -265,6 +274,22 @@ def get(name):
         paths.home()                       # 첫 결정이 apply를 부른다
     _raise_if_bad()                        # 어긋난 파일로 조용히 기본값을 쓰지 않는다
     return _STATE["values"].get(name, default(name))
+
+
+#: 층 config에 있던 키 → 옮겨 간 손잡이(B181 ⑤ — bootstrap이 한 자리에서 본다 · `moved_keys`)
+MOVED_LAYER_KEYS = {"match_threshold": "match_threshold"}
+
+
+def moved_keys(configs):
+    """**층 config의 옛 키**(B181 ⑤) — `{층: config}`에서 손잡이로 옮겨 간 키 `[(키, 손잡이, {층: 값}, 손잡이 값, 같은가)]` ·
+    같은가 = 층의 값이 전부 손잡이 값과 같다(층마다 달라도 거짓 — 어느 값인지 사람이 정한다). 없으면 빈 목록."""
+    out = []
+    for key, knob in MOVED_LAYER_KEYS.items():
+        vals = {lay: (cfg or {}).get(key) for lay, cfg in sorted((configs or {}).items()) if key in (cfg or {})}
+        if vals:
+            now = get(knob)
+            out.append((key, knob, vals, now, all(v == now for v in vals.values())))
+    return out
 
 
 def source(name):

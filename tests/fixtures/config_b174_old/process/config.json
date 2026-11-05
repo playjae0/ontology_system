@@ -39,7 +39,6 @@
     "Process,Property": "has_property",
     "Unit,Property": "has_property"
   },
-  "match_threshold": 0.85,
   "query_traverse": {
     "part_of": {
       "down": {

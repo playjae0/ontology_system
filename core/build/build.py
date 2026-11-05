@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import weakref
+
 from core.build import gate
 from core.state import store
 from core.dictionary import Dictionary
@@ -27,8 +29,6 @@ from core.matcher import MATCH, NEW, UNCERTAIN, gated, resolve
 _MEMO = {}
 #: 이번 문서 실행이 사전·노드에 더한 **LLM 매칭** 별칭(B101 ④ — 결과표의 수) · 문서 시작에 비운다.
 ADDED = []
-#: 좌표 보류 사유 — 표기가 골격 노드 여럿을 가리킨다(B104 ①). 목록 밖과 처방이 다르다(대장 `hold` · 큐 문면).
-HOLD_AMBIGUOUS = "표기 모호(골격 노드 여럿)"
 #: 값 싣기의 결과(`put_attribute` — 표 · 산문 한 함수 · B120 ①): 새 항목 · 같은 값(출처만 더함) · 같은 맥락 다른 값(spec_conflict)
 ATTR_ADDED, ATTR_SAME, ATTR_CONFLICT = "added", "same", "conflict"
 from core import matcher as _matcher              # noqa: E402 — 2차 판정 · 문장 폭
@@ -59,6 +59,12 @@ def entity_key(surface, category, cfg, *, electrode_type=None,
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
 
+def _name_of(ref):
+    """`(노드 id, 그 그래프)` → 그 노드의 canonical(없으면 None) — 값의 경로의 이름 재료."""
+    nid, g = ref if ref else (None, None)
+    return ((g.get(nid) or {}).get("canonical") if nid and g is not None else None)
+
+
 def _key_text(k, sep):
     """짝 키의 부모 요소를 글자로 — 겹(골격 밖 부모 · `_mirror_scope`)이면 `sep`으로 잇는다."""
     return sep.join(_key_text(x, sep) for x in k if x) if isinstance(k, tuple) else k
@@ -83,9 +89,10 @@ class Builder(CoordMixin):
         self.last: dict = {}
         # 판정 대장 — 문서 하나에 하나이고 걸침 하위 빌더와 **공유한다**(B74 ②).
         self.ledger = None
+        self.doc_coord = None                # 문서 좌표 — 판단 재료의 값의 경로(B181 ② · 구축 입구가 봉투에서 싣는다)
         self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
         # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
-        gate.bind([graph], lambda lay: self.for_layer(lay).g)
+        gate.bind([graph], lambda lay, me=weakref.ref(self): me().for_layer(lay).g if me() is not None else None)
 
     # ---------------------------------------------------------------- 걸침
     def for_layer(self, layer):
@@ -110,6 +117,7 @@ class Builder(CoordMixin):
             sub.book = self.book
             sub.buffer = self.buffer
             sub.ledger = self.ledger
+            sub.doc_coord = self.doc_coord
             sub.subs = self.subs
             self.subs[layer] = sub
         return self.subs[layer]
@@ -209,92 +217,6 @@ class Builder(CoordMixin):
         self.dict.save()
         self.book.save()                     # 별칭 대장은 사전과 같은 때 — 되돌림 경계도 같다 (B108 ①)
 
-    # ---------------------------------------------------------------- anchor
-    def _graph_for(self, category):
-        """카테고리의 **집** 그래프 (B90 ② — 자기 층 선언을 먼저 보지 않는다).
-
-        여러 층이 같은 카테고리를 선언하면 「내 층도 선언했다」는 답이 되지 못한다 —
-        노드는 집 하나에 산다. 같은 층이면 self.g를 그대로 쓴다.
-        """
-        eb = self.for_category(category)
-        return eb.g, eb.layer
-
-    def resolve_anchor(self, surface, category, prov, *, defer=None):
-        """골격 조회 전용 — anchor는 새로 만들지 않는다.
-
-        돌려주는 것은 **(node_id, 그 노드가 사는 그래프)**다. 걸침 anchor는 다른 층에
-        살기 때문에 그래프를 함께 줘야 호출부가 카테고리를 물어볼 수 있다.
-
-        **조회 대상은 사전(정확 일치·alias)까지다** — 문서 2 §2.4-①: "미스면 곧바로
-        orphan_anchor 큐. **anchor 해소에는 후보검색·유사도·LLM 판정을 쓰지 않는다**
-        — 골격은 사람이 고정한 유형이고(P2), 추론으로 끌어당기면 사람의 보증을
-        코드가 뒤집는다." 표기 변형은 사전의 alias가 흡수하고, 사전에 없으면 큐에서
-        사람이 판단한다. 좌표 닫힌 목록 = 골격 전 노드이며
-        (A11-6), 개념 노드와 인스턴스가 둘 다 그 목록에 있다. 문서가 상위·개념
-        해상도로 말하면("탭용접") 개념 노드가 답이고, 그것은 오류가 아니라
-        **저해상도 부착**이다.
-
-        **극성 모호(구 D5)는 구조적으로 소멸했다**(A11-6): 극성 무관 표면형의 alias는
-        개념 노드가 단독 소유하고, 극성 수식 표기는 인스턴스의 auto alias다. 남는
-        orphan_anchor 경로는 **"목록 밖 이름"**과 **"표기 모호"** 둘뿐이며, 후자에서도
-        임의 선택하지 않는다 — 쓰기는 좁게(3.5 규약 7).
-
-        **적재는 즉시 하지 않고 `defer`에 미룬다**(문서 2 §2.4-① · 문서 4 §4.7-5).
-        큐 항목이 재시도 배치의 **유일한 손잡이**인데, 좌표를 못 찾은 시점에는 그
-        행이 무엇을 만들었는지가 아직 정해지지 않았다 — 생략된 엣지의 출발 노드도,
-        연쇄 드롭된 걸침 entity도, 보류된 attribute도 레코드 처리가 끝나야 안다.
-        즉시 적재하면 그것들이 payload 밖에 남아 **골격이 나중에 자라도 그 노드는
-        영영 공정에 붙지 않는다.**
-
-        `defer`가 None이면 종전대로 즉시 싣는다 — 레코드 맥락 없이 부르는 자리
-        (골격 대조 등)를 위한 갈래다.
-        """
-        self.anchor_hold = None                   # 이 호출의 보류 사유(대장 anchor 행이 싣는다 · B104 ①)
-        if not surface:
-            return None, None
-        g, _ = self._graph_for(category)          # 걸침 anchor는 다른 층에서 찾는다
-        live = [nid for nid in self.dict.lookup(surface)
-                if is_live(g.get(nid) or {}) and
-                (g.get(nid) or {}).get("category") == category]
-        # **Tier1 한정** — 조회 결과가 auto 노드뿐이면 anchor로 쓰지 않는다(문서 2 §2.4-①).
-        # 산문에서 스쳐 언급된 auto 노드가 골격 행세하는 우회로를 막는다.
-        tier1 = [nid for nid in live if g.get(nid).get("status") in ("seed", "confirmed")]
-        autos = [nid for nid in live if nid not in tier1]
-
-        def _hold(reason, extra):
-            # **층을 싣는다**(B72 ③) — 다음 줄이 `layers/<층>/skeleton.json`을
-            # 가리키므로, 층을 모르면 사람이 그 줄을 그대로 칠 수 없다.
-            payload = {"surface": surface, "category": category,
-                       "provenance": prov, "layer": self.layer}
-            # 조회된 auto 후보를 싣는다 — 동봉하지 않으면 사람이 큐 화면에서
-            # 후보를 다시 검색해야 판단할 수 있다(문서 2 §2.4-①).
-            if autos:
-                payload["auto_candidates"] = [
-                    {"id": a, "canonical": g.get(a)["canonical"]} for a in autos]
-            payload.update(extra)
-            item = {"kind": "orphan_anchor", "reason": reason, "payload": payload}
-            if defer is None:
-                store.enqueue("orphan_anchor", reason, self.doc_id, payload)
-            else:
-                defer.append(item)
-            return None, None
-
-        if len(tier1) == 1:
-            # **해소된 좌표도 문서 버퍼에 싣는다**(문서 4 §4.2 Pass 1) — 버퍼는
-            # `정규화 표면형 → node_id` 맵이고 anchor·entity를 **둘 다** 담는다.
-            # 안 실으면 `attach_to`가 골격 노드 표기를 가리킬 때(산문이 공정에
-            # 직접 붙이는 정상 경로) 버퍼 조회가 미스가 되어 사전으로 새고,
-            # 같은 문서 안의 해소 결과가 재사용되지 않는다.
-            self.buffer[norm(surface)] = tier1[0]
-            return tier1[0], g
-        if len(tier1) > 1:
-            self.anchor_hold = HOLD_AMBIGUOUS
-            return _hold(f"표기 모호 — '{surface}'가 골격 노드 여럿을 가리킨다",
-                         {"candidates": [g.get(h)["canonical"] for h in tier1]})
-        if autos:
-            return _hold(f"골격 밖 — '{surface}'는 auto 노드로만 있다 (Tier1 한정)", {})
-        return _hold(f"골격에 없는 좌표 — '{surface}'", {})
-
     def coord_verdicts(self, group_surface, ref_id, et, g=None):
         """**좌표 쌍 판정**(B105) — `(판정 목록, 상위가 가리키는 골격 노드들)`.
 
@@ -388,13 +310,15 @@ class Builder(CoordMixin):
         return load_config(node["layer"])
 
     # ---------------------------------------------------------------- entity
-    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, chunk_text, place=None):
+    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, row, place=None, where=None,
+               field=None):
         """판정 한 번 — `((분기, node_id, 점수, 판정 dict), 재생하지 못한 사유)`.
 
         **판정 재생**(B106 ②) — 판정 없이 붙지 않는 값만(사전 · 경로 호환 같은 이름이 답하지 않았다 — `matcher.gated` ·
         후보 조립과 같은 함수) · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
-        좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `chunk_text`(산문)가 있으면 그 표기 앞뒤 글이 2차 판정의
-        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
+        좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `row`(그 값이 나온 청크 · 행)의 원문이 2차 판정의
+        문장이다(B123 ③ — 1차가 불확실일 때만 · 청크는 그 표기 앞뒤 · 표는 같은 행의 다른 칸 — B181 ③ `extract_ctx.source_of`) ·
+        `where`는 값의 경로(B181 ② — 이름 규칙 카테고리 밖). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
         판정에 오른 값은 **근거 지문**(B167 ② — `replay.basis`)을 판정 dict에 싣는다 — 대장 행이 옮기고 재생이 다시 잰 것과 견준다."""
         rp = why = fp = None
         pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
@@ -403,17 +327,19 @@ class Builder(CoordMixin):
             from core.build import replay as _rp
             fp = _rp.basis(canonical, pre, self.cfg)
             rp, why = _rp.pick(self, at, surface, category, canonical, basis_now=fp)
-        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, chunk_text, place, pre, rp)
+        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where,
+                           field)
         if fp is not None:
             got[3]["basis"] = fp
         return got, why
 
-    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, chunk_text, place, pre, rp):
+    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where=None,
+                field=None):
         """재생(`rp`) 또는 판정 — `(분기, node_id, 점수, 판정 dict)`(위 `_judge`의 몸)."""
         sent = None
-        if chunk_text and (rp is None or rp[3].get("second_due")):
-            from core.build.extract_ctx import around
-            sent = around(chunk_text, surface, _matcher.JUDGE_CONTEXT_CHARS)
+        if row and (rp is None or rp[3].get("second_due")):
+            from core.build.extract_ctx import source_of
+            sent = source_of(row, surface, field, _matcher.context_chars())
         if rp is not None:
             if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
                 got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
@@ -425,16 +351,16 @@ class Builder(CoordMixin):
                     return got
             return rp
         return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
-                       parent=parent_canonical, sentence=sent, place=place, pre=pre)
+                       parent=parent_canonical, sentence=sent, place=place, pre=pre, where=where)
 
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
-                       belongs=None, at=None, chunk_text=None, coord=None, owner=None):
+                       belongs=None, at=None, row=None, field=None, coord=None, owner=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시). `coord` · `owner`(산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
         판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름 부모는 호출부가 `naming.name_parent`로 · B144 ②).
 
-        `chunk_text`(그 표기가 나온 청크의 원문 — 산문이 준다)가 있으면 1차가 불확실일 때 그 앞뒤 글로 2차를 묻는다
-        (B123 ③ — `matcher.second` · 표의 행은 청크가 아니라 주지 않는다).
+        `row`(그 표기가 나온 청크 · 표의 행 — B181 ②)는 판단 재료다 — 값의 경로(이름 규칙 카테고리 밖 — `extract_ctx.value_path`) ·
+        1차가 불확실이면 그 원문으로 2차를 묻는다(B123 ③ — `matcher.second` · 청크는 그 표기 앞뒤 글).
 
         `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
         그 노드에서 **상속**한다(A11-9 ① — 이중 표기 방지). 그렇지 않을 때만
@@ -483,8 +409,12 @@ class Builder(CoordMixin):
         from core.build import scope_path
         _u0 = _llm.usage_total()
         place = scope_path.place(self, category, coord, owner, surface, parent_canonical)
+        where = None
+        if place is None:                       # 값의 경로(B181 ② — 이름 규칙 카테고리는 `place.names()` 그대로)
+            from core.build.extract_ctx import value_path
+            where = value_path(row, field, self.doc_coord, coord=_name_of(coord), owner=_name_of(owner))
         (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped, polarity,
-                                                   parent_canonical, at, chunk_text, place=place)
+                                                   parent_canonical, at, row, place=place, where=where, field=field)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
@@ -543,17 +473,6 @@ class Builder(CoordMixin):
         self.buffer[norm(surface)] = nid
         self.last["node_id"] = nid
         return nid
-
-    def anchor_hold_of(self, surface, category=None):
-        """좌표 표기가 왜 안 풀렸나(B104 ①) — 골격 노드 여럿을 가리키면 `(HOLD_AMBIGUOUS, [canonical…])` ·
-        아니면 `(None, [])`(목록 밖). 사전 조회 한 번 — `resolve_anchor`와 같은 Tier1 기준이다."""
-        from core.state.bootstrap import COORD_CATEGORY
-        category = category or COORD_CATEGORY
-        g, _ = self._graph_for(category)
-        t1 = sorted(g.get(n)["canonical"] for n in set(self.dict.lookup(surface or ""))
-                    if is_live(g.get(n) or {}) and (g.get(n) or {}).get("category") == category
-                    and g.get(n).get("status") in ("seed", "confirmed"))
-        return (HOLD_AMBIGUOUS, t1) if len(t1) > 1 else (None, [])
 
     def _no_coord(self, surface, category, prov, coord_surface, belongs):
         """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 `missing_field`(키 `process_ref`) ·

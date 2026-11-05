@@ -375,7 +375,7 @@ show("⑥ 정확 일치만이면 진행이 흐르지 않는다 (진행은 호출
      str(_seen[:1]))
 _seen2 = []
 _pl.parse(_cpmod, "B3b", _big, max_rows=100,
-          pick_coord=lambda ref, choices: None,
+          pick_coord=lambda ref, cands, **_k: None,
           progress=lambda i, n, c: _seen2.append((i, n, c)), layer=coord_layer())
 show("⑥ 진행 콜백이 **표기 단위**로 흐르고 끝에서 총수와 같다",
      len(_seen2) > 0 and _seen2[-1][0] == _seen2[-1][1],

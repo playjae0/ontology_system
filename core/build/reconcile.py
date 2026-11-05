@@ -483,12 +483,70 @@ def owner_counts(rows):
     return len(apart), ex
 
 
-def second_counts(rows):
-    """2차 판정(B123 ③) — `(이번에 부른 개체 행 n, 매칭으로 바뀐 m)` · 대장 행의 `judge2`에서(새 계산 0 · 재생이 옮긴 지난 기록은
-    빼고 재생의 2차(`judge2.replay`)는 넣는다)."""
-    got = [r.get("judge2") for r in rows or [] if r.get("role") == "entity" and r.get("judge2")
-           and (r.get("path") != "replay" or r["judge2"].get("replay"))]
-    return len(got), sum(1 for j in got if j.get("now") == "match")
+#: 같다 기준 근처 — 짝 줄의 확실도 구간 · 곳마다 보이는 짝 수(B181 ⑥ · 결정 §2 「0.7 ~ 0.9 사이 짝 예시」)
+NEAR, NEAR_SHOW = (0.7, 0.9), 3
+_ENTITY_ROLES = ("entity", "belongs", "heading")
+
+
+def place_of(row):
+    """대장 행의 곳(B181 ⑥) — anchor 행은 `place` 칸(판단을 지난 행만) · 개체 역할 행은 「개체」 · 그 밖 None."""
+    from core.state.surface_book import ENTITY
+    if row.get("place"):
+        return row["place"]
+    return ENTITY if row.get("role") in _ENTITY_ROLES else None
+
+
+def judge_counts(rows):
+    """**곳별 판단 수치**(B181 ⑥) — `{곳: {판단, 같다(확실도 0.1 구간 10칸), 애매, 다르다, 근처 [(표기, 후보, 확실도, 답)], 다시
+    [물음, 바뀜]}}` · 대장 행에서(새 판정 0 · 읽기만) · 이번 실행이 판단한 행만(개체는 경로 `…+judge` · anchor 칸은 `place`가 있는
+    행 — 표기마다 한 번) · 다시 묻기는 재생의 2차(`judge2.replay`)도 센다(옛 「2차 n → 바뀜 m」을 곳별로) · 기준 근처 짝은 같다 ·
+    애매의 답만(다르다의 확실도는 「다르다」의 확신이다)."""
+    from core.state.surface_book import CLOSED, ENTITY, SKELETON
+    out, seen = {}, set()
+    for r in rows or []:
+        pl = place_of(r)
+        j2 = r.get("judge2") or {}
+        judged = bool(r.get("place")) or str(r.get("path") or "").endswith("+judge")
+        if pl is None or not (judged or j2.get("replay")):
+            continue
+        if r.get("role") == "anchor":
+            if (pl, r.get("surface")) in seen:
+                continue
+            seen.add((pl, r.get("surface")))
+        d = out.setdefault(pl, {"판단": 0, "같다": [0] * 10, "애매": 0, "다르다": 0, "근처": [], "다시": [0, 0]})
+        if j2:
+            d["다시"][0] += 1
+            d["다시"][1] += int(j2.get("now") == "match")
+        if not judged:
+            continue
+        ans, conf = r.get("answer") or r.get("verdict"), float(r.get("confidence") or 0.0)
+        d["판단"] += 1
+        if ans == "match":
+            d["같다"][min(9, int(conf * 10 + 1e-9))] += 1
+        d["애매"] += int(ans == "uncertain")
+        d["다르다"] += int(ans == "new")
+        if ans != "new" and NEAR[0] <= conf <= NEAR[1] and len(d["근처"]) < NEAR_SHOW:     # 「다르다」의 확실도는 다른 잣대
+            d["근처"].append((r.get("surface"), _pair_of(r, ans), round(conf, 4), ans))
+    return {k: out[k] for k in (SKELETON, CLOSED, ENTITY) if k in out}
+
+
+def _pair_of(r, ans):
+    """짝의 후보 이름 — 같다면 붙은 노드 · 그 밖은 판단이 가장 가깝다고 한 후보(없으면 None)."""
+    if ans == "match":
+        return r.get("target") or r.get("canonical")
+    return (r.get("nearest") or {}).get("canonical")
+
+
+def judge_lines(jc):
+    """판단 수치 줄(B181 ⑥) — 곳마다 `곳 — 판단 n · 같다 m(확실도 0.9~ a · …) · 애매 u · 다르다 d · 다시 묻기 k → 바뀜 j` + 기준 근처
+    짝 줄(표기 → 후보 · 확실도 · 답) · 판단이 없으면 빈 목록."""
+    out = []
+    for pl, d in (jc or {}).items():
+        bins = " · ".join(f"{i / 10:.1f}~ {n:,}" for i, n in reversed(list(enumerate(d["같다"]))) if n)
+        out.append(f"{pl} — 판단 {d['판단']:,} · 같다 {sum(d['같다']):,}" + (f"(확실도 {bins})" if bins else "")
+                   + f" · 애매 {d['애매']:,} · 다르다 {d['다르다']:,} · 다시 묻기 {d['다시'][0]:,} → 바뀜 {d['다시'][1]:,}")
+        out += [f"  기준 근처 {s} → {c or '—'} · {cf:.2f} · {a}" for s, c, cf, a in d["근처"]]
+    return out
 
 
 def replay_second_counts(rows):
@@ -513,9 +571,15 @@ def summary_text(doc_id, s):
     return (f"{doc_id} — 개체 {s['개체']:,} → {body} | 엣지 {s['엣지']:+,} | 그래프 노드 {nodes} | "
             f"유닛 이하 비율 {ratio}" + (f" | 구조 · 가드 부딪힘 {s['가드 부딪힘']:,}" if s.get("가드 부딪힘") else "")
             + _value_text(s.get("값"))
-            + (f" | 2차 {s['2차'][0]:,} → 바뀜 {s['2차'][1]:,}" if (s.get("2차") or (0,))[0] else "")
+            + _again_text(s.get("판단"))
             + (" | 재생 불확실 {:,} → 2차 {:,} → 바뀜 {:,}".format(*s["재생 2차"]) if (s.get("재생 2차") or (0,))[0] else "")
             + (" | 캡처 끔" if s.get("캡처 끔") else ""))
+
+
+def _again_text(jc):
+    """` | 다시 묻기 곳 n → 바뀜 m · …` — 다시 물은 곳만(B181 ⑥ — 옛 「2차 n → 바뀜 m」을 곳별로)."""
+    cells = [f"{pl} {d['다시'][0]:,} → 바뀜 {d['다시'][1]:,}" for pl, d in (jc or {}).items() if d["다시"][0]]
+    return (" | 다시 묻기 " + " · ".join(cells)) if cells else ""
 
 
 def _value_text(v):
@@ -557,9 +621,11 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     lines += reinforce_line(rows)
     q_new, q_old = (run or {}).get("큐 이번"), (run or {}).get("큐 이전")
     after = layer_counts(graphs)
+    jc = judge_counts(rows)
     return {"doc_id": doc_id, "줄": lines,
             "소유자": owner_counts(rows),
-            "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "2차": second_counts(rows),
+            "판단": jc,
+            "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "판단": jc,
                      "재생 2차": replay_second_counts(rows),
                      "캡처 끔": bool(((env or {}).get("context") or {}).get("capture_off"))},
             "그래프": graph_lines(res, after, (run or {}).get("층 전")),

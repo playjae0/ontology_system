@@ -14,6 +14,8 @@
 """
 from __future__ import annotations
 
+import weakref
+
 from core import matcher
 from core.build import gate
 from core.state import catalog, log, store
@@ -144,7 +146,8 @@ def retry_orphans(layers=None):
 
     lays = layers or discover()
     graphs = {lay: open_graph(lay) for lay in lays}
-    gate.bind(graphs.values(), graphs.__getitem__)   # 다른 층의 같은 엣지 — 이 배치가 저장하는 그래프에(B180 ②)
+    _wr = {lay: weakref.ref(g) for lay, g in graphs.items()}       # 다른 층의 같은 엣지 — 이 배치가 저장하는 그래프에(B180 ② · 약하게)
+    gate.bind(graphs.values(), lambda lay, wr=_wr: wr[lay]() if lay in wr else None)
     cfgs = {lay: load_config(lay) for lay in lays}
     dic = Dictionary.open()
     healed = {k: 0 for k in RETRY_KINDS + (COORD_HOLD,)}
@@ -480,12 +483,10 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     surface, category = pl.get("surface"), pl.get("category")
     if not surface or not category:
         return False
-    # **좌표 재시도도 anchor의 해소 규칙을 그대로 쓴다 — 사전(정확 일치·alias)까지다.**
+    # **좌표 재시도는 사전(정확 일치·alias)까지다 — LLM 0.**
     #
-    # 문서 2 §2.4-①: "사전 조회(정확 일치·alias) → 해소, 미스면 곧바로
-    # orphan_anchor 큐. **anchor 해소에는 후보검색·유사도·LLM 판정을 쓰지 않는다**
-    # — 골격은 사람이 고정한 유형이고(P2), 추론으로 끌어당기면 사람의 보증을 코드가
-    # 뒤집는다." 좌표 태깅이 닫힌 목록의 정확 일치 대조인 것과 같은 성질이다.
+    # 같은지 판단(문서 2 §2.4-① · B181 ①)은 인입의 자리(골격 칸은 파서 태깅 · 닫힌 분류는 anchor 칸) 한 번이다 —
+    # 거기서 「같다」면 표기가 사전 · 표기 대장에 남아 다음엔 사전에서 끝난다. 재시도는 그 판단을 다시 부르지 않는다.
     #
     # 재시도가 존재하는 이유는 **그래프가 자랐기 때문**이지 매칭이 느슨해졌기
     # 때문이 아니다(§4.7-5). anchor는 Tier1(seed·confirmed) 한정이다.

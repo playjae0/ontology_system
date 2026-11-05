@@ -8,6 +8,8 @@
   ⓒ 2단 — 가짜 게이트웨이(실호출 갈래 · 판정 지시문 · 후보 · 계약은 실물): 1차 불확실 → 2차(청크 문장)로 매칭 · 2차도
      불확실이면 지금 동작(신규 + `uncertain_match`) · 2차는 1차 불확실에만 · 재구축(기본 fresh → 다시 인입 · 재생) 판정 LLM 0
 네 벌(ⓓ)은 마감 한 줄의 네 벌 단계가 잰다(mock 판정은 문장을 읽지 않아 2차 0).
+B181(같은지 판단 한 계약 — 가짜 게이트웨이 · PFMEA 꼴 표 사본 셋 행) ⓐ 세 곳이 같은 함수 · 정의문 · 값의 경로 ⓑ 닫힌 분류 같다 → 해소 ·
+표기 대장 · 애매 → 보류 후보 ⓒ 표 개체의 다시 묻기 = 같은 행의 다른 칸 ⓓ 손잡이 둘 · 층 config 옛 키 ⓔ 곳별 수치 = 대장 행에서 센 수.
 """
 from __future__ import annotations
 
@@ -192,4 +194,121 @@ show("ⓑ 붙은 자리 칸(md) = 관계 상대(방식) · 인입 화면의 └ 
 for _p in (HINTS / f"{DID}.json", HINTS / f"{DID}@structure.json", HINTS / f"{DID}@outline.json"):
     _p.unlink(missing_ok=True)
 _unregister(DT)                                            # 등록 단은 클린이 남긴다 — 시험 몫을 치운다
+
+# ────────────────────────────────────────────────────────────── B181 같은지 판단 한 계약 (가짜 게이트웨이 · 창작 표본)
+print("\n■ B181 — 세 곳(골격 칸 · 닫힌 분류 · 개체)이 같은 판단 함수 · 같은 재료 · 애매면 원문으로 한 번 더 · 손잡이 · 곳별 수치")
+from core import matcher as MT                                   # noqa: E402
+from core.build import reconcile as RC                            # noqa: E402
+from core.llm import gateway, points as PT                        # noqa: E402
+from core.state import knobs as KN, store as STO, surface_book as SB   # noqa: E402
+from core.state.bootstrap import COORD_CATEGORY, coord_layer      # noqa: E402
+from parser import tagger as TG                                   # noqa: E402
+with _quiet():
+    init.init(fresh_=True, all_=True)
+    RUN.cmd_bootstrap([])
+D181 = "b181_pfmea"
+_sp = _P.schemas(f"{D181}.json")
+_P.ensure(_sp)
+_sp.write_text(json.dumps({**json.loads(_P.fixture_schemas("pfmea.json").read_text(encoding="utf-8")),
+                           "doc_type": D181}, ensure_ascii=False), encoding="utf-8")
+_dts = STO.read(STO.DOC_TYPES, {})
+_dts[D181] = {"doc_type": D181, "status": "registered", "layer": "quality", "schema": f"schemas/{D181}.json",
+              "adapter": "parser/adapters/basic_prose_xlsx.py", "schema_version": 1}
+STO.write(STO.DOC_TYPES, _dts)
+_SEEN = []
+_judge0 = MT.judge
+
+
+def _spy(surface, pool, category, cfg=None, **kw):
+    _SEEN.append((kw.get("point") or "judge", category))
+    return _judge0(surface, pool, category, cfg, **kw)
+
+
+def _fake181(body):
+    """가짜 판단(창작) — 표기마다 정한 답 · 다시 묻기(context)여도 같은 답(바뀜 0)."""
+    by = {c["canonical"]: c["id"] for c in body["candidates"]}
+    m = body["mention"]
+    if m == "방전 불능":
+        return {"type": "match", "matched_id": by.get("방전기능상실"), "confidence": 0.93}
+    if m in ("발화", "노칭공정A", "노칭::장력 과다"):
+        return {"type": "uncertain", "matched_id": next(iter(by.values()), None), "confidence": 0.75}
+    return {"type": "new", "matched_id": None, "confidence": 0.9}
+
+
+_b181 = {"doc_type": D181, "process_group": "조립", "electrode_type": "both", "severity": 5}
+_recs = [dict(_b181, source_locator="R1", process_ref="노칭", failure_mode="탭 찢김", cause="장력 과다",
+              effect_category="방전 불능"),
+         dict(_b181, source_locator="R2", process_ref="노칭", failure_mode="탭 찢김", cause="장력 과다", effect_category="발화"),
+         dict(_b181, source_locator="R3", process_ref="노칭공정A", failure_mode="버 발생", cause="금형 마모",
+              effect_category="외관 손상")]
+MT.judge = _spy
+try:
+    with Live(by={"judge": _fake181, "coord_tag": _fake181}), _quiet():
+        _tg = TG.tag(_recs, layer=coord_layer(), pick=PT.coord_picker(), doc_type=D181, doc_id="B181P")
+        run_document({"doc_id": "B181P", "doc_type": D181, "source_path": "(합성) B181P.xlsx", "revision": "R1",
+                      "parsed_at": "2026-11-05T00:00:00", "parser_version": "m", "adapter_version": "m", "context": {},
+                      "payload_kind": "table", "records": _tg})
+finally:
+    MT.judge = _judge0
+_bodies = {(pt, b["category"]): b for pt, b in CALLS if "category" in b and "context" not in b}
+_three = [("coord_tag", COORD_CATEGORY), ("judge", "FailureEffect"), ("judge", "Failure")]
+show("ⓐ 세 곳(골격 칸 · 닫힌 분류 · 개체)의 판단 입력에 정의문 · 값의 경로가 있고 같은 판단 함수(matcher.judge)를 지난다",
+     all(k in _bodies and _bodies[k].get("definition") and _bodies[k].get("path") for k in _three)
+     and set(_three) <= set(_SEEN),
+     " · ".join(f"{pt}/{c} 경로 {(_bodies.get((pt, c)) or {}).get('path')}" for pt, c in _three))
+_rows181 = (LG.read("B181P") or {}).get("rows") or []
+_q181 = {(x.get("payload") or {}).get("surface"): x["payload"] for x in STO.read(STO.QUEUE, [])
+         if x.get("doc_id") == "B181P" and x["kind"] == "orphan_anchor"}
+_bk = [e for e in SB.entries() if e.get("표기") == "방전 불능"]
+_r1 = next((r for r in _rows181 if r.get("field") == "effect_category" and r.get("surface") == "방전 불능"), {})
+show("ⓑ 사전에 없는 닫힌 분류 표기 — 같다면 해소 · 표기 대장(닫힌 분류 · 기계 판단) · 애매면 보류 큐 payload에 후보(골격 칸도)",
+     _r1.get("canonical") == "방전기능상실" and _r1.get("verdict") == "anchor"
+     and any(e["곳"] == SB.CLOSED and e["지위"] == SB.MACHINE for e in _bk)
+     and ((_q181.get("발화") or {}).get("judge") or {}).get("candidates")
+     and ((_q181.get("노칭공정A") or {}).get("judge") or {}).get("candidates"),
+     f"방전 불능 → {_r1.get('canonical')} · 대장 {[(e['곳'], e['지위']) for e in _bk]} · 발화 {(_q181.get('발화') or {}).get('judge')}")
+_ctx = [b for pt, b in CALLS if pt == "judge" and b.get("category") == "Failure" and "context" in b]
+show("ⓒ 표 개체가 애매면 같은 행의 다른 칸(판단하는 칸은 뺀다)을 원문으로 한 번 더 묻는다 · mock은 원문을 읽지 않는다(0)",
+     len(_ctx) == 1 and "failure_mode: 탭 찢김" in _ctx[0]["context"] and "cause:" not in _ctx[0]["context"]
+     and "second" not in MT.second("x", [{"id": "a", "canonical": "a", "category": "Failure"}], "Failure", None,
+                                   {"type": MT.UNCERTAIN, "matched_id": None, "confidence": 0.5}, {"text": "원문", "span": []}),
+     (_ctx[0]["context"] if _ctx else "다시 묻기 0"))
+_jc = RC.judge_counts(_rows181)
+_cl = [r for r in _rows181 if r.get("place") == SB.CLOSED]
+_cl1 = list({r["surface"]: r for r in _cl}.values())
+_en = [r for r in _rows181 if r.get("role") == "entity" and str(r.get("path") or "").endswith("+judge")]
+show("ⓔ 곳별 수치 줄의 수(확실도 구간 · 애매 · 다시 묻기)가 대장 행에서 센 수와 같다(닫힌 분류 · 개체 · 골격 칸)",
+     _jc[SB.CLOSED]["같다"][9] == sum(1 for r in _cl1 if r["answer"] == "match" and r["confidence"] >= 0.9)
+     and _jc[SB.CLOSED]["애매"] == sum(1 for r in _cl1 if r["answer"] == "uncertain")
+     and _jc[SB.CLOSED]["다시"][0] == sum(1 for r in _cl1 if r.get("judge2"))
+     and _jc[SB.ENTITY]["판단"] == len(_en) and _jc[SB.ENTITY]["다시"][0] == sum(1 for r in _en if r.get("judge2"))
+     and _jc[SB.SKELETON]["애매"] == 1 and _jc[SB.CLOSED]["근처"],
+     " · ".join(f"{k} {v['판단']}/{v['애매']}/{v['다시']}" for k, v in _jc.items()))
+_kp = _P.knobs()
+_kp.write_text(json.dumps({"match_threshold": 0.95, "candidate_top_n": 3}), encoding="utf-8")
+KN.apply()
+_keep_chat = gateway.chat
+gateway.chat = lambda *a, **k: {"type": "match", "matched_id": "a", "confidence": 0.93}
+try:
+    _v95 = MT.judge("x", [{"id": "a", "canonical": "a"}], "Failure")
+finally:
+    gateway.chat = _keep_chat
+_cfgq = _P.layers("quality", "config.json")
+_kq = _cfgq.read_bytes()
+_out = {}
+for _val in (0.95, 0.8):
+    _cfgq.write_text(json.dumps({**json.loads(_kq), "match_threshold": _val}, ensure_ascii=False), encoding="utf-8")
+    _b = io.StringIO()
+    with contextlib.redirect_stdout(_b):
+        _out[_val] = (RUN._moved_keys_gate(), _b.getvalue())
+_n3 = MT.candidate_top_n()
+_cfgq.write_bytes(_kq)
+_kp.unlink()
+KN.apply()
+show("ⓓ knobs.json의 match_threshold · candidate_top_n이 판정에 닿는다 · 층 config 옛 키 — 손잡이 값과 같으면 한 줄(rc 0) · 다르면 멈춤(rc 1)",
+     _v95["type"] == MT.UNCERTAIN and _n3 == 3 and MT.threshold() == MT.THRESHOLD and _out[0.95][0] == 0
+     and "지워도 된다" in _out[0.95][1]
+     and _out[0.8][0] == 1 and "[상태]" in _out[0.8][1],
+     f"0.93 → {_v95['type']} · 같음 rc {_out[0.95][0]} · 다름 rc {_out[0.8][0]}")
+_unregister(D181)
 done()

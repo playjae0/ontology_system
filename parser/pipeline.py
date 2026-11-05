@@ -444,7 +444,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     |---|---|---|---|
     | `summarize(ref, image=, mime=, context=, page=)` | ④이미지 요약 | 실호출 | 고정 문자열 |
     | `map_structure(doc_id, lines)` | ⑦구조 지도 | 실호출 | 번호 패턴 휴리스틱 |
-    | `pick_coord(surface, choices)` | ⑨좌표 태깅 | 실호출 | 닫힌 목록 정확 일치 |
+    | `pick_coord(surface, cands, row=, field=, doc_coord=)` | ⑨좌표 태깅(같은지 판단 — 답 꼴 같다 · 다르다 · 애매 · B181) | 실호출 | 닫힌 목록 정확 일치 |
     | `structure(doc_id, frame, labels)` | ⑪ 안의 문서 구조(B119 ①) | 산문 시트마다 실호출(mock은 힌트) | 고정 규칙 그대로 |
     | `deck(doc_id, slides)` | ⑪ 안의 덱 구조(B125 ③ · `capture` 참이면 쪽 번호를 달아 추출이 캡처를 붙인다 — B125 ②) | PPT 덱마다 1회(mock은 힌트) | 지금 방식 |
     | `reading(doc_id, 입력, …)` | ④ 안의 쪽 판독(B156 ② — 덱 판단 다음 · `capture` 참이면 쪽 캡처를 주 입력으로) | PPT · PDF 쪽마다 1회(mock은 힌트) | 판독 없음 |

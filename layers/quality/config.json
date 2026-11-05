@@ -27,7 +27,6 @@
     "Process",
     "Property"
   ],
-  "match_threshold": 0.85,
   "query_traverse": {
     "causes": {
       "both": {

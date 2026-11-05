@@ -108,7 +108,7 @@ MT._evidence(_ev, [{"id": "N01", "canonical": "후보 노드 1"}])
 _keep = gateway.chat
 gateway.chat = lambda *a, **k: {"type": "uncertain", "matched_id": "N02", "confidence": 0.4}
 try:
-    _lv = MT._judge_live("표기", [{"id": "N02", "canonical": "후보 노드 2"}], "Property")
+    _lv = MT.judge("표기", [{"id": "N02", "canonical": "후보 노드 2"}], "Property")      # 고침(B181 ① — 판단 한 자리의 이름)
 finally:
     gateway.chat = _keep
 from cli.platform import auto_next_lines       # noqa: E402

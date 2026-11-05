@@ -415,6 +415,13 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, 
     return [c for i, c in enumerate(cells) if i not in cut], [c for i, c in enumerate(kinds) if i not in cut]
 
 
+def plan_body(info):
+    """판정 예고 줄의 본문 — 값 · 표기 · 사전 히트 · 목록 밖 좌표 → LLM 상한 · 닫힌 분류 판단 상한(B181 ① — 있을 때만)."""
+    return (f"entity 값 {info['값_수']:,}건(표기 {info['표기_종수']:,}종 · 사전 히트 {info['사전_히트']:,}건) · 목록 밖 좌표 "
+            f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회"
+            + (f" · 닫힌 분류 판단 ≤ {info['닫힌_분류']:,}회" if info.get("닫힌_분류") else ""))
+
+
 def build_screen(step=False, stage=None, prose=False):
     """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
 
@@ -454,10 +461,7 @@ def build_screen(step=False, stage=None, prose=False):
             return _screen.answer("     그래도 부를까? [y/N] ", "yes", eof=False)
         if info.get("단계") == "판정예고":
             lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
-            body = (f"entity 값 {info['값_수']:,}건"
-                    f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
-                    f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
-                    f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
+            body = plan_body(info)
             if info.get("추출뒤") and stage is not None:
                 # 산문 판정의 총수 = 추출이 낸 개체 수(B99 ⑦ — 레코드 수가 아니다)
                 stage.update({"이름": JUDGE, "값": 0, "총": info["값_수"], "t0": None})
@@ -484,7 +488,7 @@ def build_screen(step=False, stage=None, prose=False):
         if j.get("조립"):
             # **어떻게 좁혔나를 화면이 말한다**(B73 ①) — 후보가 전량이던 시절의
             # 비용은 화면 어디에도 없었다.
-            from core.matcher import CANDIDATE_TOP_N
+            from core.matcher import candidate_top_n
             # **좁힘을 갈라 적는다**(B75 ①) — 임베딩으로 골랐는지 겹침으로 골랐는지가
             # 같은 문서를 두 설정으로 넣어 견줄 때의 유일한 표지다.
             # `관문으로 끝`은 **판정 없이** 끝난 수다(B75 ② · B142 ① — 같은 공정 줄기 · 경로 호환 후보 0개) ·
@@ -493,7 +497,7 @@ def build_screen(step=False, stage=None, prose=False):
                   f"관문으로 끝 {j.get('관문끝', 0):,} · "
                   f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
-                  f"(상한 {CANDIDATE_TOP_N})"
+                  f"(상한 {candidate_top_n()})"
                   + (f" · 2차 {j['2차']:,} → 바뀜 {j.get('2차바뀜', 0):,}" if j.get("2차") else ""))
         rp = info.get("재생") or {}
         if any(rp.values()):

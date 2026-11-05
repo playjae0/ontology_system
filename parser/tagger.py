@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .coord_rows import MAX_UP, choices, flat_rows, fold_rows
 from .namefold import key as name_key
 
 # 골격 닫힌 목록 스냅샷의 자리 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7)
@@ -243,7 +244,6 @@ def surfaces(nodes):
     return out
 
 
-MAX_UP = 16                                       # 조상 추적 깊이 제한 (순환 방어)
 
 
 def group_of(node, nodes):
@@ -469,7 +469,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     | | 갈래 |
     |---|---|
     | `pick=None` | **닫힌 목록 스냅샷의 정확 일치 대조 — 모델을 부르지 않는다**(§7.1 대체 표) |
-    | `pick` 주입 | 모델이 **닫힌 목록 중에서 고르거나 null**을 낸다 |
+    | `pick` 주입 | **같은지 판단**(core 한 자리 · B181 ①) — 같다면 그 골격 노드 · 다르다 · 애매는 목록 밖 그대로(애매는 행 `meta.coord_judge`에 후보) |
 
     **판정은 함수 유무 하나다**(B48) — 파서는 모드를 읽지 않는다. 대체가 선언되지
     않은 LLM 지점은 모델 없는 실행에서 실호출로 흘러 외부 의존 0(문서 1 B12)이
@@ -507,8 +507,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     # 행마다 `scope_rows` → `scope_pick`(시트명·제목 대조와 같은 함수)
     idx, _shared, _a = scoped_index(nodes)
     # **목록 좌표**(덱의 공정 표기 · B125 ④)는 **원소마다 한 행처럼** 대조한다(B151 ② — 표의 좌표 대조와 같은 연산 전부 · 같은
-    # 표기는 조각이 여럿이어도 한 번 묻는다) · 결과는 조각마다 다시 접는다(`_fold_back`)
-    whole, flat, owner = pieces, *_flat(pieces, ref_field)
+    # 표기는 조각이 여럿이어도 한 번 묻는다) · 결과는 조각마다 다시 접는다(`coord_rows.fold_rows`)
+    whole, flat, owner = pieces, *flat_rows(pieces, ref_field)
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
     refs = [p.get(ref_field) or None for p in flat]
@@ -552,39 +552,59 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     if notice is not None:
         notice(dict(plan))
 
-    # ── ② 표기마다 한 번 — 답을 기억한다(null도).
-    memo, calls, adopted = {}, 0, 0
+    # ── ② 표기마다 한 번 — 답을 기억한다(null도)
+    memo, judged, calls, adopted = _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress)
+
+    # 애매는 목록 밖으로 기억하지 않는다(B181 ① — 다음 문서도 다시 묻는다 · 보류 큐에 후보가 실린다)
+    unsure = {r for r, j in judged.items() if j.get("type") == "uncertain"}
+    sure = {r: v for r, v in memo.items() if r not in unsure}
+    if layer and (learn or sure or kept):
+        _learn_update(book, learn, sure, refs, idx, layer, doc_id, ver, kept)
+
+    out = fold_rows(whole, owner, refs, _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
+                                                scope_at=scope_at, judged=judged), ref_field)
+    if notice is not None:
+        notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
+                "목록밖": len(misses) - adopted, "애매": len(unsure),
+                "학습_새로": sum(1 for v in memo.values() if v)})
+    return out
+
+
+def _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress):
+    """**표기마다 한 번 묻는다**(`tag`의 ② — B69 ①) — `(memo {표기: canonical 또는 None}, judged {표기: 답 꼴}, 호출, 채택)`.
+
+    **판단은 개체 · 닫힌 분류와 같은 한 자리**(B181 ① — 주입된 `pick`이 core의 판단 함수를 부른다 · 답 꼴 같다 · 다르다 · 애매) ·
+    재료는 골격 목록(이름 · 별칭 · 부모 경로 — `coord_rows.choices`)과 그 표기가 처음 나온 행(②) · 같다만 쓴다(목록 밖 id는 버린다)."""
+    memo, judged, calls, adopted = {}, {}, 0, 0
+    cands, by_id = choices(nodes) if ask else ([], {})
+    first = {}
+    for p, r in zip(pieces, refs):
+        first.setdefault(r, p)
     for n, ref in enumerate(ask, 1):
-        chosen = pick(ref, sorted(idx))
+        v = pick(ref, cands, row=first.get(ref), field=ref_field, doc_coord=doc_coord) or {}
         calls += 1
-        memo[ref] = chosen if (chosen and chosen in idx) else None
-        if memo[ref]:
-            adopted += 1
+        hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
+        memo[ref] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
+        judged[ref] = {k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None}
+        adopted += int(bool(memo[ref]))
         if notice is not None:
             # 표기 하나 = 표의 한 행(B98 ⑥) — 진행 콜백(3인자 계약)은 그대로 두고 예고와 같은 통로로
             notice({"단계": "행", "i": n, "총": len(ask), "표기": ref,
                     "행_수": refs.count(ref), "결과": memo[ref]})
         if progress is not None:
             progress(n, len(ask), adopted)
-
-    if layer and (learn or memo or kept):
-        _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver, kept)
-
-    out = _fold_back(whole, owner, refs, _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
-                                                scope_at=scope_at), ref_field)
-    if notice is not None:
-        notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
-                "목록밖": len(misses) - adopted,
-                "학습_새로": sum(1 for v in memo.values() if v)})
-    return out
+    return memo, judged, calls, adopted
 
 
-def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None):
+def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None):
     """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생.
-    `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다."""
+    `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다.
+    `judged`(이번에 판단한 표기 — B181 ①)는 그 표기의 행마다 `meta.coord_judge {표기: 답 꼴}`로 남는다(대장의 곳 · 보류 큐의 후보)."""
     out = []
     for i, (p, ref) in enumerate(zip(pieces, refs)):
         r = dict(p)
+        if ref and (judged or {}).get(ref):
+            r["meta"] = {**(r.get("meta") or {}), "coord_judge": {ref: judged[ref]}}
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
         # `electrode_type`을 달고 들어온다. 어댑터가 좌표를 못 뽑는 계열(기본
@@ -617,57 +637,6 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
                 # 읽고 문서 좌표가 있으면 그것으로 잰다 · B106 ⑤ — 딴 상위는 하위와 늘 맞아 대조가 비었다).
                 # meta는 복사해서 단다 — 조각끼리 같은 dict를 나눠 쓰면 이 행의 표시가 다른 행으로 번진다
                 r["meta"] = {**(r.get("meta") or {}), "group_from_ref": True}
-        out.append(r)
-    return out
-
-
-def _flat(pieces, ref_field):
-    """목록 좌표 조각을 원소마다 한 행으로 — `(행들, 행마다 조각 차례)` · 목록이 아닌 조각은 그대로 한 행(meta는 원소마다 복사 —
-    태깅 표시가 다른 원소로 번지지 않게)."""
-    from parser.normalizer import coord_refs
-    flat, owner = [], []
-    for i, p in enumerate(pieces):
-        if isinstance(p.get(ref_field), list):
-            for x in coord_refs(p[ref_field]) or [None]:
-                flat.append({**p, ref_field: x, "meta": dict(p.get("meta") or {})})
-                owner.append(i)
-        else:
-            flat.append(p)
-            owner.append(i)
-    return flat, owner
-
-
-def _fold_back(pieces, owner, refs, rows, ref_field):
-    """원소마다 쓴 결과를 조각마다 접는다(B151 ②) — 목록 조각의 값은 원소 값의 목록(목록 꼴 그대로 — 꼴을 고치지 않는다: 표 레코드의
-    목록은 계약 검사가 잡을 결함이다) · 원소 하나라도 canonical로
-    고쳐 썼으면 `meta.coord_tags`(원소마다 원 표기 · 쓴 값 · 출처 — 차례 그대로)와 조각 칸 `coord_tag_source` · `coord_tag_from`(첫
-    바뀐 원소 — 셈이 조각 하나를 한 번 센다) · 상위는 원소들의 상위가 하나일 때만(둘 이상이면 비운다 · 지어내지 않는다)."""
-    by = {}
-    for i, ref, r in zip(owner, refs, rows):
-        by.setdefault(i, []).append((ref, r))
-    out = []
-    for i, p in enumerate(pieces):
-        got = by[i]
-        if not isinstance(p.get(ref_field), list):
-            out.append(got[0][1])
-            continue
-        r, m = dict(got[0][1]), dict(p.get("meta") or {})
-        r[ref_field] = list(dict.fromkeys(e.get(ref_field) for _ref, e in got if e.get(ref_field)))
-        tags = [{"from": ref, "to": e.get(ref_field),
-                 **({"source": (e.get("meta") or {}).get("coord_tag_source")} if e.get(ref_field) != ref else {})}
-                for ref, e in got]
-        moved = [(tg, e) for tg, (_ref, e) in zip(tags, got) if "source" in tg]
-        if moved:
-            m["coord_tags"] = tags
-            m.update(coord_tag_source=moved[0][0]["source"], coord_tag_from=moved[0][0]["from"])
-            if (moved[0][1].get("meta") or {}).get("coord_tag_scope"):
-                m["coord_tag_scope"] = moved[0][1]["meta"]["coord_tag_scope"]
-        if not p.get("process_group"):
-            gs = {e.get("process_group") for _ref, e in got}
-            r["process_group"] = gs.pop() if len(gs) == 1 and None not in gs else None
-            if r["process_group"]:
-                m["group_from_ref"] = True
-        r["meta"] = m
         out.append(r)
     return out
 
