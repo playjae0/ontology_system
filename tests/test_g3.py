@@ -152,8 +152,9 @@ show("B171 ⓐ 같은 표기의 고장이 다른 공정 행이면 두 노드(노
      and _layer[0]["canonical"] == "스태킹::적층 어긋남" and "적층 어긋남" in {a["surface"] for a in _layer[0]["aliases"]},
      str(sorted(n["canonical"] for n in _fails if n["canonical"].endswith(("절연 파괴", "적층 어긋남")))))
 _orph = [x for x in q("orphan_anchor") if "레이저노칭" in str(x.get("payload"))]
-show("B171 ⓑ 좌표가 골격 밖인 행(R13 레이저노칭)의 고장은 노드 0 · 재료(표기)는 orphan_anchor 항목이 든다",
-     not [n for n in _fails if n["canonical"].endswith("슬리팅 버")] and any("슬리팅 버" in str(x["payload"]) for x in _orph),
+show("B171 ⓑ 좌표가 골격 밖인 행(R13 레이저노칭)의 고장은 그 행의 잠정 골격 노드 경로 이름 · 보류 0(기대 변경 B182 — 골격 칸은 "
+     "잠정 골격 노드로 선다)",
+     [n["canonical"] for n in _fails if n["canonical"].endswith("슬리팅 버")] == ["레이저노칭::슬리팅 버"] and not _orph,
      f"고장 노드 {[n['canonical'] for n in _fails if '슬리팅' in n['canonical']]} · 항목 {len(_orph)}")
 show("비스코프 카테고리는 이름에 실린다 (F1 결합 유지)",
      all("::" not in n["canonical"] for n in P.nodes.values()
@@ -182,8 +183,8 @@ show("C5′ 개념 해상도 anchor('탭용접') → 개념 노드에 부착 (�
 show("C5′ 극성 모호 orphan_anchor 0건 (D5 구조 소멸)",
      not any("모호" in x["reason"] for x in q("orphan_anchor")),
      str([x["reason"] for x in q("orphan_anchor")]))
-show("orphan_anchor는 '목록 밖 이름'만 남음 (레이저노칭·셀 부풀음)",
-     {"레이저노칭", "셀 부풀음"}
+show("orphan_anchor는 닫힌 분류의 '목록 밖 이름'만 남음 (셀 부풀음 — 기대 변경 B182 · 좌표 골격 칸 레이저노칭은 잠정 골격 노드)",
+     {"셀 부풀음"}
      == {x["payload"]["surface"] for x in q("orphan_anchor")},
      str(sorted({x["payload"]["surface"] for x in q("orphan_anchor")})))
 
@@ -315,8 +316,8 @@ def _counts():
 
 _n0, _e0 = _counts()
 _bad = dict(_env, doc_id="S13NEG2",
-            chunks=[dict(_env["chunks"][0], source_locator="S13NEG2-C001",
-                         process_ref="레이저노칭")])   # 좌표까지 미해소 — 연쇄 드롭
+            chunks=[dict(_env["chunks"][0], source_locator="S13NEG2-C001", process_ref="레이저커팅ZZ",
+                         meta={"coord_unjudged": ["레이저커팅ZZ"]})])   # 좌표까지 미해소(판단을 받지 못함 — B182 보류) — 연쇄 드롭
 (_FXR.EXTRACT_HINTS / "S13NEG2.json").write_text(
     json.dumps({"S13NEG2-C001": _hint and json.loads(_hint.read_text(encoding="utf-8"))["S13NEG-C001"]},
                ensure_ascii=False), encoding="utf-8")

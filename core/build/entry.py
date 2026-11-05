@@ -252,6 +252,7 @@ def decision_plan(mentions, refs, layer, closed=()):
             hits += 1
     from parser.normalizer import coord_refs
     from core.state.bootstrap import coord_layer
+    from core.state.status import is_skeleton
     # 좌표 골격은 좌표 층에만 있다(문서 3 §3.6 공정은 한 벌) — 문서 층이 아니라 좌표 층에서 잰다(B177 ② · 값 셈은 집 층 그대로)
     cg = g if layer == coord_layer() else open_graph(coord_layer())
     out_of_list = []
@@ -260,8 +261,7 @@ def decision_plan(mentions, refs, layer, closed=()):
         if n in out_of_list:
             continue
         if not [nid for nid in dic.lookup(r)
-                if nid in cg.nodes
-                and (cg.get(nid) or {}).get("status") in ("seed", "confirmed")]:
+                if nid in cg.nodes and is_skeleton(cg.get(nid))]:
             out_of_list.append(n)
     from parser.namefold import key as _fold
     closed_ask, hgs = set(), {}
@@ -270,7 +270,7 @@ def decision_plan(mentions, refs, layer, closed=()):
             hgs[cat] = open_graph(b.home_of(cat)) if b.home_of(cat) != layer else g
         hg = hgs[cat]
         if not [nid for nid in dic.lookup(s) if (hg.get(nid) or {}).get("category") == cat
-                and (hg.get(nid) or {}).get("status") in ("seed", "confirmed")]:
+                and is_skeleton(hg.get(nid))]:
             closed_ask.add((cat, _fold(s)))
     return {"단계": "판정예고", "값_수": vals, "표기_종수": len(kinds),
             "사전_히트": hits, "예상_호출": max(0, vals - hits),

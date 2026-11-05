@@ -651,6 +651,7 @@ def _stop165(info):
 _PF = "PFMEA01"
 RP.OFF, RP.COUNT_ALL = None, False                  # 앞 ⓓ의 `--no-replay`가 켠 끔을 기본으로(인입 한 번의 재생 규칙)
 _base165()
+hold_coords()             # 골격 밖 좌표는 보류로(B182 — B177 ⓒ는 구축이 못 푼 좌표 표기와 예고의 목록 밖 수를 견준다 · 손잡이는 클린이 남긴다)
 _seen165, _grows176 = [], []
 LG.ON_GROUP = lambda i: (_seen165.append((i["이름"], i["끝"], store.path(LG.partial_name(i["doc_id"])).exists())),
                          _grows176.append(list(i["rows"])))
@@ -771,6 +772,7 @@ show("B167 ⓓ 표 --extract-only → 판정까지(held · 그래프 · 큐 시�
      and any(r.get("locator") in _g1 for r in _due167) and all(r.get("path") == "replay" for r in _due167)
      and _world165() == _wg165 and LG.read_partial(_PF) is None,
      f"멈춤 {_held167} · 판정에 오른 값 {len(_due167)} · 경로 {sorted({r.get('path') for r in _due167})}")
+hold_coords(False)             # B165 · B177 · B167 ⓓ의 비교 바닥(멈춤 없는 실행 _wg165)이 같은 손잡이로 섰다
 
 _base165()
 run_document(_pf165(), extract_only=True)

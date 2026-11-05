@@ -256,7 +256,7 @@ def coord_screen():
         if info.get("호출"):
             _screen.close()
             print(f"   좌표 태깅 끝 — 호출 {info['호출']:,} · 채택 {info['채택']:,} · "
-                  f"목록 밖 {info['목록밖']:,}(orphan_anchor 후보 · `show learned`의 새 공정 후보)"
+                  f"목록 밖 {info['목록밖']:,}(인입에서 잠정 골격 노드 · `show learned`)"
                   + (f" · 학습 새로 {info['학습_새로']:,}" if info.get("학습_새로") else ""))
 
     box = {"t": None}

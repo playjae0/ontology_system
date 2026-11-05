@@ -258,6 +258,7 @@ show("ⓖ 결과표 — 끝 줄 노드 = 층별 합 · 집이 다른 층인 노�
 
 print("\n■ B99 ⑥ 재시도 줄")
 init.init(fresh_=True, all_=True)               # 골격 없이 넣는다 — 좌표가 전부 orphan_anchor
+hold_coords()                                   # 잠정 골격 노드 대신 보류(B182 — 이 시험은 재연결 줄을 잰다)
 run_document(load("CP01"))
 _qa = store.read(store.QUEUE, [])
 _oa = [x for x in _qa if x["kind"] == "orphan_anchor"]
@@ -278,6 +279,7 @@ show("ⓗ 재연결 줄 — 붙음 · 상한 도달 · 그래프 그대로라 �
      and _l1["left"] == sum(_l1["target"].values()) - sum(_l1["healed"].values())
      and "붙음" in _f1["retry_line"] and "건너뜀" in _f2["retry_line"],
      f"{_f1['retry_line']} / {_f2['retry_line']}")
+hold_coords(False)
 _unregister()
 _unregister("prose_q")
 init.init(fresh_=True, all_=True)

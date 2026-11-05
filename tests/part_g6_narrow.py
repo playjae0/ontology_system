@@ -134,6 +134,7 @@ _e73 = json.loads((ROOT / "tests/fixtures/parsed/CP01.json").read_text(encoding=
 _e73["doc_id"], _e73["records"] = "B73ORPH", _e73["records"][:4]
 for _r in _e73["records"]:
     _r["process_ref"] = "없는공정QQ"
+    _r["meta"] = {"coord_unjudged": ["없는공정QQ"]}     # 판단을 받지 못한 표기 — 보류 그대로(B182 · 판단을 받으면 잠정 골격 노드)
 _run72(_e73)
 _RT73.retry_orphans()
 _it73 = [x for x in store.read(store.QUEUE, []) if x["kind"] == "orphan_anchor"]

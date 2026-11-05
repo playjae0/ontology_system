@@ -497,8 +497,10 @@ with _quiet():
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
 _register()
+hold_coords()                     # 골격 밖 공정 표기는 보류로(B182 — ⓓ · B154 ⓑ는 보류된 좌표의 큐 · 「행 밖」 줄을 잰다)
 _rd, _ed, _cd, _md = _p151("B151D", P151, A151)
 _n151, _cr151 = _run(_ed)
+hold_coords(False)
 _q151 = [q for q in store.read(store.QUEUE, []) if q.get("doc_id") == "B151D"]
 _mis = {(q.get("payload") or {}).get("provenance", "").split("#")[-1] for q in _q151 if q.get("kind") == "coord_mismatch"}
 _orp = [q for q in _q151 if q.get("kind") == "orphan_anchor"]

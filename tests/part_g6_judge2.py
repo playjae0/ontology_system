@@ -267,12 +267,11 @@ _q181 = {(x.get("payload") or {}).get("surface"): x["payload"] for x in STO.read
          if x.get("doc_id") == "B181P" and x["kind"] == "orphan_anchor"}
 _bk = [e for e in SB.entries() if e.get("표기") == "방전 불능"]
 _r1 = next((r for r in _rows181 if r.get("field") == "effect_category" and r.get("surface") == "방전 불능"), {})
-show("ⓑ 사전에 없는 닫힌 분류 표기 — 같다면 해소 · 표기 대장(닫힌 분류 · 기계 판단) · 애매면 보류 큐 payload에 후보(골격 칸도) · "
-     "파서가 행에 단 표지(meta)는 스키마 밖 필드가 아니다(고침 리뷰 #136)",
+show("ⓑ 사전에 없는 닫힌 분류 표기 — 같다면 해소 · 표기 대장(닫힌 분류 · 기계 판단) · 애매면 보류 큐 payload에 후보 · "
+     "파서가 행에 단 표지(meta)는 스키마 밖 필드가 아니다(고침 리뷰 #136 · 골격 칸 애매는 B182 ⓑ — 잠정 + 합칠 후보)",
      _r1.get("canonical") == "방전기능상실" and _r1.get("verdict") == "anchor"
      and any(e["곳"] == SB.CLOSED and e["지위"] == SB.MACHINE for e in _bk)
      and ((_q181.get("발화") or {}).get("judge") or {}).get("candidates")
-     and ((_q181.get("노칭공정A") or {}).get("judge") or {}).get("candidates")
      and not [x for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == "B181P" and x["kind"] == "unknown_field"],
      f"방전 불능 → {_r1.get('canonical')} · 대장 {[(e['곳'], e['지위']) for e in _bk]} · 발화 {(_q181.get('발화') or {}).get('judge')}")
 _ctx = [b for pt, b in CALLS if pt == "judge" and b.get("category") == "Failure" and "context" in b]
@@ -321,5 +320,146 @@ show("ⓓ knobs.json의 match_threshold · candidate_top_n이 판정에 닿는�
      and "지워도 된다" in _out[0.95][1]
      and _out[0.8][0] == 1 and "[상태]" in _out[0.8][1],
      f"0.93 → {_v95['type']} · 같음 rc {_out[0.95][0]} · 다름 rc {_out[0.8][0]}")
+
+# ────────────────────────────────────────────────────────────── B182 잠정 골격 노드 (창작 표본 · mock + 가짜 게이트웨이)
+print("\n■ B182 — 골격 칸 값은 찾거나, 없으면 잠정 골격 노드로 선다(다르다 auto_node · 애매 합칠 후보 + uncertain_match)")
+from core.build import provisional as PV                          # noqa: E402
+from core.state.status import PROVISIONAL, is_live                # noqa: E402
+from parser import normalizer as NZ                               # noqa: E402
+from cli import rebuild as RB                                     # noqa: E402
+
+
+def _pv(canon):
+    """좌표 층의 그 canonical 산 노드(없으면 None)."""
+    return next((n for n in open_graph(coord_layer()).nodes.values() if n["canonical"] == canon and is_live(n)), None)
+
+
+def _up(n):
+    """그 노드의 부모 canonical — 골격 자식 관계 엣지(seed · 잠정)."""
+    g = open_graph(coord_layer())
+    child = load_config(coord_layer())["skeleton"]["relations"]["child"]
+    return next(((g.get(e["dst"]) or {}).get("canonical") for e in g.edges if e["src"] == n["id"] and e["rel"] == child), None)
+
+
+def _doc(did, recs, pick=None):
+    tg = TG.tag(recs, layer=coord_layer(), pick=pick, doc_type=D181, doc_id=did)
+    with _quiet():
+        run_document({"doc_id": did, "doc_type": D181, "source_path": f"(합성) {did}.xlsx", "revision": "R1",
+                      "parsed_at": "2026-11-05T00:00:00", "parser_version": "m", "adapter_version": "m", "context": {},
+                      "payload_kind": "table", "records": tg})
+    return (LG.read(did) or {}).get("rows") or []
+
+
+_na = _pv("노칭공정A")
+_um = [x for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == "B181P" and x["kind"] == "uncertain_match"
+       and (x.get("payload") or {}).get(PROVISIONAL)]
+show("B182 ⓑ 골격 칸 애매(대역 판단) — 잠정 골격 노드(표시 애매 · 합칠 후보 = 판단의 가장 가까운 후보) · uncertain_match 1",
+     bool(_na) and _na[PROVISIONAL]["answer"] == "uncertain" and _na[PROVISIONAL].get("near") == ["노칭"]
+     and len(_um) == 1 and _um[0]["payload"].get("nearest") == {"canonical": "노칭"},
+     f"노칭공정A {(_na or {}).get(PROVISIONAL)} · uncertain_match {len(_um)}")
+
+_c = {"doc_type": D181, "electrode_type": "both", "severity": 5, "failure_mode": "버 발생", "cause": "금형 마모"}
+_rc = _doc("B182C", [dict(_c, source_locator="C1", process_group="노칭", process_ref="신공정X", effect_category="단락"),
+                     dict(_c, source_locator="C2", process_group="조립", process_ref="신공정X", effect_category="단락"),
+                     dict(_c, source_locator="C3", process_group="스태킹", process_ref="신공정X", effect_category="단락"),
+                     dict(_c, source_locator="C4", process_group=None, process_ref="신공정Y", effect_category="단락"),
+                     dict(_c, source_locator="C5", process_group="노칭::전극 언와인딩", process_ref="신공정Z",
+                          effect_category="외관 손상X")])
+_y0 = _pv("신공정Y")
+_up0 = _up(_y0) if _y0 else "?"
+_rc2 = _doc("B182C2", [dict(_c, source_locator="D1", process_group="패키징", process_ref="신공정Y", effect_category="단락")])
+_an = {r["locator"]: r for r in _rc + _rc2 if r.get("role") == "anchor"}
+_x, _sx = _pv("신공정X"), _pv("스태킹::신공정X")
+show("B182 ⓒ 같은 잠정 이름 — 같은 줄기의 부모면 같은 노드 · 다른 줄기면 `부모::이름` 따로 · 부모 미정 노드에 부모를 말하는 행이 "
+     "오면 채운다(노드 수 그대로)",
+     bool(_x and _sx) and _up(_x) == "노칭" and _up(_sx) == "스태킹"
+     and _an["C1"]["node_id"] == _an["C2"]["node_id"] == _x["id"] and _an["C3"]["node_id"] == _sx["id"]
+     and _up0 is None and _an["D1"]["node_id"] == _an["C4"]["node_id"] == _y0["id"] and _up(_pv("신공정Y")) == "패키징",
+     f"신공정X ← {_up(_x) if _x else '-'} · 스태킹::신공정X ← {_up(_sx) if _sx else '-'} · 신공정Y {_up0} → {_up(_pv('신공정Y')) if _y0 else '-'}")
+
+_n0 = sum(len(open_graph(lay).nodes) for lay in ("process", "quality"))
+_sug = TG.suggest_doc_coord("신공정Q_관리계획서.xlsx", TG.coord_list(coord_layer()))
+_n1 = sum(len(open_graph(lay).nodes) for lay in ("process", "quality"))
+_cm = TG.coord_from_section(NZ.blank_coords([{"source_locator": "K1", "process_ref": "전공정", "text": "x"}]),
+                            layer=coord_layer(), doc_coord="노칭")
+_qz = [x for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == "B182C" and x["kind"] == "orphan_anchor"]
+_cat = {(x["payload"].get("surface"), x["payload"].get("category")) for x in _qz}
+show("B182 ⓔ 바꾸지 않는 것 — 닫힌 분류 목록 밖은 보류 · 파일명 제안은 노드 0 · 「전 공정」 좌표 칸은 문서 좌표 · 맨 아래 단 아래 "
+     "자리는 보류 + 「골격 아래 새 단」",
+     ("외관 손상X", "FailureEffect") in _cat and _n0 == _n1 and not _pv("신공정Q") and _cm[0]["process_ref"] == "노칭"
+     and ("신공정Z", COORD_CATEGORY) in _cat and _an["C5"].get("hold") == PV.HOLD_DEEP and not _pv("신공정Z"),
+     f"보류 {sorted(_cat)} · 제안 {_sug} · 전공정 → {_cm[0]['process_ref']} · C5 {_an['C5'].get('hold')}")
 _unregister(D181)
+
+# ⓐ ⓕ ⓓ — mock 대표 사례(CP01 → PFMEA01) · 재구축 동치 · 다음 문서
+with _quiet():
+    init.init(fresh_=True, all_=True)
+    RUN.cmd_bootstrap([])
+for _f, _dt in (("CP01.xlsx", "cp"), ("PFMEA01.xlsx", "pfmea")):
+    _quiet_r = _quiet()
+    with _quiet_r:
+        IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / _f), _dt, ask=False)
+_ln = _pv("레이저노칭")
+_r16 = [r for r in (LG.read("PFMEA01") or {}).get("rows") or [] if str(r.get("locator")).endswith("R16")]
+_an16 = next((r for r in _r16 if r.get("role") == "anchor"), {})
+_e16 = [r for r in _r16 if r.get("role") == "entity"]
+_auto = [x for x in STO.read(STO.QUEUE, []) if x["kind"] == "auto_node" and (x.get("payload") or {}).get("node_id") == (_ln or {}).get("id")]
+_oa = [x for x in STO.read(STO.QUEUE, []) if x["kind"] == "orphan_anchor" and (x.get("payload") or {}).get("surface") == "레이저노칭"]
+show("B182 ⓐ mock PFMEA01 R16 「레이저노칭」(목록 밖) — 잠정 골격 노드(좌표 카테고리 · auto + 잠정 · 부모 「조립」 = 같은 행 공정 그룹 칸 · "
+     "auto_node 1) · 같은 행의 셋이 노드로 서고 · orphan_anchor에 그 표기 0",
+     bool(_ln) and _ln["category"] == COORD_CATEGORY and _ln["status"] == "auto" and _ln.get(PROVISIONAL)
+     and _up(_ln) == "조립" and len(_auto) == 1 and _an16.get("node_id") == _ln["id"]
+     and {r["surface"] for r in _e16} >= {"슬리팅 버", "빔 출력 편차", "빔 출력"} and all(r.get("node_id") for r in _e16)
+     and not _oa,
+     f"레이저노칭 {(_ln or {}).get(PROVISIONAL)} ← {_up(_ln) if _ln else '-'} · auto_node {len(_auto)} · R16 개체 "
+     f"{[(r['surface'], bool(r.get('node_id'))) for r in _e16]} · orphan {len(_oa)}")
+
+
+def _shape():
+    """그래프 모양 — 노드(canonical · 카테고리 · status · 단 · 잠정 표시) · 엣지(관계 · 양끝 canonical · status)."""
+    out = set()
+    for lay in ("process", "quality"):
+        g = open_graph(lay)
+        out |= {("n", lay, n["canonical"], n["category"], n.get("status"), n.get("tier"), str(n.get(PROVISIONAL)))
+                for n in g.nodes.values() if is_live(n)}
+        out |= {("e", e["rel"], (g.get(e["src"]) or {}).get("canonical"), (g.get(e["dst"]) or {}).get("canonical"),
+                 e.get("status")) for e in g.edges}
+    return out
+
+
+_s0 = _shape()
+CALLS.clear()
+_rbc, _rbo = 0, ""
+_b = io.StringIO()
+with contextlib.redirect_stdout(_b):
+    _rbc = RB.main(["--allow-mock", "--yes"], bootstrap=RUN.cmd_bootstrap, screen=RUN.fresh_screen)
+_s1 = _shape()
+show("B182 ⓕ 재구축 동치 — 기본 fresh → 다시 인입 · 같은 잠정 노드(부모 · 단 · 표시) · 같은 그래프 · LLM 0",
+     _rbc == 0 and _s0 == _s1 and _pv("레이저노칭") and not CALLS,
+     f"rc {_rbc} · 다른 것 {sorted(_s0 ^ _s1)[:4]} · 호출 {len(CALLS)}")
+
+_pf = {"doc_type": "pfmea", "process_group": "조립", "electrode_type": "both", "severity": 5, "cause": "빔 흔들림",
+       "effect_category": "단락"}
+CALLS.clear()
+_ask_seen = []
+
+
+def _fake182(body):
+    _ask_seen.append([c["canonical"] for c in body["candidates"]])
+    return {"type": "new", "matched_id": None, "confidence": 0.9}
+
+
+with Live(by={"coord_tag": _fake182}):
+    _tg2 = TG.tag([dict(_pf, source_locator="N1", process_ref="레이저노칭", failure_mode="빔 끊김"),
+                   dict(_pf, source_locator="N2", process_ref="레이저 커팅", failure_mode="빔 끊김")],
+                  layer=coord_layer(), pick=PT.coord_picker(), doc_type="pfmea", doc_id="B182N")
+with _quiet():
+    run_document({"doc_id": "B182N", "doc_type": "pfmea", "source_path": "(합성) B182N.xlsx", "revision": "R1",
+                  "parsed_at": "2026-11-05T00:00:00", "parser_version": "m", "adapter_version": "m", "context": {},
+                  "payload_kind": "table", "records": _tg2})
+_rn = {r["locator"]: r for r in (LG.read("B182N") or {}).get("rows") or [] if r.get("role") == "anchor"}
+show("B182 ⓓ 다음 문서의 같은 표기는 좌표 태깅 목록에서 바로(LLM 0) 그 잠정 노드에 · 다른 표기의 판단 후보에 잠정 노드가 든다",
+     _rn["N1"]["node_id"] == _pv("레이저노칭")["id"] and len(_ask_seen) == 1 and "레이저노칭" in _ask_seen[0]
+     and _pv("레이저 커팅") is not None,
+     f"N1 → {_rn['N1'].get('canonical')} · 판단 {len(_ask_seen)}회 · 후보에 레이저노칭 {'레이저노칭' in (_ask_seen or [[]])[0]}")
 done()

@@ -52,6 +52,21 @@ _learned_io = None
 LEARN_SOURCE = "LLM 좌표 학습"
 
 
+#: **잠정 골격 노드 목록**(B182 ② — `layer → [노드]` · 스냅샷과 같은 꼴) — core가 주입한다(`core/paths.bind_parser`). 없으면 0.
+_provisional_fn = None
+
+
+def use_provisional(fn):
+    """잠정 골격 노드 목록 주입 — 부르는 쪽은 `core/paths.bind_parser()` 하나다(파서는 그래프를 읽지 않는다)."""
+    global _provisional_fn
+    _provisional_fn = fn
+
+
+def coord_list(layer=None):
+    """**좌표 태깅 목록** — 골격 닫힌 목록 스냅샷 + 잠정 골격 노드(B182 ② — 다음 문서의 골격 칸 후보) · 파싱의 좌표 대조가 이것을 본다."""
+    return closed_list(layer) + (list(_provisional_fn(layer) or []) if _provisional_fn and layer else [])
+
+
 def use_learned(read, write):
     """학습 기록 읽기·쓰기 주입 — `read() -> dict` · `write(dict)`. `None, None`이면 끈다."""
     global _learned_io
@@ -375,7 +390,7 @@ def coord_from_section(pieces, *, layer=None, nodes=None,
       ⑥전역 공유 별칭이 범위 안에서 하나면 **그 노드의 canonical**을 쓴다(`scope_pick` — B104 ①).
     """
     from .struct_rule import chain_items, heading_name
-    nodes = nodes if nodes is not None else closed_list(layer)
+    nodes = nodes if nodes is not None else coord_list(layer)
     idx, shared, _a = scoped_index(nodes, doc_coord)
     full, full_shared, _f = scoped_index(nodes)
     stem = _stem(nodes, doc_coord) if doc_coord else None
@@ -501,7 +516,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     한 번(`단계="예고"`), 끝나고 한 번(`단계="끝"`) 같은 그릇으로 온다. `progress`는
     **표기 단위**로 흐른다 — 부르지 않으면 진행도 없다.
     """
-    nodes = nodes if nodes is not None else closed_list(layer)
+    nodes = nodes if nodes is not None else coord_list(layer)
     # 공유 별칭은 대조에 쓰지 않는다(B102 ② — 첫 노드를 고르지 않는다 · 목록 밖으로 간다) —
     # 단 **범위 안에서 하나면 그 노드**다: 문서 좌표(B104 ①) 먼저, 다음은 행의 상위(B105 ①) ·
     # 행마다 `scope_rows` → `scope_pick`(시트명·제목 대조와 같은 함수)
@@ -555,14 +570,17 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     # ── ② 표기마다 한 번 — 답을 기억한다(null도)
     memo, judged, calls, adopted = _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress)
 
-    # 애매는 목록 밖으로 기억하지 않는다(B181 ① — 다음 문서도 다시 묻는다 · 보류 큐에 후보가 실린다)
+    # 애매는 목록 밖으로 기억하지 않는다(B181 ① — 다음 문서도 다시 묻는다 · 보류 큐에 후보가 실린다) · 답이 없는 표기(판단 실패)도
+    # 기억하지 않는다(B182 ① — 판단을 받지 못한 표기는 보류 · 다음 실행도 다시 묻는다 — 기억하면 다음엔 「다르다」로 읽혀 잠정 노드가 선다)
     unsure = {r for r, j in judged.items() if j.get("type") == "uncertain"}
-    sure = {r: v for r, v in memo.items() if r not in unsure}
+    sure = {r: v for r, v in memo.items() if r not in unsure and r in judged}
     if layer and (learn or sure or kept):
         _learn_update(book, learn, sure, refs, idx, layer, doc_id, ver, kept)
 
+    # **판단을 받지 못한 표기**(B182 ① — 상한 · 실패) — 행 `meta.coord_unjudged` · 인입은 잠정 노드로 세우지 않고 보류(mock은 0)
+    unjudged = {r for r in misses if r not in kept and r not in judged} if pick is not None else set()
     out = fold_rows(whole, owner, refs, _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
-                                                scope_at=scope_at, judged=judged), ref_field)
+                                                scope_at=scope_at, judged=judged, unjudged=unjudged), ref_field)
     if notice is not None:
         notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
                 "목록밖": len(misses) - adopted, "애매": len(unsure),
@@ -598,7 +616,7 @@ def _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, 
     return memo, judged, calls, adopted
 
 
-def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None):
+def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None, unjudged=()):
     """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생.
     `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다.
     `judged`(이번에 판단한 표기 — B181 ①)는 그 표기의 행마다 `meta.coord_judge {표기: 답 꼴}`로 남는다(대장의 곳 · 보류 큐의 후보)."""
@@ -607,6 +625,8 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
         r = dict(p)
         if ref and (judged or {}).get(ref):
             r["meta"] = {**(r.get("meta") or {}), "coord_judge": {ref: judged[ref]}}
+        if ref and ref in unjudged and not memo.get(ref):
+            r["meta"] = {**(r.get("meta") or {}), "coord_unjudged": [ref]}
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
         # `electrode_type`을 달고 들어온다. 어댑터가 좌표를 못 뽑는 계열(기본

@@ -62,10 +62,10 @@ def _counted(point, detail=""):
     return _mock0(point, detail)
 
 
-def _fake_pick(surface, cands, **_k):
+def _fake_pick(surface, cands, **_k):            # 「목록에 없음」 = 다르다(고침 B182 — 답 없음은 판단 실패라 기억하지 않는다)
     gateway._account("coord_tag", {"usage": {"prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10}})
     PICKED.append(surface)
-    return None
+    return {"type": "new", "matched_id": None, "confidence": 0.9}
 
 
 gateway.mock = _counted
@@ -176,6 +176,7 @@ _hint("B107Q", {
 SHEETS = "2-4:prose 5:ref *:skip"
 DOCS = [("B107CP", CPX, "cp", None, None), ("B107Q", QX, QDT, SHEETS, X)]
 _first = {}
+hold_coords()            # 목록 밖 좌표는 보류로(B182 — 이 시험은 보류 → 별칭 + bootstrap → 재시도 · 재구축 재생을 잰다 · 손잡이는 클린이 남긴다)
 for did, f, dt, sh, co in DOCS:
     _r, _o = _quiet(IG.ingest_file, str(f), dt, ask=False, sheets=sh, coord=co)
     _first[did] = _r.get("status")
@@ -447,6 +448,7 @@ show("ⓒ 산문(층 둘) — 같은 함수로 다시 넣으면 재시도가 적
      + " · ".join(f"{d} " + ", ".join(f"{r['surface']}→{r.get('target')} {r.get('path')}" for r in rs) for d, rs in _rpp.items()))
 
 # ── 뒷정리 — 시험이 세운 것은 시험이 치운다
+hold_coords(False)
 for _d in _hinted:
     (HINTS / f"{_d}.json").unlink(missing_ok=True)
 _unregister(QDT)

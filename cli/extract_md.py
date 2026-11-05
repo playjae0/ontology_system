@@ -62,7 +62,8 @@ def _closed(layer):
     from core.dictionary import Dictionary
     from core.state.bootstrap import open_graph
     dic, g = Dictionary.open(), open_graph(layer)
-    return lambda r: any(nid in g.nodes and (g.get(nid) or {}).get("status") in ("seed", "confirmed") for nid in dic.lookup(r))
+    from core.state.status import is_skeleton
+    return lambda r: any(nid in g.nodes and is_skeleton(g.get(nid)) for nid in dic.lookup(r))
 
 
 def _where(text, word):

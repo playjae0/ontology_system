@@ -507,7 +507,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     pieces = _drop_images(res, pieces, no_images)
 
     # **층은 호출자가 준다**(B85 ②) — 닫힌 목록을 직접 받은 경우만 층 없이 돈다.
-    nodes = closed_list if closed_list is not None else tagger.closed_list(layer)
+    nodes = closed_list if closed_list is not None else tagger.coord_list(layer)     # 골격 + 잠정 골격 노드 (B182 ②)
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     pieces = _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map,
                            kept_maps, made_maps, map_picks, src_hash,

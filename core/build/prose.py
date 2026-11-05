@@ -14,7 +14,7 @@ from core.build.build import Builder
 from core.build import gate
 from core.build import ledger as _lg
 from core.build.ledger import Ledger
-from core.build import belongs, extract_ctx, heading, human, values
+from core.build import belongs, extract_ctx, heading, human, provisional, values
 from core.build.human import HUMAN                    # 사람 후보의 표지 — 추출 후보 줄 · 대장 행의 `by` (B140 ③)
 from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
 from core.build.naming import name_parent
@@ -51,7 +51,7 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
             b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
                          surface=s, canonical=r_g.get(r_id)["canonical"] if r_id else None,
                          layer=r_g.layer if r_g else None,
-                         path="skeleton" if r_id else "none",
+                         **provisional.cells(b, r_id, r_g, prov),       # 경로 · 이 행에서 세운 잠정 노드(B182 ③)
                          verdict="anchor" if r_id else ("orphan" if s else "pending"),
                          node_id=r_id,
                          queue_kind=None if (r_id or not s) else "orphan_anchor",
@@ -138,7 +138,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                            belongs_to=(bel or {}).get("name"),
                            category=last.get("category"), scope=last.get("scope"),
                            replay=last.get("replay"), judge2=last.get("judge2"),
-                           apart=last.get("apart"), basis=last.get("basis"),
+                           apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"),   # 세운 잠정 골격 노드 (B182 ③)
                            by=HUMAN if e.get("by") == HUMAN else None)        # 사람 후보 표지 (B140 ③)
         if nid:
             values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)
@@ -337,6 +337,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
     # 카테고리로 선별해야 하는 소비처는 사전을 함께 조회한다.
     # **제목 개체 먼저**(B115 ② — 문서 개요가 대상으로 정한 제목 · 트리 순서) — 같은 문서의 소속 이름이 버퍼에서
     # 찾고 · 상위로 올라가는 폴백 사슬의 칸이 된다. 개요가 없거나 대상이 없으면 0(지금 길 그대로).
+    provisional.settle(b, env, outline)           # 좌표 골격 칸 — 골격에 없으면 잠정 골격 노드로 먼저 세운다 (B182 ① — 제목 · 청크가 찾는다)
     landed = heading.land(b, cfg, graph, env, outline, {loc: cid for cid, loc in loc_of.items()})
     _lg.chunk_done(None)                          # 제목 개체 행 — 붙은 자리와 함께 화면에 (B119 ⑤)
     human.aliases(b, env["doc_id"])               # 사람 후보 같은 것 — 있는 노드면 해소 앞에 (B140 ③)

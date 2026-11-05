@@ -79,10 +79,10 @@ def _counted(point, detail=""):
     return _mock0(point, detail)
 
 
-def _fake_pick(surface, cands, **_k):          # 판단 꼴의 주입(B181 ① · 고침 — 답 None은 「다르다」 없이 목록 밖)
+def _fake_pick(surface, cands, **_k):          # 판단 꼴의 주입(B181 ① · 고침 B182 — 「목록에 없음」은 다르다 · 답 없음은 판단 실패라 기억하지 않는다)
     gateway._account("coord_tag", {"usage": {"prompt_tokens": 8, "completion_tokens": 2, "total_tokens": 10}})
     PICKED.append(surface)
-    return None
+    return {"type": "new", "matched_id": None, "confidence": 0.9}
 
 
 gateway.mock = _counted
@@ -446,7 +446,9 @@ def _rn(node):
 _sk["TREE"] = _rn(_sk["TREE"])
 _sk["ALIASES"] = {(NEW if k == OLD else k): v for k, v in _sk["ALIASES"].items()}
 SK.write_text(json.dumps(_sk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+hold_coords()                  # 개명된 seed 동안 목록 밖이 된 좌표는 보류로(B182 — 이 시험은 별칭 대장의 재구축 셈을 잰다 · 잠정 노드는 B182 ⓐ~ⓕ)
 _rc, OUT_E = _rebuild()
+hold_coords(False)
 _ee = _end(OUT_E)
 _miss = [ln.strip() for ln in OUT_E.splitlines() if ln.strip().startswith("대상 없음 — 'B108 적층 라인'")]
 _left = AB.AliasBook.open().get("B108 적층 라인", {"layer": "process", "category": "Process", "canonical": "스태킹::적층"})

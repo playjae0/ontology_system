@@ -39,6 +39,17 @@ def is_live(node):
             and node.get("status") != STATUS_OBSOLETE)
 
 
+#: 사람이 보증한 노드(Tier1) · **잠정 골격 노드의 표시 필드**(B182 ② — auto + 이 필드 · 값은 `{answer, near?}`)
+TIER1 = ("seed", "confirmed")
+PROVISIONAL = "provisional"
+
+
+def is_skeleton(node):
+    """**골격 카테고리 노드인가**(문서 1 D4 · B182) — 사람이 보증한 Tier1 또는 잠정 골격 노드. 좌표(anchor) 조회 · 골격 칸
+    후보 · 재시도가 이 판정 하나다(카테고리 · 생존은 부르는 쪽이 본다). 골격 밖 카테고리의 auto 노드는 좌표가 아니다."""
+    return bool(node) and (node.get("status") in TIER1 or bool(node.get(PROVISIONAL)))
+
+
 def resolve_chain(graph, nid, field, depth=0, seen=None):
     """툼스톤 체인 추적 — **방문집합 + 깊이 제한**, 초과는 결함 로그(L8 읽기 측).
 

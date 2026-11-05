@@ -104,7 +104,7 @@ def reconcile_lines(mt, limit=None):
     `limit`이면 엣지 없는 노드 목록을 그 줄까지(전체는 `show report`)."""
     if not mt:
         return []
-    from core.build import reconcile as RC
+    from core.build import provisional, reconcile as RC
     out = []
     if mt.get("요약"):                     # 문서 한 줄 요약(B118 ① — 아래 맞춤표의 같은 수)
         out.append("   요약 — " + RC.summary_text(mt["doc_id"], mt["요약"]))
@@ -113,6 +113,9 @@ def reconcile_lines(mt, limit=None):
         out.append("     " + _formula(ln))
         if not ln["맞음"]:
             out.append(f"     [결함] {ln['줄'].strip()} 합 {ln['합']:,} ≠ 전체 {ln['전체']:,}")
+    pl = provisional.line(mt.get("잠정"))
+    if pl:                                 # 잠정 골격 노드(B182 ③ — 결정 문서 §2 「볼 것」 · 승격 · 합침은 사람 몫)
+        out.append(f"     {pl}")
     jl = RC.judge_lines(mt.get("판단"))
     if jl:                                 # 곳별 판단 수치(B181 ⑥ — 대장 행에서 · 문턱 조정의 재료 · 손잡이 match_threshold)
         out.append("     판단 수치 — 곳마다 판단 · 같다(확실도 구간) · 애매 · 다르다 · 다시 묻기 · 기준 근처 짝")

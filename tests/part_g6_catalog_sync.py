@@ -336,14 +336,19 @@ _pg = open_graph("process")
 _new = {n["canonical"] for n in _pg.nodes.values()} - _pg0
 _q94 = [x for x in store.read(store.QUEUE, []) if x["doc_id"] == "X94" and x["kind"] == "orphan_anchor"]
 _rows = (_LG.read("X94") or {}).get("rows") or []
-show("ⓔ 골격 카테고리로 뽑힌 골격 밖 이름 → 노드 0 · 큐 orphan_anchor +1 · 대장 행(orphan)",
-     not any("골격에없는공정" in c for c in _new) and len(_q94) == 1
-     and any(r.get("surface") == "골격에없는공정" and r.get("verdict") == "orphan" for r in _rows),
-     f"새 노드 {sorted(_new)} · 큐 {[x['payload'].get('key') for x in _q94]}")
+_pv94 = next((n for n in _pg.nodes.values() if n["canonical"] == "골격에없는공정"), None)
+_au94 = [x for x in store.read(store.QUEUE, []) if x["doc_id"] == "X94" and x["kind"] == "auto_node"
+         and (x.get("payload") or {}).get("provisional")]
+show("ⓔ 좌표 골격 카테고리로 뽑힌 골격 밖 이름 → 잠정 골격 노드(부모 = 그 청크의 좌표 · auto_node 1) · orphan_anchor 0 · 대장 행 "
+     "new + 세운 표지(기대 변경 B182 — 옛 「조회 전용 · 노드 0」)",
+     bool(_pv94) and _pv94.get("provisional", {}).get("answer") == "new" and not _q94 and len(_au94) == 1
+     and _au94[0]["payload"].get("parent") == "노칭"
+     and any(r.get("surface") == "골격에없는공정" and r.get("verdict") == "new" and r.get("made") for r in _rows),
+     f"새 노드 {sorted(_new)} · auto_node {[x['payload'].get('parent') for x in _au94]} · 보류 {len(_q94)}")
 _nc = [r for r in _rows if r.get("surface") == "NC"]
 show("ⓕ 골격 별칭이면 매칭(노드 0) · 골격이 아닌 카테고리의 신규는 그대로",
      _nc and _nc[0].get("verdict") == "match" and (_pg.get(_nc[0]["node_id"]) or {}).get("canonical") == "노칭"
-     and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 1,
+     and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 2,       # 기대 변경(B182 — 잠정 골격 노드 하나가 더 선다)
      f"NC → {(_pg.get((_nc or [{}])[0].get('node_id')) or {}).get('canonical')} · 새 {sorted(_new)}")
 init.init(fresh_=True, all_=True)
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import PurePath
 
+from core.build import provisional
 from core.build.ledger import KEPT
 from core.build.result import hold_reason
 from parser.struct_rule import ROLES
@@ -626,6 +627,7 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
     return {"doc_id": doc_id, "줄": lines,
             "소유자": owner_counts(rows),
             "판단": jc,
+            "잠정": provisional.counts(rows),          # 잠정 골격 노드(B182 ③ — 대장의 `made` 칸에서)
             "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "판단": jc,
                      "재생 2차": replay_second_counts(rows),
                      "캡처 끔": bool(((env or {}).get("context") or {}).get("capture_off"))},

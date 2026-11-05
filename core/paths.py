@@ -399,6 +399,7 @@ def bind_parser():
     render.use_soffice_given(lambda: os.environ.get(render.SOFFICE_ENV))   # soffice 지정 자리 (B129 ① — 셸 설정)
     normalizer.use_null_markers(lambda: _catalog().null_markers())     # 빈칸 표시 목록 (B113 ② — 공통 config)
     tagger.use_snapshot(lambda: data(store.SKELETON_LIST))
+    tagger.use_provisional(lambda lay: _provisional().listing(lay))    # 잠정 골격 노드 — 좌표 태깅 목록에 (B182 ②)
     tagger.use_learned(lambda: _surface_book().learned(),               # 좌표 학습 — 표기 대장의 그 갈래 (B101 ② · B179 ②)
                        lambda d: _surface_book().write_learned(d))
 
@@ -406,6 +407,11 @@ def bind_parser():
 def _surface_book():
     from core.state import surface_book                  # 함수 안 — 이 모듈이 다 서기 전에 주입된다
     return surface_book
+
+
+def _provisional():
+    from core.build import provisional                   # 함수 안 — 파싱이 부를 때만(그래프를 여는 손은 core)
+    return provisional
 
 
 def ensure(path):

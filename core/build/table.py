@@ -9,7 +9,7 @@ from __future__ import annotations
 from core.state.bootstrap import COORD_CATEGORY
 from core.build.build_coord import coord_judged, judge_cells
 from core import matcher
-from core.build import gate, loop
+from core.build import gate, loop, provisional
 from core.build.build import Builder
 from core.build.ledger import Ledger
 from core.state import log, store
@@ -59,6 +59,7 @@ def build_table(env, cfg, schema, graph, defer_save=False):
     doc_id = env["doc_id"]
     envelope_ctx = loop._context(env, env.get("source_path"), doc_id)
 
+    provisional.settle(b, env)                 # 좌표 골격 칸 — 골격에 없으면 잠정 골격 노드로 먼저 세운다 (B182 ①)
     groups = _Groups(b.ledger, env)            # 판정을 공정 그룹 단위로 끊는다 (B165 ①)
     for rec in env.get("records", []):
         groups.step(rec)
@@ -176,7 +177,7 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
                      else "process_ref", role="anchor",
                      surface=_grp_s if r.coord_case == "low_res" else _ref_s,
                      canonical=r.parent, layer=r.ref_g.layer if r.ref_g else None,
-                     path="skeleton" if r.ref else "none",
+                     **provisional.cells(b, r.ref, r.ref_g, r.prov),        # 경로 · 이 행에서 세운 잠정 노드(B182 ③)
                      verdict=("lowres" if r.coord_case == "low_res"
                               else "anchor" if r.ref else "orphan"),
                      node_id=r.ref,

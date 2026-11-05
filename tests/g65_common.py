@@ -87,6 +87,18 @@ def done():
     sys.exit(0 if allok else 1)
 
 
+def hold_coords(on=True):
+    """**골격 밖 좌표를 보류로**(B182) — 손잡이 `provisional_min_mentions`를 크게(잠정 골격 노드를 세우지 않는다 · 보류 · 재시도 ·
+    다음 줄의 기계를 재는 시험 몫) · `on=False`면 손잡이 파일을 걷는다(기본 1 — 처음 나올 때 선다)."""
+    from core.state import knobs as _KN
+    p = _P.knobs()
+    if on:
+        p.write_text(json.dumps({"provisional_min_mentions": 999}), encoding="utf-8")
+    else:
+        p.unlink(missing_ok=True)
+    _KN.apply()
+
+
 # ── 테스트 전용 층 덧칠 (B90 · B91 — 두 스위트가 같은 바닥에서 돈다) ─────────────
 OV = json.loads((ROOT / "tests/fixtures/layers_b90/overlay.json").read_text(encoding="utf-8"))
 
