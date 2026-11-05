@@ -3,31 +3,31 @@
  "suites": {
   "test_g1_g2": {
    "n": 85,
-   "secs": 6
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 9
+   "secs": 10
   },
   "test_g3": {
    "n": 88,
-   "secs": 4
+   "secs": 3
   },
   "test_query": {
    "n": 131,
-   "secs": 21
+   "secs": 22
   },
   "test_ops": {
    "n": 84,
-   "secs": 8
+   "secs": 10
   },
   "test_intake": {
    "n": 100,
-   "secs": 21
+   "secs": 22
   },
   "test_ingest_view": {
    "n": 77,
-   "secs": 42
+   "secs": 45
   },
   "test_coord": {
    "n": 49,
@@ -35,43 +35,43 @@
   },
   "test_catalog": {
    "n": 90,
-   "secs": 32
+   "secs": 31
   },
   "test_safety": {
    "n": 36,
-   "secs": 73
+   "secs": 80
   },
   "test_judge": {
-   "n": 89,
-   "secs": 12
+   "n": 95,
+   "secs": 18
   },
   "test_build": {
    "n": 80,
-   "secs": 27
+   "secs": 33
   },
   "test_rebuild": {
    "n": 51,
-   "secs": 36
+   "secs": 38
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 9
+   "secs": 6
   },
   "test_structure": {
    "n": 126,
-   "secs": 29
+   "secs": 31
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 26
+   "secs": 30
   },
   "test_g6_close": {
    "n": 32,
-   "secs": 39
+   "secs": 40
   },
   "test_contract": {
    "n": 76,
-   "secs": 29
+   "secs": 27
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,15 +87,15 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 4
+   "secs": 5
   },
   "test_p1_media": {
    "n": 19,
-   "secs": 5
+   "secs": 4
   },
   "test_p2": {
    "n": 69,
-   "secs": 5
+   "secs": 8
   },
   "test_p3_register": {
    "n": 73,
@@ -111,7 +111,7 @@
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_recover": {
    "n": 38,
@@ -123,11 +123,11 @@
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 3
+   "secs": 4
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 12
+   "secs": 13
   },
   "test_2a_gateway": {
    "n": 75,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 26
+   "secs": 28
   }
  },
  "log": [
@@ -817,6 +817,14 @@
    "suite": "test_judge",
    "from": 84,
    "to": 89,
+   "why": ""
+  },
+  {
+   "at": "2026-11-05",
+   "head": "a94e4ce",
+   "suite": "test_judge",
+   "from": 89,
+   "to": 95,
    "why": ""
   }
  ]
