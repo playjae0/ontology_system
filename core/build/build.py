@@ -310,13 +310,15 @@ class Builder(CoordMixin):
         return load_config(node["layer"])
 
     # ---------------------------------------------------------------- entity
-    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, row, place=None, where=None):
+    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, row, place=None, where=None,
+               field=None):
         """판정 한 번 — `((분기, node_id, 점수, 판정 dict), 재생하지 못한 사유)`.
 
         **판정 재생**(B106 ②) — 판정 없이 붙지 않는 값만(사전 · 경로 호환 같은 이름이 답하지 않았다 — `matcher.gated` ·
         후보 조립과 같은 함수) · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
         좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `row`(그 값이 나온 청크 · 행)의 원문이 2차 판정의
-        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다) · `where`는 값의 경로(B181 ② — 이름 규칙 카테고리 밖). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
+        문장이다(B123 ③ — 1차가 불확실일 때만 · 청크는 그 표기 앞뒤 · 표는 같은 행의 다른 칸 — B181 ③ `extract_ctx.source_of`) ·
+        `where`는 값의 경로(B181 ② — 이름 규칙 카테고리 밖). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
         판정에 오른 값은 **근거 지문**(B167 ② — `replay.basis`)을 판정 dict에 싣는다 — 대장 행이 옮기고 재생이 다시 잰 것과 견준다."""
         rp = why = fp = None
         pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
@@ -325,17 +327,19 @@ class Builder(CoordMixin):
             from core.build import replay as _rp
             fp = _rp.basis(canonical, pre, self.cfg)
             rp, why = _rp.pick(self, at, surface, category, canonical, basis_now=fp)
-        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where)
+        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where,
+                           field)
         if fp is not None:
             got[3]["basis"] = fp
         return got, why
 
-    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where=None):
+    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where=None,
+                field=None):
         """재생(`rp`) 또는 판정 — `(분기, node_id, 점수, 판정 dict)`(위 `_judge`의 몸)."""
         sent = None
-        if (row or {}).get("text") and (rp is None or rp[3].get("second_due")):
-            from core.build.extract_ctx import around
-            sent = around(row["text"], surface, _matcher.context_chars())
+        if row and (rp is None or rp[3].get("second_due")):
+            from core.build.extract_ctx import source_of
+            sent = source_of(row, surface, field, _matcher.context_chars())
         if rp is not None:
             if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
                 got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
@@ -410,7 +414,7 @@ class Builder(CoordMixin):
             from core.build.extract_ctx import value_path
             where = value_path(row, field, self.doc_coord, coord=_name_of(coord), owner=_name_of(owner))
         (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped, polarity,
-                                                   parent_canonical, at, row, place=place, where=where)
+                                                   parent_canonical, at, row, place=place, where=where, field=field)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).
