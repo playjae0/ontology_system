@@ -317,13 +317,25 @@ def settle(b, env, outline=None):
             nid = e["node"]
             if e["act"] == "fill":
                 fill(b, nid, e["up"], e["tier"], e["provs"][0])
-        n = b.for_category(_coord()).g.get(nid)
+        eb = b.for_category(_coord())
+        n = eb.g.get(nid)
         for prov in e["provs"]:
             if prov:
                 b.coord_at[(prov, e["surface"])] = nid
                 if prov not in n["provenance"]:      # 그 행이 근거다 — 재인입이 걷은 출처를 되살린다(개체 매칭과 같은 결)
                     n["provenance"].append(prov)
+        _restate_parent(eb, nid, e["up"], e["provs"])
     return b.made
+
+
+def _restate_parent(eb, nid, up, provs):
+    """그 부모를 말한 행은 부모 엣지의 근거다 — 엣지가 그 부모일 때만 출처를 더한다(재인입이 걷은 출처를 되살린다 · 다른 부모는 0)."""
+    from core.state.bootstrap import load_config
+    if up is None:
+        return
+    child = ((load_config(eb.layer).get("skeleton") or {}).get("relations") or {}).get("child")
+    if eb.g.edge(nid, child, up) is not None:
+        eb.g.add_edge(nid, child, up, "auto", provenance=[p for p in provs if p])
 
 
 def preview(env, outline=None):
