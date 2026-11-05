@@ -25,7 +25,8 @@ from core.build.retry import retry_orphans
 # `doc_type`은 조각 공통 층의 일원이고(§2.2 계약 ①) 스키마 조회 키다(봉투 값의 반복) —
 # 여기 없으면 조각이 계약대로 달고 온 필드가 `unknown_field` 큐로 간다.
 STRUCTURAL = {"doc_type", "process_group", "process_ref", "process_no",
-              "electrode_type", "source_locator", "section", "context"}
+              "electrode_type", "source_locator", "section", "context",
+              "meta"}     # 파서가 조각에 다는 표지(좌표 태깅 출처 · 상위를 하위에서 땀 · 골격 칸 판단 — B181) · 스키마 값이 아니다
 
 # 봉투 `payload_kind`의 **닫힌 2값**(CH2 2.2). 밖의 값은 폴백 대상이 아니라 계약 위반이다.
 PAYLOAD_KINDS = ("table", "prose")
@@ -399,7 +400,7 @@ def h_anchor(value, spec, ctx):
                      path="skeleton" if nid else "none", verdict="anchor" if nid else "orphan", node_id=nid,
                      queue_kind=None if nid else "orphan_anchor", confidence=v.get("confidence"),
                      place=CLOSED, answer=v.get("type"), judge2=v.get("second"),
-                     nearest={"canonical": v["candidates"][0]} if v.get("candidates") else None)
+                     nearest={"canonical": v["candidates"][0]} if v.get("candidates") else None, asked=v.get("asked"))
     return nid
 
 

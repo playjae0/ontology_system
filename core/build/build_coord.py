@@ -229,8 +229,9 @@ class CoordMixin:
                     if (g.get(c["id"]) or {}).get("category") == category and is_live(g.get(c["id"]))
                     and g.get(c["id"]).get("status") in ("seed", "confirmed")]
             sent = source_of(row, surface, field, _matcher.context_chars()) if row else None
-            memo[k] = _matcher.decide(surface, pool, category, load_config(lay), sentence=sent, place=CLOSED,
-                                      where=value_path(row, field, self.doc_coord, coord=coord))
+            v = _matcher.decide(surface, pool, category, load_config(lay), sentence=sent, place=CLOSED,
+                                where=value_path(row, field, self.doc_coord, coord=coord))
+            memo[k] = {**v, "asked": surface} if v else v      # 판단에 올린 표기(같은 열쇠의 뒷 표기는 그 판단을 나눠 쓴다)
         return memo[k]
 
     def _closed_match(self, surface, category, g, v, prov):
@@ -273,4 +274,4 @@ def judge_cells(v):
     if not v:
         return {}
     return {"place": SKELETON, "answer": v.get("type"), "confidence": v.get("confidence"), "judge2": v.get("second"),
-            "nearest": {"canonical": v["candidates"][0]} if v.get("candidates") else None}
+            "nearest": {"canonical": v["candidates"][0]} if v.get("candidates") else None, "asked": v.get("asked")}

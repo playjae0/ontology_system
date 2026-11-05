@@ -230,6 +230,8 @@ def _fake181(body):
     m = body["mention"]
     if m == "방전 불능":
         return {"type": "match", "matched_id": by.get("방전기능상실"), "confidence": 0.93}
+    if m in ("노칭공정B", "노칭공정C"):                   # 다른 두 표기가 같은 골격 노드 — 판단은 둘(리뷰 #136 P2)
+        return {"type": "match", "matched_id": by.get("노칭"), "confidence": 0.9}
     if m in ("발화", "노칭공정A", "노칭::장력 과다"):
         return {"type": "uncertain", "matched_id": next(iter(by.values()), None), "confidence": 0.75}
     return {"type": "new", "matched_id": None, "confidence": 0.9}
@@ -240,7 +242,11 @@ _recs = [dict(_b181, source_locator="R1", process_ref="노칭", failure_mode="�
               effect_category="방전 불능"),
          dict(_b181, source_locator="R2", process_ref="노칭", failure_mode="탭 찢김", cause="장력 과다", effect_category="발화"),
          dict(_b181, source_locator="R3", process_ref="노칭공정A", failure_mode="버 발생", cause="금형 마모",
-              effect_category="외관 손상")]
+              effect_category="외관 손상"),
+         dict(_b181, source_locator="R4", process_ref="노칭공정B", failure_mode="버 발생", cause="금형 마모",
+              effect_category="단락"),
+         dict(_b181, source_locator="R5", process_ref="노칭공정C", failure_mode="버 발생", cause="금형 마모",
+              effect_category="단락")]
 MT.judge = _spy
 try:
     with Live(by={"judge": _fake181, "coord_tag": _fake181}), _quiet():
@@ -261,11 +267,13 @@ _q181 = {(x.get("payload") or {}).get("surface"): x["payload"] for x in STO.read
          if x.get("doc_id") == "B181P" and x["kind"] == "orphan_anchor"}
 _bk = [e for e in SB.entries() if e.get("표기") == "방전 불능"]
 _r1 = next((r for r in _rows181 if r.get("field") == "effect_category" and r.get("surface") == "방전 불능"), {})
-show("ⓑ 사전에 없는 닫힌 분류 표기 — 같다면 해소 · 표기 대장(닫힌 분류 · 기계 판단) · 애매면 보류 큐 payload에 후보(골격 칸도)",
+show("ⓑ 사전에 없는 닫힌 분류 표기 — 같다면 해소 · 표기 대장(닫힌 분류 · 기계 판단) · 애매면 보류 큐 payload에 후보(골격 칸도) · "
+     "파서가 행에 단 표지(meta)는 스키마 밖 필드가 아니다(고침 리뷰 #136)",
      _r1.get("canonical") == "방전기능상실" and _r1.get("verdict") == "anchor"
      and any(e["곳"] == SB.CLOSED and e["지위"] == SB.MACHINE for e in _bk)
      and ((_q181.get("발화") or {}).get("judge") or {}).get("candidates")
-     and ((_q181.get("노칭공정A") or {}).get("judge") or {}).get("candidates"),
+     and ((_q181.get("노칭공정A") or {}).get("judge") or {}).get("candidates")
+     and not [x for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == "B181P" and x["kind"] == "unknown_field"],
      f"방전 불능 → {_r1.get('canonical')} · 대장 {[(e['곳'], e['지위']) for e in _bk]} · 발화 {(_q181.get('발화') or {}).get('judge')}")
 _ctx = [b for pt, b in CALLS if pt == "judge" and b.get("category") == "Failure" and "context" in b]
 show("ⓒ 표 개체가 애매면 같은 행의 다른 칸(판단하는 칸은 뺀다)을 원문으로 한 번 더 묻는다 · mock은 원문을 읽지 않는다(0)",
@@ -277,12 +285,15 @@ _jc = RC.judge_counts(_rows181)
 _cl = [r for r in _rows181 if r.get("place") == SB.CLOSED]
 _cl1 = list({r["surface"]: r for r in _cl}.values())
 _en = [r for r in _rows181 if r.get("role") == "entity" and str(r.get("path") or "").endswith("+judge")]
-show("ⓔ 곳별 수치 줄의 수(확실도 구간 · 애매 · 다시 묻기)가 대장 행에서 센 수와 같다(닫힌 분류 · 개체 · 골격 칸)",
+show("ⓔ 곳별 수치 줄의 수(확실도 구간 · 애매 · 다시 묻기)가 대장 행에서 센 수와 같다(닫힌 분류 · 개체 · 골격 칸 — 다른 두 표기가 "
+     "같은 골격 노드로 붙어도 판단 둘 · 고침 리뷰 #136 P2)",
      _jc[SB.CLOSED]["같다"][9] == sum(1 for r in _cl1 if r["answer"] == "match" and r["confidence"] >= 0.9)
      and _jc[SB.CLOSED]["애매"] == sum(1 for r in _cl1 if r["answer"] == "uncertain")
      and _jc[SB.CLOSED]["다시"][0] == sum(1 for r in _cl1 if r.get("judge2"))
      and _jc[SB.ENTITY]["판단"] == len(_en) and _jc[SB.ENTITY]["다시"][0] == sum(1 for r in _en if r.get("judge2"))
-     and _jc[SB.SKELETON]["애매"] == 1 and _jc[SB.CLOSED]["근처"],
+     and _jc[SB.SKELETON]["애매"] == 1 and _jc[SB.CLOSED]["근처"]
+     and _jc[SB.SKELETON]["판단"] == len({r["asked"] for r in _rows181 if r.get("place") == SB.SKELETON}) == 3
+     and sum(_jc[SB.SKELETON]["같다"]) == 2,
      " · ".join(f"{k} {v['판단']}/{v['애매']}/{v['다시']}" for k, v in _jc.items()))
 _kp = _P.knobs()
 _kp.write_text(json.dumps({"match_threshold": 0.95, "candidate_top_n": 3}), encoding="utf-8")

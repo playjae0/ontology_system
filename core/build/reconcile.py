@@ -499,7 +499,7 @@ def place_of(row):
 def judge_counts(rows):
     """**곳별 판단 수치**(B181 ⑥) — `{곳: {판단, 같다(확실도 0.1 구간 10칸), 애매, 다르다, 근처 [(표기, 후보, 확실도, 답)], 다시
     [물음, 바뀜]}}` · 대장 행에서(새 판정 0 · 읽기만) · 이번 실행이 판단한 행만(개체는 경로 `…+judge` · anchor 칸은 `place`가 있는
-    행 — 표기마다 한 번) · 다시 묻기는 재생의 2차(`judge2.replay`)도 센다(옛 「2차 n → 바뀜 m」을 곳별로) · 기준 근처 짝은 같다 ·
+    행 — 판단에 올린 표기(`asked`)마다 한 번) · 다시 묻기는 재생의 2차(`judge2.replay`)도 센다(옛 「2차 n → 바뀜 m」을 곳별로) · 기준 근처 짝은 같다 ·
     애매의 답만(다르다의 확실도는 「다르다」의 확신이다)."""
     from core.state.surface_book import CLOSED, ENTITY, SKELETON
     out, seen = {}, set()
@@ -509,10 +509,11 @@ def judge_counts(rows):
         judged = bool(r.get("place")) or str(r.get("path") or "").endswith("+judge")
         if pl is None or not (judged or j2.get("replay")):
             continue
-        if r.get("role") == "anchor":
-            if (pl, r.get("surface")) in seen:
+        if r.get("role") == "anchor":                # 판단 하나 = 판단에 올린 표기 하나(같다면 행 값은 canonical로 바뀐다)
+            k = (pl, r.get("asked") or r.get("surface"))
+            if k in seen:
                 continue
-            seen.add((pl, r.get("surface")))
+            seen.add(k)
         d = out.setdefault(pl, {"판단": 0, "같다": [0] * 10, "애매": 0, "다르다": 0, "근처": [], "다시": [0, 0]})
         if j2:
             d["다시"][0] += 1

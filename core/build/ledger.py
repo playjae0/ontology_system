@@ -39,7 +39,7 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "judge2",                        # 2차 판정 `{was, now, span}`(B123 ③ — 1차 불확실 · 청크 원문의 근거 문장 자리)
          "apart",                         # 같은 이름 · 다른 소유자 아래 노드(B142 ⑥ — 이름 · 위 5)
          "basis",                         # 근거 지문 — 판정에 오른 값의 후보 이름 · 지시문 판 · 임계 해시(B167 ② · `replay.basis`)
-         "place", "answer")               # 곳 · 같은지 판단의 답 — 골격 칸 · 닫힌 분류의 판단을 지난 anchor 행만(B181 ① ⑥ · 개체 행은 역할이 곳)
+         "place", "answer", "asked")      # 곳 · 같은지 판단의 답 · 판단에 올린 표기 — 골격 칸 · 닫힌 분류의 판단을 지난 anchor 행만(B181 ① ⑥ · 개체 행은 역할이 곳)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -109,7 +109,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
         blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, basis=None,
-        place=None, answer=None):
+        place=None, answer=None, asked=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -150,7 +150,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 근거 지문(B167 ② — 판정에 오른 값만 · 재생이 다시 잰 것과 견준다)
                  ("basis", basis),
                  # 곳 · 같은지 판단의 답(B181 ① ⑥ — 골격 칸 · 닫힌 분류의 판단을 지난 anchor 행만)
-                 ("place", place), ("answer", answer)):
+                 ("place", place), ("answer", answer), ("asked", asked)):
         if v is not None:
             r[k] = v
     return r

@@ -585,7 +585,9 @@ def _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, 
         calls += 1
         hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
         memo[ref] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
-        judged[ref] = {k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None}
+        if v.get("type"):                                  # 답이 없으면(빈 주입) 표지 0
+            judged[ref] = {**{k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None},
+                           "asked": ref}                   # 판단에 올린 표기 — 같다면 행 값은 canonical로 바뀐다(수치는 이것으로 센다)
         adopted += int(bool(memo[ref]))
         if notice is not None:
             # 표기 하나 = 표의 한 행(B98 ⑥) — 진행 콜백(3인자 계약)은 그대로 두고 예고와 같은 통로로
