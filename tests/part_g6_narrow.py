@@ -122,8 +122,8 @@ _v73b = _MT73.match("노칭::설비0", [dict(c, status="confirmed") for c in _au
 show("③ auto 후보 · confirmed 후보가 같은 판정이다 — 임계 이상이면 붙는다(B172 — 고침 · 옛 기대: auto는 uncertain)",
      _v73["type"] == _MT73.MATCH and _v73 == _v73b, f"{_v73} / {_v73b}")
 _j73 = (ROOT / "prompts/3.4_judge.md").read_text(encoding="utf-8")
-show("③ 지시문에 후보 상태 · 근거 건수의 기준 0 · 판이 올랐다(B172 ⓒ — 고침 · 옛 기대: 그 규칙을 말한다 · j-1.3)",
-     "status" not in _j73 and "evidence" not in _j73 and "`auto`" not in _j73 and "version: j-1.4" in _j73)
+show("③ 지시문에 후보 상태 · 근거 건수의 기준 0(B172 ⓒ — 고침 B181: 판 확인(한 번 고친 것의 확인)을 뺐다 · 판 올림은 마감 한 줄이 잰다)",
+     "status" not in _j73 and "evidence" not in _j73 and "`auto`" not in _j73)
 
 # ② retry는 조건부다 — 후보 집합이 그대로면 LLM 0
 from core.build import retry as _RT73                                    # noqa: E402
