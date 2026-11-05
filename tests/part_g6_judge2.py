@@ -474,4 +474,78 @@ show("B182 ⓓ 다음 문서의 같은 표기는 좌표 태깅 목록에서 바�
      _rn["N1"]["node_id"] == _pv("레이저노칭")["id"] and len(_ask_seen) == 1 and "레이저노칭" in _ask_seen[0]
      and _pv("레이저 커팅") is not None,
      f"N1 → {_rn['N1'].get('canonical')} · 판단 {len(_ask_seen)}회 · 후보에 레이저노칭 {'레이저노칭' in (_ask_seen or [[]])[0]}")
+
+# ────────────────────────────────────────────────────────────── B183 자리 추정 (창작 표본 · 가짜 게이트웨이)
+print("\n■ B183 — 자리를 아예 말하지 않은 값은 그 카테고리 노드 전체에서 같은 것이 하나일 때만 붙는다(자리 추정 — 유일 후보)")
+from core.build import place_guess as PG                           # noqa: E402
+from core.build import retry as RT                                 # noqa: E402
+D183, _E183 = "b183_live", {}
+
+
+def _x183(body):
+    text = body["chunk"].split("\n", 1)[-1] if body["chunk"].startswith("[") else body["chunk"]
+    return {"entities": [{"surface": s, "category": "Property", "parent": None, "belongs_to": None, "value": None}
+                         for s in _E183.get(text, [])], "relations": [], "about": []}
+
+
+def _p183(did, chunks, ref=None):
+    """산문 문서 하나 → 마무리(재연결) · 개체 행 `{표기: 행}`. `ref`가 없으면 자리를 아예 말하지 않은 문서(공정 · 그룹 · 문서 좌표 0)."""
+    for _k, t, ents in chunks:
+        _E183[t] = ents
+    env = {"source_path": f"(합성) {did}.pptx", "revision": "R1", "parsed_at": "2026-11-05T00:00:00", "parser_version": "m",
+           "adapter_version": "m", "context": {}, "payload_kind": "prose", "doc_type": D183, "doc_id": did,
+           "chunks": [{"source_locator": k, "doc_type": D183, "process_group": None, "process_ref": ref, "electrode_type": "both",
+                       "text": t, "section": f"슬라이드 {i}", "meta": {}} for i, (k, t, _e) in enumerate(chunks, 1)]}
+    with Live(by={"extract": _x183, "judge": lambda b: {"type": "new", "matched_id": None, "confidence": 0.9},
+                  "outline": lambda b: {"headings": []}, "reinforce": lambda b: {"pick": None}}), _quiet():
+        run_document(env)
+        finalize()
+    return {r["surface"]: r for r in (LG.read(did) or {}).get("rows") or [] if r.get("role") == "entity"}
+
+
+def _pn(canon):
+    return next((n for n in open_graph("process").nodes.values() if n["canonical"] == canon and is_live(n)), None)
+
+
+def _mf(did):
+    """그 문서의 빈 좌표 보류 재료 `{표기: 개체 재료}`(missing_field · 키 process_ref)."""
+    return {d["surface"]: d for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == did and x["kind"] == "missing_field"
+            for e in (x.get("payload") or {}).get("items") or [x.get("payload") or {}] for d in e.get("dropped_entities") or []}
+
+
+_register("process", D183)
+_rp1 = _p183("B183P1", [("P1", "노칭 쪽 B183정밀도와 B183장력.", ["B183정밀도", "B183장력"])], ref="노칭")
+_p183("B183P2", [("P2", "스태킹 쪽 B183장력.", ["B183장력"])], ref="스태킹")
+_n0 = sum(len(open_graph(lay).nodes) for lay in ("process", "quality"))
+CALLS.clear()
+_ru = _p183("B183U", [("U1", "B183정밀도를 잰다.", ["B183정밀도"]), ("U2", "B183장력을 잰다.", ["B183장력"]),
+                      ("U3", "B183피치를 잰다.", ["B183피치"])])
+_n1 = sum(len(open_graph(lay).nodes) for lay in ("process", "quality"))
+_j183 = [b.get("mention") for pt, b in CALLS if pt == "judge"]
+_mu = _mf("B183U")
+_np = _pn("노칭::B183정밀도")
+show("B183 ⓐ 좌표가 모두 빈 산문에서 그래프에 하나뿐인 이름 — 그 노드에 붙는다(새 노드 0 · 출처 + 1 · 대장 경로 「자리 추정 — 유일 후보」) · "
+     "그 값의 missing_field 0",
+     _ru["B183정밀도"].get("path") == PG.PATH and _ru["B183정밀도"].get("target") == "노칭::B183정밀도" and _n1 == _n0
+     and "B183U#U1" in _np["provenance"] and "B183정밀도" not in _mu,
+     f"U1 {_ru['B183정밀도'].get('path')} → {_ru['B183정밀도'].get('target')} · 노드 {_n0} → {_n1}")
+show("B183 ⓑ 같은 이름이 두 공정 줄기에 있는 값 — 보류 · payload 후보 둘 · 판단 LLM 0",
+     not _ru["B183장력"].get("node_id") and (_mu.get("B183장력") or {}).get("guess", {}).get("why") == PG.MANY
+     and _mu["B183장력"]["guess"]["candidates"] == ["노칭::B183장력", "스태킹::B183장력"] and "B183장력" not in _j183,
+     f"U2 {(_mu.get('B183장력') or {}).get('guess')} · 판단 {_j183}")
+_rp3 = _p183("B183P3", [("P3", "스태킹 쪽 B183정밀도와 B183피치.", ["B183정밀도", "B183피치"])], ref="스태킹")
+_mu2 = _mf("B183U")
+_ru2 = {r["surface"]: r for r in (LG.read("B183U") or {}).get("rows") or [] if r.get("role") == "entity"}
+show("B183 ⓒ 깨질 때 — 같은 이름이 다른 공정 줄기에 서면 재연결이 그 출처를 걷고 보류(missing_field + 후보 둘) · 거꾸로 보류였던 값은 "
+     "이름이 하나로 서면 붙는다(LLM 0)",
+     "B183U#U1" not in _pn("노칭::B183정밀도")["provenance"] and not _pn("노칭::B183정밀도").get(PG.FIELD)
+     and len((_mu2.get("B183정밀도") or {}).get("guess", {}).get("candidates") or []) == 2
+     and _ru2["B183피치"].get("target") == "스태킹::B183피치" and "B183피치" not in _mu2
+     and RT.LAST.get("guess") == {"되돌림": 1, "다시 붙음": 1},
+     f"되돌림 · 다시 붙음 {RT.LAST.get('guess')} · U1 재료 {_mu2.get('B183정밀도')} · U3 → {_ru2['B183피치'].get('target')}")
+show("B183 ⓓ 바꾸지 않는 것 — 좌표가 있는 값은 지금 판정(자리 추정 칸 0) · 후보 없는 자리 없는 값은 노드 0(보류 「후보 없음」)",
+     all(r.get("guess") is None and r.get("path") != PG.PATH for r in list(_rp1.values()) + list(_rp3.values()))
+     and _ru["B183피치"].get("guess", {}).get("why") == PG.NONE and not _ru["B183피치"].get("node_id"),
+     f"P1 {[(s, r.get('path')) for s, r in _rp1.items()]} · U3 {_ru['B183피치'].get('guess')}")
+_unregister(D183)
 done()

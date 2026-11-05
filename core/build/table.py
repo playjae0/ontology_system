@@ -202,6 +202,8 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
              "ref_g": r.ref_g, "parent": r.parent, "et": r.et,
              "anchor_pol": r.anchor_pol, "external": r.external,
              "anchor_hold": r.hold,
+             # 자리를 아예 말하지 않은 행(B183 — 공정 칸 · 위 칸 둘 다 비었다 · 표기가 있는데 못 풀린 행은 아니다)
+             "no_place": r.coord_case == "missing" and not r.defer,
              "defer": r.defer, "field": None}
     hctx = loop.Ctx(graphs=b.graphs(), dic=b.dict, buffer=b.buffer, queue=store,
                record=rec, schema=schema, state=state)

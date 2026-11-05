@@ -92,7 +92,10 @@ def begin(doc_id, doc_hash=None):
     from core.build import reinforce
     reinforce.PRIOR[doc_id] = [r for r in (data or {}).get("rows") or [] if r.get("role") == reinforce.ROLE]
     n = 0
+    GUESS.clear()
     for r in ((part or {}).get("rows") or []) + ((data or {}).get("rows") or []):
+        if r.get("guess") is not None and r.get("answer"):      # 자리 추정의 뜻 판단(B183 — 붙었든 보류든 판단을 지난 행)
+            GUESS.setdefault(key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")), r)
         if r.get("role") not in ROLES or r.get("verdict") not in REPLAYABLE:
             continue
         TABLE.setdefault(key(r.get("locator"), r.get("field"), r.get("surface"), r.get("layer")), []).append(r)
@@ -102,6 +105,18 @@ def begin(doc_id, doc_hash=None):
 
 #: 근거 지문의 판정 지시문 판 — `begin`이 문서마다 읽는다(값마다 파일을 열지 않는다)
 _JUDGE = {}
+#: 자리 추정의 뜻 판단 행(B183 — `core/build/place_guess` · 판단을 지난 행만) — 재구축은 대장의 답을 쓴다(LLM 0)
+GUESS = {}
+
+
+def guess_row(at, surface, layer):
+    """자리 추정 뜻 판단의 지난 행(B183) — 같은 자리 · 열 · 표기 · 집 하나 · 없거나 재생 대상이 아니면 None(쓰면 재생으로 센다)."""
+    if not LIVE or OFF or not at:
+        return None
+    r = GUESS.get(key(at[0], at[1], surface, layer))
+    if r is not None:
+        _count("재생")
+    return r
 
 
 def basis(surface, pre, cfg):

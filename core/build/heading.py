@@ -154,7 +154,8 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
                            target=b.canonical_of(nid),
                            category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
-                           apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"))   # 세운 잠정 골격 노드 (B182 ③)
+                           apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"),   # 세운 잠정 골격 노드 (B182 ③)
+                           place=last.get("place"), answer=last.get("answer"), guess=last.get("guess"))  # 자리 추정 (B183)
         if not nid:
             continue
         hg = cg or b.graph_of(nid) or graph

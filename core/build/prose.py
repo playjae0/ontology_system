@@ -139,6 +139,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                            category=last.get("category"), scope=last.get("scope"),
                            replay=last.get("replay"), judge2=last.get("judge2"),
                            apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"),   # 세운 잠정 골격 노드 (B182 ③)
+                           place=last.get("place"), answer=last.get("answer"), guess=last.get("guess"),  # 자리 추정 (B183)
                            by=HUMAN if e.get("by") == HUMAN else None)        # 사람 후보 표지 (B140 ③)
         if nid:
             values.land(cfg, eb, nid, e, src, prov, cid, row)    # 「항목 = 값」 → 그 노드의 속성(표와 같은 함수 · B120 ①)

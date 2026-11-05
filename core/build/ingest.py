@@ -157,29 +157,41 @@ def withdraw(env, doc_id):
         """
         return p == doc_id or str(p).startswith(doc_id + "#")
 
-    def strip(holder):
-        """그 문서 유래 provenance 항목을 걷어낸다. 남은 개수를 돌려준다."""
-        holder["provenance"] = [p for p in (holder.get("provenance") or [])
-                                if not mine(p)]
-        return len(holder["provenance"])
-
     # ① 노드·값·엣지의 provenance
     for layer in discover():
         g = open_graph(layer)
         for n in g.nodes.values():
-            strip(n)
-            for name, val in list((n.get("attrs") or {}).items()):
-                if isinstance(val, list):               # 맥락형 — context 그룹별 항목
-                    left = [it for it in val if strip(it)]
-                    n["attrs"][name] = left
-                    if not left:
-                        del n["attrs"][name]
-                elif isinstance(val, dict) and "provenance" in val:
-                    if not strip(val):                  # 단순형 — 빈 그룹 하나로 취급
-                        del n["attrs"][name]
+            strip_node(n, mine)
         for e in g.edges:
-            strip(e)
+            strip_holder(e, mine)
         g.save()
+
+
+def strip_holder(holder, mine):
+    """그 출처(`mine(p)`가 참인 것)의 provenance 항목을 걷어낸다 — 남은 개수(재인입 회수 · 자리 추정 되돌림이 같은 손 · B183)."""
+    holder["provenance"] = [p for p in (holder.get("provenance") or []) if not mine(p)]
+    return len(holder["provenance"])
+
+
+def strip_node(n, mine):
+    """노드 하나에서 그 출처를 걷는다 — 노드 · 값(맥락형은 context 그룹별 항목 · 단순형은 빈 그룹 하나) · 자리 추정 칸(B183)."""
+    strip_holder(n, mine)
+    for name, val in list((n.get("attrs") or {}).items()):
+        if isinstance(val, list):
+            left = [it for it in val if strip_holder(it, mine)]
+            n["attrs"][name] = left
+            if not left:
+                del n["attrs"][name]
+        elif isinstance(val, dict) and "provenance" in val:
+            if not strip_holder(val, mine):
+                del n["attrs"][name]
+    from core.build.place_guess import FIELD
+    if n.get(FIELD):
+        left = [x for x in n[FIELD] if not mine(x.get("prov"))]
+        if left:
+            n[FIELD] = left
+        else:
+            del n[FIELD]
 
 
 def register_doc(env, dh, routing=None):

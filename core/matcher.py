@@ -248,8 +248,8 @@ def _narrow(surface, pool, top_n, *, scoped=False):
 # 코드가 아는 사실만 적는다(LLM 산출이 아니다 — C38의 결).
 PATHS = ("skeleton", "dictionary", "scope+judge", "embedding+judge",
          "overlap+judge", "self_coord", "memo", "replay", "reinforce",
-         "path_compat", "provisional",
-         "none")  # self_coord — 자기 좌표(B90 ③) · memo — 반복 판정 기억(B100 ⑤) · replay — 판정 재생(B106 ②) · reinforce — 연결 보강(B115 ④ · 지점 ⑫) · path_compat — 경로 호환 같은 이름(B142 ② · LLM 0) · provisional — 잠정 골격 노드에 선 좌표(B182)
+         "path_compat", "provisional", "place_guess",
+         "none")  # self_coord — 자기 좌표(B90 ③) · memo — 반복 판정 기억(B100 ⑤) · replay — 판정 재생(B106 ②) · reinforce — 연결 보강(B115 ④ · 지점 ⑫) · path_compat — 경로 호환 같은 이름(B142 ② · LLM 0) · provisional — 잠정 골격 노드에 선 좌표(B182) · place_guess — 자리 추정 — 유일 후보(B183)
 
 # 좁힌 방법 → 경로 이름. `그대로`(좁힐 것도 없었다)는 **그 실행이 고른 방법**의
 # 이름으로 적는다 — 후보를 무엇으로 고르는 세계였는지가 그 자리의 사실이다(B75 ①).

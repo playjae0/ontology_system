@@ -223,7 +223,8 @@ def _ledger_row(b, eb, nid, at, name, bel):
                  llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
                  target=b.canonical_of(nid), belongs_from=bel.get("from"),
                  category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
-                 apart=last.get("apart"), basis=last.get("basis"))
+                 apart=last.get("apart"), basis=last.get("basis"),
+                 place=last.get("place"), answer=last.get("answer"), guess=last.get("guess"))   # 자리 추정 (B183)
 
 
 def edge_of(cfg, tgt_cat, child_cat):

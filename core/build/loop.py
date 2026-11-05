@@ -438,10 +438,23 @@ def h_entity(value, spec, ctx):
     #
     # 대신 그 재료를 `orphan_anchor` 큐 항목이 보유한다 — 그것이 재시도의 손잡이다.
     if st["ref"] is None and _scoped_category(spec["category"], lay, st["b"]):
+        mark = None
+        if st.get("no_place"):                 # 자리를 아예 말하지 않은 행 — 자리 추정(B183 · 산문과 같은 함수 `place_guess.attach`)
+            from core.build import place_guess
+            eb = st["b"].for_category(spec["category"])
+            nid = place_guess.attach(eb, value, spec["category"], st["prov"], electrode_type=st["et"], row=ctx.record,
+                                     field=st["field"], at=(st.get("locator"), st.get("field")))
+            if nid is not None:
+                _ledger_entity(st, value, lay, eb.last)
+                if eb is not st["b"]:
+                    st["external"][st["field"]] = eb.g
+                ctx.buffer[_n(value)] = nid
+                return nid
+            mark = place_guess.mark(eb.last)
         st["dropped_entities"].append(
             {"surface": value, "category": spec["category"],
-             "target_layer": lay, "field": st["field"]})
-        _ledger_entity(st, value, lay, None)
+             "target_layer": lay, "field": st["field"], **({"guess": mark} if mark else {})})
+        _ledger_entity(st, value, lay, None, guess=(eb.last.get("guess") if mark else None))
         return None
 
     # **표 행의 소유자**(B142 ③ · B144 ②) — 같은 행의 소유 엣지 개체(먼저 해소됐다)가 판정의 자리이자 **이름 부모**다
@@ -471,12 +484,12 @@ _VERDICT = {"match": "match", "new": "new", "uncertain": "uncertain",
             "blank": "blank"}                                  # 빈칸 표시 — 개체 0 (B113 ②)
 
 
-def _ledger_entity(st, surface, layer, last):
+def _ledger_entity(st, surface, layer, last, guess=None):
     """entity 값 하나의 대장 행 — **판정이 아는 것을 그대로 옮긴다**(B74 ②).
 
     `last`가 없으면 판정에 오르지도 못한 값이다(좌표 미해소로 드롭 — 그 재료는
     `orphan_anchor` 큐가 들고 있다). 그것도 **행으로 남는다**: 대장이 「이 문서의
-    값 전부」를 덮지 않으면 행 단위 눈 검수가 성립하지 않는다.
+    값 전부」를 덮지 않으면 행 단위 눈 검수가 성립하지 않는다. 자리 추정이 못 붙인 값은 그 사실(`guess` — B183)을 함께.
     """
     b = st["b"]
     if b.ledger is None:
@@ -485,7 +498,7 @@ def _ledger_entity(st, surface, layer, last):
         b.ledger.add(locator=st.get("locator"), field=st.get("field"),
                      role="entity", surface=surface, layer=layer,
                      path="none", verdict="orphan", queue_kind="orphan_anchor",
-                     hold=st.get("anchor_hold"))      # 이 행의 좌표가 표기 모호였으면 그 사유(B104 ①)
+                     hold=st.get("anchor_hold"), guess=guess)      # 이 행의 좌표가 표기 모호였으면 그 사유(B104 ①)
         return
     b.ledger.add(**judged(last, locator=st.get("locator"), field=st.get("field"), surface=surface,
                           layer=layer, target=b.canonical_of(last.get("node_id"))))

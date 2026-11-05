@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import PurePath
 
-from core.build import provisional
+from core.build import place_guess, provisional
 from core.build.ledger import KEPT
 from core.build.result import hold_reason
 from parser.struct_rule import ROLES
@@ -124,6 +124,8 @@ def value_cell(r):
         return "사전", out or verdict
     if path == "path_compat":                     # 경로 호환 같은 이름(B142 ② — LLM 0)
         return "경로", out or verdict
+    if path == "place_guess":                     # 자리 추정 — 유일 후보(B183)
+        return "자리 추정", out or verdict
     if path in ("skeleton", "self_coord"):
         return "골격", out or verdict
     if path == "replay" and out:
@@ -137,7 +139,7 @@ def value_cell(r):
     return "그 밖", f"{path}:{verdict}"
 
 
-VALUE_ORDER = ("사전", "골격", "경로", "재생", "기억", "LLM 일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
+VALUE_ORDER = ("사전", "골격", "경로", "자리 추정", "재생", "기억", "LLM 일치", "새 노드", "불확실", "다른 공정 언급", "빈칸 표시",
                "보류", "그 밖")
 
 
@@ -149,7 +151,7 @@ def value_lines(rows):
         cells[k] += 1
         if d:
             subs.setdefault(k, Counter())[d] += 1
-    det = {k: _sub(c) for k, c in subs.items() if k not in ("사전", "골격", "경로")}
+    det = {k: _sub(c) for k, c in subs.items() if k not in ("사전", "골격", "경로", "자리 추정")}
     ends = Counter("보류" if hold_reason(r) else END.get(r.get("verdict"), "그 밖") for r in ent)
     return [line("값(개체 행)", len(ent), [(k, cells.get(k, 0), det.get(k, "")) for k in VALUE_ORDER]),
             line("결말(개체 행)", len(ent),
@@ -628,6 +630,7 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
             "소유자": owner_counts(rows),
             "판단": jc,
             "잠정": provisional.counts(rows),          # 잠정 골격 노드(B182 ③ — 대장의 `made` 칸에서)
+            "자리": place_guess.counts(rows),          # 자리 없는 값(B183 ③ — 대장의 `guess` 칸에서)
             "요약": {**summary(lines, res, after, (run or {}).get("층 전")), "판단": jc,
                      "재생 2차": replay_second_counts(rows),
                      "캡처 끔": bool(((env or {}).get("context") or {}).get("capture_off"))},

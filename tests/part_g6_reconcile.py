@@ -409,7 +409,8 @@ _register("process", DT)
 XA = _book(TMP / "B149_설비_사양서.xlsx", {"일반": ("visible", ["1. 범위", "장력은 매 시간 기록한다.", "2. 운전",
                                                                "속도는 분당 기록한다."])})
 _da, _oa = _ingest149(XA, ["일반"], _ents149)
-_ca = RCZ.causes(RCZ.material(_da))
+_ma149a = RCZ.material(_da)                       # 그 문서 인입 직후의 진단 재료(B152 ⓐ가 쓴다 — 뒤 문서가 이름을 하나로 세우면 재연결이 다시 붙인다 · B183 ②)
+_ca = RCZ.causes(_ma149a)
 _ra = _run("show", "report", _da)
 # 기대 변경(B152 ① — 수의 단위는 못 붙은 행(좌표 행 제외) · 원인 줄 「못 붙은 행 m(종류별)」)
 show("ⓐ 문서 좌표 없음 — 원인 묶음 첫 줄 「문서 좌표 없음 — 못 붙은 행 n」 + 가까운 골격 이름 + 처방(--coord · 실경로) · 원인 하나 · "
@@ -462,7 +463,8 @@ XC = _book(TMP / "B149_소속.xlsx", {"사양": ("visible", ["1. 반송", "장�
 _dc, _oc = _ingest149(XC, ["사양"], lambda c: [{"surface": w, "category": "Property",
                                                "belongs_to": {"name": "반송 유닛", "category": None, "from": "본문"}}
                                               for w in ("장력", "속도") if w in c.get("text", "")], "--coord", "노칭")
-_cc = RCZ.causes(RCZ.material(_dc))
+_mc149 = RCZ.material(_dc)                        # 인입 직후의 재료(B152 ⓒ · B154 ⓒ — B183 ②)
+_cc = RCZ.causes(_mc149)
 _q_c = sum(int((x.get("payload") or {}).get("rows") or 0) for x in store.read(store.QUEUE, [])
            if x.get("kind") == "orphan_attach" and x.get("doc_id") == _dc and (x.get("payload") or {}).get("key") == "반송 유닛")
 # 기대 변경(B152 ① — 못 붙은 행)
@@ -507,7 +509,7 @@ show("B176 ⓒ 좌표를 못 찾은 행이 있는 사본 — 그 좌표 줄이 �
 
 # ────────────────────────────────────────────────────────────── B152 진단 화면의 수 단위
 print("\n■ B152 — 수의 단위는 못 붙은 행(좌표 행 제외 · 맞춤표 행 종류) · 머리 · 원인 줄 · 목차 나무가 같은 행 집합")
-_ma152 = RCZ.material(_da)
+_ma152 = _ma149a                                  # 고침(B183 ② — 뒤 문서의 재연결이 보류를 다시 붙이기 전 재료)
 _hd152 = RCZ.head_line(_ma152) or ""
 _ra_lines = _ra.splitlines()
 _doc152 = next((ln for ln in _ra_lines if ln.strip().startswith("문서 좌표 없음 — 문서 좌표 · 확인할 행")), "")
@@ -532,8 +534,7 @@ show("B152 ⓑ 속성만 못 붙은 원인이 보인다 — 부착 대상 표본
      and f"속성·내용 {_gx[0]['행']}/" in _hx and "개체 0/" in _hx,   # 기대 변경(B154 ③ — 머리는 전체가 0이 아닌 종류 전부 · 개체는 못 붙음 0)
      f"{_hx.strip()} · {[(g['원인'], g['못 찾은 것'], g['종류']) for g in _cx152]}")
 _sums = []
-for _d152 in (_db, _dc, _dt):
-    _m152 = RCZ.material(_d152)
+for _d152, _m152 in ((_db, _mb), (_dc, _mc149), (_dt, _mt149)):    # 고침(B183 ② — 인입 직후 재료)
     _n152, _tot, _kinds, _st = RCZ.head_count(_m152)
     _c152 = RCZ.causes(_m152)
     _kc = Counter()
@@ -544,8 +545,9 @@ for _d152 in (_db, _dc, _dt):
     _sums.append((_d152, _n152, dict(_kc) == {k: a for k, a, _b in _kinds if a}, sum(_kc.values()), _lost_tree))   # 기대 변경(B154 ③ — 머리에 못 붙음 0인 종류도 선다)
 show("B152 ⓒ 합 — B149 ⓑ · ⓒ · ⓔ 표본에서 원인 줄의 종류별 합 = 머리의 분자 · 목차 나무(펼친 줄 + 접은 줄) · 좌표 표기 목록의 못 붙음 합 = 머리의 n",
      all(ok and n == s == lt and n > 0 for _d, n, ok, s, lt in _sums), str(_sums))
-_dn154 = [(d, sum(b for _k, _a, b in RCZ.head_count(RCZ.material(d))[2]), RCZ.head_count(RCZ.material(d))[1]) for d in (_db, _dc, _dt)]
-_hb154 = RCZ.head_line(RCZ.material(_db)) or ""
+_dn154 = [(d, sum(b for _k, _a, b in RCZ.head_count(m)[2]), RCZ.head_count(m)[1])
+          for d, m in ((_db, _mb), (_dc, _mc149), (_dt, _mt149))]       # 고침(B183 ② — 인입 직후 재료)
+_hb154 = RCZ.head_line(_mb) or ""
 show("B154 ⓒ 머리의 분모 — 제목 행이 든 표본(B149 ⓑ)에서 못 붙음 0인 종류도 서서 보이는 분모 합 = 전체(B149 ⓑ · ⓒ · ⓔ 표본)",
      all(a == b > 0 for _d, a, b in _dn154) and " 0/" in _hb154, f"{_hb154.strip()} · {_dn154}")
 for _x in (XA, XB, XC, XT):
