@@ -113,6 +113,10 @@ def reconcile_lines(mt, limit=None):
         out.append("     " + _formula(ln))
         if not ln["맞음"]:
             out.append(f"     [결함] {ln['줄'].strip()} 합 {ln['합']:,} ≠ 전체 {ln['전체']:,}")
+    jl = RC.judge_lines(mt.get("판단"))
+    if jl:                                 # 곳별 판단 수치(B181 ⑥ — 대장 행에서 · 문턱 조정의 재료 · 손잡이 match_threshold)
+        out.append("     판단 수치 — 곳마다 판단 · 같다(확실도 구간) · 애매 · 다르다 · 다시 묻기 · 기준 근처 짝")
+        out += [f"       {ln}" for ln in jl]
     k, ex = (mt.get("소유자") or (0, []))[:2]
     if k:                                  # 같은 이름 · 다른 소유자(B142 ⑥ — 전체 목록은 show report --md · 합칠 것이면 ops merge)
         out.append(f"     같은 이름 · 다른 소유자 — 새 노드 중 같은 공정 줄기의 다른 소유자 아래 같은 이름이 있는 것 {k:,}"

@@ -398,7 +398,8 @@ def h_anchor(value, spec, ctx):
                      canonical=ng.get(nid)["canonical"] if nid else None, layer=ng.layer if nid else None,
                      path="skeleton" if nid else "none", verdict="anchor" if nid else "orphan", node_id=nid,
                      queue_kind=None if nid else "orphan_anchor", confidence=v.get("confidence"),
-                     place=CLOSED, answer=v.get("type"), judge2=v.get("second"))
+                     place=CLOSED, answer=v.get("type"), judge2=v.get("second"),
+                     nearest={"canonical": v["candidates"][0]} if v.get("candidates") else None)
     return nid
 
 

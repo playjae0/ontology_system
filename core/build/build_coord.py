@@ -222,7 +222,8 @@ class CoordMixin:
             from core.build.extract_ctx import source_of, value_path
             from core.state.bootstrap import load_config
             from core.state.surface_book import CLOSED
-            from parser.tagger import choices, closed_list
+            from parser.coord_rows import choices
+            from parser.tagger import closed_list
             lay = self.home_of(category)
             pool = [dict(c, category=category) for c in choices(closed_list(lay))[0]
                     if (g.get(c["id"]) or {}).get("category") == category and is_live(g.get(c["id"]))
@@ -271,4 +272,5 @@ def judge_cells(v):
     from core.state.surface_book import SKELETON
     if not v:
         return {}
-    return {"place": SKELETON, "answer": v.get("type"), "confidence": v.get("confidence"), "judge2": v.get("second")}
+    return {"place": SKELETON, "answer": v.get("type"), "confidence": v.get("confidence"), "judge2": v.get("second"),
+            "nearest": {"canonical": v["candidates"][0]} if v.get("candidates") else None}
