@@ -3,11 +3,11 @@
  "suites": {
   "test_g1_g2": {
    "n": 85,
-   "secs": 5
+   "secs": 6
   },
   "test_places": {
    "n": 32,
-   "secs": 10
+   "secs": 9
   },
   "test_g3": {
    "n": 88,
@@ -15,47 +15,47 @@
   },
   "test_query": {
    "n": 131,
-   "secs": 22
+   "secs": 24
   },
   "test_ops": {
    "n": 84,
-   "secs": 10
+   "secs": 9
   },
   "test_intake": {
    "n": 100,
-   "secs": 22
+   "secs": 20
   },
   "test_ingest_view": {
    "n": 77,
-   "secs": 45
+   "secs": 47
   },
   "test_coord": {
    "n": 49,
-   "secs": 15
+   "secs": 14
   },
   "test_catalog": {
    "n": 90,
-   "secs": 31
+   "secs": 30
   },
   "test_safety": {
    "n": 36,
-   "secs": 80
+   "secs": 81
   },
   "test_judge": {
    "n": 95,
-   "secs": 18
+   "secs": 19
   },
   "test_build": {
    "n": 80,
-   "secs": 33
+   "secs": 30
   },
   "test_rebuild": {
    "n": 51,
-   "secs": 38
+   "secs": 37
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 6
+   "secs": 10
   },
   "test_structure": {
    "n": 126,
@@ -63,15 +63,15 @@
   },
   "test_g6_capture": {
    "n": 11,
-   "secs": 30
+   "secs": 32
   },
   "test_g6_close": {
    "n": 32,
-   "secs": 40
+   "secs": 39
   },
   "test_contract": {
    "n": 76,
-   "secs": 27
+   "secs": 33
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,7 +87,7 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 5
+   "secs": 4
   },
   "test_p1_media": {
    "n": 19,
@@ -95,11 +95,11 @@
   },
   "test_p2": {
    "n": 69,
-   "secs": 8
+   "secs": 5
   },
   "test_p3_register": {
    "n": 73,
-   "secs": 7
+   "secs": 9
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,11 +107,11 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 5
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 6
+   "secs": 5
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,15 +119,15 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 9
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 4
+   "secs": 3
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 13
+   "secs": 12
   },
   "test_2a_gateway": {
    "n": 75,
@@ -135,15 +135,15 @@
   },
   "test_viewer": {
    "n": 60,
-   "secs": 3
+   "secs": 2
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 0
+   "secs": 1
   },
   "test_site": {
    "n": 56,
-   "secs": 28
+   "secs": 30
   }
  },
  "log": [
