@@ -457,7 +457,8 @@ def build_screen(step=False, stage=None, prose=False):
             body = (f"entity 값 {info['값_수']:,}건"
                     f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
                     f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
-                    f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회")
+                    f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회"
+                    + (f" · 닫힌 분류 판단 ≤ {info['닫힌_분류']:,}회" if info.get("닫힌_분류") else ""))
             if info.get("추출뒤") and stage is not None:
                 # 산문 판정의 총수 = 추출이 낸 개체 수(B99 ⑦ — 레코드 수가 아니다)
                 stage.update({"이름": JUDGE, "값": 0, "총": info["값_수"], "t0": None})

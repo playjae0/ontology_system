@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from core.state.bootstrap import COORD_CATEGORY
+from core.build.build_coord import coord_judged, judge_cells
 from core import matcher
 from core.build import gate, loop
 from core.build.build import Builder
@@ -146,8 +147,9 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
     """
     rec = r.rec
     _ref_s, _grp_s = rec.get("process_ref"), rec.get("process_group")
+    _cj = coord_judged(rec, _ref_s)                 # 파서의 골격 칸 판단(B181 ① — 애매면 보류에 후보)
     r.ref, r.ref_g = b.resolve_anchor(_ref_s, COORD_CATEGORY, r.prov,
-                                      defer=r.defer)
+                                      defer=r.defer, judged=_cj)
     if not _ref_s:
         if _grp_s:
             # **저해상도 부착** — 그룹은 조상 대조용이지만, 좌표가 아예 없으면
@@ -178,7 +180,8 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
                               else "anchor" if r.ref else "orphan"),
                      node_id=r.ref,
                      queue_kind=None if r.ref else "orphan_anchor",
-                     hold=None if r.ref else b.anchor_hold)
+                     hold=None if r.ref else b.anchor_hold,
+                     **(judge_cells(_cj) if r.coord_case != "low_res" else {}))
     r.hold = None if r.ref else b.anchor_hold        # 이 행의 좌표 보류 사유 — 드롭된 값 행도 같은 사유(B104 ①)
 
 

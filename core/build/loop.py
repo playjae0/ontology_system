@@ -385,10 +385,20 @@ def h_anchor(value, spec, ctx):
     `fields`에 직접 적은 스키마는 블록의 값을 받지 않는다(스키마 선언이 블록을 이긴다).
     """
     st = ctx.state
-    nid, ng = st["b"].resolve_anchor(value, spec.get("target_category") or COORD_CATEGORY,
-                                     st["prov"], defer=st["defer"])
+    b = st["b"]
+    nid, ng = b.resolve_anchor(value, spec.get("target_category") or COORD_CATEGORY,
+                               st["prov"], defer=st["defer"], ask=(ctx.record, st["field"]))
     if nid is not None and ng is not st["graph"]:
         st["external"][st["field"]] = ng
+    v = b.anchor_judge
+    if v and b.ledger is not None:
+        # **닫힌 분류의 판단 행**(B181 ① ⑥) — 같은지 판단을 지난 anchor 칸만(사전 히트 · mock은 행 0 — 지금 그대로)
+        from core.state.surface_book import CLOSED
+        b.ledger.add(locator=st.get("locator"), field=st["field"], role="anchor", surface=value,
+                     canonical=ng.get(nid)["canonical"] if nid else None, layer=ng.layer if nid else None,
+                     path="skeleton" if nid else "none", verdict="anchor" if nid else "orphan", node_id=nid,
+                     queue_kind=None if nid else "orphan_anchor", confidence=v.get("confidence"),
+                     place=CLOSED, answer=v.get("type"), judge2=v.get("second"))
     return nid
 
 

@@ -123,7 +123,7 @@ def cases():
             lambda r: isinstance(r, dict) and r.get("chunk_id") == "C1"
             and all(isinstance(r.get(k), list) for k in ("entities", "relations", "attach"))),
         "judge": (
-            lambda: matcher._judge_live("탭 용접", pool, "Unit", cfg),
+            lambda: matcher.judge("탭 용접", pool, "Unit", cfg),
             lambda r: isinstance(r, dict) and r.get("type") in ("match", "new", "uncertain")
             and "confidence" in r and "path" in r),
         "embed": (
@@ -158,9 +158,10 @@ def cases():
                  "chunks": [], "path": "graph_fact", "linked": [], "note": None,
                  "truncated": 0, "transit": []}),
             lambda r: isinstance(r, str) and r),
-        "coord_tag": (
-            lambda: points.pick_coord("탭 용접", ["탭용접", "노칭"]),
-            lambda r: r is None or isinstance(r, str)),
+        "coord_tag": (      # 기대 변경(B181 ① — 판단 한 자리 · 답 꼴은 개체 판정과 같다)
+            lambda: points.pick_coord("탭 용접", [{"id": "n1", "canonical": "탭용접", "aliases": [], "path": []},
+                                                {"id": "n2", "canonical": "노칭", "aliases": [], "path": []}]),
+            lambda r: r is None or r.get("type") in ("match", "new", "uncertain")),
         "sheet_role": (
             lambda: points.judge_sheet("가격", ["품목 | 단가", "A | 100"]),   # 기대 변경(B148 ④ — 표본 줄만 · 층 0)
             lambda r: r.get("role") in ("prose", "ref") and isinstance(r.get("reason"), str)),

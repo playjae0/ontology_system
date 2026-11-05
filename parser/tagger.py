@@ -469,7 +469,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     | | 갈래 |
     |---|---|
     | `pick=None` | **닫힌 목록 스냅샷의 정확 일치 대조 — 모델을 부르지 않는다**(§7.1 대체 표) |
-    | `pick` 주입 | 모델이 **닫힌 목록 중에서 고르거나 null**을 낸다 |
+    | `pick` 주입 | **같은지 판단**(core 한 자리 · B181 ①) — 같다면 그 골격 노드 · 다르다 · 애매는 목록 밖 그대로(애매는 행 `meta.coord_judge`에 후보) |
 
     **판정은 함수 유무 하나다**(B48) — 파서는 모드를 읽지 않는다. 대체가 선언되지
     않은 LLM 지점은 모델 없는 실행에서 실호출로 흘러 외부 의존 0(문서 1 B12)이
@@ -552,12 +552,19 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     if notice is not None:
         notice(dict(plan))
 
-    # ── ② 표기마다 한 번 — 답을 기억한다(null도).
-    memo, calls, adopted = {}, 0, 0
+    # ── ② 표기마다 한 번 — 답을 기억한다(null도). **판단은 개체 · 닫힌 분류와 같은 한 자리**(B181 ① — 주입된 `pick`이 core의
+    # 판단 함수를 부른다 · 답 꼴 같다 · 다르다 · 애매) · 재료는 골격 목록(이름 · 별칭 · 부모 경로)과 그 표기가 처음 나온 행(②)
+    memo, judged, calls, adopted = {}, {}, 0, 0
+    cands, by_id = choices(nodes) if ask else ([], {})
+    first = {}
+    for p, r in zip(pieces, refs):
+        first.setdefault(r, p)
     for n, ref in enumerate(ask, 1):
-        chosen = pick(ref, sorted(idx))
+        v = pick(ref, cands, row=first.get(ref), field=ref_field, doc_coord=doc_coord) or {}
         calls += 1
-        memo[ref] = chosen if (chosen and chosen in idx) else None
+        hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
+        memo[ref] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
+        judged[ref] = {k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None}
         if memo[ref]:
             adopted += 1
         if notice is not None:
@@ -567,24 +574,48 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         if progress is not None:
             progress(n, len(ask), adopted)
 
-    if layer and (learn or memo or kept):
-        _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver, kept)
+    # 애매는 목록 밖으로 기억하지 않는다(B181 ① — 다음 문서도 다시 묻는다 · 보류 큐에 후보가 실린다)
+    unsure = {r for r, j in judged.items() if j.get("type") == "uncertain"}
+    sure = {r: v for r, v in memo.items() if r not in unsure}
+    if layer and (learn or sure or kept):
+        _learn_update(book, learn, sure, refs, idx, layer, doc_id, ver, kept)
 
     out = _fold_back(whole, owner, refs, _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
-                                                scope_at=scope_at), ref_field)
+                                                scope_at=scope_at, judged=judged), ref_field)
     if notice is not None:
         notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
-                "목록밖": len(misses) - adopted,
+                "목록밖": len(misses) - adopted, "애매": len(unsure),
                 "학습_새로": sum(1 for v in memo.values() if v)})
     return out
 
 
-def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None):
+def choices(nodes):
+    """**골격 칸 판단의 후보**(B181 ②) — 닫힌 목록 노드마다 `{id, canonical, aliases, path}`(부모 경로 — 위에서부터 · 스냅샷의
+    `parent` 링크로 · 문자열 파싱 0) · `(후보들, id → 노드)`. id가 없는 목록(킷)은 canonical이 id다."""
+    by_canon = {n["canonical"]: n for n in nodes}
+    out, by_id = [], {}
+    for n in nodes:
+        up, cur, seen = [], by_canon.get(n.get("parent")), set()
+        while cur is not None and cur["canonical"] not in seen and len(up) < MAX_UP:
+            seen.add(cur["canonical"])
+            up.append(cur["canonical"])
+            cur = by_canon.get(cur.get("parent"))
+        nid = n.get("id") or n["canonical"]
+        out.append({"id": nid, "canonical": n["canonical"], "aliases": list(n.get("aliases") or []),
+                    "path": list(reversed(up))})
+        by_id[nid] = n
+    return out, by_id
+
+
+def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None):
     """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생.
-    `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다."""
+    `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다.
+    `judged`(이번에 판단한 표기 — B181 ①)는 그 표기의 행마다 `meta.coord_judge {표기: 답 꼴}`로 남는다(대장의 곳 · 보류 큐의 후보)."""
     out = []
     for i, (p, ref) in enumerate(zip(pieces, refs)):
         r = dict(p)
+        if ref and (judged or {}).get(ref):
+            r["meta"] = {**(r.get("meta") or {}), "coord_judge": {ref: judged[ref]}}
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
         # `electrode_type`을 달고 들어온다. 어댑터가 좌표를 못 뽑는 계열(기본
@@ -657,6 +688,9 @@ def _fold_back(pieces, owner, refs, rows, ref_field):
                  **({"source": (e.get("meta") or {}).get("coord_tag_source")} if e.get(ref_field) != ref else {})}
                 for ref, e in got]
         moved = [(tg, e) for tg, (_ref, e) in zip(tags, got) if "source" in tg]
+        cj = {k: x for _ref, e in got for k, x in ((e.get("meta") or {}).get("coord_judge") or {}).items()}
+        if cj:
+            m["coord_judge"] = cj
         if moved:
             m["coord_tags"] = tags
             m.update(coord_tag_source=moved[0][0]["source"], coord_tag_from=moved[0][0]["from"])

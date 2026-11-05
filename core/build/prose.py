@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from core.state.bootstrap import COORD_CATEGORY
+from core.build.build_coord import coord_judged, judge_cells
 from core import matcher
 from core.build import loop
 from core.build.build import Builder
@@ -43,7 +44,7 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
         _loc = src.get("source_locator")
         prov = f"{env['doc_id']}#{_loc}" if _loc else cid
         # **공정은 목록이다**(B125 ④) — 공정마다 anchor 행 하나(하나면 지금 그대로) · 주 좌표는 하나일 때만
-        res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"))
+        res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"), piece=src)
         for s, r_id, r_g, hold in res:
             # 상위·극성 대조는 구축 말미 한 자리(`coord_scan.enqueue` — 표와 같은 함수 · B105 ③④)
             # **정직한 anchor 행**(B102 ⑦) — 빈 좌표는 「좌표 없음」(큐 없음) · 목록 밖 이름만 orphan_anchor
@@ -54,7 +55,7 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
                          verdict="anchor" if r_id else ("orphan" if s else "pending"),
                          node_id=r_id,
                          queue_kind=None if (r_id or not s) else "orphan_anchor",
-                         hold=None if r_id else hold)
+                         hold=None if r_id else hold, **judge_cells(coord_judged(src, s)))
         # 골격 이름 제목 아래면 그 골격 노드로 내린다(B150 ② — 내리기만 · 봉투는 그대로 · anchor 행은 봉투의 좌표)
         low = heading.coord_below(b, landed, outline, src)
         ref, ref_g = low or b.main_coord(res)

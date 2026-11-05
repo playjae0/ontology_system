@@ -122,6 +122,19 @@ def _entity_surfaces(env, schema):
     return out
 
 
+def _closed_surfaces(env, schema):
+    """**닫힌 분류의 표기**(B181 ① — 판정 예고) — 좌표 층 밖 골격을 가리키는 anchor 칸의 값 `[(표기, 카테고리)]` · LLM 0."""
+    fields = (schema or {}).get("fields") or {}
+    out = []
+    for rec in env.get("records") or []:
+        for f, spec in fields.items():
+            cat = (spec or {}).get("target_category") or COORD_CATEGORY
+            v = rec.get(f)
+            if (spec or {}).get("role") == "anchor" and cat != COORD_CATEGORY and isinstance(v, str) and v.strip():
+                out.append((v.strip(), cat))
+    return out
+
+
 def plan_mention(rec, f, fields, owners):
     """레코드 한 칸의 **판정 재료** — 표기 · 열 · 카테고리 · 좌표 · 축값 · 소유자(B74 ① · B144 ②) · 값이 비었으면 None.
     예고와 등록 관문의 기수(G4L — `core/build/cardinality` · B166)가 같은 재료를 쓴다."""
@@ -202,11 +215,13 @@ def _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=None)
                          parent=parent, cfg=eb.cfg, place=place)[0], key
 
 
-def decision_plan(mentions, refs, layer):
+def decision_plan(mentions, refs, layer, closed=()):
     """**판정 예고** — 부르기 전에 몇 번 부를지 센다 (B72 ② · B74 ① · B22의 정신).
 
-    넷을 센다: ①판정에 올라가는 **값의 수**(행 × entity 열) ②문서 내 중복을 제외한
-    표기 종수 ③그중 **사전이 이미 아는 것**(값 단위 — 판정과 같은 키) ④골격 밖 좌표(좌표 층의 골격으로 — B177 ②).
+    다섯을 센다: ①판정에 올라가는 **값의 수**(행 × entity 열) ②문서 내 중복을 제외한
+    표기 종수 ③그중 **사전이 이미 아는 것**(값 단위 — 판정과 같은 키) ④골격 밖 좌표(좌표 층의 골격으로 — B177 ②)
+    ⑤닫힌 분류 판단의 상한(B181 ① — `closed` `[(표기, 카테고리)]` 중 사전이 그 카테고리 골격 노드로 답하지 않는 표기 종수 ·
+    같은 표기는 문서에 한 번 묻는다).
 
     **상한은 ① − ③이다**: 개체 판정은 **행마다** 돈다(같은 표기라도 부모 좌표가
     다르면 다른 노드다). 사전 히트는 `match`가 exact로 끊으므로 호출이 없고, 그
@@ -248,9 +263,18 @@ def decision_plan(mentions, refs, layer):
                 if nid in cg.nodes
                 and (cg.get(nid) or {}).get("status") in ("seed", "confirmed")]:
             out_of_list.append(n)
+    from parser.namefold import key as _fold
+    closed_ask, hgs = set(), {}
+    for s, cat in closed:
+        if cat not in hgs:
+            hgs[cat] = open_graph(b.home_of(cat)) if b.home_of(cat) != layer else g
+        hg = hgs[cat]
+        if not [nid for nid in dic.lookup(s) if (hg.get(nid) or {}).get("category") == cat
+                and (hg.get(nid) or {}).get("status") in ("seed", "confirmed")]:
+            closed_ask.add((cat, _fold(s)))
     return {"단계": "판정예고", "값_수": vals, "표기_종수": len(kinds),
             "사전_히트": hits, "예상_호출": max(0, vals - hits),
-            "목록밖_좌표": len(out_of_list)}
+            "목록밖_좌표": len(out_of_list), "닫힌_분류": len(closed_ask)}
 
 
 def doc_queue_summary(doc_id, new_only=False):
@@ -415,7 +439,7 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
             # **판정 전에** 예고한다 — 쓰고 나서 알면 결정할 것이 없다(B22).
             notice(decision_plan(_entity_surfaces(env, schema),
                                  [r.get("process_ref") for r in env.get("records") or []
-                                  if r.get("process_ref")], layer))
+                                  if r.get("process_ref")], layer, closed=_closed_surfaces(env, schema)))
         builder = table_mod.build_table(env, cfg, schema, graph, defer_save=True)
     else:
         _land_hierarchy(env)

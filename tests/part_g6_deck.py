@@ -503,7 +503,7 @@ _q151 = [q for q in store.read(store.QUEUE, []) if q.get("doc_id") == "B151D"]
 _mis = {(q.get("payload") or {}).get("provenance", "").split("#")[-1] for q in _q151 if q.get("kind") == "coord_mismatch"}
 _orp = [q for q in _q151 if q.get("kind") == "orphan_anchor"]
 _ASK = []
-_rp, _ep, _cp, _mp = _p151("B151P", P151, A151, pick=lambda ref, cands: (_ASK.append(ref), "스태킹" if ref == "스태킹 공정" else None)[1])
+_rp, _ep, _cp, _mp = _p151("B151P", P151, A151, pick=lambda ref, cands, **_k: (_ASK.append(ref), {"type": "match", "confidence": 0.9, "matched_id": next(c["id"] for c in cands if c["canonical"] == "스태킹")} if ref == "스태킹 공정" else {"type": "new", "matched_id": None, "confidence": 0.9})[1])
 _s7 = _sl(_ep, 7)
 show("B151 ⓓ 공정 걸기(문서 좌표 「노칭」) — 슬라이드 4는 3을 이어 「스태킹」 · 태깅에서 골격에 맞음 · 문서 좌표 밖이라 coord_mismatch에 "
      "그 슬라이드들 · 골격 · 별칭에 없는 「스태킹 공정」은 ⑨ 없는 mock에서 그대로 → orphan_anchor 큐 · ⑨ 주입이면 같은 표기를 한 번 묻고 "

@@ -77,7 +77,7 @@ POINTS = {
     "link": "⑥질의 링킹 (사전 스캔 → LLM 폴백 → 임베딩 훅 3단)",
     "struct_map": "⑦구조 지도 패스",
     "answer": "⑧답변 생성",
-    "coord_tag": "⑨좌표 태깅 (닫힌 목록 선택 또는 null)",
+    "coord_tag": "⑨좌표 태깅 (골격 칸 — 같은지 판단 · 판정 지시문 · 같다 · 다르다 · 애매)",
     "sheet_role": "⑩시트 역할 판정 (prose/ref + 이유 — 시트 이름 · 표본 줄만 · 층 어휘 0)",
     "outline": "⑪문서 구조 · 목차 노드화 (사다리 · 시트 확인 · 덱 — 층 0 · 목차 노드화 — 제목마다 이 층의 노드 · 카테고리)",
     "reinforce": "⑫연결 보강 (엣지 없는 개체 — 닫힌 후보 안에서 소속·관계 + 근거 문장)",
@@ -481,6 +481,10 @@ def prompt_for(name, cfgs, key):
         if isinstance(hint, str) and hint.strip():
             out += f"\n\n## 층 어휘 — {lay}\n{hint.strip()}"
     return out
+
+
+#: 지점 → 그 지점이 쓰는 지시문(이름이 다를 때만) — 골격 칸(좌표 태깅)은 같은지 판단 한 자리다(B181 ① — `3.4_judge`)
+PROMPT_OF = {"coord_tag": "judge"}
 
 
 def has_prompt(name):

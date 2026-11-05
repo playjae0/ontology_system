@@ -348,7 +348,7 @@ for _a79 in _AH79.ASSETS:
     _src = ROOT / _a79
     (_sh.copytree(_src, _root79 / _a79) if _src.is_dir() else
      (_root79 / _a79).parent.mkdir(parents=True, exist_ok=True) or _sh.copy2(_src, _root79 / _a79))
-_pr79 = _root79 / "prompts" / "2.8_coord_tag.md"
+_pr79 = _root79 / "prompts" / "2.8_image_summary.md"
 _keep79 = _pr79.read_bytes()
 try:
     _pr79.write_bytes(_keep79 + "\n<!-- 변이 -->\n".encode("utf-8"))
@@ -356,7 +356,7 @@ try:
 finally:
     _sh.rmtree(_root79, ignore_errors=True)
 show("지시문을 고치면 대조가 그 파일을 짚는다 (사내에서 고치지 않는 것을 기계가 잰다)",
-     _chg2 == ["prompts/2.8_coord_tag.md"] and not _AH79.diff()[0], str(_chg2))
+     _chg2 == ["prompts/2.8_image_summary.md"] and not _AH79.diff()[0], str(_chg2))
 
 # ── B78 3 — **코드 지도는 생성물이다** ────────────────────────────────
 # 손으로 쓴 구조 설명은 코드가 움직이면 낡고, 낡은 지도는 사람을 없는 자리로 보낸다.

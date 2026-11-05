@@ -265,7 +265,7 @@ print("\n■ 분기가 실물로 서 있는가 — 주석을 세지 않는다 (�
 
 # core 6지점 — **종전 방식 유지**(인라인 분기. 팩토리로 옮기는 것은 다음 회차)
 WIRED = {"extract": ("core/build/extract.py", "_candidates_for"),
-         "judge": ("core/matcher.py", "_judge_live"),
+         "judge": ("core/matcher.py", "judge"),
          "embed": ("core/llm/embeddings.py", "gateway.require"),
          "generate": ("cli/register/draft.py", "_draft_live"),
          "link": ("core/query/query.py", "_link_llm"),
@@ -300,7 +300,7 @@ _orig = (llm.use_mock, points.image_summarizer, points.coord_picker,
          struct_map_pass.struct_mapper)
 llm.use_mock = lambda: False
 points.image_summarizer = lambda: (lambda ref: "요약")
-points.coord_picker = lambda: (lambda s, c: None)
+points.coord_picker = lambda: (lambda s, c, **_k: None)
 struct_map_pass.struct_mapper = lambda: None    # ← ⑦ 배선을 뺀다
 try:
     _inj()

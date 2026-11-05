@@ -191,9 +191,10 @@ for form, lay, _cat in MATRIX:
     dt = ("cp" if lay == "process" else "pfmea") if form == "표" else "ppt_" + lay
     calls = []
 
-    def pick(ref, opts):
+    def pick(ref, cands, **_k):          # 판단 꼴(B181 ① · 고침)
         calls.append(ref)
-        return "노칭" if ref == LEARN else None
+        return ({"type": "match", "matched_id": next(c["id"] for c in cands if c["canonical"] == "노칭"), "confidence": 0.9}
+                if ref == LEARN else {"type": "new", "matched_id": None, "confidence": 0.9})
 
     def run_tag(doc):
         notes = []
@@ -266,7 +267,7 @@ show("ⓒ 새 공정 후보 — null 표기 · 행 · 문서가 show learned에 
 
 # ④ 별칭 출처 — 골격 · 좌표 학습 (골격 노드)
 _fresh()
-TG.tag([{"source_locator": "x", "process_ref": LEARN}], layer=coord_layer(), pick=lambda r, o: "노칭",
+TG.tag([{"source_locator": "x", "process_ref": LEARN}], layer=coord_layer(), pick=lambda r, c, **_k: {"type": "match", "confidence": 0.9, "matched_id": next(x["id"] for x in c if x["canonical"] == "노칭")},
        doc_type="cp", doc_id="DS")
 _sk = _show_node("노칭")
 _ok_d.append(("골격", coord_layer(), "← 골격" in _sk and f"{LEARN}  ← 좌표 학습(DS" in _sk,

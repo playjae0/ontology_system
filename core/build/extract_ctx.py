@@ -80,6 +80,30 @@ def around(text, surface, chars):
     return {"text": text[a:b], "span": [a, b]}
 
 
+#: 표 행에서 다시 묻기 원문에 싣지 않는 칸 — 위치 · 종류 · 메타(값이 아니다)
+_NOT_CELLS = ("source_locator", "doc_type", "meta")
+
+
+def row_cells(record, field, chars):
+    """**같은 행의 다른 칸**(B181 ③ — 표의 다시 묻기 원문) — `{"text": "칸: 값 · …", "span": []}` · 판단하는 칸(`field`)과 빈 칸 ·
+    위치 · 메타는 뺀다 · 칸마다 `chars // 칸 수`자(적어도 8자)로 잘라 합이 `chars` 근처 · 다른 칸이 없거나 `chars`가 0이면 None."""
+    if not chars or not isinstance(record, dict):
+        return None
+    cells = [(k, " ".join(str(v).split())) for k, v in record.items()
+             if k != field and k not in _NOT_CELLS and v not in (None, "", [], {}) and not isinstance(v, dict)]
+    if not cells:
+        return None
+    per = max(8, int(chars) // len(cells))
+    return {"text": " · ".join(f"{k}: {v[:per]}" for k, v in cells), "span": []}
+
+
+def source_of(piece, surface, field, chars):
+    """다시 묻기의 원문 한 자리 — 청크(글이 있다)면 그 표기 앞뒤(`around`) · 표의 행이면 같은 행의 다른 칸(`row_cells`)."""
+    if (piece or {}).get("text"):
+        return around(piece["text"], surface, chars)
+    return row_cells(piece, field, chars)
+
+
 def place(chunk):
     """**위치 두 칸**(B118 ③) — `(시트, 청크)`: 시트 이름(없으면 빈칸) · 청크 = **경로 끝 제목**(경로가 없으면 조각의 구획
     · 그것도 없으면 위치). 가운데 경로는 생략한다 — 전체는 라벨(`chunk_label`)이 들고 명령 로그에 그대로다.

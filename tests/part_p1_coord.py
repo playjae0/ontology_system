@@ -139,9 +139,12 @@ def _pieces69(refs):
 
 
 def _picker69(log, answer=None):
-    def pick(ref, choices):
+    def pick(ref, cands, **_k):          # 판단 꼴(B181 ① — 같다 · 다르다 · 고침: 옛 꼴은 이름 또는 None)
         log.append(ref)
-        return answer
+        if not answer:
+            return {"type": "new", "matched_id": None, "confidence": 0.9}
+        return {"type": "match", "matched_id": next((c["id"] for c in cands if c["canonical"] == answer), answer),
+                "confidence": 0.9}
     return pick
 
 

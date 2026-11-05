@@ -91,6 +91,11 @@ STATS = {"판정": 0, "사전": 0, "경로": 0, "스코프": 0, "관문끝": 0, 
 #: 묻는다 · 0이면 끈다(사내 손잡이 `judge_context_chars` · 창작 기본값). 비용은 불확실 수에 비례한다.
 JUDGE_CONTEXT_CHARS = 80
 
+
+def context_chars():
+    """다시 묻기의 원문 글자 상한 — 세 곳 · 산문 · 표가 이 값 하나(B181 ③)."""
+    return JUDGE_CONTEXT_CHARS
+
 # 진행 콜백 — 호출부가 꽂는다(기본 없음). **판정 중에도 비용이 보인다**(사용자
 # 요청 2026-09-16): 좌표 태깅 진행 줄(B69 ②)과 같은 결이고, 자리는 부르는 자리다.
 PROGRESS = None
@@ -443,7 +448,7 @@ def match(surface, candidates, category, cfg=None, *, where=None):
         PROGRESS(dict(STATS))
 
     if not gateway.use_mock():
-        return _judge_live(surface, pool, category, cfg, path=path, where=where)
+        return judge(surface, pool, category, cfg, path=path, where=where)
     gateway.mock("judge", f"'{surface}' vs 후보 {len(pool)}")
 
     best, score = None, 0.0
@@ -473,52 +478,56 @@ def _pool(candidates, category):
             if c.get("category") == category or category in (c.get("also") or ())]
 
 
-def second(surface, cands, category, cfg, v1, sentence, where=None):
+def second(surface, cands, category, cfg, v1, sentence, where=None, *, point="judge", place=None):
     """**2차 판정**(B123 ③) — 1차 `v1`이 불확실이고 문장이 있을 때만 · 같은 후보 · 같은 계약(후보 밖 id 버림 · 임계)으로 그 표기가 나온 문장 `sentence = {"text", "span"}`을 붙여 한 번 더 묻는다.
 
     **매칭만 바꾼다** — 2차가 매칭이면 그 노드 · 불확실이거나 새 것이면 1차 그대로(신규 + `uncertain_match` — 사람이
     본다 · 비대칭 그대로). 돌려주는 판정에 `second {was, now, span}`이 실린다(대장의 단계 · 근거 문장 자리).
-    mock은 문장을 읽지 않는다 — 판정 없음(1차 그대로 · 표지 0 · 수에 들지 않는다)."""
+    mock은 문장을 읽지 않는다 — 판정 없음(1차 그대로 · 표지 0 · 수에 들지 않는다). 세 곳이 이 함수 하나(B181 ③ — `place`가
+    골격 칸 · 닫힌 분류면 판정 계측 `STATS`에 들지 않는다 · 그 수는 대장 행이 센다)."""
     pool = _pool(cands, category)
     if v1.get("type") != UNCERTAIN or not sentence or not sentence.get("text") or not pool \
-            or not JUDGE_CONTEXT_CHARS or gateway.use_mock():
+            or not context_chars() or gateway.use_mock():
         return v1
-    STATS["2차"] += 1
-    v2 = _judge_live(surface, pool, category, cfg, path=v1.get("path"), sentence=sentence["text"], where=where)
+    if place is None:
+        STATS["2차"] += 1
+    v2 = judge(surface, pool, category, cfg, path=v1.get("path"), context=sentence["text"], where=where, point=point)
     got = v2.get("type") == MATCH
-    if got:
+    if got and place is None:
         STATS["2차바뀜"] += 1
     out = dict(v2) if got else dict(v1)
     out["second"] = {"was": v1.get("type"), "now": v2.get("type"), "span": list(sentence.get("span") or [])}
     return out
 
 
-def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None, where=None):
-    """지점 ② 개체 동일성 판정의 실호출 갈래 — **반환 계약이 mock과 같다.**
+def judge(surface, pool, category, cfg=None, *, path=None, context=None, where=None, point="judge"):
+    """**같은지 판단 한 자리**(B181 ① — 골격 칸 · 닫힌 분류 · 개체가 이 함수 하나) — 실호출 갈래 · **반환 계약이 mock과 같다.**
 
-    입력은 `mention` + 후보들이고 후보 하나는 `canonical`·`aliases`·부착 위치·
-    `category`로 구성한다(문서 4 §4.3-6). 정의문과 비대칭 기준은 층 config가
-    프롬프트로 주입하는데, 그 주입 통로는 별개 갭 항목이다 — 여기서는 이음매를
-    세우고 후보 형태와 반환 계약을 지킨다.
+    답 꼴은 `{"type": match | new | uncertain, "matched_id", "confidence"}`(같다 · 다르다 · 애매 — 문서 4 §4.3-6) · 지시문은
+    `3.4_judge` 하나(층 어휘는 그 층 config `prompts.judge`가 실행 시 덧붙는다 — B9) · 문턱은 손잡이 `match_threshold` 하나.
+    입력 재료도 세 곳이 같다 — `mention` · `category` · `definition`(그 카테고리의 정의문 — `catalog.definition`) · `candidates`
+    (후보마다 `canonical` · `aliases` · `path` …) · 값의 경로가 있으면 `path` · 다시 묻기면 `context`(원문 — 산문은 그 표기 앞뒤 ·
+    표는 같은 행의 다른 칸). `point`는 비용을 세는 지점 이름이다(골격 칸 `coord_tag` · 그 밖 `judge` — 함수 · 지시문은 같다).
 
-    **판정기가 후보 밖의 id를 답하면 버린다.** 모델이 지어낸 id가 엣지 끝점이
-    되면 그래프에 없는 노드를 가리키는 엣지가 선다.
-
-    `sentence`(2차 — B123 ③)가 있으면 입력에 `context`(그 표기가 나온 문장)가 더해진다 · `where`(B142 ② — 값의 경로:
-    공정부터 가장 가까운 소유자까지)가 있으면 `path` — 후보는 저마다 `path` · `path_relation`을 진다 · 계약은 그대로다.
+    **판정기가 후보 밖의 id를 답하면 버린다**(애매) — 모델이 지어낸 id가 엣지 끝점이 되면 그래프에 없는 노드를 가리키는 엣지가
+    선다 · 같다의 확실도가 문턱 아래면 애매다.
     """
     ids = {c["id"] for c in pool}
-    body = {"mention": surface, "category": category, "candidates": pool}
+    body = {"mention": surface, "category": category}
+    d = _definition(category)
+    if d:
+        body["definition"] = d
+    body["candidates"] = pool
     if where:
         body["path"] = where
-    if sentence:
-        body["context"] = sentence
+    if context:
+        body["context"] = context
     out = gateway.chat(
         # **지시문은 파일이 정본이다**(§7.6-B-5). 층 어휘(정의문·비대칭 기준)는
         # config `prompts.judge`가 소유하고 실행 시 조립된다(B9).
         [{"role": "system", "content": gateway.prompt_for("judge", {(cfg or {}).get("layer") or "-": cfg}, "judge")},
          {"role": "user", "content": json.dumps(body, ensure_ascii=False)}],
-        json_schema=JUDGE_SCHEMA, point="judge")
+        json_schema=JUDGE_SCHEMA, point=point)
     vtype = out.get("type")
     mid = out.get("matched_id")
     conf = float(out.get("confidence") or 0.0)
@@ -540,6 +549,39 @@ def _judge_live(surface, pool, category, cfg=None, *, path=None, sentence=None, 
             "matched_id": mid if vtype == MATCH else None,
             "confidence": conf, "path": path,
             "nearest_id": mid if (vtype == UNCERTAIN and mid in ids) else None}
+
+
+def _definition(category):
+    from core.state import catalog
+    try:
+        return catalog.definition(category)
+    except catalog.CatalogError:
+        return ""
+
+
+def decide(surface, pool, category, cfg=None, *, where=None, sentence=None, point="judge", place=None):
+    """**골격 칸 · 닫힌 분류의 판단**(B181 ① ③) — 사전(이름 · 별칭 · 표기 대조)이 답하지 않은 표기를 `judge` 한 번 · 애매면 원문으로
+    한 번 더(`second` — 개체와 같은 함수) · 돌려주는 것은 개체 판정과 같은 꼴 dict(+ `second`). **mock은 None**(부르지 않는다 —
+    두 곳의 mock 갈래는 정확 일치뿐 · 지금 그대로) · 후보 0도 None(다르다로 끝 — LLM 0)."""
+    if gateway.use_mock() or not pool:
+        return None
+    v = judge(surface, pool, category, cfg, where=where, point=point, path="none")
+    v = second(surface, pool, category, cfg, v, sentence, where=where, point=point, place=place)
+    if v.get("type") == UNCERTAIN:            # 보류 큐에 실을 후보(이름) — 판단이 가장 가깝다고 한 것이 먼저 · 위 다섯
+        near = v.get("nearest_id")
+        v["candidates"] = ([c["canonical"] for c in pool if c["id"] == near]
+                           + [c["canonical"] for c in pool if c["id"] != near])[:HELD_TOP]
+    return v
+
+
+#: 애매 보류 큐에 싣는 후보 이름의 수(골격 칸 · 닫힌 분류 — B181 ①)
+HELD_TOP = 5
+
+
+def held(v):
+    """보류 큐 payload의 판단 재료 `{type, confidence, candidates}`(B181 ① — `decide`의 답 · 애매만 후보가 있다)."""
+    return {"type": v.get("type"), "confidence": round(float(v.get("confidence") or 0.0), 4),
+            "candidates": list(v.get("candidates") or [])}
 
 
 def _evidence(v, cands):
@@ -565,7 +607,7 @@ def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, p
               place=None, pre=None):
     """**재생의 불확실에 2차만 한 번**(B127 ① — 지난 대장에 2차 기록이 없는 불확실 행) — 지금 후보 · 같은 계약(`second`) ·
     돌려주는 것은 `resolve`와 같은 튜플(경로는 `replay` 그대로 · `second.replay`) 또는 None(부르지 않았다 — 재생 그대로)."""
-    if not sentence or not sentence.get("text") or not JUDGE_CONTEXT_CHARS or gateway.use_mock():
+    if not sentence or not sentence.get("text") or not context_chars() or gateway.use_mock():
         return None
     from core.state.bootstrap import load_config
     cfg = load_config(layer)
