@@ -153,7 +153,11 @@ def retry_orphans(layers=None):
     healed = {k: 0 for k in RETRY_KINDS + (COORD_HOLD,)}
     # **결과를 버리지 않는다**(B99 ⑥) — 대상 · 그래프·골격·사전 그대로라 건너뜀 · 상한 도달 · 연결 · 남음 · 바퀴(B113 ③)
     LAST.clear()
-    LAST.update(target={}, same=0, capped=0, healed=healed, left=0, rounds=[], cut=False)
+    LAST.update(target={}, same=0, capped=0, healed=healed, left=0, rounds=[], cut=False,
+                guess={"되돌림": 0, "다시 붙음": 0})
+    # **자리 추정이 깨졌나**(B183 ② — 같은 이름이 다른 노드에도 섰으면 그 행의 출처를 걷고 보류로 · LLM 0) — 바퀴 앞에 한 번
+    from core.build import place_guess
+    LAST["guess"]["되돌림"] = place_guess.recheck(graphs, cfgs, dic, _builder, _guess_row)
     tried = set()
     for k in range(max(1, int(RELINK_ROUNDS))):
         got = _sweep(graphs, cfgs, dic, healed, tried, first=(k == 0))
@@ -252,6 +256,7 @@ def line():
             + (f"({kinds})" if kinds else "")
             + f" · 붙음 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}" + (f"({left})" if left else "")
             + f" · 그래프·골격·사전 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
+            + _guess_text(LAST.get("guess"))
             + (" · 바퀴 상한에서 멈춤(더 붙을 수 있다 — 다음 인입 또는 python run.py ops relink)"
                if LAST.get("cut") else "")
             + _dist_text(LAST.get("dist")))
@@ -283,6 +288,21 @@ def rounds_text():
     """바퀴마다 `바퀴 i — 대상 n · 붙음 m · 건너뜀 s` (손 명령 `ops relink`의 끝 줄들)."""
     return [f"바퀴 {i} — 대상 {r['대상']:,} · 붙음 {r['붙음']:,} · 건너뜀 {r['건너뜀']:,} · 상한 {r['상한']:,}"
             for i, r in enumerate(LAST.get("rounds") or [], 1)]
+
+
+def _guess_text(g):
+    """「 · 자리 추정 되돌림 n · 다시 붙음 m」(B183 ③) — 둘 다 0이면 빈 문자열."""
+    if not g or not any(g.values()):
+        return ""
+    return f" · 자리 추정 되돌림 {g['되돌림']:,} · 다시 붙음 {g['다시 붙음']:,}"
+
+
+def _guess_row(did, prov, d, lay, b, nid):
+    """자리 추정의 재연결 한 행(B183 ②) — 그 문서 대장의 같은 키 행을 갈아 끼우고(`_ledger` — by retry) · 산문 조각 값이 붙었으면
+    그 조각의 `describes`(표의 열 값은 열 · 행이 잇는다)."""
+    _ledger(did, prov, d, lay, b)
+    if nid and not d.get("field") and prov and str(prov).startswith(f"{did}#"):
+        _describe_revived(did, str(prov)[len(did) + 1:], nid)
 
 
 def _dist_text(d):
@@ -535,8 +555,11 @@ def _retry_coord_hold(pl, item, graphs, cfgs, dic):
     from core.state.bootstrap import COORD_CATEGORY
     did = item.get("doc_id")
     coord = (_doc_coords().get(did) or {}).get("coord")
-    if not coord:
-        return False                                    # 문서 좌표 기록이 없다 — 남긴다
+    if not coord:                                       # 문서 좌표 기록이 없다 — 자리 추정의 다시 붙음만(B183 ② · 표지 있는 재료 · LLM 0)
+        from core.build import place_guess
+        n = place_guess.reattach(pl, item, graphs, cfgs, dic, _builder, _guess_row)
+        LAST.setdefault("guess", {"되돌림": 0, "다시 붙음": 0})["다시 붙음"] += n
+        return bool(n)
     ref, rlay, rg = _tier1(coord, COORD_CATEGORY, graphs, dic)
     if ref is None:
         return False

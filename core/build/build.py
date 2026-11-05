@@ -395,9 +395,10 @@ class Builder(CoordMixin):
                          "queue_kind": "invalid_category", "node_id": None}
             return None
         # **좌표 없는 스코프 개체 0**(B102 ⑤ · 문서 4 §4.4) — 이름 규칙 카테고리인데 부모 좌표가 없으면
-        # 노드를 만들지 않고 판정도 부르지 않는다(LLM 0). 재료는 큐가 든다. 표·산문·렌즈가 이 자리를 지난다.
+        # 노드를 만들지 않는다. 자리를 아예 말하지 않은 값만 자리 추정(B183 — 같은 것이 하나면 그 노드) · 재료는 큐가 든다.
         if category in scope_categories(self.cfg) and not parent_canonical:
-            return self._no_coord(surface, category, prov, coord_surface, belongs)
+            return self._no_coord(surface, category, prov, coord_surface, belongs,
+                                  guess=dict(electrode_type=electrode_type, row=row, field=field, at=at))
         canonical, polarity, scoped, scoped_category = entity_key(
             surface, category, self.cfg, electrode_type=electrode_type,
             parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
@@ -477,9 +478,10 @@ class Builder(CoordMixin):
         self.last["node_id"] = nid
         return nid
 
-    def _no_coord(self, surface, category, prov, coord_surface, belongs):
-        """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 `missing_field`(키 `process_ref`) ·
-        목록 밖 좌표 이름이면 그 표기의 `orphan_anchor` 항목에 행으로(새 kind 0 · B56)."""
+    def _no_coord(self, surface, category, prov, coord_surface, belongs, guess=None):
+        """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 먼저 자리 추정(B183 — `place_guess.attach` · 표와 같은 함수 ·
+        붙으면 그 노드 id) · 못 붙으면 `missing_field`(키 `process_ref` · 재료의 표지 `guess`) · 목록 밖 좌표 이름이면 그 표기의
+        `orphan_anchor` 항목에 행으로(새 kind 0 · B56)."""
         from core.state.bootstrap import COORD_CATEGORY
         # 재료의 모양은 표의 연쇄 드롭과 같다(재시도 `_land_anchor_entry`가 같은 손으로 되살린다)
         item = {"surface": surface, "category": category, "target_layer": self.layer,
@@ -509,12 +511,12 @@ class Builder(CoordMixin):
                                 **({"candidates": cands} if why else {}),
                                 "dropped_entities": [item]}, locator=loc)
         else:
-            kind = "missing_field"
-            store.enqueue_rows(kind, f"좌표(process_ref)가 비어 '{surface}'({category})를 만들지 않았다 — "
-                                     f"문서 좌표(--coord) 또는 시트·제목의 공정 이름",
-                               self.doc_id, "process_ref",
-                               {"field": "process_ref", "provenance": prov,
-                                "dropped_entities": [item]}, locator=loc)
+            from core.build import place_guess
+            nid = place_guess.attach(self, surface, category, prov, **(guess or {}))
+            if nid:
+                return nid
+            place_guess.hold(self.doc_id, prov, dict(item, guess=place_guess.mark(self.last)))
+            return None
         self.last = {"canonical": surface, "verdict": "pending", "path": "none", "confidence": 0.0,
                      "layer": self.layer, "queue_kind": kind, "candidates_n": 0, "node_id": None,
                      "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}

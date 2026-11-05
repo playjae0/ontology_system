@@ -40,7 +40,8 @@ _KEYS = ("locator", "field", "role", "surface", "canonical", "layer", "path",
          "apart",                         # 같은 이름 · 다른 소유자 아래 노드(B142 ⑥ — 이름 · 위 5)
          "basis",                         # 근거 지문 — 판정에 오른 값의 후보 이름 · 지시문 판 · 임계 해시(B167 ② · `replay.basis`)
          "place", "answer", "asked",      # 곳 · 같은지 판단의 답 · 판단에 올린 표기 — 골격 칸 · 닫힌 분류의 판단을 지난 anchor 행만(B181 ① ⑥ · 개체 행은 역할이 곳)
-         "made")                          # 이 행에서 잠정 골격 노드를 세웠다 `{answer, parent, queue}`(B182 ③ — 세운 행만)
+         "made",                          # 이 행에서 잠정 골격 노드를 세웠다 `{answer, parent, queue}`(B182 ③ — 세운 행만)
+         "guess")                         # 자리 추정의 사실 `{n, why?, candidates?, cut?}`(B183 — 자리 없는 값만 · 붙으면 경로 `place_guess`)
 
 
 # 행 콜백 — 호출부가 꽂는다(기본 없음). **화면은 대장의 투영이다**(B81 ①):
@@ -110,7 +111,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
         blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, basis=None,
-        place=None, answer=None, asked=None, made=None):
+        place=None, answer=None, asked=None, made=None, guess=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -153,7 +154,9 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 곳 · 같은지 판단의 답(B181 ① ⑥ — 골격 칸 · 닫힌 분류의 판단을 지난 anchor 행만)
                  ("place", place), ("answer", answer), ("asked", asked),
                  # 이 행에서 잠정 골격 노드를 세웠다(B182 ③ — 세운 행만 · 맞춤표 「잠정 골격 노드」 줄이 센다)
-                 ("made", made)):
+                 ("made", made),
+                 # 자리 추정(B183 — 자리 없는 값만 · 후보 수 · 못 붙인 사유 · 후보 · 상한에 잘림)
+                 ("guess", guess)):
         if v is not None:
             r[k] = v
     return r
@@ -171,7 +174,8 @@ def judged(last, *, locator, field, surface, layer, target):
                 emb_top=last.get("emb_top"), nearest=last.get("nearest"),
                 target=target, category=last.get("category"), scope=last.get("scope"),
                 replay=last.get("replay"), judge2=last.get("judge2"),
-                apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"))
+                apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"),
+                place=last.get("place"), answer=last.get("answer"), guess=last.get("guess"))   # 자리 추정(B183)
 
 
 def put_row(doc_id, new, old=None):

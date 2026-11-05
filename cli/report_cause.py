@@ -182,14 +182,16 @@ def causes(mat, layer=None):
     groups, taken = {}, set()
 
     rk = {i: kind_of(r) for i, r, _s in vals}
+    guessed = {i for i, r, _s in vals if r.get("guess") is not None and not r.get("node_id")}   # 자리 추정이 못 붙인 값(B183 ③)
 
     def put(kind, what, i, loc, fix):
         """한 행(또는 큐 항목 · 끝점 하나)을 그 원인에 — `i`가 행 차례(정수)면 행으로 세고 아래 원인에서 다시 세지 않는다."""
         g = groups.setdefault((kind, what), {"원인": kind, "못 찾은 것": what, "행": 0, "종류": Counter(), "밖": 0,
-                                             "위치": [], "처방": fix})
+                                             "위치": [], "처방": fix, "추정": 0})
         if isinstance(i, int):
             g["행"] += 1
             g["종류"][rk[i]] += 1
+            g["추정"] += int(i in guessed)
             taken.add(i)
         else:
             g["밖"] += 1
@@ -332,8 +334,11 @@ def cause_lines(cs, limit=None, mat=None, layer=None):
             from core.build.reconcile import near_coords
             nc = near_coords(mat["env"].get("source_path"), mat["skeleton"])
             near = " · 가까운 골격 이름(보여만 준다): " + (" · ".join(nc) if nc else "없음")
+        # 상위를 못 찾음(B183 ③ · 기준서 2.8) — 문서 · 목차 단위로 묶인 자리 없는 값 중 자리 추정도 못 붙인 것
+        up = (f" · 상위를 못 찾음 — 문서 파악 문제일 수 있음(자리 추정 보류 {g['추정']:,})"
+              if g.get("추정") and g["원인"] in (DOC, SECTION) else "")
         out.append(f"    {g['원인']} — {_screen.cut(str(g['못 찾은 것']), 60)} · {CHECK} {g['행']:,}"
-                   f"({_kinds_text(g['종류'])}){tail}{near}")
+                   f"({_kinds_text(g['종류'])}){tail}{near}{up}")
         out.append(f"      ▶ {g['처방']}")
     if limit is not None and len(cs) > limit:
         out.append(f"    … 외 {len(cs) - limit:,}")

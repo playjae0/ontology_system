@@ -180,7 +180,7 @@ def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False, ask_
 MARKS = {"붙음": "✓", "새로 생김": "+", "그래프에 없음": "✗", "노드 아님": "↗"}
 
 #: 경로 → 짧은 이름. 화면이 경로를 다시 해석하지 않는다(대장의 값 그대로).
-PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "path_compat": "경로", "scope+judge": "스코프",
+PATH_SHORT = {"skeleton": "스코프", "dictionary": "사전", "path_compat": "경로", "place_guess": "자리 추정", "scope+judge": "스코프",
               "embedding+judge": "임베딩", "overlap+judge": "겹침", "self_coord": "자기 좌표",
               "memo": "기억", "replay": "재생", "none": "—"}
 

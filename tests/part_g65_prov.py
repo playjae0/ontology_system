@@ -161,7 +161,7 @@ show("②ⓑ 좌표가 둘 다 null이면 missing_field 1건",
      _b57_mf[0]["reason"][:44] if _b57_mf else str(_b57_q3))
 _b57_pl = _b57_mf[0]["payload"] if _b57_mf else {}
 show("②ⓑ payload에 **드롭된 entity 표면형**이 실려 있다 (재시도의 재료)",
-     any(e.get("surface") == "노칭 프레스"
+     any(e.get("surface") == "사다리시험"   # 기대 변경(B183 — 그래프에 하나뿐인 「노칭 프레스」는 자리 추정으로 붙고 · 같은 이름이 없는 값이 재료로 남는다)
          for e in (_b57_pl.get("dropped_entities") or [])),
      str([e.get("surface") for e in (_b57_pl.get("dropped_entities") or [])])[:56])
 show("②ⓑ payload에 dropped_edges·pending_attrs도 함께 실린다",
