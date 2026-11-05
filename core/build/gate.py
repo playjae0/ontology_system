@@ -183,7 +183,7 @@ def _node_in(world, nid):
 def parent_edge(nid, *graphs):
     """**부모 엣지**(B180 ①) — 그 노드를 아래 끝으로 둔 위아래 쌍 엣지(두 끝 카테고리(주 ∪ 겸) · 관계 · 방향이 공통 config의 쌍과
     같다)가 **층 전부**(`_world` — 넘겨받은 그래프 · 이 실행이 쓰는 그래프 · 나머지는 읽기 전용 사본)에 있나 — `(관계, 위 노드 id,
-    위 canonical, 위가 출발인가)` 또는 None · 사람이 지운 엣지는 세지 않는다. 위치 폴백(좌표 · 제목 사슬)은 이것이 None일 때만 선다."""
+    위 canonical, 위가 출발인가)` 또는 None · 사람이 지운 엣지 · 근거(출처) 0 엣지는 세지 않는다. 위치 폴백(좌표 · 제목 사슬)은 이것이 None일 때만 선다."""
     from core.graph import STATUS_DELETED
     from core.state import catalog
     world = _world(*graphs)
@@ -197,8 +197,8 @@ def parent_edge(nid, *graphs):
         up_src = p.get("src") == "upper"
         for lay in sorted(world):
             for e in _node_edges(world[lay]).get(nid) or ():
-                if e["rel"] != p["rel"] or e.get("status") == STATUS_DELETED:
-                    continue
+                if e["rel"] != p["rel"] or e.get("status") == STATUS_DELETED or not e.get("provenance"):
+                    continue                        # 지운 엣지 · 근거 0 엣지(다시 넣기의 회수가 출처를 걷었다)는 부모가 아니다
                 other = e["src"] if up_src and e["dst"] == nid else (e["dst"] if not up_src and e["src"] == nid else None)
                 up = _node_in(world, other) if other else None
                 if up and p["upper"] in _categories(up):
