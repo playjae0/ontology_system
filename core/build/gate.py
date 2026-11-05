@@ -36,6 +36,8 @@
 """
 from __future__ import annotations
 
+import weakref
+
 from core.state import store
 
 COMMIT = "commit"
@@ -125,8 +127,20 @@ def _judge_also(s, rel, d, cfg, path, verdict, pat=None):
 COEXIST = []
 #: 반대 방향 판정의 범위 — 이 실행이 쓰는 그래프(층 → 살아 있는 사본) · 나머지 층은 읽기 전용 사본(`GraphStore.snapshot`)
 _LIVE = {}
-#: 그래프마다 엣지 색인 — 층 → `{g, n, map}`(엣지 목록은 빌드 동안 뒤에만 붙는다 — 늘어난 몫만 더한다)
+#: 그래프마다 엣지 색인 — 층 → `{g, n, map, node}`(엣지 목록은 빌드 동안 뒤에만 붙는다 — 늘어난 몫만 더한다)
 _IDX = {}
+#: 이번 실행의 **다른 층의 같은 엣지에 출처만 더함**(B180 ②) — 문서 끝 결과가 그 문서 몫을 읽는다(`entry._result`)
+SHARED = []
+#: 그래프 → 그 그래프를 쓰는 손의 「층 열기」(B180 ② — 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **그 손이 저장하는 그래프**로
+#: 연다 · `bind` · 먼저 건 손이 이긴다)
+_OPEN = weakref.WeakKeyDictionary()
+
+
+def bind(graphs, opener):
+    """이 그래프들을 쓰는 손의 층 열기 `opener(층) -> 그래프`를 건다(빌더 · 재연결 배치) — 이미 걸렸으면 그대로."""
+    for g in graphs:
+        if g is not None and g not in _OPEN:
+            _OPEN[g] = opener
 
 
 def _world(*graphs):
@@ -147,10 +161,78 @@ def _edge_map(g):
     ix = _IDX.get(g.layer)
     if ix is None or ix["g"] is not g or ix["n"] > len(g.edges):
         ix = _IDX[g.layer] = {"g": g, "n": 0, "map": {}}
+    node = ix.setdefault("node", {})
     for e in g.edges[ix["n"]:]:
         ix["map"][(e["src"], e["rel"], e["dst"])] = e
+        node.setdefault(e["src"], []).append(e)
+        node.setdefault(e["dst"], []).append(e)
     ix["n"] = len(g.edges)
     return ix["map"]
+
+
+def _node_edges(g):
+    """그 그래프의 노드 → 그 노드가 끝인 엣지 목록(같은 색인)."""
+    _edge_map(g)
+    return _IDX[g.layer]["node"]
+
+
+def _node_in(world, nid):
+    return next((g.get(nid) for _l, g in sorted(world.items()) if g.get(nid)), None)
+
+
+def parent_edge(nid, *graphs):
+    """**부모 엣지**(B180 ①) — 그 노드를 아래 끝으로 둔 위아래 쌍 엣지(두 끝 카테고리(주 ∪ 겸) · 관계 · 방향이 공통 config의 쌍과
+    같다)가 **층 전부**(`_world` — 넘겨받은 그래프 · 이 실행이 쓰는 그래프 · 나머지는 읽기 전용 사본)에 있나 — `(관계, 위 노드 id,
+    위 canonical, 위가 출발인가)` 또는 None · 사람이 지운 엣지는 세지 않는다. 위치 폴백(좌표 · 제목 사슬)은 이것이 None일 때만 선다."""
+    from core.graph import STATUS_DELETED
+    from core.state import catalog
+    world = _world(*graphs)
+    me = _node_in(world, nid)
+    if not me:
+        return None
+    mine = _categories(me)
+    for p in catalog.pairs():
+        if p["lower"] not in mine:
+            continue
+        up_src = p.get("src") == "upper"
+        for lay in sorted(world):
+            for e in _node_edges(world[lay]).get(nid) or ():
+                if e["rel"] != p["rel"] or e.get("status") == STATUS_DELETED:
+                    continue
+                other = e["src"] if up_src and e["dst"] == nid else (e["dst"] if not up_src and e["src"] == nid else None)
+                up = _node_in(world, other) if other else None
+                if up and p["upper"] in _categories(up):
+                    return p["rel"], other, up.get("canonical"), up_src
+    return None
+
+
+def _same(world, here, src, rel, dst):
+    """같은 엣지(두 끝 · 관계 · 방향)가 **다른 층**에 있나 — `(층, 엣지)` 또는 None(사람이 지운 엣지도 돌려준다 — 부르는 쪽이 건너뛴다)."""
+    for lay in sorted(world):
+        if lay != here:
+            e = _edge_map(world[lay]).get((src, rel, dst))
+            if e is not None:
+                return lay, e
+    return None
+
+
+def _share(graph, world, hit, src, rel, dst, provenance, doc_id, s, d):
+    """다른 층의 같은 엣지에 출처를 더한다(B180 ②) — 그 층을 **쓰는 손이 저장하는 그래프**(`bind`의 층 열기)로 연다 · 연 손이 없으면
+    이 실행이 쓰는 그래프일 때만 · 아니면 False(이 층에 쓴다 — 연 손 없는 호출)."""
+    lay, e = hit
+    opener = _OPEN.get(graph)
+    if opener is not None:
+        e = opener(lay).edge(src, rel, dst)
+    elif _LIVE.get(lay) is not world[lay]:
+        return False
+    if e is None:
+        return False
+    for p in provenance or []:
+        if p not in e["provenance"]:
+            e["provenance"].append(p)
+    SHARED.append({"doc_id": doc_id, "rel": rel, "src": s["canonical"], "dst": d["canonical"],
+                   "layer": lay, "from": graph.layer})
+    return True
 
 
 def _opposite(world, src, rel, dst):
@@ -201,8 +283,16 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
 
     if verdict == COMMIT:
         hit = None
-        if not (pat or {}).get("symmetric") and graph.edge(src, rel, dst) is None:   # 새 엣지일 때만(같은 방향 중복 · 툼스톤은 그대로)
-            hit = _opposite(_world(graph, src_graph, dst_graph), src, rel, dst)
+        if graph.edge(src, rel, dst) is None:          # 이 층에 없을 때만(같은 층의 중복 · 툼스톤은 `add_edge`가 그대로)
+            world = _world(graph, src_graph, dst_graph)
+            same = _same(world, graph.layer, src, rel, dst)   # **같은 엣지는 그래프 전체에 한 벌**(B180 ②)
+            if same is not None:
+                from core.graph import STATUS_DELETED
+                if same[1].get("status") == STATUS_DELETED or _share(graph, world, same, src, rel, dst, provenance,
+                                                                     doc_id, s, d):
+                    return COMMIT                      # 사람이 지운 엣지(어느 층이든)는 건너뛴다 · 아니면 출처만 더했다
+            if not (pat or {}).get("symmetric"):
+                hit = _opposite(world, src, rel, dst)
         if hit:
             from core.state import catalog
             first = {"layer": hit[0], "status": hit[1].get("status"), "provenance": list(hit[1].get("provenance") or [])}

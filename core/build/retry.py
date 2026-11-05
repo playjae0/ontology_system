@@ -144,6 +144,7 @@ def retry_orphans(layers=None):
 
     lays = layers or discover()
     graphs = {lay: open_graph(lay) for lay in lays}
+    gate.bind(graphs.values(), graphs.__getitem__)   # 다른 층의 같은 엣지 — 이 배치가 저장하는 그래프에(B180 ②)
     cfgs = {lay: load_config(lay) for lay in lays}
     dic = Dictionary.open()
     healed = {k: 0 for k in RETRY_KINDS + (COORD_HOLD,)}

@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import PurePath
 
+from core.build.ledger import KEPT
 from core.build.result import hold_reason
 from parser.struct_rule import ROLES
 
@@ -212,6 +213,8 @@ def attach_line(rows, skeleton):
             depth[str(hf[0]["path"])[len("폴백("):-1].replace("제목 ", "")] += 1
         elif any(a.get("path") == "폴백" for a in att):
             c["좌표 폴백"] += 1
+        elif any(a.get("path") == KEPT for a in att):     # 위치 폴백 차례에 이미 부모 엣지가 있었다(B180 ①)
+            c["부모 있음 — 폴백 안 함"] += 1
         elif r.get("verdict") == "mention":       # 다른 공정 언급 — 노드 대신 관련 링크(B113 ①)
             c["관련 링크"] += 1
         elif r.get("verdict") == "blank":         # 빈칸 표시 — 개체 0(B113 ②)
@@ -220,8 +223,8 @@ def attach_line(rows, skeleton):
             c["엣지 없음"] += 1
         else:
             c["노드 없음"] += 1
-    order = ("소속 엣지", "관계만", "연결 보강", "제목 폴백", "좌표 폴백", "관련 링크", "빈칸 표시", "엣지 없음",
-             "노드 없음")
+    order = ("소속 엣지", "관계만", "연결 보강", "제목 폴백", "좌표 폴백", "부모 있음 — 폴백 안 함", "관련 링크", "빈칸 표시",
+             "엣지 없음", "노드 없음")
     sub = {"소속 엣지": _sub(kind), "제목 폴백": _sub(Counter(dict(sorted(depth.items()))))}
     return line("부착(개체 행)", len(ent), [(k, c.get(k, 0), sub.get(k, "")) for k in order])
 
