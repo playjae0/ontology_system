@@ -31,6 +31,10 @@ _LOG = log.get(__name__)
 PING = "ping"
 
 
+
+#: 지점 → 그 지점이 쓰는 지시문(이름이 다를 때만) — 골격 칸(좌표 태깅)은 같은지 판단 한 자리다(B181 ① — `3.4_judge`)
+PROMPT_OF = {"coord_tag": "judge"}
+
 def mock_state():
     """지금 mock인가를 **문장으로** 돌려준다 — 호출부가 환경변수를 읽지 않게.
 
@@ -195,7 +199,7 @@ def _probe_points(cfg, points, add):
                 _EM.embed(PING)
                 add("·", label, True, f"{cfg['embed_backend']} · {_EM.cost_line()}")
                 continue
-            pn = gateway.PROMPT_OF.get(pt, pt)
+            pn = PROMPT_OF.get(pt, pt)
             msgs = ([{"role": "system", "content": gateway.prompt(pn)}]
                     if gateway.has_prompt(pn) else [])
             msgs.append({"role": "user", "content": PING})

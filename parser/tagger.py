@@ -552,27 +552,8 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     if notice is not None:
         notice(dict(plan))
 
-    # ── ② 표기마다 한 번 — 답을 기억한다(null도). **판단은 개체 · 닫힌 분류와 같은 한 자리**(B181 ① — 주입된 `pick`이 core의
-    # 판단 함수를 부른다 · 답 꼴 같다 · 다르다 · 애매) · 재료는 골격 목록(이름 · 별칭 · 부모 경로)과 그 표기가 처음 나온 행(②)
-    memo, judged, calls, adopted = {}, {}, 0, 0
-    cands, by_id = choices(nodes) if ask else ([], {})
-    first = {}
-    for p, r in zip(pieces, refs):
-        first.setdefault(r, p)
-    for n, ref in enumerate(ask, 1):
-        v = pick(ref, cands, row=first.get(ref), field=ref_field, doc_coord=doc_coord) or {}
-        calls += 1
-        hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
-        memo[ref] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
-        judged[ref] = {k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None}
-        if memo[ref]:
-            adopted += 1
-        if notice is not None:
-            # 표기 하나 = 표의 한 행(B98 ⑥) — 진행 콜백(3인자 계약)은 그대로 두고 예고와 같은 통로로
-            notice({"단계": "행", "i": n, "총": len(ask), "표기": ref,
-                    "행_수": refs.count(ref), "결과": memo[ref]})
-        if progress is not None:
-            progress(n, len(ask), adopted)
+    # ── ② 표기마다 한 번 — 답을 기억한다(null도)
+    memo, judged, calls, adopted = _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress)
 
     # 애매는 목록 밖으로 기억하지 않는다(B181 ① — 다음 문서도 다시 묻는다 · 보류 큐에 후보가 실린다)
     unsure = {r for r, j in judged.items() if j.get("type") == "uncertain"}
@@ -587,6 +568,32 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
                 "목록밖": len(misses) - adopted, "애매": len(unsure),
                 "학습_새로": sum(1 for v in memo.values() if v)})
     return out
+
+
+def _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress):
+    """**표기마다 한 번 묻는다**(`tag`의 ② — B69 ①) — `(memo {표기: canonical 또는 None}, judged {표기: 답 꼴}, 호출, 채택)`.
+
+    **판단은 개체 · 닫힌 분류와 같은 한 자리**(B181 ① — 주입된 `pick`이 core의 판단 함수를 부른다 · 답 꼴 같다 · 다르다 · 애매) ·
+    재료는 골격 목록(이름 · 별칭 · 부모 경로 — `coord_rows.choices`)과 그 표기가 처음 나온 행(②) · 같다만 쓴다(목록 밖 id는 버린다)."""
+    memo, judged, calls, adopted = {}, {}, 0, 0
+    cands, by_id = choices(nodes) if ask else ([], {})
+    first = {}
+    for p, r in zip(pieces, refs):
+        first.setdefault(r, p)
+    for n, ref in enumerate(ask, 1):
+        v = pick(ref, cands, row=first.get(ref), field=ref_field, doc_coord=doc_coord) or {}
+        calls += 1
+        hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
+        memo[ref] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
+        judged[ref] = {k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None}
+        adopted += int(bool(memo[ref]))
+        if notice is not None:
+            # 표기 하나 = 표의 한 행(B98 ⑥) — 진행 콜백(3인자 계약)은 그대로 두고 예고와 같은 통로로
+            notice({"단계": "행", "i": n, "총": len(ask), "표기": ref,
+                    "행_수": refs.count(ref), "결과": memo[ref]})
+        if progress is not None:
+            progress(n, len(ask), adopted)
+    return memo, judged, calls, adopted
 
 
 def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None):

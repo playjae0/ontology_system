@@ -200,7 +200,7 @@ print("\n■ B181 — 세 곳(골격 칸 · 닫힌 분류 · 개체)이 같은 �
 from core import matcher as MT                                   # noqa: E402
 from core.build import reconcile as RC                            # noqa: E402
 from core.llm import gateway, points as PT                        # noqa: E402
-from core.state import knobs as KN, store as STO, surface_book as SB, fixtures as FXR   # noqa: E402
+from core.state import knobs as KN, store as STO, surface_book as SB   # noqa: E402
 from core.state.bootstrap import COORD_CATEGORY, coord_layer      # noqa: E402
 from parser import tagger as TG                                   # noqa: E402
 with _quiet():
@@ -209,7 +209,7 @@ with _quiet():
 D181 = "b181_pfmea"
 _sp = _P.schemas(f"{D181}.json")
 _P.ensure(_sp)
-_sp.write_text(json.dumps({**json.loads((FXR.ROOT_DIR / "schemas" / "pfmea.json").read_text(encoding="utf-8")),
+_sp.write_text(json.dumps({**json.loads(_P.fixture_schemas("pfmea.json").read_text(encoding="utf-8")),
                            "doc_type": D181}, ensure_ascii=False), encoding="utf-8")
 _dts = STO.read(STO.DOC_TYPES, {})
 _dts[D181] = {"doc_type": D181, "status": "registered", "layer": "quality", "schema": f"schemas/{D181}.json",

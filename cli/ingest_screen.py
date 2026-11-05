@@ -415,6 +415,13 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, 
     return [c for i, c in enumerate(cells) if i not in cut], [c for i, c in enumerate(kinds) if i not in cut]
 
 
+def plan_body(info):
+    """판정 예고 줄의 본문 — 값 · 표기 · 사전 히트 · 목록 밖 좌표 → LLM 상한 · 닫힌 분류 판단 상한(B181 ① — 있을 때만)."""
+    return (f"entity 값 {info['값_수']:,}건(표기 {info['표기_종수']:,}종 · 사전 히트 {info['사전_히트']:,}건) · 목록 밖 좌표 "
+            f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회"
+            + (f" · 닫힌 분류 판단 ≤ {info['닫힌_분류']:,}회" if info.get("닫힌_분류") else ""))
+
+
 def build_screen(step=False, stage=None, prose=False):
     """인입 화면 — **판정 예고**와 **끝 요약 한 줄** (B72 ②).
 
@@ -454,11 +461,7 @@ def build_screen(step=False, stage=None, prose=False):
             return _screen.answer("     그래도 부를까? [y/N] ", "yes", eof=False)
         if info.get("단계") == "판정예고":
             lz = f"[{info['렌즈']}] " if info.get("렌즈") else ""
-            body = (f"entity 값 {info['값_수']:,}건"
-                    f"(표기 {info['표기_종수']:,}종 · 사전 히트 "
-                    f"{info['사전_히트']:,}건) · 목록 밖 좌표 "
-                    f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회"
-                    + (f" · 닫힌 분류 판단 ≤ {info['닫힌_분류']:,}회" if info.get("닫힌_분류") else ""))
+            body = plan_body(info)
             if info.get("추출뒤") and stage is not None:
                 # 산문 판정의 총수 = 추출이 낸 개체 수(B99 ⑦ — 레코드 수가 아니다)
                 stage.update({"이름": JUDGE, "값": 0, "총": info["값_수"], "t0": None})

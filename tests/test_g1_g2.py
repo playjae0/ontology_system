@@ -199,11 +199,7 @@ show("큐 항목의 created가 실제 시각이다 (상수 위조 아님 — §7
      _it[0]["created"] if _it else "")
 store.drop("auto_node", lambda p: p.get("probe") == 1)
 
-# 판정 임계는 층 config가 소유한다(문서 3 §3.1 · 문서 7 §7.1 관리 자산의 원칙).
-from core import matcher as _M2                                 # noqa: E402
-show("판정 임계를 층 config에서 읽는다 (코드 상수는 폴백)",
-     _M2.threshold({"match_threshold": 0.9}) == 0.9
-     and _M2.threshold({}) == _M2.THRESHOLD)
+# 판정 임계는 층 config 키가 아니다 — 사내 손잡이 `match_threshold`(B181 ⑤ · 그 어서션은 test_judge B181 ⓓ)
 
 # 확장은 프론티어 전파다 — `recursive: false`는 **같은 관계**를 연달아 재추적하지
 # 않는다는 뜻일 뿐, 다른 관계로 도달한 노드에의 적용을 막지 않는다(문서 5 §5.1-5).

@@ -483,10 +483,6 @@ def prompt_for(name, cfgs, key):
     return out
 
 
-#: 지점 → 그 지점이 쓰는 지시문(이름이 다를 때만) — 골격 칸(좌표 태깅)은 같은지 판단 한 자리다(B181 ① — `3.4_judge`)
-PROMPT_OF = {"coord_tag": "judge"}
-
-
 def has_prompt(name):
     """지시문 파일이 있는가 — **묻기만 하고 실패를 기록하지 않는다.**
 
