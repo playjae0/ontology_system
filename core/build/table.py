@@ -53,6 +53,7 @@ def build_table(env, cfg, schema, graph, defer_save=False):
     규칙 B 폴백 → 말미 적재. 단계의 순서가 계약이다(문서 2 §2.4 · 문서 4 §4.4)."""
     # **층 이름은 연 그래프의 폴더 이름**(B99 ①) — config 안 `"layer"`는 검사 대상이지 이름이 아니다
     b = Builder(graph, cfg, schema, env["doc_id"], graph.layer)
+    b.doc_coord = env.get("doc_coord")
     b.ledger = Ledger(env["doc_id"])          # 판정 대장 — 행마다 적는다 (B74 ②)
     fields = schema["fields"]
     doc_id = env["doc_id"]

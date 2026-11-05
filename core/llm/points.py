@@ -72,13 +72,13 @@ def pick_coord(surface, cands, row=None, field="process_ref", doc_coord=None):
     (`type` · `matched_id` · `confidence` …) — **고르는 것이지 만드는 것이 아니다**: 후보 밖 id · 문턱 아래 같다는 애매(계약) ·
     파서는 같다만 쓴다(다르다 · 애매는 목록 밖 그대로 → 인입의 `orphan_anchor`)."""
     from core import matcher
-    from core.build.extract_ctx import source_of
+    from core.build.extract_ctx import source_of, value_path
     from core.state.bootstrap import COORD_CATEGORY, coord_layer, load_config
     from core.state.surface_book import SKELETON
     pool = [{**c, "category": COORD_CATEGORY} for c in cands]
     sent = source_of(row, surface, field, matcher.context_chars()) if row else None
     return matcher.decide(surface, pool, COORD_CATEGORY, load_config(coord_layer()), sentence=sent,
-                          point="coord_tag", place=SKELETON)
+                          where=value_path(row, field, doc_coord), point="coord_tag", place=SKELETON)
 
 
 def coord_picker():

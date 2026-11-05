@@ -212,14 +212,14 @@ class CoordMixin:
             return _hold(f"골격 밖 — '{surface}'는 auto 노드로만 있다 (Tier1 한정)", extra)
         return _hold(f"골격에 없는 좌표 — '{surface}'", extra)
 
-    def _closed_judge(self, surface, category, g, row, field):
+    def _closed_judge(self, surface, category, g, row, field, coord=None):
         """**닫힌 분류의 같은지 판단**(B181 ①) — 후보는 그 카테고리 골격 목록(골격 칸과 같은 함수 `tagger.choices` — 이름 · 별칭 ·
         부모 경로 · Tier1 산 노드만) · 같은 표기는 문서에 한 번(기억) · mock · 후보 0이면 None(지금 그대로 보류)."""
         from parser.namefold import key
         memo = self.__dict__.setdefault("_closed", {})
         k = (category, key(surface))
         if k not in memo:
-            from core.build.extract_ctx import source_of
+            from core.build.extract_ctx import source_of, value_path
             from core.state.bootstrap import load_config
             from core.state.surface_book import CLOSED
             from parser.tagger import choices, closed_list
@@ -228,7 +228,8 @@ class CoordMixin:
                     if (g.get(c["id"]) or {}).get("category") == category and is_live(g.get(c["id"]))
                     and g.get(c["id"]).get("status") in ("seed", "confirmed")]
             sent = source_of(row, surface, field, _matcher.context_chars()) if row else None
-            memo[k] = _matcher.decide(surface, pool, category, load_config(lay), sentence=sent, place=CLOSED)
+            memo[k] = _matcher.decide(surface, pool, category, load_config(lay), sentence=sent, place=CLOSED,
+                                      where=value_path(row, field, self.doc_coord, coord=coord))
         return memo[k]
 
     def _closed_match(self, surface, category, g, v, prov):

@@ -626,7 +626,7 @@ def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, p
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
-            polarity=None, parent=None, sentence=None, place=None, pre=None):
+            polarity=None, parent=None, sentence=None, place=None, pre=None, where=None):
     """후보 조립 + 판정의 2단을 한 번에 — Pass 1 entity 경로의 편의 형태다.
 
     돌려주는 것은 `(분기, node_id 또는 None, 점수, 판정 dict)` 튜플이다 — 네 번째는
@@ -639,7 +639,7 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
                        scoped=scoped, polarity=polarity, parent=parent, cfg=cfg, place=place, pre=pre)
-    where = place.names() if place else None      # 값의 경로 — 판정 입력(B142 ②)
+    where = place.names() if place else where     # 값의 경로 — 판정 입력(B142 ② · 이름 규칙 밖은 호출부의 경로 — B181 ②)
     v = second(surface, cands, category, cfg, match(surface, cands, category, cfg, where=where), sentence,
                where=where)                       # 불확실만 2차 (B123 ③)
     _evidence(v, cands)

@@ -387,7 +387,7 @@ def h_anchor(value, spec, ctx):
     st = ctx.state
     b = st["b"]
     nid, ng = b.resolve_anchor(value, spec.get("target_category") or COORD_CATEGORY,
-                               st["prov"], defer=st["defer"], ask=(ctx.record, st["field"]))
+                               st["prov"], defer=st["defer"], ask=(ctx.record, st["field"], st.get("parent")))
     if nid is not None and ng is not st["graph"]:
         st["external"][st["field"]] = ng
     v = b.anchor_judge
@@ -449,7 +449,7 @@ def h_entity(value, spec, ctx):
                                       parent_canonical=owner_parent(st["b"].cfg, spec["category"], owner, st["parent"]),
                                       anchor_polarity=st["anchor_pol"],
                                       at=(st.get("locator"), st.get("field")),   # 판정 재생의 자리 (B106 ②)
-                                      owner=owner)
+                                      owner=owner, row=ctx.record, field=st.get("field"))   # 판단 재료(B181 ②)
     _ledger_entity(st, value, lay, eb.last)
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g

@@ -59,6 +59,12 @@ def entity_key(surface, category, cfg, *, electrode_type=None,
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
 
 
+def _name_of(ref):
+    """`(노드 id, 그 그래프)` → 그 노드의 canonical(없으면 None) — 값의 경로의 이름 재료."""
+    nid, g = ref if ref else (None, None)
+    return ((g.get(nid) or {}).get("canonical") if nid and g is not None else None)
+
+
 def _key_text(k, sep):
     """짝 키의 부모 요소를 글자로 — 겹(골격 밖 부모 · `_mirror_scope`)이면 `sep`으로 잇는다."""
     return sep.join(_key_text(x, sep) for x in k if x) if isinstance(k, tuple) else k
@@ -83,6 +89,7 @@ class Builder(CoordMixin):
         self.last: dict = {}
         # 판정 대장 — 문서 하나에 하나이고 걸침 하위 빌더와 **공유한다**(B74 ②).
         self.ledger = None
+        self.doc_coord = None                # 문서 좌표 — 판단 재료의 값의 경로(B181 ② · 구축 입구가 봉투에서 싣는다)
         self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
         # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
         gate.bind([graph], lambda lay, me=weakref.ref(self): me().for_layer(lay).g if me() is not None else None)
@@ -110,6 +117,7 @@ class Builder(CoordMixin):
             sub.book = self.book
             sub.buffer = self.buffer
             sub.ledger = self.ledger
+            sub.doc_coord = self.doc_coord
             sub.subs = self.subs
             self.subs[layer] = sub
         return self.subs[layer]
@@ -302,13 +310,13 @@ class Builder(CoordMixin):
         return load_config(node["layer"])
 
     # ---------------------------------------------------------------- entity
-    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, chunk_text, place=None):
+    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, row, place=None, where=None):
         """판정 한 번 — `((분기, node_id, 점수, 판정 dict), 재생하지 못한 사유)`.
 
         **판정 재생**(B106 ②) — 판정 없이 붙지 않는 값만(사전 · 경로 호환 같은 이름이 답하지 않았다 — `matcher.gated` ·
         후보 조립과 같은 함수) · `at`(위치 · 열)의 지난 판정이 있으면 그 결과를 바꿔 끼우고
-        좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `chunk_text`(산문)가 있으면 그 표기 앞뒤 글이 2차 판정의
-        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
+        좁히기 + LLM을 건너뛴다. 아니면 `matcher.resolve` — `row`(그 값이 나온 청크 · 행)의 원문이 2차 판정의
+        문장이다(B123 ③ — 1차가 불확실일 때만 쓰인다) · `where`는 값의 경로(B181 ② — 이름 규칙 카테고리 밖). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
         판정에 오른 값은 **근거 지문**(B167 ② — `replay.basis`)을 판정 dict에 싣는다 — 대장 행이 옮기고 재생이 다시 잰 것과 견준다."""
         rp = why = fp = None
         pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
@@ -317,17 +325,17 @@ class Builder(CoordMixin):
             from core.build import replay as _rp
             fp = _rp.basis(canonical, pre, self.cfg)
             rp, why = _rp.pick(self, at, surface, category, canonical, basis_now=fp)
-        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, chunk_text, place, pre, rp)
+        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where)
         if fp is not None:
             got[3]["basis"] = fp
         return got, why
 
-    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, chunk_text, place, pre, rp):
+    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where=None):
         """재생(`rp`) 또는 판정 — `(분기, node_id, 점수, 판정 dict)`(위 `_judge`의 몸)."""
         sent = None
-        if chunk_text and (rp is None or rp[3].get("second_due")):
+        if (row or {}).get("text") and (rp is None or rp[3].get("second_due")):
             from core.build.extract_ctx import around
-            sent = around(chunk_text, surface, _matcher.context_chars())
+            sent = around(row["text"], surface, _matcher.context_chars())
         if rp is not None:
             if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
                 got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
@@ -339,16 +347,16 @@ class Builder(CoordMixin):
                     return got
             return rp
         return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
-                       parent=parent_canonical, sentence=sent, place=place, pre=pre)
+                       parent=parent_canonical, sentence=sent, place=place, pre=pre, where=where)
 
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
                        parent_canonical=None, anchor_polarity=None, coord_surface=None,
-                       belongs=None, at=None, chunk_text=None, coord=None, owner=None):
+                       belongs=None, at=None, row=None, field=None, coord=None, owner=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시). `coord` · `owner`(산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
         판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름 부모는 호출부가 `naming.name_parent`로 · B144 ②).
 
-        `chunk_text`(그 표기가 나온 청크의 원문 — 산문이 준다)가 있으면 1차가 불확실일 때 그 앞뒤 글로 2차를 묻는다
-        (B123 ③ — `matcher.second` · 표의 행은 청크가 아니라 주지 않는다).
+        `row`(그 표기가 나온 청크 · 표의 행 — B181 ②)는 판단 재료다 — 값의 경로(이름 규칙 카테고리 밖 — `extract_ctx.value_path`) ·
+        1차가 불확실이면 그 원문으로 2차를 묻는다(B123 ③ — `matcher.second` · 청크는 그 표기 앞뒤 글).
 
         `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
         그 노드에서 **상속**한다(A11-9 ① — 이중 표기 방지). 그렇지 않을 때만
@@ -397,8 +405,12 @@ class Builder(CoordMixin):
         from core.build import scope_path
         _u0 = _llm.usage_total()
         place = scope_path.place(self, category, coord, owner, surface, parent_canonical)
+        where = None
+        if place is None:                       # 값의 경로(B181 ② — 이름 규칙 카테고리는 `place.names()` 그대로)
+            from core.build.extract_ctx import value_path
+            where = value_path(row, field, self.doc_coord, coord=_name_of(coord), owner=_name_of(owner))
         (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped, polarity,
-                                                   parent_canonical, at, chunk_text, place=place)
+                                                   parent_canonical, at, row, place=place, where=where)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
         # 자리와 같아야 화면과 실물이 갈리지 않는다(B73 ①과 같은 결).

@@ -118,7 +118,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                                     anchor_polarity=e_pol,
                                     coord_surface=src.get("process_ref"), belongs=bel,
                                     at=(_loc or cid, e.get("category")),       # 판정 재생의 자리 (B106 ②)
-                                    chunk_text=src.get("text"),                # 2차 판정의 문장 (B123 ③)
+                                    row=src,                                   # 판단 재료 · 2차 판정의 원문 (B123 ③ · B181 ②)
                                     owner=owner)
         last = eb.last or {}
         row = b.ledger.add(locator=_loc or cid, field=e.get("category"),
@@ -317,6 +317,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
     # 그래프가 두 인스턴스로 열려 저장이 서로 덮는다. 그래프·사전·버퍼·대장을 공유한다.
     # **층 이름은 연 그래프의 폴더 이름**(B99 ①) — config 안 `"layer"`는 검사 대상이지 이름이 아니다
     b = builder or Builder(graph, cfg, None, env["doc_id"], graph.layer)
+    b.doc_coord = env.get("doc_coord")
     if b.ledger is None:
         b.ledger = Ledger(env["doc_id"])      # 판정 대장 — 비정형도 같은 표다 (B74 ②)
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})

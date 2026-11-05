@@ -97,6 +97,20 @@ def row_cells(record, field, chars):
     return {"text": " · ".join(f"{k}: {v[:per]}" for k, v in cells), "span": []}
 
 
+def value_path(piece, field=None, doc_coord=None, coord=None, owner=None):
+    """**값의 경로**(B181 ② — 이름 규칙 카테고리 밖의 값 · 골격 칸 · 닫힌 분류의 판단 재료) — 위에서부터 `[문서 좌표 · 행의 상위
+    칸(공정 그룹) · 좌표(그 행 · 청크가 선 골격 노드) · 소유자 · 목차 경로(청크의 구획 경로 · 시트)]` · 판단하는 칸 자신 · 빈 것 ·
+    겹친 것은 뺀다 · 없으면 None. 이름 규칙 카테고리는 지금 경로 그대로(`scope_path.Place.names`)."""
+    p = piece if isinstance(piece, dict) else {}
+    m = p.get("meta") or {}
+    out = [doc_coord, p.get("process_group") if field != "process_group" else None, coord, owner]
+    sp = m.get("section_path") or m.get("sheet")
+    if sp:
+        out += [x.strip() for x in _path(sp).split(PATH_SEP)]
+    out = list(dict.fromkeys(str(x) for x in out if x))
+    return out or None
+
+
 def source_of(piece, surface, field, chars):
     """다시 묻기의 원문 한 자리 — 청크(글이 있다)면 그 표기 앞뒤(`around`) · 표의 행이면 같은 행의 다른 칸(`row_cells`)."""
     if (piece or {}).get("text"):
