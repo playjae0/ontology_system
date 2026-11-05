@@ -127,6 +127,10 @@ KNOBS = {
                         "같다고 받는 기준 — 같은지 판단의 「같다」 확실도가 이 값 아래면 애매(골격 칸 · 닫힌 분류 · 개체 "
                         "공통 · 옛 층 config 키는 bootstrap이 옮긴다)",
                         "인입 끝 「판단 수치」 곳별 줄(확실도 구간 · 기준 근처 짝) · python run.py show report <doc_id>"),
+    "provisional_min_mentions": ("core.build.provisional", ("MIN_MENTIONS",), "int",
+                                 "잠정 골격 노드 최소 출현 수 — 골격에 없는 좌표 골격 칸 표기의 행 수(이 문서 + 다른 문서의 열린 "
+                                 "보류)가 이 값에 못 미치면 보류(orphan_anchor) · 차면 세우고 재시도가 열린 보류를 거둔다(1이면 처음 나올 때 선다)",
+                                 "인입 끝 「잠정 골격 노드」 줄 · 좌표 단계 [3/7] 「잠정 n종」 · python run.py show report <doc_id>"),
     "candidate_top_n": ("core.matcher", ("CANDIDATE_TOP_N",), "int",
                         "판정 후보 상한 — 개체 판정에 올리는 후보 수(같은 이름은 자르지 않는다 · 넘으면 임베딩 · 겹침으로 좁힌다)",
                         "인입 판정 끝 줄 「후보 평균 n(상한 N)」 · python run.py show report <doc_id>"),

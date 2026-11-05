@@ -85,8 +85,9 @@ STEPS = [
              "지정했으면 그 사실이 위에 있다. 다음은 그 어댑터로 문서를 읽는다."),
     ("파싱", "어댑터가 문서를 조각(행·청크)으로 만들었다. 아직 그래프에 아무것도 "
              "쓰지 않았다 — 계약 JSON(parsed/)까지다. 다음은 좌표를 맞춘다."),
-    ("좌표", "조각의 공정좌표를 골격 닫힌 목록과 맞췄다. 목록 밖 표기는 고치지 않고 "
-             "그대로 둔다 — 인입에서 보류(orphan_anchor)로 간다. 다음은 판정 예고다(산문은 추출 예고)."),
+    ("좌표", "조각의 공정좌표를 골격 닫힌 목록(잠정 골격 노드 포함)과 맞췄다. 목록 밖 표기는 고치지 않고 "
+             "그대로 둔다 — 인입에서 잠정 골격 노드로 선다(판단을 받지 못한 표기는 보류 orphan_anchor). "
+             "다음은 판정 예고다(산문은 추출 예고)."),
     ("판정 예고", "개체 판정에 몇 번 부를지를 **부르기 전에** 센다. 사전이 이미 아는 "
                   "표기는 부르지 않는다. 여기서 멈추면 그래프에 쓴 것이 0이다."),
     ("판정", "표기마다 기존 노드와 같은 것인지 판정했다. 확신되면 잇고, 아니면 새 "
@@ -413,6 +414,22 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, 
         cells[7] = f"{how} · {secs:.1f}초"
     cut = _drop(prose, wide, live)
     return [c for i, c in enumerate(cells) if i not in cut], [c for i, c in enumerate(kinds) if i not in cut]
+
+
+def provisional_cells(env, step=False):
+    """좌표 단계 줄의 잠정 칸(B182 ③) — `잠정 n종(부모 미정 m)` · `step`(`--step`)이면 잠정 표(표기 · 부모 · 단 · 행 수 · 합칠 후보)를
+    먼저 낸다 — **보이기만**(승격 · 합침 · 그대로 처분은 사람 몫). 계획은 구축 앞 패스와 같은 함수(`provisional.preview` — 쓰기 0)."""
+    from core.build import provisional
+    got = provisional.preview(env)
+    if step and got:
+        t = _screen.Table([("잠정 골격 노드", 28, False), ("부모", 20, False), ("단", 6, False), ("행 수", 6, True),
+                           ("합칠 후보", 20, False)], flex=0)
+        for e in got:
+            t.row([e.get("canonical") or e["surface"], e.get("up_name") or ("부모 미정" if e["act"] != "hold" else "—"),
+                   e.get("tier") or ("보류 " + e["hold"] if e["act"] == "hold" else "미정"), e["rows"],
+                   " · ".join(e.get("near") or []) or "—"], [None, "aux", "aux", "aux", "aux"])
+        t.end()
+    return provisional.preview_text(got)
 
 
 def plan_body(info):

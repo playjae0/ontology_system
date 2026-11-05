@@ -28,12 +28,13 @@ def _q72(kind, doc_id=None):
 # ② 같은 필드 N행 → 큐 1건 · rows == N
 _meta72 = _env72("B72META", 6)
 for _r in _meta72["records"]:
-    _r["meta"] = {"개정일": "2026-01-01"}          # 사내가 받은 그 산출의 모양
+    _r["meta"] = {"개정일": "2026-01-01", "coord_tag_source": "live"}   # 사내가 받은 그 산출의 모양 + 파서 표지(B182 ⓪)
 _run72(_meta72)
 _uf72 = _q72("unknown_field", "B72META")
-show("② 같은 필드 N행 → 큐 **1건**이고 rows == N (사람이 판정할 것은 하나다)",
+show("② 같은 필드 N행 → 큐 **1건**이고 rows == N (사람이 판정할 것은 하나다) · 값은 문서가 실어 온 것만(파서 표지는 뺀다 — B182 ⓪)",
      len(_uf72) == 1 and (_uf72[0]["payload"] or {}).get("rows") == 6
-     and _uf72[0]["payload"].get("key") == "meta",
+     and _uf72[0]["payload"].get("key") == "meta"
+     and all(it.get("value") == {"개정일": "2026-01-01"} for it in _uf72[0]["payload"].get("items") or [None]),
      f"{len(_uf72)}건 · rows {(_uf72[0]['payload'] or {}).get('rows') if _uf72 else '-'}")
 show("② 값과 발자국을 버리지 않는다 — items[]·locators에 남는다 (G5)",
      len((_uf72[0]["payload"] or {}).get("items") or []) == 6
@@ -44,9 +45,10 @@ show("② 값과 발자국을 버리지 않는다 — items[]·locators에 남�
 _o72 = _env72("B72ORPH", 6)
 for _i, _r in enumerate(_o72["records"]):
     _r["process_ref"] = "없는공정ZZ" if _i % 2 else "없는공정YY"
+    _r["meta"] = {"coord_unjudged": [_r["process_ref"]]}     # 판단을 받지 못한 표기 — 보류 그대로(기대 변경 B182 · 판단을 받으면 잠정 골격 노드)
 _run72(_o72)
 _oa72 = _q72("orphan_anchor", "B72ORPH")
-show("② 목록 밖 좌표 k표기 → 큐 k건 (행이 아니라 표기가 단위다)",
+show("② 목록 밖 좌표(판단을 받지 못함) k표기 → 큐 k건 (행이 아니라 표기가 단위다)",
      len(_oa72) == 2
      and {(x["payload"] or {}).get("key") for x in _oa72} == {"없는공정ZZ", "없는공정YY"},
      f"{len(_oa72)}건 · {sorted((x['payload'] or {}).get('key') for x in _oa72)}")
@@ -126,6 +128,7 @@ try:
     _re72 = _env72("B72ORPH", 6)          # 같은 문서 재인입 — 보류분이 붙는다
     for _i, _r in enumerate(_re72["records"]):
         _r["process_ref"] = "없는공정ZZ" if _i % 2 else "없는공정YY"
+        _r["meta"] = {"coord_unjudged": [_r["process_ref"]]}    # 판단을 받지 못한 표기 그대로(B182 — 별칭이 생긴 표기는 사전이 먼저 푼다)
     _run72(_re72)
     _PL72.finalize()
     _left72 = {(x["payload"] or {}).get("key") for x in _q72("orphan_anchor", "B72ORPH")}

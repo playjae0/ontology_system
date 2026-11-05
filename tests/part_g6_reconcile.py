@@ -479,7 +479,9 @@ for _row in _ws.iter_rows(min_row=4):
         _row[2].value = "없는공정B149"
 XT = TMP / "B149_CP.xlsx"
 _wb.save(XT)
+hold_coords()                                     # 골격 밖 좌표는 보류로(B182 — 이 시험은 못 붙은 좌표의 진단을 잰다)
 _ot = _run("ingest-file", str(XT), "--doc-type", "cp", "--allow-mock")
+hold_coords(False)
 _dt = IG.doc_id_of(XT)
 _mt149 = RCZ.material(_dt)
 _ct = RCZ.causes(_mt149)

@@ -11,7 +11,7 @@ from core.matcher import MATCH, UNCERTAIN, held
 from core.state import store
 from core.state.bootstrap import COORD_CATEGORY
 from core.state.ids import norm
-from core.state.status import is_live
+from core.state.status import PROVISIONAL, is_live, is_skeleton
 
 #: 좌표 보류 사유 — 표기가 골격 노드 여럿을 가리킨다(B104 ①). 목록 밖과 처방이 다르다(대장 `hold` · 큐 문면).
 HOLD_AMBIGUOUS = "표기 모호(골격 노드 여럿)"
@@ -32,7 +32,7 @@ class CoordMixin:
         g, _ = self._graph_for(COORD_CATEGORY)
         hits = sorted(nid for nid in set(self.dict.lookup(surface))
                       if (g.get(nid) or {}).get("category") == COORD_CATEGORY and is_live(g.get(nid))
-                      and g.get(nid).get("status") in ("seed", "confirmed"))
+                      and is_skeleton(g.get(nid)))
         if not hits:
             return None
         pm = self._parent_map(g, COORD_CATEGORY)
@@ -163,13 +163,18 @@ class CoordMixin:
         if not surface:
             return None, None
         g, _ = self._graph_for(category)          # 걸침 anchor는 다른 층에서 찾는다
+        at = self.coord_at.get((prov, surface)) if category == COORD_CATEGORY else None
+        if at and is_live(g.get(at)):             # 이 문서의 앞 패스가 정한 자리(B182 — 같은 이름 · 다른 줄기의 잠정 노드)
+            self.buffer[norm(surface)] = at
+            return at, g
         live = [nid for nid in self.dict.lookup(surface)
                 if is_live(g.get(nid) or {}) and
                 (g.get(nid) or {}).get("category") == category]
-        # **Tier1 한정** — 조회 결과가 auto 노드뿐이면 anchor로 쓰지 않는다(문서 2 §2.4-①).
-        # 산문에서 스쳐 언급된 auto 노드가 골격 행세하는 우회로를 막는다.
-        tier1 = [nid for nid in live if g.get(nid).get("status") in ("seed", "confirmed")]
-        autos = [nid for nid in live if nid not in tier1]
+        # **골격 카테고리 노드 한정**(문서 1 D4 · B182) — Tier1과 잠정 골격 노드(`status.is_skeleton`) · 조회 결과가 골격 밖
+        # auto 노드뿐이면 anchor로 쓰지 않는다(문서 2 §2.4-①). 산문에서 스쳐 언급된 auto 노드가 골격 행세하는 우회로를 막는다.
+        tier1 = first_fixed(g, [nid for nid in live if is_skeleton(g.get(nid))])
+        autos = [nid for nid in live if not is_skeleton(g.get(nid))]
+        row_hold = self.coord_hold.get((prov, surface)) if category == COORD_CATEGORY else None
 
         def _hold(reason, extra):
             # **층을 싣는다**(B72 ③) — 다음 줄이 `layers/<층>/skeleton.json`을
@@ -189,6 +194,10 @@ class CoordMixin:
                 defer.append(item)
             return None, None
 
+        if row_hold and not any(not g.get(n).get(PROVISIONAL) for n in tier1):
+            # 앞 패스가 이 행을 보류했다(B182 — 같은 이름이 다른 행에서 잠정으로 섰어도 이 행의 자리는 아니다 · 사람이 고정한 골격은 그대로)
+            self.anchor_hold = row_hold
+            return _hold(f"{row_hold} — '{surface}'", {})
         if len(tier1) == 1:
             # **해소된 좌표도 문서 버퍼에 싣는다**(문서 4 §4.2 Pass 1) — 버퍼는
             # `정규화 표면형 → node_id` 맵이고 anchor·entity를 **둘 다** 담는다.
@@ -208,6 +217,10 @@ class CoordMixin:
             if v and v.get("type") == MATCH:
                 return self._closed_match(surface, category, g, v, prov), g
         extra = {"judge": held(v)} if v and v.get("type") == UNCERTAIN else {}
+        why = self.coord_hold.get(_fold(surface)) if category == COORD_CATEGORY else None
+        if why:                                   # 잠정 노드로 세우지 못한 자리(B182 ② — 골격 아래 새 단 · 출현 수 미달 · 표기 모호)
+            self.anchor_hold = why
+            return _hold(f"{why} — '{surface}'", extra)
         if autos:
             return _hold(f"골격 밖 — '{surface}'는 auto 노드로만 있다 (Tier1 한정)", extra)
         return _hold(f"골격에 없는 좌표 — '{surface}'", extra)
@@ -227,10 +240,11 @@ class CoordMixin:
             lay = self.home_of(category)
             pool = [dict(c, category=category) for c in choices(closed_list(lay))[0]
                     if (g.get(c["id"]) or {}).get("category") == category and is_live(g.get(c["id"]))
-                    and g.get(c["id"]).get("status") in ("seed", "confirmed")]
+                    and is_skeleton(g.get(c["id"]))]
             sent = source_of(row, surface, field, _matcher.context_chars()) if row else None
-            memo[k] = _matcher.decide(surface, pool, category, load_config(lay), sentence=sent, place=CLOSED,
-                                      where=value_path(row, field, self.doc_coord, coord=coord))
+            v = _matcher.decide(surface, pool, category, load_config(lay), sentence=sent, place=CLOSED,
+                                where=value_path(row, field, self.doc_coord, coord=coord))
+            memo[k] = {**v, "asked": surface} if v else v      # 판단에 올린 표기(같은 열쇠의 뒷 표기는 그 판단을 나눠 쓴다)
         return memo[k]
 
     def _closed_match(self, surface, category, g, v, prov):
@@ -242,16 +256,19 @@ class CoordMixin:
         self.buffer[norm(surface)] = nid
         return nid
 
-    def anchor_hold_of(self, surface, category=None):
+    def anchor_hold_of(self, surface, category=None, prov=None):
         """좌표 표기가 왜 안 풀렸나(B104 ①) — 골격 노드 여럿을 가리키면 `(HOLD_AMBIGUOUS, [canonical…])` ·
         아니면 `(None, [])`(목록 밖). 사전 조회 한 번 — `resolve_anchor`와 같은 Tier1 기준이다."""
         from core.state.bootstrap import COORD_CATEGORY
         category = category or COORD_CATEGORY
         g, _ = self._graph_for(category)
-        t1 = sorted(g.get(n)["canonical"] for n in set(self.dict.lookup(surface or ""))
-                    if is_live(g.get(n) or {}) and (g.get(n) or {}).get("category") == category
-                    and g.get(n).get("status") in ("seed", "confirmed"))
-        return (HOLD_AMBIGUOUS, t1) if len(t1) > 1 else (None, [])
+        t1 = sorted(g.get(n)["canonical"] for n in first_fixed(g, [n for n in set(self.dict.lookup(surface or ""))
+                                                                    if is_live(g.get(n) or {})
+                                                                    and (g.get(n) or {}).get("category") == category
+                                                                    and is_skeleton(g.get(n))]))
+        if len(t1) > 1:
+            return HOLD_AMBIGUOUS, t1
+        return (self.coord_hold.get((prov, surface)) or self.coord_hold.get(_fold(surface or ""))), []   # 잠정으로 세우지 못한 사유(B182)
 
 
 def coord_judged(piece, surface):
@@ -267,10 +284,28 @@ def coord_judged(piece, surface):
     return cj.get(src)
 
 
+def first_fixed(g, nids):
+    """**사람이 고정한 것이 먼저**(B182) — 골격 카테고리 노드 중 Tier1이 있으면 그것만(잠정 노드와 같은 표기를 사람이 골격 별칭에
+    더했다 — 그 뒤로는 골격이 답한다) · 없으면 잠정 노드 그대로."""
+    fixed = [n for n in nids if not (g.get(n) or {}).get(PROVISIONAL)]
+    return fixed or list(nids)
+
+
+def coord_unjudged(piece, surface):
+    """**판단을 받지 못한 골격 칸 표기**(B182 ① — 태깅 호출 상한 · 판단 실패 · 조각 `meta.coord_unjudged`) — 잠정 노드로 세우지 않고
+    보류 그대로(`orphan_anchor`). mock · 기억된 「다르다」는 표지가 없다(맞는 것이 없으면 다르다)."""
+    return bool(surface) and surface in (((piece or {}).get("meta") or {}).get("coord_unjudged") or ())
+
+
+def _fold(surface):
+    from parser.namefold import key
+    return key(surface)
+
+
 def judge_cells(v):
     """대장 anchor 행의 판단 칸(B181 ⑥ — 곳 · 답 · 확실도 · 다시 묻기) — 판단이 없으면 빈 dict(행 바이트 그대로)."""
     from core.state.surface_book import SKELETON
     if not v:
         return {}
     return {"place": SKELETON, "answer": v.get("type"), "confidence": v.get("confidence"), "judge2": v.get("second"),
-            "nearest": {"canonical": v["candidates"][0]} if v.get("candidates") else None}
+            "nearest": {"canonical": v["candidates"][0]} if v.get("candidates") else None, "asked": v.get("asked")}

@@ -91,6 +91,8 @@ class Builder(CoordMixin):
         self.ledger = None
         self.doc_coord = None                # 문서 좌표 — 판단 재료의 값의 경로(B181 ② · 구축 입구가 봉투에서 싣는다)
         self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
+        # 잠정 골격 노드(B182 — `core/build/provisional`): 앞 패스가 정한 행의 자리 · 보류 사유 · 이 문서가 세운 것(하위 빌더와 공유)
+        self.coord_at, self.coord_hold, self.made = {}, {}, {}
         # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
         gate.bind([graph], lambda lay, me=weakref.ref(self): me().for_layer(lay).g if me() is not None else None)
 
@@ -118,6 +120,7 @@ class Builder(CoordMixin):
             sub.buffer = self.buffer
             sub.ledger = self.ledger
             sub.doc_coord = self.doc_coord
+            sub.coord_at, sub.coord_hold, sub.made = self.coord_at, self.coord_hold, self.made
             sub.subs = self.subs
             self.subs[layer] = sub
         return self.subs[layer]
@@ -404,7 +407,7 @@ class Builder(CoordMixin):
         # 같은 열쇠면 다시 묻지 않는다(후보·LLM 0) · 대장 행은 매 행 남는다(경로 `memo`).
         mkey = self._memo_key(surface, canonical, category, parent_canonical, polarity)
         if mkey in _MEMO:
-            return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey])
+            return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey], coord=coord)
         from core.llm import gateway as _llm
         from core.build import scope_path
         _u0 = _llm.usage_total()
@@ -448,7 +451,7 @@ class Builder(CoordMixin):
             return nid
         if self._skeleton_category(category):
             _MEMO[mkey] = verdict
-            return self._skeleton_miss(surface, category, canonical, prov, verdict)
+            return self._skeleton_miss(surface, category, canonical, prov, verdict, coord=coord)
 
         extra = {"_scoped": True} if scoped and category in scope_categories(self.cfg) else {}
         extra["polarity"] = polarity                     # 닫힌 4값을 항상 기록한다
@@ -496,8 +499,9 @@ class Builder(CoordMixin):
             coord_surface = many[0]
             kind = "orphan_anchor"
             # **실제 사유를 말한다**(B104 ①) — 표기 모호(골격 노드 여럿)와 목록 밖은 처방이 다르다
-            why, cands = self.anchor_hold_of(coord_surface)
-            store.enqueue_rows(kind, (f"좌표 '{coord_surface}'가 {why}(— {' · '.join(cands)})라 '{surface}'를 만들지 않았다"
+            why, cands = self.anchor_hold_of(coord_surface, prov=prov)
+            store.enqueue_rows(kind, (f"좌표 '{coord_surface}'가 {why}" + (f"(— {' · '.join(cands)})" if cands else "")
+                                      + f"라 '{surface}'를 만들지 않았다"
                                       if why else f"좌표 '{coord_surface}'가 골격 목록 밖이라 '{surface}'를 만들지 않았다"),
                                self.doc_id, norm(coord_surface),
                                {"surface": coord_surface, "category": COORD_CATEGORY,
@@ -532,28 +536,37 @@ class Builder(CoordMixin):
                 sk.stat().st_mtime_ns if sk.exists() else None,
                 tuple(sorted(set(self.dict.lookup(surface)) | set(self.dict.lookup(canonical)))))
 
-    def _memo_replay(self, surface, category, canonical, prov, verdict):
+    def _memo_replay(self, surface, category, canonical, prov, verdict, coord=None):
         """기억한 판정을 그대로 낸다 — 큐는 지금처럼 문서 × 표기 1건(행만 붙는다) · 대장 경로 `memo`."""
         self.last = {"canonical": canonical, "verdict": verdict, "path": "memo",
                      "confidence": 0.0, "layer": self.layer, "queue_kind": None,
                      "candidates_n": 0, "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
-        return self._skeleton_miss(surface, category, canonical, prov, verdict)
+        return self._skeleton_miss(surface, category, canonical, prov, verdict, coord=coord)
 
-    def _skeleton_miss(self, surface, category, canonical, prov, verdict):
-        """**골격 카테고리 개체는 조회 전용**(B94 ③) — 매칭이 아니면 노드를 만들지 않는다.
-
-        골격은 사람이 만든다 — 골격 카테고리로 뽑힌 이름이 골격(사전·별칭)에 없으면 신규·불확실
-        갈래로 골격 밖 노드를 세우지 않고 `orphan_anchor`(골격 닫힌 목록 밖 표기 — 좌표 미해소와
-        같은 사건)로 큐에 둔다. 골격 `ALIASES`가 생기면 재시도·재인입이 붙인다.
+    def _skeleton_miss(self, surface, category, canonical, prov, verdict, coord=None):
+        """**골격 카테고리 개체가 매칭이 아니다**(B94 ③ · B182 ①) — 좌표 골격 카테고리면 잠정 골격 노드(`provisional.from_entity` —
+        세우는 손 하나 · 다르다 `auto_node` · 애매 합칠 후보 + `uncertain_match` · 부모 = 그 자리의 좌표) · 닫힌 분류(좌표 층 밖
+        골격)와 세우지 못한 자리(골격 아래 새 단 등)는 노드 0 · `orphan_anchor`(골격에 별칭이 생기면 재시도 · 재인입이 붙인다).
         """
-        reason = (f"골격 카테고리 '{category}'로 뽑힌 '{surface}'가 골격에 없다 — 노드를 만들지 "
-                  f"않는다(골격은 사람이 만든다 · 같은 것이면 골격 ALIASES에)")
+        from core.state.bootstrap import COORD_CATEGORY
+        why = None
+        if category == COORD_CATEGORY:
+            from core.build import provisional
+            nid, why = provisional.from_entity(self, surface, prov, verdict, self.last.get("nearest"), coord)
+            if nid:
+                self.buffer[norm(surface)] = nid
+                m = self.made[nid]
+                self.last.update(node_id=nid, canonical=self.g.get(nid)["canonical"], queue_kind=m["queue"],
+                                 made={k: m[k] for k in ("answer", "parent", "queue")})
+                return nid
+        reason = (f"골격 카테고리 '{category}'로 뽑힌 '{surface}'가 " + (f"{why}라 세우지 않았다" if why else
+                  "골격에 없다 — 노드를 만들지 않는다(닫힌 분류 · 같은 것이면 골격 ALIASES에)"))
         store.enqueue_rows("orphan_anchor", reason, self.doc_id, norm(surface),
                            {"surface": surface, "category": category, "provenance": prov,
                             "role": "entity", "verdict": verdict},
                            locator=(prov or "").split("#")[-1] or None)
         self.last.update(verdict="orphan", queue_kind="orphan_anchor", node_id=None,
-                         canonical=canonical)
+                         canonical=canonical, **({"hold": why} if why else {}))
         return None
 
     # ---------------------------------------------------------------- attribute

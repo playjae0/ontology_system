@@ -31,6 +31,14 @@ def layer_counts(graphs):
             for lay, g in graphs.items()}
 
 
+def coord_miss(why):
+    """**골격에 맞지 않은 좌표 표기의 보류 사유인가**(진단 화면의 「좌표 표기」 원인 — 목록 밖 · 골격에 없는 좌표 · 잠정 골격 노드로
+    세우지 못한 자리 B182 — 골격 아래 새 단 · 출현 수 미달 · 이름 겹침)."""
+    from core.build.provisional import HOLDS
+    w = str(why or "")
+    return w == HOLD_REASONS[0][2] or w.startswith("골격에 없는 좌표") or w in HOLDS
+
+
 def hold_reason(row):
     if row.get("role") == "link":          # 연결 보강 행(B115 ④)은 값 판정이 아니다 — 못 고름 · 버림은 보류가 아니다
         return None

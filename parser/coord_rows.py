@@ -68,6 +68,9 @@ def fold_rows(pieces, owner, refs, rows, ref_field):
         cj = {k: x for _ref, e in got for k, x in ((e.get("meta") or {}).get("coord_judge") or {}).items()}
         if cj:
             m["coord_judge"] = cj
+        uj = [x for _ref, e in got for x in ((e.get("meta") or {}).get("coord_unjudged") or [])]
+        if uj:
+            m["coord_unjudged"] = uj                 # 판단을 받지 못한 표기(B182 ①)
         if moved:
             m["coord_tags"] = tags
             m.update(coord_tag_source=moved[0][0]["source"], coord_tag_from=moved[0][0]["from"])

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""칸 2.8 — **좌표 학습 기록의 사람 손** — 목록 · 승격 · 거부 · 새 공정 후보 (B101 ②③).
+"""칸 2.8 — **좌표 학습 기록의 사람 손** — 목록 · 승격 · 거부 (B101 ②③).
 
 좌표 태깅(⑨)이 목록 밖 표기를 골격 노드로 채택하면 파서가 그 대응을 학습 기록(③진실 표기 대장
 `data/surface_book.json`의 좌표 학습 갈래 — 지위 기계 판단 · B179 ②)에 남기고 **다음부터 바로 쓴다**(LLM 0). 사람 보증은 아니다 —
 여기서 사람이 보고 **승격**(골격 `ALIASES`로 — 다음 줄 `bootstrap`)하거나 **거부**(기록을 지운다 —
-다음엔 다시 묻는다)한다. 「목록에 없음」(null) 답은 해소에 쓰지 않고 **새 공정 후보**로만 보인다 —
-골격을 넓힐지는 사람이 정한다(문서 3 §3.6 원칙 9). null 답은 그때의 닫힌 목록 판과 함께 기억되어 같은 판이면
-다시 묻지 않는다(B107 ②) — 거부가 그 기억 하나를 지운다(후보는 남는다).
+다음엔 다시 묻는다)한다. 「목록에 없음」(null) 답은 인입에서 잠정 골격 노드의 재료다(B182 — 새 공정 후보 = 잠정 골격 노드 목록 ·
+`show learned` · 골격 파일을 넓힐지는 사람이 정한다 — 문서 3 §3.6 원칙 9). null 답은 그때의 닫힌 목록 판과 함께 기억되어 같은 판이면
+다시 묻지 않는다(B107 ②) — 거부가 그 기억 하나를 지운다.
 
 코드에 층 어휘 0 — 좌표 층은 `bootstrap.coord_layer()`가 답한다.
 """
@@ -30,20 +30,6 @@ def rows():
     """학습 기록 — `[(표기, 기록)]` (적중 많은 순 · 표기 순)."""
     b = book()["채택"]
     return sorted(b.items(), key=lambda kv: (-int(kv[1].get("hits") or 0), kv[0]))
-
-
-def candidates():
-    """**새 공정 후보** — 태깅이 「목록에 없음」으로 답한 표기 · 행 수 · 문서 · 처음 본 때 +
-    그 표기의 `orphan_anchor` 행 수(큐) — `[(표기, 기록, 큐 행)]` (행 많은 순)."""
-    q = {}
-    for x in store.read(store.QUEUE, []):
-        if x.get("kind") == "orphan_anchor" and not x.get("resolution"):
-            pl = x.get("payload") or {}
-            s, n = pl.get("surface"), pl.get("rows")
-            if s:                                   # 행 수는 수다(`store.enqueue_rows`) — 옛 모양(목록)도 센다
-                q[s] = q.get(s, 0) + (n if isinstance(n, int) else len(n or [1]))
-    out = [(s, r, q.get(s, 0)) for s, r in book()["목록밖"].items()]
-    return sorted(out, key=lambda t: (-int(t[1].get("rows") or 0), t[0]))
 
 
 def _skeleton_file():

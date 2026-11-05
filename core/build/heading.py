@@ -48,9 +48,10 @@ def _first_chunks(env, ol):
 
 
 def _is_coord(n):
-    """골격 좌표 노드인가(Tier1 — `resolve_anchor`와 같은 기준) — 그 아래 제목은 이것을 좌표로 쓴다."""
+    """골격 좌표 노드인가(Tier1 · 잠정 — `resolve_anchor`와 같은 기준 `status.is_skeleton`) — 그 아래 제목은 이것을 좌표로 쓴다."""
     from core.state.bootstrap import COORD_CATEGORY
-    return bool(n) and n.get("category") == COORD_CATEGORY and n.get("status") in ("seed", "confirmed")
+    from core.state.status import is_skeleton
+    return bool(n) and n.get("category") == COORD_CATEGORY and is_skeleton(n)
 
 
 def _kw(b, src, prov, landed=None, ol=None):
@@ -153,7 +154,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            llm=last.get("llm"), queue_kind=last.get("queue_kind"), nearest=last.get("nearest"),
                            target=b.canonical_of(nid),
                            category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
-                           apart=last.get("apart"), basis=last.get("basis"))
+                           apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"))   # 세운 잠정 골격 노드 (B182 ③)
         if not nid:
             continue
         hg = cg or b.graph_of(nid) or graph

@@ -174,6 +174,9 @@ def cmd_node(args):
         if n.get("polarity") and n["polarity"] != "none":
             print(f"  극성       {n['polarity']}")
         from cli import show_learn as _sl                 # 별칭마다 출처 (B101 ④)
+        _pl = _sl.provisional_line(g, n)                  # 잠정 골격 노드 — 부모 · 단 · 합칠 후보 (B182 ③)
+        if _pl:
+            print(_pl)
         for _ln in _sl.node_alias_lines(n):
             print(_ln)
         print(f"  출처       {_prov(n['provenance'])}")

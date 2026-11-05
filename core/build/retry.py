@@ -489,7 +489,7 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     # 거기서 「같다」면 표기가 사전 · 표기 대장에 남아 다음엔 사전에서 끝난다. 재시도는 그 판단을 다시 부르지 않는다.
     #
     # 재시도가 존재하는 이유는 **그래프가 자랐기 때문**이지 매칭이 느슨해졌기
-    # 때문이 아니다(§4.7-5). anchor는 Tier1(seed·confirmed) 한정이다.
+    # 때문이 아니다(§4.7-5). anchor는 골격 카테고리 노드(Tier1 · 잠정) 한정이다(문서 1 D4 · 잠정이 서면 거둔다 — B182 ④).
     ref, rlay, rg = _tier1(surface, category, graphs, dic)
     if ref is None:
         # **좌표 학습 기록**(B101 ② · B113 ③) — LLM이 채택한 표기는 인입이 바로 쓴다 · 재연결도 같은 기록을 본다
@@ -514,12 +514,14 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
 
 
 def _tier1(surface, category, graphs, dic):
-    """골격(Tier1 — seed · confirmed) 조회 — 사전(정확 · 별칭)까지 · 하나일 때만 `(id, 층, 그래프)`."""
+    """골격(Tier1 · 잠정 — `status.is_skeleton` · B182 ④) 조회 — 사전(정확 · 별칭)까지 · 하나일 때만 `(id, 층, 그래프)`."""
+    from core.state.status import is_skeleton
     for lay, g in graphs.items():
-        hits = [nid for nid in dic.lookup(surface)
-                if nid in g.nodes and is_live(g.get(nid))
-                and g.get(nid)["category"] == category
-                and g.get(nid).get("status") in ("seed", "confirmed")]
+        from core.build.build_coord import first_fixed
+        hits = first_fixed(g, [nid for nid in dic.lookup(surface)
+                               if nid in g.nodes and is_live(g.get(nid))
+                               and g.get(nid)["category"] == category
+                               and is_skeleton(g.get(nid))])
         if len(hits) == 1:
             return hits[0], lay, g
     return None, None, None

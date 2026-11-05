@@ -88,10 +88,12 @@ _res = []
 # 표 × process / 표 × quality — 골격 없이 넣어 좌표 보류 → 골격을 심으면 붙는다
 for doc, lay in (("CP01", "process"), ("PFMEA01", "quality")):
     _fresh(boot=False)
+    hold_coords()                                 # 잠정 골격 노드 대신 보류(B182 — 이 시험은 재시도의 보류 기계를 잰다)
     bootstrap("quality", echo=False) if lay == "quality" else None
     run_document(load(doc))
     bootstrap("process", echo=False)
     _res.append(("표", lay) + _retry_case())
+    hold_coords(False)
 # 산문 × process / 산문 × quality — 부착 대상이 없다 → 사람이 별칭을 이으면 붙는다
 from core.state import ops                     # noqa: E402
 for doc_type, lay, did in (("ppt_process", "process", "B100AP"), ("ppt_quality", "quality", "B100AQ")):
@@ -567,6 +569,7 @@ try:
     for form, lay, cat in (("표", "process", "Process"), ("표", "quality", "FailureEffect"),
                            ("산문", "process", "Process"), ("산문", "quality", "FailureEffect")):
         _fresh()
+        hold_coords()                             # 좌표 골격 카테고리도 보류로(B182 — 이 시험은 골격 밖 반복 판정 기억을 잰다)
         surf = f"골격밖 B100 {lay}"
         if form == "표":
             did = f"B100T{lay[0].upper()}"
@@ -587,6 +590,7 @@ try:
         (HINTS / f"{did}.json").unlink(missing_ok=True)
 finally:
     BLD.resolve = _real_resolve
+    hold_coords(False)
 show("ⓖ 골격 밖 같은 표기 n행 → 판정 1회 · 대장 n행(둘째부터 memo) · 큐 문서×표기 1건 (표·산문 × 층 둘)",
      all(o for _f, _l, o, _d in _ok_g), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_g))
 print("\n■ B100 ⑥ 골격·사전이 바뀌면 재시도가 돈다 (표·산문 × 층 둘)")
@@ -595,6 +599,7 @@ NEW = "B100별칭표기"
 _ok_h = []
 for form, lay in (("표", "process"), ("표", "quality"), ("산문", "process"), ("산문", "quality")):
     _fresh()
+    hold_coords()                                    # 목록 밖 좌표는 보류로(B182 — 이 시험은 별칭 + bootstrap 뒤 재시도를 잰다)
     if form == "표":
         env = load("CP01" if lay == "process" else "PFMEA01")
         env["records"][0]["process_ref"] = NEW         # 목록 밖 좌표 → orphan_anchor
@@ -626,6 +631,7 @@ for form, lay in (("표", "process"), ("표", "quality"), ("산문", "process"),
                   f"건너뜀 {same0} · 보류 {len(q0)} → {len(q1)} · 그래프 수 {'그대로' if n0 == n1 else '바뀜'} · "
                   f"「{line.strip()[:60]}」"))
     (HINTS / f"{env['doc_id']}.json").unlink(missing_ok=True)
+    hold_coords(False)
 show("ⓗ 골격 별칭 + bootstrap(보류 줄) → 다음 마무리에서 보류분 연결 · 그래프 수 그대로여도 (표·산문 × 층 둘)",
      all(o for _f, _l, o, _d in _ok_h), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_h))
 # 등록 단(②)은 `init --fresh`가 지우지 않는다 — 이 시험이 세운 doc_type·패키지는 이 시험이 치운다

@@ -36,6 +36,36 @@ def node_alias_lines(n):
     return out or ["  별칭       (없음)"]
 
 
+def provisional_line(g, n):
+    """`show node`의 잠정 줄(B182 ③) — 판단 · 부모(미정) · 단 · 합칠 후보 · 잠정이 아니면 None."""
+    from core.build import provisional
+    a = provisional.about(g, n)
+    if a is None:
+        return None
+    return (f"  잠정       잠정 골격 노드({'다르다' if a['answer'] == 'new' else '애매'} · 부모 {a['parent'] or '미정'} · "
+            f"단 {a['tier'] or '미정'}" + (f" · 합칠 후보 {' · '.join(a['near'])}" if a["near"] else "")
+            + ") — 골격 파일에는 없다(승격 · 합침은 사람)")
+
+
+def _provisional_list():
+    """**새 공정 후보 = 잠정 골격 노드 목록**(B182 ③ — 한 자리) — 노드 · 부모 · 단 · 판단 · 합칠 후보 · 처음 문서 · 보이기만."""
+    from core.build import provisional
+    from core.state.bootstrap import coord_layer
+    lay = coord_layer()
+    pv = provisional.listing(lay)
+    print(f"\n■ 새 공정 후보 = 잠정 골격 노드 — {len(pv):,}노드 (골격에 없는 좌표 골격 칸 이름 · 그 행의 좌표로 바로 쓴다 · "
+          f"골격 파일은 사람의 승격만)")
+    if pv:
+        print(f"  {'지위':<6} {'노드':<24} {'부모':<16} {'단':<7} {'판단':<5} {'합칠 후보':<16} 처음 문서")
+    for e in pv:
+        near = " · ".join(e.get("near") or []) or "—"
+        print(f"  {SB.MACHINE:<6} {e['canonical']:<24} {e.get('parent') or '미정':<16} {e.get('tier') or '미정':<7} "
+              f"{'다르다' if e.get('answer') == 'new' else '애매':<5} {near:<16} {e.get('doc') or '—'}")
+    if pv:
+        print(f"  ▶ 다음 줄 — 있는 공정의 다른 이름이면 그 노드의 ALIASES에 더한다(layers/{lay}/skeleton.json) → "
+              "python run.py bootstrap(그 뒤로 골격이 답한다) · 새 공정이면 골격 노드로 · 승격 · 합침 명령은 다음 회차(A2)")
+
+
 def cmd_learned(args):
     from core import paths
     from core.state import store
@@ -55,16 +85,7 @@ def cmd_learned(args):
               "--actor <이름> → python run.py bootstrap")
         print("               틀리면 거부(다음엔 다시 묻는다): python run.py ops learn-reject <층> <표기> "
               "--actor <이름>")
-    cands = coord_learn.candidates()
-    print(f"\n■ 새 공정 후보 — {len(cands):,}표기 (태깅이 「목록에 없음」으로 답했다 · 해소에 쓰지 않는다)")
-    if cands:
-        print(f"  {'지위':<6} {'표기':<20} {'행':>5} {'큐 행':>5}  {'문서':<24} 처음 본 때")
-    for s, r, q in cands:
-        print(f"  {SB.MACHINE:<6} {s:<20} {int(r.get('rows') or 0):>5,} {q:>5,}  {', '.join(r.get('docs') or [])[:24]:<24} "
-              f"{r.get('first_seen')}")
-    if cands:
-        print("  ▶ 다음 줄 — 새 공정이면 골격 노드로, 있는 공정의 다른 이름이면 그 노드의 ALIASES에 더한다 "
-              "(layers/<좌표 층>/skeleton.json) → python run.py bootstrap → 다음 인입 마무리에서 붙는다")
+    _provisional_list()
     return 0
 
 

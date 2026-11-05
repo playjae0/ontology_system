@@ -173,7 +173,7 @@ def _top_heading(mat):
 def causes(mat, layer=None):
     """원인 묶음 — `[{원인, 못 찾은 것, 행, 종류, 위치, 처방}]`(원인 순 → 확인할 행 수). 행은 가장 위 원인에서 한 번만 · 큐 항목 ·
     끝점 이름처럼 대장 행이 아닌 것은 `밖`에만 센다(행 0이면 화면 줄 0)."""
-    from core.build.result import ATTACH_NOT_TARGET, ATTACH_UNRESOLVED, HOLD_REASONS, hold_reason
+    from core.build.result import ATTACH_NOT_TARGET, ATTACH_UNRESOLVED, HOLD_REASONS, coord_miss, hold_reason
     vals = _values(mat, layer)
     pieces = mat["env"].get("records") or mat["env"].get("chunks") or []
     any_coord = any(_coord(p) for p in pieces)
@@ -204,7 +204,7 @@ def causes(mat, layer=None):
         elif not co:
             what = tops.get(loc) or "(좌표 칸 빈 행)"
             put(SECTION, what, i, loc, _fix_section(mat, what))
-        elif kind == "보류" and anchor.get(_norm(co)) == HOLD_REASONS[0][2]:      # 표 — 골격에 맞지 않은 좌표 표기
+        elif kind == "보류" and coord_miss(anchor.get(_norm(co))):      # 표 — 골격에 맞지 않은 좌표 표기(잠정으로 세우지 못한 자리 포함 · B182)
             put(SECTION, f"좌표 표기 '{co}'", i, loc, f"골격 ALIASES[\"<골격 canonical>\"]에 \"{co}\" → python run.py bootstrap → "
                                                   f"python run.py ingest-file {doc} --doc-type {dt}")
     for x in mat["orphans"]:
@@ -294,7 +294,7 @@ def outside(mat, cs, layer=None):
     """**행 밖**(B154 ②) — 확인할 행으로 세지 않는 잃은 것 `[{무엇, 말, 위치, 처방}]` · 행의 합(머리 · 원인 줄 · 목차 나무)에 섞지 않는다:
     관계 끝점 없음(원인 묶음의 끝점 무리 그대로 — 위 원인으로 못 선 값의 이름은 이미 빠졌다) · 골격에 없는 공정 표기(좌표 행 보류 —
     좌표 목록 밖 · 골격에 없는 좌표 — 중 위 원인 줄의 「못 찾은 것」에 이미 든 표기는 뺀다 — 그 표기 때문에 값이 못 붙었으면 원인 줄이 말한다)."""
-    from core.build.result import HOLD_REASONS, hold_reason
+    from core.build.result import coord_miss, hold_reason
     out = [{"무엇": "관계", "말": f"끝점 없음 '{g['못 찾은 것']}' · 못 선 관계 {g['밖']:,}", "위치": g["위치"], "처방": g["처방"]}
            for g in cs or [] if g["원인"] == ENDPOINT and not g["행"] and g["밖"]]
     named = " ".join(str(g["못 찾은 것"]) for g in cs or [] if g["행"])
@@ -302,7 +302,7 @@ def outside(mat, cs, layer=None):
     for r in mat["rows"]:
         why = str(hold_reason(r) or "") if r.get("role") == "anchor" else ""
         s = r.get("surface")
-        if (not s or not (why == HOLD_REASONS[0][2] or why.startswith("골격에 없는 좌표")) or f"'{s}'" in named
+        if (not s or not coord_miss(why) or f"'{s}'" in named
                 or (layer and r.get("layer") and r.get("layer") != layer)):
             continue
         e = by.setdefault(s, {"n": 0, "locs": []})

@@ -183,7 +183,7 @@ show("ⓔ 일괄 검토 — 비대화형은 계획만(쓰기 0) · 합침(m)·�
 
 print("\n■ B101 ② 좌표 학습 보존 · ③ 새 공정 후보 (표·산문 × 층 둘)")
 LEARN, NULLX = "노칭 B101공정", "없는공정 B101"
-_ok_b, _ok_c = [], []
+_ok_b = []
 from core.state.bootstrap import coord_layer      # noqa: E402
 for form, lay, _cat in MATRIX:
     _fresh()
@@ -222,21 +222,11 @@ for form, lay, _cat in MATRIX:
                   and LEARN not in CL.book()["채택"],
                   f"A 호출 {ca} · B 호출 {cb} 학습 적중 {pb['학습_적중']}종(행 {pb['학습_적중_행']}) · 목록 밖(기억) {pb.get('기억_종수')}종 · "
                   f"거부 뒤 C 호출 {cc} · 승격+bootstrap 뒤 D 호출 {cd}(정확 일치 {pd['정확_일치']})"))
-    # ③ 새 공정 후보 — 표기 · 행 · 문서
-    cands = {s: (r_, q) for s, r_, q in CL.candidates()}
-    b = io.StringIO()
-    with contextlib.redirect_stdout(b):
-        SL.cmd_learned([])
-    out = b.getvalue()
-    c = (cands.get(NULLX) or ({}, 0))[0]
-    _ok_c.append((form, lay, set(c.get("docs") or []) == {"DA", "DB", "DC", "DD"} and c.get("rows") == 4
-                  and NULLX in out and "새 공정 후보" in out and "bootstrap" in out,
-                  f"{NULLX} 행 {c.get('rows')} · 문서 {c.get('docs')}"))
-
 # ③ 다음 줄대로 골격에 더하면 다음 인입 마무리에서 붙는다 — 표·산문 × 층 둘
 _ok_c2 = []
 for form, lay, cat in MATRIX:
     _fresh()
+    hold_coords()                   # 목록 밖 좌표는 보류로(B182 — 이 시험은 보류 → 골격 별칭 + bootstrap → 다음 마무리를 잰다)
     did = f"B101N{form[0] == '표' and 'T' or 'P'}{lay[0].upper()}"
     env = _env(form, lay, cat, did, ["B101 새 공정 설비"], ref=NULLX)
     run_document(env)
@@ -257,13 +247,14 @@ for form, lay, cat in MATRIX:
     _ok_c2.append((form, lay, bool(q0) and not q1, f"보류 {len(q0)} → {len(q1)} ({sorted({x['kind'] for x in q0})})"))
     (HINTS / f"{did}.json").unlink(missing_ok=True)
     _unreg([f"b101t{lay[0]}"])
+    hold_coords(False)
 show("ⓑ 좌표 학습 — A 채택 → B LLM 0(예고 학습 적중) · null은 같은 판이면 기억(B107 ②) · 거부 뒤 다시 묻는다 · "
      "승격+bootstrap 뒤 사람 보증 정확 일치 · 판이 바뀌어 null은 다시 묻는다 (표·산문 × 층 둘)",
      all(o for _f, _l, o, _d in _ok_b), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_b))
-show("ⓒ 새 공정 후보 — null 표기 · 행 · 문서가 show learned에 · 다음 줄대로 골격에 더하면 다음 인입 마무리에서 붙는다 "
-     "(표·산문 × 층 둘)",
-     all(o for _f, _l, o, _d in _ok_c + _ok_c2),
-     " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_c + _ok_c2))
+show("ⓒ 보류된 좌표 표기 — 다음 줄대로 골격에 더하면 다음 인입 마무리에서 붙는다 (표·산문 × 층 둘 · 고침 B182 — 새 공정 후보 "
+     "화면은 잠정 골격 노드 목록 · 옛 null 기록 화면의 어서션은 지움)",
+     all(o for _f, _l, o, _d in _ok_c2),
+     " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_c2))
 
 # ④ 별칭 출처 — 골격 · 좌표 학습 (골격 노드)
 _fresh()
