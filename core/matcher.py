@@ -25,18 +25,15 @@ from core.state.ids import norm
 from core.build.naming import POLARITY_NONE, scope_of
 from core.state.status import is_live
 
-# 판정 임계 — **층 config `match_threshold`가 소유한다**(문서 3 §3.1 키 일람).
-# 판단에 영향을 주는 자산은 코드에 박지 않는다(문서 7 §7.1 관리 자산의 원칙).
-# 아래 상수는 config가 그 키를 선언하지 않았을 때의 폴백이다.
+# 같다고 받는 기준 — **사내 손잡이 `match_threshold`**(B181 ⑤ — 사람이 조절하는 값의 자리는 `knobs.json` 하나 · 세 곳 공통).
+# 아래 상수가 기본값이다(코드 상수를 사내에서 고치지 않는다).
 THRESHOLD = 0.85
 
 
-def threshold(cfg=None):
-    """이 층의 판정 임계. 세분화는 판정 보류율이 쌓인 뒤에만(P7·E2)."""
-    if cfg is None:
-        return THRESHOLD
-    v = cfg.get("match_threshold")
-    return float(v) if v is not None else THRESHOLD
+def threshold():
+    """같다고 받는 기준 — 손잡이 `match_threshold`(파일에 없으면 `THRESHOLD`) · 하나다(E2 — 세분화는 보류율이 쌓인 뒤에만)."""
+    from core.state import knobs
+    return float(knobs.get("match_threshold"))
 
 MATCH = "match"
 NEW = "new"
@@ -79,8 +76,14 @@ def _pol(value):
 # **판정에 올리는 후보의 상한**(B73 ① · 06 대장 3.4). 사내 실측 열두째: 후보가
 # 카테고리·층 **전량**이라 노드가 늘수록 매 판정의 입력이 커졌다(입력 토큰 2만,
 # 출력 40 이하). 명세는 처음부터 다르게 말한다 — 문서 4 §4.2 ②「후보 검색 — 사전
-# 미스 시 임베딩 유사도」. 상한 하나가 그 구현의 손잡이다.
+# 미스 시 임베딩 유사도」. 상한 하나가 그 구현의 손잡이다 — 사내 손잡이 `candidate_top_n`(B181 ⑤ · 아래는 기본값).
 CANDIDATE_TOP_N = 12
+
+
+def candidate_top_n():
+    """판정 후보 상한 — 손잡이 `candidate_top_n`(파일에 없으면 `CANDIDATE_TOP_N`)."""
+    from core.state import knobs
+    return int(knobs.get("candidate_top_n"))
 
 # **판정의 계측** — 화면이 「어떻게 좁혔고 몇 번 불렀나」를 세는 재료다(B73 ①).
 # 세는 자리가 **그 일을 하는 자리**와 같아야 화면과 실물이 갈리지 않는다.
@@ -93,8 +96,10 @@ JUDGE_CONTEXT_CHARS = 80
 
 
 def context_chars():
-    """다시 묻기의 원문 글자 상한 — 세 곳 · 산문 · 표가 이 값 하나(B181 ③)."""
-    return JUDGE_CONTEXT_CHARS
+    """다시 묻기의 원문 글자 상한 — 세 곳 · 산문 · 표가 이 값 하나(B181 ③) · 손잡이 `judge_context_chars`(파일에 없으면
+    `JUDGE_CONTEXT_CHARS` — B181 ⑤: 옛 판정은 상수를 바로 읽어 `knobs.json`의 값이 닿지 않았다)."""
+    from core.state import knobs
+    return int(knobs.get("judge_context_chars"))
 
 # 진행 콜백 — 호출부가 꽂는다(기본 없음). **판정 중에도 비용이 보인다**(사용자
 # 요청 2026-09-16): 좌표 태깅 진행 줄(B69 ②)과 같은 결이고, 자리는 부르는 자리다.
@@ -406,7 +411,7 @@ def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
         # 같은 공정 줄기 · 경로 호환 후보가 없다 — 답은 NEW로 정해져 있다. 여기서 끝낸다.
         STATS["관문끝"] += 1
     # **후보 전량을 판정에 올리지 않는다**(B73 ①) — 상한 안으로 좁힌다(같은 이름은 남긴다 — ④).
-    kept, how = _narrow(surface, pool, top_n or CANDIDATE_TOP_N,
+    kept, how = _narrow(surface, pool, top_n or candidate_top_n(),
                         scoped=gated_)
     STATS["조립"] += 1
     STATS["후보합"] += len(out) + len(kept)
@@ -463,7 +468,7 @@ def match(surface, candidates, category, cfg=None, *, where=None):
         if s > score:
             best, score = c["id"], s
 
-    if score >= threshold(cfg):
+    if score >= threshold():
         return {"type": MATCH, "matched_id": best, "confidence": score, "path": path}
     if score > 0.0:
         # 임계 아래인데 0은 아닌 구간 — 확신이 없으므로 신규로 만들고 표시한다.
@@ -536,7 +541,7 @@ def judge(surface, pool, category, cfg=None, *, path=None, context=None, where=N
         _LOG.warning("판정이 후보 밖 id를 답했다 — 버리고 uncertain으로 둔다: %r", mid)
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
                 "path": path}
-    if vtype == MATCH and conf < threshold(cfg):
+    if vtype == MATCH and conf < threshold():
         return {"type": UNCERTAIN, "matched_id": None, "confidence": conf,
                 "path": path, "nearest_id": mid}
     if vtype == MATCH:

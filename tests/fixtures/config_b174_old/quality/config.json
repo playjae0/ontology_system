@@ -24,7 +24,6 @@
     "controlled_by"
   ],
   "category_pair_map": {},
-  "match_threshold": 0.85,
   "query_traverse": {
     "causes": {
       "both": {

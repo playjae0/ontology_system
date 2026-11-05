@@ -1,6 +1,6 @@
 # config 작성 가이드 — 새 층을 세울 때 사람이 실제로 쓰는 것
 
-> **결론 먼저**: 층 config 문법 키는 **20종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **18종** · 품질층 **16종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다 · 선택 키 `value_categories`는 공정층만) — 그중 **사람이 실제로 쓰는 것은 12종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 8종은 베끼거나 자동으로 따라온다. 이름 규칙(카테고리 경로)과 위아래 쌍은 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
+> **결론 먼저**: 층 config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **17종** · 품질층 **15종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다 · 선택 키 `value_categories`는 공정층만) — 그중 **사람이 실제로 쓰는 것은 12종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 7종은 베끼거나 자동으로 따라온다. 이름 규칙(카테고리 경로)과 위아래 쌍은 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
 > **골격 가이드와 짝이다** — 골격을 먼저 심으면 3종이 따라오고, 이 가이드는 그다음이다.
 > 실물 예시는 전부 `layers/process/config.json`에서 그대로 가져왔다 — **자산이 정본이다.**
 
@@ -26,16 +26,16 @@
 
 **즉 사내에서 새 문서 종류를 붙일 때는 이 가이드가 아니라 ①번이다** — `python -m cli.register generate <doc_type> <층> <표본>` → 검수 뷰 → 승인. 이 가이드는 **새 층을 세울 때만** 쓴다.
 
-## 0. 20종의 실제 부담 분류
+## 0. 19종의 실제 부담 분류
 
 | 분류 | 키 | 작성법 |
 |---|---|---|
-| **베낀다 (2)** | `match_threshold` `query_intents` | 두 층이 완전 동일 — 기존 층 것을 복사 |
+| **베낀다 (1)** | `query_intents` | 두 층이 완전 동일 — 기존 층 것을 복사 |
 | **한 줄 (3)** | `layer` `config_version` `registration` | 이름표 — `"quality"` · `"quality-1"` · `"registered"` |
 | **골격에서 따라옴 (3)** | `skeleton` `skeleton_version` `polarity` | 골격 가이드의 산출. 극성 없는 층은 뒤 둘 생략 |
 | **사람이 쓴다 (12)** | 아래 §1~§6 — `categories` `relations` `relation_patterns` `uses` `query_traverse` `cross_layer_traverse` `mirrors` `fact_templates` `extract_patterns` `prompts` `relevance_terms`(선택 · §6-a) `value_categories`(선택 · §1-b) | **이 가이드의 본문** |
 
-> **20종은 합집합이다.** 실물은 공정층 18종·품질층 16종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다 · `value_categories`는 선택 — 없으면 산문 값 0), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. 옛 키(`canonical_scope` · `category_pair_map` · 집이 아닌 층의 카테고리 정의)가 있으면 `bootstrap`이 새 모양 제안을 쓰고 멈춘다(§0-a).
+> **19종은 합집합이다.** 실물은 공정층 17종·품질층 15종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다 · `value_categories`는 선택 — 없으면 산문 값 0), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. 옛 키(`canonical_scope` · `category_pair_map` · 집이 아닌 층의 카테고리 정의)가 있으면 `bootstrap`이 새 모양 제안을 쓰고 멈춘다(§0-a). 같다고 받는 기준(옛 `match_threshold`)은 층 config 키가 아니다 — 사내 손잡이 `knobs.json`의 `match_threshold`다(층 config에 남아 있으면 `bootstrap`이 손잡이 값과 같으면 「지워도 된다」 한 줄 · 다르면 멈춘다).
 
 ## 0-b. 항목 표 — 무엇을 비우면 무엇이 되나 · 어느 단계가 읽나
 
@@ -55,7 +55,6 @@
 | `polarity` | 선택(극성 없는 층은 생략) | 극성 하강 · 극성 대조 0 | 메타(좌표 태깅) · 그래프 |
 | `skeleton` | 골격 층은 필수 | 좌표 닫힌 목록 0 — 좌표가 서지 않는다 | 메타(좌표 태깅) · 그래프 |
 | `skeleton_version` | 골격 층은 필수(기록) | 골격 판 기록이 빈다 | 그래프(기록) |
-| `match_threshold` | 선택 | 코드 기본 판정 문턱 | 그래프(판정) |
 | `query_intents` | 선택 | 질의 의도 표지 0 | 질의 |
 | `query_traverse` | 선택 | 질의 확장 0(맞은 노드만) | 질의 |
 | `cross_layer_traverse` | 선택(선언층에만) | 층간 다리 0 | 질의 |
@@ -325,7 +324,7 @@
 | # | 파일 | 왜 |
 |---|---|---|
 | 1 | `layers/process/config.json` | **양식 그 자체** — 문법 키 17종 + 주석 키 4종의 실제 형태 |
-| 2 | `layers/quality/config.json` (문법 키 16종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(polarity·skeleton_version 없음)를 실물로 보여준다 |
+| 2 | `layers/quality/config.json` (문법 키 15종) | **두 번째 예** — 무엇이 층마다 다르고 무엇이 같은지 보인다. 그리고 **비워도 되는 키**(polarity·skeleton_version 없음)를 실물로 보여준다 |
 | 3 | 새 층의 **골격 seed** (이미 만든 것) | 카테고리·관계가 골격과 맞아야 한다 |
 | 4 | 새 층의 **대표 문서 1~2부** | 무엇을 담는 층인지의 실체 |
 | 5 | `$ONTO_HOME/layers/common.json` | **재사용 목록** — 이미 있는 카테고리(`used_by`로 누가 쓰는지까지). 같은 뜻이면 그 이름을 쓰게 한다 |
@@ -360,7 +359,7 @@ query_traverse · fact_templates 등은 첨부 ①②를 베이스로
 query_traverse는 관계→규칙이름→{direction,recursive}의 **3단 중첩**이다.
 
 [규율]
-- 첨부에 없는 키를 만들지 않는다(선택 키 relevance_terms · value_categories만 예외 — 그 층의 글에 실제로 나오는 말 · 값을 받는 카테고리). 20종이 전부다.
+- 첨부에 없는 키를 만들지 않는다(선택 키 relevance_terms · value_categories만 예외 — 그 층의 글에 실제로 나오는 말 · 값을 받는 카테고리). 19종이 전부다.
 - 판단이 갈린 자리는 JSON 뒤 "확인 필요:"에 적는다. 추측으로 채우지 않는다.
 ```
 

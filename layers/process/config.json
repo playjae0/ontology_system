@@ -35,7 +35,6 @@
     "mirrors"
   ],
   "uses": [],
-  "match_threshold": 0.85,
   "query_traverse": {
     "part_of": {
       "down": {

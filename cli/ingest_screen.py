@@ -485,7 +485,7 @@ def build_screen(step=False, stage=None, prose=False):
         if j.get("조립"):
             # **어떻게 좁혔나를 화면이 말한다**(B73 ①) — 후보가 전량이던 시절의
             # 비용은 화면 어디에도 없었다.
-            from core.matcher import CANDIDATE_TOP_N
+            from core.matcher import candidate_top_n
             # **좁힘을 갈라 적는다**(B75 ①) — 임베딩으로 골랐는지 겹침으로 골랐는지가
             # 같은 문서를 두 설정으로 넣어 견줄 때의 유일한 표지다.
             # `관문으로 끝`은 **판정 없이** 끝난 수다(B75 ② · B142 ① — 같은 공정 줄기 · 경로 호환 후보 0개) ·
@@ -494,7 +494,7 @@ def build_screen(step=False, stage=None, prose=False):
                   f"관문으로 끝 {j.get('관문끝', 0):,} · "
                   f"좁힘 — 임베딩 {j.get('임베딩', 0):,} · 겹침 {j.get('겹침', 0):,} · "
                   f"후보 평균 {j['후보합'] / max(1, j['조립']):.1f}"
-                  f"(상한 {CANDIDATE_TOP_N})"
+                  f"(상한 {candidate_top_n()})"
                   + (f" · 2차 {j['2차']:,} → 바뀜 {j.get('2차바뀜', 0):,}" if j.get("2차") else ""))
         rp = info.get("재생") or {}
         if any(rp.values()):

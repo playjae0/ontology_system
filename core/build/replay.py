@@ -113,14 +113,14 @@ def basis(surface, pre, cfg):
     from core import matcher
     out, pool, scoped = pre
     keep = dict(matcher.LAST_NARROW)
-    kept, _how = matcher._narrow(surface, list(pool), matcher.CANDIDATE_TOP_N, scoped=scoped)
+    kept, _how = matcher._narrow(surface, list(pool), matcher.candidate_top_n(), scoped=scoped)
     matcher.LAST_NARROW.clear()
     matcher.LAST_NARROW.update(keep)                  # 좁힌 기록은 판정의 것이다 — 여기서 남기지 않는다
     names = sorted(f"{c.get('layer')}|{c.get('category')}|{norm(c.get('canonical') or '')}" for c in list(out) + kept)
     if "판" not in _JUDGE:
         from core.llm import gateway
         _JUDGE["판"] = gateway.prompt_version("judge")
-    raw = json.dumps([names, _JUDGE["판"], matcher.threshold(cfg)], ensure_ascii=False)
+    raw = json.dumps([names, _JUDGE["판"], matcher.threshold()], ensure_ascii=False)     # 손잡이 값(B181 ⑤ — 같으면 지문 그대로)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 

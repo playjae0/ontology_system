@@ -223,6 +223,36 @@ def _dry_run_end(p, bad, skel):
     return 1 if n else 0
 
 
+def _moved_keys_gate():
+    """**층 config의 옛 키 → 손잡이**(B181 ⑤ — `knobs.MOVED_LAYER_KEYS`) — 층 값이 손잡이 값과 같으면 한 줄(지워도 된다) · 다르면
+    (층마다 달라도) 멈춘다 — 조용히 무시하지 않는다(사람은 바꾼 줄 알고 결과는 그대로다)."""
+    from core import paths
+    from core.state import knobs
+    cfgs = {}
+    for lay in discover():
+        p = paths.layers(lay, "config.json")
+        try:
+            cfgs[lay] = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except ValueError:
+            continue                                  # JSON 결함은 뒤의 관문이 문면으로 멈춘다
+    try:
+        moved = knobs.moved_keys(cfgs)
+    except knobs.KnobError as e:
+        print(f"[bootstrap] {e}")
+        return 1
+    for key, knob, vals, now, same in moved:
+        where = " · ".join(f"{lay} {v}" for lay, v in vals.items())
+        if same:
+            print(f"[bootstrap] 층 config의 {key}({where})는 손잡이 {knob}({now} — knobs.json)로 옮겼다 — 층 config의 이 키는 지워도 된다")
+            continue
+        print(f"[bootstrap] [상태] 층 config의 {key}가 손잡이 값과 다르다 — {where} · 손잡이 {knob} {now}({knobs.source(knob)})\n"
+              f"  근거 — {paths.show(paths.layers())} · {paths.show(paths.knobs())}\n"
+              f"  ▶ 다음 줄: knobs.json에 \"{knob}\": <값>을 적거나 층 config의 {key}를 지운다(층마다 다르면 어느 값인지 사람이 "
+              f"정한다) → python run.py show knobs")
+        return 1
+    return 0
+
+
 def _catalog_gate(dry_run=False):
     """**층 공통 config 먼저** (B90 ① · B92) — 층 config와 맞추고, 어긋나면 층을 심기 전에 멈춘다.
 
@@ -236,6 +266,9 @@ def _catalog_gate(dry_run=False):
     from core.state import catalog, catalog_sync
     if paths.common(draft=True).exists():
         print(f"[bootstrap] {paths.show(paths.common(draft=True))}는 쓰지 않는 파일이다(지워도 된다)")
+    rc = _moved_keys_gate()                           # 층 config의 옛 키 → 손잡이(B181 ⑤ — 같으면 한 줄 · 다르면 멈춤)
+    if rc:
+        return rc
     from cli import config_next                       # 옛 모양이면 제안 · 보고를 쓰고 멈춘다(B174 ③)
     rc = config_next.screen(dry_run=dry_run) if paths.common().exists() else None
     if rc is not None:

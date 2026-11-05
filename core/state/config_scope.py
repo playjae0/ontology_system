@@ -29,7 +29,7 @@ LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patte
 USES = "uses"
 #: 층 config — 그 밖 갈래의 아는 키(영향 없음 · 갈래 판정은 `kind`가 「그 밖」으로 본다 · B148 ⑥ — 가이드 항목 표의 나머지)
 OTHER = {"질의": ("query_intents", "query_traverse", "cross_layer_traverse", "fact_templates"),
-         "기록": ("layer", "config_version", "registration", "skeleton_version"), "판정 문턱": ("match_threshold",)}
+         "기록": ("layer", "config_version", "registration", "skeleton_version")}
 #: 층 공통 config(`layers/common.json`) — 카테고리 항목은 칸마다 편다(`common_view` — 추출 입력은 겸뿐 · `used_by`는 기록 · B174)
 COMMON = {"추출": ("categories.also",), "구축": ("categories.home", "categories.no_path", "pairs", "sep")}
 COMMON_KEY = "공통"
