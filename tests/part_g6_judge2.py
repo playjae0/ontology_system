@@ -732,4 +732,62 @@ show("B185 ⓐ 새 손잡이 — knobs.json의 값을 쓰는 자리가 읽는다
      _d185 == (PS.COORD_CAP, (1500,) * 3, 0.7, None, 1600, 1600, QY.COLLECT_LIMIT) and _v185 == (7, (42,) * 3, 0.3, 5, 777, 777, 5)
      and _b185() == _d185,
      f"기본 {_d185} · 적은 값 {_v185}")
+# ────────────────────────────────────────────────────────────── B186 ⓔ 두 끝이 같은 노드인 엣지 — 세우지 않고 관문 거부로 기록(문서 1 J32)
+print("\n■ B186 ⓔ 같은 노드 엣지 — 원인 칸 = 모드 칸 · 표기가 다른 두 칸을 사전이 한 노드로")
+import openpyxl as _ox186                                                     # noqa: E402
+from core.build import gate as _G186                                          # noqa: E402
+from core.state import ops_mark as _OM186                                     # noqa: E402
+from cli import ops_review as _OR186                                          # noqa: E402
+_t186 = Path(tempfile.mkdtemp(prefix="b186_"))                               # 사본은 시스템 임시 폴더(레포 쓰기 0)
+
+
+def _pf186(name, cause):
+    wb = _ox186.load_workbook(_FXR.ROOT_DIR / "raw" / "PFMEA01.xlsx")
+    ws = wb.active
+    ws.cell(4, 6).value = cause(ws.cell(4, 5).value)                          # R4 고장원인 칸 ← (모드 칸으로 정한 글)
+    wb.save(_t186 / name)
+    return str(_t186 / name)
+
+
+def _same186(doc):
+    return [x for x in STO.read(STO.GATE_REJECTS, {"rejects": []}).get("rejects") or []
+            if x.get("verdict") == _G186.SAME_NODE and x.get("doc_id") == doc]
+
+
+def _ing186(path):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        IG.ingest_file(path, "pfmea", ask=False)
+    return buf.getvalue()
+
+
+with _quiet():
+    init.init(fresh_=True, all_=True)
+    RUN.cmd_bootstrap([])
+    IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / "CP01.xlsx"), "cp", ask=False)
+_o186 = _ing186(_pf186("PFMEAB186A.xlsx", lambda m: m))
+_s186 = _same186("PFMEAB186A")
+_gq186 = open_graph("quality")
+_fm186 = next((n for n in _gq186.nodes.values() if n.get("canonical", "").endswith("전극 치수 불량")), {})
+_e186 = [e for lay in ("process", "quality") for e in open_graph(lay).edges if e["src"] == _fm186.get("id")]
+show("B186 ⓔ 원인 칸 = 모드 칸(PFMEA 사본) — 그 causes 엣지 0 · 거부 기록 1(사유 같은 노드 · 두 표기) · 인입은 끝까지 · "
+     "그 행의 다른 엣지 그대로 · 인입 끝 줄 「같은 노드 엣지 1(표기가 다른 것 0」",
+     len(_s186) == 1 and _s186[0]["rel"] == "causes" and _s186[0]["surfaces"] == ["전극 치수 불량"] * 2
+     and not any(e["src"] == e["dst"] for lay in ("process", "quality") for e in open_graph(lay).edges)
+     and {"affects", "occurs_in"} <= {e["rel"] for e in _e186} and "같은 노드 엣지 1(표기가 다른 것 0" in _o186
+     and LG.read("PFMEAB186A"),
+     f"거부 {[(x['rel'], x['surfaces']) for x in _s186]} · 노드 엣지 {sorted({e['rel'] for e in _e186})}")
+_OM186.alias("quality", _fm186.get("id"), "B186 다른 표기", "시험", "B186 ⓔ — 두 표기를 한 노드로(대역 판단)")
+_o186b = _ing186(_pf186("PFMEAB186B.xlsx", lambda m: "B186 다른 표기"))
+_s186b = _same186("PFMEAB186B")
+_rv186 = io.StringIO()
+with contextlib.redirect_stdout(_rv186):
+    _OR186.tables(_OR186.bundles("all"))
+show("B186 ⓔ 표기가 다른 두 칸이 한 노드로(사전 별칭) — 「표기가 다른 것 1」 · 인입 뒤 한 화면 다섯째 묶음 1줄(두 표기 · 다음 줄)",
+     len(_s186b) == 1 and sorted(_s186b[0]["surfaces"]) == sorted(["B186 다른 표기", "전극 치수 불량"])
+     and "같은 노드 엣지 1(표기가 다른 것 1" in _o186b
+     and [r["doc"] for r in _OR186.same_nodes("all")] == ["PFMEAB186B"] and "ops alias-reject" in _rv186.getvalue(),
+     f"거부 {[x['surfaces'] for x in _s186b]} · 묶음 {_OR186.same_nodes('all')}")
+shutil.rmtree(_t186, ignore_errors=True)
+
 done()

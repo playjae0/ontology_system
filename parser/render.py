@@ -209,14 +209,23 @@ def _probe(exe):
             doc.close()
 
 
+def run_soffice(exe, fmt, src, outdir):
+    """**soffice 변환 한 자리**(B186 ⓪) — 부를 때마다 `outdir` 안 자기 사용자 프로필(`-env:UserInstallation`)로 돈다.
+
+    같은 프로필을 쓰는 soffice가 동시에 뜨면 나중 것이 결과 없이 rc 1로 끝난다(병렬 doctor의 「변환 실패」 — 실행마다 프로필을
+    주면 같은 병렬에서 실패 0). 실패는 `CalledProcessError` 등 예외 그대로 — 호출부가 사유로 바꾼다."""
+    prof = Path(outdir) / ".lo_profile"                       # 호출부의 임시 폴더 안 — 그 폴더와 함께 지워진다
+    subprocess.run([exe, "--headless", f"-env:UserInstallation={prof.resolve().as_uri()}", "--convert-to", fmt,
+                    "--outdir", str(outdir), str(src)],
+                   check=True, capture_output=True, timeout=SOFFICE_TIMEOUT, stdin=subprocess.DEVNULL)
+
+
 def _soffice_pdf(path, outdir, exe=None):
     exe = exe or _soffice()
     if not exe:
         return None
     try:
-        subprocess.run([exe, "--headless", "--convert-to", "pdf",
-                        "--outdir", str(outdir), str(path)],
-                       check=True, capture_output=True, timeout=SOFFICE_TIMEOUT, stdin=subprocess.DEVNULL)
+        run_soffice(exe, "pdf", path, outdir)
     except Exception as e:                                  # noqa: BLE001
         # **변환 실패는 문서 실패가 아니다** — 결함 한 줄로 남기고 계속한다.
         _LOG.warning("soffice 변환 실패 — %s: %s", type(e).__name__, e)
@@ -288,9 +297,7 @@ def to_png(data, mime):
         src.write_bytes(data)
         out = Path(td) / "out"
         try:
-            subprocess.run([exe, "--headless", "--convert-to", "png",
-                            "--outdir", str(out), str(src)],
-                           check=True, capture_output=True, timeout=SOFFICE_TIMEOUT)
+            run_soffice(exe, "png", src, out)
         except Exception as e:                              # noqa: BLE001
             _LOG.warning("그림 변환 실패 — %s: %s", type(e).__name__, e)
             return None, CONVERT_FAILED

@@ -6,27 +6,27 @@ JSON으로 낸다 · 두 모델의 뜻 차이를 잰다.
     python run.py export config --json [경로]       같은 모델을 JSON으로(기본 export/config_map.json — 이름순 · 결정적)
     python run.py export config --from <layers 폴더> …  그 폴더(제안 — `work/config_next/layers`)를 읽는다(상태 루트 쓰기 0)
     python run.py export config --diff a.json b.json  두 모델의 뜻 차이만(category · home · also · name form · 층 categories ·
-                                                     relation_patterns · parent_pairs · 층에 걸린 parent_pairs · uses · cross-layer edge) —
-                                                     같으면 rc 0 · 다르면 rc 1 (B177 ① — 층 걸림도 잰다)
+                                                     relation_patterns · parent_pairs · 층에 걸린 parent_pairs · uses · cross-layer edge ·
+                                                     온톨로지 맵의 선(종류 · 출처) · attributes) — 같으면 rc 0 · 다르면 rc 1
+                                                     (실제 엣지 수는 상태마다 달라 뺀다 · B186 ①)
 
 **화면 낱말은 config 키 이름**(B177 ① · 사용자 확정 2026-11-02 — 고칠 자리를 그 이름으로 찾는다 · 한국어는 설명에만) · 층은
 `<층 layer>` 머리와 색 띠(그림의 점 색 = home 층 — 같은 색).
 
-**관계 그림은 지금 뷰어를 다시 쓴다**(`cli.export.build_html` — 카테고리 하나 = 점 하나(home 층 · 색 축 `layer`) · 관계 패턴 하나 =
-엣지 하나(선언한 층) · 끝점의 층이 다르면 뷰어 규칙 그대로 붉은 점선). 뷰어 쪽은 한 화면을 다 쓰는 그림이라 표와 한 장에
-싣지 못하므로 `iframe srcdoc`으로 품는다 — 외부 주소 0 · 파일 하나로 열린다. 바깥 장은 보는 쪽 테마를 따른다.
+**관계 그림은 온톨로지 맵이다**(`cli.ontology_map` — B186 ①): 카테고리 수준의 지도를 인라인 SVG로 그린다(점 = 카테고리 · 색 = home
+층 · 선 = 종류 색 · 층을 넘는 관계는 점선 · 같은 카테고리끼리의 선은 고리) — 인스턴스 뷰어의 거름판(status · made_by · 문서)은 지도에
+뜻이 없어 쓰지 않는다 · 외부 주소 0 · 파일 하나로 열린다. 바깥 장은 보는 쪽 테마를 따른다.
 """
 from __future__ import annotations
 
 import html
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 from core import paths
 from core.state import catalog
-from cli import config_map as M
-from cli.export import build_html, node_color, out_path
+from cli import config_map as M, ontology_map as OM
+from cli.export import node_color, out_path
 
 #: 뜻 차이에서 빼는 것 — 정의문 글 · 렌즈 · 골격 노드 수 · 점검 문면 · 경로 사유 · 쌍에서 온 cross-layer edge(층 걸림 행이 잰다)
 #: 연결 포인트의 출처 → config 키(화면 · 대조)
@@ -69,8 +69,13 @@ def _rows(model):
         out |= {("relation_patterns", f"{lay}: {p['src']} -{p['rel']}-> {p['dst']}" + (" (symmetric)" if p.get("symmetric") else ""))
                 for p in d.get("patterns") or []}
         out |= {("uses", f"{lay}: {c}") for c in d.get("uses") or []}
-        out |= {("parent_pairs (layer)", f"{lay}: {s} -{r}-> {t}") for s, r, t in d.get("pairs") or []}   # 층 걸림(B177 ①)
-    out |= {("parent_pairs", f"{s} -{r}-> {t}") for s, r, t in model.get("pairs") or []}
+        out |= {("parent_pairs (layer)", f"{lay}: {s} -{r}-> {t}") for s, r, t in d.get("pair_edges") or []}   # 층 걸림(B177 ①)
+    out |= {("parent_pairs", f"{s} -{r}-> {t}") for s, r, t in model.get("pair_edges") or []}
+    onto = model.get("ontology") or {}
+    out |= {("ontology line", f"{x['src']} -{x['rel']}-> {x['dst']} · {x['kind']}" + (f" · {OM.CROSS}" if x["cross"] else "")
+             + (" · symmetric" if x["symmetric"] else "") + f" · {' · '.join(x['sources'])}") for x in onto.get("lines") or []}
+    out |= {("attributes", f"{x['category']}.{x['attribute']} · {x['where']}" + (" · 맥락형" if x["contextual"] else ""))
+            for x in onto.get("attributes") or []}
     for c, v in (model.get("categories") or {}).items():
         out.add(("category", c))
         out.add(("home", f"{c} → {v.get('home')}"))
@@ -90,26 +95,6 @@ def diff(a, b):
     return ([f"- {k} — {t}" for k, t in sorted(ra - rb)] + [f"+ {k} — {t}" for k, t in sorted(rb - ra)])
 
 
-# ---------------------------------------------------------------- 관계 그림 (지금 뷰어)
-def _world(model):
-    """뷰어가 먹는 월드 — 카테고리 = 점(home 층 · 골격 카테고리는 seed) · relation_patterns · parent_pairs = 엣지(그 층)."""
-    world = {lay: SimpleNamespace(nodes={}, edges=[]) for lay in model["layers"]}
-    for c, v in model["categories"].items():
-        lay = v["home"] if v["home"] in world else next(iter(v["declared_by"]), None)
-        if lay not in world:
-            continue
-        world[lay].nodes[f"C:{c}"] = {
-            "id": f"C:{c}", "canonical": c, "category": c, "status": "seed" if v["skeleton_of"] else "confirmed",
-            "aliases": [], "attrs": {},
-            "provenance": [f"{d}: {model['layers'][d]['categories'].get(c, '')}" for d in v["declared_by"]]}
-    for lay, d in model["layers"].items():
-        world[lay].edges += [{"src": f"C:{p['src']}", "dst": f"C:{p['dst']}", "rel": p["rel"], "status": "confirmed",
-                              "provenance": [f"{lay} relation_patterns"]} for p in d["patterns"]]
-        world[lay].edges += [{"src": f"C:{s}", "dst": f"C:{t}", "rel": r, "status": "confirmed",
-                              "provenance": [f"{lay} parent_pairs (common.json)"]} for s, r, t in d["pairs"]]
-    return world
-
-
 # ---------------------------------------------------------------- HTML
 _CSS = """:root{--bg:#ffffff;--fg:#1d2330;--dim:#5b6475;--line:#d8dce4;--panel:#f5f6f8;--bad:#c62828;--warn:#9a6700}
 @media (prefers-color-scheme: dark){:root{--bg:#0f1115;--fg:#e6e6e6;--dim:#8b93a1;--line:#2a2f3a;--panel:#161a22;
@@ -121,7 +106,8 @@ h3{font-size:13px;margin:14px 0 6px} .sub{color:var(--dim)} .wrap{overflow-x:aut
 table{border-collapse:collapse;width:100%;margin:4px 0 10px} th,td{border:1px solid var(--line);padding:4px 8px;
 text-align:left;vertical-align:top} th{background:var(--panel);font-weight:600} code{font-size:12px}
 .bad td{color:var(--bad);font-weight:600} .warn td{color:var(--warn)} .none{color:var(--dim)}
-iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:6px;background:#0f1115}
+.omap{max-width:900px;display:block;margin:6px auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.omap .lab{font-size:10px;fill:var(--dim)} .omap .name{font-size:12px;fill:var(--fg);font-weight:600}
 .band{border-left:6px solid var(--c);padding-left:8px} .chip{display:inline-block;width:10px;height:10px;border-radius:50%;
 background:var(--c);margin:0 4px 0 6px;vertical-align:baseline}
 .keys{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin:10px 0}
@@ -162,8 +148,8 @@ def _layer_html(lay, d, coord):
     """층 하나 — `<층 layer>` 머리 · 색 띠(그림의 점 색) · categories · relation_patterns · key/value."""
     sk = d["skeleton"] or {}
     pol = d["polarity"] or {}
-    only = {tuple(e) for e in d.get("pairs_only") or []}
-    pairs = " · ".join(f"{s} -{r}-> {t}" + (" (parent_pairs에서)" if (s, r, t) in only else "") for s, r, t in d["pairs"])
+    only = {tuple(e) for e in d.get("pair_edges_only") or []}
+    pairs = " · ".join(f"{s} -{r}-> {t}" + (" (parent_pairs에서)" if (s, r, t) in only else "") for s, r, t in d["pair_edges"])
     note = "coord layer — 좌표 골격을 가진 층" if lay == coord else "좌표는 coord layer 골격에서"
     return (f'<h3 class="band" style="--c:{node_color(lay)}">&lt;{_e(lay)} layer&gt;</h3><p class="sub">{note}</p>'
             + _table(("categories", "정의문 첫 줄"), list(d["categories"].items()))
@@ -201,7 +187,7 @@ def _pair_rows(model):
             gives = f"upper 노드 아래 — {M.COORD_TOKEN}::<{p['upper']}>::{M.NAME_TOKEN}"
         rows.append((p["lower"], p["upper"], p["rel"], p.get("src") or "lower", p.get("정의문") or "", gives))
     seen = {catalog.pair_edge(p) for p in defs}
-    return rows + [("—", "—", r, f"{s} → {t}", "(옛 층 매핑)", "—") for s, r, t in model["pairs"] if (s, r, t) not in seen]
+    return rows + [("—", "—", r, f"{s} → {t}", "(옛 층 매핑)", "—") for s, r, t in model["pair_edges"] if (s, r, t) not in seen]
 
 
 def _uses_rows(model):
@@ -234,20 +220,37 @@ def head(model):
         + f" · coord layer {co['layer']} ({co['category']})")
 
 
+def _map_html(model):
+    """**온톨로지 맵**(B186 ①) — 그림 한 장 + 선 표(relations) + 값 칸 표(attributes)."""
+    onto = model.get("ontology") or {}
+    n = OM.counts(onto)
+    legend = " · ".join(f'<span style="color:{OM.COLORS[k]}">━</span> {k} {n[k]}' for k in OM.KINDS)
+    rows = [(x["src"], x["rel"], x["dst"], x["kind"] + (f" · {OM.CROSS}" if x["cross"] else ""), " · ".join(x["sources"]),
+             " · ".join(x["layers"]) or "—", "✓" if x["symmetric"] else "",
+             "—" if x["edges"] is None else ("0 (선언만)" if x["edges"] == 0 else f"{x['edges']:,}"), x["same_node"] or "")
+            for x in onto.get("lines") or []]
+    return ("<h2>ontology map — 카테고리 수준의 지도</h2><p class=\"sub\">점 = 카테고리 · 색 = home 층 "
+            + " ".join(_chip(lay) for lay in model["layers"])
+            + f" · 선 = (src, rel, dst) 하나 — {legend} · 점선 = {OM.CROSS} {n[OM.CROSS]} · 고리 {n['고리']} = 같은 카테고리끼리의 관계"
+            f"(실제 그래프에서는 다른 두 노드) · 선언만 {n['선언만']}(그래프에 엣지 0) · 선 {n['선']}</p>"
+            + OM.svg(model, node_color)
+            + "<h3>relations — 선 하나에 한 줄(출처가 여럿이면 함께)</h3>"
+            + _table(("src", "rel", "dst", "종류", "출처(config 키)", "층", "symmetric", "실제 엣지", "같은 노드 엣지"), rows)
+            + "<h3>attributes — 값 칸</h3>"
+            + _table(("category", "attribute", "정의한 자리", "맥락형"),
+                     [(x["category"], x["attribute"], x["where"], "✓" if x["contextual"] else "")
+                      for x in onto.get("attributes") or []]))
+
+
 def render_html(model):
-    """HTML 한 장 — 요약 · 설명 상자 · 관계 그림(지금 뷰어 · 색 = home 층) · layers · categories · parent_pairs · cross-layer links · checks."""
+    """HTML 한 장 — 요약 · 설명 상자 · 온톨로지 맵(그림 · relations · attributes) · layers · categories · parent_pairs · cross-layer links · checks."""
     lk = model["links"]
-    viewer = build_html(_world(model), query_panel=False, title="config map — categories · relation_patterns · parent_pairs",
-                        color_axis="layer")
     body = (f"<h1>config map</h1><div class=\"sub\">{_e(model.get('shape'))} · {_e(head(model))} · 읽기만(지금 config · "
             "카탈로그 · 등록부가 읽힌 그대로)</div>"
             '<div class="keys"><b>칸 이름은 config 키 그대로</b> — 고칠 자리를 그 이름으로 찾는다<dl>'
             + "".join(f"<dt>{_e(k)}</dt><dd>{_e(v)}</dd>" for k, v in KEYS) + "</dl></div>"
-            "<h2>graph — categories · relation_patterns · parent_pairs</h2><p class=\"sub\">점 = 카테고리 · 색 = home 층 "
-            + " ".join(_chip(lay) for lay in model["layers"])
-            + " · 엣지 = relation_patterns · parent_pairs · 층을 넘는 엣지는 붉은 점선</p>"
-            f"<iframe title=\"graph\" srcdoc=\"{html.escape(viewer, quote=True)}\"></iframe>"
-            "<h2>layers</h2>" + "".join(_layer_html(lay, d, model["coord"]["layer"]) for lay, d in model["layers"].items())
+            + _map_html(model)
+            + "<h2>layers</h2>" + "".join(_layer_html(lay, d, model["coord"]["layer"]) for lay, d in model["layers"].items())
             + "<h2>categories — common.json</h2>"
             + _table(("category", "home", "used_by", "also", "no_path", "skeleton", "name form"),
                      [(c, v["home"], " · ".join(v["used_by"]),

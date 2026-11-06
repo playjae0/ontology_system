@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 — **인입 뒤 한 화면 — 판단이 필요했던 것을 몰아서**(B101 ⑤ · B184 ④) — 묶음 넷을 표로 · 한 건씩 처분.
+"""칸 0.3 — **인입 뒤 한 화면 — 판단이 필요했던 것을 몰아서**(B101 ⑤ · B184 ④) — 묶음 다섯을 표로 · 한 건씩 처분(다섯째는 표만).
 
     python run.py ops review <층|all> --actor <이름>
 
@@ -9,6 +9,7 @@
 | 애매(`uncertain_match` — 잠정 노드 것은 첫 묶음) | 합침 · 별개 · 건너뜀(`ops.merge` · `ops.confirm`) |
 | 자리 추정(유일 후보 · 「맞음」은 접어 둔다) | 맞음(확인 표지) · 떼기(보류로 — `place_guess.detach`) |
 | 보류(후보가 있는 것) | 후보 고르기 — 자리 없는 값은 `place_guess.pick`(출처 사람) · 골격 칸은 합침 손 |
+| 같은 노드 엣지 — 표기가 다른 것(B186 ②) | 묻지 않는다 — 다음 줄(`ops split` · `ops alias-reject` — 지금 손) |
 
 새 쓰기 손은 승격 하나다(나머지는 지금 있는 손). **비대화형(터미널 아님)은 계획만** 낸다(쓰기 0). 끝 줄은 묶음마다 처분 수 ·
 재구축이 필요한 처분이 있으면 그 명령 한 줄.
@@ -94,6 +95,24 @@ def holds(layer=None):
     return out
 
 
+def same_nodes(layer=None):
+    """**같은 노드 엣지 — 표기가 다른 것**(B186 ②) — 관문 거부 기록에서 두 표기가 다른데 한 노드로 풀린 엣지(같은지 판단 확인 거리) ·
+    표기가 같은 것(문서의 두 칸에 같은 글)은 고칠 것이 없어 올리지 않는다."""
+    from core.build import gate
+    from parser.namefold import key
+    out, seen = [], set()
+    for x in store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []:
+        sf = x.get("surfaces") or []
+        if x.get("verdict") != gate.SAME_NODE or len({key(t or "") for t in sf}) < 2:
+            continue
+        lay = x.get("node_layer") or x.get("layer")
+        k = (x.get("node"), tuple(sf), x.get("doc_id"), x.get("rel"))
+        if layer in (None, "all", lay) and k not in seen:
+            seen.add(k)
+            out.append({"node": x.get("node"), "layer": lay, "surfaces": sf, "doc": x.get("doc_id"), "rel": x.get("rel")})
+    return out
+
+
 # ---------------------------------------------------------------- 표
 def _cut(s, n):
     s = str(s if s is not None else "—")
@@ -105,7 +124,8 @@ def tables(b):
     rows, folded = b["잠정"]
     print(f"■ 인입 뒤 한 화면 — 잠정 골격 노드 {len(rows):,}" + (f"(봄 {folded:,} 접음)" if folded else "")
           + f" · 애매 {len(b['애매']):,} · 자리 추정 {len(b['추정'][0]):,}"
-          + (f"(맞음 {b['추정'][1]:,} 접음)" if b["추정"][1] else "") + f" · 후보 있는 보류 {len(b['보류']):,}")
+          + (f"(맞음 {b['추정'][1]:,} 접음)" if b["추정"][1] else "") + f" · 후보 있는 보류 {len(b['보류']):,}"
+          + (f" · 같은 노드 엣지(표기가 다른 것) {len(b['같은 노드']):,}" if b["같은 노드"] else ""))
     if rows:
         print(f"  ── 잠정 골격 노드 — {'#':>3} {'표기':<18} {'부모':<14} {'단':<6} {'행 수':>4} {'합칠 후보':<16} 처음 본 문서")
         for i, r in enumerate(rows, 1):
@@ -127,6 +147,12 @@ def tables(b):
         for i, r in enumerate(b["보류"], 1):
             print(f"     {i:>3} {_cut(r['kind'], 6)} {_cut(r['surface'], 18)} "
                   f"{_cut(' · '.join(f'{j}.{c}' for j, c in enumerate(r['candidates'], 1)), 30)} {r['doc']}")
+    if b["같은 노드"]:
+        print(f"  ── 같은 노드 엣지(표기가 다른 것 — 같은지 판단 확인) — {'#':>3} {'노드':<20} {'두 표기':<26} {'관계':<12} 문서")
+        for i, r in enumerate(b["같은 노드"], 1):
+            print(f"     {i:>3} {_cut(r['node'], 20)} {_cut(' ↔ '.join(r['surfaces']), 26)} {_cut(r['rel'], 12)} {r['doc']}")
+            print(f"         ▶ 다른 것이면 python run.py ops split {r['layer']} <id> <배분표.json> --actor <이름> · "
+                  f"표기 하나가 틀렸으면 python run.py ops alias-reject {r['layer']} \"{r['node']}\" \"<표기>\" --actor <이름>")
 
 
 # ---------------------------------------------------------------- 처분
@@ -175,7 +201,8 @@ def _hold(r, ans, actor):
 
 
 def bundles(layer):
-    return {"잠정": provisionals(layer), "애매": items(layer), "추정": guesses(layer), "보류": holds(layer)}
+    return {"잠정": provisionals(layer), "애매": items(layer), "추정": guesses(layer), "보류": holds(layer),
+            "같은 노드": same_nodes(layer)}
 
 
 def run(a, ask=None):

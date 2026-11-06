@@ -370,6 +370,17 @@ if _std:
          _r9.get("png") is None and _n9.get("png") == render.NO_CONVERTER
          and f"soffice 있음 — {_r9['find'][0]}({render.PLACE})" in _env9 and "PPT 캡처 — 가능(soffice)" in _env9,
          f"변환 {_r9.get('png')} / 가림 {_n9.get('png')} · " + " / ".join(ln.strip() for ln in _env9.splitlines() if "soffice" in ln)[:200])
+    # B186 ⓪ — 병렬 doctor의 「변환 실패」 원인: 같은 사용자 프로필을 쓰는 soffice가 동시에 뜨면 나중 것이 rc 1(결과 없음) ·
+    # 고친 자리 `render.run_soffice`(부를 때마다 자기 프로필) — 같은 프로세스에서 동시 변환 넷(실경로 · 대역 없음)
+    import threading                                                        # noqa: E402
+    _par = [None] * 4
+    _th = [threading.Thread(target=lambda i=i: _par.__setitem__(i, render.to_png(_bmp(), "image/bmp"))) for i in range(4)]
+    for t in _th:
+        t.start()
+    for t in _th:
+        t.join()
+    show("B186 ⓪ 동시 그림 형식 변환 넷(실경로) — 전부 PNG(같은 사용자 프로필 잠금 0 — soffice 실행마다 자기 프로필)",
+         all(r and r[0] and r[0][:4] == b"\x89PNG" and r[1] is None for r in _par), str([r[1] if r else r for r in _par]))
 else:
     show("B129 — 이 기계에는 표준 자리의 soffice가 없다(허브가 실경로를 돈다)", True, f"표준 자리 {render._places()}")
 _unregister()

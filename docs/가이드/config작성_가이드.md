@@ -213,6 +213,8 @@
 | `relation_patterns` | 게이트가 대조하는 **삼항 표**(그 층이 말하는 `parent_pairs`의 삼항은 게이트가 더한다 — 여기 다시 적지 않는다). 정의문 없는 관계를 올리지 않는다. **골격 삼항(`Process part_of Process` 등)은 넣지 않는다** — `Unit part_of Process`는 `parent_pairs`이 준다 |
 | `uses` · `parent_pairs` | 다른 층 카테고리는 `uses`에 이름만(골격 카테고리 포함 — 없으면 G4C FAIL). 이종 쌍의 방향은 **공통 config `parent_pairs`**(§0-a)가 준다 — **동종 쌍은 여기로 방향을 못 정한다**(seed·edges 선언만). 소속 엣지·좌표 폴백은 쌍의 엣지를 **두 방향으로 다 본다** — `Unit → Process part_of`(개체 → 대상)든 `Property ← Unit has_property`(대상 → 개체)든 한 줄이면 된다. 쌍은 **두 카테고리를 다 말하는 층**(`categories` ∪ `uses`)에만 걸린다 — 없으면 결함 로그 「카테고리쌍 매핑 없음」이고 그 노드는 「엣지 없는 노드」로 센다(인입 끝 요약 `부착 —` 줄) |
 
+**지도로 확인한다 — 온톨로지 맵**(`python run.py export config` → `export/config_map.html` 맨 위 그림): 점 = 카테고리(색 = `home` 층) · 선 = (src, rel, dst) 하나 — 회색 **골격 관계**(`skeleton.relations` · 골격 극성 짝 `mirrors`) · 파랑 **소속**(`parent_pairs`) · 주황 **사실 관계**(`relation_patterns` · 등록 스키마 `edges`) · 점선 = 층을 넘는 관계(끝 카테고리의 `home`이 선언한 층과 다르다). **같은 카테고리끼리의 선은 고리**다(`Failure causes Failure` — 실제 그래프에서는 다른 두 노드) · 두 끝이 같은 노드인 엣지는 세우지 않는다(인입 끝 「같은 노드 엣지」 줄). 선 라벨의 수는 지금 그래프의 엣지 수 — **「선언만」은 0**(config에 있는데 아직 아무 문서도 그 길로 잇지 않았다) · 같은 삼항을 두 자리가 선언하면 선 하나에 출처를 함께 적는다(relations 표). 그림 밑 **attributes 표**는 값 칸(스키마 `role: attribute` · `value_categories` · 맥락형 표시).
+
 ## 3. 질의 확장 — `query_traverse` (형태 주의: 3단 중첩)
 
 ```json

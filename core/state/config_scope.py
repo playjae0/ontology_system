@@ -37,6 +37,16 @@ COMMON_KEY = "공통"
 RENAMED = {COMMON_KEY: {"pairs": "parent_pairs"}}
 
 
+def renamed(cfg, part=COMMON_KEY):
+    """**옛 키 이름을 새 이름으로 읽은 사본**(B186 ⓪ — 「지금」 쪽 읽기도 `RENAMED` 한 자리) — 둘 다 있으면 목록을 잇는다 · 원본은 그대로."""
+    out = dict(cfg or {})
+    for o, n in RENAMED.get(part, {}).items():
+        if o in out:
+            old = out.pop(o)
+            out[n] = (list(out.get(n) or []) + list(old or [])) if isinstance(old, list) else out.get(n, old)
+    return out
+
+
 def _h(v):
     return hashlib.sha256(json.dumps(v, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 

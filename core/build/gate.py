@@ -46,6 +46,7 @@ DIRECTION_UNVERIFIABLE = "direction_unverifiable"
 INVALID_PATTERN = "invalid_pattern"
 UNDECLARED = "undeclared_relation"
 UNRESOLVED_ENDPOINT = "unresolved_endpoint"     # 끝점 미해소 — 큐가 아니라 로그다(D-7)
+SAME_NODE = "same_node"                         # 두 끝이 같은 노드 — 세우지 않고 기록한다(문서 1 J32 · B186 ②)
 
 # 경로 이름 — ①(seed)은 여기 없다. 이 관문에 오지 않기 때문이다(위 설명).
 # 죽은 상수를 남겨 두면 다음 사람이 그것을 태워도 되는 신호로 읽는다.
@@ -252,19 +253,19 @@ def _opposite(world, src, rel, dst):
 SOURCE = {PATH_SCHEMA: "정형", PATH_EXTRACT: "추출", PATH_AUTO: "자동"}
 
 
-def log_reject(rel, src_cat, dst_cat, verdict, path, doc_id, source=None, layer=None):
+def log_reject(rel, src_cat, dst_cat, verdict, path, doc_id, source=None, layer=None, extra=None):
     """거부 기록 — 사유별 건수. 큐가 아니라 로그다(D-7). `source`는 경로보다 좁은 출처(연결 보강 — B118 ⑥) · `layer`는
-    판정한 config의 층(넣을 패턴 줄의 자리)."""
+    판정한 config의 층(넣을 패턴 줄의 자리) · `extra`는 사유가 더 싣는 칸(같은 노드 — 노드 · 두 표기 · B186 ②)."""
     log = store.read(store.GATE_REJECTS, {"rejects": [], "counts": {}})
     log["rejects"].append({"rel": rel, "src_cat": src_cat, "dst_cat": dst_cat,
                            "verdict": verdict, "path": path, "doc_id": doc_id,
-                           "source": source or SOURCE.get(path, path), "layer": layer})
+                           "source": source or SOURCE.get(path, path), "layer": layer, **(extra or {})})
     log["counts"][verdict] = log["counts"].get(verdict, 0) + 1
     store.write(store.GATE_REJECTS, log)
 
 
 def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
-                evidence_chunk=None, src_graph=None, dst_graph=None, source=None):
+                evidence_chunk=None, src_graph=None, dst_graph=None, source=None, surfaces=None):
     """게이트를 통과시킨 뒤에만 엣지를 쓴다. 돌려주는 것은 분기 이름이다.
 
     `src_graph`·`dst_graph`는 **걸침 엣지**용이다 — 끝점이 다른 층에 살아도 엣지 자체는
@@ -272,7 +273,8 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
     구판은 `from`이 걸침일 때 판정 전에 무음으로 사라졌다(D-61 수리의 남은 절반).
 
     끝점이 해소되지 않았으면 **그것도 기록한다** — 거부는 버리는 것이 아니라 기록하는
-    것이고(D-7), 무기록 소멸은 아무도 모른다.
+    것이고(D-7), 무기록 소멸은 아무도 모른다. **두 끝이 같은 노드면 세우지 않고 기록한다**(문서 1 J32 · B186 ②) —
+    `surfaces`는 두 끝의 원래 표기(칸 · 언급 — 없으면 노드 이름) · 인입은 멈추지 않는다(그 엣지 하나만).
     """
     s = (src_graph or graph).get(src) if src else None
     d = (dst_graph or graph).get(dst) if dst else None
@@ -280,6 +282,12 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
         log_reject(rel, "?" if not s else s["category"], "?" if not d else d["category"],
                    UNRESOLVED_ENDPOINT, path, doc_id, source, cfg.get("layer"))
         return UNRESOLVED_ENDPOINT
+    if src == dst:
+        a, b = (list(surfaces or ()) + [None, None])[:2]          # 칸 값은 숫자일 수 있다 — 기록은 글자로(대조 · 화면이 같은 꼴을 읽는다)
+        log_reject(rel, s["category"], d["category"], SAME_NODE, path, doc_id, source, cfg.get("layer"),
+                   {"node": s["canonical"], "node_layer": s.get("layer"),
+                    "surfaces": [str(x) if x not in (None, "") else s["canonical"] for x in (a, b)]})
+        return SAME_NODE
     verdict, pat = judge(s["category"], rel, d["category"], cfg, path)
     if verdict != COMMIT:
         verdict, pat = _judge_also(s, rel, d, cfg, path, verdict, pat)
