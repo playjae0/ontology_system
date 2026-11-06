@@ -87,6 +87,16 @@ def load_adapter(path):
 # `--coord-llm off | <종수>`로 덮는다. 기본을 0(끔)으로 두지 않는 이유: 골격 표기가
 # 조금만 달라도 전 문서가 목록 밖이 되고, 그러면 인입이 orphan_anchor만 쌓는다.
 COORD_CAP = 100
+#: 플래그가 없을 때의 표지 — 값은 부를 때 손잡이 `coord_tag_cap`(기본 = `COORD_CAP` · B185 ①)에서 읽는다(None은 무제한이라 따로 둔다)
+CAP_DEFAULT = "손잡이"
+
+
+def coord_cap_now(cap=CAP_DEFAULT):
+    """상한의 지금 값 — 표지면 손잡이 `coord_tag_cap` · 아니면 그 값(0 끔 · None 무제한)."""
+    if cap != CAP_DEFAULT:
+        return cap
+    from core.state import knobs
+    return knobs.get("coord_tag_cap")
 
 
 def coord_cap_of(args):
@@ -97,7 +107,7 @@ def coord_cap_of(args):
     """
     args = list(args)
     if "--coord-llm" not in args:
-        return args, COORD_CAP
+        return args, CAP_DEFAULT
     i = args.index("--coord-llm")
     v = args[i + 1] if i + 1 < len(args) else None
     del args[i:i + 2]
@@ -283,7 +293,7 @@ def coord_screen():
     return notice, progress
 
 
-def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
+def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=CAP_DEFAULT,
               sheet_roles=None, no_images=False, doc_coord=None, no_capture=False):
     """운영 파싱 1회 — **출력 경로는 인자이고, 운영 산출 자리는 `parsed/{doc_id}.json`이다**
     (문서 7 §7.1 진입점 계약 · §7.8). **파일 존재 = 파싱 완료**이므로 자리가 정해져
@@ -293,6 +303,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=COORD_CAP,
     두 벌이면 주입(이미지 요약·좌표)이 한쪽에서 빠지는 날이 온다.
     돌려주는 것은 `(ParseResult, 쓴 경로 또는 None)`이다.
     """
+    coord_cap = coord_cap_now(coord_cap)
     out = out or str(PARSED_DIR / f"{doc_id}.json")
     # LLM 지점(④·⑦·⑨·⑪)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
     # 않는다(A1). mock이면 None이 오고 파서가 §7.1 대체를 쓴다.

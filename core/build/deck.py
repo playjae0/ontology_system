@@ -47,6 +47,11 @@ SCHEMA = {
 
 #: 덱 개요의 글자 상한 — 맥락 줄의 칸이라 한 단락(창작 기본값)
 OVERVIEW_CHARS = 600
+
+
+def _knob(name):
+    from core.state import knobs
+    return knobs.get(name)
 #: 다루는 것 · 공정 표기의 이음 — 명사구가 여럿이면 이것으로(맥락 줄 · 화면과 같은 이음)
 JOIN = " · "
 
@@ -134,7 +139,7 @@ def check(doc_id, slides, ans):
         if drops.get(n):
             d["dropped"] = list(drops[n])
         out[n] = d
-    ov = " ".join(str((ans or {}).get("overview") or "").split())[:OVERVIEW_CHARS] or None
+    ov = " ".join(str((ans or {}).get("overview") or "").split())[:_knob("deck_overview_chars")] or None
     return {"slides": out, "overview": ov, "dropped": {k: v for k, v in drop.items() if v}}
 
 

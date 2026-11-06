@@ -419,7 +419,7 @@ show("② 예고의 숫자가 계약 JSON의 조각 수와 맞는다 (화면이 
 show("③ --coord-llm off|<종수>가 상한을 정한다 · 기본은 상수 하나",
      _PS.coord_cap_of(["x", "--coord-llm", "off"]) == (["x"], 0)
      and _PS.coord_cap_of(["x", "--coord-llm", "200"]) == (["x"], 200)
-     and _PS.coord_cap_of(["x"]) == (["x"], _PS.COORD_CAP),
+     and _PS.coord_cap_now(_PS.coord_cap_of(["x"])[1]) == _PS.COORD_CAP,   # 고침(B185 ① — 기본은 손잡이 coord_tag_cap · 기본값 = 상수)
      f"기본 {_PS.COORD_CAP}")
 # 값이 종수도 off도 아니면 **사용법 거부**다 — 조용히 기본으로 떨어지면 사람은
 # 상한을 준 줄 안다.

@@ -156,7 +156,8 @@ def candidates(r, nid, rows, nodes, ol, path_of):
         if cid not in seen:
             seen.add(cid)
             out.append({"node_id": cid, "name": n["canonical"], "category": n["category"]})
-    return out[:CAND_MAX]
+    from core.state import knobs
+    return out[:knobs.get("reinforce_candidates")]
 
 
 # ---------------------------------------------------------------- 판정

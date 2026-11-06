@@ -27,6 +27,13 @@ KEEP = True
 #: 보관 JPEG의 긴 변(px) · 품질(창작 기본값 — 렌더 상한과 같은 1,600)
 MAX_EDGE = 1600
 QUALITY = 85
+
+
+def _size():
+    """`(긴 변, JPEG 품질)` — llm.json `IMAGE_MAX_EDGE` · `IMAGE_QUALITY`(B185 ① — 비우면 위 상수 · 파서 렌더와 같은 긴 변)."""
+    from core.llm import gateway
+    cfg = gateway.config()
+    return cfg.get("image_max_edge") or MAX_EDGE, cfg.get("image_quality") or QUALITY
 INDEX = "index.json"
 
 #: 이 실행의 캡처 — `{doc_id: ({쪽 번호: 바이트}, 사유 또는 None)}`(문서마다 한 번 — 판독 · 추출이 같은 판 · `extract_unit._PAGES`)
@@ -71,9 +78,10 @@ def _kept(doc_id, path, want):
 def _jpeg(png):
     from PIL import Image                                   # 선택 의존 — 지연 import
     im = Image.open(io.BytesIO(png)).convert("RGB")
-    im.thumbnail((MAX_EDGE, MAX_EDGE))
+    edge, q = _size()
+    im.thumbnail((edge, edge))
     buf = io.BytesIO()
-    im.save(buf, "JPEG", quality=QUALITY, optimize=True)
+    im.save(buf, "JPEG", quality=q, optimize=True)
     return buf.getvalue()
 
 
@@ -98,7 +106,7 @@ def _keep(doc_id, path, got):
         p = page_file(doc_id, n)
         paths.ensure(p)
         store.atomic_write_bytes(p, b)
-    m = {"doc_id": doc_id, "source": _source(path), "pages": len(jp), "max_edge": MAX_EDGE, "jpeg_q": QUALITY,
+    m = {"doc_id": doc_id, "source": _source(path), "pages": len(jp), "max_edge": _size()[0], "jpeg_q": _size()[1],
          "sha": {str(n): hashlib.sha256(b).hexdigest()[:16] for n, b in jp.items()}}
     store.atomic_write_bytes(paths.captures(doc_id, INDEX), (json.dumps(m, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return jp

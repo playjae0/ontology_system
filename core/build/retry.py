@@ -33,6 +33,12 @@ RETRY_KINDS = ("orphan_anchor", "orphan_attach", "orphan_chunk_link")
 # 상태에서 같은 답이 반복되는 것을 비용으로 바꾸지 않는다. 큐 kind는 그대로다.
 ATTEMPT_MAX = 5
 
+
+def attempt_max():
+    """재시도 상한의 지금 값 — 손잡이 `retry_attempts`(기본 = `ATTEMPT_MAX` · B185 ①)."""
+    from core.state import knobs
+    return knobs.get("retry_attempts")
+
 #: 재연결 바퀴 상한(B113 ③ — 창작 기본값 · 사내 손잡이 `relink_rounds`) — 넘으면 그 사실을 줄로 낸다
 RELINK_ROUNDS = 5
 #: **좌표 미해소 보류**(B113 ③) — 좌표 칸이 비어 세우지 못한 행의 큐(`missing_field` · 필드 `process_ref`) ·
@@ -178,7 +184,7 @@ def retry_orphans(layers=None):
     # 남은 항목의 시도 횟수 분포(B102 ⑦) — 상한에 닿은 것은 「상한」으로 센다
     _d = {}
     for x in _left:
-        k = "상한" if int(x.get("attempts") or 0) >= ATTEMPT_MAX else f"{int(x.get('attempts') or 0)}회"
+        k = "상한" if int(x.get("attempts") or 0) >= attempt_max() else f"{int(x.get('attempts') or 0)}회"
         _d[k] = _d.get(k, 0) + 1
     LAST["dist"] = _d
     _LOG.info("orphan 재시도 — %s", line())
@@ -209,7 +215,7 @@ def _sweep(graphs, cfgs, dic, healed, tried, first):
             got["건너뜀"] += 1
             LAST["same"] += 1 if first else 0
             continue
-        if int(item.get("attempts", 0)) >= ATTEMPT_MAX:
+        if int(item.get("attempts", 0)) >= attempt_max():
             got["상한"] += 1
             LAST["capped"] += 1 if first else 0
             continue                      # 사람 판정 대기 — 더 돌지 않는다
@@ -277,7 +283,7 @@ def plan(layers=None, doc_coord=None):
         out["target"][x["kind"]] = out["target"].get(x["kind"], 0) + 1
         if x.get("last_fp") == _item_fp(fp, x, dc):
             out["same"] += 1
-        elif int(x.get("attempts", 0)) >= ATTEMPT_MAX:
+        elif int(x.get("attempts", 0)) >= attempt_max():
             out["capped"] += 1
         else:
             out["try"] += 1

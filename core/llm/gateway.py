@@ -348,7 +348,11 @@ def _temperature(raw):
 #: `core/llm/check.py`). 격리 환경(`isolated_env`)이 이 목록을 뺀다 — 키를 더하면 여기에도.
 CONFIG_KEYS = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL", "EMBED_BACKEND",
                "EMBED_GATEWAY_URL", "CANDIDATE_NARROW", "CHAT_TEMPERATURE", "PROGRESS_EVERY",
-               "LLM_TIMEOUT", "LLM_RETRY", "LLM_CONTEXT_TOKENS")
+               "LLM_TIMEOUT", "LLM_RETRY", "LLM_CONTEXT_TOKENS",
+               "EMBED_BATCH", "EMBED_SAVE_EVERY", "IMAGE_MAX_EDGE", "IMAGE_QUALITY")
+#: **접속 · 모델에 매인 수**(B185 ① — 임베딩 묶음 · 이어 저장 · 그림 긴 변 · JPEG 품질) — 비우면 None(쓰는 자리의 상수가 기본값)
+SIZE_KEYS = {"embed_batch": "EMBED_BATCH", "embed_save_every": "EMBED_SAVE_EVERY",
+             "image_max_edge": "IMAGE_MAX_EDGE", "image_quality": "IMAGE_QUALITY"}
 
 
 def config():
@@ -389,7 +393,8 @@ def config():
             # 여기 하나다(§7.6-B-1 수렴). 값 N개마다 진행 줄 · 기본 25.
             "progress_every": max(1, int(get("PROGRESS_EVERY", 25) or 25)),
             "timeout": float(get("LLM_TIMEOUT", 60)),
-            "retry": int(get("LLM_RETRY", 2))}
+            "retry": int(get("LLM_RETRY", 2)),
+            **{k: (int(get(v, None)) if get(v, None) not in (None, "") else None) for k, v in SIZE_KEYS.items()}}
 
 def require(point, *, need=("url", "model")):
     """실호출 직전의 관문. 설정이 없으면 명시적 실패다.

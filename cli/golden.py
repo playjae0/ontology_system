@@ -31,7 +31,10 @@ from core.state import store
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = paths.golden("queries.json")
 LOG = "golden_log.json"
-DEFAULT_K = 8                       # 수집 상한과 같다 (문서 5 §5.1 규약 6)
+def default_k():
+    """채점 k = 근거 수집 상한(손잡이 `collect_limit` — 문서 5 §5.1 규약 6 · 같은 값을 두 자리에 두지 않는다 · B185 ①)."""
+    from core.state import knobs
+    return knobs.get("collect_limit")
 
 # **유형은 닫힌 값이다**(§5.5-4). 유형 → `expected_path` 파생은 §5.3 유형표의
 # 「답의 소재」 열이 정한다 — 여기서 새로 판단하지 않고 그 대응을 옮긴다.
@@ -127,12 +130,13 @@ def load(path):
 
 
 # ───────────────────────────────────────────────────────────── ② 채점
-def score_set(queries, k=DEFAULT_K):
+def score_set(queries, k=None):
     """문항마다 `answer()` 1회 — 4축. **⑧은 부르지 않는다**(§5.5-4).
 
     측정 중 `link_miss`·`chunk_truncated` 적재를 끈다(§5.5 규율 4) — `cmd_gauges`와
     **같은 스위치**다: 측정이 재료 로그를 오염시키면 다음 측정이 제 흔적을 센다.
     """
+    k = default_k() if k is None else k
     from cli.query import answer
 
     rows = []
@@ -175,7 +179,8 @@ def _grade(q, res, idx, k):
     return r
 
 
-def aggregate(rows, k=DEFAULT_K):
+def aggregate(rows, k=None):
+    k = default_k() if k is None else k
     def rate(sel, axis):
         xs = [r[axis] for r in sel if r[axis] is not None]
         return (round(sum(1 for x in xs if x["ok"]) / len(xs), 3), len(xs)) if xs \
@@ -270,7 +275,7 @@ def cmd_score(args):
     as_json = "--json" in args
     while "--json" in args:
         args.remove("--json")
-    k = DEFAULT_K
+    k = default_k()
     if "--k" in args:
         i = args.index("--k")
         try:

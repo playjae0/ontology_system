@@ -53,6 +53,7 @@ except ImportError:                     # pragma: no cover
 
 from core import paths
 from core.llm import embeddings as E
+from core.llm import gateway
 from core.query import status
 
 #: 마지막 호출의 계측 — `{종류: {made, reused, secs, backend, cut, longest}}`
@@ -223,9 +224,11 @@ def _vectors(kind, texts, rows=None):
     try:
         items, todo, vers = _split(con, texts, bid)
         t0 = time.perf_counter()
-        for s in range(0, len(todo), SAVE_EVERY):
-            part = todo[s:s + SAVE_EVERY]
-            rows = [(bid, ver, kind, _pack(v)) for (_i, ver), v in zip(part, E.embed_many([texts[i] for i, _ in part], BATCH))]
+        cfg = gateway.config()                     # 묶음 · 이어 저장의 수는 llm.json(B185 ① — 비우면 상수)
+        every, batch = cfg.get("embed_save_every") or SAVE_EVERY, cfg.get("embed_batch") or BATCH
+        for s in range(0, len(todo), every):
+            part = todo[s:s + every]
+            rows = [(bid, ver, kind, _pack(v)) for (_i, ver), v in zip(part, E.embed_many([texts[i] for i, _ in part], batch))]
             with con:                              # 이어 저장 — 끊겨도 여기까지는 다음 호출이 재사용한다
                 con.executemany("INSERT OR IGNORE INTO v VALUES (?, ?, ?, ?)", rows)
             made = {ver: b for _b, ver, _k, b in rows}

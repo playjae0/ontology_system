@@ -30,7 +30,7 @@ from core import paths
 #: 형: `int`(≥1) · `int0`(≥0) · `range`([작은, 큰] 정수 · 1 ≤ 작은 < 큰) ·
 #:     `pair0`([≥1 정수, ≥0 정수]) · `dict`(기본값과 같은 키 · 수) · `pct`(1~100 정수) ·
 #:     `choice:<값|값…>`(닫힌 문자열 — B104 ②)
-#:     `bool`(true · false — B156 ⑤) · `unit`(0 < 수 ≤ 1 — B181 ⑤)
+#:     `bool`(true · false — B156 ⑤) · `unit`(0 < 수 ≤ 1 — B181 ⑤) · `widths`(≥1 정수 목록 · 큰 것부터 — B185 ①)
 KNOBS = {
     "heading_max_chars": ("parser.struct_map", ("HEADING_MAX_CHARS",), "int",
                           "제목 후보의 최대 글자 — 넘는 번호 행은 제목이 아니다",
@@ -147,6 +147,58 @@ KNOBS = {
                                  "뷰어 탐색 모드 문턱 — 노드가 이보다 많으면 첫 화면을 골격 뿌리부터 "
                                  "탐색 모드로 연다(이웃 펼쳐 보기 · B103 ③)",
                                  "python run.py viewer — 머리 줄 노드 수"),
+    # ── B185 ① 손잡이 모으기 — 사람이 바꿀 까닭이 있는 상수(기본값 = 그 상수 · 같은 뜻은 손잡이 하나)
+    "coord_tag_cap": ("cli.parse", ("COORD_CAP",), "int0",
+                      "좌표 태깅 LLM 상한(표기 종수 · 0 = 끔) — 플래그 `--coord-llm`이 이긴다",
+                      "인입 좌표 줄 「목록 밖 표기 k종 … → LLM 최대 q회」"),
+    "reinforce_candidates": ("core.build.reinforce", ("CAND_MAX",), "int",
+                             "연결 보강 한 대상의 후보 상한(가까운 것부터)", "python run.py show report <doc_id> — 연결 보강 줄"),
+    "retry_attempts": ("core.build.retry", ("ATTEMPT_MAX",), "int",
+                       "재시도 상한 — 같은 보류를 이만큼 돌고도 못 붙이면 사람 판정 대기",
+                       "인입 끝 「재연결」 줄의 「시도 n회 · 상한」 · python run.py platform queue"),
+    "query_anchor_hops": ("core.query.anchor", ("ANCHOR_HOPS",), "int",
+                          "질의 · 뷰어의 닻 홉 상한 — 넘으면 「연결 없는 노드」", "python run.py viewer — 연결 없는 노드 수"),
+    "image_context_chars": ("parser.adapters.basic_ppt", ("CONTEXT_CHARS",), "int",
+                            "그림 요약에 딸려 보내는 본문 맥락 글자(PPT · 산문 엑셀 · Word 같은 값)",
+                            "python run.py show dist captures"),
+    "deck_box_chars": ("parser.deck", ("BOX_CHARS",), "int",
+                       "덱 · 쪽 판독 입력의 상자 글자 상한", "python run.py show report <doc_id> --md"),
+    "deck_note_chars": ("parser.deck", ("NOTE_CHARS",), "int",
+                        "덱 입력의 슬라이드 노트 글자 상한", "python run.py show report <doc_id> --md"),
+    "deck_head_chars": ("parser.deck", ("HEAD_CHARS",), "int",
+                        "덱 입력의 제목 상자 첫 줄 글자 상한", "python run.py show report <doc_id> --md"),
+    "deck_overview_chars": ("core.build.deck", ("OVERVIEW_CHARS",), "int",
+                            "덱 구조 답의 개요 글자 상한", "python run.py show report <doc_id> --md"),
+    "ladder_head_chars": ("core.build.ladder", ("HEAD_CHARS",), "int",
+                          "사다리 · 시트 확인 입력의 제목 줄 글자", "python run.py ingest-file <문서> --split-only --step"),
+    "ladder_near_lines": ("core.build.ladder", ("NEAR",), "int0",
+                          "시트 확인 입력에서 판단 필요 행의 앞뒤 줄 수", "python run.py ingest-file <문서> --split-only --step"),
+    "ladder_front_rows": ("core.build.ladder", ("FRONT_ROWS",), "int",
+                          "사다리 입력 앞부분의 행 상한", "python run.py ingest-file <문서> --split-only --step"),
+    "sheet_sample_rows": ("parser.form", ("SHEET_SAMPLE_ROWS",), "int",
+                          "시트 역할 판정 입력의 앞 행 수", "python run.py show dist sheets"),
+    "sheet_sample_chars": ("parser.form", ("SHEET_SAMPLE_CHARS",), "int",
+                           "시트 역할 판정 입력의 행마다 글자", "python run.py show dist sheets"),
+    "struct_map_widths": ("core.llm.struct_map_pass", ("MAP_LINE_WIDTHS",), "widths",
+                          "구조 지도 입력의 행 앞자리 글자 — 한도를 넘으면 다음 값으로 줄인다(큰 것부터)",
+                          "구조 지도 답의 「감축」 · python run.py show report <doc_id> --md"),
+    "profile_sparse_empty_ratio": ("parser.profile", ("SPARSE_EMPTY_RATIO",), "unit",
+                                   "등록 열 프로파일 — 빈 셀 비율이 이것을 넘으면 「판정 보류 제안」", "등록 검수 뷰 열 프로파일"),
+    "profile_sample_values": ("parser.profile", ("SAMPLE_VALUES",), "int",
+                              "등록 열 프로파일 — 고유값이 많을 때 대표값 개수", "등록 검수 뷰 열 프로파일"),
+    "profile_sample_chars": ("parser.profile", ("SAMPLE_CHARS",), "int",
+                             "등록 열 프로파일 — 대표값 하나의 글자", "등록 검수 뷰 열 프로파일"),
+    "profile_full_list_max": ("parser.profile", ("FULL_LIST_MAX",), "int",
+                              "등록 열 프로파일 — 고유값이 이만큼 이하면 전부 싣는다", "등록 검수 뷰 열 프로파일"),
+    "profile_observe_rows": ("parser.reader", ("OBSERVE_ROWS",), "int",
+                             "등록 관찰 재료 — 앞 몇 행을 본다", "등록 입력 패키지 reader head"),
+    "profile_min_unique_values": ("parser.form", ("MIN_VALUES_FOR_UNIQUE",), "int",
+                                  "형태 판정 — 고유 열로 보는 최소 값 수", "python run.py show dist forms"),
+    "decor_share": ("parser.reading_pick", ("DECOR_SHARE",), "unit",
+                    "쪽 판독 — 이 비율 이상의 쪽에 되풀이되는 그림은 장식(판독 안 함)", "python run.py show dist captures"),
+    "convert_timeout_s": ("parser.render", ("SOFFICE_TIMEOUT",), "int",
+                          "문서 변환(LibreOffice) 시간 상한(초) — 넘으면 그 문서의 캡처를 포기한다",
+                          "python doctor.py --env — soffice 줄"),
 }
 PARSER_KNOBS = tuple(k for k, v in KNOBS.items() if v[0].startswith("parser."))
 
@@ -188,6 +240,8 @@ def _check(name, v, dflt):
           and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v.values()),
           "bool": lambda: isinstance(v, bool),
           "unit": lambda: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v <= 1,
+          "widths": lambda: isinstance(v, list) and v and all(_int(x, 1) for x in v)
+          and all(a > b for a, b in zip(v, v[1:])),
           }[kind]() if not kind.startswith("choice:") else v in kind[len("choice:"):].split("|")
     if not ok and name in RETIRED and v in RETIRED[name]:
         raise KnobError(
@@ -238,9 +292,21 @@ def apply():
     """파일을 읽어 **파서에 주입**하고 core 값을 기억한다 — 상태 루트가 정해질 때 한 번."""
     from parser import tuning
     vals = load()
-    tuning.apply({k: v for k, v in vals.items() if k in PARSER_KNOBS})
+    tuning.apply({**{k: v for k, v in vals.items() if k in PARSER_KNOBS}, **_from_llm()})
     _STATE.update(values=vals, loaded=True)
     return vals
+
+
+def _from_llm():
+    """파서에 넣는 llm.json 값(B185 ① — 그림 긴 변 `IMAGE_MAX_EDGE` · core 캡처와 같은 값) — 비었거나 설정이 깨졌으면 넣지 않는다
+    (깨진 설정은 게이트웨이를 쓰는 자리가 시끄럽게 멈춘다 — 여기서 두 번 말하지 않는다)."""
+    from parser import tuning
+    try:
+        from core.llm import gateway
+        cfg = gateway.config()
+    except Exception:                                    # noqa: BLE001 — 설정 판독의 실패는 게이트웨이 자리의 몫
+        return {}
+    return {k: cfg[k] for k in tuning.FROM_LLM if cfg.get(k)}
 
 
 def apply_safe():

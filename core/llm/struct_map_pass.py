@@ -60,7 +60,9 @@ def map_structure(doc_id, lines):
     sys_msg = gateway.prompt("struct_map")
     lim = check.context_limit()
     body = width = est = None
-    for w in MAP_LINE_WIDTHS:                 # **감축 순서**(B41) — 앞자리부터 줄인다
+    from core.state import knobs
+    widths = tuple(knobs.get("struct_map_widths"))   # 손잡이(B185 ① — 기본 = `MAP_LINE_WIDTHS`)
+    for w in widths:                          # **감축 순서**(B41) — 앞자리부터 줄인다
         body, width = _map_lines(lines, w), w
         est = (len(sys_msg.encode("utf-8")) + len(body.encode("utf-8"))) // 3
         if not lim or est <= lim:
@@ -89,8 +91,8 @@ def map_structure(doc_id, lines):
                 "unavailable": reason,
                 "prompt_version": gateway.prompt_version("struct_map"),
                 "meta": {"dropped": 0, "note": None, "행_앞자리": width,
-                         "감축": (f"앞 {MAP_LINE_WIDTHS[0]}자 → {width}자 (크기 예산 B41)"
-                                if width != MAP_LINE_WIDTHS[0] else None)}}
+                         "감축": (f"앞 {widths[0]}자 → {width}자 (크기 예산 B41)"
+                                if width != widths[0] else None)}}
     out = gateway.chat([{"role": "system", "content": sys_msg},
                 {"role": "user", "content": body}],
                json_schema=STRUCT_MAP_SCHEMA, point="struct_map")
@@ -111,8 +113,8 @@ def map_structure(doc_id, lines):
         "prompt_version": gateway.prompt_version("struct_map"),
         "meta": {"dropped": dropped, "note": out.get("note"),
                  "행_앞자리": width,
-                 "감축": (f"앞 {MAP_LINE_WIDTHS[0]}자 → {width}자 (크기 예산 B41)"
-                        if width != MAP_LINE_WIDTHS[0] else None)},
+                 "감축": (f"앞 {widths[0]}자 → {width}자 (크기 예산 B41)"
+                        if width != widths[0] else None)},
     }
 
 

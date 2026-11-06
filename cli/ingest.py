@@ -46,7 +46,7 @@ from pathlib import Path
 
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
-from cli.parse import COORD_CAP, coord_cap_of, run_parse
+from cli.parse import CAP_DEFAULT, coord_cap_of, run_parse
 from cli import _screen
 from cli import provisional_ask as PA      # 잠정 골격 노드 한 줄의 물음 (B184 ③)
 from cli import ingest_screen as SCR
@@ -452,7 +452,7 @@ def _extract_only(doc, sel, row, stage):
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
-                finalize_after=True, coord_cap=COORD_CAP, step=False,
+                finalize_after=True, coord_cap=CAP_DEFAULT, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
                 no_images=False, preflight=None, coord=None, revise=False,
                 allow_duplicate=False, split_only=False, no_capture=False, extract_only=False):

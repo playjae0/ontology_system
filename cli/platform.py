@@ -165,11 +165,11 @@ def cmd_queue(kind=None):
                     tail += f" {pl['locators'][:3]}"
             # **재시도 이력**(B73 ②) — 「한 번 해결하고 다시 도는지」를 사람이 본다.
             if x.get("attempts"):
-                from core.build.retry import ATTEMPT_MAX
+                from core.build.retry import attempt_max
                 tail += (f"  · {x['attempts']}회 재시도 · 첫 발생 "
                          f"{x.get('doc_id')}"
                          + (" · **사람 판정 대기**(상한)"
-                            if x["attempts"] >= ATTEMPT_MAX else ""))
+                            if x["attempts"] >= attempt_max() else ""))
             if x.get("resolution"):
                 # **사람이 판단한 항목은 목록에서 지위를 달리한다**(§7.2) —
                 # 내리지 않되 「끝난 것」으로 보인다.
@@ -627,11 +627,12 @@ def cmd_accuracy():
         if skipped:
             print(f"  (형식으로 건너뛴 문항 {len(skipped)}건 — `run.py golden score`가 사유를 찍는다)")
     else:
-        rows = G.score_set(queries, G.DEFAULT_K)
-        agg = G.aggregate(rows, G.DEFAULT_K)
+        _k = G.default_k()
+        rows = G.score_set(queries, _k)
+        agg = G.aggregate(rows, _k)
         rate = agg["path_rate"]
         print(G.render(agg, rows, src=paths.show(gset), is_mock=not is_golden,
-                       skipped=skipped, k=G.DEFAULT_K))
+                       skipped=skipped, k=_k))
         print()
 
     q = store.read(store.QUEUE, [])
