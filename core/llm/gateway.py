@@ -346,13 +346,10 @@ def _temperature(raw):
 
 #: 게이트웨이 설정의 키 — 환경변수와 설정 파일이 같은 이름을 쓴다(`config()` · 문맥 상한은
 #: `core/llm/check.py`). 격리 환경(`isolated_env`)이 이 목록을 뺀다 — 키를 더하면 여기에도.
+SIZE_KEYS = ("EMBED_BATCH", "EMBED_SAVE_EVERY", "IMAGE_MAX_EDGE", "IMAGE_QUALITY")  # 접속 · 모델에 매인 수(B185 ①) — 소문자 키 · 비우면 None
 CONFIG_KEYS = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL", "EMBED_BACKEND",
                "EMBED_GATEWAY_URL", "CANDIDATE_NARROW", "CHAT_TEMPERATURE", "PROGRESS_EVERY",
-               "LLM_TIMEOUT", "LLM_RETRY", "LLM_CONTEXT_TOKENS",
-               "EMBED_BATCH", "EMBED_SAVE_EVERY", "IMAGE_MAX_EDGE", "IMAGE_QUALITY")
-#: **접속 · 모델에 매인 수**(B185 ① — 임베딩 묶음 · 이어 저장 · 그림 긴 변 · JPEG 품질) — 비우면 None(쓰는 자리의 상수가 기본값)
-SIZE_KEYS = {"embed_batch": "EMBED_BATCH", "embed_save_every": "EMBED_SAVE_EVERY",
-             "image_max_edge": "IMAGE_MAX_EDGE", "image_quality": "IMAGE_QUALITY"}
+               "LLM_TIMEOUT", "LLM_RETRY", "LLM_CONTEXT_TOKENS") + SIZE_KEYS
 
 
 def config():
@@ -382,11 +379,9 @@ def config():
             "embed_backend": (str(get("EMBED_BACKEND", "gateway")).strip().lower()
                               or "gateway"),
             # 임베딩 주소는 채팅과 **다를 수 있다** — 없으면 채팅 base를 쓴다.
-            "embed_url": (str(get("EMBED_GATEWAY_URL")).rstrip("/")
-                          or str(get("LLM_GATEWAY_URL")).rstrip("/")),
+            "embed_url": str(get("EMBED_GATEWAY_URL")).rstrip("/") or str(get("LLM_GATEWAY_URL")).rstrip("/"),
             # **후보 좁히기는 선택이다**(B75 ①) — 임베딩이 없어도 인입은 선다.
-            "narrow": (str(get("CANDIDATE_NARROW", "auto")).strip().lower()
-                       or "auto"),
+            "narrow": str(get("CANDIDATE_NARROW", "auto")).strip().lower() or "auto",
             # **요청 파라미터의 손잡이**(B80 ①) — 비우면 payload에 키가 없다.
             "temperature": _temperature(get("CHAT_TEMPERATURE", None)),
             # **화면 보폭**(B81 ④) — LLM 설정은 아니지만 설정 파일을 여는 자리는
@@ -394,7 +389,7 @@ def config():
             "progress_every": max(1, int(get("PROGRESS_EVERY", 25) or 25)),
             "timeout": float(get("LLM_TIMEOUT", 60)),
             "retry": int(get("LLM_RETRY", 2)),
-            **{k: (int(get(v, None)) if get(v, None) not in (None, "") else None) for k, v in SIZE_KEYS.items()}}
+            **{k.lower(): (int(get(k, None)) if get(k, None) not in (None, "") else None) for k in SIZE_KEYS}}
 
 def require(point, *, need=("url", "model")):
     """실호출 직전의 관문. 설정이 없으면 명시적 실패다.
