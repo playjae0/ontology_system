@@ -23,6 +23,7 @@ import re
 from pathlib import Path
 
 from core.state.bootstrap import COORD_CATEGORY, NoCoordLayer, coord_layer, open_graph
+from core.state.config_scope import renamed
 from core.state.status import is_live
 
 MAP_VERSION = 3                                    # 3 — 공통 쌍 정의 · 층의 쌍에서만 온 것 · 이름 꼴 표기(B177 ①)
@@ -43,7 +44,7 @@ def read(src=None):
     """`(공통 config, {층: 층 config})` — 상태 루트의 `layers/`(기본) 또는 그 모양의 폴더(제안 — 읽기만)."""
     base = Path(src) if src else paths.layers()
     cp = base / "common.json"
-    common = json.loads(cp.read_text(encoding="utf-8")) if cp.exists() else {}
+    common = renamed(json.loads(cp.read_text(encoding="utf-8")) if cp.exists() else {})   # 옛 키 이름은 새 이름으로(B186 ⓪)
     configs = {d.name: json.loads((d / "config.json").read_text(encoding="utf-8"))
                for d in sorted(base.iterdir()) if (d / "config.json").exists()} if base.exists() else {}
     return common, configs
@@ -304,7 +305,17 @@ def build(src=None):
             "coord": {"layer": coord, "category": COORD_CATEGORY}, "layers": layers,
             "pairs": [list(e) for e in edges], "categories": cats, "links": links(layers, cats, schemas),
             "pair_defs": sorted(catalog.pairs(common), key=lambda p: (p["lower"], p["upper"], p["rel"])),
-            "checks": checks(layers, cats, common, configs, src, schemas)}
+            "checks": _old_key_note(checks(layers, cats, common, configs, src, schemas), src)}
+
+
+def _old_key_note(chk, src):
+    """옛 키 이름이 남은 공통 config — 새 이름으로 읽었다는 경고 한 줄(점검은 `--diff` 밖 · bootstrap은 제안을 쓰고 멈춘다)."""
+    cp = (Path(src) if src else paths.layers()) / "common.json"
+    raw = json.loads(cp.read_text(encoding="utf-8")) if cp.exists() else {}
+    from core.state.config_scope import COMMON_KEY, RENAMED
+    chk["경고"] += [{"from": "지도", "line": f"공통 config 키 `{o}` — `{n}`로 읽었다(뜻 그대로 · bootstrap은 제안을 쓰고 멈춘다)"}
+                   for o, n in sorted(RENAMED[COMMON_KEY].items()) if o in raw]
+    return chk
 
 
 def counts(model):

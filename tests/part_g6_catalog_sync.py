@@ -571,6 +571,17 @@ show("B185 ⓑ 키 parent_pairs — 옛 키 pairs 사본은 bootstrap이 제안�
      _rc185 != 0 and "`pairs` → `parent_pairs`" in _o185 and "pairs" not in _pc185 and _pc185.get("parent_pairs")
      and len(_pc185["parent_pairs"]) == len(catalog.pairs(_pc185)) and any("지난 인입과 같다" in ln for ln in _same185),
      f"rc {_rc185} · 제안 키 {sorted(k for k in _pc185 if 'pairs' in k)} · {_same185[:1]}")
+# B186 ⓐ ⓪ — 키만 pairs인 새 모양 사본: 「지금」 쪽도 RENAMED로 읽어 보고는 「키 이름 바뀜」 한 묶음뿐 · 지도 --diff 같다
+from cli import export_config as ED186                             # noqa: E402
+_raw186 = CM.read()                                                # 상태 루트(옛 키) — 「지금」 쪽 읽기
+_cr186 = json.loads(_P.common().read_text(encoding="utf-8"))
+_pr186 = CN.propose(_cr186, _raw186[1])
+_md186 = CN.report_md(_pr186)
+_d186 = ED186.diff(CM.build(), CM.build(_P.config_next("layers")))
+show("B186 ⓐ ⓪ 키만 pairs인 새 모양 사본 — 보고는 「키 이름 바뀜」 한 묶음뿐(이름 바뀜 0 · 새로 걸림 0 · 재구축 줄 0) · 지도 --diff 같다",
+     len(_pr186["report"]["키"]) == 1 and not _pr186["report"]["이름 바뀜"] and not _pr186["report"]["새로 걸림"]
+     and "rebuild" not in _md186 and _d186 == [] and not _pr186["stops"],
+     f"키 {_pr186['report']['키']} · 이름 바뀜 {_pr186['report']['이름 바뀜'][:2]} · 새로 걸림 {_pr186['report']['새로 걸림'][:2]} · diff {_d186[:3]}")
 init.init(fresh_=True, all_=True)
 
 done()

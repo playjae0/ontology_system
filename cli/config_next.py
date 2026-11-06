@@ -91,7 +91,10 @@ def _pairs(configs, sk, nest):
 def propose(common, configs, schemas=()):
     """**제안**(순수 함수 — 쓰지 않는다) — `{"common", "layers", "stops", "report"}` · `stops`가 있으면 제안을 쓰지 않는다."""
     from cli.config_map import name_forms
-    before = name_forms(common or {}, configs or {})
+    from core.state.config_scope import renamed
+    now = renamed(common)                                                      # 「지금」도 새 키 이름으로 읽는다(B186 ⓪)
+    before = name_forms(now, configs or {})
+    now_edges = {catalog.pair_edge(p) for p in catalog.pairs(now)}
     common, configs = json.loads(json.dumps(common or {})), json.loads(json.dumps(configs or {}))
     sk = catalog.skeleton_categories(configs)
     rule = catalog.legacy_rule(common, configs)                                # 없으면 공통 이름 규칙이 이미 새 모양 — 그대로 둔다
@@ -103,7 +106,7 @@ def propose(common, configs, schemas=()):
             cats[c] = {**(v or {}), "no_path": WHY_KEPT}
             rep["안 씀"].append(c)
     if catalog.OLD_PAIRS in common:                                            # 옛 키 이름(B185 ② — 뜻 그대로)
-        common[catalog.PAIRS] = list(common.get(catalog.PAIRS) or []) + list(common.pop(catalog.OLD_PAIRS) or [])
+        common = {**renamed(common), "categories": cats}
         rep["키"].append(f"공통 `{catalog.OLD_PAIRS}` → `{catalog.PAIRS}`(뜻 그대로 — 키 이름만 · 재구축 범위 아님)")
     pairs, rep["쌍"], stops = _pairs(configs, sk, nest)                       # ⓑ — 공통에 이미 있는 쌍은 두고 더한다
     have = {(p["lower"], p["upper"]): p for p in common.get(catalog.PAIRS) or []}
@@ -117,7 +120,8 @@ def propose(common, configs, schemas=()):
     pairs = list(common.get(catalog.PAIRS) or []) + list({(p["lower"], p["upper"]): p for p in pairs
                                                     if (p["lower"], p["upper"]) not in have}.values())
     edges = {catalog.pair_edge(p) for p in pairs}
-    old_pair = {lay: set(_map_triples(c)) for lay, c in configs.items()}
+    old_pair = {lay: set(_map_triples(c)) | {e for e in now_edges if {e[0], e[2]} <= catalog.spoken(c)}   # 지금 걸린 쌍
+                for lay, c in configs.items()}
     sc_cats = _schema_cats(schemas)
     for lay, cfg in sorted(configs.items()):
         own = cfg.get("categories") or {}
