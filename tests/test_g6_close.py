@@ -26,6 +26,7 @@
   ⓖ 명세 낱말 대조(B158 ②) — 기준 판(git)에서 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 적으면 rc 0 · 머리줄 하나를 바꾼
      사본 ⇒ rc 1
   B187 ⓐ — 코드 · 구조도 문면에 「위아래 쌍」 · home 뜻의 「집」 0
+  B188 ⓑ ⓒ ⓓ — 런북 「확인할 것」 대조(mock 한 벌 · 바꾼 사본은 붉다) · 지도 보는 법 · 재연결 뜻의 「붙음」 0
   B185 ⓒ ⓓ — 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0 · 레포 .py 컴파일에 잘못된 이스케이프 경고 0(SyntaxWarning · DeprecationWarning)
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
 """
@@ -491,6 +492,35 @@ _w187 = [f for f in _tracked if (f.startswith(("cli/", "core/", "parser/", "kit/
          and ("위아래 쌍" in (ROOT / f).read_text(encoding="utf-8") or _home187.search((ROOT / f).read_text(encoding="utf-8")))]
 show("B187 ⓐ ⓪ 코드 · 구조도 문면에 「위아래 쌍」 0 · home 뜻의 「집」 0(화면 낱말 = config 키 이름)", not _w187, " · ".join(_w187[:5]))
 show("B185 ⓓ 레포 .py 컴파일에 잘못된 이스케이프 경고 0(SyntaxWarning · DeprecationWarning — 파이썬 판과 무관)", not _sw185, " · ".join(_sw185[:5]))
+
+# B188 ⓑ ⓒ ⓓ — 런북 「확인할 것」 대조(tools/runbook_check.py — mock 한 벌을 한 번 쳐서 화면을 남기고 사본 대조는 그 화면으로)
+_scr188 = T / "runbook_screen.txt"
+_rc188, _o188 = _run([str(ROOT / "tools" / "runbook_check.py"), "--keep", str(_scr188)])
+_m188 = re.search(r"대조 (\d+) · 맞음 (\d+) · 없음 (\d+) · 뺀 줄 (\d+)", _o188)
+_st188 = dict((int(k), (int(a), int(b))) for k, a, b in re.findall(r"(\d) (\d+)/(\d+)", _o188.split("단계마다 —")[-1].splitlines()[0]))
+_rb188 = (ROOT / "docs" / "가이드" / "운영_런북.md").read_text(encoding="utf-8")
+_spec188 = importlib.util.spec_from_file_location("runbook_check", ROOT / "tools" / "runbook_check.py")
+_RC188 = importlib.util.module_from_spec(_spec188)
+_spec188.loader.exec_module(_RC188)
+_q4188 = [q for st, _n, q, mk in _RC188.quotes(_rb188) if st == 4 and mk is None and "| quality |" in q
+          and re.search(r"\| \d+$", q.strip()) and q.split(" | ")[1] in ("occurs_in", "causes", "affects", "controlled_by")]
+_map188 = _rb188[_rb188.index("**온톨로지 맵 보는 법**"):_rb188.index("## 2 ")]
+show("B188 ⓑ 런북 0 → 1 → 3(CP01 · PFMEA01 --step) → 4 → 지도 다시 — 대조에 든 줄이 전부 실화면(단계 넷 다) · 지도 보는 법 단락(점 · 선 · "
+     "고리 · 선언만 · attributes · 점검 줄) · PFMEA 뒤 품질층 네 선의 엣지 수 줄이 대조에 들었다",
+     _rc188 == 0 and _m188 and int(_m188.group(3)) == 0 and set(_st188) == {0, 1, 3, 4} and all(a == b > 0 for a, b in _st188.values())
+     and all(w in _map188 for w in ("**점**", "**선**", "**고리**", "「선언만」", "**attributes 표**", "**점검 줄**")) and len(_q4188) == 4,
+     _o188.splitlines()[0] if _o188 else "출력 없음")
+_cp188 = T / "런북_바꿈.md"
+_cp188.write_text(_rb188.replace("cross-layer edges 7 · uses 3", "cross-layer edges 5 · uses 3", 1), encoding="utf-8")
+_rc188b, _o188b = _run([str(ROOT / "tools" / "runbook_check.py"), "--screen", str(_scr188), "--runbook", str(_cp188)])
+show("B188 ⓒ 대조 장치 — 대조에 든 줄 n · 뺀 줄 m(표지별 · 닫힌 목록) · 런북 줄 하나를 바꾼 사본은 붉다(rc 1 · 그 줄)",
+     _m188 and int(_m188.group(1)) > 0 and int(_m188.group(4)) > 0 and re.search(r"뺀 줄 \d+\((.+)\)", _o188)
+     and _rc188b == 1 and "없음 1 " in _o188b and "없음 — 단계 1 · " in _o188b and "[export] config map(새 모양)" in _o188b,
+     f"{_m188.group(0) if _m188 else '—'} · 사본 rc {_rc188b}")
+_rl188 = [x for x in re.findall(r"`([^`]+)`", _rb188) + _rb188.splitlines()
+          if x.strip().startswith(("재연결 —", "바퀴 ", "재연결 ")) and "붙음" in x]
+show("B188 ⓓ 런북에 재연결 뜻의 「붙음」 0(재연결 · 바퀴 줄 · 「붙음 누계」 — 지금 화면은 「이어짐」)",
+     not _rl188 and "붙음 누계" not in _rb188 and "붙음 = 이번에" not in _rb188, " · ".join(x[:40] for x in _rl188[:3]))
 
 shutil.rmtree(T, ignore_errors=True)
 print("\n" + "=" * 62)

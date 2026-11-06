@@ -103,7 +103,7 @@ def renamed(model):
 def version_note(a, b):
     """두 모델의 판이 다르면 한 줄(뜻 비교는 그대로 — 옛 판은 `renamed`로 읽었다) · 같으면 None."""
     va, vb = a.get("map_version"), b.get("map_version")
-    return None if va == vb else f"  ※ 판이 다르다 — 판 {va} ↔ 판 {vb} · 옛 판의 이름은 지금 이름으로 읽어 견준다(뜻 비교는 그대로)"
+    return None if va == vb else f"  ※ 판이 다르다 — 판 {va} ↔ 판 {vb} · 앞선 판의 출처 이름은 지금 이름으로 읽어 견준다(뜻 비교는 그대로)"
 
 
 def diff(a, b):
