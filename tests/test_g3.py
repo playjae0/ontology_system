@@ -626,6 +626,21 @@ show("B175 ⓓ 대칭 관계(mirrors)는 지금 그대로 — 양방향 커밋 �
      _vd == (_G175.COMMIT, _G175.COMMIT) and len(_G175.COEXIST) == _k175 and len(store.read(store.QUEUE, [])) == _q175,
      str(_vd))
 
+# B187 ⓐ ⓪(a) — B186 리뷰 고침(5ced590): 계약 JSON은 칸 값을 숫자로 실을 수 있다(엑셀 · CSV 파서는 글자로 넘긴다) — 같은 노드 거부의
+# 두 표기는 관문이 글자로 적고 인입 뒤 한 화면이 그 줄로 열린다(고친 자리가 관문 한 곳이라 그 자리에서 잰다)
+from cli import ops_review as _OR187                                  # noqa: E402
+_v187 = _G175.commit_edge(_g175, _u["A"], "causes", _u["A"], _cfg175, _G175.PATH_SCHEMA, ["B187#1"], "B187A",
+                          src_graph=_g175, dst_graph=_g175, surfaces=(18601, "B187 표기"))
+_r187 = [x for x in store.read(store.GATE_REJECTS, {"rejects": []})["rejects"] if x.get("doc_id") == "B187A"]
+_buf187 = _io.StringIO()
+with _ctx.redirect_stdout(_buf187):
+    _OR187.tables(_OR187.bundles("all"))
+show("B187 ⓐ ⓪(a) 숫자 칸 표기(18601)와 다른 표기가 한 노드 — 관문 거부 기록의 두 표기가 글자 · 엣지 0 · "
+     "인입 뒤 한 화면이 열리고 다섯째 묶음에 그 줄",
+     _v187 == _G175.SAME_NODE and len(_r187) == 1 and _r187[0]["surfaces"] == ["18601", "B187 표기"]
+     and not _g175.edge(_u["A"], "causes", _u["A"]) and "18601 ↔ B187 표기" in _buf187.getvalue(),
+     f"{_v187} · 기록 {[x['surfaces'] for x in _r187]}")
+
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — G3 완료판정 충족" if allok else "FAIL")
 sys.exit(0 if allok else 1)

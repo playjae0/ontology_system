@@ -12,25 +12,25 @@
      "parent_pairs": [{"lower": "<카테고리>", "upper": "<카테고리>", "rel": "<관계>", "src": "lower|upper"}, …],
      "sep": "::"}
 
-- `home` — 집(노드가 사는 그래프). 해소는 table·prose 모두 **집 빌더**에서 한다(②).
+- `home` — home(노드가 사는 그래프). 해소는 table·prose 모두 **home 빌더**에서 한다(②).
 - `also` — 겸. 「그 단(`tier`)의 이 카테고리 노드는 저 카테고리이기도 하다」(③).
   **노드에 저장하지 않는다** — 주 카테고리 + `tier`와 카탈로그에서 계산한다.
 - **경로**(이름 규칙 — B174 ①): 적지 않으면 「씀」(이름에 공정 경로가 붙는다) · `no_path`(사유)면 「안 씀」 · 골격
   카테고리는 적지 않는다(층 config `skeleton`이 정본 — 이름 그대로).
-- **위아래 쌍**(`parent_pairs` — B174 ① · B185 ②): 아래 · 위 · 엣지(관계 · `src` — 엣지의 출발이 아래인가 위인가). 산문 부착 · 소속 · 재부착 ·
+- **`parent_pairs`**(`parent_pairs` — B174 ① · B185 ②): 아래 · 위 · 엣지(관계 · `src` — 엣지의 출발이 아래인가 위인가). 산문 부착 · 소속 · 재부착 ·
   표의 소유 엣지 · 이관 재배선이 이 한 곳을 읽고(`pair_relation`) · 그 층이 쓰는 두 카테고리의 쌍은 게이트가 허용한다
   (`layer_patterns`) · **위가 일반 노드(골격이 아닌 카테고리)면 아래 카테고리의 이름은 그 노드 아래다**(`naming_rule` 「nest」).
-- 옛 모양(공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 정의)은 `old_shape`가 말하고 `bootstrap`이 새 모양
+- 옛 모양(공통 `canonical_scope` · 층 `category_pair_map` · home이 아닌 층의 정의)은 `old_shape`가 말하고 `bootstrap`이 새 모양
   제안을 쓰고 멈춘다(`core/state/config_next.py`).
 
-**코드에 층 어휘 0** — 어느 카테고리가 어느 층 집인지, 무엇이 무엇의 겸인지는 전부 이
+**코드에 층 어휘 0** — 어느 카테고리가 어느 층 home인지, 무엇이 무엇의 겸인지는 전부 이
 파일의 값이다. 정의문은 여기 두지 않는다(정의문은 층의 렌즈 — 층 config `categories`).
 
 **맞추기는 `bootstrap`이 한다**(B92 · `core/state/catalog_sync.py`): 층 config에서 결정적으로
-따라 나오는 줄(한 층만 선언한 카테고리의 집 · 선언도 노드도 없는 카테고리의 제거)은 자동이고,
-파일이 없으면(운영) 같은 규칙으로 바로 만든다 — 여러 층이 선언한 카테고리의 집은 빈칸으로
+따라 나오는 줄(한 층만 선언한 카테고리의 home · 선언도 노드도 없는 카테고리의 제거)은 자동이고,
+파일이 없으면(운영) 같은 규칙으로 바로 만든다 — 여러 층이 선언한 카테고리의 home은 빈칸으로
 두고 멈춘다(사람이 고른다). mock 루트에 파일이 없으면 층 선언에서 그 자리에서 세운다 — 한 층만
-선언한 카테고리만 있을 때만(겹치면 멈춘다 — 집을 추측하지 않는다).
+선언한 카테고리만 있을 때만(겹치면 멈춘다 — home을 추측하지 않는다).
 """
 from __future__ import annotations
 
@@ -43,10 +43,10 @@ _CACHE = {}
 
 
 class CatalogError(RuntimeError):
-    """카탈로그가 없거나 쓸 수 없다 — 집을 추측하지 않고 멈춘다."""
+    """카탈로그가 없거나 쓸 수 없다 — home을 추측하지 않고 멈춘다."""
 
 
-#: 공통 config의 위아래 쌍 키(B185 ② — 카테고리 사이의 소속 관계 · 그 노드를 아래 끝으로 둔 엣지가 부모 엣지)
+#: 공통 config의 `parent_pairs` 키(B185 ② — 카테고리 사이의 소속 관계 · 그 노드를 아래 끝으로 둔 엣지가 부모 엣지)
 PAIRS = "parent_pairs"
 
 
@@ -72,7 +72,7 @@ def declared_by(configs=None):
 
 
 def draft(configs=None):
-    """층 선언에서 세운 카탈로그 — 한 층만 선언한 카테고리는 그 층이 집 · 여럿이면 **빈칸**(사람이 채운다) · 위아래 쌍은 빈 목록
+    """층 선언에서 세운 카탈로그 — 한 층만 선언한 카테고리는 그 층이 home · 여럿이면 **빈칸**(사람이 채운다) · `parent_pairs`은 빈 목록
     (사람이 적는다 — B174)."""
     configs = configs or _layer_configs()
     cats = {c: {"home": lays[0] if len(lays) == 1 else ""}
@@ -99,12 +99,12 @@ def load():
         blank = sorted(c for c, v in cat["categories"].items() if not v["home"])
         if blank:
             raise CatalogError(f"공통 config 없음 · 여러 층이 선언한 카테고리 {blank} — "
-                               f"집을 추측하지 않는다 ({p})")
+                               f"home을 추측하지 않는다 ({p})")
     else:
         raise CatalogError(
             f"[상태] 층 공통 config가 없다 — {p}\n"
             f"  ▶ 다음 줄: python run.py bootstrap   (층 config에서 만든다 — 여러 층이 "
-            f"선언한 카테고리의 집은 사람이 채운다)")
+            f"선언한 카테고리의 home은 사람이 채운다)")
     _CACHE.clear()
     _CACHE[key] = cat
     return cat
@@ -170,13 +170,13 @@ def sep(cat=None):
 
 
 def pairs(cat=None):
-    """**위아래 쌍**(B174 ①) — `[{lower, upper, rel, src, 정의문?}]` · 모양이 덜 찬 줄은 읽지 않는다(지도 점검이 말한다)."""
+    """**`parent_pairs`**(B174 ①) — `[{lower, upper, rel, src, 정의문?}]` · 모양이 덜 찬 줄은 읽지 않는다(지도 점검이 말한다)."""
     return [dict(p) for p in (_cat_or_none(cat) or {}).get(PAIRS) or []
             if isinstance(p, dict) and p.get("lower") and p.get("upper") and p.get("rel")]
 
 
 def structural_relations(cat=None):
-    """**구조 관계** — 위아래 쌍의 관계 이름(B175 · 카테고리와 무관 — 같은 관계 이름은 모든 층에서 같은 뜻) · 반대 방향은 보류된다."""
+    """**구조 관계** — `parent_pairs`의 관계 이름(B175 · 카테고리와 무관 — 같은 관계 이름은 모든 층에서 같은 뜻) · 반대 방향은 보류된다."""
     return {p["rel"] for p in pairs(cat)}
 
 
@@ -197,7 +197,7 @@ _NAMING = {}
 def naming_rule(cat=None, configs=None):
     """**이름 규칙**(B174 ①) — `{"path": [경로 씀], "nest": [이름이 위 노드 아래인 카테고리], "sep"}`.
 
-    경로 씀 = 카탈로그 카테고리 − 골격 카테고리 − `no_path` · nest = 위아래 쌍에서 위가 일반 노드(골격이 아닌 카테고리)인 아래
+    경로 씀 = 카탈로그 카테고리 − 골격 카테고리 − `no_path` · nest = `parent_pairs`에서 위가 일반 노드(골격이 아닌 카테고리)인 아래
     카테고리(목록 없이 쌍에서 — 그 노드가 이어지면 그 이름 아래 · 없으면 좌표 아래). 인자가 없으면 상태 루트를 읽고 파일 시각으로
     기억한다(값마다 부르는 자리다)."""
     if cat is None and configs is None:
@@ -217,12 +217,12 @@ def naming_rule(cat=None, configs=None):
 
 
 def spoken(cfg):
-    """층이 말하는 카테고리 = 집 카테고리(`categories`) ∪ 쓰는 다른 층 카테고리(`uses`) (B174 ②)."""
+    """층이 말하는 카테고리 = home 카테고리(`categories`) ∪ 쓰는 다른 층 카테고리(`uses`) (B174 ②)."""
     return set((cfg or {}).get("categories") or {}) | set((cfg or {}).get("uses") or [])
 
 
 def definition(category):
-    """그 카테고리의 **정의문 — 집 층 config 한 곳**(B174 · B178 ① — 다른 층 config에 다시 적지 않는다) · 집이 없거나 못 읽으면 빈 글."""
+    """그 카테고리의 **정의문 — home 층 config 한 곳**(B174 · B178 ① — 다른 층 config에 다시 적지 않는다) · home이 없거나 못 읽으면 빈 글."""
     try:
         h = home(category)
     except CatalogError:
@@ -234,20 +234,20 @@ def definition(category):
 
 
 def asked(cfg):
-    """**추출이 묻는 카테고리** `{이름: 정의문}`(B178 ①) = 그 층이 말하는 카테고리(`spoken` — 받는 거름과 같은 함수) · 집 카테고리는
-    그 층 정의문 · `uses`는 집 층의 정의문(`definition`) · 차례는 집 카테고리(층 config 차례) → `uses`(이름순)."""
+    """**추출이 묻는 카테고리** `{이름: 정의문}`(B178 ①) = 그 층이 말하는 카테고리(`spoken` — 받는 거름과 같은 함수) · home 카테고리는
+    그 층 정의문 · `uses`는 home 층의 정의문(`definition`) · 차례는 home 카테고리(층 config 차례) → `uses`(이름순)."""
     own = dict((cfg or {}).get("categories") or {})
     return {**own, **{c: definition(c) for c in sorted(spoken(cfg) - set(own))}}
 
 
 def layer_pairs(cfg, cat=None):
-    """그 층에 걸리는 위아래 쌍 — 두 카테고리를 다 말하는 층(`spoken`)."""
+    """그 층에 걸리는 `parent_pairs` — 두 카테고리를 다 말하는 층(`spoken`)."""
     sp = spoken(cfg)
     return [p for p in pairs(cat) if p["lower"] in sp and p["upper"] in sp]
 
 
 def layer_patterns(cfg, cat=None):
-    """그 층의 **게이트 패턴** = 층 `relation_patterns` + 그 층에 걸리는 위아래 쌍의 엣지(B174 ② — 쌍의 삼항은 층에 다시 적지 않는다)."""
+    """그 층의 **게이트 패턴** = 층 `relation_patterns` + 그 층에 걸리는 `parent_pairs`의 엣지(B174 ② — 쌍의 삼항은 층에 다시 적지 않는다)."""
     own = list((cfg or {}).get("relation_patterns") or [])
     have = {(x.get("src"), x.get("rel"), x.get("dst")) for x in own}
     for p in layer_pairs(cfg, cat):
@@ -259,7 +259,7 @@ def layer_patterns(cfg, cat=None):
 
 
 def pair_relation(cfg, src_cat, dst_cat, cat=None):
-    """`src_cat` → `dst_cat` 엣지의 관계 — 그 층에 걸리는 위아래 쌍 중 엣지가 그 방향인 것(없으면 None · 한 자리 — 표 · 산문 · 재시도 ·
+    """`src_cat` → `dst_cat` 엣지의 관계 — 그 층에 걸리는 `parent_pairs` 중 엣지가 그 방향인 것(없으면 None · 한 자리 — 표 · 산문 · 재시도 ·
     이관이 이것을 읽는다)."""
     for p in layer_pairs(cfg, cat):
         s, r, d = pair_edge(p)
@@ -269,7 +269,7 @@ def pair_relation(cfg, src_cat, dst_cat, cat=None):
 
 
 def used_by(configs=None):
-    """카테고리 → 그것을 말하는 층(집 정의 · `uses`) — 결과 기록 `used_by`의 재료(B92 · B174 ②)."""
+    """카테고리 → 그것을 말하는 층(home 정의 · `uses`) — 결과 기록 `used_by`의 재료(B92 · B174 ②)."""
     out = {}
     for lay, cfg in sorted((configs if configs is not None else _layer_configs()).items()):
         for c in sorted(spoken(cfg)):
@@ -283,7 +283,7 @@ OLD_PAIRS = OLD_COMMON_KEYS[1]
 
 
 def legacy_rule(common, configs):
-    """**옛 이름 규칙** `(bind, nest, sep)` — 공통 `canonical_scope` · 없으면 층에 남은 것(공통이 새 모양 이름 규칙 — 위아래 쌍이나
+    """**옛 이름 규칙** `(bind, nest, sep)` — 공통 `canonical_scope` · 없으면 층에 남은 것(공통이 새 모양 이름 규칙 — `parent_pairs`이나
     `no_path` — 을 아직 갖지 않을 때만 · 가지면 공통이 정본) · 없으면 None(제안 · 지도의 옛 뜻 해석이 같은 함수로 읽는다)."""
     common = common or {}
     sc = (common[OLD_COMMON_KEYS[0]] or {}) if OLD_COMMON_KEYS[0] in common else None   # 빈 규칙도 규칙이다(목록 빈 것)
@@ -298,7 +298,7 @@ OLD_LAYER_KEYS = ("category_pair_map", "canonical_scope")
 
 def old_shape(configs=None, cat=None):
     """**옛 모양의 자리** — `[문면]` · 비면 새 모양. 공통 `canonical_scope` · 층 `category_pair_map` · 층에 남은 `canonical_scope` ·
-    집이 아닌 층의 카테고리 정의(정의문은 집 한 곳 · 다른 층은 `uses`)."""
+    home이 아닌 층의 카테고리 정의(정의문은 home 한 곳 · 다른 층은 `uses`)."""
     configs = configs if configs is not None else _layer_configs()
     cat = _cat_or_none(cat) or {}
     out = [f"공통 config에 {k}가 남아 있다" + (f" — `{OLD_PAIRS}` → `{PAIRS}`(뜻 그대로 — 키 이름만)" if k == OLD_PAIRS else "")
@@ -309,7 +309,7 @@ def old_shape(configs=None, cat=None):
     for c, lays in sorted(declared_by(configs).items()):
         h = (cats.get(c) or {}).get("home")
         if h and len(lays) > 1:
-            out += [f"층 {lay}가 집({h})이 아닌 카테고리 '{c}'를 정의한다" for lay in lays if lay != h]
+            out += [f"층 {lay}가 home({h})이 아닌 카테고리 '{c}'를 정의한다" for lay in lays if lay != h]
     return out
 
 
@@ -374,7 +374,7 @@ def problems(configs=None, cat=None):
     for c, lays in sorted(decl.items()):
         if c not in cats:
             out.append(("ⓑ", f"층 {lays}의 카테고리 '{c}'가 공통 config에 없다 — "
-                             f"python run.py bootstrap이 맞춘다(한 층이면 자동 · 여럿이면 집을 묻는다)"))
+                             f"python run.py bootstrap이 맞춘다(한 층이면 자동 · 여럿이면 home을 묻는다)"))
     for c, v in sorted(cats.items()):
         h = (v or {}).get("home")
         if not h:
@@ -389,7 +389,7 @@ def problems(configs=None, cat=None):
             if bad or not tiers:
                 out.append(("ⓔ", f"'{c}'의 also['{other}']의 단 {bad or tiers}가 "
                                  f"{'·'.join(TIERS)} 밖이다"))
-    out += [("ⓓ", f"{m} — 옛 모양이다(이름 규칙 · 위아래 쌍은 공통 config 한 곳 · 정의문은 집 층 · 다른 층은 uses) · "
+    out += [("ⓓ", f"{m} — 옛 모양이다(이름 규칙 · parent_pairs는 공통 config 한 곳 · 정의문은 home 층 · 다른 층은 uses) · "
                    f"python run.py bootstrap이 새 모양 제안을 쓰고 멈춘다") for m in old_shape(configs, cat)]
     for lay, cfg in sorted(configs.items()):
         vc = cfg.get("value_categories")                         # 값을 받는 카테고리 (B120 ②)
@@ -402,8 +402,8 @@ def problems(configs=None, cat=None):
 
 
 def warnings(cat=None):
-    """경고(거부 아님) — `[문면]`. **겸의 집 불일치**(B91 ⑥ · D-171 ⑦): 주 카테고리 C가 X를
-    겸하는데 X의 집이 C의 집과 다르면, 겸 후보는 판정이 보는 **집 그래프 안만** 보므로 그
+    """경고(거부 아님) — `[문면]`. **겸의 home 불일치**(B91 ⑥ · D-171 ⑦): 주 카테고리 C가 X를
+    겸하는데 X의 home이 C의 home과 다르면, 겸 후보는 판정이 보는 **home 그래프 안만** 보므로 그
     구성에서는 겸 매칭이 조용히 빠진다 — 막지 않고 말한다(사람이 의도했을 수 있다).
     """
     cats = (cat if cat is not None else load()).get("categories") or {}
@@ -413,19 +413,19 @@ def warnings(cat=None):
         for other in sorted(((v or {}).get("also") or {})):
             ho = (cats.get(other) or {}).get("home")
             if hc and ho and hc != ho:
-                out.append(f"'{c}'(집 {hc})가 '{other}'(집 {ho})를 겸한다 — 겸 후보는 판정이 보는 "
-                           f"집 그래프 안만 본다: '{other}' 판정({ho})에서 '{c}' 노드({hc})는 겸 후보가 "
+                out.append(f"'{c}'(home {hc})가 '{other}'(home {ho})를 겸한다 — 겸 후보는 판정이 보는 "
+                           f"home 그래프 안만 본다: '{other}' 판정({ho})에서 '{c}' 노드({hc})는 겸 후보가 "
                            f"되지 않는다(이 구성에서는 겸 매칭이 조용히 빠진다)")
     return out
 
 
 def mirror_warnings(configs=None, cat=None):
-    """**미러 규칙과 집의 어긋남**(B100 ④) — `[(문면, 다음 줄)]` · 경고만(막지 않는다 — 사람 판단).
+    """**미러 규칙과 home의 어긋남**(B100 ④) — `[(문면, 다음 줄)]` · 경고만(막지 않는다 — 사람 판단).
 
-    극성 결합·미러 짝 키(부모 경로 `scope` · 맨 이름 `base_name`)는 노드를 만드는 **집 층의 빌더**가 그 층
-    config로 적는다. 어떤 층 L이 카테고리 C를 `polarity.bind_categories`에 묶었는데 C의 집 H(≠L)의
+    극성 결합·미러 짝 키(부모 경로 `scope` · 맨 이름 `base_name`)는 노드를 만드는 **home 층의 빌더**가 그 층
+    config로 적는다. 어떤 층 L이 카테고리 C를 `polarity.bind_categories`에 묶었는데 C의 home H(≠L)의
     config에 그 규칙이 없으면, 이 구성에서는 C 노드의 극성·미러 짝이 조용히 빠진다(B99 ⑪ 재현 —
-    집을 옮기면 mirrors 26 → 20). 규칙을 층 사이로 옮겨 읽는 코드는 넣지 않는다 — 말하고 사람이 옮긴다.
+    home을 옮기면 mirrors 26 → 20). 규칙을 층 사이로 옮겨 읽는 코드는 넣지 않는다 — 말하고 사람이 옮긴다.
     """
     configs = configs or _layer_configs()
     cats = (cat if cat is not None else load()).get("categories") or {}
@@ -447,14 +447,14 @@ def mirror_warnings(configs=None, cat=None):
                     list(hp.get("values") or []) != list(pol.get("values") or []):
                 missing.append(f"같은 polarity.values({pol.get('values')} ≠ {hp.get('values')})")
             if missing:
-                out.append((f"층 {lay}이 '{c}'를 극성 짝(polarity.bind_categories)에 묶었는데 '{c}'의 집 "
-                            f"{h}의 config에는 {' · '.join(missing)}가 없다 — 노드는 집 층 빌더가 만들므로 "
+                out.append((f"층 {lay}이 '{c}'를 극성 짝(polarity.bind_categories)에 묶었는데 '{c}'의 home "
+                            f"{h}의 config에는 {' · '.join(missing)}가 없다 — 노드는 home 층 빌더가 만들므로 "
                             f"이 구성에서는 '{c}'의 극성·미러 짝이 빠진다",
-                            f"규칙을 집 층 config로 — {paths.show(paths.layers(h, 'config.json'))}의 "
+                            f"규칙을 home 층 config로 — {paths.show(paths.layers(h, 'config.json'))}의 "
                             f"polarity(bind_categories에 '{c}' · values) · mirrors를 {lay}와 같게 → "
                             f"python run.py bootstrap"))
-    # **극성 축 values의 어긋남**(B101 ⑥) — C를 선언한 층 L과 C의 집 H의 축 값이 다르면, 극성 표기가 있는
-    # 행의 C 노드는 집 H의 축으로 판정된다(H에 축이 있고 C를 묶지 않으면 `unbound` — 극성별로 둘이 된다)
+    # **극성 축 values의 어긋남**(B101 ⑥) — C를 선언한 층 L과 C의 home H의 축 값이 다르면, 극성 표기가 있는
+    # 행의 C 노드는 home H의 축으로 판정된다(H에 축이 있고 C를 묶지 않으면 `unbound` — 극성별로 둘이 된다)
     decl = declared_by(configs)
     for c, lays in sorted(decl.items()):
         h = (cats.get(c) or {}).get("home")
@@ -465,12 +465,12 @@ def mirror_warnings(configs=None, cat=None):
             if lay == h or c in ((configs[lay].get("polarity") or {}).get("bind_categories") or []):
                 continue                                   # 묶은 층은 위에서 본다
             lv = list(((configs[lay].get("polarity") or {}).get("values")) or [])
-            # 집에 축이 있고 C를 묶지 않을 때만 갈린다(축이 없는 집은 극성 none — 갈리지 않는다)
+            # home에 축이 있고 C를 묶지 않을 때만 갈린다(축이 없는 home은 극성 none — 갈리지 않는다)
             if hv and hv != lv and c not in ((configs[h].get("polarity") or {}).get("bind_categories") or []):
-                out.append((f"'{c}'의 집 {h}의 극성 축 values {hv or '없음'}가 선언한 층 {lay}의 "
-                            f"{lv or '없음'}와 다르다 — 극성 표기가 있는 행의 '{c}' 노드는 집 {h}의 축으로 "
+                out.append((f"'{c}'의 home {h}의 극성 축 values {hv or '없음'}가 선언한 층 {lay}의 "
+                            f"{lv or '없음'}와 다르다 — 극성 표기가 있는 행의 '{c}' 노드는 home {h}의 축으로 "
                             f"판정된다(묶지 않은 축이면 unbound — 극성별로 둘이 된다)",
-                            f"의도가 아니면 '{c}'의 집을 축이 같은 층으로({paths.show(paths.common())}) 또는 "
+                            f"의도가 아니면 '{c}'의 home을 축이 같은 층으로({paths.show(paths.common())}) 또는 "
                             f"{paths.show(paths.layers(h, 'config.json'))}의 polarity를 맞춘다 → "
                             f"python run.py bootstrap"))
     return out

@@ -188,8 +188,8 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
         collected.setdefault(lay, set()).update(Q.expand(g, direct, cfg, trace=rounds))
         for hops in rounds:                 # 한 바퀴 = 한 홉 · 규칙마다 한 줄
             tr["hops"] += hops
-    # **엣지는 문서 층에 산다**(B100 ④) — 직접 노드의 집이 아닌 층 그래프가 그 노드에 닿은
-    # 확장 관계 엣지를 가지면 그 층에서도(그 층 규칙으로) 뻗는다. 집과 문서 층이 같으면 0건이다.
+    # **엣지는 문서 층에 산다**(B100 ④) — 직접 노드의 home이 아닌 층 그래프가 그 노드에 닿은
+    # 확장 관계 엣지를 가지면 그 층에서도(그 층 규칙으로) 뻗는다. home과 문서 층이 같으면 0건이다.
     if intent not in ("flow", "order"):
         for lay, more in Q.expand_elsewhere(direct_by_layer, graphs, configs).items():
             rounds = []

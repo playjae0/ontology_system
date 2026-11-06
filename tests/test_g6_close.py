@@ -25,6 +25,7 @@
      (B159 ②)
   ⓖ 명세 낱말 대조(B158 ②) — 기준 판(git)에서 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 적으면 rc 0 · 머리줄 하나를 바꾼
      사본 ⇒ rc 1
+  B187 ⓐ — 코드 · 구조도 문면에 「위아래 쌍」 · home 뜻의 「집」 0
   B185 ⓒ ⓓ — 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0 · 레포 .py 컴파일에 잘못된 이스케이프 경고 0(SyntaxWarning · DeprecationWarning)
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
 """
@@ -482,6 +483,13 @@ for f in (x for x in _tracked if x.endswith(".py")):
             pass
     _sw185 += [f for x in _w if issubclass(x.category, (SyntaxWarning, DeprecationWarning))]   # 잘못된 이스케이프 — 3.11은 Deprecation · 3.12+는 Syntax(B186 ⓪)
 show("B185 ⓒ 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0(개정대장 밖)", not _old185, " · ".join(_old185[:5]))
+# B187 ⓐ ⓪ — 화면 낱말 = config 키 이름: 코드(cli · core · parser · kit · tools)와 구조도 문면에 「위아래 쌍」 0 · home 뜻의 「집」 0
+#   (집합 · 집계 · 집는다 · 집행은 다른 낱말 — 뒤에 붙는 글자로 가른다)
+_home187 = re.compile(r"(?<![가-힣`])집(?=(?:이다|인지|에서|으로|이|을|과|은|에|의)?(?:[^가-힣]|$))")
+_w187 = [f for f in _tracked if (f.startswith(("cli/", "core/", "parser/", "kit/", "tools/")) and f.endswith(".py")
+                                 or f.startswith("docs/구조도/") and f.endswith(".md")) and (ROOT / f).is_file()
+         and ("위아래 쌍" in (ROOT / f).read_text(encoding="utf-8") or _home187.search((ROOT / f).read_text(encoding="utf-8")))]
+show("B187 ⓐ ⓪ 코드 · 구조도 문면에 「위아래 쌍」 0 · home 뜻의 「집」 0(화면 낱말 = config 키 이름)", not _w187, " · ".join(_w187[:5]))
 show("B185 ⓓ 레포 .py 컴파일에 잘못된 이스케이프 경고 0(SyntaxWarning · DeprecationWarning — 파이썬 판과 무관)", not _sw185, " · ".join(_sw185[:5]))
 
 shutil.rmtree(T, ignore_errors=True)

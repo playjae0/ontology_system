@@ -18,7 +18,7 @@
     패턴 안                  → 커밋
     패턴과 방향만 반대        → 커밋하지 않고 `direction_conflict` 큐 (**자동으로 뒤집지 않는다**)
     같은 두 노드에 반대 방향 엣지가 이미 있음(층 전부 · 대칭 관계 밖 — B175)
-                              → 위아래 쌍의 관계(구조)면 커밋하지 않고 `direction_conflict` 큐(먼저 선 것을 둔다 · 두 출처)
+                              → `parent_pairs`의 관계(구조)면 커밋하지 않고 `direction_conflict` 큐(먼저 선 것을 둔다 · 두 출처)
                                 · 그 밖(사실)은 커밋하고 문서 끝 결과에 「반대 방향 공존」
     관계는 선언됐으나 패턴 밖 → 거부 + 사유 기록 (`invalid_pattern`)
     관계 자체가 미선언        → 발생 불가(③이 닫힌 목록 선택) — 방어적으로 거부 + 기록
@@ -57,7 +57,7 @@ PATH_AUTO = "auto"          # ④
 
 def _index(cfg):
     from core.state import catalog
-    pats = catalog.layer_patterns(cfg)                   # 층 패턴 + 그 층에 걸리는 위아래 쌍(B174 ②)
+    pats = catalog.layer_patterns(cfg)                   # 층 패턴 + 그 층에 걸리는 `parent_pairs`(B174 ②)
     forward = {(p["src"], p["rel"], p["dst"]): p for p in pats}
     reverse = {(p["dst"], p["rel"], p["src"]): p for p in pats
                if not p.get("symmetric")}
@@ -66,7 +66,7 @@ def _index(cfg):
 
 
 def pair_relation(cfg, src_cat, dst_cat):
-    """관계는 공통 config의 위아래 쌍이 결정한다 — 게이트 패턴표의 특수형(§6-3 · B174 ① — 층마다 두지 않고 한 곳).
+    """관계는 공통 config의 `parent_pairs`이 결정한다 — 게이트 패턴표의 특수형(§6-3 · B174 ① — 층마다 두지 않고 한 곳).
 
     표·산문·재시도 세 경로가 같은 함수를 읽는다(`catalog.pair_relation` — 그 층이 두 카테고리를 다 말할 때만)."""
     from core.state import catalog
@@ -184,7 +184,7 @@ def _node_in(world, nid):
 
 
 def parent_edge(nid, *graphs):
-    """**부모 엣지**(B180 ①) — 그 노드를 아래 끝으로 둔 위아래 쌍 엣지(두 끝 카테고리(주 ∪ 겸) · 관계 · 방향이 공통 config의 쌍과
+    """**부모 엣지**(B180 ①) — 그 노드를 아래 끝으로 둔 `parent_pairs` 엣지(두 끝 카테고리(주 ∪ 겸) · 관계 · 방향이 공통 config의 쌍과
     같다)가 **층 전부**(`_world` — 넘겨받은 그래프 · 이 실행이 쓰는 그래프 · 나머지는 읽기 전용 사본)에 있나 — `(관계, 위 노드 id,
     위 canonical, 위가 출발인가)` 또는 None · 사람이 지운 엣지 · 근거(출처) 0 엣지는 세지 않는다. 위치 폴백(좌표 · 제목 사슬)은 이것이 None일 때만 선다."""
     from core.graph import STATUS_DELETED

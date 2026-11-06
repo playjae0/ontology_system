@@ -43,7 +43,7 @@ def _key(eb, surface, category, electrode_type):
 
 
 def _gated(eb, key, category, polarity):
-    """그 카테고리(주 ∪ 겸) · 집 층 · 같은 극성의 산 노드 전체 — `matcher.gated`(관문 없음 · LLM 0)."""
+    """그 카테고리(주 ∪ 겸) · home 층 · 같은 극성의 산 노드 전체 — `matcher.gated`(관문 없음 · LLM 0)."""
     return matcher.gated(key, category, eb.layer, eb.g, eb.dict, scoped=True, polarity=polarity, cfg=eb.cfg)
 
 

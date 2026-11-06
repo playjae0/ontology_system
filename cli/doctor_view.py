@@ -234,7 +234,7 @@ def state_line():
         _coord = coord_layer()
     except NoCoordLayer:
         _coord = "**없다**"
-    # **층 공통 config의 판을 같은 줄에**(B90 ①) — 집·겸·이름 규칙이 어느 판으로 도는가.
+    # **층 공통 config의 판을 같은 줄에**(B90 ①) — home·겸·이름 규칙이 어느 판으로 도는가.
     from core.state import catalog as _catalog                      # noqa: E402
     _cv = _catalog.version()
     _common = (f"v{_cv}" if _cv is not None
@@ -248,9 +248,9 @@ def state_line():
           + f" · 공통 config {_common}"
           + f" · 문서 {len(store.read(store.DOC_REGISTRY, {}))}")
     try:
-        for _w in _catalog.warnings():               # 겸 집 불일치 — 경고 (B91 ⑥)
+        for _w in _catalog.warnings():               # 겸 home 불일치 — 경고 (B91 ⑥)
             print(f"  ⚠ 공통 config 겸 {_w}")
-        for _w, _nx in _catalog.mirror_warnings():   # 미러 규칙 ≠ 집 — 경고 (B100 ④)
+        for _w, _nx in _catalog.mirror_warnings():   # 미러 규칙 ≠ home — 경고 (B100 ④)
             print(f"  ⚠ 미러 규칙 {_w}\n    ▶ 다음 줄 — {_nx}")
         from core.state import catalog_sync as _cs   # 겸 상태 — 골격 카테고리마다 (B93 ③)
         for _warn, _m in _cs.coord_status():

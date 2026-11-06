@@ -90,7 +90,7 @@ def attributes(configs, schemas, coord):
 def edge_counts(layers):
     """**실제 엣지 수** — `({(src 카테고리, rel, dst 카테고리): 수}, [(주 카테고리 삼항, 주 ∪ 겸 조합)])` · 그래프가 없거나 비면 `(None, None)`.
 
-    층 전부를 연다(노드는 집 층 · 엣지는 문서 층 — B100) · 사람이 지운 엣지는 빼고 · 카테고리는 주 ∪ 겸(관문이 겸으로도 판정한다)."""
+    층 전부를 연다(노드는 home 층 · 엣지는 문서 층 — B100) · 사람이 지운 엣지는 빼고 · 카테고리는 주 ∪ 겸(관문이 겸으로도 판정한다)."""
     from core.graph import STATUS_DELETED, GraphStore
     stores = [GraphStore.for_layer(lay) for lay in sorted(layers)]
     graphs = [s.load() for s in stores if s.exists()]

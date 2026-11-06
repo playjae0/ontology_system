@@ -265,11 +265,11 @@ def expand(graph, ids, cfg, trace=None):
 
 
 def expand_elsewhere(direct_by_layer, graphs, configs):
-    """**집이 아닌 층의 확장 출발점**(B100 ④) — `{층: 노드 집합}`.
+    """**home이 아닌 층의 확장 출발점**(B100 ④) — `{층: 노드 집합}`.
 
-    노드는 집 층 · 엣지는 문서 층이다. 직접 노드 X의 집이 H인데 층 L(≠H)의 그래프에 X에 닿은
+    노드는 home 층 · 엣지는 문서 층이다. 직접 노드 X의 home이 H인데 층 L(≠H)의 그래프에 X에 닿은
     엣지가 있고 그 관계가 **L의** `query_traverse`에 있으면, X는 L에서도 확장 출발점이다(L의
-    규칙으로 뻗는다). 집과 문서 층이 같은 구성에서는 비어 있다 — 결과가 집의 위치와 무관해진다.
+    규칙으로 뻗는다). home과 문서 층이 같은 구성에서는 비어 있다 — 결과가 home의 위치와 무관해진다.
     """
     out = {}
     for home, ids in direct_by_layer.items():

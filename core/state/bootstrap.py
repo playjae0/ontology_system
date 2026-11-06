@@ -62,7 +62,7 @@ ALIAS_LOAD = {}
 def load_config(layer):
     """층 config — 파일 그대로(층 이름만 폴더 이름으로).
 
-    이름 규칙 · 위아래 쌍은 층 사이의 사실이라 공통 config 한 곳에 살고 **얹지 않는다** — 읽는 자리는 함수다
+    이름 규칙 · `parent_pairs`은 층 사이의 사실이라 공통 config 한 곳에 살고 **얹지 않는다** — 읽는 자리는 함수다
     (`naming.scope_categories` · `naming.nest_categories` · `catalog.pair_relation` · `catalog.sep` — B174 ①).
     """
     cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
@@ -120,7 +120,7 @@ def coord_layer():
 
 
 def layer_of_category(category):
-    """그 카테고리의 **집**(노드가 사는 층) — 공통 config의 `home` (B90 ①).
+    """그 카테고리의 **home**(노드가 사는 층) — 공통 config의 `home` (B90 ①).
 
     품질층 문서의 `process_ref`가 공정층 골격을 가리키는 것이 대표 사례다 —
     걸침 필드는 다른 층 그래프에 기록된다(명세 §15.7 규칙 A). 여러 층이 같은

@@ -642,6 +642,25 @@ show("B186 ⓓ attributes 표 — spec(cp · 맥락형) · 측정방법(cp) · �
      {("spec", "schema: cp", True), ("측정방법", "schema: cp", False), ("설비사양", "value_categories (process)", False),
       ("severity", "schema: pfmea", False)} <= _A186 and "<h3>attributes" in _h186,
      str(sorted(_A186)))
+# B187 ⓐ ⓪(b) — B186 리뷰 고침(5ced590): 겸 카테고리로 관문을 지난 엣지는 그 선의 수에 들고 「출처 없는 삼항」이 아니다
+_c0187 = _P.common().read_bytes()
+_gp187 = _og186("process")
+_pn187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Process" and n.get("tier"))
+_un187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Unit")
+try:
+    _rw(_P.common(), lambda c: c["categories"]["Process"].__setitem__("also", {"Unit": [_pn187["tier"]]}))
+    _n0187 = {(x["src"], x["rel"], x["dst"]): x["edges"] for x in CM.build()["ontology"]["lines"]}
+    _gp187.add_edge(_pn187["id"], "mirrors", _un187["id"], "auto", ["B187#b"])
+    _gp187.save()
+    _m187 = CM.build()
+finally:
+    _P.common().write_bytes(_c0187)
+_n1187 = {(x["src"], x["rel"], x["dst"]): x["edges"] for x in _m187["ontology"]["lines"]}
+_unk187 = _m187["ontology"]["unknown"] + [x["line"] for x in _m187["checks"]["표시"] if "없는 삼항" in x["line"]]
+show("B187 ⓐ ⓪(b) 겸 카테고리(Process가 그 단에서 Unit 겸)로 선 Process -mirrors-> Unit 엣지 — Unit mirrors Unit 선의 수 +1 · "
+     "지도 점검 「출처 없는 삼항」 0",
+     _n1187[("Unit", "mirrors", "Unit")] == _n0187[("Unit", "mirrors", "Unit")] + 1 and not _unk187,
+     f"수 {_n0187[('Unit', 'mirrors', 'Unit')]} → {_n1187[('Unit', 'mirrors', 'Unit')]} · 출처 없음 {_unk187}")
 init.init(fresh_=True, all_=True)
 
 done()

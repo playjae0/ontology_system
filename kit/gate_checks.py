@@ -70,13 +70,13 @@ def _common():
 
 
 def _homes():
-    """공통 config의 집 표 — `{카테고리: 층}` (B90 ② · 없으면 빈 표 — 대조하지 않는다)."""
+    """공통 config의 home 표 — `{카테고리: 층}` (B90 ② · 없으면 빈 표 — 대조하지 않는다)."""
     cats = _common().get("categories") or {}
     return {c: (v or {}).get("home") for c, v in cats.items() if (v or {}).get("home")}
 
 
 def _pair_triples(spoken):
-    """그 층이 두 카테고리를 다 말하는 위아래 쌍의 엣지 삼항(B174 ② — `core.state.catalog.layer_patterns`와 같은 규칙 · 킷 몫)."""
+    """그 층이 두 카테고리를 다 말하는 `parent_pairs`의 엣지 삼항(B174 ② — `core.state.catalog.layer_patterns`와 같은 규칙 · 킷 몫)."""
     out = set()
     for p in _common().get("parent_pairs") or []:
         if not isinstance(p, dict) or p.get("lower") not in spoken or p.get("upper") not in spoken or not p.get("rel"):
@@ -224,7 +224,7 @@ def check_vocab(schema, fields, label):
 
     # G4C — category는 **그 층이 말하는 카테고리** 안이다.
     #
-    # 「그 층이 말하는 것」 = 자기 `categories`(집 카테고리) + **`uses`**(쓰는 다른 층 카테고리 — 골격 카테고리 포함)다(B174 ② —
+    # 「그 층이 말하는 것」 = 자기 `categories`(home 카테고리) + **`uses`**(쓰는 다른 층 카테고리 — 골격 카테고리 포함)다(B174 ② —
     # 패턴표에서 짐작하지 않는다). 좌표 블록의 `target_category`도 이 목록으로 본다 — 없으면 `uses`에 적으라고 말한다.
     # 걸침 필드(`target_layer`)는 그 층의 목록으로 본다 — 사람이 층을 지정했으면 그 층이 정본이다.
     spoken = set(cats) | set(voc.get("uses") or [])
@@ -236,10 +236,10 @@ def check_vocab(schema, fields, label):
             if not v:
                 continue
             tl = f.get("target_layer")
-            # **`target_layer`는 집과 같아야 한다**(B90 ②) — 해소는 집에서 한다. 다르면
+            # **`target_layer`는 home과 같아야 한다**(B90 ②) — 해소는 home에서 한다. 다르면
             # 스키마가 말하는 층과 노드가 사는 층이 갈린다(새 태그 없이 G4C 상세로).
             if tl and homes.get(v) and tl != homes[v]:
-                bad_c.append(f"{name}.target_layer={tl!r}는 {v}의 집 {homes[v]!r}와 다르다 · "
+                bad_c.append(f"{name}.target_layer={tl!r}는 {v}의 home {homes[v]!r}와 다르다 · "
                              f"target_layer를 빼거나 {homes[v]!r}로")
                 continue
             own = set(_vocab(tl).get("categories") or {}) if tl else spoken
@@ -319,7 +319,7 @@ def check_anchor_columns(schema, fields, pieces):
 
     anchor는 값이 이미 있는 골격 노드를 가리킨다(문서 2 §2.4 ①) — 하나도 가리키지 않으면 매핑이 틀렸다. 대상은
     `target_category`이고 생략이면 좌표 카테고리다(구축과 같은 규칙 — 킷은 `--coord-category`로 받는다). 대상 노드는
-    **스냅샷의 층 전부**에서 그 카테고리를 고른다 — 구축은 카테고리의 집 그래프에서 찾으므로 집이 등록 층 · 좌표 층 밖이어도
+    **스냅샷의 층 전부**에서 그 카테고리를 고른다 — 구축은 카테고리의 home 그래프에서 찾으므로 home이 등록 층 · 좌표 층 밖이어도
     풀린다(PR #119 리뷰). 맞춤은 G4H와 같은 `skeleton_hits`. 일부만 맞으면 판정이 아니라 보고 한 줄(별칭 후보). 목록 파일이
     없거나(건넨 자리에 파일이 없을 때도 — bootstrap 전) 좌표 카테고리를 받지 못하면 대조를 생략하고 그렇게 말한다."""
     from parser import tagger

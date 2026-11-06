@@ -20,7 +20,7 @@ from parser.normalizer import coord_refs
 
 def scan(env, b):
     """조각마다 `{loc, prov, verdicts, both, node_pol}` — `both`는 상위·하위가 둘 다 골격에 맞았나(등록 관문의 분모와
-    같은 뜻 · 공정 목록이면 원소 하나라도) · `node_pol`은 `{하위 canonical: 극성}`(공정 목록이면 원소마다). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 집에서 — `_graph_for`).
+    같은 뜻 · 공정 목록이면 원소 하나라도) · `node_pol`은 `{하위 canonical: 극성}`(공정 목록이면 원소마다). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 home에서 — `_graph_for`).
 
     **행에 상위가 없고 문서 좌표가 있으면 문서 좌표를 상위로** 같은 판정에 넣는다(B106 ⑤) — 하위가 문서 좌표
     노드 자신이거나 그 아래면 맞음 · 밖이면 어긋남(종류 `DOC_GROUP` — 쌍의 열쇠는 상위와 같다). 「행에 상위가

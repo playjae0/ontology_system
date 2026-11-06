@@ -41,7 +41,7 @@ def verbatim(value, text):
 
 
 def land(cfg, eb, nid, e, chunk, prov, cid, row):
-    """개체 하나의 값 — 노드 `nid`(집 빌더 `eb`)에 싣고 개체 행에 결과를 단다 · 값이 아니면 아무것도 하지 않는다.
+    """개체 하나의 값 — 노드 `nid`(home 빌더 `eb`)에 싣고 개체 행에 결과를 단다 · 값이 아니면 아무것도 하지 않는다.
 
     선언은 **추출이 본 config**(`cfg` — 그 문서 · 렌즈의 층)에서 읽는다 — 추출 입력의 `value_categories`와 추출 재사용 판이
     같은 config라 「뽑을 때의 선언」과 「실을 때의 선언」이 갈리지 않는다."""

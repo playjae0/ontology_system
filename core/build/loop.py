@@ -186,7 +186,7 @@ def _fallback_attach(b, cfg, graph, child, ref, ref_g, prov, doc_id, evidence_ch
     if child is None or ref is None:
         return False
     tg = ref_g if ref_g is not None else graph
-    cg = b.graph_of(child) or graph        # 자식은 집 그래프에 산다(B90 ②)
+    cg = b.graph_of(child) or graph        # 자식은 home 그래프에 산다(B90 ②)
     # 매핑 키는 엣지 방향이다 — 두 방향을 본다(B102 ④ — 소속 엣지와 같은 함수 `belongs.edge_of`)
     from core.build.belongs import edge_of
     rel, fwd = edge_of(cfg, (tg.get(ref) or {}).get("category"), (cg.get(child) or {}).get("category"))
@@ -412,16 +412,16 @@ def h_anchor(value, spec, ctx):
 def h_entity(value, spec, ctx):
     """**entity — 개체.** 노드가 될 자격이 있는 것. 3분기(매칭/신규/불확실).
 
-    **카테고리의 집에서 해소한다**(B90 ② — 공통 config `home`). 자기 층에서 해소하면
+    **카테고리의 home에서 해소한다**(B90 ② — 공통 config `home`). 자기 층에서 해소하면
     걸침 개체가 자기 층에 복제되어 문서 간 병합이 조용히 깨진다. 스키마의 `target_layer`는
-    집과 같아야 한다(다르면 등록 관문 G4C가 FAIL로 막는다).
+    home과 같아야 한다(다르면 등록 관문 G4C가 FAIL로 막는다).
 
     해소 결과는 **문서 해소 버퍼에도 싣는다** — attach_to의 해소 범위가 청크·행
     경계를 넘기 때문이다(문서 4 §4.10-6). 층 간 동명은 **마지막 해소가 이긴다**(§4.2).
     """
     st = ctx.state
-    # **집에서 해소한다**(B90 ②) — `target_layer`는 있으면 집과 같아야 하고(다르면 등록
-    # 관문 G4C가 막는다), 없으면 집이다. prose와 **같은 함수**(`resolve_at_home`)를 부른다.
+    # **home에서 해소한다**(B90 ②) — `target_layer`는 있으면 home과 같아야 하고(다르면 등록
+    # 관문 G4C가 막는다), 없으면 home이다. prose와 **같은 함수**(`resolve_at_home`)를 부른다.
     lay = st["b"].home_of(spec["category"])
 
     # **좌표 없는 노드를 미리 만들어 두지 않는다**(문서 4 §4.4 — B14).

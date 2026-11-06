@@ -2,18 +2,18 @@
 """칸 0.1 — **옛 모양 config → 새 모양 제안 → 멈춤**(B174 ③): `bootstrap`이 옛 키를 보면 제안 · 보고를 ④작업
 `work/config_next/`에 쓰고 멈춘다(그래프 · config · 등록부 쓰기 0). 사람이 지도로 앞뒤를 맞추고 복사한다.
 
-옛 키(`catalog.old_shape` — 공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 카테고리 정의)를 읽는 자리는
+옛 키(`catalog.old_shape` — 공통 `canonical_scope` · 층 `category_pair_map` · home이 아닌 층의 카테고리 정의)를 읽는 자리는
 옛 모양 감지와 여기(제안 짓기)뿐이다. 제안 규칙:
   ⓐ 옛 이름 규칙 목록(`bind` ∪ `nest`)에 없던 카테고리(골격 제외)는 경로 「안 씀」 + 사유 「이전 판 그대로 …」
-  ⓑ 층 `category_pair_map`의 쌍은 위아래 쌍으로(엣지 방향 그대로) — 위 · 아래는 골격이 위 · 옛 nest가 아래 · 같은 관계의 골격
+  ⓑ 층 `category_pair_map`의 쌍은 `parent_pairs`으로(엣지 방향 그대로) — 위 · 아래는 골격이 위 · 옛 nest가 아래 · 같은 관계의 골격
      끝 삼항과 같은 쪽 · 다 아니면 키 앞이 위(판단을 보고에 적는다) · **층끼리 같은 쌍에 다른 관계면 제안을 쓰지 않고 그 쌍을
      문면으로**(사람이 고른다)
-  ⓒ 집이 아닌 층의 카테고리 정의는 그 층 `uses`로 · 정의문은 집 층 것을 두고 다른 층 정의문은 보고에 나란히
+  ⓒ home이 아닌 층의 카테고리 정의는 그 층 `uses`로 · 정의문은 home 층 것을 두고 다른 층 정의문은 보고에 나란히
   ⓓ 관계 패턴 · 등록 스키마(공용 좌표 블록 포함)에만 나오던 다른 층 카테고리도 `uses`로(골격 카테고리 포함)
-  ⓔ 위아래 쌍과 같은 삼항은 층 `relation_patterns`에서 뺀다(정의문은 쌍으로) — 층 `relations` · 정의문 · 추출 입력 칸은 그대로
+  ⓔ `parent_pairs`과 같은 삼항은 층 `relation_patterns`에서 뺀다(정의문은 쌍으로) — 층 `relations` · 정의문 · 추출 입력 칸은 그대로
 보고에는 **이름이 바뀌는 카테고리**(지도의 이름 꼴이 앞뒤로 다른 것 — 위가 일반 노드인 쌍의 아래인데 옛 nest에 없던 것 · 앞뒤
 이름 꼴 · 노드 수)와 **층마다 새로
-걸리는 위아래 쌍**(그 층이 두 카테고리를 다 말하는데 옛 그 층 매핑에 없던 것)이 먼저 보인다.
+걸리는 `parent_pairs`**(그 층이 두 카테고리를 다 말하는데 옛 그 층 매핑에 없던 것)이 먼저 보인다.
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _src_side(configs, sk):
 
 
 def _pairs(configs, sk, nest):
-    """ⓑ 층 `category_pair_map` → 위아래 쌍 · `(쌍 목록, 판단 줄, 멈춤 줄)`."""
+    """ⓑ 층 `category_pair_map` → `parent_pairs` · `(쌍 목록, 판단 줄, 멈춤 줄)`."""
     seen, stops, side = {}, [], _src_side(configs, sk)
     for lay, cfg in sorted(configs.items()):
         for s, rel, d in _map_triples(cfg):
@@ -129,7 +129,7 @@ def propose(common, configs, schemas=()):
         for c in sorted(own):                                                  # ⓒ
             h = (cats.get(c) or {}).get("home")
             if h and h != lay:
-                rep["정의문"].append(f"'{c}' — 집 {h}: {(configs.get(h, {}).get('categories') or {}).get(c, '')} ‖ "
+                rep["정의문"].append(f"'{c}' — home {h}: {(configs.get(h, {}).get('categories') or {}).get(c, '')} ‖ "
                                      f"{lay}: {own[c]} (이 층 추출이 다시 돈다 — 이 카테고리는 ②회차까지 이 층 추출이 묻지 않는다)")
                 del own[c]
                 uses.append(c)
@@ -177,11 +177,11 @@ def report_md(prop, counts=None):
           for c, b, a in rep["이름 바뀜"]] or ["- 없음"]
     if rep.get("키"):
         L += ["", "## 키 이름 바뀜 (뜻 그대로)", ""] + [f"- {x}" for x in rep["키"]]
-    L += ["", "## 층마다 새로 걸리는 위아래 쌍 (그 층이 두 카테고리를 다 말한다 — 옛 그 층 매핑에는 없었다)", ""]
+    L += ["", "## 층마다 새로 걸리는 parent_pairs (그 층이 두 카테고리를 다 말한다 — 옛 그 층 매핑에는 없었다)", ""]
     L += [f"- {x}" for x in rep["새로 걸림"]] or ["- 없음"]
     for title, key in (("ⓐ 경로 「안 씀」(옛 이름 규칙 밖 — 사유를 적거나 지워서 「씀」으로)", "안 씀"),
-                       ("ⓑ 위아래 쌍(옛 층 매핑에서 — 위 · 아래 판단)", "쌍"), ("ⓒ 집이 아닌 층의 정의문(집 층 것을 둔다 — 나란히)", "정의문"),
-                       ("ⓓ uses(층이 쓰는 다른 층 카테고리 — 골격 포함)", "uses"), ("ⓔ 층 패턴에서 뺀 삼항(위아래 쌍과 같다)", "패턴 뺌")):
+                       ("ⓑ parent_pairs(옛 층 매핑에서 — 위 · 아래 판단)", "쌍"), ("ⓒ home이 아닌 층의 정의문(home 층 것을 둔다 — 나란히)", "정의문"),
+                       ("ⓓ uses(층이 쓰는 다른 층 카테고리 — 골격 포함)", "uses"), ("ⓔ 층 패턴에서 뺀 삼항(parent_pairs과 같다)", "패턴 뺌")):
         L += ["", f"## {title}", ""] + ([f"- {x}" for x in rep[key]] or ["- 없음"])
     return "\n".join(L) + "\n"
 
@@ -217,7 +217,7 @@ def screen(dry_run=False):
     olds = catalog.old_shape(configs, common)
     if not olds:
         return None
-    print(f"[bootstrap] 옛 모양 config — {len(olds)}곳 · 새 모양(공통 config: 카테고리 경로 · 위아래 쌍 / 층 config: 집 "
+    print(f"[bootstrap] 옛 모양 config — {len(olds)}곳 · 새 모양(공통 config: 카테고리 경로 · parent_pairs / 층 config: home "
           f"카테고리 정의문 · uses)으로 옮긴다")
     for m in olds:
         print(f"  · {m}")

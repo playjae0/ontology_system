@@ -176,8 +176,9 @@ _k = subprocess.run(
      "c.check_vocab({'layer': 'quality'}, {'unit': {'role': 'entity', 'category': 'Unit',"
      " 'target_layer': 'quality'}}, 'b90')" % str(_P.layers())],
     cwd=str(ROOT / "kit"), capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
-show("② table의 target_layer가 집과 다르면 등록 관문 G4C가 FAIL로 말한다",
-     "[FAIL] G4C" in _k and "집 'process'" in _k,
+# 고침(B187 ⓪ — 화면 낱말 = config 키: 「집」 → home)
+show("② table의 target_layer가 home과 다르면 등록 관문 G4C가 FAIL로 말한다",
+     "[FAIL] G4C" in _k and "home 'process'" in _k,
      next((l for l in _k.splitlines() if "G4C" in l), "")[:160])
 init.init(fresh_=True, all_=True)
 

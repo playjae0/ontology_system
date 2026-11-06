@@ -13,7 +13,7 @@
 | 출현 수가 손잡이 `provisional_min_mentions`에 못 미침 | 보류 · 차면 세우고 재시도가 열린 보류를 거둔다 |
 | 맨 아래 단보다 깊어지는 자리 | 보류 「골격 아래 새 단」 |
 
-**모양**: 좌표 골격 카테고리 · 집 층 · auto + 표시 필드(`status.PROVISIONAL` = `{answer, near?}`) · 이름 = 표기(같은 이름이 다른 줄기에
+**모양**: 좌표 골격 카테고리 · home 층 · auto + 표시 필드(`status.PROVISIONAL` = `{answer, near?}`) · 이름 = 표기(같은 이름이 다른 줄기에
 이미 있으면 뒤의 것이 `부모::이름`) · 부모 = 같은 행의 위 칸 → 목차의 좌표 제목 → 문서 좌표(없으면 부모 미정 — 부모를 말하는 행이
 오면 채운다 · 따로 세우지 않는다) · 부모 엣지 = 골격 config의 자식 관계(출처 = 그 문서 · 형제 순서 0) · 단 = 부모 바로 아래(부모 미정이면
 미정 · 극성 단 0) · 골격 파일에는 쓰지 않는다(승격은 사람 — A2). 코드에 층 어휘 0 — 카테고리 · 관계 · 단 이름은 config와 골격 심기의 것.
@@ -244,7 +244,7 @@ def _decide(cx, g):
 
 # ---------------------------------------------------------------- 쓰기 — 세우는 손 하나
 def make(b, surface, prov, *, answer, canonical=None, near=None, up=None, tier=None):
-    """**잠정 골격 노드를 세운다**(B182 ②) — 노드(집 층 · auto + 표시) · 사전 · 부모 엣지(골격 자식 관계 · 출처 그 문서) · 큐
+    """**잠정 골격 노드를 세운다**(B182 ②) — 노드(home 층 · auto + 표시) · 사전 · 부모 엣지(골격 자식 관계 · 출처 그 문서) · 큐
     (다르다 `auto_node` · 애매 `uncertain_match` + 합칠 후보) · 이 문서의 세운 기록(`b.made` — 대장의 `made` 칸). 돌려주는 것은 id."""
     from core.build.build import POLARITY_NONE
     from core.state.bootstrap import load_config

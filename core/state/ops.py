@@ -65,9 +65,9 @@ def _target(g, nid):
 
 
 def _open(layer, nid):
-    """**층 그래프 전부를 한 번 열고**(B100 ④) 대상 노드의 집 그래프를 집는다 — `(world, 집 그래프, 집 층)`.
+    """**층 그래프 전부를 한 번 열고**(B100 ④) 대상 노드의 home 그래프를 집는다 — `(world, home 그래프, home 층)`.
 
-    노드는 집 층에 산다 — 사람이 친 층에 없으면 집을 찾아 거기서 다룬다(층 표시만 다르다).
+    노드는 home 층에 산다 — 사람이 친 층에 없으면 home을 찾아 거기서 다룬다(층 표시만 다르다).
     엣지는 문서 층에 산다 — 엣지를 고치는 손은 `world`가 층마다 갖는다.
     """
     w = World()
@@ -127,7 +127,7 @@ def _scope_children(w, parent_canonical, cfg):
 
     스코프가 걸린 카테고리만 본다(이름 규칙 — `naming.scope_categories`).
     부모 개명이 자식 이름을 끌고 가는 것은 **스코프가 주소이기 때문**이며,
-    주소가 아닌 카테고리는 연쇄 대상이 아니다. 자식의 집은 부모의 집과 다를 수 있다 —
+    주소가 아닌 카테고리는 연쇄 대상이 아니다. 자식의 home은 부모의 home과 다를 수 있다 —
     **층 전부**에서 찾는다(B100 ④).
     """
     from core.build.naming import scope_categories
@@ -193,7 +193,7 @@ def _transfer_edges(w, cfg, node, parent, scoped, sep, old, nid, skel_rels, pair
             #    좌표 부착을 세운다. 새 부모 아래 대응 설비를 **만들지 않는다**.
             e["status"] = STATUS_DELETED
             from core.state import catalog
-            rel = catalog.pair_relation(cfg, parent["category"], node["category"])   # 위아래 쌍 한 자리(B174 ①)
+            rel = catalog.pair_relation(cfg, parent["category"], node["category"])   # `parent_pairs` 한 자리(B174 ①)
             if rel:
                 g.add_edge(parent["id"], rel, nid, "auto",
                            list(e.get("provenance") or []))
@@ -255,7 +255,7 @@ def transfer(layer, nid, new_parent, actor, reason="", dry_run=False):
     # ① 엣지 재배선 — 골격에 매단 관계를 새 부모로.
     skel_rels = set((cfg.get("skeleton") or {}).get("relations", {}).values())
     from core.state import catalog
-    pair_rels = {p["rel"] for p in catalog.layer_pairs(cfg)}      # 위아래 쌍의 관계(B174 ① — 공통 config 한 곳)
+    pair_rels = {p["rel"] for p in catalog.layer_pairs(cfg)}      # `parent_pairs`의 관계(B174 ① — 공통 config 한 곳)
     moved = _transfer_edges(w, cfg, node, parent, scoped, sep, old,
                             nid, skel_rels, pair_rels)
 
@@ -380,7 +380,7 @@ def merge_targets(layer, nid, limit=5):
     사람이 골라 넣는다. 그래서 `uncertain`도 함께 낸다 — 확신되지 않은 후보를
     감추면 사람이 볼 것이 줄어들고, 판정을 감춘 자리에서 오병합이 난다.
     """
-    _w, g, layer = _open(layer, nid)                         # 집 그래프 — 같은 카테고리는 같은 집
+    _w, g, layer = _open(layer, nid)                         # home 그래프 — 같은 카테고리는 같은 home
     node = g.get(nid)
     if node is None or not is_live(node):
         return []
@@ -471,8 +471,8 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
         raise OpRefused("행위자 미지정 — I축 연산은 로그에 행위자를 남긴다")
     w, g, layer = _open(layer, nid)
     if w.home(into, layer) not in (None, layer):
-        raise OpRefused(f"두 노드의 집이 다르다 — {nid}({layer}) · {into}({w.home(into)}) · "
-                        f"병합은 같은 카테고리(같은 집)끼리다")
+        raise OpRefused(f"두 노드의 home이 다르다 — {nid}({layer}) · {into}({w.home(into)}) · "
+                        f"병합은 같은 카테고리(같은 home)끼리다")
     a, b = _target(g, nid), _target(g, into)
     if a["id"] == b["id"]:
         raise OpRefused("자기 자신과 병합할 수 없다")
@@ -542,7 +542,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
 def edge_keys(layer, nid):
     """배분표에 쓰는 **엣지 번호** — `[(번호, 관계, 상대 canonical, 층)]` (B100 ④).
 
-    집 그래프 엣지는 그 그래프의 번호(지금과 같다) · 다른 층에 사는 엣지는 `"<층>:<번호>"`.
+    home 그래프 엣지는 그 그래프의 번호(지금과 같다) · 다른 층에 사는 엣지는 `"<층>:<번호>"`.
     """
     w, _g, home = _open(layer, nid)
     out = []
@@ -571,7 +571,7 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
     w, g, layer = _open(layer, nid)
     node = _target(g, nid)
 
-    # 배분표의 엣지 번호 — 집 그래프 엣지는 그 그래프의 번호(지금과 같다) · 다른 층에 사는 엣지는
+    # 배분표의 엣지 번호 — home 그래프 엣지는 그 그래프의 번호(지금과 같다) · 다른 층에 사는 엣지는
     # `"<층>:<번호>"`(B100 ④ — 엣지는 문서 층). 닿은 엣지 전부가 배분 대상이다.
     touch = {}
     for lay, og in w.graphs.items():

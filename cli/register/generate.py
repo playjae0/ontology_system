@@ -425,7 +425,7 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
                                  "categories": cfg.get("categories"),
                                  "uses": cfg.get("uses") or [],
                                  "relations": cfg.get("relations"),
-                                 # 그 층의 게이트 패턴 — 층 패턴 + 그 층에 걸리는 위아래 쌍(B174 ② · 한 함수)
+                                 # 그 층의 게이트 패턴 — 층 패턴 + 그 층에 걸리는 `parent_pairs`(B174 ② · 한 함수)
                                  "relation_patterns": _catalog.layer_patterns(cfg)},
             "blocks": json.loads(paths.blocks()
                                  .read_text(encoding="utf-8")),
