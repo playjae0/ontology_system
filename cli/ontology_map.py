@@ -88,7 +88,7 @@ def attributes(configs, schemas, coord):
 
 
 def edge_counts(layers):
-    """**실제 엣지 수** — `({(src 카테고리, rel, dst 카테고리): 수}, 끝 카테고리 그대로의 삼항 수)` · 그래프가 없거나 비면 `(None, None)`.
+    """**실제 엣지 수** — `({(src 카테고리, rel, dst 카테고리): 수}, [(주 카테고리 삼항, 주 ∪ 겸 조합)])` · 그래프가 없거나 비면 `(None, None)`.
 
     층 전부를 연다(노드는 집 층 · 엣지는 문서 층 — B100) · 사람이 지운 엣지는 빼고 · 카테고리는 주 ∪ 겸(관문이 겸으로도 판정한다)."""
     from core.graph import STATUS_DELETED, GraphStore
@@ -97,17 +97,17 @@ def edge_counts(layers):
     if not any(g.nodes for g in graphs):                     # 그래프가 없다 · 비었다(bootstrap 전) — 수 칸을 비운다
         return None, None
     nodes = {nid: n for g in graphs for nid, n in g.nodes.items()}
-    by, raw = {}, {}
+    by, each = {}, []
     for g in graphs:
         for e in g.edges:
             a, b = nodes.get(e["src"]), nodes.get(e["dst"])
             if not a or not b or e.get("status") == STATUS_DELETED:
                 continue
-            raw[(a.get("category"), e["rel"], b.get("category"))] = raw.get((a.get("category"), e["rel"], b.get("category")), 0) + 1
-            for s in sorted(catalog.categories_of(a)):
-                for d in sorted(catalog.categories_of(b)):
-                    by[(s, e["rel"], d)] = by.get((s, e["rel"], d), 0) + 1
-    return by, raw
+            combos = {(s, e["rel"], d) for s in catalog.categories_of(a) for d in catalog.categories_of(b)}
+            for k in combos:
+                by[k] = by.get(k, 0) + 1
+            each.append(((a.get("category"), e["rel"], b.get("category")), combos))
+    return by, each
 
 
 def same_node_counts():
@@ -125,14 +125,18 @@ def same_node_counts():
 def build(configs, schemas, pair_edges, cats, coord, layers):
     """모델의 `ontology` 칸 — `{lines, attributes, unknown}` · 선마다 `edges`(실제 엣지 수 · 그래프 없으면 None) · `same_node`."""
     ls = lines(configs, schemas, pair_edges, cats, coord)
-    by, raw = edge_counts(layers)
+    by, each = edge_counts(layers)
     same = same_node_counts()
     for x in ls:
         k = (x["src"], x["rel"], x["dst"])
         x["edges"] = None if by is None else by.get(k, 0)
         x["same_node"] = same.get(k, 0)
     known = {(x["src"], x["rel"], x["dst"]) for x in ls}
-    unknown = sorted([list(k) + [n] for k, n in (raw or {}).items() if k not in known])
+    miss = {}
+    for main, combos in each or ():                          # 주 ∪ 겸 조합 중 하나라도 선이면 출처가 있다(관문이 겸으로도 판정한다)
+        if not combos & known:
+            miss[main] = miss.get(main, 0) + 1
+    unknown = sorted([list(k) + [n] for k, n in miss.items()])
     return {"lines": ls, "attributes": attributes(configs, schemas, coord), "unknown": unknown}
 
 

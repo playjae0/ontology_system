@@ -283,9 +283,10 @@ def commit_edge(graph, src, rel, dst, cfg, path, provenance, doc_id,
                    UNRESOLVED_ENDPOINT, path, doc_id, source, cfg.get("layer"))
         return UNRESOLVED_ENDPOINT
     if src == dst:
-        a, b = (list(surfaces or ()) + [None, None])[:2]
+        a, b = (list(surfaces or ()) + [None, None])[:2]          # 칸 값은 숫자일 수 있다 — 기록은 글자로(대조 · 화면이 같은 꼴을 읽는다)
         log_reject(rel, s["category"], d["category"], SAME_NODE, path, doc_id, source, cfg.get("layer"),
-                   {"node": s["canonical"], "node_layer": s.get("layer"), "surfaces": [a or s["canonical"], b or s["canonical"]]})
+                   {"node": s["canonical"], "node_layer": s.get("layer"),
+                    "surfaces": [str(x) if x not in (None, "") else s["canonical"] for x in (a, b)]})
         return SAME_NODE
     verdict, pat = judge(s["category"], rel, d["category"], cfg, path)
     if verdict != COMMIT:
