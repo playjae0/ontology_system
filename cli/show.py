@@ -15,7 +15,7 @@
     python -m cli.show knobs                  사내 손잡이 — 값 · 출처 · 분포를 보는 명령
     python -m cli.show dist   <무엇>           손잡이 값을 정할 분포 (chunks·headings·forms·sheets·evidence·lens·ref·embed)
     python -m cli.show learned                좌표 학습 기록 · 새 공정 후보 (B101)
-    python -m cli.show aliases [층] [--source …] [--node …]   별칭 대장 — seed 것과 대장 것 · 출처 · 문서 · 횟수 (B108)
+    python -m cli.show aliases [층] [--source …] [--node …]   표기 대장 별칭 갈래 — seed 것과 대장 것 · 출처 · 문서 · 횟수 (B108)
     python -m cli.show summary [--save <이름> | --diff <이름1> <이름2>]   전체 판 — 층 · 문서 · 큐 · 보류 · 재연결 · 불확실 · 값 (B118)
     python -m cli.show score  <doc_id> [--template] | --all   점수표 — 사람이 채운 정답표로 맞음 · 틀림 · 정답률 (B118)
     python -m cli.show near   [층] [--top N]                  중복 후보 — 같은 층 · 카테고리 · 부모 안에서 노드 벡터가 가까운 쌍(읽기 전용 · B136)
@@ -667,7 +667,7 @@ def _near_cmd(args):
 
 
 def _aliases_cmd(args):
-    from cli import show_learn                      # 별칭 대장 화면도 동의어 화면 파일에 산다 (B108 ①)
+    from cli import show_learn                      # 표기 대장 별칭 갈래 화면도 동의어 화면 파일에 산다 (B108 ①)
     return show_learn.cmd_aliases(args)
 
 

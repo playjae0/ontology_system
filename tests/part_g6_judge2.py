@@ -700,4 +700,36 @@ show("B184 ⓔ `--step` 좌표 단계에서 승격 · 합침 — 그 문서에�
      "그 골격 노드로 바로 풀린다 · 잠정 노드 0 · 재구축 0",
      _ok_p and str(_an2.get("canonical")).split("::")[0] == "노칭" and not _provs184() and not _pn("레이저노칭"),
      f"승격 {_ok_p} · 합침 R16 → {_an2.get('canonical')} · 잠정 {len(_provs184())}")
+# ────────────────────────────────────────────────────────────── B185 ① 손잡이 모으기 (기본값 = 지금 상수)
+print("\n■ B185 ① — 사람이 바꿀 까닭이 있는 상수는 knobs.json · llm.json으로(적지 않으면 지금 상수 · 같은 뜻은 손잡이 하나)")
+from cli import golden as GD, parse as PS                          # noqa: E402
+from core.query import query as QY                                 # noqa: E402
+from core.state import captures as CPT                             # noqa: E402
+from parser import profile as PPF, render as RND                   # noqa: E402
+from parser.adapters import basic_docx as BDX, basic_ppt as BPP, basic_prose_xlsx as BPX   # noqa: E402
+
+
+def _b185():
+    return (PS.coord_cap_now(), (BPP.CONTEXT_CHARS, BPX.CONTEXT_CHARS, BDX.CONTEXT_CHARS), PPF.SPARSE_EMPTY_RATIO,
+            gateway.config().get("embed_batch"), RND.MAX_EDGE, CPT._size()[0], GD.default_k())
+
+
+_P.knobs().unlink(missing_ok=True)
+KN.apply()
+_d185 = _b185()
+_P.knobs().write_text(json.dumps({"coord_tag_cap": 7, "image_context_chars": 42, "profile_sparse_empty_ratio": 0.3,
+                                  "collect_limit": 5}), encoding="utf-8")
+os.environ.update(EMBED_BATCH="5", IMAGE_MAX_EDGE="777")
+KN.apply()
+_v185 = _b185()
+_P.knobs().unlink()
+for _k in ("EMBED_BATCH", "IMAGE_MAX_EDGE"):
+    os.environ.pop(_k, None)
+KN.apply()
+show("B185 ⓐ 새 손잡이 — knobs.json의 값을 쓰는 자리가 읽는다(coord_tag_cap · image_context_chars — 세 어댑터 한 값 · "
+     "profile_sparse_empty_ratio) · llm.json 쪽(EMBED_BATCH · IMAGE_MAX_EDGE — 파서 렌더와 core 캡처 같은 값) · 골든셋 k = collect_limit · "
+     "적지 않으면 지금 상수",
+     _d185 == (PS.COORD_CAP, (1500,) * 3, 0.7, None, 1600, 1600, QY.COLLECT_LIMIT) and _v185 == (7, (42,) * 3, 0.3, 5, 777, 777, 5)
+     and _b185() == _d185,
+     f"기본 {_d185} · 적은 값 {_v185}")
 done()

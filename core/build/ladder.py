@@ -34,6 +34,12 @@ HEAD_CHARS = 40
 NEAR = 2
 FRONT_ROWS = 60
 
+
+def _knob(name):
+    """사다리 · 시트 확인 입력의 손잡이(B185 ① — 기본 = 위 상수)."""
+    from core.state import knobs
+    return knobs.get(name)
+
 _ROLE = {"type": ["string", "null"], "enum": list(ROLES) + [None]}
 LADDER_SCHEMA = {
     "type": "object",
@@ -77,8 +83,8 @@ def _depth_of(heads):
 
 
 def _head(x):
-    t = str(x.get("text") or "").strip()
-    return t[:HEAD_CHARS] + (f"…총 {len(t)}자" if len(t) > HEAD_CHARS else "")
+    t, n = str(x.get("text") or "").strip(), _knob("ladder_head_chars")
+    return t[:n] + (f"…총 {len(t)}자" if len(t) > n else "")
 
 
 def skeleton(labs, heads, needs, lo=None, hi=None):
@@ -88,8 +94,9 @@ def skeleton(labs, heads, needs, lo=None, hi=None):
     need = {n["row"]: n for n in needs}
     toc = _depth_of(heads)
     eg = {r for n in needs for r in list(n.get("rows") or [])[:2]}       # 같은 꼴 묶음의 예시 둘도 앞뒤와 함께 (B139 ③)
+    k = _knob("ladder_near_lines")
     near = {r for n in set(need) | eg for i, x in enumerate(rows) if x["row"] == n
-            for r in (y["row"] for y in rows[max(0, i - NEAR):i + NEAR + 1])}
+            for r in (y["row"] for y in rows[max(0, i - k):i + k + 1])}
     out, body = [], []
 
     def flush():
@@ -121,7 +128,7 @@ def skeleton(labs, heads, needs, lo=None, hi=None):
 
 def front(frames, built):
     """사다리 입력의 **앞부분** — 사슬이 가장 깊이 내려간 첫 대목(그 제목의 맨 위 조상 줄부터 · 길어도 `FRONT_ROWS`행)의 골격 보기."""
-    best = None
+    best, front_rows = None, _knob("ladder_front_rows")
     for name, labs in frames.items():
         heads = (built.get(name) or {}).get("headings") or []
         for r, d in _depth_of(heads).items():
@@ -129,7 +136,7 @@ def front(frames, built):
                 best = (d, name, r, heads)
     if best is None:
         name = next(iter(frames), None)
-        return {"frame": name, "skeleton": skeleton(frames[name][:FRONT_ROWS + 1], [], []) if name else []}
+        return {"frame": name, "skeleton": skeleton(frames[name][:front_rows + 1], [], []) if name else []}
     _d, name, r, heads = best
     parent = {h["row"]: h.get("parent") for h in heads}
     top = r
@@ -137,8 +144,8 @@ def front(frames, built):
         top = parent[top]
     rows = [x["row"] for x in frames[name] if x["row"] != FRAME_ROW]
     i = rows.index(top) if top in rows else 0
-    j = min(len(rows), max(rows.index(r) + 10 if r in rows else i + FRONT_ROWS, i + 1))
-    span = rows[i:min(j, i + FRONT_ROWS)]
+    j = min(len(rows), max(rows.index(r) + 10 if r in rows else i + front_rows, i + 1))
+    span = rows[i:min(j, i + front_rows)]
     needs = (built.get(name) or {}).get("needs") or []
     return {"frame": name, "skeleton": skeleton(frames[name], heads, needs, span[0], span[-1]) if span else []}
 

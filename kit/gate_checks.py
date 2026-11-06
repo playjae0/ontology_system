@@ -78,7 +78,7 @@ def _homes():
 def _pair_triples(spoken):
     """그 층이 두 카테고리를 다 말하는 위아래 쌍의 엣지 삼항(B174 ② — `core.state.catalog.layer_patterns`와 같은 규칙 · 킷 몫)."""
     out = set()
-    for p in _common().get("pairs") or []:
+    for p in _common().get("parent_pairs") or []:
         if not isinstance(p, dict) or p.get("lower") not in spoken or p.get("upper") not in spoken or not p.get("rel"):
             continue
         up = p.get("src") == "upper"

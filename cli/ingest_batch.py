@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cli import _screen
-from cli.parse import COORD_CAP
+from cli.parse import CAP_DEFAULT
 from core import paths
 from core.llm import gateway
 from core.state import log
@@ -40,7 +40,7 @@ def preflight_list(items):
     return True, pf
 
 
-def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP,
+def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=CAP_DEFAULT,
                 progress_every=None, sheets=None, revise=False, preflight=None):
     """문서 여럿 — `items`는 `[(경로, {doc_type, no_images, allow_duplicate})]`. 돌려주는 것은 결과 행들.
     `preflight`는 이미 돈 사전 점검의 묶음(`preflight_list` — 재구축)이다 · 없으면 첫 문서에서 돈다."""
@@ -72,7 +72,7 @@ def ingest_list(items, *, dry_run=False, adapter_paths=None, coord_cap=COORD_CAP
 
 
 def ingest_dir(path, doc_type=None, dry_run=False, adapter_paths=None,
-               coord_cap=COORD_CAP, recurse=False, progress_every=None, no_images=False,
+               coord_cap=CAP_DEFAULT, recurse=False, progress_every=None, no_images=False,
                sheets=None, revise=False, no_capture=False):
     """경로의 문서를 **하위 폴더 없이** 순회한다(D-110 — 하위 폴더는 별도 투입).
 

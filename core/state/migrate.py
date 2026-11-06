@@ -34,7 +34,7 @@ _LOG = log.get(__name__)
 #: 옛 배치의 표식 — 등록부가 진실 옆에 있던 자리다.
 LEGACY_MARK = ("data", "doc_types.json")
 
-#: ③진실에 남는 파일(허브 확정 2026-09-17 · B101 ② 좌표 학습 기록 · B108 ① 별칭 대장 추가 — 층 등록부
+#: ③진실에 남는 파일(허브 확정 2026-09-17 · B101 ② 좌표 학습 기록 · B108 ① 표기 대장 별칭 갈래 추가 — 층 등록부
 #: `registry.json` 포함 · `<층>/graph.json`은 층 폴더라 아래에서 따로 훑는다).
 TRUTH_FILES = (store.DICTIONARY, store.CHUNKS, store.QUEUE,
                store.DOC_REGISTRY, store.SKELETON_LIST, store.SURFACE_BOOK, store.COORD_LEARNED,

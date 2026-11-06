@@ -46,7 +46,7 @@ from pathlib import Path
 
 from cli import scan as scan_mod
 from cli._gate import require_live_or_allow    # mock 관문 (B48)
-from cli.parse import COORD_CAP, coord_cap_of, run_parse
+from cli.parse import CAP_DEFAULT, coord_cap_of, run_parse
 from cli import _screen
 from cli import provisional_ask as PA      # 잠정 골격 노드 한 줄의 물음 (B184 ③)
 from cli import ingest_screen as SCR
@@ -452,7 +452,7 @@ def _extract_only(doc, sel, row, stage):
 
 
 def ingest_file(doc, doc_type=None, dry_run=False, adapter_paths=None,
-                finalize_after=True, coord_cap=COORD_CAP, step=False,
+                finalize_after=True, coord_cap=CAP_DEFAULT, step=False,
                 step_every=0, progress_every=None, sheets=None, ask=True,
                 no_images=False, preflight=None, coord=None, revise=False,
                 allow_duplicate=False, split_only=False, no_capture=False, extract_only=False):
@@ -592,7 +592,7 @@ def _finalize_screen():
     print(f"   {fin['reinforce_line']}")
     if h0:
         h1 = human.waiting()
-        print(f"   사람 후보 — 재연결 붙음 {h0 - h1:,} · 남음 {h1:,}(그 이름을 기다리던 고아 행)")
+        print(f"   사람 후보 — 재연결 이어짐 {h0 - h1:,} · 남음 {h1:,}(그 이름을 기다리던 고아 행)")
     for o in gateway.usage_table(doc_id="(마무리)"):    # 마무리 구간의 LLM — 갈래별 한 줄(끝 표 함수 그대로 · 호출 0이면 줄 없음 · B147 ④)
         print(f"   LLM 마무리 · {o['갈래']} — 호출 {o['calls']:,} · 입력 {o['prompt']:,} · 출력 {o['completion']:,}")
     return fin

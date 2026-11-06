@@ -16,7 +16,7 @@
      목록) — 실패면 그래프 그대로 멈춘다(쓰기 0) · 통과한 묶음을 인입에 넘겨 다시 묻지 않는다
   ② `init --fresh`(보존) ③ `bootstrap` ④ 문서마다 같은 순서로 인입(문서 좌표 · 시트 역할은 ②등록이 갖는다)
   ⑤ `ops replay` ⑥ 보고 — 문서 수 · 판정 재생 · 재판정(사유별) · LLM 호출(추출 · 판정 · 태깅) · 사람 판단 재생 ·
-     대상 없음 목록 · 원본 없음 목록 · 별칭 대장(그래프에 있음 · 없음 — 목록)
+     대상 없음 목록 · 원본 없음 목록 · 표기 대장 별칭 갈래(그래프에 있음 · 없음 — 목록)
 
 **쌓인 별칭은 지우기 전에 이름으로 남긴다**(B108 ① · ③ `data/alias_book.json` — 보존 fresh가 남긴다): 계획이 지금
 그래프의 seed 밖 별칭 중 대장에 없는 것을 채우고, 재구축의 bootstrap이 골격 대상 별칭을 스냅샷 전에 싣는다.
@@ -76,7 +76,7 @@ def make_plan():
     그 계획에서 이어 간다(B111 ② — 대장 `registry_n`건은 그 도중의 것) · 진행 표시 없는 옛 파일은 대장이 비었을 때만.
 
     **사람 판단 기록의 이름을 여기서 채운다**(B107 ① — fresh 앞 · 대상 id가 그래프에 살아 있는 마지막 순간 ·
-    비대화형 계획만이어도 채운다 — 채움은 기록에 남고 그래프는 건드리지 않는다). **별칭 대장도 같은 자리에서
+    비대화형 계획만이어도 채운다 — 채움은 기록에 남고 그래프는 건드리지 않는다). **표기 대장 별칭 갈래도 같은 자리에서
     채운다**(B108 ① — 지금 그래프의 seed 밖 별칭 중 대장에 없는 것 · 이름으로)."""
     from core.state import alias_book, oplog
     docs, resumed, last = from_registry(), False, last_plan()
@@ -108,7 +108,7 @@ def show_plan(plan):
     sb = SB.counts()
     print(f"  표기 대장 {sb['합']:,}(사람 보증 {sb[SB.HUMAN]:,} · 기계 판단 {sb[SB.MACHINE]:,}) — 좌표 학습 "
           f"{sb['갈래'][SB.LEARN]:,} · 목록 밖 {sb['갈래'][SB.MISS]:,} · 별칭 {sb['갈래'][SB.ALIAS]:,}(B179 ②)")
-    print(f"  별칭 대장 {ab['total']:,}(이번에 채움 {ab['filled']:,}) · 골격 대상 {ab['skeleton']:,}"
+    print(f"  표기 대장 별칭 갈래 {ab['total']:,}(이번에 채움 {ab['filled']:,}) · 골격 대상 {ab['skeleton']:,}"
           + (f" · 거부 {ab['rejected']:,}" if ab["rejected"] else "")
           + " — 재구축의 bootstrap이 골격 대상 별칭을 스냅샷 전에 싣는다")
     # 좌표 태깅의 null 답은 닫힌 목록 판과 함께 기억된다(B107 ②) — 판을 적기 전의 기록은 이번에 한 번 다시 묻는다
@@ -197,7 +197,7 @@ def report(r):
         print(f"  원본 없음 — {d['doc_id']} · {d['source_path']} (원본을 그 자리에 두고 다시 재구축)")
     from core.state import alias_book
     ab = alias_book.presence()
-    print(f"  별칭 대장 {ab['total']:,} · 그래프에 있음 {ab['present']:,} · 없음 {len(ab['missing']):,}")
+    print(f"  표기 대장 별칭 갈래 {ab['total']:,} · 그래프에 있음 {ab['present']:,} · 없음 {len(ab['missing']):,}")
     for x in ab["missing"]:
         t = x["target"]
         print(f"    없음 — '{x['surface']}' → {t['canonical']} ({t['category']} · {t['layer']}) · {x['source']}"

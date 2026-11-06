@@ -156,7 +156,8 @@ def candidates(r, nid, rows, nodes, ol, path_of):
         if cid not in seen:
             seen.add(cid)
             out.append({"node_id": cid, "name": n["canonical"], "category": n["category"]})
-    return out[:CAND_MAX]
+    from core.state import knobs
+    return out[:knobs.get("reinforce_candidates")]
 
 
 # ---------------------------------------------------------------- 판정
@@ -398,13 +399,13 @@ def _env(doc_id):
 
 
 def line():
-    """마무리 한 줄 — `연결 보강 — 대상 n → 붙음 a · 재생 r · 못 고름 b · 버림 c · 상한 밖 d · 호출 k`."""
+    """마무리 한 줄 — `연결 보강 — 대상 n → 이어짐 a · 재생 r · 못 고름 b · 버림 c · 상한 밖 d · 호출 k`."""
     if not LAST or not LAST.get("대상"):
         return "연결 보강 — 대상 0(엣지 없는 · 공정에만 붙은 개체가 없다)"
-    s = (f"연결 보강 — 대상 {LAST['대상']:,} → 붙음 {LAST['붙음']:,} · 재생 {LAST['재생']:,} · "
+    s = (f"연결 보강 — 대상 {LAST['대상']:,} → 이어짐 {LAST['붙음']:,} · 재생 {LAST['재생']:,} · "
          f"못 고름 {LAST['못 고름']:,} · 버림 {LAST['버림']:,} · 호출 {LAST['호출']:,}")
     if LAST.get("버림→붙음"):
-        s += f" · 재생 중 버림→붙음 {LAST['버림→붙음']:,}(지금 config로 게이트를 다시 돌았다 — LLM 0)"
+        s += f" · 재생 중 버림→이어짐 {LAST['버림→붙음']:,}(지금 config로 게이트를 다시 돌았다 — LLM 0)"
     if LAST.get("상한 밖"):
         s += f" · 상한 밖 {LAST['상한 밖']:,}(손잡이 reinforce_call_cap — 다음 인입 · 재구축이 잇는다)"
     if LAST.get("판정 없음"):

@@ -25,11 +25,14 @@ def is_skeleton(n):
     return n.get("status") == "seed"
 
 
-def anchors(nodes, edges, hops=ANCHOR_HOPS):
+def anchors(nodes, edges, hops=None):
     """노드마다 닻 — `{id: {"anchor", "host", "hops", "path": [{rel, src, dst}]}}`.
 
     `host`는 BFS의 앞 노드(위성의 위성은 그 위성 둘레에 놓인다) · 골격 노드는 자기 자신(hops 0) ·
     닻이 없는 노드는 빠진다(`detached`가 센다)."""
+    if hops is None:                           # 손잡이 `query_anchor_hops`(기본 = `ANCHOR_HOPS` · B185 ①)
+        from core.state import knobs
+        hops = knobs.get("query_anchor_hops")
     by = {n["id"]: n for n in nodes}
     adj = {i: [] for i in by}
     for e in edges:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""G6 ㉕ 별칭 대장 — 쌓인 별칭이 재구축에서도 처음부터 쓰인다 (B108 ①).
+"""G6 ㉕ 표기 대장 별칭 갈래 — 쌓인 별칭이 재구축에서도 처음부터 쓰인다 (B108 ①).
 
 창작 표본(mock · 시험 주입)으로 메커니즘을 잰다 — 수치는 근거가 아니다([정정] 50). 형태(표·산문) × 층(process · quality):
 표 B108TP(cp 어댑터 · 설비 열 = 골격 카테고리 Process · process) · B108TQ(같은 어댑터 · 설비 열 = 골격 카테고리 FailureEffect ·
@@ -17,7 +17,7 @@ quality) · 산문 B108SP(prose 엑셀 · process · 조각 개체 Process) · B
      그 뒤 재구축이 ⓑ와 같다
   ⓓ 거두기: `alias-reject` 비대화형은 계획만(쓰기 0) · `--yes` → 노드 · 사전에서 빠지고 대장 「거부」 · bootstrap이 다시 싣지
      않는다(골격 대상 — 판이 바뀐다) · 재구축 뒤에도 빠져 있다(골격 · 엔티티)
-  ⓔ 화면: `show aliases` 수 = 대장 수(출처별) · 재구축 끝 줄 「별칭 대장 n · 그래프에 있음 m · 없음 k」 · 골격 이름을 바꾼 seed로
+  ⓔ 화면: `show aliases` 수 = 대장 수(출처별) · 재구축 끝 줄 「표기 대장 별칭 갈래 n · 그래프에 있음 m · 없음 k」 · 골격 이름을 바꾼 seed로
      재구축하면 그 대상의 별칭이 「대상 없음」(대장에는 남는다) · 되돌리면 다시 실린다
 """
 from __future__ import annotations
@@ -191,7 +191,7 @@ def _rebuild():
 
 def _end(out):
     m = re.search(r"LLM 호출 — 추출 ([\d,]+) · 판정 ([\d,]+) · 태깅 ([\d,]+)", out)
-    b = re.search(r"별칭 대장 ([\d,]+) · 그래프에 있음 ([\d,]+) · 없음 ([\d,]+)", out)
+    b = re.search(r"표기 대장 별칭 갈래 ([\d,]+) · 그래프에 있음 ([\d,]+) · 없음 ([\d,]+)", out)
     n = [int(x.replace(",", "")) for x in (m.groups() if m else ()) + (b.groups() if b else ())]
     return dict(zip(("추출", "판정", "태깅", "대장", "있음", "없음"), n))
 
@@ -262,7 +262,7 @@ B_ALL = AB.AliasBook.open()
 print(f"  첫 인입 4문서 · 사람 연산 {len(oplog.read())}건 · 대장 {AB.counts(B_ALL)}")
 
 # ────────────────────────────────────────────────────────────── ⓐ 대장 쓰기
-print("\n■ B108 ① 별칭 대장 — 쓰는 손 하나 · 이름으로 · 같은 별칭은 한 항목")
+print("\n■ B108 ① 표기 대장 별칭 갈래 — 쓰는 손 하나 · 이름으로 · 같은 별칭은 한 항목")
 _want = {("B108 적층 라인", "process", "스태킹::적층", "LLM 매칭"), ("B108 불남", "quality", "화재", "LLM 매칭"),
          ("B108 타발 공정", "process", "노칭::노칭 타발", "LLM 매칭"), ("B108 쇼트", "quality", "단락", "LLM 매칭"),
          (HUM_P, "process", "스태킹::적층", "사람"), (HUM_Q, "quality", "화재", "사람"),
@@ -348,7 +348,7 @@ show("ⓑ 바닥 — 쓰는 문서의 공정명이 골격 대상 별칭(LLM 매�
 _rc, OUT_B = _rebuild()
 _equiv("rebuild", OUT_B)
 for ln in OUT_B.splitlines():
-    if ln.startswith("  별칭 대장") or ln.startswith("[bootstrap] process: 별칭") or ln.startswith("[bootstrap] quality: 별칭") \
+    if ln.startswith("  표기 대장 별칭 갈래") or ln.startswith("[bootstrap] process: 별칭") or ln.startswith("[bootstrap] quality: 별칭") \
             or ln.startswith("■ 재구축 끝") or ln.startswith("  LLM 호출"):
         print(f"      {ln}")
 
@@ -359,17 +359,17 @@ _drop_alias_book()
 _oc = _run("show", "aliases")                         # 아무 명령 — 공통 진입이 채운다
 L1 = _live()
 show("ⓒ 첫 실행(공통 진입)이 지금 그래프의 seed 밖 별칭을 이름으로 채운다 — 표기 · 대상 · 출처가 지운 대장과 같다(처음 채움 표시)",
-     L1 == L0 and all(r.get("filled") == AB.FILLED for r in AB.AliasBook.open().rows) and "[별칭 대장]" in _oc,
+     L1 == L0 and all(r.get("filled") == AB.FILLED for r in AB.AliasBook.open().rows) and "[표기 대장 별칭 갈래]" in _oc,
      f"지운 대장 {len(L0)} → 채움 {len(L1)} · 다른 것 {sorted(L0 ^ L1)[:3] or '0'}")
 for ln in _oc.splitlines():
-    if ln.startswith("[별칭 대장]"):
+    if ln.startswith("[표기 대장 별칭 갈래]"):
         print(f"      {ln}")
 _drop_alias_book()
 _pl, _po = _quiet(RB.make_plan)
 _, _ps = _quiet(RB.show_plan, _pl)
-_pline = next((ln.strip() for ln in _ps.splitlines() if ln.strip().startswith("별칭 대장")), "")
-show("ⓒ 재구축 계획(fresh 앞)도 채운다 — 계획 줄 「별칭 대장 n(이번에 채움 m) · 골격 대상 g」",
-     _live() == L0 and _pl["alias_book"]["filled"] == len(L0) and f"별칭 대장 {len(L0)}(이번에 채움 {len(L0)})" in _pline,
+_pline = next((ln.strip() for ln in _ps.splitlines() if ln.strip().startswith("표기 대장 별칭 갈래")), "")
+show("ⓒ 재구축 계획(fresh 앞)도 채운다 — 계획 줄 「표기 대장 별칭 갈래 n(이번에 채움 m) · 골격 대상 g」",
+     _live() == L0 and _pl["alias_book"]["filled"] == len(L0) and f"표기 대장 별칭 갈래 {len(L0)}(이번에 채움 {len(L0)})" in _pline,
      f"「{_pline}」")
 _rc, OUT_C = _rebuild()
 _equiv("처음 채움 뒤 rebuild", OUT_C)
@@ -421,7 +421,7 @@ for r in AB.AliasBook.open().rows:
     if r["status"] == AB.LIVE:
         _by[r["source"]] = _by.get(r["source"], 0) + 1
 _ed = _end(OUT_D)
-show("ⓔ `show aliases` 수 = 대장 수(출처별 · 살아 있음 · 거부) · 재구축 끝 줄 「별칭 대장 n · 그래프에 있음 m · 없음 k」(n = 대장)",
+show("ⓔ `show aliases` 수 = 대장 수(출처별 · 살아 있음 · 거부) · 재구축 끝 줄 「표기 대장 별칭 갈래 n · 그래프에 있음 m · 없음 k」(n = 대장)",
      all(_shown.get(s, 0) == _by.get(s, 0) for s in AB.SOURCES)
      and f"살아 있음 {sum(_by.values())} · 거부 2" in _os and _ed.get("대장") == sum(_by.values())
      and _ed.get("있음", -1) + _ed.get("없음", -1) == _ed.get("대장"),
@@ -446,7 +446,7 @@ def _rn(node):
 _sk["TREE"] = _rn(_sk["TREE"])
 _sk["ALIASES"] = {(NEW if k == OLD else k): v for k, v in _sk["ALIASES"].items()}
 SK.write_text(json.dumps(_sk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-hold_coords()                  # 개명된 seed 동안 목록 밖이 된 좌표는 보류로(B182 — 이 시험은 별칭 대장의 재구축 셈을 잰다 · 잠정 노드는 B182 ⓐ~ⓕ)
+hold_coords()                  # 개명된 seed 동안 목록 밖이 된 좌표는 보류로(B182 — 이 시험은 표기 대장 별칭 갈래의 재구축 셈을 잰다 · 잠정 노드는 B182 ⓐ~ⓕ)
 _rc, OUT_E = _rebuild()
 hold_coords(False)
 _ee = _end(OUT_E)
@@ -458,7 +458,7 @@ show("ⓔ 골격 「스태킹::적층」의 이름을 바꾼 seed로 재구축 �
      and _left and _left["status"] == AB.LIVE,
      f"끝 줄 {_ee} · 「{_miss[0] if _miss else ''}」")
 for ln in OUT_E.splitlines()[next((i for i, ln in enumerate(OUT_E.splitlines()) if ln.startswith("■ 재구축 끝")), 0):]:
-    if "별칭 대장" in ln or "없음 —" in ln:
+    if "표기 대장 별칭 갈래" in ln or "없음 —" in ln:
         print(f"      {ln}")
 SK.write_bytes(_SK0)
 _rc, OUT_F = _rebuild()
@@ -472,7 +472,7 @@ show("ⓔ seed를 되돌려 다시 재구축하면 그 대상의 별칭이 다�
                                                          for r in _gone_f) or "0"))
 
 # ────────────────────────────────────────────────────────────── B179 ② 표기 대장 이전
-print("\n■ B179 ② 표기 대장 이전 — 옛 두 파일(좌표 학습 · 별칭 대장) → 대장 하나 · 옛 파일 보관 · 다시 돌려도 같다")
+print("\n■ B179 ② 표기 대장 이전 — 옛 두 파일(좌표 학습 · 별칭) → 대장 하나 · 옛 파일 보관 · 다시 돌려도 같다")
 _rows0 = AB.AliasBook.open().rows                      # 지금 별칭 갈래 = 옛 `alias_book.json`의 모양
 _learn0 = {"채택": {"B179 학습 표기": {"canonical": X, "layer": coord_layer(), "doc_id": "B179", "hits": 2}},
            "목록밖": {"B179 목록 밖": {"rows": 3, "docs": ["B179"], "first_seen": "t", "list_version": "v"}}}

@@ -25,6 +25,7 @@
      (B159 ②)
   ⓖ 명세 낱말 대조(B158 ②) — 기준 판(git)에서 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 적으면 rc 0 · 머리줄 하나를 바꾼
      사본 ⇒ rc 1
+  B185 ⓒ ⓓ — 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0 · 레포 .py 컴파일에 SyntaxWarning 0
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
 """
 from __future__ import annotations
@@ -463,6 +464,25 @@ show("ⓖ 낱말 하나를 지운 사본 ⇒ rc 1 + 그 낱말 · 대조 표에 
      rc_g1 == 1 and set(_d1) == {(_word, "사라짐")} and rc_g2 == 0 and rc_g3 == 1
      and any("머리줄 — 다르다" in x for x in _ln3) and STM.compare(_old, _old)[0] == 0,
      f"낱말 {_word} · rc {rc_g1} · {rc_g2} · {rc_g3}")
+
+# B185 ⓒ ⓓ — 한 뜻 한 말(옛 낱말 0 — 개정대장 · 보관은 기록이라 밖) · 레포 .py 컴파일에 SyntaxWarning 0(읽기만 — 쓰기 0)
+import warnings  # noqa: E402
+_tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL).stdout.split("\n")
+_old185 = [f for f in _tracked if (f.endswith(".py") or f.startswith(("docs/spec/", "docs/가이드/")))
+           and not f.endswith(("개정대장.md", "test_g6_close.py")) and (ROOT / f).is_file()
+           and any(w in (ROOT / f).read_text(encoding="utf-8", errors="replace") for w in ("별칭 대장", "특이점"))]
+_sw185 = []
+for f in (x for x in _tracked if x.endswith(".py")):
+    with warnings.catch_warnings(record=True) as _w:
+        warnings.simplefilter("always")
+        try:
+            compile((ROOT / f).read_bytes(), f, "exec", dont_inherit=True)
+        except SyntaxError:
+            pass
+    _sw185 += [f for x in _w if issubclass(x.category, SyntaxWarning)]
+show("B185 ⓒ 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0(개정대장 밖)", not _old185, " · ".join(_old185[:5]))
+show("B185 ⓓ 레포 .py 컴파일에 SyntaxWarning 0", not _sw185, " · ".join(_sw185[:5]))
 
 shutil.rmtree(T, ignore_errors=True)
 print("\n" + "=" * 62)

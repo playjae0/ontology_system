@@ -97,13 +97,16 @@ def propose(common, configs, schemas=()):
     rule = catalog.legacy_rule(common, configs)                                # 없으면 공통 이름 규칙이 이미 새 모양 — 그대로 둔다
     bind, nest, sep = rule or (set(), set(), None)
     cats = common.setdefault("categories", {})
-    rep = {"안 씀": [], "쌍": [], "uses": [], "정의문": [], "패턴 뺌": [], "이름 바뀜": [], "새로 걸림": []}
+    rep = {"안 씀": [], "쌍": [], "uses": [], "정의문": [], "패턴 뺌": [], "이름 바뀜": [], "새로 걸림": [], "키": []}
     for c, v in sorted(cats.items()) if rule else ():                          # ⓐ
         if c not in sk and c not in bind | nest and not (v or {}).get("no_path"):
             cats[c] = {**(v or {}), "no_path": WHY_KEPT}
             rep["안 씀"].append(c)
+    if catalog.OLD_PAIRS in common:                                            # 옛 키 이름(B185 ② — 뜻 그대로)
+        common[catalog.PAIRS] = list(common.get(catalog.PAIRS) or []) + list(common.pop(catalog.OLD_PAIRS) or [])
+        rep["키"].append(f"공통 `{catalog.OLD_PAIRS}` → `{catalog.PAIRS}`(뜻 그대로 — 키 이름만 · 재구축 범위 아님)")
     pairs, rep["쌍"], stops = _pairs(configs, sk, nest)                       # ⓑ — 공통에 이미 있는 쌍은 두고 더한다
-    have = {(p["lower"], p["upper"]): p for p in common.get("pairs") or []}
+    have = {(p["lower"], p["upper"]): p for p in common.get(catalog.PAIRS) or []}
     seen = dict(have)
     for p in list(pairs):                                                      # 같은 두 카테고리 — 관계 · 방향이 다르면 멈춘다
         q = seen.setdefault((p["lower"], p["upper"]), p)
@@ -111,7 +114,7 @@ def propose(common, configs, schemas=()):
             stops.append(f"쌍 {p['lower']} → {p['upper']}의 엣지가 둘이다 — {' -'.join(catalog.pair_edge(q)[:2])}-> "
                          f"{catalog.pair_edge(q)[2]} ‖ {' -'.join(catalog.pair_edge(p)[:2])}-> {catalog.pair_edge(p)[2]} · "
                          f"한 관계 · 한 방향으로 고친 뒤 다시 bootstrap(추측하지 않는다)")
-    pairs = list(common.get("pairs") or []) + list({(p["lower"], p["upper"]): p for p in pairs
+    pairs = list(common.get(catalog.PAIRS) or []) + list({(p["lower"], p["upper"]): p for p in pairs
                                                     if (p["lower"], p["upper"]) not in have}.values())
     edges = {catalog.pair_edge(p) for p in pairs}
     old_pair = {lay: set(_map_triples(c)) for lay, c in configs.items()}
@@ -149,7 +152,7 @@ def propose(common, configs, schemas=()):
                            if {s, d} <= spk and (s, r, d) not in old_pair.get(lay, set())]
     for k in catalog.OLD_COMMON_KEYS:
         common.pop(k, None)
-    common["pairs"], common["sep"] = pairs, common.get("sep") or sep or "::"
+    common[catalog.PAIRS], common["sep"] = pairs, common.get("sep") or sep or "::"
     after = name_forms(common, configs)                                        # 이름이 바뀌는 카테고리 — 지도의 이름 꼴 앞뒤
     rep["이름 바뀜"] = [(c, before[c], after[c]) for c in sorted(after) if c in before and before[c] != after[c]]
     return {"common": common, "layers": configs, "stops": stops, "report": rep}
@@ -168,6 +171,8 @@ def report_md(prop, counts=None):
          "## 이름이 바뀌는 카테고리 (재구축이 필요하다)", ""]
     L += [f"- `{c}` — 지금 `{b}` → 제안 `{a}` · 노드 {counts.get(c, 0):,} · 새 인입 전에 python run.py rebuild"
           for c, b, a in rep["이름 바뀜"]] or ["- 없음"]
+    if rep.get("키"):
+        L += ["", "## 키 이름 바뀜 (뜻 그대로)", ""] + [f"- {x}" for x in rep["키"]]
     L += ["", "## 층마다 새로 걸리는 위아래 쌍 (그 층이 두 카테고리를 다 말한다 — 옛 그 층 매핑에는 없었다)", ""]
     L += [f"- {x}" for x in rep["새로 걸림"]] or ["- 없음"]
     for title, key in (("ⓐ 경로 「안 씀」(옛 이름 규칙 밖 — 사유를 적거나 지워서 「씀」으로)", "안 씀"),

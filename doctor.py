@@ -72,7 +72,7 @@ SUITES = [
      ("test_g6_diag", "test_g6_synonym", "test_g6_judge2", "test_g6_replay2", "test_g6_narrow",)),
     ("test_build", "맥락 줄 · 문서 좌표 · 소속 · 산문의 값 · 다른 공정 이름은 관련 링크 · 빈칸 표시 · 재연결 · 맞춤표 · 시트 숨김 · 청크 목차",
      ("test_g6_belongs", "test_g6_values", "test_g6_relink", "test_g6_reconcile",)),
-    ("test_rebuild", "fresh 보존 · --all 클린 · 재구축 한 명령(동치 · LLM 0) · 판정 재생 · 옛 기록에 이름 채우기 · 태깅 null 기억 · 별칭 대장 · 재구축 동치",
+    ("test_rebuild", "fresh 보존 · --all 클린 · 재구축 한 명령(동치 · LLM 0) · 판정 재생 · 옛 기록에 이름 채우기 · 태깅 null 기억 · 표기 대장 별칭 갈래 · 재구축 동치",
      ("test_g6_rebuild", "test_g6_rebuild_memory", "test_g6_alias_book",)),
     ("test_g6_rehearsal", "B116 — 추출 리허설은 임시 상태 루트(하위 실행 · 운영은 읽기만): 이미 인입된 문서(렌즈판이 있는 루트)를 표본으로 등록 세 단계 전후 운영 지문 같음(층 하나) · ②구획 채워짐 · 리허설 산출 자리(추출 · 개요) · 안내 줄 · 같은 조건(실호출 · 상태 루트 llm.json · 손잡이) · 새 종류 인입 추출 · 개요 LLM 0 · 원래 종류는 지금 규칙 · 부분 · 실패 · 중단(Ctrl-C) 흔적 0"),
     ("test_structure", "문서 구조(시트마다 · 검사 · 구조 관문) · 구조 v2 · edit · 구조 확인 · 문서 규칙 힌트 · 산문 엑셀 계층 · 목차 · 청크 경로 · 글자 상한 · 문서 개요 · 폴백 사슬 · 연결 보강 · PPT 덱 구조",

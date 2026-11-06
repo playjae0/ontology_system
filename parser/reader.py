@@ -753,7 +753,7 @@ def legacy_note(path):
 OBSERVE_ROWS = 20
 
 
-def head(raw, n=OBSERVE_ROWS):
+def head(raw, n=None):
     """등록 세션에 공급하는 관찰 재료 — head N행 (M5 관찰 범위 규칙)
 
     **분기는 포맷 이름이 아니라 구조로 한다.** 구판은 `format != "xlsx"`면 슬라이드로
@@ -761,6 +761,7 @@ def head(raw, n=OBSERVE_ROWS):
     csv가 xlsx와 같은 구조를 내는 이유가 바로 «어댑터가 포맷을 몰라도 되게»인데,
     이 함수만 이름으로 갈라 그 취지를 깨고 있었다.
     """
+    n = OBSERVE_ROWS if n is None else n          # 손잡이 `profile_observe_rows`(B185 ① — 부를 때 읽는다)
     # **바이트는 관찰 재료가 아니다**(B88 ①) — `_images` 같은 `_` 키는 ④에 보내는 파이프라인
     # 몫이고, 등록 입력 패키지(JSON)에 실리면 직렬화가 죽는다(실측 — 그림 든 TOC 표본).
     raw = {k: v for k, v in raw.items() if not k.startswith("_")}

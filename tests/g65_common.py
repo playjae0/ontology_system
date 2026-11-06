@@ -115,9 +115,9 @@ def component_floor(quality_uses=("Component",)):
     overlay(component=True)
     _rw(_P.common(), lambda c: c["categories"]["Component"].pop("no_path", None))   # 옛 nest = 경로 씀(B174 — 같은 뜻)
     # 옛 바닥은 nest = [Component]뿐이었다 — 위가 일반 노드(Unit)인 다른 쌍은 걷는다(관리항목은 공정 스코프 · 같은 뜻)
-    _rw(_P.common(), lambda c: c.__setitem__("pairs", [p for p in c.get("pairs") or []
+    _rw(_P.common(), lambda c: c.__setitem__("parent_pairs", [p for p in c.get("parent_pairs") or []
                                                        if not (p["upper"] == "Unit" and p["lower"] != "Component")]))
-    _rw(_P.common(), lambda c: c.setdefault("pairs", []).extend(
+    _rw(_P.common(), lambda c: c.setdefault("parent_pairs", []).extend(
         {"lower": "Component", "upper": u, "rel": "part_of", "src": "lower", "정의문": f"Component가 {u}에 속한다"}
         for u in ("Unit", "Process")))
     _rw(_P.layers("quality", "config.json"), lambda c: c.setdefault("uses", []).extend(
