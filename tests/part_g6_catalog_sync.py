@@ -714,6 +714,23 @@ show("B187 ⓐ ⓪(b) 겸 카테고리(Process가 그 단에서 Unit 겸)로 선
      "지도 점검 「출처 없는 삼항」 0",
      _n1187[("Unit", "mirrors", "Unit")] == _n0187[("Unit", "mirrors", "Unit")] + 1 and not _unk187,
      f"수 {_n0187[('Unit', 'mirrors', 'Unit')]} → {_n1187[('Unit', 'mirrors', 'Unit')]} · 출처 없음 {_unk187}")
+# B188 ⓐ ⓪ — 판 4 모델(쌍 출처가 옛 한국어 이름)과 판 5 모델(같은 config)의 --diff가 같다(rc 0) + 판 차이 알림 한 줄(사람이 치는 길)
+_v4188 = json.loads(json.dumps(_m186))
+_v4188["map_version"] = 4
+_n188 = 0
+for _x in _v4188["links"]["cross"]:
+    if _x["from"] == "parent_pairs":
+        _x["from"], _n188 = "위아래 쌍", _n188 + 1
+with tempfile.TemporaryDirectory(prefix="b188_") as _td:
+    (Path(_td) / "v4.json").write_text(json.dumps(_v4188, ensure_ascii=False), encoding="utf-8")
+    (Path(_td) / "v5.json").write_text(json.dumps(_m186, ensure_ascii=False), encoding="utf-8")
+    _r188 = subprocess.run([sys.executable, str(ROOT / "run.py"), "export", "config", "--diff", str(Path(_td) / "v4.json"),
+                            str(Path(_td) / "v5.json")], cwd=str(ROOT), env={**os.environ, "USE_MOCK": "1"},
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL)
+show("B188 ⓐ ⓪ 판 4 ↔ 판 5 모델(같은 config · 옛 출처 이름)의 --diff가 같다(rc 0) + 판 차이 알림 한 줄",
+     _n188 > 0 and _r188.returncode == 0 and "같다" in _r188.stdout
+     and sum("판 4 ↔ 판 5" in ln for ln in _r188.stdout.splitlines()) == 1,
+     f"옛 이름 {_n188} · rc {_r188.returncode} · {_r188.stdout.strip()[:200]}")
 init.init(fresh_=True, all_=True)
 
 done()
