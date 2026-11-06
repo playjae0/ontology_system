@@ -498,7 +498,7 @@ def merge(layer, nid, into, actor, canonical=None, override=None,
     seen = {al["surface"] for al in keep["aliases"]}
     # 흡수된 이름은 **사람이 친 merge**가 보증한다(B101 ④ — 별칭 출처 사람)
     _by = f"op:merge:{actor}"
-    # 별칭 대장 — 없어질 쪽을 가리키던 항목은 남는 쪽으로 · 옮긴 별칭은 쓰는 손 하나로(출처 병합 · B108 ①)
+    # 표기 대장 별칭 갈래 — 없어질 쪽을 가리키던 항목은 남는 쪽으로 · 옮긴 별칭은 쓰는 손 하나로(출처 병합 · B108 ①)
     book = alias_book.AliasBook.open()
     book.retarget(alias_book.name(gone), alias_book.name(keep), source="병합")
     for al in [dict(x, provenance=list(x.get("provenance") or []) + [_by]) for x in gone["aliases"]] + \

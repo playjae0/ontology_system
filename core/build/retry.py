@@ -250,7 +250,7 @@ LAST = {}
 
 
 def line():
-    """`재연결 — 바퀴 k · 대상 n(kind별) · 붙음 m · 남음 r(kind별) · 그래프·골격·사전 그대로라 건너뜀 s · 상한 도달 c`
+    """`재연결 — 바퀴 k · 대상 n(kind별) · 이어짐 m · 남음 r(kind별) · 그래프·골격·사전 그대로라 건너뜀 s · 상한 도달 c`
     (B113 ③ — 바퀴마다는 `rounds_text`)."""
     if not LAST:
         return "재연결 — 돌지 않았다"
@@ -260,7 +260,7 @@ def line():
     left = " · ".join(f"{k} {v}" for k, v in sorted(lb.items()))
     return (f"재연결 — 바퀴 {len(LAST.get('rounds') or []):,} · 대상 {sum(t.values()):,}"
             + (f"({kinds})" if kinds else "")
-            + f" · 붙음 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}" + (f"({left})" if left else "")
+            + f" · 이어짐 {sum(LAST['healed'].values()):,} · 남음 {LAST['left']:,}" + (f"({left})" if left else "")
             + f" · 그래프·골격·사전 그대로라 건너뜀 {LAST['same']:,} · 상한 도달 {LAST['capped']:,}"
             + _guess_text(LAST.get("guess"))
             + (" · 바퀴 상한에서 멈춤(더 붙을 수 있다 — 다음 인입 또는 python run.py ops relink)"
@@ -291,8 +291,8 @@ def plan(layers=None, doc_coord=None):
 
 
 def rounds_text():
-    """바퀴마다 `바퀴 i — 대상 n · 붙음 m · 건너뜀 s` (손 명령 `ops relink`의 끝 줄들)."""
-    return [f"바퀴 {i} — 대상 {r['대상']:,} · 붙음 {r['붙음']:,} · 건너뜀 {r['건너뜀']:,} · 상한 {r['상한']:,}"
+    """바퀴마다 `바퀴 i — 대상 n · 이어짐 m · 건너뜀 s` (손 명령 `ops relink`의 끝 줄들)."""
+    return [f"바퀴 {i} — 대상 {r['대상']:,} · 이어짐 {r['붙음']:,} · 건너뜀 {r['건너뜀']:,} · 상한 {r['상한']:,}"
             for i, r in enumerate(LAST.get("rounds") or [], 1)]
 
 

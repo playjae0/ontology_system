@@ -263,7 +263,7 @@ _f1, _l1 = _fp(T, logs=False), _fp(T)
 show("ⓑ 운영 루트 · 비대화형 — 거부(rc 1 · 다음 줄 `--yes`) · 지울 것과 크기를 말한다 · 지문 불변(명령 로그 제외 · 로그는 그 "
      "명령의 것만)",
      _rc == 1 and _f0 == _f1 and _logs_only(_l0, _l1, "init") and "python run.py init --fresh --all --yes" in _out
-     # 고침(B179 ② — 보존 이름이 표기 대장 · 좌표 학습 + 별칭 대장)
+     # 고침(B179 ② — 보존 이름이 표기 대장 · 좌표 학습 + 표기 대장 별칭 갈래)
      and any("지울 것 —" in ln and "판정 대장" in ln and "표기 대장" in ln for ln in _out.splitlines())
      and f"운영 상태 폴더의 클린이다 — {T.resolve()}" in _out and "지우지 않았다" in _out,
      f"rc {_rc} · 지문 {'같음' if _f0 == _f1 else _fpdiff(_f0, _f1)}")

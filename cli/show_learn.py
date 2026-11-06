@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 2.8 — **동의어 학습 화면** — 좌표 학습 목록 · 새 공정 후보 · 별칭 출처 (B101 ②③④) · 별칭 대장 (B108 ①) — 둘 다
+"""칸 2.8 — **동의어 학습 화면** — 좌표 학습 목록 · 새 공정 후보 · 별칭 출처 (B101 ②③④) · 표기 대장 별칭 갈래 (B108 ①) — 둘 다
 표기 대장 하나의 갈래이고 줄마다 **지위**(사람 보증 | 기계 판단 — B179 ②).
 
     python run.py show learned        표기 대장 수 + 좌표 학습(지위 · 표기 · 노드 · 문서 · 적중 · 시각) + 새 공정 후보
@@ -89,7 +89,7 @@ def cmd_learned(args):
     return 0
 
 
-# ---------------------------------------------------------------- 별칭 대장 (B108 ①)
+# ---------------------------------------------------------------- 표기 대장 별칭 갈래 (B108 ①)
 def _opt(args, flag):
     if flag not in args:
         return None
@@ -133,7 +133,7 @@ def cmd_aliases(args):
     by = {}
     for r in live:
         by[r["source"]] = by.get(r["source"], 0) + 1
-    print(f"■ 별칭 대장(표기 대장의 별칭 갈래) — 살아 있음 {len(live):,} · 거부 {len(rows) - len(live):,} · 골격 대상 "
+    print(f"■ 표기 대장 — 별칭 갈래 — 살아 있음 {len(live):,} · 거부 {len(rows) - len(live):,} · 골격 대상 "
           f"{sum(1 for r in live if r.get('skeleton')):,} · 사람 보증 "
           f"{sum(1 for r in live if SB.standing(r['source']) == SB.HUMAN):,} · 기계 판단 "
           f"{sum(1 for r in live if SB.standing(r['source']) == SB.MACHINE):,} "

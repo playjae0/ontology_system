@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 — **별칭 대장** — 쌓인 별칭을 이름으로 남기고, 재구축에서도 처음부터 쓴다 (B108 ① · 사용자 결정
+"""칸 0.3 — **표기 대장 별칭 갈래** — 쌓인 별칭을 이름으로 남기고, 재구축에서도 처음부터 쓴다 (B108 ① · 사용자 결정
 2026-10-14 「별칭은 누적·호환해 활용하는 핵심 자산이다」).
 
     <상태>/data/surface_book.json의 별칭 갈래   ③진실 표기 대장(B179 ② — 좌표 학습과 한 파일 · 항목마다 지위 ·
@@ -311,7 +311,7 @@ def backfill(book=None, world=None):
                 filled += 1
     if filled:
         book.save()
-        _LOG.info("별칭 대장 처음 채움 — %d건(지금 그래프에서)", filled)
+        _LOG.info("표기 대장 별칭 갈래 처음 채움 — %d건(지금 그래프에서)", filled)
     return {**counts(book), "filled": filled}
 
 

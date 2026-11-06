@@ -6,7 +6,7 @@
 바뀌는 이유가 다르다 — 앞은 파이프라인이, 뒤는 사람이 읽는 방식이 바꾼다.
 
 **화면은 대장의 투영이다**(B81 ①) — 값 줄의 재료는 판정 대장 행이고 여기서 새로
-계산하지 않는다. 색은 특이점에만 붙는다(`cli/_screen.py`).
+계산하지 않는다. 색은 값의 결과에만 붙는다(B176)(`cli/_screen.py`).
 """
 from __future__ import annotations
 
@@ -596,7 +596,7 @@ def end_lists(info):
 
 def reinforce_screen(stage=None):
     """**연결 보강 화면**(B115 ④ · 지점 ⑫) — 예고(대상 n · 재생 r → LLM ≤ k회 · 상한) · 진행(대상마다 결과 — 판정이 있었던
-    것만 · `-v`면 전부) · 끝(붙음 · 재생 · 못 고름 · 버림 · 사용량). 끝 줄 전문은 마무리 줄(`reinforce.line`)이 낸다."""
+    것만 · `-v`면 전부) · 끝(이어짐 · 재생 · 못 고름 · 버림 · 사용량). 끝 줄 전문은 마무리 줄(`reinforce.line`)이 낸다."""
     def notice(info):
         k = info.get("단계")
         if k == "보강예고":
@@ -613,7 +613,7 @@ def reinforce_screen(stage=None):
                 _screen.say(f"     {info['i']}/{info['m']} {info.get('표기')} — {info['결과']}", "aux")
             _LOG.info("연결 보강 %s/%s %s — %s", info["i"], info["m"], info.get("표기"), info.get("결과"))
         elif k == "보강끝":
-            _screen.say(f"   연결 보강 끝 — 붙음 {info['붙음']:,} · 재생 {info['재생']:,} · 못 고름 {info['못 고름']:,} · "
+            _screen.say(f"   연결 보강 끝 — 이어짐 {info['붙음']:,} · 재생 {info['재생']:,} · 못 고름 {info['못 고름']:,} · "
                         f"버림 {info['버림']:,} · {_screen.usage_line(info.get('since'))}", "head")
         return None
     return notice

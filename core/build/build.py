@@ -79,7 +79,7 @@ class Builder(CoordMixin):
         self.doc_id = doc_id
         self.layer = layer
         self.dict = Dictionary.open()      # 사전 접근은 관문 경유로만 (문서 7 §7.1)
-        self.book = alias_book.AliasBook.open()   # 별칭 대장 — 사전과 같이 열고 같이 쓴다 (B108 ①)
+        self.book = alias_book.AliasBook.open()   # 표기 대장 별칭 갈래 — 사전과 같이 열고 같이 쓴다 (B108 ①)
         self.buffer: dict[str, str] = {}     # 문서 해소 버퍼 (2-pass Pass 1)
         # 걸침 층별 하위 빌더 — 아래 for_layer. **뿌리도 제 층 이름으로 든다**(B99 ①): 하위 빌더가
         # 뿌리 층을 물으면 새로 열지 않고 뿌리를 돌려준다(같은 그래프 사본 둘 = 덮어쓰기 소실).
@@ -218,7 +218,7 @@ class Builder(CoordMixin):
 
     def flush(self):
         self.dict.save()
-        self.book.save()                     # 별칭 대장은 사전과 같은 때 — 되돌림 경계도 같다 (B108 ①)
+        self.book.save()                     # 표기 대장 별칭 갈래은 사전과 같은 때 — 되돌림 경계도 같다 (B108 ①)
 
     def coord_verdicts(self, group_surface, ref_id, et, g=None):
         """**좌표 쌍 판정**(B105) — `(판정 목록, 상위가 가리키는 골격 노드들)`.

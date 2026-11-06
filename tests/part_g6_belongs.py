@@ -707,8 +707,8 @@ show("B140 ⓑ 더하기 — 관문(pty) n → 상세 → OK → 기록 → [6/8
 _pPn = _live_named("노칭::실린더 행정")
 show("B140 ⓒ 다른 문서 고아 — 먼저 넣은 문서의 「실린더」 고아가 그 노드를 만든 인입의 마무리 재연결에서 붙는다",
      not _orph("B140P", "실린더") and _pPn and ("노칭::실린더", "has_property", "노칭::실린더 행정") in _edges_of(_pPn[0]["id"])
-     and "사람 후보 — 재연결 붙음 1" in _ob,
-     f"P 고아 {len(_orph('B140P', '실린더'))} · 마무리 {[ln.strip() for ln in _ob.splitlines() if '재연결 붙음' in ln]}")
+     and "사람 후보 — 재연결 이어짐 1" in _ob,   # 고침(B185 ③ — 엣지가 이어진 것은 「이어짐」)
+     f"P 고아 {len(_orph('B140P', '실린더'))} · 마무리 {[ln.strip() for ln in _ob.splitlines() if '재연결 이어짐' in ln]}")
 _pH, _cH = _b140("B142H", ["1. 구동", "실린더 행정은 60mm다."], {"실린더 행정": "실린더"})
 _go(_pH, _cH)
 _rH = next((r for r in LG.read("B142H")["rows"] if r.get("surface") == "실린더 행정" and r.get("role") == "entity"), {})
@@ -725,7 +725,7 @@ from core.state import alias_book as _AB                   # noqa: E402
 _sb = str((_AB.AliasBook.open().get("실린더봉", _AB.name(_cy[0])) or {}).get("source")) if _cy else ""
 _rS = next((r for r in LG.read("B140S")["rows"] if r.get("surface") == "실린더봉 행정"), {})
 _clash = _board("B140A").same_check({"name": "센서"}, {"name": "노칭::실린더", "layer": "process", "category": "Unit"})
-show("B140 ⓓ 같은 것 — 별칭이 등재되고(별칭 대장 출처 사람) 그 표기의 고아가 붙는다 · 같은 자리 다른 노드에 붙은 표기는 거부(ops alias와 같은 검사)",
+show("B140 ⓓ 같은 것 — 별칭이 등재되고(표기 대장 별칭 갈래 출처 사람) 그 표기의 고아가 붙는다 · 같은 자리 다른 노드에 붙은 표기는 거부(ops alias와 같은 검사)",
      _sb == "사람" and any(a.get("other") == "노칭::실린더" and str(a.get("path")).startswith("소속")
                           for a in _rS.get("attached") or []) and not _orph("B140S", "실린더봉")
      and "이미 같은 자리의 다른 노드에 붙어 있다" in str(_clash),

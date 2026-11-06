@@ -202,7 +202,7 @@ def _pick(w, layer, target):
 
 
 def alias_reject(layer, target, surface, actor, reason="", dry_run=False):
-    """**별칭 거두기**(B108 ①) — 노드 · 사전에서 그 표기를 빼고 별칭 대장에 「거부」로 남긴다 — 쓰는 손이 다시
+    """**별칭 거두기**(B108 ①) — 노드 · 사전에서 그 표기를 빼고 표기 대장 별칭 갈래에 「거부」로 남긴다 — 쓰는 손이 다시
     붙이지 않고 bootstrap도 싣지 않는다. 사람 판단 기록에 이름으로(재구축 뒤 `ops replay`가 다시 거둔다).
 
     거부 셋: 행위자 없음 · seed 별칭(골격 `ALIASES` — 골격 파일에서 지우고 `bootstrap`) · 노드 자신의 이름.

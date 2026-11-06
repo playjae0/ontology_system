@@ -201,7 +201,7 @@ show("④ 끝까지 가면 7단계가 다 뜨고 인입이 끝난다",
 # 카테고리·층 전량이라 노드가 늘수록 매 호출이 커졌다. 명세는 처음부터 다르게
 # 말한다 — 문서 4 §4.2 ②「후보 검색 — 사전 미스 시 임베딩 유사도」.
 
-# ── B81 ①②③④ — 화면은 대장의 투영 · 로그는 파일 · 색은 특이점에만 ─────────
+# ── B81 ①②③④ — 화면은 대장의 투영 · 로그는 파일 · 색은 값의 결과에만 ─────────
 #
 # 사내 실측(2026-09-22): 「화면에 눈에 들어오는 게 없다」 — INFO 로그가 값마다 두 줄씩
 # 흐르고, 사람이 알고 싶은 것(붙었나·새로 생겼나·불확실한가)이 그 사이에 묻혔다.
@@ -211,7 +211,7 @@ from cli import ingest as IG81                                        # noqa: E4
 from cli import ingest_screen as SCR81                                # noqa: E402
 from core.build import ledger as LG81                                 # noqa: E402
 
-# ③ 색은 **특이점에만** · 비-tty면 ESC 0. (여기 stdout은 파이프다 — 회귀가 그 조건이다.)
+# ③ 색은 **값의 결과에만** · 비-tty면 ESC 0. (여기 stdout은 파이프다 — 회귀가 그 조건이다.)
 # 기대 변경(B142 ⑥ — 처리한 값은 개체 행만 센다 · 행에 역할을 단다)
 _row_new = {"role": "entity", "canonical": "노칭::버 높이", "verdict": "new", "candidates_n": 0,
             "path": "skeleton", "llm": {"calls": 0}, "queue_kind": "auto_node"}
@@ -226,7 +226,7 @@ show("③ 파이프로 나가는 화면에 ESC가 0바이트다 (색이 문면�
 show("③ 색을 벗긴 문자열이 원본과 같다 (어서션·스캐너가 같은 것을 읽는다)",
      SC.strip_ansi(SC.paint("x", "new")) == "x"
      and SC.paint("x", "없는종류") == "x")
-# ③ tty면 특이점에 색이 붙는다 — **스텁 스트림으로** 잰다(회귀는 파이프로 돈다).
+# ③ tty면 값의 결과에 색이 붙는다 — **스텁 스트림으로** 잰다(회귀는 파이프로 돈다).
 class _TTY81:
     def isatty(self):
         return True

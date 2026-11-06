@@ -13,7 +13,7 @@
   ⓕ 토큰 표기는 한 함수(입력·출력) · 미제공이면 그 문면 · 화면에 합계만 찍는 자리 0
   ⓖ 구축 실패 → 실패 줄에 추출 체크포인트 보존 · 다음 줄
   ⓗ 표: 한글 긴 표기·줄바꿈 섞인 표기·80칸에서 칸 정렬 유지 · 30초 행이 행 중간에 끼지 않는다
-  ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · 새 층에 빨강·노랑 0(특이점 전용)
+  ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · 새 층에 빨강·노랑 0(결과 색 전용)
   B139 ⓔ 단계 끝 줄은 이 단계 · 누계 · 끝 표 갈래 합 = 게이트웨이 누계 · 명령 끝 줄은 공통 진입 한 자리
 """
 from __future__ import annotations
@@ -227,7 +227,7 @@ _off = _screen.paint("x", "head", stream=_TTY())
 os.environ.pop("NO_COLOR", None)
 if _keep_nc is not None:
     os.environ["NO_COLOR"] = _keep_nc
-show("ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · tty면 새 층이 칠해진다 · 새 층에 빨강·노랑 0(특이점 전용)",
+show("ⓘ 색: 파이프·NO_COLOR에서 ESC 0 · tty면 새 층이 칠해진다 · 새 층에 빨강·노랑 0(결과 색 전용)",
      "\033" not in _od and "\033" not in _oc and "\033" in _on and _off == "x"
      and all(not ({"red", "yellow"} & set(_screen.KINDS[k]))
              for k in ("head", "prog", "beat", "aux")))

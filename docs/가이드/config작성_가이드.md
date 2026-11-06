@@ -1,6 +1,6 @@
 # config 작성 가이드 — 새 층을 세울 때 사람이 실제로 쓰는 것
 
-> **결론 먼저**: 층 config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **17종** · 품질층 **15종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다 · 선택 키 `value_categories`는 공정층만) — 그중 **사람이 실제로 쓰는 것은 12종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 7종은 베끼거나 자동으로 따라온다. 이름 규칙(카테고리 경로)과 위아래 쌍은 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
+> **결론 먼저**: 층 config 문법 키는 **19종이 합집합**이고 — 한 층이 전부 갖지 않는다(실물: 공정층 **17종** · 품질층 **15종** · 선택 키 `relevance_terms`는 두 층 모두 아직 없다 · 선택 키 `value_categories`는 공정층만) — 그중 **사람이 실제로 쓰는 것은 12종**이며, 그중 **절반은 비워도 돈다**(품질층 실물이 증거 — `polarity`·`skeleton_version`·`relevance_terms` 없이 돈다). 나머지 7종은 베끼거나 자동으로 따라온다. 이름 규칙(카테고리 경로)과 `parent_pairs`은 층 config 키가 아니다 — 공통 config(§0-a) 한 곳이다.
 > **골격 가이드와 짝이다** — 골격을 먼저 심으면 3종이 따라오고, 이 가이드는 그다음이다.
 > 실물 예시는 전부 `layers/process/config.json`에서 그대로 가져왔다 — **자산이 정본이다.**
 
@@ -35,7 +35,7 @@
 | **골격에서 따라옴 (3)** | `skeleton` `skeleton_version` `polarity` | 골격 가이드의 산출. 극성 없는 층은 뒤 둘 생략 |
 | **사람이 쓴다 (12)** | 아래 §1~§6 — `categories` `relations` `relation_patterns` `uses` `query_traverse` `cross_layer_traverse` `mirrors` `fact_templates` `extract_patterns` `prompts` `relevance_terms`(선택 · §6-a) `value_categories`(선택 · §1-b) | **이 가이드의 본문** |
 
-> **19종은 합집합이다.** 실물은 공정층 17종·품질층 15종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다 · `value_categories`는 선택 — 없으면 산문 값 0), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. 옛 키(`canonical_scope` · `category_pair_map` · 집이 아닌 층의 카테고리 정의)가 있으면 `bootstrap`이 새 모양 제안을 쓰고 멈춘다(§0-a). 같다고 받는 기준(옛 `match_threshold`)은 층 config 키가 아니다 — 사내 손잡이 `knobs.json`의 `match_threshold`다(층 config에 남아 있으면 `bootstrap`이 손잡이 값과 같으면 「지워도 된다」 한 줄 · 다르면 멈춘다).
+> **19종은 합집합이다.** 실물은 공정층 17종·품질층 15종이고(`relevance_terms`는 선택 — 없으면 렌즈 거름·시트 판정이 사전 어휘만 본다 · `value_categories`는 선택 — 없으면 산문 값 0), **`_`로 시작하는 주석 키**(공정층 4·품질층 2)는 일람 **밖**이라 loader가 무시한다 — 세지 않는다. 옛 키(`canonical_scope` · `category_pair_map` · `home`이 아닌 층의 카테고리 정의)가 있으면 `bootstrap`이 새 모양 제안을 쓰고 멈춘다(§0-a). 같다고 받는 기준(옛 `match_threshold`)은 층 config 키가 아니다 — 사내 손잡이 `knobs.json`의 `match_threshold`다(층 config에 남아 있으면 `bootstrap`이 손잡이 값과 같으면 「지워도 된다」 한 줄 · 다르면 멈춘다).
 
 ## 0-b. 항목 표 — 무엇을 비우면 무엇이 되나 · 어느 단계가 읽나
 
@@ -47,10 +47,10 @@
 | `layer` | 필수(기록) | 이름의 정본은 폴더 이름이다 — 다르면 `bootstrap`이 거부한다(비면 폴더 이름) | 그래프 |
 | `config_version` | 선택(기록) | 기록 칸이 빈다(골격 판이 대신 · 판정에 쓰지 않는다) | 그래프(기록) |
 | `registration` | 선택(기록) | `registered`로 읽는다 | 그래프(기록) |
-| `categories` | 필수(집이 그 층인 카테고리의 정의문) | 그 층의 닫힌 목록이 빈다 — 목차 노드화 · 추출 · 판정이 고를 카테고리 0(노드가 서지 않는다) | 그래프 |
+| `categories` | 필수(`home`이 그 층인 카테고리의 정의문) | 그 층의 닫힌 목록이 빈다 — 목차 노드화 · 추출 · 판정이 고를 카테고리 0(노드가 서지 않는다) | 그래프 |
 | `relations` | 필수 | 추출 지시문에 관계 이름 목록이 빈다(엣지를 거르는 것은 `relation_patterns`) | 그래프(추출) |
 | `relation_patterns` | 필수 | 삼항 0 — 게이트가 엣지를 거른다(`show log gate`) | 그래프(구축) |
-| `uses` | 다른 층 카테고리를 쓰면 필수(골격 카테고리 포함) | 그 카테고리를 쓰는 스키마 · 패턴이 등록 관문 G4C FAIL(「uses에 적는다」) · 그 층에 위아래 쌍이 걸리지 않는다 · 이 층 문서에서 추출이 그 카테고리를 찾지 않는다 | 추출(여기 적은 카테고리를 이 층 문서에서 함께 찾는다 — 정의문은 집 층에서 온다 · 바꾸면 이 층 산문이 다시 뽑힌다) · 그래프(구축 · 받는 거름) |
+| `uses` | 다른 층 카테고리를 쓰면 필수(골격 카테고리 포함) | 그 카테고리를 쓰는 스키마 · 패턴이 등록 관문 G4C FAIL(「uses에 적는다」) · 그 층에 `parent_pairs`이 걸리지 않는다 · 이 층 문서에서 추출이 그 카테고리를 찾지 않는다 | 추출(여기 적은 카테고리를 이 층 문서에서 함께 찾는다 — 정의문은 `home` 층에서 온다 · 바꾸면 이 층 산문이 다시 뽑힌다) · 그래프(구축 · 받는 거름) |
 | `mirrors` | 선택 | 짝 엣지 0 | 그래프(구축) |
 | `polarity` | 선택(극성 없는 층은 생략) | 극성 하강 · 극성 대조 0 | 메타(좌표 태깅) · 그래프 |
 | `skeleton` | 골격 층은 필수 | 좌표 닫힌 목록 0 — 좌표가 서지 않는다 | 메타(좌표 태깅) · 그래프 |
@@ -66,9 +66,9 @@
 
 ## 0-a. 층 공통 config — `layers/common.json` (카테고리 카탈로그)
 
-층 config `categories`는 **집이 그 층인 카테고리의 정의문**이다 — 정의문은 집 층 한 곳이다. 다른 층 카테고리를 쓰는 층은 `uses`에 **이름만** 적는다(골격 카테고리 `Process`·`Unit` 포함 — 이슈이력층이 불량층의 `Failure`와 공정 좌표를 쓰면 `"uses": ["Failure", "Process"]`) · **같은 이름이면 층이 달라도 노드 하나**다.
+층 config `categories`는 **`home`이 그 층인 카테고리의 정의문**이다 — 정의문은 `home` 층 한 곳이다. 다른 층 카테고리를 쓰는 층은 `uses`에 **이름만** 적는다(골격 카테고리 `Process`·`Unit` 포함 — 이슈이력층이 불량층의 `Failure`와 공정 좌표를 쓰면 `"uses": ["Failure", "Process"]`) · **같은 이름이면 층이 달라도 노드 하나**다.
 
-**재사용 규칙 — 새 층의 categories를 쓸 때**: 같은 뜻이면 **기존 이름**을 쓴다(`common.json`의 카테고리 목록이 재사용 목록이다) · 새 이름은 뜻이 다를 때만. 같은 뜻을 다른 이름(`Failure` 대신 `DefectHistory`)으로 선언하면 두 종류로 갈려 층 사이 호환이 끊긴다. 그래서 `bootstrap`은 **없던 카테고리를 더할 때** 그 아래에 기존 카탈로그(카테고리마다 `home` · `used_by` · 선언한 층의 정의문 앞부분)를 보인다 — 표시일 뿐 막지 않는다(같은 뜻인지는 사람이 본다). 그러면 층 하나가 답할 수 없는 것(집 · 겸 · 쓰는 층 · 이름 규칙 · 위아래 쌍)이 생긴다 — 그것을 **공통 config 한 파일**에 둔다(`$ONTO_HOME/layers/common.json` · 층 목록에는 안 잡힌다):
+**재사용 규칙 — 새 층의 categories를 쓸 때**: 같은 뜻이면 **기존 이름**을 쓴다(`common.json`의 카테고리 목록이 재사용 목록이다) · 새 이름은 뜻이 다를 때만. 같은 뜻을 다른 이름(`Failure` 대신 `DefectHistory`)으로 선언하면 두 종류로 갈려 층 사이 호환이 끊긴다. 그래서 `bootstrap`은 **없던 카테고리를 더할 때** 그 아래에 기존 카탈로그(카테고리마다 `home` · `used_by` · 선언한 층의 정의문 앞부분)를 보인다 — 표시일 뿐 막지 않는다(같은 뜻인지는 사람이 본다). 그러면 층 하나가 답할 수 없는 것(`home` · 겸 · 쓰는 층 · 이름 규칙 · `parent_pairs`)이 생긴다 — 그것을 **공통 config 한 파일**에 둔다(`$ONTO_HOME/layers/common.json` · 층 목록에는 안 잡힌다):
 
 ```json
 {"common_version": 1,
@@ -78,35 +78,35 @@
    "Property": {"home": "process", "used_by": ["process"]},
    "Failure":  {"home": "defect", "used_by": ["defect", "issue"]},
    "Effect":   {"home": "defect", "no_path": "여러 공정이 함께 쓰는 공용 분류", "used_by": ["defect"]}},
- "pairs": [{"lower": "Unit", "upper": "Process", "rel": "part_of", "src": "lower", "정의문": "설비가 그 공정에 속한다"},
+ "parent_pairs": [{"lower": "Unit", "upper": "Process", "rel": "part_of", "src": "lower", "정의문": "설비가 그 공정에 속한다"},
            {"lower": "Property", "upper": "Unit", "rel": "has_property", "src": "upper", "정의문": "설비가 그 관리항목을 갖는다"}],
  "sep": "::"}
 ```
 
 | 키 | 뜻 | 쓰는 자리 |
 |---|---|---|
-| `home` | **집** — 그 카테고리의 노드가 사는 층. 어느 층 문서가 말하든 table·prose 모두 집 그래프에서 매칭·생성한다(같은 뜻이면 노드 하나). 좌표 층 = `Process`의 집 | 해소 · 좌표 층 · `doctor` 첫 줄 |
+| `home` | **`home`** — 그 카테고리의 노드가 사는 층. 어느 층 문서가 말하든 table·prose 모두 `home` 그래프에서 매칭·생성한다(같은 뜻이면 노드 하나). 좌표 층 = `Process`의 `home` | 해소 · 좌표 층 · `doctor` 첫 줄 |
 | `also` | **겸** — 「그 단(`main`·`sub`·`detail`)의 이 카테고리 노드는 저 카테고리이기도 하다」. 노드에 저장하지 않고 계산한다(고치면 바로 따라온다) | 매칭 후보 · 삼항 게이트 · 자기 좌표 규칙 · 추출 어휘 한 줄 · `show node`의 「겸 Unit」 |
-| `used_by` | **쓰는 층** — 그 카테고리를 정의하거나(`categories`) `uses`에 적은 층 전부. `bootstrap`이 층 config에서 적는다(사람이 관리하지 않는다 · 손으로 고쳐도 되돌린다). 결과 기록이라 판정(집·제거·겹침)은 이것을 읽지 않는다 | 공통 config 하나로 「누가 무엇을 쓰나」를 본다 · 새 카테고리 경고 |
+| `used_by` | **쓰는 층** — 그 카테고리를 정의하거나(`categories`) `uses`에 적은 층 전부. `bootstrap`이 층 config에서 적는다(사람이 관리하지 않는다 · 손으로 고쳐도 되돌린다). 결과 기록이라 판정(`home`·제거·겹침)은 이것을 읽지 않는다 | 공통 config 하나로 「누가 무엇을 쓰나」를 본다 · 새 카테고리 경고 |
 | `null_markers` | **빈칸 표시 목록**(선택 · 닫힌 목록) — 개체 칸 · 좌표 칸의 값이 이 표기 중 하나와 같으면(공백 무시) 빈 값이다: 개체 0(빈 셀과 같다) · 좌표 칸은 비워 문서 좌표를 물려받는다. 값 칸은 버리지 않는다 — 원문을 두고 판정 대장 행에 표지(`blank`)만. 없으면 기본 `-` · `—` · `–` · `N/A` · `n/a` · `해당 없음` · `해당없음` · `없음`. 사람이 고친다(`bootstrap`은 이 키를 그대로 둔다) — 고치면 그 뒤에 넣는 문서부터 따르고 이미 넣은 문서는 다시 넣는다 | 표 파서 정규화 · 산문 추출 결과 대조(한 함수 `parser/normalizer.null_marker`) · 맞춤 `빈칸 표시` 칸 |
 | `no_path` | **경로 안 씀**(이름 규칙 — 카테고리마다) — 값은 사유 한 줄. 적지 않으면 **씀**(이름에 공정 접두 `노칭::노칭 정밀도`) · 골격 카테고리는 적지 않는다(층 `skeleton`이 정본 · 이름 그대로) · 판정 기준은 §5 · 사유가 비면 지도 점검의 「누락」 · 새 카테고리가 생기면 `bootstrap` 경고 끝에 이름 규칙 줄(경로 씀 · 안 씀)이 뜬다 | 키 조립 · 매칭 · 이관 연쇄 |
-| `pairs` | **위아래 쌍** `{lower, upper, rel, src, 정의문}`(`src` = 엣지가 떠나는 끝 `lower` · `upper`) — 소속 · 폴백 · 제목 트리 · 표의 소유 엣지 · 이관 재배선의 관계가 여기 한 곳(§2) · 위가 골격이 아닌 노드면 아래 이름이 그 노드 아래(`노칭::이송 유닛::모터`) · 두 카테고리를 다 말하는 층의 게이트가 그 삼항을 허용한다(층 `relation_patterns`에 다시 적지 않는다) · **여기 적은 관계 이름은 구조 관계다** — 어느 층 · 어느 카테고리에서든 같은 두 노드의 반대 방향은 커밋하지 않고 `direction_conflict` 큐로 보류된다(먼저 선 것을 둔다 · 그 밖의 관계는 둘 다 서고 `show report`의 「반대 방향 공존」) | 구축 · 이름 · 게이트 |
+| `parent_pairs` | **`parent_pairs`** `{lower, upper, rel, src, 정의문}`(`src` = 엣지가 떠나는 끝 `lower` · `upper`) — 소속 · 폴백 · 제목 트리 · 표의 소유 엣지 · 이관 재배선의 관계가 여기 한 곳(§2) · 위가 골격이 아닌 노드면 아래 이름이 그 노드 아래(`노칭::이송 유닛::모터`) · 두 카테고리를 다 말하는 층의 게이트가 그 삼항을 허용한다(층 `relation_patterns`에 다시 적지 않는다) · **여기 적은 관계 이름은 구조 관계다** — 어느 층 · 어느 카테고리에서든 같은 두 노드의 반대 방향은 커밋하지 않고 `direction_conflict` 큐로 보류된다(먼저 선 것을 둔다 · 그 밖의 관계는 둘 다 서고 `show report`의 「반대 방향 공존」) | 구축 · 이름 · 게이트 |
 | `sep` | 이름 구분자(`::`) | 키 조립 |
 
-카테고리 정의문은 여기 두지 않는다 — 집 층 config `categories`의 값이다(여기 있는 것은 쌍의 정의문뿐). 스키마의 `target_layer`는 있으면 그 카테고리의 집과 같아야 한다(다르면 등록 관문 G4C FAIL).
+카테고리 정의문은 여기 두지 않는다 — `home` 층 config `categories`의 값이다(여기 있는 것은 쌍의 정의문뿐). 스키마의 `target_layer`는 있으면 그 카테고리의 `home`과 같아야 한다(다르면 등록 관문 G4C FAIL).
 
 **맞추기는 `bootstrap`이 한다** — 층 config를 고치고 `python run.py bootstrap`을 치면, 층을 심기 전에 공통 config를 층 config들(`categories`)과 맞춘다. 층 config에서 **결정적으로 따라 나오는 줄은 자동**이고, **새 결정은 사람**이다:
 
 | 경우 | `bootstrap`이 하는 것 | 사람이 하는 것 |
 |---|---|---|
-| **골격 카테고리**(층 config `skeleton.category`) | 집 = 골격 층 — 여러 층이 선언해도 자동 추가 · 빈칸이면 채운다(골격이 이미 정했다) | 없음 — 단 채운 `home`이 골격 층과 다르거나 두 층의 골격이 같은 카테고리면 멈춘다(아래 ⓕⓖ) |
+| **골격 카테고리**(층 config `skeleton.category`) | `home` = 골격 층 — 여러 층이 선언해도 자동 추가 · 빈칸이면 채운다(골격이 이미 정했다) | 없음 — 단 채운 `home`이 골격 층과 다르거나 두 층의 골격이 같은 카테고리면 멈춘다(아래 ⓕⓖ) |
 | 카탈로그에 없는 카테고리를 **한 층만** 선언 | 자동 추가(`home` = 그 층) · 화면 `공통 config + 'X' (home 층A — 층A만 선언)` | 없음 |
 | 카탈로그에 없는 카테고리를 **여러 층이** 선언 | `home` 빈칸으로 추가하고 **멈춘다** | 선언한 층 중 하나로 `home`을 채우고 다시 `bootstrap`(다음은 다른 층의 정의를 `uses`로 옮기는 제안 — 아래 「옛 모양」) |
-| 카탈로그에 있는데 **어느 층도 선언 안 함** | 그 집 그래프에 노드가 0이면 자동 제거 · 있으면 **멈춘다** | 층 config에 되살리거나 재구축(`python run.py rebuild` — 계획 → `--yes` · 2B 가이드 §7) |
+| 카탈로그에 있는데 **어느 층도 선언 안 함** | 그 `home` 그래프에 노드가 0이면 자동 제거 · 있으면 **멈춘다** | 층 config에 되살리거나 재구축(`python run.py rebuild` — 계획 → `--yes` · 2B 가이드 §7) |
 | 카탈로그에 있고 선언도 있다 | **건드리지 않는다** — `home`·`also`는 사람 값 | 겸(`also`)은 사람이 쓴다 |
-| 노드가 있는 카테고리의 `home`을 바꿨다 | **멈춘다** — 옛 집 그래프에 그 카테고리 노드가 남아 있다 | 재구축(`python run.py rebuild`) 또는 `home`을 되돌린다 |
+| 노드가 있는 카테고리의 `home`을 바꿨다 | **멈춘다** — 옛 `home` 그래프에 그 카테고리 노드가 남아 있다 | 재구축(`python run.py rebuild`) 또는 `home`을 되돌린다 |
 | **처음**(파일 없음) | 같은 규칙으로 `common.json`을 바로 만든다 · 빈칸이 있으면 멈춘다 | 빈칸을 채우고 다시 `bootstrap` |
-| **옛 모양**(공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 카테고리 정의) | 맞추기 전에 새 모양 **제안**(`work/config_next/layers/` — `layers/`와 같은 모양) · **보고**(같은 폴더의 보고 md)를 쓰고 **멈춘다** — 그래프 · config · 등록부 쓰기 0 | 보고(이름이 바뀌는 카테고리 · 「안 씀」 사유 · 나란히 놓인 정의문)를 읽고 화면 다음 줄대로 지도 대조(`export config --json` 둘 → `--diff`) → 복사 → `bootstrap` · 이름이 바뀌는 카테고리가 있으면 새 인입 전에 `python run.py rebuild` |
+| **옛 모양**(공통 `canonical_scope` · 층 `category_pair_map` · `home`이 아닌 층의 카테고리 정의) | 맞추기 전에 새 모양 **제안**(`work/config_next/layers/` — `layers/`와 같은 모양) · **보고**(같은 폴더의 보고 md)를 쓰고 **멈춘다** — 그래프 · config · 등록부 쓰기 0 | 보고(이름이 바뀌는 카테고리 · 「안 씀」 사유 · 나란히 놓인 정의문)를 읽고 화면 다음 줄대로 지도 대조(`export config --json` 둘 → `--diff`) → 복사 → `bootstrap` · 이름이 바뀌는 카테고리가 있으면 새 인입 전에 `python run.py rebuild` |
 
 **뼈대층(설비·공정)을 처음 세울 때**의 골격 두 단 · 겸 · 별칭은 `골격작성_가이드.md` §3-a(그때만 쓰는 절)다. `bootstrap` 끝에 골격 카테고리마다 겸 상태(켜짐 · 꺼짐 · 반쪽 ⚠) 한 줄이 뜬다 — 표시일 뿐이다.
 
@@ -152,8 +152,8 @@
 | Key | Add | Why |
 |---|---|---|
 | `categories` | `Component` — 「유닛을 이루는 교체·정비 단위(예: 상부 금형 · 서보 모터). 유닛 자체·소모품 규격값은 제외」 | 정의문이 추출·판정 프롬프트에 그대로 들어간다 — 헷갈리는 이웃(Unit·Property)을 적는다 |
-| 공통 config `pairs` | `{"lower": "Component", "upper": "Unit", "rel": "part_of", "src": "lower"}` · 같은 꼴로 `"upper": "Process"`(`categories`의 `"Component": {"home": "<층>"}`는 한 층만 정의하면 `bootstrap`이 더한다) | 위가 골격이 아닌 노드(Unit)라 부품 이름이 **소속 유닛 아래로** 중첩된다 — `노칭::이송 유닛::상부 금형`(다른 유닛의 같은 이름은 다른 노드). 소속이 없거나 골격이면 `노칭::상부 금형` · 쌍의 삼항은 `relation_patterns`에 다시 적지 않는다 · §5 |
-| `relations` · `relation_patterns` | 관계 이름(`part_of`) · 위아래 쌍이 아닌 삼항(`Property of Component` 같은) | 패턴표(층 패턴 ∪ 그 층의 위아래 쌍)에 없는 삼항은 게이트가 **조용히 버린다**(`show log gate`에만 남는다) — 여기가 가장 자주 빠지는 자리 |
+| 공통 config `parent_pairs` | `{"lower": "Component", "upper": "Unit", "rel": "part_of", "src": "lower"}` · 같은 꼴로 `"upper": "Process"`(`categories`의 `"Component": {"home": "<층>"}`는 한 층만 정의하면 `bootstrap`이 더한다) | 위가 골격이 아닌 노드(Unit)라 부품 이름이 **소속 유닛 아래로** 중첩된다 — `노칭::이송 유닛::상부 금형`(다른 유닛의 같은 이름은 다른 노드). 소속이 없거나 골격이면 `노칭::상부 금형` · 쌍의 삼항은 `relation_patterns`에 다시 적지 않는다 · §5 |
+| `relations` · `relation_patterns` | 관계 이름(`part_of`) · `parent_pairs`이 아닌 삼항(`Property of Component` 같은) | 패턴표(층 패턴 ∪ 그 층의 `parent_pairs`)에 없는 삼항은 게이트가 **조용히 버린다**(`show log gate`에만 남는다) — 여기가 가장 자주 빠지는 자리 |
 | `query_traverse` | `Unit → Component`는 `recursive: false` | 설비를 물으면 유닛까지, 유닛을 물어야 부품 — 깊이는 골격이 아니라 여기서 조절한다 |
 | `fact_templates` · `prompts` 정의문 | 새 관계의 문장 틀 · 추출 정의문 | 없으면 답이 관계를 문장으로 못 만든다 |
 | `config_version` | 올린다(기록) | 층 개정 절차 — 어느 판으로 넣었는지 대장에 남는다 · 추출을 다시 뽑을지는 판정에 쓰지 않는다(추출 칸의 내용으로 자동 — §1-b) |
@@ -171,9 +171,9 @@
 | 자리 | 바꿀 줄(그대로) | 왜 |
 |---|---|---|
 | 그 층 config `categories`의 유닛 카테고리 정의문 | `"Unit": "설비를 이루는 유닛 · 부(部) · 모듈 이름(예: 언와인더 unit · 공급부 · NG unit). 공정 이름 · 설비 전체 이름 · 부품 · 규격값은 제외"` | 목차 노드화와 추출이 이 정의문으로 「유닛 제목」을 알아본다 — 예에 사내 양식의 유닛 표기를 둘셋 적는다 |
-| 공통 config `pairs` | `{"lower": "Property", "upper": "Unit", "rel": "has_property", "src": "upper"}`가 있는지 본다(mock에는 있다) | 유닛에 붙은 사양이 `노칭::언와인더 unit::속도`로 선다(유닛마다 다른 노드) · 공정에 붙은 사양은 `노칭::속도` 그대로 · 표(CP · PFMEA)는 소속이 공정이라 이름이 바뀌지 않는다 |
+| 공통 config `parent_pairs` | `{"lower": "Property", "upper": "Unit", "rel": "has_property", "src": "upper"}`가 있는지 본다(mock에는 있다) | 유닛에 붙은 사양이 `노칭::언와인더 unit::속도`로 선다(유닛마다 다른 노드) · 공정에 붙은 사양은 `노칭::속도` 그대로 · 표(CP · PFMEA)는 소속이 공정이라 이름이 바뀌지 않는다 |
 | 그 층 config `value_categories` | `"value_categories": {"Property": "설비사양"}`(값을 받는 카테고리 → 값을 싣는 속성 이름) — **표 규격(`spec`)과 다른 이름**을 쓴다: 설비 RFQ의 값은 관리값이 아니라 설비사양이다(같은 이름이면 표의 관리 규격과 한 칸에서 충돌 판정을 받는다) | 없으면 산문 값 0 — 사양 값이 청크 원문에만 남는다 |
-| 그 층 config `categories` · `uses` | 그 층이 Unit · Property를 둘 다 말하는지 본다(집이면 `categories` · 아니면 `uses`) | 두 카테고리를 다 말하는 층에만 위아래 쌍이 걸린다 — 유닛 → 사양 소속 엣지가 게이트를 지난다 · 없으면 사양이 유닛에 닿지 못하고 거부 묶음에 쌓인다 |
+| 그 층 config `categories` · `uses` | 그 층이 Unit · Property를 둘 다 말하는지 본다(`home`이면 `categories` · 아니면 `uses`) | 두 카테고리를 다 말하는 층에만 `parent_pairs`이 걸린다 — 유닛 → 사양 소속 엣지가 게이트를 지난다 · 없으면 사양이 유닛에 닿지 못하고 거부 묶음에 쌓인다 |
 
 `config_version`은 올리지 않아도 된다 — 추출을 다시 뽑을지는 추출 칸(`categories` · `relations` · `relevance_terms` · `extract_patterns` · `value_categories` · 공통 `categories`의 겸)의 내용이 바뀌었는지로 자동으로 정해진다(`config_version`은 기록만 · `relation_patterns` 같은 구축 칸만 바꾸면 추출은 재사용 — LLM 0).
 
@@ -185,7 +185,7 @@
 
 | 무엇 | 이렇게 쓴다 |
 |---|---|
-| **어느 층의 config에 넣나** | 그 카테고리의 **집**(공통 config `categories.<카테고리>.home`)인 층 — 사내는 골격(공정 · 설비)을 가진 층이 설비층이라 유닛 · 사양 정의문도 설비층 config에 · 다른 층은 정의문 없이 `uses`에 이름만(노드는 집 하나) |
+| **어느 층의 config에 넣나** | 그 카테고리의 **`home`**(공통 config `categories.<카테고리>.home`)인 층 — 사내는 골격(공정 · 설비)을 가진 층이 설비층이라 유닛 · 사양 정의문도 설비층 config에 · 다른 층은 정의문 없이 `uses`에 이름만(노드는 `home` 하나) |
 | **한 문장 = 무엇 + 예 둘셋 + 제외** | `"Unit": "설비를 이루는 한 부분(유닛 · 부(部) · 모듈)의 이름(예: <사내 양식의 유닛 표기 둘셋>). 설비 전체를 부르는 이름 · 공정 이름 · 부품 · 규격값은 제외"` — 예는 **사내 양식에서 실제로 쓰는 표기**를 그대로 |
 | **「unit」의 두 뜻을 가른다** | 사내 문서는 설비 전체를 「○○ unit」으로도 부르고(설비 이름) 설비의 한 부분도 「○○ unit」으로 부른다 — 정의문의 제외에 「설비 전체를 부르는 「○○ unit」」을 적고, 층 힌트에 둘을 가르는 단서(시트 이름 · 문서 제목이면 설비 · 그 안의 번호 줄이면 부분)를 한 줄 |
 | **이웃과의 경계** | 공정(골격 이름 — 정의문에 「공정 이름은 제외」) · 부품(유닛 안의 교체 단위 — `Component`) · 사양(값이 붙는 항목 — `Property` · 「그 아래 줄이 값」) — 헷갈리는 이웃을 정의문 끝 「제외」에 이름으로 적는다 |
@@ -210,8 +210,8 @@
 | 키 | 규칙 |
 |---|---|
 | `relations` | **이름 배열일 뿐** — 대칭 표시를 여기 심지 않는다(게이트가 못 읽는다 · §3.1 규약 4) |
-| `relation_patterns` | 게이트가 대조하는 **삼항 표**(그 층이 말하는 위아래 쌍의 삼항은 게이트가 더한다 — 여기 다시 적지 않는다). 정의문 없는 관계를 올리지 않는다. **골격 삼항(`Process part_of Process` 등)은 넣지 않는다** — `Unit part_of Process`는 위아래 쌍이 준다 |
-| `uses` · 위아래 쌍 | 다른 층 카테고리는 `uses`에 이름만(골격 카테고리 포함 — 없으면 G4C FAIL). 이종 쌍의 방향은 **공통 config `pairs`**(§0-a)가 준다 — **동종 쌍은 여기로 방향을 못 정한다**(seed·edges 선언만). 소속 엣지·좌표 폴백은 쌍의 엣지를 **두 방향으로 다 본다** — `Unit → Process part_of`(개체 → 대상)든 `Property ← Unit has_property`(대상 → 개체)든 한 줄이면 된다. 쌍은 **두 카테고리를 다 말하는 층**(`categories` ∪ `uses`)에만 걸린다 — 없으면 결함 로그 「카테고리쌍 매핑 없음」이고 그 노드는 「엣지 없는 노드」로 센다(인입 끝 요약 `부착 —` 줄) |
+| `relation_patterns` | 게이트가 대조하는 **삼항 표**(그 층이 말하는 `parent_pairs`의 삼항은 게이트가 더한다 — 여기 다시 적지 않는다). 정의문 없는 관계를 올리지 않는다. **골격 삼항(`Process part_of Process` 등)은 넣지 않는다** — `Unit part_of Process`는 `parent_pairs`이 준다 |
+| `uses` · `parent_pairs` | 다른 층 카테고리는 `uses`에 이름만(골격 카테고리 포함 — 없으면 G4C FAIL). 이종 쌍의 방향은 **공통 config `parent_pairs`**(§0-a)가 준다 — **동종 쌍은 여기로 방향을 못 정한다**(seed·edges 선언만). 소속 엣지·좌표 폴백은 쌍의 엣지를 **두 방향으로 다 본다** — `Unit → Process part_of`(개체 → 대상)든 `Property ← Unit has_property`(대상 → 개체)든 한 줄이면 된다. 쌍은 **두 카테고리를 다 말하는 층**(`categories` ∪ `uses`)에만 걸린다 — 없으면 결함 로그 「카테고리쌍 매핑 없음」이고 그 노드는 「엣지 없는 노드」로 센다(인입 끝 요약 `부착 —` 줄) |
 
 ## 3. 질의 확장 — `query_traverse` (형태 주의: 3단 중첩)
 
@@ -238,7 +238,7 @@
 
 ## 5. 이름·문장화 — 카테고리 경로 · `mirrors` · `fact_templates`
 
-이름 규칙(카테고리 경로 `no_path` · 위아래 쌍 `pairs`)은 **공통 config**(§0-a)에 한 번 쓴다 — 층 config에는 두지 않는다. 나머지 둘은 층 config다.
+이름 규칙(카테고리 경로 `no_path` · `parent_pairs`)은 **공통 config**(§0-a)에 한 번 쓴다 — 층 config에는 두지 않는다. 나머지 둘은 층 config다.
 
 ```json
 "mirrors":         {"enabled": true, "relation": "mirrors"},
@@ -257,7 +257,7 @@
 |---|---|---|
 | ①이름에 공정 접두가 붙는다 — **공정이 다르면 다른 노드**(같은 「상부 금형」도 노칭의 것과 스태킹의 것이 따로) ②좌표가 미해소면 그 노드를 **만들지 않는다** | 구성 부품 · 공정 파라미터·관리 특성 · 고장(불량 유형) — 공정을 빼면 어느 실물·어느 값·어느 공정의 고장인지 모른다 | 여러 공정이 함께 쓰는 공용 분류(불량 영향 등) — 쓰면 **같은 분류가 공정마다 갈린다**(공정 사이 비교가 끊긴다) · 골격은 이름 그대로(적지 않는다) |
 
-**이름의 앞말 — 위아래 쌍**: 쌍의 위가 골격이 아닌 노드(Unit 등)면 아래 카테고리는 **소속**(추출의 `belongs_to` · 표는 같은 행의
+**이름의 앞말 — `parent_pairs`**: 쌍의 위가 골격이 아닌 노드(Unit 등)면 아래 카테고리는 **소속**(추출의 `belongs_to` · 표는 같은 행의
 소유 엣지)이 그 노드로 풀릴 때 그 노드의 canonical을 이름 부모로 쓴다: `노칭::이송 유닛::모터`. 소속이 골격 노드거나 없으면
 좌표 접두(`노칭::모터`). 목록은 없다 — 쌍에서 나온다(`python run.py export config` 요약의 `name form` 줄이 카테고리마다 보인다).
 설비 문서는 `Component → Unit` 쌍을 둔다. 사양을 공정 스코프 키(`노칭::가압력` — CP·PFMEA·RFQ가 같은 노드로 만난다)로 두려면
@@ -347,11 +347,11 @@ categories를 먼저 확정한다. 2~5종이 정상이고, 많으면 잘못 갈�
 - 값·수치·판정결과는 카테고리가 아니다 — attribute다.
 
 [그다음 — 관계 묶음]
-relations · relation_patterns · uses를 **한 묶음으로** 만든다(위아래 쌍은 공통 config — 층 패턴에 다시 적지 않는다).
+relations · relation_patterns · uses를 **한 묶음으로** 만든다(`parent_pairs`은 공통 config — 층 패턴에 다시 적지 않는다).
 - relations는 **이름 배열일 뿐**이다. 대칭 표시를 여기 심지 않는다.
 - relation_patterns의 각 항목에 **정의문을 병기**한다 — 정의문 없는 관계는 올리지 않는다.
 - **골격 소유 관계의 삼항**(Process part_of Process 등)은 패턴표에 넣지 않는다.
-  Unit part_of Process 같은 위아래 쌍의 삼항은 공통 config `pairs`가 준다.
+  Unit part_of Process 같은 `parent_pairs`의 삼항은 공통 config `parent_pairs`가 준다.
 
 [나머지]
 query_traverse · fact_templates 등은 첨부 ①②를 베이스로

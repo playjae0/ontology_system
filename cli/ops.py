@@ -154,7 +154,7 @@ def _alias_reject(a):
     if not approved(a.yes, f'python run.py ops alias-reject {a.layer} {target} "{surface}" --actor {a.actor} --yes'):
         return 0
     ops.alias_reject(a.layer, target, surface, a.actor, a.reason)
-    print(f"[거둠] '{surface}' ↛ {pv['canonical']} — 노드 · 사전에서 뺐다 · 별칭 대장 「거부」"
+    print(f"[거둠] '{surface}' ↛ {pv['canonical']} — 노드 · 사전에서 뺐다 · 표기 대장 별칭 갈래 「거부」"
           f"(다시 붙이지 않는다 · 재구축 뒤 ops replay가 다시 거둔다 · by {a.actor})")
     if pv["skeleton"]:
         print("  ▶ 다음 줄 — python run.py bootstrap   (골격 닫힌 목록에서 뺀다 — 판이 바뀐다)")

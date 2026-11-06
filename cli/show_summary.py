@@ -8,8 +8,8 @@
     python run.py show summary --diff <이름1> <이름2>  두 판의 같은 줄끼리 — 바뀐 줄만(`지금` = 지금 판)
 
 **화면은 장부 · 그래프의 투영이다**(새 판정 0 · 저장은 스냅샷 파일뿐): 층별 노드(골격 · auto · 확정 · 그 밖 · 엣지 없는 노드) ·
-엣지(관계별) · **문서별 줄**(노드 · 엣지 · 보류 · 유닛 이하 비율 · 연결 보강 붙음/못 고름/버림 · 정답률) · 큐(종류별 열림/닫힘) ·
-보류(사유별) · 재연결 누계(붙음 — 대장의 재시도 행 · 남음 · 상한 도달 — 큐) · 불확실(사람 검토 대기 — `ops review`) · 값(attrs) 수.
+엣지(관계별) · **문서별 줄**(노드 · 엣지 · 보류 · 유닛 이하 비율 · 연결 보강 이어짐/못 고름/버림 · 정답률) · 큐(종류별 열림/닫힘) ·
+보류(사유별) · 재연결 누계(이어짐 — 대장의 재시도 행 · 남음 · 상한 도달 — 큐) · 불확실(사람 검토 대기 — `ops review`) · 값(attrs) 수.
 문서별 수는 맞춤표(`core/build/reconcile.table`)의 같은 줄에서 온다 — 문서 끝 한 줄 요약과 같은 수다.
 """
 from __future__ import annotations
@@ -72,7 +72,7 @@ def collect(graphs=None):
                               "보강": rf, "정답률": (sc or {}).get("정답률")}
         ratio = f"{s['유닛 이하 비율']}%" if s["유닛 이하 비율"] is not None else "—"
         out.append((f"문서 {doc_id}", f"노드 {mine[0]:,} · 엣지 {mine[1]:,} · 보류 {s['보류']:,} · 유닛 이하 {ratio} · "
-                                       f"연결 보강 붙음 {rf.get('붙음', 0):,}/못 고름 {rf.get('못 고름', 0):,}/버림 "
+                                       f"연결 보강 이어짐 {rf.get('붙음', 0):,}/못 고름 {rf.get('못 고름', 0):,}/버림 "
                                        f"{rf.get('버림', 0):,}"
                                        + (f" · 정답률 {sc['정답률']}%({sc['맞음']}/{sc['맞음'] + sc['틀림']})"
                                           if sc and sc.get("정답률") is not None else "")))
@@ -95,8 +95,8 @@ def collect(graphs=None):
     healed = sum(1 for d in store.read(store.DOC_REGISTRY, {}) for r in (ledger.read(d) or {}).get("rows") or []
                  if r.get("by") == "retry")
     pl = plan()
-    raw["재연결"] = {"붙음 누계": healed, "남음": sum(pl["target"].values()), "상한 도달": pl["capped"]}
-    out.append(("재연결", f"붙음 누계 {healed:,}(대장의 재시도 행) · 남음 {sum(pl['target'].values()):,} · "
+    raw["재연결"] = {"이어짐 누계": healed, "남음": sum(pl["target"].values()), "상한 도달": pl["capped"]}
+    out.append(("재연결", f"이어짐 누계 {healed:,}(대장의 재시도 행) · 남음 {sum(pl['target'].values()):,} · "
                          f"상한 도달 {pl['capped']:,}"))
     rv = len(ops_review.items())
     raw["불확실"] = rv

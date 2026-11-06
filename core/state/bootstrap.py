@@ -38,7 +38,7 @@ from core.state.skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
                        SEED_STATUS, SeedError, _pad, _register_aliases, plant)
 
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
-#: 층별 마지막 별칭 대장 싣기 — `{층: {loaded, already, missing, rejected}}`(B108 ① · 화면 · 시험)
+#: 층별 마지막 표기 대장 별칭 갈래 싣기 — `{층: {loaded, already, missing, rejected}}`(B108 ① · 화면 · 시험)
 ALIAS_LOAD = {}
 # **층 자산의 자리는 상수가 아니라 질문이다**(B79 ①) — 상태 루트 아래이고
 # `paths.reset()`을 따라 움직여야 한다. `paths.layers()`가 유일한 자리 소유자다.
@@ -201,7 +201,7 @@ def write_closed_list(layer, g, cfg, seed=None, book=None):
 
     **파생물이다**(P5) — 골격을 재빌드하면 loader가 다시 만든다. 손으로 고치지 않는다.
 
-    **별칭 = seed + 별칭 대장**(B108 ① · `alias_book.snapshot_aliases`) — 그래프에 붙은 다른 별칭은 싣지 않는다:
+    **별칭 = seed + 표기 대장 별칭 갈래**(B108 ① · `alias_book.snapshot_aliases`) — 그래프에 붙은 다른 별칭은 싣지 않는다:
     그래야 스냅샷(과 그 판 `tagger.list_version`)이 bootstrap을 인입 앞에 돌렸는지 뒤에 돌렸는지와 무관하다.
     """
     # 구조 부모를 함께 싣는다 — 태거가 `process_group`(tier:main 조상 — A11-7)을
@@ -278,7 +278,7 @@ def bootstrap(layer, echo=True):
                f"— 깨끗한 재빌드가 필요하다 {stale}")
         store.append_defect(msg)
 
-    # **별칭 대장의 골격 대상 별칭을 먼저 싣는다**(B108 ①) — 심은 뒤 · 스냅샷 전에. 스냅샷 = seed + 대장
+    # **표기 대장 별칭 갈래의 골격 대상 별칭을 먼저 싣는다**(B108 ①) — 심은 뒤 · 스냅샷 전에. 스냅샷 = seed + 대장
     book = alias_book.AliasBook.open()
     ALIAS_LOAD[layer] = loaded = alias_book.load_skeleton(book, layer, g, dictionary)
 
@@ -313,7 +313,7 @@ def bootstrap(layer, echo=True):
         if stale:
             print(f"  ⚠ 옛 골격 노드 {len(stale)}건 잔존: {stale}")
     if echo and (loaded["loaded"] or loaded["already"] or loaded["missing"] or loaded["rejected"]):
-        print(f"[bootstrap] {layer}: 별칭 대장 — 골격 대상 실음 {loaded['loaded']:,} · 이미 있음 {loaded['already']:,}"
+        print(f"[bootstrap] {layer}: 표기 대장 별칭 갈래 — 골격 대상 실음 {loaded['loaded']:,} · 이미 있음 {loaded['already']:,}"
               f" · 대상 없음 {len(loaded['missing']):,}" + (f" · 거부 {loaded['rejected']:,}" if loaded["rejected"] else ""))
         for r in loaded["missing"]:
             t = r["target"]
