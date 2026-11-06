@@ -11,7 +11,8 @@
     "Unit": {
       "home": "process",
       "used_by": [
-        "process"
+        "process",
+        "quality"
       ]
     },
     "Property": {

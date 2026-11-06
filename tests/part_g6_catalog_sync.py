@@ -271,7 +271,7 @@ _rw(_P.common(), lambda c: c["categories"]["Failure"].update(used_by=["process",
 _rc, _o = _boot()
 show("ⓑ 손으로 고친 used_by는 다음 bootstrap이 층 config 값으로 되돌린다(로그)",
      _rc == 0 and _common()["categories"]["Failure"]["used_by"] == ["quality"]
-     and _common()["categories"]["Unit"]["used_by"] == ["process"] and "층 config에서 온다" in _o,
+     and _common()["categories"]["Unit"]["used_by"] == ["process", "quality"] and "층 config에서 온다" in _o,   # 기대 변경(B184 ① — 품질층 uses에 Unit)
      [l for l in _o.splitlines() if "used_by" in l][:2])
 _cur = _common()
 _cur["categories"]["Failure"]["used_by"] = ["process"]          # 틀린 기록
