@@ -401,17 +401,6 @@ def graph_data(world):
     return nodes, edges
 
 
-def node_color(value):
-    """뷰어의 점 색(`viewer.html`의 `color()`)과 같은 색 — 바깥 장의 칩 · 띠가 그림의 점과 같은 색을 쓴다(B177 ① · 팔레트는 템플릿 한 자리)."""
-    pal = re.findall(r'"(#[0-9a-fA-F]{6})"', re.search(r"const PAL = \[(.*?)\];", _sections()["page"], re.S).group(1))
-    h = 0
-    for ch in str(value):
-        u = ord(ch) if ord(ch) < 0x10000 else 0xD800 + ((ord(ch) - 0x10000) >> 10)   # charCodeAt(0) — 첫 UTF-16 단위
-        h = (h * 31 + u) & 0xFFFFFFFF
-    h = h - 0x100000000 if h >= 0x80000000 else h
-    return pal[abs(h) % len(pal)]
-
-
 def build_html(world, *, query_panel=False, title="온톨로지 그래프"):
     """**템플릿은 하나다** — 파일로 저장하는 `export html`과 뷰어가 같은 것을 쓴다.
 
