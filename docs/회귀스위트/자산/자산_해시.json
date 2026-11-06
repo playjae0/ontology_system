@@ -27,7 +27,7 @@
   "layers/common.json": "803bfde1c027c9b164b9e95c92b5b2bcd8384b1c5baf870a8ee13bd6f2f74333",
   "layers/process/config.json": "3aa05bccf5505bfa45237601f6f3c9048ddab800c6da35da67127439f2edd43c",
   "layers/process/skeleton.json": "a096d1c4897464be54055ed61f945749debd7bab87e296a3c3e6b5844ed378b4",
-  "layers/quality/config.json": "6f68db9e86248b1a3d9850fff9c587d73a7b6739babd09df46d5b077c56b02b3",
+  "layers/quality/config.json": "699f8d81383ab1d0eb75222fd3192f3cf9a5469f8a90d020724aecf8289c70dd",
   "prompts/1.3_interview.md": "78a88626d3dcb7349f2de14cc8d6557d77766322dd16378476690cff48871344",
   "prompts/1.4_generate.md": "7901c50f80a028043119c00a56f3a6aaad57b08737c377cc8041fbc5decbae1a",
   "prompts/2.4_deck.md": "353745f9f178bffbb18f088c7a16b0635858a2b10de632995d13eaece967f87b",
