@@ -260,7 +260,8 @@ def _belongs_edges(b, cfg, graph, env, plans, touched, prov, cid):
             continue
         src, dst, sg, dg = (tid, nid, tg, cg) if fwd else (nid, tid, cg, tg)
         br = gate.commit_edge(graph, src, rel, dst, cfg, gate.PATH_EXTRACT, [prov], env["doc_id"],
-                              evidence_chunk=cid, src_graph=sg, dst_graph=dg)
+                              evidence_chunk=cid, src_graph=sg, dst_graph=dg,
+                              surfaces=(bel["name"], p["row"].get("surface")) if fwd else (p["row"].get("surface"), bel["name"]))
         if br == gate.COMMIT:
             touched.add(nid)
             # 화살표 = 실제 엣지 방향(B112 ⑥) — 대상 → 개체면 이 행 쪽으로 들어온다(←) · 개체 → 대상이면 나간다(→)
@@ -375,7 +376,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
                 # **엣지는 뽑은 층에**, 끝점은 제 집 그래프에서 읽는다(걸침 엣지 — B90 ②)
                 br = gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
                                       [prov], env["doc_id"], evidence_chunk=cid,
-                                      src_graph=sh[2], dst_graph=dh[2])
+                                      src_graph=sh[2], dst_graph=dh[2], surfaces=(r["src"], r["dst"]))
                 if br == gate.COMMIT:
                     touched |= {s, d}
                     _attached(rows.get(s), r["rel"], b.canonical_of(d), "관계", "→")

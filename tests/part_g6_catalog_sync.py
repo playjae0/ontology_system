@@ -419,31 +419,34 @@ finally:
     _c173.write_bytes(_c0173)
 _d173 = XC.diff(json.loads((_t173 / "a.json").read_text(encoding="utf-8")),
                 json.loads((_t173 / "b.json").read_text(encoding="utf-8")))
-show("B173 ⓒ --json 두 번이 바이트 같다 · 관계 패턴 하나를 지운 사본과의 --diff가 그 하나만 낸다",
+# 고침(B186 ① — --diff가 온톨로지 맵의 선도 잰다: 그 패턴이 유일한 출처인 선이 함께 빠진다)
+show("B173 ⓒ --json 두 번이 바이트 같다 · 관계 패턴 하나를 지운 사본과의 --diff가 그 하나(패턴 줄 · 그 선)만 낸다",
      (_t173 / "a.json").read_bytes() == (_t173 / "a2.json").read_bytes()
-     and _d173 == [f"- relation_patterns — {_lay173}: {_p173['src']} -{_p173['rel']}-> {_p173['dst']}"   # 고침(B177 ① — config 키 낱말)
-                   + (" (symmetric)" if _p173["symmetric"] else "")], f"대조 {_d173}")
+     and sorted(_d173) == sorted([f"- relation_patterns — {_lay173}: {_p173['src']} -{_p173['rel']}-> {_p173['dst']}"
+                                  + (" (symmetric)" if _p173["symmetric"] else ""),
+                                  f"- ontology line — {_p173['src']} -{_p173['rel']}-> {_p173['dst']} · 사실 관계"
+                                  + (" · symmetric" if _p173["symmetric"] else "") + " · relation_patterns"]), f"대조 {_d173}")
 
 _r173 = subprocess.run([sys.executable, str(ROOT / "run.py"), "export", "config"], cwd=str(ROOT),
                        env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 _html173 = _P.export("config_map.html").read_text(encoding="utf-8") if _P.export("config_map.html").exists() else ""
-show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 외부 주소 0 · 관계 그림은 지금 뷰어(걸침 엣지 표시) · "
-     "그래프 · config · 등록부 바이트 그대로",
-     _r173.returncode == 0 and "<iframe" in _html173 and "&quot;cross&quot;: true" in _html173
-     and "http://" not in _html173 and "https://" not in _html173 and _hash173() == _h173,
-     f"rc {_r173.returncode} · {_r173.stdout.strip().splitlines()[:1]} · {len(_html173):,}B")
+# 고침(B186 ① — 관계 그림은 온톨로지 맵(인라인 SVG · 층을 넘는 관계는 점선) · 옛 기대: 뷰어 iframe)
+show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 외부 주소 0(SVG 이름공간 밖) · 관계 그림은 온톨로지 맵(층을 넘는 "
+     "관계 점선) · 그래프 · config · 등록부 바이트 그대로",
+     _r173.returncode == 0 and '<svg xmlns="http://www.w3.org/2000/svg" class="omap"' in _html173
+     and 'stroke-dasharray="6 4"' in _html173 and "<iframe" not in _html173
+     and "http://" not in _html173.replace("http://www.w3.org/2000/svg", "")
+     and "https://" not in _html173 and _hash173() == _h173,
+     f"rc {_r173.returncode} · svg {'omap' in _html173} · 점선 {'stroke-dasharray' in _html173} · "
+     f"바이트 그대로 {_hash173() == _h173} · {len(_html173):,}B")
 shutil.rmtree(_t173, ignore_errors=True)
-# B177 ⓑ 지도의 그림은 색 축 layer(그리기 인자) · 뷰어 기본은 자동 그대로(인자 없으면 템플릿의 자동 고름 한 줄 그대로) ·
-# 이름 꼴의 좌표 자리는 좌표 카테고리 이름(등록 블록 자산 — 코드에 카테고리 이름 0은 층 어휘 점검이 잰다)
+# B177 ⓑ 이름 꼴의 좌표 자리는 좌표 카테고리 이름(등록 블록 자산 — 코드에 카테고리 이름 0은 층 어휘 점검이 잰다)
+# 고침(B186 ① — 그림은 온톨로지 맵이라 뷰어 색 축 인자(`color_axis`)는 지웠다 · 점 색은 칩 · 띠와 같은 색 함수 `node_color`)
 from cli import export as EX177                                            # noqa: E402
 from core.state.bootstrap import COORD_CATEGORY as _CC177                 # noqa: E402
-_w177 = XC._world(_m173)
-_auto177, _lay177 = EX177.build_html(_w177), EX177.build_html(_w177, color_axis="layer")
-show("B177 ⓑ 지도 그림의 색 축은 layer(그리기 인자 · 칩 · 띠와 같은 색 함수) · 인자가 없으면 자동 고름 그대로 · "
-     "이름 꼴의 좌표 자리 = 좌표 카테고리 이름",
-     EX177._COLOR_AX in _auto177 and EX177._COLOR_AX not in _lay177
-     and _lay177.replace('const COLOR_AX = "layer" ?? (() => {', EX177._COLOR_AX) == _auto177
-     and "&quot;layer&quot; ??" in XC.render_html(_m173)
+_h177 = XC.render_html(_m173)
+show("B177 ⓑ 지도 그림의 점 색 = 칩 · 띠와 같은 색 함수(home 층) · 이름 꼴의 좌표 자리 = 좌표 카테고리 이름",
+     all(f'fill="{EX177.node_color(v["home"])}"' in _h177 for v in _m173["categories"].values())
      and all(v["name_form"].startswith(f"<{_CC177}>::") for v in _m173["categories"].values()
              if not v["skeleton_of"] and not v["path"].startswith("안 씀")),
      f"이름 꼴 {[v['name_form'] for v in _m173['categories'].values()][:2]}")
@@ -480,11 +483,16 @@ _rc, _o = _boot()
 _w174 = _hash173() == _h174
 _pc, _pl = CM.read(_P.config_next("layers"))
 _d174 = _maps174()
+_rep174 = CN.propose(*CM.read(OLD174))["report"]                     # 옛 사본의 제안 보고(「패턴 뺌」 — 선 출처가 바뀌는 자리)
 # 고침(B177 ⓐ — `--diff`가 층 걸림을 잰다: 옛 모양에서 품질층 게이트가 허용하는 삼항이 하나 늘었다 · 옛 기대: --diff 0)
 show("B174 ⓑ 옛 모양 mock config → bootstrap이 제안(layers 모양) · 보고를 쓰고 멈춘다 · 그래프 · config · 등록부 쓰기 0 · "
      "제안은 새 모양 · B177 ⓐ 지도 지금 ↔ 제안 --diff는 층 걸림 한 줄(품질층에 새로 걸린 쌍)",
      _rc != 0 and "옛 모양" in _o and _P.config_next("보고.md").exists() and _w174
-     and not catalog.old_shape(_pl, _pc) and _d174 == ["+ parent_pairs (layer) — quality: Process -has_property-> Property"],   # 고침(B185 ② — config 키 이름)
+     and not catalog.old_shape(_pl, _pc)
+     and [x for x in _d174 if " ontology line — " not in x] == ["+ parent_pairs (layer) — quality: Process -has_property-> Property"]   # 고침(B185 ② — config 키 이름)
+     # 고침(B186 ① — --diff가 선의 출처도 잰다: 제안이 쌍과 겹치는 패턴을 빼면(보고 「패턴 뺌」) 그 선의 출처에서 relation_patterns가 빠진다)
+     and {x.split(" — ", 1)[1].split(" · ", 1)[0] for x in _d174 if " ontology line — " in x}
+     <= {ln.split(": ", 1)[1] for ln in _rep174["패턴 뺌"]},
      f"rc {_rc} · 쓰기 0 {_w174} · 제안 옛 모양 {catalog.old_shape(_pl, _pc)} · 대조 {_d174[:3]}")
 
 
@@ -582,6 +590,58 @@ show("B186 ⓐ ⓪ 키만 pairs인 새 모양 사본 — 보고는 「키 이름
      len(_pr186["report"]["키"]) == 1 and not _pr186["report"]["이름 바뀜"] and not _pr186["report"]["새로 걸림"]
      and "rebuild" not in _md186 and _d186 == [] and not _pr186["stops"],
      f"키 {_pr186['report']['키']} · 이름 바뀜 {_pr186['report']['이름 바뀜'][:2]} · 새로 걸림 {_pr186['report']['새로 걸림'][:2]} · diff {_d186[:3]}")
+# ────────────────────────────────────────────────────────────── B186 ① 온톨로지 맵 — 카테고리 수준의 지도
+import math                                                         # noqa: E402
+import re                                                           # noqa: E402
+from cli import ingest as IG186, ontology_map as OM186               # noqa: E402
+from core.state import fixtures as FX186                            # noqa: E402
+from core.state.bootstrap import open_graph as _og186               # noqa: E402
+init.init(fresh_=True, all_=True)
+_m0186 = CM.build()                                                 # 그래프가 아직 없다(클린 — bootstrap 전)
+_boot()
+with contextlib.redirect_stdout(io.StringIO()):
+    for _f, _dt in (("CP01.xlsx", "cp"), ("PFMEA01.xlsx", "pfmea")):
+        IG186.ingest_file(str(FX186.ROOT_DIR / "raw" / _f), _dt, ask=False)
+_m186 = CM.build()
+_L186 = {(x["src"], x["rel"], x["dst"]): x for x in _m186["ontology"]["lines"]}
+_loops = {k for k in _L186 if k[0] == k[2]}
+_h186 = XC.render_html(_m186)
+_apex = {}
+for _c, _xy in re.findall(r'class="loop" data-line="([^|]+)\|[^"]*" data-apex="([-\d.]+,[-\d.]+)"', _h186):
+    _apex.setdefault(_c, []).append(tuple(float(v) for v in _xy.split(",")))
+_cxy = {c: (float(x), float(y)) for c, x, y in re.findall(r'data-cat="([^"]+)"><circle cx="([-\d.]+)" cy="([-\d.]+)"', _h186)}
+_sep = all(math.dist(a, b) > 40 for pts in _apex.values() for i, a in enumerate(pts) for b in pts[i + 1:])
+_out = all(math.dist(a, _cxy[c]) > OM186.NODE_R for c, pts in _apex.items() for a in pts)
+show("B186 ⓑ 지도 — mock 고리 여섯(Failure causes · Property mirrors · Unit mirrors · 공정 part_of · precedes · 골격 극성 짝 mirrors) · "
+     "같은 삼항은 선 하나(controlled_by · occurs_in — 출처 둘) · 종류 넷(골격 · 소속 · 사실 + 층을 넘는) · 그림의 고리는 점 밖이고 서로 겹치지 않는다",
+     {(s, r) for s, r, _d in _loops} == {("Failure", "causes"), ("Property", "mirrors"), ("Unit", "mirrors"), ("Process", "part_of"),
+                                        ("Process", "precedes"), ("Process", "mirrors")}
+     and _L186[("Process", "mirrors", "Process")]["kind"] == OM186.KINDS[0]
+     and all(len(_L186[("Failure", r, d)]["sources"]) == 2 for r, d in (("controlled_by", "Property"), ("occurs_in", "Process")))
+     and {x["kind"] for x in _L186.values()} == set(OM186.KINDS) and any(x["cross"] for x in _L186.values())
+     and sum(len(v) for v in _apex.values()) == len(_loops) and _sep and _out,
+     f"고리 {sorted(_loops)} · 그림 고리 {sum(len(v) for v in _apex.values())} · 떨어짐 {_sep} · 점 밖 {_out}")
+_raw186 = {}
+for _lay in ("process", "quality"):
+    _g = _og186(_lay)
+    _nodes = {**{n: v for lay2 in ("process", "quality") for n, v in _og186(lay2).nodes.items()}}
+    for _e in _g.edges:
+        _k = (_nodes[_e["src"]]["category"], _e["rel"], _nodes[_e["dst"]]["category"])
+        _raw186[_k] = _raw186.get(_k, 0) + 1
+show("B186 ⓒ 실제 엣지 수 — CP01 · PFMEA01 상태에서 선마다 = 그 삼항의 엣지 수(대표: Failure causes Failure · Unit part_of Process) · "
+     "0인 선은 「선언만」 · 그래프가 없는 상태(클린)는 수 칸 빔",
+     _L186[("Failure", "causes", "Failure")]["edges"] == _raw186.get(("Failure", "causes", "Failure")) > 0
+     and _L186[("Unit", "part_of", "Process")]["edges"] == _raw186.get(("Unit", "part_of", "Process")) > 0
+     and all(("0 (선언만)" in _h186) for x in _L186.values() if x["edges"] == 0)
+     and all(x["edges"] is None for x in _m0186["ontology"]["lines"]),
+     f"causes {_L186[('Failure', 'causes', 'Failure')]['edges']}/{_raw186.get(('Failure', 'causes', 'Failure'))} · "
+     f"part_of {_L186[('Unit', 'part_of', 'Process')]['edges']}/{_raw186.get(('Unit', 'part_of', 'Process'))} · "
+     f"선언만 {OM186.counts(_m186['ontology'])['선언만']}")
+_A186 = {(x["attribute"], x["where"].split(" · ")[0], x["contextual"]) for x in _m186["ontology"]["attributes"]}
+show("B186 ⓓ attributes 표 — spec(cp · 맥락형) · 측정방법(cp) · 설비사양(value_categories) · severity(pfmea)",
+     {("spec", "schema: cp", True), ("측정방법", "schema: cp", False), ("설비사양", "value_categories (process)", False),
+      ("severity", "schema: pfmea", False)} <= _A186 and "<h3>attributes" in _h186,
+     str(sorted(_A186)))
 init.init(fresh_=True, all_=True)
 
 done()

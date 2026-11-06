@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from collections import Counter
 
+from core.build.gate import SAME_NODE
+
 #: 보류 사유 — 대장 행의 (역할, 판정)에서 읽는다(닫힌 표).
 HOLD_REASONS = (("anchor", "orphan", "좌표 목록 밖"),
                 ("entity", "orphan", "골격 밖(골격 카테고리 · B94)"),
@@ -81,15 +83,24 @@ def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage, extra=Non
         "불확실": v.get("uncertain", 0) + v.get("lowres", 0),
         "보류": dict(hold),
         "관계 버림": [[f"{s} {rel} {d}", n] for (s, rel, d), n in Counter(
-            (x.get("src_cat"), x.get("rel"), x.get("dst_cat")) for x in rejects).most_common(5)],
+            (x.get("src_cat"), x.get("rel"), x.get("dst_cat")) for x in rejects if x.get("verdict") != SAME_NODE).most_common(5)],
         "LLM": {pt: {**u, "avg": round((u["prompt"] + u["completion"]) / u["calls"], 1)
                      if u["calls"] else 0} for pt, u in usage.items()},
         "층": {lay: {"노드": d[0], "엣지": d[1], "auto": d[2]} for lay, d in layers.items()
               if any(d)},
         "큐 이번": dict(Counter(x["kind"] for x in q_new)),
         "큐 이전": dict(Counter(x["kind"] for x in q_old)),
+        **same_node(rejects),
         **(extra or {}),
     }
+
+
+def same_node(rejects):
+    """**같은 노드 엣지**(B186 ② — 관문이 세우지 않았다) — `{"같은 노드 엣지": [수, 표기가 다른 수]}` · 없으면 빈 칸(대장 바이트 그대로)."""
+    xs = [x for x in rejects if x.get("verdict") == SAME_NODE]
+    if not xs:
+        return {}
+    return {"같은 노드 엣지": [len(xs), sum(1 for x in xs if len({_k(t) for t in x.get("surfaces") or ()}) > 1)]}
 
 
 def totals(res):

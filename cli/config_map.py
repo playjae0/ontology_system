@@ -26,7 +26,7 @@ from core.state.bootstrap import COORD_CATEGORY, NoCoordLayer, coord_layer, open
 from core.state.config_scope import renamed
 from core.state.status import is_live
 
-MAP_VERSION = 3                                    # 3 — 공통 쌍 정의 · 층의 쌍에서만 온 것 · 이름 꼴 표기(B177 ①)
+MAP_VERSION = 4                                    # 4 — 온톨로지 맵(선 · 고리 · 실제 엣지 수 · attributes) · 허용 삼항 이름 pair_edges(B186 ①)
 #: 점검 갈래 — 거부(인입 · bootstrap이 멈춘다) · 경고(막지 않는다 · 고칠 거리) · 표시(사람이 본다)
 LEVELS = ("거부", "경고", "표시")
 #: 이름 꼴의 좌표 자리 — 좌표 카테고리 이름(등록 블록 자산 `process_coord` — 코드에 카테고리 이름 0 · B177 ①) · 이름 자리는 `<name>`
@@ -127,13 +127,13 @@ def _layer(lay, cfg, lenses, edges, old, schemas):
     raw = {(p.get("src"), p.get("rel"), p.get("dst")) for p in cfg.get("relation_patterns") or []}
     return {
         # 이 층에 걸린 쌍 중 층 패턴에 없는 것 — 공통 `parent_pairs`에서만 온다(B177 ① 표시 「parent_pairs에서」 · 옛 모양은 층 매핑이라 0)
-        "pairs_only": [] if old else [list(e) for e in edges if {e[0], e[2]} <= spk and tuple(e) not in raw],
+        "pair_edges_only": [] if old else [list(e) for e in edges if {e[0], e[2]} <= spk and tuple(e) not in raw],
         "categories": {c: _first_line(d) for c, d in sorted((cfg.get("categories") or {}).items())},
         "uses": uses,
         "skeleton": _skeleton(lay, cfg),
         "relations": sorted(cfg.get("relations") or []),
         "patterns": own,
-        "pairs": [list(e) for e in edges if {e[0], e[2]} <= spk] if not old else
+        "pair_edges": [list(e) for e in edges if {e[0], e[2]} <= spk] if not old else
                  sorted([list(e) for e in edges if f"{e[0]},{e[2]}" in (cfg.get(catalog.OLD_LAYER_KEYS[0]) or {})]),
         "polarity": ({"bind_categories": sorted(pol.get("bind_categories") or []),
                       "values": list(pol.get("values") or [])} if pol else None),
@@ -217,7 +217,7 @@ def links(layers, cats, schemas=()):
     for lay, d in layers.items():
         for p in d["patterns"]:
             _add(lay, p["src"], p["rel"], p["dst"], "관계 패턴")
-        for s, r, t in d["pairs"]:
+        for s, r, t in d["pair_edges"]:
             _add(lay, s, r, t, "위아래 쌍")
     for dt, sc, fields in schemas:
         for e in sc.get("edges") or []:
@@ -255,7 +255,7 @@ def new_checks(layers, cats, configs, schemas=()):
         out += [("경고", f"누락 — 층 {lay}가 관계 패턴 · 스키마에서 '{c}'를 쓰는데 categories에도 uses에도 없다 · "
                          f"{cfgp}의 uses에 적는다(B174 ②)") for c in miss]
         dup = [(p["src"], p["rel"], p["dst"]) for p in (configs.get(lay, {}).get("relation_patterns") or [])
-               if [p.get("src"), p.get("rel"), p.get("dst")] in d["pairs"]]
+               if [p.get("src"), p.get("rel"), p.get("dst")] in d["pair_edges"]]
         out += [("표시", f"중복 — 층 {lay} 패턴 {s} -{r}-> {t}는 위아래 쌍과 같다(쌍이 정본 · 층 패턴에서 지운다)") for s, r, t in dup]
     for c, v in cats.items():
         if v["path"].startswith("안 씀") and "(사유 없음" in v["path"]:
@@ -288,8 +288,8 @@ def checks(layers, cats, common, configs, src=None, schemas=()):
 
 
 def build(src=None):
-    """지도 모델 하나 — `{map_version, shape, coord, layers, pairs, categories, links, checks}` · `src`는 읽을 `layers/` 모양의
-    폴더(없으면 상태 루트)."""
+    """지도 모델 하나 — `{map_version, shape, coord, layers, pair_edges, categories, links, pair_defs, ontology, checks}` · `src`는
+    읽을 `layers/` 모양의 폴더(없으면 상태 루트) · `ontology`는 온톨로지 맵(`cli.ontology_map` — B186 ①)."""
     common, configs = read(src)
     old = bool(catalog.old_shape(configs, common))
     schemas = _schemas()
@@ -301,11 +301,16 @@ def build(src=None):
         coord = coord_layer()
     except NoCoordLayer:                           # 좌표 층이 없다 — 지도는 그대로 그린다
         coord = None
+    from cli import ontology_map as OM
+    onto = OM.build(configs, schemas, edges, cats, COORD_CATEGORY, configs)
+    chk = _old_key_note(checks(layers, cats, common, configs, src, schemas), src)
+    for lv, line in OM.check_lines(onto):
+        chk[lv].append({"from": "지도", "line": line})
     return {"map_version": MAP_VERSION, "shape": "옛 모양" if old else "새 모양",
             "coord": {"layer": coord, "category": COORD_CATEGORY}, "layers": layers,
-            "pairs": [list(e) for e in edges], "categories": cats, "links": links(layers, cats, schemas),
+            "pair_edges": [list(e) for e in edges], "categories": cats, "links": links(layers, cats, schemas),
             "pair_defs": sorted(catalog.pairs(common), key=lambda p: (p["lower"], p["upper"], p["rel"])),
-            "checks": _old_key_note(checks(layers, cats, common, configs, src, schemas), src)}
+            "ontology": onto, "checks": chk}
 
 
 def _old_key_note(chk, src):
@@ -323,6 +328,6 @@ def counts(model):
     lk = model["links"]
     miss = sum(1 for x in model["checks"]["경고"] if x["from"] == "지도" and x["line"].startswith("누락 — 층"))
     return {"층": len(model["layers"]), "카테고리": len(model["categories"]),
-            "관계 패턴": sum(len(d["patterns"]) for d in model["layers"].values()), "위아래 쌍": len(model["pairs"]),
+            "관계 패턴": sum(len(d["patterns"]) for d in model["layers"].values()), "위아래 쌍": len(model["pair_edges"]),
             "걸침": len(lk["cross"]), "쓰는 카테고리": len(lk["uses"]), "선언 없이 씀": miss,
             "여러 층 선언": len(lk["shared"]), **{lv: len(model["checks"][lv]) for lv in LEVELS}}

@@ -24,6 +24,10 @@ def lines(res):
            + (f"({_kinds(hold)})" if hold else "")]
     if res.get("관계 버림"):
         out.append("     관계 버림(관문) — " + " · ".join(f"{t} {n:,}" for t, n in res["관계 버림"]))
+    if res.get("같은 노드 엣지"):                    # 두 끝이 같은 노드 — 관문이 세우지 않았다(B186 ② · 문서 1 J32)
+        n, diff = res["같은 노드 엣지"]
+        out.append(f"     같은 노드 엣지 {n:,}(표기가 다른 것 {diff:,} — 같은지 판단 확인"
+                   + (" · python run.py ops review all --actor <이름>" if diff else "") + ")")
     if res.get("반대 방향 공존"):                    # 사실 관계의 반대 방향이 함께 섰다(B175 — 구조 관계는 큐 direction_conflict)
         cx = res["반대 방향 공존"]
         out.append(f"     반대 방향 공존 {len(cx):,}쌍 — " + " · ".join(f"{x['src']} -{x['rel']}-> {x['dst']}" for x in cx[:3])

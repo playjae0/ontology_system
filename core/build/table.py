@@ -339,7 +339,8 @@ def _row_edges(r, schema, fields, graph, cfg, doc_id, b=None):
         # 끝점 미해소도 게이트에 넘긴다 — 판정 전에 무음으로 사라지면 안 된다(D2).
         br = gate.commit_edge(graph, src, e["relation"], dst, cfg,
                               gate.PATH_SCHEMA, [r.prov], doc_id,
-                              src_graph=sg, dst_graph=dg)
+                              src_graph=sg, dst_graph=dg,
+                              surfaces=(loop._field_surface(e["from"], rec), loop._field_surface(e["to"], rec)))
         if br == gate.COMMIT and b is not None:
             _lg.attach(rows.get(src), e["relation"], b.canonical_of(dst), "관계", "→")
             _lg.attach(rows.get(dst), e["relation"], b.canonical_of(src), "관계", "←")
