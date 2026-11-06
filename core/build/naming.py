@@ -74,7 +74,7 @@ def is_bound(polarity, cfg):
 
 
 def scope_categories(cfg=None):
-    """**이름에 부모가 붙는 카테고리** — 공통 config의 경로 「씀」 ∪ 위아래 쌍의 nest(B174 ① · `catalog.naming_rule` — 데이터 ·
+    """**이름에 부모가 붙는 카테고리** — 공통 config의 경로 「씀」 ∪ `parent_pairs`의 nest(B174 ① · `catalog.naming_rule` — 데이터 ·
     코드가 카테고리 이름을 모른다). 한 자리에서 읽는다(판정 · 막이 · 연쇄) · `cfg`는 부르는 모양을 지키는 자리(읽지 않는다)."""
     from core.state import catalog
     rule = catalog.naming_rule()
@@ -82,7 +82,7 @@ def scope_categories(cfg=None):
 
 
 def nest_categories(cfg=None):
-    """소속이 골격 밖 노드로 해소되면 **그 노드의 canonical을 이름 부모로** 쓰는 카테고리 — 위아래 쌍에서 위가 일반 노드인 아래
+    """소속이 골격 밖 노드로 해소되면 **그 노드의 canonical을 이름 부모로** 쓰는 카테고리 — `parent_pairs`에서 위가 일반 노드인 아래
     카테고리(B102 ⑤ · B174 ① — 목록 없이 쌍에서)."""
     from core.state import catalog
     return list(catalog.naming_rule()["nest"])

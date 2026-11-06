@@ -168,12 +168,12 @@ def _plan_hit(b, m, layer):
 
 
 def plan_resolve(b, m):
-    """한 값의 **판정 없는 해소** — `(판정 없이 붙는 후보, 조회 키, 집 층)` · 판정에 오르지 않는 값(표기 · 카테고리 없음 · 좌표
+    """한 값의 **판정 없는 해소** — `(판정 없이 붙는 후보, 조회 키, home 층)` · 판정에 오르지 않는 값(표기 · 카테고리 없음 · 좌표
     없는 스코프 개체)이면 None. 예고(`_plan_hit`)와 등록 관문의 기수(G4L — `core/build/cardinality` · B166)가 같은 길이다."""
     surface, category = m.get("surface"), m.get("category")
     if not surface or not category:
         return None
-    lay = b.home_of(category)       # 판정과 같은 자리 — 집 (B90 ②)
+    lay = b.home_of(category)       # 판정과 같은 자리 — home (B90 ②)
     et = m.get("electrode_type")
     sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
     from parser.normalizer import coord_refs
@@ -253,7 +253,7 @@ def decision_plan(mentions, refs, layer, closed=()):
     from parser.normalizer import coord_refs
     from core.state.bootstrap import coord_layer
     from core.state.status import is_skeleton
-    # 좌표 골격은 좌표 층에만 있다(문서 3 §3.6 공정은 한 벌) — 문서 층이 아니라 좌표 층에서 잰다(B177 ② · 값 셈은 집 층 그대로)
+    # 좌표 골격은 좌표 층에만 있다(문서 3 §3.6 공정은 한 벌) — 문서 층이 아니라 좌표 층에서 잰다(B177 ② · 값 셈은 home 층 그대로)
     cg = g if layer == coord_layer() else open_graph(coord_layer())
     out_of_list = []
     for r in [x for v in refs for x in coord_refs(v)]:        # 공정은 목록 (B125 ④)
@@ -520,7 +520,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
     _record_build(doc_id, metrics)
     res = _result(builder, doc_id)
     if notice is not None:
-        # **층별 합**(B99 ⑤ — 노드는 카테고리의 집에 산다) · 큐는 **이번 실행이 만든 것**
+        # **층별 합**(B99 ⑤ — 노드는 카테고리의 home에 산다) · 큐는 **이번 실행이 만든 것**
         dn, de, da = result_mod.totals(res)
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
                 "저해상도": loop.LOWRES["n"], "제목폴백": loop.LOWRES["heading"], "총_노드": metrics.get("nodes"),

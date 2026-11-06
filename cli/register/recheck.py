@@ -34,7 +34,7 @@ from core.state import registry
 
 KIT = paths.ROOT / "kit"
 #: 판정 태그 → 고칠 자리(층 config 키)
-_FIX = {"G4C": "uses(다른 층 카테고리 — B174) 또는 categories(집 카테고리)", "G4D": "relations",
+_FIX = {"G4C": "uses(다른 층 카테고리 — B174) 또는 categories(home 카테고리)", "G4D": "relations",
         "G4E": "relation_patterns"}
 
 
@@ -62,7 +62,7 @@ def revise_line(dt, schema=None, schema_only=False):
 
 
 def _speaks(cfg, category):
-    """층이 그 카테고리를 말하는가 — 집 카테고리 ∪ `uses`(B174 ② — 패턴표에서 짐작하지 않는다)."""
+    """층이 그 카테고리를 말하는가 — home 카테고리 ∪ `uses`(B174 ② — 패턴표에서 짐작하지 않는다)."""
     from core.state import catalog
     return category in catalog.spoken(cfg)
 

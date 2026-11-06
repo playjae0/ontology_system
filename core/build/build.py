@@ -129,31 +129,31 @@ class Builder(CoordMixin):
         """이 빌드가 만진 그래프 전부 — 자기 층 + 걸침 층. 저장 대상이다."""
         return [self.g] + [s.g for s in self.subs.values() if s is not self]
 
-    # ---------------------------------------------------------------- 집 (B90 ②)
+    # ---------------------------------------------------------------- home (B90 ②)
     def home_of(self, category):
-        """카테고리의 **집** 층 — 공통 config의 `home`. 카탈로그 밖이면 자기 층."""
+        """카테고리의 **home** 층 — 공통 config의 `home`. 카탈로그 밖이면 자기 층."""
         from core.state.bootstrap import layer_of_category
         return layer_of_category(category) or self.layer
 
     def for_category(self, category):
-        """카테고리의 집 빌더 — **해소의 라우팅 한 자리**다(table·prose가 같이 부른다).
+        """카테고리의 home 빌더 — **해소의 라우팅 한 자리**다(table·prose가 같이 부른다).
 
-        노드는 집 그래프에 산다: 여러 층이 같은 카테고리를 선언해도 매칭·생성은
-        집 하나에서 한다 — 같은 뜻이면 노드 하나(두 벌로 만든 뒤 합치지 않는다).
+        노드는 home 그래프에 산다: 여러 층이 같은 카테고리를 선언해도 매칭·생성은
+        home 하나에서 한다 — 같은 뜻이면 노드 하나(두 벌로 만든 뒤 합치지 않는다).
         """
         return self.for_layer(self.home_of(category))
 
     def canonical_of(self, nid):
-        """그 노드의 canonical — 집 그래프에서(B102 ⑦ 대장 `target` · 없으면 None)."""
+        """그 노드의 canonical — home 그래프에서(B102 ⑦ 대장 `target` · 없으면 None)."""
         if not nid:
             return None
         return ((self.graph_of(nid) or self.g).get(nid) or {}).get("canonical")
 
     def resolve_at_home(self, surface, category, prov, *, coord=None, coords=None, **kw):
-        """개체 하나를 **집 빌더에서** 해소한다 — `(node_id, 그 빌더)`.
+        """개체 하나를 **home 빌더에서** 해소한다 — `(node_id, 그 빌더)`.
 
         판정의 사실(`last` — 경로·층·큐)은 돌려준 빌더에 실린다. 대장·큐의 `layer`가
-        집이 되는 것은 그래서다(종결 명령이 그 층을 가리켜야 한다).
+        home이 되는 것은 그래서다(종결 명령이 그 층을 가리켜야 한다).
 
         `coord`(`(좌표 노드 id, 그 그래프)`)가 있으면 **자기 좌표 규칙을 먼저 본다**
         (B90 ③) — 이름 규칙(`X::…`)으로 키를 만들기 **전**이어야 한다.

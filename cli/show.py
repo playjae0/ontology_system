@@ -96,7 +96,7 @@ def cmd_tree(args):
     nxt = {e["src"]: e["dst"] for e in g.edges if e["rel"] == sib}
 
     order = {i: k for k, i in enumerate(seed)}         # 심은 순서 = 골격 선언 순서
-    # 문서 유래 노드 수는 싣지 않는다(B100 ④ — 그 수는 어느 카테고리의 집이 이 층인지에 따라 달라진다)
+    # 문서 유래 노드 수는 싣지 않는다(B100 ④ — 그 수는 어느 카테고리의 home이 이 층인지에 따라 달라진다)
     print(f"■ {lay} 골격 — 노드 {len(seed)} (문서 유래 노드는 제외)")
     print("  순서 = 흐름(precedes) · 흐름 밖은 뒤에 이름순\n")
 

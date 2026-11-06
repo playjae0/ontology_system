@@ -293,7 +293,7 @@ def _role_target(doc_id, h, v):
 def judge(doc_id, heads, cfg, answers):
     """답(`{id: 답}`)을 제목마다 대조해 싣는다 — 목록 밖 id는 버린다(결함 로그)."""
     from core.state import catalog
-    cats = catalog.spoken(cfg)                        # 받는 거름 = 그 층이 말하는 카테고리(집 ∪ uses — B174 ② · 묻는 목록은 그대로)
+    cats = catalog.spoken(cfg)                        # 받는 거름 = 그 층이 말하는 카테고리(home ∪ uses — B174 ② · 묻는 목록은 그대로)
     ids = {h["id"] for h in heads}
     for k in sorted(set(answers) - ids, key=str):
         store.append_defect(f"{doc_id}: 목차 노드화 — 목록 밖 제목 id {k!r} → 버렸다")

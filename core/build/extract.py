@@ -382,7 +382,7 @@ def _call_key(chunk, cfg, image=None):
 
 
 def categories_with_also(cfg):
-    """**묻는 목록** — 그 층이 말하는 카테고리(`catalog.asked` — 집 ∪ `uses` · `uses`의 정의문은 집 층에서 · B178 ①) + **겸 한 줄**
+    """**묻는 목록** — 그 층이 말하는 카테고리(`catalog.asked` — home ∪ `uses` · `uses`의 정의문은 home 층에서 · B178 ①) + **겸 한 줄**
     (B90 ③ — 문안은 공통 config `also`에서 렌더해 정의문 끝에 · 템플릿에는 층 어휘를 적지 않는다 B9) · 추출 · 목차 노드화 · 사람 후보가 같은 목록."""
     from core.state import catalog
     cats = catalog.asked(cfg)

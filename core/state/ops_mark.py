@@ -191,7 +191,7 @@ def alias(layer, target, surface, actor, reason="", dry_run=False):
 
 
 def _pick(w, layer, target):
-    """대상 — node_id 또는 canonical(친 층 먼저 · 없으면 층 전부 — 노드는 집 층)."""
+    """대상 — node_id 또는 canonical(친 층 먼저 · 없으면 층 전부 — 노드는 home 층)."""
     if w.get(target):
         return target
     here = list((w.graphs[layer].nodes.values()) if layer in w.graphs else [])

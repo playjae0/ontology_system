@@ -442,11 +442,13 @@ show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 
 shutil.rmtree(_t173, ignore_errors=True)
 # B177 ⓑ 이름 꼴의 좌표 자리는 좌표 카테고리 이름(등록 블록 자산 — 코드에 카테고리 이름 0은 층 어휘 점검이 잰다)
 # 고침(B186 ① — 그림은 온톨로지 맵이라 뷰어 색 축 인자(`color_axis`)는 지웠다 · 점 색은 칩 · 띠와 같은 색 함수 `node_color`)
-from cli import export as EX177                                            # noqa: E402
+from cli import ontology_map as OM186L                                    # noqa: E402
 from core.state.bootstrap import COORD_CATEGORY as _CC177                 # noqa: E402
 _h177 = XC.render_html(_m173)
-show("B177 ⓑ 지도 그림의 점 색 = 칩 · 띠와 같은 색 함수(home 층) · 이름 꼴의 좌표 자리 = 좌표 카테고리 이름",
-     all(f'fill="{EX177.node_color(v["home"])}"' in _h177 for v in _m173["categories"].values())
+# 고침(B187 ① — 점 색은 지도 자기 목록을 층 순서로 · 뷰어 색 함수 `node_color`는 지웠다)
+show("B177 ⓑ 지도 그림의 점 색 = 칩 · 띠와 같은 색(home 층의 층 순서 색) · 이름 꼴의 좌표 자리 = 좌표 카테고리 이름",
+     all(f'fill="{OM186L.layer_colors(_m173)[v["home"]]}"' in _h177 and f'--c:{OM186L.layer_colors(_m173)[v["home"]]}' in _h177
+         for v in _m173["categories"].values())
      and all(v["name_form"].startswith(f"<{_CC177}>::") for v in _m173["categories"].values()
              if not v["skeleton_of"] and not v["path"].startswith("안 씀")),
      f"이름 꼴 {[v['name_form'] for v in _m173['categories'].values()][:2]}")
@@ -642,6 +644,76 @@ show("B186 ⓓ attributes 표 — spec(cp · 맥락형) · 측정방법(cp) · �
      {("spec", "schema: cp", True), ("측정방법", "schema: cp", False), ("설비사양", "value_categories (process)", False),
       ("severity", "schema: pfmea", False)} <= _A186 and "<h3>attributes" in _h186,
      str(sorted(_A186)))
+# B187 ① ② — 지도의 색(형광 아님 · 층 순서 · 사실 관계 선은 주황 밖) · 선 이름 바탕 · 인스턴스 뷰어 바이트 그대로
+import colorsys                                                       # noqa: E402
+
+
+def _hsl187(c):
+    r, g, b = (int(c[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    h, l, s_ = colorsys.rgb_to_hls(r, g, b)
+    return h * 360, s_, l
+
+
+def _con187(a, b):
+    def lum(c):
+        v = [int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        v = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in v]
+        return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _hd187(a, b):
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
+_h187 = XC.render_html(_m186)
+_fill187 = dict(re.findall(r'data-cat="([^"]+)"><circle [^>]*fill="(#[0-9a-f]{6})"', _h187))
+_pan187 = [m for m in re.findall(r"--panel:(#[0-9a-f]{6})", _h187)]              # 밝음 · 어두움 바탕
+_home187 = {c: v["home"] for c, v in _m186["categories"].items()}
+_lc187 = OM186.layer_colors(_m186)
+_ren187 = OM186.layer_colors({"layers": {"a_" + k: v for k, v in _m186["layers"].items()}})   # 층 이름을 바꾼 사본(순서 같다)
+_lines187 = [c for k, c in OM186.COLORS.items() if k != OM186.KINDS[0]]           # 회색(골격 관계) 빼고
+_first, _second = sorted(_m186["layers"])[:2]
+show("B187 ⓑ 색 — 첫 층 점 초록(90°~130°) · 둘째 층 점 주황(20°~35°) · 모든 점 형광 아님(채도 ≤ 0.65 · 밝기 0.40~0.60) · 사실 관계 선 "
+     "주황 밖 · 선 색(회색 빼고)과 점 색 색상 거리 ≥ 40° · 칩 · 띠 = 점 · 층 이름을 바꾼 사본도 같은 차례 색 · 두 바탕 대비 ≥ 2.5",
+     all(90 <= _hsl187(_fill187[c])[0] <= 130 for c, h in _home187.items() if h == _first)
+     and all(20 <= _hsl187(_fill187[c])[0] <= 35 for c, h in _home187.items() if h == _second)
+     and all(_hsl187(c)[1] <= 0.65 and 0.40 <= _hsl187(c)[2] <= 0.60 for c in _fill187.values())
+     and not 20 <= _hsl187(OM186.COLORS[OM186.KINDS[2]])[0] <= 35
+     and all(_hd187(_hsl187(a)[0], _hsl187(b)[0]) >= 40 for a in _lines187 for b in _fill187.values())
+     and all(f'--c:{_lc187[lay]}' in _h187 for lay in _m186["layers"]) and list(_ren187.values()) == list(_lc187.values())
+     and len(_pan187) >= 2 and all(_con187(c, bg) >= 2.5 for c in list(_fill187.values()) + list(OM186.COLORS.values()) for bg in _pan187),
+     f"점 {_fill187} · 선 {OM186.COLORS} · 바탕 {_pan187}")
+_labs187 = re.findall(r'<text [^>]*class="lab"[^>]*>', _h187)
+show("B187 ⓒ 선 이름 — 모든 lab 글자에 바탕 상자(지도 바탕색 필터 · 밝음 · 어두움은 --panel이 따른다)",
+     _labs187 and all(f'filter="url(#{OM186.LABEL_BG})"' in t for t in _labs187)
+     and f'<filter id="{OM186.LABEL_BG}"' in _h187 and "flood-color:var(--panel)" in _h187,
+     f"lab {len(_labs187)}")
+_vw187 = hashlib.sha256((ROOT / "cli" / "viewer.html").read_bytes()).hexdigest()
+show("B187 ⓓ 인스턴스 뷰어(cli/viewer.html) 바이트 = hub_164 반입 판(sha256) · 지도 모델에 색 칸 0(색은 그리는 자리만 — 모델 · --diff 그대로)",
+     _vw187 == "5837ea4b4c93b38f29ac1dc4533e58f7fa9953f5f8cd1c11e51699929d696b5b" and not re.search(r"#[0-9a-fA-F]{6}", json.dumps(_m186)),
+     f"뷰어 sha256 {_vw187[:16]}")
+# B187 ⓐ ⓪(b) — B186 리뷰 고침(5ced590): 겸 카테고리로 관문을 지난 엣지는 그 선의 수에 들고 「출처 없는 삼항」이 아니다
+_c0187 = _P.common().read_bytes()
+_gp187 = _og186("process")
+_pn187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Process" and n.get("tier"))
+_un187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Unit")
+try:
+    _rw(_P.common(), lambda c: c["categories"]["Process"].__setitem__("also", {"Unit": [_pn187["tier"]]}))
+    _n0187 = {(x["src"], x["rel"], x["dst"]): x["edges"] for x in CM.build()["ontology"]["lines"]}
+    _gp187.add_edge(_pn187["id"], "mirrors", _un187["id"], "auto", ["B187#b"])
+    _gp187.save()
+    _m187 = CM.build()
+finally:
+    _P.common().write_bytes(_c0187)
+_n1187 = {(x["src"], x["rel"], x["dst"]): x["edges"] for x in _m187["ontology"]["lines"]}
+_unk187 = _m187["ontology"]["unknown"] + [x["line"] for x in _m187["checks"]["표시"] if "없는 삼항" in x["line"]]
+show("B187 ⓐ ⓪(b) 겸 카테고리(Process가 그 단에서 Unit 겸)로 선 Process -mirrors-> Unit 엣지 — Unit mirrors Unit 선의 수 +1 · "
+     "지도 점검 「출처 없는 삼항」 0",
+     _n1187[("Unit", "mirrors", "Unit")] == _n0187[("Unit", "mirrors", "Unit")] + 1 and not _unk187,
+     f"수 {_n0187[('Unit', 'mirrors', 'Unit')]} → {_n1187[('Unit', 'mirrors', 'Unit')]} · 출처 없음 {_unk187}")
 init.init(fresh_=True, all_=True)
 
 done()

@@ -687,7 +687,7 @@ def cmd_dashboard():
     g = graphs.get(_coord)
     if g:
         from core.state import catalog
-        # 좌표 카테고리에서 나가는 위아래 쌍의 관계 — 카테고리 이름을 코드에 적지 않는다(층 어휘 0 · B121 ① · B174 ①)
+        # 좌표 카테고리에서 나가는 `parent_pairs`의 관계 — 카테고리 이름을 코드에 적지 않는다(층 어휘 0 · B121 ① · B174 ①)
         rel = next((r for s, r, _d in map(catalog.pair_edge, catalog.layer_pairs(load_config(_coord)))
                     if s == COORD_CATEGORY), None) or "has_property"
         cnt = Counter()

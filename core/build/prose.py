@@ -110,7 +110,7 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
                     e_ref, e_g, e_parent, e_pol = up, upg, upg.get(up)["canonical"], b.anchor_polarity(up, upg)
             e_parent = name_parent(e["category"], tgt[2].get(tgt[1])["canonical"], e_parent, b.cfg)
             owner = (tgt[1], tgt[2])
-        # **집에서 해소한다**(B90 ②) — table과 **같은 함수**다.
+        # **home에서 해소한다**(B90 ②) — table과 **같은 함수**다.
         nid, eb = b.resolve_at_home(e["surface"], e["category"], prov,
                                     coord=(e_ref, e_g), coords=coords,     # 다른 공정 가드 = 목록 전체의 계보 (B125 ④)
                                     electrode_type=src.get("electrode_type"),
@@ -197,7 +197,7 @@ def _about_hit(b, cfg, a):
     """
     surface, cat = (a or {}).get("surface"), (a or {}).get("category")
     from core.state import catalog
-    if not surface or cat not in catalog.spoken(cfg):                    # 그 층이 말하는 카테고리(집 ∪ uses — B174 ②)
+    if not surface or cat not in catalog.spoken(cfg):                    # 그 층이 말하는 카테고리(home ∪ uses — B174 ②)
         return None
     hosts = matcher._hosts(cat)
     nid = b.buffer.get(loop._n(surface))
@@ -373,7 +373,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
             sh, dh = (belongs.lookup(b, r[k], coord=ref, src=src, doc=doc) for k in ("src", "dst"))
             s, d = (sh or (None, None))[1], (dh or (None, None))[1]
             if s and d:
-                # **엣지는 뽑은 층에**, 끝점은 제 집 그래프에서 읽는다(걸침 엣지 — B90 ②)
+                # **엣지는 뽑은 층에**, 끝점은 제 home 그래프에서 읽는다(걸침 엣지 — B90 ②)
                 br = gate.commit_edge(graph, s, r["rel"], d, cfg, gate.PATH_EXTRACT,
                                       [prov], env["doc_id"], evidence_chunk=cid,
                                       src_graph=sh[2], dst_graph=dh[2], surfaces=(r["src"], r["dst"]))

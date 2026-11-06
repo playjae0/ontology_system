@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """칸 0.1 — **config 지도 모델**(B173 · 읽기만): 층 · 카테고리 · 층 사이 연결 포인트 · 점검을 한 모델로 모은다.
 
-코드가 이미 읽는 자리를 부른다 — 카탈로그(`catalog` — 집 · 겸 · 이름 규칙 · 위아래 쌍 · 선언한 층) · 좌표 층
+코드가 이미 읽는 자리를 부른다 — 카탈로그(`catalog` — home · 겸 · 이름 규칙 · `parent_pairs` · 선언한 층) · 좌표 층
 (`bootstrap.coord_layer`) · 등록부(`registry` — 스키마 · 렌즈) · 골격(층 그래프의 seed 노드 — GraphStore 경유 · 읽기만).
 읽는 자리는 상태 루트의 `layers/` 또는 **제안 폴더**(`--from` — B174 ④ · 상태 루트를 건드리지 않는다)이고, **옛 모양은 옛 뜻으로 ·
-새 모양은 새 뜻으로 읽어 같은 「뜻」**(카테고리 · 집 · 겸 · 이름 꼴 · 관계 패턴 · 위아래 쌍 · 쓰는 카테고리 · 연결 포인트)으로 모은다
+새 모양은 새 뜻으로 읽어 같은 「뜻」**(카테고리 · home · 겸 · 이름 꼴 · 관계 패턴 · `parent_pairs` · 쓰는 카테고리 · 연결 포인트)으로 모은다
 — 옛 ↔ 새 대조가 이 모델의 `--diff`다.
 
 **판정은 있는 함수를 부른다**(같은 판정의 두 번째 자리 0): 거부 = 카탈로그 `problems`(층 이름 = 폴더 이름 ⓕ 포함) ·
@@ -26,7 +26,7 @@ from core.state.bootstrap import COORD_CATEGORY, NoCoordLayer, coord_layer, open
 from core.state.config_scope import renamed
 from core.state.status import is_live
 
-MAP_VERSION = 4                                    # 4 — 온톨로지 맵(선 · 고리 · 실제 엣지 수 · attributes) · 허용 삼항 이름 pair_edges(B186 ①)
+MAP_VERSION = 5                                    # 5 — 연결 포인트 출처 이름 parent_pairs(B187 ⓪ — 화면 낱말 = config 키) · 4 — 온톨로지 맵(B186 ①)
 #: 점검 갈래 — 거부(인입 · bootstrap이 멈춘다) · 경고(막지 않는다 · 고칠 거리) · 표시(사람이 본다)
 LEVELS = ("거부", "경고", "표시")
 #: 이름 꼴의 좌표 자리 — 좌표 카테고리 이름(등록 블록 자산 `process_coord` — 코드에 카테고리 이름 0 · B177 ①) · 이름 자리는 `<name>`
@@ -91,7 +91,7 @@ def _cat_of(fields, name):
 
 
 def _pair_edges(common, configs, old):
-    """위아래 쌍의 엣지 `[(출발, 관계, 도착)]` — 새 모양은 공통 `parent_pairs` · 옛 모양은 층 매핑의 합(옛 뜻)."""
+    """`parent_pairs`의 엣지 `[(출발, 관계, 도착)]` — 새 모양은 공통 `parent_pairs` · 옛 모양은 층 매핑의 합(옛 뜻)."""
     edges = {catalog.pair_edge(p) for p in catalog.pairs(common)}           # 공통에 이미 있는 쌍 + 옛 층 매핑(옛 뜻)
     if old:
         edges |= {(k.partition(",")[0], r, k.partition(",")[2])
@@ -182,7 +182,7 @@ def name_forms(common, configs):
 
 
 def _categories(common, configs, old, edges):
-    """카테고리마다 — 집 · 선언한 층 · 쓰는 층(`used_by`) · 겸 · 경로 · 이름 꼴 · 골격 카테고리인 층."""
+    """카테고리마다 — home · 선언한 층 · 쓰는 층(`used_by`) · 겸 · 경로 · 이름 꼴 · 골격 카테고리인 층."""
     cats = common.get("categories") or {}
     decl = catalog.declared_by(configs)
     skel = {}
@@ -202,8 +202,8 @@ def _categories(common, configs, old, edges):
 
 
 def links(layers, cats, schemas=()):
-    """**층 사이 연결 포인트**(B173 ① · B174) — ⓐ 걸침이 될 수 있는 엣지(끝 카테고리의 집 ≠ 그 층 — 층 패턴 · 그 층에 걸리는
-    위아래 쌍 · 스키마 엣지) ⓑ 층이 쓰는 다른 층 카테고리(`uses`) ⓒ 여러 층이 정의한 카테고리(정의문은 집 한 곳이어야 한다)."""
+    """**층 사이 연결 포인트**(B173 ① · B174) — ⓐ 걸침이 될 수 있는 엣지(끝 카테고리의 home ≠ 그 층 — 층 패턴 · 그 층에 걸리는
+    `parent_pairs` · 스키마 엣지) ⓑ 층이 쓰는 다른 층 카테고리(`uses`) ⓒ 여러 층이 정의한 카테고리(정의문은 home 한 곳이어야 한다)."""
     cross, seen = [], set()
 
     def _add(lay, src, rel, dst, where):
@@ -218,7 +218,7 @@ def links(layers, cats, schemas=()):
         for p in d["patterns"]:
             _add(lay, p["src"], p["rel"], p["dst"], "관계 패턴")
         for s, r, t in d["pair_edges"]:
-            _add(lay, s, r, t, "위아래 쌍")
+            _add(lay, s, r, t, "parent_pairs")
     for dt, sc, fields in schemas:
         for e in sc.get("edges") or []:
             _add(sc.get("layer"), _cat_of(fields, e.get("from")), e.get("relation"), _cat_of(fields, e.get("to")), f"스키마 {dt}")
@@ -256,13 +256,13 @@ def new_checks(layers, cats, configs, schemas=()):
                          f"{cfgp}의 uses에 적는다(B174 ②)") for c in miss]
         dup = [(p["src"], p["rel"], p["dst"]) for p in (configs.get(lay, {}).get("relation_patterns") or [])
                if [p.get("src"), p.get("rel"), p.get("dst")] in d["pair_edges"]]
-        out += [("표시", f"중복 — 층 {lay} 패턴 {s} -{r}-> {t}는 위아래 쌍과 같다(쌍이 정본 · 층 패턴에서 지운다)") for s, r, t in dup]
+        out += [("표시", f"중복 — 층 {lay} 패턴 {s} -{r}-> {t}는 parent_pairs와 같다(쌍이 정본 · 층 패턴에서 지운다)") for s, r, t in dup]
     for c, v in cats.items():
         if v["path"].startswith("안 씀") and "(사유 없음" in v["path"]:
             out.append(("경고", f"누락 — '{c}'의 경로 「안 씀」에 사유가 없다 · 공통 config categories['{c}'].no_path에 적거나 "
                               f"지워서 「씀」으로"))
         if len(v["declared_by"]) > 1:
-            out.append(("표시", f"중복 — '{c}'를 여러 층이 정의했다 {v['declared_by']} · 정의문은 집({v['home']}) 한 곳 · "
+            out.append(("표시", f"중복 — '{c}'를 여러 층이 정의했다 {v['declared_by']} · 정의문은 home({v['home']}) 한 곳 · "
                               f"다른 층은 uses"))
     return out
 
@@ -324,10 +324,10 @@ def _old_key_note(chk, src):
 
 
 def counts(model):
-    """화면 요약의 수 — 층 · 카테고리 · 관계 패턴 · 위아래 쌍 · 연결 포인트 · 선언 없이 씀(누락) · 점검 갈래마다."""
+    """화면 요약의 수 — 층 · 카테고리 · 관계 패턴 · `parent_pairs` · 연결 포인트 · 선언 없이 씀(누락) · 점검 갈래마다."""
     lk = model["links"]
     miss = sum(1 for x in model["checks"]["경고"] if x["from"] == "지도" and x["line"].startswith("누락 — 층"))
     return {"층": len(model["layers"]), "카테고리": len(model["categories"]),
-            "관계 패턴": sum(len(d["patterns"]) for d in model["layers"].values()), "위아래 쌍": len(model["pair_edges"]),
+            "관계 패턴": sum(len(d["patterns"]) for d in model["layers"].values()), "parent_pairs": len(model["pair_edges"]),
             "걸침": len(lk["cross"]), "쓰는 카테고리": len(lk["uses"]), "선언 없이 씀": miss,
             "여러 층 선언": len(lk["shared"]), **{lv: len(model["checks"][lv]) for lv in LEVELS}}

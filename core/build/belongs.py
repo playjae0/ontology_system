@@ -143,7 +143,7 @@ def lookup(b, name, cat=None, *, coord=None, src=None, doc=None):
         n = g.get(nid) or {}
         if n and (not cat or matcher._is(n, cat, hosts)):
             return NODE, nid, g
-    if not here or (cat and cat not in catalog.spoken(b.cfg)):          # 그 층이 말하는 카테고리(집 ∪ uses — B174 ②)
+    if not here or (cat and cat not in catalog.spoken(b.cfg)):          # 그 층이 말하는 카테고리(home ∪ uses — B174 ②)
         return None
     hits = {}
     for x in set(b.dict.lookup(name)):

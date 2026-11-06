@@ -64,7 +64,7 @@ def reset(off=None):
 
 
 def key(locator, field, surface, layer):
-    """찾는 열쇠 — 같은 자리 · 같은 열 · 같은 표기 · 같은 집. 카테고리 · 부모 좌표는 행을 고를 때 잰다(`pick`)."""
+    """찾는 열쇠 — 같은 자리 · 같은 열 · 같은 표기 · 같은 home. 카테고리 · 부모 좌표는 행을 고를 때 잰다(`pick`)."""
     return (str(locator), str(field), norm(surface or ""), layer)
 
 
@@ -110,7 +110,7 @@ GUESS = {}
 
 
 def guess_row(at, surface, layer):
-    """자리 추정 뜻 판단의 지난 행(B183) — 같은 자리 · 열 · 표기 · 집 하나 · 없거나 재생 대상이 아니면 None(쓰면 재생으로 센다)."""
+    """자리 추정 뜻 판단의 지난 행(B183) — 같은 자리 · 열 · 표기 · home 하나 · 없거나 재생 대상이 아니면 None(쓰면 재생으로 센다)."""
     if not LIVE or OFF or not at:
         return None
     r = GUESS.get(key(at[0], at[1], surface, layer))
@@ -148,7 +148,7 @@ def _count(what):
 
 
 def _find(b, canonical, category):
-    """이름 → 지금 그 집 그래프의 노드 하나(살아 있고 · 그 카테고리(겸 포함) · canonical 같음) · 없거나 여럿이면 None."""
+    """이름 → 지금 그 home 그래프의 노드 하나(살아 있고 · 그 카테고리(겸 포함) · canonical 같음) · 없거나 여럿이면 None."""
     from core import matcher
     if not canonical:
         return None

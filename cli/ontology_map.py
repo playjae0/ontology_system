@@ -20,7 +20,16 @@ from core.state import catalog
 #: 선의 종류 — 앞이 이긴다(같은 삼항이 두 종류의 출처를 가지면 앞 종류로 그린다)
 KINDS = ("골격 관계", "소속", "사실 관계")
 CROSS = "층을 넘는 관계"
-COLORS = {"골격 관계": "#8a8f98", "소속": "#3b7dd8", "사실 관계": "#e07b28"}
+COLORS = {"골격 관계": "#8a8f98", "소속": "#3b7dd8", "사실 관계": "#8e44ad"}
+#: **점 색**(B187 ① — 지도 자기 목록 · 형광 아님: HSL 채도 ≤ 0.65 · 밝기 0.40 ~ 0.60 · 선 색(회색 빼고)과 색상 거리 ≥ 40° · 두 바탕
+#: 대비 ≥ 2.5) — **층 순서**(모델의 층 이름순)로 쓴다: 첫 층 초록 · 둘째 층 주황 · 그다음 청록 · 금 · 빨강 · 올리브 · 장미(층이 더 많으면 돈다)
+NODE_COLORS = ("#5f9e4f", "#cf7a33", "#3f9a8c", "#b8962e", "#c0504d", "#8a9a3a", "#b5527a")
+NO_HOME = COLORS["골격 관계"]                                 # home이 층 목록 밖인 카테고리
+
+
+def layer_colors(model):
+    """`{층: 점 색}` — 층 이름순으로 목록을 돈다(층 이름 해시가 아니라 순서 — 사내 층 이름과 무관하게 같은 차례 · B187 ①)."""
+    return {lay: NODE_COLORS[i % len(NODE_COLORS)] for i, lay in enumerate(sorted(model.get("layers") or {}))}
 _RANK = {k: i for i, k in enumerate(KINDS)}
 
 
@@ -90,7 +99,7 @@ def attributes(configs, schemas, coord):
 def edge_counts(layers):
     """**실제 엣지 수** — `({(src 카테고리, rel, dst 카테고리): 수}, [(주 카테고리 삼항, 주 ∪ 겸 조합)])` · 그래프가 없거나 비면 `(None, None)`.
 
-    층 전부를 연다(노드는 집 층 · 엣지는 문서 층 — B100) · 사람이 지운 엣지는 빼고 · 카테고리는 주 ∪ 겸(관문이 겸으로도 판정한다)."""
+    층 전부를 연다(노드는 home 층 · 엣지는 문서 층 — B100) · 사람이 지운 엣지는 빼고 · 카테고리는 주 ∪ 겸(관문이 겸으로도 판정한다)."""
     from core.graph import STATUS_DELETED, GraphStore
     stores = [GraphStore.for_layer(lay) for lay in sorted(layers)]
     graphs = [s.load() for s in stores if s.exists()]
@@ -203,8 +212,17 @@ def _stroke(x):
             + f' marker-end="url(#a-{_RANK[x["kind"]]})"' + (f' marker-start="url(#s-{_RANK[x["kind"]]})"' if x["symmetric"] else ""))
 
 
-def svg(model, node_color):
-    """지도 한 장(인라인 SVG) — 점 = 카테고리(색 = home 층) · 선 = 종류 색 · 층을 넘는 관계는 점선 · 고리는 점 바깥 · 선마다 rel · 엣지 수."""
+#: 선 이름 바탕 — 글자 상자를 지도 바탕색으로 덮는 필터(선이 글자 사이로 지나지 않는다 · 바탕색은 페이지 `--panel` — 밝음 · 어두움 ·
+#: 글자 너비를 짐작하지 않는다 · B187 ②)
+LABEL_BG = "lab-bg"
+LABEL_FILTER = (f'<filter id="{LABEL_BG}" x="-0.04" y="-0.12" width="1.08" height="1.24">'
+                '<feFlood style="flood-color:var(--panel)"/><feComposite in="SourceGraphic" operator="over"/></filter>')
+
+
+def svg(model):
+    """지도 한 장(인라인 SVG) — 점 = 카테고리(색 = home 층 · `layer_colors`) · 선 = 종류 색 · 층을 넘는 관계는 점선 · 고리는 점 바깥 ·
+    선마다 rel · 엣지 수(글자 밑에 바탕 상자)."""
+    colors = layer_colors(model)
     pos, (w, h), center = layout(model)
     e = html.escape
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" class="omap" viewBox="0 0 {w} {h}" width="100%" role="img" '
@@ -214,7 +232,8 @@ def svg(model, node_color):
                    f'<path d="M0,0 L10,5 L0,10 z" fill="{COLORS[k]}"/></marker>'
                    f'<marker id="s-{i}" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto">'
                    f'<path d="M10,0 L0,5 L10,10 z" fill="{COLORS[k]}"/></marker>')
-    out.append("</defs>")
+    out.append(LABEL_FILTER + "</defs>")
+    labs = []                                                   # 선 이름은 선 · 고리 · 점을 다 그린 뒤 맨 위에(뒤 선이 앞 글자를 덮지 않게)
     pair = {}
     for x in model["ontology"]["lines"]:
         if x["src"] != x["dst"] and x["src"] in pos and x["dst"] in pos:
@@ -230,15 +249,16 @@ def svg(model, node_color):
             off = side * 30 * (i - (len(ls) - 1) / 2 + (0.5 if len(ls) % 2 == 0 else 0)) if len(ls) > 1 else 0
             mx, my = (sx + tx) / 2 - uy * off, (sy + ty) / 2 + ux * off
             out.append(f'<path class="line" data-line="{e(x["src"])}|{e(x["rel"])}|{e(x["dst"])}" '
-                       f'd="M{sx:.1f},{sy:.1f} Q{mx:.1f},{my:.1f} {tx:.1f},{ty:.1f}" {_stroke(x)}/>'
-                       f'<text x="{mx:.1f}" y="{my - 4:.1f}" class="lab" text-anchor="middle">{e(_label(x))}</text>')
+                       f'd="M{sx:.1f},{sy:.1f} Q{mx:.1f},{my:.1f} {tx:.1f},{ty:.1f}" {_stroke(x)}/>')
+            labs.append(f'<text x="{mx:.1f}" y="{my - 4:.1f}" class="lab" filter="url(#{LABEL_BG})" text-anchor="middle">{e(_label(x))}</text>')
     for x, a, b, c1, c2, top in loops(model, pos, center):
         out.append(f'<path class="loop" data-line="{e(x["src"])}|{e(x["rel"])}|{e(x["dst"])}" data-apex="{top[0]},{top[1]}" '
-                   f'd="M{a[0]},{a[1]} C{c1[0]},{c1[1]} {c2[0]},{c2[1]} {b[0]},{b[1]}" {_stroke(x)}/>'
-                   f'<text x="{top[0]}" y="{top[1]}" class="lab" text-anchor="middle">{e(_label(x))}</text>')
+                   f'd="M{a[0]},{a[1]} C{c1[0]},{c1[1]} {c2[0]},{c2[1]} {b[0]},{b[1]}" {_stroke(x)}/>')
+        labs.append(f'<text x="{top[0]}" y="{top[1]}" class="lab" filter="url(#{LABEL_BG})" text-anchor="middle">{e(_label(x))}</text>')
     for c, (x, y) in sorted(pos.items()):
         home = (model["categories"][c] or {}).get("home")
-        out.append(f'<g class="cat" data-cat="{e(c)}"><circle cx="{x}" cy="{y}" r="{NODE_R}" fill="{node_color(home)}" '
+        out.append(f'<g class="cat" data-cat="{e(c)}"><circle cx="{x}" cy="{y}" r="{NODE_R}" fill="{colors.get(home, NO_HOME)}" '
                    f'fill-opacity="0.85"/><text x="{x}" y="{y + NODE_R + 14}" class="name" text-anchor="middle">{e(c)}</text></g>')
+    out += labs
     out.append("</svg>")
     return "".join(out)

@@ -255,7 +255,7 @@ def lenses_of(doc_type):
     """**렌즈** — 이 문서 종류가 prose 추출 때 보는 층 목록 (B91 ①).
 
     없으면 등록 층 하나(지금과 같다). `"all"`이면 층 전부(층을 모르는 문서 — 비용 장치가 붙는다).
-    table은 대상이 아니다 — 스키마의 카테고리가 이미 집으로 층을 가른다(B90).
+    table은 대상이 아니다 — 스키마의 카테고리가 이미 home으로 층을 가른다(B90).
     """
     from router import discover
     e = lookup(doc_type) or {}

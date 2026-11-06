@@ -23,7 +23,7 @@ from core.state import store
 
 # ---------------------------------------------------------------- 재료 (쓰기 0)
 def items(layer=None):
-    """애매 — 사람 판단이 없는 `uncertain_match`(잠정 골격 노드 것은 첫 묶음) · `layer`면 그 층(집) 것만."""
+    """애매 — 사람 판단이 없는 `uncertain_match`(잠정 골격 노드 것은 첫 묶음) · `layer`면 그 층(home) 것만."""
     from core.state.status import PROVISIONAL
     out = []
     for x in store.read(store.QUEUE, []):

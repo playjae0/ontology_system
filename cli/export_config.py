@@ -26,17 +26,17 @@ from pathlib import Path
 from core import paths
 from core.state import catalog
 from cli import config_map as M, ontology_map as OM
-from cli.export import node_color, out_path
+from cli.export import out_path
 
 #: 뜻 차이에서 빼는 것 — 정의문 글 · 렌즈 · 골격 노드 수 · 점검 문면 · 경로 사유 · 쌍에서 온 cross-layer edge(층 걸림 행이 잰다)
 #: 연결 포인트의 출처 → config 키(화면 · 대조)
-FROM_KEY = {"관계 패턴": "relation_patterns", "위아래 쌍": "parent_pairs"}
+FROM_KEY = {"관계 패턴": "relation_patterns", "parent_pairs": "parent_pairs"}
 #: 점검 갈래 → 화면 낱말
 LEVEL_KEY = {"거부": "reject", "경고": "warn", "표시": "info"}
 
 
 def from_key(where):
-    """연결 포인트 출처 → config 키 — 관계 패턴 `relation_patterns` · 위아래 쌍 `parent_pairs` · 스키마 `schema: <doc_type>`."""
+    """연결 포인트 출처 → config 키 — 관계 패턴 `relation_patterns` · `parent_pairs` `parent_pairs` · 스키마 `schema: <doc_type>`."""
     return FROM_KEY.get(where) or (f"schema: {where.split(' ', 1)[1]}" if where.startswith("스키마 ") else where)
 
 
@@ -84,7 +84,7 @@ def _rows(model):
     lk = model.get("links") or {}
     out |= {("cross-layer edge", f"{x['layer']}: {x['src']} -{x['rel']}-> {x['dst']} · {x['end']} {x['category']} → home "
                                  f"{x['home']} · {from_key(x['from'])}")
-            for x in lk.get("cross") or [] if x["from"] != "위아래 쌍"}
+            for x in lk.get("cross") or [] if x["from"] != "parent_pairs"}
     out |= {("declared_by", f"{x['category']} {x['layers']} home {x['home']}") for x in lk.get("shared") or []}
     return out
 
@@ -134,24 +134,24 @@ KEYS = (("home", "그 카테고리의 노드가 사는 층 (common.json)"),
         ("also", "겸 — 그 단의 노드가 다른 카테고리이기도 함"),
         ("no_path", "이름에 공정 경로를 안 붙임 + 사유 · 비어 있으면 붙임(기본)"),
         ("skeleton", "사람이 고정한 나무 · 목록 (층 config) — 이름 그대로"),
-        ("parent_pairs", "위아래 쌍 — lower · upper · rel · src(엣지가 떠나는 끝) · 정의문 (common.json 한 곳)"),
+        ("parent_pairs", "카테고리 사이의 소속 관계 — lower · upper · rel · src(엣지가 떠나는 끝) · 정의문 (common.json 한 곳)"),
         ("uses", "그 층 문서가 쓰는 다른 층 카테고리 (층 config)"),
         ("name form", f"그 카테고리 노드의 이름 꼴 — {M.COORD_TOKEN}는 좌표 · 그 사이 자리는 위 노드(upper)"),
         ("relation_patterns", "그 층이 허용하는 (src, rel, dst) · symmetric = 대칭"))
 
 
-def _chip(lay):
-    return f'<span class="chip" style="--c:{node_color(lay)}"></span>{_e(lay)}'
+def _chip(lay, color):
+    return f'<span class="chip" style="--c:{color}"></span>{_e(lay)}'
 
 
-def _layer_html(lay, d, coord):
+def _layer_html(lay, d, coord, color):
     """층 하나 — `<층 layer>` 머리 · 색 띠(그림의 점 색) · categories · relation_patterns · key/value."""
     sk = d["skeleton"] or {}
     pol = d["polarity"] or {}
     only = {tuple(e) for e in d.get("pair_edges_only") or []}
     pairs = " · ".join(f"{s} -{r}-> {t}" + (" (parent_pairs에서)" if (s, r, t) in only else "") for s, r, t in d["pair_edges"])
     note = "coord layer — 좌표 골격을 가진 층" if lay == coord else "좌표는 coord layer 골격에서"
-    return (f'<h3 class="band" style="--c:{node_color(lay)}">&lt;{_e(lay)} layer&gt;</h3><p class="sub">{note}</p>'
+    return (f'<h3 class="band" style="--c:{color}">&lt;{_e(lay)} layer&gt;</h3><p class="sub">{note}</p>'
             + _table(("categories", "정의문 첫 줄"), list(d["categories"].items()))
             + _table(("src", "rel", "dst", "symmetric"),
                      [(p["src"], p["rel"], p["dst"], "✓" if p["symmetric"] else "") for p in d["patterns"]])
@@ -214,7 +214,7 @@ def head(model):
     n = M.counts(model)
     co = model["coord"]
     return (" · ".join(f"{k} {v}" for k, v in (
-        ("layers", n["층"]), ("categories", n["카테고리"]), ("relation_patterns", n["관계 패턴"]), ("parent_pairs", n["위아래 쌍"]),
+        ("layers", n["층"]), ("categories", n["카테고리"]), ("relation_patterns", n["관계 패턴"]), ("parent_pairs", n["parent_pairs"]),
         ("cross-layer edges", len(cross_edges(model))), ("uses", n["쓰는 카테고리"]),
         ("reject", n["거부"]), ("warn", n["경고"]), ("info", n["표시"])))
         + f" · coord layer {co['layer']} ({co['category']})")
@@ -230,10 +230,10 @@ def _map_html(model):
              "—" if x["edges"] is None else ("0 (선언만)" if x["edges"] == 0 else f"{x['edges']:,}"), x["same_node"] or "")
             for x in onto.get("lines") or []]
     return ("<h2>ontology map — 카테고리 수준의 지도</h2><p class=\"sub\">점 = 카테고리 · 색 = home 층 "
-            + " ".join(_chip(lay) for lay in model["layers"])
+            + " ".join(_chip(lay, c) for lay, c in OM.layer_colors(model).items())
             + f" · 선 = (src, rel, dst) 하나 — {legend} · 점선 = {OM.CROSS} {n[OM.CROSS]} · 고리 {n['고리']} = 같은 카테고리끼리의 관계"
             f"(실제 그래프에서는 다른 두 노드) · 선언만 {n['선언만']}(그래프에 엣지 0) · 선 {n['선']}</p>"
-            + OM.svg(model, node_color)
+            + OM.svg(model)
             + "<h3>relations — 선 하나에 한 줄(출처가 여럿이면 함께)</h3>"
             + _table(("src", "rel", "dst", "종류", "출처(config 키)", "층", "symmetric", "실제 엣지", "같은 노드 엣지"), rows)
             + "<h3>attributes — 값 칸</h3>"
@@ -250,7 +250,7 @@ def render_html(model):
             '<div class="keys"><b>칸 이름은 config 키 그대로</b> — 고칠 자리를 그 이름으로 찾는다<dl>'
             + "".join(f"<dt>{_e(k)}</dt><dd>{_e(v)}</dd>" for k, v in KEYS) + "</dl></div>"
             + _map_html(model)
-            + "<h2>layers</h2>" + "".join(_layer_html(lay, d, model["coord"]["layer"]) for lay, d in model["layers"].items())
+            + "<h2>layers</h2>" + "".join(_layer_html(lay, d, model["coord"]["layer"], OM.layer_colors(model)[lay]) for lay, d in model["layers"].items())
             + "<h2>categories — common.json</h2>"
             + _table(("category", "home", "used_by", "also", "no_path", "skeleton", "name form"),
                      [(c, v["home"], " · ".join(v["used_by"]),
