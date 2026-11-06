@@ -100,12 +100,29 @@ def _trace():
                               "chunks": store.read(store.CHUNKS, {})}, nm), ensure_ascii=False, sort_keys=True)
 
 
+def _drain(fd, secs):
+    """남은 출력을 `secs`초 안에서 읽는다(멈춘 자식의 스택)."""
+    got = b""
+    while True:
+        r, _w, _x = select.select([fd], [], [], secs)
+        if not r:
+            return got
+        try:
+            d = os.read(fd, 65536)
+        except OSError:
+            return got
+        if not d:
+            return got
+        got += d
+
+
 def _drive(argv, answers, wait=25):
     """pty로 `run.py`를 돌리며 **묻는 줄이 뜰 때마다** 다음 답을 넣는다 — `(화면, 넣은 답 수, 묻는 줄 수)`."""
     import pty
     pid, fd = pty.fork()
     if pid == 0:                                                     # pragma: no cover
         os.environ["USE_MOCK"] = "1"
+        os.environ["PYTHONFAULTHANDLER"] = "1"                       # 멈춘 자식의 스택(B184 ⓪ — 기다림이 끝나면 SIGABRT)
         os.chdir(str(ROOT))
         os.execv(sys.executable, [sys.executable, str(ROOT / "run.py"), *argv])
     out, sent = b"", 0
@@ -115,7 +132,17 @@ def _drive(argv, answers, wait=25):
         except InterruptedError:
             continue
         if not r:
-            os.kill(pid, signal.SIGKILL)                             # 답을 기다린 채 멈췄다 — 시험이 끝낸다
+            # 답을 기다린 채 멈췄다 — 스레드마다 커널 자리(시스템 호출 · 기다리는 곳)와 스택(SIGABRT · faulthandler)을 받고 시험이 끝낸다(B184 ⓪)
+            for t in sorted(Path(f"/proc/{pid}/task").glob("*")):
+                with contextlib.suppress(OSError):
+                    print(f"   [멈춘 자식 {t.name}] syscall {(t / 'syscall').read_text().split()[:2]} · wchan "
+                          f"{(t / 'wchan').read_text()} · " + " ".join(ln for ln in (t / "status").read_text().splitlines()
+                                                                if ln.startswith(("SigPnd", "ShdPnd", "SigBlk"))), flush=True)
+            os.kill(pid, signal.SIGABRT)
+            out += _drain(fd, 3.0)
+            print("   [멈춘 자식] " + _screen.strip_ansi(out.decode("utf-8", "replace"))[-4000:], flush=True)
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
             break
         try:
             d = os.read(fd, 4096)

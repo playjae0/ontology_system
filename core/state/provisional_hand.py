@@ -1,0 +1,249 @@
+# -*- coding: utf-8 -*-
+"""칸 2.8 곁 — **잠정 골격 노드의 사람 손 — 승격 · 합침 · 그대로**(B184 ② · 결정 A-승격) · 골격 `ALIASES`에 쓰는 자리 하나.
+
+부르는 화면은 둘이다 — 인입 `--step` 좌표 단계(`cli/provisional_ask`)와 인입 뒤 한 화면(`ops review`). 둘이 같은 함수를 부른다.
+
+| 처분 | 하는 일 |
+|---|---|
+| 승격 `promote` | 골격 파일에 (부모, 이름) 줄(`{"@unordered": 이름}` — 형제 순서 0) · 잠정 표시를 걷고 사람 고정(seed) · 그 자리에서
+|                | 골격 심기(`bootstrap` — 다음 bootstrap과 같은 일 · 같은 노드 · id 그대로) · 이름이 바뀌는 자리(골격이 `부모::이름`을 세운다)는
+|                | 거부 — 이름이 바뀌는 일은 재구축 한 길(운영 런북 6) |
+| 합침 `merge`   | 그 표기를 고른 골격 노드의 `ALIASES`로 · 이미 세운 잠정이면 재구축 한 길(아래 이름이 바뀐다) · 아직 세우지 않았으면 그
+|                | 자리에서 골격 심기(사전이 그 표기를 그 골격 노드로 안다 — 그 문서의 나머지 행부터) |
+| 그대로 `keep`  | 쓰지 않는다 · 사람 판단 기록에 「봄」(다음 화면은 접어 둔다) |
+
+학습 기록 승격(`coord_learn.promote` — 좌표 학습의 사람 손)도 `ALIASES`는 여기 `add_alias`로 쓴다(D-269). 골격이 config 인라인인
+층은 두 손이 같은 문면으로 멈춘다(`skeleton_file`). 코드에 층 어휘 0 — 카테고리 · 관계 · 단은 config와 골격 심기의 것.
+"""
+from __future__ import annotations
+
+import copy
+import json
+
+from core import paths
+from core.state import store
+from core.state.status import PROVISIONAL, is_live
+
+#: 사람 판단 기록의 연산 이름(재생은 건너뛴다 — 골격 파일에 남는 판단 · 「봄」은 화면 표지 · `oplog.SKIP`)
+OP_PROMOTE, OP_MERGE, OP_KEEP = "provisional:promote", "provisional:merge", "provisional:keep"
+#: 큐 판단(재인입 회수가 보존한다 — `resolution`)
+DEC_PROMOTE, DEC_MERGE = "승격", "합침(재구축 대기)"
+REBUILD = "python run.py rebuild"
+
+
+class Refused(Exception):
+    """사람 손의 거부 — 문면에 다음 줄이 있다."""
+
+
+# ---------------------------------------------------------------- 골격 파일 · ALIASES (자리 하나)
+def skeleton_file(err=Refused):
+    """`(좌표 층, 골격 파일)` — 골격이 config 인라인이면 `err`(학습 승격과 같은 문면)."""
+    from core.state.bootstrap import coord_layer, load_config
+    lay = coord_layer()
+    src = ((load_config(lay).get("skeleton") or {}).get("source"))
+    if not src:
+        raise err(
+            f"[상태] 좌표 층 {lay}의 골격이 파일이 아니다(config 인라인) — 승격할 `ALIASES` 자리가 없다\n"
+            f"  ▶ 다음 줄 — 표기를 노드에 사람이 잇는다: python run.py ops alias {lay} <노드> <표기> --actor <이름>")
+    return lay, paths.layers(lay, src)
+
+
+def _read(p):
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _write(p, seed):
+    store.atomic_write_bytes(p, (json.dumps(seed, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+
+def add_alias(canonical, surface, err=Refused):
+    """**골격 `ALIASES`에 쓰는 자리 하나** — `canonical`(골격 노드) 아래에 `surface` · 돌려주는 것은 `(층, 파일)`."""
+    lay, p = skeleton_file(err)
+    seed = _read(p)
+    al = seed.setdefault("ALIASES", {}).setdefault(canonical, [])
+    if surface not in al:
+        al.append(surface)
+    _write(p, seed)
+    return lay, p
+
+
+def _replant(lay):
+    """그 자리의 골격 심기 — 다음 `bootstrap`과 같은 일(같은 노드 · id 그대로 · 사전 · 닫힌 목록 스냅샷)."""
+    from core.state.bootstrap import bootstrap
+    bootstrap(lay, echo=False)
+
+
+# ---------------------------------------------------------------- 골격 트리에 한 줄
+def _insert(items, target, entry, up, depth, labels, sep):
+    """`target`(부모 canonical) 아래에 `entry`를 더한다 — 찾으면 True. 잎(문자열) · 극성 표지 부모는 자식 배열로 편다(뜻 그대로)."""
+    from core.state.skeleton import MARK_PREFIX, MARK_SPLIT, MARK_UNORDERED, TIER_BY_DEPTH
+
+    def canon(name):
+        return name if depth in TIER_BY_DEPTH else f"{up}{sep}{name}"
+    for i, it in enumerate(items):
+        if isinstance(it, str):
+            if not it.startswith((sep, MARK_PREFIX)) and canon(it) == target:
+                items[i] = {it: [entry]}
+                return True
+            continue
+        if not isinstance(it, dict) or len(it) != 1:
+            continue
+        (k, v), = it.items()
+        if k == MARK_UNORDERED:
+            box = [v]
+            if _insert(box, target, entry, up, depth, labels, sep):
+                it[k] = box[0]
+                return True
+        elif isinstance(v, list):
+            if canon(k) == target:
+                v.append(entry)
+                return True
+            if _insert(v, target, entry, canon(k), depth + 1, labels, sep):
+                return True
+        elif isinstance(v, str) and v.startswith(MARK_PREFIX) and canon(k) == target:
+            kids = [sep + x for x in labels] if v == MARK_SPLIT else [sep + v[len(MARK_PREFIX):]]
+            it[k] = kids + [entry]
+            return True
+    return False
+
+
+def _grown(seed, parent, name):
+    """골격에 (부모, 이름)을 더한 새 seed와 그 사양 — `(seed, spec)` · 골격 파서가 거부하면 `Refused`."""
+    from core.state import catalog
+    from core.state.skeleton import MARK_UNORDERED, SeedError, _TreeParser
+    sep, labels = catalog.sep(), seed.get("AXIS_LABELS") or {}
+    new = copy.deepcopy(seed)
+    if not _insert(new.get("TREE") or [], parent, {MARK_UNORDERED: name}, None, 1, labels, sep):
+        raise Refused(f"부모 '{parent}'가 골격 파일에 없다 — 사람이 고정한 골격 노드 아래로만 승격한다(잠정 부모는 먼저 승격)")
+    try:
+        parsed = _TreeParser(labels, sep).parse(new["TREE"])
+    except SeedError as e:
+        raise Refused(f"골격 파일이 받지 않는다 — {e}") from None
+    spec = next((s for s in parsed.specs if not s.instance and s.name == name and s.parent is not None
+                 and s.parent.canonical == parent), None)
+    return new, spec, parsed
+
+
+def _polarity_note(parsed, spec, g, canonical, sep):
+    """극성 단 안내가 필요한가 — 부모가 극성 단을 가졌거나 그 노드 아래 값에 극성이 있다."""
+    from core.build.build import POLARITY_NONE
+    if any(s.instance and s.parent is spec.parent for s in parsed.specs):
+        return True
+    return any(is_live(n) and str(n["canonical"]).startswith(canonical + sep)
+               and n.get("polarity") not in (None, POLARITY_NONE) for n in g.nodes.values())
+
+
+POLARITY_LINE = "극성 단을 열려면 골격 파일에 극성 줄 → python run.py bootstrap → python run.py rebuild (운영 런북 6)"
+
+
+# ---------------------------------------------------------------- 처분 셋
+def _ctx():
+    from core.state.bootstrap import COORD_CATEGORY, coord_layer, load_config, open_graph
+    lay = coord_layer()
+    child = ((load_config(lay).get("skeleton") or {}).get("relations") or {}).get("child")
+    return lay, open_graph(lay), child, COORD_CATEGORY
+
+
+def _node(g, nid, cat):
+    n = g.get(nid) if nid else None
+    if not (n and is_live(n) and n.get(PROVISIONAL) and n.get("category") == cat):
+        raise Refused(f"잠정 골격 노드가 아니다 — {nid}")
+    return n
+
+
+def _names(lay, n, cat):
+    return {"node": {"layer": lay, "canonical": n["canonical"], "category": cat}}
+
+
+def promote(actor, *, nid=None, surface=None, parent=None, reason=""):
+    """**승격** — 잠정 노드(`nid` — 이미 세웠다) 또는 이 문서에서 세울 표기(`surface` — `--step`)를 골격 파일의 (부모, 이름)으로.
+
+    부모는 그 노드의 부모 엣지 → `parent`(부모 미정이면 사람이 정한다 — 골격 노드 canonical). 돌려주는 것
+    `{canonical, parent, id, file, polarity}`. 이름이 바뀌는 자리 · 부모 미정 · 잠정 부모는 `Refused`(다음 줄 포함)."""
+    from core.state import catalog
+    from core.state.ops import log_op
+    if not actor:
+        raise Refused("행위자 미지정 — 승격은 로그에 행위자를 남긴다")
+    lay, g, child, cat = _ctx()
+    _lay, p = skeleton_file()
+    n = _node(g, nid, cat) if nid else None
+    up = None
+    if n is not None:
+        e = next((e for e in g.edges if e["src"] == nid and e["rel"] == child and is_live(g.get(e["dst"]))), None)
+        up = (g.get(e["dst"]) or {}).get("canonical") if e else None
+    up = up or parent
+    if not up:
+        raise Refused("부모 미정 — 부모를 정한다(골격 노드 이름)")
+    sep = catalog.sep()
+    canonical = n["canonical"] if n is not None else surface
+    name = canonical[len(up) + len(sep):] if canonical.startswith(up + sep) else canonical
+    seed, spec, parsed = _grown(_read(p), up, name)
+    if spec is None or (n is not None and spec.canonical != canonical):
+        raise Refused(f"승격하면 이름이 바뀐다(지금 '{canonical}' → 골격 '{spec.canonical if spec else name}') — 이름이 바뀌는 일은 "
+                      "재구축 한 길: 골격 파일에 줄 → python run.py bootstrap → python run.py rebuild (운영 런북 6)")
+    _write(p, seed)
+    if n is not None:
+        n["status"] = "seed"
+        n.pop(PROVISIONAL, None)
+        for x in g.edges:                         # 부모 엣지도 사람 고정(닫힌 목록 스냅샷의 부모)
+            if x["src"] == nid and x["rel"] == child and (g.get(x["dst"]) or {}).get("canonical") == up:
+                x["status"] = "seed"
+        g.save()
+    _replant(lay)
+    g = _ctx()[1]
+    got = next((i for i, x in g.nodes.items() if x["canonical"] == spec.canonical and x["category"] == cat and is_live(x)), None)
+    if n is not None:
+        store.resolve_item("auto_node", lambda pl: pl.get("node_id") == nid, actor=actor, decision=DEC_PROMOTE,
+                           at=store._now(), note="승격")
+        store.resolve_item("uncertain_match", lambda pl: pl.get("node_id") == nid, actor=actor, decision=DEC_PROMOTE,
+                           at=store._now(), note="승격")
+    log_op(OP_PROMOTE, actor, [got], reason, {"canonical": spec.canonical, "parent": up, "skeleton": paths.show(p)},
+           {"node": {"layer": lay, "canonical": spec.canonical, "category": cat}})
+    return {"canonical": spec.canonical, "parent": up, "id": got, "file": p,
+            "polarity": _polarity_note(parsed, spec, g, spec.canonical, sep)}
+
+
+def merge(actor, *, target, nid=None, surface=None, reason=""):
+    """**합침** — 표기를 골격 노드 `target`(canonical — 사람이 고정한 것)의 `ALIASES`로. 이미 세운 잠정(`nid`)이면 재구축이
+    필요하다(`rebuild: True` — 그 자리에서 이름을 고치는 둘째 길 0) · 아직 세우지 않은 표기(`surface`)면 그 자리의 골격 심기."""
+    from core.state.ops import log_op
+    if not actor:
+        raise Refused("행위자 미지정 — 합침은 로그에 행위자를 남긴다")
+    lay, g, _child, cat = _ctx()
+    t = next((x for x in g.nodes.values() if x["canonical"] == target and x["category"] == cat and is_live(x)
+              and not x.get(PROVISIONAL) and x.get("status") == "seed"), None)
+    if t is None:
+        raise Refused(f"합칠 골격 노드 '{target}'가 없다 — 사람이 고정한 골격 노드로만 합친다")
+    n = _node(g, nid, cat) if nid else None
+    words = ([surface] if surface else []) + ([a["surface"] for a in n.get("aliases") or [] if a.get("surface")]
+                                               if n is not None else [])
+    if n is not None and not words:
+        words = [n["canonical"]]
+    for w in dict.fromkeys(words):
+        _lay, p = add_alias(target, w)
+    if n is None:
+        _replant(lay)
+    else:
+        store.resolve_item("auto_node", lambda pl: pl.get("node_id") == nid, actor=actor, decision=DEC_MERGE,
+                           at=store._now(), note=f"→ {target}")
+        store.resolve_item("uncertain_match", lambda pl: pl.get("node_id") == nid, actor=actor, decision=DEC_MERGE,
+                           at=store._now(), note=f"→ {target}")
+    log_op(OP_MERGE, actor, [nid or t["id"]], reason, {"surfaces": list(dict.fromkeys(words)), "target": target,
+                                                        "rebuild": n is not None, "skeleton": paths.show(p)},
+           _names(lay, n, cat) if n is not None else {"node": {"layer": lay, "canonical": target, "category": cat}})
+    return {"target": target, "surfaces": list(dict.fromkeys(words)), "rebuild": n is not None, "file": p}
+
+
+def keep(actor, nid, reason=""):
+    """**그대로** — 쓰지 않는다 · 「봄」 표지(사람 판단 기록 — 다음 화면은 접어 둔다)."""
+    from core.state.ops import log_op
+    lay, g, _child, cat = _ctx()
+    n = _node(g, nid, cat)
+    log_op(OP_KEEP, actor, [nid], reason, {"canonical": n["canonical"]}, _names(lay, n, cat))
+    return {"canonical": n["canonical"]}
+
+
+def kept():
+    """「봄」 표지가 있는 잠정 노드 이름 — 사람 판단 기록에서(화면이 접어 둔다)."""
+    from core.state import oplog
+    return {((r.get("names") or {}).get("node") or {}).get("canonical") for r in oplog.read() if r.get("op") == OP_KEEP}

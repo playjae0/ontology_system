@@ -12,10 +12,8 @@
 """
 from __future__ import annotations
 
-import json
-
 from core import paths
-from core.state import store, surface_book
+from core.state import surface_book
 
 
 class LearnRefused(Exception):
@@ -32,17 +30,6 @@ def rows():
     return sorted(b.items(), key=lambda kv: (-int(kv[1].get("hits") or 0), kv[0]))
 
 
-def _skeleton_file():
-    from core.state.bootstrap import coord_layer, load_config
-    lay = coord_layer()
-    src = ((load_config(lay).get("skeleton") or {}).get("source"))
-    if not src:
-        raise LearnRefused(
-            f"[상태] 좌표 층 {lay}의 골격이 파일이 아니다(config 인라인) — 승격할 `ALIASES` 자리가 없다\n"
-            f"  ▶ 다음 줄 — 표기를 노드에 사람이 잇는다: python run.py ops alias {lay} <노드> <표기> --actor <이름>")
-    return lay, paths.layers(lay, src)
-
-
 def promote(surface, actor):
     """**승격** — 학습 기록을 골격 `ALIASES`로 옮긴다(사람 보증) · 기록은 지운다 · 다음 줄 `bootstrap`."""
     if not actor:
@@ -51,12 +38,8 @@ def promote(surface, actor):
     rec = b["채택"].get(surface)
     if not rec:
         raise LearnRefused(f"학습 기록에 '{surface}'가 없다 — python run.py show learned")
-    lay, p = _skeleton_file()
-    seed = json.loads(p.read_text(encoding="utf-8"))
-    al = seed.setdefault("ALIASES", {}).setdefault(rec["canonical"], [])
-    if surface not in al:
-        al.append(surface)
-    store.atomic_write_bytes(p, (json.dumps(seed, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    from core.state import provisional_hand
+    lay, p = provisional_hand.add_alias(rec["canonical"], surface, err=LearnRefused)   # `ALIASES`에 쓰는 자리 하나(B184 ②)
     b["채택"].pop(surface)
     surface_book.write_learned(b)
     from core.state.ops import log_op

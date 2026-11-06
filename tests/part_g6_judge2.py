@@ -547,5 +547,157 @@ show("B183 ⓓ 바꾸지 않는 것 — 좌표가 있는 값은 지금 판정(�
      all(r.get("guess") is None and r.get("path") != PG.PATH for r in list(_rp1.values()) + list(_rp3.values()))
      and _ru["B183피치"].get("guess", {}).get("why") == PG.NONE and not _ru["B183피치"].get("node_id"),
      f"P1 {[(s, r.get('path')) for s, r in _rp1.items()]} · U3 {_ru['B183피치'].get('guess')}")
+# ────────────────────────────────────────────────────────────── B184 잠정 골격 노드의 사람 손 · 인입 뒤 한 화면 (창작 표본)
+print("\n■ B184 — 승격 · 합침 · 그대로(손 하나) · 인입 `--step` 좌표 단계 · 인입 뒤 한 화면(묶음 넷) · 품질층 uses에 Unit")
+import builtins                                                    # noqa: E402
+import json as _js184                                              # noqa: E402
+from types import SimpleNamespace                                  # noqa: E402
+from cli import ops_review as OR, provisional_ask as PA            # noqa: E402
+from core import paths as _P184                                    # noqa: E402
+from core.state import provisional_hand as PH                      # noqa: E402
+
+
+def _snap184():
+    return _js184.dumps([STO.read(STO.QUEUE, []), {lay: open_graph(lay).nodes for lay in ("process", "quality")}],
+                        sort_keys=True, ensure_ascii=False)
+
+
+_a184 = SimpleNamespace(layer="all", actor="B184시험")
+_z0 = _snap184()
+_b = io.StringIO()
+with contextlib.redirect_stdout(_b):
+    OR.run(_a184)                                  # 시험 stdin은 터미널이 아니다 — 계획만
+_plan_only = _snap184() == _z0
+_head = _b.getvalue().splitlines()[0] if _b.getvalue() else ""
+
+
+def _ans184(q):
+    if "[자리 추정" in q and "B183피치" in q:
+        return "d"
+    if "[보류" in q and "B183장력" in q:
+        return "1"
+    return ""
+
+
+with contextlib.redirect_stdout(io.StringIO()):
+    OR.run(_a184, ask=_ans184)
+_mu3 = _mf("B183U")
+_jang = _pn("노칭::B183장력")
+show("B184 ⓕ 인입 뒤 한 화면 — 묶음 넷(잠정 · 애매 · 자리 추정 · 후보 있는 보류)이 한 명령의 표로 · 비대화형은 쓰기 0 · 자리 추정 떼기는 "
+     "보류로(다시 붙음이 보지 않는다 — 표지 없음) · 보류의 후보 고르기는 그 노드에 붙인다(큐에서 내림)",
+     _plan_only and all(w in _head for w in ("잠정 골격 노드", "애매", "자리 추정", "후보 있는 보류"))
+     and not (_pn("스태킹::B183피치") or {}).get(PG.FIELD) and "B183피치" in _mu3 and not _mu3["B183피치"].get("guess")
+     and "B183U#U2" in (_jang or {}).get("provenance", []) and "B183장력" not in _mu3,
+     f"계획만 쓰기 0 {_plan_only} · {_head[:90]} · 피치 재료 {_mu3.get('B183피치')} · 장력 출처 {(_jang or {}).get('provenance')}")
 _unregister(D183)
+
+# ⓑ ① 품질층 uses에 Unit — 품질 산문이 설비 소속을 말한 새 값은 그 설비 아래 이름(표와 같은 규칙) · 소속 엣지는 설비에서
+D184 = "b184_q"
+_register("quality", D184)
+_X184 = {"entities": [{"surface": "B184압력", "category": "Property", "parent": None, "value": None,
+                       "belongs_to": {"name": "노칭 프레스", "category": "Unit", "from": "본문"}}], "relations": [], "about": []}
+with Live(by={"extract": lambda b: _X184, "judge": lambda b: {"type": "new", "matched_id": None, "confidence": 0.9},
+              "outline": lambda b: {"headings": []}, "reinforce": lambda b: {"pick": None}}), _quiet():
+    run_document({"source_path": "(합성) B184Q.docx", "revision": "R1", "parsed_at": "2026-11-06T00:00:00", "parser_version": "m",
+                  "adapter_version": "m", "context": {}, "payload_kind": "prose", "doc_type": D184, "doc_id": "B184Q",
+                  "chunks": [{"source_locator": "Q1", "doc_type": D184, "process_group": None, "process_ref": "노칭",
+                              "electrode_type": "both", "text": "노칭 프레스의 B184압력을 관리한다.", "section": "1", "meta": {}}]})
+    finalize()
+_pq = _pn("노칭::노칭 프레스::B184압력")
+_un = _pn("노칭::노칭 프레스")
+_oa184 = [x for x in STO.read(STO.QUEUE, []) if x["kind"] == "orphan_attach" and x.get("doc_id") == "B184Q"]
+show("B184 ⓑ 품질층 uses에 Unit — 품질 산문이 「노칭 프레스의 ○○」를 말한 새 값이 소속 대상 「노칭 프레스」(공정층 Unit)로 풀린다 — "
+     "그 설비 아래 이름 · 설비에서 소속 엣지 · orphan_attach 0",
+     bool(_pq and _un) and not _oa184
+     and any(e["src"] == _un["id"] and e["dst"] == _pq["id"] for lay in ("process", "quality") for e in open_graph(lay).edges),
+     f"값 {(_pq or {}).get('canonical')} · orphan_attach {len(_oa184)}")
+_unregister(D184)
+
+
+def _mock184(step_answer=None):
+    """클린 → CP01 → PFMEA01(`step_answer`면 `--step` — 좌표 단계에서 그 답 한 번(`p 1` 꼴) · 관문은 c · 그 밖은 EOF)."""
+    with _quiet():
+        init.init(fresh_=True, all_=True)
+        RUN.cmd_bootstrap([])
+        IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / "CP01.xlsx"), "cp", ask=False)
+    if step_answer is None:
+        with _quiet():
+            IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / "PFMEA01.xlsx"), "pfmea", ask=False)
+        return
+
+    left = [step_answer]
+
+    def _inp(q=""):
+        if PA.GATE_PROMPT in q and left:                    # 좌표 단계 — 잠정 줄 처분 한 번 · 그다음은 계속
+            return left.pop()
+        if "계속 c" in q:
+            return "c"
+        raise EOFError
+    _in0, _tty0 = builtins.input, sys.stdin.isatty
+    builtins.input, sys.stdin.isatty = _inp, (lambda: True)          # 터미널 (`--step`은 대화형에서만 산다)
+    try:
+        with _quiet():
+            IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / "PFMEA01.xlsx"), "pfmea", step=True)
+    finally:
+        builtins.input, sys.stdin.isatty = _in0, _tty0
+
+
+def _r16():
+    rows = [r for r in (LG.read("PFMEA01") or {}).get("rows") or [] if str(r.get("locator")).endswith("R16")]
+    return next((r for r in rows if r.get("role") == "anchor"), {}), [r for r in rows if r.get("role") == "entity"]
+
+
+def _skel184():
+    return _js184.loads(_P184.layers(coord_layer(), "skeleton.json").read_text(encoding="utf-8"))
+
+
+def _provs184():
+    return [n for n in open_graph(coord_layer()).nodes.values() if is_live(n) and n.get(PROVISIONAL)]
+
+
+# ⓒ 승격 — 이미 세운 잠정(인입 뒤)
+_mock184()
+_ln0 = _pv("레이저노칭")
+_g0 = open_graph(coord_layer())
+_vals0 = sorted(n["canonical"] for n in _g0.nodes.values() if n["canonical"].startswith("레이저노칭::"))
+_pr = PH.promote("B184시험", nid=_ln0["id"])
+with _quiet():
+    RUN.cmd_bootstrap([])
+_g1 = open_graph(coord_layer())
+_ln1 = _g1.get(_ln0["id"])
+_tree = _js184.dumps(_skel184()["TREE"], ensure_ascii=False)
+show("B184 ⓒ 승격 — mock PFMEA01의 잠정 「레이저노칭」 → 골격 파일에 (조립, 레이저노칭) · 같은 노드 id · 잠정 표시 0 · 사람 고정 · "
+     "다음 bootstrap 뒤 노드 수 그대로(두 벌 0) · 아래 값 이름 그대로",
+     _pr["parent"] == "조립" and '{"@unordered": "레이저노칭"}' in _tree and _ln1["status"] == "seed" and not _ln1.get(PROVISIONAL)
+     and len(_g1.nodes) == len(_g0.nodes)
+     and sum(1 for n in _g1.nodes.values() if n["canonical"] == "레이저노칭") == 1
+     and sorted(n["canonical"] for n in _g1.nodes.values() if n["canonical"].startswith("레이저노칭::")) == _vals0 and _vals0,
+     f"{_pr['parent']} › {_pr['canonical']} · 노드 {len(_g0.nodes)} → {len(_g1.nodes)} · 값 {_vals0[:2]}")
+
+# ⓓ 합침 — 이미 세운 잠정을 골격 노드로 → 재구축 한 길
+_mock184()
+_mg = PH.merge("B184시험", target="노칭", nid=_pv("레이저노칭")["id"])
+_b = io.StringIO()
+with contextlib.redirect_stdout(_b):
+    _rbc = RB.main(["--allow-mock", "--yes"], bootstrap=RUN.cmd_bootstrap, screen=RUN.fresh_screen)
+_an, _en = _r16()
+show("B184 ⓓ 합침 — 잠정을 기존 골격 노드 「노칭」으로 → 골격 별칭에 그 표기 · 재구축 안내 · 재구축 뒤 잠정 노드 0 · 아래 값이 "
+     "그 골격 노드 아래 이름",
+     _mg["rebuild"] and "레이저노칭" in _skel184()["ALIASES"].get("노칭", []) and _rbc == 0 and not _provs184()
+     and str(_an.get("canonical")).split("::")[0] == "노칭" and _en
+     and all(str((open_graph("quality").get(r["node_id"]) or open_graph("process").get(r["node_id"]) or {}).get("canonical", ""))
+             .startswith("노칭::") for r in _en if r.get("node_id")),
+     f"재구축 rc {_rbc} · 잠정 {len(_provs184())} · R16 → {_an.get('canonical')} · 값 {[r.get('target') for r in _en][:3]}")
+
+# ⓔ `--step` 좌표 단계 — 정한 것은 그 문서의 나머지 행부터(재구축 0)
+_mock184("p 1")
+_an, _en = _r16()
+_lp = _pn("레이저노칭")
+_ok_p = (_lp or {}).get("status") == "seed" and not _provs184() and str(_an.get("canonical")).split("::")[0] == "레이저노칭"
+_mock184("m 1 노칭")
+_an2, _en2 = _r16()
+show("B184 ⓔ `--step` 좌표 단계에서 승격 · 합침 — 그 문서에서 세울 잠정이 승격이면 사람 고정으로 바로 서고(그 행의 좌표) · 합침이면 "
+     "그 골격 노드로 바로 풀린다 · 잠정 노드 0 · 재구축 0",
+     _ok_p and str(_an2.get("canonical")).split("::")[0] == "노칭" and not _provs184() and not _pn("레이저노칭"),
+     f"승격 {_ok_p} · 합침 R16 → {_an2.get('canonical')} · 잠정 {len(_provs184())}")
 done()

@@ -90,6 +90,37 @@ class _Tee(io.TextIOBase):
         return getattr(self.inner, "encoding", "utf-8")
 
 
+def _wait_line():
+    """**답 줄이 올 때까지 신호가 깨우는 기다림**(B184 ⓪) — 터미널에서만 · 그 뒤 `input()`은 막히지 않는다.
+
+    `input()`은 묻는 줄을 낸 뒤 C 안에서 `read()`로 들어간다 — 그 사이(파이썬 코드가 없는 구간)에 온 Ctrl-C는 처리기가 깃발만
+    세우고 `read()`가 줄을 기다려 영영 멈춘다(재현: `PyOS_InputHook`에 `pause`를 걸면 매번). 여기서는 신호가 깨우는 관(`set_wakeup_fd`)과
+    표준입력을 함께 기다린다 — 기다리는 동안 온 Ctrl-C는 `select`가 `KeyboardInterrupt`로 올리고, 관을 건 뒤 · `select` 앞에 온 것은
+    관이 깨운다(다음 바이트코드가 올린다). 주 스레드가 아니거나 터미널이 아니거나(파이프 — 묻지 않는 실행) select가 표준입력을
+    못 기다리는 곳(Windows)이면 아무것도 하지 않는다(지금 `input()` 그대로).
+    """
+    import select
+    import signal
+    try:
+        fd = sys.stdin.fileno()
+        if os.name == "nt" or not os.isatty(fd) or threading.current_thread() is not threading.main_thread():
+            return
+    except (AttributeError, ValueError, OSError):
+        return
+    r, w = os.pipe()
+    try:
+        os.set_blocking(w, False)
+        old = signal.set_wakeup_fd(w, warn_on_full_buffer=False)
+        try:
+            while fd not in select.select([fd, r], [], [])[0]:
+                os.read(r, 512)                  # 신호가 깨웠다 — 처리기(Ctrl-C면 KeyboardInterrupt)는 다음 바이트코드가 부른다
+        finally:
+            signal.set_wakeup_fd(old)
+    finally:
+        os.close(r)
+        os.close(w)
+
+
 #: `python -m cli.<x>` → `run.py`와 같은 명령 이름(같은 로그 파일).
 _NAMES = {"llmcheck": "llm-check", "skeleton": "skeleton-confirm"}
 
@@ -236,6 +267,7 @@ def run(command, main, argv=None):
         out.write(str(prompt))
         out.flush()
         # 답이 없으면(EOF · Ctrl-C) 묻는 줄은 버퍼에 남는다 — 화면처럼 다음 출력이 같은 줄에 붙는다
+        _wait_line()
         ans = orig_input("")
         out.answer(ans)
         return ans
