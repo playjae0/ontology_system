@@ -297,3 +297,143 @@ def line(c):
     return (f"자리 없는 값 {c['값']:,} — 자리 추정 {c['붙음']:,}(유일 후보) · 보류 {c['보류']:,}(줄기 둘 이상 {s[MANY]:,} · "
             f"애매 {s[UNSURE]:,} · 후보 없음 {s[NONE]:,}) · 상한에 잘림 {c['잘림']:,}"
             + (f" · 한 조각에서 다른 공정으로 갈림 {c['갈림']:,}" if c["갈림"] else ""))
+
+
+# ---------------------------------------------------------------- 사람 손 (B184 ④ — 인입 뒤 한 화면)
+#: 사람 판단 기록의 연산 — 맞음은 화면 표지(재생 0) · 떼기 · 고르기는 재구축 뒤 재생이 다시 한다(`oplog._HANDS`)
+OP_OK, OP_DETACH, OP_PICK = "guess:confirm", "guess:detach", "guess:pick"
+
+
+def _graphs():
+    from core.state.bootstrap import load_config, open_graph
+    from router import discover
+    lays = discover()
+    return {lay: open_graph(lay) for lay in lays}, {lay: load_config(lay) for lay in lays}
+
+
+def _human(op):
+    """그 연산의 사람 기록 `{(출처, 표기)}`(맞음 · 떼기)."""
+    from core.state import oplog
+    return {((r.get("detail") or {}).get("prov"), (r.get("detail") or {}).get("surface")) for r in oplog.read()
+            if r.get("op") == op}
+
+
+def attached(layer=None):
+    """자리 추정으로 붙은 값 — 노드 칸 `place_guess` 그대로(출처가 산 것 · 쓰기 0) · 그 노드와 부딪힌 값(`spec_conflict` — 그 출처) ·
+    사람이 「맞음」을 친 것은 `ok`."""
+    graphs, _c = _graphs()
+    ok = _human(OP_OK)
+    sc = [x for x in store.read(store.QUEUE, []) if x.get("kind") == "spec_conflict" and not x.get("resolution")]
+    out = []
+    for lay, g in graphs.items():
+        if layer not in (None, "all", lay):
+            continue
+        for nid, n in g.nodes.items():
+            for e in n.get(FIELD) or [] if is_live(n) else []:
+                if e.get("prov") not in (n.get("provenance") or []):
+                    continue
+                hit = [x["payload"] for x in sc if (x.get("payload") or {}).get("node_id") == nid
+                       and (x.get("payload") or {}).get("provenance") == e["prov"]]
+                out.append({"layer": lay, "node_id": nid, "canonical": n["canonical"], "ok": (e["prov"], e["surface"]) in ok,
+                            "doc": str(e["prov"]).split("#")[0], "conflict": [f"{p['attr']} {p['incoming']} ↔ {p['existing']}"
+                                                                           for p in hit], **e})
+    return out
+
+
+def detach(layer, nid, prov, surface, actor, reason=""):
+    """**떼기** — 그 행의 출처를 그 노드에서 걷고(되돌림과 같은 손 `_strip`) 빈 좌표 보류로(`hold` — 표지 `guess` 없음: 다시 붙음이
+    보지 않는다 · 사람이 뗐다) · 칸에서 내린다 · 기록(재구축 뒤 재생이 다시 뗀다). 돌려주는 것은 뗀 값(없으면 None)."""
+    from core.state.ops import log_op
+    graphs, _c = _graphs()
+    n = graphs[layer].get(nid) or {}
+    ent = next((e for e in n.get(FIELD) or [] if e.get("prov") == prov and e.get("surface") == surface), None)
+    if ent is None:
+        return None
+    did = str(prov).split("#")[0]
+    _strip(graphs, nid, prov, did)
+    hold(did, prov, {"surface": surface, "category": ent["category"], "target_layer": layer,
+                     **({"field": ent["field"]} if ent.get("field") else {})})
+    rest = [e for e in n.get(FIELD) or [] if e != ent]          # 회수 손(`strip_node`)이 이미 내렸을 수 있다
+    if rest:
+        n[FIELD] = rest
+    else:
+        n.pop(FIELD, None)
+    for g in graphs.values():
+        g.save()
+    log_op(OP_DETACH, actor, [nid], reason, {"prov": prov, "surface": surface, "category": ent["category"]},
+           {"node": {"layer": layer, "canonical": n["canonical"], "category": n["category"]}})
+    return ent
+
+
+def confirm(layer, nid, prov, surface, actor, reason=""):
+    """**맞음** — 확인 표지(사람 판단 기록 · 다음 화면은 접어 둔다 · 그래프 쓰기 0)."""
+    from core.state.ops import log_op
+    graphs, _c = _graphs()
+    n = graphs[layer].get(nid) or {}
+    log_op(OP_OK, actor, [nid], reason, {"prov": prov, "surface": surface},
+           {"node": {"layer": layer, "canonical": n.get("canonical"), "category": n.get("category")}})
+
+
+def held():
+    """**후보가 있는 자리 없는 값 보류** — `missing_field` 재료 중 표지 `guess.candidates`가 든 값(사람 판단 없는 것)."""
+    out = []
+    for x in store.read(store.QUEUE, []):
+        if x.get("kind") != "missing_field" or x.get("resolution"):
+            continue
+        pl = x.get("payload") or {}
+        for ent in pl.get("items") or [pl]:
+            for d in ent.get("dropped_entities") or []:
+                c = (d.get("guess") or {}).get("candidates")
+                if c:
+                    out.append({"doc": x.get("doc_id"), "prov": ent.get("provenance"), "surface": d["surface"],
+                                "category": d["category"], "layer": d.get("target_layer"), "candidates": list(c),
+                                "why": d["guess"].get("why"), "electrode_type": ent.get("electrode_type"),
+                                **({"field": d["field"]} if d.get("field") else {})})
+    return out
+
+
+def pick(row, target, actor, reason=""):
+    """**후보 고르기** — 사람이 고른 후보(`target` canonical)에 붙인다(붙이기와 같은 손 `_land` · 출처 사람) · 그 값을 큐에서 내린다 ·
+    기록(재구축 뒤 재생이 다시 고른다). 돌려주는 것은 노드 id(대상이 없으면 None)."""
+    from core.build.retry import _builder
+    from core.dictionary import Dictionary
+    from core.state.ops import log_op
+    graphs, cfgs = _graphs()
+    lay = row["layer"]
+    g = graphs.get(lay)
+    nid = next((i for i, n in (g.nodes.items() if g else ()) if n["canonical"] == target and is_live(n)), None)
+    if nid is None:
+        return None
+    dic = Dictionary.open()
+    b = _builder(g, cfgs[lay], row["doc"], lay, dic)
+    key, _pol = _key(b, row["surface"], row["category"], row.get("electrode_type"))
+    _land(b, nid, row["surface"], row["category"], row["prov"], key, row.get("field"), row.get("electrode_type"),
+          {"by": "사람", "actor": actor})
+    b.flush()
+    g.save()
+    dic.save()
+    _unqueue(row)
+    log_op(OP_PICK, actor, [nid], reason, {"prov": row["prov"], "surface": row["surface"], "category": row["category"],
+                                           "doc": row["doc"], "field": row.get("field"), "electrode_type": row.get("electrode_type")},
+           {"node": {"layer": lay, "canonical": target, "category": g.get(nid)["category"]}})
+    return nid
+
+
+def _unqueue(row):
+    """그 값 하나를 `missing_field`에서 내린다 — 행의 재료가 비면 행째 · 항목이 비면 항목째."""
+    q = store.read(store.QUEUE, [])
+    keep = []
+    for x in q:
+        pl = x.get("payload") or {}
+        if x.get("kind") == "missing_field" and x.get("doc_id") == row["doc"]:
+            ents = pl.get("items") or [pl]
+            for ent in ents:
+                if ent.get("provenance") == row["prov"]:
+                    ent["dropped_entities"] = [d for d in ent.get("dropped_entities") or [] if d.get("surface") != row["surface"]]
+            ents = [e for e in ents if e.get("dropped_entities") or e.get("dropped_edges") or e.get("pending_attrs")]
+            if not ents:
+                continue
+            if pl.get("items") is not None:
+                x["payload"] = dict(pl, items=ents, rows=len(ents))
+        keep.append(x)
+    store.write(store.QUEUE, keep)

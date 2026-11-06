@@ -1,11 +1,17 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 — **불확실 일괄 검토** — `uncertain_match`를 표로 보고 한 건씩 합침 / 별개 / 건너뜀 (B101 ⑤).
+"""칸 0.3 — **인입 뒤 한 화면 — 판단이 필요했던 것을 몰아서**(B101 ⑤ · B184 ④) — 묶음 넷을 표로 · 한 건씩 처분.
 
     python run.py ops review <층|all> --actor <이름>
 
-손은 지금의 `ops.merge`·`ops.confirm`이다(두 벌 0) — 합치면 사람이 친 merge(별칭 출처 사람) ·
-별개면 확정(confirmed) · 건너뜀은 아무것도 쓰지 않는다. 층에 걸친 노드도 같은 손이다(B100 —
-층 전부를 연다). **비대화형(터미널 아님)은 계획만** 낸다(쓰기 0).
+| 묶음 | 처분(손) |
+|---|---|
+| 잠정 골격 노드(좌표 층 · 「봄」은 접어 둔다) | 승격 · 합침 · 그대로(`cli/provisional_ask.decide` — 인입 `--step`과 같은 함수) |
+| 애매(`uncertain_match` — 잠정 노드 것은 첫 묶음) | 합침 · 별개 · 건너뜀(`ops.merge` · `ops.confirm`) |
+| 자리 추정(유일 후보 · 「맞음」은 접어 둔다) | 맞음(확인 표지) · 떼기(보류로 — `place_guess.detach`) |
+| 보류(후보가 있는 것) | 후보 고르기 — 자리 없는 값은 `place_guess.pick`(출처 사람) · 골격 칸은 합침 손 |
+
+새 쓰기 손은 승격 하나다(나머지는 지금 있는 손). **비대화형(터미널 아님)은 계획만** 낸다(쓰기 0). 끝 줄은 묶음마다 처분 수 ·
+재구축이 필요한 처분이 있으면 그 명령 한 줄.
 """
 from __future__ import annotations
 
@@ -14,14 +20,16 @@ import sys
 from core.state import store
 
 
+# ---------------------------------------------------------------- 재료 (쓰기 0)
 def items(layer=None):
-    """검토 대상 — 사람 판단이 없는 `uncertain_match` · `layer`면 그 층(집) 것만."""
+    """애매 — 사람 판단이 없는 `uncertain_match`(잠정 골격 노드 것은 첫 묶음) · `layer`면 그 층(집) 것만."""
+    from core.state.status import PROVISIONAL
     out = []
     for x in store.read(store.QUEUE, []):
         if x.get("kind") != "uncertain_match" or x.get("resolution"):
             continue
         pl = x.get("payload") or {}
-        if layer not in (None, "all") and pl.get("layer") != layer:
+        if pl.get(PROVISIONAL) or layer not in (None, "all") and pl.get("layer") != layer:
             continue
         near = pl.get("nearest") or {}
         score = next((t.get("score") for t in near.get("top") or [] if t.get("id") == near.get("id")), None)
@@ -33,19 +41,97 @@ def items(layer=None):
     return out
 
 
-def table(rows):
-    print(f"■ 불확실 일괄 검토 — {len(rows):,}건 (판정이 확신하지 못해 새로 만든 노드 · 가장 가까운 후보)")
+def provisionals(layer=None):
+    """잠정 골격 노드 — `(보일 줄, 접은 수)` · 좌표 층만 · 「봄」 표지는 접는다."""
+    from core.build import provisional
+    from core.state import provisional_hand as PH
+    from core.state.bootstrap import coord_layer
+    lay = coord_layer()
+    if layer not in (None, "all", lay):
+        return [], 0
+    from core.state.bootstrap import open_graph
+    kept, g = PH.kept(), open_graph(lay)
+    rows = [{"nid": e["id"], "surface": e["canonical"], "canonical": e["canonical"], "parent": e.get("parent"),
+             "tier": e.get("tier"), "near": e.get("near") or [], "doc": e.get("doc"),
+             "rows": sum(1 for p in (g.get(e["id"]) or {}).get("provenance") or [] if "#" in str(p))}
+            for e in provisional.listing(lay)]
+    return [r for r in rows if r["canonical"] not in kept], sum(1 for r in rows if r["canonical"] in kept)
+
+
+def guesses(layer=None):
+    """자리 추정으로 붙은 값 — `(보일 줄, 접은 수)` · 「맞음」은 접는다."""
+    from core.build import place_guess
+    rows = place_guess.attached(layer)
+    return [r for r in rows if not r["ok"]], sum(1 for r in rows if r["ok"])
+
+
+def holds(layer=None):
+    """후보가 있는 보류 — 자리 없는 값(`missing_field` 표지 후보) · 골격 칸(`orphan_anchor` — 같은 이름의 골격 노드가 있다)."""
+    from core.build import place_guess
+    from parser.namefold import key
+    out = [dict(r, kind="값") for r in place_guess.held() if layer in (None, "all", r["layer"])]
+    from core.state.bootstrap import COORD_CATEGORY, coord_layer, open_graph
+    lay = coord_layer()
+    if layer not in (None, "all", lay):
+        return out
+    from core.state import catalog
+    g, sep = open_graph(lay), catalog.sep()
+    names = {}
+    for n in g.nodes.values():
+        if n.get("category") == COORD_CATEGORY and n.get("status") == "seed":
+            for s in {n["canonical"].rsplit(sep, 1)[-1]} | {a["surface"] for a in n.get("aliases") or []}:
+                names.setdefault(key(s), set()).add(n["canonical"])
+    seen = set()
+    for x in store.read(store.QUEUE, []):
+        pl = x.get("payload") or {}
+        if x.get("kind") != "orphan_anchor" or x.get("resolution") or pl.get("category") != COORD_CATEGORY:
+            continue
+        c = sorted(names.get(key(pl.get("surface") or ""), ()))
+        if c and pl.get("surface") not in seen:
+            seen.add(pl["surface"])
+            out.append({"kind": "골격 칸", "doc": x.get("doc_id"), "surface": pl["surface"], "candidates": c,
+                        "why": x.get("reason", "")[:40], "layer": lay})
+    return out
+
+
+# ---------------------------------------------------------------- 표
+def _cut(s, n):
+    s = str(s if s is not None else "—")
+    return s[:n] + " " * max(0, n - len(s))
+
+
+def tables(b):
+    """묶음 넷의 표 — 머리 · 줄(번호는 묶음 안에서)."""
+    rows, folded = b["잠정"]
+    print(f"■ 인입 뒤 한 화면 — 잠정 골격 노드 {len(rows):,}" + (f"(봄 {folded:,} 접음)" if folded else "")
+          + f" · 애매 {len(b['애매']):,} · 자리 추정 {len(b['추정'][0]):,}"
+          + (f"(맞음 {b['추정'][1]:,} 접음)" if b["추정"][1] else "") + f" · 후보 있는 보류 {len(b['보류']):,}")
     if rows:
-        print(f"  {'#':>3} {'표기':<18} {'새 노드':<22} {'가장 가까운 후보':<22} {'점수':>6}  {'문서':<12} 가드")
-    for i, r in enumerate(rows, 1):
-        sc = "" if r["score"] is None else f"{r['score']:.2f}"
-        print(f"  {i:>3} {str(r['surface'])[:18]:<18} {str(r['canonical'])[:22]:<22} "
-              f"{str(r['near'] or '(없음)')[:22]:<22} {sc:>6}  {str(r['doc_id'])[:12]:<12} "
-              f"{'예' if r['guard'] else ''}")
+        print(f"  ── 잠정 골격 노드 — {'#':>3} {'표기':<18} {'부모':<14} {'단':<6} {'행 수':>4} {'합칠 후보':<16} 처음 본 문서")
+        for i, r in enumerate(rows, 1):
+            print(f"     {i:>3} {_cut(r['canonical'], 18)} {_cut(r['parent'] or '부모 미정', 14)} {_cut(r['tier'] or '미정', 6)} "
+                  f"{r['rows']:>4} {_cut(' · '.join(r['near']) or '—', 16)} {r['doc'] or '—'}")
+    if b["애매"]:
+        print(f"  ── 애매 — {'#':>3} {'표기':<18} {'새 노드':<22} {'가장 가까운 후보':<22} {'점수':>6}  {'문서':<12} 가드")
+        for i, r in enumerate(b["애매"], 1):
+            sc = "" if r["score"] is None else f"{r['score']:.2f}"
+            print(f"     {i:>3} {_cut(r['surface'], 18)} {_cut(r['canonical'], 22)} {_cut(r['near'] or '(없음)', 22)} {sc:>6}  "
+                  f"{_cut(r['doc_id'], 12)} {'예' if r['guard'] else ''}")
+    if b["추정"][0]:
+        print(f"  ── 자리 추정(유일 후보) — {'#':>3} {'값':<18} {'붙은 노드':<24} {'문서':<12} 부딪힌 값")
+        for i, r in enumerate(b["추정"][0], 1):
+            print(f"     {i:>3} {_cut(r['surface'], 18)} {_cut(r['canonical'], 24)} {_cut(r['doc'], 12)} "
+                  f"{' · '.join(r['conflict']) or '—'}")
+    if b["보류"]:
+        print(f"  ── 보류(후보 있음) — {'#':>3} {'칸':<6} {'표기':<18} {'후보':<30} 문서")
+        for i, r in enumerate(b["보류"], 1):
+            print(f"     {i:>3} {_cut(r['kind'], 6)} {_cut(r['surface'], 18)} "
+                  f"{_cut(' · '.join(f'{j}.{c}' for j, c in enumerate(r['candidates'], 1)), 30)} {r['doc']}")
 
 
+# ---------------------------------------------------------------- 처분
 def decide(r, ans, actor):
-    """한 건의 답 — `m`(합침 · 가까운 후보로) · `c`(별개 · 확정) · 그 밖(건너뜀). 돌려주는 것은 한 일."""
+    """애매 한 건 — `m`(합침 · 가까운 후보로) · `c`(별개 · 확정) · 그 밖(건너뜀). 돌려주는 것은 한 일."""
     from core.state import ops
     if ans == "m" and r["near_id"]:
         ops.merge(r["layer"], r["node_id"], r["near_id"], actor, reason="ops review — 합침")
@@ -63,27 +149,72 @@ def decide(r, ans, actor):
     return "건너뜀"
 
 
+def _guess(r, ans, actor):
+    from core.build import place_guess
+    if ans == "o":
+        place_guess.confirm(r["layer"], r["node_id"], r["prov"], r["surface"], actor, "ops review — 맞음")
+        return "맞음"
+    if ans == "d":
+        place_guess.detach(r["layer"], r["node_id"], r["prov"], r["surface"], actor, "ops review — 떼기")
+        return "떼기"
+    return "건너뜀"
+
+
+def _hold(r, ans, actor):
+    """보류 한 건 — 번호(후보 고르기) · 그 밖(그대로)."""
+    if not ans.isdigit() or not 1 <= int(ans) <= len(r["candidates"]):
+        return "그대로", False
+    c = r["candidates"][int(ans) - 1]
+    if r["kind"] == "값":
+        from core.build import place_guess
+        return ("고름" if place_guess.pick(r, c, actor, "ops review — 후보 고르기") else "그대로"), False
+    from core.state import provisional_hand as PH
+    PH.merge(actor, target=c, surface=r["surface"], reason="ops review — 골격 칸 후보")
+    print(f"     골격 칸 '{r['surface']}' → {c} 골격 ALIASES — 재연결(다음 인입 마무리 · python run.py ops relink all --actor {actor} --apply)이 그 행을 잇는다")
+    return "고름", False
+
+
+def bundles(layer):
+    return {"잠정": provisionals(layer), "애매": items(layer), "추정": guesses(layer), "보류": holds(layer)}
+
+
 def run(a, ask=None):
-    """`ops review` — 표 · 한 건씩 묻기(`ask(문면) -> 답`) · 비대화형은 계획만."""
-    rows = items(a.layer)
-    table(rows)
-    if not rows:
+    """`ops review` — 묶음 넷의 표 · 한 건씩 묻기(`ask(문면) -> 답`) · 비대화형은 계획만."""
+    from cli import _screen, provisional_ask
+    b = bundles(a.layer)
+    tables(b)
+    n = len(b["잠정"][0]) + len(b["애매"]) + len(b["추정"][0]) + len(b["보류"])
+    if not n:
         return 0
     if ask is None and not sys.stdin.isatty():
         print("  (비대화형 — 계획만 · 쓰기 0) ▶ 다음 줄 — 터미널에서: "
               f"python run.py ops review {a.layer} --actor {a.actor}")
         return 0
-    ask = ask or input
-    done = {"합침": 0, "별개": 0, "건너뜀": 0}
-    for i, r in enumerate(rows, 1):
-        q = (f"  [{i}/{len(rows)}] '{r['surface']}' — 합침(m: → {r['near'] or '후보 없음'}) / "
-             f"별개(c) / 건너뜀(s) > ")
-        ans = (ask(q) or "").strip().lower()[:1]
+    ask = ask or (lambda q: _screen.answer(q, "text", eof=""))
+    done = {"잠정": {k: 0 for k in provisional_ask.DONE}, "애매": {"합침": 0, "별개": 0, "건너뜀": 0},
+            "추정": {"맞음": 0, "떼기": 0, "건너뜀": 0}, "보류": {"고름": 0, "그대로": 0}}
+    rebuild = False
+    for r in b["잠정"][0]:
+        did, rb = provisional_ask.decide(r, a.actor, ask, indent="  ")
+        done["잠정"][did] += 1
+        rebuild |= rb
+    for i, r in enumerate(b["애매"], 1):
+        q = f"  [애매 {i}/{len(b['애매'])}] '{r['surface']}' — 합침(m: → {r['near'] or '후보 없음'}) / 별개(c) / 건너뜀(s) > "
         try:
-            did = decide(r, ans, a.actor)
+            did = decide(r, (ask(q) or "").strip().lower()[:1], a.actor)
         except Exception as e:                      # noqa: BLE001 — 거부는 그 건만 건너뛴다
             print(f"     [거부] {e}")
             did = "건너뜀"
-        done[did] += 1
-    print(f"■ 검토 끝 — 합침 {done['합침']:,} · 별개 {done['별개']:,} · 건너뜀 {done['건너뜀']:,}")
+        done["애매"][did] += 1
+    for i, r in enumerate(b["추정"][0], 1):
+        q = f"  [자리 추정 {i}/{len(b['추정'][0])}] '{r['surface']}' → {r['canonical']} — 맞음(o) / 떼기(d · 보류로) / 건너뜀 > "
+        done["추정"][_guess(r, (ask(q) or "").strip().lower()[:1], a.actor)] += 1
+    for i, r in enumerate(b["보류"], 1):
+        q = f"  [보류 {i}/{len(b['보류'])}] '{r['surface']}' — 후보 번호(1~{len(r['candidates'])}) / 그대로 Enter > "
+        did, rb = _hold(r, (ask(q) or "").strip(), a.actor)
+        done["보류"][did] += 1
+        rebuild |= rb
+    print("■ 검토 끝 — " + " | ".join(f"{k} " + " · ".join(f"{x} {v:,}" for x, v in d.items()) for k, d in done.items()))
+    if rebuild:
+        print("  ▶ 재구축이 필요하다(합친 표기의 아래 노드 이름이 바뀐다) — python run.py rebuild")
     return 0

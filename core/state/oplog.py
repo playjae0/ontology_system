@@ -40,7 +40,10 @@ MUTED = False
 #: 재생하지 않는 연산 — 사유(목록으로 보인다)
 SKIP = {"I3:split": "split — 배분표가 엣지 번호라 재구축 뒤 맞지 않는다(사람이 다시 나눈다)",
         "learn:promote": "파일에 남는 판단(골격 ALIASES)",
-        "learn:reject": "파일에 남는 판단(좌표 학습 기록)"}
+        "learn:reject": "파일에 남는 판단(좌표 학습 기록)",
+        "provisional:promote": "파일에 남는 판단(골격 파일 — 재구축이 심는다)",
+        "provisional:merge": "파일에 남는 판단(골격 ALIASES — 재구축이 심는다)",
+        "provisional:keep": "화면 표지(봄)", "guess:confirm": "화면 표지(맞음)"}
 
 KINDS = ("done", "already", "missing", "no_names", "skipped", "refused")
 
@@ -363,9 +366,39 @@ def _queue(w, nm, d, a, dry):
     return "done", f"큐 {kind} '{node['canonical']}' → '{dec}'"
 
 
+def _guess_detach(w, nm, d, a, dry):
+    """자리 추정 떼기(B184 ④) — 재구축의 자리 추정이 다시 붙였으면 다시 뗀다 · 이미 떼었으면 건너뛴다."""
+    from core.build import place_guess
+    node = nm["node"]
+    cur = _one(w, node)
+    n = w.get(cur) if cur else None
+    if n is None:
+        return "missing", f"'{node['canonical']}' 없음"
+    if not any(e.get("prov") == d.get("prov") and e.get("surface") == d.get("surface")
+                            for e in n.get(place_guess.FIELD) or []):
+        return "already", f"'{d.get('surface')}'는 '{node['canonical']}'에 붙어 있지 않다"
+    if not dry:
+        place_guess.detach(node["layer"], cur, d["prov"], d["surface"], a["actor"], a["reason"])
+    return "done", f"'{d.get('surface')}' ↛ '{node['canonical']}' 뗌"
+
+
+def _guess_pick(w, nm, d, a, dry):
+    """자리 없는 값의 후보 고르기(B184 ④) — 같은 값이 보류로 돌아왔으면 같은 후보에 다시 붙인다."""
+    from core.build import place_guess
+    node = nm["node"]
+    row = next((r for r in place_guess.held() if r["prov"] == d.get("prov") and r["surface"] == d.get("surface")), None)
+    if row is None:
+        return "already", f"'{d.get('surface')}' 보류가 없다(이미 붙었다)"
+    if _one(w, node) is None:
+        return "missing", f"'{node['canonical']}' 없음"
+    if not dry:
+        place_guess.pick(row, node["canonical"], a["actor"], a["reason"])
+    return "done", f"'{d.get('surface')}' → '{node['canonical']}'"
+
+
 _HANDS = {"I1:rename": _rename, "I5:transfer": _transfer, "I2:merge": _merge, "I4:obsolete": _obsolete,
           "I5:confirm": _confirm, "I6:alias": _alias, "alias:reject": _alias_reject, "edge:delete": _edge,
-          "queue:resolve": _queue}
+          "queue:resolve": _queue, "guess:detach": _guess_detach, "guess:pick": _guess_pick}
 
 
 #: 같은 표기 · 같은 대상의 별칭 판단(잇기 · 거두기) — **마지막 것만** 재생한다(B108 ① — 살렸다 다시 거두는 왕복 0)
