@@ -89,9 +89,26 @@ def _rows(model):
     return out
 
 
+def renamed(model):
+    """**옛 판 모델을 지금 판 이름으로 읽은 사본**(B188 ⓪ — `config_scope.renamed`와 같은 꼴 · 원본은 그대로) — 판 5 앞은 쌍에서 온
+    연결 포인트의 출처가 한국어 설명 이름이었다: 그 판의 출처는 관계 패턴 · 쌍 · 스키마 셋뿐이라 관계 패턴 · 스키마 밖은 `parent_pairs`."""
+    if (model.get("map_version") or 0) >= 5:
+        return model
+    lk = dict(model.get("links") or {})
+    lk["cross"] = [x if x["from"] in FROM_KEY or x["from"].startswith("스키마 ") else {**x, "from": "parent_pairs"}
+                   for x in lk.get("cross") or []]
+    return {**model, "links": lk}
+
+
+def version_note(a, b):
+    """두 모델의 판이 다르면 한 줄(뜻 비교는 그대로 — 옛 판은 `renamed`로 읽었다) · 같으면 None."""
+    va, vb = a.get("map_version"), b.get("map_version")
+    return None if va == vb else f"  ※ 판이 다르다 — 판 {va} ↔ 판 {vb} · 앞선 판의 출처 이름은 지금 이름으로 읽어 견준다(뜻 비교는 그대로)"
+
+
 def diff(a, b):
-    """두 모델의 뜻 차이 — `[줄]`(`- ` a에만 · `+ ` b에만 · 갈래순) · 같으면 빈 목록."""
-    ra, rb = _rows(a), _rows(b)
+    """두 모델의 뜻 차이 — `[줄]`(`- ` a에만 · `+ ` b에만 · 갈래순) · 같으면 빈 목록 · 옛 판은 지금 이름으로 읽는다(`renamed`)."""
+    ra, rb = _rows(renamed(a)), _rows(renamed(b))
     return ([f"- {k} — {t}" for k, t in sorted(ra - rb)] + [f"+ {k} — {t}" for k, t in sorted(rb - ra)])
 
 
@@ -292,8 +309,11 @@ def main(args):
     if args[:1] == ["--diff"]:
         if len(args) != 3:
             raise SystemExit("사용법: python run.py export config --diff a.json b.json")      # [사용법]
-        lines = diff(_read(args[1]), _read(args[2]))
+        a, b = _read(args[1]), _read(args[2])
+        lines, note = diff(a, b), version_note(a, b)
         print(f"[export] config map 대조 — {args[1]} ↔ {args[2]} · " + (f"다름 {len(lines)}" if lines else "같다"))
+        if note:
+            print(note)
         for ln in lines:
             print(f"  {ln}")
         return 1 if lines else 0
