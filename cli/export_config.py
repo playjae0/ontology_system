@@ -6,7 +6,7 @@ JSON으로 낸다 · 두 모델의 뜻 차이를 잰다.
     python run.py export config --json [경로]       같은 모델을 JSON으로(기본 export/config_map.json — 이름순 · 결정적)
     python run.py export config --from <layers 폴더> …  그 폴더(제안 — `work/config_next/layers`)를 읽는다(상태 루트 쓰기 0)
     python run.py export config --diff a.json b.json  두 모델의 뜻 차이만(category · home · also · name form · 층 categories ·
-                                                     relation_patterns · pairs · 층에 걸린 pairs · uses · cross-layer edge) —
+                                                     relation_patterns · parent_pairs · 층에 걸린 parent_pairs · uses · cross-layer edge) —
                                                      같으면 rc 0 · 다르면 rc 1 (B177 ① — 층 걸림도 잰다)
 
 **화면 낱말은 config 키 이름**(B177 ① · 사용자 확정 2026-11-02 — 고칠 자리를 그 이름으로 찾는다 · 한국어는 설명에만) · 층은
@@ -30,13 +30,13 @@ from cli.export import build_html, node_color, out_path
 
 #: 뜻 차이에서 빼는 것 — 정의문 글 · 렌즈 · 골격 노드 수 · 점검 문면 · 경로 사유 · 쌍에서 온 cross-layer edge(층 걸림 행이 잰다)
 #: 연결 포인트의 출처 → config 키(화면 · 대조)
-FROM_KEY = {"관계 패턴": "relation_patterns", "위아래 쌍": "pairs"}
+FROM_KEY = {"관계 패턴": "relation_patterns", "위아래 쌍": "parent_pairs"}
 #: 점검 갈래 → 화면 낱말
 LEVEL_KEY = {"거부": "reject", "경고": "warn", "표시": "info"}
 
 
 def from_key(where):
-    """연결 포인트 출처 → config 키 — 관계 패턴 `relation_patterns` · 위아래 쌍 `pairs` · 스키마 `schema: <doc_type>`."""
+    """연결 포인트 출처 → config 키 — 관계 패턴 `relation_patterns` · 위아래 쌍 `parent_pairs` · 스키마 `schema: <doc_type>`."""
     return FROM_KEY.get(where) or (f"schema: {where.split(' ', 1)[1]}" if where.startswith("스키마 ") else where)
 
 
@@ -69,8 +69,8 @@ def _rows(model):
         out |= {("relation_patterns", f"{lay}: {p['src']} -{p['rel']}-> {p['dst']}" + (" (symmetric)" if p.get("symmetric") else ""))
                 for p in d.get("patterns") or []}
         out |= {("uses", f"{lay}: {c}") for c in d.get("uses") or []}
-        out |= {("pairs (layer)", f"{lay}: {s} -{r}-> {t}") for s, r, t in d.get("pairs") or []}   # 층 걸림(B177 ①)
-    out |= {("pairs", f"{s} -{r}-> {t}") for s, r, t in model.get("pairs") or []}
+        out |= {("parent_pairs (layer)", f"{lay}: {s} -{r}-> {t}") for s, r, t in d.get("pairs") or []}   # 층 걸림(B177 ①)
+    out |= {("parent_pairs", f"{s} -{r}-> {t}") for s, r, t in model.get("pairs") or []}
     for c, v in (model.get("categories") or {}).items():
         out.add(("category", c))
         out.add(("home", f"{c} → {v.get('home')}"))
@@ -92,7 +92,7 @@ def diff(a, b):
 
 # ---------------------------------------------------------------- 관계 그림 (지금 뷰어)
 def _world(model):
-    """뷰어가 먹는 월드 — 카테고리 = 점(home 층 · 골격 카테고리는 seed) · relation_patterns · pairs = 엣지(그 층)."""
+    """뷰어가 먹는 월드 — 카테고리 = 점(home 층 · 골격 카테고리는 seed) · relation_patterns · parent_pairs = 엣지(그 층)."""
     world = {lay: SimpleNamespace(nodes={}, edges=[]) for lay in model["layers"]}
     for c, v in model["categories"].items():
         lay = v["home"] if v["home"] in world else next(iter(v["declared_by"]), None)
@@ -106,7 +106,7 @@ def _world(model):
         world[lay].edges += [{"src": f"C:{p['src']}", "dst": f"C:{p['dst']}", "rel": p["rel"], "status": "confirmed",
                               "provenance": [f"{lay} relation_patterns"]} for p in d["patterns"]]
         world[lay].edges += [{"src": f"C:{s}", "dst": f"C:{t}", "rel": r, "status": "confirmed",
-                              "provenance": [f"{lay} pairs (common.json)"]} for s, r, t in d["pairs"]]
+                              "provenance": [f"{lay} parent_pairs (common.json)"]} for s, r, t in d["pairs"]]
     return world
 
 
@@ -148,7 +148,7 @@ KEYS = (("home", "그 카테고리의 노드가 사는 층 (common.json)"),
         ("also", "겸 — 그 단의 노드가 다른 카테고리이기도 함"),
         ("no_path", "이름에 공정 경로를 안 붙임 + 사유 · 비어 있으면 붙임(기본)"),
         ("skeleton", "사람이 고정한 나무 · 목록 (층 config) — 이름 그대로"),
-        ("pairs", "위아래 쌍 — lower · upper · rel · src(엣지가 떠나는 끝) · 정의문 (common.json 한 곳)"),
+        ("parent_pairs", "위아래 쌍 — lower · upper · rel · src(엣지가 떠나는 끝) · 정의문 (common.json 한 곳)"),
         ("uses", "그 층 문서가 쓰는 다른 층 카테고리 (층 config)"),
         ("name form", f"그 카테고리 노드의 이름 꼴 — {M.COORD_TOKEN}는 좌표 · 그 사이 자리는 위 노드(upper)"),
         ("relation_patterns", "그 층이 허용하는 (src, rel, dst) · symmetric = 대칭"))
@@ -163,7 +163,7 @@ def _layer_html(lay, d, coord):
     sk = d["skeleton"] or {}
     pol = d["polarity"] or {}
     only = {tuple(e) for e in d.get("pairs_only") or []}
-    pairs = " · ".join(f"{s} -{r}-> {t}" + (" (pairs에서)" if (s, r, t) in only else "") for s, r, t in d["pairs"])
+    pairs = " · ".join(f"{s} -{r}-> {t}" + (" (parent_pairs에서)" if (s, r, t) in only else "") for s, r, t in d["pairs"])
     note = "coord layer — 좌표 골격을 가진 층" if lay == coord else "좌표는 coord layer 골격에서"
     return (f'<h3 class="band" style="--c:{node_color(lay)}">&lt;{_e(lay)} layer&gt;</h3><p class="sub">{note}</p>'
             + _table(("categories", "정의문 첫 줄"), list(d["categories"].items()))
@@ -173,7 +173,7 @@ def _layer_html(lay, d, coord):
                 ("skeleton", f"{sk.get('type')} · {sk.get('category')} · nodes {sk.get('nodes')}" if sk else "—"),
                 ("uses", " · ".join(d["uses"]) or "—"),
                 ("relations", " · ".join(d["relations"]) or "—"),
-                ("pairs (이 층에 걸린 것)", pairs or "—"),
+                ("parent_pairs (이 층에 걸린 것)", pairs or "—"),
                 ("polarity", f"{' · '.join(pol.get('bind_categories') or [])} — {' · '.join(pol.get('values') or [])}"
                  if pol else "—"),
                 ("mirrors", "declared" if d["mirrors"] else "—"),
@@ -187,7 +187,7 @@ def _no_path(v):
 
 
 def _pair_rows(model):
-    """`pairs` 표 — 공통 정의 그대로(lower · upper · rel · src · 정의문) + 이름에 주는 것 · 옛 층 매핑에서만 온 엣지는 그 표시."""
+    """`parent_pairs` 표 — 공통 정의 그대로(lower · upper · rel · src · 정의문) + 이름에 주는 것 · 옛 층 매핑에서만 온 엣지는 그 표시."""
     cats = model["categories"]
     sk = {c for c, v in cats.items() if v["skeleton_of"]}
     defs = model.get("pair_defs") or []
@@ -223,29 +223,29 @@ def _checks_html(chk):
 
 
 def head(model):
-    """머리 요약 — `layers · categories · relation_patterns · pairs · cross-layer edges(엣지 수) · uses · reject · warn · info ·
+    """머리 요약 — `layers · categories · relation_patterns · parent_pairs · cross-layer edges(엣지 수) · uses · reject · warn · info ·
     coord layer`(B177 ①)."""
     n = M.counts(model)
     co = model["coord"]
     return (" · ".join(f"{k} {v}" for k, v in (
-        ("layers", n["층"]), ("categories", n["카테고리"]), ("relation_patterns", n["관계 패턴"]), ("pairs", n["위아래 쌍"]),
+        ("layers", n["층"]), ("categories", n["카테고리"]), ("relation_patterns", n["관계 패턴"]), ("parent_pairs", n["위아래 쌍"]),
         ("cross-layer edges", len(cross_edges(model))), ("uses", n["쓰는 카테고리"]),
         ("reject", n["거부"]), ("warn", n["경고"]), ("info", n["표시"])))
         + f" · coord layer {co['layer']} ({co['category']})")
 
 
 def render_html(model):
-    """HTML 한 장 — 요약 · 설명 상자 · 관계 그림(지금 뷰어 · 색 = home 층) · layers · categories · pairs · cross-layer links · checks."""
+    """HTML 한 장 — 요약 · 설명 상자 · 관계 그림(지금 뷰어 · 색 = home 층) · layers · categories · parent_pairs · cross-layer links · checks."""
     lk = model["links"]
-    viewer = build_html(_world(model), query_panel=False, title="config map — categories · relation_patterns · pairs",
+    viewer = build_html(_world(model), query_panel=False, title="config map — categories · relation_patterns · parent_pairs",
                         color_axis="layer")
     body = (f"<h1>config map</h1><div class=\"sub\">{_e(model.get('shape'))} · {_e(head(model))} · 읽기만(지금 config · "
             "카탈로그 · 등록부가 읽힌 그대로)</div>"
             '<div class="keys"><b>칸 이름은 config 키 그대로</b> — 고칠 자리를 그 이름으로 찾는다<dl>'
             + "".join(f"<dt>{_e(k)}</dt><dd>{_e(v)}</dd>" for k, v in KEYS) + "</dl></div>"
-            "<h2>graph — categories · relation_patterns · pairs</h2><p class=\"sub\">점 = 카테고리 · 색 = home 층 "
+            "<h2>graph — categories · relation_patterns · parent_pairs</h2><p class=\"sub\">점 = 카테고리 · 색 = home 층 "
             + " ".join(_chip(lay) for lay in model["layers"])
-            + " · 엣지 = relation_patterns · pairs · 층을 넘는 엣지는 붉은 점선</p>"
+            + " · 엣지 = relation_patterns · parent_pairs · 층을 넘는 엣지는 붉은 점선</p>"
             f"<iframe title=\"graph\" srcdoc=\"{html.escape(viewer, quote=True)}\"></iframe>"
             "<h2>layers</h2>" + "".join(_layer_html(lay, d, model["coord"]["layer"]) for lay, d in model["layers"].items())
             + "<h2>categories — common.json</h2>"
@@ -253,7 +253,7 @@ def render_html(model):
                      [(c, v["home"], " · ".join(v["used_by"]),
                        " · ".join(f"{o}({'·'.join(t)})" for o, t in v["also"].items()) or "—", _no_path(v),
                        " · ".join(v["skeleton_of"]), v["name_form"]) for c, v in model["categories"].items()])
-            + "<h2>pairs — common.json</h2>"
+            + "<h2>parent_pairs — common.json</h2>"
             + _table(("lower", "upper", "rel", "src", "정의문", "이름에 주는 것"), _pair_rows(model))
             + "<h2>cross-layer links</h2><h3>층을 넘는 엣지 — 엣지 하나에 한 줄 · 끝 카테고리의 home이 그 층이 아니다</h3>"
             + _table(("layer", "src", "rel", "dst", "end → home", "from"),

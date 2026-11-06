@@ -484,7 +484,7 @@ _d174 = _maps174()
 show("B174 ⓑ 옛 모양 mock config → bootstrap이 제안(layers 모양) · 보고를 쓰고 멈춘다 · 그래프 · config · 등록부 쓰기 0 · "
      "제안은 새 모양 · B177 ⓐ 지도 지금 ↔ 제안 --diff는 층 걸림 한 줄(품질층에 새로 걸린 쌍)",
      _rc != 0 and "옛 모양" in _o and _P.config_next("보고.md").exists() and _w174
-     and not catalog.old_shape(_pl, _pc) and _d174 == ["+ pairs (layer) — quality: Process -has_property-> Property"],
+     and not catalog.old_shape(_pl, _pc) and _d174 == ["+ parent_pairs (layer) — quality: Process -has_property-> Property"],   # 고침(B185 ② — config 키 이름)
      f"rc {_rc} · 쓰기 0 {_w174} · 제안 옛 모양 {catalog.old_shape(_pl, _pc)} · 대조 {_d174[:3]}")
 
 
@@ -502,7 +502,7 @@ _pc, _pl = CM.read(_P.config_next("layers"))
 show("B174 ⓒ (일반 노드 카테고리) 아래 (경로 쓰는 카테고리) 쌍을 더한 옛 모양 → 보고 「이름이 바뀌는 카테고리」에 그 카테고리와 "
      "앞뒤 이름 꼴 · 위 · 아래는 같은 관계의 골격 끝 삼항과 같은 쪽",
      _rc != 0 and "`Failure` — 지금 `<Process>::<name>` → 제안 `<Process>::<Unit>::<name>" in _ren   # 고침(B177 ① — 이름 꼴 토큰)
-     and {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"} in _pc.get("pairs", []),
+     and {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"} in _pc.get("parent_pairs", []),
      [ln for ln in _ren.splitlines() if "Failure" in ln][:1])
 _d0 = _pc["categories"].get("Tool", {}).get("no_path")
 _rw(_P.config_next("layers", "common.json"), lambda c: c["categories"]["Tool"].update(no_path=""))
@@ -530,11 +530,11 @@ _cfg174["quality"]["categories"]["Property"] = "(시험) 관리항목"
 _cfg174["quality"]["uses"].remove("Property")
 _mx174 = CN.propose(_com174, _cfg174)
 show("B174 리뷰 고침 ⓐ 섞인 모양 → 제안은 공통 쌍 · sep · 경로를 그대로 두고 겹친 정의만 uses로(이름 바뀜 0 · 제안은 새 모양)",
-     not _mx174["stops"] and _mx174["common"]["pairs"] == _com174["pairs"] and _mx174["common"]["sep"] == _com174["sep"]
+     not _mx174["stops"] and _mx174["common"]["parent_pairs"] == _com174["parent_pairs"] and _mx174["common"]["sep"] == _com174["sep"]
      and not any("no_path" in v for v in _mx174["common"]["categories"].values())
      and "Property" in _mx174["layers"]["quality"]["uses"] and not _mx174["report"]["이름 바뀜"]
      and not catalog.old_shape(_mx174["layers"], _mx174["common"]),
-     f"쌍 {len(_mx174['common']['pairs'])} · quality uses {_mx174['layers']['quality']['uses']}")
+     f"쌍 {len(_mx174['common']['parent_pairs'])} · quality uses {_mx174['layers']['quality']['uses']}")
 _com174["categories"]["Property"]["no_path"] = "(시험) 공용 분류"
 _nr174 = catalog.naming_rule(_com174, _cfg174)
 show("B174 리뷰 고침 ⓑ 「안 씀」 카테고리는 위가 일반 노드인 쌍의 아래여도 앞말이 없다 — 이름 규칙과 지도 이름 꼴이 같은 답",
@@ -555,6 +555,22 @@ show("B174 리뷰 고침 ⓒ 빈 옛 규칙(canonical_scope {})은 규칙이다 
      and not _em174["report"]["이름 바뀜"] and not _em174["stops"]
      and len(_rp174["stops"]) == 1 and "엣지가 둘이다" in _rp174["stops"][0],
      f"안 씀 {sorted(c for c, v in _em174['common']['categories'].items() if 'no_path' in v)} · 멈춤 {_rp174['stops'][:1]}")
+# ────────────────────────────────────────────────────────────── B185 ② 공통 config 키 pairs → parent_pairs (뜻 그대로)
+from core.state import config_scope as CSC                         # noqa: E402
+init.init(fresh_=True, all_=True)
+_boot()
+_now185 = CSC.snapshot()
+_old185 = {k: ({("pairs" if kk == "parent_pairs" else kk): vv for kk, vv in v.items()} if k == CSC.COMMON_KEY else v)
+           for k, v in _now185.items()}                            # 지난 인입이 옛 키 이름으로 적은 지문
+_same185 = CSC.lines(CSC.impact({"B185X": {"config_parts": _old185}}, _now185))
+_rw(_P.common(), lambda c: c.__setitem__("pairs", c.pop("parent_pairs")))
+_rc185, _o185 = _boot()
+_pc185 = json.loads(_P.config_next("layers", "common.json").read_text(encoding="utf-8")) if _P.config_next("layers", "common.json").exists() else {}
+show("B185 ⓑ 키 parent_pairs — 옛 키 pairs 사본은 bootstrap이 제안을 쓰고 멈춘다(문면에 새 키 · 제안은 parent_pairs · 같은 쌍) · "
+     "키 이름만 바꾼 지난 기록은 「config 영향 — 지난 인입과 같다」",
+     _rc185 != 0 and "`pairs` → `parent_pairs`" in _o185 and "pairs" not in _pc185 and _pc185.get("parent_pairs")
+     and len(_pc185["parent_pairs"]) == len(catalog.pairs(_pc185)) and any("지난 인입과 같다" in ln for ln in _same185),
+     f"rc {_rc185} · 제안 키 {sorted(k for k in _pc185 if 'pairs' in k)} · {_same185[:1]}")
 init.init(fresh_=True, all_=True)
 
 done()

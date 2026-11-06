@@ -35,7 +35,7 @@
       ]
     }
   },
-  "pairs": [
+  "parent_pairs": [
     {
       "lower": "Unit",
       "upper": "Process",

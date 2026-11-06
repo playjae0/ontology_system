@@ -10,7 +10,7 @@
     B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다 · 메타의 구조 판단은 층 config를 읽지 않는다 — B148 ①)
   · 둘 다 — 층 `uses`(묻는 목록에 그 카테고리 · 집 층 정의문이 든다 · 게이트의 걸린 쌍 — B178 ②) → 다시 뽑고 다시 판정한다
   · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `mirrors` · `polarity` · `skeleton` · 공통 카테고리의 집 · 경로
-    (`no_path`) · 위아래 쌍(`pairs`) · `sep` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
+    (`no_path`) · 위아래 쌍(`parent_pairs`) · `sep` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
   · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) · 표에 없는 키 → 영향 없음
     (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥)
 
@@ -31,8 +31,10 @@ USES = "uses"
 OTHER = {"질의": ("query_intents", "query_traverse", "cross_layer_traverse", "fact_templates"),
          "기록": ("layer", "config_version", "registration", "skeleton_version")}
 #: 층 공통 config(`layers/common.json`) — 카테고리 항목은 칸마다 편다(`common_view` — 추출 입력은 겸뿐 · `used_by`는 기록 · B174)
-COMMON = {"추출": ("categories.also",), "구축": ("categories.home", "categories.no_path", "pairs", "sep")}
+COMMON = {"추출": ("categories.also",), "구축": ("categories.home", "categories.no_path", "parent_pairs", "sep")}
 COMMON_KEY = "공통"
+#: 이름만 바뀐 칸(B185 ② — 지난 기록의 옛 이름은 새 이름으로 대조한다 · 값이 같으면 바뀜이 아니다)
+RENAMED = {COMMON_KEY: {"pairs": "parent_pairs"}}
 
 
 def _h(v):
@@ -121,7 +123,8 @@ def changed(old, new):
     """두 지문의 바뀐 칸 — `{갈래: ["층.키" …]}` (더함 · 지움 · 바뀜 전부 · 지난 기록에 없는 층은 대조하지 않는다)."""
     out = {"추출": [], "구축": [], "그 밖": []}
     for lay in sorted(set(old or {}) & set(new or {})):
-        a, b = old[lay] or {}, new[lay] or {}
+        ren = RENAMED.get(lay, {})
+        a, b = {ren.get(k, k): v for k, v in (old[lay] or {}).items()}, new[lay] or {}
         for key in sorted(set(a) | set(b)):
             if a.get(key) != b.get(key):
                 for k in kinds(key, lay == COMMON_KEY):

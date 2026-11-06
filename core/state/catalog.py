@@ -9,7 +9,7 @@
     {"common_version": 1,
      "categories": {"<카테고리>": {"home": "<층>", "also": {"<카테고리>": ["sub", "detail"]},
                                   "no_path": "<사유>"}, …},
-     "pairs": [{"lower": "<카테고리>", "upper": "<카테고리>", "rel": "<관계>", "src": "lower|upper"}, …],
+     "parent_pairs": [{"lower": "<카테고리>", "upper": "<카테고리>", "rel": "<관계>", "src": "lower|upper"}, …],
      "sep": "::"}
 
 - `home` — 집(노드가 사는 그래프). 해소는 table·prose 모두 **집 빌더**에서 한다(②).
@@ -17,7 +17,7 @@
   **노드에 저장하지 않는다** — 주 카테고리 + `tier`와 카탈로그에서 계산한다.
 - **경로**(이름 규칙 — B174 ①): 적지 않으면 「씀」(이름에 공정 경로가 붙는다) · `no_path`(사유)면 「안 씀」 · 골격
   카테고리는 적지 않는다(층 config `skeleton`이 정본 — 이름 그대로).
-- **위아래 쌍**(`pairs` — B174 ①): 아래 · 위 · 엣지(관계 · `src` — 엣지의 출발이 아래인가 위인가). 산문 부착 · 소속 · 재부착 ·
+- **위아래 쌍**(`parent_pairs` — B174 ① · B185 ②): 아래 · 위 · 엣지(관계 · `src` — 엣지의 출발이 아래인가 위인가). 산문 부착 · 소속 · 재부착 ·
   표의 소유 엣지 · 이관 재배선이 이 한 곳을 읽고(`pair_relation`) · 그 층이 쓰는 두 카테고리의 쌍은 게이트가 허용한다
   (`layer_patterns`) · **위가 일반 노드(골격이 아닌 카테고리)면 아래 카테고리의 이름은 그 노드 아래다**(`naming_rule` 「nest」).
 - 옛 모양(공통 `canonical_scope` · 층 `category_pair_map` · 집이 아닌 층의 정의)은 `old_shape`가 말하고 `bootstrap`이 새 모양
@@ -44,6 +44,10 @@ _CACHE = {}
 
 class CatalogError(RuntimeError):
     """카탈로그가 없거나 쓸 수 없다 — 집을 추측하지 않고 멈춘다."""
+
+
+#: 공통 config의 위아래 쌍 키(B185 ② — 카테고리 사이의 소속 관계 · 그 노드를 아래 끝으로 둔 엣지가 부모 엣지)
+PAIRS = "parent_pairs"
 
 
 def _mock():
@@ -73,7 +77,7 @@ def draft(configs=None):
     configs = configs or _layer_configs()
     cats = {c: {"home": lays[0] if len(lays) == 1 else ""}
             for c, lays in sorted(declared_by(configs).items())}
-    out = {"common_version": 1, "categories": cats, "pairs": [], "sep": "::"}
+    out = {"common_version": 1, "categories": cats, PAIRS: [], "sep": "::"}
     shared = {c: lays for c, lays in declared_by(configs).items() if len(lays) > 1}
     if shared:
         out["_빈칸"] = {c: f"여러 층이 선언했다 {lays} — home을 그중 하나로 채운다"
@@ -167,7 +171,7 @@ def sep(cat=None):
 
 def pairs(cat=None):
     """**위아래 쌍**(B174 ①) — `[{lower, upper, rel, src, 정의문?}]` · 모양이 덜 찬 줄은 읽지 않는다(지도 점검이 말한다)."""
-    return [dict(p) for p in (_cat_or_none(cat) or {}).get("pairs") or []
+    return [dict(p) for p in (_cat_or_none(cat) or {}).get(PAIRS) or []
             if isinstance(p, dict) and p.get("lower") and p.get("upper") and p.get("rel")]
 
 
@@ -273,8 +277,9 @@ def used_by(configs=None):
     return out
 
 
-#: 옛 모양의 키(B174 ③) — 읽는 자리는 옛 모양 감지와 제안 짓기뿐이다
-OLD_COMMON_KEYS = ("canonical_scope",)
+#: 옛 모양의 키(B174 ③) — 읽는 자리는 옛 모양 감지와 제안 짓기뿐이다 · 옛 이름 `pairs`(B185 ② — 뜻 그대로 `parent_pairs`)
+OLD_COMMON_KEYS = ("canonical_scope", "pairs")
+OLD_PAIRS = OLD_COMMON_KEYS[1]
 
 
 def legacy_rule(common, configs):
@@ -282,7 +287,7 @@ def legacy_rule(common, configs):
     `no_path` — 을 아직 갖지 않을 때만 · 가지면 공통이 정본) · 없으면 None(제안 · 지도의 옛 뜻 해석이 같은 함수로 읽는다)."""
     common = common or {}
     sc = (common[OLD_COMMON_KEYS[0]] or {}) if OLD_COMMON_KEYS[0] in common else None   # 빈 규칙도 규칙이다(목록 빈 것)
-    has_new = bool(common.get("pairs")) or any("no_path" in (v or {}) for v in (common.get("categories") or {}).values())
+    has_new = bool(common.get(PAIRS) or common.get(OLD_PAIRS)) or any("no_path" in (v or {}) for v in (common.get("categories") or {}).values())
     if sc is None and not has_new:
         sc = next(((c[OLD_LAYER_KEYS[1]] or {}) for _l, c in sorted((configs or {}).items()) if OLD_LAYER_KEYS[1] in c), None)
     if sc is None:
@@ -296,7 +301,8 @@ def old_shape(configs=None, cat=None):
     집이 아닌 층의 카테고리 정의(정의문은 집 한 곳 · 다른 층은 `uses`)."""
     configs = configs if configs is not None else _layer_configs()
     cat = _cat_or_none(cat) or {}
-    out = [f"공통 config에 {k}가 남아 있다" for k in OLD_COMMON_KEYS if k in cat]
+    out = [f"공통 config에 {k}가 남아 있다" + (f" — `{OLD_PAIRS}` → `{PAIRS}`(뜻 그대로 — 키 이름만)" if k == OLD_PAIRS else "")
+           for k in OLD_COMMON_KEYS if k in cat]
     for lay, cfg in sorted(configs.items()):
         out += [f"층 {lay}의 config에 {k}가 남아 있다" for k in OLD_LAYER_KEYS if k in cfg]
     cats = cat.get("categories") or {}

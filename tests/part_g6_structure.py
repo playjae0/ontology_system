@@ -128,7 +128,7 @@ def _setup():
     """클린 → 덧칠(quality가 `Unit`을 쓴다) → 소속 엣지의 위아래 쌍(공통 config — B174) · 문서 종류 둘 · 청크 목표 행 손잡이(작은 표본)."""
     with contextlib.redirect_stdout(io.StringIO()):
         overlay()
-    _rw(_P.common(), lambda c: c.setdefault("pairs", []).append(
+    _rw(_P.common(), lambda c: c.setdefault("parent_pairs", []).append(
         {"lower": "Failure", "upper": "Unit", "rel": "occurs_in", "src": "lower"}))
     for lay in LAYERS:
         with contextlib.redirect_stdout(io.StringIO()):
@@ -341,7 +341,7 @@ def _table_names(nest):
         init.init(fresh_=True, all_=True)
         RUN.cmd_bootstrap([])
         if not nest:                              # 고침(B174 — nest는 위아래 쌍에서: 설비가 관리항목의 위인 쌍을 뺀다)
-            _rw(_P.common(), lambda c: c.update(pairs=[x for x in c["pairs"] if (x["lower"], x["upper"]) != ("Property", "Unit")]))
+            _rw(_P.common(), lambda c: c.update(parent_pairs=[x for x in c["parent_pairs"] if (x["lower"], x["upper"]) != ("Property", "Unit")]))
         for d in ("CP01", "PFMEA01"):
             run_document(load(d))
     return sorted(n["canonical"] for _l, n in World().nodes() if n.get("status") == "auto")

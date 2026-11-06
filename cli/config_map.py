@@ -90,7 +90,7 @@ def _cat_of(fields, name):
 
 
 def _pair_edges(common, configs, old):
-    """위아래 쌍의 엣지 `[(출발, 관계, 도착)]` — 새 모양은 공통 `pairs` · 옛 모양은 층 매핑의 합(옛 뜻)."""
+    """위아래 쌍의 엣지 `[(출발, 관계, 도착)]` — 새 모양은 공통 `parent_pairs` · 옛 모양은 층 매핑의 합(옛 뜻)."""
     edges = {catalog.pair_edge(p) for p in catalog.pairs(common)}           # 공통에 이미 있는 쌍 + 옛 층 매핑(옛 뜻)
     if old:
         edges |= {(k.partition(",")[0], r, k.partition(",")[2])
@@ -125,7 +125,7 @@ def _layer(lay, cfg, lenses, edges, old, schemas):
     spk = set(cfg.get("categories") or {}) | set(uses)
     raw = {(p.get("src"), p.get("rel"), p.get("dst")) for p in cfg.get("relation_patterns") or []}
     return {
-        # 이 층에 걸린 쌍 중 층 패턴에 없는 것 — 공통 `pairs`에서만 온다(B177 ① 표시 「pairs에서」 · 옛 모양은 층 매핑이라 0)
+        # 이 층에 걸린 쌍 중 층 패턴에 없는 것 — 공통 `parent_pairs`에서만 온다(B177 ① 표시 「parent_pairs에서」 · 옛 모양은 층 매핑이라 0)
         "pairs_only": [] if old else [list(e) for e in edges if {e[0], e[2]} <= spk and tuple(e) not in raw],
         "categories": {c: _first_line(d) for c, d in sorted((cfg.get("categories") or {}).items())},
         "uses": uses,
