@@ -226,7 +226,7 @@ show("ⓐ --diff는 바뀐 줄만 — 넷째 문서 줄이 더해지고 · 보�
 _old192 = [[k, v.replace("골격 아래", "유닛 이하")] for k, v in _lines]
 SS.save("b192_old", _old192)
 _cli192 = _run("show", "summary", "--diff", "b192_old", "지금")
-_end192 = next((ln for o in OUT.values() for ln in o.splitlines() if "요약 —" in ln), "")      # 인입 끝 한 줄(-v 화면)
+_end192 = next((ln for o in OUT.values() for ln in o.splitlines() if ln.strip().startswith("요약 — ")), "")      # 인입 끝 한 줄(-v 화면)
 show("B192 ⓔ 화면 낱말 — 인입 끝 한 줄 · show summary 문서 줄이 「골격 아래」(「유닛 이하」 0) · 옛 낱말로 저장된 요약도 --diff가 돈다"
      "(새 낱말로 읽어 바뀐 줄 0)",
      "골격 아래 비율" in _end192 and "유닛" not in _end192 and any("골격 아래" in v for k, v in _lines if k.startswith("문서 "))

@@ -8,7 +8,8 @@
     주석으로 지나간다 · 옛 키(옛 모양 · 손잡이로 옮겨 간 키)는 그 관문이 본다(두 번 말하지 않는다). **표 밖의 키는 거부** — 파일 · 키 ·
     가장 가까운 아는 키 · 다음 줄.
   · **값** — 코드가 그 형으로 읽는 칸(목록 · 딕셔너리 · 글)과 코드에 닫힌 값이 있는 칸(`CLOSED` — 값 · 읽는 자리)만.
-  · **참조** — 층이 관계 패턴 · 등록 스키마에서 부르는 카테고리가 그 층 `categories`에도 `uses`에도 없으면 거부(옛 모양이면 ⓓ가 본다).
+  · **참조** — 층이 관계 패턴에서 부르는 카테고리가 그 층 `categories`에도 `uses`에도 없으면 거부(옛 모양이면 ⓓ가 본다 · 등록 스키마
+    쪽은 이미 있는 재대조 G4C가 같은 것을 말한다 — 두 번 말하지 않는다).
   · **JSON 문법** — `read_json`이 파일 · 행 · 열 · 무엇을 고치나 한 줄로 멈춘다(traceback 0) · config를 읽는 자리가 전부 이 함수다.
 
 부르는 자리는 하나다 — `catalog.problems`(갈래 ⓗ 문법 · ⓘ 참조)가 `bootstrap`(`--dry-run` 포함) · 사전 점검(인입) · `export config`의
@@ -169,7 +170,7 @@ def layer_problems(lay, cfg):
 def common_problems(common):
     """공통 config — 아는 키(최상위 · 카테고리 항목 · `parent_pairs` 항목) · 형 · 닫힌 값."""
     from core.state import catalog
-    where = "layers/common.json"
+    where = label(paths.common())
     top, entry = config_scope.common_keys()
     out = _keys(where, common, top, old=catalog.OLD_COMMON_KEYS)
     for k, want in COMMON_TYPES.items():
@@ -206,36 +207,23 @@ def talks(lay, cfg, schemas):
     return out
 
 
-def schemas():
-    """`[(doc_type, 스키마, 합친 필드)]` — 등록 스키마(공용 블록 필드 포함 · 킷의 블록 전개를 지연 import)."""
-    from core.state import registry
-    from kit.gate_tables import load_blocks
-    out = []
-    for dt in sorted(registry.all_doc_types()):
-        schema = registry.schema_of(dt)
-        if schema:
-            out.append((dt, schema, load_blocks(schema)[0]))
-    return out
-
-
-def ref_problems(configs, scs=None):
-    """참조 — 층이 부르는 카테고리가 그 층 `categories`에도 `uses`에도 없다(B174 ② · B192 ① 경고 → 거부)."""
-    scs = schemas() if scs is None else scs
+def ref_problems(configs):
+    """참조 — 층이 관계 패턴에서 부르는 카테고리가 그 층 `categories`에도 `uses`에도 없다(B174 ② · B192 ① 경고 → 거부)."""
     out = []
     for lay, cfg in sorted(configs.items()):
         have = set(cfg.get("categories") or {}) | set(cfg.get("uses") or [])
-        for c in sorted(talks(lay, cfg, scs) - have):
-            out.append((TAG_REF, f"누락 — 층 {lay}가 관계 패턴 · 스키마에서 '{c}'를 쓰는데 categories에도 uses에도 없다 · "
+        for c in sorted(talks(lay, cfg, ()) - have):
+            out.append((TAG_REF, f"누락 — 층 {lay}가 관계 패턴에서 '{c}'를 쓰는데 categories에도 uses에도 없다 · "
                                  f"▶ 다음 줄 — layers/{lay}/config.json의 uses에 적고 {NEXT}"))
     return out
 
 
-def problems(configs, common, base=None, scs=None):
+def problems(configs, common, base=None):
     """문법 단 전부 — `[(갈래, 문면)]` · 옛 모양이면 참조는 건너뛴다(ⓓ가 새 모양 제안으로 멈춘다)."""
     from core.state import catalog
     out = common_problems(common)
     for lay, cfg in sorted(configs.items()):
         out += layer_problems(lay, cfg) + seed_problems(lay, cfg, base)
     if not catalog.old_shape(configs, common):
-        out += ref_problems(configs, scs)
+        out += ref_problems(configs)
     return out

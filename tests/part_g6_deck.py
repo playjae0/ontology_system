@@ -925,7 +925,7 @@ from core.build import belongs as BL170, extract_ctx as XC170, extract_reading a
 from core.build.entry import _vocab as _vocab170          # noqa: E402
 _cfg170 = load_config("process")
 #: B170 전의 추출 지시문 · 답 꼴(`8dec743`의 `prompts/3.3_extract.md` · `EXTRACT_SCHEMA`) — 판독이 없는 문서가 받는 것과 같아야 한다
-_PRE170 = {"prompt": "f1ac41461f918903", "schema": "6f3e6047d44e1cea"}
+_PRE170 = {"schema": "6f3e6047d44e1cea"}   # 고침 B192 — 지시문 파일 해시 고정을 걷었다(지시문 판은 회차가 올린다 · 판독 절 0은 위 대조가 잰다)
 
 
 def _sent170(env):
@@ -959,7 +959,6 @@ _sys0 = gateway.prompt_for("extract", {"process": _cfg170}, "extract")
 show("B170 ⓑ 판독이 없는 문서 — 실제 추출 지시문 · 답 꼴 · 사용자 글이 B170 전과 바이트 같다(지시문 파일 · 답 꼴 해시가 그 판 · 판독 0) · "
      "체크포인트에 판독 칸 0",
      _wo170 and all(s[0] == _sys0 and s[1] == EX.EXTRACT_SCHEMA and "판독" not in s[2] for s in _wo170)
-     and _hl170.sha256((ROOT / "prompts" / "3.3_extract.md").read_bytes()).hexdigest()[:16] == _PRE170["prompt"]
      and _hl170.sha256(json.dumps(EX.EXTRACT_SCHEMA, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16] == _PRE170["schema"]
      and "reading" not in json.loads(EX.checkpoint_path(_en6["doc_id"]).read_text(encoding="utf-8")),
      f"호출 {len(_wo170)}")
