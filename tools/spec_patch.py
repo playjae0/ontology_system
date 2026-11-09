@@ -12,6 +12,12 @@
     까닭: <한 줄 — 회차 · D-###>
 
 새 문장 끼우기는 `지금`에 앞 문장, `바뀔`에 앞 문장 + 새 문장(표의 새 행도 같다 — 앞 행 + 새 행).
+**지움**(B192 ⓪) — 새로 쓰는 글이 없는 항목은 `지금` · `바뀔` 대신 `지움:` 하나(그 파일에서 정확히 한 번) + `까닭:`(출처 꼬리 `(B###)`는
+까닭에) · 줄 전체(표 행 포함)를 가리키면 그 줄바꿈까지 지운다 · 글자 증감은 −(지운 글자).
+
+    ### <파일> <절>
+    지움: <명세에서 그대로 복사 — 지울 글>
+    까닭: <한 줄 — 회차 (B###)>
 
 `--check`가 보는 것: ①항목마다 열쇠 넷(파일 · 지금 · 바뀔 · 까닭) ②`지금`이 그 파일에서 **정확히 한 번**(앞 항목을 적용한 판에서도) ③`바뀔`의
 새 몫이 **지금 규칙만** — 취소선 · 「구판」 서술 · `[개정]` 꼬리표 없이 · 출처 꼬리 `(B###)` 하나 이상 · 표 행이면 `|`로 시작하고 끝난다
@@ -38,6 +44,7 @@ SPEC = ROOT / "docs" / "spec"
 CHECK_DIR = ROOT / "docs" / "회귀스위트"
 CHECKS = ("문면", "경로", "문서간", "가이드", "자산", "미러", "모양")
 KEYS = ("지금", "바뀔", "까닭")
+DEL = "지움"
 _TAIL = re.compile(r"\(B\d{2,4}[^)]*\)")
 
 
@@ -52,7 +59,7 @@ def parse(text):
             continue
         if cur is None:
             continue
-        m = re.match(r"^(지금|바뀔|까닭):\s?(.*)$", line)
+        m = re.match(r"^(지금|바뀔|까닭|지움):\s?(.*)$", line)
         if m:
             key = m.group(1)
             if key in cur:
@@ -61,11 +68,13 @@ def parse(text):
         elif key and key != "까닭":
             cur[key] += "\n" + line                       # 빈 줄도 값이다(새 문단) — 끝의 빈 줄만 버린다
     for it in items:
-        for k in ("지금", "바뀔"):
+        for k in ("지금", "바뀔", DEL):
             if k in it:
                 it[k] = it[k].rstrip("\n")
         it["file"] = it["name"].split()[0] if it["name"] else ""
-        for k in KEYS:
+        if DEL in it and ("지금" in it or "바뀔" in it):
+            errs.append((it["name"], "'지움:'은 '지금:' · '바뀔:'과 함께 쓰지 않는다"))
+        for k in ((DEL, "까닭") if DEL in it else KEYS):
             if not (it.get(k) or "").strip():
                 errs.append((it["name"], f"'{k}:'가 없거나 비었다"))
     return items, errs
@@ -79,7 +88,9 @@ def _target(spec, name):
 
 
 def lint(it):
-    """`바뀔`의 새 몫 — 지금 규칙만인가. 돌려주는 것은 어긋남 목록."""
+    """`바뀔`의 새 몫 — 지금 규칙만인가. 돌려주는 것은 어긋남 목록 · 지움 항목은 까닭의 출처 꼬리만."""
+    if DEL in it:
+        return [] if _TAIL.search(it.get("까닭") or "") else ["출처 꼬리 (B###) 없음(지움은 까닭에)"]
     old, new = it["지금"], it["바뀔"]
     added = new[len(old):] if new.startswith(old) else new
     bad = []
@@ -99,6 +110,13 @@ def lint(it):
     return bad
 
 
+def _span(t, s):
+    """지움 항목이 지우는 글 — 줄 전체(앞이 줄 머리 · 뒤가 줄바꿈)면 그 줄바꿈까지."""
+    i = t.find(s)
+    whole = (i == 0 or t[i - 1] == "\n") and t[i + len(s):i + len(s) + 1] == "\n"
+    return s + "\n" if whole else s
+
+
 def _signed(n):
     return f"+{n:,}" if n > 0 else f"−{-n:,}" if n < 0 else "0"
 
@@ -109,17 +127,23 @@ def plan(patch, spec=SPEC):
     texts, results = {}, []
     for it in items:
         bad = []
-        delta = len(it.get("바뀔") or "") - len(it.get("지금") or "")
+        old = it.get(DEL) if DEL in it else it.get("지금")
+        delta = (-len(old or "")) if DEL in it else len(it.get("바뀔") or "") - len(old or "")
         p = _target(spec, it["file"])
         if not p.exists():
             bad.append(f"파일 없음 {it['file']}")
-        elif it.get("지금") and it.get("바뀔"):
+        elif old and (DEL in it or it.get("바뀔")):
             t = texts.get(p) if p in texts else p.read_text(encoding="utf-8")
-            n = t.count(it["지금"])
+            key = DEL if DEL in it else "지금"
+            n = t.count(old)
             if n != 1:
-                bad.append(f"'지금'이 그 파일에서 {n}번" + (" (앞 항목 적용 뒤)" if p in texts else ""))
+                bad.append(f"'{key}'이 그 파일에서 {n}번" + (" (앞 항목 적용 뒤)" if p in texts else ""))
+            elif DEL in it:
+                cut = _span(t, old)
+                delta = -len(cut)
+                texts[p] = t.replace(cut, "", 1)
             else:
-                texts[p] = t.replace(it["지금"], it["바뀔"], 1)
+                texts[p] = t.replace(old, it["바뀔"], 1)
             bad += lint(it)
         results.append((it["name"], bad, delta))
     return texts, results, errs

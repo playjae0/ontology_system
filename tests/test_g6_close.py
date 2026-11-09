@@ -27,6 +27,7 @@
      사본 ⇒ rc 1
   B187 ⓐ — 코드 · 구조도 문면에 「위아래 쌍」 · home 뜻의 「집」 0
   B188 ⓑ ⓒ ⓓ — 런북 「확인할 것」 대조(mock 한 벌 · 바꾼 사본은 붉다) · 지도 보는 법 · 재연결 뜻의 「붙음」 0
+  B192 ⓪ — 명세 패치 「지움」 항목(표 행 · 줄바꿈까지 · 글자 증감 −)
   B185 ⓒ ⓓ — 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0 · 레포 .py 컴파일에 잘못된 이스케이프 경고 0(SyntaxWarning · DeprecationWarning)
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
 """
@@ -143,6 +144,9 @@ _anc = _pair["body"]["anchor"]
 _mir = f"### {_pair['body']['doc']} 미러 body\n지금: {_anc}\n바뀔: {_anc} 시험으로 끼운 문장이다(B121).\n까닭: 시험\n"
 MIR, MIX = T / "mirror.md", T / "mirror_shape.md"
 MIR.write_text("# 시험 패치\n\n" + _mir, encoding="utf-8")
+_row = next(ln for ln in _text.splitlines() if ln.startswith("|") and "---" not in ln and _text.count(ln) == 1)
+DELP = T / "delete.md"                               # B192 ⓪ — 지움 항목(바뀔 없이 · 까닭에 출처 꼬리 · 표 행은 줄바꿈까지)
+DELP.write_text(f"# 시험 패치\n\n### {_name} 표 행 지움\n지움: {_row}\n까닭: 시험(B192)\n", encoding="utf-8")
 MIX.write_text("# 시험 패치\n\n" + _mir + f"\n### {_name} 긴 줄\n지금: {_line}{_new}\n바뀔: {_line}{_new}\n{'가' * 1600}(B121)\n"
                "까닭: 시험\n", encoding="utf-8")
 
@@ -167,6 +171,9 @@ def _spec_runs():
     r["fp1"] = _fp(SP)
     r[15] = _run(["tools/spec_patch.py", "--apply", str(MIX), "--spec", str(SP)])
     r["fp15"] = _fp(SP)
+    r["del0"] = (SP / _name).read_text(encoding="utf-8")
+    r["del"] = _run(["tools/spec_patch.py", "--apply", str(DELP), "--spec", str(SP)])
+    r["del1"] = (SP / _name).read_text(encoding="utf-8")
     return r
 
 
@@ -414,6 +421,10 @@ show("ⓒ 미러 body만 바꾸는 패치 ⇒ --check는 「재봉인 대상 <�
 show("ⓒ 미러와 함께 다른 검사(모양 — 1500자+ 줄)가 늘면 ⇒ 재봉인 알림 없이 어긋남 · 쓰기 0 (B121 ④)",
      rc15 == 1 and "늘었다: 미러 · 모양" in out15 and "재봉인 대상" not in out15 and "쓰기 0" in out15
      and _R["fp15"] == _R["fp1"], f"rc {rc15}")
+_rcd, _outd = _R["del"]
+show("B192 ⓪ 지움 항목(바뀔 없이 · 까닭에 출처 꼬리) ⇒ 표 행이 줄째 지워진다 · 글자 증감 = −(행 + 줄바꿈)",
+     _rcd == 0 and _R["del1"] == _R["del0"].replace(_row + "\n", "", 1) and _deltas(_outd)[0] == [-(len(_row) + 1)],
+     f"rc {_rcd} · {_deltas(_outd)}")
 show("ⓒ 패치 점검 · 적용이 레포의 검사 결과 파일을 바꾸지 않는다",
      all(f.read_bytes() == b for f, b in _res.items()), f"결과 파일 {len(_res)}")
 
