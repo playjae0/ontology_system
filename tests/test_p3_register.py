@@ -433,6 +433,98 @@ except SystemExit as e:
 show("③ 표본 자리의 비파일을 지목하고 --hint 를 안내한다",
      "힌트문장" in _caught and "--hint" in _caught, _caught.splitlines()[0] if _caught else "")
 
+# ============================================================ B190 같은 종류의 다른 양식
+print("\n■ B190 변형 — 같은 doc_type에 어댑터를 더한다(스키마 고정 · 지문이 변형을 고른다 · 창작 표본)")
+import hashlib as _hl                                      # noqa: E402
+import openpyxl as _ox                                     # noqa: E402
+from core.state import fixtures as _FX                     # noqa: E402
+from cli import ingest as _IG                              # noqa: E402
+DT190 = "b190cp"
+_d190 = _TMP / "b190"
+_d190.mkdir()
+# 기본 등록분 — 참조 어댑터 cp.py의 사본(이름만 이 등록의 것 · 사내 등록분과 같은 모양 — 등록부에 어댑터 하나)
+_src190 = (_FX.ADAPTERS / "cp.py").read_text(encoding="utf-8").replace('"doc_type": "cp"', f'"doc_type": {DT190!r}')
+_P.ensure(_P.adapters(f"{DT190}.py")).write_text(_src190, encoding="utf-8")
+_sc190 = json.loads(_P.fixture_schemas("cp.json").read_text(encoding="utf-8"))
+registry.register(DT190, layer=_sc190.get("layer") or "process", adapter=f"adapters/{DT190}.py",
+                  schema=f"schemas/{DT190}.json", adapter_version="1.0", approved_by="시험",
+                  approved_at="2026-11-09T00:00:00+00:00")
+_P.ensure(_P.schemas(f"{DT190}.json")).write_text(json.dumps({**_sc190, "doc_type": DT190}, ensure_ascii=False, indent=2),
+                                                  encoding="utf-8")
+
+
+def _form190(name, rename=None):
+    """양식 B — CP01에서 규격 · 측정방법 열을 맞바꾸고 규격 머리를 「규격치」로(창작) · `rename`은 더 바꿀 머리 `{열 번호: 글}`."""
+    wb = _ox.load_workbook(RAW / "CP01.xlsx")
+    ws = wb.active
+    for r in range(3, ws.max_row + 1):
+        try:
+            ws.cell(r, 7).value, ws.cell(r, 8).value = ws.cell(r, 8).value, ws.cell(r, 7).value
+        except AttributeError:                              # 병합 칸
+            pass
+    ws.cell(3, 8).value = "규격치"
+    ws.cell(4, 9).value = f"{ws.cell(4, 9).value} ({name})"   # 대응계획 한 칸 — 같은 내용의 다른 문서가 아니게(중복 보류 밖)
+    for c, lab in (rename or {}).items():
+        ws.cell(3, c).value = lab
+    wb.save(_d190 / f"{name}.xlsx")
+    return _d190 / f"{name}.xlsx"
+
+
+_A190 = _d190 / "CPA190.xlsx"
+shutil.copy2(RAW / "CP01.xlsx", _A190)
+_B190, _C190, _D190 = _form190("CPB190"), _form190("CPC190", {5: "설비명"}), _form190("CPD190")
+_s0190 = _IG.select(str(_A190), doc_type=DT190)            # 변형을 더하기 전 — 지금 등록분
+# mock 초안 — 픽스처 자리의 `<dt>@<변형>`(어댑터는 열 둘을 맞바꾼 것 · D190은 attr_name을 바꾼 스키마도 낸다)
+_vsrc190 = _src190.replace('"규격": "G"', '"규격": "H"').replace('"측정방법": "H"', '"측정방법": "G"')
+for _n190 in ("CPB190", "CPD190"):
+    _P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@{_n190}.py").write_text(_vsrc190, encoding="utf-8")
+_bad190 = json.loads(json.dumps({**_sc190, "doc_type": DT190}))
+_bad190["fields"]["규격"]["attr_name"] = "규격값"
+_P.ensure(_FX.FIXTURE_SCHEMAS / f"{DT190}@CPD190.json").write_text(json.dumps(_bad190, ensure_ascii=False), encoding="utf-8")
+_h0190 = _hl.sha256(_P.schemas(f"{DT190}.json").read_bytes()).hexdigest()
+_g190 = run("generate", DT190, "process", str(_B190), "--variant")
+_c190 = run("confirm", f"{DT190}@CPB190", "--by", "시험")
+_gd190 = run("generate", DT190, "process", str(_D190), "--variant")
+for _n190 in ("CPB190", "CPD190"):                          # 초안 픽스처는 스캔 소재지(mock)이기도 하다 — 확정 뒤 걷는다
+    (_FX.FIXTURE_ADAPTERS / f"{DT190}@{_n190}.py").unlink()
+(_FX.FIXTURE_SCHEMAS / f"{DT190}@CPD190.json").unlink()
+_v190 = [n for n, _ in registry.variants_of(DT190)]
+show("B190 ⓐ 변형 등록 — 양식 B로 --variant → 확정 · 스키마 바이트 그대로 · 등록부 그 doc_type에 변형 둘 · 어댑터 자리 "
+     "adapters/<dt>@<변형>.py",
+     _g190.returncode == 0 and _c190.returncode == 0 and _v190 == [registry.BASE_VARIANT, "CPB190"]
+     and _hl.sha256(_P.schemas(f"{DT190}.json").read_bytes()).hexdigest() == _h0190
+     and _P.registry(registry.variant_adapter(DT190, "CPB190")).exists(),
+     f"rc {_g190.returncode}/{_c190.returncode} · 변형 {_v190}")
+_sb190, _sa190 = _IG.select(str(_B190)), _IG.select(str(_A190), doc_type=DT190)
+_ing190 = [subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file", str(_f190), *_x190, "--allow-mock"],
+                          capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
+           for _f190, _x190 in ((_A190, ["--doc-type", DT190]), (_B190, []))]
+_rec190 = {d: [(r.get("관리항목"), r.get("규격")) for r in
+               json.loads(_P.parsed(f"{d}.json").read_text(encoding="utf-8")).get("records") or []]
+           for d in ("CPA190", "CPB190") if _P.parsed(f"{d}.json").exists()}
+_rt190 = (store.read(store.DOC_REGISTRY, {}).get("CPB190") or {}).get("routing") or {}
+show("B190 ⓑ 선택 — --doc-type 없이 B 문서 → 같은 doc_type · 변형 CPB190(문서 대장 routing에도) · A 문서(--doc-type)는 지문이 "
+     "기본 변형 · 같은 열의 값이 두 문서에서 같은 attr_name 키(규격)에 실린다",
+     _sb190.get("status") == "chosen" and _sb190["doc_type"] == DT190 and _sb190["basis"].get("variant") == "CPB190"
+     and _sa190.get("status") == "chosen" and _sa190["basis"].get("variant") == registry.BASE_VARIANT
+     and _rt190.get("variant") == "CPB190" and len(_rec190) == 2
+     and _rec190["CPA190"] == _rec190["CPB190"] and any(v for _k, v in _rec190["CPA190"]),
+     f"B {_sb190.get('status')} {(_sb190.get('basis') or {}).get('variant')} · A {(_sa190.get('basis') or {}).get('variant')} · "
+     f"routing {_rt190.get('variant')} · 문서 {sorted(_rec190)} · 인입 rc {[x.returncode for x in _ing190]} "
+     f"{(_ing190[-1].stdout + _ing190[-1].stderr)[-1500:] if _ing190[-1].returncode else ''}")
+_sc190s = _IG.select(str(_C190))
+show("B190 ⓒ 일치 0건 화면 — 가장 가까운 doc_type으로 완성된 --variant 등록 한 줄",
+     _sc190s.get("status") == "none" and any(f"python -m cli.register generate {DT190} process {_C190} --variant" in ln
+                                            for ln in _sc190s.get("next") or []),
+     " | ".join(_sc190s.get("next") or [])[:200])
+show("B190 ⓓ 스키마를 바꿔야 맞는 양식은 「판정 불가」로 멈춘다(쓰기 0 · 변형 그대로) · 지금 등록분(변형 하나)은 다시 등록 없이 "
+     "그대로 골린다(선택 근거에 변형 칸 0)",
+     _gd190.returncode != 0 and "판정 불가" in (_gd190.stdout + _gd190.stderr)
+     and [n for n, _ in registry.variants_of(DT190)] == _v190 and not (REVIEW / f"{DT190}@CPD190" / "schema.json").exists()
+     and _s0190.get("status") == "chosen" and "variant" not in (_s0190.get("basis") or {}),
+     f"rc {_gd190.returncode} · 지금 등록분 {_s0190.get('status')} {(_s0190.get('basis') or {}).get('variant')}")
+registry.unregister(DT190)                                 # 다른 구획의 지문 대조에 끼지 않게(어댑터 · 변형 · 스키마를 함께 걷는다)
+
 # ============================================================ B25 골격 확정
 
 done()

@@ -669,7 +669,12 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         _sb = split_block(out)
         if _sb:
             print(_sb)
-        orphan = _orphan_of(st)
+        # **변형은 스키마를 바꾸지 않는다**(B190 ①) — 대장 셋째 조건(전 열이 fields · unmappable에) 대신 열 대조 한 줄(D-274)
+        from cli.register import variant as variant_mod
+        _vn = variant_mod.notes(doc_type, st, samples)
+        if _vn:
+            print(_vn)
+        orphan = [] if _vn else _orphan_of(st)
         if orphan:
             print(f"   스키마 대장에 없는 열 {len(orphan)}건 — "
                   f"{[u['field'] for u in orphan]}")

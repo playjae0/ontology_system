@@ -184,6 +184,23 @@ def _fill_schema_only(text, hint):
     return text.replace(SCHEMA_ONLY_SLOT, f"```json\n{body}\n```")
 
 
+# 같은 종류의 다른 양식 구획의 자리(B190 ①) — 문장은 템플릿 몫 · 코드는 등록 스키마 전문만 채우거나 구획째 지운다.
+VARIANT_SLOT = "{{변형_스키마}}"
+_VARIANT_SECTION = re.compile(
+    r"\n---\n\n## \[같은 종류의 다른 양식.*?" + re.escape(VARIANT_SLOT) + r"\n?", re.S)
+
+
+def _fill_variant(text, hint):
+    """`human.hint.variant`가 있으면 등록 스키마 전문을 자리에 · 없으면 **구획째** 지운다(스키마만 새 판 구획과 같은 결)."""
+    v = hint.get("variant") if isinstance(hint, dict) else None
+    if not isinstance(v, dict):
+        return _VARIANT_SECTION.sub("", text)
+    from core.state import registry
+    p = registry.at(v.get("schema") or "")
+    body = p.read_text(encoding="utf-8").strip() if p.is_file() else "{}"
+    return text.replace(VARIANT_SLOT, f"```json\n{body}\n```")
+
+
 def _fill_regeneration(text, items):
     """지시 목록을 자리에 넣거나, 지시가 없으면 **구획째** 지운다."""
     if not items:
@@ -238,6 +255,7 @@ def _render_template(text, pkg, *, regeneration=None):
     sysd = pkg.get("system") or {}
     voc = sysd.get("layer_vocabulary") or {}
     text = _fill_schema_only(text, (pkg.get("human") or {}).get("hint"))   # 스키마만 새 판 (B150 ③)
+    text = _fill_variant(text, (pkg.get("human") or {}).get("hint"))       # 같은 종류의 다른 양식 (B190 ①)
 
     cats = voc.get("categories") or {}
     cat_md = "\n".join(f"- `{k}` — {v}" for k, v in cats.items()) or "- (없음)"

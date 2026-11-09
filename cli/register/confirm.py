@@ -39,6 +39,22 @@ def cmd_confirm(doc_type, approved_by):
 
     mod = _load(draft_mod._at(st["adapter"]), f"reg_{doc_type}")
     at = store._now()
+    from cli.register import variant as variant_mod
+    if variant_mod.of(doc_type):                       # 같은 종류의 다른 양식 — 그 doc_type에 변형을 더한다 (B190 ①)
+        return variant_mod.confirm(doc_type, st, approved_by, mod, at)
+    if draft_mod.schema_only_of(doc_type):
+        # **스키마는 전 변형이 공유한다**(§6.5-1) — 새 스키마로 다른 변형도 관문을 다시 지나야 확정한다(B190 ③)
+        _bad = [x for x in variant_mod.gate_all(doc_type, draft_mod._at(st["schema"]), skip=(registry.BASE_VARIANT,))
+                if not x[1]]
+        if _bad:
+            print(f"■ 확정 멈춤 — 새 스키마로 변형 {len(_bad)}개가 관문 FAIL "
+                  f"({' · '.join(f'{n}(표본 {k}부)' for n, _ok, k, _o in _bad)}) — 스키마는 전 변형이 함께 쓴다")
+            for n, _ok, _k, o in _bad:
+                for code, label, detail in gate.fail_lines(o)[:3]:
+                    print(f"  [FAIL] {n} · {code or ''}  {label}" + (f" — {detail}" if detail else ""))
+            print(f"  ▶ 다음 줄 — 변형 어댑터를 새 스키마에 맞춘다: python -m cli.register generate {doc_type} "
+                  f"{st.get('layer') or '<층>'} <그 변형 표본...> --variant <이름>  (그 뒤 이 확정을 다시)")
+            return 1
     # **등재가 먼저, 승격이 나중이다.** 반대로 하면 등재가 거부됐을 때 승격된
     # 파일만 남아 조회에는 잡히고 등록부에는 없는 반쪽 상태가 되고, 그 이름의
     # 재등록이 「내장 중복」으로 영영 막힌다(실측).

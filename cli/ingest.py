@@ -96,147 +96,8 @@ def doc_id_of(path):
     return re.sub(r"\s+", "_", Path(path).stem.strip())
 
 
-def form_of(doc):
-    """형태 판정(table/prose) — **격자 포맷만**. `.pptx`·`.pdf`는 포맷이 prose를 함의한다.
+from cli.ingest_select import _basis_line, _form_line, form_of, select   # noqa: E402,F401 — 선택 칸 (B190 ②)
 
-    선택 근거(`basis`)에 실어 인입 기록으로 보낸다 — **기록이 이 기능의 절반이다**
-    (문서 1 C37): 문턱 조정과 애매 구간 측정의 유일한 재료이고, 그 크기가 재어진
-    뒤에야 LLM 보조를 검토한다.
-
-    판정이 **선택을 바꾸지는 않는다** — doc_type이 정해지면 어댑터가 갈래를 이미
-    말한다. 여기서 하는 일은 ①기록 ②그 둘이 어긋날 때 화면 경고다. 판정으로
-    어댑터를 갈아 끼우면 사람이 지정한 doc_type이 조용히 무시된다.
-    """
-    p = Path(doc)
-    if p.suffix.lower() not in GRID_EXT:
-        return None
-    try:
-        return form_mod.judge(reader_mod.read(str(p)))
-    except Exception as e:                       # 판정 실패가 인입을 막지 않는다
-        return {"verdict": None, "auto": False, "signals": {},
-                "why": f"형태 판정 불가 — {type(e).__name__}: {e}"}
-
-
-def select(doc, doc_type=None, adapter_paths=None):
-    """doc_type 선택 — 파싱하지 않는다. 결과 `status`는 chosen · ambiguous · none · unsupported.
-
-    `basis`가 **선택 근거**다(B46 ①): 사람 지정이면 `by=human`, 스캔이면 `by=scan`과
-    일치 내역(`header_labels` 완전 일치 — 누락 0·잉여 0)이 함께 실린다.
-    """
-    p = Path(doc)
-    out = {"doc": str(p), "doc_id": doc_id_of(p), "doc_type": None, "adapter": None,
-           "basis": None, "candidates": [], "reason": None}
-    if p.suffix.lower() in LEGACY_BINARY:        # `.doc` 등 — 무엇으로 저장하면 되나를 말한다 (B88 ②)
-        return {**out, "status": "unsupported", "reason": legacy_note(p)}
-    if p.suffix.lower() not in SUPPORTED:
-        return {**out, "status": "unsupported",
-                "reason": f"지원하지 않는 포맷 {p.suffix!r} — reader가 여는 것은 {SUPPORTED}"}
-    if doc_type:
-        if registry.schema_of(doc_type) is None:
-            return {**out, "status": "none",
-                    "reason": f"미등록 doc_type '{doc_type}' — 구축 모드(register) 대상이다"}
-        # 어댑터 실물은 **지문 스캔과 같은 소재지**에서 찾는다(등록부 + 기본 소재지) —
-        # 등록부만 보면 내장 doc_type(스키마만 싣고 어댑터는 mock 트랙)이 지정으로도 안 간다.
-        found = {m.ADAPTER.get("doc_type"): f for f, m in scan_mod.adapters(adapter_paths)}
-        if doc_type not in found:
-            return {**out, "status": "none", "doc_type": doc_type,
-                    "reason": f"'{doc_type}'의 어댑터 실물이 소재지에 없다 — "
-                              f"`parse run <어댑터> …`로 직접 넣거나 register로 어댑터를 등록한다"}
-        return {**out, "status": "chosen", "doc_type": doc_type,
-                "adapter": Path(found[doc_type]),
-                "basis": {"by": "human", "doc_type": doc_type,
-                          "form": form_of(p)}}
-    res = scan_mod.scan(p, adapter_paths)
-    cands = res["candidates"]
-    out["candidates"] = cands
-    if len(cands) == 1:
-        dt = cands[0]
-        f, _mod = res["_mods"][dt]
-        d = next(x for x in res["details"] if x["doc_type"] == dt)
-        if registry.schema_of(dt) is None:
-            return {**out, "status": "none", "doc_type": dt,
-                    "reason": f"지문은 '{dt}'와 유일 일치지만 **등록부에 없다** — "
-                              f"인입이 미등록 doc_type을 거부한다(B3). register로 확정하라"}
-        rejected = [f"{x['doc_type']}(누락 {len(x['missing'])}·잉여 {len(x['extra'])})"
-                    for x in res["details"] if x.get("eligible") and not x.get("candidate")]
-        return {**out, "status": "chosen", "doc_type": dt, "adapter": Path(f),
-                "basis": {"by": "scan", "doc_type": dt,
-                          "match": f"header_labels 완전 일치 {d['matched']}/{d['declared']} "
-                                   f"(누락 0 · 잉여 0)",
-                          "rejected": rejected, "form": form_of(p)}}
-    if len(cands) > 1:
-        return {**out, "status": "ambiguous",
-                "reason": f"지문이 {len(cands)}개 어댑터와 일치 {cands} — 사람이 --doc-type으로 고른다"}
-    # **미선택은 네 갈래다**(B66 ② · B61 계약) — 구판은 한 문면(「대조할 정형
-    # 어댑터가 없다」)이 서로 다른 넷을 덮었고, CSV가 대조조차 안 된 것(①)이 그
-    # 문면으로 나와 사람은 **어댑터가 없다고 읽었다**. 재료는 이미 `scan()`이 낸다 —
-    # 읽지 않던 키를 읽을 뿐이고 **새 계산 0**이다.
-    if res.get("not_fingerprintable"):
-        return {**out, "status": "none",
-                "reason": f"비정형({res['not_fingerprintable']}) — 헤더 지문이 없다. "
-                          f"다음: --doc-type <dt> 지정 투입"}
-    if not res["details"]:
-        return {**out, "status": "none",
-                "reason": "대조할 어댑터 0건 — 소재지가 비었다. "
-                          "다음: python -m cli.register generate <dt> <층> <문서>"}
-    eligible = [x for x in res["details"] if x.get("eligible")]
-    if not eligible:
-        why = " · ".join(f"{x['doc_type']}: {x.get('note') or '자격 없음'}"
-                         for x in res["details"])
-        return {**out, "status": "none",
-                "reason": f"자격 있는 어댑터 0건 — {why}. "
-                          f"다음: --doc-type <dt> 또는 "
-                          f"python -m cli.register generate <dt> <층> <표본...> --revise"}
-    # 차이 내역은 **개수만** — 열 이름 전부를 문서마다 늘어놓으면 목록이 읽히지 않는다.
-    # 자세한 내역은 `run.py scan <문서>`가 낸다(같은 대조).
-    diffs = [f"{x['doc_type']}(누락 {len(x['missing'])}·잉여 {len(x['extra'])})"
-             for x in eligible]
-    return {**out, "status": "none",
-            "reason": f"지문 일치 0건 — {' · '.join(diffs)} — "
-                      f"상세: python run.py scan {p}"}
-
-
-def _basis_line(sel):
-    b = sel.get("basis") or {}
-    if b.get("by") == "human":
-        out = f"사람 지정 --doc-type {b['doc_type']}"
-    elif b.get("by") == "scan":
-        out = f"지문 스캔 유일 일치 → {b['doc_type']} · {b['match']}" + (
-            f" · 불일치 {b['rejected']}" if b.get("rejected") else "")
-    else:
-        return "-"
-    # **어느 파일이 골라졌나**(B66 ④) — 어댑터는 등록부(`adapters/<dt>.py`)를 먼저
-    # 보고 없으면 내장 doc_type의 소재지를 본다. 화면이 그것을 말하지 않으면 사람은
-    # 「mock 소재지가 뭐냐」를 묻게 된다(사내 실측) — 경로 한 조각이 답이다.
-    if sel.get("adapter"):
-        out += f"  ← {paths.show(sel['adapter'])}"      # 표기는 한 자리 (B86 ①)
-    return out + _form_line(b.get("form"))
-
-
-def _form_line(f):
-    """형태 판정의 화면 한 줄 — **신호값 다섯을 그대로** 싣는다(문서 1 C37).
-
-    요약만 보이면 문턱이 왜 그렇게 갈렸는지 사람이 판단할 재료가 없다. 사람에게
-    올라온 문서는 특히 그렇다 — 그가 보고 정할 것이 이 다섯 값이다.
-    """
-    if not f:
-        return ""
-    head = f["verdict"] or "**사람 판정 대상**"
-    line = f"\n     형태 판정: {head} ({'자동' if f.get('auto') else '자동 아님'}) — {f['why']}"
-    if f.get("signals"):
-        line += "\n     신호값: " + " · ".join(
-            f"{k}={f['signals'][k]}[{(f.get('votes') or {}).get(k, '?')[0]}]"
-            for k in form_mod.SIGNALS if k in f["signals"])
-    return line
-
-
-# ── 인입 실패 화면 — 이유와 행이 **화면에** 뜬다 (B61 ③ · 칸 3.1 · C14) ────────
-#
-# 사람은 `ingest-file`을 치고 **화면을 본다** — 큐를 먼저 열지 않는다. 사유는 이미 큐
-# payload에 있으므로 **같은 재료를 화면에도 찍는다**(두 자리에 두 사실이 아니라 한
-# 재료의 두 표시다). 태그(`P##`)는 관문의 `G##`·골격의 `K##`과 같은 방식이고 **정본은
-# 여기 한 자리**다 — 앞자리가 단이다: 2 어댑터/지문 · 3 계약(validator) · 4 구조 ·
-# 5 인입 보류.
 
 def narrow_notice():
     """후보 좁히기가 **무엇으로** 도는지 — 임베딩이 없어도 인입은 선다(B75 ①).
@@ -264,6 +125,8 @@ def _ingest_file_select(doc, sel, row, step, revise=False, dry_run=False):
     narrow_notice()
     if sel["status"] != "chosen":
         print(f"   미선택 — {sel['reason']}")
+        for _ln in sel.get("next") or []:          # 일치 0건 — 완성된 등록 줄 (B190 ②)
+            print(f"   {_ln}")
         return row, None, step
     print(f"   선택 근거: {row['basis']}")
     # **`--step`은 대화형에서만 산다**(B72 ④) — 비대화형·일괄에서 묻고 EOF를 받으면

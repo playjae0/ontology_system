@@ -33,6 +33,12 @@ FIXTURE_SCHEMA_DIR = paths.fixture_schemas()   # **내장(mock)** — 자리로 
 
 BUILTIN = "builtin"
 
+#: **변형**(B190 · 문서 6 §6.5 — 스키마 1 + 어댑터 N): 같은 doc_type의 다른 양식은 같은 항목에 어댑터를 더한다 ·
+#: 항목의 `adapter`가 기본 변형(지금 등록분 그대로) · 더한 것은 `variants: {이름: {adapter, adapter_version, …}}` ·
+#: 자리는 `adapters/{doc_type}@{이름}.py`(등록 단 · 기본은 `adapters/{doc_type}.py` 그대로)
+BASE_VARIANT = "기본"
+VARIANT_SEP = "@"
+
 _LOG = log.get(__name__)
 REGISTERED = "registered"
 
@@ -148,8 +154,33 @@ def schema_of(doc_type):
     return json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else None
 
 
+def variant_adapter(doc_type, name):
+    """변형 어댑터의 등록부 기록 자리(`registry/` 기준) — 기본 변형은 `adapters/{doc_type}.py`."""
+    return f"adapters/{doc_type}.py" if name == BASE_VARIANT else f"adapters/{doc_type}{VARIANT_SEP}{name}.py"
+
+
+def _variants(entry):
+    """항목의 변형 `[(이름, {adapter, adapter_version, …})]` — 기본 먼저 · 더한 것은 이름순."""
+    out = []
+    if (entry or {}).get("adapter"):
+        out.append((BASE_VARIANT, {k: entry.get(k) for k in ("adapter", "adapter_version", "revision",
+                                                              "approved_by", "approved_at")}))
+    return out + sorted(((entry or {}).get("variants") or {}).items())
+
+
+def variants_of(doc_type):
+    """그 doc_type의 변형 목록 — 등록분만(내장은 어댑터를 등록부에 싣지 않는다)."""
+    return _variants(lookup(doc_type))
+
+
+def adapter_variants():
+    """등록된 어댑터 전부 `[(doc_type, 변형, 실물 자리)]` — 지문 스캔이 어댑터(변형) 단위로 대조한다(B190 ②)."""
+    return [(dt, name, _abs(e, v["adapter"])) for dt, e in all_doc_types().items()
+            for name, v in _variants(e) if v.get("adapter")]
+
+
 def adapter_paths():
-    """등록된 어댑터의 소재 — 지문 스캔(n9)이 대조할 대상이다.
+    """등록된 어댑터의 소재 — 지문 스캔(n9)이 대조할 대상이다(변형마다 한 줄 — B190).
 
     **등록부가 정본**이고, 등록부에 어댑터가 없는 내장 doc_type은 여기 오지 않는다
     (내장은 스키마만 싣고 어댑터는 mock 트랙에 있다).
@@ -160,8 +191,7 @@ def adapter_paths():
     거르면 화면이 「내장 셋만 있다」로 보인다. 결손의 판정은 `missing_assets()`가
     하고, 막는 자리는 사람이 치는 진입(`cli/scan.py::adapters`)이다.
     """
-    return [(dt, _abs(e, e["adapter"])) for dt, e in all_doc_types().items()
-            if e.get("adapter")]
+    return [(dt, p) for dt, _name, p in adapter_variants()]
 
 
 def missing_assets():
@@ -172,8 +202,8 @@ def missing_assets():
     """
     out = []
     for dt, e in sorted(_registered().items()):
-        for key in ("adapter", "schema"):
-            rel = e.get(key)
+        for key, rel in [("adapter", e.get("adapter")), ("schema", e.get("schema"))] + [
+                ("adapter", v.get("adapter")) for _n, v in sorted((e.get("variants") or {}).items())]:
             if rel and not _abs(e, rel).exists():
                 out.append({"doc_type": dt, "kind": key, "path": rel,
                             "approved_by": e.get("approved_by"),
@@ -326,6 +356,33 @@ def revise(doc_type, *, adapter, schema, adapter_version, approved_by,
     return reg[doc_type]
 
 
+def add_variant(doc_type, name, *, adapter, adapter_version, approved_by, approved_at, instructions=None):
+    """**변형 확정**(B190 ①) — 그 doc_type 항목에 어댑터 하나를 더한다(스키마 · 기본 변형 · 판 그대로).
+
+    같은 이름의 변형이 있으면 **그 변형의 새 판**이다(같은 양식의 교정 — adapter_version · `revision`이 오르고 승인은 누적) ·
+    기본 변형의 새 판은 지금처럼 `revise`다. 등록분에만 낸다(내장은 등록부에 어댑터가 없다)."""
+    reg = _registered()
+    if doc_type not in reg:
+        log.explicit_fail(_LOG, "core.registry.add_variant", f"등록되지 않은 doc_type — '{doc_type}'")
+        raise ValueError(f"'{doc_type}'은 등록돼 있지 않다 — 변형은 등록분에만 더한다")
+    if not approved_by:
+        raise ValueError("승인자 미지정 — 무수정 자동 통과는 금지다 (문서 1 §승인 게이트)")
+    if name == BASE_VARIANT or VARIANT_SEP in name:
+        raise ValueError(f"변형 이름 '{name}'은 쓸 수 없다 — '{BASE_VARIANT}'은 지금 등록분 · '{VARIANT_SEP}' 없이")
+    vs = dict(reg[doc_type].get("variants") or {})
+    cur = vs.get(name) or {}
+    rev = int(cur.get("revision", -1)) + 1
+    vs[name] = {"adapter": adapter, "adapter_version": adapter_version, "revision": rev,
+                "approved_by": approved_by, "approved_at": approved_at,
+                "approvals": list(cur.get("approvals") or []) + [
+                    {"revision": rev, "approved_by": approved_by, "approved_at": approved_at,
+                     "adapter_version": adapter_version}],
+                "instructions": list(instructions or [])}
+    reg[doc_type] = {**reg[doc_type], "variants": vs}
+    store.write(store.DOC_TYPES, reg)
+    return vs[name]
+
+
 def ingested_docs(doc_type):
     """그 doc_type으로 **이미 인입된 문서** 목록 — 재인입 판단의 재료다.
 
@@ -352,8 +409,8 @@ def unregister(doc_type):
     entry = reg.get(doc_type)
     if entry is None:
         return False
-    for key, base in (("adapter", "adapters"), ("schema", "schemas")):
-        rel = entry.get(key) or ""
+    for base, rel in [("adapters", entry.get("adapter") or ""), ("schemas", entry.get("schema") or "")] + [
+            ("adapters", v.get("adapter") or "") for v in (entry.get("variants") or {}).values()]:
         p = _abs(entry, rel)
         if rel.startswith(base + "/") and p.exists():
             p.unlink()
