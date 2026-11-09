@@ -18,6 +18,7 @@
   ⑤ config를 바꾸면 등록 스키마 재대조가 doc_type마다 FAIL/PASS 줄을 낸다 · prose 층의 좌표 경고 · B174 ⓔ G4C 문면이 uses를
      말한다(골격 카테고리 포함) · 새 모양 mock 지도의 「선언 없이 씀」 0
   ⑥ 등록 패키지의 쓰기는 원자적 한 자리 · 디버그 파일은 작업 단(work/)
+  B192 ⓐ ⓑ config 문법 단 — 모르는 키 · 닫힌 값 · JSON 문법 · 없는 카테고리 참조 ⇒ bootstrap(--dry-run) · export config · 인입이 같은 거부
   B178 ⓐ 묻는 목록 = 말하는 카테고리(uses 정의문은 집 층) ⓑ 추출 판 — uses 빈 층 그대로 · 쓰는 층은 집 층 정의문까지 ⓒ 품질 산문의 공정층 값이 집 그래프에서 해소
 """
 from __future__ import annotations
@@ -81,6 +82,47 @@ show("① 거부 네 갈래(ⓑ 카탈로그 밖 · ⓒ 선언 안 한 집 · �
      and any("옛 모양" in m and "제안" in m for _t, m in _cases["ⓓ"])          # 고침 B174 — 옛 모양은 제안으로
      and sum(1 for t, _m in _cases["ⓔ"] if t == "ⓔ") == 2,
      str({k: [t for t, _m in v] for k, v in _cases.items()}))
+init.init(fresh_=True, all_=True)
+
+# B192 ⓐ ⓑ 문법 단 — 키 오타 · 공통 키 오타 · 골격 키 오타 · 닫힌 값 밖 · JSON 쉼표 · 없는 카테고리 참조 → 세 명령(+ 인입)이 같은 거부 문면
+def _run192(*argv):
+    r = subprocess.run([sys.executable, str(ROOT / "run.py"), *argv], cwd=str(ROOT), capture_output=True, text=True,
+                       env={**os.environ, "USE_MOCK": "1"}, stdin=subprocess.DEVNULL)
+    return r.returncode, r.stdout + r.stderr
+
+
+def _case192(path, edit):
+    init.init(fresh_=True, all_=True)
+    if callable(edit):
+        _rw(path, edit)
+    else:
+        path.write_text(path.read_text(encoding="utf-8").replace(*edit, 1), encoding="utf-8")
+    outs = [_run192("bootstrap", "--dry-run"), _run192("bootstrap"), _run192("export", "config", str(_P.export("b192.html")))]
+    line = next((ln.split("ⓗ ", 1)[-1].split("ⓘ ", 1)[-1].split("[상태] ", 1)[-1] for ln in outs[0][1].splitlines()
+                 if "[상태]" in ln and ("layers/" in ln)), "")
+    ing = _run192("ingest-file", str(fixtures.ROOT_DIR / "raw" / "CP01.xlsx"), "--allow-mock") if "relation_patern" in line else None
+    return line, outs, ing
+
+
+from core.state import fixtures            # noqa: E402
+_c192 = {"층 키": _case192(_P.layers("process", "config.json"),
+                         lambda c: c.__setitem__("relation_patern", c.pop("relation_patterns"))),
+         "공통 키": _case192(_P.common(), lambda c: c.__setitem__("parent_pair", c.pop("parent_pairs"))),
+         "골격 키": _case192(_P.layers("process", "skeleton.json"), lambda c: c.__setitem__("ALIAS", c.pop("ALIASES"))),
+         "닫힌 값": _case192(_P.layers("quality", "config.json"),
+                          lambda c: c["cross_layer_traverse"]["occurs_in"].__setitem__("direction", "upward")),
+         "JSON": _case192(_P.layers("quality", "config.json"), ('",\n', '"\n')),
+         "참조": _case192(_P.layers("quality", "config.json"), lambda c: c.__setitem__("uses", [u for u in c["uses"] if u != "Process"]))}
+_bad192 = {k: (bool(ln), [o[0] for o in outs[:2]], all(ln in o[1] for o in outs), ing and ln in ing[1])
+           for k, (ln, outs, ing) in _c192.items()}
+show("B192 ⓐ 문법 단 — 층 키 오타 · 공통 parent_pair · 골격 ALIAS · direction \"upward\" · JSON 쉼표 빠짐 ⇒ bootstrap --dry-run · "
+     "bootstrap · export config가 같은 거부 문면(파일 · 키 · 다음 줄) · 인입(사전 점검)도 같은 줄 · rc 1",
+     all(v[0] and v[1] == [1, 1] and v[2] for k, v in _bad192.items() if k != "참조") and _bad192["층 키"][3]
+     and "relation_patterns" in _c192["층 키"][0] and "3행" in _c192["JSON"][0] and "upward" in _c192["닫힌 값"][0],
+     " · ".join(f"{k} {v}" for k, v in _bad192.items()) + f" | {_c192['층 키'][0][:120]}")
+show("B192 ⓑ 관계 패턴이 쓰는 카테고리가 categories에도 uses에도 없다 ⇒ 경고가 아니라 거부(세 명령 같은 줄 · rc 1)",
+     _bad192["참조"][0] and _bad192["참조"][1] == [1, 1] and _bad192["참조"][2] and "'Process'" in _c192["참조"][0],
+     _c192["참조"][0][:140])
 init.init(fresh_=True, all_=True)
 
 # ⓐ 운영 — 없으면 초안을 만들고 멈춘다(자동 채택 0) · 초안을 덮지 않는다

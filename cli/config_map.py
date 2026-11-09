@@ -44,8 +44,9 @@ def read(src=None):
     """`(공통 config, {층: 층 config})` — 상태 루트의 `layers/`(기본) 또는 그 모양의 폴더(제안 — 읽기만)."""
     base = Path(src) if src else paths.layers()
     cp = base / "common.json"
-    common = renamed(json.loads(cp.read_text(encoding="utf-8")) if cp.exists() else {})   # 옛 키 이름은 새 이름으로(B186 ⓪)
-    configs = {d.name: json.loads((d / "config.json").read_text(encoding="utf-8"))
+    from core.state.config_grammar import read_json           # JSON 문법은 한 줄 문면(B192 ①)
+    common = renamed(read_json(cp) if cp.exists() else {})   # 옛 키 이름은 새 이름으로(B186 ⓪)
+    configs = {d.name: read_json(d / "config.json")
                for d in sorted(base.iterdir()) if (d / "config.json").exists()} if base.exists() else {}
     return common, configs
 
@@ -75,14 +76,9 @@ def _lenses():
 
 
 def _schemas():
-    """`[(doc_type, 스키마, 합친 필드)]` — 등록 스키마(공용 블록 필드 포함)."""
-    from kit.gate_tables import load_blocks
-    out = []
-    for dt in sorted(registry.all_doc_types()):
-        schema = registry.schema_of(dt)
-        if schema:
-            out.append((dt, schema, load_blocks(schema)[0]))
-    return out
+    """`[(doc_type, 스키마, 합친 필드)]` — 등록 스키마(공용 블록 필드 포함 · 문법 단과 한 함수 · B192 ①)."""
+    from core.state.config_grammar import schemas
+    return schemas()
 
 
 def _cat_of(fields, name):
@@ -108,13 +104,9 @@ def _uses(lay, cfg, old, schemas):
 
 
 def _talks(lay, cfg, schemas):
-    """층이 관계 패턴 · 등록 스키마(공용 블록 · `target_layer` 필드는 그 층 몫)에서 부르는 카테고리."""
-    out = {x for p in cfg.get("relation_patterns") or [] for x in (p.get("src"), p.get("dst")) if x}
-    for _dt, sc, fields in schemas:
-        if sc.get("layer") == lay:
-            out |= {f.get(k) for f in fields.values() if isinstance(f, dict) and not f.get("target_layer")
-                    for k in ("category", "target_category") if f.get(k)}
-    return out
+    """층이 관계 패턴 · 등록 스키마에서 부르는 카테고리 — 문법 단의 참조 판정과 한 함수(B192 ①)."""
+    from core.state.config_grammar import talks
+    return talks(lay, cfg, schemas)
 
 
 def _layer(lay, cfg, lenses, edges, old, schemas):
@@ -251,9 +243,6 @@ def new_checks(layers, cats, configs, schemas=()):
             if not line:
                 out.append(("경고", f"층 {lay}의 카테고리 '{c}' 정의문이 비었다 — 추출 · 판정 지시문이 그 뜻을 모른다 · "
                                   f"{cfgp}의 categories['{c}']에 한 줄"))
-        miss = sorted(_talks(lay, configs.get(lay, {}), schemas) - set(d["categories"]) - set(d["uses"]))
-        out += [("경고", f"누락 — 층 {lay}가 관계 패턴 · 스키마에서 '{c}'를 쓰는데 categories에도 uses에도 없다 · "
-                         f"{cfgp}의 uses에 적는다(B174 ②)") for c in miss]
         dup = [(p["src"], p["rel"], p["dst"]) for p in (configs.get(lay, {}).get("relation_patterns") or [])
                if [p.get("src"), p.get("rel"), p.get("dst")] in d["pair_edges"]]
         out += [("표시", f"중복 — 층 {lay} 패턴 {s} -{r}-> {t}는 parent_pairs와 같다(쌍이 정본 · 층 패턴에서 지운다)") for s, r, t in dup]
@@ -271,7 +260,7 @@ def checks(layers, cats, common, configs, src=None, schemas=()):
     """점검 표 — `{갈래: [{"from", "line"}]}` · 있는 판정의 문면을 그대로 싣는다(다시 계산하지 않는다)."""
     out = {lv: [] for lv in LEVELS}
     try:
-        for tag, line in catalog.problems(configs, common):
+        for tag, line in catalog.problems(configs, common, base=src):
             out["거부"].append({"from": f"카탈로그 {tag}", "line": line})
         out["경고"] += [{"from": "카탈로그 겸", "line": w} for w in catalog.warnings(common)]
         out["경고"] += [{"from": "카탈로그 극성 · 미러", "line": f"{w} · ▶ {nxt}"}
@@ -326,7 +315,8 @@ def _old_key_note(chk, src):
 def counts(model):
     """화면 요약의 수 — 층 · 카테고리 · 관계 패턴 · `parent_pairs` · 연결 포인트 · 선언 없이 씀(누락) · 점검 갈래마다."""
     lk = model["links"]
-    miss = sum(1 for x in model["checks"]["경고"] if x["from"] == "지도" and x["line"].startswith("누락 — 층"))
+    from core.state.config_grammar import TAG_REF                 # 선언 없이 씀 = 참조 거부 ⓘ(B192 ① — 경고 → 거부)
+    miss = sum(1 for x in model["checks"]["거부"] if x["from"] == f"카탈로그 {TAG_REF}")
     return {"층": len(model["layers"]), "카테고리": len(model["categories"]),
             "관계 패턴": sum(len(d["patterns"]) for d in model["layers"].values()), "parent_pairs": len(model["pair_edges"]),
             "걸침": len(lk["cross"]), "쓰는 카테고리": len(lk["uses"]), "선언 없이 씀": miss,

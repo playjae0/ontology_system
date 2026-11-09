@@ -153,14 +153,23 @@ def _pick_variant(p, doc_type, adapter_paths, out, basis):
 
 
 def _variant_next(p, eligible):
-    """일치 0건의 다음 줄 — **가장 가까운 doc_type**(누락 + 잉여가 가장 적은 것)으로 완성된 `--variant` 등록 한 줄(B190 ②)."""
+    """일치 0건의 다음 줄 — **가장 가까운 doc_type**(누락 + 잉여가 가장 적은 것)으로 완성된 `--variant` 등록 한 줄(B190 ②) ·
+    동률이면 그 doc_type 전부(이름순) 한 줄씩 — 사람이 고른다(B192 ⓪)."""
     if not eligible:
         return []
-    near = min(eligible, key=lambda x: (len(x["missing"]) + len(x["extra"]), x["label"]))
-    e = registry.lookup(near["doc_type"]) or {}
-    return [f"▶ 같은 종류의 다른 양식이면 — 가장 가까운 doc_type '{near['doc_type']}'(누락 {len(near['missing'])}·"
-            f"잉여 {len(near['extra'])})에 변형으로 등록한다(스키마 그대로 · 어댑터만):",
-            f"   python -m cli.register generate {near['doc_type']} {e.get('layer') or '<층>'} {p} --variant"]
+    cost = lambda x: len(x["missing"]) + len(x["extra"])      # noqa: E731
+    low = min(cost(x) for x in eligible)
+    near = {}
+    for x in sorted(eligible, key=lambda x: x["label"]):
+        if cost(x) == low:
+            near.setdefault(x["doc_type"], x)
+    x0 = next(iter(near.values()))
+    head = (f"가장 가까운 doc_type '{x0['doc_type']}'(누락 {len(x0['missing'])}·잉여 {len(x0['extra'])})" if len(near) == 1 else
+            f"가장 가까운 doc_type {len(near)}개가 동률(누락+잉여 {low}) — 그중 하나")
+    out = [f"▶ 같은 종류의 다른 양식이면 — {head}에 변형으로 등록한다(스키마 그대로 · 어댑터만):"]
+    for dt in sorted(near):
+        out.append(f"   python -m cli.register generate {dt} {(registry.lookup(dt) or {}).get('layer') or '<층>'} {p} --variant")
+    return out
 
 
 def _basis_line(sel):

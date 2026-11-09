@@ -313,7 +313,7 @@
    → 정의문 있는지·골격 삼항 뺐는지 확인 → 사람 확정
 3. 나머지 — traverse·templates·scope는 기존 층을 베이스로 이름만 수정
 4. 검증 — python3 run.py init --fresh && run.py all
-   → 부팅 실패 = config 문법 오류 (명시적 실패가 어느 키인지 말해 준다)
+   → 부팅 실패 = config 문법 오류 (bootstrap · --dry-run이 파일 · 모르는 키와 가장 가까운 아는 키 · 닫힌 값 · JSON 행 · 열을 한 줄로 말한다)
    → 점검_자산.py — 명세·자산 대조
 ```
 

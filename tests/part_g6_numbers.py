@@ -222,6 +222,17 @@ show("ⓐ --diff는 바뀐 줄만 — 넷째 문서 줄이 더해지고 · 보�
      and all(a != b for _k, a, b in _dd) and len(_same) + sum(1 for _k, _a, b in _dd if b is not None) == len(_lines)
      and f"바뀐 줄 {len(_dd)}" in _cli, f"바뀐 줄 {len(_dd)} · 같은 줄 {len(_same)}")
 
+# B192 ⓔ 화면 낱말 — 「골격 아래」(층 중립) · 옛 낱말로 저장한 요약은 읽을 때 새 낱말로(`show_summary.RENAMED`) — --diff가 그대로 돈다
+_old192 = [[k, v.replace("골격 아래", "유닛 이하")] for k, v in _lines]
+SS.save("b192_old", _old192)
+_cli192 = _run("show", "summary", "--diff", "b192_old", "지금")
+_end192 = next((ln for o in OUT.values() for ln in o.splitlines() if "요약 —" in ln), "")      # 인입 끝 한 줄(-v 화면)
+show("B192 ⓔ 화면 낱말 — 인입 끝 한 줄 · show summary 문서 줄이 「골격 아래」(「유닛 이하」 0) · 옛 낱말로 저장된 요약도 --diff가 돈다"
+     "(새 낱말로 읽어 바뀐 줄 0)",
+     "골격 아래 비율" in _end192 and "유닛" not in _end192 and any("골격 아래" in v for k, v in _lines if k.startswith("문서 "))
+     and not any("유닛" in v for _k, v in _lines) and any("유닛 이하" in v for _k, v in _old192) and "바뀐 줄 0" in _cli192,
+     f"{_end192[-60:]} · {_cli192.strip().splitlines()[0] if _cli192.strip() else ''}")
+
 # ⓒ 위치 칸(칸 글자 · 잘림 표지)은 지웠다(B131 ④ — 화면 글자는 재지 않는다 · 값 표 칸은 md 보고서 시험(test_judge의 조각 judge2 —
 # 값 표 행 = 대장 개체 행 · 잘림 0)이 같은 칸 함수로 잡는다).
 

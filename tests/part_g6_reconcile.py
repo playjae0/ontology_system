@@ -294,18 +294,18 @@ for _lay in ("process", "quality"):
                 _dirs.append((r["surface"], a.get("dir"), real))
     _g = _edgeless_in_graph(_did)
     _od.append((_lay, _bl["전체"] == _decl and _bl["맞음"] and _cl["버림(출처 없음)"] == 1
-                and _cl["유닛·부품(노드)"] == 2 and len(_mtd["엣지 없는 노드"]) == _g
+                and _cl["골격 밖 노드"] == 2 and len(_mtd["엣지 없는 노드"]) == _g
                 and _dirs and all(d == real for _s, d, real in _dirs),
                 f"{_lay}: 소속 대상 {_bl['전체']}/낸 개체 {_decl} · {_cl} · 엣지 없는 노드 {len(_mtd['엣지 없는 노드'])}"
                 f"/그래프 {_g} · 화살표(대장 → 실제) {_dirs}"))
-show("ⓓ 소속 대상 합 = 소속을 낸 개체 수 · 유닛·부품(노드) · 지어낸 이름은 버림 · 엣지 없는 노드 = 그래프에서 센 수 · "
+show("ⓓ 소속 대상 합 = 소속을 낸 개체 수 · 골격 밖 노드 · 지어낸 이름은 버림 · 엣지 없는 노드 = 그래프에서 센 수 · "
      "대장 dir = 실제 엣지 방향 (층 둘)", all(o for _l, o, _d in _od), " ‖ ".join(d for _l, _o, d in _od))
 _register("process", DT)
 _tr = _run("show", "report", _did, "--trace")
 _tl = [ln.strip() for ln in _tr.splitlines() if ln.strip().startswith("소속 ") and "'" in ln]
 _dir_q = {s: d for s, d, _r in _dirs}
 show("ⓓ --trace — 행마다 「소속 이름 → 대상(종류) → 결과」 · 화살표는 대장 dir 그대로",
-     any("유닛·부품 · 노드" in ln and f"엣지 part_of {_dir_q.get('모터')}" in ln for ln in _tl)
+     any("골격 밖 · 노드" in ln and f"엣지 part_of {_dir_q.get('모터')}" in ln for ln in _tl)
      and any("버림(출처 없음" in ln for ln in _tl), _tl[:2])
 
 # ────────────────────────────────────────────────────────────── ⓔ

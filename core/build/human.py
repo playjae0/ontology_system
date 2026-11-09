@@ -68,9 +68,9 @@ class Board:
         if cid not in self._coords:
             from core.build.heading import _kw
             src = self.src.get(cid) or {}
-            ref, ref_g, _p, _pol = _kw(self.b, src, f"{self.doc_id}#{src.get('source_locator')}")
-            self._coords[cid] = (ref, ref_g)
-        return self._coords[cid]
+            ref, ref_g, _p, pol = _kw(self.b, src, f"{self.doc_id}#{src.get('source_locator')}")
+            self._coords[cid] = (ref, ref_g, pol)
+        return self._coords[cid][:2]
 
     def known(self, name, cat, cid):
         """구축이 이 이름을 푸는가 — 이 문서 개체 · 제목 개체 · 골격 · 사전(`belongs.lookup`) · 새로 세울 소속."""
@@ -169,19 +169,23 @@ class Board:
         return None if rel else f"카테고리쌍 매핑 없음({upper.get('category')} · {cat}) — 이 위 노드에 붙일 관계가 없다"
 
     def preview(self, it, upper, cat):
-        """상세 화면의 재료 — `{node, belongs [(표기[카테고리] = 값, 지금 자리)], relations [(줄, 결말)], orphans {문서: 행}}`."""
+        """상세 화면의 재료 — `{node, belongs [(표기[카테고리] = 값, 지금 자리)], relations [(줄, 결말)], orphans {문서: 행}}`.
+        이름은 **인입과 같은 길**(B192 ②) — 그 카테고리 home 빌더의 config(`for_category`) · 청크의 극성 재료(`resolve_at_home`의 재료)."""
         from core.build.build import entity_key
         from core.build.naming import name_parent
         cid = sorted(it["청크"])[0]
         ref, ref_g = self.coord(cid)
+        kw = {"electrode_type": (self.src.get(cid) or {}).get("electrode_type"), "anchor_polarity": self._coords[cid][2]}
         cp = (ref_g.get(ref) or {}).get("canonical") if ref else None
+        hc = self.b.for_category(cat).cfg
         if upper["kind"] == "골격":
             parent = upper["name"]
         else:
             owner = (upper["name"] if upper["kind"] == "노드" else
-                     entity_key(upper["name"], upper["category"], self.cfg, parent_canonical=cp)[0])
-            parent = name_parent(cat, owner, cp, self.cfg)
-        node = entity_key(it["name"], cat, self.cfg, parent_canonical=parent)[0]
+                     entity_key(upper["name"], upper["category"], self.b.for_category(upper["category"]).cfg,
+                                parent_canonical=cp, **kw)[0])
+            parent = name_parent(cat, owner, cp, hc)
+        node = entity_key(it["name"], cat, hc, parent_canonical=parent, **kw)[0]
         bel, rel = [], []
         for kind, ccid, mat in it["items"]:
             if kind == "소속":

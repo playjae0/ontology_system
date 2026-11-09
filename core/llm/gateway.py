@@ -473,8 +473,8 @@ def prompt(name):
 
 def prompt_for(name, cfgs, key):
     """지시문 + **층 힌트**(B124 ③) — 층 config `prompts.<key>`(구조 `structure` · 추출 `extract` · 보강 `reinforce` · 판정
-    `judge`)를 층마다 `## 층 어휘 — <층>` 절로 덧붙인다. **모든 LLM 자리가 이 함수 하나**다(지시문 파일에는 층 어휘 0 —
-    층의 말은 config가 소유한다 · 문서 1 B9). 힌트가 없는 층은 덧붙이지 않는다(지시문 그대로)."""
+    `judge`)를 층마다 `## 층 어휘 — <층>` 절로 덧붙인다. **층 힌트를 받는 자리는 넷(구조 · 추출 · 보강 · 판정)** — 나머지 지시문은
+    층 어휘 없이 쓴다(지시문 파일에 층 어휘 0 · 층의 말은 config — 문서 1 B9 · B192 ③). 힌트가 없는 층은 덧붙이지 않는다."""
     out = prompt(name)
     for lay, cfg in sorted((cfgs or {}).items()):
         hint = ((cfg or {}).get("prompts") or {}).get(key)

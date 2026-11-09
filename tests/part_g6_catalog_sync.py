@@ -253,18 +253,18 @@ from core.build import extract as _EX      # noqa: E402
 init.init(fresh_=True, all_=True)
 _decl0 = catalog.used_by()                                     # 고침(B174 — 집 정의 ∪ uses)
 _ub0 = {c: v.get("used_by") for c, v in _common()["categories"].items()}
-_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].remove("Property"))
+_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].remove("Unit"))   # 고침 B192 — 관계 패턴이 쓰는 카테고리(Property)를 빼면 참조 거부 ⓘ
 _v0, _l0 = _common()["common_version"], len(_logs())
 _rc, _o = _boot()
-_ub1 = _common()["categories"]["Property"].get("used_by")
-_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].append("Property"))
+_ub1 = _common()["categories"]["Unit"].get("used_by")
+_rw(_P.layers("quality", "config.json"), lambda c: c["uses"].append("Unit"))
 _rc2, _o2 = _boot()
 show("ⓐ used_by = 층 config의 집 정의 ∪ uses(처음 · 추가/삭제마다) · 판 +1 · 로그(고침 B174 — 옛: 선언만)",
      all(_ub0[c] == _decl0[c] for c in _decl0)
      and _rc == 0 and _ub1 == ["process"] and _common()["common_version"] >= _v0 + 2
-     and _common()["categories"]["Property"]["used_by"] == ["process", "quality"]
-     and "used_by 'Property' − quality" in _o and "used_by 'Property' + quality" in _o2
-     and "used_by 'Property'" in _logs()[_l0:],
+     and _common()["categories"]["Unit"]["used_by"] == ["process", "quality"]
+     and "used_by 'Unit' − quality" in _o and "used_by 'Unit' + quality" in _o2
+     and "used_by 'Unit'" in _logs()[_l0:],
      [l for l in _o.splitlines() if "used_by" in l][:1])
 _rw(_P.common(), lambda c: c["categories"]["Failure"].update(used_by=["process", "엉뚱한층"])
     or c["categories"]["Unit"].update(used_by=[]))

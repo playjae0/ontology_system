@@ -14,7 +14,7 @@ quality는 시험 덧칠의 렌즈 `Unit`):
 잠그는 성질:
   ⓐ 구조 — ⓑ에서 유닛 줄이 트리에 서고 경로에 든다(`시트 › 유닛 › 지정사양`) · 한 유닛 아래 청크 둘이 같은 유닛 노드 · ⓐ는 고정 규칙과
      같은 트리 · 같은 파일이면 구조 LLM 0 (구조의 답은 계층 사다리 + 시트 확인 — B132 · 검사 · 폴백은 조각 ladder)
-  ⓑ 소속 — 세 표본 모두 주인이 있는 개체는 그 유닛에 붙는다(유닛 이하 = 주인 있는 개체 수) · 공정으로 가는 것은 주인 없는 개체뿐 ·
+  ⓑ 소속 — 세 표본 모두 주인이 있는 개체는 그 유닛에 붙는다(골격 아래 = 주인 있는 개체 수) · 공정으로 가는 것은 주인 없는 개체뿐 ·
      지어낸 이름은 버림(후보 밖 0) · 추출 · 보강 입력에 구조 사슬 · 다른 공정 가드와 부딪힌 구조 유닛을 센다
   ⓒ 관문 — `--step` 구조 표에서 「<번호> <카테고리>」 → 등록 단 기록 · 다시 파싱(LLM 0) · 그 아래 개체가 그 유닛에 · 재구축이 재생 ·
      약한 구조 신호가 화면 · 인입 기록 · `show summary`에
@@ -284,10 +284,10 @@ for lay in LAYERS:
                  and e["surface"] in WORDS[lay][:4]]
         good = all(any(p.startswith("소속") and o.endswith(e["belongs_to"]) for p, o in _attached(e)) for e in owned)
         s = r["mt"]["요약"]
-        RATIO[(key, lay)] = (s["유닛 이하 비율"], s["유닛 이하"], s["소속"])
-        _ob1.append((f"{key}·{lay}", good and owned and s["유닛 이하"] == len(owned),
-                     f"{key}·{lay} 주인 있는 개체 {len(owned)} · 유닛 이하 {s['유닛 이하']}/{s['소속']}({s['유닛 이하 비율']}%)"))
-show("ⓑ 세 표본 모두 — 주인(사슬 · 본문)이 있는 개체는 그 유닛에 소속 엣지로 붙는다 · 유닛 이하 = 주인 있는 개체 수 (표본 셋 × 층 둘)",
+        RATIO[(key, lay)] = (s["골격 아래 비율"], s["골격 아래"], s["소속"])
+        _ob1.append((f"{key}·{lay}", good and owned and s["골격 아래"] == len(owned),
+                     f"{key}·{lay} 주인 있는 개체 {len(owned)} · 골격 아래 {s['골격 아래']}/{s['소속']}({s['골격 아래 비율']}%)"))
+show("ⓑ 세 표본 모두 — 주인(사슬 · 본문)이 있는 개체는 그 유닛에 소속 엣지로 붙는다 · 골격 아래 = 주인 있는 개체 수 (표본 셋 × 층 둘)",
      all(o for _k, o, _d in _ob1), " ‖ ".join(d for _k, _o, d in _ob1))
 
 _ob2 = []
@@ -606,7 +606,7 @@ for _d in _made:
 for lay in LAYERS:
     _unregister(f"b119_{lay}")
 shutil.rmtree(TMP, ignore_errors=True)
-print("\n   표본별 유닛 이하 비율(창작 표본 — 근거가 아니다): "
+print("\n   표본별 골격 아래 비율(창작 표본 — 근거가 아니다): "
       + " · ".join(f"{k}·{lay} {v[0]}%({v[1]}/{v[2]})" for (k, lay), v in sorted(RATIO.items())))
 with contextlib.redirect_stdout(io.StringIO()):
     init.init(fresh_=True, all_=True)

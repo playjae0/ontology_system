@@ -206,7 +206,8 @@ def write(prop):
 def _state():
     """상태 루트의 옛 config 그대로 — `(공통, {층: 층 config}, 등록 스키마들)`."""
     from core.state import registry
-    common = json.loads(paths.common().read_text(encoding="utf-8")) if paths.common().exists() else {}
+    from core.state.config_grammar import read_json
+    common = read_json(paths.common()) if paths.common().exists() else {}
     schemas = [s for dt in sorted(registry.all_doc_types()) for s in [registry.schema_of(dt)] if s]
     return common, catalog._layer_configs(), schemas
 
