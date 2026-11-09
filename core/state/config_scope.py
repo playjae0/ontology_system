@@ -11,8 +11,9 @@
   · 둘 다 — 층 `uses`(묻는 목록에 그 카테고리 · home 층 정의문이 든다 · 게이트의 걸린 쌍 — B178 ②) → 다시 뽑고 다시 판정한다
   · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `mirrors` · `polarity` · `skeleton` · 공통 카테고리의 home · 경로
     (`no_path`) · `parent_pairs` · `sep` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
-  · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) · 표에 없는 키 → 영향 없음
-    (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥)
+  · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) → 영향 없음
+    (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥ · **표에 없는 키는 거부** —
+    `config_grammar` · B192 ①)
 
 **지난 인입이 쓴 config**는 문서 대장(`doc_registry.json`)의 `config_parts`(칸마다 내용 해시)다 — 인입이 적고(`ingest.register_doc`)
 `bootstrap` 끝 줄이 지금과 칸별로 대조한다(`impact`). 내용은 저장하지 않는다(해시만 — 바뀌었나만 안다).
@@ -35,6 +36,11 @@ COMMON = {"추출": ("categories.also",), "구축": ("categories.home", "categor
 COMMON_KEY = "공통"
 #: 이름만 바뀐 칸(B185 ② — 지난 기록의 옛 이름은 새 이름으로 대조한다 · 값이 같으면 바뀜이 아니다)
 RENAMED = {COMMON_KEY: {"pairs": "parent_pairs"}}
+#: **아는 키**(B192 ① — 문법 단 `config_grammar`가 이 표 밖의 키를 거부한다 · 영향 범위 표와 한 자리) — 공통 config의 그 밖 갈래
+#: (기록 · 파서가 읽는 빈칸 표시 — 영향 범위는 「그 밖」) · `parent_pairs` 항목 키 · 골격 파일 최상위 키
+COMMON_OTHER = {"기록": ("common_version", "categories.used_by"), "파서": ("null_markers",)}
+PAIR_ITEM_KEYS = ("lower", "upper", "rel", "src", "정의문")
+SEED_FORMAT_KEY = "seed_format"
 
 
 def renamed(cfg, part=COMMON_KEY):
@@ -94,6 +100,19 @@ def extract_key(cfg):
 def layer_keys():
     """층 config의 아는 키 전부 — 갈래 표(`LAYER`) + 그 밖(`OTHER`) · 차례는 표 그대로(두 갈래에 든 키는 한 번)."""
     return tuple(dict.fromkeys(k for table in (LAYER, OTHER) for keys in table.values() for k in keys))
+
+
+def common_keys():
+    """공통 config의 아는 키 — `(최상위 키, 카테고리 항목 키)` · `COMMON` + `COMMON_OTHER`를 편 것(B192 ①)."""
+    flat = [k for table in (COMMON, COMMON_OTHER) for keys in table.values() for k in keys]
+    top = tuple(dict.fromkeys(k.split(".", 1)[0] for k in flat))
+    return top, tuple(dict.fromkeys(k.split(".", 1)[1] for k in flat if "." in k))
+
+
+def seed_keys():
+    """골격 파일의 아는 최상위 키 — 판 번호 + 블록 셋(`skeleton.KEY_*` — 트리 안 문법은 `SeedError`가 본다 · B192 ①)."""
+    from core.state.skeleton import KEY_ALIASES, KEY_LABELS, KEY_TREE
+    return (SEED_FORMAT_KEY, KEY_LABELS, KEY_TREE, KEY_ALIASES)
 
 
 def kinds(key, common=False):

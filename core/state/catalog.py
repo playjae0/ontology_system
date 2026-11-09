@@ -58,8 +58,8 @@ def _mock():
 def _layer_configs():
     """층 config **파일 그대로**(카탈로그 병합 전) — `{층: cfg}`."""
     from router import discover
-    return {lay: json.loads(paths.layers(lay, "config.json").read_text(encoding="utf-8"))
-            for lay in discover()}
+    from core.state.config_grammar import read_json          # JSON 문법은 한 줄 문면(B192 ①)
+    return {lay: read_json(paths.layers(lay, "config.json")) for lay in discover()}
 
 
 def declared_by(configs=None):
@@ -93,7 +93,8 @@ def load():
     if key in _CACHE:
         return _CACHE[key]
     if p.exists():
-        cat = json.loads(p.read_text(encoding="utf-8"))
+        from core.state.config_grammar import read_json
+        cat = read_json(p)
     elif _mock():
         cat = draft()
         blank = sorted(c for c, v in cat["categories"].items() if not v["home"])
@@ -180,9 +181,13 @@ def structural_relations(cat=None):
     return {p["rel"] for p in pairs(cat)}
 
 
+#: 쌍의 출발 끝 — 닫힌 둘(문법 단이 이 값으로 잰다 · B192 ①)
+PAIR_SRC = ("lower", "upper")
+
+
 def pair_edge(p):
     """쌍의 엣지 `(출발 카테고리, 관계, 도착 카테고리)` — `src`가 `upper`면 위 → 아래 · 아니면 아래 → 위."""
-    return (p["upper"], p["rel"], p["lower"]) if p.get("src") == "upper" else (p["lower"], p["rel"], p["upper"])
+    return (p["upper"], p["rel"], p["lower"]) if p.get("src") == PAIR_SRC[1] else (p["lower"], p["rel"], p["upper"])
 
 
 def skeleton_categories(configs=None):
@@ -360,8 +365,9 @@ def layer_name_problems(configs=None):
     return out
 
 
-def problems(configs=None, cat=None):
-    """거부 갈래 ⓑ~ⓕ — `[(갈래, 문면)]`(ⓕ 층 이름 ≠ 폴더 이름 · B99 ①). 비어 있으면 통과다(ⓐ 파일 없음은 호출부가 본다).
+def problems(configs=None, cat=None, base=None):
+    """거부 갈래 ⓑ~ⓘ — `[(갈래, 문면)]`(ⓕ 층 이름 ≠ 폴더 이름 · B99 ① · ⓗ 문법 단 아는 키 · 값 · ⓘ 참조 — `config_grammar` ·
+    B192 ①). 비어 있으면 통과다(ⓐ 파일 없음은 호출부가 본다). `base`는 골격 파일을 읽을 `layers/` 모양의 폴더(없으면 상태 루트).
 
     `cat`을 주면 그 카탈로그를 검사한다 — `bootstrap --dry-run`이 **맞춘 뒤의 계획**을 쓰지 않고
     실제 실행과 같은 판정을 받는 통로다(B96 ①). 없으면 파일의 카탈로그.
@@ -369,6 +375,8 @@ def problems(configs=None, cat=None):
     configs = configs or _layer_configs()
     out = [("ⓕ", m) for m in layer_name_problems(configs)]     # 층 이름 = 폴더 이름 (B99 ①)
     cat = cat if cat is not None else load()
+    from core.state import config_grammar                       # 문법 단 ⓗ 아는 키 · 값 · ⓘ 참조(B192 ①)
+    out += config_grammar.problems(configs, cat, base=base)
     cats = cat.get("categories") or {}
     decl = declared_by(configs)
     for c, lays in sorted(decl.items()):

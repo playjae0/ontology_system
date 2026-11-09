@@ -323,7 +323,12 @@ def main(args):
         if i + 1 >= len(args):
             raise SystemExit("사용법: python run.py export config --from <layers 폴더> [--json 경로 | 경로]")   # [사용법]
         src, args = args[i + 1], args[:i] + args[i + 2:]
-    model = M.build(src)
+    from core.state.config_grammar import ConfigSyntaxError
+    try:
+        model = M.build(src)
+    except ConfigSyntaxError as e:                     # JSON 문법 — bootstrap과 같은 한 줄(B192 ①)
+        print(f"[export] [상태] {e}")
+        return 1
     if args[:1] == ["--json"]:
         out = out_path(args[1] if len(args) > 1 else None, "config_map.json")
         out.write_text(model_json(model), encoding="utf-8")

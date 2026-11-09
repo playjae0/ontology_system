@@ -65,7 +65,8 @@ def load_config(layer):
     이름 규칙 · `parent_pairs`은 층 사이의 사실이라 공통 config 한 곳에 살고 **얹지 않는다** — 읽는 자리는 함수다
     (`naming.scope_categories` · `naming.nest_categories` · `catalog.pair_relation` · `catalog.sep` — B174 ①).
     """
-    cfg = json.loads(paths.layers(layer, "config.json").read_text(encoding="utf-8"))
+    from core.state.config_grammar import read_json          # JSON 문법은 한 줄 문면(B192 ①)
+    cfg = read_json(paths.layers(layer, "config.json"))
     # **층 이름의 정본은 폴더 이름이다**(B99 ①) — 파일 안 `"layer"`가 달라도 읽는 쪽은 폴더 이름을
     # 받는다(다르면 `layer_name_problems`가 거부한다 · 사내: 폴더 `equip` · config `"equipment"`
     # → 같은 그래프를 두 번 열어 새 노드가 덮였다). 고치기 전 상태에서도 소실 0이 되게 하는 자리다.
@@ -152,7 +153,8 @@ def load_seed(layer, skel):
         # `FileNotFoundError`가 그대로 올라와 사람이 무엇을 두어야 하는지 몰랐다).
         raise SeedError(f"골격 파일이 없다 — {seed_missing_note(layer, path)}\n"
                         f"  ▶ 다음 줄:  python run.py skeleton-status {layer}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    from core.state.config_grammar import read_json
+    return read_json(path)
 
 
 def seed_missing_note(layer, path):

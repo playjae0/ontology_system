@@ -195,9 +195,10 @@ def _new_category_warning(p):
 
 
 def _problems_screen(bad):
-    """공통 config 거부 ⓑ~ⓔ의 문면 — 실제 실행과 `--dry-run`이 같은 함수다(두 벌 금지 · B96 ①)."""
+    """config 거부 ⓑ~ⓘ의 문면 — 실제 실행과 `--dry-run`이 같은 함수다(두 벌 금지 · B96 ①) · 문법 단 ⓗ ⓘ는 문면이 파일을 말한다(B192 ①)."""
+    from core.state.config_grammar import TAG_GRAMMAR, TAG_REF
     for tag, msg in bad:
-        print(f"[bootstrap] [상태] 공통 config {tag} {msg}")
+        print(f"[bootstrap] [상태] {'config' if tag in (TAG_GRAMMAR, TAG_REF) else '공통 config'} {tag} {msg}")
 
 
 def _skeleton_stops():
@@ -266,6 +267,14 @@ def _catalog_gate(dry_run=False):
     from core.state import catalog, catalog_sync
     if paths.common(draft=True).exists():
         print(f"[bootstrap] {paths.show(paths.common(draft=True))}는 쓰지 않는 파일이다(지워도 된다)")
+    from core.state.config_grammar import syntax_errors        # JSON 문법 — 파일 · 행 · 열 한 줄(B192 ① · traceback 0)
+    bad_json = syntax_errors()
+    for e in bad_json:
+        print(f"[bootstrap] [상태] {e}")
+    if bad_json:
+        if dry_run:
+            print(f"[bootstrap] --dry-run — 쓰기 0 · 멈출 것 {len(bad_json)}건(JSON 문법)")
+        return 1
     rc = _moved_keys_gate()                           # 층 config의 옛 키 → 손잡이(B181 ⑤ — 같으면 한 줄 · 다르면 멈춤)
     if rc:
         return rc

@@ -53,6 +53,8 @@ ALARM_BUILD_SECONDS = 30.0
 
 # 엣지 status 어휘 (구현문서 §2.3)
 STATUS_DELETED = "deleted_by_user"
+#: 질의 펼침의 방향 — 닫힌 셋(층 config `query_traverse` · `cross_layer_traverse`의 `direction` · 문법 단이 이 값으로 잰다 · B192 ①)
+DIRECTIONS = ("out", "in", "both")
 #: 읽기 전용 사본 — 파일 자리 → (판, 그래프) · `GraphStore.snapshot`
 _SNAP = {}
 
