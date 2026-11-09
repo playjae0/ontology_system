@@ -29,10 +29,6 @@ PROMPTS = "prompts"
 #: 바뀌어야 하고, 판이 바뀌면 사내 재추출(LLM 비용)이 난다 — 허브가 그 지시문을 개정할 때 함께 지운다(B121 ①).
 ALLOW = {
     ("cli/register/generate.py", "process"): "열 머리 영어 낱말 힌트(anchor) — 층 이름이 아니라 머리글 단어다",
-    ("prompts/1.3_interview.md", "Unit"): "선택지 예시 — 지시문 판 iv-2.1 · 개정 때 자리표로",
-    ("prompts/1.4_generate.md", "Process"): "킷 유지 규칙의 옛 판 서술 — 지시문 판 1.7 · 개정 때 지운다",
-    ("prompts/1.4_generate.md", "Unit"): "킷 유지 규칙의 옛 판 서술 — 지시문 판 1.7 · 개정 때 지운다",
-    ("prompts/1.4_generate.md", "Property"): "킷 유지 규칙의 옛 판 서술 — 지시문 판 1.7 · 개정 때 지운다",
 }
 
 

@@ -8,7 +8,7 @@
     python run.py show summary --diff <이름1> <이름2>  두 판의 같은 줄끼리 — 바뀐 줄만(`지금` = 지금 판)
 
 **화면은 장부 · 그래프의 투영이다**(새 판정 0 · 저장은 스냅샷 파일뿐): 층별 노드(골격 · auto · 확정 · 그 밖 · 엣지 없는 노드) ·
-엣지(관계별) · **문서별 줄**(노드 · 엣지 · 보류 · 유닛 이하 비율 · 연결 보강 이어짐/못 고름/버림 · 정답률) · 큐(종류별 열림/닫힘) ·
+엣지(관계별) · **문서별 줄**(노드 · 엣지 · 보류 · 골격 아래 비율 · 연결 보강 이어짐/못 고름/버림 · 정답률) · 큐(종류별 열림/닫힘) ·
 보류(사유별) · 재연결 누계(이어짐 — 대장의 재시도 행 · 남음 · 상한 도달 — 큐) · 불확실(사람 검토 대기 — `ops review`) · 값(attrs) 수.
 문서별 수는 맞춤표(`core/build/reconcile.table`)의 같은 줄에서 온다 — 문서 끝 한 줄 요약과 같은 수다.
 """
@@ -68,10 +68,10 @@ def collect(graphs=None):
         rf = {k: n for k, n, _d in (lk or {}).get("칸", [])}
         sc = show_score.score(doc_id)
         mine = _mine(graphs, doc_id)
-        raw["문서"][doc_id] = {"노드": mine[0], "엣지": mine[1], "보류": s["보류"], "유닛 이하 비율": s["유닛 이하 비율"],
+        raw["문서"][doc_id] = {"노드": mine[0], "엣지": mine[1], "보류": s["보류"], "골격 아래 비율": s["골격 아래 비율"],
                               "보강": rf, "정답률": (sc or {}).get("정답률")}
-        ratio = f"{s['유닛 이하 비율']}%" if s["유닛 이하 비율"] is not None else "—"
-        out.append((f"문서 {doc_id}", f"노드 {mine[0]:,} · 엣지 {mine[1]:,} · 보류 {s['보류']:,} · 유닛 이하 {ratio} · "
+        ratio = f"{s['골격 아래 비율']}%" if s["골격 아래 비율"] is not None else "—"
+        out.append((f"문서 {doc_id}", f"노드 {mine[0]:,} · 엣지 {mine[1]:,} · 보류 {s['보류']:,} · 골격 아래 {ratio} · "
                                        f"연결 보강 이어짐 {rf.get('붙음', 0):,}/못 고름 {rf.get('못 고름', 0):,}/버림 "
                                        f"{rf.get('버림', 0):,}"
                                        + (f" · 정답률 {sc['정답률']}%({sc['맞음']}/{sc['맞음'] + sc['틀림']})"
@@ -130,6 +130,16 @@ def _doc_table(doc_id, data, graphs, queue, nodes):
                     graphs, queue, nodes)
 
 
+#: 이름만 바뀐 낱말(B192 ④ — `config_scope.RENAMED` 꼴): 옛 스냅샷의 줄은 읽을 때 새 낱말로 — 옛 저장과 `--diff`가 그대로 돈다
+RENAMED = {"유닛 이하": "골격 아래"}
+
+
+def _renamed(text):
+    for o, n in RENAMED.items():
+        text = text.replace(o, n) if isinstance(text, str) else text
+    return text
+
+
 def snap_path(name):
     """스냅샷 자리 — `golden/summary/` (사람이 이름을 붙인 기준선 · 재구축 전후를 대조하려면 재구축이 지우면 안 된다)."""
     return paths.golden("summary", f"{name}.json")
@@ -151,7 +161,7 @@ def load(name):
     if not p.exists():
         raise SystemExit(f"[summary] 스냅샷 '{name}'이 없다 — {paths.show(p)} · 먼저 python run.py show summary "  # [상태]
                          f"--save {name}")
-    return [tuple(x) for x in json.loads(p.read_text(encoding="utf-8"))["lines"]]
+    return [(_renamed(k), _renamed(v)) for k, v in json.loads(p.read_text(encoding="utf-8"))["lines"]]
 
 
 def diff(a, b):

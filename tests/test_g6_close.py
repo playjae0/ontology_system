@@ -27,7 +27,7 @@
      사본 ⇒ rc 1
   B187 ⓐ — 코드 · 구조도 문면에 「위아래 쌍」 · home 뜻의 「집」 0
   B188 ⓑ ⓒ ⓓ — 런북 「확인할 것」 대조(mock 한 벌 · 바꾼 사본은 붉다) · 지도 보는 법 · 재연결 뜻의 「붙음」 0
-  B192 ⓪ — 명세 패치 「지움」 항목(표 행 · 줄바꿈까지 · 글자 증감 −)
+  B192 ⓪ — 명세 패치 「지움」 항목(표 행 · 줄바꿈까지 · 글자 증감 −) · ⓓ 지시문 — 등재 예외 1 · 판 넷 오름 · 예시는 mock 층 힌트로
   B185 ⓒ ⓓ — 「별칭 대장」 · 「특이점」이 코드 · 명세 · 가이드에 0 · 레포 .py 컴파일에 잘못된 이스케이프 경고 0(SyntaxWarning · DeprecationWarning)
 명세 사본 · 레포 사본은 시스템 임시 폴더다 — 레포와 mock 상태 폴더는 ⓐ의 고른 실행(그 스위트의 클린 단독)만 지난다.
 """
@@ -218,6 +218,15 @@ _git(BOX, "checkout", "-q", "--", "core/build/heading.py")
 show("ⓕ 층 어휘 정적 점검 — 지금 레포 위반 0(rc 0) · 사본 core에 카테고리 이름 하나를 넣으면 rc 1 · 그 파일 · 낱말을 말한다 (B121 ①)",
      _lw0[0] == 0 and "위반 0건" in _lw0[1] and _lw1[0] == 1 and f"core/build/heading.py" in _lw1[1] and f"'{_cat}'" in _lw1[1],
      f"rc {_lw0[0]} · {_lw1[0]} · {_cat}")
+# B192 ⓓ 지시문 — mock 예시 · 위계 가정을 걷었다: 등재 예외는 코드 하나 · 판 넷이 올랐다 · 옮긴 예시는 mock 공정층 힌트(prompts.extract)에
+_ver192 = {f: re.search(r"^version:\s*(\S+)", (ROOT / "prompts" / f).read_text(encoding="utf-8"), re.M).group(1)
+           for f in ("3.3_extract.md", "3.4_reinforce.md", "1.3_interview.md", "1.4_generate.md")}
+_old192 = {"3.3_extract.md": "e-2.1", "3.4_reinforce.md": "rf-1.2", "1.3_interview.md": "iv-2.1", "1.4_generate.md": "1.11"}
+_hint192 = (json.loads((ROOT / "layers" / "process" / "config.json").read_text(encoding="utf-8")).get("prompts") or {}).get("extract", "")
+show("B192 ⓓ 지시문 — 층 어휘 점검 위반 0 · 등재 예외 1(코드) · 판 넷 오름 · 추출 지시문의 mock 예시(「이송 유닛」)는 mock 공정층 힌트로",
+     "위반 0건 · 등재 예외 1" in _lw0[1] and all(_ver192[f] != _old192[f] for f in _old192)
+     and "이송 유닛" in _hint192 and "이송 유닛" not in (ROOT / "prompts" / "3.3_extract.md").read_text(encoding="utf-8"),
+     f"{_ver192} · 힌트 {len(_hint192)}자")
 # 레포 쓰기 정적 점검(B133 ①) — 지금 레포 위반 0 · 사본 시험 하나에 레포 쓰기를 심으면 붉고 그 자리를 말한다
 _rw0 = _run(["tools/repo_writes.py"])
 _rwf = BOX / "tests" / "test_p1_wiring.py"
