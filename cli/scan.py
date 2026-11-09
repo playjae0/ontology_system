@@ -155,15 +155,21 @@ def scan(doc_path, adapter_paths=None):
         return {"doc": str(doc_path), "details": [], "candidates": [],
                 "not_fingerprintable": Path(str(doc_path)).suffix.lstrip(".").lower()
                                        or "포맷 미상", "_mods": {}}
+    # **어댑터(변형) 단위로 대조한다**(B190 ② · 문서 6 §6.5-3) — doc_type 이름으로 묶으면 같은 doc_type의 둘째 변형이 덮인다 ·
+    # 열쇠(`label`)는 기본 변형이면 doc_type 그대로 · 더한 변형이면 `<doc_type>@<이름>`
+    vmap = {Path(q).resolve(): name for _dt, name, q in registry.adapter_variants()}
     details, mods = [], {}
     for f, mod in adapters(adapter_paths):
         d = match_detail(raw, mod)
         d["adapter_path"] = str(f)
+        d["variant"] = vmap.get(Path(f).resolve())
+        d["label"] = (d["doc_type"] if d["variant"] in (None, registry.BASE_VARIANT)
+                      else f"{d['doc_type']}{registry.VARIANT_SEP}{d['variant']}")
         details.append(d)
-        mods[d["doc_type"]] = (f, mod)
+        mods[d["label"]] = (f, mod)
     return {"doc": str(doc_path),
             "details": details,
-            "candidates": [d["doc_type"] for d in details if d.get("candidate")],
+            "candidates": [d["label"] for d in details if d.get("candidate")],
             "_mods": mods}
 
 
@@ -216,7 +222,7 @@ def render(res):
             lines.append(f"  · {d['doc_type']:<12} 대상 아님 — {d['note']}")
             continue
         mark = "◎ 후보" if d["candidate"] else "  불일치"
-        lines.append(f"  {mark} {d['doc_type']:<12} 일치 {d['matched']}/{d['declared']}"
+        lines.append(f"  {mark} {d.get('label') or d['doc_type']:<12} 일치 {d['matched']}/{d['declared']}"
                      + (f" · 누락 {d['missing']}" if d["missing"] else "")
                      + (f" · 잉여 {d['extra']}" if d["extra"] else ""))
     if res["candidates"]:

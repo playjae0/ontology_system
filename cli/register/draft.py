@@ -42,6 +42,7 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
     승인 기록(approval.json)이 가리키는 것도 파일이다.
     """
     so = schema_only_of(doc_type)                  # 스키마만 새 판이면 어댑터는 운영 판 그대로 (B150 ③)
+    vr = variant_of(doc_type)                      # 같은 종류의 다른 양식이면 스키마는 등록 판 그대로 (B190 ①)
     if gateway.use_mock():
         gateway.mock("generate", f"fixture {doc_type} rev{revision}")
         # **mock에서도 지시문을 조립해 덤프한다**(플래그가 켜졌을 때만) — 조립이
@@ -58,11 +59,24 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
             sc = FIXTURES / "schemas" / f"{stem}.json"
             if so and sc.exists():
                 return _at(so["adapter"]), sc
+            if vr and ad.exists():                 # 변형 — 픽스처 스키마는 「초안이 낸 스키마」(있으면 병합 키를 잰다)
+                from cli.register import variant as variant_mod
+                return variant_mod.settle(doc_type, ad, sc if sc.exists() else None)
             if ad.exists() and sc.exists():
                 return ad, sc
         return None, None
-    return _draft_live(doc_type, revision,
-                       instruction=instruction, history=history, schema_only=so)
+    ad, sc = _draft_live(doc_type, revision,
+                         instruction=instruction, history=history, schema_only=so)
+    if vr:
+        from cli.register import variant as variant_mod
+        return variant_mod.settle(doc_type, ad, sc)
+    return ad, sc
+
+
+def variant_of(doc_type):
+    """**같은 종류의 다른 양식**(B190 ①)의 재료 또는 None — 정본은 `cli/register/variant.of`(입력 패키지 `human.hint.variant`)."""
+    from cli.register import variant as variant_mod
+    return variant_mod.of(doc_type)
 
 
 def schema_only_of(doc_type):

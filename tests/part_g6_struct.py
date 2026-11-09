@@ -319,8 +319,10 @@ show("ⓑ 대부분의 대상에서 행마다 다른 값이 오는 attribute 열
 show("ⓒ G4L 문면이 자동 지시로 분류된다", any("G4L" in x for x in GT.classify_failures(_outa166)[0])
      and not any("G4L" in x for x in GT.classify_failures(_outa166)[1]))
 _g166 = (ROOT / "prompts" / "1.4_generate.md").read_text(encoding="utf-8")
-show("ⓓ 생성 지시문 판 1.10 · 그래프 입장 시험에 ⓒ 기수 시험(세 시험)",
-     "\nversion: 1.10\n" in _g166 and "ⓒ **기수 시험**" in _g166 and "**세 시험이 모두 예**" in _g166)
+import re                                          # noqa: E402
+_v166 = re.search(r"\nversion: 1\.(\d+)\n", _g166)          # 판은 그 뒤에도 오른다(B190 1.11) — 1.10 아래로 내려가지 않는다
+show("ⓓ 생성 지시문 판 ≥ 1.10 · 그래프 입장 시험에 ⓒ 기수 시험(세 시험)",
+     bool(_v166) and int(_v166.group(1)) >= 10 and "ⓒ **기수 시험**" in _g166 and "**세 시험이 모두 예**" in _g166)
 #: 리뷰 고침(PR #121) — ①새로 설 이름은 사전과 같은 정규화(연속 공백) ②값의 같음은 구축의 ==(1과 1.0) ③문서는 표본 경로로
 from core.build import cardinality as CD166      # noqa: E402
 _r166 = load("PFMEA01")["records"][0]

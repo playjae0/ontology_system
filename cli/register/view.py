@@ -661,6 +661,12 @@ def _status_registered(doc_type, st, reg):
                            doc_type=doc_type, roles_map=roles)
     print(f"■ 등록됨 — {doc_type} · 지금 코드로 관문 {'PASS' if ok else 'FAIL'} "
           f"(운영 어댑터 {paths.show(ad)} · 표본 {len(samples)}부)")
+    # **변형마다 관문**(B190 ③ · §6.5-1 — 스키마는 전 변형이 함께 쓴다) — 표본은 그 변형 검수 자리의 것
+    from cli.register import variant as variant_mod
+    for _n, _ok, _k, _o in variant_mod.gate_all(doc_type, sc, skip=(registry.BASE_VARIANT,)):
+        print(f"   변형 '{_n}' — 관문 {'PASS' if _ok else 'FAIL'} (표본 {_k}부)")
+        ok = ok and _ok
+        out += "\n" + _o
     print(f"   렌즈 — {registry.lenses_of(doc_type)}"            # prose 추출이 보는 층 (B91 ①)
           + ("" if (reg or {}).get("lenses") else " (기본 — 등록 층 하나)"))
     if ok:
@@ -683,6 +689,9 @@ def cmd_status(doc_type):
     「무엇을 치면 되는지」가 통과 쪽에서도 화면에 있어야 대칭이 선다.
     """
     st = _state(doc_type)
+    _reg0 = store.read(store.DOC_TYPES, {}).get(doc_type) or {}
+    if not st and _reg0.get("status") == "registered" and _reg0.get("adapter"):
+        return _status_registered(doc_type, {}, _reg0)  # 검수 자리 없이 옮겨 온 등록분도 지금 코드로 다시 잰다(표본 0 · 변형마다)
     if not st:
         raise SystemExit(f"[상태] '{doc_type}' 생성이 먼저다 — "                  # [상태]
                          f"근거 review/{doc_type}/state.json 없음\n"
@@ -692,6 +701,11 @@ def cmd_status(doc_type):
     _reg = store.read(store.DOC_TYPES, {}).get(doc_type) or {}
     if _reg.get("status") == "registered" and _reg.get("adapter"):
         return _status_registered(doc_type, st, _reg)
+    from cli.register import variant as variant_mod
+    _dt, _vn = variant_mod.split(doc_type)          # 확정된 변형이면 그 doc_type의 등록 재확인(변형 전부)으로 (B190)
+    _base = store.read(store.DOC_TYPES, {}).get(_dt) or {}
+    if _vn and _vn in (_base.get("variants") or {}):
+        return _status_registered(_dt, _state(_dt) or {}, _base)
     if gate.regate(doc_type, st) != "PASS":          # 저장값이 아니라 지금 판정이다
         gate.gate_block(doc_type, st)
         return 1

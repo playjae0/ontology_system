@@ -13,6 +13,7 @@ from cli._gate import require_live_or_allow
 from core.state import fixtures, log, registry, store
 import json
 import sys
+from pathlib import Path
 from cli.register import confirm
 from cli.register import draft as draft_mod
 from cli.register import generate
@@ -116,6 +117,13 @@ def _run(argv):
         if schema_only:
             rest.remove("--schema-only")
         as_name = opt("--as", None)
+        # **같은 종류의 다른 양식**(B190 ①) — `--variant [이름]` · 이름이 없으면 첫 표본의 파일 이름
+        variant = None
+        if "--variant" in rest:
+            _i = rest.index("--variant")
+            _nx = rest[_i + 1] if _i + 1 < len(rest) else None
+            variant = "" if (_nx is None or _nx.startswith("--") or Path(_nx).is_file()) else _nx
+            del rest[_i:_i + (2 if variant else 1)]
         # **렌즈**(B91 ①) — prose 추출이 보는 층 목록(`a,b` 또는 `all`) · 없으면 등록 층 하나
         lenses = opt("--lenses", None)
         # **표본의 시트 역할**(B86 ⑤) — 인입과 같은 문법 · 표본이 하나일 때만.
@@ -130,7 +138,7 @@ def _run(argv):
                             hint, interview=interview,
                             no_fewshot=no_few, resume=resume, use_basic=use_basic,
                             drop_interview=drop_iv, revise=revise, as_name=as_name,
-                            no_basic=no_basic, sheets=sheets, schema_only=schema_only)
+                            no_basic=no_basic, sheets=sheets, schema_only=schema_only, variant=variant)
         if lenses:
             _dt = as_name or rest[0]
             _st = _state(_dt)

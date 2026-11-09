@@ -267,7 +267,10 @@ def _cmd_generate_guard(doc_type, layer, samples, revise):
             f"   ① 같은 이름의 **새 판** — 어댑터를 고쳐 정본을 교체한다\n"
             f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
             f"<표본...> --revise\n"
-            f"   ② **변형 등록** — 기존은 그대로 두고 다른 이름으로 간다\n"
+            f"   ② **같은 종류의 다른 양식** — 스키마는 그대로 두고 이 doc_type에 어댑터(변형)를 더한다\n"
+            f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
+            f"<표본...> --variant [이름]\n"
+            f"   ③ **다른 종류** — 기존은 그대로 두고 새 doc_type(스키마도 새로)\n"
             f"        python -m cli.register generate {doc_type} {layer or '<층>'} "
             f"<표본...> --as <새이름>\n"
             + (f"   ※ 이 doc_type으로 인입된 문서 {len(_docs)}건이 있다 — "
@@ -362,11 +365,12 @@ def _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revi
 
 
 def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
-                          interview, drop_interview, operating=None):
+                          interview, drop_interview, operating=None, variant=None):
     """③ 입력 패키지 — 사람 4 + 시스템 5를 세운다. 돌려주는 것은 `(pkg, 자리)`.
 
     `operating`(스키마만 새 판 — B150 ③)이면 그 재료를 `human.hint`의 `schema_only`에(`--no-fewshot`과 같은 그릇) ·
-    `system.adapter_skeleton`은 스켈레톤 대신 **운영 어댑터의 전문**(키 수 그대로 — 값만 바뀐다 · 생성 지시문이 그렇게 읽는다)."""
+    `system.adapter_skeleton`은 스켈레톤 대신 **운영 어댑터의 전문**(키 수 그대로 — 값만 바뀐다 · 생성 지시문이 그렇게 읽는다).
+    `variant`(같은 종류의 다른 양식 — B190 ①)면 그 재료를 `human.hint.variant`에 · 스켈레톤 대신 **가장 가까운 변형의 어댑터 전문**."""
     from core.state.bootstrap import coord_layer, load_config   # 이름 규칙은 공통 config에서 얹는다
     # **골격 목록은 등록 층 몫 함수 하나에서**(B100 ②) — 좌표 층 몫 + 이 층 자기 골격 · 노드마다 몫 표시
     _sk_nodes = tagger.registration_list(layer, coord_layer())
@@ -382,8 +386,9 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
                   # 문서 6 §6.5 표). `hint`가 「사람이 준 것」의 자리이므로 그 안에
                   # 싣는다 — 문답 전문을 같은 자리에 실은 D-101과 같은 규칙이다.
                   "hint": ({"text": hint, **({"no_fewshot": True} if no_fewshot else {}),
-                            **({"schema_only": operating} if operating else {})}
-                           if (no_fewshot or operating) else hint)},
+                            **({"schema_only": operating} if operating else {}),
+                            **({"variant": variant} if variant else {})}
+                           if (no_fewshot or operating or variant) else hint)},
         "system": {
             # **관찰 재료 그릇 안에 열 프로파일을 함께 싣는다**(B39·B36) —
             # 시스템 5키를 늘리지 않는다. 앞 N줄 창으로는 보이지 않는 사실(행마다
@@ -433,7 +438,8 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
             # 그 파일을 열 수 없어 뼈대를 **작문**하게 된다. 실측: 전송분의 extract가
             # 시그니처와 docstring에서 끝났다. 시스템 키는 **5 그대로**다 — 값의
             # 형태만 바뀐다(문서 6 §6.5 표).
-            "adapter_skeleton": (draft_mod._at(operating["adapter"]).read_text(encoding="utf-8") if operating
+            "adapter_skeleton": (draft_mod._at((operating or variant["nearest"])["adapter"]).read_text(encoding="utf-8")
+                                 if (operating or variant)
                                  else _strip_module_doc((KIT / "어댑터_스켈레톤.py").read_text(encoding="utf-8"))),
         },
     }
@@ -537,7 +543,8 @@ def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
                          f"     USE_MOCK=0 python -m cli.register generate "
                          f"{doc_type} --resume")
     print(f"   초안 수령: {draft_mod._rel(ad)} · {draft_mod._rel(sc)}"
-          + (" (스키마만 — 어댑터는 운영 판 그대로)" if draft_mod.schema_only_of(doc_type) else ""))
+          + (" (스키마만 — 어댑터는 운영 판 그대로)" if draft_mod.schema_only_of(doc_type) else "")
+          + (" (어댑터만 — 스키마는 등록 판 그대로)" if draft_mod.variant_of(doc_type) else ""))
     if gateway.usage_total()["calls"]:
         from cli import _screen
         print(f"   {_screen.usage_line()}")          # 문구는 한 함수 (B96 ③)
@@ -556,20 +563,29 @@ def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):
 def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                  no_fewshot=False, resume=False, use_basic=False,
                  drop_interview=False, revise=False, as_name=None,
-                 no_basic=False, sheets=None, schema_only=False):
+                 no_basic=False, sheets=None, schema_only=False, variant=None):
     """① 생성 — 입력 패키지를 세우고 초안을 받는다.
 
     **입력 패키지 = 사람 4 + 시스템 5**(증분0 §3 P3 · 카드 M10):
       사람 — 표본 · doc_type 이름 · 층 지정 · 힌트(자유 텍스트)
       시스템 — reader 원시 추출 · 골격 닫힌 목록 · 층 어휘 · 공용 블록 · 어댑터 스켈레톤
 
-    **등록분에도 다시 들어올 수 있다**(H27 · B58 ①): `--revise`는 같은 이름의 새 판,
-    `--as <이름>`은 변형 등록이다. 구판은 등록된 이름이면 통째로 거부해 **어댑터를
-    고쳐 다시 등록할 길이 없었다** — 사내가 그 자리에서 멈춰 있었다.
+    **등록분에도 다시 들어올 수 있다**(H27 · B58 ①): `--revise`는 같은 이름의 새 판(기본 변형) ·
+    `--variant [이름]`은 같은 종류의 다른 양식(스키마 그대로 · 어댑터를 더한다 — B190 ① · `cli/register/variant.py`) ·
+    `--as <이름>`은 새 doc_type이다(스키마도 새로).
     """
+    vr = None
+    if variant is not None:
+        if as_name or revise or schema_only:
+            raise SystemExit("[생성] --variant는 --as · --revise · --schema-only와 함께 쓰지 않는다 — "            # [사용법]
+                             "변형의 새 판은 같은 이름으로 --variant <이름>을 다시 친다")
+        from cli.register import variant as variant_mod
+        vr = variant_mod.prepare(doc_type, layer, samples, variant or None)
+        doc_type, layer = vr["work"], vr["layer"]
     if as_name:
-        # **변형 등록** — 기존 doc_type은 손대지 않고 새 이름으로 정상 경로를 간다.
-        print(f"  ▶ 변형 등록 — '{doc_type}'은 그대로 두고 '{as_name}'으로 간다")
+        # **새 doc_type** — 기존 doc_type은 손대지 않고 새 이름으로 정상 경로를 간다(스키마도 새로).
+        print(f"  ▶ 새 doc_type — '{doc_type}'은 그대로 두고 '{as_name}'으로 간다 "
+              f"(같은 종류의 다른 양식이면 --variant — 스키마 그대로 · 어댑터만)")
         doc_type = as_name
     revise = revise or schema_only                 # 스키마만 새 판도 새 판이다 (B150 ③)
     op = _cmd_generate_revise(doc_type, layer, schema_only) if revise else None
@@ -589,12 +605,12 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
                          f"  근거 — 설정 파일 {gateway.config_sources()['read'] or '없음(환경변수만)'}\n"
                          f"  ▶ 다음 줄 — 단계별 원인을 본다:\n"
                          f"     python run.py llm-check")
-    # 스키마만 새 판은 형태가 이미 정해졌다(표 · 운영 어댑터) — 형태 판정 · 고정 어댑터 권유를 건너뛴다
-    _r = None if op else _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
+    # 스키마만 새 판 · 변형은 형태가 이미 정해졌다(표 · 운영 어댑터 · 등록 스키마) — 형태 판정 · 고정 어댑터 권유를 건너뛴다
+    _r = None if (op or vr) else _cmd_generate_form(doc_type, layer, samples, hint, use_basic, no_basic, revise)
     if _r is not None:
         return _r
     pkg, d = _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
-                                   interview, drop_interview, operating=op)
+                                   interview, drop_interview, operating=op, variant=vr)
     _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview)
     return _cmd_generate_draft(doc_type, layer, samples, pkg, revise)
 
