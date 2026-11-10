@@ -241,7 +241,7 @@ def orphan_next_lines(item, layer=None):
         f"        python run.py ingest-file {doc} --doc-type {dt}   "
         "← 재인입이 보류분을 붙인다",
         "        (골격에 없는 공정이면 seed에 노드를 더한다 — "
-        "골격작성_가이드 · 사람 판단)"]))
+        "골격 팩 · 사람 판단)"]))
 
 
 def extract_view():

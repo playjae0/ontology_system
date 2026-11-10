@@ -1,6 +1,6 @@
 # 층 config 팩 — `layers/<층>/config.json` (+ 공통 config에 더할 줄 제안)
 
-> **사람**: 이 폴더의 다섯 파일(`층config_팩.md` · 예시 넷)과 함께 ①그 층의 대표 문서 1 ~ 2부 ②골격 층이면 확정한 `skeleton.json` ③이미 세운 층이 있으면 지금 `$ONTO_HOME/layers/common.json`과 그 층들의 `config.json`을 사내 LLM에 넘긴다. **한 번에 한 층** — 골격 층(설비층)부터. 받은 뒤는 맨 끝 「받은 뒤 확인」.
+> **사람**: 이 폴더의 다섯 파일(`층config_팩.md` · 예시 넷)과 함께 ①그 층의 대표 문서 1 ~ 2부 ②골격 층이면 골격 팩으로 받은 `skeleton.json`(확정은 이 config를 놓고 `bootstrap`한 뒤 — 「받은 뒤 확인」) ③이미 세운 층이 있으면 지금 `$ONTO_HOME/layers/common.json`과 그 층들의 `config.json`을 사내 LLM에 넘긴다. **한 번에 한 층** — 골격 층(설비층)부터. 받은 뒤는 맨 끝 「받은 뒤 확인」.
 
 ## 1. 할 일
 
@@ -141,4 +141,5 @@
                                            파일 · 키 · 가장 가까운 아는 키 · 다음 줄을 말하고 멈춘다(멈출 것 0이 될 때까지)
 3. python run.py bootstrap                ← 끝 줄: 골격 겸 상태 · 등록 스키마 재대조(doc_type마다 PASS/FAIL) · config 영향
 4. python run.py export config            ← 첫 줄 reject 0 · warn 0 · coord layer <골격 층> · 온톨로지 맵(export/config_map.html)
+5. 골격 층이면 골격 팩 「받은 뒤 확인」 3 ~ 6(skeleton-status · 흐름 대조 · 노드 수 · skeleton-confirm)
 ```

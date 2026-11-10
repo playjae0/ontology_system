@@ -12,6 +12,9 @@
   ③ **운영 런북 전체**와 `2B_작업가이드.md` **증상표 절에 회차·결정 번호 0**(`B\\d\\d` · `D-\\d+`) ·
      둘 다 **옛 판 서술 0**(구판 · 옛 판 · 이전에는) — 가이드는 지금 동작만 말한다
      (무엇이 언제 바뀌었나는 개정대장 몫 · 2B의 「시작하기」는 런북이 됐다 — B108 ②)
+  ④ **런북과 2B 증상표의 짝**(B194) — 런북 단계의 「막히면」이 가리키는 `2B_작업가이드.md#7-…` 앵커가
+     2B §7의 묶음 제목(`### 7-n …`)에 있고, 묶음마다 런북 어딘가가 가리킨다(묶음 번호 = 런북 단계)
+  가이드는 `docs/가이드/` 아래 전부(팩 폴더 포함)다.
 
 사용: python docs/회귀스위트/점검_가이드.py     (위반이 있으면 exit 1)
 """
@@ -170,10 +173,38 @@ def check_2b():
     return hits
 
 
+def _slug(head):
+    """마크다운 제목 → 앵커(GitHub 규칙 — 소문자 · 글자 · 숫자 · 빈칸 · 하이픈만 남기고 빈칸은 하이픈)."""
+    t = re.sub(r"[^\w\- ]", "", head.strip().lower())
+    return t.replace(" ", "-")
+
+
+def check_pairs():
+    """④ 런북 「막히면」 → 2B §7 묶음 앵커가 있다 · 2B §7 묶음마다 런북이 가리킨다."""
+    if not (RUNBOOK.exists() and GUIDE_2B.exists()):
+        return []
+    book = RUNBOOK.read_text(encoding="utf-8")
+    text = GUIDE_2B.read_text(encoding="utf-8")
+    groups = {_slug(ln[4:]): ln[4:] for ln in text.splitlines() if re.match(r"^### 7-\d ", ln)}
+    hits = []
+    linked = set()
+    for i, ln in enumerate(book.splitlines(), 1):
+        for a in re.findall(r"2B_작업가이드\.md#(7-\d[^)\s]*)", ln):
+            linked.add(a)
+            if a not in groups:
+                hits.append((RUNBOOK, i, a, "2B §7에 그 묶음이 없다"))
+    for a, h in groups.items():
+        if a not in linked:
+            hits.append((GUIDE_2B, 0, h, "런북이 가리키지 않는 증상 묶음"))
+    if not groups:
+        hits.append((GUIDE_2B, 0, "### 7-n", "증상표 묶음이 없다"))
+    return hits
+
+
 def main():
-    guides = sorted(GUIDES.glob("*.md"))
+    guides = sorted(GUIDES.rglob("*.md"))
     structs = sorted(STRUCT.glob("*.md"))
-    hits = check_commands(guides) + check_links(guides + structs) + check_2b()
+    hits = check_commands(guides) + check_links(guides + structs) + check_2b() + check_pairs()
     print(f"가이드 점검 — 가이드 {len(guides)}개 · 구조도 {len(structs)}개")
     for f, i, what, why in hits:
         print(f"  {f.relative_to(ROOT).as_posix()}:{i}  {what}  — {why}")

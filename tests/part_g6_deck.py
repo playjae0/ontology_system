@@ -276,8 +276,8 @@ _ins6 = [_sub("ingest-file", str(_dir / f"{DID}.pptx"), "--doc-type", DT, "--all
 _hint.unlink(missing_ok=True)
 _files = sorted(str(f.relative_to(_P.home())) for f in _P.home().rglob("*")
                 if f.is_file() and not any(x.startswith(".") or x == "__pycache__" for x in f.relative_to(_P.home()).parts))
-_gd = (ROOT / "docs/가이드/상태_폴더_가이드.md").read_text(encoding="utf-8")
-_rows6 = [[c.strip() for c in ln.strip().strip("|").split("|")] for ln in _gd.split("### 2-1.")[1].split("\n## ")[0].splitlines()
+_gd = (ROOT / "docs/가이드/2B_작업가이드.md").read_text(encoding="utf-8")   # 상태 폴더 지도는 2B §0-4(B194)
+_rows6 = [[c.strip() for c in ln.strip().strip("|").split("|")] for ln in _gd.split("### §0-4")[1].split("\n## ")[0].splitlines()
           if ln.startswith("| `")]
 
 
