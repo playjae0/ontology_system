@@ -1,0 +1,15 @@
+{
+  "_pack_note": "창작 예시 — 공통 config(layers/common.json)에서 사람이 쓰는 줄만이다. home · used_by · common_version은 bootstrap이 쓴다.",
+  "_parent_pairs_note": "Property → Unit 쌍을 두면 유닛에 붙은 관리항목이 유닛 아래 이름(<공정>::<유닛>::<항목>)으로 선다 · 공정 아래 하나로 두려면 그 쌍을 뺀다 — 사내가 정할 줄이라 「확인 필요」로 올린다.",
+  "categories": {
+    "Process": {"also": {"Unit": ["sub", "detail"]}}
+  },
+  "parent_pairs": [
+    {"lower": "Unit", "upper": "Process", "rel": "part_of", "src": "lower", "정의문": "설비 표기가 그 공정에 속한다"},
+    {"lower": "Component", "upper": "Unit", "rel": "part_of", "src": "lower", "정의문": "부품이 그 유닛에 속한다"},
+    {"lower": "Component", "upper": "Process", "rel": "part_of", "src": "lower", "정의문": "부품이 그 공정(설비)에 속한다"},
+    {"lower": "Property", "upper": "Process", "rel": "has_property", "src": "upper", "정의문": "공정이 그 관리항목을 갖는다"},
+    {"lower": "Property", "upper": "Unit", "rel": "has_property", "src": "upper", "정의문": "유닛이 그 관리항목을 갖는다"}
+  ],
+  "sep": "::"
+}

@@ -1,0 +1,149 @@
+{
+ "_pack_note": "창작 예시 — 사내 모양의 골격 층(설비층)이다. 이름(공정 · 유닛 · 부품)은 지은 것이라 출력에 옮기지 않는다 · 키 구조와 값의 꼴만 따른다.",
+ "layer": "equipment",
+ "config_version": "equipment-1",
+ "registration": "builtin",
+ "_categories_note": "home이 이 층인 카테고리의 정의문만 — 골격 카테고리(Process)와 설비 카테고리(Unit · Component). 정의문은 추출 · 판정 LLM이 그대로 읽는 판정 규칙이다.",
+ "categories": {
+  "Process": "제품을 만들기 위해 수행하는 작업 단계의 이름이다. 골격(사람이 고정한 좌표)으로만 서며 문서가 새로 만들지 않는다. 상위 공정은 설비 단위(예: 라미네이션 · 폴딩), 하위 공정은 unit 단위(예: 히터 unit · 폴딩 unit)이고 둘 다 설비이기도 하다. 경계 — 그 이름이 없어져도 작업이 남으면 공정이다. 「<공정> 설비」 · 「<공정> unit」은 그 공정 자신이다. 아닌 것: 구성 기계 · 부품(Component) · 관리항목(Property) · 라인 · 호기 표기.",
+  "Unit": "설비 · 유닛(설비를 이루는 한 부분 — 유닛 · 부(部) · 모듈)의 이름이다(예: 히터 unit · 폴딩 unit · 문서에만 나오는 보조 유닛). 골격의 공정 · unit 이름이나 그 별칭이면 새 노드가 아니라 그 공정 자신으로 풀린다 — 골격에 없는 표기만 Unit 노드로 서고 사람이 큐에서 본다. 설비 전체를 부르는 「○○ unit」(시트 이름 · 문서 제목)과 설비의 한 부분인 유닛을 가른다. 아닌 것: 부품(Component) · 관리항목(Property) · 규격값.",
+  "Component": "유닛을 이루는 교체 · 정비 단위의 이름이다(예: 히터 블록 · 커팅 나이프 · 진공 패드). 경계 — 그것만 따로 교체 · 주문하면 Component, 설비가 맡는 동작 단위면 공정(unit). 아닌 것: 유닛 · 설비 이름 · 소모품의 규격값(attribute) · 관리항목(Property)."
+ },
+ "_skeleton_note": "골격 층만 갖는다 — 트리 seed는 같은 폴더 skeleton.json(골격 팩).",
+ "skeleton": {
+  "type": "tree-v3.2",
+  "category": "Process",
+  "source": "skeleton.json",
+  "relations": {
+   "child": "part_of",
+   "sibling": "precedes"
+  }
+ },
+ "skeleton_version": "equipment-1",
+ "_polarity_note": "극성은 그 카테고리의 home 층 config가 정한다 — Unit · Component의 home이 이 층이라 여기 적는다(Property의 극성은 공정층 config). values는 골격 AXIS_LABELS 키와 같고 모든 층이 같다.",
+ "polarity": {
+  "bind_categories": [
+   "Unit",
+   "Component"
+  ],
+  "values": [
+   "cathode",
+   "anode"
+  ]
+ },
+ "mirrors": {
+  "enabled": true,
+  "relation": "mirrors"
+ },
+ "relations": [
+  "part_of",
+  "precedes",
+  "has_property",
+  "mirrors"
+ ],
+ "_relation_patterns_note": "골격 삼항(Process part_of/precedes Process)과 공통 parent_pairs의 삼항(Unit part_of Process 등)은 여기 적지 않는다.",
+ "relation_patterns": [
+  {
+   "src": "Unit",
+   "rel": "mirrors",
+   "dst": "Unit",
+   "symmetric": true,
+   "정의문": "극성만 다른 대칭 설비 유닛이다"
+  },
+  {
+   "src": "Component",
+   "rel": "mirrors",
+   "dst": "Component",
+   "symmetric": true,
+   "정의문": "극성만 다른 대칭 부품이다"
+  }
+ ],
+ "_uses_note": "설비 문서(사양서)가 사양 항목을 말하면 그 항목은 Property다 — Property의 home은 공정층이라 이름만 적는다. 그 항목의 값은 이 층에서 받지 못한다(value_categories는 이 층 home 카테고리만 — 값까지 받으려면 그 문서를 공정층에 등록한다).",
+ "uses": [
+  "Property"
+ ],
+ "query_traverse": {
+  "part_of": {
+   "down": {
+    "direction": "in",
+    "recursive": true
+   },
+   "up": {
+    "direction": "out",
+    "recursive": false
+   }
+  },
+  "has_property": {
+   "both": {
+    "direction": "both",
+    "recursive": false
+   }
+  }
+ },
+ "fact_templates": {
+  "part_of": "{src}는 {dst}의 하위 요소이다",
+  "precedes": "{src} 다음 공정은 {dst}이다",
+  "mirrors": "{src}는 {dst}와(과) 극성 대칭이다",
+  "precedes:derived": "({scope} 기준) {src} 다음 공정은 {dst}이다",
+  "precedes:none": "{src}의 다음 공정은 골격에 선언되어 있지 않다 (순서 정보 없음)",
+  "node:replaced": "(대체됨: {old} → {new})",
+  "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)",
+  "has_property": "{src}의 관리항목: {dst}"
+ },
+ "_query_intents_note": "질문 유형 표기 목록 — 층마다 같게 베낀다(실호출에서는 LLM이 유형을 판정한다).",
+ "query_intents": {
+  "flow": [
+   "전체 공정 흐름",
+   "공정 흐름",
+   "전체 흐름"
+  ],
+  "order": [
+   "다음 공정",
+   "다음은",
+   "다음에 오는",
+   "다음 단계"
+  ],
+  "general": [
+   "영어로",
+   "영문으로",
+   "동작 원리"
+  ],
+  "value": [
+   "규격이",
+   "규격은",
+   "규격 뭐",
+   "몇 ",
+   "얼마"
+  ],
+  "reverse": [
+   "관리하는",
+   "발생할 수 있는",
+   "이어질 수 있는",
+   "어디서"
+  ],
+  "structure": [
+   "어떤 설비",
+   "무슨 설비",
+   "어떤 관리",
+   "무슨 관리",
+   "어떤 인자",
+   "있어?"
+  ],
+  "describe": [
+   "어떻게",
+   "관리 방법",
+   "방법은"
+  ]
+ },
+ "_prompts_note": "층 힌트 — 이 층의 지식(어떤 항목이 어떤 카테고리인가)만 · 지시문 끝에 「## 층 어휘 — equipment」로 붙는다.",
+ "prompts": {
+  "structure": "이 층에서 대상 제목은 셋이다 — 설비(그 아래 글이 설비 하나 전체 · 골격의 공정 이름 · 별칭이면 좌표) · 유닛(설비의 한 부분 — 「히터 unit」 · 골격의 공정 이름 · 별칭이면 좌표 · 아니면 Unit) · 부품(교체 단위 — Component). 사양을 묶는 소제목은 이 층의 노드가 아니다.",
+  "extract": "이 층의 소속 예 — 시트가 「히터 unit」이고 본문이 「히터 블록」을 말하면 그 부품의 소속은 「히터 unit」이다(from: 시트) · 「히터 온도 120℃」처럼 값이 붙은 사양 항목은 Property이고 그 소속은 그 유닛이다."
+ },
+ "extract_patterns": [],
+ "relevance_terms": [
+  "사양서",
+  "구성 부품",
+  "Spec"
+ ]
+}
