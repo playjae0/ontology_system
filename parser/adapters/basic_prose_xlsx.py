@@ -229,6 +229,8 @@ def _image_pieces(sheet, chunks):
                 "shape_id": im["ref"], "cell": im.get("cell"), "section_path": section, "sheet": name}
         if im.get("mime"):
             meta["image_mime"] = im["mime"]
+        if im.get("cells"):
+            meta["image_cells"] = list(im["cells"])        # 그림 묶음 — 한 장 요약에 든 그림의 앵커 셀(B195 ④)
         out.append({"source_locator": f"{name}!{im.get('cell')}#{im['ref']}",
                     "section": section, "image_ref": im["ref"],
                     "context": ((host or {}).get("text") or "")[:CONTEXT_CHARS],

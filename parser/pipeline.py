@@ -171,6 +171,37 @@ def _convert_images(res, pieces, imgs, kept_img):
     return out
 
 
+def _image_keys(raw, imgs, summarize):
+    """그림 요약 보존의 **열쇠**(B195 ④) — `{ref: ref@지시문 판#그림 바이트 해시}` · 묶음은 그 그림들 전부의 바이트 · 지시문 판이 바뀌거나
+    그림이 바뀐 것만 다시 부른다(같은 문서 안 — 원본 해시 열쇠는 그대로)."""
+    import hashlib
+    ver = getattr(summarize, "version", None) or "?"
+    groups = raw.get("_groups") or {}
+    out = {}
+    for ref, (blob, _mime) in imgs.items():
+        h = hashlib.sha256()
+        for b in ([m[0] for m in groups[ref]] if ref in groups else [blob]):
+            h.update(b or b"")
+        out[ref] = f"{ref}@{ver}#{h.hexdigest()[:12]}"
+    return out
+
+
+def _compose_groups(res, groups, imgs, kept_refs=()):
+    """그림 묶음을 **한 장**으로(실호출 요약 직전 — `ooxml.compose`) · 보존 요약이 있는 묶음은 만들지 않는다 · 만들지 못하면(선택 의존
+    없음) 첫 그림 그대로 · 사유는 보고에."""
+    from parser import ooxml
+    made, why = 0, None
+    for ref, members in groups.items():
+        if ref in kept_refs:
+            continue
+        try:
+            imgs[ref] = (ooxml.compose(members), "image/png")
+            made += 1
+        except ImportError as e:
+            why = f"그림 묶음 합성 못 함 — {e} · 첫 그림만 요약"
+    res.report["image_groups"] = {"묶음": len(groups), "합성": made, **({"사유": why} if why else {})}
+
+
 def _drop_images(res, pieces, no_images):
     """`ref` 시트의 그림은 조각 0(참조 = LLM 0 · B83) · `--no-images`면 그림 전부 — **기록한다**."""
     out = [p for p in pieces if not (p.get("image_ref")
@@ -200,12 +231,15 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
     # **바이트와 쪽 그림은 여기서 붙인다**(B53) — 리더 raw가 이 함수의 손에 있고,
     # 어댑터는 순수 함수라 원본 파일을 다시 열 수 없다(§6.4-2).
     imgs = dict(raw.get("_images") or {})
-    pieces = _convert_images(res, pieces, imgs, kept_img)
+    keys = _image_keys(raw, imgs, summarize) if summarize is not None else {}
+    if summarize is not None and raw.get("_groups"):
+        _compose_groups(res, raw["_groups"], imgs, {r for r, k in keys.items() if k in kept_img and r in raw["_groups"]})
+    pieces = _convert_images(res, pieces, imgs, {r for r, k in keys.items() if k in kept_img} | set(kept_img))
     _refs = [p["image_ref"] for p in pieces if p.get("image_ref") and not p.get("text")]
     if image_notice and summarize is not None and _refs:
         # **부르기 전에** 몇 장인지 말한다(B88 ① · B69 ②의 결) — 보존분은 호출 0이다.
-        image_notice({"새": sum(1 for r in _refs if r not in kept_img),
-                      "재사용": sum(1 for r in _refs if r in kept_img)})
+        image_notice({"새": sum(1 for r in _refs if keys.get(r, r) not in kept_img),
+                      "재사용": sum(1 for r in _refs if keys.get(r, r) in kept_img)})
     # **쪽 전체 렌더는 쪽이 있는 포맷만**(PPT·PDF) — 엑셀·Word에는 쪽이 없다(B88 ①).
     has_pages = raw.get("slides") is not None or raw.get("pages") is not None
     pages = _page_map(path, raw) if (imgs and summarize is not None and has_pages) else {}
@@ -213,7 +247,7 @@ def _parse_images(res, pieces, raw, path, doc_id, summarize, kept_map, kept_maps
         # **캡처는 그림 유무와 무관하다**(B125 ② — 주입 `capture`가 켤 때 · 렌더는 추출이 원본에서 뜬다)
         pieces, res.report["capture_pages"] = _capture(res, pieces, raw)
     pieces = tagger.complete_images(pieces, summarize, kept=kept_img,
-                                    images=imgs, pages=pages)          # ⑤ tagger
+                                    images=imgs, pages=pages, keys=keys)          # ⑤ tagger
     # 보존은 **새로 산출된 것이 있을 때만** 쓴다 — 매번 쓰면 재사용 갈래에서도 파일
     # mtime이 흔들려 «재사용했나»가 파일로 판정되지 않는다.
     fresh = {}

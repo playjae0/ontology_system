@@ -693,7 +693,7 @@ def _mark(m, blob, mime, page):
     m["slide_render"] = "page" if page else "none"
 
 
-def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=None):
+def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=None, keys=None):
     """이미지 placeholder의 요약 완성 — **코어가 호출한다**(어댑터 아님, §6 규약 3).
 
     **갈림길은 함수 유무 하나다**(B48 · 문서 7 §7.6-B-1): `summarize`가 오면 실호출,
@@ -724,16 +724,18 @@ def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=Non
     """
     images = images or {}
     pages = pages or {}
+    keys = keys or {}
     out = []
     for p in pieces:
         r = dict(p)
         ref = r.get("image_ref")
+        key = keys.get(ref, ref)                  # 보존 열쇠 — 그림 · 묶음 · 지시문 판(B195 ④ · 없으면 ref)
         blob, mime = images.get(ref, (None, None)) if ref else (None, None)
         page = pages.get(_page_no(r)) if ref else None
-        if ref and not r.get("text") and kept is not None and ref in kept:
+        if ref and not r.get("text") and kept is not None and key in kept:
             # **보존분 재사용** — 매 인입 새로 부르면 text가 흔들려 그 문서의
             # chunk_id가 전량 이동한다(문서 6 §6.3 · chunk_id 결정성 §7.2).
-            r["text"] = kept[ref]
+            r["text"] = kept[key]
             m = r.setdefault("meta", {})
             m["image_summary"] = True
             m["image_summary_source"] = "kept"
@@ -749,7 +751,7 @@ def complete_images(pieces, summarize=None, *, kept=None, images=None, pages=Non
                                       context=r.get("context") or "", page=page)
                 src = "live"
                 if kept is not None:
-                    kept[ref] = r["text"]        # **보존** — 재인입에 재사용(§6.3)
+                    kept[key] = r["text"]        # **보존** — 재인입에 재사용(§6.3)
             else:
                 r["text"] = MOCK_IMAGE_SUMMARY.format(image_ref=ref)
                 src = "mock"

@@ -8,6 +8,7 @@
   ② 개요 수준대로 section(스타일 id 로캘 무관 · 상속) · 개요 없으면 번호 패턴 · 표는 행마다 한 줄 ·
      그림은 ④ 조각 · 머리글·삭제 글자 0 · `.doc` 거부 문면 · 선택 의존 0 · 킷 관문 PASS
   ③ 등록된 doc_type의 `status`는 운영 어댑터를 읽는다 · 다음 줄에 `confirm` 0
+  B195 ④ 엑셀 그림 묶음 — 맞닿는 그림은 한 항목(요약 1) · 보존 열쇠에 지시문 판 · 합성 실경로
 """
 from __future__ import annotations
 
@@ -205,7 +206,42 @@ show("③ 등록된 doc_type의 `status`는 **운영 어댑터**로 돈다 — �
      [l.strip() for l in (_st + _st3).splitlines() if l.startswith("■")][:2])
 show("③ 다음 줄에 `confirm`이 없다 (이미 등록됐다)",
      "cli.register confirm" not in _st and "cli.register confirm" not in _st3)
+# B195 ④ 엑셀 그림 묶음 — 맞닿는 그림 둘은 한 항목(요약 호출 1 · 앵커 셀 둘) · 먼 그림은 지금처럼 하나 · 보존 열쇠에 지시문 판 · 합성은
+# 실경로(선택 의존 Pillow — 대역 없음)로 한 장
+def _png195(color):
+    from PIL import Image as _PI
+    b = io.BytesIO()
+    _PI.new("RGB", (60, 40), color).save(b, "PNG")
+    b.seek(0)
+    return b
+
+
+from openpyxl import Workbook as _WB195                                 # noqa: E402
+from openpyxl.drawing.image import Image as _XI195                      # noqa: E402
+from parser import pipeline as _PL195, reader as _RD195                # noqa: E402
+_d195 = Path(tempfile.mkdtemp(prefix="b195img_"))
+_wb195 = _WB195()
+_ws195 = _wb195.active
+_ws195.title = "설비"
+_ws195["A1"] = "1. 구동부"
+for _c195, _a195 in (("red", "B3"), ("blue", "C4"), ("green", "J20")):
+    _ws195.add_image(_XI195(_png195(_c195)), _a195)
+_wb195.save(_d195 / "IMG195.xlsx")
+_raw195 = _RD195.read(str(_d195 / "IMG195.xlsx"))
+_ims195 = _raw195["sheets"][0]["images"]
+_grp195 = (_raw195.get("_groups") or {})
+_fake195 = type("S", (), {"version": "i-test"})()
+_k195 = _PL195._image_keys(_raw195, dict(_raw195["_images"]), _fake195)
+_fake195b = type("S", (), {"version": "i-test2"})()
+_k195b = _PL195._image_keys(_raw195, dict(_raw195["_images"]), _fake195b)
+_png = ooxml.compose(next(iter(_grp195.values()))) if _grp195 else b""
+show("B195 ④ 엑셀 그림 묶음 — 맞닿는 그림 둘 = 그림 항목 하나(앵커 셀 둘 · 요약 1) · 먼 그림은 하나 그대로 · 보존 열쇠에 지시문 판이 "
+     "든다(판이 바뀌면 다른 열쇠) · 합성은 실경로로 PNG 한 장",
+     len(_ims195) == 2 and _ims195[0].get("cells") == ["B3", "C4"] and "cells" not in _ims195[1] and len(_grp195) == 1
+     and all(_k195[r] != _k195b[r] and "i-test" in _k195[r] for r in _k195) and _png[:8] == b"\x89PNG\r\n\x1a\n",
+     f"그림 항목 {[(i['cell'], i.get('cells')) for i in _ims195]} · 열쇠 {sorted(_k195.values())[:1]} · 합성 {len(_png)}바이트")
 import shutil                                                          # noqa: E402
+shutil.rmtree(_d195, ignore_errors=True)
 shutil.rmtree(_P.review("b88docx"), ignore_errors=True)
 for _f in (_ops, _P.registry("schemas", "b88docx.json")):
     Path(_f).unlink(missing_ok=True)
