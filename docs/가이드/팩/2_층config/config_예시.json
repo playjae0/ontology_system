@@ -1,5 +1,17 @@
 {
- "_pack_note": "창작 예시 — 사내 모양의 골격 층(설비층)이다. 이름(공정 · 유닛 · 부품)은 지은 것이라 출력에 옮기지 않는다 · 키 구조와 값의 꼴만 따른다.",
+ "_pack_note": "창작 예시 — 첫 층(골격 층)의 config 한 벌이다. 층 모양의 견본이 아니라 키 구조 · 값의 꼴을 보이는 것이다. 이름(공정 · 유닛 · 부품)은 지은 것이라 출력에 옮기지 않는다. 키마다 어느 정보 형태(팩 §3)에서 온 칸인지 _form_note에 적었다 — 다른 층은 형태가 다르면 이 칸이 없거나 다르다.",
+ "_decide_note": {
+  "고정 — 그대로 옮긴다": "registration(골격 층 builtin · 나머지 registered) · skeleton의 꼴(type · relations) · query_intents · extract_patterns · query_traverse의 direction 값",
+  "따름 — 첨부한 실제 층 config · common.json에서 가져온다(첫 층이면 이 꼴)": "uses의 이름 · relations 중 이미 쓰인 관계 이름 · polarity.values · 같은 관계의 fact_templates",
+  "정함 — 이 층의 메모와 문서로 바꾼다": "layer · config_version · mirrors(극성을 묶으면 true) · categories와 정의문 · relation_patterns · skeleton의 내용(source · data) · skeleton_version · polarity.bind_categories · query_traverse · cross_layer_traverse · 새 관계의 fact_templates · prompts · relevance_terms · value_categories"
+ },
+ "_form_note": {
+  "skeleton · skeleton_version · registration · polarity · mirrors": "뼈대형 — 이 층 문서가 순서 · 위계가 있는 이름 목록(공정)을 말한다",
+  "categories.Unit · categories.Component": "구성형 — 「A는 B의 일부」(유닛 · 부품) · 소속은 공통 parent_pairs(common_사람줄_예시.json)",
+  "uses: Property": "값형을 빌려 씀 — 이 층 문서가 다른 층이 정의한 카테고리(관리항목)의 이름을 말한다 · 정의는 그 카테고리의 home 층",
+  "relations · relation_patterns": "이 층 문서가 쓰는 관계만 — 사건형 · 관계형(인과)이 없는 층이라 사실 관계 삼항이 극성 짝뿐이다",
+  "query_traverse · fact_templates · query_intents · prompts · relevance_terms": "모든 형태 공통 칸 — 내용은 그 층 문서에서"
+ },
  "layer": "equipment",
  "config_version": "equipment-1",
  "registration": "builtin",
@@ -20,7 +32,7 @@
   }
  },
  "skeleton_version": "equipment-1",
- "_polarity_note": "극성은 그 카테고리의 home 층 config가 정한다 — Unit · Component의 home이 이 층이라 여기 적는다(Property의 극성은 공정층 config). values는 골격 AXIS_LABELS 키와 같고 모든 층이 같다.",
+ "_polarity_note": "극성은 그 카테고리의 home 층 config가 정한다 — Unit · Component의 home이 이 층이라 여기 적는다(Property의 극성은 Property의 home 층 config). values는 골격 AXIS_LABELS 키와 같고 모든 층이 같다.",
  "polarity": {
   "bind_categories": [
    "Unit",
@@ -58,7 +70,7 @@
    "정의문": "극성만 다른 대칭 부품이다"
   }
  ],
- "_uses_note": "설비 문서(사양서)가 사양 항목을 말하면 그 항목은 Property다 — Property의 home은 공정층이라 이름만 적는다. 그 항목의 값은 이 층에서 받지 못한다(value_categories는 이 층 home 카테고리만 — 값까지 받으려면 그 문서를 공정층에 등록한다).",
+ "_uses_note": "이 층 문서(사양서)가 사양 항목을 말하면 그 항목은 Property다 — Property의 home은 다른 층이라 이름만 적는다. 그 항목의 값은 이 층에서 받지 못한다(value_categories는 이 층 home 카테고리만 — 값까지 받으려면 그 문서를 Property의 home 층에 등록한다).",
  "uses": [
   "Property"
  ],
