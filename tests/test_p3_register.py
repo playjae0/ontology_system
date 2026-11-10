@@ -519,7 +519,8 @@ show("B190 ⓒ 일치 0건 화면 — 가장 가까운 doc_type으로 완성된 
      " | ".join(_sc190s.get("next") or [])[:200])
 _tie = [{"doc_type": d, "label": d, "missing": ["x"], "extra": e} for d, e in (("TIEB192", []), ("TIEA192", []),
                                                                          ("FAR192", ["y", "z"]))]
-_tl = [ln for ln in _IG._variant_next("f.xlsx", _tie) if "generate" in ln]
+from cli import ingest_select as _IS192                  # noqa: E402 — 선택 칸(일치 0건의 다음 줄)
+_tl = [ln for ln in _IS192._variant_next("f.xlsx", _tie) if "generate" in ln]
 show("B192 ⓪ 일치 0건의 가장 가까운 doc_type이 동률이면 둘 다(이름순) 완성된 --variant 한 줄씩 · 먼 것은 빠진다",
      [ln.split()[4] for ln in _tl] == ["TIEA192", "TIEB192"], " | ".join(_tl))
 show("B190 ⓓ 스키마를 바꿔야 맞는 양식은 「판정 불가」로 멈춘다(쓰기 0 · 변형 그대로) · 지금 등록분(변형 하나)은 다시 등록 없이 "

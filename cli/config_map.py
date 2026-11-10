@@ -76,9 +76,14 @@ def _lenses():
 
 
 def _schemas():
-    """`[(doc_type, 스키마, 합친 필드)]` — 등록 스키마(공용 블록 필드 포함 · 문법 단과 한 함수 · B192 ①)."""
-    from core.state.config_grammar import schemas
-    return schemas()
+    """`[(doc_type, 스키마, 합친 필드)]` — 등록 스키마(공용 블록 필드 포함)."""
+    from kit.gate_tables import load_blocks
+    out = []
+    for dt in sorted(registry.all_doc_types()):
+        schema = registry.schema_of(dt)
+        if schema:
+            out.append((dt, schema, load_blocks(schema)[0]))
+    return out
 
 
 def _cat_of(fields, name):
