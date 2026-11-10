@@ -1,0 +1,156 @@
+{
+ "_pack_note": "창작 예시 — 사내 모양의 품질층이다. 불량 이름은 지은 것이라 출력에 옮기지 않는다.",
+ "layer": "quality",
+ "config_version": "quality-1",
+ "registration": "registered",
+ "categories": {
+  "Failure": "공정에서 생길 수 있는 불량 · 고장 현상의 이름이다(예: 접합 들뜸 · 실링 누설). 고장모드와 고장원인을 한 카테고리로 둔다 — 원인인지 모드인지는 노드가 아니라 엣지의 자리가 말한다. 아닌 것: 영향 분류(FailureEffect) · 관리항목(Property) · 발생 건수 · 날짜(기록).",
+  "FailureEffect": "셀 관점의 결과 분류다 — 닫힌 목록(이 config의 skeleton.data)에서만 고르고 새로 만들지 않는다. 아닌 것: 불량 현상 이름(Failure)."
+ },
+ "_skeleton_note": "이 층의 닫힌 목록 — 평면(flat) 골격은 config 안에 적는다(파일 없음).",
+ "skeleton": {
+  "type": "flat",
+  "category": "FailureEffect",
+  "data": [
+   "단락",
+   "발화",
+   "용량 저하",
+   "외관 불량"
+  ]
+ },
+ "mirrors": {
+  "enabled": false
+ },
+ "uses": [
+  "Process",
+  "Unit",
+  "Property"
+ ],
+ "relations": [
+  "causes",
+  "affects",
+  "occurs_in",
+  "controlled_by",
+  "has_property"
+ ],
+ "relation_patterns": [
+  {
+   "src": "Failure",
+   "rel": "causes",
+   "dst": "Failure",
+   "symmetric": false,
+   "정의문": "앞의 불량이 뒤의 불량을 일으킨다"
+  },
+  {
+   "src": "Failure",
+   "rel": "affects",
+   "dst": "FailureEffect",
+   "symmetric": false,
+   "정의문": "불량이 그 영향으로 이어진다"
+  },
+  {
+   "src": "Failure",
+   "rel": "occurs_in",
+   "dst": "Process",
+   "symmetric": false,
+   "정의문": "불량이 그 공정에서 생긴다(층 사이)"
+  },
+  {
+   "src": "Failure",
+   "rel": "occurs_in",
+   "dst": "Unit",
+   "symmetric": false,
+   "정의문": "불량이 그 설비 유닛에서 생긴다(층 사이)"
+  },
+  {
+   "src": "Failure",
+   "rel": "controlled_by",
+   "dst": "Property",
+   "symmetric": false,
+   "정의문": "불량이 그 관리항목으로 통제된다(층 사이)"
+  }
+ ],
+ "query_traverse": {
+  "causes": {
+   "both": {
+    "direction": "both",
+    "recursive": false
+   }
+  },
+  "affects": {
+   "both": {
+    "direction": "both",
+    "recursive": false
+   }
+  }
+ },
+ "_cross_layer_traverse_note": "다른 층 노드로 가는 엣지를 만드는 이 층에만 둔다 — 1단(관계 → {direction, recursive}).",
+ "cross_layer_traverse": {
+  "occurs_in": {
+   "direction": "both",
+   "recursive": false
+  },
+  "controlled_by": {
+   "direction": "both",
+   "recursive": false
+  }
+ },
+ "fact_templates": {
+  "causes": "{src}는 {dst}의 원인이 될 수 있다",
+  "affects": "{src}는 {dst}(으)로 이어질 수 있다",
+  "occurs_in": "{src}는 {dst}에서 발생한다",
+  "controlled_by": "{src}는 {dst}(으)로 관리한다",
+  "attr:severity": "{node}의 심각도: {value} (출처: {prov})",
+  "node:replaced": "(대체됨: {old} → {new})",
+  "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)",
+  "has_property": "{src}의 관리항목: {dst}"
+ },
+ "_query_intents_note": "질문 유형 표기 목록 — 층마다 같게 베낀다(실호출에서는 LLM이 유형을 판정한다).",
+ "query_intents": {
+  "flow": [
+   "전체 공정 흐름",
+   "공정 흐름",
+   "전체 흐름"
+  ],
+  "order": [
+   "다음 공정",
+   "다음은",
+   "다음에 오는",
+   "다음 단계"
+  ],
+  "general": [
+   "영어로",
+   "영문으로",
+   "동작 원리"
+  ],
+  "value": [
+   "규격이",
+   "규격은",
+   "규격 뭐",
+   "몇 ",
+   "얼마"
+  ],
+  "reverse": [
+   "관리하는",
+   "발생할 수 있는",
+   "이어질 수 있는",
+   "어디서"
+  ],
+  "structure": [
+   "어떤 설비",
+   "무슨 설비",
+   "어떤 관리",
+   "무슨 관리",
+   "어떤 인자",
+   "있어?"
+  ],
+  "describe": [
+   "어떻게",
+   "관리 방법",
+   "방법은"
+  ]
+ },
+ "prompts": {},
+ "extract_patterns": [],
+ "_relations_note": "has_property — 이 층이 Property와 공정 · 유닛을 다 말해 공통 parent_pairs의 소속 쌍이 이 층에도 걸린다(PFMEA 행의 관리항목 → 공정)."
+}
