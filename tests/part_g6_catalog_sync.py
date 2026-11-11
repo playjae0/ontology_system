@@ -325,30 +325,40 @@ def _stub94(cid, chunk, cfg, vocab):
         {"surface": "새 관리 인자", "category": "Property"}]}
 
 
-_EX._candidates_for = _stub94
-try:
-    _pg0 = {n["canonical"] for n in open_graph("process").nodes.values()}
-    run_document(dict(PROSE, doc_type="ppt_process", doc_id="X94", chunks=[
-        dict(C1, source_locator="X94-C001", text="골격에없는공정과 NC와 새 관리 인자.")]))
-finally:
-    _EX._candidates_for = _real
-_pg = open_graph("process")
+def _x94():
+    _EX._candidates_for = _stub94
+    try:
+        run_document(dict(PROSE, doc_type="ppt_process", doc_id="X94", chunks=[
+            dict(C1, source_locator="X94-C001", text="골격에없는공정과 NC와 새 관리 인자.")]))
+    finally:
+        _EX._candidates_for = _real
+    return open_graph("process")
+
+
+_pg0 = {n["canonical"] for n in open_graph("process").nodes.values()}
+_pg = _x94()
 _new = {n["canonical"] for n in _pg.nodes.values()} - _pg0
 _q94 = [x for x in store.read(store.QUEUE, []) if x["doc_id"] == "X94" and x["kind"] == "orphan_anchor"]
 _rows = (_LG.read("X94") or {}).get("rows") or []
-_pv94 = next((n for n in _pg.nodes.values() if n["canonical"] == "골격에없는공정"), None)
+_held94 = not any(n["canonical"] == "골격에없는공정" for n in _pg.nodes.values()) and len(_q94) == 1 \
+    and "사람 확인 전" in _q94[0]["reason"] and (_q94[0]["payload"].get("gate") or {}).get("parent") == "노칭"
+from core.state import provisional_hand as _PH94                      # noqa: E402
+_PH94.seed("시험", "골격에없는공정", "노칭")                          # 사람이 「새로」 — 다음 인입부터 선다
+_pg2 = _x94()
+_pv94 = next((n for n in _pg2.nodes.values() if n["canonical"] == "골격에없는공정"), None)
 _au94 = [x for x in store.read(store.QUEUE, []) if x["doc_id"] == "X94" and x["kind"] == "auto_node"
          and (x.get("payload") or {}).get("provisional")]
-show("ⓔ 좌표 골격 카테고리로 뽑힌 골격 밖 이름 → 잠정 골격 노드(부모 = 그 청크의 좌표 · auto_node 1) · orphan_anchor 0 · 대장 행 "
-     "new + 세운 표지(기대 변경 B182 — 옛 「조회 전용 · 노드 0」)",
-     bool(_pv94) and _pv94.get("provisional", {}).get("answer") == "new" and not _q94 and len(_au94) == 1
+_rows2 = (_LG.read("X94") or {}).get("rows") or []
+show("ⓔ 좌표 골격 카테고리로 뽑힌 골격 밖 이름 — 사람 확인 전이면 노드 0 · 보류 1(사유 「사람 확인 전」 · 들어온 자리 = 그 청크의 좌표) · "
+     "사람이 「새로」면 다시 넣을 때 잠정 골격 노드(부모 = 그 청크의 좌표 · auto_node 1 · 대장 new + 세운 표지)(고침 B196 ① — 옛 「선다」)",
+     _held94 and bool(_pv94) and _pv94.get("provisional", {}).get("answer") == "new" and len(_au94) == 1
      and _au94[0]["payload"].get("parent") == "노칭"
-     and any(r.get("surface") == "골격에없는공정" and r.get("verdict") == "new" and r.get("made") for r in _rows),
-     f"새 노드 {sorted(_new)} · auto_node {[x['payload'].get('parent') for x in _au94]} · 보류 {len(_q94)}")
+     and any(r.get("surface") == "골격에없는공정" and r.get("verdict") == "new" and r.get("made") for r in _rows2),
+     f"보류 {[x['reason'][:30] for x in _q94]} · 새 노드 {sorted(_new)} · auto_node {[x['payload'].get('parent') for x in _au94]}")
 _nc = [r for r in _rows if r.get("surface") == "NC"]
 show("ⓕ 골격 별칭이면 매칭(노드 0) · 골격이 아닌 카테고리의 신규는 그대로",
      _nc and _nc[0].get("verdict") == "match" and (_pg.get(_nc[0]["node_id"]) or {}).get("canonical") == "노칭"
-     and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 2,       # 기대 변경(B182 — 잠정 골격 노드 하나가 더 선다)
+     and any(c.endswith("새 관리 인자") for c in _new) and len(_new) == 1,       # 고침(B196 ① — 잠정 골격 노드는 사람 답 뒤)
      f"NC → {(_pg.get((_nc or [{}])[0].get('node_id')) or {}).get('canonical')} · 새 {sorted(_new)}")
 init.init(fresh_=True, all_=True)
 

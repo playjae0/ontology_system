@@ -111,7 +111,7 @@ def row(*, locator=None, field=None, role=None, surface=None,
         queue_kind=None, narrow=None, emb_top=None, nearest=None,
         target=None, belongs_from=None, hold=None, category=None, scope=None, replay=None, by=None,
         blank=None, evidence=None, proposal=None, belongs_to=None, judge2=None, apart=None, basis=None,
-        place=None, answer=None, asked=None, made=None, guess=None):
+        place=None, answer=None, asked=None, made=None, guess=None, connect=None):
     """행 하나 = entity 값 하나(anchor·부착 결과도 같은 표에 — role이 가른다) — **행의 모양은 이 함수 하나**다
     (인입 루프 `Ledger.add` · 재시도 `put_row`가 같이 쓴다 — B107 ③)."""
     if path not in PATHS:
@@ -156,10 +156,40 @@ def row(*, locator=None, field=None, role=None, surface=None,
                  # 이 행에서 잠정 골격 노드를 세웠다(B182 ③ — 세운 행만 · 맞춤표 「잠정 골격 노드」 줄이 센다)
                  ("made", made),
                  # 자리 추정(B183 — 자리 없는 값만 · 후보 수 · 못 붙인 사유 · 후보 · 상한에 잘림)
-                 ("guess", guess)):
+                 ("guess", guess),
+                 # 연결 표지(B196 ④ — 연결 미성립의 갈래 · `LINKS` · 있을 때만 · 역할 `link`(연결 보강)와 다른 칸)
+                 ("connect", connect)):
         if v is not None:
             r[k] = v
     return r
+
+
+#: **연결 표지**(B196 ④ — 닫힌 셋 · 동작은 그대로이고 표지와 수만) — 소유자 칸에 값이 있는데 미해소 · 규칙 B 폴백(어느 엣지에도
+#: 서지 못해 좌표에) · 산문 소속 폴백(소속 이름이 원문에 없음 · 매핑 없음 · 기다리는 이름)
+LINKS = {"owner_unresolved": "소유자 미해소", "rel_fallback": "관계 폴백", "belongs_fallback": "소속 폴백"}
+
+
+def mark_link(r, link):
+    """그 행에 연결 표지 — 앞의 표지가 있으면 그대로(소유자 미해소가 폴백보다 앞 — 왜 폴백했는가)."""
+    if r is not None and link in LINKS and not r.get("connect"):
+        r["connect"] = link
+
+
+def link_counts(rows):
+    """`{연결 미성립, 소유자 미해소, 관계 폴백, 소속 폴백, ref 빈 행}` — 대장 행에서(새 계산 0) · ref 빈 행은 좌표 행의 `lowres`."""
+    c = {v: 0 for v in LINKS.values()}
+    for r in rows or []:
+        if r.get("connect") in LINKS:
+            c[LINKS[r["connect"]]] += 1
+    return {"연결 미성립": sum(c.values()), **c,
+            "ref 빈 행": sum(1 for r in rows or [] if r.get("role") == "anchor" and r.get("verdict") == "lowres")}
+
+
+def link_line(c, fallback_n=None):
+    """`연결 미성립 n (소유자 미해소 a · 관계 폴백 b · 소속 폴백 c)` + 「좌표 폴백 n」(붙인 수 — 그대로) · 「ref 빈 행 n」."""
+    return (f"연결 미성립 {c['연결 미성립']:,} (소유자 미해소 {c['소유자 미해소']:,} · 관계 폴백 {c['관계 폴백']:,} · "
+            f"소속 폴백 {c['소속 폴백']:,})" + (f" · 좌표 폴백 {fallback_n:,}" if fallback_n is not None else "")
+            + f" · ref 빈 행 {c['ref 빈 행']:,}")
 
 
 def judged(last, *, locator, field, surface, layer, target):

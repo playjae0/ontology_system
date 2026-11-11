@@ -93,6 +93,8 @@ class Builder(CoordMixin):
         self._pmaps = {}                     # 골격 부모 표 — 좌표 쌍 판정(B105 · `_parent_map`)
         # 잠정 골격 노드(B182 — `core/build/provisional`): 앞 패스가 정한 행의 자리 · 보류 사유 · 이 문서가 세운 것(하위 빌더와 공유)
         self.coord_at, self.coord_hold, self.made = {}, {}, {}
+        self.coord_gate = {}                      # 문에 걸린 행의 재료(B196 ① — 자리 · 판단 · 후보 · `(prov, 표기)`)
+        self.coord_pair, self.pair_off = {}, False   # 쌍 어긋남의 문(B196 ② — 확인 전 보류 행 · 대조 중에는 끈다)
         # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
         gate.bind([graph], lambda lay, me=weakref.ref(self): me().for_layer(lay).g if me() is not None else None)
 
@@ -121,6 +123,7 @@ class Builder(CoordMixin):
             sub.ledger = self.ledger
             sub.doc_coord = self.doc_coord
             sub.coord_at, sub.coord_hold, sub.made = self.coord_at, self.coord_hold, self.made
+            sub.coord_gate, sub.coord_pair = self.coord_gate, self.coord_pair
             sub.subs = self.subs
             self.subs[layer] = sub
         return self.subs[layer]
@@ -564,7 +567,8 @@ class Builder(CoordMixin):
                   "골격에 없다 — 노드를 만들지 않는다(닫힌 분류 · 같은 것이면 골격 ALIASES에)"))
         store.enqueue_rows("orphan_anchor", reason, self.doc_id, norm(surface),
                            {"surface": surface, "category": category, "provenance": prov,
-                            "role": "entity", "verdict": verdict},
+                            "role": "entity", "verdict": verdict,
+                            **({"gate": self.coord_gate[(prov, surface)]} if (prov, surface) in self.coord_gate else {})},
                            locator=(prov or "").split("#")[-1] or None)
         self.last.update(verdict="orphan", queue_kind="orphan_anchor", node_id=None,
                          canonical=canonical, **({"hold": why} if why else {}))

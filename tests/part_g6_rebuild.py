@@ -177,10 +177,10 @@ show("ⓕ 상위 없는 행(태깅이 하위에서 딴 상위 · meta.group_from
                 f"{sorted((k[1][0] + '>' + k[1][1], v) for k, v in que.items())}"
                 for f, l, tab, que, _u, _d, _p in _ff))
 show("ⓕ Y가 X 안이면 0(B) · 행에 상위가 있으면 그 상위로만(C 맞음 0 · D는 「상위 '탭용접'」 쌍 하나 — 문서 좌표 대조 없음) · "
-     "하위는 그대로(A의 개체가 Y 아래)",
+     "어긋난 행은 확인 전 보류(A의 개체 0 — 고침 B196 ② · 옛 「하위는 그대로」)",
      all(set(ups) == {"A", "D"} and ups["D"] is None and tab.get((CP.GROUP, ("탭용접", Y))) == 1 and len(tab) == 2
          and not (pcs["C"].get("meta") or {}).get("group_from_ref")
-         and str(led.get("B106 카메라 A") or "").startswith(Y + "::") for _f, _l, tab, _q2, ups, led, pcs in _ff),
+         and led.get("B106 카메라 A") is None for _f, _l, tab, _q2, ups, led, pcs in _ff),
      " ‖ ".join(f"{f}×{l} 어긋난 행 {sorted(ups)} · A → {led.get('B106 카메라 A')}" for f, l, _t, _q2, ups, led, _p in _ff))
 for ln in _lines:
     print(f"      {ln}")
@@ -363,6 +363,8 @@ DOCS = [("CP01", RAW / "CP01.xlsx", "cp", None, None), ("RFQ01", RFQ, DT, SHEETS
 DIDS = [d[0] for d in DOCS]
 CALLS.clear()
 _first = {}
+# 쌍 확인은 좌표 단계에서(고침 B196 ② — 확인 전에는 그 행이 보류 · 인입 뒤 확인이면 재연결이 붙이고 뒤 문서의 판정 근거가 바뀐다)
+CA.ack(CP.GROUP, ("스태킹", "노칭"), A, "B106 쌍 확인", seen=True)
 for did, f, dt, sh, co in DOCS:
     _r, _o = _quiet(IG.ingest_file, str(f), dt, ask=False, sheets=sh, coord=co)
     _first[did] = _r.get("status")
@@ -398,7 +400,6 @@ with contextlib.redirect_stdout(io.StringIO()):
     ops.delete_edge("process", _e1["src"], _e1["rel"], _e1["dst"], A, "B106 엣지 삭제(표)")
     _e2 = _live_edge(_id("process", "노칭::이송 장치"), "has_property", _id("process", "노칭::이송 장치::이송 속도"))   # 산문 소속 엣지   # 기대 변경(B119 ④ — 사양은 주인 아래 `nest_categories`)
     ops.delete_edge("process", _e2["src"], _e2["rel"], _e2["dst"], A, "B106 엣지 삭제(산문 소속)")
-    CA.ack(CP.GROUP, ("스태킹", "노칭"), A, "B106 쌍 확인")
 _unc = next((r for r in OR.items("all") if r["doc_id"] == "RFQ01"), None)
 
 

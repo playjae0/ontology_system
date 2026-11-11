@@ -26,6 +26,10 @@ from core.state.status import PROVISIONAL, is_live
 
 #: 사람 판단 기록의 연산 이름(재생은 건너뛴다 — 골격 파일에 남는 판단 · 「봄」은 화면 표지 · `oplog.SKIP`)
 OP_PROMOTE, OP_MERGE, OP_KEEP = "provisional:promote", "provisional:merge", "provisional:keep"
+#: **골격 칸의 문**(B196 ① · 결정 A′) — 사람이 「새로」(세움) · 「drop」을 정한 표기 + 들어온 자리(부모 이름) · 노드가 없어도 적는다
+OP_SEED, OP_DROP = "provisional:seed", "provisional:drop"
+#: 문이 보는 사람 답 — 세움(「봄」도 세움 · 재구축 뒤에도 그 노드가 다시 선다) · drop
+SEEDED, DROPPED = "seed", "drop"
 #: 큐 판단(재인입 회수가 보존한다 — `resolution`)
 DEC_PROMOTE, DEC_MERGE = "승격", "합침(재구축 대기)"
 REBUILD = "python run.py rebuild"
@@ -235,12 +239,87 @@ def merge(actor, *, target, nid=None, surface=None, reason=""):
 
 
 def keep(actor, nid, reason=""):
-    """**그대로** — 쓰지 않는다 · 「봄」 표지(사람 판단 기록 — 다음 화면은 접어 둔다)."""
+    """**그대로** — 쓰지 않는다 · 「봄」 표지(사람 판단 기록 — 다음 화면은 접어 둔다 · 문에는 「세움」과 같다 — B196 ①)."""
     from core.state.ops import log_op
-    lay, g, _child, cat = _ctx()
+    lay, g, child, cat = _ctx()
     n = _node(g, nid, cat)
-    log_op(OP_KEEP, actor, [nid], reason, {"canonical": n["canonical"]}, _names(lay, n, cat))
+    e = next((e for e in g.edges if e["src"] == nid and e["rel"] == child and is_live(g.get(e["dst"]))), None)
+    log_op(OP_KEEP, actor, [nid], reason, {"canonical": n["canonical"],
+                                            "parent": (g.get(e["dst"]) or {}).get("canonical") if e else None},
+           _names(lay, n, cat))
     return {"canonical": n["canonical"]}
+
+
+def _gate_rec(op, actor, surface, parent, reason):
+    from core.state.ops import log_op
+    if not actor:
+        raise Refused("행위자 미지정 — 사람 판단은 로그에 행위자를 남긴다")
+    lay, _g, _child, cat = _ctx()
+    log_op(op, actor, [], reason, {"surface": surface, "parent": parent},
+           {"node": {"layer": lay, "canonical": surface, "category": cat}})
+
+
+def seed(actor, surface, parent=None, reason=""):
+    """**새로(잠정)**(B196 ①) — 표기 + 들어온 자리(부모 이름)의 「세움」 기록 · 노드가 아직 없어도 적는다(계획이 그 기록을 보고
+    세운다 — 그 문서의 나머지 행부터 · 재연결이 보류 행을 그 노드에)."""
+    _gate_rec(OP_SEED, actor, surface, parent, reason)
+    _reopen(surface, parent)
+    return {"surface": surface, "parent": parent}
+
+
+def drop(actor, surface, parent=None, reason=""):
+    """**drop**(B196 ① — 사유 필수) — 세우지 않는다 · 그 표기의 열린 보류를 「사람 drop」으로 닫는다(재연결이 다시 열지 않는다)."""
+    if not (reason or "").strip():
+        raise Refused("drop은 사유가 있어야 한다 — d <줄> <사유>")
+    _gate_rec(OP_DROP, actor, surface, parent, reason)
+    from core.state.bootstrap import COORD_CATEGORY
+    from parser.namefold import key
+    k = key(surface)
+    n = store.resolve_item("orphan_anchor", lambda pl: key(pl.get("surface") or "") == k
+                           and pl.get("category") == COORD_CATEGORY and (pl.get("gate") or {}).get("parent") == parent,
+                           actor=actor, decision=DEC_DROP, at=store._now(), note=reason)
+    return {"surface": surface, "parent": parent, "closed": n}
+
+
+#: 큐 판단 — drop으로 닫은 보류(재연결 대상 밖 · `retry.is_target`가 `resolution`으로 거른다)
+DEC_DROP = "사람 drop"
+
+
+def _reopen(surface, parent):
+    """「세움」 뒤 그 표기의 열린 보류는 다시 시도할 거리다 — 지난 시도의 지문을 걷는다(재연결이 그 행을 다시 본다)."""
+    from parser.namefold import key
+    k, q, hit = key(surface), store.read(store.QUEUE, []), False
+    for x in q:
+        pl = x.get("payload") or {}
+        if x.get("kind") == "orphan_anchor" and key(pl.get("surface") or "") == k and (pl.get("gate") or {}).get("parent") == parent:
+            x.pop("last_fp", None)
+            hit = True
+    if hit:
+        store.write(store.QUEUE, q)
+
+
+def decisions():
+    """**문이 보는 사람 답**(B196 ① — 쓰기 0) — `{(표기 키, 부모 이름): seed|drop}` · 뒤의 기록이 앞을 덮는다. 「봄」(`OP_KEEP`)은
+    세움이다(그 노드의 이름 · 부모 — 옛 기록은 부모가 없어 이름만: `(키, None)`과 `(키, "*")`)."""
+    from core.state import catalog, oplog
+    from parser.namefold import key
+    sep, out = catalog.sep(), {}
+    for r in oplog.read():
+        op, d = r.get("op"), r.get("detail") or {}
+        if op in (OP_SEED, OP_DROP) and d.get("surface"):
+            out[(key(d["surface"]), d.get("parent"))] = SEEDED if op == OP_SEED else DROPPED
+        elif op == OP_KEEP and d.get("canonical"):
+            c, up = d["canonical"], d.get("parent", "*")
+            base = c[len(up) + len(sep):] if isinstance(up, str) and up != "*" and c.startswith(up + sep) else c
+            out[(key(base), up)] = SEEDED
+    return out
+
+
+def decided(book, surface, parent):
+    """그 표기 · 그 자리(부모 이름)의 사람 답 — `book`은 `decisions()` · 「봄」 옛 기록(`*`)은 자리를 가리지 않는다."""
+    from parser.namefold import key
+    k = key(surface or "")
+    return book.get((k, parent)) or book.get((k, "*"))
 
 
 def kept():

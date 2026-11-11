@@ -386,6 +386,8 @@ _ed["doc_type"] = "b115_process"
 for _c in _ed["chunks"]:
     _c["doc_type"] = _ed["doc_type"]
 _nodes0 = {n["id"] for _l, n in World().nodes()}
+from core.state import coord_acks as _CA148             # noqa: E402
+_CA148.ack("문서 좌표", ("노칭", "스태킹"), "시험", seen=True)   # 사람이 쌍 확인(고침 B196 ② — 확인 전에는 「2. 스태킹」 구간이 보류)
 _nd, _cd = _run(_ed, {})                                 # 목차 노드화의 답 비움 — 골격 이름 제목은 묻지 않는다
 _asked = [h["text"] for p, b in _cd if p == "outline" for h in b["toc"]]
 _new = sorted(n["canonical"] for _l, n in World().nodes() if n["id"] not in _nodes0 and ops.is_live(n))

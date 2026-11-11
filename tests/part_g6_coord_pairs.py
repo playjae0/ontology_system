@@ -349,6 +349,155 @@ show("ⓔ 상한은 손잡이 query_record_limit — 2면 레코드 2 · 닿은 
      len(_j2["records"]) == 2 and _j2["records_total"] == _j["records_total"],
      f"{len(_j2['records'])} / {_j2['records_total']}")
 
+# ────────────────────────────────────────────────────────────── B196 골격 칸의 문 (창작 표본 · mock)
+print("\n■ B196 — 잠정 골격 노드는 사람이 정한 것만 · 쌍 어긋남은 확인 전 보류 · 골격 칸 검토 줄 · 연결 표지")
+from cli import ops_review as OR196, provisional_ask as PA196        # noqa: E402
+from core.build import provisional as PV196, retry as RT196, skeleton_review as SR196   # noqa: E402
+from core.build import coord_scan as CS196                          # noqa: E402
+from core.state import provisional_hand as PH196                     # noqa: E402
+from core.state.bootstrap import coord_layer                         # noqa: E402
+from core.state.status import is_live                                # noqa: E402
+with contextlib.redirect_stdout(io.StringIO()):
+    init.init(fresh_=True, all_=True)
+    for _l in ("process", "quality"):
+        bootstrap(_l, echo=False)
+_clean_acks()
+_dt196 = _register_table("process")
+
+
+def _env196(did, recs):
+    return {**TABLE, "doc_id": did, "doc_type": _dt196, "records": TG.tag(
+        [dict(r, doc_type=_dt196, electrode_type=r.get("electrode_type", "both")) for r in recs],
+        layer=coord_layer(), doc_type=_dt196, doc_id=did)}
+
+
+def _run196(env):
+    with contextlib.redirect_stdout(io.StringIO()):
+        run_document(env, allow_duplicate=True)
+    return {r["locator"]: r for r in (LG.read(env["doc_id"]) or {}).get("rows") or [] if r.get("role") == "anchor"}
+
+
+def _pv196(c):
+    return next((n for n in open_graph(coord_layer()).nodes.values() if n["canonical"] == c and is_live(n)), None)
+
+
+def _rec196(loc, ref, grp="조립", **kw):
+    return {"source_locator": loc, "process_group": grp, "process_ref": ref, "개체": f"B196 카메라 {loc}", **kw}
+
+
+def _ask196(env, surface, answer):
+    rows = [r for r in PA196.step_rows(env) if r.get("surface") == surface or r.get("ref") == surface]
+    with contextlib.redirect_stdout(io.StringIO()):
+        return PA196.decide(rows[0], "시험", answer=answer)[0] if rows else None
+
+
+# ⓐ 사람 없는 실행 — 다르다(mock)인 표기는 세우지 않고 보류 · ⓖ 머리 줄의 수 · 후보 차례
+_judged = {"노칭공정X": {"type": "uncertain", "candidates": ["스태킹"], "confidence": 0.6}}
+_ea = _env196("B196A", [_rec196("A1", "노칭공정X", meta={"coord_judge": _judged}),
+                        _rec196("A2", "노칭공정X", meta={"coord_judge": _judged})])
+_rv = SR196.review(_ea)
+_an = _run196(_ea)
+_oa = [x for x in store.read(store.QUEUE, []) if x["kind"] == "orphan_anchor" and x["payload"].get("surface") == "노칭공정X"]
+show("B196 ⓐ 표 행 「노칭공정X」(골격 밖 · 판단 다르다/애매) · 사람 없는 실행 → 잠정 노드 0 · 그 행들 보류(사유 「사람 확인 전 공정 표기」 · "
+     "보류 재료에 들어온 자리 · 판단 · 후보)",
+     _pv196("노칭공정X") is None and all(_an[k].get("hold") == PV196.HOLD_HUMAN and not _an[k].get("node_id") for k in ("A1", "A2"))
+     and len(_oa) == 1 and _oa[0]["payload"]["gate"]["parent"] == "조립" and _oa[0]["payload"]["rows"] == 2,
+     f"노드 {_pv196('노칭공정X')} · 보류 {[_an[k].get('hold') for k in ('A1', 'A2')]} · 재료 {(_oa or [{}])[0].get('payload', {}).get('gate')}")
+_sk = SR196._Sk()
+_kids = sorted([n for n in _sk.kids(_sk.by_name["조립"]) if _sk.g.get(n)["canonical"] != "스태킹"],
+               key=lambda n: (-_sk.kinds(n), -_sk.rows(n), _sk.g.get(n)["canonical"]))
+_cn = [c["name"] for c in _rv["held"][0]["candidates"]]
+show("B196 ⓖ 골격 칸 머리 줄의 수 = 표본의 실제(공정 표기 1종 · 골격에 0 · 문에 걸림 1종 2행 · 쌍 0 · ref 빈 행 0 · 판단 못 받음 0) · "
+     "후보 차례 = 판단 후보 → 같은 부모 아래 자식 종류 수 → 행 수",
+     (_rv["counts"]["표기"], _rv["counts"]["골격"], _rv["counts"]["문"], _rv["counts"]["문 행"], _rv["counts"]["쌍"],
+      _rv["counts"]["ref 빈 행"], _rv["counts"]["판단 못 받음"]) == (1, 0, 1, 2, 0, 0, 0)
+     and _cn == ["스태킹", _sk.g.get(_kids[0])["canonical"]] and "문에 걸림 1종(2행)" in SR196.head_line(_rv["counts"]),
+     f"{SR196.head_line(_rv['counts'])} · 후보 {_cn}")
+
+# ⓑ 처분 — 합침(후보 1) · 새로 · drop(사유) → 그 문서의 행부터 · drop은 재연결이 열지 않는다
+_eb = _env196("B196B", [_rec196("B1", "노칭공정M", meta={"coord_judge": {"노칭공정M": _judged["노칭공정X"]}}),
+                        _rec196("B2", "노칭공정K"), _rec196("B3", "노칭공정D")])
+_did = (_ask196(_eb, "노칭공정M", "m 1"), _ask196(_eb, "노칭공정K", "k"), _ask196(_eb, "노칭공정D", "d 오기"))
+_bn = _run196(_eb)
+with contextlib.redirect_stdout(io.StringIO()):
+    RT196.retry_orphans()
+show("B196 ⓑ 좌표 단계 처분 — 합침(후보 1 → 스태킹 별칭 · 그 행은 스태킹) · 새로(잠정 노드 하나 · 그 행의 자리) · drop 「오기」(노드 0 · "
+     "보류 「사람 drop」 · 재연결이 열지 않는다)",
+     _did == ("합침", "새로", "drop") and (open_graph(coord_layer()).get(_bn["B1"]["node_id"]) or {}).get("canonical") == "스태킹"
+     and bool(_pv196("노칭공정K")) and _bn["B2"]["node_id"] == (_pv196("노칭공정K") or {}).get("id")
+     and _pv196("노칭공정D") is None and _bn["B3"].get("hold") == PV196.HOLD_DROP,
+     f"{_did} · B1 → {(open_graph(coord_layer()).get(_bn['B1'].get('node_id')) or {}).get('canonical')} · K {bool(_pv196('노칭공정K'))} · "
+     f"D {_bn['B3'].get('hold')}")
+
+# ⓓ 처분 없이 끝난 문서 둘 → ops review 한 줄(행 수 합) → 합침 → 재연결이 보류 행을 잇는다(추출 LLM 0)
+_run196(_env196("B196D1", [_rec196("D1", "노칭공정W"), _rec196("D2", "노칭공정W")]))
+_run196(_env196("B196D2", [_rec196("E1", "노칭공정W")]))
+_gw = [r for r in OR196.skeleton_cells("all") if r["kind"] == "gate" and r["surface"] == "노칭공정W"]
+with contextlib.redirect_stdout(io.StringIO()):
+    _dw = PA196.decide(_gw[0], "시험", answer="m 노칭")[0] if _gw else None
+    RT196.retry_orphans()
+_left = [x for x in store.read(store.QUEUE, []) if x["kind"] == "orphan_anchor" and x["payload"].get("surface") == "노칭공정W"]
+_cams = [n for n in open_graph("process").nodes.values() if n["canonical"].startswith("노칭::B196 카메라 ") and is_live(n)]
+show("B196 ⓓ 처분 없이 끝난 문서 둘 → ops review 골격 칸 한 줄(문서 둘 · 행 3) → 합침(노칭) → ops relink가 보류 행을 잇는다 · 남은 보류 0",
+     len(_gw) == 1 and _gw[0]["rows"] == 3 and sorted(_gw[0]["docs"]) == ["B196D1", "B196D2"] and _dw == "합침" and not _left
+     and {n["canonical"] for n in _cams} >= {"노칭::B196 카메라 D1", "노칭::B196 카메라 D2", "노칭::B196 카메라 E1"},
+     f"줄 {[(r['rows'], r['docs']) for r in _gw]} · 남은 보류 {len(_left)} · 붙은 값 {sorted(n['canonical'] for n in _cams)[:3]}")
+
+# ⓔ 「봄」(이 회차 전에 선 잠정 노드 — 세움 기록 없이) → fresh 뒤 다시 넣어도 그 노드가 선다
+PH196.seed("시험", "노칭공정V", "조립")
+_ev = _env196("B196V", [_rec196("V1", "노칭공정V")])
+_run196(_ev)
+_nv = _pv196("노칭공정V")
+store.write(store.OPS_LOG, [r for r in store.read(store.OPS_LOG, []) if r.get("op") != PH196.OP_SEED
+                            or (r.get("detail") or {}).get("surface") != "노칭공정V"])       # 옛 노드처럼 — 세움 기록 없음
+with contextlib.redirect_stdout(io.StringIO()):
+    PH196.keep("시험", _nv["id"])
+    for _l in ("process", "quality"):           # 재구축의 그래프 비움 — 사람 판단 기록(②등록)은 남는다
+        _gg = open_graph(_l)
+        _gg.nodes.clear()
+        _gg.edges.clear()
+        _gg.save()
+        bootstrap(_l, echo=False)
+_av = _run196(_env196("B196V", [_rec196("V1", "노칭공정V")]))
+show("B196 ⓔ 「봄」 기록(세움 기록 없이 — 이 회차 전에 선 잠정 노드) → 그래프를 비우고(재구축) 다시 넣어도 그 노드가 선다",
+     bool(_nv) and bool(_pv196("노칭공정V")) and _av["V1"].get("node_id") == _pv196("노칭공정V")["id"],
+     f"전 {bool(_nv)} · 뒤 {bool(_pv196('노칭공정V'))} · V1 {_av['V1'].get('canonical')}")
+
+# ⓕ 쌍 어긋남 — 확인 전 보류 · 확인(a) → ref 자리 · 정정(r) → 그 상위 아래 노드 · 극성 쌍은 그대로
+_ef = _env196("B196F", [_rec196("F1", "노칭", grp="스태킹"), _rec196("F2", "탭용접", grp="노칭"),
+                        _rec196("F3", "노칭::cathode", grp="노칭", electrode_type="anode")])
+_f0 = _run196(_ef)
+_pr = [r for r in SR196.pairs_from_queue() if r["up"] in ("스태킹", "노칭")]
+_ra = _ask196(_ef, "노칭", "a")
+_rr = next((r for r in PA196.rows_of({"pairs": _pr}) if r["ref"] == "탭용접"), None)
+with contextlib.redirect_stdout(io.StringIO()):
+    _dr = PA196.decide(_rr, "시험", answer="r 1")[0] if _rr else None
+    RT196.retry_orphans()
+_f1 = {r["locator"]: r for r in (LG.read("B196F") or {}).get("rows") or [] if r.get("role") == "anchor"}
+_g = open_graph(coord_layer())
+_fix = (CA.answers().get(CA.key(CP.GROUP, ("노칭", "탭용접"))) or (None, {}))[1].get("target")
+show("B196 ⓕ 쌍 어긋남(상위 스태킹 · ref 노칭) → 확인 전 보류 · a → 노칭에 · r 1(노칭 아래 후보) → 그 노드에 · 극성 쌍(노칭::cathode ↔ "
+     "행 anode)은 지금처럼 붙고 큐만",
+     _f0["F1"].get("hold") == CS196.HOLD_PAIR and _f0["F2"].get("hold") == CS196.HOLD_PAIR and _f0["F3"].get("node_id")
+     and _ra == "확인" and _dr == "정정" and (_g.get(_f1["F1"].get("node_id")) or {}).get("canonical") == "노칭"
+     and _fix and str(_fix).startswith("노칭::") and (_g.get(_f1["F2"].get("node_id")) or {}).get("canonical") == _fix
+     and any(x["kind"] == "coord_mismatch" and x["payload"].get("node_polarity") for x in store.read(store.QUEUE, [])
+             if x.get("doc_id") == "B196F"),
+     f"전 {[_f0[k].get('hold') for k in ('F1', 'F2')]} · F1 → {_f1['F1'].get('canonical')} · F2 → {_f1['F2'].get('canonical')}(정정 {_fix})")
+
+# ⓗ 연결 표지 — 대장 칸 · 인입 끝 줄과 show report의 「연결 미성립 n(…)」 · 「좌표 폴백」 · 「ref 빈 행」
+from cli import report_cause as RC196                               # noqa: E402
+_lr = (LG.read("B196F") or {}).get("rows") or []
+_lc = LG.link_counts(_lr)
+_hl = [ln for ln in RC196.report("B196F")[0] if "연결 미성립" in ln]
+show("B196 ⓗ 연결 표지 — 규칙 B 폴백으로 좌표에 선 값은 대장 연결 칸 connect=rel_fallback · show report 머리 「연결 미성립 n(소유자 미해소 · 관계 폴백 · "
+     "소속 폴백)」 · 「ref 빈 행 n」이 대장에서 센 수",
+     any(r.get("connect") == "rel_fallback" for r in _lr) and _lc["관계 폴백"] == sum(1 for r in _lr if r.get("connect") == "rel_fallback")
+     and _hl and f"연결 미성립 {_lc['연결 미성립']:,} (소유자 미해소 {_lc['소유자 미해소']:,}" in _hl[0] and "ref 빈 행" in _hl[0],
+     f"{_lc} · {(_hl or [''])[0].strip()}")
+_unregister("process")
+_clean_acks()
+
 for d in set(_made):
     (HINTS / f"{d}.json").unlink(missing_ok=True)
 done()

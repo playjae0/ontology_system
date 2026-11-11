@@ -524,6 +524,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
         dn, de, da = result_mod.totals(res)
         notice({"단계": "끝", "doc_id": doc_id, "노드": dn, "엣지": de, "auto": da,
                 "저해상도": loop.LOWRES["n"], "제목폴백": loop.LOWRES["heading"], "총_노드": metrics.get("nodes"),
+                "연결": ledger_mod.link_counts(builder.ledger.rows if builder.ledger else []),   # 연결 표지(B196 ④)
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
                 "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res),
                 "사람": human_mod.summary(builder.ledger.rows if builder.ledger else [], doc_id)})   # 사람 후보 (B140 ③)

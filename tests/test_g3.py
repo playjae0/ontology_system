@@ -51,6 +51,8 @@ def full_run():
     init.init(fresh_=True, all_=True)          # 클린의 정의는 진입점이 갖는다 (문서 7 §7.6-4)
     for lay in ("process", "quality"):
         bootstrap(lay, echo=False)      # 파생 흐름 출력은 사람 대조용 — 판정은 test_g1_g2
+    from core.state import provisional_hand as _PH
+    _PH.seed("시험", "레이저노칭", "조립")   # 사람이 「새로」(고침 B196 ① — 문 · 사람 없는 실행은 세우지 않는다)
     flags = {}
     for d in DOCS:
         _, _, extracted = run_document(load(f"{d}.json"))
@@ -183,9 +185,10 @@ show("C5′ 개념 해상도 anchor('탭용접') → 개념 노드에 부착 (�
 show("C5′ 극성 모호 orphan_anchor 0건 (D5 구조 소멸)",
      not any("모호" in x["reason"] for x in q("orphan_anchor")),
      str([x["reason"] for x in q("orphan_anchor")]))
-show("orphan_anchor는 닫힌 분류의 '목록 밖 이름'만 남음 (셀 부풀음 — 기대 변경 B182 · 좌표 골격 칸 레이저노칭은 잠정 골격 노드)",
-     {"셀 부풀음"}
-     == {x["payload"]["surface"] for x in q("orphan_anchor")},
+show("orphan_anchor는 닫힌 분류의 '목록 밖 이름'만 남음 (셀 부풀음 — 기대 변경 B182 · 좌표 골격 칸 레이저노칭은 잠정 골격 노드 · "
+     "쌍 어긋남 행은 확인 전 보류 — 고침 B196 ②)",
+     {"셀 부풀음"} == {x["payload"]["surface"] for x in q("orphan_anchor") if not x["payload"].get("pair")}
+     and {x["payload"]["surface"] for x in q("orphan_anchor") if x["payload"].get("pair")} == {"노칭"},
      str(sorted({x["payload"]["surface"] for x in q("orphan_anchor")})))
 
 # ★ M2 — 부착 정합 (A11-9)
@@ -236,7 +239,7 @@ show("**C12 coord_mismatch — A11-9 ②** (좌표 극성 cathode ↔ record 극
          and x["payload"].get("electrode_type") == "anode" for x in cm),
      str([x["payload"] for x in cm if "node_polarity" in x["payload"]]))
 show("coord_mismatch 2건 · orphan_anchor로 새지 않음 (골격 밖과 구분)",
-     len(cm) == 2 and all("스태킹" not in x["reason"] for x in q("orphan_anchor")),
+     len(cm) == 2 and all("스태킹" not in x["reason"] for x in q("orphan_anchor") if not x["payload"].get("pair")),
      str(len(cm)))
 
 show("Property canonical이 세부공정 스코프", any("::" in c for c in canon(P)),

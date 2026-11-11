@@ -499,7 +499,10 @@ with _quiet():
 _register()
 hold_coords()                     # 골격 밖 공정 표기는 보류로(B182 — ⓓ · B154 ⓑ는 보류된 좌표의 큐 · 「행 밖」 줄을 잰다)
 _rd, _ed, _cd, _md = _p151("B151D", P151, A151)
+from core.state import coord_acks as _CA151             # noqa: E402
+_CA151.ack("문서 좌표", ("노칭", "스태킹"), "시험", seen=True)   # 사람이 쌍 확인(고침 B196 ② — 확인 전에는 슬라이드 3 · 4가 보류)
 _n151, _cr151 = _run(_ed)
+_CA151.unack("문서 좌표", ("노칭", "스태킹"), "시험")       # 뒤의 쌍 화면 · 큐 화면(B154 ⓐ)은 확인 전 쌍을 잰다
 hold_coords(False)
 _q151 = [q for q in store.read(store.QUEUE, []) if q.get("doc_id") == "B151D"]
 _mis = {(q.get("payload") or {}).get("provenance", "").split("#")[-1] for q in _q151 if q.get("kind") == "coord_mismatch"}

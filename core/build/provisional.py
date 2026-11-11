@@ -10,8 +10,11 @@
 | 다르다(mock — 정확 일치에 맞는 것이 없다) | 잠정 + `auto_node` |
 | 애매 | 잠정 + 합칠 후보(판단이 가장 가깝다고 한 후보) + `uncertain_match` |
 | 판단을 받지 못함(태깅 상한 · 실패 — 행 `meta.coord_unjudged`) | 보류(`orphan_anchor`) 그대로 |
-| 출현 수가 손잡이 `provisional_min_mentions`에 못 미침 | 보류 · 차면 세우고 재시도가 열린 보류를 거둔다 |
 | 맨 아래 단보다 깊어지는 자리 | 보류 「골격 아래 새 단」 |
+| **문**(B196 ① · 결정 A′) — 사람이 「새로」를 정하지 않은 표기 | 세우지 않고 보류 「사람 확인 전 공정 표기」 · 「drop」이면 「사람 drop」 |
+
+**문의 단위는 표기 + 들어온 자리(부모 이름)**다 — 사람 답은 `provisional_hand.decisions`(사람 판단 기록 — 「새로」 · 「drop」 ·
+「봄」은 세움) · 사람 없는 실행은 묻지 않는다(전부 보류) · 「새로」를 고른 표기는 1행이어도 선다(출현 수를 세지 않는다).
 
 **모양**: 좌표 골격 카테고리 · home 층 · auto + 표시 필드(`status.PROVISIONAL` = `{answer, near?}`) · 이름 = 표기(같은 이름이 다른 줄기에
 이미 있으면 뒤의 것이 `부모::이름`) · 부모 = 같은 행의 위 칸 → 목차의 좌표 제목 → 문서 좌표(없으면 부모 미정 — 부모를 말하는 행이
@@ -28,14 +31,16 @@ from core.state.status import PROVISIONAL, is_live, is_skeleton
 HOLD_DEEP = "골격 아래 새 단"
 HOLD_FEW = "잠정 노드 최소 출현 수 미달"
 HOLD_NAME = "같은 이름의 다른 노드(부모 미정)"
-HOLDS = (HOLD_DEEP, HOLD_FEW, HOLD_NAME)
-#: **잠정 노드 최소 출현 수**(손잡이 `provisional_min_mentions` · 결정 문서 §2) — 그 표기의 행 수(이 문서 + 다른 문서의 열린 보류)
+#: **문**(B196 ①) — 사람이 정하기 전 · 사람이 세우지 않기로 했다(재연결이 다시 열지 않는다)
+HOLD_HUMAN = "사람 확인 전 공정 표기"
+HOLD_DROP = "사람 drop"
+HOLDS = (HOLD_DEEP, HOLD_FEW, HOLD_NAME, HOLD_HUMAN, HOLD_DROP)
+GATED = (HOLD_HUMAN, HOLD_DROP)
+#: **잠정 노드 최소 출현 수**(손잡이 `provisional_min_mentions` · 결정 문서 §2) — B196 문 뒤로는 효과가 없다(세우는 것은 사람의
+#: 「새로」뿐이고 그 표기는 1행이어도 선다 — 손잡이 목록의 기본값으로만 남는다)
 MIN_MENTIONS = 1
-
-
-def min_mentions():
-    from core.state import knobs
-    return int(knobs.get("provisional_min_mentions"))
+#: 판단 후보 · 화면 후보 수(B196 ③ — 판단이 낸 후보를 둘까지)
+NEAR = 2
 
 
 # ---------------------------------------------------------------- 조회 (쓰기 0)
@@ -105,6 +110,16 @@ class _Ctx:
         self.bottom = max((_depth(g, self.pm, nid) or 0 for nid in t1), default=0)
         self.names = {n["canonical"] for n in g.nodes.values() if is_live(n)}
         self.planned = []                         # 이 문서에 세울 것 — 뒤 행의 같은 이름 · 부모 채우기 대조
+        from core.state import provisional_hand as PH
+        self.book = PH.decisions()                # 문의 사람 답(B196 ①) — 문서마다 한 번 읽는다
+
+    def gate(self, surface, up):
+        """**문**(B196 ①) — `(세운다?, 보류 사유)` · 사람 답이 「새로」(봄 포함)면 세운다 · drop이면 「사람 drop」 · 없으면 「사람 확인 전」."""
+        from core.state import provisional_hand as PH
+        d = PH.decided(self.book, surface, self.name(up))
+        if d == PH.SEEDED:
+            return True, None
+        return False, (HOLD_DROP if d == PH.DROPPED else HOLD_HUMAN)
 
     def name(self, nid):
         return (self.eb.g.get(nid) or {}).get("canonical")
@@ -146,15 +161,6 @@ class _Ctx:
         return TIER_BY_DEPTH.get(d + 1, TIER_DEEP), None
 
 
-def _open_rows(surface):
-    """다른 문서의 열린 보류(`orphan_anchor`)가 든 그 표기의 행 수 — 최소 출현 수 셈(손잡이가 1이면 부르지 않는다)."""
-    from parser.namefold import key
-    k = key(surface)
-    return sum(int((x.get("payload") or {}).get("rows") or 1) for x in store.read(store.QUEUE, [])
-               if x.get("kind") == "orphan_anchor" and key((x.get("payload") or {}).get("surface") or "") == k
-               and (x.get("payload") or {}).get("category") == _coord())
-
-
 def _occurrences(b, env):
     """`[(표기, prov, 조각, 저해상도)]` — 조각 좌표(목록이면 원소마다) · 표의 공정 칸이 비고 그룹만 있으면 그룹(저해상도)."""
     from parser.normalizer import coord_refs
@@ -186,9 +192,6 @@ def plan(b, env, outline=None):
         up = cx.up_of(p, s, low, outline)
         g = groups.setdefault((key(s), up), {"surface": s, "provs": [], "up": up, "judge": coord_judged(p, s)})
         g["provs"].append(prov)
-    for g in groups.values():                                     # 최소 출현 수는 한 노드가 될 행을 함께 센다(같은 이름 · 같은 줄기)
-        g["mentions"] = sum(len(h["provs"]) for (k, _u), h in groups.items()
-                            if k == key(g["surface"]) and _same_stem(cx.pm, h["up"], g["up"]))
     return [_decide(cx, g) for g in groups.values()]
 
 
@@ -197,7 +200,8 @@ def _decide(cx, g):
     v = g["judge"] or {}
     e = {"surface": s, "provs": g["provs"], "rows": len(g["provs"]), "up": up, "up_name": cx.name(up),
          "answer": "uncertain" if v.get("type") == "uncertain" else "new",
-         "near": list(v.get("candidates") or [])[:1], "act": None, "node": None, "canonical": None, "hold": None}
+         "near": list(v.get("candidates") or [])[:NEAR], "act": None, "node": None, "canonical": None, "hold": None,
+         "confidence": v.get("confidence")}
     have = [n for n in look(cx.b, s) if (cx.eb.g.get(n) or {}).get(PROVISIONAL)]
     fit = [n for n in have if _same_stem(cx.pm, cx.pm.get(n), up)]
     if len(fit) > 1 and up is not None:
@@ -232,9 +236,9 @@ def _decide(cx, g):
     if canon is None or canon in cx.names:
         e.update(act="hold", hold=HOLD_NAME)
         return e
-    need = min_mentions()
-    if need > 1 and g.get("mentions", e["rows"]) + _open_rows(s) < need:
-        e.update(act="hold", hold=HOLD_FEW)
+    ok, why = cx.gate(s, up)                       # 문(B196 ①) — 세우는 것은 사람의 「새로」뿐
+    if not ok:
+        e.update(act="hold", hold=why, canonical=canon)
         return e
     cx.names.add(canon)
     e.update(act="new", canonical=canon)
@@ -280,11 +284,38 @@ def from_entity(b, surface, prov, verdict, nearest, coord=None):
     canon = surface if surface not in cx.names else (f"{cx.name(up)}::{surface}" if up is not None else None)
     if canon is None or canon in cx.names:
         return None, HOLD_NAME
-    need = min_mentions()
-    if need > 1 and 1 + _open_rows(surface) < need:
-        return None, HOLD_FEW
+    ok, why = cx.gate(surface, up)                 # 문(B196 ①) — 표 · 산문 · 제목 · PPT 같은 판단
+    if not ok:
+        b.coord_gate[(prov, surface)] = {"parent": cx.name(up), "answer": verdict,
+                                         "near": [nearest["canonical"]] if (nearest or {}).get("canonical") else []}
+        return None, why
     near = [nearest["canonical"]] if verdict == "uncertain" and (nearest or {}).get("canonical") else None
     return make(b, surface, prov, answer=verdict, canonical=canon, near=near, up=up, tier=tier), None
+
+
+def seed_at(graphs, cfgs, dic, did, surface, parent, prov, gi=None):
+    """**재연결의 「새로」**(B196 ① — 인입 뒤 처분) — 사람이 「새로」를 정한 표기의 잠정 노드를 세운다(세우는 손 `make` 그대로 ·
+    부모 = 그 자리 이름의 골격 노드 · 단은 그 바로 아래) · `(id, 층, 그래프)` · 세우지 못하면 `(None, None, None)`(쓰기 0)."""
+    from core.build.build import Builder
+    from core.state.bootstrap import coord_layer
+    lay = coord_layer()
+    g = graphs.get(lay)
+    if g is None:
+        return None, None, None
+    b = Builder(g, cfgs[lay], None, did, lay)
+    b.dict = dic
+    cx = _Ctx(b)
+    up = next((nid for nid, n in g.nodes.items() if n.get("canonical") == parent and is_live(n) and is_skeleton(n)), None)
+    if (parent is not None and up is None) or not cx.gate(surface, up)[0]:
+        return None, None, None
+    up = cx.concept(up) if up else None
+    tier, why = cx.tier(up)
+    canon = surface if surface not in cx.names else (f"{cx.name(up)}::{surface}" if up is not None else None)
+    if why or canon is None or canon in cx.names:
+        return None, None, None
+    nid = make(b, surface, prov, answer=(gi or {}).get("answer") or "new", canonical=canon,
+               near=(gi or {}).get("near") or None, up=up, tier=tier)
+    return nid, lay, g
 
 
 def fill(b, nid, up, tier, prov):
@@ -303,10 +334,13 @@ def settle(b, env, outline=None):
     사유(`b.coord_hold[(prov, 표기)]` · 표기 키)를 남긴다 — 뒤의 좌표 해소(`resolve_anchor`)가 그것을 먼저 본다(같은 이름 · 다른 줄기)."""
     from parser.namefold import key
     made = {}
-    for e in plan(b, env, outline):
+    entries = plan(b, env, outline)
+    for e in entries:
         if e["act"] == "hold":                       # 행마다(같은 이름의 다른 행이 섰어도 이 행은 보류 · 사전보다 먼저) + 표기 키(사유 표시)
             b.coord_hold[key(e["surface"])] = e["hold"]
             b.coord_hold.update({(prov, e["surface"]): e["hold"] for prov in e["provs"] if prov})
+            if e["hold"] in GATED:                   # 문에 걸린 행 — 보류 재료에 자리 · 판단을 싣는다(검토 · 재연결이 읽는다)
+                b.coord_gate.update({(prov, e["surface"]): gate_info(e) for prov in e["provs"] if prov})
             continue
         if e["act"] == "new":
             made[id(e)] = make(b, e["surface"], e["provs"][0], answer=e["answer"], canonical=e["canonical"],
@@ -326,6 +360,8 @@ def settle(b, env, outline=None):
                 if prov not in n["provenance"]:      # 그 행이 근거다 — 재인입이 걷은 출처를 되살린다(개체 매칭과 같은 결)
                     n["provenance"].append(prov)
         _restate_parent(eb, nid, e["up"], e["provs"])
+    from core.build import coord_scan
+    b.pair_rows = coord_scan.gate(env, b)            # 쌍 어긋남의 문(B196 ②) — 잠정 노드가 선 뒤 같은 해소로 대조한다
     return b.made
 
 
@@ -337,6 +373,11 @@ def _restate_parent(eb, nid, up, provs):
     child = ((load_config(eb.layer).get("skeleton") or {}).get("relations") or {}).get("child")
     if eb.g.edge(nid, child, up) is not None:
         eb.g.add_edge(nid, child, up, "auto", provenance=[p for p in provs if p])
+
+
+def gate_info(e):
+    """문에 걸린 계획 줄 → 보류 재료의 `gate` 칸 — 들어온 자리(부모 이름) · 판단 · 후보(둘까지)."""
+    return {"parent": e.get("up_name"), "answer": e.get("answer"), "near": list(e.get("near") or [])}
 
 
 def preview(env, outline=None):

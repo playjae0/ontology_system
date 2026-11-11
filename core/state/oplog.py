@@ -43,7 +43,9 @@ SKIP = {"I3:split": "split — 배분표가 엣지 번호라 재구축 뒤 맞�
         "learn:reject": "파일에 남는 판단(좌표 학습 기록)",
         "provisional:promote": "파일에 남는 판단(골격 파일 — 재구축이 심는다)",
         "provisional:merge": "파일에 남는 판단(골격 ALIASES — 재구축이 심는다)",
-        "provisional:keep": "화면 표지(봄)", "guess:confirm": "화면 표지(맞음)"}
+        "provisional:keep": "화면 표지(봄)", "guess:confirm": "화면 표지(맞음)",
+        "provisional:seed": "문의 사람 답(골격 칸 — 계획이 읽는다)", "provisional:drop": "문의 사람 답(골격 칸 — 계획이 읽는다)",
+        "coord:fix": "문의 사람 답(좌표 쌍 — 계획이 읽는다)", "coord:drop": "문의 사람 답(좌표 쌍 — 계획이 읽는다)"}
 
 KINDS = ("done", "already", "missing", "no_names", "skipped", "refused")
 
