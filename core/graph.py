@@ -144,8 +144,13 @@ class GraphStore:
         직접 덮어쓰면 build가 쓰기 도중 죽었을 때 graph.json이 반쯤 쓰인 채 남고,
         data/는 백업 대상이라 진실이 복구 불가로 유실된다. 산식은 store가 소유한다 —
         같은 방어를 두 벌 쓰면 한쪽만 고쳐지는 날이 온다.
+
+        **극성 칸은 저장 앞 한 자리에서 다시 적는다**(B198 · `core/build/polarity.stamp_graphs`) — 구축 · 재연결 · 사람 도구 ·
+        되돌림이 모두 이 자리를 지난다(출처가 늘거나 빠지면 칸이 따라간다 · 극성 없는 노드 · 엣지는 바이트 그대로).
         """
         from core.state import store
+        from core.build import polarity
+        polarity.stamp_graphs([self])
         out = store.atomic_write_bytes(
             self._path, _dumps({"nodes": self.nodes, "edges": self.edges}))
         self._loaded = self.stamp()
@@ -172,7 +177,7 @@ class GraphStore:
             "attrs": attrs or {}, "aliases": aliases or [],
             "provenance": list(provenance or []),
         }
-        node.update(extra)                      # tier·polarity 등 파생 필드
+        node.update(extra)                      # tier 등 파생 필드
         self.nodes[nid] = node
         return nid
 

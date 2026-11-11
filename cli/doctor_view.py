@@ -79,7 +79,7 @@ def transition():
          f"         {_seed_p or paths.layers('<좌표 층>', '<skeleton.source>')}\n"
          "         을 사내 공정 체계로 바꾸고 `python run.py bootstrap`.\n"
          "         코드는 한 줄도 안 바뀐다 — seed는 데이터다.\n"
-         "         형식은 docs/skeleton_seed.md · 마커 4종(:: · @split · @unordered · @noflow)")
+         "         형식은 docs/skeleton_seed.md · 마커 3종(:: · @unordered · @noflow)")
 
     # ── 1′. role 배정 실험 ────────────────────────────────────────
     # **등록 세션 진입 전에 이것이 먼저다**(갭 spec-A-201 · role-136).
@@ -250,8 +250,6 @@ def state_line():
     try:
         for _w in _catalog.warnings():               # 겸 home 불일치 — 경고 (B91 ⑥)
             print(f"  ⚠ 공통 config 겸 {_w}")
-        for _w, _nx in _catalog.mirror_warnings():   # 미러 규칙 ≠ home — 경고 (B100 ④)
-            print(f"  ⚠ 미러 규칙 {_w}\n    ▶ 다음 줄 — {_nx}")
         from core.state import catalog_sync as _cs   # 겸 상태 — 골격 카테고리마다 (B93 ③)
         for _warn, _m in _cs.coord_status():
             print(f"  {'⚠' if _warn else '·'} {_m}")

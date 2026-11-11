@@ -68,12 +68,12 @@ bad = [(q["id"], q["expected_path"], results[q["id"]]["path"])
        for q in QUERIES["queries"] if results[q["id"]]["path"] != q["expected_path"]]
 show("queries.json 12문항이 expected_path대로 응답", not bad, str(bad))
 
-show("flow 질의(5번)가 골격 대표 흐름을 통째로 공급",
-     len(results[5]["facts"]) == sum(1 for e in P.edges if e["rel"] == "precedes"
-                                     and P.get(e["src"])["polarity"] == "none"),
-     f"{len(results[5]['facts'])}줄")
-show("flow는 개념 레벨이다 — 축 인스턴스는 흐름에 없다 (J12)",
-     not any("::cathode" in f or "::anode" in f for f in results[5]["facts"]))
+# 기대 변경(B198 ⓕ — 펼친 흐름): 상위 흐름 × 줄기 안 흐름을 한 줄로(저장 0) · 흐름 밖(@unordered · @noflow)은 줄 끝에 이름과 함께
+_flow = results[5]["facts"]
+show("B198 ⓕ 펼친 흐름 — 「노칭 › 마지막 세부 공정 → 스태킹 › 첫 세부 공정」이 한 줄에 · 흐름 밖 표시",
+     len(_flow) == 1 and "노칭 › 전극 리와인딩 → 스태킹 › 적층" in _flow[0]
+     and "흐름 밖 2(스태킹 › 분리막 공급 · 스태킹 › 전극 시트 공급)" in _flow[0],
+     str(_flow)[:300])
 
 # 2홉 도달: 공정 →(part_of 하향)→ 설비 →(has_property)→ 인자. 프론티어 전파의 실증.
 show("2홉 도달 — part_of 하향으로 닿은 설비의 has_property 인자까지 수집",
@@ -106,11 +106,8 @@ def fact(key):
 
 show("① 자기 선언 — 그대로 답하고 해상도를 덧붙이지 않는다",
      fact("self") == "노칭 다음 공정은 스태킹이다", fact("self"))
-show("② 부모 파생 + 동일 축값 인스턴스 하강",
-     "탭용접::pre vision::cathode" in fact("derived_instance"), fact("derived_instance"))
-show("② 파생 답에 **해상도 표기**", "기준)" in fact("derived_instance"))
-show("② 공유 스텝 합류 자동 — 후속에 동일 축값이 없으면 개념 노드로 답한다",
-     "탭용접::bead press" in fact("derived_merge"), fact("derived_merge"))
+show("② 부모 파생 — 자기 선언이 없으면 부모의 후속 · 파생 답에 **해상도 표기** (극성 하강 없음 — 기대 변경 B198)",
+     "패키징" in fact("derived") and "(탭용접 기준)" in fact("derived"), fact("derived"))
 show("③ 조상까지 선언이 없으면 '순서 정보 없음' (추측 금지)",
      "순서 정보 없음" in fact("none"), fact("none"))
 

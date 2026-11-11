@@ -3,7 +3,6 @@
 
     python run.py platform queue coord_mismatch                         쌍 묶음(행 수 · 문서 · 예시 위치 · 확인 여부)
     python run.py ops coord-ack   all "<상위>" "<하위>" --actor <이름> [--reason "<메모>"]
-    python run.py ops coord-ack   all "<극성>" "<노드>" --polarity --actor <이름>
     python run.py ops coord-unack all "<상위>" "<하위>" --actor <이름>          (확인 취소 — 다시 보인다)
 
 큐 항목은 지금처럼 **행마다 하나**다(저장 모양 불변) — 묶는 것은 화면이고, 열쇠는 payload의 쌍
@@ -19,11 +18,10 @@ from parser import coord_pairs as CP
 
 
 def _cmd(op, kind, pair, extra=""):
-    pol = " --polarity" if kind == CP.POLARITY else ""
-    return f'python run.py ops {op} all "{pair[0]}" "{pair[1]}"{pol} --actor <이름>{extra}'
+    return f'python run.py ops {op} all "{pair[0]}" "{pair[1]}" --actor <이름>{extra}'
 
 
-#: 쌍 상위의 출처 둘 — 행(표의 상위 열 · 극성 · 상위 이름 골격 밖) · 문서 좌표(행에 상위가 없어 문서 좌표로 잰 쌍 — B106 ⑤)
+#: 쌍 상위의 출처 둘 — 행(표의 상위 열 · 상위 이름 골격 밖) · 문서 좌표(행에 상위가 없어 문서 좌표로 잰 쌍 — B106 ⑤)
 ROW, DOC = "행", "문서 좌표"
 
 
@@ -104,12 +102,11 @@ def show():
 
 
 def run_ops(a):
-    """`ops coord-ack|coord-unack` — `(상위, 하위)` 또는 `--polarity`면 `(극성, 노드)` · `--actor` 필수 · 비대화형 그대로."""
+    """`ops coord-ack|coord-unack` — `(상위, 하위)` · `--actor` 필수 · 비대화형 그대로."""
     if len(a.args) != 2:
-        print(f'■ 거부 — 쌍 둘을 달라: python run.py ops {a.op} all "<상위>" "<하위>" --actor <이름> '
-              f'(극성이면 "<극성>" "<노드>" --polarity)')
+        print(f'■ 거부 — 쌍 둘을 달라: python run.py ops {a.op} all "<상위>" "<하위>" --actor <이름>')
         return 2
-    kind = CP.POLARITY if getattr(a, "polarity", False) else CP.GROUP
+    kind = CP.GROUP
     pair = (a.args[0], a.args[1])
     try:
         if a.op == "coord-ack":

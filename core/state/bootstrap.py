@@ -9,15 +9,13 @@
 **골격의 두 축**(틀 §4B-A11 · 카드 J12):
     part_of  = 구조 — 공장·제품·세대 무관 분해. 주소 체계다.
     precedes = 지식 — "대표 흐름" 한 벌. **자식 배열의 순서가 곧 선언**이며,
-               비참여 3종(`::`인스턴스 자동 · `@unordered` 개별 · `@noflow` 레벨
-               전체)은 건너뛰고 잇는다. 비참여 = 무주장(병렬 단정도 순차 단정도 아님).
+               비참여 2종(`@unordered` 개별 · `@noflow` 레벨 전체)은 건너뛰고 잇는다.
+               비참여 = 무주장(병렬 단정도 순차 단정도 아님).
 
 **코드에 층 어휘 0**(B1) — 공정·노칭·스태킹은 물론 **극성 값(cathode/anode)도
-이 파일에 없다.** 코드가 아는 것은 **구문 마커 4종**(`::` 접두 · `@split` ·
-`@unordered` · `@noflow`)뿐이고, 축의 값은 seed의 `AXIS_LABELS` **키에서
-읽는다**. 그래서 판정문의 "마커 닫힌 7종"이 코드에서는 "구문 4종 + 데이터에서 온
-값 N개"로 구현된다 — 어휘 밖 마커는 명시적 실패다. 골격의 모양·카테고리·관계·
-소재는 전부 `layers/<layer>/config.json`이 값으로 선언한다.
+이 파일에 없다.** 코드가 아는 것은 **구문 마커 3종**(`::` 접두 · `@unordered` · `@noflow`)뿐이고,
+극성 값의 닫힌 목록은 seed의 `AXIS_LABELS` **키에서 읽는다**(골격 닫힌 목록 스냅샷 `axis`로 옮겨 적는다 — B198) — 어휘 밖
+마커는 명시적 실패다. 골격의 모양·카테고리·관계·소재는 전부 `layers/<layer>/config.json`이 값으로 선언한다.
 
 **로드 시 파생 대표 흐름을 출력한다**(A11-2 · §4 완화 3겹의 ②). 비참여 표시
 누락으로 생긴 거짓 순서는 구문으로 막을 수 없고, 나열로 보면 즉시 보인다 —
@@ -33,7 +31,6 @@ from core.state import alias_book, store
 from core.dictionary import Dictionary
 from core.graph import GraphStore
 from core.state.ids import norm
-from core.build.naming import POLARITY_NONE
 from core.state.skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
                        SEED_STATUS, SeedError, _pad, _register_aliases, plant)
 
@@ -45,7 +42,7 @@ ALIAS_LOAD = {}
 
 
 # ---- seed 문법: 코드가 아는 전부 -------------------------------------------
-# 구문 마커 4종. 축의 **값**은 여기에 없다 — AXIS_LABELS 키에서 읽는다(B1).
+# 구문 마커 3종. 축의 **값**은 여기에 없다 — AXIS_LABELS 키에서 읽는다(B1).
 
 # tier는 틀 §4B-A11-7이 전 층 공통으로 고정한 3단 어휘다(층 어휘가 아니다).
 
@@ -53,9 +50,7 @@ ALIAS_LOAD = {}
 # 구 `PROCESS_TREE`·`POLARITY_LABELS`는 형식이 특정 층·특정 축의 이름을 달고 있어
 # 로더에 층 어휘가 새던 지점이라 `TREE`·`AXIS_LABELS`로 개명했다. 상수로 격리하는
 # 것은 위반을 유지한 채 숨기는 것이고, seed 실물 1개·의존 코드 1곳인 지금이 가장
-# 싼 시점이다. 노드 필드 `polarity`와 config의 `polarity` 블록은 그대로 둔다 —
-# 그쪽은 A11-8이 정한 시스템 어휘이자 B1의 명시된 예외이며, 해소 경로는
-# identity_axis 일반화로 이연되어 있다.
+# 싼 시점이다. 극성은 노드를 가르지 않는다(B198 — 값 · 엣지 · 노드의 한정어 `core/build/polarity`).
 
 
 
@@ -220,7 +215,6 @@ def write_closed_list(layer, g, cfg, seed=None, book=None):
         entries.append({
             "id": n["id"], "canonical": n["canonical"], "category": n["category"],
             "tier": n.get("tier"),
-            "polarity": n.get("polarity"),
             "parent": up["canonical"] if up else None,
             "aliases": alias_book.snapshot_aliases(book, n),
         })
@@ -230,6 +224,8 @@ def write_closed_list(layer, g, cfg, seed=None, book=None):
         "skeleton_version": cfg.get("skeleton_version"),
         "seed_version": (seed or {}).get("seed_format"),
         "category": (cfg.get("skeleton") or {}).get("category"),
+        # 극성 값의 닫힌 목록 `{값: 표시 이름}` — seed `AXIS_LABELS`의 사본(B198 · `core/build/polarity.axis`가 읽는다)
+        **({"axis": dict((seed or {}).get(KEY_LABELS) or {})} if (seed or {}).get(KEY_LABELS) else {}),
         "count": len(entries),
         "nodes": entries,
     }
@@ -270,9 +266,7 @@ def bootstrap(layer, echo=True):
             n["aliases"].append({"surface": surface, "provenance": list(SEED_PROV)})
 
     seed = load_seed(layer, skel)
-    flow_lines, parsed, pairs = [], None, []
-
-    ids, parsed, pairs, flow_lines = plant(g, seed, skel, cfg, register)
+    ids, parsed, flow_lines = plant(g, seed, skel, cfg, register)
 
     stale = _stale_skeleton(g, skel["category"], set(ids.values()))
     if stale:
@@ -307,8 +301,6 @@ def bootstrap(layer, echo=True):
         for line in flow_lines:
             print(line)
         if parsed is not None:
-            print(f"  (순서 비참여: 인스턴스 {parsed.instance_count}종 "
-                  f"— 축값 간 순서 무주장 · mirrors 쌍 {len(pairs)})")
             if parsed.ambiguous:
                 print(f"  (짧은 이름 모호 — 사전 미등재, 접두 키로만 조회: "
                       f"{parsed.ambiguous})")
@@ -316,7 +308,8 @@ def bootstrap(layer, echo=True):
             print(f"  ⚠ 옛 골격 노드 {len(stale)}건 잔존: {stale}")
     if echo and (loaded["loaded"] or loaded["already"] or loaded["missing"] or loaded["rejected"]):
         print(f"[bootstrap] {layer}: 표기 대장 별칭 갈래 — 골격 대상 실음 {loaded['loaded']:,} · 이미 있음 {loaded['already']:,}"
-              f" · 대상 없음 {len(loaded['missing']):,}" + (f" · 거부 {loaded['rejected']:,}" if loaded["rejected"] else ""))
+              f" · 대상 없음 {len(loaded['missing']):,}" + (f" · 거부 {loaded['rejected']:,}" if loaded["rejected"] else "")
+              + (f" · 극성 이름 → 개념 이름 {loaded['polar']:,}" if loaded.get("polar") else ""))
         for r in loaded["missing"]:
             t = r["target"]
             print(f"  대상 없음 — '{r['surface']}' → {t['canonical']} ({t['category']}) · {r['source']}"

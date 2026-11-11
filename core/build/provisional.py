@@ -63,20 +63,15 @@ def _parents(g, child_rel):
     return pm
 
 
-def _instance(n):
-    from core.build.build import POLARITY_NONE
-    return (n or {}).get("polarity") not in (None, POLARITY_NONE)
-
-
 def _depth(g, pm, nid):
-    """단의 깊이 — 인스턴스는 세지 않는다(골격 심기 A11-7) · 잠정 노드의 단이 미정이면 None."""
+    """단의 깊이 — 잠정 노드의 단이 미정이면 None."""
     d, cur, seen = 0, nid, set()
     while cur and cur not in seen and len(seen) < 64:
         seen.add(cur)
         n = g.get(cur) or {}
         if n.get(PROVISIONAL) and not n.get("tier") and cur not in pm:
             return None
-        d += 0 if _instance(n) else 1
+        d += 1
         cur = pm.get(cur)
     return d
 
@@ -139,12 +134,8 @@ class _Ctx:
                 continue
             hit = look(self.b, s)
             if len(hit) == 1:
-                return self.concept(hit[0])
+                return hit[0]
         return None
-
-    def concept(self, nid):
-        """극성 인스턴스면 그 개념 — 단은 개념에서 센다(인스턴스는 깊이에 들지 않는다)."""
-        return self.pm.get(nid, nid) if _instance(self.eb.g.get(nid)) else nid
 
     def tier(self, up):
         """`(단, 보류 사유)` — 부모 바로 아래 단 · 부모 미정이면 `(None, None)` · 맨 아래 단보다 깊으면 「골격 아래 새 단」."""
@@ -248,13 +239,12 @@ def _decide(cx, g):
 def make(b, surface, prov, *, answer, canonical=None, near=None, up=None, tier=None):
     """**잠정 골격 노드를 세운다**(B182 ②) — 노드(home 층 · auto + 표시) · 사전 · 부모 엣지(골격 자식 관계 · 출처 그 문서) · 큐
     (다르다 `auto_node` · 애매 `uncertain_match` + 합칠 후보) · 이 문서의 세운 기록(`b.made` — 대장의 `made` 칸). 돌려주는 것은 id."""
-    from core.build.build import POLARITY_NONE
     from core.state.bootstrap import load_config
     eb = b.for_category(_coord())
     canonical = canonical or surface
     mark = {"answer": answer, **({"near": list(near)} if near else {})}
     nid = eb.g.add_node(canonical, _coord(), "auto", provenance=[prov] if prov else [b.doc_id],
-                        tier=tier, polarity=POLARITY_NONE, **{PROVISIONAL: mark})
+                        tier=tier, **{PROVISIONAL: mark})
     eb._register(surface, nid, prov or b.doc_id, key=canonical)
     if up is not None:
         child = ((load_config(eb.layer).get("skeleton") or {}).get("relations") or {}).get("child")
@@ -275,7 +265,6 @@ def from_entity(b, surface, prov, verdict, nearest, coord=None):
     자리의 좌표 · 단은 그 바로 아래) · `(id, 보류 사유)`. 같은 이름의 잠정 노드는 판정 후보에 이미 들었다(같다면 여기 오지 않는다)."""
     cx = _Ctx(b)
     up = coord[0] if coord and coord[0] and is_skeleton(cx.eb.g.get(coord[0])) else None
-    up = cx.concept(up) if up else None
     tier, why = cx.tier(up)
     if why:
         return None, why
@@ -306,7 +295,6 @@ def seed_at(graphs, cfgs, dic, did, surface, parent, prov, gi=None):
     up = next((nid for nid, n in g.nodes.items() if n.get("canonical") == parent and is_live(n) and is_skeleton(n)), None)
     if (parent is not None and up is None) or not cx.gate(surface, up)[0]:
         return None, None, None
-    up = cx.concept(up) if up else None
     tier, why = cx.tier(up)
     canon = surface if surface not in cx.names else (f"{cx.name(up)}::{surface}" if up is not None else None)
     if why or canon is None or canon in cx.names:
@@ -454,7 +442,7 @@ def listing(layer):
     for nid, n in g.nodes.items():
         if is_live(n) and n.get(PROVISIONAL) and n.get("category") == _coord():
             out.append({"id": nid, "canonical": n["canonical"], "category": n["category"], "tier": n.get("tier"),
-                        "polarity": n.get("polarity"), "parent": (g.get(pm.get(nid)) or {}).get("canonical"),
+                        "parent": (g.get(pm.get(nid)) or {}).get("canonical"),
                         "aliases": sorted({a["surface"] for a in n.get("aliases") or [] if a.get("surface")}),
                         PROVISIONAL: True, "answer": n[PROVISIONAL].get("answer"), "near": n[PROVISIONAL].get("near") or [],
                         "doc": str((n.get("provenance") or [""])[0]).split("#", 1)[0] or None})

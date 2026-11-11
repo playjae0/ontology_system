@@ -7,8 +7,8 @@
      — `classification`은 소비 대상이 **아니다**(D-37: 자리만 있고 아무도 읽지 않는다)
   ③ process_group·process_ref 둘 다 anchor이나 **부착은 process_ref 하나**.
      process_group은 해소 후 **골격 조상 대조만** 하고, 어긋나면 `coord_mismatch` 큐(C3)
-  ④ `electrode_type`은 블록에 넣지 않고 **구조 필드**로 유지 — 극성 결합은
-     role 핸들러가 아니라 entity 해소 코드가 record에서 직접 읽는다(D-1)
+  ④ `electrode_type`은 블록에 넣지 않고 **구조 필드**로 유지 — 극성은 이름 · 판정에 들지 않고 값 · 엣지 · 노드의
+     한정어로 시스템이 옮겨 적는다(B198 · `core/build/polarity` — role 핸들러 · LLM이 쓰지 않는다)
   ⑤ 큐 kind 목록 확장 (§6-5, 계 20종)
 
 **코드에 층 어휘 0**(B1) — 카테고리 이름·관계 이름·극성 값이 이 파일에 없다.
@@ -34,26 +34,19 @@ ATTR_ADDED, ATTR_SAME, ATTR_CONFLICT = "added", "same", "conflict"
 from core import matcher as _matcher              # noqa: E402 — 2차 판정 · 문장 폭
 from core.state.status import is_live
 from core.build.build_coord import CoordMixin              # 좌표 계보 · 공정 목록 (B125 ④ — 800행 상한으로 나눴다)
-from core.build.naming import (scope_categories, POLARITY_NONE, bind_polarity, derive_polarity,
-                     is_bound, scope_canonical, scope_of, base_name_of)
+from core.build.naming import scope_categories, scope_canonical, scope_of, base_name_of
 
-def entity_key(surface, category, cfg, *, electrode_type=None,
-               parent_canonical=None, anchor_polarity=None):
+def entity_key(surface, category, cfg, *, parent_canonical=None):
     """**판정이 사전을 여는 키** — 예고와 판정이 이 함수 하나를 부른다 (B74 ①).
 
-    돌려주는 것은 `(canonical, polarity, scoped, 스코프_카테고리인가)`다. 키 조립이
+    돌려주는 것은 `(canonical, scoped, 스코프_카테고리인가)`다. 키 조립이
     두 곳에 복제되면 예고가 판정과 **다른 키로 사전을 보게 되고**, 그 순간 예고는
     비용을 잘못 말한다(허브 실측 열셋째: 예고 「사전 히트 31종」 · 판정 「사전 0」).
+    **극성은 키에 들지 않는다**(B198 — 같은 이름 · 같은 자리 · 다른 극성은 노드 하나).
     """
     scoped_category = category in scope_categories(cfg)
-    anchor_polarity = anchor_polarity if scoped_category else None
-    inherited = anchor_polarity is not None
-    bound = surface if inherited else \
-        bind_polarity(surface, category, electrode_type, cfg)            # ④
-    polarity = derive_polarity(category, electrode_type, cfg,
-                               anchor_polarity=anchor_polarity)
-    canonical, scoped = scope_canonical(bound, category, parent_canonical, cfg)
-    return canonical, polarity, scoped, scoped_category
+    canonical, scoped = scope_canonical(surface, category, parent_canonical, cfg)
+    return canonical, scoped, scoped_category
 
 
 ROLE_HANDLERS = ("anchor", "entity", "attribute", "content", "meta")
@@ -63,11 +56,6 @@ def _name_of(ref):
     """`(노드 id, 그 그래프)` → 그 노드의 canonical(없으면 None) — 값의 경로의 이름 재료."""
     nid, g = ref if ref else (None, None)
     return ((g.get(nid) or {}).get("canonical") if nid and g is not None else None)
-
-
-def _key_text(k, sep):
-    """짝 키의 부모 요소를 글자로 — 겹(골격 밖 부모 · `_mirror_scope`)이면 `sep`으로 잇는다."""
-    return sep.join(_key_text(x, sep) for x in k if x) if isinstance(k, tuple) else k
 
 
 class Builder(CoordMixin):
@@ -226,13 +214,13 @@ class Builder(CoordMixin):
         self.dict.save()
         self.book.save()                     # 표기 대장 별칭 갈래은 사전과 같은 때 — 되돌림 경계도 같다 (B108 ①)
 
-    def coord_verdicts(self, group_surface, ref_id, et, g=None):
+    def coord_verdicts(self, group_surface, ref_id, g=None):
         """**좌표 쌍 판정**(B105) — `(판정 목록, 상위가 가리키는 골격 노드들)`.
 
         판정은 `parser.coord_pairs.verdict` **하나**다 — 등록 리허설 · 인입 좌표 단계 · 구축이 같은 함수(두 벌 금지).
         여기는 구축의 해소만 한다: 상위 표기 → 사전 조회 중 하위와 같은 카테고리 노드 **전부**(공유 별칭이면 여럿 —
-        첫 노드를 고르지 않는다 · 그중 하나라도 조상이면 맞음) · 부모 사슬은 그 카테고리를 선언한 층의 골격 관계 ·
-        극성 축값은 하위 노드를 선언한 층 config. 상위가 골격 밖이면 어긋남이 아니다(D3·A5 — 큐 없음 · 화면이 센다).
+        첫 노드를 고르지 않는다 · 그중 하나라도 조상이면 맞음) · 부모 사슬은 그 카테고리를 선언한 층의 골격 관계.
+        상위가 골격 밖이면 어긋남이 아니다(D3·A5 — 큐 없음 · 화면이 센다).
         큐에 싣는 자리는 `core/build/coord_scan.enqueue` 하나다(구축 말미 — 표·산문·렌즈 같이).
         """
         from parser import coord_pairs as CP
@@ -243,10 +231,7 @@ class Builder(CoordMixin):
         cat, rc = node.get("category"), node.get("canonical")
         gcs = sorted({g.get(nid)["canonical"] for nid in self.dict.lookup(group_surface)
                       if (g.get(nid) or {}).get("category") == cat}) if group_surface else []
-        axis = tuple((self._owner_cfg(node).get("polarity") or {}).get("values") or [])
-        return CP.verdict(group_surface, gcs, rc, et, parent_of=self._parent_map(g, cat).get,
-                          polarity_of=lambda c: node.get("polarity") if c == rc else None,
-                          axis=axis), gcs
+        return CP.verdict(group_surface, gcs, rc, parent_of=self._parent_map(g, cat).get), gcs
 
     def _parent_map(self, g, cat):
         """그 그래프 골격의 부모 표 `{canonical: 부모 canonical}` — 그 카테고리를 선언한 층의 골격 자식 관계 ·
@@ -265,61 +250,8 @@ class Builder(CoordMixin):
             self._pmaps[key] = pm
         return self._pmaps[key]
 
-    def descend_anchor(self, ref_id, electrode_type, g=None):
-        """⓪ **하강 부착** (틀 §4B-A11-9 ⓪ · 카드 F1 v18 · CH3B 3.5 규약 3-⓪).
-
-        좌표가 **개념 노드**인데 record의 축값이 확정이면, 그 개념의 **동일 축값
-        인스턴스가 존재할 때** 그리로 내려가 부착한다(`탭용접`+cathode → `탭용접::cathode`).
-        하강 후에는 ①(표면형 결합 생략)이 그대로 적용된다.
-
-        **인스턴스가 없으면 하강하지 않는다** — 골격은 Tier1이고 부착 코드가 임의로
-        인스턴스를 만들 수 없다. 그때는 현행 F1 결합이 답이다.
-
-        고치는 것: 같은 실물이 좌표 해상도에 따라 두 canonical로 갈리던 접점 결함이다
-        (`탭용접::cathode 용접 가압력` ↔ `탭용접::cathode::용접 가압력` — 판정필요-6).
-        **A11-5 순서 파생의 하강과 동형**이라 그 함수를 그대로 쓴다 — 새 로직이 아니다.
-        """
-        if not ref_id:
-            return ref_id
-        g = g or self.g
-        node = g.get(ref_id) or {}
-        owner = self._owner_cfg(node)
-        if is_bound(node.get("polarity"), owner):      # 이미 인스턴스다 — 하강 대상 아님
-            return ref_id
-        if not is_bound(electrode_type, owner):        # record가 축값을 확정하지 않았다
-            return ref_id
-        child_rel = ((owner.get("skeleton") or {}).get("relations") or {}).get("child")
-        if not child_rel:
-            return ref_id
-        from core.query.query import _descend                    # A11-5와 같은 하강 (동형 재사용)
-        return _descend(g, ref_id, electrode_type, child_rel)
-
-    def anchor_polarity(self, ref_id, g=None):
-        """부착 골격 노드의 polarity. 축값이 확정일 때만 돌려준다(아니면 None).
-
-        확정이면 ①표면형 극성 결합을 생략하고 ②노드 polarity를 여기서 상속한다
-        (A11-9 ①) — 극성이 이미 주소(스코프 접두)에 있으므로 표면형에 다시 붙이면
-        `…::anode::anode 용접 강도` 같은 이중 표기가 된다.
-        """
-        if not ref_id:
-            return None
-        node = ((g or self.g).get(ref_id) or {})
-        pol = node.get("polarity")
-        return pol if is_bound(pol, self._owner_cfg(node)) else None
-
-    def _owner_cfg(self, node):
-        """그 노드를 선언한 층의 config. 축값 목록은 그 층이 소유한다(B1).
-
-        걸침 anchor(품질층 문서 → 공정층 골격)에서 자기 층 config를 쓰면 축값
-        목록이 비어 판정이 조용히 무력화된다.
-        """
-        if not node or node.get("layer") == self.layer:
-            return self.cfg
-        from core.state.bootstrap import load_config
-        return load_config(node["layer"])
-
     # ---------------------------------------------------------------- entity
-    def _judge(self, surface, category, canonical, scoped, polarity, parent_canonical, at, row, place=None, where=None,
+    def _judge(self, surface, category, canonical, scoped, parent_canonical, at, row, place=None, where=None,
                field=None):
         """판정 한 번 — `((분기, node_id, 점수, 판정 dict), 재생하지 못한 사유)`.
 
@@ -330,19 +262,18 @@ class Builder(CoordMixin):
         `where`는 값의 경로(B181 ② — 이름 규칙 카테고리 밖). 그 뒤(노드 · 사전 · 큐 · 대장)는 호출부 그대로다.
         판정에 오른 값은 **근거 지문**(B167 ② — `replay.basis`)을 판정 dict에 싣는다 — 대장 행이 옮기고 재생이 다시 잰 것과 견준다."""
         rp = why = fp = None
-        pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
+        pre = gated(canonical, category, self.layer, self.g, self.dict, scoped=scoped,
                     parent=parent_canonical, cfg=self.cfg, place=place)
         if not pre[0]:
             from core.build import replay as _rp
             fp = _rp.basis(canonical, pre, self.cfg)
             rp, why = _rp.pick(self, at, surface, category, canonical, basis_now=fp)
-        got = self._judged(surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where,
-                           field)
+        got = self._judged(surface, category, canonical, scoped, parent_canonical, row, place, pre, rp, where, field)
         if fp is not None:
             got[3]["basis"] = fp
         return got, why
 
-    def _judged(self, surface, category, canonical, scoped, polarity, parent_canonical, row, place, pre, rp, where=None,
+    def _judged(self, surface, category, canonical, scoped, parent_canonical, row, place, pre, rp, where=None,
                 field=None):
         """재생(`rp`) 또는 판정 — `(분기, node_id, 점수, 판정 dict)`(위 `_judge`의 몸)."""
         sent = None
@@ -352,18 +283,17 @@ class Builder(CoordMixin):
         if rp is not None:
             if rp[3].get("second_due") and sent:       # 재생의 불확실 · 2차 기록 없음 → 2차 한 번(B127 ①)
                 got = _matcher.second_at(canonical, category, self.layer, self.g, self.dict, rp[3], scoped=scoped,
-                                         polarity=polarity, parent=parent_canonical, sentence=sent,
-                                         place=place, pre=pre)
+                                         parent=parent_canonical, sentence=sent, place=place, pre=pre)
                 if got is not None:
                     from core.build import replay as _rp
                     _rp.note_second(got[0] == "match")
                     return got
             return rp
-        return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped, polarity=polarity,
+        return resolve(canonical, category, self.layer, self.g, self.dict, scoped=scoped,
                        parent=parent_canonical, sentence=sent, place=place, pre=pre, where=where)
 
     def resolve_entity(self, surface, category, prov, *, electrode_type=None,
-                       parent_canonical=None, anchor_polarity=None, coord_surface=None,
+                       parent_canonical=None, coord_surface=None,
                        belongs=None, at=None, row=None, field=None, coord=None, owner=None):
         """3분기 — 매칭 / 신규 / 불확실(신규+표시). `coord` · `owner`(산문 소속 대상 · 표 행의 소유 엣지 개체 · 위 제목 개체)는
         판정의 **자리**다(B142 — `scope_path.place` · 관문은 카테고리 · 공정 줄기 · 경로는 증거 · 이름 부모는 호출부가 `naming.name_parent`로 · B144 ②).
@@ -371,21 +301,8 @@ class Builder(CoordMixin):
         `row`(그 표기가 나온 청크 · 표의 행 — B181 ②)는 판단 재료다 — 값의 경로(이름 규칙 카테고리 밖 — `extract_ctx.value_path`) ·
         1차가 불확실이면 그 원문으로 2차를 묻는다(B123 ③ — `matcher.second` · 청크는 그 표기 앞뒤 글).
 
-        `anchor_polarity`가 확정이면 **표면형 극성 결합을 생략**하고 polarity를
-        그 노드에서 **상속**한다(A11-9 ① — 이중 표기 방지). 그렇지 않을 때만
-        기존 극성 결합 3조건이 돈다(F1).
-
-        **생략은 스코프 카테고리에 한정한다** [틀 v2.7 · CH3B v2.2 3.5 규약 3 ·
-        카드 F1]. 생략의 근거는 "극성이 이미 주소에 있다"인데, 주소가 canonical에
-        실리는 것은 `canonical_scope`가 걸린 카테고리뿐이다 — **어느 카테고리인지는
-        config의 `bind_categories`가 정하고 코드는 그것을 읽는다**(B26에서 Unit이
-        더해졌다 · [정정] 45). 구판 주석은 「현행 Property」라고 적어 두었는데,
-        그것은 D-57 시점의 사실이고 **동작은 이미 config를 읽고 있었다** —
-        주석만 거짓말하고 있었다.
-
-        스코프가 없는 카테고리에 생략을 적용하면 표면형에도 주소에도 극성이 없어져
-        **polarity 필드만 다르고 canonical이 같은 노드 2개가 공존**한다(P4 취지
-        위반 — C12 실측). 그 성질은 이제 회귀 어서션이 지킨다.
+        **극성은 이름 · 후보 · 판정 기억에 들지 않는다**(B198) — `electrode_type`은 자리 추정의 재료로만 넘기고, 극성은 문서 끝
+        한 자리(`polarity.stamp_graphs`)가 노드 · 엣지의 출처별 칸에 옮겨 적는다.
         """
         from core.state.bootstrap import layer_of_category
         if layer_of_category(category) is None:
@@ -394,9 +311,7 @@ class Builder(CoordMixin):
         if category in scope_categories(self.cfg) and not parent_canonical:
             return self._no_coord(surface, category, prov, coord_surface, belongs,
                                   guess=dict(electrode_type=electrode_type, row=row, field=field, at=at))
-        canonical, polarity, scoped, scoped_category = entity_key(
-            surface, category, self.cfg, electrode_type=electrode_type,
-            parent_canonical=parent_canonical, anchor_polarity=anchor_polarity)
+        canonical, scoped, scoped_category = entity_key(surface, category, self.cfg, parent_canonical=parent_canonical)
         # **부모 좌표를 넘긴다**(B73 ①) — 후보를 상한 안으로 좁힐 때 「같은 공정
         # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
         # **골격 밖 반복 판정 기억**(B100 ⑤) — 노드를 만들지 않고 끝난 판정은 한 실행 안에서
@@ -405,7 +320,7 @@ class Builder(CoordMixin):
         gate_at = also_gate.pre(self, surface, category, prov, coord)     # 골격 단의 문(B197 ① — 겸 값은 골격 노드로만)
         if isinstance(gate_at, tuple):
             return gate_at[1]
-        mkey = self._memo_key(surface, canonical, category, parent_canonical, polarity)
+        mkey = self._memo_key(surface, canonical, category, parent_canonical)
         if mkey in _MEMO:
             return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey], coord=coord)
         from core.llm import gateway as _llm
@@ -416,7 +331,7 @@ class Builder(CoordMixin):
         if place is None:                       # 값의 경로(B181 ② — 이름 규칙 카테고리는 `place.names()` 그대로)
             from core.build.extract_ctx import value_path
             where = value_path(row, field, self.doc_coord, coord=_name_of(coord), owner=_name_of(owner))
-        (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped, polarity,
+        (verdict, nid, conf, v), why = self._judge(surface, category, canonical, scoped,
                                                    parent_canonical, at, row, place=place, where=where, field=field)
         _u1 = _llm.usage_total()
         # **이 값 하나가 얼마를 썼나** — 대장이 적는다(B74 ②). 재는 자리가 쓰는
@@ -456,9 +371,8 @@ class Builder(CoordMixin):
             return self._skeleton_miss(surface, category, canonical, prov, verdict, coord=coord)
 
         extra = {"_scoped": True} if scoped and category in scope_categories(self.cfg) else {}
-        extra["polarity"] = polarity                     # 닫힌 4값을 항상 기록한다
         # **부모 경로**(`scope`)와 **맨 이름**(`base_name` — 주소 접두를 뺀 자기 이름부)이다(B142 ⑤ — 옛 칸 `mirror_scope` ·
-        # `mirror_name`). canonical을 되 파싱하지 않기 위해(A11-8) 조립 시점에 적어 둔다 — 극성 짝 키 · 판정의 경로 · 별칭 검사가
+        # `mirror_name`). canonical을 되 파싱하지 않기 위해(A11-8) 조립 시점에 적어 둔다 — 판정의 경로 · 별칭 검사가
         # 읽는다(`naming.scope_of` · `base_name_of`). 스코프가 없는 카테고리는 부모가 이름에 실리지 않으므로 부모 경로도 없다.
         extra["scope"] = parent_canonical if scoped_category else None
         extra["base_name"] = norm(surface)
@@ -539,12 +453,12 @@ class Builder(CoordMixin):
             self._sk_cats = set(skeleton_layers())
         return category in self._sk_cats
 
-    def _memo_key(self, surface, canonical, category, parent, polarity):
-        """기억의 열쇠 — (표기 · 카테고리 · 부모 스코프 · 극성) + **판정 재료의 판**(골격 스냅샷 ·
-        이 표기의 사전 항목). 골격·사전이 바뀌면 열쇠가 달라져 기억을 쓰지 않는다(B100 ⑤)."""
+    def _memo_key(self, surface, canonical, category, parent):
+        """기억의 열쇠 — (표기 · 카테고리 · 부모 스코프) + **판정 재료의 판**(골격 스냅샷 · 이 표기의 사전 항목) · 극성은 들지
+        않는다(B198). 골격·사전이 바뀌면 열쇠가 달라져 기억을 쓰지 않는다(B100 ⑤)."""
         from core.state import store as _st
         sk = _st.path(_st.SKELETON_LIST)
-        return (norm(canonical), category, parent, polarity, self.layer,
+        return (norm(canonical), category, parent, self.layer,
                 sk.stat().st_mtime_ns if sk.exists() else None,
                 tuple(sorted(set(self.dict.lookup(surface)) | set(self.dict.lookup(canonical)))))
 
@@ -587,7 +501,9 @@ class Builder(CoordMixin):
         """맥락형은 `[{context, value, provenance}]`로 **병렬 저장**한다.
 
         충돌 판정은 **같은 context 그룹 안에서만** — deep-equal로 달라야 spec_conflict다.
-        context가 다르면 충돌이 아니라 병렬 항목이고, 완전 동일이면 무시한다.
+        context가 다르면 충돌이 아니라 병렬 항목이고, 완전 동일이면 무시한다. **극성은 context의 한 열쇠다**(B198) — 출처
+        행 · 청크의 `electrode_type`이 축 값이면 `context.polarity`(`polarity.of_prov` — 시스템이 쓴다 · 비면 넣지 않는다 = 공통) ·
+        anode 규격과 cathode 규격은 충돌이 아니다.
         돌려주는 것은 결과 하나 — `ATTR_ADDED` · `ATTR_SAME` · `ATTR_CONFLICT` · None(노드 없음) — 산문 값이 센다(B120 ①).
         """
         n = self.g.get(node_id)
@@ -599,6 +515,10 @@ class Builder(CoordMixin):
             # 특수 사례다. 구판은 deep-equal 없이 덮어써서 교차 출처의 다른 주장이
             # provenance째 소멸했다("충돌은 정보다" — 규약 6).
             context = {}
+        from core.build import polarity as _pol
+        pol = _pol.of_prov(prov)
+        if pol:
+            context = {**(context or {}), _pol.CTX: pol}
         items = attrs.setdefault(name, [])
         if not isinstance(items, list):                  # 구판 단순형 값의 승격
             items = attrs[name] = [items]
@@ -608,107 +528,12 @@ class Builder(CoordMixin):
                     if prov not in it["provenance"]:
                         it["provenance"].append(prov)
                     return ATTR_SAME
-                # **대상 노드의 polarity를 동봉한다**(문서 4 §4.7). 무극성(`none`)
-                # 건은 **I3 분리 후보**로 표시한다 — 극성이 갈린 값이 한 노드에
-                # 쌓인 것일 수 있고, 그 경우 사람이 볼 것은 "값 충돌"이 아니라
-                # "노드가 둘이어야 하는가"다. 표시가 없으면 두 사건이 큐에서
-                # 구분되지 않아 판정자가 매번 그래프를 다시 열어야 한다.
-                pol = n.get("polarity") or POLARITY_NONE
                 store.enqueue("spec_conflict",
                               f"{n['canonical']}의 {name}: 같은 맥락에 다른 값",
                               self.doc_id,
                               {"node_id": node_id, "attr": name, "context": context,
                                "existing": it["value"], "incoming": value,
-                               "polarity": pol,
-                               "split_candidate": pol == POLARITY_NONE,
                                "provenance": prov})
                 return ATTR_CONFLICT
         items.append({"context": context, "value": value, "provenance": [prov]})
         return ATTR_ADDED
-
-    # ---------------------------------------------------------------- mirrors
-    def _mirror_scope(self, scope, _depth=0):
-        """짝 키의 부모 요소 — **부모가 mirror 쌍이면 동일시한다**(F3 하향 연쇄).
-
-        부모가 축 인스턴스이고 그 인스턴스가 mirrors로 이어져 있으면, 그 아래 같은
-        이름의 자식들은 **같은 자리**에 있는 것이다. 그래서 부모를 개념 노드로 올려
-        잡아야 `탭용접::cathode::용접 강도`와 `탭용접::anode::용접 강도`가 한 키로
-        모인다. 구판은 canonical 전문을 키로 써서 둘을 영영 못 짝짓고 전부 편측
-        큐로 흘렸다(D-50이 고친 것과 같은 뿌리의 남은 절반).
-
-        **짝 없는 인스턴스는 동일시하지 않는다** — mirrors 엣지가 없으면 그 자리는
-        분화 쌍이 아니고, 올려 잡으면 무관한 자식들이 한 키로 뭉친다.
-        판정 근거는 전부 필드·엣지다 — canonical을 파싱하지 않는다(A11-8).
-        """
-        if not scope:
-            return scope
-        node = next((n for n in self.g.nodes.values() if n["canonical"] == scope), None)
-        if node is None or not is_bound(node.get("polarity"), self.cfg):
-            return scope
-        from core.build.heading import _is_coord
-        if not _is_coord(node) and scope_of(node) and _depth < 16:
-            # **골격 밖 부모**(소유자 — 유닛 · 설비 · B144 ②): 그 부모의 짝 키가 이 자리다 — `탭용접::cathode::융착기::용접 강도`와
-            # `탭용접::anode::융착기::용접 강도`가 한 키(부모들이 같은 자리면 같은 키 · 짝 없는 쪽은 편측 큐 그대로)
-            return self._mirror_scope(scope_of(node), _depth + 1), base_name_of(node) or node["canonical"]
-        mrel = (self.cfg.get("mirrors") or {}).get("relation")
-        if not any(e["src"] == node["id"] and e["rel"] == mrel for e in self.g.edges):
-            return scope
-        child_rel = (self.cfg.get("skeleton") or {}).get("relations", {}).get("child")
-        up = [e["dst"] for e in self.g.edges
-              if e["src"] == node["id"] and e["rel"] == child_rel]
-        return self.g.get(up[0])["canonical"] if up else scope
-
-    def link_mirrors(self):
-        """④ 자동 규칙 — 같은 이름부(결합 전 canonical) + polarity 반대 쌍.
-
-        **판정 근거는 `polarity` 필드다**(F3 — 문자열 극성 토큰 파싱 폐지). 짝을
-        찾는 키도 canonical을 되 파싱해 만들지 않고, 결합 시점에 적어 둔
-        `base_canonical`(스코프는 붙고 극성은 안 붙은 이름)을 쓴다. 구판은 **앞에
-        붙은** 접두만 뗄 수 있어서 스코프가 붙은 관리항목(`노칭::anode 버 높이`)의
-        짝을 영영 찾지 못했고, 정상 쌍까지 비대칭 큐로 흘렸다.
-
-        **Tier1(seed) 노드는 제외한다** — 골격의 mirrors는 loader가 이미 이었고,
-        Tier1 단극성은 사람 보증이라 `mirror_asymmetry` 대상이 아니다(A11-4).
-        이 큐는 **Tier2의 문서 편측 갱신**을 잡는 장치다.
-
-        **표시만 한다.** 값을 공유하지 않으며, 한쪽에만 있는 자식은
-        `mirror_asymmetry` 큐로 알린다(3.5 규약 3).
-        """
-        rel = (self.cfg.get("mirrors") or {}).get("relation")
-        if not rel or not (self.cfg.get("mirrors") or {}).get("enabled"):
-            return
-        vals = (self.cfg.get("polarity") or {}).get("values") or []
-        if not vals:
-            return
-        # **재평가 전에 이 층 소관의 옛 항목을 걷어낸다** — 매 빌드의 재평가가 곧
-        # 현재 스냅샷이고, 대칭이 회복되면 큐에서 내려가야 한다(3.5 규약 6 self-heal).
-        store.drop("mirror_asymmetry", lambda p: p.get("node_id") in self.g.nodes)
-        by_key = {}
-        for nid, n in self.g.nodes.items():
-            if n["status"] == "seed":                    # Tier1 — loader 소관
-                continue
-            pol = n.get("polarity")
-            if pol not in vals:
-                continue
-            key = (self._mirror_scope(scope_of(n)), base_name_of(n) or n["canonical"])
-            by_key.setdefault(key, {})[pol] = nid
-        for base, pair in by_key.items():
-            if len(pair) == len(vals):
-                a, b = (pair[v] for v in vals)
-                gate.commit_edge(self.g, a, rel, b, self.cfg, gate.PATH_AUTO,
-                                 ["auto:mirror_rule"], self.doc_id)
-                gate.commit_edge(self.g, b, rel, a, self.cfg, gate.PATH_AUTO,
-                                 ["auto:mirror_rule"], self.doc_id)
-                continue
-            # 비대칭 — 한쪽 극성에만 달린 자식
-            only = next(iter(pair))
-            scope, name = base
-            from core.state import catalog
-            sep = catalog.sep()
-            scope = _key_text(scope, sep)                # 골격 밖 부모의 짝 키는 겹 — 글자로 펴서 싣는다(B144 ②)
-            label = f"{scope}{sep}{name}" if scope else name
-            store.enqueue("mirror_asymmetry",
-                          f"'{label}'가 {only} 쪽에만 있다 (극성 쌍의 구성 불일치)",
-                          self.doc_id,
-                          {"base": label, "scope": scope, "name": name,
-                           "present": only, "node_id": pair[only]})

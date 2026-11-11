@@ -49,6 +49,8 @@ SKIP = {"I3:split": "split — 배분표가 엣지 번호라 재구축 뒤 맞�
         "coord:fix": "문의 사람 답(좌표 쌍 — 계획이 읽는다)", "coord:drop": "문의 사람 답(좌표 쌍 — 계획이 읽는다)"}
 
 KINDS = ("done", "already", "missing", "no_names", "skipped", "refused")
+#: 옛 극성 이름(B198 ④ — `<공정>::<축값>` · 결합 이름)을 개념 이름으로 다시 찾은 것 · 개념 이름으로도 자리 없는 것(이름)
+POLAR = {"mapped": set(), "missing": set()}
 
 
 def read():
@@ -218,10 +220,22 @@ def _all(w, nm):
         return []
     g = w.graphs.get(nm.get("layer"))
     pools = [g] if g is not None else list(w.graphs.values())
-    want, cat = norm(nm.get("canonical") or ""), nm.get("category")
-    return [n["id"] for gg in pools for n in gg.nodes.values()
-            if n.get("status") != STATUS_MERGED and (cat is None or n.get("category") == cat)
-            and norm(n.get("canonical") or "") == want]
+    cat = nm.get("category")
+
+    def hits(name):
+        want = norm(name or "")
+        return [n["id"] for gg in pools for n in gg.nodes.values()
+                if n.get("status") != STATUS_MERGED and (cat is None or n.get("category") == cat)
+                and norm(n.get("canonical") or "") == want]
+    got = hits(nm.get("canonical"))
+    if got:
+        return got
+    from core.build import polarity
+    cn = polarity.concept_name(nm.get("canonical"))
+    if cn and cn != nm.get("canonical"):           # 옛 극성 이름 — 개념 이름으로 다시 찾는다(B198 ④ · 못 찾으면 자리 없음 목록)
+        got = hits(cn)
+        (POLAR["mapped"] if got else POLAR["missing"]).add(nm.get("canonical"))
+    return got
 
 
 def _one(w, nm):
@@ -424,6 +438,8 @@ def replay(dry_run=False):
     from core.state import ops
     from core.state.world import World
     out = {k: [] for k in KINDS}
+    for v in POLAR.values():
+        v.clear()
     out["backfill"] = backfill()
     recs = read()
     last = {_alias_key(r): i for i, r in enumerate(recs) if r.get("op") in ALIAS_OPS and r.get("names")}
@@ -448,4 +464,5 @@ def replay(dry_run=False):
                     kind, what = "refused", str(e).splitlines()[0]
             out[kind].append({"op": op, "actor": a["actor"], "at": rec.get("at"),
                               "reason": a["reason"], "what": what})
+    out["polar"] = {"mapped": len(POLAR["mapped"]), "missing": sorted(POLAR["missing"])}
     return out

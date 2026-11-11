@@ -196,7 +196,7 @@ _out = _buf.getvalue()
 _g2 = next((l for l in _out.splitlines() if "좌표 —" in l and "좌표 쌍 어긋남" in l), "")
 show("ⓒ --step 좌표 관문 — 쌍 표가 판정 전에 서고(머리에 「좌표 쌍 어긋남 k쌍」) 멈추면 LLM 0 · 그래프·큐 쓰기 0",
      _row.get("reason") == "사람이 멈췄다 — 좌표까지" and _u1 == _u0 and _graph_hash() == _h0
-     and "좌표 쌍 — 어긋남 2쌍(2행)" in _out and "좌표 쌍 어긋남 2쌍(2행)" in _g2,
+     and "좌표 쌍 — 어긋남 1쌍(1행)" in _out and "좌표 쌍 어긋남 1쌍(1행)" in _g2,   # 극성 쌍 지움(기대 변경 B198)
      f"{_row.get('reason')} · LLM {_u1 - _u0} · 머리 「{_g2.strip()[:70]}」")
 
 # ────────────────────────────────────────────────────────────── ⓑ
@@ -463,9 +463,9 @@ show("B196 ⓔ 「봄」 기록(세움 기록 없이 — 이 회차 전에 선 �
      bool(_nv) and bool(_pv196("노칭공정V")) and _av["V1"].get("node_id") == _pv196("노칭공정V")["id"],
      f"전 {bool(_nv)} · 뒤 {bool(_pv196('노칭공정V'))} · V1 {_av['V1'].get('canonical')}")
 
-# ⓕ 쌍 어긋남 — 확인 전 보류 · 확인(a) → ref 자리 · 정정(r) → 그 상위 아래 노드 · 극성 쌍은 그대로
+# ⓕ 쌍 어긋남 — 확인 전 보류 · 확인(a) → ref 자리 · 정정(r) → 그 상위 아래 노드(극성 쌍은 없다 — 기대 변경 B198)
 _ef = _env196("B196F", [_rec196("F1", "노칭", grp="스태킹"), _rec196("F2", "탭용접", grp="노칭"),
-                        _rec196("F3", "노칭::cathode", grp="노칭", electrode_type="anode")])
+                        _rec196("F3", "노칭", grp="노칭", electrode_type="anode")])   # 극성 행은 그냥 붙는다(ⓗ의 재료)
 _f0 = _run196(_ef)
 _pr = [r for r in SR196.pairs_from_queue() if r["up"] in ("스태킹", "노칭")]
 _ra = _ask196(_ef, "노칭", "a")
@@ -476,13 +476,10 @@ with contextlib.redirect_stdout(io.StringIO()):
 _f1 = {r["locator"]: r for r in (LG.read("B196F") or {}).get("rows") or [] if r.get("role") == "anchor"}
 _g = open_graph(coord_layer())
 _fix = (CA.answers().get(CA.key(CP.GROUP, ("노칭", "탭용접"))) or (None, {}))[1].get("target")
-show("B196 ⓕ 쌍 어긋남(상위 스태킹 · ref 노칭) → 확인 전 보류 · a → 노칭에 · r 1(노칭 아래 후보) → 그 노드에 · 극성 쌍(노칭::cathode ↔ "
-     "행 anode)은 지금처럼 붙고 큐만",
-     _f0["F1"].get("hold") == CS196.HOLD_PAIR and _f0["F2"].get("hold") == CS196.HOLD_PAIR and _f0["F3"].get("node_id")
+show("B196 ⓕ 쌍 어긋남(상위 스태킹 · ref 노칭) → 확인 전 보류 · a → 노칭에 · r 1(노칭 아래 후보) → 그 노드에",
+     _f0["F1"].get("hold") == CS196.HOLD_PAIR and _f0["F2"].get("hold") == CS196.HOLD_PAIR
      and _ra == "확인" and _dr == "정정" and (_g.get(_f1["F1"].get("node_id")) or {}).get("canonical") == "노칭"
-     and _fix and str(_fix).startswith("노칭::") and (_g.get(_f1["F2"].get("node_id")) or {}).get("canonical") == _fix
-     and any(x["kind"] == "coord_mismatch" and x["payload"].get("node_polarity") for x in store.read(store.QUEUE, [])
-             if x.get("doc_id") == "B196F"),
+     and _fix and str(_fix).startswith("노칭::") and (_g.get(_f1["F2"].get("node_id")) or {}).get("canonical") == _fix,
      f"전 {[_f0[k].get('hold') for k in ('F1', 'F2')]} · F1 → {_f1['F1'].get('canonical')} · F2 → {_f1['F2'].get('canonical')}(정정 {_fix})")
 
 # ⓗ 연결 표지 — 대장 칸 · 인입 끝 줄과 show report의 「연결 미성립 n(…)」 · 「좌표 폴백」 · 「ref 빈 행」

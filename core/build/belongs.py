@@ -190,8 +190,7 @@ def coord_of(b, nid, g):
 def resolve_target(b, bel, prov, chunk_kw, at=None):
     """소속 대상 — `(종류, node_id, 그래프)` 또는 None. 종류는 `골격` | `노드`.
 
-    `chunk_kw`는 청크의 해소 재료(`coord` · `electrode_type` · `parent_canonical` · `anchor_polarity` ·
-    `coord_surface`) — 골격 밖 대상을 새로 해소할 때 그 청크의 개체와 같은 규칙으로 이름을 짓는다.
+    `chunk_kw`는 청크의 해소 재료(`coord` · `electrode_type` · `parent_canonical` · `coord_surface`) — 골격 밖 대상을 새로 해소할 때 그 청크의 개체와 같은 규칙으로 이름을 짓는다.
     `at`은 그 청크의 자리 `(위치, 열)` — 새로 해소한 판정은 **대장에 한 행**(역할 `belongs`)으로 남아 다음
     재구축이 그 판정을 재생한다(B106 ② — 대장 행이 없던 판정은 재구축마다 LLM을 다시 불렀다)."""
     name, cat = bel.get("name"), bel.get("category")

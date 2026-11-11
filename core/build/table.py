@@ -27,13 +27,13 @@ class _Row:
     단계별로 떼되 **행 안에서 쌓이는 것**(해소 결과·보류·드롭·외부 그래프)은 여기 한
     곳에 둔다 — 인자로 넘기면 단계 함수 서명이 열두 개짜리가 된다.
     """
-    __slots__ = ("rec", "prov", "ref", "ref_g", "et", "ctx", "parent", "anchor_pol",
+    __slots__ = ("rec", "prov", "ref", "ref_g", "et", "ctx", "parent",
                  "resolved", "external", "attrs", "contents",
                  "defer", "dropped", "pending", "dropped_ents", "coord_case", "hold")
 
     def __init__(self, rec, doc_id=None):
         self.rec, self.prov = rec, loop._prov(rec, doc_id)
-        self.ref = self.ref_g = self.et = self.parent = self.anchor_pol = None
+        self.ref = self.ref_g = self.et = self.parent = None
         self.coord_case = "present"     # present · low_res · missing ([개정] B56-2)
         self.hold = None                # 좌표 보류 사유(표기 모호일 때만 — B104 ①)
         self.ctx = {}
@@ -161,15 +161,11 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
             r.coord_case = "low_res" if r.ref else "missing"
         else:
             r.coord_case = "missing"
-    r.et = rec.get("electrode_type")                # ④ 구조 필드 — 직접 읽는다
-    r.ref = b.descend_anchor(r.ref, r.et, r.ref_g)  # ⓪ 하강 부착 (A11-9 ⓪)
-    # 상위·극성 대조(C3 · A11-9 ②)는 구축 말미 한 자리다 — `coord_scan.enqueue`(같은 해소 · B105 ③④)
+    r.et = rec.get("electrode_type")                # ④ 구조 필드 — 자리 추정의 재료(극성은 좌표를 가르지 않는다 — B198)
+    # 상위 대조(C3)는 구축 말미 한 자리다 — `coord_scan.enqueue`(같은 해소 · B105 ③④)
     r.ctx = dict(envelope_ctx)
     r.ctx.update(loop._context(rec, r.prov, doc_id))     # 봉투 → 레코드 상속·덮어쓰기
     r.parent = r.ref_g.get(r.ref)["canonical"] if r.ref else None
-    # 부착 정합 2규칙 (A11-9): ①주소에 극성이 있으면 표면형 결합 생략
-    # ②record와 좌표의 극성이 둘 다 확정인데 다르면 coord_mismatch(구축 말미 — `coord_scan`)
-    r.anchor_pol = b.anchor_polarity(r.ref, r.ref_g)
     # **대장의 anchor 행** — 이 행이 어느 좌표에 섰는지가 뒤의 전부를 가른다(B74 ②).
     if b.ledger is not None:
         b.ledger.add(locator=rec.get("source_locator"),
@@ -200,7 +196,7 @@ def _row_roles(b, r, fields, schema, graph, cfg, doc_id):
              "locator": rec.get("source_locator"),
              "dropped_entities": r.dropped_ents,
              "ref_g": r.ref_g, "parent": r.parent, "et": r.et,
-             "anchor_pol": r.anchor_pol, "external": r.external,
+             "external": r.external,
              "anchor_hold": r.hold,
              # 자리를 아예 말하지 않은 행(B183 — 공정 칸 · 위 칸 둘 다 비었다 · 표기가 있는데 못 풀린 행은 아니다)
              "no_place": r.coord_case == "missing" and not r.defer,

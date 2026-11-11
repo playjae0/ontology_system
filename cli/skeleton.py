@@ -63,7 +63,7 @@ def _view(layer):
     seed = load_seed(layer, skel)
     with tempfile.TemporaryDirectory() as tmp:
         g = GraphStore.for_layer(layer, data_dir=tmp)
-        _ids, _parsed, _pairs, flow = plant(g, seed, skel, cfg, lambda s, n: None)
+        _ids, _parsed, flow = plant(g, seed, skel, cfg, lambda s, n: None)
     return seed, flow
 
 
@@ -80,10 +80,10 @@ def _view(layer):
 
 K_READ = "K01"      # seed를 읽지 못했다 (JSON 문법)
 K_DUP = "K02"       # 같은 자리에 같은 이름이 둘 (main·sub 충돌의 원천)
-K_MARK = "K05"      # 마커 어휘 밖 (`::축값` 오타 · `@마커` 오타)
+K_MARK = "K05"      # 마커 어휘 밖 (`@마커` 오타) · 옛 극성 분기 마커(`@split` · `::축값` · `@축값` — B198 지움)
 K_LOAD = "K09"      # loader가 낸 위반 — 문면은 loader의 것
 
-_MARKERS = {SK.MARK_SPLIT, SK.MARK_UNORDERED, SK.MARK_NOFLOW}
+_MARKERS = {SK.MARK_UNORDERED, SK.MARK_NOFLOW}
 
 
 def _tree_span(text):
@@ -143,19 +143,16 @@ def check(layer):
     pairs = []
     _names(data.get(SK.KEY_TREE) or [], 1, pairs)
 
-    # K05 — 마커 어휘. 코드가 아는 것은 구문 마커 4종뿐이다(문서 1).
+    # K05 — 마커 어휘. 코드가 아는 것은 구문 마커 3종뿐이다(문서 1) · 옛 극성 분기 마커는 지울 줄로(B198)
     for name, _d in pairs:
-        if name.startswith(SK.MARK_PREFIX):
-            if name not in _MARKERS and name[1:] not in labels:
-                out.append({"tag": K_MARK, "label": "마커 어휘 밖",
-                            "detail": f"'{name}' — 마커는 {sorted(_MARKERS)} "
-                                      f"또는 @<축값> {sorted(labels)}",
-                            "lines": _lines_of(text, name, span)})
-        elif name.startswith("::"):
-            if name[2:] not in labels:
-                out.append({"tag": K_MARK, "label": "극성 마커 문법",
-                            "detail": f"'{name}' — 축값은 {sorted(labels)}뿐이다",
-                            "lines": _lines_of(text, name, span)})
+        if name == SK.OLD_SPLIT or name.startswith("::") or (name.startswith(SK.MARK_PREFIX) and name[1:] in labels):
+            out.append({"tag": K_MARK, "label": "옛 극성 분기 마커",
+                        "detail": f"'{name}' — 극성은 골격을 가르지 않는다(값 · 엣지의 한정어) · 이 마커를 지운다",
+                        "lines": _lines_of(text, name, span)})
+        elif name.startswith(SK.MARK_PREFIX) and name not in _MARKERS:
+            out.append({"tag": K_MARK, "label": "마커 어휘 밖",
+                        "detail": f"'{name}' — 마커는 {sorted(_MARKERS)}",
+                        "lines": _lines_of(text, name, span)})
 
     # K02 — main·sub 자리의 같은 이름. canonical이 짧은 이름 그대로라 충돌하면
     # 두 개념이 한 노드가 된다(loader `_check_name_collision`이 막는 그 자리).

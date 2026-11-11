@@ -22,7 +22,7 @@ import json
 from core.llm import gateway, narrow
 from core.state import log
 from core.state.ids import norm
-from core.build.naming import POLARITY_NONE, scope_of
+from core.build.naming import scope_of
 from core.state.status import is_live
 
 # 같다고 받는 기준 — **사내 손잡이 `match_threshold`**(B181 ⑤ — 사람이 조절하는 값의 자리는 `knobs.json` 하나 · 세 곳 공통).
@@ -54,9 +54,7 @@ _LOG = log.get(__name__)
 def _similarity(a, b):
     """USE_MOCK 판정 규칙 — 공백 제거 후 동일/포함이면 0.95 (구현문서 §8).
 
-    "노칭정밀도"와 "노칭 정밀도"는 표기 차이라 붙어야 하고,
-    "cathode 노칭 프레스"와 "anode 노칭 프레스"는 다른 실물이라 붙으면 안 된다.
-    후자는 표면형 자체가 다르므로 이 규칙으로도 갈린다.
+    "노칭정밀도"와 "노칭 정밀도"는 표기 차이라 붙어야 한다.
     """
     x, y = norm(a).replace(" ", ""), norm(b).replace(" ", "")
     if not x or not y:
@@ -66,11 +64,6 @@ def _similarity(a, b):
     if x in y or y in x:
         return 0.95
     return 0.0
-
-
-def _pol(value):
-    """polarity 필드의 정규형. 필드가 없는 노드는 `none`으로 읽는다(닫힌 4값)."""
-    return value or POLARITY_NONE
 
 
 # **판정에 올리는 후보의 상한**(B73 ① · 06 대장 3.4). 사내 실측 열두째: 후보가
@@ -303,12 +296,10 @@ def _cand_base(nid, n, exact=False):
             "category": n["category"], "layer": n.get("layer"),
             "parent": scope_of(n),
             "scoped": bool(n.get("_scoped")),
-            "polarity": _pol(n.get("polarity")),
             "exact": exact}
 
 
-def dict_hits(surface, category, layer, graph, dictionary, *, polarity=None,
-              parent=None, scope_cats=()):
+def dict_hits(surface, category, layer, graph, dictionary, *, parent=None, scope_cats=()):
     """**사전 exact 후보** — 결정적·무LLM. 후보 조립 ①이고 예고가 같이 쓴다(B74 ①).
 
     **키가 갈리면 사전은 영영 히트하지 않는다.** 등재는 원 표기로 하고 조회는
@@ -321,15 +312,12 @@ def dict_hits(surface, category, layer, graph, dictionary, *, polarity=None,
     `세퍼레이터::cutter`를 같은 것으로 올리지 못하게 한다. 부모를 모르는 호출
     (`parent=None`)은 거르지 않는다 — 모르는 것을 근거로 버리지 않는다.
     """
-    want = _pol(polarity)
     scoped_cat = category in (scope_cats or ())
     hosts = _hosts(category)
     out = []
     for nid in dictionary.lookup(surface):
         n = graph.get(nid)
         if not n or not _is(n, category, hosts) or n["layer"] != layer:
-            continue
-        if _pol(n.get("polarity")) != want:
             continue
         if scoped_cat and parent is not None \
                 and scope_of(n) != parent:
@@ -339,19 +327,16 @@ def dict_hits(surface, category, layer, graph, dictionary, *, polarity=None,
     return out
 
 
-def gated(surface, category, layer, graph, dictionary, *, scoped=True, polarity=None, parent=None, cfg=None,
-          place=None):
+def gated(surface, category, layer, graph, dictionary, *, scoped=True, parent=None, cfg=None, place=None):
     """**관문까지** — `(판정 없이 붙는 후보, 판정에 올릴 후보(좁히기 전), 관문이 걸렸나)` · LLM · 임베딩 0.
 
     판정 재생(`build._judge`)과 예고(`entry._plan_hit`)가 이것으로 「판정 없이 붙는가」를 잰다 — 후보 조립(`candidates`)과
     **같은 함수**다(B74 ①의 결 · 예고 · 재생 · 판정이 다른 열쇠로 사전을 보지 않는다)."""
-    want = _pol(polarity)
     from core.build.naming import scope_categories
     scope_cats = scope_categories(cfg)
 
     # ① 사전 조회 — 결정적·무LLM. **예고와 판정이 같은 함수를 쓴다**(B74 ①).
-    out = dict_hits(surface, category, layer, graph, dictionary,
-                    polarity=polarity, parent=parent, scope_cats=scope_cats)
+    out = dict_hits(surface, category, layer, graph, dictionary, parent=parent, scope_cats=scope_cats)
     seen = {c["id"] for c in out}
 
     # ② 후보 검색 — 위 안전망 넷으로 걸러 담는다(상한 안으로 좁히는 것은 `candidates` — B73 ①).
@@ -369,8 +354,6 @@ def gated(surface, category, layer, graph, dictionary, *, scoped=True, polarity=
             continue
         if not scoped and n.get("_scoped"):
             continue
-        if _pol(n.get("polarity")) != want:
-            continue
         pool.append(_cand(nid, n, also=category if n["category"] != category else None))
     # **관문이 먼저다**(B75 ② · B142 ①) — 상한 이하 여부와 무관하다 · 자리가 없으면 거르지 않는다.
     pool = gate(pool, use, graph, dictionary, surface)
@@ -382,30 +365,26 @@ def gated(surface, category, layer, graph, dictionary, *, scoped=True, polarity=
 
 
 def candidates(surface, category, layer, graph, dictionary, *, scoped=True,
-               polarity=None, parent=None, cfg=None, top_n=None, place=None, pre=None):
+               parent=None, cfg=None, top_n=None, place=None, pre=None):
     """**후보 조립** — 판정과 분리한다 (문서 7 §7.1 · 문서 4 §4.3-6).
 
     후보 하나의 형태는 명세가 정한다 — `canonical` · `aliases` · **부착 위치
     (부모·스코프)** · `category`. 부착 위치가 입력에서 빠지면 부모 미해소 노드의
-    병합 금지와 극성 후보 제외를 판정기가 알 수 없어, 두 안전망이 판정 **전**
-    필터가 아니라 사후 필터로 밀려난다.
+    병합 금지를 판정기가 알 수 없어, 안전망이 판정 **전** 필터가 아니라 사후 필터로 밀려난다.
 
-    안전망 넷은 **후보에 넣지 않는 것**으로 건다 — 감점이 아니라 제외다:
+    안전망 셋은 **후보에 넣지 않는 것**으로 건다 — 감점이 아니라 제외다(극성은 후보를 가르지 않는다 — B198):
 
     1. **툼스톤 제외**(`is_live`) — 사람이 지운 것을 판정이 되살리지 않는다.
     2. **카테고리 불일치**(규약 3) — "노칭"(Process)과 "노칭 정밀도"(Property)가
        유사도로 붙는 사고의 구조적 차단.
-    3. **극성 불일치**(D-40) — "cathode 노칭 프레스"와 "anode 노칭 프레스"는 표기
-       차이가 아니라 다른 실물이다. 근거는 canonical 문자열이 아니라 `polarity`
-       **필드**다(A11-8).
-    4. **부모 미해소 ↔ 스코프 노드**(문서 4 §4.5-6) — 좌표를 모른 채 만든 노드를
+    3. **부모 미해소 ↔ 스코프 노드**(문서 4 §4.5-6) — 좌표를 모른 채 만든 노드를
        유사도로 합치면 오병합이다.
 
     그 위에 **관문**(B142 ① — 카테고리 · 공정 줄기 · `place`가 있을 때)과 **경로 호환**(②)이 선다 — `gated`.
     사전 히트 · 경로 호환 같은 이름은 **`exact` 표시를 달아** 앞에 둔다 — 결정적·무LLM 경로라 판정이
     그것을 1.0으로 인정할 근거가 후보에 남아야 한다. `pre`는 이미 잰 `gated`의 답(재생 앞에서 잰 것 — 두 번 걷지 않는다).
     """
-    out, pool, gated_ = pre or gated(surface, category, layer, graph, dictionary, scoped=scoped, polarity=polarity,
+    out, pool, gated_ = pre or gated(surface, category, layer, graph, dictionary, scoped=scoped,
                                      parent=parent, cfg=cfg, place=place)
     if gated_ and not pool and not out:
         # 같은 공정 줄기 · 경로 호환 후보가 없다 — 답은 NEW로 정해져 있다. 여기서 끝낸다.
@@ -608,7 +587,7 @@ def _evidence(v, cands):
                                 for i, cn, s in top]}
 
 
-def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, polarity=None, parent=None, sentence=None,
+def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, parent=None, sentence=None,
               place=None, pre=None):
     """**재생의 불확실에 2차만 한 번**(B127 ① — 지난 대장에 2차 기록이 없는 불확실 행) — 지금 후보 · 같은 계약(`second`) ·
     돌려주는 것은 `resolve`와 같은 튜플(경로는 `replay` 그대로 · `second.replay`) 또는 None(부르지 않았다 — 재생 그대로)."""
@@ -618,7 +597,7 @@ def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, p
     cfg = load_config(layer)
     LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
-                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg, place=place, pre=pre)
+                       scoped=scoped, parent=parent, cfg=cfg, place=place, pre=pre)
     v0 = {"type": UNCERTAIN, "matched_id": None, "confidence": v1.get("confidence") or 0.0,
           "path": v1.get("replayed_path") or "replay"}
     v = second(surface, cands, category, cfg, v0, sentence, where=place.names() if place else None)
@@ -631,7 +610,7 @@ def second_at(surface, category, layer, graph, dictionary, v1, *, scoped=True, p
 
 
 def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
-            polarity=None, parent=None, sentence=None, place=None, pre=None, where=None):
+            parent=None, sentence=None, place=None, pre=None, where=None):
     """후보 조립 + 판정의 2단을 한 번에 — Pass 1 entity 경로의 편의 형태다.
 
     돌려주는 것은 `(분기, node_id 또는 None, 점수, 판정 dict)` 튜플이다 — 네 번째는
@@ -643,7 +622,7 @@ def resolve(surface, category, layer, graph, dictionary, *, scoped=True,
     cfg = load_config(layer)
     LAST_NARROW.clear()
     cands = candidates(surface, category, layer, graph, dictionary,
-                       scoped=scoped, polarity=polarity, parent=parent, cfg=cfg, place=place, pre=pre)
+                       scoped=scoped, parent=parent, cfg=cfg, place=place, pre=pre)
     where = place.names() if place else where     # 값의 경로 — 판정 입력(B142 ② · 이름 규칙 밖은 호출부의 경로 — B181 ②)
     v = second(surface, cands, category, cfg, match(surface, cands, category, cfg, where=where), sentence,
                where=where)                       # 불확실만 2차 (B123 ③)

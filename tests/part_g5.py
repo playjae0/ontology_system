@@ -215,7 +215,7 @@ show("행위자가 전부 기록됨", all(x["actor"] == ACTOR for x in log))
 show("4연산이 전부 로그에 등장",
      {"I1:rename", "I2:merge", "I3:split", "I4:obsolete"}
      <= {x["op"] for x in log}, str(sorted({x["op"] for x in log})))
-show("큐 kind는 늘지 않았다 (I축은 로그이지 큐가 아니다 — 닫힌 20종)",
+show("큐 kind는 늘지 않았다 (I축은 로그이지 큐가 아니다 — 닫힌 목록)",
      "ops" not in {x["kind"] for x in store.read(store.QUEUE, [])})
 
 # ============================================================ 단위 5 — 엣지 삭제
@@ -417,9 +417,8 @@ ops.alias("process", _t75["id"], "현장표기ZZ", ACTOR, reason="현장이 그�
 def _exact75(surface, parent, category="Unit"):
     """인입이 그 표기를 만났을 때와 **같은 키·같은 필터**로 본다."""
     g, dic = open_graph("process"), _DIC75.open()
-    key, pol, _s, _c = _KEY75(surface, category, _cfg75, parent_canonical=parent)
-    return [c["id"] for c in _MT75.dict_hits(key, category, "process", g, dic,
-                                             polarity=pol, parent=parent,
+    key, _s, _c = _KEY75(surface, category, _cfg75, parent_canonical=parent)
+    return [c["id"] for c in _MT75.dict_hits(key, category, "process", g, dic, parent=parent,
                                              scope_cats=_sc75)]
 
 

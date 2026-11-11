@@ -35,10 +35,9 @@ class _Sk:
         self.g = g or open_graph(coord_layer())
         child = ((load_config(self.g.layer).get("skeleton") or {}).get("relations") or {}).get("child")
         self.pm = _parents(self.g, child)
-        from core.build.provisional import _instance
         self.sk = {nid: n for nid, n in self.g.nodes.items()
                    if is_live(n) and n.get("category") == _coord() and is_skeleton(n)}
-        self.concepts = {nid for nid, n in self.sk.items() if not _instance(n)}     # 후보는 개념 노드만(극성 인스턴스 0)
+        self.concepts = set(self.sk)              # 후보는 골격 노드(극성은 골격을 가르지 않는다 — B198)
         self.by_name = {n["canonical"]: nid for nid, n in self.sk.items()}
         self._kinds = None
 

@@ -2,9 +2,10 @@
 """칸 1.5 — **attribute 기수**(B166 ① · G4L) — 표본 레코드로 attribute 열마다 「한 대상 · 한 맥락에 값 하나」를 잰다.
 
 대상은 **구축이 그 값을 싣는 노드**다 — 붙을 대상 열의 표기를 판정 예고와 같은 길(`entry.plan_resolve` — 좌표 해소 → 하강 →
-극성 상속 → 소유자 이름 부모 → `build.entity_key`)로 해소해 열쇠를 짓는다(두 번째 구현 0): 사전 · 경로 호환이 답하면 그 노드 ·
+소유자 이름 부모 → `build.entity_key`)로 해소해 열쇠를 짓는다(두 번째 구현 0): 사전 · 경로 호환이 답하면 그 노드 ·
 아니면 새로 설 이름(home 층과 함께) · 대상이 anchor면 골격 조회(구축과 같은 `resolve_anchor`). `contextual`이면 맥락(봉투 ∪ 레코드
-— 구축과 같은 덮어쓰기)을 더한다. 값의 같음은 구축의 충돌 판정과 같다(통째 비교). 기수는 **문서 안**이다(문서 간은 충돌 시험의
+— 구축과 같은 덮어쓰기)을 더한다 · 행의 극성(`electrode_type`이 축 값이면)은 늘 맥락의 한 열쇠다(구축의 `put_attribute`와 같다 —
+B198). 값의 같음은 구축의 충돌 판정과 같다(통째 비교). 기수는 **문서 안**이다(문서 간은 충돌 시험의
 몫 · 문서는 표본 경로로 가른다). LLM 0 · 쓰기 0(좌표 미해소는 버리는 자루). 새로 설 이름은 사전과 같은 정규화(`ids.norm`)로 잰다 ·
 값의 같음은 `Builder.put_attribute`와 같은 `==`(1과 1.0은 같다 — 구조체 안의 수도). `contextual` 열에서 맥락이 딕셔너리가 아닌 행(계약 위반 — 구축은 `missing_field`
 를 올리고 맥락 없이 싣는다)은 세지 않고 수만 낸다 — 그 갈림은 열의 성질이 아니라 맥락의 꼴 때문이다(D-249 ⑥).
@@ -55,6 +56,9 @@ def _one(b, f, spec, fields, owners, docs):
                 continue
             rc = rec.get("context") if isinstance(rec.get("context"), dict) else {}
             ctx = {**base, **rc} if spec.get("contextual") else {}
+            from core.build import polarity
+            if polarity.of(rec.get("electrode_type")):          # 극성은 값의 한정어 — 구축과 같은 맥락 열쇠(B198)
+                ctx = {**ctx, polarity.CTX: polarity.of(rec.get("electrode_type"))}
             k = (d.get("doc"), tid, json.dumps(ctx, sort_keys=True, ensure_ascii=False, default=str))
             g = groups.setdefault(k, {"rows": 0, "vals": [], "name": tv.strip()})
             g["rows"] += 1

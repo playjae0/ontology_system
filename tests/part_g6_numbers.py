@@ -452,6 +452,8 @@ _cfgp.write_bytes(_keep_cfg)
 # B148 ⑥ — 층 config 팩 키 표(B194 — config 작성 가이드를 팩으로 대체) = 코드가 아는 층 config 키(빠진 것 0 · 남는 것 0) · 아는 키는 코드가 읽고 · seed 키는 아는 키 안
 _gd148 = (ROOT / "docs/가이드/팩/2_층config/층config_팩.md").read_text(encoding="utf-8")
 _gk148 = set(re.findall(r"^\| `([a-z_]+)` \|", _gd148[_gd148.index("## 4. 키"):_gd148.index("## 5.")], re.M))
+from core.state.config_grammar import RETIRED_LAYER_KEYS as _RET148     # noqa: E402 — 지운 키(B198)의 팩 문장은 P2(팩 회차)가 걷는다
+_gk148 -= set(_RET148)
 _ck148 = set(CS.layer_keys())
 _sk148 = {k for p_ in list((ROOT / "layers").glob("*/config.json")) + list((ROOT / "tests/fixtures").rglob("layers*/*/config.json"))
           for k in json.loads(p_.read_text(encoding="utf-8")) if not k.startswith("_")}

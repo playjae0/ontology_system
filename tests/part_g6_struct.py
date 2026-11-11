@@ -488,36 +488,6 @@ show("ⓔ 집 이동 동치 — merge·split 뒤 끝점 없는 엣지 0 · renam
      f"질의 노드 {len(_b[3]['질의'][0])} · 사실 {len(_b[3]['질의'][1])}")
 (HINTS / "B100MV.json").unlink(missing_ok=True)
 
-print("\n■ B100 ④ 미러 규칙 ≠ 집 — 경고 (층 둘)")
-from core.state import catalog as CT              # noqa: E402
-_ok_f = []
-for cat, frm, to in (("Property", "process", "quality"), ("Unit", "process", "quality")):
-    init.init(fresh_=True, all_=True)
-    _rw_json(_P.layers(to, "config.json"), lambda c, cat=cat: c["categories"].update({cat: "(시험 렌즈)"})
-             or c.update(uses=[x for x in c.get("uses", []) if x != cat]))
-    def _frm(c, cat=cat):                          # 고침(B174 — 옛 집 층은 uses · 겹친 정의 0 · 값 카테고리도 집 층으로)
-        c["categories"].pop(cat)
-        c.setdefault("uses", []).append(cat)
-        val = (c.get("value_categories") or {}).pop(cat, None)
-        if val:
-            _rw_json(_P.layers(to, "config.json"), lambda q: q.setdefault("value_categories", {}).update({cat: val}))
-    _rw_json(_P.layers(frm, "config.json"), _frm)
-    _rw_json(_P.common(), lambda c, cat=cat, to=to: c["categories"][cat].update(home=to))
-    w1 = CT.mirror_warnings()
-    import subprocess as _sp                       # noqa: E402
-    _r = _sp.run([sys.executable, str(ROOT / "run.py"), "bootstrap"], capture_output=True, text=True,
-                 cwd=str(ROOT), stdin=_sp.DEVNULL)
-    b2 = io.StringIO(_r.stdout + _r.stderr)
-    src_cfg = json.loads(_P.layers(frm, "config.json").read_text(encoding="utf-8"))
-    _rw_json(_P.layers(to, "config.json"), lambda c, s=src_cfg, cat=cat: c.update(
-        polarity={**s["polarity"], "bind_categories": [cat]}, mirrors=s["mirrors"]))
-    w2 = CT.mirror_warnings()
-    _ok_f.append((cat, len(w1) == 1 and cat in w1[0][0] and "config.json" in w1[0][1]
-                  and "미러 규칙" in b2.getvalue() and "▶ 다음 줄" in b2.getvalue() and _r.returncode == 0
-                  and not w2,
-                  f"{cat} 집 {to}: 경고 {len(w1)} → 규칙 옮김 {len(w2)}"))
-show("ⓕ 미러 규칙(극성 묶음)이 집 층 config에 없으면 bootstrap·doctor 경고 + 다음 줄 · 옮기면 0 · 막지 않는다",
-     all(o for _c, o, _d in _ok_f), " · ".join(d for _c, _o, d in _ok_f))
 print("\n■ B100 ⑤ 골격 밖 반복 판정 기억 (표·산문 × 층 둘)")
 from core.build import build as BLD             # noqa: E402
 _calls = {"n": 0}

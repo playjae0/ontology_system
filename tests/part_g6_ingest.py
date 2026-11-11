@@ -55,8 +55,8 @@ show("② 목록 밖 좌표(판단을 받지 못함) k표기 → 큐 k건 (행�
 show("② 행 단위 재시도 재료는 그대로 남는다 (items[]에 행마다)",
      all(len((x["payload"] or {}).get("items") or []) == 3 for x in _oa72),
      str([len((x['payload'] or {}).get('items') or []) for x in _oa72]))
-show("② 큐 kind는 닫힌 20종 그대로다 (집계는 세는 단위만 바꾼다)",
-     len(PF.QUEUE_KINDS) == 20 and not PF.queue_view()["alien"],
+show("② 큐 kind는 닫힌 목록 그대로다 (집계는 세는 단위만 바꾼다 · 19종 — 기대 변경 B198)",
+     len(PF.QUEUE_KINDS) == 19 and not PF.queue_view()["alien"],
      str(PF.queue_view()["alien"]))
 
 # ② 예고 종수 == 실제 판정 호출 수 (사전 히트 제외)

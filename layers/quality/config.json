@@ -14,9 +14,6 @@
       "충전기능상실"
     ]
   },
-  "mirrors": {
-    "enabled": false
-  },
   "relations": [
     "causes",
     "affects",

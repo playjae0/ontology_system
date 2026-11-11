@@ -391,8 +391,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     _dec = OR.decide(_ur, "m", A)                         # 큐 종결 — ops review 합침(queue:resolve 기록 · 가까운 후보가 합쳐지기 전에)
     ops.merge("process", _id("process", "노칭::금형 간극"), _id("process", "노칭::노칭 프레스::금형 클리어런스"), A,   # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
               reason="B106 합침(품질 문서의 노드 → 표 · 품질 그래프의 엣지가 따라간다)")
-    ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::노칭 프레스::버 높이"), A,
-              reason="B106 합침(산문 → 표)")
+    # (B198 — 산문 「버 높이」가 표의 노드에 바로 붙어 합칠 둘이 없다 · 합침은 위 한 건이 잰다)
     ops.alias("process", _id("process", "노칭::노칭 프레스::노칭 정밀도"), "노칭 정확도", A, "B106 표기(표)")
     ops.alias("quality", _id("quality", "노칭::전원 차단 실패"), "전원 차단 불량", A, "B106 표기(산문)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B106 폐기")
@@ -580,6 +579,24 @@ _again = oplog.replay()
 show("ⓓ `ops replay` 두 번 = 한 번(재구축이 한 번 돌린 뒤 · 할 것 0 · 상태 · 기록 수 그대로)",
      not _again["done"] and not _diff(S4, _snap()) and len(oplog.read()) == _n4,
      " · ".join(f"{k} {len(v)}" for k, v in _again.items()))
+
+# B198 ⓗ 사람 기록의 극성 이름(`<공정>::<축값>::…` — 옛 이름)은 개념 이름으로 재생 · 개념 이름으로도 자리 없으면 목록(지어내지 않는다)
+_recs198 = oplog.read()
+_cf198 = next(r for r in _recs198 if r["op"] == "I5:confirm" and (r.get("names") or {}).get("node"))
+_old198 = json.loads(json.dumps(_cf198))
+_old198["names"]["node"]["canonical"] = _cf198["names"]["node"]["canonical"].replace("::", "::anode::", 1)
+_gone198 = json.loads(json.dumps(_cf198))
+_gone198["names"]["node"]["canonical"] = "노칭::cathode::B198 없는 설비"
+_base198 = oplog.replay(dry_run=True)
+store.write(store.OPS_LOG, _recs198 + [_old198, _gone198])
+try:
+    _rp198 = oplog.replay(dry_run=True)
+finally:
+    store.write(store.OPS_LOG, _recs198)
+show("B198 ⓗ 사람 기록의 극성 이름 → 개념 이름으로 재생 · 못 찾으면 그 이름이 목록에 · 쓰기 0",
+     _rp198["polar"]["mapped"] == 1 and _rp198["polar"]["missing"] == ["노칭::cathode::B198 없는 설비"]
+     and len(_rp198["missing"]) == len(_base198["missing"]) + 1 and not _diff(S4, _snap()),
+     f"{_old198['names']['node']['canonical']} → 찾음 {_rp198['polar']['mapped']} · 자리 없음 {_rp198['polar']['missing']}")
 
 # ── ⓐ CLI — 기본 fresh(보존) · --all(클린) · 기본 호출 0
 _T1 = _tree()
@@ -788,7 +805,8 @@ _moved = [r.get("canonical") for r in _fin167 if r.get("replay") == "근거 바�
 _rest = [r for r in _fin167 if r.get("canonical") not in _moved
          and str(_was167.get((r.get("locator"), r.get("field"), r.get("surface")))).endswith("+judge")]
 show("B167 ⓒ 판정과 확정 사이에 후보가 하나 더 서면(시험이 노드를 더한다) 그 값만 「근거 바뀜」으로 다시 묻고 나머지는 재생",
-     _moved == ["노칭::노칭정밀도"] and RP.DOC["근거 바뀜"] == 1 and _rest and all(r.get("path") == "replay" for r in _rest),
+     _moved and all(m.startswith("노칭::") for m in _moved) and RP.DOC["근거 바뀜"] == len(_moved)   # 기대 변경(B198 — 「노칭」 아래 값이 극성으로 갈리지 않아 새 후보의 자리에 든 값이 늘었다)
+     and _rest and all(r.get("path") == "replay" for r in _rest),
      f"근거 바뀜 {_moved} · 나머지 경로 {sorted({r.get('path') for r in _rest})} · 재생 {dict(RP.DOC)}")
 
 _base165()

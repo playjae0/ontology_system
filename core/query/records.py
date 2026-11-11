@@ -47,9 +47,10 @@ def collect(direct_by_layer, collected, graphs, limit):
             also = sorted(catalog.categories_of(n) - {n.get("category")})
         except catalog.CatalogError:
             also = []
+        from core.build import polarity as P
         out.append({"node_id": nid, "layer": n.get("layer") or lay, "role": role,
                     "canonical": n.get("canonical"), "category": n.get("category"), "also": also,
-                    "status": n.get("status"), "polarity": n.get("polarity"), "tier": n.get("tier"),
+                    "status": n.get("status"), "polarity": P.label(P.visible(n)), "tier": n.get("tier"),
                     "aliases": copy.deepcopy(n.get("aliases") or []),
                     "attrs": copy.deepcopy(n.get("attrs") or {}),
                     "provenance": list(n.get("provenance") or []),

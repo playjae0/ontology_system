@@ -386,7 +386,7 @@ def merge_targets(layer, nid, limit=5):
         return []
     cands = [c for c in matcher.candidates(
         node["canonical"], node["category"], node.get("layer") or layer,
-        g, Dictionary.open(), polarity=node.get("polarity"))
+        g, Dictionary.open())
         if c["id"] != nid]
     out = []
     for c in cands:
@@ -605,7 +605,6 @@ def split(layer, nid, plan, actor, reason="", dry_run=False):
                          attrs=dict(node.get("attrs") or {}),
                          provenance=list(t.get("provenance") or []),
                          aliases=[],
-                         polarity=node.get("polarity", "none"),
                          scope=scope_of(node), base_name=base_name_of(node))
         book.retarget(alias_book.name(node), alias_book.name(g.get(new)),
                       surfaces=set(t.get("aliases") or []), source="분리")

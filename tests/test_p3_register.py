@@ -90,7 +90,7 @@ show("① 사람 4 — 표본·doc_type·층·힌트",
 show("① 시스템 5 — reader head·골격 닫힌 목록·층 어휘·공용 블록·어댑터 스켈레톤",
      set(pkg["system"]) == {"reader_head", "skeleton_closed_list", "layer_vocabulary",
                             "blocks", "adapter_skeleton"}
-     and pkg["system"]["skeleton_closed_list"]["count"] == 46)
+     and pkg["system"]["skeleton_closed_list"]["count"] == 30)        # 기대 변경(B198 — 극성 인스턴스 16이 없다)
 show("① 초안은 fixture가 반환한다 (USE_MOCK — D-10·D-26)",
      "fixtures/adapters/toc_report.py" in r.stdout)     # 픽스처 뿌리는 회귀의 사본일 수 있다(B133)
 _gen = r

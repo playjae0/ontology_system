@@ -36,13 +36,13 @@ show("큐 열람 — 전 항목 kind·reason·doc_id 열람 가능",
 
 # ============================================================ 4′ 신규 노출
 print("\n■ 4′ — 신규 산출물 노출 (증분0 §3 G6 + 허브 추가 지시)")
-show("큐 kind 닫힌 20종이 전부 열람에 뜬다 — 0건 kind 포함 (D-54)",
-     len(PF.QUEUE_KINDS) == 20 and set(qv["kinds"]) == set(PF.QUEUE_KINDS))
+show("큐 kind 닫힌 19종이 전부 열람에 뜬다 — 0건 kind 포함 (D-54 · 극성 짝 큐 지움 — 기대 변경 B198)",
+     len(PF.QUEUE_KINDS) == 19 and "mirror_asymmetry" not in PF.QUEUE_KINDS and set(qv["kinds"]) == set(PF.QUEUE_KINDS))
 show("목록 밖 kind 0 — 실물 큐가 닫힌 목록 안", not qv["alien"], str(qv["alien"]))
 fired = {k for k, n in qv["kinds"].items() if n}
-show("G3~G5 발화 kind가 열람에 뜬다 (coord_mismatch·direction_*·mirror_asymmetry)",
+show("G3~G5 발화 kind가 열람에 뜬다 (coord_mismatch·direction_*)",
      {"coord_mismatch", "direction_unverifiable", "direction_conflict",
-      "mirror_asymmetry", "auto_node", "spec_conflict", "orphan_anchor"} <= fired,
+      "auto_node", "spec_conflict", "orphan_anchor"} <= fired,
      str(sorted(fired)))
 
 ev = PF.extract_view()

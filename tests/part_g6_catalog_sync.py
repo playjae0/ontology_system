@@ -429,13 +429,15 @@ finally:
     _c173.write_bytes(_c0173)
 _d173 = XC.diff(json.loads((_t173 / "a.json").read_text(encoding="utf-8")),
                 json.loads((_t173 / "b.json").read_text(encoding="utf-8")))
-# 고침(B186 ① — --diff가 온톨로지 맵의 선도 잰다: 그 패턴이 유일한 출처인 선이 함께 빠진다)
+# 고침(B186 ① — --diff가 온톨로지 맵의 선도 잰다: 그 선에서 relation_patterns 출처가 빠진다 · 다른 출처가 있으면 선은 남는다 · B198)
+_tri173 = f"{_p173['src']} -{_p173['rel']}-> {_p173['dst']}"
 show("B173 ⓒ --json 두 번이 바이트 같다 · 관계 패턴 하나를 지운 사본과의 --diff가 그 하나(패턴 줄 · 그 선)만 낸다",
      (_t173 / "a.json").read_bytes() == (_t173 / "a2.json").read_bytes()
-     and sorted(_d173) == sorted([f"- relation_patterns — {_lay173}: {_p173['src']} -{_p173['rel']}-> {_p173['dst']}"
-                                  + (" (symmetric)" if _p173["symmetric"] else ""),
-                                  f"- ontology line — {_p173['src']} -{_p173['rel']}-> {_p173['dst']} · 사실 관계"
-                                  + (" · symmetric" if _p173["symmetric"] else "") + " · relation_patterns"]), f"대조 {_d173}")
+     and f"- relation_patterns — {_lay173}: {_tri173}" + (" (symmetric)" if _p173["symmetric"] else "") in _d173
+     and any(x.startswith(f"- ontology line — {_tri173}") for x in _d173)
+     and all(x.startswith("- relation_patterns") or x.startswith(("- ontology line — " + _tri173,
+                                                                   "+ ontology line — " + _tri173)) for x in _d173)
+     and len(_d173) <= 3, f"대조 {_d173}")
 
 _r173 = subprocess.run([sys.executable, str(ROOT / "run.py"), "export", "config"], cwd=str(ROOT),
                        env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -624,11 +626,10 @@ for _c, _xy in re.findall(r'class="loop" data-line="([^|]+)\|[^"]*" data-apex="(
 _cxy = {c: (float(x), float(y)) for c, x, y in re.findall(r'data-cat="([^"]+)"><circle cx="([-\d.]+)" cy="([-\d.]+)"', _h186)}
 _sep = all(math.dist(a, b) > 40 for pts in _apex.values() for i, a in enumerate(pts) for b in pts[i + 1:])
 _out = all(math.dist(a, _cxy[c]) > OM186.NODE_R for c, pts in _apex.items() for a in pts)
-show("B186 ⓑ 지도 — mock 고리 여섯(Failure causes · Property mirrors · Unit mirrors · 공정 part_of · precedes · 골격 극성 짝 mirrors) · "
+show("B186 ⓑ 지도 — mock 고리 셋(Failure causes · 공정 part_of · precedes — 극성 짝 지움 · 기대 변경 B198) · "
      "같은 삼항은 선 하나(controlled_by · occurs_in — 출처 둘) · 종류 넷(골격 · 소속 · 사실 + 층을 넘는) · 그림의 고리는 점 밖이고 서로 겹치지 않는다",
-     {(s, r) for s, r, _d in _loops} == {("Failure", "causes"), ("Property", "mirrors"), ("Unit", "mirrors"), ("Process", "part_of"),
-                                        ("Process", "precedes"), ("Process", "mirrors")}
-     and _L186[("Process", "mirrors", "Process")]["kind"] == OM186.KINDS[0]
+     {(s, r) for s, r, _d in _loops} == {("Failure", "causes"), ("Process", "part_of"), ("Process", "precedes")}
+     and _L186[("Process", "part_of", "Process")]["kind"] == OM186.KINDS[0]
      and all(len(_L186[("Failure", r, d)]["sources"]) == 2 for r, d in (("controlled_by", "Property"), ("occurs_in", "Process")))
      and {x["kind"] for x in _L186.values()} == set(OM186.KINDS) and any(x["cross"] for x in _L186.values())
      and sum(len(v) for v in _apex.values()) == len(_loops) and _sep and _out,
@@ -709,21 +710,21 @@ show("B187 ⓓ 인스턴스 뷰어(cli/viewer.html) 바이트 = hub_164 반입 �
 _c0187 = _P.common().read_bytes()
 _gp187 = _og186("process")
 _pn187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Process" and n.get("tier"))
-_un187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Unit")
+_un187 = next(n for n in _gp187.nodes.values() if n.get("category") == "Property")
 try:
     _rw(_P.common(), lambda c: c["categories"]["Process"].__setitem__("also", {"Unit": [_pn187["tier"]]}))
     _n0187 = {(x["src"], x["rel"], x["dst"]): x["edges"] for x in CM.build()["ontology"]["lines"]}
-    _gp187.add_edge(_pn187["id"], "mirrors", _un187["id"], "auto", ["B187#b"])
+    _gp187.add_edge(_pn187["id"], "has_property", _un187["id"], "auto", ["B187#b"])
     _gp187.save()
     _m187 = CM.build()
 finally:
     _P.common().write_bytes(_c0187)
 _n1187 = {(x["src"], x["rel"], x["dst"]): x["edges"] for x in _m187["ontology"]["lines"]}
 _unk187 = _m187["ontology"]["unknown"] + [x["line"] for x in _m187["checks"]["표시"] if "없는 삼항" in x["line"]]
-show("B187 ⓐ ⓪(b) 겸 카테고리(Process가 그 단에서 Unit 겸)로 선 Process -mirrors-> Unit 엣지 — Unit mirrors Unit 선의 수 +1 · "
-     "지도 점검 「출처 없는 삼항」 0",
-     _n1187[("Unit", "mirrors", "Unit")] == _n0187[("Unit", "mirrors", "Unit")] + 1 and not _unk187,
-     f"수 {_n0187[('Unit', 'mirrors', 'Unit')]} → {_n1187[('Unit', 'mirrors', 'Unit')]} · 출처 없음 {_unk187}")
+show("B187 ⓐ ⓪(b) 겸 카테고리(Process가 그 단에서 Unit 겸)로 선 Process -has_property-> Property 엣지 — Unit has_property Property 선의 "
+     "수 +1 · 지도 점검 「출처 없는 삼항」 0(극성 짝 선 지움 — 기대 변경 B198)",
+     _n1187[("Unit", "has_property", "Property")] == _n0187[("Unit", "has_property", "Property")] + 1 and not _unk187,
+     f"수 {_n0187[('Unit', 'has_property', 'Property')]} → {_n1187[('Unit', 'has_property', 'Property')]} · 출처 없음 {_unk187}")
 # B188 ⓐ ⓪ — 판 4 모델(쌍 출처가 옛 한국어 이름)과 판 5 모델(같은 config)의 --diff가 같다(rc 0) + 판 차이 알림 한 줄(사람이 치는 길)
 _v4188 = json.loads(json.dumps(_m186))
 _v4188["map_version"] = 4

@@ -128,10 +128,14 @@ def answer(question):
     direct_by_layer = {}
     for h in hits:
         direct_by_layer.setdefault(h["layer"], set()).add(h["node_id"])
+    from core.build import polarity as _pol
+    want = _pol.asked(question)                         # 물음에 걸린 극성(B198 — 값 · 엣지를 거른다 · 공통은 함께)
+    if want:
+        tr["polarity"] = want
     QS.stage("확장")
-    collected = _answer_expand(res, tr, intent, direct_by_layer, graphs, configs)
+    collected = _answer_expand(res, tr, intent, direct_by_layer, graphs, configs, want)
     QS.stage("수집")
-    _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent)
+    _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent, want)
     # **ⓖ 노드 원 레코드**(B105 ⑤) — 링킹·확장 노드를 가공 없이(문장 틀 0) · 상한은 손잡이
     from core.query import records as R
     res["records"], res["records_total"] = R.collect(direct_by_layer, collected, graphs,
@@ -167,7 +171,7 @@ def _hop_names(tr, graphs):
                     e[f"{end}_name"] = n["canonical"] if n else e[end]
 
 
-def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
+def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs, want=None):
     """② 확장 — 층내 전파 + cross 브리지 1홉. **홉은 계산된 것을 적을 뿐이다**(B82 ③)."""
     collected = {}
     for lay, direct in direct_by_layer.items():
@@ -233,15 +237,15 @@ def _answer_expand(res, tr, intent, direct_by_layer, graphs, configs):
     _seen = {(lay, e["src"], e["rel"], e["dst"]) for lay, e in crossed}
     res["facts"] += Q.cross_facts(
         crossed + [(lay, e) for lay, e in stranded
-                   if (lay, e["src"], e["rel"], e["dst"]) not in _seen], graphs, configs)
+                   if (lay, e["src"], e["rel"], e["dst"]) not in _seen], graphs, configs, want)
 
     return collected
 
 
-def _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent):
-    """③④ 수집·문장화 — 채널 둘을 채우고 경로를 정한다."""
+def _answer_collect(res, tr, collected, direct_by_layer, graphs, configs, intent, want=None):
+    """③④ 수집·문장화 — 채널 둘을 채우고 경로를 정한다 · `want`는 물음에 걸린 극성(`polarity.asked`)."""
     for lay, ids in collected.items():
-        res["facts"] += Q.facts(graphs[lay], ids, configs[lay])
+        res["facts"] += Q.facts(graphs[lay], ids, configs[lay], want)
 
     all_ids = {i for ids in collected.values() for i in ids}
     direct_ids = {i for s in direct_by_layer.values() for i in s}
@@ -475,7 +479,7 @@ def records_block(res):
              f"상한 {knobs.get('query_record_limit')} — 손잡이 query_record_limit)"]
     for r in recs:
         tag = " · ".join(x for x in (r["layer"], r["category"] + (f"(겸 {'·'.join(r['also'])})" if r["also"] else ""),
-                                     r["status"], f"극성 {r['polarity']}" if r.get("polarity") not in (None, "none") else "",
+                                     r["status"], f"극성 {r['polarity']}" if r.get("polarity") else "",
                                      f"단 {r['tier']}" if r.get("tier") else "") if x)
         lines.append(f"   [원 레코드] {r['role']} · {r['canonical']} — {tag}")
         lines.append("       별칭  " + (" · ".join(f"{a.get('surface')} ← {alias_source(a)}" for a in r["aliases"])

@@ -127,8 +127,7 @@ show("⑤ 스코프 대상 카테고리는 config가 갖는다 (코드가 이름
      "canonical_scope" not in load_config("process")                              # 고침(B174 — 이름 규칙은 공통 config의 경로 · 얹지 않는다)
      and set(_SC57()) == {c for c, v in json.loads((ROOT / "layers" / "common.json").read_text(encoding="utf-8"))["categories"].items()
                           if "no_path" not in v} - {load_config(l).get("skeleton", {}).get("category") for l in ("process", "quality")}
-     and "카테고리(현행 Property)뿐이다" not in _b57_bsrc
-     and "bind_categories`가 정하고 코드는 그것을 읽는다" in _b57_bsrc)
+     and "카테고리(현행 Property)뿐이다" not in _b57_bsrc)                     # 고침(B198 — 극성 이름 결합 bind_categories를 걷었다)
 show("⑤ 회귀 대조 자산이 개정본 기준이다 (감사 에이전트가 읽는 자리)",
      "현행 Property" not in
      (ROOT / "docs" / "회귀스위트" / "자산" / "조항_기준선.json").read_text(encoding="utf-8")

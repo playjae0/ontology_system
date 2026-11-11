@@ -164,7 +164,6 @@ def _chip(lay, color):
 def _layer_html(lay, d, coord, color):
     """층 하나 — `<층 layer>` 머리 · 색 띠(그림의 점 색) · categories · relation_patterns · key/value."""
     sk = d["skeleton"] or {}
-    pol = d["polarity"] or {}
     only = {tuple(e) for e in d.get("pair_edges_only") or []}
     pairs = " · ".join(f"{s} -{r}-> {t}" + (" (parent_pairs에서)" if (s, r, t) in only else "") for s, r, t in d["pair_edges"])
     note = "coord layer — 좌표 골격을 가진 층" if lay == coord else "좌표는 coord layer 골격에서"
@@ -177,9 +176,6 @@ def _layer_html(lay, d, coord, color):
                 ("uses", " · ".join(d["uses"]) or "—"),
                 ("relations", " · ".join(d["relations"]) or "—"),
                 ("parent_pairs (이 층에 걸린 것)", pairs or "—"),
-                ("polarity", f"{' · '.join(pol.get('bind_categories') or [])} — {' · '.join(pol.get('values') or [])}"
-                 if pol else "—"),
-                ("mirrors", "declared" if d["mirrors"] else "—"),
                 ("lenses (doc_type)", " · ".join(d["lenses"]) or "—")]))
 
 

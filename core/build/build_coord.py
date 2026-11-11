@@ -96,8 +96,8 @@ class CoordMixin:
 
 
     # ---------------------------------------------------------------- 청크 공정 목록 (B125 ④)
-    def resolve_coords(self, value, category, prov, *, electrode_type=None, defer=None, piece=None):
-        """**청크 공정 목록의 해소**(B125 ④) — `[(표기, id, 그래프, 보류 사유)]`(목록 순서 · 극성 인스턴스로 내린 것) ·
+    def resolve_coords(self, value, category, prov, *, defer=None, piece=None):
+        """**청크 공정 목록의 해소**(B125 ④) — `[(표기, id, 그래프, 보류 사유)]`(목록 순서 · 극성은 좌표를 가르지 않는다 — B198) ·
         비면 `[(None, None, None, None)]`(좌표 없음 — 지금 행 하나 그대로). 표 · 산문 · 제목 개체가 이 함수 하나.
         `piece`(그 조각)가 있으면 파서의 골격 칸 판단(`coord_judged`)을 보류에 싣는다(B181 ①)."""
         from parser.normalizer import coord_refs
@@ -105,7 +105,7 @@ class CoordMixin:
         for s in coord_refs(value):
             nid, g = self.resolve_anchor(s, category, prov, defer=defer, judged=coord_judged(piece, s))
             hold = self.anchor_hold
-            out.append((s, self.descend_anchor(nid, electrode_type, g) if nid else None, g, hold))
+            out.append((s, nid if nid else None, g, hold))
         if not out:
             self.resolve_anchor(None, category, prov, defer=defer)
             out = [(None, None, None, None)]

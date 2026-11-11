@@ -9,8 +9,9 @@ config에서 받는 통로가 지점마다 갈리고**, 층 어휘 0(문서 1 A/
 파생 규칙의 규범 소유는 문서 3 §3.9-⑴/⑵이고, **여기 코드는 관계 이름을 가정하지
 않는다** — `child`·`sibling`이라는 역할만 알고 실제 이름은 config가 준다.
 
-코드가 아는 것은 **구문 마커 4종**뿐이다 — `::` 접두 · `@split` · `@unordered` ·
-`@noflow`. 축의 값(cathode·anode 등)은 코드에 없고 seed의 `AXIS_LABELS` 키에서 읽는다.
+코드가 아는 것은 **구문 마커 3종**뿐이다 — `::` 구분자(이름 접두) · `@unordered` · `@noflow`. 극성은 골격을 가르지
+않는다(B198 — 값 · 엣지의 한정어) — 옛 극성 분기 마커(`@split` · `::{축값}` 인스턴스 · `@{축값}` 단극성)가 seed에 남았으면
+**거부하고 지울 줄을 보인다**(`old_marks` · 조용히 무시하지 않는다). `AXIS_LABELS`는 극성 값의 닫힌 목록(키) · 표시 이름(값)이다.
 
 `bootstrap.py`는 config 로딩·적재·등록부 갱신만 남는다.
 """
@@ -18,7 +19,6 @@ from __future__ import annotations
 
 from core.state import log, store
 from core.state.ids import norm
-from core.build.naming import POLARITY_NONE
 
 _LOG = log.get(__name__)
 
@@ -40,10 +40,11 @@ class SeedError(ValueError):
 
 SEED_STATUS = "seed"        # 사람이 파일로 심은 것 (용어 대장 status 어휘)
 SEED_PROV = ["seed"]
-MARK_SPLIT = "@split"           # 전 축값 전개 (개념 + 인스턴스 N)
 MARK_UNORDERED = "@unordered"   # 순서 비참여 래퍼 (개별)
 MARK_NOFLOW = "@noflow"         # 그 부모 아래 전체 무주장 (배열 첫 요소)
-MARK_PREFIX = "@"               # 축약형 마커의 접두 — `@{축값}` = 단극성
+MARK_PREFIX = "@"               # 마커의 접두 — 그 밖의 `@…`는 어휘 밖
+#: 옛 극성 분기 마커(B198 — 지운 문법) — seed에 남으면 `bootstrap`이 거부하고 지울 줄을 보인다
+OLD_SPLIT = "@split"
 TIER_BY_DEPTH = {1: "main", 2: "sub"}
 TIER_DEEP = "detail"
 KEY_TREE = "TREE"
@@ -55,28 +56,23 @@ KEY_ALIASES = "ALIASES"
 class _Spec:
     """심기 전의 노드 사양. 파싱과 적재를 가르면 검증이 그래프를 더럽히지 않는다."""
 
-    __slots__ = ("name", "canonical", "tier", "polarity", "parent", "instance")
+    __slots__ = ("name", "canonical", "tier", "parent")
 
-    def __init__(self, name, canonical, tier, polarity, parent, instance):
+    def __init__(self, name, canonical, tier, parent):
         self.name = name                # 짧은 이름 (auto alias·출력용)
         self.canonical = canonical      # 층 내 유일한 이름
         self.tier = tier                # main | sub | detail
-        self.polarity = polarity        # 축값 | none
         self.parent = parent            # 부모 _Spec (루트는 None)
-        self.instance = instance        # 축 인스턴스인가
 
 
 class _TreeParser:
     """seed 트리 → (노드 사양 목록 · 흐름 체인 · 파생 흐름 보고).
 
     파생 규칙은 M2 판정문 §4의 표가 정본이다:
-      tier      깊이 1=main·2=sub·3+=detail. **인스턴스는 깊이 계수에서 빠지고
-                자기 개념의 tier를 상속**한다.
-      parent    중첩 그대로. 인스턴스의 부모 = 그 개념 노드.
-      polarity  마커에서만 파생. 없으면 none.
+      tier      깊이 1=main·2=sub·3+=detail.
+      parent    중첩 그대로.
       canonical main/sub는 이름 그대로, sub 이하는 **부모 경로 균일 접두**.
-                인스턴스는 `{개념}::{축값}` — **쌍 유무와 무관하게 균일**하다
-                (반대 극성이 나중에 판명돼도 기존 노드가 개명되지 않는다).
+    옛 극성 분기 마커는 `old`에 모은다(지울 줄 — 파싱이 끝난 뒤 한꺼번에 거부 · B198).
     """
 
     def __init__(self, labels, sep):
@@ -85,8 +81,8 @@ class _TreeParser:
         self.specs: list[_Spec] = []
         self.chains: list[tuple[_Spec, _Spec]] = []     # (앞, 뒤) — precedes
         self.flow_lines: list[str] = []                 # 사람이 읽는 파생 흐름
-        self.instance_count = 0
         self.ambiguous: list[str] = []                  # 사전 미등재 짧은 이름
+        self.old: list[str] = []                        # 옛 극성 분기 마커 — 지울 줄(B198)
 
     # -- 진입점
     def parse(self, tree):
@@ -112,7 +108,7 @@ class _TreeParser:
                 continue
             if participates and not noflow:
                 flow.append(spec)
-            elif not spec.instance:                 # 인스턴스는 전역 요약으로 따로 센다
+            else:
                 unassert.append(spec)
         for a, b in zip(flow, flow[1:]):            # 참여 항목만 건너 잇는다
             self.chains.append((a, b))
@@ -127,17 +123,9 @@ class _TreeParser:
         raise SeedError(f"항목의 형태를 알 수 없다: {item!r}")
 
     def _str_item(self, item, parent, depth, wrapped):
-        if item.startswith(self.sep):                       # `::{축값}` — 주소 인스턴스
-            value = item[len(self.sep):]
-            if value not in self.labels:
-                raise SeedError(f"마커 어휘 밖: '{item}' — 축값은 {list(self.labels)}뿐이다")
-            if wrapped:
-                raise SeedError(
-                    f"{MARK_UNORDERED}를 인스턴스에 붙일 수 없다: '{item}' "
-                    "— 인스턴스는 이미 순서 비참여다")
-            if parent is None:
-                raise SeedError(f"인스턴스에 개념 노드가 없다: '{item}'")
-            self._instance(parent, value)
+        if item.startswith(self.sep):                       # 옛 `::{축값}` 인스턴스(B198 — 지운 문법)
+            self.old.append(f"{parent.canonical if parent else '(루트)'} 아래 '{item}' — 이 항목을 지운다"
+                            + self._alias_note(parent, [item[len(self.sep):]]))
             return None, False
         if item.startswith(MARK_PREFIX):
             raise SeedError(f"마커 어휘 밖: '{item}'")
@@ -154,17 +142,27 @@ class _TreeParser:
             spec = self._concept(key, parent, depth)
             self._level(value, spec, depth + 1)
             return spec, True
-        if isinstance(value, str) and value.startswith(MARK_PREFIX):
-            spec = self._concept(key, parent, depth)        # 개념은 참여
-            if value == MARK_SPLIT:
-                for v in self.labels:                       # 전 축값 전개
-                    self._instance(spec, v)
-            elif value[len(MARK_PREFIX):] in self.labels:   # 단극성 = 개념 + 인스턴스 1
-                self._instance(spec, value[len(MARK_PREFIX):])
-            else:
-                raise SeedError(f"마커 어휘 밖: '{value}' ('{key}')")
+        if isinstance(value, str) and (value == OLD_SPLIT or (value.startswith(MARK_PREFIX)
+                                                                and value[len(MARK_PREFIX):] in self.labels)):
+            # 옛 `{이름: "@split"}` · `{이름: "@{축값}"}`(B198) — 개념은 그대로 걷고(지울 줄을 다 모은다) 거부는 파싱 뒤
+            spec = self._concept(key, parent, depth)
+            vals = list(self.labels) if value == OLD_SPLIT else [value[len(MARK_PREFIX):]]
+            self.old.append(f"{parent.canonical if parent else '(루트)'} 아래 {{\"{key}\": \"{value}\"}} — \"{key}\"로 바꾼다"
+                            + self._alias_note(spec, vals))
             return spec, True
+        if isinstance(value, str) and value.startswith(MARK_PREFIX):
+            raise SeedError(f"마커 어휘 밖: '{value}' ('{key}')")
         raise SeedError(f"항목 값의 형태를 알 수 없다: {key} → {value!r}")
+
+    def _alias_note(self, spec, vals):
+        """옛 인스턴스의 자동 별칭(`{축값} {이름}` · `{표시 이름} {이름}`) — 코드가 더는 만들지 않는다 · 그 표기를 쓰는 문서가 있으면
+        사람이 개념의 ALIASES로 옮긴다(B198 가결정 — 지어내지 않는다)."""
+        if spec is None:
+            return ""
+        got = [f"{v} {spec.name}" for v in vals if v in self.labels]
+        got += [f"{self.labels[v]} {spec.name}" for v in vals if self.labels.get(v)]
+        return (f" (그 표기를 쓰는 문서가 있으면 ALIASES의 '{spec.canonical}'에: " + " · ".join(f"'{x}'" for x in got) + ")"
+                if got else "")
 
     # -- 노드 사양 생성
     def _concept(self, name, parent, depth):
@@ -173,16 +171,8 @@ class _TreeParser:
                 f"축값을 공정 이름으로 쓸 수 없다: '{name}' — 리스트 표기(['{name}'])는 금지다")
         tier = TIER_BY_DEPTH.get(depth, TIER_DEEP)
         canonical = name if tier != TIER_DEEP else f"{parent.canonical}{self.sep}{name}"
-        spec = _Spec(name, canonical, tier, POLARITY_NONE, parent, False)
+        spec = _Spec(name, canonical, tier, parent)
         self.specs.append(spec)
-        return spec
-
-    def _instance(self, concept, value):
-        """인스턴스는 개념의 tier를 상속하고 깊이 계수에 들어가지 않는다(A11-7)."""
-        spec = _Spec(concept.name, f"{concept.canonical}{self.sep}{value}",
-                     concept.tier, value, concept, True)
-        self.specs.append(spec)
-        self.instance_count += 1
         return spec
 
     # -- 검증: main·sub 이름 충돌
@@ -190,7 +180,7 @@ class _TreeParser:
         """main·sub는 canonical이 짧은 이름 그대로라 충돌하면 두 개념이 한 노드가 된다."""
         seen = {}
         for s in self.specs:
-            if s.instance or s.tier == TIER_DEEP:
+            if s.tier == TIER_DEEP:
                 continue
             if s.canonical in seen:
                 raise SeedError(f"main·sub 이름 충돌: '{s.canonical}'")
@@ -225,14 +215,14 @@ def _plant_tree(g, seed, skel, cfg, register):
         raise SeedError(f"seed에 트리 블록({KEY_TREE})이 없다")
 
     parsed = _TreeParser(labels, sep).parse(tree)
+    old_marks(seed, parsed, labels, sep)                   # 옛 극성 분기 마커 — 거부하고 지울 줄(B198)
     category = skel["category"]
     child_rel = skel["relations"]["child"]       # 자식 → 부모 (구조)
     sib_rel = skel["relations"]["sibling"]       # 앞 → 뒤 (대표 흐름)
 
     ids = {}
     for s in parsed.specs:
-        ids[s.canonical] = _plant(g, s.canonical, category, register,
-                                  tier=s.tier, polarity=s.polarity)
+        ids[s.canonical] = _plant(g, s.canonical, category, register, tier=s.tier)
     for s in parsed.specs:                       # ① 구조
         if s.parent is not None:
             g.add_edge(ids[s.canonical], child_rel, ids[s.parent.canonical],
@@ -241,37 +231,21 @@ def _plant_tree(g, seed, skel, cfg, register):
         g.add_edge(ids[a.canonical], sib_rel, ids[b.canonical],
                    SEED_STATUS, SEED_PROV)
 
-    pairs = _link_seed_mirrors(g, parsed, ids, cfg, labels)
     parsed.ambiguous = _register_aliases(g, seed, parsed, ids, labels, register)
-    return ids, parsed, pairs
+    return ids, parsed
 
 
-def _link_seed_mirrors(g, parsed, ids, cfg, labels):
-    """축 인스턴스의 mirrors — **polarity 필드 비교**다(F3, 문자열 파싱 폐지).
-
-    같은 개념 아래 축값이 전부 갖춰졌을 때만 잇는다. **Tier1의 단극성 인스턴스는
-    mirror_asymmetry 큐에 올리지 않는다**(A11-4) — 사람이 보증한 "짝 없음"이
-    의도이기 때문이다. 그 큐는 Tier2의 문서 편측 갱신을 잡는 장치다.
-    """
-    rel = (cfg.get("mirrors") or {}).get("relation")
-    if not rel or not (cfg.get("mirrors") or {}).get("enabled"):
-        return []
-    by_concept = {}
-    for s in parsed.specs:
-        if s.instance:
-            by_concept.setdefault(s.parent.canonical, {})[s.polarity] = s
-    pairs = []
-    for group in by_concept.values():
-        if len(group) != len(labels):
-            continue                              # 단극성 — 큐 없이 넘어간다
-        members = list(group.values())
-        pairs.append(tuple(sorted(m.canonical for m in members)))
-        for a in members:
-            for b in members:
-                if a is not b:
-                    g.add_edge(ids[a.canonical], rel, ids[b.canonical],
-                               SEED_STATUS, SEED_PROV)
-    return pairs
+def old_marks(seed, parsed, labels, sep):
+    """**옛 극성 분기 마커**(B198 — 극성은 골격을 가르지 않는다) — 트리의 `::{축값}` · `{이름: "@split"}` · `{이름: "@{축값}"}`와
+    ALIASES의 `{이름}::{축값}` 열쇠. 하나라도 있으면 거부하고 지울 줄을 전부 보인다(조용히 무시하지 않는다 · 사람이 지운다)."""
+    lines = list(parsed.old)
+    for key in (seed.get(KEY_ALIASES) or {}):
+        tail = key.rsplit(sep, 1)[-1] if sep in key else None
+        if tail in labels:
+            lines.append(f"{KEY_ALIASES}의 열쇠 '{key}' — 이 열쇠를 지우거나 별칭을 '{key.rsplit(sep, 1)[0]}' 열쇠로 옮긴다")
+    if lines:
+        raise SeedError("골격에 옛 극성 분기 마커가 남았다 — 극성은 골격을 가르지 않는다(값 · 엣지의 한정어) · "
+                        f"지울 줄 {len(lines)}:\n" + "\n".join(f"  · {x}" for x in lines))
 
 
 def _register_aliases(g, seed, parsed, ids, labels, register):
@@ -286,23 +260,16 @@ def _register_aliases(g, seed, parsed, ids, labels, register):
         등재한다. 모호한 짧은 이름을 등재하면 소비처가 조용히 하나를 고르게 되는데,
         그것이 바로 "임의 선택 금지"가 막는 사고다 — 모호하면 사전에 없는 것이 맞고
         접두 키가 그 자리를 대신한다.
-      · 인스턴스 — `{축값} {이름}` · `{라벨} {이름}` (AXIS_LABELS).
     """
     by_canonical = {s.canonical: s for s in parsed.specs}
 
     short_owners = {}
     for s in parsed.specs:
-        if not s.instance:
-            short_owners.setdefault(s.name, []).append(s)
+        short_owners.setdefault(s.name, []).append(s)
     ambiguous = sorted(n for n, owners in short_owners.items() if len(owners) > 1)
     for name, owners in short_owners.items():
         if len(owners) == 1 and owners[0].canonical != name:
             register(name, ids[owners[0].canonical])
-
-    for s in parsed.specs:                       # 인스턴스 auto alias
-        if s.instance:
-            register(f"{s.polarity} {s.name}", ids[s.canonical])
-            register(f"{labels[s.polarity]} {s.name}", ids[s.canonical])
 
     for key, surfaces in (seed.get(KEY_ALIASES) or {}).items():
         spec = by_canonical.get(key)
@@ -327,11 +294,12 @@ def _plant(g, canonical, category, register, **fields):
     늘고 provenance·엣지가 갈라진다. 노드 유일성(P4) 위반이며 `run.py all` 2회 =
     동일 그래프(§8 전체 완료판정)도 깨진다.
 
-    파생 필드(tier·polarity)는 재사용 시에도 갱신한다 — seed를 고치고 다시 돌리는
-    것이 골격 개정의 정상 경로이기 때문이다(id는 그대로 유지된다).
+    파생 필드(tier)는 재사용 시에도 갱신한다 — seed를 고치고 다시 돌리는
+    것이 골격 개정의 정상 경로이기 때문이다(id는 그대로 유지된다). 옛 극성 칸(`polarity` — B198 전 노드)은 걷는다.
     """
     for nid, n in g.nodes.items():
         if n["canonical"] == canonical and n["category"] == category:
+            n.pop("polarity", None)
             n.update(fields)
             register(canonical, nid)
             return nid
@@ -356,18 +324,16 @@ def plant(g, seed, skel, cfg, register):
     `bootstrap`에 남기면 "어느 모양을 어떻게 파생하나"가 loader에 섞여, 새 모양을
     더할 때 config 통로가 아니라 loader를 고치게 된다(§7.1 골격 심기 모듈의 자리).
 
-    돌려주는 것: `(ids, parsed, pairs, flow_lines)`.
-    `parsed`·`pairs`는 tree 전용이고 flat에서는 None·[]이다.
+    돌려주는 것: `(ids, parsed, flow_lines)`. `parsed`는 tree 전용이고 flat에서는 None이다.
     """
     kind = skel.get("type")
     if kind == TYPE_TREE:
-        ids, parsed, pairs = _plant_tree(g, seed, skel, cfg, register)
-        return ids, parsed, pairs, [ln for ln in parsed.flow_lines if ln]
+        ids, parsed = _plant_tree(g, seed, skel, cfg, register)
+        return ids, parsed, [ln for ln in parsed.flow_lines if ln]
     if kind == TYPE_FLAT:                        # 관계 없는 골격 목록
-        ids = {item: _plant(g, item, skel["category"], register,
-                            tier=TIER_BY_DEPTH[1], polarity=POLARITY_NONE)
+        ids = {item: _plant(g, item, skel["category"], register, tier=TIER_BY_DEPTH[1])
                for item in seed["data"]}
-        return ids, None, [], []
+        return ids, None, []
     # **명시적 실패는 raise로 드러내는 데 그치지 않고 장부에도 병기한다**
     # (문서 7 §7.4) — 런타임 예외로만 남으면 "어느 결정점이 config로 표현되지
     # 않았나"의 실측이 축적되지 않아, core 패턴 승격 판단을 나중에 처음부터

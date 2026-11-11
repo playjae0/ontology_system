@@ -46,12 +46,16 @@ def load():
 
 
 def answers():
-    """쌍의 사람 답(B196 ② — 쓰기 0) — `{열쇠: ("ack"|"fix"|"drop", 기록)}` · 확인이 정정 · drop보다 앞이 아니다(나중 기록이 이긴다)."""
+    """쌍의 사람 답(B196 ② — 쓰기 0) — `{열쇠: ("ack"|"fix"|"drop", 기록)}` · 확인이 정정 · drop보다 앞이 아니다(나중 기록이 이긴다).
+    옛 극성 이름을 가리키는 쌍(B198 ④ — `<공정>::<축값>`)은 개념 이름의 열쇠로 읽는다(기록은 그대로)."""
+    from core.build import polarity
     d = load()
     out = {}
     for name in ("pairs", "fixes", "drops"):
         for k, rec in (d.get(name) or {}).items():
             tag = {"pairs": "ack", "fixes": "fix", "drops": "drop"}[name]
+            if rec.get("a") is not None and rec.get("kind"):
+                k = key(rec["kind"], (polarity.concept_name(rec["a"]), polarity.concept_name(rec.get("b"))))
             if k not in out or str(rec.get("at") or "") >= str(out[k][1].get("at") or ""):
                 out[k] = (tag, rec)
     return out

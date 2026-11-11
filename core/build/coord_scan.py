@@ -3,7 +3,7 @@
 
 판정은 `parser.coord_pairs.verdict` 하나이고(등록 리허설 · 좌표 단계 · 구축 공통), 해소는 구축의 것이다 —
 사전 조회(`Builder.resolve_anchor` · Tier1 · 표기 모호는 보류 — 큐는 만들지 않는다) → 저해상도 사다리(하위가
-비면 상위) → 극성 하강(`descend_anchor`) → `Builder.coord_verdicts`. 두 자리가 이 모듈을 부른다:
+비면 상위) → `Builder.coord_verdicts`(극성은 좌표를 가르지 않는다 — B198). 두 자리가 이 모듈을 부른다:
 
   · **좌표 단계**(인입 · 판정 전 — `scan`): 화면의 쌍 표 · `--step` 관문 — 큐를 만들지 않는다(LLM 0 · 쓰기 0)
   · **구축 말미**(`enqueue` — 표·산문·렌즈 세 길이 같이 · 되돌림 경계 안): 어긋남을 `coord_mismatch` 큐로
@@ -19,8 +19,8 @@ from parser.normalizer import coord_refs
 
 
 def scan(env, b):
-    """조각마다 `{loc, prov, verdicts, both, node_pol}` — `both`는 상위·하위가 둘 다 골격에 맞았나(등록 관문의 분모와
-    같은 뜻 · 공정 목록이면 원소 하나라도) · `node_pol`은 `{하위 canonical: 극성}`(공정 목록이면 원소마다). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 home에서 — `_graph_for`).
+    """조각마다 `{loc, prov, verdicts, both, hits}` — `both`는 상위·하위가 둘 다 골격에 맞았나(등록 관문의 분모와
+    같은 뜻 · 공정 목록이면 원소 하나라도). `b`는 아무 층의 빌더(좌표 해소는 카테고리의 home에서 — `_graph_for`).
 
     **행에 상위가 없고 문서 좌표가 있으면 문서 좌표를 상위로** 같은 판정에 넣는다(B106 ⑤) — 하위가 문서 좌표
     노드 자신이거나 그 아래면 맞음 · 밖이면 어긋남(종류 `DOC_GROUP` — 쌍의 열쇠는 상위와 같다). 「행에 상위가
@@ -43,26 +43,23 @@ def _scan(env, b, doc_id, dc, out):
     for p in env.get("records") or env.get("chunks") or []:
         loc = p.get("source_locator")
         prov = f"{doc_id}#{loc}" if loc else doc_id
-        ref_s, grp_s, et = p.get("process_ref"), p.get("process_group"), p.get("electrode_type")
+        ref_s, grp_s = p.get("process_ref"), p.get("process_group")
         refs = coord_refs(ref_s)
         if isinstance(ref_s, list) and not refs:
             continue                                # 덱 구조의 「없음」 — 대조 0 (B143 ①)
         own = None if (p.get("meta") or {}).get("group_from_ref") else grp_s   # 행이 가져온 상위만
         by_doc = bool(dc) and not own               # 상위 — 행의 것 먼저 · 없으면 문서 좌표(B106 ⑤)
         up = dc if by_doc else grp_s
-        vs, both, pols, hits = [], False, {}, []
+        vs, both, hits = [], False, []
         for one in refs or [None]:                  # 공정 목록이면 원소마다 같은 판정(B125 ④ · B143 ① — 등록 SnapView와 같은 꼴)
             sink = []                               # 보류는 구축의 몫이다 — 여기서는 버리는 자루
             ref, ref_g = b.resolve_anchor(one or grp_s, COORD_CATEGORY, prov, defer=sink)
-            ref = b.descend_anchor(ref, et, ref_g)
-            v1, gcs = b.coord_verdicts(up, ref, et, ref_g)
+            v1, gcs = b.coord_verdicts(up, ref, ref_g)
             v1 = [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in v1] if by_doc else v1
             vs += v1
             hits += [(k, pr, one or grp_s) for k, pr in v1]
             both = both or bool(ref and up and gcs)
-            if ref:
-                pols[ref_g.get(ref)["canonical"]] = (ref_g.get(ref) or {}).get("polarity")
-        out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": both, "node_pol": pols, "hits": hits})
+        out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": both, "hits": hits})
     return out
 
 
@@ -72,7 +69,7 @@ HOLD_PAIR_DROP = "좌표 쌍 어긋남 — 사람 drop"
 
 
 def gate(env, b):
-    """**쌍 어긋남의 문**(B196 ② · 결정 A′ — 구축 앞 패스 · 쓰기 0) — 상위 쌍이 어긋난 행(골격 밖 상위 · 극성 쌍은 그대로)은 사람
+    """**쌍 어긋남의 문**(B196 ② · 결정 A′ — 구축 앞 패스 · 쓰기 0) — 상위 쌍이 어긋난 행(골격 밖 상위는 그대로)은 사람
     답대로: 확인 → 그대로(ref 자리) · 정정 → 그 노드(`b.coord_at`) · drop · 답 없음 → 보류(`b.coord_pair[(prov, 표기)]`).
     돌려주는 것은 `[{pair, kind, prov, surface, answer}]`(좌표 단계 화면 · 검토가 같은 줄을 센다)."""
     from core.state import coord_acks
@@ -111,8 +108,6 @@ def enqueue(env, b):
         for kind, pair in r["verdicts"]:
             if kind == CP.OUTSIDE:
                 continue
-            pol = r["node_pol"].get(pair[1])                 # 쌍의 하위 노드 극성(공정 목록이면 원소마다 — B143 ①)
-            coord_acks.enqueue(CP.reason(kind, pair, pol), env.get("doc_id"),
-                               CP.payload(kind, pair, r["prov"], pol))
+            coord_acks.enqueue(CP.reason(kind, pair), env.get("doc_id"), CP.payload(kind, pair, r["prov"]))
             n += 1
     return n

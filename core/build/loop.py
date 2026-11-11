@@ -476,7 +476,6 @@ def h_entity(value, spec, ctx):
                                       coord=(st["ref"], st.get("ref_g")),
                                       electrode_type=st["et"],
                                       parent_canonical=owner_parent(st["b"].cfg, spec["category"], owner, st["parent"]),
-                                      anchor_polarity=st["anchor_pol"],
                                       at=(st.get("locator"), st.get("field")),   # 판정 재생의 자리 (B106 ②)
                                       owner=owner, row=ctx.record, field=st.get("field"))   # 판단 재료(B181 ②)
     st["b"].also.update(defer=None, field=None)
@@ -528,7 +527,7 @@ def _ledger_entity(st, surface, layer, last, guess=None):
 def _scoped_category(category, layer, builder):
     """이 카테고리는 **좌표가 canonical에 들어가는가** (문서 4 §4.4 — B14의 기준).
 
-    판정은 층 config의 `canonical_scope.bind_categories`가 한다 — **코드가 카테고리
+    판정은 공통 config의 이름 규칙(`naming.scope_categories`)이 한다 — **코드가 카테고리
     이름을 알지 않는다**(B1). 걸침(다른 층 선언)도 같은 기준으로 그 층 config에
     물어본다.
     """
