@@ -359,6 +359,9 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
         from core.build import replay as _rp
         _rp.begin(doc_id, _dh(env))                       # 멈춘 실행의 중간 저장도 — 원본이 바뀌었으면 버린다(B165 ③)
+        from core.build import also_gate as _ag
+        _ag.clear(doc_id)                                 # 앞 실행의 판정 전 판단을 읽지 않는다(B197 ② — 이 문서의 처분 자리가 다시 잰다)
+        _RUN.update(also_items=(), outline=None, ledger0=store.read(_lg.name_of(doc_id), None))   # 쓰기 전 멈춤의 되돌림 재료(B197 ④)
         # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)
         _q0 = store.read(store.QUEUE, [])
         from core.build import gate as _gate
@@ -459,9 +462,16 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
             vocab = _vocab(cfg)
             from core.build import outline as outline_mod
             ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
-            ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
+            from core.build.also_stage import heading_gate
+            drop = heading_gate(env, ol, notice, _RUN)             # 골격 단의 문 — 제목 개체 · 확정한 공정 (B197 ②)
+            ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol, drop=drop)
             cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보 (B140 ③)
             builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
+    from core.build import also_stage
+    if also_stage.pre_write(env, builder, notice, extract_only, _RUN) is False:
+        from core.state.ids import doc_hash
+        also_stage.hold_ledger(env, builder, _RUN, doc_hash(env))   # 사람이 쓰지 않고 멈췄다 — 판정까지와 같은 끝(B197 ④)
+        raise ExtractStop(EXTRACT_STOP)
     if extract_only:
         raise ExtractStop(EXTRACT_STOP)         # 판정까지 — 저장 직전(대장은 `ledger.HOLD`로 중간 저장에 있다 · B167 ①)
     return _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted)
@@ -478,12 +488,15 @@ def prose_gate(env, ck, loc2id, layer, notice, lens=None, *, cfg=None, graph=Non
     from core.build import human
     if notice is not None:
         _notice_plan(env, ck, loc2id, layer, notice, lens,
-                     human.Board(env, ck["candidates"], cfg, graph, layer, loc2id, outline) if cfg is not None else None)
+                     human.Board(env, ck["candidates"], cfg, graph, layer, loc2id, outline) if cfg is not None else None,
+                     outline)
     return human.apply(env, ck["candidates"], cfg or {}, loc2id)
 
 
-def _notice_plan(env, ck, loc2id, layer, notice, lens, board):
-    """추출 뒤 판정 예고 — `False`면 멈춘다(위 `prose_gate`)."""
+def _notice_plan(env, ck, loc2id, layer, notice, lens, board, outline=None):
+    """추출 뒤 판정 예고 — `False`면 멈춘다(위 `prose_gate`) · 쌍별 예고(B197 ③) · 본문 값의 골격 단 문(B197 ② — 판단은 여기서 한 번)."""
+    from core.build import also_stage
+    also = also_stage.plan_extra(env, ck["candidates"], loc2id, outline, _RUN)
     _by_loc = {c["source_locator"]: c for c in env.get("chunks") or []}
     _loc_of = {cid: loc for loc, cid in loc2id.items()}
     plan = decision_plan(
@@ -494,7 +507,7 @@ def _notice_plan(env, ck, loc2id, layer, notice, lens, board):
          for c in ck["candidates"]
          for e in (c.get("entities") or []) if e.get("surface")],
         [c.get("process_ref") for c in env.get("chunks") or [] if c.get("process_ref")], layer)
-    if notice({**plan, "추출뒤": True, "렌즈": lens, "사람후보": board}) is False:
+    if notice({**plan, **also, "추출뒤": True, "렌즈": lens, "사람후보": board}) is False:
         raise StepStop("사람이 멈췄다 — 추출 뒤 판정 예고까지 (그래프 쓰기 0 · 추출 체크포인트는 "
                        "완료로 남는다 — 다시 치면 추출 재사용으로 구축만 간다)")
 

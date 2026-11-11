@@ -64,6 +64,17 @@ def land(cfg, eb, nid, e, chunk, prov, cid, row):
     return verdict
 
 
+def pending(cfg, e, chunk):
+    """보류에 실을 값 하나(B197 ① — 재연결의 `pending_attrs` 꼴) · 값이 아니거나 원문에 없으면 None(`land`와 같은 거름)."""
+    value, name = e.get("value"), attr_name(cfg, e.get("category"))
+    if value in (None, "") or not name:
+        return None
+    from core.build.extract_unit import _is_image, text_of
+    if not verbatim(str(value), "" if _is_image(chunk or {}) else text_of(chunk or {})):
+        return None
+    return {"attr_name": name, "value": str(value), "context": None}
+
+
 def counts(rows):
     """개체 행에서 — `{실림, 버림, 충돌}`(값을 낸 개체 행만)."""
     out = {k: 0 for k in VERDICTS}

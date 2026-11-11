@@ -88,14 +88,10 @@ def done():
 
 
 def hold_coords(on=True):
-    """**골격 밖 좌표를 보류로**(B182) — 손잡이 `provisional_min_mentions`를 크게(잠정 골격 노드를 세우지 않는다 · 보류 · 재시도 ·
-    다음 줄의 기계를 재는 시험 몫) · `on=False`면 손잡이 파일을 걷는다(기본 1 — 처음 나올 때 선다)."""
+    """**골격 밖 좌표를 보류로**(B182) — 사람 없는 실행은 골격 밖 공정 표기를 세우지 않는다(B196 ① 문 — 기본이 보류) · 시험 몫의
+    손잡이 파일을 걷는다(B197 ⑥ — 옛 손잡이 `provisional_min_mentions`는 걷혔다 · 부르는 자리는 그대로 둔다 — `on`은 읽지 않는다)."""
     from core.state import knobs as _KN
-    p = _P.knobs()
-    if on:
-        p.write_text(json.dumps({"provisional_min_mentions": 999}), encoding="utf-8")
-    else:
-        p.unlink(missing_ok=True)
+    _P.knobs().unlink(missing_ok=True)
     _KN.apply()
 
 

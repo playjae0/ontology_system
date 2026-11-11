@@ -439,7 +439,9 @@ _hb = {h["row"]: h for h in _fb["headings"]}
 _lb = {x["row"]: x for x in _fb["labels"]}
 show("B137 ⓒ 판단 필요 — 첫 서수인데 얕은 줄(ⓑ) · 같은 꼴 형제와 서식이 다른 줄(ⓔ) · 붙인 다단 번호(ⓕ) · 굵게 · 글자색만 다른 짧은 줄(ⓔ)이 "
      "하나씩 · 답으로 바뀐다(10행 제목 · 12행 본문) · 코드가 혼자 정한 줄 0 · 리더가 글자색을 읽는다(실경로 openpyxl)",
-     _nb == {3: "ⓑ", 5: "ⓔ", 10: "ⓕ", 12: "ⓔ"} and _hb.get(10, {}).get("parent") == 5 and 12 not in _hb
+     # 고침 B197 ⑤ — 한 행짜리 「1) … 4)」(6~9행 · 사이 본문 없음 · 자식 없음)은 본문 목록 규칙으로 본문(판단 필요 「목록」 6행)
+     _nb == {3: "ⓑ", 5: "ⓔ", 6: "ⓒ", 10: "ⓕ", 12: "ⓔ"} and _hb.get(10, {}).get("parent") == 5 and 12 not in _hb
+     and not ({6, 7, 8, 9} & set(_hb))
      and not ({10, 12} & {h["row"] for h in _fb["toc0"]}) and not _fb["missing"] and "글자색" in _lb[12]["marks"],
      f"판단 필요 {_nb} · 10행 부모 {_hb.get(10, {}).get('parent')} · 12행 표시 {_lb[12]['marks']}")
 _ra = {h["row"]: h for h in _fa["headings"]}
@@ -450,7 +452,8 @@ show("B137 ⓓ 규칙 한 줄 — 「가. 아래 첫 서수로 시작하는 '1.'
 _md7 = _EMD146.write(D7, _g7.envelope).read_text(encoding="utf-8")   # 기대 변경(B146 ② — md는 봉투 하나에서)
 _l10 = _tl(_scr7, 10)                                    # 기대 변경(B139 ④ — 목차 줄은 나무 글자로 시작)
 show("B137 ⓔ 화면 — 사다리 첫 서수 표기 · 접은 형제 줄 · 목차 줄의 판단 필요 표지와 LLM 답 · 시트마다 LLM 한 줄 · ✎ · md 끝의 버린 고침",
-     _go7 and "시트 › 1.(주제) › 가. · 1)" in _scr7 and "외 3줄" in _scr7 and split_report.NEED_MARK in _l10 and "(LLM)" in _l10
+     # 고침 B197 ⑤ — 6~9행은 본문 목록이 되어 접힐 형제 제목이 없다(접기는 B197 ⓚ가 잰다 — 청크가 시작하는 제목은 접지 않는다)
+     _go7 and "시트 › 1.(주제) › 가. · 1)" in _scr7 and split_report.NEED_MARK in _l10 and "(LLM)" in _l10
      and "✎" in _l10 and sum(1 for ln in _scr7.splitlines() if ln.strip().startswith("LLM —")) == 2
      and "고침 상세" in _md7 and "버림 — 99행" in _md7 and "버림 — 99행" not in _scr7,
      f"10행 줄 {_l10.strip()[:90]}")

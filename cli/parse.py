@@ -199,8 +199,8 @@ def print_split_notes(report):
                     + (f" · 실패 {rd['실패']}" if rd.get("실패") else ""), "warn" if rd.get("실패") else "head")
     cap = ((report or {}).get("split") or {}).get("글자_상한") or {}
     if cap:
-        print(f"   글자 상한 초과 {cap['초과_청크']}청크 → 행 경계로 {cap['조각']}조각"
-              f" (상한 {cap['상한']:,}자"
+        print(f"   글자 상한 초과 {cap['초과_청크']}청크 → {cap['조각']}조각(제목 경계 {cap.get('제목_경계', 0)} · "
+              f"행 경계 {cap.get('행_경계', 0)}) (상한 {cap['상한']:,}자"
               + (f" · 혼자 넘는 행 {cap['혼자_넘는_행']}" if cap.get("혼자_넘는_행") else "")
               + ")")
 

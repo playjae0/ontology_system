@@ -28,8 +28,10 @@ from core.state.status import PROVISIONAL, is_live
 OP_PROMOTE, OP_MERGE, OP_KEEP = "provisional:promote", "provisional:merge", "provisional:keep"
 #: **골격 칸의 문**(B196 ① · 결정 A′) — 사람이 「새로」(세움) · 「drop」을 정한 표기 + 들어온 자리(부모 이름) · 노드가 없어도 적는다
 OP_SEED, OP_DROP = "provisional:seed", "provisional:drop"
-#: 문이 보는 사람 답 — 세움(「봄」도 세움 · 재구축 뒤에도 그 노드가 다시 선다) · drop
-SEEDED, DROPPED = "seed", "drop"
+#: **올림**(B197 ① — 골격 단 값) — 노드를 세우지 않고 그 값 · 딸린 값을 위 공정(들어온 자리)에 바로
+OP_RAISE = "provisional:raise"
+#: 문이 보는 사람 답 — 세움(「봄」도 세움 · 재구축 뒤에도 그 노드가 다시 선다) · drop · 올림
+SEEDED, DROPPED, RAISED = "seed", "drop", "raise"
 #: 큐 판단(재인입 회수가 보존한다 — `resolution`)
 DEC_PROMOTE, DEC_MERGE = "승격", "합침(재구축 대기)"
 REBUILD = "python run.py rebuild"
@@ -267,6 +269,15 @@ def seed(actor, surface, parent=None, reason=""):
     return {"surface": surface, "parent": parent}
 
 
+def raise_up(actor, surface, parent=None, reason=""):
+    """**올림**(B197 ① — 골격 단 값) — 노드 0 · 그 값 · 딸린 값은 위 공정(들어온 자리 `parent`)에 바로 · 재연결이 그 보류를 위 공정에 잇는다."""
+    if not parent:
+        raise Refused("올릴 위 공정이 없다(부모 미정) — 합침 · 새로 · drop 중 하나")
+    _gate_rec(OP_RAISE, actor, surface, parent, reason)
+    _reopen(surface, parent)
+    return {"surface": surface, "parent": parent}
+
+
 def drop(actor, surface, parent=None, reason=""):
     """**drop**(B196 ① — 사유 필수) — 세우지 않는다 · 그 표기의 열린 보류를 「사람 drop」으로 닫는다(재연결이 다시 열지 않는다)."""
     if not (reason or "").strip():
@@ -306,8 +317,8 @@ def decisions():
     sep, out = catalog.sep(), {}
     for r in oplog.read():
         op, d = r.get("op"), r.get("detail") or {}
-        if op in (OP_SEED, OP_DROP) and d.get("surface"):
-            out[(key(d["surface"]), d.get("parent"))] = SEEDED if op == OP_SEED else DROPPED
+        if op in (OP_SEED, OP_DROP, OP_RAISE) and d.get("surface"):
+            out[(key(d["surface"]), d.get("parent"))] = {OP_SEED: SEEDED, OP_DROP: DROPPED, OP_RAISE: RAISED}[op]
         elif op == OP_KEEP and d.get("canonical"):
             c, up = d["canonical"], d.get("parent", "*")
             base = c[len(up) + len(sep):] if isinstance(up, str) and up != "*" and c.startswith(up + sep) else c

@@ -142,13 +142,16 @@ def _spans(frame, chunks):
         m = _SPAN.search(str(c.get("source_locator") or ""))
         if m and not c.get("image_ref"):
             a = int(m.group(1))
-            out.append((a, int(m.group(2) or a), i, path_of(frame, c)))
+            part = (c.get("meta") or {}).get("char_cap_part")     # 크기 나눔 조각(B197 ⑤)
+            out.append((a, int(m.group(2) or a), i,
+                        path_of(frame, c) + (f" (나눔 {part[0]}/{part[1]})" if part else "")))
     return sorted(out)
 
 
-def _items(frame, fr):
+def _items(frame, fr, starts=frozenset()):
     """목차에 보일 줄 — 제목 · 판단 필요 줄 · LLM이 뺀 줄 · **나무 순서**(부모 아래 자식 · 행 순 — 부모가 엇갈려도 나무가 맞게) · 하위 없는
-    형제 셋 이상은 접는다 · `[{row, parent, line, tail, need, rows?}]`(`parent`는 보이는 줄 가운데)."""
+    형제 셋 이상은 접는다(청크가 시작하는 제목 `starts`는 접지 않는다 · 접힌 줄에 「그중 청크 시작 k」 — B197 ⑤) ·
+    `[{row, parent, line, tail, need, rows?}]`(`parent`는 보이는 줄 가운데)."""
     labs = fr.get("labels") or []
     by = {x["row"]: x for x in labs}
     heads = fr.get("headings") or []
@@ -174,7 +177,8 @@ def _items(frame, fr):
         tail = (f"  {NEED_MARK} {n.get('tag') or n['kind']}" + (f"({len(n['rows'])}줄)" if n.get("rows") else "")
                 + _answer_tail(ans.get(r), by, who)) if n else ""
         rows[r] = {"row": r, "parent": par, "line": f"{r}행 {x.get('text') or ''} — {body}", "tail": tail, "need": bool(n),
-                   "fold": bool(h) and r not in kids and not n and r not in changed and h.get("sig") != TITLE}
+                   "fold": bool(h) and r not in kids and not n and r not in changed and h.get("sig") != TITLE
+                   and r not in starts}
     for it in rows.values():
         if it["parent"] not in rows:
             it["parent"] = None
@@ -192,8 +196,11 @@ def _items(frame, fr):
         while j + 1 < len(flat) and flat[j + 1]["fold"] and flat[i]["fold"] and flat[j + 1]["parent"] == flat[i]["parent"]:
             j += 1
         if j - i + 1 >= FOLD_MIN:
+            lo, hi = flat[i + 1]["row"], flat[j]["row"]
+            k = sum(1 for a in starts if lo <= a <= hi)
             out += [flat[i], {"row": flat[i + 1]["row"], "parent": flat[i]["parent"], "need": False, "tail": "", "fold": True,
-                              "line": f"… 외 {j - i}줄({_num(by[flat[i + 1]['row']])}~{_num(by[flat[j]['row']])})",
+                              "line": f"… 외 {j - i}줄({_num(by[flat[i + 1]['row']])}~{_num(by[flat[j]['row']])})"
+                                      + (f" — 그중 청크 시작 {k}" if k else ""),
                               "rows": [rw["row"] for rw in flat[i + 1:j + 1]]}]
         else:
             out += flat[i:j + 1]
@@ -205,7 +212,8 @@ def toc_lines(frame, fr, chunks=None):
     """목차 줄(B137 ⑥ · B139 ④) — **나무 글자**(`├─` · `└─` · `│` — 깊이 · 형제가 보이게) · 줄마다 꼴 표기 없음(꼴은 사다리 한 줄에만 —
     `행 · 글 — 역할 · 표지`) · **청크 경계**(`✂ 청크 n — 경로` — 청크가 그 줄에서 시작하면 그 줄 앞 · 본문에서 시작하면 바로 앞 줄 뒤) ·
     청크 안 줄의 판단 필요는 그대로 올리고 「청크 안 — 경로 영향 없음」 · `[(줄, 판단 필요인가)]`."""
-    items = _items(frame, fr)
+    spans = _spans(frame, chunks)
+    items = _items(frame, fr, frozenset(a for a, _b, _i, _p in spans))
     kids = {}
     for k, it in enumerate(items):
         kids.setdefault(it["parent"], []).append(k)
@@ -218,7 +226,6 @@ def toc_lines(frame, fr, chunks=None):
             chain.append(pos[p])
             p = items[pos[p]]["parent"]
         return "".join(_GAP if a in last else _BAR for a in reversed(chain))
-    spans = _spans(frame, chunks)
     rowset = sorted(pos)
     before, after = {}, {}
     for a, _b, i, path in spans:

@@ -525,6 +525,8 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
         if d == PH.DROPPED:
             return False
     ref, rlay, rg = _tier1(surface, category, graphs, dic)
+    if ref is None and gi is not None and d == PH.RAISED:   # 사람이 「올림」(B197 ① — 골격 단 값) — 위 공정(들어온 자리 이름)에 바로
+        ref, rlay, rg = _tier1(gi.get("parent"), category, graphs, dic)
     if ref is None and gi is not None and d == PH.SEEDED:
         from core.build import provisional             # 사람이 「새로」 — 세우는 손 하나로 세우고 그 행들을 잇는다
         ref, rlay, rg = provisional.seed_at(graphs, cfgs, dic, item.get("doc_id"), surface, gi.get("parent"),
@@ -690,11 +692,14 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
     # 소유자 열을 먼저 세운다(`scope_path.table_owners` · `owner_first` · `owner_parent`)
     from core.build import scope_path
     ents = pl.get("dropped_entities") or []
-    owners = scope_path.table_owners({"fields": {d["field"]: {"role": "entity", "category": d.get("category")}
-                                                 for d in ents if d.get("field")},
-                                      "edges": pl.get("dropped_edges") or []}, cfg)
+    fs = {d["field"]: {"role": "entity", "category": d.get("category")} for d in ents if d.get("field")}
+    if pl.get("also") and pl.get("field"):          # 골격 단 값의 열(B197 ①) — 그 값은 정해진 노드다(같은 행의 소유자로 다시 읽는다)
+        fs[pl["field"]] = {"role": "entity", "category": pl["also"]}
+    owners = scope_path.table_owners({"fields": fs, "edges": pl.get("dropped_edges") or []}, cfg)
     order = {f: i for i, f in enumerate(scope_path.owner_first([d["field"] for d in ents if d.get("field")], owners))}
     homes = {}
+    if pl.get("also") and pl.get("field"):
+        revived[pl["field"]], homes[pl["field"]] = ref, rg
     for d in sorted(ents, key=lambda d: order.get(d.get("field"), len(order))):
         lay2 = d.get("target_layer") or rlay
         g2 = graphs.get(lay2)

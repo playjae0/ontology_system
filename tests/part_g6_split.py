@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import io
 import sys
 import tempfile
@@ -330,5 +331,81 @@ _od = _run("show", "structure", "--diff", str(_saved))
 _sum = next((ln for ln in _od.splitlines() if ln.strip().startswith("합 —")), "")
 show("ⓖ 전후 비교 — 봉투 폴더 둘(한 시트의 청크 경계를 바꾼 사본) → 바뀐 시트 1 · 역할이 바뀐 시트 0",
      "청크 경계가 바뀐 시트 1" in _sum and "시트 역할이 바뀐 시트 0" in _sum, _sum.strip() or _od[-200:])
+
+# ────────────────────────────────────────────────────────────── B197 ⑤ 청크 나눔 — 본문 목록 · 형제 꼴 · 고르게 · 문구 · md
+print("\n■ B197 ⑤ 본문 목록 · 형제 꼴 일관성 · 조각 수를 먼저 · 고르게 · 문구 · md")
+from cli import parse as CP197                                   # noqa: E402
+from parser import sig as SG197, struct_lists as SL197, tuning as TU197   # noqa: E402
+_item197 = lambda i: f"{i}) 주액 노즐 {i}번 정량 주입 조건과 세척 주기"         # noqa: E731 — 한 행짜리 번호 줄(창작)
+
+
+def _doc197(body):
+    """「1. 주액 설비」(큰 구간 — 「가. 주액」 + 한 행짜리 「1) … 28)」 · `body`면 줄마다 본문) + 「2. 검사 설비」(작은 구간)."""
+    rows = ["1. 주액 설비", "본 사양은 주액 설비의 범위를 정한다.", "가. 주액"]
+    for i in range(1, 29):
+        rows += [_item197(i)] + ([f"노즐 {i}의 세부 조건은 따로 정한다."] if body else [])
+    rows += ["2. 검사 설비", "검사는 매 셀마다 한다."]
+    p = TMP / f"B197_{int(body)}.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "주액 사양"
+    for r, v in enumerate(rows, 1):
+        ws.cell(row=r, column=1, value=v)
+    wb.save(p)
+    struct_map.invalidate(f"B197S{int(body)}")
+    return pipeline.parse(BX, f"B197S{int(body)}", str(p), closed_list=[], sheet_roles={"주액 사양": "prose"},
+                          structure=ST.structurer())
+
+
+TU197.apply({"chunk_max_chars": 600})            # 작은 창작 표본에서 상한을 넘게(사내 손잡이 자리 — 수치는 근거가 아니다)
+_r0, _r1 = _doc197(False), _doc197(True)
+_c0 = [c for c in _r0.envelope["chunks"] if (c.get("meta") or {}).get("char_cap_from")]
+_c1 = [c for c in _r1.envelope["chunks"] if (c.get("meta") or {}).get("char_cap_from")]
+_g0 = [c for c in _c0 if "가. 주액" in str((c.get("meta") or {}).get("section_path"))]
+_g1 = [c for c in _c1 if "가. 주액" in str((c.get("meta") or {}).get("section_path"))]
+_n0 = [n for fr in (_r0.report["structure"]["프레임"]).values() for n in fr.get("needs") or [] if n.get("tag") == SL197.TAG_LIST]
+_sum1 = sum(len(c["text"]) for c in _g1)
+show("B197 ⓘ 「가. 주액」 + 한 행짜리 「1) … 28)」(본문 없음) → 본문 목록(판단 필요 「목록: 본문으로 28줄」) → 본문 · ⌈글자 ÷ 상한⌉ = 2조각 · 고르게 · "
+     "경로 둘 다 「가. 주액」 · 「1)」에 본문이 있는 판 → 제목 그대로 · 제목 경계에서 고르게(줄마다 아님)",
+     len(_g0) == 2 and all(str(c["meta"]["section_path"]).endswith("가. 주액") for c in _g0)
+     and abs(len(_g0[0]["text"]) - len(_g0[1]["text"])) < 120 and _n0 and "28줄" in _n0[0]["why"]
+     and 2 <= len(_g1) <= -(-_sum1 // 600) + 1 and all(c["meta"]["char_cap_by"] == "제목" for c in _g1)
+     and all(str(c["meta"]["section_path"]).endswith("가. 주액") for c in _g1),
+     f"목록 판 {[len(c['text']) for c in _g0]} · 본문 판 {[len(c['text']) for c in _g1]} · {(_n0 or [{}])[0].get('why')}")
+
+# ⓙ 형제 꼴 섞임(구조 대역) — 같은 부모 아래 「1)」 다섯 중 둘만 제목 → 모두 본문(많은 쪽) · 판단 필요 · 사람이 고친 줄은 그대로
+_lab197 = [{"row": 0, "text": "시트", "sig": None}] + [{"row": r, "text": t, "sig": SG197.signature(t)[0]} for r, t in
+                                                      [(1, "2. 치수"), (2, "1) 길이"), (3, "2) 폭"), (4, "3) 두께"), (5, "4) 무게"),
+                                                       (6, "5) 높이"), (7, "치수 본문이다.")]]
+_st197 = {"headings": [{"row": 1, "parent": None}, {"row": 2, "parent": 1}, {"row": 4, "parent": 1}]}
+_j0 = SL197.apply(_st197, _lab197)
+_j1 = SL197.apply(_st197, _lab197, fixes={2: {"role": "주제"}})
+show("B197 ⓙ 같은 부모 아래 「1)」 다섯 중 둘만 제목 → 모두 본문(많은 쪽) · 「판단 필요 — 형제 꼴 섞임」 · 사람이 고친 줄(2행)은 제목 그대로",
+     [h["row"] for h in _j0["headings"]] == [1] and any(n.get("tag") == SL197.TAG_MIX for n in _j0["needs"])
+     and [h["row"] for h in _j1["headings"]] == [1, 2],
+     f"고침 없음 {[h['row'] for h in _j0['headings']]} · 고침 {[h['row'] for h in _j1['headings']]}")
+
+# ⓚ 문구 「… → b조각(제목 경계 c · 행 경계 d)」 · md — 청크가 시작하는 제목은 접지 않는다 · 크기 나눔 조각의 ✂에 (나눔 i/n)
+_buf197 = io.StringIO()
+with contextlib.redirect_stdout(_buf197):
+    CP197.print_split_notes(_r1.report)
+_fr1 = _r1.report["structure"]["프레임"]["주액 사양"]
+_tl1 = [ln for ln, _need in split_report.toc_lines("주액 사양", _fr1, split_report.chunks_of(_r1.envelope, "주액 사양"))]
+_starts = [int(str(c["source_locator"]).split("!R")[1].split("-")[0]) for c in _g1]
+show("B197 ⓚ 문구 「글자 상한 초과 a청크 → b조각(제목 경계 c · 행 경계 d)」 · md 목차에 조각이 시작하는 제목 줄이 다 보인다(접히지 않음) · "
+     "✂ 「(나눔 i/n)」",
+     re.search(r"글자 상한 초과 \d+청크 → \d+조각\(제목 경계 \d+ · 행 경계 \d+\)", _buf197.getvalue()) is not None
+     and all(any(f"{r}행 " in ln and "청크" not in ln.split(f"{r}행 ")[0][-3:] for ln in _tl1) for r in _starts)
+     and any("(나눔 1/" in ln for ln in _tl1),
+     f"{[ln.strip() for ln in _buf197.getvalue().splitlines() if '글자 상한' in ln]} · 시작 {_starts}")
+
+# ⓛ 상한 이하 청크는 바이트 그대로 — 같은 문서를 상한 없이(크게) 자른 것과 「2. 검사 설비」 청크가 같다
+TU197.apply({"chunk_max_chars": 1000000})
+_rb = _doc197(True)
+TU197.apply({})
+_small = lambda env: [(c["source_locator"], c["text"], c.get("section")) for c in env["chunks"]
+                      if "2. 검사 설비" in str((c.get("meta") or {}).get("section_path"))]   # noqa: E731
+show("B197 ⓛ 상한 이하 청크 바이트 같음 — 상한을 넘던 구간만 나뉘고 「2. 검사 설비」 청크(위치 · 글 · 경로)는 상한 없는 판과 같다",
+     _small(_rb.envelope) and _small(_rb.envelope) == _small(_r1.envelope), f"{_small(_r1.envelope)}")
 
 done()

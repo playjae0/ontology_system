@@ -14,7 +14,7 @@ from core.build.build import Builder
 from core.build import gate
 from core.build import ledger as _lg
 from core.build.ledger import Ledger
-from core.build import belongs, extract_ctx, heading, human, provisional, values
+from core.build import also_gate, belongs, extract_ctx, heading, human, provisional, values
 from core.build.human import HUMAN                    # 사람 후보의 표지 — 추출 후보 줄 · 대장 행의 `by` (B140 ③)
 from parser.normalizer import null_marker            # 빈칸 표시 — 표와 같은 함수 (B113 ②)
 from core.build.naming import name_parent
@@ -63,12 +63,13 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
         anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
                                 (ref, ref_g, parent, anchor_pol), _loc,
-                                coords=[low] if low else [(r_id, r_g) for _s, r_id, r_g, _h in res if r_id])
+                                coords=[low] if low else [(r_id, r_g) for _s, r_id, r_g, _h in res if r_id],
+                                held=also_gate.held_up(b, outline, _loc))     # 문에 걸린 제목 아래 청크(B197 ①)
         coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol, plans)
     return coords
 
 
-def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
+def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None, held=None):
     """청크 하나의 개체 — 소속 대상 먼저(같은 청크 안 순서) → 이름 부모(골격 소속 · `nest_categories`) →
     해소(`resolve_at_home` — 표와 같은 함수) · 대장 행. 돌려주는 것은 소속 계획 `[{nid, tgt, bel, row}]`."""
     ref, ref_g, parent, anchor_pol = main
@@ -95,6 +96,11 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None):
             if where is None:                      # 지어낸 소속 — 버린다(지어내지 않는다)
                 belongs.drop_invented(b.doc_id, e["surface"], bel, cid)
                 bel = None
+        h = also_gate.held_name(b, (bel or {}).get("name")) or also_gate.held_name(b, held)
+        if h is not None:                          # 소속 · 제목 사슬이 골격 단의 문에 걸렸다 — 그 보류와 함께(B197 ①)
+            also_gate.follow(b, h["pl"]["surface"], e, prov, values.pending(cfg, e, src))
+            also_gate.ledger_row(b, _loc or cid, e, h)
+            continue
         tgt = (belongs.resolve_target(b, bel, prov, chunk_kw, at=(_loc or cid, belongs.FIELD))
                if bel and not bel.get("legacy") else None)
         # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.

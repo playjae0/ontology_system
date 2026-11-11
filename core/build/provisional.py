@@ -27,7 +27,8 @@ from core.state import store
 from core.state.ids import norm
 from core.state.status import PROVISIONAL, is_live, is_skeleton
 
-#: 보류 사유 — 대장 `hold` · 큐 문면(B182 ② — 결정 「아래로 새 단을 열지 않는다」 · 손잡이 미달 · 이름이 다른 노드와 같다)
+#: 보류 사유 — 대장 `hold` · 큐 문면(B182 ② — 결정 「아래로 새 단을 열지 않는다」 · 이름이 다른 노드와 같다 · 「최소 출현 수 미달」은 옛 대장
+#: 행을 읽으려고만 남는다 — 그 손잡이는 B197 ⑥에서 걷혔다)
 HOLD_DEEP = "골격 아래 새 단"
 HOLD_FEW = "잠정 노드 최소 출현 수 미달"
 HOLD_NAME = "같은 이름의 다른 노드(부모 미정)"
@@ -36,9 +37,6 @@ HOLD_HUMAN = "사람 확인 전 공정 표기"
 HOLD_DROP = "사람 drop"
 HOLDS = (HOLD_DEEP, HOLD_FEW, HOLD_NAME, HOLD_HUMAN, HOLD_DROP)
 GATED = (HOLD_HUMAN, HOLD_DROP)
-#: **잠정 노드 최소 출현 수**(손잡이 `provisional_min_mentions` · 결정 문서 §2) — B196 문 뒤로는 효과가 없다(세우는 것은 사람의
-#: 「새로」뿐이고 그 표기는 1행이어도 선다 — 손잡이 목록의 기본값으로만 남는다)
-MIN_MENTIONS = 1
 #: 판단 후보 · 화면 후보 수(B196 ③ — 판단이 낸 후보를 둘까지)
 NEAR = 2
 

@@ -22,7 +22,7 @@
 """
 from __future__ import annotations
 
-from core.build import belongs, gate
+from core.build import also_gate, belongs, gate
 from core.state import store
 from core.state.ids import norm
 
@@ -78,7 +78,8 @@ def coord_below(b, landed, ol, src):
     if len(refs) != 1:
         return None
     h = next((h for h in OL.chain(ol, src.get("source_locator"))
-              if h.get("coord") and h["id"] in landed and _is_coord(landed[h["id"]][1].get(landed[h["id"]][0]))), None)
+              if (h.get("coord") or norm((h.get("target") or {}).get("name") or "") in b.also["landed"])    # 골격 단의 문이 세운 제목(B197 ①)도 좌표
+              and h["id"] in landed and _is_coord(landed[h["id"]][1].get(landed[h["id"]][0]))), None)
     if h is None:
         return None
     hid, g = b.resolve_anchor(h["target"]["name"], COORD_CATEGORY, None, defer=[])
@@ -139,6 +140,12 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                 parent = name_parent(cat, un.get("canonical"), parent, b.cfg)
                 owner = (uid, ug)
         cg = None
+        hu = also_gate.held_name(b, also_gate.held_up(b, ol, heading=h))
+        if hu is not None:                          # 위 제목이 골격 단의 문에 걸렸다 — 그 보류와 함께(B197 ① 제목 사슬)
+            also_gate.follow(b, hu["pl"]["surface"], {"surface": name, "category": cat}, prov)
+            also_gate.ledger_row(b, h["path"], {"surface": name, "category": cat}, hu, role=ROLE)
+            b.also["heads"][h["id"]] = hu["pl"]["surface"]
+            continue
         if h.get("coord"):                          # 골격 이름 제목 — 좌표 (B148 ②)
             (nid, cg), eb = _coord(b, name, cat, prov, src, ref, ref_g), b
         else:
@@ -155,8 +162,11 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
                            target=b.canonical_of(nid),
                            category=last.get("category"), scope=last.get("scope"), replay=last.get("replay"),
                            apart=last.get("apart"), basis=last.get("basis"), made=last.get("made"),   # 세운 잠정 골격 노드 (B182 ③)
-                           place=last.get("place"), answer=last.get("answer"), guess=last.get("guess"))  # 자리 추정 (B183)
+                           place=last.get("place"), answer=last.get("answer"), guess=last.get("guess"),  # 자리 추정 (B183)
+                           **({"hold": last["hold"]} if last.get("also") else {}))      # 골격 단의 문(B197 ①)
         if not nid:
+            if last.get("also"):                    # 골격 단의 문 — 그 아래 제목 · 청크는 이 보류와 함께(B197 ①)
+                b.also["heads"][h["id"]] = name
             continue
         hg = cg or b.graph_of(nid) or graph
         b.buffer[norm(name)] = nid                  # 같은 문서의 소속 이름이 이 노드를 찾는다(버퍼 · B102 ④)

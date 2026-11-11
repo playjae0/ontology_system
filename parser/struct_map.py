@@ -429,13 +429,13 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
 
 
 def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split=None):
-    """**글자 상한**(B87 ③ · B132 ⑥) — 넘는 청크만: **깊은 제목을 차례로**(자른 단 바로 아래 단 → 그래도 넘는 조각은 그 아래 단 …) →
-    더 깊은 제목이 없으면 행 경계. `deeper`는 자른 단보다 깊은 제목 `{행: 단}`(행 모음이면 한 단으로 본다).
+    """**글자 상한**(B87 ③ · B132 ⑥ · B197 ⑤) — 넘는 청크만: **조각 수를 먼저**(⌈글자 ÷ 상한⌉) 정하고 가장 얕은 하위 제목 경계 중
+    크기가 고르게 되는 자리에서만 자른다 · 혼자 넘는 하위 항목만 그 안에서 같은 규칙 · 제목이 없으면 행 경계에서 고르게. `deeper`는
+    자른 단보다 깊은 제목 `{행: 단}`(행 모음이면 한 단으로 본다).
 
-    셀 중간은 자르지 않는다 — 한 행이 혼자 상한을 넘으면 통째로 두고
-    `meta.over_char_cap`. 조각마다 `meta.char_cap_from`(원래 청크의 자리)을 싣는다 —
-    화면의 「글자 상한 초과 n청크 → m조각」이 그것을 센다. 상한 이하 청크는 **손대지
-    않는다**(바이트 동일 — 추출 체크포인트 재사용의 조건이다).
+    셀 중간은 자르지 않는다 — 한 행이 혼자 상한을 넘으면 통째로 두고 `meta.over_char_cap`. 조각마다 `meta.char_cap_from`(원래 청크의
+    자리) · `char_cap_by`(제목 경계 · 행 경계) · `char_cap_part`(i/n)를 싣는다 — 화면 · md가 센다. 조각의 경로는 담긴 형제의 공통
+    부모(형제 하나면 그 형제). 상한 이하 청크는 **손대지 않는다**(바이트 동일 — 추출 체크포인트 재사용의 조건이다).
     """
     out = []
     for c in chunks:
@@ -450,28 +450,88 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
         if len(c.get("text") or "") <= (keep_cap if join else CHUNK_MAX_CHARS):
             out.append({**c, "_row0": lines[0][0]})
             continue
+        levels = deeper if isinstance(deeper, dict) else {n: 1 for n in deeper or ()}
         if join and keep_split is not None:
-            pieces = [(part, False) for part in keep_split(lines)]
+            pieces = [(part, False, CUT_HEAD) for part in keep_split(lines)]
         else:
-            levels = deeper if isinstance(deeper, dict) else {n: 1 for n in deeper or ()}
             pieces = _by_depth(lines, levels)
-        for part, over in pieces:
-            meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"]}
+        for i, (part, over, by) in enumerate(pieces, 1):
+            meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"], "char_cap_by": by,
+                    "char_cap_part": [i, len(pieces)]}
             if over:
                 meta["over_char_cap"] = True
+            r0 = _anchor(lines, part, levels)
             out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
-                        "text": "\n".join(x for _n, x in part), "meta": meta, "_row0": part[0][0], "_piece": True})
+                        "text": "\n".join(x for _n, x in part), "meta": meta,
+                        "_row0": part[0][0] if r0 is None else r0, "_piece": r0 is not None})
     return out
 
 
+#: 크기 나눔이 자른 경계(화면 「제목 경계 c · 행 경계 d」 · B197 ⑤)
+CUT_HEAD, CUT_ROW = "제목", "행"
+
+
+def _anchor(lines, part, levels):
+    """조각의 경로 자리 — 형제 하나로 시작하면 그 형제 줄 · 형제가 둘 이상이거나 본문으로 시작하면 그 공통 부모(조각 앞 · 더 얕은 제목
+    줄 · 청크 안에 없으면 None = 청크의 주인) · 제목이 없으면 첫 줄(그 주인)."""
+    hs = [n for n, _x in part if n in levels]
+    if not hs:
+        return part[0][0]
+    lv = min(levels[n] for n in hs)
+    tops = [n for n in hs if levels[n] == lv]
+    if len(tops) == 1 and part[0][0] == tops[0]:
+        return part[0][0]
+    rows = [n for n, _x in lines]
+    for n in reversed(rows[:rows.index(part[0][0])]):
+        if n in levels and levels[n] < lv:
+            return n
+    return None
+
+
+def _size(part):
+    return len("\n".join(x for _n, x in part))
+
+
+def _balance(units, size, cap):
+    """이어진 단위들을 **고르게** 묶는다 — 묶음 수는 ⌈합 ÷ 상한⌉부터(넘으면 하나씩 더) · 묶음 크기의 최댓값이 가장 작은 나눔(경계는
+    단위 사이만) · `[[단위 …]]` 순서 무손실."""
+    if not units:
+        return []
+    sz = [size(u) for u in units]
+    total = sum(sz) + len(sz) - 1
+    n = len(units)
+    pre = [0]
+    for x in sz:
+        pre.append(pre[-1] + x)
+
+    def span(i, j):                                # 단위 i..j-1 묶음의 크기(줄바꿈 하나씩)
+        return pre[j] - pre[i] + (j - i - 1)
+
+    for k in range(max(1, -(-total // cap)), n + 1):
+        best = {(0, 0): (0, None)}
+        for g in range(1, k + 1):
+            for j in range(g, n - (k - g) + 1):
+                cands = [(max(best[(i, g - 1)][0], span(i, j)), i) for i in range(g - 1, j) if (i, g - 1) in best]
+                if cands:
+                    best[(j, g)] = min(cands)
+        if (n, k) in best and best[(n, k)][0] <= cap:
+            cuts, j = [], n
+            for g in range(k, 0, -1):
+                i = best[(j, g)][1]
+                cuts.append((i, j))
+                j = i
+            return [units[i:j] for i, j in reversed(cuts)]
+    return [[u] for u in units]
+
+
 def _by_depth(part, levels):
-    """넘는 조각을 **얕은 제목 단부터 차례로** 나눈다 — 그 조각에 든 가장 얕은 단의 제목 앞에서 자르고, 그래도 넘는 조각은 그 아래 단으로 ·
-    더 깊은 제목이 없으면 행 경계(`_pack`) — `[(행 목록, 혼자_넘음)]` · 순서 · 내용 무손실."""
-    if len("\n".join(x for _n, x in part)) <= CHUNK_MAX_CHARS:
-        return [(part, False)]
+    """넘는 구간 — 가장 얕은 하위 제목 경계에서 고르게(`_balance`) · 혼자 넘는 하위 항목은 그 안에서 같은 규칙(더 깊은 제목 →
+    행) · 제목이 없으면 행 경계에서 고르게 — `[(행 목록, 혼자_넘음, 자른 경계)]` · 순서 · 내용 무손실."""
+    if _size(part) <= CHUNK_MAX_CHARS:
+        return [(part, False, None)]
     here = sorted({levels[n] for n, _x in part[1:] if n in levels})       # 첫 줄 앞은 자르는 자리가 아니다
     if not here:
-        return _pack(part)
+        return _even_rows(part)
     cut, segs, seg = here[0], [], []
     for n, x in part:
         if levels.get(n) == cut and seg:
@@ -480,32 +540,40 @@ def _by_depth(part, levels):
         seg.append((n, x))
     segs.append(seg)
     deeper = {n: l for n, l in levels.items() if l > cut}
-    return [p for sg in segs for p in _by_depth(sg, deeper)]
+    out, run = [], []
+
+    def flush():
+        out.extend(([r for sg in grp for r in sg], False, CUT_HEAD) for grp in _balance(run, _size, CHUNK_MAX_CHARS))
+        run.clear()
+    for sg in segs:
+        if _size(sg) > CHUNK_MAX_CHARS:            # 혼자 넘는 하위 항목 — 그 안에서 같은 규칙
+            flush()
+            out.extend(_by_depth(sg, deeper))
+        else:
+            run.append(sg)
+    flush()
+    return out
 
 
-def _pack(part):
-    """행 경계에서 상한 이하로 묶는다 — `[(행 목록, 혼자_넘음)]`. 순서·내용 무손실."""
-    out, cur, size = [], [], 0
+def _even_rows(part):
+    """제목이 없는 구간 — 행 경계에서 고르게(혼자 넘는 행은 통째로 · `혼자_넘음`)."""
+    out, run = [], []
+
+    def flush():
+        out.extend((grp, False, CUT_ROW) for grp in _balance(run, lambda r: len(r[1]), CHUNK_MAX_CHARS))
+        run.clear()
     for n, x in part:
-        if len(x) > CHUNK_MAX_CHARS:           # 혼자 넘는 행 — 통째로 둔다
-            if cur:
-                out.append((cur, False))
-            out.append(([(n, x)], True))
-            cur, size = [], 0
-            continue
-        add = len(x) + (1 if cur else 0)
-        if cur and size + add > CHUNK_MAX_CHARS:
-            out.append((cur, False))
-            cur, size, add = [], 0, len(x)
-        cur.append((n, x))
-        size += add
-    if cur:
-        out.append((cur, False))
+        if len(x) > CHUNK_MAX_CHARS:
+            flush()
+            out.append(([(n, x)], True, CUT_ROW))
+        else:
+            run.append((n, x))
+    flush()
     return out
 
 
 def _resplit(chunks, deeper, locator):
-    """상한 초과 청크를 **바로 아래 레벨의 헤딩에서만** 한 번 더 가른다.
+    """행이 권장 상한의 두 배를 넘는 청크를 **바로 아래 레벨의 헤딩 경계에서 고르게** 가른다(조각 수 ⌈행 ÷ `CHUNK_MAX`⌉ — B197 ⑤).
 
     자르는 재료는 청크가 들고 있는 `_lines`(행 번호 · 셀 글)다(B89 ①) — 구판은 본문을
     `\\n`으로 잘라 **글로 행을 되찾았고**, 셀 안 줄바꿈 조각·반복 글(「해당 없음」)은
@@ -527,9 +595,15 @@ def _resplit(chunks, deeper, locator):
         if len(cur) <= 1:
             out.append(c)
             continue
-        for part in cur:
+        groups = _balance(cur, len, CHUNK_MAX)
+        if len(groups) <= 1:
+            out.append(c)
+            continue
+        for grp in groups:
+            part = [r for sg in grp for r in sg]
             out.append({**c, "source_locator": locator(part[0][0], part[-1][0]),
-                        "text": "\n".join(x for _n, x in part), "_lines": part, "_piece": True})
+                        "text": "\n".join(x for _n, x in part), "_lines": part,
+                        "_piece": len(grp) == 1 and part[0][0] in deeper})
     return out
 
 
@@ -601,6 +675,8 @@ def split_stats(pieces, map_picks):
         out["글자_상한"] = {"상한": CHUNK_MAX_CHARS,
                           "초과_청크": len({f for f in _from if f}),
                           "조각": sum(1 for f in _from if f),
+                          "제목_경계": sum(1 for p in pieces if (p.get("meta") or {}).get("char_cap_by") == CUT_HEAD),
+                          "행_경계": sum(1 for p in pieces if (p.get("meta") or {}).get("char_cap_by") == CUT_ROW),
                           "혼자_넘는_행": sum(1 for p in pieces
                                           if (p.get("meta") or {}).get("over_char_cap"))}
     return out

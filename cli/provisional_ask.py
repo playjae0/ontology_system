@@ -6,7 +6,7 @@
 
 | 줄 | 처분(글쇠) |
 |---|---|
-| 문에 걸린 표기(`kind: gate`) | 합침 `m [후보 번호|이름]` · 새로 `k` · 승격 `p` · drop `d <사유>` · 건너뜀 |
+| 문에 걸린 표기(`kind: gate`) | 합침 `m [후보 번호|이름]` · 새로 `k` · 승격 `p` · drop `d <사유>` · 올림 `u`(골격 단 값만 — B197) · 건너뜀 |
 | 쌍 어긋남(`kind: pair`) | 확인 `a` · 정정 `r <후보 번호|이름>` · drop `d <사유>` · 건너뜀 |
 | 이미 세운 잠정 노드(`nid`) | 승격 `p` · 합침 `m [이름]` · 그대로 `k`(「봄」) · 건너뜀 |
 
@@ -18,11 +18,11 @@ from cli import _screen
 from core import paths
 
 PROMPT = "[승격 p / 합침 m [이름] / 그대로 k / 건너뜀 Enter] "
-PROMPT_GATE = "[합침 m [후보|이름] / 새로 k / 승격 p / drop d <사유> / 건너뜀 Enter] "
+PROMPT_GATE = "[합침 m [후보|이름] / 새로 k / 승격 p / drop d <사유> / 올림 u / 건너뜀 Enter] "
 PROMPT_PAIR = "[확인 a / 정정 r <후보|이름> / drop d <사유> / 건너뜀 Enter] "
 #: 한글 자판 그대로(같은 자리의 글쇠 — B118 ④)
-KEYS = {"ㅔ": "p", "ㅡ": "m", "ㅏ": "k", "ㅇ": "d", "ㅁ": "a", "ㄱ": "r"}
-DONE = ("승격", "합침", "그대로", "새로", "drop", "확인", "정정", "건너뜀")
+KEYS = {"ㅔ": "p", "ㅡ": "m", "ㅏ": "k", "ㅇ": "d", "ㅁ": "a", "ㄱ": "r", "ㅕ": "u"}
+DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "건너뜀")
 
 
 def _key(a):
@@ -54,6 +54,13 @@ def decide(row, actor, ask=None, indent="     ", answer=None):
             PH.drop(actor, row["surface"], row.get("up_name"), rest)
             print(f"{indent}drop — '{row['surface']}'({row.get('up_name') or '부모 미정'}) 세우지 않는다 · 사유 {rest} · 재연결이 다시 열지 않는다")
             return "drop", False
+        if k == "u" and kind == "gate":
+            if not row.get("also"):
+                print(f"{indent}[거부] 올림은 골격 단 값(겸)의 줄만 — 공정 표기는 합침 · 새로 · 승격 · drop")
+                return "건너뜀", False
+            PH.raise_up(actor, row["surface"], row.get("up_name"), rest)
+            print(f"{indent}올림 — '{row['surface']}' 노드 0 · 그 값과 딸린 값은 위 공정 {row.get('up_name')}에 바로(재연결이 보류 행을 잇는다)")
+            return "올림", False
         if k == "k" and kind == "gate":
             PH.seed(actor, row["surface"], row.get("up_name"))
             print(f"{indent}새로 — '{row['surface']}'(부모 {row.get('up_name') or '미정'}) 잠정 골격 노드로 선다(그 문서의 나머지 행부터 · "
@@ -140,16 +147,16 @@ def show_rows(rows, indent="     "):
 
 
 #: `--step` 좌표 단계의 물음 — 지금 관문 답 규칙(계속은 c(ㅊ)만 · 멈춤 q) + 줄의 처분(번호 — 사람 후보 관문 [5/8]과 같은 꼴)
-GATE_PROMPT = ("   [계속 c / 멈춤 q / 합침 m <줄> [후보|이름] / 새로 k <줄> / 승격 p <줄> / drop d <줄> <사유> / "
+GATE_PROMPT = ("   [계속 c / 멈춤 q / 합침 m <줄> [후보|이름] / 새로 k <줄> / 승격 p <줄> / drop d <줄> <사유> / 올림 u <줄> / "
                "쌍 확인 a <줄> / 쌍 정정 r <줄> <후보|이름>] ")
 GATE_HELP = ("   c(ㅊ) 계속 · q(ㅂ) 멈춤 · m <줄> [후보 번호|이름] 합침 · k <줄> 새로 · p <줄> 승격 · d <줄> <사유> drop · "
-             "a <줄> 쌍 확인 · r <줄> <후보 번호|이름> 쌍 정정 — 다시 친다")
+             "u <줄> 올림(골격 단 값) · a <줄> 쌍 확인 · r <줄> <후보 번호|이름> 쌍 정정 — 다시 친다")
 
 
 def _gate_cmd(a):
     k, rest = _key(a)
     num, _sp, name = rest.partition(" ")
-    if k in ("p", "m", "k", "d", "a", "r") and num.isdigit():
+    if k in ("p", "m", "k", "d", "u", "a", "r") and num.isdigit():
         return k, int(num), name.strip()
     return None
 
