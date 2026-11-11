@@ -3,75 +3,75 @@
  "suites": {
   "test_g1_g2": {
    "n": 85,
-   "secs": 6
+   "secs": 5
   },
   "test_places": {
    "n": 32,
-   "secs": 10
+   "secs": 8
   },
   "test_g3": {
    "n": 89,
-   "secs": 4
+   "secs": 3
   },
   "test_query": {
    "n": 131,
-   "secs": 21
+   "secs": 20
   },
   "test_ops": {
    "n": 84,
-   "secs": 9
+   "secs": 7
   },
   "test_intake": {
    "n": 100,
-   "secs": 24
+   "secs": 21
   },
   "test_ingest_view": {
    "n": 79,
-   "secs": 44
+   "secs": 37
   },
   "test_coord": {
-   "n": 49,
-   "secs": 16
+   "n": 56,
+   "secs": 14
   },
   "test_catalog": {
    "n": 102,
-   "secs": 42
+   "secs": 35
   },
   "test_safety": {
    "n": 36,
-   "secs": 80
+   "secs": 64
   },
   "test_judge": {
    "n": 107,
-   "secs": 34
+   "secs": 29
   },
   "test_build": {
    "n": 81,
-   "secs": 35
+   "secs": 25
   },
   "test_rebuild": {
    "n": 51,
-   "secs": 36
+   "secs": 27
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 6
   },
   "test_structure": {
    "n": 129,
-   "secs": 33
+   "secs": 27
   },
   "test_g6_capture": {
    "n": 12,
-   "secs": 30
+   "secs": 25
   },
   "test_g6_close": {
    "n": 40,
-   "secs": 52
+   "secs": 44
   },
   "test_contract": {
    "n": 76,
-   "secs": 31
+   "secs": 23
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,7 +83,7 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 4
+   "secs": 3
   },
   "test_p1_form": {
    "n": 35,
@@ -91,15 +91,15 @@
   },
   "test_p1_media": {
    "n": 20,
-   "secs": 6
+   "secs": 4
   },
   "test_p2": {
    "n": 69,
-   "secs": 6
+   "secs": 5
   },
   "test_p3_register": {
    "n": 78,
-   "secs": 12
+   "secs": 11
   },
   "test_p3_prompt": {
    "n": 60,
@@ -111,7 +111,7 @@
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 6
+   "secs": 5
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,15 +119,15 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 7
+   "secs": 6
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 4
+   "secs": 3
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 12
+   "secs": 10
   },
   "test_2a_gateway": {
    "n": 75,
@@ -139,11 +139,11 @@
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 1
+   "secs": 0
   },
   "test_site": {
    "n": 56,
-   "secs": 27
+   "secs": 24
   }
  },
  "log": [
@@ -1001,6 +1001,14 @@
    "suite": "test_p1_media",
    "from": 19,
    "to": 20,
+   "why": ""
+  },
+  {
+   "at": "2026-11-11",
+   "head": "ef49ad3",
+   "suite": "test_coord",
+   "from": 49,
+   "to": 56,
    "why": ""
   }
  ]
