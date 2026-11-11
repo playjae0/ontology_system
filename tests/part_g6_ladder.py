@@ -15,6 +15,7 @@
   B134 — 시트 확인 답 꼴이 어긋나면 그 칸만 버리고 사다리 목차(결함 로그 · 화면) · 사다리 답이 문자열이면 코드 사다리 · 구조 함수 안의
      TypeError는 파싱 실패 · 지도 훅을 받지 않는 옛 꼴 어댑터는 그대로 파싱
   B139 — 같은 꼴 판단 필요는 시트마다 하나(답은 그 줄 전부에) · 구조 화면은 나무 글자 · 꼴 표기 0 · ✂ 청크 경계 · 청크 안 표지
+  B195 ⓐ ⓑ ⓒ — 「하」 다음 서수 · 제목 범위 연속(닫힌 부모 → 열린 더미 · 판단 필요 「연속」) · 첫 번호의 들여쓰기
 (B124 「구조 v2」 조각 — LLM 청크 구간 · 구간 검사 · 폴백은 경로를 지워(B132 ⑧) 이 조각으로 바꿨다 · ⓘ는 test_site · ⓙ는 네 벌 단계)
 """
 from __future__ import annotations
@@ -138,7 +139,8 @@ _f1, _f2 = _st["프레임"][S1], _st["프레임"][S2]
 _lad = [b for p, b in CALLS if p == "structure" and b.get("task") == "ladder"]
 _chk = {b["frame"]: b for p, b in CALLS if p == "structure" and b.get("task") == "check"}
 _h1 = {h["row"]: h for h in _f1["headings"]}
-_want = [(1, None), (2, 1), (3, 2), (5, 2), (6, 5), (8, 5), (12, 1), (13, 12), (15, 12), (17, 12), (20, None), (22, 1)]
+# 고침 B195 ① — 20행이 맨 위 단으로 열려 시트 제목(1행)이 닫혔다 · 22행은 닫힌 1행 아래로 돌아가지 않는다(열린 20행 아래 · 판단 필요 「연속」)
+_want = [(1, None), (2, 1), (3, 2), (5, 2), (6, 5), (8, 5), (12, 1), (13, 12), (15, 12), (17, 12), (20, None), (22, 20)]
 _lin = json.dumps(_lad[0], ensure_ascii=False) if _lad else ""
 show("ⓒ 사다리 답(`9. › 가.(대상) › 9) › A.`)으로 목차가 맞고 단의 역할이 줄에(대상 이름 = 번호를 뗀 글 · 카테고리 칸 0) · 사다리 호출 "
      "문서당 1 · 입력에 줄 전문 0(본문 · 긴 제목의 전문 없음)",
@@ -148,12 +150,12 @@ show("ⓒ 사다리 답(`9. › 가.(대상) › 9) › A.`)으로 목차가 맞
      and _h1[12]["name"] == "스태킹 unit" and _h1[1]["by"] == "시트 제목" and len(_lad) == 1
      and FOLDED not in _lin and LONG not in _lin and "stats" in _lad[0],
      f"목차 {_tree(_r, S1)} · 사다리 호출 {len(_lad)} · 2행 {(_h1[2].get('role'), _h1[2].get('name'))}")
-_need = {n["row"]: n["kind"] for n in _f1["needs"]}
+_need = {n["row"]: n["kind"] for n in _f1["needs"] if n.get("tag") != "연속"}     # 연속(B195 ①)은 시트 확인 뒤에 단다 — 22행
 _t1 = {e.get("row"): e for e in _chk.get(S1, {}).get("toc") or []}
 _toc0 = {h["row"] for h in _f1["toc0"]}
 show("ⓓ 판단 필요 넷이 하나씩(ⓑ 8 · ⓐ 10 · ⓒ 17 · ⓓ 20) · 시트 확인 입력에 이유와 앞뒤 두 줄 · 답으로 바뀐다(20행 제목 · 10행 본문) · "
      "코드가 혼자 정한 애매한 줄 0(ⓐ · ⓓ 줄은 코드 목차에 없다 · 답 빠짐 0)",
-     _need == {8: "ⓑ", 10: "ⓐ", 17: "ⓒ", 20: "ⓓ"}
+     _need == {8: "ⓑ", 10: "ⓐ", 17: "ⓒ", 20: "ⓓ"} and [n["row"] for n in _f1["needs"] if n.get("tag") == "연속"] == [22]
      and all(_t1.get(r, {}).get("kind") == "판단 필요" and _t1[r].get("why") for r in _need)
      and _t1.get(9, {}).get("kind") == "앞뒤" and _t1.get(11, {}).get("kind") == "앞뒤" and _t1.get(19) is None
      and 20 in _h1 and _h1[20]["role"] == "주제" and 10 not in _h1 and not ({10, 20} & _toc0)
@@ -424,8 +426,9 @@ _ck7 = next((b for p, b in CALLS if p == "structure" and b.get("task") == "check
 _cl7 = {n["row"]: n["why"] for n in _ck7.get("needs") or [] if n["need"] == "ⓒ"}
 show("B137 ⓐ 사내 꼴 표본 — 코드 초안(LLM 0)이 맞다(6. 맨 위 · 가. · 나. 그 아래 · 1. · 2.가 가. · 나. 아래) / B139 ② 사다리 답이 「9. › 가.」이면 "
      "초안은 사다리(1. · 2.가 가.의 형제)이고 그 첫 서수 줄이 판단 필요(「첫 서수로는 바로 위 가. 아래」)",
-     _tr(_c7[SA]) == WANT_A and _tr(_fa, "toc0") == [(1, None), (2, 1), (3, 1), (5, 1), (7, 1), (8, 1)]
-     and set(_cl7) == {3, 8} and all("첫 서수로는 바로 위" in w for w in _cl7.values()) and _fa["ladder_source"] == "LLM",
+     # 고침 B195 ③ — 1.(B열)이 가.(A열)보다 들여 썼다: 사다리와 어긋나도 가.의 자식(사다리를 따르던 초안 · 판단 필요 「첫 서수로는」은 걷혔다)
+     _tr(_c7[SA]) == WANT_A and _tr(_fa, "toc0") == WANT_A
+     and not _cl7 and _fa["ladder_source"] == "LLM",
      f"코드 {_tr(_c7[SA])} · 사다리 답 초안 {_tr(_fa, 'toc0')} · 판단 필요 {sorted(_cl7)}")
 show("B137 ⓑ 첫 행 = 시트 제목 — 번호를 붙인 이름 · 뗀 이름 · 공백이 다른 이름이 모두 시트 제목 · 다른 글이면 지금처럼(시트 제목 없음)",
      all(PLD.title_row(_lab(n, f)) == 1 for n, f in _ttl) and PLD.title_row(_lab("공정별 상세사양", "가. 이송 물류")) is None
@@ -618,5 +621,39 @@ show("B139 ⓓ 화면 — 나무 표시(├─ · └─ · │) · 줄마다 �
      and any(f"{S1} › 6.공정별 상세사양 › 가. | 노칭 unit › 2)지정사양 › A.입고전 검수" in ln for ln in _cut)
      and _in and all(split_report.NEED_MARK in ln for ln in _in),
      f"나무 줄 {len(_trs)} · ✂ {len(_cut)} · 청크 안 {[ln.strip()[:60] for ln in _in]}")
+
+
+# ────────────────────────────────────────────────────────────── B195 ①②③ 목차 — 위에서 아래로 한 번 · 「하」 다음 · 첫 번호의 들여쓰기
+from parser import ladder as _PL195, struct_rule as _SR195, toc as _TOC195   # noqa: E402
+_l195 = [(1, "파. 공정"), (2, "하. 설비"), (3, "1) 모터"), (4, "2) 기어"), (5, "거. 검사"), (6, "너. 포장"), (7, "3) 박스")]
+_lv195 = _TOC195.number_levels(_l195)
+_own195, _ch195 = _TOC195.toc_chains(_l195, {r: lv for r, (lv, _s) in _lv195.items()})
+show("B195 ⓐ 「파. 하. 거. 너.」 — 거. · 너.가 하.의 형제(맨 위 단) · 너. 아래 「3)」의 부모는 너.(앞의 하. 아래 「2)」의 형제가 아니다)",
+     _lv195.get(5, (0,))[0] == _lv195.get(6, (0,))[0] == _lv195[2][0] and _ch195(7) == [6, 7],
+     f"단 {{{', '.join(f'{r}:{v[0]}' for r, v in _lv195.items())}}} · 3)의 사슬 {_ch195(7)}")
+_labs195 = [{"row": r} for r in (300, 345, 360, 466)]
+_st195 = _SR195.contiguous({"headings": [{"row": 300, "parent": None}, {"row": 345, "parent": 300},
+                                         {"row": 360, "parent": None}, {"row": 466, "parent": 345}], "needs": []}, _labs195)
+_rows195, _info195 = _SR195.structure_rows([(r, f"{r}행") for r in (300, 345, 360, 466)], _st195)
+_par195 = {r["row"]: r.get("parent") for r in _rows195 if r.get("heading")}
+_o195, _c195 = _TOC195.toc_chains([(r, "") for r in (300, 345, 360, 466)], {r["row"]: r["level"] for r in _rows195 if r.get("heading")},
+                                  _par195)
+show("B195 ⓑ 구조가 466행의 부모를 이미 닫힌 345행으로 줘도 — 부모는 열린 더미가 정한 360행 · 「판단 필요 — 연속」 한 줄 · 청크 경로"
+     "(toc_chains)와 단(structure_rows)이 같은 부모",
+     _par195[466] == 360 and _c195(466) == [360, 466] and _info195[466]["depth"] == 2
+     and any(n.get("tag") == "연속" and "345행은 이미 닫혔다" in n["why"] for n in _st195["needs"]),
+     f"부모 {_par195} · 사슬 {_c195(466)} · 판단 필요 {[n['why'][:40] for n in _st195['needs']]}")
+_l195c = [(1, "타. 설비"), (2, "4) 구동"), (3, "가. 모터"), (4, "나. 기어")]
+_lad195 = {"levels": [{"sigs": ["가."]}, {"sigs": ["9)"]}]}
+
+
+def _par195c(ci):
+    labs = _SR195.labels("S", _l195c, [], {}, True, {1: {"ci": 0}, 2: {"ci": 0}, 3: {"ci": ci}, 4: {"ci": ci}})
+    return {h["row"]: h["parent"] for h in _PL195.apply(labs, _lad195, {})["headings"]}
+
+
+_in195, _flat195 = _par195c(1), _par195c(0)
+show("B195 ⓒ 「타. → 4) → 가.」 — 가.의 시작 열이 4)보다 오른쪽이면 가.는 4)의 자식 · 같은 열이면 지금 규칙(사다리 — 맨 위 단)",
+     _in195.get(3) == 2 and _in195.get(4) == 2 and _flat195.get(3) != 2, f"들여 씀 {_in195} · 같은 열 {_flat195}")
 
 done()

@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from parser import sig as SG
 
-#: **목차 규칙 판**(B130 ① · B132 — 꼴 서명 · 사다리 · B137 — 첫 서수 · 이어짐의 초안 · 첫 행 시트 제목) — 구조 확인의 확정 기록이
+#: **목차 규칙 판**(B130 ① · B132 — 꼴 서명 · 사다리 · B137 — 첫 서수 · 이어짐의 초안 · 첫 행 시트 제목 · B195 — 제목 범위 연속 ·
+#: 한글 서수 「하」 다음 · 첫 번호의 들여쓰기) — 구조 확인의 확정 기록이
 #: 이 판을 적는다 · 판이 다른 옛 확정은 재생하지 않는다(목차가 틀렸을 수 있다)
-TOC_VERSION = "toc-4"
+TOC_VERSION = "toc-5"
 
 
 def _short(text):
@@ -42,7 +43,8 @@ def _toc(hits, forbid, seen=None, rank=None, first=None):
 
     `first`(**목차 초안** — 계층 사다리 적용 · B137 ①)가 오면 ⓑ의 첫 서수는 `forbid` · 사다리로 열린 줄을 닫지 않고 **바로 위 제목 줄의
     자식**이다(같은 꼴이 두 깊이에 선다) — 그 자리가 `forbid`(사다리 단 순서)와 어긋나면 **초안은 사다리를 따르고**(ⓑ의 닫기 · B139 ②)
-    `first["clash"]`에 `{행: 바로 위 제목 행}`을 적는다(판단 필요의 재료) · 문서 규칙
+    `first["clash"]`에 `{행: 바로 위 제목 행}`을 적는다(판단 필요의 재료) — 단 그 첫 서수 줄이 바로 위 제목 줄보다 **들여 썼으면**
+    (`first["indented"](행, 위 행)` — 이 경우 하나에만 쓰는 들여쓰기 · B195 ③) 사다리와 어긋나도 그 자식이다 · 문서 규칙
     「P 아래에서 첫 서수로 시작하는 S 목록」(`first["lists"]` — `{(S, P)}`)에 맞으면 가장 가까운 열린 P 줄의 자식이고 그 목록의 이어지는
     줄과 함께 `first["ruled"]`(`{행: (S, P)}`)에 적는다 · 이어짐도 첫 서수도 아닌 번호 줄은 같은 꼴의 열린 줄을 찾지 않고 사다리의 단
     순서(ⓒ)로 서며 `first["loose"]`에 적는다."""
@@ -64,6 +66,8 @@ def _toc(hits, forbid, seen=None, rank=None, first=None):
             if par is not None:
                 first["ruled"][r] = (key, stack[par][0])
                 del stack[par + 1:]
+            elif stack and (key, stack[-1][0]) in forbid and first.get("indented") and first["indented"](r, stack[-1][3]):
+                pass                                                   # 바로 위 제목보다 들여 썼다 — 사다리와 어긋나도 그 자식(B195 ③)
             elif stack and (key, stack[-1][0]) in forbid:
                 first["clash"][r] = stack[-1][3]                       # 첫 서수로는 바로 위의 자식 — 단 순서와 어긋나 사다리를 따른다
                 while stack and (key, stack[-1][0]) in forbid:
@@ -168,6 +172,36 @@ def number_levels(lines, ladder=None):
         forbid = {(c, p) for c in rank for p in rank if rank[c] <= rank[p]}
     lv = _toc(hits, forbid, rank=rank)
     return {r: (lv[r], s) for r, s, _v in hits}
+
+
+def contiguous(rows, parents, top=(None,)):
+    """**제목 범위는 연속이다**(B195 ① — 글은 위에서 아래로 한 번) — `rows`(제목 행 · 읽는 차례) · `parents`(`{행: 받은 부모}`) →
+    `(부모 {행: 부모}, 닫힘 [(행, 받은 부모, 선 부모)])`.
+
+    제목을 만나면 먼저 그 제목과 같거나 깊은 단의 열린 제목을 닫고 연다 — 받은 부모가 **그 자리에서 열려 있는 제목**이면 그것 ·
+    이미 닫힌 제목이면(뒤 행이 앞의 닫힌 제목 아래로 갈 길은 없다) 받은 부모의 단으로 열린 더미가 정한 부모(그 단보다 얕은 가장
+    가까운 열린 제목)이고 `닫힘`에 적는다 · 받은 부모가 목차 밖(맨 위 · `top`)이거나 앞에 없던 행이면 받은 그대로."""
+    open_, depth, out, closed, seen = [], {}, {}, [], set()
+    for r in rows:
+        p = parents.get(r)
+        if p in top or p not in seen:
+            out[r] = p
+            d = depth.get(p, 0) + 1 if p not in top else 1
+            open_ = [x for x in open_ if depth[x] < d]
+        elif p in open_:
+            out[r] = p
+            open_ = open_[:open_.index(p) + 1]
+            d = depth[p] + 1
+        else:
+            d = depth[p] + 1
+            open_ = [x for x in open_ if depth[x] < d]
+            out[r] = open_[-1] if open_ else None
+            d = depth[out[r]] + 1 if out[r] is not None else 1
+            closed.append((r, p, out[r]))
+        depth[r] = d
+        open_.append(r)
+        seen.add(r)
+    return out, closed
 
 
 def toc_chains(lines, levels, parents=None):

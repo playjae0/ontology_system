@@ -61,6 +61,7 @@ def image_summarizer():
     if gateway.use_mock():
         return None
     gateway.require("image_summary")        # 미설정이면 파싱 전에 명시적으로 실패한다
+    summarize_image.version = gateway.prompt_stamp("image_summary").get("prompt_version")   # 보존 열쇠의 지시문 판(B195 ④)
     return summarize_image
 
 

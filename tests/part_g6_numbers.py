@@ -233,6 +233,17 @@ show("B192 ⓔ 화면 낱말 — 인입 끝 한 줄 · show summary 문서 줄�
      and not any("유닛" in v for _k, v in _lines) and any("유닛 이하" in v for _k, v in _old192) and "바뀐 줄 0" in _cli192,
      f"{_end192[-60:]} · {_cli192.strip().splitlines()[0] if _cli192.strip() else ''}")
 
+# B195 ⓔ 화면 셋 — [5/8] 물음 「노드 추가 n」 · 이름 없는 대상 0이면 한 줄 · 추출 청크 표 머리 한 줄(산문 인입 화면)
+from cli import human_gate as _HG195                                    # noqa: E402
+_stub195 = type("B", (), {"doc_id": "B195NONE", "rows": lambda self: ([], {"종": 0, "관계": 0})})()
+_hl195 = _HG195.lines(_stub195)
+show("B195 ⓔ 화면 — [5/8] 물음 · 도움말이 「노드 추가 n」(「더하기」 0) · 이름 없는 대상 0이면 한 줄(원인 묶음으로) · 산문 인입의 추출 "
+     "청크 표 위에 머리 한 줄",
+     "노드 추가 n" in _HG195.PROMPT and "더하기" not in _HG195.PROMPT + _HG195.HELP
+     and any(ln.strip().startswith("이름 없는 대상 0 —") for ln in _hl195)
+     and any("추출 진행 — 청크마다 뽑은 개체 수" in o for o in OUT.values()),
+     f"{_hl195} · 머리 줄 {[k for k, o in OUT.items() if '추출 진행' in o]}")
+
 # ⓒ 위치 칸(칸 글자 · 잘림 표지)은 지웠다(B131 ④ — 화면 글자는 재지 않는다 · 값 표 칸은 md 보고서 시험(test_judge의 조각 judge2 —
 # 값 표 행 = 대장 개체 행 · 잘림 0)이 같은 칸 함수로 잡는다).
 

@@ -709,7 +709,7 @@ show("B192 ② 사람 후보 미리보기 — 문서 층 ≠ home이어도 이�
      _cat0 and _n192["quality"] == _n192["process"] and _pol192 and _pol192 in str(_n192["process"]), str(_n192))
 _ckb = EX.checkpoint_path("B140A").read_bytes()
 _ob = _drive(["ingest-file", str(_pA), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose", *_cA, "--step"],
-             [("더하기 n", ["n 1", "c"]), ("[OK o / 위 노드", ["o"])])
+             [("노드 추가 n", ["n 1", "c"]), ("[OK o / 위 노드", ["o"])])
 _cy = _live_named("노칭::실린더")
 _rowA = {r["surface"]: r for r in LG.read("B140A")["rows"] if r.get("role") == "entity"}
 _eA = _edges_of(_cy[0]["id"]) if _cy else []
@@ -768,7 +768,7 @@ HC.drop("B140A", 1)
 _go(_pA, _cA)
 _hA = [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN]
 show("B140 ⓔ 다시 — 같은 문서 재인입은 묻지 않고 기록을 적용해 같은 엣지 · 기본 fresh 뒤 재구축도 같다 · 지우기로 걷으면 다음 인입에서 빠진다",
-     _g0 and _g0 == _g1 == _g2 and "사람 기록 1 — 적용" in _oe and "더하기 n" not in _oe and not _hA,
+     _g0 and _g0 == _g1 == _g2 and "사람 기록 1 — 적용" in _oe and "노드 추가 n" not in _oe and not _hA,
      f"엣지 {len(_g0)} / {len(_g1)} / {len(_g2)} · 걷은 뒤 사람 행 {len(_hA)}")
 # 끝점 조회 — 다른 문서가 만든 노드를 끝점으로 · 사전 히트 둘이 좁혀도 둘이면 미해소
 from core.state.bootstrap import open_graph as _og2         # noqa: E402
@@ -807,7 +807,7 @@ show("B140 ⓗ 막기 — 좌표 카테고리는 고를 수 없다 · 매핑 없
 HC.add("B140A", {"kind": HC.NEW, "name": "실린더", "category": "Unit", "upper": {"name": "노칭", "category": "Process", "kind": "골격"}})
 _oi = _go(_pA, _cA, "--step")
 show("B140 ⓘ 비대화형 — 목록과 안내 줄만(묻지 않는다) · 지난 기록은 적용한다",
-     "사람 기록 1 — 적용" in _oi and "더하기 n" not in _oi and [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN],
+     "사람 기록 1 — 적용" in _oi and "노드 추가 n" not in _oi and [r for r in LG.read("B140A")["rows"] if r.get("by") == HU.HUMAN],
      " / ".join(ln.strip() for ln in _oi.splitlines() if "사람" in ln)[:200])
 # ── B145 — 소속을 말했는데 미해소라 선 폴백은 소유자 근거가 아니다(기다리는 이름이 근거) · 말하지 않은 값의 폴백은 근거
 B140_WORDS = B140_WORDS + (("토크", "Property"), ("밸브 개도", "Property"))

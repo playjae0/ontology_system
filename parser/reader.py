@@ -139,7 +139,7 @@ def read_xlsx(path):
     # 모델이 받지 못하는 형식의 변환과 「건너뜀」은 파이프라인이 정한다.
     from . import ooxml
     zimgs = ooxml.xlsx_images(path)
-    all_images, n_img = {}, 0
+    all_images, n_img, groups = {}, 0, {}
     sheets = []
     for ws in wb.worksheets:
         cells, indent, bold, size, fill, color = {}, {}, [], {}, {}, {}
@@ -163,11 +163,18 @@ def read_xlsx(path):
                 if fc:
                     color[addr] = fc
         images = []
-        for cell, blob, mime in zimgs.get(ws.title, []):
+        got = zimgs.get(ws.title, [])
+        for grp in ooxml.image_groups([(at["anchor"], at["span"]) for _c, _b, _m, at in got]):
+            # **그림 묶음 하나 = 그림 항목 하나**(B195 ④) — 같은 앵커 · 셀 범위가 겹치거나 맞닿는 그림 · 바이트는 첫 그림(합성은
+            # 실호출 요약 직전 — `_groups` · 선택 의존을 mock 길에 들이지 않는다) · 하나뿐인 묶음은 지금 모양 그대로
             n_img += 1
             ref = f"img_{n_img:03d}"              # 문서 전체에서 하나 — 시트를 넘어 겹치지 않는다
+            cell, blob, mime, _at = got[grp[0]]
             all_images[ref] = (blob, mime)
-            images.append({"cell": cell, "ref": ref, "mime": mime})
+            images.append({"cell": cell, "ref": ref, "mime": mime,
+                           **({"cells": [got[i][0] for i in grp]} if len(grp) > 1 else {})})
+            if len(grp) > 1:
+                groups[ref] = [(got[i][1], got[i][2], got[i][3]["span"]) for i in grp]
         sheet = {
             "name": ws.title,
             "max_row": ws.max_row, "max_col": ws.max_column,
@@ -189,6 +196,8 @@ def read_xlsx(path):
     if all_images:
         # 키는 **있을 때만** — 그림 없는 문서의 판독 결과가 한 바이트도 바뀌지 않는다.
         out["_images"] = all_images
+    if groups:
+        out["_groups"] = groups                   # 그림 묶음의 그림들 `{ref: [(바이트, mime, span)]}` (B195 ④)
     return out
 
 

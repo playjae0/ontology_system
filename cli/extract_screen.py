@@ -129,6 +129,9 @@ def _chunk_row(box, info, lz):
     """청크 한 행 — 개체는 전부(칸이 좁으면 `…` · `-v`면 행 아래 전체 · 전체는 늘 로그와 체크포인트)."""
     t = box["t"] or extract_table()
     box["t"] = t
+    if not box.get("머리"):                            # 표 머리 한 줄 — 무엇을 세는 표인가(B195 ⑤)
+        _screen.say("   추출 진행 — 청크마다 뽑은 개체 수 · 할 일 없음(그림 요약 청크도 든다)", "aux")
+        box["머리"] = True
     ents = " · ".join(f"{s}[{c}]" for s, c in info["개체"])
     tok = info.get("토큰") or {}
     cum = _screen.tokens(gateway.usage_total(), box["u0"]).split("(")[0].replace("토큰 ", "")

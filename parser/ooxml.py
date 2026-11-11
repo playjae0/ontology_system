@@ -73,10 +73,76 @@ def _mime(part):
 
 
 # ---------------------------------------------------------------- 엑셀 그림 (B88 ①)
-def xlsx_images(path):
-    """`{시트 이름: [(셀, 바이트, mime), …]}` — 앵커의 **시작 셀** 순(행 → 열).
+#: 표준 칸(픽셀 — 열 너비 · 행 높이)과 EMU — 그림 묶음의 자리 · 합성의 칸(B195 ④)
+CELL_PX, EMU_PX = (64, 20), 9525
 
-    그룹 안의 그림도 센다(앵커 하나에 blip 여럿). 읽지 못하는 zip이면 빈 dict다 —
+
+def _span(anchor, row, col):
+    """앵커의 셀 범위 `(시작 행, 시작 열, 끝 행, 끝 열)` — 두 셀 앵커는 `to`까지 · 나머지는 시작 셀 하나."""
+    to, ext = anchor.find("xdr:to", NS), anchor.find("xdr:ext", NS)
+    try:
+        if to is not None:
+            return (row, col, int(to.findtext("xdr:row", str(row), NS)), int(to.findtext("xdr:col", str(col), NS)))
+        if ext is not None:                                 # 한 셀 앵커 — 크기(EMU)를 표준 칸으로 편다
+            w, h = (int(ext.get("cx") or 0) / EMU_PX, int(ext.get("cy") or 0) / EMU_PX)
+            return (row, col, row + max(0, -(-int(h) // CELL_PX[1]) - 1), col + max(0, -(-int(w) // CELL_PX[0]) - 1))
+    except ValueError:
+        pass
+    return (row, col, row, col)
+
+
+def image_groups(items):
+    """**그림 묶음**(B195 ④) — `[(앵커 번호, (r0, c0, r1, c1))]` → 묶음마다 그 항목 번호 목록(읽는 차례) · 같은 앵커(그룹 도형) ·
+    셀 범위가 겹치거나 맞닿는(한 칸 안) 그림은 한 묶음이다."""
+    parent = list(range(len(items)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def near(a, b):
+        return a[0] <= b[2] + 1 and b[0] <= a[2] + 1 and a[1] <= b[3] + 1 and b[1] <= a[3] + 1
+    for i, (ai, sa) in enumerate(items):
+        for j in range(i):
+            aj, sb = items[j]
+            if ai == aj or near(sa, sb):
+                parent[find(i)] = find(j)
+    out = {}
+    for i in range(len(items)):
+        out.setdefault(find(i), []).append(i)
+    return sorted(out.values(), key=lambda g: g[0])
+
+
+def compose(members, cell_px=CELL_PX):
+    """묶음을 **한 장**으로(B195 ④ 가결정 — 그림만 앵커 자리대로 붙인 합성 · 도형은 읽지 않는다) — `[(바이트, mime, span)]` → PNG
+    바이트 · 그림마다 앵커 셀 범위의 칸(열 너비 · 행 높이는 표준 칸 `cell_px`)에 맞춰 놓는다 · 선택 의존(Pillow)은 지연 import ·
+    못 읽는 그림은 빈 칸으로 둔다."""
+    import io
+    from PIL import Image                                   # 선택 의존 — 실호출 그림 요약에서만 부른다
+    w, h = cell_px
+    r0 = min(s[0] for _b, _m, s in members)
+    c0 = min(s[1] for _b, _m, s in members)
+    r1 = max(s[2] for _b, _m, s in members)
+    c1 = max(s[3] for _b, _m, s in members)
+    canvas = Image.new("RGB", ((c1 - c0 + 1) * w, (r1 - r0 + 1) * h), "white")
+    for blob, _mime, (a, b, c, d) in members:
+        try:
+            im = Image.open(io.BytesIO(blob)).convert("RGBA")
+        except Exception:                                  # noqa: BLE001 — 못 읽는 그림(WMF 등)은 빈 칸
+            continue
+        box = ((d - b + 1) * w, (c - a + 1) * h)
+        canvas.paste(im.resize(box), ((b - c0) * w, (a - r0) * h), im.resize(box))
+    buf = io.BytesIO()
+    canvas.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def xlsx_images(path):
+    """`{시트 이름: [(셀, 바이트, mime, 자리 {anchor, span}), …]}` — 앵커의 **시작 셀** 순(행 → 열).
+
+    그룹 안의 그림도 센다(앵커 하나에 blip 여럿 — 같은 `anchor` 번호). 읽지 못하는 zip이면 빈 dict다 —
     그림은 판독의 부속이고, 표·산문 판독을 그림 때문에 죽이지 않는다.
     """
     try:
@@ -101,7 +167,7 @@ def xlsx_images(path):
                 if droot is None:
                     continue
                 drels = _rels(z, dpart)
-                for anchor in droot:
+                for ai, anchor in enumerate(droot):
                     fr = anchor.find("xdr:from", NS)
                     if fr is None:
                         continue
@@ -119,17 +185,17 @@ def xlsx_images(path):
                         except KeyError:
                             continue
                         got.append((row, col, f"{_col_letter(col)}{row + 1}", data,
-                                    _mime(media)))
+                                    _mime(media), {"anchor": f"{dpart}#{ai}", "span": _span(anchor, row, col)}))
             got.sort(key=lambda g: (g[0], g[1]))
             if got:
-                out[sh.get("name")] = [(c, d, m) for _r, _c, c, d, m in got]
+                out[sh.get("name")] = [(c, d, m, at) for _r, _c, c, d, m, at in got]
         return out
 
 
 # ---------------------------------------------------------------- Word (B88 ② · B138)
 BODY_OUTLINE = 9          # w:outlineLvl 9 = 본문(제목 아님)
 #: 자동 번호의 꼴(`w:numFmt`) — 흔한 것만(B138 ①). 밖의 꼴은 번호 글 없이 「자동 번호 · 수준 n」 표시만(판단 필요)
-_HANGUL = "가나다라마바사아자차카타파하"
+from parser.sig import HANGUL as _HANGUL     # noqa: E402 — 한글 서수 표 한 자리(B195 ②)
 _CHOSUNG = "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ"
 _ROMAN = ((1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"),
           (9, "IX"), (5, "V"), (4, "IV"), (1, "I"))

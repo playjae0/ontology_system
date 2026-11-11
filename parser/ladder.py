@@ -165,6 +165,12 @@ def _match(rule, x):
     return bool(rule.get("when"))
 
 
+def _indented(x, up):
+    """첫 서수 줄 `x`가 바로 위 제목 줄 `up`보다 들여 썼나 — 시작 열(`ci`)이 오른쪽이거나 셀 들여쓰기(`indent`)가 크다(B195 ③ · 앞 공백 ·
+    서식은 보지 않는다)."""
+    return (x.get("ci", 0) > up.get("ci", 0)) or (x.get("indent", 0) > up.get("indent", 0))
+
+
 def apply(labs, ladder, counts=None):
     """이름표 + 사다리 → `{"headings": [{row, parent, role, name, sig, by}], "needs": [{row, kind, why, tag}]}`.
 
@@ -198,7 +204,9 @@ def apply(labs, ladder, counts=None):
                 rank.setdefault(key, float(rules[hit].get("level") or 0) - 0.5)
                 hits.append((x["row"], key, None))
     forbid = {(c, p) for c in rank for p in rank if rank[c] <= rank[p]}
-    first = {"lists": set(lists), "clash": {}, "ruled": {}, "loose": []}
+    first = {"lists": set(lists), "clash": {}, "ruled": {}, "loose": [],
+             # 첫 서수 줄이 바로 위 제목 줄보다 들여 썼는가 — 시작 열이 오른쪽이거나 셀 들여쓰기가 크다(B195 ③ · 이 경우 하나에만)
+             "indented": lambda r, above: _indented(by_row.get(r) or {}, by_row.get(above) or {})}
     lv = toc._toc(hits, forbid, rank=rank, first=first)
     parent, stack = {}, []
     for r, _k, _v in hits:

@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 85,
-   "secs": 7
+   "secs": 6
   },
   "test_places": {
    "n": 32,
@@ -11,11 +11,11 @@
   },
   "test_g3": {
    "n": 89,
-   "secs": 3
+   "secs": 4
   },
   "test_query": {
    "n": 131,
-   "secs": 22
+   "secs": 21
   },
   "test_ops": {
    "n": 84,
@@ -26,48 +26,48 @@
    "secs": 24
   },
   "test_ingest_view": {
-   "n": 78,
-   "secs": 47
+   "n": 79,
+   "secs": 44
   },
   "test_coord": {
    "n": 49,
-   "secs": 15
+   "secs": 16
   },
   "test_catalog": {
    "n": 102,
-   "secs": 44
+   "secs": 42
   },
   "test_safety": {
    "n": 36,
-   "secs": 82
+   "secs": 80
   },
   "test_judge": {
    "n": 107,
-   "secs": 33
+   "secs": 34
   },
   "test_build": {
    "n": 81,
-   "secs": 29
+   "secs": 35
   },
   "test_rebuild": {
    "n": 51,
-   "secs": 30
+   "secs": 36
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 9
+   "secs": 7
   },
   "test_structure": {
-   "n": 126,
-   "secs": 32
+   "n": 129,
+   "secs": 33
   },
   "test_g6_capture": {
    "n": 12,
-   "secs": 31
+   "secs": 30
   },
   "test_g6_close": {
    "n": 40,
-   "secs": 53
+   "secs": 52
   },
   "test_contract": {
    "n": 76,
@@ -83,19 +83,19 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 3
+   "secs": 4
   },
   "test_p1_form": {
    "n": 35,
    "secs": 3
   },
   "test_p1_media": {
-   "n": 19,
-   "secs": 5
+   "n": 20,
+   "secs": 6
   },
   "test_p2": {
    "n": 69,
-   "secs": 7
+   "secs": 6
   },
   "test_p3_register": {
    "n": 78,
@@ -107,11 +107,11 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 6
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,11 +119,11 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 7
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 3
+   "secs": 4
   },
   "test_p3_flow": {
    "n": 69,
@@ -139,11 +139,11 @@
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 0
+   "secs": 1
   },
   "test_site": {
    "n": 56,
-   "secs": 28
+   "secs": 27
   }
  },
  "log": [
@@ -977,6 +977,30 @@
    "suite": "test_p3_register",
    "from": 77,
    "to": 78,
+   "why": ""
+  },
+  {
+   "at": "2026-11-10",
+   "head": "ccc4e9e",
+   "suite": "test_ingest_view",
+   "from": 78,
+   "to": 79,
+   "why": ""
+  },
+  {
+   "at": "2026-11-10",
+   "head": "ccc4e9e",
+   "suite": "test_structure",
+   "from": 126,
+   "to": 129,
+   "why": ""
+  },
+  {
+   "at": "2026-11-10",
+   "head": "ccc4e9e",
+   "suite": "test_p1_media",
+   "from": 19,
+   "to": 20,
    "why": ""
   }
  ]

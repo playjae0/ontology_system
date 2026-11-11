@@ -146,7 +146,8 @@ def chain_items(segs, meta, sheet_first=True):
 def labels(name, lines, rows, marks, sheet=True, mats=None):
     """줄 이름표 — `[{row, text, marks, draft, sig, ord, col, depth, gap, len}]`(줄마다 · `sheet`면 0행 = 시트 이름) (B119 ① · B132 ①②).
 
-    `draft`는 어댑터 판정(코드 목차)의 단(0 = 제목 아님) · `sig` · `ord`는 꼴 서명과 서수(`parser/sig.py` — 판정 아님) · `col`은 시작 열 ·
+    `draft`는 어댑터 판정(코드 목차)의 단(0 = 제목 아님) · `sig` · `ord`는 꼴 서명과 서수(`parser/sig.py` — 판정 아님) · `col`은 시작 열
+    (`ci` — 그 번호 · 셀 들여쓰기 `indent`는 0이 아닐 때만 — 첫 번호의 들여쓰기 한 곳만 읽는다 · B195 ③) ·
     `depth`는 **들여쓰기 깊이 하나**(시작 열 · 셀 서식 들여쓰기 · 앞 공백 수를 이 순서로 견준 값 — 시트 안에서 쓰인 값을 작은 것부터
     0 · 1 · 2 …) · `gap`은 빈 행 뒤(어댑터가 뺀 빈 행은 행 번호의 틈으로 남는다) · `len`은 줄 글자 수. `marks[행]`은 어댑터가 채운
     보조 표시(굵게 · 병합 · 크기n · 채움 · 개요n …)다 — 단 신호가 아니다. 글 전체를 싣는다(구조 호출은 골격 보기만 보낸다)."""
@@ -168,6 +169,7 @@ def labels(name, lines, rows, marks, sheet=True, mats=None):
         m = mats.get(n) or {}
         out.append({"row": n, "text": t, "marks": mk, "draft": draft.get(n, 0), "sig": sg, "ord": od,
                     "col": m.get("col"), "depth": rank.get((m.get("ci", 0), m.get("indent", 0), m.get("spaces", 0)), 0),
+                    **({"ci": m["ci"]} if "ci" in m else {}), **({"indent": m["indent"]} if m.get("indent") else {}),
                     "gap": gap, "len": len(str(t).strip())})
     return out
 
@@ -219,6 +221,29 @@ def apply_fixes(st, fixes, labs):
     st["headings"] = [heads[r] for r in order if r in heads]
     st["fixed"] = len(fixes)
     return st
+
+
+def contiguous(st, labs):
+    """구조의 부모를 **제목 범위 연속**으로(`toc.contiguous` — 위에서 아래로 한 번) · 이미 닫힌 제목을 부모로 받은 줄은 열린 더미가
+    정한 부모로 서고 판단 필요 한 줄(「연속」)을 단다 — 구조 확인 md · 화면 · 청크 경로(`toc_chains`) · 단(`structure_rows`)이 같은 부모를 본다."""
+    if not st or not st.get("headings"):
+        return st
+    order = {x["row"]: i for i, x in enumerate(labs)}
+    heads = sorted((dict(h) for h in st["headings"]), key=lambda h: order.get(h.get("row"), len(order)))
+    fixed, closed = toc.contiguous([h["row"] for h in heads], {h["row"]: h.get("parent") for h in heads}, top=(None, FRAME_ROW))
+    if not closed:
+        return st
+    for h in heads:
+        h["parent"] = fixed[h["row"]]
+    needs = [dict(n) for n in st.get("needs") or []]
+    at = {n.get("row"): n for n in needs}
+    for r, p, q in closed:
+        why = f"연속: {r}행의 부모 {p}행은 이미 닫혔다 — 열린 제목 {f'{q}행' if q is not None else '맨 위'} 아래에 섰다"
+        if r in at:
+            at[r]["why"] = f"{at[r].get('why') or ''} · {why}"
+        else:
+            needs.append({"row": r, "kind": "ⓒ", "tag": "연속", "why": why})
+    return {**st, "headings": heads, "needs": needs}
 
 
 def structure_rows(lines, st):
@@ -370,6 +395,7 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 if made is not None and not st.get("failed"):
                     made[frame] = st
         st = apply_fixes(st, fixes.get(frame), labs)
+        st = contiguous(st, labs)                             # 제목 범위는 연속이다 — 받은 구조 · 고침 · 확정 전부 한 자리(B195 ①)
         if st is not None:
             tally.setdefault("프레임", {})[frame] = {
                 "labels": labs, "headings": st.get("headings") or [], "toc0": st.get("toc0") or [],

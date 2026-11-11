@@ -6,7 +6,7 @@
 않는다(EOF = 계속) · 입력은 번호 · Enter 중심(긴 이름을 붙여 넣지 않아도 된다 — 「직접」만 이름).
 
     lines(board, step)   [5/8] 머리 아래 줄 — 지난 기록 · 이름 없는 대상(잃을 것이 많은 차례 · 위 10 — `-v`면 전부) · 꼬리 · 안내
-    ask(board)           `--step`의 물음 — `[계속 c / 멈춤 q / 더하기 n <번호> / 같은 것 s <번호> / 지우기 d <번호>]`
+    ask(board)           `--step`의 물음 — `[계속 c / 멈춤 q / 노드 추가 n <번호> / 같은 것 s <번호> / 지우기 d <번호>]`
 """
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from cli import _screen
 from core.build import human
 from core.state import human_candidates as HC
 
-PROMPT = "   [계속 c / 멈춤 q / 더하기 n <번호> / 같은 것 s <번호> / 지우기 d <번호>] "
-HELP = "   c(ㅊ) 계속 · q(ㅂ) 멈춤 · n <번호> 더하기 · s <번호> 같은 것 · d <번호> 지우기 — 다시 친다"
+PROMPT = "   [계속 c / 멈춤 q / 노드 추가 n <번호> / 같은 것 s <번호> / 지우기 d <번호>] "
+HELP = "   c(ㅊ) 계속 · q(ㅂ) 멈춤 · n <번호> 노드 추가 · s <번호> 같은 것 · d <번호> 지우기 — 다시 친다"
 DETAIL = "     [OK o / 위 노드 p / 카테고리 k / 취소 x] "
 #: 한글 자판 그대로(같은 자리의 글쇠 — B118 ④)
 KEYS = {"ㅜ": "n", "ㄴ": "s", "ㅇ": "d", "ㅐ": "o", "ㅔ": "p", "ㅏ": "k", "ㅌ": "x"}
@@ -50,6 +50,8 @@ def lines(board, step=False):
                        f"관계 {it['관계']} · 다른 문서 고아 {sum(it['고아'].values())} · 청크 {len(it['청크'])}")
         if len(rows) > len(top):
             out.append(f"     … 외 {len(rows) - len(top)}(-v면 전부)")
+    if not rows:                                       # 0이어도 한 줄 — 못 붙은 다른 까닭은 인입 끝 원인 묶음(B195 ⑤)
+        out.append("   이름 없는 대상 0 — 추출이 쓴 소속 · 관계 이름이 모두 풀렸다(못 붙은 다른 까닭은 인입 끝 원인 묶음)")
     if tail["종"]:
         out.append(f"   본문에 없는 이름 {tail['종']}종(관계 {tail['관계']}) — 더할 수 없다")
     if rows and not step:
@@ -91,7 +93,7 @@ def _up(u):
 
 
 def _detail(board, it, up, cat):
-    print(f"   ── 더하기 — '{it['name']}'")
+    print(f"   ── 노드 추가 — '{it['name']}'")
     print(f"     위 노드 — {_up(up)} · 카테고리 — {cat}")
     why = board.why_not(up, cat)
     if why:
