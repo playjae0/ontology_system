@@ -74,7 +74,10 @@ def notice(info, step=False):
         if step and not info.get("판정까지") and sys.stdin.isatty():
             ASKED["판정결과"] = True
             print("   c는 쓴다(그 뒤 [부착·엣지] · [큐·요약] 그대로) · q는 쓰지 않고 멈춘다(그래프 0 · 판정은 대장 중간 저장 — 다시 넣으면 LLM 0)")
-            return _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True)
+            go = _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True)
+            if not go:
+                print("   멈춤 — 쓰지 않았다(그래프 · 사전 · 큐 0 · 판정은 대장 중간 저장 — 같은 명령을 다시 치면 LLM 0)")
+            return go
         return None
     return None
 
