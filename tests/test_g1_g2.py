@@ -4,8 +4,8 @@
   st  : graph.py 밖 직접 접근 0 (grep 실증) + 계기판 7·8 출력
   n1  : S6(occ 충돌) + 멱등성 2종(2회 인입 동일 · 조각 순서 셔플 동일)
   n2  : S5(doc_hash 차단)
-  n10 : **seed v3.2 골격**(Process 46 · part_of 45 · precedes 22 · polarity≠none 16
-        · mirrors 쌍 8) + 파생 대표 흐름 출력 + registry에 builtin 층 1개만 존재
+  n10 : **seed v3.2 골격**(Process 30 · part_of 29 · precedes 22 · 극성 인스턴스 0 · mirrors 0 — B198)
+        + 파생 대표 흐름 출력 + registry에 builtin 층 1개만 존재
         — 구 기대값(8·7·6)은 골격 두 축 분리(D-42) 전 수치다.
 
 사용: python tests/test_g1_g2.py
@@ -80,9 +80,10 @@ _NODE_MIN = {"id", "canonical", "category", "layer", "status",
              "attrs", "aliases", "provenance"}
 show("노드 레코드가 명세 최소 집합을 전부 보유 (§7.2)",
      all(_NODE_MIN <= set(n) for n in _g.nodes.values()))
-_POL = {"cathode", "anode", "none", "unbound"}
-show("polarity가 **최상위 파생 필드**이고 닫힌 4값이다 (attrs 우회 금지)",
-     all(n.get("polarity") in _POL for n in _g.nodes.values())
+from core.build import polarity as _PB                          # noqa: E402
+show("극성은 노드 정체성이 아니다 — 옛 polarity 글자 칸 0 · 출처별 칸 값은 축 값만 · attrs 우회 0 (B198)",
+     not any("polarity" in n for n in _g.nodes.values())
+     and all(set((n.get(_PB.FIELD) or {}).values()) <= set(_PB.axis()) for n in _g.nodes.values())
      and not any("polarity" in (n.get("attrs") or {}) for n in _g.nodes.values()))
 show("tier가 최상위이고 닫힌 3값 (골격 유래 한정)",
      all(n.get("tier") in (None, "main", "sub", "detail") for n in _g.nodes.values())
@@ -229,17 +230,13 @@ show("직렬화 orjson (미설치 시 표준 json 폴백)", m["serializer"] in (
 # ============================================================ n10
 print("\n■ n10 — 부트스트랩 seed·config (골격 seed v3.2 · 두 축 분리)")
 rels = Counter(e["rel"] for e in g.edges)
-POL = [n for n in g.nodes.values() if n.get("polarity") not in (None, "none")]
-show("Process 46노드",
-     sum(1 for n in g.nodes.values() if n["category"] == "Process") == 46,
+show("Process 30노드 (극성 인스턴스 0 — B198)",
+     sum(1 for n in g.nodes.values() if n["category"] == "Process") == 30,
      str(len(g.nodes)))
-show("part_of 45 (구조 — 루트 제외 전 노드)", rels["part_of"] == 45, str(rels["part_of"]))
+show("part_of 29 (구조 — 루트 제외 전 노드)", rels["part_of"] == 29, str(rels["part_of"]))
 show("precedes 22 (지식 — 참여 항목만 건너 이음)", rels["precedes"] == 22,
      str(rels["precedes"]))
-show("polarity ≠ none 16 (인스턴스 4 + @split 인스턴스 12)", len(POL) == 16,
-     str(len(POL)))
-show("mirrors 쌍 8 (노칭 1 + 탭용접 1 + @split 6)", rels["mirrors"] == 16,
-     f"엣지 {rels['mirrors']} → 쌍 {rels['mirrors'] // 2}")
+show("극성 짝 엣지 0 (B198 — 짝 기구 지움)", rels["mirrors"] == 0, str(rels["mirrors"]))
 show("골격 노드 status = seed",
      {n["status"] for n in g.nodes.values()} == {"seed"})
 show("골격 provenance = ['seed']",
@@ -247,17 +244,13 @@ show("골격 provenance = ['seed']",
 
 # tier·canonical — loader 파생이며 수기 접두가 아니다 (A11-7 · D-47)
 tiers = Counter(n["tier"] for n in g.nodes.values())
-show("tier가 깊이에서 파생 (main 1 · sub 8 · detail 37)",
-     tiers == Counter({"main": 1, "sub": 8, "detail": 37}), str(dict(tiers)))
+show("tier가 깊이에서 파생 (main 1 · sub 4 · detail 25)",
+     tiers == Counter({"main": 1, "sub": 4, "detail": 25}), str(dict(tiers)))
 show("main·sub canonical은 이름 그대로 / detail은 부모 경로 접두",
      {"조립", "노칭", "탭용접"} <= canon(g)
      and "탭용접::pre용접" in canon(g) and "패키징::사이드 실링" in canon(g))
-show("인스턴스 canonical = {개념}::{축값} — 쌍 유무 무관 균일",
-     {"노칭::cathode", "노칭::anode", "탭용접::pre용접::cathode"} <= canon(g))
-show("극성 인스턴스 간 precedes 0건 (구조적 미생성 — J12)",
-     not [e for e in g.edges if e["rel"] == "precedes"
-          and (g.get(e["src"]).get("polarity") != "none"
-               or g.get(e["dst"]).get("polarity") != "none")])
+show("공정 노드는 극성 없이 하나 — 옛 인스턴스 이름 0 (B198)",
+     not ({"노칭::cathode", "노칭::anode", "탭용접::pre용접::cathode"} & canon(g)) and "탭용접::pre용접" in canon(g))
 
 # seed ALIASES → 사전 등재 (장부는 dictionary.json 하나 — 카드 B4)
 D = store.read(store.DICTIONARY, {})
@@ -265,8 +258,8 @@ show("seed ALIASES가 사전에 등재 (provenance=['seed'])",
      D.get("notching") and D.get("전해액주입")
      and all(a["provenance"] == ["seed"]
              for n in g.nodes.values() for a in n["aliases"]))
-show("인스턴스 auto alias 2종 ('{축값} {이름}' · '{라벨} {이름}')",
-     D.get("cathode 탭용접") and D.get("양극 탭용접") and D.get("음극 노칭"))
+show("극성 수식 표기는 자동 별칭이 아니다 — seed ALIASES에 적은 것만 (B198)",
+     D.get("cathode 탭용접") and not D.get("양극 탭용접") and not D.get("음극 노칭"))
 show("짧은 이름 auto alias (detail 노드의 접두 없는 조회)",
      D.get("사이드 실링") and D.get("적층") and D.get("pre용접"))
 show("모호한 짧은 이름은 미등재 ('비전검사' — 접두 키가 대신한다)",
@@ -285,8 +278,7 @@ show("무주장 항목이 흐름에서 빠지고 별도 표기됨 (@unordered)",
 print("\n■ seed 경로 ① — 선언이지 후보가 아니다 (게이트 비경유의 잠금)")
 CFG = load_config("process")
 SKEL_REL = {CFG["skeleton"]["relations"]["child"],
-            CFG["skeleton"]["relations"]["sibling"],
-            (CFG.get("mirrors") or {}).get("relation")}
+            CFG["skeleton"]["relations"]["sibling"]}
 SKEL_CAT = CFG["skeleton"]["category"]
 show("① 패턴표에 골격 관계가 없다 (추출이 골격을 개정할 수 없다)",
      not [p for p in CFG["relation_patterns"]
@@ -449,9 +441,9 @@ from cli import skeleton as _SK61                                # noqa: E402
 
 _seed61 = _P.layers("process", "skeleton.json")     # 층 자산은 상태 루트다(B79 ①)
 _keep61 = _seed61.read_text(encoding="utf-8")
-# **위반 둘을 심는다** — 극성 마커 오타 하나, main·sub 이름 중복 하나.
-_bad61 = (_keep61.replace('{ "탭용접": ["::cathode", "::anode",',
-                          '{ "탭용접": ["::cathod", "::anode",', 1)
+# **위반 둘을 심는다** — 옛 극성 분기 마커 하나(B198 — 지울 줄), main·sub 이름 중복 하나.
+_bad61 = (_keep61.replace('{ "탭용접": ["pre용접",',
+                          '{ "탭용접": ["::cathode", "pre용접",', 1)
                  .replace('{ "패키징": ["파우치 포밍"', '{ "노칭": ["파우치 포밍"', 1))
 _seed61.write_text(_bad61, encoding="utf-8")
 try:
@@ -476,6 +468,25 @@ finally:
     _seed61.write_text(_keep61, encoding="utf-8")
 show("② 되돌리면 위반 0건이다 (시험 자체가 늘 붉는 것이 아니다)",
      _SK61.check("process") == [])
+
+# B198 ⓖ — seed에 옛 극성 분기(트리 `::축값` · ALIASES `이름::축값` 열쇠)가 남은 골격 → bootstrap 거부 · 지울 줄 전부 · 그래프 쓰기 0
+from core.state.skeleton import SeedError as _SE198               # noqa: E402
+_s198 = json.loads(_keep61)
+_s198["ALIASES"]["노칭::anode"] = ["음극 노칭"]
+_seed61.write_text(json.dumps(_s198, ensure_ascii=False, indent=2).replace('"pre용접",', '"::cathode", "pre용접",', 1),
+                   encoding="utf-8")
+_gb198 = (sorted(open_graph("process").nodes), len(open_graph("process").edges))
+try:
+    try:
+        bootstrap("process", echo=False)
+        _e198 = ""
+    except _SE198 as _x:
+        _e198 = str(_x)
+finally:
+    _seed61.write_text(_keep61, encoding="utf-8")
+show("B198 ⓖ seed에 @split · ::축값이 남은 골격 → bootstrap 거부 · 지울 줄(트리 마커 · ALIASES 열쇠) 전부 · 그래프 쓰기 0",
+     "지울 줄 2" in _e198 and "::cathode" in _e198 and "'노칭::anode'" in _e198
+     and (sorted(open_graph("process").nodes), len(open_graph("process").edges)) == _gb198, _e198.splitlines()[0][:120] if _e198 else "거부 없음")
 
 
 # ============================================================

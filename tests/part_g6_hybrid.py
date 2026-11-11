@@ -535,12 +535,11 @@ _gr153 = {l: open_graph(l) for l in _disc()}
 _t153, _i153 = _HY.node_texts(_gr153)
 _by153 = {_i153[i]["canonical"]: (t, _i153[i]["where"]) for i, t in _t153.items()}
 _np = _by153.get("노칭::노칭 프레스::노칭 정밀도", ("", ""))
-show("B153 ⓒ 노드 글 — 「맨 이름 | Property | 별칭 | 위치: 노칭 > 노칭 프레스」(관계 이름 · 화살표 0 · 경로 한 번) · 극성 갈래 마디 · "
-     "골격 노드는 골격 경로 · 화면의 where는 엣지 꼴 그대로",
+show("B153 ⓒ 노드 글 — 「맨 이름 | Property | 별칭 | 위치: 노칭 > 노칭 프레스」(관계 이름 · 화살표 0 · 경로 한 번) · "
+     "골격 노드는 골격 경로 · 화면의 where는 엣지 꼴 그대로(극성 갈래 마디 지움 — 기대 변경 B198)",
      _np[0].startswith("노칭 정밀도 | Property | ") and _np[0].endswith(" | 위치: 노칭 > 노칭 프레스") and "→" not in _np[0]
      and "노칭::" not in _np[0] and "—has_property→" in _np[1]
-     and any(c.startswith("탭용접::cathode::") and "위치: 탭용접 > cathode" in t for c, (t, _w) in _by153.items())
-     and _by153.get("탭용접::cathode", ("",))[0].endswith("| 위치: 탭용접"),
+     and _by153.get("탭용접::cutting", ("",))[0].endswith("| 위치: 탭용접"),
      f"{_np[0]} · 화면 {_np[1][:60]}")
 _knobs({"embed_max_chars": 40})
 _r153 = [_vec_cmd(), _vec_cmd()]

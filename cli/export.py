@@ -22,7 +22,7 @@ from pathlib import Path
 
 
 from core import paths
-from core.build import ledger
+from core.build import ledger, polarity
 from core.state import store
 from core.state.bootstrap import COORD_CATEGORY, coord_layer, open_graph
 from core.state.status import is_live
@@ -91,8 +91,8 @@ def cmd_cypher(args):
                 continue                       # 툼스톤은 화면에 올리지 않는다
             props = [f"id: {_q(n['id'])}", f"name: {_q(n['canonical'])}",
                      f"layer: {_q(lay)}", f"status: {_q(n.get('status'))}"]
-            if n.get("polarity") and n["polarity"] != "none":
-                props.append(f"polarity: {_q(n['polarity'])}")
+            if polarity.visible(n):
+                props.append(f"polarity: {_q(polarity.visible(n))}")
             if n.get("tier"):
                 props.append(f"tier: {_q(n['tier'])}")
             if n.get("aliases"):
@@ -156,7 +156,7 @@ def cmd_csv(args):
                 if not is_live(n):
                     continue
                 w.writerow([n["id"], n["canonical"], n["category"], lay,
-                            n.get("status"), n.get("polarity"), n.get("tier"),
+                            n.get("status"), polarity.visible(n), n.get("tier"),
                             " | ".join(a["surface"] for a in n["aliases"]),
                             " | ".join(n.get("provenance") or []),
                             json.dumps(n.get("attrs") or {}, ensure_ascii=False)])
@@ -219,8 +219,6 @@ def cmd_mermaid(args):
         if e["rel"] != sib or e["src"] not in seed or e["dst"] not in seed:
             continue
         a, b = seed[e["src"]], seed[e["dst"]]
-        if a.get("polarity") not in (None, "none"):
-            continue                            # 개념 레벨만 — 축 인스턴스는 뺀다
         ida, idb = a["id"][-6:], b["id"][-6:]
         L.append(f'  {ida}["{a["canonical"].split("::")[-1]}"]'
                  f' --> {idb}["{b["canonical"].split("::")[-1]}"]')
@@ -372,7 +370,7 @@ def graph_data(world):
             nodes.append({
                 "id": n["id"], "name": n["canonical"], "layer": lay,
                 "category": n["category"], **_also_of(n), "status": n.get("status"),
-                "tier": n.get("tier"), "polarity": n.get("polarity"),
+                "tier": n.get("tier"), "polarity": polarity.visible(n),
                 "prov": ", ".join(prov[:4]),
                 # 대장이 모르는 노드는 골격(seed)이거나 대장 이전의 것이다 —
                 # 둘을 섞지 않는다: 「모른다」가 「골격이다」로 읽히면 집계가 거짓말한다.

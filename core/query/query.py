@@ -257,8 +257,7 @@ def expand(graph, ids, cfg, trace=None):
     """config의 `query_traverse` 스펙대로만 뻗는다.
 
     `precedes`는 확장에 넣지 않는다(순서는 그래프 사실 채널과 flow 특례가 담당) —
-    `mirrors`도 기본 확장에 없다. 둘 다 **config가 그렇게 선언**하기 때문이며 코드는
-    관계 이름을 모른다. 전파는 프론티어 방식이라 다른 관계로 도달한 노드에도 규칙이
+    **config가 그렇게 선언**하기 때문이며 코드는 관계 이름을 모른다. 전파는 프론티어 방식이라 다른 관계로 도달한 노드에도 규칙이
     적용된다 — 공정→(part_of 하향)→설비→(has_property)→인자 2홉이 성립하는 근거다.
     """
     return graph.neighbors(ids, cfg.get("query_traverse") or {}, trace=trace)
@@ -337,15 +336,18 @@ def stranded(graph, ids):
     return out
 
 
-def cross_facts(crossed, graphs, configs):
+def cross_facts(crossed, graphs, configs, want=None):
     """걸침 엣지의 문장화 — **출발 층의 템플릿을 쓴다**(§8-R4).
 
     같은 층 안의 엣지와 갈라 두는 이유: 걸침 엣지는 **dst가 다른 층 그래프에 산다.**
     한 층의 노드 집합만 보고 문장화하면 이 엣지는 양끝이 한 집합에 들어오지 않아
-    영영 렌더되지 않는다 — "노칭에서 나는 불량은?"이 답을 못 내던 자리다.
+    영영 렌더되지 않는다 — "노칭에서 나는 불량은?"이 답을 못 내던 자리다. 물음의 극성(`want`)은 `facts`와 같은 거르기.
     """
+    from core.build import polarity as P
     out = []
     for layer, e in crossed:
+        if not P.keeps(P.visible(e), want):
+            continue
         tpl = (configs[layer].get("fact_templates") or {}).get(e["rel"])
         src, dst = _find(graphs, e["src"]), _find(graphs, e["dst"])
         if tpl and src and dst:
@@ -489,19 +491,23 @@ def ref_near(direct, graphs, trace=None):
 
 
 # ---------------------------------------------------------------- ④ 답변 — 채널 1
-def facts(graph, node_ids, cfg):
+def facts(graph, node_ids, cfg, want=None):
     """[그래프 사실] — 수집 노드의 엣지·값을 `fact_templates`로 문장화한다.
 
     **순서·규격은 이 채널에만 있다.** 청크 단채널이면 "노칭 다음은?"에 답하지 못한다.
     맥락형 attr는 context 그룹별로 한 줄씩 낸다(같은 인자의 M1·M2 규격은 충돌이
-    아니라 병렬 항목이기 때문이다).
+    아니라 병렬 항목이기 때문이다). **물음에 극성이 걸리면**(`want` — `polarity.asked`) 보이는 극성이 공통이거나 그 극성인
+    엣지 · 값만 낸다 · 공통 값은 「공통」을 단다(특정 극성 값이 공통 값을 덮지 않는다 — B198 결정 2-10).
     """
+    from core.build import polarity as P
     tpl = cfg.get("fact_templates") or {}
     out = []
     for e in graph.edges:
         if e.get("status") == "deleted_by_user":
             continue
         if e["src"] not in node_ids or e["dst"] not in node_ids or e["rel"] not in tpl:
+            continue
+        if not P.keeps(P.visible(e), want):
             continue
         s, d = graph.get(e["src"]), graph.get(e["dst"])
         # **이 층에 없는 끝점은 여기서 문장화하지 않는다** — 걸침 엣지의 반대쪽이고
@@ -521,15 +527,23 @@ def facts(graph, node_ids, cfg):
             for item in (val if isinstance(val, list) else [val]):
                 if not isinstance(item, dict) or item.get("value") is None:
                     continue
+                pol = P.of_value(item)
+                if not P.keeps(pol, want):
+                    continue
                 line = t.format(node=n["canonical"], value=item["value"],
                                 prov=", ".join(item.get("provenance") or []))
-                ctx = item.get("context")
-                out.append(f"[{_ctx(ctx)}] {line}" if ctx else line)
+                tag = _ctx(item.get("context"), common=want is not None and pol is None)
+                out.append(f"[{tag}] {line}" if tag else line)
     return out
 
 
-def _ctx(ctx):
-    return ", ".join(f"{k}={v}" for k, v in sorted(ctx.items()))
+def _ctx(ctx, common=False):
+    """값의 한정어 줄 — 극성은 표시 이름(골격 `AXIS_LABELS`) · 그 밖은 `키=값` · 물음에 극성이 걸렸는데 공통이면 「공통」."""
+    from core.build import polarity as P
+    ctx = dict(ctx or {})
+    pol = ctx.pop(P.CTX, None)
+    head = [P.label(pol)] if pol else (["공통"] if common else [])
+    return ", ".join(head + [f"{k}={v}" for k, v in sorted(ctx.items())])
 
 
 # ---------------------------------------------------------------- 순서 파생 (규약 8)
@@ -537,12 +551,11 @@ def next_of(graph, nid, cfg):
     """순서 파생 — **자기 선언 > 부모 파생 > "순서 정보 없음"** (틀 §4B-A11-5).
 
     ①노드 자신에게 `precedes` 선언이 있으면 그것이 답이다.
-    ②없으면 부모로 올라가 부모의 후속 Q를 찾고, **Q에 나와 같은 축값 인스턴스가
-      있으면 그리로 하강**한다 — 없으면 Q 자체다(공유 스텝 합류가 자동으로 된다).
+    ②없으면 부모로 올라가 부모의 후속 Q를 찾는다(극성은 골격을 가르지 않는다 — B198).
     ③조상까지 선언이 없으면 **추측하지 않고** "순서 정보 없음"으로 답한다.
 
     돌려주는 것은 `(후속 노드 id 또는 None, 해상도 노드 id)`다. 해상도를 함께 주는
-    이유: 인스턴스 질문에 개념 해상도로 답하는 경우를 사람이 오해하지 않게
+    이유: 세부 공정 질문에 상위 해상도로 답하는 경우를 사람이 오해하지 않게
     **답변에 그 기준을 표기**해야 하기 때문이다(fact_template).
     """
     skel = cfg.get("skeleton") or {}
@@ -555,42 +568,71 @@ def next_of(graph, nid, cfg):
         seen.add(cur)
         nxt = [e["dst"] for e in graph.edges if e["src"] == cur and e["rel"] == sib_rel]
         if nxt:
-            return _descend(graph, nxt[0], graph.get(nid).get("polarity"),
-                            child_rel), cur
+            return nxt[0], cur
         up = [e["dst"] for e in graph.edges if e["src"] == cur and e["rel"] == child_rel]
         cur = up[0] if up else None
     return None, None
 
 
-def _descend(graph, target, polarity, child_rel):
-    """후속 노드에 **같은 축값 인스턴스**가 있으면 그리로 내려간다(없으면 개념 그대로).
-
-    이것이 "공유 스텝 합류 자동"의 실체다 — 극성 가지를 타던 질문이 극성 없는
-    공통 스텝을 만나면 그냥 그 스텝으로 답이 나온다.
-    """
-    if not polarity or polarity == "none":
-        return target
-    for e in graph.edges:
-        if e["rel"] == child_rel and e["dst"] == target:
-            child = graph.get(e["src"])
-            if child and child.get("polarity") == polarity:
-                return e["src"]
-    return target
+#: 펼친 흐름의 줄 — 이름 사이 · 단 사이
+FLOW_ARROW, FLOW_STEP = " → ", " › "
 
 
 def flow_chain(graph, cfg):
-    """flow 특례 — **개념 노드 레벨 대표 흐름 체인**을 통째로 공급한다(5.2 규약 4).
+    """flow 특례 — **펼친 흐름**(5.2 규약 4 · B198 결정 2-11 · 이연대장 §4 15) — 상위 흐름 × 줄기 안 흐름을 코드로 펼친 줄(저장 0).
 
-    골격이 얇아 저비용이고, 축 인스턴스는 제외한다 — 극성 인스턴스 간에는 순서가
-    선언되지 않으므로(J12) 흐름의 단위는 개념 노드다.
-    """
-    sib = ((cfg.get("skeleton") or {}).get("relations") or {}).get("sibling")
-    tpl = (cfg.get("fact_templates") or {}).get(sib, "{src} → {dst}")
-    return [tpl.format(src=graph.get(e["src"])["canonical"],
-                       dst=graph.get(e["dst"])["canonical"])
-            for e in graph.edges
-            if e["rel"] == sib
-            and graph.get(e["src"]).get("polarity") in (None, "none")]
+    골격 뿌리마다 한 줄 — 단마다 대표 흐름(`sibling`)의 차례로 자식을 펼치고, 자식 흐름이 없는 노드에서 멈춘다(`상위 › 하위`).
+    흐름에 들지 않는 자식(`@unordered` · `@noflow`)은 줄 끝에 「흐름 밖 n」으로 이름과 함께. 골격 노드(seed)만 본다."""
+    rels = (cfg.get("skeleton") or {}).get("relations") or {}
+    child, sib = rels.get("child"), rels.get("sibling")
+    if not child or not sib:
+        return []
+    from core.state import catalog
+    sep = catalog.sep()
+    seed = {nid for nid, n in graph.nodes.items() if n.get("status") == "seed"}
+    kids, nxt, has_prev = {}, {}, set()
+    for e in graph.edges:
+        if e.get("status") != "seed" or e["src"] not in seed or e["dst"] not in seed:
+            continue
+        if e["rel"] == child:
+            kids.setdefault(e["dst"], []).append(e["src"])
+        elif e["rel"] == sib:
+            nxt.setdefault(e["src"], e["dst"])
+            has_prev.add(e["dst"])
+    up = {k: p for p, ks in kids.items() for k in ks}
+
+    def name(nid):
+        return str(graph.get(nid)["canonical"]).rsplit(sep, 1)[-1]
+
+    def order(ks):
+        """자식의 흐름 차례 — 흐름 사슬(첫 것 = 앞이 없는 것) · 사슬 밖 자식은 흐름 밖(자식이 하나면 그것이 흐름)."""
+        ks = set(ks)
+        heads = [k for k in ks if k in nxt and nxt[k] in ks and k not in has_prev]
+        seq = []
+        for h in sorted(heads, key=name):
+            cur = h
+            while cur in ks and cur not in seq:
+                seq.append(cur)
+                cur = nxt.get(cur)
+        if not seq and len(ks) == 1:
+            seq = list(ks)
+        return seq, sorted(ks - set(seq), key=name)
+
+    def walk(nid, path, out, off):
+        seq, rest = order(kids.get(nid, ()))
+        off += [FLOW_STEP.join(path + [name(k)]) for k in rest]
+        if not seq:
+            out.append(FLOW_STEP.join(path) if path else name(nid))
+            return
+        for k in seq:
+            walk(k, path + [name(k)], out, off)
+
+    lines = []
+    for root in sorted((r for r in seed if r not in up and r in kids), key=name):
+        out, off = [], []
+        walk(root, [], out, off)
+        lines.append(FLOW_ARROW.join(out) + (f" · 흐름 밖 {len(off)}({' · '.join(off)})" if off else ""))
+    return lines
 
 
 # ---------------------------------------------------------------- 의도

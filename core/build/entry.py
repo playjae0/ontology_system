@@ -3,7 +3,7 @@
 
 `run_document()`가 파이프라인의 입구다: 인입 검사(3.1) → 형태 분기(정형/비정형) →
 판정 예고 → 구축 → 대장·계측. `finalize()`는 **문서 하나로는 판정할 수 없는 것**
-(mirrors·고아 재시도·근거 소실)을 빌드 말미에 한 번 돈다.
+(고아 재시도·근거 소실·연결 보강)을 빌드 말미에 한 번 돈다.
 """
 from __future__ import annotations
 
@@ -31,44 +31,35 @@ BUILT = {}
 def finalize(layers=None, notice=None):
     """빌드 말미 패스 — **전역 재평가가 필요한 자동 규칙**은 문서 빌드가 아니라 여기서 돈다.
 
-    문서 빌드 안에서 돌리면 **뒤에 인입되는 문서가 만드는 노드를 보지 못한다** — mirrors
-    재평가가 한 박자 늦어 큐가 1회차 3건 → 2회차 4건으로 수렴했다(20회차 후속 실측).
-    노드에 짝 키를 적어 두는 것(부모 경로 `scope` · 맨 이름 `base_name`)은 그대로 층 빌드가 하고,
-    **재평가와 큐 갱신만** 이쪽으로 옮긴다 — 자동 규칙 자체를 옮기는 것이 아니다.
+    문서 빌드 안에서 돌리면 **뒤에 인입되는 문서가 만드는 노드를 보지 못한다** — 근거 소실 · 고아 재시도 · 연결 보강이
+    그래프 전체를 본다(극성 짝 엣지는 없다 — B198 · 극성은 값 · 엣지의 한정어).
 
     큐 항목의 `doc_id`는 `None`이다. 이 조건은 **어느 한 문서의 것이 아니라 그래프 전체의
     상태**이기 때문이다 — 특정 문서에 귀속시키면 그 문서를 다시 넣을 때만 갱신되는
     지금의 문제로 되돌아간다.
     """
     from router import discover
-    e0 = e1 = 0
     for layer in (layers or discover()):
         g = open_graph(layer)
-        e0 += len(g.edges)
         g.build_begin()
-        Builder(g, load_config(layer), None, None, layer).link_mirrors()
         _evidence_lost(g)
         g.build_end()
-        e1 += len(g.edges)
     retry_orphans(layers)
     # **연결 보강**(B115 ④ · 지점 ⑫) — 재연결 바퀴가 멈춘 **뒤** · 이 실행이 구축한 문서만
     from core.build import reinforce as _rf
     docs = dict(BUILT)
     BUILT.clear()
     _rf.run(docs, notice=notice)
-    # **마무리의 사실을 돌려준다**(B99 ⑥) — 미러(새 짝 엣지 · 비대칭 큐) · 재시도(`retry.LAST`) · 연결 보강
+    # **마무리의 사실을 돌려준다**(B99 ⑥) — 재시도(`retry.LAST`) · 연결 보강
     from core.build import retry as _rt
-    return {"mirror_new": e1 - e0,
-            "mirror_asym": sum(1 for x in store.read(store.QUEUE, [])
-                               if x.get("kind") == "mirror_asymmetry"),
-            "retry": dict(_rt.LAST), "retry_line": _rt.line(),
+    return {"retry": dict(_rt.LAST), "retry_line": _rt.line(),
             "reinforce": dict(_rf.LAST), "reinforce_line": _rf.line()}
 
 
 def _evidence_lost(g):
     """근거가 0이 된 auto 노드·엣지 (카드 L9) — **삭제가 아니라 표시**다.
 
-    회수(재인입) 시점이 아니라 여기서 판정하는 이유는 mirrors와 같다(D-65):
+    회수(재인입) 시점이 아니라 여기서 판정하는 이유(D-65):
     회수 직후는 아직 재적재 전이라 "근거 0"이 참이 아니다. 재적재가 근거를 되돌리면
     이 조건은 성립하지 않아야 하고, 그러려면 **빌드가 끝난 뒤**에 봐야 한다.
     """
@@ -174,17 +165,13 @@ def plan_resolve(b, m):
     if not surface or not category:
         return None
     lay = b.home_of(category)       # 판정과 같은 자리 — home (B90 ②)
-    et = m.get("electrode_type")
     sink = []                       # 예고는 큐를 만들지 않는다 — 버리는 자루다
     from parser.normalizer import coord_refs
     _rs = coord_refs(m.get("ref"))                            # 주 좌표는 하나일 때만 (B125 ④)
     ref_id, ref_g = (b.resolve_anchor(_rs[0] if len(_rs) == 1 else None, COORD_CATEGORY, "(예고)",
                                       defer=sink)
                      if m.get("ref") else (None, None))
-    if ref_id:
-        ref_id = b.descend_anchor(ref_id, et, ref_g)
     parent = ref_g.get(ref_id)["canonical"] if ref_id else None
-    apol = b.anchor_polarity(ref_id, ref_g) if ref_id else None
     if ref_id is None and loop._scoped_category(category, lay, b):
         return None                 # 좌표 없는 스코프 개체는 판정에 오르지 않는다
     eb = b.for_layer(lay)
@@ -194,24 +181,23 @@ def plan_resolve(b, m):
     from core.build.naming import name_parent
     owner, o = None, m.get("owner")
     if o and parent:
-        hit, okey = _plan_key(b, o["surface"], o["category"], ref_id, ref_g, parent, apol, et)
+        hit, okey = _plan_key(b, o["surface"], o["category"], ref_id, ref_g, parent)
         owner = (hit[0]["id"], b.for_layer(b.home_of(o["category"])).g) if hit else None
         parent = (scope_path.owner_parent(eb.cfg, category, owner, parent) if owner
                   else name_parent(category, okey, parent, eb.cfg))
-    hits, key = _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=owner)
+    hits, key = _plan_key(b, surface, category, ref_id, ref_g, parent, owner=owner)
     return hits, key, lay
 
 
-def _plan_key(b, surface, category, ref_id, ref_g, parent, apol, et, owner=None):
+def _plan_key(b, surface, category, ref_id, ref_g, parent, owner=None):
     """예고 한 값 — `(판정 없이 붙는 후보, 조회 키)` · 판정과 같은 키(`entity_key`) · 같은 관문(`matcher.gated` · B142)."""
     from core.build import scope_path
     from core.build.build import entity_key
     lay = b.home_of(category)
     eb = b.for_layer(lay)
-    key, pol, scoped, _sc = entity_key(surface, category, eb.cfg, electrode_type=et, parent_canonical=parent,
-                                       anchor_polarity=apol)
+    key, scoped, _sc = entity_key(surface, category, eb.cfg, parent_canonical=parent)
     place = scope_path.place(eb, category, (ref_id, ref_g), owner, surface, parent)
-    return matcher.gated(key, category, lay, eb.g, b.dict, scoped=scoped, polarity=pol,
+    return matcher.gated(key, category, lay, eb.g, b.dict, scoped=scoped,
                          parent=parent, cfg=eb.cfg, place=place)[0], key
 
 
@@ -359,7 +345,8 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
         # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
         from core.build import replay as _rp
         _rp.begin(doc_id, _dh(env))                       # 멈춘 실행의 중간 저장도 — 원본이 바뀌었으면 버린다(B165 ③)
-        from core.build import also_gate as _ag
+        from core.build import also_gate as _ag, polarity as _pol
+        _pol.begin(env)                                   # 출처 → 극성(B198 — 값 · 엣지 · 노드의 한정어 · 저장 앞에서 적는다)
         _ag.clear(doc_id)                                 # 앞 실행의 판정 전 판단을 읽지 않는다(B197 ② — 이 문서의 처분 자리가 다시 잰다)
         _RUN.update(also_items=(), outline=None, ledger0=store.read(_lg.name_of(doc_id), None))   # 쓰기 전 멈춤의 되돌림 재료(B197 ④)
         # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)

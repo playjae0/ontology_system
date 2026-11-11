@@ -81,8 +81,8 @@ def _replant(lay):
 
 # ---------------------------------------------------------------- 골격 트리에 한 줄
 def _insert(items, target, entry, up, depth, labels, sep):
-    """`target`(부모 canonical) 아래에 `entry`를 더한다 — 찾으면 True. 잎(문자열) · 극성 표지 부모는 자식 배열로 편다(뜻 그대로)."""
-    from core.state.skeleton import MARK_PREFIX, MARK_SPLIT, MARK_UNORDERED, TIER_BY_DEPTH
+    """`target`(부모 canonical) 아래에 `entry`를 더한다 — 찾으면 True. 잎(문자열)은 자식 배열로 편다(뜻 그대로)."""
+    from core.state.skeleton import MARK_PREFIX, MARK_UNORDERED, TIER_BY_DEPTH
 
     def canon(name):
         return name if depth in TIER_BY_DEPTH else f"{up}{sep}{name}"
@@ -106,10 +106,6 @@ def _insert(items, target, entry, up, depth, labels, sep):
                 return True
             if _insert(v, target, entry, canon(k), depth + 1, labels, sep):
                 return True
-        elif isinstance(v, str) and v.startswith(MARK_PREFIX) and canon(k) == target:
-            kids = [sep + x for x in labels] if v == MARK_SPLIT else [sep + v[len(MARK_PREFIX):]]
-            it[k] = kids + [entry]
-            return True
     return False
 
 
@@ -125,21 +121,9 @@ def _grown(seed, parent, name):
         parsed = _TreeParser(labels, sep).parse(new["TREE"])
     except SeedError as e:
         raise Refused(f"골격 파일이 받지 않는다 — {e}") from None
-    spec = next((s for s in parsed.specs if not s.instance and s.name == name and s.parent is not None
+    spec = next((s for s in parsed.specs if s.name == name and s.parent is not None
                  and s.parent.canonical == parent), None)
     return new, spec, parsed
-
-
-def _polarity_note(parsed, spec, g, canonical, sep):
-    """극성 단 안내가 필요한가 — 부모가 극성 단을 가졌거나 그 노드 아래 값에 극성이 있다."""
-    from core.build.build import POLARITY_NONE
-    if any(s.instance and s.parent is spec.parent for s in parsed.specs):
-        return True
-    return any(is_live(n) and str(n["canonical"]).startswith(canonical + sep)
-               and n.get("polarity") not in (None, POLARITY_NONE) for n in g.nodes.values())
-
-
-POLARITY_LINE = "극성 단을 열려면 골격 파일에 극성 줄 → python run.py bootstrap → python run.py rebuild (운영 런북 6)"
 
 
 # ---------------------------------------------------------------- 처분 셋
@@ -165,7 +149,7 @@ def promote(actor, *, nid=None, surface=None, parent=None, reason=""):
     """**승격** — 잠정 노드(`nid` — 이미 세웠다) 또는 이 문서에서 세울 표기(`surface` — `--step`)를 골격 파일의 (부모, 이름)으로.
 
     부모는 그 노드의 부모 엣지 → `parent`(부모 미정이면 사람이 정한다 — 골격 노드 canonical). 돌려주는 것
-    `{canonical, parent, id, file, polarity}`. 이름이 바뀌는 자리 · 부모 미정 · 잠정 부모는 `Refused`(다음 줄 포함)."""
+    `{canonical, parent, id, file}`. 이름이 바뀌는 자리 · 부모 미정 · 잠정 부모는 `Refused`(다음 줄 포함)."""
     from core.state import catalog
     from core.state.ops import log_op
     if not actor:
@@ -183,7 +167,7 @@ def promote(actor, *, nid=None, surface=None, parent=None, reason=""):
     sep = catalog.sep()
     canonical = n["canonical"] if n is not None else surface
     name = canonical[len(up) + len(sep):] if canonical.startswith(up + sep) else canonical
-    seed, spec, parsed = _grown(_read(p), up, name)
+    seed, spec, _parsed = _grown(_read(p), up, name)
     if spec is None or (n is not None and spec.canonical != canonical):
         raise Refused(f"승격하면 이름이 바뀐다(지금 '{canonical}' → 골격 '{spec.canonical if spec else name}') — 이름이 바뀌는 일은 "
                       "재구축 한 길: 골격 파일에 줄 → python run.py bootstrap → python run.py rebuild (운영 런북 6)")
@@ -205,8 +189,7 @@ def promote(actor, *, nid=None, surface=None, parent=None, reason=""):
                            at=store._now(), note="승격")
     log_op(OP_PROMOTE, actor, [got], reason, {"canonical": spec.canonical, "parent": up, "skeleton": paths.show(p)},
            {"node": {"layer": lay, "canonical": spec.canonical, "category": cat}})
-    return {"canonical": spec.canonical, "parent": up, "id": got, "file": p,
-            "polarity": _polarity_note(parsed, spec, g, spec.canonical, sep)}
+    return {"canonical": spec.canonical, "parent": up, "id": got, "file": p}
 
 
 def merge(actor, *, target, nid=None, surface=None, reason=""):

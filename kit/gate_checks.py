@@ -359,17 +359,8 @@ def check_anchor_columns(schema, fields, pieces):
     return ok
 
 
-def _axis(layer):
-    """좌표 층의 극성 축값 — 층 config `polarity.values`(킷은 core를 모른다 — 건네받은 층 폴더에서 읽는다)."""
-    p = tables.layers_dir() / str(layer) / "config.json"
-    try:
-        return tuple(((json.load(open(p, encoding="utf-8")).get("polarity") or {}).get("values")) or ())
-    except Exception:
-        return ()
-
-
 def check_coord_pairs(schema, pieces, nodes):
-    """**좌표 쌍 관문**(B105 ② · G4I) — 표본 행의 (상위, 하위)·극성을 골격과 대조한다.
+    """**좌표 쌍 관문**(B105 ② · G4I) — 표본 행의 (상위, 하위)를 골격과 대조한다.
 
     판정은 구축과 같은 함수(`parser.coord_pairs.verdict`)이고 해소는 닫힌 목록(`SnapView` — 킷은 core를 모른다).
     상위·하위가 **둘 다 골격에 맞은 행** 중 상위 어긋남이 문턱(손잡이 `coord_pair_pct`) 이상이면 FAIL — 열이
@@ -379,7 +370,7 @@ def check_coord_pairs(schema, pieces, nodes):
     if not nodes:
         print("      골격 목록 없음 — G4I 대조 생략 (등록 흐름은 --closed-list · --coord-layer로 건넨다)")
         return True
-    view = CP.SnapView(nodes, _axis(tables.COORD_LAYER or schema.get("layer")))
+    view = CP.SnapView(nodes)
     t = CP.tally(CP.judge_all(pieces, view))
     pct, m, k = CP.COORD_PAIR_PCT, t["checked"], t["group_rows"]
     sw, sn = CP.swapped(pieces, view)

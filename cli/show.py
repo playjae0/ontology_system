@@ -102,8 +102,7 @@ def cmd_tree(args):
 
     def draw(nid, pre="", mark="", child_pre=""):
         n = seed[nid]
-        pol = n.get("polarity")
-        tag = f"[{n.get('tier')}" + (f"·{pol}" if pol and pol != "none" else "") + "]"
+        tag = f"[{n.get('tier')}]"
         alias = [a["surface"] for a in n["aliases"]
                  if norm(a["surface"]) != norm(n["canonical"])]
         name = n["canonical"].split("::")[-1]
@@ -171,8 +170,9 @@ def cmd_node(args):
     for lay, g, n in hits:
         print(f"\n■ {n['canonical']}   [{lay} · {n['category']}{_also_tag(n)} · {n['status']}]")
         print(f"  id        {n['id']}")
-        if n.get("polarity") and n["polarity"] != "none":
-            print(f"  극성       {n['polarity']}")
+        from core.build import polarity as _P             # 보이는 극성 — 출처마다(B198 · 공통이면 줄 없음)
+        if _P.visible(n):
+            print(f"  극성       {_P.label(_P.visible(n))} (출처 {len(n.get(_P.FIELD) or {}):,} 모두 {_P.visible(n)})")
         from cli import show_learn as _sl                 # 별칭마다 출처 (B101 ④)
         _pl = _sl.provisional_line(g, n)                  # 잠정 골격 노드 — 부모 · 단 · 합칠 후보 (B182 ③)
         if _pl:

@@ -236,16 +236,16 @@ _u74 = next(n for n in _g74.nodes.values()
 _pa74 = _SO142_74(_u74)          # 기대 변경(B142 ⑤ — 부모 경로 칸 scope · 읽는 함수 하나)
 from core.build.naming import scope_categories as _SC74             # noqa: E402 — 읽는 함수 하나(B174)
 _sc74 = _SC74()
-_k74, _pol74, _, _ = _KEY74(_u74["canonical"].split("::")[-1], "Unit", _cfg74,
-                            parent_canonical=_pa74)
+_k74, _, _ = _KEY74(_u74["canonical"].split("::")[-1], "Unit", _cfg74,
+                    parent_canonical=_pa74)
 show("① 등재된 키가 **해소가 여는 키**다 (exact 후보가 선다)",
      any(c["id"] == _u74["id"] for c in
          _MT74.dict_hits(_k74, "Unit", "process", _g74, _dic74,
-                         polarity=_pol74, parent=_pa74, scope_cats=_sc74)),
+                         parent=_pa74, scope_cats=_sc74)),
      f"키 {_k74!r}")
 show("① 같은 표기·**다른 부모**는 exact에 들지 않는다 (notching/separator의 cutter)",
      not _MT74.dict_hits(_k74, "Unit", "process", _g74, _dic74,
-                         polarity=_pol74, parent="다른공정XX",
+                         parent="다른공정XX",
                          scope_cats=_sc74))
 show("① 원 표기 키는 그대로 남는다 (질의 링킹의 표면형 스캔)",
      any(_n74 == _u74["canonical"].split("::")[-1]
@@ -557,12 +557,9 @@ def _pr142(doc, owner, child, proc="노칭"):
     """산문 꼴 노드 — 소속 대상(유닛) 아래 이름 규칙 그대로 · 판정의 자리는 산문 소속과 같은 손(`resolve_at_home` · `owner`)."""
     b = _BLD73(open_graph("process"), _cfg142, None, doc, "process")
     ref, rg = b.resolve_anchor(proc, "Process", f"{doc}#1", defer=[])
-    pol = b.anchor_polarity(ref, rg)              # 좌표의 극성 상속 — 산문 청크와 같다(A11-9 ①)
-    uid, ub = b.resolve_at_home(owner, "Unit", f"{doc}#1", coord=(ref, rg), parent_canonical=rg.get(ref)["canonical"],
-                                anchor_polarity=pol)
+    uid, ub = b.resolve_at_home(owner, "Unit", f"{doc}#1", coord=(ref, rg), parent_canonical=rg.get(ref)["canonical"])
     par = _NP142("Property", ub.g.get(uid)["canonical"], rg.get(ref)["canonical"], _cfg142)
-    _pid, pb = b.resolve_at_home(child, "Property", f"{doc}#1", coord=(ref, rg), parent_canonical=par, owner=(uid, ub.g),
-                                 anchor_polarity=pol)
+    _pid, pb = b.resolve_at_home(child, "Property", f"{doc}#1", coord=(ref, rg), parent_canonical=par, owner=(uid, ub.g))
     for _x in b.graphs():
         _x.save()
     b.flush()
@@ -645,15 +642,14 @@ show("B142 ⓔ 깊이만 다름(중간 소유자 「실린더 몸통」이 빠�
      _eE == _uc and _ebE.last.get("path") == "path_compat", f"{_ebE.last.get('path')} → {_ebE.last.get('canonical')}")
 _MT74.reset_stats()
 _fO = _pr142("B142P7", "실린더", "실린더 행정", proc="스태킹")
-_fP = _pr142("B142P8", "실린더", "실린더 행정", proc="노칭::cathode")
 _bF = _BLD73(open_graph("process"), _cfg142, None, "B142F", "process")
 _gF = _bF.g
 _nF = _gF.add_node("실린더 행정", "Property", "auto", provenance=["B142 시험"], base_name="실린더 행정", polarity="none")
 _plF = _SP73.place(_bF, "Property", _bF.resolve_anchor("노칭", "Process", None, defer=[]), None, "실린더 행정", "노칭")
-show("B142 ⓕ 다른 공정 줄기 → 후보 아님(LLM 0 · 새 노드) · 극성이 다르면 후보 아님 · 부모 미해소 노드는 관문을 못 지난다",
+show("B142 ⓕ 다른 공정 줄기 → 후보 아님(LLM 0 · 새 노드) · 부모 미해소 노드는 관문을 못 지난다",
      _fO.get("path") == "none" and _fO.get("verdict") == "new" and _MT74.STATS["판정"] == 0
-     and _fP.get("verdict") == "new" and len(_named142("실린더 행정")) == 3 and _plF.relation(_nF, _gF) == _SP73.OTHER,
-     f"다른 줄기 {_fO.get('path')}:{_fO.get('verdict')} · 극성 {_fP.get('canonical')} · {_named142('실린더 행정')}")
+     and len(_named142("실린더 행정")) == 2 and _plF.relation(_nF, _gF) == _SP73.OTHER,
+     f"다른 줄기 {_fO.get('path')}:{_fO.get('verdict')} · {_named142('실린더 행정')}")
 _bG = _BLD73(open_graph("process"), _cfg142, None, "B142G", "process")
 for _i in range(15):
     _bG.g.add_node(f"노칭::gap 항목 {_i:02d}", "Property", "auto", provenance=["B142 시험"], scope="노칭",
@@ -670,8 +666,7 @@ show("B142 ⓖ 별칭 · 라틴 접기로 맞는 후보는 상한 좁히기 뒤�
 _gI = open_graph("process")
 _nn142 = next(n for n in _gI.nodes.values() if n["canonical"] == "노칭::실린더::실린더 행정")   # 구축이 세운 노드
 _nf142 = (_nn142.get("scope"), _nn142.get("base_name"), "mirror_scope" in _nn142 or "mirror_name" in _nn142)
-_bI0 = _BLD73(_gI, _cfg142, None, "B142I", "process")
-_mk0 = {i: (_bI0._mirror_scope(_SO142(n)), _BN142(n) or n["canonical"]) for i, n in _gI.nodes.items()}
+_mk0 = {i: (_SO142(n), _BN142(n) or n["canonical"]) for i, n in _gI.nodes.items()}
 _cl0 = _OM142.alias_clash(_DIC74.open(), _gI.get, _uc, _gI.get(_uc), "실린더 행정", _cfg142)
 for _n in _gI.nodes.values():                                   # 옛 칸만 있는 그래프(재구축 전 · B142 ⑤)
     if "scope" in _n:
@@ -680,15 +675,15 @@ for _n in _gI.nodes.values():                                   # 옛 칸만 있
         _n["mirror_name"] = _n.pop("base_name")
 _gI.save()
 _bI = _BLD73(open_graph("process"), _cfg142, None, "B142I", "process")
-_mk1 = {i: (_bI._mirror_scope(_SO142(n)), _BN142(n) or n["canonical"]) for i, n in _bI.g.nodes.items()}
+_mk1 = {i: (_SO142(n), _BN142(n) or n["canonical"]) for i, n in _bI.g.nodes.items()}
 _ci142 = _cp142("B142C5", [("노칭", "실린더", "실린더 행정")], 측정방법="옛 칸 그래프")
 _cl1 = _OM142.alias_clash(_DIC74.open(), open_graph("process").get, _uc, open_graph("process").get(_uc), "실린더 행정", _cfg142)
-show("B142 ⓘ 칸 이름 — 새 노드는 scope · base_name · 옛 칸만 있는 그래프에서도 판정 · 극성 짝 키 · 별칭 검사 결과가 같다",
+show("B142 ⓘ 칸 이름 — 새 노드는 scope · base_name · 옛 칸만 있는 그래프에서도 판정 · 부모 경로 · 이름 · 별칭 검사 결과가 같다",
      _nf142 == ("노칭::실린더", "실린더 행정", False) and _mk0 == _mk1
      and _ci142["실린더 행정"]["target"] == "노칭::실린더::실린더 행정"
      and _ci142["실린더 행정"]["path"] == "dictionary"         # 기대 변경(B144 ② — 표도 소유자 아래 이름 · 사전 · 옛 칸으로도)
      and _cl0 == _cl1,
-     f"판정 → {_ci142['실린더 행정'].get('target')} · 짝 키 같다 {_mk0 == _mk1} · 별칭 검사 같다 {_cl0 == _cl1}")
+     f"판정 → {_ci142['실린더 행정'].get('target')} · 경로 · 이름 같다 {_mk0 == _mk1} · 별칭 검사 같다 {_cl0 == _cl1}")
 _st142 = {"이름": _SCR142.JUDGE, "총": 10}
 _on142 = _SCR142.row_printer(None, stage=_st142)
 with _ctx.redirect_stdout(_io.StringIO()):
@@ -715,12 +710,11 @@ def _pe144(doc, owner, child, proc="노칭"):
     """산문 꼴 값 — `owner`가 있으면 산문 소속과 같은 손(대상 해소 → 이름 부모 → 소속 엣지 `belongs.edge_of` · `gate.commit_edge`)."""
     b = _BLD73(open_graph("process"), _cfg142, None, doc, "process")
     ref, rg = b.resolve_anchor(proc, "Process", f"{doc}#1", defer=[])
-    pol, par, own = b.anchor_polarity(ref, rg), rg.get(ref)["canonical"], None
+    par, own = rg.get(ref)["canonical"], None
     if owner:
-        uid, ub = b.resolve_at_home(owner, "Unit", f"{doc}#1", coord=(ref, rg), parent_canonical=par, anchor_polarity=pol)
+        uid, ub = b.resolve_at_home(owner, "Unit", f"{doc}#1", coord=(ref, rg), parent_canonical=par)
         own, par = (uid, ub.g), _NP142("Property", ub.g.get(uid)["canonical"], par, _cfg142)
-    pid, pb = b.resolve_at_home(child, "Property", f"{doc}#1", coord=(ref, rg), parent_canonical=par, owner=own,
-                                anchor_polarity=pol)
+    pid, pb = b.resolve_at_home(child, "Property", f"{doc}#1", coord=(ref, rg), parent_canonical=par, owner=own)
     if own and pid:
         rel, fwd = _BE144.edge_of(_cfg142, "Unit", "Property")
         s, d = (own[0], pid) if fwd else (pid, own[0])

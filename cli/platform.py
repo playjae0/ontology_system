@@ -40,17 +40,17 @@ from core.build.extract import EXTRACT_DIR
 from core.state.status import is_live
 from router import discover
 
-# 수정 큐 kind — **닫힌 20종**(구현문서 §2.3의 13종 + 증분0 §6-5의 확장 7종 · D-54).
+# 수정 큐 kind — **닫힌 19종**(구현문서 §2.3의 13종 + 증분0 §6-5의 확장 7종 · D-54 · 극성 짝 큐 지움 — B198).
 # 열람 화면의 상수다: 0건인 kind도 화면에 떠야 "닫힌 목록"이 보인다.
 QUEUE_KINDS = [
-    # 기존 13종 (구현문서 §2.3)
+    # 기존 12종 (구현문서 §2.3 — 극성 짝 큐 지움 · B198)
     "auto_node", "uncertain_match", "orphan_anchor", "orphan_chunk_link",
     "orphan_attach", "attach_conflict", "unknown_field", "missing_field",
-    "invalid_category", "spec_conflict", "evidence_lost", "mirror_asymmetry",
+    "invalid_category", "spec_conflict", "evidence_lost",
     "structural_proposal",
-    # 확정 확장 4종 (증분0 §6-5 — 계 17)
+    # 확정 확장 4종 (증분0 §6-5 — 계 16)
     "direction_unverifiable", "coord_mismatch", "parse_failure", "adapter_mismatch",
-    # 승인 신설 3종 (D-3·D-4·D-5 — 계 20)
+    # 승인 신설 3종 (D-3·D-4·D-5 — 계 19)
     "direction_conflict", "duplicate_doc_hold", "hierarchy_unresolved",
 ]
 

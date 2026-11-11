@@ -8,7 +8,7 @@
 — 옛 ↔ 새 대조가 이 모델의 `--diff`다.
 
 **판정은 있는 함수를 부른다**(같은 판정의 두 번째 자리 0): 거부 = 카탈로그 `problems`(층 이름 = 폴더 이름 ⓕ 포함) ·
-등록 스키마 재대조 FAIL(`cli.register.recheck.run` — G4C · G4D · G4E) / 경고 = 카탈로그 `warnings` · `mirror_warnings` ·
+등록 스키마 재대조 FAIL(`cli.register.recheck.run` — G4C · G4D · G4E) / 경고 = 카탈로그 `warnings` ·
 재대조 ⚠. **없는 것만 더한다**(`new_checks`): 여러 층이 같은 관계 이름을 선언(표시 — 같은 이름은 모든 층에서 같은 뜻 ·
 사람이 본다) · 관계 패턴의 관계가 그 층 `relations`에 없음(경고) · 정의문이 빈 카테고리(경고).
 
@@ -115,7 +115,6 @@ def _talks(lay, cfg, schemas):
 
 
 def _layer(lay, cfg, lenses, edges, old, schemas):
-    pol = cfg.get("polarity") or {}
     own = sorted((_pattern(p) for p in cfg.get("relation_patterns") or []
                   if (p.get("src"), p.get("rel"), p.get("dst")) not in set(edges)),
                  key=lambda p: (p["src"] or "", p["rel"] or "", p["dst"] or ""))
@@ -132,9 +131,6 @@ def _layer(lay, cfg, lenses, edges, old, schemas):
         "patterns": own,
         "pair_edges": [list(e) for e in edges if {e[0], e[2]} <= spk] if not old else
                  sorted([list(e) for e in edges if f"{e[0]},{e[2]}" in (cfg.get(catalog.OLD_LAYER_KEYS[0]) or {})]),
-        "polarity": ({"bind_categories": sorted(pol.get("bind_categories") or []),
-                      "values": list(pol.get("values") or [])} if pol else None),
-        "mirrors": bool((cfg.get("mirrors") or {}).get("enabled")),
         "lenses": lenses.get(lay, []),
     }
 
@@ -268,8 +264,6 @@ def checks(layers, cats, common, configs, src=None, schemas=()):
         for tag, line in catalog.problems(configs, common, base=src):
             out["거부"].append({"from": f"카탈로그 {tag}", "line": line})
         out["경고"] += [{"from": "카탈로그 겸", "line": w} for w in catalog.warnings(common)]
-        out["경고"] += [{"from": "카탈로그 극성 · 미러", "line": f"{w} · ▶ {nxt}"}
-                       for w, nxt in catalog.mirror_warnings(configs, common)]
     except catalog.CatalogError as e:
         out["거부"].append({"from": "카탈로그", "line": str(e)})
     from cli.register import recheck

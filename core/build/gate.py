@@ -9,7 +9,7 @@
 아니라 **선언**이다. 사람이 파일에 적은 골격을 코드가 다시 판정할 근거가 없고,
 판정할 표(`relation_patterns`)를 골격까지 덮도록 넓히면 **경로 ③이 골격을 개정할 수
 있게 된다** — A5 하향 한정·발명 금지 ③ 위반이다. 그래서 골격 관계
-(`Process part_of/precedes/mirrors Process`)는 패턴표에 **넣지 않는다.**
+(`Process part_of/precedes Process`)는 패턴표에 **넣지 않는다.**
 층이 어떤 관계를 갖는지의 선언은 config `relations` 배열이 이미 하고 있고,
 `relation_patterns`는 그것과 별개인 **추출용 게이트 패턴**이다.
 골격 엣지는 loader(n10)가 `status="seed"`로 직접 쓴다.

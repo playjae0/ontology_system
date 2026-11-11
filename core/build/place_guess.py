@@ -35,22 +35,20 @@ REASON = "좌표(process_ref)가 비어 '{surface}'({category})를 만들지 않
 
 
 # ---------------------------------------------------------------- 후보 · 같은 이름
-def _key(eb, surface, category, electrode_type):
-    """`(조회 키, 극성)` — 판정이 사전을 여는 키와 같은 함수(`build.entity_key` — 부모 없음)."""
+def _key(eb, surface, category):
+    """조회 키 — 판정이 사전을 여는 키와 같은 함수(`build.entity_key` — 부모 없음 · 극성은 들지 않는다 — B198)."""
     from core.build.build import entity_key
-    canonical, polarity, _s, _c = entity_key(surface, category, eb.cfg, electrode_type=electrode_type)
-    return canonical, polarity
+    return entity_key(surface, category, eb.cfg)[0]
 
 
-def _gated(eb, key, category, polarity):
-    """그 카테고리(주 ∪ 겸) · home 층 · 같은 극성의 산 노드 전체 — `matcher.gated`(관문 없음 · LLM 0)."""
-    return matcher.gated(key, category, eb.layer, eb.g, eb.dict, scoped=True, polarity=polarity, cfg=eb.cfg)
+def _gated(eb, key, category):
+    """그 카테고리(주 ∪ 겸) · home 층의 산 노드 전체 — `matcher.gated`(관문 없음 · LLM 0)."""
+    return matcher.gated(key, category, eb.layer, eb.g, eb.dict, scoped=True, cfg=eb.cfg)
 
 
 def _same(eb, surface, key, pre):
     """같은 이름의 노드 id — 사전 표기 · 맨 이름 · canonical · 별칭 · 표기 대조 키(`scope_path.names` — 줄기를 묻지 않는다).
-    이름은 원 표기와 조회 키(극성을 붙인 표기) 둘 다로 견준다 — 극성 인스턴스 아래 노드의 맨 이름은 극성 없는 표기다(극성은 후보를
-    거르는 칸이다 — `_gated`)."""
+    이름은 원 표기와 조회 키 둘 다로 견준다."""
     from core.build import scope_path
     from parser.namefold import key as fold
     ks = {fold(x) for x in (surface, key) if x} - {""}
@@ -69,8 +67,8 @@ def _names(eb, ids):
 
 def unique(eb, surface, category, electrode_type=None):
     """같은 이름이 **한 노드**면 그 id(사전 · 표기 대조 — LLM 0) · 아니면 None. 재연결의 다시 붙음이 이것만 본다."""
-    key, pol = _key(eb, surface, category, electrode_type)
-    same = _same(eb, surface, key, _gated(eb, key, category, pol))
+    key = _key(eb, surface, category)
+    same = _same(eb, surface, key, _gated(eb, key, category))
     return same[0] if len(same) == 1 else None
 
 
@@ -81,8 +79,8 @@ def attach(eb, surface, category, prov, *, electrode_type=None, row=None, field=
     산문은 값 하나 — `hold`)이고 재료의 표지는 `mark(eb.last)`."""
     from core.llm import gateway
     u0 = gateway.usage_total()
-    key, pol = _key(eb, surface, category, electrode_type)
-    pre = _gated(eb, key, category, pol)
+    key = _key(eb, surface, category)
+    pre = _gated(eb, key, category)
     same = _same(eb, surface, key, pre)
     info = {"n": len(pre[0]) + len(pre[1])}
     v, nid, conf = None, None, 1.0
@@ -181,8 +179,8 @@ def recheck(graphs, cfgs, dic, builder, on_row):
                     continue
                 did = str(e["prov"]).split("#")[0]
                 b = builder(g, cfgs[lay], did, lay, dic)
-                key, pol = _key(b, e["surface"], e["category"], e.get("electrode_type"))
-                same = _same(b, e["surface"], key, _gated(b, key, e["category"], pol))
+                key = _key(b, e["surface"], e["category"])
+                same = _same(b, e["surface"], key, _gated(b, key, e["category"]))
                 if len(same) < 2:
                     keep.append(e)
                     continue
@@ -406,7 +404,7 @@ def pick(row, target, actor, reason=""):
         return None
     dic = Dictionary.open()
     b = _builder(g, cfgs[lay], row["doc"], lay, dic)
-    key, _pol = _key(b, row["surface"], row["category"], row.get("electrode_type"))
+    key = _key(b, row["surface"], row["category"])
     _land(b, nid, row["surface"], row["category"], row["prov"], key, row.get("field"), row.get("electrode_type"),
           {"by": "사람", "actor": actor})
     b.flush()

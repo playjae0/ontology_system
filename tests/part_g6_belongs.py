@@ -21,7 +21,7 @@ quality)에서 같은 성질을 잰다(CLAUDE.md §4 범용성).
   ⓖ 대장 `target`·`attached`·`from` · 「표기 → 붙은 노드」 · 「└ 관계 → 상대」 · `--trace` · 좌표 줄 · 끝 요약 ·
      목록 · 재시도 분포 · 표 진행 줄 분모 = 실제 값 수
   ⓗ 해시 없는 보존물 재사용 0 · 동명 다른 경로 멈춤 / `--revise`면 개정
-  B192 ② 사람 후보 미리보기 이름 = 인입 길(그 카테고리 home 층 config · 청크 극성) — 문서 층 ≠ home에서도 같은 이름
+  B192 ② 사람 후보 미리보기 이름 = 인입 길(그 카테고리 home 층 config) — 문서 층 ≠ home에서도 같은 이름
   B140 이름 없는 대상 — [5/8] 예고(쓰기 0 · LLM 0) · 더하기(pty 관문 → 기록 → [6/8]이 평소 길로) · 다른 문서 고아 · 같은 것 ·
      다시(재인입 · 재구축 · 지우기) · 관계 끝점 사전 조회 · 소속 노드의 좌표 상속 · 막기 · 비대화형
 """
@@ -691,7 +691,7 @@ show("B140 ⓐ 예고 — 「실린더」가 소속 · 관계 · 다른 문서 �
      and "1. 실린더 — 소속 1" in _oa0 and "본문에 없는 이름 1종" in _oa0 and _pv0.get("node") == "노칭::실린더"
      and _state_print() == _s0 and gateway.usage_total()["calls"] == _u0,
      f"목록 {[(x['name'], x['소속'], x['관계'], x['고아']) for x in _rw0]} · 꼬리 {_tl0} · 추천 {_up0} · {_cat0} · 미리보기 {_pv0.get('node')}")
-# B192 ② 미리보기 이름 = 인입이 세운 이름 — 문서 층(quality) ≠ home(process)이고 극성을 결합하는 카테고리(창작 — 청크 극성 하나)
+# B192 ② 미리보기 이름 = 인입이 세운 이름 — 문서 층(quality) ≠ home(process) · 청크에 극성이 있어도 이름에 들지 않는다(B198)
 def _pv192(lay):
     bd = _board("B140A")
     bd2 = HU.Board(bd.env, bd.cands, load_config(lay), open_graph(lay), lay, _l2i192, bd.ol)
@@ -704,11 +704,12 @@ def _pv192(lay):
 from core.state.bootstrap import load_config, open_graph   # noqa: E402
 _l2i192 = {c["source_locator"]: cid for cid, c in store.read(store.CHUNKS, {"chunks": {}})["chunks"].items()
            if c.get("doc_id") == "B140A"}
-_pol192 = (load_config("process").get("polarity") or {}).get("values", [None])[0]
+from core.build import polarity as _P192                    # noqa: E402
+_pol192 = next(iter(_P192.axis()), None)
 _n192 = {lay: _pv192(lay) for lay in ("process", "quality")}
 show("B192 ② 사람 후보 미리보기 — 문서 층 ≠ home이어도 이름은 그 카테고리 home 층 config로(인입 · 문서 층 = home일 때와 같은 이름 · "
-     "극성 결합이 든다)",
-     _cat0 and _n192["quality"] == _n192["process"] and _pol192 and _pol192 in str(_n192["process"]), str(_n192))
+     "청크 극성은 이름에 들지 않는다)",
+     _cat0 and _n192["quality"] == _n192["process"] and _pol192 and _pol192 not in str(_n192["process"]), str(_n192))
 _ckb = EX.checkpoint_path("B140A").read_bytes()
 _ob = _drive(["ingest-file", str(_pA), "--doc-type", DT, "--allow-mock", "--sheets", "1:prose", *_cA, "--step"],
              [("노드 추가 n", ["n 1", "c"]), ("[OK o / 위 노드", ["o"])])

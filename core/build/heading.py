@@ -55,19 +55,18 @@ def _is_coord(n):
 
 
 def _kw(b, src, prov, landed=None, ol=None):
-    """그 조각의 좌표 해소 재료 — `(좌표 id, 그래프, 부모 canonical, 극성)` (산문 pass1과 같은 순서 · 큐 0 · 좌표 하강 같은 함수)."""
+    """그 조각의 좌표 해소 재료 — `(좌표 id, 그래프, 부모 canonical)` (산문 pass1과 같은 순서 · 큐 0 · 좌표 하강 같은 함수)."""
     from core.state.bootstrap import COORD_CATEGORY
-    res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"),
-                           defer=[])                       # 공정 목록 — 주 좌표는 하나일 때만 (B125 ④)
+    res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, defer=[])   # 공정 목록 — 주 좌표는 하나일 때만 (B125 ④)
     ref, ref_g = coord_below(b, landed, ol, src) or b.main_coord(res)
-    return ref, ref_g, (ref_g.get(ref)["canonical"] if ref else None), b.anchor_polarity(ref, ref_g)
+    return ref, ref_g, (ref_g.get(ref)["canonical"] if ref else None)
 
 
 def coord_below(b, landed, ol, src):
     """**조각 좌표 하강**(B150 ②) — 그 조각 위 가장 가까운 **좌표 제목**(골격 이름 제목이 골격 노드에 앉은 것)이 조각 좌표의
     아래면 그 골격 노드 `(id, 그래프)` · 아니면 None(조각 좌표 그대로). **내리기만**: 조각 좌표(문서 좌표에서 물려받은 것도 같은
     대조)가 그 노드의 조상일 때만 — 같은 노드 · 더 깊은 자기 좌표 · 다른 줄기 · 좌표 없음 · 공정 목록(주 좌표 없음)은 그대로.
-    대조는 개념 노드끼리(극성 하강 전 — `resolve_anchor` 조회만) · 극성은 그 조각의 극성으로 지금 하강 함수(`descend_anchor`) ·
+    대조는 개념 노드끼리(`resolve_anchor` 조회만 · 극성은 좌표를 가르지 않는다 — B198) ·
     메타(봉투)는 바꾸지 않는다 — 이름은 지금 이름 규칙이 이 좌표로 짓는다(표의 `process_ref`가 그 노드인 행과 같은 이름)."""
     if not landed:
         return None
@@ -93,7 +92,7 @@ def coord_below(b, landed, ol, src):
         c = pm.get(c)
     if rg.get(rid)["canonical"] not in up:
         return None
-    return (b.descend_anchor(hid, src.get("electrode_type"), g) or hid), g
+    return hid, g
 
 
 def _coord(b, name, cat, prov, src, ref, ref_g):
@@ -106,7 +105,6 @@ def _coord(b, name, cat, prov, src, ref, ref_g):
     if not nid:
         b.last = {"canonical": name, "verdict": "pending", "path": "none", "layer": b.layer}
         return None, None
-    nid = b.descend_anchor(nid, src.get("electrode_type"), g) or nid
     b.last = {"canonical": g.get(nid)["canonical"], "verdict": "match", "path": "skeleton", "confidence": 1.0,
               "layer": getattr(g, "layer", b.layer), "queue_kind": None, "candidates_n": 0, "node_id": nid,
               "category": cat, "llm": {"calls": 0, "in_tokens": 0, "out_tokens": 0}}
@@ -128,14 +126,14 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
         loc = src.get("source_locator")
         prov = f"{env['doc_id']}#{loc}" if loc else env["doc_id"]
         name, cat = h["target"]["name"], h["target"]["category"]
-        ref, ref_g, parent, pol = _kw(b, src, prov, landed, ol)
+        ref, ref_g, parent = _kw(b, src, prov, landed, ol)
         ups = _landed_ups(h, by, landed)
         owner = None                                # 판정의 자리 — 위 제목 개체(B142 ③ · 이름 부모와 같은 재료)
         if ups:
             uid, ug, _d = ups[0]
             un = ug.get(uid) or {}
             if _is_coord(un):                       # 위 제목 개체가 골격 — 그것이 좌표다(소속 골격과 같은 결)
-                ref, ref_g, parent, pol = uid, ug, un["canonical"], b.anchor_polarity(uid, ug)
+                ref, ref_g, parent = uid, ug, un["canonical"]
             else:                                   # 이름에 소속 — 부모 제목 개체 아래 (B102 ⑤ · 한 함수 B119 ④)
                 parent = name_parent(cat, un.get("canonical"), parent, b.cfg)
                 owner = (uid, ug)
@@ -150,7 +148,7 @@ def land(b, cfg, graph, env, ol, chunk_id_of):
             (nid, cg), eb = _coord(b, name, cat, prov, src, ref, ref_g), b
         else:
             nid, eb = b.resolve_at_home(name, cat, prov, coord=(ref, ref_g), electrode_type=src.get("electrode_type"),
-                                        parent_canonical=parent, anchor_polarity=pol,
+                                        parent_canonical=parent,
                                         coord_surface=src.get("process_ref"), at=(h["path"], cat), owner=owner)
         last = eb.last or {}
         row = b.ledger.add(locator=h["path"], field=cat, role=ROLE, surface=name,

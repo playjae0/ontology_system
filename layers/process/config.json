@@ -14,25 +14,10 @@
       "sibling": "precedes"
     }
   },
-  "mirrors": {
-    "enabled": true,
-    "relation": "mirrors"
-  },
-  "polarity": {
-    "bind_categories": [
-      "Unit",
-      "Property"
-    ],
-    "values": [
-      "cathode",
-      "anode"
-    ]
-  },
   "relations": [
     "part_of",
     "precedes",
-    "has_property",
-    "mirrors"
+    "has_property"
   ],
   "uses": [],
   "query_traverse": {
@@ -57,7 +42,6 @@
     "part_of": "{src}는 {dst}의 하위 요소이다",
     "precedes": "{src} 다음 공정은 {dst}이다",
     "has_property": "{src}의 관리인자: {dst}",
-    "mirrors": "{src}는 {dst}와(과) 극성 대칭 공정/설비이다",
     "attr:spec": "{node}의 규격: {value} (출처: {prov})",
     "precedes:derived": "({scope} 기준) {src} 다음 공정은 {dst}이다",
     "precedes:none": "{src}의 다음 공정은 골격에 선언되어 있지 않다 (순서 정보 없음)",
@@ -65,25 +49,10 @@
     "node:replaced": "(대체됨: {old} → {new})",
     "node:obsolete": "'{node}'는 폐기된 항목이다 (대체 지정 없음)"
   },
-  "_fact_note": "맥락형 attr(spec 등)은 context 그룹별 한 줄씩 렌더: '[model=M1] 규격: ...'. mirrors는 query_traverse 기본 미포함(비대칭 조회 시에만 명시적 확장 — HOOK).",
+  "_fact_note": "맥락형 attr(spec 등)은 context 그룹별 한 줄씩 렌더: '[model=M1] 규격: ...'.",
   "prompts": {"structure": "이 층에서 대상 제목은 셋이다 — 설비(그 아래 글 전체가 장비 하나 전체를 말한다 · 카테고리 Unit) · 유닛(설비를 이루는 유닛 · 부(部) · 모듈 — 「언와인더 unit」 「공급부」 · 카테고리 Unit) · 항목(관리 항목 · 사양 하나의 이름 — 그 아래 줄이 그 값이다 · 카테고리 Property). 설비 전체를 부르는 「○○ unit」(설비 이름)과 설비의 한 부분인 유닛을 가른다 — 둘 다 Unit이다. 사양을 묶는 소제목(기본사양 · 지정사양 · 요구사항)은 이 층의 노드가 아니다.", "extract": "이 층의 소속 예 — 시트가 「이송 유닛」이고 본문이 「모터」를 말하면 그 모터의 소속은 시트의 「이송 유닛」이다(from: 시트) · 「모터」는 어느 유닛의 모터인가 · 「가압력」은 어느 설비의 특성인가 · 유닛 · 부품은 골격에 없다(본문의 이름 그대로)."},
-  "_relation_patterns_note": "추출 경로 전용 게이트 패턴. 골격 관계(Process part_of/precedes/mirrors Process)는 여기 넣지 않는다 — 넣으면 추출이 골격을 개정한다. 층이 어떤 관계를 갖는지의 선언은 위 relations 배열이 한다.",
-  "relation_patterns": [
-    {
-      "src": "Unit",
-      "rel": "mirrors",
-      "dst": "Unit",
-      "symmetric": true,
-      "정의문": "극성만 다른 대칭 설비다"
-    },
-    {
-      "src": "Property",
-      "rel": "mirrors",
-      "dst": "Property",
-      "symmetric": true,
-      "정의문": "극성만 다른 대칭 관리항목이다"
-    }
-  ],
+  "_relation_patterns_note": "추출 경로 전용 게이트 패턴. 골격 관계(Process part_of/precedes Process)는 여기 넣지 않는다 — 넣으면 추출이 골격을 개정한다. 층이 어떤 관계를 갖는지의 선언은 위 relations 배열이 한다.",
+  "relation_patterns": [],
   "skeleton_version": "process-3.2",
   "config_version": "process-1",
   "registration": "builtin",

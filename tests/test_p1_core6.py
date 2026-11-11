@@ -21,18 +21,18 @@ show("골격 재빌드가 스냅샷 파일을 생성한다 (파생물 — P5)", 
      _P.rel_to_home(snap_path))
 snap = json.loads(snap_path.read_text(encoding="utf-8"))
 proc = snap["process"]
-show("스냅샷이 골격 전 노드를 담는다 (개념+인스턴스 — A11-6·D-45)",
-     proc["count"] == 46, f"{proc['count']}노드")
+show("스냅샷이 골격 전 노드를 담는다 (극성 인스턴스 0 — B198)",
+     proc["count"] == 30, f"{proc['count']}노드")
 show("skeleton_version 정합 (config ↔ 스냅샷)",
      proc["skeleton_version"] == json.loads(
          _P.layers("process", "config.json").read_text(encoding="utf-8")
      )["skeleton_version"], proc["skeleton_version"])
-show("canonical·alias·tier·polarity·parent를 함께 싣는다 (태거가 파생할 재료)",
-     all({"canonical", "aliases", "tier", "polarity", "parent"} <= set(n)
-         for n in proc["nodes"]))
+show("canonical·alias·tier·parent를 싣고 극성 값의 닫힌 목록은 axis 한 자리 (B198 — 노드에 극성 칸 0)",
+     all({"canonical", "aliases", "tier", "parent"} <= set(n) and "polarity" not in n
+         for n in proc["nodes"]) and set(proc.get("axis") or {}) == {"cathode", "anode"})
 nodes = tagger.closed_list("process")
 show("파서가 그래프가 아니라 **파일**을 읽는다 (D-9 — 결합은 JSON뿐)",
-     len(nodes) == 46 and tagger.snapshot_path() == snap_path)
+     len(nodes) == 30 and tagger.snapshot_path() == snap_path)
 before = json.dumps(snap, ensure_ascii=False, sort_keys=True)
 bootstrap("process", echo=False)
 show("재빌드가 스냅샷을 재생성한다 (손으로 고치지 않는 파생물)",
@@ -79,7 +79,7 @@ ok2, d2 = validator.check({
 show("validator — 파서가 정본 id를 부여하면 실패다 (틀 A7-1)",
      not ok2 and any("정본 id" in x for x in d2), str(d2))
 
-n = next(x for x in nodes if x["canonical"] == "탭용접::cathode")
+n = next(x for x in nodes if x["canonical"] == "탭용접::cutting")
 show("tagger — process_group은 tier:main 조상 파생이다 (A11-7 · 지어내지 않는다)",
      tagger.group_of(n, nodes) == "조립")
 img = tagger.complete_images([{"source_locator": "L", "image_ref": "img_001"}])

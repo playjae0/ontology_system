@@ -7,7 +7,7 @@
   ⓐ 층 config에 canonical_scope가 남으면 --dry-run도 rc 1 · 실제 실행과 같은 ⓓ 문면
   ⓑ 골격 문법 위반이면 --dry-run rc 1 · 태그
   ⓒ --dry-run을 통과한 같은 상태에서 실제 bootstrap rc 0
-  ⓓ show tree 형제 순서 = precedes 사슬 · 흐름 밖은 뒤
+  ⓓ show tree 형제 순서 = precedes 사슬
   ⓔ 뷰 확인 · 시트 역할 관문 끝에 사용량 줄
   ⓕ 라틴 대소문자만 다른 표기가 사전 조회·적중·좌표에서 맞는다 · 둘 이상을 가리키면 미스
   ⓖ norm·문서 id는 그대로다
@@ -63,8 +63,8 @@ def _pos(name, after=0):
 
 
 _n = next(i for i, l in enumerate(_lines) if "─ 노칭  [" in l)
-_order = [_pos(x, _n) for x in ("전극 언와인딩", "노칭 타발", "비전검사", "전극 리와인딩", "anode")]
-show("ⓓ show tree 형제 순서 = precedes 사슬(이름순 아님) · 흐름 밖(극성 인스턴스)은 뒤",
+_order = [_pos(x, _n) for x in ("전극 언와인딩", "노칭 타발", "비전검사", "전극 리와인딩")]
+show("ⓓ show tree 형제 순서 = precedes 사슬(이름순 아님)",
      _rc == 0 and all(a < b for a, b in zip(_order, _order[1:])) and -1 not in _order
      and "순서 = 흐름" in _ot, str(_order))
 

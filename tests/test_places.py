@@ -214,7 +214,7 @@ show("카테고리 불일치는 후보에서 제외된다 — 판정이 재확�
 
 import core.state.skeleton as _SK                                     # noqa: E402
 show("골격 심기가 core/state/skeleton.py에 산다 (§7.1 — 파생이 loader에 섞이지 않는다)",
-     all(hasattr(_SK, f) for f in ("plant", "_plant_tree", "_link_seed_mirrors"))
+     all(hasattr(_SK, f) for f in ("plant", "_plant_tree", "old_marks"))
      and "_TreeParser" in dir(_SK))
 _bsrc = (ROOT / "core" / "state" / "bootstrap.py").read_text(encoding="utf-8")
 show("bootstrap에 트리 파싱·모양 분기가 남아 있지 않다",

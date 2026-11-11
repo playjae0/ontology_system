@@ -674,13 +674,11 @@ def _ledger(did, prov, d, lay, b, attached=None):
 def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
     """좌표가 해소된 **한 행**의 보유분을 착지시킨다 — 돌려주는 것은 건수다.
 
-    좌표는 **인입과 같이 그 행의 극성으로 하강**하고(⓪ 하강 부착 — 행 재료의 `electrode_type`) 개체는 인입과 같은
-    함수(`resolve_at_home` — 자기 좌표 규칙 · 극성 상속)로 해소한다(B107 ③): 재시도가 인입과 다른 이름을 세우면
-    다음 재구축의 판정 재생이 그 값을 「대상 없음」으로 다시 판정하고 그래프도 갈린다."""
+    개체는 인입과 같은 함수(`resolve_at_home` — 자기 좌표 규칙)로 해소한다(B107 ③): 재시도가 인입과 다른 이름을 세우면
+    다음 재구축의 판정 재생이 그 값을 「대상 없음」으로 다시 판정하고 그래프도 갈린다 · 극성은 좌표를 가르지 않는다(B198 —
+    저장 앞에서 출처의 극성이 칸으로 간다)."""
     prov = pl.get("provenance")
     et = pl.get("electrode_type")
-    ref = b0.descend_anchor(ref, et, rg)
-    pol = b0.anchor_polarity(ref, rg)
     n = 0
 
     # ① **연쇄 드롭된 entity를 새로 세운다**(문서 4 §4.4 — B14).
@@ -710,7 +708,7 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
         owner = (revived[of], homes[of]) if of in homes else None
         nid2, eb2 = b2.resolve_at_home(d["surface"], d["category"], prov, coord=(ref, rg), electrode_type=et,
                                        parent_canonical=scope_path.owner_parent(b2.cfg, d["category"], owner, parent),
-                                       anchor_polarity=pol, owner=owner)
+                                       owner=owner)
         b2.flush()
         rows.append((d, lay2, eb2, nid2))         # 대장 행은 잇고 난 뒤에 — 붙은 자리까지 (B107 ③ · B113 ③)
         if nid2:

@@ -92,41 +92,63 @@ show("C7 병렬 항목 (context 상이 → 충돌 아님)",
      == {'{"model": "M1"}', '{"model": "M2"}'},
      str([s["context"] for s in specs]))
 
-# 기대값 이동 [B26]: `Unit`이 `canonical_scope.bind_categories`에 들어와
-# **극성이 이름이 아니라 주소에 실린다** — 부착 노드가 극성 인스턴스면 극성이
-# 스코프에 이미 담기므로 표면형 결합을 생략한다(문서 4 §4.5-3①).
-# **판정의 본체는 그대로다**: 극성별로 노드가 갈리는가.
-show("C8·C9 극성 결합 canonical 2노드 (B26 — 극성이 주소에 실린다)",
-     {"노칭::cathode::노칭 프레스", "노칭::anode::노칭 프레스"} <= canon(P),
-     str(sorted(c for c in canon(P) if "노칭 프레스" in c)))
-show("mirrors 엣지 생성", rel["mirrors"] > 0, str(rel["mirrors"]))
-# 짝은 **polarity 필드**로 찾는다(F3 — 문자열 파싱 폐지). 스코프가 붙은 관리항목의
-# 짝도 찾아야 하며, 못 찾으면 정상 쌍이 비대칭 큐로 새어 나간다.
-show("C10 mirror_asymmetry 참 양성 (anode 쪽에만 '버 높이')",
-     "노칭::노칭 프레스::버 높이" in [x["payload"]["base"] for x in q("mirror_asymmetry")],  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
-     str([x["payload"]["base"] for x in q("mirror_asymmetry")]))
+# 기대 변경(B198 — 극성은 값의 한정어 · 노드를 가르지 않는다): C1(both) · C8(cathode) · C9(anode)의 「노칭 프레스 · 노칭 정밀도」는
+# 노드 하나 · 값 셋(context.polarity 없음 · cathode · anode) · 값 충돌 0(같은 context끼리만) — 완료판정 ⓒ
+from core.build import polarity as _PB3                     # noqa: E402
+_np = [n for n in P.nodes.values() if n["canonical"] == "노칭::노칭 프레스::노칭 정밀도"]
+_sp = (_np[0]["attrs"].get("spec") or []) if _np else []
+show("B198 ⓒ 같은 관리항목 · anode · cathode · 빈칸 행 → 노드 하나 · 값 셋(context.polarity anode · cathode · 없음) · 값 충돌 0",
+     len(_np) == 1 and len([c for c in canon(P) if c.endswith("노칭 정밀도")]) == 1
+     and sorted(str(_PB3.of_value(x)) for x in _sp) == ["None", "anode", "cathode"]
+     and not [x for x in q("spec_conflict") if x["payload"].get("node_id") == (_np[0]["id"] if _np else None)],
+     str([(x.get("context"), x.get("value")) for x in _sp]))
+show("B198 짝 기구 0 — mirrors 엣지 0 · 큐 mirror_asymmetry 0", rel["mirrors"] == 0 and not q("mirror_asymmetry"),
+     f"{rel['mirrors']} · {len(q('mirror_asymmetry'))}")
 
-# ★ 판정필요-5 ① — F3 하향 연쇄 (틀 v2.7 · 카드 F3 · CH3B v2.2 3.5 규약 6)
-# 짝 키는 canonical 전문이 아니라 **(부모 — mirror 쌍이면 동일시 · 주소 접두를 제외한
-# 자기 이름부 · polarity 반대)** 세 요소다. 개수가 아니라 **구조로** 잠근다 — 큐에
-# 오른 항목마다 반대 극성 노드를 직접 찾아 "정말로 짝이 없는지"를 확인하므로,
-# 나중에 짝이 생기면 큐가 줄어도 이 판정은 그대로 성립한다.
-_pol_vals = ["cathode", "anode"]
-_by_key = {}
-for _n in P.nodes.values():
-    if _n["status"] != "seed" and _n.get("polarity") in _pol_vals:
-        # 기대 변경(B142 ⑤ — 짝 키의 칸 이름 scope · base_name · 읽는 함수 하나)
-        _by_key.setdefault((_SO3(_n), _BN3(_n)), set()).add(_n["polarity"])
-_false = [x["payload"]["base"] for x in q("mirror_asymmetry")
-          if len(_by_key.get((x["payload"]["scope"], x["payload"]["name"]), ())) > 1]
-show("mirror_asymmetry 오검출 0건 (짝이 있는데 큐에 오른 항목이 없다)",
-     not _false, str(_false))
-show("F3 하향 연쇄 — 부모가 mirror 쌍이면 자식 짝 키에서 동일시된다",
-     BLD._mirror_scope("탭용접::cathode") == "탭용접"
-     and BLD._mirror_scope("탭용접::anode") == "탭용접",
-     f"탭용접::cathode → {BLD._mirror_scope('탭용접::cathode')}")
-show("짝 없는 인스턴스는 동일시하지 않는다 (무관한 자식이 한 키로 뭉치지 않는다)",
-     BLD._mirror_scope("노칭") == "노칭")
+# B198 ⓓ 보이는 극성(엣지 · 노드 공용 — 결정 2-6): 함수 하나 · 출처 집합 · 회수 뒤 남은 출처로 · 극성 없는 엣지는 칸 없음
+_F = _PB3.FIELD
+
+
+def _vis(*pols):
+    provs = [f"D#{i}" for i in range(len(pols))]
+    return _PB3.visible({"provenance": provs, _F: {p: v for p, v in zip(provs, pols) if v}})
+
+
+_all_e = list(P.edges) + list(Q.edges)
+_polar = [e for e in _all_e if e.get(_F)]
+_two = next((e for e in _polar if len(set(e.get("provenance") or [])) > len(e[_F])          # 극성 없는 출처가 낀 엣지(공통)
+             and len(set(e[_F].values())) == 1), None)                                    # · 극성 출처는 한 극성
+_wd = dict(_two or {})
+if _two:                                                   # 한 문서 회수 — 극성 없는 출처를 빼고 다시 센다(재인입 회수와 같은 함수)
+    _wd["provenance"] = [x for x in _two["provenance"] if x in _two[_F]]
+    _PB3.stamp(_wd)
+show("B198 ⓓ 보이는 극성 — anode만 → anode · anode + cathode → 공통 · anode + 빈칸 → 공통 · 차례 무관 · 회수 뒤 남은 출처로 다시 · "
+     "극성 없는 출처뿐인 엣지 · 노드는 칸 없음",
+     _vis("anode") == "anode" and _vis("anode", "anode") == "anode" and _vis("anode", "cathode") is None
+     and _vis("cathode", "anode") is None and _vis("anode", None) is None and _vis(None, "anode") is None
+     and _two is not None and _PB3.visible(_two) is None and _PB3.visible(_wd) in _PB3.axis()
+     and all(_F not in x for x in _all_e + list(P.nodes.values()) + list(Q.nodes.values())
+             if not any(_PB3.of_prov(p) for p in x.get("provenance") or [])),
+     f"극성 칸 엣지 {len(_polar)} · 공통 사례 {(_two or {}).get('rel')} → 회수 뒤 {_PB3.visible(_wd)}")
+
+# B198 ⓔ 질의 거르기(결정 2-10) — 「양극 … 원인」(양극 = 골격 AXIS_LABELS의 cathode 표시 이름): anode만인 엣지는 빠지고 cathode ·
+# 공통은 남는다 · 공통 값에 「공통」(특정 극성 값이 공통 값을 덮지 않는다)
+from core.query import query as _QQ3                     # noqa: E402
+_want = _PB3.asked("양극 탭용접 불량의 원인은?")
+_cfgP = load_config("process")
+_cfgQ = load_config("quality")
+_tplQ = _cfgQ.get("fact_templates") or {}
+_line = lambda g, e: _tplQ[e["rel"]].format(src=g.get(e["src"])["canonical"], dst=g.get(e["dst"])["canonical"])   # noqa: E731
+_qe = [e for e in Q.edges if e["rel"] in _tplQ and Q.get(e["src"]) and Q.get(e["dst"])]
+_fa, _fc = set(_QQ3.facts(Q, set(Q.nodes), _cfgQ)), set(_QQ3.facts(Q, set(Q.nodes), _cfgQ, _want))
+_only_a = [_line(Q, e) for e in _qe if _PB3.visible(e) == "anode"]
+_kept = [_line(Q, e) for e in _qe if _PB3.visible(e) in (None, "cathode")]
+_vc = _QQ3.facts(P, {_np[0]["id"]} if _np else set(), _cfgP, _want)
+show("B198 ⓔ 질의 — 「양극 … 원인」 → anode만인 엣지는 빠지고 cathode · 공통은 남는다 · 공통 값에 「공통」",
+     _want == "cathode" and _only_a and not (set(_only_a) - set(_kept)) & _fc and set(_kept) <= _fc and set(_only_a) <= _fa
+     and any(x.startswith("[공통]") for x in _vc) and any(x.startswith(f"[{_PB3.label('cathode')}]") for x in _vc)
+     and not any(x.startswith(f"[{_PB3.label('anode')}]") for x in _vc),
+     f"극성 {_want} · anode만 {len(_only_a)} 빠짐 · 남음 {len(_kept)} · 값 {_vc}")
 
 # ★ 판정필요-5 ② — A11-9 ① 적용 범위를 스코프 카테고리로 한정 (카드 F1 v14)
 _dup = [c for c, k in Counter((n["canonical"], n["category"])
@@ -142,8 +164,7 @@ _bad = [n["canonical"] for n in P.nodes.values()
         if n["status"] != "seed" and n["category"] in _scoped
         and "::" not in n["canonical"]]
 show("스코프 카테고리는 주소에 실린다 (B26 — Property·Unit 둘 다)",
-     not _bad and {"탭용접::cathode::초음파 융착기", "탭용접::초음파 융착기",
-                   "탭용접::cathode::초음파 융착기::용접 강도"} <= canon(P),  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
+     not _bad and {"탭용접::초음파 융착기", "탭용접::초음파 융착기::용접 강도"} <= canon(P),  # 기대 변경(B198 — 극성 인스턴스 0)
      str(_bad or sorted(c for c in canon(P) if "융착" in c)))
 # B171 — 고장도 이름 규칙 카테고리(공통 config `bind_categories`): 공정이 다르면 다른 노드 · 같은 공정이면 한 노드 · 좌표 없으면 노드 0
 _fails = [n for n in Q.nodes.values() if n["category"] == "Failure" and n["status"] != "seed"]
@@ -164,20 +185,6 @@ show("비스코프 카테고리는 이름에 실린다 (F1 결합 유지)",
          and n["category"] != "Process"),
      str(sorted({n["category"] for n in P.nodes.values()
                  if n["status"] != "seed"} - _scoped)))
-# 기대값 이동 [P1 §0 — A11-9 ⓪ 하강 부착]: C8·C9는 좌표가 **개념**(`노칭`)이고 극성이
-# 확정이라 이제 `노칭::cathode`·`노칭::anode` 인스턴스로 하강해 부착한다. 그래서
-# canonical이 F1 결합형(`노칭::cathode 노칭 정밀도`)에서 스코프형으로 이동했다.
-# **페어링이 성립하는지**가 이 항의 판정이고 그것은 그대로다.
-show("스코프 붙은 관리항목의 극성 쌍도 페어링 (구 strip 방식이 놓치던 자리)",
-     any(e["rel"] == "mirrors"
-         and P.get(e["src"])["canonical"] == "노칭::cathode::노칭 프레스::노칭 정밀도"  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
-         and P.get(e["dst"])["canonical"] == "노칭::anode::노칭 프레스::노칭 정밀도"
-         for e in P.edges),
-     str(sorted(c for c in canon(P) if "노칭 정밀도" in c)))
-show("Tier1(seed) 골격은 mirror_asymmetry 대상이 아님 (A11-4)",
-     not any(P.get(x["payload"]["node_id"])["status"] == "seed"
-             for x in q("mirror_asymmetry")))
-
 # ★ M2 — D5(극성 모호)는 **구조적으로 소멸**했다(A11-6). "탭용접"은 개념 노드가
 # 극성 무관 alias를 단독 소유하므로 모호하지 않고 **저해상도 부착**된다.
 show("C5′ 개념 해상도 anchor('탭용접') → 개념 노드에 부착 (저해상도 부착)",
@@ -191,41 +198,13 @@ show("orphan_anchor는 닫힌 분류의 '목록 밖 이름'만 남음 (셀 부�
      and {x["payload"]["surface"] for x in q("orphan_anchor") if x["payload"].get("pair")} == {"노칭"},
      str(sorted({x["payload"]["surface"] for x in q("orphan_anchor")})))
 
-# ★ M2 — 부착 정합 (A11-9)
-# 판정 문면은 **이중 표기 방지**다 — 한 canonical에 축값이 두 번 실리지 않아야 한다.
-# (구판은 "::cathode 용접"을 프록시로 썼으나, 좌표가 **개념**인 레코드는 주소에 극성이
-#  없어 F1 결합이 한 번 일어나는 것이 정상이다 — G6.5 D1 수리로 드러난 정상 형태다.)
-def _axis_twice(c):
-    return any(c.count(v) > 1 for v in ("cathode", "anode"))
-
-
-# 증인은 **정형 유래**(CP01#C12)를 쓴다 — 아래 126행이 이미 신뢰하는 노드이고,
-# 표 경로라 인입 순서에 무관하다. 구판 증인(PPT01 유래 `…용접 가압력`)은 G6.5 E2가
-# mock 폴백 어휘를 골격 닫힌 목록으로 한정하면서 corpus에서 사라졌다.
-show("A11-9 ① 부착 노드 polarity≠none이면 표면형 극성 결합 생략 (이중 표기 방지)",
-     "탭용접::cathode::초음파 융착기::용접 강도" in canon(P)  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
-     and not any(_axis_twice(c) for c in canon(P)),
-     str([c for c in canon(P) if _axis_twice(c)]))
-# ★ P1 §0 — A11-9 ⓪ 하강 부착 (판정필요-6 종결 어서션)
-show("A11-9 ⓪ 개념 좌표 + 축값 확정 → 동일 극성 인스턴스로 하강 부착",
-     "탭용접::cathode::용접 가압력" in canon(P)
-     and "탭용접::cathode 용접 가압력" not in canon(P),
-     str(sorted(c for c in canon(P) if "용접 가압력" in c)))
-show("A11-9 ⓪ 같은 실물이 좌표 해상도로 갈리지 않는다 (판정필요-6 종결)",
-     len([c for c in canon(P) if c.endswith("용접 가압력")
-          and "cathode" in c]) == 1)
-show("A11-9 ⓪ 인스턴스가 없으면 하강하지 않는다 (임의 생성 금지 — 골격 Tier1)",
-     "패키징::전해액 주액::cathode 주액량" in canon(P),
-     str(sorted(c for c in canon(P) if "주액량" in c)))
-show("A11-9 ① polarity는 부착 노드에서 상속해 기록",
-     next(n for n in P.nodes.values()
-          if n["canonical"] == "탭용접::cathode::초음파 융착기::용접 강도")["polarity"] == "cathode")  # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
-show("polarity가 닫힌 4값 밖으로 새지 않음 (cathode/anode/none/unbound)",
-     {n.get("polarity") for n in list(P.nodes.values()) + list(Q.nodes.values())}
-     <= {"cathode", "anode", "none", "unbound"},
-     str(sorted({str(n.get("polarity"))
-                 for n in list(P.nodes.values()) + list(Q.nodes.values())})))
-show("D-43 — electrode_type은 노드에 기록되지 않는다 (구조 필드 · polarity가 파생 필드)",
+# 기대 변경(B198 — 하강 부착 · 이름 결합 지움): 이름에 극성 값 0 · 노드에 옛 polarity 칸 0
+show("B198 이름에 극성 0 — 축 값 마디 · 「축값 이름」 꼴 0 · 노드 polarity 칸 0",
+     not [c for c in canon(P) | canon(Q) if any(x in ("cathode", "anode") or x.startswith(("cathode ", "anode "))
+                                                for x in c.split("::"))]
+     and not any("polarity" in n for n in list(P.nodes.values()) + list(Q.nodes.values())),
+     str([c for c in canon(P) if "cathode" in c or "anode" in c]))
+show("D-43 — electrode_type은 노드에 기록되지 않는다 (구조 필드 · 극성은 출처별 칸)",
      not any("electrode_type" in n for n in
              list(P.nodes.values()) + list(Q.nodes.values())))
 
@@ -234,12 +213,8 @@ cm = q("coord_mismatch")
 show("**C11 coord_mismatch** (스태킹/노칭 — 실존하되 조상 아님)",
      any(x["payload"].get("process_group") == "스태킹" for x in cm),
      str([x["reason"] for x in cm]))
-show("**C12 coord_mismatch — A11-9 ②** (좌표 극성 cathode ↔ record 극성 anode)",
-     any(x["payload"].get("node_polarity") == "cathode"
-         and x["payload"].get("electrode_type") == "anode" for x in cm),
-     str([x["payload"] for x in cm if "node_polarity" in x["payload"]]))
-show("coord_mismatch 2건 · orphan_anchor로 새지 않음 (골격 밖과 구분)",
-     len(cm) == 2 and all("스태킹" not in x["reason"] for x in q("orphan_anchor") if not x["payload"].get("pair")),
+show("coord_mismatch 1건(극성 쌍 지움 — B198) · orphan_anchor로 새지 않음 (골격 밖과 구분)",
+     len(cm) == 1 and all("스태킹" not in x["reason"] for x in q("orphan_anchor") if not x["payload"].get("pair")),
      str(len(cm)))
 
 show("Property canonical이 세부공정 스코프", any("::" in c for c in canon(P)),
@@ -481,42 +456,14 @@ show("★ part_of가 **자기 좌표의 공정에만** 걸린다 (양쪽에 걸�
      all(len(v) <= 1 and (not v or k.rsplit("::", 1)[0] == v[0])
          for k, v in _uparents.items()),
      str(_uparents))
-show("★ 같은 이름의 Unit이 공정 수만큼 갈린다 (노칭 프레스 3 · 초음파 융착기 2)",
-     len([c for c in _uparents if c.endswith("노칭 프레스")]) == 3
-     and len([c for c in _uparents if c.endswith("초음파 융착기")]) == 2,
+show("★ 같은 이름의 Unit은 공정마다 하나 — 극성으로 갈리지 않는다 (노칭 프레스 1 · 초음파 융착기 1 — 기대 변경 B198)",
+     len([c for c in _uparents if c.endswith("노칭 프레스")]) == 1
+     and len([c for c in _uparents if c.endswith("초음파 융착기")]) == 1,
      str(sorted(_uparents)))
 
-# ⓐ 극성 상속 — 부모가 극성 인스턴스면 극성이 **주소에** 담기고 표면형 결합을
-#    생략한다(문서 4 §4.5-3① — 스코프 카테고리 한정).
-_polu = [n for n in P.nodes.values()
-         if n["category"] == "Unit" and n["polarity"] in ("cathode", "anode")]
-show("ⓐ 부모가 극성 인스턴스면 polarity를 상속한다",
-     _polu and all(n["canonical"].split("::")[-2] == n["polarity"] for n in _polu),
-     str(sorted(f"{n['canonical']}({n['polarity']})" for n in _polu)))
-show("ⓐ 표면형 결합을 생략한다 — 이름부에 극성이 없다 (이중 결합 방지)",
-     all(not n["canonical"].split("::")[-1].startswith(("cathode ", "anode "))
-         for n in _polu),
-     str([n["canonical"].split("::")[-1] for n in _polu]))
-show("ⓐ 부모가 개념 노드면 극성 없음 (F1 결합 대상이 아니다)",
-     all(n["polarity"] == "none" for n in P.nodes.values()
-         if n["category"] == "Unit" and n["canonical"].count("::") == 1),
-     str([(n["canonical"], n["polarity"]) for n in P.nodes.values()
-          if n["category"] == "Unit" and n["canonical"].count("::") == 1]))
-
-# ⓑ mirrors 페어링 — 접두가 이름부 파싱과 얽히지 않는가
-_upairs = [(a["canonical"], b["canonical"])
-           for e in P.edges if e["rel"] == "mirrors"
-           for a, b in [(P.get(e["src"]), P.get(e["dst"]))]
-           if a and b and a["category"] == "Unit"]
-show("ⓑ 스코프 접두가 붙은 극성 유닛 쌍도 자동 페어링된다",
-     any({"cathode", "anode"} == {P.get(e["src"])["polarity"], P.get(e["dst"])["polarity"]}
-         for e in P.edges if e["rel"] == "mirrors"
-         and P.get(e["src"]) and P.get(e["src"])["category"] == "Unit"),
-     str(_upairs))
 # 기대 변경(B142 ⑤ — 맨 이름 칸 base_name · 칸이 비면 이 어서션은 빈 것을 센다 — 극성 노드는 칸이 있어야 한다)
-show("ⓑ 짝 키의 이름부가 접두를 포함하지 않는다 (맨 이름 base_name은 자기 이름부만)",
-     all("::" not in (_BN3(n) or "") for n in P.nodes.values())
-     and all(_BN3(n) for n in P.nodes.values() if n["status"] != "seed" and n.get("polarity") in _pol_vals),
+show("ⓑ 맨 이름 base_name은 자기 이름부만 — 접두를 포함하지 않는다",
+     all("::" not in (_BN3(n) or "") for n in P.nodes.values()),
      str([n["canonical"] for n in P.nodes.values()
           if "::" in (_BN3(n) or "")][:3]))
 
@@ -578,8 +525,9 @@ show("③ validator 결함 여러 건이 각각 한 줄이 된다 (합쳐 자르
 print("\n■ B175 반대 방향 엣지 — 구조 관계는 보류(먼저 선 것을 둔다) · 사실 관계는 공존 · 층 전부 · 대칭은 그대로")
 from core.build import entry as _E175, gate as _G175          # noqa: E402
 _cfg175 = json.loads(json.dumps(load_config("process")))      # 시험 안 config — 같은 카테고리 쌍의 구조 · 사실 관계(창작)
-_cfg175["relations"] = list(_cfg175["relations"]) + ["causes"]
+_cfg175["relations"] = list(_cfg175["relations"]) + ["causes", "paired_with"]
 _cfg175["relation_patterns"] = list(_cfg175["relation_patterns"]) + [
+    {"src": "Unit", "rel": "paired_with", "dst": "Unit", "symmetric": True, "정의문": "(시험) 설비가 설비와 짝이다"},
     {"src": "Unit", "rel": "part_of", "dst": "Unit", "symmetric": False, "정의문": "(시험) 설비가 설비에 속한다"},
     {"src": "Unit", "rel": "causes", "dst": "Unit", "symmetric": False, "정의문": "(시험) 설비가 설비의 원인이다"}]
 _g175 = open_graph("process")
@@ -624,8 +572,8 @@ show("B175 ⓒ 반대 엣지가 다른 층 그래프에 있어도 같다 — 구
      and _qc[0]["payload"]["opposite"]["layer"] == "quality" and len(_cc) == 1 and _cc[0]["first"]["layer"] == "quality",
      f"{_vc} · 큐 {len(_qc)} · 공존 {len(_cc)}")
 _k175, _q175 = len(_G175.COEXIST), len(store.read(store.QUEUE, []))
-_vd = (_ce175("A", "mirrors", "B", "B175D", "B175D#1"), _ce175("B", "mirrors", "A", "B175D", "B175D#2"))
-show("B175 ⓓ 대칭 관계(mirrors)는 지금 그대로 — 양방향 커밋 · 큐 0 · 공존 0",
+_vd = (_ce175("A", "paired_with", "B", "B175D", "B175D#1"), _ce175("B", "paired_with", "A", "B175D", "B175D#2"))
+show("B175 ⓓ 대칭 관계(symmetric 패턴 — 시험 관계)는 지금 그대로 — 양방향 커밋 · 큐 0 · 공존 0",
      _vd == (_G175.COMMIT, _G175.COMMIT) and len(_G175.COEXIST) == _k175 and len(store.read(store.QUEUE, [])) == _q175,
      str(_vd))
 

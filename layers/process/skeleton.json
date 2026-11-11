@@ -3,15 +3,13 @@
   "AXIS_LABELS": { "cathode": "양극", "anode": "음극" },
   "TREE": [
     { "조립": [
-      { "노칭": ["::cathode", "::anode",
-                 "전극 언와인딩", "노칭 타발", "비전검사", "전극 리와인딩"] },
+      { "노칭": ["전극 언와인딩", "노칭 타발", "비전검사", "전극 리와인딩"] },
       { "스태킹": [
           {"@unordered": "전극 시트 공급"},
           {"@unordered": "분리막 공급"},
           "적층", "비전검사", "스택 테이핑"] },
-      { "탭용접": ["::cathode", "::anode",
-                   {"pre용접": "@split"}, {"pre vision": "@split"}, {"cutting": "@split"},
-                   {"탭공급": "@split"}, {"main용접": "@split"}, {"laser용접": "@split"},
+      { "탭용접": ["pre용접", "pre vision", "cutting",
+                   "탭공급", "main용접", "laser용접",
                    "bead press", "cleaning", "탭 taping", "vision check", "barcode marking"] },
       { "패키징": ["파우치 포밍", "스택 삽입", "사이드 실링", "전해액 주액", "프리 실링"] }
     ]}
@@ -29,9 +27,7 @@
     "적층": ["z-stacking", "z-folding", "스택 적층"],
     "스태킹::비전검사": ["비전 검사", "정렬 검사", "align inspection"],
     "스택 테이핑": ["스택 고정 테이핑"],
-    "탭용접": ["tab welding", "탭 용접", "TW"],
-    "탭용접::cathode": ["cathode tab welding"],
-    "탭용접::anode": ["anode tab welding"],
+    "탭용접": ["tab welding", "탭 용접", "TW", "cathode tab welding", "anode tab welding", "cathode 탭용접", "anode 탭용접"],
     "pre용접": ["pre 용접", "pre welding", "예비 용접"],
     "pre vision": ["프리 비전"],
     "cutting": ["tab cutting", "탭 컷팅", "탭 절단"],

@@ -109,14 +109,11 @@ def _build_view_anomalies(st, results, harness_ok, harness_out, schema, mod):
 
 def pair_table(r):
     """리허설 파싱 하나의 **좌표 쌍 표**(B105 ②) — 관문 G4I와 같은 판정(`parser.coord_pairs.verdict`) · 같은 해소
-    (좌표 층 닫힌 목록 `SnapView`) · 극성 축값은 좌표 층 config. 파싱이 실패했으면 None."""
+    (좌표 층 닫힌 목록 `SnapView`). 파싱이 실패했으면 None."""
     if not r.ok:
         return None
     from parser import coord_pairs as CP
-    from core.state.bootstrap import load_config
-    lay = coord_layer()
-    view = CP.SnapView(tagger.closed_list(lay),
-                       ((load_config(lay).get("polarity") or {}).get("values")) or ())
+    view = CP.SnapView(tagger.closed_list(coord_layer()))
     return CP.tally(CP.judge_all(r.envelope.get("records") or r.envelope.get("chunks") or [], view))
 
 

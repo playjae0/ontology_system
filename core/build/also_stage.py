@@ -42,7 +42,7 @@ def _prov(env, src):
 
 def _chunk_coord(b, src, prov):
     from core.build import heading as HD
-    ref, g, _p, _pol = HD._kw(b, src, prov)
+    ref, g, _p = HD._kw(b, src, prov)
     return ref, g
 
 
@@ -248,8 +248,8 @@ def _line(b, surface, category, pair, belongs, tgt_cat=None):
         else:
             parent = g.get(ref)["canonical"] if ref else None
             try:
-                canonical, pol, scoped, _sc = entity_key(surface, category, eb.cfg, parent_canonical=parent)
-                out, pool, _g = matcher.gated(canonical, category, eb.layer, eb.g, eb.dict, scoped=scoped, polarity=pol,
+                canonical, scoped, _sc = entity_key(surface, category, eb.cfg, parent_canonical=parent)
+                out, pool, _g = matcher.gated(canonical, category, eb.layer, eb.g, eb.dict, scoped=scoped,
                                               parent=parent, cfg=eb.cfg)
             except Exception:                            # noqa: BLE001 — 예고는 판정을 막지 않는다
                 out, pool = [], []

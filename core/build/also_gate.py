@@ -33,11 +33,6 @@ def _coord():
     return COORD_CATEGORY
 
 
-def _instance(n):
-    from core.build.provisional import _instance as inst
-    return inst(n)
-
-
 def tiers(category):
     """그 카테고리를 좌표 골격 카테고리가 겸하는 단 목록 — 없으면 `()`(겸 선언 없음 · 골격 카테고리 자신)."""
     from core.state import catalog
@@ -56,7 +51,7 @@ def _kids(b, g):
         pm = b._parent_map(g, _coord())
         by = {}
         for nid, n in g.nodes.items():
-            if is_live(n) and n.get("category") == _coord() and is_skeleton(n) and not _instance(n):
+            if is_live(n) and n.get("category") == _coord() and is_skeleton(n):
                 up = pm.get(n["canonical"])
                 if up:
                     by.setdefault(up, []).append(nid)
@@ -65,7 +60,7 @@ def _kids(b, g):
 
 
 def place(b, category, coord):
-    """**문에 드는 자리인가**(쓰기 0) — `{x: 좌표 id, g, up: 위 공정 이름(개념), kids: 겸 단 골격 자식, under: 그 아래 골격 전부}` 또는 None."""
+    """**문에 드는 자리인가**(쓰기 0) — `{x: 좌표 id, g, up: 위 공정 이름, kids: 겸 단 골격 자식, under: 그 아래 골격 전부}` 또는 None."""
     ts = tiers(category)
     ref, g = coord or (None, None)
     n = g.get(ref) if (ts and ref and g is not None) else None
@@ -73,11 +68,7 @@ def place(b, category, coord):
         return None
     by = _kids(b, g)
     up = n["canonical"]
-    names = [up]
-    if _instance(n):                               # 극성 인스턴스 — 결정의 자리는 그 개념(극성과 무관하게 같은 판단)
-        up = b._parent_map(g, _coord()).get(n["canonical"]) or up
-        names.append(up)
-    kids = [k for nm in names for k in by.get(nm, ()) if (g.get(k) or {}).get("tier") in ts]
+    kids = [k for k in by.get(up, ()) if (g.get(k) or {}).get("tier") in ts]
     if not kids:
         return None
     under, todo = set(kids), list(kids)
@@ -279,10 +270,9 @@ def _judge(b, surface, category, p):
     from core.build import scope_path
     from core.build.build import entity_key
     eb = b.for_category(category)
-    canonical, polarity, scoped, _sc = entity_key(surface, category, eb.cfg, parent_canonical=p["up"])
+    canonical, scoped, _sc = entity_key(surface, category, eb.cfg, parent_canonical=p["up"])
     pl = scope_path.place(eb, category, (p["x"], p["g"]), None, surface, p["up"])
-    return matcher.resolve(canonical, category, eb.layer, eb.g, eb.dict, scoped=scoped, polarity=polarity,
-                           parent=p["up"], place=pl)
+    return matcher.resolve(canonical, category, eb.layer, eb.g, eb.dict, scoped=scoped, parent=p["up"], place=pl)
 
 
 def clear(doc_id=None):

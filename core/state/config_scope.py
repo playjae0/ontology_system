@@ -9,7 +9,7 @@
     정의문 끝에 붙는다 — 공통은 겸 칸만 잰다 · B174) → **산문 추출을 다시 뽑는다** — 추출 · 목차 노드화 보존분의 재사용 판이 이 칸들의 해시다(`extract_key` ·
     B120 ③ — 사람이 적는 `config_version`은 기록용이고 판정에 쓰지 않는다 · 메타의 구조 판단은 층 config를 읽지 않는다 — B148 ①)
   · 둘 다 — 층 `uses`(묻는 목록에 그 카테고리 · home 층 정의문이 든다 · 게이트의 걸린 쌍 — B178 ②) → 다시 뽑고 다시 판정한다
-  · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `mirrors` · `polarity` · `skeleton` · 공통 카테고리의 home · 경로
+  · 구축 — 게이트 · 구축만: 층 `relation_patterns` · `skeleton` · 공통 카테고리의 home · 경로
     (`no_path`) · `parent_pairs` · `sep` → **재구축이 LLM 0으로 다시 판정한다**(판정 재생 · 게이트 · 이름 규칙이 지금 config로)
   · 그 밖 — 질의(`query_*` · `fact_templates`) · 기록(판 번호 · `registration`) · 주석(`_`로 시작) → 영향 없음
     (아는 키 전부 = 두 갈래 + `OTHER` — `layer_keys()` · config 작성 가이드 항목 표가 이것과 같다 · B148 ⑥ · **표에 없는 키는 거부** —
@@ -25,7 +25,7 @@ import json
 
 #: 층 config — 갈래마다 키(닫힌 표 · 밖은 「그 밖」)
 LAYER = {"추출": ("categories", "relations", "relevance_terms", "extract_patterns", "value_categories", "prompts", "uses"),
-         "구축": ("relation_patterns", "uses", "mirrors", "polarity", "skeleton")}
+         "구축": ("relation_patterns", "uses", "skeleton")}
 #: 두 갈래에 다 드는 칸 — `uses`는 묻는 목록(추출 · B178 ②)이자 게이트의 걸린 쌍(구축 · B174)
 USES = "uses"
 #: 층 config — 그 밖 갈래의 아는 키(영향 없음 · 갈래 판정은 `kind`가 「그 밖」으로 본다 · B148 ⑥ — 가이드 항목 표의 나머지)

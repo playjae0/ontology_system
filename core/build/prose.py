@@ -44,9 +44,9 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
         _loc = src.get("source_locator")
         prov = f"{env['doc_id']}#{_loc}" if _loc else cid
         # **공정은 목록이다**(B125 ④) — 공정마다 anchor 행 하나(하나면 지금 그대로) · 주 좌표는 하나일 때만
-        res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, electrode_type=src.get("electrode_type"), piece=src)
+        res = b.resolve_coords(src.get("process_ref"), COORD_CATEGORY, prov, piece=src)
         for s, r_id, r_g, hold in res:
-            # 상위·극성 대조는 구축 말미 한 자리(`coord_scan.enqueue` — 표와 같은 함수 · B105 ③④)
+            # 상위 대조는 구축 말미 한 자리(`coord_scan.enqueue` — 표와 같은 함수 · B105 ③④)
             # **정직한 anchor 행**(B102 ⑦) — 빈 좌표는 「좌표 없음」(큐 없음) · 목록 밖 이름만 orphan_anchor
             b.ledger.add(locator=_loc or cid, field="process_ref", role="anchor",
                          surface=s, canonical=r_g.get(r_id)["canonical"] if r_id else None,
@@ -60,26 +60,24 @@ def _build_prose_pass1(b, cfg, env, candidates, by_locator, ch, loc_of, landed=N
         low = heading.coord_below(b, landed, outline, src)
         ref, ref_g = low or b.main_coord(res)
         parent = ref_g.get(ref)["canonical"] if ref else None
-        anchor_pol = b.anchor_polarity(ref, ref_g)      # A11-9 ① — 비정형도 동일
         plans = _pass1_entities(b, cfg, cand, src, prov, cid, doc,
-                                (ref, ref_g, parent, anchor_pol), _loc,
+                                (ref, ref_g, parent), _loc,
                                 coords=[low] if low else [(r_id, r_g) for _s, r_id, r_g, _h in res if r_id],
                                 held=also_gate.held_up(b, outline, _loc))     # 문에 걸린 제목 아래 청크(B197 ①)
-        coords[cid] = (src, prov, ref, ref_g, parent, anchor_pol, plans)
+        coords[cid] = (src, prov, ref, ref_g, parent, plans)
     return coords
 
 
 def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None, held=None):
     """청크 하나의 개체 — 소속 대상 먼저(같은 청크 안 순서) → 이름 부모(골격 소속 · `nest_categories`) →
     해소(`resolve_at_home` — 표와 같은 함수) · 대장 행. 돌려주는 것은 소속 계획 `[{nid, tgt, bel, row}]`."""
-    ref, ref_g, parent, anchor_pol = main
+    ref, ref_g, parent = main
     bmap = belongs.belongs_of(cand)
     ents, cyc = belongs.order(cand.get("entities", []), bmap)
     for k in sorted(cyc):
         store.append_defect(f"{b.doc_id}: 소속 순환 — '{k}' @ {cid} → 소속을 버렸다")
     chunk_kw = dict(coord=(ref, ref_g), coords=coords, electrode_type=src.get("electrode_type"),
-                    parent_canonical=parent, anchor_polarity=anchor_pol,
-                    coord_surface=src.get("process_ref"))
+                    parent_canonical=parent, coord_surface=src.get("process_ref"))
     pcs, plans = {}, []
     for e in ents:
         if null_marker(e.get("surface")):
@@ -104,16 +102,16 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None, 
         tgt = (belongs.resolve_target(b, bel, prov, chunk_kw, at=(_loc or cid, belongs.FIELD))
                if bel and not bel.get("legacy") else None)
         # **개체별 부모가 주 좌표를 이긴다**(B91 ③) — 이름을 정하기 **전에** 본다.
-        e_ref, e_g, e_parent, e_pol = _entity_parent(b, e, src, prov, cid, pcs, main)
+        e_ref, e_g, e_parent = _entity_parent(b, e, src, prov, cid, pcs, main)
         owner = None                               # 판정의 자리 — 소속 대상 노드(B142 ③ · 이름 부모와 같은 재료)
         if tgt and tgt[0] == belongs.SKELETON and not e.get("parent"):
             e_ref, e_g = tgt[1], tgt[2]            # 골격 소속 = 그 개체의 좌표
-            e_parent, e_pol = e_g.get(e_ref)["canonical"], b.anchor_polarity(e_ref, e_g)
+            e_parent = e_g.get(e_ref)["canonical"]
         elif tgt and tgt[0] == belongs.NODE:      # 이름에 소속 — 골격 밖 노드 아래 (B102 ⑤ · 한 함수 B119 ④)
             if not ref and not e.get("parent"):    # 청크 좌표가 없으면 그 노드의 좌표를 물려받는다 (B140 ⑤)
                 up, upg = belongs.coord_of(b, tgt[1], tgt[2])
                 if up:
-                    e_ref, e_g, e_parent, e_pol = up, upg, upg.get(up)["canonical"], b.anchor_polarity(up, upg)
+                    e_ref, e_g, e_parent = up, upg, upg.get(up)["canonical"]
             e_parent = name_parent(e["category"], tgt[2].get(tgt[1])["canonical"], e_parent, b.cfg)
             owner = (tgt[1], tgt[2])
         # **home에서 해소한다**(B90 ②) — table과 **같은 함수**다.
@@ -121,7 +119,6 @@ def _pass1_entities(b, cfg, cand, src, prov, cid, doc, main, _loc, coords=None, 
                                     coord=(e_ref, e_g), coords=coords,     # 다른 공정 가드 = 목록 전체의 계보 (B125 ④)
                                     electrode_type=src.get("electrode_type"),
                                     parent_canonical=e_parent,
-                                    anchor_polarity=e_pol,
                                     coord_surface=src.get("process_ref"), belongs=bel,
                                     at=(_loc or cid, e.get("category")),       # 판정 재생의 자리 (B106 ②)
                                     row=src,                                   # 판단 재료 · 2차 판정의 원문 (B123 ③ · B181 ②)
@@ -192,8 +189,7 @@ def _entity_parent(b, e, src, prov, cid, pcs, main):
         store.append_defect(f"{b.doc_id}: 개체 부모 후보 밖 — '{want}' (개체 '{e['surface']}' "
                             f"@ {cid}) → null · 주 좌표를 쓴다")
         return main
-    pid = b.descend_anchor(pid, src.get("electrode_type"), pg)
-    return pid, pg, pg.get(pid)["canonical"], b.anchor_polarity(pid, pg)
+    return pid, pg, pg.get(pid)["canonical"]
 
 
 def _about_hit(b, cfg, a):
@@ -358,7 +354,7 @@ def build_prose(env, cfg, graph, candidates, builder=None, defer_save=False, out
     # 성립 여부와 무관하다. 청크의 `linked`는 그 결과의 재계산이다(§4.8-2①).
     for cand in candidates:
         cid = cand["chunk_id"]
-        src, prov, ref, ref_g, parent, anchor_pol, plans = coords[cid]
+        src, prov, ref, ref_g, parent, plans = coords[cid]
 
         for e in cand.get("entities", []):
             nid = b.buffer.get(loop._n(e["surface"]))
@@ -433,7 +429,7 @@ def _dict_hit(b, surface, graph, *, category):
         cands.append({"id": nid, "canonical": n["canonical"],
                       "aliases": [a["surface"] for a in n.get("aliases") or []],
                       "category": n["category"], "layer": n.get("layer"),
-                      "polarity": n.get("polarity"), "exact": True,
+                      "exact": True,
                       **({"also": [category]} if n["category"] != category else {})})
     if not cands:
         return None

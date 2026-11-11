@@ -2,7 +2,7 @@
 """칸 0.1 곁 — **온톨로지 맵**(B186 ①) — config 지도의 관계 그림을 **카테고리 수준의 지도**로: 점 = 카테고리 · 선 = (src, rel, dst) 하나.
 
 선 하나는 「어떤 카테고리가 어떤 관계로 어떤 카테고리에 이어질 수 있나」이고 출처(config 키)가 여럿이면 선 하나에 함께 적는다.
-종류는 셋 — 골격 관계(층 config `skeleton.relations` · 골격 극성 짝 `mirrors`) · 소속(공통 `parent_pairs`) · 사실 관계(층
+종류는 셋 — 골격 관계(층 config `skeleton.relations`) · 소속(공통 `parent_pairs`) · 사실 관계(층
 `relation_patterns` · 등록 스키마 `edges`) — 이고 끝점 카테고리의 `home`이 선언한 층과 다르면 **층을 넘는 관계**(같은 색 점선)다.
 **같은 카테고리끼리의 선은 그 점에서 나가 그 점으로 돌아오는 고리**다(실제 그래프에서는 다른 두 노드 사이의 선) — 두 끝이 같은
 노드인 엣지(관문이 세우지 않는다 · 문서 1 J32)와 다른 것이다.
@@ -62,9 +62,6 @@ def lines(configs, schemas, pair_edges, cats, coord):
         if c:
             for k, rel in sorted((sk.get("relations") or {}).items()):
                 add(c, rel, c, KINDS[0], f"skeleton.relations.{k}", lay)
-            mir = cfg.get("mirrors") or {}
-            if mir.get("enabled") and mir.get("relation") and (cfg.get("polarity") or {}).get("values"):
-                add(c, mir["relation"], c, KINDS[0], "mirrors", lay, True)     # 골격이 심는 극성 짝
         for p in cfg.get("relation_patterns") or []:
             add(p.get("src"), p.get("rel"), p.get("dst"), KINDS[2], "relation_patterns", lay, p.get("symmetric"))
     for s, r, d in pair_edges:

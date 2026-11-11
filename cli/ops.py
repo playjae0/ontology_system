@@ -8,7 +8,7 @@
     python cli/ops.py delete-edge <층> <src> <rel> <dst> --actor …
     python cli/ops.py alias  <층> <node_id|canonical> <표기> --actor <사람>
     python cli/ops.py alias-reject <층> <node_id|canonical> <표기> --actor <사람> [--yes]   별칭 거두기 (B108 ①)
-    python cli/ops.py coord-ack|coord-unack all "<상위>" "<하위>" [--polarity] --actor <사람> [--reason <메모>]
+    python cli/ops.py coord-ack|coord-unack all "<상위>" "<하위>" --actor <사람> [--reason <메모>]
     python cli/ops.py confirm all --doc <doc_id> --actor <사람> [--yes]     문서 단위 일괄 확인 (B106 ④)
     python cli/ops.py replay  all --actor <사람> [--dry-run]               사람 판단 재생 — 이름으로 (B106 ③)
 
@@ -112,6 +112,10 @@ def replay_lines(r):
     out = [f"사람 판단 재생 — 한 일 {len(r['done']):,} · 이미 그 상태 {len(r['already']):,} · "
            f"대상 없음 {len(r['missing']):,} · 기록에 이름 없음 {len(r['no_names']):,} · "
            f"재생 안 함 {len(r['skipped']):,} · 거부 {len(r['refused']):,}"]
+    pol = r.get("polar") or {}
+    if pol.get("mapped") or pol.get("missing"):                 # 옛 극성 이름(B198 ④)
+        out.append(f"  극성 이름 → 개념 이름 {pol.get('mapped', 0):,} · 자리 없음 {len(pol.get('missing') or []):,}"
+                   + (" — " + " · ".join(pol["missing"]) if pol.get("missing") else ""))
     for k, head in (("missing", "대상 없음"), ("no_names", "이름 없음"), ("refused", "거부"),
                     ("skipped", "재생 안 함")):
         for x in r[k]:
@@ -222,8 +226,7 @@ def _relink(a):
     fin = finalize()
     for ln in RT.rounds_text():
         print(f"    {ln}")
-    print(f"  {fin['retry_line']}")
-    print(f"  미러 — 새 짝 엣지 {fin['mirror_new']:,} · 비대칭(mirror_asymmetry) {fin['mirror_asym']:,} · by {a.actor}")
+    print(f"  {fin['retry_line']} · by {a.actor}")
     return 0
 
 
@@ -243,7 +246,6 @@ def main(argv=None):
     p.add_argument("--parent", help="이관 — 새 부모 노드 id (소속 변경)")
     p.add_argument("--yes", action="store_true", help="미리보기 확인 후 실행")
     p.add_argument("--apply", action="store_true", help="tidy · relink — 계획이 아니라 실제로 한다")
-    p.add_argument("--polarity", action="store_true", help="coord-ack — 쌍이 (극성, 노드)다")
     p.add_argument("--doc", help="confirm — 그 문서 실행이 만든 auto 노드 전부(문서 단위 확인 · B106 ④) · "
                                  "relink — 문서 좌표를 기록할 문서")
     p.add_argument("--coord", help="relink — 그 문서(--doc)의 문서 좌표(골격 이름)를 기록하고 잇는다(재인입 없이 · B113 ③)")

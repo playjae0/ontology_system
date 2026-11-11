@@ -201,8 +201,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     _k, _g = _id("process", "노칭::노칭 프레스::금형 클리어런스"), _id("process", "노칭::금형 간극")   # 기대 변경(B144 ② — 표의 관리항목은 같은 행의 설비 아래 이름)
     ops.merge("process", _g, _k, A, canonical="노칭::금형 간극", override=_k,
               reason="B107 합침(품질 문서의 노드 → 표 · 이름은 없어지는 쪽)")
-    ops.merge("process", _id("process", "노칭::버 높이"), _id("process", "노칭::anode::노칭 프레스::버 높이"), A,
-              reason="B107 합침(산문 → 표)")
+    # (B198 — 산문 「버 높이」가 표의 노드에 바로 붙어 합칠 둘이 없다 · 합침은 위 한 건이 잰다)
     ops.alias("process", _id("process", "노칭::노칭 프레스::노칭 정밀도"), "노칭 정확도", A, "B107 표기(표)")
     ops.alias("quality", _id("quality", "노칭::전원 차단 실패"), "전원 차단 불량", A, "B107 표기(산문)")   # 기대 변경(B171 — 고장은 공정 경로 이름)
     ops.obsolete("process", _id("process", "스태킹::스태커"), A, reason="B107 폐기(표)")
@@ -402,7 +401,7 @@ def _held(did):
 _before = {d: _held(d) for d in ("B107CP", *[e["doc_id"] for e in PENVS.values()])}
 _sk = json.loads(_SK0.decode("utf-8"))
 _al = _sk.setdefault("ALIASES", {})
-_al.setdefault("노칭", []).append(ALIASED[0])                  # 표 × process(B107CP) — 극성 cathode 행(그 이름 노드는 아직 없다)
+_al.setdefault("노칭", []).append(ALIASED[0])                  # 표 × process(B107CP)
 _al.setdefault("탭용접", []).append(ALIASED[1])                # 산문 × 층 둘
 SK.write_text(json.dumps(_sk, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 with contextlib.redirect_stdout(io.StringIO()):
@@ -415,10 +414,11 @@ _keyed = all({(r["locator"], r["field"], r["surface"]) for r in _before[d]}
              <= {(r["locator"], r["field"], r["surface"]) for r in _after_c[d]} for d in _before)
 _bf = _after_c["B107CP"]
 show("ⓒ 좌표가 목록 밖이라 orphan이던 값 → 별칭 + bootstrap → 재시도가 붙인다(판정 호출 > 0) · 그 문서 대장의 같은 키 행이 그 판정으로 "
-     "갈린다(`by: retry` · 경로 · 결과 · 대상 canonical — 표 · 산문 × 층 둘) · 인입과 같은 이름(극성 하강)",
+     "갈린다(`by: retry` · 경로 · 결과 · 대상 canonical — 표 · 산문 × 층 둘) · 인입과 같은 이름(극성 마디 없음 · B198)",
      _judge_retry > 0 and _keyed and all(_before[d] for d in _before)
      and all(r["verdict"] in ("match", "new", "uncertain") and r.get("target") for d in _after_c for r in _after_c[d])
-     and any(str(r.get("target")).startswith("노칭::cathode::") for r in _bf),
+     and any(str(r.get("target")).startswith("노칭::") for r in _bf)
+     and not any("::cathode" in str(r.get("target")) for d in _after_c for r in _after_c[d]),
      f"판정 호출 {_judge_retry} · {_fin.get('retry_line')} ‖ "
      + " · ".join(f"{d} {len(_before[d])}행 → " + ", ".join(f"{r['surface']}({r['field']}) {r['verdict']}·{r['path']}→{r.get('target')}"
                                                          for r in _after_c[d]) for d in _after_c))
@@ -426,11 +426,13 @@ _rc, OUT_C = _rebuild()
 _endC = _end(OUT_C)
 _rp = {d: _rows(d, lambda r: (r["locator"], r["field"], r["surface"]) in
                 {(x["locator"], x["field"], x["surface"]) for x in _after_c[d]}) for d in ("B107CP",)}
-show("ⓒ 재구축 ⇒ 재시도가 붙인 값이 재생된다(그 행 경로 replay · 끝 보고 「키 없음」 0 · 「대상 없음」 0 · 판정 호출 0) — 표",
+# 기대 변경(B198 — 재시도의 값이 「노칭」 아래에 서서(극성 갈래 없음) 위 사람 연산(개명 · 폐기)이 바꾼 후보가 재시도 때와 재구축 때
+# 다르다 — 재구축은 연산 재생 전에 짓는다 · 그 값은 「근거 바뀜」으로 다시 묻는다(B167 ②) · 나머지는 재생)
+show("ⓒ 재구축 ⇒ 재시도가 적은 대장 행이 재구축의 열쇠다(그 행 경로 replay 또는 「근거 바뀜」만 다시 묻기 · 끝 보고 「키 없음」 0 · "
+     "「대상 없음」 0 · 판정 호출 ≤ 재판정) — 표",
      _rc == 0 and _endC.get("키 없음") == 0 and _endC.get("대상 없음") == 0 and _endC.get("판정") == 0
-     # 기대 변경(B144 ② — 새 설비 아래 첫 값은 후보 0으로 끝난 새 노드라 재생하지 않고 다시 잰다(B142 · LLM 0) · 나머지는 재생)
-     and CALLS.get("judge", 0) == 0 and all(_rp[d] and all(r.get("path") in ("replay", "none") for r in _rp[d])
-                                            and any(r.get("path") == "replay" for r in _rp[d]) for d in _rp),
+     and CALLS.get("judge", 0) <= _endC.get("재판정", 0)
+     and all(_rp[d] and all(r.get("path") in ("replay", "none") or r.get("replay") == "근거 바뀜" for r in _rp[d]) for d in _rp),
      f"끝 줄 {_endC} · mock 판정 {CALLS.get('judge', 0)} · " + " · ".join(
          f"{d} " + ", ".join(f"{r['surface']} {r.get('path')}" for r in _rp[d]) for d in _rp))
 for ln in _end_lines(OUT_C)[:3]:

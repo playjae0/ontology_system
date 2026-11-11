@@ -256,17 +256,22 @@ def load_skeleton(book, layer, g, dictionary):
     골격(seed) 노드인 것을 노드 · 사전에 싣는다(쓰는 손 `attach` · 사전 관문 — 횟수는 늘리지 않는다).
 
     대상은 이름(카테고리 · canonical)으로 찾는다 — 골격에 없으면 싣지 않고 「대상 없음」(골격 대상이던 항목만
-    센다 · 엔티티 대상은 판정 재생 · 사람 판단 재생의 몫이다). `{loaded, already, missing, rejected}`."""
+    센다 · 엔티티 대상은 판정 재생 · 사람 판단 재생의 몫이다). 옛 극성 이름(`<공정>::<축값>` — B198 ④)은 개념 이름으로 다시
+    찾는다(`polar` — 그렇게 찾은 수). `{loaded, already, missing, rejected, polar}`."""
+    from core.build import polarity
     seeds = {}
     for n in g.nodes.values():
         if n.get("status") == "seed":
             seeds.setdefault((n["category"], norm(n["canonical"])), n)
-    out = {"loaded": 0, "already": 0, "missing": [], "rejected": 0}
+    out = {"loaded": 0, "already": 0, "missing": [], "rejected": 0, "polar": 0}
     for r in list(book.rows):
         t = r["target"]
         if t.get("layer") != layer:
             continue
         n = seeds.get((t.get("category"), norm(t.get("canonical") or "")))
+        if n is None and polarity.concept_name(t.get("canonical")) != t.get("canonical"):
+            n = seeds.get((t.get("category"), norm(polarity.concept_name(t.get("canonical")) or "")))
+            out["polar"] += 1 if n is not None and r.get("status") == LIVE else 0
         if r.get("status") != LIVE:
             out["rejected"] += 1 if n is not None else 0
             continue

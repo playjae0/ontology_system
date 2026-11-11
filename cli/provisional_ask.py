@@ -74,8 +74,6 @@ def decide(row, actor, ask=None, indent="     ", answer=None):
             r = PH.promote(actor, nid=row.get("nid"), surface=None if row.get("nid") else row["surface"], parent=parent)
             print(f"{indent}승격 — 골격 파일에 ({r['parent']} › {r['canonical']}) · 사람 고정 · 노드 그대로({str(r['id'])[:8]}) · "
                   f"{paths.show(r['file'])}")
-            if r["polarity"]:
-                print(f"{indent}  {PH.POLARITY_LINE}")
             return "승격", False
         if k == "m":
             target = _pick(rest, row.get("candidates") or []) if kind == "gate" else \

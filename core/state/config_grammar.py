@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """칸 0.1 — **config 문법 단** — 아는 키 · 값의 형과 닫힌 값 · 참조 · JSON 문법 (B192 ①).
 
-뜻 검사(`catalog.problems` ⓑ~ⓖ · 겸 · 미러 경고)의 **앞 단**이다 — 거기서 보지 않는 것만 본다:
+뜻 검사(`catalog.problems` ⓑ~ⓖ · 겸)의 **앞 단**이다 — 거기서 보지 않는 것만 본다:
 
   · **아는 키** — 층 config는 `config_scope.layer_keys()` · 공통 config는 `config_scope.common_keys()`(최상위 · 카테고리 항목) +
     `PAIR_ITEM_KEYS`(`parent_pairs` 항목) · 골격 파일은 `config_scope.seed_keys()`(최상위만 — 트리 안은 `SeedError`) · `_`로 시작하면
@@ -28,9 +28,12 @@ TAG_GRAMMAR, TAG_REF = "ⓗ", "ⓘ"
 NEXT = "python run.py bootstrap --dry-run"
 #: 코드가 그 형으로 읽는 칸 — 층 config(`dict` · `list` · `str`)
 LAYER_TYPES = {"categories": dict, "relations": list, "relevance_terms": list, "extract_patterns": list, "prompts": dict,
-               "uses": list, "relation_patterns": list, "mirrors": dict, "polarity": dict, "skeleton": dict,
+               "uses": list, "relation_patterns": list, "skeleton": dict,
                "query_intents": dict, "query_traverse": dict, "cross_layer_traverse": dict, "fact_templates": dict}
 COMMON_TYPES = {"categories": dict, "parent_pairs": list, "sep": str, "null_markers": list}
+#: **지운 층 config 키**(B198 — 극성은 값 · 엣지 · 노드의 한정어 · 노드를 가르지 않는다 · 짝 엣지 없음) — 남아 있으면 거부하고 지울 키를 말한다
+RETIRED_LAYER_KEYS = {"mirrors": "극성 짝 엣지는 없다(B198)",
+                      "polarity": "극성 값의 닫힌 목록은 골격 AXIS_LABELS 한 자리 · 이름 결합은 없다(B198)"}
 _BOOL = (True, False)
 _JSON_WHAT = (("Expecting ',' delimiter", "쉼표(,)가 빠졌다 — 앞 항목 끝에 쉼표"),
               ("Expecting property name", "키 자리에 큰따옴표 이름이 없다 — 마지막 항목 뒤 쉼표를 지우거나 키를 큰따옴표로"),
@@ -50,7 +53,6 @@ def closed():
             ("cross_layer_traverse.<관계>.direction", DIRECTIONS, "core/query/query.py 층 걸침"),
             ("cross_layer_traverse.<관계>.recursive", _BOOL, "core/query/query.py 층 걸침"),
             ("relation_patterns[].symmetric", _BOOL, "core/build/gate.py"),
-            ("mirrors.enabled", _BOOL, "core/state/skeleton.py 미러"),
             ("parent_pairs[].src", PAIR_SRC, "core/state/catalog.py pair_edge")]
 
 
@@ -151,7 +153,10 @@ def layer_problems(lay, cfg):
     """층 config 하나 — 아는 키 · 형 · 닫힌 값."""
     from core.state import catalog, knobs
     where = f"layers/{lay}/config.json"
-    out = _keys(where, cfg, config_scope.layer_keys(), old=(*catalog.OLD_LAYER_KEYS, *knobs.MOVED_LAYER_KEYS))
+    out = [(TAG_GRAMMAR, f"{where}의 `{k}`는 지운 키다 — {why} · ▶ 다음 줄 — 이 키를 지우고 {NEXT}")
+           for k, why in RETIRED_LAYER_KEYS.items() if k in cfg]
+    out += _keys(where, cfg, config_scope.layer_keys(),
+                 old=(*catalog.OLD_LAYER_KEYS, *knobs.MOVED_LAYER_KEYS, *RETIRED_LAYER_KEYS))
     for k, want in LAYER_TYPES.items():
         if k in cfg:
             out += _type(where, k, cfg[k], want)
@@ -159,8 +164,6 @@ def layer_problems(lay, cfg):
         out += _traverse(where, "query_traverse", cfg["query_traverse"], nested=True)
     if isinstance(cfg.get("cross_layer_traverse"), dict):
         out += _traverse(where, "cross_layer_traverse", cfg["cross_layer_traverse"], nested=False)
-    if isinstance(cfg.get("mirrors"), dict) and "enabled" in cfg["mirrors"]:
-        out += _value(where, "mirrors.enabled", cfg["mirrors"]["enabled"], _BOOL)
     for i, p in enumerate(cfg.get("relation_patterns") or [] if isinstance(cfg.get("relation_patterns"), list) else []):
         if isinstance(p, dict) and "symmetric" in p:
             out += _value(where, f"relation_patterns[{i}].symmetric", p["symmetric"], _BOOL)
