@@ -498,6 +498,147 @@ show("B196 ⓗ 연결 표지 — 규칙 B 폴백으로 좌표에 선 값은 대�
 _unregister("process")
 _clean_acks()
 
+# ────────────────────────────────────────────────────────────── B197 골격 단의 문 (창작 표본 · mock · 겸 선언이 있는 시험 config)
+print("\n■ B197 — 겸 값은 골격 노드로만 · 판정 전 처분 · 쌍별 예고 · 쓰기 전 판정 결과")
+from core.build import also_gate as AG197, also_stage as AS197                 # noqa: E402
+from cli import also_screen as ASC197                                          # noqa: E402
+overlay(also=True)                                # Process가 sub · detail 단에서 Unit을 겸한다(공통 also) — 노칭(sub) 아래 detail 넷
+_dt196 = _register_table("process")              # 클린이 등록부를 비웠다 — 표 문서 종류(개체 칸 = Unit)를 다시
+
+
+def _prose197(did, chunks, outline=None, hints=None):
+    (HINTS / f"{did}.json").write_text(json.dumps(hints or {}, ensure_ascii=False), encoding="utf-8")
+    if outline:
+        (HINTS / f"{did}@outline.json").write_text(json.dumps(outline, ensure_ascii=False), encoding="utf-8")
+    _made.append(did)
+    pcs = [{**C1, "source_locator": loc, "doc_type": "ppt_process", "process_ref": "노칭", "text": t,
+            "meta": {"section_path": path} if path else {}} for loc, path, t in chunks]
+    return {**PROSE, "doc_id": did, "doc_type": "ppt_process", "source_path": f"{did}.pptx", "doc_coord": "노칭",
+            "chunks": TG.tag(pcs, nodes=TG.closed_list("process"), doc_type="ppt_process")}
+
+
+def _h197(did, name="추출부"):
+    """제목 「2. <name>」 — 사람 답은 표기 + 자리로 남으니 경우마다 다른 이름(같은 이름이면 앞 경우의 답이 선다 — 그것이 규칙)."""
+    return _prose197(did, [("H-1", "1. 개요", "범위는 노칭이다."), ("H-2", f"2. {name}", "흡착력은 5N이다.")],
+                     outline={f"2. {name}": {"name": name, "category": "Unit"}},
+                     hints={"H-1": {"entities": [{"surface": "범위", "category": "Property"}], "relations": []},
+                            "H-2": {"entities": [{"surface": "흡착력", "category": "Property"}], "relations": []}})
+
+
+def _go197(env, answer=None, stop_at=None):
+    """인입 — 골격 단 줄에 `answer`(m · k · d · u)를 그 자리에서 · `stop_at` 단계에서 False(멈춤) · 돌려주는 것은 알림 목록."""
+    notes = []
+
+    def nt(info):
+        notes.append(info)
+        if info.get("단계") == "골격단" and answer:
+            with contextlib.redirect_stdout(io.StringIO()):
+                for r in info["rows"]:
+                    PA196.decide(r, "시험", answer=answer)
+        return False if info.get("단계") == stop_at else None
+    with contextlib.redirect_stdout(io.StringIO()):
+        run_document(env, notice=nt, allow_duplicate=True)
+    return notes
+
+
+def _names197():
+    return {n["canonical"] for n in open_graph("process").nodes.values() if is_live(n)}
+
+
+# ⓐ 제목 「2. 추출부」 → 목차 노드화 Unit → [3/8] 문(노드 0 · 후보 = 노칭 아래 골격)
+_na = _go197(_h197("B197A"))
+_ga = [r for n in _na if n.get("단계") == "골격단" for r in n["rows"]]
+_sk = SR196._Sk()
+_ca = SR196.candidates(_sk, "추출부", "노칭", _ga[0]["near"] if _ga else None) if _ga else []
+show("B197 ⓐ 산문 · 문서 좌표 노칭(골격 자식 넷) · 제목 「2. 추출부」 → Unit → [3/8] 골격 단 줄(위 공정 노칭) · 노드 0 · 후보 = 노칭 아래 골격",
+     len(_ga) == 1 and _ga[0]["surface"] == "추출부" and _ga[0]["up_name"] == "노칭"
+     and not any("추출부" in c for c in _names197()) and _ca and all(c["path"].startswith("조립 › 노칭 › ") for c in _ca),
+     f"{[(r['surface'], r['up_name'], r['answer']) for r in _ga]} · 후보 {[c['name'] for c in _ca]}")
+
+# ⓑ 처분 넷 — m(골격 별칭 · 그 아래 값이 그 노드 아래) · k(잠정 골격 노드 · 그 아래 값) · d(그 아래 청크 추출 0 · 값 0) · u(노드 0 · 값은 노칭)
+_out = {}
+for _k, _ans in (("m", "m 노칭::노칭 타발"), ("k", "k"), ("d", "d 설계 항목"), ("u", "u")):
+    _did = f"B197B{_k}"
+    _go197(_h197(_did, f"추출부{_k}"), answer=_ans)
+    _ck = json.loads(_P.work("extract", f"{_did}.json").read_text(encoding="utf-8"))
+    _out[_k] = ({c for c in _names197() if c.endswith("흡착력")}, [c for c in _ck["candidates"] if c.get("human_drop")])
+show("B197 ⓑ m → 「노칭::노칭 타발::흡착력」 · k → 잠정 「추출부」 아래 · d → 그 제목 아래 청크 추출 0(사람 drop) · 값 0 · u → 노드 0 · 값은 노칭",
+     "노칭::노칭 타발::흡착력" in _out["m"][0] and "추출부k::흡착력" in _out["k"][0] and _out["d"][1]
+     and _out["d"][0] == _out["k"][0] and "노칭::흡착력" in _out["u"][0] and "추출부k" in _names197()
+     and not {"추출부m", "추출부d", "추출부u"} & _names197(),
+     " · ".join(f"{k} {sorted(v[0])}" for k, v in _out.items()))
+
+# ⓒ 청크 본문의 Unit 「센서」(청크 좌표 노칭) → [5/8] 머리 문 · 같은 처분(u → 소속 값이 노칭에)
+_ec = _prose197("B197C", [("C-1", None, "센서는 레이저 센서다. 응답 시간은 5ms다.")], hints={"C-1": {"entities": [
+    {"surface": "센서", "category": "Unit"},
+    {"surface": "응답 시간", "category": "Property", "belongs_to": {"name": "센서", "category": "Unit", "from": "본문"}}],
+    "relations": []}})
+_nc = _go197(_ec)
+_gc = [r for n in _nc if n.get("추출뒤") for r in n.get("골격단") or []]
+with contextlib.redirect_stdout(io.StringIO()):
+    PA196.decide(_gc[0], "시험", answer="u") if _gc else None
+_go197(_ec)
+show("B197 ⓒ 본문 Unit 「센서」 → [5/8] 머리 골격 단 줄 · 처분 u → 노드 0 · 소속 값 「응답 시간」은 노칭 아래",
+     len(_gc) == 1 and _gc[0]["surface"] == "센서" and "노칭::응답 시간" in _names197()
+     and not any(c.endswith("센서") for c in _names197()),
+     f"{[(r['surface'], r['up_name']) for r in _gc]}")
+
+# ⓓ 표 — ref 빈 행 · group 노칭 · Unit 칸 → 같은 문 · ref(맨 아래 단 노칭 타발)가 있는 행의 Unit 값 → 지금처럼 자동
+_ed = _env196("B197D", [_rec196("D1", None, grp="노칭"), _rec196("D2", "노칭 타발", grp="노칭")])
+_run196(_ed)
+_qd = [x for x in store.read(store.QUEUE, []) if x["kind"] == "orphan_anchor" and x.get("doc_id") == "B197D"
+       and x["payload"].get("also")]
+_d2 = next((r for r in (LG.read("B197D") or {}).get("rows") or [] if r.get("role") == "entity" and r.get("locator") == "D2"), {})
+show("B197 ⓓ 표 행(ref 빈칸 · group 노칭)의 Unit 값 → 골격 단 보류(노드 0) · ref 노칭 타발(맨 아래 단) 행의 Unit 값 → 문 밖(지금처럼 판정 · 노드)",
+     [x["payload"]["surface"] for x in _qd] == ["B196 카메라 D1"] and _d2.get("node_id") and not _d2.get("hold")
+     and not any(c.endswith("B196 카메라 D1") for c in _names197()),
+     f"보류 {[x['payload']['surface'] for x in _qd]} · D2 {_d2.get('verdict')} → {_d2.get('target')}")
+
+# ⓔ 건너뜀 → ops review 한 줄 → 합침 → ops relink → 보류 값이 붙는다(추출 LLM 0)
+_go197(_prose197("B197E", [("E-1", None, "감지기는 레이저 감지기다. 감지 거리는 5mm다.")], hints={"E-1": {"entities": [
+    {"surface": "감지기", "category": "Unit"},
+    {"surface": "감지 거리", "category": "Property", "belongs_to": {"name": "감지기", "category": "Unit", "from": "본문"}}],
+    "relations": []}}))
+_ge = [r for r in OR196.skeleton_cells("all") if r["kind"] == "gate" and r["surface"] == "감지기"]
+with contextlib.redirect_stdout(io.StringIO()):
+    _de = PA196.decide(_ge[0], "시험", answer="m 노칭::비전검사")[0] if _ge else None
+    RT196.retry_orphans()
+show("B197 ⓔ 건너뜀 → ops review 골격 단 한 줄(겸 값) → 합침(노칭::비전검사) → ops relink → 「노칭::비전검사::감지 거리」",
+     len(_ge) == 1 and _ge[0].get("also") == "Unit" and _de == "합침" and "노칭::비전검사::감지 거리" in _names197(),
+     f"{[(r['surface'], r.get('also')) for r in _ge]} · {_de}")
+
+# ⓖ [3/8] 끝 줄 「확정한 공정」 · [5/8] 쌍별 예고(붙을 자리 · 연결 · 판정 예정 · 칸 안 잘림) · 표 [4/7] 같은 함수
+_ng = _go197(_h197("B197G", "취출부"), answer="m 노칭::노칭 타발")
+_pl = [n["줄"] for n in _ng if n.get("단계") == "확정공정"]
+_pv = AS197.preview_lines(next(n for n in _ng if n.get("추출뒤"))["쌍별"])
+_tv = AS197.preview_lines(AS197.preview(AS197.builder(_ed), _ed, schema={"fields": {"개체": {"role": "entity", "category": "Unit"}}}))
+show("B197 ⓖ 확정한 공정 — 청크 2: 노칭 › 노칭::노칭 타발 1 · 노칭(상위만) 1 · 쌍별 예고 묶음 머리 = 그 쌍 · 줄에 붙을 자리 · 연결 · 판정 예정 · "
+     "표 [4/7]도 같은 함수(골격 단 — 문 · 맨 아래 단 아래는 새 노드)",
+     _pl and "노칭 › 노칭::노칭 타발 1" in _pl[0] and "노칭(상위만) 1" in _pl[0]
+     and any(ln.strip().startswith("노칭 › 노칭::노칭 타발") for ln in _pv)
+     and any("흡착력" in ln and ln.split("붙을 자리 ")[1].startswith("노칭::노칭 타발  ") and "has_property" in ln
+             and ln.rstrip().endswith(("사전 연결", "새 노드", "→ 판정")) for ln in _pv)
+     and any("골격 단 — 문" in ln for ln in _tv) and any("후보 0 → 새 노드" in ln or "후보" in ln for ln in _tv),
+     f"{(_pl or [''])[0]} · {[ln.strip() for ln in _pv][:3]} · 표 {[ln.strip() for ln in _tv]}")
+
+# ⓗ 쓰기 전 판정 결과 → q → 그래프 · 사전 · 큐 0 · 대장 중간 저장 → 다시 넣으면 재생(판정 LLM 0) · c → 지금과 같은 그래프
+from core import matcher as MT197                                    # noqa: E402
+_eh = _prose197("B197H", [("Q-1", None, "노즐 압력은 3bar다.")],
+                hints={"Q-1": {"entities": [{"surface": "노즐 압력", "category": "Property"}], "relations": []}})
+_n0, _q0 = _names197(), len(store.read(store.QUEUE, []))
+_nh = _go197(_eh, stop_at="판정결과")
+_rh = [n for n in _nh if n.get("단계") == "판정결과"]
+_mid = (_n0 == _names197(), len(store.read(store.QUEUE, [])) == _q0, LG.read("B197H") is None,
+        store.path(LG.partial_name("B197H")).exists())
+MT197.STATS["판정"] = 0
+_go197(_eh)
+show("B197 ⓗ 판정 결과(쓰기 전 · 쌍마다 match · new · uncertain) → q → 그래프 · 큐 0 · 확정 대장 없음 · 중간 저장 남음 → 다시 넣으면 "
+     "재생(판정 LLM 0) · 노드가 선다",
+     _rh and "new 1" in " ".join(_rh[0]["줄"]) and all(_mid) and MT197.STATS["판정"] == 0 and "노칭::노즐 압력" in _names197(),
+     f"{_rh[0]['줄'] if _rh else '-'} · 중간 {_mid} · 판정 {MT197.STATS['판정']}")
+init.init(fresh_=True, all_=True)
+
 for d in set(_made):
     (HINTS / f"{d}.json").unlink(missing_ok=True)
+    (HINTS / f"{d}@outline.json").unlink(missing_ok=True)
 done()

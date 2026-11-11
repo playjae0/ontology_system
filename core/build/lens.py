@@ -120,8 +120,11 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
         try:
             # 문서 개요 — 렌즈마다 그 층 어휘로 한 번 (B115 ① — 렌즈가 키에 든다)
             ol = outline_mod.run(env, cfgs[lay], lens=lay, notice=notice)
+            from core.build.also_stage import heading_gate
+            from core.build.entry import _RUN
+            drop = heading_gate(env, ol, notice, _RUN)               # 골격 단의 문 — 제목 (B197 ② · 기본 길과 같은 함수)
             ck, did = extract_mod.extract(env, cfgs[lay], loc2id, _vocab(cfgs[lay]),
-                                          lens=lay, skip=skip[lay], notice=_nt, outline=ol)
+                                          lens=lay, skip=skip[lay], notice=_nt, outline=ol, drop=drop)
         finally:
             _gw.set_lens(None)
         extracted = extracted or did

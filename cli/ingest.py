@@ -214,6 +214,10 @@ def _step_stops(res, sel, row, ask=True):
     _ct = _rep.get("coord_tag") or {}
     _cp = _rep.get("coord_pairs") or {}             # 판정 전 좌표 쌍 (B105 ③ — 이 관문에서 멈추면 LLM 0)
     _pc, _pbody = SCR.provisional_cells(res.envelope, ask)      # 골격 칸 머리 줄 · 보이기만 하는 표(B196 ③)
+    from core.build import also_stage as _AS
+    _ab = _AS.builder(res.envelope)
+    if not prose:                                    # 표는 행의 확정한 공정 — 산문은 목차 노드화 뒤(B197 ②)
+        _pbody = list(_pbody or []) + [f"   {_AS.pair_line(_AS.pairs(_ab, res.envelope), table=True)}"]
     if not SCR._step_gate(2, prose=prose, ask=ask, body=_pbody, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
                       f"{_pc} · "
                       + (f"목록 밖(기억) {_ct['기억_종수']}종 — LLM 0 · " if _ct.get("기억_종수") else "")
@@ -233,10 +237,13 @@ def _step_stops(res, sel, row, ask=True):
         _entity_surfaces(res.envelope, _sc),
         [x.get("process_ref") for x in (res.envelope.get("records") or [])
          if x.get("process_ref")], _sc.get("layer") or coord_layer(), closed=_closed_surfaces(res.envelope, _sc))
+    _pv = _AS.preview(_ab, res.envelope, schema=_sc)              # 쌍별 예고 — 산문 [5/8]과 같은 함수(B197 ③)
     if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
                       f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
                       f"{_pl['예상_호출']}회"
-                      + (f" · 닫힌 분류 판단 ≤ {_pl['닫힌_분류']}회" if _pl.get("닫힌_분류") else ""), ask=ask):
+                      + (f" · 닫힌 분류 판단 ≤ {_pl['닫힌_분류']}회" if _pl.get("닫힌_분류") else ""), ask=ask,
+                      body=(["   쌍별 예고 — 확정한 공정 쌍마다 값 · 붙을 자리 · 연결 · 판정 예정(쓰기 0 · LLM 0)"]
+                            + _AS.preview_lines(_pv, indent="     ")) if _pv else None):
         row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
                                        "(그래프 쓰기 0)")
         return True

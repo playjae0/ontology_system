@@ -142,7 +142,8 @@ def lookup(b, name, cat=None, *, coord=None, src=None, doc=None):
         g = b.graph_of(nid) or b.g
         n = g.get(nid) or {}
         if n and (not cat or matcher._is(n, cat, hosts)):
-            return NODE, nid, g
+            # 골격 단의 문이 골격 노드로 세운 이름(B197 ① — 합침 · 새로 · 올림)은 골격 소속이다(그 아래 값의 좌표)
+            return (SKELETON if norm(name) in b.also["landed"] else NODE), nid, g
     if not here or (cat and cat not in catalog.spoken(b.cfg)):          # 그 층이 말하는 카테고리(home ∪ uses — B174 ②)
         return None
     hits = {}

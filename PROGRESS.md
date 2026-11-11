@@ -220,6 +220,7 @@
 - B187 — 온톨로지 맵의 색(점은 형광 아닌 지도 자기 목록 · 층 순서 — 첫 층 초록 · 둘째 층 주황 · 사실 관계 선 보라) · 선 이름 바탕 + B186 마감에서 잰 둘 · 2026-11-06 · **완료** — 본문 `docs/archive/장부/PROGRESS_B187.md`
 - B188 — 운영 런북을 지금 화면에: 품질 문서(PFMEA) `ingest-file` 한 줄기 · 온톨로지 맵 보는 법 · 「확인할 것」 대조 장치 + `--diff` 판 차이 · 2026-11-06 · **완료** — 본문 `docs/archive/장부/PROGRESS_B188.md`
 - B190 — 같은 종류의 다른 양식은 같은 doc_type에 어댑터(변형)를 더한다: 스키마 고정 · 지문이 변형을 고른다 · 일치 0건 화면에 --variant 줄 · 2026-11-09 · **완료** — 본문 `docs/archive/장부/PROGRESS_B190.md`
+- B192 — 층 호환 고침: config 문법 단 · 미리보기의 config · 지시문의 mock 예시와 위계 가정 · 화면 낱말 「골격 아래」 · 2026-11-09 · **완료** — 본문 `docs/archive/장부/PROGRESS_B192.md`
 
 ---
 
@@ -342,29 +343,6 @@
 ---
 
 ---
-
-## B192 — 층 호환 고침: config 문법 단 · 미리보기의 config · 지시문의 mock 예시와 위계 가정 · 화면 낱말 「골격 아래」 (2026-11-09 · 칸 0.1 · 0.3 · 3.x · 지시문 · 문서)
-
-> 요청문 `docs/안건/B192_요청문.md`(hub_170 반입 `232cfef` · B190 머지 `b96b94a` 위) · 단독 · 중간.
-
-- 전제 17행 — 같다(94 · 439 · 102 · catalog 9 · 80 · 113~139 · sync 138~140 · skeleton 49~51 · graph 246 · config_map 255 · bootstrap 68 · catalog 61 · 234 · 270 · 404 · 422 · human 182 · 184 · prompt_for 다섯 · 지시문 줄 · 등재 예외 넷 · 판 넷 · mock 힌트 · reconcile · show_summary · extract 212)
-- 마감 한 줄 3회 — 1회 FAIL 2(참조 거부가 재대조 문면을 가로챔 · 상태 폴더 이름 문자열 · 시험 둘) → 2회 FAIL 1(시험 import) → 3회 FAIL 0 · doctor 2229/2222 · 클린 2회 동일 그래프 · 네 벌 같다 · §7 상한 0 · 층 어휘 0(예외 1) · 레포 쓰기 0 · 문서 검사 일곱 0
-- ⓐ PASS 문법 단 — 층 키 오타(`relation_patern`) · 공통 `parent_pair` · 골격 `ALIAS` · `direction: "upward"` · JSON 쉼표 빠짐 → `bootstrap --dry-run` · `bootstrap` · `export config`가 같은 거부 문면(파일 · 키 · 가장 가까운 아는 키 · 다음 줄) · 인입(사전 점검)도 같은 줄 · rc 1 · 레포 mock 자산 거부 0 · 고침을 빼면 붉다(문면 0)
-- ⓑ PASS 관계 패턴이 쓰는 카테고리가 categories · uses에 없다 → 거부(ⓘ · 세 명령 같은 줄)
-- ⓒ PASS 미리보기 이름 = 인입 길(문서 층 quality ≠ home process · 극성 결합) — 고침을 빼면 붉다(극성이 빠진 이름)
-- ⓓ PASS 지시문 — 층 어휘 점검 위반 0 · 예외 1 · 판 넷 오름 · 「이송 유닛」 예시는 mock 공정층 `prompts.extract` · 네 벌 같다
-- ⓔ PASS 화면 — 인입 끝 한 줄 · `show summary` 문서 줄 「골격 아래」 · 옛 낱말로 저장된 요약 `--diff` 바뀐 줄 0
-- ⓕ PASS ⓪ 둘 — 명세 패치 「지움」(표 행 · 줄바꿈까지 · 증감 −) · 동률이면 doctype 전부 이름순 한 줄씩
-- ⓖ PASS 마감 FAIL 0 · 네 벌 전부 같다
-- 이미 있던 것 / 새로 넣은 것 — 있던 것: 층 아는 키 `config_scope.layer_keys` · 뜻 검사 `catalog.problems` ⓑ~ⓖ · 겸 · 미러 경고 · 골격 트리 `SeedError` · `skeleton.type` 명시적 실패 · 스키마 쪽 참조(재대조 G4C — uses를 말하는 FAIL) · 옛 키 관문(옛 모양 · 손잡이로 옮긴 키) · 영향 범위 `RENAMED` 꼴 / 새로: 공통 아는 키 `config_scope.common_keys` · `COMMON_OTHER` · `PAIR_ITEM_KEYS` · `seed_keys` · 판정 `core/state/config_grammar`(ⓗ 문법 · ⓘ 관계 패턴 참조 · `read_json` · `syntax_errors` · `closed`) · 닫힌 값 상수 `graph.DIRECTIONS` · `catalog.PAIR_SRC` · `show_summary.RENAMED` · `spec_patch` 지움 항목
-- 정한 것(D-275) — 아는 키는 영향 범위 표와 한 자리(`config_scope`) · 판정은 `catalog.problems`의 ⓗ ⓘ(네 자리 같은 함수) · 닫은 칸 7(`query_traverse` · `cross_layer_traverse`의 direction · recursive · `relation_patterns[].symmetric` · `mirrors.enabled` · `parent_pairs[].src`) · 참조는 관계 패턴만(스키마 몫은 G4C) · 화면 낱말 「골격 밖 노드」 · 「골격 아래 비율」
-- 명세 패치 적용(+291자 · 문서 0 · 1 항목 0 · 재봉인 0) — 문서 7 §7.8(표 밖의 키 거부 · 낱말 셋) · 지시문 지금 판(e-2.2 · rf-1.3) · 문서 3 §3.1(dry-run 검사에 ⓗ ⓘ) · 부록(골격 아래 비율 · 한 줄 요약)
-- 지시문 판 — 3.3 e-2.1 → e-2.2 · 3.4 rf-1.2 → rf-1.3 · 1.3 iv-2.1 → iv-2.2 · 1.4 1.11 → 1.12 · 사내 영향: 산문 추출 다시(반입 뒤 `rebuild`가 어차피 다시 뽑는다 — 같은 반입이면 더 드는 호출 0)
-- 어서션 +8 · 삭제 0 · 고침 4 — +B192 ⓪ 둘 · ⓐ ⓑ(part_g6_catalog) · ②(part_g6_belongs) · ⓓ(test_g6_close) · ⓔ(part_g6_numbers) · 고침: B94 used_by(Property → Unit — 관계 패턴이 쓰는 카테고리를 빼면 이제 거부) · B170 ⓑ(지시문 파일 해시 고정 걷음 — 판독 절 0은 남은 대조가 잰다) · 구조 ⓑ · 맞춤 ⓓ(키 새 낱말)
-- 바꾼 파일 — `core/state/config_grammar.py`(새) · `config_scope.py` · `catalog.py` · `bootstrap.py` · `core/graph.py` · `core/build/human.py` · `reconcile.py` · `extract.py`(주석) · `core/llm/gateway.py`(주석) · `cli/config_map.py` · `config_next.py` · `export_config.py` · `show_summary.py` · `ingest_select.py` · `run.py` · `tools/spec_patch.py` · `tools/layer_words.py` · 지시문 넷 · `layers/process/config.json` · 시험 일곱 · 가이드 넷 · 구조도 06 · 코드 지도
-- 보인 것 — 추출 지시문 규약 11의 값 예(「장력」 · 「집진 용량」)와 생성 지시문 182행 「탭용접」은 mock 어휘 예시다(층 어휘 점검은 카테고리 이름만 센다) · 문서 4 25 · 282행의 「지시문 e-2.1」은 도입 판 표기
-- 사내 config 줄 — 0(이 회차는 단일 반입에 든다)
-- 소요 약 30분(반입 10:37 → 마감 11:07 · 커밋 시각) — 전제 · 읽기 4분 · 문법 단 9분 · 미리보기 4분 · 지시문 · 낱말 5분 · 시험 · 패치 · 문서 4분 · 마감 한 줄 3회 각 3분 + 고침 4분
 
 ---
 
@@ -414,3 +392,30 @@
 - 보인 것 — 재시도가 보류 재료의 값을 그 행의 대상 열이 아니라 좌표 노드에 실었다(옛 결함 — 확인 뒤 재연결에서 재구축 동치를 깼다 → 대상 열로 고침) · 인입 뒤에 쌍을 확인하고 재연결하면 뒤 문서의 판정 근거가 바뀌어 재구축이 다시 묻는다(B167 「근거 바뀜」 그대로 — 처분은 좌표 단계에서 하면 0) · 손잡이 `provisional_min_mentions`는 효과가 없다(걷을지 허브) · 옛 「보류 k표기 — 골격 밖 좌표는…」 줄은 골격 칸 보류를 따로 낸다
 - 사내 config 줄 — 0 · 머지 뒤 반입 → 그래프를 CP 전까지 다시(런북 6 · 사람 기록은 산다) → 문서마다 `ingest-file … --step` 좌표 단계에서 처분 또는 끝난 뒤 `ops review all` → `ops relink all --apply`
 - 소요 약 90분(03:00 무렵 → 04:28 · 시작은 어림) — 전제 · 읽기 12분 · ① 문 12분 · ② 쌍 10분 · ③ 검토 줄 · 물음 · ops review 15분 · ④ 연결 표지 6분 · 옛 시험 고침(아홉 스위트) 20분 · 새 시험 6분 · 런북 · 가이드 · 패치 · 결정 8분 · 마감 한 줄 2회 각 3분
+
+## B197 — 골격 단의 문(겸 값은 골격 노드로만) · 판정 전 처분 자리 · [5/8] 쌍별 예고 · 쓰기 전 판정 결과 · 청크 나눔 고침 (2026-11-11 · 칸 3.4 · 0.3 · 2.4 · 2.6 · 문서)
+
+> 요청문 `docs/안건/B197_요청문.md`(hub_179 반입 `efc8065` · B196 머지 `c3cad2b` 위) · 단독 · 대 · 결정 기준 `결정_동의어_골격수준.md` §1 A″.
+
+- 전제 16행 — 같다(지금 판에서 다시 잼) · 2행 `resolve_at_home(` 호출 다섯(belongs 204 · loop 468 · heading 145 · retry 706 · prose 114 · 정의 build 155) — 멈춤 없음
+- 마감 한 줄 2회 — 1회 FAIL 1(사전 점검의 레포 작업 트리 대조 — 마감 도는 중에 내가 두 파일을 커밋했다 · 시험 실패 아님) → 2회 FAIL 0 · doctor 2252/2252 · 클린 2회 동일 그래프 · 네 벌 전부 같다 · §7 상한 0 · 층 어휘 0(예외 1) · 레포 쓰기 0
+- ⓐ PASS 산문 · 문서 좌표 노칭 · 제목 「2. 추출부」 → Unit → 골격 단 줄(위 공정 노칭 · 판단 애매) · 노드 0 · 후보 = 노칭 아래 골격
+- ⓑ PASS m → 「노칭::노칭 타발::흡착력」(별칭 · 그 아래 값) · k → 잠정 「추출부k」 아래 · d → 그 제목 아래 청크 추출 0(`human_drop`) · 값 0 · u → 노드 0 · 값은 노칭
+- ⓒ PASS 본문 Unit 「센서」 → [5/8] 머리 골격 단 줄 · u → 소속 값 「응답 시간」은 노칭 아래
+- ⓓ PASS 표 행(ref 빈칸 · group 노칭)의 Unit 값 → 골격 단 보류(그 행의 말미 적재) · ref 노칭 타발(맨 아래 단) 행 → 문 밖(지금처럼 판정)
+- ⓔ PASS 건너뜀 → `ops review` 골격 단 한 줄(겸 값 표지) → 합침 → `ops relink` → 「노칭::비전검사::감지 거리」(추출 LLM 0)
+- ⓕ PASS 겸 없는 config(mock) — 네 벌 전부 같다
+- ⓖ PASS 「확정한 공정 — 청크 2: 노칭 › 노칭::노칭 타발 1 · 노칭(상위만) 1」 · 쌍별 예고 묶음 = 쌍 · 붙을 자리 · 연결 · 판정 예정 · 표 [4/7] 같은 함수(골격 단 — 문 · 후보 n → 판정)
+- ⓗ PASS 쓰기 전 판정 결과 → q → 그래프 · 큐 그대로 · 확정 대장 없음 · 중간 저장 남음 → 다시 넣으면 재생(판정 LLM 0) · 노드가 선다
+- ⓘ PASS 「가. 주액」 + 한 행짜리 「1) … 28)」 → 본문 목록(판단 필요 「목록: 본문으로 28줄」) → 2조각(407 · 419자 — 시험 상한 600 · 창작 표본) · 경로 둘 다 「가. 주액」 · 본문이 있는 판 → 제목 경계에서 고르게 3조각(경로 = 공통 부모)
+- ⓙ PASS 「1)」 다섯 중 둘만 제목(구조 대역) → 모두 본문 · 「판단 필요 — 형제 꼴 섞임」 · 사람이 고친 줄은 그대로
+- ⓚ PASS 「글자 상한 초과 1청크 → 4조각(제목 경계 4 · 행 경계 0) (상한 600자)」 · md에 조각이 시작하는 제목이 접히지 않는다 · ✂ 「(나눔 i/n)」
+- ⓛ PASS 상한 이하 청크(「2. 검사 설비」) 위치 · 글 · 경로가 상한 없는 판과 같다 · 네 벌 같다
+- ⓜ PASS 명세 패치 `--apply`(+721자 · 문서 0 · 2 · 3 · 4 · 6 · 7 — 8항목) · 허브 몫(`B197_명세패치_허브.md` — 문서 1 D4 · 문서 4 미러 F1 봉인 문단 안 한 항목 — 적용하지 않음) · 마감 FAIL 0
+- 가결정(D-278) — 문의 자리(`also_gate` — 키 조립 뒤 판정 앞 · 판정 뒤 한 자리) · 위 공정 자신 · 줄기 밖 골격에 붙는 「같다」는 애매(후보는 그 아래 골격만) · 처분 자리(산문 제목 = 목차 노드화 바로 뒤 · 추출 전 — 판단은 거기서 한 번 · 구축이 재사용) · 표의 겸 값은 구축의 문 → `ops review` · 올림 기록 `provisional:raise` · 글쇠 `u`(ㅕ) · 쌍별 예고 칸 · 쓰기 전 물음은 표준 `[계속 c / 멈춤 q]` · 목차 규칙 판 그대로(`toc-5`) · 이유가 붙은 고침 줄도 규칙 밖 · 고르게 나눔(옛 `_pack` 지움)
+- 바뀐 시험 기대 — ladder B137 ⓒ(6~9행 「1) … 4)」 본문 목록 · 판단 필요 6행) · B137 ⓔ(「외 3줄」 절은 B197 ⓚ로) · hier B132 ⑥(조각 시작 [2, 3, 5, 7] → [2, 5, 7] — 고르게) · numbers ⓓ(저장 전 관문 수 표 6→7 · 산문 8→9) · judge2 B182 ⓒ · g65_common `hold_coords`(손잡이 걷음)
+- 어서션 +11 · 삭제 0 · 고침 6 — +B197 ⓐ ⓑ ⓒ ⓓ ⓔ ⓖ ⓗ(test_coord +7) · ⓘ ⓙ ⓚ ⓛ(test_structure +4) · 지운 절 「외 3줄」의 성질(형제 접기)은 B197 ⓚ가 잡는다
+- 바꾼 파일 — `core/build/{also_gate(새),also_stage(새),build,belongs,heading,prose,loop,retry,extract,entry,lens,values,provisional,skeleton_review}.py` · `core/state/{provisional_hand,oplog,knobs}.py` · `parser/{struct_lists(새),struct_rule,struct_map}.py` · `cli/{also_screen(새),provisional_ask,ingest,ingest_screen,extract_screen,parse,split_report}.py` · 시험 7 · 명세 6 · 가이드 3 · 장부(결정 문서 · 이연대장 · D-278)
+- 보인 것 — mock 판정은 이름 포함 규칙으로 「노칭::센서」를 부모 「노칭」 자신에 붙인다(겸 선언이 있을 때 · 전부터) · 문 안에서는 같다로 세지 않아 시험이 문을 잰다 · 맨 아래 단 아래의 겸 값은 mock에서 그 골격 노드에 붙는다(실호출에서는 판정 몫)
+- 사내 config 줄 — 0 · 머지 뒤 반입 → `common.json` 겸 확인(`bootstrap` 끝 줄 「골격 '<공정 카테고리>': 겸 …」 — 꺼짐이면 하위 공정 단 = 유닛 겸) → 그래프를 CP 전까지 다시(런북 6) — 산문은 `--step` 목차 노드화 뒤 골격 단 처분 · 상한을 넘던 청크는 다시 나뉘어 그 청크만 다시 추출 · 본문 목록 규칙으로 제목이 바뀐 시트는 목차 노드화 · 그 아래 청크가 바뀐다
+- 소요 약 4시간 30분(어림) — 전제 · 읽기 40분 · ① 문 · 딸린 값 · 재연결 60분 · ②③④ 처분 자리 · 예고 · 쓰기 전 50분 · ⑤ 청크 나눔 40분 · ⑥ 손잡이 · 문서 · 명세 패치 25분 · 시험 작성 · 옛 기대 고침 45분 · 회귀 1회(약 40분 대기) · 마감 한 줄 2회(각 3분)

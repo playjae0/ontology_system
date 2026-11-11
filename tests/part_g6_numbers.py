@@ -60,7 +60,7 @@ CASES = {"표 · process": (FX / "raw" / "CP01.xlsx", None, []),          # 대�
 #: 저장 전 관문 수(표 — 선택 · 파싱 · 좌표 · 판정 예고 / 산문 — + 구조 확인(산문 시트마다 — 기대 변경 B132: mock 힌트가 없어도
 #: 코드 사다리로 구조가 선다 · 표본은 산문 시트 셋) · 추출 예고 · 추출 결과·판정 예고)
 #: 기대 변경(B165 — 표는 판정 안의 공정 그룹 경계에서도 묻는다: CP01은 조립 · 스태킹 · 조립이라 경계 둘 · 4 → 6)
-BEFORE = {"표": 6, "산문": 8}
+BEFORE = {"표": 7, "산문": 9}                                   # 고침 B197 ④ — 저장 직전 판정 결과도 저장 전 관문(그 뒤 [판정] 머리는 묻지 않는다)
 PROMPT = "[계속 c / 멈춤 q".encode("utf-8")                # 구조 확인은 `… / 힌트 <글>]`까지 — 앞부분이 같다
 TS = ("created", "at", "first_seen", "last_seen", "last_tried", "last_fp", "attempts", "obsoleted_at", "confirmed_at",
       "parsed_at", "first_ingested_at", "ingested_at", "updated_at", "last_hit")

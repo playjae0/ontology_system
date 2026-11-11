@@ -464,7 +464,14 @@ def h_entity(value, spec, ctx):
     of = (st.get("owners") or {}).get(st.get("field"))
     oid = (st.get("resolved") or {}).get(of) if of else None
     owner = (oid, st["external"].get(of, st["graph"])) if oid else None
+    if of and oid is None and of in st.setdefault("also_held", set()):
+        # 소유자가 골격 단의 문에 걸렸다(B197 ①) — 같은 행의 그 아래 값은 그 보류와 함께(재연결이 정해진 노드 아래 세운다)
+        st["dropped_entities"].append({"surface": value, "category": spec["category"], "target_layer": lay,
+                                       "field": st["field"]})
+        _ledger_entity(st, value, lay, None)
+        return None
     from core.build.scope_path import owner_parent
+    st["b"].also.update(defer=st["defer"], field=st["field"])       # 문에 걸리면 이 행의 말미 적재로(같은 행의 드롭 · 보류가 함께)
     nid, eb = st["b"].resolve_at_home(value, spec["category"], st["prov"],
                                       coord=(st["ref"], st.get("ref_g")),
                                       electrode_type=st["et"],
@@ -472,6 +479,9 @@ def h_entity(value, spec, ctx):
                                       anchor_polarity=st["anchor_pol"],
                                       at=(st.get("locator"), st.get("field")),   # 판정 재생의 자리 (B106 ②)
                                       owner=owner, row=ctx.record, field=st.get("field"))   # 판단 재료(B181 ②)
+    st["b"].also.update(defer=None, field=None)
+    if nid is None and (eb.last or {}).get("also"):
+        st.setdefault("also_held", set()).add(st["field"])
     _ledger_entity(st, value, lay, eb.last)
     _ov = (ctx.record or {}).get(of) if of else None
     if of and oid is None and st["b"].ledger is not None and _ov not in (None, "") and not _blank(_ov):

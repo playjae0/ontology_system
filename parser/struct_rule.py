@@ -396,6 +396,8 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                     made[frame] = st
         st = apply_fixes(st, fixes.get(frame), labs)
         st = contiguous(st, labs)                             # 제목 범위는 연속이다 — 받은 구조 · 고침 · 확정 전부 한 자리(B195 ①)
+        from parser import struct_lists
+        st = struct_lists.apply(st, labs, fixes.get(frame), FRAME_ROW)   # 형제 꼴 일관성 → 본문 목록(B197 ⑤ · 같은 자리)
         if st is not None:
             tally.setdefault("프레임", {})[frame] = {
                 "labels": labs, "headings": st.get("headings") or [], "toc0": st.get("toc0") or [],

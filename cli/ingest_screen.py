@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from cli import _screen
+from cli import also_screen                         # 골격 단의 화면(B197 ②④)
 from core import paths
 from core.llm import gateway
 from core.state import log, store
@@ -466,6 +467,8 @@ def build_screen(step=False, stage=None, prose=False):
             if info["단계"] == "추출끝" and stage is not None:
                 stage.update(_judge)              # 누적 줄·비용 줄이 다시 판정을 가리킨다
             return out
+        if info.get("단계") in also_screen.STAGES:        # 골격 단의 문 · 확정한 공정 · 쓰기 전 판정 결과 (B197 ②④)
+            return also_screen.notice(info, step)
         if info.get("단계") == "렌즈예고":
             # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0 ·
             # 이 줄이 추출 예고의 자리다(B97 ① — 두 줄 0) · `--step`이면 여기서 묻는다
@@ -491,10 +494,8 @@ def build_screen(step=False, stage=None, prose=False):
                 _judge.update(stage)
             if info.get("추출뒤"):
                 # 산문은 **추출 뒤 단계 머리**가 이 줄이다(B97 ④ · 늘 — B99 ④) — `--step`이면 묻는다 · 머리 아래 사람 후보 (B140 ①②)
-                from cli import human_gate
-                hb = info.get("사람후보")
-                return _step_gate(8, lz + body, prose=True, ask=step, body=human_gate.lines(hb, step) if hb else None,
-                                  ask_fn=(lambda: human_gate.ask(hb)) if hb else None)
+                lines, ask_fn = also_screen.step8(info, step)   # 쌍별 예고 · 골격 단(B197) · 사람 후보(B140) — 머리 아래 · 물음
+                return _step_gate(8, lz + body, prose=True, ask=step, body=lines, ask_fn=ask_fn)
             from core.build import replay as _rp      # 멈춘 실행의 중간 저장(B165 ③) — 쓰는가 · 버렸나 한 줄
             if _rp.PARTIAL.get("버림") is not None:
                 _screen.say("   중간 저장 — 원본이 바뀌어 중간 저장을 쓰지 않는다", "aux")
@@ -532,7 +533,8 @@ def build_screen(step=False, stage=None, prose=False):
         # 결과만 보이는 세 머리(판정 · 부착·엣지 · 큐) — 늘 낸다(B99 ④) · `--step`이면 묻는다
         u2 = gateway.usage_total()
         # 이 셋은 **저장 뒤**다(B109 ② — 멈춰도 되돌리지 않는다): 멈추면 남은 머리는 묻지 않고 내기만 한다(B118 ④)
-        go = _step_gate(4, prose=prose, ask=step, saved=True, detail=f"새 노드(auto) {info.get('auto', 0)} · "
+        _pre = also_screen.asked_pop()                 # 쓰기 전 판정 결과에서 이미 물었다(B197 ④) — 여기서는 내기만
+        go = _step_gate(4, prose=prose, ask=step and not _pre, saved=True, detail=f"새 노드(auto) {info.get('auto', 0)} · "
                         f"LLM 호출 {u2['calls']:,}")
         _hf = f" · 제목 개체 폴백 {info['제목폴백']:,}행" if info.get("제목폴백") else ""   # 상위 사슬 (B115 ③)
         from core.build import ledger as _lg196
@@ -586,7 +588,8 @@ def toc_lines(info):
     from collections import Counter
     c = Counter(st for *_x, st, _ch in toc)
     out.append(f"   청크(산문) {len(toc):,} = 부름 {c.get('부름', 0):,} + ref {c.get('ref', 0):,} + "
-               f"거름 {c.get('거름', 0):,} + 재사용 {c.get('재사용', 0):,}")
+               f"거름 {c.get('거름', 0):,} + 재사용 {c.get('재사용', 0):,}"
+               + (f" + 거름 — 사람 drop {c['거름 — 사람 drop']:,}" if c.get("거름 — 사람 drop") else ""))
     return out
 
 

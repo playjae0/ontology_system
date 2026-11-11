@@ -95,6 +95,8 @@ class Builder(CoordMixin):
         self.coord_at, self.coord_hold, self.made = {}, {}, {}
         self.coord_gate = {}                      # 문에 걸린 행의 재료(B196 ① — 자리 · 판단 · 후보 · `(prov, 표기)`)
         self.coord_pair, self.pair_off = {}, False   # 쌍 어긋남의 문(B196 ② — 확인 전 보류 행 · 대조 중에는 끈다)
+        # 골격 단의 문(B197 ① — `core/build/also_gate`): 문에 걸린 값 · 걸린 제목 · 표 행의 말미 적재 자루 · 사람 답(하위 빌더와 공유)
+        self.also = {"held": {}, "heads": {}, "landed": {}, "defer": None, "field": None, "book": None}
         # 다른 층의 같은 엣지에 출처를 더할 때 그 층을 **이 빌드가 저장하는 그래프**로 연다(B180 ② · `gate.bind` — 먼저 건 손이 이긴다)
         gate.bind([graph], lambda lay, me=weakref.ref(self): me().for_layer(lay).g if me() is not None else None)
 
@@ -124,6 +126,7 @@ class Builder(CoordMixin):
             sub.doc_coord = self.doc_coord
             sub.coord_at, sub.coord_hold, sub.made = self.coord_at, self.coord_hold, self.made
             sub.coord_gate, sub.coord_pair = self.coord_gate, self.coord_pair
+            sub.also = self.also
             sub.subs = self.subs
             self.subs[layer] = sub
         return self.subs[layer]
@@ -386,17 +389,7 @@ class Builder(CoordMixin):
         """
         from core.state.bootstrap import layer_of_category
         if layer_of_category(category) is None:
-            # 카테고리는 **운영 중에 발명되지 않는다**(카드 I3 · CH2 2.9 금지 목록).
-            # 추출→구축의 신뢰 경계에서 이것이 유일한 강제 지점이다 — 프롬프트 계약만으로는
-            # 층 어휘가 아닌 이름이 그래프에 심긴다.
-            store.enqueue("invalid_category",
-                          f"층이 선언하지 않은 카테고리 '{category}' — 노드를 만들지 않는다",
-                          self.doc_id, {"surface": surface, "category": category,
-                                        "provenance": prov})
-            self.last = {"canonical": surface, "verdict": "gate_reject",
-                         "path": "none", "confidence": 0.0, "layer": self.layer,
-                         "queue_kind": "invalid_category", "node_id": None}
-            return None
+            return self._invalid_category(surface, category, prov)
         # **좌표 없는 스코프 개체 0**(B102 ⑤ · 문서 4 §4.4) — 노드를 만들지 않는다 · 자리를 아예 말하지 않은 값만 자리 추정(B183) · 재료는 큐
         if category in scope_categories(self.cfg) and not parent_canonical:
             return self._no_coord(surface, category, prov, coord_surface, belongs,
@@ -408,6 +401,10 @@ class Builder(CoordMixin):
         # 아래」가 첫 기준이고, 그 정보는 여기에만 있다.
         # **골격 밖 반복 판정 기억**(B100 ⑤) — 노드를 만들지 않고 끝난 판정은 한 실행 안에서
         # 같은 열쇠면 다시 묻지 않는다(후보·LLM 0) · 대장 행은 매 행 남는다(경로 `memo`).
+        from core.build import also_gate
+        gate_at = also_gate.pre(self, surface, category, prov, coord)     # 골격 단의 문(B197 ① — 겸 값은 골격 노드로만)
+        if isinstance(gate_at, tuple):
+            return gate_at[1]
         mkey = self._memo_key(surface, canonical, category, parent_canonical, polarity)
         if mkey in _MEMO:
             return self._memo_replay(surface, category, canonical, prov, _MEMO[mkey], coord=coord)
@@ -440,6 +437,8 @@ class Builder(CoordMixin):
                              "in_tokens": _u1["prompt_tokens"] - _u0["prompt_tokens"],
                              "out_tokens": (_u1["completion_tokens"]
                                             - _u0["completion_tokens"])}}
+        if gate_at is not None and not also_gate.same(gate_at, verdict, nid):
+            return also_gate.miss(self, surface, category, prov, gate_at, verdict, v, nid)   # 문(B197 ①) — 세우지 않는다
         if verdict == MATCH:
             # 판정으로 붙은 표기는 **출처 LLM 매칭**으로 남는다(B101 ④) — 사전 히트·기억은 아니다
             _by = (None if (v.get("replayed_path") or v.get("path")) in ("dictionary", "memo", "self_coord", "path_compat",
@@ -479,6 +478,15 @@ class Builder(CoordMixin):
         self.buffer[norm(surface)] = nid
         self.last["node_id"] = nid
         return nid
+
+    def _invalid_category(self, surface, category, prov):
+        """카테고리는 **운영 중에 발명되지 않는다**(카드 I3 · CH2 2.9 금지 목록) — 추출→구축의 신뢰 경계에서 이것이 유일한 강제
+        지점이다(프롬프트 계약만으로는 층 어휘가 아닌 이름이 그래프에 심긴다) · 노드 0 · `invalid_category`."""
+        store.enqueue("invalid_category", f"층이 선언하지 않은 카테고리 '{category}' — 노드를 만들지 않는다",
+                      self.doc_id, {"surface": surface, "category": category, "provenance": prov})
+        self.last = {"canonical": surface, "verdict": "gate_reject", "path": "none", "confidence": 0.0,
+                     "layer": self.layer, "queue_kind": "invalid_category", "node_id": None}
+        return None
 
     def _no_coord(self, surface, category, prov, coord_surface, belongs, guess=None):
         """좌표 없는 스코프 개체의 재료를 큐에 — 좌표가 비었으면 먼저 자리 추정(B183 — `place_guess.attach` · 표와 같은 함수 ·

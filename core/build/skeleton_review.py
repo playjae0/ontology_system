@@ -181,8 +181,8 @@ def held_from_queue():
             continue
         k = (key(pl.get("surface") or ""), gi.get("parent"))
         r = out.setdefault(k, {"kind": "gate", "surface": pl["surface"], "up_name": gi.get("parent"), "rows": 0, "docs": [],
-                               "answer": gi.get("answer"), "near": gi.get("near") or []})
-        r["rows"] += int(pl.get("rows") or 1)
+                               "answer": gi.get("answer"), "near": gi.get("near") or [], "also": pl.get("also")})
+        r["rows"] += sum(1 for it in pl.get("items") or [pl] if not it.get("follow")) or 1   # 딸린 값(B197 ①)은 행에 들지 않는다
         if x.get("doc_id") not in r["docs"]:
             r["docs"].append(x.get("doc_id"))
     rows = sorted(out.values(), key=lambda r: (-r["rows"], r["surface"]))
