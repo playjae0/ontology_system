@@ -356,7 +356,9 @@ def cause_lines(cs, limit=None, mat=None, layer=None):
 def head_lines(mat):
     """문서 머리 — 문서 좌표와 출처 · 조각 좌표 출처별 수(`doc_coord.coord_line` 그대로)."""
     from cli.doc_coord import coord_line
-    return [f"   문서 좌표 — {mat['doc_coord'] or '없음'} (출처: {mat['doc_coord_src']})", coord_line(mat["env"])]
+    from core.build import ledger
+    return [f"   문서 좌표 — {mat['doc_coord'] or '없음'} (출처: {mat['doc_coord_src']})", coord_line(mat["env"]),
+            "   " + ledger.link_line(ledger.link_counts(mat["rows"]))]          # 연결 표지(B196 ④)
 
 
 def _counts(mat, locs, layer=None):

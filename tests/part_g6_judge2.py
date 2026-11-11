@@ -251,6 +251,7 @@ MT.judge = _spy
 try:
     with Live(by={"judge": _fake181, "coord_tag": _fake181}), _quiet():
         _tg = TG.tag(_recs, layer=coord_layer(), pick=PT.coord_picker(), doc_type=D181, doc_id="B181P")
+        say_new_env({"doc_id": "B181P", "payload_kind": "table", "records": _tg})   # 사람이 「새로」(고침 B196 ① — 문)
         run_document({"doc_id": "B181P", "doc_type": D181, "source_path": "(합성) B181P.xlsx", "revision": "R1",
                       "parsed_at": "2026-11-05T00:00:00", "parser_version": "m", "adapter_version": "m", "context": {},
                       "payload_kind": "table", "records": _tg})
@@ -343,6 +344,7 @@ def _up(n):
 
 def _doc(did, recs, pick=None):
     tg = TG.tag(recs, layer=coord_layer(), pick=pick, doc_type=D181, doc_id=did)
+    say_new_env({"doc_id": did, "payload_kind": "table", "records": tg})        # 사람이 「새로」(고침 B196 ① — 문)
     with _quiet():
         run_document({"doc_id": did, "doc_type": D181, "source_path": f"(합성) {did}.xlsx", "revision": "R1",
                       "parsed_at": "2026-11-05T00:00:00", "parser_version": "m", "adapter_version": "m", "context": {},
@@ -354,7 +356,7 @@ _na = _pv("노칭공정A")
 _um = [x for x in STO.read(STO.QUEUE, []) if x.get("doc_id") == "B181P" and x["kind"] == "uncertain_match"
        and (x.get("payload") or {}).get(PROVISIONAL)]
 show("B182 ⓑ 골격 칸 애매(대역 판단) — 잠정 골격 노드(표시 애매 · 합칠 후보 = 판단의 가장 가까운 후보) · uncertain_match 1",
-     bool(_na) and _na[PROVISIONAL]["answer"] == "uncertain" and _na[PROVISIONAL].get("near") == ["노칭"]
+     bool(_na) and _na[PROVISIONAL]["answer"] == "uncertain" and (_na[PROVISIONAL].get("near") or [None])[0] == "노칭"   # 후보 둘까지(고침 B196 ③)
      and len(_um) == 1 and _um[0]["payload"].get("nearest") == {"canonical": "노칭"},
      f"노칭공정A {(_na or {}).get(PROVISIONAL)} · uncertain_match {len(_um)}")
 
@@ -380,12 +382,12 @@ _P.knobs().unlink()
 KN.apply()
 _am = {r["locator"]: r for r in _rm if r.get("role") == "anchor"}
 show("B182 ⓒ 같은 잠정 이름 — 같은 줄기의 부모면 같은 노드 · 다른 줄기면 `부모::이름` 따로 · 부모 미정 노드에 부모를 말하는 행이 "
-     "오면 채운다(노드 수 그대로) · 손잡이 provisional_min_mentions 2면 같은 줄기의 두 행이 함께 세져 서고 한 행뿐인 표기는 보류(리뷰 #137 P2)",
+     "오면 채운다(노드 수 그대로) · 사람이 「새로」를 고른 표기는 손잡이 provisional_min_mentions와 무관하게 1행이어도 선다(고침 B196 ①)",
      bool(_x and _sx) and _up(_x) == "노칭" and _up(_sx) == "스태킹"
      and _an["C1"]["node_id"] == _an["C2"]["node_id"] == _x["id"] and _an["C3"]["node_id"] == _sx["id"]
      and _up0 is None and _an["D1"]["node_id"] == _an["C4"]["node_id"] == _y0["id"] and _up(_pv("신공정Y")) == "패키징"
      and _pv("신공정W") and _am["M1"]["node_id"] == _am["M2"]["node_id"] == _pv("신공정W")["id"]
-     and _am["M3"].get("hold") == PV.HOLD_FEW and not _pv("신공정V"),
+     and _pv("신공정V") and _am["M3"]["node_id"] == _pv("신공정V")["id"],
      f"신공정X ← {_up(_x) if _x else '-'} · 스태킹::신공정X ← {_up(_sx) if _sx else '-'} · 신공정Y {_up0} → {_up(_pv('신공정Y')) if _y0 else '-'}")
 
 _n0 = sum(len(open_graph(lay).nodes) for lay in ("process", "quality"))
@@ -407,6 +409,7 @@ _unregister(D181)
 with _quiet():
     init.init(fresh_=True, all_=True)
     RUN.cmd_bootstrap([])
+say_new(("레이저노칭", "조립"))                    # 사람이 「새로」(고침 B196 ① — 문 · 같은 행 공정 그룹 칸이 들어온 자리)
 for _f, _dt in (("CP01.xlsx", "cp"), ("PFMEA01.xlsx", "pfmea")):
     _quiet_r = _quiet()
     with _quiet_r:
@@ -465,6 +468,7 @@ with Live(by={"coord_tag": _fake182}):
     _tg2 = TG.tag([dict(_pf, source_locator="N1", process_ref="레이저노칭", failure_mode="빔 끊김"),
                    dict(_pf, source_locator="N2", process_ref="레이저 커팅", failure_mode="빔 끊김")],
                   layer=coord_layer(), pick=PT.coord_picker(), doc_type="pfmea", doc_id="B182N")
+say_new_env({"doc_id": "B182N", "payload_kind": "table", "records": _tg2})   # 사람이 「새로」(고침 B196 ① — 문)
 with _quiet():
     run_document({"doc_id": "B182N", "doc_type": "pfmea", "source_path": "(합성) B182N.xlsx", "revision": "R1",
                   "parsed_at": "2026-11-05T00:00:00", "parser_version": "m", "adapter_version": "m", "context": {},
@@ -621,6 +625,7 @@ def _mock184(step_answer=None):
         RUN.cmd_bootstrap([])
         IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / "CP01.xlsx"), "cp", ask=False)
     if step_answer is None:
+        say_new(("레이저노칭", "조립"))              # 사람이 「새로」(고침 B196 ① — 사람 없는 실행은 세우지 않는다)
         with _quiet():
             IG.ingest_file(str(_FXR.ROOT_DIR / "raw" / "PFMEA01.xlsx"), "pfmea", ask=False)
         return

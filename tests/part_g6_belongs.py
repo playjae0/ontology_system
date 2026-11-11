@@ -269,6 +269,8 @@ _hint("B157S", {"사양!R2": {"entities": [{"surface": "타발 속도", "categor
                                        {"surface": "노칭", "category": "Unit"}], "relations": []},
                 "사양!R6": {"entities": [{"surface": "공정 온도", "category": "Property", "value": "25도"}], "relations": []}})
 _pr157 = DC.pair_report(_e157)[0]["pairs"].get(("문서 좌표", ("노칭", "스태킹")), {}).get("rows")
+from core.state import coord_acks as _CA157                 # noqa: E402
+_CA157.ack("문서 좌표", ("노칭", "스태킹"), "시험", seen=True)   # 사람이 쌍 확인(고침 B196 ② — 확인 전에는 그 구간이 보류)
 with contextlib.redirect_stdout(io.StringIO()):
     run_document(dict(_e157))
 _made.append("B157S")

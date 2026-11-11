@@ -29,6 +29,17 @@ def scan(env, b):
     doc_id = env.get("doc_id")
     dc = env.get("doc_coord")
     out = []
+    off, b.pair_off = getattr(b, "pair_off", False), True      # 대조는 쌍 문(B196 ②) 앞의 해소로 — 보류된 행도 쌍을 낸다
+    buf = dict(b.buffer)                            # 대조는 쓰기 0 — 해소가 문서 버퍼에 남기는 것을 되돌린다
+    try:
+        return _scan(env, b, doc_id, dc, out)
+    finally:
+        b.pair_off = off
+        b.buffer.clear()
+        b.buffer.update(buf)
+
+
+def _scan(env, b, doc_id, dc, out):
     for p in env.get("records") or env.get("chunks") or []:
         loc = p.get("source_locator")
         prov = f"{doc_id}#{loc}" if loc else doc_id
@@ -39,17 +50,51 @@ def scan(env, b):
         own = None if (p.get("meta") or {}).get("group_from_ref") else grp_s   # 행이 가져온 상위만
         by_doc = bool(dc) and not own               # 상위 — 행의 것 먼저 · 없으면 문서 좌표(B106 ⑤)
         up = dc if by_doc else grp_s
-        vs, both, pols = [], False, {}
+        vs, both, pols, hits = [], False, {}, []
         for one in refs or [None]:                  # 공정 목록이면 원소마다 같은 판정(B125 ④ · B143 ① — 등록 SnapView와 같은 꼴)
             sink = []                               # 보류는 구축의 몫이다 — 여기서는 버리는 자루
             ref, ref_g = b.resolve_anchor(one or grp_s, COORD_CATEGORY, prov, defer=sink)
             ref = b.descend_anchor(ref, et, ref_g)
             v1, gcs = b.coord_verdicts(up, ref, et, ref_g)
-            vs += [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in v1] if by_doc else v1
+            v1 = [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in v1] if by_doc else v1
+            vs += v1
+            hits += [(k, pr, one or grp_s) for k, pr in v1]
             both = both or bool(ref and up and gcs)
             if ref:
                 pols[ref_g.get(ref)["canonical"]] = (ref_g.get(ref) or {}).get("polarity")
-        out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": both, "node_pol": pols})
+        out.append({"loc": loc, "prov": prov, "verdicts": vs, "both": both, "node_pol": pols, "hits": hits})
+    return out
+
+
+#: 쌍 문의 보류 사유(B196 ② — 확인 전 · 사람 drop)
+HOLD_PAIR = "좌표 쌍 어긋남 — 사람 확인 전"
+HOLD_PAIR_DROP = "좌표 쌍 어긋남 — 사람 drop"
+
+
+def gate(env, b):
+    """**쌍 어긋남의 문**(B196 ② · 결정 A′ — 구축 앞 패스 · 쓰기 0) — 상위 쌍이 어긋난 행(골격 밖 상위 · 극성 쌍은 그대로)은 사람
+    답대로: 확인 → 그대로(ref 자리) · 정정 → 그 노드(`b.coord_at`) · drop · 답 없음 → 보류(`b.coord_pair[(prov, 표기)]`).
+    돌려주는 것은 `[{pair, kind, prov, surface, answer}]`(좌표 단계 화면 · 검토가 같은 줄을 센다)."""
+    from core.state import coord_acks
+    book = coord_acks.answers()
+    g, _ = b._graph_for(COORD_CATEGORY)
+    out = []
+    for r in scan(env, b):
+        for kind, pair, surface in r["hits"]:
+            if kind not in (CP.GROUP, CP.DOC_GROUP):
+                continue
+            tag, rec = book.get(coord_acks.key(kind, pair), (None, None))
+            out.append({"pair": pair, "kind": kind, "prov": r["prov"], "surface": surface, "answer": tag})
+            if tag == "ack":
+                continue
+            if tag == "fix":
+                nid = next((i for i, n in g.nodes.items() if n.get("canonical") == rec.get("target")
+                            and n.get("category") == COORD_CATEGORY), None)
+                if nid:
+                    b.coord_at[(r["prov"], surface)] = nid
+                    continue
+            b.coord_pair[(r["prov"], surface)] = {"why": HOLD_PAIR_DROP if tag == "drop" else HOLD_PAIR,
+                                                 "kind": kind, "up": pair[0], "ref": pair[1]}
     return out
 
 

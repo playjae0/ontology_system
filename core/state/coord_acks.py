@@ -11,6 +11,10 @@
   · **취소**(`unack`) — 기록을 지우고 **이 손잡이가 단** `resolution`만 걷는다(다른 사람 판단은 그대로) → 다시 보인다
 
 자동으로 고치지 않는다 — 골격도 문서도 바꾸지 않는다(판단은 사람).
+
+**쌍 어긋남의 문**(B196 ② · 결정 A′) — 확인 전에는 그 행을 붙이지 않고 보류한다(구축 앞 패스 `provisional.settle`이 읽는다).
+처분은 넷이다: 확인(`ack` — ref 자리에) · 정정(`fix` — 「그 상위 아래의 이 ref 표기 = 그 노드」 · `fixes`) · drop(`drop` — 사유 ·
+`drops`) · 건너뜀(기록 없음 — 보류). 같은 파일 · 같은 열쇠(상위 쌍)다.
 """
 from __future__ import annotations
 
@@ -41,6 +45,60 @@ def load():
     return d
 
 
+def answers():
+    """쌍의 사람 답(B196 ② — 쓰기 0) — `{열쇠: ("ack"|"fix"|"drop", 기록)}` · 확인이 정정 · drop보다 앞이 아니다(나중 기록이 이긴다)."""
+    d = load()
+    out = {}
+    for name in ("pairs", "fixes", "drops"):
+        for k, rec in (d.get(name) or {}).items():
+            tag = {"pairs": "ack", "fixes": "fix", "drops": "drop"}[name]
+            if k not in out or str(rec.get("at") or "") >= str(out[k][1].get("at") or ""):
+                out[k] = (tag, rec)
+    return out
+
+
+def _decide(name, kind, pair, actor, note, **extra):
+    from core.state.ops import log_op
+    if not actor:
+        raise AckRefused("행위자가 없다 — --actor <이름>")
+    k = key(kind, pair)
+    d = load()
+    for other in ("pairs", "fixes", "drops"):
+        (d.get(other) or {}).pop(k, None)
+    rec = {"kind": kind, "a": pair[0], "b": pair[1], "actor": actor, "at": _now(), "note": note or "", **extra}
+    d.setdefault(name, {})[k] = rec
+    _save(d)
+    log_op("coord:" + {"fixes": "fix", "drops": "drop"}[name], actor, [], note or "", dict(rec), None)
+    _reopen(k)
+    return rec
+
+
+def fix(kind, pair, target, actor, note=""):
+    """**정정**(B196 ②) — 상위가 맞다: 그 상위 아래에서 이 ref 표기는 `target`(골격 노드 canonical) · 재연결 · 다음 인입이 그 노드에."""
+    if not target:
+        raise AckRefused("정정할 노드가 없다 — r <줄> <후보 번호|이름>")
+    return _decide("fixes", kind, pair, actor, note, target=target)
+
+
+def drop(kind, pair, actor, note=""):
+    """**drop**(B196 ② — 사유 필수) — 그 쌍의 행은 붙이지 않는다(재연결이 다시 열지 않는다)."""
+    if not (note or "").strip():
+        raise AckRefused("drop은 사유가 있어야 한다 — d <줄> <사유>")
+    return _decide("drops", kind, pair, actor, note)
+
+
+def _reopen(k):
+    """처분 뒤 그 쌍의 보류 행은 다시 시도할 거리다 — 지난 시도의 지문을 걷는다."""
+    q, hit = store.read(store.QUEUE, []), False
+    for x in q:
+        pr = (x.get("payload") or {}).get("pair")
+        if x.get("kind") == "orphan_anchor" and pr and key(pr["kind"], (pr["up"], pr["ref"])) == k:
+            x.pop("last_fp", None)
+            hit = True
+    if hit:
+        store.write(store.QUEUE, q)
+
+
 def _save(d):
     store.atomic_write_bytes(path(), (json.dumps(d, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
@@ -64,20 +122,24 @@ def _now():
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
-def ack(kind, pair, actor, note=""):
-    """쌍 하나를 확인한다 — `(기록, 종결한 큐 항목 수)`. 지금 큐에 그 쌍이 없으면 거부(지어낸 쌍을 남기지 않는다)."""
+def ack(kind, pair, actor, note="", seen=False):
+    """쌍 하나를 확인한다 — `(기록, 종결한 큐 항목 수)`. 지금 큐에 그 쌍이 없으면 거부(지어낸 쌍을 남기지 않는다) — `seen`(좌표 단계가
+    이 문서에서 본 쌍 · B196 ②)이면 큐 앞이라도 받는다."""
     if not actor:
         raise AckRefused("행위자가 없다 — --actor <이름>")
     k = key(kind, pair)
     items = [x for x in store.read(store.QUEUE, []) if x.get("kind") == KIND and key_of(x.get("payload")) == k]
-    if not items:
+    if not items and not seen:
         raise AckRefused(f"큐에 그 쌍이 없다 — {kind} '{pair[0]}' · '{pair[1]}' "
                          f"(python run.py platform queue {KIND} 의 쌍을 그대로 준다)")
     d = load()
     rec = {"kind": kind, "a": pair[0], "b": pair[1], "actor": actor, "at": _now(), "note": note or "",
            "docs": sorted({x.get("doc_id") for x in items if x.get("doc_id")})}
+    for other in ("fixes", "drops"):
+        (d.get(other) or {}).pop(k, None)
     d["pairs"][k] = rec
     _save(d)
+    _reopen(k)
     n = store.resolve_item(KIND, lambda pl: key_of(pl) == k, actor=actor, decision=DECISION,
                            at=rec["at"], note=rec["note"])
     return rec, n

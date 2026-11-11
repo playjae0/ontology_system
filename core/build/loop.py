@@ -240,12 +240,14 @@ def fallback_untouched(b, cfg, items, touched, ref, ref_g, prov, doc_id, evidenc
             done.append((nid, rel))
             from core.build.heading import fallback_path
             _lg.attach(rows.get(nid), rel, other, fallback_path(depth), "←" if fwd else "→")
+            _lg.mark_link(rows.get(nid), "belongs_fallback" if (rows.get(nid) or {}).get("belongs_to") else "rel_fallback")
             continue
         rel = _fallback_attach(b, cfg, graph, nid, ref, ref_g, prov, doc_id,
                                evidence_chunk=evidence_chunk)
         if rel:
             done.append((nid, rel))
             _lg.attach(rows.get(nid), rel, coord, "폴백", "←")
+            _lg.mark_link(rows.get(nid), "belongs_fallback" if (rows.get(nid) or {}).get("belongs_to") else "rel_fallback")
     return done
 
 
@@ -471,6 +473,10 @@ def h_entity(value, spec, ctx):
                                       at=(st.get("locator"), st.get("field")),   # 판정 재생의 자리 (B106 ②)
                                       owner=owner, row=ctx.record, field=st.get("field"))   # 판단 재료(B181 ②)
     _ledger_entity(st, value, lay, eb.last)
+    _ov = (ctx.record or {}).get(of) if of else None
+    if of and oid is None and st["b"].ledger is not None and _ov not in (None, "") and not _blank(_ov):
+        from core.build import ledger as _lg      # 소유자 칸에 값이 있는데 풀리지 않았다(B196 ④ — 빈 칸은 표지 없음)
+        _lg.mark_link(st["b"].ledger.rows[-1], "owner_unresolved")
     if eb is not st["b"]:
         st["external"][st["field"]] = eb.g
     if nid is not None:
@@ -482,6 +488,11 @@ _VERDICT = {"match": "match", "new": "new", "uncertain": "uncertain",
             "gate_reject": "gate_reject", "orphan": "orphan",   # orphan — 골격 밖 골격 카테고리 (B94 ③)
             "mention": "mention",                              # 다른 공정 언급 — 관련 링크 (B113 ①)
             "blank": "blank"}                                  # 빈칸 표시 — 개체 0 (B113 ②)
+
+
+def _blank(v):
+    from parser.normalizer import null_marker
+    return null_marker(v)
 
 
 def _ledger_entity(st, surface, layer, last, guess=None):

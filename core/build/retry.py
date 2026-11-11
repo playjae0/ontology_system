@@ -516,7 +516,19 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     #
     # 재시도가 존재하는 이유는 **그래프가 자랐기 때문**이지 매칭이 느슨해졌기
     # 때문이 아니다(§4.7-5). anchor는 골격 카테고리 노드(Tier1 · 잠정) 한정이다(문서 1 D4 · 잠정이 서면 거둔다 — B182 ④).
+    gi, pr = pl.get("gate"), pl.get("pair")             # 문에 걸린 보류(B196 ①②) — 사람 답대로만 다시 잇는다
+    if pr is not None:
+        return _retry_pair(pl, item, pr, graphs, cfgs, dic)
+    if gi is not None:
+        from core.state import provisional_hand as PH
+        d = PH.decided(PH.decisions(), surface, gi.get("parent"))
+        if d == PH.DROPPED:
+            return False
     ref, rlay, rg = _tier1(surface, category, graphs, dic)
+    if ref is None and gi is not None and d == PH.SEEDED:
+        from core.build import provisional             # 사람이 「새로」 — 세우는 손 하나로 세우고 그 행들을 잇는다
+        ref, rlay, rg = provisional.seed_at(graphs, cfgs, dic, item.get("doc_id"), surface, gi.get("parent"),
+                                            pl.get("provenance"), gi)
     if ref is None:
         # **좌표 학습 기록**(B101 ② · B113 ③) — LLM이 채택한 표기는 인입이 바로 쓴다 · 재연결도 같은 기록을 본다
         from core.state import surface_book
@@ -536,6 +548,26 @@ def _retry_anchor(pl, item, graphs, cfgs, dic):
     for _ent in (pl.get("items") or [pl]):
         n += _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfg, did, b0)
     store.drop(item["kind"], lambda p: p == pl)         # self-heal
+    return True
+
+
+def _retry_pair(pl, item, pr, graphs, cfgs, dic):
+    """**쌍 어긋남 보류**(B196 ②) — 확인이면 ref 자리 · 정정이면 그 노드 · drop · 답 없음은 남긴다(LLM 0)."""
+    from core.state import coord_acks
+    tag, rec = coord_acks.answers().get(coord_acks.key(pr["kind"], (pr["up"], pr["ref"])), (None, None))
+    if tag == "ack":
+        ref, rlay, rg = _tier1(pl.get("surface"), pl.get("category"), graphs, dic)
+    elif tag == "fix":
+        ref, rlay, rg = _tier1(rec.get("target"), pl.get("category"), graphs, dic)
+    else:
+        return False
+    if ref is None:
+        return False
+    did = item.get("doc_id")
+    b0 = _builder(rg, cfgs[rlay], did, rlay, dic)
+    for _ent in (pl.get("items") or [pl]):
+        _land_anchor_entry(_ent, ref, rlay, rg, graphs, cfgs, cfgs[rlay], did, b0)
+    store.drop(item["kind"], lambda p: p == pl)
     return True
 
 
@@ -706,8 +738,11 @@ def _land_anchor_entry(pl, ref, rlay, rg, graphs, cfgs, cfg, did, b0):
     for d, lay2, eb2, nid2 in rows:               # 재시도도 판정이다 — 그 문서 대장의 같은 키 행에 (B107 ③)
         _ledger(did, prov, d, lay2, eb2, attached=att.get(nid2))
     for a in pl.get("pending_attrs") or []:
-        b = _builder(rg, cfg, did, rlay, b0.dict)
-        b.put_attribute(ref, a["attr_name"], a["value"], a.get("context") or {},
+        # 값은 그 행의 대상 열(`attach_to_field` — 되살린 개체)에 · 대상 열이 없는 재료만 좌표에(B196 ② — 확인 뒤 재연결이 인입과 같은 자리에)
+        tgt = revived.get(a.get("attach_to_field")) or ref
+        tg = next((g for g in graphs.values() if tgt in g.nodes), rg)
+        b = _builder(tg, cfgs.get(tg.layer, cfg), did, tg.layer, b0.dict)
+        b.put_attribute(tgt, a["attr_name"], a["value"], a.get("context") or {},
                         a.get("provenance"), bool(a.get("context")))
         b.flush()
         n += 1

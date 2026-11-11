@@ -213,12 +213,13 @@ def _step_stops(res, sel, row, ask=True):
         return True
     _ct = _rep.get("coord_tag") or {}
     _cp = _rep.get("coord_pairs") or {}             # 판정 전 좌표 쌍 (B105 ③ — 이 관문에서 멈추면 LLM 0)
-    if not SCR._step_gate(2, prose=prose, ask=ask, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
-                      f"{SCR.provisional_cells(res.envelope, ask)} · "
+    _pc, _pbody = SCR.provisional_cells(res.envelope, ask)      # 골격 칸 머리 줄 · 보이기만 하는 표(B196 ③)
+    if not SCR._step_gate(2, prose=prose, ask=ask, body=_pbody, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
+                      f"{_pc} · "
                       + (f"목록 밖(기억) {_ct['기억_종수']}종 — LLM 0 · " if _ct.get("기억_종수") else "")
                       + f"LLM 호출 {_ct.get('호출', 0)} · "
                       f"좌표 쌍 어긋남 {_cp.get('쌍', 0)}쌍({_cp.get('행', 0)}행)",
-                      ask_fn=lambda: PA.gate(res.envelope)):     # 잠정 줄마다 승격 · 합침 · 그대로(B184 ③)
+                      ask_fn=lambda: PA.gate(res.envelope)):     # 문에 걸린 표기 · 쌍 어긋남마다 처분(B184 ③ · B196 ③)
         row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
         return True
     if prose:

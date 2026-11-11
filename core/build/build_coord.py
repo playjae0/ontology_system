@@ -194,10 +194,16 @@ class CoordMixin:
                 defer.append(item)
             return None, None
 
+        cp = None if self.pair_off or category != COORD_CATEGORY else self.coord_pair.get((prov, surface))
+        if cp:                                    # 쌍 어긋남 — 사람 확인 전(B196 ②) · ref가 골격에 있어도 붙이지 않는다
+            self.anchor_hold = cp["why"]
+            return _hold(f"{cp['why']} — '{cp['up']}' · '{surface}'",
+                         {"pair": {"kind": cp["kind"], "up": cp["up"], "ref": cp["ref"]}})
         if row_hold and not any(not g.get(n).get(PROVISIONAL) for n in tier1):
             # 앞 패스가 이 행을 보류했다(B182 — 같은 이름이 다른 행에서 잠정으로 섰어도 이 행의 자리는 아니다 · 사람이 고정한 골격은 그대로)
             self.anchor_hold = row_hold
-            return _hold(f"{row_hold} — '{surface}'", {})
+            gi = self.coord_gate.get((prov, surface))         # 문에 걸린 행(B196 ①) — 자리 · 판단 · 후보를 재료에
+            return _hold(f"{row_hold} — '{surface}'", {"gate": gi} if gi else {})
         if len(tier1) == 1:
             # **해소된 좌표도 문서 버퍼에 싣는다**(문서 4 §4.2 Pass 1) — 버퍼는
             # `정규화 표면형 → node_id` 맵이고 anchor·entity를 **둘 다** 담는다.

@@ -99,6 +99,22 @@ def hold_coords(on=True):
     _KN.apply()
 
 
+def say_new(*pairs, actor="시험"):
+    """**사람이 「새로」**(B196 ① — 문) — `(표기, 부모 이름)`마다 세움 기록 · 그 표기는 문을 지나 잠정 골격 노드로 선다(B182 기계를
+    재는 시험 몫 — 사람 없는 실행은 세우지 않는다)."""
+    from core.state import provisional_hand as _PH
+    for s, up in pairs:
+        _PH.seed(actor, s, up)
+
+
+def say_new_env(env, actor="시험"):
+    """그 봉투에서 문에 걸릴 표기 전부에 「새로」(계획 `provisional.preview` — 쓰기 0) · 돌려주는 것은 `(표기, 부모)` 목록."""
+    from core.build import provisional as _PV
+    got = [(e["surface"], e.get("up_name")) for e in _PV.preview(env) if e.get("hold") == _PV.HOLD_HUMAN]
+    say_new(*got, actor=actor)
+    return got
+
+
 # ── 테스트 전용 층 덧칠 (B90 · B91 — 두 스위트가 같은 바닥에서 돈다) ─────────────
 OV = json.loads((ROOT / "tests/fixtures/layers_b90/overlay.json").read_text(encoding="utf-8"))
 

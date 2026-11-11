@@ -69,6 +69,12 @@ def _orphan_next(doc_id):
     items = [x for x in store.read(store.QUEUE, [])
              if x.get("kind") == "orphan_anchor"
              and (doc_id is None or x.get("doc_id") == doc_id)]
+    gated = [x for x in items if {"gate", "pair"} & set(x.get("payload") or {})]      # 골격 칸의 문 · 쌍 어긋남(B196)
+    if gated:
+        print(f"   골격 칸 보류 {len(gated)}표기 — 사람 확인 전(문에 걸린 표기 · 쌍 어긋남): "
+              f"{[(y.get('payload') or {}).get('key') for y in gated[:3]]}")
+        print("   ▶ 다음 줄 — 처분: python run.py ops review all --actor <이름> → python run.py ops relink all --actor <이름> --apply")
+    items = [x for x in items if x not in gated]
     for x in items[:1]:                  # 표기가 여럿이어도 처방은 하나다
         pl = x.get("payload") or {}
         print(f"   보류 {len(items)}표기 — 골격 밖 좌표는 드랍이 아니다"
@@ -417,19 +423,19 @@ def value_cells(row, places=None, roles=None, prose=True, wide=True, secs=None, 
 
 
 def provisional_cells(env, step=False):
-    """좌표 단계 줄의 잠정 칸(B182 ③) — `잠정 n종(부모 미정 m)` · `step`(`--step`)이면 잠정 표(표기 · 부모 · 단 · 행 수 · 합칠 후보)를
-    먼저 낸다 — **보이기만**(승격 · 합침 · 그대로 처분은 사람 몫). 계획은 구축 앞 패스와 같은 함수(`provisional.preview` — 쓰기 0)."""
-    from core.build import provisional
-    got = provisional.preview(env)
-    if step and got:
-        t = _screen.Table([("잠정 골격 노드", 28, False), ("부모", 20, False), ("단", 6, False), ("행 수", 6, True),
-                           ("합칠 후보", 20, False)], flex=0)
-        for e in got:
-            t.row([e.get("canonical") or e["surface"], e.get("up_name") or ("부모 미정" if e["act"] != "hold" else "—"),
-                   e.get("tier") or ("보류 " + e["hold"] if e["act"] == "hold" else "미정"), e["rows"],
-                   " · ".join(e.get("near") or []) or "—"], [None, "aux", "aux", "aux", "aux"])
-        t.end()
-    return provisional.preview_text(got)
+    """좌표 단계의 골격 칸(B182 ③ · B196 ③) — `(줄의 칸, 머리 아래 줄들)`. 칸은 `잠정 n종(부모 미정 m) · 보류 k(사유)` · 머리 아래는
+    골격 칸 머리 줄(`--step`이 아니어도) · `step`이면 보이기만 하는 표 둘(LLM이 같다고 한 표기 · ref 빈 행 — 처분할 줄은 물음이 낸다).
+    계획은 구축 앞 패스와 같은 함수(`skeleton_review.review` — 쓰기 0)."""
+    from core.build import provisional, skeleton_review
+    rv = skeleton_review.review(env)
+    body = ["   " + skeleton_review.head_line(rv["counts"])]
+    if step and rv["llm_same"]:
+        from core.state.bootstrap import coord_layer
+        body.append(f"   LLM이 같다고 한 표기(보이기만 — 틀렸으면 python run.py ops learn-reject {coord_layer()} <표기> --actor <이름>):")
+        body += [f"     {x['from']} → {x['to']} · 행 {x['rows']}" for x in rv["llm_same"]]
+    if step and rv["lowres"]:
+        body.append("   ref 빈 행(상위로 붙음 · 보이기만): " + " · ".join(f"{up} {n}행" for up, n in rv["lowres"]))
+    return provisional.preview_text(rv["plan"]), body
 
 
 def plan_body(info):
@@ -529,13 +535,15 @@ def build_screen(step=False, stage=None, prose=False):
         go = _step_gate(4, prose=prose, ask=step, saved=True, detail=f"새 노드(auto) {info.get('auto', 0)} · "
                         f"LLM 호출 {u2['calls']:,}")
         _hf = f" · 제목 개체 폴백 {info['제목폴백']:,}행" if info.get("제목폴백") else ""   # 상위 사슬 (B115 ③)
+        from core.build import ledger as _lg196
+        _lk = info.get("연결") or _lg196.link_counts([])
         go = _step_gate(5, prose=prose, ask=step and go, saved=True, detail=f"엣지 +{info.get('엣지', 0)} · "
-                        f"저해상도 부착 {info.get('저해상도', 0)}행{_hf}") and go
+                        f"좌표 폴백 {info.get('저해상도', 0)} · ref 빈 행 {_lk['ref 빈 행']}{_hf}") and go
         _step_gate(6, head or "큐 0", prose=prose, ask=step and go, saved=True)
         _orphan_next(info.get("doc_id"))
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
-              f"저해상도 부착 {info.get('저해상도', 0):,}행{_hf}"
+              f"{_lg196.link_line(_lk, info.get('저해상도', 0))}{_hf}"
               + (f" · 큐: {head}" if head else " · 큐 0")
               + f" · {_screen.usage_pair(doc_since(), '이 문서')}")
         if info.get("사람"):                      # 사람 후보 한 줄 (B140 ③)

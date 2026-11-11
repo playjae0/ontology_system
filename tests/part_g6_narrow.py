@@ -789,6 +789,8 @@ _e1, _e2 = _cost144(60), _cost144(240)
 show("B144 ⓔ 비용 — 값 10개에서 같은 카테고리 노드가 60 → 240이어도 설정 읽기 · 골격 조회 횟수가 같다(노드 수에 비례하지 않는다)",
      _e1 == _e2 and _e1["설정"] <= 2 * 10, f"노드 60 {_e1} · 240 {_e2}")
 _pe144("B144PG", "노칭 프레스", "노칭 피치")
+from core.state import coord_acks as _CA144                  # noqa: E402
+_CA144.ack("상위", ("스태킹", "노칭"), "시험", seen=True)       # 사람이 쌍 확인(고침 B196 ② — CP01 R14는 확인 전 보류)
 _rg144 = _sp72.run([sys.executable, "run.py", "ingest-file", str(ROOT / "tests/fixtures/raw/CP01.xlsx"), "--doc-type", "cp",
                     "--allow-mock"], cwd=str(ROOT), capture_output=True, text=True, stdin=_sp72.DEVNULL,
                    env={**_LL74.isolated_env(), "USE_MOCK": "1"}, timeout=600)

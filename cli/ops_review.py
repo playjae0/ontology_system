@@ -5,6 +5,7 @@
 
 | 묶음 | 처분(손) |
 |---|---|
+| 골격 칸 — 문에 걸린 표기 · 쌍 어긋남(B196 ③ — 문서를 넘어 한 줄) | 합침 · 새로 · 승격 · drop · 확인 · 정정(`cli/provisional_ask.decide` — 좌표 단계와 같은 함수) |
 | 잠정 골격 노드(좌표 층 · 「봄」은 접어 둔다) | 승격 · 합침 · 그대로(`cli/provisional_ask.decide` — 인입 `--step`과 같은 함수) |
 | 애매(`uncertain_match` — 잠정 노드 것은 첫 묶음) | 합침 · 별개 · 건너뜀(`ops.merge` · `ops.confirm`) |
 | 자리 추정(유일 후보 · 「맞음」은 접어 둔다) | 맞음(확인 표지) · 떼기(보류로 — `place_guess.detach`) |
@@ -85,7 +86,8 @@ def holds(layer=None):
     seen = set()
     for x in store.read(store.QUEUE, []):
         pl = x.get("payload") or {}
-        if x.get("kind") != "orphan_anchor" or x.get("resolution") or pl.get("category") != COORD_CATEGORY:
+        if x.get("kind") != "orphan_anchor" or x.get("resolution") or pl.get("category") != COORD_CATEGORY \
+                or pl.get("gate") is not None or pl.get("pair") is not None:      # 문 · 쌍은 골격 칸 묶음(B196 ③)
             continue
         c = sorted(names.get(key(pl.get("surface") or ""), ()))
         if c and pl.get("surface") not in seen:
@@ -120,12 +122,18 @@ def _cut(s, n):
 
 
 def tables(b):
-    """묶음 넷의 표 — 머리 · 줄(번호는 묶음 안에서)."""
+    """묶음의 표 — 머리 · 줄(번호는 묶음 안에서)."""
+    from cli import provisional_ask
     rows, folded = b["잠정"]
-    print(f"■ 인입 뒤 한 화면 — 잠정 골격 노드 {len(rows):,}" + (f"(봄 {folded:,} 접음)" if folded else "")
+    gate = b["골격 칸"]
+    print(f"■ 인입 뒤 한 화면 — 골격 칸 {len(gate):,}(문에 걸림 {sum(1 for r in gate if r['kind'] == 'gate'):,} · 쌍 어긋남 "
+          f"{sum(1 for r in gate if r['kind'] == 'pair'):,}) · 잠정 골격 노드 {len(rows):,}" + (f"(봄 {folded:,} 접음)" if folded else "")
           + f" · 애매 {len(b['애매']):,} · 자리 추정 {len(b['추정'][0]):,}"
           + (f"(맞음 {b['추정'][1]:,} 접음)" if b["추정"][1] else "") + f" · 후보 있는 보류 {len(b['보류']):,}"
           + (f" · 같은 노드 엣지(표기가 다른 것) {len(b['같은 노드']):,}" if b["같은 노드"] else ""))
+    if gate:
+        print("  ── 골격 칸 — 문에 걸린 표기(표기 + 들어온 자리) · 쌍 어긋남 — 문서를 넘어 한 줄 · 행 수는 합")
+        provisional_ask.show_rows(gate)
     if rows:
         print(f"  ── 잠정 골격 노드 — {'#':>3} {'표기':<18} {'부모':<14} {'단':<6} {'행 수':>4} {'합칠 후보':<16} 처음 본 문서")
         for i, r in enumerate(rows, 1):
@@ -200,8 +208,18 @@ def _hold(r, ans, actor):
     return "고름", False
 
 
+def skeleton_cells(layer=None):
+    """골격 칸 묶음(B196 ③) — 좌표 층만 · 문에 걸린 표기 + 쌍 어긋남(`skeleton_review` — 좌표 단계와 같은 줄)."""
+    from cli import provisional_ask
+    from core.build import skeleton_review as SR
+    from core.state.bootstrap import coord_layer
+    if layer not in (None, "all", coord_layer()):
+        return []
+    return provisional_ask.rows_of({"held": SR.held_from_queue(), "pairs": SR.pairs_from_queue()})
+
+
 def bundles(layer):
-    return {"잠정": provisionals(layer), "애매": items(layer), "추정": guesses(layer), "보류": holds(layer),
+    return {"골격 칸": skeleton_cells(layer), "잠정": provisionals(layer), "애매": items(layer), "추정": guesses(layer), "보류": holds(layer),
             "같은 노드": same_nodes(layer)}
 
 
@@ -210,7 +228,7 @@ def run(a, ask=None):
     from cli import _screen, provisional_ask
     b = bundles(a.layer)
     tables(b)
-    n = len(b["잠정"][0]) + len(b["애매"]) + len(b["추정"][0]) + len(b["보류"])
+    n = len(b["골격 칸"]) + len(b["잠정"][0]) + len(b["애매"]) + len(b["추정"][0]) + len(b["보류"])
     if not n:
         return 0
     if ask is None and not sys.stdin.isatty():
@@ -218,9 +236,14 @@ def run(a, ask=None):
               f"python run.py ops review {a.layer} --actor {a.actor}")
         return 0
     ask = ask or (lambda q: _screen.answer(q, "text", eof=""))
-    done = {"잠정": {k: 0 for k in provisional_ask.DONE}, "애매": {"합침": 0, "별개": 0, "건너뜀": 0},
+    done = {"골격 칸": {k: 0 for k in provisional_ask.DONE}, "잠정": {k: 0 for k in provisional_ask.DONE},
+            "애매": {"합침": 0, "별개": 0, "건너뜀": 0},
             "추정": {"맞음": 0, "떼기": 0, "건너뜀": 0}, "보류": {"고름": 0, "그대로": 0}}
     rebuild = False
+    for r in b["골격 칸"]:
+        did, rb = provisional_ask.decide(r, a.actor, ask, indent="  ")
+        done["골격 칸"][did] += 1
+        rebuild |= rb
     for r in b["잠정"][0]:
         did, rb = provisional_ask.decide(r, a.actor, ask, indent="  ")
         done["잠정"][did] += 1
@@ -241,7 +264,10 @@ def run(a, ask=None):
         did, rb = _hold(r, (ask(q) or "").strip(), a.actor)
         done["보류"][did] += 1
         rebuild |= rb
-    print("■ 검토 끝 — " + " | ".join(f"{k} " + " · ".join(f"{x} {v:,}" for x, v in d.items()) for k, d in done.items()))
+    print("■ 검토 끝 — " + " | ".join(f"{k} " + " · ".join(f"{x} {v:,}" for x, v in d.items() if v or x == "건너뜀")
+                                     for k, d in done.items()))
+    if sum(v for x, v in done["골격 칸"].items() if x != "건너뜀") or done["보류"]["고름"]:
+        print(f"  ▶ 다음 줄 — 처분한 보류 행을 잇는다(추출 LLM 0): python run.py ops relink all --actor {a.actor} --apply")
     if rebuild:
         print("  ▶ 재구축이 필요하다(합친 표기의 아래 노드 이름이 바뀐다) — python run.py rebuild")
     return 0
