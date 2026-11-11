@@ -452,11 +452,14 @@ store.write(store.OPS_LOG, [r for r in store.read(store.OPS_LOG, []) if r.get("o
                             or (r.get("detail") or {}).get("surface") != "노칭공정V"])       # 옛 노드처럼 — 세움 기록 없음
 with contextlib.redirect_stdout(io.StringIO()):
     PH196.keep("시험", _nv["id"])
-    init.init(fresh_=True)
-    for _l in ("process", "quality"):
+    for _l in ("process", "quality"):           # 재구축의 그래프 비움 — 사람 판단 기록(②등록)은 남는다
+        _gg = open_graph(_l)
+        _gg.nodes.clear()
+        _gg.edges.clear()
+        _gg.save()
         bootstrap(_l, echo=False)
 _av = _run196(_env196("B196V", [_rec196("V1", "노칭공정V")]))
-show("B196 ⓔ 「봄」 기록(세움 기록 없이 — 이 회차 전에 선 잠정 노드) → fresh 뒤 다시 넣어도 그 노드가 선다(재구축 동치)",
+show("B196 ⓔ 「봄」 기록(세움 기록 없이 — 이 회차 전에 선 잠정 노드) → 그래프를 비우고(재구축) 다시 넣어도 그 노드가 선다",
      bool(_nv) and bool(_pv196("노칭공정V")) and _av["V1"].get("node_id") == _pv196("노칭공정V")["id"],
      f"전 {bool(_nv)} · 뒤 {bool(_pv196('노칭공정V'))} · V1 {_av['V1'].get('canonical')}")
 
