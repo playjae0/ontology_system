@@ -7,8 +7,8 @@
 | drop한 제목 아래 청크(추출하지 않는다) | `dropped_locators` |
 | 청크마다 확정한 공정 쌍 `(상위, 하위 또는 None)` · 끝 줄 | `pairs` · `pair_line` |
 | 본문 값 중 겸 단에 설 것([5/8] 머리) | `body_items` → `also_gate.scan` |
-| [5/8] 쌍별 예고(표 [4/7]도 같은 함수) — 붙을 자리 · 연결 · 판정 예정 | `preview` · `preview_lines` |
-| 쓰기 전 판정 결과 — 쌍마다 match · new · uncertain · 문 | `verdicts` · `verdict_lines` |
+| [5/8] 쌍별 예고(표 [4/7]도 같은 함수) — 붙을 자리(판정 전) · 연결 · 판정 예정 · 화면은 쌍마다 요약 · 전부는 md(B199 ①) | `preview` · `preview_lines` |
+| 쓰기 전 판정 결과 — 쌍마다 match · new · uncertain · 문 · 자리가 바뀐 값(판정 전 이름 부모 ≠ 실제 — B199 ②) | `verdicts` · `moved` · `verdict_lines` |
 
 판단은 문의 판단(`also_gate.scan` — 판정 함수 그대로 · 구축이 다시 부르지 않는다) · 그 밖은 사전 · 관문까지(LLM 0). 코드에 층 어휘 0.
 """
@@ -213,12 +213,14 @@ def preview(b, env, candidates=None, loc_of=None, outline=None, items=(), schema
                         ln["plan"] = f"{'drop' if held == 'drop' else '보류'} — 제목 {hd['target']['name']}(골격 단의 문)"
                     groups.setdefault(pm.get(loc), []).append(ln)
     for k, rows in groups.items():
-        seen, keep = set(), []
+        seen, keep = {}, []
         for r in rows:
             kk = (norm(r["surface"]), r["category"], r["at"])
             if kk not in seen:
-                seen.add(kk)
+                seen[kk] = r
+                r["n"] = 0
                 keep.append(r)
+            seen[kk]["n"] += 1                         # 같은 판정 단위가 나온 행 · 청크 수(요약의 「행 수 큰 차례」 — B199 ①)
         groups[k] = keep
     return groups
 
@@ -257,17 +259,45 @@ def _line(b, surface, category, pair, belongs, tgt_cat=None):
     return {"surface": surface, "category": category or "—", "at": at, "rel": rel or "—", "plan": plan}
 
 
-def preview_lines(groups, indent="   "):
-    """쌍별 예고 줄 — 묶음 머리 `상위 › 하위 (청크 n)` · 줄 = 표기 · 카테고리 · 붙을 자리 · 연결 · 판정 예정(칸을 자르지 않는다)."""
+#: 요약에 내는 판정 대상 수(쌍마다 — 행 수 큰 차례 · 나머지는 md · B199 ①)
+TOP = 3
+#: 판정 예정의 갈래 — 요약 줄의 칸(사전 연결 · 새 노드 · 판정(후보 있음) · 그 밖)
+PLAN_KINDS = (("사전 연결", "사전 연결"), ("새 노드", "후보 0 → 새 노드"), ("판정(후보 있음)", "→ 판정"))
+
+
+def _head(pair):
+    up, low = pair or (None, None)
+    return "좌표 없음" if up is None else (f"{up}{ARROW}{low}" if low and low != "drop" else f"{up} {ONLY}")
+
+
+def _kind(plan):
+    return next((k for k, mark in PLAN_KINDS if str(plan).endswith(mark) or plan == mark), "그 밖")
+
+
+def preview_lines(groups, indent="   ", full=False):
+    """쌍별 예고 줄 — `full`이면 전부(md · 묶음 머리 `상위 › 하위 (값 n)` · 줄 = 표기 · 카테고리 · 붙을 자리(판정 전) · 연결 · 판정
+    예정 · 칸을 자르지 않는다) · 아니면 쌍마다 한 줄(값 n — 사전 연결 a · 새 노드 b · 판정 c(후보 있음) · 그 밖 d) + 판정 대상 위
+    `TOP`(행 수 큰 차례 · 한 줄 — B199 ①)."""
     out = []
     for pair, rows in sorted(groups.items(), key=lambda kv: (kv[0] is None, str(kv[0]))):
-        up, low = pair or (None, None)
-        head = "좌표 없음" if up is None else (f"{up}{ARROW}{low}" if low and low != "drop" else f"{up} {ONLY}")
-        out.append(f"{indent}{head} (값 {len(rows):,})")
-        w = [max([len(str(r[k])) for r in rows] + [1]) for k in ("surface", "category", "at", "rel")]
+        if full:
+            out.append(f"{indent}{_head(pair)} (값 {len(rows):,})")
+            w = [max([len(str(r[k])) for r in rows] + [1]) for k in ("surface", "category", "at", "rel")]
+            for r in rows:
+                out.append(f"{indent}  {str(r['surface']).ljust(w[0])}  {str(r['category']).ljust(w[1])}  붙을 자리(판정 전) "
+                           f"{str(r['at']).ljust(w[2])}  {str(r['rel']).ljust(w[3])}  {r['plan']}")
+            continue
+        cnt = {}
         for r in rows:
-            out.append(f"{indent}  {str(r['surface']).ljust(w[0])}  {str(r['category']).ljust(w[1])}  붙을 자리 "
-                       f"{str(r['at']).ljust(w[2])}  {str(r['rel']).ljust(w[3])}  {r['plan']}")
+            cnt[_kind(r["plan"])] = cnt.get(_kind(r["plan"]), 0) + 1
+        kinds = [k for k, _m in PLAN_KINDS] + ["그 밖"]
+        out.append(f"{indent}{_head(pair)}  값 {len(rows):,} — "
+                   + " · ".join(f"{k} {cnt.get(k, 0):,}" for k in kinds if cnt.get(k) or k != "그 밖"))
+        judge = sorted((r for r in rows if _kind(r["plan"]) == PLAN_KINDS[2][0]), key=lambda r: -r.get("n", 1))
+        if judge:
+            more = len(judge) - TOP
+            out.append(f"{indent}  판정 — " + " · ".join(f"{r['surface']}({r['category']})" for r in judge[:TOP])
+                       + (f" · 그 밖 {more:,}" if more > 0 else ""))
     return out
 
 
@@ -291,13 +321,43 @@ def verdicts(rows, pm):
     return out, unc
 
 
-def verdict_lines(out, unc, indent="   "):
+def moved(rows, pm):
+    """**자리가 바뀐 값**(B199 ②) — 판정 전 이름 부모(쌍의 노드 › 소속) ≠ 판정 뒤 실제 이름 부모(붙은 노드 canonical의 부모) ·
+    쌍마다 `[{surface, before, after, path}]`(같은 표기 · 같은 두 자리는 한 번 · `n` = 나온 행 수). 좌표 없는 행은 뺀다."""
+    from core.state import catalog
+    sep = catalog.sep()
+    out, seen = {}, {}
+    for r in rows or []:
+        if r.get("role") != "entity" or r.get("verdict") not in ("match", "new", "uncertain") or not r.get("target"):
+            continue
+        k = pm.get(r.get("locator"), (None, None))
+        up, low = k
+        node = low if low and low != "drop" else up
+        if node is None:
+            continue
+        before = sep.join(x for x in (node, r.get("belongs_to")) if x)
+        tgt = str(r["target"])
+        after = tgt.rsplit(sep, 1)[0] if sep in tgt else None
+        if after is None or norm(after) == norm(before):
+            continue
+        key = (k, norm(r.get("surface") or ""), before, after)
+        if key in seen:
+            seen[key]["n"] += 1
+            continue
+        seen[key] = {"surface": r.get("surface"), "before": before, "after": after, "path": r.get("path"), "n": 1}
+        out.setdefault(k, []).append(seen[key])
+    return out
+
+
+def verdict_lines(out, unc, indent="   ", moves=None):
+    """쌍마다 한 줄 — 값이 0인 쌍은 내지 않는다 · 자리가 바뀐 값의 수(B199 ②) · 애매 줄."""
     lines = []
     for k, c in sorted(out.items(), key=lambda kv: str(kv[0])):
-        up, low = k
-        head = "좌표 없음" if up is None else (f"{up}{ARROW}{low}" if low and low != "drop" else f"{up} {ONLY}")
-        lines.append(f"{indent}{head} — match {c['match']:,} · new {c['new']:,} · uncertain {c['uncertain']:,}"
-                     + (f" · 문에 걸림 {c['문']:,}" if c["문"] else ""))
+        if not any(c.values()):
+            continue
+        mv = len((moves or {}).get(k) or [])
+        lines.append(f"{indent}{_head(k)} — match {c['match']:,} · new {c['new']:,} · uncertain {c['uncertain']:,}"
+                     + (f" · 문에 걸림 {c['문']:,}" if c["문"] else "") + (f" · 자리 바뀜 {mv:,}" if mv else ""))
         for s, near, conf in unc.get(k) or []:
             lines.append(f"{indent}  uncertain {s} ~ {near or '—'}"
                          + (f" · 확신 {conf:.2f}" if isinstance(conf, (int, float)) else ""))
@@ -333,7 +393,7 @@ def plan_extra(env, candidates, loc2id, outline, run):
     items = run.get("also_items") or ()
     bi = body_items(b, env, candidates, loc_of, outline, items)
     return {"쌍별": preview(b, env, candidates, loc_of, outline, items),
-            "골격단": also_gate.scan(b, bi) if bi else []}
+            "골격단": also_gate.scan(b, bi) if bi else [], "doc_id": env.get("doc_id")}
 
 
 def pre_write(env, bld, notice, extract_only, run):
@@ -349,8 +409,11 @@ def pre_write(env, bld, notice, extract_only, run):
         pm.update({h["path"]: pm.get((first.get(h["id"]) or {}).get("source_locator"), (None, None))
                    for h in ol.get("headings") or []})
     out, unc = verdicts(bld.ledger.rows, pm)
+    mv = moved(bld.ledger.rows, pm)
     tot = {k: sum(c[k] for c in out.values()) for k in ("match", "new", "uncertain", "문")}
-    return notice({"단계": "판정결과", "줄": verdict_lines(out, unc), "합": tot, "판정까지": extract_only})
+    return notice({"단계": "판정결과", "줄": verdict_lines(out, unc, moves=mv), "합": tot, "판정까지": extract_only,
+                   "자리": [dict(x, pair=_head(k)) for k, xs in sorted(mv.items(), key=lambda kv: str(kv[0])) for x in xs],
+                   "doc_id": env.get("doc_id")})
 
 
 def hold_ledger(env, bld, run, doc_hash):

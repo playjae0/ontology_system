@@ -59,7 +59,7 @@ def _check_fields(rec, fields, prov, doc_id):
 
     스키마 밖 필드는 **값을 동봉해** `unknown_field` 큐로 간다(레코드는 어디에도
     저장되지 않으므로, 여기서 안 실으면 그 값은 영구 소실이다 — 카드 G5).
-    `optional` 미선언 필드의 부재는 `missing_field` 큐다. 둘 다 닫힌 20종 안이고
+    `optional` 미선언 필드의 부재는 `missing_field` 큐다. 둘 다 닫힌 19종 안이고
     **문서를 죽이지 않는다** — 문서 단위 실패는 파서 측 계약이다(C14).
     """
     loc = rec.get("source_locator")
@@ -91,7 +91,7 @@ def _context(holder, prov, doc_id):
     표면화한 뒤 그 필드만 버리고 전진한다. 한 필드의 형태 오류로 레코드 전체를 잃으면
     "조용히 버리지 않는다"가 반대 방향으로 깨지고, 죽어 버리면 나머지 행의 정상 지식까지
     통째로 사라진다. 새 kind를 만들지 않는다 — `missing_field`가 "필수 값 부재·계약 위반"을
-    이미 덮는다(CH3B 3.7 · 닫힌 20종).
+    이미 덮는다(CH3B 3.7 · 닫힌 19종).
     """
     c = holder.get("context")
     if c is None or isinstance(c, dict):

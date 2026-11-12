@@ -524,26 +524,56 @@ def facts(graph, node_ids, cfg, want=None):
             t = tpl.get(f"attr:{name}")
             if not t or val is None:
                 continue
-            for item in (val if isinstance(val, list) else [val]):
-                if not isinstance(item, dict) or item.get("value") is None:
-                    continue
-                pol = P.of_value(item)
-                if not P.keeps(pol, want):
-                    continue
-                line = t.format(node=n["canonical"], value=item["value"],
-                                prov=", ".join(item.get("provenance") or []))
-                tag = _ctx(item.get("context"), common=want is not None and pol is None)
+            kept = [it for it in (val if isinstance(val, list) else [val])
+                    if isinstance(it, dict) and it.get("value") is not None and P.keeps(P.of_value(it), want)]
+            for g in fold_values(kept):                # 같은 값이 극성만 다르면 한 줄(B199 ④)
+                line = t.format(node=n["canonical"], value=g["value"], prov=", ".join(g["provenance"]))
+                tag = ", ".join(x for x in [pols_label(g["pols"], common=want is not None)]
+                                + [f"{k}={v}" for k, v in sorted(g["context"].items())] if x)
                 out.append(f"[{tag}] {line}" if tag else line)
     return out
 
 
-def _ctx(ctx, common=False):
-    """값의 한정어 줄 — 극성은 표시 이름(골격 `AXIS_LABELS`) · 그 밖은 `키=값` · 물음에 극성이 걸렸는데 공통이면 「공통」."""
+def fold_values(items):
+    """**같은 값 접기**(B199 ④ — `show node` · 질의 값 줄 · 뷰어 노드 상세 한 함수) — 같은 칸의 값 항목 중 값과 극성 밖 context가
+    같으면 한 묶음 `[{context(극성 뺌), value, pols(공통 → 골격 축 차례), provenance}]` · 값 항목 꼴이 아닌 것은 뺀다(호출부가 따로 본다)."""
+    import json
     from core.build import polarity as P
-    ctx = dict(ctx or {})
-    pol = ctx.pop(P.CTX, None)
-    head = [P.label(pol)] if pol else (["공통"] if common else [])
-    return ", ".join(head + [f"{k}={v}" for k, v in sorted(ctx.items())])
+    axis = list(P.axis())
+    out, by = [], {}
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        ctx = dict(it.get("context") or {})
+        pol = ctx.pop(P.CTX, None)
+        key = (json.dumps(ctx, sort_keys=True, ensure_ascii=False), json.dumps(it.get("value"), sort_keys=True, ensure_ascii=False))
+        g = by.get(key)
+        if g is None:
+            g = by[key] = {"context": ctx, "value": it.get("value"), "pols": [], "provenance": []}
+            out.append(g)
+        if pol not in g["pols"]:
+            g["pols"].append(pol)
+        g["provenance"] += [x for x in it.get("provenance") or [] if x not in g["provenance"]]
+    for g in out:
+        g["pols"].sort(key=lambda v: -1 if v is None else (axis.index(v) if v in axis else len(axis)))
+    return out
+
+
+def pols_label(pols, common=False):
+    """극성 묶음의 표시 — 표시 이름(골격 `AXIS_LABELS`)을 ` · `로 · 공통 하나뿐이면 `common`일 때만 「공통」."""
+    from core.build import polarity as P
+    if list(pols) == [None]:
+        return "공통" if common else ""
+    return " · ".join("공통" if p is None else P.label(p) for p in pols)
+
+
+def value_text(g):
+    """접은 값 묶음 한 줄 — 극성 하나면 머리 `[양극]`(극성 밖 context와 함께) · 여럿이면 값 뒤 `(공통 · 양극 · 음극)` — `show node` ·
+    뷰어 노드 상세가 같은 글(B199 ④)."""
+    one = len(g["pols"]) == 1
+    head = [pols_label(g["pols"])] if one and g["pols"] != [None] else []
+    ctx_s = ", ".join(head + [f"{a}={b}" for a, b in sorted(g["context"].items())])
+    return (f"[{ctx_s}] " if ctx_s else "") + str(g["value"]) + ("" if one else f"  ({pols_label(g['pols'])})")
 
 
 # ---------------------------------------------------------------- 순서 파생 (규약 8)

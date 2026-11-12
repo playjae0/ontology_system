@@ -454,7 +454,7 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
         if join and keep_split is not None:
             pieces = [(part, False, CUT_HEAD) for part in keep_split(lines)]
         else:
-            pieces = _by_depth(lines, levels)
+            pieces = _absorb(_by_depth(lines, levels), CHUNK_MAX_CHARS // FLOOR_DIV)
         for i, (part, over, by) in enumerate(pieces, 1):
             meta = {**(c.get("meta") or {}), "char_cap_from": c["source_locator"], "char_cap_by": by,
                     "char_cap_part": [i, len(pieces)]}
@@ -469,6 +469,26 @@ def cap_chars(chunks, deeper, locator, keep_rows=None, keep_cap=None, keep_split
 
 #: 크기 나눔이 자른 경계(화면 「제목 경계 c · 행 경계 d」 · B197 ⑤)
 CUT_HEAD, CUT_ROW = "제목", "행"
+#: 혼자 넘는 행 옆 조각의 하한 = 상한 ÷ 이 수(B199 ⑥ — 3,000자면 300자)
+FLOOR_DIV = 10
+
+
+def _absorb(pieces, floor):
+    """**혼자 넘는 행 옆의 작은 조각**(B199 ⑥) — 혼자 상한을 넘는 조각(`over`) 바로 앞 · 뒤 조각이 하한 미만이면 그 조각에 붙인다
+    (한 청크의 조각들 — 같은 구간 · 순서 무손실) · 하한 이상이면 그대로 · 넘지 않는 조각끼리는 손대지 않는다."""
+    out = [list(p) for p in pieces]
+    i = 0
+    while i < len(out):
+        part, over, by = out[i]
+        if over:
+            if i > 0 and not out[i - 1][1] and _size(out[i - 1][0]) < floor:
+                out[i - 1:i + 1] = [[out[i - 1][0] + part, True, by]]
+                i -= 1
+                part = out[i][0]
+            if i + 1 < len(out) and not out[i + 1][1] and _size(out[i + 1][0]) < floor:
+                out[i:i + 2] = [[part + out[i + 1][0], True, by]]
+        i += 1
+    return [tuple(p) for p in out]
 
 
 def _anchor(lines, part, levels):

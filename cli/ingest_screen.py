@@ -230,7 +230,7 @@ def value_line(row):
 
 
 def row_printer(env=None, stage=None):
-    """대장 행 콜백 — 집계하고, 판단이 갈린 값만 찍는다(`-v`면 전부).
+    """대장 행 콜백 — 집계하고, `-v`면 값 줄을 찍는다(기본은 찍지 않는다 — B199 ① · 결과는 쌍별 판정 결과 · `show report`).
 
     **판정 행이 서는 대로 찍는다**(표 · 산문 같은 결 — B150 ①: 산문의 판정은 Pass 1이라 조각 부착 끝까지 모으면 줄이 한참
     없다가 쏟아진다) · 산문은 경로 칸에 걸린 시간(앞 값 행 이후 — 판정 호출 포함)을 함께 · 붙은 자리는 **조각 부착이 끝날 때**
@@ -255,7 +255,7 @@ def row_printer(env=None, stage=None):
             ln = (f"     └ {row.get('surface') or row.get('canonical')} · {info['rel']} {info['dir']} "
                   f"{info['other']} ({info['path']})")
             _LOG.info("붙은 자리 %s", ln.strip())
-            if not prose and (_screen.VERBOSE or _loud(row)):
+            if not prose and _screen.VERBOSE:                # 진행 줄은 -v일 때만(B199 ① — 기본은 쌍별 요약 · 판정 결과)
                 print(ln)
     from core.build import ledger as _lg
     _lg.ON_EDGE = on_edge
@@ -285,10 +285,12 @@ def row_printer(env=None, stage=None):
             TALLY["큐"] += 1
         now = time.monotonic()
         secs, clock["t"] = (now - clock["t"]) if prose else None, now
-        if _screen.VERBOSE or _loud(row):
+        if _screen.VERBOSE:                           # 진행 줄은 -v일 때만(B199 ① — 결과는 쌍별 판정 결과 · show report)
             show(row, secs)
             if prose:
                 shown.setdefault(row.get("locator"), []).append(row)
+        elif _loud(row):                              # 판단이 갈린 값은 명령 로그에 그대로(화면 0)
+            _LOG.info("값 %s", value_line(row).strip())
     # 위치 두 칸의 재료(B118 ③) — 봉투의 조각마다 `(시트, 경로 끝)` · 대장 행의 위치로 찾는다(새 판정 0)
     from core.build import extract_ctx as _xc
     pieces = [c for c in ((env or {}).get("chunks") or []) + ((env or {}).get("records") or [])

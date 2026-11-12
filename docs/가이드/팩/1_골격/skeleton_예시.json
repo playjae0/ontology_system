@@ -4,8 +4,7 @@
   "AXIS_LABELS": {"cathode": "양극", "anode": "음극"},
   "TREE": [
     {"조립": [
-      {"라미네이션": ["::cathode", "::anode",
-                      {"전극 공급 unit": "@split"}, "히터 unit", "커팅 unit"]},
+      {"라미네이션": ["전극 공급 unit", "히터 unit", "커팅 unit"]},
       {"폴딩": [{"@unordered": "분리막 공급 unit"},
                 "폴딩 unit", "폴딩 검사 unit"]},
       {"디개싱": ["@noflow", "진공 챔버 unit", "재실링 unit"]}

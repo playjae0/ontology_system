@@ -638,7 +638,13 @@ def table(doc_id, rows, res, env, cks, graphs, queue, nodes, run=None):
             "큐": ({"이번 실행": queue_text(q_new), "이전 실행이 남긴 것": queue_text(q_old)} if q_new is not None
                   else {"지금 이 문서의 것": queue_text(queue)}),
             "엣지 없는 노드": edgeless(rows, graphs, doc_id, names, skeleton, orphans),
-            "소속 이름": names, "고아": orphans, "제목 개체": heading_names(rows)}
+            "소속 이름": names, "고아": orphans, "제목 개체": heading_names(rows),
+            "극성 못 읽음": _unread(graphs)}
+
+
+def _unread(graphs):
+    from core.build import polarity
+    return polarity.unread(list((graphs or {}).values()) if isinstance(graphs, dict) else list(graphs or []))
 
 
 # ---------------------------------------------------------------- 재료 모으기 (인입 끝 · show report)

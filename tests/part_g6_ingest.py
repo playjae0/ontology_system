@@ -277,9 +277,9 @@ def _data_rows(text):
             if l.strip()[:1] in ("✓", "+", "?", "✗", "·") and not l.strip().startswith("+--")]
 
 
-show("① 찍힌 줄은 판단이 갈린 둘뿐이다 (사전 히트는 화면에 없다)",
-     len(_data_rows(_out81)) == 2
-     and "노칭::버 높이" in _out81 and "dictionary" not in _out81)
+# 고침(B199 ① — 진행 줄은 -v일 때만 · 기본은 쌍별 예고 · 판정 결과 요약 — 판단이 갈린 값은 명령 로그에)
+show("① 기본은 값 줄을 찍지 않는다 (판단이 갈린 값도 — 결과는 쌍별 판정 결과 · 로그)",
+     len(_data_rows(_out81)) == 0)
 
 # ②④ 실행 화면 — 기본과 `-v`, 보폭 둘
 _raw81 = _P.raw()
@@ -305,8 +305,8 @@ def _ing81(*extra):
 _scr81 = _ing81("--progress-every", "10")
 _led81 = (LG81.read("CP01") or {}).get("rows") or []
 _vals81 = _data_rows(_scr81)
-show("① 값 줄 수 == 대장 행 중 판단이 갈린 수 (두 벌이 갈리지 않는다)",
-     len(_vals81) == sum(1 for r in _led81 if SCR81._loud(r)),
+show("① 실행 화면에도 값 줄 0 · 대장에는 판단이 갈린 행이 있다(고침 B199 ①)",
+     len(_vals81) == 0 and sum(1 for r in _led81 if SCR81._loud(r)) > 0,
      f"화면 {len(_vals81)} · 대장 LOUD {sum(1 for r in _led81 if SCR81._loud(r))}"
      f" / 전체 {len(_led81)}")
 show("② 기본 화면에 INFO 로그 줄이 0이다 (화면은 판단이 갈린 값만)",

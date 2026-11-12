@@ -607,16 +607,29 @@ show("B197 ⓔ 건너뜀 → ops review 골격 단 한 줄(겸 값) → 합침(�
 # ⓖ [3/8] 끝 줄 「확정한 공정」 · [5/8] 쌍별 예고(붙을 자리 · 연결 · 판정 예정 · 칸 안 잘림) · 표 [4/7] 같은 함수
 _ng = _go197(_h197("B197G", "취출부"), answer="m 노칭::노칭 타발")
 _pl = [n["줄"] for n in _ng if n.get("단계") == "확정공정"]
-_pv = AS197.preview_lines(next(n for n in _ng if n.get("추출뒤"))["쌍별"])
-_tv = AS197.preview_lines(AS197.preview(AS197.builder(_ed), _ed, schema={"fields": {"개체": {"role": "entity", "category": "Unit"}}}))
+_pv = AS197.preview_lines(next(n for n in _ng if n.get("추출뒤"))["쌍별"], full=True)     # 전부(md 몸 — 화면은 요약 · B199 ①)
+_tv = AS197.preview_lines(AS197.preview(AS197.builder(_ed), _ed, schema={"fields": {"개체": {"role": "entity", "category": "Unit"}}}),
+                          full=True)
 show("B197 ⓖ 확정한 공정 — 청크 2: 노칭 › 노칭::노칭 타발 1 · 노칭(상위만) 1 · 쌍별 예고 묶음 머리 = 그 쌍 · 줄에 붙을 자리 · 연결 · 판정 예정 · "
      "표 [4/7]도 같은 함수(골격 단 — 문 · 맨 아래 단 아래는 새 노드)",
      _pl and "노칭 › 노칭::노칭 타발 1" in _pl[0] and "노칭(상위만) 1" in _pl[0]
      and any(ln.strip().startswith("노칭 › 노칭::노칭 타발") for ln in _pv)
-     and any("흡착력" in ln and ln.split("붙을 자리 ")[1].startswith("노칭::노칭 타발  ") and "has_property" in ln
+     and any("흡착력" in ln and ln.split("붙을 자리(판정 전) ")[1].startswith("노칭::노칭 타발  ") and "has_property" in ln
              and ln.rstrip().endswith(("사전 연결", "새 노드", "→ 판정")) for ln in _pv)
      and any("골격 단 — 문" in ln for ln in _tv) and any("후보 0 → 새 노드" in ln or "후보" in ln for ln in _tv),
      f"{(_pl or [''])[0]} · {[ln.strip() for ln in _pv][:3]} · 표 {[ln.strip() for ln in _tv]}")
+
+# B199 ① 화면은 쌍마다 요약 · 전부는 export/plan_<doc>.md(같은 원자 쓰기 손 — 줄을 자르지 않는다)
+from cli import also_screen as ASC199                                    # noqa: E402
+from core import paths as _P199                                          # noqa: E402
+_g199 = next(n for n in _ng if n.get("추출뒤"))["쌍별"]
+_sc199 = ASC199.preview_screen(_g199, "B197G")
+_md199 = _P199.export(ASC199.plan_md_name("B197G")).read_text(encoding="utf-8")
+show("B199 ① 쌍별 예고 — 화면은 쌍마다 한 줄(값 n — 사전 연결 · 새 노드 · 판정) · md에 전부(전 줄 그대로)",
+     all(ln.strip() in _md199 for ln in AS197.preview_lines(_g199, full=True))
+     and any(" — 사전 연결 " in ln and " · 새 노드 " in ln for ln in _sc199) and "plan_B197G.md" in _sc199[-1]
+     and not any("붙을 자리(판정 전) " in ln for ln in _sc199[1:-1]),
+     f"화면 {len(_sc199)}줄 · md {len(_md199.splitlines())}줄")
 
 # ⓗ 쓰기 전 판정 결과 → q → 그래프 · 사전 · 큐 0 · 대장 중간 저장 → 다시 넣으면 재생(판정 LLM 0) · c → 지금과 같은 그래프
 from core import matcher as MT197                                    # noqa: E402

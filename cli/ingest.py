@@ -215,6 +215,7 @@ def _step_stops(res, sel, row, ask=True):
     _cp = _rep.get("coord_pairs") or {}             # 판정 전 좌표 쌍 (B105 ③ — 이 관문에서 멈추면 LLM 0)
     _pc, _pbody = SCR.provisional_cells(res.envelope, ask)      # 골격 칸 머리 줄 · 보이기만 하는 표(B196 ③)
     from core.build import also_stage as _AS
+    from cli import also_screen as _ASC
     _ab = _AS.builder(res.envelope)
     if not prose:                                    # 표는 행의 확정한 공정 — 산문은 목차 노드화 뒤(B197 ②)
         _pbody = list(_pbody or []) + [f"   {_AS.pair_line(_AS.pairs(_ab, res.envelope), table=True)}"]
@@ -242,8 +243,7 @@ def _step_stops(res, sel, row, ask=True):
                       f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
                       f"{_pl['예상_호출']}회"
                       + (f" · 닫힌 분류 판단 ≤ {_pl['닫힌_분류']}회" if _pl.get("닫힌_분류") else ""), ask=ask,
-                      body=(["   쌍별 예고 — 확정한 공정 쌍마다 값 · 붙을 자리 · 연결 · 판정 예정(쓰기 0 · LLM 0)"]
-                            + _AS.preview_lines(_pv, indent="     ")) if _pv else None):
+                      body=_ASC.preview_screen(_pv, sel["doc_id"]) if _pv else None):
         row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "
                                        "(그래프 쓰기 0)")
         return True

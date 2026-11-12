@@ -32,7 +32,7 @@
  {
   "구분": "형태",
   "대상": "`fact_templates`",
-  "실태": "process: dict · 깊이 1 · 최상위 9 | quality: dict · 깊이 1 · 최상위 7   ▸ 명세: [5_읽기절차] 1. **채널 1 — [그래프 사실]**: 링킹·확장 노드의 엣지와 값을 config의 fact_templates로 문장화한다. 예: \"노칭 다음 공정은 스태킹이다\", \"노칭::노칭 정밀도의 규격: ±0.1mm (출처: CP01)\". 맥락형 값은 context 그룹별 한 줄. cross 브리지 엣지는 가 ‖ [3_구조] | ⑥ 읽기 절차 | 질의 때 어느 관계로 얼마나 뻗는가 | config.query_traverse·fact_templates |"
+  "실태": "process: dict · 깊이 1 · 최상위 9 | quality: dict · 깊이 1 · 최상위 7   ▸ 명세: [5_읽기절차] 1. **채널 1 — [그래프 사실]**: 링킹·확장 노드의 엣지와 값을 config의 fact_templates로 문장화한다. 예: \"노칭 다음 공정은 스태킹이다\", \"노칭::노칭 정밀도의 규격: ±0.1mm (출처: CP01)\". 맥락형 값은 context 그룹별 한 줄 · 같은 값이 극성만 다르면  ‖ [3_구조] | ⑥ 읽기 절차 | 질의 때 어느 관계로 얼마나 뻗는가 | config.query_traverse·fact_templates |"
  },
  {
   "구분": "형태",

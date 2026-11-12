@@ -34,7 +34,7 @@ python run.py all                        # 골격 심기 + mock 문서 전량 �
 python run.py query "노칭 다음 공정은?"    # 질의 4단
 python run.py show tree                  # 골격 트리 (텍스트)
 python run.py show node "노칭 정밀도"      # 노드 하나 전부 — 값·출처·연결
-python run.py platform queue             # 수정 큐 (닫힌 20종)
+python run.py platform queue             # 수정 큐 (닫힌 19종)
 python run.py gauges                     # 계기판 8종
 python run.py export cypher              # Neo4j용 (파생물 — 진실은 data/의 JSON이다)
 ```

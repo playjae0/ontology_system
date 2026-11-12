@@ -112,6 +112,9 @@ def reconcile_lines(mt, limit=None):
     out = []
     if mt.get("요약"):                     # 문서 한 줄 요약(B118 ① — 아래 맞춤표의 같은 수)
         out.append("   요약 — " + RC.summary_text(mt["doc_id"], mt["요약"]))
+    if mt.get("극성 못 읽음"):              # 봉투를 못 읽은 출처 — 극성 칸은 지난 값 그대로(B199 ⑤ · 0이면 줄 0)
+        d = mt["극성 못 읽음"]
+        out.append(f"   극성 출처 못 읽음 {len(d):,}(문서 {' · '.join(d[:5])}{' …' if len(d) > 5 else ''}) — 그 출처의 극성 칸은 지난 값 그대로")
     out.append("   맞춤 — 줄마다 단위 · 같은 단위는 합 = 전체")
     for ln in mt["줄"]:
         out.append("     " + _formula(ln))

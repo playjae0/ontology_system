@@ -259,16 +259,6 @@ def _inherit(styles, sid, key):
     return None
 
 
-def _style_outlines(z):
-    """스타일 id → 개요 수준(0부터) — **상속 체인(basedOn)을 따라간다.**
-
-    스타일 **이름**이 아니라 개요 수준을 본다: 한글 Word의 「제목 1」은 스타일 id가
-    로캘마다 다르다(`Heading1` · `1` · `제목1` …) — 이름을 맞추면 로캘마다 틀린다.
-    """
-    styles, _d = _styles(z)
-    return {sid: v for sid in styles if (v := _inherit(styles, sid, "outline")) is not None}
-
-
 class _Numbers:
     """**자동 번호를 보이는 글로**(B138 ①) — 번호 정의(`word/numbering.xml`)의 단마다 글(`lvlText`) · 꼴(`numFmt`) · 시작.
 

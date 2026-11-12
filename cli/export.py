@@ -23,6 +23,7 @@ from pathlib import Path
 
 from core import paths
 from core.build import ledger, polarity
+from core.query import query as QQ
 from core.state import store
 from core.state.bootstrap import COORD_CATEGORY, coord_layer, open_graph
 from core.state.status import is_live
@@ -378,6 +379,8 @@ def graph_data(world):
                     "seed" if n.get("status") == "seed" else "unknown"),
                 "aliases": len(n.get("aliases") or []),
                 "attrs": len(n.get("attrs") or {}),
+                "values": [f"{k} {QQ.value_text(g)}" for k, v in (n.get("attrs") or {}).items()     # 접은 값 줄(B199 ④)
+                           for g in QQ.fold_values(v if isinstance(v, list) else [v])],
                 "queue": queued.get(n["id"]),
                 "docs": _docs_of(prov),
             })

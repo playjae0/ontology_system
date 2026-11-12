@@ -70,8 +70,6 @@
 | `relation_patterns` | 필수 | 정함 | 삼항 목록(§6) |
 | `skeleton` | 골격 층 · 닫힌 목록을 가진 층 | 꼴 고정 · 내용 정함 | §8 |
 | `skeleton_version` | 골격 층만 | 정함(기록) | 기록용 글(`"<층>-1"`) |
-| `polarity` | 극성을 묶는 층만 | 따름(`values`) · 정함(`bind_categories`) | §7 |
-| `mirrors` | 선택 | 정함(극성을 묶으면 `true`) | `{"enabled": true\|false, "relation": "mirrors"}` |
 | `query_traverse` | 선택 | 정함(`direction`은 고정 값) | 3단(§9) |
 | `cross_layer_traverse` | 다른 층으로 가는 엣지를 만드는 층만 | 정함 | 1단(§9) |
 | `fact_templates` | 선택 | 따름(같은 관계) · 정함(새 관계) | 관계마다 문장 틀(§9) |
@@ -98,13 +96,11 @@
 - 적지 않는 삼항 둘: **골격 삼항**(`<뼈대> part_of <뼈대>` · `<뼈대> precedes <뼈대>` — 골격이 소유한다) · **공통 `parent_pairs`의 삼항**(게이트가 더한다).
 - 이 층 config에 없는 삼항은 게이트가 버린다 — 가장 자주 빠지는 자리다.
 
-## 7. 극성 — 그 카테고리의 home 층에
+## 7. 극성 — config에 적지 않는다
 
-- `polarity`는 `{"bind_categories": [카테고리…], "values": [축값…]}`이다.
-- **결합 규칙은 그 카테고리의 home 층 config만 본다** — 문서가 어느 층이든 같다. 다른 층 config에 같은 카테고리를 묶어도 효과가 없고 `bootstrap`이 경고한다.
-- `values`는 골격 `AXIS_LABELS`의 키와 같고 **모든 층이 같다**. 극성을 묶지 않는 층은 `polarity`를 뺀다.
-- `values`는 **골격 층 config의 `polarity.values`를 그대로 옮긴다**(= 골격 `AXIS_LABELS`의 키).
-- 극성이 갈리는 카테고리는 같은 층에 `mirrors` 삼항(`{"src": X, "rel": "mirrors", "dst": X, "symmetric": true}`)과 `"mirrors": {"enabled": true, "relation": "mirrors"}`를 둔다 — 골격 카테고리는 뺀다: 골격의 극성 짝은 골격이 만든다(골격 삼항은 패턴에 적지 않는다 — §6).
+- **극성은 config 키가 아니다**(사용자 확정 2026-11-11 · B198 — `결정_극성_값단.md`). 옛 키 `polarity` · `mirrors`는 `bootstrap`이 거부하고 지울 줄을 보인다.
+- 극성 값의 닫힌 목록은 골격 `AXIS_LABELS` 한 자리다(골격 팩).
+- 극성은 문서 행 · 청크의 극성 칸(`electrode_type`)이 값(`context.polarity`)과 엣지 · 노드(`polarity_by` — 출처마다)에 붙인다 · 비면 공통 · 모든 출처가 같은 한 극성일 때만 그 극성. 극성만 다른 같은 것은 노드 하나다 — 짝 관계 · 짝 삼항을 적지 않는다.
 
 ## 8. 골격 · 닫힌 목록
 
@@ -145,7 +141,7 @@
 3. `relation_patterns`의 카테고리가 전부 `categories` ∪ `uses` 안에 있고, 삼항마다 정의문이 있다.
 4. 골격 삼항과 `parent_pairs` 삼항을 `relation_patterns`에 다시 적지 않았다.
 5. 이 층 문서의 **소속**(구성형 · 값형 — 아래가 위의 일부 · 위의 항목: 이름의 부모가 되는 관계)은 `parent_pairs` 제안에 있고(사건형의 자리 관계 같은 사실 관계는 `relation_patterns`), 그 두 카테고리를 이 층이 다 말한다(`categories` ∪ `uses`) — 아니면 소속 엣지가 서지 않고 그 노드는 「엣지 없는 노드」로 남는다. 그 관계 이름은 `relations`에 있다.
-6. 극성은 그 카테고리의 home 층 config에만 있고, `values`가 골격 층 config의 `polarity.values`와 같다.
+6. `polarity` · `mirrors` 키 · `mirrors` 관계 · 짝 삼항이 없다(극성은 config에 적지 않는다 — §7).
 7. 질의가 이 층 엣지를 따라 다른 층 노드로 건너가는 길이 있다 — 소속 관계는 이 층 `query_traverse`에 두면 다른 층 노드에서도 이 층 규칙으로 뻗고, 사건형의 자리 관계 같은 층을 넘는 사실 관계의 다리는 이 층 `cross_layer_traverse`에 둔다. 그 관계마다 `fact_templates`가 있다.
 
 ## 13. 규율

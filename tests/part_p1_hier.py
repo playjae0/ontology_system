@@ -89,9 +89,11 @@ show("③ 상한 이하 청크만 있는 문서는 분할이 그대로다 (상�
 _whole = {p["source_locator"]: p for p in _extract(HIER, 10 ** 9)}
 _cut = BX.extract(read(str(HIER)))
 _parts = [p for p in _cut if (p.get("meta") or {}).get("char_cap_from")]
-show("③ 넘는 청크의 조각은 전부 상한 이하다 (혼자 넘는 행 — 표시된 것만 예외)",
+# 고침(B199 ⑥ — 혼자 넘는 행의 조각은 그 행 + 하한(상한 ÷ 10) 미만 이웃 조각)
+show("③ 넘는 청크의 조각은 전부 상한 이하다 (혼자 넘는 행 — 표시된 것만 예외 · 그 행과 하한 미만 이웃만)",
      _parts and all(len(p["text"]) <= _cap or (p["meta"].get("over_char_cap")
-                                               and "\n" not in p["text"]) for p in _parts),
+                                               and len(p["text"]) - max(map(len, p["text"].split("\n")))
+                                               < 2 * (_cap // struct_map.FLOOR_DIV) + 2) for p in _parts),
      f"조각 {len(_parts)} · 최대 {max(len(p['text']) for p in _parts)}자")
 _cells = {r: t for r, t in _hl}
 _long_sh = _sheet(HIER, "장문")
@@ -172,6 +174,18 @@ try:
 except ValueError:
     _raised = True
 show("B89 ① 행 목록 없는 청크는 결함으로 드러난다 (원래 locator를 붙여 넘기지 않는다)", _raised)
+# B199 ⑥ — 혼자 상한을 넘는 행 바로 앞 · 뒤 조각이 하한(상한 ÷ 10) 미만이면 그 행의 조각에 붙는다 · 하한 이상이면 따로(창작 줄)
+def _caps199(small):
+    ln = [(1, small), (2, "행" * 4005), (3, small)]
+    return struct_map.cap_chars([{"source_locator": "S!R1-R3", "text": "\n".join(t for _r, t in ln), "_lines": ln}],
+                                set(), lambda a, b: f"S!R{a}" if a == b else f"S!R{a}-R{b}")
+
+
+_c199a, _c199b = _caps199("작은 본문a"), _caps199("본" * 400)
+show("B199 ⓕ 「작은 본문 · 4,005자 행 · 작은 꼬리」 → 한 조각(넘는 표지 · 세 행 그대로) · 작은 쪽이 하한 이상이면 지금처럼 셋",
+     len(_c199a) == 1 and _c199a[0]["meta"].get("over_char_cap") and _c199a[0]["source_locator"] == "S!R1-R3"
+     and len(_c199b) == 3 and [bool(c["meta"].get("over_char_cap")) for c in _c199b] == [False, True, False],
+     f"{[c['source_locator'] for c in _c199a]} · {[c['source_locator'] for c in _c199b]}")
 # B132 ⑥ — 넘는 조각은 깊은 제목을 차례로(한 단계 → 두 단계 … → 행 경계) · 합성 줄(창작 — 근거가 아니다)
 _syn6 = [(1, "1. 상세"), (2, "가. 공급"), (3, "1) 속도"), (4, "속" * 40), (5, "2) 하중"), (6, "하" * 40), (7, "나. 적층"), (8, "짧은 본문")]
 _lv6 = {1: 1, 2: 2, 3: 3, 5: 3, 7: 2}

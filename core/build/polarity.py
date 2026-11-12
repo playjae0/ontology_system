@@ -62,32 +62,59 @@ def begin(env):
         _FILE.pop(env["doc_id"], None)
 
 
-def of_prov(prov):
-    """출처 하나의 극성(없으면 None) — 출처 꼴 `{문서}#{위치}`(`loop._prov`) · 그 밖(`seed` · `auto:…`)은 None."""
-    if not prov or "#" not in str(prov):
-        return None
-    doc = str(prov).split("#", 1)[0]
+def _rows_of_doc(doc):
+    """그 문서의 출처 → 극성 — 구축 중이면 `begin`이 실은 것 · 아니면 `parsed/<문서>.json`(파일 판으로 기억) · 봉투가 없거나 깨졌으면
+    None(**모른다** — 공통이 아니다 · B199 ⑤)."""
     if doc in _ROWS:
-        return _ROWS[doc].get(prov)
+        return _ROWS[doc]
     from core import paths
     p = paths.parsed(f"{doc}.json")
     key = (str(p), p.stat().st_mtime_ns if p.exists() else None)
     if (_FILE.get(doc) or (None,))[0] != key:
-        rows = {}
+        rows = None
         if key[1] is not None:
             try:
                 import json
                 rows = _rows_of(json.loads(p.read_text(encoding="utf-8")))
-            except Exception:                               # 읽지 못하는 봉투는 공통으로(극성을 지어내지 않는다)
-                rows = {}
+            except Exception:                               # 읽지 못하는 봉투 — 모른다(극성을 지어내지도 지우지도 않는다)
+                rows = None
         _FILE[doc] = (key, rows)
-    return _FILE[doc][1].get(prov)
+    return _FILE[doc][1]
+
+
+def _doc(prov):
+    return str(prov).split("#", 1)[0] if prov and "#" in str(prov) else None
+
+
+def of_prov(prov):
+    """출처 하나의 극성(없거나 모르면 None) — 출처 꼴 `{문서}#{위치}`(`loop._prov`) · 그 밖(`seed` · `auto:…`)은 None."""
+    doc = _doc(prov)
+    rows = _rows_of_doc(doc) if doc else None
+    return (rows or {}).get(prov)
+
+
+def unread(graphs):
+    """**극성 출처 못 읽음**(B199 ⑤) — 그래프 노드 · 엣지의 출처 중 봉투를 못 읽는 문서(차례대로) · 인입 끝 · `show report`가 한 줄로."""
+    docs = []
+    for g in graphs:
+        for obj in list(g.nodes.values()) + list(g.edges):
+            for p in obj.get("provenance") or []:
+                d = _doc(p)
+                if d and d not in docs and _rows_of_doc(d) is None:
+                    docs.append(d)
+    return docs
 
 
 def stamp(obj):
-    """엣지 · 노드 하나의 칸을 지금 출처로 다시 적는다 — 출처마다 `of_prov` · 빠진 출처의 칸은 걷는다 · 비면 칸 없음."""
+    """엣지 · 노드 하나의 칸을 지금 출처로 다시 적는다 — 출처마다 그 봉투의 극성 · 빠진 출처의 칸은 걷는다 · **봉투를 못 읽는
+    출처는 지난 칸 값 그대로**(모르는 것을 공통으로 덮지 않는다 · B199 ⑤) · 비면 칸 없음."""
     provs = list(obj.get("provenance") or [])
-    m = {p: of_prov(p) for p in provs}
+    prev = obj.get(FIELD) or {}
+    m = {}
+    for p in provs:
+        d = _doc(p)
+        rows = _rows_of_doc(d) if d else {}
+        m[p] = prev.get(p) if rows is None else rows.get(p)
     m = {p: v for p, v in m.items() if v}
     if m:
         obj[FIELD] = m
