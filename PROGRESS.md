@@ -225,6 +225,7 @@
 - B196 — 골격 칸의 문: 잠정 골격 노드는 사람이 정한 것만 · 좌표 쌍 어긋남은 확인 전 보류 · 골격 칸 검토 줄 · 연결 표지 · 2026-11-11 · **완료** — 본문 `docs/archive/장부/PROGRESS_B196.md`
 - B197 — 골격 단의 문(겸 값은 골격 노드로만) · 판정 전 처분 자리 · [5/8] 쌍별 예고 · 쓰기 전 판정 결과 · 청크 나눔 고침 · 2026-11-11 · **완료** — 본문 `docs/archive/장부/PROGRESS_B197.md`
 - B198 — 극성은 값의 한정어(P1 — 코드 · 명세): 골격 분기 · 하강 부착 · 이름 결합 · 짝 기구 · 극성 좌표 쌍 걷기 · 세 자리 · 질의 거르기 · 펼친 흐름 · 2026-11-11 · **완료** — 본문 `docs/archive/장부/PROGRESS_B198.md`
+- B199 — 줄이기 · 정제: 쌍별 예고 축약 · 붙는 자리 · 거부 근거 · 같은 값 접기 · 극성 칸 지키기 · 혼자 넘는 행 옆 조각 · 폐기 노드 연산 · 죽은 함수 · 2026-11-12 · **완료** — 본문 `docs/archive/장부/PROGRESS_B199.md`
 
 ---
 
@@ -357,30 +358,6 @@
 ---
 
 ---
-
-## B199 — 줄이기 · 정제: 쌍별 예고 축약 · 붙는 자리 · 거부 근거 · 같은 값 접기 · 극성 칸 지키기 · 혼자 넘는 행 옆 조각 · 폐기 노드 연산 · 죽은 함수 (2026-11-12 · 칸 0.3 · 2.6 · 3.4 · 문서)
-
-> 요청문 `docs/안건/B199_요청문.md`(hub_185 반입 `064642b` · B198 머지 `f810465` 위 — hub_184 대신 누적본) · 단독 · 중간.
-
-- 전제 11행 — 같다(1행은 hub_184 반입 커밋 없음 — hub_185가 대신 · 9행 KeyError 'merged_into' 재현)
-- 마감 한 줄 2회 — 1회 FAIL 1(doctor — 기본 화면의 └ 줄을 재던 시험 둘 · 고침) → 2회 FAIL 0 · doctor 2240(기대 2233 +7) · 클린 2회 동일 그래프 · 네 벌 전부 같다 · 사전 점검 116/116
-- ⓐ PASS mock PFMEA01 --step [4/7] ~ 판정 결과 241줄 → 39줄 · `export/plan_PFMEA01.md`에 쌍별 예고 전부 · -v면 지금 진행 줄 그대로
-- ⓑ PASS 판정 결과 「용접 진폭: 탭용접 → 탭용접::초음파 융착기(경로)」 꼴 위 3 · 쌍 줄 끝 「자리 바뀜 k」 · 값 0인 쌍 줄 0
-- ⓒ PASS 층 config에 polarity 키 → 근거 「layers/process/config.json」(공통 config 근거 0)
-- ⓓ PASS show node 노칭 정밀도 — 측정방법 「비전 측정기 (공통 · 양극 · 음극)」 한 줄 · spec 「±0.1mm (공통 · 양극)」 · 「[음극] ±0.12mm」(mock 원본)
-- ⓔ PASS 봉투를 못 읽게 한 문서(CP01) 출처의 극성 칸이 다른 문서 저장 뒤 그대로 · 「극성 출처 못 읽음 1(문서 CP01)」
-- ⓕ PASS 「작은 본문 · 4,005자 행 · 작은 꼬리」 → 한 조각(S!R1-R3) · 작은 쪽 400자(하한 300 이상) → 셋
-- ⓖ PASS 폐기 노드에 rename · obsolete → 「폐기 노드다 — 되살리지 않는다 · … ops merge · … 다시 넣는다」 · KeyError 0(CLI는 지금 거부 관례 rc 2)
-- ⓗ PASS `_is_toc` · `_style_outlines` grep 0(옆 상수 `_TOC_TITLE`도 읽는 곳 0이라 지움) · 네 벌 전부 같다 · 상한 이하 청크 바이트 같음(③ 시험)
-- ⓘ PASS 명세 패치 `--apply`(+418자 · 문서 3 · 4 · 5 · 6 · 7 — 7항목 · 문서 1 항목 0 · 재봉인 0)
-- ⑧ 확인 — 시험만 부르는 함수: `ops.merge_targets` · `ops.edge_keys` · `platform.extract_view` · `vectors.fingerprint` · `ids.is_ulid` — 운영 경로(core · cli · parser · kit · tools · run · doctor) 호출 0(지우지 않음 · 보고만) · `loop.py` 주석 20종 → 19종
-- 가결정(D-280) — 예고 요약은 쌍 줄 + 판정 대상 위 3 한 줄 · 자리 바뀐 값 위 3은 문서 전체 · 쌍마다 진행 줄은 넣지 않음(40줄 한도) · md 한 자리(`envelope_md.save`) · 값 접기 `query.fold_values` · `value_text` 한 벌(옛 `_ctx` 지움) · 극성 못 읽음은 그래프 출처의 봉투를 지금 읽어 센다(문서 수) · 하한 = 상한 ÷ 10(코드 상수) · 거부 rc는 지금 관례 2
-- 바뀐 시험 기대 — ingest_view ① 둘(기본 값 줄 0) · coord B197 ⓖ(예고 전부는 `full=True` · 칸 이름 「붙을 자리(판정 전)」) · g3 B198 ⓔ(값 줄 머리 「[공통 · 양극, …]」) · hier ③(넘는 조각 = 그 행 + 하한 미만 이웃) · judge2 ⓑ · belongs ⓖ(└ 줄은 -v로)
-- 어서션 +7 · 삭제 0 · 고침 7 — +ⓐⓑ(test_g6_close) · ①md(test_coord) · ⓒ(test_catalog) · ⓓⓔ(test_g3) · ⓕ(test_structure) · ⓖ(test_ops)
-- 바꾼 파일 — `core/build/{also_stage,polarity,reconcile,loop}.py` · `core/query/query.py` · `core/state/{ops,status}.py` · `parser/{struct_map,ooxml}.py` · `parser/adapters/basic_ppt.py` · `cli/{also_screen,ingest,ingest_screen,show,export,result_screen}.py` · `cli/viewer/static/app.js` · `run.py` · 시험 · 명세
-- 보인 것 — 질의 값 줄 · `show node`의 공통이 단독일 때는 표지 없음(물음에 극성이 걸릴 때만 「공통」) · 뷰어 노드 상세의 값 칸은 접은 줄을 이어 붙인 글(표 칸 하나)
-- 사내 config 줄 — 0 · 머지 뒤 반입(PFMEA 전) — 동작은 같고 화면 · 문면만 · PFMEA --step 화면이 쌍별 요약으로 · 전부는 `export/plan_<doc>.md`
-- 소요 약 3시간 30분(어림) — 전제 · 읽기 30분 · ①② 70분 · ③④⑤ 50분 · ⑥⑦⑧ 30분 · 시험 고침 · 대표 어서션 30분 · 명세 패치 15분 · 마감 한 줄 2회 각 3분
 
 ---
 
@@ -405,7 +382,10 @@
 - 바꾼 파일 — 새: `core/state/alias_{audit,review,approve}.py` · `cli/viewer/alias.py` · `cli/viewer/static/alias.js` · `prompts/0.3_alias_review.md` · `tests/fixtures/alias_review.json` · 고침: `core/state/{bootstrap,alias_book,surface_book,provisional_hand,oplog}.py` · `core/build/{build_coord,table,coord_scan}.py` · `core/llm/{gateway,points,preflight}.py` · `cli/ops.py` · `cli/viewer/{server.py,static/index.html,static/app.js,static/style.css}` · `run.py` · 시험 · 명세 · 런북 · 칸 대장
 - 보인 것 — mock `all`은 봉투를 `work/parsed/`에 두지 않아 mock 화면의 붙은 행은 대개 「모른다」(사내 실경로는 인입이 남긴다) · 골격 팩에 「승인 · bootstrap이 ALIASES를 고친다」 한 줄이 빠졌다(결정 §4 — 다음 회차 가이드)
 - 사내 config 줄 — 0 · 머지 뒤 반입 → `bootstrap`(걷음 줄 · 동의어 한 줄) → 뷰어 「동의어」 → 「LLM 검토」(처음 한 번 전체 — 비용 미리보기) → 승인 → 「다시 붙일 행」이 있으면 그 문서 재인입
+- ⓪ 긴급(hub_192 · `8645815` 위) — `cli/split_report.py` 목차 접기 KeyError 고침은 #159로 이미 머지(zip과 같은 바이트 · MD5 `0cec73d9…`) · 이번엔 회귀 어서션 셋으로 맞춤(test_structure — 1 재현 10~13행 제목 + 14행 판단 필요 → 14행이 13행 아래 · 「외 2줄(R11~R12)」 · 2 판단 필요를 빼면 「외 3줄(R11~R13)」 · 3 무작위 나무 3000 예외 0) · 어서션 +2(앞 회차의 한 개를 1로 고침) · 삭제 0 · 마감 한 줄 1회 FAIL 0 · doctor 2252(기대 2250 +2) · 네 벌 전부 같다 · 바꾼 파일 `tests/part_g6_split.py` · 소요 약 25분(읽기 5 · 시험 10 · 마감 한 줄 4)
 - 소요 약 4시간 30분(어림) — 전제 · 읽기 40분 · ⑤⑥ 30분 · ①② 50분 · ③④ 60분 · 시험 작성 · 고침 50분 · 명세 · 장부 20분 · 마감 한 줄 2회 각 3분
+
+---
 
 ## B201 — 산문 값 칸은 카테고리 home의 선언을 따른다(읽는 층과 무관) (2026-11-12 · 칸 3.3 · 0.1 · 문서)
 
