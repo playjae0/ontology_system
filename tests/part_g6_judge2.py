@@ -632,7 +632,7 @@ def _mock184(step_answer=None):
     left = [step_answer]
 
     def _inp(q=""):
-        if PA.GATE_PROMPT in q and left:                    # 좌표 단계 — 잠정 줄 처분 한 번 · 그다음은 계속
+        if "말 또는 글쇠" in q and left:                     # 좌표 단계 — 골격 칸 줄 처분 한 번 · 그다음은 계속(B202 — 한 고리)
             return left.pop()
         if "계속 c" in q:
             return "c"
@@ -697,13 +697,13 @@ show("B184 ⓓ 합침 — 잠정을 기존 골격 노드 「노칭」으로 → 
 _mock184("p 1")
 _an, _en = _r16()
 _lp = _pn("레이저노칭")
-_ok_p = (_lp or {}).get("status") == "seed" and not _provs184() and str(_an.get("canonical")).split("::")[0] == "레이저노칭"
+_ok_p = not _lp and not _provs184() and not _an.get("node_id")       # B202 ③ — 문 줄의 승격 p는 거부(기록 0 · 그 행은 보류 그대로)
 _mock184("m 1 노칭")
 _an2, _en2 = _r16()
-show("B184 ⓔ `--step` 좌표 단계에서 승격 · 합침 — 그 문서에서 세울 잠정이 승격이면 사람 고정으로 바로 서고(그 행의 좌표) · 합침이면 "
-     "그 골격 노드로 바로 풀린다 · 잠정 노드 0 · 재구축 0",
+show("B184 ⓔ `--step` 좌표 단계에서 합침 — 그 골격 노드로 바로 풀린다 · 잠정 노드 0 · 재구축 0 · 문 줄의 승격 `p 1`은 거부(B202 ③ — "
+     "기록 0 · 노드 0 · 그 행은 보류)",
      _ok_p and str(_an2.get("canonical")).split("::")[0] == "노칭" and not _provs184() and not _pn("레이저노칭"),
-     f"승격 {_ok_p} · 합침 R16 → {_an2.get('canonical')} · 잠정 {len(_provs184())}")
+     f"p 거부 {_ok_p} · 합침 R16 → {_an2.get('canonical')} · 잠정 {len(_provs184())}")
 # ────────────────────────────────────────────────────────────── B185 ① 손잡이 모으기 (기본값 = 지금 상수)
 print("\n■ B185 ① — 사람이 바꿀 까닭이 있는 상수는 knobs.json · llm.json으로(적지 않으면 지금 상수 · 같은 뜻은 손잡이 하나)")
 from cli import golden as GD, parse as PS                          # noqa: E402

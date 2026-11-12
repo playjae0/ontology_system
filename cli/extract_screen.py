@@ -18,11 +18,12 @@ _LOG = log.get(__name__)
 
 
 def extract_table(places=None):
-    """추출 청크 표(B98 ⑥) — 번호 · 시트 · 청크(경로 끝) · 개체 수 · 개체(카테고리) · 관계 · 입력 · 출력 · 누적."""
+    """추출 청크 표(B98 ⑥) — 번호 · 시트 · 청크(경로 끝) · 붙을 노드(그 청크의 주 좌표 — 청크 목차의 좌표와 같은 값 · B202 ⑤) ·
+    개체 수 · 개체(카테고리) · 관계 · 입력 · 출력 · 누적."""
     ws, wc = place_widths(places)
-    return _screen.Table([("번호", 7, True), ("시트", ws, False), ("청크", wc, False), ("개체", 4, True),
+    return _screen.Table([("번호", 7, True), ("시트", ws, False), ("청크", wc, False), ("붙을 노드", 16, False), ("개체", 4, True),
                           ("개체(카테고리)", 60, False), ("관계", 4, True), ("입력", 6, True),
-                          ("출력", 6, True), ("누적", 8, True)], flex=4, keep=(1, 2))
+                          ("출력", 6, True), ("누적", 8, True)], flex=5, keep=(1, 2, 3))
 
 
 def extract_screen(step=False, stage=None):
@@ -142,10 +143,10 @@ def _chunk_row(box, info, lz):
     else:
         cell, kind = ents or "— (개체 0)", (None if ents else "aux")
     sheet, end = info.get("자리") or where_cells(info["locator"])
-    t.row([f"{info['i']}/{info['m']}", lz + sheet, end, len(info["개체"]), cell,
+    t.row([f"{info['i']}/{info['m']}", lz + sheet, end, info.get("좌표") or "-", len(info["개체"]), cell,
            info["관계"], f"{tok.get('prompt_tokens', 0):,}", f"{tok.get('completion_tokens', 0):,}",
            cum],
-          ["prog", "aux", "aux", "aux" if not info["개체"] else None, kind, None, "aux", "aux", "aux"],
+          ["prog", "aux", "aux", "head", "aux" if not info["개체"] else None, kind, None, "aux", "aux", "aux"],
           extra=(ents if _screen.VERBOSE and ents else None))
     _LOG.info("추출 %s %s(%s) · 개체 %s · %s", info["i"], info["locator"], info.get("라벨") or "", ents,
               _screen.tokens(tok))

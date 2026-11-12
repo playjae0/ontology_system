@@ -46,6 +46,7 @@ SKIP = {"I3:split": "split — 배분표가 엣지 번호라 재구축 뒤 맞�
         "provisional:keep": "화면 표지(봄)", "guess:confirm": "화면 표지(맞음)",
         "provisional:seed": "문의 사람 답(골격 칸 — 계획이 읽는다)", "provisional:drop": "문의 사람 답(골격 칸 — 계획이 읽는다)",
         "provisional:raise": "문의 사람 답(골격 단 값 — 구축이 읽는다)",
+        "provisional:reread": "문의 사람 답(해석 고침 — 구축이 읽는다)",
         "coord:fix": "문의 사람 답(좌표 쌍 — 계획이 읽는다)", "coord:drop": "문의 사람 답(좌표 쌍 — 계획이 읽는다)",
         "alias:skeleton": "파일에 남는 판단(골격 ALIASES — 동의어 점검 승인 · B200 ④)"}
 

@@ -30,8 +30,10 @@ OP_PROMOTE, OP_MERGE, OP_KEEP = "provisional:promote", "provisional:merge", "pro
 OP_SEED, OP_DROP = "provisional:seed", "provisional:drop"
 #: **올림**(B197 ① — 골격 단 값) — 노드를 세우지 않고 그 값 · 딸린 값을 위 공정(들어온 자리)에 바로
 OP_RAISE = "provisional:raise"
-#: 문이 보는 사람 답 — 세움(「봄」도 세움 · 재구축 뒤에도 그 노드가 다시 선다) · drop · 올림
-SEEDED, DROPPED, RAISED = "seed", "drop", "raise"
+#: **해석 고침**(B202 ② — 사람 말을 LLM이 읽은 「이 줄의 해석이 틀렸다」) — 카테고리 · 위 공정 · 기록은 표기 + 들어온 자리 + 고친 칸
+OP_REREAD = "provisional:reread"
+#: 문이 보는 사람 답 — 세움(「봄」도 세움 · 재구축 뒤에도 그 노드가 다시 선다) · drop · 올림 · 해석 고침(그 자리의 문을 떠난다)
+SEEDED, DROPPED, RAISED, REREAD = "seed", "drop", "raise", "reread"
 #: 큐 판단(재인입 회수가 보존한다 — `resolution`)
 DEC_PROMOTE, DEC_MERGE = "승격", "합침(재구축 대기)"
 REBUILD = "python run.py rebuild"
@@ -307,6 +309,40 @@ def drop(actor, surface, parent=None, reason=""):
 
 #: 큐 판단 — drop으로 닫은 보류(재연결 대상 밖 · `retry.is_target`가 `resolution`으로 거른다)
 DEC_DROP = "사람 drop"
+DEC_REREAD = "사람 해석 고침"
+
+
+def reread(actor, surface, parent, *, category=None, up=None, before=None, reason=""):
+    """**해석 고침**(B202 ②) — 그 표기 · 그 자리의 해석을 사람이 고쳤다(`category` — 다른 카테고리 · `up` — 다른 위 공정) · 그 자리의 문을
+    떠난다(문의 사람 답 `REREAD`) · 구축은 고친 해석으로 판정한다(`also_gate.reread` — `resolve_at_home` 입구 한 자리) · 열린 보류는
+    「사람 해석 고침」으로 닫는다(다시 넣으면 고친 해석으로)."""
+    from core.state.ops import log_op
+    from parser.namefold import key
+    if not actor:
+        raise Refused("행위자 미지정 — 사람 판단은 로그에 행위자를 남긴다")
+    if not (category or up):
+        raise Refused("고칠 칸이 없다 — 카테고리 또는 위 공정")
+    lay, _g, _child, cat = _ctx()
+    log_op(OP_REREAD, actor, [], reason, {"surface": surface, "parent": parent, "category": category, "up": up,
+                                          "before": before},
+           {"node": {"layer": lay, "canonical": surface, "category": cat}})
+    k = key(surface)
+    n = store.resolve_item("orphan_anchor", lambda pl: key(pl.get("surface") or "") == k and pl.get("category") == cat
+                           and (pl.get("gate") or {}).get("parent") == parent,
+                           actor=actor, decision=DEC_REREAD, at=store._now(), note=f"{before} → {category or up}")
+    return {"surface": surface, "parent": parent, "category": category, "up": up, "closed": n}
+
+
+def rereads():
+    """해석 고침 기록 — `{(표기 키, 들어온 자리): {category, up}}` · 뒤의 기록이 앞을 덮는다(쓰기 0)."""
+    from core.state import oplog
+    from parser.namefold import key
+    out = {}
+    for r in oplog.read():
+        d = r.get("detail") or {}
+        if r.get("op") == OP_REREAD and d.get("surface"):
+            out[(key(d["surface"]), d.get("parent"))] = {"category": d.get("category"), "up": d.get("up")}
+    return out
 
 
 def _reopen(surface, parent):
@@ -330,8 +366,9 @@ def decisions():
     sep, out = catalog.sep(), {}
     for r in oplog.read():
         op, d = r.get("op"), r.get("detail") or {}
-        if op in (OP_SEED, OP_DROP, OP_RAISE) and d.get("surface"):
-            out[(key(d["surface"]), d.get("parent"))] = {OP_SEED: SEEDED, OP_DROP: DROPPED, OP_RAISE: RAISED}[op]
+        if op in (OP_SEED, OP_DROP, OP_RAISE, OP_REREAD) and d.get("surface"):
+            out[(key(d["surface"]), d.get("parent"))] = {OP_SEED: SEEDED, OP_DROP: DROPPED, OP_RAISE: RAISED,
+                                                         OP_REREAD: REREAD}[op]
         elif op == OP_KEEP and d.get("canonical"):
             c, up = d["canonical"], d.get("parent", "*")
             base = c[len(up) + len(sep):] if isinstance(up, str) and up != "*" and c.startswith(up + sep) else c

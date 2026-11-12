@@ -31,7 +31,8 @@ NO_CAPTURE_NEXT = "캡처 없이 진행하려면 같은 명령에 --no-capture(�
 #: 구축 중에 처음 불려 그때 없다고 죽지 않게 · 추출 · 판정과 같이)
 CHAT_PROMPTS = ("extract", "outline", "deck", "ladder", "judge", "reinforce", "reading",   # 쪽 판독 ④(B168 ④)
                 "extract_reading",                                                            # 추출의 판독 절(B170)
-                "alias_review")                                                               # 동의어 점검(B200 ②)
+                "alias_review",                                                               # 동의어 점검(B200 ②)
+                "gate_judge", "gate_say")                                                     # 골격 칸 판단 · 사람 말(B202)
 
 
 def run(*, chat=True, embed=False, images=False, catalog=True, capture=()):

@@ -5,7 +5,7 @@
 
 | 묶음 | 처분(손) |
 |---|---|
-| 골격 칸 — 문에 걸린 표기 · 쌍 어긋남(B196 ③ — 문서를 넘어 한 줄) | 합침 · 새로 · 승격 · drop · 확인 · 정정(`cli/provisional_ask.decide` — 좌표 단계와 같은 함수) |
+| 골격 칸 — 문에 걸린 표기 · 쌍 어긋남(B196 ③ — 문서를 넘어 한 줄) | 처분 넷 · 맞다 · 해석 고침(`cli/gate_table.loop` — 좌표 단계 · 골격 단과 같은 고리 · B202) |
 | 잠정 골격 노드(좌표 층 · 「봄」은 접어 둔다) | 승격 · 합침 · 그대로(`cli/provisional_ask.decide` — 인입 `--step`과 같은 함수) |
 | 애매(`uncertain_match` — 잠정 노드 것은 첫 묶음) | 합침 · 별개 · 건너뜀(`ops.merge` · `ops.confirm`) |
 | 자리 추정(유일 후보 · 「맞음」은 접어 둔다) | 맞음(확인 표지) · 떼기(보류로 — `place_guess.detach`) |
@@ -121,9 +121,13 @@ def _cut(s, n):
     return s[:n] + " " * max(0, n - len(s))
 
 
-def tables(b):
-    """묶음의 표 — 머리 · 줄(번호는 묶음 안에서)."""
-    from cli import provisional_ask
+#: 골격 칸 묶음의 표 머리
+GATE_TITLE = "골격 칸 — 문에 걸린 표기(표기 + 들어온 자리) · 쌍 어긋남 — 문서를 넘어 한 줄 · 행 수는 합"
+
+
+def tables(b, live=False):
+    """묶음의 표 — 머리 · 줄(번호는 묶음 안에서) · 골격 칸은 사람이 있으면 물음 고리가 그린다(`live` — 표는 거기서 · B202 ④)."""
+    from cli import gate_table
     rows, folded = b["잠정"]
     gate = b["골격 칸"]
     print(f"■ 인입 뒤 한 화면 — 골격 칸 {len(gate):,}(문에 걸림 {sum(1 for r in gate if r['kind'] == 'gate'):,} · 쌍 어긋남 "
@@ -131,9 +135,8 @@ def tables(b):
           + f" · 애매 {len(b['애매']):,} · 자리 추정 {len(b['추정'][0]):,}"
           + (f"(맞음 {b['추정'][1]:,} 접음)" if b["추정"][1] else "") + f" · 후보 있는 보류 {len(b['보류']):,}"
           + (f" · 같은 노드 엣지(표기가 다른 것) {len(b['같은 노드']):,}" if b["같은 노드"] else ""))
-    if gate:
-        print("  ── 골격 칸 — 문에 걸린 표기(표기 + 들어온 자리) · 쌍 어긋남 — 문서를 넘어 한 줄 · 행 수는 합")
-        provisional_ask.show_rows(gate)
+    if gate and not live:
+        gate_table.show(gate, GATE_TITLE)
     if rows:
         print(f"  ── 잠정 골격 노드 — {'#':>3} {'표기':<18} {'부모':<14} {'단':<6} {'행 수':>4} {'합칠 후보':<16} 처음 본 문서")
         for i, r in enumerate(rows, 1):
@@ -218,6 +221,15 @@ def skeleton_cells(layer=None):
     return provisional_ask.rows_of({"held": SR.held_from_queue(), "pairs": SR.pairs_from_queue()})
 
 
+def _did(r):
+    """표 고리의 처분 칸 → 끝 줄의 셈 이름."""
+    cell = str(r.get("done") or "")
+    if cell.startswith("✎"):
+        return "해석 고침"
+    word = cell[2:].split(" ", 1)[0].split("(", 1)[0] if cell.startswith("✓") else ""
+    return {"버림": "drop", "위로": "올림", "맞다": "확인"}.get(word, word) if word else "건너뜀"
+
+
 def bundles(layer):
     return {"골격 칸": skeleton_cells(layer), "잠정": provisionals(layer), "애매": items(layer), "추정": guesses(layer), "보류": holds(layer),
             "같은 노드": same_nodes(layer)}
@@ -227,11 +239,12 @@ def run(a, ask=None):
     """`ops review` — 묶음 넷의 표 · 한 건씩 묻기(`ask(문면) -> 답`) · 비대화형은 계획만."""
     from cli import _screen, provisional_ask
     b = bundles(a.layer)
-    tables(b)
+    live = ask is not None or sys.stdin.isatty()
+    tables(b, live)
     n = len(b["골격 칸"]) + len(b["잠정"][0]) + len(b["애매"]) + len(b["추정"][0]) + len(b["보류"])
     if not n:
         return 0
-    if ask is None and not sys.stdin.isatty():
+    if not live:
         print("  (비대화형 — 계획만 · 쓰기 0) ▶ 다음 줄 — 터미널에서: "
               f"python run.py ops review {a.layer} --actor {a.actor}")
         return 0
@@ -240,10 +253,13 @@ def run(a, ask=None):
             "애매": {"합침": 0, "별개": 0, "건너뜀": 0},
             "추정": {"맞음": 0, "떼기": 0, "건너뜀": 0}, "보류": {"고름": 0, "그대로": 0}}
     rebuild = False
-    for r in b["골격 칸"]:
-        did, rb = provisional_ask.decide(r, a.actor, ask, indent="  ")
-        done["골격 칸"][did] += 1
-        rebuild |= rb
+    if b["골격 칸"]:                                 # 한 고리(B202 — 표 · 말 또는 글쇠 · 처분 뒤 다시 그림 · q면 검토 끝)
+        from cli import gate_table
+        go = gate_table.loop(b["골격 칸"], a.actor, title=GATE_TITLE, ask=ask)
+        for r in b["골격 칸"]:
+            done["골격 칸"][_did(r)] += 1
+        if go is False:
+            b["잠정"], b["애매"], b["추정"], b["보류"] = ([], 0), [], ([], 0), []
     for r in b["잠정"][0]:
         did, rb = provisional_ask.decide(r, a.actor, ask, indent="  ")
         done["잠정"][did] += 1

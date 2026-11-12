@@ -80,6 +80,26 @@ def place(b, category, coord):
     return {"x": ref, "g": g, "up": up, "kids": kids, "under": under}
 
 
+def reread(b, surface, category, coord):
+    """**해석 고침**(B202 ② — 사람 말을 LLM이 읽어 사람이 확인한 것) — `(카테고리, 좌표)`를 고친 해석으로 · 기록이 없으면 그대로.
+    열쇠는 (표기 키, 들어온 자리 = 그 좌표 노드 이름) · 카테고리가 바뀌어 문에 걸 값이 아니면 지금의 판정 길로 · 위 공정이 바뀌면 그
+    자리로(`resolve_at_home` 입구 · `scan` — 한 함수)."""
+    ref, g = coord or (None, None)
+    n = g.get(ref) if (tiers(category) and ref and g is not None) else None
+    if n is None:
+        return category, coord
+    if b.also.get("reread") is None:
+        from core.state import provisional_hand as PH
+        b.also["reread"] = PH.rereads()
+    r = b.also["reread"].get((_k(surface), n.get("canonical")))
+    if not r:
+        return category, coord
+    if r.get("up"):
+        nid = next((i for i, x in g.nodes.items() if x.get("canonical") == r["up"] and is_live(x)), None)
+        coord = (nid, g) if nid else coord
+    return r.get("category") or category, coord
+
+
 def _book(b):
     if b.also.get("book") is None:
         from core.state import provisional_hand as PH
@@ -241,7 +261,8 @@ def scan(b, items):
     from core.state import provisional_hand as PH
     rows = {}
     for it in items:
-        p = place(b, it["category"], it.get("coord"))
+        cat, co = reread(b, it["surface"], it["category"], it.get("coord"))
+        p = place(b, cat, co)
         if p is None:
             continue
         s = it["surface"]
@@ -253,12 +274,12 @@ def scan(b, items):
             continue
         k3 = (b.doc_id,) + kk
         if k3 not in _PRE:
-            _PRE[k3] = _judge(b, s, it["category"], p)
+            _PRE[k3] = _judge(b, s, cat, p)
         verdict, nid, conf, v = _PRE[k3]
         if same(p, verdict, nid):
             continue
         near = None if verdict == "match" else (_near(p, v.get("nearest")) or {}).get("canonical")
-        rows[kk] = {"kind": "gate", "also": it["category"], "surface": s, "up_name": p["up"], "rows": 1,
+        rows[kk] = {"kind": "gate", "also": cat, "surface": s, "up_name": p["up"], "rows": 1,
                     "answer": "uncertain" if verdict == "match" else verdict, "confidence": conf,
                     "place": it.get("place") or "", "near": [near] if near else []}
     return list(rows.values())

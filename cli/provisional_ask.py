@@ -6,11 +6,12 @@
 
 | 줄 | 처분(글쇠) |
 |---|---|
-| 문에 걸린 표기(`kind: gate`) | 합침 `m [후보 번호|이름]` · 새로 `k` · 승격 `p` · drop `d <사유>` · 올림 `u`(골격 단 값만 — B197) · 건너뜀 |
-| 쌍 어긋남(`kind: pair`) | 확인 `a` · 정정 `r <후보 번호|이름>` · drop `d <사유>` · 건너뜀 |
+| 문에 걸린 표기(`kind: gate`) | 처분 넷(B202 ③) — 같다 `m [후보 번호|이름]` · 새로 `k` · 버림 `d <사유>` · 위로 `u`(겸 값 줄만) |
+| 쌍 어긋남(`kind: pair`) | 맞다 `a` · 같다 `m <후보 번호|이름>`(정정) · 버림 `d <사유>` |
 | 이미 세운 잠정 노드(`nid`) | 승격 `p` · 합침 `m [이름]` · 그대로 `k`(「봄」) · 건너뜀 |
 
-답은 묻는 한 함수(`_screen.answer`) · 한글 자판 짝 그대로(B118 ④).
+문 · 쌍 줄의 표와 물음(번호 + 말 또는 글쇠 — 말은 LLM이 읽는다)은 한 고리 `cli/gate_table.loop`(B202) · 잠정 노드 줄은 `ops review`의
+물음 · 한글 자판 짝 그대로(B118 ④).
 """
 from __future__ import annotations
 
@@ -18,16 +19,19 @@ from cli import _screen
 from core import paths
 
 PROMPT = "[승격 p / 합침 m [이름] / 그대로 k / 건너뜀 Enter] "
-PROMPT_GATE = "[합침 m [후보|이름] / 새로 k / 승격 p / drop d <사유> / 올림 u / 건너뜀 Enter] "
-PROMPT_PAIR = "[확인 a / 정정 r <후보|이름> / drop d <사유> / 건너뜀 Enter] "
 #: 한글 자판 그대로(같은 자리의 글쇠 — B118 ④)
 KEYS = {"ㅔ": "p", "ㅡ": "m", "ㅏ": "k", "ㅇ": "d", "ㅁ": "a", "ㄱ": "r", "ㅕ": "u"}
-DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "건너뜀")
+DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "해석 고침", "건너뜀")
+
+
+def key_of(ch):
+    """글쇠 하나 — 한글 자판 짝 그대로."""
+    return KEYS.get(ch, (ch or "").lower())
 
 
 def _key(a):
     a = (a or "").strip()
-    return KEYS.get(a[:1], a[:1].lower()), a[1:].strip()
+    return key_of(a[:1]), a[1:].strip()
 
 
 def _pick(rest, cands):
@@ -39,14 +43,18 @@ def _pick(rest, cands):
 
 
 def decide(row, actor, ask=None, indent="     ", answer=None):
-    """한 줄 — `answer`가 있으면 묻지 않고 그 답(`--step` 관문의 `m 1 1` 꼴의 뒤). 돌려주는 것 `(한 일, 재구축 필요)`."""
+    """한 줄 — `answer`가 있으면 묻지 않고 그 답(문 · 쌍 줄은 늘 `answer` — 표 고리 `cli/gate_table`의 처분). 돌려주는 것
+    `(한 일, 재구축 필요)` · 그 줄에 쓸 수 없는 글쇠는 거부(기록 0 — B202 ③)."""
     from core.state import coord_acks
     from core.state import provisional_hand as PH
+    from core.state.gate_say import allowed
     ask = ask or (lambda q: _screen.answer(q, "text", eof=""))
     kind = row.get("kind")
-    q = {"gate": PROMPT_GATE, "pair": PROMPT_PAIR}.get(kind, PROMPT)
-    name = f"'{row['up']}' · '{row['surface']}'" if kind == "pair" else f"'{row.get('canonical') or row['surface']}'"
-    k, rest = _key(answer if answer is not None else ask(f"{indent}{name} {q}"))
+    name = f"'{row.get('canonical') or row['surface']}'"
+    k, rest = _key(answer if answer is not None else ask(f"{indent}{name} {PROMPT}"))
+    if kind in ("gate", "pair") and k and k not in allowed(row):
+        print(f"{indent}[거부] 이 줄({'쌍' if kind == 'pair' else '문'})에는 '{k}'를 쓸 수 없다 — {' · '.join(allowed(row))}")
+        return "건너뜀", False
     try:
         if kind == "pair":
             return _pair(row, k, rest, actor, indent, coord_acks)
@@ -100,10 +108,10 @@ def _pair(row, k, rest, actor, indent, coord_acks):
         coord_acks.ack(row["pair_kind"], pair, actor, seen=True)
         print(f"{indent}확인 — '{row['ref']}' 자리 그대로 붙인다(이 쌍은 다시 묻지 않는다)")
         return "확인", False
-    if k == "r":
+    if k == "m":                                      # 쌍 줄의 「같다」 = 정정(B202 ③ — 같은 뜻)
         target = _pick(rest, row.get("candidates") or [])
         if not target:
-            print(f"{indent}[거부] 정정할 노드가 없다 — r <줄> <후보 번호|이름>")
+            print(f"{indent}[거부] 정정할 노드가 없다 — m <줄> <후보 번호|이름>")
             return "건너뜀", False
         coord_acks.fix(row["pair_kind"], pair, target, actor)
         print(f"{indent}정정 — '{row['up']}' 아래의 '{row['surface']}' = {target}(그 행들은 그 노드에)")
@@ -128,37 +136,6 @@ def step_rows(env):
     return rows_of(skeleton_review.review(env))
 
 
-def show_rows(rows, indent="     "):
-    """줄 표 — 문에 걸린 표기(번호 · 표기 · 들어온 자리 · 행 수 · 판단 · 후보 둘) · 쌍 어긋남(번호 · 상위 · ref · 실제 위 · 행 수 · 후보)."""
-    for i, r in enumerate(rows, 1):
-        cands = " · ".join(f"{j}.{c['name']}(경로 {c['path']} · 행 {c['rows']} · 자식 {c['kinds']}종)"
-                           for j, c in enumerate(r.get("candidates") or [], 1)) or "—"
-        if r["kind"] == "gate":
-            ans = {"uncertain": "애매", "new": "다르다"}.get(r.get("answer"), r.get("answer") or "—")
-            conf = r.get("confidence")
-            print(f"{indent}{i}. 문 — {r['surface']} · 들어온 자리 {r.get('up_name') or '미정'} · 행 {r['rows']} · 판단 {ans}"
-                  + (f"(확실도 {conf:.2f})" if isinstance(conf, (int, float)) else "") + f" · 후보 {cands}"
-                  + (f" · 문서 {' · '.join(r['docs'])}" if r.get("docs") else ""))
-        else:
-            print(f"{indent}{i}. 쌍 — 상위 {r['up']} · ref {r['surface']} · 실제 위 {r['real_up']} · 행 {r['rows']} · 후보 {cands}"
-                  + (f" · 문서 {' · '.join(r['docs'])}" if r.get("docs") else ""))
-
-
-#: `--step` 좌표 단계의 물음 — 지금 관문 답 규칙(계속은 c(ㅊ)만 · 멈춤 q) + 줄의 처분(번호 — 사람 후보 관문 [5/8]과 같은 꼴)
-GATE_PROMPT = ("   [계속 c / 멈춤 q / 합침 m <줄> [후보|이름] / 새로 k <줄> / 승격 p <줄> / drop d <줄> <사유> / 올림 u <줄> / "
-               "쌍 확인 a <줄> / 쌍 정정 r <줄> <후보|이름>] ")
-GATE_HELP = ("   c(ㅊ) 계속 · q(ㅂ) 멈춤 · m <줄> [후보 번호|이름] 합침 · k <줄> 새로 · p <줄> 승격 · d <줄> <사유> drop · "
-             "u <줄> 올림(골격 단 값) · a <줄> 쌍 확인 · r <줄> <후보 번호|이름> 쌍 정정 — 다시 친다")
-
-
-def _gate_cmd(a):
-    k, rest = _key(a)
-    num, _sp, name = rest.partition(" ")
-    if k in ("p", "m", "k", "d", "u", "a", "r") and num.isdigit():
-        return k, int(num), name.strip()
-    return None
-
-
 def actor():
     """행위자 — 셸 사용자 이름(인입 명령에 `--actor`가 없다 — D-269)."""
     import getpass
@@ -169,17 +146,11 @@ def actor():
 
 
 def gate(env):
-    """**`--step` 좌표 단계의 물음**(B184 ③ · B196 ③) — 줄이 있으면 번호로 처분(정한 것은 그 문서의 나머지 행부터 · 재구축 0) → 계속 / 멈춤."""
-    who = actor()
-    while True:
-        rows = step_rows(env)
-        show_rows(rows)
-        got = _screen.answer(GATE_PROMPT if rows else "   [계속 c / 멈춤 q] ", "go", eof=True,
-                             other=_gate_cmd if rows else None, hint=GATE_HELP)
-        if got is True or got is False:
-            return got
-        k, i, name = got
-        if not 1 <= i <= len(rows):
-            print(f"     {i}번이 목록에 없다")
-            continue
-        decide(rows[i - 1], who, answer=f"{k} {name}".strip())
+    """**`--step` 좌표 단계의 물음**(B184 ③ · B196 ③ · B202 ④) — 줄이 있으면 골격 칸 표 고리(`cli/gate_table.loop` — LLM 판단 · 말 또는
+    글쇠 · 처분 뒤 다시 그림 · 정한 것은 그 문서의 나머지 행부터 · 재구축 0) → 계속 / 멈춤."""
+    rows = step_rows(env)
+    if not rows:
+        return _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True)
+    from cli import gate_table
+    g, p = sum(1 for r in rows if r["kind"] == "gate"), sum(1 for r in rows if r["kind"] == "pair")
+    return gate_table.loop(rows, actor(), title=f"골격 칸 — 문에 걸린 표기 {g:,}종 · 쌍 어긋남 {p:,}쌍")
