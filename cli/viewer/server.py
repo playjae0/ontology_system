@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """칸 5.1 — 뷰어 **서버** — 표준 라이브러리 HTTP · 읽기 전용 · 127.0.0.1 (B82 ①).
 
-라우트는 전부 GET이고 **쓰기 라우트가 없다**(`do_POST`를 두지 않으면 501로 거절된다):
+라우트는 GET이고 **쓰기 라우트는 둘뿐이다**(B200 ③ — 「동의어」 탭의 LLM 검토 시작 · 승인 · 그 밖의 POST는 501로 거절된다):
 
     /                     정적 화면 (static/index.html)
     /static/<파일>        화면 자산 — vendor 포함(외부 URL 0)
@@ -14,6 +14,8 @@
     /api/doc/<doc_id>     문서 대장 행 + 판정 집계 + 그 문서가 만든 노드·청크
     /api/funnel           문서 깔때기 · orphan 행
     /raw/<상대경로>       원본 파일 그대로 — `<상태>/raw/` 아래만 · 탈출 거부
+    /api/aliases          동의어 점검 화면 (B200 ③ — `cli/viewer/alias.py`)
+    POST /api/aliases/review · /api/aliases/approve   쓰기 둘 — 한 번에 하나(진행 중이면 409 문면)
 
 **새로고침이면 최신 상태를 읽는다** — 구판은 뜬 시점의 HTML 한 장을 물고 있어
 인입·재구축 뒤에 다시 띄워야 했다. 화면이 증거인 도구에서 그것은 증거가 낡는 것이다.
@@ -130,7 +132,11 @@ class Handler(BaseHTTPRequestHandler):
                 404, {"error": "그 doc_id는 문서 대장에 없다"})
         if u.path == "/api/status":
             from core.query import status as QS              # 질의 진행 — 폴링(쓰기 0 · B114 ④)
-            return self._json(200, QS.get())
+            from core.state import alias_review as AR          # 동의어 LLM 검토 진행(B200 ③ — 같은 폴링)
+            return self._json(200, {**QS.get(), "aliases": dict(AR.PROGRESS)})
+        if u.path == "/api/aliases":
+            from cli.viewer import alias as VA
+            return self._json(200, VA.aliases())
         if u.path == "/api/query":
             q = (parse_qs(u.query).get("q") or [""])[0].strip()
             if not q:
@@ -152,7 +158,25 @@ class Handler(BaseHTTPRequestHandler):
                 "text/plain; charset=utf-8")
         return self._send(404, b"404", "text/plain; charset=utf-8")
 
-    # 쓰기 라우트는 만들지 않는다 — do_POST를 두지 않으면 501로 거절된다.
+    #: 쓰기 라우트 — 이 둘뿐이다(B200 ③ · 결정 §2 9). 그 밖의 POST는 501(읽기 전용 그대로)
+    WRITES = ("/api/aliases/review", "/api/aliases/approve")
+
+    def do_POST(self):                                  # noqa: N802 (표준 서버 규약)
+        u = urlparse(self.path)
+        if u.path not in self.WRITES:
+            return self._send(501, "쓰기 라우트가 아니다 — 뷰어의 쓰기는 동의어 검토 · 승인 둘뿐이다".encode("utf-8"),
+                              "text/plain; charset=utf-8")
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n).decode("utf-8") or "{}") if n else {}
+        except (ValueError, UnicodeDecodeError) as e:
+            return self._json(400, {"error": f"본문을 읽지 못했다 — {e}"})
+        from cli.viewer import alias as VA
+        try:
+            code, out = VA.start_review() if u.path.endswith("/review") else VA.approve(body)
+        except Exception as e:                          # noqa: BLE001 — 사유를 화면까지
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        return self._json(code, out)
 
 
 def serve(port=8765):
@@ -199,7 +223,7 @@ def main(args):
     print(f"  모드 {h['mode']} · 노드 {len(g['nodes'])} · 엣지 {len(g['edges'])} · "
           f"층 {len(h['layers'])} · 문서 {h['docs']} · 상태 {h['home']}")
     print("  라우트: / · /api/graph · /api/query?q=… · /api/status · /api/node/<id> · /api/neighbors/<id> · "
-          "/api/doc/<id> · /api/funnel · /raw/<경로> · /api/health   (쓰기 없음 — 읽기 전용)")
+          "/api/doc/<id> · /api/funnel · /raw/<경로> · /api/health · /api/aliases   (쓰기는 동의어 검토 · 승인 둘뿐)")
     print("  Ctrl+C로 멈춘다")
     threading.Thread(target=_warm, daemon=True).start()     # 질의 벡터 미리 만들기 — 주소 뒤 배경으로 (B114 ④)
     if not no_browser:

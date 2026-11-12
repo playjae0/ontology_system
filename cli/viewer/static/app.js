@@ -273,8 +273,10 @@ function controls() {
     b.onclick = () => {
       document.querySelectorAll("#tabs button").forEach((x) => x.classList.remove("on"));
       b.classList.add("on");
-      ["graph", "query", "funnel"].forEach((t) => { $(`#pane-${t}`).hidden = t !== b.dataset.tab; });
+      ["graph", "query", "funnel", "alias"].forEach((t) => { $(`#pane-${t}`).hidden = t !== b.dataset.tab; });
+      $("#alias-main").hidden = b.dataset.tab !== "alias";          // 동의어 목록은 가운데 넓은 칸(B200 ③)
       if (b.dataset.tab === "funnel") funnel();
+      if (b.dataset.tab === "alias") aliasTab();
     };
   });
   const ex = $("#examples"); ex.innerHTML = "예: ";

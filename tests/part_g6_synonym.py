@@ -266,6 +266,127 @@ _ok_d.append(("골격", coord_layer(), "← 골격" in _sk and f"{LEARN}  ← �
 show("ⓓ 별칭 출처 — show node가 LLM 매칭(확신·문서) · 사람(merge) · 골격 · 좌표 학습을 가른다 (표·산문 × 층 둘 + 골격)",
      all(o for _f, _l, o, _d in _ok_d), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_d))
 
+# ── B200 동의어 점검 — 규칙 점검 · LLM 검토(mock 창작 답) · 승인 → 반영 · 골격에서 빠진 seed 별칭 걷기 · 공유 별칭 보류 문면
+from core.state import alias_approve as AP, alias_audit as AA, alias_review as AR, alias_book as AB, oplog as OL  # noqa: E402
+from core.state import surface_book as SB                              # noqa: E402
+from cli.viewer import alias as VA                                     # noqa: E402
+
+fresh()
+_P.ensure(_P.parsed())
+for _d in ("CP01", "PFMEA01"):                       # 봉투 — 실경로의 인입이 남기는 자리(붙은 행의 바탕)
+    (_P.parsed(f"{_d}.json")).write_text(json.dumps(load(_d), ensure_ascii=False), encoding="utf-8")
+
+
+def _boot():
+    return subprocess.run([sys.executable, str(ROOT / "run.py"), "bootstrap"], capture_output=True, text=True,
+                          cwd=str(ROOT), stdin=subprocess.DEVNULL).stdout
+
+
+def _gbytes():
+    from core.graph import GraphStore
+    return {lay: GraphStore.for_layer(lay)._path.read_bytes() for lay in ("process", "quality")}
+
+
+# ⓐ bootstrap 끝 한 줄 · 공유에 「비전 검사」(노드 셋) · 뷰어 묶음과 같은 수 · 점검 · 화면은 그래프 바이트 0
+_out = _boot()
+_ln = next((l for l in _out.splitlines() if "동의어 —" in l), "")
+_g0 = _gbytes()
+_view = VA.aliases()
+_vis = sorted({p["target"]["canonical"] for g in _view["groups"] for p in g["pairs"] if p["surface"] == "비전 검사"})
+show("B200 ⓐ bootstrap 「동의어 — 공유 n …」 한 줄 · 공유 「비전 검사」 노드 셋 · 뷰어 묶음의 공유 수 같다 · 점검 · 화면 쓰기 0",
+     f"공유 {_view['counts']['shared']}" in _ln and len(_vis) == 3 and _gbytes() == _g0, f"{_ln.strip()} · {_vis}")
+
+# ⓑ 골격에서 지운 seed 별칭 → bootstrap이 노드 · 사전에서 걷는다 · 붙어 있던 행(CP01) · 재인입은 사전 연결이 아니다
+_skp = _P.layers("process", "skeleton.json")
+_sk = json.loads(_skp.read_text(encoding="utf-8"))
+_sk["ALIASES"]["탭용접"].remove("cathode 탭용접")
+_skp.write_text(json.dumps(_sk, ensure_ascii=False, indent=2), encoding="utf-8")
+_out = _boot()
+_tw = node_by("process", "탭용접")
+_held = [x for x in q_of("orphan_anchor", "CP01")]
+run_document(load("CP01"))
+finalize()
+_c12 = [x for x in q_of("orphan_anchor", "CP01") if (x.get("payload") or {}).get("provenance") == "CP01#C12"]
+show("B200 ⓑ 골격에서 지운 seed 별칭 — 노드 · 사전에서 걷음 · 「걷음 1 — 붙어 있던 행 …(CP01)」 · 재인입에서 C12 보류(사유 한 줄)",
+     "cathode 탭용접" not in [a["surface"] for a in _tw["aliases"]] and not Dictionary.open().lookup("cathode 탭용접")
+     and "seed 별칭 1 걷음 — 붙어 있던 행 1(문서 CP01)" in _out and len(_c12) == 1,
+     next((l.strip() for l in _out.splitlines() if "걷음" in l), "걷음 줄 없음")[:110] + f" · C12 {[x['reason'] for x in _c12]}")
+
+# ⓒ LLM 검토(mock) — 「유지」 승인 짝은 묻지 않는다 · 첫 실행 짝 k · 둘째 실행 0 → 호출 0 · 노드 개명 뒤 열쇠가 따라간다
+_keep = AP.approve([{"surface": "TW", "target": {"layer": "process", "canonical": "탭용접", "category": "Process"},
+                     "kind": AR.PAIR, "disposition": AP.KEEP}], "B200시험")
+_ent = node_by("process", next(n["canonical"] for n in open_graph("process").nodes.values()
+                               if n.get("status") != "seed" and ops.is_live(n) and n["category"] == "Property"))
+ops_mark_ = __import__("core.state.ops_mark", fromlist=["alias"])
+ops_mark_.alias("process", _ent["id"], "B200 사람 표기", "B200시험")
+_k0 = len(AR.targets(AR.Review.open(), AR.items()))
+_r1 = AR.run()
+_r2 = AR.run()
+_rows = AR.Review.open()
+_kept_asked = (_rows.get(AR.key("TW", {"layer": "process", "canonical": "탭용접", "category": "Process"})) or {}).get("verdict")
+_new = _ent["canonical"] + " B200"
+ops.rename("process", _ent["id"], _new, "B200시험")
+_rv = AR.Review.open()
+_follow = _rv.get(AR.key("B200 사람 표기", {"layer": "process", "canonical": _new, "category": "Property"}))
+show("B200 ⓒ LLM 검토(mock) — 첫 실행 짝 k 판정(유지 짝 제외) · 둘째 실행 물음 0 · 호출 0 · 개명 뒤 열쇠가 따라간다(판정 그대로)",
+     _r1["asked"] == _k0 and _r1["wrong"] == 1 and _r1["unsure"] >= 1 and _kept_asked is None
+     and _r2["asked"] == 0 and _r2["calls"] == 0 and bool(_follow and _follow.get("verdict")),
+     f"첫 {_r1} · 둘째 물음 {_r2['asked']} 호출 {_r2['calls']} · 개명 뒤 {(_follow or {}).get('verdict')}")
+
+# ⓓ 승인 — 대장 별칭 지움 · seed 별칭 지움 · 후보 받기 · 행위자 없음 · 낡은 승인 · ops replay
+_t = {"layer": "process", "canonical": _new, "category": "Property"}
+_m = AP.stamp()
+_a1 = AP.approve([{"surface": "B200 사람 표기", "target": _t, "kind": AR.PAIR, "disposition": AP.DROP},
+                  {"surface": "anode 탭용접", "target": {"layer": "process", "canonical": "탭용접", "category": "Process"},
+                   "kind": AR.PAIR, "disposition": AP.DROP}], "B200시험", made=_m)
+_bk = AB.AliasBook.open().get("B200 사람 표기", _t) or {}
+_sk = json.loads(_skp.read_text(encoding="utf-8"))
+_tw = node_by("process", "탭용접")
+_pend = AA.pending()
+_cand = next((e for e in _pend if e["layer"] == "quality"), None)
+_fe = next((n for n in open_graph("quality").nodes.values() if n.get("status") == "seed"
+            and n["category"] == (_cand or {}).get("category")), None)
+_a2 = AP.approve([{"surface": _cand["surface"], "target": {"layer": "quality", "canonical": None, "category": _cand["category"]},
+                   "kind": AR.CANDIDATE, "disposition": AP.TAKE, "to": _fe["canonical"]}], "B200시험") if _cand and _fe else {}
+finalize()
+_took = bool(_cand and _fe) and _fe["id"] in Dictionary.open().lookup(_cand["surface"]) and not any(
+    (x.get("payload") or {}).get("surface") == _cand["surface"] for x in q_of("orphan_anchor"))
+try:
+    AP.approve([], "")
+    _noactor = False
+except AP.Refused:
+    _noactor = True
+_m2 = AP.stamp()
+_sk["ALIASES"]["탭용접"].remove("TW")                   # 사람이 골격을 손으로 고쳤다 — 화면(판 _m2)은 낡았다
+_skp.write_text(json.dumps(_sk, ensure_ascii=False, indent=2), encoding="utf-8")
+_a3 = AP.approve([{"surface": "TW", "target": {"layer": "process", "canonical": "탭용접", "category": "Process"},
+                   "kind": AR.PAIR, "disposition": AP.KEEP},
+                  {"surface": "탭 용접", "target": {"layer": "process", "canonical": "탭용접", "category": "Process"},
+                   "kind": AR.PAIR, "disposition": AP.KEEP}], "B200시험", made=_m2)
+SB.write_review([])                                    # 판정 목록을 비운다 — 재생이 사람 처분을 다시 적는가
+_rp = OL.replay()
+_back = AR.Review.open().get(AR.key("TW", {"layer": "process", "canonical": "탭용접", "category": "Process"})) or {}
+show("B200 ⓓ 승인 — 대장 지움 → 대장 거부 · seed 지움 → skeleton.json · 노드 · 사전에서 빠짐 · 후보 받기 → 다음 마무리에 사전 연결 · "
+     "행위자 없음 거부 · 손으로 고친 골격 → 「골격이 바뀜」 · ops replay가 유지를 다시 적는다",
+     _bk.get("status") == AB.REJECTED and "anode 탭용접" not in _sk["ALIASES"].get("탭용접", [])
+     and "anode 탭용접" not in [a["surface"] for a in _tw["aliases"]] and not Dictionary.open().lookup("anode 탭용접")
+     and _a1["done"][AP.DROP] == 2 and _took and _noactor and _a3["stale"] == ["TW"] and _a3["done"][AP.KEEP] == 1
+     and (_back.get("human") or {}).get("disposition") == AP.KEEP,
+     f"{_a1['line']} · 후보 {(_cand or {}).get('surface')} → {(_fe or {}).get('canonical')} {_took} · 낡은 승인 {_a3['line']} · "
+     f"재생 유지 {(_back.get('human') or {}).get('disposition')}")
+
+# ⓕ 공유 별칭 보류 문면 — 범위 밖 · 범위 없음
+# (같은 문서 · 같은 표기는 큐 한 항목이라 — 행 둘을 문서 둘로)
+run_document(dict(TABLE, doc_id="B200F", records=[
+    {"source_locator": "F1", "process_group": "패키징", "process_ref": "비전 검사", "설비": "B200 비전기", "관리항목": "B200 정렬"}]))
+run_document(dict(TABLE, doc_id="B200G", records=[
+    {"source_locator": "F2", "process_ref": "비전 검사", "설비": "B200 비전기", "관리항목": "B200 정렬"}]))
+_rs = {(x.get("payload") or {}).get("provenance"): x["reason"]
+       for d in ("B200F", "B200G") for x in q_of("orphan_anchor", d)}
+show("B200 ⓕ 공유 별칭 보류 — 「표기 모호 — '비전 검사'의 노드 여럿(…) · 이 행의 범위(패키징)에 없다」 · 범위 없는 행 → 「범위 없음 — …」",
+     "이 행의 범위(패키징)에 없다" in _rs.get("B200F#F1", "") and "'비전 검사'의 노드 여럿(" in _rs.get("B200F#F1", "")
+     and "범위 없음 — 문서 좌표(--coord) 또는 상위 칸" in _rs.get("B200G#F2", ""), " ‖ ".join(f"{k} {v}" for k, v in _rs.items()))
+
 init.init(fresh_=True, all_=True)
 
 done()

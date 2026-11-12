@@ -46,7 +46,8 @@ SKIP = {"I3:split": "split — 배분표가 엣지 번호라 재구축 뒤 맞�
         "provisional:keep": "화면 표지(봄)", "guess:confirm": "화면 표지(맞음)",
         "provisional:seed": "문의 사람 답(골격 칸 — 계획이 읽는다)", "provisional:drop": "문의 사람 답(골격 칸 — 계획이 읽는다)",
         "provisional:raise": "문의 사람 답(골격 단 값 — 구축이 읽는다)",
-        "coord:fix": "문의 사람 답(좌표 쌍 — 계획이 읽는다)", "coord:drop": "문의 사람 답(좌표 쌍 — 계획이 읽는다)"}
+        "coord:fix": "문의 사람 답(좌표 쌍 — 계획이 읽는다)", "coord:drop": "문의 사람 답(좌표 쌍 — 계획이 읽는다)",
+        "alias:skeleton": "파일에 남는 판단(골격 ALIASES — 동의어 점검 승인 · B200 ④)"}
 
 KINDS = ("done", "already", "missing", "no_names", "skipped", "refused")
 #: 옛 극성 이름(B198 ④ — `<공정>::<축값>` · 결합 이름)을 개념 이름으로 다시 찾은 것 · 개념 이름으로도 자리 없는 것(이름)
@@ -413,9 +414,23 @@ def _guess_pick(w, nm, d, a, dry):
     return "done", f"'{d.get('surface')}' → '{node['canonical']}'"
 
 
+def _alias_keep(w, nm, d, a, dry):
+    """동의어 점검 「유지」(B200 ④) — 판정 목록(별칭 검토 갈래)에 사람 처분을 다시 적는다(같은 열쇠 · 이미 있으면 그대로)."""
+    from core.state import alias_review as AR
+    t, s = nm.get("node") or {}, d.get("surface")
+    rv = AR.Review.open()
+    r = rv.get(AR.key(s, t))
+    if r is not None and (r.get("human") or {}).get("disposition") == AR.KEEP:
+        return "already", f"'{s}' — 이미 유지"
+    if not dry:
+        rv.put(AR.key(s, t), s, t, None, AR.PAIR, human={"disposition": AR.KEEP, "actor": a["actor"], "at": store._now()})
+        rv.save()
+    return "done", f"'{s}' → '{t.get('canonical')}' 유지"
+
+
 _HANDS = {"I1:rename": _rename, "I5:transfer": _transfer, "I2:merge": _merge, "I4:obsolete": _obsolete,
           "I5:confirm": _confirm, "I6:alias": _alias, "alias:reject": _alias_reject, "edge:delete": _edge,
-          "queue:resolve": _queue, "guess:detach": _guess_detach, "guess:pick": _guess_pick}
+          "queue:resolve": _queue, "guess:detach": _guess_detach, "guess:pick": _guess_pick, "alias:keep": _alias_keep}
 
 
 #: 같은 표기 · 같은 대상의 별칭 판단(잇기 · 거두기) — **마지막 것만** 재생한다(B108 ① — 살렸다 다시 거두는 왕복 0)

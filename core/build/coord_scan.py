@@ -53,7 +53,7 @@ def _scan(env, b, doc_id, dc, out):
         vs, both, hits = [], False, []
         for one in refs or [None]:                  # 공정 목록이면 원소마다 같은 판정(B125 ④ · B143 ① — 등록 SnapView와 같은 꼴)
             sink = []                               # 보류는 구축의 몫이다 — 여기서는 버리는 자루
-            ref, ref_g = b.resolve_anchor(one or grp_s, COORD_CATEGORY, prov, defer=sink)
+            ref, ref_g = b.resolve_anchor(one or grp_s, COORD_CATEGORY, prov, defer=sink, group=grp_s)
             v1, gcs = b.coord_verdicts(up, ref, ref_g)
             v1 = [(CP.DOC_GROUP if k == CP.GROUP else k, pr) for k, pr in v1] if by_doc else v1
             vs += v1

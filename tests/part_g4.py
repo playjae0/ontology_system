@@ -393,10 +393,10 @@ try:
     show("/ — 뷰어 HTML을 낸다", _get("/")[0] == 200)
     show("q가 비면 400 (조용히 빈 답을 내지 않는다)", _get("/api/query?q=")[0] == 400)
     show("그 밖의 경로는 404", _get("/nope")[0] == 404)
-    # **쓰기 라우트가 없다** — 파생물에서 그래프를 고치는 경로는 없다(문서 1 P5).
-    show("쓰기 라우트 없음 — POST는 501로 거절된다",
+    # **쓰기 라우트는 동의어 둘뿐** — 그 밖의 POST는 501(고침 B200 ⓔ — 옛 「do_POST가 없다」)
+    show("쓰기 라우트 둘 밖의 POST는 501로 거절된다",
          _get("/", data=b"{}", method="POST")[0] == 501
-         and not hasattr(VS.Handler, "do_POST"))
+         and VS.Handler.WRITES == ("/api/aliases/review", "/api/aliases/approve"))
 finally:
     _srv.shutdown()
     _srv.server_close()

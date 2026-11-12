@@ -63,3 +63,10 @@ pre.src { white-space:pre-wrap; word-break:break-word; margin:4px 0 0; font-size
 .dot { display:inline-block; border-radius:50%; background:var(--dim); margin-right:6px; vertical-align:middle; }
 #qstatus { margin:6px 0; }
 #qstatus .on { color:var(--fg); font-weight:600; }
+
+/* 동의어 탭(B200 ③) — 가운데 넓은 칸을 덮는다 */
+#alias-main { position:absolute; inset:0; overflow:auto; background:var(--bg); z-index:5; padding:8px 12px; }
+#alias-main table td, #alias-main table th { vertical-align:top; padding:2px 4px; }
+#alias-main .err { color:#c0392b; }
+.albar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:4px 0; }
+.chk.inline { display:inline-block; margin-right:10px; }

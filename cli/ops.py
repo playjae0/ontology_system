@@ -11,6 +11,7 @@
     python cli/ops.py coord-ack|coord-unack all "<상위>" "<하위>" --actor <사람> [--reason <메모>]
     python cli/ops.py confirm all --doc <doc_id> --actor <사람> [--yes]     문서 단위 일괄 확인 (B106 ④)
     python cli/ops.py replay  all --actor <사람> [--dry-run]               사람 판단 재생 — 이름으로 (B106 ③)
+    python run.py ops alias-audit [--llm]                                 동의어 점검 — 층 · 행위자 없이(run.py가 받는다 · B200 ⑦)
 
 **파급이 1건을 넘는 작업은 실행 전에 미리보기를 찍는다**(카드 G6). `--yes` 없이는
 미리보기만 내고 멈춘다 — 승인 없는 파급은 이 도구의 설계상 존재하지 않는다.
@@ -230,12 +231,42 @@ def _relink(a):
     return 0
 
 
+def _alias_audit(rest):
+    """`ops alias-audit [--llm]`(B200 ⑦) — 동의어 점검(규칙 · `--llm`이면 LLM 검토까지) · 요약 한 줄만 · 승인은 뷰어 「동의어」
+    (또는 골격 손 편집 → 다음 `bootstrap`). 층 · 행위자를 받지 않는다(판정 목록에 LLM 판정만 쓴다 — 골격 · 사전 · 대장 쓰기 0)."""
+    from core.state import alias_audit as AA, alias_review as AR
+    from core.state.world import World
+    bad = [x for x in rest if x != "--llm"]
+    if bad:
+        print(f"[사용법] python run.py ops alias-audit [--llm] — 모르는 인자 {bad}")
+        return 2
+    ps = AA.pairs(World())
+    rv = AR.Review.open()
+    its = AR.items(ps)
+    if "--llm" in rest:
+        tg = AR.targets(rv, its)
+        print(f"■ {AR.preview_line(AR.preview(tg))}")
+        from core.llm import gateway
+        if tg and not gateway.use_mock():
+            from cli.preflight import gate
+            if not gate(chat=True, embed=False, catalog=False):       # LLM 비용 전 사전 점검(B98 — 채팅만)
+                return 1
+        r = AR.run(tg)
+        print(f"■ LLM 검토 — 물음 {r['asked']:,}(호출 {r['calls']:,}) · 맞음 {r['right']:,} · 틀림 {r['wrong']:,} · 애매 "
+              f"{r['unsure']:,} · 없어짐 {r['closed']:,}")
+        rv = AR.Review.open()
+    c = AA.counts(ps, len(AR.targets(rv, its)))
+    print(f"■ {AA.line(c) or '동의어 — 공유 0 · 겹침 의심 0 · 검토 안 된 짝 0'} · 짝 {c['pairs']:,} · 죽은 별칭 {c['dead']:,} · "
+          f"보류 표기 {sum(1 for it in its if it['kind'] == AR.CANDIDATE):,}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="I축 인스턴스 변경 도구 (n5)")
     p.add_argument("op", choices=["rename", "merge", "split", "obsolete",
                                   "transfer", "delete-edge", "confirm", "alias", "alias-reject", "tidy",
                                   "learn-promote", "learn-reject", "review",
-                                  "coord-ack", "coord-unack", "replay", "relink"])
+                                  "coord-ack", "coord-unack", "replay", "relink", "alias-audit"])   # alias-audit은 run.py가 먼저 받는다
     p.add_argument("layer")
     p.add_argument("args", nargs="*")
     p.add_argument("--actor", required=True, help="행위자 — 로그 5요소 중 하나(필수)")
@@ -251,8 +282,8 @@ def main(argv=None):
     p.add_argument("--coord", help="relink — 그 문서(--doc)의 문서 좌표(골격 이름)를 기록하고 잇는다(재인입 없이 · B113 ③)")
     p.add_argument("--dry-run", dest="dry_run", action="store_true", help="replay — 계획만(쓰기 0)")
     a = p.parse_args(argv)
-    if a.op == "replay":
-        return _replay(a)
+    if a.op in ("replay", "alias-audit"):
+        return _replay(a) if a.op == "replay" else _alias_audit([])
     if a.op == "relink":
         return _relink(a)
     if (a.op == "confirm" and a.doc) or a.op == "alias-reject":

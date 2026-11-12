@@ -42,10 +42,11 @@ class Refused(Exception):
 
 
 # ---------------------------------------------------------------- 골격 파일 · ALIASES (자리 하나)
-def skeleton_file(err=Refused):
-    """`(좌표 층, 골격 파일)` — 골격이 config 인라인이면 `err`(학습 승격과 같은 문면)."""
+def skeleton_file(err=Refused, layer=None):
+    """`(층, 골격 파일)` — 층을 주지 않으면 좌표 층(B200 ④ — 동의어 승인은 대상 노드의 층) · 골격이 config 인라인이면 `err`(학습 승격과
+    같은 문면)."""
     from core.state.bootstrap import coord_layer, load_config
-    lay = coord_layer()
+    lay = layer or coord_layer()
     src = ((load_config(lay).get("skeleton") or {}).get("source"))
     if not src:
         raise err(
@@ -62,15 +63,44 @@ def _write(p, seed):
     store.atomic_write_bytes(p, (json.dumps(seed, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
-def add_alias(canonical, surface, err=Refused):
-    """**골격 `ALIASES`에 쓰는 자리 하나** — `canonical`(골격 노드) 아래에 `surface` · 돌려주는 것은 `(층, 파일)`."""
-    lay, p = skeleton_file(err)
+def add_alias(canonical, surface, err=Refused, layer=None):
+    """**골격 `ALIASES`에 쓰는 자리 하나** — `canonical`(골격 노드) 아래에 `surface` · 돌려주는 것은 `(층, 파일)` · 층을 주지 않으면 좌표 층."""
+    lay, p = skeleton_file(err, layer)
     seed = _read(p)
     al = seed.setdefault("ALIASES", {}).setdefault(canonical, [])
     if surface not in al:
         al.append(surface)
     _write(p, seed)
     return lay, p
+
+
+def drop_alias(canonical, surface, err=Refused, layer=None):
+    """골격 `ALIASES`에서 빼는 자리 하나(B200 ④ — `add_alias`의 짝) — `canonical` 키 또는 그 노드의 짧은 이름 키(짧은 키는
+    다른 노드의 이름이 아닐 때만 그 노드다 — 로더 규칙)에서 `surface`를 뺀다 · 빈 키는 지운다. 돌려주는 것은 `(층, 파일, 뺐나)`."""
+    from core.state import catalog
+    lay, p = skeleton_file(err, layer)
+    seed = _read(p)
+    al = seed.get("ALIASES") or {}
+    short = str(canonical).split(catalog.sep())[-1]
+    names = _canonicals(seed)
+    hit = False
+    for k in [canonical] + ([short] if short != canonical and short not in names else []):
+        if surface in (al.get(k) or []):
+            al[k] = [s for s in al[k] if s != surface]
+            if not al[k]:
+                del al[k]
+            hit = True
+    if hit:
+        _write(p, seed)
+    return lay, p, hit
+
+
+def _canonicals(seed):
+    """seed 트리의 canonical 전부 — 로더의 파서 그대로(짧은 키가 다른 노드의 이름인지 가린다)."""
+    from core.state import catalog
+    from core.state.skeleton import _TreeParser
+    return {s.canonical for s in _TreeParser(dict(seed.get("AXIS_LABELS") or {}), catalog.sep()).parse(
+        seed.get("TREE") or []).specs}
 
 
 def _replant(lay):
