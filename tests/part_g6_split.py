@@ -409,15 +409,60 @@ show("B197 ⓛ 상한 이하 청크 바이트 같음 — 상한을 넘던 구간
      _small(_rb.envelope) and _small(_rb.envelope) == _small(_r1.envelope), f"{_small(_r1.envelope)}")
 
 # B200 ⓪ 긴급(사내 rfq_packaging) — 아래에 본문 · 판단 필요 줄이 붙은 제목은 접지 않는다(접힌 부모를 자식이 찾다 KeyError)
-_frk = {"labels": [{"row": r, "text": tx} for r, tx in [(1, "1. 가"), (2, "2. 나"), (3, "3. 다"), (4, "4. 라"), (5, "판단할 본문")]],
-        "headings": [{"row": r, "parent": None, "role": "묶음"} for r in (1, 2, 3, 4)], "needs": [{"row": 5, "kind": "판단 필요"}]}
-try:
-    _tlk = [ln for ln, _need in split_report.toc_lines("시트", _frk)]
-except KeyError as _e:
-    _tlk = [f"KeyError {_e}"]
-_i4 = next((i for i, ln in enumerate(_tlk) if "4행 " in ln), None)
-show("B200 ⓪ 형제 제목 넷(부모 없음) + 마지막 제목 아래 판단 필요 본문 — toc_lines가 죽지 않고 그 본문이 마지막 제목 아래 · 하위 없는 형제 셋은 접힌다",
-     _i4 is not None and "5행 " in _tlk[_i4 + 1] and len(_tlk[_i4 + 1]) - len(_tlk[_i4 + 1].lstrip(" │")) > 0
-     and any("외 2줄" in ln for ln in _tlk[:_i4]), " / ".join(_tlk))
+def _frk(need=True):
+    labs = [(10, "1) 가"), (11, "2) 나"), (12, "3) 다"), (13, "4) 라"), (14, "판단할 본문")]
+    return {"labels": [{"row": r, "text": tx} for r, tx in (labs if need else labs[:4])],
+            "headings": [{"row": r, "parent": None, "role": "제목"} for r in (10, 11, 12, 13)],
+            "needs": [{"row": 14, "kind": "판단 필요"}] if need else []}
+
+
+def _toc(fr):
+    try:
+        return [ln for ln, _need in split_report.toc_lines("시트", fr)]
+    except Exception as e:                                    # noqa: BLE001 — 죽으면 그 까닭이 근거
+        return [f"{type(e).__name__} {e}"]
+
+
+_tlk = _toc(_frk())
+_i4 = next((i for i, ln in enumerate(_tlk) if "13행 " in ln), None)
+show("B200 ⓪-1 형제 제목 넷(부모 없음) + 마지막 제목 아래 판단 필요 본문 — 죽지 않고 14행이 13행 아래 · 10행 뒤 「외 2줄(R11~R12)」",
+     _i4 is not None and _i4 + 1 < len(_tlk) and "14행 " in _tlk[_i4 + 1]
+     and len(_tlk[_i4 + 1]) - len(_tlk[_i4 + 1].lstrip(" │")) > 0
+     and any("외 2줄" in ln and "11" in ln and "12" in ln for ln in _tlk[:_i4]), " / ".join(_tlk))
+_tln = _toc(_frk(need=False))
+show("B200 ⓪-2 판단 필요를 빼면 그 제목도 접힌다 — 「외 3줄(R11~R13)」(접기 그대로)",
+     any("외 3줄" in ln and "11" in ln and "13" in ln for ln in _tln) and not any("13행 " in ln for ln in _tln), " / ".join(_tln))
+
+
+def _tree(seed):
+    """무작위 나무(시드 고정) — 줄 1~40 · 제목(부모 = 앞 제목 · 없음 · 틀 행) · 판단 필요 · 초안 · 청크 시작 · 고친 줄 섞음."""
+    import random
+    rd = random.Random(seed)
+    n = rd.randint(1, 40)
+    rows = list(range(1, n + 1))
+    heads, hs = [], []
+    for r in rows:
+        if rd.random() < 0.55:
+            par = rd.choice(hs + [None, None, split_report.FRAME_ROW]) if hs else rd.choice([None, split_report.FRAME_ROW])
+            heads.append({"row": r, "parent": par, "role": "제목"})
+            hs.append(r)
+    pick = lambda q: [r for r in rows if rd.random() < q]                     # noqa: E731
+    fr = {"labels": [{"row": r, "text": f"{r}) 줄" if rd.random() < 0.5 else "본문 줄"} for r in rows], "headings": heads,
+          "needs": [{"row": r, "kind": "판단 필요"} for r in pick(0.15)], "changed": pick(0.1)}
+    if rd.random() < 0.5:
+        fr["toc0"] = [{"row": r} for r in pick(0.4)]
+    return fr, frozenset(pick(0.1))
+
+
+_bad = []
+for _sd in range(3000):
+    _fr, _st = _tree(_sd)
+    try:
+        split_report._items("시트", _fr, _st)
+        split_report.toc_lines("시트", _fr)
+    except Exception as e:                                    # noqa: BLE001
+        _bad.append(f"{_sd}:{type(e).__name__} {e}")
+show("B200 ⓪-3 무작위 나무 3000(시드 0~2999 · 제목 · 판단 필요 · 초안 · 청크 시작 · 고친 줄 섞음) — _items · toc_lines 예외 0",
+     not _bad, f"실패 {len(_bad)} — " + " · ".join(_bad[:5]))
 
 done()
