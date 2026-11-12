@@ -2,8 +2,9 @@
 """칸 0.3 — **config 지도 내보내기**(B173 · 읽기만 · ⑤파생 `export/`): 모델(`cli.config_map`)을 HTML 한 장 · 화면 요약 ·
 JSON으로 낸다 · 두 모델의 뜻 차이를 잰다.
 
-    python run.py export config [경로]              HTML 한 장(기본 export/config_map.html) + 화면 요약
-    python run.py export config --json [경로]       같은 모델을 JSON으로(기본 export/config_map.json — 이름순 · 결정적)
+    python run.py export config [경로]              HTML 한 장(기본 export/config_map.html — 늘 최신 · 같은 내용을
+                                                     config_map_<날짜-시각>.html로도 남긴다) + 화면 요약
+    python run.py export config --json [경로]       같은 모델을 JSON으로(기본 export/config_map.json — 이름순 · 결정적 · 시각 이름 사본도)
     python run.py export config --from <layers 폴더> …  그 폴더(제안 — `work/config_next/layers`)를 읽는다(상태 루트 쓰기 0)
     python run.py export config --diff a.json b.json  두 모델의 뜻 차이만(category · home · also · name form · 층 categories ·
                                                      relation_patterns · parent_pairs · 층에 걸린 parent_pairs · uses · cross-layer edge ·
@@ -301,6 +302,16 @@ def _read(p):
     return json.loads(Path(p).read_text(encoding="utf-8"))
 
 
+def _keep(name, body):
+    """**시각 이름 사본**(기본 자리일 때만) — `export/config_map_<날짜-시각>.<html|json>`에 같은 내용 · 최신 이름은 덮어쓰고 지난 지도는
+    이 사본으로 남는다. 돌려주는 것은 사본 자리."""
+    import time
+    stem, ext = name.rsplit(".", 1)
+    p = out_path(None, f"{stem}_{time.strftime('%Y%m%d-%H%M%S')}.{ext}")
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
 def main(args):
     if args[:1] == ["--diff"]:
         if len(args) != 3:
@@ -326,12 +337,15 @@ def main(args):
         print(f"[export] [상태] {e}")
         return 1
     if args[:1] == ["--json"]:
-        out = out_path(args[1] if len(args) > 1 else None, "config_map.json")
-        out.write_text(model_json(model), encoding="utf-8")
+        given, name, body = (args[1] if len(args) > 1 else None), "config_map.json", model_json(model)
     else:
-        out = out_path(args[0] if args else None, "config_map.html")
-        out.write_text(render_html(model), encoding="utf-8")
+        given, name, body = (args[0] if args else None), "config_map.html", render_html(model)
+    out = out_path(given, name)
+    out.write_text(body, encoding="utf-8")
+    kept = None if given else _keep(name, body)
     for ln in summary(model, out):
         print(ln)
+    if kept:
+        print(f"  사본 {paths.show(kept)} — 지난 지도는 시각 이름으로 남는다(--diff로 대조 · {name}은 늘 최신)")
     print("  ※ 읽기만 — config · 그래프 · 등록부 쓰기 0 · 외부 주소 0 · 파생물이다(고치는 자리는 config · bootstrap)")
     return 0
