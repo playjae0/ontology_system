@@ -408,4 +408,16 @@ _small = lambda env: [(c["source_locator"], c["text"], c.get("section")) for c i
 show("B197 ⓛ 상한 이하 청크 바이트 같음 — 상한을 넘던 구간만 나뉘고 「2. 검사 설비」 청크(위치 · 글 · 경로)는 상한 없는 판과 같다",
      _small(_rb.envelope) and _small(_rb.envelope) == _small(_r1.envelope), f"{_small(_r1.envelope)}")
 
+# B200 ⓪ 긴급(사내 rfq_packaging) — 아래에 본문 · 판단 필요 줄이 붙은 제목은 접지 않는다(접힌 부모를 자식이 찾다 KeyError)
+_frk = {"labels": [{"row": r, "text": tx} for r, tx in [(1, "1. 가"), (2, "2. 나"), (3, "3. 다"), (4, "4. 라"), (5, "판단할 본문")]],
+        "headings": [{"row": r, "parent": None, "role": "묶음"} for r in (1, 2, 3, 4)], "needs": [{"row": 5, "kind": "판단 필요"}]}
+try:
+    _tlk = [ln for ln, _need in split_report.toc_lines("시트", _frk)]
+except KeyError as _e:
+    _tlk = [f"KeyError {_e}"]
+_i4 = next((i for i, ln in enumerate(_tlk) if "4행 " in ln), None)
+show("B200 ⓪ 형제 제목 넷(부모 없음) + 마지막 제목 아래 판단 필요 본문 — toc_lines가 죽지 않고 그 본문이 마지막 제목 아래 · 하위 없는 형제 셋은 접힌다",
+     _i4 is not None and "5행 " in _tlk[_i4 + 1] and len(_tlk[_i4 + 1]) - len(_tlk[_i4 + 1].lstrip(" │")) > 0
+     and any("외 2줄" in ln for ln in _tlk[:_i4]), " / ".join(_tlk))
+
 done()

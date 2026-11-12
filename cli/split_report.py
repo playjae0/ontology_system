@@ -182,6 +182,9 @@ def _items(frame, fr, starts=frozenset()):
     for it in rows.values():
         if it["parent"] not in rows:
             it["parent"] = None
+    for it in rows.values():                                 # 아래에 줄이 붙은 제목은 접지 않는다 — 본문 · 판단 필요 줄의 부모도(제목 부모만 세면 접힌 부모를 자식이 찾다 KeyError)
+        if it["parent"] is not None:
+            rows[it["parent"]]["fold"] = False
     child = {}
     for r in order:
         child.setdefault(rows[r]["parent"], []).append(r)
