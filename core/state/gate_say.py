@@ -38,7 +38,7 @@ def allowed(row):
 
 
 def categories():
-    """좌표 층의 카테고리 닫힌 목록(집 카테고리 + uses)."""
+    """좌표 층의 카테고리 닫힌 목록(categories + uses)."""
     from core.state.bootstrap import coord_layer, load_config
     cfg = load_config(coord_layer())
     return sorted(set(cfg.get("categories") or {}) | set(cfg.get("uses") or []))

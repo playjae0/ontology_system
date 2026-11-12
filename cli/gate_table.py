@@ -79,10 +79,10 @@ def lines(rows, title, indent="   "):
 def prompt(rows):
     pair = any(r.get("kind") == "pair" for r in rows)
     tail = " · 쌍 줄은 맞다 a" if pair else ""
-    if len(rows) == 1:
-        return (f"   [말 또는 글쇠 (예: 사이드 실링이랑 같은 거 · k · d 설계 항목 · 이건 부품이야{tail}) / 계속 c / 멈춤 q] ")
-    return (f"   [번호 + 말 또는 글쇠 (예: 1 사이드 실링이랑 같은 거 · 1 새로 · 1 버려 설계 항목 · 1 이건 부품이야{tail}) / "
-            "계속 c / 멈춤 q] ")
+    if len(rows) == 1:                      # 머리는 관문 물음과 같다(「[계속 c / 멈춤 q」)
+        return f"   [계속 c / 멈춤 q / 말 또는 글쇠 (예: 사이드 실링이랑 같은 거 · k · d 설계 항목 · 이건 부품이야{tail})] "
+    return (f"   [계속 c / 멈춤 q / 번호 + 말 또는 글쇠 (예: 1 사이드 실링이랑 같은 거 · 1 새로 · 1 버려 설계 항목 · "
+            f"1 이건 부품이야{tail})] ")
 
 
 HELP = ("   번호 + 말(LLM이 읽는다 — 해석을 보이고 Enter 뒤에 쓴다) 또는 글쇠 — m [후보|이름] 같다 · k 새로 · d <사유> 버림 · "
