@@ -189,6 +189,23 @@ show("replaced_by 없는 폐기는 '폐기됨'을 명시해 답한다 (침묵 �
      "폐기된 항목" in (ans2.get("note") or "") + " ".join(ans2["transit"]),
      str(ans2.get("note")))
 
+# B199 ⓖ 폐기 노드에 연산 — 거부 문면(되살리지 않는다 · 살아 있는 노드에 merge · 문서를 다시 넣는다) · KeyError 0
+def _refused199(fn, *a, **kw):
+    try:
+        fn(*a, **kw)
+        return None
+    except ops.OpRefused as e:
+        return str(e)
+    except KeyError as e:                                   # 옛 결함(merged_into를 읽었다)
+        return f"KeyError {e}"
+
+
+_r199 = (_refused199(ops.rename, "process", lone, "폐기 시험 노드 2", ACTOR),
+         _refused199(ops.obsolete, "process", lone, ACTOR, reason="두 번"))
+show("B199 ⓖ 폐기 노드에 rename · obsolete → 거부 「폐기 노드다 — 되살리지 않는다 · … ops merge · … 다시 넣는다」 · KeyError 0",
+     all(r and r.startswith("폐기 노드다 — 되살리지 않는다") and "ops merge" in r and "KeyError" not in r for r in _r199),
+     str([(r or "")[:40] for r in _r199]))
+
 # ============================================================ I-5 순환 거부
 print("\n■ I-5 순환 방어 2겹 (L8)")
 # 툼스톤(=이미 체인 위에 있는 id)을 다시 병합 대상으로 삼는 것이 순환의 입구다.

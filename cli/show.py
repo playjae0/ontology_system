@@ -184,8 +184,11 @@ def cmd_node(args):
         attrs = n.get("attrs") or {}
         if attrs:
             print("\n  ── 값 ──")
+        from core.query.query import fold_values, value_text
         for k, v in attrs.items():
             items = v if isinstance(v, list) else [v]
+            for g in fold_values(items):              # 같은 값이 극성만 다르면 한 줄 · 극성은 표시 이름(B199 ④)
+                print(f"    {k:<12} {value_text(g)}   ({_prov(g['provenance'], 3)})")
             for it in items:
                 # **열람은 진실을 판정하지 않는다.** 값 항목의 정본 형태는
                 # `{value, provenance}` 또는 `{context, value, provenance}`이고
@@ -195,11 +198,6 @@ def cmd_node(args):
                 # 다르다고 표시한다.
                 if not isinstance(it, dict):
                     print(f"    {k:<12} {it!r}   ← 값 항목 형태 아님 (쓰기 측 결함)")
-                    continue
-                ctx = it.get("context") or {}
-                ctx_s = f"[{', '.join(f'{a}={b}' for a, b in ctx.items())}] " if ctx else ""
-                print(f"    {k:<12} {ctx_s}{it.get('value')}"
-                      f"   ({_prov(it.get('provenance'), 3)})")
 
         print("\n  ── 연결 ──")
         gs = _graphs()

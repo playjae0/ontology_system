@@ -14,6 +14,52 @@ from cli import _screen
 STAGES = ("골격단", "확정공정", "판정결과")
 #: 쓰기 전 판정 결과를 이 문서에서 물었나(물었으면 저장 뒤 [판정] 머리는 묻지 않는다)
 ASKED = {"판정결과": False}
+#: 이 문서의 쌍별 예고 md 몸(`export/plan_<doc>.md` — 판정 결과의 자리 바뀐 값을 끝 절로 더해 다시 쓴다 · B199 ①②)
+PLAN = {}
+
+
+def plan_md_name(doc_id):
+    return f"plan_{doc_id}.md"
+
+
+def _save_plan(doc_id, extra=()):
+    from cli import envelope_md
+    body = PLAN.get(doc_id) or [f"# 쌍별 예고 — {doc_id}", ""]
+    return envelope_md.save(plan_md_name(doc_id), "\n".join(list(body) + list(extra)) + "\n")
+
+
+def preview_screen(groups, doc_id, indent="     "):
+    """쌍별 예고 — 화면은 쌍마다 요약(`also_stage.preview_lines`) · 전부는 md(`export/plan_<doc>.md` · 원자 쓰기 한 자리 — B199 ①)."""
+    from core import paths
+    from core.build import also_stage as AS
+    full = AS.preview_lines(groups, indent="", full=True)
+    PLAN[doc_id] = [f"# 쌍별 예고 — {doc_id}", "", "붙을 자리는 판정 전 이름 부모다(판정 뒤 자리는 끝 절).", "", "```"] + full + ["```"]
+    p = _save_plan(doc_id)
+    vals = sum(len(v) for v in groups.values())
+    shown = sum(min(AS.TOP, sum(1 for r in v if AS._kind(r["plan"]) == AS.PLAN_KINDS[2][0])) for v in groups.values())
+    return ([f"   쌍별 예고 — 쌍 {len(groups):,} · 표기 {vals:,}(같은 표기 · 자리는 한 번) · 붙을 자리(판정 전) · 판정 예정(쓰기 0 · LLM 0)"]
+            + AS.preview_lines(groups, indent=indent)
+            + [f"{indent}… 그 밖 {max(0, vals - shown):,}줄 — {paths.show(p)}"])
+
+
+def moved_lines(info, indent="   "):
+    """판정 결과 아래 — 자리가 바뀐 값 위 `TOP`(행 수 큰 차례) · 전부는 쌍별 예고 md의 끝 절(B199 ②)."""
+    from cli.ingest_screen import PATH_SHORT
+    from core import paths
+    from core.build import also_stage as AS
+    rows = info.get("자리") or []
+    if not rows:
+        return []
+
+    def one(x):
+        return f"{x['surface']}: {x['before']} → {x['after']}({PATH_SHORT.get(x.get('path'), x.get('path') or '—')})"
+    doc = info.get("doc_id")
+    out = [f"{indent}자리 바뀜(판정 전 → 판정 뒤) {len(rows):,}"]
+    out += [f"{indent}  {one(x)}" for x in sorted(rows, key=lambda x: -x["n"])[:AS.TOP]]
+    if doc:
+        p = _save_plan(doc, ["", "## 판정 뒤 자리가 바뀐 값", ""] + [f"- {x['pair']} · {one(x)} · 행 {x['n']}" for x in rows])
+        out.append(f"{indent}  전부 — {paths.show(p)}")
+    return out
 
 
 def rows_lines(rows, indent="     "):
@@ -69,7 +115,7 @@ def notice(info, step=False):
         _screen.say(f"   판정 결과 — 쓰기 전{' (판정까지)' if info.get('판정까지') else ''} — "
                     f"match {info['합']['match']:,} · new {info['합']['new']:,} · uncertain {info['합']['uncertain']:,}"
                     + (f" · 문에 걸림 {info['합']['문']:,}" if info["합"]["문"] else ""), "head")
-        for ln in info["줄"]:
+        for ln in info["줄"] + moved_lines(info):
             print(ln)
         if step and not info.get("판정까지") and sys.stdin.isatty():
             ASKED["판정결과"] = True
@@ -83,12 +129,10 @@ def notice(info, step=False):
 
 
 def plan_lines(info):
-    """[5/8] 머리 아래 — 쌍별 예고(③) · 본문 값의 골격 단 문(②)."""
-    from core.build import also_stage as AS
+    """[5/8] 머리 아래 — 쌍별 예고(③ — 요약 · 전부는 md) · 본문 값의 골격 단 문(②)."""
     out = []
     if info.get("쌍별"):
-        out.append("   쌍별 예고 — 확정한 공정 쌍마다 값 · 붙을 자리 · 연결 · 판정 예정(쓰기 0 · LLM 0)")
-        out += AS.preview_lines(info["쌍별"], indent="     ")
+        out += preview_screen(info["쌍별"], info.get("doc_id") or "문서")
     if info.get("골격단"):
         out += gate_lines(info["골격단"], "본문")
     return out

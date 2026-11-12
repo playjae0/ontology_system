@@ -49,7 +49,6 @@ def _over(body):
 
 
 _SECTION_LAYOUT = ("section", "구획")
-_TOC_TITLE = ("목차", "agenda", "contents")
 CONTEXT_CHARS = 1500        # ④ 맥락으로 보내는 슬라이드 텍스트 상한
 
 
@@ -64,11 +63,6 @@ def _is_section_header(s):
         return True
     body = [r for r in s.get("shapes", []) if r["kind"] not in ("title", "subtitle")]
     return bool(s.get("title")) and not body
-
-
-def _is_toc(s):
-    t = (s.get("title") or "").lower()
-    return any(k in t for k in _TOC_TITLE)
 
 
 def _sections(slides):

@@ -146,9 +146,40 @@ _kept = [_line(Q, e) for e in _qe if _PB3.visible(e) in (None, "cathode")]
 _vc = _QQ3.facts(P, {_np[0]["id"]} if _np else set(), _cfgP, _want)
 show("B198 ⓔ 질의 — 「양극 … 원인」 → anode만인 엣지는 빠지고 cathode · 공통은 남는다 · 공통 값에 「공통」",
      _want == "cathode" and _only_a and not (set(_only_a) - set(_kept)) & _fc and set(_kept) <= _fc and set(_only_a) <= _fa
-     and any(x.startswith("[공통]") for x in _vc) and any(x.startswith(f"[{_PB3.label('cathode')}]") for x in _vc)
-     and not any(x.startswith(f"[{_PB3.label('anode')}]") for x in _vc),
+     # 고침(B199 ④ — 같은 값은 극성만 다르면 한 줄 · 머리 「[공통 · 양극, …]」)
+     and any(x.startswith("[공통") for x in _vc) and any(_PB3.label("cathode") in x.split("]")[0] for x in _vc)
+     and not any(_PB3.label("anode") in x.split("]")[0] for x in _vc),
      f"극성 {_want} · anode만 {len(_only_a)} 빠짐 · 남음 {len(_kept)} · 값 {_vc}")
+# B199 ④ 같은 값 접기(show node · 질의 값 줄 · 뷰어 한 함수) — 같은 칸 · 같은 값이 극성만 다르면 한 묶음 · 표시 이름 · 값이 다르면 따로
+_fd = {k: _QQ3.fold_values(v) for k, v in (_np[0]["attrs"] if _np else {}).items()}
+_tx = {k: [_QQ3.value_text(g) for g in gs] for k, gs in _fd.items()}
+show("B199 ⓓ 같은 값 접기 — 측정방법 한 줄 「비전 측정기 (공통 · 양극 · 음극)」 · 값이 다른 것은 따로 · polarity=… 글자 0",
+     any(t.endswith(f"(공통 · {_PB3.label('cathode')} · {_PB3.label('anode')})") for t in _tx.get("측정방법", []))
+     and len(_tx.get("측정방법", [])) == 1 and sum(len(g["pols"]) for gs in _fd.values() for g in gs)
+     == sum(len(v) for v in (_np[0]["attrs"] if _np else {}).values()) and not any("polarity=" in t for ts in _tx.values() for t in ts),
+     str(_tx))
+
+# B199 ⓔ 극성 칸 지키기 — 한 문서의 봉투를 못 읽게 한 뒤(구축 기억에서 빼고 parsed/ 없음) 다른 문서를 넣어 저장 → 그 문서 출처의
+# 극성 칸은 지난 값 그대로(모르는 것을 공통으로 덮지 않는다) · 「극성 출처 못 읽음 1」 줄(인입 끝 · show report 한 자리)
+from cli import result_screen as _RS3                         # noqa: E402
+_cp_e = {e2["src"] + e2["rel"] + e2["dst"]: dict(e2[_F]) for e2 in P.edges if any(k.startswith("CP01#") for k in e2.get(_F) or {})}
+_keep_rows = _PB3._ROWS.pop("CP01", None)
+_PB3._FILE.pop("CP01", None)
+_P.parsed("CP01.json").unlink(missing_ok=True)
+with _ctx.redirect_stdout(_io.StringIO()):
+    run_document(load("PPT01.json"))
+_Pe = open_graph("process")
+_after_e = {e2["src"] + e2["rel"] + e2["dst"]: dict(e2.get(_F) or {}) for e2 in _Pe.edges}
+_un = _PB3.unread([_Pe, open_graph("quality")])
+_ln_e = _RS3.reconcile_lines({"doc_id": "PPT01", "줄": [], "극성 못 읽음": _un})
+show("B199 ⓔ 봉투를 못 읽는 출처의 극성 칸은 지난 값 그대로 · 「극성 출처 못 읽음 1(문서 CP01)」 · 0이면 줄 0",
+     _cp_e and all(_after_e.get(k, {}).get(p) == v for k, m in _cp_e.items() for p, v in m.items())
+     and _un == ["CP01"] and any(ln.strip().startswith("극성 출처 못 읽음 1(문서 CP01)") for ln in _ln_e)
+     and not any("극성 출처" in ln for ln in _RS3.reconcile_lines({"doc_id": "PPT01", "줄": [], "극성 못 읽음": []})),
+     f"극성 칸 엣지 {len(_cp_e)} · 못 읽음 {_un}")
+if _keep_rows is not None:
+    _PB3._ROWS["CP01"] = _keep_rows
+P = open_graph("process")
 
 # ★ 판정필요-5 ② — A11-9 ① 적용 범위를 스코프 카테고리로 한정 (카드 F1 v14)
 _dup = [c for c, k in Counter((n["canonical"], n["category"])

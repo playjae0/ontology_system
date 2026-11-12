@@ -170,6 +170,8 @@ show("ⓐ md — 값 표 행 = 대장 개체 행 · 잘린 칸 0 · 카테고리
 
 _keep_loud, _cols = SCR._loud, os.environ.get("COLUMNS")
 SCR._loud, os.environ["COLUMNS"] = (lambda r: True), "220"
+_keep_v = SCR._screen.VERBOSE
+SCR._screen.VERBOSE = True                                  # 값 줄 · └ 줄은 -v일 때만(고침 B199 ①)
 _buf = io.StringIO()
 with contextlib.redirect_stdout(_buf):
     _pr = SCR.row_printer(_env)
@@ -177,6 +179,7 @@ with contextlib.redirect_stdout(_buf):
         _pr(_r)
     _pr.flush(None)
 SCR._loud = _keep_loud
+SCR._screen.VERBOSE = _keep_v
 if _cols is None:
     os.environ.pop("COLUMNS", None)
 else:

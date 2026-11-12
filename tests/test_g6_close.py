@@ -542,6 +542,20 @@ _rl188 = [x for x in re.findall(r"`([^`]+)`", _rb188) + _rb188.splitlines()
 show("B188 ⓓ 런북에 재연결 뜻의 「붙음」 0(재연결 · 바퀴 줄 · 「붙음 누계」 — 지금 화면은 「이어짐」)",
      not _rl188 and "붙음 누계" not in _rb188 and "붙음 = 이번에" not in _rb188, " · ".join(x[:40] for x in _rl188[:3]))
 
+# B199 ⓐ ⓑ — PFMEA01 --step의 [4/7] ~ 판정 결과(쓰기 전 물음까지) 40줄 이하 · 쌍별 예고 전부는 md · 판정 결과에 자리 바뀐 값
+# (판정 전 이름 부모 → 판정 뒤) · 값 0인 쌍 줄 0 — 위 B188 ⓑ의 한 벌 실행 화면 그대로
+_pf199 = _scr188.read_text(encoding="utf-8").split("#### 단계 3 · run.py ingest-file {raw}/PFMEA01.xlsx")[-1].splitlines()
+_i199 = next((i for i, ln in enumerate(_pf199) if "[4/7] 판정 예고" in ln), None)
+_j199 = next((i for i, ln in enumerate(_pf199) if _i199 is not None and i > _i199 and "c는 쓴다" in ln), None)
+_blk199 = _pf199[_i199:_j199 + 2] if _i199 is not None and _j199 is not None else []
+_mv199 = [ln for ln in _blk199 if re.search(r"^\s+\S.*: \S+ → \S+::\S", ln)]
+show("B199 ⓐ ⓑ PFMEA01 --step [4/7] ~ 판정 결과 40줄 이하 · 쌍별 예고 전부는 export/plan_PFMEA01.md · 진행 줄 0(-v만) · "
+     "판정 결과에 「표기: 판정 전 → 판정 뒤」 줄 · 값 0인 쌍 줄 0",
+     _blk199 and len(_blk199) <= 40 and any("plan_PFMEA01.md" in ln for ln in _blk199)
+     and not any(ln.strip().startswith("+ |") or "(관계)" in ln for ln in _blk199)
+     and _mv199 and not any("match 0 · new 0 · uncertain 0" in ln for ln in _blk199),
+     f"{len(_blk199)}줄 · 자리 바뀜 예 {_mv199[:1]}")
+
 shutil.rmtree(T, ignore_errors=True)
 print("\n" + "=" * 62)
 print("전체 결과:", "PASS — B117 마감 도구" if allok else "FAIL")

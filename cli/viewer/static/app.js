@@ -125,7 +125,7 @@ async function detail(n) {
   const t = el("table");
   [["layer", n.layer], ["category", n.category], ["status", n.status], ["tier", n.tier],
    ["polarity", n.polarity], ["made_by", n.made_by], ["alias", n.aliases],
-   ["attrs", n.attrs], ["큐", n.queue || "—"], ["id", n.id]]
+   ["attrs", n.attrs], ["값", (n.values || []).join("\n") || "—"], ["큐", n.queue || "—"], ["id", n.id]]
     .forEach(([k, v]) => { const tr = el("tr"); tr.append(el("td", "", k), el("td", "", String(v ?? "—"))); t.append(tr); });
   box.append(t);
   box.append(el("h3", "", "provenance"));

@@ -469,7 +469,7 @@ _hint(did, {c["source_locator"]: {"entities": [{"surface": "모터", "category":
                                   "relations": [], "attach": []}
             for c in _parse("엑셀", did, doc_coord="노칭")["chunks"] if "모터" in c.get("text", "")})
 out = _run("ingest-file", str(xl), "--doc-type", DT, "--allow-mock", "--coord", "노칭",
-           "--sheets", "1-2:prose")
+           "--sheets", "1-2:prose", "-v")                  # └ 줄은 -v일 때만(고침 B199 ①)
 rows = [r for r in (LG.read(did) or {}).get("rows") or [] if r.get("role") == "entity"]
 att = [a for r in rows for a in r.get("attached") or []]
 _ok_g1 = (rows and all(r.get("target") and r.get("from") == "시트" for r in rows)

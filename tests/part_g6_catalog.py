@@ -123,6 +123,11 @@ show("B192 ⓐ 문법 단 — 층 키 오타 · 공통 parent_pair · 골격 ALI
 show("B192 ⓑ 관계 패턴이 쓰는 카테고리가 categories에도 uses에도 없다 ⇒ 경고가 아니라 거부(세 명령 같은 줄 · rc 1)",
      _bad192["참조"][0] and _bad192["참조"][1] == [1, 1] and _bad192["참조"][2] and "'Process'" in _c192["참조"][0],
      _c192["참조"][0][:140])
+# B199 ⓒ 거부 근거는 오류가 난 파일 — 층 config에 지운 키(`polarity`) ⇒ 근거 줄 「layers/process/config.json」(공통 config 아님)
+_ln199, _o199, _ = _case192(_P.layers("process", "config.json"), lambda c: c.__setitem__("polarity", {"values": ["x"]}))
+_ev199 = [ln.strip() for ln in _o199[1][1].splitlines() if ln.strip().startswith("근거 —")]
+show("B199 ⓒ 층 config에 polarity 키 ⇒ bootstrap 거부 · 근거 줄이 그 파일(layers/process/config.json) · 공통 config 근거 0 · rc 1",
+     _o199[1][0] == 1 and "`polarity`" in _ln199 and _ev199 == ["근거 — layers/process/config.json"], str(_ev199))
 init.init(fresh_=True, all_=True)
 
 # ⓐ 운영 — 없으면 초안을 만들고 멈춘다(자동 채택 0) · 초안을 덮지 않는다

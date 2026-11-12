@@ -59,8 +59,11 @@ def _target(g, nid):
     n = g.get(nid)
     if n is None:
         raise OpRefused(f"대상 노드가 없다: {nid}")
+    if n.get("status") == STATUS_OBSOLETE and not n.get(STATUS_MERGED):     # 폐기 — 툼스톤과 문면이 다르다(B199 ⑦ · KeyError 0)
+        raise OpRefused(f"폐기 노드다 — 되살리지 않는다 · 같은 것이면 살아 있는 노드에 `ops merge` · "
+                        f"다시 세우려면 그 문서를 다시 넣는다: {n.get('canonical') or nid}")
     if not is_live(n):
-        raise OpRefused(f"툼스톤은 연산 대상이 아니다 — 생존자 {n[STATUS_MERGED]}를 쓰라")
+        raise OpRefused(f"툼스톤은 연산 대상이 아니다 — 생존자 {n.get(STATUS_MERGED)}를 쓰라")
     return n
 
 

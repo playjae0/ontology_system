@@ -201,6 +201,22 @@ def _problems_screen(bad):
         print(f"[bootstrap] [상태] {'config' if tag in (TAG_GRAMMAR, TAG_REF) else '공통 config'} {tag} {msg}")
 
 
+def _evidence(bad):
+    """거부 근거 줄 — **오류가 난 파일**(B199 ③) · 문면이 말하는 층 config · 공통 config를 파일마다(문면이 파일을 말하지 않으면 공통
+    config — 카탈로그 갈래 ⓑ~ⓔ의 자리) · 차례는 처음 나온 차례."""
+    from core import paths
+    files = [paths.show(paths.layers(lay, "config.json")) for lay in discover()] + [paths.show(paths.common())]
+    out = []
+    for _tag, msg in bad or []:
+        hit = [f for f in files if f in str(msg)] or [paths.show(paths.common())]
+        out += [f for f in hit if f not in out]
+    return out or [paths.show(paths.common())]
+
+
+def _evidence_lines(bad):
+    return "".join(f"  근거 — {f}\n" for f in _evidence(bad))
+
+
 def _skeleton_stops():
     """골격 문법 위반 — 골격 seed를 가진 층마다 `cli/skeleton.check`(skeleton-status·confirm과 같은 판정).
 
@@ -312,7 +328,7 @@ def _catalog_gate(dry_run=False):
         if catalog_sync.changed(p):
             catalog_sync.apply(p)
         if catalog_sync.blocked(p):
-            print(f"  근거 — {paths.show(paths.common())}\n"
+            print(f"{_evidence_lines([])}"                     # 맞추기 멈춤 — 카탈로그 몫(공통 config)
                   f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap   (미리 보기: --dry-run)")
             return 1
     try:
@@ -322,7 +338,7 @@ def _catalog_gate(dry_run=False):
         return 1
     _problems_screen(bad)
     if bad:
-        print(f"  근거 — {paths.show(paths.common())}\n"
+        print(f"{_evidence_lines(bad)}"
               f"  ▶ 다음 줄: 위 줄을 고치고 python run.py bootstrap")
         return 1
     for msg in catalog.warnings():                 # 겸 집 불일치 — 경고만 (B91 ⑥)
