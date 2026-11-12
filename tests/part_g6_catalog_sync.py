@@ -442,6 +442,10 @@ show("B173 ⓒ --json 두 번이 바이트 같다 · 관계 패턴 하나를 지
 _r173 = subprocess.run([sys.executable, str(ROOT / "run.py"), "export", "config"], cwd=str(ROOT),
                        env={**os.environ, "USE_MOCK": "1"}, capture_output=True, text=True, stdin=subprocess.DEVNULL)
 _html173 = _P.export("config_map.html").read_text(encoding="utf-8") if _P.export("config_map.html").exists() else ""
+_kept173 = sorted(_P.export().glob("config_map_*.html"))
+show("export config(기본 자리) — 최신 이름과 같은 내용의 시각 이름 사본이 남는다(지난 지도가 덮이지 않는다)",
+     bool(_kept173) and _kept173[-1].read_text(encoding="utf-8") == _html173 and "사본 " in _r173.stdout,
+     ", ".join(p.name for p in _kept173[-2:]))
 # 고침(B186 ① — 관계 그림은 온톨로지 맵(인라인 SVG · 층을 넘는 관계는 점선) · 옛 기대: 뷰어 iframe)
 show("B173 ⓓ export config(실경로) — HTML 한 장을 쓰고 읽는다 · 외부 주소 0(SVG 이름공간 밖) · 관계 그림은 온톨로지 맵(층을 넘는 "
      "관계 점선) · 그래프 · config · 등록부 바이트 그대로",
