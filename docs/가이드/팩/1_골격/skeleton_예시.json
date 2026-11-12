@@ -4,15 +4,17 @@
   "AXIS_LABELS": {"cathode": "양극", "anode": "음극"},
   "TREE": [
     {"조립": [
-      {"라미네이션": ["전극 공급 unit", "히터 unit", "커팅 unit"]},
+      {"라미네이션": ["전극 공급 unit", "히터 unit", "커팅 unit", "비전 unit"]},
       {"폴딩": [{"@unordered": "분리막 공급 unit"},
-                "폴딩 unit", "폴딩 검사 unit"]},
+                "폴딩 unit", "비전 unit"]},
       {"디개싱": ["@noflow", "진공 챔버 unit", "재실링 unit"]}
     ]}
   ],
   "ALIASES": {
     "라미네이션": ["라미네이션 설비", "라미네이션설비", "Lamination", "LAM"],
-    "히터 unit": ["히터", "히터유닛", "Heater unit"],
+    "라미네이션::히터 unit": ["히터", "히터유닛", "Heater unit"],
+    "라미네이션::비전 unit": ["라미네이션 비전", "LAM vision", "비전 unit", "vision unit"],
+    "폴딩::비전 unit": ["폴딩 비전", "폴딩 검사 unit", "비전 unit", "vision unit"],
     "디개싱": ["디개싱 설비", "Degassing"]
   }
 }
