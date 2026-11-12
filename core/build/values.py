@@ -2,7 +2,7 @@
 """칸 3.3 곁 — **산문의 값** — 「항목 = 값」을 주인 아래 노드의 속성으로 (B120 ① · 문서 4 §4.6).
 
     추출 개체의 `value`(청크 원문 글자 그대로 — 단위 · 범위 · 조건 꼴 그대로)
-      ├ 그 카테고리가 층 config `value_categories`에 없다 → 값 아님(지금 동작 그대로 · 수에 들지 않는다)
+      ├ 그 카테고리의 home 층 config `value_categories`에 없다 → 값 아님(지금 동작 그대로 · 수에 들지 않는다 · B201 — 읽는 층과 무관)
       ├ 청크 원문에 글자 그대로 없다 → **버림**(결함 로그 — 지어낸 값 · 계산한 값)
       └ 노드가 섰다 → `Builder.put_attribute`(**표의 attribute와 같은 함수** — 같은 맥락 다른 값 = `spec_conflict` ·
         덮어쓰기 0) → **실림** 또는 **충돌**
@@ -24,10 +24,23 @@ VERDICTS = (LANDED, DROPPED, CONFLICT)
 
 
 def attr_name(cfg, category):
-    """그 카테고리의 값을 싣는 속성 이름 — 선언이 없으면 None(값 아님)."""
-    decl = (cfg or {}).get(KEY) or {}
-    name = decl.get(category) if isinstance(decl, dict) else None
-    return str(name) if name else None
+    """그 카테고리의 값을 싣는 속성 이름 — **카테고리 home 층의 선언**(B201 — 읽는 층이 home이면 그 층 선언 그대로 · `uses`로 빌린
+    카테고리도 home의 칸 이름) · 읽는 층이 말하지 않는 카테고리(`categories` ∪ `uses` 밖)거나 선언이 없으면 None(값 아님)."""
+    cfg = cfg or {}
+    decl = cfg.get(KEY) if isinstance(cfg.get(KEY), dict) else {}
+    if decl.get(category):                                  # 읽는 층이 home — 그 선언(ⓖ — 키는 그 층 categories 안)
+        return str(decl[category])
+    if category not in set((cfg.get("categories") or {})) | set(cfg.get("uses") or []):
+        return None
+    from core.state import catalog
+    return catalog.value_attr(category)
+
+
+def categories(cfg):
+    """**값을 받는 카테고리**(추출 입력 — B201) — 읽는 층 자기 선언 ∪ 그 층 `uses` 카테고리 중 home 선언이 있는 것 · 정렬."""
+    cfg = cfg or {}
+    return sorted(c for c in set((cfg.get(KEY) or {}) if isinstance(cfg.get(KEY), dict) else {}) | set(cfg.get("uses") or [])
+                  if attr_name(cfg, c))
 
 
 def _flat(s):

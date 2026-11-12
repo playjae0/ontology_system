@@ -238,6 +238,21 @@ def definition(category):
     return str((json.loads(p.read_text(encoding="utf-8")).get("categories") or {}).get(category) or "")
 
 
+def value_attr(category):
+    """그 카테고리의 **산문 값 칸 이름 — home 층 config의 `value_categories` 한 곳**(B201 — 값을 받는지는 카테고리가 정한다 · 어느 층이
+    읽든 같다) · 선언이 없거나 home을 못 읽으면 None."""
+    try:
+        h = home(category)
+    except CatalogError:
+        return None
+    p = paths.layers(h, "config.json") if h else None
+    if not p or not p.exists():
+        return None
+    decl = json.loads(p.read_text(encoding="utf-8")).get("value_categories") or {}
+    name = decl.get(category) if isinstance(decl, dict) else None
+    return str(name) if name else None
+
+
 def asked(cfg):
     """**추출이 묻는 카테고리** `{이름: 정의문}`(B178 ①) = 그 층이 말하는 카테고리(`spoken` — 받는 거름과 같은 함수) · home 카테고리는
     그 층 정의문 · `uses`는 home 층의 정의문(`definition`) · 차례는 home 카테고리(층 config 차례) → `uses`(이름순)."""
