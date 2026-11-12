@@ -37,6 +37,8 @@ from core.state.skeleton import (KEY_ALIASES, KEY_LABELS, KEY_TREE, SEED_PROV,
 ROOT = paths.ROOT                  # 레포 루트는 자리 소유자가 안다 (B78)
 #: 층별 마지막 표기 대장 별칭 갈래 싣기 — `{층: {loaded, already, missing, rejected}}`(B108 ① · 화면 · 시험)
 ALIAS_LOAD = {}
+#: 층별 마지막 「골격에서 빠진 seed 별칭 걷기」 — `{층: sweep_seed의 결과}`(B200 ⑤ · 화면 · 시험)
+SWEPT = {}
 # **층 자산의 자리는 상수가 아니라 질문이다**(B79 ①) — 상태 루트 아래이고
 # `paths.reset()`을 따라 움직여야 한다. `paths.layers()`가 유일한 자리 소유자다.
 
@@ -182,6 +184,51 @@ def _stale_skeleton(g, category, planted):
                   and n["id"] not in planted)
 
 
+def sweep_seed(g, category, planted, dictionary):
+    """**골격에서 빠진 seed 별칭을 걷는다**(B200 ⑤) — 골격 노드의 별칭 중 provenance `seed`인데 이번 seed(골격 `ALIASES` · 승격 ·
+    짧은 이름)가 등재하지 않은 것을 노드에서 빼고 · 사전에서 그 노드를 가리키는 그 표기의 키를 걷는다(노드의 다른 이름이 같은
+    키를 쓰면 남긴다 — `ops_mark.alias_reject`의 키 규칙). 돌려주는 것은 `{rows, docs, unknown, swept: [(canonical, 표기)]}` — 행은
+    걷기 전의 그래프로 센다(`alias_audit.used` — 그 표기로 붙어 있던 행 · 다시 붙이려면 그 문서를 다시 넣는다)."""
+    out = {"swept": [], "rows": 0, "docs": [], "unknown": []}
+    gone = []
+    for n in g.nodes.values():
+        if n.get("status") != SEED_STATUS or n.get("category") != category:
+            continue
+        for a in list(n.get("aliases") or []):
+            if alias_book.is_seed(a) and (n["id"], a["surface"]) not in planted:
+                gone.append((n, a))
+    if not gone:
+        return out
+    from core.state import alias_audit
+    from core.state.world import World
+    provs = alias_audit.provs_index(World())
+    entries = dictionary.entries()
+    for n, a in gone:
+        s = a["surface"]
+        u = alias_audit.used(s, provs.get(n["id"], []))
+        out["rows"] += u["rows"]
+        out["docs"] += [d for d in u["docs"] if d not in out["docs"]]
+        out["unknown"] += [d for d in u["unknown"] if d not in out["unknown"]]
+        n["aliases"].remove(a)
+        keep = {norm(n["canonical"])} | {norm(x["surface"]) for x in n["aliases"]}
+        if norm(s) not in keep and n["id"] in (entries.get(norm(s)) or []):
+            dictionary.unregister(s, n["id"])
+        out["swept"].append((n["canonical"], s))
+    return out
+
+
+def swept_line(sw):
+    """`골격에서 빠진 seed 별칭 n 걷음 — 붙어 있던 행 r(문서 …)` · 걷은 것이 없으면 None."""
+    if not sw or not sw.get("swept"):
+        return None
+    tail = (f" — 붙어 있던 행 {sw['rows']:,}(문서 {' · '.join(sw['docs'])}) · 다시 붙이려면 그 문서를 다시 넣는다"
+            if sw["rows"] else " — 붙어 있던 행 0")
+    if sw["unknown"]:
+        tail += f" · 봉투를 못 읽어 모른다(문서 {' · '.join(sw['unknown'])})"
+    return (f"골격에서 빠진 seed 별칭 {len(sw['swept']):,} 걷음{tail}: "
+            + " · ".join(f"'{s}'({c})" for c, s in sw["swept"][:5]) + (" …" if len(sw["swept"]) > 5 else ""))
+
+
 # ---------------------------------------------------------------- 진입점
 def write_closed_list(layer, g, cfg, seed=None, book=None):
     """골격 닫힌 목록 스냅샷 — **파서·에이전트의 공유 자산**이다 (D-11 확정).
@@ -252,6 +299,7 @@ def bootstrap(layer, echo=True):
     g.build_begin()
 
     dictionary = Dictionary.open()          # 사전 접근은 관문 경유로만 (문서 7 §7.1)
+    planted = set()                         # 이번 seed가 등재한 (노드, 표기) — 골격에서 빠진 seed 별칭을 가린다(B200 ⑤)
 
     def register(surface, nid):
         """사전 등재는 관문이 한다 — 키 규칙과 provenance 필수가 그쪽에 있다.
@@ -260,6 +308,7 @@ def bootstrap(layer, echo=True):
         여기서 붙인다. 두 일을 한 모듈에 합치면 사전이 그래프를 쓰게 된다.
         """
         key = dictionary.register(surface, nid, provenance=SEED_PROV[0])
+        planted.add((nid, surface))
         n = g.get(nid)
         if key != norm(n["canonical"]) and \
                 not any(a["surface"] == surface for a in n["aliases"]):
@@ -273,6 +322,7 @@ def bootstrap(layer, echo=True):
         msg = (f"{layer}: 이번 seed에 없는 옛 골격 노드 {len(stale)}건이 남아 있다 "
                f"— 깨끗한 재빌드가 필요하다 {stale}")
         store.append_defect(msg)
+    SWEPT[layer] = sweep_seed(g, skel["category"], planted, dictionary)
 
     # **표기 대장 별칭 갈래의 골격 대상 별칭을 먼저 싣는다**(B108 ①) — 심은 뒤 · 스냅샷 전에. 스냅샷 = seed + 대장
     book = alias_book.AliasBook.open()

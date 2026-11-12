@@ -103,7 +103,8 @@ class CoordMixin:
         from parser.normalizer import coord_refs
         out = []
         for s in coord_refs(value):
-            nid, g = self.resolve_anchor(s, category, prov, defer=defer, judged=coord_judged(piece, s))
+            nid, g = self.resolve_anchor(s, category, prov, defer=defer, judged=coord_judged(piece, s),
+                                         group=(piece or {}).get("process_group"))
             hold = self.anchor_hold
             out.append((s, nid if nid else None, g, hold))
         if not out:
@@ -127,7 +128,31 @@ class CoordMixin:
         eb = self.for_category(category)
         return eb.g, eb.layer
 
-    def resolve_anchor(self, surface, category, prov, *, defer=None, judged=None, ask=None):
+    def _ambiguous_reason(self, surface, cans, g, category, group=None):
+        """**표기 모호의 문면**(B200 ⑥) — 노드 여럿(셋까지) · 이 행의 범위(문서 좌표 먼저 · 없으면 행의 상위가 골격 노드 하나로 맞으면
+        그 노드 — `tagger.scope_rows`와 같은 순서) 밖인지 · 범위 안에도 여럿인지 · 범위가 없는지. 보류 판단은 그대로(문면만)."""
+        head = f"표기 모호 — '{surface}'의 노드 여럿({' · '.join(cans[:3])}" + (f" 외 {len(cans) - 3}" if len(cans) > 3 else "") + ")"
+        scope = self.doc_coord
+        if not scope and group:
+            hit = {g.get(n)["canonical"] for n in self.dict.lookup(group)
+                   if (g.get(n) or {}).get("category") == category and is_live(g.get(n)) and is_skeleton(g.get(n))}
+            scope = next(iter(hit)) if len(hit) == 1 else None
+        if not scope:
+            return head + " · 범위 없음 — 문서 좌표(--coord) 또는 상위 칸"
+        pm = self._parent_map(g, category)
+
+        def under(c):
+            seen = []
+            while c and c not in seen and len(seen) < 64:
+                if c == scope:
+                    return True
+                seen.append(c)
+                c = pm.get(c)
+            return False
+        inside = [c for c in cans if under(c)]
+        return head + (f" · 이 행의 범위({scope}) 안에도 여럿" if inside else f" · 이 행의 범위({scope})에 없다")
+
+    def resolve_anchor(self, surface, category, prov, *, defer=None, judged=None, ask=None, group=None):
         """골격 조회 — anchor는 새로 만들지 않는다.
 
         돌려주는 것은 **(node_id, 그 노드가 사는 그래프)**다. 걸침 anchor는 다른 층에
@@ -214,8 +239,8 @@ class CoordMixin:
             return tier1[0], g
         if len(tier1) > 1:
             self.anchor_hold = HOLD_AMBIGUOUS
-            return _hold(f"표기 모호 — '{surface}'가 골격 노드 여럿을 가리킨다",
-                         {"candidates": [g.get(h)["canonical"] for h in tier1]})
+            cans = [g.get(h)["canonical"] for h in tier1]
+            return _hold(self._ambiguous_reason(surface, cans, g, category, group), {"candidates": cans})
         # **사전이 답하지 않았다 — 같은지 판단**(B181 ① · 결정 D 4단계) — 골격 칸은 파서의 답 · 닫힌 분류는 여기서
         v = judged
         if ask is not None and category != COORD_CATEGORY:

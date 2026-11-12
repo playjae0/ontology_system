@@ -365,6 +365,10 @@ def cmd_bootstrap(args=()):
         print(f"[bootstrap] {layer}: 노드 {m['nodes']} · 엣지 {m['edges']}")
         print(f"            계기판 7 graph {m['gauge7_graph_mb']}MB "
               f"({m['serializer']}) · 8 build {m['gauge8_build_seconds']}s")
+        from core.state.bootstrap import SWEPT, swept_line
+        _sw = swept_line(SWEPT.get(layer))
+        if _sw:
+            print(f"[bootstrap] {layer}: {_sw}")
     # **config를 바꾸면 등록 스키마를 다시 대조한다**(B90 ⑤) — 층은 섰다(rc는 층의 것).
     # FAIL은 doc_type을 고칠 일이지 층 적재의 실패가 아니다 — 줄과 다음 줄로 말한다.
     from cli.register import recheck
@@ -390,6 +394,11 @@ def cmd_bootstrap(args=()):
     from core.state import config_scope
     for ln in config_scope.lines(config_scope.impact()):
         print(ln)
+    # **동의어 점검 한 줄**(B200 ①) — 규칙 점검(LLM 0 · 쓰기 0) · 0이면 줄 0 · 보는 자리는 뷰어 「동의어」
+    from core.state import alias_review
+    _ln = alias_review.summary_line()
+    if _ln:
+        print(f"[bootstrap] {_ln}")
     return rc
 
 
@@ -453,7 +462,9 @@ def cmd_viewer(args):
 
 def cmd_ops(args):
     """I축 도구도 subprocess 진입점을 갖는다(§16.1) — 위임만 한다."""
-    from cli.ops import main
+    from cli.ops import _alias_audit, main
+    if args and args[0] == "alias-audit":                 # 동의어 점검 — 층 · 행위자를 받지 않는다(B200 ⑦)
+        return _alias_audit(list(args[1:]))
     return main(args)
 
 

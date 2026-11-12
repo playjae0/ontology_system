@@ -95,6 +95,7 @@ class AliasBook:
         self.rows = list((data or {}).get("entries") or [])
         self._idx = {_key(r["surface"], r["target"]): r for r in self.rows}
         self.dirty = False
+        self._review = []                  # 대상 이름이 바뀐 것 — 저장 때 별칭 검토 갈래의 열쇠도 따라간다(B200 ②)
 
     @classmethod
     def open(cls):
@@ -109,6 +110,13 @@ class AliasBook:
         if self.dirty or force:
             surface_book.write_aliases(self.rows)
             self.dirty = False
+        if self._review:
+            from core.state import alias_review
+            rv = alias_review.Review.open()
+            for old, new, again in self._review:
+                rv.retarget(old, new, again=again)
+            rv.save()
+            self._review = []
 
     # ------------------------------------------------------------ 조회
     def get(self, surface, target):
@@ -197,6 +205,7 @@ class AliasBook:
             moved += 1
         if moved:
             self.dirty = True
+        self._review.append((dict(old), dict(new), source == "병합"))   # 판정 목록도 같은 노드를 따라간다 · 병합은 다시 묻는다
         return moved
 
     def reject(self, node, surface, *, actor, reason="", alias=None, key=None):

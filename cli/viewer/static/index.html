@@ -14,6 +14,7 @@
     <button data-tab="graph" class="on">그래프</button>
     <button data-tab="query">질의</button>
     <button data-tab="funnel">연결 현황</button>
+    <button data-tab="alias">동의어</button>
   </nav>
 </header>
 
@@ -61,6 +62,12 @@
       <div id="qmiss"></div>
     </section>
 
+    <section id="pane-alias" hidden>
+      <h3>동의어 점검</h3>
+      <p class="note">골격 ALIASES · 표기 대장 별칭 · 보류 표기를 한 화면에 — LLM 판정은 제안이고 골격 · 사전은 승인으로만 바뀐다.
+        목록은 가운데 넓은 칸이다.</p>
+    </section>
+
     <section id="pane-funnel" hidden>
       <h3>연결 현황</h3>
       <p class="note" id="funnel-def"></p>
@@ -71,7 +78,7 @@
   </aside>
 
   <!-- ── 가운데: 그래프 ───────────────────────────────────────── -->
-  <div id="canvas-wrap"><div id="crumbs" hidden></div><div id="canvas"></div><div id="webgl-warn" hidden>
+  <div id="canvas-wrap"><div id="alias-main" hidden></div><div id="crumbs" hidden></div><div id="canvas"></div><div id="webgl-warn" hidden>
     이 브라우저는 WebGL을 켜지 못했다 — 그래프를 그릴 수 없다(폴백을 두지 않는다).
   </div></div>
 
@@ -85,6 +92,7 @@
 <script src="/static/render.js"></script>
 <script src="/static/explore.js"></script>
 <script src="/static/query.js"></script>
+<script src="/static/alias.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

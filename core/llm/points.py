@@ -129,3 +129,8 @@ def sheet_judge():
         return None
     gateway.require("sheet_role")
     return judge_sheet
+
+
+def chat_model():
+    """지금 채팅 모델 이름(설정 접근은 core/llm 안 — 기록 칸용 · B200 ② 판정 목록의 모델)."""
+    return (gateway.config() or {}).get("model")

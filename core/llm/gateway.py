@@ -91,7 +91,7 @@ POINTS = {
 CALL_TAGS = {"interview": "generate",
              "structure": "outline",           # B119 ① — 시트마다의 문서 구조는 ⑪ 안의 호출이다(개요와 한 지시문)
              "deck": "outline",                # B125 ③ — 덱 구조(PPT 덱 한 벌)도 ⑪ 안의 호출이다(지시문은 `2.4_deck.md` — B135 ④)
-             "reading": "image_summary"}       # B156 ② — 쪽 판독(PPT · PDF 쪽마다)은 ④ 그림 · 쪽 판독 안의 호출이다(지시문 `2.4_reading.md`)
+             "reading": "image_summary", "alias_review": "judge"}   # B156 ② · B200 ② 동의어 검토(지시문 `0.3_alias_review.md`)       # B156 ② — 쪽 판독(PPT · PDF 쪽마다)은 ④ 그림 · 쪽 판독 안의 호출이다(지시문 `2.4_reading.md`)
 
 
 def point_label(point):

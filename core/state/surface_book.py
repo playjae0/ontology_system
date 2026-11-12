@@ -32,6 +32,8 @@ LEGACY = (store.COORD_LEARNED, store.ALIAS_BOOK)
 HUMAN, MACHINE = "사람 보증", "기계 판단"
 SKELETON, CLOSED, ENTITY = "골격 칸", "닫힌 분류", "개체"
 LEARN, MISS, ALIAS = "좌표 학습", "목록 밖", "별칭"
+#: **별칭 검토**(B200 ②) — 동의어 점검의 판정 목록(LLM 판정 · 사람 처분) · 쓰는 손은 `core/state/alias_review`의 `write_review` 하나
+REVIEW = "별칭 검토"
 #: 사람 보증인 별칭 출처(`alias_book.SOURCES`의 사람 연산)
 HUMAN_SOURCES = ("사람", "개명", "이관", "병합", "분리")
 #: 별칭 갈래를 한 번이라도 썼다(처음 채움이 끝났다 — 옛 `alias_book.json`이 있던 것과 같은 표지)
@@ -124,6 +126,23 @@ def write_aliases(rows):
     _write({**data, "entries": keep + [_alias_entry(r, coord) for r in rows], FILLED: True})
 
 
+# ---------------------------------------------------------------- 별칭 검토 갈래 (alias_review · B200 ②)
+def review_rows():
+    """별칭 검토 갈래의 항목 — `{surface, target, where, **기록}` 행 목록(대상의 canonical이 None이면 보류 표기 — 붙을 노드 미정)."""
+    return [{"surface": e["표기"], "target": e.get("대상"), "where": e.get("곳"), **(e.get("기록") or {})}
+            for e in _read().get("entries") or [] if e.get("갈래") == REVIEW]
+
+
+def write_review(rows):
+    """별칭 검토 갈래를 `rows`로 바꿔 쓴다 — 다른 갈래 · 표지는 디스크의 것 그대로. 지위는 사람 처분이 있으면 사람 보증."""
+    data = _read()
+    keep = [e for e in data.get("entries") or [] if e.get("갈래") != REVIEW]
+    new = [{"갈래": REVIEW, "지위": HUMAN if (r.get("human") or {}).get("disposition") else MACHINE,
+            "곳": r.get("where") or ENTITY, "표기": r["surface"], "대상": r.get("target"), "출처": "LLM 검토",
+            "기록": {k: v for k, v in r.items() if k not in ("surface", "target", "where")}} for r in rows]
+    _write({**data, "entries": keep + new})
+
+
 # ---------------------------------------------------------------- 대장 전체 (화면 · 수)
 def entries():
     """항목 전부(머리 포함) — 화면 · 수."""
@@ -135,7 +154,7 @@ def counts():
     es = entries()
     return {"합": len(es), HUMAN: sum(1 for e in es if e.get("지위") == HUMAN),
             MACHINE: sum(1 for e in es if e.get("지위") == MACHINE),
-            "갈래": {k: sum(1 for e in es if e.get("갈래") == k) for k in (LEARN, MISS, ALIAS)}}
+            "갈래": {k: sum(1 for e in es if e.get("갈래") == k) for k in (LEARN, MISS, ALIAS, REVIEW)}}
 
 
 def legacy_paths():

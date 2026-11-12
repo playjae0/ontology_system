@@ -162,9 +162,18 @@ try:
     show("/raw/ — `..`·절대 경로·없는 파일은 4xx (자리 밖으로 한 바이트도 안 나간다)",
          all(_get(p)[0] >= 400 for p in _escapes),
          str([(p, _get(p)[0]) for p in _escapes[:2]]))
-    show("쓰기 라우트 없음 — POST는 501 · do_POST가 없다",
-         _get("/", method="POST", data=b"{}")[0] == 501
-         and not hasattr(VS.Handler, "do_POST"))
+    # B200 ⓔ 쓰기 라우트는 둘뿐(고침 — 옛 「do_POST가 없다」) — 그 밖의 POST는 501 · 진행 중 둘째 검토는 409 문면 · 읽기는 GET
+    from cli.viewer import alias as _VA                              # noqa: E402
+    _VA.BUSY.acquire()
+    try:
+        _sc_b, _b_b = _get("/api/aliases/review", method="POST", data=b"{}")
+    finally:
+        _VA.BUSY.release()
+    _sc_a, _b_a = _get("/api/aliases")
+    show("B200 ⓔ 쓰기 라우트 둘 밖의 POST는 501 · 진행 중 두 번째 LLM 검토는 409 + 거절 문면 · `/api/aliases`는 GET 200",
+         _get("/", method="POST", data=b"{}")[0] == 501 and _get("/api/graph", method="POST", data=b"{}")[0] == 501
+         and _sc_b == 409 and _VA.BUSY_TEXT in json.loads(_b_b).get("error", "") and _sc_a == 200
+         and "counts" in json.loads(_b_a), f"검토 {_sc_b} · 읽기 {_sc_a}")
     _sc_f, _b_f = _get("/api/funnel")
     _f = json.loads(_b_f)
     # ⑤ **오류는 문면으로 올라온다**(B84 ⑤) — 실제로 터뜨려 잰다(문자열 검사가 아니다).
@@ -401,10 +410,10 @@ show("④ /api/node — 근거 원문 = describes 청크 전부(글자 그대로
      f"{_nd['name']} · 근거 {_nd['evidence_total']} · 길 {[s_['rel'] for s_ in _nd['anchor_path']['steps']]} · "
      f"붙은 자리 {len(_nd['landed'])}")
 show("⑥ 상세·이웃·그래프 조회는 쓰기 0 (③진실·②등록 해시 불변)", _state_hash() == _h0)
-show("⑥ 서버에 노드·이웃 라우트가 있고 쓰기 라우트는 여전히 없다",
+show("⑥ 서버에 노드·이웃 라우트가 있고 쓰기 라우트는 동의어 둘뿐이다 (고침 B200 ⓔ — 옛 「쓰기 라우트 없음」)",
      "/api/node/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")
      and "/api/neighbors/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")
-     and not hasattr(VS.Handler, "do_POST"))
+     and VS.Handler.WRITES == ("/api/aliases/review", "/api/aliases/approve"))
 
 print("\n■ B114 — 힘 배치 워커 · 크기 · 벡터 이어 만들기 · 질의 단계 (브라우저 없이 재는 성질 · 브라우저 몫은 "
       "tests/viewer_browser_b114.py)")

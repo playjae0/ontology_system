@@ -151,7 +151,7 @@ def _row_anchor(b, r, envelope_ctx, doc_id):
     _ref_s, _grp_s = rec.get("process_ref"), rec.get("process_group")
     _cj = coord_judged(rec, _ref_s)                 # 파서의 골격 칸 판단(B181 ① — 애매면 보류에 후보)
     r.ref, r.ref_g = b.resolve_anchor(_ref_s, COORD_CATEGORY, r.prov,
-                                      defer=r.defer, judged=_cj)
+                                      defer=r.defer, judged=_cj, group=_grp_s)
     if not _ref_s:
         if _grp_s:
             # **저해상도 부착** — 그룹은 조상 대조용이지만, 좌표가 아예 없으면
