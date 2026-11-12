@@ -224,6 +224,7 @@
 - B195 — 사내 관측 고침: 목차는 위에서 아래로 한 번(제목 범위 연속) · 한글 서수 「하」 다음 · 첫 번호의 들여쓰기 · 엑셀 그림 묶음 한 장 요약 · 화면 낱말 · 2026-11-10 · **완료** — 본문 `docs/archive/장부/PROGRESS_B195.md`
 - B196 — 골격 칸의 문: 잠정 골격 노드는 사람이 정한 것만 · 좌표 쌍 어긋남은 확인 전 보류 · 골격 칸 검토 줄 · 연결 표지 · 2026-11-11 · **완료** — 본문 `docs/archive/장부/PROGRESS_B196.md`
 - B197 — 골격 단의 문(겸 값은 골격 노드로만) · 판정 전 처분 자리 · [5/8] 쌍별 예고 · 쓰기 전 판정 결과 · 청크 나눔 고침 · 2026-11-11 · **완료** — 본문 `docs/archive/장부/PROGRESS_B197.md`
+- B198 — 극성은 값의 한정어(P1 — 코드 · 명세): 골격 분기 · 하강 부착 · 이름 결합 · 짝 기구 · 극성 좌표 쌍 걷기 · 세 자리 · 질의 거르기 · 펼친 흐름 · 2026-11-11 · **완료** — 본문 `docs/archive/장부/PROGRESS_B198.md`
 
 ---
 
@@ -354,30 +355,6 @@
 ---
 
 ---
-
-## B198 — 극성은 값의 한정어(P1 — 코드 · 명세): 골격 분기 · 하강 부착 · 이름 결합 · 짝 기구 · 극성 좌표 쌍 걷기 · 세 자리 · 질의 거르기 · 펼친 흐름 (2026-11-11 · 칸 3.4 · 3.6 · 0.3 · 문서)
-
-> 요청문 `docs/안건/B198_요청문.md`(hub_182 반입 `5816f9c` · B197 머지 `dadf1b6` 위) · 단독 · 대 · 결정 `결정_극성_값단.md` · 전수 목록 `극성P1_전수목록.md` · 기대 차이 `B198_기대차이.json`.
-
-- 전제 11행 — 같다(2행 전수 grep 376줄 · 59파일) — 멈춤 없음
-- 마감 한 줄 2회 — 1회 FAIL 2(사전 점검 116/117 — 줄어든 기대 수는 사전 점검이 `--why`를 받지 않아 붉다 · 그 회의 doctor가 새 기대 수를 썼다 / 네 벌 — ⓑ의 의도된 차이) · doctor 2233/2252(줄어든 19는 사유) · 클린 2회 동일 그래프 → 2회 FAIL 1(네 벌 — ⓑ의 의도된 차이 하나) · 사전 점검 116/116 · doctor 2233/2233 · 클린 2회 동일 그래프 · 기대 수 바뀐 스위트 없음
-- ⓐ PASS 전제 3의 grep 86 → 6 — 남은 6은 옛 마커 거부의 검출기(`skeleton.OLD_SPLIT` · 그 docstring 셋 · `cli/skeleton` K05 주석 — ⓖ가 쓴다)와 `catalog.legacy_rule`의 옛 config 키 `canonical_scope.bind_categories`(B174 옛 모양 제안 · 극성 결합 함수가 아니다)
-- ⓑ 기대 차이 — C · D 노드 · 엣지 같다 · A process 노드 64(기대 69) · B 49(기대 52) — 결정 2-1로 PFMEA 관리항목이 CP의 설비 아래 같은 관리항목으로 맞는다(A 5 · B 3 — 품질 엣지도 그 노드로) · 엣지는 층마다 기대보다 8 적다 — 허브 계산이 인스턴스 → 개념 part_of 8(개념 이름으로 옮기면 자기 고리 — 같은 노드 엣지 거부)을 셌다 · 극성 한정 값 A 16 · B 8 같다 · mirrors 0 · `mirror_asymmetry` 0 · coord_mismatch 2 → 1(극성 쌍 지움)
-- ⓒ PASS 「노칭::노칭 프레스::노칭 정밀도」 노드 하나 · 값 셋(없음 · anode · cathode) · 값 충돌 0
-- ⓓ PASS anode → anode · anode + cathode → 공통 · anode + 빈칸 → 공통 · 차례 무관 · 극성 없는 출처를 걷으면 anode · 극성 없는 출처뿐인 엣지 · 노드는 칸 없음
-- ⓔ PASS 「양극 탭용접 불량의 원인은?」 → cathode · anode만인 엣지 5 빠짐 · cathode · 공통 18 남음 · 값 줄 `[공통]` · `[양극]` (요청문의 「음극」은 `AXIS_LABELS`에서 anode다 — 요청문 기대 꼴에 맞춰 「양극」으로 쟀다)
-- ⓕ PASS 펼친 흐름 한 줄 · 「흐름 밖 2(스태킹 › 분리막 공급 · 스태킹 › 전극 시트 공급)」
-- ⓖ PASS 트리 `::cathode` + ALIASES `노칭::anode` → bootstrap 거부 「지울 줄 2」 · 그래프 쓰기 0
-- ⓗ PASS 기록 이름 「노칭::anode::노칭 프레스」 → 개념 이름으로 찾음 1 · 「노칭::cathode::B198 없는 설비」 → 자리 없음 목록 · 쓰기 0
-- ⓘ PASS 재구축 동치(test_rebuild) · 클린 2회 동일 그래프 · 층 어휘 0
-- ⓙ 명세 패치 `--apply`(−4,587자 · 문서 0 · 2 · 3 · 4 · 5 · 7 · README · 부록 — 77항목) · 허브 몫(`B198_명세패치_허브.md` — 문서 1 C3 · F1 · F2 · F3 · F11 · J23 · 문서 4 F1 봉인 문단 §4.5-3 · 4 · 7 · 8 · 경계 — 12항목 · 재봉인 대상 F1 — 적용하지 않았다)
-- 가결정(D-279) — 칸 이름 `polarity_by` · 값 `context.polarity` · 극성 값 목록은 골격 `AXIS_LABELS` 하나(스냅샷 `axis`) · 층 config `polarity` · `mirrors`는 폐기 키 · 적는 자리 `GraphStore.save` 앞 한 자리 · 극성 수식 표기는 자동으로 짓지 않고 사람이 ALIASES에 · 킷 `_axis`는 G5와 함께 지움 · G4L은 행 극성을 맥락 열쇠로 · 질의 극성은 하나일 때만 · 화면 문구
-- 바뀐 시험 기대 — test_g3(노드 하나 · 값 셋 · coord_mismatch 1 · Units 1/1) · test_g1_g2(Process 30 · part_of 29 · tier 1/4/25) · part_g4(펼친 흐름 · 부모 파생 「(탭용접 기준)」) · 런북 「확인할 것」 14줄(mock 수) · rebuild B167 ⓒ(근거 바뀜 = 「노칭」 아래 값 전부) · rebuild_memory B107 ③(재생 또는 「근거 바뀜」만 다시 묻기 — 위 사람 연산의 개명 · 폐기가 재시도 때와 재구축 때 후보를 가른다) · B106 · B107 「버 높이」 합침 지움(산문이 표 노드에 바로 붙는다) · narrow B142 ⓕ · contract C1~C6 이름
-- 어서션 +5 · 삭제 24 · 고침 다수 — +ⓓ ⓔ(test_g3) · ⓖ(test_g1_g2) · ⓗ(test_rebuild) · ⓕ(test_query) · 지움: 극성 인스턴스 · 하강 · 짝 · polarity 칸 · 미러 경고 · 극성 values 경고(test_g3 −14 · test_g1_g2 −1 · test_query −3 · test_catalog −1 · test_judge −1 — 기능을 걷었다 · 그 자리의 성질은 ⓒ ~ ⓗ와 네 벌이 잡는다)
-- 바꾼 파일 — `core/build/{polarity(새),build,entry,heading,prose,table,loop,retry,belongs,human,also_gate,also_stage,place_guess,provisional,skeleton_review,coord_scan,build_coord,cardinality,naming}.py` · `core/{graph,matcher}.py` · `core/query/{query,records}.py` · `core/state/{skeleton,bootstrap,catalog,config_grammar,config_scope,ops,provisional_hand,oplog,alias_book,coord_acks,store}.py` · `parser/coord_pairs.py` · `kit/gate_checks.py` · `cli/*`(query · ops · ingest · show · export · skeleton · platform · coord_queue · config_map · export_config · ontology_map · doctor_view · provisional_ask · register/view) · `run.py` · mock `layers/{process,quality}` · 시험 · 런북 「확인할 것」 · 명세
-- 보인 것 — 문서 3 §3.6 ⑷ 앞 근거 문단(극성 형제 · 병렬 체인)과 문서 4 §4.7 머리(「닫힌 20종」) · 가이드 · 팩의 `@split` · `polarity` · `mirrors` · `coord-ack --polarity`는 P2 몫으로 두었다 · CLAUDE.md의 「큐 kind 닫힌 20종」은 19종이 됐다 · 이연대장 §4 15(펼친 흐름)는 이 회차가 구현했다
-- 사내 config 줄 — 머지 뒤 반입 → 골격 `skeleton.json`에서 `@split` · `::축값` · `@축값`(과 ALIASES `이름::축값` 열쇠)을 지운다(bootstrap이 지울 줄을 보인다) · 극성 수식 표기는 개념 노드 ALIASES로 · 층 config `polarity` · `mirrors` 키를 지운다(문법이 폐기 키로 멈춘다) → bootstrap → 그래프를 다시
-- 소요 약 7시간(어림) — 전제 · 읽기 40분 · G1 ~ G5 걷기 150분 · G6 세 자리 · 질의 · 흐름 · 재생 80분 · 시험 고침 · 대표 어서션 120분 · 명세 패치 40분 · 마감 한 줄 2회 각 3분
 
 ---
 
@@ -405,6 +382,8 @@
 - 사내 config 줄 — 0 · 머지 뒤 반입(PFMEA 전) — 동작은 같고 화면 · 문면만 · PFMEA --step 화면이 쌍별 요약으로 · 전부는 `export/plan_<doc>.md`
 - 소요 약 3시간 30분(어림) — 전제 · 읽기 30분 · ①② 70분 · ③④⑤ 50분 · ⑥⑦⑧ 30분 · 시험 고침 · 대표 어서션 30분 · 명세 패치 15분 · 마감 한 줄 2회 각 3분
 
+---
+
 ## B200 — 동의어 점검: 규칙 점검 · LLM 검토 · 뷰어 「동의어」 탭 · 사람 승인 · 골격에서 빠진 seed 별칭 걷기 · 공유 별칭 보류 문면 (2026-11-12 · 칸 0.3 · 3.4 · 5.1 · 문서)
 
 > 요청문 `docs/안건/B200_요청문.md`(hub_188 반입 `7b42aba` · B199 머지 `0c05539` · hub_186 `d9b3b7e` 위) · 단독 · 큼.
@@ -427,3 +406,22 @@
 - 보인 것 — mock `all`은 봉투를 `work/parsed/`에 두지 않아 mock 화면의 붙은 행은 대개 「모른다」(사내 실경로는 인입이 남긴다) · 골격 팩에 「승인 · bootstrap이 ALIASES를 고친다」 한 줄이 빠졌다(결정 §4 — 다음 회차 가이드)
 - 사내 config 줄 — 0 · 머지 뒤 반입 → `bootstrap`(걷음 줄 · 동의어 한 줄) → 뷰어 「동의어」 → 「LLM 검토」(처음 한 번 전체 — 비용 미리보기) → 승인 → 「다시 붙일 행」이 있으면 그 문서 재인입
 - 소요 약 4시간 30분(어림) — 전제 · 읽기 40분 · ⑤⑥ 30분 · ①② 50분 · ③④ 60분 · 시험 작성 · 고침 50분 · 명세 · 장부 20분 · 마감 한 줄 2회 각 3분
+
+## B201 — 산문 값 칸은 카테고리 home의 선언을 따른다(읽는 층과 무관) (2026-11-12 · 칸 3.3 · 0.1 · 문서)
+
+> 요청문 `docs/안건/B201_요청문.md`(hub_191 반입 `869afde` · B200 머지 `64e28a2` 위) · 단독 · 작음.
+
+- 전제 8행 — 같다(1행 맨 위 hub_191 반입 · 그 아래 B200 머지 · 8행 `attributes`는 81행)
+- 마감 한 줄 1회 — FAIL 0 · doctor 2248(기대 2245 +3) · 클린 2회 동일 그래프 · 네 벌 전부 같다 · §7 상한 0
+- ⓐ PASS 품질층(uses Property · 선언 없음)으로 같은 창작 표본을 읽은 산문의 Property 값(30N · 20N · 100ppm)이 노드 `설비사양` 칸(home의 칸 이름)에 · 렌즈 없음 · 값 카테고리 목록 ['Property']
+- ⓑ PASS Property를 uses에 두지 않은 층 — 목록 [] · Process · Unit 칸 이름 없음
+- ⓒ PASS home 선언의 칸 이름을 바꾸면 빌린 층 `extract_key`가 바뀐다 · 되돌리면 그대로 · uses 없는 층 판 바이트 같다
+- ⓓ PASS 지시문 바이트 같음(마감 「바뀐 지시문 — 없음」 · 자산 해시 같음) · 층 config 키 일람 같음(`config_scope` 표 그대로) · 새 키 · 새 단계 · 새 화면 0
+- ⓔ PASS 네 벌 전부 같다 — 차이 목록 0(mock 바닥에 빌린 층으로 읽는 산문의 Property 값이 없다 · 표의 값 · 노드 · 엣지 같음)
+- ⓕ PASS 명세 패치 `--apply`(+106자 · 문서 3 · 4 — 3항목 · 문서 1 항목 0) · 마감 FAIL 0
+- 가결정(D-282) — 자리 하나 `catalog.value_attr` · `values.attr_name`(칸 이름) · `values.categories`(추출 입력) · `uses_view` 「값 칸」(선언 없으면 칸 없음 — 판 바이트 그대로) · 읽는 층이 말하지 않는 카테고리는 home 선언이 있어도 값 아님
+- 어서션 +3 · 삭제 0 · 고침 0 — B201 ⓐⓑⓒ(test_build — 산문 값 조각)
+- 바꾼 파일 — `core/state/{catalog,config_scope}.py` · `core/build/{values,extract}.py` · `tests/part_g6_values.py` · 명세 · DECISIONS
+- 가이드(③ — 허브 몫): 층config 팩 §4 `value_categories` 줄 · 바탕층 메모 「렌즈에 공정층」 · 런북 2의 렌즈 줄은 손대지 않았다
+- 사내 config 줄 — 공정층 config에 `"value_categories": {"<관리항목 카테고리>": "설비사양"}`(없으면 한 줄) → `bootstrap`(빌린 층의 「추출 다시」 알림) → 설비층 산문도 렌즈 없이 값이 실린다
+- 소요 약 1시간(어림) — 반입 · 런북 합치기 15분 · 전제 · 읽기 10분 · 구현 15분 · 시험 15분 · 명세 · 장부 5분 · 마감 한 줄 1회 4분

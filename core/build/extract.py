@@ -334,12 +334,12 @@ def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
 
 def _payload(chunk, cfg):
     """실호출 사용자 글 — **조립은 여기 하나**(호출 보존의 열쇠가 같은 글을 해시한다 · B135 ①)."""
+    from core.build import values as _values
     return json.dumps(
              {"categories": categories_with_also(cfg),
               "relations": cfg.get("relations"),
-              # **값을 받는 카테고리**(B120 ② — 층 config 선언 · 없으면 빈 목록 = 값 0)
-              "value_categories": sorted((cfg.get("value_categories") or {}).keys())
-              if isinstance(cfg.get("value_categories"), dict) else [],
+              # **값을 받는 카테고리**(B120 ② · B201 — 읽는 층 선언 ∪ 빌린 카테고리의 home 선언 · 없으면 빈 목록 = 값 0)
+              "value_categories": _values.categories(cfg),
               # 층을 넘기지 않는다 — 후보는 **좌표 층**의 골격에서 온다(B85 ②).
               "attach_candidates": attach_candidates(chunk.get("process_ref")),
               "parent_candidates": parent_candidates(chunk),

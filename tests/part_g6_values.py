@@ -158,6 +158,35 @@ show("ⓑ 원문에 없는 값은 버림(노드 attrs 0 · 행 `value.verdict` �
      and [v for v, _p in _spec("노칭::언와인더 unit::장력")[0]] == ["30N"],
      f"버림 {[r['value'] for r in _drop]} · 요약 {_sv} · 충돌 {[(x['payload']['existing'], x['payload']['incoming']) for x in _q]}")
 
+print("\n■ B201 산문 값 칸은 카테고리 home의 선언을 따른다 (읽는 층과 무관)")
+from core.build import values as VL                       # noqa: E402
+from core.state import config_scope as CS                 # noqa: E402
+from core.state.bootstrap import load_config               # noqa: E402
+_DTQ, _DQ = "b201_quality", "B201Q"                       # 품질층(`uses` Property · 값 선언 없음)으로 같은 표본을 읽는다 — 렌즈 없음
+_register("quality", _DTQ)
+(HINTS / f"{_DQ}.json").write_text(json.dumps(HINTS_OF["B120TW"], ensure_ascii=False), encoding="utf-8")
+for _k in ("structure", "outline"):
+    (HINTS / f"{_DQ}@{_k}.json").write_text((HINTS / f"B120TW@{_k}.json").read_text(encoding="utf-8"), encoding="utf-8")
+_pq = TMP / f"{_DQ}.xlsx"
+_pq.write_bytes((TMP / "B120TW.xlsx").read_bytes())
+with contextlib.redirect_stdout(io.StringIO()):
+    IG.ingest_file(str(_pq), _DTQ, ask=False, sheets="1:prose", coord="노칭")
+_qv = sorted({it["value"] for _l, n in World().nodes() for it in (n.get("attrs") or {}).get("설비사양") or []
+              if any(str(p).startswith(_DQ + "#") for p in it["provenance"])})
+_qcfg = load_config("quality")
+show("B201 ⓐ 품질층(uses Property · 선언 없음)으로 읽는 산문의 Property 값 → 노드 `설비사양` 칸(home의 칸 이름) · 렌즈 없음",
+     "value_categories" not in _qcfg and "Property" in VL.categories(_qcfg) and "30N" in _qv and "20N" in _qv,
+     f"값 {_qv} · 목록 {VL.categories(_qcfg)}")
+_nouse = {"categories": {}, "uses": ["Process", "Unit"]}
+show("B201 ⓑ Property를 uses에 두지 않은 층 — 값 카테고리 목록 [] · 다른 카테고리(Process · Unit) 칸 이름 없음",
+     VL.categories(_nouse) == [] and VL.attr_name(_nouse, "Process") is None and VL.attr_name(_nouse, "Property") is None)
+_k0, _ke0 = CS.extract_key(_qcfg), CS.extract_key({"categories": {}})
+_cfg(lambda c: c["value_categories"].__setitem__("Property", "설비사양B201"))
+_k1, _ke1 = CS.extract_key(load_config("quality")), CS.extract_key({"categories": {}})
+_cfg(lambda c: c["value_categories"].__setitem__("Property", "설비사양"))
+show("B201 ⓒ home 선언의 칸 이름을 바꾸면 빌린 층의 추출 판이 바뀐다 · 되돌리면 그대로 · uses 없는 층은 판 바이트 같다",
+     _k0 != _k1 and CS.extract_key(load_config("quality")) == _k0 and _ke0 == _ke1, f"{_k0[:8]} → {_k1[:8]}")
+
 print("\n■ ⓒ 선언 · 판 · ⓓ 재구축")
 _before = _prose_values()
 _drop_hints()                                             # 다시 뽑으면 값이 사라진다 — 재사용만이 값을 지킨다
@@ -184,5 +213,8 @@ show("ⓒ 정의문을 바꾸면 다시 뽑는다(힌트가 없어 값 0) · 선
 for _did in DOCS:
     for _p in (HINTS / f"{_did}.json", HINTS / f"{_did}@structure.json", HINTS / f"{_did}@outline.json"):
         _p.unlink(missing_ok=True)
+for _p in (HINTS / f"{_DQ}.json", HINTS / f"{_DQ}@structure.json", HINTS / f"{_DQ}@outline.json"):
+    _p.unlink(missing_ok=True)
 _unregister(DT)                                           # 등록 단은 클린이 남긴다 — 시험 몫을 치운다
+_unregister(_DTQ)
 done()

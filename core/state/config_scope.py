@@ -78,11 +78,14 @@ def common_view(com):
 
 
 def uses_view(cfg):
-    """`uses` 칸이 추출에 주는 것 — 쓰는 카테고리 이름 · 그 정의문(home 층 config — `catalog.definition`)(B178 ②)."""
+    """`uses` 칸이 추출에 주는 것 — 쓰는 카테고리 이름 · 그 정의문(home 층 config — `catalog.definition`)(B178 ②) · 그 home 값 칸
+    (`catalog.value_attr` — 선언이 있는 것만 · B201)."""
     from core.state import catalog
     own = (cfg or {}).get("categories") or {}
+    borrowed = [c for c in (cfg or {}).get(USES) or [] if c not in own]
+    vals = {c: catalog.value_attr(c) for c in borrowed if catalog.value_attr(c)}     # home 값 칸(B201 — 없으면 칸 없음 · 판 바이트 그대로)
     return {USES: list((cfg or {}).get(USES) or []),
-            "정의문": {c: catalog.definition(c) for c in (cfg or {}).get(USES) or [] if c not in own}}
+            "정의문": {c: catalog.definition(c) for c in borrowed}, **({"값 칸": vals} if vals else {})}
 
 
 def extract_key(cfg):
