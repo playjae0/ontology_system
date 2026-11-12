@@ -2,7 +2,7 @@
 """칸 0.3 — **골격 단의 화면**(B197 ②③④) — 문에 걸린 겸 값의 표와 처분 · 확정한 공정 줄 · 쌍별 예고 · 쓰기 전 판정 결과.
 
 core는 사실만 낸다(`core/build/entry.heading_gate` · `_notice_plan` · `_pre_write`의 `notice`) — 화면이 그리고 `--step`이면 묻는다.
-처분은 B196의 물음 함수 그대로(`cli.provisional_ask.decide` — 합침 · 새로 · 승격 · drop · 올림 `u`).
+문의 표 · 물음은 골격 칸의 한 고리(`cli/gate_table` — LLM 판단 · 말 또는 글쇠 · 처분 넷 · B202) · 사람 없는 실행은 표만(LLM 0).
 """
 from __future__ import annotations
 
@@ -62,50 +62,29 @@ def moved_lines(info, indent="   "):
     return out
 
 
-def rows_lines(rows, indent="     "):
-    """문에 걸린 겸 값 — `번호. 자리 · 이름 · 카테고리 · 판단 · 후보 둘`(후보 = 그 위 공정 아래 골격 — 판단 후보 → 자식 종류 수 → 행 수)."""
-    from core.build import skeleton_review as SR
-    sk = SR._Sk()
-    out = []
-    for i, r in enumerate(rows, 1):
-        r.setdefault("candidates", SR.candidates(sk, r["surface"], r.get("up_name"), r.get("near")))
-        cands = " · ".join(f"{j}.{c['name']}(경로 {c['path']} · 행 {c['rows']} · 자식 {c['kinds']}종)"
-                           for j, c in enumerate(r["candidates"], 1)) or "—"
-        ans = {"uncertain": "애매", "new": "다르다"}.get(r.get("answer"), r.get("answer") or "—")
-        out.append(f"{indent}{i}. 자리 {r.get('place') or '—'} · {r['surface']} · {r.get('also')} · 위 공정 {r.get('up_name')} · "
-                   f"판단 {ans} · 후보 {cands}")
-    return out
+def _title(rows, where):
+    return f"골격 단 — {where}의 겸 값 {len(rows):,}종이 문에 걸렸다(사람 확인 전 — 노드 0 · 그 아래 값도 보류)"
 
 
-def ask_rows(rows):
-    """처분 — 번호로(`m <줄> [후보|이름]` · `k <줄>` · `p <줄>` · `d <줄> <사유>` · `u <줄>`) → 계속 c / 멈춤 q."""
-    from cli import provisional_ask as PA
-    who = PA.actor()
-    while True:
-        got = _screen.answer(PA.GATE_PROMPT, "go", eof=True, other=PA._gate_cmd, hint=PA.GATE_HELP)
-        if got is True or got is False:
-            return got
-        k, i, name = got
-        if not 1 <= i <= len(rows):
-            print(f"     {i}번이 목록에 없다")
-            continue
-        PA.decide(rows[i - 1], who, answer=f"{k} {name}".strip())
-
-
-def gate_lines(rows, where):
-    head = (f"   골격 단 — {where}의 겸 값 {len(rows):,}종이 문에 걸렸다(사람 확인 전 — 노드 0 · 그 아래 값도 보류 · "
-            "처분은 합침 · 새로 · 승격 · drop · 올림)")
-    return [head] + rows_lines(rows)
+def ask_rows(rows, where="값"):
+    """처분 — 골격 칸의 한 고리(번호 + 말 또는 글쇠 → 처분 → 표 다시) → 계속 c / 멈춤 q."""
+    from cli import gate_table, provisional_ask as PA
+    for r in rows:
+        r.setdefault("where", where)
+    return gate_table.loop(rows, PA.actor(), title=_title(rows, where))
 
 
 def notice(info, step=False):
     """골격 단 화면 — `False`면 멈춤."""
     k = info["단계"]
     if k == "골격단":
-        for ln in gate_lines(info["rows"], info.get("자리") or "값"):
-            _screen.say(ln, "warn" if ln.startswith("   골격") else None)
+        where = info.get("자리") or "값"
         if step and sys.stdin.isatty():
-            return ask_rows(info["rows"])
+            return ask_rows(info["rows"], where)
+        from cli import gate_table
+        for r in info["rows"]:
+            r.setdefault("where", where)
+        gate_table.show(info["rows"], _title(info["rows"], where))
         return None
     if k == "확정공정":
         _screen.say(f"   {info['줄']}", "head")
@@ -128,13 +107,23 @@ def notice(info, step=False):
     return None
 
 
-def plan_lines(info):
-    """[5/8] 머리 아래 — 쌍별 예고(③ — 요약 · 전부는 md) · 본문 값의 골격 단 문(②)."""
+def plan_lines(info, live=False):
+    """[5/8] 머리 아래 — 쌍별 예고(③ — 요약 · 전부는 md) · 본문 값의 골격 단 문(② — 사람이 있으면 물음 고리가 그린다 · 없으면
+    표만(LLM 0))."""
     out = []
     if info.get("쌍별"):
         out += preview_screen(info["쌍별"], info.get("doc_id") or "문서")
     if info.get("골격단"):
-        out += gate_lines(info["골격단"], "본문")
+        from cli import gate_table
+        from core.state import gate_judge
+        rows = info["골격단"]
+        for r in rows:
+            r.setdefault("where", "본문")
+        if live:
+            out.append(f"   {_title(rows, '본문')} — 표는 물음에서")
+        else:
+            gate_judge.judge(rows, live=False)
+            out += gate_table.lines(rows, _title(rows, "본문"))
     return out
 
 
@@ -145,10 +134,11 @@ def step8(info, step):
     rows = info.get("골격단") or []
 
     def ask():
-        if rows and not ask_rows(rows):
+        if rows and not ask_rows(rows, "본문"):
             return False
         return human_gate.ask(hb) if hb else True
-    return plan_lines(info) + (human_gate.lines(hb, step) if hb else []), (ask if (hb or rows) else None)
+    live = bool(step and rows and sys.stdin.isatty())
+    return plan_lines(info, live) + (human_gate.lines(hb, step) if hb else []), (ask if (hb or rows) else None)
 
 
 def asked_pop():

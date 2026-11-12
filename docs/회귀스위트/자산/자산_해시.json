@@ -29,6 +29,8 @@
   "layers/process/skeleton.json": "d2742e665b8ae370d5835d782f00edf733338ca78bafee60a5171b389df345eb",
   "layers/quality/config.json": "e6a54f53013dc93630fd5bf2a24acbdd8f90ae23275e844effd44f758142dedb",
   "prompts/0.3_alias_review.md": "83d7f755a830ce942ed5f4112f53a8d8004c13bf18da6bcd94b69e9f311b6213",
+  "prompts/0.3_gate_judge.md": "081a1c9d8fe11aae916ddd92b2fd307225fe48ac2a80c07e2b29f535baf6c304",
+  "prompts/0.3_gate_say.md": "fb47ea6378ac6d091ee410932289600b1c43bf09cce0a9412a61bf7b9267b7ba",
   "prompts/1.3_interview.md": "82db5ab0e4257066a998c3322fe95d3552a06790758f7d8ed21e875550aada5f",
   "prompts/1.4_generate.md": "84cfa8fd714cddff0c847dd16afe63145eda31cbe05a8e0a718b3761d20486b4",
   "prompts/2.4_deck.md": "353745f9f178bffbb18f088c7a16b0635858a2b10de632995d13eaece967f87b",

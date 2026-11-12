@@ -447,7 +447,7 @@ def _load_hints(doc_id):
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
 
 
-def _chunk_info(entry, i, m, locator, label, tokens, lens, place=None):
+def _chunk_info(entry, i, m, locator, label, tokens, lens, place=None, coord=None):
     """청크 하나의 화면 재료 — 개체는 **전부**(표기·카테고리) · 관계·부착·부모는 수 (B97 ②).
 
     `tokens`는 이 청크의 사용량 차이(`prompt_tokens`·`completion_tokens`·`total_tokens` — B98 ③)."""
@@ -456,7 +456,7 @@ def _chunk_info(entry, i, m, locator, label, tokens, lens, place=None):
             "개체": [(e.get("surface"), e.get("category")) for e in ents],
             "관계": len(entry.get("relations") or []), "부착": len(entry.get("attach") or []),
             "부모": sum(1 for e in ents if e.get("parent")), "토큰": tokens,
-            "실패": entry.get("failed")}
+            "실패": entry.get("failed"), "좌표": coord}
 
 
 def _call_unit(doc_id, unit, cfg, vocab, hints, pages):
@@ -699,7 +699,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         _say(notice, _chunk_info(entry, i, m, c.get("source_locator"), extract_ctx.chunk_label(c),
                                  {k: t1.get(k, 0) - t0.get(k, 0) for k in
                                   ("prompt_tokens", "completion_tokens", "total_tokens")},
-                                 lens, extract_ctx.place(c)))
+                                 lens, extract_ctx.place(c), coord_text(c.get("process_ref")) or env.get("doc_coord") or "-"))
     called = [x for x in candidates if not x.get("lens_skipped")]
     failed = sum(1 for x in called if x.get("failed"))
     RUN[(doc_id, lens or "")] = {"부름": i, "재사용": reused}

@@ -403,15 +403,12 @@ show("B196 ⓐ 표 행 「노칭공정X」(골격 밖 · 판단 다르다/애매
      _pv196("노칭공정X") is None and all(_an[k].get("hold") == PV196.HOLD_HUMAN and not _an[k].get("node_id") for k in ("A1", "A2"))
      and len(_oa) == 1 and _oa[0]["payload"]["gate"]["parent"] == "조립" and _oa[0]["payload"]["rows"] == 2,
      f"노드 {_pv196('노칭공정X')} · 보류 {[_an[k].get('hold') for k in ('A1', 'A2')]} · 재료 {(_oa or [{}])[0].get('payload', {}).get('gate')}")
-_sk = SR196._Sk()
-_kids = sorted([n for n in _sk.kids(_sk.by_name["조립"]) if _sk.g.get(n)["canonical"] != "스태킹"],
-               key=lambda n: (-_sk.kinds(n), -_sk.rows(n), _sk.g.get(n)["canonical"]))
 _cn = [c["name"] for c in _rv["held"][0]["candidates"]]
 show("B196 ⓖ 골격 칸 머리 줄의 수 = 표본의 실제(공정 표기 1종 · 골격에 0 · 문에 걸림 1종 2행 · 쌍 0 · ref 빈 행 0 · 판단 못 받음 0) · "
-     "후보 차례 = 판단 후보 → 같은 부모 아래 자식 종류 수 → 행 수",
+     "첫 판단의 후보는 판단이 낸 것만(큰 형제로 채우기 걷음 — B202 ① · 문에 걸린 뒤의 순위는 LLM)",
      (_rv["counts"]["표기"], _rv["counts"]["골격"], _rv["counts"]["문"], _rv["counts"]["문 행"], _rv["counts"]["쌍"],
       _rv["counts"]["ref 빈 행"], _rv["counts"]["판단 못 받음"]) == (1, 0, 1, 2, 0, 0, 0)
-     and _cn == ["스태킹", _sk.g.get(_kids[0])["canonical"]] and "문에 걸림 1종(2행)" in SR196.head_line(_rv["counts"]),
+     and _cn == ["스태킹"] and "문에 걸림 1종(2행)" in SR196.head_line(_rv["counts"]),
      f"{SR196.head_line(_rv['counts'])} · 후보 {_cn}")
 
 # ⓑ 처분 — 합침(후보 1) · 새로 · drop(사유) → 그 문서의 행부터 · drop은 재연결이 열지 않는다
@@ -471,12 +468,12 @@ _pr = [r for r in SR196.pairs_from_queue() if r["up"] in ("스태킹", "노칭")
 _ra = _ask196(_ef, "노칭", "a")
 _rr = next((r for r in PA196.rows_of({"pairs": _pr}) if r["ref"] == "탭용접"), None)
 with contextlib.redirect_stdout(io.StringIO()):
-    _dr = PA196.decide(_rr, "시험", answer="r 1")[0] if _rr else None
+    _dr = PA196.decide(_rr, "시험", answer="m 1")[0] if _rr else None
     RT196.retry_orphans()
 _f1 = {r["locator"]: r for r in (LG.read("B196F") or {}).get("rows") or [] if r.get("role") == "anchor"}
 _g = open_graph(coord_layer())
 _fix = (CA.answers().get(CA.key(CP.GROUP, ("노칭", "탭용접"))) or (None, {}))[1].get("target")
-show("B196 ⓕ 쌍 어긋남(상위 스태킹 · ref 노칭) → 확인 전 보류 · a → 노칭에 · r 1(노칭 아래 후보) → 그 노드에",
+show("B196 ⓕ 쌍 어긋남(상위 스태킹 · ref 노칭) → 확인 전 보류 · a → 노칭에 · m 1(정정 — 노칭 아래 후보 · B202 ③) → 그 노드에",
      _f0["F1"].get("hold") == CS196.HOLD_PAIR and _f0["F2"].get("hold") == CS196.HOLD_PAIR
      and _ra == "확인" and _dr == "정정" and (_g.get(_f1["F1"].get("node_id")) or {}).get("canonical") == "노칭"
      and _fix and str(_fix).startswith("노칭::") and (_g.get(_f1["F2"].get("node_id")) or {}).get("canonical") == _fix,
@@ -545,12 +542,13 @@ def _names197():
 # ⓐ 제목 「2. 추출부」 → 목차 노드화 Unit → [3/8] 문(노드 0 · 후보 = 노칭 아래 골격)
 _na = _go197(_h197("B197A"))
 _ga = [r for n in _na if n.get("단계") == "골격단" for r in n["rows"]]
-_sk = SR196._Sk()
-_ca = SR196.candidates(_sk, "추출부", "노칭", _ga[0]["near"] if _ga else None) if _ga else []
-show("B197 ⓐ 산문 · 문서 좌표 노칭(골격 자식 넷) · 제목 「2. 추출부」 → Unit → [3/8] 골격 단 줄(위 공정 노칭) · 노드 0 · 후보 = 노칭 아래 골격",
+from core.state import gate_judge as GJ197                                     # noqa: E402
+_ca = GJ197.listing("노칭")
+show("B197 ⓐ 산문 · 문서 좌표 노칭(골격 자식 넷) · 제목 「2. 추출부」 → Unit → [3/8] 골격 단 줄(위 공정 노칭) · 노드 0 · LLM이 볼 골격 목록 = "
+     "노칭 아래 골격(B202 ①)",
      len(_ga) == 1 and _ga[0]["surface"] == "추출부" and _ga[0]["up_name"] == "노칭"
-     and not any("추출부" in c for c in _names197()) and _ca and all(c["path"].startswith("조립 › 노칭 › ") for c in _ca),
-     f"{[(r['surface'], r['up_name'], r['answer']) for r in _ga]} · 후보 {[c['name'] for c in _ca]}")
+     and not any("추출부" in c for c in _names197()) and len(_ca) == 4 and all(c["path"].startswith("조립 › 노칭 › ") for c in _ca),
+     f"{[(r['surface'], r['up_name'], r['answer']) for r in _ga]} · 목록 {[c['name'] for c in _ca]}")
 
 # ⓑ 처분 넷 — m(골격 별칭 · 그 아래 값이 그 노드 아래) · k(잠정 골격 노드 · 그 아래 값) · d(그 아래 청크 추출 0 · 값 0) · u(노드 0 · 값은 노칭)
 _out = {}

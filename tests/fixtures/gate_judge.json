@@ -1,0 +1,10 @@
+{
+  "_설명": "B202 ① 창작 답(mock) — 표기 → 골격 칸 판단. 수치는 창작 표본이다(근거 아님 — [정정] 50). 「없는 노드」는 목록 밖 후보(버려져야 한다).",
+  "Side Sealing unit": {"verdict": "같다", "confidence": 0.93, "why": "같은 공정의 영어 이름 — 설비 접미만 붙었다",
+                      "candidates": [{"name": "사이드 실링", "why": "Side Sealing = 사이드 실링"},
+                                     {"name": "프리 실링", "why": "실링 공정 · 단계 다름"},
+                                     {"name": "없는 노드", "why": "목록 밖"}]},
+  "실링 지그": {"verdict": "다르다", "confidence": 0.71, "why": "실링 설비에 쓰는 부품이다",
+                "candidates": [{"name": "사이드 실링", "why": "그 부품을 쓰는 공정"}]},
+  "검사 항목": {"verdict": "애매", "confidence": 0.3, "why": "제목 글 — 공정 이름이 아니다", "candidates": []}
+}

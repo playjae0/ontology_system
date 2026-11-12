@@ -6,7 +6,7 @@
 | 머리 줄의 수 일곱 — 공정 표기 · 골격에 있음(LLM 같다) · 문에 걸림 · 쌍 어긋남 · ref 빈 행 · 판단 못 받음 | `review` |
 | 문에 걸린 표기(표기 + 들어온 자리 · 행 수 · 판단 · 후보 둘) | `review` · `held_from_queue`(문서를 넘어) |
 | 쌍 어긋남(상위 · ref · ref의 실제 위 · 행 수 · 후보 둘) | `review` · `pairs_from_queue` |
-| 후보 — 판단이 낸 후보 먼저 · 모자라면 같은 부모 아래 골격 노드를 자식 종류 수 → 행 수 순으로 | `candidates` |
+| 첫 판단의 후보(가까운 것만 — 문에 걸린 뒤의 순위는 LLM · `core/state/gate_judge`) | `candidates` |
 
 계획은 구축 앞 패스와 같은 함수다(`provisional.plan` · `coord_scan.gate`) — 화면의 수 = 그 문서 구축의 보류 수. 코드에 층 어휘 0.
 """
@@ -83,12 +83,9 @@ class _Sk:
 
 
 def candidates(sk, surface, parent, near):
-    """**후보 둘**(사용자 규칙 — 추천 순서) — 판단이 낸 후보 먼저 · 모자라면 같은 부모 아래 골격 노드를 자식 종류 수 → 행 수 순으로."""
-    picked = [sk.by_name[c] for c in near or [] if c in sk.by_name][:TOP]
-    up = sk.by_name.get(parent) if parent else None
-    pool = [n for n in (sk.kids(up) if parent else [x for x in sk.concepts if x not in sk.pm]) if n not in picked]
-    pool.sort(key=lambda n: (-sk.kinds(n), -sk.rows(n), sk.g.get(n)["canonical"]))
-    return [sk.card(n) for n in (picked + pool)[:TOP]]
+    """**첫 판단의 후보**(판단이 낸 가까운 것만 — 큰 형제로 채우기는 걷었다 · B202 ①) — 문에 걸린 뒤의 후보 순위는 LLM이 골격 목록을
+    보고 낸다(`core/state/gate_judge`)."""
+    return [sk.card(sk.by_name[c]) for c in near or [] if c in sk.by_name][:TOP]
 
 
 def pair_candidates(sk, up_surface, ref_surface):

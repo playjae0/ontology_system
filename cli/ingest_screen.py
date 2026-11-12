@@ -577,15 +577,19 @@ LIST_LIMIT = 8
 LAST_RESULT = {"res": None}
 
 
+#: 청크 목차 라벨 칸 폭(B202 ⑤ — 화면 박자 · 손잡이 아님)
+LABEL_W = 132
+
+
 def toc_lines(info):
     """**청크 목차**(B112 ③) — 청크 전부 · `# · 라벨 · 좌표 · 상태 · 글자 수` + 표 아래 청크 맞춤 줄."""
     toc = info.get("목차") or []
     if not toc:
         return []
-    out = ["   " + _screen.pad("#", 5) + _screen.pad("라벨", 44) + _screen.pad("좌표", 18)
+    out = ["   " + _screen.pad("#", 5) + _screen.pad("라벨", LABEL_W + 2) + _screen.pad("좌표", 18)
            + _screen.pad("상태", 8) + "글자"]
-    for n, lab, co, st, ch in toc:
-        out.append("   " + _screen.pad(n, 5) + _screen.pad(_screen.cut(lab, 42), 44)
+    for n, lab, co, st, ch in toc:                 # 라벨은 가운데를 줄인다 — 앞 · 끝이 보인다(B202 ⑤)
+        out.append("   " + _screen.pad(n, 5) + _screen.pad(_screen.cut_mid(lab, LABEL_W), LABEL_W + 2)
                    + _screen.pad(_screen.cut(str(co), 16), 18) + _screen.pad(st, 8) + f"{ch:,}")
     from collections import Counter
     c = Counter(st for *_x, st, _ch in toc)

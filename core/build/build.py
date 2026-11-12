@@ -156,6 +156,9 @@ class Builder(CoordMixin):
         않고 그 공정으로 관련 링크(`mentions` — 구축 끝에 청크의 `about`)만 남긴다(`(None, self)`). `coords`(청크 공정
         목록의 해소 `[(id, 그래프)]` — B125 ④)가 오면 계보는 목록 **전체**다(없으면 `coord` 하나).
         """
+        if self.also is not None:                      # 사람이 고친 해석(B202 ② — 카테고리 · 위 공정)이 먼저
+            from core.build import also_gate
+            category, coord = also_gate.reread(self, surface, category, coord)
         other = self.other_process(surface, coord, coords)
         if other is not None:
             return self._mention(surface, category, prov, other), self

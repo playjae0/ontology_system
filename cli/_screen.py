@@ -145,6 +145,24 @@ def cut(text, n):
     return out
 
 
+def cut_mid(text, n):
+    """**가운데를 줄인다**(B202 ⑤) — 폭 `n` 안에 앞 · 끝이 남고 사이에 `…`(동아시아 폭) · 넘치지 않으면 그대로."""
+    t = str(text)
+    if w(t) <= n:
+        return t
+    room = max(0, n - 1)
+    head, tail = "", ""
+    for c in t:
+        if w(head) + w(c) > (room + 1) // 2:
+            break
+        head += c
+    for c in reversed(t[len(head):]):
+        if w(head) + w(tail) + w(c) > room:
+            break
+        tail = c + tail
+    return head + "…" + tail
+
+
 def tokens(u, since=None):
     """**토큰 표기 한 함수**(B98 ③) — `토큰 T(입력 I · 출력 O)`.
 
