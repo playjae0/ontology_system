@@ -422,7 +422,7 @@
 - ② 비용 실측(창작 mock) — 짝 103 · 묶음 3(50) · 예상 입력 약 15,877 · 출력 약 4,120 토큰(어림 — 글자 / 2) · `ops alias-audit --llm` 실경로
 - 뷰어 — Playwright로 「동의어」 탭(mock — 「LLM이 빼자는 것 1」 폴딩 → 스택 삽입 · 공유 「비전 검사」 · 봉투 없는 문서는 「모른다」)
 - 가결정(D-281) — LLM 지점은 ② 안의 태그 `alias_review`(닫힌 12 그대로) · 판정 목록 칸 · 붙은 행 셈 · 개명은 따라감 / 병합은 다시 · 인라인 골격은 `ops alias` · 골격 `ALIASES` 두 손이 층을 받는다 · 보류 문면 셋째(범위 안에도 여럿) · 쓰기 자물쇠 하나 · 진행은 `/api/status` · 「유지」 재생 `alias:keep`
-- 어서션 +6 · 삭제 0 · 고침 2 — +ⓐⓑⓒⓓⓕ(test_judge — 동의어 조각) · ⓔ(test_viewer) · 고침: test_viewer ⑥ · test_ops(part_g4) 「쓰기 라우트 없음」 → 「둘 밖 501 · WRITES 둘」
+- 어서션 +5 · 삭제 0 · 고침 3 — +ⓐⓑⓒⓓⓕ(test_judge — 동의어 조각) · 고침: test_viewer 「쓰기 라우트 없음」 → ⓔ(둘 밖 501 · 진행 중 409 · 읽기 200) · test_viewer ⑥ · part_g4 「쓰기 라우트 없음」 → 「둘 밖 501 · WRITES 둘」
 - 바꾼 파일 — 새: `core/state/alias_{audit,review,approve}.py` · `cli/viewer/alias.py` · `cli/viewer/static/alias.js` · `prompts/0.3_alias_review.md` · `tests/fixtures/alias_review.json` · 고침: `core/state/{bootstrap,alias_book,surface_book,provisional_hand,oplog}.py` · `core/build/{build_coord,table,coord_scan}.py` · `core/llm/{gateway,points,preflight}.py` · `cli/ops.py` · `cli/viewer/{server.py,static/index.html,static/app.js,static/style.css}` · `run.py` · 시험 · 명세 · 런북 · 칸 대장
 - 보인 것 — mock `all`은 봉투를 `work/parsed/`에 두지 않아 mock 화면의 붙은 행은 대개 「모른다」(사내 실경로는 인입이 남긴다) · 골격 팩에 「승인 · bootstrap이 ALIASES를 고친다」 한 줄이 빠졌다(결정 §4 — 다음 회차 가이드)
 - 사내 config 줄 — 0 · 머지 뒤 반입 → `bootstrap`(걷음 줄 · 동의어 한 줄) → 뷰어 「동의어」 → 「LLM 검토」(처음 한 번 전체 — 비용 미리보기) → 승인 → 「다시 붙일 행」이 있으면 그 문서 재인입
