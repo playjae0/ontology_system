@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 84,
-   "secs": 6
+   "secs": 7
   },
   "test_places": {
    "n": 32,
@@ -15,63 +15,63 @@
   },
   "test_query": {
    "n": 128,
-   "secs": 23
+   "secs": 22
   },
   "test_ops": {
    "n": 85,
-   "secs": 12
+   "secs": 8
   },
   "test_intake": {
    "n": 100,
-   "secs": 26
+   "secs": 24
   },
   "test_ingest_view": {
    "n": 79,
-   "secs": 54
+   "secs": 48
   },
   "test_coord": {
-   "n": 85,
-   "secs": 20
+   "n": 92,
+   "secs": 21
   },
   "test_catalog": {
    "n": 103,
-   "secs": 48
+   "secs": 44
   },
   "test_safety": {
    "n": 36,
-   "secs": 93
+   "secs": 83
   },
   "test_judge": {
    "n": 112,
-   "secs": 41
+   "secs": 36
   },
   "test_build": {
    "n": 84,
-   "secs": 37
+   "secs": 35
   },
   "test_rebuild": {
    "n": 52,
-   "secs": 38
+   "secs": 32
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 8
+   "secs": 7
   },
   "test_structure": {
    "n": 137,
-   "secs": 43
+   "secs": 32
   },
   "test_g6_capture": {
    "n": 12,
-   "secs": 36
+   "secs": 31
   },
   "test_g6_close": {
    "n": 41,
-   "secs": 61
+   "secs": 56
   },
   "test_contract": {
    "n": 76,
-   "secs": 32
+   "secs": 27
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,23 +83,23 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 3
+   "secs": 2
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 4
+   "secs": 5
   },
   "test_p1_media": {
    "n": 20,
-   "secs": 6
+   "secs": 5
   },
   "test_p2": {
    "n": 69,
-   "secs": 8
+   "secs": 6
   },
   "test_p3_register": {
    "n": 78,
-   "secs": 13
+   "secs": 11
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,11 +107,11 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 6
+   "secs": 7
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,7 +119,7 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 9
+   "secs": 8
   },
   "test_p3_ledger": {
    "n": 46,
@@ -127,7 +127,7 @@
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 14
+   "secs": 13
   },
   "test_2a_gateway": {
    "n": 78,
@@ -143,7 +143,7 @@
   },
   "test_site": {
    "n": 56,
-   "secs": 34
+   "secs": 27
   }
  },
  "log": [
@@ -1209,6 +1209,14 @@
    "suite": "test_2a_gateway",
    "from": 77,
    "to": 78,
+   "why": ""
+  },
+  {
+   "at": "2026-11-13",
+   "head": "677237e",
+   "suite": "test_coord",
+   "from": 85,
+   "to": 92,
    "why": ""
   }
  ]
