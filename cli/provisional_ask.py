@@ -10,7 +10,7 @@
 | 쌍 어긋남(`kind: pair`) | 그대로 연결 `a` · 새로 만들기 `k [번호]`(문서의 상위 밑) · 같은 것으로 `m <번호|이름>`(정정) · 버리기 `d <사유>` |
 | 이미 세운 잠정 노드(`nid`) | 승격 `p` · 합침 `m [이름]` · 그대로 `k`(「봄」) · 건너뜀 |
 
-문 · 쌍 줄의 표와 물음(번호 + 말 또는 글쇠 — 말은 LLM이 읽는다)은 한 고리 `cli/gate_table.loop`(B202) · 잠정 노드 줄은 `ops review`의
+문 · 쌍 줄의 표와 물음(한 줄씩 말 또는 글쇠 — 말은 LLM이 읽는다)은 한 고리 `cli/gate_table.loop`(B202) · 잠정 노드 줄은 `ops review`의
 물음 · 한글 자판 짝 그대로(B118 ④).
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from core import paths
 PROMPT = "[승격 p / 합침 m [이름] / 그대로 k / 건너뜀 Enter] "
 #: 한글 자판 그대로(같은 자리의 글쇠 — B118 ④)
 KEYS = {"ㅔ": "p", "ㅡ": "m", "ㅏ": "k", "ㅇ": "d", "ㅁ": "a", "ㄱ": "r", "ㅕ": "u"}
-DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "해석 고침", "건너뜀")
+DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "해석 고침", "자동", "건너뜀")
 
 
 def key_of(ch):
@@ -53,7 +53,7 @@ def decide(row, actor, ask=None, indent="     ", answer=None, under=None):
     name = f"'{row.get('canonical') or row['surface']}'"
     k, rest = _key(answer if answer is not None else ask(f"{indent}{name} {PROMPT}"))
     if kind in ("gate", "pair") and k and k not in allowed(row):
-        print(f"{indent}[거부] 이 줄({'쌍' if kind == 'pair' else '문'})에는 '{k}'를 쓸 수 없다 — {' · '.join(allowed(row))}")
+        print(f"{indent}[거부] 이 줄({'공정 짝 어긋남' if kind == 'pair' else '공정 표기'})에는 '{k}'를 쓸 수 없다 — {' · '.join(allowed(row))}")
         return "건너뜀", False
     try:
         if kind == "pair":
@@ -106,14 +106,14 @@ def _pair(row, k, rest, actor, indent, coord_acks, under=None):
     pair = (row["up"], row["ref"])
     if k == "a":
         coord_acks.ack(row["pair_kind"], pair, actor, seen=True)
-        print(f"{indent}그대로 연결 — '{row['ref']}' 자리 그대로 붙인다(이 쌍은 다시 묻지 않는다)")
+        print(f"{indent}그대로 연결 — '{row['ref']}' 자리 그대로 붙인다(이 공정 짝은 다시 묻지 않는다)")
         return "확인", False
     if k == "k":                                      # 쌍 줄의 새로 만들기(B203 ④) — 문서의 상위(또는 고른 부모) 밑에 그 하위 이름으로
         from core.state import catalog, provisional_hand as PH
         PH.seed(actor, row["surface"], row["up"], under=under, pair=True)
         target = f"{under or row['up']}{catalog.sep()}{row['surface']}"
         coord_acks.fix(row["pair_kind"], pair, target, actor, note="새로 만들기")
-        print(f"{indent}새로 만들기 — {target} 잠정 골격 노드(그 쌍의 행은 그 노드에 · 그 문서의 나머지 행부터)")
+        print(f"{indent}새로 만들기 — {target} 잠정 골격 노드(그 공정 짝의 행은 그 노드에 · 그 문서의 나머지 행부터)")
         return "새로", False
     if k == "m":                                      # 쌍 줄의 「같다」 = 정정(B202 ③ — 같은 뜻)
         target = _pick(rest, row.get("candidates") or [])
@@ -125,7 +125,7 @@ def _pair(row, k, rest, actor, indent, coord_acks, under=None):
         return "정정", False
     if k == "d":
         coord_acks.drop(row["pair_kind"], pair, actor, rest)
-        print(f"{indent}버리기 — 그 쌍의 행은 붙이지 않는다 · 사유 {rest}")
+        print(f"{indent}버리기 — 그 공정 짝의 행은 붙이지 않는다 · 사유 {rest}")
         return "drop", False
     return "건너뜀", False
 
@@ -160,4 +160,5 @@ def gate(env):
         return _screen.answer("   [계속 c / 멈춤 q] ", "go", eof=True)
     from cli import gate_table
     g, p = sum(1 for r in rows if r["kind"] == "gate"), sum(1 for r in rows if r["kind"] == "pair")
-    return gate_table.loop(rows, actor(), title=f"골격 칸 — 문에 걸린 표기 {g:,}종 · 쌍 어긋남 {p:,}쌍")
+    return gate_table.loop(rows, actor(), title=f"골격 칸 처분 — 추출 전(공정 표기 {g:,} · 공정 짝 어긋남 {p:,}) {len(rows):,}줄 · "
+                                                 "여기서 정한 공정이 추출의 후보가 된다")

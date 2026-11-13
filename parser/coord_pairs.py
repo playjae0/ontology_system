@@ -182,12 +182,12 @@ def ordered(t):
 
 
 def head_line(t, acked=()):
-    """한 줄 — `좌표 쌍 — 어긋남 k쌍(n행) · 상위 이름 골격 밖 m종` (+ 확인된 쌍은 따로 센다)."""
+    """한 줄 — `공정 짝 — 어긋남 k짝(n행) · 상위 이름 골격 밖 m종` (+ 그대로 연결한 짝은 따로 센다)."""
     live = [(k, e) for k, e in t["pairs"].items() if k not in acked]
     done = [(k, e) for k, e in t["pairs"].items() if k in acked]
-    return (f"좌표 쌍 — 어긋남 {len(live):,}쌍({sum(e['rows'] for _k, e in live):,}행) · "
+    return (f"공정 짝 — 어긋남 {len(live):,}짝({sum(e['rows'] for _k, e in live):,}행) · "
             f"상위 이름 골격 밖 {len(t['outside']):,}종"
-            + (f" · 확인된 쌍 {len(done):,}({sum(e['rows'] for _k, e in done):,}행)" if done else ""))
+            + (f" · 그대로 연결한 짝 {len(done):,}({sum(e['rows'] for _k, e in done):,}행)" if done else ""))
 
 
 def describe(kind, pair):
@@ -206,7 +206,7 @@ def pair_lines(t, acked=(), top=TOP):
         out.append(f"{what} · {e['rows']:,}행 · 예 {', '.join(e['locs'])}"
                    + ("  [확인됨]" if (kind, pair) in acked else ""))
     if len(t["pairs"]) > top:
-        out.append(f"… 쌍 {len(t['pairs']) - top:,}개 더")
+        out.append(f"… 공정 짝 {len(t['pairs']) - top:,}개 더")
     if t["outside"]:
         out.append("상위 이름 골격 밖: " + " · ".join(
             f"'{g}' {n:,}행" for g, n in sorted(t["outside"].items(), key=lambda x: (-x[1], x[0]))[:top]))

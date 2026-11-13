@@ -75,8 +75,6 @@ def extract_screen(step=False, stage=None):
                 head += f" · 다시 뽑는다 — {info['다시']}"
             if info.get("개체없음"):                # 덱 구조의 「개체 없음」 슬라이드 — 부르지 않는다 (B125 ①)
                 head += f" · 개체 없음 {info['개체없음']:,}"
-            if info.get("사람drop"):                # 사람이 drop한 골격 단 제목 아래 — 부르지 않는다 (B197 ①)
-                head += f" · 거름 — 사람 drop {info['사람drop']:,}"
             cp = info.get("캡처")                   # 슬라이드 · 쪽 캡처 (B125 ②)
             if cp:
                 _screen.say(f"   캡처 — 있음 {cp['있음']:,} · 없음 {cp['없음']:,}"

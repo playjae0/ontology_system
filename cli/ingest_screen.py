@@ -72,7 +72,7 @@ def _orphan_next(doc_id):
              and (doc_id is None or x.get("doc_id") == doc_id)]
     gated = [x for x in items if {"gate", "pair"} & set(x.get("payload") or {})]      # 골격 칸의 문 · 쌍 어긋남(B196)
     if gated:
-        print(f"   골격 칸 보류 {len(gated)}표기 — 사람 확인 전(문에 걸린 표기 · 쌍 어긋남): "
+        print(f"   골격 칸 보류 {len(gated)}표기 — 사람 확인 전(공정 표기 · 공정 짝 어긋남): "
               f"{[(y.get('payload') or {}).get('key') for y in gated[:3]]}")
         print("   ▶ 다음 줄 — 처분: python run.py ops review all --actor <이름> → python run.py ops relink all --actor <이름> --apply")
     items = [x for x in items if x not in gated]

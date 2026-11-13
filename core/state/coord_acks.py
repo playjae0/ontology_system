@@ -134,8 +134,8 @@ def ack(kind, pair, actor, note="", seen=False):
     k = key(kind, pair)
     items = [x for x in store.read(store.QUEUE, []) if x.get("kind") == KIND and key_of(x.get("payload")) == k]
     if not items and not seen:
-        raise AckRefused(f"큐에 그 쌍이 없다 — {kind} '{pair[0]}' · '{pair[1]}' "
-                         f"(python run.py platform queue {KIND} 의 쌍을 그대로 준다)")
+        raise AckRefused(f"큐에 그 공정 짝이 없다 — {kind} '{pair[0]}' · '{pair[1]}' "
+                         f"(python run.py platform queue {KIND} 의 공정 짝을 그대로 준다)")
     d = load()
     rec = {"kind": kind, "a": pair[0], "b": pair[1], "actor": actor, "at": _now(), "note": note or "",
            "docs": sorted({x.get("doc_id") for x in items if x.get("doc_id")})}
@@ -157,7 +157,7 @@ def unack(kind, pair, actor):
     d = load()
     rec = d["pairs"].pop(k, None)
     if rec is None:
-        raise AckRefused(f"확인 기록에 그 쌍이 없다 — {kind} '{pair[0]}' · '{pair[1]}'")
+        raise AckRefused(f"확인 기록에 그 공정 짝이 없다 — {kind} '{pair[0]}' · '{pair[1]}'")
     _save(d)
     n = store.clear_resolution(KIND, lambda pl: key_of(pl) == k, decision=DECISION)
     return rec, n

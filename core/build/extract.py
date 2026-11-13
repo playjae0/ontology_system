@@ -505,7 +505,7 @@ def _call_chunk(doc_id, cid, c, cfg, vocab, hints, image=None):
         return {"chunk_id": cid, "failed": why, "entities": [], "relations": [], "attach": []}
 
 
-_TOC_STATE = {"call": "부름", "ref": "ref", "skip": "거름", "none": "개체 없음", "drop": "거름 — 사람 drop"}
+_TOC_STATE = {"call": "부름", "ref": "ref", "skip": "거름", "none": "개체 없음"}
 
 
 def _toc(rows, env):
@@ -515,16 +515,12 @@ def _toc(rows, env):
              len(c.get("text") or "")) for n, (k, _cid, c) in enumerate(rows, start=1)]
 
 
-def _todo(env, chunk_ids_by_locator, skip, drop=()):
-    """부를 청크와 건너뛸 청크를 **부르기 전에** 가른다 — 예고와 루프가 같은 표를 쓴다(다시 쓸 호출은 단위가 가른다 — `_unit_hit`).
-    `drop`(위치)은 사람이 drop한 골격 단 제목 아래 조각이다(B197 ① — 부르지 않는다 · 「거름 — 사람 drop」)."""
+def _todo(env, chunk_ids_by_locator, skip):
+    """부를 청크와 건너뛸 청크를 **부르기 전에** 가른다 — 예고와 루프가 같은 표를 쓴다(다시 쓸 호출은 단위가 가른다 — `_unit_hit`)."""
     rows, ref, lens_sk = [], 0, 0
     for c in env.get("chunks", []):
         cid = chunk_ids_by_locator.get(c.get("source_locator"))
         if cid is None:
-            continue
-        if c.get("source_locator") in drop:
-            rows.append(("drop", cid, c))
             continue
         # **관련성 거름으로 건너뛴 청크**(B91 ① — 렌즈가 둘 이상일 때만 · LLM 0) — 이 렌즈에서
         # 무후보다. 건너뛴 수는 체크포인트에 남는다(렌즈별 호출 분포의 재료).
@@ -612,7 +608,7 @@ def _context(env, outline):
                    for c in env.get("chunks", [])})
 
 
-def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice=None, outline=None, drop=()):
+def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice=None, outline=None):
     """계약 JSON(prose) → extract/{doc_id}.json. 이미 있으면 만들지 않는다.
 
     **실패의 처분은 청크 단위다**(문서 4 §4.10 규약 9) — 실패한 청크는 `failed`로 체크포인트에
@@ -646,7 +642,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         checkpoint_path(doc_id, lens).unlink()
 
     hints = _load_hints(doc_id)
-    rows, ref_skipped, lens_skipped = _todo(env, chunk_ids_by_locator, skip, drop)
+    rows, ref_skipped, lens_skipped = _todo(env, chunk_ids_by_locator, skip)
     from core.build import extract_unit as EU
     units = EU.group(rows)                              # 추출 단위 — 슬라이드 · 쪽은 한 호출 (B125 ①)
     pages, cap_why = EU.capture(env) if (units and not gateway.use_mock()) else ({}, None)
@@ -661,7 +657,7 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
     _say(notice, {"단계": "추출예고", "렌즈": lens, "청크": len(rows),
                   "다시": (why if why and why != "체크포인트 없음" else None),
                   "ref": ref_skipped, "거름": lens_skipped, "재사용": reused, "호출": m, "캡처": cap,
-                  "개체없음": sum(1 for r in rows if r[0] == "none"), "사람drop": sum(1 for r in rows if r[0] == "drop"),
+                  "개체없음": sum(1 for r in rows if r[0] == "none"),
                   "목차": _toc(rows, env), "자리목록": [extract_ctx.place(c) for _k, _cid, c in rows]})
     u0 = gateway.usage_total()
     candidates, i = [], 0
@@ -671,9 +667,6 @@ def extract(env, cfg, chunk_ids_by_locator, vocab, *, lens=None, skip=(), notice
         if kind == "skip":
             candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [],
                                "lens_skipped": True})
-            continue
-        if kind == "drop":                              # 사람 drop 제목 아래 — 부르지 않는다 · 값 0 (B197 ①)
-            candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [], "human_drop": True})
             continue
         if kind == "none":                              # 개체 없음(덱 구조) — 부르지 않는다 · 체크포인트에는 남는다
             candidates.append({"chunk_id": cid, "entities": [], "relations": [], "attach": [], "no_entities": True})

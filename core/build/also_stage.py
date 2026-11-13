@@ -3,8 +3,8 @@
 
 | 무엇 | 자리 |
 |---|---|
-| 제목 개체 중 겸 단에 설 것(목차 노드화 결과) — 문의 줄 | `heading_items` → `also_gate.scan` |
-| drop한 제목 아래 청크(추출하지 않는다) | `dropped_locators` |
+| 제목 개체 중 겸 단에 설 것(목차 노드화 결과) — 판단은 [3/8] · 줄은 [5/8] 맨 앞 한 표(B204 ①) | `heading_items` → `also_gate.scan` |
+| 버린 제목 아래 청크 — 추출 뒤 그 결과를 버린다(B204 ①) | `dropped_locators` · `drop_after` |
 | 청크마다 확정한 공정 쌍 `(상위, 하위 또는 None)` · 끝 줄 | `pairs` · `pair_line` |
 | 본문 값 중 겸 단에 설 것([5/8] 머리) | `body_items` → `also_gate.scan` |
 | [5/8] 쌍별 예고(표 [4/7]도 같은 함수) — 붙을 자리(판정 전) · 연결 · 판정 예정 · 화면은 쌍마다 요약 · 전부는 md(B199 ①) | `preview` · `preview_lines` |
@@ -91,7 +91,7 @@ def _answer(b, it):
 
 
 def dropped_locators(b, env, outline, items):
-    """drop한 제목 아래 조각의 위치 — 추출하지 않는다(B197 ① — 「거름 — 사람 drop」)."""
+    """버린 제목 아래 조각의 위치 — 추출 뒤 그 결과를 버린다(`drop_after` — B204 ①)."""
     from core.build import outline as OL
     b.also["book"] = None                          # 처분 뒤 다시 읽는다
     hids = {it["hid"] for it in items if _answer(b, it)[0] == "drop"}
@@ -146,7 +146,7 @@ def pair_line(pm, table=False):
         if up is None:
             parts.append(f"좌표 없음 {n:,}")
         elif low == "drop":
-            parts.append(f"{up} › 사람 drop {n:,}")
+            parts.append(f"{up} › 사람 버리기 {n:,}")
         elif low:
             parts.append(f"{up}{ARROW}{low} {n:,}")
         else:
@@ -210,7 +210,7 @@ def preview(b, env, candidates=None, loc_of=None, outline=None, items=(), schema
                     ln = _line(b, e["surface"], e.get("category"), pm.get(loc), bt.get("name") or (hd or {}).get(
                         "target", {}).get("name"), bt.get("category") or ((hd or {}).get("target") or {}).get("category"))
                     if held in ("보류", "drop"):           # 위 제목이 골격 단의 문에 걸렸다 — 그 보류와 함께
-                        ln["plan"] = f"{'drop' if held == 'drop' else '보류'} — 제목 {hd['target']['name']}(골격 단의 문)"
+                        ln["plan"] = f"{'버리기' if held == 'drop' else '보류'} — 제목 {hd['target']['name']}(골격 단 — 이름 처분)"
                     groups.setdefault(pm.get(loc), []).append(ln)
     for k, rows in groups.items():
         seen, keep = {}, []
@@ -366,23 +366,28 @@ def verdict_lines(out, unc, indent="   ", moves=None):
 
 # ---------------------------------------------------------------- 구축 입구의 세 자리 (`core/build/entry`가 부른다)
 def heading_gate(env, ol, notice, run):
-    """**골격 단의 문 — 제목**(B197 ② · 목차 노드화 바로 뒤 · 추출 전) — 제목 개체 중 겸 단에 설 것의 같은지 판단(여기서 한 번 —
-    구축이 다시 부르지 않는다) · 줄이 있으면 화면이 처분을 묻는다(`--step`) · 끝 줄 「확정한 공정」 · 돌려주는 것은 drop한 제목 아래
-    조각의 위치(추출하지 않는다)."""
+    """**골격 단 — 제목의 판단**(B197 ② · 목차 노드화 바로 뒤 · 추출 전) — 제목 개체 중 겸 단에 설 것의 같은지 판단(여기서 한 번 —
+    `_PRE` · 구축이 다시 부르지 않는다) · 처분 줄은 [5/8] 맨 앞 한 표(`plan_extra` — B204 ①) · 끝 줄 「확정한 공정」."""
     from core.build import also_gate
-    from core.build.entry import StepStop
     b = builder(env)
     items = heading_items(b, env, ol)
-    rows = also_gate.scan(b, items) if items else []
-    if notice is not None and rows and notice({"단계": "골격단", "자리": "제목", "rows": rows}) is False:
-        raise StepStop("사람이 멈췄다 — 골격 단(제목)까지 (LLM은 판단만 · 그래프 쓰기 0)")
-    if rows:
-        b = builder(env)                           # 처분 뒤 — 사전 · 골격 별칭 · 사람 답을 다시 연다
-    drop = dropped_locators(b, env, ol, items) if items else set()
+    if items:
+        also_gate.scan(b, items)
     if notice is not None:
         notice({"단계": "확정공정", "줄": pair_line(pairs(b, env, ol, items))})
     run.update(also_items=items, outline=ol)
-    return drop
+
+
+def drop_after(env, cands, loc2id, run):
+    """**버린 제목 아래 청크의 추출 결과를 버린다**(B204 ① — [5/8] 처분 뒤 · 표 · 산문 · 렌즈 한 자리) — 그 청크는 개체 · 관계 · 부착 0
+    (`human_drop` — 추출 체크포인트는 그대로)."""
+    items = run.get("also_items") or ()
+    drop = dropped_locators(builder(env), env, run.get("outline"), items) if items else set()
+    if not drop:
+        return cands
+    loc_of = {cid: loc for loc, cid in loc2id.items()}
+    return [{"chunk_id": c["chunk_id"], "entities": [], "relations": [], "attach": [], "human_drop": True}
+            if loc_of.get(c["chunk_id"]) in drop else c for c in cands]
 
 
 def plan_extra(env, candidates, loc2id, outline, run):
@@ -392,8 +397,23 @@ def plan_extra(env, candidates, loc2id, outline, run):
     loc_of = {cid: loc for loc, cid in loc2id.items()}
     items = run.get("also_items") or ()
     bi = body_items(b, env, candidates, loc_of, outline, items)
+    rows = {}                                      # 이름(겸 값) 한 표 — 제목 · 본문 · 같은 표기 · 같은 위 공정은 한 줄(B204 ①)
+    for where, its in (("제목", items), ("본문", bi)):
+        for r in also_gate.scan(b, its) if its else []:
+            k = (norm(r["surface"]), r["up_name"])
+            if k in rows:
+                rows[k]["rows"] += r["rows"]
+                rows[k]["where"] = " · ".join(dict.fromkeys(rows[k]["where"].split(" · ") + [where]))
+            else:
+                rows[k] = dict(r, where=where)
+    from core.state import provisional_hand as PH
+    kept = set()                                   # 앞에서 정한 표기(사람 답이 있어 줄 0 — 머리 줄의 수 · B204 ④)
+    for it in list(items) + bi:
+        p = also_gate.place(b, it["category"], it.get("coord"))
+        if p and PH.decided(also_gate._book(b), it["surface"], p["up"]):
+            kept.add(norm(it["surface"]))
     return {"쌍별": preview(b, env, candidates, loc_of, outline, items),
-            "골격단": also_gate.scan(b, bi) if bi else [], "doc_id": env.get("doc_id")}
+            "골격단": list(rows.values()), "앞에서정함": len(kept), "doc_id": env.get("doc_id")}
 
 
 def pre_write(env, bld, notice, extract_only, run):

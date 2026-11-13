@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 
 from core import paths
 from core.state import log, store
@@ -35,8 +36,9 @@ MEMO = ("extract", "gate_judge.json")
 SCHEMA = {"type": "object", "properties": {
     "verdict": {"type": "string", "enum": list(VERDICTS)}, "confidence": {"type": "number"}, "why": {"type": "string"},
     "candidates": {"type": "array", "items": {"type": "object", "properties": {
-        "name": {"type": "string"}, "why": {"type": "string"}}, "required": ["name", "why"], "additionalProperties": False}}},
-    "required": ["verdict", "confidence", "why", "candidates"], "additionalProperties": False}     # 엄격 규칙(B200 ⓪ — `gateway.strict_issues`)
+        "name": {"type": "string"}, "why": {"type": "string"}}, "required": ["name", "why"], "additionalProperties": False}},
+    "under": {"type": ["integer", "null"]}, "under_why": {"type": ["string", "null"]}},
+    "required": ["verdict", "confidence", "why", "candidates", "under", "under_why"], "additionalProperties": False}     # 엄격 규칙(B200 ⓪ — `gateway.strict_issues`)
 #: 이 실행의 호출 수 — 보고 · 화면(첫 판단 · 다시 판단)
 CALLS = {"첫 판단": 0, "다시 판단": 0}
 
@@ -145,8 +147,8 @@ def _ask(row, lst, hint):
 
 
 def check(ans, lst):
-    """코드는 검사만 — 판단이 셋 안인가 · 후보 이름이 목록 안인가(밖이면 버림 · 결함 로그) · 확실도 0~1. `{verdict, confidence, why,
-    candidates: [{canonical, path, why}], dropped}`."""
+    """코드는 검사만 — 판단이 셋 안인가 · 후보 이름이 목록 안인가(밖이면 버림 · 결함 로그) · 확실도 0~1 · 「새로라면 어디 밑」 번호가
+    목록 안인가(밖이면 None — B204 ②). `{verdict, confidence, why, candidates: [{canonical, path, why}], under, dropped}`."""
     by = {x["canonical"]: x for x in lst}
     v = ans.get("verdict") if ans.get("verdict") in VERDICTS else UNSURE
     try:
@@ -163,8 +165,10 @@ def check(ans, lst):
             cands.append({"canonical": hit[0], "path": by[hit[0]]["path"], "why": str(c.get("why") or "")[:120]})
     if dropped:
         _LOG.warning("[결함] 골격 칸 판단 — 목록 밖 후보 버림 %s", dropped)
+    u = next((x for x in lst if isinstance(ans.get("under"), int) and x["no"] == ans["under"]), None)
     return {"verdict": v, "confidence": conf, "why": str(ans.get("why") or "")[:200], "candidates": cands[:TOP],
-            "dropped": dropped}
+            "under": u and {"canonical": u["canonical"], "path": u["path"], "host": u.get("host"),
+                            "why": str(ans.get("under_why") or "")[:120]}, "dropped": dropped}
 
 
 def judge(rows, *, live=True, hint=None, again=False):
@@ -185,7 +189,7 @@ def judge(rows, *, live=True, hint=None, again=False):
             r["llm"], r["llm0"] = None, "사람 없는 실행"
             continue
         else:
-            r["llm"], r["llm0"] = check(_ask(r, lst, hint), lst), None
+            r["llm"], r["llm0"] = dict(check(_ask(r, lst, hint), lst), at=time.strftime("%Y-%m-%d")), None   # 날짜 — 「지난 판단(날짜)」
             CALLS["다시 판단" if hint or again else "첫 판단"] += 1
             if not hint:
                 book[k], dirty = r["llm"], True

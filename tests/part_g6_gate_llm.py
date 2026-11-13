@@ -29,6 +29,7 @@ from g65_common import _P, done, overlay   # noqa: F401
 
 from cli import _screen, gate_table as GT, ingest_screen as IS, extract_screen as XS   # noqa: E402
 from core.build.entry import run_document                                              # noqa: E402
+from core.build import ledger as LG                                                    # noqa: E402
 from core.state import fixtures as _FXR, gate_judge as GJ, gate_say as GS, oplog, provisional_hand as PH   # noqa: E402
 from core.state.bootstrap import bootstrap, open_graph                                 # noqa: E402
 from core.state.status import is_live                                                  # noqa: E402
@@ -70,10 +71,10 @@ def _go(env, answers=(), keep=None):
 
     def nt(info):
         notes.append(info)
-        if info.get("단계") == "골격단":
+        if info.get("골격단"):
             if keep is not None:
-                keep.extend(info["rows"])
-            return GT.loop(info["rows"], "B202시험", title="골격 단 — 시험", ask=lambda q: feed.pop(0) if feed else "c")
+                keep.extend(info["골격단"])
+            return GT.loop(info["골격단"], "B202시험", title="골격 단 — 시험", ask=lambda q: feed.pop(0) if feed else "c")
         return None
     with contextlib.redirect_stdout(box):
         run_document(env, notice=nt, allow_duplicate=True)
@@ -92,7 +93,7 @@ def _ops():
 _e1 = _doc("B202A", ["Side Sealing unit", "실링 지그", "검사 항목"])
 _rows0, _all0 = [], []
 with contextlib.redirect_stdout(io.StringIO()):
-    run_document(_e1, notice=lambda i: (_all0.append(i), _rows0.extend(i["rows"]) if i.get("단계") == "골격단" else None)[1],
+    run_document(_e1, notice=lambda i: (_all0.append(i), _rows0.extend(i["골격단"]) if i.get("골격단") else None)[1],
                  allow_duplicate=True)
 _c0, _o0, _m0 = dict(GJ.CALLS), _ops(), GJ._memo_path().exists()
 _b0 = io.StringIO()
@@ -123,9 +124,9 @@ show("B202 ⓖ 같은 문서 재인입 — 판단 기억(표기 · 위 공정 ·
 
 # ⓔ 문 줄의 r · p → 거부(기록 0) · ⓕ 확인이 Enter가 아니면 쓰기 0 · ⓑ 말 → 같다 → Enter → ALIASES · ✓ · ⓒ 해석 고침
 _o1, _a1 = _ops(), list(_alias("패키징::사이드 실링"))
-_n, _out = _go(_e1, ["r 1", "p 1", "1 사이드 실링이랑 같은 거", "아니", "1 사이드 실링이랑 같은 거", "", "2 이건 부품이야", ""])
+_n, _out = _go(_e1, ["r", "p", "사이드 실링이랑 같은 거", "아니", "사이드 실링이랑 같은 거", "", "이건 부품이야", ""])
 show("B202 ⓔ 문 줄에 `r 1` · `p 1` → 거부 문면(그 줄 · 쓸 수 있는 것) · 기록 0 · 다시 묻는다",
-     "[거부] 1번(문)에는 'r'" in _out and "[거부] 1번(문)에는 'p'" in _out
+     "에는 'r' — 이 줄은:" in _out and "에는 'p' — 이 줄은:" in _out
      and not any(r.get("op") == "provisional:promote" for r in oplog.read()[_o1:]), _out[:0])
 show("B202 ⓕ 해석을 보인 뒤 Enter가 아니면(「아니」 — 다시 말하기) 쓰기 0 · 다음 말로 간다",
      "[해석 못 함]" in _out and _out.index("[해석 못 함]") < _out.index("같은 것으로 —"), "")
@@ -179,9 +180,9 @@ def _go203(did, head, say):
         return say(rows[0]) if n[0] == 1 else "" if n[0] == 2 else "c"
 
     def nt(info):
-        if info.get("단계") == "골격단":
-            rows.extend(info["rows"])
-            return GT.loop(info["rows"], "B203시험", title="골격 단 — 시험", ask=ask)
+        if info.get("골격단"):
+            rows.extend(info["골격단"])
+            return GT.loop(info["골격단"], "B203시험", title="골격 단 — 시험", ask=ask)
     with contextlib.redirect_stdout(box):
         run_document(_doc(did, [head], coord="조립"), notice=nt, allow_duplicate=True)
     return rows, box.getvalue()
@@ -191,7 +192,7 @@ def _n203(r, name):
     return next(x["n"] for x in GJ.picks(r) if x["name"] == name)
 
 _seen = {}
-_rh, _oh = _go203("B203H", "B203 지그", lambda r: _seen.update(row=dict(r)) or f"k 1 {_n203(r, '스태킹')}")
+_rh, _oh = _go203("B203H", "B203 지그", lambda r: _seen.update(row=dict(r)) or f"k {_n203(r, '스태킹')}")
 _ph = PH.placed().get((_key203("B203 지그"), "조립")) or {}
 _rq = dict(_seen["row"], done=None)
 with contextlib.redirect_stdout(io.StringIO()) as _bq:
@@ -208,7 +209,7 @@ _t5 = GT._target(1, _seen["row"], "5")
 show("B203 ⓘ `m 1 5` · `k 1 5`가 같은 번호 목록(후보 다음 골격 · 이어지는 번호) · `? 1` 펼친 뒤에도 번호 같음",
      [x["n"] for x in _pk] == list(range(1, len(_pk) + 1)) and _t5 == _pk[4] and f"{GT._no(5)} {_pk[4]['name']} —" in _b2.getvalue(),
      f"5 = {(_t5 or {}).get('name')}")
-_rj, _oj = _go203("B203J", "B203 받침", lambda r: "1 스태킹 밑에 새로")
+_rj, _oj = _go203("B203J", "B203 받침", lambda r: "스태킹 밑에 새로")
 _pj = PH.placed().get((_key203("B203 받침"), "조립")) or {}
 show("B203 ⓙ 말 「1 스태킹 밑에 새로」 → 해석 = 새로 만들기 · 부모 번호 → Enter → ⓗ와 같은 기록(스태킹 밑)",
      "1번 = 새로 만들기 → 조립 › 스태킹 › B203 받침 (잠정)" in _oj and _pj.get("under") == "스태킹", f"{_pj}")
@@ -218,6 +219,135 @@ _rx = GT._reject(1, dict(_seen["row"]), "a")
 show("B203 ⓚ 처분 말 다섯이 화면(동작 줄) · 처분 칸 · 거부 문면 · 런북 · 인입 이해 가이드에서 같다 · 쓸 수 없는 글쇠 → 동작 줄을 다시",
      all(all(w in d for w in _w5) for d in _docs) and all(any(w in ln for ln in GT.acts(1, _rg)) for _rg in ([_seen["row"]]) for w in _w5[:3])
      and "이 줄은:" in _rx and all(w in _rx for w in ("새로 만들기", "같은 것으로", "버리기")), _rx)
+
+# B204 ⓐ~ⓕ — 이름(겸 값)은 [5/8] 맨 앞 한 표 · 버린 제목은 추출 뒤 버림 · 「새로라면 어디 밑」 제안 · 맨 아래 단 자동 · 「쌍」 0 · 색
+from core.build import also_gate as AG204                          # noqa: E402
+from core.state import coord_acks as CA204                         # noqa: E402 — 큐 해결 기록의 열쇠(그대로)
+
+
+def _doc204(did, coord, head, body, extra=()):
+    """제목 하나(Unit) 아래 청크 — 본문 개체 `body`(같은 표기 Unit · 값 하나) · `extra`(다른 겸 값)."""
+    loc = "H-1"
+    (HINTS / f"{did}.json").write_text(json.dumps({loc: {"entities": [{"surface": body, "category": "Unit"},
+                                                                      {"surface": f"{did} 값", "category": "Property"}]
+                                                         + [{"surface": x, "category": "Unit"} for x in extra], "relations": []}},
+                                                  ensure_ascii=False), encoding="utf-8")
+    (HINTS / f"{did}@outline.json").write_text(json.dumps({f"3) {head}": {"name": head, "category": "Unit"}}, ensure_ascii=False),
+                                               encoding="utf-8")
+    _made.append(did)
+    pcs = [{**C1, "source_locator": loc, "doc_type": "ppt_process", "process_ref": coord, "text": f"{body}의 조건은 5N이다.",
+            "meta": {"section_path": f"3) {head}"}}]
+    return {**PROSE, "doc_id": did, "doc_type": "ppt_process", "source_path": f"{did}.pptx", "doc_coord": coord,
+            "chunks": TG.tag(pcs, nodes=TG.closed_list("process"), doc_type="ppt_process")}
+
+
+def _go204(env, answer):
+    """인입 — 알림 전부 · [5/8] 한 표의 줄에 `answer(줄들)`의 답을 차례로(그 뒤 c)."""
+    notes, feed = [], []
+
+    def nt(info):
+        notes.append(info)
+        if info.get("골격단"):
+            feed.extend(answer(info["골격단"]))
+            return GT.loop(info["골격단"], "B204시험", title="t", ask=lambda q: feed.pop(0) if feed else "c")
+    with contextlib.redirect_stdout(io.StringIO()):
+        run_document(env, notice=nt, allow_duplicate=True)
+    return notes
+
+
+_jn = {"n": 0}
+_j0 = AG204._judge
+AG204._judge = lambda *a, **k: (_jn.__setitem__("n", _jn["n"] + 1), _j0(*a, **k))[1]      # 판단 수만 센다(동작 그대로)
+_na = _go204(_doc204("B204A", "스태킹", "정렬 비전", "정렬 비전", ["흡착 패드"]), lambda rows: [])
+AG204._judge = _j0
+_ra = [r for n in _na if n.get("추출뒤") for r in n.get("골격단") or []]
+show("B204 ⓐ [3/8]에 이름 줄 0 · [5/8] 맨 앞 한 표 — 제목 · 본문 같은 표기는 한 줄(자리 「제목 · 본문」 · 행 합) · 다른 본문 겸 값 한 줄 · "
+     "제목 판단은 [3/8]의 한 번(LLM 다시 0)",
+     not any(n.get("단계") == "골격단" for n in _na) and sorted((r["surface"], r["where"]) for r in _ra)
+     == [("정렬 비전", "제목 · 본문"), ("흡착 패드", "본문")] and _jn["n"] == 2, f"{[(r['surface'], r['where'], r['rows']) for r in _ra]} · 판단 {_jn['n']}")
+_go204(_doc204("B204B", "스태킹", "버릴 제목", "버릴 제목"), lambda rows: ["d 제목일 뿐"])
+_ckb = json.loads(_P.work("extract", "B204B.json").read_text(encoding="utf-8"))
+_gb = open_graph("process")
+show("B204 ⓑ 제목 버리기 → 그 아래 청크는 추출했고(체크포인트에 그 값) 그 결과를 버린다 — 그래프에 그 값 0",
+     any(e.get("surface") == "B204B 값" for c in _ckb["candidates"] for e in c.get("entities") or [])
+     and not any(n["canonical"].endswith("B204B 값") for n in _gb.nodes.values() if is_live(n)), "")
+_go204(_doc204("B204C", "조립", "B204 받침대", "B204 받침대"), lambda rows: ["k"])
+_pc = PH.placed().get((_key203("B204 받침대"), "조립")) or {}
+show("B204 ⓒ LLM 제안 「새로라면 어디 밑」(스태킹) → `k 1`만으로 제안 부모 밑(같은 기록 꼴 — B203 ⓗ의 `k 1 <번호>` · ⓙ의 말과 같다)",
+     _pc.get("under") == "스태킹", f"{_pc}")
+_nd = _go204(_doc204("B204D", "스태킹", "B204 정렬 비전", "B204 정렬 비전"), lambda rows: [])
+_rd = [r for n in _nd if n.get("추출뒤") for r in n.get("골격단") or []]
+_ld = [r for r in (LG.read("B204D") or {}).get("rows") or [] if r.get("surface") == "B204 정렬 비전"]
+_rr4 = PH.rereads().get((_key203("B204 정렬 비전"), "스태킹")) or {}
+show("B204 ⓓ 제안 부모가 맨 아래 단(적층) → 처분 칸 「자동」(처분 없음) · 위 공정 기록 적층 · 그 값은 문 밖 — 판정 뒤 지금 규칙의 자리(보류 0 · "
+     "맨 아래 단 아래는 자동 — A″ · 표의 B197 ⓓ와 같은 길)",
+     _rd and _rd[0].get("did") == "자동" and str(_rr4.get("up")).endswith("적층")
+     and __import__("cli.ops_review", fromlist=["_did"])._did(_rd[0]) in __import__("cli.provisional_ask", fromlist=["DONE"]).DONE and _ld and all(r.get("node_id") and not r.get("hold") for r in _ld),
+     f"{[r.get('done') for r in _rd]} · {_rr4} · {[(r.get('verdict'), r.get('hold')) for r in _ld]}")
+import ast as _ast204                                                # noqa: E402
+_old = ("쌍 어긋남", "쌍별", "좌표 쌍", "쌍 줄", "쌍 확인", "쌍 정정", "쌍 묶음", "확인된 쌍", "쌍 표")
+_left = []
+for _f in (p for d in ("cli", "core", "parser", "kit") for p in (ROOT / d).rglob("*.py")):
+    _t = _ast204.parse(_f.read_text(encoding="utf-8"))
+    _doc = {id(x.body[0].value) for x in _ast204.walk(_t) if isinstance(x, (_ast204.Module, _ast204.FunctionDef, _ast204.ClassDef))
+            and x.body and isinstance(x.body[0], _ast204.Expr) and isinstance(x.body[0].value, _ast204.Constant)}
+    _left += [f"{_f.relative_to(ROOT)}:{n.lineno}" for n in _ast204.walk(_t) if isinstance(n, _ast204.Constant) and id(n) not in _doc
+              and isinstance(n.value, str) and n.value not in ("쌍별", CA204.DECISION) and "카테고리" not in n.value and any(w in n.value for w in _old)]   # 열쇠 「쌍별」 · 카테고리 쌍은 다른 뜻
+_pv = AS197_ = __import__("core.build.also_stage", fromlist=["pair_line"])
+show("B204 ⓔ 화면 · 문면에 좌표 「쌍」 0(문자열 상수 — 코드 이름 · 큐 kind · 기록 열쇠 밖) · 「공정별 예고」 · 쌍별 예고 판단 이름이 다섯 말",
+     not _left and "사람 버리기" in _pv.pair_line({"x": ("노칭", "drop")}) and "공정별 예고" in __import__("inspect").getsource(
+         __import__("cli.also_screen", fromlist=["x"]).preview_screen), f"{_left[:5]}")
+
+
+class _Tty(io.StringIO):
+    def isatty(self):
+        return True
+
+
+_rf = [dict(_rd[0], done=None, did=None, llm={"verdict": "같다", "confidence": 0.9, "why": "w", "candidates": []}),
+       dict(_ra[0], llm={"verdict": "다르다", "confidence": 0.5, "why": "w", "candidates": []}, done="✓ 버리기(x)")]
+_plain = "\n".join(GT.lines(_rf, "t") + [GT._reject(1, _rf[0], "a")])
+_tt = _Tty()
+with contextlib.redirect_stdout(_tt):
+    _col = "\n".join(GT.lines(_rf, "t") + [GT._reject(1, _rf[0], "a")])
+_K = _screen.KINDS
+_c = lambda k: "".join(_screen._C[x] for x in _K[k])                                                   # noqa: E731
+show("B204 ⓕ 색 — 파이프 출력에 ANSI 0 · 터미널에서 판단 같다 = 붙음 색 · 다르다 = 새로 생김 색 · 처분 ✓ = 붙음 색 · 거부 = 실패 색 · 머리 = head",
+     "\x1b[" not in _plain and all(_c(k) in _col for k in ("match", "new", "fail", "head")), "")
+
+# B204 ⑥ 한 줄씩 — i/n · 처분한 줄 다시 0 · `k <번호>` = 고를 곳 그 번호 밑 · 거부 · 결과는 물음 바로 위(표 다시 0) · 판단 기억 안내 · 「다시」 = LLM 1
+_e6 = _doc204("B204F", "조립", "B204 바탕", "B204 바탕", ["B204 가", "B204 나", "B204 다", "B204 라"])
+_go204(_e6, lambda rows: [])                                         # 첫 인입 — 판단 기억이 선다(처분 없이 c)
+_box6, _seg6, _m6, _mb6 = io.StringIO(), [], {}, GJ._memo_path().read_bytes()
+_f6 = ["a", lambda rs: f"k {_m6.setdefault('n', next(x['n'] for x in GJ.picks(rs[0]) if x.get('host') and x['n'] > 1))}",
+       "d 시험", "u", GT.AGAIN, "d 시험", "s", "5", "d 시험", "c"]
+
+
+def _ask6(q):
+    _seg6.append(_box6.getvalue())
+    a = _f6.pop(0) if _f6 else "c"
+    return a(_m6["rows"]) if callable(a) else a
+
+
+def _nt6(info):
+    if info.get("골격단"):
+        _m6.update(rows=info["골격단"], calls=dict(GJ.CALLS))
+        return GT.loop(info["골격단"], "B204시험", title="t", ask=_ask6)
+
+
+with contextlib.redirect_stdout(_box6):
+    run_document(_e6, notice=_nt6, allow_duplicate=True)
+_o6, _r60 = _box6.getvalue(), _m6["rows"][0]
+_x6 = [_seg6[i + 1][len(_seg6[i]):] for i in range(2)]
+_pk6 = next(x for x in GJ.picks(_r60) if x["n"] == _m6["n"])
+show("B204 ⑥ 이름 다섯 → 1/5 ~ 5/5 한 줄씩 · 처분한 줄은 다시 그리지 않는다(다시 연 5만 둘) · `k <번호>` → 고를 곳 그 번호 밑 · 거부 · 결과 줄이 "
+     "물음 바로 위(사이에 표 다시 0) · 판단 기억 줄에 「지난 판단 · 다시」 · 「다시」 → LLM 1(첫 판단 0 · 기억 그대로)",
+     len(_m6["rows"]) == 5 and [_o6.count(f"── {i}/5") for i in range(1, 6)] == [1, 1, 1, 1, 2]
+     and (PH.placed().get((_key203(_r60["surface"]), _r60.get("up_name"))) or {}).get("under") == _pk6["canonical"]
+     and "[거부]" in _x6[0] and "── " not in _x6[0] and _x6[1].index("✓ 새로 만들기") < _x6[1].index("── 2/5") and _x6[1].count("── ") == 1
+     and "지난 판단" in _o6 and f"「{GT.AGAIN}」" in _o6 and GJ.CALLS["다시 판단"] - _m6["calls"]["다시 판단"] == 1
+     and GJ.CALLS["첫 판단"] == _m6["calls"]["첫 판단"] and GJ._memo_path().read_bytes() == _mb6 and "처분 요약 —" in _o6,
+     f"줄 {len(_m6['rows'])} · 머리 {[_o6.count(f'── {i}/5') for i in range(1, 6)]} · 호출 {GJ.CALLS} · 앞 {_m6['calls']}")
 
 # ⓗ 청크 목차 라벨 200자 → 132칸 안 앞 · 끝 · 가운데 … · 추출 진행 표에 「붙을 노드」(청크 목차의 좌표와 같은 값)
 _lab = "앞머리" + "가" * 194 + "끝꼬리"

@@ -235,10 +235,10 @@ def _sub(*a):
 _rg = _sub("register", "generate", "b143_reg", "process", str(_dir / f"{DID}.pptx"), "--use-basic", "--allow-mock")
 _rs = _sub("register", "status", "b143_reg", "--allow-mock")
 show("B143 ⓐ 공정 목록이 둘 이상인 슬라이드가 든 덱 — register generate --use-basic → status가 끝까지 돈다(좌표 쌍 표 · 관문 줄)",
-     _rg.returncode == 0 and "좌표 쌍 —" in _rg.stdout and "[결함]" not in _rg.stdout + _rg.stderr
+     _rg.returncode == 0 and "공정 짝 —" in _rg.stdout and "[결함]" not in _rg.stdout + _rg.stderr
      and _rs.returncode == 0 and "기계 관문(하네스): PASS" in _rs.stdout,
      f"generate rc {_rg.returncode} · status rc {_rs.returncode} · "
-     + next((ln.strip() for ln in _rg.stdout.splitlines() if "좌표 쌍 —" in ln), (_rg.stdout + _rg.stderr)[-120:]))
+     + next((ln.strip() for ln in _rg.stdout.splitlines() if "공정 짝 —" in ln), (_rg.stdout + _rg.stderr)[-120:]))
 # B143 ⓓ · ⓔ — PPT --split-only: 추출 0 · 그래프 쓰기 0 · parsed JSON과 md · md는 봉투만으로 찍은 글
 from cli import envelope_md as EMD                       # noqa: E402
 _so = _sub("ingest-file", str(_dir / f"{DID}.pptx"), "--doc-type", DT, "--allow-mock", "--split-only")

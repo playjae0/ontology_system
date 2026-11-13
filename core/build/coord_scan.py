@@ -64,8 +64,8 @@ def _scan(env, b, doc_id, dc, out):
 
 
 #: 쌍 문의 보류 사유(B196 ② — 확인 전 · 사람 drop)
-HOLD_PAIR = "좌표 쌍 어긋남 — 사람 확인 전"
-HOLD_PAIR_DROP = "좌표 쌍 어긋남 — 사람 drop"
+HOLD_PAIR = "공정 짝 어긋남 — 사람 확인 전"
+HOLD_PAIR_DROP = "공정 짝 어긋남 — 사람 drop"
 
 
 def gate(env, b):

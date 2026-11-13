@@ -142,7 +142,7 @@ def pair_report(env):
     from core.state import coord_acks
     from core.state.bootstrap import coord_layer, load_config, open_graph
     lay = coord_layer()
-    b = Builder(open_graph(lay), load_config(lay), None, "(좌표 쌍)", lay)
+    b = Builder(open_graph(lay), load_config(lay), None, "(공정 짝)", lay)
     t = coord_scan.table(coord_scan.scan(env, b))
     done = coord_acks.acked()
     return t, {k for k in t["pairs"] if coord_acks.key(*k) in done}
