@@ -257,7 +257,7 @@ show("ⓑ 쓰기 명령 파이프 닫힘(표 · 산문 × 층 둘) — 트레이
 _cuts = {}
 for case in CASES:
     n = TOTAL[case]
-    picks = sorted(set(range(1, n, max(1, n // 3))) | set(range(max(1, n - 9), n + 1)))   # B131 ④ — 고른 셋 + 끝 열(저장 경계)
+    picks = sorted(set(range(1, n, max(1, n // 4))) | set(range(max(1, n - 9), n + 1)))   # B131 ④ — 고른 넷 + 끝 열(저장 경계 · 고침 B203 — 셋이면 화면 줄 수에 따라 구축 단계를 비껴간다)
     for k in picks:
         _base()
         rc, _l, lg = _inproc(case, k)

@@ -17,24 +17,24 @@ from __future__ import annotations
 
 PROMPT, TAG = "gate_say", "gate_say"
 LINK, REREAD, UNKNOWN = "처분", "해석", "모름"
-#: 처분 이름 → 글쇠(처분 넷 + 쌍 줄의 맞다)
-KEYS = {"같다": "m", "새로": "k", "버림": "d", "위로": "u", "맞다": "a"}
+#: **처분 말 다섯**(B203 ④ — 화면 · 처분 칸 · 거부 문면 · 말 해석이 이 한 자리) → 글쇠
+KEYS = {"같은 것으로": "m", "새로 만들기": "k", "버리기": "d", "위로": "u", "그대로 연결": "a"}
 FIELDS = ("카테고리", "위 공정")
 SCHEMA = {"type": "object", "properties": {
     "kind": {"type": "string", "enum": [LINK, REREAD, UNKNOWN]},
     "disposition": {"type": ["string", "null"], "enum": list(KEYS) + [None]},
-    "target": {"type": ["string", "null"]}, "reason": {"type": ["string", "null"]},
+    "target": {"type": ["string", "null"]}, "under": {"type": ["integer", "null"]}, "reason": {"type": ["string", "null"]},
     "field": {"type": ["string", "null"], "enum": list(FIELDS) + [None]}, "value": {"type": ["string", "null"]},
     "confidence": {"type": "number"}, "why": {"type": "string"}},
-    "required": ["kind", "disposition", "target", "reason", "field", "value", "confidence", "why"],
+    "required": ["kind", "disposition", "target", "under", "reason", "field", "value", "confidence", "why"],
     "additionalProperties": False}                     # 엄격 규칙(B200 ⓪ — 쓰지 않는 칸은 null · `gateway.strict_issues`)
 CALLS = {"말 해석": 0}
 
 
 def allowed(row):
-    """그 줄에 쓸 수 있는 글쇠 — 문 줄 `m k d`(+ 겸 값 줄 `u`) · 쌍 줄 `m a d`."""
+    """그 줄에 쓸 수 있는 글쇠 — 문 줄 `m k d`(+ 겸 값 줄 `u`) · 쌍 줄 `a k m d`(B203 ④ — 문서의 상위 밑에 새로 만들기)."""
     if row.get("kind") == "pair":
-        return ("m", "a", "d")
+        return ("a", "k", "m", "d")
     return ("m", "k", "d", "u") if row.get("also") else ("m", "k", "d")
 
 
@@ -53,12 +53,13 @@ def ups(sk=None):
 
 
 def payload(text, row, cats, up_list):
+    from core.state import gate_judge as GJ
     lm = row.get("llm") or {}
     return {"사람 말": text, "줄": {"표기": row.get("surface"), "종류": "쌍" if row.get("kind") == "pair" else "문",
                                  "카테고리": row.get("also") or "좌표", "위 공정": row.get("up_name") or row.get("up") or "미정",
                                  "판단": lm.get("verdict"), "후보": [c["canonical"] for c in lm.get("candidates") or []]},
             "쓸 수 있는 처분": [k for k, v in KEYS.items() if v in allowed(row)],
-            "골격": [{"번호": x["no"], "이름": x["name"], "경로": x["path"]} for x in row.get("skeleton") or []],
+            "골격": [{"번호": x["n"], "이름": x["name"], "경로": x["path"]} for x in GJ.picks(row)],
             "카테고리 목록": cats, "위 공정 목록": up_list}
 
 
@@ -92,10 +93,15 @@ def read(text, row):
             return None, f"해석이 이 줄에 쓸 수 없는 처분 — {a.get('disposition')}"
         out["key"] = k
         if k == "m":
-            hit = GJ.find(a.get("target"), row.get("skeleton") or [])
+            hit = GJ.find(a.get("target"), GJ.picks(row))
             if len(hit) != 1:
                 return None, f"해석의 대상이 골격 목록 밖 — {a.get('target')}"
             out["target"] = hit[0]
+        if k == "k" and a.get("under"):
+            ps = GJ.picks(row)
+            if not 1 <= int(a["under"]) <= len(ps):
+                return None, f"해석의 부모 번호가 목록 밖 — {a['under']}"
+            out["under"] = int(a["under"])
         if k == "d":
             out["reason"] = str(a.get("reason") or text).strip()
         return out, None

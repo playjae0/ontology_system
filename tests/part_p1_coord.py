@@ -205,4 +205,58 @@ _log69f = []
 tagger.tag(_pieces69(["A", "B"]), nodes=_NODES69, pick=_picker69(_log69f), cap=0)
 show("③ off(0)면 호출 0 — 정확 일치만", not _log69f)
 
+# ── B203 ①~③ — 극성은 같은지를 가르지 않는다(지시문 둘) · 공정별 후보 · [1/7] 표기마다 결과 ────────────
+print("\n■ B203 ①~③ — 좌표 태깅: 극성 한 줄 · 공정 칸 아래 먼저 · 표기마다 결과")
+from cli import parse as _PS203                                   # noqa: E402
+from core.state.bootstrap import coord_layer as _cl203            # noqa: E402
+_N203 = [{"canonical": "노칭", "tier": "main"}, {"canonical": "노칭::cutting", "parent": "노칭", "aliases": []},
+         {"canonical": "스태킹", "tier": "main"}, {"canonical": "스태킹::적층", "parent": "스태킹", "aliases": []}]
+
+
+def _pick203(log, uncertain=()):
+    def pick(ref, cands, **_k):                                   # 창작 답 — 표기 끝 낱말이 후보의 짧은 이름이면 같다
+        log.append((ref, sorted(c["canonical"] for c in cands)))
+        hit = next((c for c in cands if c["canonical"].rsplit("::", 1)[-1] == ref.split()[-1]), None)
+        if ref in uncertain or hit is None:
+            return {"type": "uncertain" if ref in uncertain else "new", "matched_id": None, "confidence": 0.5}
+        return {"type": "match", "matched_id": hit["id"], "confidence": 0.92}
+    return pick
+
+
+_rows203 = [{"source_locator": f"R{i}", "process_group": "노칭", "process_ref": r}
+            for i, r in enumerate(["anode cutting", "cathode cutting", "양극 cutting", "B203 적층"], 1)]
+_l203, _n203 = [], []
+_o203 = tagger.tag(_rows203, nodes=_N203, pick=_pick203(_l203), notice=_n203.append)
+show("B203 ⓐ anode · cathode · 양극 cutting → 셋 다 노칭::cutting(창작 답) · 골격 별칭에 극성 표기 0",
+     [p["process_ref"] for p in _o203[:3]] == ["노칭::cutting"] * 3 and not any(n.get("aliases") for n in _N203), str(_o203[:3]))
+show("B203 ⓑ 후보는 공정 칸(노칭) 아래 먼저 · 노칭 아래에 없는 표기(B203 적층)만 전체로 한 번 더",
+     [c for _r, c in _l203[:3]] == [["노칭", "노칭::cutting"]] * 3 and _l203[3][1] == ["노칭", "노칭::cutting"]
+     and len(_l203[4][1]) == 4 and _o203[3]["process_ref"] == "스태킹::적층", str(_l203))
+_sp203 = _P.layers(_cl203(), "skeleton.json")
+_sd203 = json.loads(_sp203.read_text(encoding="utf-8"))
+_sd203.setdefault("AXIS_LABELS", {})["b203axis"] = "B203표시"            # 극성 값을 바꾼 골격 → 지시문 입력도 바뀐다
+_sp203.write_text(json.dumps(_sd203, ensure_ascii=False, indent=2), encoding="utf-8")
+bootstrap(_cl203(), echo=False)
+_ax = __import__("core.build.polarity", fromlist=["axis"]).axis()
+_j203 = [_LLM.prompt(n) for n in ("judge", "gate_judge")]
+show("B203 ⓒ 지시문 둘에 극성 문장 · 자리표가 골격 AXIS_LABELS에서 채워진다(바꾼 골격의 값이 입력에 · 지시문 파일에 값 0)",
+     "b203axis(B203표시)" in _j203[0] and all("같은지를 가르지 않는다" in t and all(f"{k}({v})" in t for k, v in _ax.items())
+                                         for t in _j203) and "{{극성 표기}}" not in "".join(_j203), str(_ax))
+_res203 = next(x for x in _n203 if x["단계"] == "끝")["표기_결과"]
+_b203 = __import__("io").StringIO()
+with __import__("contextlib").redirect_stdout(_b203):
+    _PS203.coord_results({"표기_결과": _res203})
+show("B203 ⓓ [1/7] 표기마다 결과 — 공정 칸 · 행 수 · 결과(LLM 같다 → 이름) · 확실도 · 까닭(어디서 찾았나)",
+     len(_res203) == 4 and all(x["공정 칸"] == "노칭" and x["확실도"] and x["까닭"] for x in _res203)
+     and {x["까닭"] for x in _res203} == {"노칭 아래 2", "전체 4"} and _b203.getvalue().count("LLM 같다 →") == 4, _b203.getvalue()[-300:])
+# ⓔ 전제 4의 갈림 재현 — 한 극성 표기는 같다(학습) · 다른 극성 표기는 애매(기억하지 않음 — 다음 문서도 다시 묻는다)
+_lay203 = _cl203()
+_e203 = [{"source_locator": "R1", "process_group": "노칭", "process_ref": r} for r in ("B203 cathode cutting", "B203 anode cutting")]
+_le1, _le2 = [], []
+tagger.tag(_e203, layer=_lay203, nodes=_N203, pick=_pick203(_le1, uncertain={"B203 anode cutting"}), doc_id="B203E1")
+_r2 = tagger.tag(_e203, layer=_lay203, nodes=_N203, pick=_pick203(_le2, uncertain={"B203 anode cutting"}), doc_id="B203E2")
+show("B203 ⓔ 전제 4 재현 — 앞 문서에서 같다인 표기는 학습(다음 문서 LLM 0) · 애매인 표기는 기억하지 않아 문서마다 다시 묻는다",
+     [r for r, _c in _le2] == ["B203 anode cutting"] * 2 and _r2[0].get("meta", {}).get("coord_tag_source") == "learned",
+     f"둘째 문서 호출 {[r for r, _c in _le2]}")
+
 done()

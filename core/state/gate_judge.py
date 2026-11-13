@@ -50,18 +50,34 @@ def listing(up, sk=None):
     sk = sk or SR._Sk()
     nid = sk.by_name.get(up) if up else None
     want = set(sk.under(nid)) if nid else set(sk.sk)
-    sep = catalog.sep()
+    sep, bottom = catalog.sep(), max((sk.path(x).count(" › ") for x in sk.sk), default=0)
     out = []
     for i in (x for x in sk.g.nodes if x in want):
         n = sk.g.get(i)
         out.append({"no": len(out) + 1, "name": n["canonical"].rsplit(sep, 1)[-1], "canonical": n["canonical"],
-                    "path": sk.path(i), "tier": n.get("tier")})
+                    "path": sk.path(i), "tier": n.get("tier"), "host": sk.path(i).count(" › ") < bottom})   # 그 밑에 잠정 노드가 설 수 있나
     return out
 
 
+def picks(row):
+    """**그 줄의 고를 곳 — 번호 하나**(B203 ④) — 후보(LLM 순위) 다음 골격 목록(위 공정 아래 · `listing` 차례 · 후보와 겹치면 한 번)을
+    이어지는 번호로 `[{n, canonical, name, path, host, why, cand}]` — 화면 · `m` · `k` · 말 해석이 같은 목록을 쓴다."""
+    from core.state import catalog
+    lst = row.get("skeleton") or []
+    by = {x["canonical"]: x for x in lst}
+    out = []
+    for c in row.get("candidates") or []:
+        x = by.get(c["name"]) or {"name": c["name"].rsplit(catalog.sep(), 1)[-1], "canonical": c["name"], "path": c.get("path") or c["name"]}
+        out.append({**x, "why": c.get("why"), "cand": True})
+    seen = {x["canonical"] for x in out}
+    out += [{**x, "cand": False} for x in lst if x["canonical"] not in seen]
+    return [{**x, "n": i} for i, x in enumerate(out, 1)]
+
+
 def version(lst):
-    """골격 판 — 그 목록의 지문(이름 · 경로 · 단)."""
-    raw = json.dumps([(x["canonical"], x["path"], x["tier"]) for x in lst], ensure_ascii=False)
+    """골격 판 — 그 목록의 지문(이름 · 경로 · 단) + 지시문 판(판을 올리면 다시 판단한다 · B203 ①)."""
+    from core.llm import gateway
+    raw = json.dumps([gateway.prompt_version(PROMPT)] + [(x["canonical"], x["path"], x["tier"]) for x in lst], ensure_ascii=False)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 

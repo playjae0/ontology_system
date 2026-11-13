@@ -219,7 +219,36 @@ def _coord_diag(info):
              info["표기_종수"] > len(info["목록밖_상위"]) else ""))
 
 
-def coord_screen():
+#: [1/7] 표기마다 결과 — 화면 위 줄 수(전부는 md)
+RESULT_TOP = 10
+
+
+def coord_results(info, doc_id=None):
+    """**[1/7] 표기마다 결과**(B203 ③ — 진행 줄 뒤 · `tagger.tag`의 끝 알림 `표기_결과`) — 위 `RESULT_TOP` · 넘으면 「전부 — md」."""
+    rows = info.get("표기_결과") or []
+    if not rows:
+        return None
+
+    def cells(x):
+        conf = x.get("확실도")
+        return [x["표기"], x.get("공정 칸") or "—", x["행 수"], x["결과"] + (f" → {x['이름']}" if x.get("이름") else ""),
+                "—" if conf is None else f"{conf:.2f}", x.get("까닭") or "—"]
+    t = _screen.Table([("표기", 24, False), ("공정 칸", 12, False), ("행 수", 5, True), ("결과", 30, False),
+                       ("확실도", 6, True), ("까닭", 24, False)], flex=5)
+    for x in rows[:RESULT_TOP]:
+        t.row(cells(x), [None, "aux", "aux", "match" if x.get("이름") else "aux", "aux", "aux"])
+    t.end()
+    if len(rows) > RESULT_TOP and doc_id:
+        from cli import envelope_md
+        from core import paths
+        body = ["# 좌표 태깅 — 표기마다 결과 — " + doc_id, "", "| 표기 | 공정 칸 | 행 수 | 결과 | 확실도 | 까닭 |", "|---|---|---|---|---|---|"]
+        p = envelope_md.save(f"coord_tag_{doc_id}.md", "\n".join(body + ["| " + " | ".join(str(c) for c in cells(x)) + " |"
+                                                                       for x in rows]) + "\n")
+        print(f"   … 그 밖 {len(rows) - RESULT_TOP:,}표기 — 전부 — {paths.show(p)}")
+    return rows
+
+
+def coord_screen(doc_id=None):
     """좌표 태깅의 예고·진행·끝 줄 — `(notice, progress)` (B69 ② · B22의 정신).
 
     **비용은 화면에 오른다.** 예고는 호출 **전에** 무LLM으로 센 숫자다: 사람이
@@ -268,17 +297,18 @@ def coord_screen():
             print(f"   좌표 태깅 끝 — 호출 {info['호출']:,} · 채택 {info['채택']:,} · "
                   f"목록 밖 {info['목록밖']:,}(인입에서 잠정 골격 노드 · `show learned`)"
                   + (f" · 학습 새로 {info['학습_새로']:,}" if info.get("학습_새로") else ""))
+        coord_results(info, doc_id)
 
     box = {"t": None}
 
     def row(info):
         # **표기마다 한 행 — 이어지는 표**(B98 ⑥) · 표기 하나가 LLM 호출 하나다
         if box["t"] is None:
-            box["t"] = _screen.Table([("번호", 9, True), ("표기", 40, False),
+            box["t"] = _screen.Table([("번호", 9, True), ("표기", 32, False), ("공정 칸", 12, False),
                                       ("행 수", 5, True), ("결과", 24, False)], flex=1)
-        box["t"].row([f"{info['i']}/{info['총']}", info["표기"], info["행_수"],
+        box["t"].row([f"{info['i']}/{info['총']}", info["표기"], info.get("공정 칸") or "—", info["행_수"],
                       info["결과"] or "목록 밖(orphan_anchor 후보)"],
-                     ["prog", None, "aux", "match" if info["결과"] else "aux"])
+                     ["prog", None, "aux", "aux", "match" if info["결과"] else "aux"])
 
     def progress(done, total, adopted):
         # 보폭 진행 줄 — 표가 이어지는 중이면 그 표의 구분 행이다(B69 ② · B98 ⑥)
@@ -307,7 +337,7 @@ def run_parse(adapter_path, doc_id, doc, out=None, coord_cap=CAP_DEFAULT,
     out = out or str(PARSED_DIR / f"{doc_id}.json")
     # LLM 지점(④·⑦·⑨·⑪)의 실호출 경로는 **주입**한다 — 파서는 core를 import하지
     # 않는다(A1). mock이면 None이 오고 파서가 §7.1 대체를 쓴다.
-    _notice, _progress = coord_screen()
+    _notice, _progress = coord_screen(doc_id)
     # **좌표 층도 주입이다**(B85 ②) — 파서는 어느 층이 좌표 층인지 모른다.
     # 묻는 자리는 하나(`coord_layer()` = `Process`를 선언한 층)이고, 폴더 이름이
     # 무엇이든 그 답을 쓴다.

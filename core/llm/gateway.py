@@ -450,7 +450,8 @@ def prompt(name):
                           f"— 파일이 정본이다(§7.6-B-5)")
         raise FileNotFoundError(f"지시문 템플릿 없음: <칸ID>_{name}.md")
     with open(p, encoding="utf-8") as f:
-        return f.read()
+        from core.build.polarity import fill                 # 시스템 자리표(극성 값 — 골격 `AXIS_LABELS` · B203 ①)
+        return fill(f.read())
 
 
 def prompt_for(name, cfgs, key):
