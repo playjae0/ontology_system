@@ -135,16 +135,16 @@ def check(doc_id, inp, ans, text=""):
 
 # ---------------------------------------------------------------- 실호출 · mock
 def _live(doc_id, inp, capture, images, hint):
-    from core.state.captures import mime
     sys_ = gateway.prompt(PROMPT)
     kt, _kh = knowledge()
     if kt:
         sys_ += "\n\n## 읽기 지식(사내)\n" + kt.strip()
     parts = [{"type": "text", "text": json.dumps({"page": inp, **({"hint": hint} if hint else {})}, ensure_ascii=False)}]
     if capture:
-        parts.append(gateway._image_part(capture, mime(capture)))
+        parts.append(gateway._image_part(capture, where=f"{doc_id} 캡처"))
     for ref, blob, mm in images or ():
-        parts += [{"type": "text", "text": f"[그림 {ref}]"}, gateway._image_part(blob, mm)]
+        parts += [{"type": "text", "text": f"[그림 {ref}]"}, gateway._image_part(blob, where=ref)]
+    parts = [p for p in parts if p]                        # 못 보내는 그림은 빠진다(그 쪽은 글로 계속)
     return gateway.chat([{"role": "system", "content": sys_}, {"role": "user", "content": parts}],
                         json_schema=SCHEMA, point="reading")      # 호출 지점 이름은 글자로(칸 대장 L칸 대조 — TAG와 같다)
 

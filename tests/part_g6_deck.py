@@ -128,7 +128,7 @@ with _quiet():
 _register()
 _keep = (render.capture_path, render.render_pages)
 render.capture_path = lambda path=None, probe=False: (True, "시험", None)      # 기대 변경(B128 ① — 판정 한 자리의 이름 · 답 꼴)
-render.render_pages = lambda path: {n: f"PNG{n}".encode() for n in range(1, 6)}   # 보이는 슬라이드 5장의 가짜 렌더
+render.render_pages = lambda path: {n: b"\x89PNG" + str(n).encode() for n in range(1, 6)}   # 보이는 슬라이드 5장의 가짜 렌더
 struct_map.invalidate(DID)
 RES, ENV, PCALLS = _parse()
 NOTES, CALLS1 = _run(ENV)
@@ -359,7 +359,7 @@ import builtins as _bi                                    # noqa: E402
 _open0 = _bi.open
 _bi.open = lambda f, *a, **k: (_opened.append(str(f)), _open0(f, *a, **k))[1]
 render.capture_path = lambda path=None, probe=False: (True, "시험", None)
-render.render_pages = lambda path: (_rendered.append(str(path)), {n: b"PNG" for n in range(1, 6)})[1]
+render.render_pages = lambda path: (_rendered.append(str(path)), {n: b"\x89PNG" for n in range(1, 6)})[1]
 EU._PAGES.clear()
 EX.invalidate(DID)
 try:

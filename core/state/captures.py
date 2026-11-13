@@ -46,9 +46,51 @@ def keep_on():
     return bool(knobs.get("keep_page_captures"))
 
 
-def mime(blob):
-    """캡처 바이트의 형식 — JPEG(보관분) 또는 PNG(렌더)."""
-    return "image/jpeg" if (blob or b"")[:3] == b"\xff\xd8\xff" else "image/png"
+#: 게이트웨이가 받는 형식(바이트 머리 → 이름표) — 그 밖은 PNG로 바꾸거나 보내지 않는다
+SEND = ((b"\x89PNG", "image/png"), (b"\xff\xd8\xff", "image/jpeg"), (b"GIF8", "image/gif"))
+#: 그림 형식을 바이트로 — PIL이 못 여는 셋(soffice 길 · `parser.render.to_png`)
+VECTOR = {"emf": "image/x-emf", "wmf": "image/x-wmf", "svg": "image/svg+xml"}
+
+
+def kind(blob):
+    """바이트 머리로 정한 형식 이름(이름표가 아니라 — 확장자와 바이트가 어긋나는 그림이 있다)."""
+    b = blob or b""
+    hit = next((m for sig, m in SEND if b.startswith(sig)), None)
+    if hit or (b[:4] == b"RIFF" and b[8:12] == b"WEBP"):
+        return (hit or "image/webp").split("/")[1]
+    if b[40:44] == b" EMF":
+        return "emf"
+    if b[:4] in (b"\xd7\xcd\xc6\x9a", b"\x01\x00\x09\x00", b"\x02\x00\x09\x00"):
+        return "wmf"
+    tiff = b[:4] in (b"II*\x00", b"MM\x00*")
+    return "svg" if b"<svg" in b[:512] else "tiff" if tiff else "bmp" if b[:2] == b"BM" else "?"
+
+
+def fit(blob, where="—"):
+    """**보내기 전 그림 검사 한 자리**(그림 요약 · 캡처 · 판독 — `gateway._image_part`) — `(바이트, 이름표)` 또는 `(None, None)`.
+    받는 넷(PNG · JPEG · GIF · WebP)은 바이트 그대로 그 이름표 · PIL이 여는 것(BMP · TIFF …)은 PNG로 · EMF · WMF · SVG는 soffice 길로 ·
+    못 바꾸면 보내지 않는다(그 그림만 — 화면 한 줄 · 결함 로그 · 문서는 계속)."""
+    k = kind(blob)
+    if k in ("png", "jpeg", "gif", "webp"):
+        return blob, f"image/{k}"
+    if k in VECTOR:
+        from parser.render import to_png
+        png = to_png(blob, VECTOR[k])[0]
+    else:
+        try:
+            from PIL import Image
+            buf = io.BytesIO()
+            Image.open(io.BytesIO(blob)).convert("RGB").save(buf, "PNG")
+            png = buf.getvalue()
+        except Exception:                                   # noqa: BLE001 — 열지 못하는 형식 — 보내지 않는다
+            png = None
+    if png:
+        return png, "image/png"
+    from core.state import store
+    line = f"그림 {where} 형식 {k.upper()} — 보내지 않음"
+    print(f"   {line}", flush=True)
+    store.append_defect(f"[그림 형식] {line}")
+    return None, None
 
 
 def page_file(doc_id, n):

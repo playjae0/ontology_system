@@ -315,8 +315,8 @@ def _candidates_for(chunk_id, chunk, cfg, vocab, image=None):
     tmpl = ER.system(gateway.prompt_for("extract", {cfg.get("layer") or "-": cfg}, "extract"), chunk)   # 층 힌트 · 판독 절(B124 ③ · B170)
     user = _payload(chunk, cfg)
     # **캡처**(B125 ② — 그 슬라이드 · 쪽의 렌더 · 있을 때만): 배치 · 화살표 · 붙음을 보는 근거 — 이름과 값은 글자에서
-    from core.state.captures import mime
-    content = [{"type": "text", "text": user}, gateway._image_part(image, mime(image))] if image else user   # 보관분은 JPEG (B156 ⑤)
+    part = gateway._image_part(image, where=f"{chunk_id} 캡처") if image else None   # 이름표는 바이트로 (보관분 JPEG · 렌더 PNG)
+    content = [{"type": "text", "text": user}, part] if part else user
     try:
         out = gateway.chat([{"role": "system", "content": tmpl}, {"role": "user", "content": content}],
                            json_schema=ER.schema(EXTRACT_SCHEMA, chunk), point="extract")
