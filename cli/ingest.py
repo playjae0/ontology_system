@@ -223,7 +223,7 @@ def _step_stops(res, sel, row, ask=True):
                       f"{_pc} · "
                       + (f"목록 밖(기억) {_ct['기억_종수']}종 — LLM 0 · " if _ct.get("기억_종수") else "")
                       + f"LLM 호출 {_ct.get('호출', 0)} · "
-                      f"좌표 쌍 어긋남 {_cp.get('쌍', 0)}쌍({_cp.get('행', 0)}행)",
+                      f"공정 짝 어긋남 {_cp.get('쌍', 0)}짝({_cp.get('행', 0)}행)",
                       ask_fn=lambda: PA.gate(res.envelope)):     # 문에 걸린 표기 · 쌍 어긋남마다 처분(B184 ③ · B196 ③)
         row.update(status=SKIP, reason="사람이 멈췄다 — 좌표까지")
         return True

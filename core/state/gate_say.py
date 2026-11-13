@@ -55,7 +55,7 @@ def ups(sk=None):
 def payload(text, row, cats, up_list):
     from core.state import gate_judge as GJ
     lm = row.get("llm") or {}
-    return {"사람 말": text, "줄": {"표기": row.get("surface"), "종류": "쌍" if row.get("kind") == "pair" else "문",
+    return {"사람 말": text, "줄": {"표기": row.get("surface"), "종류": "공정 짝 어긋남" if row.get("kind") == "pair" else "공정 표기" if not row.get("also") else "이름",
                                  "카테고리": row.get("also") or "좌표", "위 공정": row.get("up_name") or row.get("up") or "미정",
                                  "판단": lm.get("verdict"), "후보": [c["canonical"] for c in lm.get("candidates") or []]},
             "쓸 수 있는 처분": [k for k, v in KEYS.items() if v in allowed(row)],

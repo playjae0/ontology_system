@@ -378,7 +378,7 @@ def check_coord_pairs(schema, pieces, nodes):
     why = (f"상위·하위가 둘 다 골격에 맞은 {m}행 중 어긋남 {k}행 — 상위·하위 열이 뒤바뀌었거나 매핑이 틀렸다"
            + (f" · 열을 바꾸면 {sw}/{sn} 맞는다" if sn and sw * 2 > sn else "")) if fail else \
         (f"둘 다 골격에 맞은 {m}행 · 어긋남 {k}행 · " + CP.head_line(t))
-    ok = show(f"G4I  좌표 쌍 — 상위가 하위의 조상 (문턱 {pct}%)", not fail, why)
+    ok = show(f"G4I  공정 짝 — 상위가 하위의 조상 (문턱 {pct}%)", not fail, why)
     for line in CP.pair_lines(t):
         print("      " + line)
     if fail:
@@ -386,7 +386,7 @@ def check_coord_pairs(schema, pieces, nodes):
               f"{schema.get('layer')} <표본> --revise --hint \"상위(process_group)·하위(process_ref) 열 매핑을 "
               f"바로잡는다\"")
     elif t["pairs"] or t["outside"]:
-        print("      ⚠ 경고 — 어긋남이 문턱 아래다(관문은 막지 않는다) · 인입하면 쌍 표와 큐(coord_mismatch)로 보인다")
+        print("      ⚠ 경고 — 어긋남이 문턱 아래다(관문은 막지 않는다) · 인입하면 공정 짝 표와 큐(coord_mismatch)로 보인다")
     return ok
 
 

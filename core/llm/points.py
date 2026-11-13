@@ -32,10 +32,11 @@ def summarize_image(image_ref, *, image=None, mime=None, context="", page=None):
               "text": (f"[맥락] {context}\n\n" if context else "")
                       + f"[그림] {image_ref}"}]
     if image:
-        parts.append(gateway._image_part(image, mime))
+        parts.append(gateway._image_part(image, where=image_ref))
     if page:
         parts.append({"type": "text", "text": "[전체 화면] 위 그림이 실린 쪽 전체다."})
-        parts.append(gateway._image_part(page, "image/png"))
+        parts.append(gateway._image_part(page, where=f"{image_ref} 쪽"))
+    parts = [p for p in parts if p]                        # 못 보내는 그림은 빠진다(문서는 계속 · B200 ⓪ 꼴의 한 자리 검사)
     try:
         out = gateway.chat([{"role": "system", "content": gateway.prompt("image_summary")},
                     {"role": "user", "content": parts}],

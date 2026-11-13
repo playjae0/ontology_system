@@ -122,7 +122,7 @@ def _cut(s, n):
 
 
 #: 골격 칸 묶음의 표 머리
-GATE_TITLE = "골격 칸 — 문에 걸린 표기(표기 + 들어온 자리) · 쌍 어긋남 — 문서를 넘어 한 줄 · 행 수는 합"
+GATE_TITLE = "골격 칸 — 공정 표기(표기 + 들어온 자리) · 공정 짝 어긋남 — 문서를 넘어 한 줄 · 행 수는 합"
 
 
 def tables(b, live=False):
@@ -130,7 +130,7 @@ def tables(b, live=False):
     from cli import gate_table
     rows, folded = b["잠정"]
     gate = b["골격 칸"]
-    print(f"■ 인입 뒤 한 화면 — 골격 칸 {len(gate):,}(문에 걸림 {sum(1 for r in gate if r['kind'] == 'gate'):,} · 쌍 어긋남 "
+    print(f"■ 인입 뒤 한 화면 — 골격 칸 {len(gate):,}(공정 표기 {sum(1 for r in gate if r['kind'] == 'gate'):,} · 공정 짝 어긋남 "
           f"{sum(1 for r in gate if r['kind'] == 'pair'):,}) · 잠정 골격 노드 {len(rows):,}" + (f"(봄 {folded:,} 접음)" if folded else "")
           + f" · 애매 {len(b['애매']):,} · 자리 추정 {len(b['추정'][0]):,}"
           + (f"(맞음 {b['추정'][1]:,} 접음)" if b["추정"][1] else "") + f" · 후보 있는 보류 {len(b['보류']):,}"
@@ -222,12 +222,8 @@ def skeleton_cells(layer=None):
 
 
 def _did(r):
-    """표 고리의 처분 칸 → 끝 줄의 셈 이름."""
-    cell = str(r.get("done") or "")
-    if cell.startswith("✎"):
-        return "해석 고침"
-    word = cell[2:].split(" ", 1)[0].split("(", 1)[0] if cell.startswith("✓") else ""
-    return {"버림": "drop", "위로": "올림", "맞다": "확인"}.get(word, word) if word else "건너뜀"
+    """표 고리가 그 줄에 실은 한 일(`gate_table` — 처분 칸 글자를 되읽지 않는다 · B204) → 끝 줄의 셈 이름."""
+    return r.get("did") or ("해석 고침" if str(r.get("done") or "").startswith("✎") else "건너뜀")
 
 
 def bundles(layer):

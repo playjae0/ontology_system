@@ -11,7 +11,7 @@ import sys
 from cli import _screen
 
 #: 이 화면이 맡는 단계
-STAGES = ("골격단", "확정공정", "판정결과")
+STAGES = ("확정공정", "판정결과")
 #: 쓰기 전 판정 결과를 이 문서에서 물었나(물었으면 저장 뒤 [판정] 머리는 묻지 않는다)
 ASKED = {"판정결과": False}
 #: 이 문서의 쌍별 예고 md 몸(`export/plan_<doc>.md` — 판정 결과의 자리 바뀐 값을 끝 절로 더해 다시 쓴다 · B199 ①②)
@@ -24,7 +24,7 @@ def plan_md_name(doc_id):
 
 def _save_plan(doc_id, extra=()):
     from cli import envelope_md
-    body = PLAN.get(doc_id) or [f"# 쌍별 예고 — {doc_id}", ""]
+    body = PLAN.get(doc_id) or [f"# 공정별 예고 — {doc_id}", ""]
     return envelope_md.save(plan_md_name(doc_id), "\n".join(list(body) + list(extra)) + "\n")
 
 
@@ -33,11 +33,11 @@ def preview_screen(groups, doc_id, indent="     "):
     from core import paths
     from core.build import also_stage as AS
     full = AS.preview_lines(groups, indent="", full=True)
-    PLAN[doc_id] = [f"# 쌍별 예고 — {doc_id}", "", "붙을 자리는 판정 전 이름 부모다(판정 뒤 자리는 끝 절).", "", "```"] + full + ["```"]
+    PLAN[doc_id] = [f"# 공정별 예고 — {doc_id}", "", "붙을 자리는 판정 전 이름 부모다(판정 뒤 자리는 끝 절).", "", "```"] + full + ["```"]
     p = _save_plan(doc_id)
     vals = sum(len(v) for v in groups.values())
     shown = sum(min(AS.TOP, sum(1 for r in v if AS._kind(r["plan"]) == AS.PLAN_KINDS[2][0])) for v in groups.values())
-    return ([f"   쌍별 예고 — 쌍 {len(groups):,} · 표기 {vals:,}(같은 표기 · 자리는 한 번) · 붙을 자리(판정 전) · 판정 예정(쓰기 0 · LLM 0)"]
+    return ([f"   공정별 예고 — 공정 {len(groups):,} · 표기 {vals:,}(같은 표기 · 자리는 한 번) · 붙을 자리(판정 전) · 판정 예정(쓰기 0 · LLM 0)"]
             + AS.preview_lines(groups, indent=indent)
             + [f"{indent}… 그 밖 {max(0, vals - shown):,}줄 — {paths.show(p)}"])
 
@@ -62,30 +62,23 @@ def moved_lines(info, indent="   "):
     return out
 
 
-def _title(rows, where):
-    return f"골격 단 — {where}의 겸 값 {len(rows):,}종이 문에 걸렸다(사람 확인 전 — 노드 0 · 그 아래 값도 보류)"
+def _title(rows, kept=0):
+    """[5/8] 머리 — 무엇을 · 왜 지금 · 앞에서 정한 수(B204 ④)."""
+    return (f"골격 칸 처분 — 추출 뒤(이름 — 제목 · 본문) {len(rows):,}줄 · 앞에서 정한 표기 {kept:,}종은 그대로(다시 묻지 않음) · "
+            "노드 0 · 그 아래 값도 처분 뒤")
 
 
-def ask_rows(rows, where="값"):
-    """처분 — 골격 칸의 한 고리(번호 + 말 또는 글쇠 → 처분 → 표 다시) → 계속 c / 멈춤 q."""
+def ask_rows(rows, where="본문", kept=0):
+    """처분 — 골격 칸의 한 고리(한 줄씩 — 말 또는 글쇠 → 처분 → 다음 줄 · B204 ⑥) → 계속 c / 멈춤 q."""
     from cli import gate_table, provisional_ask as PA
     for r in rows:
         r.setdefault("where", where)
-    return gate_table.loop(rows, PA.actor(), title=_title(rows, where))
+    return gate_table.loop(rows, PA.actor(), title=_title(rows, kept))
 
 
 def notice(info, step=False):
     """골격 단 화면 — `False`면 멈춤."""
     k = info["단계"]
-    if k == "골격단":
-        where = info.get("자리") or "값"
-        if step and sys.stdin.isatty():
-            return ask_rows(info["rows"], where)
-        from cli import gate_table
-        for r in info["rows"]:
-            r.setdefault("where", where)
-        gate_table.show(info["rows"], _title(info["rows"], where))
-        return None
     if k == "확정공정":
         _screen.say(f"   {info['줄']}", "head")
         return None
@@ -108,22 +101,22 @@ def notice(info, step=False):
 
 
 def plan_lines(info, live=False):
-    """[5/8] 머리 아래 — 쌍별 예고(③ — 요약 · 전부는 md) · 본문 값의 골격 단 문(② — 사람이 있으면 물음 고리가 그린다 · 없으면
-    표만(LLM 0))."""
+    """[5/8] 머리 아래 — 맨 앞 이름(겸 값 — 제목 · 본문) 한 표(B204 ① — 사람이 있으면 물음 고리가 그린다 · 없으면 표만(LLM 0)) ·
+    공정별 예고(요약 · 전부는 md)."""
     out = []
-    if info.get("쌍별"):
-        out += preview_screen(info["쌍별"], info.get("doc_id") or "문서")
     if info.get("골격단"):
         from cli import gate_table
         from core.state import gate_judge
-        rows = info["골격단"]
+        rows, kept = info["골격단"], info.get("앞에서정함", 0)
         for r in rows:
             r.setdefault("where", "본문")
         if live:
-            out.append(f"   {_title(rows, '본문')} — 표는 물음에서")
+            out.append(f"   {_title(rows, kept)} — 표는 물음에서")
         else:
             gate_judge.judge(rows, live=False)
-            out += gate_table.lines(rows, _title(rows, "본문"))
+            out += gate_table.lines(rows, _title(rows, kept))
+    if info.get("쌍별"):
+        out += preview_screen(info["쌍별"], info.get("doc_id") or "문서")
     return out
 
 
@@ -134,7 +127,7 @@ def step8(info, step):
     rows = info.get("골격단") or []
 
     def ask():
-        if rows and not ask_rows(rows, "본문"):
+        if rows and not ask_rows(rows, "본문", info.get("앞에서정함", 0)):
             return False
         return human_gate.ask(hb) if hb else True
     live = bool(step and rows and sys.stdin.isatty())

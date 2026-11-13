@@ -694,11 +694,11 @@ show("B184 ⓓ 합침 — 잠정을 기존 골격 노드 「노칭」으로 → 
      f"재구축 rc {_rbc} · 잠정 {len(_provs184())} · R16 → {_an.get('canonical')} · 값 {[r.get('target') for r in _en][:3]}")
 
 # ⓔ `--step` 좌표 단계 — 정한 것은 그 문서의 나머지 행부터(재구축 0)
-_mock184("p 1")
+_mock184("p")
 _an, _en = _r16()
 _lp = _pn("레이저노칭")
 _ok_p = not _lp and not _provs184() and not _an.get("node_id")       # B202 ③ — 문 줄의 승격 p는 거부(기록 0 · 그 행은 보류 그대로)
-_mock184("m 1 노칭")
+_mock184("m 노칭")
 _an2, _en2 = _r16()
 show("B184 ⓔ `--step` 좌표 단계에서 합침 — 그 골격 노드로 바로 풀린다 · 잠정 노드 0 · 재구축 0 · 문 줄의 승격 `p 1`은 거부(B202 ③ — "
      "기록 0 · 노드 0 · 그 행은 보류)",

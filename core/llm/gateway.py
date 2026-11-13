@@ -791,9 +791,10 @@ _PING_PNG = base64.b64decode(
 
 
 def _data_uri(blob, mime):
-    """바이트 → `data:` URI. **키·경로가 아니라 내용을 보낸다.**"""
     return f"data:{mime or 'image/png'};base64,{base64.b64encode(blob).decode()}"
 
 
-def _image_part(blob, mime):
-    return {"type": "image_url", "image_url": {"url": _data_uri(blob, mime)}}
+def _image_part(blob, where=""):
+    from core.state.captures import fit          # 이름표는 바이트로 · 못 보내는 형식은 None(그 그림만 빠진다)
+    data, mm = fit(blob, f"{where or '—'} · {DOC.get('doc_id') or '—'}")
+    return {"type": "image_url", "image_url": {"url": _data_uri(data, mm)}} if data else None

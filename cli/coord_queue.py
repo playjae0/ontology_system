@@ -28,7 +28,7 @@ ROW, DOC = "행", "문서 좌표"
 def next_lines(kinds, doc=None, dt=None):
     """좌표 쌍 **다음 줄 한 자리**(B154 ① — 판정 전 쌍 화면 · 큐 화면이 같이 부른다) — 쌍의 상위가 어디서 왔나(`ROW` · `DOC`)로
     고른다(문서 형태 · doc_type으로 가르지 않는다) · 섞이면 종류마다 한 줄 · `doc` · `dt`가 있으면 그대로 쳐서 도는 꼴로 채운다."""
-    ack = "이대로 두려면 쌍 확인(python run.py platform queue coord_mismatch)"
+    ack = "이대로 두려면 그대로 연결(python run.py platform queue coord_mismatch)"
     out = []
     if ROW in kinds:
         out.append(f"▶ 다음 줄(행의 상위) — 열이 뒤바뀌었으면 재등록(python -m cli.register generate {dt or '<dt>'} <층> <표본> "
@@ -74,8 +74,8 @@ def show():
     gs = groups()
     live = [(k, e) for k, e in gs if e["open"]]
     done = [(k, e) for k, e in gs if not e["open"] and e["rec"]]
-    print(f"\n[{CA.KIND}] 쌍 묶음 — 어긋남 {len(live):,}쌍({sum(e['open'] for _k, e in live):,}행) · "
-          f"확인된 쌍 {len(done):,}({sum(e['done'] for _k, e in done):,}행) · 큐 항목 {sum(e['rows'] for _k, e in gs):,}")
+    print(f"\n[{CA.KIND}] 공정 짝 묶음 — 어긋남 {len(live):,}짝({sum(e['open'] for _k, e in live):,}행) · "
+          f"그대로 연결한 짝 {len(done):,}({sum(e['done'] for _k, e in done):,}행) · 큐 항목 {sum(e['rows'] for _k, e in gs):,}")
     for (kind, pair), e in gs:
         # 문서 좌표를 상위로 삼은 행(B106 ⑤)은 그 말로 — 섞였으면 둘 다
         what = (CP.describe(CP.DOC_GROUP, pair) if kind == CP.GROUP and e["doc_upper"] == e["rows"]
@@ -112,7 +112,7 @@ def run_ops(a):
         if a.op == "coord-ack":
             rec, n = CA.ack(kind, pair, a.actor, a.reason)
             print(f"[확인] {kind} '{pair[0]}' · '{pair[1]}' — 큐 {n:,}행을 「{CA.DECISION}」으로 닫았다 · "
-                  f"문서 {', '.join(rec['docs'])} · 기록 {paths.show(CA.path())}(재인입 · 다른 문서의 같은 쌍도 확인됨)")
+                  f"문서 {', '.join(rec['docs'])} · 기록 {paths.show(CA.path())}(재인입 · 다른 문서의 같은 공정 짝도 그대로 연결)")
             print(f"  ▶ 되돌리려면: {_cmd('coord-unack', kind, pair)}")
         else:
             rec, n = CA.unack(kind, pair, a.actor)

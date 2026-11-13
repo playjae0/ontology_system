@@ -193,10 +193,10 @@ try:
 finally:
     IG.sys.stdin, _screen.ask = _keep
 _out = _buf.getvalue()
-_g2 = next((l for l in _out.splitlines() if "좌표 —" in l and "좌표 쌍 어긋남" in l), "")
+_g2 = next((l for l in _out.splitlines() if "좌표 —" in l and "공정 짝 어긋남" in l), "")
 show("ⓒ --step 좌표 관문 — 쌍 표가 판정 전에 서고(머리에 「좌표 쌍 어긋남 k쌍」) 멈추면 LLM 0 · 그래프·큐 쓰기 0",
      _row.get("reason") == "사람이 멈췄다 — 좌표까지" and _u1 == _u0 and _graph_hash() == _h0
-     and "좌표 쌍 — 어긋남 1쌍(1행)" in _out and "좌표 쌍 어긋남 1쌍(1행)" in _g2,   # 극성 쌍 지움(기대 변경 B198)
+     and "공정 짝 — 어긋남 1짝(1행)" in _out and "공정 짝 어긋남 1짝(1행)" in _g2,   # 「쌍」 말 걷기(고침 B204 ③)   # 극성 쌍 지움(기대 변경 B198)
      f"{_row.get('reason')} · LLM {_u1 - _u0} · 머리 「{_g2.strip()[:70]}」")
 
 # ────────────────────────────────────────────────────────────── ⓑ
@@ -542,9 +542,9 @@ def _go197(env, answer=None, stop_at=None):
 
     def nt(info):
         notes.append(info)
-        if info.get("단계") == "골격단" and answer:
+        if info.get("골격단") and answer:
             with contextlib.redirect_stdout(io.StringIO()):
-                for r in info["rows"]:
+                for r in info["골격단"]:
                     PA196.decide(r, "시험", answer=answer)
         return False if info.get("단계") == stop_at else None
     with contextlib.redirect_stdout(io.StringIO()):
@@ -556,25 +556,27 @@ def _names197():
     return {n["canonical"] for n in open_graph("process").nodes.values() if is_live(n)}
 
 
-# ⓐ 제목 「2. 추출부」 → 목차 노드화 Unit → [3/8] 문(노드 0 · 후보 = 노칭 아래 골격)
+# ⓐ 제목 「2. 추출부」 → 목차 노드화 Unit → [5/8] 맨 앞 한 표의 이름 줄(자리 제목 · 노드 0 · 후보 = 노칭 아래 골격 — 고침 B204 ①)
 _na = _go197(_h197("B197A"))
-_ga = [r for n in _na if n.get("단계") == "골격단" for r in n["rows"]]
+_ga = [r for n in _na if n.get("추출뒤") for r in n.get("골격단") or []]
 from core.state import gate_judge as GJ197                                     # noqa: E402
 _ca = GJ197.listing("노칭")
-show("B197 ⓐ 산문 · 문서 좌표 노칭(골격 자식 넷) · 제목 「2. 추출부」 → Unit → [3/8] 골격 단 줄(위 공정 노칭) · 노드 0 · LLM이 볼 골격 목록 = "
-     "노칭 아래 골격(B202 ①)",
-     len(_ga) == 1 and _ga[0]["surface"] == "추출부" and _ga[0]["up_name"] == "노칭"
+show("B197 ⓐ 산문 · 문서 좌표 노칭(골격 자식 넷) · 제목 「2. 추출부」 → Unit → [5/8] 한 표의 이름 줄(자리 제목 · 위 공정 노칭) · 노드 0 · "
+     "LLM이 볼 골격 목록 = 노칭 아래 골격(B202 ①) · [3/8]에 이름 줄 0(고침 B204 ①)",
+     len(_ga) == 1 and _ga[0]["surface"] == "추출부" and _ga[0]["up_name"] == "노칭" and _ga[0]["where"] == "제목"
      and not any("추출부" in c for c in _names197()) and len(_ca) == 4 and all(c["path"].startswith("조립 › 노칭 › ") for c in _ca),
      f"{[(r['surface'], r['up_name'], r['answer']) for r in _ga]} · 목록 {[c['name'] for c in _ca]}")
 
-# ⓑ 처분 넷 — m(골격 별칭 · 그 아래 값이 그 노드 아래) · k(잠정 골격 노드 · 그 아래 값) · d(그 아래 청크 추출 0 · 값 0) · u(노드 0 · 값은 노칭)
+# ⓑ 처분 넷 — m(골격 별칭 · 그 아래 값이 그 노드 아래) · k(잠정 골격 노드 · 그 아래 값) · d(그 아래 청크는 추출 뒤 버림 · 값 0) · u(노드 0 · 값은 노칭)
 _out = {}
 for _k, _ans in (("m", "m 노칭::노칭 타발"), ("k", "k"), ("d", "d 설계 항목"), ("u", "u")):
     _did = f"B197B{_k}"
     _go197(_h197(_did, f"추출부{_k}"), answer=_ans)
     _ck = json.loads(_P.work("extract", f"{_did}.json").read_text(encoding="utf-8"))
-    _out[_k] = ({c for c in _names197() if c.endswith("흡착력")}, [c for c in _ck["candidates"] if c.get("human_drop")])
-show("B197 ⓑ m → 「노칭::노칭 타발::흡착력」 · k → 잠정 「추출부」 아래 · d → 그 제목 아래 청크 추출 0(사람 drop) · 값 0 · u → 노드 0 · 값은 노칭",
+    _out[_k] = ({c for c in _names197() if c.endswith("흡착력")},
+                [c for c in _ck["candidates"] if any(e.get("surface") == "흡착력" for e in c.get("entities") or [])])
+show("B197 ⓑ m → 「노칭::노칭 타발::흡착력」 · k → 잠정 「추출부」 아래 · d → 그 제목 아래 청크는 추출했고(체크포인트 그대로) 그 결과를 버린다 · "
+     "값 0(고침 B204 ①) · u → 노드 0 · 값은 노칭",
      "노칭::노칭 타발::흡착력" in _out["m"][0] and "추출부k::흡착력" in _out["k"][0] and _out["d"][1]
      and _out["d"][0] == _out["k"][0] and "노칭::흡착력" in _out["u"][0] and "추출부k" in _names197()
      and not {"추출부m", "추출부d", "추출부u"} & _names197(),
@@ -620,7 +622,8 @@ show("B197 ⓔ 건너뜀 → ops review 골격 단 한 줄(겸 값) → 합침(�
      f"{[(r['surface'], r.get('also')) for r in _ge]} · {_de}")
 
 # ⓖ [3/8] 끝 줄 「확정한 공정」 · [5/8] 쌍별 예고(붙을 자리 · 연결 · 판정 예정 · 칸 안 잘림) · 표 [4/7] 같은 함수
-_ng = _go197(_h197("B197G", "취출부"), answer="m 노칭::노칭 타발")
+_go197(_h197("B197G", "취출부"), answer="m 노칭::노칭 타발")
+_ng = _go197(_h197("B197G", "취출부"))                       # 처분은 [5/8] — 정한 뒤 다시 넣은 문서의 [3/8] 확정 공정 · 공정별 예고(고침 B204 ①)
 _pl = [n["줄"] for n in _ng if n.get("단계") == "확정공정"]
 _pv = AS197.preview_lines(next(n for n in _ng if n.get("추출뒤"))["쌍별"], full=True)     # 전부(md 몸 — 화면은 요약 · B199 ①)
 _tv = AS197.preview_lines(AS197.preview(AS197.builder(_ed), _ed, schema={"fields": {"개체": {"role": "entity", "category": "Unit"}}}),

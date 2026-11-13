@@ -449,10 +449,11 @@ def _build_document(env, kind, schema, cfg, layer, graph, doc_id,
             vocab = _vocab(cfg)
             from core.build import outline as outline_mod
             ol = outline_mod.run(env, cfg, notice=notice)          # 문서 개요 — 추출 전 한 번 (B115 ①)
-            from core.build.also_stage import heading_gate
-            drop = heading_gate(env, ol, notice, _RUN)             # 골격 단의 문 — 제목 개체 · 확정한 공정 (B197 ②)
-            ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol, drop=drop)
+            from core.build.also_stage import drop_after, heading_gate
+            heading_gate(env, ol, notice, _RUN)                    # 골격 단 — 제목의 판단 · 확정한 공정 (B197 ② · 처분은 [5/8] — B204 ①)
+            ck, extracted = extract_mod.extract(env, cfg, loc2id, vocab, notice=notice, outline=ol)
             cands = prose_gate(env, ck, loc2id, layer, notice, cfg=cfg, graph=graph, outline=ol)   # 사람 후보 (B140 ③)
+            cands = drop_after(env, cands, loc2id, _RUN)  # 버린 제목 아래 — 추출 뒤 버린다 (B204 ①)
             builder = prose_mod.build_prose(env, cfg, graph, cands, defer_save=True, outline=ol)
     from core.build import also_stage
     if also_stage.pre_write(env, builder, notice, extract_only, _RUN) is False:

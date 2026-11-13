@@ -122,14 +122,16 @@ def build_with_lenses(env, lenses, layer, graph, loc2id, notice=None):
             ol = outline_mod.run(env, cfgs[lay], lens=lay, notice=notice)
             from core.build.also_stage import heading_gate
             from core.build.entry import _RUN
-            drop = heading_gate(env, ol, notice, _RUN)               # 골격 단의 문 — 제목 (B197 ② · 기본 길과 같은 함수)
+            heading_gate(env, ol, notice, _RUN)                      # 골격 단 — 제목의 판단 (B197 ② · 기본 길과 같은 함수)
             ck, did = extract_mod.extract(env, cfgs[lay], loc2id, _vocab(cfgs[lay]),
-                                          lens=lay, skip=skip[lay], notice=_nt, outline=ol, drop=drop)
+                                          lens=lay, skip=skip[lay], notice=_nt, outline=ol)
         finally:
             _gw.set_lens(None)
         extracted = extracted or did
         lb = root.for_layer(lay)
         cands = prose_gate(env, ck, loc2id, lay, notice, lens=lay, cfg=cfgs[lay], graph=lb.g, outline=ol)   # 사람 후보 (B140 ③)
+        from core.build.also_stage import drop_after
+        cands = drop_after(env, cands, loc2id, _RUN)                 # 버린 제목 아래 — 추출 뒤 버린다 (B204 ①)
         prose_mod.build_prose(env, cfgs[lay], lb.g, cands, builder=lb, defer_save=True,
                               outline=ol)
     return root, extracted
