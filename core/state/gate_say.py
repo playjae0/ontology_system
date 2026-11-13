@@ -26,7 +26,9 @@ SCHEMA = {"type": "object", "properties": {
     "disposition": {"type": ["string", "null"], "enum": list(KEYS) + [None]},
     "target": {"type": ["string", "null"]}, "reason": {"type": ["string", "null"]},
     "field": {"type": ["string", "null"], "enum": list(FIELDS) + [None]}, "value": {"type": ["string", "null"]},
-    "confidence": {"type": "number"}, "why": {"type": "string"}}, "required": ["kind", "confidence", "why"]}
+    "confidence": {"type": "number"}, "why": {"type": "string"}},
+    "required": ["kind", "disposition", "target", "reason", "field", "value", "confidence", "why"],
+    "additionalProperties": False}                     # 엄격 규칙(B200 ⓪ — 쓰지 않는 칸은 null · `gateway.strict_issues`)
 CALLS = {"말 해석": 0}
 
 

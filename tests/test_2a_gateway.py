@@ -369,6 +369,28 @@ hooks = [f"{p.relative_to(ROOT)}:{i}"
          if "HOOK:" in ln]
 show("주석 훅 표시가 0건이다 — 주석은 실행되지 않는다", not hooks, str(hooks))
 
+# ── B200 ⓪ 구조화 출력 엄격 규칙(사내 [3/8] HTTP 400 「additionalProperties is required」) — 검사 한 자리 `gateway.strict_issues`
+from core.llm import gateway as _gw0                                         # noqa: E402
+try:
+    _gw0._payload({"model": "m"}, [], json_schema={"type": "object", "properties": {"a": {"type": "string"}}}, point="시험")
+    _blk = None
+except _gw0.SchemaError as _e:
+    _blk = _e
+show("B200 ⓪ 보내기 전 막음 — 엄격 규칙을 어긴 schema는 `_payload`가 보내지 않고 SchemaError(지점 · 경로 — 맨 바깥 additionalProperties · "
+     "required 밖 칸)",
+     _blk is not None and _blk.point == "시험" and any(i.startswith("() additionalProperties") for i in _blk.issues)
+     and any("required 밖" in i for i in _blk.issues), str(_blk))
+import strict_probe as _SP                                                    # noqa: E402
+_got = _SP.run()
+_sites = sorted({c["site"].rsplit(":", 1)[0] for c in _got["calls"]})
+_viol = [(c["site"], _gw0.strict_issues(c["schema"])) for c in _got["calls"] if c["schema"] and _gw0.strict_issues(c["schema"])]
+show("B200 ⓪ 실호출 길 자동 수집(mock 끔 · `_post`만) — CP01 · PFMEA01 · RFQ01 산문 --step(골격 단 판단 · 사람 말) · 시트 역할 · "
+     "ops alias-audit --llm · 뷰어 LLM 검토에서 잡힌 response_format.json_schema 전부가 엄격 규칙 위반 0 · 막음 0",
+     not _viol and not _got["errors"] and all(c["strict"] for c in _got["calls"] if c["schema"])
+     and {"core/state/gate_judge.py", "core/state/gate_say.py", "core/state/alias_review.py", "core/build/outline.py",
+          "core/build/extract.py", "core/matcher.py", "core/llm/points.py"} <= set(_sites),
+     f"자리 {_sites} · 위반 {_viol[:3]} · 막음 {_got['errors'][:3]}")
+
 print("\n" + "=" * 62)
 print(f"전체 결과: {'PASS — 게이트웨이 골조 성립' if not _fail else f'FAIL {_fail}건'}")
 sys.exit(1 if _fail else 0)

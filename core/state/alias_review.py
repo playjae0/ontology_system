@@ -34,7 +34,8 @@ KEEP = "유지"
 SCHEMA = {"type": "object", "properties": {"answers": {"type": "array", "items": {
     "type": "object", "properties": {"id": {"type": "integer"}, "verdict": {"type": "string", "enum": list(VERDICTS)},
                                      "why": {"type": "string"}, "suggest": {"type": ["string", "null"]}},
-    "required": ["id", "verdict", "why"]}}}, "required": ["answers"]}
+    "required": ["id", "verdict", "why", "suggest"], "additionalProperties": False}}},
+    "required": ["answers"], "additionalProperties": False}       # 엄격 규칙(B200 ⓪ — 제안 없으면 null · `gateway.strict_issues`)
 #: 진행(뷰어의 폴링 · CLI) — `{state, done, total, batches, calls}`
 PROGRESS = {"state": "idle", "done": 0, "total": 0, "batches": 0, "calls": 0}
 

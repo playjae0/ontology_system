@@ -35,8 +35,8 @@ MEMO = ("extract", "gate_judge.json")
 SCHEMA = {"type": "object", "properties": {
     "verdict": {"type": "string", "enum": list(VERDICTS)}, "confidence": {"type": "number"}, "why": {"type": "string"},
     "candidates": {"type": "array", "items": {"type": "object", "properties": {
-        "name": {"type": "string"}, "why": {"type": "string"}}, "required": ["name"]}}},
-    "required": ["verdict", "confidence", "why", "candidates"]}
+        "name": {"type": "string"}, "why": {"type": "string"}}, "required": ["name", "why"], "additionalProperties": False}}},
+    "required": ["verdict", "confidence", "why", "candidates"], "additionalProperties": False}     # 엄격 규칙(B200 ⓪ — `gateway.strict_issues`)
 #: 이 실행의 호출 수 — 보고 · 화면(첫 판단 · 다시 판단)
 CALLS = {"첫 판단": 0, "다시 판단": 0}
 
