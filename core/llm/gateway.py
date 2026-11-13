@@ -100,15 +100,7 @@ def point_label(point):
 
 
 def use_mock():
-    """mock 갈래인가. **판독은 이 함수 하나가 한다** — 지점마다 읽으면 갈린다.
-
-    **환경변수 > 설정 파일 > mock**(B42 · `config()`와 같은 우선순위). 설정 파일을
-    지원하는 이유는 실측이다 — 운영자가 `llm.json`을 만들어 두고도 `USE_MOCK`을
-    export하지 않아 mock 고정 문안을 실호출 오동작으로 읽었다. **읽는 곳은
-    여전히 여기 하나다.**
-
-    둘 다 없으면 mock이다(조항 B12 — 외부 의존 0으로 전 경로가 돈다).
-    """
+    """mock 갈래인가 — **판독은 이 함수 하나**(지점마다 읽으면 갈린다) · 환경변수 > 설정 파일(`llm.json` — B42) > mock(조항 B12)."""
     v = os.environ.get("USE_MOCK")
     if v is None or v == "":
         try:
@@ -353,14 +345,8 @@ CONFIG_KEYS = ("LLM_GATEWAY_URL", "LLM_API_KEY", "CHAT_MODEL", "EMBED_MODEL", "E
 
 
 def config():
-    """게이트웨이 설정. **비어 있으면 그 사실을 그대로 돌려준다** — 여기서 채우지 않는다.
-
-    **우선순위: 환경변수 > 설정 파일 > 빈 값.** 환경변수 갈래를 그대로 남기는 이유는
-    회귀·CI가 그것으로 돌기 때문이다 — 파일을 더하는 것이지 바꾸는 것이 아니다.
-
-    **파일을 여는 코드는 여기 하나다**(§7.6-B-1 수렴). 호출부가 각자 열면 우선순위가
-    지점마다 갈리고, 그때 "왜 이 지점만 안 붙나"의 답이 코드 전체에 흩어진다.
-    """
+    """게이트웨이 설정 — 비어 있으면 그대로(여기서 채우지 않는다) · 환경변수 > 설정 파일 > 빈 값(회귀 · CI는 환경변수로 돈다) ·
+    **파일을 여는 코드는 여기 하나**(§7.6-B-1 — 지점마다 열면 우선순위가 갈린다)."""
     f, _src = _from_file()
 
     def get(name, default=""):
@@ -392,11 +378,7 @@ def config():
             **{k.lower(): (int(get(k, None)) if get(k, None) not in (None, "") else None) for k in SIZE_KEYS}}
 
 def require(point, *, need=("url", "model")):
-    """실호출 직전의 관문. 설정이 없으면 명시적 실패다.
-
-    `point`를 받는 이유: 어느 LLM 지점이 미설정으로 막혔는지가 실측으로 쌓여야
-    한다(§7.4 — 명시적 실패는 장부에도 병기한다).
-    """
+    """실호출 직전의 관문 — 설정이 없으면 명시적 실패(어느 지점이 막혔는지 장부에도 · §7.4)."""
     cfg = config()
     missing = [k for k in need if not cfg.get(k)]
     if missing:
@@ -665,22 +647,13 @@ class GatewayError(RuntimeError):
 
     def __init__(self, status, body, url):
         self.status, self.body, self.url = status, body, url
-        # **어느 주소를 쳤는지 말한다**(B80 ③ · 사내 실측 2026-09-22): 404는 「그
-        # 주소에 그 경로가 없다」인데 주소가 안 보이면 사람이 설정을 못 고친다.
-        # 임베딩이 채팅과 다른 base를 쓸 수 있게 된 뒤로는 더 그렇다(M9).
+        # **어느 주소를 쳤는지 말한다**(B80 ③ — 주소가 안 보이면 사람이 설정을 못 고친다 · 임베딩 base가 따로일 때 M9)
         super().__init__(f"HTTP {status} — POST {url} — {body}")
 
 
 def _post(url, payload, key, timeout):
-    """게이트웨이 HTTP 1회. 표준 urllib만 쓴다 — 코어 외부 의존 0.
-
-    **오류 본문을 버리지 않는다**(B44). `urlopen`은 4xx/5xx에 `HTTPError`를 던지는데,
-    그것을 잡지 않으면 `HTTPError.read()`가 호출되지 않아 **게이트웨이가 적어 보낸
-    이유가 통째로 사라진다** — 실측: 400 본문에 *"Missing 'attribute_ranking'"*이
-    적혀 있었는데 화면에는 `HTTP Error 400: Bad Request`만 떴다.
-
-    **인증 헤더·키는 남기지 않는다** — 본문과 상태 코드까지다.
-    """
+    """게이트웨이 HTTP 1회(표준 urllib — 외부 의존 0) · **오류 본문을 버리지 않는다**(B44 — 4xx 본문이 게이트웨이가 적은 이유다) ·
+    인증 헤더 · 키는 남기지 않는다."""
     body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url, data=body_bytes,
@@ -705,22 +678,47 @@ def _post(url, payload, key, timeout):
         raise GatewayError(e.code, body, url) from e
 
 
-def _payload(cfg, messages, *, model=None, json_schema=None, temperature=UNSET):
-    """**게이트웨이 요청을 조립하는 유일한 자리** (B80 ① · 문서 7 §7.6-B-1).
+def strict_issues(s, path="()"):
+    """**구조화 출력 엄격 규칙 검사 한 자리**(B200 ⓪ — `strict: True`: 객체마다 `additionalProperties: false` · `required` = 칸 전부 ·
+    비워도 되는 칸은 `["string", "null"]`) — 위반 경로 목록(없으면 []). 보내기 전(`_payload`)과 시험이 같은 함수다."""
+    out = []
+    if not isinstance(s, dict):
+        return out
+    t = s.get("type")
+    if "object" in (t if isinstance(t, list) else [t]) or "properties" in s:
+        if s.get("additionalProperties") is not False:
+            out.append(f"{path} additionalProperties 없음")
+        miss = sorted(set(s.get("properties") or {}) - set(s.get("required") or []))
+        if miss:
+            out.append(f"{path} required 밖 {miss}")
+    for k, v in (s.get("properties") or {}).items():
+        out += strict_issues(v, f"{path}.{k}")
+    out += strict_issues(s.get("items"), f"{path}[]")
+    for k in ("anyOf", "oneOf", "allOf"):
+        for i, v in enumerate(s.get(k) or []):
+            out += strict_issues(v, f"{path}.{k}{i}")
+    return out
 
-    여기 하나인 이유: 구판은 `chat()`과 `llm-check`의 탐침 둘이 payload를 **따로**
-    조립했다. 그래서 요청 모양에 손잡이를 더하면 `llm-check`는 옛 모양을 보내
-    「점검은 통과했는데 인입은 400」이 난다(같은 기능 두 자리 — B77 ④).
 
-    `temperature`의 우선순위는 **인자 > 설정 > 없음**이다. 인자를 주는 호출부는
-    지점마다 값을 정할 수 있고(지금 그런 호출부는 0), 아무도 정하지 않으면 키가
-    payload에 **없다**.
-    """
+class SchemaError(RuntimeError):
+    """보내기 전에 잡은 schema 결함(엄격 규칙 위반 — 게이트웨이의 400 대신 어느 지점 · 어느 칸인지)."""
+
+    def __init__(self, point, issues):
+        self.point, self.issues, self.status = point, list(issues), 0
+        super().__init__(f"[결함] schema 엄격 규칙 위반 — {point} · " + " · ".join(self.issues[:5]))
+
+
+def _payload(cfg, messages, *, model=None, json_schema=None, temperature=UNSET, point="chat"):
+    """**게이트웨이 요청을 조립하는 유일한 자리**(B80 ① · `chat` · `llm-check`가 같은 함수 — 두 자리면 「점검 통과 · 인입 400」) ·
+    `temperature`는 인자 > 설정 > 없음 · **구조화 출력은 엄격 규칙을 보내기 전에 잰다**(`strict_issues` — 어기면 `SchemaError` · B200 ⓪)."""
     out = {"model": model or cfg["model"], "messages": messages}
     t = cfg.get("temperature", UNSET) if temperature is UNSET else temperature
     if not (t is UNSET or t is None):
         out["temperature"] = t
     if json_schema:
+        bad = strict_issues(json_schema)
+        if bad:
+            raise SchemaError(point, bad)
         out["response_format"] = {"type": "json_schema",
                                   "json_schema": {"name": "out",
                                                   "schema": json_schema,
@@ -754,7 +752,7 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=UN
     """
     cfg = require(point)
     payload = _payload(cfg, messages, model=model, json_schema=json_schema,
-                       temperature=temperature)
+                       temperature=temperature, point=point)
     last = None
     for attempt in range(cfg["retry"] + 1):
         try:

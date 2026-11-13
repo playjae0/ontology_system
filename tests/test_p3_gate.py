@@ -29,22 +29,8 @@ from parser import struct_map as _SM, tagger as _TG                 # noqa: E402
 
 
 def _strict(s, path="$"):
-    """구조화 출력의 strict 요건 — 모든 object에서 properties == required ·
-    additionalProperties is False · **자유 키 사전 없음**."""
-    bad = []
-    if isinstance(s, dict):
-        if s.get("type") == "object" or "properties" in s:
-            if set(s.get("properties") or {}) != set(s.get("required") or []):
-                bad.append(f"{path}: properties != required")
-            ap = s.get("additionalProperties")
-            if ap is not False:
-                bad.append(f"{path}: additionalProperties={ap!r}"
-                           + (" (자유 키 사전)" if isinstance(ap, dict) else ""))
-        for k, v in (s.get("properties") or {}).items():
-            bad += _strict(v, f"{path}.{k}")
-        if "items" in s:
-            bad += _strict(s["items"], f"{path}[]")
-    return bad
+    """구조화 출력의 strict 요건 — 검사는 한 자리(`gateway.strict_issues` · B200 ⓪ — 보내기 전 막음과 같은 함수)."""
+    return gateway.strict_issues(s, path)
 
 
 # ① **코드의 전 json_schema**를 훑는다 — 하나라도 어기면 그 지점이 400으로 죽는다
