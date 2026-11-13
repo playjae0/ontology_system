@@ -479,6 +479,23 @@ show("B196 ⓕ 쌍 어긋남(상위 스태킹 · ref 노칭) → 확인 전 보�
      and _fix and str(_fix).startswith("노칭::") and (_g.get(_f1["F2"].get("node_id")) or {}).get("canonical") == _fix,
      f"전 {[_f0[k].get('hold') for k in ('F1', 'F2')]} · F1 → {_f1['F1'].get('canonical')} · F2 → {_f1['F2'].get('canonical')}(정정 {_fix})")
 
+# B203 ⓖ 쌍 줄의 새로 만들기 — 문서 스태킹 › 전극 언와인딩 · 골격은 노칭 아래 → 동작 줄 넷(실제 이름) · k → 스태킹 밑에 잠정 · 그 쌍의 행이 새 노드로
+from cli import gate_table as GTB                                    # noqa: E402
+_eg = _env196("B203G", [_rec196("G1", "전극 언와인딩", grp="스태킹"), _rec196("G2", "전극 언와인딩", grp="스태킹")])
+_rg = next(r for r in PA196.step_rows(_eg) if r["kind"] == "pair")
+_ag = GTB.acts(1, _rg)
+with contextlib.redirect_stdout(io.StringIO()):
+    GTB._apply(1, _rg, "k", "", "시험")
+_g2 = _run196(_eg)
+_gg = open_graph(coord_layer())
+_ng = [(_gg.get(_g2[k].get("node_id")) or {}) for k in ("G1", "G2")]
+show("B203 ⓖ 쌍 줄 — 동작 줄 넷이 실제 이름으로(그대로 연결 → 노칭 아래 · 새로 만들기 → 스태킹 밑) · k → 처분 칸에 경로 · 그 쌍의 행 둘이 새 잠정 노드로",
+     [ln.split()[1:3] for ln in _ag] == [["그대로", "연결"], ["새로", "만들기"], ["같은", "것으로"], ["버리기", "→"]]
+     and "노칭 › 전극 언와인딩" in _ag[0] and "스태킹 › 전극 언와인딩" in _ag[1]
+     and _rg.get("done") == "✓ 새로 만들기 → 스태킹 › 전극 언와인딩 (잠정)"
+     and [n.get("canonical") for n in _ng] == ["스태킹::전극 언와인딩"] * 2 and _ng[0].get(PV196.PROVISIONAL),
+     f"{_ag} · {_rg.get('done')} · 노드 {[(n.get('canonical'), n.get('status')) for n in _ng]}")
+
 # ⓗ 연결 표지 — 대장 칸 · 인입 끝 줄과 show report의 「연결 미성립 n(…)」 · 「좌표 폴백」 · 「ref 빈 행」
 from cli import report_cause as RC196                               # noqa: E402
 _lr = (LG.read("B196F") or {}).get("rows") or []

@@ -105,6 +105,14 @@ class _Ctx:
         self.planned = []                         # 이 문서에 세울 것 — 뒤 행의 같은 이름 · 부모 채우기 대조
         from core.state import provisional_hand as PH
         self.book = PH.decisions()                # 문의 사람 답(B196 ①) — 문서마다 한 번 읽는다
+        self.placed = PH.placed()                 # 「새로 만들기」의 자리(B203 ④ — 고른 부모 · 쌍 줄)
+
+    def place(self, surface, up):
+        """`(세울 부모 id, 쌍 줄?)` — 사람이 고른 부모가 있으면 그것(골격 노드 하나일 때) · 아니면 들어온 자리."""
+        from parser.namefold import key
+        p = self.placed.get((key(surface or ""), self.name(up))) or {}
+        hit = [i for i, n in self.eb.g.nodes.items() if is_live(n) and n.get("canonical") == p.get("under")]
+        return (hit[0] if len(hit) == 1 else up), bool(p.get("pair"))
 
     def gate(self, surface, up):
         """**문**(B196 ①) — `(세운다?, 보류 사유)` · 사람 답이 「새로」(봄 포함)면 세운다 · drop이면 「사람 drop」 · 없으면 「사람 확인 전」."""
@@ -173,19 +181,24 @@ def plan(b, env, outline=None):
     from core.build.build_coord import coord_judged, coord_unjudged
     from parser.namefold import key
     cx, groups = _Ctx(b), {}
+    pairs = {k[0] for k, v in cx.placed.items() if v.get("pair")}
     for s, prov, p, low in _occurrences(b, env):
-        if look(b, s) and any(not (cx.eb.g.get(n) or {}).get(PROVISIONAL) for n in look(b, s)):
+        skel = look(b, s) and any(not (cx.eb.g.get(n) or {}).get(PROVISIONAL) for n in look(b, s))
+        if skel and key(s) not in pairs:
             continue                                              # 골격(Tier1)이 답한다 — 지금 그대로
         if coord_unjudged(p, s):
             continue                                              # 판단을 받지 못했다 — 보류 그대로
         up = cx.up_of(p, s, low, outline)
+        if skel and not cx.place(s, up)[1]:
+            continue                                              # 쌍 줄 「새로 만들기」만 그 자리 밑에(B203 ④)
         g = groups.setdefault((key(s), up), {"surface": s, "provs": [], "up": up, "judge": coord_judged(p, s)})
         g["provs"].append(prov)
     return [_decide(cx, g) for g in groups.values()]
 
 
 def _decide(cx, g):
-    s, up = g["surface"], g["up"]
+    s, entry = g["surface"], g["up"]
+    up, pair = cx.place(s, entry)                  # 세울 자리 — 사람이 고른 부모(B203 ④) · 문은 들어온 자리로 묻는다
     v = g["judge"] or {}
     e = {"surface": s, "provs": g["provs"], "rows": len(g["provs"]), "up": up, "up_name": cx.name(up),
          "answer": "uncertain" if v.get("type") == "uncertain" else "new",
@@ -221,11 +234,11 @@ def _decide(cx, g):
     if e["hold"]:
         e["act"] = "hold"
         return e
-    canon = s if s not in cx.names else (f"{cx.name(up)}::{s}" if up is not None else None)
+    canon = s if s not in cx.names and not pair else (f"{cx.name(up)}::{s}" if up is not None else None)
     if canon is None or canon in cx.names:
         e.update(act="hold", hold=HOLD_NAME)
         return e
-    ok, why = cx.gate(s, up)                       # 문(B196 ①) — 세우는 것은 사람의 「새로」뿐
+    ok, why = cx.gate(s, entry)                    # 문(B196 ①) — 세우는 것은 사람의 「새로 만들기」뿐
     if not ok:
         e.update(act="hold", hold=why, canonical=canon)
         return e
@@ -264,16 +277,17 @@ def from_entity(b, surface, prov, verdict, nearest, coord=None):
     """**산문 · 제목의 좌표 골격 카테고리 개체**(B182 ① — `Builder._skeleton_miss`) — 판정이 다르다 · 애매면 잠정 노드(부모 = 그
     자리의 좌표 · 단은 그 바로 아래) · `(id, 보류 사유)`. 같은 이름의 잠정 노드는 판정 후보에 이미 들었다(같다면 여기 오지 않는다)."""
     cx = _Ctx(b)
-    up = coord[0] if coord and coord[0] and is_skeleton(cx.eb.g.get(coord[0])) else None
+    entry = coord[0] if coord and coord[0] and is_skeleton(cx.eb.g.get(coord[0])) else None
+    up = cx.place(surface, entry)[0]               # 사람이 고른 부모(B203 ④) · 문은 들어온 자리로 묻는다
     tier, why = cx.tier(up)
     if why:
         return None, why
     canon = surface if surface not in cx.names else (f"{cx.name(up)}::{surface}" if up is not None else None)
     if canon is None or canon in cx.names:
         return None, HOLD_NAME
-    ok, why = cx.gate(surface, up)                 # 문(B196 ①) — 표 · 산문 · 제목 · PPT 같은 판단
+    ok, why = cx.gate(surface, entry)              # 문(B196 ①) — 표 · 산문 · 제목 · PPT 같은 판단
     if not ok:
-        b.coord_gate[(prov, surface)] = {"parent": cx.name(up), "answer": verdict,
+        b.coord_gate[(prov, surface)] = {"parent": cx.name(entry), "answer": verdict,
                                          "near": [nearest["canonical"]] if (nearest or {}).get("canonical") else []}
         return None, why
     near = [nearest["canonical"]] if verdict == "uncertain" and (nearest or {}).get("canonical") else None
@@ -295,8 +309,9 @@ def seed_at(graphs, cfgs, dic, did, surface, parent, prov, gi=None):
     up = next((nid for nid, n in g.nodes.items() if n.get("canonical") == parent and is_live(n) and is_skeleton(n)), None)
     if (parent is not None and up is None) or not cx.gate(surface, up)[0]:
         return None, None, None
+    up, pair = cx.place(surface, up)               # 사람이 고른 부모 · 쌍 줄(B203 ④)
     tier, why = cx.tier(up)
-    canon = surface if surface not in cx.names else (f"{cx.name(up)}::{surface}" if up is not None else None)
+    canon = surface if surface not in cx.names and not pair else (f"{cx.name(up)}::{surface}" if up is not None else None)
     if why or canon is None or canon in cx.names:
         return None, None, None
     nid = make(b, surface, prov, answer=(gi or {}).get("answer") or "new", canonical=canon,

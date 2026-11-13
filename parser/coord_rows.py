@@ -29,6 +29,66 @@ def choices(nodes):
 
 
 
+def ask_all(ask, pieces, refs, nodes, idx, pick, home, *, ref_field, doc_coord, notice=None, progress=None):
+    """**(표기, 공정 칸)마다 한 번 묻는다**(B69 ① · B203 ②) — 행의 공정 칸(`process_group`)이 골격 노드 하나로 풀리면(`home`) 후보는
+    그 노드와 그 아래 먼저 · 같다가 없을 때만 전체로 한 번 더(공정 칸이 틀린 행을 놓치지 않는다). 판단은 주입된 `pick` 한 자리(B181 ①
+    — 같다 · 다르다 · 애매) · 같다만 쓴다(목록 밖 id는 버린다). `(memo {(표기, 공정 칸): canonical | None}, judged {(표기, 공정 칸):
+    답 꼴 + 범위}, 호출, 채택)`."""
+    memo, judged, calls, adopted = {}, {}, 0, 0
+    cands, by_id = choices(nodes) if ask else ([], {})
+    first, want = {}, set(ask)
+    for p, r in zip(pieces, refs):
+        if r in want:
+            first.setdefault((r, p.get("process_group")), p)
+    for n, (ref, g) in enumerate(first, 1):
+        up = home(g)
+        sub = [c for c in cands if up and (c["canonical"] == up or up in c["path"])]
+        for pool in ([sub] if 0 < len(sub) < len(cands) else []) + [cands]:
+            v = pick(ref, pool, row=first[(ref, g)], field=ref_field, doc_coord=doc_coord) or {}
+            calls += 1
+            if v.get("type") == "match":
+                break
+        hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
+        memo[(ref, g)] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
+        if v.get("type"):                                  # 답이 없으면(빈 주입) 표지 0
+            judged[(ref, g)] = {**{k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None},
+                                "asked": ref, "scope": f"{up} 아래 {len(pool)}" if pool is sub else f"전체 {len(pool)}"}
+        adopted += int(bool(memo[(ref, g)]))
+        if notice is not None:                             # 표기 하나 = 표의 한 행(B98 ⑥)
+            notice({"단계": "행", "i": n, "총": len(first), "표기": ref, "공정 칸": g,
+                    "행_수": sum(1 for p, r in zip(pieces, refs) if r == ref and p.get("process_group") == g),
+                    "결과": memo[(ref, g)], **{k: judged.get((ref, g), {}).get(k) for k in ("type", "confidence", "scope")}})
+        if progress is not None:
+            progress(n, len(first), adopted)
+    return memo, judged, calls, adopted
+
+
+#: 판단 답 꼴 → [1/7] 결과 말
+VERDICT = {"match": "LLM 같다", "new": "LLM 다르다", "uncertain": "애매"}
+
+
+def results(keys, idx, folded, scope_at, learn, kept, memo, judged):
+    """**[1/7] 표기마다 결과**(B203 ③) — (표기, 공정 칸)마다 `{표기, 공정 칸, 행 수, 결과, 이름, 확실도, 까닭}`(행 수 큰 차례 · 쓰기 0)."""
+    out = {}
+    for i, k in enumerate(keys):
+        ref, j = k[0], judged.get(k) or {}
+        if not ref:
+            continue
+        if k not in out:
+            sc, node = scope_at[i], idx.get(ref) or folded.get(ref)
+            if sc or node:
+                res, name, why = "정확", (sc[0] if sc else node)["canonical"], "범위 안 공유 별칭" if sc else "닫힌 목록 이름 · 별칭"
+            elif ref in learn:
+                res, name, why = "학습", learn[ref], "앞 문서의 같다(좌표 학습)"
+            elif ref in kept:
+                res, name, why = "목록 밖 기억", None, "같은 닫힌 목록 판의 목록 밖 답"
+            else:
+                res, name, why = (VERDICT.get(j.get("type"), "판단 없음"), memo.get(k), j.get("scope") or "상한 · 실패 — 보류")
+            out[k] = {"표기": ref, "공정 칸": k[1], "행 수": 0, "결과": res, "이름": name, "확실도": j.get("confidence"), "까닭": why}
+        out[k]["행 수"] += 1
+    return sorted(out.values(), key=lambda x: (-x["행 수"], x["표기"]))
+
+
 def flat_rows(pieces, ref_field):
     """목록 좌표 조각을 원소마다 한 행으로 — `(행들, 행마다 조각 차례)` · 목록이 아닌 조각은 그대로 한 행(meta는 원소마다 복사 —
     태깅 표시가 다른 원소로 번지지 않게)."""

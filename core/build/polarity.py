@@ -40,6 +40,17 @@ def axis():
     return _AXIS[key]
 
 
+#: 지시문의 시스템 자리표 — 실행 때 골격에서 채운다(극성 값을 지시문에 박지 않는다 · B203 ①)
+SLOT = "{{극성 표기}}"
+
+
+def fill(text):
+    """지시문의 `SLOT`을 지금 골격의 극성 값 「키(표시 이름) · …」으로(없으면 「없음」) — `gateway.prompt` 한 자리가 부른다."""
+    if SLOT not in text:
+        return text
+    return text.replace(SLOT, " · ".join(f"{k}({v})" for k, v in axis().items()) or "없음")
+
+
 def of(value):
     """행 · 청크의 `electrode_type` → 극성 값(닫힌 목록 안일 때만) · 그 밖(빈칸 · 공통 표기 · 목록 밖)은 None = 공통."""
     return value if value and value in axis() else None

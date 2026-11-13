@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .coord_rows import MAX_UP, choices, flat_rows, fold_rows
+from .coord_rows import MAX_UP, ask_all, flat_rows, fold_rows, results
 from .namefold import key as name_key
 
 # 골격 닫힌 목록 스냅샷의 자리 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7)
@@ -567,65 +567,43 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     if notice is not None:
         notice(dict(plan))
 
-    # ── ② 표기마다 한 번 — 답을 기억한다(null도)
-    memo, judged, calls, adopted = _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress)
-
+    # ── ② (표기, 공정 칸)마다 한 번 — 답을 기억한다(null도 · B203 ② 공정 칸 아래 먼저)
+    memo, judged, calls, adopted = ask_all(ask, pieces, refs, nodes, idx, pick,
+                                           lambda g: (idx.get(g) or fold_hit(g, idx) or {}).get("canonical") if g else None,
+                                           ref_field=ref_field, doc_coord=doc_coord, notice=notice, progress=progress)
+    keys = [(r, p.get("process_group")) for p, r in zip(pieces, refs)]
     # 애매는 목록 밖으로 기억하지 않는다(B181 ① — 다음 문서도 다시 묻는다 · 보류 큐에 후보가 실린다) · 답이 없는 표기(판단 실패)도
-    # 기억하지 않는다(B182 ① — 판단을 받지 못한 표기는 보류 · 다음 실행도 다시 묻는다 — 기억하면 다음엔 「다르다」로 읽혀 잠정 노드가 선다)
-    unsure = {r for r, j in judged.items() if j.get("type") == "uncertain"}
-    sure = {r: v for r, v in memo.items() if r not in unsure and r in judged}
+    # 기억하지 않는다(B182 ①) · 학습은 표기 열쇠다 — 공정 칸마다 답이 같을 때만(B203 ② — 갈리면 다음에도 공정 칸마다 묻는다)
+    unsure = {k for k, j in judged.items() if j.get("type") == "uncertain"}
+    by_ref = {}
+    for k, v in memo.items():
+        by_ref.setdefault(k[0], set()).add(v if k in judged and k not in unsure else "?")
+    sure = {r: next(iter(vs)) for r, vs in by_ref.items() if len(vs) == 1 and "?" not in vs}
     if layer and (learn or sure or kept):
         _learn_update(book, learn, sure, refs, idx, layer, doc_id, ver, kept)
 
     # **판단을 받지 못한 표기**(B182 ① — 상한 · 실패) — 행 `meta.coord_unjudged` · 인입은 잠정 노드로 세우지 않고 보류(mock은 0)
-    unjudged = {r for r in misses if r not in kept and r not in judged} if pick is not None else set()
+    unjudged = {k for k in keys if k[0] in misses and k[0] not in kept and k not in judged} if pick is not None else set()
     out = fold_rows(whole, owner, refs, _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type,
-                                                scope_at=scope_at, judged=judged, unjudged=unjudged), ref_field)
+                                                scope_at=scope_at, judged=judged, unjudged=unjudged, keys=keys), ref_field)
     if notice is not None:
-        notice({**plan, "단계": "끝", "호출": calls, "채택": adopted,
-                "목록밖": len(misses) - adopted, "애매": len(unsure),
-                "학습_새로": sum(1 for v in memo.values() if v)})
+        hit = {k[0] for k, v in memo.items() if v}
+        notice({**plan, "단계": "끝", "호출": calls, "채택": len(hit), "목록밖": len(misses) - len(hit), "애매": len(unsure),
+                "학습_새로": sum(1 for v in sure.values() if v),
+                "표기_결과": results(keys, idx, folded, scope_at, learn, kept, memo, judged)})
     return out
 
 
-def _ask_all(ask, pieces, refs, nodes, idx, pick, ref_field, doc_coord, notice, progress):
-    """**표기마다 한 번 묻는다**(`tag`의 ② — B69 ①) — `(memo {표기: canonical 또는 None}, judged {표기: 답 꼴}, 호출, 채택)`.
-
-    **판단은 개체 · 닫힌 분류와 같은 한 자리**(B181 ① — 주입된 `pick`이 core의 판단 함수를 부른다 · 답 꼴 같다 · 다르다 · 애매) ·
-    재료는 골격 목록(이름 · 별칭 · 부모 경로 — `coord_rows.choices`)과 그 표기가 처음 나온 행(②) · 같다만 쓴다(목록 밖 id는 버린다)."""
-    memo, judged, calls, adopted = {}, {}, 0, 0
-    cands, by_id = choices(nodes) if ask else ([], {})
-    first = {}
-    for p, r in zip(pieces, refs):
-        first.setdefault(r, p)
-    for n, ref in enumerate(ask, 1):
-        v = pick(ref, cands, row=first.get(ref), field=ref_field, doc_coord=doc_coord) or {}
-        calls += 1
-        hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
-        memo[ref] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
-        if v.get("type"):                                  # 답이 없으면(빈 주입) 표지 0
-            judged[ref] = {**{k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None},
-                           "asked": ref}                   # 판단에 올린 표기 — 같다면 행 값은 canonical로 바뀐다(수치는 이것으로 센다)
-        adopted += int(bool(memo[ref]))
-        if notice is not None:
-            # 표기 하나 = 표의 한 행(B98 ⑥) — 진행 콜백(3인자 계약)은 그대로 두고 예고와 같은 통로로
-            notice({"단계": "행", "i": n, "총": len(ask), "표기": ref,
-                    "행_수": refs.count(ref), "결과": memo[ref]})
-        if progress is not None:
-            progress(n, len(ask), adopted)
-    return memo, judged, calls, adopted
-
-
-def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None, unjudged=()):
+def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, scope_at=None, judged=None, unjudged=(), keys=None):
     """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생.
     `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다.
     `judged`(이번에 판단한 표기 — B181 ①)는 그 표기의 행마다 `meta.coord_judge {표기: 답 꼴}`로 남는다(대장의 곳 · 보류 큐의 후보)."""
     out = []
     for i, (p, ref) in enumerate(zip(pieces, refs)):
-        r = dict(p)
-        if ref and (judged or {}).get(ref):
-            r["meta"] = {**(r.get("meta") or {}), "coord_judge": {ref: judged[ref]}}
-        if ref and ref in unjudged and not memo.get(ref):
+        r, key = dict(p), (keys or [])[i] if keys else (ref, None)
+        if ref and (judged or {}).get(key):
+            r["meta"] = {**(r.get("meta") or {}), "coord_judge": {ref: judged[key]}}
+        if ref and key in unjudged and not memo.get(key):
             r["meta"] = {**(r.get("meta") or {}), "coord_unjudged": [ref]}
         # **조각 공통 층을 세운다**(문서 2 §2.2 계약 ①) — 모든 record/chunk가
         # `source_locator`·`doc_type`·`process_group`·`process_ref`·
@@ -645,9 +623,9 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
             r[ref_field] = learn[ref]
             node = idx[learn[ref]]
             r.setdefault("meta", {}).update(coord_tag_source="learned", coord_tag_from=ref)
-        if ref and node is None and memo.get(ref):
-            r[ref_field] = memo[ref]
-            node = idx[memo[ref]]
+        if ref and node is None and memo.get(key):
+            r[ref_field] = memo[key]
+            node = idx[memo[key]]
             r.setdefault("meta", {}).update(coord_tag_source="live", coord_tag_from=ref)
         if ref and node is None:
             r[ref_field] = ref                      # 그대로 둔다 — orphan_anchor는 인입 몫
