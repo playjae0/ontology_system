@@ -186,8 +186,8 @@ try:
         "choices": [{"message": {"content": "요약"}}]}
     gateway.require = lambda pt: {"url": "https://x", "model": "m", "key": "k",
                               "timeout": 5, "retry": 0}
-    points.summarize_image("R1", image=b"\x89PNG\x00", mime="image/png",
-                        context="맥락", page=b"\x89PNGpage")
+    _png = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82'   # 진짜 1×1 PNG — 보내기 전 검사가 여는 그림
+    points.summarize_image("R1", image=_png, mime="image/png", context="맥락", page=_png + b"page")
     _parts = _sent["payload"]["messages"][-1]["content"]
     _imgs = [p for p in _parts if p.get("type") == "image_url"]
     show("chat() 멀티모달 — content가 리스트이고 image_url이 base64 data URI다",

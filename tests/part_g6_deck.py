@@ -127,8 +127,9 @@ with _quiet():
     RUN.cmd_bootstrap([])
 _register()
 _keep = (render.capture_path, render.render_pages)
+_PNG = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82'   # 진짜 1×1 PNG — 보내기 전 검사가 여는 그림(뒤에 붙인 바이트로 쪽마다 다르게)
 render.capture_path = lambda path=None, probe=False: (True, "시험", None)      # 기대 변경(B128 ① — 판정 한 자리의 이름 · 답 꼴)
-render.render_pages = lambda path: {n: b"\x89PNG" + str(n).encode() for n in range(1, 6)}   # 보이는 슬라이드 5장의 가짜 렌더
+render.render_pages = lambda path: {n: _PNG + str(n).encode() for n in range(1, 6)}   # 보이는 슬라이드 5장의 가짜 렌더
 struct_map.invalidate(DID)
 RES, ENV, PCALLS = _parse()
 NOTES, CALLS1 = _run(ENV)
@@ -159,6 +160,7 @@ _ck = json.loads(EX.checkpoint_path(DID).read_text(encoding="utf-8"))
 _cap = {c["chunk_id"]: c.get("capture") for c in _ck["candidates"] if c.get("capture")}
 _pre = next((n for n in NOTES if n.get("단계") == "추출예고"), {})
 EX.invalidate(DID)                                   # 렌더가 없는 환경 — 같은 문서를 다시 뽑는다
+__import__("shutil").rmtree(__import__("core.paths").paths.captures(DID), ignore_errors=True)   # 보관분도 없는 환경(진짜 PNG면 보관된다)
 EU._PAGES.clear()
 render.capture_path = lambda path=None, probe=False: (False, "없음", "soffice 없음")
 _n2, _c2 = _run(ENV)
@@ -359,7 +361,7 @@ import builtins as _bi                                    # noqa: E402
 _open0 = _bi.open
 _bi.open = lambda f, *a, **k: (_opened.append(str(f)), _open0(f, *a, **k))[1]
 render.capture_path = lambda path=None, probe=False: (True, "시험", None)
-render.render_pages = lambda path: (_rendered.append(str(path)), {n: b"\x89PNG" for n in range(1, 6)})[1]
+render.render_pages = lambda path: (_rendered.append(str(path)), {n: _PNG for n in range(1, 6)})[1]
 EU._PAGES.clear()
 EX.invalidate(DID)
 try:
