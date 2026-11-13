@@ -719,10 +719,7 @@ def _payload(cfg, messages, *, model=None, json_schema=None, temperature=UNSET, 
         bad = strict_issues(json_schema)
         if bad:
             raise SchemaError(point, bad)
-        out["response_format"] = {"type": "json_schema",
-                                  "json_schema": {"name": "out",
-                                                  "schema": json_schema,
-                                                  "strict": True}}
+        out["response_format"] = {"type": "json_schema", "json_schema": {"name": "out", "schema": json_schema, "strict": True}}
     return out
 
 
@@ -742,13 +739,8 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=UN
     결함(개정대장 §AJ)은 여기가 문자열만 받아서가 아니라 부르는 쪽이 그림을
     안 실어서였다: 통로는 여기에 두고 무엇을 실을지는 지점이 정한다.
 
-    `json_schema`를 주면 구조화 출력을 요청하고 **파싱까지 여기서 한다** — 파싱을
-    호출부에 두면 지점마다 다른 관용도로 깨진 JSON을 다루게 되고, mock 갈래와
-    반환 계약이 갈린다(§7.6-B-3: 소비부는 어느 쪽인지 몰라야 한다).
-
-    재시도는 **전송·파싱 실패에만** 한다. 모델이 규칙을 어긴 내용(목록 밖 카테고리
-    등)은 재시도가 아니라 하류의 게이트·큐가 처리한다 — 파이프라인을 LLM이
-    조종하지 않는다(§7.3-4).
+    `json_schema`를 주면 구조화 출력을 요청하고 **파싱까지 여기서 한다**(지점마다 다른 관용도 0 · §7.6-B-3).
+    재시도는 **전송·파싱 실패에만** — 규칙을 어긴 내용은 하류의 게이트·큐가 처리한다(§7.3-4).
     """
     cfg = require(point)
     payload = _payload(cfg, messages, model=model, json_schema=json_schema,
@@ -781,6 +773,14 @@ def chat(messages, *, model=None, json_schema=None, point="chat", temperature=UN
     reason = f"{point_label(point)} — 재시도 소진: {type(last).__name__}: {last}"
     log.explicit_fail(_LOG, f"core.llm[{point}]", reason)
     raise RuntimeError(reason)
+
+
+def ask(point, prompt_name, data, schema, *, mock=None):
+    """**지시문 + JSON 입력 → 구조화 답** 한 자리(골격 칸 판단 · 사람 말 · 동의어 검토) — mock이면 `mock()`."""
+    if mock is not None and use_mock():
+        return mock()
+    return chat([{"role": "system", "content": prompt(prompt_name)},
+                 {"role": "user", "content": json.dumps(data, ensure_ascii=False)}], json_schema=schema, point=point)
 
 
 # 1×1 투명 PNG — `llm-check` ⑦의 왕복 시험에만 쓴다(가장 작은 실제 이미지).

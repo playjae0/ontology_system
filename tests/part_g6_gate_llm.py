@@ -158,6 +158,14 @@ _n2, _out2 = _go(_e2, ["k"])
 show("B202 ⓔ 줄이 하나면 번호 생략 — `k` 단독 = `k 1`(잠정 「새로」 기록 · 처분 칸 ✓ 새로)",
      PH.decided(PH.decisions(), "열 압착부", "패키징") == PH.SEEDED and "✓ 새로(잠정)" in _out2, "")
 
+_o3 = _ops()
+_k3 = []
+_n3, _out3 = _go(_doc("B202U", ["프레스 지그"]), ["이건 조립 아래야", ""], keep=_k3)
+_ru = [r["detail"] for r in oplog.read()[_o3:] if r.get("op") == PH.OP_REREAD]
+show("B202 ⓒ′ 말 「이건 조립 아래야」 → 해석 고침 위 공정 패키징 → 조립 · 그 자리로 다시 판단(조립 아래 골격 목록) · Enter → 기록 한 줄(위 공정)",
+     len(_k3) == 1 and _k3[0]["up_name"] == "조립" and _k3[0]["skeleton"] == GJ.listing("조립") and (_k3[0]["llm"] or {}).get("verdict")
+     and [(d["surface"], d["parent"], d["up"]) for d in _ru] == [("프레스 지그", "패키징", "조립")], f"기록 {_ru}")
+
 # ⓗ 청크 목차 라벨 200자 → 132칸 안 앞 · 끝 · 가운데 … · 추출 진행 표에 「붙을 노드」(청크 목차의 좌표와 같은 값)
 _lab = "앞머리" + "가" * 194 + "끝꼬리"
 _tl = IS.toc_lines({"목차": [(1, _lab, "패키징", "부름", 10)]})[1]

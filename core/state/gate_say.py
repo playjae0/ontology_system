@@ -14,7 +14,6 @@
 """
 from __future__ import annotations
 
-import json
 
 PROMPT, TAG = "gate_say", "gate_say"
 LINK, REREAD, UNKNOWN = "처분", "해석", "모름"
@@ -67,23 +66,13 @@ def _mock(text):
     from core.llm import gateway
     from core.state import fixtures
     gateway.mock(TAG, text)
-    p = fixtures.ROOT_DIR / "gate_say.json"
-    try:
-        book = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
-    except Exception:                                    # noqa: BLE001 — 깨진 창작 답 — 없는 것
-        book = {}
-    return book.get(text.strip()) or {"kind": UNKNOWN, "confidence": 0.0, "why": "mock — 창작 답 없음"}
+    return fixtures.answers("gate_say").get(text.strip()) or {"kind": UNKNOWN, "confidence": 0.0, "why": "mock — 창작 답 없음"}
 
 
 def _ask(text, row, cats, up_list):
     from core.llm import gateway
     CALLS["말 해석"] += 1
-    if gateway.use_mock():
-        return _mock(text)
-    gateway.require(TAG)
-    return gateway.chat([{"role": "system", "content": gateway.prompt(PROMPT)},
-                         {"role": "user", "content": json.dumps(payload(text, row, cats, up_list), ensure_ascii=False)}],
-                        json_schema=SCHEMA, point=TAG)
+    return gateway.ask(TAG, PROMPT, payload(text, row, cats, up_list), SCHEMA, mock=lambda: _mock(text))
 
 
 def read(text, row):

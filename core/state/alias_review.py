@@ -20,8 +20,7 @@ from __future__ import annotations
 import json
 import math
 
-from core.state import alias_audit as AA, store, surface_book as SB
-from core.state.ids import norm
+from core.state import alias_audit as AA, alias_book as AB, store, surface_book as SB
 
 PROMPT, TAG = "alias_review", "alias_review"
 BATCH = 50
@@ -40,9 +39,6 @@ SCHEMA = {"type": "object", "properties": {"answers": {"type": "array", "items":
 PROGRESS = {"state": "idle", "done": 0, "total": 0, "batches": 0, "calls": 0}
 
 
-def key(surface, target):
-    t = target or {}
-    return (surface, t.get("layer"), t.get("category"), norm(t.get("canonical") or ""))
 
 
 class Review:
@@ -50,7 +46,7 @@ class Review:
 
     def __init__(self, rows=None):
         self.rows = list(rows or [])
-        self.idx = {key(r["surface"], r.get("target")): r for r in self.rows}
+        self.idx = {AB.pair_key(r["surface"], r.get("target")): r for r in self.rows}
         self.dirty = False
 
     @classmethod
@@ -77,19 +73,19 @@ class Review:
 
     def retarget(self, old, new, *, again=False):
         """대상 이름이 바뀌었다(같은 노드) — 열쇠가 따라간다 · `again`(병합)이면 판정 · 처분을 걷고 「다시」. 돌려주는 것은 옮긴 수."""
-        ko = (old.get("layer"), old.get("category"), norm(old.get("canonical") or ""))
+        ko = AB.target_key(old)
         moved = 0
         for r in list(self.rows):
             t = r.get("target") or {}
-            if (t.get("layer"), t.get("category"), norm(t.get("canonical") or "")) != ko:
+            if AB.target_key(t) != ko:
                 continue
-            del self.idx[key(r["surface"], t)]
+            del self.idx[AB.pair_key(r["surface"], t)]
             r["target"] = {**t, **{k: new.get(k) for k in ("layer", "canonical", "category")}}
             if again:
                 for c in ("verdict", "why", "suggest", "human"):
                     r.pop(c, None)
                 r["state"] = AGAIN
-            self.idx[key(r["surface"], r["target"])] = r
+            self.idx[AB.pair_key(r["surface"], r["target"])] = r
             moved += 1
         self.dirty = self.dirty or bool(moved)
         return moved
@@ -97,30 +93,23 @@ class Review:
 
 # ---------------------------------------------------------------- 지금 짝 ↔ 판정 목록
 def _where(p):
-    from core.state.bootstrap import coord_layer
-    try:
-        lay = coord_layer()
-    except Exception:                                       # noqa: BLE001 — 좌표 층 없는 루트
-        lay = None
-    if p.get("kind") == CANDIDATE or p.get("skeleton"):
-        return SB.SKELETON if p.get("layer") == lay else SB.CLOSED
-    return SB.ENTITY
+    return SB.place(p.get("kind") == CANDIDATE or p.get("skeleton"), p.get("layer"))
 
 
-def items(ps=None, pend=None):
+def items(ps=None, pend=None, w=None):
     """지금 점검 대상 — 짝(`alias_audit.pairs`) + 보류 표기(`alias_audit.pending` — 후보) · 항목마다 `k`(판정 목록 열쇠)."""
     from core.state.world import World
-    w = World()
+    w = w or World()
     ps = AA.pairs(w) if ps is None else ps
     pend = AA.pending() if pend is None else pend
     out = []
     for p in ps:
         n = w.get(p["node_id"]) or {}
         t = {"layer": p["layer"], "canonical": p["canonical"], "category": p["category"]}
-        out.append({**p, "kind": PAIR, "target": t, "k": key(p["surface"], t), "skeleton": n.get("status") == "seed"})
+        out.append({**p, "kind": PAIR, "target": t, "k": AB.pair_key(p["surface"], t), "skeleton": n.get("status") == "seed"})
     for e in pend:
         t = {"layer": e["layer"], "canonical": None, "category": e["category"]}
-        out.append({**e, "kind": CANDIDATE, "target": t, "k": key(e["surface"], t)})
+        out.append({**e, "kind": CANDIDATE, "target": t, "k": AB.pair_key(e["surface"], t)})
     return out
 
 
@@ -129,7 +118,7 @@ def sync(rv, its):
     now = {it["k"] for it in its}
     closed = 0
     for r in rv.rows:
-        k = key(r["surface"], r.get("target"))
+        k = AB.pair_key(r["surface"], r.get("target"))
         if k not in now and r.get("state") != GONE:
             r["state"] = GONE
             closed += 1
@@ -154,17 +143,21 @@ def targets(rv, its):
     return [it for it in its if not asked(rv.get(it["k"]))]
 
 
-def unreviewed_count():
+def state():
+    """**점검 상태 한 자리**(bootstrap 끝 줄 · 뷰어 · `ops alias-audit` · 배경 검토) — 그래프를 한 번 연다 · 쓰기 0.
+    `{pairs, items, review, targets, counts}`."""
+    from core.state.world import World
+    w = World()
+    ps = AA.pairs(w)
+    its = items(ps, w=w)
     rv = Review.open()
-    return len(targets(rv, items()))
+    tg = targets(rv, its)
+    return {"pairs": ps, "items": its, "review": rv, "targets": tg, "counts": AA.counts(ps, len(tg))}
 
 
 def summary_line():
     """bootstrap 끝 한 줄(`alias_audit.line`) — 짝 · 보류 표기를 지금 세고 판정 목록과 맞춘다(쓰기 0)."""
-    from core.state.world import World
-    ps = AA.pairs(World())
-    its = items(ps)
-    return AA.line(AA.counts(ps, len(targets(Review.open(), its))))
+    return AA.line(state()["counts"])
 
 
 # ---------------------------------------------------------------- LLM 입력 · 미리보기
@@ -200,22 +193,12 @@ def preview_line(pv):
 
 
 # ---------------------------------------------------------------- 묻기 (실호출 · mock)
-def _mock_book():
-    from core.state import fixtures
-    p = fixtures.ROOT_DIR / "alias_review.json"
-    if not p.is_file():
-        return {}
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:                                       # noqa: BLE001 — 깨진 창작 답 — 전부 맞음
-        return {}
-
-
 def _mock(batch):
     """mock — 픽스처의 창작 답(`{"틀림": [{표기, canonical, 까닭, 제안}], "애매": [...], "후보": [{표기, 제안, 까닭}]}`) · 그 밖은 맞음."""
     from core.llm import gateway
+    from core.state import fixtures
     gateway.mock(TAG, f"{len(batch)}짝")
-    book = _mock_book()
+    book = fixtures.answers("alias_review")
     out = []
     for i, it in enumerate(batch):
         hit = None
@@ -235,22 +218,17 @@ def _mock(batch):
 
 def _ask(batch):
     from core.llm import gateway
-    if gateway.use_mock():
-        return _mock(batch), None
-    gateway.require(TAG)
-    out = gateway.chat([{"role": "system", "content": gateway.prompt(PROMPT)},
-                        {"role": "user", "content": json.dumps([payload(i, it) for i, it in enumerate(batch)],
-                                                               ensure_ascii=False)}],
-                       json_schema=SCHEMA, point=TAG)
     from core.llm import points
-    return list(out.get("answers") or []), points.chat_model()
+    out = gateway.ask(TAG, PROMPT, [payload(i, it) for i, it in enumerate(batch)], SCHEMA,
+                      mock=lambda: {"answers": _mock(batch)})
+    return list(out.get("answers") or []), None if gateway.use_mock() else points.chat_model()
 
 
-def run(tg=None, *, on_batch=None):
+def run(tg=None, *, its=None, on_batch=None):
     """LLM 검토 — 묶음마다 묻고 판정 목록에 적는다(묶음마다 저장 — 끊겨도 앞 묶음은 남는다). `{asked, wrong, unsure, right,
     closed, calls}`. 진행은 `PROGRESS`(뷰어 폴링)."""
     rv = Review.open()
-    its = items()
+    its = items() if its is None else its
     closed = sync(rv, its)
     tg = targets(rv, its) if tg is None else tg
     bs = batches(tg)

@@ -380,16 +380,47 @@ show("B200 ⓪ 보내기 전 막음 — 엄격 규칙을 어긴 schema는 `_payl
      "required 밖 칸)",
      _blk is not None and _blk.point == "시험" and any(i.startswith("() additionalProperties") for i in _blk.issues)
      and any("required 밖" in i for i in _blk.issues), str(_blk))
-import strict_probe as _SP                                                    # noqa: E402
-_got = _SP.run()
-_sites = sorted({c["site"].rsplit(":", 1)[0] for c in _got["calls"]})
-_viol = [(c["site"], _gw0.strict_issues(c["schema"])) for c in _got["calls"] if c["schema"] and _gw0.strict_issues(c["schema"])]
-show("B200 ⓪ 실호출 길 자동 수집(mock 끔 · `_post`만) — CP01 · PFMEA01 · RFQ01 산문 --step(골격 단 판단 · 사람 말) · 시트 역할 · "
-     "ops alias-audit --llm · 뷰어 LLM 검토에서 잡힌 response_format.json_schema 전부가 엄격 규칙 위반 0 · 막음 0",
-     not _viol and not _got["errors"] and all(c["strict"] for c in _got["calls"] if c["schema"])
-     and {"core/state/gate_judge.py", "core/state/gate_say.py", "core/state/alias_review.py", "core/build/outline.py",
-          "core/build/extract.py", "core/matcher.py", "core/llm/points.py"} <= set(_sites),
-     f"자리 {_sites} · 위반 {_viol[:3]} · 막음 {_got['errors'][:3]}")
+import ast as _ast                                                             # noqa: E402
+import importlib as _il                                                       # noqa: E402
+
+
+def _schemas_of(mod, tree, expr):
+    """그 자리의 schema 식이 가리키는 dict 전부 — 식 그대로 · 식 안의 이름 · 속성(부르는 함수면 같은 모듈 함수 몸의 이름도) · 지역 리터럴."""
+    subs = [expr]
+    if isinstance(expr, _ast.Call) and isinstance(expr.func, _ast.Name):
+        subs += [d for d in tree.body if isinstance(d, _ast.FunctionDef) and d.name == expr.func.id]
+    out = []
+    for n in [expr] * isinstance(expr, _ast.Call) + [x for sub in subs for x in _ast.walk(sub) if isinstance(x, (_ast.Name, _ast.Attribute))]:
+        try:
+            v = eval(_ast.unparse(n), vars(mod))                           # noqa: S307 — 레포 모듈의 상수 읽기
+        except Exception:                                                  # noqa: BLE001 — 모듈 밖 이름은 지역 리터럴로
+            v = next((_ast.literal_eval(a.value) for a in _ast.walk(tree) if isinstance(a, _ast.Assign)
+                      and any(isinstance(t, _ast.Name) and t.id == getattr(n, "id", None) for t in a.targets)
+                      and isinstance(a.value, _ast.Dict)), None)
+        if isinstance(v, dict) and "properties" in v and all(v is not o for o in out):
+            out.append(v)
+    return out
+
+
+_sites, _viol, _lost = set(), [], []
+for _f in sorted(p for d in ("core", "cli", "parser") for p in (ROOT / d).rglob("*.py") if p.name != "gateway.py"):
+    _tree = _ast.parse(_f.read_text(encoding="utf-8"))
+    _here = [(c.lineno, k.value) for c in _ast.walk(_tree) if isinstance(c, _ast.Call) for k in c.keywords if k.arg == "json_schema"]
+    _here += [(c.lineno, c.args[3]) for c in _ast.walk(_tree) if isinstance(c, _ast.Call) and len(c.args) >= 4
+              and isinstance(c.func, _ast.Attribute) and c.func.attr == "ask" and _ast.unparse(c.func.value) == "gateway"]
+    if not _here:
+        continue
+    _mod = _il.import_module(".".join(_f.relative_to(ROOT).with_suffix("").parts))
+    for _ln, _e in _here:
+        _site, _got = f"{_f.relative_to(ROOT).as_posix()}:{_ln}", _schemas_of(_mod, _tree, _e)
+        _sites.add(_site.rsplit(":", 1)[0])
+        _lost += [] if _got else [_site]
+        _viol += [(_site, i) for sc in _got for i in _gw0.strict_issues(sc)]
+show("B200 ⓪ 구조화 출력 자리 정적 수집(`json_schema=` · `gateway.ask` — core · cli · parser 전부) — 자리마다 schema를 찾고 "
+     "엄격 규칙 위반 0(`gateway.strict_issues` · 고침 — 실호출 길 수집 도우미를 걷었다)",
+     not _viol and not _lost and {"core/state/gate_judge.py", "core/state/gate_say.py", "core/state/alias_review.py",
+                                  "core/build/extract.py", "cli/register/draft.py", "core/llm/check.py"} <= _sites,
+     f"자리 {len(_sites)} · 위반 {_viol[:3]} · schema 못 찾음 {_lost}")
 
 print("\n" + "=" * 62)
 print(f"전체 결과: {'PASS — 게이트웨이 골조 성립' if not _fail else f'FAIL {_fail}건'}")

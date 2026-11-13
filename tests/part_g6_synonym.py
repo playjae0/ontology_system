@@ -14,7 +14,7 @@
      일치)으로 맞는다 · 판이 바뀌어 null은 다시 묻는다
   ⓒ 새 공정 후보: null 표기가 행·문서와 함께 보이고(`show learned`) · 다음 줄대로 골격에 더하면 다음 인입
      마무리에서 붙는다
-  ⓓ 별칭 출처: `show node`가 LLM 매칭 · 사람(merge) · 골격 · 좌표 학습을 가른다
+  ⓓ 별칭 출처: `show node`가 LLM 매칭 · 사람(merge — 분류는 표기 대장과 같은 함수) · 골격 · 좌표 학습을 가른다
   ⓔ 일괄 검토: 비대화형은 계획만(쓰기 0) · 합침·별개·건너뜀이 `ops` 함수로 · 합침 뒤 끝점 없는 엣지 0
   ⓕ 극성 values 경고 — 묶은 층과 집의 values가 다르다 · 선언 층과 집의 축이 다르다(층 둘) · 맞추면 0
 """
@@ -263,7 +263,7 @@ TG.tag([{"source_locator": "x", "process_ref": LEARN}], layer=coord_layer(), pic
 _sk = _show_node("노칭")
 _ok_d.append(("골격", coord_layer(), "← 골격" in _sk and f"{LEARN}  ← 좌표 학습(DS" in _sk,
               " / ".join(l.strip() for l in _sk.splitlines() if "좌표 학습" in l)[:120]))
-show("ⓓ 별칭 출처 — show node가 LLM 매칭(확신·문서) · 사람(merge) · 골격 · 좌표 학습을 가른다 (표·산문 × 층 둘 + 골격)",
+show("ⓓ 별칭 출처 — show node가 LLM 매칭(확신·문서) · 사람(merge — 분류는 대장과 같은 함수) · 골격 · 좌표 학습을 가른다 (표·산문 × 층 둘 + 골격)",
      all(o for _f, _l, o, _d in _ok_d), " ‖ ".join(f"{f}×{l} {d}" for f, l, _o, d in _ok_d))
 
 # ── B200 동의어 점검 — 규칙 점검 · LLM 검토(mock 창작 답) · 승인 → 반영 · 골격에서 빠진 seed 별칭 걷기 · 공유 별칭 보류 문면
@@ -323,11 +323,11 @@ _k0 = len(AR.targets(AR.Review.open(), AR.items()))
 _r1 = AR.run()
 _r2 = AR.run()
 _rows = AR.Review.open()
-_kept_asked = (_rows.get(AR.key("TW", {"layer": "process", "canonical": "탭용접", "category": "Process"})) or {}).get("verdict")
+_kept_asked = (_rows.get(AB.pair_key("TW", {"layer": "process", "canonical": "탭용접", "category": "Process"})) or {}).get("verdict")
 _new = _ent["canonical"] + " B200"
 ops.rename("process", _ent["id"], _new, "B200시험")
 _rv = AR.Review.open()
-_follow = _rv.get(AR.key("B200 사람 표기", {"layer": "process", "canonical": _new, "category": "Property"}))
+_follow = _rv.get(AB.pair_key("B200 사람 표기", {"layer": "process", "canonical": _new, "category": "Property"}))
 show("B200 ⓒ LLM 검토(mock) — 첫 실행 짝 k 판정(유지 짝 제외) · 둘째 실행 물음 0 · 호출 0 · 개명 뒤 열쇠가 따라간다(판정 그대로)",
      _r1["asked"] == _k0 and _r1["wrong"] == 1 and _r1["unsure"] >= 1 and _kept_asked is None
      and _r2["asked"] == 0 and _r2["calls"] == 0 and bool(_follow and _follow.get("verdict")),
@@ -363,9 +363,13 @@ _a3 = AP.approve([{"surface": "TW", "target": {"layer": "process", "canonical": 
                    "kind": AR.PAIR, "disposition": AP.KEEP},
                   {"surface": "탭 용접", "target": {"layer": "process", "canonical": "탭용접", "category": "Process"},
                    "kind": AR.PAIR, "disposition": AP.KEEP}], "B200시험", made=_m2)
+_tw_t = {"layer": "process", "canonical": "탭용접", "category": "Process"}
+_w_ap = (AR.Review.open().get(AB.pair_key("탭 용접", _tw_t)) or {}).get("where")   # 승인 길이 적은 「곳」
+_sbc = SB.counts()                                     # 판정 목록이 찬 때 — 합 · 지위는 표기 갈래만
 SB.write_review([])                                    # 판정 목록을 비운다 — 재생이 사람 처분을 다시 적는가
 _rp = OL.replay()
-_back = AR.Review.open().get(AR.key("TW", {"layer": "process", "canonical": "탭용접", "category": "Process"})) or {}
+_back = AR.Review.open().get(AB.pair_key("TW", _tw_t)) or {}
+_back2 = AR.Review.open().get(AB.pair_key("탭 용접", _tw_t)) or {}
 show("B200 ⓓ 승인 — 대장 지움 → 대장 거부 · seed 지움 → skeleton.json · 노드 · 사전에서 빠짐 · 후보 받기 → 다음 마무리에 사전 연결 · "
      "행위자 없음 거부 · 손으로 고친 골격 → 「골격이 바뀜」 · ops replay가 유지를 다시 적는다",
      _bk.get("status") == AB.REJECTED and "anode 탭용접" not in _sk["ALIASES"].get("탭용접", [])
@@ -374,6 +378,13 @@ show("B200 ⓓ 승인 — 대장 지움 → 대장 거부 · seed 지움 → ske
      and (_back.get("human") or {}).get("disposition") == AP.KEEP,
      f"{_a1['line']} · 후보 {(_cand or {}).get('surface')} → {(_fe or {}).get('canonical')} {_took} · 낡은 승인 {_a3['line']} · "
      f"재생 유지 {(_back.get('human') or {}).get('disposition')}")
+
+show("B200 ⓓ′ 재생이 적은 「유지」의 곳 = 승인 길의 곳(한 함수 `surface_book.place` · 고침 — 옛 재생은 곳 없음) · "
+     "표기 대장 합 = 표기 갈래 셋의 합(별칭 검토 갈래는 합 · 지위 밖 · 고침)",
+     _w_ap == SB.SKELETON and _back.get("where") == _w_ap and _back2.get("where") == _w_ap
+     and _sbc["갈래"][SB.REVIEW] > 0 and _sbc["합"] == sum(_sbc["갈래"][k] for k in (SB.LEARN, SB.MISS, SB.ALIAS))
+     and _sbc[SB.HUMAN] + _sbc[SB.MACHINE] == _sbc["합"],
+     f"승인 {_w_ap} · 재생 {_back.get('where')} · {_back2.get('where')} · 대장 {_sbc}")
 
 # ⓕ 공유 별칭 보류 문면 — 범위 밖 · 범위 없음
 # (같은 문서 · 같은 표기는 큐 한 항목이라 — 행 둘을 문서 둘로)

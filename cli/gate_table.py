@@ -30,6 +30,23 @@ _NUM = re.compile(r"^(\d+)\s*(.*)$")
 #: 글쇠 먼저 꼴(`m 1 사이드실링` · `p 1` · `d 1 사유`) — 지금 물음과 같은 꼴
 _KEYNUM = re.compile(r"^(\S)\s+(\d+)(?:\s+(.*))?$")
 _KEY = re.compile(r"^(\S)(?:\s+(.*))?$")
+_KEYS = ("m", "k", "d", "u", "a", "p", "r")
+
+
+def _parse(text, n):
+    """**입력 한 줄 → (번호, 글쇠 | None, 나머지)** 한 자리 — 글쇠 + 번호 먼저(`m 1 …` · `1 m …`) · 아니면 말(`1 <말>`) ·
+    줄이 하나면 번호 생략 · 번호를 못 정하면 None."""
+    from cli.provisional_ask import key_of
+    m = _KEYNUM.match(text)
+    if m and key_of(m.group(1)) in _KEYS:
+        return int(m.group(2)), key_of(m.group(1)), (m.group(3) or "").strip()
+    m = _NUM.match(text)
+    if not m and n != 1:
+        return None
+    i, rest = (int(m.group(1)), m.group(2).strip()) if m else (1, text)
+    km = _KEY.match(rest)
+    k = key_of(km.group(1)) if km else None
+    return (i, k, (km.group(2) or "").strip()) if k in _KEYS else (i, None, rest)
 
 
 def _cut(s, n):
@@ -188,7 +205,6 @@ def _say(i, r, text, who, ask):
 def loop(rows, who, *, title, ask=None):
     """**한 고리** — LLM 판단 → 표 → 번호 + 말 또는 글쇠 → (말이면 해석 · 확인) → 처분 → 표 다시 · `True` 계속 · `False` 멈춤."""
     from core.state import gate_judge as GJ
-    from cli.provisional_ask import key_of
     from core.state.gate_say import allowed
     GJ.judge(rows, live=True)
     nxt = None
@@ -208,16 +224,11 @@ def loop(rows, who, *, title, ask=None):
             for x in (r or {}).get("skeleton") or []:
                 print(f"     {x['no']}. {x['name']} — {x['path']} · 단 {x['tier'] or '—'}")
             continue
-        m, km0 = _NUM.match(text), _KEYNUM.match(text)
-        if km0 and key_of(km0.group(1)) in ("m", "k", "d", "u", "a", "p", "r"):
-            i, rest = int(km0.group(2)), f"{km0.group(1)} {km0.group(3) or ''}".strip()
-        elif m:
-            i, rest = int(m.group(1)), m.group(2).strip()
-        elif len(rows) == 1:
-            i, rest = 1, text
-        else:
+        got = _parse(text, len(rows))
+        if got is None:
             print("   번호를 먼저 — 예: 1 사이드 실링이랑 같은 거 · 1 k")
             continue
+        i, k, rest = got
         if not 1 <= i <= len(rows):
             print(f"   {i}번이 목록에 없다")
             continue
@@ -225,14 +236,11 @@ def loop(rows, who, *, title, ask=None):
         if r.get("done"):
             print(f"   {i}번은 이미 처분했다 — {r['done']}")
             continue
-        km = _KEY.match(rest)
-        k = key_of(km.group(1)) if km else None
-        if km and k in ("m", "k", "d", "u", "a", "p", "r"):
+        if k:
             if k not in allowed(r):
                 print(_reject(i, r, k))
-                nxt = None
-                continue
-            _apply(i, r, k, (km.group(2) or "").strip(), who)
+            else:
+                _apply(i, r, k, rest, who)
             continue
         if not rest:
             print(f"   {i}번에 할 말 또는 글쇠 — " + " · ".join(allowed(r)))

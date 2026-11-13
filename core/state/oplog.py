@@ -418,13 +418,16 @@ def _guess_pick(w, nm, d, a, dry):
 def _alias_keep(w, nm, d, a, dry):
     """동의어 점검 「유지」(B200 ④) — 판정 목록(별칭 검토 갈래)에 사람 처분을 다시 적는다(같은 열쇠 · 이미 있으면 그대로)."""
     from core.state import alias_review as AR
+    from core.state.alias_book import pair_key
     t, s = nm.get("node") or {}, d.get("surface")
     rv = AR.Review.open()
-    r = rv.get(AR.key(s, t))
+    r = rv.get(pair_key(s, t))
     if r is not None and (r.get("human") or {}).get("disposition") == AR.KEEP:
         return "already", f"'{s}' — 이미 유지"
     if not dry:
-        rv.put(AR.key(s, t), s, t, None, AR.PAIR, human={"disposition": AR.KEEP, "actor": a["actor"], "at": store._now()})
+        nid = _one(w, t)                                  # 곳은 승인 길과 같은 함수(`AR._where` — 골격 대상이면 골격 · 닫힌 분류)
+        where = AR._where({"kind": AR.PAIR, "layer": t.get("layer"), "skeleton": bool(nid) and w.get(nid).get("status") == "seed"})
+        rv.put(pair_key(s, t), s, t, where, AR.PAIR, human={"disposition": AR.KEEP, "actor": a["actor"], "at": store._now()})
         rv.save()
     return "done", f"'{s}' → '{t.get('canonical')}' 유지"
 
@@ -439,10 +442,8 @@ ALIAS_OPS = ("I6:alias", "alias:reject")
 
 
 def _alias_key(rec):
-    from core.state.ids import norm
-    node = (rec.get("names") or {}).get("node") or {}
-    return (node.get("layer"), node.get("category"), norm(node.get("canonical") or ""),
-            (rec.get("detail") or {}).get("surface"))
+    from core.state.alias_book import pair_key
+    return pair_key((rec.get("detail") or {}).get("surface"), (rec.get("names") or {}).get("node"))
 
 
 def replay(dry_run=False):

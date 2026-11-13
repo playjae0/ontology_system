@@ -51,8 +51,15 @@ def name(n):
     return {"layer": n.get("layer"), "canonical": n.get("canonical"), "category": n.get("category")}
 
 
-def _key(surface, t):
-    return (t.get("layer"), t.get("category"), norm(t.get("canonical") or ""), surface)
+def target_key(t):
+    """대상 이름의 열쇠 — (층, 카테고리, canonical 정규형) · 표기 대장 · 판정 목록 · 사람 판단 재생이 같이 쓴다."""
+    t = t or {}
+    return (t.get("layer"), t.get("category"), norm(t.get("canonical") or ""))
+
+
+def pair_key(surface, t):
+    """(표기, 대상) 열쇠 — 한 자리(대장 색인 · 판정 목록 `alias_review` · 재생 `oplog`)."""
+    return (surface, *target_key(t))
 
 
 def is_seed(alias):
@@ -93,7 +100,7 @@ class AliasBook:
 
     def __init__(self, data=None):
         self.rows = list((data or {}).get("entries") or [])
-        self._idx = {_key(r["surface"], r["target"]): r for r in self.rows}
+        self._idx = {pair_key(r["surface"], r["target"]): r for r in self.rows}
         self.dirty = False
         self._review = []                  # 대상 이름이 바뀐 것 — 저장 때 별칭 검토 갈래의 열쇠도 따라간다(B200 ②)
 
@@ -120,7 +127,7 @@ class AliasBook:
 
     # ------------------------------------------------------------ 조회
     def get(self, surface, target):
-        return self._idx.get(_key(surface, target))
+        return self._idx.get(pair_key(surface, target))
 
     def live(self, surface, node):
         r = self.get(surface, name(node))
@@ -130,13 +137,20 @@ class AliasBook:
         r = self.get(surface, name(node))
         return bool(r and r.get("status") == REJECTED)
 
-    def of(self, node):
-        """그 노드를 대상으로 하는 항목 전부."""
-        t = name(node)
-        k = (t["layer"], t["category"], norm(t["canonical"] or ""))
-        return [r for r in self.rows if _key(r["surface"], r["target"])[:3] == k]
-
     # ------------------------------------------------------------ 적기
+    def _new(self, node, alias, source, key, doc=None, count=1):
+        """새 항목 한 자리(적기 · 거부가 같이 — 항목 모양 하나) — 색인까지."""
+        s = alias["surface"]
+        now = store._now()
+        r = {"surface": s, "target": name(node), "id": node.get("id"), "source": source,
+             "skeleton": node.get("status") == "seed", "alias": {k: v for k, v in alias.items() if k != "surface"},
+             "key": key if key and norm(key) != norm(s) else None,
+             "docs": [doc] if doc else [], "first_doc": doc, "last_doc": doc,
+             "first_at": now, "last_at": now, "count": count, "status": LIVE}
+        self.rows.append(r)
+        self._idx[pair_key(s, r["target"])] = r
+        return r
+
     def note(self, node, alias, source, *, doc=None, key=None, bump=True, filled=False):
         """항목 하나를 적는다(쓰는 손 `attach` · 처음 채움이 부른다) — 돌려주는 것은 항목(적지 않으면 None)."""
         s = alias["surface"]
@@ -149,15 +163,9 @@ class AliasBook:
         if r is None:
             if source == "문서" and not skel:
                 return None
-            r = {"surface": s, "target": tgt, "id": node.get("id"), "source": source, "skeleton": skel,
-                 "alias": {k: v for k, v in alias.items() if k != "surface"},
-                 "key": key if key and norm(key) != norm(s) else None,
-                 "docs": [doc] if doc else [], "first_doc": doc, "last_doc": doc,
-                 "first_at": now, "last_at": now, "count": 1, "status": LIVE}
+            r = self._new(node, alias, source, key, doc)
             if filled:
                 r["filled"] = FILLED
-            self.rows.append(r)
-            self._idx[_key(s, tgt)] = r
             self.dirty = True
             return r
         if doc and doc not in r["docs"]:
@@ -183,17 +191,17 @@ class AliasBook:
     def retarget(self, old, new, *, surfaces=None, source=None):
         """대상 이름이 바뀌었다(같은 노드 — 개명 · 이관 · 병합 · 분리) — `old` 이름 항목을 `new`로. 겹치면 합친다
         (문서 · 횟수) · `source`를 주면 출처를 바꾸고 앞 출처 · 대상을 `via`에 남긴다. 돌려주는 것은 옮긴 수."""
-        k_old = _key("", old)[:3]
+        k_old = target_key(old)
         moved = 0
         for r in list(self.rows):
-            if _key(r["surface"], r["target"])[:3] != k_old or (surfaces is not None and r["surface"] not in surfaces):
+            if target_key(r["target"]) != k_old or (surfaces is not None and r["surface"] not in surfaces):
                 continue
-            del self._idx[_key(r["surface"], r["target"])]
+            del self._idx[pair_key(r["surface"], r["target"])]
             if source and source != r["source"]:
                 r.setdefault("via", []).append({"source": r["source"], "target": dict(r["target"])})
                 r["source"] = source
             r["target"] = dict(new)
-            dst = self._idx.get(_key(r["surface"], new))
+            dst = self._idx.get(pair_key(r["surface"], new))
             if dst is not None:                                # 같은 별칭이 이미 그 대상에 — 한 항목으로
                 for d in r["docs"]:
                     if d not in dst["docs"]:
@@ -201,7 +209,7 @@ class AliasBook:
                 dst["count"] += r["count"]
                 self.rows.remove(r)
             else:
-                self._idx[_key(r["surface"], new)] = r
+                self._idx[pair_key(r["surface"], new)] = r
             moved += 1
         if moved:
             self.dirty = True
@@ -213,16 +221,7 @@ class AliasBook:
         r = self.get(surface, name(node))
         if r is None:
             al = alias or {"surface": surface, "provenance": []}
-            src = source_of(al) or "문서"
-            now = store._now()
-            r = {"surface": surface, "target": name(node), "id": node.get("id"), "source": src,
-                 "skeleton": node.get("status") == "seed",
-                 "alias": {k: v for k, v in al.items() if k != "surface"},
-                 "key": key if key and norm(key) != norm(surface) else None,
-                 "docs": [], "first_doc": None, "last_doc": None, "first_at": now, "last_at": now,
-                 "count": 0, "status": LIVE}
-            self.rows.append(r)
-            self._idx[_key(surface, r["target"])] = r
+            r = self._new(node, {**al, "surface": surface}, source_of(al) or "문서", key, count=0)
         r["status"] = REJECTED
         r["rejected"] = {"actor": actor, "at": store._now(), "reason": reason}
         if key and norm(key) != norm(surface) and not r.get("key"):
@@ -347,9 +346,8 @@ def presence(book=None, world=None):
     have = {}
     for _lay, n in w.nodes():
         if is_live(n):
-            t = name(n)
-            have.setdefault((t["layer"], t["category"], norm(t["canonical"] or "")), set()).update(
+            have.setdefault(target_key(name(n)), set()).update(
                 a["surface"] for a in n.get("aliases") or [])
     live = [r for r in book.rows if r.get("status") == LIVE]
-    miss = [r for r in live if r["surface"] not in have.get(_key(r["surface"], r["target"])[:3], set())]
+    miss = [r for r in live if r["surface"] not in have.get(target_key(r["target"]), set())]
     return {"total": len(live), "present": len(live) - len(miss), "missing": miss}
