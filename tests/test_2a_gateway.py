@@ -435,6 +435,8 @@ for e in ("emf", "wmf"):
     subprocess.run(["soffice", "--headless", "--convert-to", e, "--outdir", str(d), str(d / "a.svg")], capture_output=True, stdin=subprocess.DEVNULL)
 src = {f: pil(f) for f in ("PNG", "JPEG", "GIF", "WEBP", "BMP", "TIFF")} | {e.upper(): (d / f"a.{e}").read_bytes() for e in ("emf", "wmf", "svg")}
 src["GARBAGE"] = b"\x00garbage" * 9
+src["EMZ"] = __import__("gzip").compress(src["EMF"]); src["BIG"] = (lambda b: (Image.new("RGB", (2400, 90)).save(b, "PNG"), b.getvalue())[1])(io.BytesIO())
+g = io.BytesIO(); Image.new("RGB", (8, 6)).save(g, "GIF", save_all=True, append_images=[Image.new("RGB", (8, 6), (9, 9, 9))]); src["ANIM"] = g.getvalue()
 sent = []
 gateway._post = lambda u, p, k, t: sent.append(p) or {"choices": [{"message": {"content": "요약"}, "finish_reason": "stop"}], "usage": {}}
 out = {}
@@ -450,9 +452,9 @@ with tempfile.TemporaryDirectory(prefix="img_home_") as _ih:
                               "ONTO_CONFIG": str(ROOT / "tests" / "fixtures" / "_no_such_llm_config.json")})
 _io = _json79.loads(next((x[4:] for x in _ir.stdout.splitlines() if x.startswith("IMG ")), "{}"))
 show("그림 형식(실호출 길 · 전송만 가로챔) — PNG · JPEG · GIF · WebP는 바이트 그대로 그 이름표 · BMP · TIFF · EMF · WMF · SVG는 PNG로 · "
-     "보낸 이름표 = 바이트 형식 · 못 여는 바이트는 그 그림만 빠지고 호출은 간다(화면 한 줄)",
+     "움직이는 GIF · 긴 변 상한 넘음 · EMZ(gzip)도 PNG로 · 보낸 이름표 = 바이트 형식 · 못 여는 바이트는 그 그림만 빠지고 호출은 간다(화면 한 줄)",
      all(_io.get(f) == [[f"image/{f.lower()}", f.lower(), True]] for f in ("PNG", "JPEG", "GIF", "WEBP"))
-     and all(_io.get(f) == [["image/png", "png", False]] for f in ("BMP", "TIFF", "EMF", "WMF", "SVG"))
+     and all(_io.get(f) == [["image/png", "png", False]] for f in ("BMP", "TIFF", "EMF", "WMF", "SVG", "EMZ", "BIG", "ANIM"))
      and _io.get("GARBAGE") == [] and "형식 ? — 보내지 않음" in _ir.stdout,
      f"{_io} {_ir.stderr.strip().splitlines()[-1:]}")
 
