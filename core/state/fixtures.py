@@ -45,6 +45,16 @@ EXTRACT_HINTS = ROOT_DIR / "extract_hints"
 
 
 
+def answers(name):
+    """창작 답 책 `<뿌리>/<name>.json`(mock 판정 · 판단 · 말 해석) — 없거나 깨졌으면 `{}`(창작 답 없음)."""
+    import json
+    p = ROOT_DIR / f"{name}.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+    except Exception:                                    # noqa: BLE001 — 깨진 창작 답 — 없는 것
+        return {}
+
+
 def dirs(*paths):
     """존재하는 디렉터리만 돌려준다 — **없는 것을 모듈로 로드하려다 죽지 않게.**"""
     return [p for p in paths if p.is_dir()]

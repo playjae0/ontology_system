@@ -3,5 +3,7 @@
   "사이드 실링이랑 같은 거": {"kind": "처분", "disposition": "같다", "target": "사이드 실링", "confidence": 0.95,
                               "why": "「…이랑 같은 거」 — 목록의 사이드 실링"},
   "이건 부품이야": {"kind": "해석", "field": "카테고리", "value": "Component", "confidence": 0.9,
-                    "why": "「부품」 — 카테고리 고침"}
+                    "why": "「부품」 — 카테고리 고침"},
+  "이건 조립 아래야": {"kind": "해석", "field": "위 공정", "value": "조립", "confidence": 0.9,
+                       "why": "「조립 아래」 — 위 공정 고침"}
 }

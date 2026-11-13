@@ -72,6 +72,13 @@ def _coord():
         return None, COORD_CATEGORY
 
 
+def place(skeleton, layer, lay=...):
+    """「곳」 한 자리 — 골격 대상이면 좌표 층은 골격 · 다른 층은 닫힌 분류 · 아니면 개체(대장 · 판정 목록 · 재생이 같이)."""
+    if not skeleton:
+        return ENTITY
+    return SKELETON if layer == (_coord()[0] if lay is ... else lay) else CLOSED
+
+
 def _learn_entries(view, coord):
     lay, cat = coord
     from parser.tagger import LEARN_SOURCE
@@ -84,8 +91,7 @@ def _learn_entries(view, coord):
 
 def _alias_entry(row, coord):
     t = row.get("target") or {}
-    where = (SKELETON if t.get("layer") == coord[0] else CLOSED) if row.get("skeleton") else ENTITY
-    return {"갈래": ALIAS, "지위": standing(row.get("source")), "곳": where, "표기": row["surface"], "대상": t,
+    return {"갈래": ALIAS, "지위": standing(row.get("source")), "곳": place(row.get("skeleton"), t.get("layer"), coord[0]), "표기": row["surface"], "대상": t,
             "출처": row.get("source"), "기록": {k: v for k, v in row.items() if k not in ("surface", "target")}}
 
 
@@ -150,11 +156,13 @@ def entries():
 
 
 def counts():
-    """`{합, 사람 보증, 기계 판단, 갈래: {좌표 학습, 목록 밖, 별칭}}`."""
-    es = entries()
+    """`{합, 사람 보증, 기계 판단, 갈래: {좌표 학습, 목록 밖, 별칭, 별칭 검토}}` — 합 · 지위는 표기 셋 갈래만(별칭 검토는 판정 목록 —
+    표기가 아니다 · 화면의 합 = 보이는 갈래의 합)."""
+    allx = entries()
+    es = [e for e in allx if e.get("갈래") != REVIEW]
     return {"합": len(es), HUMAN: sum(1 for e in es if e.get("지위") == HUMAN),
             MACHINE: sum(1 for e in es if e.get("지위") == MACHINE),
-            "갈래": {k: sum(1 for e in es if e.get("갈래") == k) for k in (LEARN, MISS, ALIAS, REVIEW)}}
+            "갈래": {k: sum(1 for e in allx if e.get("갈래") == k) for k in (LEARN, MISS, ALIAS, REVIEW)}}
 
 
 def legacy_paths():

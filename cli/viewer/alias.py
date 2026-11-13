@@ -35,17 +35,13 @@ def _row(it, rv):
 
 def aliases():
     """점검 화면의 묶음 — 짝 · 보류 표기를 지금 세고 판정 목록을 붙인다(쓰기 0)."""
-    from core.state.world import World
-    ps = AA.pairs(World())
-    its = AR.items(ps)
-    rv = AR.Review.open()
-    tg = AR.targets(rv, its)
+    st = AR.state()
+    its, rv, tg, c = st["items"], st["review"], st["targets"], st["counts"]
     rows = [_row(it, rv) for it in its]
     groups = {}
     for r in rows:
         if r["kind"] == AR.PAIR:
             groups.setdefault((r["path"], r["target"]["canonical"]), []).append(r)
-    c = AA.counts(ps, len(tg))
     pv = AR.preview(tg)
     return {"stamp": AP.stamp(), "counts": {**c, "pending": sum(1 for r in rows if r["kind"] == AR.CANDIDATE)},
             "line": AA.line(c), "preview": {**pv, "line": AR.preview_line(pv)},
@@ -61,13 +57,14 @@ def start_review():
     """LLM 검토를 배경으로 — `(코드, 몸)` · 진행 중이면 409."""
     if not BUSY.acquire(blocking=False):
         return 409, {"error": BUSY_TEXT}
-    tg = AR.targets(AR.Review.open(), AR.items())
+    st = AR.state()
+    tg = st["targets"]
     pv = AR.preview(tg)
     LAST["error"] = None
 
     def work():
         try:
-            LAST["review"] = AR.run(tg)
+            LAST["review"] = AR.run(tg, its=st["items"])
         except Exception as e:                              # noqa: BLE001 — 사유를 화면까지(조용히 비지 않는다)
             LAST["error"] = f"{type(e).__name__}: {e}"
         finally:

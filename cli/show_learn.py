@@ -15,16 +15,16 @@ from core.state import coord_learn, surface_book as SB
 
 
 def alias_source(a):
-    """별칭 하나의 **출처**(B101 ④) — 사람(`ops` · 사람이 친 merge) · 골격(seed) · LLM 매칭 · 문서."""
-    if a.get("by") == "LLM 매칭":
-        return f"LLM 매칭(확신 {a.get('confidence')} · {a.get('doc')})"
-    prov = [str(p) for p in (a.get("provenance") or [])]
-    op = next((p for p in prov if p.startswith("op:")), None)
-    if op:
-        return f"사람({op.split(':')[1]} · {op.split(':')[-1]})"
-    if any(p == "seed" or p.startswith("seed") for p in prov):
+    """별칭 하나의 **출처**(B101 ④ — 사람 · 골격 · LLM 매칭 · 문서) — 분류는 표기 대장과 같은 함수(`alias_book.source_of` — 마지막
+    연산) · 연산 출처(사람 · 개명 · 이관 · 병합 · 분리)는 「사람(연산 · 대상)」 · 여기는 꼬리만."""
+    from core.state import alias_book as AB
+    src = AB.source_of(a)
+    if src is None:
         return "골격"
-    return "문서 표기"
+    if src == "LLM 매칭":
+        return f"LLM 매칭(확신 {a.get('confidence')} · {a.get('doc')})"
+    op = next((p for p in reversed([str(x) for x in a.get("provenance") or []]) if p.startswith("op:")), None)
+    return f"사람({op.split(':')[1]} · {op.split(':')[-1]})" if op else "문서 표기"
 
 
 def node_alias_lines(n):
@@ -144,10 +144,10 @@ def cmd_aliases(args):
     nodes = {}
     for _l, n in w.nodes():
         if is_live(n):
-            nodes.setdefault(AB._key("", AB.name(n))[:3], n)
+            nodes.setdefault(AB.target_key(AB.name(n)), n)
     groups = {}
     for r in rows:
-        groups.setdefault(AB._key("", r["target"])[:3], []).append(r)
+        groups.setdefault(AB.target_key(r["target"]), []).append(r)
     if want is not None and src is None:              # 대상을 지목하면 대장 항목이 없어도 seed 별칭을 보인다
         for k, n in nodes.items():
             if _hit(AB.name(n), n["id"]):

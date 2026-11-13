@@ -105,7 +105,7 @@ def approve(decisions, actor, made=None):
     replant = set()
     for d in decisions:
         s, t, how = d.get("surface"), d.get("target") or {}, d.get("disposition")
-        k = AR.key(s, t)
+        k = AB.pair_key(s, t)
         it = its.get(k)
         if how not in DISPOSITIONS:
             out["refused"].append((s, f"처분 밖 — '{how}'"))

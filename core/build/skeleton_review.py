@@ -27,7 +27,7 @@ def _coord():
 
 
 class _Sk:
-    """좌표 층 골격의 조회 재료 — 부모 표 · 자식 · 행 수 · 자식 종류 수(쓰기 0)."""
+    """좌표 층 골격의 조회 재료 — 부모 표 · 자식 · 경로(쓰기 0)."""
 
     def __init__(self, g=None):
         from core.build.provisional import _parents
@@ -39,7 +39,6 @@ class _Sk:
                    if is_live(n) and n.get("category") == _coord() and is_skeleton(n)}
         self.concepts = set(self.sk)              # 후보는 골격 노드(극성은 골격을 가르지 않는다 — B198)
         self.by_name = {n["canonical"]: nid for nid, n in self.sk.items()}
-        self._kinds = None
 
     def kids(self, up):
         return [nid for nid in self.concepts if self.pm.get(nid) == up]
@@ -51,24 +50,8 @@ class _Sk:
             cur = self.pm.get(cur)
         return " › ".join((self.g.get(x) or {}).get("canonical", "?") for x in reversed(out))
 
-    def rows(self, nid):
-        return sum(1 for p in (self.g.get(nid) or {}).get("provenance") or [] if "#" in str(p))
-
-    def kinds(self, nid):
-        """그 노드를 이름 부모(`scope`)로 둔 산 노드의 카테고리 종류 수 — 층 전부."""
-        if self._kinds is None:
-            from core.state.bootstrap import open_graph
-            from router import discover
-            acc = {}
-            for lay in discover():
-                for n in open_graph(lay).nodes.values():
-                    if is_live(n) and n.get("scope"):
-                        acc.setdefault(n["scope"], set()).add(n.get("category"))
-            self._kinds = acc
-        return len(self._kinds.get((self.g.get(nid) or {}).get("canonical"), ()))
-
     def card(self, nid):
-        return {"name": self.g.get(nid)["canonical"], "path": self.path(nid), "rows": self.rows(nid), "kinds": self.kinds(nid)}
+        return {"name": self.g.get(nid)["canonical"], "path": self.path(nid)}
 
     def under(self, up):
         """그 노드의 아래(자신 제외) — 골격 노드 id 전부."""

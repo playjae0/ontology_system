@@ -192,16 +192,9 @@ def pairs(world=None, book=None, dic=None):
                     "siblings": siblings(w, nid, parents, kids)[:8],
                     "others": sorted(a["surface"] for a in n.get("aliases") or [] if a["surface"] != s)[:8],
                     "shared": shared, "overlap": overlap, "dict_miss": nid not in (entries.get(norm(s)) or []),
-                    **u, "dead": u["rows"] == 0 and not u["unknown"],
-                    "key": pair_key(s, AB.name(n))})
+                    **u, "dead": u["rows"] == 0 and not u["unknown"]})
     out.sort(key=lambda p: (p["path"], p["surface"]))
     return out
-
-
-def pair_key(surface, target):
-    """판정 목록의 열쇠 — (표기, 층, 카테고리, canonical)."""
-    t = target or {}
-    return (surface, t.get("layer"), t.get("category"), norm(t.get("canonical") or ""))
 
 
 # ---------------------------------------------------------------- 보류 표기 (별칭 후보)

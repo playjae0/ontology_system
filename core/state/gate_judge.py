@@ -114,11 +114,7 @@ def _mock(row, lst, hint):
     from core.llm import gateway
     from core.state import fixtures
     gateway.mock(TAG, str(row.get("surface")))
-    p = fixtures.ROOT_DIR / "gate_judge.json"
-    try:
-        book = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
-    except Exception:                                    # noqa: BLE001 — 깨진 창작 답 — 없는 것
-        book = {}
+    book = fixtures.answers("gate_judge")
     got = book.get(f"{row.get('surface')}@{hint}") if hint else None
     got = got or book.get(str(row.get("surface")))
     if got:
@@ -129,12 +125,7 @@ def _mock(row, lst, hint):
 
 def _ask(row, lst, hint):
     from core.llm import gateway
-    if gateway.use_mock():
-        return _mock(row, lst, hint)
-    gateway.require(TAG)
-    return gateway.chat([{"role": "system", "content": gateway.prompt(PROMPT)},
-                         {"role": "user", "content": json.dumps(payload(row, lst, hint), ensure_ascii=False)}],
-                        json_schema=SCHEMA, point=TAG)
+    return gateway.ask(TAG, PROMPT, payload(row, lst, hint), SCHEMA, mock=lambda: _mock(row, lst, hint))
 
 
 def check(ans, lst):
