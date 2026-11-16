@@ -488,6 +488,27 @@ show("B198 ⓖ seed에 @split · ::축값이 남은 골격 → bootstrap 거부 
      "지울 줄 2" in _e198 and "::cathode" in _e198 and "'노칭::anode'" in _e198
      and (sorted(open_graph("process").nodes), len(open_graph("process").edges)) == _gb198, _e198.splitlines()[0][:120] if _e198 else "거부 없음")
 
+# B207 ⓑ — seed 별칭이 다른 노드의 TREE 이름과 같으면 bootstrap · --dry-run(check) 거부 · 같은 짧은 이름 묶음의 공유 별칭은 통과
+_s207 = json.loads(_keep61)
+_s207["ALIASES"]["적층"] = _s207["ALIASES"]["적층"] + ["cleaning"]
+_seed61.write_text(json.dumps(_s207, ensure_ascii=False), encoding="utf-8")
+try:
+    _d207 = " ".join(r["detail"] for r in _SK61.check("process"))
+    try:
+        bootstrap("process", echo=False)
+        _e207 = ""
+    except _SE198 as _x:
+        _e207 = str(_x)
+    _s207 = json.loads(_keep61)
+    for _k in ("노칭::비전검사", "스태킹::비전검사"):
+        _s207["ALIASES"][_k] = _s207["ALIASES"][_k] + ["비전검사"]
+    _seed61.write_text(json.dumps(_s207, ensure_ascii=False), encoding="utf-8")
+    _ok207 = _SK61.check("process")
+finally:
+    _seed61.write_text(_keep61, encoding="utf-8")
+show("B207 ⓑ 별칭 'cleaning'(다른 노드 이름) → bootstrap · --dry-run 거부(문면 · 다음 줄) · 두 '비전검사' 묶음의 공유 별칭은 통과",
+     "ALIASES '적층'의 별칭 'cleaning'가 노드" in _e207 and "bootstrap --dry-run" in _e207 and _e207.split("\n")[0] in _d207
+     and _ok207 == [], (_e207 or "거부 없음")[:160])
 
 # ============================================================
 done("G1+G2 완료판정 충족")

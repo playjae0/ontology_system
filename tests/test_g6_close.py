@@ -549,12 +549,15 @@ _i199 = next((i for i, ln in enumerate(_pf199) if "[4/7] 판정 예고" in ln), 
 _j199 = next((i for i, ln in enumerate(_pf199) if _i199 is not None and i > _i199 and "c는 쓴다" in ln), None)
 _blk199 = _pf199[_i199:_j199 + 2] if _i199 is not None and _j199 is not None else []
 _mv199 = [ln for ln in _blk199 if re.search(r"^\s+\S.*: \S+ → \S+::\S", ln)]
-show("B199 ⓐ ⓑ PFMEA01 --step [4/7] ~ 판정 결과 40줄 이하 · 쌍별 예고 전부는 export/plan_PFMEA01.md · 진행 줄 0(-v만) · "
-     "판정 결과에 「표기: 판정 전 → 판정 뒤」 줄 · 값 0인 쌍 줄 0",
-     _blk199 and len(_blk199) <= 40 and any("plan_PFMEA01.md" in ln for ln in _blk199)
+# 고침(B208 ① — 기본 화면은 볼 것이 있는 표의 행을 한 행 한 줄로 · 40줄은 행 줄 · 그 아래 └ 줄 밖에서 잰다)
+_r208 = [ln for ln in _blk199 if re.match(r"\s+R\d+\s", ln)]
+_rest199 = [ln for ln in _blk199 if ln not in _r208 and not ln.startswith("          └")]
+show("B199 ⓐ ⓑ PFMEA01 --step [4/7] ~ 판정 결과 40줄 이하(행 줄 밖) · 행은 한 줄씩 · 쌍별 예고 전부는 export/plan_PFMEA01.md · "
+     "진행 줄 0(-v만) · 판정 결과에 「표기: 판정 전 → 판정 뒤」 줄 · 값 0인 쌍 줄 0",
+     _blk199 and len(_rest199) <= 40 and len(_r208) == len({ln.split()[0] for ln in _r208}) and any("plan_PFMEA01.md" in ln for ln in _blk199)
      and not any(ln.strip().startswith("+ |") or "(관계)" in ln for ln in _blk199)
      and _mv199 and not any("match 0 · new 0 · uncertain 0" in ln for ln in _blk199),
-     f"{len(_blk199)}줄 · 자리 바뀜 예 {_mv199[:1]}")
+     f"{len(_rest199)}줄 · 행 줄 {len(_r208)} · 자리 바뀜 예 {_mv199[:1]}")
 
 shutil.rmtree(T, ignore_errors=True)
 print("\n" + "=" * 62)

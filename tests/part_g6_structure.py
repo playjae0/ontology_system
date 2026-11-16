@@ -494,8 +494,8 @@ _vl = _vout.splitlines()
 _vidx = [i for i, ln in enumerate(_vl) if re.match(r"\s+[✓+?✗·] \| ", ln)]
 _tidx = [i for i, ln in enumerate(_vl) if re.match(r"\s+└ \S.* · \S+ [←→] .* \(.*\)$", ln)]
 _vrows = [_vl[i].split(" | ") for i in _vidx]
-_ties = {(m.group(1), m.group(2), m.group(3), m.group(4)) for m in
-         (re.match(r"\s+└ (.+?) · (\S+) [←→] (.+) \((.*)\)$", _vl[i]) for i in _tidx) if m}
+_ties = {_vl[i].strip() for i in _tidx}                     # 고침(B208 ② — 엣지마다 한 번 · → 쪽: `coord_table.edge_line`)
+from cli import coord_table as _CT208                       # noqa: E402
 _led = {e.get("target"): e for e in _rows("B119VIEW")}       # 같은 표기가 유닛마다 — 붙은 노드로 맞춘다
 _ok5, _mine, _their = [], [], set()                         # 잰 행의 판정 줄 위치 · 그 행들의 붙은 자리
 for i, cells in zip(_vidx, _vrows):
@@ -505,15 +505,16 @@ for i, cells in zip(_vidx, _vrows):
         continue
     full_b = f"{e['belongs_to']}(사슬)"
     _mine.append(i)
-    _their |= {(e["surface"], a["rel"], a["other"], a["path"]) for a in e.get("attached") or []}
+    _their |= {_CT208.edge_line(e, a).strip() for a in e.get("attached") or []}
     _ok5.append((cells[3].strip() == "묶음" and full_b.startswith(cells[9].strip().rstrip("…"))
-                 and all((e["surface"], a["rel"], a["other"], a["path"]) in _ties for a in e.get("attached") or [])
+                 and all(_CT208.edge_line(e, a).strip() in _ties for a in e.get("attached") or [])
                  and e.get("attached") and cells[7].strip().endswith("초"),
                  [c.strip() for c in cells[3:11]], full_b, e.get("attached")))
-_tmine = [i for i in _tidx if (lambda m: m and m.groups() in _their)(re.match(r"\s+└ (.+?) · (\S+) [←→] (.+) \((.*)\)$", _vl[i]))]
+_tmine = [i for i in _tidx if _vl[i].strip() in _their]
 show("⑤ 값 표 — 구조 칸(가장 가까운 제목 줄의 역할) · 소속(출처) 칸 = 대장 belongs_to(사슬) · 붙은 자리 = 행 아래 └ 줄 = 대장 attached "
      "· B150 ⓐ 판정 줄은 Pass 1에 바로(그 행들의 마지막 판정 줄이 첫 붙은 자리 줄보다 앞 · 경로 칸에 걸린 시간) (산문 · -v)",
-     len(_ok5) >= 4 and all(o for o, *_r in _ok5) and _tmine and max(_mine) < min(_tmine),
+     len(_ok5) >= 4 and all(o for o, *_r in _ok5) and _tmine and max(_mine) < min(_tmine)
+     and len(_tidx) == len(_ties) and not any("←" in _vl[i] for i in _tidx),
      f"행 {len(_ok5)} · 판정 줄 {_mine[:1]}…{_mine[-1:]} · └ 줄 {_tmine[:1]} · {[x for x in _ok5 if not x[0]][:2] or _ok5[:1]}")
 
 # ────────────────────────────────────────────────────────────── B148 ①② 구조 판단은 층을 모른다 · 목차 노드화가 층마다

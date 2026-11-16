@@ -86,3 +86,82 @@ def show(rows, indent="     "):
     for c in table(rows):
         text, kind = line(c)
         _screen.say(indent + text, kind)
+
+
+# ── 표의 한 행 한 줄 (B208 ①②) ─────────────────────────────────────────────
+#: 값 칸을 낱낱이 쓰는 열 수 상한(넘으면 `값 n`) · 값 하나의 폭 상한
+VALS_MAX, VAL_W = 3, 14
+#: 줄의 기호 — 인입 값 표와 같은 결과 기호(`ingest_screen.MARKS`의 짝 · 결과 없음은 `·`)
+SYM = {"붙음": "✓", "새로 생김": "+", "그래프에 없음": "✗", "노드 아님": "↗"}
+
+
+def edge_key(row, a):
+    """붙은 자리 하나 → 엣지 키 `(앞, 관계, 뒤)` — 양 끝 행이 같은 엣지를 한 번씩 받으니 → 쪽으로 맞춘다(관계는 한 번)."""
+    me = row.get("target") or row.get("canonical") or row.get("surface")
+    return (me, a["rel"], a["other"]) if a.get("dir") != "←" else (a["other"], a["rel"], me)
+
+
+def edge_line(row, a):
+    """엣지 하나의 `└` 줄 — 늘 → 쪽(`앞 · 관계 → 뒤 (방식)`)."""
+    src, rel, dst = edge_key(row, a)
+    if a.get("dir") != "←":
+        src = row.get("surface") or src                  # 이 행이 앞 끝이면 그 표기로
+    return f"     └ {src} · {rel} → {dst} ({a['path']})"
+
+
+def _flat(v, n=VAL_W):
+    return _screen.cut(" ".join(str(v).split()), n) if v not in (None, "") else "—"
+
+
+def _sub(e):
+    """LLM이 든 개체 · 애매 · 보류의 `└` 줄 — 판단 · 확실도 · 후보(가장 가까운) · 표시."""
+    from parser.coord_rows import VERDICT
+    calls, (_r, _k, mark) = (e.get("llm") or {}).get("calls"), _screen.outcome(e)
+    near = (e.get("nearest") or {}).get("canonical")
+    parts = [VERDICT.get(e.get("verdict"), e.get("verdict")) if calls else e.get("verdict")]
+    parts += [f"{e.get('confidence', 0):.2f}"] if calls else []
+    parts += [f"후보 {e.get('candidates_n') or 0}" + (f"({near})" if near else "")] + ([str(mark)] if mark else [])
+    return f"          └ {e.get('surface') or e.get('canonical')} — " + " · ".join(str(p) for p in parts if p)
+
+
+def fit(segs, width=None, tail=None):
+    """칸들 `[(글, 색)]` → 터미널 폭에서 자른 한 줄(자른 뒤 칸마다 칠한다 — 파이프는 색 0) · `tail`(끝 칸)은 늘 남긴다."""
+    room, out = (width or _screen.term_width()) - 1 - (_screen.w(tail[0]) if tail else 0), []
+    for text, kind in segs + ([tail] if tail else []):
+        if tail and (text, kind) == tail:
+            room += _screen.w(text)
+        if room <= 1:
+            break
+        text = text if _screen.w(text) <= room else _screen.cut(text, room - 1)
+        out.append(_screen.paint(text, kind))
+        room -= _screen.w(text)
+    return "".join(out)
+
+
+def row_line(rows, rec=None, label="", width=None):
+    """**표의 한 행 한 줄**(B208 ①) — 그 행의 대장 행들 → `(줄, └ 줄들)`. 좌표 · 개체 열마다 `열 이름 · 이름 · 기호` · 값은
+    `열 이름 값`(원 레코드의 값 자체 — 길면 자름 · 열이 많으면 `값 n`) · 관계 수(엣지 키 — 한 번씩) · 좌표가 그래프에 없으면
+    행 보류 한 칸. 색 · 기호는 `_screen.outcome` 하나(새 판정 0)."""
+    rec, segs, subs = rec or {}, [(f"   {_screen.pad(label, 5)}", "aux")], []
+    by = {k: [r for r in rows if r.get("role") in ks] for k, ks in
+          (("a", ("anchor",)), ("e", ("entity",)), ("v", ("attribute", "content")))}
+    for a in by["a"]:
+        res, k, _m = _screen.outcome(a)
+        segs.append((f"{a.get('canonical') if a.get('node_id') else a.get('surface') or '—'} {SYM.get(res, '·')}", k))
+    held = next((a for a in by["a"] if _screen.outcome(a)[0] == "그래프에 없음"), None)
+    if held:
+        segs.append((f" │ {_screen.outcome(held)[2]} → 행 보류(값 {len(by['e'])})", "orphan"))
+        return fit(segs, width), subs
+    for e in by["e"]:
+        res, k, _m = _screen.outcome(e)
+        segs.append((f" │ {e.get('field') or ''} {e.get('surface') or e.get('canonical') or '—'} {SYM.get(res, '·')}", k))
+        if (e.get("llm") or {}).get("calls") or e.get("verdict") == "uncertain" or res == "그래프에 없음":
+            subs.append(_sub(e))
+    if by["v"]:
+        outs = [_screen.outcome(v) for v in by["v"]]
+        body = (f"값 {len(by['v'])}" if len(by["v"]) > VALS_MAX
+                else " · ".join(f"{v.get('field')} {_flat(rec.get(v.get('field')))}" for v in by["v"]))
+        worst = next((o for o in outs if o[0] != "붙음"), outs[0])
+        segs.append((f" │ {body} " + "".join(dict.fromkeys(SYM.get(o[0], "·") for o in outs)), worst[1]))
+    rel = (f" │ 관계 {len({edge_key(r, a) for r in rows for a in r.get('attached') or []})}", "aux")
+    return fit(segs, width, rel), [_screen.cut(s, (width or _screen.term_width()) - 2) for s in subs]

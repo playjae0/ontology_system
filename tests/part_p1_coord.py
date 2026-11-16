@@ -259,4 +259,16 @@ show("B203 ⓔ 전제 4 재현 — 앞 문서에서 같다인 표기는 학습(�
      [r for r, _c in _le2] == ["B203 anode cutting"] * 2 and _r2[0].get("meta", {}).get("coord_tag_source") == "learned",
      f"둘째 문서 호출 {[r for r, _c in _le2]}")
 
+# B207 ⓐ 전제 4 — canonical '쇼트체크'가 다른 노드의 별칭이라 표기 색인에서 빠져도 답 · 학습은 canonical 표로(KeyError 0) · 사라진 기억은 다시 묻기
+_N207 = [{"canonical": "쇼트체크", "aliases": ["포장 쇼트체크"]}, {"canonical": "tab welding::short check", "aliases": ["쇼트체크"]}]
+_l207, _r207, _o207 = [], [{"source_locator": "R1", "process_ref": "쇼트 check"}], __import__("io").StringIO()
+_p207 = lambda ref, cands, **_k: _l207.append(ref) or {"type": "match" if len(cands) > 1 else "new", "matched_id": "쇼트체크"}
+_a207, _b207 = (tagger.tag(_r207, layer=_lay203, nodes=_N207, pick=_p207, doc_id=d) for d in ("B207A", "B207B"))
+with __import__("contextlib").redirect_stdout(_o207):
+    _c207 = tagger.tag(_r207, layer=_lay203, nodes=[{"canonical": "쇼트 체커"}], pick=_p207, notice=_PS203.coord_screen()[0])
+show("B207 ⓐ 공유 표기가 된 canonical — LLM 답 · 다음 문서 학습 적중 그 노드(LLM 0) · 골격에서 사라지면 다시 묻기 + 화면 한 줄",
+     _a207[0]["process_ref"] == _b207[0]["process_ref"] == "쇼트체크" and _b207[0]["meta"]["coord_tag_source"] == "learned"
+     and _l207 == ["쇼트 check"] * 2 and _c207[0]["process_ref"] == "쇼트 check"
+     and "학습 기억 '쇼트 check' → '쇼트체크' 지금 골격에 없음 — 다시 묻는다" in _o207.getvalue(), str(_l207))
+
 done()

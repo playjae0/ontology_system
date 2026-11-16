@@ -89,21 +89,28 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _learned_hits(misses, idx, rec):
-    """학습 기록 적중 — **표기 정확 대조**(유사도 0) · 가리키는 골격 노드가 지금 목록에 있을 때만."""
-    out = {}
-    by_canon = {n["canonical"]: n for n in idx.values()}
+def _canon(nodes):
+    """canonical 표 — 학습 · LLM 답(canonical)은 이 표로 찾는다 · 표기 색인(공유 표기가 빠진다)으로 찾지 않는다(B207 ①)."""
+    return {n["canonical"]: n for n in nodes}
+
+
+def _learned_hits(misses, nodes, rec):
+    """학습 기록 적중 — **표기 정확 대조**(유사도 0) · 가리키는 골격 노드가 지금 닫힌 목록에 있을 때만 ·
+    `(적중, 사라진 기억 [(표기, canonical)])` — 사라진 기억은 다시 묻는다(B207 ①)."""
+    out, gone, by_canon = {}, [], _canon(nodes)
     for r in misses:
         x = rec.get(r)
         if x and x.get("canonical") in by_canon:
             out[r] = x["canonical"]
-    return out
+        elif x and x.get("canonical"):
+            gone.append((r, x["canonical"]))
+    return out, gone
 
-def _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver=None, kept=()):
+def _learn_update(book, learn, memo, refs, nodes, layer, doc_id, ver=None, kept=()):
     """학습 기록 갱신 — 채택은 바로 쓴다(출처 · 문서 · 시각 · 골격 판) · 적중 횟수 · null은 새 공정 후보로 ·
     **null도 그때의 닫힌 목록 판과 함께 기억한다**(B107 ② `list_version` — 같은 판이면 다시 묻지 않는다) ·
     기억으로 답한 표기(`kept`)도 이 문서의 「목록에 없음」이다 — 후보의 행 수 · 문서 · 마지막 본 때를 센다."""
-    at = _now()
+    at, by_canon = _now(), _canon(nodes)
     for r in kept:
         c = book["목록밖"][r]
         c["rows"] = int(c.get("rows") or 0) + refs.count(r)
@@ -116,7 +123,7 @@ def _learn_update(book, learn, memo, refs, idx, layer, doc_id, ver=None, kept=()
         x["last_hit"] = at
     for r, v in memo.items():
         if v:
-            node = idx[v]
+            node = by_canon[v]
             book["채택"][r] = {"canonical": node["canonical"], "id": node.get("id"),
                               "layer": layer, "doc_id": doc_id, "at": at, "hits": 0,
                               "skeleton_version": _snap_version(layer), "list_version": ver,
@@ -549,7 +556,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     # **학습 기록**(B101 ②) — 사람 보증(이름·별칭) 다음, LLM 앞. 적중은 LLM 0.
     # 기록은 **좌표 층 이름이 있을 때만** 읽고 쓴다 — 층 없이 목록만 넘긴 호출은 학습과 무관하다.
     book = learned() if layer else {"채택": {}, "목록밖": {}}
-    learn = _learned_hits(misses, idx, {k: v for k, v in book["채택"].items()
+    learn, gone = _learned_hits(misses, nodes, {k: v for k, v in book["채택"].items()
                                         if v.get("layer") in (None, layer)})
     misses = [r for r in misses if r not in learn]
     learn_rows = sum(1 for r in refs if r in learn)
@@ -571,7 +578,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
             "범위_안_해소_행": sum(1 for sc in scope_at if sc),
             # **좌표 진단**(B99 ⑧) — 목록 밖 표기 상위(표기 · 행 수) · LLM 전에 안다
             "목록밖_상위": sorted(((r, refs.count(r)) for r in misses),
-                                key=lambda x: (-x[1], x[0]))[:10], "극성_뗌": axis_cut, "극성_어긋남": axis_odd}
+                                key=lambda x: (-x[1], x[0]))[:10], "극성_뗌": axis_cut, "극성_어긋남": axis_odd, "학습_사라짐": gone}
     if notice is not None:
         notice(dict(plan))
 
@@ -588,7 +595,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
         by_ref.setdefault(k[0], set()).add(v if k in judged and k not in unsure else "?")
     sure = {r: next(iter(vs)) for r, vs in by_ref.items() if len(vs) == 1 and "?" not in vs}
     if layer and (learn or sure or kept):
-        _learn_update(book, learn, sure, refs, idx, layer, doc_id, ver, kept)
+        _learn_update(book, learn, sure, refs, nodes, layer, doc_id, ver, kept)
 
     # **판단을 받지 못한 표기**(B182 ① — 상한 · 실패) — 행 `meta.coord_unjudged` · 인입은 잠정 노드로 세우지 않고 보류(mock은 0)
     unjudged = {k for k in keys if k[0] in misses and k[0] not in kept and k not in judged} if pick is not None else set()
@@ -606,7 +613,7 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
     """태깅 결과를 조각에 쓴다 — 정확 일치 · 학습 적중 · LLM 채택 순 · 목록 밖은 그대로 · `process_group` 파생.
     `scope_at`(행마다 범위 안에서 하나인 공유 별칭 — B104 ① · B105 ①)은 canonical로 쓰고 원 표기와 범위를 남긴다.
     `judged`(이번에 판단한 표기 — B181 ①)는 그 표기의 행마다 `meta.coord_judge {표기: 답 꼴}`로 남는다(대장의 곳 · 보류 큐의 후보)."""
-    out = []
+    out, by_canon = [], _canon(nodes)
     for i, (p, ref) in enumerate(zip(pieces, refs)):
         r, key = dict(p), (keys or [])[i] if keys else (ref, None)
         if ref and (judged or {}).get(key):
@@ -629,11 +636,11 @@ def _apply(pieces, refs, idx, folded, learn, memo, nodes, ref_field, doc_type, s
                                             coord_tag_scope=sc[1])
         if ref and node is None and learn.get(ref):
             r[ref_field] = learn[ref]
-            node = idx[learn[ref]]
+            node = by_canon[learn[ref]]
             r.setdefault("meta", {}).update(coord_tag_source="learned", coord_tag_from=ref)
         if ref and node is None and memo.get(key):
             r[ref_field] = memo[key]
-            node = idx[memo[key]]
+            node = by_canon[memo[key]]
             r.setdefault("meta", {}).update(coord_tag_source="live", coord_tag_from=ref)
         if ref and node is None:
             r[ref_field] = ref                      # 그대로 둔다 — orphan_anchor는 인입 몫

@@ -284,7 +284,12 @@ def _register_aliases(g, seed, parsed, ids, labels, register):
                     f"ALIASES 키가 모호하다: '{key}' — 접두 키를 쓰라 "
                     f"({[o.canonical for o in owners]})")
             spec = owners[0]
-        for surface in surfaces:
+        for surface in surfaces:                 # 다른 노드의 TREE 이름과 같은 별칭은 거부 — 같은 짧은 이름 묶음만 허용(B207 ②)
+            clash = [o for o in short_owners.get(surface, []) + [by_canonical.get(surface)] if o and o is not spec]
+            if clash and spec.name != surface:
+                raise SeedError(f"ALIASES '{key}'의 별칭 '{surface}'가 노드 '{clash[0].canonical}'의 이름과 같다 — 같은 개념이면 "
+                                "두 노드 이름을 같게 맞추고 맨 표기는 둘 다에(골격 팩 §6 ③ ⑤) · 다른 개념이면 그 별칭을 뺀다\n"
+                                "  ▶ 다음 줄: (골격 파일의 그 별칭을 고친 뒤)  python run.py bootstrap --dry-run")
             register(surface, ids[spec.canonical])
     return ambiguous
 

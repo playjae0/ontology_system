@@ -271,6 +271,8 @@ def coord_screen(doc_id=None):
             return row(info)
         if info.get("단계") == "예고":
             axis_lines(info)
+            for r, c in info.get("학습_사라짐") or ():       # 골격이 바뀐 뒤의 옛 기억(B207 ①)
+                print(f"   학습 기억 '{r}' → '{c}' 지금 골격에 없음 — 다시 묻는다")
         if info.get("단계") == "예고" and info.get("목록밖_상위"):
             _coord_diag(info)
         if info.get("단계") == "예고":

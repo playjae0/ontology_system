@@ -2,6 +2,7 @@
 """G6 ⑤ 인입 화면 — 판정 예고 · 큐 집계 · 다음 줄 · `--step`(B72) · 값 줄 · 색(B81) · 색 함수가 대장 판정 전부에 결과(B176 ⓐ)."""
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -265,8 +266,9 @@ show("① 사전으로 끝난 값은 줄을 찍지 않는다 (판단이 갈린 �
 _on = SCR81.row_printer()
 _buf81 = _io.StringIO()
 with _ctx.redirect_stdout(_buf81):
-    for _r in (_row_dict, _row_new, _row_unc):
-        _on(_r)
+    for _r, _l in ((_row_dict, "R1"), (_row_new, "R2"), (_row_unc, "R2")):
+        _on({**_r, "locator": f"관리계획서!{_l}"})
+    _on.flush()
 _out81 = _buf81.getvalue()
 show("① 집계가 대장 행에서 나온다 (사전 1 · NEW 1 · 불확실 1 · 큐 2)",
      SCR81.TALLY == {"값": 3, "사전": 1, "NEW": 1, "불확실": 1, "큐": 2, "orphan": 0},
@@ -277,9 +279,11 @@ def _data_rows(text):
             if l.strip()[:1] in ("✓", "+", "?", "✗", "·") and not l.strip().startswith("+--")]
 
 
-# 고침(B199 ① — 진행 줄은 -v일 때만 · 기본은 쌍별 예고 · 판정 결과 요약 — 판단이 갈린 값은 명령 로그에)
-show("① 기본은 값 줄을 찍지 않는다 (판단이 갈린 값도 — 결과는 쌍별 판정 결과 · 로그)",
-     len(_data_rows(_out81)) == 0)
+# 고침(B208 ① — 표는 한 행 한 줄 · 기본은 볼 것이 있는 행만 · LLM이 든 개체는 그 아래 └ 한 줄 · 값 단위 줄 0)
+_rl208 = [l for l in _out81.splitlines() if re.match(r"\s+R\d+\s", l)]
+show("① 기본은 볼 것이 있는 행만 한 행 한 줄 (사전으로 끝난 R1 0 · R2 한 줄 + LLM 개체 └ 한 줄 · 값 단위 줄 0)",
+     [l.split()[0] for l in _rl208] == ["R2"] and len(_data_rows(_out81)) == 0
+     and sum(1 for l in _out81.splitlines() if l.strip().startswith("└ ")) == 1, _out81[-300:])
 
 # ②④ 실행 화면 — 기본과 `-v`, 보폭 둘
 _raw81 = _P.raw()
@@ -305,8 +309,10 @@ def _ing81(*extra):
 _scr81 = _ing81("--progress-every", "10")
 _led81 = (LG81.read("CP01") or {}).get("rows") or []
 _vals81 = _data_rows(_scr81)
-show("① 실행 화면에도 값 줄 0 · 대장에는 판단이 갈린 행이 있다(고침 B199 ①)",
-     len(_vals81) == 0 and sum(1 for r in _led81 if SCR81._loud(r)) > 0,
+_rows81 = lambda t: [l.split()[0] for l in t.splitlines() if re.match(r"\s+R\d+\s", l)]
+_locs81 = {r["locator"].rsplit("!", 1)[-1] for r in _led81 if SCR81._loud(r)}
+show("① 실행 화면에 값 단위 줄 0 · 행 줄 = 판단이 갈린 값이 있는 표의 행(고침 B208 ①)",
+     len(_vals81) == 0 and sorted(_rows81(_scr81)) == sorted(_locs81) and _locs81,
      f"화면 {len(_vals81)} · 대장 LOUD {sum(1 for r in _led81 if SCR81._loud(r))}"
      f" / 전체 {len(_led81)}")
 show("② 기본 화면에 INFO 로그 줄이 0이다 (화면은 판단이 갈린 값만)",
@@ -329,10 +335,16 @@ _scrv81 = _ing81("-v")
 _valsv81 = _data_rows(_scrv81)
 show("② -v면 콘솔에도 INFO가 돌아온다 (지금까지의 화면)",
      bool([l for l in _scrv81.splitlines() if l.startswith("INFO")]))
-show("① -v면 값 줄이 대장 행 전부다",
-     len(_valsv81) >= len(_vals81) and len(_valsv81) == len(
-         (LG81.read("CP01") or {}).get("rows") or []),
-     f"-v {len(_valsv81)} · 기본 {len(_vals81)} · 대장 {len(_led81)}")
+_lv81 = (LG81.read("CP01") or {}).get("rows") or []
+show("① -v면 표의 행마다 한 줄 — 행 줄 = 대장의 위치 전부 · 한 번씩(고침 B208 ①)",
+     sorted(_rows81(_scrv81)) == sorted({r["locator"].rsplit("!", 1)[-1] for r in _lv81}) and len(_valsv81) == 0,
+     f"-v 행 줄 {len(_rows81(_scrv81))} · 기본 {len(_rows81(_scr81))} · 대장 위치 {len({r['locator'] for r in _lv81})}")
+_v208 = _scrv81.splitlines()
+_r4 = next((l for l in _v208 if re.match(r"\s+R4\s", l)), "")
+_h208 = next((i for i, l in enumerate(_v208) if l.startswith("── [5/7] 판정")), 99999)
+show("B208 ⓐⓑⓒ -v — R4 줄에 규격 값 자체(원 레코드) · 관계 줄 ← 0 · [5/7] 판정 머리가 첫 행 줄보다 앞",
+     "규격 ±0.1mm" in _r4 and "has_property ←" not in _scrv81
+     and _h208 < min(i for i, l in enumerate(_v208) if re.match(r"\s+R\d+\s", l)), _r4[:160])
 # ④ 보폭 — 작게 주면 진행 줄이 늘고, 줄의 값 n이 보폭 규칙을 지킨다.
 _prog = lambda s: [l for l in s.splitlines() if "[판정] 값" in l]
 _scr5 = _ing81("--progress-every", "5")

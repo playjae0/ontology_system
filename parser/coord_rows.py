@@ -89,7 +89,7 @@ def ask_all(ask, pieces, refs, nodes, idx, pick, home, *, ref_field, doc_coord, 
             if v.get("type") == "match":
                 break
         hit = by_id.get(v.get("matched_id")) if v.get("type") == "match" else None
-        memo[(ref, g)] = hit["canonical"] if hit is not None and hit["canonical"] in idx else None
+        memo[(ref, g)] = hit["canonical"] if hit is not None else None   # 목록 밖 id는 by_id에서 빠진다(B207 ①)
         if v.get("type"):                                  # 답이 없으면(빈 주입) 표지 0
             judged[(ref, g)] = {**{k: v[k] for k in ("type", "confidence", "candidates", "second") if v.get(k) is not None},
                                 "asked": ref, "scope": f"{up} 아래 {len(pool)}" if pool is sub else f"전체 {len(pool)}"}
