@@ -179,7 +179,7 @@ def write(name, obj):
 
 
 #: **문서 하나를 짓는 동안의 메모리 판**(B209 ① — 항목 · 값마다 파일 전체를 읽고 쓰던 제곱을 끊는다) — `queue_batch()` 안에서
-#: 큐 · 청크(`BATCHED`)의 `read`는 메모리 판 그 자체 · `write`는 판 갈기 · 싣기(`enqueue` · `enqueue_rows`)는 판에 바로(중복은 열쇠
+#: 큐 · 청크(`queue_batch`가 여는 둘)의 `read`는 메모리 판 그 자체 · `write`는 판 갈기 · 싣기(`enqueue` · `enqueue_rows`)는 판에 바로(중복은 열쇠
 #: 색인) · 파일은 `queue_flush` 한 번(사람이 답하는 자리 · 문서 끝). 되돌림은 판을 버리고 시작 전 판을 쓴다(`entry._undo` — 그대로).
 _QB = {}
 #: 문서 묶음 안에서 항목마다 로그 줄을 내지 않는 kind — 문서 끝에 (노드, 칸)마다 한 줄로 모은다(`result.conflicts` · B209 ③)
