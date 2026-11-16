@@ -2,56 +2,56 @@
  "_note": "생성물 — 마감 한 줄(tools/close.py)이 doctor 결과로 쓴다 · 손으로 고치지 않는다 · 줄어든 수는 --why <스위트>=<사유>와 함께만 기록된다(B131 ②)",
  "suites": {
   "test_g1_g2": {
-   "n": 84,
-   "secs": 7
-  },
-  "test_places": {
-   "n": 32,
-   "secs": 8
-  },
-  "test_g3": {
-   "n": 77,
-   "secs": 3
-  },
-  "test_query": {
-   "n": 128,
-   "secs": 21
-  },
-  "test_ops": {
    "n": 85,
    "secs": 6
   },
+  "test_places": {
+   "n": 32,
+   "secs": 12
+  },
+  "test_g3": {
+   "n": 77,
+   "secs": 4
+  },
+  "test_query": {
+   "n": 128,
+   "secs": 24
+  },
+  "test_ops": {
+   "n": 85,
+   "secs": 10
+  },
   "test_intake": {
    "n": 100,
-   "secs": 21
+   "secs": 26
   },
   "test_ingest_view": {
    "n": 79,
-   "secs": 43
+   "secs": 48
   },
   "test_coord": {
-   "n": 97,
-   "secs": 19
+   "n": 98,
+   "secs": 24
   },
   "test_catalog": {
    "n": 103,
-   "secs": 38
+   "secs": 43
   },
   "test_safety": {
    "n": 36,
-   "secs": 73
+   "secs": 82
   },
   "test_judge": {
    "n": 112,
-   "secs": 32
+   "secs": 36
   },
   "test_build": {
    "n": 84,
-   "secs": 28
+   "secs": 37
   },
   "test_rebuild": {
    "n": 52,
-   "secs": 29
+   "secs": 32
   },
   "test_g6_rehearsal": {
    "n": 18,
@@ -59,19 +59,19 @@
   },
   "test_structure": {
    "n": 137,
-   "secs": 31
+   "secs": 34
   },
   "test_g6_capture": {
    "n": 12,
-   "secs": 29
+   "secs": 32
   },
   "test_g6_close": {
    "n": 41,
-   "secs": 50
+   "secs": 52
   },
   "test_contract": {
    "n": 76,
-   "secs": 22
+   "secs": 28
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,19 +87,19 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 4
+   "secs": 6
   },
   "test_p1_media": {
    "n": 20,
-   "secs": 5
+   "secs": 4
   },
   "test_p2": {
    "n": 69,
-   "secs": 5
+   "secs": 8
   },
   "test_p3_register": {
    "n": 78,
-   "secs": 10
+   "secs": 14
   },
   "test_p3_prompt": {
    "n": 60,
@@ -111,15 +111,15 @@
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 5
+   "secs": 6
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 1
+   "secs": 2
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 7
   },
   "test_p3_ledger": {
    "n": 46,
@@ -127,23 +127,23 @@
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 11
+   "secs": 14
   },
   "test_2a_gateway": {
    "n": 78,
-   "secs": 10
+   "secs": 14
   },
   "test_viewer": {
    "n": 62,
-   "secs": 2
+   "secs": 3
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 0
+   "secs": 1
   },
   "test_site": {
    "n": 56,
-   "secs": 26
+   "secs": 29
   }
  },
  "log": [
@@ -1249,6 +1249,22 @@
    "suite": "test_viewer",
    "from": 60,
    "to": 62,
+   "why": ""
+  },
+  {
+   "at": "2026-11-16",
+   "head": "3190e17",
+   "suite": "test_g1_g2",
+   "from": 84,
+   "to": 85,
+   "why": ""
+  },
+  {
+   "at": "2026-11-16",
+   "head": "3190e17",
+   "suite": "test_coord",
+   "from": 97,
+   "to": 98,
    "why": ""
   }
  ]
