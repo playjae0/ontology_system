@@ -248,6 +248,17 @@ def coord_results(info, doc_id=None):
     return rows
 
 
+def axis_lines(info):
+    """**극성 뗌**(B205 ① — 표기마다 한 줄 · 위 `RESULT_TOP`) · 행의 극성 칸과 이름의 극성이 다른 행(칸이 이긴다)."""
+    cut = sorted((info.get("극성_뗌") or {}).items(), key=lambda x: -x[1][2])
+    for v, (c, k, n) in cut[:RESULT_TOP]:
+        print(f"   {v} → {c} (극성 {k}) · 행 {n:,}")
+    if len(cut) > RESULT_TOP:
+        print(f"   … 극성 뗀 표기 그 밖 {len(cut) - RESULT_TOP:,}")
+    for v, (has, k, n) in (info.get("극성_어긋남") or {}).items():
+        _screen.say(f"   극성 칸과 이름이 다르다 — {v}: 칸 {has} · 이름 {k} · 행 {n:,} (칸을 쓴다)", "fail")
+
+
 def coord_screen(doc_id=None):
     """좌표 태깅의 예고·진행·끝 줄 — `(notice, progress)` (B69 ② · B22의 정신).
 
@@ -258,6 +269,8 @@ def coord_screen(doc_id=None):
     def notice(info):
         if info.get("단계") == "행":
             return row(info)
+        if info.get("단계") == "예고":
+            axis_lines(info)
         if info.get("단계") == "예고" and info.get("목록밖_상위"):
             _coord_diag(info)
         if info.get("단계") == "예고":

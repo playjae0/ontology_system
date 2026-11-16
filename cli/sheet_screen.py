@@ -47,7 +47,7 @@ def sheet_pieces_line(env, roles):
     n = Counter((p.get("meta") or {}).get("sheet") for p in pcs)
     parts = [f"{name}({role}) {n.get(name, 0):,}" for name, role in (roles or {}).items()]
     other = sum(v for k, v in n.items() if k not in (roles or {}))
-    return ("   시트별 조각 — " + " · ".join(parts) + (f" · 시트 표시 없음 {other:,}" if other else ""))
+    return "\n".join(_screen.items("   시트별 조각 — ", parts + ([f"시트 표시 없음 {other:,}"] if other else [])))
 
 
 def sheet_note(rec, pend):
@@ -162,7 +162,7 @@ def sheets_refusal(doc, rows, *, pend=None, rec=None, retry=None, flag_cmd=None)
                  ).replace("{sheets}", sug)
     return "\n".join([
         f"■ 시트 역할 미정 — {Path(doc).name} ({what})",
-        "   시트: " + " · ".join(f"{r['no']} {r['name']}" for r in rows),
+        "\n".join(_screen.items("   시트: ", [f"{r['no']} {r['name']}" for r in rows])),
         "   비대화형이라 묻지 않는다 — 조용한 기본값은 없다(역할 없이 읽으면 "
         "가격·일정 시트까지 그래프 후보가 된다).",
         "   ▶ 다음 줄:",

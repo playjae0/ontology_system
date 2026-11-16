@@ -178,21 +178,19 @@ def keeps(pol, want):
 
 
 def concept_name(name, sep=None):
-    """**옛 극성 이름 → 개념 이름**(B198 ④ — 사람 기록 재생 · 대장 싣기 · 쌍 확인이 한 함수) — 마디가 축 값이면 그 마디를 빼고
-    (`<공정>::<축값>`) · 마디가 `<축값> <이름>`이면 축 값을 뗀다(옛 결합 이름) · 바뀐 것이 없으면 그대로. 축 값은 데이터(`axis`)."""
+    """**극성 이름 → 개념 이름**(B198 ④ · B205 ① — 사람 기록 재생 · 대장 싣기 · 쌍 확인 · 파서 태깅이 한 규칙) — 마디가 축 값(키 · 표시
+    이름)이면 그 마디를 빼고(`<공정>::<축값>`) · 마디의 앞 · 뒤 · 괄호 극성은 `parser.namefold.split_axis`가 뗀다 · 바뀐 것이 없으면
+    그대로. 축 값은 데이터(`axis`)."""
+    from parser.namefold import split_axis
     if not name:
         return name
     if sep is None:
         from core.state import catalog
         sep = catalog.sep()
-    vals = list(axis())
+    ax = axis()
     out = []
     for part in str(name).split(sep):
-        if part in vals:
+        if split_axis(f"{part} x", ax)[0] == "x" and part.strip():
             continue
-        for v in vals:
-            if part.startswith(v + " "):
-                part = part[len(v) + 1:]
-                break
-        out.append(part)
+        out.append(split_axis(part, ax)[0])
     return sep.join(out) or name

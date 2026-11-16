@@ -218,7 +218,8 @@ def _step_stops(res, sel, row, ask=True):
     from cli import also_screen as _ASC
     _ab = _AS.builder(res.envelope)
     if not prose:                                    # 표는 행의 확정한 공정 — 산문은 목차 노드화 뒤(B197 ②)
-        _pbody = list(_pbody or []) + [f"   {_AS.pair_line(_AS.pairs(_ab, res.envelope), table=True)}"]
+        _pm = _AS.pairs(_ab, res.envelope)
+        _pbody = list(_pbody or []) + _ASC.pair_lines(_AS.pair_rows(_pm), len(_pm), table=True, doc_id=res.envelope.get("doc_id"))
     if not SCR._step_gate(2, prose=prose, ask=ask, body=_pbody, detail=f"정확 일치 {_ct.get('정확_일치', 0)} · "
                       f"{_pc} · "
                       + (f"목록 밖(기억) {_ct['기억_종수']}종 — LLM 0 · " if _ct.get("기억_종수") else "")

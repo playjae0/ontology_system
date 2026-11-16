@@ -61,6 +61,19 @@ def listing(up, sk=None):
     return out
 
 
+def beside(up, sk):
+    """**위 공정과 같은 단**(B205 ④ — 고를 곳의 셋째 묶음 · LLM 입력 밖이라 판단 기억이 흔들리지 않는다) — `listing`과 같은 꼴 ·
+    위 공정이 골격 밖이면 빈 것."""
+    from core.state import catalog
+    nid = sk.by_name.get(up) if up else None
+    if not nid:
+        return []
+    d, bottom = sk.path(nid).count(" › "), max((sk.path(x).count(" › ") for x in sk.sk), default=0)
+    return [{"name": sk.g.get(i)["canonical"].rsplit(catalog.sep(), 1)[-1], "canonical": sk.g.get(i)["canonical"], "path": sk.path(i),
+             "tier": sk.g.get(i).get("tier"), "host": d < bottom, "same": True}
+            for i in sk.g.nodes if i in sk.sk and i != nid and sk.path(i).count(" › ") == d]
+
+
 def picks(row):
     """**그 줄의 고를 곳 — 번호 하나**(B203 ④) — 후보(LLM 순위) 다음 골격 목록(위 공정 아래 · `listing` 차례 · 후보와 겹치면 한 번)을
     이어지는 번호로 `[{n, canonical, name, path, host, why, cand}]` — 화면 · `m` · `k` · 말 해석이 같은 목록을 쓴다."""
@@ -72,7 +85,7 @@ def picks(row):
         x = by.get(c["name"]) or {"name": c["name"].rsplit(catalog.sep(), 1)[-1], "canonical": c["name"], "path": c.get("path") or c["name"]}
         out.append({**x, "why": c.get("why"), "cand": True})
     seen = {x["canonical"] for x in out}
-    out += [{**x, "cand": False} for x in lst if x["canonical"] not in seen]
+    out += [{**x, "cand": False} for x in lst + (row.get("beside") or []) if x["canonical"] not in seen and not seen.add(x["canonical"])]
     return [{**x, "n": i} for i, x in enumerate(out, 1)]
 
 
@@ -182,6 +195,8 @@ def judge(rows, *, live=True, hint=None, again=False):
             continue
         lst = listing(r.get("up_name") or r.get("up"), sk)
         r["skeleton"] = lst
+        up = r.get("up_name") or r.get("up")
+        r["beside"], r["up_out"] = beside(up, sk), bool(up) and up not in sk.by_name     # 같은 단 · 위 공정이 골격 밖(B205 ④)
         k = memo_key(r, version(lst))
         if not hint and not again and k in book:
             r["llm"], r["llm0"] = book[k], "판단 기억"

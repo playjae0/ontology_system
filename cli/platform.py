@@ -673,12 +673,11 @@ def cmd_dashboard():
     for lay, g in graphs.items():
         live = [n for n in g.nodes.values() if is_live(n)]
         cats = Counter(n["category"] for n in live)
-        print(f"  [{lay}] 노드 {len(live)} — "
-              + " · ".join(f"{k} {v}" for k, v in cats.most_common()))
+        from cli import _screen
+        print("\n".join(_screen.items(f"  [{lay}] 노드 {len(live)} — ", [f"{k} {v}" for k, v in cats.most_common()])))
         rels = Counter(e["rel"] for e in g.edges
                        if e.get("status") != "deleted_by_user")
-        print(f"          엣지 {sum(rels.values())} — "
-              + " · ".join(f"{k} {v}" for k, v in rels.most_common()))
+        print("\n".join(_screen.items(f"          엣지 {sum(rels.values())} — ", [f"{k} {v}" for k, v in rels.most_common()])))
 
     # 공정별 관리항목 수 — Q7의 대표 형태. **층은 카테고리로 찾는다**(B85 ②) —
     # 폴더 이름을 박으면 골격 층을 다른 이름으로 세운 순간 이 표가 빈다.

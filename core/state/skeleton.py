@@ -230,6 +230,8 @@ def _plant_tree(g, seed, skel, cfg, register):
     for a, b in parsed.chains:                   # ② 대표 흐름
         g.add_edge(ids[a.canonical], sib_rel, ids[b.canonical],
                    SEED_STATUS, SEED_PROV)
+    from core.build.provisional import replay_flow
+    replay_flow(g, sib_rel)                      # ③ 잠정 노드의 같은 단 자리(B205 ② — 심기 뒤에 같은 기록으로 같은 자리)
 
     parsed.ambiguous = _register_aliases(g, seed, parsed, ids, labels, register)
     return ids, parsed

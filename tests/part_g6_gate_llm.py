@@ -199,7 +199,7 @@ with contextlib.redirect_stdout(io.StringIO()) as _bq:
     GT._apply(1, _rq, "k", str(_n203(_rq, "비전검사")), "시험")
 show("B203 ⓗ `k 1 <번호>`(골격 목록의 스태킹) → 스태킹 밑에 잠정 · 처분 칸에 경로 · 골격 단 밖 번호(비전검사 — 맨 아래 단) → 거부 · 설 수 있는 번호",
      _ph.get("under") == "스태킹" and "B203 지그" in [x["name"] for x in GJ.listing("스태킹")]
-     and "✓ 새로 만들기 → 조립 › 스태킹 › B203 지그 (잠정)" in _oh and "설 수 있는 번호:" in _bq.getvalue() and not _rq.get("done"),
+     and "✓ 새로 만들기 → 조립 › 스태킹 › B203 지그 (잠정)" in _oh and "갈 길: k" in _bq.getvalue() and not _rq.get("done"),   # 고침 B205 ③
      f"자리 {_ph} · 스태킹 번호 {_n203(_seen['row'], '스태킹')} · {_bq.getvalue().strip()[:120]}")
 _pk = GJ.picks(_seen["row"])
 _b2 = io.StringIO()
@@ -212,7 +212,7 @@ show("B203 ⓘ `m 1 5` · `k 1 5`가 같은 번호 목록(후보 다음 골격 �
 _rj, _oj = _go203("B203J", "B203 받침", lambda r: "스태킹 밑에 새로")
 _pj = PH.placed().get((_key203("B203 받침"), "조립")) or {}
 show("B203 ⓙ 말 「1 스태킹 밑에 새로」 → 해석 = 새로 만들기 · 부모 번호 → Enter → ⓗ와 같은 기록(스태킹 밑)",
-     "1번 = 새로 만들기 → 조립 › 스태킹 › B203 받침 (잠정)" in _oj and _pj.get("under") == "스태킹", f"{_pj}")
+     "1번 = 새로 만들기 → 조립 › 스태킹 › B203 받침 (잠정" in _oj and _pj.get("under") == "스태킹", f"{_pj}")
 _w5 = list(GS.KEYS)
 _docs = [(ROOT / "docs" / "가이드" / f).read_text(encoding="utf-8") for f in ("운영_런북.md", "인입_이해_가이드.md")]
 _rx = GT._reject(1, dict(_seen["row"]), "a")
@@ -293,9 +293,9 @@ for _f in (p for d in ("cli", "core", "parser", "kit") for p in (ROOT / d).rglob
             and x.body and isinstance(x.body[0], _ast204.Expr) and isinstance(x.body[0].value, _ast204.Constant)}
     _left += [f"{_f.relative_to(ROOT)}:{n.lineno}" for n in _ast204.walk(_t) if isinstance(n, _ast204.Constant) and id(n) not in _doc
               and isinstance(n.value, str) and n.value not in ("쌍별", CA204.DECISION) and "카테고리" not in n.value and any(w in n.value for w in _old)]   # 열쇠 「쌍별」 · 카테고리 쌍은 다른 뜻
-_pv = AS197_ = __import__("core.build.also_stage", fromlist=["pair_line"])
+_pv = AS197_ = __import__("core.build.also_stage", fromlist=["pair_rows"])
 show("B204 ⓔ 화면 · 문면에 좌표 「쌍」 0(문자열 상수 — 코드 이름 · 큐 kind · 기록 열쇠 밖) · 「공정별 예고」 · 쌍별 예고 판단 이름이 다섯 말",
-     not _left and "사람 버리기" in _pv.pair_line({"x": ("노칭", "drop")}) and "공정별 예고" in __import__("inspect").getsource(
+     not _left and ("노칭 › 사람 버리기", 1) in _pv.pair_rows({"x": ("노칭", "drop")}) and "공정별 예고" in __import__("inspect").getsource(
          __import__("cli.also_screen", fromlist=["x"]).preview_screen), f"{_left[:5]}")
 
 

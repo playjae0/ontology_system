@@ -21,7 +21,7 @@ from core import paths
 PROMPT = "[승격 p / 합침 m [이름] / 그대로 k / 건너뜀 Enter] "
 #: 한글 자판 그대로(같은 자리의 글쇠 — B118 ④)
 KEYS = {"ㅔ": "p", "ㅡ": "m", "ㅏ": "k", "ㅇ": "d", "ㅁ": "a", "ㄱ": "r", "ㅕ": "u"}
-DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "해석 고침", "자동", "건너뜀")
+DONE = ("승격", "합침", "그대로", "새로", "drop", "올림", "확인", "정정", "해석 고침", "자동", "아래", "건너뜀")
 
 
 def key_of(ch):
@@ -42,7 +42,7 @@ def _pick(rest, cands):
     return rest or (cands[0]["name"] if cands else None)
 
 
-def decide(row, actor, ask=None, indent="     ", answer=None, under=None):
+def decide(row, actor, ask=None, indent="     ", answer=None, under=None, at=None):
     """한 줄 — `answer`가 있으면 묻지 않고 그 답(문 · 쌍 줄은 늘 `answer` — 표 고리 `cli/gate_table`의 처분) · `under` = 새로 만들기의
     부모(골격 노드 canonical — B203 ④). 돌려주는 것 `(한 일, 재구축 필요)` · 그 줄에 쓸 수 없는 글쇠는 거부(기록 0 — B202 ③)."""
     from core.state import coord_acks
@@ -57,7 +57,7 @@ def decide(row, actor, ask=None, indent="     ", answer=None, under=None):
         return "건너뜀", False
     try:
         if kind == "pair":
-            return _pair(row, k, rest, actor, indent, coord_acks, under)
+            return _pair(row, k, rest, actor, indent, coord_acks, under, at)
         if k == "d" and kind == "gate":
             PH.drop(actor, row["surface"], row.get("up_name"), rest)
             print(f"{indent}버리기 — '{row['surface']}'({row.get('up_name') or '부모 미정'}) 세우지 않는다 · 사유 {rest} · 재연결이 다시 열지 않는다")
@@ -70,7 +70,7 @@ def decide(row, actor, ask=None, indent="     ", answer=None, under=None):
             print(f"{indent}위로 — '{row['surface']}' 노드 0 · 그 값과 딸린 값은 위 공정 {row.get('up_name')}에 바로(재연결이 보류 행을 잇는다)")
             return "올림", False
         if k == "k" and kind == "gate":
-            PH.seed(actor, row["surface"], row.get("up_name"), under=under)
+            PH.seed(actor, row["surface"], row.get("up_name"), under=under, at=at)
             print(f"{indent}새로 만들기 — '{row['surface']}'(부모 {under or row.get('up_name') or '미정'}) 잠정 골격 노드로 선다(그 문서의 "
                   "나머지 행부터 · 재연결이 보류 행을 잇는다)")
             return "새로", False
@@ -102,7 +102,7 @@ def decide(row, actor, ask=None, indent="     ", answer=None, under=None):
     return "건너뜀", False
 
 
-def _pair(row, k, rest, actor, indent, coord_acks, under=None):
+def _pair(row, k, rest, actor, indent, coord_acks, under=None, at=None):
     pair = (row["up"], row["ref"])
     if k == "a":
         coord_acks.ack(row["pair_kind"], pair, actor, seen=True)
@@ -110,7 +110,7 @@ def _pair(row, k, rest, actor, indent, coord_acks, under=None):
         return "확인", False
     if k == "k":                                      # 쌍 줄의 새로 만들기(B203 ④) — 문서의 상위(또는 고른 부모) 밑에 그 하위 이름으로
         from core.state import catalog, provisional_hand as PH
-        PH.seed(actor, row["surface"], row["up"], under=under, pair=True)
+        PH.seed(actor, row["surface"], row["up"], under=under, pair=True, at=at)
         target = f"{under or row['up']}{catalog.sep()}{row['surface']}"
         coord_acks.fix(row["pair_kind"], pair, target, actor, note="새로 만들기")
         print(f"{indent}새로 만들기 — {target} 잠정 골격 노드(그 공정 짝의 행은 그 노드에 · 그 문서의 나머지 행부터)")

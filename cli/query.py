@@ -482,8 +482,8 @@ def records_block(res):
                                      r["status"], f"극성 {r['polarity']}" if r.get("polarity") else "",
                                      f"단 {r['tier']}" if r.get("tier") else "") if x)
         lines.append(f"   [원 레코드] {r['role']} · {r['canonical']} — {tag}")
-        lines.append("       별칭  " + (" · ".join(f"{a.get('surface')} ← {alias_source(a)}" for a in r["aliases"])
-                                       or "(없음)"))
+        from cli import _screen
+        lines += _screen.items("       별칭  ", [f"{a.get('surface')} ← {alias_source(a)}" for a in r["aliases"]] or ["(없음)"])
         vals = [f"{k} = " + (str(it.get("value")) if isinstance(it, dict) else f"{it!r}  ← 값 항목 형태 아님")
                 + (f" [{', '.join(f'{a}={b}' for a, b in (it.get('context') or {}).items())}]"
                    if isinstance(it, dict) and it.get("context") else "")

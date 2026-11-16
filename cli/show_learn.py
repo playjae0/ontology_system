@@ -160,7 +160,8 @@ def cmd_aliases(args):
               + ("" if n else " · 그래프에 없음") + ")")
         seeds = sorted(a["surface"] for a in (n or {}).get("aliases") or [] if AB.is_seed(a))
         if seeds:
-            print("     seed  " + " · ".join(seeds))
+            from cli import _screen
+            print("\n".join(_screen.items("     seed  ", seeds)))
         for r in sorted(rs, key=lambda r: (r["status"] != AB.LIVE, r["surface"])):
             print(_entry_line(r, miss))
     if live:

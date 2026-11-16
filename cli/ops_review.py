@@ -54,7 +54,7 @@ def provisionals(layer=None):
     from core.state.bootstrap import open_graph
     kept, g = PH.kept(), open_graph(lay)
     rows = [{"nid": e["id"], "surface": e["canonical"], "canonical": e["canonical"], "parent": e.get("parent"),
-             "tier": e.get("tier"), "near": e.get("near") or [], "doc": e.get("doc"),
+             "tier": e.get("tier"), "near": e.get("near") or [], "doc": e.get("doc"), "at": e.get("at"),
              "rows": sum(1 for p in (g.get(e["id"]) or {}).get("provenance") or [] if "#" in str(p))}
             for e in provisional.listing(lay)]
     return [r for r in rows if r["canonical"] not in kept], sum(1 for r in rows if r["canonical"] in kept)
@@ -140,7 +140,9 @@ def tables(b, live=False):
     if rows:
         print(f"  ── 잠정 골격 노드 — {'#':>3} {'표기':<18} {'부모':<14} {'단':<6} {'행 수':>4} {'합칠 후보':<16} 처음 본 문서")
         for i, r in enumerate(rows, 1):
-            print(f"     {i:>3} {_cut(r['canonical'], 18)} {_cut(r['parent'] or '부모 미정', 14)} {_cut(r['tier'] or '미정', 6)} "
+            at = next(iter((r.get("at") or {}).items()), None)        # 같은 단 그 자리(B205 ② — 골격 파일에 옮길 때 그대로)
+            par = (r["parent"] or "부모 미정") + (f" · {gate_table.short(at[1])} {'다음' if at[0] == 'after' else '앞'}" if at else "")
+            print(f"     {i:>3} {_cut(r['canonical'], 18)} {_cut(par, 14)} {_cut(r['tier'] or '미정', 6)} "
                   f"{r['rows']:>4} {_cut(' · '.join(r['near']) or '—', 16)} {r['doc'] or '—'}")
     if b["애매"]:
         print(f"  ── 애매 — {'#':>3} {'표기':<18} {'새 노드':<22} {'가장 가까운 후보':<22} {'점수':>6}  {'문서':<12} 가드")

@@ -105,7 +105,8 @@ class _Ctx:
         self.planned = []                         # 이 문서에 세울 것 — 뒤 행의 같은 이름 · 부모 채우기 대조
         from core.state import provisional_hand as PH
         self.book = PH.decisions()                # 문의 사람 답(B196 ①) — 문서마다 한 번 읽는다
-        self.placed = PH.placed()                 # 「새로 만들기」의 자리(B203 ④ — 고른 부모 · 쌍 줄)
+        self.placed = PH.placed()                 # 「새로 만들기」의 자리(B203 ④ — 고른 부모 · 쌍 줄 · B205 ② 같은 단 그 자리)
+        self.reread = PH.rereads()                # 「아래 개체로」(B205 ③)
 
     def place(self, surface, up):
         """`(세울 부모 id, 쌍 줄?)` — 사람이 고른 부모가 있으면 그것(골격 노드 하나일 때) · 아니면 들어온 자리."""
@@ -113,6 +114,21 @@ class _Ctx:
         p = self.placed.get((key(surface or ""), self.name(up))) or {}
         hit = [i for i, n in self.eb.g.nodes.items() if is_live(n) and n.get("canonical") == p.get("under")]
         return (hit[0] if len(hit) == 1 else up), bool(p.get("pair"))
+
+    def slot(self, surface, up):
+        """같은 단 그 자리(B205 ②) — `("after"|"before", 골격 노드 id)` · 기록이 없거나 그 노드가 하나로 안 풀리면 None."""
+        from parser.namefold import key
+        p = self.placed.get((key(surface or ""), self.name(up))) or {}
+        side = "after" if p.get("after") else "before" if p.get("before") else None
+        hit = [i for i, n in self.eb.g.nodes.items() if side and is_live(n) and n.get("canonical") == p[side]]
+        return (side, hit[0]) if len(hit) == 1 else None
+
+    def below(self, surface, up):
+        """「아래 개체로」(B205 ③ — 해석 고침의 위 공정이 맨 아래 단 노드) — 그 노드 id 또는 None."""
+        from parser.namefold import key
+        r = self.reread.get((key(surface or ""), self.name(up))) or {}
+        hit = [i for i, n in self.eb.g.nodes.items() if r.get("up") and is_live(n) and n.get("canonical") == r["up"]]
+        return hit[0] if len(hit) == 1 and _depth(self.eb.g, self.pm, hit[0]) == self.bottom else None
 
     def gate(self, surface, up):
         """**문**(B196 ①) — `(세운다?, 보류 사유)` · 사람 답이 「새로」(봄 포함)면 세운다 · drop이면 「사람 drop」 · 없으면 「사람 확인 전」."""
@@ -203,7 +219,10 @@ def _decide(cx, g):
     e = {"surface": s, "provs": g["provs"], "rows": len(g["provs"]), "up": up, "up_name": cx.name(up),
          "answer": "uncertain" if v.get("type") == "uncertain" else "new",
          "near": list(v.get("candidates") or [])[:NEAR], "act": None, "node": None, "canonical": None, "hold": None,
-         "confidence": v.get("confidence")}
+         "confidence": v.get("confidence"), "at": cx.slot(s, entry)}
+    if cx.below(s, entry):                         # 맨 아래 단 노드 아래 개체로 — 좌표 = 그 노드 · 골격 노드 0(B205 ③)
+        e.update(act="use", node=cx.below(s, entry))
+        return e
     have = [n for n in look(cx.b, s) if (cx.eb.g.get(n) or {}).get(PROVISIONAL)]
     fit = [n for n in have if _same_stem(cx.pm, cx.pm.get(n), up)]
     if len(fit) > 1 and up is not None:
@@ -249,19 +268,61 @@ def _decide(cx, g):
 
 
 # ---------------------------------------------------------------- 쓰기 — 세우는 손 하나
-def make(b, surface, prov, *, answer, canonical=None, near=None, up=None, tier=None):
+def flow_of(g, sib, x):
+    """그 노드의 대표 흐름 엣지 — `(앞에서 오는 것, 뒤로 가는 것)` · 둘 다 비면 흐름 무주장 부모(`@unordered` · `@noflow`)."""
+    return ([e for e in g.edges if e["rel"] == sib and e["dst"] == x], [e for e in g.edges if e["rel"] == sib and e["src"] == x])
+
+
+def flowless(canonical):
+    """그 골격 노드가 흐름 무주장 부모 아래인가(앞 · 뒤 흐름 엣지 0 — 화면 한 줄 · 쓰기 0)."""
+    from core.build import skeleton_review as SR
+    from core.state.bootstrap import load_config
+    sk = SR._Sk()
+    sib = ((load_config(sk.g.layer).get("skeleton") or {}).get("relations") or {}).get("sibling")
+    nid = sk.by_name.get(canonical)
+    return bool(nid) and not any(flow_of(sk.g, sib, nid))
+
+
+def replay_flow(g, sib):
+    """**골격 심기 뒤 같은 단 자리를 다시**(B205 ② — `bootstrap`이 seed 흐름을 다시 심어도 잠정 노드는 같은 자리) — 노드 표시 `at`대로."""
+    by = {n["canonical"]: i for i, n in g.nodes.items() if is_live(n)}
+    for nid, n in list(g.nodes.items()):
+        for side, canon in (((n.get(PROVISIONAL) or {}).get("at") or {}) if is_live(n) else {}).items():
+            if canon in by:
+                insert_flow(g, sib, nid, (side, by[canon]), (n.get("provenance") or ["seed"])[0])
+
+
+def insert_flow(g, sib, nid, at, prov):
+    """**같은 단 그 자리에 흐름을 끊고 넣는다**(B205 ②) — `x → y`가 있으면 끊고 `x → 새 → y`(뒤) · `w → x`면 `w → 새 → x`(앞) ·
+    맨 끝 · 맨 앞이면 한 엣지 · 흐름 무주장 부모면 0(`False`). 엣지는 auto · 출처 그 문서(재구축은 같은 기록으로 같은 자리)."""
+    side, x = at
+    into, out = flow_of(g, sib, x)
+    if not into and not out:
+        return False
+    for e in [e for e in (out if side == "after" else into) if nid not in (e["src"], e["dst"])]:   # 다시 불러도 같다
+        g.edges.remove(e)
+        g.add_edge(*((nid, sib, e["dst"]) if side == "after" else (e["src"], sib, nid)), "auto", provenance=[prov])
+    g.add_edge(*((x, sib, nid) if side == "after" else (nid, sib, x)), "auto", provenance=[prov])
+    return True
+
+
+
+def make(b, surface, prov, *, answer, canonical=None, near=None, up=None, tier=None, at=None):
     """**잠정 골격 노드를 세운다**(B182 ②) — 노드(home 층 · auto + 표시) · 사전 · 부모 엣지(골격 자식 관계 · 출처 그 문서) · 큐
     (다르다 `auto_node` · 애매 `uncertain_match` + 합칠 후보) · 이 문서의 세운 기록(`b.made` — 대장의 `made` 칸). 돌려주는 것은 id."""
     from core.state.bootstrap import load_config
     eb = b.for_category(_coord())
     canonical = canonical or surface
-    mark = {"answer": answer, **({"near": list(near)} if near else {})}
+    mark = {"answer": answer, **({"near": list(near)} if near else {}),
+            **({"at": {at[0]: eb.g.get(at[1])["canonical"]}} if at else {})}
     nid = eb.g.add_node(canonical, _coord(), "auto", provenance=[prov] if prov else [b.doc_id],
                         tier=tier, **{PROVISIONAL: mark})
     eb._register(surface, nid, prov or b.doc_id, key=canonical)
+    rel = (load_config(eb.layer).get("skeleton") or {}).get("relations") or {}
     if up is not None:
-        child = ((load_config(eb.layer).get("skeleton") or {}).get("relations") or {}).get("child")
-        eb.g.add_edge(nid, child, up, "auto", provenance=[prov or b.doc_id])
+        eb.g.add_edge(nid, rel.get("child"), up, "auto", provenance=[prov or b.doc_id])
+    if at:
+        insert_flow(eb.g, rel.get("sibling"), nid, at, prov or b.doc_id)
     kind = "auto_node" if answer == "new" else "uncertain_match"
     store.enqueue(kind, f"잠정 골격 노드{'' if answer == 'new' else ' — 판단 애매 · 합칠 후보'}: {canonical} ({_coord()})",
                   b.doc_id, {"node_id": nid, "canonical": canonical, "surface": surface, "provenance": prov or b.doc_id,
@@ -345,7 +406,7 @@ def settle(b, env, outline=None):
             continue
         if e["act"] == "new":
             made[id(e)] = make(b, e["surface"], e["provs"][0], answer=e["answer"], canonical=e["canonical"],
-                               near=e["near"], up=e["up"], tier=e["tier"])
+                               near=e["near"], up=e["up"], tier=e["tier"], at=e.get("at"))
             nid = made[id(e)]
         elif e["act"] == "join":
             nid = made[id(e["node"])]
@@ -460,5 +521,6 @@ def listing(layer):
                         "parent": (g.get(pm.get(nid)) or {}).get("canonical"),
                         "aliases": sorted({a["surface"] for a in n.get("aliases") or [] if a.get("surface")}),
                         PROVISIONAL: True, "answer": n[PROVISIONAL].get("answer"), "near": n[PROVISIONAL].get("near") or [],
+                        "at": n[PROVISIONAL].get("at"),
                         "doc": str((n.get("provenance") or [""])[0]).split("#", 1)[0] or None})
     return sorted(out, key=lambda e: e["canonical"])

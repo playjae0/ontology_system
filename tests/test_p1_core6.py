@@ -159,6 +159,8 @@ for doc, adapter, n_prefix in (("CP01", CP, 12), ("PFMEA01", PFMEA, 13)):
     got = (res.envelope or {}).get("records", [])
     want = json.loads((ROOT / "tests/fixtures/parsed" / f"{doc}.json").read_text(
         encoding="utf-8"))["records"]
+    from parser import tagger as _TG, coord_rows as _CR      # 정본은 태깅 전 계약 — 태깅 몫(극성 떼기 B205 ①)은 같은 함수로 얹는다
+    want = _CR.strip_axis(want, "process_ref", _CR.axis_of(_TG.snapshot_path()))[0]
     bad = []
     for i, (g, e) in enumerate(zip(got[:n_prefix], want[:n_prefix]), 1):
         gg = {k: v for k, v in g.items() if k not in SKIP and v not in (None, "")}

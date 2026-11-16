@@ -276,11 +276,12 @@ def _gate_rec(op, actor, surface, parent, reason, **more):
            {"node": {"layer": lay, "canonical": surface, "category": cat}})
 
 
-def seed(actor, surface, parent=None, reason="", under=None, pair=False):
+def seed(actor, surface, parent=None, reason="", under=None, pair=False, at=None):
     """**새로 만들기(잠정)**(B196 ① · B203 ④) — 표기 + 들어온 자리(부모 이름)의 「세움」 기록 · 노드가 아직 없어도 적는다(계획이 그 기록을
     보고 세운다 — 그 문서의 나머지 행부터 · 재연결이 보류 행을 그 노드에) · `under` = 고른 부모(골격 노드 canonical — 없으면 들어온 자리) ·
-    `pair` = 쌍 줄(그 이름이 골격의 다른 자리에 있어도 이 자리 밑에 `<부모>::<표기>`로 선다)."""
-    _gate_rec(OP_SEED, actor, surface, parent, reason, under=under, pair=pair)
+    `pair` = 쌍 줄(그 이름이 골격의 다른 자리에 있어도 이 자리 밑에 `<부모>::<표기>`로 선다) · `at` = 같은 단 그 자리(B205 ② —
+    `{"after"|"before": 골격 canonical}` — 대표 흐름을 끊고 그 사이에)."""
+    _gate_rec(OP_SEED, actor, surface, parent, reason, under=under, pair=pair, **(at or {}))
     _reopen(surface, parent)
     return {"surface": surface, "parent": parent, "under": under}
 
@@ -293,7 +294,8 @@ def placed():
     for r in oplog.read():
         d = r.get("detail") or {}
         if r.get("op") in (OP_SEED, OP_DROP, OP_RAISE, OP_REREAD) and d.get("surface"):
-            out[(key(d["surface"]), d.get("parent"))] = {k: d.get(k) for k in ("under", "pair")}
+            out[(key(d["surface"]), d.get("parent"))] = {k: d.get(k) for k in ("under", "pair")
+                                                         + (("after", "before") if r.get("op") == OP_SEED else ())}   # 해석 고침의 before는 다른 뜻
     return out
 
 

@@ -102,10 +102,10 @@ def cmd_roles(args):
     print(f"\n  배정 제안 {len(rows) - len(unmapped)}/{len(rows)} · "
           f"**UNMAPPABLE {len(unmapped)}**")
     if materials:
-        print(f"  **자재 열 관찰 {len(materials)}건**: " + " · ".join(materials))
+        print("\n".join(_screen.items(f"  **자재 열 관찰 {len(materials)}건**: ", materials)))
         print("  → 개체로 만들지 않는다. 빈도가 쌓이면 3번째 층(R5) 판정의 재료다.")
     if unmapped:
-        print("  질문할 열: " + " · ".join(unmapped))
+        print("\n".join(_screen.items("  질문할 열: ", unmapped)))
         print("  → 이 열들이 생성 세션의 첫 안건이다. 답을 준비하고 register generate로.")
     else:
         print("  → 막히는 열이 없다. register generate로 진행해도 된다.")

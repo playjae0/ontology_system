@@ -20,13 +20,16 @@ LINK, REREAD, UNKNOWN = "처분", "해석", "모름"
 #: **처분 말 다섯**(B203 ④ — 화면 · 처분 칸 · 거부 문면 · 말 해석이 이 한 자리) → 글쇠
 KEYS = {"같은 것으로": "m", "새로 만들기": "k", "버리기": "d", "위로": "u", "그대로 연결": "a"}
 FIELDS = ("카테고리", "위 공정")
+#: 새로 만들기의 자리(B205 ② ③ — `under` 번호 기준) — 뒤 · 앞 = 같은 단 그 자리(흐름 끊고) · 아래 = 맨 아래 단 노드 아래 개체로
+SIDES = ("뒤", "앞", "아래")
 SCHEMA = {"type": "object", "properties": {
     "kind": {"type": "string", "enum": [LINK, REREAD, UNKNOWN]},
     "disposition": {"type": ["string", "null"], "enum": list(KEYS) + [None]},
-    "target": {"type": ["string", "null"]}, "under": {"type": ["integer", "null"]}, "reason": {"type": ["string", "null"]},
+    "target": {"type": ["string", "null"]}, "under": {"type": ["integer", "null"]},
+    "side": {"type": ["string", "null"], "enum": list(SIDES) + [None]}, "reason": {"type": ["string", "null"]},
     "field": {"type": ["string", "null"], "enum": list(FIELDS) + [None]}, "value": {"type": ["string", "null"]},
     "confidence": {"type": "number"}, "why": {"type": "string"}},
-    "required": ["kind", "disposition", "target", "under", "reason", "field", "value", "confidence", "why"],
+    "required": ["kind", "disposition", "target", "under", "side", "reason", "field", "value", "confidence", "why"],
     "additionalProperties": False}                     # 엄격 규칙(B200 ⓪ — 쓰지 않는 칸은 null · `gateway.strict_issues`)
 CALLS = {"말 해석": 0}
 
@@ -102,6 +105,7 @@ def read(text, row):
             if not 1 <= int(a["under"]) <= len(ps):
                 return None, f"해석의 부모 번호가 목록 밖 — {a['under']}"
             out["under"] = int(a["under"])
+            out["side"] = a.get("side") if a.get("side") in SIDES else None
         if k == "d":
             out["reason"] = str(a.get("reason") or text).strip()
         return out, None
