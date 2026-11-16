@@ -531,8 +531,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     # **목록 좌표**(덱의 공정 표기 · B125 ④)는 **원소마다 한 행처럼** 대조한다(B151 ② — 표의 좌표 대조와 같은 연산 전부 · 같은
     # 표기는 조각이 여럿이어도 한 번 묻는다) · 결과는 조각마다 다시 접는다(`coord_rows.fold_rows`)
     whole, flat, owner = pieces, *flat_rows(pieces, ref_field)
-    # **극성은 이름 앞에서 뗀다**(B205 ① — 정확 일치 · 학습 · LLM · 문 · 새로 만들기 · 판정 기억이 다 개념 이름을 본다)
-    flat, axis_cut, axis_odd = strip_axis(flat, ref_field, axis_of(_snap_or_none()))
+    flat, axis_cut, axis_odd = strip_axis(flat, ref_field, axis_of(_snap_or_none()))   # 극성은 이름 앞에서 뗀다(B205 ① — 판단 · 기록 전)
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
     refs = [p.get(ref_field) or None for p in flat]

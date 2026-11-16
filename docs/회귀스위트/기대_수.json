@@ -3,11 +3,11 @@
  "suites": {
   "test_g1_g2": {
    "n": 84,
-   "secs": 7
+   "secs": 8
   },
   "test_places": {
    "n": 32,
-   "secs": 11
+   "secs": 13
   },
   "test_g3": {
    "n": 77,
@@ -15,31 +15,31 @@
   },
   "test_query": {
    "n": 128,
-   "secs": 22
+   "secs": 20
   },
   "test_ops": {
    "n": 85,
-   "secs": 8
+   "secs": 7
   },
   "test_intake": {
    "n": 100,
-   "secs": 24
+   "secs": 23
   },
   "test_ingest_view": {
    "n": 79,
-   "secs": 48
+   "secs": 46
   },
   "test_coord": {
-   "n": 92,
+   "n": 96,
    "secs": 21
   },
   "test_catalog": {
    "n": 103,
-   "secs": 44
+   "secs": 42
   },
   "test_safety": {
    "n": 36,
-   "secs": 83
+   "secs": 78
   },
   "test_judge": {
    "n": 112,
@@ -47,7 +47,7 @@
   },
   "test_build": {
    "n": 84,
-   "secs": 35
+   "secs": 30
   },
   "test_rebuild": {
    "n": 52,
@@ -55,11 +55,11 @@
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 7
+   "secs": 10
   },
   "test_structure": {
    "n": 137,
-   "secs": 32
+   "secs": 34
   },
   "test_g6_capture": {
    "n": 12,
@@ -67,11 +67,11 @@
   },
   "test_g6_close": {
    "n": 41,
-   "secs": 56
+   "secs": 51
   },
   "test_contract": {
    "n": 76,
-   "secs": 27
+   "secs": 24
   },
   "test_p1_core6": {
    "n": 42,
@@ -87,11 +87,11 @@
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 5
+   "secs": 4
   },
   "test_p1_media": {
    "n": 20,
-   "secs": 5
+   "secs": 4
   },
   "test_p2": {
    "n": 69,
@@ -99,7 +99,7 @@
   },
   "test_p3_register": {
    "n": 78,
-   "secs": 11
+   "secs": 13
   },
   "test_p3_prompt": {
    "n": 60,
@@ -107,11 +107,11 @@
   },
   "test_p3_gate": {
    "n": 76,
-   "secs": 6
+   "secs": 4
   },
   "test_p3_view": {
    "n": 32,
-   "secs": 7
+   "secs": 6
   },
   "test_p3_recover": {
    "n": 38,
@@ -119,11 +119,11 @@
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 8
+   "secs": 10
   },
   "test_p3_ledger": {
    "n": 46,
-   "secs": 4
+   "secs": 3
   },
   "test_p3_flow": {
    "n": 69,
@@ -131,7 +131,7 @@
   },
   "test_2a_gateway": {
    "n": 78,
-   "secs": 13
+   "secs": 12
   },
   "test_viewer": {
    "n": 60,
@@ -139,11 +139,11 @@
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 1
+   "secs": 0
   },
   "test_site": {
    "n": 56,
-   "secs": 27
+   "secs": 28
   }
  },
  "log": [
@@ -1217,6 +1217,14 @@
    "suite": "test_coord",
    "from": 85,
    "to": 92,
+   "why": ""
+  },
+  {
+   "at": "2026-11-16",
+   "head": "35e54c2",
+   "suite": "test_coord",
+   "from": 92,
+   "to": 96,
    "why": ""
   }
  ]
