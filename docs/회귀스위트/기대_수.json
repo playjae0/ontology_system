@@ -3,7 +3,7 @@
  "suites": {
   "test_g1_g2": {
    "n": 84,
-   "secs": 6
+   "secs": 7
   },
   "test_places": {
    "n": 32,
@@ -19,43 +19,43 @@
   },
   "test_ops": {
    "n": 85,
-   "secs": 8
+   "secs": 6
   },
   "test_intake": {
    "n": 100,
-   "secs": 19
+   "secs": 21
   },
   "test_ingest_view": {
    "n": 79,
-   "secs": 49
+   "secs": 43
   },
   "test_coord": {
-   "n": 96,
+   "n": 97,
    "secs": 19
   },
   "test_catalog": {
    "n": 103,
-   "secs": 43
+   "secs": 38
   },
   "test_safety": {
    "n": 36,
-   "secs": 81
+   "secs": 73
   },
   "test_judge": {
    "n": 112,
-   "secs": 35
+   "secs": 32
   },
   "test_build": {
    "n": 84,
-   "secs": 33
+   "secs": 28
   },
   "test_rebuild": {
    "n": 52,
-   "secs": 31
+   "secs": 29
   },
   "test_g6_rehearsal": {
    "n": 18,
-   "secs": 8
+   "secs": 7
   },
   "test_structure": {
    "n": 137,
@@ -63,15 +63,15 @@
   },
   "test_g6_capture": {
    "n": 12,
-   "secs": 30
+   "secs": 29
   },
   "test_g6_close": {
    "n": 41,
-   "secs": 56
+   "secs": 50
   },
   "test_contract": {
    "n": 76,
-   "secs": 26
+   "secs": 22
   },
   "test_p1_core6": {
    "n": 42,
@@ -83,30 +83,30 @@
   },
   "test_p1_csv": {
    "n": 54,
-   "secs": 2
+   "secs": 3
   },
   "test_p1_form": {
    "n": 35,
-   "secs": 3
+   "secs": 4
   },
   "test_p1_media": {
    "n": 20,
-   "secs": 4
+   "secs": 5
   },
   "test_p2": {
    "n": 69,
-   "secs": 7
+   "secs": 5
   },
   "test_p3_register": {
    "n": 78,
-   "secs": 12
+   "secs": 10
   },
   "test_p3_prompt": {
    "n": 60,
    "secs": 2
   },
   "test_p3_gate": {
-   "n": 76,
+   "n": 79,
    "secs": 4
   },
   "test_p3_view": {
@@ -115,11 +115,11 @@
   },
   "test_p3_recover": {
    "n": 38,
-   "secs": 2
+   "secs": 1
   },
   "test_p3_screen": {
    "n": 52,
-   "secs": 7
+   "secs": 8
   },
   "test_p3_ledger": {
    "n": 46,
@@ -127,19 +127,19 @@
   },
   "test_p3_flow": {
    "n": 69,
-   "secs": 14
+   "secs": 11
   },
   "test_2a_gateway": {
    "n": 78,
-   "secs": 12
+   "secs": 10
   },
   "test_viewer": {
-   "n": 60,
-   "secs": 3
+   "n": 62,
+   "secs": 2
   },
   "verify_roundtrip": {
    "n": 50,
-   "secs": 1
+   "secs": 0
   },
   "test_site": {
    "n": 56,
@@ -1225,6 +1225,30 @@
    "suite": "test_coord",
    "from": 92,
    "to": 96,
+   "why": ""
+  },
+  {
+   "at": "2026-11-16",
+   "head": "98c08ed",
+   "suite": "test_coord",
+   "from": 96,
+   "to": 97,
+   "why": ""
+  },
+  {
+   "at": "2026-11-16",
+   "head": "98c08ed",
+   "suite": "test_p3_gate",
+   "from": 76,
+   "to": 79,
+   "why": ""
+  },
+  {
+   "at": "2026-11-16",
+   "head": "98c08ed",
+   "suite": "test_viewer",
+   "from": 60,
+   "to": 62,
    "why": ""
   }
  ]

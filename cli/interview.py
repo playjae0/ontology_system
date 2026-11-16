@@ -60,6 +60,14 @@ INTERVIEW_SCHEMA = {
         # **이해 요약이 이 설계의 심장이다** — 사람이 판정하는 대상은 "질문에 다
         # 답했나"가 아니라 **"LLM의 이해가 맞아졌나"**다.
         "understanding": {"type": "string"},
+        # **열마다 판정**(B206 ④) — 라운드 화면의 열 표(살아남은 열 · 제외 한 줄 · 바뀐 열 ✎)
+        "columns": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"column": {"type": "string"}, "role": {"type": "string"},
+                           "attach": {"type": ["string", "null"]}, "store_as": {"type": ["string", "null"]},
+                           "context_type": {"type": ["string", "null"]}},
+            "required": ["column", "role", "attach", "store_as", "context_type"],
+            "additionalProperties": False}},
         "questions": {"type": "array", "items": {
             "type": "object",
             "properties": {"q": {"type": "string"},
@@ -69,9 +77,25 @@ INTERVIEW_SCHEMA = {
             "required": ["q", "options", "importance"],
             "additionalProperties": False}},
     },
-    "required": ["progress", "understanding", "questions"],
+    "required": ["progress", "understanding", "columns", "questions"],
     "additionalProperties": False,
 }
+#: 문답 열 표의 「뺀다」 role(지시문 1.3 — 맞출 칸 없음)
+UNMAPPABLE = "unmappable"
+
+
+def cols_lines(cols, prev=None):
+    """**문답 열 표**(B206 ④ — 라운드 화면 · 생성 전 확정 확인이 같은 함수) — 살아남은 열(열 · role · 붙는 곳 · 저장명 · 맥락형 ·
+    지난 라운드에서 바뀐 열 ✎) + 제외 한 줄."""
+    from cli import _screen
+    was = {c["column"]: c for c in prev or []}
+    keep = [c for c in cols or [] if c.get("role") != UNMAPPABLE]
+    out = [f"   {_screen.pad('열', 18)}{_screen.pad('role', 12)}{_screen.pad('붙는 곳', 14)}{_screen.pad('저장명', 14)}맥락형"] if keep else []
+    out += [f"   {_screen.pad(_screen.cut(c['column'], 17), 18)}{_screen.pad(c['role'], 12)}{_screen.pad(c.get('attach') or '—', 14)}"
+            f"{_screen.pad(c.get('store_as') or '—', 14)}{c.get('context_type') or '—'}"
+            + ("  ✎" if prev is not None and was.get(c["column"]) != c else "") for c in keep]
+    gone = [c["column"] for c in cols or [] if c.get("role") == UNMAPPABLE]
+    return out + (_screen.items(f"   제외 {len(gone)}열: ", gone) if gone else [])
 
 
 INTERVIEW_STOP = ("진행", "go", "ok", "진행해", "진행합니다")
@@ -146,41 +170,37 @@ def _show_decisions(decisions):
               f"  — {d.get('reason', '')}{rd}")
 
 
-def finalize(pkg, history, context=None):
-    """문답이 끝난 자리 — **확정 요약을 내고 사람이 확인한다** (B60 ②).
-
-    실측: 라운드 전문을 그대로 생성에 실었더니 표본이 바뀌어 묶음이 둘일 때 모델이
-    「결국 헤더는 몇 행으로 정해졌나」를 대화에서 재구성했고 거기서 어긋났다.
-    **대화는 이력, 판단은 정본** — 이 시스템이 `DECISIONS.md`와 대화를 가르는 원칙과
-    같다. 전문은 그대로 남는다(재현 근거).
-
-    화면: 요약을 찍고 `[Y/n/수정]`. **짧아서 볼 수 있다** — 전문은 못 보지만 요약은
-    본다. 이것이 사람이 최종 판단을 확인하는 자리다. `수정`(또는 항목 번호)이면 그
-    항목만 다시 묻고, `n`이면 모델이 요약을 다시 낸다(1회). 비대화형이면 그대로 간다.
-    """
-    if not history:
-        return []
-    decisions = _summarize(pkg, history, context)
-    retried = False
+def confirm(decisions, columns=None, retry=None):
+    """**생성 전 확정 확인 한 자리**(B60 ② · B206 ⑤) — 문답 · 힌트만 · 이어가기(y) 어느 길이든 열 표 + 확정 요약을 보이고
+    `[Y / 수정(번호) / 추가(문장)]` · `retry`(문답 길)면 `n` = 요약을 다시 낸다(1회) · 비대화형은 그대로 간다(한 줄) · 고침은
+    같은 리스트에(부르는 쪽의 묶음이 그대로 바뀐다)."""
     while True:
+        for ln in cols_lines(columns):
+            print(ln)
         _show_decisions(decisions)
         try:
-            raw = _ask("   확정 요약이 맞나? [Y/n/수정(번호)] > ").strip()
+            raw = _ask("   확정 요약이 맞나? [Y / 수정(번호) / 추가(문장)] > ").strip()
         except (EOFError, KeyboardInterrupt, StopIteration):
-            print("   (입력 없음 — 요약 그대로 진행)")
+            print("   (비대화형 — 확인 없이 요약 그대로 생성으로 간다)")
             return decisions
         low = raw.lower()
         if low in ("", "예") or low in _screen.YES or low in INTERVIEW_STOP:
             return decisions
-        if low in _screen.NO and not retried:
-            retried = True
+        if low in _screen.NO and retry:
             print("   → 요약을 다시 낸다 (1회)")
-            decisions = _summarize(pkg, history, context)
+            decisions[:], retry = retry(), None
+            continue
+        if raw.startswith("추가"):
+            text = raw[len("추가"):].strip()
+            if text:
+                decisions.append({"topic": "추가", "decision": text, "reason": "사람이 확정 확인에서 추가", "round": None})
+            else:
+                print("   추가할 문장을 같이 적어라 — 예: 추가 헤더는 3행이다")
             continue
         m = re.match(r"\s*(?:수정\s*)?(\d+)", raw)
         idx = int(m.group(1)) if m else None
         if idx is None or not (1 <= idx <= len(decisions)):
-            print(f"   항목 번호를 적어라 (1~{len(decisions)}) — 예: 수정 2")
+            print(f"   항목 번호를 적어라 (1~{len(decisions)}) — 예: 수정 2 · 또는 추가 <문장>")
             continue
         d = decisions[idx - 1]
         try:
@@ -188,8 +208,18 @@ def finalize(pkg, history, context=None):
         except (EOFError, KeyboardInterrupt, StopIteration):
             return decisions
         if fix:
-            decisions[idx - 1] = {**d, "decision": fix,
-                                  "reason": f"사람이 요약 확인에서 수정 — 이전: {d.get('reason', '')}"}
+            decisions[idx - 1] = {**d, "decision": fix, "reason": f"사람이 요약 확인에서 수정 — 이전: {d.get('reason', '')}"}
+
+
+def finalize(pkg, history, context=None):
+    """문답이 끝난 자리 — **확정 요약을 내고 사람이 확인한다** (B60 ②) · 확인은 생성 전 한 자리 `confirm`.
+
+    **대화는 이력, 판단은 정본** — 라운드 전문은 남고 생성에는 요약만 실린다(표본이 바뀐 묶음 둘에서 모델이 대화를
+    재구성하다 어긋난 실측). `n`이면 모델이 요약을 다시 낸다(1회)."""
+    if not history:
+        return []
+    return confirm(_summarize(pkg, history, context), history[-1].get("columns"),
+                   retry=lambda: _summarize(pkg, history, context))
 
 
 def _interview_round(pkg, history, context=None):
@@ -226,8 +256,14 @@ def _interview_round(pkg, history, context=None):
                    "options": ["표본을 바꾼다", "힌트를 더한다", "모름"],
                    "importance": "높음 — 이것이 풀려야 산출이 선다"}] + qs
             base = f"기계 관문 실패 {len(context)}건을 보고 다시 묻는다. " + base
+        # 열 판정도 규칙으로(창작 — 첫 열 anchor · 「비고」 꼴은 뺀다 · 교정에 이름이 나온 열은 context로 — ✎를 보이는 자리)
+        roles = [("anchor" if i == 0 else UNMAPPABLE if any(w in c for w in ("비고", "서명", "No")) else
+                  "context" if any(c in f for f in fixes) else "attribute") for i, c in enumerate(cols)]
         return {"understanding": base + ("" if not fixes else
                                          " · 교정 반영: " + " / ".join(fixes)),
+                "columns": [{"column": c, "role": r, "attach": None if r == UNMAPPABLE else cols[0],
+                             "store_as": None if r == UNMAPPABLE else c, "context_type": "행" if r == "context" else None}
+                            for c, r in zip(cols, roles)],
                 "progress": {"columns": len(cols), "decided": len(fixes),
                              "undecided": max(0, len(cols) - len(fixes)),
                              "by_role": "(mock — 규칙 요약이라 role 배정이 없다)"},
@@ -327,6 +363,8 @@ def _interview(pkg, on_round=None, context=None):
                   f"이번 질문 {len(out.get('questions') or [])}")
         else:
             print(f"\n[라운드 {n}]")
+        for ln in cols_lines(out.get("columns"), (history[-1].get("columns") or []) if history else None):
+            print(ln)                         # 살아남은 열 표 · 제외 한 줄(B206 ④)
         print("이해 요약")
         print(f"   {out['understanding']}")
         _prof_hint(pkg)                       # 판정 근거를 사람에게도 보인다
@@ -372,7 +410,7 @@ def _interview(pkg, on_round=None, context=None):
             ans = (ans + "; " if ans else "") + f"교정: {extra}"
         history.append({"round": n, "understanding": out["understanding"],
                         "questions": qs, "answers": answers, "answer": ans,
-                        "progress": pg})
+                        "progress": pg, "columns": out.get("columns") or []})
         if on_round:
             on_round(history)                 # **라운드마다 즉시 저장**(B43 ⑤)
         if stop:

@@ -10,6 +10,8 @@ trace가 질의의 계산과 같은 것을 말하는가 · 화면 코드가 그 
 from __future__ import annotations
 
 import hashlib
+import contextlib
+import io
 import json
 import sys
 import threading
@@ -180,6 +182,16 @@ try:
     _sc_ok, _b_ok = _get("/api/query?q=" + _up.quote("노칭 다음 공정은?"))
     show("⑤ 정상 질의는 200이고 오류 키가 없다",
          _sc_ok == 200 and "error" not in json.loads(_b_ok))
+    import cli.query as _CQ6                                         # noqa: E402
+    _vq = json.loads(_b_ok).get("verdict") or ""
+    _vm = json.loads(_get("/api/query?q=" + _up.quote("zqxv 없는 물음"))[1]).get("verdict") or ""
+    _co = io.StringIO()
+    with contextlib.redirect_stdout(_co):
+        _CQ6.main(["노칭 다음 공정은?"])
+    show("B206 ⓐ 결과 한 줄 — 답 되는 물음 「답함 · 쓴 사실 n」 · 답 안 되는 물음 「답 못 함 — 그래프 사실 0 · 근거 조각 0」 · "
+         "CLI는 답 바로 밑에 같은 줄(같은 함수)",
+         _vq.startswith("답함 · 쓴 사실") and _vm.startswith("답 못 함 — ") and "그래프 사실 0" in _vm and "근거 조각 0" in _vm
+         and f"   {_vq}" in _co.getvalue().splitlines(), f"{_vq} / {_vm}")
     import cli.query as _CQ                                          # noqa: E402
     _real = _CQ.answer
     _CQ.answer = lambda q: (_ for _ in ()).throw(
@@ -409,6 +421,11 @@ show("④ /api/node — 근거 원문 = describes 청크 전부(글자 그대로
      and VD.node("없는-id") is None,
      f"{_nd['name']} · 근거 {_nd['evidence_total']} · 길 {[s_['rel'] for s_ in _nd['anchor_path']['steps']]} · "
      f"붙은 자리 {len(_nd['landed'])}")
+_cx = next((n for l_ in discover() for n in open_graph(l_).nodes.values() if any(
+    isinstance(it, dict) and it.get("context") for v in (n.get("attrs") or {}).values() for it in (v if isinstance(v, list) else [v]))), None)
+show("B206 ⓑ /api/node 원 레코드 = 그래프에 저장된 노드 그대로 — 맥락형 값의 context가 레코드에 실린다(값 · provenance 칸 그대로)",
+     _nd["record"] == _raw and _cx is not None and VD.node(_cx["id"])["record"]["attrs"] == _cx["attrs"],
+     f"{(_cx or {}).get('canonical')}")
 show("⑥ 상세·이웃·그래프 조회는 쓰기 0 (③진실·②등록 해시 불변)", _state_hash() == _h0)
 show("⑥ 서버에 노드·이웃 라우트가 있고 쓰기 라우트는 동의어 둘뿐이다 (고침 B200 ⓔ — 옛 「쓰기 라우트 없음」)",
      "/api/node/" in (ROOT / "cli/viewer/server.py").read_text(encoding="utf-8")

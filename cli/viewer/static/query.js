@@ -148,6 +148,8 @@ async function ask(q) {
     ans.append(el("div", "muted", `LLM(live) · ${A.lines || 0}줄 · 쓴 사실 ${(tr.facts || []).filter((f) => f.used).length}`
                                     + ` · 쓴 청크 ${(A.used_chunks || []).length}`));
   else ans.append(el("div", "muted", "(mock — 답은 정형 나열 · 문장 생성 없음)"));
+  // 결과 한 줄(B206 ① — 서버의 `verdict` 그대로 · 답 바로 밑 · 못 하면 사유)
+  if (res.verdict) ans.append(el("div", res.verdict.startsWith("답 못 함") ? "card err" : "note", res.verdict));
   records(res);
   const ms = $("#qmiss"); ms.innerHTML = "";
   if ((tr.miss || []).length) ms.append(el("p", "note", `미스(사전 단): ${tr.miss.join(" · ")}`));

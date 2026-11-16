@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from cli.interview import (  # noqa: F401
     INTERVIEW_SCHEMA, INTERVIEW_STOP, _interview_round, _prof_hint, _interview,
-    finalize as iv_finalize)
+    confirm as iv_confirm, finalize as iv_finalize)
 from cli.prompt import (  # noqa: F401
     KIT_NOTE, VOCAB_SECTIONS, _dir, _strip_kit_notes, _dump_prompt, _strip_module_doc,
     _reference_adapter, generate_template, _render_template, _vocab_excerpt, _sent_size)
@@ -458,17 +458,12 @@ def _cmd_generate_package(doc_type, layer, samples, hint, no_fewshot,
             write_file(d / "input_package.json",
                        json.dumps(_old_pkg, ensure_ascii=False, indent=2) + "\n")
             prior = ivlog.prior_interview(d / "input_package.json")
-    if prior and drop_interview:
-        _lg = ivlog.read_log(doc_type)
-        print(f"   ⚠ 이전 문답 "
-              f"{sum(len(_lg.get(b.get('at')) or []) for b in prior)}라운드를 "
-              f"**버린다** (--drop-interview)")
+    if prior and (drop_interview or not ivlog._keep_prior(prior, ivlog.read_log(doc_type))):
+        print(f"   → {ivlog.DROP_LINE}" + (" (--drop-interview)" if drop_interview else ""))
+        pkg["human"]["hint"] = ivlog._merge_hint(pkg["human"]["hint"], ivlog.drop_batches(prior))
     elif prior:
-        if ivlog._keep_prior(prior, ivlog.read_log(doc_type)):
-            kept = ivlog._age_rounds(prior, [str(x) for x in samples])
-            pkg["human"]["hint"] = ivlog._merge_hint(pkg["human"]["hint"], kept)
-        else:
-            print("   → 이전 문답을 버리고 새로 시작한다")
+        kept = ivlog._age_rounds(prior, [str(x) for x in samples])
+        pkg["human"]["hint"] = ivlog._merge_hint(pkg["human"]["hint"], kept)
     if not interview:
         # **문답을 열지 않는 실행에서만 말한다**(B62 ②ⓓ) — 바로 문답이 열리면
         # 「결정을 세워라」가 아니라 열리는 문답이 답이다.
@@ -522,10 +517,17 @@ def _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview):
         # **문답 없이 힌트만** — 힌트 문장이 그대로 한 항목의 확정 사항이다. 자리는
         # 항상 있어야 하므로 여기서 묶음을 세운다(사람 4키는 그대로 — `hint` 안이다).
         _hb = ivlog._new_batch([str(x) for x in samples])
-        _hb["decisions"] = ivlog.hint_only_decisions(hint)
+        _hb["decisions"] = iv_confirm(ivlog.hint_only_decisions(hint))     # 생성 전 확정 확인(B206 ⑤ — 힌트만 길)
         pkg["human"]["hint"] = ivlog._merge_hint(
             pkg["human"]["hint"], ivlog._hint_batches(pkg["human"]["hint"]) + [_hb])
         write_file(d / "input_package.json", json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
+    else:
+        live = [b for b in ivlog._hint_batches(pkg["human"]["hint"]) if not b.get("stale")]
+        if live:                                  # 이어가기(y) — 이전 확정 요약을 먼저 · 고친 뒤 생성(B206 ⑤)
+            print("   이어가기 — 이전 확정 요약(고칠 곳을 고친 뒤 생성)")
+            rounds = ivlog.read_log(doc_type).get(live[-1].get("at")) or []
+            iv_confirm(live[-1].setdefault("decisions", []), (rounds[-1].get("columns") if rounds else None))
+            write_file(d / "input_package.json", json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
 
 
 def _cmd_generate_draft(doc_type, layer, samples, pkg, revise):

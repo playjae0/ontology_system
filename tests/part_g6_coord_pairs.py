@@ -733,6 +733,33 @@ show("B205 ⓓ 맨 아래 단(노칭 타발) 고르기 → 갈 길 둘(같은 �
      and _a205["F4"].get("node_id") == _at205.get("노칭::비전검사") and "B205 탭 컷" not in _at205
      and "B205 탭 컷" not in _P.layers("process", "skeleton.json").read_text(encoding="utf-8") and "['n']}번" not in (ROOT / "cli" / "gate_table.py").read_text(encoding="utf-8")
      and len(_pl205) == 11 and all(ln.count(" › ") == 1 for ln in _pl205[1:]), f"{_lb} · {len(_pl205)}")
+
+# B206 ⓒ — 잠정 노드로 「같은 것으로」(위 B205가 세운 잠정 scrap vision · 노칭 아래) · 처분은 진짜 `gate_table._apply`
+_e206 = {**TABLE, "doc_id": "B206A", "doc_type": _dt196, "records": TG.tag(
+    [dict(_rec196("G1", "B206 sv", "노칭"), doc_type=_dt196, electrode_type="both")], layer=coord_layer(), doc_type=_dt196, doc_id="B206A")}
+_rw206 = PA196.step_rows(_e206)
+GJ205.judge(_rw206, live=False)
+_r206 = next(r for r in _rw206 if r["surface"] == "B206 sv")
+_pk206 = next(x for x in GJ205.picks(_r206) if x["canonical"] == "scrap vision")
+with contextlib.redirect_stdout(io.StringIO()):
+    GT205._apply(1, _r206, "m", str(_pk206["n"]), "시험")
+_sk206 = lambda: json.dumps(json.loads(_P.layers("process", "skeleton.json").read_text(encoding="utf-8")).get("ALIASES") or {},  # noqa: E731
+                            ensure_ascii=False)
+_a206, _no_al = _run196(_e206), "B206 sv" not in _sk206()
+with contextlib.redirect_stdout(io.StringIO()):
+    init.init(fresh_=True)                                           # 시험 대상: 기본 fresh — 재구축의 바닥(사람 기록은 남는다)
+    bootstrap("process", echo=False)
+_register_table("process")
+_run196(_e205)
+_b206 = _run196(_e206)
+_sv206 = _flow205()[1].get("scrap vision")
+with contextlib.redirect_stdout(io.StringIO()):
+    _pr206 = PH196.promote("시험", surface="scrap vision", parent="노칭")     # 셋째 단은 이름이 바뀌어 노드 승격은 재구축 길 — 표기 승격으로
+show("B206 ⓒ 잠정 후보(「(잠정)」)에 `m` → 그 잠정 노드의 별칭(골격 ALIASES 0) · 그 행이 그 잠정으로 · 재구축 바닥 뒤 같은 표기가 같은 "
+     "잠정으로(기록을 계획이 읽는다) · 승격하면 별칭이 ALIASES로 같이 간다",
+     _pk206.get("prov") and "(잠정)" in "\n".join(GT205.row_lines(1, _r206)) and _r206.get("did") == "합침" and _no_al
+     and _a206["G1"].get("node_id") == _at205.get("scrap vision") and _b206["G1"].get("node_id") == _sv206
+     and "B206 sv" in _sk206(), f"{_r206.get('done')} · {_pr206.get('canonical')}")
 init.init(fresh_=True, all_=True)
 
 for d in set(_made):

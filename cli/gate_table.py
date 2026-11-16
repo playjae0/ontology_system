@@ -113,7 +113,7 @@ def row_lines(i, r, indent="   "):
     head = "후보(LLM 순위)" if r.get("llm") else "후보(첫 판단)"
     for j, x in enumerate(p for p in ps if p["cand"]):
         out.append(indent + "     " + _screen.pad("고를 곳 ─ " + head if j == 0 else "", 26)
-                   + P(f"{_no(x['n'])} {short(x['path'])}" + (f" — {x['why']}" if x.get("why") else ""), "prog"))
+                   + P(f"{_no(x['n'])} {short(x['path'])}" + ("(잠정)" if x.get("prov") else "") + (f" — {x['why']}" if x.get("why") else ""), "prog"))
     rest = [x for x in ps if not x["cand"]]
     first = len(rest) == len(ps)                             # 후보가 없으면 첫 묶음 줄이 「고를 곳」 머리를 단다
     for j, grp in enumerate(([x for x in rest if not x.get("same")], [x for x in rest if x.get("same")])):
@@ -122,7 +122,7 @@ def row_lines(i, r, indent="   "):
         head = (f"같은 단({up} 옆) " if j else f"위 공정 '{up}'이 골격 밖 — 골격 전체 {len(grp)}: " if r.get("up_out")
                 else f"골격({up or '좌표 층'} 아래) ")
         out.append(indent + "     " + _screen.pad("고를 곳 ─" if first else "", 26)
-                   + P(head + "  ".join(f"{_no(x['n'])} {x['name']}" for x in grp[:SHOW]) + ("  … (? = 전부 번호로)" if len(grp) > SHOW else ""), "aux"))
+                   + P(head + "  ".join(f"{_no(x['n'])} {x['name']}" + ("(잠정)" if x.get("prov") else "") for x in grp[:SHOW]) + ("  … (? = 전부 번호로)" if len(grp) > SHOW else ""), "aux"))
         first = False
     if r.get("llm") and r.get("llm0"):                    # 판단 기억 — 칸이 잘려도 안내는 한 줄로(B204 ⑥)
         out.append(P(f"{indent}     LLM 0 — 지난 판단({r['llm'].get('at') or '날짜 모름'}) · 새로 보려면 「{AGAIN}」", "aux"))

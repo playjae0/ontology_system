@@ -84,6 +84,9 @@ function detachedToggle() {
 async function evidence(n, box) {
   const d = await get(`/api/node/${encodeURIComponent(n.id)}`);
   if (!d || d.error) return;
+  const rec = el("details", "card rec");              // 원 레코드(B206 ② — 저장된 꼴 그대로 · 기본 접힘)
+  rec.append(el("summary", "", "원 레코드(JSON)"), el("pre", "src", JSON.stringify(d.record || {}, null, 1)));
+  box.append(rec);
   box.append(el("h3", "", "닻까지의 길"));
   const ap = d.anchor_path;
   if (!ap) box.append(el("p", "muted", "닻 없음 — 골격에 닿는 엣지가 없다(연결 없는 노드)"));
