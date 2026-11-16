@@ -70,6 +70,22 @@ def table_of(res):
     return [{**o, "몫": round(100.0 * (o["prompt"] + o["completion"]) / tot, 1) if tot else None} for o in rows]
 
 
+def conflict_lines(rows, limit=10):
+    """**값 충돌**(B209 ③) — 칸별 상위 5 한 줄 + (노드, 칸)마다 한 줄 → 화면 줄들(위 `limit`줄 · 나머지는 명령 로그에 바로)."""
+    if not rows:
+        return []
+    from collections import Counter
+    from core.state import log
+    by = Counter()
+    for r in rows:
+        by[r["칸"]] += r["행"]
+    for r in rows[limit:]:
+        log.get(__name__).info("값 충돌 %s", r["줄"])
+    return (["   충돌이 많은 칸 — " + " · ".join(f"{k} {n:,}행" for k, n in by.most_common(5))
+             + " — 그 열이 공유 노드의 attribute인가(역할 판정 가이드 §4)"] + [f"     {r['줄']}" for r in rows[:limit]]
+            + ([f"     … 그 밖 {len(rows) - limit:,}줄 — 명령 로그"] if len(rows) > limit else []))
+
+
 def show(res):
     for ln in lines(res):
         _screen.say(ln, "head" if ln.startswith("   결과") else None)

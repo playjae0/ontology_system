@@ -509,6 +509,45 @@ finally:
 show("B207 ⓑ 별칭 'cleaning'(다른 노드 이름) → bootstrap · --dry-run 거부(문면 · 다음 줄) · 두 '비전검사' 묶음의 공유 별칭은 통과",
      "ALIASES '적층'의 별칭 'cleaning'가 노드" in _e207 and "bootstrap --dry-run" in _e207 and _e207.split("\n")[0] in _d207
      and _ok207 == [], (_e207 or "거부 없음")[:160])
+# B209 ①③ — 큐는 문서 묶음의 메모리 판(싣기는 파일 0 · 사람 문 · 끝에서 한 번 · 예외는 버림 · 결과는 묶음 밖 싣기와 같다) · 값 충돌은
+# (노드, 칸)마다 한 줄 · 큐 항목은 그대로
+from core.build import result as _R209                                    # noqa: E402
+from cli import result_screen as _RS209                                   # noqa: E402
+_q209 = store.read(store.QUEUE, [])
+_strip = lambda q: [{k: v for k, v in x.items() if k != "created"} for x in q]
+
+
+def _put209():
+    for i in range(40):
+        store.enqueue("spec_conflict", f"N{i % 2}의 규격: 같은 맥락에 다른 값", "D209",
+                      {"node_id": f"n{i % 2}", "attr": "규격", "existing": "1", "incoming": str(i % 4), "provenance": f"R{i}"})
+        store.enqueue_rows("unknown_field", "r", "D209", f"f{i % 3}", {"i": i}, locator=f"R{i}")
+    store.enqueue("spec_conflict", "N0의 규격: 같은 맥락에 다른 값", "D209",       # 같은 항목 — 한 번
+                  {"node_id": "n0", "attr": "규격", "existing": "1", "incoming": "0", "provenance": "R0"})
+
+
+_put209()
+_plain209 = _strip(store.read(store.QUEUE, []))
+store.write(store.QUEUE, _q209)
+_raw0 = store.path(store.QUEUE).read_bytes()
+with store.queue_batch():
+    _put209()
+    _mid209 = store.path(store.QUEUE).read_bytes() == _raw0
+_batch209 = _strip(store.read(store.QUEUE, []))
+_lines209 = _RS209.conflict_lines(_R209.conflicts("D209", _q209))
+store.write(store.QUEUE, _q209)
+try:
+    with store.queue_batch():
+        _put209()
+        raise RuntimeError("시험 — 문서 중 멈춤")
+except RuntimeError:
+    pass
+_disc209 = store.path(store.QUEUE).read_bytes() == _raw0
+show("B209 ①③ 큐 묶음 — 묶음 안 싣기는 파일 0 · 끝에서 한 번 = 묶음 밖 싣기와 같은 판 · 예외는 버림 · 값 충돌 (노드, 칸) 한 줄 · 큐 항목 그대로",
+     _mid209 and _batch209 == _plain209 and _disc209 and len([x for x in _batch209 if x["kind"] == "spec_conflict"]) == 40
+     and len(_lines209) == 3 and "규격 40행" in _lines209[0] and "다른 값 2종 · 행 20" in _lines209[1],
+     f"묶음 중 파일 그대로 {_mid209} · 같은 판 {_batch209 == _plain209} · 버림 {_disc209} · {_lines209[:2]}")
+store.write(store.QUEUE, _q209)
 
 # ============================================================
 done("G1+G2 완료판정 충족")

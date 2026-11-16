@@ -95,6 +95,24 @@ def collect(doc_id, rows, before, after, q_new, q_old, rejects, usage, extra=Non
     }
 
 
+def conflicts(doc_id, q0=()):
+    """**이 문서 실행의 값 충돌을 (노드, 칸)마다**(B209 ③ — 큐 항목은 그대로 · 화면 · 명령 로그의 한 줄) — `[{줄, 칸, 행}]` 행 많은
+    차례 · 「다른 값 n종」은 들어온 값의 종수 · 「남은 값」은 노드에 남은 값."""
+    from core.state import store
+    from core.build.entry import _qkey
+    seen, by = {_qkey(x) for x in q0}, {}
+    for x in store.read(store.QUEUE, []):
+        p = x.get("payload") or {}
+        if x.get("kind") not in store.ROLLUP or x.get("doc_id") != doc_id or _qkey(x) in seen:
+            continue
+        c = by.setdefault((p.get("node_id"), p.get("attr")), {"이름": str(x.get("reason") or "").split(": ")[0],
+                                                             "칸": p.get("attr"), "값": set(), "행": 0, "남은": p.get("existing")})
+        c["값"].add(str(p.get("incoming")))
+        c["행"] += 1
+    return [{"줄": f"{c['이름']} — 다른 값 {len(c['값']):,}종 · 행 {c['행']:,} · 남은 값 '{c['남은']}'", "칸": c["칸"], "행": c["행"]}
+            for c in sorted(by.values(), key=lambda c: -c["행"])]
+
+
 def same_node(rejects):
     """**같은 노드 엣지**(B186 ② — 관문이 세우지 않았다) — `{"같은 노드 엣지": [수, 표기가 다른 수]}` · 없으면 빈 칸(대장 바이트 그대로)."""
     xs = [x for x in rejects if x.get("verdict") == SAME_NODE]

@@ -157,6 +157,8 @@ def atomic_write_bytes(target: Path, data: bytes) -> int:
 
 
 def read(name, default):
+    if name in _QB.get("v", ()):                 # 문서 묶음 안 — 메모리 판 그 자체(B209 ① — 판으로 남길 손은 사본을 뜬다)
+        return _QB["v"][name]
     p = path(name)
     return _loads(p.read_bytes()) if p.exists() else default
 
@@ -169,7 +171,76 @@ def content_fp(obj):
 
 def write(name, obj):
     # 폴더는 `atomic_write_bytes`가 만든다(부모 mkdir) — 여기서 또 만들지 않는다(B77 ④).
+    if name in _QB.get("v", ()):                 # 문서 묶음 안 — 판을 간다(파일은 `queue_flush`)
+        _QB["v"][name] = obj
+        _QB["dirty"].add(name)
+        return
     atomic_write_bytes(path(name), _dumps(obj))
+
+
+#: **문서 하나를 짓는 동안의 메모리 판**(B209 ① — 항목 · 값마다 파일 전체를 읽고 쓰던 제곱을 끊는다) — `queue_batch()` 안에서
+#: 큐 · 청크(`BATCHED`)의 `read`는 메모리 판 그 자체 · `write`는 판 갈기 · 싣기(`enqueue` · `enqueue_rows`)는 판에 바로(중복은 열쇠
+#: 색인) · 파일은 `queue_flush` 한 번(사람이 답하는 자리 · 문서 끝). 되돌림은 판을 버리고 시작 전 판을 쓴다(`entry._undo` — 그대로).
+_QB = {}
+#: 문서 묶음 안에서 항목마다 로그 줄을 내지 않는 kind — 문서 끝에 (노드, 칸)마다 한 줄로 모은다(`result.conflicts` · B209 ③)
+ROLLUP = ("spec_conflict",)
+
+
+@contextlib.contextmanager
+def queue_batch(keep=lambda: False):
+    """묶음 — 정상 끝은 한 번 쓴다 · 예외면 판을 버린다(되돌림이 시작 전 판을 쓴다) · 단 `keep()`이 참(저장 뒤 멈춤 — 끝난 문서)이면 쓴다."""
+    _QB.clear()
+    _QB.update(v={QUEUE: read(QUEUE, []), CHUNKS: read(CHUNKS, {"chunks": {}, "describes": []})}, dirty=set())
+    try:
+        yield
+        queue_flush()
+    except BaseException:
+        if keep():
+            queue_flush()
+        raise
+    finally:
+        _QB.clear()
+
+
+def queue_flush():
+    """묶음 안이고 판이 바뀌었으면 파일에 한 번 쓴다(밖이면 아무것도 안 한다)."""
+    for name in sorted(_QB.get("dirty") or ()):
+        atomic_write_bytes(path(name), _dumps(_QB["v"][name]))
+    if _QB:
+        _QB["dirty"].clear()
+
+
+def _qkey(x):
+    import json
+    return (x.get("kind"), x.get("doc_id"), json.dumps(x.get("payload"), sort_keys=True, ensure_ascii=False, default=str))
+
+
+def _qfind(q, kind, doc_id, payload=None, key=None):
+    """같은 항목 — `key`면 `(kind, doc_id, payload.key)`(enqueue_rows) · 아니면 `(kind, doc_id, payload)`(enqueue) · 처음 것.
+    묶음 안은 열쇠 색인(판이 갈리면 다시 짓는다) · 밖은 목록 훑기."""
+    match = ((lambda x: (x.get("kind"), x.get("doc_id"), (x.get("payload") or {}).get("key")) == (kind, doc_id, key))
+             if key is not None else (lambda x: (x.get("kind"), x.get("doc_id"), x.get("payload")) == (kind, doc_id, payload)))
+    if not _QB:
+        return next((x for x in q if match(x)), None)
+    if _QB.get("for") is not q:
+        _QB.update(ix={}, ixr={}, **{"for": q})
+        for x in q:
+            _qindex(x)
+    hit = (_QB["ixr"].get((kind, doc_id, key)) if key is not None
+           else _QB["ix"].get(_qkey({"kind": kind, "doc_id": doc_id, "payload": payload})))
+    return hit if hit is not None and match(hit) else None
+
+
+def _qindex(x):
+    if _QB.get("for") is not None:
+        _QB["ix"].setdefault(_qkey(x), x)
+        _QB["ixr"].setdefault((x.get("kind"), x.get("doc_id"), (x.get("payload") or {}).get("key")), x)
+
+
+def _qput(q, item):
+    q.append(item)
+    _qindex(item)
+    write(QUEUE, q)
 
 
 def append_line(name: str, line: str):
@@ -286,25 +357,23 @@ def enqueue_rows(kind, reason, doc_id, key, payload, *, locator=None):
     `enqueue`와 달리 같은 항목의 재호출이 **갱신**이다 — 그래서 여기서 직접 쓴다.
     """
     q = read(QUEUE, [])
-    for x in q:
-        if x.get("kind") == kind and x.get("doc_id") == doc_id \
-                and (x.get("payload") or {}).get("key") == key:
-            pl = x["payload"]
-            pl["rows"] = int(pl.get("rows", 1)) + 1
-            if locator and len(pl.setdefault("locators", [])) < LOC_KEEP:
-                pl["locators"].append(locator)
-            pl.setdefault("items", []).append(payload)
-            x["reason"] = reason
-            write(QUEUE, q)
-            return x
+    x = _qfind(q, kind, doc_id, key=key)
+    if x is not None:
+        pl = x["payload"]
+        pl["rows"] = int(pl.get("rows", 1)) + 1
+        if locator and len(pl.setdefault("locators", [])) < LOC_KEEP:
+            pl["locators"].append(locator)
+        pl.setdefault("items", []).append(payload)
+        x["reason"] = reason
+        write(QUEUE, q)
+        return x
     item = {"kind": kind, "reason": reason, "doc_id": doc_id,
             "payload": {**payload, "key": key, "rows": 1,
                         "locators": [locator] if locator else [],
                         "items": [payload]},
             "created": _now()}
-    q.append(item)
     log.queue_put(_LOG, kind, reason, doc_id)
-    write(QUEUE, q)
+    _qput(q, item)
     return item
 
 
@@ -322,13 +391,12 @@ def enqueue(kind, reason, doc_id, payload):
     미검토 작업목록)까지 재인입이 지워 버린다.
     """
     q = read(QUEUE, [])
+    hit = _qfind(q, kind, doc_id, payload)
+    if hit is not None:
+        return hit
     item = {"kind": kind, "payload": payload, "reason": reason,
             "doc_id": doc_id, "created": _now()}
-    for x in q:
-        if (x.get("kind"), x.get("doc_id"), x.get("payload")) \
-                == (kind, doc_id, payload):
-            return x
-    q.append(item)
-    log.queue_put(_LOG, kind, reason, doc_id)   # 문서 7 §7.8 로그 3종
-    write(QUEUE, q)
+    if not (_QB and kind in ROLLUP):            # 문서 7 §7.8 로그 3종 · 묶음 안의 값 충돌은 문서 끝 (노드, 칸) 한 줄(B209 ③)
+        log.queue_put(_LOG, kind, reason, doc_id)
+    _qput(q, item)
     return item
