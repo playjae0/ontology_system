@@ -53,4 +53,5 @@ def detail(nid, nodes, edges, anc, raw_node):
                            "path": r.get("path"), "from": r.get("from"),
                            "attached": r.get("attached") or []})
     return {"id": nid, "name": by[nid]["name"], "anchor_path": path,
-            "evidence": ev[:EVIDENCE_MAX], "evidence_total": len(ev), "landed": landed}
+            "evidence": ev[:EVIDENCE_MAX], "evidence_total": len(ev), "landed": landed,
+            "record": raw_node}                     # 원 레코드 — 그래프에 저장된 꼴 그대로(B206 ② — 값 · context · provenance · 극성)

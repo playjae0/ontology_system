@@ -344,6 +344,54 @@ show("⑤ 번호 답이 선택지 본문으로 풀려 기록된다 (모델은 «
      and _hist[0]["questions"][0]["options"][0] in _hist[0]["answer"])
 show("⑤ «진행»은 어느 자리에서든 종료다 — 라운드 2에서 멈춤", len(_hist) == 2)
 
+# B206 ⓓ~ⓕ — 문답 라운드 열 표 · 생성 전 확정 확인(문답 · 힌트만 · 이어가기 한 자리) · 버린 문답은 보관 → 새 판 확정 때 정리
+from cli.register import generate as _GN6, interview as _RV6        # noqa: E402
+from cli import prompt as _PR6                                      # noqa: E402
+_pk6 = {"human": {"doc_type": "ivb206", "layer": "quality", "samples": [], "hint": ""},
+        "system": {"reader_head": [{"head": {"sheets": [{"cells": {"A1": "공정", "B1": "관리항목", "C1": "비고"}}]}}],
+                   "skeleton_closed_list": {}, "layer_vocabulary": {}, "blocks": {}, "adapter_skeleton": ""}}
+
+
+def _run6(feed, fn, *a):
+    it = iter(feed)
+    _IV._ask = lambda prompt="": next(it)
+    b6 = _io.StringIO()
+    try:
+        with _ctx.redirect_stdout(b6):
+            out = fn(*a)
+    finally:
+        _IV._ask = _orig_ask
+    return out, b6.getvalue()
+
+
+_h6, _s6 = _run6(["1", "관리항목은 행마다 다르다", "진행"], _IV._interview, _pk6)
+show("B206 ⓓ 문답 라운드 — 살아남은 열 표(열 · role · 붙는 곳 · 저장명 · 맥락형) · 제외 한 줄 · 교정으로 바뀐 열 ✎",
+     len(_h6) == 2 and "제외 1열: 비고" in _s6 and any("관리항목" in ln and "✎" in ln for ln in _s6.splitlines())
+     and not any(ln.startswith("   공정 ") and "✎" in ln for ln in _s6.splitlines()), f"{[c['role'] for c in _h6[-1]['columns']]}")
+_d6, _f6 = _run6(["수정 2", "관리항목은 행 맥락", "y"], _IV.finalize, _pk6, _h6)
+_dh, _fh = _run6(["추가 헤더는 1행", "y"], _IV.confirm, _RV6.hint_only_decisions("병합 셀은 위 값"))
+_d = _P.review("ivb206")
+_P.ensure(_d / "x")
+_RV6.write_rounds("ivb206", "T1", [], _h6)
+_pky = dict(_pk6, human=dict(_pk6["human"], hint={"text": "", "interview": [{"samples": [], "at": "T1", "decisions": [dict(x) for x in _d6]}]}))
+_, _fy = _run6(["수정 1", "공정 열은 anchor", "y"], _GN6._cmd_generate_interview, "ivb206", [], "", _pky, _d, False)
+_yb = _RV6._hint_batches(json.loads((_d / "input_package.json").read_text(encoding="utf-8"))["human"]["hint"])[-1]
+_, _fn = _run6([], _IV.confirm, [{"topic": "t", "decision": "d", "reason": "r", "round": None}])
+show("B206 ⓔ 생성 전 확정 확인 — 문답(`수정 2`가 결정을 바꿈) · 힌트만(`추가`) · 이어가기(y — 이전 요약 · 열 표 · `수정 1`) 세 길이 같은 "
+     "물음 · 비대화형은 확인 없이 한 줄",
+     _d6[1]["decision"] == "관리항목은 행 맥락" and _dh[-1]["decision"] == "헤더는 1행"
+     and "이어가기 — 이전 확정 요약" in _fy and "제외 1열: 비고" in _fy and _yb["decisions"][0]["decision"] == "공정 열은 anchor"
+     and "비대화형 — 확인 없이" in _fn, f"{_d6[1]['decision']} · {_yb['decisions'][0]['decision']}")
+_pkd = dict(_pkg, human=dict(_pkg["human"], hint=_RV6._merge_hint("", _RV6.drop_batches([_yb]))))
+(_d / "input_package.json").write_text(json.dumps(_pkd, ensure_ascii=False), encoding="utf-8")
+_before = _RV6._hint_batches(json.loads((_d / "input_package.json").read_text(encoding="utf-8"))["human"]["hint"])
+_g6, _r6 = _RV6.purge_dropped("ivb206")
+show("B206 ⓕ n → 보관(dropped · 이번 입력의 확정 사항 밖) · 확정 전에는 그대로 · 새 판 확정 때 정리(묶음 · 로그 전문)",
+     len(_before) == 1 and _before[0].get("dropped") and "공정 열은 anchor" not in _PR6._decisions_block(_before)
+     and (_g6, _r6) == (1, 2) and not _RV6._hint_batches(json.loads((_d / "input_package.json").read_text(encoding="utf-8"))["human"]["hint"])
+     and not _RV6.read_log("ivb206").get("T1"), f"{_g6} · {_r6}")
+shutil.rmtree(_d, ignore_errors=True)
+
 # ============================================================ mock 관문 (B48 ③)
 print("\n■ mock 관문 — 운영 명령은 mock에서 실행 전에 멈춘다 (문서 7 §7.6-B-1)")
 from cli import _gate as _G                                         # noqa: E402

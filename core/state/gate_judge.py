@@ -49,6 +49,7 @@ def listing(up, sk=None):
     (미정) 좌표 층 골격 전부."""
     from core.build import skeleton_review as SR
     from core.state import catalog
+    from core.state.status import PROVISIONAL
     sk = sk or SR._Sk()
     nid = sk.by_name.get(up) if up else None
     want = set(sk.under(nid)) if nid else set(sk.sk)
@@ -57,7 +58,8 @@ def listing(up, sk=None):
     for i in (x for x in sk.g.nodes if x in want):
         n = sk.g.get(i)
         out.append({"no": len(out) + 1, "name": n["canonical"].rsplit(sep, 1)[-1], "canonical": n["canonical"],
-                    "path": sk.path(i), "tier": n.get("tier"), "host": sk.path(i).count(" › ") < bottom})   # 그 밑에 잠정 노드가 설 수 있나
+                    "path": sk.path(i), "tier": n.get("tier"), "host": sk.path(i).count(" › ") < bottom,   # 그 밑에 잠정 노드가 설 수 있나
+                    "prov": bool(n.get(PROVISIONAL))})                                                  # 잠정 노드(B206 ③ — 화면 「(잠정)」)
     return out
 
 

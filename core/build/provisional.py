@@ -107,6 +107,7 @@ class _Ctx:
         self.book = PH.decisions()                # 문의 사람 답(B196 ①) — 문서마다 한 번 읽는다
         self.placed = PH.placed()                 # 「새로 만들기」의 자리(B203 ④ — 고른 부모 · 쌍 줄 · B205 ② 같은 단 그 자리)
         self.reread = PH.rereads()                # 「아래 개체로」(B205 ③)
+        self.merged = PH.merged()                 # 잠정 노드로 「같은 것으로」(B206 ③)
 
     def place(self, surface, up):
         """`(세울 부모 id, 쌍 줄?)` — 사람이 고른 부모가 있으면 그것(골격 노드 하나일 때) · 아니면 들어온 자리."""
@@ -129,6 +130,13 @@ class _Ctx:
         r = self.reread.get((key(surface or ""), self.name(up))) or {}
         hit = [i for i, n in self.eb.g.nodes.items() if r.get("up") and is_live(n) and n.get("canonical") == r["up"]]
         return hit[0] if len(hit) == 1 and _depth(self.eb.g, self.pm, hit[0]) == self.bottom else None
+
+    def merged_to(self, surface):
+        """잠정 노드로 합친 표기(B206 ③ — 재구축 인입도 같은 자리) — 그 잠정 노드 id 또는 None."""
+        from parser.namefold import key
+        t = (self.merged.get(key(surface or "")) or (None, None))[1]
+        hit = [i for i, n in self.eb.g.nodes.items() if t and is_live(n) and n.get(PROVISIONAL) and n.get("canonical") == t]
+        return hit[0] if len(hit) == 1 else None
 
     def gate(self, surface, up):
         """**문**(B196 ①) — `(세운다?, 보류 사유)` · 사람 답이 「새로」(봄 포함)면 세운다 · drop이면 「사람 drop」 · 없으면 「사람 확인 전」."""
@@ -220,8 +228,9 @@ def _decide(cx, g):
          "answer": "uncertain" if v.get("type") == "uncertain" else "new",
          "near": list(v.get("candidates") or [])[:NEAR], "act": None, "node": None, "canonical": None, "hold": None,
          "confidence": v.get("confidence"), "at": cx.slot(s, entry)}
-    if cx.below(s, entry):                         # 맨 아래 단 노드 아래 개체로 — 좌표 = 그 노드 · 골격 노드 0(B205 ③)
-        e.update(act="use", node=cx.below(s, entry))
+    x = cx.below(s, entry) or cx.merged_to(s)      # 맨 아래 단 노드 아래 개체로(B205 ③) · 잠정으로 같은 것으로(B206 ③)
+    if x:
+        e.update(act="use", node=x)
         return e
     have = [n for n in look(cx.b, s) if (cx.eb.g.get(n) or {}).get(PROVISIONAL)]
     fit = [n for n in have if _same_stem(cx.pm, cx.pm.get(n), up)]

@@ -228,7 +228,7 @@ def _decisions_block(batches):
     lines = ["[확정 사항 — 문답·힌트에서 정해진 것 · 이것을 그대로 따른다]"]
     lines += _decision_lines(live) or ["- (확정 사항 없음 — 문답도 힌트도 없다)"]
     for b in batches:
-        if b.get("stale") and b.get("decisions"):
+        if b.get("stale") and not b.get("dropped") and b.get("decisions"):     # 버린 문답은 입력 밖(보관 — B206 ⑥)
             lines.append(f"[이전 표본의 확정 사항 — 지금 표본이 아니다: "
                          f"{', '.join(b.get('samples') or []) or '표본 미상'}]")
             lines += _decision_lines(b["decisions"])

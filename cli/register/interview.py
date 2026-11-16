@@ -126,11 +126,42 @@ def _keep_prior(prior, counts=None):
         print(f"     · {b.get('at', '?')[:19]} · 표본 "
               f"{[Path(x).name for x in (b.get('samples') or [])]} · "
               f"{_n(b)}라운드")
-    go = _screen.answer("   이어갈까? [Y/n]  (n이면 버린다 · 사람의 답은 다시 못 만든다) ", "Yes", eof=None)
+    go = _screen.answer(f"   이어갈까? [Y/n]  ({DROP_LINE}) ", "Yes", eof=None)
     if go is None:
         print("   (비대화형 — **이어간다.** 버리려면 --drop-interview)")
         return True
     return go
+
+
+#: 버리기(n · `--drop-interview`)의 문면(B206 ⑥)
+DROP_LINE = "n이면 이번 입력에서 뺀다(보관 — 새 판 확정 때 정리) · 지금 등록은 확정 전까지 그대로"
+
+
+def drop_batches(prior):
+    """**버린 문답은 보관**(B206 ⑥) — 이번 입력에서 빼되 지우지 않는다(`stale`과 같은 꼴의 표지 `dropped`) · 새 판 확정 때 정리."""
+    return [dict(b, stale=True, dropped=True) for b in prior]
+
+
+def purge_dropped(doc_type):
+    """**새 판 확정 때 정리**(B206 ⑥ — `confirm`) — 패키지의 `dropped` 묶음과 그 로그 전문을 지운다 · `(묶음 수, 라운드 수)`."""
+    path = REVIEW / doc_type / "input_package.json"
+    if not path.exists():
+        return 0, 0
+    obj = json.loads(path.read_text(encoding="utf-8"))
+    hint = (obj.get("human") or {}).get("hint")
+    gone = {b.get("at") for b in _hint_batches(hint) if b.get("dropped")}
+    if not gone:
+        return 0, 0
+    try:
+        log = json.loads(log_path(doc_type).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        log = {"batches": []}
+    n = sum(len(b.get("rounds") or []) for b in log.get("batches") or [] if b.get("at") in gone)
+    log["batches"] = [b for b in log.get("batches") or [] if b.get("at") not in gone]
+    write_file(log_path(doc_type), json.dumps(log, ensure_ascii=False, indent=2) + "\n")
+    obj["human"]["hint"] = _merge_hint(hint, [b for b in _hint_batches(hint) if not b.get("dropped")])
+    write_file(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
+    return len(gone), n
 
 
 def _new_batch(samples):

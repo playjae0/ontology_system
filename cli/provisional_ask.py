@@ -90,7 +90,8 @@ def decide(row, actor, ask=None, indent="     ", answer=None, under=None, at=Non
             if not target:
                 return "건너뜀", False
             r = PH.merge(actor, target=target, nid=row.get("nid"), surface=None if row.get("nid") else row["surface"])
-            print(f"{indent}같은 것으로 — '{' · '.join(r['surfaces'])}' → {r['target']} 골격 ALIASES · "
+            print(f"{indent}같은 것으로 — '{' · '.join(r['surfaces'])}' → {r['target']} "
+                  + ("잠정 노드의 별칭(승격하면 ALIASES로 같이 간다) · " if r.get("provisional") else "골격 ALIASES · ")
                   + (f"재구축이 필요하다 — {PH.REBUILD}" if r["rebuild"] else "이 문서의 나머지 행부터 그 골격 노드로"))
             return "합침", r["rebuild"]
         if k == "k" and row.get("nid"):

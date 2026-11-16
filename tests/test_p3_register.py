@@ -395,9 +395,9 @@ show("④ 이해 요약이 사람의 교정을 반영해 바뀐다",
      _r1["understanding"] != _r2["understanding"]
      and "병합은 위 값 채움" in _r2["understanding"])
 # [B43 ⑥] 진행 재료가 더해져 셋이다 — strict 요건상 required는 properties 전량이다.
-show("④ 스키마가 이해 요약·질문·진행을 요구한다",
+show("④ 스키마가 이해 요약·질문·진행 · 열마다 판정(고침 B206 ④)을 요구한다",
      set(_R.INTERVIEW_SCHEMA["required"])
-     == {"understanding", "questions", "progress"},
+     == {"understanding", "questions", "progress", "columns"},
      str(sorted(_R.INTERVIEW_SCHEMA["required"])))
 show("④ 종료어에 «진행»이 있다 (끝내는 것은 사람이다)", "진행" in _R.INTERVIEW_STOP)
 

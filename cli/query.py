@@ -495,6 +495,35 @@ def records_block(res):
     return "\n".join(lines)
 
 
+def verdict(res):
+    """**결과 한 줄**(B206 ① — 질의 탭 · CLI가 같은 함수 · trace에서 — 새 계산 0) — `답함 · 쓴 사실 n · 쓴 조각 n · LLM(live)` 또는
+    `답 못 함 — <사유>`(쓴 사실 0 · 쓴 조각 0 또는 답 오류 · 사유는 닫힌 셋에서 걸린 것 전부)."""
+    tr = res.get("trace") or {}
+    a, err = tr.get("answer") or {}, res.get("answer_error")
+    live = a.get("mode") == "live"
+    nf = sum(1 for f in tr.get("facts") or [] if f.get("used")) if live else len(tr.get("facts") or [])
+    nc = len(a.get("used_chunks") or []) if live else len(res.get("chunks") or []) + len(res.get("doc_search") or [])
+    if not err and (nf or nc):
+        return f"답함 · 쓴 사실 {nf:,} · 쓴 조각 {nc:,} · " + ("LLM(live)" if live else "mock(정형 나열)")
+    miss = tr.get("miss") or []
+    why = [("링킹 0" + (f"(사전 미스 {' · '.join(miss)})" if miss else "")) if not tr.get("linking") else "",
+           "그래프 사실 0" if not nf else "", "근거 조각 0" if not nc else "",
+           f"상한에서 잘림 {res['truncated']:,}" if res.get("truncated") else "", f"LLM 오류({err})" if err else "",
+           "" if live or err else "mock(정형 나열)"]
+    return "답 못 함 — " + " · ".join(x for x in why if x)
+
+
+def _generate(res):
+    """답 만들기 — 답변 게이트웨이 실패는 묶음에 문면으로 남기고 결과 한 줄이 사유로 보인다(B206 ① — 근거 칸은 그대로 보인다)."""
+    try:
+        return generate(res)
+    except gateway.GatewayError as e:
+        res["answer_error"] = f"{type(e).__name__}: {e}"
+        return ""
+    finally:
+        QS.end()
+
+
 JSON_FLAG = "--json"
 
 
@@ -509,11 +538,8 @@ def as_json(res):
     `res["facts"]`를 좁히기 때문이다(§5.3 Q5) — 답보다 넓은 근거 목록을 함께 내면
     묶음이 「이 답의 근거」라고 거짓말을 한다. mock이면 `render(res)`라 변화가 없다.
     """
-    try:
-        text = generate(res)
-    finally:
-        QS.end()
-    return dict(res, answer=text)
+    text = _generate(res)
+    return dict(res, answer=text, verdict=verdict(res))
 
 
 def main(args):
@@ -541,13 +567,11 @@ def main(args):
     else:
         print(f"  {gateway.mode_line()}")          # B42 ⑤ — 어느 갈래로 도는지 먼저
         res = answer(question)
-        try:
-            text = generate(res)
-        finally:
-            QS.end()
+        text = _generate(res)
         # **링크 결과와 답을 나란히**(B104 ④) — mock은 답이 곧 나열이고, live는 나열(ⓐ~ⓔ) 아래 LLM 답(ⓕ)
         print(text if gateway.use_mock() else render(res))
         print(answer_block(res, text))
+        print(f"   {verdict(res)}")                     # 결과 한 줄 — 답 바로 밑(B206 ①)
         print(records_block(res))                    # ⓖ 노드 원 레코드 (B105 ⑤)
         if _V.cost_line():
             print(f"  {_V.cost_line()}")           # 벡터 캐시 — 만든 수 · 재사용 · 판 · 시간 (B104 ③)

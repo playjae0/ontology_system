@@ -108,6 +108,10 @@ def cmd_confirm(doc_type, approved_by):
               f"**재인입은 사람이 정한다**(자동으로 다시 읽지 않는다)")
         print(f"     {', '.join(_ing[:8])}" + (f" 외 {len(_ing) - 8}건" if len(_ing) > 8 else ""))
     print(f"   승인 기록 → {paths.show(_dir(doc_type) / 'approval.json')}")
+    from cli.register import interview as _iv
+    _g, _r = _iv.purge_dropped(doc_type)          # 버린 문답(보관)은 새 판 확정 때 정리(B206 ⑥)
+    if _g:
+        print(f"   버린 문답 정리 — 보관 {_g}묶음 · 라운드 {_r} 지움")
     # **등록은 여기서 끝이고 인입은 자동으로 이어지지 않는다** — 그래프까지 간 줄 알고
     # 멈춘 실측이 있어 다음 두 줄을 그대로 낸다(등록개선 ③).
     # **가이드가 사람에게 시키는 흐름 그대로다**(B66 ③) — 구판은 `parse run`·`build`

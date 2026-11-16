@@ -203,6 +203,10 @@ def promote(actor, *, nid=None, surface=None, parent=None, reason=""):
     if spec is None or (n is not None and spec.canonical != canonical):
         raise Refused(f"승격하면 이름이 바뀐다(지금 '{canonical}' → 골격 '{spec.canonical if spec else name}') — 이름이 바뀌는 일은 "
                       "재구축 한 길: 골격 파일에 줄 → python run.py bootstrap → python run.py rebuild (운영 런북 6)")
+    al = seed.setdefault("ALIASES", {}).setdefault(spec.canonical, [])     # 잠정에 합쳐 둔 표기는 승격과 함께(B206 ③)
+    al += [w for w, tgt in merged().values() if tgt == canonical and w not in al]
+    if not al:
+        seed["ALIASES"].pop(spec.canonical)
     _write(p, seed)
     if n is not None:
         n["status"] = "seed"
@@ -232,14 +236,16 @@ def merge(actor, *, target, nid=None, surface=None, reason=""):
         raise Refused("행위자 미지정 — 합침은 로그에 행위자를 남긴다")
     lay, g, _child, cat = _ctx()
     t = next((x for x in g.nodes.values() if x["canonical"] == target and x["category"] == cat and is_live(x)
-              and not x.get(PROVISIONAL) and x.get("status") == "seed"), None)
+              and (x.get(PROVISIONAL) or x.get("status") == "seed")), None)
     if t is None:
-        raise Refused(f"합칠 골격 노드 '{target}'가 없다 — 사람이 고정한 골격 노드로만 합친다")
+        raise Refused(f"합칠 골격 노드 '{target}'가 없다 — 골격 칸 후보(고정 · 잠정)로만 합친다")
     n = _node(g, nid, cat) if nid else None
     words = ([surface] if surface else []) + ([a["surface"] for a in n.get("aliases") or [] if a.get("surface")]
                                                if n is not None else [])
     if n is not None and not words:
         words = [n["canonical"]]
+    if t.get(PROVISIONAL):                        # 잠정 대상(B206 ③) — 골격 파일에 노드가 없다: 그 노드의 별칭(사람 판단 기록 · ALIASES 0)
+        return _merge_provisional(actor, t, n, nid, list(dict.fromkeys(words)), reason, lay, cat)
     for w in dict.fromkeys(words):
         _lay, p = add_alias(target, w)
     if n is None:
@@ -253,6 +259,30 @@ def merge(actor, *, target, nid=None, surface=None, reason=""):
                                                         "rebuild": n is not None, "skeleton": paths.show(p)},
            _names(lay, n, cat) if n is not None else {"node": {"layer": lay, "canonical": target, "category": cat}})
     return {"target": target, "surfaces": list(dict.fromkeys(words)), "rebuild": n is not None, "file": p}
+
+
+def _merge_provisional(actor, t, n, nid, words, reason, lay, cat):
+    """잠정 노드로 「같은 것으로」 — 표기를 그 노드의 별칭으로(`ops_mark.alias` — 사전 · 표기 대장 · I축 기록 · 재구축 재생) · 계획이
+    기록을 읽어 재구축 인입에서도 그 노드로(`provisional._Ctx.merged_to`) · 승격하면 별칭도 `ALIASES`로(`promote`)."""
+    from core.state import ops, ops_mark
+    from core.state.ops import log_op
+    try:
+        for w in words:
+            ops_mark.alias(lay, t["id"], w, actor, reason or f"같은 것으로 → {t['canonical']}(잠정)")
+    except ops.OpRefused as e:
+        raise Refused(str(e).splitlines()[0]) from e
+    log_op(OP_MERGE, actor, [nid or t["id"]], reason, {"surfaces": words, "target": t["canonical"], "provisional": True,
+                                                        "rebuild": n is not None},
+           _names(lay, n, cat) if n is not None else {"node": {"layer": lay, "canonical": t["canonical"], "category": cat}})
+    return {"target": t["canonical"], "surfaces": words, "rebuild": n is not None, "file": None, "provisional": True}
+
+
+def merged():
+    """잠정 노드로 합친 표기 — `{표기 키: (표기, 잠정 canonical)}`(기록에서 · 뒤가 앞을 덮는다 · 쓰기 0)."""
+    from core.state import oplog
+    from parser.namefold import key
+    return {key(w): (w, d["target"]) for r in oplog.read() if r.get("op") == OP_MERGE
+            for d in [r.get("detail") or {}] if d.get("provisional") for w in d.get("surfaces") or []}
 
 
 def keep(actor, nid, reason=""):
