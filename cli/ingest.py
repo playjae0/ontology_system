@@ -242,7 +242,7 @@ def _step_stops(res, sel, row, ask=True):
     _pv = _AS.preview(_ab, res.envelope, schema=_sc)              # 쌍별 예고 — 산문 [5/8]과 같은 함수(B197 ③)
     if not SCR._step_gate(3, f"값 {_pl['값_수']}건 · 표기 {_pl['표기_종수']}종 "
                       f"· 사전 히트 {_pl['사전_히트']}건 → LLM ≤ "
-                      f"{_pl['예상_호출']}회"
+                      f"{_pl['예상_호출']}회(고유 표기 기준 — 관문으로 끝이 더 줄인다)"
                       + (f" · 닫힌 분류 판단 ≤ {_pl['닫힌_분류']}회" if _pl.get("닫힌_분류") else ""), ask=ask,
                       body=_ASC.preview_screen(_pv, sel["doc_id"]) if _pv else None):
         row.update(status=SKIP, reason="사람이 멈췄다 — 판정 예고까지 "

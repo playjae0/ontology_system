@@ -209,8 +209,8 @@ def decision_plan(mentions, refs, layer, closed=()):
     ⑤닫힌 분류 판단의 상한(B181 ① — `closed` `[(표기, 카테고리)]` 중 사전이 그 카테고리 골격 노드로 답하지 않는 표기 종수 ·
     같은 표기는 문서에 한 번 묻는다).
 
-    **상한은 ① − ③이다**: 개체 판정은 **행마다** 돈다(같은 표기라도 부모 좌표가
-    다르면 다른 노드다). 사전 히트는 `match`가 exact로 끊으므로 호출이 없고, 그
+    **상한은 사전에 없는 판정 키의 종수다**(B209 ④ — 옛 판 ① − ③은 같은 표기의 반복 · 관문으로 끝을 세어 몇 배 컸다): 같은
+    판정 키(같은 공정 줄기의 같은 표기)는 첫 판단 뒤 사전 히트다(같은 표기라도 부모 좌표가 다르면 다른 키 — 다른 노드다). 사전 히트는 `match`가 exact로 끊으므로 호출이 없고, 그
     수를 **판정과 같은 함수로** 세기 때문에 뺄 수 있다(B74 ① — 구판은 원 표기로
     세어 「31종」이라 하고 판정은 0이었다). 처음 인입은 사전이 **도는 중에** 차므로
     예고가 덜 세고, 그때도 상한은 실제를 덮는다(덜 세면 상한이 커진다).
@@ -223,7 +223,7 @@ def decision_plan(mentions, refs, layer, closed=()):
     dic = Dictionary.open()
     g = open_graph(layer)
     b = Builder(g, load_config(layer), None, "(판정예고)", layer)
-    kinds, hits, vals = [], 0, 0
+    kinds, hits, vals, ask = [], 0, 0, set()
     for m in mentions:
         if isinstance(m, str):
             m = {"surface": m}
@@ -234,8 +234,11 @@ def decision_plan(mentions, refs, layer, closed=()):
         n = norm(s)
         if n not in kinds:
             kinds.append(n)
-        if _plan_hit(b, m, layer):
+        r = plan_resolve(b, m)
+        if r and r[0]:
             hits += 1
+        elif r:                     # 묻는 단위는 판정 키(B209 ④ — 같은 공정 줄기 · 이름 규칙 밖은 층 전체) · 첫 판단 뒤는 사전 히트
+            ask.add((m.get("category"), r[1]))
     from parser.normalizer import coord_refs
     from core.state.bootstrap import coord_layer
     from core.state.status import is_skeleton
@@ -259,7 +262,7 @@ def decision_plan(mentions, refs, layer, closed=()):
                 and is_skeleton(hg.get(nid))]:
             closed_ask.add((cat, _fold(s)))
     return {"단계": "판정예고", "값_수": vals, "표기_종수": len(kinds),
-            "사전_히트": hits, "예상_호출": max(0, vals - hits),
+            "사전_히트": hits, "예상_호출": len(ask),
             "목록밖_좌표": len(out_of_list), "닫힌_분류": len(closed_ask)}
 
 
@@ -332,44 +335,45 @@ def run_document(path_or_env, layer=None, *, allow_duplicate=False,
     from core.state.ids import doc_hash as _dh
     _lg.HOLD = _dh(env) if extract_only else None          # 판정까지 — 대장은 중간 저장으로(B167 ①)
     try:
-        res = ingest(env, allow_duplicate=allow_duplicate,   # ①doc_hash ①′회수 ②id ③필드
-                     routing=routing)
-        if res.status == "held":
-            return res, None, False
-        graph = open_graph(layer)
-        graph.build_begin()
-        # 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ④)
-        from core import matcher as _mt
-        from core.build import build as _bld
-        del _bld.ADDED[:]
-        # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
-        from core.build import replay as _rp
-        _rp.begin(doc_id, _dh(env))                       # 멈춘 실행의 중간 저장도 — 원본이 바뀌었으면 버린다(B165 ③)
-        from core.build import also_gate as _ag, polarity as _pol
-        _pol.begin(env)                                   # 출처 → 극성(B198 — 값 · 엣지 · 노드의 한정어 · 저장 앞에서 적는다)
-        _ag.clear(doc_id)                                 # 앞 실행의 판정 전 판단을 읽지 않는다(B197 ② — 이 문서의 처분 자리가 다시 잰다)
-        _RUN.update(also_items=(), outline=None, ledger0=store.read(_lg.name_of(doc_id), None))   # 쓰기 전 멈춤의 되돌림 재료(B197 ④)
-        # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)
-        _q0 = store.read(store.QUEUE, [])
-        from core.build import gate as _gate
-        from core.dictionary import Dictionary as _D
-        from core.build import result as _res
-        from router import discover as _disc
-        _RUN.update(env=env, coord_learn=result_mod.coord_learn(env), q0=_q0,
-                    d0={k: list(v) for k, v in _D.open().entries().items()},
-                    layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
-                    rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []),
-                    coex0=len(_gate.COEXIST),                 # 반대 방향 공존 — 이 문서 실행이 더한 몫만(B175)
-                    shared0=len(_gate.SHARED))                # 다른 층의 같은 엣지에 출처만 더함 — 같은 몫(B180 ②)
-        loop.LOWRES.update(n=0, heading=0)
-        _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
-        _n0 = len(graph.nodes)
-        _e0 = len(graph.edges)
-        _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
-        _, metrics, extracted = _build_document(
-            env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0, extract_only)
-        BUILT[doc_id] = layer                    # 마무리의 연결 보강 대상 (B115 ④)
-        return res, metrics, extracted
+        with store.queue_batch(keep=lambda: _RUN.get("committed")):   # 큐는 문서 단위 메모리 판 — 쓰기는 사람 문 · 끝에서(B209 ①)
+            res = ingest(env, allow_duplicate=allow_duplicate,   # ①doc_hash ①′회수 ②id ③필드
+                         routing=routing)
+            if res.status == "held":
+                return res, None, False
+            graph = open_graph(layer)
+            graph.build_begin()
+            # 이번 문서가 더한 LLM 별칭은 **문서 실행마다** 새로 센다(B101 ④)
+            from core import matcher as _mt
+            from core.build import build as _bld
+            del _bld.ADDED[:]
+            # **판정 재생의 재료**(B106 ②) — 그 문서의 지난 대장을 새 대장이 덮기 **전에** 읽는다
+            from core.build import replay as _rp
+            _rp.begin(doc_id, _dh(env))                       # 멈춘 실행의 중간 저장도 — 원본이 바뀌었으면 버린다(B165 ③)
+            from core.build import also_gate as _ag, polarity as _pol
+            _pol.begin(env)                                   # 출처 → 극성(B198 — 값 · 엣지 · 노드의 한정어 · 저장 앞에서 적는다)
+            _ag.clear(doc_id)                                 # 앞 실행의 판정 전 판단을 읽지 않는다(B197 ② — 이 문서의 처분 자리가 다시 잰다)
+            _RUN.update(also_items=(), outline=None, ledger0=store.read(_lg.name_of(doc_id), None))   # 쓰기 전 멈춤의 되돌림 재료(B197 ④)
+            # 인입 검사 뒤의 큐 — 화면의 「이번 실행」 큐 대조(B75 ③ · 되돌림 자리는 시작 전 판 `t0` 하나다)
+            _q0 = __import__("copy").deepcopy(store.read(store.QUEUE, []))   # 판 그대로(묶음 안 읽기는 메모리 판 자체 — B209 ①)
+            from core.build import gate as _gate
+            from core.dictionary import Dictionary as _D
+            from core.build import result as _res
+            from router import discover as _disc
+            _RUN.update(env=env, coord_learn=result_mod.coord_learn(env), q0=_q0,
+                        d0={k: list(v) for k, v in _D.open().entries().items()},
+                        layers0=_res.layer_counts({lay: open_graph(lay) for lay in _disc()}),
+                        rej0=len(store.read(store.GATE_REJECTS, {"rejects": []}).get("rejects") or []),
+                        coex0=len(_gate.COEXIST),                 # 반대 방향 공존 — 이 문서 실행이 더한 몫만(B175)
+                        shared0=len(_gate.SHARED))                # 다른 층의 같은 엣지에 출처만 더함 — 같은 몫(B180 ②)
+            loop.LOWRES.update(n=0, heading=0)
+            _mt.reset_stats()                    # 판정 계측은 문서 단위다 (B73 ①)
+            _n0 = len(graph.nodes)
+            _e0 = len(graph.edges)
+            _a0 = sum(1 for n in graph.nodes.values() if n.get("status") == "auto")
+            _, metrics, extracted = _build_document(
+                env, kind, schema, cfg, layer, graph, doc_id, notice, _n0, _e0, _a0, extract_only)
+            BUILT[doc_id] = layer                    # 마무리의 연결 보강 대상 (B115 ④)
+            return res, metrics, extracted
     except BaseException as stop:
         # **어떤 이유로 멈춰도 한 손이다**(B99 ② — 일반 예외 · Ctrl-C · 화면 닫힘 B109 ② · 사람·관문의 멈춤 B110 ③
         # · 표·산문·렌즈가 이 경계 하나를 지난다) 저장 전이면 시작 전 판으로 · 저장 뒤면 끝난 문서다. 차이는 하나 —
@@ -527,6 +531,7 @@ def _finish_build(builder, graph, doc_id, notice, _n0, _e0, _a0, extracted):
                 "저해상도": loop.LOWRES["n"], "제목폴백": loop.LOWRES["heading"], "총_노드": metrics.get("nodes"),
                 "연결": ledger_mod.link_counts(builder.ledger.rows if builder.ledger else []),   # 연결 표지(B196 ④)
                 "판정": dict(_mt.STATS), "큐": doc_queue_summary(doc_id, new_only=True),
+                "충돌": result_mod.conflicts(doc_id, _RUN["q0"]),                     # 값 충돌 (노드, 칸) 한 줄(B209 ③)
                 "재생": dict(_rp.DOC), "결과": res, "맞춤": _reconcile(builder, doc_id, res),
                 "사람": human_mod.summary(builder.ledger.rows if builder.ledger else [], doc_id)})   # 사람 후보 (B140 ③)
     return None, metrics, extracted

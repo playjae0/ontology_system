@@ -154,7 +154,9 @@ def judge_open(prose, info, pre=None):
     if pre:
         _screen.say(pre, "head")
     _screen.close()
-    _screen.say(f"── [{seq.index(4) + 1}/{len(seq)}] {STEPS[4][0]} — 값 {info.get('값_수', 0):,} · "
+    o, n, cols = (not prose and _MARK.get("split")) or (0, 0, ())
+    rows = (f"원본 {o:,}행 → 나눈 {n:,}행({' · '.join(cols)} 칸 나눔) · " if n != o else f"행 {n:,} · ") if n else ""
+    _screen.say(f"── [{seq.index(4) + 1}/{len(seq)}] {STEPS[4][0]} — {rows}값 {info.get('값_수', 0):,} · "
                 f"판정 예정(LLM ≤ {info.get('예상_호출', 0):,})", "head")
     _stage_end()
     _MARK["judge"] = True
@@ -257,7 +259,7 @@ def row_printer(env=None, stage=None):
         TALLY[k] = 0
     from cli import coord_table as CT
     prose = bool((env or {}).get("chunks"))
-    shown, seen, logged, buf, pend = {}, set(), set(), {"loc": None, "rows": []}, []   # 산문 찍은 값 행 · 찍은 엣지 · 표의 지금 행                                       # 위치 → 찍은 값 행(산문 — 붙은 자리는 조각 부착 때)
+    shown, seen, logged, buf, pend, bun = {}, set(), set(), {"loc": None, "rows": []}, [], []   # 산문 찍은 값 행 · 찍은 엣지 · 표의 지금 행                                       # 위치 → 찍은 값 행(산문 — 붙은 자리는 조각 부착 때)
     clock = {"t": time.monotonic()}
 
     def show(row, secs=None):
@@ -289,13 +291,24 @@ def row_printer(env=None, stage=None):
         while pend:
             show(*pend.pop(0))
 
-    def flush_row():
-        """표의 한 행이 끝났다 — 한 행 한 줄(B208 ① · 기본은 볼 것이 있는 행만 · `-v`는 모든 행)."""
+    def flush_row(end=True):
+        """표의 한 행이 끝났다 — 묶음(같은 공정 · 같은 맨 위 개체의 연속 행)에 넣고 묶음이 바뀌거나 `end`(그룹 · 문서 끝)면 앞 묶음을
+        한 줄로(B209 ② — 기본은 판정으로 정해진 항목이 있는 묶음만 · `-v`는 모든 묶음 · 행마다는 명령 로그)."""
         rows, buf["rows"] = buf["rows"], []
-        if rows and (_screen.VERBOSE or any(_loud(r) for r in rows)):
+        k = CT.bundle_key(rows) if rows else None
+        if rows and bun and k != bun[0][0]:
+            emit()
+        if rows:
+            bun.append((k, buf["loc"], rows))
+        if end:
+            emit()
+
+    def emit():
+        if bun and (_screen.VERBOSE or any(CT.judged(r) for _k, _l, rs in bun for r in rs)):
             _screen.close()
-            line, subs = CT.row_line(rows, recs.get(buf["loc"]), where_cells(buf["loc"], places)[1])
+            line, subs = CT.bundle_line([(l, rs) for _k, l, rs in bun], lambda x: where_cells(x, places)[1])
             print(line, *subs, sep="\n")
+        bun.clear()
 
     def on_row(row):
         if row.get("role") == "entity":            # 처리한 값 = 개체 행(좌표 · 부착 행은 값이 아니다 — B142 ⑥)
@@ -317,7 +330,7 @@ def row_printer(env=None, stage=None):
         secs, clock["t"] = (now - clock["t"]) if prose else None, now
         if not prose:                                 # 표 — 행이 바뀔 때 앞 행을 한 줄로(로그는 값 줄 그대로)
             if row.get("locator") != buf["loc"]:
-                flush_row()
+                flush_row(end=False)
                 buf["loc"] = row.get("locator")
             buf["rows"].append(row)
             if _screen.VERBOSE or _loud(row):
@@ -335,7 +348,7 @@ def row_printer(env=None, stage=None):
     pieces = [c for c in ((env or {}).get("chunks") or []) + ((env or {}).get("records") or [])
               if c.get("source_locator")]
     places = {c["source_locator"]: _xc.place(c) for c in pieces}
-    recs = {c["source_locator"]: c for c in pieces}
+    _MARK["split"] = None if prose else CT.split_info((env or {}).get("records"))   # 판정 머리의 원본 → 나눈 행(B209 ②)
     labels = {c["source_locator"]: _xc.chunk_label(c) for c in pieces}
     roles = struct_roles(env) if prose else {}
     wide = _screen.term_width() >= WIDE_MIN
@@ -488,7 +501,7 @@ def provisional_cells(env, step=False):
 def plan_body(info):
     """판정 예고 줄의 본문 — 값 · 표기 · 사전 히트 · 목록 밖 좌표 → LLM 상한 · 닫힌 분류 판단 상한(B181 ① — 있을 때만)."""
     return (f"entity 값 {info['값_수']:,}건(표기 {info['표기_종수']:,}종 · 사전 히트 {info['사전_히트']:,}건) · 목록 밖 좌표 "
-            f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회"
+            f"{info['목록밖_좌표']:,}표기 → LLM ≤ {info['예상_호출']:,}회(고유 표기 기준 — 관문으로 끝이 더 줄인다)"
             + (f" · 닫힌 분류 판단 ≤ {info['닫힌_분류']:,}회" if info.get("닫힌_분류") else ""))
 
 
@@ -585,7 +598,9 @@ def build_screen(step=False, stage=None, prose=False):
         _lk = info.get("연결") or _lg196.link_counts([])
         go = _step_gate(5, prose=prose, ask=step and go, saved=True, detail=f"엣지 +{info.get('엣지', 0)} · "
                         f"좌표 폴백 {info.get('저해상도', 0)} · ref 빈 행 {_lk['ref 빈 행']}{_hf}") and go
-        _step_gate(6, head or "큐 0", prose=prose, ask=step and go, saved=True)
+        from cli import result_screen
+        _step_gate(6, head or "큐 0", prose=prose, ask=step and go, saved=True,     # 값 충돌 (노드, 칸) 한 줄 · 칸별 상위(B209 ③)
+                   body=result_screen.conflict_lines(info.get("충돌")))
         _orphan_next(info.get("doc_id"))
         print(f"   인입 끝 — 노드 +{info.get('노드', 0):,}"
               f"(auto {info.get('auto', 0):,}) · 엣지 +{info.get('엣지', 0):,} · "
@@ -596,7 +611,6 @@ def build_screen(step=False, stage=None, prose=False):
             from cli import human_gate
             print(human_gate.end_line(info["사람"]))
         # **문서 끝 결과표**(B99 ⑤) — 층별 증감 · 이번/이전 큐 · LLM 지점별
-        from cli import result_screen
         LAST_RESULT["res"] = info.get("결과")
         result_screen.show(info.get("결과"))
         result_screen.show_reconcile(info.get("맞춤"), limit=LIST_LIMIT)     # 맞춤표 (B112 ①④⑤)

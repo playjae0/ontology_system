@@ -288,7 +288,10 @@ def answer(prompt, kind="text", eof=None, other=None, hint=None):
     **EOF는 `eof`를 돌려준다** — 비대화형(Ctrl-D 포함)은 그 자리의 지금 규칙 그대로다(묻는 자리가 기본값을 준다).
     `other`(`go`만)는 계속 · 멈춤이 아닌 답을 읽는 자리(구조 표의 고침 — B119 ③) — 참인 값을 돌려주면 그것이 답이다 ·
     거짓이면 `hint`(없으면 기본 안내)를 찍고 다시 묻는다.
+    사람이 답하는 자리마다 큐 파일은 지금 판이다(B209 ① — 문서 묶음의 메모리 판을 여기서 쓴다 · 묶음 밖이면 0).
     """
+    from core.state import store
+    store.queue_flush()
     while True:
         try:
             raw = ask(prompt)

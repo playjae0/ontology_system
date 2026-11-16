@@ -390,13 +390,20 @@ def _endpoint(name, resolved, ref, ref_g, external, graph, doc_id):
     return None, graph
 
 
+#: 청크 판의 색인 — `(판, {(문서, 열, 위치): 청크 id}, {(청크 id, 노드)})` · 판이 같으면 다시 짓지 않는다(B209 ① — 값마다 훑기 0)
+_DESC = [None, {}, set()]
+
+
 def _describe(doc_id, rec, field, node_id):
     ch = store.read(store.CHUNKS, {"chunks": {}, "describes": []})
-    for cid, c in ch["chunks"].items():
-        if c.get("doc_id") == doc_id and c.get("meta", {}).get("field") == field \
-                and c.get("source_locator") == rec.get("source_locator"):
-            if {"chunk_id": cid, "node_id": node_id} not in ch["describes"]:
-                ch["describes"].append({"chunk_id": cid, "node_id": node_id})
-            c["linked"] = True          # 관측 상태 — 이미 걸려 있어도 참이다(A4)
-            break
+    if _DESC[0] is not ch:
+        _DESC[:] = [ch, {}, {(d.get("chunk_id"), d.get("node_id")) for d in ch["describes"]}]
+        for cid, c in ch["chunks"].items():
+            _DESC[1].setdefault((c.get("doc_id"), (c.get("meta") or {}).get("field"), c.get("source_locator")), cid)
+    cid = _DESC[1].get((doc_id, field, rec.get("source_locator")))
+    if cid is not None:
+        if (cid, node_id) not in _DESC[2]:
+            _DESC[2].add((cid, node_id))
+            ch["describes"].append({"chunk_id": cid, "node_id": node_id})
+        ch["chunks"][cid]["linked"] = True          # 관측 상태 — 이미 걸려 있어도 참이다(A4)
     store.write(store.CHUNKS, ch)
