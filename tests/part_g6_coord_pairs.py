@@ -624,13 +624,13 @@ show("B197 ⓔ 건너뜀 → ops review 골격 단 한 줄(겸 값) → 합침(�
 # ⓖ [3/8] 끝 줄 「확정한 공정」 · [5/8] 쌍별 예고(붙을 자리 · 연결 · 판정 예정 · 칸 안 잘림) · 표 [4/7] 같은 함수
 _go197(_h197("B197G", "취출부"), answer="m 노칭::노칭 타발")
 _ng = _go197(_h197("B197G", "취출부"))                       # 처분은 [5/8] — 정한 뒤 다시 넣은 문서의 [3/8] 확정 공정 · 공정별 예고(고침 B204 ①)
-_pl = [n["줄"] for n in _ng if n.get("단계") == "확정공정"]
+_pl = [n["공정"] for n in _ng if n.get("단계") == "확정공정"]               # 공정마다 한 줄(고침 B205 ⑤)
 _pv = AS197.preview_lines(next(n for n in _ng if n.get("추출뒤"))["쌍별"], full=True)     # 전부(md 몸 — 화면은 요약 · B199 ①)
 _tv = AS197.preview_lines(AS197.preview(AS197.builder(_ed), _ed, schema={"fields": {"개체": {"role": "entity", "category": "Unit"}}}),
                           full=True)
 show("B197 ⓖ 확정한 공정 — 청크 2: 노칭 › 노칭::노칭 타발 1 · 노칭(상위만) 1 · 쌍별 예고 묶음 머리 = 그 쌍 · 줄에 붙을 자리 · 연결 · 판정 예정 · "
      "표 [4/7]도 같은 함수(골격 단 — 문 · 맨 아래 단 아래는 새 노드)",
-     _pl and "노칭 › 노칭::노칭 타발 1" in _pl[0] and "노칭(상위만) 1" in _pl[0]
+     _pl and ("노칭 › 노칭::노칭 타발", 1) in _pl[0] and ("노칭(상위만)", 1) in _pl[0]
      and any(ln.strip().startswith("노칭 › 노칭::노칭 타발") for ln in _pv)
      and any("흡착력" in ln and ln.split("붙을 자리(판정 전) ")[1].startswith("노칭::노칭 타발  ") and "has_property" in ln
              and ln.rstrip().endswith(("사전 연결", "새 노드", "→ 판정")) for ln in _pv)
@@ -664,6 +664,75 @@ show("B197 ⓗ 판정 결과(쓰기 전 · 쌍마다 match · new · uncertain) 
      "재생(판정 LLM 0) · 노드가 선다",
      _rh and "new 1" in " ".join(_rh[0]["줄"]) and all(_mid) and MT197.STATS["판정"] == 0 and "노칭::노즐 압력" in _names197(),
      f"{_rh[0]['줄'] if _rh else '-'} · 중간 {_mid} · 판정 {MT197.STATS['판정']}")
+# B205 ①~④ — 극성 떼기 · 골격 사이에 넣기(흐름 끊고) · 맨 아래 단의 갈 길 · 번호에 이름(창작 표본 — 노칭 아래 전극 언와인딩 ·
+# 노칭 타발 · 비전검사 · 전극 리와인딩 · 축 cathode · anode — 골격 AXIS_LABELS) · 처분은 진짜 `gate_table._apply`
+from cli import also_screen as ASC205, gate_table as GT205          # noqa: E402
+from core.state import gate_judge as GJ205                          # noqa: E402
+with contextlib.redirect_stdout(io.StringIO()):
+    init.init(fresh_=True, all_=True)
+    bootstrap("process", echo=False)
+_dt196, _tg205 = _register_table("process"), []
+_e205 = {**TABLE, "doc_id": "B205A", "doc_type": _dt196, "records": TG.tag(
+    [dict(_rec196(f"F{i}", r, g), doc_type=_dt196, electrode_type=e) for i, (r, g, e) in enumerate(
+        [("anode scrap vision", "anode notching", None), ("Cathode Scrap Vision", "노칭", "cathode"), ("scrap vision(anode)", "노칭", None),
+         ("B205 탭 컷", "노칭", None)], 1)], layer=coord_layer(), doc_type=_dt196, doc_id="B205A", notice=_tg205.append)}
+_rw205 = PA196.step_rows(_e205)
+GJ205.judge(_rw205, live=False)
+_sv, _tc = (next(r for r in _rw205 if r["surface"] == s) for s in ("scrap vision", "B205 탭 컷"))
+_n205 = lambda r, name: next(x["n"] for x in GJ205.picks(r) if x["name"] == name)      # noqa: E731
+_b205 = io.StringIO()
+with contextlib.redirect_stdout(_b205):
+    GT205._apply(1, _sv, "k", str(_n205(_sv, "노칭 타발")), "시험")           # 맨 아래 단 — 거부 대신 갈 길 둘
+    GT205._apply(1, _sv, "k", f"{_n205(_sv, '노칭 타발')} 뒤", "시험")
+    GT205._apply(2, _tc, "k", f"{_n205(_tc, '비전검사')} 아래", "시험")
+
+
+def _flow205():
+    g = open_graph("process")
+    at = {n["canonical"]: i for i, n in g.nodes.items() if is_live(n)}
+    return g, at, lambda a, b: bool(g.edge(at.get(a), "precedes", at.get(b)))
+
+
+_a205 = _run196(_e205)
+_g205, _at205, _fl205 = _flow205()
+_txt205 = "".join(p.read_text(encoding="utf-8") for p in [_P.layers("process", "skeleton.json")] + sorted(_P.data().glob("*.json")))
+show("B205 ⓐ 세 표기(앞 · 대소문자 · 괄호) → 한 개념 scrap vision — 행 셋이 한 노드 · 노드 이름 · 골격 파일 · 진실 단(사전 · 표기 대장)에 "
+     "극성 표기 0 · 빈 칸 행은 electrode_type = 뗀 축 키(파서) · cathode 행은 그대로 · 태깅 예고에 뗀 표기",
+     {r["electrode_type"] for r in _e205["records"][:3]} == {"anode", "cathode"} and _e205["records"][1]["electrode_type"] == "cathode"
+     and len({_a205[f"F{i}"].get("node_id") for i in (1, 2, 3)}) == 1 and _a205["F1"].get("node_id") == _at205.get("scrap vision")
+     and not any(w in _txt205 for w in ("anode scrap", "Scrap Vision", "vision(anode)"))
+     and "anode scrap vision" in (_tg205[0].get("극성_뗌") or {}), f"{[(r['process_ref'], r['electrode_type']) for r in _e205['records']]}")
+show("B205 ⓑ 위 공정 'anode notching' → 노칭으로 풀림 · 고를 곳 = 노칭 아래 + 같은 단(스태킹 …)",
+     _sv["up_name"] == "노칭" and any(x["name"] == "노칭 타발" and not x.get("same") for x in GJ205.picks(_sv))
+     and any(x["name"] == "스태킹" and x.get("same") for x in GJ205.picks(_sv)), f"{_sv['up_name']}")
+bootstrap("process", echo=False)                                     # fresh 없이 다시 심기 — seed 흐름이 돌아와도 같은 자리
+_g2, _at2, _fl2 = _flow205()
+
+
+class _G205:
+    def __init__(self, es):
+        self.edges = [{"src": a, "rel": "r", "dst": b} for a, b in es]
+
+    def add_edge(self, a, rel, b, st, provenance=None):
+        self.edges.append({"src": a, "rel": rel, "dst": b})
+
+
+_ge, _gf, _gn = _G205([("a", "b")]), _G205([("a", "b")]), _G205([])
+show("B205 ⓒ `k <노칭 타발> 뒤` → 노칭 › scrap vision · 흐름 노칭 타발 → scrap vision → 비전검사 · 노칭 타발 → 비전검사 0 · bootstrap(fresh 없이) 뒤 같은 "
+     "흐름 · 맨 끝(뒤) · 맨 앞(앞) · 흐름 무주장(엣지 0)은 같은 함수",
+     _fl205("노칭::노칭 타발", "scrap vision") and _fl205("scrap vision", "노칭::비전검사") and not _fl205("노칭::노칭 타발", "노칭::비전검사")
+     and _fl2("노칭::노칭 타발", "scrap vision") and _fl2("scrap vision", "노칭::비전검사") and not _fl2("노칭::노칭 타발", "노칭::비전검사")
+     and PV196.insert_flow(_ge, "r", "n", ("after", "b"), "p") and {(e["src"], e["dst"]) for e in _ge.edges} == {("a", "b"), ("b", "n")}
+     and PV196.insert_flow(_gf, "r", "n", ("before", "a"), "p") and {(e["src"], e["dst"]) for e in _gf.edges} == {("a", "b"), ("n", "a")}
+     and not PV196.insert_flow(_gn, "r", "n", ("after", "b"), "p") and not _gn.edges, _b205.getvalue()[-300:])
+_lb = GT205.label(next(x for x in GJ205.picks(_sv) if x["name"] == "노칭 타발"))
+_pl205 = ASC205.pair_lines([(f"공정{i} › 하위", i) for i in range(12)], 66, table=True)
+show("B205 ⓓ 맨 아래 단(노칭 타발) 고르기 → 갈 길 둘(같은 단 그 뒤 · 아래 개체로) · 「아래 개체로」(비전검사) → 그 행의 좌표 = 그 노드 · "
+     "그 표기의 노드 0 · 골격 ALIASES 0 / ⓔ 번호 줄은 `번호 이름(경로)` · 번호만 말하는 줄 0(그 파일 grep) · 확정한 공정은 공정마다 한 줄 · 위 10",
+     f"{_lb} — 골격 맨 아래 단" in _b205.getvalue() and "아래(그 노드 아래 개체로" in _b205.getvalue()
+     and _a205["F4"].get("node_id") == _at205.get("노칭::비전검사") and "B205 탭 컷" not in _at205
+     and "B205 탭 컷" not in _P.layers("process", "skeleton.json").read_text(encoding="utf-8") and "['n']}번" not in (ROOT / "cli" / "gate_table.py").read_text(encoding="utf-8")
+     and len(_pl205) == 11 and all(ln.count(" › ") == 1 for ln in _pl205[1:]), f"{_lb} · {len(_pl205)}")
 init.init(fresh_=True, all_=True)
 
 for d in set(_made):

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import re
 import unicodedata
 
 #: 전각 ASCII 구간(！ ~ ～) — 반각과의 거리
@@ -36,3 +37,27 @@ def _key(s: str) -> str:
 def key(text) -> str:
     """이름 → 대조 키 — 공백을 없애고 · 라틴 글자는 소문자 · 전각 ASCII는 반각으로. 그 밖의 글자는 그대로."""
     return _key("" if text is None else str(text))
+
+
+def _fold(s):
+    """글자 수를 지키는 접기(전각 → 반각 · 라틴 소문자) — 뗄 자리를 원문에서 그대로 자른다."""
+    return "".join(_key(ch) or ch for ch in s)
+
+
+def split_axis(name, axis):
+    """**극성 떼기 한 자리**(B205 ① — 결정 1 「이름에서 극성을 뺀다」) — `(개념 이름, 축 키)` · 못 떼면 `(name, None)`.
+    찾는 극성은 축(`{키: 표시 이름}` — 골격 `AXIS_LABELS`)의 키와 표시 이름 전부 · 대소문자 · 전각 무시 · 앞(`anode x`) · 뒤(`x anode`) ·
+    괄호(`x(anode)` · `(anode) x`) · 구분자(공백 · `_` · `-`) · 떼고 남은 것이 비면 떼지 않는다. 파서 · core(옛 기록 재생)가 같이 부른다."""
+    if not name or not axis:
+        return name, None
+    f, sep = _fold(str(name)), r"[\s_\-]+"
+    toks = sorted(((_fold(t), k) for k, lab in axis.items() for t in (k, lab) if t), key=lambda x: -len(x[0]))
+    for t, k in toks:
+        t = re.escape(t)
+        for pat, cut in ((rf"^[(\[]\s*{t}\s*[)\]]\s*", "head"), (rf"^{t}{sep}", "head"),
+                         (rf"\s*[(\[]\s*{t}\s*[)\]]\s*$", "tail"), (rf"{sep}{t}$", "tail")):
+            m = re.search(pat, f)
+            rest = (str(name)[m.end():] if cut == "head" else str(name)[:m.start()]).strip() if m else ""
+            if rest:
+                return rest, k
+    return name, None

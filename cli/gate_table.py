@@ -29,7 +29,7 @@ SHOW = 6
 DONE = ("합침", "정정", "새로", "drop", "올림", "확인")
 #: 요약 줄의 이름(한 일 → 처분 말)
 SAID = {"합침": "같은 것으로", "정정": "같은 것으로", "새로": "새로 만들기", "drop": "버리기", "올림": "위로", "확인": "그대로 연결",
-        "자동": "자동"}
+        "자동": "자동", "아래": "아래 개체로"}
 _KEY = re.compile(r"^(\S)(?:\s+(.*))?$")
 _KEYS = ("m", "k", "d", "u", "a", "p", "r")
 #: 「다시」 — 그 줄을 다시 판단(LLM 1 · 판단 기억은 덮지 않는다 — 사람 말 길)
@@ -82,8 +82,8 @@ def acts(i, r, indent="   "):
     from core.state.gate_say import allowed
     pair, w, u = r.get("kind") == "pair", _words(), suggested(r)
     up = r.get("up") if pair else r.get("up_name")
-    k = (f"→ {short(u['path'])} 밑 (LLM 제안 · {u['why'] or '까닭 없음'}) · 다른 곳: k <번호>" if u and u.get("host")
-         else f"→ {up or '부모 미정'} › {r.get('surface')} (잠정 · k <번호>면 그 번호 밑에)")
+    k = (f"→ {short(u['path'])} 밑 (LLM 제안 · {u['why'] or '까닭 없음'}) · 다른 곳: k <번호> 하위로 · k <번호> 뒤|앞 같은 단 그 자리에"
+         if u and u.get("host") else f"→ {up or '부모 미정'} › {r.get('surface')} (잠정) · k <번호> 하위로 · k <번호> 뒤|앞 같은 단 그 자리에")
     say = {"a": f"→ {short(r.get('real_up'))} › {r.get('surface')}", "k": k,
            "m": "→ m <번호>", "u": f"→ {up}", "d": "→ d <사유>"}
     return [f"{indent}     {k} {w[k]} {say[k]}" for k in allowed(r)]
@@ -115,9 +115,15 @@ def row_lines(i, r, indent="   "):
         out.append(indent + "     " + _screen.pad("고를 곳 ─ " + head if j == 0 else "", 26)
                    + P(f"{_no(x['n'])} {short(x['path'])}" + (f" — {x['why']}" if x.get("why") else ""), "prog"))
     rest = [x for x in ps if not x["cand"]]
-    if rest:
-        out.append(indent + "     " + _screen.pad("" if len(rest) < len(ps) else "고를 곳 ─", 26) + P(f"골격({up or '좌표 층'} 아래) "
-                   + "  ".join(f"{_no(x['n'])} {x['name']}" for x in rest[:SHOW]) + ("  … (? = 전부 번호로)" if len(rest) > SHOW else ""), "aux"))
+    first = len(rest) == len(ps)                             # 후보가 없으면 첫 묶음 줄이 「고를 곳」 머리를 단다
+    for j, grp in enumerate(([x for x in rest if not x.get("same")], [x for x in rest if x.get("same")])):
+        if not grp:
+            continue
+        head = (f"같은 단({up} 옆) " if j else f"위 공정 '{up}'이 골격 밖 — 골격 전체 {len(grp)}: " if r.get("up_out")
+                else f"골격({up or '좌표 층'} 아래) ")
+        out.append(indent + "     " + _screen.pad("고를 곳 ─" if first else "", 26)
+                   + P(head + "  ".join(f"{_no(x['n'])} {x['name']}" for x in grp[:SHOW]) + ("  … (? = 전부 번호로)" if len(grp) > SHOW else ""), "aux"))
+        first = False
     if r.get("llm") and r.get("llm0"):                    # 판단 기억 — 칸이 잘려도 안내는 한 줄로(B204 ⑥)
         out.append(P(f"{indent}     LLM 0 — 지난 판단({r['llm'].get('at') or '날짜 모름'}) · 새로 보려면 「{AGAIN}」", "aux"))
     return out + acts(i, r, indent)
@@ -139,11 +145,12 @@ def lines(rows, title, indent="   "):
 def prompt(r):
     """한 줄의 물음 — 그 줄에 쓸 수 있는 글쇠만(B204 ⑥)."""
     from core.state.gate_say import allowed
-    ks = {"a": "a", "k": "k (제안 밑) · k <번호>" if suggested(r) else "k · k <번호>", "m": "m <번호>", "u": "u", "d": "d <사유>"}
+    ks = {"a": "a", "k": ("k (제안 밑) · " if suggested(r) else "k · ") + "k <번호> · k <번호> 뒤|앞", "m": "m <번호>", "u": "u", "d": "d <사유>"}
     return f"   [계속 c / 멈춤 q / 말 또는 글쇠 — {' · '.join(ks[k] for k in allowed(r))} · {AGAIN} · ? 전부 · 건너뛰기 s] "   # 머리는 관문 물음과 같다
 
 
-HELP = ("   말(LLM이 읽는다 — 해석을 보이고 Enter 뒤에 쓴다) 또는 글쇠 — a 그대로 연결(공정 짝 어긋남 줄) · k [번호] 새로 만들기 · "
+HELP = ("   말(LLM이 읽는다 — 해석을 보이고 Enter 뒤에 쓴다) 또는 글쇠 — a 그대로 연결(공정 짝 어긋남 줄) · k [번호] 새로 만들기(하위로) · "
+        "k <번호> 뒤|앞 같은 단 그 자리에(흐름 끊고) · k <번호> 아래 맨 아래 단 노드 아래 개체로 · "
         f"m [번호|이름] 같은 것으로 · u 위로(겸 값 줄) · d <사유> 버리기 · {AGAIN} 다시 판단 · ? 고를 곳 전부 · s 건너뛰기 · c 계속 · q 멈춤")
 
 
@@ -185,20 +192,62 @@ def _target(i, r, rest):
     return None
 
 
+def label(x):
+    """번호를 말하는 줄의 꼴 — `번호 이름(경로)`(B205 ④ — 거부 · 갈 길 · 해석 · 결과가 이 한 자리)."""
+    return f"{x['n']} {x['name']}({short(x['path'])})"
+
+
+def _side(arg):
+    """`<번호|이름> 뒤|앞|아래` → `(번호|이름, 자리)`(B205 ② ③) · 자리 말이 없으면 `(arg, None)`."""
+    from core.state.gate_say import SIDES
+    head, _, last = (arg or "").rpartition(" ")
+    return (head.strip(), last) if last in SIDES and head.strip() else (arg, None)
+
+
+def _beside(i, r, x, side, who):
+    """**같은 단 그 자리 · 아래 개체로**(B205 ② ③) — 뒤 · 앞은 그 노드의 부모 밑에 새로(흐름 끊고 넣기 — `provisional.insert_flow`) ·
+    아래는 맨 아래 단 노드 아래 개체로(표기 줄은 해석 고침 기록 — B204 `auto`와 같은 손 · 공정 짝 줄은 정정 · 골격 노드 0 · ALIASES 0)."""
+    from cli import provisional_ask as PA
+    from core.build import provisional
+    from core.state import coord_acks, provisional_hand as PH
+    pair = r.get("kind") == "pair"
+    if side == "아래":
+        if x.get("host") is not False:
+            print(_screen.paint(f"   [거부] 아래 개체로는 맨 아래 단 노드만 — {label(x)}은 하위로: k {x['n']}", "fail"))
+            return
+        if pair:
+            coord_acks.fix(r["pair_kind"], (r["up"], r["ref"]), x["canonical"], who, note="아래 개체로")
+        else:
+            PH.reread(who, r["surface"], r.get("up_name"), up=x["canonical"], before=r.get("up_name"), reason=f"{label(x)} 아래 개체로")
+        r["done"], r["did"] = f"✓ 아래 개체로 → {short(x['path'])} 아래 개체(골격 노드 0)", "아래"
+        return
+    par = x["path"].split(" › ")[:-1]
+    if not par:
+        print(_screen.paint(f"   [거부] {label(x)} — 맨 위 단 사이는 골격 파일에서(사람 승격) · 하위로: k {x['n']}", "fail"))
+        return
+    did, _rb = PA.decide(r, who, answer="k", under=par[-1], at={"after" if side == "뒤" else "before": x["canonical"]})
+    if did in DONE:
+        r["did"], r["done"] = did, f"✓ 새로 만들기 → {short(' › '.join(par))} › {r.get('surface')} (잠정 · {x['name']} {'다음' if side == '뒤' else '앞'})"
+        if provisional.flowless(x["canonical"]):
+            print("   흐름 무주장 부모 — 자리만 기록(흐름 엣지 0)")
+
+
 def _apply(i, r, k, arg, who):
     """처분 한 줄 — 쓰는 손은 `provisional_ask.decide`(같은 함수) · 처분 칸에 실제 경로(B203 ④)."""
     from cli import provisional_ask as PA
     from core.state import gate_judge as GJ
+    arg, side = _side(arg) if k == "k" else (arg, None)
     x = _target(i, r, arg) if k == "m" or (k == "k" and arg) else None
     u = suggested(r)
     if k == "k" and not arg and u and u.get("host"):              # `k`만 — LLM 제안 밑(B204 ②)
         x = next((y for y in GJ.picks(r) if y["canonical"] == u["canonical"]), None)
     if (k == "m" or (k == "k" and arg)) and not x:
         return
-    if k == "k" and x and x.get("host") is False:
-        ok = [str(y["n"]) for y in GJ.picks(r) if y.get("host")]
-        print(f"   [거부] {i}번 — {x['n']}번 {short(x['path'])} — 골격 맨 아래 단(그 밑에 잠정 노드가 설 수 없다) · 설 수 있는 번호: "
-              + (" · ".join(ok) or "없음"))
+    if k == "k" and x and side:
+        return _beside(i, r, x, side, who)
+    if k == "k" and x and x.get("host") is False:                  # 맨 아래 단 — 거부 대신 갈 길 둘(B205 ③)
+        print(_screen.paint(f"   {label(x)} — 골격 맨 아래 단(그 밑에 골격 노드 0) — 갈 길: k {x['n']} 뒤(같은 단 그 뒤에 새로) · "
+                            f"k {x['n']} 아래(그 노드 아래 개체로 — 좌표 = 그 노드)", "fail"))
         return
     if k == "d" and not arg:
         print("   [거부] 버리기는 사유가 있어야 한다 — d <사유>")
@@ -225,8 +274,10 @@ def _say(i, r, text, who, ask):
     conf = f" · 확실 {got['confidence']:.2f}"
     if got["kind"] == GS.LINK:
         ps = GJ.picks(r)
-        up = short(ps[got["under"] - 1]["path"]) if got.get("under") else (r.get("up") if r.get("kind") == "pair" else r.get("up_name"))
-        what = f"{up} › {r.get('surface')} (잠정)" if got["key"] == "k" else \
+        x = ps[got["under"] - 1] if got.get("under") else None
+        up = short(x["path"]) if x else (r.get("up") if r.get("kind") == "pair" else r.get("up_name"))
+        what = f"{label(x)} {got['side']}" if got.get("side") else \
+            f"{up} › {r.get('surface')} (잠정" + (f" · {label(x)} 밑)" if x else ")") if got["key"] == "k" else \
             got.get("target") or got.get("reason") or (r.get("up_name") if got["key"] == "u" else "")
         print(f"   해석(LLM) — {i}번 = {_words()[got['key']]}" + (f" → {what}" if what else "") + f"{conf} · {got['why']}")
     elif got["field"] == "카테고리":
@@ -244,7 +295,7 @@ def _say(i, r, text, who, ask):
     if a.strip():
         return a.strip()
     if got["kind"] == GS.LINK:
-        _apply(i, r, got["key"], str(got["under"]) if got.get("under") else got.get("target") or got.get("reason"), who)
+        _apply(i, r, got["key"], f"{got['under']} {got.get('side') or ''}".strip() if got.get("under") else got.get("target") or got.get("reason"), who)
     elif got["field"] == "카테고리":
         PH.reread(who, r["surface"], r.get("up_name"), category=got["value"], before=r.get("also"), reason=text)
         r["done"] = f"✎ 해석 고침(카테고리 {r.get('also')} → {got['value']}) → 문 떠남"

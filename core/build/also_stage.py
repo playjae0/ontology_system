@@ -137,21 +137,15 @@ def pairs(b, env, outline=None, items=()):
     return out
 
 
-def pair_line(pm, table=False):
-    """`확정한 공정 — 청크 n: <상위 › 하위> a · <상위>(상위만) b …`(표는 행)."""
+def pair_rows(pm):
+    """**확정한 공정**(B205 ⑤ — 공정마다 한 줄 · 표 · 산문 같은 함수) — `[(상위 › 하위 | 상위(상위만) | 좌표 없음, 수)]` 많은 차례
+    (화면은 `cli/also_screen.pair_lines` — 위 10 + 전부는 md)."""
     from collections import Counter
-    c = Counter(pm.values())
-    parts = []
-    for (up, low), n in sorted(c.items(), key=lambda kv: (-kv[1], str(kv[0]))):
-        if up is None:
-            parts.append(f"좌표 없음 {n:,}")
-        elif low == "drop":
-            parts.append(f"{up} › 사람 버리기 {n:,}")
-        elif low:
-            parts.append(f"{up}{ARROW}{low} {n:,}")
-        else:
-            parts.append(f"{up}{ONLY} {n:,}")
-    return f"확정한 공정 — {'행' if table else '청크'} {len(pm):,}: " + (" · ".join(parts) or "없음")
+    out = []
+    for (up, low), n in sorted(Counter(pm.values()).items(), key=lambda kv: (-kv[1], str(kv[0]))):
+        out.append(("좌표 없음" if up is None else f"{up} › 사람 버리기" if low == "drop" else f"{up}{ARROW}{low}" if low
+                    else f"{up}{ONLY}", n))
+    return out
 
 
 # ---------------------------------------------------------------- 본문 값([5/8] 머리)
@@ -374,7 +368,8 @@ def heading_gate(env, ol, notice, run):
     if items:
         also_gate.scan(b, items)
     if notice is not None:
-        notice({"단계": "확정공정", "줄": pair_line(pairs(b, env, ol, items))})
+        pm = pairs(b, env, ol, items)
+        notice({"단계": "확정공정", "공정": pair_rows(pm), "수": len(pm), "doc_id": env.get("doc_id")})
     run.update(also_items=items, outline=ol)
 
 

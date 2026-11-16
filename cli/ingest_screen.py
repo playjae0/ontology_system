@@ -437,7 +437,7 @@ def provisional_cells(env, step=False):
         body.append(f"   LLM이 같다고 한 표기(보이기만 — 틀렸으면 python run.py ops learn-reject {coord_layer()} <표기> --actor <이름>):")
         body += [f"     {x['from']} → {x['to']} · 행 {x['rows']}" for x in rv["llm_same"]]
     if step and rv["lowres"]:
-        body.append("   ref 빈 행(상위로 붙음 · 보이기만): " + " · ".join(f"{up} {n}행" for up, n in rv["lowres"]))
+        body += _screen.items("   ref 빈 행(상위로 붙음 · 보이기만): ", [f"{up} {n}행" for up, n in rv["lowres"]])
     return provisional.preview_text(rv["plan"]), body
 
 

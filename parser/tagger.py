@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .coord_rows import MAX_UP, ask_all, flat_rows, fold_rows, results
+from .coord_rows import MAX_UP, ask_all, axis_of, flat_rows, fold_rows, results, strip_axis
 from .namefold import key as name_key
 
 # 골격 닫힌 목록 스냅샷의 자리 — 파서는 `core`를 import하지 않으므로(문서 6 §6.7)
@@ -172,6 +172,13 @@ def _snap_version(layer):
         return (json.loads(p.read_text(encoding="utf-8")).get(layer) or {}).get("skeleton_version") \
             if layer and p.exists() else None
     except (RuntimeError, ValueError):
+        return None
+
+
+def _snap_or_none():
+    try:
+        return snapshot_path()
+    except RuntimeError:                                    # 주입 없는 킷 — 극성 축 없음
         return None
 
 
@@ -524,6 +531,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
     # **목록 좌표**(덱의 공정 표기 · B125 ④)는 **원소마다 한 행처럼** 대조한다(B151 ② — 표의 좌표 대조와 같은 연산 전부 · 같은
     # 표기는 조각이 여럿이어도 한 번 묻는다) · 결과는 조각마다 다시 접는다(`coord_rows.fold_rows`)
     whole, flat, owner = pieces, *flat_rows(pieces, ref_field)
+    flat, axis_cut, axis_odd = strip_axis(flat, ref_field, axis_of(_snap_or_none()))   # 극성은 이름 앞에서 뗀다(B205 ① — 판단 · 기록 전)
 
     # ── ① 무LLM 사전 계산 — 무엇을 몇 번 물을지는 부르기 전에 안다.
     refs = [p.get(ref_field) or None for p in flat]
@@ -563,7 +571,7 @@ def tag(pieces, *, layer=None, nodes=None, ref_field="process_ref",
             "범위_안_해소_행": sum(1 for sc in scope_at if sc),
             # **좌표 진단**(B99 ⑧) — 목록 밖 표기 상위(표기 · 행 수) · LLM 전에 안다
             "목록밖_상위": sorted(((r, refs.count(r)) for r in misses),
-                                key=lambda x: (-x[1], x[0]))[:10]}
+                                key=lambda x: (-x[1], x[0]))[:10], "극성_뗌": axis_cut, "극성_어긋남": axis_odd}
     if notice is not None:
         notice(dict(plan))
 

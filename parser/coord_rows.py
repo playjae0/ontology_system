@@ -6,6 +6,46 @@
 """
 from __future__ import annotations
 
+#: 극성을 떼는 좌표 칸(행의 공정 이름 둘 — `process_ref`는 부르는 쪽 `ref_field`)
+GROUP_FIELD, AXIS_FIELD = "process_group", "electrode_type"
+
+
+def axis_of(path):
+    """극성 축 `{키: 표시 이름}` — 닫힌 목록 스냅샷의 층마다 `axis`를 합친다(core `polarity.axis`와 같은 자리 · 없으면 빈 것)."""
+    import json
+    from pathlib import Path
+    try:
+        snap = json.loads(Path(path).read_text(encoding="utf-8")) if path and Path(path).exists() else {}
+    except (OSError, ValueError):
+        return {}
+    return {k: v for s in snap.values() if isinstance(s, dict) for k, v in (s.get("axis") or {}).items()}
+
+
+def strip_axis(pieces, ref_field, axis):
+    """**공정 이름의 극성을 판단 · 기록 전에 뗀다**(B205 ① — 결정 1 · 8) — 행의 공정 표기 · 위 공정 이름을 개념 이름으로(같은 접기 키는
+    처음 본 꼴 하나로) · 행의 극성 칸이 비면 뗀 축 키를 옮겨 적는다(시스템이 쓴다) · 있으면 그것이 이긴다. 돌려주는 것
+    `(새 행들, {원 표기: [개념, 키, 행 수]}, {표기: [행 칸 값, 뗀 키, 행 수]} — 둘이 다른 행)`."""
+    from .namefold import key, split_axis
+    out, seen, cut, odd = [], {}, {}, {}
+    for p in pieces:
+        r, got = dict(p), None
+        for f in (ref_field, GROUP_FIELD):
+            v = r.get(f)
+            c, k = split_axis(v, axis) if isinstance(v, str) else (v, None)
+            if k:
+                c = seen.setdefault(key(c), c)
+                cut.setdefault(v, [c, k, 0])[2] += 1
+                r[f], got = c, got or (k, v)
+        if got:
+            has = split_axis(f"{r.get(AXIS_FIELD)} x", axis)[1] if r.get(AXIS_FIELD) else None
+            if not r.get(AXIS_FIELD):
+                r[AXIS_FIELD] = got[0]
+            elif (has or r[AXIS_FIELD]) != got[0]:
+                odd.setdefault(got[1], [r[AXIS_FIELD], got[0], 0])[2] += 1
+        out.append(r)
+    return out, cut, odd
+
+
 #: 조상 추적 깊이 제한(순환 방어) — 골격 부모 사슬을 걷는 자리(`tagger.group_of` · `choices`)가 같이 쓴다
 MAX_UP = 16
 

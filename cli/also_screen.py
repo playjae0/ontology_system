@@ -76,11 +76,30 @@ def ask_rows(rows, where="본문", kept=0):
     return gate_table.loop(rows, PA.actor(), title=_title(rows, kept))
 
 
+#: 확정한 공정 — 화면 위 줄 수(전부는 md)
+PAIR_TOP = 10
+
+
+def pair_lines(rows, total, table=False, doc_id=None):
+    """**확정한 공정 화면**(B205 ⑤ — 표 [3/7] · 산문 [3/8] 같은 함수) — 머리 한 줄 + 공정마다 한 줄(위 `PAIR_TOP`) · 넘치면 전부는 md."""
+    unit = "행" if table else "청크"
+    out = [_screen.paint(f"   확정한 공정 — {unit} {total:,} · 공정 {len(rows):,}" + ("" if rows else " · 없음"), "head")]
+    out += [f"     {_screen.pad(name, 36)} {unit} {n:,}" for name, n in rows[:PAIR_TOP]]
+    if len(rows) > PAIR_TOP and doc_id:
+        from cli import envelope_md
+        from core import paths
+        p = envelope_md.save(f"pairs_{doc_id}.md", "\n".join([f"# 확정한 공정 — {doc_id}", "", f"| 공정 | {unit} |", "|---|---|"]
+                                                             + [f"| {name} | {n} |" for name, n in rows]) + "\n")
+        out.append(f"     … 그 밖 {len(rows) - PAIR_TOP:,}공정 — 전부 — {paths.show(p)}")
+    return out
+
+
 def notice(info, step=False):
     """골격 단 화면 — `False`면 멈춤."""
     k = info["단계"]
     if k == "확정공정":
-        _screen.say(f"   {info['줄']}", "head")
+        for ln in pair_lines(info["공정"], info["수"], doc_id=info.get("doc_id")):
+            print(ln)
         return None
     if k == "판정결과":
         _screen.close()

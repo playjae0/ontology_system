@@ -436,6 +436,17 @@ def term_width():
     return shutil.get_terminal_size((120, 24)).columns
 
 
+def items(head, parts, top=10, indent="     "):
+    """**나열 줄 한 자리**(B205 ⑤) — 한 줄이 터미널 폭 안이면 `머리 + 항목 · 항목` 한 줄 · 넘으면 머리 한 줄 + 항목마다 한 줄(위 `top`)
+    + 「… 그 밖 n」(짧은 요약 줄은 그대로 한 줄)."""
+    parts = [str(p) for p in parts]
+    one = head + " · ".join(parts)
+    if len(parts) < 2 or w(one) <= term_width():
+        return [one]
+    return ([head.rstrip(" —:")] + [indent + p for p in parts[:top]]
+            + ([f"{indent}… 그 밖 {len(parts) - top:,}"] if len(parts) > top else []))
+
+
 class Table:
     """**이어지는 표**(B98 ⑥) — 머리글 한 번 · 행이 이어 붙는다 · `HEAD_EVERY`행마다 머리글 다시.
 
