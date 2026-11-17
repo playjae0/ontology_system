@@ -551,8 +551,11 @@ _blk199 = _pf199[_i199:_j199 + 2] if _i199 is not None and _j199 is not None els
 _mv199 = [ln for ln in _blk199 if re.search(r"^\s+\S.*: \S+ → \S+::\S", ln)]
 # 고침(B208 ① — 기본 화면은 볼 것이 있는 표의 행을 한 행 한 줄로 · 40줄은 행 줄 · 그 아래 └ 줄 밖에서 잰다)
 _r208 = [ln for ln in _blk199 if re.match(r"\s+R\d+\s", ln)]
-_rest199 = [ln for ln in _blk199 if ln not in _r208 and not ln.startswith("          └")    # 고침(B211 ① — 표 머리 · 괘선 · 그룹 끝 수도 표 몫)
-            and not re.match(r"\s+(행\s+\||-+\+|\[그룹 끝\])", ln)]
+_bd212, _in212 = set(), False                                                    # 고침(B212 ① — 그룹 끝 판정 묶음은 표 몫)
+for _i, ln in enumerate(_blk199):
+    _in212 = "판정 묶음 —" in ln or (_in212 and ln.startswith(("   ── ", "      ")))
+    _bd212 |= {_i} if _in212 else set()
+_rest199 = [ln for _i, ln in enumerate(_blk199) if ln not in _r208 and not ln.startswith("          └") and _i not in _bd212]
 show("B199 ⓐ ⓑ PFMEA01 --step [4/7] ~ 판정 결과 40줄 이하(행 줄 밖) · 행은 한 줄씩 · 쌍별 예고 전부는 export/plan_PFMEA01.md · "
      "진행 줄 0(-v만) · 판정 결과에 「표기: 판정 전 → 판정 뒤」 줄 · 값 0인 쌍 줄 0",
      _blk199 and len(_rest199) <= 40 and len(_r208) == len({ln.split()[0] for ln in _r208}) and any("plan_PFMEA01.md" in ln for ln in _blk199)

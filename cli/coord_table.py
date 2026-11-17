@@ -88,12 +88,7 @@ def show(rows, indent="     "):
         _screen.say(indent + text, kind)
 
 
-# ── 표 판정 화면 — 판단이 있었던 행만 한 줄의 표 (B211 ①) · 관계 한 번 (B208 ②) ───────────────────
-#: 좌표 칸의 기호 · 개체 칸의 결과 기호(붙음 `=` · 새로 `+새` · 애매 `?` · 보류 `✗` — 결과 색 표의 결과 하나)
-SYM = {"붙음": "✓", "새로 생김": "+", "그래프에 없음": "✗", "노드 아님": "↗"}
-CELL = {"붙음": "=", "새로 생김": "+새", "그래프에 없음": "✗", "노드 아님": "↗"}
-#: 줄을 찍는 판단(기본) — `-v`는 「관문 끝」(새로 — LLM 0)까지 · 개체 열 상한(넘으면 「개체 열 n 더」 한 줄)
-LOUD, ENT_MAX = ("LLM", "사람 문", "애매", "보류"), 4
+# ── 표 판정 화면 — 판별 단위 묶음을 그룹 끝에 한 번 (B212 ①) · 관계 한 번 (B208 ②) ─────────────────
 
 
 def edge_key(row, a):
@@ -108,17 +103,6 @@ def edge_line(row, a):
     if a.get("dir") != "←":
         src = row.get("surface") or src                  # 이 행이 앞 끝이면 그 표기로
     return f"     └ {src} · {rel} → {dst} ({a['path']})"
-
-
-def _sub(e):
-    """LLM이 든 개체 · 애매 · 보류의 `└` 줄 — 판단 · 확실도 · 후보(가장 가까운) · 표시."""
-    from parser.coord_rows import VERDICT
-    calls, (_r, _k, mark) = (e.get("llm") or {}).get("calls"), _screen.outcome(e)
-    near = (e.get("nearest") or {}).get("canonical")
-    parts = [VERDICT.get(e.get("verdict"), e.get("verdict")) if calls else e.get("verdict")]
-    parts += [f"{e.get('confidence', 0):.2f}"] if calls else []
-    parts += [f"후보 {e.get('candidates_n') or 0}" + (f"({near})" if near else "")] + ([str(mark)] if mark else [])
-    return f"          └ {e.get('surface') or e.get('canonical')} — " + " · ".join(str(p) for p in parts if p)
 
 
 def decision(r):
@@ -136,67 +120,89 @@ def decision(r):
     return "관문 끝" if r.get("verdict") == "new" else None
 
 
-def _cell(r):
-    res, _k, mark = _screen.outcome(r)
-    return f"{r.get('surface') or r.get('canonical') or '—'} {'?' if mark == _screen.REVIEW else CELL.get(res, '·')}"
-
-
-def _flat(v, n=14):
-    return _screen.cut(" ".join(str(v).split()), n) if v not in (None, "") else "—"
+def _short(c, sep):
+    return str(c or "—").rsplit(sep, 1)[-1]
 
 
 class JudgeTable:
-    """**표 판정 화면**(B211 ①) — 판단이 있었던 행만 한 줄의 표(머리 · 열 정렬 · 그룹마다 머리 한 번) · 열 = 행 · 공정 · 스키마의
-    개체 열 차례 · 값(attribute · content 열의 실제 값) · 판단 · 기본은 LLM · 사람 문 · 애매 · 보류가 있는 행 · `-v`는 + 관문 끝 ·
-    전부 사전인 행은 줄 0(그룹 끝 수) · LLM · 애매 · 보류 칸만 그 행 아래 `└`. 재료는 대장 행 · 봉투 레코드뿐(새 판정 0)."""
+    """**표 판정 화면**(B212 ①) — 판정 중엔 행마다 줄 0 · 그룹 끝에 그 그룹에서 정한 것을 **판별 단위**(같은 열 · 같은 표기 · 같은 자리)로
+    묶어 넷: LLM이 판단한 것 → 사람이 정할 것 → 새로 선 것(관문 끝 — 행 많은 순 앞 5 · 전부는 `export/judge_<doc>.md` · `-v`면 화면도) →
+    사전으로 붙은 것(열마다 수). 한 줄 = 열 · 표기 → 판정 → 붙은 노드 [부모 경로] → 엣지(앞 3 · 외 k) → 행 수(첫 행) · 단위의 갈래는
+    그 그룹 첫 행의 판단(`decision`)이고 같은 단위의 뒤 행(사전 히트)은 행 수에 든다. 재료는 대장 행뿐(새 판정 0)."""
+    KINDS = (("LLM", "LLM이 판단한 것"), ("사람", "사람이 정할 것"), ("관문 끝", "새로 선 것"))
 
-    def __init__(self, fields, recs, label, verbose):
-        self.fields, self.recs, self.label, self.verbose = list(fields)[:ENT_MAX], recs, label, verbose
-        self.more, self.loc, self.rows, self.t = max(0, len(fields) - ENT_MAX), None, [], None
-        self.n = {"판단": 0, "사전": 0, "LLM": 0}
+    def __init__(self, doc_id, label, verbose):
+        from core.state import catalog
+        self.doc, self.label, self.verbose, self.sep, self.rows, self.md = doc_id, label, verbose, catalog.sep(), [], []
 
     def add(self, row):
-        if row.get("locator") != self.loc:
-            self._done()
-            self.loc = row.get("locator")
         self.rows.append(row)
 
+    def _units(self, rows):
+        held = {r.get("locator") for r in rows if r.get("role") == "anchor" and decision(r)}
+        coord = {r.get("locator"): _name(r) for r in rows if r.get("role") == "anchor"}
+        units = {}
+        for r in rows:
+            if (r.get("role") == "anchor" and r.get("locator") in held) or (r.get("role") == "entity" and r.get("locator") not in held):
+                k = (r.get("role"), r.get("field"), r.get("surface"), r.get("target") or r.get("canonical"))
+                u = units.setdefault(k, {"r": r, "rows": [], "coord": coord.get(r.get("locator"))})
+                u["rows"].append(r)
+        kind = {"LLM": "LLM", "관문 끝": "관문 끝", None: "사전"}
+        return {k: dict(u, kind=kind.get(decision(u["r"]), "사람")) for k, u in units.items()}, held
+
+    def _line(self, u):
+        from parser.coord_rows import VERDICT
+        r, n = u["r"], len(u["rows"])
+        tail = f"행 {n:,} (첫 {self.label(r.get('locator'))})"
+        if r.get("role") == "anchor":
+            return f"      공정 표기  {r.get('surface')}  {_screen.outcome(r)[2]}   {tail}"
+        conf, near = r.get("confidence") or 0, (r.get("nearest") or {}).get("canonical")
+        how = {"LLM": f"{VERDICT.get(r.get('verdict'), r.get('verdict'))[4:]} {conf:.2f} · 후보 {r.get('candidates_n') or 0}",
+               "사람": (f"애매 {conf:.2f} · 후보 {r.get('candidates_n') or 0}" + (f"({near})" if near else "") + " → 보류"
+                      if r.get("verdict") == "uncertain" else f"{_screen.outcome(r)[2] or decision(r)}"),
+               "관문 끝": "관문 끝"}.get(u["kind"], "")
+        c = r.get("target") or r.get("canonical")
+        path = c.rsplit(self.sep, 1)[0] if c and self.sep in c else u["coord"]
+        node = (("새로 " if r.get("verdict") in ("new", "uncertain") else "") + _short(c, self.sep)
+                + (f" [{' › '.join(str(path).split(self.sep))}]" if path else "")) if c else "—"
+        es = list(dict.fromkeys(f"{a['rel']} {a['dir']} {_short(a['other'], self.sep)}" for x in u["rows"] for a in x.get("attached") or []))
+        edges = " · ".join(es[:3]) + (f" 외 {len(es) - 3}" if len(es) > 3 else "")
+        return f"      {r.get('field')}  {r.get('surface')} → {how} → {node}   {edges}   {tail}"
+
+    def _say(self, line):
+        import sys
+        print(_screen.cut(line, _screen.term_width() - 1) if sys.stdout.isatty() else line)
+
     def end(self, *_a):
-        """그룹 · 문서 끝 — 남은 행 · 그룹 끝 수 한 줄 · 다음 그룹은 머리부터."""
-        self._done()
-        if any(self.n.values()):
-            print(f"   [그룹 끝] 판단 있는 행 {self.n['판단']:,} · 사전으로만 붙은 행 {self.n['사전']:,}(줄 없음) · LLM {self.n['LLM']:,}")
-        self.n, self.t = {k: 0 for k in self.n}, None
-
-    def _done(self):
-        rows, self.rows = self.rows, []
-        ds = [d for d in map(decision, rows) if d]
-        self.n["LLM"] += ds.count("LLM")
-        self.n["판단" if ds else "사전"] += bool(rows)
-        if ds and (self.verbose or any(d in LOUD for d in ds)):
-            self._print(rows, ds)
-
-    def _print(self, rows, ds):
+        """그룹 · 문서 끝 — 판별 단위 묶음 넷(빈 갈래는 줄 0) · 새로 선 것은 md에 쌓아 다시 쓴다."""
         from collections import Counter
-        anchors = [r for r in rows if r.get("role") == "anchor"]
-        held = next((a for a in anchors if _screen.outcome(a)[0] == "그래프에 없음"), None)
-        proc = " · ".join(f"{_name(a)} {SYM.get(_screen.outcome(a)[0], '·')}" for a in anchors) or "—"
-        if self.t is None:
-            cols = [("행", 6, False), ("공정", 14, False)] + [(f, 18, False) for f in self.fields or ["개체"]]
-            self.t = _screen.Table(cols + [("값", 24, False), ("판단", 14, False)], flex=len(cols))
-            if self.more:
-                print(f"   (개체 열 {self.more} 더 — show report <doc_id> --md)")
-        ents, rec = [r for r in rows if r.get("role") == "entity"], self.recs.get(self.loc) or {}
-        cells = ([" · ".join(_cell(r) for r in ents if r.get("field") == f) for f in self.fields] if self.fields
-                 else [" · ".join(map(_cell, ents))])
-        vals = " · ".join(f"{r.get('field')} {_flat(rec.get(r.get('field')))}" for r in rows if r.get("role") in ("attribute", "content"))
-        if held:
-            cells, vals = [""] * len(cells), f"— {_screen.outcome(held)[2]} → 행 보류(값 {len(ents)})"
-        self.t.row([self.label(self.loc), proc, *cells, vals, " · ".join(f"{k} {n}" for k, n in Counter(ds).items())],
-                   ["aux", _screen.outcome(anchors[0])[1] if anchors else None] + [None] * (len(cells) + 2))
-        for r in ([] if held else ents):
-            if decision(r) in LOUD:
-                print(_screen.cut(_sub(r), _screen.term_width() - 2))
+        rows, self.rows = self.rows, []
+        units, held = self._units(rows)
+        if not units:
+            return
+        by = {k: sorted((u for u in units.values() if u["kind"] == k), key=lambda u: -len(u["rows"])) for k in ("LLM", "사람", "관문 끝", "사전")}
+        self._say(f"   판정 묶음 — 행 {len({r.get('locator') for r in rows}):,} · 항목 {sum(1 for r in rows if r.get('role') == 'entity'):,} · "
+                  + f"LLM {len(by['LLM']):,} · 사람 {len(by['사람']):,} · 새로 {len(by['관문 끝']):,} · 사전 {sum(len(u['rows']) for u in by['사전']):,}")
+        for k, title in self.KINDS:
+            if not by[k]:
+                continue
+            lines = [self._line(u) for u in by[k]]
+            self._say(f"   ── {title} {len(lines):,}" + (" (관문으로 끝 · LLM 0)" if k == "관문 끝" else ""))
+            if k != "관문 끝" or self.verbose:
+                for ln in lines:
+                    self._say(ln)
+            else:
+                cnt = Counter(u["r"].get("field") for u in by[k])
+                self._say("      " + " · ".join(f"{f} {n}" for f, n in cnt.items()) + " — 행 많은 순: "
+                          + " · ".join(ln.split(" → ")[2].split("   ")[0].replace("새로 ", "") + f" {len(u['rows'])}"
+                                       for ln, u in zip(lines[:5], by[k])) + "  전부 — md")
+            if k == "관문 끝" and self.doc:
+                self.md += lines
+                from cli import envelope_md
+                envelope_md.save(f"judge_{self.doc}.md", f"# 새로 선 것 — {self.doc}\n\n" + "\n".join(f"- {x.strip()}" for x in self.md) + "\n")
+        if by["사전"]:
+            cnt = Counter(u["r"].get("field") for u in by["사전"] for _ in u["rows"])
+            self._say(f"   ── 사전으로 붙은 것 {sum(cnt.values()):,} (줄 없음 — " + " · ".join(f"{f} {n:,}" for f, n in cnt.items()) + ")")
 
 
 def _name(a):

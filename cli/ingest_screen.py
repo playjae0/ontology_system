@@ -332,10 +332,7 @@ def row_printer(env=None, stage=None):
     roles = struct_roles(env) if prose else {}
     wide = _screen.term_width() >= WIDE_MIN
     table = value_table(list(places.values()), prose, wide, live=True)
-    from core.state import registry as _rg
-    _sf = (_rg.schema_of((env or {}).get("doc_type")) or {}).get("fields") or {} if env else {}
-    jt = CT.JudgeTable([f for f, sp in _sf.items() if (sp or {}).get("role") == "entity"],
-                       {c["source_locator"]: c for c in pieces}, lambda x: where_cells(x, places)[1], _screen.VERBOSE)
+    jt = CT.JudgeTable((env or {}).get("doc_id"), lambda x: where_cells(x, places)[1], _screen.VERBOSE)
     _lg.ON_CHUNK = on_chunk if prose else None
     on_row.flush = on_chunk if prose else jt.end
     return on_row
