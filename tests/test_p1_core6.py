@@ -49,6 +49,19 @@ show("reader가 두 모드에서 같은 코드다 (운영 추출 = 등록 세션
      == __import__("parser.reader", fromlist=["head"]).head(
          read(str(RAW / "CP01.xlsx")), 5)["sheets"][0]["name"])
 
+# B210 ① 관찰 재료 — 앞 N행이면 셀마다의 칸(서식 · 병합 · 그림) 모두 앞 N행 · N행 이하 표본은 그대로
+_rh = __import__("parser.reader", fromlist=["head"])
+_raw210 = {"format": "xlsx", "sheets": [{"name": "S", "max_row": 9, "max_col": 1, "cells": {f"A{i}": i for i in range(1, 10)},
+           "indent": {}, "bold": ["A2", "A8"], "size": {"A3": 11.0, "A9": 12.0}, "fill": {"A7": "F"}, "color": {"A1": "R"},
+           "images": [{"cell": "A2", "ref": "i1"}, {"cell": "A9", "ref": "i2"}], "merged": ["A1:A2", "A4:A6", "A8:A9"]}]}
+_s210 = _rh.head(_raw210, 5)["sheets"][0]
+_cp210 = read(str(RAW / "CP01.xlsx"))
+show("B210 ① head — 서식 · 병합 · 그림 칸도 앞 N행(병합은 시작 행 기준 · 끝은 N까지) · 표본 전부가 N 안이면 셀마다의 칸 그대로",
+     (_s210["bold"], list(_s210["size"]), _s210["fill"], [x["cell"] for x in _s210["images"]], _s210["merged"])
+     == (["A2"], ["A3"], {}, ["A2"], ["A1:A2", "A4:A5"])
+     and _rh.head(_cp210, 10 ** 6)["sheets"] == [{k: v for k, v in sh.items()} for sh in _cp210["sheets"]]
+     and __import__("cli.prompt", fromlist=["x"])._big_keys([json.dumps({"head": _raw210})])[0][0] == "cells", str(_s210["merged"]))  # ② 큰 칸
+
 ipqc_pieces = IPQC.extract(read(str(RAW / "IPQC01.xlsx")))
 same, rep = normalizer.normalize(ipqc_pieces, multi_fields=["검사항목"], seps=[", "])
 show("normalizer 멱등 — 이미 자기완결인 어댑터 산출은 무변경 (이중 전개 0)",

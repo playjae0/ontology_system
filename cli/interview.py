@@ -241,6 +241,19 @@ def _interview_round(pkg, history, context=None):
         for sh in (h.get("head") or {}).get("sheets") or []:
             cols += [v for a, v in (sh.get("cells") or {}).items()
                      if a.endswith("1") and isinstance(v, str)]
+    # **판정 어휘를 이어 붙인다**(B32) — 문답이 role·층 어휘를 모른 채 물으면
+    # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
+    # **이전 표본에 대한 이해는 구분해 싣는다**(B55 ②-1) — 같은 자리에 섞으면
+    # 다른 문서에 대한 판단이 현재 판정에 들어오고, 빼면 재현 조건이 사라진다.
+    fresh = _prior_rounds(pkg)
+    convo = [{"role": "system",
+              "content": gateway.prompt("interview") + "\n\n---\n\n"
+                         + _vocab_excerpt(pkg)},
+             {"role": "user", "content": json.dumps(
+                 {"입력_패키지": pkg, "지난_문답": fresh + history,
+                  **({"기계_관문_실패": context} if context else {})},
+                 ensure_ascii=False)}]
+    _sent_size(convo, f"문답 라운드 {len(history) + 1}")              # mock도 같은 크기 줄(B210 ② — 보낼 것을 잰다)
     if gateway.use_mock():
         gateway.mock("generate", f"문답 라운드 {len(history) + 1} — 규칙 요약")
         base = (f"열 {len(cols)}개를 관찰했다: {', '.join(cols[:6])}"
@@ -269,19 +282,6 @@ def _interview_round(pkg, history, context=None):
                              "by_role": "(mock — 규칙 요약이라 role 배정이 없다)"},
                 "questions": qs}
 
-    # **판정 어휘를 이어 붙인다**(B32) — 문답이 role·층 어휘를 모른 채 물으면
-    # 「판단이 갈리는 것」의 기준이 없어 업무 사정을 묻게 된다.
-    # **이전 표본에 대한 이해는 구분해 싣는다**(B55 ②-1) — 같은 자리에 섞으면
-    # 다른 문서에 대한 판단이 현재 판정에 들어오고, 빼면 재현 조건이 사라진다.
-    fresh = _prior_rounds(pkg)
-    convo = [{"role": "system",
-              "content": gateway.prompt("interview") + "\n\n---\n\n"
-                         + _vocab_excerpt(pkg)},
-             {"role": "user", "content": json.dumps(
-                 {"입력_패키지": pkg, "지난_문답": fresh + history,
-                  **({"기계_관문_실패": context} if context else {})},
-                 ensure_ascii=False)}]
-    _sent_size(convo, f"문답 라운드 {len(history) + 1}")
     return gateway.chat(convo, json_schema=INTERVIEW_SCHEMA, point="interview")
 
 

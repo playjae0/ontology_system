@@ -778,14 +778,22 @@ def head(raw, n=None):
         return {**raw, "slides": raw.get("slides", [])[:n]}
     out = []
     for sh in raw["sheets"]:
-        cells = {a: v for a, v in sh["cells"].items()
-                 if int("".join(ch for ch in a if ch.isdigit())) <= n}
         # **`max_row`도 함께 줄인다.** 안 줄이면 어댑터가 원래 행 수까지 훑고,
         # 잘린 구간의 빈 셀이 «결측»으로 잡혀 **자르지 않았으면 없었을 C14 실패**가
         # 난다(실측: 병합이 절단면을 걸치면 그 행만 부분적으로 채워진다).
-        # 「앞 N행」은 셀만이 아니라 **시트의 크기**까지의 말이다.
-        out.append({**sh, "cells": cells,
-                    "max_row": min(int(sh.get("max_row") or 0), n),
-                    "indent": {a: v for a, v in sh["indent"].items()
-                               if int("".join(ch for ch in a if ch.isdigit())) <= n}})
+        # 「앞 N행」은 셀만이 아니라 **시트의 크기 · 셀마다의 칸 전부**(서식 · 병합 · 그림 — B210 ①)까지의 말이다.
+        out.append({**sh, **_rows_upto(sh, n), "max_row": min(int(sh.get("max_row") or 0), n)})
     return {**raw, "sheets": out}
+
+
+def _rows_upto(sh, n):
+    """**셀마다의 칸을 앞 N행으로**(B210 ① — 한 거르기) — 셀 → 값 칸 · `bold` · `images`(`cell`) · `merged`(시작 행 ≤ N · 끝은 N까지)."""
+    row = lambda a: int("".join(ch for ch in str(a).split(":")[0] if ch.isdigit()) or 0)   # noqa: E731
+    out = {k: {a: v for a, v in sh[k].items() if row(a) <= n} for k in ("cells", "indent", "size", "fill", "color")
+           if isinstance(sh.get(k), dict)}
+    out.update({k: [x for x in sh[k] if row(x.get("cell") if isinstance(x, dict) else x) <= n]
+                for k in ("bold", "images") if isinstance(sh.get(k), list)})
+    if isinstance(sh.get("merged"), list):
+        out["merged"] = [m if row(m.split(":")[-1]) <= n else f"{m.split(':')[0]}:{''.join(c for c in m.split(':')[-1] if c.isalpha())}{n}"
+                         for m in sh["merged"] if row(m) <= n]
+    return out

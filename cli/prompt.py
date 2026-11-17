@@ -375,6 +375,29 @@ def _vocab_excerpt(pkg):
     return "\n\n".join(out)
 
 
+def _big_keys(texts, top=3):
+    """보내는 JSON의 **가장 큰 칸 셋**(B210 ② — 키 · 글자 수) — 값 글자를 가장 가까운 이름 키로 센다(셀 주소 키는 건너 그 위 이름으로)."""
+    from collections import Counter
+    sz, addr = Counter(), re.compile(r"[A-Z]{1,3}\d+")
+
+    def walk(x, name):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                sz[name] += len(str(k)) + 4 if addr.fullmatch(str(k)) else 0      # 셀 주소 키도 그 칸의 글자
+                walk(v, name if addr.fullmatch(str(k)) else k)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v, name)
+        else:
+            sz[name] += len(json.dumps(x, ensure_ascii=False))
+    for t in texts:
+        try:
+            walk(json.loads(t), "(맨 위)")
+        except ValueError:
+            continue
+    return sz.most_common(top)
+
+
 def _sent_size(msgs, label):
     """전송 크기를 화면에 1줄 (B30) — **부르기 직전에** 잰다.
 
@@ -390,9 +413,11 @@ def _sent_size(msgs, label):
     # 한글 혼재 기준의 **거친 어림**이다(3바이트/토큰) — 정밀 계수는 게이트웨이 몫.
     est = tot // 3          # 한글 혼재의 거친 어림 — 정밀 계수는 게이트웨이 몫
     lim = check.context_limit()
+    big = _big_keys([m["content"] for m in msgs if m["role"] != "system"])
     print(f"   [전송] {label} — system {sys_b:,}B + user {usr_b:,}B "
           f"= {tot:,}B (약 {est:,} 토큰"
-          + (f" / 한도 {lim:,})" if lim else ")"), flush=True)
+          + (f" / 한도 {lim:,})" if lim else ")")
+          + (" · 큰 칸 " + " · ".join(f"{k} {n:,}자" for k, n in big) if big else ""), flush=True)
     if lim and est > lim:
         # **초과면 보내지 않고 멈춘다** — 컨텍스트 초과는 응답이 잘리는 게 아니라
         # 요청이 거부되고, 그 거부는 게이트웨이마다 문면이 달라 원인이 안 보인다.
