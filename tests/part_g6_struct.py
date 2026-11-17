@@ -323,6 +323,23 @@ import re                                          # noqa: E402
 _v166 = re.search(r"\nversion: 1\.(\d+)\n", _g166)          # 판은 그 뒤에도 오른다(B190 1.11) — 1.10 아래로 내려가지 않는다
 show("ⓓ 생성 지시문 판 ≥ 1.10 · 그래프 입장 시험에 ⓒ 기수 시험(세 시험)",
      bool(_v166) and int(_v166.group(1)) >= 10 and "ⓒ **기수 시험**" in _g166 and "**세 시험이 모두 예**" in _g166)
+# B211 ③ — 칸에 목록을 직접 만든 어댑터 → G4M FAIL(문면) · 짝 칸을 구분자로 이어 multi_value_groups로 넘기면 PASS(행 전개는 공용 코어)
+_src211 = (FX / "adapters" / "pfmea.py").read_text(encoding="utf-8")
+_wrap211 = {"list": ("    out[0]['cause'] = [out[0]['cause'], '원인 둘']\n", ""),
+            "pair": ("    out[0]['cause'] += ';원인 둘'\n    out[0]['control_item_for_cause'] = '관리 하나;관리 둘'\n",
+                     '\nADAPTER["expects"]["multi_value_groups"] = [["cause", "control_item_for_cause"]]\n'
+                     'ADAPTER["expects"]["multi_value_seps"] = [";"] + ADAPTER["expects"]["multi_value_seps"]\n')}
+_o211 = {}
+with tempfile.TemporaryDirectory(prefix="b211_") as td:
+    for _k, (_body, _tail) in _wrap211.items():
+        (Path(td) / f"{_k}.py").write_text(_src211 + _tail + "\n_orig = extract\n\n\ndef extract(raw):\n    out = _orig(raw)\n" + _body
+                                           + "    return out\n", encoding="utf-8")
+        _o211[_k] = GT.harness(Path(td) / f"{_k}.py", _P.fixture_schemas("pfmea.json"), [RAW / "PFMEA01.xlsx"])[1]
+_m211 = {k: [l.strip() for l in o.splitlines() if "G4M" in l] for k, o in _o211.items()}
+show("B211 ③ G4M — 목록 값 → FAIL(칸 · 행 수 · 처방 multi_value_groups) · 짝 칸을 이어 multi_value_groups로 넘긴 어댑터 → PASS(⑤ 완주)",
+     any(l.startswith("[FAIL] G4M") and "'cause' 값이 목록 1행" in l and "multi_value_groups" in l for l in _m211["list"])
+     and _m211["pair"] and all(l.startswith("[PASS]") for l in _m211["pair"]) and "[PASS] G51" in _o211["pair"],
+     " ‖ ".join(_m211["list"])[:200])
 #: 리뷰 고침(PR #121) — ①새로 설 이름은 사전과 같은 정규화(연속 공백) ②값의 같음은 구축의 ==(1과 1.0) ③문서는 표본 경로로
 from core.build import cardinality as CD166      # noqa: E402
 _r166 = load("PFMEA01")["records"][0]

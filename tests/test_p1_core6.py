@@ -62,6 +62,14 @@ show("B210 ① head — 서식 · 병합 · 그림 칸도 앞 N행(병합은 시
      and _rh.head(_cp210, 10 ** 6)["sheets"] == [{k: v for k, v in sh.items()} for sh in _cp210["sheets"]]
      and __import__("cli.prompt", fromlist=["x"])._big_keys([json.dumps({"head": _raw210})])[0][0] == "cells", str(_s210["merged"]))  # ② 큰 칸
 
+# B211 ② 짝 묶음 — 한 셀의 「이름 · 설명」 짝 여러 개를 같은 차례로 행 전개(짧은 쪽은 빈 값 · 묶음 밖은 복사) · 칸 하나 전개는 그대로
+_pr211 = [{"source_locator": "S!R3", "e": "단락; 발화", "d": "내부 단락; 셀 발화; 연기", "k": "x"}, {"source_locator": "S!R4", "m": "a, b"}]
+_g211, _n211 = normalizer.split_multi(_pr211, ["m"], ["; ", ", "], groups=[["e", "d"]])
+show("B211 ② split_multi groups — 짝마다 한 행 · 같은 차례 · #n · 묶음 밖 칸 복사 · groups 없는 칸 하나 전개는 그대로",
+     [(r["source_locator"], r.get("e"), r.get("d"), r.get("k")) for r in _g211[:3]]
+     == [("S!R3#1", "단락", "내부 단락", "x"), ("S!R3#2", "발화", "셀 발화", "x"), ("S!R3#3", "", "연기", "x")]
+     and _g211[3:] == normalizer.split_multi(_pr211[1:], ["m"], ["; ", ", "])[0] and _n211 == 2, str(_g211[:2]))
+
 ipqc_pieces = IPQC.extract(read(str(RAW / "IPQC01.xlsx")))
 same, rep = normalizer.normalize(ipqc_pieces, multi_fields=["검사항목"], seps=[", "])
 show("normalizer 멱등 — 이미 자기완결인 어댑터 산출은 무변경 (이중 전개 0)",

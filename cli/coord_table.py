@@ -88,11 +88,12 @@ def show(rows, indent="     "):
         _screen.say(indent + text, kind)
 
 
-# ── 판정 화면 — 묶음 한 줄 (B209 ②) · 관계 한 번 (B208 ②) ─────────────────────────────
-#: 줄의 기호 — 인입 값 표와 같은 결과 기호(`ingest_screen.MARKS`의 짝 · 결과 없음은 `·`)
+# ── 표 판정 화면 — 판단이 있었던 행만 한 줄의 표 (B211 ①) · 관계 한 번 (B208 ②) ───────────────────
+#: 좌표 칸의 기호 · 개체 칸의 결과 기호(붙음 `=` · 새로 `+새` · 애매 `?` · 보류 `✗` — 결과 색 표의 결과 하나)
 SYM = {"붙음": "✓", "새로 생김": "+", "그래프에 없음": "✗", "노드 아님": "↗"}
-#: 묶음 아래 `└` 줄 상한(넘으면 「그 밖 n」 — 행마다는 명령 로그 · `show report --rows`)
-SUBS_MAX = 5
+CELL = {"붙음": "=", "새로 생김": "+새", "그래프에 없음": "✗", "노드 아님": "↗"}
+#: 줄을 찍는 판단(기본) — `-v`는 「관문 끝」(새로 — LLM 0)까지 · 개체 열 상한(넘으면 「개체 열 n 더」 한 줄)
+LOUD, ENT_MAX = ("LLM", "사람 문", "애매", "보류"), 4
 
 
 def edge_key(row, a):
@@ -120,40 +121,86 @@ def _sub(e):
     return f"          └ {e.get('surface') or e.get('canonical')} — " + " · ".join(str(p) for p in parts if p)
 
 
-def fit(segs, width=None, tail=None):
-    """칸들 `[(글, 색)]` → 터미널 폭에서 자른 한 줄(자른 뒤 칸마다 칠한다 — 파이프는 색 0) · `tail`(끝 칸)은 늘 남긴다."""
-    room, out = (width or _screen.term_width()) - 1 - (_screen.w(tail[0]) if tail else 0), []
-    for text, kind in segs + ([tail] if tail else []):
-        if tail and (text, kind) == tail:
-            room += _screen.w(text)
-        if room <= 1:
-            break
-        text = text if _screen.w(text) <= room else _screen.cut(text, room - 1)
-        out.append(_screen.paint(text, kind))
-        room -= _screen.w(text)
-    return "".join(out)
+def decision(r):
+    """그 칸에서 **정한 방법** — LLM · 사람 문 · 애매 · 보류 · 관문 끝(새로 — LLM 0) · 판단 아님(사전 · 경로 · 앞 행이 정한 표기)은 None."""
+    if r.get("role") not in ("anchor", "entity"):
+        return None
+    if (r.get("llm") or {}).get("calls"):
+        return "LLM"
+    if r.get("by"):
+        return "사람 문"
+    if r.get("verdict") == "uncertain":
+        return "애매"
+    if _screen.outcome(r)[0] == "그래프에 없음":
+        return "보류"
+    return "관문 끝" if r.get("verdict") == "new" else None
 
 
-def judged(r):
-    """**판정으로 정해진 항목** — LLM · 애매 · 보류 · 사람 문(사전 · 관문으로 끝은 수만 — B209 ②)."""
-    return bool((r.get("llm") or {}).get("calls") or r.get("verdict") == "uncertain" or r.get("by")
-                or _screen.outcome(r)[0] == "그래프에 없음")
+def _cell(r):
+    res, _k, mark = _screen.outcome(r)
+    return f"{r.get('surface') or r.get('canonical') or '—'} {'?' if mark == _screen.REVIEW else CELL.get(res, '·')}"
+
+
+def _flat(v, n=14):
+    return _screen.cut(" ".join(str(v).split()), n) if v not in (None, "") else "—"
+
+
+class JudgeTable:
+    """**표 판정 화면**(B211 ①) — 판단이 있었던 행만 한 줄의 표(머리 · 열 정렬 · 그룹마다 머리 한 번) · 열 = 행 · 공정 · 스키마의
+    개체 열 차례 · 값(attribute · content 열의 실제 값) · 판단 · 기본은 LLM · 사람 문 · 애매 · 보류가 있는 행 · `-v`는 + 관문 끝 ·
+    전부 사전인 행은 줄 0(그룹 끝 수) · LLM · 애매 · 보류 칸만 그 행 아래 `└`. 재료는 대장 행 · 봉투 레코드뿐(새 판정 0)."""
+
+    def __init__(self, fields, recs, label, verbose):
+        self.fields, self.recs, self.label, self.verbose = list(fields)[:ENT_MAX], recs, label, verbose
+        self.more, self.loc, self.rows, self.t = max(0, len(fields) - ENT_MAX), None, [], None
+        self.n = {"판단": 0, "사전": 0, "LLM": 0}
+
+    def add(self, row):
+        if row.get("locator") != self.loc:
+            self._done()
+            self.loc = row.get("locator")
+        self.rows.append(row)
+
+    def end(self, *_a):
+        """그룹 · 문서 끝 — 남은 행 · 그룹 끝 수 한 줄 · 다음 그룹은 머리부터."""
+        self._done()
+        if any(self.n.values()):
+            print(f"   [그룹 끝] 판단 있는 행 {self.n['판단']:,} · 사전으로만 붙은 행 {self.n['사전']:,}(줄 없음) · LLM {self.n['LLM']:,}")
+        self.n, self.t = {k: 0 for k in self.n}, None
+
+    def _done(self):
+        rows, self.rows = self.rows, []
+        ds = [d for d in map(decision, rows) if d]
+        self.n["LLM"] += ds.count("LLM")
+        self.n["판단" if ds else "사전"] += bool(rows)
+        if ds and (self.verbose or any(d in LOUD for d in ds)):
+            self._print(rows, ds)
+
+    def _print(self, rows, ds):
+        from collections import Counter
+        anchors = [r for r in rows if r.get("role") == "anchor"]
+        held = next((a for a in anchors if _screen.outcome(a)[0] == "그래프에 없음"), None)
+        proc = " · ".join(f"{_name(a)} {SYM.get(_screen.outcome(a)[0], '·')}" for a in anchors) or "—"
+        if self.t is None:
+            cols = [("행", 6, False), ("공정", 14, False)] + [(f, 18, False) for f in self.fields or ["개체"]]
+            self.t = _screen.Table(cols + [("값", 24, False), ("판단", 14, False)], flex=len(cols))
+            if self.more:
+                print(f"   (개체 열 {self.more} 더 — show report <doc_id> --md)")
+        ents, rec = [r for r in rows if r.get("role") == "entity"], self.recs.get(self.loc) or {}
+        cells = ([" · ".join(_cell(r) for r in ents if r.get("field") == f) for f in self.fields] if self.fields
+                 else [" · ".join(map(_cell, ents))])
+        vals = " · ".join(f"{r.get('field')} {_flat(rec.get(r.get('field')))}" for r in rows if r.get("role") in ("attribute", "content"))
+        if held:
+            cells, vals = [""] * len(cells), f"— {_screen.outcome(held)[2]} → 행 보류(값 {len(ents)})"
+        self.t.row([self.label(self.loc), proc, *cells, vals, " · ".join(f"{k} {n}" for k, n in Counter(ds).items())],
+                   ["aux", _screen.outcome(anchors[0])[1] if anchors else None] + [None] * (len(cells) + 2))
+        for r in ([] if held else ents):
+            if decision(r) in LOUD:
+                print(_screen.cut(_sub(r), _screen.term_width() - 2))
 
 
 def _name(a):
     return (a.get("canonical") if a.get("node_id") else a.get("surface")) or "—"
-
-
-def bundle_key(rows):
-    """묶음 열쇠 — `(공정, (맨 위 개체 열, 표기))` · 같은 공정 안 맨 위 개체가 같은 연속 행이 한 묶음이다."""
-    ents = [r for r in rows if r.get("role") == "entity"]
-    return (tuple(_name(a) for a in rows if a.get("role") == "anchor"),
-            (ents[0].get("field"), ents[0].get("surface")) if ents else None)
-
-
-def _syms(rs):
-    from collections import Counter
-    return " ".join(f"{s}{n:,}" for s, n in Counter(SYM.get(_screen.outcome(r)[0], "·") for r in rs).items())
 
 
 def split_info(records):
@@ -164,35 +211,3 @@ def split_info(records):
     cols = {f for rs in sib.values() if len(rs) > 1 for f in rs[0] if f != "source_locator" and isinstance(rs[0][f], str)
             and len({str(x.get(f)) for x in rs}) > 1}
     return len(sib), len(records or []), sorted(cols)
-
-
-def bundle_line(items, label=str, width=None):
-    """**묶음 한 줄**(B209 ②) — `items` [(위치, 그 행의 대장 행들)] → `(줄, └ 줄들)`: 공정 › 맨 위 개체(기호별 수) · 원본 행 범위 ·
-    나눈 행 · 아래 개체 열마다 수(기호별) · 보류 행 · 아래 `└`는 판정으로 정해진 항목만(같은 표기는 한 번 · 상한 SUBS_MAX)."""
-    rows = [r for _l, rs in items for r in rs]
-    procs, top = bundle_key(items[0][1])
-    base = list(dict.fromkeys(str(l).split("#")[0] for l, _r in items))
-    held = {l for l, rs in items if any(r.get("role") == "anchor" and _screen.outcome(r)[0] == "그래프에 없음" for r in rs)}
-    ents = [r for r in rows if r.get("role") == "entity"]
-    tops = [r for r in ents if (r.get("field"), r.get("surface")) == top]
-    span = label(base[0]) + (f"~{label(base[-1])}" if len(base) > 1 else "")
-    by = {}
-    for r in ents:
-        if (r.get("field"), r.get("surface")) != top:
-            by.setdefault(r.get("field"), []).append(r)
-    segs = [(f"   {' · '.join(procs) or '좌표 없음'} › {top[1] if top else '—'} ({_syms(tops)})",
-             _screen.outcome(tops[0])[1] if tops else None),
-            (f" — 원본 {span} {len(base):,}행" + (f" · 나눈 {len(items):,}행" if len(items) != len(base) else ""), "aux")]
-    segs += [(f" · {f} {len(rs):,}({_syms(rs)})", "aux") for f, rs in by.items()]
-    if held:
-        a = next(r for l, rs in items if l in held for r in rs if r.get("role") == "anchor")
-        segs.append((f" · 보류 {len(held):,}행({_screen.outcome(a)[2]})", "orphan"))
-    subs, seen = [], set()
-    for l, rs in items:
-        for r in rs:
-            k = (r.get("field"), r.get("surface"))
-            if l not in held and r.get("role") == "entity" and judged(r) and k not in seen:
-                seen.add(k)
-                subs.append(_sub(r))
-    more = [f"          … 그 밖 {len(subs) - SUBS_MAX:,} — 행마다는 명령 로그 · show report --rows"] if len(subs) > SUBS_MAX else []
-    return fit(segs, width), [_screen.cut(x, (width or _screen.term_width()) - 2) for x in subs[:SUBS_MAX] + more]
