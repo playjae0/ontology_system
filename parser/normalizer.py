@@ -181,41 +181,54 @@ def resolve_ditto(records, fields=None, marks=DITTO):
 
 
 # ---------------------------------------------------------------- ③ 복수값 분리
-def split_multi(records, fields, seps=None, locator_key="source_locator"):
+def split_multi(records, fields, seps=None, locator_key="source_locator", groups=()):
     """한 칸의 복수값을 **행으로 전개**한다 — 첫 일치 구분자·첫 대상 필드 하나만.
 
     전개하면 `source_locator`에 `#n` 접미를 붙여 유일성을 지킨다(파서_명세 §5 규약 1).
     **전개할 것이 없으면 원본을 그대로 돌려준다**(멱등 — 이중 전개 방지).
+    `groups`는 **짝 묶음** `[[칸 A, 칸 B, …]]`(B211 ②) — 묶음 칸에서 처음 보이는 구분자로 그 칸들을 함께 나눠 **같은 차례로**
+    행 전개(짧은 쪽은 빈 값 · 묶음 밖 칸은 복사) · 묶음이 나눈 레코드는 칸 하나 전개를 다시 타지 않는다.
     """
     seps = seps or DEFAULT_SEPS
     out, hits = [], 0
     for rec in records:
-        target = None
-        for f in fields:
-            v = rec.get(f)
-            if not isinstance(v, str):
-                continue
-            for sep in seps:
-                if sep in v:
-                    parts = [x.strip() for x in v.split(sep) if x.strip()]
-                    if len(parts) > 1:
-                        target = (f, parts)
-                    break
-            if target:
-                break
-        if not target:
+        rows = _group_rows(rec, groups, seps) or _field_rows(rec, fields, seps)
+        if not rows:
             out.append(rec)
             continue
-        f, parts = target
         hits += 1
         base = rec.get(locator_key)
-        for i, p in enumerate(parts, 1):
-            r = dict(rec)
-            r[f] = p
+        for i, vals in enumerate(rows, 1):
+            r = {**rec, **vals}
             if base:
                 r[locator_key] = f"{base}#{i}"
             out.append(r)
     return out, hits
+
+
+def _field_rows(rec, fields, seps):
+    for f in fields:
+        v = rec.get(f)
+        if not isinstance(v, str):
+            continue
+        for sep in seps:
+            if sep in v:
+                parts = [x.strip() for x in v.split(sep) if x.strip()]
+                if len(parts) > 1:
+                    return [{f: p} for p in parts]
+                break
+    return None
+
+
+def _group_rows(rec, groups, seps):
+    for g in groups or ():
+        vals = {f: rec.get(f) for f in g if isinstance(rec.get(f), str)}
+        sep = next((s for s in seps if any(s in v for v in vals.values())), None)
+        parts = {f: [x.strip() for x in v.split(sep)] for f, v in vals.items()} if sep else {}
+        n = max(map(len, parts.values()), default=0)
+        if n > 1:
+            return [{f: (ps[i] if i < len(ps) else "") for f, ps in parts.items()} for i in range(n)]
+    return None
 
 
 # ---------------------------------------------------------------- ④ nested 평탄화
@@ -241,13 +254,13 @@ def flatten(records, sep="."):
 
 
 # ---------------------------------------------------------------- 진입점
-def normalize(records, *, ditto_fields=None, multi_fields=(), seps=None):
+def normalize(records, *, ditto_fields=None, multi_fields=(), seps=None, groups=()):
     """4기능을 순서대로 — 상동 → 복수값 → nested. (병합 전개는 셀 단계라 별도)
 
     돌려주는 것은 `(records, report)`이고 report는 기능별 적용 건수다 — **0이면
     이미 자기완결이었다는 뜻**이고, 그것이 정상이다(어댑터가 자기 안에서 풀었다).
     """
     recs, d = resolve_ditto(records, ditto_fields)
-    recs, m = split_multi(recs, list(multi_fields), seps) if multi_fields else (recs, 0)
+    recs, m = split_multi(recs, list(multi_fields), seps, groups=groups) if multi_fields or groups else (recs, 0)
     recs, f = flatten(recs)
     return recs, {"ditto": d, "multi": m, "nested": f}

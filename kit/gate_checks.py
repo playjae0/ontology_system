@@ -314,6 +314,20 @@ def check_skeleton_columns(schema, fields, pieces):
     return ok
 
 
+def check_scalar_values(schema, records, stage):
+    """**한 칸에 값 하나**(B211 ③ · G4M) — 스키마 role이 entity · anchor · attribute인 칸의 값이 목록 · 튜플 · 딕셔너리면 FAIL
+    (인입이 `missing_field`로 그 칸을 버린다 — 「단일 값이 아니다」) · `context` · `meta`는 대상 밖 · `stage`는 ③ · ⑤."""
+    fields = (schema or {}).get("fields") or {}
+    bad = {}
+    for r in records or []:
+        for k, spec in fields.items():
+            if (spec or {}).get("role") in ("entity", "anchor", "attribute") and isinstance(r.get(k), (list, tuple, dict)):
+                bad.setdefault(k, []).append(r.get("source_locator"))
+    detail = " · ".join(f"'{k}' 값이 목록 {len(ls)}행(예 {ls[0]}) — 한 칸 복수값은 expects.multi_value_fields · 짝이면 "
+                        f"multi_value_groups로 행 전개(직접 목록을 만들지 않는다)" for k, ls in bad.items())
+    return show(f"G4M  entity · anchor · attribute 칸의 값이 하나다({stage})", not bad, detail)
+
+
 def check_anchor_columns(schema, fields, pieces):
     """**anchor 열의 대상 목록**(B164 ② · G4K) — anchor 열의 표본 값이 그 대상 카테고리 목록에 하나도 없으면 FAIL.
 

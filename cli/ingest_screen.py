@@ -18,6 +18,7 @@ from cli import also_screen                         # 골격 단의 화면(B197 
 from core import paths
 from core.llm import gateway
 from core.state import log, store
+from core.build import ledger as _LG
 
 _LOG = log.get(__name__)
 
@@ -259,7 +260,7 @@ def row_printer(env=None, stage=None):
         TALLY[k] = 0
     from cli import coord_table as CT
     prose = bool((env or {}).get("chunks"))
-    shown, seen, logged, buf, pend, bun = {}, set(), set(), {"loc": None, "rows": []}, [], []   # 산문 찍은 값 행 · 찍은 엣지 · 표의 지금 행                                       # 위치 → 찍은 값 행(산문 — 붙은 자리는 조각 부착 때)
+    shown, seen, logged, pend = {}, set(), set(), []   # 산문 — 찍은 값 행(위치 → 행 · 붙은 자리는 조각 부착 때) · 찍은 엣지 · 로그한 엣지
     clock = {"t": time.monotonic()}
 
     def show(row, secs=None):
@@ -291,25 +292,6 @@ def row_printer(env=None, stage=None):
         while pend:
             show(*pend.pop(0))
 
-    def flush_row(end=True):
-        """표의 한 행이 끝났다 — 묶음(같은 공정 · 같은 맨 위 개체의 연속 행)에 넣고 묶음이 바뀌거나 `end`(그룹 · 문서 끝)면 앞 묶음을
-        한 줄로(B209 ② — 기본은 판정으로 정해진 항목이 있는 묶음만 · `-v`는 모든 묶음 · 행마다는 명령 로그)."""
-        rows, buf["rows"] = buf["rows"], []
-        k = CT.bundle_key(rows) if rows else None
-        if rows and bun and k != bun[0][0]:
-            emit()
-        if rows:
-            bun.append((k, buf["loc"], rows))
-        if end:
-            emit()
-
-    def emit():
-        if bun and (_screen.VERBOSE or any(CT.judged(r) for _k, _l, rs in bun for r in rs)):
-            _screen.close()
-            line, subs = CT.bundle_line([(l, rs) for _k, l, rs in bun], lambda x: where_cells(x, places)[1])
-            print(line, *subs, sep="\n")
-        bun.clear()
-
     def on_row(row):
         if row.get("role") == "entity":            # 처리한 값 = 개체 행(좌표 · 부착 행은 값이 아니다 — B142 ⑥)
             TALLY["값"] += 1
@@ -328,11 +310,8 @@ def row_printer(env=None, stage=None):
             TALLY["큐"] += 1
         now = time.monotonic()
         secs, clock["t"] = (now - clock["t"]) if prose else None, now
-        if not prose:                                 # 표 — 행이 바뀔 때 앞 행을 한 줄로(로그는 값 줄 그대로)
-            if row.get("locator") != buf["loc"]:
-                flush_row(end=False)
-                buf["loc"] = row.get("locator")
-            buf["rows"].append(row)
+        if not prose:                                 # 표 — 판단이 있었던 행만 한 줄의 표(B211 ① · 로그는 값 줄 그대로)
+            jt.add(row)
             if _screen.VERBOSE or _loud(row):
                 _LOG.info("값 %s%s", value_line(row).strip(), f" · 자리 {labels[row['locator']]}"
                           if _screen.VERBOSE and labels.get(row.get("locator")) else "")
@@ -353,8 +332,12 @@ def row_printer(env=None, stage=None):
     roles = struct_roles(env) if prose else {}
     wide = _screen.term_width() >= WIDE_MIN
     table = value_table(list(places.values()), prose, wide, live=True)
+    from core.state import registry as _rg
+    _sf = (_rg.schema_of((env or {}).get("doc_type")) or {}).get("fields") or {} if env else {}
+    jt = CT.JudgeTable([f for f, sp in _sf.items() if (sp or {}).get("role") == "entity"],
+                       {c["source_locator"]: c for c in pieces}, lambda x: where_cells(x, places)[1], _screen.VERBOSE)
     _lg.ON_CHUNK = on_chunk if prose else None
-    on_row.flush = on_chunk if prose else flush_row
+    on_row.flush = on_chunk if prose else jt.end
     return on_row
 
 
@@ -527,6 +510,7 @@ def build_screen(step=False, stage=None, prose=False):
                 stage.update(_judge)              # 누적 줄·비용 줄이 다시 판정을 가리킨다
             return out
         if info.get("단계") in also_screen.STAGES:        # 골격 단의 문 · 확정한 공정 · 쓰기 전 판정 결과 (B197 ②④)
+            (info.get("단계") == "판정결과" and getattr(_LG.ON_ROW, "flush", lambda: None)())   # 판정 표는 그 앞에서 닫는다(B211 ①)
             return also_screen.notice(info, step)
         if info.get("단계") == "렌즈예고":
             # **호출 전 예고**(B91 ①) — 렌즈가 둘 이상일 때만 온다 · 거름은 LLM 0 ·

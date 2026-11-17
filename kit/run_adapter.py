@@ -45,7 +45,7 @@ import gate_tables as tables
 from gate_tables import (BANNED_IMPORTS, BLOCKS_PATH, G26, G39, NORMALIZER_API,
                          ROLES, SELFMADE, STRUCT_ONLY, load_blocks,
                          structural_fields)
-from gate_checks import (check_coord_pairs, check_ledger_coverage, check_schema, check_shapes,
+from gate_checks import (check_coord_pairs, check_scalar_values, check_ledger_coverage, check_schema, check_shapes,
                          check_vocab, payload_kind_of)
 
 # ---------------------------------------------------------------- ① 로드
@@ -405,6 +405,7 @@ def run_extract(mod, raw, label, schema=None):
     if schema is not None and pk == "table":
         # **table 한정**(규약 7) — prose 조각의 키는 계약 고정 4종이라 대상이 아니다.
         check_output_keys(schema, pieces, label)
+        check_scalar_values(schema, pieces, "③ extract")       # G4M (B211 ③)
     return pieces
 
 
@@ -505,6 +506,8 @@ def run_pipeline(mod, schema, doc, label):
              isinstance(env, dict) and bool(env), f'키 {sorted(env)[:6]}')
         # **좌표 쌍**(B105 ② · G4I) — 태깅이 끝난 조각으로(운영 좌표 단계 · 구축과 같은 판정)
         check_coord_pairs(schema, env.get("records") or env.get("chunks") or [], nodes)
+        if env.get("records") is not None:
+            check_scalar_values(schema, env["records"], "⑤ 파서 전 구간")   # G4M (B211 ③)
         if tables.RECORDS_OUT and env.get("records") is not None:
             # G4L(B166 ①)의 재료 — 문서 하나 한 줄(봉투 맥락 · 레코드) · 세는 것은 등록 흐름이다(구축의 노드 열쇠) ·
             # 문서는 표본 경로로 가른다(다른 폴더의 같은 이름 표본이 한 문서로 섞이지 않게)
