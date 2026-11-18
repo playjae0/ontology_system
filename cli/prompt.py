@@ -186,6 +186,7 @@ def _fill_schema_only(text, hint):
 
 # 같은 종류의 다른 양식 구획의 자리(B190 ①) — 문장은 템플릿 몫 · 코드는 등록 스키마 전문만 채우거나 구획째 지운다.
 VARIANT_SLOT = "{{변형_스키마}}"
+INHERIT_SLOT = "{{변형_물려받기}}"           # 이전 양식에서 사람이 확정한 것 (B213 ③ — 구획 안 · 변형 스키마 자리보다 앞)
 _VARIANT_SECTION = re.compile(
     r"\n---\n\n## \[같은 종류의 다른 양식.*?" + re.escape(VARIANT_SLOT) + r"\n?", re.S)
 
@@ -198,7 +199,14 @@ def _fill_variant(text, hint):
     from core.state import registry
     p = registry.at(v.get("schema") or "")
     body = p.read_text(encoding="utf-8").strip() if p.is_file() else "{}"
-    return text.replace(VARIANT_SLOT, f"```json\n{body}\n```")
+    inh = v.get("inherit") or {}
+    got = [f"- 물려받은 변형: {' · '.join(inh.get('from') or []) or '없음'}",
+           "- 같은 헤더(이 대응 그대로): " + (" · ".join(f"`{h}` → `{f}`" for h, f in (inh.get("headers") or {}).items()) or "없음"),
+           "- 충돌(변형마다 다른 필드 — 사람이 고른다): " + (" · ".join(
+               f"`{h}` → " + " · ".join(f"`{f}`({'·'.join(ns)})" for f, ns in fs.items())
+               for h, fs in (inh.get("conflicts") or {}).items()) or "없음")]
+    got.append(_decisions_block([{"decisions": inh.get("decisions") or []}]))
+    return text.replace(INHERIT_SLOT, "\n".join(got)).replace(VARIANT_SLOT, f"```json\n{body}\n```")
 
 
 def _fill_regeneration(text, items):

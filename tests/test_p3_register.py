@@ -529,6 +529,97 @@ show("B190 ⓓ 스키마를 바꿔야 맞는 양식은 「판정 불가」로 �
      and [n for n, _ in registry.variants_of(DT190)] == _v190 and not (REVIEW / f"{DT190}@CPD190" / "schema.json").exists()
      and _s0190.get("status") == "chosen" and "variant" not in (_s0190.get("basis") or {}),
      f"rc {_gd190.returncode} · 지금 등록분 {_s0190.get('status')} {(_s0190.get('basis') or {}).get('variant')}")
+# ── B213 양식이 다른 문서 — P21은 변형으로 안내 · 헤더 4갈래 · 이전 확정을 물려받아 잠금 · 새 칸은 더하기만(mock · 창작 표본)
+from cli.register import variant as _V213                  # noqa: E402
+from cli import ingest_screen as _SCR213, prompt as _PR213  # noqa: E402
+from parser.normalizer import _col as _c213                # noqa: E402
+_ing213 = lambda f, *x: subprocess.run([sys.executable, str(ROOT / "run.py"), "ingest-file", str(f), *x, "--allow-mock"],  # noqa: E731
+                                       capture_output=True, text=True, cwd=str(ROOT), stdin=subprocess.DEVNULL)
+_p213 = _ing213(RAW / "CP02_drift.xlsx", "--doc-type", DT190)
+_o213 = _p213.stdout + _p213.stderr
+_cp213 = _SCR213.fail_block("x.xlsx", "x", _SCR213.fail_rows([{"kind": "adapter_mismatch", "reason": "양식 표류", "detail": {
+    "missing": ["a"], "extra": ["b"], "sheet": "S", "header_row": 3}}]), doc_type="cp")
+show("B213 ⓐ P21 — 누락 · 잉여 줄 · 등록 표 doc_type은 ▶ 첫 줄 --variant · 둘째 --revise · 내장 doc_type은 지금 줄 그대로",
+     "누락 ['관리항목'] · 잉여 ['관리 항목명']" in _o213 and "--revise" in _o213 and re.search(
+         rf"▶ 다음 줄:\n\s+같은 종류의 다른 양식이면:\s+python -m cli.register generate {DT190} process \S*CP02_drift.xlsx --variant", _o213)
+     and "--variant" not in _cp213 and "양식이 바뀐 거면:" in _cp213 and "누락 ['a'] · 잉여 ['b']" in _cp213, _o213[-700:])
+_L213, _M213 = _V213.pairs(registry.at(dict(registry.variants_of(DT190))[registry.BASE_VARIANT]["adapter"]))
+_P.ensure(REVIEW / f"{DT190}@P213" / "input_package.json").write_text(json.dumps({"human": {"hint": {"variant": {
+    "doc_type": DT190, "inherit": _V213.inherit(DT190)}}}}, ensure_ascii=False), encoding="utf-8")
+
+
+def _cnt213(labels):
+    """창작 양식의 헤더 → 기본 변형의 필드(「관리 항목명」은 관리항목)로 읽는 어댑터 → 4갈래 수(같음 · 바뀜 · 새 · 사라짐 · 충돌)."""
+    fld, p = {**_M213, "관리 항목명": "관리항목"}, _d190 / f"f213_{len(labels)}_{labels.index('공정명')}{labels[4]}.py"
+    p.write_text(f"ADAPTER = {{'expects': {{'header_labels': {labels!r}, 'columns': "
+                 f"{ {fld[h]: _c213(i) for i, h in enumerate(labels, 1) if h in fld}!r}}}}}\n", encoding="utf-8")
+    m = _V213.match(f"{DT190}@P213", p)
+    return tuple(len(m[k]) for k in ("same", "renamed", "new", "gone", "conflict")), _V213.table(f"{DT190}@P213", m)
+
+
+_sw213 = _L213[:4] + [_L213[5], _L213[4]] + _L213[6:]
+_mix213 = [h if h != "관리항목" else "관리 항목명" for h in _sw213 if h != "대응계획"] + ["비고"]
+_n213 = [_cnt213(x) for x in (_sw213, _L213 + ["비고"], [h for h in _L213 if h != "대응계획"], _mix213)]
+show("B213 ⓑ 매칭표 — 창작 넷(순서만 · 새 열 · 빠진 열 · 셋 섞임 + 이름 바뀜)의 갈래별 수 · 같은 입력 두 번 같은 표",
+     [n for n, _t in _n213] == [(11, 0, 0, 0, 0), (11, 0, 1, 0, 0), (10, 0, 0, 1, 0), (9, 1, 1, 1, 0)]
+     and _cnt213(_mix213) == _n213[3] and "관리 항목명 → 관리항목" in _n213[3][1][2], " | ".join(_n213[3][1]))
+# ⓓ 물려받기 재료 — 기본 변형 자리의 문답(지금 · stale · 버림)
+_P.ensure(REVIEW / DT190 / "state.json").write_text(json.dumps({"samples": [str(_A190)]}), encoding="utf-8")
+_P.ensure(REVIEW / DT190 / "input_package.json").write_text(json.dumps({"human": {"hint": {"interview": [
+    {"samples": [str(_A190)], "decisions": [{"topic": "관리항목 열", "decision": "entity", "reason": "T213 지금"}]},
+    {"samples": ["옛"], "stale": True, "decisions": [{"topic": "x", "decision": "y", "reason": "T213 stale"}]},
+    {"samples": ["옛"], "stale": True, "dropped": True, "decisions": [{"topic": "x", "decision": "y", "reason": "T213 버림"}]}]}}},
+    ensure_ascii=False), encoding="utf-8")
+_e213 = _src190.replace('"process_no": "B",', "")                                            # 물려받은 「공정번호」를 읽지 않는 초안
+for _n213 in ("CPE213", "CPE213_rev1", "CPE213_rev2"):                                        # rev1은 자동 재생성 몫
+    _P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@{_n213}.py").write_text(_e213, encoding="utf-8")
+_ge213 = run("generate", DT190, "process", str(RAW / "CP02_drift.xlsx"), "--variant", "CPE213")
+_ri213 = run("review", f"{DT190}@CPE213", "--instruct", "'공정번호'는 이 양식에서 읽지 않는다")
+_txt213 = _PR213._render_template(_PR213.generate_template(), json.loads(
+    (REVIEW / f"{DT190}@CPE213" / "input_package.json").read_text(encoding="utf-8")))
+show("B213 ⓒ 잠금 — 물려받은 헤더를 다른 필드로 읽은 초안은 G4V FAIL(문면) · --instruct로 부른 헤더는 PASS · 표에 이름 바뀜 짝",
+     "[FAIL] G4V" in _ge213.stdout and "'공정번호'는 기본·CPB190에서 'process_no'로 확정 — 초안은 '읽지 않음'" in _ge213.stdout
+     and "[PASS] G4V" in json.loads((REVIEW / f"{DT190}@CPE213" / "state.json").read_text(encoding="utf-8")).get("harness_out", "")
+     and "공정번호→process_no (지시로 바꿈)" in _ri213.stdout and "이름 바뀜 1   관리 항목명 → 관리항목" in _ge213.stdout,
+     " | ".join(re.findall(r".*(?:G4V|이름 바뀜|재생성).*", _ge213.stdout + "\n#\n" + _ri213.stdout))[:1500])
+show("B213 ⓓ 물려받기 — 기본 변형 자리의 확정 문답이 변형 생성 지시문에 · stale · 버린 문답은 빠진다 · 같은 헤더 대응도",
+     "T213 지금" in _txt213 and "T213 stale" not in _txt213 and "T213 버림" not in _txt213 and "`공정명` → `process_ref`" in _txt213
+     and "{{변형_물려받기}}" not in _txt213, "")
+# ⓔ 칸 더하기 — 새 열 「비고」 창작 + --instruct → 등록 스키마 + 그 칸 · 모든 변형 관문 · 기존 칸 role을 바꾸면 판정 불가
+_wb213 = _ox.load_workbook(RAW / "CP01.xlsx")
+_wb213.active.cell(3, 12).value = "비고"
+_wb213.active.cell(4, 12).value = "창작 비고"
+_wb213.save(_d190 / "CPF213.xlsx")
+_reg213 = json.loads(_P.schemas(f"{DT190}.json").read_text(encoding="utf-8"))
+_add213 = {**_reg213, "fields": {**_reg213["fields"], "비고": {"role": "content", "attach_to_field": "관리항목", "optional": True}}}
+_P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@CPF213.py").write_text(_src190, encoding="utf-8")
+_P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@CPF213_rev1.py").write_text(_src190.replace('"context": "J",', '"context": "J", "비고": "L",'),
+                                                                       encoding="utf-8")
+_P.ensure(_FX.FIXTURE_SCHEMAS / f"{DT190}@CPF213_rev1.json").write_text(json.dumps(_add213, ensure_ascii=False), encoding="utf-8")
+_gf213 = run("generate", DT190, "process", str(_d190 / "CPF213.xlsx"), "--variant")
+_rf213 = run("review", f"{DT190}@CPF213", "--instruct", "'비고'를 content로 더한다")
+_cf213 = run("confirm", f"{DT190}@CPF213", "--by", "시험")
+_new213 = json.loads(_P.schemas(f"{DT190}.json").read_text(encoding="utf-8"))
+_role213 = {**_add213, "fields": {**_add213["fields"], "규격": {**_reg213["fields"]["규격"], "role": "entity"}}}
+show("B213 ⓔ 칸 더하기 — 스키마 새 판(기존 칸 같음 · schema_version +1) · 모든 변형 관문 PASS · 이미 넣은 문서 한 줄 · role 바꿈은 판정 불가",
+     _cf213.returncode == 0 and "비고 → 읽지 않음" in _gf213.stdout and "이미 넣은 문서는 다시 넣지 않아도 된다" in _cf213.stdout
+     and all(_new213["fields"][k] == v for k, v in _reg213["fields"].items()) and "비고" in _new213["fields"]
+     and _new213["schema_version"] == int(_reg213.get("schema_version") or 1) + 1
+     and _V213.added(_reg213, _role213, [{"by": "사람", "instruction": "'비고'를 더한다"}]) is None,
+     (_rf213.stdout + _cf213.stdout + _cf213.stderr)[-900:])
+# 충돌 — 같은 헤더를 다른 필드로 확정한 변형을 하나 더 두면(창작) 표에 충돌 · 고르지 않으면 confirm이 멈춘다
+_x213 = registry.variant_adapter(DT190, "X213")
+_P.ensure(_P.registry(_x213)).write_text(_src190.replace('"설비": "E"', '"설비": "F"').replace('"관리항목": "F"', '"관리항목": "E"'),
+                                          encoding="utf-8")
+registry.add_variant(DT190, "X213", adapter=_x213, adapter_version="1.0", approved_by="시험", approved_at="2026-11-18T00:00:00+00:00")
+_P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@CPG213.py").write_text(_vsrc190, encoding="utf-8")
+_gg213 = run("generate", DT190, "process", str(_B190), "--variant", "CPG213")
+_cg213 = run("confirm", f"{DT190}@CPG213", "--by", "시험")
+show("B213 ⓑ 충돌 — 같은 헤더가 두 변형에서 다른 필드 → 표에 충돌 · 고르지 않으면 confirm 멈춤(등재 0)",
+     re.search(r"충돌\s+2 ", _gg213.stdout) and _cg213.returncode != 0 and "헤더 충돌" in _cg213.stdout
+     and "CPG213" not in dict(registry.variants_of(DT190)), (_gg213.stdout + _cg213.stdout)[-700:])
+for _f213 in [*_FX.FIXTURE_ADAPTERS.glob(f"{DT190}@CP*213*.py"), *_FX.FIXTURE_SCHEMAS.glob(f"{DT190}@CP*213*.json")]:
+    _f213.unlink()
 registry.unregister(DT190)                                 # 다른 구획의 지문 대조에 끼지 않게(어댑터 · 변형 · 스키마를 함께 걷는다)
 
 # ============================================================ B25 골격 확정

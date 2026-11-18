@@ -43,6 +43,19 @@ def _exists(sample):
     return (p if p.is_absolute() else paths.ROOT / p).exists()
 
 
+def variant_line(dt, doc):
+    """같은 종류의 다른 양식의 다음 줄 — 그 doc_type에 변형으로 등록하는 완성된 한 줄(B190 ② 일치 0건 · B213 ① P21 — 같은 함수)."""
+    return f"python -m cli.register generate {dt} {(registry.lookup(dt) or {}).get('layer') or '<층>'} {doc} --variant"
+
+
+def variant_ok(dt):
+    """등록부에 어댑터가 있는 표 doc_type인가(변형을 더할 수 있나) — 내장(mock 자산) · 산문은 아니다."""
+    from core.state import store
+    e = (store.read(store.DOC_TYPES, {}) or {}).get(dt) or {}
+    sc = registry.schema_path(dt) if e.get("adapter") else None
+    return bool(sc and sc.exists() and json.loads(sc.read_text(encoding="utf-8")).get("payload_kind") != "prose")
+
+
 def revise_line(dt, schema=None, schema_only=False):
     """재등록 다음 줄(B148 ⑦) — `python -m cli.register generate <dt> <등록 층> <표본...> --revise` · 스키마 칸만 고치면
     (부착 대상 ⚠ — B147) `--schema-only`(운영 어댑터 그대로 · B150 ③)."""

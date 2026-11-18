@@ -284,7 +284,7 @@ def check(adapter, raw):
     # **선언은 정규화해서 맞춘다** — 실물 쪽만 정규화하면 같은 셀이 다르게 읽힌다.
     declared = [norm_label(h) for h in declared]
     actual = header_labels(raw, hr, exp)
-    detail.update({"declared": declared, "actual": actual, "sheet": _sh.get("name"),
+    detail.update({"declared": declared, "actual": actual, "sheet": _sh.get("name"), "header_row": hr,
                    "missing": [h for h in declared if h not in actual],
                    "extra": [h for h in actual if h not in declared]})
     return not detail["missing"] and not detail["extra"], detail

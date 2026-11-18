@@ -166,9 +166,10 @@ def _variant_next(p, eligible):
     x0 = next(iter(near.values()))
     head = (f"가장 가까운 doc_type '{x0['doc_type']}'(누락 {len(x0['missing'])}·잉여 {len(x0['extra'])})" if len(near) == 1 else
             f"가장 가까운 doc_type {len(near)}개가 동률(누락+잉여 {low}) — 그중 하나")
+    from cli.register.recheck import variant_line
     out = [f"▶ 같은 종류의 다른 양식이면 — {head}에 변형으로 등록한다(스키마 그대로 · 어댑터만):"]
     for dt in sorted(near):
-        out.append(f"   python -m cli.register generate {dt} {(registry.lookup(dt) or {}).get('layer') or '<층>'} {p} --variant")
+        out.append(f"   {variant_line(dt, p)}")
     return out
 
 
