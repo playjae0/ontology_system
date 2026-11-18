@@ -122,6 +122,7 @@ AUTO_FIX = {
     "파서 출력에 스키마 밖 필드 없음": "스키마 밖 필드 이름이 문면에 있다",
     "adapter.doc_type == schema.doc_type": "어긋난 두 값이 문면에 있다",
     "물려받은 헤더는 확정된 필드 그대로": "확정된 필드가 문면에 있다 (B213 ③ · G4V)",
+    "여러 시트 표본의 표 어댑터는 expects.sheet": "읽을 시트 이름이 문면에 있다 (B214 ④ · G4S)",
     "필수 키 4종": "빠진 키 이름이 문면에 있다",
     "헤더 4키": "빠진 키 이름이 문면에 있다",
     # **고칠 값이 문면에 있다**(B64 ②) — 후보 열문자·헤더 목록·의심 행이 상세에 있고,
@@ -666,6 +667,7 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
                           roles_map=_roles)
         from cli.register import variant as variant_mod
         ok, out = variant_mod.lock(doc_type, st, ok, out)            # G4V — 물려받은 헤더 잠금 (B213 ③)
+        ok, out = samples_mod.sheet_check(st, _roles, ok, out)       # G4S — 여러 시트 표본의 표 시트 이름 (B214 ④)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
         # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.

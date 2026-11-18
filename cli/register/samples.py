@@ -23,35 +23,23 @@ from core.state import sheets as SH
 from cli.register import draft as draft_mod
 
 
-def _kind_of(st, sample):
-    """갈래 — **초안 스키마가 있으면 그것**, 없으면(생성 입구) 표본의 형태 판정이다.
-
-    생성 입구에서 묻는 이유: 초안(LLM)을 받기 **전에** 정해야 비용이 헛되지 않는다.
-    그 자리에는 스키마가 아직 없어 형태 판정으로 가른다 — 표로 판정된 표본만 관문을
-    건너뛴다(기권은 산문 쪽으로 — 시트 전부를 도는 갈래일 수 있다 · D-164 ①의 결).
-
-    **시트가 둘 이상이면 시트마다 판정한다**(B89 ③) — 비어 있지 않은 시트 **전부가**
-    table일 때만 table이다. 통합문서 한 벌 판정은 표 시트가 산문 시트를 덮어 table로
-    기울고, 그러면 관문도 `--sheets`도 건너뛰어 산문 시트를 가를 자리가 없었다.
-    """
+def _kind_of(st, kind=None):
+    """갈래(B214 ①) — **등록 스키마**(`kind` — `--variant` · `--revise`) → **작업 자리 초안 스키마** → 둘 다 없으면 None
+    (관문이 읽음 시트에서만 형태를 잰다 — `sheet_gate.one_form` · `draft.read_sample(judge=True)`)."""
     sc = (st or {}).get("schema")
     if sc and draft_mod._at(sc).exists():
-        return json.loads(draft_mod._at(sc).read_text(encoding="utf-8")).get("payload_kind")
-    from parser import form as form_mod, reader as reader_mod
-    try:
-        raw = reader_mod.read(str(sample))
-        per = form_mod.judge_sheets(raw)
-        if len(per) >= 2:
-            return "table" if all(v == form_mod.TABLE for v in per.values()) else "prose"
-        verdict = form_mod.judge(raw)["verdict"]
-    except reader_mod.MissingDependency:
-        raise
-    except Exception:                                   # noqa: BLE001 — 판정 불가는 산문 쪽
-        verdict = None
-    return "table" if verdict == "table" else "prose"
+        return json.loads(draft_mod._at(sc).read_text(encoding="utf-8")).get("payload_kind") or "table"   # 생략 = 표
+    return kind
 
 
-def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
+def _adapters(doc_type):
+    """등록된 doc_type(변형 이름이면 그 doc_type)의 어댑터 전부 — 읽음 제안의 헤더 지문(B214 ③) · 첫째가 기본 변형."""
+    from core.state import registry
+    from cli.register import variant as variant_mod
+    return [registry.at(v["adapter"]) for _n, v in registry.variants_of(variant_mod.split(doc_type)[0])]
+
+
+def sample_roles(doc_type, st, samples, *, spec=None, layer=None, kind=None):
     """표본마다 관문을 걸고 `{표본 절대 경로: 역할}`을 돌려준다(역할 없는 표본은 빠진다).
 
     `--sheets`는 **표본이 하나일 때만** 받는다 — 번호는 문서마다 다른 시트를 가리킨다
@@ -66,7 +54,7 @@ def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
     out = {}
     for s in samples:
         roles, stop = SG.gate(
-            s, doc_id_of(s), _kind_of(st, s), spec=spec, ask=True,
+            s, doc_id_of(s), _kind_of(st, kind), spec=spec, ask=True, adapters=_adapters(doc_type),
             retry=f"python -m cli.register generate {doc_type} {lay} {s}",
             flag_cmd=(f"python -m cli.register generate {doc_type} {lay} {s} "
                       f'--sheets "{{sheets}}"'))
@@ -79,6 +67,35 @@ def sample_roles(doc_type, st, samples, *, spec=None, layer=None):
         if roles:
             out[str(Path(s).resolve())] = roles
     return out
+
+
+def _read_sheet(roles):
+    """시트 둘 이상인 표본의 읽음 시트 이름(하나일 때) 또는 None."""
+    reads = [n for n, r in (roles or {}).items() if r == "read"]
+    return reads[0] if len(roles or {}) >= 2 and len(reads) == 1 else None
+
+
+def sheet_fact(roles_map, kind):
+    """**생성 입력의 사실 한 줄**(B214 ④) — 표 계열 · 시트 둘 이상인 표본의 읽음 시트 · 아니면 빈 글.
+    계열을 모르면(새 등록) 그 읽음 시트 하나만 형태를 잰다."""
+    from parser import form as form_mod, reader as reader_mod
+    out = []
+    for s, roles in (roles_map or {}).items():
+        n = _read_sheet(roles)
+        if n and (kind or form_mod.judge_sheets(reader_mod.read(s)).get(n)) == form_mod.TABLE:
+            out.append(f"[시트 역할 기록] {Path(s).name}: 읽을 시트 '{n}' — 어댑터 `expects.sheet`에 이 이름을 적는다")
+    return "\n".join(dict.fromkeys(out))
+
+
+def sheet_check(st, roles_map, ok, out):
+    """**G4S**(B214 ④) — 표 계열 · 시트 둘 이상인 표본이 있는데 초안 어댑터에 `expects.sheet`가 없으면 FAIL · `(ok, out)`."""
+    need = [n for n in map(_read_sheet, (roles_map or {}).values()) if n]
+    if _kind_of(st) != "table" or not need:
+        return ok, out
+    have = SG._named(draft_mod._at(st["adapter"]))
+    line = (f"  [{'PASS' if have else 'FAIL'}] G4S  여러 시트 표본의 표 어댑터는 expects.sheet로 읽을 시트를 적는다  — "
+            + (f"expects.sheet '{have}'" if have else f"expects.sheet 없음 — 읽을 시트 '{need[0]}'(시트 역할 기록)를 expects.sheet에"))
+    return ok and bool(have), out.rstrip("\n") + "\n" + line + "\n"
 
 
 def hold(doc_type, samples):

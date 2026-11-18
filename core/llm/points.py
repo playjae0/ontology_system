@@ -97,14 +97,14 @@ def coord_picker():
 
 SHEET_ROLE_SCHEMA = {
     "type": "object",
-    "properties": {"role": {"type": "string", "enum": ["prose", "ref"]},
+    "properties": {"role": {"type": "string", "enum": ["read", "ref"]},
                    "reason": {"type": "string"}},
     "required": ["role", "reason"], "additionalProperties": False,
 }
 
 
 def judge_sheet(name, sample):
-    """지점 ⑩ 시트 역할 판정의 **실호출 갈래** — `{"role": prose|ref, "reason": …}` (B91 ②).
+    """지점 ⑩ 시트 역할 판정의 **실호출 갈래** — `{"role": read|ref, "reason": …}` (B91 ②).
 
     입력은 **시트 이름과 표본 줄만**이다(B148 ④ — 층 카테고리 · 관련어 0 · 층을 바꿔도 같은 시트의 답이 같다).
     빈 시트는 부르지 않는다(호출부가 `skip`). 답이 닫힌 둘 밖이면 `ref`로 읽는다(모르면 ref — 호출부가 그 사실을 이유에 남긴다).
@@ -113,9 +113,9 @@ def judge_sheet(name, sample):
                         {"role": "user", "content": json.dumps(
                             {"sheet": name, "head_rows": sample}, ensure_ascii=False)}],
                        json_schema=SHEET_ROLE_SCHEMA, point="sheet_role")
-    role = out.get("role")
+    role = {"prose": "read"}.get(out.get("role"), out.get("role"))       # 옛 이름 (B214 ②)
     reason = str(out.get("reason") or "")[:200]
-    if role not in ("prose", "ref"):
+    if role not in ("read", "ref"):
         return {"role": "ref", "reason": f"답이 닫힌 둘 밖({role!r}) — ref로 읽었다"}
     return {"role": role, "reason": reason}
 

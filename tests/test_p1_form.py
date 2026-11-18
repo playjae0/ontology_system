@@ -337,17 +337,9 @@ show("B89 ② 역할 표가 없으면 지금과 같다 (skip 시트까지 본다
 
 print("\n■ B89 ③ 형태 판정이 시트 역할을 따른다")
 _whole = _form.judge(read(str(_MIX)))["verdict"]
-with _tmp.TemporaryDirectory(prefix="b89tab_") as _td:
-    from openpyxl import load_workbook as _lw                  # noqa: E402
-    _wb = _lw(str(_MIX))
-    _wb.remove(_wb["사양"])
-    _alltab = Path(_td) / "B89TAB.xlsx"
-    _wb.save(str(_alltab))
-    _k_all = _samples._kind_of(None, _alltab)
-show("B89 ③ 입구 — 시트마다 판정: 하나라도 table이 아니면 관문 갈래(prose) · 전 시트 table이면 table",
-     _whole == "table" and _samples._kind_of(None, _MIX) == "prose"
-     and _k_all == "table" and _samples._kind_of(None, RAW / "CP01.xlsx") == "table",
-     f"통합문서 전체 {_whole} · 시트 전부 표 {_k_all}")
+# 고침(B214 ① — 입구는 형태를 먼저 판정하지 않는다: 등록 · 초안 스키마가 없으면 None이고 관문이 읽음 시트에서 잰다)
+show("B214 ① 입구 갈래 — 스키마가 없으면 형태 판정 0(None) · 등록 스키마의 계열을 받으면 그것 · 통합문서 한 벌 판정은 표로 기운다",
+     _whole == "table" and _samples._kind_of(None) is None and _samples._kind_of(None, "table") == "table", f"통합문서 전체 {_whole}")
 
 
 def _roled(path, roles):

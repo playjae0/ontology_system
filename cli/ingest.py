@@ -3,7 +3,7 @@
 
   python run.py ingest-file <문서> [--doc-type X] [--dry-run] [--coord-llm off|<종수>] [--no-images] [--no-capture]
                                   [--step] [--step-every N] [--narrow embed|overlap]
-                                  [--progress-every N] [--sheets "2-3:prose 4:ref *:ref"|auto]
+                                  [--progress-every N] [--sheets "2-3:read 4:ref *:ref"|auto]
                                   [--no-sheet-llm] [--coord <골격 이름|none>] [--revise] [--no-replay] [--split-only | --extract-only]
                                   [-v] [--no-color]
   python run.py ingest-dir  [<경로>] [--doc-type X] [--dry-run] [--coord-llm off|<종수>]
@@ -176,8 +176,11 @@ def _sheet_gate(doc, sel, *, spec=None, dry_run=False, ask=True, coord=None):
     형태 판정이 기권해도 **실제로 시트 전부를 도는 갈래**를 가린다. 묻는 말·기록·
     거부 문면은 `sheet_gate.gate()` 한 벌이다(등록 표본과 같은 함수 · B86 ⑤).
     """
-    kind = (registry.schema_of(sel.get("doc_type")) or {}).get("payload_kind")
-    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask)
+    _sc = registry.schema_of(sel.get("doc_type"))
+    kind = (_sc.get("payload_kind") or "table") if _sc else None                    # 생략 = 표 (B214 ①)
+    ads = [sel["adapter"]] if sel.get("adapter") else []
+    ads += [a for _n, v in registry.variants_of(sel.get("doc_type")) for a in [registry.at(v["adapter"])] if a not in ads]
+    roles, stop = SG.gate(doc, sel["doc_id"], kind, spec=spec, dry_run=dry_run, ask=ask, adapters=ads)
     if stop is None:
         # **문서 좌표**도 이 관문 자리에서 정한다(B102 ② — 한 번 묻는다 · 한 줄)
         from cli import doc_coord as DC

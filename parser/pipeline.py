@@ -317,14 +317,19 @@ def _parse_coord(res, pieces, a, layer, nodes, pick_coord, coord_cap,
     return pieces
 
 
-def drop_skipped(raw, sheet_roles):
-    """`skip` 시트를 **어댑터가 보기 전에** 뺀다 (B83 ①).
+def drop_skipped(raw, sheet_roles, table=False):
+    """`skip` 시트를 **어댑터가 보기 전에** 뺀다 (B83 ①) · 표 어댑터(`table`)면 시트 둘 이상 중 읽음 시트 하나만 건네고 그 이름을
+    `read_sheet`로 싣는다(B214 ④ — 문서의 읽음 시트가 표 시트다 · `reader.sheet_of`가 `expects.sheet`보다 앞에 본다).
 
     자르는 자리가 어댑터 안이면 어댑터마다 규칙이 생긴다 — 여기서 한 번 빼면
     어댑터는 「받은 시트 전부」를 지금처럼 돌면 된다(어댑터 코드 변경 0).
     """
     if not sheet_roles or not (raw or {}).get("sheets"):
         return raw
+    from parser.form import role_of
+    reads = [s for s in raw["sheets"] if role_of(sheet_roles.get(s.get("name"))) == "read"]
+    if table and len(reads) == 1 and len(raw["sheets"]) > 1:
+        return {**raw, "sheets": reads, "read_sheet": reads[0].get("name")}
     keep = [s for s in raw["sheets"] if sheet_roles.get(s.get("name")) != "skip"]
     if len(keep) == len(raw["sheets"]):
         return raw
@@ -349,7 +354,7 @@ def mark_roles(pieces, sheet_roles):
     return pieces
 
 
-def _read_doc(res, path, sheet_roles, max_rows):
+def _read_doc(res, path, sheet_roles, max_rows, table=False):
     """① 판독 — 읽고, 버린 그림을 싣고, `skip` 시트를 빼고, 리허설이면 앞 N행으로 자른다.
 
     `parse`에서 떼어냈다(B86 ④ — 읽기 경고를 싣다가 함수 상한 120행을 넘었다).
@@ -359,7 +364,7 @@ def _read_doc(res, path, sheet_roles, max_rows):
         # **읽다가 버린 그림을 리포트에 싣는다**(B86 ④) — 이미지 요약에서 빠지는 것을
         # 사람이 알아야 한다. 화면 한 줄은 호출자가 이 값으로 낸다.
         res.report["read_warnings"] = raw["read_warnings"]
-    raw = drop_skipped(raw, sheet_roles)        # `skip` 시트는 어댑터가 보지 않는다
+    raw = drop_skipped(raw, sheet_roles, table)    # `skip` 시트는 어댑터가 보지 않는다 · 표는 읽음 시트 하나(B214 ④)
     # **부분 리허설** — 등록 검수의 리허설 파싱을 앞 N행으로 제한한다(2B ⑥-2).
     # 전량 파싱은 좌표 미스 행마다 LLM을 부르므로 수천 행이면 몇 시간이다.
     # `reader.head`가 이미 「앞 N행」의 정의를 갖고 있어 그것을 그대로 쓴다 —
@@ -496,7 +501,11 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     a = adapter.ADAPTER
     exp = a.get("expects") or {}
 
-    raw = _read_doc(res, path, sheet_roles, max_rows)
+    raw = _read_doc(res, path, sheet_roles, max_rows, a.get("payload_kind") == "table")
+    if a.get("payload_kind") == "table" and len(raw.get("sheets") or []) > 1:     # 표 어댑터는 표 시트 하나만 본다 (B214 ④)
+        from parser.reader import sheet_of
+        _sh = sheet_of(raw, exp)[0]
+        raw = {**raw, "sheets": [_sh]} if _sh else raw
 
     # 지도와 이미지 요약은 **같은 보존 규칙**을 탄다(문서 6 §6.3) — 매 인입 새로
     # 부르면 text가 흔들려 그 문서의 chunk_id가 전량 이동한다.

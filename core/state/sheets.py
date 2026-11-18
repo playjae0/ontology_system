@@ -54,10 +54,15 @@ def read(doc_id):
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        rec = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         _LOG.warning("시트 역할 기록을 읽지 못했다 — %s (%s: %s)", p, type(e).__name__, e)
         return None
+    from parser.form import role_of                   # 옛 이름 `prose` → `read` (B214 ②)
+    for k in ("sheets", "logic", "llm"):
+        if isinstance(rec.get(k), dict):
+            rec[k] = {n: role_of(r) for n, r in rec[k].items()}
+    return rec
 
 
 def roles_of(doc_id):

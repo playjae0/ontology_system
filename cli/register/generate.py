@@ -599,7 +599,11 @@ def cmd_generate(doc_type, layer, samples, hint="", interview=False,
     # **표본의 시트 역할을 입구에서 정한다**(B86 ⑤) — 초안(LLM)을 받기 전이라야
     # 거부·중단이 비용을 헛되게 하지 않는다. 답은 기록이 되고 리허설·킷이 그것을 읽는다.
     from cli.register import samples as samples_mod
-    samples_mod.sample_roles(doc_type, None, samples, spec=sheets, layer=layer)
+    _sc = registry.schema_of((vr or {}).get("doc_type") or doc_type) if (vr or revise) else None
+    _kind = (_sc.get("payload_kind") or "table") if _sc else None                      # 생략 = 표
+    _fact = samples_mod.sheet_fact(samples_mod.sample_roles(doc_type, None, samples, spec=sheets, layer=layer, kind=_kind),
+                                   _kind)                     # 등록된 doc_type이면 그 스키마의 계열 · 읽을 시트 사실 (B214 ①④)
+    hint = "\n".join(x for x in (hint, _fact) if x)
     # **사전 점검**(B98 ①) — 초안 LLM을 부르기 전에 채팅 왕복 1회(llm-check와 같은 함수)
     from cli import preflight as _pf
     if not _pf.gate(chat=True, catalog=False):
