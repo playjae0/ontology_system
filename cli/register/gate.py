@@ -121,6 +121,7 @@ AUTO_FIX = {
     "전 필드의 role이 닫힌 5종 안": "닫힌 5종 밖 값이 문면에 있다",
     "파서 출력에 스키마 밖 필드 없음": "스키마 밖 필드 이름이 문면에 있다",
     "adapter.doc_type == schema.doc_type": "어긋난 두 값이 문면에 있다",
+    "물려받은 헤더는 확정된 필드 그대로": "확정된 필드가 문면에 있다 (B213 ③ · G4V)",
     "필수 키 4종": "빠진 키 이름이 문면에 있다",
     "헤더 4키": "빠진 키 이름이 문면에 있다",
     # **고칠 값이 문면에 있다**(B64 ②) — 후보 열문자·헤더 목록·의심 행이 상세에 있고,
@@ -660,8 +661,11 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         ledger.sync_ledger(doc_type, st, samples)
         ok, out = harness(draft_mod._at(st["adapter"]), draft_mod._at(st["schema"]), samples,
                           package=REVIEW / doc_type / "input_package.json",
-                          doc_type=doc_type,          # G4G 대장 커버리지 (B76 ②)
+                          # G4G 대장 커버리지 (B76 ②) — 변형은 재지 않는다(이 양식에 없는 필드는 열 대조 줄이 말한다 · B213 ④)
+                          doc_type=None if draft_mod.variant_of(doc_type) else doc_type,
                           roles_map=_roles)
+        from cli.register import variant as variant_mod
+        ok, out = variant_mod.lock(doc_type, st, ok, out)            # G4V — 물려받은 헤더 잠금 (B213 ③)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
         # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.
@@ -670,7 +674,6 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         if _sb:
             print(_sb)
         # **변형은 스키마를 바꾸지 않는다**(B190 ①) — 대장 셋째 조건(전 열이 fields · unmappable에) 대신 열 대조 한 줄(D-274)
-        from cli.register import variant as variant_mod
         _vn = variant_mod.notes(doc_type, st, samples)
         if _vn:
             print(_vn)

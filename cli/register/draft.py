@@ -61,7 +61,7 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
                 return _at(so["adapter"]), sc
             if vr and ad.exists():                 # 변형 — 픽스처 스키마는 「초안이 낸 스키마」(있으면 병합 키를 잰다)
                 from cli.register import variant as variant_mod
-                return variant_mod.settle(doc_type, ad, sc if sc.exists() else None)
+                return variant_mod.settle(doc_type, ad, sc if sc.exists() else None, history)
             if ad.exists() and sc.exists():
                 return ad, sc
         return None, None
@@ -69,7 +69,7 @@ def draft(doc_type, revision=0, *, instruction=None, history=None):
                          instruction=instruction, history=history, schema_only=so)
     if vr:
         from cli.register import variant as variant_mod
-        return variant_mod.settle(doc_type, ad, sc)
+        return variant_mod.settle(doc_type, ad, sc, history)
     return ad, sc
 
 

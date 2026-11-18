@@ -43,7 +43,7 @@ def fail_rows(failures):
             rows += [{"tag": tag, "kind": f["kind"], "reason": d} for d in defects]
         else:
             rows.append({"tag": tag, "kind": f.get("kind", "?"),
-                         "reason": f.get("reason", "")})
+                         "reason": f.get("reason", ""), "detail": f.get("detail") or {}})
     return rows
 
 
@@ -52,11 +52,21 @@ def fail_block(doc, doc_id, rows, *, doc_type=None, queued=0):
     out = [f"■ 인입 실패 — {Path(doc).name} (doc_id {doc_id})"]
     for r in rows:
         out.append(f"  [FAIL] {r['tag']}  {r['kind']} — {r['reason']}")
+        d = r.get("detail") or {}
+        if d.get("missing") or d.get("extra"):         # 양식 표류의 차이 내역 (B213 ①)
+            out.append(f"        누락 {d.get('missing') or []} · 잉여 {d.get('extra') or []}   "
+                       f"(시트 {d.get('sheet') or '—'} · 헤더 {d.get('header_row')}행)")
     if queued:
         out.append(f"  큐: parse_failure {queued}건 (같은 내용)")
     out.append("  ▶ 다음 줄:")
+    from cli.register.recheck import revise_line, variant_line, variant_ok
+    if doc_type and any(r["kind"] == "adapter_mismatch" for r in rows) and variant_ok(doc_type):
+        out.append(f"     같은 종류의 다른 양식이면:  {variant_line(doc_type, doc)}   (스키마 그대로 · 어댑터만 더한다)")
+        out.append(f"     이 양식으로 바꾸고 옛 양식은 더 안 쓰면:  {revise_line(doc_type)}   "
+                   f"(기존 어댑터가 바뀐다 — 이미 넣은 옛 양식 문서가 P21이 된다)")
+        out.append(f"     (문서를 고친 뒤)  python run.py ingest-file {doc}")
+        return "\n".join(out)
     out.append(f"     (문서를 고친 뒤)      python run.py ingest-file {doc}")
-    from cli.register.recheck import revise_line
     out.append(f"     양식이 바뀐 거면:     {revise_line(doc_type) if doc_type else revise_line('<doc_type>', {})}")
     return "\n".join(out)
 
