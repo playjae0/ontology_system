@@ -279,12 +279,10 @@ def _data_rows(text):
             if l.strip()[:1] in ("✓", "+", "?", "✗", "·") and not l.strip().startswith("+--")]
 
 
-# 고침(B211 ① — 판정 화면은 판단이 있었던 행만 한 줄의 표 · 기본은 LLM · 애매 · 보류 · 사람 문 행 · 아래 └는 그 칸만 · 사전 행 줄 0)
-from cli import coord_table as _CT211                                    # noqa: E402
-_tr211 = lambda t: [l.split()[0] for l in t.splitlines() if re.match(r"\s+R\d+\s+\|", l)]
-show("① 기본은 판단(LLM · 애매)이 있었던 행만 표 한 줄 (사전으로 끝난 R1 0 · R2 한 줄 + LLM 애매 └ 한 줄 · 그룹 끝 수 · 값 단위 줄 0)",
-     _tr211(_out81) == ["R2"] and len(_data_rows(_out81)) == 0 and "사전으로만 붙은 행 1(줄 없음)" in _out81
-     and sum(1 for l in _out81.splitlines() if l.strip().startswith("└ ")) == 1, _out81[-300:])
+# 고침(B212 ① — 판정 중엔 행마다 줄 0 · 그룹 끝에 판별 단위 묶음 한 번 · 사전 히트는 수만)
+show("① 행마다 줄 0 · 그룹 끝 묶음 한 번 (사전으로 끝난 R1은 수만 · 값 단위 줄 · └ 줄 0)",
+     _out81.count("판정 묶음 —") == 1 and "사전으로 붙은 것 1" in _out81 and len(_data_rows(_out81)) == 0
+     and not re.search(r"^\s+R\d+\s+\|", _out81, re.M) and "└ " not in _out81, _out81[-300:])
 
 # ②④ 실행 화면 — 기본과 `-v`, 보폭 둘
 _raw81 = _P.raw()
@@ -308,23 +306,11 @@ def _ing81(*extra):
 
 
 _scr81 = _ing81("--progress-every", "10")
-_led81 = (LG81.read("CP01") or {}).get("rows") or []
 _vals81 = _data_rows(_scr81)
-
-
-def _rows211(rows, loud):
-    """대장의 위치마다 정한 방법(`coord_table.decision` — 화면과 같은 함수) → 줄을 찍을 위치의 끝 이름(`loud`면 기본 화면 몫만)."""
-    locs = {}
-    for r in rows:
-        if not r.get("by"):
-            locs.setdefault(r["locator"], []).append(_CT211.decision(r))
-    return sorted(l.rsplit("!", 1)[-1] for l, ds in locs.items() if any(d and (not loud or d in _CT211.LOUD) for d in ds))
-
-
-show("① 실행 화면에 값 단위 줄 0 · 표 줄 = 대장에서 LLM · 애매 · 보류 · 사람 문이 있는 행(고침 B211 ①)",
-     len(_vals81) == 0 and sorted(_tr211(_scr81)) == _rows211(_led81, True) != [],
-     f"화면 {len(_vals81)} · 대장 LOUD {sum(1 for r in _led81 if SCR81._loud(r))}"
-     f" / 전체 {len(_led81)}")
+_new212 = lambda s: [l for l in s.splitlines() if " → 관문 끝 → 새로 " in l]
+show("① 실행 화면에 값 단위 줄 0 · 그룹마다 판정 묶음 한 번 · 기본은 새로 선 것을 수와 앞 5로만(고침 B212 ①)",
+     len(_vals81) == 0 and _scr81.count("판정 묶음 —") == len(re.findall(r"^\s+\[그룹 \d+\]", _scr81, re.M)) > 0
+     and not _new212(_scr81) and "전부 — md" in _scr81, f"화면 {len(_vals81)} · 묶음 {_scr81.count('판정 묶음 —')}")
 show("② 기본 화면에 INFO 로그 줄이 0이다 (화면은 판단이 갈린 값만)",
      not [l for l in _scr81.splitlines() if l.startswith("INFO")],
      str([l for l in _scr81.splitlines() if l.startswith("INFO")][:1]))
@@ -345,16 +331,17 @@ _scrv81 = _ing81("-v")
 _valsv81 = _data_rows(_scrv81)
 show("② -v면 콘솔에도 INFO가 돌아온다 (지금까지의 화면)",
      bool([l for l in _scrv81.splitlines() if l.startswith("INFO")]))
-_lv81 = (LG81.read("CP01") or {}).get("rows") or []
-show("① -v면 + 새로 선 행 — 표 줄 = 대장에서 판단이 있었던 행 · 사전으로만 붙은 행은 줄 0(그룹 끝 수)(고침 B211 ①)",
-     sorted(_tr211(_scrv81)) == _rows211(_lv81, False) and len(_tr211(_scrv81)) < len({r["locator"] for r in _lv81})
-     and len(_tr211(_scrv81)) > len(_tr211(_scr81)) and "사전으로만 붙은 행" in _scrv81 and len(_valsv81) == 0,
-     f"-v 표 줄 {len(_tr211(_scrv81))} · 기본 {len(_tr211(_scr81))} · 대장 위치 {len({r['locator'] for r in _lv81})}")
+_md212 = (_P.home() / "export" / "judge_CP01.md")
+_mdl212 = [l for l in _md212.read_text(encoding="utf-8").splitlines() if l.startswith("- ")] if _md212.is_file() else []
+show("① -v면 새로 선 판별 전부 — 줄 수 = md 줄 수 · 줄에 붙은 노드 [부모 경로] · 엣지 · 행 수(첫 행)(고침 B212 ①)",
+     len(_new212(_scrv81)) == len(_mdl212) > 0 and "[노칭 › 노칭 프레스]   has_property ← 노칭 프레스   행 " in _scrv81
+     and len(_valsv81) == 0, f"-v 새로 {len(_new212(_scrv81))} · md {len(_mdl212)}")
 _v208 = _scrv81.splitlines()
 _h208 = next((i for i, l in enumerate(_v208) if l.startswith("── [5/7] 판정")), 99999)
-show("B211 ① -v — [5/7] 판정 머리(행 n · 값 m)가 표 머리 줄보다 앞 · 표 머리에 스키마 개체 열 이름 · 관계 줄 ← 0(B208 ②)",
-     re.search(r"── \[5/7\] 판정 — 행 \d+ · 값 \d+", _scrv81) and "has_property ←" not in _scrv81
-     and _h208 < min(i for i, l in enumerate(_v208) if re.match(r"\s+행\s+\| 공정\s+\| 설비", l)), _v208[_h208][:120] if _h208 < 99999 else "")
+show("B212 ① -v — [5/7] 판정 머리(행 n · 값 m)가 첫 판정 묶음보다 앞 · 관계 줄 ← 0(B208 ②)",
+     re.search(r"── \[5/7\] 판정 — 행 \d+ · 값 \d+", _scrv81) and not re.search(r"^\s+has_property ←", _scrv81, re.M)
+     and _h208 < min(
+         i for i, l in enumerate(_v208) if "판정 묶음 —" in l), _v208[_h208][:120] if _h208 < 99999 else "")
 # ④ 보폭 — 작게 주면 진행 줄이 늘고, 줄의 값 n이 보폭 규칙을 지킨다.
 _prog = lambda s: [l for l in s.splitlines() if "[판정] 값" in l]
 _scr5 = _ing81("--progress-every", "5")
