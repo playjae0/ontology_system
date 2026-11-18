@@ -16,7 +16,7 @@ from core import paths
 
 
 def sheets(env):
-    """봉투 → `{시트: (청크 위치 차례, 역할)}` — 역할은 `prose` · `ref`(봉투에 없는 시트는 `skip` — 비교가 가른다)."""
+    """봉투 → `{시트: (청크 위치 차례, 역할)}` — 역할은 `read` · `ref`(봉투에 없는 시트는 `skip` — 비교가 가른다)."""
     from cli import envelope_md as EM
     env = env or {}
     out = {}
@@ -25,7 +25,7 @@ def sheets(env):
         s = m.get("sheet") or m.get("frame")
         if s is None:
             continue
-        locs, role = out.get(s, ((), "prose"))
+        locs, role = out.get(s, ((), "read"))
         out[s] = (locs + (c.get("source_locator"),), "ref" if m.get("sheet_role") == "ref" else role)
     for u, cs in EM.units(env, "structure"):             # 구조 블록의 단위 — 그 단위의 청크 위치 차례가 경계다 (B146 ①)
         name = u.get("unit")

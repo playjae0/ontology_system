@@ -705,7 +705,7 @@ def sheet_of(raw, expects=None):
     """
     sheets = raw.get("sheets") or []
     names = [sh.get("name") for sh in sheets]
-    want = (expects or {}).get("sheet")
+    want = raw.get("read_sheet") or (expects or {}).get("sheet")      # 문서의 읽음 시트 기록이 앞 (B214 ④ — pipeline이 싣는다)
     if want:
         for sh in sheets:
             if sh.get("name") == want:

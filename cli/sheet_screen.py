@@ -63,7 +63,7 @@ def sheet_row(r, known=None):
     """표 한 줄 — 값은 `form.sheet_table()`이 낸 것 그대로."""
     role = (known or {}).get(r["name"])
     hid = r.get("state", "visible") != "visible"
-    last = (f"기록 {role}" if role else r["suggest"]) + ("  ⚠ 기록 prose · 숨김 시트" if hid and role == "prose" else "")
+    last = (f"기록 {role}" if role else r["suggest"]) + ("  ⚠ 기록 read · 숨김 시트" if hid and role == "read" else "")
     return "   " + (_screen.pad(r["no"], 4)
                     + _screen.pad(_screen.cut(r["name"], 18), 20)
                     + _screen.pad(f"{r['rows']:,}", 6) + _screen.pad(r["cols"], 5)
@@ -94,7 +94,7 @@ def sheet_auto_line(roles, promote, by):
     from core.state import sheets as SH
     return (f"   자동 모드 — {SH.summary(roles)} (LLM {by})"
             + (f" · **승격 후보 {len(promote)}장**: {' · '.join(promote)} "
-               f"(로직과 LLM이 어긋나 ref로 두었다 — 올리려면 --sheets \"<번호>:prose\")"
+               f"(로직과 LLM이 어긋나 ref로 두었다 — 올리려면 --sheets \"<번호>:read\")"
                if promote else " · 승격 후보 0"))
 
 
@@ -119,7 +119,7 @@ def sheet_gate(rows, *, file, doc_id, rec=None):
     pend = SH.pending(roles, names)
     print(sheet_table_block(rows, file=file, rec=rec, pend=pend))
     while True:
-        ans = _screen.answer("\n   역할 — 번호:역할 (예 2-3:prose 4:ref *:ref · Enter=제안대로 · q=중단): ", "text")
+        ans = _screen.answer("\n   역할 — 번호:역할 (예 2-3:read 4:ref *:ref · Enter=제안대로 · q=중단): ", "text")
         if ans is None:
             return None                       # 비대화형 · Ctrl-C — 같은 처분(조용히 넘기지 않는다)
         if ans.lower() in ("q", "ㅂ", "quit"):

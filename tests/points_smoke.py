@@ -164,7 +164,7 @@ def cases():
             lambda r: r is None or r.get("type") in ("match", "new", "uncertain")),
         "sheet_role": (
             lambda: points.judge_sheet("가격", ["품목 | 단가", "A | 100"]),   # 기대 변경(B148 ④ — 표본 줄만 · 층 0)
-            lambda r: r.get("role") in ("prose", "ref") and isinstance(r.get("reason"), str)),
+            lambda r: r.get("role") in ("read", "ref") and isinstance(r.get("reason"), str)),
         # ⑪문서 개요(B115 ①) — `{제목 id: 대상 또는 None}` · ⑫연결 보강(B115 ④) — 고른 것 dict 또는 None
         "outline": (
             lambda: __import__("core.build.outline", fromlist=["x"])._ask(   # 기대 변경(B148 ② — 목차 노드화 입력에 청크 수 · 본문 줄 수)

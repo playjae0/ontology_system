@@ -620,6 +620,68 @@ show("B213 ⓑ 충돌 — 같은 헤더가 두 변형에서 다른 필드 → �
      and "CPG213" not in dict(registry.variants_of(DT190)), (_gg213.stdout + _cg213.stdout)[-700:])
 for _f213 in [*_FX.FIXTURE_ADAPTERS.glob(f"{DT190}@CP*213*.py"), *_FX.FIXTURE_SCHEMAS.glob(f"{DT190}@CP*213*.json")]:
     _f213.unlink()
+# ── B214 시트가 여럿인 문서 — 읽을 시트를 먼저 정하고 그 시트로 형태를 본다(창작: CP01 + 「개정이력」)
+from cli import sheet_gate as _SG214                       # noqa: E402
+from cli.register import samples as _SM214                 # noqa: E402
+from core.state import sheets as _SH214                    # noqa: E402
+from parser import form as _F214                           # noqa: E402
+
+
+def _wb214(name, title=None):
+    wb = _ox.load_workbook(RAW / "CP01.xlsx")
+    wb.active.title = title or wb.active.title
+    wb.active.cell(4, 9).value = f"{wb.active.cell(4, 9).value} ({name})"     # 같은 내용의 다른 문서가 아니게(중복 보류 밖)
+    ws = wb.create_sheet("개정이력")
+    for r in (["개정", "일자", "내용"], ["R1", "2025-01-01", "초판"], ["R2", "2025-06-01", "측정방법 변경"], ["R3", "2026-01-05", "규격"]):
+        ws.append(r)
+    wb.save(_d190 / f"{name}.xlsx")
+    return _d190 / f"{name}.xlsx"
+
+
+_R214, _S214, _T214 = _wb214("CPR214"), _wb214("CPS214"), _wb214("CPT214", "CP_2026")
+_src214 = _src190.replace(f'"doc_type": {DT190!r}', '"doc_type": "b214cp"').replace('"header_row": 3,', '"header_row": 3, "sheet": "관리계획서",')
+_P.ensure(_FX.FIXTURE_ADAPTERS / "b214cp.py").write_text(_src214, encoding="utf-8")
+_P.ensure(_FX.FIXTURE_SCHEMAS / "b214cp.json").write_text(json.dumps({**_sc190, "doc_type": "b214cp"}, ensure_ascii=False), encoding="utf-8")
+_ga214 = run("generate", "b214cp", "process", str(_R214))
+_gb214 = run("generate", "b214cp", "process", str(_R214), "--sheets", "1:read 2:ref")
+_st214 = json.loads((REVIEW / "b214cp" / "state.json").read_text(encoding="utf-8"))
+_bad214 = _d190 / "b214bad.py"
+_bad214.write_text(_src190, encoding="utf-8")
+_g4s = _SM214.sheet_check({**_st214, "adapter": str(_bad214)}, {str(_R214): {"관리계획서": "read", "개정이력": "ref"}}, True, "")
+show("B214 ⓐ 새 등록 — 관문 제안 1:read 2:ref · 계열 table · 생성 입력에 읽을 시트 사실 · expects.sheet 초안 G4S PASS · 없는 초안 G4S FAIL",
+     '--sheets "1:read 2:ref"' in _ga214.stdout + _ga214.stderr and _gb214.returncode == 0
+     and "읽을 시트 '관리계획서'" in json.dumps(_st214.get("hint"), ensure_ascii=False) and "[PASS] G4S" in _st214.get("harness_out", "")
+     and not _g4s[0] and "[FAIL] G4S" in _g4s[1] and re.search(r"판정 시트 1장[^\n]*관리계획서", _gb214.stdout),
+     "".join(l for l in _gb214.stdout.splitlines(True) if "판정" in l)[:400])
+_c214 = run("confirm", "b214cp", "--by", "시험")
+_judge214, _F214.judge_sheets = _F214.judge_sheets, lambda *_a: (_ for _ in ()).throw(AssertionError("형태 판정 호출"))
+try:
+    _rb214 = _SG214.suggest_read(_S214, _SG214.rows_of(_S214), "table", _SM214._adapters(DT190))
+finally:
+    _F214.judge_sheets = _judge214
+show("B214 ⓑ --variant(등록된 표 doc_type) — 형태 판정 호출 0 · 제안이 헤더 지문 일치 시트(나머지 지금 규칙)",
+     [(r["name"], r["suggest"]) for r in _rb214] == [("관리계획서", "read"), ("개정이력", "ref")], str([(r["name"], r["suggest"]) for r in _rb214]))
+_i214 = [_ing213(f, "--doc-type", "b214cp", *x) for f, x in ((_R214, ()), (_T214, ()), (_T214, ("--sheets", "1:read 2:ref")), (_T214, ()))]
+_o214 = [x.stdout + x.stderr for x in _i214]
+_rec214 = json.loads(_P.parsed("CPT214.json").read_text(encoding="utf-8")).get("records") if _P.parsed("CPT214.json").exists() else []
+show("B214 ⓒ 인입 — expects.sheet 시트가 있으면 묻지 않음 · 시트 이름만 다른 문서는 묻고(제안 read) 기록 → 그 시트를 표로 읽음 · 다시 넣으면 기록대로",
+     "■ 시트 역할" not in _o214[0] and "[성공]" in _o214[0] and '--sheets "1:read 2:ref"' in _o214[1] and "[성공]" in _o214[2]
+     and len(_rec214 or []) > 0 and "기록대로 진행" in _o214[3] and "[성공]" in _o214[3], " ‖ ".join(o[-300:] for o in _o214))
+_MX214 = RAW / "MIX01.xlsx"
+_m1 = _SG214.one_form(_MX214, {"가격": "read", "사양": "read", "일정": "ref", "도면목록": "ref"}, None)
+_m2 = _SG214.one_form(_MX214, {"가격": "read", "일정": "read", "사양": "ref", "도면목록": "ref"}, "table")
+show("B214 ⓓ 섞임 — 읽음 시트가 표 + 글이면 멈춤 문면 · 표 계열인데 읽음 시트 둘이면 멈춤",
+     "한 doc_type은 한 형태다 — 읽음 시트 가격는 표 · 사양는 글" in (_m1 or {}).get("reason", "") and "읽음 시트가 하나다" in (_m2 or {}).get("reason", ""),
+     f"{_m1} · {_m2}")
+_rq214 = [(r["name"], r["suggest"]) for r in _SG214.rows_of(RAW / "RFQ01.xlsx")]
+_SH214.write("B214OLD", "x.xlsx", {"사양": "prose", "메모": "ref"}, "flag")
+show("B214 ⓔⓕ 산문 통합문서 제안 그대로(읽음 제안이 손대지 않는다) · 옛 기록 prose → read · --sheets \"1:prose\"를 받는다",
+     [(r["name"], r["suggest"]) for r in _SG214.suggest_read(RAW / "RFQ01.xlsx", _SG214.rows_of(RAW / "RFQ01.xlsx"), None)] == _rq214
+     and [s for n, s in _rq214 if s == "read"] and _SH214.read("B214OLD")["sheets"] == {"사양": "read", "메모": "ref"}
+     and _F214.parse_sheet_spec("1:prose 2:ref", ["사양", "메모"])[0] == {"사양": "read", "메모": "ref"}, str(_rq214))
+for _f214 in (_FX.FIXTURE_ADAPTERS / "b214cp.py", _FX.FIXTURE_SCHEMAS / "b214cp.json"):
+    _f214.unlink()
+registry.unregister("b214cp")
 registry.unregister(DT190)                                 # 다른 구획의 지문 대조에 끼지 않게(어댑터 · 변형 · 스키마를 함께 걷는다)
 
 # ============================================================ B25 골격 확정

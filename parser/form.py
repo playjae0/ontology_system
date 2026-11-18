@@ -160,7 +160,14 @@ def judge_sheets(raw):
 # **제안은 규칙이다 — LLM 지점을 늘리지 않는다**(B83 ②): 사람이 어차피 고치는 제안에
 # 지점 하나(지시문·mock·실호출·도달성 어서션)를 열 이유가 없다. 규칙이 못 미치면
 # 사람이 고치고, 그 답이 기록이 된다.
-SHEET_ROLES = ("prose", "ref", "skip")
+SHEET_ROLES = ("read", "ref", "skip")
+#: 옛 이름 — 기록 · `--sheets`의 `prose`는 `read`로 읽는다(B214 ② — 다시 묻지 않는다 · 쓰는 것은 `read`)
+OLD_ROLES = {"prose": "read"}
+
+
+def role_of(role):
+    """역할 이름 하나 — 옛 이름이면 지금 이름(읽는 자리는 이 함수 하나)."""
+    return OLD_ROLES.get(role, role)
 
 #: 문턱 — **표본 관찰로 정했다**(B83 · 보고에 근거를 적는다).
 #: 산문 시트는 「문장이 여러 줄」이고 참조 시트는 「짧은 항목이 줄줄이」다.
@@ -191,7 +198,7 @@ def sheet_stats(sheet):
 
 
 def suggest_role(stat, thresholds=None):
-    """제안 하나 — `prose` · `ref` · `skip`. **제안은 제안이다**(기록은 사람의 답).
+    """제안 하나 — `read` · `ref` · `skip`. **제안은 제안이다**(기록은 사람의 답).
 
     로직 제안은 **모양만**이다(B148 ④ — 층 어휘 적중 0 · 층과 그래프 상태가 바뀌어도 같은 시트의 제안이 같다).
     """
@@ -200,7 +207,7 @@ def suggest_role(stat, thresholds=None):
         return "skip"                      # 빈 시트는 읽을 것이 없다
     if (stat["text_ratio"] >= th["text_ratio"] and stat["rows"] >= th["rows"]
             and stat["avg_len"] >= th["avg_len"]):
-        return "prose"
+        return "read"
     return "ref"
 
 
@@ -235,7 +242,7 @@ def sheet_table(raw, thresholds=None):
 
 
 def parse_sheet_spec(spec, names):
-    """`2-3:prose 4:ref *:skip` → `({시트: 역할}, 오류 문면 또는 None)`.
+    """`2-3:read 4:ref *:skip` → `({시트: 역할}, 오류 문면 또는 None)`.
 
     문법의 자리는 여기 하나다 — 관문의 한 줄 입력과 `--sheets` 플래그가 **같은 문법**을
     쓴다(③). 선택은 표의 번호(`2` · `2-3` · `2,3,7`) 또는 시트 이름이고 `*`는 「나머지」다.
@@ -248,6 +255,7 @@ def parse_sheet_spec(spec, names):
         if ":" not in tok:
             return None, f"토큰 {tok!r}에 ':'이 없다 — 문법은 <선택>:<역할>이다"
         sel, role = tok.rsplit(":", 1)
+        role = role_of(role)
         if role not in SHEET_ROLES:
             return None, f"역할 {role!r}는 닫힌 셋 밖이다 — {'|'.join(SHEET_ROLES)}"
         if sel == "*":

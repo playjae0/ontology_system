@@ -222,7 +222,7 @@ _live = _run("ingest-file", str(HID), "--doc-type", DT, "--allow-mock", "--coord
              "--sheets", "1:prose 2:prose 3:skip")
 _pc = next((ln for ln in _live.splitlines() if ln.strip().startswith("시트별 조각 — ")), "")
 show("ⓑ `--sheets`로 숨김 시트를 살린다 — 파싱 끝 시트별 조각(역할과 함께) · 그 시트의 청크가 선다",
-     re.search(r"다른공정\(prose\) [1-9]", _pc) and "메모(skip) 0" in _pc
+     re.search(r"다른공정\(read\) [1-9]", _pc) and "메모(skip) 0" in _pc   # 고침(B214 ② — 옛 문법 prose를 받아 read로 쓴다)
      and any((c.get("meta") or {}).get("sheet") == "다른공정" for c in chunks_of(_did_h).values()), _pc.strip())
 _again = _run("ingest-file", str(HID), "--doc-type", DT, "--allow-mock")
 #: 숨김 칸은 기록이 있는 실행의 표에서 잰다 — 같은 표 함수 · dry-run을 한 번 더 돌리지 않는다(B121 ②ⓓ) · 제안 skip은 위 판정 줄
@@ -233,7 +233,7 @@ show("ⓑ 시트 표에 숨김 칸 — 「숨김」 · 「아주 숨김」 (보�
 _hl = _ln["다른공정"]
 show("ⓑ 기록이 있어도 표를 낸다 — 묻지 않고 기록대로 · 다시 고르는 명령줄 · 기록 prose인데 숨김이면 그 줄에 표시",
      "■ 시트 역할" in _again and "Enter=" not in _again and "기록대로 진행" in _again and "다시 고르려면" in _again
-     and "⚠ 기록 prose · 숨김 시트" in _hl and "[성공]" in _again, re.sub(r"\s+", " ", _hl.strip()))
+     and "⚠ 기록 read · 숨김 시트" in _hl and "[성공]" in _again, re.sub(r"\s+", " ", _hl.strip()))
 
 
 # ────────────────────────────────────────────────────────────── ⓓ

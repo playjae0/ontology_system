@@ -195,7 +195,7 @@ def read_sample(sample, *, judge=False):
     """표본 원시 — **기록된 시트 역할을 운영과 같게** 적용한다 (B89 ③).
 
     `judge=False`: `skip` 시트를 뺀다 — 운영·관문이 어댑터에 건네는 시트와 같다
-    (`parser.pipeline.drop_skipped` — 재구현하지 않는다). `judge=True`: **`prose` 역할
+    (`parser.pipeline.drop_skipped` — 재구현하지 않는다). `judge=True`: **`read` 역할
     시트만** — 형태 판정용이다(참조·가격 표가 판정을 기울이지 않게). 역할 기록이 없으면
     통합문서 전체다(지금과 같다). 돌려주는 raw의 `_judged_sheets`가 판정에 쓴 시트다.
     """
@@ -204,7 +204,7 @@ def read_sample(sample, *, judge=False):
     if not roles:
         return raw
     if judge:
-        raw = {**raw, "sheets": [sh for sh in raw["sheets"] if roles.get(sh.get("name")) == "prose"]}
+        raw = {**raw, "sheets": [sh for sh in raw["sheets"] if roles.get(sh.get("name")) == "read"]}
         return {**raw, "_judged_sheets": [sh.get("name") for sh in raw["sheets"]]}
     from parser import pipeline as parser_pipeline
     return parser_pipeline.drop_skipped(raw, roles)

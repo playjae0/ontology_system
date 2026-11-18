@@ -247,7 +247,7 @@ for _l in ("process", "quality"):
     _rw(_P.layers(_l, "config.json"), lambda c: c.update(
         relevance_terms=list(_s0), categories={**c["categories"], "Price148": "견적의 가격 · 납기 항목"}))
 _s1 = _sug()
-_pick = next(n for n, (_lg, _lm, s) in _s0.items() if s == "prose")
+_pick = next(n for n, (_lg, _lm, s) in _s0.items() if s == "read")   # 고침(B214 ② — 역할 이름 read)
 SH.write("XB91R", _RFQ, {n: ("ref" if n == _pick else s) for n, (_lg, _lm, s) in _s0.items()}, "gate")
 (_rr, _sr), _ro = _gate("XB91R", ask=False)
 SH.path("XB91R").unlink(missing_ok=True)

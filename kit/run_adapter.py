@@ -414,7 +414,7 @@ def roles_of(doc):
     return (tables.SHEET_ROLES or {}).get(str(Path(doc).resolve()))
 
 
-def apply_roles(raw, doc, label):
+def apply_roles(raw, doc, label, table=False):
     """③④도 ⑤와 **같은 시트**를 본다 (B89 ②) — `skip` 시트는 어댑터에 건네지 않는다.
 
     구판은 역할을 ⑤에만 건넸다 — 운영이 읽지 않는 시트가 ③④를 FAIL시켜 등록을 막았다.
@@ -424,7 +424,7 @@ def apply_roles(raw, doc, label):
     if not roles:
         return raw, None
     from parser import pipeline as parser_pipeline      # 지연 import — 역할 표가 있을 때만
-    kept = parser_pipeline.drop_skipped(raw, roles)
+    kept = parser_pipeline.drop_skipped(raw, roles, table)         # 표는 읽음 시트 하나 (B214 ④)
     gone = len(raw.get("sheets") or []) - len(kept.get("sheets") or [])
     print(f"\n   시트 역할 적용 — {label}: skip {gone}장 뺐다 (⑤와 같은 표)")
     return kept, roles
@@ -602,7 +602,7 @@ if __name__ == "__main__":
     check_ledger_coverage(schema, mod)                   # G4G (B76 ②)
     for d in docs:
         label = d.split("/")[-1]
-        raw, roles = apply_roles(read(d), d, label)
+        raw, roles = apply_roles(read(d), d, label, mod.ADAPTER.get("payload_kind") == "table")
         preflight(mod, raw, label)
         pieces = run_extract(mod, raw, label, schema)
         if roles:
