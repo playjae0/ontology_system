@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 
-from .normalizer import _col
+from .normalizer import _col, _idx
 from .reader import norm_label, sheet_of
 
 # 열문자의 꼴 — `A`·`AB`·`ZZZ`. **먼저 대조한다**(B64 ①): 지금까지 쓰인 어댑터의
@@ -24,6 +24,74 @@ from .reader import norm_label, sheet_of
 # 마침 이 꼴이면(한 글자 대문자 헤더) 그 열은 열문자로 가리킨다.
 COL_LETTERS = re.compile(r"^[A-Z]{1,3}$")
 
+
+
+def span(hr):
+    """`header_row` → `(시작, 끝)` — 정수면 `(n, n)` · `[시작, 끝]`이면 그 둘 · 아니면 None (B215 ① — 값 꼴은 이 둘뿐)."""
+    if isinstance(hr, (list, tuple)) and len(hr) == 2 and all(isinstance(x, int) for x in hr):
+        return int(hr[0]), int(hr[1])
+    return (int(hr), int(hr)) if isinstance(hr, int) and hr else None
+
+
+def is_range(hr):
+    return isinstance(hr, (list, tuple))
+
+
+def rows_text(hr):
+    """화면의 헤더 행 — 정수는 그대로(`3`) · 범위는 `2~3`."""
+    return f"{span(hr)[0]}~{span(hr)[1]}" if is_range(hr) and span(hr) else str(hr)
+
+
+def fill_data_start(exp):
+    """범위 꼴이고 `data_start_row` 선언이 없으면 범위 끝 + 1을 채운다(정수 꼴은 손대지 않는다) — 어댑터가 읽기 전에."""
+    sp = span((exp or {}).get("header_row"))
+    if sp and is_range(exp["header_row"]) and "data_start_row" not in exp:
+        exp["data_start_row"] = sp[1] + 1
+    return exp
+
+
+def merged_names(sh, hr):
+    """**헤더 이름 한 함수**(B215 ① — 범위 꼴) — `{열문자: 이름}`: 열마다 범위 안의 행을 **범위 안에서만** 병합 전개한 뒤
+    위 → 아래로 읽고 빈 칸은 빼고 바로 위와 같은 글자는 하나로 ` › `로 잇는다."""
+    a, b = span(hr)
+    cells = dict(sh.get("cells") or {})
+    for rng in sh.get("merged") or []:
+        try:
+            (c1, r1), (c2, r2) = (_idx(x) for x in str(rng).split(":", 1))
+        except ValueError:
+            continue
+        v = cells.get(f"{_col(c1)}{r1}")
+        for r in range(max(r1, a), min(r2, b) + 1):
+            for c in range(c1, c2 + 1):
+                if norm_label(cells.get(f"{_col(c)}{r}")) == "":
+                    cells[f"{_col(c)}{r}"] = v
+    out = {}
+    for c in range(1, (sh.get("max_col") or 0) + 1):
+        parts = []
+        for r in range(a, b + 1):
+            t = norm_label(cells.get(f"{_col(c)}{r}"))
+            if t and (not parts or parts[-1] != t):
+                parts.append(t)
+        if parts:
+            out[_col(c)] = " › ".join(parts)
+    return out
+
+
+def title_row_suspect(raw, exp):
+    """**제목 행 의심**(경고 — FAIL 아님) — 범위 맨 윗행이 사용 열 전부에 걸친 병합 하나면 그 행 번호 · 아니면 None."""
+    hr = (exp or {}).get("header_row")
+    sh, err = sheet_of(raw, exp)
+    if err or not is_range(hr) or not span(hr):
+        return None
+    cols = [_idx(f"{c}1")[0] for c in merged_names(sh, hr)]
+    for rng in sh.get("merged") or []:
+        try:
+            (c1, r1), (c2, r2) = (_idx(x) for x in str(rng).split(":", 1))
+        except ValueError:
+            continue
+        if cols and r1 == r2 == span(hr)[0] and c1 <= min(cols) and c2 >= max(cols):
+            return r1
+    return None
 
 
 def header_labels(raw, header_row, expects=None):
@@ -37,6 +105,8 @@ def header_labels(raw, header_row, expects=None):
     sh, err = sheet_of(raw, expects)
     if err:
         return []
+    if is_range(header_row):
+        return list(merged_names(sh, header_row).values())
     out = []
     for c in range(1, (sh.get("max_col") or 0) + 1):
         v = norm_label(sh.get("cells", {}).get(f"{_col(c)}{header_row}"))
@@ -58,6 +128,10 @@ def label_columns(raw, exp):
     if err or not hr:
         return {}
     out = {}
+    if is_range(hr):
+        for c, lab in merged_names(sh, hr).items():
+            out.setdefault(lab, []).append(c)
+        return out
     for addr, v in (sh.get("cells") or {}).items():
         letters = "".join(ch for ch in str(addr) if ch.isalpha())
         digits = "".join(ch for ch in str(addr) if ch.isdigit())
@@ -91,17 +165,20 @@ def resolve_columns(raw, exp):
         return dict(cols), []             # 시트 해석 실패는 관문이 따로 말한다
     cells = sh.get("cells") or {}
     labels = label_columns(raw, exp)
+    names = merged_names(sh, hr) if is_range(hr) else None        # 범위 꼴 — 합친 이름 (B215 ①)
     out, bad = {}, []
 
     def one(field, v, *, in_list):
         """한 값 → 열문자 **리스트**(리스트 안에서는 펼쳐지므로 리스트로 돌려준다)."""
         v = str(v)
         if COL_LETTERS.match(v):
-            if not norm_label(cells.get(f"{v}{hr}")):
+            if not (names.get(v) if names is not None else norm_label(cells.get(f"{v}{hr}"))):
                 bad.append({"field": field, "value": v, "reason": "empty",
                             "header_row": hr})
             return [v]
         hits = labels.get(norm_label(v)) or []
+        if not hits and names is not None:                       # 하위 글자 — 끝 마디가 맞는 열(같은 합친 이름이 먼저)
+            hits = sorted((c for c, n in names.items() if n.split(" › ")[-1] == norm_label(v)), key=lambda c: (len(c), c))
         if not hits:
             bad.append({"field": field, "value": v, "reason": "not_found",
                         "headers": sorted(labels)})
@@ -140,9 +217,10 @@ def field_labels(raw, exp):
     if err or not hr:
         return {}
     cells = sh.get("cells") or {}
+    names = merged_names(sh, hr) if is_range(hr) else None
     out = {}
     for field, v in resolve_columns(raw, exp)[0].items():
-        labs = [norm_label(cells.get(f"{c}{hr}")) for c in (v if isinstance(v, list) else [v])
+        labs = [names.get(c, "") if names is not None else norm_label(cells.get(f"{c}{hr}")) for c in (v if isinstance(v, list) else [v])
                 if COL_LETTERS.match(str(c))]
         labs = list(dict.fromkeys(x for x in labs if x))
         if labs:
@@ -164,6 +242,9 @@ def header_row_suspect(raw, exp):
     if err:
         return None                       # 시트 해석 실패는 check()가 따로 말한다
     cells = sh.get("cells") or {}
+    if is_range(hr):                                             # 범위 꼴 — 범위 안 모든 행이 빈 열 (B215 ①)
+        names = merged_names(sh, hr)
+        cells = {**cells, **{f"{c}{hr}": n for c, n in names.items()}}
     # **해석된 열문자만 본다**(B64 ①) — 값이 헤더 라벨이면 `"Center3"` 같은 주소를
     # 찾다가 「비었다」고 말한다(사내 실측: `empty_columns`에 라벨이 그대로 떴다).
     # 라벨의 처분은 `resolve_columns`가 세 갈래로 가른다.
@@ -175,7 +256,7 @@ def header_row_suspect(raw, exp):
         return None
     got = [norm_label(cells.get(f"{_col(c)}{hr}"))
            for c in range(1, (sh.get("max_col") or 0) + 1)]
-    return {"reason": f"header_row 의심 — {sh.get('name')}!{hr}행에서 읽힌 값: "
+    return {"reason": f"header_row 의심 — {sh.get('name')}!{rows_text(hr)}행에서 읽힌 값: "
                       f"{[g for g in got if g][:5]}",
             "empty_columns": empty, "header_row": hr}
 

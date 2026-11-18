@@ -274,3 +274,30 @@ def _merge_hint(hint, batches):
     base = dict(hint) if isinstance(hint, dict) else {"text": hint or ""}
     base["interview"] = batches
     return base
+
+
+def memory(doc_type, samples):
+    """**열 기억**(B215 ②) — 그 doc_type의 **승인된** 작업 자리(등록부의 변형 — 기본 · 변형)의 열 판정 대장 행 + 확정 문답
+    (stale · 버린 문답 제외) · 같은 헤더가 둘에서 다르면 충돌 · 표본 헤더는 기본 어댑터의 `header_row`로 읽는다(헤더 이름 한 함수).
+    등록되지 않은 doc_type(첫 등록)이면 None — 다른 doc_type의 기억은 쓰지 않는다."""
+    from core.state import registry, store
+    from cli.register import ledger, variant as V
+    from cli import scan as scan_mod
+    from parser import preflight, reader
+    dt = V.split(doc_type)[0]
+    if not (store.read(store.DOC_TYPES, {}) or {}).get(dt):
+        return None
+    cols, conf = {}, {}
+    for name, _v in registry.variants_of(dt):
+        w = dt if name == registry.BASE_VARIANT else V.work(dt, name)
+        for r in ledger.read_ledger(w):
+            if not r.get("label"):
+                continue
+            m = cols.setdefault(r["label"], {"role": r.get("role"), "field": r.get("field"), "by": r.get("by"), "from": w})
+            if (m["role"], m["field"]) != (r.get("role"), r.get("field")) and w not in conf.setdefault(r["label"], [m["from"]]):
+                conf[r["label"]].append(w)
+    near = V.nearest(dt, samples[0]) if samples else None            # 표본 헤더는 가장 가까운 변형의 header_row로(헤더 이름 한 함수)
+    exp = (scan_mod._load(near[1]).ADAPTER.get("expects") or {}) if near else {}
+    heads = preflight.header_labels(reader.read(str(samples[0])), exp.get("header_row"), exp) if samples else []
+    return {"cols": cols, "conflicts": {h: ws for h, ws in conf.items() if len(ws) > 1}, "decisions": V._decisions(dt),
+            "headers": heads}

@@ -553,13 +553,16 @@ def stamp_system_fields(st, samples):
     declared = [reader.norm_label(x) for x in (exp.get("header_labels") or [])]
     note = _write_stamp(st, path, (actual, raw, exp, samples), want_ver,
                         a.get("adapter_version"),
-                        cols if cols != (exp.get("columns") or {}) else None)
+                        cols if cols != (exp.get("columns") or {}) or _COLS_LINE in path.read_text(encoding="utf-8") else None)
     if declared == actual:
         return note
     diff = [x for x in actual if x not in declared] + \
            [x for x in declared if x not in actual]
     return (f"   헤더 문자열은 시스템이 채운다 — LLM 선언 {len(declared)} / "
             f"실물 {len(actual)} · 다른 것 {len(diff)}: {diff[:5]}")
+
+
+_COLS_LINE = 'ADAPTER["expects"]["columns"] = '     # 다시 찍어도 해석한 열문자 줄이 남는다(B215 — 표시 블록을 걷고 다시 쓰므로)
 
 
 def _write_stamp(st, path, header, want_ver, had_ver, cols=None):
@@ -583,7 +586,7 @@ def _write_stamp(st, path, header, want_ver, had_ver, cols=None):
     if cols:
         # **해석된 열문자를 쓴다**(B64 ①) — 이후 코드(스켈레톤 extract·preflight·
         # orphan)는 열문자만 본다. 라벨은 여기까지다.
-        lines.append(f"ADAPTER[\"expects\"][\"columns\"] = {cols!r}")
+        lines.append(f"{_COLS_LINE}{cols!r}")
     lines.append(f"ADAPTER[\"adapter_version\"] = {want_ver!r}"
                  f"   # state.revision = {st.get('revision', 0)}")
     head = src.split(_FILLED_MARK)[0].rstrip("\n")
@@ -670,6 +673,8 @@ def machine_gate(doc_type, st, samples, pkg=None, *, fix=True):
         ok, out = samples_mod.sheet_check(st, _roles, ok, out)       # G4S — 여러 시트 표본의 표 시트 이름 (B214 ④)
         print(f"   기계 관문(하네스): {'PASS' if ok else 'FAIL'} — "
               f"{out.count('[PASS]')} PASS / {out.count('[FAIL]')} FAIL")
+        for _w in (ln for ln in out.splitlines() if "제목 행으로 보인다" in ln):     # 경고 — FAIL 아님 (B215 ①)
+            print(f"   {_w.strip()}")
         # **분할은 관문 결과 줄 다음이다**(B68 ②) — prose일 때만 줄이 난다.
         # `status`·`confirm`도 관문을 다시 도니 같은 재료로 같은 줄을 낸다.
         _sb = split_block(out)

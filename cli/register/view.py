@@ -80,6 +80,8 @@ def _build_view_anomalies(st, results, harness_ok, harness_out, schema, mod):
         for f in r.failures:
             anomalies.append({"kind": "failure", "message": f["reason"],
                               "where": r.doc_id, "detail": f.get("detail") or {}})
+    anomalies += [{"kind": "warning", "message": ln.strip().lstrip("⚠ "), "where": "kit/run_adapter.py"}      # 제목 행 의심 (B215 ①)
+                  for ln in harness_out.splitlines() if "제목 행으로 보인다" in ln]
     # **셋을 갈라 낸다**(B49) — 판정된 제외는 질문이 아니고, 대장에 없는 열은 결함이다.
     excluded, undecided, orphan = ledger.unmappable_of(schema, mod)
     for u in undecided:

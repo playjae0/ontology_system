@@ -13,6 +13,7 @@ import re
 from core.llm import gateway
 from cli import _screen
 from cli.prompt import _sent_size, _vocab_excerpt
+from parser.normalizer import _col
 
 def _ask(prompt=""):
     """문답 입력 한 줄 — 묻는 한 자리(`_screen.answer`)를 지난다(B118 ④) · 테스트가 이 이름을 갈아끼운다(대화형이라
@@ -60,6 +61,11 @@ INTERVIEW_SCHEMA = {
         # **이해 요약이 이 설계의 심장이다** — 사람이 판정하는 대상은 "질문에 다
         # 답했나"가 아니라 **"LLM의 이해가 맞아졌나"**다.
         "understanding": {"type": "string"},
+        # **열마다 한 항목**(B215 ③ — 이해 요약의 열 줄 · 위 `understanding`은 전체 한두 문장)
+        "reading": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"column": {"type": "string"}, "header": {"type": "string"}, "how": {"type": "string"}},
+            "required": ["column", "header", "how"], "additionalProperties": False}},
         # **열마다 판정**(B206 ④) — 라운드 화면의 열 표(살아남은 열 · 제외 한 줄 · 바뀐 열 ✎)
         "columns": {"type": "array", "items": {
             "type": "object",
@@ -77,14 +83,37 @@ INTERVIEW_SCHEMA = {
             "required": ["q", "options", "importance"],
             "additionalProperties": False}},
     },
-    "required": ["progress", "understanding", "columns", "questions"],
+    "required": ["progress", "understanding", "reading", "columns", "questions"],
     "additionalProperties": False,
 }
 #: 문답 열 표의 「뺀다」 role(지시문 1.3 — 맞출 칸 없음)
 UNMAPPABLE = "unmappable"
 
 
-def cols_lines(cols, prev=None):
+def _mem_of(c, mem):
+    """그 열이 기억 그대로면 기억의 작업 자리 · 아니면 None(사람이 고친 열은 기억 표시를 뗀다 — B215 ②)."""
+    m = ((mem or {}).get("cols") or {}).get(c.get("column"))
+    ok = m and str(m.get("role") or "").lower() == str(c.get("role") or "").lower() and m.get("field") == c.get("store_as")
+    return m["from"] if ok else None
+
+
+def prefill(cols, mem):
+    """**기억으로 시작**(B215 ②) — 표본 헤더 중 기억에 있는 열(충돌 밖)은 코드가 열 표에 채운다 · 나머지는 받은 그대로."""
+    if not mem:
+        return cols
+    got, out = {c["column"]: c for c in cols or []}, []
+    for h in mem.get("headers") or []:
+        m = (mem.get("cols") or {}).get(h)
+        if m and h not in (mem.get("conflicts") or {}):
+            g = got.get(h) or {}
+            out.append({"column": h, "role": str(m.get("role") or "").lower() if m.get("role") == "UNMAPPABLE" else m.get("role"),
+                        "attach": g.get("attach"), "store_as": m.get("field"), "context_type": g.get("context_type")})
+        elif h in got:
+            out.append(got[h])
+    return out + [c for c in cols or [] if c["column"] not in (mem.get("headers") or [])]
+
+
+def cols_lines(cols, prev=None, mem=None):
     """**문답 열 표**(B206 ④ — 라운드 화면 · 생성 전 확정 확인이 같은 함수) — 살아남은 열(열 · role · 붙는 곳 · 저장명 · 맥락형 ·
     지난 라운드에서 바뀐 열 ✎) + 제외 한 줄."""
     from cli import _screen
@@ -93,7 +122,8 @@ def cols_lines(cols, prev=None):
     out = [f"   {_screen.pad('열', 18)}{_screen.pad('role', 12)}{_screen.pad('붙는 곳', 14)}{_screen.pad('저장명', 14)}맥락형"] if keep else []
     out += [f"   {_screen.pad(_screen.cut(c['column'], 17), 18)}{_screen.pad(c['role'], 12)}{_screen.pad(c.get('attach') or '—', 14)}"
             f"{_screen.pad(c.get('store_as') or '—', 14)}{c.get('context_type') or '—'}"
-            + ("  ✎" if prev is not None and was.get(c["column"]) != c else "") for c in keep]
+            + ("  ✎" if prev is not None and was.get(c["column"]) != c else "")
+            + (f"  기억 {_mem_of(c, mem)}" if _mem_of(c, mem) else "") for c in keep]
     gone = [c["column"] for c in cols or [] if c.get("role") == UNMAPPABLE]
     return out + (_screen.items(f"   제외 {len(gone)}열: ", gone) if gone else [])
 
@@ -146,7 +176,8 @@ def _summarize(pkg, history, context=None):
         if not out and history:
             last = history[-1]
             out.append({"topic": "이해 요약",
-                        "decision": last.get("understanding") or "",
+                        "decision": " · ".join([f"{x['column']} {x['header']}: {x['how']}" for x in last.get("reading") or []]
+                                               + [last.get("understanding") or ""]),
                         "reason": f"{last.get('round')}라운드 이해 — 사람이 교정 없이 진행",
                         "round": last.get("round")})
         return out
@@ -222,7 +253,7 @@ def finalize(pkg, history, context=None):
                    retry=lambda: _summarize(pkg, history, context))
 
 
-def _interview_round(pkg, history, context=None):
+def _interview_round(pkg, history, context=None, memory=None):
     """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
 
     `context`는 **생성 전이 아니라 실패 뒤에 열 때** 오는 재료다(B50) — 기계 관문의
@@ -251,15 +282,20 @@ def _interview_round(pkg, history, context=None):
                          + _vocab_excerpt(pkg)},
              {"role": "user", "content": json.dumps(
                  {"입력_패키지": pkg, "지난_문답": fresh + history,
-                  **({"기계_관문_실패": context} if context else {})},
+                  **({"기계_관문_실패": context} if context else {}),
+                  **({"열_기억": memory} if memory else {})},          # 승인된 양식의 열 판정 · 확정 문답 (B215 ② — 메시지에만)
                  ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")              # mock도 같은 크기 줄(B210 ② — 보낼 것을 잰다)
     if gateway.use_mock():
         gateway.mock("generate", f"문답 라운드 {len(history) + 1} — 규칙 요약")
+        cols = list((memory or {}).get("headers") or cols)          # 기억이 있으면 표본 헤더(헤더 이름 한 함수)
         base = (f"열 {len(cols)}개를 관찰했다: {', '.join(cols[:6])}"
                 if cols else "표본에서 열을 관찰하지 못했다")
         fixes = [h["answer"] for h in history if h.get("answer")]
         qs = ([] if fixes else
+              [{"q": f"새 헤더 '{c}'는 무엇으로 읽나", "options": ["entity", "attribute", "읽지 않음"],
+                "importance": "높음 — 기억에 없는 열"} for c in cols
+               if c not in (memory.get("cols") or {}) or c in (memory.get("conflicts") or {})] if memory else
               [{"q": "병합된 좌측 열은 어떻게 다루나",
                 "options": ["위 값 채움", "행 독립", "모름"],
                 "importance": "높음 — 좌표 해소가 여기 걸린다"}])
@@ -274,6 +310,7 @@ def _interview_round(pkg, history, context=None):
                   "context" if any(c in f for f in fixes) else "attribute") for i, c in enumerate(cols)]
         return {"understanding": base + ("" if not fixes else
                                          " · 교정 반영: " + " / ".join(fixes)),
+                "reading": [{"column": _col(i), "header": c, "how": r} for i, (c, r) in enumerate(zip(cols, roles), 1)],
                 "columns": [{"column": c, "role": r, "attach": None if r == UNMAPPABLE else cols[0],
                              "store_as": None if r == UNMAPPABLE else c, "context_type": "행" if r == "context" else None}
                             for c, r in zip(cols, roles)],
@@ -315,26 +352,38 @@ def _prior_rounds(pkg):
     return out
 
 
-def _prof_hint(pkg, top=6):
-    """열 프로파일 요약을 **사람에게도** 보인다 (B43 ⑥-3).
+def _first_text(pkg):
+    """열문자 → 그 열의 첫 글자 셀(헤더 행을 아직 모를 때의 이름)."""
+    out = {}
+    for h in ((pkg.get("system") or {}).get("reader_head") or []):
+        for sh in (h.get("head") or {}).get("sheets") or []:
+            for a, v in sorted((sh.get("cells") or {}).items(), key=lambda kv: int(re.sub(r"\D", "", kv[0]) or 0)):
+                if isinstance(v, str) and v.strip():
+                    out.setdefault(re.sub(r"\d", "", a), v.strip())
+    return out
 
-    LLM은 이 재료를 이미 받아 쓰는데 사람 화면에는 없었다 — 그러면 사람은 LLM의
-    판정을 근거 없이 믿거나 근거 없이 의심한다.
-    """
+
+def _prof_hint(pkg, out=None):
+    """열 프로파일 요약을 **사람에게도** 보인다 (B43 ⑥-3) — **주요 열만**(B215 ③): 이번 라운드에서 entity · anchor ·
+    attribute로 읽은 열 + 이번 질문에 나온 열 · 줄마다 `A 공정명: …`(이름은 이해 요약의 열 항목 · 없으면 그 열의 첫 글자 셀)."""
     profs = [pp for h in ((pkg.get("system") or {}).get("reader_head") or [])
              for pp in (h.get("열_프로파일") or [])]
-    cols = [(c, v) for s in profs for c, v in (s.get("열") or {}).items()]
+    names = {**_first_text(pkg), **{x["column"]: x["header"] for x in (out or {}).get("reading") or []}}
+    want = {c["column"] for c in (out or {}).get("columns") or [] if c.get("role") in ("entity", "anchor", "attribute")}
+    qtext = " ".join(q.get("q", "") for q in (out or {}).get("questions") or [])
+    cols = [(c, v) for s in profs for c, v in (s.get("열") or {}).items()
+            if names.get(c) in want or (names.get(c) and names[c] in qtext)]
     if not cols:
         return
-    print(f"   [근거] 열 프로파일 {len(cols)}열 — 고유값/형태 (앞 {top}열)")
-    for c, v in cols[:top]:
+    print(f"   [근거] 열 프로파일 — 주요 열 {len(cols)}(entity · anchor · attribute로 읽은 열 · 질문에 나온 열)")
+    for c, v in cols:
         sh = v.get("형태") or {}
-        print(f"     {c}: 고유 {v['고유값수']:>3} / {v['비지_않은_행수']:>3}행 · "
+        print(f"     {c} {names.get(c, '')}: 고유 {v['고유값수']:>3} / {v['비지_않은_행수']:>3}행 · "
               f"빈셀 {v['빈셀비율']} · 수치단위 {sh.get('수치단위_비율', '?')} · "
               f"제안 {v['기계제안']['제안']}")
 
 
-def _interview(pkg, on_round=None, context=None):
+def _interview(pkg, on_round=None, context=None, memory=None):
     """문답 — **끝내는 것은 사람뿐이다.** 상한 없음(§6.5 재생성 루프와 같은 원리).
 
     **생성 전에도, 기계 관문 실패 뒤에도 같은 장치다**(B50) — 실패 뒤에 여는 경우
@@ -352,8 +401,10 @@ def _interview(pkg, on_round=None, context=None):
         for c in context[:5]:
             print(f"     · {c}")
     while True:
-        out = _interview_round(pkg, history, context)
+        out = _interview_round(pkg, history, context, memory)
         n = len(history) + 1
+        if n == 1:
+            out["columns"] = prefill(out.get("columns"), memory)      # 첫 라운드 — 기억 열은 코드가 채운다 (B215 ②)
         pg = out.get("progress") or {}
         # **진행 1줄**(B43 ⑥) — 「이제 진행해도 되나」의 판단 근거다.
         if pg:
@@ -363,11 +414,13 @@ def _interview(pkg, on_round=None, context=None):
                   f"이번 질문 {len(out.get('questions') or [])}")
         else:
             print(f"\n[라운드 {n}]")
-        for ln in cols_lines(out.get("columns"), (history[-1].get("columns") or []) if history else None):
-            print(ln)                         # 살아남은 열 표 · 제외 한 줄(B206 ④)
+        for ln in cols_lines(out.get("columns"), (history[-1].get("columns") or []) if history else None, memory):
+            print(ln)                         # 살아남은 열 표 · 제외 한 줄(B206 ④) · 기억 표시(B215 ②)
         print("이해 요약")
+        for x in out.get("reading") or []:    # 열마다 한 줄 (B215 ③)
+            print(f"   {x['column']} {_screen.paint(x['header'], 'head')}: {x['how']}")
         print(f"   {out['understanding']}")
-        _prof_hint(pkg)                       # 판정 근거를 사람에게도 보인다
+        _prof_hint(pkg, out)                  # 판정 근거 — 주요 열(B215 ③)
         # **질문 하나 = 한 구획**(등록개선 ⑤) — 중요도 순으로 번호를 매기고, 구획마다
         # 구분선·번호 선택지·입력 한 줄. 이어 붙이면 어느 답이 어느 열 것인지 안 보인다.
         qs = sorted(out.get("questions") or [], key=_rank)
@@ -408,7 +461,7 @@ def _interview(pkg, on_round=None, context=None):
                         not in INTERVIEW_STOP)
         if extra and extra.lower() not in INTERVIEW_STOP:
             ans = (ans + "; " if ans else "") + f"교정: {extra}"
-        history.append({"round": n, "understanding": out["understanding"],
+        history.append({"round": n, "understanding": out["understanding"], "reading": out.get("reading") or [],
                         "questions": qs, "answers": answers, "answer": ans,
                         "progress": pg, "columns": out.get("columns") or []})
         if on_round:

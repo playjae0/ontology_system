@@ -130,6 +130,8 @@ def load_adapter(path):
         return None
     show("G15  import 성공", True)
     A = getattr(mod, "ADAPTER", None)
+    if isinstance(A, dict) and isinstance(A.get("expects"), dict):
+        preflight_mod.fill_data_start(A["expects"])                # 범위 헤더면 데이터 첫 행 = 끝 + 1 (B215 ①)
     show("G16  ADAPTER 선언 존재", isinstance(A, dict))
     if isinstance(A, dict):
         show("G17  필수 키 4종 (doc_type·adapter_version·payload_kind·expects)",
@@ -228,7 +230,7 @@ def preflight(mod, raw, label):
     # **그대로 칠 수 있는 다음 값**을 담는다(B61 계약 · AUTO_FIX 대상).
     _cols, bad = preflight_mod.resolve_columns(raw, exp)
     suspect = preflight_mod.header_row_suspect(raw, exp)
-    hr_ = exp.get("header_row")
+    hr_ = preflight_mod.rows_text(exp.get("header_row"))            # 정수는 그대로 · 범위는 `2~3` (B215 ①)
     # **라벨은 태그와 한 몸이다**(B59 ①) — 한 태그에 두 라벨을 두면 사람이 읽어
     # 전달한 코드가 두 가지를 가리킨다. 그래서 G26의 라벨은 하나이고, **원인 셋은
     # 상세가 가른다**: 없음 · 중복 · 빈 헤더.
@@ -247,7 +249,11 @@ def preflight(mod, raw, label):
     if not bad:
         show(G26, not suspect, (suspect or {}).get("reason", ""))
     actual = preflight_mod.header_labels(raw, hr, exp)
-    show(f"G24  header_row {hr}행에 헤더 {len(actual)}개 존재", len(actual) >= 5, str(actual[:4]))
+    show(f"G24  header_row {hr_}행에 헤더 {len(actual)}개 존재", len(actual) >= 5, str(actual[:4]))
+    _t = preflight_mod.title_row_suspect(raw, exp)
+    if _t:                                                          # 경고(FAIL 아님 — B215 ①)
+        print(f"  ⚠ {_t}행은 제목 행으로 보인다 — 지문에 들면 문서마다 P21 · 범위에서 빼려면 header_row "
+              f"[{_t + 1}, {preflight_mod.span(hr)[1]}]")
     strings = {reader_mod.norm_label(x) for x in strings}
     missing = [a for a in actual if a not in strings]
     show("G25  원본 헤더 문자열이 전부 expects에 실림 → 표류 감지 가능",

@@ -500,7 +500,7 @@ def _cmd_generate_interview(doc_type, samples, hint, pkg, d, interview):
 
         # **이전 라운드를 문답에 실어 보낸다**(②-2) — 저장만 이어 붙이고 모델이
         # 처음부터 물으면 사람이 두 번 답한다.
-        rounds = _interview(pkg, on_round=_persist)
+        rounds = _interview(pkg, on_round=_persist, memory=ivlog.memory(doc_type, samples))   # 열 기억으로 시작 (B215 ②)
         # **확정 요약이 생성의 입력이다**(B60 ②) — 전문은 이력으로 남고, 사람이
         # 화면에서 요약을 확인한다. 요약도 즉시 저장한다(라운드와 같은 이유).
         _batch["decisions"] = iv_finalize(pkg, rounds)
