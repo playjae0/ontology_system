@@ -12,7 +12,7 @@
   "kit/gate_screen.py": "e16688504e06ca4e156baecf1e777226788bc6abf5bd9164bbb37d52c4a74d56",
   "kit/gate_tables.py": "36c590d69cfde93938ee05c4d29464dfd6642e3522d24349cc0c582817098fb5",
   "kit/render_review.py": "50fd61e668b2efc4baf8441d0f56c92a5a9cace8b839f299fef8e67372034c9d",
-  "kit/run_adapter.py": "ccbe30ebaaed51481b07bd92fb521ae4b95a167f85384a63be9046c3311c6ab8",
+  "kit/run_adapter.py": "b8a7f74ba581f4e354fa6f68a12e71f9ffb2b2be3647d0f75301f0e215914358",
   "kit/검수뷰_데이터스키마.json": "66f6dae0e042efe5b9787fd99cf2882837d35cd716f603c8cedd03a573b42563",
   "kit/어댑터_스켈레톤.py": "a010ba25d05319d2933a5c5f843917c5382601345fc705ac773509342a80a2e3",
   "kit/읽기지식_틀.md": "7876072a3bc5fc52b610493f4400893811e7089f3dfae33d8e33b7763ec202ed",
@@ -43,7 +43,7 @@
   "prompts/3.3_outline.md": "9c3a77d5d915b2c0d4700bc85e5e05c1b2bb231f7ff2b50ee63e7cfbbb233257",
   "prompts/3.4_judge.md": "98cf87919afcf498844142e892734c04b65133e847226174f4159a79479258a2",
   "prompts/3.4_reinforce.md": "86570396f8b4de03be73391faad8ae8c92ac3a7ebc2897c34a94f7bdc602f1f9",
-  "prompts/3.8_sheet_role.md": "7b32745c204783bc9862dfe1c8d905bc83f10f1e4829042223c4de78a8fb9a7a",
+  "prompts/3.8_sheet_role.md": "7d2f5760931949447f6673f5bb303eab40cb48c3f9346360ca70672334b24ae3",
   "prompts/4.1_link.md": "28c7dcf63a5ac935ee6ca6c01544c2963c0df44f51ba59dd086fbfb17ac2833a",
   "prompts/4.4_answer.md": "2845922e4c3c77b2be7159cfcc881c2397336d913ff749e1764cb51c87b06cc6",
   "schemas/blocks.json": "dcb2aec7a7e5d35bf15f6c116bcfaab1ef182244f4cc55228ae5d12b950ecfe4"
