@@ -75,7 +75,9 @@ def frame_chunks(name, lines, rows, locator, sep, base_meta, *, structure_fn=Non
     text_of = dict(lines)
     out = []
     keep = {n for j in joins for n, _t in lines if j["from_row"] <= n <= j["to_row"]} if joins else None
-    for c in struct_map.split(smap, lines, locator, sep, heads=bool(info), keep_rows=keep,
+    # 사람 붙임(구조 확인의 명령 — B216 ①)은 그 범위가 한 청크 — 범위 첫 줄과 끝 다음 줄에서 자른다
+    cuts = {r for j in joins if j.get("by") for r in (j["from_row"], next((n for n, _t in lines if n > j["to_row"]), None))}
+    for c in struct_map.split(smap, lines, locator, sep, heads=bool(info), keep_rows=keep, cuts=cuts,
                               keep_cap=struct_map.CHUNK_MAX_CHARS * CHUNK_OVER if keep else None,
                               keep_split=lambda body: _sibling_parts(body, rows0)):
         hs = c.pop("_heads", None)
@@ -194,19 +196,21 @@ def draft_structure(labs):
     return out
 
 
-def apply_fixes(st, fixes, labs):
+def apply_fixes(st, fixes, labs, edit=None):
     """사람의 고침(등록 단 · `{행: {role, name} | {role: "본문"}}`)을 구조 위에 — 결정적(재구축이 같은 고침을 쓴다).
 
-    고칠 수 있는 것은 **역할과 대상 이름**이다(단은 그대로 · 옛 기록의 `category`는 읽지 않는다 — B148 ①) — 제목이 아니던 줄을 고치면
-    그 앞 제목의 형제로 선다."""
+    옛 고침(동사 칸 없음)이 고칠 수 있는 것은 **역할과 대상 이름**이다(단은 그대로 · 옛 기록의 `category`는 읽지 않는다 — B148 ①) — 제목이
+    아니던 줄을 고치면 그 앞 제목의 형제로 선다. **동사째 고침**(`what` 칸 — 구조 확인의 명령 · B216 ①)은 주입된 `edit(제목, 붙임,
+    {행: 고침})` → `(제목, 붙임)`이 여섯 동사의 검사 그대로 건다(옛 고침 다음)."""
     if not fixes:
         return st
     st = dict(st or {"headings": draft_structure(labs), "source": "draft"})
     heads = {h["row"]: dict(h) for h in st.get("headings") or []}
     order = [x["row"] for x in labs]
+    verbs = {int(k): fx for k, fx in fixes.items() if isinstance(fx, dict) and fx.get("what")}
     for k, fx in fixes.items():
         r = int(k)
-        if r not in order:
+        if r not in order or r in verbs:
             continue
         if fx.get("role") == BODY:
             heads.pop(r, None)
@@ -220,6 +224,8 @@ def apply_fixes(st, fixes, labs):
         heads[r].update(role=fx.get("role"), name=fx.get("name"), by="사람")
     st["headings"] = [heads[r] for r in order if r in heads]
     st["fixed"] = len(fixes)
+    if verbs and callable(edit):
+        st["headings"], st["joins"] = edit(st["headings"], st.get("joins") or [], verbs)
     return st
 
 
@@ -394,7 +400,8 @@ def structure_hook(ask, doc_id, *, kept=None, made=None, tally=None, fixes=None,
                 st = {**st, "labels": h, "key": key}
                 if made is not None and not st.get("failed"):
                     made[frame] = st
-        st = apply_fixes(st, fixes.get(frame), labs)
+        st = apply_fixes(st, fixes.get(frame), labs, edit=(lambda hs, js, vs: ask.edit(doc_id, frame, labs, hs, js, vs))
+                         if callable(getattr(ask, "edit", None)) else None)
         st = contiguous(st, labs)                             # 제목 범위는 연속이다 — 받은 구조 · 고침 · 확정 전부 한 자리(B195 ①)
         from parser import struct_lists
         st = struct_lists.apply(st, labs, fixes.get(frame), FRAME_ROW)   # 형제 꼴 일관성 → 본문 목록(B197 ⑤ · 같은 자리)

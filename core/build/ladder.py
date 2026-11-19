@@ -69,8 +69,15 @@ def check_schema():
                                    "name": {"type": ["string", "null"]}, "why": {"type": "string"}},
                     "required": ["row", "heading", "parent", "role", "name", "why"],
                     "additionalProperties": False}},
-                "edits": EDIT_SCHEMA["properties"]["edits"], "rules": EDIT_SCHEMA["properties"]["rules"]},
-            "required": ["answers", "edits", "rules"], "additionalProperties": False}
+                "edits": EDIT_SCHEMA["properties"]["edits"], "rules": EDIT_SCHEMA["properties"]["rules"],
+                # 힌트 처리(B216 ② — 힌트마다 한 번: 번호 · 갈래 · 그 힌트로 낸 고침 · 규칙의 번호(1부터) · 못 함 이유)
+                "hint_status": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"hint": {"type": "integer"}, "kind": {"type": "string", "enum": list(HINT_KINDS)},
+                                   "edits": {"type": "array", "items": {"type": "integer"}},
+                                   "rules": {"type": "array", "items": {"type": "integer"}}, "why": {"type": ["string", "null"]}},
+                    "required": ["hint", "kind", "edits", "rules", "why"], "additionalProperties": False}}},
+            "required": ["answers", "edits", "rules", "hint_status"], "additionalProperties": False}
 
 
 # ---------------------------------------------------------------- 골격 보기 (코드 — 줄 전문 0)
@@ -153,7 +160,9 @@ def front(frames, built):
 # ---------------------------------------------------------------- 답 꼴 검사 (B134 ② — 실호출 답 · mock 힌트가 같은 함수)
 #: 답 종류마다 **목록이어야 하는 칸** · 칸 항목의 조건(dict 밖은 늘 뺀다)
 SHAPE = {"사다리": ("levels", "unnumbered"), "시트 확인": ("answers", "edits", "rules")}
-_ITEM_OK = {"rules": lambda x: isinstance(x.get("shape"), str)}
+_ITEM_OK = {"rules": lambda x: isinstance(x.get("shape"), str) or isinstance(x.get("row"), int)}
+#: 힌트 처리의 갈래(B216 ② — 시트 확인 답의 `hint_status`)
+HINT_KINDS = ("행", "규칙", "못 함")
 
 
 def shape(doc_id, what, out, frame=None):
@@ -298,6 +307,15 @@ def fix_ladder(ladder, rules):
         role = rule.get("role") if rule.get("role") in ROLES else None
         if not s:
             continue
+        if rule.get("same_as"):                              # 같은 단(B216 ③) — 상대 꼴의 단에 든다(그 단의 역할)
+            to = next((lv for lv in levels if rule["same_as"] in lv["sigs"]), None)
+            if to is not None and s not in to["sigs"]:
+                for lv in levels:
+                    if s in lv["sigs"]:
+                        lv["sigs"].remove(s)
+                to["sigs"].append(s)
+                levels = [lv for lv in levels if lv["sigs"]]
+            continue
         if scope_of(rule) == SE_SCOPES[1]:
             if psh:
                 lists = [u for u in lists if (u["shape"], u["parent_shape"]) != (s, psh)] + [
@@ -319,8 +337,8 @@ def fix_ladder(ladder, rules):
 
 
 # ---------------------------------------------------------------- 시트 확인 — 호출 · mock · 답을 고침으로
-def ask_check(frame, labs, built, ladder, ctx=None, hints=None, prev=None):
-    """시트 확인 실호출 — 공통 지시문 그대로(층 힌트 0 · B148 ①) · 입력에 층 카테고리 0."""
+def ask_check(frame, labs, built, ladder, ctx=None, hints=None, prev=None, retry=None):
+    """시트 확인 실호출 — 공통 지시문 그대로(층 힌트 0 · B148 ①) · 입력에 층 카테고리 0 · `retry`는 한 번 다시 묻는 까닭(B216 ②)."""
     out = gateway.chat(
         [{"role": "system", "content": gateway.prompt(PROMPT)},
          {"role": "user", "content": json.dumps(
@@ -328,7 +346,7 @@ def ask_check(frame, labs, built, ladder, ctx=None, hints=None, prev=None):
               "toc": skeleton(labs, built["headings"], built["needs"]),
               "needs": [{"row": n["row"], "need": n["kind"], "why": n["why"], **({"rows": n["rows"]} if n.get("rows") else {})}
                         for n in built["needs"]],
-              "hints": list(hints or []), "previous": prev}, ensure_ascii=False)}],
+              "hints": list(hints or []), "previous": prev, **({"retry": retry} if retry else {})}, ensure_ascii=False)}],
         json_schema=check_schema(), point="structure")
     return out                                              # 꼴 검사는 부르는 쪽이 `shape`로(mock 힌트와 같은 함수 — B134 ②)
 
@@ -455,6 +473,95 @@ def answers_to_edits(doc_id, frame, heads, needs, answers):
     if missing:
         store.append_defect(f"{doc_id}: 시트 확인 — 판단 필요 답 빠짐 {len(missing)}(시트 '{frame}' {missing[:6]}) → 코드 자리 그대로")
     return edits, missing, stray
+
+
+def row_rule(x, labs, ladder):
+    """**행 번호 규칙**(B216 ③ — `row` · `parent_row` · 같은 단 `same_as_row`) → 서명 규칙 `(규칙, 버림 이유 또는 None)` — 코드가 그 행의
+    서명으로 바꾼다(서명 답은 그대로) · 같은 단은 상대 꼴의 단(`same_as` — 부모 꼴 · 역할이 상대의 것 · 상대가 맨 위 단이면 그 단) ·
+    역할을 말하지 않으면 그 꼴의 지금 역할."""
+    if not isinstance(x.get("row"), int):
+        return x, None
+    sig = {y["row"]: y.get("sig") for y in labs}
+    levels = (ladder or {}).get("levels") or []
+    at = {s: i for i, lv in enumerate(levels) for s in lv.get("sigs") or []}
+    s, p, same = sig.get(x["row"]), x.get("parent_row"), x.get("same_as_row")
+    y = {"shape": s, "role": x.get("role"), "parent_shape": x.get("parent_shape"), "scope": x.get("scope") or SE_SCOPES[0],
+         "said": x.get("said") or command_of(x)}
+    if not s:
+        return y, f"R{x['row']} 줄에 꼴 서명이 없다"
+    if isinstance(same, int):
+        if sig.get(same) not in at:
+            return y, f"R{same}의 꼴이 사다리에 없다"
+        i = at[sig[same]]
+        y.update(same_as=sig[same], role=x.get("role") or levels[i].get("role"),
+                 parent_shape=levels[i - 1]["sigs"][0] if i else None)
+    elif isinstance(p, int):
+        if not sig.get(p):
+            return y, f"R{p} 줄에 꼴 서명이 없다"
+        y["parent_shape"] = sig[p]
+    if y["role"] is None and s in at:
+        y["role"] = levels[at[s]].get("role")
+    return y, None
+
+
+def command_of(e):
+    """고침 · 행 번호 규칙 하나를 **명령 꼴**로(B216 — 구조 확인에 치는 글 그대로 · 힌트 줄의 반영 · 직접 제안)."""
+    r, w = e.get("row"), e.get("what")
+    if isinstance(e.get("same_as_row"), int):
+        return f"R{r} 같은 단 R{e['same_as_row']}"
+    if isinstance(e.get("parent_row"), int):
+        return f"R{r} 꼴 부모 R{e['parent_row']}"
+    if not w:
+        return (f"꼴 「{SG.show(e.get('shape'))}」" + (f" 부모 꼴 「{SG.show(e['parent_shape'])}」" if e.get("parent_shape") else "")
+                + (f" {e['role']}" if e.get("role") else ""))
+    return {"제목 더함": f"R{r} 제목", "제목 뺌": f"R{r} 제목 아님", "부모 바꿈": f"R{r} 부모 R{e.get('parent')}",
+            "역할": f"R{r} 역할 {e.get('role')}", "대상": f"R{r} 대상" + (f" {e['name']}" if e.get("name") else ""),
+            "붙임": f"R{r}~R{e.get('to_row')} 붙임"}.get(w, f"R{r} {w}")
+
+
+def hint_gap(out, hints):
+    """답의 `hint_status`에 빠진 힌트 번호(B216 ② — 힌트마다 한 번이 원칙 · 힌트가 없으면 빈 목록)."""
+    got = {s.get("hint") for s in (out or {}).get("hint_status") or [] if isinstance(s, dict)} if isinstance(out, dict) else set()
+    return [i for i in range(1, len(hints or []) + 1) if i not in got]
+
+
+def _direct(hint, kind):
+    """「직접」 제안 — 힌트 글의 행 번호(`R<n>`)를 코드가 아는 만큼 명령 꼴로."""
+    import re
+    rs = re.findall(r"[Rr](\d+)", hint)
+    if kind != "행" and len(rs) >= 2:
+        return f"R{rs[0]} 같은 단 R{rs[1]} · R{rs[0]} 꼴 부모 R{rs[1]}"
+    if rs:
+        return f"R{rs[0]} 제목 · R{rs[0]} 제목 아님 · R{rs[0]} 부모 R<m>"
+    return "R<n> 제목 · R<n> 부모 R<m> · R<n> 같은 단 R<m>"
+
+
+def hint_lines(hints, out, conv, took, bad, mine, rbad):
+    """**힌트마다 처리 줄**(B216 ② — 코드가 적용 결과로 쓴다) → `hint_status`(답 꼴의 힌트 처리 칸 · 줄 `line`) — 반영(그 고침 · 규칙의
+    명령 꼴) · 버림(검사 이유 → 직접 명령) · 못 함(LLM 이유 → 직접) · 답 없음. `conv`는 답의 규칙마다 `(서명 규칙, 버림 이유)`."""
+    eds, by = list((out or {}).get("edits") or []), {s.get("hint"): s for s in (out or {}).get("hint_status") or [] if isinstance(s, dict)}
+    plain = lambda x: {k: v for k, v in x.items() if k != "버림"}
+    res = []
+    for i, h in enumerate(hints or [], 1):
+        s = by.get(i) or {"hint": i, "kind": "답 없음", "edits": [], "rules": [], "why": None}
+        head = f"힌트 {i} 「{h if len(h) <= 30 else h[:30] + '…'}」 — "
+        es = [eds[j - 1] for j in s.get("edits") or [] if isinstance(j, int) and 0 < j <= len(eds)]
+        rs = [(j, conv[j - 1]) for j in s.get("rules") or [] if isinstance(j, int) and 0 < j <= len(conv)]
+        ok = [command_of(e) for e in es if e in took] + [command_of(out["rules"][j - 1]) for j, (y, _w) in rs if y in mine]
+        no = [x["버림"] for x in bad if plain(x) in es] + [w or next((x["버림"] for x in rbad if plain(x) == y), "검사")
+                                                       for _j, (y, w) in rs if y not in mine]
+        if s["kind"] == "답 없음":
+            line = head + f"답 없음 → 직접: {_direct(h, '규칙')}"
+        elif s["kind"] == "못 함":
+            line = head + f"못 함: {s.get('why') or '이유 없음'} → 직접: {_direct(h, '규칙')}"
+        elif ok:
+            line = head + "반영: " + " · ".join(ok) + (f" (버림 {len(no)} — {no[0]})" if no else "")
+        else:
+            gone = [plain(x) for x in bad if plain(x) in es]
+            line = head + (f"버림: {no[0] if no else '낸 고침 · 규칙 없음'} → 직접: "
+                           + (command_of(gone[0]) if gone else _direct(h, s["kind"])))
+        res.append({**s, "line": line})
+    return res
 
 
 def rule_counts(labs, heads, rules):

@@ -335,7 +335,7 @@ def choose_level(stats):
                   f"사람이 정한다(자동으로 지도 패스로 넘기지 않는다)"), True
 
 
-def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap=None, keep_split=None):
+def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap=None, keep_split=None, cuts=None):
     """지도를 적용해 자른다 — **여기에 LLM은 없다.** 같은 지도면 같은 분할이다.
 
     헤딩 행은 청크가 아니라 `section` 경로를 만들고, 그 아래 연속 본문이 청크다.
@@ -349,7 +349,8 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
     하나뿐이라, 여기서 안 실으면 경로마다 따로 실어야 하고 하나가 빠지는 날이 온다.
 
     `heads`면 조각마다 `_heads`(경로를 이룬 제목 줄의 행 — 위에서 아래로)를 싣는다 — 문서 구조(B119 ①)가
-    그 줄의 역할 · 대상을 조각에 단다. 받은 쪽이 떼어 낸다(`struct_rule.frame_chunks`).
+    그 줄의 역할 · 대상을 조각에 단다. 받은 쪽이 떼어 낸다(`struct_rule.frame_chunks`). `cuts`는 제목이 아니어도 자르는 줄(사람 붙임의
+    경계 — 경로는 그대로).
 
     **경로는 목차의 부모 사슬 전체다**(B130 ②) — 주인 제목과 그 조상 전부(자른 단까지의 스택이 아니다): 자른 단의 청크는 그 청크를
     연 제목 · 나눔 조각(한 단계 더 · 글자 상한 · 붙임 나눔)은 첫 줄의 주인 제목(첫 줄이 제목이면 그 줄 · 아니면 그 위의 가장 가까운 제목).
@@ -404,6 +405,8 @@ def split(smap, lines, locator, sep=" > ", heads=False, keep_rows=None, keep_cap
                 stack.pop()
             stack.append((depth, text.strip(), n))
         else:
+            if cuts and n in cuts:
+                flush()
             buf.append(n)
     flush()
 

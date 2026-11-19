@@ -109,7 +109,7 @@ def structurer():
                         "usage": {"calls": 0, "prompt": 0, "completion": 0, "total": 0}}
         return DOCL[doc_id]
 
-    def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None):
+    def fn(doc_id, frame, labs, ctx=None, hints=None, prev=None, mode=None, answer=None, replay=False):
         from core.build import ladder as LA
         from core.build import structure_edit as SE
         from parser import ladder as PL
@@ -130,16 +130,32 @@ def structurer():
             return {**st, "doc_hints": list(hints or [])}
         failed = None
         u0 = gateway.usage_total()
-        if live:
+
+        def asked(ask):
+            """시트 확인 한 번 + 힌트 처리가 빠지면 한 번 다시(B216 ② — 그래도 빠진 힌트는 「답 없음」)."""
+            got = ask(None)
+            gap = LA.hint_gap(got, hints) if got is not None and hints else []
+            if gap:
+                store.append_defect(f"{doc_id}: 시트 확인 — 힌트 처리 빠짐 {gap}(시트 '{frame}') → 한 번 다시 묻는다")
+                st["calls"] += int(live)
+                again = ask(f"hint_status에 힌트 {gap}이 없다 — 힌트마다 한 번씩")
+                got = again if again is not None else got
+            return got
+        if replay:                                            # 앞 답으로 다시 세운다(B216 ① — 사람 명령의 규칙 뒤 · LLM 0)
+            out = answer
+            if out is None:
+                return {**st, "doc_hints": list(hints or [])}
+            st["source"] = "live" if live else "hint"
+        elif live:
             gateway.require(TAG)
             st.update(calls=1, source="live")
             try:
-                out = LA.ask_check(frame, labs, built, ladder, ctx, hints, prev)
+                out = asked(lambda why: LA.ask_check(frame, labs, built, ladder, ctx, hints, prev, why))
             except gateway.GatewayError as e:
                 store.append_defect(f"{doc_id}: 시트 확인 호출 실패 — 시트 '{frame}' — {e} → 사다리 목차 그대로")
                 out, failed = {"answers": [], "edits": [], "rules": []}, f"{type(e).__name__}: {str(e)[:120]}"
         else:
-            out = LA.hint_check(doc_id, frame, labs, built["headings"], built["needs"])
+            out = asked(lambda _why: LA.hint_check(doc_id, frame, labs, built["headings"], built["needs"]))
             if out is None:
                 return {**st, "doc_hints": list(hints or [])}     # 판정 없음 — 사다리 목차 그대로(판단 필요는 남는다)
             st["source"] = "hint"
@@ -147,11 +163,15 @@ def structurer():
         out, shaped = LA.shape(doc_id, "시트 확인", out, frame)   # 꼴이 어긋난 답 · 칸은 버린다 — 사다리 목차 그대로 (B134 ②)
         out = out or {"answers": [], "edits": [], "rules": []}
         have = set(d["counts"]) | {x["sig"] for x in labs if x.get("sig")} | set(rank_of(ladder))
-        mine, rbad = LA.check_rules(doc_id, frame, [x for x in out.get("rules") or [] if x.get("shape")]
+        conv = [LA.row_rule(x, labs, ladder) for x in out.get("rules") or []]   # 행 번호 규칙 → 서명 (B216 ③)
+        pre = [{**x, "버림": w} for x, (_y, w) in zip(out.get("rules") or [], conv) if w]
+        for x in pre:
+            store.append_defect(f"{doc_id}: 사다리 고침 버림 — {x['버림']} (시트 '{frame}')")
+        mine, rbad = LA.check_rules(doc_id, frame, [y for y, w in conv if not w and y.get("shape")]
                                     + LA.group_rules(built["needs"], out.get("answers"), labs), have)   # 같은 꼴 답 = 규칙 (B139 ③)
+        rbad = pre + rbad
         if mine:                                            # 사다리 고침 — 문서 규칙(뒤 시트에도) · 이 시트는 고친 사다리로 다시 세운다
-            doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
-            doc["rules"] = _merge_rules(doc.get("rules"), mine)
+            add_doc_rules(doc_id, mine, under=replay)     # 앞 답의 규칙은 사람 명령의 규칙 아래 (B216 ①)
             ladder = ladder_now(doc_id)
             asked, built = built["needs"], PL.apply(labs, ladder, d["counts"])
             now = {n["row"] for n in built["needs"]}
@@ -159,6 +179,8 @@ def structurer():
         edits, missing, stray = LA.answers_to_edits(doc_id, frame, built["headings"], built["needs"], out.get("answers"))
         heads, joins, took, bad = SE.apply_edits(doc_id, frame, labs, built["headings"],
                                                  {"edits": edits + list(out.get("edits") or []), "headings": []})
+        if hints:                                           # 힌트마다 처리 줄 — 적용 결과로 (B216 ②)
+            out = {**out, "hint_status": LA.hint_lines(hints, out, conv, took, bad, mine, rbad)}
         _LOG.info("시트 확인 %s · %s — 판단 필요 %d · 답 빠짐 %d · 고침 %d · 버림 %d", doc_id, frame, len(built["needs"]),
                   len(missing), len(took), len(bad))
         return {**st, "headings": heads, "toc0": draft, "needs": built["needs"], "ladder": ladder,
@@ -174,7 +196,13 @@ def structurer():
     fn.prepare = prepare
     fn.adopt = adopt
     fn.ladder_of = lambda doc_id: ladder_now(doc_id) if doc_id in DOCL else None
+    fn.edit = _replay                                          # 사람 명령의 재생 (B216 ① — 파서는 core를 모른다 · 주입)
     return fn
+
+
+def _replay(doc_id, frame, labs, heads, joins, verbs):
+    from core.build import structure_edit as SE
+    return SE.replay(doc_id, frame, labs, heads, joins, verbs)[:2]
 
 
 # ---------------------------------------------------------------- 문서 규칙 (B130 ④ — 힌트는 문서 규칙 · 사다리 고침으로 되말한다)
@@ -189,11 +217,16 @@ def _rule_key(x):
     return (x.get("shape"), x.get("parent_shape")) if LA.scope_of(x) == LA.SE_SCOPES[1] else x.get("shape")
 
 
+def _keep(x):
+    """규칙 한 줄의 남기는 칸 — 같은 단 규칙만 상대 서명(`same_as` — B216 ③)을 더 든다."""
+    return {**{k: x.get(k) for k in RULE_KEYS}, **({"same_as": x["same_as"]} if x.get("same_as") else {})}
+
+
 def _merge_rules(old, new):
     """자리마다 하나 — 뒤의 규칙이 이긴다(같은 서명을 다시 말했다)."""
-    out = {_rule_key(x): {k: x.get(k) for k in RULE_KEYS} for x in old or []}
+    out = {_rule_key(x): _keep(x) for x in old or []}
     for x in new or []:
-        out[_rule_key(x)] = {k: x.get(k) for k in RULE_KEYS}
+        out[_rule_key(x)] = _keep(x)
     return list(out.values())
 
 
@@ -212,6 +245,14 @@ def doc_state(doc_id):
 
 def add_doc_hint(doc_id, text):
     DOC.setdefault(doc_id, {"hints": [], "rules": []})["hints"].append(text)
+
+
+def add_doc_rules(doc_id, rules, under=False):
+    doc = DOC.setdefault(doc_id, {"hints": [], "rules": []})
+    if under:                                             # 아래로 — 이미 있는 자리는 그대로(차례도 · 다시 세운 사다리가 같다)
+        have = {_rule_key(x) for x in doc.get("rules") or []}
+        rules = [x for x in rules or [] if _rule_key(x) not in have]
+    doc["rules"] = _merge_rules(doc.get("rules"), rules)
 
 
 # ---------------------------------------------------------------- 확정 기록 (B126 ③ — 등록 단 · 사람 판단 · 재생성 불가)
@@ -261,13 +302,13 @@ def confirm(doc_id, frame, st, hints=None):
     store.atomic_write_bytes(p, (json.dumps(d, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
-def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, ctx=None):
+def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, ctx=None, answer=None, replay=False):
     """구조 확인의 고리(B126 ③) — 그 시트를 같은 방식(또는 `mode`)으로 다시 부르고(앞 출력 + 힌트 전부) 구조 보존분의 그 시트
     자리에 둔다 → 다시 파싱이 그것을 쓴다(LLM 0). 돌려주는 것은 새 구조 또는 None."""
     from parser import struct_map
     from parser.struct_rule import labels_hash
     fn = structurer()
-    st = fn(doc_id, frame, labs, ctx=ctx, hints=hints, prev=prev, mode=mode)
+    st = fn(doc_id, frame, labs, ctx=ctx, hints=hints, prev=prev, mode=mode, answer=answer, replay=replay)
     if not st or st.get("skip"):
         return st
     src = struct_map.source_hash(src_path)
@@ -276,6 +317,14 @@ def reask(doc_id, frame, labs, src_path, *, hints=None, prev=None, mode=None, ct
     s[frame] = {**st, "labels": labels_hash(labs), "key": fn.key()}
     struct_map.keep(doc_id, {**kept, "doc_id": doc_id, "structure": s}, src)
     return st
+
+
+def recheck(doc_id, frames, src_path):
+    """사람 명령의 규칙 뒤 **앞 답으로 다시 세운다**(B216 ① — LLM 0) — 확정 재생이 아닌 시트(비켜 둔 시트 포함)를 그 시트의 앞 답 위에
+    지금 사다리로 다시 세워 구조 보존분에 둔다 → 다시 파싱이 그것을 쓴다. `frames`는 구조 셈의 시트 칸."""
+    for f, fr in frames.items():
+        if not fr.get("confirmed") or (doc_id, f) in SUSPENDED:
+            reask(doc_id, f, fr.get("labels") or [], src_path, answer=fr.get("answer"), replay=True)
 
 
 # ---------------------------------------------------------------- 사람의 고침 (B119 ③ — 등록 단 · 재생성 불가)
@@ -306,6 +355,21 @@ def fixes_of(doc_id):
     `category`는 읽지 않는다(B148 ①)."""
     return {fr: {int(r): _migrated(fx) for r, fx in rows.items()}
             for fr, rows in (_fixes_all().get(doc_id) or {}).items()}
+
+
+def merge_fix(old, cmd):
+    """고침 기록 한 줄에 명령 하나를 얹는다(동사째 — B216 ①) — `what`은 그 줄의 동사들 · 제목 뺌은 붙임 밖의 동사를 · 제목 더함은 제목
+    뺌을 · 역할과 대상은 서로를 지운다 · 옛 `{role, name}` 줄은 동사째로 옮긴다(본문이면 제목 뺌)."""
+    from core.build.structure_edit import WHATS
+    from parser.struct_rule import BODY
+    fx = {k: v for k, v in (old or {}).items() if k not in ("by", "at")}
+    if fx and not fx.get("what"):
+        fx = {"what": ["제목 뺌"]} if fx.get("role") == BODY else {
+            "what": ["제목 더함", "대상" if fx.get("name") else "역할"], "role": fx.get("role"), "name": fx.get("name")}
+    w = cmd["what"]
+    gone = {"제목 뺌": set(WHATS) - {"붙임"}, "제목 더함": {"제목 뺌"}, "역할": {"대상"}, "대상": {"역할"}}.get(w, set())
+    fx.update({k: cmd[k] for k in ("parent", "to_row", "role", "name") if k in cmd})
+    return {**fx, "what": [v for v in fx.get("what") or [] if v != w and v not in gone] + [w]}
 
 
 def record_fix(doc_id, frame, row, fix):

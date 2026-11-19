@@ -20,6 +20,9 @@ _LOG = log.get(__name__)
 WHATS = ("제목 더함", "제목 뺌", "부모 바꿈", "역할", "대상", "붙임")
 #: 사다리 고침이 거는 범위(닫힌 둘 — B137 ⑤) — 없으면 「꼴 전부」(옛 답 · 힌트)
 SCOPES = ("꼴 전부", "첫 서수 목록")
+#: 고침의 적용 차례(동사로 고정 — 답 · 고침 · 사람 명령이 어느 차례로 와도 같은 나무)
+PHASE = {"제목 더함": 0, "제목 뺌": 1, "부모 바꿈": 2, "역할": 3, "대상": 3, "붙임": 4}
+_N = lambda t: {"type": [t, "null"]}
 
 EDIT_SCHEMA = {
     "type": "object",
@@ -39,13 +42,16 @@ EDIT_SCHEMA = {
             "required": ["row", "role", "name", "why"], "additionalProperties": False}},
         # **사다리 고침**(B130 ④ · B132 ⑤ — 힌트 · 판단이 서명에 걸린 규칙이면 되말한다 · `shape` = 서명 · 코드가 문서 사다리를 고쳐 그
         # 문서의 뒤 시트까지 다시 세운다 · 아니면 빈 목록) · `scope`(B137 ⑤ — 「꼴 전부」 그 서명의 단 · 「첫 서수 목록」 `parent_shape`
-        # 아래에서 첫 서수로 시작하는 그 서명의 목록만 — 꼴 전부를 옮기지 않는다)
+        # 아래에서 첫 서수로 시작하는 그 서명의 목록만 — 꼴 전부를 옮기지 않는다) · 꼴은 행 번호로도(`row` · `parent_row` · 같은 단
+        # `same_as_row` — B216 ③ · 코드가 서명으로 바꾼다)
         "rules": {"type": "array", "items": {
             "type": "object",
-            "properties": {"shape": {"type": "string"}, "role": {"type": ["string", "null"]},
+            "properties": {"shape": _N("string"), "row": _N("integer"), "parent_row": _N("integer"),
+                           "same_as_row": _N("integer"), "role": {"type": ["string", "null"]},
                            "parent_shape": {"type": ["string", "null"]},
                            "scope": {"type": "string", "enum": list(SCOPES)}, "said": {"type": "string"}},
-            "required": ["shape", "role", "parent_shape", "scope", "said"], "additionalProperties": False}}},
+            "required": ["shape", "row", "parent_row", "same_as_row", "role", "parent_shape", "scope", "said"],
+            "additionalProperties": False}}},
     "required": ["edits", "headings", "rules"], "additionalProperties": False,
 }
 
@@ -68,16 +74,16 @@ def _list_tail(r, parent, heads, lab, order):
     return out
 
 
-def apply_edits(doc_id, frame, labs, draft, out):
+def apply_edits(doc_id, frame, labs, draft, out, joins=None):
     """규칙 나무 + 고침 → `(제목 [{row, parent, role, name, why?}], 붙임 [{from_row, to_row}], 받은 고침, 버린 고침)` ·
-    어긋난 고침만 버린다(결함 로그 · 셈) — 시트 전체를 버리지 않는다."""
+    어긋난 고침만 버린다(결함 로그 · 셈) — 시트 전체를 버리지 않는다 · `joins`는 이미 선 붙임(새 붙임이 겹치면 버린다)."""
     from core.build.outline import _span
     from parser.struct_rule import FRAME_ROW, ROLES, TARGET_ROLES
     order = {x["row"]: i for i, x in enumerate(labs)}
     text = {x["row"]: x.get("text") for x in labs}
     lab = {x["row"]: x for x in labs}
     heads = {h["row"]: dict(h) for h in draft}
-    joins, took, bad = [], [], []
+    joins, took, bad = list(joins or []), [], []
 
     def drop(e, why):
         store.append_defect(f"{doc_id}: 문서 구조 고침 버림 — {why} (시트 '{frame}' {e.get('row')}행 {e.get('what')})")
@@ -92,10 +98,9 @@ def apply_edits(doc_id, frame, labs, draft, out):
         got = _span(e.get("name"), text.get(r))
         return None if got is None else {"name": got}
 
-    phase = {"제목 더함": 0, "제목 뺌": 1, "부모 바꿈": 2, "역할": 3, "대상": 3, "붙임": 4}
     edits = [e for e in (out or {}).get("edits") or [] if isinstance(e, dict)]
-    # 적용 순서는 동사로 고정한다(답 · 고침이 어느 차례로 와도 같은 나무) — 제목 더함(행 순 — 부모가 먼저 선다) → 제목 뺌 → 부모 바꿈 → 역할 · 대상 → 붙임
-    edits.sort(key=lambda e: (phase.get(e.get("what"), 5), order.get(e.get("row"), 1 << 30) if e.get("what") == "제목 더함" else 0))
+    # 적용 순서는 동사로 고정한다(`PHASE`) — 제목 더함(행 순 — 부모가 먼저 선다) → 제목 뺌 → 부모 바꿈 → 역할 · 대상 → 붙임
+    edits.sort(key=lambda e: (PHASE.get(e.get("what"), 5), order.get(e.get("row"), 1 << 30) if e.get("what") == "제목 더함" else 0))
     for e in edits:
         r, w = e.get("row"), e.get("what")
         if r not in order or r == FRAME_ROW and w not in ("역할", "대상"):
@@ -161,3 +166,34 @@ def apply_edits(doc_id, frame, labs, draft, out):
             heads[r]["why"] = str(h["why"])[:200]
     out_heads = [heads[x["row"]] for x in labs if x["row"] in heads]
     return out_heads, joins, took, bad
+
+
+# ---------------------------------------------------------------- 사람 명령의 기록 (B216 ① — 동사째 · 재구축이 재생한다)
+def verb_edits(row, fx):
+    """고침 기록 한 줄(동사째 `{what: [동사 …], parent, to_row, role, name}`) → 고침 목록(여섯 동사 밖은 읽지 않는다)."""
+    return [{"row": row, "what": w, "parent": fx.get("parent"), "to_row": fx.get("to_row"), "role": fx.get("role"),
+             "name": fx.get("name"), "why": "사람 명령"} for w in fx.get("what") or [] if w in WHATS]
+
+
+def _due(e, heads, joins):
+    """그 고침이 아직 나무에 없는가 — 확정 재생 · 다시 파싱 위에 같은 고침을 거듭 걸지 않는다(버림 0)."""
+    from parser.struct_rule import FRAME_ROW, TARGET_ROLES
+    h, p = heads.get(e["row"]), None if e.get("parent") == FRAME_ROW else e.get("parent")
+    return {"제목 더함": h is None, "제목 뺌": h is not None, "부모 바꿈": h is None or h.get("parent") != p,
+            "역할": h is None or h.get("role") != e.get("role"),
+            "대상": h is None or h.get("role") != TARGET_ROLES[0] or bool(e.get("name")) and h.get("name") != e.get("name"),
+            "붙임": not any((j["from_row"], j["to_row"]) == (e["row"], e.get("to_row")) for j in joins)}.get(e["what"], True)
+
+
+def replay(doc_id, frame, labs, heads, joins, verbs):
+    """사람 명령(`{행: 동사째 기록}`)을 나무 위에 — `(제목, 붙임, 받은 고침, 버린 고침)` · 검사는 `apply_edits` 그대로 · 이미 그대로인
+    고침은 건너뛴다 · 받은 줄 · 붙임은 사람 표지(사람 붙임은 그 범위가 한 청크 — `struct_rule.frame_chunks`). 구조 확인의 명령(그 자리
+    검사)과 파싱 · 재구축의 재생이 이 함수 하나다."""
+    have = {h["row"]: h for h in heads}
+    todo = [e for r in sorted(verbs) for e in verb_edits(r, verbs[r]) if _due(e, have, joins)]
+    if not todo:
+        return heads, joins, [], []
+    hs, js, took, bad = apply_edits(doc_id, frame, labs, heads, {"edits": todo, "headings": []}, joins=joins)
+    mine = {e["row"] for e in took}
+    js = js[:len(joins)] + [{**j, "by": "사람"} for j in js[len(joins):]]
+    return [{**h, "by": "사람"} if h["row"] in mine else h for h in hs], js, took, bad

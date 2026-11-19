@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""칸 0.3 · 2.4 — **구조 확인** — 계층 사다리 · 목차 · 판단 필요와 답을 보이고, 사람이 **사다리 고침 · 행 고침**을 힌트로 준다 (B119 ③ · B130 ③④ · B132 ⑦).
+"""칸 0.3 · 2.4 — **구조 확인** — 계층 사다리 · 목차 · 판단 필요와 답을 보이고, 사람이 **명령**(코드가 바로)과 **힌트**(LLM)를 준다 (B119 ③ · B130 ③④ · B132 ⑦ · B216).
 
     파싱 끝 (산문 · 구조가 섰을 때)
       ├ 약한 구조 신호 — 늘 크게(`[약한 구조]`) · 비대화형이면 기록(인입 기록 · `show summary`)에 남기고 진행
       └ `--step`이면 시트마다 사다리 한 줄 · 들여쓰기 목차(역할 · 바뀐 줄) · 판단 필요와 LLM의 답 · 사다리 고침(적용 n줄 / 전체 m줄) ·
-        청크마다 전체 경로를 보이고 묻는다: `c` 확정 · `q` 멈춤 · 힌트(문서 규칙 — 「가.는 9) 위다」 · 「가. 단은 대상 Unit」 같은 사다리
-        고침은 문서 전체에 다시 · 「R36은 제목이 아니다」 같은 행 고침)
+        청크마다 전체 경로를 보이고 묻는다: `c` 확정 · `q` 멈춤 · **명령**(`_CMDS` — LLM 0 · 여섯 동사 · 행 번호 규칙 · 그 자리 검사 →
+        기록 → 다시 세움 → 바뀐 수 한 줄 · 걸리면 이유 한 줄) · 그 밖의 글은 **힌트**(문서 규칙 — LLM이 다시 확인 · 힌트마다 처리 줄)
 
-줄 고침 명령은 받지 않는다 — 옛 고침 기록(`registry/structure_fixes.json` — 등록 단)은 파싱 · 재구축이 그대로 재생한다.
+행 명령은 `registry/structure_fixes.json`(등록 단)에 동사째(옛 `{role, name}` 줄은 그대로 읽힌다) · 규칙 명령은 문서 규칙 — 파싱 · 재구축이 재생한다.
 
 **덱 구조 표**(PPT — B125 ③ · B151 ④): 번호 · 슬라이드 · 제목 · 초안(placeholder) · 이어짐 · 다루는 것 · 공정(문서 표기 → 골격) · 고침
 `<번호> 공정 <a,b|없음>`(문서 표기 — 덱 글 안) · `<번호> 다루는 것 <글>` · `<번호> 제목 <글>` · `<번호> 이어짐 <슬라이드|없음>` · `개요 <글>`
@@ -19,13 +19,88 @@ from cli import _screen
 from core.build import structure as ST
 from core.llm import gateway
 
-PROMPT = "   [계속 c / 멈춤 q / 힌트 <글>] "
+PROMPT = ("   [계속 c / 멈춤 q / R<n> 제목 · 제목 아님 · 부모 R<m> · 역할 <역할> · 대상 · 붙임 R<m> · R<a>~R<b> 붙임 · 같은 단 R<m> · "
+          "꼴 부모 R<m> / 그 밖의 글은 힌트] ")
 DECK_PROMPT = ("   [계속 c / 멈춤 q / 고침 <번호> 공정 <a,b|없음> · <번호> 다루는 것 <글> · <번호> 제목 <글> · "
                "<번호> 이어짐 <슬라이드|없음> · 개요 <글>] ")
 DECK_HELP = ("   c(ㅊ)는 계속 · q(ㅂ)는 멈춤 · 고침은 「<번호> 공정 <표기>,<표기>」(덱에 적힌 표기 그대로 · 없음) · 「<번호> 다루는 것 <말>」 · "
              "「<번호> 제목 <그 슬라이드 글>」 · 「<번호> 이어짐 <앞 슬라이드 번호|없음>」 · 「개요 <한 단락>」 — 다시 친다")
-HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 그 밖의 글은 **힌트 — 문서 규칙**(사다리 고침 「가.는 9) 위다」 · 「가. 단은 대상이다」 — "
-        "LLM이 되말하고 문서 전체에 다시 세운다 / 행 고침 「R36은 제목이 아니다」) — 다시 친다")
+HELP = ("   c(ㅊ)는 이 시트 확정 · q(ㅂ)는 멈춤 · 명령(LLM 0 — 그 자리에서): 「R5 제목」 · 「R5 제목 아님」 · 「R7 부모 R5」 · 「R5 역할 묶음」 · "
+        "「R5 대상」 · 「R9 붙임 R8」 · 「R10~R60 붙임」 · 「R10 같은 단 R20」 · 「R12 꼴 부모 R3」 · 그 밖의 글은 힌트(LLM이 다시 확인) — 다시 친다")
+_R = r"[Rr](\d+)"
+#: **명령 꼴**(B216 ① — LLM 0) — 행 명령은 여섯 동사(`structure_edit.WHATS`) · 규칙 명령은 행 번호 규칙(`ladder.row_rule`)
+_CMDS = (
+    (rf"{_R}\s*~\s*{_R}\s+붙임", lambda m: {"what": "붙임", "row": min(int(m[1]), int(m[2])), "to_row": max(int(m[1]), int(m[2]))}),
+    (rf"{_R}\s+붙임\s+{_R}", lambda m: {"what": "붙임", "row": min(int(m[1]), int(m[2])), "to_row": max(int(m[1]), int(m[2]))}),
+    (rf"{_R}\s+제목\s*아님", lambda m: {"what": "제목 뺌", "row": int(m[1])}),
+    (rf"{_R}\s+제목", lambda m: {"what": "제목 더함", "row": int(m[1])}),
+    (rf"{_R}\s+부모\s+{_R}", lambda m: {"what": "부모 바꿈", "row": int(m[1]), "parent": int(m[2])}),
+    (rf"{_R}\s+역할\s+(\S+)", lambda m: {"what": "역할", "row": int(m[1]), "role": m[2]}),
+    (rf"{_R}\s+대상(?:\s+(.+))?", lambda m: {"what": "대상", "row": int(m[1]), "name": m[2]}),
+    (rf"{_R}\s+같은\s*단\s+{_R}", lambda m: {"rule": {"row": int(m[1]), "same_as_row": int(m[2])}}),
+    (rf"{_R}\s+꼴\s*부모\s+{_R}", lambda m: {"rule": {"row": int(m[1]), "parent_row": int(m[2])}}),
+)
+
+
+def parse_command(answer):
+    """구조 확인 입력 줄 → 명령(`{what, row, …}` · `{rule: {row, …}}` + `said`) · 명령 꼴이 아니면 None(힌트)."""
+    import re
+    a = answer.strip()
+    for pat, make in _CMDS:
+        m = re.fullmatch(pat, a)
+        if m:
+            return {**make(m), "said": a}
+    return None
+
+
+def _command(res, doc_id, name, cmd, reparse, frames):
+    """명령 하나(B216 ① — LLM 0) → 그 자리 검사(행 `structure_edit.replay` · 규칙 `ladder.row_rule` · `check_rules` — 파싱 · 재구축과
+    같은 함수) → 기록 → 다시 세움 → 바뀐 수 한 줄 · 걸리면 이유 한 줄 — `(res, 적용?)`."""
+    from core.build import ladder as LA, structure_edit as SE
+    from parser.struct_rule import FRAME_ROW
+    frs = res.report["structure"]["프레임"]
+    fr, labs = frs[name], frs[name].get("labels") or []
+    if "rule" in cmd:
+        y, why = LA.row_rule(cmd["rule"], labs, ST.ladder_now(doc_id))
+        mine, rb = ([], []) if why else LA.check_rules(doc_id, name, [y], set((ST.DOCL.get(doc_id) or {}).get("counts") or {})
+                                                       | {x["sig"] for x in labs if x.get("sig")})
+        why = why or (rb[0]["버림"] if rb else None)
+    else:
+        row, heads, order = cmd["row"], {h["row"]: h for h in fr.get("headings") or []}, [x["row"] for x in labs]
+        if cmd["what"] == "제목 더함":                    # 부모는 앞 제목의 부모(그 형제로 선다 — 다른 자리면 `부모` 명령)
+            up = [r for r in order[:order.index(row)] if r in heads and r != FRAME_ROW] if row in order else []
+            cmd = {**cmd, "parent": heads[up[-1]].get("parent") if up else None}
+        fx = ST.merge_fix(ST.fixes_of(doc_id).get(name, {}).get(row), {k: v for k, v in cmd.items() if k not in ("said", "row")})
+        _h, _j, took, bad = SE.replay(doc_id, name, labs, fr.get("headings") or [], fr.get("joins") or [], {row: fx})
+        why = bad[0]["버림"] if bad else (None if took else "이미 그대로")
+    if why:
+        print(f"   {cmd['said']} — 버림: {why}")
+        return res, False
+    if "rule" in cmd:
+        ST.add_doc_rules(doc_id, mine)
+        if fr.get("confirmed"):
+            ST.SUSPENDED.add((doc_id, name))
+    else:
+        ST.record_fix(doc_id, name, row, fx)
+    ST.recheck(doc_id, frs, (res.envelope or {}).get("source_path"))    # 시트마다 앞 답 위에 지금 사다리로(LLM 0)
+    new = reparse()
+    if new.ok:
+        print(f"   {cmd['said']} — 적용 · " + _delta(res, new, name, frames))
+    return new, True
+
+
+def _delta(old, new, name, frames):
+    """명령 뒤 바뀐 수 한 줄 — `목차 줄 n 바뀜 · 청크 a → b · 뒤 시트 k`(줄 = 제목이 되거나 빠지거나 부모 · 역할 · 이름이 바뀐 줄)."""
+    from cli import split_report as SR
+    fo, fn = ((r.report or {}).get("structure", {}).get("프레임") or {} for r in (old, new))
+
+    def diff(f):
+        a, b = ({h["row"]: (h.get("parent"), h.get("role"), h.get("name")) for h in (d.get(f) or {}).get("headings") or []}
+                for d in (fo, fn))
+        return sum(1 for r in set(a) | set(b) if a.get(r) != b.get(r))
+    later = sum(1 for f in frames[frames.index(name) + 1:] if diff(f))
+    return (f"목차 줄 {diff(name)} 바뀜 · 청크 {len(SR.chunks_of(old.envelope, name))} → {len(SR.chunks_of(new.envelope, name))} · "
+            f"뒤 시트 {later}")
 
 
 def weak_lines(weak):
@@ -124,9 +199,10 @@ def _reading_gate(res, doc_id, reparse):
 
 
 def _sheet_answer(answer):
-    """묻는 줄의 답 — 힌트(문서 규칙 · B130 ④ — 줄 고침 명령은 받지 않는다 · 옛 고침 기록은 재생된다)."""
+    """묻는 줄의 답 — 명령 꼴이면 명령(B216 ①) · 그 밖의 글은 힌트(문서 규칙 · B130 ④)."""
     a = answer.strip()
-    return ("hint", a) if a else None
+    cmd = parse_command(a) if a else None
+    return ("cmd", cmd) if cmd else (("hint", a) if a else None)
 
 
 def _print_sheet(name, fr, res):
@@ -171,7 +247,7 @@ def md_of(doc_id, res):
 def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
     from cli import envelope_md as EM, split_report as SR
     from parser.struct_rule import labels_hash
-    pos, said = 0, False
+    pos, said, again = 0, False, False
     while True:
         if not res.ok:                       # 고친 뒤 다시 파싱이 실패했다 — 진행하지 않는다
             print("   다시 파싱 실패 — " + "; ".join(f["reason"] for f in res.failures)[:200])
@@ -202,7 +278,12 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
             return res, True
         name = frames[pos]
         fr = st["프레임"][name]
-        _print_sheet(name, fr, res)
+        if not again:                        # 걸린 명령 뒤에는 시트를 다시 찍지 않는다(이유 줄 바로 아래에서 다시 친다)
+            _print_sheet(name, fr, res)
+            for h in (fr.get("answer") or {}).get("hint_status") or []:
+                if h.get("line"):
+                    print("   " + h["line"])          # 힌트마다 처리 줄 — 확정 물음 바로 위 (B216 ②)
+        again = False
         md = EM.write(doc_id, res.envelope)
         got = _screen.answer(PROMPT, "go", eof=True, other=_sheet_answer, hint=HELP)
         if got is False:
@@ -216,7 +297,11 @@ def _gate_loop(res, doc_id, reparse, ask, layers, coord_in):
                   + (f" · 다음 시트 '{frames[pos + 1]}'" if pos + 1 < len(frames) else ""))
             pos += 1
             continue
-        _kind, val = got
+        kind, val = got
+        if kind == "cmd":
+            res, done = _command(res, doc_id, name, val, reparse, frames)
+            again = not done
+            continue
         ST.add_doc_hint(doc_id, val)         # 힌트는 문서 규칙 — 그 문서의 모든 시트에 (B130 ④)
         hs = ST.doc_state(doc_id)["hints"]
         if fr.get("confirmed"):              # 확정한 시트에 다시 힌트 — 이 고리에서는 확정을 비켜 둔다(B127 ③)
