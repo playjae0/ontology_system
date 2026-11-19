@@ -488,6 +488,9 @@ def run_pipeline(mod, schema, doc, label):
         return None
 
     show("G51  파서 전 구간이 예외 없이 완주 (normalizer·tagger·envelope·validator)", True)
+    up = normalizer_mod.coord_up_line(((res.report or {}).get("normalizer") or {}).get("coord_up"))
+    if up:
+        print(f"      [보고] {up}")                             # 상위로 붙는 것은 조용하지 않게 (B217 ②)
     fails = {f["kind"] for f in res.failures}
     # **구조 미확정은 표시이지 실패가 아니다**(D-5) — 문서는 들어가고 큐가 뜬다.
     # 관문이 이것으로 막으면 지도 폴백을 쓰는 문서는 영영 등록되지 못한다.

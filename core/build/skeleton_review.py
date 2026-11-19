@@ -93,7 +93,7 @@ def review(env, outline=None):
     from core.build.build_coord import coord_unjudged
     from core.state.bootstrap import coord_layer, load_config, open_graph
     from parser.namefold import key
-    from parser.normalizer import coord_refs
+    from parser.normalizer import coord_refs, coord_up
     lay = coord_layer()
     b = Builder(open_graph(lay), load_config(lay), None, env.get("doc_id"), lay)
     b.doc_coord = env.get("doc_coord")
@@ -101,11 +101,10 @@ def review(env, outline=None):
     pair_rows = coord_scan.gate(env, b)
     sk = _Sk(b.for_category(_coord()).g)
     table = env.get("payload_kind") == "table"
-    surf, found, unj, llm, low = set(), set(), set(), {}, {}
+    surf, found, unj, llm = set(), set(), set(), {}
+    low = dict(coord_up(env.get("records"))) if table else {}
     for p in (env.get("records") if table else env.get("chunks")) or []:
         refs = coord_refs(p.get("process_ref"))
-        if not refs and table and p.get("process_group"):
-            low[p["process_group"]] = low.get(p["process_group"], 0) + 1
         m = p.get("meta") or {}
         for s in refs:
             surf.add(key(s))

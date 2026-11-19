@@ -61,6 +61,10 @@ def cmd_report(args):
           f"임베딩→판정 {su['임베딩']} · 겹침→판정 {su['겹침']} · 신규 {su['신규']} · "
           f"불확실 {su['불확실']} · 보류 {su['보류']} · LLM 호출 {su['호출']} · "
           f"토큰 {su['토큰']}")
+    from parser.normalizer import coord_up_line   # 좌표 상위로 붙은 행(대장의 anchor lowres — B217 ②)
+    _up = Counter(r.get("surface") for r in rows if r.get("role") == "anchor" and r.get("verdict") == "lowres")
+    if coord_up_line(sorted(_up.items())):
+        print("  " + coord_up_line(sorted(_up.items())))
     for ln in diag:                              # 머리 → 원인 묶음 → 목차 나무 (B149)
         print(ln)
     from cli import coord_table                  # 좌표마다 한 줄 — 인입 그룹 끝과 같은 함수(B176 ②)

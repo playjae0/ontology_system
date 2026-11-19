@@ -545,7 +545,10 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
         else list(exp.get("multi_value_fields") or []),
         seps=exp.get("multi_value_seps") or (
             [exp["multi_value_sep"]] if exp.get("multi_value_sep") else None),
-        groups=exp.get("multi_value_groups") or ())                     # 짝 묶음(B211 ②)
+        groups=exp.get("multi_value_groups") or (),                     # 짝 묶음(B211 ②)
+        fill=exp.get("fill_down"))                                       # 빈 칸 이어받기(B217 ②)
+    if normalizer.coord_up(pieces):
+        rep["coord_up"] = normalizer.coord_up(pieces)                    # 좌표 상위로 붙는 행 — 관문 · 보고 (B217 ②)
     res.report["normalizer"] = rep
     pieces = mark_roles(pieces, sheet_roles)    # `ref` 시트의 조각에 표시를 단다
     pieces = _drop_images(res, pieces, no_images)

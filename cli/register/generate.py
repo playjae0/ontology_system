@@ -281,6 +281,9 @@ def _cmd_generate_guard(doc_type, layer, samples, revise):
     # 그 단어들이 표본 목록으로 들어오고, 지금까지는 reader가 「지원하지 않는 포맷」으로
     # 죽거나 조용히 빠졌다 — 어느 쪽이든 사람은 «힌트를 줬다»고 믿는다.
     bad = [s for s in samples if not Path(s).is_file()]
+    dash = [s for s in bad if str(s)[:1] in "—–−"]
+    if dash:                                                              # [사용법] 긴 대시로 바뀐 옵션 (B217 ④)
+        raise SystemExit(f"[생성] 대시가 바뀌었다 — `--{str(dash[0]).lstrip('—–−-')}`으로 친다: {dash}")
     if bad:
         # **이것은 상태가 아니라 사용법이다**(B77 ③) — 시스템의 상태는 멀쩡하고
         # 사람이 인자를 잘못 쳤다. 근거 자리가 없는 것이 아니라 **없는 것이 맞다**:

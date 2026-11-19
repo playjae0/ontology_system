@@ -74,6 +74,7 @@ ADAPTER = {
         # "multi_value_seps": [",", "/", "\n"],   # D-12 기본 닫힌 목록
         # "multi_value_fields": [],   # 한 칸에 복수값이 오는 필드
         # "required": [],             # 자기완결 필수 필드 — 결측이면 문서 단위 실패(C14)
+        # "fill_down": {"fields": [], "scope": []},   # 빈 칸을 같은 상위(scope 값) 안 위 행 값으로 — 문답이 정한 열만
     },
 }
 
@@ -125,7 +126,8 @@ def extract(raw) -> list[dict]:
             [r for _n, r in rows],
             # **없으면 빈 집합이다**(B76 ④ⓑ) — `None`을 넘기면 공용 코어가
             # 「상동 없음」이 아니라 「검사할 수 없음」으로 받아 죽는다.
-            marks={exp["ditto_mark"]} if exp.get("ditto_mark") else set())
+            marks={exp["ditto_mark"]} if exp.get("ditto_mark") else set(),
+            blank=(exp.get("fill_down") or {}).get("fields") or (), scope=(exp.get("fill_down") or {}).get("scope") or ())
         for (row, _r0), rec in zip(rows, recs or []):
             miss = [c for c in (exp.get("required") or []) if rec.get(c, "") == ""]
             if miss:

@@ -74,6 +74,12 @@ INTERVIEW_SCHEMA = {
                            "context_type": {"type": ["string", "null"]}},
             "required": ["column", "role", "attach", "store_as", "context_type"],
             "additionalProperties": False}},
+        # **열마다 확인**(B217 ① — 변형 · 개정 · 스키마만: 기억 열을 포함한 모든 열에 확인 · 수정 제안 + 근거 한 줄 · 그 밖이면 빈 목록)
+        "checks": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"column": {"type": "string"}, "verdict": {"type": "string", "enum": ["확인", "수정"]},
+                           "proposal": {"type": ["string", "null"]}, "why": {"type": "string"}},
+            "required": ["column", "verdict", "proposal", "why"], "additionalProperties": False}},
         "questions": {"type": "array", "items": {
             "type": "object",
             "properties": {"q": {"type": "string"},
@@ -83,11 +89,65 @@ INTERVIEW_SCHEMA = {
             "required": ["q", "options", "importance"],
             "additionalProperties": False}},
     },
-    "required": ["progress", "understanding", "reading", "columns", "questions"],
+    "required": ["progress", "understanding", "reading", "columns", "checks", "questions"],
     "additionalProperties": False,
 }
 #: 문답 열 표의 「뺀다」 role(지시문 1.3 — 맞출 칸 없음)
 UNMAPPABLE = "unmappable"
+#: 열 기억 어긋남 문턱 — 기억과 이번 표본의 빈 칸 비율 차가 이 값 이상이면 묻는다(사내 손잡이 `memory_blank_gap` · 창작 기본값)
+MEMORY_BLANK_GAP = 0.1
+#: 좌표 · 필수 열 빈 칸의 처분 셋(B217 ② — 앞의 둘은 코드가 빈 칸 꼴로 제안 · 셋째는 사람이 고를 때만)
+FILL = ("이어받기", "필수", "상위로 붙임")
+
+
+def mismatches(mem):
+    """**어긋남은 코드가 판정한다**(B217 ① — LLM에 맡기지 않는다) — 기억 열마다 `{헤더: 이유(수)}`: anchor · 필수 열에 빈 칸이 생겼다 ·
+    빈 칸 비율 차가 문턱 이상 · 고유값 수가 2배 이상 · 기준 양식의 헤더가 표본에 없다."""
+    out, seen, old = {}, (mem or {}).get("seen") or {}, (mem or {}).get("old") or {}
+    for h, m in ((mem or {}).get("cols") or {}).items():
+        s, o = seen.get(h), old.get(h) or {}
+        if s is None:
+            if h in (mem.get("base") or []):
+                out[h] = "기억의 헤더가 표본에 없다"
+            continue
+        must = "anchor" if str(m.get("role") or "").lower() == "anchor" else "필수" if m.get("field") in (mem.get("required") or []) else None
+        if must and s["blank"] > 0 and not o.get("blank"):
+            out[h] = f"{must} 열에 빈 칸이 생겼다(빈 칸 비율 {o.get('blank', 0)} → {s['blank']})"
+        elif o and abs(s["blank"] - o.get("blank", 0)) >= MEMORY_BLANK_GAP:
+            out[h] = f"빈 칸 비율 {o.get('blank', 0)} → {s['blank']}"
+        elif o.get("uniq") and s["uniq"] and max(o["uniq"], s["uniq"]) >= 2 * min(o["uniq"], s["uniq"]):
+            out[h] = f"고유값 수 {o['uniq']} → {s['uniq']}"
+    return out
+
+
+def mismatch_questions(mem, bad):
+    """어긋난 열마다 질문 하나(코드가 만든다 · 중요도 높음) — 빈 칸이 있는 열이면 처분 셋(제안이 먼저)."""
+    qs = []
+    for h, why in bad.items():
+        s = ((mem or {}).get("seen") or {}).get(h) or {}
+        if s.get("fill"):
+            opts = [f"{s['fill']} (제안)"] + [x for x in FILL if x != s["fill"]]
+            q = f"'{h}' — 기억과 어긋남: {why} · 빈 칸을 어떻게 하나(같은 상위 '{s.get('scope') or '시트 전체'}' 안)"
+        else:
+            opts, q = ["기억 그대로", "다르게 읽는다(교정에 적는다)", "읽지 않음"], f"'{h}' — 기억과 어긋남: {why} · 이 표본에서 어떻게 읽나"
+        qs.append({"q": q, "options": opts, "importance": "높음 — 기억과 어긋남(코드 판정)"})
+    return qs
+
+
+def check_lines(mem, bad, checks):
+    """**열마다 한 줄**(B217 ①) — ✔ 기억 그대로 · ✎ 제안(LLM 수정 · 기억에 없는 열) · ⚠ 어긋남 + 기억 · 관찰 · LLM 확인(없으면 「확인 없음」)."""
+    by = {c.get("column"): c for c in checks or []}
+    cols, seen, old = mem.get("cols") or {}, mem.get("seen") or {}, mem.get("old") or {}
+    out = ["   열 확인 — 기억 · 이번 표본 관찰(빈 칸 비율 · 고유값 수 · 값 예) · LLM 확인"]
+    for h in mem.get("headers") or []:
+        m, s, o, c = cols.get(h) or {}, seen.get(h) or {}, old.get(h), by.get(h)
+        mark = "⚠" if h in bad else "✎" if not m or (c or {}).get("verdict") == "수정" else "✔"
+        out.append(f"   {mark} {_screen.pad(_screen.cut(h, 17), 18)}기억 {m.get('role') or '—'}/{m.get('field') or '—'}"
+                   + (f"(빈 {o['blank']} · 고유 {o['uniq']})" if o else "")
+                   + f" | 관찰 빈 {s.get('blank', '—')} · 고유 {s.get('uniq', '—')} · 예 {', '.join(repr(v) for v in s.get('eg') or [])}"
+                   + (f" — 어긋남: {bad[h]}" if h in bad else "")
+                   + (f" · LLM {c['verdict']}{': ' + c['proposal'] if c.get('proposal') else ''} — {c.get('why') or ''}" if c else " · 확인 없음"))
+    return out
 
 
 def _mem_of(c, mem):
@@ -253,7 +313,7 @@ def finalize(pkg, history, context=None):
                    retry=lambda: _summarize(pkg, history, context))
 
 
-def _interview_round(pkg, history, context=None, memory=None):
+def _interview_round(pkg, history, context=None, memory=None, retry=None):
     """문답 1라운드 — 이해 요약과 질문을 받는다. **종료를 결정하지 않는다.**
 
     `context`는 **생성 전이 아니라 실패 뒤에 열 때** 오는 재료다(B50) — 기계 관문의
@@ -283,7 +343,8 @@ def _interview_round(pkg, history, context=None, memory=None):
              {"role": "user", "content": json.dumps(
                  {"입력_패키지": pkg, "지난_문답": fresh + history,
                   **({"기계_관문_실패": context} if context else {}),
-                  **({"열_기억": memory} if memory else {})},          # 승인된 양식의 열 판정 · 확정 문답 (B215 ② — 메시지에만)
+                  **({"열_기억": memory} if memory else {}),          # 승인된 양식의 열 판정 · 확정 문답 (B215 ② — 메시지에만)
+                  **({"다시_묻는_까닭": retry} if retry else {})},
                  ensure_ascii=False)}]
     _sent_size(convo, f"문답 라운드 {len(history) + 1}")              # mock도 같은 크기 줄(B210 ② — 보낼 것을 잰다)
     if gateway.use_mock():
@@ -314,6 +375,9 @@ def _interview_round(pkg, history, context=None, memory=None):
                 "columns": [{"column": c, "role": r, "attach": None if r == UNMAPPABLE else cols[0],
                              "store_as": None if r == UNMAPPABLE else c, "context_type": "행" if r == "context" else None}
                             for c, r in zip(cols, roles)],
+                "checks": [{"column": c, "verdict": "확인", "proposal": None,
+                            "why": "기억 그대로" if c in (memory.get("cols") or {}) else "새 헤더 — 관찰로 읽는다"}
+                           for c in cols] if memory else [],
                 "progress": {"columns": len(cols), "decided": len(fixes),
                              "undecided": max(0, len(cols) - len(fixes)),
                              "by_role": "(mock — 규칙 요약이라 role 배정이 없다)"},
@@ -402,9 +466,14 @@ def _interview(pkg, on_round=None, context=None, memory=None):
             print(f"     · {c}")
     while True:
         out = _interview_round(pkg, history, context, memory)
+        gap = [h for h in (memory or {}).get("headers") or [] if h not in {c.get("column") for c in out.get("checks") or []}]
+        if gap:                                                       # 열 확인이 빠졌다 — 한 번 다시 묻는다 (B217 ①)
+            out = _interview_round(pkg, history, context, memory, retry=f"checks에 열 {gap}이 없다 — 모든 열에 한 번씩") or out
         n = len(history) + 1
+        bad = mismatches(memory) if memory and n == 1 else {}
         if n == 1:
             out["columns"] = prefill(out.get("columns"), memory)      # 첫 라운드 — 기억 열은 코드가 채운다 (B215 ②)
+            out["questions"] = mismatch_questions(memory, bad) + list(out.get("questions") or [])   # 어긋남 질문은 코드가 (B217 ①)
         pg = out.get("progress") or {}
         # **진행 1줄**(B43 ⑥) — 「이제 진행해도 되나」의 판단 근거다.
         if pg:
@@ -416,6 +485,8 @@ def _interview(pkg, on_round=None, context=None, memory=None):
             print(f"\n[라운드 {n}]")
         for ln in cols_lines(out.get("columns"), (history[-1].get("columns") or []) if history else None, memory):
             print(ln)                         # 살아남은 열 표 · 제외 한 줄(B206 ④) · 기억 표시(B215 ②)
+        for ln in check_lines(memory, bad, out.get("checks")) if memory and n == 1 else []:
+            print(ln)                         # 열마다 기억 · 관찰 · LLM 확인 (B217 ①)
         print("이해 요약")
         for x in out.get("reading") or []:    # 열마다 한 줄 (B215 ③)
             print(f"   {x['column']} {_screen.paint(x['header'], 'head')}: {x['how']}")

@@ -359,21 +359,34 @@ def check_anchor_columns(schema, fields, pieces):
                 if isinstance(p.get(name), (str, int, float)) and p.get(name) != ""]
         if not vals:
             continue
-        hit, _by = tagger.skeleton_hits(vals, [n for n in nodes if n.get("category") == cat])
+        pool = [n for n in nodes if n.get("category") == cat]
+        hit, _by = tagger.skeleton_hits(vals, pool)
         seen.append(f"{name} {len(hit)}/{len(vals)}")
         if not hit:
-            bad.append((name, cat, len(vals), not spec.get("target_category")))
+            bad.append((name, cat, len(vals), not spec.get("target_category"), _missed(vals, hit, pool)))
         elif len(hit) < len(vals):
-            part.append((name, len(vals) - len(hit), len(vals)))
+            part.append((name, len(vals) - len(hit), len(vals), _missed(vals, hit, pool)))
     detail = [f"anchor 열 '{name}'의 값 0/{n}이 {cat} 목록에 있다"
               + (" (target_category 생략 — 좌표 카테고리)" if omitted else "")
-              + " — `target_category`를 그 값의 골격 카테고리로(공정이 아니면 반드시 적는다) · 골격이 없으면 골격부터"
-              for name, cat, n, omitted in bad]
+              + " — `target_category`를 그 값의 골격 카테고리로(공정이 아니면 반드시 적는다) · 골격이 없으면 골격부터 · " + why
+              for name, cat, n, omitted, why in bad]
     ok = show("G4K  anchor 열의 값이 대상 골격 목록에 하나 이상", not bad,
               " ‖ ".join(detail) if bad else " · ".join(seen))
-    for name, k, n in part:
-        print(f"      [보고] anchor 열 '{name}' {k}/{n}이 목록 밖 — 별칭 후보")
+    for name, k, n, why in part:
+        print(f"      [보고] anchor 열 '{name}' {k}/{n}이 목록 밖 — 별칭 후보 · {why}")
     return ok
+
+
+def _missed(vals, hit, pool):
+    """G4K 문면(B217 ③) — 빗나간 값 앞 3(`repr` — 숨은 글자가 보이게) · 대조한 목록의 자리 · 시각 · 그 카테고리 노드 수 · 이름 앞 5."""
+    import datetime
+    got, miss = set(hit), []
+    for v in vals:
+        if " ".join(str(v).split()) not in got and v not in miss:
+            miss.append(v)
+    at = datetime.datetime.fromtimestamp(Path(tables.CLOSED_LIST).stat().st_mtime).isoformat(timespec="seconds")
+    return (f"빗나간 값 {', '.join(repr(v) for v in miss[:3])} · 대조 목록 {tables.CLOSED_LIST}({at}) · 노드 {len(pool)} — "
+            + (", ".join(str(n.get("name")) for n in pool[:5]) or "없음"))
 
 
 def check_coord_pairs(schema, pieces, nodes):

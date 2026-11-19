@@ -126,7 +126,8 @@ def _keep_prior(prior, counts=None):
         print(f"     · {b.get('at', '?')[:19]} · 표본 "
               f"{[Path(x).name for x in (b.get('samples') or [])]} · "
               f"{_n(b)}라운드")
-    go = _screen.answer(f"   이어갈까? [Y/n]  ({DROP_LINE}) ", "Yes", eof=None)
+    go = _screen.answer(f"   이전 문답 {n}라운드(묶음 {len(prior)})가 있다 — 이번 생성에 넣을까? "
+                        f"[Y 넣고 진행 / n 빼고 진행 — 지우지 않음 · 열 기억(열 표)은 그대로] ", "Yes", eof=None)
     if go is None:
         print("   (비대화형 — **이어간다.** 버리려면 --drop-interview)")
         return True
@@ -298,6 +299,85 @@ def memory(doc_type, samples):
                 conf[r["label"]].append(w)
     near = V.nearest(dt, samples[0]) if samples else None            # 표본 헤더는 가장 가까운 변형의 header_row로(헤더 이름 한 함수)
     exp = (scan_mod._load(near[1]).ADAPTER.get("expects") or {}) if near else {}
-    heads = preflight.header_labels(reader.read(str(samples[0])), exp.get("header_row"), exp) if samples else []
+    raw = reader.read(str(samples[0])) if samples else None
+    heads = preflight.header_labels(raw, exp.get("header_row"), exp) if samples else []
     return {"cols": cols, "conflicts": {h: ws for h, ws in conf.items() if len(ws) > 1}, "decisions": V._decisions(dt),
-            "headers": heads}
+            "headers": heads, **_observe(dt, near, exp, raw, cols)}
+
+
+def _observe(dt, near, exp, raw, cols):
+    """**기억 · 관찰**(B217 ①) — `old` 기억 열의 그 양식 표본 통계 · `seen` 이번 표본의 열마다 빈 칸 비율 · 고유값 수 · 값 예 2 · 빈 칸
+    꼴의 처분 제안(같은 상위 안에서 값 있는 행 뒤에만 → 이어받기 · 상위 첫 행부터 → 필수) · `base` 기준 양식(가장 가까운 변형)의 헤더 ·
+    `required`(그 어댑터). 양쪽 다 같은 함수(`_table` — 병합을 편 칸)로 잰다 · 그 양식의 표본 파일이 없으면 저장된 열 프로파일."""
+    from core.state import registry
+    from cli import scan as scan_mod
+    from cli.register import ledger, variant as V
+    from parser import reader
+    from parser.normalizer import COORD_FIELDS
+    old, base = {}, []
+    for name, v in registry.variants_of(dt):
+        w = dt if name == registry.BASE_VARIANT else V.work(dt, name)
+        rows = ledger.read_ledger(w)
+        base += [r["label"] for r in rows if near and name == near[0] and r.get("label")]
+        smp = next(iter(_samples_of(w)), None)
+        if smp and Path(smp).is_file():
+            at, vals, rs = _table(reader.read(smp), scan_mod._load(registry.at(v["adapter"])).ADAPTER.get("expects") or {})
+            for h, c in at.items():
+                old.setdefault(h, _stat(vals.get(c) or {}, rs))
+            continue
+        pr = {c: x for s in ledger._profiles(w) for c, x in (s.get("열") or {}).items()}       # 표본 파일이 없다 — 저장된 프로파일
+        for r in rows:
+            if r.get("label") and isinstance(r.get("col"), str) and r["col"] in pr:
+                old.setdefault(r["label"], {"blank": pr[r["col"]]["빈셀비율"], "uniq": pr[r["col"]]["고유값수"]})
+    at, vals, rs = _table(raw, exp)
+    full = [c for c in sorted(at.values(), key=lambda c: (len(c), c)) if len(vals.get(c) or {}) == len(rs)]
+    name_of, seen = {c: h for h, c in at.items()}, {}
+    for h, c in at.items():
+        xs = vals.get(c) or {}
+        up = next((g for g, m in cols.items() if m.get("field") == COORD_FIELDS[1] and g in at), None) \
+            if (cols.get(h) or {}).get("field") == COORD_FIELDS[0] else \
+            next((name_of[x] for x in reversed(full) if (len(x), x) < (len(c), c)), None)
+        seen[h] = {**_stat(xs, rs), "col": c, "scope": up,
+                   "fill": _fill_kind(rs, xs, vals.get(at[up]) if up else None) if len(xs) < len(rs) else None}
+    return {"old": old, "seen": seen, "base": base, "required": list(exp.get("required") or [])}
+
+
+def _samples_of(w):
+    p = REVIEW / w / "input_package.json"
+    try:
+        return list(((json.loads(p.read_text(encoding="utf-8")).get("human") or {}).get("samples")) or []) if p.exists() else []
+    except (OSError, ValueError):
+        return []
+
+
+def _table(raw, exp):
+    """표본 한 시트의 열마다 값 `(헤더 → 열문자, {열문자: {행: 값}}, 데이터 행)` — 병합은 편다(어댑터가 읽는 칸 그대로) · 정수 · 범위 헤더."""
+    from parser import normalizer, preflight, profile
+    sh = preflight.sheet_of(raw, exp)[0] if raw else None
+    if not sh:
+        return {}, {}, []
+    hr = exp.get("header_row") or 1
+    sh = {**sh, "cells": normalizer.expand_merged(sh)}
+    names = (preflight.merged_names(sh, hr) if preflight.is_range(hr) else
+             {normalizer._col(c): preflight.norm_label(sh["cells"].get(f"{normalizer._col(c)}{hr}"))
+              for c in range(1, (sh.get("max_col") or 0) + 1)})
+    vals = {c: dict(v) for c, v in profile.columns(sh, header_row=hr[1] if preflight.is_range(hr) else hr).items()}
+    return {h: c for c, h in names.items() if h}, vals, sorted({r for v in vals.values() for r in v})
+
+
+def _stat(xs, rows):
+    return {"blank": round(1 - len(xs) / len(rows), 2) if rows else 0.0, "uniq": len(set(xs.values())),
+            "eg": list(dict.fromkeys(xs.values()))[:2]}
+
+
+def _fill_kind(rows, xs, ss):
+    """빈 칸 꼴 → 처분 제안 — 상위(`ss`) 안에서 값 있는 행 뒤에만 비면 「이어받기」 · 상위의 첫 행부터 비면 「필수」(원본 확인)."""
+    cur, have, first = object(), False, 0
+    for r in rows:
+        if ss and r in ss and ss[r] != cur:
+            cur, have = ss[r], False
+        if r in xs:
+            have = True
+        elif not have:
+            first += 1
+    return "필수" if first else "이어받기"

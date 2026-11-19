@@ -192,6 +192,10 @@ def _step_gate(i, detail="", prose=False, ask=True, body=None, saved=False, ask_
         _screen.say(("\n" if ask else "") + f"── [{seq.index(i) + 1}/{len(seq)}] {name}"
                     + (f" — {detail}" if detail else ""), "head")
         _screen.say(_stage_end(), "aux")
+    if i == 4:                                # 판정 끝 — 좌표가 상위로 붙은 행은 조용하지 않게 (B217 ②)
+        from parser.normalizer import coord_up_line
+        if coord_up_line(_MARK.get("up")):
+            _screen.say("   " + coord_up_line(_MARK.pop("up")), "warn")
     for ln in body or []:                     # 머리 아래 표(청크 목차 — B112 ③) — 묻기 전에
         print(ln)
     if not ask:
@@ -483,6 +487,7 @@ def provisional_cells(env, step=False):
         from core.state.bootstrap import coord_layer
         body.append(f"   LLM이 같다고 한 표기(보이기만 — 틀렸으면 python run.py ops learn-reject {coord_layer()} <표기> --actor <이름>):")
         body += [f"     {x['from']} → {x['to']} · 행 {x['rows']}" for x in rv["llm_same"]]
+    _MARK["up"] = rv["lowres"]                       # 판정 끝 줄이 같은 수를 다시 말한다 (B217 ②)
     if step and rv["lowres"]:
         body += _screen.items("   ref 빈 행(상위로 붙음 · 보이기만): ", [f"{up} {n}행" for up, n in rv["lowres"]])
     return provisional.preview_text(rv["plan"]), body
