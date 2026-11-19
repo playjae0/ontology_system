@@ -92,16 +92,21 @@ def _body_answers(body):
             for n in body.get("needs") or []]
 
 
+def _hs(body, kind="행", rules=()):
+    """힌트 처리 칸(B216 ② — 힌트마다 한 번)."""
+    return [{"hint": i, "kind": kind, "edits": [], "rules": list(rules), "why": None} for i in range(1, len(body.get("hints") or []) + 1)]
+
+
 def _structure(body):
     """가짜 ⑪ — 사다리는 코드 사다리 · 시트 확인은 시트 E만 고침(힌트가 있으면 둘째 판) · 그 밖은 고침 0 · 판단 필요는 본문 답."""
     if body.get("task") == "ladder":
         return _ladder(body)
     if body["frame"] != E:
-        return {"answers": _body_answers(body), "edits": [], "rules": []}
+        return {"answers": _body_answers(body), "edits": [], "rules": [], "hint_status": _hs(body)}
     eds = [_E(e) for e in EDITS[:1]] if not body.get("hints") else [_E(e) for e in EDITS]
     if any(AGAIN in h for h in body.get("hints") or []):      # 확정한 시트를 다시 연 힌트(B127 ③) — 새 답
         eds.append(_E({"row": 5, "what": "제목 뺌", "why": WHY["다시"]}))
-    return {"answers": _body_answers(body), "edits": eds, "rules": []}
+    return {"answers": _body_answers(body), "edits": eds, "rules": [], "hint_status": _hs(body)}
 
 
 with contextlib.redirect_stdout(io.StringIO()):
@@ -211,8 +216,9 @@ def _rule_llm(body):
     if body.get("task") == "ladder":
         return _ladder(body)
     said = [{"shape": "가.", "role": "대상", "parent_shape": None, "said": "'가.' 줄은 대상의 단"}]
-    return {"answers": _body_answers(body), "edits": [],
-            "rules": said if any(RULE_HINT in h for h in body.get("hints") or []) else []}
+    hit = any(RULE_HINT in h for h in body.get("hints") or [])
+    return {"answers": _body_answers(body), "edits": [], "rules": said if hit else [],
+            "hint_status": _hs(body, "규칙", [1] if hit else [])}
 
 
 def _parse2(confirmed=None):
@@ -234,11 +240,11 @@ _s2calls = [b for p_, b in CALLS if p_ == "structure" and b.get("frame") == S2]
 # 기대 변경(B148 ① — 사다리 고침은 역할만 건다 · 카테고리 칸 0 · 카테고리는 그래프 단계의 목차 노드화)
 _tgt = {f: {h["row"]: (h.get("role"), h.get("name")) for h in _fr9[f]["headings"]} for f in (S1, S2)}
 show("ⓔ 문서 규칙 — 첫 시트 힌트 → 사다리 고침(서명 가. · 대상) → 그 문서의 「가.」 줄 전부(둘째 시트도 첫 호출부터 힌트) · "
-     "화면에 적용 수 · 묻는 줄에 줄 고침 명령 0",
+     "화면에 적용 수",
      _go and _tgt[S1].get(1) == ("대상", "공급부") and _tgt[S1].get(4) == ("대상", "적층부")
      and _tgt[S2].get(1) == ("대상", "이송부") and _tgt[S2].get(3) == ("대상", "반전부")
      and _s2calls and RULE_HINT in (_s2calls[-1].get("hints") or [])          # 힌트 뒤 둘째 시트의 첫 호출부터(파싱 첫 판은 힌트 전)
-     and "적용 2줄 / 그 서명 전체 2줄" in _scr and _prompts and not any("고침" in x for x in _prompts),
+     and "적용 2줄 / 그 서명 전체 2줄" in _scr,
      f"S1 {_tgt[S1]} · S2 {_tgt[S2]} · S2 호출 {len(_s2calls)} · 힌트 {[b.get('hints') for b in _s2calls]} · 적용 줄 "
      f"{[ln.strip()[:60] for ln in _scr.splitlines() if '사다리 고침' in ln][:2]} · 묻는 줄 {_prompts[:1]}")
 struct_map.invalidate(DID2)
@@ -432,6 +438,108 @@ show("B200 ⓪-1 형제 제목 넷(부모 없음) + 마지막 제목 아래 판�
 _tln = _toc(_frk(need=False))
 show("B200 ⓪-2 판단 필요를 빼면 그 제목도 접힌다 — 「외 3줄(R11~R13)」(접기 그대로)",
      any("외 3줄" in ln and "11" in ln and "13" in ln for ln in _tln) and not any("13행 " in ln for ln in _tln), " / ".join(_tln))
+
+# ────────────────────────────────────────────────────────────── B216 명령은 코드가 바로 · 힌트마다 처리 줄 · 행 번호 규칙
+print("\n■ B216 구조 확인 — 명령(LLM 0) · 범위 붙임 · 행 번호 규칙 · 힌트 처리 줄 · 재생")
+DID3, A3, B3, C3 = "B216C", "공급 사양", "검사 사양", "세부 사양"
+_p3 = TMP / f"{DID3}.xlsx"
+_wb = Workbook()
+_wb.remove(_wb.active)
+for _n, _rows in ((A3, ["가. 공급부", "공급부는 소재를 넣는다.", "(1) 투입 기준", "투입은 매분 한다.", "1) 속도", "속도는 50이다.", "나. 적층부",
+                        "보조 기준", "보조 본문이다.", "1) 장력", "장력은 30이다.", "다. 검사부", "검사 본문이다."]),
+                  (B3, ["가. 외관", "외관 본문이다.", "(1) 표면", "표면 본문이다.", "1) 흠", "흠 본문이다.", "A. 세부", "세부 본문이다."]),
+                  (C3, [x for k in range(1, 16) for x in [f"{k}) 항목{k}"] + [f"항목{k}의 {j}번째 기준이다." for j in range(1, 6)]])):
+    _ws = _wb.create_sheet(title=_n)
+    for _i, _v in enumerate(_rows, 1):
+        _ws.cell(row=_i, column=1, value=_v)
+_wb.save(_p3)
+_RR = lambda **k: {"shape": None, "row": None, "parent_row": None, "same_as_row": None, "role": None, "parent_shape": None,
+                   "scope": "꼴 전부", "said": "행 번호 규칙", **k}
+
+
+def _llm216(body):
+    """가짜 ⑪ — 첫 시트는 「1)은 (1)과 같은 단」 · 둘째 시트는 「A.의 부모 꼴은 가.」(행 번호로 · ⓓ)."""
+    if body.get("task") == "ladder":
+        return _ladder(body)
+    rules = {A3: [_RR(row=5, same_as_row=3)], B3: [_RR(row=7, parent_row=1)]}.get(body["frame"], [])
+    t = {e.get("row"): e for e in body.get("toc") or []}                  # 판단 필요는 초안 그대로
+    ans = [{"row": n["row"], "heading": "toc" in t.get(n["row"], {}), "parent": t.get(n["row"], {}).get("parent"), "role": None,
+            "name": None, "why": "초안 그대로"} for n in body.get("needs") or []]
+    return {"answers": ans, "edits": [], "rules": rules, "hint_status": _hs(body)}
+
+
+def _parse3(did=DID3, confirmed=None):
+    return pipeline.parse(BX, did, str(_p3), closed_list=[], sheet_roles={A3: "prose", B3: "prose", C3: "prose"}, structure=ST.structurer(),
+                          structure_confirmed=confirmed, structure_fixes=ST.fixes_of(did))
+
+
+_par = lambda r, f: {h["row"]: h.get("parent") for h in r.report["structure"]["프레임"][f]["headings"]}
+struct_map.invalidate(DID3)
+with Live(by={"structure": _llm216}):
+    _r30 = _parse3()
+_fr30 = _r30.report["structure"]["프레임"]
+show("B216 ⓓ 행 번호 규칙 — {row, same_as_row} · {row, parent_row} 답이 서명으로 바뀌어 문서 전체 · 뒤 시트에(1)은 (1)의 형제 · A.는 가. 아래)",
+     _par(_r30, A3).get(5) == 1 and _par(_r30, B3).get(5) == 1 and _par(_r30, B3).get(7) == 1
+     and any(x.get("shape") == "9)" and x.get("same_as") == "(9)" for x in _fr30[A3]["rules"])
+     and any(x.get("shape") == "A." and x.get("parent_shape") == "가." for x in _fr30[B3]["rules"]),
+     f"A {_par(_r30, A3)} · B {_par(_r30, B3)} · 규칙 {[(x.get('shape'), x.get('same_as'), x.get('parent_shape')) for x in _fr30[A3]['rules'] + _fr30[B3]['rules']]}")
+_cmds = ["R8 제목", "R8 부모 R7", "R199 제목", "R5 꼴 부모 R3", "R5 같은 단 R3", "R3 제목 아님", "R1 대상", "R7 역할 묶음",
+         "c", "c", "R1~R90 붙임", "c"]
+_it = iter(_cmds)
+_screen.ask = lambda prompt: next(_it)
+_buf = io.StringIO()
+CALLS.clear()
+with Live(by={"structure": _llm216}), contextlib.redirect_stdout(_buf):
+    _r31, _go = SS.gate(_r30, DID3, lambda: _parse3(confirmed=ST.confirmed_of(DID3)), layers=["process"])
+_screen.ask = _ask0
+_cmds = [c for c in _cmds if c != "c"]
+_out = {c: next((ln.strip() for ln in _buf.getvalue().splitlines() if ln.strip().startswith(c + " — ")), "") for c in _cmds}
+_fx, _fc = ST.fixes_of(DID3)[A3], ST.fixes_of(DID3)[C3]
+_nums = re.search(r"청크 (\d+) → (\d+)", _out["R1~R90 붙임"])
+_one = [c for c in split_report.chunks_of(_r31.envelope, C3) if "항목1의" in c["text"] and "항목15의" in c["text"]]
+show("B216 ⓐ 명령 — 제목 · 부모 · 범위 붙임 · 꼴 부모 · 같은 단 · 제목 아님 · 대상 · 역할 각각 적용 줄(바뀐 수) · 시트 밖 줄은 이유 줄 · LLM 0 · "
+     "기록에 동사째",
+     _go and all("— 적용 · 목차 줄" in _out[c] for c in _cmds if c != "R199 제목") and "버림: 시트에 없는 줄" in _out["R199 제목"]
+     and "뒤 시트 1" in _out["R5 꼴 부모 R3"] and "뒤 시트 1" in _out["R5 같은 단 R3"]
+     and not [b for p_, b in CALLS if p_ == "structure"]
+     and _fx[8]["what"] == ["제목 더함", "부모 바꿈"] and _fc[1]["what"] == ["붙임"] and _fc[1]["to_row"] == 90
+     and _fx[3]["what"] == ["제목 뺌"] and _par(_r31, A3).get(8) == 7 and 3 not in _par(_r31, A3),
+     " / ".join(_out.values()) + f" · 호출 {len(CALLS)} · 기록 {[(r, x.get('what')) for r, x in _fx.items()]} · 8행 {_par(_r31, A3).get(8)}")
+show("B216 ⓑ 범위 붙임 — 잘게 나뉜 R1~R90이 한 청크(청크 수 앞 → 뒤가 줄에)",
+     _nums and int(_nums[2]) == 1 < int(_nums[1]) and len(_one) == 1, f"{_nums[0] if _nums else _out['R1~R90 붙임']} · 한 청크 {len(_one)}")
+struct_map.invalidate(DID3)
+ST.DOC.pop(DID3, None)
+CALLS.clear()
+with Live(by={"structure": _llm216}):
+    _r32 = _parse3(confirmed=ST.confirmed_of(DID3))
+show("B216 ⓐ 재구축 재생 — 보존분 없이 확정 + 고침 기록만으로 같은 나무 · 같은 청크 · 구조 LLM 0",
+     all(_r32.report["structure"]["프레임"][f]["headings"] == _r31.report["structure"]["프레임"][f]["headings"] for f in (A3, B3, C3))
+     and all(_by(_r32, f) == _by(_r31, f) for f in (A3, C3)) and not [b for p_, b in CALLS if p_ == "structure"], f"재생 호출 {len(CALLS)}")
+
+DID4 = "B216H"
+(HINTS / f"{DID4}@structure.json").write_text(json.dumps({A3: {
+    "answers": [], "edits": [{"row": 8, "what": "제목 더함", "parent": 7, "to_row": None, "role": None, "name": None, "why": "힌트"}],
+    "rules": [{"shape": "가)", "role": None, "parent_shape": None, "scope": "꼴 전부", "said": "틀린 서명"}],
+    "hint_status": [{"hint": 1, "kind": "행", "edits": [1], "rules": [], "why": None},
+                    {"hint": 2, "kind": "규칙", "edits": [], "rules": [1], "why": None}]}}, ensure_ascii=False), encoding="utf-8")
+from core.build import ladder as _LA216                     # noqa: E402
+_n216, _hc = [], _LA216.hint_check
+_LA216.hint_check = lambda *a, **k: (_n216.append(a[1]), _hc(*a, **k))[1]
+_it = iter(["R8을 나. 아래 제목으로", "R10과 R5는 같은 단이다", "보조 기준은 묶음이다", "q"])
+_screen.ask = lambda prompt: next(_it)
+_buf = io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    SS.gate(_parse3(DID4), DID4, lambda: _parse3(DID4), layers=["process"])
+_screen.ask, _LA216.hint_check = _ask0, _hc
+(HINTS / f"{DID4}@structure.json").unlink(missing_ok=True)
+_hl = [ln.strip() for ln in _buf.getvalue().splitlines() if ln.strip().startswith("힌트 ") and " — " in ln]
+show("B216 ⓒ 힌트마다 처리 줄 — 반영(명령 꼴) · 서명을 틀린 규칙은 버림 + 직접 명령(힌트의 행 번호로) · 빠진 힌트는 한 번 다시 묻고 「답 없음」",
+     any(ln.startswith("힌트 1 ") and "반영: R8 제목" in ln for ln in _hl)
+     and any(ln.startswith("힌트 2 ") and "버림: 문서에 없는 서명 '가)' → 직접: R10 같은 단 R5" in ln for ln in _hl)
+     and any(ln.startswith("힌트 3 ") and "답 없음" in ln for ln in _hl) and _n216.count(A3) == 5,
+     f"확인 {_n216.count(A3)} · " + " / ".join(_hl[-3:]))
+ST.confirmed_path().unlink(missing_ok=True)
+ST.fixes_path().unlink(missing_ok=True)
 
 
 def _tree(seed):
