@@ -69,10 +69,6 @@ def home():
     if _HOME is None:
         from core.llm import gateway            # 함수 안 import — 모듈 수준 순환을 만들지 않는다
         if gateway.use_mock():
-            h = os.environ.get(HOME_ENV)
-            if h and not os.environ.get("USE_MOCK") and gateway.config_file() is None:   # 조용히 mock 루트로 가지 않는다 (B217 ④)
-                raise SystemExit(f"[상태] ONTO_HOME={h}인데 llm.json이 없다 — 운영이면 {Path(h) / 'llm.json'} · "
-                                 f"mock이면 USE_MOCK=1을 적는다")
             v = os.environ.get(MOCK_HOME_ENV)          # 시험 전용 — 위 머리말
             _HOME = (Path(v).expanduser().resolve() if v else ROOT / MOCK_HOME)
         else:

@@ -126,8 +126,8 @@ def extract(raw) -> list[dict]:
             [r for _n, r in rows],
             # **없으면 빈 집합이다**(B76 ④ⓑ) — `None`을 넘기면 공용 코어가
             # 「상동 없음」이 아니라 「검사할 수 없음」으로 받아 죽는다.
-            marks={exp["ditto_mark"]} if exp.get("ditto_mark") else set(),
-            blank=(exp.get("fill_down") or {}).get("fields") or (), scope=(exp.get("fill_down") or {}).get("scope") or ())
+            blank=(exp.get("fill_down") or {}).get("fields") or (), scope=(exp.get("fill_down") or {}).get("scope") or (),
+            marks={exp["ditto_mark"]} if exp.get("ditto_mark") else set())
         for (row, _r0), rec in zip(rows, recs or []):
             miss = [c for c in (exp.get("required") or []) if rec.get(c, "") == ""]
             if miss:
