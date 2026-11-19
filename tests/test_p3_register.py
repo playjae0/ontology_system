@@ -802,7 +802,8 @@ _a217 = re.sub(r'"header_labels": \[.*?\],', f'"header_labels": {json.dumps(_PF2
                _a217, flags=re.S)
 _up217 = _a217.replace('"required": ["process_ref", "설비", "관리항목"]', '"required": ["설비", "관리항목"]').replace(
     '"fields": ["process_ref"]', '"fields": []')                                                     # 사람이 「상위로 붙임」을 고른 판
-_mf, _mu = [_KR217.load_adapter((_TMP / n).write_text(s, encoding="utf-8") and _TMP / n) for n, s in (("a217.py", _a217), ("u217.py", _up217))]
+with contextlib.redirect_stdout(io.StringIO()):                                                   # 킷의 로드 줄은 이 스위트의 어서션이 아니다
+    _mf, _mu = [_KR217.load_adapter((_TMP / n).write_text(s, encoding="utf-8") and _TMP / n) for n, s in (("a217.py", _a217), ("u217.py", _up217))]
 from parser import pipeline as _PL217                       # noqa: E402
 _px = lambda m, f: _PL217.parse(m, f.stem, str(f), closed_list=[])                                # noqa: E731
 _b217, _f217, _x217r, _u217 = _px(_mu, _h217), _px(_mf, _h217), _px(_mf, _x217), _px(_mu, _x217)
