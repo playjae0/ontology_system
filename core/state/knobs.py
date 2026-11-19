@@ -55,6 +55,9 @@ KNOBS = {
                        "등록 관문 공정 짝 문턱(%) — 상위·하위가 둘 다 골격에 맞은 표본 행 중 상위 어긋남이 이 비율 "
                        "이상이면 FAIL(열이 뒤바뀌었거나 매핑이 틀렸다)",
                        "등록 관문 화면 G4I 줄 — 둘 다 골격에 맞은 m행 중 어긋남 k행 · 인입 공정 짝 표"),
+    "memory_blank_gap": ("cli.interview", ("MEMORY_BLANK_GAP",), "unit",
+                         "열 기억 어긋남 문턱 — 기억과 이번 표본의 빈 칸 비율 차가 이 값 이상이면 그 열을 묻는다(변형 · 개정 문답)",
+                         "변형 · 개정 문답 첫 라운드 — 열 확인 줄(⚠ 어긋남)"),
     "collect_limit": ("core.query.query", ("COLLECT_LIMIT",), "int",
                       "근거 수집 상한(청크)", "python run.py show dist evidence"),
     "ref_limit": ("core.query.query", ("REF_LIMIT",), "int0",

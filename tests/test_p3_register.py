@@ -397,7 +397,7 @@ show("④ 이해 요약이 사람의 교정을 반영해 바뀐다",
 # [B43 ⑥] 진행 재료가 더해져 셋이다 — strict 요건상 required는 properties 전량이다.
 show("④ 스키마가 이해 요약·질문·진행 · 열마다 판정(고침 B206 ④)을 요구한다",
      set(_R.INTERVIEW_SCHEMA["required"])
-     == {"understanding", "reading", "questions", "progress", "columns"},     # 고침(B215 ③ — 열마다 이해 항목)
+     == {"understanding", "reading", "questions", "progress", "columns", "checks"},     # 고침(B217 ① — 열마다 확인)
      str(sorted(_R.INTERVIEW_SCHEMA["required"])))
 show("④ 종료어에 «진행»이 있다 (끝내는 것은 사람이다)", "진행" in _R.INTERVIEW_STOP)
 
@@ -749,8 +749,8 @@ show("B215 ⓒⓓ 관문 — 1행을 넣은 초안은 제목 행 경고(FAIL 아
           [f"[PASS] {g}" in _ho215 for g in ("G24", "G25", "G26")], "header_row 2~3행" in _ho215, _cm215.returncode, "[성공]" in _im215.stdout,
           (_rec215 or [{}])[0].get("source_locator")]) + (_gm215.stdout[-300:] + _cm215.stdout[-300:] + _im215.stdout[-300:]))
 _mem215 = _RIV215.memory(DT190, [str(_m215b)])
-_ans215 = iter(["", "설비 열은 행마다 맥락이다", "진행"])
-_IV215._ask, _ask0 = (lambda *_a: next(_ans215)), _IV215._ask
+_ans215 = iter(["설비 열은 행마다 맥락이다", "진행"])                 # 고침(B217 ① — 질문은 늘 건너뛴다 · 코드의 어긋남 질문이 더해졌다)
+_IV215._ask, _ask0 = (lambda p="", *_a: "" if p.strip().startswith("Q") else next(_ans215)), _IV215._ask
 _pkg215 = {"human": {"doc_type": f"{DT190}@IV215", "samples": [str(_m215b)], "hint": ""},
            "system": {"reader_head": [{"head": {}, "열_프로파일": [_PR215.profile(_rw["sheets"][0])]}]}}
 with contextlib.redirect_stdout(io.StringIO()) as _buf215:
@@ -762,16 +762,128 @@ _o215 = _buf215.getvalue()
 _r1, _r2 = _o215.split("[라운드 2]")[0], _o215.split("[라운드 2]")[-1]
 show("B215 ⓔ 기억 — 첫 라운드 열 표에 승인 작업 자리의 기억 열이 미리 차 있다 · 질문은 기억에 없는 헤더만 · 사람이 고친 열은 ✎ · 기억 표시를 뗀다 · "
      "승인 안 된 작업 자리는 기억 밖",
-     re.search(r"설비\s.*기억 b190cp@", _r1) and all("새 헤더" in q["q"] for q in _hist215[0]["questions"])
+     # 고침(B217 ① — 질문은 기억에 없는 헤더 + 코드가 판정한 어긋남)
+     re.search(r"설비\s.*기억 b190cp@", _r1) and all("새 헤더" in q["q"] or "기억과 어긋남" in q["q"] for q in _hist215[0]["questions"])
      and all(not q["q"].startswith("새 헤더 '설비'") for q in _hist215[0]["questions"])
      and re.search(r"설비\s.*✎", _r2) and not re.search(r"설비\s.*기억", _r2)
      and not any(m["from"].endswith(("CPE213", "CPD190", "P213")) for m in _mem215["cols"].values()), _r1[-700:])
 show("B215 ⓕ 화면 — 이해 요약 열마다 한 줄 · [근거]는 주요 열을 `A 공정번호` 꼴로 · 옛 라운드(문자열)도 확정 요약에 읽힌다",
      re.search(r"\n   A 공정번호: ", _r1) and "[근거] 열 프로파일 — 주요 열" in _r1 and re.search(r"\n     B 공정명: 고유", _r1)
      and _IV215._summarize(_pkg215, [{"round": 1, "understanding": "옛 문자열 이해"}])[0]["decision"].endswith("옛 문자열 이해"), "")
+# ── B217 기억은 제안 · 검증은 전 열 · 좌표 빈 칸은 같은 상위 안에서 이어받기(창작 화성형 — 열 위치 다름 · 2 · 3행 병합 헤더)
+from kit import run_adapter as _KR217                       # noqa: E402
+
+
+def _hs217(name, rows):
+    """창작 화성형 — A 공정구분 · B 설비 · C 공정명(2~3행 세로 병합) · D:E 관리항목(항목 · 규격) · 공정명은 상위의 첫 행에만."""
+    wb = _ox.Workbook()
+    (ws := wb.active).title, ws["A1"] = "관리계획서", "창작 화성 관리계획서"
+    for c, h in zip("ABC", ("공정구분", "설비", "공정명")):
+        ws[f"{c}2"] = h
+        ws.merge_cells(f"{c}2:{c}3")
+    ws["D2"], ws["D3"], ws["E3"] = "관리항목", "항목", "규격"
+    ws.merge_cells("D2:E2")
+    [ws.append(r) for r in rows]
+    wb.save(_d190 / f"{name}.xlsx")
+    return _d190 / f"{name}.xlsx"
+
+
+_HS = [["노칭", "프레스", "노칭 타발", "버 높이", "30㎛"], ["노칭", "프레스 2", "", "정렬도", "0.2mm"],
+       ["스태킹", "스태커", "적층", "정렬", "0.2mm"], ["스태킹", "스태커 2", "", "장력", "30N"]]
+_h217 = _hs217("HS217", _HS)
+_x217 = _hs217("HS217X", _HS[:2] + [["스태킹", "스태커", "", "정렬", "0.2mm"]] + _HS[3:])      # 스태킹 첫 행부터 빈 묶음
+_cols217 = '{"process_group": "A", "설비": "B", "process_ref": "C", "관리항목": "D", "규격": "E"}'
+_a217 = (re.sub(r'"columns": \{.*?\n        \},', f'"columns": {_cols217},', _src190, flags=re.S)
+         .replace('"header_row": 3,', '"header_row": [2, 3],').replace('"data_start_row": 4,', '"data_start_row": 4, "fill_down": '
+                                                                          '{"fields": ["process_ref"], "scope": ["process_group"]},')
+         .replace('"multi_value_fields": ["설비", "관리항목"]', '"multi_value_fields": []')
+         .replace('marks={exp["ditto_mark"]})', 'marks={exp["ditto_mark"]}, blank=exp["fill_down"]["fields"], scope=exp["fill_down"]["scope"])'))
+_a217 = re.sub(r'"header_labels": \[.*?\],', f'"header_labels": {json.dumps(_PF215.header_labels(_RD215.read(str(_h217)), [2, 3], {}), ensure_ascii=False)},',
+               _a217, flags=re.S)
+_up217 = _a217.replace('"required": ["process_ref", "설비", "관리항목"]', '"required": ["설비", "관리항목"]').replace(
+    '"fields": ["process_ref"]', '"fields": []')                                                     # 사람이 「상위로 붙임」을 고른 판
+with contextlib.redirect_stdout(io.StringIO()):                                                   # 킷의 로드 줄은 이 스위트의 어서션이 아니다
+    _mf, _mu = [_KR217.load_adapter((_TMP / n).write_text(s, encoding="utf-8") and _TMP / n) for n, s in (("a217.py", _a217), ("u217.py", _up217))]
+from parser import pipeline as _PL217                       # noqa: E402
+_px = lambda m, f: _PL217.parse(m, f.stem, str(f), closed_list=[])                                # noqa: E731
+_b217, _f217, _x217r, _u217 = _px(_mu, _h217), _px(_mf, _h217), _px(_mf, _x217), _px(_mu, _x217)
+_ref = lambda r: [(x.get("process_group"), x.get("process_ref")) for x in (r.envelope or {}).get("records") or []]                 # noqa: E731
+show("B217 ⓑ 이어받기 — 빈 칸 행의 공정명이 같은 상위의 위 행 값 · 상위가 바뀐 첫 행은 이어받지 않는다(필수면 문서 실패) · 처분 없이는 그대로",
+     _ref(_b217)[:3] == [("노칭", "노칭 타발"), ("노칭", ""), ("스태킹", "적층")]
+     and _ref(_f217) == [("노칭", "노칭 타발"), ("노칭", "노칭 타발"), ("스태킹", "적층"), ("스태킹", "적층")]
+     and not _x217r.ok and "process_ref" in json.dumps(_x217r.failures, ensure_ascii=False),
+     f"전 {_ref(_b217)} · 뒤 {_ref(_f217)} · 첫 행부터 빈 묶음 {[f['reason'][:60] for f in _x217r.failures]}")
+_mem217 = _RIV215.memory(DT190, [str(_h217)])
+_calls217, _round0 = [], _IV215._interview_round
+
+
+def _drop217(pkg, history, context=None, memory=None, retry=None):       # 열 확인에서 '설비'를 늘 빠뜨리는 판
+    _calls217.append(retry)
+    out = _round0(pkg, history, context, memory, retry)
+    return {**out, "checks": [c for c in out.get("checks") or [] if c["column"] != "설비"]}
+
+
+_ans217 = iter(["1", "진행"])
+_IV215._ask, _IV215._interview_round = (lambda *_a: next(_ans217)), _drop217
+with contextlib.redirect_stdout(io.StringIO()) as _buf217:
+    try:
+        _hist217 = _IV215._interview({"human": {"doc_type": f"{DT190}@HS217", "samples": [str(_h217)], "hint": ""},
+                                      "system": {"reader_head": [{"head": {}, "열_프로파일": [_PR215.profile(_RD215.read(str(_h217))["sheets"][0])]}]}},
+                                     memory=_mem217)
+    finally:
+        _IV215._ask, _IV215._interview_round = _ask0, _round0
+_o217 = _buf217.getvalue()
+_q217 = next((q for q in _hist217[0]["questions"] if q["q"].startswith("'공정명'")), {"q": "", "options": [""]})
+show("B217 ⓐ 문답 — 첫 라운드 열마다 기억 · 관찰 · 공정명에 ⚠(빈 칸 비율 수) · 코드가 만든 질문(이어받기 제안) · 열 확인이 빠지면 한 번 다시 묻고 "
+     "「확인 없음」",
+     re.search(r"⚠ 공정명\s.*관찰 빈 0\.5 · 고유 2 · 예 '노칭 타발', '적층' — 어긋남: anchor 열에 빈 칸이 생겼다", _o217)
+     and len(re.findall(r"\n   [✔✎⚠] ", _o217)) == len(_mem217["headers"]) == 5 and re.search(r"설비\s.*확인 없음", _o217) and "기억과 어긋남" in _q217["q"] and _q217["options"][0] == "이어받기 (제안)"
+     and "'공정구분' 안" in _q217["q"] and _calls217[:2] == [None, _calls217[1]] and _calls217[1] and "설비" in _calls217[1],
+     _o217[:1500])
+
 for _f215 in _FX.FIXTURE_ADAPTERS.glob(f"{DT190}@MH215*.py"):
     _f215.unlink()
 registry.unregister(DT190)                                 # 다른 구획의 지문 대조에 끼지 않게(어댑터 · 변형 · 스키마를 함께 걷는다)
+_P.ensure(_P.adapters("b217cp.py")).write_text(_up217.replace(repr(DT190), "'b217cp'"), encoding="utf-8")   # 「상위로 붙임」 판의 등록(창작)
+_P.ensure(_P.schemas("b217cp.json")).write_text(json.dumps({**_sc190, "doc_type": "b217cp"}, ensure_ascii=False), encoding="utf-8")
+registry.register("b217cp", layer=_sc190.get("layer") or "process", adapter="adapters/b217cp.py", schema="schemas/b217cp.json",
+                  adapter_version="1.0", approved_by="시험", approved_at="2026-11-19T00:00:00+00:00")
+_i217 = _ing213(_x217, "--doc-type", "b217cp")
+_s217 = subprocess.run([sys.executable, str(ROOT / "run.py"), "show", "report", "HS217X"], capture_output=True, text=True, cwd=str(ROOT),
+                       stdin=subprocess.DEVNULL)
+registry.unregister("b217cp")
+import gate_checks as _GC217, gate_tables as _GB217        # noqa: E402 — 킷 자리(p3_common)
+from parser import tagger as _TG217                        # noqa: E402
+_GB217.CLOSED_LIST, _cc217 = str(_TG217.snapshot_path()), _GB217.COORD_CATEGORY
+from core.state import bootstrap as _BS217                 # noqa: E402
+_GB217.COORD_CATEGORY = _BS217.COORD_CATEGORY             # 킷 관문이 받는 둘(목록 자리 · 좌표 카테고리)
+with contextlib.redirect_stdout(io.StringIO()) as _g217:
+    _GC217.check_anchor_columns({}, {"x": {"role": "anchor"}}, [{"x": "노칭\u200b"}, {"x": "없는 공정"}, {"x": "노칭\u200b"}])
+_GB217.CLOSED_LIST, _GB217.COORD_CATEGORY = None, _cc217
+_o217g = _g217.getvalue()
+show("B217 ⓓ G4K — 목록 밖 창작(폭 없는 공백 낀 값) → 빗나간 값 repr 앞 3 · 대조 목록 자리 · 시각 · 노드 수 · 그 목록 이름 앞 5",
+     "[FAIL] G4K" in _o217g and "빗나간 값 '노칭\\u200b', '없는 공정'" in _o217g and f"대조 목록 {_TG217.snapshot_path()}(20" in _o217g
+     and re.search(r"노드 \d+ — \S", _o217g), _o217g[-400:])
+from cli import _screen as _SC217                         # noqa: E402
+_kp217, _ans0, _SC217.answer = [], _SC217.answer, (lambda p, *a, **k: (_kp217.append(p), True)[1])
+_RIV215._keep_prior([{"at": "2026-11-19T00:00:00", "samples": [], "rounds": [{}, {}]}])
+_SC217.answer = _ans0
+_dash217 = run("generate", "b217x", "process", "—interview")
+_env217 = {k: v for k, v in _os.environ.items() if k != "USE_MOCK"}
+_oh217 = [subprocess.run([sys.executable, str(ROOT / "run.py"), "show", "knobs"], capture_output=True, text=True, cwd=str(ROOT),
+                         stdin=subprocess.DEVNULL, env={**_env217, "ONTO_HOME": str(_TMP), **x}) for x in ({}, {"USE_MOCK": "1"})]
+show("B217 ⓔ 작은 셋 — 이어갈까 문면(넣을까 · n이면 무엇이 되나) · `—interview`는 대시 문면으로 멈춤 · ONTO_HOME만 있고 llm.json 없으면 멈춤 · "
+     "USE_MOCK=1 명시면 그대로",
+     "이번 생성에 넣을까? [Y 넣고 진행 / n 빼고 진행 — 지우지 않음 · 열 기억(열 표)은 그대로]" in (_kp217 or [""])[0]
+     and "대시가 바뀌었다 — `--interview`" in (_dash217.stdout + _dash217.stderr)
+     and _oh217[0].returncode != 0 and "llm.json이 없다" in _oh217[0].stdout + _oh217[0].stderr
+     and _oh217[1].returncode == 0 and "llm.json이 없다" not in _oh217[1].stdout + _oh217[1].stderr,
+     f"{_kp217[:1]} · {(_dash217.stdout + _dash217.stderr)[-160:]} · {[(x.returncode, (x.stdout + x.stderr)[-120:]) for x in _oh217]}")
+show("B217 ⓒ 상위로 — 사람이 고른 판: 파싱 보고 · 인입 [5/7] 끝 · show report에 `좌표 상위로 붙음 n행` 줄",
+     [tuple(x) for x in (_u217.report.get("normalizer") or {}).get("coord_up") or []] == [("노칭", 1), ("스태킹", 2)]
+     and "좌표 상위로 붙음 3행 — process_ref 빔(노칭 1행 · 스태킹 2행에 붙었다)" in _i217.stdout and "좌표 상위로 붙음 3행" in _s217.stdout,
+     f"{(_u217.report.get('normalizer') or {}).get('coord_up')} · " + " / ".join(ln.strip() for ln in (_i217.stdout + _s217.stdout).splitlines()
+                                                                          if "상위로 붙음" in ln)[:300] + " ‖ 보고 " + (_s217.stdout + _s217.stderr)[:800])
 
 # ============================================================ B25 골격 확정
 

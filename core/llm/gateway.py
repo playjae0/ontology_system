@@ -107,6 +107,9 @@ def use_mock():
             v = _from_file()[0].get("USE_MOCK")
         except NotConfigured:
             v = None        # 설정 파일이 깨진 것은 config()가 시끄럽게 말한다
+    h = os.environ.get("ONTO_HOME")
+    if v is None and h and config_file() is None:        # 운영 루트를 줬는데 설정이 없다 — 조용히 mock 루트로 가지 않는다 (B217 ④)
+        raise SystemExit(f"[상태] ONTO_HOME={h}인데 llm.json이 없다 — 운영이면 {os.path.join(h, 'llm.json')} · mock이면 USE_MOCK=1을 적는다")
     return "1" if v is None else str(v) == "1"
 
 
@@ -193,16 +196,12 @@ def config_file():
     없는 것이 정상이다(환경변수로만 쓰는 사람이 있고, 회귀·CI가 그 경로로 돈다).
     """
     # **`ONTO_CONFIG`를 지정했으면 그것만 본다.** 지정한 경로가 없다고 다른 파일로
-    # 넘어가면, 「이 설정으로 돌려라」가 조용히 무시되고 **엉뚱한 자리의 설정이
-    # 이긴다** — 회귀가 운영자의 `~/.onto/llm.json`을 물어 「설정 없음」 판정이
-    # 통째로 무너진 실측이 그 형태다.
+    # 넘어가면 **엉뚱한 자리의 설정이 이긴다** — 회귀가 운영자의 `~/.onto/llm.json`을 물어 「설정 없음」 판정이 무너진 실측.
     explicit = os.environ.get(CONFIG_ENV)
     if explicit:
         return explicit if os.path.isfile(explicit) else None
     from core import paths                  # 함수 안 import — 모듈 수준 순환 방지
-    # 넷째 자리는 **상태 루트**다(B78 1b) — 사내는 `ONTO_HOME`을 코드 밖에 두므로
-    # 설정도 상태와 함께 이사한다. `paths.config_file()`은 `home()`을 부르지 않는다
-    # (부르면 `use_mock()` → 설정 판독 → 여기로 돌아와 서로를 기다린다).
+    # 넷째 자리는 **상태 루트**다(B78 1b — 설정도 상태와 함께 이사한다) · `paths.config_file()`은 `home()`을 부르지 않는다(부르면 서로를 기다린다).
     cand = [os.path.expanduser(CONFIG_PATHS[0]),
             os.path.join(str(paths.ROOT), CONFIG_PATHS[1]),
             str(paths.config_file())]

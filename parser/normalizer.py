@@ -74,6 +74,24 @@ def coord_refs(value):
     return out
 
 
+def coord_up(records):
+    """**좌표 상위로 붙는 행**(B217 ② — 좌표 칸이 비고 상위 칸이 있다 · 구축이 상위에 붙인다) → `[(상위, 행 수)]`(이름 차례)."""
+    low = {}
+    for p in records or []:
+        g = p.get(COORD_FIELDS[1])
+        if not coord_refs(p.get(COORD_FIELDS[0])) and isinstance(g, str) and g.strip():
+            low[g] = low.get(g, 0) + 1
+    return sorted(low.items())
+
+
+def coord_up_line(ups):
+    """그 한 줄(등록 관문 · 인입 [5/7] · `show report`가 같은 문면) — 없으면 None."""
+    if not ups:
+        return None
+    return (f"좌표 상위로 붙음 {sum(n for _g, n in ups):,}행 — {COORD_FIELDS[0]} 빔("
+            + " · ".join(f"{g} {n}행" for g, n in ups[:5]) + (" …" if len(ups) > 5 else "") + "에 붙었다)")
+
+
 def coord_value(refs):
     """목록 → 저장 꼴(쓰는 손 하나) — 없으면 None · 하나면 그 이름(어댑터 · 저장된 산출과 같은 꼴) · 둘 이상이면 목록."""
     refs = coord_refs(refs)
@@ -148,8 +166,11 @@ def _idx(addr):
 
 
 # ---------------------------------------------------------------- ① 상동 해소
-def resolve_ditto(records, fields=None, marks=DITTO):
+def resolve_ditto(records, fields=None, marks=DITTO, blank=(), scope=()):
     """상동 기호를 **같은 필드의 직전 실값**으로 치환한다. 없으면 그대로 둔다.
+
+    `blank`는 **빈 칸도 상동으로 볼 필드**(B217 ② — 어댑터 `expects.fill_down.fields`) · `scope`는 **끊는 필드**(그 값이 바뀌면
+    `blank` 필드는 위 행을 이어받지 않는다 — 끊긴 뒤 첫 행이 비면 그대로 · 자기완결 검사가 잡는다).
 
     직전 값이 없으면(첫 행이 상동) 채울 근거가 없으므로 건드리지 않는다 —
     validator의 자기완결 검사가 그것을 잡는다. 여기서 추측하지 않는다.
@@ -160,10 +181,20 @@ def resolve_ditto(records, fields=None, marks=DITTO):
     호출자의 `None`에 죽으면 그 위의 **어댑터 전부**가 죽는다(스켈레톤을 그대로
     채운 어댑터가 정확히 그 모양이었다).
     """
-    marks = set(marks or ())
-    prev, out, hits = {}, [], 0
+    marks, blank = set(marks or ()), list(blank or ())
+    scope = [scope] if isinstance(scope, str) else list(scope or ())
+    prev, out, hits, last = {}, [], 0, {}
     for rec in records:
         r = dict(rec)
+        cur = {s: r[s] for s in scope if r.get(s) not in (None, "") and not (isinstance(r[s], str) and r[s].strip() in marks)}
+        if any(s in last and last[s] != v for s, v in cur.items()):
+            for f in blank:                                    # 상위가 바뀌었다 — 빈 칸은 이어받지 않는다
+                prev.pop(f, None)
+        last.update(cur)
+        for f in blank:
+            if r.get(f) in (None, "") and f in prev:
+                r[f] = prev[f]
+                hits += 1
         for f in (fields or r.keys()):
             v = r.get(f)
             if isinstance(v, str) and v.strip() in marks:
@@ -254,13 +285,13 @@ def flatten(records, sep="."):
 
 
 # ---------------------------------------------------------------- 진입점
-def normalize(records, *, ditto_fields=None, multi_fields=(), seps=None, groups=()):
+def normalize(records, *, ditto_fields=None, multi_fields=(), seps=None, groups=(), fill=None):
     """4기능을 순서대로 — 상동 → 복수값 → nested. (병합 전개는 셀 단계라 별도)
 
     돌려주는 것은 `(records, report)`이고 report는 기능별 적용 건수다 — **0이면
     이미 자기완결이었다는 뜻**이고, 그것이 정상이다(어댑터가 자기 안에서 풀었다).
     """
-    recs, d = resolve_ditto(records, ditto_fields)
+    recs, d = resolve_ditto(records, ditto_fields, blank=(fill or {}).get("fields") or (), scope=(fill or {}).get("scope") or ())
     recs, m = split_multi(recs, list(multi_fields), seps, groups=groups) if multi_fields or groups else (recs, 0)
     recs, f = flatten(recs)
     return recs, {"ditto": d, "multi": m, "nested": f}
