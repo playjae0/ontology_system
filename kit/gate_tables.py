@@ -100,7 +100,7 @@ SHAPE_ADAPTER = {
     "adapter_version": "str",
     "expects.columns.*": "str|str[]",       # 합치기 리스트는 **허용**이다(B64 ①)
     "expects.header_labels": "str[]",
-    "expects.header_row": "int",
+    "expects.header_row": "int|int[2]",      # 여러 행 헤더는 [시작, 끝] (B215 ①)
     "expects.sample_path": "str",
 }
 

@@ -129,6 +129,9 @@ def _shape_ok(v, want):
         return isinstance(v, (list, tuple)) and all(isinstance(x, str) for x in v)
     if want == "str|str[]":
         return _shape_ok(v, "str") or _shape_ok(v, "str[]")
+    if want == "int|int[2]":
+        return _shape_ok(v, "int") or (isinstance(v, (list, tuple)) and len(v) == 2
+                                       and all(_shape_ok(x, "int") for x in v) and v[0] <= v[1])
     return True
 
 

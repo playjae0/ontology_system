@@ -397,7 +397,7 @@ show("④ 이해 요약이 사람의 교정을 반영해 바뀐다",
 # [B43 ⑥] 진행 재료가 더해져 셋이다 — strict 요건상 required는 properties 전량이다.
 show("④ 스키마가 이해 요약·질문·진행 · 열마다 판정(고침 B206 ④)을 요구한다",
      set(_R.INTERVIEW_SCHEMA["required"])
-     == {"understanding", "questions", "progress", "columns"},
+     == {"understanding", "reading", "questions", "progress", "columns"},     # 고침(B215 ③ — 열마다 이해 항목)
      str(sorted(_R.INTERVIEW_SCHEMA["required"])))
 show("④ 종료어에 «진행»이 있다 (끝내는 것은 사람이다)", "진행" in _R.INTERVIEW_STOP)
 
@@ -682,6 +682,95 @@ show("B214 ⓔⓕ 산문 통합문서 제안 그대로(읽음 제안이 손대�
 for _f214 in (_FX.FIXTURE_ADAPTERS / "b214cp.py", _FX.FIXTURE_SCHEMAS / "b214cp.json"):
     _f214.unlink()
 registry.unregister("b214cp")
+# ── B215 여러 행 · 병합 헤더 · 열 기억으로 문답 시작 · 문답 화면(창작 — 1행 제목 · 세로 병합 · 가로 묶음 + 3행 하위 글자)
+from parser import preflight as _PF215, reader as _RD215, profile as _PR215    # noqa: E402
+from cli import interview as _IV215                         # noqa: E402
+from cli.register import interview as _RIV215              # noqa: E402
+import contextlib                                          # noqa: E402
+import io                                                  # noqa: E402
+
+
+def _mh215(name, groups=(("관리항목", ("항목", "규격", "측정방법")), ("대응", ("조치", "담당"))), top=None, seed=""):
+    """창작 다단 헤더 — A 공정번호 · B 공정명 · C 설비(2~3행 세로 병합) · 묶음마다 2행 가로 병합 + 3행 하위 글자 · `top`이면 1행도 묶음."""
+    wb = _ox.Workbook()
+    ws = wb.active
+    ws.title, ws["A1"] = "관리계획서", "창작 관리계획서"
+    for c, h in zip("ABC", ("공정번호", "공정명", "설비")):
+        ws[f"{c}2"] = h
+        ws.merge_cells(f"{c}2:{c}3")
+    col = 4
+    for g, subs in groups:
+        ws.cell(2, col).value = g
+        ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + len(subs) - 1)
+        for i, s in enumerate(subs):
+            ws.cell(3, col + i).value = s
+        col += len(subs)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col - 1) if not top else ws.cell(1, 4).__setattr__("value", top)
+    for r in (["OP-10", "노칭", "노칭 프레스", f"버 높이{seed}", "30㎛ 이하", "현미경", "금형 연마", "생산"],
+              ["OP-20", "스태킹", "스태커", "적층 정렬도", "±0.2mm", "비전", "정렬 보정", "품질"]):
+        ws.append(r)
+    wb.save(_d190 / f"{name}.xlsx")
+    return _d190 / f"{name}.xlsx"
+
+
+_m215, _m215b = _mh215("MH215"), _mh215("MH215B", seed=" 2")
+_rw = _RD215.read(str(_m215))
+_h23 = _PF215.header_labels(_rw, [2, 3], {})
+_h3t = _PF215.header_labels(_RD215.read(str(_mh215("MH215T", top="상위"))), [1, 3], {})
+_two = _RD215.read(str(_mh215("MH215G", groups=(("관리항목", ("항목", "규격")), ("기준", ("규격", "담당"))))))
+_amb = _PF215.resolve_columns(_two, {"header_row": [2, 3], "columns": {"a": "규격", "b": "관리항목 › 규격", "c": "항목"}})
+_emp = _PF215.header_labels(_RD215.read(str(_mh215("MH215E", groups=(("관리항목", ("항목", None)),)))), [2, 3], {})
+show("B215 ⓐ 헤더 — 범위 [2, 3]이면 합친 이름 여덟 · 세 단은 세 마디 · 하위 글자가 두 묶음이면 ambiguous · 합친 이름 · 한 묶음 글자는 그 열 · "
+     "묶음 아래 빈 열은 묶음 이름만",
+     _h23 == ["공정번호", "공정명", "설비", "관리항목 › 항목", "관리항목 › 규격", "관리항목 › 측정방법", "대응 › 조치", "대응 › 담당"]
+     and "상위 › 관리항목 › 항목" in _h3t and [b["reason"] for b in _amb[1]] == ["ambiguous"]
+     and _amb[0]["b"] == "E" and _amb[0]["c"] == "D" and _emp[-1] == "관리항목", f"{_h23} · {_h3t[3:4]} · {_amb} · {_emp}")
+_t215 = _PF215.title_row_suspect(_rw, {"header_row": [1, 3]})
+show("B215 ⓒ 제목 행 — 범위에 1행을 넣으면 경고 재료(FAIL 아님 · 다음 값 [2, 3]) · [2, 3]이면 없음",
+     _t215 == 1 and _PF215.title_row_suspect(_rw, {"header_row": [2, 3]}) is None, str(_t215))
+_src215 = re.sub(r'"columns": \{.*?\n        \},', '"columns": {"process_no": "공정번호", "process_ref": "공정명", "설비": "설비", '
+                 '"관리항목": "관리항목 › 항목", "규격": "규격", "측정방법": "관리항목 › 측정방법", "대응계획": "대응 › 조치"},',
+                 _src190, flags=re.S).replace('"header_row": 3,', '"header_row": [1, 3],').replace('"data_start_row": 4,', "")
+_P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@MH215.py").write_text(_src215, encoding="utf-8")
+_P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@MH215_rev1.py").write_text(_src215.replace("[1, 3]", "[2, 3]"), encoding="utf-8")
+_P.ensure(_FX.FIXTURE_ADAPTERS / f"{DT190}@MH215_rev2.py").write_text(_src215.replace("[1, 3]", "[2, 3]"), encoding="utf-8")
+_gm215 = run("generate", DT190, "process", str(_m215), "--variant", "MH215")     # 첫 초안 [1, 3] → G26 자동 재생성 → [2, 3]
+run("review", f"{DT190}@MH215", "--instruct", "'설비'는 설비로 읽는다")            # B213 충돌(X213)을 사람이 고른다
+_cm215 = run("confirm", f"{DT190}@MH215", "--by", "시험")
+_im215 = _ing213(_m215b, "--doc-type", DT190)
+_rec215 = (json.loads(_P.parsed("MH215B.json").read_text(encoding="utf-8")).get("records") or []) if _P.parsed("MH215B.json").exists() else []
+_ho215 = json.loads((REVIEW / f"{DT190}@MH215" / "state.json").read_text(encoding="utf-8")).get("harness_out", "")
+show("B215 ⓒⓓ 관문 — 1행을 넣은 초안은 제목 행 경고(FAIL 아님) · [2, 3] 판은 G24 ~ G26 PASS · 변형 확정 → 같은 꼴 다른 문서 인입 PASS · "
+     "데이터 첫 행 = 범위 끝 + 1",
+     "⚠ 1행은 제목 행으로 보인다" in _gm215.stdout and "header_row [2, 3]" in _gm215.stdout
+     and all(f"[PASS] {g}" in _ho215 for g in ("G24", "G25", "G26")) and "header_row 2~3행" in _ho215
+     and _cm215.returncode == 0 and "[성공]" in _im215.stdout and str((_rec215 or [{}])[0].get("source_locator", "")).endswith("R4"),
+     str(["⚠ 1행은 제목 행으로 보인다" in _gm215.stdout, "header_row [2, 3]" in _gm215.stdout,
+          [f"[PASS] {g}" in _ho215 for g in ("G24", "G25", "G26")], "header_row 2~3행" in _ho215, _cm215.returncode, "[성공]" in _im215.stdout,
+          (_rec215 or [{}])[0].get("source_locator")]) + (_gm215.stdout[-300:] + _cm215.stdout[-300:] + _im215.stdout[-300:]))
+_mem215 = _RIV215.memory(DT190, [str(_m215b)])
+_ans215 = iter(["", "설비 열은 행마다 맥락이다", "진행"])
+_IV215._ask, _ask0 = (lambda *_a: next(_ans215)), _IV215._ask
+_pkg215 = {"human": {"doc_type": f"{DT190}@IV215", "samples": [str(_m215b)], "hint": ""},
+           "system": {"reader_head": [{"head": {}, "열_프로파일": [_PR215.profile(_rw["sheets"][0])]}]}}
+with contextlib.redirect_stdout(io.StringIO()) as _buf215:
+    try:
+        _hist215 = _IV215._interview(_pkg215, memory=_mem215)
+    finally:
+        _IV215._ask = _ask0
+_o215 = _buf215.getvalue()
+_r1, _r2 = _o215.split("[라운드 2]")[0], _o215.split("[라운드 2]")[-1]
+show("B215 ⓔ 기억 — 첫 라운드 열 표에 승인 작업 자리의 기억 열이 미리 차 있다 · 질문은 기억에 없는 헤더만 · 사람이 고친 열은 ✎ · 기억 표시를 뗀다 · "
+     "승인 안 된 작업 자리는 기억 밖",
+     re.search(r"설비\s.*기억 b190cp@", _r1) and all("새 헤더" in q["q"] for q in _hist215[0]["questions"])
+     and all(not q["q"].startswith("새 헤더 '설비'") for q in _hist215[0]["questions"])
+     and re.search(r"설비\s.*✎", _r2) and not re.search(r"설비\s.*기억", _r2)
+     and not any(m["from"].endswith(("CPE213", "CPD190", "P213")) for m in _mem215["cols"].values()), _r1[-700:])
+show("B215 ⓕ 화면 — 이해 요약 열마다 한 줄 · [근거]는 주요 열을 `A 공정번호` 꼴로 · 옛 라운드(문자열)도 확정 요약에 읽힌다",
+     re.search(r"\n   A 공정번호: ", _r1) and "[근거] 열 프로파일 — 주요 열" in _r1 and re.search(r"\n     B 공정명: 고유", _r1)
+     and _IV215._summarize(_pkg215, [{"round": 1, "understanding": "옛 문자열 이해"}])[0]["decision"].endswith("옛 문자열 이해"), "")
+for _f215 in _FX.FIXTURE_ADAPTERS.glob(f"{DT190}@MH215*.py"):
+    _f215.unlink()
 registry.unregister(DT190)                                 # 다른 구획의 지문 대조에 끼지 않게(어댑터 · 변형 · 스키마를 함께 걷는다)
 
 # ============================================================ B25 골격 확정

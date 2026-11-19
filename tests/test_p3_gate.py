@@ -142,7 +142,7 @@ show("⑤ 문답이 라운드마다 즉시 저장된다 (중간에 죽어도 잃
 show("⑥ 문답 스키마가 진행 재료와 중요도를 요구한다",
      "progress" in R.INTERVIEW_SCHEMA["required"]
      and "importance" in R.INTERVIEW_SCHEMA["properties"]["questions"]["items"]["required"])
-show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hint(pkg)" in _src5i)
+show("⑥ 판정 근거(프로파일)를 사람 화면에도 낸다", "_prof_hint(pkg, out)" in _src5i)      # 고침(B215 ③ — 주요 열)
 
 # ============================================================ B45 분할 분포
 print("\n■ B45 — 분할 크기 분포를 검수 뷰에 (자르는 규칙은 안 건드린다)")

@@ -499,7 +499,7 @@ def parse(adapter, doc_id, path, *, layer=None, revision="R1",
     """
     res = ParseResult(doc_id)
     a = adapter.ADAPTER
-    exp = a.get("expects") or {}
+    exp = preflight.fill_data_start(a.get("expects") or {})       # 범위 헤더면 데이터 첫 행 = 끝 + 1 (B215 ①)
 
     raw = _read_doc(res, path, sheet_roles, max_rows, a.get("payload_kind") == "table")
     if a.get("payload_kind") == "table" and len(raw.get("sheets") or []) > 1:     # 표 어댑터는 표 시트 하나만 본다 (B214 ④)
