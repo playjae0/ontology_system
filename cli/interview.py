@@ -375,9 +375,9 @@ def _interview_round(pkg, history, context=None, memory=None, retry=None):
                 "columns": [{"column": c, "role": r, "attach": None if r == UNMAPPABLE else cols[0],
                              "store_as": None if r == UNMAPPABLE else c, "context_type": "행" if r == "context" else None}
                             for c, r in zip(cols, roles)],
-                "checks": [{"column": c, "verdict": "확인", "proposal": None,
-                            "why": "기억 그대로" if c in (memory.get("cols") or {}) else "새 헤더 — 관찰로 읽는다"}
-                           for c in cols] if memory else [],
+                **({"checks": [{"column": c, "verdict": "확인", "proposal": None,
+                                "why": "기억 그대로" if c in (memory.get("cols") or {}) else "새 헤더 — 관찰로 읽는다"}
+                               for c in cols]} if memory else {}),
                 "progress": {"columns": len(cols), "decided": len(fixes),
                              "undecided": max(0, len(cols) - len(fixes)),
                              "by_role": "(mock — 규칙 요약이라 role 배정이 없다)"},
